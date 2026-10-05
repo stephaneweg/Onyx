@@ -35,7 +35,7 @@ public:
 		static const char *const L[9] = { "Name", "E-mail", "Other e-mail", "Phone", "Mobile", "Company", "Address", "Birthday", "Notes" };
 		int y = titleH () + 14;
 		for (int i = 0; i < 9; i++) text_v (canvas, PAD, y + i * 38, 30, L[i], C_TEXT);
-		text (canvas, PAD, y + 7 * 38 + 30, "(dd/mm/yyyy)", wk_mix (C_BG, C_TEXT, 140), F_TINY);
+		text (canvas, PAD, y + 7 * 38 + 30, "(dd/mm/yyyy)", uk_mix (C_BG, C_TEXT, 140), F_TINY);
 	}
 	bool get (Contact &out)
 	{
@@ -99,7 +99,7 @@ public:
 			if (strcmp (L, letter)) { scpy (letter, L, sizeof letter); if (y > -30 && y < height) text (canvas, 16, y + 4, letter, C_ACCENT, F_SMALL, 1); y += 24; }
 			if (y > -50 && y < height)
 			{
-				if (i == sel) wk_fill_round (canvas, 6, y, LW - 12, 46, 6, col_sel ());
+				if (i == sel) uk_fill_round (canvas, 6, y, LW - 12, 46, 6, col_sel ());
 				avatar (canvas, 30, y + 23, 16, c.name[0] ? c.name : c.email, c.email);
 				text (canvas, 56, y + 5, c.name[0] ? c.name : c.email, C_FIELD_TEXT, F_UI, 1, LW - 70);
 				text (canvas, 56, y + 24, c.email, col_dim (), F_SMALL, 0, LW - 70);
@@ -132,7 +132,7 @@ public:
 		for (int k = 0; k < 4; k++)
 		{
 			int bw = tw (B[k], F_UI, 1) + 28;
-			wk_fill_round (canvas, bx, cy, bw, 32, 16, k == 0 ? C_ACCENT : col_line ());
+			uk_fill_round (canvas, bx, cy, bw, 32, 16, k == 0 ? C_ACCENT : col_line ());
 			text_c (canvas, bx, cy, bw, 32, B[k], k == 0 ? C_SEL_TEXT : C_FIELD_TEXT, F_UI, 1);
 			hits.add (bx, cy, bw, 32, BK[k]);
 			bx += bw + 8;
@@ -186,7 +186,7 @@ public:
 		case H_DELETE:
 		{
 			char q[300]; snprintf (q, sizeof q, "Delete %s from the contacts?", c.name[0] ? c.name : c.email);
-			if (wk_messagebox ("Mail", q, MB_YESNO) == 1) { g_m.contacts.remove (order[sel]); g_m.contacts.save (); reload (); }
+			if (uk_messagebox ("Mail", q, MB_YESNO) == 1) { g_m.contacts.remove (order[sel]); g_m.contacts.save (); reload (); }
 			break;
 		}
 		case H_CARDFILE: kapi_exec ("SD:apps/cardfile.app/main", "SD:/Documents/Contacts.card"); break;

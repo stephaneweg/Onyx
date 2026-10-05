@@ -22,7 +22,7 @@
 #define _paint_pview_h
 
 #include <stdlib.h>
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "raster.h"
 #include "pbrush.h"
 #include "pgrad.h"
@@ -30,7 +30,7 @@
 
 namespace pd {
 
-using namespace wtk;
+using namespace uikit;
 
 enum { T_SELECT, T_PENCIL, T_BRUSH, T_ERASER, T_FILL, T_PICKER, T_ZOOM, T_SHAPE, T_TEXT, T_GRADIENT, T_COUNT };
 static const char *const TOOL_NAMES[T_COUNT] = { "Select", "Pencil", "Brush", "Eraser", "Fill", "Colour picker", "Magnifier", "Shapes", "Text", "Gradient" };
@@ -385,12 +385,12 @@ public:
 		int btn = bl ? 1 : br ? 2 : 0;
 		int hot = mx >= viewW () && my < viewH () ? 1 : my >= viewH () && mx < viewW () ? 2 : 0;
 		if (!m_btn && !m_drag && hot != m_barHot) { m_barHot = hot; invalidate (true); }
-		if (m_drag == 3) wk_cursor (KAPI_CURSOR_MOVE);			// (a pan)
-		else if (!hot && m_drag != 1 && m_drag != 2 && mx >= 0 && mx < viewW () && my < viewH ()) wk_cursor (KAPI_CURSOR_CROSSHAIR);
+		if (m_drag == 3) uk_cursor (KAPI_CURSOR_MOVE);			// (a pan)
+		else if (!hot && m_drag != 1 && m_drag != 2 && mx >= 0 && mx < viewW () && my < viewH ()) uk_cursor (KAPI_CURSOR_CROSSHAIR);
 		if (m_drag == 1 || m_drag == 2)
 		{
-			if (m_drag == 1) sy = (int) wk_thumb_pos (my, viewH (), docH (), viewH (), wk_thumb (docH (), viewH (), sy, viewH ()).h);
-			else sx = (int) wk_thumb_pos (mx, viewW (), docW (), viewW (), wk_thumb (docW (), viewW (), sx, viewW ()).h);
+			if (m_drag == 1) sy = (int) uk_thumb_pos (my, viewH (), docH (), viewH (), uk_thumb (docH (), viewH (), sy, viewH ()).h);
+			else sx = (int) uk_thumb_pos (mx, viewW (), docW (), viewW (), uk_thumb (docW (), viewW (), sx, viewW ()).h);
 			clampScroll (); invalidate (true);
 			if (!btn) { m_drag = 0; catchOutside = false; }
 			return true;
@@ -421,13 +421,13 @@ public:
 		unsigned mods = kapi_get_modifiers ();
 		if (g_text.on && !(mods & MOD_CTRL))			// (typing a text)
 		{
-			char u[4]; int n = wk_u8_key (k, u);
+			char u[4]; int n = uk_u8_key (k, u);
 			if (n > 0) text_insert (u, n);
 			else if (k == KEY_ENTER) text_insert ("\n", 1);
 			else if (k == KEY_BACKSPACE) text_back ();
 			else if (k == KEY_DEL) text_del ();
-			else if (k == KEY_LEFT) g_text.caret = wk_u8_prev (g_text.s, g_text.caret);
-			else if (k == KEY_RIGHT) g_text.caret = wk_u8_next (g_text.s, g_text.caret, g_text.n);
+			else if (k == KEY_LEFT) g_text.caret = uk_u8_prev (g_text.s, g_text.caret);
+			else if (k == KEY_RIGHT) g_text.caret = uk_u8_next (g_text.s, g_text.caret, g_text.n);
 			else if (k == KEY_HOME) { while (g_text.caret > 0 && g_text.s[g_text.caret - 1] != '\n') g_text.caret--; }
 			else if (k == KEY_END) { while (g_text.caret < g_text.n && g_text.s[g_text.caret] != '\n') g_text.caret++; }
 			else if (k == 27) { text_end (false); invalidate (true); notify (); return true; }
@@ -542,7 +542,7 @@ private:
 	{
 		for (int i = 1; i <= 6; i++)
 		{
-			unsigned c = wk_mix (DESK, 0x000000, 40 - i * 6);
+			unsigned c = uk_mix (DESK, 0x000000, 40 - i * 6);
 			fillClip (x - i + 2, y + h + i - 1, w + 2 * i - 2, 1, c);
 			fillClip (x + w + i - 1, y - i + 4, 1, h + 2 * i - 4, c);
 		}
@@ -604,9 +604,9 @@ private:
 				p.clear (); p.circle (V (hx), V (hy), V (6)); p.fill (canvas, 0xFFFFFF);
 			}
 			const char *tip = "Drag the ends to adjust   -   Enter: apply   -   Esc: cancel";
-			int tw = wk_tw (tip) + 24, th = wk_fh () + 8, tx = (viewW () - tw) / 2, ty = viewH () - th - 10;
-			wk_rbox (canvas, tx, ty, tw, th, th / 2, 0x26262C, 0x26262C);
-			wk_text_c (canvas, tx, ty, tw, th, tip, 0xFFFFFF);
+			int tw = uk_tw (tip) + 24, th = uk_fh () + 8, tx = (viewW () - tw) / 2, ty = viewH () - th - 10;
+			uk_rbox (canvas, tx, ty, tw, th, th / 2, 0x26262C, 0x26262C);
+			uk_text_c (canvas, tx, ty, tw, th, tip, 0xFFFFFF);
 		}
 	}
 	void ring (int cx, int cy, int r, unsigned c)
@@ -873,7 +873,7 @@ private:
 	void gridPx (int x, int y)
 	{
 		unsigned &p = canvas.px[y * canvas.stride + x];
-		p = wk_bright (p) > 110 ? wk_mix (p, 0x000000, 70) : wk_mix (p, 0xFFFFFF, 80);
+		p = uk_bright (p) > 110 ? uk_mix (p, 0x000000, 70) : uk_mix (p, 0xFFFFFF, 80);
 	}
 	void drawGrid (int ix0, int iy0, int ix1, int iy1)
 	{
@@ -893,17 +893,17 @@ private:
 	// Thin bars on the desk: a track, a thumb.
 	void drawBars ()
 	{
-		WkThumb t = wk_thumb (docH (), viewH (), sy, viewH () - 4);
+		UkThumb t = uk_thumb (docH (), viewH (), sy, viewH () - 4);
 		if (t.show)
 		{
-			canvas.fillRect (viewW () + 2, 2, SBW - 4, viewH () - 4, wk_mix (DESK, 0xFFFFFF, 18));
-			wk_rbox (canvas, viewW () + 3, 2 + t.y, SBW - 6, t.h, 3, wk_mix (DESK, 0xFFFFFF, m_barHot == 1 || m_drag == 1 ? 150 : 90), wk_mix (DESK, 0xFFFFFF, m_barHot == 1 || m_drag == 1 ? 150 : 90));
+			canvas.fillRect (viewW () + 2, 2, SBW - 4, viewH () - 4, uk_mix (DESK, 0xFFFFFF, 18));
+			uk_rbox (canvas, viewW () + 3, 2 + t.y, SBW - 6, t.h, 3, uk_mix (DESK, 0xFFFFFF, m_barHot == 1 || m_drag == 1 ? 150 : 90), uk_mix (DESK, 0xFFFFFF, m_barHot == 1 || m_drag == 1 ? 150 : 90));
 		}
-		WkThumb u = wk_thumb (docW (), viewW (), sx, viewW () - 4);
+		UkThumb u = uk_thumb (docW (), viewW (), sx, viewW () - 4);
 		if (u.show)
 		{
-			canvas.fillRect (2, viewH () + 2, viewW () - 4, SBW - 4, wk_mix (DESK, 0xFFFFFF, 18));
-			wk_rbox (canvas, 2 + u.y, viewH () + 3, u.h, SBW - 6, 3, wk_mix (DESK, 0xFFFFFF, m_barHot == 2 || m_drag == 2 ? 150 : 90), wk_mix (DESK, 0xFFFFFF, m_barHot == 2 || m_drag == 2 ? 150 : 90));
+			canvas.fillRect (2, viewH () + 2, viewW () - 4, SBW - 4, uk_mix (DESK, 0xFFFFFF, 18));
+			uk_rbox (canvas, 2 + u.y, viewH () + 3, u.h, SBW - 6, 3, uk_mix (DESK, 0xFFFFFF, m_barHot == 2 || m_drag == 2 ? 150 : 90), uk_mix (DESK, 0xFFFFFF, m_barHot == 2 || m_drag == 2 ? 150 : 90));
 		}
 	}
 };

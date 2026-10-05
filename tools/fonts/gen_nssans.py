@@ -7,7 +7,7 @@
 # '#' = ink, '.' = paper, fixed 8-px-wide columns at fixed offsets.
 #
 # Output: ONE file sdcard/fonts/ns-sans.fnt holding all four styles, in the Onyx font
-# family format read by wtk::Font:
+# family format read by uikit::Font:
 #     0   "ONYF"                         magic
 #     4   version (u8)        = 1
 #     5   width   (u8)        = 8        glyph width  (px)

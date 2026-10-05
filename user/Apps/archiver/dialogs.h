@@ -1,5 +1,5 @@
 //
-// archiver/dialogs.h -- the Archiver's dialogs (wtk modals): Extract (what, where, which folders, a
+// archiver/dialogs.h -- the Archiver's dialogs (uikit modals): Extract (what, where, which folders, a
 // file that exists, the password), Add to the Archive (the files and folders, where in the archive,
 // the compression), the job's progress (Background / Cancel), "it exists already", a line of text
 // (a name, a password), the archive's properties.
@@ -26,8 +26,8 @@ static inline void centre (Modal *m)
 // a section: an etched frame, its title in small capitals
 static inline void section (Canvas &cv, int x, int y, int w, int h, const char *title)
 {
-	wk_etch_box (cv, x, y, w, h, 6, C_FACE);
-	small_v (cv, x + 12, y + 4, 18, title, wk_mix (C_TEXT, C_FACE, 100), 2);
+	uk_etch_box (cv, x, y, w, h, 6, C_FACE);
+	small_v (cv, x + 12, y + 4, 18, title, uk_mix (C_TEXT, C_FACE, 100), 2);
 }
 static inline Button *button (Modal *m, int x, int y, int w, const char *s, int tag)
 {
@@ -76,7 +76,7 @@ public:
 		static const char *lab[] = { "Replace", "Replace All", "Skip", "Skip All", "Keep Both", "Cancel" };
 		static const int tag[] = { arc::ANS_REPLACE, arc::ANS_REPLACE_ALL, arc::ANS_SKIP, arc::ANS_SKIP_ALL, arc::ANS_KEEP_BOTH, 0 };
 		int x = 16;
-		for (int i = 0; i < 6; i++) { int w = wk_tw (lab[i]) + 26; button (this, x, height - 46, w, lab[i], tag[i]); x += w + 6; }
+		for (int i = 0; i < 6; i++) { int w = uk_tw (lab[i]) + 26; button (this, x, height - 46, w, lab[i], tag[i]); x += w + 6; }
 	}
 	void onButton (int tag) override { close (tag); }
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
@@ -84,10 +84,10 @@ public:
 	{
 		drawBox ("A file exists already");
 		char t[260]; arc::scopy (t, m_name, sizeof t); arc::scat (t, " is there already.", sizeof t);
-		char f[220]; wk_text_fit (t, width - 32, f, sizeof f, 2);
+		char f[220]; uk_text_fit (t, width - 32, f, sizeof f, 2);
 		text_v (canvas, 16, titleH () + 12, 22, f, C_TEXT, 2);
-		wk_text_fit (m_where, width - 80, f, sizeof f);
-		small_v (canvas, 16, titleH () + 38, 20, "In", wk_mix (C_TEXT, C_FACE, 100));
+		uk_text_fit (m_where, width - 80, f, sizeof f);
+		small_v (canvas, 16, titleH () + 38, 20, "In", uk_mix (C_TEXT, C_FACE, 100));
 		small_v (canvas, 36, titleH () + 38, 20, f, C_TEXT);
 	}
 };
@@ -109,10 +109,10 @@ public:
 	void onDraw () override
 	{
 		drawBox (title);
-		char f[200]; wk_text_fit (file, width - 32, f, sizeof f);
+		char f[200]; uk_text_fit (file, width - 32, f, sizeof f);
 		text_v (canvas, 16, titleH () + 12, 22, f, C_TEXT);
-		wk_progress_bar (canvas, 16, titleH () + 44, width - 32, 14, pct);
-		small_v (canvas, 16, titleH () + 66, 20, line, wk_mix (C_TEXT, C_FACE, 100));
+		uk_progress_bar (canvas, 16, titleH () + 44, width - 32, 14, pct);
+		small_v (canvas, 16, titleH () + 66, 20, line, uk_mix (C_TEXT, C_FACE, 100));
 	}
 };
 
@@ -137,8 +137,8 @@ public:
 		for (int i = 0; i < n; i++)
 		{
 			int y = titleH () + 14 + i * 24;
-			small_v (canvas, 16, y, 22, k[i], wk_mix (C_TEXT, C_FACE, 100));
-			char t[160]; wk_text_fit (v[i], width - 160, t, sizeof t, 2);
+			small_v (canvas, 16, y, 22, k[i], uk_mix (C_TEXT, C_FACE, 100));
+			char t[160]; uk_text_fit (v[i], width - 160, t, sizeof t, 2);
 			text_v (canvas, 140, y, 22, t, C_TEXT, 2);
 		}
 	}
@@ -211,7 +211,7 @@ public:
 		if (tag == 3)
 		{
 			char p[300];
-			if (wk_folder_open (p, sizeof p, dest->text)) { dest->setText (p); dest->invalidate (true); }
+			if (uk_folder_open (p, sizeof p, dest->text)) { dest->setText (p); dest->invalidate (true); }
 			return;
 		}
 		close (tag);
@@ -222,18 +222,18 @@ public:
 		drawBox ("Extract");
 		int x = 20, w = width - 40;
 		icon_archive (canvas, x, titleH () + 12, 38);
-		char t[160]; wk_text_fit (m_title, w - 60, t, sizeof t, 2);
+		char t[160]; uk_text_fit (m_title, w - 60, t, sizeof t, 2);
 		text_v (canvas, x + 52, titleH () + 10, 22, t, C_TEXT, 2);
-		wk_text_fit (m_sub, w - 60, t, sizeof t);
-		small_v (canvas, x + 52, titleH () + 32, 18, t, wk_mix (C_TEXT, C_FACE, 100));
+		uk_text_fit (m_sub, w - 60, t, sizeof t);
+		small_v (canvas, x + 52, titleH () + 32, 18, t, uk_mix (C_TEXT, C_FACE, 100));
 		section (canvas, x, gy[0], w, gy[1] - gy[0] - 10, "WHAT");
 		section (canvas, x, gy[1], w, gy[2] - gy[1] - 10, "WHERE");
 		section (canvas, x, gy[2], w, gy[3] - gy[2] - 10, "FOLDERS");
 		section (canvas, x, gy[3], w, gy[4] - gy[3] - 10, "IF A FILE EXISTS");
-		unsigned dm = wk_mix (C_TEXT, C_FACE, 100);
+		unsigned dm = uk_mix (C_TEXT, C_FACE, 100);
 		small_v (canvas, x + 234, gy[0] + 26, 24, selText, dm);
 		small_v (canvas, x + 234, gy[0] + 50, 24, allText, dm);
-		for (int i = 0; i < 3; i++) { wk_text_fit (m_hint[i], w - 280, t, sizeof t); small_v (canvas, x + 262, gy[2] + 26 + i * 24, 24, t, dm); }
+		for (int i = 0; i < 3; i++) { uk_text_fit (m_hint[i], w - 280, t, sizeof t); small_v (canvas, x + 262, gy[2] + 26 + i * 24, 24, t, dm); }
 		text_v (canvas, x + 14, gy[3] + 26, 28, "Existing files:", C_TEXT);
 		text_v (canvas, x, gy[4], 28, "Password:", m_crypt ? C_TEXT : C_DIS);
 		if (!m_crypt) small_v (canvas, x + 370, gy[4], 28, "(nothing is encrypted)", dm);
@@ -296,8 +296,8 @@ public:
 	void onButton (int tag) override
 	{
 		char p[300];
-		if (tag == 3) { if (wk_file_open (p, sizeof p, m_dir)) { addPath (p); arc::scopy (m_dir, p, sizeof m_dir); char *s = strrchr (m_dir, '/'); if (s) *s = 0; } return; }
-		if (tag == 4) { if (wk_folder_open (p, sizeof p, m_dir)) { addPath (p); arc::scopy (m_dir, p, sizeof m_dir); } return; }
+		if (tag == 3) { if (uk_file_open (p, sizeof p, m_dir)) { addPath (p); arc::scopy (m_dir, p, sizeof m_dir); char *s = strrchr (m_dir, '/'); if (s) *s = 0; } return; }
+		if (tag == 4) { if (uk_folder_open (p, sizeof p, m_dir)) { addPath (p); arc::scopy (m_dir, p, sizeof m_dir); } return; }
 		if (tag == 5) { if (selItem >= 0 && selItem < nitem) { for (int i = selItem; i < nitem - 1; i++) arc::scopy (item[i], item[i + 1], 300); nitem--; selItem = -1; invalidate (true); } return; }
 		if (tag == 1 && !nitem) return;
 		close (tag);
@@ -318,29 +318,29 @@ public:
 		drawBox ("Add to the Archive");
 		int x = 20, w = width - 40;
 		icon_archive (canvas, x, titleH () + 12, 38);
-		char t[200]; wk_text_fit (m_title, w - 60, t, sizeof t, 2);
+		char t[200]; uk_text_fit (m_title, w - 60, t, sizeof t, 2);
 		text_v (canvas, x + 52, titleH () + 10, 22, t, C_TEXT, 2);
 		char cnt[40]; arc::u64_str ((arc::u64) nitem, cnt, sizeof cnt); arc::scat (cnt, nitem == 1 ? " item to add" : " items to add", sizeof cnt);
-		small_v (canvas, x + 52, titleH () + 32, 18, nitem ? cnt : "Nothing yet: Add Files... / Add Folder..., or drop them on the archive", wk_mix (C_TEXT, C_FACE, 100));
+		small_v (canvas, x + 52, titleH () + 32, 18, nitem ? cnt : "Nothing yet: Add Files... / Add Folder..., or drop them on the archive", uk_mix (C_TEXT, C_FACE, 100));
 		int lw = w - 132;
-		wk_sunken (canvas, x, listY, lw, listH, 5, C_FIELD);
+		uk_sunken (canvas, x, listY, lw, listH, 5, C_FIELD);
 		for (int i = 0; i < nitem && 4 + (i + 1) * 26 <= listH; i++)
 		{
 			int y = listY + 4 + i * 26;
-			if (i == selItem) wk_hilite (canvas, x + 3, y, lw - 6, 24, 4, false);
+			if (i == selItem) uk_hilite (canvas, x + 3, y, lw - 6, 24, 4, false);
 			bool dir = arc::path_is_dir (item[i]);
 			if (dir) icon_folder (canvas, x + 10, y + 3, 18); else icon_file (canvas, x + 10, y + 3, 18, kind_colour (item[i]));
-			wk_text_fit (arc::base_of (item[i]), lw / 2 - 40, t, sizeof t, dir ? 2 : 0);
+			uk_text_fit (arc::base_of (item[i]), lw / 2 - 40, t, sizeof t, dir ? 2 : 0);
 			text_v (canvas, x + 36, y, 24, t, C_FIELD_TEXT, dir ? 2 : 0);
 			char d[300]; arc::scopy (d, item[i], sizeof d); char *s = strrchr (d, '/'); if (s) *s = 0;
-			wk_text_fit (d, lw / 2 - 20, t, sizeof t);
+			uk_text_fit (d, lw / 2 - 20, t, sizeof t);
 			small_v (canvas, x + lw / 2, y, 24, t, dim_ink ());
 		}
 		section (canvas, x, gy[0], w, gy[1] - gy[0] - 12, "WHERE IN THE ARCHIVE");
 		section (canvas, x, gy[1], w, gy[2] - gy[1] - 12, "COMPRESSION");
 		text_v (canvas, x + 14, gy[0] + 28, 28, "Into the folder:", C_TEXT);
 		small_v (canvas, x + 140, gy[0] + 56, 0, "", C_TEXT);
-		unsigned dm = wk_mix (C_TEXT, C_FACE, 100);
+		unsigned dm = uk_mix (C_TEXT, C_FACE, 100);
 		small_v (canvas, x + 290, gy[0] + 64, 26, "a folder keeps its name and its tree", dm);
 		small_v (canvas, x + 290, gy[0] + 90, 26, "the files of the folders, side by side", dm);
 		small_v (canvas, x + 330, gy[1] + 28, 28, "Deflate; png, jpg, zip... are stored", dm);

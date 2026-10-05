@@ -217,13 +217,13 @@ public:
 		// the subject, the chips
 		const char *subj = last.subject && last.subject[0] ? last.subject : "(no subject)";
 		{
-			WkFaceScope sc (g_face[F_H1]);
+			UkFaceScope sc (g_face[F_H1]);
 			// (a long subject over two lines)
 			char a[400], b[400]; scpy (a, subj, sizeof a); b[0] = 0;
-			if (wk_tw (a, 2) > W - 2 * PAD)
+			if (uk_tw (a, 2) > W - 2 * PAD)
 			{
 				int cut = (int) strlen (a);
-				while (cut > 0) { while (cut > 0 && a[cut] != ' ') cut--; char t = a[cut]; a[cut] = 0; int ww = wk_tw (a, 2); a[cut] = t; if (ww <= W - 2 * PAD || cut == 0) break; cut--; }
+				while (cut > 0) { while (cut > 0 && a[cut] != ' ') cut--; char t = a[cut]; a[cut] = 0; int ww = uk_tw (a, 2); a[cut] = t; if (ww <= W - 2 * PAD || cut == 0) break; cut--; }
 				if (cut > 0) { scpy (b, a + cut + 1, sizeof b); a[cut] = 0; }
 			}
 			text (canvas, PAD, y, a, C_FIELD_TEXT, F_H1, 1, W - 2 * PAD); y += fh (F_H1) + 2;
@@ -238,7 +238,7 @@ public:
 			for (int k = 0; k < 2; k++)
 			{
 				int w = tw (chips[k], F_SMALL, 1) + 16;
-				wk_fill_round (canvas, x, y, w, 20, 10, k ? col_line () : wk_mix (C_FIELD, a.colour, 200));
+				uk_fill_round (canvas, x, y, w, 20, 10, k ? col_line () : uk_mix (C_FIELD, a.colour, 200));
 				text_c (canvas, x, y, w, 20, chips[k], k ? col_dim () : 0xFFFFFF, F_SMALL, 1);
 				x += w + 6;
 			}
@@ -358,8 +358,8 @@ public:
 		contentH = y + sy + 20;
 		// the scroll bar
 		int vh = viewH ();
-		WkThumb t = wk_thumb (contentH, vh, sy, vh);
-		if (t.show) wk_draw_vscroll (canvas, width - WK_SBW, 0, WK_SBW, vh, t, C_FIELD, barDrag);
+		UkThumb t = uk_thumb (contentH, vh, sy, vh);
+		if (t.show) uk_draw_vscroll (canvas, width - UK_SBW, 0, UK_SBW, vh, t, C_FIELD, barDrag);
 		// the quick reply's band
 		if (nsh)
 		{
@@ -373,8 +373,8 @@ public:
 	void pictures_bar (int &y, int W, int i)
 	{
 		int bw = W - 2 * PAD;
-		wk_fill_round (canvas, PAD, y, bw, 32, 6, wk_mix (C_FIELD, 0xF2A600, 40));
-		icon (canvas, I_PICTURE, PAD + 10, y + 7, 18, wk_mix (C_FIELD, 0x8A6000, 220));
+		uk_fill_round (canvas, PAD, y, bw, 32, 6, uk_mix (C_FIELD, 0xF2A600, 40));
+		icon (canvas, I_PICTURE, PAD + 10, y + 7, 18, uk_mix (C_FIELD, 0x8A6000, 220));
 		text_v (canvas, PAD + 36, y, 32, "Pictures from the web are hidden.", C_FIELD_TEXT, F_SMALL, 0, bw - 190);
 		const char *lb = "Show the pictures"; int lw = tw (lb, F_SMALL, 1);
 		text_v (canvas, PAD + bw - lw - 12, y, 32, lb, C_ACCENT, F_SMALL, 1);
@@ -398,8 +398,8 @@ public:
 		{
 			int cx = PAD + (k % 2) * (cw + 10), cy = y + (k / 2) * 52;
 			const Part &p = s.mime->parts[s.att[k]];
-			wk_fill_round (canvas, cx, cy, cw, 44, 6, col_line ());
-			wk_fill_round (canvas, cx + 1, cy + 1, cw - 2, 42, 5, C_FIELD);
+			uk_fill_round (canvas, cx, cy, cw, 44, 6, col_line ());
+			uk_fill_round (canvas, cx + 1, cy + 1, cw - 2, 42, 5, C_FIELD);
 			bool pic = ieq (p.type, "image");
 			bool pdf = ieq (p.sub, "pdf");
 			icon (canvas, pic ? I_PICTURE : I_FILE, cx + 10, cy + 10, 24, pic ? 0x3C8DA8 : pdf ? 0xC83C32 : 0x7B8794);
@@ -471,12 +471,12 @@ public:
 		if (barDrag)
 		{
 			if (!bl) { barDrag = false; invalidate (true); return true; }
-			int vh = viewH (); WkThumb t = wk_thumb (contentH, vh, sy, vh);
-			scroll_to ((int) wk_thumb_pos (my, vh, contentH, vh, t.h)); return true;
+			int vh = viewH (); UkThumb t = uk_thumb (contentH, vh, sy, vh);
+			scroll_to ((int) uk_thumb_pos (my, vh, contentH, vh, t.h)); return true;
 		}
-		if (my < viewH () && mx < width - WK_SBW && link_under (mx, my)) wk_cursor (KAPI_CURSOR_HAND);
+		if (my < viewH () && mx < width - UK_SBW && link_under (mx, my)) uk_cursor (KAPI_CURSOR_HAND);
 		if (!down) return my < viewH ();
-		if (mx >= width - WK_SBW && my < viewH ()) { barDrag = true; int vh = viewH (); WkThumb t = wk_thumb (contentH, vh, sy, vh); scroll_to ((int) wk_thumb_pos (my, vh, contentH, vh, t.h)); return true; }
+		if (mx >= width - UK_SBW && my < viewH ()) { barDrag = true; int vh = viewH (); UkThumb t = uk_thumb (contentH, vh, sy, vh); scroll_to ((int) uk_thumb_pos (my, vh, contentH, vh, t.h)); return true; }
 		if (my >= viewH ()) return false;
 		const Hit *h = hits.at (mx, my);
 		if (h) { act (*h, mx, my); return true; }
@@ -505,7 +505,7 @@ public:
 		{
 			// asked first: a link in a mail may not go where it says
 			char q[700]; snprintf (q, sizeof q, "Open this link in Jet?\n\n%.600s", href);
-			if (wk_messagebox ("Mail", q, MB_YESNO) != 1) return;
+			if (uk_messagebox ("Mail", q, MB_YESNO) != 1) return;
 			kapi_exec (WV_PROGRAM, href);
 		}
 	}
@@ -563,11 +563,11 @@ public:
 		char ol[80]; snprintf (ol, sizeof ol, can ? "Open (%s)" : "Open", app);
 		pm.add (ol, 1, can); pm.add ("Save as...", 2, true);
 		int r = pm.run ();
-		if (r == 1) { kapi_mkdir ("SD:/tmp"); kapi_mkdir ("SD:/tmp/mail"); if (write_att (s, k, tmp)) fa_open (tmp); else wk_messagebox ("Mail", "The attachment could not be written to the card.", MB_OK); }
+		if (r == 1) { kapi_mkdir ("SD:/tmp"); kapi_mkdir ("SD:/tmp/mail"); if (write_att (s, k, tmp)) fa_open (tmp); else uk_messagebox ("Mail", "The attachment could not be written to the card.", MB_OK); }
 		else if (r == 2)
 		{
 			char out[300]; kapi_mkdir ("SD:/Downloads");
-			if (wk_file_save (out, sizeof out, "SD:/Downloads", nm) && !write_att (s, k, out)) wk_messagebox ("Mail", "The attachment could not be written.", MB_OK);
+			if (uk_file_save (out, sizeof out, "SD:/Downloads", nm) && !write_att (s, k, out)) uk_messagebox ("Mail", "The attachment could not be written.", MB_OK);
 		}
 	}
 	void save_all (Shown &s)

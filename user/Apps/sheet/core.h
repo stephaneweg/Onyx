@@ -1,6 +1,6 @@
 //
 // core.h -- the spreadsheet's basics: a growing buffer, UTF-8 (the cells' text is UTF-8; the keyboard
-// and wtk's own font speak Latin-1), case folding, numbers to text and back, Excel's serial dates
+// and uikit's own font speak Latin-1), case folding, numbers to text and back, Excel's serial dates
 // (the 1900 system, its 29 February 1900 included), a scratch arena for the values a formula makes.
 // Plain C++ over newlib's libc / libm: the same code builds on the PC for the host tests.
 //
@@ -110,8 +110,8 @@ static bool u8_valid (const char *s, int n)
 	}
 	return true;
 }
-// Latin-1 (the keyboard's, wtk's text boxes', a CSV's) -> UTF-8; 0x80 is the euro sign, as Windows-1252
-// and wtk's font have it (the keymaps' AltGr+E).
+// Latin-1 (the keyboard's, uikit's text boxes', a CSV's) -> UTF-8; 0x80 is the euro sign, as Windows-1252
+// and uikit's font have it (the keymaps' AltGr+E).
 static unsigned latin1_cp (unsigned c) { return c == 0x80 ? 0x20AC : c; }
 static char *latin1_to_u8 (const char *s, int n)
 {
@@ -119,7 +119,7 @@ static char *latin1_to_u8 (const char *s, int n)
 	for (int i = 0; i < n; i++) b.putu (latin1_cp ((unsigned char) s[i]));
 	return b.take ();
 }
-// UTF-8 -> Latin-1 for wtk's own font ('?' for a character it lacks; the euro sign: 0x80).
+// UTF-8 -> Latin-1 for uikit's own font ('?' for a character it lacks; the euro sign: 0x80).
 static void u8_to_latin1 (const char *s, char *o, int cap)
 {
 	int n = (int) strlen (s), i = 0, k = 0, l;

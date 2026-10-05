@@ -3,7 +3,7 @@
 // mail merge's data) written as RTF, .docx and .odt and read back the same (each through the others
 // too); with LibreOffice (when installed: soffice), our .docx and .odt converted by it (to .docx, .odt)
 // and read back: their text, tables, fields, headers and footers kept. Linked with the desktop
-// simulator's wtk (the image codecs) and kapi (fakekapi.o).
+// simulator's uikit (the image codecs) and kapi (fakekapi.o).
 //
 //   files_test DIR
 //

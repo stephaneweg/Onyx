@@ -13,10 +13,10 @@
 //
 #include "kapi.h"
 #include "gamepad.h"
-#include "wtk/wtk.h"
-#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
+#include "uikit/uikit.h"
+#include "ft/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	600
 #define H	440
@@ -198,24 +198,24 @@ static void save_mapping (void)
 }
 
 // ---- the window ------------------------------------------------------------------------------------
-// The theme's look (wtk/paint.h): a key cap -- raised, or the accent while it is held -- and its
+// The theme's look (uikit/paint.h): a key cap -- raised, or the accent while it is held -- and its
 // label.
 static void key_cap (Canvas &c, int x, int y, int w, int h, bool lit, const char *t)
 {
 	if (lit)
 	{
-		wk_rbox (c, x, y, w, h, 4, wk_tone (C_ACCENT, 150), wk_tone (C_ACCENT, 112));
-		wk_rline (c, x, y, w, h, 4, wk_tone (C_ACCENT, 70), 220);
+		uk_rbox (c, x, y, w, h, 4, uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 112));
+		uk_rline (c, x, y, w, h, 4, uk_tone (C_ACCENT, 70), 220);
 	}
-	else wk_raised (c, x, y, w, h, 4, C_FACE);
-	if (t[0]) wk_text_c (c, x, y, w, h, t, lit ? C_SEL_TEXT : C_TEXT);
+	else uk_raised (c, x, y, w, h, 4, C_FACE);
+	if (t[0]) uk_text_c (c, x, y, w, h, t, lit ? C_SEL_TEXT : C_TEXT);
 }
 
 static void pad_shape (Canvas &c, int x, int y, unsigned b)
 {
 	// a pad seen from above: d-pad left, face buttons right, shoulders on top, sticks' clicks
-	wk_rbox (c, x, y + 20, 300, 130, 14, wk_tone (C_FACE, 118), wk_tone (C_FACE, 96));
-	wk_rline (c, x, y + 20, 300, 130, 14, wk_tone (C_FACE, 60), 220);
+	uk_rbox (c, x, y + 20, 300, 130, 14, uk_tone (C_FACE, 118), uk_tone (C_FACE, 96));
+	uk_rline (c, x, y + 20, 300, 130, 14, uk_tone (C_FACE, 60), 220);
 	struct { int bit, dx, dy, w, h; const char *t; } k[] = {
 		{ 8, 10, 0, 60, 16, "L" }, { 10, 80, 0, 50, 16, "L2" }, { 11, 170, 0, 50, 16, "R2" }, { 9, 230, 0, 60, 16, "R" },
 		{ 0, 44, 40, 22, 22, "" }, { 1, 44, 84, 22, 22, "" }, { 2, 22, 62, 22, 22, "" }, { 3, 66, 62, 22, 22, "" },
@@ -233,22 +233,22 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		unsigned msg = wk_tone (C_ACCENT, 84);				// (a message: the dark accent)
+		unsigned msg = uk_tone (C_ACCENT, 84);				// (a message: the dark accent)
 		char s[200]; int n;
-		wk_rbox (canvas, 0, 0, W, 38, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
-		wk_etch_h (canvas, 0, 38, W, C_FACE);
+		uk_rbox (canvas, 0, 0, W, 38, 0, uk_tone (C_FACE, 170), uk_tone (C_FACE, 130));
+		uk_etch_h (canvas, 0, 38, W, C_FACE);
 		for (int i = 0; i < PAD_MAX; i++)				// the tabs: the current one in the accent
 		{
 			struct kapi_pad p; bool there = kapi_pad_state (i, &p) != 0, cur = i == g_pad;
 			int tx = 10 + i * 100;
 			if (cur)
 			{
-				wk_hilite (canvas, tx, 8, 94, 24, 6, true);
-				wk_rline (canvas, tx, 8, 94, 24, 6, wk_tone (C_ACCENT, 70), 200);
+				uk_hilite (canvas, tx, 8, 94, 24, 6, true);
+				uk_rline (canvas, tx, 8, 94, 24, 6, uk_tone (C_ACCENT, 70), 200);
 			}
-			else wk_raised (canvas, tx, 8, 94, 24, 6, C_FACE);
+			else uk_raised (canvas, tx, 8, 94, 24, 6, C_FACE);
 			n = 0; s[0] = 0; cat (s, &n, sizeof s, "Pad "); cati (s, &n, sizeof s, i + 1); if (!there) cat (s, &n, sizeof s, " -");
-			wk_text_l (canvas, tx + 12, 8, 24, s, cur ? C_SEL_TEXT : there ? C_TEXT : C_DIS, cur ? 2 : 0);
+			uk_text_l (canvas, tx + 12, 8, 24, s, cur ? C_SEL_TEXT : there ? C_TEXT : C_DIS, cur ? 2 : 0);
 		}
 		int y = 44;
 		if (!g_there)
@@ -283,11 +283,11 @@ public:
 		{
 			int bx = 90 + (i % 4) * 124, by = y + (i / 4) * 22;
 			int lo = g_raw.axes[i].minimum, hi = g_raw.axes[i].maximum, v = g_raw.axes[i].value;
-			wk_sunken (canvas, bx, by, 110, 18, 4, C_FIELD);
+			uk_sunken (canvas, bx, by, 110, 18, 4, C_FIELD);
 			if (hi > lo)
 			{
 				int w = (v - lo) * 110 / (hi - lo); if (w < 0) w = 0; if (w > 110) w = 110;
-				if (w > 2) wk_rbox (canvas, bx + 1, by + 1, w - 2, 16, 3, wk_mix (C_FIELD, C_ACCENT, 120), wk_mix (C_FIELD, C_ACCENT, 90));
+				if (w > 2) uk_rbox (canvas, bx + 1, by + 1, w - 2, 16, 3, uk_mix (C_FIELD, C_ACCENT, 120), uk_mix (C_FIELD, C_ACCENT, 90));
 			}
 			n = 0; s[0] = 0; cati (s, &n, sizeof s, i + 1); cat (s, &n, sizeof s, ": "); cati (s, &n, sizeof s, v);
 			canvas.text (bx + 4, by + 1, s, C_FIELD_TEXT);
@@ -298,7 +298,7 @@ public:
 		for (int i = 0; i < g_raw.nhats; i++) { cat (s, &n, sizeof s, i ? ", " : "  "); int h = g_raw.hats[i]; cat (s, &n, sizeof s, h >= 0 && h < 8 ? DIR[h] : "centre"); }
 		if (!g_raw.nhats) cat (s, &n, sizeof s, "  none");
 		canvas.text (14, y, "Hats", C_DIS);
-		canvas.text (14 + 4 * wk_fw (), y, s, C_TEXT); y += 28;
+		canvas.text (14 + 4 * uk_fw (), y, s, C_TEXT); y += 28;
 		// what the apps see
 		int lx, ly, rx, ry;
 		unsigned b = pad_apply (&g_raw, &m, &lx, &ly, &rx, &ry);
@@ -307,13 +307,13 @@ public:
 		y += 160;
 		if (g_mapping)						// the step: a band of a tint of the accent
 		{
-			wk_rbox (canvas, 6, y - 5, W - 12, 44, 6, wk_mix (C_FIELD, C_ACCENT, 70), wk_mix (C_FIELD, C_ACCENT, 46));
-			wk_rline (canvas, 6, y - 5, W - 12, 44, 6, C_ACCENT, 200);
+			uk_rbox (canvas, 6, y - 5, W - 12, 44, 6, uk_mix (C_FIELD, C_ACCENT, 70), uk_mix (C_FIELD, C_ACCENT, 46));
+			uk_rline (canvas, 6, y - 5, W - 12, 44, 6, C_ACCENT, 200);
 			n = 0; s[0] = 0;
 			if (g_step >= PAD_NBUTTONS) cat (s, &n, sizeof s, "Release every button...");
 			else { cat (s, &n, sizeof s, g_waitRelease ? "Release, then press " : "Press "); cat (s, &n, sizeof s, STEP_TEXT[g_step]); }
-			wk_text_l (canvas, 14, y, 16, s, C_FIELD_TEXT, 2);
-			canvas.text (14, y + 18, "Esc: the pad has none (skip)   Backspace: cancel", wk_mix (C_FIELD, C_FIELD_TEXT, 150));
+			uk_text_l (canvas, 14, y, 16, s, C_FIELD_TEXT, 2);
+			canvas.text (14, y + 18, "Esc: the pad has none (skip)   Backspace: cancel", uk_mix (C_FIELD, C_FIELD_TEXT, 150));
 		}
 		else canvas.text (14, y, "Map Buttons... (M) if the buttons above are not in their places.", C_DIS);
 		if (g_msg[0]) canvas.text (14, height - 70, g_msg, msg);
@@ -355,7 +355,7 @@ static void bt_reload (Widget &) { on_reload (); }
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	PadRoot root;
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
@@ -365,7 +365,7 @@ int main (void)
 	menu.item ("Forget Mapping",      "",   0, on_forget);
 	menu.item ("Reload gamepad.ini",  "",   0, on_reload);
 	menu.separator ();
-	menu.item ("Quit",                "^Q", WK_CTRL ('Q'), on_quit);
+	menu.item ("Quit",                "^Q", UK_CTRL ('Q'), on_quit);
 	menu.publish ();
 	int by = root.height - 40;			// (the commands, also as buttons: an applet has no menu)
 	root.addChild (new Button (root.width - 440, by, 150, 30, "Map Buttons...", bt_map));
@@ -373,9 +373,9 @@ int main (void)
 	root.addChild (new Button (root.width - 124, by, 112, 30, "Reload", bt_reload));
 	root.attach ();
 	unsigned lastSeq = 0; bool lastThere = false; int lastPad = -1;
-	while (!wk_quit ())
+	while (!uk_quit ())
 	{
-		wk_pump ();
+		uk_pump ();
 		g_there = kapi_pad_state (g_pad, &g_raw) != 0;
 		map_poll ();
 		if (g_there != lastThere || g_pad != lastPad || (g_there && g_raw.seq != lastSeq))
@@ -383,7 +383,7 @@ int main (void)
 			lastThere = g_there; lastPad = g_pad; lastSeq = g_raw.seq;
 			root.invalidate (true);
 		}
-		if (!root.valid) { root.draw (); wk_present (); }
+		if (!root.valid) { root.draw (); uk_present (); }
 		kapi_msleep (16);
 	}
 	return 0;

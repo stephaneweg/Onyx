@@ -11,7 +11,7 @@
 #define _docguard_h
 
 #include "kapi.h"
-#include "wtk/dialog.h"
+#include "uikit/dialog.h"
 
 static inline unsigned doc_hash (const void *p, unsigned n)	// FNV-1a
 {
@@ -30,7 +30,7 @@ static inline bool doc_confirm (const char *name, bool changed, void (*save_fn) 
 	for (int i = 0; a[i]; i++) msg[p++] = a[i];
 	for (int i = 0; name && name[i] && p < (int) sizeof msg - 3; i++) msg[p++] = name[i];
 	msg[p++] = '?'; msg[p] = '\0';
-	int r = wtk::wk_messagebox ("Unsaved changes", msg, MB_YESNOCANCEL);
+	int r = uikit::uk_messagebox ("Unsaved changes", msg, MB_YESNOCANCEL);
 	if (r == 0) return false;			// Cancel / Esc
 	if (r == 1 && save_fn) save_fn ();		// Yes
 	return true;					// Yes (saved) / No (discard)

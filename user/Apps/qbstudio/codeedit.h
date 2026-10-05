@@ -10,12 +10,12 @@
 #ifndef _qbstudio_codeedit_h
 #define _qbstudio_codeedit_h
 
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "clipboard.h"
 #include "form.h"
 
 namespace qs {
-using namespace wtk;
+using namespace uikit;
 
 enum { LANG_BASIC, LANG_FORM };
 static TextFace *g_mono = 0;				// the code's face (DejaVu Sans Mono), 0: the UI's
@@ -39,10 +39,10 @@ enum { TK_TEXT, TK_KEYWORD, TK_STR, TK_NUM, TK_COMMENT, TK_OBJECT, TK_MEMBER, TK
 static inline unsigned tk_color (int k)
 {
 	static const unsigned C[] = { 0, 0x000F5FB8, 0x00B5530B, 0x006A3FB5, 0x00808890, 0x00146C7A, 0x000E7A8A, 0x000F5FB8, 0x00202020, 0x00A0226E, 0x00146C7A, 0 };
-	bool dark = wk_bright (C_FIELD) < 110;
+	bool dark = uk_bright (C_FIELD) < 110;
 	if (k == TK_TEXT || k == TK_NAME) return C_FIELD_TEXT;
-	if (k == TK_PUNCT) return wk_mix (C_FIELD, C_FIELD_TEXT, 170);
-	return dark ? wk_mix (C[k], 0xFFFFFF, 110) : C[k];
+	if (k == TK_PUNCT) return uk_mix (C_FIELD, C_FIELD_TEXT, 170);
+	return dark ? uk_mix (C[k], 0xFFFFFF, 110) : C[k];
 }
 
 // A text that grows (the editor's)
@@ -153,29 +153,29 @@ public:
 	void insertText (const char *s) { if (readonly) return; snap (3); insert (s, (int) strlen (s)); }
 
 	// ---- geometry ----------------------------------------------------------------------------------------------------
-	int cw () { WkFaceScope fs (g_mono); int w = wk_tw ("M"); return w < 1 ? 8 : w; }
-	int lh () { WkFaceScope fs (g_mono); return wk_fh () + 3; }
+	int cw () { UkFaceScope fs (g_mono); int w = uk_tw ("M"); return w < 1 ? 8 : w; }
+	int lh () { UkFaceScope fs (g_mono); return uk_fh () + 3; }
 	int gutter () { int d = 1, n = m_lines.n; while (n >= 10) { n /= 10; d++; } return imax (2, d) * cw () + 22; }
 	int viewRows () { return imax (1, (height - 8) / lh ()); }
 	bool vbar () { return m_lines.n > (height - 8) / lh (); }
-	int textW () { return width - gutter () - (vbar () ? WK_SBW : 0); }
+	int textW () { return width - gutter () - (vbar () ? UK_SBW : 0); }
 
 	void onDraw () override
 	{
-		WkFaceScope fs (g_mono);
-		int fh = wk_fh (), LH = lh (), CW = cw (), G = gutter ();
+		UkFaceScope fs (g_mono);
+		int fh = uk_fh (), LH = lh (), CW = cw (), G = gutter ();
 		bool focus = hasFocus && !disabled;
-		unsigned bg = readonly ? wk_mix (C_FIELD, C_BG, 90) : C_FIELD;
+		unsigned bg = readonly ? uk_mix (C_FIELD, C_BG, 90) : C_FIELD;
 		canvas.clear (bg);
 		int rows = viewRows ();
 		clampScroll ();
 		int tw_ = textW ();
-		canvas.fillRect (0, 0, G - 10, height, wk_mix (bg, C_FIELD_TEXT, 10));
-		canvas.fillRect (G - 10, 0, 1, height, wk_mix (bg, C_FIELD_TEXT, 36));
+		canvas.fillRect (0, 0, G - 10, height, uk_mix (bg, C_FIELD_TEXT, 10));
+		canvas.fillRect (G - 10, 0, 1, height, uk_mix (bg, C_FIELD_TEXT, 36));
 		Canvas clip; clip.adopt (canvas.px + G, imax (1, tw_), height, canvas.stride);
 		int cl = lineOf (m_caret);
 		int sa = selA (), sb = selB ();
-		unsigned faint = wk_mix (bg, C_FIELD_TEXT, 90);
+		unsigned faint = uk_mix (bg, C_FIELD_TEXT, 90);
 		for (int r = 0; r < rows + 1; r++)
 		{
 			int ln = m_top + r;
@@ -183,11 +183,11 @@ public:
 			int y = 4 + r * LH;
 			int ls = m_lines[ln], le = lineEnd (ln);
 			bool marked = marks.find (ln + 1) >= 0;
-			if (hiLine == ln + 1) clip.fillRect (0, y, tw_, LH, wk_mix (bg, 0xF0C020, 90));
-			else if (focus && ln == cl && !hasSel ()) clip.fillRect (0, y, tw_, LH, wk_mix (bg, C_ACCENT, 14));
+			if (hiLine == ln + 1) clip.fillRect (0, y, tw_, LH, uk_mix (bg, 0xF0C020, 90));
+			else if (focus && ln == cl && !hasSel ()) clip.fillRect (0, y, tw_, LH, uk_mix (bg, C_ACCENT, 14));
 			char b[16]; snprintf (b, sizeof b, "%d", ln + 1);
-			wk_text (canvas, G - 16 - wk_tw (b), y + 1, b, ln == cl ? C_FIELD_TEXT : faint);
-			if (marked) { wk_bead (canvas, G - 9 - 3, y + LH / 2 - 3, 7, 0xD03B2B); }
+			uk_text (canvas, G - 16 - uk_tw (b), y + 1, b, ln == cl ? C_FIELD_TEXT : faint);
+			if (marked) { uk_bead (canvas, G - 9 - 3, y + LH / 2 - 3, 7, 0xD03B2B); }
 			// the indentation's guides
 			{
 				int ind = 0; while (ls + ind < le && m_t.b[ls + ind] == ' ') ind++;
@@ -195,14 +195,14 @@ public:
 				for (int c = 0; c + 2 <= ind; c += 2)
 				{
 					int x = c * CW - m_left + CW / 2;
-					if (x >= 0) for (int q = 0; q < LH; q += 2) clip.fillRect (x, y + q, 1, 1, wk_mix (bg, C_FIELD_TEXT, 40));
+					if (x >= 0) for (int q = 0; q < LH; q += 2) clip.fillRect (x, y + q, 1, 1, uk_mix (bg, C_FIELD_TEXT, 40));
 				}
 			}
 			if (hasSel () && sb > ls && sa <= le)
 			{
 				int a = imax (sa, ls), e = imin (sb, le);
 				int xa = colOf (ls, a) * CW - m_left, xb = colOf (ls, e) * CW - m_left + (sb > le ? CW / 2 : 0);
-				clip.fillRect (xa, y, imax (2, xb - xa), LH, wk_mix (C_FIELD, C_ACCENT, focus ? 80 : 50));
+				clip.fillRect (xa, y, imax (2, xb - xa), LH, uk_mix (C_FIELD, C_ACCENT, focus ? 80 : 50));
 			}
 			drawLine (clip, ls, le, y + (LH - fh) / 2, CW);
 			if (marked)
@@ -219,8 +219,8 @@ public:
 		}
 		if (vbar ())
 		{
-			WkThumb t = wk_thumb (m_lines.n, rows, m_top, height);
-			wk_draw_vscroll (canvas, width - WK_SBW, 0, WK_SBW, height, t, bg, m_drag == 2);
+			UkThumb t = uk_thumb (m_lines.n, rows, m_top, height);
+			uk_draw_vscroll (canvas, width - UK_SBW, 0, UK_SBW, height, t, bg, m_drag == 2);
 		}
 		if (m_popup) drawPopup ();
 	}
@@ -234,7 +234,7 @@ public:
 			m_top -= wheel * 3; clampScroll (); invalidate (true); return true;
 		}
 		int G = gutter ();
-		if (mx >= G && mx < width - WK_SBW) wk_cursor (KAPI_CURSOR_TEXT);
+		if (mx >= G && mx < width - UK_SBW) uk_cursor (KAPI_CURSOR_TEXT);
 		if (bl && !pressed)
 		{
 			pressed = true;
@@ -244,7 +244,7 @@ public:
 				if (inPopup (mx, my)) { int i = m_ptop + (my - m_py - 3) / popRowH (); if (i >= 0 && i < m_items.n) { m_psel = i; accept (); } return true; }
 				m_popup = false;
 			}
-			if (vbar () && mx >= width - WK_SBW) { m_drag = 2; dragV (my); return true; }
+			if (vbar () && mx >= width - UK_SBW) { m_drag = 2; dragV (my); return true; }
 			int p = posAt (mx, my);
 			unsigned now = kapi_get_ticks ();
 			if (now - m_lastClick < 35 && p == m_caret)
@@ -367,7 +367,7 @@ public:
 			}
 			insert ("  ", 2); return true;
 		}
-		char u[4]; int un = wk_u8_key (k, u);
+		char u[4]; int un = uk_u8_key (k, u);
 		if (un > 0 && !ctrl)
 		{
 			snap (1);
@@ -481,8 +481,8 @@ private:
 	void dragV (int my)
 	{
 		int rows = viewRows ();
-		WkThumb t = wk_thumb (m_lines.n, rows, m_top, height);
-		m_top = (int) wk_thumb_pos (my, height, m_lines.n, rows, t.h);
+		UkThumb t = uk_thumb (m_lines.n, rows, m_top, height);
+		m_top = (int) uk_thumb_pos (my, height, m_lines.n, rows, t.h);
 		clampScroll (); invalidate (true);
 	}
 
@@ -533,7 +533,7 @@ private:
 	}
 
 	// ---- completion -------------------------------------------------------------------------------------------------------
-	int popRowH () { return wk_fh () + 4; }
+	int popRowH () { return uk_fh () + 4; }
 	bool inPopup (int mx, int my) { return mx >= m_px && mx < m_px + POP_W && my >= m_py && my < m_py + POP_ROWS * popRowH () + 6; }
 	void openPopup (bool names)
 	{
@@ -590,26 +590,26 @@ private:
 		int ln = lineOf (m_pstart);
 		m_px = gutter () + colOf (m_lines[ln], m_pstart) * CW - m_left - 4;
 		m_py = 4 + (ln - m_top + 1) * LH + 2;
-		WkFaceScope back (g_ui);			// (the UI's face for the list)
+		UkFaceScope back (g_ui);			// (the UI's face for the list)
 		int RH = popRowH (), n = imin (POP_ROWS, m_items.n), h = n * RH + 6;
 		if (m_py + h > height) m_py = 4 + (ln - m_top) * LH - h - 2;
-		if (m_px + POP_W > width - WK_SBW) m_px = width - WK_SBW - POP_W;
+		if (m_px + POP_W > width - UK_SBW) m_px = width - UK_SBW - POP_W;
 		if (m_px < 0) m_px = 0;
-		wk_popup (canvas, m_px, m_py, POP_W, h, 0, C_FIELD);
+		uk_popup (canvas, m_px, m_py, POP_W, h, 0, C_FIELD);
 		m_ptop = iclamp (m_ptop, 0, imax (0, m_items.n - POP_ROWS));
 		for (int r = 0; r < n; r++)
 		{
 			int i = m_ptop + r; const Compl &c = m_items[i];
 			int y = m_py + 3 + r * RH;
 			unsigned ink = C_FIELD_TEXT;
-			if (i == m_psel) { wk_hilite (canvas, m_px + 3, y, POP_W - 6, RH, 3); ink = wk_hilite_ink (); }
+			if (i == m_psel) { uk_hilite (canvas, m_px + 3, y, POP_W - 6, RH, 3); ink = uk_hilite_ink (); }
 			unsigned kc = c.kind == 'p' ? 0x2E7FA8 : c.kind == 'm' ? 0xB5530B : c.kind == 'c' ? 0x146C7A : c.kind == 's' ? 0x6A3FB5 : 0x0F5FB8;
 			canvas.fillRect (m_px + 8, y + RH / 2 - 6, 12, 12, kc);
 			char t[2] = { c.kind, 0 };
-			wk_text_c (canvas, m_px + 8, y + RH / 2 - 6, 12, 12, t, 0xFFFFFF, 2);
-			wk_text (canvas, m_px + 26, y + 2, c.name, ink, i == m_psel ? 2 : 0);
-			int dw = wk_tw (c.detail);
-			wk_text (canvas, m_px + POP_W - 10 - dw, y + 2, c.detail, i == m_psel ? ink : wk_mix (C_FIELD, C_FIELD_TEXT, 130));
+			uk_text_c (canvas, m_px + 8, y + RH / 2 - 6, 12, 12, t, 0xFFFFFF, 2);
+			uk_text (canvas, m_px + 26, y + 2, c.name, ink, i == m_psel ? 2 : 0);
+			int dw = uk_tw (c.detail);
+			uk_text (canvas, m_px + POP_W - 10 - dw, y + 2, c.detail, i == m_psel ? ink : uk_mix (C_FIELD, C_FIELD_TEXT, 130));
 		}
 	}
 
@@ -627,7 +627,7 @@ private:
 			if (x > cv.w) break;
 			if (m_t.b[i] == ' ') continue;
 			g[0] = m_t.b[i];
-			wk_text (cv, x, y, g, c, style);
+			uk_text (cv, x, y, g, c, style);
 		}
 	}
 	void drawLine (Canvas &cv, int ls, int le, int y, int CW)

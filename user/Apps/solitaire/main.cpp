@@ -8,10 +8,10 @@
 // the cards bounce when you win.
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "cards.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define GAP	12
 #define W	(GAP + 7 * (CARD_W + GAP))
@@ -24,22 +24,22 @@ using namespace wtk;
 
 enum { STOCK = 0, WASTE = 1, FOUND = 2, TAB = 6, NPILE = 13 };
 
-// The theme's pieces (wtk/paint.h) round the table: a status bar of the face (an etched line on
+// The theme's pieces (uikit/paint.h) round the table: a status bar of the face (an etched line on
 // top), a message box (a title strip, the face, an outline).
 static void status_bar (Canvas &c, const char *s)
 {
-	wk_rbox (c, 0, H - SBH, W, SBH, 0, wk_tone (C_FACE, 150), wk_tone (C_FACE, 120));
-	wk_etch_h (c, 0, H - SBH, W, C_FACE);
-	wk_text_l (c, GAP, H - SBH + 1, SBH - 1, s, C_TEXT);
+	uk_rbox (c, 0, H - SBH, W, SBH, 0, uk_tone (C_FACE, 150), uk_tone (C_FACE, 120));
+	uk_etch_h (c, 0, H - SBH, W, C_FACE);
+	uk_text_l (c, GAP, H - SBH + 1, SBH - 1, s, C_TEXT);
 }
 static void msgbox (Canvas &c, int cx, int cy, const char *title, const char *text)
 {
-	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	int th = uk_fh () + 10, w = uk_text_w (text) + 56, h = th + uk_fh () + 24;
 	int x = cx - w / 2, y = cy - h / 2;
-	wk_rbox (c, x, y, w, h, 8, C_FACE, C_FACE);
-	wk_title_strip (c, x + 1, y + 1, w - 2, th, title, 7);
-	wk_rline (c, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
-	wk_text_c (c, x, y + th, w, h - th, text, C_TEXT);
+	uk_rbox (c, x, y, w, h, 8, C_FACE, C_FACE);
+	uk_title_strip (c, x + 1, y + 1, w - 2, th, title, 7);
+	uk_rline (c, x, y, w, h, 8, UK_OUTLINE == 2 ? 0 : uk_tone (C_FRAME_ACTIVE, 44), 255);
+	uk_text_c (c, x, y + th, w, h - th, text, C_TEXT);
 }
 
 struct Pile { int n; signed char c[52]; bool up[52]; };
@@ -269,7 +269,7 @@ public:
 	}
 	bool key (long k) override
 	{
-		if (k == WK_CTRL ('Z')) { do_undo (); return true; }
+		if (k == UK_CTRL ('Z')) { do_undo (); return true; }
 		if (k == ' ') { turnStock (); return true; }
 		return false;
 	}
@@ -340,8 +340,8 @@ int main (void)
 	root.view = g_game;
 	static Menu menu;
 	menu.menu ("Game");
-	menu.item ("Deal",                "^N", WK_CTRL ('N'), on_new);
-	menu.item ("Undo",                "^Z", WK_CTRL ('Z'), on_undo);
+	menu.item ("Deal",                "^N", UK_CTRL ('N'), on_new);
+	menu.item ("Undo",                "^Z", UK_CTRL ('Z'), on_undo);
 	menu.item ("Cards to Foundations", "",  0,             on_auto);
 	menu.separator ();
 	menu.item ("Draw One",            "",   0,             on_draw1);

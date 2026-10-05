@@ -1,11 +1,11 @@
 //
-// demoE/main.cpp -- multi-line editable Textarea + a scroll view (wtk port). The
-// Textarea (wtk) is an editable widget; the scroll view is a custom Widget drawing an
-// app-owned colour grid, scrolled by a vertical + horizontal wtk Scrollbar (value 0..100).
+// demoE/main.cpp -- multi-line editable Textarea + a scroll view (uikit port). The
+// Textarea (uikit) is an editable widget; the scroll view is a custom Widget drawing an
+// app-owned colour grid, scrolled by a vertical + horizontal uikit Scrollbar (value 0..100).
 //
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	320
 #define H	240
@@ -50,7 +50,7 @@ int main (void)
 	root.addChild (new Label (10, 8, 290, 14, "multi-line editable + scroll view:"));	// (the theme's face)
 
 	Textarea *ta = new Textarea (10, 26, 290, 52, 1024);
-	ta->setContent ("click to focus, then type.\nmulti-line editing in the\nwtk Textarea.");
+	ta->setContent ("click to focus, then type.\nmulti-line editing in the\nuikit Textarea.");
 	root.addChild (ta);
 
 	g_grid = new GridView (VP_X, VP_Y, VP_W, VP_H);

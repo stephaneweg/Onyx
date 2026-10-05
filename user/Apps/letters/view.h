@@ -20,7 +20,7 @@
 
 namespace wr {
 
-using namespace wtk;
+using namespace uikit;
 
 enum { GAP = 22, SBW = 13 };
 
@@ -31,8 +31,8 @@ static pdfw::Writer *g_pdf;
 static bool g_pdfJpeg;				// the images as JPEG (a smaller file)
 static const float PX2PT = 0.75f;
 
-static unsigned C_DESK () { return wk_mix (wk_tone (C_BG, 92), 0x7A7E86, 110); }
-static unsigned C_SELECT () { return wk_mix (0xFFFFFF, C_ACCENT, 92); }
+static unsigned C_DESK () { return uk_mix (uk_tone (C_BG, 92), 0x7A7E86, 110); }
+static unsigned C_SELECT () { return uk_mix (0xFFFFFF, C_ACCENT, 92); }
 
 static void (*g_onContext) (int x, int y);	// the app's: a right click at (x, y) of the view
 static bool g_showMarks;			// View > Formatting Marks: the spaces, tabs, line breaks, paragraphs' ends shown
@@ -186,7 +186,7 @@ public:
 		int vh = viewH ();
 		canvas.fillRect (0, 0, width, height, C_DESK ());
 		int ox = originX ();
-		unsigned shadow = wk_mix (C_DESK (), 0, 60);
+		unsigned shadow = uk_mix (C_DESK (), 0, 60);
 		bool inBody = L.d->cur == SY_BODY;
 		int n; Para **bp = story_p (*L.d, SY_BODY, &n);
 		for (int pg = 0; pg < L.npages; pg++)
@@ -195,7 +195,7 @@ public:
 			if (pt > vh) break;
 			if (pt + L.pageH < 0) continue;
 			fillClip (ox + 3, pt + 3, L.pageW, L.pageH, shadow);
-			fillClip (ox - 1, pt - 1, L.pageW + 2, L.pageH + 2, wk_mix (C_DESK (), 0, 90));
+			fillClip (ox - 1, pt - 1, L.pageW + 2, L.pageH + 2, uk_mix (C_DESK (), 0, 90));
 			fillClip (ox, pt, L.pageW, L.pageH, 0xFFFFFF);
 			cropMarks (ox, pt);
 			paintPage (pg, ox, pt, vh, bp, inBody);
@@ -213,9 +213,9 @@ public:
 	{
 		if (mx < 0 && m_drag == 0) { if (m_barHot) { m_barHot = 0; invalidate (true); } m_bl = false; return false; }
 		m_mx = mx; m_my = my;
-		if (m_drag == 5) wk_cursor (KAPI_CURSOR_SIZE_H);		// (a column's border)
-		else if (m_drag == 4) wk_cursor (KAPI_CURSOR_SIZE_NWSE);	// (an image's corner)
-		else if (m_drag == 0 && mx >= 0 && mx < viewW () && my < viewH ()) wk_cursor (KAPI_CURSOR_TEXT);
+		if (m_drag == 5) uk_cursor (KAPI_CURSOR_SIZE_H);		// (a column's border)
+		else if (m_drag == 4) uk_cursor (KAPI_CURSOR_SIZE_NWSE);	// (an image's corner)
+		else if (m_drag == 0 && mx >= 0 && mx < viewW () && my < viewH ()) uk_cursor (KAPI_CURSOR_TEXT);
 		if (wheel)
 		{
 			sy -= wheel * 40;
@@ -243,8 +243,8 @@ public:
 		if (hot != m_barHot && !m_drag) { m_barHot = hot; invalidate (true); }
 		if (m_drag == 2 || m_drag == 3)				// a scroll bar's thumb dragged
 		{
-			if (m_drag == 2) { int th = thumbV (); sy = (int) wk_thumb_pos (my, viewH (), docH (), viewH (), th); }
-			else { int th = thumbH (); sx = (int) wk_thumb_pos (mx, viewW (), docW (), viewW (), th); }
+			if (m_drag == 2) { int th = thumbV (); sy = (int) uk_thumb_pos (my, viewH (), docH (), viewH (), th); }
+			else { int th = thumbH (); sx = (int) uk_thumb_pos (mx, viewW (), docW (), viewW (), th); }
 			clampScroll (); invalidate (true);
 			return true;
 		}
@@ -631,12 +631,12 @@ private:
 		{
 			int s = hf_story (f != 0, pg);
 			int y = pt + ((f ? body_bot (pg) : body_top (pg)) >> 6);
-			unsigned c = s == L.d->cur ? C_ACCENT : wk_mix (0xFFFFFF, C_ACCENT, 120);
+			unsigned c = s == L.d->cur ? C_ACCENT : uk_mix (0xFFFFFF, C_ACCENT, 120);
 			for (int x = ox + 2; x < ox + L.pageW - 2; x += 6) fillClip (x, y, 3, 1, c);
 			const char *nm = STORY_NAMES[s];
-			int tw = wk_text_w (nm) + 12, th = 18, tx = ox + (L.ml64 >> 6), ty = f ? y - th : y + 1;
+			int tw = uk_text_w (nm) + 12, th = 18, tx = ox + (L.ml64 >> 6), ty = f ? y - th : y + 1;
 			if (ty < 0 || ty + th > viewH () || tx + tw > viewW ()) continue;
-			canvas.fillRect (tx, ty, tw, th, wk_mix (0xFFFFFF, C_ACCENT, 50));
+			canvas.fillRect (tx, ty, tw, th, uk_mix (0xFFFFFF, C_ACCENT, 50));
 			canvas.text (tx + 6, ty + 2, nm, s == L.d->cur ? C_ACCENT : 0x707070);
 		}
 	}
@@ -659,7 +659,7 @@ private:
 		const Table *t = run.t;
 		int bw = wmax (1, (t->bw * L.zoom + 300) / 600);		// (eighths of a point, at 96 dpi)
 		unsigned bc = t->bcolor == AUTO ? 0 : t->bcolor;
-		if (L.d->cur != SY_BODY) bc = wk_mix (bc, 0xFFFFFF, 150);
+		if (L.d->cur != SY_BODY) bc = uk_mix (bc, 0xFFFFFF, 150);
 		int dy = 0;
 		bool rep = repeatAt (t, pg, &dy);
 		for (int r = rep ? -1 : 0; r < t->nrows; r++)
@@ -675,7 +675,7 @@ private:
 				if (r < 0) re = 0;
 				int x0 = ox + ((t->x64 + t->colX64[c]) >> 6), x1 = ox + ((t->x64 + t->colX64[ce]) >> 6);
 				int y0 = pt + ((t->rowY64[row] + off) >> 6), y1 = pt + ((t->rowY64[re] + t->rowH64[re] + off) >> 6);
-				if (fills) { if (cl.fill != AUTO) fillClip (x0, y0, x1 - x0, y1 - y0, L.d->cur != SY_BODY ? wk_mix (cl.fill, 0xFFFFFF, 150) : cl.fill); continue; }
+				if (fills) { if (cl.fill != AUTO) fillClip (x0, y0, x1 - x0, y1 - y0, L.d->cur != SY_BODY ? uk_mix (cl.fill, 0xFFFFFF, 150) : cl.fill); continue; }
 				bool lastOnPage = re == t->nrows - 1 || t->rowPage[re + 1] != pg || r < 0;
 				bool top = false, bot = false, lft = false, rgt = false;
 				switch (t->border)
@@ -737,7 +737,7 @@ private:
 		int tx64 = (ox << 6) + q->x64;
 		const int *xs = q->xs;
 		auto xAt = [&] (int i) { return i < ln.end ? xs[i] : ln.xEnd64; };
-		auto ink = [&] (unsigned c) { return dim ? wk_mix (c, 0xFFFFFF, 150) : c; };
+		auto ink = [&] (unsigned c) { return dim ? uk_mix (c, 0xFFFFFF, 150) : c; };
 		// highlights, the fields' shading (their font's height, on the baseline)
 		for (int i = ln.start; i < ln.end; )
 		{
@@ -878,7 +878,7 @@ private:
 	{
 		if (g_pdf) return;
 		int x1 = wmin (x + w, viewW ()), y1 = wmin (y + h, viewH ());
-		for (int j = wmax (y, 0); j < y1; j++) for (int i = wmax (x, 0); i < x1; i++) wk_blend_px (canvas, i, j, c, a);
+		for (int j = wmax (y, 0); j < y1; j++) for (int i = wmax (x, 0); i < x1; i++) uk_blend_px (canvas, i, j, c, a);
 	}
 	// An image at its size on the screen (scaled once, kept until the size changes), blended by its alpha.
 	void drawImage (Image &im, int x, int y, int w, int h, int vh)
@@ -918,7 +918,7 @@ private:
 			{
 				unsigned p = s[i - x], al = p >> 24;
 				if (al >= 255) d[i] = p & 0xFFFFFF;
-				else if (al) d[i] = wk_mix (d[i], p & 0xFFFFFF, (int) al + 1);
+				else if (al) d[i] = uk_mix (d[i], p & 0xFFFFFF, (int) al + 1);
 			}
 		}
 	}
@@ -981,19 +981,19 @@ private:
 		m_caretDrawn = false;
 	}
 
-	int thumbV () { WkThumb t = wk_thumb (docH (), viewH (), sy, viewH ()); return t.h; }
-	int thumbH () { WkThumb t = wk_thumb (docW (), viewW (), sx, viewW ()); return t.h; }
+	int thumbV () { UkThumb t = uk_thumb (docH (), viewH (), sy, viewH ()); return t.h; }
+	int thumbH () { UkThumb t = uk_thumb (docW (), viewW (), sx, viewW ()); return t.h; }
 	void drawBars ()
 	{
 		unsigned bg = C_BG;
 		canvas.fillRect (viewW (), 0, SBW, height, bg);
-		WkThumb t = wk_thumb (docH (), viewH (), sy, viewH () - 2);
-		wk_scroll_bar (canvas, viewW () + 1, 1, SBW - 2, viewH () - 2, true, t.y, t.show ? t.h : 0, bg, m_barHot == 1 || m_drag == 2 ? WK_HOT : WK_NORMAL);
+		UkThumb t = uk_thumb (docH (), viewH (), sy, viewH () - 2);
+		uk_scroll_bar (canvas, viewW () + 1, 1, SBW - 2, viewH () - 2, true, t.y, t.show ? t.h : 0, bg, m_barHot == 1 || m_drag == 2 ? UK_HOT : UK_NORMAL);
 		if (hbar ())
 		{
 			canvas.fillRect (0, viewH (), width, SBW, bg);
-			WkThumb u = wk_thumb (docW (), viewW (), sx, viewW () - 2);
-			wk_scroll_bar (canvas, 1, viewH () + 1, viewW () - 2, SBW - 2, false, u.y, u.show ? u.h : 0, bg, m_barHot == 2 || m_drag == 3 ? WK_HOT : WK_NORMAL);
+			UkThumb u = uk_thumb (docW (), viewW (), sx, viewW () - 2);
+			uk_scroll_bar (canvas, 1, viewH () + 1, viewW () - 2, SBW - 2, false, u.y, u.show ? u.h : 0, bg, m_barHot == 2 || m_drag == 3 ? UK_HOT : UK_NORMAL);
 		}
 	}
 };

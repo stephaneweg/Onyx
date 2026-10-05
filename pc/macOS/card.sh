@@ -1,7 +1,7 @@
 #!/bin/sh
 # pc/macOS/card.sh DEST -- the card's files Ledger and Letters read, copied to DEST (Ledger.app's
 # Contents/Resources/sd: the read-only card under the user's own folders): the fonts, the theme, Ledger's
-# templates, words (lang/: French) and manuals, wtk's words (res/lang), the demo company and its bank
+# templates, words (lang/: French) and manuals, uikit's words (res/lang), the demo company and its bank
 # statement, Letters' fonts (res/fonts).
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)

@@ -1,7 +1,7 @@
 //
 // shell/main.cpp -- Onyx activity shell (PHASE 0: empty home-screen frame).
 //
-// The shell is a fullscreen, borderless wtk app that owns the whole screen and
+// The shell is a fullscreen, borderless uikit app that owns the whole screen and
 // replaces the old panel (taskbar) + voronoy (wallpaper). It draws the persistent
 // chrome of the activity model:
 //   - a top TITLE bar  : current activity name ("Accueil") | clock | Home button
@@ -10,14 +10,14 @@
 //   - a central CONTENT area  : the activity viewport (hosts apps in surfaces)
 //
 // It already runs its OWN event loop (not Root::run) because the shell grows a timer +
-// the SHELL_REQUEST/mailbox IPC here. The pointer/key trampolines mirror wtk::Root::run's
+// the SHELL_REQUEST/mailbox IPC here. The pointer/key trampolines mirror uikit::Root::run's
 // routing; this loop is the seam where the shell diverges.
 //
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "applib.h"		// should_exit, pump_events, msleep, present
 #include "shell_proto.h"	// activity-shell IPC protocol (hosted apps draw into surfaces)
 
-using namespace wtk;
+using namespace uikit;
 
 #define TOPBAR_H	32
 #define TIMELINE_H	28
@@ -26,7 +26,7 @@ using namespace wtk;
 
 // The palette: the theme's -- the bars and the panel of the face, etched lines along the edges they
 // share with the content; the content a shade darker (a well), its muted text C_DIS.
-#define COL_CONTENT	wk_tone (C_FACE, 112)
+#define COL_CONTENT	uk_tone (C_FACE, 112)
 enum { EDGE_TOP, EDGE_BOTTOM, EDGE_RIGHT };
 class EtchPanel : public Panel
 {
@@ -36,9 +36,9 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (bg);
-		if (edge == EDGE_TOP) wk_etch_h (canvas, 0, 0, width, bg);
-		else if (edge == EDGE_BOTTOM) wk_etch_h (canvas, 0, height - 2, width, bg);
-		else wk_etch_v (canvas, width - 2, 0, height, bg);
+		if (edge == EDGE_TOP) uk_etch_h (canvas, 0, 0, width, bg);
+		else if (edge == EDGE_BOTTOM) uk_etch_h (canvas, 0, height - 2, width, bg);
+		else uk_etch_v (canvas, width - 2, 0, height, bg);
 	}
 };
 
@@ -55,8 +55,8 @@ static bool   g_collapsed = false;
 static int    g_last_min  = -1;
 
 // ---- a hosted app's viewport ------------------------------------------------
-// RemoteView is a wtk widget whose canvas IS a shared surface the hosted app draws into;
-// the shell just composites it. Forwarded input (wtk already converts to view-local
+// RemoteView is a uikit widget whose canvas IS a shared surface the hosted app draws into;
+// the shell just composites it. Forwarded input (uikit already converts to view-local
 // coords) is shipped to that app over the mailbox.
 class RemoteView : public Widget
 {
@@ -167,7 +167,7 @@ static void on_apps    (Widget &) { kapi_launch ("applist"); }	// app launcher, 
 static Panel *placeholder (const char *label, unsigned bg)
 {
 	Panel *p = new Panel (0, 0, 10, 10, bg);
-	p->addChild (new Label (10, 10, 280, wk_fh (), label, wk_mix (bg, C_TEXT, 150), bg));	// (muted)
+	p->addChild (new Label (10, 10, 280, uk_fh (), label, uk_mix (bg, C_TEXT, 150), bg));	// (muted)
 	return p;
 }
 
@@ -220,7 +220,7 @@ static void poll_ipc (void)
 	}
 }
 
-// ---- event routing (mirrors wtk::Root::run; diverges here for the shell loop) ----
+// ---- event routing (mirrors uikit::Root::run; diverges here for the shell loop) ----
 static void ptr_evt (unsigned long, int ev, long v)
 {
 	static int bl = 0, br = 0, bm = 0;
@@ -254,17 +254,17 @@ int main (void)
 
 	// --- top title bar -------------------------------------------------
 	Panel *top = new EtchPanel (0, 0, g_sw, TOPBAR_H, EDGE_BOTTOM);
-	top->addChild (new Label (10, (TOPBAR_H - wk_fh ()) / 2, 240, wk_fh (), "Accueil", C_TEXT, C_FACE));
-	g_clock = new Label (g_sw - 60, (TOPBAR_H - wk_fh ()) / 2, 50, wk_fh (), "--:--", C_TEXT, C_FACE);
+	top->addChild (new Label (10, (TOPBAR_H - uk_fh ()) / 2, 240, uk_fh (), "Accueil", C_TEXT, C_FACE));
+	g_clock = new Label (g_sw - 60, (TOPBAR_H - uk_fh ()) / 2, 50, uk_fh (), "--:--", C_TEXT, C_FACE);
 	top->addChild (g_clock);
 	top->addChild (new Button (g_sw - 150, 3, 80, TOPBAR_H - 6, "Accueil", on_home));
 	root.addChild (top);
 
 	// --- left activity panel (collapsible) -----------------------------
 	g_left = new EtchPanel (0, TOPBAR_H, LEFTPANEL_W, contentH, EDGE_RIGHT);
-	g_left_title = new Label (10, 10, LEFTPANEL_W - 16, wk_fh (), "Activite", C_DIS, C_FACE);
+	g_left_title = new Label (10, 10, LEFTPANEL_W - 16, uk_fh (), "Activite", C_DIS, C_FACE);
 	g_left->addChild (g_left_title);
-	g_left->addChild (new Button (10, 14 + wk_fh (), LEFTPANEL_W - 20, 28, "Applications", on_apps));
+	g_left->addChild (new Button (10, 14 + uk_fh (), LEFTPANEL_W - 20, 28, "Applications", on_apps));
 	g_collapse = new Button (LEFTPANEL_W - 14, TOPBAR_H + contentH / 2 - 14, 12, 28, "<", on_collapse);
 	root.addChild (g_left);
 	root.addChild (g_collapse);

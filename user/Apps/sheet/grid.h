@@ -126,7 +126,7 @@ static int edit_word (const EditLine &e, char *word, int cap)
 
 // ---- the grid ---------------------------------------------------------------------------------------------
 enum { D_NONE, D_SELECT, D_COLSEL, D_ROWSEL, D_COLSIZE, D_ROWSIZE, D_FILL, D_POINT, D_VBAR, D_HBAR, D_CHART, D_CHARTSIZE };
-static const int HEAD_H = 22, SB = WK_SBW + 4;
+static const int HEAD_H = 22, SB = UK_SBW + 4;
 
 class GridView : public Widget
 {
@@ -519,13 +519,13 @@ void GridView::drawHeaders (const PaneView *pv)
 	Sheet *s = S ();
 	Rect sl = sel ();
 	int RW = rowHeadW ();
-	unsigned face = wk_tone (C_FACE, 166), line = wk_tone (C_FACE, 120);
-	unsigned hot = wk_mix (face, C_ACCENT, 70), hotAll = wk_mix (face, C_ACCENT, 140);
+	unsigned face = uk_tone (C_FACE, 166), line = uk_tone (C_FACE, 120);
+	unsigned hot = uk_mix (face, C_ACCENT, 70), hotAll = uk_mix (face, C_ACCENT, 140);
 	fnt::Font *f = ui_font (12), *fb = ui_font (12, true);
 	Rect clipAll = { 0, 0, height - 1, width - 1 };
 	// the corner
 	canvas.fillRect (0, 0, RW, HEAD_H, face);
-	{ VPath p; int tri[6] = { V (RW - 4), V (HEAD_H - 4), V (RW - 4), V (HEAD_H - 14), V (RW - 14), V (HEAD_H - 4) }; p.poly (tri, 3); p.fill (canvas, wk_tone (C_FACE, 110)); }
+	{ VPath p; int tri[6] = { V (RW - 4), V (HEAD_H - 4), V (RW - 4), V (HEAD_H - 14), V (RW - 14), V (HEAD_H - 4) }; p.poly (tri, 3); p.fill (canvas, uk_tone (C_FACE, 110)); }
 	// the column letters (panes 0/2 give the frozen columns, 1/3 the others)
 	for (int pi = 0; pi < 2; pi++)
 	{
@@ -541,7 +541,7 @@ void GridView::drawHeaders (const PaneView *pv)
 			if (in && !all) hline (canvas, x, x + w - 1, HEAD_H - 2, C_ACCENT, BS_THIN, clip), hline (canvas, x, x + w - 1, HEAD_H - 1, C_ACCENT, BS_THIN, clip);
 			vline (canvas, x + w - 1, 3, HEAD_H - 3, line, BS_THIN, clip);
 			char t[8]; col_name (c, t);
-			unsigned ink = all ? 0xFFFFFF : in ? wk_mix (C_TEXT, C_ACCENT, 120) : C_TEXT;
+			unsigned ink = all ? 0xFFFFFF : in ? uk_mix (C_TEXT, C_ACCENT, 120) : C_TEXT;
 			text_at (canvas, in ? fb : f, x + w / 2, HEAD_H / 2 + 5, t, ink, 1, clip);
 		}
 	}
@@ -561,7 +561,7 @@ void GridView::drawHeaders (const PaneView *pv)
 			if (in && !all) { vline (canvas, RW - 2, y, y + h - 1, C_ACCENT, BS_THIN, clip); vline (canvas, RW - 1, y, y + h - 1, C_ACCENT, BS_THIN, clip); }
 			hline (canvas, 3, RW - 4, y + h - 1, line, BS_THIN, clip);
 			char t[12]; snprintf (t, sizeof t, "%d", r + 1);
-			unsigned ink = all ? 0xFFFFFF : in ? wk_mix (C_TEXT, C_ACCENT, 120) : C_TEXT;
+			unsigned ink = all ? 0xFFFFFF : in ? uk_mix (C_TEXT, C_ACCENT, 120) : C_TEXT;
 			if (!all && !in && s->af.on && s->af.n && r > s->af.r.r0 && r <= s->af.r.r1) ink = 0x1F5FBF;	// (a filtered table's rows: blue, as Excel shows them)
 			text_at (canvas, in ? fb : f, RW / 2, y + h / 2 + 5, t, ink, 1, clip);
 		}
@@ -589,7 +589,7 @@ void GridView::drawSelection (const PaneView &v, int paneIdx)
 			int y0 = pane_row_y (s, z, v, r.r0), y1 = pane_row_y (s, z, v, imin (r.r1, MAXR - 1) + 1);
 			unsigned col = refs[i].col;
 			for (int yy = imax (y0, clip.r0); yy < imin (y1, clip.r1 + 1); yy++)
-				for (int xx = imax (x0, clip.c0); xx < imin (x1, clip.c1 + 1); xx++) { unsigned &px = canvas.px[yy * canvas.stride + xx]; px = wk_mix (px, col, 28); }
+				for (int xx = imax (x0, clip.c0); xx < imin (x1, clip.c1 + 1); xx++) { unsigned &px = canvas.px[yy * canvas.stride + xx]; px = uk_mix (px, col, 28); }
 			for (int t = 0; t < 2; t++)
 			{
 				hline (canvas, x0 - 1, x1 - 1, y0 - 1 + t, col, BS_THIN, clip); hline (canvas, x0 - 1, x1 - 1, y1 - 2 + t, col, BS_THIN, clip);
@@ -624,7 +624,7 @@ void GridView::drawSelection (const PaneView &v, int paneIdx)
 			for (int xx = imax (x0, clip.c0); xx < imin (x1, clip.c1 + 1); xx++)
 			{
 				if (curShown && xx >= cx && xx < cx + cw && yy >= cy && yy < cy + ch) continue;
-				unsigned &px = canvas.px[yy * canvas.stride + xx]; px = wk_mix (px, C_ACCENT, 46);
+				unsigned &px = canvas.px[yy * canvas.stride + xx]; px = uk_mix (px, C_ACCENT, 46);
 			}
 	// the frame (2 px) and the fill handle
 	unsigned fc = C_ACCENT;
@@ -720,7 +720,7 @@ void GridView::drawEditor ()
 			bool selc = i >= ed.s0 () && i < ed.s1 ();
 			unsigned c = ink;
 			for (int k = 0; k < nr; k++) if (i >= refs[k].at && i < refs[k].at + refs[k].len) c = refs[k].col;
-			if (selc) { int X0 = x64 >> 6, X1 = (x64 + adv) >> 6; for (int yy = base - asc; yy < base - asc + lh; yy++) for (int xx = X0; xx < X1; xx++) if (xx >= clip.c0 && xx <= clip.c1 && yy >= clip.r0 && yy <= clip.r1) canvas.px[yy * canvas.stride + xx] = wk_mix (0xFFFFFF, C_ACCENT, 110); }
+			if (selc) { int X0 = x64 >> 6, X1 = (x64 + adv) >> 6; for (int yy = base - asc; yy < base - asc + lh; yy++) for (int xx = X0; xx < X1; xx++) if (xx >= clip.c0 && xx <= clip.c1 && yy >= clip.r0 && yy <= clip.r1) canvas.px[yy * canvas.stride + xx] = uk_mix (0xFFFFFF, C_ACCENT, 110); }
 			fnt::draw (canvas, f, x64, base, cp, c, clip.c0, clip.r0, clip.c1 + 1, clip.r1 + 1);
 			if (i == ed.caret && m_blink) { int cxp = x64 >> 6; vline (canvas, cxp, base - asc, base - asc + lh - 1, 0, BS_THIN, clip); }
 			x64 += adv; prev = cp; i += l;
@@ -745,7 +745,7 @@ void GridView::drawEditor ()
 		{
 			int yy = ay + 4 + i * rowH;
 			bool hot = i == acSel;
-			if (hot) wk_hilite (canvas, bx + 4, yy, bw2 - 8, rowH, 4, true);
+			if (hot) uk_hilite (canvas, bx + 4, yy, bw2 - 8, rowH, 4, true);
 			text_at (canvas, ub, bx + 10, yy + 15, FNS[acList[i]].name, hot ? C_SEL_TEXT : C_FIELD_TEXT, 0, c2);
 		}
 		if (acSel < acN)					// (what it does, beside)
@@ -812,14 +812,14 @@ void GridView::onDraw ()
 			int bx, by, bs;
 			if (!filterButton (c, &bx, &by, &bs)) continue;
 			bool on = af_index (s, c) >= 0;
-			wk_raised (canvas, bx, by, bs, bs, 3, on ? wk_mix (C_FACE, C_ACCENT, 150) : wk_tone (C_FACE, 150));
+			uk_raised (canvas, bx, by, bs, bs, 3, on ? uk_mix (C_FACE, C_ACCENT, 150) : uk_tone (C_FACE, 150));
 			if (on)
 			{
 				int cx = bx + bs / 2, t = by + bs / 4, w2 = bs * 3 / 8;
 				for (int k = 0; k < bs / 3; k++) canvas.fillRect (cx - w2 + k, t + k, 2 * (w2 - k) + 1, 1, 0xFFFFFF);
 				canvas.fillRect (cx - 1, t + bs / 3, 2, bs / 4, 0xFFFFFF);
 			}
-			else wk_glyph (canvas, WKG_DOWN, bx + bs / 2, by + bs / 2, bs * 2 / 3, 0x404040);
+			else uk_glyph (canvas, WKG_DOWN, bx + bs / 2, by + bs / 2, bs * 2 / 3, 0x404040);
 		}
 	// the frozen panes' edges
 	Rect all = { 0, 0, height - 1, width - 1 };
@@ -833,10 +833,10 @@ void GridView::onDraw ()
 	long totR = imax (s->maxR + 1, s->topR + visRows ()) + 50, totC = imax (s->maxC + 1, s->leftC + visCols ()) + 10;
 	canvas.fillRect (width - SB, 0, SB, height, C_BG);
 	canvas.fillRect (0, height - SB, width, SB, C_BG);
-	WkThumb tv = wk_thumb (totR, visRows (), s->topR, height - SB - HEAD_H - 4);
-	wk_scroll_bar (canvas, width - SB + 2, HEAD_H + 2, WK_SBW, height - SB - HEAD_H - 4, true, tv.y, tv.show ? tv.h : 0, C_BG, m_drag == D_VBAR ? WK_HOT : WK_NORMAL);
-	WkThumb th = wk_thumb (totC, visCols (), s->leftC, width - SB - RW - 4);
-	wk_scroll_bar (canvas, RW + 2, height - SB + 2, width - SB - RW - 4, WK_SBW, false, th.y, th.show ? th.h : 0, C_BG, m_drag == D_HBAR ? WK_HOT : WK_NORMAL);
+	UkThumb tv = uk_thumb (totR, visRows (), s->topR, height - SB - HEAD_H - 4);
+	uk_scroll_bar (canvas, width - SB + 2, HEAD_H + 2, UK_SBW, height - SB - HEAD_H - 4, true, tv.y, tv.show ? tv.h : 0, C_BG, m_drag == D_VBAR ? UK_HOT : UK_NORMAL);
+	UkThumb th = uk_thumb (totC, visCols (), s->leftC, width - SB - RW - 4);
+	uk_scroll_bar (canvas, RW + 2, height - SB + 2, width - SB - RW - 4, UK_SBW, false, th.y, th.show ? th.h : 0, C_BG, m_drag == D_HBAR ? UK_HOT : UK_NORMAL);
 }
 
 // ---- the keys ---------------------------------------------------------------------------------------------
@@ -956,7 +956,7 @@ bool GridView::onKey (long k)
 		case KEY_BACKSPACE: ed.backspace (); updateAutocomplete (); changed (); return true;
 		case KEY_DEL: ed.del (); updateAutocomplete (); changed (); return true;
 		}
-		if (k == WK_CTRL ('A')) { ed.anchor = 0; ed.caret = ed.t.n; changed (); return true; }
+		if (k == UK_CTRL ('A')) { ed.anchor = 0; ed.caret = ed.t.n; changed (); return true; }
 		if (k >= 32 && k < 256 && k != 127)
 		{
 			ed.insert_char (latin1_cp ((unsigned) k));
@@ -1040,12 +1040,12 @@ bool GridView::onMouse (int mx, int my, int bl, int br, int, int wheel)
 	int mods = kapi_get_modifiers ();
 	int RW = rowHeadW ();
 	// the pointer's shape: what is dragged, else what a press here would do
-	if (m_drag == D_COLSIZE) wk_cursor (KAPI_CURSOR_SIZE_H);
-	else if (m_drag == D_ROWSIZE) wk_cursor (KAPI_CURSOR_SIZE_V);
-	else if (m_drag == D_CHART) wk_cursor (KAPI_CURSOR_MOVE);
-	else if (m_drag == D_CHARTSIZE) wk_cursor (KAPI_CURSOR_SIZE_NWSE);
-	else if (m_drag == D_FILL) wk_cursor (KAPI_CURSOR_CROSSHAIR);
-	else if (m_drag == D_SELECT || m_drag == D_POINT) wk_cursor (KAPI_CURSOR_CELL);
+	if (m_drag == D_COLSIZE) uk_cursor (KAPI_CURSOR_SIZE_H);
+	else if (m_drag == D_ROWSIZE) uk_cursor (KAPI_CURSOR_SIZE_V);
+	else if (m_drag == D_CHART) uk_cursor (KAPI_CURSOR_MOVE);
+	else if (m_drag == D_CHARTSIZE) uk_cursor (KAPI_CURSOR_SIZE_NWSE);
+	else if (m_drag == D_FILL) uk_cursor (KAPI_CURSOR_CROSSHAIR);
+	else if (m_drag == D_SELECT || m_drag == D_POINT) uk_cursor (KAPI_CURSOR_CELL);
 	else if (m_drag == D_NONE && in)
 	{
 		if (my < HEAD_H && mx >= RW)				// a column's edge
@@ -1053,23 +1053,23 @@ bool GridView::onMouse (int mx, int my, int bl, int br, int, int wheel)
 			PaneView pv[4]; panes (pv);
 			for (int p = 2; p <= 3; p++)
 				for (int i = 0; i < pv[p].nc; i++)
-					if (abs (mx - (pv[p].col[i].at + pv[p].col[i].len)) <= 3) wk_cursor (KAPI_CURSOR_SIZE_H);
+					if (abs (mx - (pv[p].col[i].at + pv[p].col[i].len)) <= 3) uk_cursor (KAPI_CURSOR_SIZE_H);
 		}
 		else if (mx < RW && my >= HEAD_H)			// a row's edge
 		{
 			PaneView pv[4]; panes (pv);
 			for (int p = 1; p <= 3; p += 2)
 				for (int i = 0; i < pv[p].nr; i++)
-					if (abs (my - (pv[p].row[i].at + pv[p].row[i].len)) <= 2) wk_cursor (KAPI_CURSOR_SIZE_V);
+					if (abs (my - (pv[p].row[i].at + pv[p].row[i].len)) <= 2) uk_cursor (KAPI_CURSOR_SIZE_V);
 		}
 		else if (mx >= RW && my >= HEAD_H && mx < width - SB && my < height - SB)
 		{
 			Rect sl = sel ();				// the fill handle, a chart, else the cells
 			int x0, y0, w0, h0;
 			if (!m_wholeCols && !m_wholeRows && cellBox (sl.r1, sl.c1, &x0, &y0, &w0, &h0)
-			    && abs (mx - (x0 + w0 - 1)) <= 4 && abs (my - (y0 + h0 - 1)) <= 4) wk_cursor (KAPI_CURSOR_CROSSHAIR);
-			else if (chartAt (mx, my) >= 0) wk_cursor (KAPI_CURSOR_MOVE);
-			else wk_cursor (KAPI_CURSOR_CELL);
+			    && abs (mx - (x0 + w0 - 1)) <= 4 && abs (my - (y0 + h0 - 1)) <= 4) uk_cursor (KAPI_CURSOR_CROSSHAIR);
+			else if (chartAt (mx, my) >= 0) uk_cursor (KAPI_CURSOR_MOVE);
+			else uk_cursor (KAPI_CURSOR_CELL);
 		}
 	}
 	if (wheel && in)
@@ -1145,8 +1145,8 @@ bool GridView::onMouse (int mx, int my, int bl, int br, int, int wheel)
 		{
 			sheet_bounds (s);
 			long totR = imax (s->maxR + 1, s->topR + visRows ()) + 50;
-			WkThumb t = wk_thumb (totR, visRows (), s->topR, height - SB - HEAD_H - 4);
-			s->topR = iclamp ((int) wk_thumb_pos (my - HEAD_H - 2, height - SB - HEAD_H - 4, totR, visRows (), t.h), s->freezeR, MAXR - 1);
+			UkThumb t = uk_thumb (totR, visRows (), s->topR, height - SB - HEAD_H - 4);
+			s->topR = iclamp ((int) uk_thumb_pos (my - HEAD_H - 2, height - SB - HEAD_H - 4, totR, visRows (), t.h), s->freezeR, MAXR - 1);
 			invalidate (true);
 			break;
 		}
@@ -1154,8 +1154,8 @@ bool GridView::onMouse (int mx, int my, int bl, int br, int, int wheel)
 		{
 			sheet_bounds (s);
 			long totC = imax (s->maxC + 1, s->leftC + visCols ()) + 10;
-			WkThumb t = wk_thumb (totC, visCols (), s->leftC, width - SB - RW - 4);
-			s->leftC = iclamp ((int) wk_thumb_pos (mx - RW - 2, width - SB - RW - 4, totC, visCols (), t.h), s->freezeC, MAXC - 1);
+			UkThumb t = uk_thumb (totC, visCols (), s->leftC, width - SB - RW - 4);
+			s->leftC = iclamp ((int) uk_thumb_pos (mx - RW - 2, width - SB - RW - 4, totC, visCols (), t.h), s->freezeC, MAXC - 1);
 			invalidate (true);
 			break;
 		}

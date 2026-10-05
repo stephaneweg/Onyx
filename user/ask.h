@@ -1,6 +1,6 @@
 //
 // ask.h -- a non-blocking Yes / No question (or a line of text) in its own small window
-// (apps/ask), for apps too small to host a wtk modal dialog (the dock).
+// (apps/ask), for apps too small to host a uikit modal dialog (the dock).
 //   void *h = ask_begin ("Title", "Message", "Yes", "No");	// 0 = could not start
 //   ... each frame: int r = ask_poll (h);  -1 = still open, else 1 = Yes / 0 = No
 //                                           (the handle is freed once answered)

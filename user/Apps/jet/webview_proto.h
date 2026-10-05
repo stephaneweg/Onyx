@@ -5,7 +5,7 @@
 //
 //   SD:/apps/jet.app/main --applet <surface id> <host pid> <host's IPC service>
 //
-// (main.cpp hands that run to webview_main, webview.cpp). The view's wtk Root adopts the host's surface;
+// (main.cpp hands that run to webview_main, webview.cpp). The view's uikit Root adopts the host's surface;
 // the page fills its top-left w x h (WV_SIZE: the surface is made once, as big as the work area, so the
 // host's box can grow without a new surface); JavaScript is off; a click on a link is not followed but
 // told to the host (WV_LINK). The applet protocol's AP_* messages carry the pointer, the keys, the

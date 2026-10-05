@@ -47,10 +47,10 @@ suite; the new icons (a slide, a layout, a text box, the shapes, the show) are d
 
 | Need | Onyx today | To add |
 |---|---|---|
-| The window, the toolbars, dialogs | wtk, Letters' toolbars and icons (`user/Apps/letters/icons.h`, shared by Sheet) | the new icons; the sidebar (shared later with Letters / Sheet) |
+| The window, the toolbars, dialogs | uikit, Letters' toolbars and icons (`user/Apps/letters/icons.h`, shared by Sheet) | the new icons; the sidebar (shared later with Letters / Sheet) |
 | Text in boxes | Letters' layout engine (`layout.h`: paragraphs, runs, lists), FreeType | text in a rectangle (no pages), autofit, vertical anchoring |
 | Tables, charts | Letters' tables; Sheet's charts (`chart.h`) and its formulas | an embedded small sheet for a chart's data |
-| Drawing | wtk's `vpaint.h` (anti-aliased paths) | shapes' geometry (OOXML's preset shapes, as needed), gradients, rounded picture masks |
+| Drawing | uikit's `vpaint.h` (anti-aliased paths) | shapes' geometry (OOXML's preset shapes, as needed), gradients, rounded picture masks |
 | Files | Letters' `odt.h` / `docx.h`, Sheet's `ods.h` / `xlsx.h`, their XML and ZIP readers | `odp.h` (draw:page, presentation:*), `pptx.h` (p:sld, p:sldLayout, p:sldMaster, a:theme) |
 | PDF | Letters' PDF export | a page per slide, handouts, notes pages |
 | The show | full screen windows, the GPU compositor (`user/gpucomp`) | slides rendered to textures, transitions and effects composited by the GPU (cross-fade, push, wipe, zoom are a few quads and an alpha) |

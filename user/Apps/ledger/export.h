@@ -270,7 +270,7 @@ static void save_report (const Report &p, int fmt)
 	char name[120], path[220];
 	export_name (p, fmt, name, sizeof name);
 	kapi_mkdir ("SD:/docs/Reports");
-	if (!wk_file_save (path, sizeof path, "SD:/docs/Reports", name)) return;
+	if (!uk_file_save (path, sizeof path, "SD:/docs/Reports", name)) return;
 	int n = slen (path), k = slen (XF_EXT[fmt]);
 	if (n < k || !ci_eq (path + n - k, XF_EXT[fmt])) scat (path, XF_EXT[fmt], sizeof path);
 	if (!write_report (p, fmt, path)) { warn (TR ("Export"), TR ("The file could not be written.")); return; }

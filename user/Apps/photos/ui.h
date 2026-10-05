@@ -1,6 +1,6 @@
 //
 // Apps/photos/ui.h -- Photos' drawing helpers: the faces (DejaVu Sans at a few sizes), text cut to fit, the icons
-// (drawn from their geometry: wtk/vpaint.h), the hit lists of the parts drawn by hand, the colours of the light
+// (drawn from their geometry: uikit/vpaint.h), the hit lists of the parts drawn by hand, the colours of the light
 // library and of the dark viewer and editor.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
@@ -8,13 +8,13 @@
 #ifndef _photos_ui_h
 #define _photos_ui_h
 
-#include "ft/wtkface.h"
-#include "wtk/wtk.h"
+#include "ft/uikitface.h"
+#include "uikit/uikit.h"
 #include "Apps/photos/lib.h"
 
 namespace photos {
 
-using namespace wtk;
+using namespace uikit;
 
 // ---- the faces --------------------------------------------------------------------------------------------------------
 enum { F_UI, F_SMALL, F_MID, F_H2, F_H1, F_TINY, F_N };
@@ -24,30 +24,30 @@ static void faces_open ()
 	static const int SZ[F_N] = { 13, 11, 14, 16, 22, 9 };
 	for (int i = 1; i < F_N; i++) { g_face[i] = new FtTextFace; if (!g_face[i]->open ("DejaVu Sans", SZ[i])) { delete g_face[i]; g_face[i] = 0; } }
 }
-static inline int B_ (int style) { return style == 1 ? 2 : style; }		// (1 = bold here: wtk's 2)
-static inline int tw (const char *s, int f = F_UI, int style = 0) { WkFaceScope sc (f == F_UI ? 0 : g_face[f]); return wk_tw (s, B_ (style)); }
-static inline int fh (int f = F_UI) { WkFaceScope sc (f == F_UI ? 0 : g_face[f]); return wk_fh (); }
+static inline int B_ (int style) { return style == 1 ? 2 : style; }		// (1 = bold here: uikit's 2)
+static inline int tw (const char *s, int f = F_UI, int style = 0) { UkFaceScope sc (f == F_UI ? 0 : g_face[f]); return uk_tw (s, B_ (style)); }
+static inline int fh (int f = F_UI) { UkFaceScope sc (f == F_UI ? 0 : g_face[f]); return uk_fh (); }
 static inline void text (Canvas &cv, int x, int y, const char *s, unsigned c, int f = F_UI, int style = 0, int w = 0)
 {
-	WkFaceScope sc (f == F_UI ? 0 : g_face[f]);
+	UkFaceScope sc (f == F_UI ? 0 : g_face[f]);
 	style = B_ (style);
-	if (w > 0 && wk_tw (s, style) > w) { char b[600]; wk_text_fit (s, w, b, sizeof b, style); wk_text (cv, x, y, b, c, style); }
-	else wk_text (cv, x, y, s, c, style);
+	if (w > 0 && uk_tw (s, style) > w) { char b[600]; uk_text_fit (s, w, b, sizeof b, style); uk_text (cv, x, y, b, c, style); }
+	else uk_text (cv, x, y, s, c, style);
 }
 static inline void text_v (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int f = F_UI, int style = 0, int w = 0) { text (cv, x, y + (h - fh (f)) / 2, s, c, f, style, w); }
 static inline void text_r (Canvas &cv, int xr, int y, int h, const char *s, unsigned c, int f = F_UI, int style = 0) { text (cv, xr - tw (s, f, style), y + (h - fh (f)) / 2, s, c, f, style); }
 static inline void text_c (Canvas &cv, int x, int y, int w, int h, const char *s, unsigned c, int f = F_UI, int style = 0) { text (cv, x + (w - tw (s, f, style)) / 2, y + (h - fh (f)) / 2, s, c, f, style); }
-static inline void fill_round (Canvas &cv, int x, int y, int w, int h, int r, unsigned c, int alpha = 255) { wk_rbox (cv, x, y, w, h, r, c, c, alpha); }
+static inline void fill_round (Canvas &cv, int x, int y, int w, int h, int r, unsigned c, int alpha = 255) { uk_rbox (cv, x, y, w, h, r, c, c, alpha); }
 static void disc (Canvas &cv, int cx, int cy, int r, unsigned c, int alpha = 255) { VPath p; p.circle (V (cx), V (cy), V (r)); p.fill (cv, c, alpha); }
 static void ring (Canvas &cv, int cx, int cy, int r, unsigned c, int w = 2) { VPath p; p.arc (V (cx), V (cy), V (r), 0, 360, V (w)); p.fill (cv, c); }
 
 // ---- the colours --------------------------------------------------------------------------------------------------------------
 // the library follows the desktop's theme; the viewer and the editor are dark, as photo apps are
-static unsigned col_side () { return wk_mix (C_BG, C_FIELD, 80); }
-static unsigned col_dim () { return wk_mix (C_FIELD, C_FIELD_TEXT, 140); }
-static unsigned col_faint () { return wk_mix (C_FIELD, C_FIELD_TEXT, 80); }
-static unsigned col_line () { return wk_mix (C_FIELD, C_FIELD_TEXT, 30); }
-static unsigned col_sel () { return wk_mix (C_FIELD, C_ACCENT, 70); }
+static unsigned col_side () { return uk_mix (C_BG, C_FIELD, 80); }
+static unsigned col_dim () { return uk_mix (C_FIELD, C_FIELD_TEXT, 140); }
+static unsigned col_faint () { return uk_mix (C_FIELD, C_FIELD_TEXT, 80); }
+static unsigned col_line () { return uk_mix (C_FIELD, C_FIELD_TEXT, 30); }
+static unsigned col_sel () { return uk_mix (C_FIELD, C_ACCENT, 70); }
 static const unsigned D_BG = 0x1E2024, D_BAR = 0x282A30, D_PANEL = 0x2A2D33, D_TEXT = 0xEBEBEE, D_DIM = 0xA0A4AA, D_FAINT = 0x6E7279, D_LINE = 0x3C4048, D_BTN = 0x464A52, D_FIELD = 0x34383F;
 static const unsigned RED = 0xE0483E, AMBER = 0xF2B12E;
 
@@ -60,7 +60,7 @@ public:
 	void onDraw () override
 	{
 		Textbox::onDraw ();
-		if (!text[0] && !hasFocus && hint[0]) text_v (canvas, 9, 0, height, hint, wk_mix (C_FIELD, C_FIELD_TEXT, 110), F_UI, 0, width - 16 - padR);
+		if (!text[0] && !hasFocus && hint[0]) text_v (canvas, 9, 0, height, hint, uk_mix (C_FIELD, C_FIELD_TEXT, 110), F_UI, 0, width - 16 - padR);
 	}
 };
 

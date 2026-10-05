@@ -95,7 +95,7 @@ int  engine_spawn_self (const char *role, int *toChild, int *fromChild);	// -> p
 // event); changed: the button pressed or released (0 a move). mods: MOD_* (kapi.h).
 void engine_mouse (int x, int y, int buttons, int changed, unsigned mods);
 void engine_wheel (int x, int y, int notches, unsigned mods);	// + towards the top
-void engine_key (long key, unsigned mods);			// a wtk / kapi key code (KEY_*, or the character)
+void engine_key (long key, unsigned mods);			// a uikit / kapi key code (KEY_*, or the character)
 void engine_mouse_leave ();
 // The pointer's shape the page asks for: kapi's KAPI_CURSOR_* values (kern/kapi_abi.h), named here for
 // the engine's side, which does not see kapi's header.

@@ -64,7 +64,7 @@ share their buffers): the sender writes into one, the receiver maps it by its id
 
 `user/clipboard.h` keeps its functions (`clip_set_text`, `clip_get_text`, `clip_set_files`,
 `clip_get_file`, `clip_clear`) and adds `clip_set_image`, `clip_get_image`, `clip_set (formats...)`,
-`clip_get (formats...)` — now over IPC to clipd. wtk's text fields (`textbox.cpp`, `textarea.cpp`) and
+`clip_get (formats...)` — now over IPC to clipd. uikit's text fields (`textbox.cpp`, `textarea.cpp`) and
 the apps that use the header get the history without a change; an app then adds its own formats
 (Letters' RTF, Paint's image, Sheet's cells).
 

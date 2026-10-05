@@ -1,7 +1,7 @@
 //
-// fakekapi.cpp -- a host (PC) stand-in for the kernel, to run Onyx's wtk apps (user/Apps/<app>/
+// fakekapi.cpp -- a host (PC) stand-in for the kernel, to run Onyx's uikit apps (user/Apps/<app>/
 // main.cpp) on Linux and see what they draw: their client canvas AND their window frame (the two
-// chrome copies wtk draws, kapi v28 get_chrome), as the compositor would show them.
+// chrome copies uikit draws, kapi v28 get_chrome), as the compositor would show them.
 //
 // The apps call the kernel through the kapi table at a fixed address (kern/kapi_abi.h:
 // KAPI_TABLE_VA); here a table is mapped there and filled with host functions: files are read

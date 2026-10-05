@@ -22,17 +22,17 @@ export SIM_WRITES="$OUT/writes"
 CXX="g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
-# ---- the building: wtk, the stand-in kernel, FreeType (Letters'), Ledger and Letters ----------------------
-for f in user/wtk/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
-rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/obj/*.o
+# ---- the building: uikit, the stand-in kernel, FreeType (Letters'), Ledger and Letters ----------------------
+for f in user/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
+rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
 FT=third_party/freetype-2.14.3
 FT_SRC="base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c truetype/truetype.c sfnt/sfnt.c smooth/smooth.c"
 for f in $FT_SRC; do gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
 	-Iuser/ft -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
-$CXX -Iuser/ft -I$FT/include -o "$OUT/ledger" "$OUT/fakekapi.o" user/Apps/ledger/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" &
-$CXX -Iuser/ft -I$FT/include -o "$OUT/letters" "$OUT/fakekapi.o" user/Apps/letters/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" &
+$CXX -Iuser/ft -I$FT/include -o "$OUT/ledger" "$OUT/fakekapi.o" user/Apps/ledger/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" &
+$CXX -Iuser/ft -I$FT/include -o "$OUT/letters" "$OUT/fakekapi.o" user/Apps/letters/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" &
 wait
 
 # ---- the running --------------------------------------------------------------------------------------------

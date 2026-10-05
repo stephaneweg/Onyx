@@ -32,8 +32,8 @@ Everywhere: no PDF, PWG Raster at 300 dpi) and the PDF printer. Read `docs/03` �
 an example) and `docs/04` §11 *Printing*.
 
 - **`SD:/lib/print.so`** (`user/print/`: `print.h` the API, `print.cpp`, `dialog.cpp`; table `print/print.abi`,
-  33 entries): the Print dialog and the jobs. The first library that uses others (`ft.so`, `wtk.so`: their
-  stubs linked in, opened on demand; wtk's variables through `--data onyx_wtk_data`).
+  33 entries): the Print dialog and the jobs. The first library that uses others (`ft.so`, `uikit.so`: their
+  stubs linked in, opened on demand; uikit's variables through `--data onyx_uikit_data`).
 - **`printd`** (`user/Apps/printd`): the queue (`SD:/var/spool/print`), the printers (`SD:/etc/printers.ini`),
   a job replayed as a PDF (`print/pdfsink.h`) or rendered (`print/raster.h`, our own MIT rasteriser — the
   user's choice, no MuPDF in the chain) and streamed as PWG Raster over IPP (`print/ipp.h`).
@@ -118,33 +118,33 @@ recommendation — get the user's answers before writing any code, then record t
 Step 0 (a real random generator behind `kapi_random`, PBKDF2 in the kernel) changes nothing visible and
 can go first. The printing work (`printd`, another session) is taken into account in its section 9.
 
-## Shared libraries: built (2026-10-05) — `SD:/lib/wtk.so`, `SD:/lib/ft.so`, every app on them
+## Shared libraries: built (2026-10-05) — `SD:/lib/uikit.so`, `SD:/lib/ft.so`, every app on them
 
 **Where to read**: `docs/SHARED-LIBS-PLAN.md` section 0 (what was built, where it departs from the
 plan, the results), docs/02 §7 *Shared libraries* (the kernel: kapi v83 `lib_open`), docs/03 §5.6 (the
-generator, writing and using a library), **`user/wtk/abi.h` (the rules — read it before changing wtk)**.
+generator, writing and using a library), **`user/uikit/abi.h` (the rules — read it before changing uikit)**.
 
-- **Changing wtk now**: a fix in a `.cpp` → rebuild `lib/wtk.so` only (`make -C user libs`), stage
-  `sdcard/lib/wtk.so`, publish the `wtk` package: every app gets it, none is rebuilt. A new function:
-  the same (the build appends it to `user/wtk/wtk.abi`: commit that file). **Never** add a field or a
-  virtual to a class of the headers: use the reserve (`Widget::reserved_` / `ext`, `wk_reserved0..7`,
-  `Root`'s) — `wtk/layout_lock.cpp` fails the library's build otherwise. A change in a header's
+- **Changing uikit now**: a fix in a `.cpp` → rebuild `lib/uikit.so` only (`make -C user libs`), stage
+  `sdcard/lib/uikit.so`, publish the `uikit` package: every app gets it, none is rebuilt. A new function:
+  the same (the build appends it to `user/uikit/uikit.abi`: commit that file). **Never** add a field or a
+  virtual to a class of the headers: use the reserve (`Widget::reserved_` / `ext`, `uk_reserved0..7`,
+  `Root`'s) — `uikit/layout_lock.cpp` fails the library's build otherwise. A change in a header's
   **inline** code reaches only the apps rebuilt after it. When the apps are rebuilt against a table
-  that grew: raise `wtk >= 1.<entries>` in `tools/pkg/packages.ini` (`[onyx]` and `[*apps]`) and the
-  `wtk` version in `versions.ini`.
-- **A new app**: link `lib/wtk.imp.a` (and `lib/ft.imp.a`) — the generic rules of `user/Makefile` do.
-  A static constructor of an app may use wtk: the bind constructors run first (priority 101; `user.ld`
+  that grew: raise `uikit >= 1.<entries>` in `tools/pkg/packages.ini` (`[onyx]` and `[*apps]`) and the
+  `uikit` version in `versions.ini`.
+- **A new app**: link `lib/uikit.imp.a` (and `lib/ft.imp.a`) — the generic rules of `user/Makefile` do.
+  A static constructor of an app may use uikit: the bind constructors run first (priority 101; `user.ld`
   now orders the priorities across files — it did not before).
 - **Still static**: Jet (the hosted build, `tools/webkit/build-web.sh`), the PC builds (the simulator,
-  Koton for Windows, macOS) — they compile `user/wtk/*.cpp` as before.
+  Koton for Windows, macOS) — they compile `user/uikit/*.cpp` as before.
 - **Tests**: `sh tools/tests/run_image_test.sh` (PC), on the Pi `libtest`, then from the PC
   `python tools/tests/shlib/pi_apps.py <pi-ip>` (every app started) and `sh tools/tests/shlib/compat.sh`
-  + `python tools/tests/shlib/compat_pi.py <pi-ip> out/shlib-compat` (wtk N's program on wtk N+1).
+  + `python tools/tests/shlib/compat_pi.py <pi-ip> out/shlib-compat` (uikit N's program on uikit N+1).
 - **Next on this mechanism** (not started): other libraries as wanted — the user asked for an
   **`audiokit.so`** (the study's result is in `IDEAS.md`: MeltySynth, the music decoders, a resampler, a
   MIDI file reader, a sound output helper; MIT; to expose to BASIC too) —, then `libgui` and the
   user-space window server `wsd` (`docs/GUI-USERSPACE-STUDY.md`), mbedTLS, newlib.
-- **Open**: the inline code with logic of wtk's headers was not moved into the library; `kmsg` is not
+- **Open**: the inline code with logic of uikit's headers was not moved into the library; `kmsg` is not
   stopped by Ctrl+C over telnet since the shell's rework (the tests keep a second session in it).
 
 ## The sound's output: the jack, USB or HDMI (2026-10-05, kapi v84; published: onyx 2026.10.51)
@@ -202,7 +202,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   `Root::frameResize`); every `setResizable (true)` window has it. Not done: a live resize, a size kept
   from one run to the next.
   `set_cursor` (v81) → the pointer's shapes (a hand on links, the I bar on text, arrows on what drags, Sheet's
-  cross): `wk_cursor` in a widget's `onMouse`; drawn by `tools/gui/gen_cursors.py`. Not done yet: Mail's HTML
+  cross): `uk_cursor` in a widget's `onMouse`; drawn by `tools/gui/gen_cursors.py`. Not done yet: Mail's HTML
   view (its page is drawn by another process: the shape has to come back through `webview_proto.h`), Slides
   and Studio (another session's), the terminal, a busy app's hourglass.
   The story and the design: `docs/EL0-PROTECTED-MODE.md` §7; the reference: docs/02 §5–§6.
@@ -400,7 +400,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
 ## Paint made "pro" (2026-10-02, kernel v72, not yet tried on the Pi)
 
 - **Asked by the user**: Paint more professional, FreeType, blend modes per layer composited by the GPU (a
-  hidden layer as if absent), Tab between a dialog's fields (wtk), Ctrl+wheel zoom, pattern brushes, the
+  hidden layer as if absent), Tab between a dialog's fields (uikit), Ctrl+wheel zoom, pattern brushes, the
   colour selection and the free-form one, the fill's gradient along a line (GIMP-like gradients), Open as
   Layer / Paste as New Layer, a fade between two pictures, a Colours menu (desaturate, colorize, the
   channels remapped... on the selection, the layer or everything). The mock-ups the user approved and
@@ -408,8 +408,8 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
 - **Kernel v72**: `gpu_render`'s blend presets 5..12 (`KAPI_GPU_BLEND_MULCOL` ... `DSTOUT`, kern/kapi_abi.h,
   sys/v3d.cpp's table: colour and alpha factors apart). **gpucomp**: `gpc_layer.blend` (`GPC_B_*`),
   `gpc_blend_pixel`; tests `sh tools/tests/run_gpucomp_test.sh` (the software V3D has the presets).
-- **wtk**: `Widget::tabFocus` / `isField` / `onTabFocus`, `Textbox::changed`, `Button::onKey`; a `Textbox`
-  without `cb` and a `Checkbox` / `RadioButton` leave Enter to the dialog. Every wtk app was rebuilt for it.
+- **uikit**: `Widget::tabFocus` / `isField` / `onTabFocus`, `Textbox::changed`, `Button::onKey`; a `Textbox`
+  without `cb` and a `Checkbox` / `RadioButton` leave Enter to the dialog. Every uikit app was rebuilt for it.
 - **Paint** is a newlib app now (`paint.elf` rule in user/Makefile; its window sized from the screen).
   Simulator: `sh tools/tests/desktop_sim/shots.sh paint` (`paint_scene.py`). Samples: `SD:/docs/pictures/`
   (`tools/gen_paint_samples.py`, package `paint-samples`).
@@ -491,7 +491,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   `cp`, `rm`, `cd RAM:`; Jet Browser: a site, Jet closed and opened, the site again (from `RAM:`:
   `ls RAM:/jet/cache`), no `stall: jet:cache` in `kmsg`; after a restart `RAM:` empty; the boot log's
   `ramfs: RAM: volume, up to ... MB`. A 1 GB Pi: the size (~60 MB) and the apps still fine.
-- **Next ideas**: `RAM:` in the File Viewer's Computer places and wtk's file dialog volume list;
+- **Next ideas**: `RAM:` in the File Viewer's Computer places and uikit's file dialog volume list;
   `mv` across volumes (copy + remove); a `ramfs` line in the Control Panel.
 
 ## TCP, SD and save fixes (2026-10-01, not yet tried on the Pi)
@@ -524,7 +524,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   window **`GUI_EVENT_DISPLAY_RESIZE`** (19). Refused while a full-screen app owns the display.
   The wallpaper buffer is made again at the new size (the old one leaked on purpose: it may still
   be mapped). A window may be as big as the screen (was 1024 x 768).
-- **wtk**: `Root::onDisplayResize (w, h)`; ~0.3 s later a maximised window fills the new work
+- **uikit**: `Root::onDisplayResize (w, h)`; ~0.3 s later a maximised window fills the new work
   area, another is moved / shrunk into it (`displayTick`, `fitWorkArea`); borderless ones place
   themselves. The menu bar, the dock and notifyd do; vncd (VNC DesktopSize, else the session
   closed), rdpd (`SCREEN` message) and Onyx Remote (its view of the Pi's screen resized) follow.
@@ -567,7 +567,7 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
 - **`user/Apps/clipd`** (the service, IPC "clipboard": a ring of 10 typed copies, a cursor), **`user/clipboard.h`**
   (the apps' side, its old functions kept + images and formats), **`user/clipproto.h`** (messages by mailbox,
   bytes by `RAM:/clip` files), **`user/Apps/clipboard`** (the widget, the dock's new button; the dock's small
-  buttons now: lock / gear at the left, power / clipboard at the right). Every wtk app gets it through
+  buttons now: lock / gear at the left, power / clipboard at the right). Every uikit app gets it through
   `textbox.cpp` / `textarea.cpp`: all the apps were rebuilt and staged. `autostart` runs clipd.
 - **Tested on the PC**: `sh tools/tests/run_clipboard_test.sh` (21 checks); the simulator has in-process
   mailboxes (`SIM_IPC=1`) and the magenta key of `WIN_FLAG_TRANSPARENT` windows in its dumps.
@@ -611,13 +611,13 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
 ## Setup, the first-run wizard; the settings in FreeType (2026-09-30, kernel v69, not yet tried on the Pi)
 
 - **The rule now**: every new or redesigned app draws its text with **FreeType** (DejaVu Sans
-  through wtk's face) unless the user says otherwise — `FT_APPS` in `user/Makefile` (and the same
-  list in `shots.sh`'s `build`); docs/03 after `ft_wtk_install`. Moved to it: the Control Panel,
+  through uikit's face) unless the user says otherwise — `FT_APPS` in `user/Makefile` (and the same
+  list in `shots.sh`'s `build`); docs/03 after `ft_uikit_install`. Moved to it: the Control Panel,
   its 8 applets, the Game Library, (2026-10-01) the menu bar (text measured in pixels, `drawFont` gone), (2026-10-02)
-  Paint and the File Viewer (names cut to the column's width: `wk_text_fit`; the text preview clipped).
+  Paint and the File Viewer (names cut to the column's width: `uk_text_fit`; the text preview clipped).
   **The windows' titles** too, in every app (FreeType or not): `SD:/res/fonts/title.aaf` (DejaVu Sans Bold
-  13 px pre-rendered by the apps' FreeType: `sh tools/title_font/build.sh`), read by wtk's frame (`skin.cpp`).
-- **`user/Apps/setup`** (docs/04 §4 *Setup*): 7 pages in wtk's theme (the user's validated mock-up:
+  13 px pre-rendered by the apps' FreeType: `sh tools/title_font/build.sh`), read by uikit's frame (`skin.cpp`).
+- **`user/Apps/setup`** (docs/04 §4 *Setup*): 7 pages in uikit's theme (the user's validated mock-up:
   `screenshots/setup-*.png`, `shots.sh setup`) — country / keyboard / time zone, Wi-Fi, resolution
   with "Keep this resolution?", colour + wallpaper + 32 tints, host name + remote services, a
   summary. `system.h`: what it writes (system.ini, wpa_supplicant.conf, cmdline.txt, theme.txt,
@@ -694,21 +694,21 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   `docs/gui-redesign/README.md` has the decisions, the mock-ups and §5 *where the work landed*;
   the user guide (`docs/04` §4-§6, §11) describes the result; `screenshots/` are the real apps
   (`sh tools/tests/desktop_sim/shots.sh`).
-  In short: wtk's procedural painter (`user/wtk/paint.h`) and the theme's colours as variables
+  In short: uikit's procedural painter (`user/uikit/paint.h`) and the theme's colours as variables
   (`theme.txt`: theme Peach / Steel / Sage / Brick / Slate or a colour, inactive, face, accent,
-  outline, dock), every wtk widget restyled (the user's framed button; since 2026-10-03 the push button is a plain
-  raised face, as the drop-down's: `wk_framed` draws `wk_raised`, no frame nor well), the window frames drawn
-  by wtk (title 28, border 4, rounded corners r 8, the window menu / minimise / maximise / close
+  outline, dock), every uikit widget restyled (the user's framed button; since 2026-10-03 the push button is a plain
+  raised face, as the drop-down's: `uk_framed` draws `uk_raised`, no frame nor well), the window frames drawn
+  by uikit (title 28, border 4, rounded corners r 8, the window menu / minimise / maximise / close
   buttons), kapi **v64** (`win_minimise`, `win_geometry`, `resize_window2`), the **dock**
   (`user/Apps/dock`: categories + drawers, the Shelf's tabs as its switcher, lock / gear / power,
   Terminal, File Viewer, Trash) instead of the Shelf and the panel, the see-through agenda, the
   menu bar restyled (its time opens a calendar), the **lock** screen, the **Theme** app
   rewritten, every app's hard-coded dark colours converted. Then (2026-10-01) a sixth theme,
   **Milk** (Xfce's Milk / Mac OS X: soft greys, the title buttons as coloured beads, the frame
-  melting into the window with no line between them, `WK_STYLE`, `wk_bead`), chosen in the
+  melting into the window with no line between them, `UK_STYLE`, `uk_bead`), chosen in the
   Theme app (and in Setup) like the others. Then (2026-10-03) the Theme applet's **Theme: Classic /
   Modern** over its schemes (Classic: Peach … Slate; Modern: Milk and the new **Dark Coffee**, a named
-  theme with a palette of its own: `WkNamedTheme::pal`, `wk_theme_take`), Koton in the desktop's theme
+  theme with a palette of its own: `UkNamedTheme::pal`, `uk_theme_take`), Koton in the desktop's theme
   (its arrangement's lanes alone dark), **FM Tracker** made again (FreeType; a transport bar, the
   patterns' list, M / S / meters, blocks, undo, a piano, an instrument dialog with the waves, the
   envelopes and the sound's wave drawn), Ledger in FreeType, the Package Manager's tabs a
@@ -745,8 +745,8 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
   (Control Panel) / power, the Trash (a click opens it in the File Viewer: `fileviewer trash`;
   a drop trashes). The Shelf's switcher is gone. `SD:/etc/dock.ini` (`user/dockconf.h`).
 - **The Control Panel** (`user/Apps/control`): applets drawn inside its window through a shared
-  surface (`user/applet_proto.h`; wtk's `Root` has an applet mode: `wk_applet ()`, `wk_pump`,
-  `wk_present`, `wk_quit`), listed by link files (`sdcard/apps/control.app/applets/*.lnk`).
+  surface (`user/applet_proto.h`; uikit's `Root` has an applet mode: `uk_applet ()`, `uk_pump`,
+  `uk_present`, `uk_quit`), listed by link files (`sdcard/apps/control.app/applets/*.lnk`).
   Applets: Theme (rewritten: a Windows-98-like desktop preview, a colour per part — frames,
   content, buttons, fields, selection, menu bar, dock — the wallpaper's modes, `user/wallpaper.h`
   painted by `voronoy`), Panel (`dockconf`), Sound (`soundconf`), Keyboard & Mouse (`keyconf`),
@@ -770,7 +770,7 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
 - **Wallpaper patterns**: eight abstract grey pictures (`sdcard/wallpapers/*.png`, 1024 x 768,
   made by `tools/gen_wallpapers.py`) that the Theme applet colours (`mode = pattern`: the grey
   multiplies the gradient of the two colours; `wallpaper.h` `wp_grey_cover` / `wp_multiply`,
-  painted by `voronoy`). wtk's `Dropdown` opens upward when it must.
+  painted by `voronoy`). uikit's `Dropdown` opens upward when it must.
 - **Open question for the user**: *Gamelib without its title buttons* — not reproduced (its
   frame is drawn like every Root app's, in the simulator too); the ChromeGen fix above covers
   the Onyx Remote case (a frame read while being drawn). Ask where it showed (the Pi's screen
@@ -859,7 +859,7 @@ Letters itself (no RichTextBox). Done:
   RTF read / written with all of it, text, HTML export; a recovered document after a close with
   unsaved changes. `.rtf` files now open in Letters (`sdcard/etc/fileassoc.ini`). The docs:
   `docs/04` *Letters, the word processor*, `docs/03` (TrueType text, `VPath`, Letters' pieces).
-- **wtk**: `wtk/vpaint.h` (`VPath`: anti-aliased vector shapes, integer); `img_load_mem`.
+- **uikit**: `uikit/vpaint.h` (`VPath`: anti-aliased vector shapes, integer); `img_load_mem`.
 - **Sample**: `sdcard/docs/letters-tour.rtf` (`tools/gen_letters_sample.py`); the screenshot
   `screenshots/letters.png`. The desktop simulator's script has `mods N` (modifier keys).
 - **Next ideas**: done since — tables, headers / footers, fields, tab stops, a table of contents,
@@ -895,7 +895,7 @@ small database*; the pieces: docs/03):
   typed; a new type converts the values, asked first when some would be emptied). Search (every
   word, any field), Undo / Redo (the whole document kept before each change), CSV export and import
   (the types guessed), a document kept at a close with unsaved changes (`recovered.card`).
-- **wtk**: `wtk/datagrid.h` — `DataGrid`, a virtual table (docs/03).
+- **uikit**: `uikit/datagrid.h` — `DataGrid`, a virtual table (docs/03).
 - Samples `SD:/docs/books.card` (every type) and `contacts.card`; `card = cardfile` in
   `fileassoc.ini`; the icon by `tools/gen_assets.py cardfile`; screenshots `cardfile.png`,
   `cardfile-list.png`, `cardfile-design.png`; host test `sh tools/tests/run_cardfile_test.sh`.
@@ -908,7 +908,7 @@ small database*; the pieces: docs/03):
 Asked by the user ("un peu plus poussé comme gcalc": read as LibreOffice Calc / Gnumeric). The old
 `sheet` rewritten from scratch (the user guide: docs/04 *The Spreadsheet*; the pieces: docs/03):
 
-- **`user/Apps/sheet/`**, a **newlib** wtk app (`sheet.elf` rule, FreeType), `stack = 4M` in its
+- **`user/Apps/sheet/`**, a **newlib** uikit app (`sheet.elf` rule, FreeType), `stack = 4M` in its
   `app.txt`. The engine (plain C++, the same on the PC): workbooks of sheets of 1 048 576 × 16 384
   cells in a hash of the used ones; Excel's formula syntax (references relative / absolute, to other
   sheets, whole rows / columns, arrays, names), **237 functions**, full recalculation at each
@@ -929,22 +929,22 @@ Asked by the user ("un peu plus poussé comme gcalc": read as LibreOffice Calc /
   `sheet.png`, `sheet-filter.png`, `sheet-loan.png` (the `sheet` scenario of `shots.sh`); host
   tests `sh tools/tests/run_sheet_test.sh` (328 engine checks, 122 file checks; LibreOffice round
   trips when `soffice` is installed).
-- **The euro sign**: wtk's font has it in slot 0x80 (Windows-1252's; `gen_nssans.py` `EXTRA`);
+- **The euro sign**: uikit's font has it in slot 0x80 (Windows-1252's; `gen_nssans.py` `EXTRA`);
   **AltGr+E** now types it on the FR, BE, DE, ES keymaps (AltGr+4 on UK; IT and US had it) —
-  `tools/keymaps/maps/*.h` → `genkeymaps.py`. The Spreadsheet takes it; wtk's `Textbox` /
+  `tools/keymaps/maps/*.h` → `genkeymaps.py`. The Spreadsheet takes it; uikit's `Textbox` /
   `Textarea` still ignore 0x80 (they accept 0x20–0x7E, 0xA0–0xFF).
 - **Next ideas**: spilled dynamic arrays (and with them SORT, UNIQUE, FILTER, SEQUENCE); copy /
   paste does not carry conditional formats, and a cut / paste moves the cells' formulas but not the
   names' nor the rules' (rows / columns inserted or deleted move all of them); comments; data
-  validation (drop-down lists); pivot tables; `.ods` writing; printing / PDF; the € in wtk's
+  validation (drop-down lists); pivot tables; `.ods` writing; printing / PDF; the € in uikit's
   text boxes.
 - **The freeze at its first start on the Pi (fixed, `73a1eb05`).** Its window was 1060 pixels
   wide; the kernel then made none over 1024 × 768 (`CreateWindow`, `sys/kapi.cpp`; since v66, none
   bigger than the screen) and returns a
-  null canvas, which wtk drew into: an app then ran at EL1 with the kernel's identity mapping, so the
+  null canvas, which uikit drew into: an app then ran at EL1 with the kernel's identity mapping, so the
   first frame overwrote the kernel at address 0 (at EL0 since v74, that is a fault: the app killed) — the Pi froze, nothing in `kmsg`, no
   `lastcrash.txt` (a Pi without RAM above 3 GB keeps no record, and a panic halts core 1 too), the
-  watchdog restarted it. Now 1000 pixels; wtk's `Root` stops an app the kernel gives no window;
+  watchdog restarted it. Now 1000 pixels; uikit's `Root` stops an app the kernel gives no window;
   the desktop simulator refuses windows over 1024 × 768 (its screen) as the kernel does. How it was found, and
   worth reusing: the Pi binary itself run under **qemu-aarch64** with the simulator's kapi (a
   loader mapping the ELF's segments, the kapi table at `KAPI_TABLE_VA`, a 4 MB stack with a guard
@@ -1251,7 +1251,7 @@ Koton Studio (the user's C# DAW, `github.com/stephaneweg/MusicTracker`) made aga
 score view: **`docs/daw/README.md`** (the study, the plan, the user's decisions in §8, **where it
 stands and what to test on the Pi in §9**). Code: `user/Apps/koton` (engine/, synth/, plug/, ui/,
 main.cpp), `user/kplug*.h` + `user/Apps/kp_*` (the plugins), `user/bin/llm.cpp` (the AI's HTTPS
-helper), wtk's text face (`user/ft/wtkface.h`) and studio widgets. Docs: docs/04 *Koton, the
+helper), uikit's text face (`user/ft/uikitface.h`) and studio widgets. Docs: docs/04 *Koton, the
 studio*, docs/03 *A large app: Koton*, *Koton's plugins*, the `/bin/llm` section. Tests:
 `sh tools/tests/koton/{synth,engine,ai,plug,plug_host}_run.sh`; the app on the PC:
 `sh tools/tests/desktop_sim/shots.sh koton`. The card carries the GeneralUser GS SoundFont
@@ -1270,11 +1270,11 @@ Linux by `sh pc/macOS/check.sh` (the POSIX half under a screen-less window: open
 folders). To try on a real Mac: the first build (Apple clang's warnings), the window, Retina drawing, the
 keys (Cmd, dead keys), resizing / full screen, the trackpad's scrolling, drop / Finder open, printing.
 
-**Ledger in French (2026-10-01):** every word of Ledger wrapped `TR ()` (wtk's new `lang.h`, docs/03 *An app
-in another language*), the catalogue `sdcard/apps/ledger.app/lang/fr.txt` (~930 words) + wtk's own
+**Ledger in French (2026-10-01):** every word of Ledger wrapped `TR ()` (uikit's new `lang.h`, docs/03 *An app
+in another language*), the catalogue `sdcard/apps/ledger.app/lang/fr.txt` (~930 words) + uikit's own
 `sdcard/res/lang/fr.txt` (in the `onyx` package); EN | FR at the side bar's foot and in the File menu (Ledger restarts by itself).
 Pi binary rebuilt (`sdcard/apps/ledger.app/main`, Arm GNU 13.3); the other apps not restaged (their old
-wtk has no `TR`, fine). Checked: `sh pc/macOS/check.sh` (the switch, French pictures), the engine test.
+uikit has no `TR`, fine). Checked: `sh pc/macOS/check.sh` (the switch, French pictures), the engine test.
 To do: Dutch (`nl.txt`: the same keys), the manual's pictures in French, Letters' own words.
 
 **User manual (2026-09-30):** `sdcard/manuals/koton/Koton.md` + `Koton.fr.md` and their PDFs
@@ -1294,7 +1294,7 @@ when the playhead moved a pixel, a *Low latency* setting (128 × 2 in the kernel
 docs/screenshot/README.md), then the **Priority 1** apps **in their order**; for each, **mock-ups first**
 for the user to validate, then the app -- polished, **worthy of a commercial product**.
 
-Every new app: FreeType text through wtk's face, polished, its catalog entry in docs/04 and a
+Every new app: FreeType text through uikit's face, polished, its catalog entry in docs/04 and a
 `shots.sh` scenario. In the user's priority order:
 
 **Priority 1**

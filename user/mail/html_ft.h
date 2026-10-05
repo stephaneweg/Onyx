@@ -1,6 +1,6 @@
 //
 // mail/html_ft.h -- Mail's HTML renderer on Onyx: the Host (the card's fonts measured by FreeType -- ft/fonts.h --,
-// the pictures' sizes) and the Painter (a wtk::Canvas: rectangles blended, FreeType's text, the pictures scaled). The
+// the pictures' sizes) and the Painter (a uikit::Canvas: rectangles blended, FreeType's text, the pictures scaled). The
 // families: Arial / Helvetica / Verdana -> Liberation Sans, Times -> Liberation Serif, Georgia -> Gelasio, Segoe /
 // system-ui -> Selawik, Courier / monospace -> DejaVu Sans Mono. The pictures come from the app (Pictures: a cid:
 // from the message, a remote one once allowed and fetched). Include once, in the app's translation unit, after
@@ -29,7 +29,7 @@ struct FtHost : Host, Painter
 	struct F { int fam, px; unsigned char bold, italic; };
 	F fonts[96]; int nf;
 	int fam[FF_COUNT];
-	wtk::Canvas *cv; int cx0, cy0, cx1, cy1;
+	uikit::Canvas *cv; int cx0, cy0, cx1, cy1;
 	Pictures *pics;
 	int zoom;				// percent (100: as the HTML says)
 

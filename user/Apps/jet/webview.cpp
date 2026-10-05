@@ -4,7 +4,7 @@
 //
 //   web --applet <surface id> <host pid> <host's IPC service>
 //
-// main () hands that run here. A wtk Root in the applet mode (wtk/root.cpp: it adopts the host's surface,
+// main () hands that run here. A uikit Root in the applet mode (uikit/root.cpp: it adopts the host's surface,
 // takes the pointer and the keys from the host, tells it what it drew) filled with the page; JavaScript
 // off; a clicked link not followed but told to the host; the host's own messages (webview_proto.h): the
 // page's size, the HTML to show (a file), an address to load. What happens goes to the kernel log
@@ -13,14 +13,14 @@
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see LICENSE).
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "engine.h"
 #include "webview_proto.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-using namespace wtk;
+using namespace uikit;
 
 static void say (const char *s)		// (one write: one line of the kernel log)
 {
@@ -36,7 +36,7 @@ static void tell (int type, const char *s)
 {
 	char b[512];
 	snprintf (b, sizeof b, "%s", s ? s : "");
-	wk_applet_send (type, b, (unsigned) strlen (b) + 1);
+	uk_applet_send (type, b, (unsigned) strlen (b) + 1);
 }
 
 // ---- the page (as the browser's PageView, main.cpp) ---------------------------------------------------------
@@ -90,8 +90,8 @@ public:
 	}
 	bool onKey (long k) override
 	{
-		if (k == WK_CTRL ('C')) { engine_command ("Copy"); return true; }	// (no menu here: the host has it)
-		if (k == WK_CTRL ('A')) { engine_command ("SelectAll"); return true; }
+		if (k == UK_CTRL ('C')) { engine_command ("Copy"); return true; }	// (no menu here: the host has it)
+		if (k == UK_CTRL ('A')) { engine_command ("SelectAll"); return true; }
 		engine_key (k, kapi_get_modifiers ());
 		return true;
 	}
@@ -112,7 +112,7 @@ public:
 static void on_needs_display (int x, int y, int w, int h) { g_page->damage (x, y, w, h); }
 static void on_title (const char *) {}
 static void on_url (const char *) {}
-static void on_loading (bool loading, double) { if (!loading) wk_applet_send (WV_LOADED); }
+static void on_loading (bool loading, double) { if (!loading) uk_applet_send (WV_LOADED); }
 static void on_history (bool, bool) {}
 static void on_status (const char *s) { tell (WV_STATUS, s); }
 static void on_open_window (const char *url) { tell (WV_LINK, url); }	// (target=_blank: the host's too)
@@ -121,7 +121,7 @@ static void on_load_failed (const char *url, const char *why)
 	char b[560]; snprintf (b, sizeof b, "could not load %.300s: %.200s", url, why);
 	say (b);
 }
-static void on_process_ended () { say ("the web process ended"); wk_applet_send (WV_ENDED); }
+static void on_process_ended () { say ("the web process ended"); uk_applet_send (WV_ENDED); }
 static void on_alert (const char *) {}				// (no scripts)
 static bool on_confirm (const char *) { return false; }
 static void on_key_not_handled (long, unsigned) {}
@@ -197,7 +197,7 @@ static void on_host (int type, const void *data, int len)
 int webview_main (int argc, char **argv)
 {
 	(void) argc; (void) argv;
-	if (!wk_applet ())
+	if (!uk_applet ())
 	{
 		say ("not started by a host (--applet <surface> <host pid> <host's service>)");
 		return 1;
@@ -208,13 +208,13 @@ int webview_main (int argc, char **argv)
 	g_maxW = root.width; g_maxH = root.height;
 	g_page = new ViewPage (0, 0, root.width, root.height);
 	root.addChild (g_page);
-	wk_applet_on_message (on_host);
+	uk_applet_on_message (on_host);
 	engine_set_scripts (false);
 	engine_set_link_handler (on_link);
 	if (!engine_init (&s_client, g_page->width, g_page->height))
 	{
 		say ("the web engine could not start (see kmsg)");
-		wk_applet_send (WV_ENDED);
+		uk_applet_send (WV_ENDED);
 		return 1;
 	}
 	say ("up");

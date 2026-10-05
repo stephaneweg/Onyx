@@ -16,7 +16,7 @@
 #define _ledger_core_h
 
 #include "Apps/cardfile/model.h"
-#include "wtk/lang.h"		// TR (): the words in the language chosen
+#include "uikit/lang.h"		// TR (): the words in the language chosen
 
 namespace lg {
 
@@ -281,7 +281,7 @@ static void ogm_show (const char *d12, char *out)
 }
 
 // ---- text for other programs -----------------------------------------------------------------------------------
-// One Latin-1 character (Onyx's; 0x80: the euro, as wtk's font has it) as UTF-8.
+// One Latin-1 character (Onyx's; 0x80: the euro, as uikit's font has it) as UTF-8.
 static void put_utf8 (Out &o, unsigned char c)
 {
 	if (c < 0x80) { o.put ((char) c); return; }

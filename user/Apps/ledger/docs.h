@@ -87,7 +87,7 @@ public:
 		return false;
 	}
 	// A label at the left of a field.
-	void lab (int x, int y, const char *s) { wk_text_l (canvas, x, y, ED_H, s, C_TEXT); }
+	void lab (int x, int y, const char *s) { uk_text_l (canvas, x, y, ED_H, s, C_TEXT); }
 };
 static void mark_dirty (Widget &) { if (g_doc) g_doc->dirty = true; }
 
@@ -553,16 +553,16 @@ public:
 		}
 		{
 			int d = date_parse (date->text ()), dd = date_parse (due->text ());
-			if (d && dd && dd >= d) { char t[32]; itoa10 (days_between (d, dd), t); scat (t, TR (" days"), sizeof t); wk_text_l (canvas, rx + 270, 104, ED_H, t, dim_ink (C_BG)); }
+			if (d && dd && dd >= d) { char t[32]; itoa10 (days_between (d, dd), t); scat (t, TR (" days"), sizeof t); uk_text_l (canvas, rx + 270, 104, ED_H, t, dim_ink (C_BG)); }
 		}
 		// the foot: the entry at the left, the totals at the right
 		int fy = wg (g)->top + g->height + 12, fh = height - fy - 8;
 		int tx = W - 300;
-		wk_rbox (canvas, tx, fy, 284, fh, 8, wk_tone (C_FIELD, 132), wk_tone (C_FIELD, 122));
-		wk_rline (canvas, tx, fy, 284, fh, 8, wk_mix (C_BG, 0, 60), 100);
+		uk_rbox (canvas, tx, fy, 284, fh, 8, uk_tone (C_FIELD, 132), uk_tone (C_FIELD, 122));
+		uk_rline (canvas, tx, fy, 284, fh, 8, uk_mix (C_BG, 0, 60), 100);
 		char a[32];
 		int y = fy + 8;
-		wk_text_l (canvas, tx + 14, y, 20, TR ("Total excl. VAT"), field_dim ()); text_r (canvas, tx + 270, y, 20, money_s (tNet, a), C_FIELD_TEXT); y += 20;
+		uk_text_l (canvas, tx + 14, y, 20, TR ("Total excl. VAT"), field_dim ()); text_r (canvas, tx + 270, y, 20, money_s (tNet, a), C_FIELD_TEXT); y += 20;
 		for (int c = 0; c < NVAT && y < fy + fh - 50; c++)		// the VAT by code
 		{
 			money base = 0, tax = 0; bool any = false;
@@ -571,19 +571,19 @@ public:
 			char t[48]; scpy (t, TR ("VAT "), sizeof t); scat (t, VAT_DEFS[c].code, sizeof t);
 			if (VAT_DEFS[c].rate) { char rt[16]; fmt_rate (VAT_DEFS[c].rate, rt); scat (t, " (", sizeof t); scat (t, rt, sizeof t); scat (t, ")", sizeof t); }
 			if (vat_reverse (c)) scat (t, TR (" reverse charge"), sizeof t);
-			wk_text_l (canvas, tx + 14, y, 20, t, field_dim ()); text_r (canvas, tx + 270, y, 20, money_s (tax, a), vat_reverse (c) ? field_dim () : C_FIELD_TEXT); y += 20;
+			uk_text_l (canvas, tx + 14, y, 20, t, field_dim ()); text_r (canvas, tx + 270, y, 20, money_s (tax, a), vat_reverse (c) ? field_dim () : C_FIELD_TEXT); y += 20;
 		}
-		canvas.fillRect (tx + 12, fy + fh - 40, 260, 1, wk_tone (C_FIELD, 100));
-		wk_text_l (canvas, tx + 14, fy + fh - 36, 28, v.credit || kind->cur == 1 ? TR ("Total to refund") : TR ("Total to pay"), C_FIELD_TEXT, 2);
+		canvas.fillRect (tx + 12, fy + fh - 40, 260, 1, uk_tone (C_FIELD, 100));
+		uk_text_l (canvas, tx + 14, fy + fh - 36, 28, v.credit || kind->cur == 1 ? TR ("Total to refund") : TR ("Total to pay"), C_FIELD_TEXT, 2);
 		text_r (canvas, tx + 270, fy + fh - 36, 28, money_s (tTot, a), C_FIELD_TEXT, 2);
 		// the entry
 		int ex = 16, ew = tx - 16 - 16;
-		wk_text_l (canvas, ex + 2, fy, 20, TR ("The entry it makes"), dim_ink (C_BG), 2);
+		uk_text_l (canvas, ex + 2, fy, 20, TR ("The entry it makes"), dim_ink (C_BG), 2);
 		int ly = fy + 22, maxl = (fh - 24) / 18;
 		for (int k = 0; k < preview.nl && k < maxl; k++)
 		{
 			const Line &l = preview.l[k];
-			if (k == maxl - 1 && preview.nl > maxl) { wk_text_l (canvas, ex + 2, ly, 18, "...", dim_ink (C_BG)); break; }
+			if (k == maxl - 1 && preview.nl > maxl) { uk_text_l (canvas, ex + 2, ly, 18, "...", dim_ink (C_BG)); break; }
 			char t[160]; scpy (t, l.account, sizeof t); scat (t, "  ", sizeof t);
 			scat (t, l.party ? party_name (g_b, l.party) : acc_name (g_b, l.account), sizeof t);
 			unsigned ink = dim_ink (C_BG);
@@ -957,7 +957,7 @@ public:
 		{
 			bool on = r >= 0 && r < p->s.nl && p->payHas (p->s.l[r], g_b.e[p->open[row].e].id, p->open[row].l);
 			bool else_ = p->paidElsewhere (p->open[row], r), grp = r >= 0 && r < p->s.nl && p->inGroup (p->s.l[r], p->open[row]);
-			wk_check_mark (cv, x + (w - 16) / 2, y + (h - 16) / 2, 16, on || else_ || grp, else_ || grp ? WK_DISABLED : WK_NORMAL);
+			uk_check_mark (cv, x + (w - 16) / 2, y + (h - 16) / 2, 16, on || else_ || grp, else_ || grp ? UK_DISABLED : UK_NORMAL);
 			return true;
 		}
 		if (col == 5)
@@ -1072,11 +1072,11 @@ public:
 		char a[32], b[32], t[160];
 		int y = 138;
 		scpy (t, TR ("Old balance  "), sizeof t); scat (t, money_s (s.old, a), sizeof t);
-		wk_text_l (canvas, 20, y, 26, t, C_TEXT);
+		uk_text_l (canvas, 20, y, 26, t, C_TEXT);
 		scpy (t, TR ("Movements  "), sizeof t); if (sum > 0) scat (t, "+", sizeof t); scat (t, money_s (sum, a), sizeof t);
-		wk_text_l (canvas, 240, y, 26, t, C_TEXT);
+		uk_text_l (canvas, 240, y, 26, t, C_TEXT);
 		scpy (t, TR ("New balance  "), sizeof t); scat (t, money_s (now, b), sizeof t);
-		wk_text_l (canvas, rx, y, 26, t, C_TEXT, 2);
+		uk_text_l (canvas, rx, y, 26, t, C_TEXT, 2);
 		char nb[40]; trim_copy (nb, newBal->text (), sizeof nb); money m;
 		if (nb[0] && parse_money (nb, &m))
 		{
@@ -1092,7 +1092,7 @@ public:
 			scat (t, "  \xB7  ", sizeof t); scat (t, TR ("tick those this movement pays"), sizeof t);
 		}
 		else scpy (t, TR ("Open items"), sizeof t);
-		wk_text_l (canvas, 20, iy, 24, t, C_TEXT, 2);
+		uk_text_l (canvas, 20, iy, 24, t, C_TEXT, 2);
 	}
 	void resizeTo (int w, int h) override
 	{
@@ -1317,8 +1317,8 @@ public:
 		for (int i = 0; i < e.nl; i++) { if (e.l[i].amount > 0) d += e.l[i].amount; else c -= e.l[i].amount; }
 		char a[32], t[96];
 		int y = height - 46;
-		scpy (t, TR ("Debit  "), sizeof t); scat (t, money_s (d, a), sizeof t); wk_text_l (canvas, 20, y, 30, t, C_TEXT, 2);
-		scpy (t, TR ("Credit  "), sizeof t); scat (t, money_s (c, a), sizeof t); wk_text_l (canvas, 230, y, 30, t, C_TEXT, 2);
+		scpy (t, TR ("Debit  "), sizeof t); scat (t, money_s (d, a), sizeof t); uk_text_l (canvas, 20, y, 30, t, C_TEXT, 2);
+		scpy (t, TR ("Credit  "), sizeof t); scat (t, money_s (c, a), sizeof t); uk_text_l (canvas, 230, y, 30, t, C_TEXT, 2);
 		if (d != c) { scpy (t, TR ("Difference "), sizeof t); scat (t, money_s (d - c, a), sizeof t); draw_pill (canvas, 440, y + 5, 20, t, C_BAD); }
 		else if (d) draw_pill (canvas, 440, y + 5, 20, TR ("Balanced"), C_GOOD);
 	}

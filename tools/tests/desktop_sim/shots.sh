@@ -1,8 +1,8 @@
 #!/bin/sh
 # tools/tests/desktop_sim/shots.sh -- the documentation's screenshots (screenshots/*.png), taken
 # from the REAL apps run on the PC: each app built for the host against the stand-in kernel
-# (fakekapi.cpp; wtk with its real image codecs), driven by a script of events, its window dumped
-# (the frame wtk drew + the client area), then made a PNG of its own (shot.py: the rounded corners
+# (fakekapi.cpp; uikit with its real image codecs), driven by a script of events, its window dumped
+# (the frame uikit drew + the client area), then made a PNG of its own (shot.py: the rounded corners
 # see-through) or laid over the wallpaper with others (compose.py: the desktop, the menu bar, the
 # dock...). Sample files (a note, appointments) come from sd/ (SIM_OVERLAY), not from the card.
 # A Control Panel applet is run as one (SIM_APPLET: its surface dumped), then shown in the Control
@@ -26,9 +26,9 @@ CXX="g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti
 want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # ---- the building ------------------------------------------------------------------------------
-# wtk (with the image codecs, on the host's libc) and the stand-in kernel, once; then the apps
-for f in user/wtk/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
-rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/obj/*.o
+# uikit (with the image codecs, on the host's libc) and the stand-in kernel, once; then the apps
+for f in user/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
+rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
 # the apps' TrueType-only FreeType (user/ft/, as user/Makefile builds it for the Pi): Letters'
 FT=third_party/freetype-2.14.3
@@ -43,14 +43,14 @@ build () {
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
 		for f in $K/engine/*.cpp $K/synth/*.cpp $K/plug/*.cpp; do $CXX -I$K -c "$f" -o "$OUT/koton/$(basename "$f" .cpp).o" || return 1; done
-		$CXX -I$K -Iuser/ft -I$FT/include -o "$OUT/koton/koton" "$OUT/fakekapi.o" $K/main.cpp "$OUT"/koton/*.o "$OUT/libwtk.a" "$OUT/libft.a"
+		$CXX -I$K -Iuser/ft -I$FT/include -o "$OUT/koton/koton" "$OUT/fakekapi.o" $K/main.cpp "$OUT"/koton/*.o "$OUT/libuikit.a" "$OUT/libft.a"
 		cp "$OUT/koton/koton" "$OUT/koton.bin"; return
 	fi
 	if [ "$1" = archiver ]; then			# (newlib-like: FreeType, zlib)
 		mkdir -p "$OUT/zlib"
 		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/zlib/$f.o" || return 1; done
 		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -o "$OUT/archiver" "$OUT/fakekapi.o" user/Apps/archiver/main.cpp \
-			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/zlib/*.o -lpthread; return
+			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT"/zlib/*.o -lpthread; return
 	fi
 	if [ "$1" = media ]; then			# (newlib-like: FreeType, the decoders, Koton's MeltySynth)
 		mkdir -p "$OUT/media"
@@ -61,7 +61,7 @@ build () {
 		sh third_party/ffmpeg-7.1.2/onyx/build.sh host "$FFH" || return 1
 		make -s -f $D/av_host.mk OUT="$OUT/av" -j"$(nproc)" || return 1
 		$CXX -Iuser/ft -I$FT/include -Ithird_party -o "$OUT/media.bin" "$OUT/fakekapi.o" user/Apps/media/main.cpp "$OUT"/media/*.o \
-			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT/av/libavhost.a" -L"$FFH" -lavformat -lavcodec -lswscale -lswresample -lavutil -lpthread -lm; return
+			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT/av/libavhost.a" -L"$FFH" -lavformat -lavcodec -lswscale -lswresample -lavutil -lpthread -lm; return
 	fi
 	if [ "$1" = pkgman ]; then			# (the Package Manager: pkg/pkglib.h -- zlib, mbedTLS built for the PC)
 		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb" "$OUT/pkzlib"
@@ -71,7 +71,7 @@ build () {
 		fi
 		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/pkzlib/$f.o" || return 1; done
 		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -I$M/include -o "$OUT/pkgman" "$OUT/fakekapi.o" user/Apps/pkgman/main.cpp \
-			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/pkzlib/*.o "$OUT/libmb.a" -lpthread; return
+			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT"/pkzlib/*.o "$OUT/libmb.a" -lpthread; return
 	fi
 	if [ "$1" = mail ]; then			# (Mail: mbedTLS built for the PC, as the Package Manager's; its demo accounts' maker)
 		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb"
@@ -79,38 +79,38 @@ build () {
 			for f in $M/library/*.c; do gcc -O1 -w -I$M/include -I$M/library -c $f -o "$OUT/mb/$(basename $f .c).o" || return 1; done
 			ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o
 		fi
-		$CXX -Iuser/ft -I$FT/include -I$M/include -o "$OUT/mail" "$OUT/fakekapi.o" user/Apps/mail/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" "$OUT/libmb.a" -lpthread || return 1
+		$CXX -Iuser/ft -I$FT/include -I$M/include -o "$OUT/mail" "$OUT/fakekapi.o" user/Apps/mail/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmb.a" -lpthread || return 1
 		$CXX -I$M/include -o "$OUT/mkaccounts" "$OUT/fakekapi.o" tools/tests/mail/mkaccounts.cpp "$OUT/libmb.a" -lpthread; return
 	fi
 	if [ "$1" = pdf ]; then				# (the PDF Viewer: MuPDF for the PC -- user/Apps/pdf/mupdf.mk with gcc; its FreeType)
 		make -s -j8 -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_AR=ar MU_OUT="$OUT/mupdf" MU_CFLAGS=-O2 || return 1
 		$CXX -Iuser/ft -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pdf.bin" "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
-			"$OUT/libwtk.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm; return
+			"$OUT/libuikit.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm; return
 	fi
 	if [ "$1" = paint ]; then			# (newlib-like: FreeType; the canvas through gpucomp -- the CPU's path here)
 		gcc -O2 -w -Iuser -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libwtk.a" "$OUT/libft.a"; return
+		$CXX -Iuser/ft -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = slides ]; then			# (newlib-like: FreeType; the slides' layers through gpucomp -- the CPU's path here)
 		gcc -O2 -w -Iuser -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libwtk.a" "$OUT/libft.a"; return
+		$CXX -Iuser/ft -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = qbstudio ]; then			# (newlib-like: FreeType; Onyx BASIC's compiler built in)
 		$CXX -Iuser/ft -I$FT/include -o "$OUT/qbstudio" "$OUT/fakekapi.o" user/Apps/qbstudio/main.cpp user/basic/bascomp.cpp user/basic/basvm.cpp \
-			user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libwtk.a" "$OUT/libft.a"; return
+			user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/ft -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
-			"$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
+			"$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
-		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
+		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
 	case " letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a" "$OUT/libft.a"; return ;;
+		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a"; return ;;
 	esac
-	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a"
+	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a"
 }
 APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
@@ -118,7 +118,7 @@ APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewe
       config wpaconf padconf soundconf displayconf keyconf preloadconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window)
-$CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libwtk.a" &
+$CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libuikit.a" &
 wait
 
 # ---- the running -------------------------------------------------------------------------------

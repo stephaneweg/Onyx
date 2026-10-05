@@ -1090,15 +1090,15 @@ it: `ed notes.txt < edits.txt`.
 ### Shared libraries (`SD:/lib`)
 
 The apps do not each carry a copy of the toolkit and of the text renderer: they share
-**`SD:/lib/wtk.so`** (the widgets, the windows' frames, the theme) and **`SD:/lib/ft.so`**
+**`SD:/lib/uikit.so`** (the widgets, the windows' frames, the theme) and **`SD:/lib/ft.so`**
 (FreeType: the TrueType text); **`SD:/lib/print.so`** (package **print**) is the Print dialog and the
 apps' print jobs. Each is loaded **once** — the first app that needs it reads it from
 the card, the others map the copy already in memory — and stays while an app uses it; `preload`
-(no argument) lists them, marked `(library)`. They come with the packages **wtk** and **ft**
+(no argument) lists them, marked `(library)`. They come with the packages **uikit** and **ft**
 (required; the Package Manager updates them like any other): a fix in a library reaches every app
 at once, without the apps being updated.
 
-- **An app says *this program needs the shared library "wtk" (version N or later)*** (in `kmsg` for a
+- **An app says *this program needs the shared library "uikit" (version N or later)*** (in `kmsg` for a
   windowed app; its window does not open): the library is missing from `SD:/lib`, or older than the
   app — update the packages (`pkg update`, or the Package Manager), the library first.
 - *this kernel has no shared libraries*: the system is older than the app (kernel kapi 83 is
@@ -3934,10 +3934,10 @@ disappears while it runs; **Esc**, **Enter**, **q** or a click quits and brings 
 | **demoD** | Widget gallery (label, textbox, checkbox, button, slider, progress bar). |
 | **demoE** | Multi-line textarea + scrolling view with scrollbars. |
 | **demoF** | Small borderless launcher (buttons A–E that launch the other demos). |
-| **widgets** (Widget Showcase) | The WPF-style wtk controls: radio buttons in a group box, toggle switches, a numeric up/down, a list box, a tree view, a calendar and a date picker, an image box, the colour dialog (**Colour...**), and **tooltips** (rest the pointer on a control). The **Studio** group shows the studio controls: a toolbar of transport buttons (**Play** / pause — a toggle —, **Stop**, **Record**, **Loop**), a time display that runs while playing, a segmented choice (Chords / Melody / Drums), three knobs (**Gain**, **Pan**, **Mix**: drag up or down — Shift for fine steps —, the wheel, a double click resets Gain and Pan) and level meters fed by a made-up signal while playing (the Gain and Pan knobs act on it; a click on a meter clears its red clip light). The bottom line reports each event. Reads the icon `SD:/apps/imageview.app/icon.bmp`; writes nothing. |
+| **widgets** (Widget Showcase) | The WPF-style uikit controls: radio buttons in a group box, toggle switches, a numeric up/down, a list box, a tree view, a calendar and a date picker, an image box, the colour dialog (**Colour...**), and **tooltips** (rest the pointer on a control). The **Studio** group shows the studio controls: a toolbar of transport buttons (**Play** / pause — a toggle —, **Stop**, **Record**, **Loop**), a time display that runs while playing, a segmented choice (Chords / Melody / Drums), three knobs (**Gain**, **Pan**, **Mix**: drag up or down — Shift for fine steps —, the wheel, a double click resets Gain and Pan) and level meters fed by a made-up signal while playing (the Gain and Pan knobs act on it; a click on a meter clears its red clip light). The bottom line reports each event. Reads the icon `SD:/apps/imageview.app/icon.bmp`; writes nothing. |
 | **basicdemo** (BASIC Demo) | An app written in BASIC (`main.bas`, run by `/bin/basic`): a text box and **Say hello** (a notification), a click counter and a progress bar, and concentric circles whose colour (drop-down), size (slider) and fill (check box) follow the controls. Open it in QBasic to read it. |
 | **cppdemo** | C++/OO example: a class hierarchy with virtual draw, objects created with `new` (user allocator), global constructor — proves the C++ app toolchain. |
-| **wtkdemo** (Widget Toolkit Demo) | The first wtk test window: labels, buttons, a checkbox, a slider driving a progress bar, a text box and a nested panel with its own button (recursive repaint, mouse routing, focus, clipping). |
+| **wtkdemo** (Widget Toolkit Demo) | The first uikit test window: labels, buttons, a checkbox, a slider driving a progress bar, a text box and a nested panel with its own button (recursive repaint, mouse routing, focus, clipping). |
 | **spin** | Preemption test: a CPU hog that **never yields**. On a purely cooperative kernel it freezes the whole machine; with preemptive scheduling the rest of the UI (cursor, panel, other apps) stays responsive while it spins. It cannot be closed by its window (it never checks for the close) — **stop it from `taskman`**. |
 
 ![Widget Showcase](../screenshots/widgets.png)

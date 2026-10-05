@@ -4,8 +4,8 @@
 // and its orientation. What it shows follows the printer chosen -- a printer without colour has no colour
 // choice, the PDF printer has no copies nor quality and asks for the file to write.
 //
-// A wtk modal dialog in the app's window: wtk is the shared library wtk.so, reached through its import
-// stubs (print/print.cpp opens it); wtk's variables (the palette, the text face) are the program's.
+// A uikit modal dialog in the app's window: uikit is the shared library uikit.so, reached through its import
+// stubs (print/print.cpp opens it); uikit's variables (the palette, the text face) are the program's.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -16,11 +16,11 @@
 // be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "print/print.h"
 #include "print/priv.h"
 
-using namespace wtk;
+using namespace uikit;
 using namespace pprt;
 
 namespace {
@@ -166,7 +166,7 @@ public:
 		char t[160]; scpy (t, sizeof t, TR ("Print"));
 		if (info.title && info.title[0]) { scat (t, sizeof t, " - "); scat (t, sizeof t, info.title); }
 		drawBox (t);
-		int ty = (26 - wk_fh ()) / 2;
+		int ty = (26 - uk_fh ()) / 2;
 		canvas.text (LX, titleH () + 14 + ty, TR ("Printer"), C_TEXT);
 		canvas.text (CX, yInfo, pr.model, C_DIS);
 		canvas.text (LX, yPages + 4, TR ("Pages"), C_TEXT);
@@ -188,7 +188,7 @@ public:
 
 extern "C" int print_dialog (PrintSetup *s, const PrintDialogInfo *info)
 {
-	if (!s || !print__need_wtk () || Root::current () == 0) return 0;
+	if (!s || !print__need_uikit () || Root::current () == 0) return 0;
 	PrintDialogInfo di; for (unsigned i = 0; i < sizeof di; i++) ((char *) &di)[i] = 0;
 	if (info) { unsigned n = info->size < sizeof di ? info->size : sizeof di; for (unsigned i = 0; i < n; i++) ((char *) &di)[i] = ((const char *) info)[i]; }
 	if (s->size == 0) print_setup_default (s);
@@ -229,7 +229,7 @@ extern "C" int print_dialog (PrintSetup *s, const PrintDialogInfo *info)
 			for (int i = slen (def) - 1; i > 0; i--) if (def[i] == '.') { def[i] = 0; break; } else if (def[i] == '/') break;
 			const char *base = def; for (const char *q = def; *q; q++) if (*q == '/' || *q == ':') base = q + 1;
 			char name[96]; scpy (name, sizeof name, base); scat (name, sizeof name, ".pdf");
-			ok = wk_file_save (s->output, sizeof s->output, "SD:/docs", name) ? 1 : 0;
+			ok = uk_file_save (s->output, sizeof s->output, "SD:/docs", name) ? 1 : 0;
 		}
 	}
 	delete l;

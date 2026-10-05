@@ -4,7 +4,7 @@
 # R_AARCH64_RELATIVE relocations and all of them in the RW segment, the entry = the export table,
 # one exported symbol.
 #   sh check_pic.sh                 builds the test library (user/demo) and checks it
-#   sh check_pic.sh <file.so>...    checks these (user/lib/wtk.so ...)
+#   sh check_pic.sh <file.so>...    checks these (user/lib/uikit.so ...)
 # Needs aarch64-none-elf-* on the PATH (PREFIX=... for another toolchain).
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)

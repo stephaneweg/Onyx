@@ -1,6 +1,6 @@
 //
 // wpaconf/main.cpp -- GUI editor for the WLAN credentials in SD:/etc/wpa_supplicant.conf
-// (C++ port, on the wtk toolkit).
+// (C++ port, on the uikit toolkit).
 //
 // The kernel reads that file once, at boot (WLAN bring-up runs before any user
 // process), so it must stay the canonical wpa_supplicant-format file. This editor
@@ -20,10 +20,10 @@
 // The Control Panel's Wi-Fi applet (applet_proto.h), or a window of its own when run alone.
 //
 #include "kapi.h"
-#include "wtk/wtk.h"		// recursive widget toolkit + wk_messagebox
-#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
+#include "uikit/uikit.h"		// recursive widget toolkit + uk_messagebox
+#include "ft/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 
-using namespace wtk;
+using namespace uikit;
 
 #define WPA_PATH	"SD:/etc/wpa_supplicant.conf"
 #define BGCOL		C_BG			// (the theme's face)
@@ -87,7 +87,7 @@ static Root *g_root = 0;
 static void on_scan (Widget &)
 {
 	set_status ("Scanning (3 s)...");
-	if (g_root) { g_root->draw (); wk_present (); }
+	if (g_root) { g_root->draw (); uk_present (); }
 	g_nap = kapi_wlan_scan (g_ap, 32);
 	g_ssid->clearOptions ();
 	int n = 0;
@@ -198,7 +198,7 @@ static void on_reload (Widget &) { load_conf (); }
 static void on_reboot (Widget &)
 {
 	if (!save_conf ()) return;
-	if (wk_messagebox ("Reboot", "Settings saved. Reboot now to apply them?", MB_YESNO))
+	if (uk_messagebox ("Reboot", "Settings saved. Reboot now to apply them?", MB_YESNO))
 		kapi_reboot ();					// does not return
 	else
 		set_status ("Saved. Reboot later to apply.");
@@ -216,9 +216,9 @@ public:
 	void onDraw () override
 	{
 		Root::onDraw ();
-		wk_rbox (canvas, 0, 0, width, 32, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
-		wk_etch_h (canvas, 0, 32, width, C_FACE);
-		wk_text_l (canvas, 14, 0, 32, "Wi-Fi Settings", C_TEXT, 2);
+		uk_rbox (canvas, 0, 0, width, 32, 0, uk_tone (C_FACE, 170), uk_tone (C_FACE, 130));
+		uk_etch_h (canvas, 0, 32, width, C_FACE);
+		uk_text_l (canvas, 14, 0, 32, "Wi-Fi Settings", C_TEXT, 2);
 		if (width > W + 40)		// (the Control Panel's pane: a word about the menu bar's Wi-Fi menu)
 		{
 			canvas.text (W + 30, 50, "The Wi-Fi menu of the menu bar", C_DIS);
@@ -231,7 +231,7 @@ public:
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	WpaRoot root;
 	if (root.canvas.px == 0) return 1;
 	root.setBg (BGCOL);

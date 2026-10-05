@@ -94,8 +94,8 @@ written before the user has validated the plan. Its models: `docs/SHARED-LIBS-PL
 
 - **No common settings library.** `user/applib.h` (`app_ini_load`, read-only) is used by 14 apps;
   about 25 others open a literal path with their own parser; shared headers do the same
-  (`wallpaper.h`, `dockconf.h`, `fileassoc.h`, `launch.h`, `gamepad.h`, `ftpfs.h`, `wtk/theme.cpp`,
-  `wtk/root.cpp`). wtk has no "where is my configuration" call.
+  (`wallpaper.h`, `dockconf.h`, `fileassoc.h`, `launch.h`, `gamepad.h`, `ftpfs.h`, `uikit/theme.cpp`,
+  `uikit/root.cpp`). uikit has no "where is my configuration" call.
 - What is clearly **a user's**: `SD:/etc/` `theme.txt`, `wallpaper.ini`, `dock.ini`, `quicklaunch.txt`,
   `shelf.ini`, `places.ini`, `lock.ini`, `screenshot.ini`, `sound.ini`, `ftpfs.ini` (saved logins),
   `mail/*`, `media/*`, `pdf/*`, `photos`, `web-*` (Jet); the data folders `SD:/mail`, `SD:/courier`,
@@ -106,7 +106,7 @@ written before the user has validated the plan. Its models: `docs/SHARED-LIBS-PL
 - What is **the system's**: `system.ini`, `wpa_supplicant.conf` (Wi-Fi passwords in clear),
   `autostart`, `keymaps/`, `fileassoc.ini`, `runners.ini`, `preload.ini`, `gamepad.ini`, `pkg/`,
   `SD:/var/pkg`, fonts, `res/`, `wallpapers/`, `apps/`, `bin/`, `lib/`, `cmdline.txt`.
-- File dialogs: `wtk::FileDialog` (`user/wtk/dialog.cpp`), ≈ 87 call sites in 28 apps; the start folder
+- File dialogs: `uikit::FileDialog` (`user/uikit/dialog.cpp`), ≈ 87 call sites in 28 apps; the start folder
   is `SD:/` when none is given (22 sites), `SD:/docs` (20+). The File Viewer starts at `SD:/`; its
   sidebar has no "Home".
 - The clipboard is the `clipd` service (its memory + files in `RAM:/clip`): one for the whole system.
@@ -387,7 +387,7 @@ Documents/  Downloads/  Pictures/  Music/  Videos/  Projects/      (made at the 
   place, and every app, dialog, script and command line gets it. `HOME` is set by the session.
 - `user_dir (kind)` gives the home, the settings folder, Documents… (the names are data, not literals
   in 28 apps).
-- The file dialogs (`wtk::FileDialog`, in `wtk.so`: **no app rebuilt**) start in the home when the app
+- The file dialogs (`uikit::FileDialog`, in `uikit.so`: **no app rebuilt**) start in the home when the app
   gives no folder or `SD:/`, gain a short places list (Home, Documents, Downloads, the volumes), and
   hide what the user may not read. The File Viewer starts in the home; its sidebar gains Home and the
   standard folders.
@@ -413,7 +413,7 @@ name, and old binaries stay on users' cards. **Recommended: the kernel redirects
   apps that list `SD:/etc/<their folder>` — Mail, Media — work because their whole folder is created
   in the user's copy on the first write).
 
-The other way — a `cfg_path ()` helper in `applib.h` / wtk and each literal replaced — is cleaner in
+The other way — a `cfg_path ()` helper in `applib.h` / uikit and each literal replaced — is cleaner in
 the long run and stays the direction: new code uses `user_dir`, and an app that is touched moves its
 literals. The redirection is what makes the whole desktop per-user on day one, old binaries included.
 
@@ -636,7 +636,7 @@ in the same session (CLAUDE.md). Kapi version numbers are indicative (v84 onward
 ### Step 3 — the home and per-user settings
 
 - `~` in `ResolvePath`, `user_dir`, `HOME` / `TMPDIR` per session, the skeleton; the redirection of
-  §6.2; `wtk::FileDialog` and the File Viewer (Home, places); `trash.h`; `clipd` in the session; the
+  §6.2; `uikit::FileDialog` and the File Viewer (Home, places); `trash.h`; `clipd` in the session; the
   six apps whose data folder moves (Mail, Courier, Koton, Lisa, PDF, Photos, Jet's Downloads); the
   migration tool (§10).
 - *kapi* (v86): `user_dir`.
@@ -710,7 +710,7 @@ in the same session (CLAUDE.md). Kapi version numbers are indicative (v84 onward
 | `int user_edit (int op, const struct kapi_user *)` — add, remove, change groups / home | the applet, `useradd` | elevated |
 | `long long spawn_as (const struct kapi_spawn_attr *, void **handles, unsigned n, const struct kapi_cred *)` — uid, session, flags | the greeter, the listeners, `elevate`; with a password in the cred: `su` | `system`, or a valid password |
 | `int session_open (unsigned uid, unsigned flags)`, `session_close (int session, unsigned grace_ms)`, `session_info (int session, struct kapi_session *)` | the greeter, `telnetd`, `/bin/session`, `rdpd` (who is at the console) | `system` (info: all) |
-| `int user_dir (int kind, char *buf, unsigned cap)` — home, settings, documents, downloads… | apps, wtk | all |
+| `int user_dir (int kind, char *buf, unsigned cap)` — home, settings, documents, downloads… | apps, uikit | all |
 | `int path_access (const char *path, int want)` | dialogs, the File Viewer | all |
 | `int perm_get (const char *path, struct kapi_perm *)`, `perm_set (const char *path, const struct kapi_perm *)` | Properties, `/bin/perms` | all / owner or elevated |
 

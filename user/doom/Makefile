@@ -1,6 +1,6 @@
 #
 # Makefile -- Doom for Onyx: doomgeneric (third_party/doomgeneric, GPL-2.0) + the Onyx
-# platform layer (doom_onyx.c, doom_sound.c, doom_wtk.cpp), built against newlib like the
+# platform layer (doom_onyx.c, doom_sound.c, doom_uikit.cpp), built against newlib like the
 # /bin libc programs (../libc: crt0libc.S + the kapi syscall layer). Output: ../doom.elf,
 # staged as SD:/apps/doom.app/main.
 #
@@ -25,12 +25,12 @@ DG_SRC = dummy am_map doomdef doomstat dstrings d_event d_items d_iwad d_loop d_
 	 r_main r_plane r_segs r_sky r_things sha1 sounds statdump st_lib st_stuff s_sound tables \
 	 v_video wi_stuff w_checksum w_file w_main w_wad z_zone w_file_stdc i_input i_video doomgeneric
 OBJS = $(addprefix $(OUT)/, $(addsuffix .o, $(DG_SRC))) $(OUT)/doom_onyx.o $(OUT)/doom_sound.o \
-       $(OUT)/doom_wtk.o $(OUT)/crt0libc.o $(OUT)/onyx_syscalls.o
+       $(OUT)/doom_uikit.o $(OUT)/crt0libc.o $(OUT)/onyx_syscalls.o
 
 all: ../doom.elf
 
-../doom.elf: $(OBJS) ../lib/wtk.imp.a ../user.ld
-	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(OBJS) ../lib/wtk.imp.a -lm -o $@
+../doom.elf: $(OBJS) ../lib/uikit.imp.a ../user.ld
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(OBJS) ../lib/uikit.imp.a -lm -o $@
 
 $(OUT)/%.o: $(DG)/%.c | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -38,7 +38,7 @@ $(OUT)/doom_onyx.o: doom_onyx.c ../kapi.h ../gamepad.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 $(OUT)/doom_sound.o: doom_sound.c ../kapi.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/doom_wtk.o: doom_wtk.cpp ../kapi.h | $(OUT)
+$(OUT)/doom_uikit.o: doom_uikit.cpp ../kapi.h | $(OUT)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 $(OUT)/crt0libc.o: ../libc/crt0libc.S | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@

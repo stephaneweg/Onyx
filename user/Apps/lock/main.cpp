@@ -6,9 +6,9 @@
 //
 #include "kapi.h"
 #include "applib.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 static unsigned *g_fb, *g_wall;
 static int g_w, g_h, g_ww, g_wh;
@@ -33,7 +33,7 @@ static int put2 (char *o, int p, int v) { o[p++] = (char) ('0' + v / 10 % 10); o
 static void text_centred (Canvas &cv, int y, const char *s, unsigned c, int scale, int style)
 {
 	Font &f = font ();
-	int w = wk_len (s) * f.width () * scale;
+	int w = uk_len (s) * f.width () * scale;
 	cv.drawFont ((g_w - w) / 2 + scale, y + scale, s, f, 0x00000000, scale, style);	// a soft shadow
 	cv.drawFont ((g_w - w) / 2, y, s, f, c, scale, style);
 }
@@ -67,13 +67,13 @@ static void draw (void)
 	int by = cy + 9 * fh + 20;
 	if (g_pin[0])
 	{
-		int n = wk_len (g_pin), dw = 22, x0 = (g_w - n * dw) / 2;	// a dot a digit
-		wk_paint_alpha (false);
+		int n = uk_len (g_pin), dw = 22, x0 = (g_w - n * dw) / 2;	// a dot a digit
+		uk_paint_alpha (false);
 		for (int i = 0; i < n; i++)
 		{
 			unsigned c = g_wrong ? 0x00E06058 : 0x00FFFFFF;
-			if (i < g_ntyped) wk_rbox (cv, x0 + i * dw + 4, by + 4, 12, 12, 6, c, c);
-			else wk_rline (cv, x0 + i * dw + 4, by + 4, 12, 12, 6, c, 220);
+			if (i < g_ntyped) uk_rbox (cv, x0 + i * dw + 4, by + 4, 12, 12, 6, c, c);
+			else uk_rline (cv, x0 + i * dw + 4, by + 4, 12, 12, 6, c, 220);
 		}
 		text_centred (cv, by + 34, g_wrong ? "Wrong PIN -- try again" : "Type the PIN, then Enter", 0x00C8D2DC, 1, 0);
 	}
@@ -92,7 +92,7 @@ static void on_key (unsigned long, int ev, long k)
 	else if (k == KEY_ENTER)
 	{
 		g_typed[g_ntyped] = '\0';
-		bool ok = g_ntyped == wk_len (g_pin);
+		bool ok = g_ntyped == uk_len (g_pin);
 		for (int i = 0; ok && i < g_ntyped; i++) if (g_typed[i] != g_pin[i]) ok = false;
 		if (ok) { unlock (); return; }
 		g_wrong = true; g_ntyped = 0;
@@ -108,7 +108,7 @@ static void on_pointer (unsigned long, int ev, long)
 
 int main (void)
 {
-	wtk::init ();
+	uikit::init ();
 	if (app_ini_load_path ("SD:/etc/lock.ini") >= 0)
 	{
 		const char *p = app_ini_get (0, "pin", 0);

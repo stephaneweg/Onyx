@@ -40,13 +40,13 @@
 #include "kapi.h"
 #include "launch.h"
 #include "gamepad.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "gc/gc.h"
-#include "wtk/dialog.h"
+#include "uikit/dialog.h"
 #include "emucore.h"
 #include "gxv3d.h"
 
-using namespace wtk;
+using namespace uikit;
 
 static gc::Machine *g_m = 0;
 static char g_path[256];
@@ -365,7 +365,7 @@ static void set_zoom (int z)
 	g_zoom = z;
 	int w = z == 1 ? 640 : 960, h = z == 1 ? 480 : 720;
 	g_root->canvas.adopt (kapi_resize_window (w, h), w, h, g_stride);
-	wtk::wk_decorate_window ();
+	uikit::uk_decorate_window ();
 	g_root->width = w; g_root->height = h;
 	g_root->invalidate (true);
 }
@@ -775,7 +775,7 @@ int main (void)
 	card_load ();
 	bool ok = false;
 	void *f = kapi_open (g_path);
-	if (!f) { g_loading = false; wk_messagebox ("GameCube", "Cannot open the file.", MB_OK); return 1; }
+	if (!f) { g_loading = false; uk_messagebox ("GameCube", "Cannot open the file.", MB_OK); return 1; }
 	unsigned sz = kapi_fsize (f);
 	if (ends (g_path, ".dol"))
 	{
@@ -795,7 +795,7 @@ int main (void)
 	if (!ok)
 	{
 		g_loading = false;
-		wk_messagebox ("GameCube", "Not a GameCube disc image (.iso / .gcm) or program (.dol), or its start failed.", MB_OK);
+		uk_messagebox ("GameCube", "Not a GameCube disc image (.iso / .gcm) or program (.dol), or its start failed.", MB_OK);
 		return 1;
 	}
 
@@ -814,7 +814,7 @@ int main (void)
 	menu.item ("Pause",        "P",   0, on_pause);
 	if (g_jit) menu.item ("Interpreter (no JIT)", "", 0, on_interp);
 	menu.separator ();
-	menu.item ("Quit",         "^Q",  WK_CTRL ('Q'), on_quit);
+	menu.item ("Quit",         "^Q",  UK_CTRL ('Q'), on_quit);
 	menu.menu ("Sound");
 	menu.item ("Sound On / Off", "", 0, on_sound);
 	menu.menu ("View");

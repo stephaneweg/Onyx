@@ -57,7 +57,7 @@ struct TLibImports
 	void  (*free) (void *p);
 	// The variables the library shares with the program: they are the PROGRAM's (it is linked at a
 	// fixed address: its code reads them directly), the library reaches them through these
-	// addresses. What they are is the library's business (wtk: wtk/globals.inc); append-only.
+	// addresses. What they are is the library's business (uikit: uikit/globals.inc); append-only.
 	void *const *data;
 };
 

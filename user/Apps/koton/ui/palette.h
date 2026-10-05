@@ -1,13 +1,13 @@
 //
 // ui/palette.h -- Koton's look: the desktop's theme (it was a dark studio of its own: docs/daw/mockups).
-// The wtk widgets draw with the theme as in any app; the hand-drawn views (the grids, the rings, the
+// The uikit widgets draw with the theme as in any app; the hand-drawn views (the grids, the rings, the
 // panels) use the shades below, made from the theme's colours by applyTheme (), and the small drawing
 // helpers here (fills with opacity, rounded boxes, text). The arrangement's lanes alone stay dark.
 //
 #ifndef _koton_palette_h
 #define _koton_palette_h
 
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,7 +15,7 @@
 
 namespace kui {
 
-using namespace wtk;
+using namespace uikit;
 
 // ---- the colours (0x00RRGGBB) ---------------------------------------------------------------------------------
 // the studio's shades: the desktop theme's (applyTheme makes them from its window, field, accent)
@@ -43,22 +43,22 @@ static const unsigned s_trackCols[] = { 0xE2A454, 0xCE627C, 0x76BA70, 0xDE7052, 
 static inline unsigned trackColour (int i) { return s_trackCols[(i < 0 ? 0 : i) % 8]; }
 static inline unsigned funcColour (int f) { return f == 0 ? FUNC_T : f == 1 ? FUNC_S : f == 2 ? FUNC_D : FUNC_O; }
 
-static inline unsigned mixc (unsigned a, unsigned b, int t256) { return wk_mix (a, b, t256); }
-static inline unsigned lighter (unsigned c, int t256) { return wk_mix (c, 0xFFFFFF, t256); }
-static inline unsigned darker (unsigned c, int t256) { return wk_mix (c, 0x000000, t256); }
+static inline unsigned mixc (unsigned a, unsigned b, int t256) { return uk_mix (a, b, t256); }
+static inline unsigned lighter (unsigned c, int t256) { return uk_mix (c, 0xFFFFFF, t256); }
+static inline unsigned darker (unsigned c, int t256) { return uk_mix (c, 0x000000, t256); }
 
 // The studio in the desktop's theme: its shades from the theme's colours (the side panels as the
 // Media Player's: the window's colour toward the fields').
 static inline void applyTheme ()
 {
-	bool dark = wk_bright (C_BG) < 110;
-	PANEL = C_BG; SIDE = wk_mix (C_BG, C_FIELD, 70); PANEL2 = wk_tone (C_BG, dark ? 150 : 116);
-	BG = wk_tone (C_BG, dark ? 100 : 112); FACE = C_BUTTON; LINE = wk_tone (C_BG, dark ? 160 : 100);
-	LANE = C_FIELD; LANE2 = wk_mix (C_FIELD, C_BG, 90); FIELD = C_FIELD;
-	TEXT = C_TEXT; DIM = wk_mix (C_BG, C_TEXT, 150); FAINT = wk_mix (C_BG, C_TEXT, 90);
-	ACC = C_ACCENT; ACC2 = wk_tone (C_ACCENT, 104);
-	GRID_SUB = wk_mix (C_FIELD, C_FIELD_TEXT, 16); GRID_BEAT = wk_mix (C_FIELD, C_FIELD_TEXT, 34); GRID_BAR = wk_mix (C_FIELD, C_FIELD_TEXT, 80);
-	NOTE = C_ACCENT; PAD_ON = C_ACCENT; NOTE_SEL = 0xE8A21E; BLUE_NOTE = wk_tone (C_ACCENT, dark ? 170 : 110);
+	bool dark = uk_bright (C_BG) < 110;
+	PANEL = C_BG; SIDE = uk_mix (C_BG, C_FIELD, 70); PANEL2 = uk_tone (C_BG, dark ? 150 : 116);
+	BG = uk_tone (C_BG, dark ? 100 : 112); FACE = C_BUTTON; LINE = uk_tone (C_BG, dark ? 160 : 100);
+	LANE = C_FIELD; LANE2 = uk_mix (C_FIELD, C_BG, 90); FIELD = C_FIELD;
+	TEXT = C_TEXT; DIM = uk_mix (C_BG, C_TEXT, 150); FAINT = uk_mix (C_BG, C_TEXT, 90);
+	ACC = C_ACCENT; ACC2 = uk_tone (C_ACCENT, 104);
+	GRID_SUB = uk_mix (C_FIELD, C_FIELD_TEXT, 16); GRID_BEAT = uk_mix (C_FIELD, C_FIELD_TEXT, 34); GRID_BAR = uk_mix (C_FIELD, C_FIELD_TEXT, 80);
+	NOTE = C_ACCENT; PAD_ON = C_ACCENT; NOTE_SEL = 0xE8A21E; BLUE_NOTE = uk_tone (C_ACCENT, dark ? 170 : 110);
 }
 
 // ---- drawing ---------------------------------------------------------------------------------------------------------
@@ -82,21 +82,21 @@ static inline void blendRect (Canvas &cv, int x, int y, int w, int h, unsigned c
 }
 static inline void hline (Canvas &cv, int x0, int x1, int y, unsigned c) { if (x1 > x0) cv.fillRect (x0, y, x1 - x0, 1, c); }
 static inline void vline (Canvas &cv, int x, int y0, int y1, unsigned c) { if (y1 > y0) cv.fillRect (x, y0, 1, y1 - y0, c); }
-static inline void box (Canvas &cv, int x, int y, int w, int h, int r, unsigned c) { if (w > 0 && h > 0) wk_rbox (cv, x, y, w, h, r, c, c); }
-static inline void gbox (Canvas &cv, int x, int y, int w, int h, int r, unsigned top, unsigned bottom) { if (w > 0 && h > 0) wk_rbox (cv, x, y, w, h, r, top, bottom); }
-static inline void frame (Canvas &cv, int x, int y, int w, int h, int r, unsigned c, int a = 255) { if (w > 0 && h > 0) wk_rline (cv, x, y, w, h, r, c, a); }
+static inline void box (Canvas &cv, int x, int y, int w, int h, int r, unsigned c) { if (w > 0 && h > 0) uk_rbox (cv, x, y, w, h, r, c, c); }
+static inline void gbox (Canvas &cv, int x, int y, int w, int h, int r, unsigned top, unsigned bottom) { if (w > 0 && h > 0) uk_rbox (cv, x, y, w, h, r, top, bottom); }
+static inline void frame (Canvas &cv, int x, int y, int w, int h, int r, unsigned c, int a = 255) { if (w > 0 && h > 0) uk_rline (cv, x, y, w, h, r, c, a); }
 
 // text: its height, width; left / centred / right in a box of height h
-static inline int th () { return wk_fh (); }
-static inline int tw (const char *s, int style = 0) { return wk_text_w (s, style); }
-static inline void textL (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int style = 0) { wk_text_l (cv, x, y, h, s, c, style); }
-static inline void textC (Canvas &cv, int x, int y, int w, int h, const char *s, unsigned c, int style = 0) { wk_text_c (cv, x, y, w, h, s, c, style); }
-static inline void textR (Canvas &cv, int xr, int y, int h, const char *s, unsigned c, int style = 0) { wk_text_l (cv, xr - wk_text_w (s, style), y, h, s, c, style); }
+static inline int th () { return uk_fh (); }
+static inline int tw (const char *s, int style = 0) { return uk_text_w (s, style); }
+static inline void textL (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int style = 0) { uk_text_l (cv, x, y, h, s, c, style); }
+static inline void textC (Canvas &cv, int x, int y, int w, int h, const char *s, unsigned c, int style = 0) { uk_text_c (cv, x, y, w, h, s, c, style); }
+static inline void textR (Canvas &cv, int xr, int y, int h, const char *s, unsigned c, int style = 0) { uk_text_l (cv, xr - uk_text_w (s, style), y, h, s, c, style); }
 // a string cut to fit w px ("..." when cut)
 static inline void textFit (Canvas &cv, int x, int y, int w, int h, const char *s, unsigned c, int style = 0)
 {
 	if (w <= 4) return;
-	if (wk_text_w (s, style) <= w) { textL (cv, x, y, h, s, c, style); return; }
+	if (uk_text_w (s, style) <= w) { textL (cv, x, y, h, s, c, style); return; }
 	char b[160]; int n = 0;
 	while (s[n] && n < 150) { b[n] = s[n]; n++; }
 	b[n] = 0;
@@ -105,7 +105,7 @@ static inline void textFit (Canvas &cv, int x, int y, int w, int h, const char *
 		b[--n] = 0;
 		while (n > 0 && ((unsigned char) b[n - 1] & 0xC0) == 0x80) b[--n] = 0;	// a whole UTF-8 character
 		char t[164]; snprintf (t, sizeof t, "%s...", b);
-		if (wk_text_w (t, style) <= w || n == 0) { textL (cv, x, y, h, t, c, style); return; }
+		if (uk_text_w (t, style) <= w || n == 0) { textL (cv, x, y, h, t, c, style); return; }
 	}
 }
 
@@ -122,7 +122,7 @@ static inline int wrapText (Canvas &cv, int x, int y, int w, const char *s, unsi
 			if (n >= 398) { if (lastSpace > 0) { n = lastSpace; p = s + lastSpace + 1; } break; }
 			line[n] = *p; line[n + 1] = 0;
 			if (*p == ' ') lastSpace = n;
-			if (wk_text_w (line, style) > w && n > 0)
+			if (uk_text_w (line, style) > w && n > 0)
 			{
 				if (lastSpace > 0) { n = lastSpace; p = s + lastSpace + 1; }
 				break;
@@ -169,7 +169,7 @@ static inline void aline (Canvas &cv, int x0, int y0, int x1, int y1, int w, uns
 	VPath p; p.line (V (x0), V (y0), V (x1), V (y1), V (w < 1 ? 1 : w)); p.fill (cv, c, a);
 }
 
-// ---- a drag helper: the mouse's buttons as edges (wtk gives their state) ------------------------------
+// ---- a drag helper: the mouse's buttons as edges (uikit gives their state) ------------------------------
 struct Buttons
 {
 	int l, r;

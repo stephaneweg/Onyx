@@ -95,13 +95,13 @@ public:
 		mChoices = new MemoEdit (cx, 136, cw, 108, 8000); mChoices->onChange = on_choices;
 		mChoices->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 		gField->addChild (mChoices);
-		lChHint = new Label (cx, 248, cw, 20, "One choice a line, in their order.", wk_mix (C_BG, C_TEXT, 150));
+		lChHint = new Label (cx, 248, cw, 20, "One choice a line, in their order.", uk_mix (C_BG, C_TEXT, 150));
 		lChHint->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 		gField->addChild (lChHint);
-		lStats = new Label (16, 276, gw - 30, 20, "", wk_mix (C_BG, C_TEXT, 150));
+		lStats = new Label (16, 276, gw - 30, 20, "", uk_mix (C_BG, C_TEXT, 150));
 		lStats->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 		gField->addChild (lStats);
-		lHint = new Label (cx, 136, cw, ED_H, "", wk_mix (C_BG, C_TEXT, 150));
+		lHint = new Label (cx, 136, cw, ED_H, "", uk_mix (C_BG, C_TEXT, 150));
 		lHint->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 		gField->addChild (lHint);
 
@@ -115,7 +115,7 @@ public:
 		eInfo = new LineEdit (cx, 64, cw); eInfo->onChange = on_info; eInfo->t.max = INFO_MAX - 1; eInfo->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 		eInfo->placeholder = "(none)";
 		gForm->addChild (eInfo);
-		Label *foot = new Label (gx + 4, 440, gw - 8, 22, "Changes apply at once (Ctrl+Z undoes them).", wk_mix (C_BG, C_TEXT, 150));
+		Label *foot = new Label (gx + 4, 440, gw - 8, 22, "Changes apply at once (Ctrl+Z undoes them).", uk_mix (C_BG, C_TEXT, 150));
 		foot->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 		addChild (foot);
 	}

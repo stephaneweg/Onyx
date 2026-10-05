@@ -20,7 +20,7 @@
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 //
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "docguard.h"
 #include "sidebar.h"
 #include "show.h"
@@ -30,7 +30,7 @@
 #include "pdf/pdfwrite.h"
 #include "print/pdfprint.h"
 
-using namespace wtk;
+using namespace uikit;
 using namespace sl;
 
 #define W 1000
@@ -94,10 +94,10 @@ static bool load_path (const char *path)
 	if (g_master) master_close ();
 	unsigned n = 0;
 	unsigned char *b = read_all (path, &n);
-	if (!b) { wk_messagebox ("Open", "The file could not be read.", MB_OK); return false; }
+	if (!b) { uk_messagebox ("Open", "The file could not be read.", MB_OK); return false; }
 	bool ok = deck_load (g_deck, b, n);
 	free (b);
-	if (!ok) { deck_new (g_deck); wk_messagebox ("Open", "That is not a presentation Slides can read (.odp, .pptx).", MB_OK); }
+	if (!ok) { deck_new (g_deck); uk_messagebox ("Open", "That is not a presentation Slides can read (.odp, .pptx).", MB_OK); }
 	scpy (g_path, ok ? path : "", sizeof g_path);
 	deck_loaded ();
 	return ok;
@@ -116,7 +116,7 @@ static bool write_path (const char *path, bool asCopy = false)
 	else b = has_ext (path, ".pptx") ? pptx_save (g_deck, &n) : odp_save (g_deck, &n);
 	bool ok = b && kapi_save_file (path, b, n) >= 0;
 	delete[] b;
-	if (!ok) { wk_messagebox ("Save", "The file could not be written.", MB_OK); return false; }
+	if (!ok) { uk_messagebox ("Save", "The file could not be written.", MB_OK); return false; }
 	if (!asCopy) { scpy (g_path, path, sizeof g_path); g_saved = g_deck.changes; }
 	refresh ();
 	return true;
@@ -125,7 +125,7 @@ static void cmd_save_as ()
 {
 	char path[200], def[80];
 	scpy (def, g_path[0] ? base_name (g_path) : "Untitled.odp", sizeof def);
-	if (wk_file_save (path, sizeof path, "SD:/docs", def))
+	if (uk_file_save (path, sizeof path, "SD:/docs", def))
 	{
 		// (.odp, or .pptx when the name says so -- or the file was one)
 		if (!has_ext (path, ".odp") && !has_ext (path, ".pptx")) { int k = (int) strlen (path); scpy (path + k, has_ext (g_path, ".pptx") ? ".pptx" : ".odp", (int) sizeof path - k); }
@@ -148,7 +148,7 @@ static void cmd_open ()
 {
 	if (!doc_confirm (g_path[0] ? base_name (g_path) : "Untitled", changed_doc (), save_for_guard)) { focus_view (); return; }
 	char path[200];
-	if (wk_file_open (path, sizeof path, "SD:/docs")) load_path (path);
+	if (uk_file_open (path, sizeof path, "SD:/docs")) load_path (path);
 	focus_view ();
 }
 // File > Export as PDF: the slides (a page each, the slide flattened at 1600 px wide, as a JPEG at quality 92), or
@@ -266,7 +266,7 @@ static void export_pdf (const char *path, const char *title, int mode)
 	unsigned len = 0; unsigned char *pdf = w.finish (&len);
 	int r = pdf ? kapi_save_file (path, pdf, len) : -1;
 	delete[] pdf;
-	if (r != (int) len) wk_messagebox ("Export as PDF", "The PDF could not be written there.", MB_OK);
+	if (r != (int) len) uk_messagebox ("Export as PDF", "The PDF could not be written there.", MB_OK);
 	else kapi_exec ("SD:apps/pdf.app/main", path);
 }
 static void cmd_export_png ()
@@ -274,7 +274,7 @@ static void cmd_export_png ()
 	if (g_master) { master_close (); g_thumbs.clear (); }
 	char def[120], path[200];
 	snprintf (def, sizeof def, "Slide %d.png", g_cur + 1);
-	if (!wk_file_save (path, sizeof path, "SD:/docs", def)) { focus_view (); return; }
+	if (!uk_file_save (path, sizeof path, "SD:/docs", def)) { focus_view (); return; }
 	if (!has_ext (path, ".png")) { int k = (int) strlen (path); scpy (path + k, ".png", (int) sizeof path - k); }
 	int pw = 1920, ph = pw * g_deck.sh / g_deck.sw;
 	unsigned *px = (unsigned *) malloc ((size_t) pw * ph * 4);
@@ -284,7 +284,7 @@ static void cmd_export_png ()
 	for (int k = 0; k < pw * ph; k++) px[k] |= 0xFF000000u;
 	unsigned n = 0; unsigned char *png = pngsave::png_encode (px, pw, ph, false, &n);
 	free (px);
-	if (!png || kapi_save_file (path, png, n) < 0) wk_messagebox ("Export", "The picture could not be written there.", MB_OK);
+	if (!png || kapi_save_file (path, png, n) < 0) uk_messagebox ("Export", "The picture could not be written there.", MB_OK);
 	delete[] png;
 	focus_view ();
 }
@@ -336,7 +336,7 @@ static void cmd_print ()
 	PrintJob *j = print_ask (title, shown, 0, g_deck.sw / 35.277778f, g_deck.sh / 35.277778f);
 	if (!j) { focus_view (); return; }
 	{ PrintWriter w (j); deck_pages (w, title, PDF_SLIDES, 2400); }		// (about 200 pixels an inch on A4)
-	if (print_end (j) < 0) wk_messagebox ("Print", "The slides could not be put in the print queue.", MB_OK);
+	if (print_end (j) < 0) uk_messagebox ("Print", "The slides could not be put in the print queue.", MB_OK);
 	focus_view ();
 }
 static void cmd_export_pdf ()
@@ -348,7 +348,7 @@ static void cmd_export_pdf ()
 	char def[120], path[200];
 	scpy (def, g_path[0] ? base_name (g_path) : "Untitled", sizeof def);
 	{ int n = (int) strlen (def), dot = n; while (dot > 0 && def[dot - 1] != '.') dot--; if (dot > 0) def[dot - 1] = 0; n = (int) strlen (def); scpy (def + n, mode == PDF_NOTES ? " (notes).pdf" : mode >= PDF_HAND2 ? " (handouts).pdf" : ".pdf", (int) sizeof def - n); }
-	if (!wk_file_save (path, sizeof path, "SD:/docs", def)) { focus_view (); return; }
+	if (!uk_file_save (path, sizeof path, "SD:/docs", def)) { focus_view (); return; }
 	if (!has_ext (path, ".pdf")) { int k = (int) strlen (path); scpy (path + k, ".pdf", (int) sizeof path - k); }
 	char title[120]; scpy (title, g_path[0] ? base_name (g_path) : "Untitled", sizeof title);
 	{ char *dot = strrchr (title, '.'); if (dot) *dot = 0; }
@@ -401,7 +401,7 @@ public:
 		button (width - 94, height - 42, 82, "Close", 0);
 		msg[0] = 0;
 	}
-	void drawBody () override { label (16, titleH () + 19, "Find"); label (16, titleH () + 55, "Replace with"); if (msg[0]) canvas.text (16, titleH () + 120, msg, wk_mix (C_FACE, C_TEXT, 170)); }
+	void drawBody () override { label (16, titleH () + 19, "Find"); label (16, titleH () + 55, "Replace with"); if (msg[0]) canvas.text (16, titleH () + 120, msg, uk_mix (C_FACE, C_TEXT, 170)); }
 	int word (unsigned *w, const char *s) { int n = 0; for (const unsigned char *p = (const unsigned char *) s; *p && n < 255; p++) w[n++] = *p; return n; }
 	void onButton (int tag) override
 	{
@@ -480,7 +480,7 @@ public:
 	{
 		label (16, titleH () + 20, "Title");
 		label (16, titleH () + 64, "Categories:");
-		canvas.text (16, height - 64, "A series a row, a category a column (empty: left out).", wk_mix (C_FACE, C_TEXT, 150));
+		canvas.text (16, height - 64, "A series a row, a category a column (empty: left out).", uk_mix (C_FACE, C_TEXT, 150));
 	}
 	void onButton (int tag) override
 	{
@@ -489,7 +489,7 @@ public:
 			scpy (c.title, title->text, sizeof c.title);
 			int nc = 0; for (int i = 0; i < 8; i++) if (cat[i]->text[0]) nc = i + 1;
 			int ns = 0; for (int k = 0; k < 4; k++) if (ser[k]->text[0]) ns = k + 1;
-			if (nc == 0 || ns == 0) { wk_messagebox ("Chart Data", "Name at least one category and one series.", MB_OK); return; }
+			if (nc == 0 || ns == 0) { uk_messagebox ("Chart Data", "Name at least one category and one series.", MB_OK); return; }
 			c.ncat = nc; c.nser = c.type == CH_PIE ? 1 : ns;
 			for (int i = 0; i < nc; i++) scpy (c.cat[i], cat[i]->text, 24);
 			for (int k = 0; k < ns; k++) { scpy (c.ser[k], ser[k]->text, 32); for (int i = 0; i < nc; i++) c.val[k][i] = strtod (val[k][i]->text, 0); }
@@ -512,25 +512,25 @@ public:
 	int pick () { int r = run (); return r - 1; }
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
-		wk_text_l (canvas, PAD, PAD - 2, 20, "Shapes", wk_mix (C_FIELD, C_FIELD_TEXT, 150), 1);
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		uk_text_l (canvas, PAD, PAD - 2, 20, "Shapes", uk_mix (C_FIELD, C_FIELD_TEXT, 150), 1);
 		for (int i = 0; i < SH_COUNT; i++)
 		{
 			int x = PAD + (i % PER) * CS, y = PAD + 22 + (i / PER) * CS;
-			if (i == m_hot) wk_hilite (canvas, x, y, CS - 2, CS - 2, 5, false);
+			if (i == m_hot) uk_hilite (canvas, x, y, CS - 2, CS - 2, 5, false);
 			VPath p; shape_path (p, i, (float) x + 5, (float) y + 6, CS - 12.0f, CS - 14.0f, 160, 0, true); p.fill (canvas, 0x6EA0D2);
 			p.clear (); shape_path (p, i, (float) x + 5, (float) y + 6, CS - 12.0f, CS - 14.0f, 160, 1.2f, false); p.fill (canvas, 0x3C64A0);
 		}
 		int ly = height - PAD - 34;
-		canvas.fillRect (PAD, ly, width - 2 * PAD, 1, wk_mix (C_FIELD, C_FIELD_TEXT, 40));
+		canvas.fillRect (PAD, ly, width - 2 * PAD, 1, uk_mix (C_FIELD, C_FIELD_TEXT, 40));
 		const char *names[2] = { "Line", "Arrow" };
 		for (int k = 0; k < 2; k++)
 		{
 			int x = PAD + k * (width - 2 * PAD) / 2, y = ly + 4;
-			if (m_hot == 100 + k) wk_hilite (canvas, x, y, (width - 2 * PAD) / 2 - 4, 28, 5, false);
+			if (m_hot == 100 + k) uk_hilite (canvas, x, y, (width - 2 * PAD) / 2 - 4, 28, 5, false);
 			VPath p; p.line (V (x + 8), V (y + 22), V (x + 30), V (y + 6), 26); if (k) p.arrowHead (V (x + 32), V (y + 5), 36, V (7), V (4)); p.fill (canvas, 0x3C64A0);
-			wk_text_l (canvas, x + 40, y, 28, names[k], C_FIELD_TEXT);
+			uk_text_l (canvas, x + 40, y, 28, names[k], C_FIELD_TEXT);
 		}
 	}
 	int hitAt (int mx, int my)
@@ -579,22 +579,22 @@ public:
 	int pick () { int r = run (); return r - 1; }
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
 		char t[48]; snprintf (t, sizeof t, "Layout of slide %d", g_cur + 1);
-		wk_text_l (canvas, PAD, 4, 24, t, wk_mix (C_FIELD, C_FIELD_TEXT, 150), 1);
+		uk_text_l (canvas, PAD, 4, 24, t, uk_mix (C_FIELD, C_FIELD_TEXT, 150), 1);
 		for (int k = 0; k < LY_COUNT; k++)
 		{
 			int x = PAD + (k % 4) * (IW + 12), y = 30 + (k / 4) * (IH + 34);
-			if (k == m_hot) wk_hilite (canvas, x - 5, y - 5, IW + 10, IH + 30, 5, false);
-			else if (k == m_cur) wk_rline (canvas, x - 5, y - 5, IW + 10, IH + 30, 5, C_ACCENT);
+			if (k == m_hot) uk_hilite (canvas, x - 5, y - 5, IW + 10, IH + 30, 5, false);
+			else if (k == m_cur) uk_rline (canvas, x - 5, y - 5, IW + 10, IH + 30, 5, C_ACCENT);
 			layout_thumb (canvas, x, y, IW, IH, k);
-			wk_text_c (canvas, x - 6, y + IH + 2, IW + 12, 18, L1 (g_deck.layout[k].name), k == m_hot ? C_SEL_TEXT : C_FIELD_TEXT);
+			uk_text_c (canvas, x - 6, y + IH + 2, IW + 12, 18, L1 (g_deck.layout[k].name), k == m_hot ? C_SEL_TEXT : C_FIELD_TEXT);
 		}
 		int ly = height - 40;
-		canvas.fillRect (8, ly, width - 16, 1, wk_mix (C_FIELD, C_FIELD_TEXT, 40));
-		if (m_hot == 100) wk_hilite (canvas, 8, ly + 4, width - 16, 30, 5, false);
-		wk_text_l (canvas, 16, ly + 4, 30, "Reset the slide to its layout", m_hot == 100 ? C_SEL_TEXT : C_FIELD_TEXT);
+		canvas.fillRect (8, ly, width - 16, 1, uk_mix (C_FIELD, C_FIELD_TEXT, 40));
+		if (m_hot == 100) uk_hilite (canvas, 8, ly + 4, width - 16, 30, 5, false);
+		uk_text_l (canvas, 16, ly + 4, 30, "Reset the slide to its layout", m_hot == 100 ? C_SEL_TEXT : C_FIELD_TEXT);
 	}
 	int hitAt (int mx, int my)
 	{
@@ -770,12 +770,12 @@ static void drop_shapes (ToolButton &b)
 static void picture_into (Object *ph)
 {
 	char path[200];
-	if (!wk_file_open (path, sizeof path, "SD:/docs/pictures")) { focus_view (); return; }
+	if (!uk_file_open (path, sizeof path, "SD:/docs/pictures")) { focus_view (); return; }
 	unsigned n = 0; unsigned char *b = read_all (path, &n);
 	if (!b) { focus_view (); return; }
 	Object *o = make_picture (base_name (path), b, n, ph);
 	free (b);
-	if (!o) { wk_messagebox ("Insert Picture", "That file is not a picture Slides can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK); focus_view (); return; }
+	if (!o) { uk_messagebox ("Insert Picture", "That file is not a picture Slides can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK); focus_view (); return; }
 	if (ph)
 	{
 		// the placeholder replaced by the picture (in its place in the order)
@@ -899,7 +899,7 @@ static void zoom_to (int z) { g_view->set_zoom (z); after (); }
 static void cmd_zoom_in () { int z = g_view->zoom_pct (); for (int i = 0; i < 10; i++) if (ZOOMS[i] > z + 1) { zoom_to (ZOOMS[i]); return; } }
 static void cmd_zoom_out () { int z = g_view->zoom_pct (); for (int i = 9; i >= 0; i--) if (ZOOMS[i] < z - 1) { zoom_to (ZOOMS[i]); return; } }
 static void cmd_zoom_fit () { zoom_to (0); }
-static void zoom_value (Canvas &cv, int x, int y, int, int h, unsigned ink) { char t[16]; if (g_view->zoom) snprintf (t, sizeof t, "%d%%", g_view->zoom_pct ()); else snprintf (t, sizeof t, "Fit (%d%%)", g_view->zoom_pct ()); wk_text_l (cv, x, y, h, t, ink); }
+static void zoom_value (Canvas &cv, int x, int y, int, int h, unsigned ink) { char t[16]; if (g_view->zoom) snprintf (t, sizeof t, "%d%%", g_view->zoom_pct ()); else snprintf (t, sizeof t, "Fit (%d%%)", g_view->zoom_pct ()); uk_text_l (cv, x, y, h, t, ink); }
 static const char *const ZOOM_ROWS[] = { "Fit the window", "25%", "33%", "50%", "66%", "75%", "100%", "125%", "150%", "200%", "300%" };
 static void pick_zoom (PickBox &b)
 {
@@ -915,8 +915,8 @@ static void font_value (Canvas &cv, int x, int y, int w, int h, unsigned ink)
 {
 	CharFmt f = shown_format ();
 	char b[48]; scpy (b, g_deck.font_name (f.font), sizeof b);
-	while (wk_text_w (b) > w && strlen (b) > 3) { int n = (int) strlen (b); b[n - 4] = '.'; b[n - 3] = '.'; b[n - 2] = 0; }
-	wk_text_l (cv, x, y, h, b, ink);
+	while (uk_text_w (b) > w && strlen (b) > 3) { int n = (int) strlen (b); b[n - 4] = '.'; b[n - 3] = '.'; b[n - 2] = 0; }
+	uk_text_l (cv, x, y, h, b, ink);
 }
 static void pick_font (PickBox &b)
 {
@@ -927,7 +927,7 @@ static void pick_font (PickBox &b)
 	if (r >= 0) { FmtChange c; c.what = FC_FONT; c.font = (short) g_deck.font_index (fnt::name (r)); apply_format (c); after (); }
 	focus_view ();
 }
-static void size_value (Canvas &cv, int x, int y, int, int h, unsigned ink) { CharFmt f = shown_format (); char t[16]; if (f.size % 10) snprintf (t, sizeof t, "%.1f", f.size / 10.0); else snprintf (t, sizeof t, "%d", f.size / 10); wk_text_l (cv, x, y, h, t, ink); }
+static void size_value (Canvas &cv, int x, int y, int, int h, unsigned ink) { CharFmt f = shown_format (); char t[16]; if (f.size % 10) snprintf (t, sizeof t, "%.1f", f.size / 10.0); else snprintf (t, sizeof t, "%d", f.size / 10); uk_text_l (cv, x, y, h, t, ink); }
 static const char *const SIZE_ROWS[] = { "8", "10", "12", "14", "16", "18", "20", "24", "28", "32", "36", "40", "44", "48", "54", "60", "72", "88" };
 static void pick_size (PickBox &b)
 {
@@ -1400,14 +1400,14 @@ public:
 	{
 		canvas.clear (bgColor ());
 		unsigned a = 0x3F8DA4, b = 0x2E6E80;
-		if (m_hot >= 0) { a = wk_mix (a, 0xFFFFFF, 30); }
-		wk_rbox (canvas, 0, 1, width, height - 2, 5, a, b);
-		wk_rline (canvas, 0, 1, width, height - 2, 5, 0x1E4E5C);
-		if (g_master) { wk_text_c (canvas, 0, 1, width, height - 2, "Close master", 0xFFFFFF, 1); return; }
+		if (m_hot >= 0) { a = uk_mix (a, 0xFFFFFF, 30); }
+		uk_rbox (canvas, 0, 1, width, height - 2, 5, a, b);
+		uk_rline (canvas, 0, 1, width, height - 2, 5, 0x1E4E5C);
+		if (g_master) { uk_text_c (canvas, 0, 1, width, height - 2, "Close master", 0xFFFFFF, 1); return; }
 		slides_icon (canvas, SL_SHOW, 4, 4, 0xFFFFFF, false);
-		wk_text_l (canvas, 26, 1, height - 2, "Start show", 0xFFFFFF, 1);
+		uk_text_l (canvas, 26, 1, height - 2, "Start show", 0xFFFFFF, 1);
 		canvas.fillRect (width - 18, 6, 1, height - 12, 0x8FC0CC);
-		wk_glyph (canvas, WKG_CHEV_DOWN, width - 9, height / 2, 7, 0xFFFFFF);
+		uk_glyph (canvas, WKG_CHEV_DOWN, width - 9, height / 2, 7, 0xFFFFFF);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -1490,8 +1490,8 @@ int main (void)
 	args[an < (int) sizeof args ? an : (int) sizeof args - 1] = 0;
 	SlidesRoot root; g_root = &root;
 	root.attach ();
-	wtk::init ();
-	if (!fnt::init ()) { wk_messagebox ("Slides", "No TrueType fonts in SD:/res/fonts: Slides cannot draw its slides.", MB_OK); return 1; }
+	uikit::init ();
+	if (!fnt::init ()) { uk_messagebox ("Slides", "No TrueType fonts in SD:/res/fonts: Slides cannot draw its slides.", MB_OK); return 1; }
 	ss::g_appIcon = slides_icon;
 	ss::make_palettes ();
 	Show::g_now = now_hook;
@@ -1578,7 +1578,7 @@ int main (void)
 	root.setBg (C_BG);
 
 	g_onChange = refresh; g_onSlides = on_slides;
-	g_onDone = master_sync; g_accepts = master_accepts; g_onRefuse = [] (const char *m) { wk_messagebox ("Master view", m, MB_OK); };
+	g_onDone = master_sync; g_accepts = master_accepts; g_onRefuse = [] (const char *m) { uk_messagebox ("Master view", m, MB_OK); };
 	g_onContext = view_menu; g_onSlideMenu = slide_menu; g_onPictureWanted = picture_into;
 	g_onStatus = on_status; g_onOpenSlide = open_slide; g_onTool = refresh;
 	SlideView::g_onWheelSlide = on_wheel_slide; SlideView::g_onZoom = on_zoom;
@@ -1586,27 +1586,27 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New", "^N", WK_CTRL ('N'), cmd_new);
-	menu.item ("Open...", "^O", WK_CTRL ('O'), cmd_open);
+	menu.item ("New", "^N", UK_CTRL ('N'), cmd_new);
+	menu.item ("Open...", "^O", UK_CTRL ('O'), cmd_open);
 	menu.separator ();
-	menu.item ("Save", "^S", WK_CTRL ('S'), cmd_save);
+	menu.item ("Save", "^S", UK_CTRL ('S'), cmd_save);
 	menu.item ("Save As...", "", 0, cmd_save_as);
 	menu.item ("Export as PDF...", "", 0, cmd_export_pdf);
 	menu.item ("Export Slide as PNG...", "", 0, cmd_export_png);
 	menu.separator ();
-	menu.item ("Print...", "^P", WK_CTRL ('P'), cmd_print);
+	menu.item ("Print...", "^P", UK_CTRL ('P'), cmd_print);
 	menu.menu ("Edit");
-	menu.item ("Undo", "^Z", WK_CTRL ('Z'), ui_undo);
-	menu.item ("Redo", "^Y", WK_CTRL ('Y'), ui_redo);
+	menu.item ("Undo", "^Z", UK_CTRL ('Z'), ui_undo);
+	menu.item ("Redo", "^Y", UK_CTRL ('Y'), ui_redo);
 	menu.separator ();
-	menu.item ("Cut", "^X", WK_CTRL ('X'), cmd_cut);
-	menu.item ("Copy", "^C", WK_CTRL ('C'), cmd_copy);
-	menu.item ("Paste", "^V", WK_CTRL ('V'), cmd_paste);
-	menu.item ("Duplicate", "^D", WK_CTRL ('D'), cmd_duplicate);
+	menu.item ("Cut", "^X", UK_CTRL ('X'), cmd_cut);
+	menu.item ("Copy", "^C", UK_CTRL ('C'), cmd_copy);
+	menu.item ("Paste", "^V", UK_CTRL ('V'), cmd_paste);
+	menu.item ("Duplicate", "^D", UK_CTRL ('D'), cmd_duplicate);
 	menu.item ("Delete", "Del", 0, cmd_delete);
-	menu.item ("Select All", "^A", WK_CTRL ('A'), cmd_select_all);
+	menu.item ("Select All", "^A", UK_CTRL ('A'), cmd_select_all);
 	menu.separator ();
-	menu.item ("Find and Replace...", "^F", WK_CTRL ('F'), cmd_find);
+	menu.item ("Find and Replace...", "^F", UK_CTRL ('F'), cmd_find);
 	menu.menu ("View");
 	menu.item ("Normal", "", 0, cmd_normal);
 	menu.item ("Slide Sorter", "", 0, cmd_sorter);
@@ -1617,7 +1617,7 @@ int main (void)
 	menu.item ("Zoom In", "", 0, cmd_zoom_in);
 	menu.item ("Zoom Out", "", 0, cmd_zoom_out);
 	menu.menu ("Insert");
-	menu.item ("New Slide", "^M", WK_CTRL ('M'), cmd_new_slide_btn);
+	menu.item ("New Slide", "^M", UK_CTRL ('M'), cmd_new_slide_btn);
 	menu.item ("Duplicate Slide", "", 0, cmd_dup_slide);
 	menu.separator ();
 	menu.item ("Text Box", "", 0, cmd_textbox);
@@ -1629,9 +1629,9 @@ int main (void)
 	menu.separator ();
 	menu.item ("Header and Footer...", "", 0, cmd_footer);
 	menu.menu ("Format");
-	menu.item ("Bold", "^B", WK_CTRL ('B'), cmd_bold);
+	menu.item ("Bold", "^B", UK_CTRL ('B'), cmd_bold);
 	menu.item ("Italic", "^I", 0, cmd_italic);
-	menu.item ("Underline", "^U", WK_CTRL ('U'), cmd_under);
+	menu.item ("Underline", "^U", UK_CTRL ('U'), cmd_under);
 	menu.separator ();
 	menu.item ("Bullets", "", 0, cmd_bullets);
 	menu.item ("Numbering", "", 0, cmd_numbers);
@@ -1660,7 +1660,7 @@ int main (void)
 		bool recovered = false;
 		if (b)
 		{
-			if (n > 0 && wk_messagebox ("Slides", "Slides was closed with unsaved changes. Open the recovered presentation?", MB_YESNO) == 1 && odp_load (g_deck, b, n))
+			if (n > 0 && uk_messagebox ("Slides", "Slides was closed with unsaved changes. Open the recovered presentation?", MB_YESNO) == 1 && odp_load (g_deck, b, n))
 			{
 				unsigned nn = 0; unsigned char *nb = read_all (RECOVER_NAME, &nn);
 				g_path[0] = 0;

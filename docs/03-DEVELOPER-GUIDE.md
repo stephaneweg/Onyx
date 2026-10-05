@@ -169,7 +169,7 @@ is `"OKM1"` + `u16` rows/cols + the `u16[128][5]` table (see the script header).
 
 ## 5. The application model
 
-An Onyx application is a folder **`user/Apps/<name>/`** whose `main.cpp` (C++ on the **wtk**
+An Onyx application is a folder **`user/Apps/<name>/`** whose `main.cpp` (C++ on the **uikit**
 toolkit, §6; a big app has more files beside it) is compiled into an **ELF** — freestanding, or
 against newlib (§5.1) — and run at **EL0** in its own page table, calling the kernel by system
 calls through the kapi table (docs/02 §6). A `/bin` tool is a single C file, `user/bin/<tool>.c`
@@ -258,17 +258,17 @@ add `-mcpu=cortex-a72` (FP is required by `printf %f` and `libm`) and link `-lm`
 the `LIBC_PROGS` rule in [`user/bin/Makefile`](../user/bin/Makefile) and the proof
 tool [`user/bin/libctest.c`](../user/bin/libctest.c).
 
-A **wtk app** can be a newlib app too (Doom, **Letters**, the **Spreadsheet** — FreeType
+A **uikit app** can be a newlib app too (Doom, **Letters**, the **Spreadsheet** — FreeType
 wants a libc): the `letters.elf` rule of [`user/Makefile`](../user/Makefile) is the model —
 `NL_CFLAGS` / `NL_CXXFLAGS` (hardware FP, `-nostartfiles`, sections for `--gc-sections`),
-`libc/crt0libc.o` + `libc/onyx_syscalls.o`, the app, `lib/wtk.imp.a`, then its libraries
-(`lib/ft.imp.a`) and `-lm` (the import libraries of the shared wtk and FreeType: §5.6). Take the app out of the generic `APPS` list and add its `.elf` to `all:`;
+`libc/crt0libc.o` + `libc/onyx_syscalls.o`, the app, `lib/uikit.imp.a`, then its libraries
+(`lib/ft.imp.a`) and `-lm` (the import libraries of the shared uikit and FreeType: §5.6). Take the app out of the generic `APPS` list and add its `.elf` to `all:`;
 `make stage` stages it as any.
 
 Notes / caveats:
 - **One allocator** for a plain C newlib app: newlib's `malloc` owns the heap via
-  `_sbrk`→`kapi_sbrk`; do **not** also link `umm.h`. (A wtk app on newlib has two, side by side:
-  wtk's C++ objects on umm — `onyxpp.hpp`'s `operator new` — and the C libraries on `malloc`; each
+  `_sbrk`→`kapi_sbrk`; do **not** also link `umm.h`. (A uikit app on newlib has two, side by side:
+  uikit's C++ objects on umm — `onyxpp.hpp`'s `operator new` — and the C libraries on `malloc`; each
   grows its own arena with `kapi_sbrk`.)
 - **Files are buffered in RAM.** `_open` slurps the whole file into memory to give
   `fseek`/`ftell` full semantics, and a writable file is written back with `kapi_save_file()`
@@ -701,11 +701,17 @@ its licence on the app.
 
 ### 5.6. Shared libraries (kapi v83): `SD:/lib/<name>.so`
 
+> **Names.** The libraries are "kits", one per use: **UIKit** (the widget toolkit: `user/uikit/`,
+> `namespace uikit`, the `uk_` functions, `SD:/lib/uikit.so`), **AudioKit** (§5.7), and ImageKit to
+> come. UIKit was named **wtk** until 2026-10-05 (`user/wtk/`, `namespace wtk`, `wk_`, `wtk.so`): the
+> rename was complete — sources, headers, the library, its package (`uikit` replaces `wtk`) — and
+> every program was rebuilt; older notes and commit messages say wtk.
+
 *(The design and its reasons: [`SHARED-LIBS-PLAN.md`](SHARED-LIBS-PLAN.md). The kernel side: docs/02
 §7 *Shared libraries*.)*
 
-Since kapi v83 the apps no longer carry a copy of the toolkit and of FreeType: **wtk** and
-**FreeType** are shared libraries — `SD:/lib/wtk.so`, `SD:/lib/ft.so` —, loaded once for the whole
+Since kapi v83 the apps no longer carry a copy of the toolkit and of FreeType: **uikit** and
+**FreeType** are shared libraries — `SD:/lib/uikit.so`, `SD:/lib/ft.so` —, loaded once for the whole
 system, their code mapped into every process that uses them, their data private to each. A fix in
 a library reaches every app **without rebuilding any app**.
 
@@ -724,19 +730,19 @@ per entry; the tool only ever appends):
 | File (in `user/lib/`, the build folder) | Side | What it is |
 |---|---|---|
 | `<lib>_table.S` | library | `onyx_lib_table`: version, size, `init`, then one pointer per entry. The ELF entry point of the `.so` (`ld -e onyx_lib_table`): the kernel finds it without a symbol table. |
-| `<lib>_stubs.S` | program | one **import stub** per entry, under the entry's own (mangled) name: `adrp x16, onyx_<lib>_table; ldr x16, […]; ldr x16, [x16, #slot]; br x16`. The app's source and the library's headers do not change: a call to `FT_Load_Glyph` or `wtk::Widget::invalidate` is bound by the linker to its stub. Stubs are weak (an app's own definition of a name wins, as over a static library). With `--vtables`: a **copy of each of the library's vtables** (a class whose vtable the compiler emits only with its key function is referenced by the apps that construct or derive it) — the same slots, resolved by the stubs; no library address is ever in a program. |
+| `<lib>_stubs.S` | program | one **import stub** per entry, under the entry's own (mangled) name: `adrp x16, onyx_<lib>_table; ldr x16, […]; ldr x16, [x16, #slot]; br x16`. The app's source and the library's headers do not change: a call to `FT_Load_Glyph` or `uikit::Widget::invalidate` is bound by the linker to its stub. Stubs are weak (an app's own definition of a name wins, as over a static library). With `--vtables`: a **copy of each of the library's vtables** (a class whose vtable the compiler emits only with its key function is referenced by the apps that construct or derive it) — the same slots, resolved by the stubs; no library address is ever in a program. |
 | `<lib>_bind.cpp` | program | a constructor of **priority 101** (before the app's own: a `static Menu menu;` may use the library) that calls `lib_bind ("<lib>", <version>, imports)` (`user/lib.h`) and sets `onyx_<lib>_table`. |
 
 `lib/<lib>.imp.a` (the stubs, the bind constructor) is the **import library**: an app links it
-where it linked `wtk/libwtk.a` or `ft/libft.a`. `make stage` copies `user/lib/*.so` to `sdcard/lib/`.
+where it linked `uikit/libuikit.a` or `ft/libft.a`. `make stage` copies `user/lib/*.so` to `sdcard/lib/`.
 
 **At run time.** The bind constructor calls `kapi_lib_open` (the file read once for the system,
 then shared), checks the version — the app was built against version N of the table: an older
 library is refused — and calls the table's `init` with the **imports** (`TLibImports`): the app's
 allocator (`operator new` / `delete`: one heap in the process, so an object made on one side can be
-freed on the other) and, for wtk, the addresses of the variables the two share. A library that is
+freed on the other) and, for uikit, the addresses of the variables the two share. A library that is
 missing or too old ends the app with a line on its output (the kernel log for a windowed app):
-*this program needs the shared library "wtk" (version 667 or later): the one installed is older —
+*this program needs the shared library "uikit" (version 667 or later): the one installed is older —
 update its package*; exit status 126.
 
 **Writing a library.** Sources compiled with `LIB_CXXFLAGS` (`-fPIC -fvisibility=hidden
@@ -751,27 +757,27 @@ the kernel through `KT`, the app through its imports. What the kernel accepts is
   `ft.so` exports FreeType's public API only). Never remove one, never change a signature.
 - **Global data cannot be imported** by a program (it is linked at a fixed address; the library is
   not). The generator refuses a library with global variables unless `--allow-data` says they are
-  handled. wtk's (the palette `C_BG`…, the text face) are **the app's variables**: `wtk/globals.inc`
-  lists them (append-only), `wtk/globals.cpp` — compiled into the import library — defines them and
-  the table of their addresses the bind constructor hands over (`--data onyx_wtk_data`,
-  `TLibImports.data`); in the library each one is a reference bound at `init` (`wtk/global.h`
-  `WTK_VAR`). The app's code — and the toolkit's inline code compiled into it — reads them directly.
-- **C++ classes** (`wtk/abi.h`): the apps allocate, derive and read the classes of the headers, so
+  handled. uikit's (the palette `C_BG`…, the text face) are **the app's variables**: `uikit/globals.inc`
+  lists them (append-only), `uikit/globals.cpp` — compiled into the import library — defines them and
+  the table of their addresses the bind constructor hands over (`--data onyx_uikit_data`,
+  `TLibImports.data`); in the library each one is a reference bound at `init` (`uikit/global.h`
+  `UIKIT_VAR`). The app's code — and the toolkit's inline code compiled into it — reads them directly.
+- **C++ classes** (`uikit/abi.h`): the apps allocate, derive and read the classes of the headers, so
   their **layout** and their **virtual functions' order** are part of the interface, append-only
   too. Never add a field or a virtual in a class: a new field takes the **reserve**
   (`Widget::reserved_`, `Widget::ext`, `Canvas`'s, `Root`'s), a new virtual one of the **reserved
-  slots** (`Widget::wk_reserved0..7`, `Root::wk_rootReserved0..7`: renamed, same place).
-  `wtk/layout_lock.cpp` (generated once by `tools/libgen/layout.py`) holds every class's size and
+  slots** (`Widget::uk_reserved0..7`, `Root::uk_rootReserved0..7`: renamed, same place).
+  `uikit/layout_lock.cpp` (generated once by `tools/libgen/layout.py`) holds every class's size and
   the base classes' offsets as `static_assert`s: the library's build fails when one moves
-  (`make -C user wtk-layout-update` only for a class added). **Inline code** of the headers is
+  (`make -C user uikit-layout-update` only for a class added). **Inline code** of the headers is
   compiled into the apps: a later change to it reaches only the apps rebuilt after it — code that
   may have to be fixed belongs in the `.cpp` files.
-- A change that cannot keep these rules is **another library** (`wtk2.so`), beside the old one.
+- A change that cannot keep these rules is **another library** (`uikit2.so`), beside the old one.
 
-**Using one from an app's Makefile rule:** link `lib/wtk.imp.a` (and `lib/ft.imp.a`) in place of
-the static archives; the package declares `needs = wtk` (and `ft`). Jet's hosted build
+**Using one from an app's Makefile rule:** link `lib/uikit.imp.a` (and `lib/ft.imp.a`) in place of
+the static archives; the package declares `needs = uikit` (and `ft`). Jet's hosted build
 (`tools/webkit/build-web.sh`) and the PC builds (the simulator, Koton for Windows, macOS) still
-compile wtk statically (`user/wtk/*.cpp`: the same sources — `wtk/globals.cpp` then simply defines
+compile uikit statically (`user/uikit/*.cpp`: the same sources — `uikit/globals.cpp` then simply defines
 the variables).
 
 **Tests.** `sh tools/tests/run_image_test.sh` (the loader, on the PC), `/bin/libtest` (the loader,
@@ -791,13 +797,13 @@ An app prints by **drawing its pages once**; the system does the rest. Three par
 | **The printers** | `SD:/etc/printers.ini` (`print/printers.h`), the Control Panel's **Printers** applet (`user/Apps/printconf`), `/bin/ipp` | A network printer is added by its address: `printd` asks it what it can do (IPP `Get-Printer-Attributes`: formats, papers, colour, quality, margins) and keeps the answer — no driver of a make. Any **IPP Everywhere / AirPrint** printer works. **Find** (`PD_SCAN`): one mDNS question — who offers `_ipp._tcp.local`? — sent to 224.0.0.251:5353 from an ordinary UDP port, so the printers answer to that port alone (a one-shot query, RFC 6762: no multicast group to join, which the kapi does not have); whoever answers is asked over IPP. (Trying every address of the network instead restarted the Pi: do not.) |
 
 A job does not depend on the printer: the same recorded pages become a PDF or a raster. `print.so` is
-the first library that **uses other libraries**: FreeType (`ft.so`, for `print_text`) and wtk (`wtk.so`,
+the first library that **uses other libraries**: FreeType (`ft.so`, for `print_text`) and uikit (`uikit.so`,
 for the dialog), through their import stubs linked into it; `print.cpp` opens them when first needed
-(`kapi_lib_open`), and wtk's variables are the program's (wtk's library build of `globals.o`, `--data
-onyx_wtk_data` in the bind object) — so a program that links `lib/print.imp.a` also links
-`lib/wtk.imp.a`.
+(`kapi_lib_open`), and uikit's variables are the program's (uikit's library build of `globals.o`, `--data
+onyx_uikit_data` in the bind object) — so a program that links `lib/print.imp.a` also links
+`lib/uikit.imp.a`.
 
-**Printing from an app** — link `lib/print.imp.a` (before `lib/wtk.imp.a`), include `print/print.h`.
+**Printing from an app** — link `lib/print.imp.a` (before `lib/uikit.imp.a`), include `print/print.h`.
 Lengths are **points** (1/72 inch), y goes down from the page's top-left corner, colours are `0xRRGGBB`:
 
 ```c
@@ -934,7 +940,7 @@ the library, and Koton and the Media Player no longer carry them.
 
 > **Drag & drop (ABI v42).** A **source** calls `kapi_drag_begin (DND_FILES, paths, len,
 > label)` while the left button is held (from `onMouse`, once the cursor moved a few pixels
-> from the press); `paths` is `\n`-separated. A **target** overrides the `wtk::Root`
+> from the press); `paths` is `\n`-separated. A **target** overrides the `uikit::Root`
 > virtuals: `onDrop (x, y, type, data, len, flags)` (data NUL-terminated; `flags &
 > DND_F_COPY` = Ctrl held), `onDragOver (x, y, leave, flags)` (highlight the drop spot),
 > and the source gets `onDragDone (targetPid, flags)` (`DND_F_DESKTOP` = dropped on the
@@ -953,9 +959,9 @@ the library, and Koton and the Media Player no longer carry them.
 > BMP / GIF (all frames + delays) / PNG / JPEG (stb_image, public domain), WebP
 > (simplewebp, BSD-3) and PCX (our decoder) into `0xAARRGGBB` frames from the app's umm
 > heap (`new unsigned[]` frames); `img_free (&frames)`; `img_is_image_name (name)`. The
-> codecs are compiled once into `libwtk.a` (`wtk/imgload.cpp`, with FP/SIMD like
-> `wtk/canvas.o`) and linked only into the apps that call them. Users: `imageview`,
-> `fileviewer` (preview), `wtk::ImageBox`. `img_load_mem (data, len, &frames)` decodes a file's bytes
+> codecs are compiled once into `libuikit.a` (`uikit/imgload.cpp`, with FP/SIMD like
+> `uikit/canvas.o`) and linked only into the apps that call them. Users: `imageview`,
+> `fileviewer` (preview), `uikit::ImageBox`. `img_load_mem (data, len, &frames)` decodes a file's bytes
 > already in memory (Letters' RTF pictures, Paint's OpenRaster layers); `img_inflate (data, len, zlib,
 > &n)` inflates a deflate stream (stb's: a ZIP entry, a zlib stream).
 > **Writing images** (`user/img/pngsave.hpp`, header-only, integer only — freestanding apps use it):
@@ -982,12 +988,12 @@ the library, and Koton and the Media Player no longer carry them.
 > comes from DejaVu Sans. `fnt::trim ()` drops the least used sizes when the cache is big — only at
 > a moment no `Font *` is held (after a redraw); `fnt::g_onTrim` lets the app forget its own. The
 > screenshots' build compiles the same sources for the PC (`shots.sh`).
-> **Vector shapes** (`wtk/vpaint.h`, in `libwtk.a`, integer only): a `VPath` gathers outlines —
+> **Vector shapes** (`uikit/vpaint.h`, in `libuikit.a`, integer only): a `VPath` gathers outlines —
 > `poly`, `rect`, `rrect`, `circle`, `ellipse`, `hole` (a disc cut out), strokes `line`, `polyline`,
 > `arc` (round ends and joins), `arrowHead` — in 1/16 px (`V (px)`), then `fill (cv, colour, alpha)`
 > paints their union (the non-zero rule: every outline turned the same way, a hole the other way),
 > anti-aliased (four sub-rows a pixel, the spans' ends to 1/16 px). Letters' toolbar icons are drawn
-> with it (`user/Apps/letters/icons.h`). `wk_sin / wk_cos (degrees)` × 16384.
+> with it (`user/Apps/letters/icons.h`). `uk_sin / uk_cos (degrees)` × 16384.
 > **File-system providers (ABI v44)**: an app can serve a whole path prefix to every other
 > app — `kapi_vfs_register ("XYZ:")`, then loop on `kapi_vfs_next (&req, 1)` and answer each
 > request (`req.op` = `VFS_OP_OPEN` / `READ` / `CLOSE` / `LIST` / `SAVE` / `MKDIR` / `REMOVE`
@@ -1270,7 +1276,7 @@ the library, and Koton and the Media Player no longer carry them.
 > (`user/cards.h`): `card_face` / `card_back` / `card_slot` (64×88) and the bouncing-cards
 > victory animation (`win_start` / `win_step`). Used by invaders, pipes, solitaire, freecell
 > (Arkanoid is now the BASIC game). **Host test**: `sh tools/tests/run_games_test.sh [INVADERS …]` builds each game on
-> the PC against a fake kapi table (`tools/tests/wtkhost/host_kapi.h`: every slot a stub,
+> the PC against a fake kapi table (`tools/tests/uikithost/host_kapi.h`: every slot a stub,
 > files from `sdcard/`), plays a scripted scenario (UBSan) and saves real screenshots to
 > `/tmp/onyx_games`.
 > **Rich Text Format** (`user/rtf.h`): `rtf::load (box, data, len)` parses an RTF document into
@@ -1306,7 +1312,7 @@ the library, and Koton and the Media Player no longer carry them.
 > `fileio.h` (RTF in / out — tables `\trowd`... — their lines as the cells give them: every edge, the
 > rows' only, none —, headers and footers, fields `{\field}`, tab stops,
 > the TOC's field, pictures as `\pict\pngblip` / `\jpegblip`, a PNG made when the image came as
-> something else —, text, HTML), `xml.h` (a pull reader over a zip entry — wtk's `img_inflate` —, the
+> something else —, text, HTML), `xml.h` (a pull reader over a zip entry — uikit's `img_inflate` —, the
 > units; the zip written with the PNG writer's deflate), `docx.h` (WordprocessingML: styles with their
 > inheritance and the theme's fonts, numbering, tables — grid, spans, vertical merges —, simple and
 > complex fields, the headers and footers, the section, images, `w:docVars` for the mail merge's
@@ -1362,7 +1368,7 @@ the library, and Koton and the Media Player no longer carry them.
 > `csv_read` with each column's type guessed); the order (`build_order`: the search's words, a
 > stable merge sort, empty values last). `widgets.h`: the editors — `LineEdit` (any length,
 > selection, clipboard, a filter of the characters; over a `TextCore` it shares with `MemoEdit`,
-> wrapped at the words), `DateEdit` + `CalPopup` (wtk's `Calendar`), `ColorEdit` + `ColorPopup`,
+> wrapped at the words), `DateEdit` + `CalPopup` (uikit's `Calendar`), `ColorEdit` + `ColorPopup`,
 > `ChoiceBox` + `PickList` (a scrolling list over the window), `YesNoBox` —, the toolbar, the view
 > switch, the search box, the navigator (`NavBar`), `VPath` icons. `formview.h` (the card: an
 > editor a field, the commit and its validation, Tab order, scrolling), `listview.h` (a
@@ -1374,13 +1380,13 @@ the library, and Koton and the Media Player no longer carry them.
 > byte for byte, a file edited by hand, a type changed, fields moved, CSV, the order; ASan +
 > UBSan).
 > **Ledger** (`user/Apps/ledger/`, one TU: `main.cpp` includes the rest; **in English or French**: its words
-> `TR (...)`, `sdcard/apps/ledger.app/lang/fr.txt` — wtk's `lang.h` above —, the language chosen at the
+> `TR (...)`, `sdcard/apps/ledger.app/lang/fr.txt` — uikit's `lang.h` above —, the language chosen at the
 > side bar's foot or in the File menu, Ledger then started again by itself on the same books; the books'
 > own words — the chart, the printed documents — follow the company's and the party's language as before;
 > integer only — money in
 > **cents** (`money`, a `long long`), VAT rates in hundredths of a percent, quantities in thousandths,
 > dates `yyyymmdd` —; Cardfile's `model.h` and `widgets.h` are reused: strings, `Out`, the editors).
-> **The engine** (plain C++, the same on the PC, no wtk): `core.h` (money and dates typed and shown
+> **The engine** (plain C++, the same on the PC, no uikit): `core.h` (money and dates typed and shown
 > the Belgian way, the checks — VAT numbers, IBAN, BIC, structured communications `+++…+++` —),
 > `model.h` (the `Book`: company, fiscal years, accounts, parties, journals, entries of lines — account,
 > amount, party, VAT code, role, due date, matching group —, VAT returns, the commercial documents;
@@ -1422,11 +1428,11 @@ the library, and Koton and the Media Player no longer carry them.
 > through the engine itself — `sdcard/docs/demo-company.ledger` — and its next CODA statement,
 > `demo-bank-statement.cod`: see its header), `tools/ledger/gen_templates.py` (the documents'
 > templates in French, Dutch, English, and `templates/fields.card`), `tools/ledger/gen_pcmn.py`.
-> **Spreadsheet** (`user/Apps/sheet/`, a **newlib** wtk app — FreeType and `libm` — built as Letters
+> **Spreadsheet** (`user/Apps/sheet/`, a **newlib** uikit app — FreeType and `libm` — built as Letters
 > is; one TU: `main.cpp` includes the rest, a chain of headers each including the one before, all in
 > `namespace ss`; `app.txt` asks for a **4 MB stack**: the formulas are evaluated recursively). **The
 > engine** is plain C++ over libc, the same code on the PC: `core.h` (a growing `Buf`, UTF-8 — the
-> cells' text is UTF-8, wtk's font and the keyboard Latin-1 with the euro at 0x80: `latin1_cp`,
+> cells' text is UTF-8, uikit's font and the keyboard Latin-1 with the euro at 0x80: `latin1_cp`,
 > `latin1_to_u8`, `u8_to_latin1` —, numbers ↔ text, Excel's serial dates, the `Arena` a formula's
 > temporary values live in, released after each cell), `book.h` (the `Book`: its sheets, the
 > interned `Style`s — a cell keeps an index —, the defined names; a `Sheet`: the used cells in a
@@ -1467,7 +1473,7 @@ the library, and Koton and the Media Player no longer carry them.
 > round trips; with LibreOffice installed, its `.ods` and `.xlsx` of the same workbook read back
 > alike); ASan + UBSan. The sample `sdcard/docs/cafe-2026.xlsx` is made by
 > `tools/tests/sheet/make_sample.cpp` (built with the engine itself: see its header).
-> **Slides** (`user/Apps/slides/`, a **newlib** wtk app — FreeType, `gpucomp`, Letters' PDF writer —, built
+> **Slides** (`user/Apps/slides/`, a **newlib** uikit app — FreeType, `gpucomp`, Letters' PDF writer —, built
 > as Letters and the Spreadsheet, their toolbar icons shared through `sheet/ui_base.h`'s `g_appIcon`): `model.h`
 > (the deck: slides, objects — text, shape, line, picture, table, chart —, text bodies of paragraphs and character
 > runs in hmm and tenths of a point, the theme, the master's text styles and layouts, effects, transitions; a
@@ -1754,7 +1760,7 @@ the library, and Koton and the Media Player no longer carry them.
 > by `user/doom/Makefile` (called from `user/Makefile`) into `user/doom.elf`. `doom_onyx.c`: the
 > `DG_*` platform functions — the window canvas *is* `DG_ScreenBuffer` (640 × 400, no copy),
 > full screen at 4:3, keys from `kapi_key_held` + modifiers + key events (Tab, F-keys…),
-> `gamepad.h`, `rename`/`mkdir` on the kapi; `doom_wtk.cpp`: window chrome + menu (wtk from C);
+> `gamepad.h`, `rename`/`mkdir` on the kapi; `doom_uikit.cpp`: window chrome + menu (uikit from C);
 > **The engine runs on an app core** when one is free: `main` starts `doomgeneric_Tick` there
 > after `doomgeneric_Create`; the main thread keeps the window, the input (a key queue), the
 > pictures (a triple buffer: the engine swaps `DG_ScreenBuffer` between three slots), the
@@ -1771,7 +1777,7 @@ the library, and Koton and the Media Player no longer carry them.
 > program)` → an RPN `gc::Program` (`eval (x)`), `gc::fmt`; the maths of the BASIC core
 > (`basic/basnum.h`). An app computing in `double` builds with FP: in `user/Makefile`,
 > `graphcalc.elf: CXXFLAGS := $(CXXFLAGS_FP)`. Host test: `sh tools/tests/run_graphcalc_test.sh`.
-> **HTTPS from a wtk app**: wtk apps are freestanding; do the TLS work in a newlib console
+> **HTTPS from a uikit app**: uikit apps are freestanding; do the TLS work in a newlib console
 > tool and spawn it with pipes (`kapi_pipe`, `kapi_spawn`, write the request, `kapi_stream_eof`,
 > poll `kapi_stream_read_nb` / `kapi_proc_done` from `Root::onTick`). Example: Lisa +
 > `/bin/groq` (`user/Apps/lisa`, `user/bin/groq.cpp`).
@@ -1781,13 +1787,13 @@ the library, and Koton and the Media Player no longer carry them.
 > An app that **moves or renames** files should call `shelf_moved (from, to)`
 > (`#include "shelfmsg.h"`, IPC to the `shelf` service: the dock's switcher) so the shelf's
 > references follow.
-> **WPF-style controls (P5)** — all in `wtk/wtk.h`, see `user/Apps/widgets` for each in use:
+> **WPF-style controls (P5)** — all in `uikit/uikit.h`, see `user/Apps/widgets` for each in use:
 > `RadioButton (l, t, w, h, text, group, checked, cb)` — exclusive per `group` among its
-> siblings (`wk_radio_checked (parent, group)`); `GroupBox (l, t, w, h, title)` — a titled
+> siblings (`uk_radio_checked (parent, group)`); `GroupBox (l, t, w, h, title)` — a titled
 > frame, add controls as its children; `ToggleSwitch (…, text, on, cb)`;
 > `NumericUpDown (…, min, max, value, step, cb)` — arrows, wheel, Up/Down, typed digits;
 > `ListBox (…, onSelect, onActivate)` — `add`, `clear`, `item (i)`, `sel`, `setSel`;
-> **`DataGrid (l, t, w, h)`** (`wtk/datagrid.h`) — a read-only table of rows and columns,
+> **`DataGrid (l, t, w, h)`** (`uikit/datagrid.h`) — a read-only table of rows and columns,
 > virtual (a grid of any length costs what it shows): `setColumns (n)`, `setColumn (c, title,
 > width, GRID_LEFT / GRID_RIGHT / GRID_CENTRE)`, `column (c)`, `autoSize (c, minW, maxW)` (the
 > title's and the first rows' texts), `setRows (n)`, `sel`, `setSel (r)`, `ensureVisible`, `rowAt`;
@@ -1803,8 +1809,8 @@ the library, and Koton and the Media Player no longer carry them.
 > `label (id)`, `setUserData`; `Calendar (l, t, y, m, d, cb)` (size `CAL_W`×`CAL_H`) and
 > `DatePicker (…, y, m, d, cb)` (`format (buf)` → `YYYY-MM-DD`); `ImageBox (…, IMG_FIT /
 > IMG_FILL / IMG_NONE)` — `load (path)` (any `imgload` format) or `setPixels`;
-> `wk_color_dialog (&color, title)` — RGB sliders + palette + preview, true = OK.
-> `wk_file_open` / `wk_file_save` / **`wk_folder_open (out, cap, startDir)`** (a folder, no file
+> `uk_color_dialog (&color, title)` — RGB sliders + palette + preview, true = OK.
+> `uk_file_open` / `uk_file_save` / **`uk_folder_open (out, cap, startDir)`** (a folder, no file
 > name) — the file dialog; `..` at a volume's root lists the **volumes** that are mounted
 > (`SD:`, `SD1:` … `SD3:` — the SD card's partitions, `USB:`…). Paths may start with any
 > volume (`SD1:/roms/x.iso`); `kapi_fsize` is clamped to 4 GB − 1, **`kapi_fsize64`** (ABI v59)
@@ -1833,7 +1839,7 @@ the library, and Koton and the Media Player no longer carry them.
 > also sends), not the live state. F1–F12 arrive as `KEY_F1` .. `KEY_F12` (0x110..0x11B). Text widgets (`Textbox`,
 > `Textarea`, `RichTextBox`) accept the printable Latin-1 range too (`é è à ç ù`… = 0xA0–0xFF,
 > as the keymaps produce them). The euro sign (AltGr+E, …) arrives as **0x80**, Windows-1252's
-> code for it (Latin-1 has none); wtk's font draws it there (`tools/fonts/gen_nssans.py`, `EXTRA`);
+> code for it (Latin-1 has none); uikit's font draws it there (`tools/fonts/gen_nssans.py`, `EXTRA`);
 > the text widgets do not take it yet — the Spreadsheet does (`latin1_cp` → U+20AC). With a **text
 > face** installed (below) `Textbox` and `Textarea` hold **UTF-8** instead: a typed Latin-1 key is
 > stored as its UTF-8 (0x80 as U+20AC, the euro), the caret moves and deletes whole characters.
@@ -1842,17 +1848,17 @@ the library, and Koton and the Media Player no longer carry them.
 > `hasSelection`, `selStart` / `selEnd`, `selectedText`, `deleteSelection`, `selectAll`,
 > `copy` / `cut` / `paste` (system clipboard; ^C / ^X / ^V work by themselves when the app's
 > menu does not take them).
-> **The pointer's shape** (kapi v81): a widget calls **`wk_cursor (KAPI_CURSOR_…)`** from its
+> **The pointer's shape** (kapi v81): a widget calls **`uk_cursor (KAPI_CURSOR_…)`** from its
 > `onMouse`, each time the pointer moves over it — `_TEXT` over text, `_HAND` over a link,
 > `_SIZE_H` / `_SIZE_V` on an edge that drags, `_MOVE`, `_CELL`, `_CROSSHAIR`, `_WAIT`, `_NO`
-> (`wtk/widget.h`). `Root` starts every pointer event with the arrow and tells the kernel when what
+> (`uikit/widget.h`). `Root` starts every pointer event with the arrow and tells the kernel when what
 > was asked has changed: a widget that asks nothing shows the arrow, and nothing has to be put
 > back. A widget that keeps the pointer during a drag (`catchOutside`) asks at each move of the
 > drag. Already done by `Textbox`, `Textarea`, `RichTextBox` (the I bar), a `Splitter`'s grip and a
 > `DataGrid`'s column edges (the two arrows).
 > **Tooltips**: set `widget->tip = "text"`; the `Root` shows it after the pointer rests
 > ~0.6 s. (No RTTI: `Widget::asRadio ()` identifies radio buttons.)
-> **`wtk::Root::onTick ()`** (virtual) runs once per event-loop iteration — poll a mailbox,
+> **`uikit::Root::onTick ()`** (virtual) runs once per event-loop iteration — poll a mailbox,
 > a spawned process or a timer there. **`ask.h`**: `ask_begin (title, msg, yes, no)` opens
 > the system Yes / No window (`apps/ask`) without blocking; `ask_poll (h)` returns -1 while
 > open, then 1 / 0. `ask_text_begin (title, msg, ok, cancel, text)` asks for a line of text
@@ -1867,25 +1873,25 @@ the library, and Koton and the Media Player no longer carry them.
 > `SD:/etc/sound.ini`. That is the Sound applet's and `/bin/volume`'s business: an app has no
 > reason to call it. `sound_status`' rate stays 44100 whatever the output.
 
-> **An app in another language** (`wtk/lang.h`). The sources keep their English words, wrapped:
+> **An app in another language** (`uikit/lang.h`). The sources keep their English words, wrapped:
 > **`TR ("Save")`** is the word in the language the user chose, else the English itself (a `const char *`
 > valid for the app's life: it may be kept); **`TRC ("status", "Open")`** looks up `status|Open` first, for
 > a word whose translation depends on where it stands. The catalogues are UTF-8 text, a line a word —
 > `English<TAB>translation` (`\t \n \\` escaped, `#` a comment) —: **`SD:/res/lang/<code>.txt`** for
-> wtk's own words (the dialogs' buttons, the file dialog, the months and days of `Calendar`, the window
+> uikit's own words (the dialogs' buttons, the file dialog, the months and days of `Calendar`, the window
 > menu, Cardfile's editors), **`SD:/apps/<app>.app/lang/<code>.txt`** for the app's. The language chosen
-> is `SD:/apps/<app>.app/lang.txt` (`"fr"`; none: English): **`wk_lang_init ()`** first thing in `main`
-> (after a text face is installed, if any), **`wk_lang_choose (code)`** writes it (taken at the next start —
+> is `SD:/apps/<app>.app/lang.txt` (`"fr"`; none: English): **`uk_lang_init ()`** first thing in `main`
+> (after a text face is installed, if any), **`uk_lang_choose (code)`** writes it (taken at the next start —
 > the widgets are made with their words). An app drawing with the bitmap fonts gets the words converted to
 > Latin-1 at load (as its text is drawn: one byte a glyph; the euro `0x80`), one with a face keeps UTF-8.
 > A word missing from a catalogue stays English. Ledger is the first app translated (French: its
 > side bar's EN | FR, File menu); wrap only what is shown — never a file's keys, paths, XML or a string
 > the code compares.
 
-> **Text faces — anti-aliased, proportional text in every widget** (`wtk/text.h`). By default wtk
+> **Text faces — anti-aliased, proportional text in every widget** (`uikit/text.h`). By default uikit
 > draws with its bitmap fonts (8 × 16 cells); an app may install a **`TextFace`** instead and every
-> text path of wtk goes through it: `Canvas::text`, `wk_text_l` / `wk_text_c` / `wk_text_w`, the
-> line height widgets lay out with (**`wk_fh ()`** = the face's `height ()`; `wk_fw ()` = a digit's
+> text path of uikit goes through it: `Canvas::text`, `uk_text_l` / `uk_text_c` / `uk_text_w`, the
+> line height widgets lay out with (**`uk_fh ()`** = the face's `height ()`; `uk_fw ()` = a digit's
 > width), and the widths they compute — a `NumericUpDown`'s right alignment, tooltips, `Icon`
 > labels, the `DataGrid`'s cells (cut with "..." by measure), `Calendar`, `PopupMenu`, the text
 > boxes' carets. `Textbox` and `Textarea` place the caret, the clicks and the selection by the
@@ -1894,40 +1900,40 @@ the library, and Koton and the Media Player no longer carry them.
 > window's **frame** — its title has a face of its own, the same in every window, FreeType app or
 > not: **`SD:/res/fonts/title.aaf`**, DejaVu Sans Bold at 13 px rendered ahead of time by the apps'
 > own FreeType and gamma (`sh tools/title_font/build.sh`: `gen_title_font.cpp` documents the format —
-> Latin-1, anti-aliased bitmaps, kerning pairs), read once by `wtk/skin.cpp`'s `AafFace` (without the
+> Latin-1, anti-aliased bitmaps, kerning pairs), read once by `uikit/skin.cpp`'s `AafFace` (without the
 > file: the bitmap font) —,
 > `RichTextBox` (its own styled bitmap glyphs), and the explicit bitmap calls `Canvas::drawFont` /
-> `wtk::draw_text`.
+> `uikit::draw_text`.
 > - The interface: `struct TextFace { virtual int height (); virtual int ascent (); virtual int
 >   width (const char *utf8, int style); virtual void draw (Canvas &cv, int x, int yTop, const char
 >   *utf8, unsigned color, int style); virtual int widthN (utf8, n, style); }` — styles 0 regular,
 >   1 italic, 2 bold, 3 bold italic; text in UTF-8 (a stray byte is read as Latin-1); `draw` blends
->   over the canvas, the line's top at `yTop`. **`wk_set_textface (f)`** installs it (0: back to
->   the bitmap fonts), `wk_textface ()` returns it. Install it **before building the widgets**
->   (some size themselves from `wk_fh ()` when made: a `DataGrid`'s rows, the dialogs).
-> - Measure and draw through it (they fall back to the bitmap fonts): `wk_tw (s, style)`,
->   `wk_tw_n (s, n, style)` (a prefix: a caret's x), `wk_tpos (s, n, x, style)` (the character
->   boundary nearest x: a click), `wk_text (cv, x, y, s, c, style)` (top-left),
->   `wk_text_clip (…, cx, cy, cw, ch)` (clipped to a box), `wk_text_fit (s, w, out, cap)` (cut to w
->   px with "..."), `wk_bfw` / `wk_bfh` (the bitmap cell whatever the face). UTF-8 helpers:
->   `wk_u8_len / _get / _next / _prev / _put`, `wk_u8_key (k, out)` (a typed key's UTF-8).
->   **`WkFaceScope sc (face);`** draws with another face until the end of the scope (a widget's
+>   over the canvas, the line's top at `yTop`. **`uk_set_textface (f)`** installs it (0: back to
+>   the bitmap fonts), `uk_textface ()` returns it. Install it **before building the widgets**
+>   (some size themselves from `uk_fh ()` when made: a `DataGrid`'s rows, the dialogs).
+> - Measure and draw through it (they fall back to the bitmap fonts): `uk_tw (s, style)`,
+>   `uk_tw_n (s, n, style)` (a prefix: a caret's x), `uk_tpos (s, n, x, style)` (the character
+>   boundary nearest x: a click), `uk_text (cv, x, y, s, c, style)` (top-left),
+>   `uk_text_clip (…, cx, cy, cw, ch)` (clipped to a box), `uk_text_fit (s, w, out, cap)` (cut to w
+>   px with "..."), `uk_bfw` / `uk_bfh` (the bitmap cell whatever the face). UTF-8 helpers:
+>   `uk_u8_len / _get / _next / _prev / _put`, `uk_u8_key (k, out)` (a typed key's UTF-8).
+>   **`UkFaceScope sc (face);`** draws with another face until the end of the scope (a widget's
 >   captions, a display's large digits).
-> - **FreeType's face** (`user/ft/wtkface.h`, header-only, one translation unit; a **newlib** app
->   linking `ft/libft.a`, as Letters — §5.1): **`ft_wtk_install ("DejaVu Sans", 13)`** at the start
+> - **FreeType's face** (`user/ft/uikitface.h`, header-only, one translation unit; a **newlib** app
+>   linking `ft/libft.a`, as Letters — §5.1): **`ft_uikit_install ("DejaVu Sans", 13)`** at the start
 >   of `main` (before the `Root` and the widgets) makes an `FtTextFace` on `ft/fonts.h` (the card's
 >   TrueType families of `SD:/res/fonts` / `SD:/fonts`, anti-aliased, quarter-pixel positioned,
 >   kerned, a small width cache; bold / italic from the family's files or made) and installs it;
 >   false: no TrueType font (the bitmap fonts stay). DejaVu Sans at 13 px has a 16-px line, as the
 >   bitmap font's, so layouts keep their rows. More faces for large or small text: `FtTextFace *f =
->   new FtTextFace; f->open ("DejaVu Sans", 24);` (e.g. an `LcdDisplay`'s `face`). `ft_wtk_face ()`:
+>   new FtTextFace; f->open ("DejaVu Sans", 24);` (e.g. an `LcdDisplay`'s `face`). `ft_uikit_face ()`:
 >   the installed one. The face holds no `fnt::Font *` between two calls (`fnt::trim` is safe).
 > - **Every new app uses the FreeType face** (unless told otherwise): add it to **`FT_APPS`** in
 >   `user/Makefile` — the newlib + `ft/libft.a` rule the Control Panel, its applets (Theme, Panel,
 >   Display, Sound, Keyboard & Mouse, Gamepad, Wi-Fi, App Settings), the Game Library, Setup, the
 >   menu bar and the File Viewer share (Paint, Letters, the Calendar... have rules of their own) (`FT_EXTRA_<app>`: libraries of its own) — and to the same list in
->   `tools/tests/desktop_sim/shots.sh`'s `build`. Measure text in pixels (`wk_tw`, `wk_text_fit`),
->   never in characters, and draw it through the face (`wk_text`, `canvas.text`), not `drawFont`
+>   `tools/tests/desktop_sim/shots.sh`'s `build`. Measure text in pixels (`uk_tw`, `uk_text_fit`),
+>   never in characters, and draw it through the face (`uk_text`, `canvas.text`), not `drawFont`
 >   (the bitmap fonts only).
 > - On the PC: **`sh tools/tests/desktop_sim/studio.sh [out]`** builds `gallery/studio.cpp` with
 >   the FreeType face and with the bitmap fonts, in the card's theme and in a dark palette, the
@@ -1935,74 +1941,74 @@ the library, and Koton and the Media Player no longer carry them.
 >   `/tmp/onyx_studio`), and runs `facetest.cpp` (the measures, the carets and clicks, UTF-8 editing).
 
 > **Studio controls** (for Koton's DAW, usable anywhere; drawn from the theme's colours — a light
-> theme and a dark one alike —, anti-aliased with `wtk/vpaint.h`). All in `wtk/wtk.h` but the
-> toolbar: **`#include "wtk/toolbar.h"`** yourself (Letters, the Spreadsheet and Cardfile have their
-> own `ToolBar` / `ToolButton` next to `using namespace wtk`, so `wtk.h` leaves it out). See them in
+> theme and a dark one alike —, anti-aliased with `uikit/vpaint.h`). All in `uikit/uikit.h` but the
+> toolbar: **`#include "uikit/toolbar.h"`** yourself (Letters, the Spreadsheet and Cardfile have their
+> own `ToolBar` / `ToolButton` next to `using namespace uikit`, so `uikit.h` leaves it out). See them in
 > the Widget Showcase (`user/Apps/widgets`, its Studio group) and `gallery/studio.cpp`.
 >
 > | Widget | Make it | What it does |
 > |---|---|---|
-> | **`Knob`** (`wtk/knob.h`) | `Knob (l, t, w, h, min, max, value, onChange)`; `setLabel ("Gain")`, `showValue`, `format (v, out, cap)`, `setDefault (v)`, `bipolar`, `arcColor`, `step`, `face` (captions) | A rotary control: a 270° track, the value's arc in the accent (from the start, or from 0 when `bipolar`: a pan), a cap with a pointer, the label and the value under it. Drag up / down (the range in 200 px; Shift: 1000 px), the wheel, a double click → the default; keys Up / Down / Left / Right, Page Up / Down, Home / End, Delete (the default). The dial is the width, less the captions' lines (about 24 … 64 px). `setValue (v, fire)`, `setRange`, `valueText`. |
-> | **`VuMeter`** (`wtk/vumeter.h`) | `VuMeter (l, t, w, h, vertical = true, stereo = true)`; `floorDb` / `topDb` (−48 / +6), `amberDb` / `redDb` (−12 / −3), `segPx` (3; 0 = continuous), `holdTicks`, `fallDb`, `peakFallDb`, `showPeak`, `showClip` | A level meter: segments on a dark well, green → amber → red along a dB scale, the peak held then falling, a clip light (a level over 0 dBFS; a click clears it). **`setQ16 (l, r)`** — linear, 65536 = 0 dBFS —, `setCdb (l, r)` (1/100 dB), `set (float l, float r)` in an FP-enabled unit only (wtk itself is integer-only). Call it at the UI's rate, silence included (the falls are timed by `kapi_get_ticks`); it repaints only when a lit segment or a peak moves. `wk_q16_to_cdb (v)`. |
-> | **`SegmentedControl`** (`wtk/segmented.h`) | `SegmentedControl (l, t, w, h, labels, n, selected, onChange)`; `equalWidths` (false: by the texts), `setLabels`, `setEnabled (i, on)` | Mutually exclusive segments drawn as one pill, the chosen one in the accent (bold). A click, the wheel, Left / Right. `selected`, `select (i, fire)`, `label (i)`, `count ()`. Labels copied (12 × 31 chars). |
-> | **`ToolBar`** + **`ToolButton`** (`wtk/toolbar.h`) | `ToolBar (l, t, w, h = 34)`: `add (w, gap)`, `addRight (w, gap)` (anchored right), `sep ()`, `space (px)`, `line`, `bg`; `ToolButton (w, h, tip, onClick)` then `->setGlyph (WKT_PLAY)`, `->setIcon (fn, id)` (the app's drawer), `->setText ("Loop")`, `->setToggle (true, on)`, `->setSplit (arrowCb)`, `->fitWidth ()`; `filled`, `raised`, `onColor`, `iconColor` | A strip of small buttons: an icon, a label beside it or alone, a toggle (on: the accent's tint, or `filled` — a play button), a split arrow (a palette, a menu), a tooltip. Flat until pointed (`raised`: always a face). The icons: `WKT_NEW OPEN SAVE UNDO REDO CUT COPY PASTE PLAY PAUSE STOP RECORD TO_START TO_END REWIND FORWARD LOOP METRONOME PLUS MINUS SEARCH MIXER SPARK GEAR`, drawn at any size by `wk_tool_glyph (cv, kind, x, y, size, ink)`. Generalised from Letters' (which keeps its own). |
-> | **`LcdDisplay`** (`wtk/lcd.h`) | `LcdDisplay (l, t, w, h, text, caption)`; `setText`, `setCaption`, `setSub` (repainted only on a change), `face` / `smallFace`, `scale`, `ink`, `centred` | A time / position display: a sunken well (dark in a dark theme, the accent's pale tint in a light one), large digits in the accent — the `face` given (an `FtTextFace` at 24 px), else the bitmap font scaled as large as fits —, a small caption over a second line at its right ("BAR.BEAT.16" / "0:14.83"). |
+> | **`Knob`** (`uikit/knob.h`) | `Knob (l, t, w, h, min, max, value, onChange)`; `setLabel ("Gain")`, `showValue`, `format (v, out, cap)`, `setDefault (v)`, `bipolar`, `arcColor`, `step`, `face` (captions) | A rotary control: a 270° track, the value's arc in the accent (from the start, or from 0 when `bipolar`: a pan), a cap with a pointer, the label and the value under it. Drag up / down (the range in 200 px; Shift: 1000 px), the wheel, a double click → the default; keys Up / Down / Left / Right, Page Up / Down, Home / End, Delete (the default). The dial is the width, less the captions' lines (about 24 … 64 px). `setValue (v, fire)`, `setRange`, `valueText`. |
+> | **`VuMeter`** (`uikit/vumeter.h`) | `VuMeter (l, t, w, h, vertical = true, stereo = true)`; `floorDb` / `topDb` (−48 / +6), `amberDb` / `redDb` (−12 / −3), `segPx` (3; 0 = continuous), `holdTicks`, `fallDb`, `peakFallDb`, `showPeak`, `showClip` | A level meter: segments on a dark well, green → amber → red along a dB scale, the peak held then falling, a clip light (a level over 0 dBFS; a click clears it). **`setQ16 (l, r)`** — linear, 65536 = 0 dBFS —, `setCdb (l, r)` (1/100 dB), `set (float l, float r)` in an FP-enabled unit only (uikit itself is integer-only). Call it at the UI's rate, silence included (the falls are timed by `kapi_get_ticks`); it repaints only when a lit segment or a peak moves. `uk_q16_to_cdb (v)`. |
+> | **`SegmentedControl`** (`uikit/segmented.h`) | `SegmentedControl (l, t, w, h, labels, n, selected, onChange)`; `equalWidths` (false: by the texts), `setLabels`, `setEnabled (i, on)` | Mutually exclusive segments drawn as one pill, the chosen one in the accent (bold). A click, the wheel, Left / Right. `selected`, `select (i, fire)`, `label (i)`, `count ()`. Labels copied (12 × 31 chars). |
+> | **`ToolBar`** + **`ToolButton`** (`uikit/toolbar.h`) | `ToolBar (l, t, w, h = 34)`: `add (w, gap)`, `addRight (w, gap)` (anchored right), `sep ()`, `space (px)`, `line`, `bg`; `ToolButton (w, h, tip, onClick)` then `->setGlyph (WKT_PLAY)`, `->setIcon (fn, id)` (the app's drawer), `->setText ("Loop")`, `->setToggle (true, on)`, `->setSplit (arrowCb)`, `->fitWidth ()`; `filled`, `raised`, `onColor`, `iconColor` | A strip of small buttons: an icon, a label beside it or alone, a toggle (on: the accent's tint, or `filled` — a play button), a split arrow (a palette, a menu), a tooltip. Flat until pointed (`raised`: always a face). The icons: `WKT_NEW OPEN SAVE UNDO REDO CUT COPY PASTE PLAY PAUSE STOP RECORD TO_START TO_END REWIND FORWARD LOOP METRONOME PLUS MINUS SEARCH MIXER SPARK GEAR`, drawn at any size by `uk_tool_glyph (cv, kind, x, y, size, ink)`. Generalised from Letters' (which keeps its own). |
+> | **`LcdDisplay`** (`uikit/lcd.h`) | `LcdDisplay (l, t, w, h, text, caption)`; `setText`, `setCaption`, `setSub` (repainted only on a change), `face` / `smallFace`, `scale`, `ink`, `centred` | A time / position display: a sunken well (dark in a dark theme, the accent's pale tint in a light one), large digits in the accent — the `face` given (an `FtTextFace` at 24 px), else the bitmap font scaled as large as fits —, a small caption over a second line at its right ("BAR.BEAT.16" / "0:14.83"). |
 
 > **The look: the modernised CDE (kapi v64).** Every control, and every window's frame, is
 > drawn by code from a few theme colours — no bitmap (docs/gui-redesign/README.md).
-> - **The palette** (`wtk/theme.h`): `C_BG` (an app's background: the face), `C_FACE`,
+> - **The palette** (`uikit/theme.h`): `C_BG` (an app's background: the face), `C_FACE`,
 >   `C_FACE_HI`, `C_FACE_DN`, `C_BORDER`, `C_TEXT` (on the face), `C_ACCENT` (focus, selection,
 >   checks), `C_DIS`, `C_FIELD` (a text field's, a list's background), `C_FIELD_TEXT`,
 >   `C_SEL_TEXT` (on the accent), `C_FRAME_ACTIVE` / `C_FRAME_INACTIVE` (the frames), `C_DOCK`,
 >   `C_BUTTON` / `C_BUTTON_TEXT` (a push button's, a drop-down's face: draw buttons with them),
->   `C_MENUBAR`, `WK_OUTLINE`. They are **variables**, read once from `SD:/etc/theme.txt` by
->   `wtk::init ()` (the `Root`'s constructor calls it): use them in drawing code, never copy them
+>   `C_MENUBAR`, `UK_OUTLINE`. They are **variables**, read once from `SD:/etc/theme.txt` by
+>   `uikit::init ()` (the `Root`'s constructor calls it): use them in drawing code, never copy them
 >   into a `static const` or a global initialised at start-up (that runs before the theme is
 >   read). The file: `theme` = Peach / Steel / Sage / Brick / Slate / Milk / Dark Coffee (the window in front's
->   frame; `active` = any colour instead), `style` = cde / milk (**the style**, `WK_STYLE`: CDE's
+>   frame; `active` = any colour instead), `style` = cde / milk (**the style**, `UK_STYLE`: CDE's
 >   framed title buttons, or Milk's — Xfce's Milk theme, as OS X — the title buttons coloured
->   beads, `wk_bead`, close red, minimise amber, maximise green, grey behind or for a button the
+>   beads, `uk_bead`, close red, minimise amber, maximise green, grey behind or for a button the
 >   window cannot use, and the frame melting into the window: the title's gradient from a light
 >   tone of the frame's colour down to the content's own, `C_BG`, the borders that colour,
->   nothing between them — `wk_title_strip` likewise, down to `C_FACE`; a colour the file leaves
->   out is the style's own, `wk_style_palette` — or the named theme's when it has colours of its
->   own (`WkNamedTheme::pal`, `wk_theme_palette (i)`: **Dark Coffee**, Milk's dark sister — a dark
+>   nothing between them — `uk_title_strip` likewise, down to `C_FACE`; a colour the file leaves
+>   out is the style's own, `uk_style_palette` — or the named theme's when it has colours of its
+>   own (`UkNamedTheme::pal`, `uk_theme_palette (i)`: **Dark Coffee**, Milk's dark sister — a dark
 >   frame's title goes from the frame's colour down to `C_BG`, its borders are black, a dark face's
->   fields are darker than it and its grooves, `wk_etch_*`, darker too); a named theme chosen:
->   `wk_theme_take (t, i)` (a style alone: `wk_theme_take_style (t, style)`)),
-> - **A list that draws its own scroll bar** (`wk_thumb`, `wk_draw_vscroll`: `wtk/widget.h`) must also give it
->   the mouse: a `WkBarDrag` member, `if (bar.mouse (mx, my, bl, barX, barW, trackY, trackH, total, view, &pos))
+>   fields are darker than it and its grooves, `uk_etch_*`, darker too); a named theme chosen:
+>   `uk_theme_take (t, i)` (a style alone: `uk_theme_take_style (t, style)`)),
+> - **A list that draws its own scroll bar** (`uk_thumb`, `uk_draw_vscroll`: `uikit/widget.h`) must also give it
+>   the mouse: a `UkBarDrag` member, `if (bar.mouse (mx, my, bl, barX, barW, trackY, trackH, total, view, &pos))
 >   { ...repaint; return true; }` at the top of its `onMouse` — the thumb drags, the groove turns a page, and the
 >   row under the bar never gets the click.
 >   `inactive`, `window` (the content: the face; `face` still
 >   read), `button`, `field`, `menubar` (these three follow the window's colour when absent),
 >   `accent`, `outline` = none / dark / black, `dock` — the Control Panel's Theme applet writes
->   it. As values: `WkTheme` (`WK_AUTO`: derived from the window's), `wk_theme_defaults`,
->   `wk_theme_parse (text, t)`, `wk_theme_get (t)` (the palette in use), `wk_theme_set (t)` (the
->   palette made from it: a preview), `wk_theme_write (t, out, cap)` (theme.txt's text),
->   `wk_theme_reload ()` (a new theme
+>   it. As values: `UkTheme` (`UK_AUTO`: derived from the window's), `uk_theme_defaults`,
+>   `uk_theme_parse (text, t)`, `uk_theme_get (t)` (the palette in use), `uk_theme_set (t)` (the
+>   palette made from it: a preview), `uk_theme_write (t, out, cap)` (theme.txt's text),
+>   `uk_theme_reload ()` (a new theme
 >   applied: the dock, the menu bar). Text: `C_TEXT` on the face, `C_FIELD_TEXT` on a field,
->   `C_SEL_TEXT` on the accent, `C_BUTTON_TEXT` on a button, `wk_ink_on (bg)` on any colour.
+>   `C_SEL_TEXT` on the accent, `C_BUTTON_TEXT` on a button, `uk_ink_on (bg)` on any colour.
 >   Content keeps its own colours (images, games' boards, a terminal's screen); the chrome
 >   around it follows the theme.
-> - **The painter** (`wtk/paint.h`, integer only): `wk_tone (c, level)` (a shade: 128 = `c`,
->   255 = white, 0 = black), `wk_mix`, `wk_rbox` (a rounded box with a vertical gradient, its
->   corners anti-aliased: per-radius tables), `wk_rline` (its outline), `wk_framed` (the push
+> - **The painter** (`uikit/paint.h`, integer only): `uk_tone (c, level)` (a shade: 128 = `c`,
+>   255 = white, 0 = black), `uk_mix`, `uk_rbox` (a rounded box with a vertical gradient, its
+>   corners anti-aliased: per-radius tables), `uk_rline` (its outline), `uk_framed` (the push
 >   button: a raised face, the same as a drop-down's box — it had a frame and a well round it,
->   hence its name), `wk_raised`, `wk_sunken` (a field), `wk_etch_h / _v / _box`, `wk_check_mark`,
->   `wk_radio_mark`, `wk_switch_mark`, `wk_scroll_bar`, `wk_slider_mark`, `wk_progress_bar`,
->   `wk_popup` (a floating panel, its corners keyed), `wk_hilite` / `wk_hilite_ink` (a selected
->   row and its text), `wk_title_strip`, `wk_glyph` (`WKG_CHECK`, arrows, chevrons, close,
->   minimise, maximise, restore, lock, gear, power, reload, home, history — a clock…), `wk_text_c` / `wk_text_l` (style 2 = bold).
+>   hence its name), `uk_raised`, `uk_sunken` (a field), `uk_etch_h / _v / _box`, `uk_check_mark`,
+>   `uk_radio_mark`, `uk_switch_mark`, `uk_scroll_bar`, `uk_slider_mark`, `uk_progress_bar`,
+>   `uk_popup` (a floating panel, its corners keyed), `uk_hilite` / `uk_hilite_ink` (a selected
+>   row and its text), `uk_title_strip`, `uk_glyph` (`WKG_CHECK`, arrows, chevrons, close,
+>   minimise, maximise, restore, lock, gear, power, reload, home, history — a clock…), `uk_text_c` / `uk_text_l` (style 2 = bold).
 >   `tools/tests/desktop_sim/gallery/main.cpp` shows every control in every state;
 >   `gallery/studio.cpp` (`studio.sh`) the studio controls, with a FreeType face and without.
-> - **The frame**: `wk_decorate_window ()` (the `Root` calls it; an app drawing its own window
+> - **The frame**: `uk_decorate_window ()` (the `Root` calls it; an app drawing its own window
 >   calls it after `kapi_resize_window`) draws the title bar, the borders, the rounded corners
 >   (their outside see-through in the chrome's top byte), the title buttons — the window menu,
 >   minimise, maximise, close, at the kernel's `KAPI_FRAME_*` places — and the title in bold, in
 >   the active and the inactive frames' colours. Close and minimise are the kernel's; the window
 >   menu and maximise come to the app as `GUI_EVENT_WINCTL`, handled by the `Root` (the frame's
->   state: `wk_window_state (WK_WIN_MENU | WK_WIN_RESIZABLE | WK_WIN_MAXIMISED)`, kept by the
+>   state: `uk_window_state (UK_WIN_MENU | UK_WIN_RESIZABLE | UK_WIN_MAXIMISED)`, kept by the
 >   `Root`; an app drawing its own window without a `Root` gets the window-menu button greyed).
 >   An app with its own pointer handler answers `GUI_EVENT_WINCTL` itself: `KAPI_FRAME_MENU` →
 >   `root.windowMenu ()`, `KAPI_FRAME_MAXIMISE` → `root.maximise (!root.maximised ())` (the
@@ -2023,24 +2029,24 @@ the library, and Koton and the Media Player no longer carry them.
 >   the work area is shrunk to it (a resizable one; else moved only) and moved into it — the
 >   Spreadsheet calls it at its start, so the dock does not cover its bottom.
 > - **The screen's size changing** (kernel v66, the Control Panel's Display applet): every window
->   gets `GUI_EVENT_DISPLAY_RESIZE`; wtk calls **`virtual void onDisplayResize (int w, int h)`**
+>   gets `GUI_EVENT_DISPLAY_RESIZE`; uikit calls **`virtual void onDisplayResize (int w, int h)`**
 >   at once (an app placed by the screen's size — a borderless one: the dock — places itself
 >   again there), then ~0.3 s later fits a framed window by itself: maximised, to the new work
 >   area again (its restore size kept inside it); else moved into the work area, shrunk if it is
->   resizable and too big. A borderless window is left to `onDisplayResize`. Outside wtk: handle
+>   resizable and too big. A borderless window is left to `onDisplayResize`. Outside uikit: handle
 >   `GUI_EVENT_DISPLAY_RESIZE` (`GUI_DISPLAY_W/H (value)`) in the pointer handler — the menu bar
 >   grows its canvas (`kapi_resize_window2`), the notifications move to the new top right.
-> - **`PopupMenu (x, y)`** (`wtk/dialog.h`): a pop-up menu — `add (label, id, enabled, hint)`,
+> - **`PopupMenu (x, y)`** (`uikit/dialog.h`): a pop-up menu — `add (label, id, enabled, hint)`,
 >   `separator ()`, `run ()` → the id picked, −1 (a click elsewhere, Esc). A context menu.
 > - **See-through windows** (`WIN_FLAG_ALPHA`, borderless): the canvas's top byte is each pixel's
 >   transparency (0 opaque .. 255 see-through; a click on a wholly see-through pixel goes below).
->   Clear to `0xFF000000`, then draw with **`wk_paint_alpha (true)`** so the anti-aliased edges
->   over see-through pixels keep their colour (`wk_blend_px` for single pixels); `0xFE000000`
+>   Clear to `0xFF000000`, then draw with **`uk_paint_alpha (true)`** so the anti-aliased edges
+>   over see-through pixels keep their colour (`uk_blend_px` for single pixels); `0xFE000000`
 >   (almost clear) still takes the clicks. Examples: `dock`, `menubar`, `agenda`. (Onyx Remote
 >   draws them over the other windows with the same transparency: rdpd sends them in 32 bits.)
 > - **A fixed window** (`WIN_FLAG_FIXED`, kapi v69): `Root (x, y, w, h, title, WIN_FLAG_FIXED)`
->   — the user cannot move it, its frame has no buttons (wtk's `WK_WIN_FIXED`), and the kernel
->   centres it again when the resolution changes (wtk does not fit it to the work area then).
+>   — the user cannot move it, its frame has no buttons (uikit's `UK_WIN_FIXED`), and the kernel
+>   centres it again when the resolution changes (uikit does not fit it to the work area then).
 >   Setup's (`user/Apps/setup`: its pages in `main.cpp`, what it writes in `system.h`); with
 >   `kapi_screen_native` (the monitor's EDID size) and `kapi_set_timezone` (v69 too).
 > - **Present what you draw**: the compositor and the remote desktop (`rdpd`: a window is sent
@@ -2054,14 +2060,14 @@ the library, and Koton and the Media Player no longer carry them.
 >   `kapi_list_windows` and `kapi_raise_app` see the current desk only; `kapi_win_list` sees all,
 >   `KAPI_WIN_OFFDESK` and `KAPI_WIN_DESK (state)` in their state. The dock is the pager
 >   (`dockconf.h`: the desks' number and names).
-> - **Control Panel applets** (`user/applet_proto.h`): any wtk app can be shown **inside** the
+> - **Control Panel applets** (`user/applet_proto.h`): any uikit app can be shown **inside** the
 >   Control Panel (`apps/control`) instead of in a window of its own. Started with `--applet
->   <surface> <host pid>`, `wtk::Root`'s constructor sees it (**`wk_applet ()`**) and adopts the
+>   <surface> <host pid>`, `uikit::Root`'s constructor sees it (**`uk_applet ()`**) and adopts the
 >   host's shared surface as its canvas (the pane's size, 700 × 470: lay out for it, or centre
 >   on `root.width`); the host copies it into its window at each present and sends the pointer
 >   and the keys over the mailboxes. `Root::run ()` does it all; an app with its own loop calls
->   **`wk_pump ()`**, **`wk_present ()`** and **`wk_quit ()`** instead of `pump_events` /
->   `kapi_present` / `should_exit` (they fall back to those alone). `wk_applet_send (AP_THEME)`:
+>   **`uk_pump ()`**, **`uk_present ()`** and **`uk_quit ()`** instead of `pump_events` /
+>   `kapi_present` / `should_exit` (they fall back to those alone). `uk_applet_send (AP_THEME)`:
 >   the host restarts the applet (a new theme applied). An applet needs no menu (the host has
 >   one) and never calls `kapi_create_window`. To list it, add a link file to
 >   `SD:/apps/control.app/applets/` (`name`, `icon`, `target`, `text`: the user guide §11) and
@@ -2070,8 +2076,8 @@ the library, and Koton and the Media Player no longer carry them.
 >   **Other hosts** (2026-10-03: Mail, showing Web as its HTML view): the host registers an IPC
 >   service of its own and adds its name — `--applet <surface> <host pid> <service>` — (the
 >   applet ends when that service is gone; without it: `"control"`, `AP_SERVICE`); its own message
->   types (beyond `AP_*`, up to 512 bytes) reach the applet through **`wk_applet_on_message (fn)`**
->   (called from `wk_pump`, the payload NUL-terminated). The surface may be bigger than the area the
+>   types (beyond `AP_*`, up to 512 bytes) reach the applet through **`uk_applet_on_message (fn)`**
+>   (called from `uk_pump`, the payload NUL-terminated). The surface may be bigger than the area the
 >   host shows: the applet shrinks its Root with `setBounds (w, h)` (the surface's stride kept).
 > - **Jet's web view** (`user/Apps/jet/webview.cpp`, `webview_proto.h`; docs/08 step 5): the browser's
 >   one program as an applet — `SD:/apps/jet.app/main --applet <surface> <host pid> <service>` —, the
@@ -2099,12 +2105,12 @@ the library, and Koton and the Media Player no longer carry them.
 >   there — every parent clips its children, so a drop-down near a window's bottom (or in a
 >   group box) keeps its list visible. Put the controls whose lists must pass a group box's
 >   edge in the window (the Theme applet's Desktop box does: `desk_add`).
-> - **Text on any background**: `wk_ink_for (bg)` is `C_TEXT` on the window's face (and on what
+> - **Text on any background**: `uk_ink_for (bg)` is `C_TEXT` on the window's face (and on what
 >   is as light, or as dark), else black or white — the ink `Label`s and `Checkbox`es need on a
 >   program's own colour (the BASIC runtime's controls; a `Checkbox` picks it by itself).
-> - **Dialogs**: `wk_file_open` / `wk_file_save` / `wk_folder_open` (a double-click on a file
->   picks it and confirms), `wk_color_dialog` (R / G / B sliders, a palette), `wk_messagebox`.
-> - **The desktop simulator** (`sh tools/tests/desktop_sim/run.sh`): a wtk app built for the PC
+> - **Dialogs**: `uk_file_open` / `uk_file_save` / `uk_folder_open` (a double-click on a file
+>   picks it and confirms), `uk_color_dialog` (R / G / B sliders, a palette), `uk_messagebox`.
+> - **The desktop simulator** (`sh tools/tests/desktop_sim/run.sh`): a uikit app built for the PC
 >   against a stand-in kernel (`fakekapi.cpp`: files read from `sdcard/` — what the app saves
 >   goes to `/tmp/onyx_sim_writes`, never to the card —, a script of pointer / key / menu events,
 >   `dump` writes its window — frame and client — with its transparency), laid over the
@@ -2112,19 +2118,19 @@ the library, and Koton and the Media Player no longer carry them.
 >   `shots.sh` makes the documentation's screenshots with it (below).
 
 > **Menus.** Put commands in the **system menu bar**, not in button rows. After creating
-> the `Root`, build a `wtk::Menu` once and publish it:
+> the `Root`, build a `uikit::Menu` once and publish it:
 >
 > ```cpp
 > static Menu menu;
 > menu.menu ("File");
-> menu.item ("Open...", "^O", WK_CTRL ('O'), onOpen);   // label, shortcut text, key, void() callback
+> menu.item ("Open...", "^O", UK_CTRL ('O'), onOpen);   // label, shortcut text, key, void() callback
 > menu.separator ();
-> menu.item ("Save",    "^S", WK_CTRL ('S'), onSave);
+> menu.item ("Save",    "^S", UK_CTRL ('S'), onSave);
 > menu.publish ();                                       // kapi_set_menu (ABI v39)
 > ```
 >
 > The `menubar` app shows the menus while your window is the active app and sends the
-> chosen item back (`GUI_EVENT_MENU`); `wtk::Menu` runs the callback, then invalidates the
+> chosen item back (`GUI_EVENT_MENU`); `uikit::Menu` runs the callback, then invalidates the
 > root. Every key goes through `Menu::shortcut` first (so item shortcuts work anywhere in
 > the app); **Ctrl-Q** quits. Commands and shortcuts are ignored while a modal dialog is
 > open. `^I`, `^H`, `^M` share their key codes with Tab, Backspace and Enter: `Menu::shortcut`
@@ -2132,7 +2138,7 @@ the library, and Koton and the Media Player no longer carry them.
 > text box (still, prefer other letters).
 
 
-Minimal skeleton with the raw kapi (a real app uses wtk, above: `wtk::Root`, its widgets and
+Minimal skeleton with the raw kapi (a real app uses uikit, above: `uikit::Root`, its widgets and
 its `run ()` loop; the kernel draws no widget since v29):
 
 ```c
@@ -2169,9 +2175,9 @@ Key points:
   so that it fits the default screen: over the limit (or out of memory) the call returns **0**. **Check
   it**: drawing into a null canvas faults and the app is killed (`el0: ... killed` in `kmsg`).
   (Before kapi v74, when apps ran at EL1, address 0 was the kernel's own memory: the
-  Spreadsheet's first 1060-pixel window overwrote it and froze the whole Pi.) wtk's `Root`
-  checks it: the app stops with `wtk: the window could not be made` in `kmsg`.
-- **Widgets** are user-side (wtk); the kernel-drawn ones (`kapi_add_button`…) were removed
+  Spreadsheet's first 1060-pixel window overwrote it and froze the whole Pi.) uikit's `Root`
+  checks it: the app stops with `uikit: the window could not be made` in `kmsg`.
+- **Widgets** are user-side (uikit); the kernel-drawn ones (`kapi_add_button`…) were removed
   by the v29 compat break.
 - **Event loop**: either `kapi_wait_for_exit()` (blocking, simple), or your
   own loop `while (!kapi_should_exit()) { ...; kapi_pump_events(); kapi_present();
@@ -2193,12 +2199,12 @@ apps `tinypad.c`, `paint.c`, `mandelbrot.c` for complete examples.
 ### The Archiver (`user/Apps/archiver`)
 
 The archive manager (the plan and the user's decisions: `docs/archiver/README.md`; its use:
-docs/04 §9) is a **newlib** wtk app with FreeType text (`archiver.elf` in `user/Makefile`, with
+docs/04 §9) is a **newlib** uikit app with FreeType text (`archiver.elf` in `user/Makefile`, with
 **zlib** built from `third_party/zlib-1.3.1` into `user/zlib/libz.a`), one translation unit:
 
 | File | What |
 |---|---|
-| `arc.h` (namespace `arc`) | The engine's base, no wtk: `Entry` (a path in UTF-8, sizes, CRC, DOS time, the format's fields), `Archive` (the interface a format implements: `open`, `extract (i, Sink &, Progress *)`, `rewrite (Plan, dest, Progress *)`, `writable`, `methodName`), `Plan` (a rewrite: the entries kept — renamed or not — and the new ones, a file of the disk or a folder), `Reader` (random access: `kapi_open` + `kapi_seek`, files of any size, not slurped like newlib's), `FileSink` (a `kapi_file_out` stream), CP437 → UTF-8, DOS dates, human sizes. |
+| `arc.h` (namespace `arc`) | The engine's base, no uikit: `Entry` (a path in UTF-8, sizes, CRC, DOS time, the format's fields), `Archive` (the interface a format implements: `open`, `extract (i, Sink &, Progress *)`, `rewrite (Plan, dest, Progress *)`, `writable`, `methodName`), `Plan` (a rewrite: the entries kept — renamed or not — and the new ones, a file of the disk or a folder), `Reader` (random access: `kapi_open` + `kapi_seek`, files of any size, not slurped like newlib's), `FileSink` (a `kapi_file_out` stream), CP437 → UTF-8, DOS dates, human sizes. |
 | `zip.h` | ZIP: the central directory (zip64, Info-ZIP's Unicode path, a self-extractor's offset, a UTF-8 name without its flag), extract (Store, Deflate through zlib, ZipCrypto), rewrite (the kept entries copied packed under a new local header; the new ones stored, deflated in memory when small — stored if that is not smaller —, streamed with a data descriptor when big; zip64 records when needed). |
 | `ops.h` | The operations whatever the format: `archive_open` (the format from the first bytes), `run_extract` (the layouts `LAY_FULL / LAY_FROM_CURRENT / LAY_FLAT`, the overwrite policy and its question, names made safe for FAT, no half file left), `apply_plan` (a new copy `*.part`, then swapped in), `op_add` / `op_delete` / `op_rename` / `op_new_folder`, `plan_add` (a folder walked, the names that exist replaced or kept). |
 | `model.h` (namespace `ui`) | The archive as a tree for the view: a node per path part (implicit folders too), totals, children sorted (folders first, by the list's column), the search. |
@@ -2251,7 +2257,7 @@ modes and `upgrade`, removals refused (needed, running, the system), the system 
 ### Screenshot, the capture tool (`user/Apps/screenshot`)
 
 The screen capture tool (the study, the mock-ups and the user's decisions: `docs/screenshot/README.md`;
-its use: docs/04 §12) is a **newlib** wtk app with FreeType text (`screenshot.elf` in `user/Makefile`),
+its use: docs/04 §12) is a **newlib** uikit app with FreeType text (`screenshot.elf` in `user/Makefile`),
 one file, `main.cpp`:
 
 - **The capture.** New (or Print Screen) → after the delay (counted in the window's view), the window
@@ -2264,14 +2270,14 @@ one file, `main.cpp`:
   `ow` / `oh`, `il` / `it`), the backmost, system, minimised and other desks' left out. Then
   `kapi_raise_app ("screenshot")`.
 - **The picture** (`g_base`), the **crop** (a rectangle of it), the **strokes** (in the base's 1/16 px:
-  `wtk/vpaint.h`'s units; a pen's opaque, a marker's at opacity 118 — the stroke filled once, so it
+  `uikit/vpaint.h`'s units; a pen's opaque, a marker's at opacity 118 — the stroke filled once, so it
   does not darken where it crosses itself —; smoothed 1-2-1 twice when drawn), the **operations**
   (`OP_ADD`, `OP_ERASE` — a stroke taken away by the eraser —, `OP_CROP` with the rectangles before /
   after: undo / redo). `doc_render` makes `g_doc` (the crop with the strokes over it): what is copied
   and saved. The view shows it fitted, never enlarged (a box filter), the stroke being drawn over it.
 - **Out**: `clip_set_image` (clipd's ring, an image item: `clipboard.h`), done at the tick after the
   window is drawn (clipd may have to start), and `notify ()` (notifyd's bubble); **Save As** only
-  (`wk_file_save` in `SD:/Pictures/Screenshots`, the last folder kept): `img/pngsave.hpp`'s
+  (`uk_file_save` in `SD:/Pictures/Screenshots`, the last folder kept): `img/pngsave.hpp`'s
   `png_encode` / `jpeg_encode` (quality 92) / `bmp_encode` by the name's extension (none: `.png`).
 - **The service** `screenshot` (`kapi_ipc_register`): the kernel's Print Screen (type 1, `"now"` / `"window
   <id>"`), read in `onTick`; started by the kernel: `--now` / `--window <id>`. The settings:
@@ -2286,7 +2292,7 @@ windows may end with `,title`.
 ### Media Player, the music and video library (`user/Apps/media`)
 
 The music and video library (the mock-ups and the user's decisions: `docs/media/README.md`; its use: docs/04 §12) is a
-**newlib** wtk app with FreeType text (`media.elf` in `user/Makefile`): `main.cpp` (the window) and headers. Its
+**newlib** uikit app with FreeType text (`media.elf` in `user/Makefile`): `main.cpp` (the window) and headers. Its
 videos are played by **the media library** (`user/av`, below), compiled by the rule into `Apps/media/obj/av/`
 with `av/codecs.mk`'s `AV_CODECS_CF` **and `-DAV_WITH_FFMPEG`**, and linked with the codec libraries — `libvpx.a`,
 `libdav1d.a`, `libopus.a` (`make -C user/av`; committed in `third_party/`) — and **FFmpeg 7.1.2**'s
@@ -2307,7 +2313,7 @@ with `av/codecs.mk`'s `AV_CODECS_CF` **and `-DAV_WITH_FFMPEG`**, and linked with
 | `videos.h` | `Video`, `VideoLib`: the videos (their facts, where each was left, watched, when) in `videos.tsv`; `probe_video` (the container's headers through `av_demux_*` — a few MB read at most, from where the demuxer wants: an MP4's `moov` at its end too —: length, size, codecs, `playable` = the build decodes them, `av_codec_list`); `video_names` (the title from the file's name, an episode's `S01E03` / `1x03`, the kind from the folders: *Films*, *Series*, *Clips*; else 40 min and more: a film); `scan_video` (the scan's: a known file — same path, same size — kept, else probed). |
 | `thumbs.h` | `Thumbs`: a thread makes each video's frame — `video_frame_at` (`av_demux_seek` to a tenth of the video, at most a minute in, when the container has an index; else decoded on from the start, 4 s at most; `av_decoder_*`, `av_yuv_to_rgb`), cropped to 16:9 at 384 × 216, kept as `SD:/etc/media/thumbs/<key>.jpg` (`pngsave::jpeg_encode`; the key: the path and the size hashed) —; sizes cached as the covers'; it waits while a video plays (`busy`); a video not decoded here gets a frame drawn from its name. |
 | `watch.h` | `VideoPlay`: a video playing — `av_player_new (AV_PIX_BGRA, 0)` (the kapi's sound) + `av_player_open_file` —, `poll ()` on the window's tick (the frame due copied: the library's is valid until the next poll; `statusGen` when what is shown changes), `draw` (fitted, black bars, a nearest-neighbour scaler: a frame each 33 ms on the Pi). |
-| `ui.h` | The faces (DejaVu Sans 11 … 27), text cut to fit, the times, the icons (`wtk/vpaint.h`). |
+| `ui.h` | The faces (DejaVu Sans 11 … 27), text cut to fit, the times, the icons (`uikit/vpaint.h`). |
 | `main.cpp` | The settings, the playlists (`.m3u`), the queue (its order, shuffled or not; ids < 0: a file opened that is not in the library), the pages (`Page`, back / forward; `P_VIDEOS` a kind, `P_WATCH` a video: `page_changed` closes a video left — its position saved — and opens one come back to), the widgets — `Sidebar`, `TopBar` (`SearchBox`), `Content` (every page drawn in view coordinates, its hits listed for the clicks; the songs' table, its selection, its menu; the videos' tiles, the home's cards), `NowBar`, `MiniView`, `WatchView` (the video in the whole window: `draw_watch` — the frame, the controls while the pointer moves, loading, the end, an error — shared with **full screen**: `video_full_screen`, `kapi_fullscreen_begin` + `kapi_present_fb`, its own event loop as the PDF Viewer's) —, the sound shared (`video_start`: the music's thread releases the output — `Player::release` — before the video's takes it; a song started closes the video), the positions (`video_save_pos`: every 15 s, at a pause, on leaving; near the end: watched, from the start next time), the mini player (`kapi_resize_window2` + `kapi_move_window` to the work area's bottom right), the scan's end (`scan_done`: the new library swapped in, the queue and the pages mapped by path / name; the videos' positions kept). |
 
 **Tests on the PC**: `sh tools/tests/run_media_test.sh` — sample files made by ffmpeg (MP3, Ogg, FLAC, WAV at
@@ -2394,7 +2400,7 @@ under qemu, the frames' checksum the same on both).
 ### PDF Viewer, and the PDF export (`user/Apps/pdf`, `user/pdf/pdfwrite.h`)
 
 The reader of PDF documents (the mock-ups and the user's decisions: `docs/pdf/README.md`; its use: docs/04 §12)
-is a **newlib** wtk app on **MuPDF 1.28.5** (`third_party/mupdf-1.28.5`: only its `fitz` and `pdf` parts, the
+is a **newlib** uikit app on **MuPDF 1.28.5** (`third_party/mupdf-1.28.5`: only its `fitz` and `pdf` parts, the
 14 standard fonts, jbig2dec and openjpeg — the tarball's other formats, JavaScript, HarfBuzz, lcms2, the Noto /
 CJK fonts left out). **The app is AGPL-3.0**, MuPDF's licence (docs/LICENSING.md).
 
@@ -2402,7 +2408,7 @@ CJK fonts left out). **The app is AGPL-3.0**, MuPDF's licence (docs/LICENSING.md
 |---|---|
 | `mupdf.mk` | MuPDF as one static library, `libmupdf.a`, for the Pi (`user/Makefile`: `MU_ONYX=1`, newlib's gaps in `mu/onyx_mucompat.{h,c}` — `quad`, `timegm`, `stat`, `ftruncate`, `getentropy`, no folder "archives") or the PC (`make -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_OUT=...`). The `FZ_ENABLE_*` switches turn the other formats off; `TOFU` drops the Noto fonts. It holds **its own FreeType** (Onyx's 2.14.3 with the Type 1 / CFF / CID drivers PDF needs, `mu/onyx_muftmodule.h`, plus the apps' TrueType + autofit): the app links it instead of `ft/libft.a`. Onyx's zlib and libjpeg (jpeg-9f, its names hidden: `FZ_HIDE_INTERNAL_JPEG`). |
 | `engine.h` | MuPDF's side: the contexts (one a thread, `fz_clone_context`; MuPDF's locks on `kapi_lock`), the files through the kapi (`KStream`: an `fz_stream` on `kapi_open` / `kapi_read` / `kapi_seek` — any volume, and the simulator), `Doc` (a document, its lock: a page becomes a **display list** under it, the slow drawing happens outside), the pages' sizes, the outline flattened, the links (read with the lists), `render_page` (a part of a page at a scale, turned, into 0x00RRGGBB), `page_text` (the structured text: the selection, the search), the facts and the fonts (Properties), and the **`Worker`**: a thread that draws what the window wants now (`set_wants`: the view's pages first, then the neighbours, the thumbnails, the recent documents' first pages) and searches page after page (`fz_match_stext_page`, a regular expression for *Whole words*), each result handed over with `kapi_post`. |
-| `ui.h` | The faces, text cut to fit, the hit lists, the icons (`wtk/vpaint.h`). |
+| `ui.h` | The faces, text cut to fit, the hit lists, the icons (`uikit/vpaint.h`). |
 | `main.cpp` | The tabs (`Tab`: a document and how it is shown — layout, zoom, rotation, scroll, the selection, the search's hits), the bitmaps kept (`Bmp`: a page or, past 2600 × 2600 px, the part seen on a 256-px grid; another scale's shown, scaled, until the right one comes; 18 M pixels at most, the least used dropped), the layout (`lay_out`: continuous, one page, two pages with the first alone), the widgets — `TabBar`, `ToolBar` (`SearchBox`, the page's field), `SidePanel` (Pages, Contents, Find), `View` (the pages, the hits and the selection over them, the links, the scroll bars), `Home` (the recent documents, the folders) —, the dialogs (the password, `PropsBox`), full screen (`kapi_fullscreen_begin`: the next page drawn ahead), the settings and `recent.tsv`. |
 
 **The PDF writer** — `user/pdf/pdfwrite.h`, header-only, **MIT** (Onyx's own code: docs/LICENSING.md), used by
@@ -2427,7 +2433,7 @@ tools/icons/pdf_icon.py`.
 ### Mail, the mail client (`user/Apps/mail`, `user/mail`)
 
 The mail client (the mock-ups, the plan and the user's decisions: `docs/mail/README.md`; its use: docs/04 §12) is a
-**newlib** wtk app (`mail.elf`: FreeType's text, mbedTLS as Courier, wtk's image codecs). **MIT**, all of it. Two
+**newlib** uikit app (`mail.elf`: FreeType's text, mbedTLS as Courier, uikit's image codecs). **MIT**, all of it. Two
 layers: `user/mail/` (header-only, the protocols and the HTML renderer, reusable by any app) and `user/Apps/mail/`
 (the app).
 
@@ -2458,7 +2464,7 @@ the accounts and the contacts with Mail's own code). The icon: `python3 tools/ic
 ### Photos, the photo library (`user/Apps/photos`)
 
 The photo library (the mock-ups, the plan and the user's decisions: `docs/photos/README.md`; its use: docs/04 *Photos*)
-is a **newlib** wtk app (`photos.elf`: FreeType's text, wtk's image codecs, `img/pngsave.hpp` to write JPEG and PNG,
+is a **newlib** uikit app (`photos.elf`: FreeType's text, uikit's image codecs, `img/pngsave.hpp` to write JPEG and PNG,
 `pdf/pdfwrite.h` for the contact sheets). **MIT**. Headers included by `main.cpp`:
 
 | File | What |
@@ -2477,17 +2483,17 @@ tools/tests/desktop_sim/shots.sh photos` the screenshots. The mock-ups: `python3
 
 ### A large app: Koton, the studio (`user/Apps/koton`)
 
-Koton (the DAW: `docs/daw/README.md` has its plan and the user's decisions) is a **newlib** wtk app
+Koton (the DAW: `docs/daw/README.md` has its plan and the user's decisions) is a **newlib** uikit app
 (`koton.elf` in [`user/Makefile`](../user/Makefile): the engine, MeltySynth and the plugin host are
 separate objects in `Apps/koton/obj/`, the UI is headers included by `main.cpp`), with FreeType text
-(`ft/wtkface.h`: `ft_wtk_install ("DejaVu Sans", 13)` before the Root). Its parts:
+(`ft/uikitface.h`: `ft_uikit_install ("DejaVu Sans", 13)` before the Root). Its parts:
 
 | Folder | What |
 |---|---|
 | `engine/` (namespace `kt`) | `kbase.h` (Vec, Str, .NET's seeded `Random` reproduced bit for bit, banker's rounding); `model.h/.cpp` (the song: tracks of items — a module after a silence, positions relative —, the chord track pinned last; `.sq` / `.kson` read and written with `json.hpp`); `theory` (the modes, 35 qualities, degrees and colours, 30 cadences, voice leading, the next-chord suggestions, key changes); `gen_*.cpp` (every module rendered to notes: the chord styles and grids, the articulation, the drums, the euclidean rings, the melodic line engine); `compile` (the song flattened to events per track, the tempo map); `engine` (the audio engine: one MeltySynth per track, a lock-free command ring, the mix, the preview voice, the metronome — no allocation, no kapi call in `render`); `ai*` (Koton's AI: prompts, replies placed). |
 | `synth/` | MeltySynth (C#) ported to C++: the SoundFont reader and the synthesizer, reverb and chorus. |
 | `plug/` | The plugin host: plugins as processes (`kplug_proto.h`, `kplug.h`), rendered ahead through shared rings, effects with their latency compensated, generators, editors shown as applets. |
-| `ui/` (namespace `kui`) | `palette.h` (the studio's colours as a wtk theme, the drawing helpers); `doc.h` (the song open, undo / redo as JSON snapshots, the timeline's edits); `audio.h` (the SoundFont found and loaded, the engine started on an **app core**, else a real-time thread, else the UI's tick; the song compiled when the document's revision changes); `arrange.h` (the arrangement: ONE widget the size of the view, drawing only what shows); `grid.h` (NoteGrid: every editor's grid — voice rows, drum lanes, the piano roll); `editor.h` + `ed_chord.h`, `ed_rhythm.h`, `ed_riff.h` (the block editors: a form of wtk controls in columns, a grid or a wheel on the right); `ops.h` (the editors' operations: the drum catalog, euclidean rhythms, the degree vocabulary, cadences, the next chord); `dialogs.h`, `ai_dialog.h`, `chain.h` (a track's sound chain, a plugin's editor floating), `chrome.h` (the transport bar, the browser, the editor's host, the status bar). |
+| `ui/` (namespace `kui`) | `palette.h` (the studio's colours as a uikit theme, the drawing helpers); `doc.h` (the song open, undo / redo as JSON snapshots, the timeline's edits); `audio.h` (the SoundFont found and loaded, the engine started on an **app core**, else a real-time thread, else the UI's tick; the song compiled when the document's revision changes); `arrange.h` (the arrangement: ONE widget the size of the view, drawing only what shows); `grid.h` (NoteGrid: every editor's grid — voice rows, drum lanes, the piano roll); `editor.h` + `ed_chord.h`, `ed_rhythm.h`, `ed_riff.h` (the block editors: a form of uikit controls in columns, a grid or a wheel on the right); `ops.h` (the editors' operations: the drum catalog, euclidean rhythms, the degree vocabulary, cadences, the next chord); `dialogs.h`, `ai_dialog.h`, `chain.h` (a track's sound chain, a plugin's editor floating), `chrome.h` (the transport bar, the browser, the editor's host, the status bar). |
 
 Conventions worth keeping:
 
@@ -2597,8 +2603,8 @@ message is only a doorbell):
 | `KP_DIRTY` (108) | plugin → host | Its state changed otherwise than by a parameter. |
 | `KP_BYE` (109) | both | Please end / it is ending. |
 
-(The plugin's editor is drawn by the plugin's runtime itself into the surface — wtk widgets under a
-panel that adopts the surface — rather than by wtk's applet mode, whose `Root` checks the Control
+(The plugin's editor is drawn by the plugin's runtime itself into the surface — uikit widgets under a
+panel that adopts the surface — rather than by uikit's applet mode, whose `Root` checks the Control
 Panel's service.)
 
 **Writing a plugin** (`user/Apps/kp_<name>/main.cpp`):
@@ -2637,10 +2643,10 @@ KPLUG_MAIN (desc)
 - **The editor**: made from the parameters when the plugin gives none — a knob per parameter, a
   drop-down for `choices`, a check box for `{"Off", "On"}` —, laid out in the size the host asks
   (`PlugHost::editorSize` guesses it; `editorW / editorH` or the manifest's `editor` say better).
-  An own editor (`desc.editor (root, w, h)`) builds wtk widgets under `root` and binds parameters
+  An own editor (`desc.editor (root, w, h)`) builds uikit widgets under `root` and binds parameters
   with `kp_knob / kp_choice / kp_toggle` (they follow a change from the host); `kp_set_param (i, v)`
   moves one (the host is told), `kp_dirty ()` says the state changed otherwise.
-- **Tests on the PC**: define `KPLUG_DSP_ONLY` and `KPLUG_TEST_SYM=<name>`: no kernel, no wtk;
+- **Tests on the PC**: define `KPLUG_DSP_ONLY` and `KPLUG_TEST_SYM=<name>`: no kernel, no uikit;
   `KPLUG_MAIN` exports a `KpTestApi` (attach to a region, one render pass, a request, a parameter) —
   see `tools/tests/koton/plug_test.cpp`.
 
@@ -2660,8 +2666,8 @@ bool PlugHost::syncTrack (int track, const Track &t);   // its instrumentPlugin 
 void PlugHost::releaseTracks (int from = 0);         // the tracks' instances from `from` on, ended
 void PlugHost::poll ();                              // every UI tick: the mailbox (handleMessage (from, type, data, len) for an
                                                      //   app that reads it itself -- the rest to `foreign`) and tick ()
-PlugEditorView *PlugHost::openEditor (PlugInstance *p, wtk::Widget &parent, int x, int y, int w, int h);
-PlugEditorView *PlugHost::openGeneratorEditor (const GeneratorModule &m, wtk::Widget &parent, int x, int y, int w, int h);
+PlugEditorView *PlugHost::openEditor (PlugInstance *p, uikit::Widget &parent, int x, int y, int w, int h);
+PlugEditorView *PlugHost::openGeneratorEditor (const GeneratorModule &m, uikit::Widget &parent, int x, int y, int w, int h);
 bool PlugHost::pullGeneratorState (PlugInstance *p, Project &song);   // at its onParam / onDirty: the module's state from it
 void PlugHost::closeEditor (PlugEditorView *v);      // (deleting its parent does too)
 void PlugHost::saveTrack (int track, Track &t);      // before saving the song: the live states into its PluginSlots
@@ -2747,7 +2753,7 @@ sockets, `poll`) is built on libonyxposix instead (§5.4): add it to `POSIX_PROG
 
 ### `memset` / `memcpy` in freestanding apps
 
-Apps built with `-ffreestanding -nostdlib` (every wtk app and the plain `/bin` tools)
+Apps built with `-ffreestanding -nostdlib` (every uikit app and the plain `/bin` tools)
 have no libc, yet GCC may still emit calls to `memset`/`memcpy`/`memmove` on its own
 (e.g. `char buf[64] = "";`, struct copies). Since ABI v36 the kapi table has them — since v74
 as **user-side** routines of the EL0 code page (`kernel/arch/aarch64/el0blob.S`: no system
@@ -2815,7 +2821,7 @@ reply; a newlib + mbedTLS helper, **`/bin/llm`** (`user/bin/llm.cpp`, in `TLS_PR
   answer (429, 500, 502, 503, 504 -- Gemini's free models say 503 "high demand" often, even for a short
   prompt) is asked again after 5, 10, 20 and 40 s (`llm: Gemini answered 503 (busy): asking again in 5 s
   (1/4)`) before its error is given.
-- **From the app** (wtk, freestanding): build the prompt and the request, then
+- **From the app** (uikit, freestanding): build the prompt and the request, then
   ```cpp
   json::Writer rq (false);
   kt::aiBuildRequestJson ("gemini", model, key, sys, usr, 0.7, -1, rq);
@@ -2902,7 +2908,7 @@ followed with their cookies, timed with `kapi_clock_us`. Its data are Postman's 
 XML formatting), `widgets.h` (LineEdit with `{{variable}}` pills, CodeEdit — a code editor with
 colours, undo, selection —, KVTable with Bulk Edit, TabBar, DocTabs, Btn, Choice), `views.h`,
 `rail.h` (the sidebar), `dialogs.h`, `main.cpp`. Built by `user/Makefile`'s `courier.elf`
-rule: a newlib app as Letters (FreeType's text through wtk) linking mbedTLS
+rule: a newlib app as Letters (FreeType's text through uikit) linking mbedTLS
 (`COURIER_MBEDTLS`, default `third_party/mbedtls-3.6.3`). On the PC it builds with
 `-DCOURIER_NO_TLS` (`shots.sh courier`).
 
@@ -2928,19 +2934,19 @@ name; the history has it (`git log -- user/netsurf`, the commit before the remov
 
 Two things that work came with the browsers' benches and stay in the desktop simulator: its
 stand-in kernel implements `kapi_file_out` (a file written in pieces, in `SIM_WRITES`) and lets
-`kapi_remove` delete what an app wrote there (never the card) — wtk's `FileDialog` takes Enter
+`kapi_remove` delete what an app wrote there (never the card) — uikit's `FileDialog` takes Enter
 (Open / Save) and Esc (Cancel), its name box focused in save mode; `fileName ()` reads the box —
 and its clipboard is a real one: **`SIM_CLIP`** sets it at the start (text, or `files:PATH` for
 `CLIP_FILES`), **`SIM_CLIPFILE`** receives each copy's bytes, and every set logs
 `SIM-CLIPBOARD type=T len=N`. An app that pastes a copied picture reads it as Paint does
 (`clip_get_file` + `img_load`).
 
-The widgets are user-side: **wtk** (`user/wtk/`, §6) is drawn entirely in the app's canvas,
+The widgets are user-side: **uikit** (`user/uikit/`, §6) is drawn entirely in the app's canvas,
 driven by the kernel's **pointer stream** (ABI v22: `set_pointer_handler` →
 `GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE/WHEEL` with client coords; `GUI_EVENT_PTR_WHEEL`
 carries a signed notch delta in the `lValue` wheel field, decoded with `GUI_PTR_WHEEL`). (The
 first C toolkit, `uikit.h`, and the kernel-drawn widgets — `add_button`…, removed by the v29
-compat break — are gone: every graphical app is on wtk.) New widgets are added there, in
+compat break — are gone: every graphical app is on uikit.) New widgets are added there, in
 userland, with no kernel/ABI change.
 
 ### Dynamic memory + C++ apps
@@ -3036,7 +3042,7 @@ their `name`. Three categories are **not listed** there: `Shell` (the desktop's 
 `applist`, `shelf`), `Settings` (the Control Panel's applets: reached through it) and
 `Emulators` (reached through the Game Library, which starts the right one for a game). A shell
 component also creates its window with **`WIN_FLAG_SYSTEM`** (`kapi_create_window_ex` / the
-positioned `wtk::Root` constructor), so it is left out of `kapi_list_windows` (the menu bar's
+positioned `uikit::Root` constructor), so it is left out of `kapi_list_windows` (the menu bar's
 Open Windows, the dock's running dots) and shown on every workspace.
 
 **Icons** — [`tools/gen_assets.py`](../tools/gen_assets.py) procedurally generates the
@@ -3062,10 +3068,10 @@ barwidth = 40
 
 - **Screenshots (the real apps)**: [`tools/tests/desktop_sim/shots.sh`](../tools/tests/desktop_sim/shots.sh)
   builds each documented app **for the PC** against the desktop simulator's stand-in kernel
-  (`fakekapi.cpp`, wtk with its real image codecs and fonts), plays a short script of events
+  (`fakekapi.cpp`, uikit with its real image codecs and fonts), plays a short script of events
   (clicks, keys, menu commands; a canned shell session for the terminal `SIM_PIPE`, an IRC server
   `SIM_NET`, the mailbox messages a process would send `SIM_MBOX` — IRC's conversation window —, sample files from `tools/tests/desktop_sim/sd/` `SIM_OVERLAY`), dumps its window —
-  the frame wtk drew and the client area — and writes `screenshots/<name>.png` (`shot.py`: the
+  the frame uikit drew and the client area — and writes `screenshots/<name>.png` (`shot.py`: the
   window alone, its rounded corners transparent) or lays several over the Voronoi wallpaper
   (`compose.py`: `desktop.png`, `menubar.png`, `volume.png`, `clock.png`, `wifimenu.png`,
   `dock.png`, `agenda.png`). Run `sh tools/tests/desktop_sim/shots.sh` (all) or
@@ -3145,21 +3151,21 @@ barwidth = 40
   COMMON values and the open files into the new VM. Portable C++ (only `new` / `delete`): built into
   `basic/libbasic.a` with FP/SIMD (`-fno-math-errno`), and on a PC for the tests.
 - **Runtime** `/bin/basic` (`basic/runtime.cpp`): the Onyx `bas::Host` — console (stdio)
-  or a `wtk::Root` window (a text/graphics framebuffer + wtk controls, pumped by the VM through
+  or a `uikit::Root` window (a text/graphics framebuffer + uikit controls, pumped by the VM through
   `Host::poll`, `Root::attach ()`). A windowed app (`WINDOW`) asks the platform its colours
   (`ScreenHost::windowColours`: Onyx = the theme's `C_BG` / `C_TEXT`, the PC none) and takes
   them as its background, text and drawing colours unless the program set `COLOR` first. Options `-d <dir>`, `-i` (report errors to the editor:
   mailbox to the IPC service `qbasic`, payload `line\0message\0`), `-s <service>` (the same to another service:
   QBStudio's `qbstudio`). A resizable window (`WINDOW t$, w, h, 1`: `Host::windowFlags`) reallocates its pages on
   a resize (`ScreenHost::userResized`) and queues the event **-2**; `MOVECONTROL` / `SHOWCONTROL` / `ENABLECONTROL`
-  / `FOCUSCONTROL` and `MENUITEM` (a wtk `Menu` rebuilt, its items' callbacks template thunks) are `Host` virtuals.
+  / `FOCUSCONTROL` and `MENUITEM` (a uikit `Menu` rebuilt, its items' callbacks template thunks) are `Host` virtuals.
 - **Editor** `apps/qbasic` links `libbasic.a` for the syntax check.
 - **QBStudio** `apps/qbstudio` (`user/Apps/qbstudio/`, a newlib app: the `qbstudio.elf` rule compiles the core's
   sources into it): `form.h` (the `.form` text read / written, the layout engine: `form_layout` places every
   element for a size), `gen.h` (the controls' library -- `CLASS Control` with PROPERTYs, each control's object made by `DIM SHARED name AS Control ()` --, `generate ()`: the
   window's code, each place an affine function of the window's size, found by laying the form out at two sizes;
   the program's parts, `part_of ()` turns a line of the whole program back into its file's), `codeedit.h` (the
-  code editor), `designer.h` (the window drawn with real wtk widgets under a transparent `Overlay` that takes the
+  code editor), `designer.h` (the window drawn with real uikit widgets under a transparent `Overlay` that takes the
   mouse; the toolbox), `props.h` (the properties). Host test: `sh tools/tests/run_qbstudio_test.sh` (the example
   project read, written back, laid out, generated, compiled and run on a scripted host).
 - **Properties** (`PROPERTY T.Name AS type ... END PROPERTY` the getter, `PROPERTY T.Name (v AS type)` the
@@ -3260,12 +3266,12 @@ barwidth = 40
   can run both on Linux for a check.
 - **Koton for Windows** (`pc/Koton`, built on Linux by `sh pc/Koton/build.sh` into `pc/dist/Koton/`,
   committed; `pc/build.sh` runs it too). Not a port: **the Onyx sources, unchanged** -- `user/Apps/koton`,
-  `user/wtk`, FreeType, MeltySynth, the plugins `user/Apps/kp_*`, `user/bin/llm.cpp` + mbedTLS -- built with
+  `user/uikit`, FreeType, MeltySynth, the plugins `user/Apps/kp_*`, `user/bin/llm.cpp` + mbedTLS -- built with
   MinGW-w64 over [`pc/Koton/winkapi.cpp`](../pc/Koton/winkapi.cpp), the kernel's ABI table on Win32: put
   at `KAPI_TABLE_VA` (`VirtualAlloc`) by a constructor that runs before all the others
   (`init_priority`), so `KT->...` works as on the Pi. What it gives: a Windows window whose client area is
-  the canvas (`get_chrome` answers "no frame": wtk draws none), the app's menu bar as a Windows menu
-  (`set_menu`), its size as the work area (`win_geometry`: a maximised wtk `Root` follows the window --
+  the canvas (`get_chrome` answers "no frame": uikit draws none), the app's menu bar as a Windows menu
+  (`set_menu`), its size as the work area (`win_geometry`: a maximised uikit `Root` follows the window --
   `GUI_EVENT_DISPLAY_RESIZE` on `WM_SIZE`), the events queued by the window procedure and handed out by
   `pump_events` (the app's thread, as on Onyx); files with `SD:/` = the exe's folder (`ONYX_SD`, inherited
   by the programs it starts) and `C:/...` a Windows path, `.../main` and `SD:/bin/llm` being `main.exe`,
@@ -3278,8 +3284,8 @@ barwidth = 40
   (the C runtime's `new` / `delete`), `-DIMG_HOST_TEST` for the image codecs' libc stubs. Three things
   in the shared sources exist for it, none changing Onyx: `gui_value` (`kapi_abi.h`: an event's 64-bit
   value -- `long` on Onyx, `long long` where `long` has 32 bits) with the `GUI_PTR_*` macros in 64 bits,
-  wtk's handlers declared with it; `kapi_memset/memcpy/memmove`'s weak definitions left out on `_WIN32`
-  (PE has no weak symbols worth the name); wtk's file dialog lists `SD:` and the drives `C:`... on
+  uikit's handlers declared with it; `kapi_memset/memcpy/memmove`'s weak definitions left out on `_WIN32`
+  (PE has no weak symbols worth the name); uikit's file dialog lists `SD:` and the drives `C:`... on
   `_WIN32`. Checked under Wine (`Xvfb` + `wine explorer /desktop=onyx,1920x1080 ...\Koton.exe`, driven by
   `xdotool`): the demo song, playback, the editors, the plugins (a generator, an effect, an instrument:
   processes, editors, their sound), Compose with AI (`llm.exe` over HTTPS), the file dialog, closing.
@@ -3287,7 +3293,7 @@ barwidth = 40
 - **Ledger for macOS** (`pc/macOS`, built **on a Mac** by `sh pc/macOS/build.sh` into
   `pc/dist/macOS/Ledger.app` + `Ledger-macOS-arm64.zip` -- the Xcode command-line tools only; not built
   here, so not committed). As Koton for Windows, **the Onyx sources unchanged** -- `user/Apps/ledger`,
-  `user/Apps/letters` (it prints Ledger's documents from their templates), `user/wtk`, FreeType -- over the
+  `user/Apps/letters` (it prints Ledger's documents from their templates), `user/uikit`, FreeType -- over the
   kernel's ABI table on macOS, in two halves: [`pc/macOS/hostkapi.cpp`](../pc/macOS/hostkapi.cpp) (POSIX:
   the table at `KAPI_TABLE_VA` by `mach_vm_allocate (VM_FLAGS_FIXED)` -- taken only if free --, files,
   time, threads, `wait_word`, processes, arguments) and [`pc/macOS/cocoa.mm`](../pc/macOS/cocoa.mm) (an
@@ -3307,7 +3313,7 @@ barwidth = 40
   folder shown by `open` (Numbers / Excel, the Finder). **Keys**: Cmd+letter is the Onyx Ctrl+letter
   (the real Ctrl too), Cmd+Left / Right Home / End, Cmd+Up / Down Ctrl+Home / End (each event carries
   its modifiers: `get_modifiers` answers the event's while it is handled), Option is Alt, the text
-  through `NSTextInputClient` (dead keys). One thing in the shared sources exists for it: wtk's file
+  through `NSTextInputClient` (dead keys). One thing in the shared sources exists for it: uikit's file
   dialog lists `SD:`, `HOME:`, `MAC:` on `__APPLE__`. Checked on Linux by **`sh pc/macOS/check.sh`**:
   the same `hostkapi.cpp` under Ledger and Letters with a screen-less half (`pc/macOS/headless.cpp`,
   a script of events, the window written as a picture) -- the demo company opened from the bundle's
@@ -3501,7 +3507,7 @@ synchronized between `kernel/include/kern/gui/window.h` and the `#define`s in `u
 - **Kernel (C++)**: Circle style. `CXxx` classes, `m_Xxx` members, CamelCase methods,
   `boolean`/`TRUE`/`FALSE` and Circle's `u8/u16/u32/u64` types. No exceptions or RTTI.
   `new`/`delete` go through Circle's heap.
-- **Userland**: the apps are C++ on wtk (freestanding subset, §8 *Dynamic memory + C++
+- **Userland**: the apps are C++ on uikit (freestanding subset, §8 *Dynamic memory + C++
   apps*; newlib for the big ones), the `/bin` tools freestanding C. `ax_` prefix for the
   `applib.h` helpers. Globals `g_xxx`. New code carries the MIT notice (docs/LICENSING.md).
 - **kapi**: `extern "C"` functions named `kapi_xxx` on the kernel side; inline wrappers
@@ -3579,7 +3585,7 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   creationWidth)`. To offer several sizes, create the window at the largest one (the
   emulators: their 4x zoom). Adopting with pitch = the new width gave a doubled, interlaced
   picture in `gbemu` at zoom 2x. The window's **frame follows the new size**: call
-  `wtk::wk_decorate_window ()` after the resize so the title bar and borders are redrawn
+  `uikit::uk_decorate_window ()` after the resize so the title bar and borders are redrawn
   at it (else the frame keeps the old drawing).
 - **`kapi_mkdir` / `kapi_remove` / `kapi_rename` return 0 on success** (-1 on failure),
   like POSIX — not a boolean. Test `== 0` for success (a `!kapi_rename (…)` "failure"

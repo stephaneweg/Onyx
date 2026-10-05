@@ -897,7 +897,7 @@ void engine_command (const char *name)
 
 // ---- input ---------------------------------------------------------------------------------------------
 
-static uint32_t wk_mods (unsigned m)
+static uint32_t uk_mods (unsigned m)
 {
 	uint32_t r = 0;
 	if (m & MOD_SHIFT) r |= kWKEventModifiersShiftKey;
@@ -920,7 +920,7 @@ void engine_mouse (int x, int y, int buttons, int changed, unsigned mods)
 		| ((buttons & 4) ? kWKEventMouseButtonsMiddle : 0);
 	s_buttons = buttons;
 	WKPoint p = WKPointMake (x, y);
-	WKPageHandleMouseEvent (s_page, WKMouseEventMake (type, button, held, p, p, 0, wk_mods (mods)));
+	WKPageHandleMouseEvent (s_page, WKMouseEventMake (type, button, held, p, p, 0, uk_mods (mods)));
 }
 
 void engine_mouse_leave ()
@@ -932,7 +932,7 @@ void engine_wheel (int x, int y, int notches, unsigned mods)
 {
 	if (!s_page || !notches) return;
 	WKPoint p = WKPointMake (x, y);
-	WKWheelEvent e = WKWheelEventMake (p, p, WKSizeMake (0, notches * 40.0 * 3), WKSizeMake (0, notches), wk_mods (mods));
+	WKWheelEvent e = WKWheelEventMake (p, p, WKSizeMake (0, notches * 40.0 * 3), WKSizeMake (0, notches), uk_mods (mods));
 	WKPageHandleWheelEvent (s_page, e);
 }
 
@@ -987,7 +987,7 @@ void engine_key (long k, unsigned mods)
 	char text[8];
 	int vk = vk_of (k, mods, text);
 	if (!vk) return;
-	uint32_t m = wk_mods (mods);
+	uint32_t m = uk_mods (mods);
 	// A character typed with AltGr (@, #, {, the euro sign on a French or Belgian keyboard): the keymap
 	// has already made the character, and Alt (with or without Ctrl) is still held -- sent with those,
 	// WebKit takes it for a shortcut and types nothing. A character goes as itself.

@@ -3,7 +3,7 @@
 // interface every format implements (zip.h, and later 7z, tar, rar), files read at random and
 // written as a stream through the kapi, names in UTF-8, DOS dates. Plain C++ over newlib (malloc,
 // string.h) and the kapi file calls: the same code runs on the PC (the desktop simulator's kapi)
-// for the tests. No wtk here.
+// for the tests. No uikit here.
 //
 #ifndef _archiver_arc_h
 #define _archiver_arc_h

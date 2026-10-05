@@ -13,9 +13,9 @@
 //
 #include "kapi.h"
 #include "notify.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define NW		330
 #define NH		78
@@ -44,15 +44,15 @@ static unsigned now_ms (void) { return kapi_get_ticks () * 10; }
 static void draw (const Note &n)
 {
 	g_cv.clear (0xFF000000);
-	wk_paint_alpha (true);
-	wk_rbox (g_cv, 0, 0, NW, NH, 8, wk_tone (C_FIELD, 140), C_FIELD);
-	wk_rline (g_cv, 0, 0, NW, NH, 8, wk_tone (C_FACE, 70), 200);
-	wk_paint_alpha (false);
-	wk_rbox (g_cv, 7, 9, 4, NH - 18, 2, wk_tone (C_ACCENT, 150), wk_tone (C_ACCENT, 110));
-	wk_text_l (g_cv, 18, 8, g_fh, n.title, C_FIELD_TEXT, 2);
-	if (n.action[0]) { const char *h = "click: open"; wk_text_l (g_cv, NW - 12 - wk_tw (h), 8, g_fh, h, C_ACCENT); }
+	uk_paint_alpha (true);
+	uk_rbox (g_cv, 0, 0, NW, NH, 8, uk_tone (C_FIELD, 140), C_FIELD);
+	uk_rline (g_cv, 0, 0, NW, NH, 8, uk_tone (C_FACE, 70), 200);
+	uk_paint_alpha (false);
+	uk_rbox (g_cv, 7, 9, 4, NH - 18, 2, uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 110));
+	uk_text_l (g_cv, 18, 8, g_fh, n.title, C_FIELD_TEXT, 2);
+	if (n.action[0]) { const char *h = "click: open"; uk_text_l (g_cv, NW - 12 - uk_tw (h), 8, g_fh, h, C_ACCENT); }
 	// Word-wrap the text over up to 3 lines.
-	unsigned ink = wk_mix (C_FIELD, C_FIELD_TEXT, 190);
+	unsigned ink = uk_mix (C_FIELD, C_FIELD_TEXT, 190);
 	int maxc = (NW - 28) / g_fw, y = 10 + g_fh, lines = 0;
 	const char *p = n.text;
 	while (*p && lines < 3)
@@ -125,7 +125,7 @@ int main (void)
 					      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_SYSTEM | WIN_FLAG_ALPHA);
 	if (fb == 0) return 1;
 	g_cv.adopt (fb, NW, NH);
-	wtk::init ();					// the theme (the palette) and the font
+	uikit::init ();					// the theme (the palette) and the font
 	kapi_set_window_alpha (0);
 	kapi_set_pointer_handler (ptr);
 

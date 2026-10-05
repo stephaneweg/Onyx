@@ -21,7 +21,7 @@ using ss::ListPopup; using ss::PickBox; using ss::ColorPopup; using ss::ToolButt
 
 static const unsigned PANEL_C = 0xE2D8D1;	// the panes' face (the mock-ups')
 
-// UTF-8 (the deck's names) -> Latin-1 (wtk's text): four buffers in turn
+// UTF-8 (the deck's names) -> Latin-1 (uikit's text): four buffers in turn
 static const char *L1 (const char *s)
 {
 	static char buf[4][256]; static int k;
@@ -170,22 +170,22 @@ public:
 			if (q.head)
 			{
 				bool f = section_folded (s->section);
-				wk_glyph (canvas, f ? WKG_CHEV_RIGHT : WKG_CHEV_DOWN, 13, y + q.h / 2, 7, 0x786C64);
-				wk_text_l (canvas, 22, y, q.h, L1 (s->section), 0x5A504A, 1);
+				uk_glyph (canvas, f ? WKG_CHEV_RIGHT : WKG_CHEV_DOWN, 13, y + q.h / 2, 7, 0x786C64);
+				uk_text_l (canvas, 22, y, q.h, L1 (s->section), 0x5A504A, 1);
 				continue;
 			}
 			int x = 30;
 			bool cur = q.slide == g_cur;
-			if (cur) wk_rbox (canvas, x - 5, y - 4, W + 10, H + 8, 5, HANDLE_C, HANDLE_C);
-			else if (q.slide == m_hot) wk_rbox (canvas, x - 5, y - 4, W + 10, H + 8, 5, wk_mix (PANEL_C, HANDLE_C, 70), wk_mix (PANEL_C, HANDLE_C, 70));
+			if (cur) uk_rbox (canvas, x - 5, y - 4, W + 10, H + 8, 5, HANDLE_C, HANDLE_C);
+			else if (q.slide == m_hot) uk_rbox (canvas, x - 5, y - 4, W + 10, H + 8, 5, uk_mix (PANEL_C, HANDLE_C, 70), uk_mix (PANEL_C, HANDLE_C, 70));
 			thumb_blit (canvas, q.slide, x, y, W, H);
-			canvas.frameRect (x - 1, y - 1, W + 2, H + 2, wk_mix (PANEL_C, 0, 90));
-			if (s->hidden) { for (int j = 0; j < H; j++) for (int i = 0; i < W; i++) { unsigned &p = canvas.px[(long) (y + j) * canvas.stride + x + i]; if (y + j >= 0 && y + j < canvas.h) p = wk_mix (p, PANEL_C, 150); } }
+			canvas.frameRect (x - 1, y - 1, W + 2, H + 2, uk_mix (PANEL_C, 0, 90));
+			if (s->hidden) { for (int j = 0; j < H; j++) for (int i = 0; i < W; i++) { unsigned &p = canvas.px[(long) (y + j) * canvas.stride + x + i]; if (y + j >= 0 && y + j < canvas.h) p = uk_mix (p, PANEL_C, 150); } }
 			char n[8]; snprintf (n, sizeof n, "%d", q.slide + 1);
-			int nw = wk_text_w (n);
-			wk_text_l (canvas, 24 - nw, y, 18, n, cur ? HANDLE_C : 0x786C64, cur ? 1 : 0);
+			int nw = uk_text_w (n);
+			uk_text_l (canvas, 24 - nw, y, 18, n, cur ? HANDLE_C : 0x786C64, cur ? 1 : 0);
 			if (s->hidden) { canvas.fillRect (24 - nw - 2, y + 9, nw + 4, 1, 0x786C64); }
-			if (s->anim.n) wk_glyph (canvas, WKG_DOT, 16, y + 30, 6, 0x9A8C80);
+			if (s->anim.n) uk_glyph (canvas, WKG_DOT, 16, y + 30, 6, 0x9A8C80);
 		}
 		// the drop place
 		if (m_dragFrom >= 0 && m_dropAt >= 0)
@@ -193,11 +193,11 @@ public:
 			int y = -1;
 			for (int k = 0; k < r.n; k++) if (!r[k].head && r[k].slide == m_dropAt) y = r[k].y - m_top - 6;
 			if (m_dropAt >= g_deck.slides.n && r.n) y = r[r.n - 1].y + r[r.n - 1].h - m_top - 6;
-			if (y >= 0) wk_rbox (canvas, 20, y - 1, W + 16, 4, 2, HANDLE_C, HANDLE_C);
+			if (y >= 0) uk_rbox (canvas, 20, y - 1, W + 16, 4, 2, HANDLE_C, HANDLE_C);
 		}
 		// the scroll bar
-		if (m_total > height) { WkThumb t = wk_thumb (m_total, height, m_top, height - 8); wk_draw_vscroll (canvas, width - WK_SBW - 2, 4, WK_SBW, height - 8, t, PANEL_C); }
-		wk_etch_v (canvas, width - 1, 0, height, PANEL_C);
+		if (m_total > height) { UkThumb t = uk_thumb (m_total, height, m_top, height - 8); uk_draw_vscroll (canvas, width - UK_SBW - 2, 4, UK_SBW, height - 8, t, PANEL_C); }
+		uk_etch_v (canvas, width - 1, 0, height, PANEL_C);
 	}
 	int row_at (int my, bool *head)
 	{
@@ -208,7 +208,7 @@ public:
 	bool onMouse (int mx, int my, int bl, int br, int, int wheel) override
 	{
 		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
-		if (m_bar.mouse (in ? mx : -1, my, bl, width - WK_SBW - 2, WK_SBW, 4, height - 8, m_total, height, &m_top)) { invalidate (true); return true; }
+		if (m_bar.mouse (in ? mx : -1, my, bl, width - UK_SBW - 2, UK_SBW, 4, height - 8, m_total, height, &m_top)) { invalidate (true); return true; }
 		if (wheel && in) { m_top = imax (0, imin (m_total - height, m_top - wheel * 60)); invalidate (true); return true; }
 		bool head; int i = in ? row_at (my, &head) : -1;
 		int hot = in && !head ? i : -1;
@@ -279,7 +279,7 @@ public:
 		invalidate (true);
 	}
 	long m_top; int m_total = 0, m_dragFrom, m_dropAt, m_y0 = 0; bool m_down, m_rdown = false; int m_hot;
-	WkBarDrag m_bar;
+	UkBarDrag m_bar;
 };
 
 // ---- the slide sorter --------------------------------------------------------------------------------------------
@@ -321,13 +321,13 @@ public:
 		for (int k = 0; k < hd.n; k++)
 		{
 			int y = hd[k].y - (int) m_top; Slide *s = g_deck.slides[hd[k].slide];
-			wk_glyph (canvas, WKG_CHEV_DOWN, 18, y + 9, 7, 0x786C64);
-			wk_text_l (canvas, 30, y, 18, L1 (s->section), 0x2A2420, 1);
+			uk_glyph (canvas, WKG_CHEV_DOWN, 18, y + 9, 7, 0x786C64);
+			uk_text_l (canvas, 30, y, 18, L1 (s->section), 0x2A2420, 1);
 			int n = 0; for (int i = hd[k].slide; i < g_deck.slides.n; i++) { if (i > hd[k].slide && g_deck.slides[i]->section[0]) break; n++; }
 			char t[24]; snprintf (t, sizeof t, "%d slide%s", n, n == 1 ? "" : "s");
-			int x = 30 + wk_text_w (L1 (s->section), 1) + 10;
-			wk_text_l (canvas, x, y, 18, t, 0x786C64);
-			canvas.fillRect (x + wk_text_w (t) + 12, y + 9, width - 30 - (x + wk_text_w (t) + 12), 1, 0xC8BCB2);
+			int x = 30 + uk_text_w (L1 (s->section), 1) + 10;
+			uk_text_l (canvas, x, y, 18, t, 0x786C64);
+			canvas.fillRect (x + uk_text_w (t) + 12, y + 9, width - 30 - (x + uk_text_w (t) + 12), 1, 0xC8BCB2);
 		}
 		for (int k = 0; k < c.n; k++)
 		{
@@ -335,26 +335,26 @@ public:
 			if (y + H + 30 < 0 || y > height) continue;
 			Slide *s = g_deck.slides[i];
 			bool sel = g_sorterSel.find (i) >= 0 || i == g_cur;
-			if (sel) wk_rbox (canvas, x - 5, y - 5, W + 10, H + 10, 6, i == g_cur ? HANDLE_C : wk_mix (bgColor (), HANDLE_C, 140), i == g_cur ? HANDLE_C : wk_mix (bgColor (), HANDLE_C, 140));
+			if (sel) uk_rbox (canvas, x - 5, y - 5, W + 10, H + 10, 6, i == g_cur ? HANDLE_C : uk_mix (bgColor (), HANDLE_C, 140), i == g_cur ? HANDLE_C : uk_mix (bgColor (), HANDLE_C, 140));
 			thumb_blit (canvas, i, x, y, W, H);
 			canvas.frameRect (x - 1, y - 1, W + 2, H + 2, 0xB8ACA4);
-			if (s->hidden) for (int j = 0; j < H; j++) for (int q = 0; q < W; q++) { int yy = y + j; if (yy >= 0 && yy < canvas.h) { unsigned &p = canvas.px[(long) yy * canvas.stride + x + q]; p = wk_mix (p, bgColor (), 140); } }
+			if (s->hidden) for (int j = 0; j < H; j++) for (int q = 0; q < W; q++) { int yy = y + j; if (yy >= 0 && yy < canvas.h) { unsigned &p = canvas.px[(long) yy * canvas.stride + x + q]; p = uk_mix (p, bgColor (), 140); } }
 			char n[8]; snprintf (n, sizeof n, "%d", i + 1);
-			wk_text_l (canvas, x, y + H + 4, 18, n, sel ? HANDLE_C : 0x2A2420, 1);
+			uk_text_l (canvas, x, y + H + 4, 18, n, sel ? HANDLE_C : 0x2A2420, 1);
 			char t[48]; snprintf (t, sizeof t, "%s", TR_NAMES[(int) s->tr.type]);
-			wk_text_l (canvas, x + 22, y + H + 4, 18, t, 0x786C64);
+			uk_text_l (canvas, x + 22, y + H + 4, 18, t, 0x786C64);
 			char r[32] = "";
 			if (s->tr.after >= 0) snprintf (r, sizeof r, "%d:%02d", s->tr.after / 60000, s->tr.after / 1000 % 60);
 			else if (s->anim.n) snprintf (r, sizeof r, "%d effect%s", s->anim.n, s->anim.n == 1 ? "" : "s");
-			if (r[0]) wk_text_l (canvas, x + W - wk_text_w (r), y + H + 4, 18, r, 0x786C64);
-			if (s->hidden) { wk_rbox (canvas, x + W - 64, y + 6, 58, 18, 9, 0x303030, 0x303030); wk_text_c (canvas, x + W - 64, y + 6, 58, 18, "hidden", 0xFFFFFF, 1); }
+			if (r[0]) uk_text_l (canvas, x + W - uk_text_w (r), y + H + 4, 18, r, 0x786C64);
+			if (s->hidden) { uk_rbox (canvas, x + W - 64, y + 6, 58, 18, 9, 0x303030, 0x303030); uk_text_c (canvas, x + W - 64, y + 6, 58, 18, "hidden", 0xFFFFFF, 1); }
 		}
 		if (m_drag >= 0 && m_drop >= 0)
 		{
-			for (int k = 0; k < c.n; k++) if (c[k].slide == m_drop) wk_rbox (canvas, c[k].x - 13, c[k].y - (int) m_top, 4, H, 2, HANDLE_C, HANDLE_C);
-			if (m_drop >= g_deck.slides.n && c.n) wk_rbox (canvas, c[c.n - 1].x + W + 9, c[c.n - 1].y - (int) m_top, 4, H, 2, HANDLE_C, HANDLE_C);
+			for (int k = 0; k < c.n; k++) if (c[k].slide == m_drop) uk_rbox (canvas, c[k].x - 13, c[k].y - (int) m_top, 4, H, 2, HANDLE_C, HANDLE_C);
+			if (m_drop >= g_deck.slides.n && c.n) uk_rbox (canvas, c[c.n - 1].x + W + 9, c[c.n - 1].y - (int) m_top, 4, H, 2, HANDLE_C, HANDLE_C);
 		}
-		if (m_total > height) { WkThumb t = wk_thumb (m_total, height, m_top, height - 8); wk_draw_vscroll (canvas, width - WK_SBW - 2, 4, WK_SBW, height - 8, t, bgColor ()); }
+		if (m_total > height) { UkThumb t = uk_thumb (m_total, height, m_top, height - 8); uk_draw_vscroll (canvas, width - UK_SBW - 2, 4, UK_SBW, height - 8, t, bgColor ()); }
 	}
 	int at (int mx, int my)
 	{
@@ -365,7 +365,7 @@ public:
 	bool onMouse (int mx, int my, int bl, int br, int, int wheel) override
 	{
 		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
-		if (m_bar.mouse (in ? mx : -1, my, bl, width - WK_SBW - 2, WK_SBW, 4, height - 8, m_total, height, &m_top)) { invalidate (true); return true; }
+		if (m_bar.mouse (in ? mx : -1, my, bl, width - UK_SBW - 2, UK_SBW, 4, height - 8, m_total, height, &m_top)) { invalidate (true); return true; }
 		if (wheel && in) { m_top = imax (0, imin (m_total - height, (int) m_top - wheel * 80)); invalidate (true); return true; }
 		if (br && in && !m_rdown) { m_rdown = true; int i = at (mx, my); if (i >= 0 && g_sorterSel.find (i) < 0) { g_sorterSel.clear (); go_slide (i); } if (g_onSlideMenu) { int ax = mx, ay = my; for (Widget *w = this; w && w->parent; w = w->parent) { ax += w->left; ay += w->top; } g_onSlideMenu (ax, ay); } invalidate (true); return true; }
 		if (!br) m_rdown = false;
@@ -447,7 +447,7 @@ public:
 		return false;
 	}
 	long m_top; int m_total = 0; bool m_down, m_rdown = false; int m_drag, m_drop, m_x0 = 0, m_y0 = 0; unsigned m_lastT;
-	WkBarDrag m_bar;
+	UkBarDrag m_bar;
 };
 
 // ---- the notes ----------------------------------------------------------------------------------------------------
@@ -466,8 +466,8 @@ public:
 	{
 		canvas.clear (0xFFFFFF);
 		canvas.fillRect (0, 0, width, 1, 0xC8BCB2);
-		wk_rbox (canvas, width / 2 - 16, 3, 32, 3, 1, 0xC8BCB2, 0xC8BCB2);
-		wk_text_l (canvas, 10, 2, 16, "Notes", 0x8A7C72);
+		uk_rbox (canvas, width / 2 - 16, 3, 32, 3, 1, 0xC8BCB2, 0xC8BCB2);
+		uk_text_l (canvas, 10, 2, 16, "Notes", 0x8A7C72);
 	}
 	// the slide's notes shown (another slide), or the typed text kept in it
 	void sync ()
@@ -477,7 +477,7 @@ public:
 		{
 			m_slide = g_cur; m_cur = s;
 			Buf t; s->notes.text_utf8 (t);
-			// (wtk's text is Latin-1: the others made near)
+			// (uikit's text is Latin-1: the others made near)
 			Buf l; const char *u = t.str ();
 			for (int i = 0; i < t.n; ) { int k; unsigned c = ss::u8_dec (u + i, t.n - i, &k); i += k > 0 ? k : 1;
 				if (c < 256) l.put ((char) c); else if (c == 0x2014 || c == 0x2013 || c == 0x2212) l.put ('-'); else if (c == 0x201C || c == 0x201D) l.put ('"');
@@ -513,30 +513,30 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		wk_etch_h (canvas, 0, 0, width, C_BG);
-		wk_text_l (canvas, 10, 1, height - 1, text, C_TEXT);
+		uk_etch_h (canvas, 0, 0, width, C_BG);
+		uk_text_l (canvas, 10, 1, height - 1, text, C_TEXT);
 		int x = width - 10;
 		char z[8]; snprintf (z, sizeof z, "%d%%", zoom);
-		x -= 14; wk_text_c (canvas, x, 1, 14, height - 1, "+", C_TEXT, 1); m_plus = x;
-		x -= wk_text_w (z) + 8; wk_text_l (canvas, x, 1, height - 1, z, C_TEXT); m_zoomX = x;
-		x -= 18; wk_text_c (canvas, x, 1, 14, height - 1, "-", C_TEXT, 1); m_minus = x;
+		x -= 14; uk_text_c (canvas, x, 1, 14, height - 1, "+", C_TEXT, 1); m_plus = x;
+		x -= uk_text_w (z) + 8; uk_text_l (canvas, x, 1, height - 1, z, C_TEXT); m_zoomX = x;
+		x -= 18; uk_text_c (canvas, x, 1, 14, height - 1, "-", C_TEXT, 1); m_minus = x;
 		x -= 14;
 		// the views: normal, sorter, show
 		for (int v = 2; v >= 0; v--)
 		{
 			x -= 26; m_viewX[v] = x;
 			bool on = (v == 0 && g_viewMode == VIEW_NORMAL) || (v == 1 && g_viewMode == VIEW_SORTER);
-			if (on) wk_rbox (canvas, x, 3, 24, height - 6, 4, wk_mix (C_BG, C_ACCENT, 70), wk_mix (C_BG, C_ACCENT, 70));
+			if (on) uk_rbox (canvas, x, 3, 24, height - 6, 4, uk_mix (C_BG, C_ACCENT, 70), uk_mix (C_BG, C_ACCENT, 70));
 			unsigned ink = C_TEXT; int cx = x + 4, cy = 6;
 			if (v == 0) { canvas.frameRect (cx, cy, 16, 12, ink); canvas.fillRect (cx, cy, 4, 12, ink); }
 			else if (v == 1) { for (int i = 0; i < 2; i++) for (int j = 0; j < 2; j++) canvas.fillRect (cx + i * 9, cy + j * 7, 7, 5, ink); }
 			else { canvas.frameRect (cx, cy, 16, 12, ink); VPath p; int t[6] = { V (cx + 6), V (cy + 3), V (cx + 11), V (cy + 6), V (cx + 6), V (cy + 9) }; p.poly (t, 3); p.fill (canvas, ink); }
 		}
-		x -= 12; wk_etch_v (canvas, x, 4, height - 8, C_BG);
+		x -= 12; uk_etch_v (canvas, x, 4, height - 8, C_BG);
 		x -= 70; m_notesX = x;
-		if (g_showNotes && g_viewMode == VIEW_NORMAL) wk_rbox (canvas, x, 3, 66, height - 6, 4, wk_mix (C_BG, C_ACCENT, 70), wk_mix (C_BG, C_ACCENT, 70));
+		if (g_showNotes && g_viewMode == VIEW_NORMAL) uk_rbox (canvas, x, 3, 66, height - 6, 4, uk_mix (C_BG, C_ACCENT, 70), uk_mix (C_BG, C_ACCENT, 70));
 		canvas.frameRect (x + 6, 7, 12, 11, C_TEXT); for (int k = 0; k < 3; k++) canvas.fillRect (x + 8, 9 + k * 3, 8, 1, C_TEXT);
-		wk_text_l (canvas, x + 24, 1, height - 1, "Notes", C_TEXT);
+		uk_text_l (canvas, x + 24, 1, height - 1, "Notes", C_TEXT);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{

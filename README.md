@@ -99,7 +99,7 @@ In [`docs/`](docs/README.md), in English (Word / PDF exports in `docs/exports/`,
 |---|---|
 | [01 — Project Overview](docs/01-PROJECT-OVERVIEW.md) | what Onyx is, the architecture, the execution model, the cores |
 | [02 — Kernel Internals](docs/02-KERNEL-INTERNALS.md) | boot, memory, scheduling, exceptions and system calls, the kapi ABI, GUI, network, sound, app cores, GPU |
-| [03 — Developer Guide](docs/03-DEVELOPER-GUIDE.md) | build, the app model, wtk, writing apps and tools, extending the ABI, debugging |
+| [03 — Developer Guide](docs/03-DEVELOPER-GUIDE.md) | build, the app model, uikit, writing apps and tools, extending the ABI, debugging |
 | [04 — User Guide](docs/04-USER-GUIDE.md) | the card, the boot options, the desktop, the terminal, every app and tool |
 | [05 — Circle Changes](docs/05-CIRCLE-CHANGES.md) | the patches of our Circle fork |
 | [08 — Jet Browser, the WebKit port](docs/08-WEBKIT-PORT.md) | the browser |

@@ -14,9 +14,9 @@
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see LICENSE).
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
-#include "wtk/paint.h"
-#include "wtk/toolbar.h"
+#include "uikit/uikit.h"
+#include "uikit/paint.h"
+#include "uikit/toolbar.h"
 #include "clipboard.h"
 #include <fcntl.h>
 #include <stdio.h>
@@ -26,7 +26,7 @@
 #include <unistd.h>
 #include <vector>
 
-using namespace wtk;
+using namespace uikit;
 
 namespace {
 
@@ -56,7 +56,7 @@ Lines *g_lines;
 Scrollbar *g_bar;
 Label *g_count;
 
-int row_h () { return wk_fh () + 4; }
+int row_h () { return uk_fh () + 4; }
 
 // The text's part from `start` that fits `w` pixels: cut at a space when there is one.
 int fit (const std::string &s, int start, int w)
@@ -70,7 +70,7 @@ int fit (const std::string &s, int start, int w)
 	int lo = 1, hi = eol < (int) sizeof buf - 1 ? eol : (int) sizeof buf - 1, best = 1;
 	if (hi < 1) return 0;
 	memcpy (buf, s.data () + start, (size_t) hi); buf[hi] = 0;
-	if (wk_text_w (buf) <= w) return hi;
+	if (uk_text_w (buf) <= w) return hi;
 	while (lo <= hi)
 	{
 		int mid = (lo + hi) / 2;
@@ -78,7 +78,7 @@ int fit (const std::string &s, int start, int w)
 		int cut = mid;
 		while (cut > 1 && ((unsigned char) s[(size_t) (start + cut)] & 0xC0) == 0x80) cut--;
 		memcpy (buf, s.data () + start, (size_t) cut); buf[cut] = 0;
-		if (wk_text_w (buf) <= w) { best = cut; lo = mid + 1; } else hi = mid - 1;
+		if (uk_text_w (buf) <= w) { best = cut; lo = mid + 1; } else hi = mid - 1;
 	}
 	for (int i = best; i > best / 2; i--)
 		if (s[(size_t) (start + i)] == ' ') return i + 1;
@@ -101,7 +101,7 @@ public:
 			int start = 0, n = (int) m.text.size ();
 			bool first = true;
 			// (the first row leaves room for the place, at the right)
-			int placeW = m.where.empty () ? 0 : wk_text_w (m.where.c_str ()) + 16;
+			int placeW = m.where.empty () ? 0 : uk_text_w (m.where.c_str ()) + 16;
 			do
 			{
 				int w = textW () - (first && placeW < textW () / 2 ? placeW : 0);
@@ -130,7 +130,7 @@ public:
 		layout_rows ();
 		canvas.clear (C_FIELD);
 		int rh = row_h ();
-		if (g_msgs.empty ()) { wk_text_c (canvas, 0, 0, width, height, "The page's console is empty", C_DIS); return; }
+		if (g_msgs.empty ()) { uk_text_c (canvas, 0, 0, width, height, "The page's console is empty", C_DIS); return; }
 		for (int i = 0; i < visible () + 1 && g_top + i < (int) g_rows.size (); i++)
 		{
 			const Row &r = g_rows[(size_t) (g_top + i)];
@@ -149,11 +149,11 @@ public:
 			int n = r.len < (int) sizeof buf - 1 ? r.len : (int) sizeof buf - 1;
 			memcpy (buf, m.text.data () + r.start, (size_t) n); buf[n] = 0;
 			for (int k = 0; k < n; k++) if ((unsigned char) buf[k] < 32) buf[k] = ' ';	// (tabs...)
-			wk_text_l (canvas, PAD, y, rh, buf, ink);
+			uk_text_l (canvas, PAD, y, rh, buf, ink);
 			if (r.first && !m.where.empty ())
 			{
-				int ww = wk_text_w (m.where.c_str ());
-				if (ww + 16 < textW () / 2) wk_text_l (canvas, width - PAD - ww, y, rh, m.where.c_str (), tint ? ink : C_DIS);
+				int ww = uk_text_w (m.where.c_str ());
+				if (ww + 16 < textW () / 2) uk_text_l (canvas, width - PAD - ww, y, rh, m.where.c_str (), tint ? ink : C_DIS);
 			}
 		}
 	}

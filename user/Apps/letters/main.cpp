@@ -24,7 +24,7 @@
 // JOB" makes a mail merge's documents (Cardfile asks it: merge.h). Closed with unsaved changes, the
 // document is kept in SD:/apps/letters.app/recovered.rtf and offered back at the next start.
 //
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "docguard.h"
 #include "ft/fonts.h"
 #include "ui.h"
@@ -34,7 +34,7 @@
 #include "dialogs.h"
 #include "merge.h"
 
-using namespace wtk;
+using namespace uikit;
 using namespace wr;
 
 #define W 1000
@@ -108,10 +108,10 @@ static bool read_file (const char *path, char **out, int *len)
 static bool load_path (const char *path)
 {
 	char *b; int n;
-	if (!read_file (path, &b, &n)) { wk_messagebox ("Open", "The file could not be read.", MB_OK); return false; }
+	if (!read_file (path, &b, &n)) { uk_messagebox ("Open", "The file could not be read.", MB_OK); return false; }
 	bool ok = doc_from_bytes (g_doc, b, n);
 	delete[] b;
-	if (!ok) { doc_new (g_doc); wk_messagebox ("Open", "The document could not be read.", MB_OK); }
+	if (!ok) { doc_new (g_doc); uk_messagebox ("Open", "The document could not be read.", MB_OK); }
 	if (g_doc.n == 0) doc_new (g_doc);
 	scpy (g_path, ok ? path : "", sizeof g_path);
 	doc_loaded ();
@@ -123,7 +123,7 @@ static bool write_path (const char *path, bool asCopy = false)
 	char *b = 0; unsigned n = 0;
 	bool ok = doc_bytes (g_doc, path, &b, &n) && kapi_save_file (path, b, n) >= 0;
 	delete[] b;
-	if (!ok) { wk_messagebox ("Save", "The file could not be written.", MB_OK); return false; }
+	if (!ok) { uk_messagebox ("Save", "The file could not be written.", MB_OK); return false; }
 	if (!asCopy) { scpy (g_path, path, sizeof g_path); g_saved = g_doc.changes; }
 	refresh ();
 	return true;
@@ -138,7 +138,7 @@ static void cmd_save ()
 		bool plain = g_doc.ntbl == 0;
 		CharFmt n0 = style_fmt (g_doc, ST_NORMAL);
 		for (int i = 0; i < g_doc.nfmt && plain; i++) { const CharFmt &f = g_doc.fmt[i]; if (f.flags || f.color != AUTO || f.hilite != AUTO || (f.font != n0.font && f.size != n0.size)) plain = false; }
-		if (!plain && wk_messagebox ("Save", "Plain text keeps no formats (bold, fonts, colours, tables...). Save as text anyway?", MB_YESNO) != 1) { cmd_save_as (); return; }
+		if (!plain && uk_messagebox ("Save", "Plain text keeps no formats (bold, fonts, colours, tables...). Save as text anyway?", MB_YESNO) != 1) { cmd_save_as (); return; }
 	}
 	write_path (g_path);
 	focus_view ();
@@ -154,7 +154,7 @@ static void cmd_save_as ()
 		if (n > 0) def[n - 1] = 0;
 		int k = slen (def); scpy (def + k, ".rtf", (int) sizeof def - k);
 	}
-	if (wk_file_save (path, sizeof path, "SD:/docs", def))
+	if (uk_file_save (path, sizeof path, "SD:/docs", def))
 	{
 		if (!rich_ext (path) && !has_ext (path, ".txt")) { int k = slen (path); scpy (path + k, ".rtf", (int) sizeof path - k); }
 		write_path (path);
@@ -174,7 +174,7 @@ static void cmd_open ()
 {
 	if (!doc_confirm (g_path[0] ? base_name (g_path) : "Untitled", changed_doc (), save_for_guard)) { focus_view (); return; }
 	char path[200];
-	if (wk_file_open (path, sizeof path, "SD:/docs")) load_path (path);
+	if (uk_file_open (path, sizeof path, "SD:/docs")) load_path (path);
 	focus_view ();
 }
 static void cmd_export (const char *ext)
@@ -184,7 +184,7 @@ static void cmd_export (const char *ext)
 	int n = slen (def); int dot = n; while (dot > 0 && def[dot - 1] != '.') dot--;
 	if (dot > 0) def[dot - 1] = 0;
 	n = slen (def); scpy (def + n, ext, (int) sizeof def - n);
-	if (wk_file_save (path, sizeof path, "SD:/docs", def))
+	if (uk_file_save (path, sizeof path, "SD:/docs", def))
 	{
 		if (!has_ext (path, ext)) { int k = slen (path); scpy (path + k, ext, (int) sizeof path - k); }
 		write_path (path, true);
@@ -227,11 +227,11 @@ public:
 		label (16, y + 4, "PAGES"); y += 26 + 96;
 		label (16, y + 4, "CONTENT"); y += 26 + 66;
 		label (16, y + 5, "Title"); label (16, y + 37, "Author");
-		canvas.text (16, height - 64, "The fonts are embedded: it looks the same everywhere.", wk_mix (C_FACE, C_TEXT, 150));
+		canvas.text (16, height - 64, "The fonts are embedded: it looks the same everywhere.", uk_mix (C_FACE, C_TEXT, 150));
 	}
 	void onButton (int tag) override
 	{
-		if (tag == 9) { char p[200]; if (wk_file_save (p, sizeof p, dir, file->text)) file->setText (p); return; }
+		if (tag == 9) { char p[200]; if (uk_file_save (p, sizeof p, dir, file->text)) file->setText (p); return; }
 		if (tag == 1)
 		{
 			o.pages = rAll->checked ? 0 : rCur->checked ? 1 : 2;
@@ -239,7 +239,7 @@ public:
 			{
 				int a = 0, b = 0; const char *t = range->text;
 				a = atoi (t); const char *d = strchr (t, '-'); b = d ? atoi (d + 1) : a;
-				if (a < 1 || b < a) { wk_messagebox ("Export as PDF", "Type the pages as \"2-5\" (or one page: \"3\").", MB_OK); return; }
+				if (a < 1 || b < a) { uk_messagebox ("Export as PDF", "Type the pages as \"2-5\" (or one page: \"3\").", MB_OK); return; }
 				o.from = a - 1; o.to = b - 1;
 			}
 			o.marks = cMarks->checked; o.jpeg = cJpeg->checked; o.open = cOpen->checked;
@@ -269,7 +269,7 @@ static void cmd_print ()
 	{ PrintWriter w (j); g_view->exportPages (w, 0, L.npages - 1); }
 	int id = print_end (j);
 	set_zoom (zoom); g_relayout = true; g_view->relayout (); g_view->invalidate (true);
-	if (id < 0) wk_messagebox ("Print", "The document could not be put in the print queue.", MB_OK);
+	if (id < 0) uk_messagebox ("Print", "The document could not be put in the print queue.", MB_OK);
 	focus_view ();
 }
 static void cmd_export_pdf ()
@@ -314,7 +314,7 @@ static void cmd_export_pdf ()
 	set_zoom (zoom); g_relayout = true; g_view->relayout (); g_view->invalidate (true);
 	int r = pdf ? kapi_save_file (path, pdf, len) : -1;
 	delete[] pdf;
-	if (r != (int) len) wk_messagebox ("Export as PDF", "The PDF could not be written there.", MB_OK);
+	if (r != (int) len) uk_messagebox ("Export as PDF", "The PDF could not be written there.", MB_OK);
 	else if (o.open) kapi_exec ("SD:apps/pdf.app/main", path);
 	focus_view ();
 }
@@ -381,9 +381,9 @@ static void cmd_page_break () { ed_page_break (); after_edit (); }
 static void cmd_image ()
 {
 	char path[200];
-	if (wk_file_open (path, sizeof path, "SD:/"))
+	if (uk_file_open (path, sizeof path, "SD:/"))
 	{
-		if (!ed_insert_image (path, g_doc.page.w - g_doc.page.left - g_doc.page.right)) wk_messagebox ("Insert Image", "That file is not an image Letters can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK);
+		if (!ed_insert_image (path, g_doc.page.w - g_doc.page.left - g_doc.page.right)) uk_messagebox ("Insert Image", "That file is not an image Letters can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK);
 	}
 	after_edit ();
 }
@@ -475,7 +475,7 @@ static const char *const STYLE_NAMES[ST_COUNT] = { "Normal", "Heading 1", "Headi
 static void text_in_font (Canvas &cv, int fam, int style, int size64, int x, int y, int w, int h, const char *s, unsigned ink)
 {
 	fnt::Font *f = fnt::get (fam, style, size64);
-	if (!f) { wk_text_l (cv, x, y, h, s, ink); return; }
+	if (!f) { uk_text_l (cv, x, y, h, s, ink); return; }
 	int base = y + (h + ((f->ascent - f->descent) >> 6)) / 2;
 	Canvas sub; sub.adopt (cv.px, x + w < cv.w ? x + w : cv.w, cv.h, cv.stride);	// (clipped at w)
 	fnt::draw_str (sub, f, x << 6, base, s, ink);
@@ -483,7 +483,7 @@ static void text_in_font (Canvas &cv, int fam, int style, int size64, int x, int
 static void style_value (Canvas &cv, int x, int y, int w, int h, unsigned ink)
 {
 	int st = g_doc.p[sel_a ().p]->pf.style;
-	wk_text_l (cv, x, y, h, STYLE_NAMES[st], ink);
+	uk_text_l (cv, x, y, h, STYLE_NAMES[st], ink);
 	(void) w;
 }
 static void style_row (Canvas &cv, int i, int x, int y, int w, int h, unsigned ink)
@@ -505,9 +505,9 @@ static void font_value (Canvas &cv, int x, int y, int w, int h, unsigned ink)
 {
 	CharFmt f = caret_fmt ();
 	char b[48]; scpy (b, g_doc.fontName[f.font], sizeof b);
-	int maxc = w / wk_fw ();
+	int maxc = w / uk_fw ();
 	if (slen (b) > maxc && maxc > 3) { b[maxc - 2] = '.'; b[maxc - 1] = '.'; b[maxc] = 0; }
-	wk_text_l (cv, x, y, h, b, ink);
+	uk_text_l (cv, x, y, h, b, ink);
 }
 static void font_row (Canvas &cv, int i, int x, int y, int w, int h, unsigned ink)
 {
@@ -533,11 +533,11 @@ static void zoom_value (Canvas &cv, int x, int y, int w, int h, unsigned ink)
 	while (v) { t[j++] = (char) ('0' + v % 10); v /= 10; }
 	while (j) z[n++] = t[--j];
 	z[n++] = '%'; z[n] = 0;
-	wk_text_l (cv, x, y, h, z, ink);
+	uk_text_l (cv, x, y, h, z, ink);
 	(void) w;
 }
 static const char *const ZOOM_ROWS[] = { "Page Width", "Whole Page", "25%", "50%", "75%", "100%", "125%", "150%", "200%", "300%", "400%" };
-static void zoom_row (Canvas &cv, int i, int x, int y, int, int h, unsigned ink) { wk_text_l (cv, x, y, h, ZOOM_ROWS[i], ink); }
+static void zoom_row (Canvas &cv, int i, int x, int y, int, int h, unsigned ink) { uk_text_l (cv, x, y, h, ZOOM_ROWS[i], ink); }
 static void pick_zoom (PickBox &b)
 {
 	int x, y; b.below (&x, &y);
@@ -708,10 +708,10 @@ int main (void)
 	g_now = now_hook;
 	WriterRoot root;
 	root.attach ();				// (a question asked before run (): its clicks and keys)
-	wtk::init ();
+	uikit::init ();
 	if (!fnt::init ())
 	{
-		wk_messagebox ("Letters", "No TrueType fonts in SD:/res/fonts: Letters cannot draw its pages.", MB_OK);
+		uk_messagebox ("Letters", "No TrueType fonts in SD:/res/fonts: Letters cannot draw its pages.", MB_OK);
 		return 1;
 	}
 	make_palettes ();
@@ -793,28 +793,28 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New", "^N", WK_CTRL ('N'), cmd_new);
-	menu.item ("Open...", "^O", WK_CTRL ('O'), cmd_open);
+	menu.item ("New", "^N", UK_CTRL ('N'), cmd_new);
+	menu.item ("Open...", "^O", UK_CTRL ('O'), cmd_open);
 	menu.separator ();
-	menu.item ("Save", "^S", WK_CTRL ('S'), cmd_save);
+	menu.item ("Save", "^S", UK_CTRL ('S'), cmd_save);
 	menu.item ("Save As...", "", 0, cmd_save_as);
 	menu.item ("Export as HTML...", "", 0, cmd_export_html);
 	menu.item ("Export as Text...", "", 0, cmd_export_txt);
 	menu.item ("Export as PDF...", "", 0, cmd_export_pdf);
 	menu.separator ();
 	menu.item ("Page Setup...", "", 0, cmd_page_setup);
-	menu.item ("Print...", "^P", WK_CTRL ('P'), cmd_print);
+	menu.item ("Print...", "^P", UK_CTRL ('P'), cmd_print);
 	menu.menu ("Edit");
-	menu.item ("Undo", "^Z", WK_CTRL ('Z'), cmd_undo);
-	menu.item ("Redo", "^Y", WK_CTRL ('Y'), cmd_redo);
+	menu.item ("Undo", "^Z", UK_CTRL ('Z'), cmd_undo);
+	menu.item ("Redo", "^Y", UK_CTRL ('Y'), cmd_redo);
 	menu.separator ();
-	menu.item ("Cut", "^X", WK_CTRL ('X'), cmd_cut);
-	menu.item ("Copy", "^C", WK_CTRL ('C'), cmd_copy);
-	menu.item ("Paste", "^V", WK_CTRL ('V'), cmd_paste);
+	menu.item ("Cut", "^X", UK_CTRL ('X'), cmd_cut);
+	menu.item ("Copy", "^C", UK_CTRL ('C'), cmd_copy);
+	menu.item ("Paste", "^V", UK_CTRL ('V'), cmd_paste);
 	menu.item ("Paste Unformatted", "", 0, cmd_paste_plain);
 	menu.separator ();
-	menu.item ("Select All", "^A", WK_CTRL ('A'), cmd_select_all);
-	menu.item ("Find and Replace...", "^F", WK_CTRL ('F'), cmd_find);
+	menu.item ("Select All", "^A", UK_CTRL ('A'), cmd_select_all);
+	menu.item ("Find and Replace...", "^F", UK_CTRL ('F'), cmd_find);
 	menu.menu ("View");
 	menu.item ("Actual Size (100%)", "", 0, cmd_zoom_100);
 	menu.item ("Page Width", "", 0, cmd_zoom_width);
@@ -834,22 +834,22 @@ int main (void)
 	menu.item ("Field...", "", 0, cmd_field);
 	menu.item ("Table of Contents", "", 0, cmd_toc);
 	menu.menu ("Format");
-	menu.item ("Font...", "^D", WK_CTRL ('D'), cmd_font_dialog);
+	menu.item ("Font...", "^D", UK_CTRL ('D'), cmd_font_dialog);
 	menu.item ("Paragraph...", "", 0, cmd_para_dialog);
 	menu.item ("Tabs...", "", 0, cmd_tabs);
 	menu.separator ();
-	menu.item ("Bold", "^B", WK_CTRL ('B'), cmd_bold);
+	menu.item ("Bold", "^B", UK_CTRL ('B'), cmd_bold);
 	menu.item ("Italic", "^I", 0, cmd_italic);
-	menu.item ("Underline", "^U", WK_CTRL ('U'), cmd_under);
+	menu.item ("Underline", "^U", UK_CTRL ('U'), cmd_under);
 	menu.item ("Strikethrough", "", 0, cmd_strike);
 	menu.item ("Superscript", "", 0, cmd_super);
 	menu.item ("Subscript", "", 0, cmd_sub);
 	menu.item ("Clear Formatting", "", 0, cmd_clear_format);
 	menu.separator ();
-	menu.item ("Align Left", "^L", WK_CTRL ('L'), cmd_left);
-	menu.item ("Centre", "^E", WK_CTRL ('E'), cmd_center);
-	menu.item ("Align Right", "^R", WK_CTRL ('R'), cmd_right);
-	menu.item ("Justify", "^J", WK_CTRL ('J'), cmd_justify);
+	menu.item ("Align Left", "^L", UK_CTRL ('L'), cmd_left);
+	menu.item ("Centre", "^E", UK_CTRL ('E'), cmd_center);
+	menu.item ("Align Right", "^R", UK_CTRL ('R'), cmd_right);
+	menu.item ("Justify", "^J", UK_CTRL ('J'), cmd_justify);
 	menu.separator ();
 	menu.item ("Bullets", "", 0, cmd_bullets);
 	menu.item ("Numbering", "", 0, cmd_numbers);
@@ -888,7 +888,7 @@ int main (void)
 		char *b; int n;
 		if (read_file (RECOVER, &b, &n))
 		{
-			if (n > 0 && rtf_is (b, n) && wk_messagebox ("Letters", "Letters was closed with unsaved changes. Open the recovered document?", MB_YESNO) == 1)
+			if (n > 0 && rtf_is (b, n) && uk_messagebox ("Letters", "Letters was closed with unsaved changes. Open the recovered document?", MB_YESNO) == 1)
 			{
 				rtf_load (g_doc, b, n);
 				if (g_doc.n == 0) doc_new (g_doc);

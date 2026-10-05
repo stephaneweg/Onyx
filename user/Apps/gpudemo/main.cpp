@@ -13,9 +13,9 @@
 //   T: textures on / off    Space: pause    the title bar line: frames a second, time of a frame
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 enum { WIN_W = 640, WIN_H = 480 };
 enum { NCUBES = 6, NSPARKS = 12 };

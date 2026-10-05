@@ -28,7 +28,7 @@ struct Pics : Pictures
 	}
 };
 
-static void save_ppm (const wtk::Canvas &cv, const char *path)
+static void save_ppm (const uikit::Canvas &cv, const char *path)
 {
 	FILE *f = fopen (path, "wb"); if (!f) return;
 	fprintf (f, "P6\n%d %d\n255\n", cv.w, cv.h);
@@ -42,7 +42,7 @@ static Html *render (const char *name, const char *src, int w, bool text = false
 	if (text) h->parse_text (src, (int) strlen (src)); else h->parse (src, (int) strlen (src));
 	h->layout (host, w - 32);
 	int H = h->height () + 32; if (H > 3000) H = 3000; if (H < 100) H = 100;
-	wtk::Canvas cv; cv.alloc (w, H); cv.clear (0xFFFFFFFF);
+	uikit::Canvas cv; cv.alloc (w, H); cv.clear (0xFFFFFFFF);
 	unsigned bg = h->background (); if (bg >> 24) cv.clear (bg);
 	host.cv = &cv;
 	h->paint (host, 16, 16, 0, 0, w, H);

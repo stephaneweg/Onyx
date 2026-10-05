@@ -54,7 +54,7 @@ public:
 	}
 	void onButton (int tag) override { close (tag); }
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } if (k == KEY_ENTER) { close (1); return true; } return false; }
-	void onDraw () override { drawBox (m_title); wk_text_l (canvas, 20, titleH () + 16, g_fh + 4, m_text, C_TEXT); }
+	void onDraw () override { drawBox (m_title); uk_text_l (canvas, 20, titleH () + 16, g_fh + 4, m_text, C_TEXT); }
 };
 static int choose (const char *title, const char *text, const char *a, const char *b)
 {
@@ -77,8 +77,8 @@ public:
 			int x = i * 34;
 			bool on = mask & (1 << i);
 			if (on) disc (canvas, x, 1, 28, C_ACCENT);
-			else { disc (canvas, x, 1, 28, wk_mix (C_FACE, C_TEXT, 70)); disc (canvas, x + 1, 2, 26, wk_mix (C_FACE, 0x00FFFFFF, 90)); }
-			wk_text_c (canvas, x, 1, 28, 28, L[i], on ? wk_ink_on (C_ACCENT) : C_TEXT, 2);
+			else { disc (canvas, x, 1, 28, uk_mix (C_FACE, C_TEXT, 70)); disc (canvas, x + 1, 2, 26, uk_mix (C_FACE, 0x00FFFFFF, 90)); }
+			uk_text_c (canvas, x, 1, 28, 28, L[i], on ? uk_ink_on (C_ACCENT) : C_TEXT, 2);
 		}
 	}
 	bool onMouse (int mx, int, int bl, int, int, int) override

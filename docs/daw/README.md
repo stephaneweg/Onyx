@@ -4,7 +4,7 @@
 > "in the manner of Koton Studio" (the user's own C#/WPF DAW, `github.com/stephaneweg/MusicTracker`),
 > **without the score view** at first; the same philosophy (one thinks in harmony, then adds chord,
 > rhythm and polyrhythm generators); sound and effect plugins as **separate processes over IPC**, the
-> way the Control Panel hosts its applets; a careful, "pro" interface made of wtk widgets, with the
+> way the Control Panel hosts its applets; a careful, "pro" interface made of uikit widgets, with the
 > big areas (the lanes, the grids) **drawn by hand in a canvas the size of the view**; JSON
 > everywhere (the save format, the settings, the exchange with Gemini); the extra core used; and
 > **no memory leaks**. Name: **Koton** (app folder `koton`, documents `.kson`; Koton's `.sq` open too).
@@ -18,7 +18,7 @@ The mock-ups are made by `python3 tools/screenshot/mockup_daw.py` → `docs/daw/
 | ![](mockups/daw-pianoroll.png) | **The piano roll, harmony-aware.** The chords above the roll; the rows of the scale lighter, the current chord's tones tinted in its function's colour, under each chord; "snap pitch: chord tones + scale"; the velocity lane; at the right the harmony at the cursor (the chord on a keyboard, the scale, where it resolves), transformations of the selection, the constraint chain (note filters, plugins). |
 | ![](mockups/daw-poly-ai.png) | **The polyrhythm editor and the AI dialog.** Three euclidean rings E(3,8), E(5,12), E(7,16), their table (hits, steps, rotation, sound, velocity), the "emergent melody" (the hits pitched from the chord track); over it the Compose-with-AI modal (the model, the piece, the intention, Generate / Copy the prompt / Paste a reply, the JSON behind). |
 
-The mock-ups are drawn with anti-aliased DejaVu (the `.aaf` fonts of `elegant.h`, see §5.3); wtk
+The mock-ups are drawn with anti-aliased DejaVu (the `.aaf` fonts of `elegant.h`, see §5.3); uikit
 today draws its text with bitmap fonts.
 
 ---
@@ -77,7 +77,7 @@ plugins, 6 k in MeltySynth (the vendored SF2 synth), 1.4 k in the plugin SDK, 8 
 | VST2/3 hosting | ~6 k | **no** (Windows only) — our IPC plugins instead |
 | Plugins (23 physical models, synths, effects, generators) | 36 k | a few easy ones first (§7.1), others over time |
 | Score view (Bravura), MuseScore/MusicXML, PDF | ~4 k | **no** (asked: no score at first) |
-| UI (WPF) | ~31 k | **rewrite** with wtk + hand-drawn canvases |
+| UI (WPF) | ~31 k | **rewrite** with uikit + hand-drawn canvases |
 | Live rack, updater, bug report, 8 languages | ~3 k | no |
 
 A minimum that plays and thinks in harmony: ~8 k C# of engine → ~7 k C++, plus ~9 k of UI.
@@ -88,14 +88,14 @@ A minimum that plays and thinks in harmony: ~8 k C# of engine → ~7 k C++, plus
 
 | Need | In Onyx today | Gap |
 |---|---|---|
-| Windows, widgets | wtk: Button, Dropdown, Combobox, Textbox, Slider, NumericUpDown, ListBox, TreeView, DataGrid, TabHost, splitters, stack/grid layouts, Checkbox, ToggleSwitch, dialogs (Modal, FileDialog, MessageBox), the global menu bar (`Menu`), tooltips, drag and drop | a **Knob**, a **VU meter**, a **segmented control**, a **toolbar** (exists only inside Letters / the spreadsheet), an LCD label; a zoomable time view helper |
+| Windows, widgets | uikit: Button, Dropdown, Combobox, Textbox, Slider, NumericUpDown, ListBox, TreeView, DataGrid, TabHost, splitters, stack/grid layouts, Checkbox, ToggleSwitch, dialogs (Modal, FileDialog, MessageBox), the global menu bar (`Menu`), tooltips, drag and drop | a **Knob**, a **VU meter**, a **segmented control**, a **toolbar** (exists only inside Letters / the spreadsheet), an LCD label; a zoomable time view helper |
 | Hand-drawn areas | `Widget::onDraw` into its `Canvas` (0x00RRGGBB), `paint.h` (blend, rounded boxes, gradients), `vpaint.h` (anti-aliased paths, arcs — a knob's base) | nothing blocking; the lane / grid canvases are ours to write |
 | Text | bitmap `.fnt` fonts (8 × 16 kernel font, 4 styles); FreeType only in Letters / the spreadsheet | anti-aliased UI text for the "pro" look (§5.3) |
 | Sound out | `kapi_sound_acquire / write / status`, 44.1 kHz s16 stereo, a 0.5 s ring, **core 1** renders the kernel side, 1024-frame chunks, 4 ahead (≈ 90–115 ms) | low latency; one owner at a time; the 3.5 mm PWM jack only (≈ 11-bit, hiss) |
 | Sound in, MIDI | — | **USB MIDI** (keyboards); audio input later |
 | Threads, cores | `kapi_thread_*` (v67; all threads on core 0, preemptive), mutex / event / barrier, `kapi_post`; **app cores** (`kapi_core_acquire / run`, v51): code with no kapi call and no malloc, `emucore.h` as the pattern; **core 2 is free** (core 3 = the network, `netcore=1`) | a futex-like wait on a word in shared memory (§4.3), thread priorities; threads not yet tried on the Pi |
 | Floating point | apps build with `-mgeneral-regs-only`; an app can opt out (n64, gc do) and use the FPU / NEON | just the Makefile |
-| IPC | mailboxes (512 B, 32 slots), named services (`kapi_ipc_register / lookup`), **shared surfaces** (`kapi_surface_create / map`, live while any process maps them), pipes, `kapi_exec_as`; the **applet protocol** (`applet_proto.h`: a wtk app drawn into the host's surface, pointer / keys forwarded) | a plain byte-sized shared memory would be nicer (a surface of w × 1 does it) |
+| IPC | mailboxes (512 B, 32 slots), named services (`kapi_ipc_register / lookup`), **shared surfaces** (`kapi_surface_create / map`, live while any process maps them), pipes, `kapi_exec_as`; the **applet protocol** (`applet_proto.h`: a uikit app drawn into the host's surface, pointer / keys forwarded) | a plain byte-sized shared memory would be nicer (a surface of w × 1 does it) |
 | JSON | hand-written helpers in `bin/groq.cpp` and Lisa | **a real JSON library** (§3.5) |
 | HTTPS | `http.hpp` (+ `ONYX_HTTP_TLS`, mbedTLS 3.6.3), chunked bodies; the pattern of Lisa → `bin/groq` (a helper process does the TLS) | a Gemini client; **certificates are not verified** |
 | Memory | `umm` (size classes + first fit, thread-safe, never gives memory back), `memmon`, `taskman`, `kapi_meminfo` | leak counters in debug builds; the PC build under ASan/LSan (§6) |
@@ -111,7 +111,7 @@ A minimum that plays and thinks in harmony: ~8 k C# of engine → ~7 k C++, plus
  core 0 (scheduled)                                   core 2 (app core, kapi_core_run)
  ┌────────────────────────────────────────┐          ┌──────────────────────────────────┐
  │ koton (the app)                        │          │ DSP engine — no kapi, no malloc  │
- │  UI thread: wtk Root, 60 Hz, editors   │ commands │  plays the compiled song:        │
+ │  UI thread: uikit Root, 60 Hz, editors   │ commands │  plays the compiled song:        │
  │  compile thread: project → event list ─┼─────────▶│   events → voices (SF2, built-in)│
  │  audio pump thread: PCM ring → kernel ◀┼──────────┤   built-in effects, sends, mix   │
  │  (meters, playhead ◀───────────────────┼──────────┤   meters, playhead, underruns    │
@@ -242,8 +242,8 @@ one malloc per node — a leak waiting to happen):
 | B4 | `kapi_shm_create (bytes)` (a surface of w × 1 does it today) | clearer plugin code | tiny | M5 |
 | B5 | Threads on other cores with kapi calls (SMP scheduling) | long term | large | — |
 | **C1** | **TLS certificate verification** (a CA bundle on the card) | an API key goes over it | medium | M4 |
-| **W1** | wtk: **Knob**, **VuMeter**, **SegmentedControl**, **ToolBar / ToolButton** promoted from Letters, an LCD label, a `TimeView` helper (horizontal zoom / scroll in beats, shared by the lanes and the grids) | the "pro" look, reused by other apps | medium | M0–M1 |
-| W2 | wtk: **anti-aliased text** (`.aaf` fonts of `elegant.h`, on `archive/elegant-ui-2026-09-28`) as an opt-in per widget / app | the look of the mock-ups | medium | M1–M2 |
+| **W1** | uikit: **Knob**, **VuMeter**, **SegmentedControl**, **ToolBar / ToolButton** promoted from Letters, an LCD label, a `TimeView` helper (horizontal zoom / scroll in beats, shared by the lanes and the grids) | the "pro" look, reused by other apps | medium | M0–M1 |
+| W2 | uikit: **anti-aliased text** (`.aaf` fonts of `elegant.h`, on `archive/elegant-ui-2026-09-28`) as an opt-in per widget / app | the look of the mock-ups | medium | M1–M2 |
 | L1 | `user/json.hpp` (§3.5) | everything | small | M0 |
 | L2 | `umm` debug statistics: live blocks / bytes, a high-water mark; `umm_check ()` | leak hunting on the Pi | small | M0 |
 
@@ -261,9 +261,9 @@ canvas | the browser), a splitter, the **context editor** of the selected module
 riff / piano roll, melodic line, drums, polyrhythm, generator plugin), the status bar (the engine,
 memory, the last save). A Home tab (recent songs, templates, "Compose with AI") as Koton's.
 
-### 5.2 wtk widgets vs hand-drawn canvases
+### 5.2 uikit widgets vs hand-drawn canvases
 
-- **wtk widgets** (as many as possible): the toolbar, the dropdowns, fields, NumericUpDowns,
+- **uikit widgets** (as many as possible): the toolbar, the dropdowns, fields, NumericUpDowns,
   toggles, checkboxes, the tabs, the browser (a TreeView / ListBox), the track headers (a Panel of
   widgets per track), the chord properties, the sound chain (panels + knobs), the dialogs, the
   menus.
@@ -313,7 +313,7 @@ the difference with the mock-ups; without it, the same layout with the bitmap fo
 
 | Milestone | Content | Done when |
 |---|---|---|
-| **M0 — foundations** | `json.hpp` + tests; wtk Knob / VuMeter / Segmented / ToolBar; umm debug counters; the app skeleton (`user/Apps/koton`, FPU build flags, the window, the tabs, the toolbar); the engine on core 2 playing a sine through the ring; threads tried on the Pi | a tone plays from core 2, the UI stays at 60 Hz |
+| **M0 — foundations** | `json.hpp` + tests; uikit Knob / VuMeter / Segmented / ToolBar; umm debug counters; the app skeleton (`user/Apps/koton`, FPU build flags, the window, the tabs, the toolbar); the engine on core 2 playing a sine through the ring; threads tried on the Pi | a tone plays from core 2, the UI stays at 60 Hz |
 | **M1 — it sounds** | the model + `.kson` load / save; TinySoundFont + GeneralUser GS; the compile thread; the arrangement view (lanes, ruler, playhead, drag / resize / copy of modules); transport, loop, metronome; the riff editor (piano roll); the chord track with degree chords and the 28 accompaniment styles; WAV export; A1 | a song of riffs over a chord progression plays and saves |
 | **M2 — thinking in harmony** | the chord editor (the voice grid, user styles), cadences (30 styles), next-chord suggestions, voice leading, the melodic line engine, melodic cells, the harmony-aware piano roll, drum patterns + the catalog, fills; import of Koton `.sq`; A2 | Koton's `africa.sq` opens and plays alike |
 | **M3 — rhythm and generators** | euclidean / balanced rhythms, the poly rings and the emergent melody; the generator plugin protocol; the first generator plugins (arpeggiator, cellular automaton, 1/f, random walk); USB MIDI in (A3) and recording into a riff | a polyrhythm under a song; a keyboard records a riff |
@@ -342,7 +342,7 @@ the difference with the mock-ups; without it, the same layout with the bitmap fo
    (`CHDMISoundBaseDevice`) later, as an option (A2: not now).
 4. **`.sq` files**: Koton's Windows projects open in Onyx; what is not supported is simply
    dropped (it is JSON).
-5. **Anti-aliased text**: FreeType, and **wtk updated** for it (W2).
+5. **Anti-aliased text**: FreeType, and **uikit updated** for it (W2).
 6. **The OS additions**: A1 (low-latency sound) yes; A3 (USB MIDI) with Circle's drivers; B2 / B3
    (the futex-like wait, thread priorities) if needed; W1 (the new widgets) yes; **C1 (TLS
    certificate verification) not needed** — the verification stays bypassed.
@@ -352,7 +352,7 @@ the difference with the mock-ups; without it, the same layout with the bitmap fo
 
 Everything of M0–M5 is in: the engine (`user/Apps/koton/engine`, MeltySynth in `synth/`), the app
 (`user/Apps/koton/main.cpp` + `ui/`), the AI (`engine/ai*`, `user/bin/llm`), the plugins
-(`user/kplug*.h`, `plug/`, eleven plugins `user/Apps/kp_*`), wtk's text face and studio widgets,
+(`user/kplug*.h`, `plug/`, eleven plugins `user/Apps/kp_*`), uikit's text face and studio widgets,
 kapi v68 (the sound ring, word waits, real-time threads, USB MIDI). The user's guide: docs/04,
 *Koton, the studio*; the code: docs/03, *A large app: Koton* and *Koton's plugins*. Screenshots
 `screenshots/koton*.png` (the real app in the desktop simulator).

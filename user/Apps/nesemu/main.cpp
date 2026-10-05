@@ -21,12 +21,12 @@
 #include "kapi.h"
 #include "launch.h"
 #include "gamepad.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "nes/nes.h"
-#include "wtk/dialog.h"
+#include "uikit/dialog.h"
 #include "emucore.h"
 
-using namespace wtk;
+using namespace uikit;
 
 static nes::Machine *g_m = 0;
 static unsigned char *g_rom = 0;
@@ -190,7 +190,7 @@ static void set_zoom (int z)
 	g_zoom = z;
 	// (the window's buffer keeps the pitch it was made with: 3x -- draw with that one)
 	g_root->canvas.adopt (kapi_resize_window (nes::W * z, nes::H * z), nes::W * z, nes::H * z, g_stride);
-	wtk::wk_decorate_window ();					// the frame follows
+	uikit::uk_decorate_window ();					// the frame follows
 	g_root->width = nes::W * z; g_root->height = nes::H * z;
 	g_root->invalidate (true);
 }
@@ -332,7 +332,7 @@ int main (void)
 		}
 		else cat (msg, &n, "Not a NES ROM (iNES / NES 2.0).");
 		g_loading = false;
-		wk_messagebox ("NES", msg, MB_OK);
+		uk_messagebox ("NES", msg, MB_OK);
 		return 1;
 	}
 	if (!g_m->pal && name_says_pal (g_loadName)) g_m->setPal (true);
@@ -348,7 +348,7 @@ int main (void)
 	menu.item ("Pause",        "P",   0, on_pause);
 	menu.item ("Reset",        "",    0, on_reset);
 	menu.separator ();
-	menu.item ("Quit",         "^Q",  WK_CTRL ('Q'), on_quit);
+	menu.item ("Quit",         "^Q",  UK_CTRL ('Q'), on_quit);
 	menu.menu ("View");
 	menu.item ("Full Screen",  "F11", 0, on_full);
 	menu.item ("Zoom 1x",      "",    0, on_zoom1);

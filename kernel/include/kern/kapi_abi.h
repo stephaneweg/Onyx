@@ -163,7 +163,7 @@
 // v82: + win_resizable (slot 260): the caller's window can be resized by its frame -- the pointer on
 //      an edge or a corner shows the two arrows, a drag shows the new outline, and at the release the
 //      window gets GUI_EVENT_WINRESIZE (20) with its new place and client size, which it applies
-//      (resize_window2, move_window). wtk: Root::setResizable.
+//      (resize_window2, move_window). uikit: Root::setResizable.
 // v83: shared libraries (docs/SHARED-LIBS-PLAN.md, docs/02 section 7): + lib_open (slot 261): a
 //      position-independent library (SD:/lib/<name>.so, user/lib.ld's shape) loaded once for the
 //      whole system, placed by the kernel in the library arena (16 GB..32 GB), its data relocated
@@ -304,7 +304,7 @@ struct kapi_chrome
 
 // The window frame (v64): the kernel's metrics (kern/gui/window.h WIN_TITLEBAR_H, WIN_BORDER)
 // and the title buttons' places -- the kernel hit-tests them, the app draws them into its chrome
-// copies (wtk: user/wtk/skin.cpp). The window menu at the left; from the right: close, maximise,
+// copies (uikit: user/uikit/skin.cpp). The window menu at the left; from the right: close, maximise,
 // minimise -- each KAPI_FRAME_BTN_W x _H, _Y below the frame's top, the outer ones _EDGE from
 // its side, _STEP from one to the next. The corners are rounded (radius KAPI_FRAME_RADIUS): in
 // the chrome copies a pixel's top byte is its transparency (0 opaque .. 255 see-through), heeded
@@ -1819,7 +1819,7 @@ struct TKApiTable
 	// set_cursor: the shape shown while the pointer is over the caller's window's client area (or
 	// while that window holds the pointer: a button down) -> the shape it had / -1 (no window, an
 	// unknown shape). Kept until changed; the frame, the title bar and the other windows show
-	// their own. An app sets it as the pointer moves (wtk: wk_cursor, from a widget's onMouse).
+	// their own. An app sets it as the pointer moves (uikit: uk_cursor, from a widget's onMouse).
 	int (*set_cursor) (int shape);
 
 	// --- v82: a window resized by its frame (gui/window.cpp) ---
@@ -1832,7 +1832,7 @@ struct TKApiTable
 
 	// --- v83: shared libraries (kern/image.h; proc/image.cpp, kernel.cpp; docs/SHARED-LIBS-PLAN.md) ---
 	// lib_open: the shared library `name` mapped into the caller -> its export table, or 0 with
-	// *err (if not 0) = -KAPI_E*. name: a bare name ("wtk": SD:/lib/wtk.so) or a path (relative: to
+	// *err (if not 0) = -KAPI_E*. name: a bare name ("uikit": SD:/lib/uikit.so) or a path (relative: to
 	// the working directory). The library's file is read once for the whole system (the calling
 	// task reads it, as a program's start), placed by the kernel, its data relocated once; every
 	// process maps the same code at the same address and gets its own copy of the data. Mapped in

@@ -4,7 +4,7 @@
 // shared region each, ended with the app or when unused, a crash noticed), the engine's side of each
 // (plugshm.h: an instrument rendered ahead, an effect with its latency compensated), the parameters,
 // the states (strings in the project: kt::PluginSlot::state, GeneratorModule::state), a generator's
-// requests (kt::g_generatorHook) and a plugin's editor shown in a wtk widget of the app, the way the
+// requests (kt::g_generatorHook) and a plugin's editor shown in a uikit widget of the app, the way the
 // Control Panel shows its applets.
 //
 // The app, on its UI thread (the one that posts the engine's commands):
@@ -21,7 +21,7 @@
 //     host.poll ();                       the mailbox, the liveness, what the engine let go
 //                                         (an app that reads its mailbox itself: handleMessage for
 //                                         each message, then tick ())
-//     -- an editor in the chain panel (a wtk widget; the app lays it out, closes it)
+//     -- an editor in the chain panel (a uikit widget; the app lays it out, closes it)
 //     PlugEditorView *v = host.openEditor (host.trackInsert (t, 0), panel, x, y, w, h);
 //     host.closeEditor (v);
 //     -- saving the project
@@ -39,7 +39,7 @@
 #ifndef _koton_plughost_h
 #define _koton_plughost_h
 
-#include "wtk/wtk.h"			// (before the engine's headers: see kbase.h)
+#include "uikit/uikit.h"			// (before the engine's headers: see kbase.h)
 #include "../engine/engine.h"
 #include "plugshm.h"
 #include "plugctx.h"
@@ -107,10 +107,10 @@ private:
 	unsigned m_dieT, m_usedT;
 };
 
-// A plugin's editor: a wtk widget showing what the plugin draws into a shared surface, sending it the
+// A plugin's editor: a uikit widget showing what the plugin draws into a shared surface, sending it the
 // pointer and the keys (the applets' protocol, applet_proto.h). Made by PlugHost::openEditor, a child
 // of the widget given; PlugHost::closeEditor (or deleting its parent) ends it.
-class PlugEditorView : public wtk::Widget
+class PlugEditorView : public uikit::Widget
 {
 public:
 	PlugEditorView (PlugHost *h, PlugInstance *p, int x, int y, int w, int hh);
@@ -187,12 +187,12 @@ public:
 	// a module's editor: the process takes the module's state, then its editor opens; when it
 	// reports a change (onParam / onDirty) the app calls pullGeneratorState: the state goes back into
 	// the module the editor shows (found by its id in the project: an undo's copy too) -> true: changed
-	PlugEditorView *openGeneratorEditor (const GeneratorModule &m, wtk::Widget &parent, int x, int y, int w, int h);
+	PlugEditorView *openGeneratorEditor (const GeneratorModule &m, uikit::Widget &parent, int x, int y, int w, int h);
 	bool pullGeneratorState (PlugInstance *p, Project &project);
 	bool pullGeneratorState (PlugInstance *p, GeneratorModule &m);
 
 	// ---- editors
-	PlugEditorView *openEditor (PlugInstance *p, wtk::Widget &parent, int x, int y, int w, int h);
+	PlugEditorView *openEditor (PlugInstance *p, uikit::Widget &parent, int x, int y, int w, int h);
 	void closeEditor (PlugEditorView *v);		// removed from its parent, deleted
 	void editorSize (const PlugInstance *p, int *w, int *h) const;	// what it would like
 	void editorSize (const PlugInfo *info, int *w, int *h) const;	// (from its description: a generator's before it runs)

@@ -16,8 +16,8 @@
 // views.h (the request's editor and its response), rail.h (the sidebar), dialogs.h, app.h (the tabs).
 // Files: SD:/courier/ (model.h says which). "courier <file.json>" imports it.
 //
-#include "wtk/wtk.h"
-#include "ft/wtkface.h"
+#include "uikit/uikit.h"
+#include "ft/uikitface.h"
 #include "docguard.h"
 #include "Apps/courier/dialogs.h"
 
@@ -38,20 +38,20 @@ static void app_status (const char *msg, bool error)
 }
 static void paint_status (Pane &p)
 {
-	unsigned bg = p.bg, ink = wk_ink_for (bg);
+	unsigned bg = p.bg, ink = uk_ink_for (bg);
 	p.canvas.fillRect (0, 0, p.width, 1, c_bgline ());
 	if (!ui.statusMsg.empty ())
 	{
-		unsigned c = ui.statusErr ? on_field (C_BAD) : wk_mix (bg, ink, 200);
-		if (ui.statusErr) wk_glyph (p.canvas, WKG_RING, 16, p.height / 2, 10, c);
+		unsigned c = ui.statusErr ? on_field (C_BAD) : uk_mix (bg, ink, 200);
+		if (ui.statusErr) uk_glyph (p.canvas, WKG_RING, 16, p.height / 2, 10, c);
 		text_fit (p.canvas, ui.statusErr ? 28 : 12, 0, p.height, p.width / 2, ui.statusMsg.c (), c);
 	}
 	// the right: the environment, the cookies
 	char b[160];
 	Environment *e = g_store.env ();
 	snprintf (b, sizeof b, "%s   |   %d cookie%s", e ? e->name.c () : "No environment", g_jar.list.size (), g_jar.list.size () == 1 ? "" : "s");
-	int w = wk_tw (b);
-	text_v (p.canvas, p.width - 12 - w, 0, p.height, b, wk_mix (bg, ink, 150));
+	int w = uk_tw (b);
+	text_v (p.canvas, p.width - 12 - w, 0, p.height, b, uk_mix (bg, ink, 150));
 }
 
 // ================================================================================================================
@@ -382,7 +382,7 @@ static void app_export_coll (Collection *c)
 {
 	Str nm; safe_name (nm, c->name.c ()); nm.add (".postman_collection.json");
 	char p[256];
-	if (!wk_file_save (p, sizeof p, "SD:/", nm.c ())) return;
+	if (!uk_file_save (p, sizeof p, "SD:/", nm.c ())) return;
 	json::Writer w (true); write_collection (w, *c);
 	if (save_json (p, w)) { Str m; m.addf ("Exported to %s (Postman collection v2.1).", p); app_status (m.c ()); }
 	else app_status ("The collection could not be written.", true);
@@ -432,7 +432,7 @@ static void app_export_env (int idx)
 	Environment *e = idx < 0 ? &g_store.globals : g_store.envs[idx];
 	Str nm; safe_name (nm, idx < 0 ? "globals" : e->name.c ()); nm.add (idx < 0 ? ".postman_globals.json" : ".postman_environment.json");
 	char p[256];
-	if (!wk_file_save (p, sizeof p, "SD:/", nm.c ())) return;
+	if (!uk_file_save (p, sizeof p, "SD:/", nm.c ())) return;
 	json::Writer w (true); write_environment (w, *e, idx < 0 ? "globals" : "environment");
 	if (save_json (p, w)) { Str m; m.addf ("Exported to %s.", p); app_status (m.c ()); }
 	else app_status ("The environment could not be written.", true);
@@ -838,25 +838,25 @@ static void app_cookies () { CookiesDialog d; d.run (); ui.status->invalidate (t
 // ================================================================================================================
 static void paint_top (Pane &p)
 {
-	unsigned bg = p.bg, ink = wk_ink_for (bg);
+	unsigned bg = p.bg, ink = uk_ink_for (bg);
 	p.canvas.fillRect (0, p.height - 1, p.width, 1, c_bgline ());
 	// the app's mark: a paper plane in a rounded square
 	int x = 16, y = (p.height - 30) / 2;
-	wk_rbox (p.canvas, x, y, 30, 30, 8, wk_tone (C_ACCENT, 150), wk_tone (C_ACCENT, 115));
-	unsigned w = wk_ink_on (C_ACCENT);
+	uk_rbox (p.canvas, x, y, 30, 30, 8, uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 115));
+	unsigned w = uk_ink_on (C_ACCENT);
 	for (int i = 0; i < 16; i++)
 	{
 		int lx = x + 7 + i;
 		int t0 = y + 9 + i * 7 / 16, t1 = y + 22 - i * 5 / 16;
 		if (t1 > t0) p.canvas.fillRect (lx, t0, 1, t1 - t0, w);
 	}
-	p.canvas.fillRect (x + 7, y + 15, 12, 2, wk_tone (C_ACCENT, 130));
+	p.canvas.fillRect (x + 7, y + 15, 12, 2, uk_tone (C_ACCENT, 130));
 	TextFace *big = ui.envName ? ui.envName->face : 0;
 	{
-		WkFaceScope fs (big);
+		UkFaceScope fs (big);
 		text_v (p.canvas, x + 40, 0, p.height, "Courier", ink, 2);
 	}
-	text_v (p.canvas, p.width - 16 - 44 - 8 - 240 - 8 - wk_tw ("Environment"), 0, p.height, "Environment", wk_mix (bg, ink, 150));
+	text_v (p.canvas, p.width - 16 - 44 - 8 - 240 - 8 - uk_tw ("Environment"), 0, p.height, "Environment", uk_mix (bg, ink, 150));
 }
 static void lay_top (Pane &p)
 {
@@ -891,21 +891,21 @@ static void paint_welcome (Pane &p)
 {
 	int cx = p.width / 2, y = p.height / 2 - 110;
 	// the mark, large
-	wk_rbox (p.canvas, cx - 36, y, 72, 72, 18, wk_tone (C_ACCENT, 150), wk_tone (C_ACCENT, 112));
-	unsigned w = wk_ink_on (C_ACCENT);
+	uk_rbox (p.canvas, cx - 36, y, 72, 72, 18, uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 112));
+	unsigned w = uk_ink_on (C_ACCENT);
 	for (int i = 0; i < 38; i++)
 	{
 		int lx = cx - 20 + i, t0 = y + 20 + i * 16 / 38, t1 = y + 52 - i * 12 / 38;
 		if (t1 > t0) p.canvas.fillRect (lx, t0, 1, t1 - t0, w);
 	}
-	p.canvas.fillRect (cx - 20, y + 34, 28, 4, wk_tone (C_ACCENT, 130));
+	p.canvas.fillRect (cx - 20, y + 34, 28, 4, uk_tone (C_ACCENT, 130));
 	const char *t = "Courier";
-	{ WkFaceScope fs (ui.envName ? ui.envName->face : 0); text_at (p.canvas, cx - wk_tw (t, 2) / 2, y + 86, t, C_FIELD_TEXT, 2); }
+	{ UkFaceScope fs (ui.envName ? ui.envName->face : 0); text_at (p.canvas, cx - uk_tw (t, 2) / 2, y + 86, t, C_FIELD_TEXT, 2); }
 	const char *s = "Build, send and test HTTP requests -- the way Postman does, on Onyx.";
-	text_at (p.canvas, cx - wk_tw (s) / 2, y + 118, s, c_dim ());
+	text_at (p.canvas, cx - uk_tw (s) / 2, y + 118, s, c_dim ());
 	const char *tips[] = { "Ctrl+N a new request    Ctrl+Enter send    Ctrl+S save    Ctrl+W close the tab",
 			       "Paste a cURL command in the URL, or import Postman's collections and environments (Ctrl+O)." };
-	for (int i = 0; i < 2; i++) text_at (p.canvas, cx - wk_tw (tips[i]) / 2, p.height / 2 + 100 + i * 24, tips[i], c_faint ());
+	for (int i = 0; i < 2; i++) text_at (p.canvas, cx - uk_tw (tips[i]) / 2, p.height / 2 + 100 + i * 24, tips[i], c_faint ());
 }
 static void lay_env (Pane &p)
 {
@@ -949,7 +949,7 @@ static void paint_coll (Pane &p)
 	text_v (p.canvas, 18, 104, 30, b, c_dim (), 2);
 	const char *a = c->auth.type != AUTH_NONE ? AUTH_NAMES[c->auth.type] : "no auth";
 	char v[128]; snprintf (v, sizeof v, "Auth: %s   |   %d variable%s", a, c->vars.size () ? c->vars.size () - (c->vars.last ().blank () ? 1 : 0) : 0, c->vars.size () == 2 ? "" : "s");
-	text_v (p.canvas, 30 + wk_tw (b, 2), 104, 30, v, c_faint ());
+	text_v (p.canvas, 30 + uk_tw (b, 2), 104, 30, v, c_faint ());
 }
 
 // ---- the callbacks of the request's editor ---------------------------------------------------------------------------------------
@@ -987,7 +987,7 @@ static void on_binary (Widget &)
 {
 	Tab *t = cur_tab (); if (!t) return;
 	char p[256];
-	if (!wk_file_open (p, sizeof p, "SD:/")) return;
+	if (!uk_file_open (p, sizeof p, "SD:/")) return;
 	t->req.binary = p; ui.binaryRow->invalidate (true); edited ();
 }
 static void on_follow (Widget &) { Tab *t = cur_tab (); if (!t || ui.binding) return; t->req.followRedirects = ui.follow->on; edited (); }
@@ -1012,7 +1012,7 @@ static void on_save_body (Widget &)
 			: s_findi (ct, l, "png") >= 0 ? "png" : s_findi (ct, l, "jpeg") >= 0 ? "jpg" : s_findi (ct, l, "gif") >= 0 ? "gif" : "txt";
 	char nm[64]; snprintf (nm, sizeof nm, "response.%s", ext);
 	char p[256];
-	if (!wk_file_save (p, sizeof p, "SD:/", nm)) return;
+	if (!uk_file_save (p, sizeof p, "SD:/", nm)) return;
 	if (kapi_save_file (p, t->resp->body ? t->resp->body : "", (unsigned) t->resp->bodyLen) >= 0) { Str m; m.addf ("The response was saved: %s", p); app_status (m.c ()); }
 	else app_status ("The response could not be written.", true);
 }
@@ -1333,8 +1333,8 @@ using namespace cr;
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);
-	g_sans = wk_textface ();
+	ft_uikit_install ("DejaVu Sans", 13);
+	g_sans = uk_textface ();
 	{ FtTextFace *m = new FtTextFace; if (m->open ("DejaVu Sans Mono", 13)) g_mono = m; else delete m; }
 	{ FtTextFace *s = new FtTextFace; if (s->open ("DejaVu Sans", 11)) Sidebar::g_small = s; else delete s; }
 	int sw = 1280, sh = 800;
@@ -1356,27 +1356,27 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New Request", "^N", WK_CTRL ('N'), cmd_new);
+	menu.item ("New Request", "^N", UK_CTRL ('N'), cmd_new);
 	menu.item ("New Collection", "", 0, cmd_new_coll);
 	menu.item ("New Environment", "", 0, cmd_new_env);
 	menu.separator ();
-	menu.item ("Import...", "^O", WK_CTRL ('O'), cmd_import);
+	menu.item ("Import...", "^O", UK_CTRL ('O'), cmd_import);
 	menu.item ("Export Collection...", "", 0, cmd_export_coll);
 	menu.separator ();
-	menu.item ("Save", "^S", WK_CTRL ('S'), cmd_save);
+	menu.item ("Save", "^S", UK_CTRL ('S'), cmd_save);
 	menu.item ("Save As...", "", 0, cmd_save_as);
-	menu.item ("Close Tab", "^W", WK_CTRL ('W'), cmd_close);
+	menu.item ("Close Tab", "^W", UK_CTRL ('W'), cmd_close);
 	menu.menu ("Request");
 	menu.item ("Send", "^Enter", 0, cmd_send);
 	menu.item ("Code...", "", 0, cmd_code);
-	menu.item ("Beautify the Body", "^B", WK_CTRL ('B'), cmd_beautify);
+	menu.item ("Beautify the Body", "^B", UK_CTRL ('B'), cmd_beautify);
 	menu.separator ();
 	menu.item ("Next Tab", "^PgDn", 0, cmd_next_tab);
 	menu.item ("Previous Tab", "^PgUp", 0, cmd_prev_tab);
 	menu.menu ("View");
 	menu.item ("Collections", "", 0, cmd_colls);
 	menu.item ("Environments", "", 0, cmd_envs);
-	menu.item ("History", "^H", WK_CTRL ('H'), cmd_history);
+	menu.item ("History", "^H", UK_CTRL ('H'), cmd_history);
 	menu.menu ("Tools");
 	menu.item ("Cookies...", "", 0, cmd_cookies);
 	menu.item ("Clear the History...", "", 0, cmd_clear_history);

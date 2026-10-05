@@ -1,4 +1,4 @@
-# The desktop's look (the modernised CDE), read by every app when it starts (wtk/theme.h);
+# The desktop's look (the modernised CDE), read by every app when it starts (uikit/theme.h);
 # written by the Theme app. theme: Peach, Steel, Sage, Brick, Slate, Milk (the window in front's
 # frame; active = a colour instead); style: cde or milk (the title buttons framed, or OS X's
 # beads); inactive: the frames behind; face: the apps'; accent: focus and selection; outline:

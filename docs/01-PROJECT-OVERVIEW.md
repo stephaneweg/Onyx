@@ -175,7 +175,7 @@ README.md         what Onyx is, how to build / stage / test, where the docs are
 ARCHITECTURE.md   the original design + build manifest (historical record)
 docs/             THIS documentation (overview, internals, dev/user guides, plans)
 kernel/           the Onyx kernel (see docs/02-KERNEL-INTERNALS.md)
-user/             the userland: apps (Apps/<name>/), wtk toolkit, libraries, /bin tools
+user/             the userland: apps (Apps/<name>/), uikit toolkit, libraries, /bin tools
                   (bin/), runtime (crt0.S, user.ld, libc/), the media library (av/)
 sdcard/           ready-to-flash files for an RPi 4 (firmware, config, apps, /bin, samples)
 sdcard_lite/      the minimal card (the required packages), the rest from the repository
@@ -220,7 +220,7 @@ circle/           Circle, as a git submodule (the fork stephaneweg/circle, branc
     theme editor (ABI v16).
 11. Networking: WLAN bring-up + TCP/IP on the primary core, TCP socket calls
     (ABI v21), an IRC client, a `/bin/net` tool, and NTP clock sync.
-12. The modernised CDE desktop (v64: menu bar, dock, workspaces), the wtk toolkit; the
+12. The modernised CDE desktop (v64: menu bar, dock, workspaces), the uikit toolkit; the
     preemptive scheduler; sound on core 1, app cores 2–3 (v51), the GPU (v52);
     Jet Browser (WebKit); the office suite, the emulators, Koton; threads (v67);
     the network on core 3; the `RAM:` volume (v71); the packages.

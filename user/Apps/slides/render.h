@@ -1,6 +1,6 @@
 //
 // render.h -- a slide drawn: every object rendered into a layer of its own (0xAARRGGBB premultiplied:
-// its shape filled and outlined -- wtk/vpaint.h's anti-aliased paths --, its picture, its table, its
+// its shape filled and outlined -- uikit/vpaint.h's anti-aliased paths --, its picture, its table, its
 // chart, its text), the layers kept as textures and composited by the GPU (user/gpucomp: each layer
 // moved, rotated, faded by its matrix and opacity -- an object dragged, a slide show's effects cost no
 // new drawing); the CPU's path when there is no GPU. The background, the master's decorations, the
@@ -12,12 +12,12 @@
 #define _slides_render_h
 
 #include "text.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "gpucomp/gpucomp.h"
 
 namespace sl {
 
-using namespace wtk;
+using namespace uikit;
 
 // ---- the shapes' outlines -----------------------------------------------------------------------------------------
 // The shape's outline in px (x, y, w, h: its box), as polygons into p (1/16 px). closed: a filled shape.
@@ -165,7 +165,7 @@ struct Layer
 	Surf surf () { Surf s; s.px = px; s.w = w; s.h = h; s.stride = w; s.pm = true; s.clip_all (); return s; }
 };
 
-// A path's coverage (drawn by VPath in wtk's alpha mode on a scratch canvas) blended into a layer in a colour,
+// A path's coverage (drawn by VPath in uikit's alpha mode on a scratch canvas) blended into a layer in a colour,
 // or a gradient (g0 -> g1 along angle, over the box bx, by, bw, bh), at opacity alpha.
 static unsigned *g_scratch; static int g_scratchN;
 static void path_into (Layer &L, VPath &p, const Fill &f, const Deck &d, float bx, float by, float bw, float bh, int dx = 0, int dy = 0, unsigned shadowC = 0xFF000000u, int blur = 0)
@@ -174,9 +174,9 @@ static void path_into (Layer &L, VPath &p, const Fill &f, const Deck &d, float b
 	if (n > g_scratchN) { free (g_scratch); g_scratch = (unsigned *) malloc ((size_t) n * 4); g_scratchN = n; }
 	for (int i = 0; i < n; i++) g_scratch[i] = 0xFF000000u;
 	Canvas cv; cv.adopt (g_scratch, L.w, L.h);
-	wk_paint_alpha (true);
+	uk_paint_alpha (true);
 	p.fill (cv, 0x000000, 255, dx, dy);
-	wk_paint_alpha (false);
+	uk_paint_alpha (false);
 	if (blur > 0)						// (a shadow: a box blur of the coverage, two passes)
 	{
 		unsigned char *a = (unsigned char *) malloc ((size_t) n), *t = (unsigned char *) malloc ((size_t) n);
@@ -216,7 +216,7 @@ static void path_into (Layer &L, VPath &p, const Fill &f, const Deck &d, float b
 			{
 				float t = ((x + 0.5f - gx0) * ca + (y + 0.5f - gy0) * sa) / span;
 				int k = (int) (iclamp ((int) (t * 256), 0, 256));
-				c = wk_mix (c1, c2, k);
+				c = uk_mix (c1, c2, k);
 			}
 			blend_pm (row[x], c, a * f.alpha / 255);
 		}
@@ -255,7 +255,7 @@ static void picture_into (Layer &L, const Picture &pc, const short *crop, float 
 		if (n > g_scratchN) { free (g_scratch); g_scratch = (unsigned *) malloc ((size_t) n * 4); g_scratchN = n; }
 		for (int i = 0; i < n; i++) g_scratch[i] = 0xFF000000u;
 		Canvas cv; cv.adopt (g_scratch, L.w, L.h);
-		wk_paint_alpha (true); mask->fill (cv, 0); wk_paint_alpha (false);
+		uk_paint_alpha (true); mask->fill (cv, 0); uk_paint_alpha (false);
 		m = (unsigned char *) g_scratch;		// (read through the top byte below)
 	}
 	for (int j = y0; j < y1; j++)
@@ -324,7 +324,7 @@ static void table_into (const Deck &d, Object &o, Layer &L, float pad, float sc,
 {
 	Table &t = *o.tbl;
 	int rh[64]; table_heights (d, o, rh);
-	unsigned acc = d.rgb (THEME | TC_ACC1), band = d.rgb (THEME | TC_LT2), grid = wk_mix (d.rgb (THEME | TC_LT2), 0x000000, 40);
+	unsigned acc = d.rgb (THEME | TC_ACC1), band = d.rgb (THEME | TC_LT2), grid = uk_mix (d.rgb (THEME | TC_LT2), 0x000000, 40);
 	Surf s = L.surf ();
 	float y = pad;
 	for (int r = 0; r < t.rows && r < 64; r++)
@@ -382,7 +382,7 @@ static void chart_into (const Deck &d, Object &o, Layer &L, float pad, float sc,
 	Chart &c = *o.chart;
 	Surf s = L.surf ();
 	float X = pad, Y = pad, W = o.w * sc, H = o.h * sc;
-	unsigned ink = d.rgb (THEME | TC_DK1), dim = wk_mix (ink, 0xFFFFFF, 140), gl = wk_mix (ink, 0xFFFFFF, 225);
+	unsigned ink = d.rgb (THEME | TC_DK1), dim = uk_mix (ink, 0xFFFFFF, 140), gl = uk_mix (ink, 0xFFFFFF, 225);
 	float top = Y;
 	if (c.title[0]) { chart_text (d, s, X + W / 2, Y, c.title, 180, sc, ink, 1, true, alpha); top += 180 * 3.53f * sc * 1.6f; }
 	float legendH = c.legend && c.nser > 0 && c.type != CH_PIE ? 140 * 3.53f * sc * 1.8f : 0;
@@ -623,7 +623,7 @@ static void render_bg (const Deck &d, const Slide &s, float sc, Layer &L)
 		for (int x = 0; x < W; x++)
 		{
 			unsigned c = c1;
-			if (f.type == FILL_GRADIENT) { float t = ((x - W / 2.0f) * ca + (y - H / 2.0f) * sa) / span + 0.5f; c = wk_mix (c1, c2, iclamp ((int) (t * 256), 0, 256)); }
+			if (f.type == FILL_GRADIENT) { float t = ((x - W / 2.0f) * ca + (y - H / 2.0f) * sa) / span + 0.5f; c = uk_mix (c1, c2, iclamp ((int) (t * 256), 0, 256)); }
 			else if (f.type == FILL_NONE) c = 0xFFFFFF;
 			L.px[y * W + x] = 0xFF000000u | c;
 		}

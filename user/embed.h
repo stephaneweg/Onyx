@@ -1,8 +1,8 @@
 //
 // embed.h -- helper for an app embedded in the activity shell. It registers with the
 // shell, waits for the shell to assign a surface (its viewport), maps it, and runs a
-// wtk widget tree on that surface driven by the shell's forwarded input. The app builds
-// a normal wtk tree whose ROOT canvas is the surface (Surface::root adopts it); the
+// uikit widget tree on that surface driven by the shell's forwarded input. The app builds
+// a normal uikit tree whose ROOT canvas is the surface (Surface::root adopts it); the
 // shell composites it. Pure mouse/key come in over the mailbox; the app redraws and
 // posts SH_PRESENT when its tree changes. Standalone (no shell) is detected so the app
 // can fall back to its own window.
@@ -13,7 +13,7 @@
 #include "kapi.h"
 #include "applib.h"		// should_exit, msleep
 #include "shell_proto.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
 namespace embed {
 
@@ -57,8 +57,8 @@ static inline bool attach (Host *pHost, int nRole, const char *pName)
 typedef void (*KeyFn) (int key);	// optional app key handler (calc digits, etc.)
 
 // Run the embedded event loop: draw the initial frame, then service forwarded input
-// until the shell asks us to close. `pRoot` is a wtk widget whose canvas is the surface.
-static inline void run (Host *pHost, wtk::Widget *pRoot, KeyFn pOnKey = 0)
+// until the shell asks us to close. `pRoot` is a uikit widget whose canvas is the surface.
+static inline void run (Host *pHost, uikit::Widget *pRoot, KeyFn pOnKey = 0)
 {
 	pRoot->invalidate (true);
 	pRoot->draw ();
@@ -74,7 +74,7 @@ static inline void run (Host *pHost, wtk::Widget *pRoot, KeyFn pOnKey = 0)
 		{
 		case SH_PTR:
 		{
-			ShPtr *p = (ShPtr *) Buf;	// p->x < 0 => pointer-leave (wtk convention)
+			ShPtr *p = (ShPtr *) Buf;	// p->x < 0 => pointer-leave (uikit convention)
 			pRoot->handleMouse (p->x, p->y, p->buttons & 1,
 					    (p->buttons >> 1) & 1, (p->buttons >> 2) & 1, p->wheel);
 			break;

@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include "Apps/archiver/icons.h"
 
-using namespace wtk;
+using namespace uikit;
 int main (int argc, char **argv)
 {
 	const int S = 160, N = 40;

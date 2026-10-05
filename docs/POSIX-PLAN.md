@@ -361,7 +361,7 @@ Every v75 kapi follows docs/03 §10's EL0 rules: pointers checked at entry, no k
 3. **Hook headers:** `kern/vm.h` (WP-MEM: `VmTeardown`, `struct TVmSpace` forward-declared), `kern/ofile.h` (WP-FILE/PROC: `OFileClose (void *pObj, boolean bTeardown)`) and `kern/procx.h` (WP-FILE/PROC: `ProcInfoTeardown`, `struct TProcInfo` forward-declared) exist with only those declarations. Each WP owns its header.
 4. **Teardown order in `~CAddressSpace`:** `ProcInfoTeardown (this)` runs just **before** the spawn record (`CProcess`) is marked done, so WP-FILE/PROC can copy the term reason into it (`GetProcess ()` and `GetExitStatus ()` accessors were added for that). `VmTeardown (this)` runs after `AppCoreReleaseAS` / `V3DReleaseAS` and **before** the page tables and frames are freed. It is not called when an app core failed to stop: that path already leaks the whole space on purpose.
 5. **The term reason lives in `CAddressSpace`**, not in `TProcInfo`: `SetTermReason (nReason, nCode)`, `GetTermReason ()` (default `KAPI_PROC_EXITED`) and also `GetTermCode ()`. It only records. WP-0 added the `Fault` line itself (`sys/el0.cpp`: `SetTermReason (KAPI_PROC_FAULT, EL0_FAULT_STATUS)`, which is −11), so WP-FILE/PROC does not edit `el0.cpp`. The kill and OOM paths are still to be added by their WPs.
-6. **The PC simulator does NOT leave new fields 0.** The host tables (`tools/tests/desktop_sim/fakekapi.cpp`, `pc/Koton`, `pc/Jet`, `pc/macOS`, `tools/tests/gpucomp/hostkapi.cpp`, `tools/tests/wtkhost/host_kapi.h`) fill every slot with an `unimplemented` that exits. WP-0 adds one line after each fill that zeroes the slots from `vm_map` on, so the `kapi.h` wrappers return `-KAPI_ENOSYS` there. A host that wants to implement a v75 call assigns its slot after that line.
+6. **The PC simulator does NOT leave new fields 0.** The host tables (`tools/tests/desktop_sim/fakekapi.cpp`, `pc/Koton`, `pc/Jet`, `pc/macOS`, `tools/tests/gpucomp/hostkapi.cpp`, `tools/tests/uikithost/host_kapi.h`) fill every slot with an `unimplemented` that exits. WP-0 adds one line after each fill that zeroes the slots from `vm_map` on, so the `kapi.h` wrappers return `-KAPI_ENOSYS` there. A host that wants to implement a v75 call assigns its slot after that line.
 7. **`IoWaitAddTickHook` returns `boolean`** (FALSE when its 8 hooks are taken) instead of `void`. In `IoWait`, `KAPI_WAIT_FOREVER` means no limit, 0 means only check, and longer timeouts are clamped to 30 min. `IoWake` pulses the event only when someone waits.
 8. **`HANDLE_OFILE = 6`** is routed in `HandleObjectClose` (`sys/handle.cpp`) to `OFileClose`. `CStream::PollMask` is virtual with the default `KAPI_POLLIN | KAPI_POLLOUT`, and `kern/stream.h` now includes `kern/kapi_abi.h`.
 9. **`KAPI_ESRCH 3`** is in the error list. `struct kapi_proc_status`'s fields are commented as the exit status (FAULT −11, KILLED and OOM −9), the reason, the pid and a reserved field.
@@ -1312,9 +1312,9 @@ Goal: compile Onyx apps **on the Pi** (and, later, Onyx itself). Path, after WP-
    no-MMU mode (busybox on uClinux uses **`vfork`**) with a `vfork` in the kernel (the child borrows
    the parent's address space until its exec — much simpler than fork), or a make that runs
    simple recipes directly.
-3. **The SDK on the card** (`SD:/sdk`): newlib, libstdc++, libonyxposix, `kapi.h`, wtk, the CMake
+3. **The SDK on the card** (`SD:/sdk`): newlib, libstdc++, libonyxposix, `kapi.h`, uikit, the CMake
    toolchain file for native builds, an app template.
-4. **Milestone**: a wtk app compiled on the Pi and launched from the desktop. Later: a code editor
+4. **Milestone**: a uikit app compiled on the Pi and launched from the desktop. Later: a code editor
    with a Build command; the kernel itself built on the Pi (the native GCC with `-ffreestanding`).
 Expect seconds to a minute for a small C app, minutes for a larger C++ one; WebKit stays a PC build.
 

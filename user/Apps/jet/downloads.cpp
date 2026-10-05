@@ -11,15 +11,15 @@
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see LICENSE).
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
-#include "wtk/paint.h"
+#include "uikit/uikit.h"
+#include "uikit/paint.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-using namespace wtk;
+using namespace uikit;
 
 namespace {
 
@@ -55,31 +55,31 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		int fh = wk_fh ();
-		if (g_n == 0) { wk_text_c (canvas, 0, 0, width, height, "No downloads", C_DIS); return; }
+		int fh = uk_fh ();
+		if (g_n == 0) { uk_text_c (canvas, 0, 0, width, height, "No downloads", C_DIS); return; }
 		for (int i = 0; i < g_n; i++)
 		{
 			const Row &r = g_rows[g_n - 1 - i];			// (the newest first)
 			int y = i * ROW_H + PAD;
 			if (y > height) break;
-			wk_text_l (canvas, PAD, y, fh, r.name, C_TEXT, 2);
+			uk_text_l (canvas, PAD, y, fh, r.name, C_TEXT, 2);
 			int bw = width - 2 * PAD - (r.state == ST_RUNNING ? BTN_W + PAD : 0);
 			int fill = r.total > 0 ? (int) ((double) bw * (double) r.done / (double) r.total) : 0;
 			if (r.state == ST_DONE) fill = bw;
-			wk_progress_bar (canvas, PAD, y + fh + 4, bw, 10, fill);
+			uk_progress_bar (canvas, PAD, y + fh + 4, bw, 10, fill);
 			char a[32], b[32], t[160];
 			bytes (a, sizeof a, r.done);
 			if (r.state == ST_RUNNING)
 			{
 				if (r.total > 0) { bytes (b, sizeof b, r.total); snprintf (t, sizeof t, "%s of %s", a, b); }
 				else snprintf (t, sizeof t, "%s", a);
-				wk_framed (canvas, width - PAD - BTN_W, y + 4, BTN_W, BTN_H, C_BUTTON, WK_NORMAL);
-				wk_text_c (canvas, width - PAD - BTN_W, y + 4, BTN_W, BTN_H, "Cancel", C_BUTTON_TEXT);
+				uk_framed (canvas, width - PAD - BTN_W, y + 4, BTN_W, BTN_H, C_BUTTON, UK_NORMAL);
+				uk_text_c (canvas, width - PAD - BTN_W, y + 4, BTN_W, BTN_H, "Cancel", C_BUTTON_TEXT);
 			}
 			else if (r.state == ST_DONE) snprintf (t, sizeof t, "Done -- %s, in SD:/Downloads", a);
 			else if (r.state == ST_CANCELLED) snprintf (t, sizeof t, "Cancelled");
 			else snprintf (t, sizeof t, "Failed: %s", r.why);
-			wk_text_l (canvas, PAD, y + fh + 18, fh, t, r.state == ST_FAILED ? 0x00C03030 : C_DIS);
+			uk_text_l (canvas, PAD, y + fh + 18, fh, t, r.state == ST_FAILED ? 0x00C03030 : C_DIS);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override

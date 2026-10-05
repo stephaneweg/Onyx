@@ -8,11 +8,11 @@
 // The engine renders on its own thread (the app core) in real time; the host, on the main thread
 // (the UI), makes a track's instrument (kp_fm2) and insert (kp_delay) from a project's track
 // (syncTrack), plays a song through them, sets a parameter, gets / sets a state, opens the
-// instrument's editor in a wtk panel (the plugin draws its knobs into the surface) and drags its
+// instrument's editor in a uikit panel (the plugin draws its knobs into the surface) and drags its
 // first knob (the host hears of it), renders a generator module (kp_arp) through the hook (then from
 // its cache), sees a plugin killed (onCrash) and starts it again, then ends everything (shutdown).
 //   sh tools/tests/koton/plug_host_run.sh
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "plug/plughost.h"
 #include "engine/theory.h"
 #include "applet_proto.h"
@@ -229,7 +229,7 @@ static void onCrash (PlugInstance *p, void *) { g_crashes++; printf ("  onCrash:
 static void onParam (PlugInstance *, int i, float, void *) { g_params++; g_lastParam = i; }
 
 // KPLUG_SHOT=prefix: an editor as drawn -> prefix-<name>.ppm (the user guide's picture)
-static void shot (wtk::Widget &w, int x0, int y0, int ew, int eh, const char *name)
+static void shot (uikit::Widget &w, int x0, int y0, int ew, int eh, const char *name)
 {
 	const char *pre = getenv ("KPLUG_SHOT");
 	if (!pre) return;
@@ -260,7 +260,7 @@ static void addChord (Project &p, int deg, int beats)
 int main ()
 {
 	installKernel ();
-	wtk::init ();
+	uikit::init ();
 	// the card: SD:/koton/plugins/{fm2,delay,arp} in SIM_WRITES (the manifests; a file standing for the program)
 	CHECK (getenv ("SIM_WRITES") != 0);
 	PlugHost h;
@@ -311,19 +311,19 @@ int main ()
 	printf ("host: parameters and states through the plugin: %s\n", tr.instrumentPlugin.state.c ());
 	// the editor in a panel: the plugin draws its knobs (in the host's colours: Koton's dark ones
 	// here); a drag on the first one reaches the host
-	{ wtk::WkTheme th; wtk::wk_theme_get (th); th.window = 0x21252D; th.button = 0x363C48; th.field = 0x14171C; th.accent = 0x49B0C4; wtk::wk_theme_set (th); }
-	wtk::Panel panel (0, 0, 640, 400, 0x00123456);
+	{ uikit::UkTheme th; uikit::uk_theme_get (th); th.window = 0x21252D; th.button = 0x363C48; th.field = 0x14171C; th.accent = 0x49B0C4; uikit::uk_theme_set (th); }
+	uikit::Panel panel (0, 0, 640, 400, 0x00123456);
 	int ew = 0, eh = 0; h.editorSize (fm, &ew, &eh);
 	PlugEditorView *v = h.openEditor (fm, panel, 10, 10, ew, eh);
 	CHECK (v != 0);
 	pollFor (h, 0.3);
 	panel.draw ();
 	int inked = 0;
-	for (int y = 10; y < 10 + eh; y++) for (int x = 10; x < 10 + ew; x++) if ((panel.canvas.px[y * panel.canvas.stride + x] & 0xFFFFFF) != (wtk::C_BG & 0xFFFFFF)) inked++;
+	for (int y = 10; y < 10 + eh; y++) for (int x = 10; x < 10 + ew; x++) if ((panel.canvas.px[y * panel.canvas.stride + x] & 0xFFFFFF) != (uikit::C_BG & 0xFFFFFF)) inked++;
 	CHECK (inked > 2000);
 	shot (panel, 10, 10, ew, eh, "fm2");
 	float r0 = fm->param (0);
-	int kx = 10 + 10 + 40, ky = 10 + wtk::wk_fh () + 18 + 40;		// the first knob's dial
+	int kx = 10 + 10 + 40, ky = 10 + uikit::uk_fh () + 18 + 40;		// the first knob's dial
 	panel.handleMouse (kx, ky, 0, 0, 0, 0); pollFor (h, 0.05);
 	panel.handleMouse (kx, ky, 1, 0, 0, 0); pollFor (h, 0.05);
 	panel.handleMouse (kx, ky - 60, 1, 0, 0, 0); pollFor (h, 0.05);
@@ -356,7 +356,7 @@ int main ()
 	printf ("host: a generator block rendered by kp_arp: %d notes in %.1f ms (its process started), %.2f ms again (the cache)\n",
 		r.notes.size (), (t2 - t1) * 1000, (t3 - t2) * 1000);
 	// its editor: a parameter moved there goes back into the module (found by its id in the project)
-	wtk::Panel gp (0, 0, 640, 400, 0x00123456);
+	uikit::Panel gp (0, 0, 640, 400, 0x00123456);
 	int gw = 0, gh = 0; h.editorSize (gi, &gw, &gh);
 	PlugEditorView *gv = h.openGeneratorEditor (*g, gp, 0, 0, gw, gh);
 	CHECK (gv && gi->isGenerator () && !strcmp (gi->editedModule (), "g1"));

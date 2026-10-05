@@ -21,9 +21,9 @@ export SIM_WRITES="$OUT/writes"
 CXX="g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
-# ---- the building: wtk, the stand-in kernel, FreeType, Koton (its engine, MeltySynth, its plugin host) ----
-for f in user/wtk/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
-rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/obj/*.o
+# ---- the building: uikit, the stand-in kernel, FreeType, Koton (its engine, MeltySynth, its plugin host) ----
+for f in user/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
+rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
 FT=third_party/freetype-2.14.3
 FT_SRC="base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c truetype/truetype.c sfnt/sfnt.c smooth/smooth.c"
@@ -32,7 +32,7 @@ for f in $FT_SRC; do gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<o
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 K=user/Apps/koton
 for f in $K/engine/*.cpp $K/synth/*.cpp $K/plug/*.cpp; do $CXX -I$K -c "$f" -o "$OUT/k/$(basename "$f" .cpp).o" & done; wait
-$CXX -I$K -Iuser/ft -I$FT/include -o "$OUT/koton" "$OUT/fakekapi.o" $K/main.cpp "$OUT"/k/*.o "$OUT/libwtk.a" "$OUT/libft.a"
+$CXX -I$K -Iuser/ft -I$FT/include -o "$OUT/koton" "$OUT/fakekapi.o" $K/main.cpp "$OUT"/k/*.o "$OUT/libuikit.a" "$OUT/libft.a"
 
 # ---- the running --------------------------------------------------------------------------------------------
 # raw NAME "SCRIPT": Koton through the script, its window -> OUT/NAME.png (the whole window)

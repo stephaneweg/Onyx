@@ -1,5 +1,5 @@
 // conv.cpp -- Letters' files on the PC: a document read (RTF, DOCX, ODT, text) and written again in a
-// format by its name's extension. Linked with the desktop simulator's wtk (the image codecs) and its
+// format by its name's extension. Linked with the desktop simulator's uikit (the image codecs) and its
 // kapi (fakekapi.o).
 //
 //   conv IN OUT

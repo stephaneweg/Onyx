@@ -1,11 +1,11 @@
 # Onyx: shared libraries behind an export table — the decided design and the plan
 
 *Status (2026-10-05): **built, on the Pi.** The kernel loads shared libraries (kapi v83
-`lib_open`), `SD:/lib/ft.so` (FreeType) and `SD:/lib/wtk.so` (the toolkit) exist, and **every app of
-`user/` is built against them** (`lib/wtk.imp.a`, `lib/ft.imp.a`). What was built, where it departs
+`lib_open`), `SD:/lib/ft.so` (FreeType) and `SD:/lib/uikit.so` (the toolkit) exist, and **every app of
+`user/` is built against them** (`lib/uikit.imp.a`, `lib/ft.imp.a`). What was built, where it departs
 from the plan below, and what is tested: **section 0**. The reference documentation is docs/02 §7
 *Shared libraries* (the kernel) and docs/03 §5.6 *Shared libraries* (writing and using one); the rules
-that keep old programs working are in `user/wtk/abi.h`. The study that led here, and the user-space
+that keep old programs working are in `user/uikit/abi.h`. The study that led here, and the user-space
 GUI it prepares: `docs/GUI-USERSPACE-STUDY.md` (§3.3). Answer the user in French; this page stays in
 English.*
 
@@ -16,19 +16,19 @@ English.*
 | 1a | The kernel: a library is an image (`ET_DYN` at 0, `ELF_KIND_LIB`), placed once in the arena 16 GB..32 GB (`LibPlace`), its `R_AARCH64_RELATIVE` relocations applied once to the data's copy (`LibRelocate`), up to 16 per address space (`ImageMapLib`), `kapi_lib_open` (slot 261), `KAPI_IMG_LIB`, preload of a library | `kernel/proc/elf.cpp`, `proc/image.cpp`, `kernel.cpp` `LibraryOpen`, `sys/kapi.cpp` |
 | 1a | The user side: `user/lib.h` (`TLibImports`, `TLibHeader`, `lib_bind`), `user/librt.cpp` (a library's runtime), `user/lib.ld`, `lib.vers`; the test library `user/demo`, `/bin/libtest` | |
 | 1b | The generator `tools/libgen/libgen.py`; `ft.so` (FreeType's public API: 135 entries, `user/ft/ft.abi`; `user/ft/ftso.c`) | `user/Makefile` |
-| 1c | `wtk.so` (683 entries, `user/wtk/wtk.abi`), the globals shared with the programs (`wtk/globals.inc`, `globals.cpp`, `global.h`), the reserve (`Widget`, `Canvas`, `Root`), the layout lock (`wtk/layout_lock.cpp`, `tools/libgen/layout.py`), the rules (`wtk/abi.h`); every app, Doom, BASIC's runtime and Koton's plugins relinked | `user/Makefile`, `user/doom/Makefile` |
-| + | `print.so` (33 entries, `user/print/print.abi`): printing (docs/03 §5.7) — the first library that uses others (`ft.so`, `wtk.so`: their import stubs linked in, opened on demand; wtk's variables through the importer's table) | `user/Makefile` |
-| | Packages `wtk` and `ft` (required), `needs = wtk >= 1.683, ft` on `onyx` and on every app | `tools/pkg/packages.ini` |
+| 1c | `uikit.so` (683 entries, `user/uikit/uikit.abi`), the globals shared with the programs (`uikit/globals.inc`, `globals.cpp`, `global.h`), the reserve (`Widget`, `Canvas`, `Root`), the layout lock (`uikit/layout_lock.cpp`, `tools/libgen/layout.py`), the rules (`uikit/abi.h`); every app, Doom, BASIC's runtime and Koton's plugins relinked | `user/Makefile`, `user/doom/Makefile` |
+| + | `print.so` (33 entries, `user/print/print.abi`): printing (docs/03 §5.7) — the first library that uses others (`ft.so`, `uikit.so`: their import stubs linked in, opened on demand; uikit's variables through the importer's table) | `user/Makefile` |
+| | Packages `uikit` and `ft` (required), `needs = uikit >= 1.683, ft` on `onyx` and on every app | `tools/pkg/packages.ini` |
 
 **Where it departs from the plan below — the mechanism of sections 4.3 and 5.1–5.2 (the defaults
 "reasoned, not compiled", not the user's decisions D1–D8).** The plan had the generator write, from a
-hand-kept list, header thunks (`WTK->...`) and `init_` / `fini_` bodies for every constructor. What
-was built instead needs **no change to the apps' sources nor to wtk's headers**:
+hand-kept list, header thunks (`UIKIT->...`) and `init_` / `fini_` bodies for every constructor. What
+was built instead needs **no change to the apps' sources nor to uikit's headers**:
 
 - **Import stubs, not header thunks.** The table's entries are the library's global functions *under
   their own (mangled) names*; the program side is one four-instruction stub per entry, with the same
-  name, that jumps through the table (`adrp x16, onyx_wtk_table; ldr; ldr x16, [x16, #slot]; br x16`).
-  The linker binds the app's calls — `wtk::Widget::invalidate`, `FT_Load_Glyph`, a constructor — to
+  name, that jumps through the table (`adrp x16, onyx_uikit_table; ldr; ldr x16, [x16, #slot]; br x16`).
+  The linker binds the app's calls — `uikit::Widget::invalidate`, `FT_Load_Glyph`, a constructor — to
   the stubs. Still D3 (a table of pointers filled at load, called as `KT`), D4 (append-only,
   versioned), D6 (no ELF dynamic linker: nothing is looked up by name at run time; the apps stay
   non-PIC and static).
@@ -52,11 +52,11 @@ was built instead needs **no change to the apps' sources nor to wtk's headers**:
 1a, all of its ten points); the apps started one by one on the libraries
 (`python tools/tests/shlib/pi_apps.py <pi-ip>`); **the compatibility test of D5**
 (`sh tools/tests/shlib/compat.sh` + `python tools/tests/shlib/compat_pi.py <pi-ip> out/shlib-compat`):
-a program built against wtk N, not rebuilt, on N+1 — see section 10 for the results.
+a program built against uikit N, not rebuilt, on N+1 — see section 10 for the results.
 
-**Not done** (sections 5.3 and 5.5's refinements): the inline code with logic of wtk's headers was
+**Not done** (sections 5.3 and 5.5's refinements): the inline code with logic of uikit's headers was
 *not* moved into the library — it is compiled into the apps as before, so a fix to it needs the apps
-rebuilt (the rule is written in `wtk/abi.h`; move a piece when it has to change). Spare slots exist
+rebuilt (the rule is written in `uikit/abi.h`; move a piece when it has to change). Spare slots exist
 in `Widget` and `Root` only (a new overridable goes there). Jet's hosted build stays static (P6).
 `sdcard/etc/preload.ini` is unchanged: the desktop's own processes keep both libraries in memory.
 
@@ -64,14 +64,14 @@ in `Widget` and `Root` only (a new overridable goes there). Jet's hosted build s
 
 | # | Decision | Notes |
 |---|---|---|
-| D1 | **The apps stop carrying a static copy of wtk (then FreeType, then others): shared libraries, one physical copy in memory, mapped into every process that uses them.** | the user's goal |
+| D1 | **The apps stop carrying a static copy of uikit (then FreeType, then others): shared libraries, one physical copy in memory, mapped into every process that uses them.** | the user's goal |
 | D2 | **No library at a link-time fixed address.** An app is never bound to one binary of a library. | the user ruled out the a.out / Windows-base style |
 | D3 | **A library is PIC code that publishes its entry points in a table of pointers, filled when it is loaded; an app finds the table and calls through it — exactly as it uses `kapi` (`KT->x (...)`).** | the user's design |
 | D4 | **The table is append-only, versioned like `kapi`** (`version`, `size` first; never reorder, never remove, never change a signature: a new entry `foo2` instead). | as `kern/kapi_abi.h` |
 | D5 | **A bug fix or an added function in a library ships without rebuilding any app.** This is the point of the work; the rules of §5 exist to keep it true. | asked and confirmed by the user |
 | D6 | **No ELF dynamic linker** (`ld.so`, symbol lookup by name, PLT/GOT in the apps). The apps stay non-PIC, static, at 8 GB (`user/user.ld` unchanged). | table-based dynamic linking (the AmigaOS `OpenLibrary` model), not ELF's |
-| D7 | **Not** wtk inside the window server, **not** wtk in a process of its own (304 `onDraw` overrides, 418 classes derived in the apps). | study §3.1–3.2 |
-| D8 | Order: the kernel and a demo library → **FreeType** (a C library: no class layouts) → **wtk** → others (mbedTLS, newlib, FFmpeg) as wanted. The user-space GUI (`wsd`, `libgui`) comes after, on this mechanism. | |
+| D7 | **Not** uikit inside the window server, **not** uikit in a process of its own (304 `onDraw` overrides, 418 classes derived in the apps). | study §3.1–3.2 |
+| D8 | Order: the kernel and a demo library → **FreeType** (a C library: no class layouts) → **uikit** → others (mbedTLS, newlib, FFmpeg) as wanted. The user-space GUI (`wsd`, `libgui`) comes after, on this mechanism. | |
 
 **Defaults taken with the design (proposed in the study, not contradicted; change them here if the
 user does):**
@@ -81,9 +81,9 @@ user does):**
 | P1 | The kernel places a library **once for the whole system** when it loads its image (a free slot in [16 GB, 32 GB)), and applies its relocations **once**, to the image's copy of the data. Not a link-time address: another build, another boot, another place. | no relocation work per process; the relocated vtables / table are identical everywhere; the kernel can point `kapi` slots into a library (`libgui`, later) |
 | P2 | An app gets a library with a **call**, `kapi_lib_open (name, min_version)` (kapi v83), made by a small bind object linked into the app (a constructor of priority 101: before the app's own). An ELF note naming the libraries (mapped before `_start`) may come later; same table. | simple, explicit, testable |
 | P3 | **The importer's allocator**: the app passes `alloc` / `free` to the library's `init` in a `TLibImports` table; the library's `operator new` / `delete` (and `malloc` if it needs one) go through it. | one allocator per process, whether the app is freestanding (`umm`) or newlib (`malloc`) |
-| P4 | Libraries live in **`SD:/lib/<name>.so`** (ELF `ET_DYN` — not loadable as a program); one package per library (`needs = wtk`). | |
-| P5 | A layout break of a C++ library = **a new name** (`wtk2`), beside the old one. | the escape hatch, not the rule |
-| P6 | Jet's hosted build of wtk (`tools/webkit/build-web.sh`, `-DONYX_HOSTED_NEW`) **stays static** for now. | another toolchain, another runtime |
+| P4 | Libraries live in **`SD:/lib/<name>.so`** (ELF `ET_DYN` — not loadable as a program); one package per library (`needs = uikit`). | |
+| P5 | A layout break of a C++ library = **a new name** (`uikit2`), beside the old one. | the escape hatch, not the rule |
+| P6 | Jet's hosted build of uikit (`tools/webkit/build-web.sh`, `-DONYX_HOSTED_NEW`) **stays static** for now. | another toolchain, another runtime |
 
 ## 2. The library format (step 0: done, `tools/tests/shlib/`)
 
@@ -142,7 +142,7 @@ pages per process, reference counted, preloadable, dropped when its file changes
    that maps at `ulBase + p_vaddr` and records the image in that array.
 5. **`kapi_lib_open` — kapi v83, slot 261** (after `win_resizable`, v82, slot 260):
    `const void *lib_open (const char *name, unsigned min_version, int *err)`:
-   - `name`: a bare name (`"wtk"`) → `SD:/lib/wtk.so` (P4); a path is accepted too (tests);
+   - `name`: a bare name (`"uikit"`) → `SD:/lib/uikit.so` (P4); a path is accepted too (tests);
    - already mapped in the caller → the same table (idempotent);
    - else find the named image (no card access) or load it (the calling task streams it, as a program
      start), map it, and return `ulBase + e_entry`;
@@ -154,8 +154,8 @@ pages per process, reference counted, preloadable, dropped when its file changes
    No `lib_close`: a library stays mapped until the process ends.
 6. **`image_list` / `/bin/preload` / `/bin/unload`** work on libraries unchanged (they are images):
    add `KAPI_IMG_LIB` (8) to `kapi_image_info.flags` so `preload` lists them apart; `preload
-   SD:/lib/wtk.so` in `SD:/etc/preload.ini` keeps it loaded from the boot.
-7. **Log line** per library load, as for programs (`kmsg`): `lib wtk.so: loaded in N ms at 0x4_0000_0000,
+   SD:/lib/uikit.so` in `SD:/etc/preload.ini` keeps it loaded from the boot.
+7. **Log line** per library load, as for programs (`kmsg`): `lib uikit.so: loaded in N ms at 0x4_0000_0000,
    R relocations, X KB shared, Y KB private`.
 8. **Docs at the same time** (CLAUDE.md rule): docs/02 (the ABI table, v83 in the version history, §7
    *Program images* → libraries, the VA map), docs/03 (writing and using a library), `kapi_abi.h`'s
@@ -176,14 +176,14 @@ pages per process, reference counted, preloadable, dropped when its file changes
   `unsigned version; unsigned size; int (*init) (const TLibImports *);`.
 - `init` is called by **each** process (it is per process: the RW segment is private); it is
   idempotent (a library opened by the app and by another library); it runs the library's
-  `__lib_init_array` once, then opens the libraries it depends on (wtk → `lib_open ("ft")`).
+  `__lib_init_array` once, then opens the libraries it depends on (uikit → `lib_open ("ft")`).
 
 ### 4.2 The bind object
 
 Per library, a generated `user/<lib>/<lib>_bind.cpp`, linked **statically** into the apps that use the
 library: `const T<Lib>Table *g_<lib>;` and a constructor `__attribute__ ((constructor (101)))` that
 calls `lib_bind`. `crt0.S` / `crt0libc.S` already run `.init_array` sorted by priority, so the
-library is bound before any app constructor (`static Menu menu;` in apps touches wtk at construction).
+library is bound before any app constructor (`static Menu menu;` in apps touches uikit at construction).
 
 ### 4.3 The generator (step 1b)
 
@@ -191,7 +191,7 @@ library is bound before any app constructor (`static Menu menu;` in apps touches
 the table it describes — produces:
 
 1. `<lib>_abi.h`: the table struct, the version, `KAPI_STATIC_ASSERT`-style checks of its size;
-2. the app-side inline thunks (`WTK->...` calls) — for C: inline functions / macros with the original
+2. the app-side inline thunks (`UIKIT->...` calls) — for C: inline functions / macros with the original
    names (`FT_Load_Glyph` stays the name the app source uses);
 3. the library-side table definition (`onyx_lib_table`) and, for C++, the trampolines from table
    entries to member functions (`static void t_widget_invalidate (Widget *w, bool r)
@@ -202,21 +202,21 @@ the table it describes — produces:
 ### 4.4 FreeType first (step 1b)
 
 `ft/libft.a` (FreeType) becomes `SD:/lib/ft.so`: the FreeType calls Onyx's code uses (count them from
-`ft/fonts.h`, `ft/wtkface.h`, the apps — `grep -ho "FT_[A-Za-z_]*" user` gives the list) in its table,
+`ft/fonts.h`, `ft/uikitface.h`, the apps — `grep -ho "FT_[A-Za-z_]*" user` gives the list) in its table,
 its memory through `FT_Memory` over the importer's allocator, its file access through the kapi. The
-header-only `ft/fonts.h` / `ft/wtkface.h` stay in the apps at this step (they call FreeType through the
+header-only `ft/fonts.h` / `ft/uikitface.h` stay in the apps at this step (they call FreeType through the
 table). C: no layouts beyond FreeType's own public structs, which FreeType keeps stable.
 
-## 5. wtk as a library: the C++ rules (step 1c)
+## 5. uikit as a library: the C++ rules (step 1c)
 
 The table says *where the functions are*. C++ also exposes **the layout of the classes** (apps
 allocate and subclass them, and read / write `left`, `width`, `canvas.px`, `valid`, `hidden`...) and
-**the order of the virtual functions** (apps' vtables are built by the apps' compiler). So wtk's ABI is
+**the order of the virtual functions** (apps' vtables are built by the apps' compiler). So uikit's ABI is
 **the table + the layouts + the virtual order**, and all three follow the append-only rule.
 
 ### 5.1 One header, two builds
 
-The public headers are compiled twice: in the library (`-DWTK_BUILDING_LIB`: methods declared,
+The public headers are compiled twice: in the library (`-DUIKIT_BUILDING_LIB`: methods declared,
 defined in the `.cpp` as today) and in the apps (each non-inline method defined **inline** as a thunk
 to the table, generated). The **class definitions — fields and virtuals — are the same text on both
 sides**: the vtable slot order and the offsets match by construction.
@@ -237,7 +237,7 @@ constructors (`Canvas` is a member of `Widget` with its own constructor and dest
 exposed the same way), the class's `init_`. **Rule: no logic in member-initialiser lists of exposed
 classes; no complete constructor or destructor in the table.**
 
-Today's example (`user/wtk/widget.cpp:9-19`): the 25 member initialisers of `Widget::Widget` move into
+Today's example (`user/uikit/widget.cpp:9-19`): the 25 member initialisers of `Widget::Widget` move into
 `Widget::init_`; `canvas.alloc (w, h)` stays in it.
 
 ### 5.3 Virtuals
@@ -266,35 +266,35 @@ So that additions keep old apps working (D5):
   **`void *ext`** that the library may allocate for state that does not fit;
 - **new fields go into the reserve or behind `ext`; new virtuals into a spare slot** — never in the
   middle of a class;
-- **a check at build time**: the generator writes `wtk.layout.lock` — for each exposed class its
+- **a check at build time**: the generator writes `uikit.layout.lock` — for each exposed class its
   `sizeof`, the `offsetof` of each field, and its virtuals in order (from the header) — and a host test
   compiles a probe against the current headers and compares. A difference fails the build unless the
-  lock is updated deliberately (and that means `wtk2`, P5).
+  lock is updated deliberately (and that means `uikit2`, P5).
 
 ### 5.5 What else moves
 
-- **Globals**: the 22 `extern` declarations of the headers (the theme colours `C_BG`..., `wk_face_`,
-  `wk_face_fw_`...) become fields of one `WtkGlobals` struct in the library's RW data, reached through
-  `WTK->globals`; the old names stay, as macros or inline references (`#define C_BG
-  (g_wtk->globals->c_bg)`), so the apps' source does not change. Assignments keep working (lvalues).
+- **Globals**: the 22 `extern` declarations of the headers (the theme colours `C_BG`..., `uk_face_`,
+  `uk_face_fw_`...) become fields of one `UIKitGlobals` struct in the library's RW data, reached through
+  `UIKIT->globals`; the old names stay, as macros or inline references (`#define C_BG
+  (g_uikit->globals->c_bg)`), so the apps' source does not change. Assignments keep working (lvalues).
 - **Statics in headers**: the class statics (`Menu::current`, `Font::Sans`, `Dialog::titleH`,
   `Calendar::daysIn`...) are functions: table entries like the methods.
-- **Inline code with logic** (`widget.h:21-104`: `wk_fw` / `wk_fh`, the thumb arithmetic,
-  `WkBarDrag`; `text.h` `WkFaceScope`; `skin.h` `wk_tint`; inline accessors of `root.h`): into the
+- **Inline code with logic** (`widget.h:21-104`: `uk_fw` / `uk_fh`, the thumb arithmetic,
+  `UkBarDrag`; `text.h` `UkFaceScope`; `skin.h` `uk_tint`; inline accessors of `root.h`): into the
   library unless trivial — what stays inline is frozen in the apps.
-- **`ft/fonts.h`, `ft/wtkface.h`** (header-only FreeType glue): into `ft.so` or `wtk.so` (to decide
-  then; wtk's text face is the natural owner).
+- **`ft/fonts.h`, `ft/uikitface.h`** (header-only FreeType glue): into `ft.so` or `uikit.so` (to decide
+  then; uikit's text face is the natural owner).
 - **`onyxpp.hpp`**: the apps keep defining `operator new` / `delete`; the bind object passes them to
   `init` (P3). The library defines its own `operator new` / `delete` over `TLibImports`.
-- **The canvas's NEON** (`wtk/canvas.o`, `imgload.o` built without `-mgeneral-regs-only`): same flags
+- **The canvas's NEON** (`uikit/canvas.o`, `imgload.o` built without `-mgeneral-regs-only`): same flags
   in the library build.
 - **Callbacks** (`Action`, `MenuAction`: plain function pointers into the app): unchanged — absolute
   addresses in the app, called by the library.
-- **The Makefile**: `wtk.so` built with `-fPIC -fvisibility=hidden` (§2); the apps drop `wtk/libwtk.a`
-  for `wtk/wtk_bind.o`; `make stage` copies `user/lib/*.so` to `sdcard/lib/`. The `kp_*` Koton plugins
-  link `libwtk.a` without using it: drop it. Doom (`doom/doom_wtk.cpp`), BASIC
-  (`basic/runtime.cpp`), the games (`game.h`) use wtk like any app.
-- **Every app rebuilt once** on the library (the last time for a compatible wtk change), every app
+- **The Makefile**: `uikit.so` built with `-fPIC -fvisibility=hidden` (§2); the apps drop `uikit/libuikit.a`
+  for `uikit/uikit_bind.o`; `make stage` copies `user/lib/*.so` to `sdcard/lib/`. The `kp_*` Koton plugins
+  link `libuikit.a` without using it: drop it. Doom (`doom/doom_uikit.cpp`), BASIC
+  (`basic/runtime.cpp`), the games (`game.h`) use uikit like any app.
+- **Every app rebuilt once** on the library (the last time for a compatible uikit change), every app
   started on the Pi (§6).
 
 ## 6. Tests — to automate on the Pi
@@ -306,7 +306,7 @@ collect the log.
 ### Host (PC), every build
 
 - `tools/tests/shlib/check_pic.sh` — the format (§2), for each real library too (`check_pic.sh
-  user/lib/wtk.so` once the script takes an argument).
+  user/lib/uikit.so` once the script takes an argument).
 - `tools/tests/image/imagetest.cpp` extended: a library image from `demo.so` — placed in the arena,
   relocations applied once (compare the table's pointers with `base + addend`), two address spaces
   sharing the RX frames (same physical frames, different private RW), refusal of a non-`RELATIVE`
@@ -339,28 +339,28 @@ The FreeType apps (Letters, Calendar, Sheet, Mail, the Control Panel's applets..
 before (compare screenshots: `screen_grab` through `/bin/screenshot`, or `shots.sh` on the PC);
 `image_list`: `ft.so` once; the binaries' sizes go down by ~92 KB each.
 
-### Pi, step 1c — wtk
+### Pi, step 1c — uikit
 
 - **Every app starts and draws** (a script launches each `SD:/apps/*.app`, waits, grabs the screen,
-  closes it; a crash or a "needs library" box is a failure) — the ~88 wtk apps, BASIC programs, Doom,
+  closes it; a crash or a "needs library" box is a failure) — the ~88 uikit apps, BASIC programs, Doom,
   the emulators, the Koton plugins.
 - **The compatibility test of D5 — the reason for the work**: build `wtkdemo` (or `widgets`) against
-  wtk version N; then, **without rebuilding it**: (a) fix a bug in a widget's drawing → the old app
+  uikit version N; then, **without rebuilding it**: (a) fix a bug in a widget's drawing → the old app
   shows the fix; (b) append a function and a new widget class → the old app still runs; (c) use one
   spare byte and one spare virtual slot in `Widget` → the old app still runs, a rebuilt app uses them;
-  (d) start an app built against N+1 with the library N → refused cleanly ("needs wtk ≥ N+1").
-- Memory: `image_list` shows `wtk.so` once; resident memory with 15 GUI apps open, before / after.
+  (d) start an app built against N+1 with the library N → refused cleanly ("needs uikit ≥ N+1").
+- Memory: `image_list` shows `uikit.so` once; resident memory with 15 GUI apps open, before / after.
 
 ## 7. Packages (CLAUDE.md rule: publish what changes on the card)
 
-- `tools/pkg/packages.ini`: a package per library (`wtk`, `ft`, `demo` only if wanted), files
-  `lib/<name>.so`; every app package that uses one gets `needs = wtk` (and `ft`). A library package's
+- `tools/pkg/packages.ini`: a package per library (`uikit`, `ft`, `demo` only if wanted), files
+  `lib/<name>.so`; every app package that uses one gets `needs = uikit` (and `ft`). A library package's
   version is its table version + a build number.
 - `pkg` already `unload`s / `preload`s a program it replaces (`pkglib.h` `move`): the same for a
   library (the kernel's file hook also drops the name).
 - The onyx package (the kernel, v83) before any app that needs `lib_open`: an app's `needs` include the
   onyx version with v83.
-- `sdcard/etc/preload.ini` (the Preload applet): propose `SD:/lib/wtk.so` and `SD:/lib/ft.so`.
+- `sdcard/etc/preload.ini` (the Preload applet): propose `SD:/lib/uikit.so` and `SD:/lib/ft.so`.
 
 ## 8. Licences
 
@@ -381,20 +381,20 @@ to update when each one becomes a library.
 
 ## 10. Results, and what is still not verified
 
-**On the Pi 4 (2026-10-05, kernel kapi 83, wtk 683 entries, ft 135):**
+**On the Pi 4 (2026-10-05, kernel kapi 83, uikit 683 entries, ft 135):**
 
 - `libtest 200`: **17 checks passed** (section 6, step 1a: every point).
 - `pi_apps.py`: **84 apps started one by one, 0 failed** — every app of the card built on the libraries
   (the desktop's own processes run on them since the boot: menubar, dock, notifyd, agenda; Doom, the
   BASIC apps through `/bin/basic`, the emulators, Koton, Letters, the Spreadsheet, Slides, Mail, Paint,
   Photos, the Media Player, the PDF Viewer, the Control Panel and its applets; Jet, static, beside them).
-- **The compatibility test (D5): 7 checks passed.** A program built against wtk N, **not rebuilt**, on
+- **The compatibility test (D5): 7 checks passed.** A program built against uikit N, **not rebuilt**, on
   the library N+1: (a) a fix in a library function reaches it; (b) a function appended and (c) a
   reserved virtual slot given a meaning and a reserved field written by `Widget`'s constructor do not
   disturb it (its widgets, its derived class, its callback, the same layout); a program built against
   N+1 uses them; (d) the program built against N+1 is refused by the library N, with *needs the shared
-  library "wtkc" (version 684 or later): the one installed is older*.
-- Sizes: `wtk.so` 320 KB of code shared + 64 KB of data per process, `ft.so` 192 KB + 64 KB. An app's
+  library "uikitc" (version 684 or later): the one installed is older*.
+- Sizes: `uikit.so` 320 KB of code shared + 64 KB of data per process, `ft.so` 192 KB + 64 KB. An app's
   file: Calendar 862 KB → 246 KB, wtkdemo 229 KB → 195 KB; `sdcard/apps` as a whole 74 MB → 58 MB.
 
 **Found on the way:** `user.ld` did not order the constructors' priorities across files (a static
@@ -404,6 +404,6 @@ keep a second session in it).
 
 **Not verified / not done:** resident memory with 15 GUI apps open, before / after (not measured);
 the screenshots were looked at, not compared pixel by pixel with the static builds; the inline code
-of wtk's headers is still compiled into the apps (section 0); `docs/exports` were not regenerated (no
+of uikit's headers is still compiled into the apps (section 0); `docs/exports` were not regenerated (no
 pandoc on this machine: `python docs/build_docs.py`).
 

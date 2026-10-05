@@ -15,7 +15,7 @@
 typedef __SIZE_TYPE__ onyx_size_t;
 
 // ONYX_HOSTED_NEW: a hosted program (the POSIX toolchain: libstdc++, newlib's malloc) that
-// includes this header through wtk keeps libstdc++'s operator new / delete. The ones below would
+// includes this header through uikit keeps libstdc++'s operator new / delete. The ones below would
 // replace them for the WHOLE program (they are the app's own definitions), on a second heap that
 // calls kapi_sbrk itself -- a kernel call wherever a new grows it: on an app core (kapi_core_run:
 // no kernel call there) the job is stopped. Web (tools/webkit/build-web.sh) rasterises there.
@@ -28,7 +28,7 @@ typedef __SIZE_TYPE__ onyx_size_t;
 
 // __attribute__((used)) forces emission of ALL these operators in the TU that includes
 // this header (an app includes it once, in main.o) -- so a SEPARATELY-COMPILED library
-// (e.g. wtk/libwtk.a) resolves operator new/delete from the app at link time, even the
+// (e.g. uikit/libuikit.a) resolves operator new/delete from the app at link time, even the
 // variants (like sized delete in a deleting destructor) the app never calls directly.
 // A failed new never returns 0. g++ drops the "p == 0" tests after a plain new (it assumes
 // new throws), and an Onyx app runs at EL1 with the kernel's RAM mapped: the writes that
@@ -72,7 +72,7 @@ inline void *operator new[]    (onyx_size_t, void *p) noexcept { return p; }
 
 // These four runtime symbols need a real (emitted, address-takeable) definition, but
 // they are also pulled into any SEPARATELY-COMPILED translation unit that includes this
-// header transitively (e.g. a wtk library .cpp that includes bmp.hpp). Marking them weak
+// header transitively (e.g. a uikit library .cpp that includes bmp.hpp). Marking them weak
 // lets those duplicate-but-identical definitions merge at link time instead of clashing
 // with the app's main.o copy.
 extern "C" {

@@ -1,5 +1,5 @@
 //
-// rtf.h -- Rich Text Format for wtk::RichTextBox: rtf_load parses an RTF document into the
+// rtf.h -- Rich Text Format for uikit::RichTextBox: rtf_load parses an RTF document into the
 // box (text + bold / italic / underline / strike / colour / highlight / size), rtf_save
 // writes the box back as RTF. Used by the RTF reader (rtfview) and Letters (.rtf files).
 //
@@ -13,11 +13,11 @@
 #ifndef _onyx_rtf_h
 #define _onyx_rtf_h
 
-#include "wtk/richtextbox.h"
+#include "uikit/richtextbox.h"
 
 namespace rtf {
 
-using wtk::RtStyle;
+using uikit::RtStyle;
 
 // Windows-1252 0x80..0x9F -> Latin-1 / ASCII.
 static inline const char *cp1252 (unsigned c)
@@ -53,7 +53,7 @@ static inline int nearest (unsigned rgb)
 	int best = 0; long bd = -1;
 	for (int i = 0; i < 16; i++)
 	{
-		unsigned p = wtk::rt_color (i);
+		unsigned p = uikit::rt_color (i);
 		long dr = (long) ((rgb >> 16) & 255) - (long) ((p >> 16) & 255), dg = (long) ((rgb >> 8) & 255) - (long) ((p >> 8) & 255),
 		     db = (long) (rgb & 255) - (long) (p & 255);
 		long d = dr * dr * 3 + dg * dg * 4 + db * db * 2;
@@ -67,7 +67,7 @@ struct State { RtStyle st; bool skip; int uc; };
 class Reader
 {
 public:
-	wtk::RichTextBox *box;
+	uikit::RichTextBox *box;
 	const char *s; int n, p;
 	State stack[64]; int depth;
 	State cur;
@@ -117,17 +117,17 @@ public:
 		if (eq (w, "par") || eq (w, "line") || eq (w, "sect") || eq (w, "page") || eq (w, "row")) { out ("\n"); return; }
 		if (eq (w, "tab") || eq (w, "cell")) { out ("    "); return; }
 		if (eq (w, "plain")) { RtStyle d; cur.st = d; return; }
-		if (eq (w, "b"))      { if (has && v == 0) cur.st.flags &= (unsigned char) ~wtk::RT_BOLD; else cur.st.flags |= wtk::RT_BOLD; return; }
-		if (eq (w, "i"))      { if (has && v == 0) cur.st.flags &= (unsigned char) ~wtk::RT_ITALIC; else cur.st.flags |= wtk::RT_ITALIC; return; }
+		if (eq (w, "b"))      { if (has && v == 0) cur.st.flags &= (unsigned char) ~uikit::RT_BOLD; else cur.st.flags |= uikit::RT_BOLD; return; }
+		if (eq (w, "i"))      { if (has && v == 0) cur.st.flags &= (unsigned char) ~uikit::RT_ITALIC; else cur.st.flags |= uikit::RT_ITALIC; return; }
 		if (eq (w, "ul") || eq (w, "uld") || eq (w, "uldb") || eq (w, "ulw") || eq (w, "ulth"))
-		{ if (has && v == 0) cur.st.flags &= (unsigned char) ~wtk::RT_UNDER; else cur.st.flags |= wtk::RT_UNDER; return; }
-		if (eq (w, "ulnone")) { cur.st.flags &= (unsigned char) ~wtk::RT_UNDER; return; }
-		if (eq (w, "strike") || eq (w, "striked")) { if (has && v == 0) cur.st.flags &= (unsigned char) ~wtk::RT_STRIKE; else cur.st.flags |= wtk::RT_STRIKE; return; }
-		if (eq (w, "cf")) { cur.st.fg = (unsigned char) (v > 0 && v < ncolors && colors[v] >= 0 ? colors[v] : wtk::RT_BLACK); return; }
+		{ if (has && v == 0) cur.st.flags &= (unsigned char) ~uikit::RT_UNDER; else cur.st.flags |= uikit::RT_UNDER; return; }
+		if (eq (w, "ulnone")) { cur.st.flags &= (unsigned char) ~uikit::RT_UNDER; return; }
+		if (eq (w, "strike") || eq (w, "striked")) { if (has && v == 0) cur.st.flags &= (unsigned char) ~uikit::RT_STRIKE; else cur.st.flags |= uikit::RT_STRIKE; return; }
+		if (eq (w, "cf")) { cur.st.fg = (unsigned char) (v > 0 && v < ncolors && colors[v] >= 0 ? colors[v] : uikit::RT_BLACK); return; }
 		if (eq (w, "highlight") || eq (w, "cb") || eq (w, "chcbpat"))
 		{
-			if (v > 0 && v < ncolors && colors[v] >= 0) { cur.st.bg = (unsigned char) colors[v]; cur.st.flags |= wtk::RT_HILITE; }
-			else cur.st.flags &= (unsigned char) ~wtk::RT_HILITE;
+			if (v > 0 && v < ncolors && colors[v] >= 0) { cur.st.bg = (unsigned char) colors[v]; cur.st.flags |= uikit::RT_HILITE; }
+			else cur.st.flags &= (unsigned char) ~uikit::RT_HILITE;
 			return;
 		}
 		if (eq (w, "fs")) { cur.st.size = (unsigned char) (v <= 28 ? 1 : v <= 40 ? 2 : v <= 56 ? 3 : 4); return; }
@@ -140,7 +140,7 @@ public:
 		// everything else (fonts, paragraph layout, ...) is ignored
 	}
 
-	void load (wtk::RichTextBox &b, const char *src, int len)
+	void load (uikit::RichTextBox &b, const char *src, int len)
 	{
 		box = &b; s = src; n = len; p = 0; depth = 0; rlen = 0; ncolors = 0; inColorTbl = false; pendingSkip = 0;
 		RtStyle d; cur.st = d; cur.skip = false; cur.uc = 1;
@@ -257,10 +257,10 @@ public:
 // Is this RTF? ("{\rtf")
 static inline bool is_rtf (const char *s, int n) { return n >= 5 && s[0] == '{' && s[1] == '\\' && s[2] == 'r' && s[3] == 't' && s[4] == 'f'; }
 
-static inline void load (wtk::RichTextBox &b, const char *src, int len) { static Reader r; r.load (b, src, len); }
+static inline void load (uikit::RichTextBox &b, const char *src, int len) { static Reader r; r.load (b, src, len); }
 
 // Write the box as RTF into out[cap]; returns the length (0 = didn't fit).
-static inline int save (const wtk::RichTextBox &b, char *out, int cap)
+static inline int save (const uikit::RichTextBox &b, char *out, int cap)
 {
 	int n = 0; bool ok = true;
 	auto put = [&] (const char *t) { while (*t) { if (n >= cap - 1) { ok = false; return; } out[n++] = *t++; } };
@@ -268,23 +268,23 @@ static inline int save (const wtk::RichTextBox &b, char *out, int cap)
 	put ("{\\rtf1\\ansi\\ansicpg1252\\deff0{\\fonttbl{\\f0\\fswiss Helvetica;}}\n{\\colortbl;");
 	for (int i = 0; i < 16; i++)
 	{
-		unsigned c = wtk::rt_color (i);
+		unsigned c = uikit::rt_color (i);
 		put ("\\red"); num ((c >> 16) & 255); put ("\\green"); num ((c >> 8) & 255); put ("\\blue"); num (c & 255); put (";");
 	}
 	put ("}\n\\f0\\fs24 ");
 	RtStyle prev; bool first = true;
 	for (int i = 0; i < b.len && ok; i++)
 	{
-		RtStyle st = wtk::rt_unpack (b.attr[i]);
+		RtStyle st = uikit::rt_unpack (b.attr[i]);
 		if (first || st.flags != prev.flags || st.fg != prev.fg || st.bg != prev.bg || st.size != prev.size)
 		{
 			put ("\\plain\\f0");
-			if (st.flags & wtk::RT_BOLD) put ("\\b");
-			if (st.flags & wtk::RT_ITALIC) put ("\\i");
-			if (st.flags & wtk::RT_UNDER) put ("\\ul");
-			if (st.flags & wtk::RT_STRIKE) put ("\\strike");
-			if (st.fg != wtk::RT_BLACK) { put ("\\cf"); num (st.fg + 1); }
-			if (st.flags & wtk::RT_HILITE) { put ("\\highlight"); num (st.bg + 1); }
+			if (st.flags & uikit::RT_BOLD) put ("\\b");
+			if (st.flags & uikit::RT_ITALIC) put ("\\i");
+			if (st.flags & uikit::RT_UNDER) put ("\\ul");
+			if (st.flags & uikit::RT_STRIKE) put ("\\strike");
+			if (st.fg != uikit::RT_BLACK) { put ("\\cf"); num (st.fg + 1); }
+			if (st.flags & uikit::RT_HILITE) { put ("\\highlight"); num (st.bg + 1); }
 			put ("\\fs"); num (st.size <= 1 ? 24 : st.size == 2 ? 36 : st.size == 3 ? 48 : 12 * (st.size + 1));
 			put (" ");
 			prev = st; first = false;

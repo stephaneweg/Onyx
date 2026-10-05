@@ -2,7 +2,7 @@
 // menubar -- the system menu bar across the top of the screen (macOS-style).
 //
 // It shows the ACTIVE app's name and its menus (kapi_get_menu, declared by the app with
-// wtk::Menu / kapi_set_menu), opens a drop-down on click and sends the chosen command
+// uikit::Menu / kapi_set_menu), opens a drop-down on click and sends the chosen command
 // back to the app (kapi_menu_command). The first menu is always the "Onyx" system menu:
 // Terminal / Control Panel / File Viewer / Task Manager, then one entry per app CATEGORY (the
 // "category" of each SD:/apps/<name>.app/app.txt; the "Shell" components, the Control Panel's
@@ -18,7 +18,7 @@
 //
 // A click on the time opens a calendar (the month; "Open Calendar" starts the Calendar app).
 //
-// The look: the modernised CDE (wtk/paint.h) -- a light bar in the theme's menu bar colour, the open title
+// The look: the modernised CDE (uikit/paint.h) -- a light bar in the theme's menu bar colour, the open title
 // in the accent, rounded drop-downs, anti-aliased on what lies below.
 //
 // The window is TOPMOST (always above the others, never active, never gets the keys)
@@ -31,13 +31,13 @@
 // item works too.
 //
 #include "kapi.h"
-#include "ft/wtkface.h"
+#include "ft/uikitface.h"
 #include "applib.h"
 #include "launch.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "volume.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define BAR_H		30			// the bar's height (its last row: a dark line)
 #define MAXMENUS	12
@@ -45,7 +45,7 @@ using namespace wtk;
 #define CLEAR		0xFF000000u		// a see-through pixel (the top byte: its transparency)
 #define CATCH		0xFE000000u		// ... almost: it still takes the clicks (a menu is open)
 
-// The palette: the theme's (wtk/theme.h), set once the theme is read.
+// The palette: the theme's (uikit/theme.h), set once the theme is read.
 static unsigned C_BARTXT, C_DROP, C_DIM, C_OUT;
 
 struct Item { int id; char label[40]; char key[12]; bool sep; int sub; };	// sub: a sub-menu (g_subs) or -1
@@ -265,7 +265,7 @@ static void layout_titles (void)
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		g_menus[i].x = x;
-		g_menus[i].w = wk_tw (g_menus[i].title, title_style (i)) + 16;
+		g_menus[i].w = uk_tw (g_menus[i].title, title_style (i)) + 16;
 		x += g_menus[i].w;
 	}
 }
@@ -274,7 +274,7 @@ static int drop_w (const MenuDef &m)
 	int w = 120;
 	for (int i = 0; i < m.count; i++)
 	{
-		int ww = wk_tw (m.items[i].label) + wk_tw (m.items[i].key) + 5 * g_fw + 20 + (m.items[i].sub >= 0 ? 2 * g_fw : 0);
+		int ww = uk_tw (m.items[i].label) + uk_tw (m.items[i].key) + 5 * g_fw + 20 + (m.items[i].sub >= 0 ? 2 * g_fw : 0);
 		if (ww > w) w = ww;
 	}
 	return w;
@@ -287,8 +287,8 @@ static int item_y (const MenuDef &m, int idx) { int yy = BAR_H + 5; for (int i =
 static int sub_w (const SubDef &sd)
 {
 	int w = 140;
-	for (int i = 0; i < sd.count; i++) { int ww = wk_tw (sd.items[i].label) + 28; if (ww > w) w = ww; }
-	if (sd.count == 0) w = wk_tw ("(no open window)") + 28;
+	for (int i = 0; i < sd.count; i++) { int ww = uk_tw (sd.items[i].label) + 28; if (ww > w) w = ww; }
+	if (sd.count == 0) w = uk_tw ("(no open window)") + 28;
 	return w;
 }
 static int sub_h (const SubDef &sd) { return 10 + (sd.count ? sd.count : 1) * (g_fh + 8); }
@@ -323,7 +323,7 @@ static int title_at (int x, int y)
 	return -1;
 }
 // the status icons on the right: the clock, the Wi-Fi state left of it, the speaker left of that
-static int clk_w (void) { return wk_tw ("00:00", 2); }
+static int clk_w (void) { return uk_tw ("00:00", 2); }
 static int clk_x (void) { return g_sw - clk_w () - 14; }
 static bool on_clock (int x, int y) { return y >= 0 && y < BAR_H && x >= clk_x () - 6 && x < g_sw; }
 static int wifi_x (void) { return clk_x () - 27; }
@@ -411,8 +411,8 @@ static void draw_speaker (int x, int y)
 // blended over what lies below (the canvas is see-through there).
 static void panel (int x, int y, int w, int h)
 {
-	wk_rbox (g_cv, x, y, w, h, 8, wk_tone (C_DROP, 140), C_DROP);
-	wk_rline (g_cv, x, y, w, h, 8, C_OUT, 200);
+	uk_rbox (g_cv, x, y, w, h, 8, uk_tone (C_DROP, 140), C_DROP);
+	uk_rline (g_cv, x, y, w, h, 8, C_OUT, 200);
 }
 
 // The volume box: a panel under the speaker, a slider 0..10 and Mute.
@@ -420,18 +420,18 @@ static void draw_volume_box (void)
 {
 	int bx, by; vol_box (&bx, &by);
 	panel (bx, by, VW, VH);
-	wk_text_l (g_cv, bx + 14, by + 6, 24, "Volume", C_FIELD_TEXT, 2);
+	uk_text_l (g_cv, bx + 14, by + 6, 24, "Volume", C_FIELD_TEXT, 2);
 	char v[8]; int n = 0;
 	if (g_mute) { const char *m = "Muted"; while (m[n]) { v[n] = m[n]; n++; } }
 	else { if (g_vol >= 10) { v[n++] = '1'; v[n++] = '0'; } else v[n++] = (char) ('0' + g_vol); }
 	v[n] = 0;
-	wk_text_l (g_cv, bx + VW - 14 - wk_tw (v), by + 6, 24, v, C_DIM);
+	uk_text_l (g_cv, bx + VW - 14 - uk_tw (v), by + 6, 24, v, C_DIM);
 	int x0, x1, ty; vol_track (&x0, &x1, &ty);
 	int kx = x0 + (x1 - x0) * g_vol / 10;
 	for (int i = 0; i <= 10; i++) g_cv.fillRect (x0 + (x1 - x0) * i / 10, ty + 10, 1, 3, C_DIM);
-	wk_slider_mark (g_cv, x0 - 6, ty - 8, x1 - x0 + 12, 20, kx - x0 + 6, kx - 6, 12, g_mute ? WK_DISABLED : g_volDrag ? WK_PRESSED : WK_NORMAL);
-	wk_check_mark (g_cv, bx + 18, by + 65, 15, g_mute != 0, WK_NORMAL);
-	wk_text_l (g_cv, bx + 42, by + 65, 15, "Mute", C_FIELD_TEXT);
+	uk_slider_mark (g_cv, x0 - 6, ty - 8, x1 - x0 + 12, 20, kx - x0 + 6, kx - 6, 12, g_mute ? UK_DISABLED : g_volDrag ? UK_PRESSED : UK_NORMAL);
+	uk_check_mark (g_cv, bx + 18, by + 65, 15, g_mute != 0, UK_NORMAL);
+	uk_text_l (g_cv, bx + 42, by + 65, 15, "Mute", C_FIELD_TEXT);
 }
 
 // ---- the calendar (a click on the time) ----------------------------------------------------------
@@ -461,8 +461,8 @@ static void draw_calendar_box (void)
 	g_cal->draw ();
 	g_cv.putOther (g_cal->canvas, bx + 10, by + 10, false);
 	int x, y, w, h, lx, ly, lw, lh; cal_btn (&x, &y, &w, &h);
-	wk_framed (g_cv, x, y, w, h, C_BUTTON, g_calBtnDown ? WK_PRESSED : g_calBtnHot ? WK_HOT : WK_NORMAL, &lx, &ly, &lw, &lh);
-	wk_text_c (g_cv, lx, ly, lw, lh, "Open Calendar", C_BUTTON_TEXT);
+	uk_framed (g_cv, x, y, w, h, C_BUTTON, g_calBtnDown ? UK_PRESSED : g_calBtnHot ? UK_HOT : UK_NORMAL, &lx, &ly, &lw, &lh);
+	uk_text_c (g_cv, lx, ly, lw, lh, "Open Calendar", C_BUTTON_TEXT);
 }
 
 static void draw (void)
@@ -470,22 +470,22 @@ static void draw (void)
 	bool full = g_open >= 0 || g_volOpen || g_calOpen;
 	int h = full ? g_sh : BAR_H;
 	if (full) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, CATCH);	// (catches a click elsewhere)
-	wk_paint_alpha (true);
+	uk_paint_alpha (true);
 	// the bar: a light gradient of the face, a light line on top, a darker one below
-	wk_rbox (g_cv, 0, 0, g_sw, BAR_H - 1, 0, wk_tone (C_MENUBAR, 196), wk_tone (C_MENUBAR, 150));
-	for (int x = 0; x < g_sw; x++) { wk_blend_px (g_cv, x, 0, 0x00FFFFFF, 120); g_cv.pixel (x, BAR_H - 1, C_OUT); }
+	uk_rbox (g_cv, 0, 0, g_sw, BAR_H - 1, 0, uk_tone (C_MENUBAR, 196), uk_tone (C_MENUBAR, 150));
+	for (int x = 0; x < g_sw; x++) { uk_blend_px (g_cv, x, 0, 0x00FFFFFF, 120); g_cv.pixel (x, BAR_H - 1, C_OUT); }
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		const MenuDef &m = g_menus[i];
-		if (i == g_open) wk_hilite (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, true);
-		wk_text_l (g_cv, m.x + 8, 0, BAR_H - 1, m.title, i == g_open ? C_SEL_TEXT : C_BARTXT, title_style (i));
+		if (i == g_open) uk_hilite (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, true);
+		uk_text_l (g_cv, m.x + 8, 0, BAR_H - 1, m.title, i == g_open ? C_SEL_TEXT : C_BARTXT, title_style (i));
 	}
 	int hh = 0, mm = 0;
 	kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
 	char clk[6] = { (char) ('0' + hh / 10), (char) ('0' + hh % 10), ':', (char) ('0' + mm / 10), (char) ('0' + mm % 10), 0 };
 	int clkX = clk_x ();
-	if (g_calOpen) wk_hilite (g_cv, clkX - 6, 3, clk_w () + 12, BAR_H - 7, 5, true);
-	wk_text_l (g_cv, clkX, 0, BAR_H - 1, clk, g_calOpen ? C_SEL_TEXT : C_BARTXT, 2);
+	if (g_calOpen) uk_hilite (g_cv, clkX - 6, 3, clk_w () + 12, BAR_H - 7, 5, true);
+	uk_text_l (g_cv, clkX, 0, BAR_H - 1, clk, g_calOpen ? C_SEL_TEXT : C_BARTXT, 2);
 	g_lastMin = mm;
 	if (g_wifi < 0) g_wifi = kapi_net_status (0, 0) ? 1 : 0;
 	draw_wifi (wifi_x (), (BAR_H - 1 - 12) / 2, g_wifi == 1);
@@ -503,14 +503,14 @@ static void draw (void)
 		{
 			const Item &it = m.items[i];
 			int ih = item_h (it);
-			if (it.sep) wk_etch_h (g_cv, dx + 10, yy + ih / 2 - 1, dw - 20, C_DROP);
+			if (it.sep) uk_etch_h (g_cv, dx + 10, yy + ih / 2 - 1, dw - 20, C_DROP);
 			else
 			{
 				bool hot = i == g_hover || (g_sub >= 0 && i == g_subOwner);
-				if (hot) wk_hilite (g_cv, dx + 4, yy, dw - 8, ih, 5, true);
-				wk_text_l (g_cv, dx + 14, yy, ih, it.label, hot ? C_SEL_TEXT : C_FIELD_TEXT);
-				if (it.key[0]) wk_text_l (g_cv, dx + dw - 14 - wk_tw (it.key), yy, ih, it.key, hot ? C_SEL_TEXT : C_DIM);
-				if (it.sub >= 0) wk_glyph (g_cv, WKG_CHEV_RIGHT, dx + dw - 16, yy + ih / 2, 8, hot ? C_SEL_TEXT : C_FIELD_TEXT);
+				if (hot) uk_hilite (g_cv, dx + 4, yy, dw - 8, ih, 5, true);
+				uk_text_l (g_cv, dx + 14, yy, ih, it.label, hot ? C_SEL_TEXT : C_FIELD_TEXT);
+				if (it.key[0]) uk_text_l (g_cv, dx + dw - 14 - uk_tw (it.key), yy, ih, it.key, hot ? C_SEL_TEXT : C_DIM);
+				if (it.sub >= 0) uk_glyph (g_cv, WKG_CHEV_RIGHT, dx + dw - 16, yy + ih / 2, 8, hot ? C_SEL_TEXT : C_FIELD_TEXT);
 			}
 			yy += ih;
 		}
@@ -520,16 +520,16 @@ static void draw (void)
 			int sx, sy, sw, sh; sub_rect (&sx, &sy, &sw, &sh);
 			panel (sx, sy, sw, sh);
 			int ih = g_fh + 8;
-			if (sd.count == 0) wk_text_l (g_cv, sx + 14, sy + 5, ih, sd.windows ? "(no open window)" : "(empty)", C_DIM);
+			if (sd.count == 0) uk_text_l (g_cv, sx + 14, sy + 5, ih, sd.windows ? "(no open window)" : "(empty)", C_DIM);
 			for (int i = 0; i < sd.count; i++)
 			{
 				int iy = sy + 5 + i * ih;
-				if (i == g_subHover) wk_hilite (g_cv, sx + 4, iy, sw - 8, ih, 5, true);
-				wk_text_l (g_cv, sx + 14, iy, ih, sd.items[i].label, i == g_subHover ? C_SEL_TEXT : C_FIELD_TEXT);
+				if (i == g_subHover) uk_hilite (g_cv, sx + 4, iy, sw - 8, ih, 5, true);
+				uk_text_l (g_cv, sx + 14, iy, ih, sd.items[i].label, i == g_subHover ? C_SEL_TEXT : C_FIELD_TEXT);
 			}
 		}
 	}
-	wk_paint_alpha (false);
+	uk_paint_alpha (false);
 	kapi_resize_window (g_sw, h);
 	kapi_present ();
 	g_dirty = false;
@@ -712,12 +712,12 @@ int main (void)
 	if (g_fb == 0) return 1;
 	kapi_resize_window (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
 	g_cv.adopt (g_fb, g_sw, g_sh);
-	wtk::init ();					// the fonts, the theme: the palette
-	if (ft_wtk_install ("DejaVu Sans", 13))		// FreeType's anti-aliased text (else the bitmap font)
-		g_fh = wk_fh ();
-	C_BARTXT = wk_ink_on (wk_tone (C_MENUBAR, 176));
-	C_BARDIM = wk_mix (wk_tone (C_MENUBAR, 176), C_BARTXT, 110);
-	C_DROP = C_FIELD; C_DIM = wk_mix (C_FIELD, C_FIELD_TEXT, 130); C_OUT = wk_tone (C_MENUBAR, 70);
+	uikit::init ();					// the fonts, the theme: the palette
+	if (ft_uikit_install ("DejaVu Sans", 13))		// FreeType's anti-aliased text (else the bitmap font)
+		g_fh = uk_fh ();
+	C_BARTXT = uk_ink_on (uk_tone (C_MENUBAR, 176));
+	C_BARDIM = uk_mix (uk_tone (C_MENUBAR, 176), C_BARTXT, 110);
+	C_DROP = C_FIELD; C_DIM = uk_mix (C_FIELD, C_FIELD_TEXT, 130); C_OUT = uk_tone (C_MENUBAR, 70);
 	{ int yy = 2026, mo = 1, dd = 1; kapi_get_datetime (&yy, &mo, &dd, 0, 0, 0); g_cal = new CalCard (yy, mo, dd); }
 	kapi_set_pointer_handler (ptr);
 	volume_restore ();						// the saved volume (SD:/etc/sound.ini)

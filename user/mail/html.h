@@ -1,7 +1,7 @@
 //
 // mail/html.h -- Mail's own HTML renderer (the user, 2026-10-02: "simple, not Jet, HTML 4 at least with CSS 2"): a
 // message's HTML parsed (html_dom.h), styled (html_css.h), laid out at a width (html_layout.h) and painted through a
-// Painter (html_ft.h: FreeType's text and wtk's canvas). Safe by construction: no scripts, no forms, no frames; the
+// Painter (html_ft.h: FreeType's text and uikit's canvas). Safe by construction: no scripts, no forms, no frames; the
 // remote pictures shown only when the Host says so (Mail: "Show the pictures"); the links reported, never followed.
 //
 //   mail::html::Html h;

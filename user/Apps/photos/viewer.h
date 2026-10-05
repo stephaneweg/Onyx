@@ -124,7 +124,7 @@ public:
 			{
 				if (k == pos) fill_round (canvas, x - 3, sy - 3, tw_ + 6, th_ + 6, 6, 0xFFFFFF);
 				g_th.draw (canvas, g_list[k], x, sy, tw_, th_, 4, k == pos ? 0xFFFFFF : D_BG);
-				if (k != pos) wk_rbox (canvas, x, sy, tw_, th_, 4, 0x000000, 0x000000, 70);
+				if (k != pos) uk_rbox (canvas, x, sy, tw_, th_, 4, 0x000000, 0x000000, 70);
 				hits.add (x, sy, tw_, th_, V_STRIP, k);
 			}
 		}
@@ -259,7 +259,7 @@ public:
 		// the description
 		text (canvas, X, y, "DESCRIPTION", 0x969AA0, F_TINY, 1); y += 18;
 		int bh = 86;
-		fill_round (canvas, X, y, W, bh, 6, hot == V_DESC ? 0x3A3F47 : 0x34383F); wk_rline (canvas, X, y, W, bh, 6, 0x50545C);
+		fill_round (canvas, X, y, W, bh, 6, hot == V_DESC ? 0x3A3F47 : 0x34383F); uk_rline (canvas, X, y, W, bh, 6, 0x50545C);
 		hits.add (X, y, W, bh, V_DESC);
 		const char *d = p.desc && p.desc[0] ? p.desc : 0;
 		if (!d) text (canvas, X + 10, y + 9, "Add a description...", D_FAINT, F_SMALL);

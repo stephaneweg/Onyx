@@ -12,10 +12,10 @@
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see LICENSE).
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
-#include "wtk/toolbar.h"
-#include "wtk/paint.h"
-#include "wtk/skin.h"
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
+#include "uikit/paint.h"
+#include "uikit/skin.h"
 #include "clipboard.h"
 #include "engine.h"
 #include <fcntl.h>
@@ -31,7 +31,7 @@
 int downloads_main ();				// downloads.cpp: the downloads' window (its own process)
 int console_main ();				// console.cpp: the JavaScript console's window (its own process)
 
-using namespace wtk;
+using namespace uikit;
 
 #define W0	1000		// the first size (the window fits the work area)
 #define H0	700
@@ -88,7 +88,7 @@ public:
 	{
 		int b = (bl ? 1 : 0) | (br ? 2 : 0) | (bm ? 4 : 0);
 		unsigned mods = kapi_get_modifiers ();
-		if (mx >= 0) wk_cursor (engine_cursor ());		// (a link's hand, the text bar...: what the page asked last)
+		if (mx >= 0) uk_cursor (engine_cursor ());		// (a link's hand, the text bar...: what the page asked last)
 		if (wheel) engine_wheel (mx, my, wheel, mods);
 		int changed = b ^ buttons;
 		if ((changed & 2) && (b & 2))				// a right click: the browser's menu
@@ -150,7 +150,7 @@ static char        g_hover[512];
 
 static void glyph (Canvas &cv, int id, int x, int y, int s, unsigned ink, bool off)
 {
-	wk_glyph (cv, id, x + s / 2, y + s / 2, s, off ? wk_mix (ink, C_BG, 170) : ink);
+	uk_glyph (cv, id, x + s / 2, y + s / 2, s, off ? uk_mix (ink, C_BG, 170) : ink);
 }
 
 static void draw_title ();
@@ -189,15 +189,15 @@ public:
 };
 static WebRoot *g_root;
 
-// The window's title: the page's (the frame is drawn by the app: wtk/skin.cpp -- drawn again here with
+// The window's title: the page's (the frame is drawn by the app: uikit/skin.cpp -- drawn again here with
 // the page's title over the kernel's, which stays the program's).
 static void draw_title ()
 {
 	struct kapi_chrome c;
 	if (!kapi_get_chrome (&c) || !c.active) return;
 	const char *t = g_title[0] ? g_title : "Jet";
-	wk_draw_frame (c.active, c.chrome_w, c.chrome_h, c.inset_t, t, C_FRAME_ACTIVE, true);
-	if (c.inactive) wk_draw_frame (c.inactive, c.chrome_w, c.chrome_h, c.inset_t, t, C_FRAME_INACTIVE, false);
+	uk_draw_frame (c.active, c.chrome_w, c.chrome_h, c.inset_t, t, C_FRAME_ACTIVE, true);
+	if (c.inactive) uk_draw_frame (c.inactive, c.chrome_w, c.chrome_h, c.inset_t, t, C_FRAME_INACTIVE, false);
 	g_root->invalidate (false);
 }
 
@@ -213,7 +213,7 @@ static void show_status ()
 	g_status->setText (b);
 }
 
-// ---- the <select> lists: a scrolling list under the box (wtk's PopupMenu holds 16 items) -------------------
+// ---- the <select> lists: a scrolling list under the box (uikit's PopupMenu holds 16 items) -------------------
 
 enum { POP_MAX = 512, POP_ROWS = 14 };
 static char          g_popText[64 * 1024];
@@ -241,16 +241,16 @@ public:
 	}
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 6, C_FIELD);
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 6, C_FIELD);
 		for (int r = 0; r < m_rows && m_top + r < g_popN; r++)
 		{
 			int i = m_top + r, y = 4 + r * m_rowH;
-			if (g_popFlag[i] & ENGINE_ITEM_SEPARATOR) { wk_etch_h (canvas, 8, y + m_rowH / 2, width - 16, C_FIELD); continue; }
+			if (g_popFlag[i] & ENGINE_ITEM_SEPARATOR) { uk_etch_h (canvas, 8, y + m_rowH / 2, width - 16, C_FIELD); continue; }
 			bool label = g_popFlag[i] & ENGINE_ITEM_LABEL;
-			if (i == m_hot && choosable (i)) wk_hilite (canvas, 4, y, width - 8, m_rowH, 4);
-			unsigned ink = i == m_hot && choosable (i) ? wk_hilite_ink () : choosable (i) || label ? C_FIELD_TEXT : C_DIS;
-			wk_text_l (canvas, label ? 8 : 16, y, m_rowH, g_popItem[i], ink, label ? 2 : 0);
+			if (i == m_hot && choosable (i)) uk_hilite (canvas, 4, y, width - 8, m_rowH, 4);
+			unsigned ink = i == m_hot && choosable (i) ? uk_hilite_ink () : choosable (i) || label ? C_FIELD_TEXT : C_DIS;
+			uk_text_l (canvas, label ? 8 : 16, y, m_rowH, g_popItem[i], ink, label ? 2 : 0);
 		}
 		if (g_popN > m_rows)						// (where the view is in the list)
 		{
@@ -327,8 +327,8 @@ static void show_pending_popup ()
 {
 	if (!g_popPending) return;
 	g_popPending = false;
-	int rowH = wk_fh () + 8, w = g_popW;
-	for (int i = 0; i < g_popN; i++) { int tw = wk_text_w (g_popItem[i]) + 34; if (tw > w) w = tw; }
+	int rowH = uk_fh () + 8, w = g_popW;
+	for (int i = 0; i < g_popN; i++) { int tw = uk_text_w (g_popItem[i]) + 34; if (tw > w) w = tw; }
 	if (w > g_root->width - 8) w = g_root->width - 8;
 	int rows = g_popN < POP_ROWS ? g_popN : POP_ROWS;
 	int x = g_page->left + g_popX, y = g_page->top + g_popY + g_popH, h = rows * rowH + 8;
@@ -361,7 +361,7 @@ class FindBar : public Widget
 {
 public:
 	FindBar (int l, int t, int w, int h) : Widget (l, t, w, h) {}
-	void onDraw () override { canvas.clear (C_BG); wk_etch_h (canvas, 0, 0, width, C_BG); }
+	void onDraw () override { canvas.clear (C_BG); uk_etch_h (canvas, 0, 0, width, C_BG); }
 };
 static FindBar   *g_find;
 static FindField *g_findField;
@@ -603,7 +603,7 @@ static void save_as (const char *url)
 	char name[128], path[300];
 	name_of (url, name, sizeof name);
 	kapi_mkdir ("SD:/Downloads");
-	if (wk_file_save (path, sizeof path, "SD:/Downloads", name)) engine_download_url (url, path);
+	if (uk_file_save (path, sizeof path, "SD:/Downloads", name)) engine_download_url (url, path);
 }
 
 enum { CM_OPEN_LINK = 1, CM_COPY_LINK, CM_SAVE_LINK, CM_OPEN_IMAGE, CM_COPY_IMAGE, CM_SAVE_IMAGE,
@@ -748,8 +748,8 @@ static void on_process_ended ()
 	snprintf (g_statusText, sizeof g_statusText, "The page stopped working: Reload to load it again");
 	show_status ();
 }
-static void on_alert (const char *t) { wk_messagebox ("This page says", t, MB_OK); }
-static bool on_confirm (const char *t) { return wk_messagebox ("This page asks", t, MB_OKCANCEL) == 1; }
+static void on_alert (const char *t) { uk_messagebox ("This page says", t, MB_OK); }
+static bool on_confirm (const char *t) { return uk_messagebox ("This page asks", t, MB_OKCANCEL) == 1; }
 
 static void op_back ();
 static void op_forward ();
@@ -784,19 +784,19 @@ static void op_new_window () { engine_new_window (HOME); }
 static void op_open_file ()
 {
 	char p[256];
-	if (wk_file_open (p, sizeof p, "SD:/")) engine_load (p);
+	if (uk_file_open (p, sizeof p, "SD:/")) engine_load (p);
 }
 static void op_close () { kapi_exit (0); }
 static void op_save_page () { save_as (g_pageUrl); }
 // Edit: the address field's when it has the keyboard, else the page's.
-static void op_cut () { if (g_url->hasFocus) g_url->onKey (WK_CTRL ('X')); else engine_command ("Cut"); }
-static void op_copy () { if (g_url->hasFocus) g_url->onKey (WK_CTRL ('C')); else engine_command ("Copy"); }
-static void op_paste () { if (g_url->hasFocus) g_url->onKey (WK_CTRL ('V')); else engine_command ("Paste"); }
+static void op_cut () { if (g_url->hasFocus) g_url->onKey (UK_CTRL ('X')); else engine_command ("Cut"); }
+static void op_copy () { if (g_url->hasFocus) g_url->onKey (UK_CTRL ('C')); else engine_command ("Copy"); }
+static void op_paste () { if (g_url->hasFocus) g_url->onKey (UK_CTRL ('V')); else engine_command ("Paste"); }
 static void op_select_all () { if (!g_url->hasFocus) engine_command ("SelectAll"); }	// (the field: ^C takes it whole)
 static void op_zoom_in () { engine_zoom (engine_zoom_factor () * 1.1); }
 static void op_zoom_out () { engine_zoom (engine_zoom_factor () / 1.1); }
 static void op_zoom_reset () { engine_zoom (1); }
-static void op_about () { wk_messagebox ("About Jet", "Jet -- the Onyx browser, on WebKit.\nWebKit: LGPL-2.1 (see SD:/docs/licences).", MB_OK); }
+static void op_about () { uk_messagebox ("About Jet", "Jet -- the Onyx browser, on WebKit.\nWebKit: LGPL-2.1 (see SD:/docs/licences).", MB_OK); }
 
 static void cb_back (Widget &) { op_back (); }
 static void cb_forward (Widget &) { op_forward (); }
@@ -892,22 +892,22 @@ int main (int argc, char **argv)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New Window", "^N", WK_CTRL ('N'), op_new_window);
-	menu.item ("Open File...", "^O", WK_CTRL ('O'), op_open_file);
-	menu.item ("Open Location", "^L", WK_CTRL ('L'), op_location);
-	menu.item ("Save Page As...", "^S", WK_CTRL ('S'), op_save_page);
-	menu.item ("Downloads", "^J", WK_CTRL ('J'), op_downloads);
+	menu.item ("New Window", "^N", UK_CTRL ('N'), op_new_window);
+	menu.item ("Open File...", "^O", UK_CTRL ('O'), op_open_file);
+	menu.item ("Open Location", "^L", UK_CTRL ('L'), op_location);
+	menu.item ("Save Page As...", "^S", UK_CTRL ('S'), op_save_page);
+	menu.item ("Downloads", "^J", UK_CTRL ('J'), op_downloads);
 	menu.separator ();
-	menu.item ("Close Window", "^W", WK_CTRL ('W'), op_close);
+	menu.item ("Close Window", "^W", UK_CTRL ('W'), op_close);
 	menu.menu ("Edit");
-	menu.item ("Cut", "^X", WK_CTRL ('X'), op_cut);
-	menu.item ("Copy", "^C", WK_CTRL ('C'), op_copy);
-	menu.item ("Paste", "^V", WK_CTRL ('V'), op_paste);
-	menu.item ("Select All", "^A", WK_CTRL ('A'), op_select_all);
+	menu.item ("Cut", "^X", UK_CTRL ('X'), op_cut);
+	menu.item ("Copy", "^C", UK_CTRL ('C'), op_copy);
+	menu.item ("Paste", "^V", UK_CTRL ('V'), op_paste);
+	menu.item ("Select All", "^A", UK_CTRL ('A'), op_select_all);
 	menu.separator ();
-	menu.item ("Find...", "^F", WK_CTRL ('F'), op_find);
+	menu.item ("Find...", "^F", UK_CTRL ('F'), op_find);
 	menu.menu ("View");
-	menu.item ("Reload", "^R", WK_CTRL ('R'), op_reload);
+	menu.item ("Reload", "^R", UK_CTRL ('R'), op_reload);
 	menu.separator ();
 	menu.item ("Zoom In", "", 0, op_zoom_in);
 	menu.item ("Zoom Out", "", 0, op_zoom_out);
@@ -927,7 +927,7 @@ int main (int argc, char **argv)
 	engine_set_clipboard (clip_write, clip_read, clip_serial);
 	if (!engine_init (&s_client, g_page->width, g_page->height))
 	{
-		wk_messagebox ("Jet", "The web engine could not start (see kmsg).", MB_OK);
+		uk_messagebox ("Jet", "The web engine could not start (see kmsg).", MB_OK);
 		return 1;
 	}
 	engine_load (url[0] ? url : HOME);

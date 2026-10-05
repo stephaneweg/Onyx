@@ -111,7 +111,7 @@ construire, depuis `user/` :
 
 ```sh
 cd user
-make wtk/libwtk.a ft/libft.a libc/crt0libc.o libc/onyx_syscalls.o
+make uikit/libuikit.a ft/libft.a libc/crt0libc.o libc/onyx_syscalls.o
 # mbedTLS est déjà construit dans third_party/mbedtls-3.6.3/library/libmbed{tls,x509,crypto}.a
 # (sinon : make -C user/tls)
 ```
@@ -127,7 +127,7 @@ Un `make` complet depuis `kernel/` (puis `make stage`) construit tout, noyau et 
 |---|---|---|
 | Fenêtre + framebuffer 32 bits `0x00RRGGBB` | `kapi_create_window (w, h, titre)` → `unsigned *` | `user/kapi.h`, ex. `Apps/2048` |
 | Plein écran | `kapi_fullscreen_begin / kapi_present_fb / kapi_fullscreen_end` (v41), accès direct v55 | docs/03 §6, `Apps/plasma` |
-| Widgets (champs texte, boutons, listes, dialogues, menus) | **wtk** (C++) | `user/wtk/*.h`, docs/03 §6 |
+| Widgets (champs texte, boutons, listes, dialogues, menus) | **uikit** (C++) | `user/uikit/*.h`, docs/03 §6 |
 | Souris / clavier | `kapi_set_pointer_handler`, `kapi_set_key_handler`, `kapi_get_modifiers` | `user/kapi.h` |
 | Texte TrueType anti-aliasé (chat, pseudos) | FreeType « lean » + `ft/fonts.h` (`fnt::get`, `fnt::draw`) | docs/03 §6 « TrueType text » |
 | Boucle d'événements | `kapi_pump_events`, `kapi_pump_wait (ms)`, `kapi_should_exit` | docs/03 §5.2 |
@@ -151,7 +151,7 @@ Un `make` complet depuis `kernel/` (puis `make stage`) construit tout, noyau et 
 ## 5. Squelette de build (app hors dépôt)
 
 L'app de Lucas peut vivre dans **son propre dossier privé**, avec un Makefile qui pointe vers un clone
-d'Onyx. Le modèle est la règle `courier.elf` de `user/Makefile` (newlib + wtk + FreeType + mbedTLS) :
+d'Onyx. Le modèle est la règle `courier.elf` de `user/Makefile` (newlib + uikit + FreeType + mbedTLS) :
 
 ```make
 # Makefile -- taatu.app pour Onyx (hors du dépôt Onyx)
@@ -172,7 +172,7 @@ SRC = $(wildcard src/*.cpp)
 
 taatu.elf: $(SRC) $(wildcard src/*.h)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(U)/libc/crt0libc.o $(U)/libc/onyx_syscalls.o $(SRC) \
-	    $(U)/wtk/libwtk.a $(U)/ft/libft.a \
+	    $(U)/uikit/libuikit.a $(U)/ft/libft.a \
 	    -L$(MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
 stage: taatu.elf
@@ -191,12 +191,12 @@ stack    = 2M             ; la pile par défaut est 256 KB : à augmenter si dé
 
 - **Une seule app « newlib »**, c'est-à-dire `crt0libc.o` (qui appelle `exit(main())`). **Pas
   de `crt0.S`**, qui est réservé aux apps freestanding.
-- **Deux tas cohabitent.** Les objets wtk sont alloués par `operator new` sur umm
+- **Deux tas cohabitent.** Les objets uikit sont alloués par `operator new` sur umm
   (`onyxpp.hpp`), les bibliothèques C par `malloc` (newlib). C'est normal : ne pas lier umm une
   seconde fois. Voir `user/Apps/courier/main.cpp` pour l'enchaînement exact des en-têtes.
 - `json.hpp`, `tls/onyx_tls.hpp`, `http.hpp` et `ft/fonts.h` sont **header-only** : à inclure dans
   **une seule** unité de compilation quand c'est indiqué.
-- `wtk/libwtk.a` contient les codecs d'image : il suffit d'inclure `img/imgload.hpp`.
+- `uikit/libuikit.a` contient les codecs d'image : il suffit d'inclure `img/imgload.hpp`.
 
 ---
 
@@ -248,14 +248,14 @@ Pile à écrire, du bas vers le haut :
 ### 6.3. Rendu 2.5D
 
 - **Décor** : l'image de fond de la salle est décodée une fois (`img_load_mem`) dans un
-  `wtk::Canvas`, puis copiée à chaque frame. Mieux : ne recopier que les **rectangles salis**.
+  `uikit::Canvas`, puis copiée à chaque frame. Mieux : ne recopier que les **rectangles salis**.
 - **Sprites** (avatars, meubles) : décodés en `0xAARRGGBB`, puis **triés par profondeur** à
   chaque frame selon la règle du jeu (souvent `y` du pied, ou la case iso). Le dessin se fait avec
   l'alpha. Découpage des planches, directions et frames d'animation : selon le format de TAATU.
 - **Coordonnées** : conversion écran ↔ monde (iso ou non) selon la règle du client web, au pixel
   près. Le **hit-test** au clic doit être pixel-perfect sur l'alpha du sprite, comme sur le web.
 - **Texte** : pseudos et bulles de chat avec `fnt::draw` (FreeType). La saisie du chat passe par
-  un champ wtk ou une ligne maison en bas de la fenêtre.
+  un champ uikit ou une ligne maison en bas de la fenêtre.
 - **Taille de fenêtre** : le simulateur PC n'accepte pas plus de **1024 × 768**. Sur le Pi, la
   fenêtre peut être plus grande, ou passer en plein écran (`kapi_fullscreen_begin`). Si le jeu est
   conçu pour une taille fixe, créer la fenêtre **à la plus grande taille** proposée, à cause du
@@ -287,12 +287,12 @@ Pile à écrire, du bas vers le haut :
 
 ## 7. Tester sur le PC (sans Pi)
 
-- **Simulateur de bureau** : `tools/tests/desktop_sim/` compile une app wtk **pour le PC** contre un
+- **Simulateur de bureau** : `tools/tests/desktop_sim/` compile une app uikit **pour le PC** contre un
   faux noyau (`fakekapi.cpp`) et la pilote par un script d'événements (clics, touches). Il produit
   une capture. Avec **`SIM_REALNET=1`**, les sockets TCP sont celles du PC : on peut donc se
   connecter au vrai serveur TAATU ou à un serveur local. `SIM_SLEEP=1` fait arriver les réponses
   en temps réel. Voir `shots.sh` et la doc docs/03 §9 « Screenshots », puis adapter le principe
-  pour une app hors dépôt (mêmes fichiers `fakekapi.cpp`, `imgstub.cpp`, `user/wtk/*.cpp`).
+  pour une app hors dépôt (mêmes fichiers `fakekapi.cpp`, `imgstub.cpp`, `user/uikit/*.cpp`).
 - **Le vrai ELF du Pi sur PC** : `sh tools/tests/desktop_sim/elfrun.sh <app>` exécute un
   `user/<app>.elf` sous `qemu-aarch64` avec la kapi simulée. Le script cherche l'ELF dans
   `user/` : y copier `taatu.elf`, ou adapter le chemin.
@@ -317,7 +317,7 @@ Pile à écrire, du bas vers le haut :
 
 | Composant | Licence | Utilisable dans un binaire fermé ? |
 |---|---|---|
-| Code Onyx (`user/*.h`, `wtk`, `json.hpp`, `http.hpp`, `onyx_tls.hpp`, `libc/`, `user.ld`, `crt0*`) | pas de fichier de licence (tous droits réservés) | **oui, avec l'accord de Stéphane** (accordé pour ce portage) |
+| Code Onyx (`user/*.h`, `uikit`, `json.hpp`, `http.hpp`, `onyx_tls.hpp`, `libc/`, `user.ld`, `crt0*`) | pas de fichier de licence (tous droits réservés) | **oui, avec l'accord de Stéphane** (accordé pour ce portage) |
 | newlib (libc/libm de la toolchain) | BSD-like | oui |
 | mbedTLS 3.6.3 | Apache-2.0 | oui (garder la mention) |
 | FreeType 2.14.3 | FTL | oui, **mention obligatoire** dans la doc ou l'écran « À propos » |

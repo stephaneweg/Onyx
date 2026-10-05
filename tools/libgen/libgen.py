@@ -14,7 +14,7 @@
 #                  library).
 #   --stubs        the program side: one import stub per entry, under the entry's own name -- it
 #                  loads the entry's pointer from the table and jumps there. The program's code calls
-#                  `FT_Load_Glyph` or `wtk::Widget::invalidate` as before; the linker binds the call
+#                  `FT_Load_Glyph` or `uikit::Widget::invalidate` as before; the linker binds the call
 #                  to the stub. Stubs are weak: a program's own definition of a name wins, as it won
 #                  over a static library's member.
 #   --bind         the program side: a constructor (priority 101: before the program's own) that
@@ -24,7 +24,7 @@
 # expression; default: all of them), less --exclude. Inline functions (weak) are not exported: each
 # side compiles its own. Global DATA cannot be imported by a program (it is linked at a fixed address,
 # the library is not): a global variable among the objects is an error, unless --allow-data matches
-# it (the library then reaches it another way: wtk's globals are the program's, handed to the library
+# it (the library then reaches it another way: uikit's globals are the program's, handed to the library
 # with --data).
 #
 # C++ (--vtables): a class whose vtable the compiler emits only with its key function (the library's

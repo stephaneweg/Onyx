@@ -1,6 +1,6 @@
 //
 // taskman -- the Task Manager, in tabs (as Windows' own):
-//   Processes  every task in a grid that scrolls (wtk's DataGrid): its name, an app or a kernel task,
+//   Processes  every task in a grid that scrolls (uikit's DataGrid): its name, an app or a kernel task,
 //              its state, the memory it owns, an app's system calls per second (kapi v74 proc_stats);
 //              a click on a title sorts. Up / Down select; Enter (a double click, Bring to Front)
 //              raises an app's window; k or Delete (End Task) stops the selected app (kernel tasks
@@ -16,13 +16,13 @@
 // the views follow. On a kernel older than v80 the last two tabs stay grey.
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
-#include "ft/wtkface.h"			// FreeType's text (DejaVu Sans) for every widget
+#include "uikit/uikit.h"
+#include "ft/uikitface.h"			// FreeType's text (DejaVu Sans) for every widget
 #include "applib.h"
 #include <stdio.h>
 #include <string.h>
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	560
 #define H	460
@@ -232,17 +232,17 @@ public:
 	MemView (int l, int t, int w, int h) : Widget (l, t, w, h) {}
 	void tile (int x, int y, int w, const char *label, unsigned long kb, const char *sub)
 	{
-		wk_rbox (canvas, x, y, w, 62, 6, C_FIELD, C_FIELD);
-		wk_rline (canvas, x, y, w, 62, 6, wk_tone (C_BG, 72), 200);
-		unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 130);
-		wk_text_l (canvas, x + 10, y + 5, 18, label, dim);
+		uk_rbox (canvas, x, y, w, 62, 6, C_FIELD, C_FIELD);
+		uk_rline (canvas, x, y, w, 62, 6, uk_tone (C_BG, 72), 200);
+		unsigned dim = uk_mix (C_FIELD, C_FIELD_TEXT, 130);
+		uk_text_l (canvas, x + 10, y + 5, 18, label, dim);
 		char v[24]; mb (v, sizeof v, kb);
-		wk_text_l (canvas, x + 10, y + 22, 20, v, C_FIELD_TEXT, 2);
-		if (sub) wk_text_l (canvas, x + 10, y + 41, 18, sub, dim);
+		uk_text_l (canvas, x + 10, y + 22, 20, v, C_FIELD_TEXT, 2);
+		if (sub) uk_text_l (canvas, x + 10, y + 41, 18, sub, dim);
 	}
 	void onDraw () override
 	{
-		unsigned bg = bgColor (), dim = wk_mix (bg, C_TEXT, 150);
+		unsigned bg = bgColor (), dim = uk_mix (bg, C_TEXT, 150);
 		canvas.clear (bg);
 		unsigned long used = used_kb (), sys = used > g_apps ? used - g_apps : 0;
 		// the figures
@@ -254,10 +254,10 @@ public:
 		tile (3 * (tw + gap), 0, width - 3 * (tw + gap), "System", sys, "kernel and GPU");
 		// the use over the last minute
 		int y = 74;
-		wk_text_l (canvas, 2, y, 18, "MEMORY IN USE, THE LAST MINUTE", dim, 2); y += 22;
+		uk_text_l (canvas, 2, y, 18, "MEMORY IN USE, THE LAST MINUTE", dim, 2); y += 22;
 		int gh = height - y - 104; if (gh < 50) gh = 50;
-		wk_sunken (canvas, 0, y, width, gh, 5, C_FIELD);
-		unsigned line = wk_mix (C_FIELD, C_FIELD_TEXT, 22);
+		uk_sunken (canvas, 0, y, width, gh, 5, C_FIELD);
+		unsigned line = uk_mix (C_FIELD, C_FIELD_TEXT, 22);
 		for (int k = 1; k < 4; k++) canvas.fillRect (4, y + gh * k / 4, width - 8, 1, line);
 		if (g_nhist > 1)
 		{
@@ -265,14 +265,14 @@ public:
 			for (int i = 0; i < g_nhist; i++)
 			{
 				int x = 6 + (HIST - g_nhist + i) * iw / (HIST - 1), yy = y + 6 + ih - g_hist[i] * ih / 1000;
-				canvas.fillRect (x - 1, yy, 3, y + 6 + ih - yy, wk_mix (C_FIELD, C_ACCENT, 46));
+				canvas.fillRect (x - 1, yy, 3, y + 6 + ih - yy, uk_mix (C_FIELD, C_ACCENT, 46));
 				if (i) { VPath p; p.line (V (px), V (py), V (x), V (yy), V (2)); p.fill (canvas, C_ACCENT, 255); }
 				px = x; py = yy;
 			}
 		}
 		y += gh + 10;
 		// what uses it: the system, the four largest apps, the others -- then what is free
-		wk_text_l (canvas, 2, y, 18, "WHAT USES IT", dim, 2); y += 22;
+		uk_text_l (canvas, 2, y, 18, "WHAT USES IT", dim, 2); y += 22;
 		int top[4], nt = 0;
 		for (int k = 0; k < 4; k++)			// the largest app not taken yet, four times
 		{
@@ -291,7 +291,7 @@ public:
 		unsigned long shown = 0;
 		for (int k = 0; k < nt; k++) { kb[ns] = (unsigned long) g_p[top[k]].pages * g_pageKb; shown += kb[ns]; nm[ns++] = g_p[top[k]].name; }
 		if (g_apps > shown) { kb[ns] = g_apps - shown; nm[ns++] = "the other apps"; }
-		wk_rbox (canvas, 0, y, width, 18, 4, C_FIELD, C_FIELD);
+		uk_rbox (canvas, 0, y, width, 18, 4, C_FIELD, C_FIELD);
 		int x = 1;
 		for (int k = 0; k < ns && g_total; k++)
 		{
@@ -301,16 +301,16 @@ public:
 			if (w > 0) canvas.fillRect (x, y + 1, w, 16, SEG_COL[k]);
 			x += w;
 		}
-		wk_rline (canvas, 0, y, width, 18, 4, wk_tone (C_BG, 72), 220);
+		uk_rline (canvas, 0, y, width, 18, 4, uk_tone (C_BG, 72), 220);
 		y += 26;
 		int lx = 2;
 		for (int k = 0; k < ns; k++)
 		{
 			char v[24], t[72]; mb (v, sizeof v, kb[k]); snprintf (t, sizeof t, "%s  %s", nm[k], v);
-			int w = wk_text_w (t) + 30;
+			int w = uk_text_w (t) + 30;
 			if (lx + w > width && lx > 2) { lx = 2; y += 20; }
-			wk_rbox (canvas, lx, y + 4, 10, 10, 2, SEG_COL[k], SEG_COL[k]);
-			wk_text_l (canvas, lx + 16, y, 18, t, C_TEXT);
+			uk_rbox (canvas, lx, y + 4, 10, 10, 2, SEG_COL[k], SEG_COL[k]);
+			uk_text_l (canvas, lx + 16, y, 18, t, C_TEXT);
 			lx += w;
 		}
 	}
@@ -326,20 +326,20 @@ static void plot (Canvas &cv, int x, int y, int w, int h, const int *hist, int n
 	{
 		int v = hist[i] > top ? top : hist[i];
 		int xx = x + 6 + (HIST - n + i) * iw / (HIST - 1), yy = y + 6 + ih - (int) ((long long) v * ih / top);
-		if (fill) cv.fillRect (xx - 1, yy, 3, y + 6 + ih - yy, wk_mix (C_FIELD, col, 46));
+		if (fill) cv.fillRect (xx - 1, yy, 3, y + 6 + ih - yy, uk_mix (C_FIELD, col, 46));
 		if (i) { VPath p; p.line (V (px), V (py), V (xx), V (yy), V (2)); p.fill (cv, col, 255); }
 		px = xx; py = yy;
 	}
 }
 static void plot_box (Canvas &cv, int x, int y, int w, int h)
 {
-	wk_sunken (cv, x, y, w, h, 5, C_FIELD);
-	unsigned line = wk_mix (C_FIELD, C_FIELD_TEXT, 22);
+	uk_sunken (cv, x, y, w, h, 5, C_FIELD);
+	unsigned line = uk_mix (C_FIELD, C_FIELD_TEXT, 22);
 	for (int k = 1; k < 4; k++) cv.fillRect (x + 4, y + h * k / 4, w - 8, 1, line);
 }
 static void text_r (Canvas &cv, int right, int y, int h, const char *t, unsigned c, int style = 0)
 {
-	wk_text_l (cv, right - wk_text_w (t, style), y, h, t, c, style);
+	uk_text_l (cv, right - uk_text_w (t, style), y, h, t, c, style);
 }
 
 // ---- Processor ---------------------------------------------------------------------------------------------
@@ -349,10 +349,10 @@ public:
 	CpuView (int l, int t, int w, int h) : Widget (l, t, w, h) {}
 	void onDraw () override
 	{
-		unsigned bg = bgColor (), dim = wk_mix (bg, C_TEXT, 150);
+		unsigned bg = bgColor (), dim = uk_mix (bg, C_TEXT, 150);
 		canvas.clear (bg);
 		int n = (int) g_cpu.cores; if (n > KAPI_CPU_CORES) n = KAPI_CPU_CORES;
-		if (n <= 0) { wk_text_c (canvas, 0, 0, width, height, "No core to show", dim); return; }
+		if (n <= 0) { uk_text_c (canvas, 0, 0, width, height, "No core to show", dim); return; }
 		int cols = n > 1 ? 2 : 1, rows = (n + cols - 1) / cols, gap = 10;
 		int cw = (width - (cols - 1) * gap) / cols, ch = (height - (rows - 1) * gap) / rows;
 		if (ch < 96) ch = 96;
@@ -362,7 +362,7 @@ public:
 			const struct kapi_cpu_core &k = g_cpu.core[c];
 			char t[24], what[80];
 			snprintf (t, sizeof t, "Core %d", c);
-			wk_text_l (canvas, x + 2, y, 20, t, C_TEXT, 2);
+			uk_text_l (canvas, x + 2, y, 20, t, C_TEXT, 2);
 			switch (k.role)
 			{
 			case KAPI_CORE_SYSTEM:	snprintf (what, sizeof what, "the system and every app"); break;
@@ -376,12 +376,12 @@ public:
 				else snprintf (what, sizeof what, k.pid ? "an app core: in use" : "an app core: free");
 			}
 			}
-			wk_text_l (canvas, x + 2 + wk_text_w (t, 2) + 10, y + 1, 18, what, dim);
+			uk_text_l (canvas, x + 2 + uk_text_w (t, 2) + 10, y + 1, 18, what, dim);
 			char pct[16]; snprintf (pct, sizeof pct, "%d %%", (g_load[c] + 5) / 10);
 			text_r (canvas, x + cw - 2, y, 20, pct, C_TEXT, 2);
 			int gy = y + 24, gh = ch - 24;
 			plot_box (canvas, x, gy, cw, gh);
-			plot (canvas, x, gy, cw, gh, g_cpuHist[c], g_ncpuHist, 1000, k.role == KAPI_CORE_NETWORK ? wk_mix (C_FIELD, C_ACCENT, 120) : C_ACCENT, true);
+			plot (canvas, x, gy, cw, gh, g_cpuHist[c], g_ncpuHist, 1000, k.role == KAPI_CORE_NETWORK ? uk_mix (C_FIELD, C_ACCENT, 120) : C_ACCENT, true);
 		}
 	}
 };
@@ -395,17 +395,17 @@ public:
 	NetView (int l, int t, int w, int h) : Widget (l, t, w, h) {}
 	void tile (int x, int y, int w, const char *label, const char *value, const char *sub, unsigned mark)
 	{
-		wk_rbox (canvas, x, y, w, 62, 6, C_FIELD, C_FIELD);
-		wk_rline (canvas, x, y, w, 62, 6, wk_tone (C_BG, 72), 200);
-		unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 130);
-		wk_text_l (canvas, x + 10, y + 5, 18, label, dim);
-		if (mark) wk_rbox (canvas, x + w - 20, y + 9, 10, 10, 2, mark, mark);
-		wk_text_l (canvas, x + 10, y + 22, 20, value, C_FIELD_TEXT, 2);
-		if (sub) wk_text_l (canvas, x + 10, y + 41, 18, sub, dim);
+		uk_rbox (canvas, x, y, w, 62, 6, C_FIELD, C_FIELD);
+		uk_rline (canvas, x, y, w, 62, 6, uk_tone (C_BG, 72), 200);
+		unsigned dim = uk_mix (C_FIELD, C_FIELD_TEXT, 130);
+		uk_text_l (canvas, x + 10, y + 5, 18, label, dim);
+		if (mark) uk_rbox (canvas, x + w - 20, y + 9, 10, 10, 2, mark, mark);
+		uk_text_l (canvas, x + 10, y + 22, 20, value, C_FIELD_TEXT, 2);
+		if (sub) uk_text_l (canvas, x + 10, y + 41, 18, sub, dim);
 	}
 	void onDraw () override
 	{
-		unsigned bg = bgColor (), dim = wk_mix (bg, C_TEXT, 150);
+		unsigned bg = bgColor (), dim = uk_mix (bg, C_TEXT, 150);
 		canvas.clear (bg);
 		char a[24], b[24];
 		int gap = 10, tw = (width - 3 * gap) / 4;
@@ -417,7 +417,7 @@ public:
 		int y = 74;
 		int top = 64 * 1024;
 		for (int i = 0; i < g_nnetHist; i++) { if (g_rxHist[i] > top) top = g_rxHist[i]; if (g_txHist[i] > top) top = g_txHist[i]; }
-		wk_text_l (canvas, 2, y, 18, "THE LAST MINUTE", dim, 2);
+		uk_text_l (canvas, 2, y, 18, "THE LAST MINUTE", dim, 2);
 		rate_text (a, sizeof a, top); snprintf (b, sizeof b, "top: %s", a);
 		text_r (canvas, width - 2, y, 18, b, dim);
 		y += 22;
@@ -439,21 +439,21 @@ public:
 		plot (canvas, 0, y, width, gh, g_rxHist, g_nnetHist, top, C_ACCENT, true);
 		plot (canvas, 0, y, width, gh, g_txHist, g_nnetHist, top, C_SENT, false);
 		y += gh + 10;
-		wk_text_l (canvas, 2, y, 18, "BY APP", dim, 2); y += 22;
+		uk_text_l (canvas, 2, y, 18, "BY APP", dim, 2); y += 22;
 		int c4 = width - 2, c3 = c4 - 92, c2 = c3 - 92, c1 = c2 - 92;		// the columns' right edges
 		if (c1 < 150) { c1 = c2; }						// (a narrow window: no "Received" column)
-		wk_text_l (canvas, 2, y, 18, "App", dim);
+		uk_text_l (canvas, 2, y, 18, "App", dim);
 		if (c1 != c2) text_r (canvas, c1, y, 18, "Received", dim);
 		text_r (canvas, c2, y, 18, c1 != c2 ? "Sent" : "Received", dim);
 		text_r (canvas, c3, y, 18, "Receiving", dim);
 		text_r (canvas, c4, y, 18, "Sending", dim);
 		y += 20;
-		canvas.fillRect (0, y - 2, width, 1, wk_tone (bg, 100));
-		if (!no) { wk_text_l (canvas, 2, y, 18, "No app has used the network", dim); return; }
+		canvas.fillRect (0, y - 2, width, 1, uk_tone (bg, 100));
+		if (!no) { uk_text_l (canvas, 2, y, 18, "No app has used the network", dim); return; }
 		for (int i = 0; i < no && y + rowH <= height; i++, y += rowH)
 		{
 			const Proc &p = g_p[ord[i]];
-			wk_text_l (canvas, 2, y, 18, p.name, C_TEXT);
+			uk_text_l (canvas, 2, y, 18, p.name, C_TEXT);
 			if (c1 != c2) { bytes_text (a, sizeof a, p.rx); text_r (canvas, c1, y, 18, a, C_TEXT); bytes_text (a, sizeof a, p.tx); }
 			else bytes_text (a, sizeof a, p.rx);
 			text_r (canvas, c2, y, 18, a, C_TEXT);
@@ -523,7 +523,7 @@ class TaskRoot : public Root
 public:
 	int frames, half;
 	TaskRoot () : Root (W, H, "Task Manager"), frames (0), half (0) {}
-	void onDraw () override { Root::onDraw (); canvas.fillRect (0, TOP - 1, width, 1, wk_tone (bg, 100)); }
+	void onDraw () override { Root::onDraw (); canvas.fillRect (0, TOP - 1, width, 1, uk_tone (bg, 100)); }
 	void onTick () override { if (++frames >= 30) { frames = 0; half ^= 1; refresh (half == 0); } }	// twice a second; a sample a second
 	bool onKey (long k) override
 	{
@@ -540,7 +540,7 @@ public:
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);		// (FreeType's text: wk_fw / wk_fh follow it)
+	ft_uikit_install ("DejaVu Sans", 13);		// (FreeType's text: uk_fw / uk_fh follow it)
 	TaskRoot root;
 	if (root.canvas.px == 0) return 1;
 

@@ -193,26 +193,26 @@ public:
 	void para (int x, int y, int w, const char *s, unsigned c, int f = F_UI)
 	{
 		// a paragraph wrapped at w (UTF-8 words)
-		WkFaceScope sc (f == F_UI ? 0 : g_face[f]);
-		char line[400]; line[0] = 0; int ln = 0; const char *p = s; int lh = wk_fh () + 3;
+		UkFaceScope sc (f == F_UI ? 0 : g_face[f]);
+		char line[400]; line[0] = 0; int ln = 0; const char *p = s; int lh = uk_fh () + 3;
 		while (*p)
 		{
 			const char *ws = p; while (*p && *p != ' ' && *p != '\n') p++;
 			char word[200]; int wn = (int) (p - ws); if (wn > 190) wn = 190; memcpy (word, ws, wn); word[wn] = 0;
 			char test[600]; snprintf (test, sizeof test, "%s%s%s", line, ln ? " " : "", word);
-			if (ln && wk_tw (test, 0) > w) { wk_text (canvas, x, y, line, c, 0); y += lh; scpy (line, word, sizeof line); }
+			if (ln && uk_tw (test, 0) > w) { uk_text (canvas, x, y, line, c, 0); y += lh; scpy (line, word, sizeof line); }
 			else scpy (line, test, sizeof line);
 			ln = (int) strlen (line);
-			if (*p == '\n') { wk_text (canvas, x, y, line, c, 0); y += lh; line[0] = 0; ln = 0; }
+			if (*p == '\n') { uk_text (canvas, x, y, line, c, 0); y += lh; line[0] = 0; ln = 0; }
 			if (*p) p++;
 		}
-		if (ln) wk_text (canvas, x, y, line, c, 0);
+		if (ln) uk_text (canvas, x, y, line, c, 0);
 	}
 	void onDraw () override
 	{
 		drawBox ("Add a mail account");
 		int y0 = titleH () + 20; int w = W - 2 * PAD;
-		unsigned dim = wk_mix (C_BG, C_TEXT, 150);
+		unsigned dim = uk_mix (C_BG, C_TEXT, 150);
 		switch (page)
 		{
 		case P_START:
@@ -249,7 +249,7 @@ public:
 				char t[300]; snprintf (t, sizeof t, "1. On a phone or a PC, open  %s", dc.verifyUri);
 				text (canvas, PAD, y0 + 100, t, C_TEXT, F_UI, 1, w);
 				text (canvas, PAD, y0 + 126, "2. Type this code:", C_TEXT, F_UI, 1);
-				wk_fill_round (canvas, PAD, y0 + 154, w, 64, 8, C_FIELD);
+				uk_fill_round (canvas, PAD, y0 + 154, w, 64, 8, C_FIELD);
 				text_c (canvas, PAD, y0 + 154, w, 64, dc.userCode, C_ACCENT, F_H1, 1);
 				text (canvas, PAD, y0 + 230, "3. Sign in with your Microsoft account and allow \"Onyx Mail\".", C_TEXT, F_UI, 1, w);
 				text (canvas, PAD, y0 + 262, "Mail goes on by itself as soon as it is done.", dim, F_SMALL);
@@ -285,7 +285,7 @@ public:
 		if (err[0])
 		{
 			int ey = H - 110;
-			wk_fill_round (canvas, PAD, ey, w, 46, 6, wk_mix (C_BG, 0xD93025, 40));
+			uk_fill_round (canvas, PAD, ey, w, 46, 6, uk_mix (C_BG, 0xD93025, 40));
 			icon (canvas, I_WARN, PAD + 10, ey + 12, 20, 0xC5221F);
 			para (PAD + 40, ey + 6, w - 50, err, C_TEXT, F_SMALL);
 		}
@@ -345,7 +345,7 @@ public:
 		if (tag == 3 && cur < g_m.accts.n)
 		{
 			char q[300]; snprintf (q, sizeof q, "Remove %s from Mail? Its messages stay on the server; Mail's copy on this card goes.", g_m.accts.a[cur].email);
-			if (wk_messagebox ("Mail", q, MB_YESNO) != 1) return;
+			if (uk_messagebox ("Mail", q, MB_YESNO) != 1) return;
 			delete g_m.stores[cur];
 			for (int i = cur; i < g_m.accts.n - 1; i++) { g_m.accts.a[i] = g_m.accts.a[i + 1]; g_m.stores[i] = g_m.stores[i + 1]; g_m.stores[i]->acct = &g_m.accts.a[i]; }
 			g_m.accts.n--; g_m.stores[g_m.accts.n] = 0;
@@ -365,19 +365,19 @@ public:
 		drawBox ("Accounts and settings");
 		hits.clear ();
 		int y = titleH () + 16;
-		wk_fill_round (canvas, PAD, y, LW - PAD, H - y - 64, 6, C_FIELD);
+		uk_fill_round (canvas, PAD, y, LW - PAD, H - y - 64, 6, C_FIELD);
 		for (int i = 0; i < g_m.accts.n; i++)
 		{
 			int ry = y + 4 + i * 46;
-			if (i == cur) wk_fill_round (canvas, PAD + 4, ry, LW - PAD - 8, 42, 5, col_sel ());
-			wk_fill_round (canvas, PAD + 10, ry + 12, 18, 18, 4, 0xFF000000u | g_m.accts.a[i].colour);
+			if (i == cur) uk_fill_round (canvas, PAD + 4, ry, LW - PAD - 8, 42, 5, col_sel ());
+			uk_fill_round (canvas, PAD + 10, ry + 12, 18, 18, 4, 0xFF000000u | g_m.accts.a[i].colour);
 			text (canvas, PAD + 36, ry + 4, g_m.accts.a[i].label, C_FIELD_TEXT, F_UI, 1, LW - PAD - 46);
 			text (canvas, PAD + 36, ry + 22, g_m.accts.a[i].email, col_dim (), F_SMALL, 0, LW - PAD - 46);
 			hits.add (PAD, ry, LW - PAD, 42, 1, i);
 		}
 		if (!g_m.accts.n) { text (canvas, LW + PAD, y + 10, "No account yet.", C_TEXT); return; }
 		Account &a = g_m.accts.a[cur];
-		int x = LW + PAD; unsigned dim = wk_mix (C_BG, C_TEXT, 150);
+		int x = LW + PAD; unsigned dim = uk_mix (C_BG, C_TEXT, 150);
 		text (canvas, x, y, a.email, C_TEXT, F_H2, 1, W - x - PAD);
 		text_v (canvas, x, y + 40, 30, "Your name", C_TEXT);
 		text_v (canvas, x, y + 78, 30, "Shown as", C_TEXT);

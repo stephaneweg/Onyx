@@ -34,6 +34,10 @@ LibreOffice headless). Screenshots
 > Note: in-OS strings and the rendered screenshots may still say "Zircon" (legacy); the docs
 > use "Onyx". Renaming the code/app strings to Onyx is a separate, pending task.
 
+> Names: the shared libraries are "kits" -- **UIKit** (the widget toolkit, `user/uikit/`, `namespace uikit`,
+> `uk_*`, `SD:/lib/uikit.so`; named **wtk** until 2026-10-05, fully renamed), **AudioKit** (`user/audiokit/`),
+> ImageKit to come. docs/03 sections 5.6 and 5.7.
+
 ## RULE — keep the documentation up to date automatically
 
 When you **add or change a `kapi` function or an application**, you **update the

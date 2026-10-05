@@ -34,9 +34,9 @@
 #include "trash.h"
 #include "notify.h"
 #include "dockconf.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define MAXAPPS		48
 
@@ -150,7 +150,7 @@ static void blit_small (Canvas &cv, int x, int y, const unsigned *px, int s)
 			int xx = x + i, yy = y + j;
 			if (xx < 0 || yy < 0 || xx >= cv.w || yy >= cv.h) continue;
 			unsigned *p = cv.px + (long) yy * cv.stride + xx;
-			*p = t == 0 ? (c & 0xFFFFFF) : wk_over (*p, c & 0xFFFFFF, 255 - (int) t);
+			*p = t == 0 ? (c & 0xFFFFFF) : uk_over (*p, c & 0xFFFFFF, 255 - (int) t);
 		}
 }
 
@@ -267,12 +267,12 @@ static bool poll_minis (void)
 
 static void trash_glyph (Canvas &cv, int cx, int y, bool full, unsigned face)
 {
-	unsigned c = wk_tone (face, 64), hi = wk_tone (face, 188);
-	if (full) wk_rbox (cv, cx - 8, y + 2, 16, 9, 2, 0x00FFFFFF, 0x00E4E4E4);	// paper sticking out
-	wk_rbox (cv, cx - 14, y + 8, 28, 5, 2, c, c);				// the lid, its handle
-	wk_rbox (cv, cx - 5, y + 4, 10, 5, 2, c, c);
-	wk_rbox (cv, cx - 11, y + 15, 22, 28, 4, wk_tone (face, 76), c);		// the can
-	for (int k = -1; k <= 1; k++) wk_rbox (cv, cx + k * 6 - 1, y + 19, 2, 20, 1, hi, wk_tone (face, 150));	// its ribs
+	unsigned c = uk_tone (face, 64), hi = uk_tone (face, 188);
+	if (full) uk_rbox (cv, cx - 8, y + 2, 16, 9, 2, 0x00FFFFFF, 0x00E4E4E4);	// paper sticking out
+	uk_rbox (cv, cx - 14, y + 8, 28, 5, 2, c, c);				// the lid, its handle
+	uk_rbox (cv, cx - 5, y + 4, 10, 5, 2, c, c);
+	uk_rbox (cv, cx - 11, y + 15, 22, 28, 4, uk_tone (face, 76), c);		// the can
+	for (int k = -1; k <= 1; k++) uk_rbox (cv, cx + k * 6 - 1, y + 19, 2, 20, 1, hi, uk_tone (face, 150));	// its ribs
 }
 
 // ---- the dock's layout -------------------------------------------------------------------------------
@@ -482,7 +482,7 @@ public:
 
 	void reload ()
 	{
-		wk_theme_reload ();
+		uk_theme_reload ();
 		closeDrawer ();
 		scan_apps ();
 		build ();
@@ -496,12 +496,12 @@ public:
 	// ---- drawing -----------------------------------------------------------------------------
 	void panel (int x, int y, int w, int h, int r, unsigned top, unsigned bottom, unsigned edge)
 	{
-		wk_rbox (canvas, x, y, w, h, r, top, bottom);
-		wk_rline (canvas, x, y, w, h, r, edge, 170);
+		uk_rbox (canvas, x, y, w, h, r, top, bottom);
+		uk_rline (canvas, x, y, w, h, r, edge, 170);
 		for (int i = x + r; i < x + w - r; i++)
 		{
 			unsigned *p = canvas.px + (long) (y + 1) * canvas.stride + i;
-			if (i >= 0 && i < canvas.w && y + 1 >= 0 && y + 1 < canvas.h) *p = wk_over (*p, 0x00FFFFFF, 130);
+			if (i >= 0 && i < canvas.w && y + 1 >= 0 && y + 1 < canvas.h) *p = uk_over (*p, 0x00FFFFFF, 130);
 		}
 	}
 
@@ -510,25 +510,25 @@ public:
 		unsigned d = C_DOCK;
 		for (int j = oy + 12; j < oy + DH - 12; j++)
 		{
-			canvas.pixel (x, j, wk_over (canvas.px[(long) j * canvas.stride + x], wk_tone (d, 76), 150));
-			canvas.pixel (x + 1, j, wk_over (canvas.px[(long) j * canvas.stride + x + 1], 0x00FFFFFF, 110));
+			canvas.pixel (x, j, uk_over (canvas.px[(long) j * canvas.stride + x], uk_tone (d, 76), 150));
+			canvas.pixel (x + 1, j, uk_over (canvas.px[(long) j * canvas.stride + x + 1], 0x00FFFFFF, 110));
 		}
 	}
 
 	void drawDesks (int ox, int oy)
 	{
-		unsigned d = C_DOCK, ink = wk_ink_on (d);
+		unsigned d = C_DOCK, ink = uk_ink_on (d);
 		int sx = ox + g_pgX;
-		wk_rbox (canvas, sx, oy + 8, g_pgW, DH - 16, 10, wk_tone (d, 104), wk_tone (d, 122), 200);
-		wk_rline (canvas, sx, oy + 8, g_pgW, DH - 16, 10, wk_tone (d, 76), 120);
+		uk_rbox (canvas, sx, oy + 8, g_pgW, DH - 16, 10, uk_tone (d, 104), uk_tone (d, 122), 200);
+		uk_rline (canvas, sx, oy + 8, g_pgW, DH - 16, 10, uk_tone (d, 76), 120);
 		int info = kapi_desk (-1, 0), cur = KAPI_DESK_CUR (info);
 		for (int i = 0; i < g_ndesk; i++)
 		{
 			int bx, by; desk_box (i, &bx, &by);
 			bx += ox; by += oy;
 			bool on = i == cur, h = hot.what == H_DESK && hot.index == i;
-			unsigned wall = on ? wk_mix (C_ACCENT, 0x00FFFFFF, 60) : wk_tone (d, h ? 150 : 128);
-			wk_rbox (canvas, bx, by, SQW, SQH, 4, wk_tone (wall, on ? 150 : 140), wall);
+			unsigned wall = on ? uk_mix (C_ACCENT, 0x00FFFFFF, 60) : uk_tone (d, h ? 150 : 128);
+			uk_rbox (canvas, bx, by, SQW, SQH, 4, uk_tone (wall, on ? 150 : 140), wall);
 			// its windows, small (the one with the keys in the front frame's colour)
 			bool any = false;
 			for (int m = 0; m < g_nmini; m++)
@@ -544,35 +544,35 @@ public:
 				if (y1 > by + SQH - 2) y1 = by + SQH - 2;
 				if (x1 - x0 < 3 || y1 - y0 < 3) continue;
 				unsigned f = w.keys && on ? C_FRAME_ACTIVE : C_FRAME_INACTIVE;
-				canvas.fillRect (x0, y0, x1 - x0, y1 - y0, wk_tone (f, 176));
-				canvas.frameRect (x0, y0, x1 - x0, y1 - y0, wk_tone (f, 70));
-				canvas.fillRect (x0 + 1, y0 + 1, x1 - x0 - 2, 2, wk_tone (f, 128));
+				canvas.fillRect (x0, y0, x1 - x0, y1 - y0, uk_tone (f, 176));
+				canvas.frameRect (x0, y0, x1 - x0, y1 - y0, uk_tone (f, 70));
+				canvas.fillRect (x0 + 1, y0 + 1, x1 - x0 - 2, 2, uk_tone (f, 128));
 				any = true;
 			}
 			if (!any)
 			{
 				char n[2] = { (char) ('1' + i), 0 };
-				wk_text_c (canvas, bx, by, SQW, SQH, n, on ? wk_ink_on (wall) : wk_mix (wall, wk_ink_on (wall), 150), on ? 2 : 0);
+				uk_text_c (canvas, bx, by, SQW, SQH, n, on ? uk_ink_on (wall) : uk_mix (wall, uk_ink_on (wall), 150), on ? 2 : 0);
 			}
-			wk_rline (canvas, bx, by, SQW, SQH, 4, on ? C_ACCENT : wk_tone (d, 70), on ? 255 : 170);
-			if (on) wk_rline (canvas, bx - 1, by - 1, SQW + 2, SQH + 2, 5, C_ACCENT, 110);
+			uk_rline (canvas, bx, by, SQW, SQH, 4, on ? C_ACCENT : uk_tone (d, 70), on ? 255 : 170);
+			if (on) uk_rline (canvas, bx - 1, by - 1, SQW + 2, SQH + 2, 5, C_ACCENT, 110);
 		}
 		// the left column: the lock, the gear (the Control Panel); the right one: the power, the clipboard
 		bool hl = hot.what == H_LOCK, hg = hot.what == H_GEAR, hp = hot.what == H_POWER, hc = hot.what == H_CLIP;
-		if (hl) wk_rbox (canvas, sx + 3, oy + 14, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
-		if (hg) wk_rbox (canvas, sx + 3, oy + 41, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
-		if (hp) wk_rbox (canvas, sx + g_pgW - 29, oy + 14, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
-		if (hc) wk_rbox (canvas, sx + g_pgW - 29, oy + 41, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
-		wk_glyph (canvas, WKG_LOCK, sx + 15, oy + 27, 15, ink);
-		wk_glyph (canvas, WKG_GEAR, sx + 15, oy + 53, 17, ink);
-		wk_glyph (canvas, WKG_POWER, sx + g_pgW - 17, oy + 27, 16, 0x00BE322C);
+		if (hl) uk_rbox (canvas, sx + 3, oy + 14, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
+		if (hg) uk_rbox (canvas, sx + 3, oy + 41, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
+		if (hp) uk_rbox (canvas, sx + g_pgW - 29, oy + 14, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
+		if (hc) uk_rbox (canvas, sx + g_pgW - 29, oy + 41, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
+		uk_glyph (canvas, WKG_LOCK, sx + 15, oy + 27, 15, ink);
+		uk_glyph (canvas, WKG_GEAR, sx + 15, oy + 53, 17, ink);
+		uk_glyph (canvas, WKG_POWER, sx + g_pgW - 17, oy + 27, 16, 0x00BE322C);
 		clip_glyph (canvas, sx + g_pgW - 17, oy + 53, ink);
 	}
 
 	void drawDock (int ox, int oy)
 	{
-		unsigned d = C_DOCK, ink = wk_ink_on (d);
-		panel (ox, oy, g_DW, DH, 14, wk_tone (d, 172), wk_tone (d, 120), wk_tone (d, 70));
+		unsigned d = C_DOCK, ink = uk_ink_on (d);
+		panel (ox, oy, g_DW, DH, 14, uk_tone (d, 172), uk_tone (d, 120), uk_tone (d, 70));
 		for (int i = 0; i < g_nslot; i++)
 		{
 			Slot &s = g_slot[i];
@@ -581,26 +581,26 @@ public:
 			bool pr = hIcon && down.what == H_SLOT && down.index == i;
 			bool drop = dropHot.what == H_SLOT && dropHot.index == i;
 			if (hIcon || drop)
-				wk_rbox (canvas, x + 4, oy + 19, CW - 8, 54, 8, pr ? wk_tone (d, 108) : wk_tone (d, 200),
-					 pr ? wk_tone (d, 118) : wk_tone (d, 160), drop ? 255 : 150);
-			if (drop) wk_rline (canvas, x + 4, oy + 19, CW - 8, 54, 8, C_ACCENT, 255);
+				uk_rbox (canvas, x + 4, oy + 19, CW - 8, 54, 8, pr ? uk_tone (d, 108) : uk_tone (d, 200),
+					 pr ? uk_tone (d, 118) : uk_tone (d, 160), drop ? 255 : 150);
+			if (drop) uk_rline (canvas, x + 4, oy + 19, CW - 8, 54, 8, C_ACCENT, 255);
 			if (s.kind == SL_DRAWER)
 			{
 				const Drawer &k = g_dr[s.index];
 				app_icon (canvas, cx, oy + 26, k.main);
 				// the strip at the top edge: its drawer (open: in the accent)
 				bool o = g_open == s.index;
-				unsigned top = o ? wk_tone (C_ACCENT, 170) : wk_tone (d, hStrip ? 150 : 118);
-				unsigned bot = o ? C_ACCENT : wk_tone (d, hStrip ? 132 : 106);
-				wk_rbox (canvas, cx - 20, oy + 1, 40, STRIP_H - 1, 6, top, bot, 255, WK_BL | WK_BR);
-				wk_rline (canvas, cx - 20, oy + 1, 40, STRIP_H - 1, 6, hStrip ? C_ACCENT : wk_tone (d, 70), hStrip ? 220 : 140, WK_BL | WK_BR);
-				wk_glyph (canvas, o ? WKG_CHEV_DOWN : WKG_CHEV_UP, cx, oy + 1 + (STRIP_H - 1) / 2, 10, o ? 0x00FFFFFF : ink);
-				if (k.running) wk_rbox (canvas, cx - 3, oy + DH - 9, 6, 5, 2, C_ACCENT, C_ACCENT);
+				unsigned top = o ? uk_tone (C_ACCENT, 170) : uk_tone (d, hStrip ? 150 : 118);
+				unsigned bot = o ? C_ACCENT : uk_tone (d, hStrip ? 132 : 106);
+				uk_rbox (canvas, cx - 20, oy + 1, 40, STRIP_H - 1, 6, top, bot, 255, UK_BL | UK_BR);
+				uk_rline (canvas, cx - 20, oy + 1, 40, STRIP_H - 1, 6, hStrip ? C_ACCENT : uk_tone (d, 70), hStrip ? 220 : 140, UK_BL | UK_BR);
+				uk_glyph (canvas, o ? WKG_CHEV_DOWN : WKG_CHEV_UP, cx, oy + 1 + (STRIP_H - 1) / 2, 10, o ? 0x00FFFFFF : ink);
+				if (k.running) uk_rbox (canvas, cx - 3, oy + DH - 9, 6, 5, 2, C_ACCENT, C_ACCENT);
 			}
 			else if (s.kind == SL_APP)
 			{
 				app_icon (canvas, cx, oy + 26, s.app);
-				if (s.app && s.app->running) wk_rbox (canvas, cx - 3, oy + DH - 9, 6, 5, 2, C_ACCENT, C_ACCENT);
+				if (s.app && s.app->running) uk_rbox (canvas, cx - 3, oy + DH - 9, 6, 5, 2, C_ACCENT, C_ACCENT);
 			}
 			else trash_glyph (canvas, cx, oy + 24, trashFull, d);
 			if (i + 1 < g_nslot && g_slot[i + 1].x == s.x + CW) groove (x + CW - 1, oy);	// between launchers
@@ -614,17 +614,17 @@ public:
 	void drawerFrame (int x, int y, const char *title)
 	{
 		unsigned f = C_FIELD;
-		panel (x, y, g_pw, g_ph, 12, wk_tone (f, 140), f, wk_tone (C_DOCK, 64));
+		panel (x, y, g_pw, g_ph, 12, uk_tone (f, 140), f, uk_tone (C_DOCK, 64));
 		int cx = g_pcx - wx;					// the pointer, below it
 		for (int j = 0; j < 8; j++)
 			for (int i = -8 + j; i <= 8 - j; i++) canvas.pixel (cx + i, y + g_ph - 1 + j, f);
 		for (int j = 0; j < 8; j++)
 		{
-			wk_blend_px (canvas, cx - 9 + j, y + g_ph - 1 + j, wk_tone (C_DOCK, 64), 170);
-			wk_blend_px (canvas, cx + 9 - j, y + g_ph - 1 + j, wk_tone (C_DOCK, 64), 170);
+			uk_blend_px (canvas, cx - 9 + j, y + g_ph - 1 + j, uk_tone (C_DOCK, 64), 170);
+			uk_blend_px (canvas, cx + 9 - j, y + g_ph - 1 + j, uk_tone (C_DOCK, 64), 170);
 		}
-		wk_text_l (canvas, x + 14, y + 6, 26, title, C_FIELD_TEXT, 2);
-		wk_etch_h (canvas, x + 10, y + 36, g_pw - 20, f);
+		uk_text_l (canvas, x + 14, y + 6, 26, title, C_FIELD_TEXT, 2);
+		uk_etch_h (canvas, x + 10, y + 36, g_pw - 20, f);
 	}
 
 	void drawDrawer (int x, int y)
@@ -637,18 +637,18 @@ public:
 			need_icon (a);
 			int ix = x + 6 + (i / MAXROWS) * COLW, iy = y + 42 + (i % MAXROWS) * RH;
 			bool h = hot.what == H_ITEM && hot.index == i;
-			if (h) wk_hilite (canvas, ix, iy, COLW - 6, RH - 2, 7, true);
+			if (h) uk_hilite (canvas, ix, iy, COLW - 6, RH - 2, 7, true);
 			blit_small (canvas, ix + 8, iy + 3, a.small, SI);
 			unsigned ink = h ? C_SEL_TEXT : C_FIELD_TEXT;
-			wk_text_l (canvas, ix + 46, iy, RH - 2, a.label, ink, &a == k.main ? 2 : 0);
-			if (a.running) wk_rbox (canvas, ix + COLW - 20, iy + RH / 2 - 4, 6, 6, 3, h ? ink : C_ACCENT, h ? ink : C_ACCENT);
+			uk_text_l (canvas, ix + 46, iy, RH - 2, a.label, ink, &a == k.main ? 2 : 0);
+			if (a.running) uk_rbox (canvas, ix + COLW - 20, iy + RH / 2 - 4, 6, 6, 3, h ? ink : C_ACCENT, h ? ink : C_ACCENT);
 		}
-		if (k.n == 0) wk_text_l (canvas, x + 14, y + 42, RH, "No apps in this group", wk_mix (C_FIELD, C_FIELD_TEXT, 140));
+		if (k.n == 0) uk_text_l (canvas, x + 14, y + 42, RH, "No apps in this group", uk_mix (C_FIELD, C_FIELD_TEXT, 140));
 	}
 
 	void drawTip (int ox, int oy)
 	{
-		int tw = wk_text_w (tip) + 20, th = wk_fh () + 8, cx = ox + g_DW / 2;
+		int tw = uk_text_w (tip) + 20, th = uk_fh () + 8, cx = ox + g_DW / 2;
 		if (hot.what == H_SLOT || hot.what == H_STRIP) cx = ox + g_slot[hot.index].x + CW / 2;
 		else if (hot.what == H_DESK) { int bx, by; desk_box (hot.index, &bx, &by); cx = ox + bx + SQW / 2; }
 		else if (hot.what == H_LOCK || hot.what == H_GEAR) cx = ox + g_pgX + 15;
@@ -657,21 +657,21 @@ public:
 		if (x < 0) x = 0;
 		if (x + tw > width) x = width - tw;
 		int y = oy - LABEL_H + 2;
-		wk_rbox (canvas, x, y, tw, th, 7, wk_tone (C_FIELD, 150), C_FIELD);
-		wk_rline (canvas, x, y, tw, th, 7, wk_tone (C_DOCK, 64), 170);
-		wk_text_c (canvas, x, y, tw, th, tip, C_FIELD_TEXT);
+		uk_rbox (canvas, x, y, tw, th, 7, uk_tone (C_FIELD, 150), C_FIELD);
+		uk_rline (canvas, x, y, tw, th, 7, uk_tone (C_DOCK, 64), 170);
+		uk_text_c (canvas, x, y, tw, th, tip, C_FIELD_TEXT);
 	}
 
 	void onDraw () override
 	{
 		// see-through where nothing is; almost clear (catching a click) while a drawer is open
 		canvas.clear (g_open >= 0 || g_menuUp ? 0xFE000000u : 0xFF000000u);
-		wk_paint_alpha (true);
+		uk_paint_alpha (true);
 		int ox = g_DX - wx, oy = g_DY - wy;
 		drawDock (ox, oy);
 		if (g_open >= 0) drawDrawer (g_px - wx, g_py - wy);
 		else if (tip) drawTip (ox, oy);
-		wk_paint_alpha (false);
+		uk_paint_alpha (false);
 	}
 
 	// ---- each frame ---------------------------------------------------------------------------
@@ -741,7 +741,7 @@ public:
 		closeDrawer ();
 		g_menuUp = true; tip = 0;				// (the menu needs room: the window
 		placeWindow ();						// covers the screen while it is shown)
-		draw (); wk_present ();
+		draw (); uk_present ();
 		PopupMenu menu (sx - wx - 20, g_DY - 70 - wy);
 		menu.add ("Panel Settings...", 1);
 		menu.add ("Control Panel", 2);
@@ -826,7 +826,7 @@ public:
 int main (void)
 {
 	kapi_screen_size (&g_sw, &g_sh);
-	wtk::init ();
+	uikit::init ();
 	kapi_ipc_register (DOCK_SERVICE);		// (DOCK_MSG_RELOAD: the Panel applet)
 	scan_apps ();
 	build ();

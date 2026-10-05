@@ -14,20 +14,20 @@
 //     services (their autostart lines);
 //   6 Ready: a summary; Start Onyx writes system.ini and the autostart (its own line removed, the
 //     held-back ones given back and started now), starts or stops the services, and ends.
-// FreeType's text (DejaVu Sans) through wtk's face; the theme's widgets. The user guide: docs/04, §4.
+// FreeType's text (DejaVu Sans) through uikit's face; the theme's widgets. The user guide: docs/04, §4.
 // "--demo <page>[b|c]" opens a page (0..6) in a given state, writing nothing (the screenshots':
 // 2b the Wi-Fi connecting, 2c connected; 3b "Keep this resolution?").
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "applib.h"
 #include "bmp.hpp"
 #include "wallpaper.h"
 #include "img/imgload.hpp"
-#include "ft/wtkface.h"
+#include "ft/uikitface.h"
 #include "system.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	800		// the window's client area
 #define H	600
@@ -40,8 +40,8 @@ using namespace wtk;
 static const unsigned OK_C = 0x002E9660, WARN_C = 0x00CE7828, ERR_C = 0x00C0392B;
 
 static void scpy (char *d, int cap, const char *s) { int i = 0; for (; s && s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
-static unsigned dim_ink (unsigned bg) { return wk_mix (wk_ink_for (bg), bg, 100); }
-static unsigned line_c (unsigned bg) { return wk_mix (bg, C_TEXT, 36); }
+static unsigned dim_ink (unsigned bg) { return uk_mix (uk_ink_for (bg), bg, 100); }
+static unsigned line_c (unsigned bg) { return uk_mix (bg, C_TEXT, 36); }
 static bool g_demo;				// (the screenshots: nothing written)
 
 // ---- the faces --------------------------------------------------------------------------------------------
@@ -50,23 +50,23 @@ static FtTextFace *face (const char *fam, int px) { FtTextFace *f = new FtTextFa
 
 // Text in a face (0: the installed one), left-aligned in a line of h px.
 static void ftext (Canvas &cv, TextFace *f, int x, int y, int h, const char *s, unsigned c, int style = 0)
-{ WkFaceScope sc (f); wk_text_l (cv, x, y, h, s, c, style); }
-static int ftw (TextFace *f, const char *s, int style = 0) { WkFaceScope sc (f); return wk_tw (s, style); }
+{ UkFaceScope sc (f); uk_text_l (cv, x, y, h, s, c, style); }
+static int ftw (TextFace *f, const char *s, int style = 0) { UkFaceScope sc (f); return uk_tw (s, style); }
 // Word-wrapped into w px from y (lines of lh px) -> the y below it (cv 0: only measured).
 static int fwrap (Canvas *cv, TextFace *f, int x, int y, int w, int lh, const char *s, unsigned c, int style = 0)
 {
-	WkFaceScope sc (f);
+	UkFaceScope sc (f);
 	while (*s)
 	{
 		int n = 0, fit = 0;
 		while (s[n] && s[n] != '\n')
 		{
 			int e = n; while (s[e] == ' ') e++; while (s[e] && s[e] != ' ' && s[e] != '\n') e++;
-			if (fit && wk_tw_n (s, e, style) > w) break;
+			if (fit && uk_tw_n (s, e, style) > w) break;
 			fit = n = e;
 		}
 		char b[256]; int k = n < 255 ? n : 255; for (int i = 0; i < k; i++) b[i] = s[i]; b[k] = 0;
-		if (cv) wk_text_l (*cv, x, y, lh, b, c, style);
+		if (cv) uk_text_l (*cv, x, y, lh, b, c, style);
 		y += lh; s += n; while (*s == ' ' || *s == '\n') s++;
 	}
 	return y;
@@ -92,7 +92,7 @@ static void aa_poly (Canvas &cv, int ox, int oy, const float *pts, int n, unsign
 				}
 				in += o;
 			}
-			if (in) wk_blend_px (cv, ox + px, oy + py, c, in * 255 / 16);
+			if (in) uk_blend_px (cv, ox + px, oy + py, c, in * 255 / 16);
 		}
 }
 static float sinf_ (float x) { while (x > 3.14159265f) x -= 6.2831853f; while (x < -3.14159265f) x += 6.2831853f; float x2 = x * x; return x * (1 - x2 / 6 * (1 - x2 / 20 * (1 - x2 / 42 * (1 - x2 / 72)))); }
@@ -104,8 +104,8 @@ static void gem (Canvas &cv, int x, int y, int s, unsigned c, unsigned inner)
 	float i[] = { s * .5f, s * .19f, s * .8f, s * .42f, s * .5f, s * .86f, s * .2f, s * .42f };
 	aa_poly (cv, x, y, o, 5, c); aa_poly (cv, x, y, i, 4, inner);
 }
-static void disc (Canvas &cv, int x, int y, int d, unsigned c) { wk_rbox (cv, x, y, d, d, d / 2, c, c); }
-static void big_disc (Canvas &cv, int x, int y, int d, unsigned c)		// (any size: wk_rbox's corners stop at 16)
+static void disc (Canvas &cv, int x, int y, int d, unsigned c) { uk_rbox (cv, x, y, d, d, d / 2, c, c); }
+static void big_disc (Canvas &cv, int x, int y, int d, unsigned c)		// (any size: uk_rbox's corners stop at 16)
 {
 	float p[64]; float r = d / 2.0f;
 	for (int k = 0; k < 32; k++) { float a = k * 6.2831853f / 32; p[2 * k] = r + r * cosf_ (a); p[2 * k + 1] = r + r * sinf_ (a); }
@@ -114,9 +114,9 @@ static void big_disc (Canvas &cv, int x, int y, int d, unsigned c)		// (any size
 // A small rounded label (a country's code, a network's security).
 static int chip (Canvas &cv, int x, int y, const char *s, unsigned bg, unsigned fg, int h = 18)
 {
-	int w = wk_tw (s, 2) + 12;
-	wk_rbox (cv, x, y, w, h, h / 2, bg, bg);
-	wk_text_c (cv, x, y, w, h, s, fg, 2);
+	int w = uk_tw (s, 2) + 12;
+	uk_rbox (cv, x, y, w, h, h / 2, bg, bg);
+	uk_text_c (cv, x, y, w, h, s, fg, 2);
 	return w;
 }
 
@@ -139,10 +139,10 @@ static void draw_pic (Canvas &cv, const Pic &p, int x, int y, int s)
 		for (int yy = sy0; yy < sy1; yy++) for (int xx = sx0; xx < sx1; xx++)
 		{
 			unsigned c = p.px[yy * p.w + xx] & 0xFFFFFF; t++;
-			if (c == WK_TRANSPARENT_KEY) continue;
+			if (c == UK_TRANSPARENT_KEY) continue;
 			r += (c >> 16) & 255; g += (c >> 8) & 255; b += c & 255; k++;
 		}
-		if (k) wk_blend_px (cv, x + dx, y + dy, ((r / k) << 16) | ((g / k) << 8) | (b / k), k * 255 / t);
+		if (k) uk_blend_px (cv, x + dx, y + dy, ((r / k) << 16) | ((g / k) << 8) | (b / k), k * 255 / t);
 	}
 }
 
@@ -176,10 +176,10 @@ static const char *aspect (int w, int h)
 	int a = w * 100 / h;
 	return a == 133 ? "4:3" : a == 125 ? "5:4" : a == 160 ? "16:10" : (a >= 176 && a <= 178) ? "16:9" : "";
 }
-struct Scheme { const char *name; unsigned c; int style; };	// (as wk_themes, in its order)
-static const Scheme SCHEMES[] = { { "Peach", 0x00F0B07A, WK_STYLE_CDE }, { "Steel", 0x007A98C0, WK_STYLE_CDE },
-	{ "Sage", 0x0080AA76, WK_STYLE_CDE }, { "Brick", 0x00C45450, WK_STYLE_CDE }, { "Slate", 0x003A4458, WK_STYLE_CDE },
-	{ "Milk", 0x00D4D4D6, WK_STYLE_MILK }, { "Dark Coffee", 0x004A3E37, WK_STYLE_MILK } };
+struct Scheme { const char *name; unsigned c; int style; };	// (as uk_themes, in its order)
+static const Scheme SCHEMES[] = { { "Peach", 0x00F0B07A, UK_STYLE_CDE }, { "Steel", 0x007A98C0, UK_STYLE_CDE },
+	{ "Sage", 0x0080AA76, UK_STYLE_CDE }, { "Brick", 0x00C45450, UK_STYLE_CDE }, { "Slate", 0x003A4458, UK_STYLE_CDE },
+	{ "Milk", 0x00D4D4D6, UK_STYLE_MILK }, { "Dark Coffee", 0x004A3E37, UK_STYLE_MILK } };
 #define NSCHEMES	7
 static const char *const WALLS[] = { 0, "hexagons", "low-poly", "waves", "dunes", "bokeh", "silk", "contours" };
 #define NWALLS	8
@@ -190,9 +190,9 @@ static const unsigned TINTS[] = { 0x004878B0, 0x002F5E8C, 0x003E8EA8, 0x002E8A7E
 	0x00B04A40, 0x00A84A6E, 0x007A4E9A, 0x005A5AA8, 0x004A5668, 0x00707478, 0x00705A48, 0x00303438 };
 #define NTINTS	32		// (16 a row)
 static int g_country = 1, g_keyb = 0, g_zone = 0, g_mode = 0, g_scheme = 0, g_wall = 0, g_tint = 0;
-static unsigned tint_of (int i) { return i < 16 ? TINTS[i] : wk_tone (TINTS[i - 16], 196); }
+static unsigned tint_of (int i) { return i < 16 ? TINTS[i] : uk_tone (TINTS[i - 16], 196); }
 static unsigned tint1 () { return tint_of (g_tint); }
-static unsigned tint2 () { return wk_tone (tint1 (), g_tint < 16 ? 52 : 104); }
+static unsigned tint2 () { return uk_tone (tint1 (), g_tint < 16 ? 52 : 104); }
 static bool g_ntp = true, g_services[4] = { false, true, false, false };
 static char g_ip[32];
 
@@ -208,10 +208,10 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
-		unsigned a = disabled ? wk_mix (C_ACCENT, bgColor (), 130) : pressed ? wk_tone (C_ACCENT, 100) : hover ? wk_tone (C_ACCENT, 150) : C_ACCENT;
-		wk_rbox (canvas, 0, 0, width, height, 6, wk_tone (a, 145), a);
-		wk_rline (canvas, 0, 0, width, height, 6, wk_tone (a, 96), 150);
-		wk_text_c (canvas, 0, 0, width, height, text, wk_ink_on (C_ACCENT), 2);
+		unsigned a = disabled ? uk_mix (C_ACCENT, bgColor (), 130) : pressed ? uk_tone (C_ACCENT, 100) : hover ? uk_tone (C_ACCENT, 150) : C_ACCENT;
+		uk_rbox (canvas, 0, 0, width, height, 6, uk_tone (a, 145), a);
+		uk_rline (canvas, 0, 0, width, height, 6, uk_tone (a, 96), 150);
+		uk_text_c (canvas, 0, 0, width, height, text, uk_ink_on (C_ACCENT), 2);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -233,10 +233,10 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
-		unsigned c = pressed ? wk_tone (C_ACCENT, 90) : C_ACCENT;
-		int x = width - wk_tw (text); if (x > 0 && !(tag & 1)) x = 0;
-		wk_text_l (canvas, x, 0, height, text, c);
-		if (hover) canvas.fillRect (x, height / 2 + wk_fh () / 2, wk_tw (text), 1, c);
+		unsigned c = pressed ? uk_tone (C_ACCENT, 90) : C_ACCENT;
+		int x = width - uk_tw (text); if (x > 0 && !(tag & 1)) x = 0;
+		uk_text_l (canvas, x, 0, height, text, c);
+		if (hover) canvas.fillRect (x, height / 2 + uk_fh () / 2, uk_tw (text), 1, c);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -259,7 +259,7 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
-		unsigned ink = c ? c : dim ? dim_ink (bgColor ()) : wk_ink_for (bgColor ());
+		unsigned ink = c ? c : dim ? dim_ink (bgColor ()) : uk_ink_for (bgColor ());
 		if (lh) fwrap (&canvas, f, 0, 0, width, lh, text, ink, style);
 		else ftext (canvas, f, 0, 0, height, text, ink, style);
 	}
@@ -268,14 +268,14 @@ public:
 // A white rounded box with a thin outline: the lists' frame.
 static void card (Canvas &cv, int x, int y, int w, int h)
 {
-	wk_rbox (cv, x, y, w, h, 7, 0x00FFFFFF, 0x00FFFFFF);
-	wk_rline (cv, x, y, w, h, 7, line_c (C_FIELD));
+	uk_rbox (cv, x, y, w, h, 7, 0x00FFFFFF, 0x00FFFFFF);
+	uk_rline (cv, x, y, w, h, 7, line_c (C_FIELD));
 }
 static void sel_row (Canvas &cv, int x, int y, int w, int h)
 {
-	unsigned f = wk_mix (0x00FFFFFF, C_ACCENT, 38);
-	wk_rbox (cv, x, y, w, h, 6, f, f);
-	wk_rline (cv, x, y, w, h, 6, wk_mix (0x00FFFFFF, C_ACCENT, 130));
+	unsigned f = uk_mix (0x00FFFFFF, C_ACCENT, 38);
+	uk_rbox (cv, x, y, w, h, 6, f, f);
+	uk_rline (cv, x, y, w, h, 6, uk_mix (0x00FFFFFF, C_ACCENT, 130));
 }
 
 // ---- the steps (the rail) -----------------------------------------------------------------------------------
@@ -290,8 +290,8 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		unsigned ink = wk_ink_for (C_BG), dim = dim_ink (C_BG);
-		gem (canvas, 22, 24, 30, C_ACCENT, wk_tone (C_ACCENT, 200));
+		unsigned ink = uk_ink_for (C_BG), dim = dim_ink (C_BG);
+		gem (canvas, 22, 24, 30, C_ACCENT, uk_tone (C_ACCENT, 200));
 		ftext (canvas, g_h1, 62, 20, 24, "Onyx", ink, 2);
 		ftext (canvas, g_small, 63, 42, 16, "Setup", dim);
 		int y0 = 96, rh = 44;
@@ -299,32 +299,32 @@ public:
 		{
 			int y = y0 + i * rh, cx = 34, cy = y + rh / 2;
 			if (i < NSTEPS - 1)
-				canvas.fillRect (cx - 1, cy + 11, 2, rh - 22, i < cur ? wk_mix (C_BG, OK_C, 160) : line_c (C_BG));
+				canvas.fillRect (cx - 1, cy + 11, 2, rh - 22, i < cur ? uk_mix (C_BG, OK_C, 160) : line_c (C_BG));
 			char n[2] = { (char) ('1' + i), 0 };
 			if (i == cur)
 			{
-				unsigned hl = wk_tone (C_BG, 150);
-				wk_rbox (canvas, 10, y + 4, width - 20, rh - 8, 8, hl, hl);
+				unsigned hl = uk_tone (C_BG, 150);
+				uk_rbox (canvas, 10, y + 4, width - 20, rh - 8, 8, hl, hl);
 				disc (canvas, cx - 11, cy - 11, 22, C_ACCENT);
-				wk_text_c (canvas, cx - 11, cy - 11, 22, 22, n, 0x00FFFFFF, 2);
-				wk_text_l (canvas, 56, y, rh, STEPS[i], ink, 2);
+				uk_text_c (canvas, cx - 11, cy - 11, 22, 22, n, 0x00FFFFFF, 2);
+				uk_text_l (canvas, 56, y, rh, STEPS[i], ink, 2);
 			}
 			else if (i < cur)
 			{
 				disc (canvas, cx - 11, cy - 11, 22, OK_C);
-				wk_glyph (canvas, WKG_CHECK, cx, cy, 11, 0x00FFFFFF);
-				wk_text_l (canvas, 56, y, rh, STEPS[i], ink);
+				uk_glyph (canvas, WKG_CHECK, cx, cy, 11, 0x00FFFFFF);
+				uk_text_l (canvas, 56, y, rh, STEPS[i], ink);
 			}
 			else
 			{
-				unsigned in = wk_tone (C_BG, 140);
-				wk_rbox (canvas, cx - 11, cy - 11, 22, 22, 11, in, in);
-				wk_rline (canvas, cx - 11, cy - 11, 22, 22, 11, wk_mix (C_BG, C_TEXT, 90));
-				wk_text_c (canvas, cx - 11, cy - 11, 22, 22, n, dim);
-				wk_text_l (canvas, 56, y, rh, STEPS[i], dim);
+				unsigned in = uk_tone (C_BG, 140);
+				uk_rbox (canvas, cx - 11, cy - 11, 22, 22, 11, in, in);
+				uk_rline (canvas, cx - 11, cy - 11, 22, 22, 11, uk_mix (C_BG, C_TEXT, 90));
+				uk_text_c (canvas, cx - 11, cy - 11, 22, 22, n, dim);
+				uk_text_l (canvas, 56, y, rh, STEPS[i], dim);
 			}
 		}
-		canvas.fillRect (width - 1, 0, 1, height, wk_mix (C_BG, C_TEXT, 60));
+		canvas.fillRect (width - 1, 0, 1, height, uk_mix (C_BG, C_TEXT, 60));
 		ftext (canvas, g_small, 22, height - 40, 18, "Onyx 0.9  \xC2\xB7  Raspberry Pi 4", dim);
 	}
 };
@@ -361,12 +361,12 @@ public:
 	{
 		canvas.clear (C_FIELD);
 		unsigned ink = C_FIELD_TEXT, dim = dim_ink (C_FIELD);
-		gem (canvas, 0, 0, 58, C_ACCENT, wk_tone (C_ACCENT, 200));
+		gem (canvas, 0, 0, 58, C_ACCENT, uk_tone (C_ACCENT, 200));
 		ftext (canvas, g_hero, 0, 72, 44, "Welcome to Onyx", ink, 2);
 		int y = fwrap (&canvas, g_lead, 0, 126, width - 30, 23, "Let's get your Raspberry Pi ready. A few choices -- your keyboard, the network, the screen and the look of the desktop -- and you are done. It takes about two minutes; everything can be changed later in the Control Panel.", dim);
 		y += 22;
 		static const char *const L[] = { "Keyboard, country and time zone", "Wi-Fi network", "Screen resolution", "Colours and wallpaper" };
-		for (int i = 0; i < 4; i++, y += 38) { draw_pic (canvas, ic[i], 0, y, 28); wk_text_l (canvas, 42, y, 28, L[i], ink); }
+		for (int i = 0; i < 4; i++, y += 38) { draw_pic (canvas, ic[i], 0, y, 28); uk_text_l (canvas, 42, y, 28, L[i], ink); }
 	}
 };
 
@@ -375,7 +375,7 @@ class CountryList : public Widget
 {
 public:
 	int sel, top; Action cb; static const int RH = 30;
-	WkBarDrag m_bar;
+	UkBarDrag m_bar;
 	CountryList (int l, int t, int w, int h, Action cb_) : Widget (l, t, w, h), sel (g_country), top (0), cb (cb_) { canFocus = true; }
 	int rows () const { return (height - 8) / RH; }
 	void show (int i) { if (i < top) top = i; if (i >= top + rows ()) top = i - rows () + 1; }
@@ -387,12 +387,12 @@ public:
 		{
 			int i = top + r, y = 4 + r * RH; const Country &c = COUNTRIES[i]; bool s = i == sel;
 			if (s) sel_row (canvas, 4, y, width - 18, RH);
-			chip (canvas, 12, y + 6, c.code, s ? C_ACCENT : wk_mix (0x00FFFFFF, C_BG, 170), s ? 0x00FFFFFF : dim_ink (0x00FFFFFF));
-			wk_text_l (canvas, 52, y, RH, c.name, C_FIELD_TEXT, s ? 2 : 0);
-			if (s) wk_glyph (canvas, WKG_CHECK, width - 32, y + RH / 2, 11, C_ACCENT);
+			chip (canvas, 12, y + 6, c.code, s ? C_ACCENT : uk_mix (0x00FFFFFF, C_BG, 170), s ? 0x00FFFFFF : dim_ink (0x00FFFFFF));
+			uk_text_l (canvas, 52, y, RH, c.name, C_FIELD_TEXT, s ? 2 : 0);
+			if (s) uk_glyph (canvas, WKG_CHECK, width - 32, y + RH / 2, 11, C_ACCENT);
 		}
 		int n = NCOUNTRIES, v = rows ();
-		if (n > v) { int th = (height - 12) * v / n, ty = (height - 12 - th) * top / (n - v); wk_scroll_bar (canvas, width - 11, 6, 6, height - 12, true, ty, th, 0x00FFFFFF); }
+		if (n > v) { int th = (height - 12) * v / n, ty = (height - 12 - th) * top / (n - v); uk_scroll_bar (canvas, width - 11, 6, 6, height - 12, true, ty, th, 0x00FFFFFF); }
 	}
 	void pick (int i) { if (i < 0 || i >= NCOUNTRIES) return; sel = i; show (i); invalidate (true); if (cb) cb (*this); }
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
@@ -447,9 +447,9 @@ public:
 			{
 				char key[5]; int n = 0; while (*s && *s != ' ' && n < 4) key[n++] = *s++; key[n] = 0; while (*s == ' ') s++;
 				int x = 10 + r * 8 + k * (kw + g), y = 9 + r * (kh + g);
-				wk_rbox (canvas, x, y, kw, kh, 4, 0x00FBFAF9, wk_mix (0x00FFFFFF, C_BG, 150));
-				wk_rline (canvas, x, y, kw, kh, 4, wk_mix (0x00FFFFFF, C_TEXT, 60));
-				WkFaceScope sc (g_small); wk_text_c (canvas, x, y, kw, kh - 1, key, C_FIELD_TEXT);
+				uk_rbox (canvas, x, y, kw, kh, 4, 0x00FBFAF9, uk_mix (0x00FFFFFF, C_BG, 150));
+				uk_rline (canvas, x, y, kw, kh, 4, uk_mix (0x00FFFFFF, C_TEXT, 60));
+				UkFaceScope sc (g_small); uk_text_c (canvas, x, y, kw, kh - 1, key, C_FIELD_TEXT);
 				k++;
 			}
 		}
@@ -481,7 +481,7 @@ static void scan_nets ()
 static int bars_of (int dbm) { return dbm > -50 ? 4 : dbm > -60 ? 3 : dbm > -70 ? 2 : 1; }
 static void bars (Canvas &cv, int x, int y, int n, unsigned on, unsigned off)
 {
-	for (int i = 0; i < 4; i++) { int bh = 4 + i * 3; unsigned c = i < n ? on : off; wk_rbox (cv, x + i * 5, y + 13 - bh, 4, bh, 1, c, c); }
+	for (int i = 0; i < 4; i++) { int bh = 4 + i * 3; unsigned c = i < n ? on : off; uk_rbox (cv, x + i * 5, y + 13 - bh, 4, bh, 1, c, c); }
 }
 
 enum { NET_LIST, NET_PASSWORD, NET_CONNECTING, NET_CONNECTED };
@@ -499,7 +499,7 @@ public:
 		addChild (pass); addChild (go); addChild (autoc);
 		place ();
 	}
-	static unsigned sel_bg () { return wk_mix (0x00FFFFFF, C_ACCENT, 38); }
+	static unsigned sel_bg () { return uk_mix (0x00FFFFFF, C_ACCENT, 38); }
 	unsigned bgColor () override { return 0x00FFFFFF; }
 	bool open () const { return sel >= 0 && sel < g_nnets && state == NET_PASSWORD; }
 	bool needPass () const { return open () && g_nets[sel].sec != WLAN_SEC_OPEN; }
@@ -525,7 +525,7 @@ public:
 		card (canvas, 0, 0, width, total ());
 		if (!g_nnets)
 		{
-			wk_text_c (canvas, 0, 4, width, RH, g_scanned ? "No network found. Is the Wi-Fi router on?" : "Looking for networks...", dim_ink (0x00FFFFFF));
+			uk_text_c (canvas, 0, 4, width, RH, g_scanned ? "No network found. Is the Wi-Fi router on?" : "Looking for networks...", dim_ink (0x00FFFFFF));
 			return;
 		}
 		for (int i = 0; i < g_nnets; i++)
@@ -533,20 +533,20 @@ public:
 			const Net &n = g_nets[i]; int y = rowY (i); bool s = i == sel;
 			if (s && open ()) sel_row (canvas, 4, y, width - 8, RH + openH () - 4);
 			else if (i > 0 && !(sel == i - 1 && open ())) canvas.fillRect (14, y, width - 28, 1, line_c (0x00FFFFFF));
-			bars (canvas, 18, y + 14, bars_of (n.level), C_FIELD_TEXT, wk_mix (0x00FFFFFF, C_TEXT, 60));
-			wk_text_l (canvas, 54, y, RH, n.ssid, C_FIELD_TEXT, s ? 2 : 0);
+			bars (canvas, 18, y + 14, bars_of (n.level), C_FIELD_TEXT, uk_mix (0x00FFFFFF, C_TEXT, 60));
+			uk_text_l (canvas, 54, y, RH, n.ssid, C_FIELD_TEXT, s ? 2 : 0);
 			int x = width - 18;
-			if (n.sec != WLAN_SEC_OPEN) { wk_glyph (canvas, WKG_LOCK, x - 7, y + RH / 2, 13, dim_ink (0x00FFFFFF)); x -= 22; }
+			if (n.sec != WLAN_SEC_OPEN) { uk_glyph (canvas, WKG_LOCK, x - 7, y + RH / 2, 13, dim_ink (0x00FFFFFF)); x -= 22; }
 			const char *sec = n.sec == WLAN_SEC_OPEN ? "Open" : n.sec == WLAN_SEC_WEP ? "WEP" : n.sec == WLAN_SEC_WPA ? "WPA" : "WPA2";
-			x -= wk_tw (sec, 2) + 12;
-			chip (canvas, x, y + 12, sec, wk_mix (0x00FFFFFF, C_BG, 150), dim_ink (0x00FFFFFF));
-			int cx = 54 + wk_tw (n.ssid, 2) + 12;
+			x -= uk_tw (sec, 2) + 12;
+			chip (canvas, x, y + 12, sec, uk_mix (0x00FFFFFF, C_BG, 150), dim_ink (0x00FFFFFF));
+			int cx = 54 + uk_tw (n.ssid, 2) + 12;
 			if (n.con && (state == NET_CONNECTED || !s))
 			{
-				wk_glyph (canvas, WKG_CHECK, cx + 5, y + RH / 2, 11, OK_C);
-				wk_text_l (canvas, cx + 16, y, RH, "Connected", OK_C, 2);
+				uk_glyph (canvas, WKG_CHECK, cx + 5, y + RH / 2, 11, OK_C);
+				uk_text_l (canvas, cx + 16, y, RH, "Connected", OK_C, 2);
 			}
-			else if (n.known && !s) { WkFaceScope sc (g_small); wk_text_l (canvas, cx, y, RH, "Saved", dim_ink (0x00FFFFFF)); }
+			else if (n.known && !s) { UkFaceScope sc (g_small); uk_text_l (canvas, cx, y, RH, "Saved", dim_ink (0x00FFFFFF)); }
 			if (s && needPass ())
 			{
 				ftext (canvas, g_small, 54, y + RH - 4, 18, n.known ? "Password (leave empty: the saved one)" : "Password", dim_ink (0x00FFFFFF));
@@ -593,11 +593,11 @@ public:
 			static const int CS[12] = { 0, 50, 87, 100, 87, 50, 0, -50, -87, -100, -87, -50 };
 			int dx = CS[(k + 3) % 12] * 18 / 100, dy = CS[k] * 18 / 100;
 			int a = 40 + 215 * ((k - phase + 24) % 12) / 11;
-			disc (canvas, cx + dx - 3, cy + dy - 3, 6, wk_mix (0x00FFFFFF, C_ACCENT, a));
+			disc (canvas, cx + dx - 3, cy + dy - 3, 6, uk_mix (0x00FFFFFF, C_ACCENT, a));
 		}
 		ftext (canvas, g_lead, (width - ftw (g_lead, what, 2)) / 2, 98, 26, what, C_FIELD_TEXT, 2);
 		const char *s = "Authenticating  \xC2\xB7  getting an address";
-		wk_text_l (canvas, (width - wk_tw (s)) / 2, 126, 22, s, dim_ink (0x00FFFFFF));
+		uk_text_l (canvas, (width - uk_tw (s)) / 2, 126, 22, s, dim_ink (0x00FFFFFF));
 	}
 };
 
@@ -630,18 +630,18 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_FIELD);
-		unsigned bg = wk_mix (0x00FFFFFF, c, 30);
-		wk_rbox (canvas, 0, 0, width, height, 8, bg, bg);
-		wk_rline (canvas, 0, 0, width, height, 8, wk_mix (0x00FFFFFF, c, 120));
-		unsigned ink = wk_tone (c, 70);
-		if (kind == 0) { disc (canvas, 14, height / 2 - 13, 26, c); wk_glyph (canvas, WKG_CHECK, 27, height / 2, 12, 0x00FFFFFF); }
+		unsigned bg = uk_mix (0x00FFFFFF, c, 30);
+		uk_rbox (canvas, 0, 0, width, height, 8, bg, bg);
+		uk_rline (canvas, 0, 0, width, height, 8, uk_mix (0x00FFFFFF, c, 120));
+		unsigned ink = uk_tone (c, 70);
+		if (kind == 0) { disc (canvas, 14, height / 2 - 13, 26, c); uk_glyph (canvas, WKG_CHECK, 27, height / 2, 12, 0x00FFFFFF); }
 		else
 		{
 			float tri[] = { 11, 0, 22, 19, 0, 19 };
 			aa_poly (canvas, 14, height / 2 - 10, tri, 3, c);
 			canvas.fillRect (24, height / 2 - 4, 2, 7, 0x00FFFFFF); canvas.fillRect (24, height / 2 + 5, 2, 2, 0x00FFFFFF);
 		}
-		if (t2[0]) { wk_text_l (canvas, 52, 6, 22, t1, ink, 2); ftext (canvas, g_small, 52, 27, 18, t2, ink); }
+		if (t2[0]) { uk_text_l (canvas, 52, 6, 22, t1, ink, 2); ftext (canvas, g_small, 52, 27, 18, t2, ink); }
 		else ftext (canvas, g_small, 48, 0, height, t1, ink);
 	}
 };
@@ -661,12 +661,12 @@ public:
 		{
 			int y = 4 + i * RH; bool s = i == g_mode;
 			if (s) sel_row (canvas, 4, y, width - 8, RH);
-			wk_radio_mark (canvas, 14, y + (RH - 16) / 2, 16, s, WK_NORMAL);
+			uk_radio_mark (canvas, 14, y + (RH - 16) / 2, 16, s, UK_NORMAL);
 			char b[32]; mode_text (i, b, sizeof b);
-			wk_text_l (canvas, 40, y, RH, b, C_FIELD_TEXT, s ? 2 : 0);
-			if (i == g_best) chip (canvas, width - 14 - wk_tw ("Best", 2) - 12, y + 7, "Best", OK_C, 0x00FFFFFF);
-			else if (i == g_curMode) { WkFaceScope sc (g_small); wk_text_l (canvas, width - 14 - wk_tw ("now"), y, RH, "now", C_ACCENT); }
-			else { WkFaceScope sc (g_small); const char *a = aspect (g_modes[i].w, g_modes[i].h); wk_text_l (canvas, width - 14 - wk_tw (a), y, RH, a, dim_ink (0x00FFFFFF)); }
+			uk_text_l (canvas, 40, y, RH, b, C_FIELD_TEXT, s ? 2 : 0);
+			if (i == g_best) chip (canvas, width - 14 - uk_tw ("Best", 2) - 12, y + 7, "Best", OK_C, 0x00FFFFFF);
+			else if (i == g_curMode) { UkFaceScope sc (g_small); uk_text_l (canvas, width - 14 - uk_tw ("now"), y, RH, "now", C_ACCENT); }
+			else { UkFaceScope sc (g_small); const char *a = aspect (g_modes[i].w, g_modes[i].h); uk_text_l (canvas, width - 14 - uk_tw (a), y, RH, a, dim_ink (0x00FFFFFF)); }
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -697,7 +697,7 @@ static unsigned *wall_pic (int which, int w, int h, unsigned c1, unsigned c2)
 static void blit_round (Canvas &cv, const unsigned *p, int x, int y, int w, int h, int r)
 {
 	for (int j = 0; j < h; j++) for (int i = 0; i < w; i++) cv.pixel (x + i, y + j, p[j * w + i]);
-	wk_rline (cv, x, y, w, h, r, 0, 60);
+	uk_rline (cv, x, y, w, h, r, 0, 60);
 }
 
 // A monitor showing the desktop at the chosen size: the menu bar, a window and the dock, to scale.
@@ -712,18 +712,18 @@ public:
 		const Mode &m = g_modes[g_mode];
 		int sw = width - 16, sh = sw * m.h / m.w; if (sh > height - 60) { sh = height - 60; sw = sh * m.w / m.h; }
 		int x = (width - sw - 16) / 2, y = 0;
-		wk_rbox (canvas, x, y, sw + 16, sh + 16, 8, 0x003A3E46, 0x00202228);
+		uk_rbox (canvas, x, y, sw + 16, sh + 16, 8, 0x003A3E46, 0x00202228);
 		if (!wall || ww != sw || wh != sh) { delete [] wall; wall = wall_pic (0, sw, sh, 0x004878B0, 0x001C2C48); ww = sw; wh = sh; }
 		for (int j = 0; j < sh; j++) for (int i = 0; i < sw; i++) canvas.pixel (x + 8 + i, y + 8 + j, wall[j * sw + i]);
 		int mb = 30 * sw / m.w; if (mb < 3) mb = 3;
 		canvas.fillRect (x + 8, y + 8, sw, mb, 0x00ECE6E1);
 		int wx = x + 8 + sw * 28 / 100, wy = y + 8 + sh * 22 / 100, wwid = 620 * sw / m.w, whei = 420 * sw / m.w, th = 28 * sw / m.w;
-		wk_rbox (canvas, wx, wy, wwid, whei, 3, wk_tone (C_FRAME_ACTIVE, 160), C_FRAME_ACTIVE);
+		uk_rbox (canvas, wx, wy, wwid, whei, 3, uk_tone (C_FRAME_ACTIVE, 160), C_FRAME_ACTIVE);
 		canvas.fillRect (wx + 2, wy + th, wwid - 4, whei - th - 2, C_BG);
 		int dw = 754 * sw / m.w, dh = 80 * sw / m.w; if (dh < 4) dh = 4;
-		wk_rbox (canvas, x + 8 + (sw - dw) / 2, y + 8 + sh - dh - 3, dw, dh, 3, wk_tone (C_DOCK, 170), C_DOCK);
+		uk_rbox (canvas, x + 8 + (sw - dw) / 2, y + 8 + sh - dh - 3, dw, dh, 3, uk_tone (C_DOCK, 170), C_DOCK);
 		canvas.fillRect (x + sw / 2 - 4, y + sh + 16, 24, 22, 0x0046494F);
-		wk_rbox (canvas, x + sw / 2 - 50 + 8, y + sh + 36, 100, 9, 4, 0x0050545C, 0x0032343A);
+		uk_rbox (canvas, x + sw / 2 - 50 + 8, y + sh + 36, 100, 9, 4, 0x0050545C, 0x0032343A);
 	}
 };
 
@@ -742,12 +742,12 @@ public:
 	unsigned bgColor () override { return C_FIELD; }
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 12, C_FIELD);
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 12, C_FIELD);
 		draw_pic (canvas, ic, 24, 24, 40);
 		ftext (canvas, g_lead, 80, 20, 28, "Keep this resolution?", C_FIELD_TEXT, 2);
 		fwrap (&canvas, 0, 80, 52, width - 104, 20, msg, dim_ink (C_FIELD));
-		wk_progress_bar (canvas, 80, 100, width - 104, 6, (width - 104) * secs / 15);
+		uk_progress_bar (canvas, 80, 100, width - 104, 6, (width - 104) * secs / 15);
 	}
 };
 
@@ -761,40 +761,40 @@ public:
 	DesktopPreview (int l, int t, int w, int h) : Widget (l, t, w, h), wall (0), shown (-1), shownTint (-1) {}
 	void win (int x, int y, int w, int h, unsigned frame, unsigned face, const char *t, bool front)
 	{
-		bool milk = SCHEMES[g_scheme].style == WK_STYLE_MILK;
+		bool milk = SCHEMES[g_scheme].style == UK_STYLE_MILK;
 		unsigned tbg = frame;
 		if (milk)					// (Milk: the title bar melts into the window)
 		{
-			unsigned top = wk_bright (frame) < 110 ? frame : wk_tone (frame, 230);
-			wk_rbox (canvas, x, y, w, h, 6, face, face);
-			wk_rbox (canvas, x, y, w, 20, 6, top, face, 255, WK_TL | WK_TR);
-			tbg = wk_mix (top, face, 128);
+			unsigned top = uk_bright (frame) < 110 ? frame : uk_tone (frame, 230);
+			uk_rbox (canvas, x, y, w, h, 6, face, face);
+			uk_rbox (canvas, x, y, w, 20, 6, top, face, 255, UK_TL | UK_TR);
+			tbg = uk_mix (top, face, 128);
 		}
-		else wk_rbox (canvas, x, y, w, h, 6, wk_tone (frame, 164), wk_tone (frame, 118));
-		wk_rline (canvas, x, y, w, h, 6, wk_tone (frame, 70), 170);
+		else uk_rbox (canvas, x, y, w, h, 6, uk_tone (frame, 164), uk_tone (frame, 118));
+		uk_rline (canvas, x, y, w, h, 6, uk_tone (frame, 70), 170);
 		canvas.fillRect (x + 3, y + 20, w - 6, h - 23, face);
 		static const unsigned bead[3] = { 0x00E8564E, 0x004CB653, 0x00F0B43A };	// (Milk: close, maximise, minimise)
 		for (int k = 0; k < 3; k++)
-			if (milk) wk_bead (canvas, x + w - 20 - k * 17, y + 4, 13, front ? bead[k] : 0x00C2C3C8);
-			else wk_rbox (canvas, x + w - 20 - k * 17, y + 4, 14, 12, 3, wk_tone (frame, 175), wk_tone (frame, 125));
-		WkFaceScope sc (g_small); wk_text_c (canvas, x, y, w, 20, t, wk_ink_on (tbg), 2);
-		if (front) wk_text_l (canvas, x + 12, y + 28, 18, "Hello, Onyx.", wk_ink_on (face));
+			if (milk) uk_bead (canvas, x + w - 20 - k * 17, y + 4, 13, front ? bead[k] : 0x00C2C3C8);
+			else uk_rbox (canvas, x + w - 20 - k * 17, y + 4, 14, 12, 3, uk_tone (frame, 175), uk_tone (frame, 125));
+		UkFaceScope sc (g_small); uk_text_c (canvas, x, y, w, 20, t, uk_ink_on (tbg), 2);
+		if (front) uk_text_l (canvas, x + 12, y + 28, 18, "Hello, Onyx.", uk_ink_on (face));
 	}
 	void onDraw () override
 	{
 		canvas.clear (C_FIELD);
 		if (!wall || shown != g_wall || shownTint != g_tint) { delete [] wall; wall = wall_pic (g_wall, width, height, tint1 (), tint2 ()); shown = g_wall; shownTint = g_tint; }
 		blit_round (canvas, wall, 0, 0, width, height, 8);
-		for (int y = 1; y < 19; y++) canvas.fillRect (1, y, width - 2, 1, wk_mix (0x00F6F2EE, 0x00DCD4CE, y * 256 / 19));
-		{ WkFaceScope sc (g_small); wk_text_l (canvas, 10, 1, 18, "Onyx   File   Edit   View", C_TEXT); wk_text_l (canvas, width - 44, 1, 18, "12:34", C_TEXT, 2); }
+		for (int y = 1; y < 19; y++) canvas.fillRect (1, y, width - 2, 1, uk_mix (0x00F6F2EE, 0x00DCD4CE, y * 256 / 19));
+		{ UkFaceScope sc (g_small); uk_text_l (canvas, 10, 1, 18, "Onyx   File   Edit   View", C_TEXT); uk_text_l (canvas, width - 44, 1, 18, "12:34", C_TEXT, 2); }
 		// (the chosen scheme's colours at once -- apply_look comes a moment later: another style's own)
 		int st = SCHEMES[g_scheme].style;
-		const WkPalette &pal = wk_theme_palette (g_scheme); (void) st;
+		const UkPalette &pal = uk_theme_palette (g_scheme); (void) st;
 		unsigned face = pal.face, dock = pal.dock;
 		win (40, 28, 200, 84, pal.inactive, face, "Calendar", false);
 		win (180, 40, 250, 86, SCHEMES[g_scheme].c, face, "Text Editor", true);
 		int dw = 240, dx = (width - dw) / 2, dy = height - 30;
-		wk_rbox (canvas, dx, dy, dw, 24, 7, wk_tone (dock, 175), dock); wk_rline (canvas, dx, dy, dw, 24, 7, wk_tone (dock, 60), 140);
+		uk_rbox (canvas, dx, dy, dw, 24, 7, uk_tone (dock, 175), dock); uk_rline (canvas, dx, dy, dw, 24, 7, uk_tone (dock, 60), 140);
 		static Pic di[6]; static const char *const DI[] = { "tinypad", "jet", "paint", "tetris", "terminal", "fileviewer" };
 		for (int k = 0; k < 6; k++) { if (!di[k].px) di[k] = icon (DI[k]); draw_pic (canvas, di[k], dx + 12 + k * 38, dy + 2, 20); }
 	}
@@ -812,18 +812,18 @@ public:
 		{
 			int step = (width - 8) / NSCHEMES, bw = step - 10;
 			int x = 4 + i * step, y = 4; bool s = i == g_scheme; unsigned c = SCHEMES[i].c;
-			bool milk = SCHEMES[i].style == WK_STYLE_MILK;
-			if (s) { wk_rline (canvas, x - 3, y - 3, bw + 6, 42, 10, C_ACCENT); wk_rline (canvas, x - 4, y - 4, bw + 8, 44, 11, C_ACCENT); }
-			wk_rbox (canvas, x, y, bw, 36, 8, !milk ? wk_tone (c, 164) : wk_bright (c) < 110 ? c : wk_tone (c, 230),	// (the beads' ones: down to
-				 milk ? wk_theme_palette (i).face : wk_tone (c, 118));							//  their windows' colour)
-			wk_rline (canvas, x, y, bw, 36, 8, wk_tone (c, 70), 170);
+			bool milk = SCHEMES[i].style == UK_STYLE_MILK;
+			if (s) { uk_rline (canvas, x - 3, y - 3, bw + 6, 42, 10, C_ACCENT); uk_rline (canvas, x - 4, y - 4, bw + 8, 44, 11, C_ACCENT); }
+			uk_rbox (canvas, x, y, bw, 36, 8, !milk ? uk_tone (c, 164) : uk_bright (c) < 110 ? c : uk_tone (c, 230),	// (the beads' ones: down to
+				 milk ? uk_theme_palette (i).face : uk_tone (c, 118));							//  their windows' colour)
+			uk_rline (canvas, x, y, bw, 36, 8, uk_tone (c, 70), 170);
 			if (milk)					// (its beads)
 			{
 				static const unsigned bead[3] = { 0x00F0B43A, 0x004CB653, 0x00E8564E };
-				for (int k = 0; k < 3; k++) wk_bead (canvas, x + bw - 40 + k * 11, y + 6, 9, bead[k]);
+				for (int k = 0; k < 3; k++) uk_bead (canvas, x + bw - 40 + k * 11, y + 6, 9, bead[k]);
 			}
-			if (s) wk_glyph (canvas, WKG_CHECK, x + bw / 2, y + (milk ? 24 : 18), 12, wk_ink_on (c));
-			wk_text_c (canvas, x - 4, y + 42, bw + 8, 20, SCHEMES[i].name, C_FIELD_TEXT, s ? 2 : 0);
+			if (s) uk_glyph (canvas, WKG_CHECK, x + bw / 2, y + (milk ? 24 : 18), 12, uk_ink_on (c));
+			uk_text_c (canvas, x - 4, y + 42, bw + 8, 20, SCHEMES[i].name, C_FIELD_TEXT, s ? 2 : 0);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -848,18 +848,18 @@ public:
 			int x = 4 + i * (TW + G), y = 4;
 			if (!thumb[i]) thumb[i] = wall_pic (i, TW, TH, tint1 (), tint2 ());
 			blit_round (canvas, thumb[i], x, y, TW, TH, 6);
-			if (i == g_wall) { wk_rline (canvas, x - 3, y - 3, TW + 6, TH + 6, 8, C_ACCENT); wk_rline (canvas, x - 4, y - 4, TW + 8, TH + 8, 9, C_ACCENT); }
+			if (i == g_wall) { uk_rline (canvas, x - 3, y - 3, TW + 6, TH + 6, 8, C_ACCENT); uk_rline (canvas, x - 4, y - 4, TW + 8, TH + 8, 9, C_ACCENT); }
 		}
 		static const char *const NM[] = { "Generated (Voronoi) -- a new one at every start", "Hexagons", "Low poly", "Waves", "Dunes", "Bokeh", "Silk", "Contours" };
 		for (int i = 0; i < NTINTS; i++)		// the tints: two rows of swatches (the gradient they give)
 		{
 			int x = 4 + (i % 16) * (SW + SG), y = SY + (i / 16) * (SW + SG); unsigned c = tint_of (i);
-			if (i == g_tint) { wk_rline (canvas, x - 3, y - 3, SW + 6, SW + 6, 9, C_ACCENT); wk_rline (canvas, x - 4, y - 4, SW + 8, SW + 8, 10, C_ACCENT); }
-			wk_rbox (canvas, x, y, SW, SW, 6, wk_tone (c, 150), wk_tone (c, 96));
-			wk_rline (canvas, x, y, SW, SW, 6, wk_tone (c, 60), 150);
-			if (i == g_tint) wk_glyph (canvas, WKG_CHECK, x + SW / 2, y + SW / 2, 10, wk_ink_on (c));
+			if (i == g_tint) { uk_rline (canvas, x - 3, y - 3, SW + 6, SW + 6, 9, C_ACCENT); uk_rline (canvas, x - 4, y - 4, SW + 8, SW + 8, 10, C_ACCENT); }
+			uk_rbox (canvas, x, y, SW, SW, 6, uk_tone (c, 150), uk_tone (c, 96));
+			uk_rline (canvas, x, y, SW, SW, 6, uk_tone (c, 60), 150);
+			if (i == g_tint) uk_glyph (canvas, WKG_CHECK, x + SW / 2, y + SW / 2, 10, uk_ink_on (c));
 		}
-		WkFaceScope sc (g_small); wk_text_l (canvas, 2, SY + 2 * SW + SG + 6, 18, NM[g_wall], dim_ink (C_FIELD));
+		UkFaceScope sc (g_small); uk_text_l (canvas, 2, SY + 2 * SW + SG + 6, 18, NM[g_wall], dim_ink (C_FIELD));
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -896,9 +896,9 @@ public:
 			int y = i * RH;
 			if (i) canvas.fillRect (14, y, width - 28, 1, line_c (0x00FFFFFF));
 			draw_pic (canvas, ic[i], 14, y + 13, 30);
-			wk_text_l (canvas, 58, y + 8, 20, T[i], C_FIELD_TEXT, 2);
+			uk_text_l (canvas, 58, y + 8, 20, T[i], C_FIELD_TEXT, 2);
 			ftext (canvas, g_small, 58, y + 29, 18, S[i], dim_ink (0x00FFFFFF));
-			wk_switch_mark (canvas, width - 58, y + 17, 40, 22, g_services[i], WK_NORMAL);
+			uk_switch_mark (canvas, width - 58, y + 17, 40, 22, g_services[i], UK_NORMAL);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -927,19 +927,19 @@ public:
 			int y = 4 + i * RH;
 			if (i) canvas.fillRect (14, y, width - 28, 1, line_c (0x00FFFFFF));
 			draw_pic (canvas, ic[i], 14, y + 11, 30);
-			wk_text_l (canvas, 58, y + 6, 20, T[i], C_FIELD_TEXT, 2);
-			char fit[120]; { WkFaceScope sc (g_small); wk_text_fit (val[i], width - 58 - 90, fit, sizeof fit); }
+			uk_text_l (canvas, 58, y + 6, 20, T[i], C_FIELD_TEXT, 2);
+			char fit[120]; { UkFaceScope sc (g_small); uk_text_fit (val[i], width - 58 - 90, fit, sizeof fit); }
 			ftext (canvas, g_small, 58, y + 27, 18, fit, dim_ink (0x00FFFFFF));
 			bool hot = hover && hotRow == i;
-			wk_text_l (canvas, width - 18 - wk_tw ("Change"), y, RH, "Change", hot ? wk_tone (C_ACCENT, 100) : C_ACCENT);
-			if (hot) canvas.fillRect (width - 18 - wk_tw ("Change"), y + RH / 2 + wk_fh () / 2, wk_tw ("Change"), 1, C_ACCENT);
+			uk_text_l (canvas, width - 18 - uk_tw ("Change"), y, RH, "Change", hot ? uk_tone (C_ACCENT, 100) : C_ACCENT);
+			if (hot) canvas.fillRect (width - 18 - uk_tw ("Change"), y + RH / 2 + uk_fh () / 2, uk_tw ("Change"), 1, C_ACCENT);
 		}
 	}
 	int hotRow = -1;
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
 		if (mx < 0) { if (hover) { hover = false; invalidate (true); } return false; }
-		int r = (my - 4) / RH, hr = mx > width - 30 - wk_tw ("Change") && r >= 0 && r < 5 ? r : -1;
+		int r = (my - 4) / RH, hr = mx > width - 30 - uk_tw ("Change") && r >= 0 && r < 5 ? r : -1;
 		if (!hover || hr != hotRow) { hover = true; hotRow = hr; invalidate (true); }
 		if (bl && !pressed && hr >= 0) go (hr + 1);
 		pressed = bl; return true;
@@ -1176,14 +1176,14 @@ static void on_revert (Widget &) { end_try (false); }
 static void apply_look ()
 {
 	g_lookDirty = false;
-	WkTheme t; wk_theme_get (t);
-	wk_theme_take (t, g_scheme);				// (its frame; its own colours when they differ)
-	wk_theme_set (t);					// (this window's frame in the new colour)
-	wk_decorate_window ();
+	UkTheme t; uk_theme_get (t);
+	uk_theme_take (t, g_scheme);				// (its frame; its own colours when they differ)
+	uk_theme_set (t);					// (this window's frame in the new colour)
+	uk_decorate_window ();
 	g_root->invalidate (true);
 	if (g_demo) return;
 	static char buf[1400];
-	int p = wk_theme_write (t, buf, sizeof buf - 40);
+	int p = uk_theme_write (t, buf, sizeof buf - 40);
 	p += snprintf (buf + p, sizeof buf - p, "wheelspeed=%d\n", kapi_get_wheel_speed ());
 	kapi_save_file ("SD:/etc/theme.txt", buf, (unsigned) p);
 	Wallpaper wp; wp_load (wp);
@@ -1291,7 +1291,7 @@ public:
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets)
+	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets)
 	g_h1 = face ("DejaVu Sans", 22); g_hero = face ("DejaVu Sans", 32); g_lead = face ("DejaVu Sans", 15); g_small = face ("DejaVu Sans", 11);
 	char a[32]; int na = kapi_get_args (a, sizeof a); a[na > 0 && na < 32 ? na : 0] = 0;
 	int demo = -1; char variant = 0;
@@ -1321,7 +1321,7 @@ int main (void)
 		for (int i = 0; i < NCOUNTRIES; i++) if (!strcmp (COUNTRIES[i].code, g_wpaCountry)) g_country = i;
 		for (int k = 0; k < NKEYB; k++) if (!strcmp (KEYB_CODES[k], COUNTRIES[g_country].keyb)) g_keyb = k;
 		g_zone = COUNTRIES[g_country].zones[0];
-		WkTheme t; wk_theme_get (t); if (t.theme >= 0 && t.theme < NSCHEMES) g_scheme = t.theme;
+		UkTheme t; uk_theme_get (t); if (t.theme >= 0 && t.theme < NSCHEMES) g_scheme = t.theme;
 		Wallpaper wp; wp_load (wp);
 		for (int i = 0; i < 16; i++) if (TINTS[i] == wp.c1) g_tint = i;
 	}
@@ -1341,7 +1341,7 @@ int main (void)
 
 	// the footer
 	Panel *foot = new Panel (RAIL_W, H - FOOT_H, W - RAIL_W, FOOT_H, C_BG); root.addChild (foot);
-	foot->addChild (new Panel (0, 0, W - RAIL_W, 1, wk_mix (C_BG, C_TEXT, 60)));
+	foot->addChild (new Panel (0, 0, W - RAIL_W, 1, uk_mix (C_BG, C_TEXT, 60)));
 	g_stepOf = new Text (PX, 1, 140, FOOT_H - 1, "Step 1 of 7", 0, g_small, true); foot->addChild (g_stepOf);
 	g_next = new AccentButton (W - RAIL_W - PAD - 132, 14, 132, 32, "Continue", on_next); foot->addChild (g_next);
 	g_back = new Button (W - RAIL_W - PAD - 132 - 10 - 104, 11, 104, 38, "Back", on_back); foot->addChild (g_back);
@@ -1419,7 +1419,7 @@ int main (void)
 			{
 				canvas.clear (C_FIELD);
 				big_disc (canvas, 0, 0, 52, OK_C);
-				wk_glyph (canvas, WKG_CHECK, 26, 26, 24, 0x00FFFFFF);
+				uk_glyph (canvas, WKG_CHECK, 26, 26, 24, 0x00FFFFFF);
 				ftext (canvas, g_hero, 0, 64, 44, "You're all set", C_FIELD_TEXT, 2);
 				fwrap (&canvas, g_lead, 0, 114, width, 23, "Here is what Onyx will use. Change any of it now, or later in the Control Panel.", dim_ink (C_FIELD));
 			}

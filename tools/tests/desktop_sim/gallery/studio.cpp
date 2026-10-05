@@ -1,22 +1,22 @@
 //
-// studio -- (the desktop simulator only) the studio widgets of wtk (Knob, VuMeter, SegmentedControl,
+// studio -- (the desktop simulator only) the studio widgets of uikit (Knob, VuMeter, SegmentedControl,
 // ToolBar + ToolButton, LcdDisplay) among the classic controls, for a look at them -- in the
-// theme of the card, or a dark studio palette (SIM_DARK=1) -- and at wtk's text through a FreeType
-// face (built with -DWITH_FT: ft/wtkface.h, DejaVu Sans 13 px; SIM_FT="Family,px" another). Built
+// theme of the card, or a dark studio palette (SIM_DARK=1) -- and at uikit's text through a FreeType
+// face (built with -DWITH_FT: ft/uikitface.h, DejaVu Sans 13 px; SIM_FT="Family,px" another). Built
 // and run by tools/tests/desktop_sim/studio.sh.
 //
 #include "kapi.h"
 #include "applib.h"
-#include "wtk/wtk.h"
-#include "wtk/toolbar.h"
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
 #ifdef WITH_FT
-#include "ft/wtkface.h"
+#include "ft/uikitface.h"
 #endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
-using namespace wtk;
+using namespace uikit;
 
 static const char *const ART[] = { "Articulation", "Melodic cell", "Voicing" };
 static const char *const MEL[] = { "Melodic line (rhythm only)", "Full melody (notes)" };
@@ -38,9 +38,9 @@ public:
 	{
 		canvas.clear (C_BG);
 		int x = 0; const char *s[4] = { "Regular", "Italic", "Bold", "Bold italic" };
-		for (int i = 0; i < 4; i++) { wk_text (canvas, x, 0, s[i], C_TEXT, i); x += wk_tw (s[i], i) + 14; }
-		wk_text (canvas, x, 0, wk_textface () ? "Caf\xC3\xA9 na\xC3\xAFve \xE2\x80\x93 \xC2\xBD \xE2\x99\xAA \xE2\x82\xAC 5" : "Cafe naive - 1/2 5",
-			 wk_mix (C_BG, C_TEXT, 170));
+		for (int i = 0; i < 4; i++) { uk_text (canvas, x, 0, s[i], C_TEXT, i); x += uk_tw (s[i], i) + 14; }
+		uk_text (canvas, x, 0, uk_textface () ? "Caf\xC3\xA9 na\xC3\xAFve \xE2\x80\x93 \xC2\xBD \xE2\x99\xAA \xE2\x82\xAC 5" : "Cafe naive - 1/2 5",
+			 uk_mix (C_BG, C_TEXT, 170));
 	}
 };
 
@@ -52,18 +52,18 @@ int main (void)
 		char fam[64] = "DejaVu Sans"; int px = 13;
 		const char *e = getenv ("SIM_FT");
 		if (e) { const char *c = strchr (e, ','); int n = c ? (int) (c - e) : (int) strlen (e); if (n > 63) n = 63; memcpy (fam, e, n); fam[n] = 0; if (c) px = atoi (c + 1); }
-		if (!ft_wtk_install (fam, px)) fprintf (stderr, "studio: no TrueType font\n");
+		if (!ft_uikit_install (fam, px)) fprintf (stderr, "studio: no TrueType font\n");
 	}
 #endif
 	Root root (W, H, "Studio widgets");
 	if (getenv ("SIM_DARK"))				// a dark studio palette (as Koton's)
 	{
-		WkTheme t; wk_theme_defaults (t);
+		UkTheme t; uk_theme_defaults (t);
 		t.theme = 4; t.active = 0x003A4458; t.window = 0x00262A31; t.button = 0x00323840; t.field = 0x001C1F24;
 		t.accent = 0x0036A3C0; t.menubar = 0x00262A31;
-		wk_theme_set (t);
+		uk_theme_set (t);
 		root.setBg (C_BG);
-		wk_decorate_window ();
+		uk_decorate_window ();
 	}
 
 	// the transport
@@ -142,7 +142,7 @@ int main (void)
 		snprintf (b, cap, "%d", 3 + 2 * r); return b; };
 	dg->setSel (1);
 	Styles *sty = new Styles (12, 420, 756, 20); root.addChild (sty);
-	Label *st2 = new Label (12, 446, 756, 22, "Engine on core 2 \xB7 44.1 kHz \xB7 block 256 \xB7 latency 23 ms", wk_mix (C_BG, C_TEXT, 150));
+	Label *st2 = new Label (12, 446, 756, 22, "Engine on core 2 \xB7 44.1 kHz \xB7 block 256 \xB7 latency 23 ms", uk_mix (C_BG, C_TEXT, 150));
 	root.addChild (st2);
 	Button *b1 = new Button (12, 480, 110, 30, "Cancel"); root.addChild (b1);
 	Button *b2 = new Button (130, 480, 110, 30, "Place it"); root.addChild (b2);

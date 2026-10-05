@@ -95,8 +95,8 @@ public:
 	}
 	void frame_line (float x, float y, float w, float h, unsigned c, int a)
 	{
-		for (int i = (int) x; i < (int) (x + w); i++) { wk_blend_px (canvas, i, (int) y, c, a); wk_blend_px (canvas, i, (int) (y + h - 1), c, a); }
-		for (int j = (int) y; j < (int) (y + h); j++) { wk_blend_px (canvas, (int) x, j, c, a); wk_blend_px (canvas, (int) (x + w - 1), j, c, a); }
+		for (int i = (int) x; i < (int) (x + w); i++) { uk_blend_px (canvas, i, (int) y, c, a); uk_blend_px (canvas, i, (int) (y + h - 1), c, a); }
+		for (int j = (int) y; j < (int) (y + h); j++) { uk_blend_px (canvas, (int) x, j, c, a); uk_blend_px (canvas, (int) (x + w - 1), j, c, a); }
 	}
 	// An object's local point (hmm, from its top-left, unrotated) -> view px (its rotation about its centre).
 	void to_view (const Object &o, float lx, float ly, float *X, float *Y) const
@@ -245,9 +245,9 @@ public:
 				char t[64];
 				if (m_mode == M_MOVE) snprintf (t, sizeof t, "X %.2f  Y %.2f cm", (o->x + m_dx) / 1000.0, (o->y + m_dy) / 1000.0);
 				else snprintf (t, sizeof t, "W %.2f  H %.2f cm", o->w / 1000.0, o->h / 1000.0);
-				int tw = wk_text_w (t) + 14;
+				int tw = uk_text_w (t) + 14;
 				int x = imin ((int) m_mx + 14, width - tw - 4), y = imin ((int) m_my + 18, height - 24);
-				wk_rbox (canvas, x, y, tw, 20, 4, 0x303030, 0x303030); wk_text_l (canvas, x + 7, y, 20, t, 0xFFFFFF);
+				uk_rbox (canvas, x, y, tw, 20, 4, 0x303030, 0x303030); uk_text_l (canvas, x + 7, y, 20, t, 0xFFFFFF);
 			}
 		}
 	}
@@ -746,7 +746,7 @@ public:
 			unsigned n = '\n'; type (&n, 1); return true;
 		}
 		}
-		if (ctrl && k == WK_CTRL ('A')) { int lp = tb->p.n - 1; g_anchor = tpos (0, 0); g_caret = tpos (lp, tb->p[lp]->len); notify (); invalidate (true); return true; }
+		if (ctrl && k == UK_CTRL ('A')) { int lp = tb->p.n - 1; g_anchor = tpos (0, 0); g_caret = tpos (lp, tb->p[lp]->len); notify (); invalidate (true); return true; }
 		if (k >= 32 && k != 127 && k < 0x110000 && !(k >= 0x100 && k < 0x120))
 		{
 			unsigned c = (unsigned) k;

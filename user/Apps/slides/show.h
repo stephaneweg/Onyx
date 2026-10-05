@@ -427,7 +427,7 @@ struct Show
 		for (;;)
 		{
 			kapi_pump_wait (10);
-			if (wk_quit ()) break;
+			if (uk_quit ()) break;
 			unsigned now = kapi_get_ticks ();
 			int ms = (int) (now - stepT) * 10;
 			long k = sh_next_key ();

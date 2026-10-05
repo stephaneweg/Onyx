@@ -15,9 +15,9 @@
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 //
-#include "wtk/wtk.h"
-#include "wtk/toolbar.h"
-#include "ft/wtkface.h"
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
+#include "ft/uikitface.h"
 #include "basic/bas.h"
 #include "codeedit.h"
 #include "designer.h"
@@ -25,7 +25,7 @@
 #include "gen.h"
 #include "notify.h"
 
-using namespace wtk;
+using namespace uikit;
 using namespace qs;
 
 #define W0 1000
@@ -116,9 +116,9 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		wk_text (canvas, 8, (height - wk_fh ()) / 2, text, C_TEXT, 2);
-		if (rtext[0]) wk_text (canvas, width - 8 - wk_tw (rtext), (height - wk_fh ()) / 2, rtext, wk_mix (C_BG, C_TEXT, 140));
-		canvas.fillRect (0, height - 1, width, 1, wk_mix (C_BG, C_TEXT, 30));
+		uk_text (canvas, 8, (height - uk_fh ()) / 2, text, C_TEXT, 2);
+		if (rtext[0]) uk_text (canvas, width - 8 - uk_tw (rtext), (height - uk_fh ()) / 2, rtext, uk_mix (C_BG, C_TEXT, 140));
+		canvas.fillRect (0, height - 1, width, 1, uk_mix (C_BG, C_TEXT, 30));
 	}
 };
 // The open files: a tab each (a dot: changed; x: closed)
@@ -126,24 +126,24 @@ class DocTabs : public Widget
 {
 public:
 	DocTabs () : Widget (0, 0, 10, TABS_H) {}
-	int tabW (int d) { return wk_tw (g_p.docs[d].file, 2) + 52; }
+	int tabW (int d) { return uk_tw (g_p.docs[d].file, 2) + 52; }
 	void onDraw () override
 	{
-		unsigned bg = wk_mix (C_BG, C_TEXT, 22);
+		unsigned bg = uk_mix (C_BG, C_TEXT, 22);
 		canvas.clear (bg);
 		int x = 4;
 		for (int i = 0; i < g_p.tabs.n; i++)
 		{
 			int d = g_p.tabs[i]; Doc &D = g_p.docs[d]; int w = tabW (d);
 			bool cur = d == g_p.cur;
-			if (cur) { wk_rbox (canvas, x, 3, w, height - 3, 5, C_FIELD, C_FIELD); }
-			unsigned ink = cur ? C_FIELD_TEXT : D.type == DOC_GEN ? wk_mix (bg, C_TEXT, 120) : C_TEXT;
+			if (cur) { uk_rbox (canvas, x, 3, w, height - 3, 5, C_FIELD, C_FIELD); }
+			unsigned ink = cur ? C_FIELD_TEXT : D.type == DOC_GEN ? uk_mix (bg, C_TEXT, 120) : C_TEXT;
 			unsigned ic = D.type == DOC_FORM ? 0x2E7FA8 : D.type == DOC_GEN ? 0x909090 : 0x3A6FD8;
 			canvas.fillRect (x + 8, height / 2 - 4, 10, 11, ic); canvas.fillRect (x + 9, height / 2 - 3, 8, 3, 0xFFFFFF);
-			wk_text (canvas, x + 24, (height - wk_fh ()) / 2 + 1, D.file, ink, cur ? 2 : 0);
+			uk_text (canvas, x + 24, (height - uk_fh ()) / 2 + 1, D.file, ink, cur ? 2 : 0);
 			int cx = x + w - 16;
-			if (D.dirty) wk_bead (canvas, cx - 3, height / 2 - 3, 7, wk_mix (bg, C_TEXT, 150));
-			else wk_glyph (canvas, WKG_CLOSE, cx, height / 2 + 1, 7, wk_mix (bg, C_TEXT, 130));
+			if (D.dirty) uk_bead (canvas, cx - 3, height / 2 - 3, 7, uk_mix (bg, C_TEXT, 150));
+			else uk_glyph (canvas, WKG_CLOSE, cx, height / 2 + 1, 7, uk_mix (bg, C_TEXT, 130));
 			x += w + 2;
 		}
 	}
@@ -178,29 +178,29 @@ class MsgList : public Widget
 public:
 	int scroll, sel; char output[160];
 	MsgList () : Widget (0, 0, 10, MSG_H), scroll (0), sel (-1) { output[0] = 0; }
-	int rowH () { return wk_fh () + 5; }
+	int rowH () { return uk_fh () + 5; }
 	void onDraw () override
 	{
 		canvas.clear (C_FIELD);
 		int errs = 0; for (int i = 0; i < g_probs.n; i++) if (g_probs[i].kind == 0) errs++;
-		unsigned hb = wk_mix (C_BG, C_FIELD, 100);
+		unsigned hb = uk_mix (C_BG, C_FIELD, 100);
 		canvas.fillRect (0, 0, width, HEAD_H + 2, hb);
 		char t[40]; snprintf (t, sizeof t, "Problems  %d", errs);
-		wk_text (canvas, 10, 4, t, C_TEXT, 2);
-		if (output[0]) wk_text (canvas, 120, 4, output, wk_mix (hb, C_TEXT, 150));
-		canvas.fillRect (0, HEAD_H + 2, width, 1, wk_mix (C_BG, C_TEXT, 30));
+		uk_text (canvas, 10, 4, t, C_TEXT, 2);
+		if (output[0]) uk_text (canvas, 120, 4, output, uk_mix (hb, C_TEXT, 150));
+		canvas.fillRect (0, HEAD_H + 2, width, 1, uk_mix (C_BG, C_TEXT, 30));
 		int RH = rowH ();
 		for (int i = scroll; i < g_probs.n; i++)
 		{
 			int y = HEAD_H + 5 + (i - scroll) * RH; if (y > height) break;
 			const Problem &p = g_probs[i];
-			if (i == sel) canvas.fillRect (0, y, width, RH, wk_mix (C_FIELD, C_ACCENT, 50));
+			if (i == sel) canvas.fillRect (0, y, width, RH, uk_mix (C_FIELD, C_ACCENT, 50));
 			unsigned c = p.kind == 0 ? 0xD08A1A : p.kind == 1 ? 0x2E8FB8 : 0x3FA45B;
 			if (p.kind == 0) c = 0xD03B2B;
-			wk_bead (canvas, 10, y + RH / 2 - 4, 9, c);
+			uk_bead (canvas, 10, y + RH / 2 - 4, 9, c);
 			char line[260];
 			if (p.file[0] && p.line) snprintf (line, sizeof line, "%s %d: %s", p.file, p.line, p.text); else snprintf (line, sizeof line, "%s", p.text);
-			wk_text (canvas, 26, y + 2, line, C_FIELD_TEXT);
+			uk_text (canvas, 26, y + 2, line, C_FIELD_TEXT);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
@@ -232,11 +232,11 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		canvas.fillRect (0, 0, width, 1, wk_mix (C_BG, C_TEXT, 40));
-		int y = (height - wk_fh ()) / 2 + 1;
-		wk_text (canvas, 10, y, sLeft, C_TEXT, 2);
-		wk_text (canvas, 190, y, sMid, C_TEXT);
-		wk_text (canvas, width - 12 - wk_tw (sRight), y, sRight, C_TEXT);
+		canvas.fillRect (0, 0, width, 1, uk_mix (C_BG, C_TEXT, 40));
+		int y = (height - uk_fh ()) / 2 + 1;
+		uk_text (canvas, 10, y, sLeft, C_TEXT, 2);
+		uk_text (canvas, 190, y, sMid, C_TEXT);
+		uk_text (canvas, width - 12 - uk_tw (sRight), y, sRight, C_TEXT);
 	}
 };
 static void status (const char *s) { cpy (g_status->sMid, s, sizeof g_status->sMid); g_status->invalidate (true); }
@@ -737,7 +737,7 @@ static bool load_project (const char *dir)
 {
 	char ip[260]; join (ip, sizeof ip, dir, "project.ini");
 	char *ini = read_file (ip);
-	if (!ini) { char m[300]; snprintf (m, sizeof m, "No project.ini in %s", dir); wk_messagebox ("QBStudio", m, MB_OK); return false; }
+	if (!ini) { char m[300]; snprintf (m, sizeof m, "No project.ini in %s", dir); uk_messagebox ("QBStudio", m, MB_OK); return false; }
 	clear_project ();
 	cpy (g_p.dir, dir, sizeof g_p.dir);
 	{ int n = (int) strlen (g_p.dir); if (n > 1 && g_p.dir[n - 1] == '/') g_p.dir[n - 1] = 0; }
@@ -811,7 +811,7 @@ static bool changed () { for (int i = 0; i < g_p.docs.n; i++) if (g_p.docs[i].di
 static bool confirm_close ()
 {
 	if (!changed ()) return true;
-	int r = wk_messagebox ("QBStudio", "Save the project's changes?", MB_YESNO);
+	int r = uk_messagebox ("QBStudio", "Save the project's changes?", MB_YESNO);
 	if (r == 1) save_all ();
 	return true;
 }
@@ -896,12 +896,12 @@ static void cmd_new ()
 	NewDialog d; d.name->setFocus ();
 	if (d.run () != 1) return;
 	char name[40]; cpy (name, d.name->text, sizeof name);
-	for (int i = 0; name[i]; i++) if (!name_ch (name[i])) { wk_messagebox ("New Project", "The folder's name: letters, digits and _ only", MB_OK); return; }
+	for (int i = 0; name[i]; i++) if (!name_ch (name[i])) { uk_messagebox ("New Project", "The folder's name: letters, digits and _ only", MB_OK); return; }
 	if (!name[0]) return;
 	confirm_close ();
 	char dir[200]; snprintf (dir, sizeof dir, "SD:/projects/%s", name);
 	char ip[260]; join (ip, sizeof ip, dir, "project.ini");
-	if (file_exists (ip)) { wk_messagebox ("New Project", "There is a project of that name already", MB_OK); return; }
+	if (file_exists (ip)) { uk_messagebox ("New Project", "There is a project of that name already", MB_OK); return; }
 	kapi_mkdir ("SD:/projects"); kapi_mkdir (dir);
 	int k = d.kind ();
 	const char *form = k == 0 ? T_WINDOW_FORM : k == 1 ? T_DOC_FORM : T_EMPTY_FORM;
@@ -917,7 +917,7 @@ static void cmd_new ()
 static void cmd_open ()
 {
 	char p[256];
-	if (!wk_file_open (p, sizeof p, "SD:/projects")) return;
+	if (!uk_file_open (p, sizeof p, "SD:/projects")) return;
 	confirm_close ();
 	// the project: the folder of the file chosen
 	char dir[256]; cpy (dir, p, sizeof dir);
@@ -930,7 +930,7 @@ static void cmd_add_module ()
 	if (!g_p.dir[0]) return;
 	char n[40] = "Module1";
 	if (!ask_line ("Add Module", "The module's name (its file: <name>.bas)", n, sizeof n)) return;
-	for (int i = 0; n[i]; i++) if (!name_ch (n[i])) { wk_messagebox ("Add Module", "Letters, digits and _ only", MB_OK); return; }
+	for (int i = 0; n[i]; i++) if (!name_ch (n[i])) { uk_messagebox ("Add Module", "Letters, digits and _ only", MB_OK); return; }
 	char f[64]; snprintf (f, sizeof f, "%s.bas", n);
 	if (find_doc (f) >= 0) return;
 	char t[200]; snprintf (t, sizeof t, "' %s -- (a module of %s: its SUBs and FUNCTIONs)\n\n", f, g_p.title);
@@ -947,7 +947,7 @@ static void cmd_project_settings ()
 	cpy (g_p.title, t, sizeof g_p.title);
 	char c[32]; cpy (c, g_p.category, sizeof c);
 	if (ask_line ("The project", "Its category (in the app list)", c, sizeof c)) cpy (g_p.category, c, sizeof g_p.category);
-	g_p.compiled = wk_messagebox ("The project", "Make App: compiled (main.bax, it starts at once; the source not in the app)?", MB_YESNO) == 1;
+	g_p.compiled = uk_messagebox ("The project", "Make App: compiled (main.bax, it starts at once; the source not in the app)?", MB_YESNO) == 1;
 	save_project_ini (); refresh_tree ();
 }
 
@@ -1074,7 +1074,7 @@ static void load_settings ()
 static void cmd_grid () { g_showGrid = !g_showGrid; save_settings (); g_des->rebuild (); status (g_showGrid ? "The grid shown (dots every 5 px)" : "The grid hidden"); }
 static void cmd_snap () { g_snap = !g_snap; save_settings (); status (g_snap ? "Snap to the grid: on (Alt while dragging: off)" : "Snap to the grid: off"); }
 static void cmd_help () { kapi_exec ("SD:/apps/tinypad.app/main", "SD:/apps/qbstudio.app/help.txt"); }
-static void cmd_about () { wk_messagebox ("About QBStudio", "QBStudio: desktop apps in Onyx BASIC -- a window drawn, its code written, run, made an app.", MB_OK); }
+static void cmd_about () { uk_messagebox ("About QBStudio", "QBStudio: desktop apps in Onyx BASIC -- a window drawn, its code written, run, made an app.", MB_OK); }
 static void cmd_quit () { confirm_close (); kapi_exit (0); }
 static void cmd_sample () { confirm_close (); load_project (SAMPLE); }
 
@@ -1196,14 +1196,14 @@ public:
 	CodeBar () : Widget (0, 0, 10, CODEBAR_H) {}
 	void onDraw () override
 	{
-		canvas.clear (wk_mix (C_BG, C_TEXT, 10));
+		canvas.clear (uk_mix (C_BG, C_TEXT, 10));
 		int x = g_evBox->left - left + g_evBox->width + 12;
 		const char *h = "the object, its event: its SUB";
-		if (x + wk_tw (h, 1) < width - 4) wk_text (canvas, x, (height - wk_fh ()) / 2, h, wk_mix (C_BG, C_TEXT, 130), 1);
+		if (x + uk_tw (h, 1) < width - 4) uk_text (canvas, x, (height - uk_fh ()) / 2, h, uk_mix (C_BG, C_TEXT, 130), 1);
 	}
 };
 
-static int text_w_face (const char *s) { char t[160]; plain (s, t, sizeof t); return wk_tw (t); }
+static int text_w_face (const char *s) { char t[160]; plain (s, t, sizeof t); return uk_tw (t); }
 
 int main (void)
 {
@@ -1211,12 +1211,12 @@ int main (void)
 	int an = kapi_get_args (args, sizeof args);
 	if (an < 0) an = 0;
 	args[an < (int) sizeof args ? an : (int) sizeof args - 1] = 0;
-	ft_wtk_install ("DejaVu Sans", 13);
-	g_ui = ft_wtk_face ();
+	ft_uikit_install ("DejaVu Sans", 13);
+	g_ui = ft_uikit_face ();
 	{ FtTextFace *m = new FtTextFace; if (m->open ("DejaVu Sans Mono", 13)) g_mono = m; else delete m; }
 	QsRoot root; g_root = &root;
 	root.attach ();
-	wtk::init ();
+	uikit::init ();
 	load_words ();
 	load_settings ();
 	g_isKeyword = is_keyword; g_isWord = is_word0; g_textW = text_w_face;
@@ -1270,25 +1270,25 @@ int main (void)
 	static Menu menu;
 	menu.menu ("File");
 	menu.item ("New Project...", "", 0, cmd_new);
-	menu.item ("Open Project...", "^O", WK_CTRL ('O'), cmd_open);
+	menu.item ("Open Project...", "^O", UK_CTRL ('O'), cmd_open);
 	menu.item ("Open the Example", "", 0, cmd_sample);
 	menu.separator ();
-	menu.item ("Save All", "^S", WK_CTRL ('S'), cmd_save);
+	menu.item ("Save All", "^S", UK_CTRL ('S'), cmd_save);
 	menu.separator ();
 	menu.item ("Make App", "", 0, cmd_make_app);
 	menu.separator ();
-	menu.item ("Quit", "^Q", WK_CTRL ('Q'), cmd_quit);
+	menu.item ("Quit", "^Q", UK_CTRL ('Q'), cmd_quit);
 	menu.menu ("Edit");
-	menu.item ("Undo", "^Z", WK_CTRL ('Z'), cmd_undo);
-	menu.item ("Redo", "^Y", WK_CTRL ('Y'), cmd_redo);
+	menu.item ("Undo", "^Z", UK_CTRL ('Z'), cmd_undo);
+	menu.item ("Redo", "^Y", UK_CTRL ('Y'), cmd_redo);
 	menu.separator ();
-	menu.item ("Cut", "^X", WK_CTRL ('X'), cmd_cut);
-	menu.item ("Copy", "^C", WK_CTRL ('C'), cmd_copy);
-	menu.item ("Paste", "^V", WK_CTRL ('V'), cmd_paste);
+	menu.item ("Cut", "^X", UK_CTRL ('X'), cmd_cut);
+	menu.item ("Copy", "^C", UK_CTRL ('C'), cmd_copy);
+	menu.item ("Paste", "^V", UK_CTRL ('V'), cmd_paste);
 	menu.item ("Delete", "Del", 0, cmd_delete);
-	menu.item ("Select All", "^A", WK_CTRL ('A'), cmd_select_all);
+	menu.item ("Select All", "^A", UK_CTRL ('A'), cmd_select_all);
 	menu.separator ();
-	menu.item ("Find...", "^F", WK_CTRL ('F'), cmd_find);
+	menu.item ("Find...", "^F", UK_CTRL ('F'), cmd_find);
 	menu.menu ("View");
 	menu.item ("Design", "", 0, cmd_design);
 	menu.item ("Split", "", 0, cmd_split);

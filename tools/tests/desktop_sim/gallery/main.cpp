@@ -1,5 +1,5 @@
 //
-// gallery -- (the desktop simulator only) every wtk control in each of its states, for a look at
+// gallery -- (the desktop simulator only) every uikit control in each of its states, for a look at
 // the theme: push buttons (normal, pointed, pressed, disabled, focused), check boxes, radio
 // buttons, switches, fields, lists, a drop-down and a combo box (open with SIM's clicks), a
 // slider, progress bars, scroll bars, a text area with a selection. SIM_DIALOG=1 opens a message
@@ -7,10 +7,10 @@
 //
 #include "kapi.h"
 #include "applib.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include <stdlib.h>
 
-using namespace wtk;
+using namespace uikit;
 
 static const char *const OPTS[] = { "Mandelbrot", "Julia", "Burning ship", "Newton" };
 
@@ -71,7 +71,7 @@ int main (void)
 	Label *lab = new Label (506, y + 26, 110, 20, "A label"); root.addChild (lab);
 	Scrollbar *hb = new Scrollbar (506, y + 60, 112, 14, false, 10, 7, 0); root.addChild (hb);
 	tf->setFocus ();
-	if (getenv ("SIM_DIALOG")) { root.draw (); wk_messagebox ("Save changes?", "The document has changed.\nSave it before closing?", MB_YESNOCANCEL); }
+	if (getenv ("SIM_DIALOG")) { root.draw (); uk_messagebox ("Save changes?", "The document has changed.\nSave it before closing?", MB_YESNOCANCEL); }
 	root.run ();
 	return 0;
 }

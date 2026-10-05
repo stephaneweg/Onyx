@@ -25,13 +25,13 @@ static const char *const SUIT_PIP[4][9] = {
 	{ "....#....", "...###...", "..#####..", ".#######.", "#########", "#########", ".##.#.##.", "....#....", "...###..." },
 };
 
-static inline void card_pip (wtk::Canvas &c, int x, int y, int suit, unsigned col, int sc = 1)
+static inline void card_pip (uikit::Canvas &c, int x, int y, int suit, unsigned col, int sc = 1)
 {
 	for (int r = 0; r < 9; r++) for (int i = 0; i < 9; i++)
 		if (SUIT_PIP[suit][r][i] == '#') c.fillRect (x + i * sc, y + r * sc, sc, sc, col);
 }
 
-static inline void card_round_rect (wtk::Canvas &c, int x, int y, int w, int h, unsigned fill, unsigned edge)
+static inline void card_round_rect (uikit::Canvas &c, int x, int y, int w, int h, unsigned fill, unsigned edge)
 {
 	c.fillRect (x + 2, y, w - 4, h, fill);
 	c.fillRect (x, y + 2, w, h - 4, fill);
@@ -43,14 +43,14 @@ static inline void card_round_rect (wtk::Canvas &c, int x, int y, int w, int h, 
 }
 
 // An empty slot (a dashed rounded outline), with an optional letter / suit hint.
-static inline void card_slot (wtk::Canvas &c, int x, int y, int suitHint = -1, const char *label = 0)
+static inline void card_slot (uikit::Canvas &c, int x, int y, int suitHint = -1, const char *label = 0)
 {
 	card_round_rect (c, x, y, CARD_W, CARD_H, 0x00206028, 0x0060A068);
 	if (suitHint >= 0) card_pip (c, x + CARD_W / 2 - 9, y + CARD_H / 2 - 9, suitHint, 0x0040884A, 2);
 	if (label) gtext_c (c, x + CARD_W / 2, y + CARD_H / 2 - 8, label, 0x0060A068, 1, 0);
 }
 
-static inline void card_back (wtk::Canvas &c, int x, int y)
+static inline void card_back (uikit::Canvas &c, int x, int y)
 {
 	card_round_rect (c, x, y, CARD_W, CARD_H, 0x00FFFFFF, 0x00404040);
 	c.fillRect (x + 4, y + 4, CARD_W - 8, CARD_H - 8, 0x002050B0);
@@ -60,7 +60,7 @@ static inline void card_back (wtk::Canvas &c, int x, int y)
 	c.frameRect (x + 6, y + 6, CARD_W - 12, CARD_H - 12, 0x0090B8F0);
 }
 
-static inline void card_face (wtk::Canvas &c, int x, int y, int card, bool selected = false)
+static inline void card_face (uikit::Canvas &c, int x, int y, int card, bool selected = false)
 {
 	static const char *const RANK[13] = { "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K" };
 	int s = card_suit (card), r = card_rank (card);
@@ -102,7 +102,7 @@ static inline void card_face (wtk::Canvas &c, int x, int y, int card, bool selec
 	}
 }
 
-static inline void card_draw (wtk::Canvas &c, int x, int y, int card, bool up, bool selected = false)
+static inline void card_draw (uikit::Canvas &c, int x, int y, int card, bool up, bool selected = false)
 {
 	if (up) card_face (c, x, y, card, selected); else card_back (c, x, y);
 }
@@ -121,7 +121,7 @@ static inline void win_start (WinAnim &a, const int fx[4], const int fy[4])
 	for (int i = 0; i < 4; i++) { a.fx[i] = fx[i]; a.fy[i] = fy[i]; }
 	a.next = 0; a.on = false;
 }
-static inline bool win_step (WinAnim &a, wtk::Canvas &c, int W, int H)
+static inline bool win_step (WinAnim &a, uikit::Canvas &c, int W, int H)
 {
 	for (int k = 0; k < 3; k++)
 	{

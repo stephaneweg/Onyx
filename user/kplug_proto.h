@@ -162,7 +162,7 @@ typedef struct KpReq { unsigned seq; } KpReq;
 typedef struct KpEditor
 {
 	int surface, w, h;
-	unsigned themed;			/* 1: draw with the host's colours below (its wtk theme), 0: the system's */
+	unsigned themed;			/* 1: draw with the host's colours below (its uikit theme), 0: the system's */
 	unsigned window, button, field, accent;
 } KpEditor;
 

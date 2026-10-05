@@ -2,7 +2,7 @@
 
 Asked by the user (2026-10-02): Paint should look more professional, use FreeType, have blend modes per
 layer composited by the GPU (a hidden layer = as if it did not exist), the selections and the brushes of a
-real drawing program; and wtk's dialogs must take Tab from one field to the next.
+real drawing program; and uikit's dialogs must take Tab from one field to the next.
 
 The mock-ups (`python3 tools/screenshot/mockup_paint.py` → `mockups/paint-*.png`, on the real desktop):
 
@@ -15,14 +15,14 @@ The mock-ups (`python3 tools/screenshot/mockup_paint.py` → `mockups/paint-*.pn
 | `paint-text.png` | The Text tool: font, size, bold / italic / underline, alignment, smooth edges; the text in its box on the canvas, movable until it is put down. |
 | `paint-gradient-fill.png` | The paint bucket in **gradient** mode (the user's ask): the press picks the zone (its colour, the tolerance, contiguous), the line dragged gives the gradient's direction and length; its stops can be dragged on the line; Enter applies, Esc cancels. The gradients' list (presets and yours); the shapes: linear, bi-linear, radial, square, conical; repeat (none, sawtooth, triangular); reverse. |
 | `paint-gradient-editor.png` | The gradient editor, as GIMP's: stops (colour, opacity, position), midpoints, the presets; saved in GIMP's `.ggr` format (`SD:/apps/paint.app/gradients/`). The Gradient tool uses the same gradients over the selection or the whole layer. |
-| `paint-resize.png` | The Resize dialog redone; Tab / Shift+Tab go from one field to the next (fixed in wtk for every app). |
+| `paint-resize.png` | The Resize dialog redone; Tab / Shift+Tab go from one field to the next (fixed in uikit for every app). |
 
 ## The look
 
 - **Ribbon** (light tone of the theme's face): Clipboard (Paste, Cut, Copy, Undo, Redo) · Image (Select ▾,
   Crop, Resize, Rotate) · Tools (Pencil, Fill, Text, Eraser, Colour picker, Magnifier, Gradient, Adjust *fx*) ·
   Brushes ▾ (the current brush's stroke) · Shapes (the gallery) · Colours (1 and 2 as round swatches, the
-  palette, your colours, Edit). Text in DejaVu Sans through wtk's FreeType face.
+  palette, your colours, Edit). Text in DejaVu Sans through uikit's FreeType face.
 - **Options bar** under the ribbon: what the current tool takes — a brush: its kind, size, opacity, hardness,
   "inside the selection"; the wand: new / add / subtract, tolerance, contiguous, all layers; the text: font,
   size, B I U, alignment; the gradient: linear / radial / reflected, opacity; a shape: outline / fill, width.
@@ -54,7 +54,7 @@ for while it was being made:
 
 - **Kernel kapi v72**: `gpu_render`'s compositing presets (docs/02 §8, §15); **gpucomp**: the layers' blend
   modes, GPU and CPU alike (`tools/tests/run_gpucomp_test.sh`: 54 checks, 28 of them the modes).
-- **wtk**: Tab / Shift+Tab between a dialog's controls and between a window's text fields; the first field
+- **uikit**: Tab / Shift+Tab between a dialog's controls and between a window's text fields; the first field
   focused when a dialog opens; Enter reaches the dialog's OK from a field; `Textbox::changed`.
 - **Paint**: the ribbon and options bar of the mock-ups, the canvas composited by gpucomp, blend modes and
   the **Mask / Cut out on the layer below only** (a layer mask: the user's fade between two pictures), the

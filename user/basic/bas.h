@@ -4,7 +4,7 @@
 // The core (bascore.cpp, basnum.cpp) is plain portable C++ -- no libc, only new/delete --
 // so it builds both into Onyx programs (/bin/basic, the qbasic editor) and on a PC for the
 // host tests (tools/tests/run_basic_test.sh). Everything the language does to the outside
-// world (screen, keyboard, graphics, wtk controls, files, notifications...) goes through a
+// world (screen, keyboard, graphics, uikit controls, files, notifications...) goes through a
 // bas::Host the program supplies.
 //
 //   bas::Program *p = bas::compile (source, &err);     // 0 + err.line / err.msg on error

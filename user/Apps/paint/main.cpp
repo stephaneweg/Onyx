@@ -22,15 +22,15 @@
 #include <math.h>
 #include "print/print.h"
 #include "kapi.h"
-#include "wtk/wtk.h"
-#include "ft/wtkface.h"
+#include "uikit/uikit.h"
+#include "ft/uikitface.h"
 #include "clipboard.h"
 #include "docguard.h"
 #include "pui.h"
 #include "padjust.h"
 #include "pfile.h"
 
-using namespace wtk;
+using namespace uikit;
 using namespace pd;
 
 static int W = 1100, H = 740;			// (the window: as much as the screen takes, at most this)
@@ -78,7 +78,7 @@ static void doc_loaded ()
 }
 static bool open_path (const char *path)
 {
-	if (!doc_open (path)) { wk_messagebox ("Open", "That file is not a picture Paint can read (PNG, JPEG, BMP, GIF, WebP, PCX, OpenRaster).", MB_OK); return false; }
+	if (!doc_open (path)) { uk_messagebox ("Open", "That file is not a picture Paint can read (PNG, JPEG, BMP, GIF, WebP, PCX, OpenRaster).", MB_OK); return false; }
 	scpy (g_path, path, sizeof g_path);
 	doc_loaded ();
 	return true;
@@ -98,7 +98,7 @@ static void cmd_save ()
 	unsigned n; unsigned char *b = ora_save (&n);
 	bool ok = kapi_save_file (g_path, b, n) >= 0;
 	delete[] b;
-	if (ok) g_saved = D.changes; else wk_messagebox ("Save", "The file could not be written.", MB_OK);
+	if (ok) g_saved = D.changes; else uk_messagebox ("Save", "The file could not be written.", MB_OK);
 	refresh (); focus_view ();
 }
 static void cmd_save_as ()
@@ -106,7 +106,7 @@ static void cmd_save_as ()
 	settle ();
 	char def[80], path[200];
 	with_ext (def, sizeof def, g_path[0] ? base_name (g_path) : "Untitled", ".ora");
-	if (wk_file_save (path, sizeof path, "SD:/", def))
+	if (uk_file_save (path, sizeof path, "SD:/", def))
 	{
 		if (!ends_with (path, ".ora")) { int k = slen (path); scpy (path + k, ".ora", (int) sizeof path - k); }
 		scpy (g_path, path, sizeof g_path);
@@ -122,12 +122,12 @@ static void export_as (const char *ext)
 	settle ();
 	char def[80], path[200];
 	with_ext (def, sizeof def, g_path[0] ? base_name (g_path) : "Untitled", ext);
-	if (wk_file_save (path, sizeof path, "SD:/", def))
+	if (uk_file_save (path, sizeof path, "SD:/", def))
 	{
 		if (!ends_with (path, ".png") && !ends_with (path, ".jpg") && !ends_with (path, ".jpeg") && !ends_with (path, ".bmp") && !ends_with (path, ".gif"))
 		{ int k = slen (path); scpy (path + k, ext, (int) sizeof path - k); }
 		unsigned n; unsigned char *b = export_bytes (path, &n);
-		if (kapi_save_file (path, b, n) < 0) wk_messagebox ("Export", "The file could not be written.", MB_OK);
+		if (kapi_save_file (path, b, n) < 0) uk_messagebox ("Export", "The file could not be written.", MB_OK);
 		delete[] b;
 	}
 	focus_view ();
@@ -156,7 +156,7 @@ static void cmd_print ()
 			print_image (j, flat, D.w, D.h, l + (aw - w) / 2, t + (ah - h) / 2, w, h, PRINT_IMG_ALPHA);
 			delete[] flat;
 		}
-		if (!j || print_end (j) < 0) wk_messagebox ("Print", "The picture could not be put in the print queue.", MB_OK);
+		if (!j || print_end (j) < 0) uk_messagebox ("Print", "The picture could not be put in the print queue.", MB_OK);
 	}
 	focus_view ();
 }
@@ -186,8 +186,8 @@ public:
 	{
 		drawBox ("New Picture");
 		int y = titleH () + 18;
-		wk_text_l (canvas, 24, y, 28, "Width", C_TEXT); wk_text_l (canvas, 230, y, 28, "px", wk_mix (C_FACE, C_TEXT, 150));
-		wk_text_l (canvas, 24, y + 38, 28, "Height", C_TEXT); wk_text_l (canvas, 230, y + 38, 28, "px", wk_mix (C_FACE, C_TEXT, 150));
+		uk_text_l (canvas, 24, y, 28, "Width", C_TEXT); uk_text_l (canvas, 230, y, 28, "px", uk_mix (C_FACE, C_TEXT, 150));
+		uk_text_l (canvas, 24, y + 38, 28, "Height", C_TEXT); uk_text_l (canvas, 230, y + 38, 28, "px", uk_mix (C_FACE, C_TEXT, 150));
 	}
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } if (k == KEY_ENTER) { close (1); return true; } return false; }
 };
@@ -209,7 +209,7 @@ static void cmd_open ()
 {
 	if (!guard ()) { focus_view (); return; }
 	char path[200];
-	if (wk_file_open (path, sizeof path, "SD:/")) open_path (path);
+	if (uk_file_open (path, sizeof path, "SD:/")) open_path (path);
 	focus_view ();
 }
 
@@ -270,7 +270,7 @@ static void cmd_paste ()
 static void layer_from_pixels (const char *name, unsigned *px, int w, int h)
 {
 	settle ();
-	if (D.n >= MAXLAYERS) { delete[] px; wk_messagebox ("Layers", "The picture has as many layers as it can take.", MB_OK); return; }
+	if (D.n >= MAXLAYERS) { delete[] px; uk_messagebox ("Layers", "The picture has as many layers as it can take.", MB_OK); return; }
 	rec_whole ();
 	for (int k = D.n; k > D.cur + 1; k--) D.lay[k] = D.lay[k - 1];
 	layer_init (D.lay[D.cur + 1], name, new_px (D.w, D.h, 0));
@@ -298,10 +298,10 @@ static void cmd_paste_layer ()
 static void cmd_open_layer ()
 {
 	char path[200];
-	if (wk_file_open (path, sizeof path, "SD:/"))
+	if (uk_file_open (path, sizeof path, "SD:/"))
 	{
 		ImgFrames im;
-		if (!img_load (path, &im)) wk_messagebox ("Open as Layer", "That file is not a picture Paint can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK);
+		if (!img_load (path, &im)) uk_messagebox ("Open as Layer", "That file is not a picture Paint can read (PNG, JPEG, BMP, GIF, WebP, PCX).", MB_OK);
 		else
 		{
 			for (int i = 1; i < im.n; i++) delete[] im.px[i];
@@ -330,7 +330,7 @@ static void cmd_crop ()
 {
 	float_commit (true);
 	Rect r = g_sel; r.clip (D.w, D.h);
-	if (r.empty ()) { wk_messagebox ("Crop", "Select the part to keep first (the Select tool).", MB_OK); focus_view (); return; }
+	if (r.empty ()) { uk_messagebox ("Crop", "Select the part to keep first (the Select tool).", MB_OK); focus_view (); return; }
 	settle ();
 	rec_whole ();
 	int w = r.x1 - r.x0, h = r.y1 - r.y0;
@@ -463,12 +463,12 @@ public:
 	{
 		drawBox ("Resize");
 		int y = titleH () + 100;
-		unsigned dim = wk_mix (C_FACE, C_TEXT, 150);
-		wk_text_l (canvas, 22, y, 28, "Width", C_TEXT); wk_text_l (canvas, 222, y, 28, pct () ? "%" : "px", dim);
-		wk_text_l (canvas, 22, y + 38, 28, "Height", C_TEXT); wk_text_l (canvas, 222, y + 38, 28, pct () ? "%" : "px", dim);
-		char b[64]; fmt_int (b, outW (), " x "); int n = slen (b); fmt_int (b + n, outH (), " px"); wk_text_l (canvas, 262, y + 18, 28, b, dim);
-		wk_text_l (canvas, 22, y + 116, 28, mode->selected == 1 ? "Anchor" : "Resampling", C_TEXT);
-		wk_text_l (canvas, 22, height - 44, 30, "Tab: the next field", dim);
+		unsigned dim = uk_mix (C_FACE, C_TEXT, 150);
+		uk_text_l (canvas, 22, y, 28, "Width", C_TEXT); uk_text_l (canvas, 222, y, 28, pct () ? "%" : "px", dim);
+		uk_text_l (canvas, 22, y + 38, 28, "Height", C_TEXT); uk_text_l (canvas, 222, y + 38, 28, pct () ? "%" : "px", dim);
+		char b[64]; fmt_int (b, outW (), " x "); int n = slen (b); fmt_int (b + n, outH (), " px"); uk_text_l (canvas, 262, y + 18, 28, b, dim);
+		uk_text_l (canvas, 22, y + 116, 28, mode->selected == 1 ? "Anchor" : "Resampling", C_TEXT);
+		uk_text_l (canvas, 22, height - 44, 30, "Tab: the next field", dim);
 	}
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } if (k == KEY_ENTER) { close (1); return true; } return false; }
 };
@@ -633,12 +633,12 @@ public:
 	{
 		drawBox ("Layer Properties");
 		int y = titleH () + 16;
-		wk_text_l (canvas, 22, y, 28, "Name", C_TEXT);
-		wk_text_l (canvas, 22, y + 40, 28, "Blend", C_TEXT);
-		wk_text_l (canvas, 22, y + 112, 24, "Opacity", C_TEXT);
-		char b[8]; fmt_int (b, op->value, " %"); wk_text_l (canvas, 350, y + 112, 24, b, C_TEXT);
+		uk_text_l (canvas, 22, y, 28, "Name", C_TEXT);
+		uk_text_l (canvas, 22, y + 40, 28, "Blend", C_TEXT);
+		uk_text_l (canvas, 22, y + 112, 24, "Opacity", C_TEXT);
+		char b[8]; fmt_int (b, op->value, " %"); uk_text_l (canvas, 350, y + 112, 24, b, C_TEXT);
 		const char *hint = blend->sel == GPC_B_MASK ? "Keeps what is under it where it is opaque." : blend->sel == GPC_B_CUTOUT ? "Removes what is under it where it is opaque." : "";
-		wk_text_l (canvas, 22, height - 44, 30, hint, wk_mix (C_FACE, C_TEXT, 150));
+		uk_text_l (canvas, 22, height - 44, 30, hint, uk_mix (C_FACE, C_TEXT, 150));
 	}
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } if (k == KEY_ENTER) { close (1); return true; } return false; }
 };
@@ -775,12 +775,12 @@ public:
 		for (int i = 0; i < n; i++)
 		{
 			Spec p = spec (kind, i);
-			wk_text_l (canvas, 22, y + i * 44, 28, p.label, C_TEXT);
-			if (kind != AJ_REMAP) { char b[16]; fmt_int (b, s[i]->value, p.suffix); wk_text_l (canvas, 372, y + i * 44, 26, b, C_TEXT); }
+			uk_text_l (canvas, 22, y + i * 44, 28, p.label, C_TEXT);
+			if (kind != AJ_REMAP) { char b[16]; fmt_int (b, s[i]->value, p.suffix); uk_text_l (canvas, 372, y + i * 44, 26, b, C_TEXT); }
 		}
-		wk_text_l (canvas, 22, y + n * 44 + 4, 28, "Apply to", C_TEXT);
+		uk_text_l (canvas, 22, y + n * 44 + 4, 28, "Apply to", C_TEXT);
 		const char *hint = kind == AJ_REMAP ? "Each channel taken from another one (or black, white)." : kind == AJ_INVERT ? "Each colour made its opposite." : 0;
-		if (hint) wk_text_l (canvas, 22, y + n * 44 + 40, 26, hint, wk_mix (C_FACE, C_TEXT, 150));
+		if (hint) uk_text_l (canvas, 22, y + n * 44 + 40, 26, hint, uk_mix (C_FACE, C_TEXT, 150));
 	}
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } if (k == KEY_ENTER) { close (1); return true; } return false; }
 };
@@ -853,33 +853,33 @@ public:
 	}
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 8, C_FIELD);
-		unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 150);
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 8, C_FIELD);
+		unsigned dim = uk_mix (C_FIELD, C_FIELD_TEXT, 150);
 		if (kind == GRADIENTS)
 		{
 			for (int i = 0; i < g_ngrads; i++)
 			{
 				int y = 6 + i * 30;
-				if (i == cur) wk_hilite (canvas, 4, y, width - 8, 28, 4, true);
-				else if (i == hot) wk_rbox (canvas, 4, y, width - 8, 28, 4, wk_mix (C_FIELD, C_ACCENT, 40), wk_mix (C_FIELD, C_ACCENT, 40));
+				if (i == cur) uk_hilite (canvas, 4, y, width - 8, 28, 4, true);
+				else if (i == hot) uk_rbox (canvas, 4, y, width - 8, 28, 4, uk_mix (C_FIELD, C_ACCENT, 40), uk_mix (C_FIELD, C_ACCENT, 40));
 				grad_draw (canvas, 12, y + 6, 100, 16, i);
-				wk_text_l (canvas, 122, y, 28, g_grads[i].name, i == cur ? C_SEL_TEXT : C_FIELD_TEXT);
-				if (g_grads[i].user) wk_text_l (canvas, width - 50, y, 28, "yours", i == cur ? C_SEL_TEXT : dim);
+				uk_text_l (canvas, 122, y, 28, g_grads[i].name, i == cur ? C_SEL_TEXT : C_FIELD_TEXT);
+				if (g_grads[i].user) uk_text_l (canvas, width - 50, y, 28, "yours", i == cur ? C_SEL_TEXT : dim);
 			}
 			int y = 6 + g_ngrads * 30;
-			canvas.fillRect (10, y + 2, width - 20, 1, wk_mix (C_FIELD, 0x000000, 40));
-			if (hot == 1000) wk_rbox (canvas, 4, y + 6, width - 8, 28, 4, wk_mix (C_FIELD, C_ACCENT, 40), wk_mix (C_FIELD, C_ACCENT, 40));
-			wk_text_l (canvas, 14, y + 6, 28, "Edit gradients...", C_FIELD_TEXT);
-			wk_text_l (canvas, width - 80, y + 6, 28, "GIMP .ggr", dim);
+			canvas.fillRect (10, y + 2, width - 20, 1, uk_mix (C_FIELD, 0x000000, 40));
+			if (hot == 1000) uk_rbox (canvas, 4, y + 6, width - 8, 28, 4, uk_mix (C_FIELD, C_ACCENT, 40), uk_mix (C_FIELD, C_ACCENT, 40));
+			uk_text_l (canvas, 14, y + 6, 28, "Edit gradients...", C_FIELD_TEXT);
+			uk_text_l (canvas, width - 80, y + 6, 28, "GIMP .ggr", dim);
 			return;
 		}
-		wk_text (canvas, 14, 8, kind == BRUSHES ? "Brushes" : "Patterns", dim, 2);
+		uk_text (canvas, 14, 8, kind == BRUSHES ? "Brushes" : "Patterns", dim, 2);
 		if (kind == BRUSHES)
 		{
 			int y = 30 + 3 * 62 + 4;
-			canvas.fillRect (12, y, width - 24, 1, wk_mix (C_FIELD, 0x000000, 40));
-			wk_text (canvas, 14, y + 10, "Patterns (colour 1, on the picture's grid)", dim, 2);
+			canvas.fillRect (12, y, width - 24, 1, uk_mix (C_FIELD, 0x000000, 40));
+			uk_text (canvas, 14, y + 10, "Patterns (colour 1, on the picture's grid)", dim, 2);
 		}
 		int base = kind == PATTERNS ? BR_FIRST_PATTERN : 0;
 		for (int i = 0; i < (kind == PATTERNS ? (int) NPATTERNS : (int) BR_COUNT); i++)
@@ -891,10 +891,10 @@ public:
 			if (kind == BRUSHES && k >= BR_FIRST_PATTERN) { int j = k - BR_FIRST_PATTERN; row = j / 3; col = j % 3; y0 = 30 + 3 * 62 + 38; }
 			else { row = i / 3; col = i % 3; y0 = 30; }
 			x = 10 + col * 138; y = y0 + row * 62; w = 132; h = 58;
-			if (k == cur) { wk_rbox (canvas, x, y, w, h, 5, wk_mix (C_FIELD, C_ACCENT, 60), wk_mix (C_FIELD, C_ACCENT, 60)); wk_rline (canvas, x, y, w, h, 5, wk_mix (C_FIELD, C_ACCENT, 150)); }
-			else if (k == hot) wk_rbox (canvas, x, y, w, h, 5, wk_mix (C_FIELD, C_ACCENT, 30), wk_mix (C_FIELD, C_ACCENT, 30));
+			if (k == cur) { uk_rbox (canvas, x, y, w, h, 5, uk_mix (C_FIELD, C_ACCENT, 60), uk_mix (C_FIELD, C_ACCENT, 60)); uk_rline (canvas, x, y, w, h, 5, uk_mix (C_FIELD, C_ACCENT, 150)); }
+			else if (k == hot) uk_rbox (canvas, x, y, w, h, 5, uk_mix (C_FIELD, C_ACCENT, 30), uk_mix (C_FIELD, C_ACCENT, 30));
 			brush_sample (canvas, x + 10, y + 4, w - 20, 32, k, 0x3C3860);
-			wk_text_c (canvas, x, y + 36, w, 20, BRUSH_NAMES[k], C_FIELD_TEXT);
+			uk_text_c (canvas, x, y + 36, w, 20, BRUSH_NAMES[k], C_FIELD_TEXT);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -953,7 +953,7 @@ public:
 		invalidate (true);
 	}
 	// a preset: copied first (yours then)
-	bool editable () { if (G ().user) return true; wk_messagebox ("Gradients", "A preset cannot be changed: Copy it first (the copy is yours).", MB_OK); return false; }
+	bool editable () { if (G ().user) return true; uk_messagebox ("Gradients", "A preset cannot be changed: Copy it first (the copy is yours).", MB_OK); return false; }
 	static void onName (Widget &w) { GradEditor *e = of (w); if (e->G ().user) { scpy (e->G ().name, e->name->text, sizeof e->G ().name); e->invalidate (true); } }
 	static void onPos (Widget &w)
 	{
@@ -968,7 +968,7 @@ public:
 		GradEditor *e = of (w); Gradient &g = e->G ();
 		if (!e->editable ()) return;
 		unsigned c = g.col[e->stop] & 0xFFFFFF;
-		if (wk_color_dialog (&c, "Stop Colour")) g.col[e->stop] = (g.col[e->stop] & 0xFF000000u) | c;
+		if (uk_color_dialog (&c, "Stop Colour")) g.col[e->stop] = (g.col[e->stop] & 0xFF000000u) | c;
 		e->invalidate (true);
 	}
 	static void onRev (Widget &w)
@@ -997,23 +997,23 @@ public:
 	void onDraw () override
 	{
 		drawBox ("Gradient Editor");
-		unsigned dim = wk_mix (C_FACE, C_TEXT, 150);
+		unsigned dim = uk_mix (C_FACE, C_TEXT, 150);
 		// the list
 		int lx = 16, ly = titleH () + 14, lh = height - ly - 56;
-		wk_rbox (canvas, lx, ly, LW, lh, 5, C_FIELD, C_FIELD); wk_rline (canvas, lx, ly, LW, lh, 5, wk_mix (C_FACE, 0x000000, 60));
+		uk_rbox (canvas, lx, ly, LW, lh, 5, C_FIELD, C_FIELD); uk_rline (canvas, lx, ly, LW, lh, 5, uk_mix (C_FACE, 0x000000, 60));
 		int rows = (lh - 8) / 34, top = pmax (0, gi - rows + 1);
 		for (int i = top; i < g_ngrads && i - top < rows; i++)
 		{
 			int y = ly + 4 + (i - top) * 34;
-			if (i == gi) wk_hilite (canvas, lx + 3, y, LW - 6, 32, 4, true);
+			if (i == gi) uk_hilite (canvas, lx + 3, y, LW - 6, 32, 4, true);
 			grad_draw (canvas, lx + 8, y + 4, 54, 24, i);
-			char b[40]; wk_text_fit (g_grads[i].name, LW - 80, b, sizeof b);
-			wk_text_l (canvas, lx + 70, y, 32, b, i == gi ? C_SEL_TEXT : C_FIELD_TEXT);
+			char b[40]; uk_text_fit (g_grads[i].name, LW - 80, b, sizeof b);
+			uk_text_l (canvas, lx + 70, y, 32, b, i == gi ? C_SEL_TEXT : C_FIELD_TEXT);
 		}
 		// the gradient
 		Gradient &g = G (); grad_dyn (g, g_col1, g_col2);
 		int X = barX (), Y = barY (), BW = barW ();
-		wk_text_l (canvas, X, titleH () + 14, 28, "Name", C_TEXT);
+		uk_text_l (canvas, X, titleH () + 14, 28, "Name", C_TEXT);
 		grad_draw (canvas, X, Y + 14, BW, 52, gi);
 		for (int i = 0; i + 1 < g.n; i++)				// the midpoints
 		{
@@ -1029,13 +1029,13 @@ public:
 			p.clear (); p.polyline (d, 5, 16, true); p.fill (canvas, 0x303030);
 			canvas.fillRect (sx - 5, sy + 11, 10, 10, g.col[i] & 0xFFFFFF); canvas.frameRect (sx - 5, sy + 11, 10, 10, 0x303030);
 		}
-		wk_text (canvas, X, Y + 100, g.user ? "Click under the bar: a new stop.  Drag a stop: move it (off the bar: remove it)." : "A preset: Copy it to change it.", dim);
+		uk_text (canvas, X, Y + 100, g.user ? "Click under the bar: a new stop.  Drag a stop: move it (off the bar: remove it)." : "A preset: Copy it to change it.", dim);
 		int sy = titleH () + 14 + 200;
-		wk_text_l (canvas, X, sy, 28, "Colour", C_TEXT);
+		uk_text_l (canvas, X, sy, 28, "Colour", C_TEXT);
 		canvas.fillRect (col->left + 6, col->top + 6, col->width - 12, col->height - 12, g.col[stop] & 0xFFFFFF);
-		wk_text_l (canvas, X + 160, sy, 28, "Position", C_TEXT);
-		wk_text_l (canvas, X, sy + 40, 26, "Opacity", C_TEXT);
-		char b[8]; fmt_int (b, op->value, " %"); wk_text_l (canvas, X + 296, sy + 40, 26, b, C_TEXT);
+		uk_text_l (canvas, X + 160, sy, 28, "Position", C_TEXT);
+		uk_text_l (canvas, X, sy + 40, 26, "Opacity", C_TEXT);
+		char b[8]; fmt_int (b, op->value, " %"); uk_text_l (canvas, X + 296, sy + 40, 26, b, C_TEXT);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -1120,7 +1120,7 @@ static void colours_changed () { if (g_text.on) text_preview (); if (g_gj.on) gr
 static void cmd_edit_colours ()
 {
 	unsigned c = (g_activeCol == 2 ? g_col2 : g_col1) & 0xFFFFFF;
-	if (wk_color_dialog (&c, "Edit Colours"))
+	if (uk_color_dialog (&c, "Edit Colours"))
 	{
 		if (g_activeCol == 2) g_col2 = c | 0xFF000000u; else g_col1 = c | 0xFF000000u;
 		add_custom (c);
@@ -1336,13 +1336,13 @@ public:
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);
+	ft_uikit_install ("DejaVu Sans", 13);
 	int sw = 0, sh = 0; kapi_screen_size (&sw, &sh);
 	if (sw > 0) W = pclamp (sw - 16, 760, 1180);
 	if (sh > 0) H = pclamp (sh - 64, 520, 780);
 	PaintRoot root;
 	root.attach ();				// (a question asked before run (): its clicks and keys)
-	wtk::init ();
+	uikit::init ();
 	doc_new (800, 560, true);
 	grad_presets (); grad_load_user ();
 	g_col1 = 0xFF2B2B33;
@@ -1366,31 +1366,31 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New...", "^N", WK_CTRL ('N'), cmd_new);
-	menu.item ("Open...", "^O", WK_CTRL ('O'), cmd_open);
+	menu.item ("New...", "^N", UK_CTRL ('N'), cmd_new);
+	menu.item ("Open...", "^O", UK_CTRL ('O'), cmd_open);
 	menu.item ("Open as Layer...", "", 0, cmd_open_layer);
 	menu.separator ();
-	menu.item ("Save", "^S", WK_CTRL ('S'), cmd_save);
+	menu.item ("Save", "^S", UK_CTRL ('S'), cmd_save);
 	menu.item ("Save As...", "", 0, cmd_save_as);
 	menu.separator ();
-	menu.item ("Export as PNG...", "^E", WK_CTRL ('E'), cmd_export_png);
+	menu.item ("Export as PNG...", "^E", UK_CTRL ('E'), cmd_export_png);
 	menu.item ("Export as JPEG...", "", 0, cmd_export_jpg);
 	menu.item ("Export as BMP...", "", 0, cmd_export_bmp);
 	menu.item ("Export as GIF...", "", 0, cmd_export_gif);
 	menu.separator ();
-	menu.item ("Print...", "^P", WK_CTRL ('P'), cmd_print);
+	menu.item ("Print...", "^P", UK_CTRL ('P'), cmd_print);
 	menu.menu ("Edit");
-	menu.item ("Undo", "^Z", WK_CTRL ('Z'), cmd_undo);
-	menu.item ("Redo", "^Y", WK_CTRL ('Y'), cmd_redo);
+	menu.item ("Undo", "^Z", UK_CTRL ('Z'), cmd_undo);
+	menu.item ("Redo", "^Y", UK_CTRL ('Y'), cmd_redo);
 	menu.separator ();
-	menu.item ("Cut", "^X", WK_CTRL ('X'), cmd_cut);
-	menu.item ("Copy", "^C", WK_CTRL ('C'), cmd_copy);
-	menu.item ("Paste", "^V", WK_CTRL ('V'), cmd_paste);
+	menu.item ("Cut", "^X", UK_CTRL ('X'), cmd_cut);
+	menu.item ("Copy", "^C", UK_CTRL ('C'), cmd_copy);
+	menu.item ("Paste", "^V", UK_CTRL ('V'), cmd_paste);
 	menu.item ("Paste as New Layer", "", 0, cmd_paste_layer);
 	menu.item ("Delete", "Del", 0, cmd_delete);
 	menu.separator ();
-	menu.item ("Select All", "^A", WK_CTRL ('A'), cmd_select_all);
-	menu.item ("Invert Selection", "^I", WK_CTRL ('I'), cmd_invert_sel);
+	menu.item ("Select All", "^A", UK_CTRL ('A'), cmd_select_all);
+	menu.item ("Invert Selection", "^I", UK_CTRL ('I'), cmd_invert_sel);
 	menu.item ("Deselect", "Esc", 0, cmd_deselect);
 	menu.item ("Crop to Selection", "", 0, cmd_crop);
 	menu.menu ("Image");
@@ -1400,9 +1400,9 @@ int main (void)
 	menu.item ("Flip Horizontal", "", 0, cmd_flip_h);
 	menu.item ("Flip Vertical", "", 0, cmd_flip_v);
 	menu.separator ();
-	menu.item ("Resize...", "^W", WK_CTRL ('W'), cmd_resize);
+	menu.item ("Resize...", "^W", UK_CTRL ('W'), cmd_resize);
 	menu.menu ("Layers");
-	menu.item ("New Layer", "^L", WK_CTRL ('L'), cmd_layer_new);
+	menu.item ("New Layer", "^L", UK_CTRL ('L'), cmd_layer_new);
 	menu.item ("Duplicate Layer", "", 0, cmd_layer_dup);
 	menu.item ("Delete Layer", "", 0, cmd_layer_del);
 	menu.separator ();
@@ -1437,7 +1437,7 @@ int main (void)
 	menu.item ("Actual Size (100%)", "", 0, cmd_zoom_100);
 	menu.item ("Fit the Window", "", 0, cmd_fit);
 	menu.separator ();
-	menu.item ("Grid", "^G", WK_CTRL ('G'), cmd_grid);
+	menu.item ("Grid", "^G", UK_CTRL ('G'), cmd_grid);
 	menu.publish ();
 
 	// A picture named on the command line, else the one kept at the last close.
@@ -1450,7 +1450,7 @@ int main (void)
 		if (f)
 		{
 			kapi_close (f);
-			if (wk_messagebox ("Paint", "Paint was closed with unsaved changes. Open the recovered picture?", MB_YESNO) == 1 && doc_open (RECOVER))
+			if (uk_messagebox ("Paint", "Paint was closed with unsaved changes. Open the recovered picture?", MB_YESNO) == 1 && doc_open (RECOVER))
 			{
 				g_path[0] = 0;
 				unsigned n; unsigned char *b = read_all (RECOVER_NAME, &n);

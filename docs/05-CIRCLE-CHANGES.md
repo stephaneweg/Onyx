@@ -397,7 +397,7 @@ stored in the `.kmap` layout files — keeps its number:
 The Onyx layouts (`tools/keymaps/maps/*.h` → `genkeymaps.py` → `SD:/etc/keymaps/*.kmap`)
 put them in the **Shift** column of the physical keys 0x4A–0x52. The kernel's key parser
 (`gui/window.cpp`, `NextKey`) turns any `ESC[n;mX` into the plain `KEY_*` code; apps read the
-modifier with `kapi_get_modifiers` (text selection in `wtk::Textarea` / `RichTextBox`).
+modifier with `kapi_get_modifiers` (text selection in `uikit::Textarea` / `RichTextBox`).
 
 ## 6. Partial display update
 

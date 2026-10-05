@@ -5,7 +5,7 @@
 // event (kapi_set_click_handler); 'r' starts a new board.
 //
 #include "kapi.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
 #define GW	18
 #define GH	13
@@ -17,7 +17,7 @@
 #define NCOL	4
 
 static unsigned *fb;
-static wtk::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
+static uikit::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
 
 static const unsigned COLORS[NCOL + 1] = {
 	0x00000000, 0x00e05050, 0x0050b060, 0x004080e0, 0x00e0c040
@@ -146,36 +146,36 @@ static int itoa (int v, char *b)
 	return p;
 }
 
-// The theme's look (wtk/paint.h): the face around, the board in a sunken well (its own dark);
+// The theme's look (uikit/paint.h): the face around, the board in a sunken well (its own dark);
 // drawn once into g_bg, copied at each frame.
 static void paint_bg (void)
 {
-	using namespace wtk;
+	using namespace uikit;
 	g_bg.alloc (W, H);
 	g_bg.clear (C_BG);
-	wk_text_l (g_bg, OX, 4, 20, "Score:", C_TEXT);
+	uk_text_l (g_bg, OX, 4, 20, "Score:", C_TEXT);
 	const char *hint = "click a group  r: new";
-	wk_text_l (g_bg, W - OX - wk_text_w (hint), 4, 20, hint, C_DIS);
-	wk_sunken (g_bg, OX - 3, OY - 3, GW * CELL + 5, GH * CELL + 5, 5, 0x00141820);
+	uk_text_l (g_bg, W - OX - uk_text_w (hint), 4, 20, hint, C_DIS);
+	uk_sunken (g_bg, OX - 3, OY - 3, GW * CELL + 5, GH * CELL + 5, 5, 0x00141820);
 }
 
 // A message box over the board (the theme's dialog: a title strip, the face, an outline).
 static void msgbox (int cx, int cy, const char *title, const char *text)
 {
-	using namespace wtk;
-	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	using namespace uikit;
+	int th = uk_fh () + 10, w = uk_text_w (text) + 56, h = th + uk_fh () + 24;
 	int x = cx - w / 2, y = cy - h / 2;
-	wk_rbox (g_cv, x, y, w, h, 8, C_FACE, C_FACE);
-	wk_title_strip (g_cv, x + 1, y + 1, w - 2, th, title, 7);
-	wk_rline (g_cv, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
-	wk_text_c (g_cv, x, y + th, w, h - th, text, C_TEXT);
+	uk_rbox (g_cv, x, y, w, h, 8, C_FACE, C_FACE);
+	uk_title_strip (g_cv, x + 1, y + 1, w - 2, th, title, 7);
+	uk_rline (g_cv, x, y, w, h, 8, UK_OUTLINE == 2 ? 0 : uk_tone (C_FRAME_ACTIVE, 44), 255);
+	uk_text_c (g_cv, x, y + th, w, h - th, text, C_TEXT);
 }
 
 static void redraw (void)
 {
 	g_cv.putOther (g_bg, 0, 0, false);
 	char buf[16]; itoa (g_score, buf);
-	wtk::wk_text_l (g_cv, OX + 7 * kapi_font_width (), 4, 20, buf, wtk::C_TEXT, 2);
+	uikit::uk_text_l (g_cv, OX + 7 * kapi_font_width (), 4, 20, buf, uikit::C_TEXT, 2);
 
 	for (int r = 0; r < GH; r++)
 		for (int c = 0; c < GW; c++)
@@ -190,7 +190,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "same");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 
