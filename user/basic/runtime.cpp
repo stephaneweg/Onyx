@@ -607,10 +607,82 @@ static char *attached_program (char *self, int cap, int *len)
 	return b;
 }
 
+// basic -u: every standalone app of the card (SD:/apps/<name>.app/main with a program attached) given THIS
+// runtime -- the card's SD:/bin/basic -- in the place of the one it was made with: its program is kept as
+// it is. To run after a system update (a standalone app keeps the runtime of the day it was made: an old
+// one may no longer match the system -- before AppKit it read the kernel's table itself).
+static char *whole_file (const char *path, unsigned *len)
+{
+	void *f = kapi_open (path);
+	if (!f) return 0;
+	unsigned n = kapi_fsize (f);
+	char *b = new char[n + 1];
+	unsigned got = 0;
+	while (got < n) { int r = kapi_read (f, b + got, n - got); if (r <= 0) break; got += (unsigned) r; }
+	kapi_close (f);
+	if (got != n) { delete [] b; return 0; }
+	*len = n;
+	return b;
+}
+static int update_standalone (void)
+{
+	unsigned rlen = 0;
+	char *rt = whole_file ("SD:/bin/basic", &rlen);
+	if (!rt) { kapi_stdout_write ("basic -u: cannot read SD:/bin/basic\n", 37); return 1; }
+	// (the names first: the folder's handle is not kept open while files are written)
+	static char names[512][64]; int nn = 0;
+	void *d = kapi_opendir ("SD:/apps");
+	struct kapi_dirent e;
+	while (d && nn < 512 && kapi_readdir (d, &e) > 0)
+		if (e.is_dir) { scpy (names[nn], e.name, 64); nn++; }
+	if (d) kapi_closedir (d);
+	int done = 0, failed = 0;
+	for (int i = 0; i < nn; i++)
+	{
+		char path[200]; int k = 0;
+		const char *pre = "SD:/apps/"; while (*pre) path[k++] = *pre++;
+		for (int j = 0; names[i][j] && k < 180; j++) path[k++] = names[i][j];
+		const char *suf = "/main"; while (*suf) path[k++] = *suf++;
+		path[k] = 0;
+		unsigned len = 0, off = 0, bl = 0;
+		// (the file's end first: an app's main may be a hundred megabytes)
+		void *f = kapi_open (path);
+		if (!f) continue;
+		char tail[bas::BAX_TRAILER];
+		unsigned size = kapi_fsize (f);
+		bool is = size > bas::BAX_TRAILER && kapi_seek (f, size - bas::BAX_TRAILER) >= 0
+			  && kapi_read (f, tail, sizeof tail) == (int) sizeof tail && bas::attachedBax (tail, size, &off, &bl);
+		kapi_close (f);
+		if (!is) continue;
+		char *old = whole_file (path, &len);
+		if (!old) continue;
+		if (len > bas::BAX_TRAILER && bas::attachedBax (old + len - bas::BAX_TRAILER, len, &off, &bl))
+		{
+			char *out = 0;
+			int n = bas::attachBax (rt, (int) rlen, old + off, (int) bl, &out);
+			bool same = (unsigned) n == len;
+			for (unsigned q = 0; same && q < len; q++) if (out[q] != old[q]) same = false;
+			bool ok = same || kapi_save_file (path, out, (unsigned) n) == n;
+			kapi_stdout_write (path, (unsigned) k);
+			const char *m = same ? ": has this runtime already\n" : ok ? ": updated\n" : ": CANNOT BE WRITTEN\n";
+			int ml = 0; while (m[ml]) ml++;
+			kapi_stdout_write (m, (unsigned) ml);
+			if (ok) done++; else failed++;
+			delete [] out;
+		}
+		delete [] old;
+	}
+	delete [] rt;
+	if (!done && !failed) kapi_stdout_write ("basic -u: no standalone app on the card\n", 40);
+	return failed ? 1 : 0;
+}
+
 int main (void)
 {
 	static char argbuf[512];
 	kapi_get_args (argbuf, sizeof argbuf);
+	{ int q = 0; while (argbuf[q] == ' ') q++;
+	  if (argbuf[q] == '-' && argbuf[q + 1] == 'u' && (argbuf[q + 2] == ' ' || !argbuf[q + 2])) return update_standalone (); }
 	char path[256], cwd[256] = ""; int i = 0, n = 0;
 	int alen = 0;
 	char *attached = attached_program (path, sizeof path, &alen);	// (then: no options, every argument is the program's)

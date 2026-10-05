@@ -1063,8 +1063,10 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
 >   it knew).
 >
 > **What still reads the table itself** (`-DKAPI_INLINE`, or a PC build): the two tests of the table
-> (`el0test`, `faulttest`), the simulator's stand-in kernel, and — until it is rebuilt — Jet (the hosted
-> WebKit build: its sysroot's `libonyxposix` gets the stubs at its next build).
+> (`el0test`, `faulttest`) and the simulator's stand-in kernel. Jet (the hosted WebKit build) goes
+> through AppKit like the others since its rebuild of 2026-10-05: its sysroot's `libonyxposix` carries
+> the stubs. A standalone BASIC app carries a copy of the runtime: `basic -u` gives the card's ones the
+> current runtime (docs/04).
 
 Source: [`kernel/include/kern/kapi_abi.h`](../kernel/include/kern/kapi_abi.h),
 [`kernel/sys/kapitable.cpp`](../kernel/sys/kapitable.cpp),

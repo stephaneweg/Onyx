@@ -4288,8 +4288,9 @@ one from the current program: it asks for the folder name and the title, then sh
 A **standalone** app is a real program: `SD:/apps/<name>.app/main` is **an executable** — the BASIC
 runtime of the card with the compiled program inside it (about 650 KB) — started by the system
 like any native app, without `SD:/bin/basic` nor `runners.ini`; it runs in machine code like the
-others. It keeps the runtime it was made with: make the app again after a system update to give
-it the newer one (it still uses the card's shared libraries). QBStudio asks the same things in
+others. It keeps the runtime it was made with: after a system update, **`basic -u`** (in a Terminal)
+gives every standalone app of the card the card's runtime, its program untouched (making the app
+again does the same); it still uses the card's shared libraries. QBStudio asks the same things in
 **Project ▸ Settings** (`project.ini`: `compiled`, `managed`, `standalone`), the Windows editor in
 its **Make App** (standalone when the SD folder has `bin/basic`). Examples: **BASIC Demo** (`basicdemo`, `main.bas`), **Planets 3D** and **Arkanoid**
 (`arkanoid`: `main.bax`, compiled at build time from `SD:/basic/examples/arkanoid.bas` — the

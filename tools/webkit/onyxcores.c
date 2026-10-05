@@ -173,7 +173,7 @@ static void test_failure (void)
 		for (;;) kapi__pause ();
 	if (how == 2)
 		__malloc_lock (_REENT);
-	KT->yield ();				// (a kernel call on an app core: the kernel stops the job)
+	kapi_yield ();				// (a kernel call on an app core: the kernel stops the job)
 	for (;;) kapi__pause ();
 }
 
