@@ -110,6 +110,24 @@ In [`docs/`](docs/README.md), in English (Word / PDF exports in `docs/exports/`,
 [`ARCHITECTURE.md`](ARCHITECTURE.md) is the original design record (historical: apps at EL1,
 cooperative scheduling — see its banner).
 
+## How it is built
+
+Onyx is built by **Stephan Wegener** working with **Claude**, Anthropic's AI model, through
+Claude Code. Much of the code is written by Claude, under his direction:
+
+- **The architecture and the direction are his**: what the system is, how its parts fit, what
+  comes next, and the decisions when there is a choice to make.
+- **Claude writes code and researches**: it is sometimes guided step by step, sometimes asked for
+  its opinion (it looks things up faster), sometimes handed articles and links to examples to go
+  faster.
+- **Every application starts with a mockup**: he describes what he wants, Claude draws the
+  screens first, and the code follows once the mockup is agreed. It frames the work and speeds
+  up the rest.
+- **It runs on a real Raspberry Pi 4**, where the work is tested.
+
+The instructions Claude follows are in the repository ([`CLAUDE.md`](CLAUDE.md),
+[`docs/HANDOFF.md`](docs/HANDOFF.md)), and the commits it wrote are co-signed.
+
 ## Licences
 
 Our own code is under the **MIT licence** (the user's decision, 2026-10-01). A program that
