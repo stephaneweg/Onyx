@@ -1476,7 +1476,8 @@ applet.
 **Alt+Print Screen** takes the window in front at once (§12, *Screenshot*).
 
 Accented letters (`é è à ç ù`…, the Latin-1 characters of the layout) can be typed in every
-text field and editor. The **euro sign** is **AltGr+E** (`FR`, `BE`, `DE`, `ES`, `IT`), AltGr+4
+text field and editor (from a PC's keyboard -- VNC, Onyx Remote -- AltGr arrives as Ctrl + Alt: it types its
+character there too, `#`, `@`, `{`, in the code editors as elsewhere). The **euro sign** is **AltGr+E** (`FR`, `BE`, `DE`, `ES`, `IT`), AltGr+4
 (`UK`), AltGr+5 (`US`); it is a key of its own (Windows' code 0x80, not Latin-1): the Spreadsheet
 takes it (`12,50 €`), the other apps' text fields do not yet.
 

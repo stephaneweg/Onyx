@@ -31,7 +31,9 @@ static inline int iclamp (int v, int a, int b) { return v < a ? a : v > b ? b : 
 static inline bool word_ch (char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '$' || c == '%' || c == '!' || c == '#' || c == '&'; }
 static inline bool name_ch (char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
 static inline char upc (char c) { return c >= 'a' && c <= 'z' ? (char) (c - 32) : c; }
-static inline bool mod_ctrl () { return (kapi_get_modifiers () & MOD_CTRL) != 0; }
+// Ctrl held -- alone: Ctrl + Alt is AltGr as a PC sends it (a remote keyboard: VNC, Onyx Remote), and types its
+// character (# @ { [ ...) like any other key
+static inline bool mod_ctrl () { unsigned m = kapi_get_modifiers (); return (m & MOD_CTRL) != 0 && (m & MOD_ALT) == 0; }
 static inline bool mod_shift () { return (kapi_get_modifiers () & MOD_SHIFT) != 0; }
 
 // The colours (on the field's colour: darker in a dark theme)
