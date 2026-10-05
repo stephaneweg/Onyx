@@ -294,300 +294,300 @@ field connected 41 b
 field freq 44 i
 field level 48 i
 abi_version 0 u - kapi_abi_version
-app_dir 1 i pi kapi_app_dir
-barrier_create 2 i i kapi_barrier_create
-barrier_wait 3 i i kapi_barrier_wait
-chdir 4 i s kapi_chdir
-clipboard_get 5 i IpiI kapi_clipboard_get
-clipboard_set 6 i ipi kapi_clipboard_set
-clock_info 7 i p kapi_clock_info
-close 8 v p kapi_close
-closedir 9 v p kapi_closedir
-code_alloc 10 l i kapi_code_alloc
+app_dir 1 i pi kapi_app_dir b,s
+barrier_create 2 i i kapi_barrier_create count
+barrier_wait 3 i i kapi_barrier_wait h
+chdir 4 i s kapi_chdir p
+clipboard_get 5 i IpiI kapi_clipboard_get type,b,cap,serial
+clipboard_set 6 i ipi kapi_clipboard_set type,d,n
+clock_info 7 i p kapi_clock_info out
+close 8 v p kapi_close h
+closedir 9 v p kapi_closedir d
+code_alloc 10 l i kapi_code_alloc size
 core_acquire 11 i - kapi_core_acquire
-core_release 12 v i kapi_core_release
-core_run 13 i icpp kapi_core_run
-core_state 14 i i kapi_core_state
-cpu_stats 15 i p kapi_cpu_stats
-create_window 16 l iis kapi_create_window
-create_window_ex 17 l iiiisi kapi_create_window_ex
-cursor_pos 18 v II kapi_cursor_pos
-desk 19 i ii kapi_desk
-dir_read 20 i pp kapi_dir_read
-drag_begin 21 i ipis kapi_drag_begin
-drag_data 22 i Ipi kapi_drag_data
-draw_text 23 v iisi kapi_draw_text
-draw_text_buf 24 v Iiiiisi kapi_draw_text_buf
-event_create 25 i ii kapi_event_create
-event_mods 26 u i kapi_event_mods
-event_reset 27 i i kapi_event_reset
-event_set 28 i i kapi_event_set
-event_wait 29 i ii kapi_event_wait
-exec 30 i ss kapi_exec
-exec_as 31 i sss kapi_exec_as
-exit 32 v i kapi_exit
-file_close 33 i i kapi_file_close
-file_in 34 l s kapi_file_in
-file_open 35 l sii kapi_file_open
-file_out 36 l si kapi_file_out
-file_read 37 l ipii kapi_file_read
-file_seek 38 l iii kapi_file_seek
-file_stat 39 i ip kapi_file_stat
-file_sync 40 i i kapi_file_sync
-file_truncate 41 i ii kapi_file_truncate
-file_write 42 l ipii kapi_file_write
+core_release 12 v i kapi_core_release core
+core_run 13 i icpp kapi_core_run core,fn,arg,stack_top
+core_state 14 i i kapi_core_state core
+cpu_stats 15 i p kapi_cpu_stats out
+create_window 16 l iis kapi_create_window w,h,t
+create_window_ex 17 l iiiisi kapi_create_window_ex x,y,w,h,t,f
+cursor_pos 18 v II kapi_cursor_pos x,y
+desk 19 i ii kapi_desk set,count
+dir_read 20 i pp kapi_dir_read dir,out
+drag_begin 21 i ipis kapi_drag_begin type,data,len,label
+drag_data 22 i Ipi kapi_drag_data type,buf,cap
+draw_text 23 v iisi kapi_draw_text x,y,s,c
+draw_text_buf 24 v Iiiiisi kapi_draw_text_buf dst,dw,dh,x,y,s,c
+event_create 25 i ii kapi_event_create manual_reset,initial
+event_mods 26 u i kapi_event_mods mods
+event_reset 27 i i kapi_event_reset h
+event_set 28 i i kapi_event_set h
+event_wait 29 i ii kapi_event_wait h,timeout_ms
+exec 30 i ss kapi_exec path,args
+exec_as 31 i sss kapi_exec_as path,args,name
+exit 32 v i kapi_exit s
+file_close 33 i i kapi_file_close h
+file_in 34 l s kapi_file_in p
+file_open 35 l sii kapi_file_open path,flags,mode
+file_out 36 l si kapi_file_out p,append
+file_read 37 l ipii kapi_file_read h,buf,len,off
+file_seek 38 l iii kapi_file_seek h,off,whence
+file_stat 39 i ip kapi_file_stat h,out
+file_sync 40 i i kapi_file_sync h
+file_truncate 41 i ii kapi_file_truncate h,size
+file_write 42 l ipii kapi_file_write h,buf,len,off
 font_height 43 i - kapi_font_height
 font_width 44 i - kapi_font_width
-fsize 45 u p kapi_fsize
-fsize64 46 l p kapi_fsize64
-fullscreen_begin 47 l II kapi_fullscreen_begin
-fullscreen_direct 48 l III kapi_fullscreen_direct
+fsize 45 u p kapi_fsize h
+fsize64 46 l p kapi_fsize64 h
+fullscreen_begin 47 l II kapi_fullscreen_begin w,h
+fullscreen_direct 48 l III kapi_fullscreen_direct w,h,stride
 fullscreen_end 49 v - kapi_fullscreen_end
-get_args 50 i pi kapi_get_args
-get_argv 51 i pi kapi_get_argv
-get_chrome 52 i p kapi_get_chrome
-get_datetime 53 i IIIIII kapi_get_datetime
-get_env 54 i pi kapi_get_env
-get_handles 55 i pi kapi_get_handles
-get_keymap 56 i pi kapi_get_keymap
-get_menu 57 u pipi kapi_get_menu
+get_args 50 i pi kapi_get_args b,n
+get_argv 51 i pi kapi_get_argv buf,cap
+get_chrome 52 i p kapi_get_chrome out
+get_datetime 53 i IIIIII kapi_get_datetime y,mo,d,h,mi,se
+get_env 54 i pi kapi_get_env buf,cap
+get_handles 55 i pi kapi_get_handles out,cap
+get_keymap 56 i pi kapi_get_keymap b,s
+get_menu 57 u pipi kapi_get_menu buf,cap,title,tcap
 get_modifiers 58 u - kapi_get_modifiers
 get_ticks 59 u - kapi_get_ticks
 get_verbose 60 i - kapi_get_verbose
 get_wheel_speed 61 i - kapi_get_wheel_speed
-getcwd 62 i pi kapi_getcwd
-getpid 63 i i kapi_getpid
-gpu_draw 64 i piiIiii kapi_gpu_draw
-gpu_info 65 i pi kapi_gpu_info
-gpu_program 66 i ip kapi_gpu_program
-gpu_render 67 i ppipi kapi_gpu_render
-gpu_render2 68 i ppiipipi kapi_gpu_render2
-gpu_render3 69 i ppipipip kapi_gpu_render3
-gpu_texture 70 i ipiii kapi_gpu_texture
-gpu_texture_rect 71 i iiiiipi kapi_gpu_texture_rect
-gpu_vbuf 72 l i kapi_gpu_vbuf
-handle_close 73 i i kapi_handle_close
-image_list 74 i spi kapi_image_list
-image_preload 75 i s kapi_image_preload
-image_unload 76 i s kapi_image_unload
-inject_key 77 v s kapi_inject_key
-inject_key_held 78 v ii kapi_inject_key_held
-inject_modifiers 79 v i kapi_inject_modifiers
-inject_pointer 80 v iiii kapi_inject_pointer
-ipc_lookup 81 i s kapi_ipc_lookup
-ipc_register 82 i s kapi_ipc_register
+getcwd 62 i pi kapi_getcwd b,n
+getpid 63 i i kapi_getpid which
+gpu_draw 64 i piiIiii kapi_gpu_draw v,n,clear,pixels,w,h,stride
+gpu_info 65 i pi kapi_gpu_info buf,cap
+gpu_program 66 i ip kapi_gpu_program handle,p
+gpu_render 67 i ppipi kapi_gpu_render f,v,nv,b,nb
+gpu_render2 68 i ppiipipi kapi_gpu_render2 f,v,nv,stride,b,nb,uni,nuni
+gpu_render3 69 i ppipipip kapi_gpu_render3 f,v,nfloats,b,nb,uni,nuni,view
+gpu_texture 70 i ipiii kapi_gpu_texture handle,pixels,w,h,stride
+gpu_texture_rect 71 i iiiiipi kapi_gpu_texture_rect handle,x,y,w,h,pixels,stride
+gpu_vbuf 72 l i kapi_gpu_vbuf bytes
+handle_close 73 i i kapi_handle_close h
+image_list 74 i spi kapi_image_list path,out,cap
+image_preload 75 i s kapi_image_preload path
+image_unload 76 i s kapi_image_unload path
+inject_key 77 v s kapi_inject_key keys
+inject_key_held 78 v ii kapi_inject_key_held key,down
+inject_modifiers 79 v i kapi_inject_modifiers mods
+inject_pointer 80 v iiii kapi_inject_pointer x,y,buttons,wheel
+ipc_lookup 81 i s kapi_ipc_lookup name
+ipc_register 82 i s kapi_ipc_register name
 is_protected 83 i - kapi_is_protected
 kbd_ready 84 i - kapi_kbd_ready
-kernel_info 85 i pi kapi_kernel_info
-key_held 86 i i kapi_key_held
-kill 87 i s kapi_kill
-kill_pid 88 i ii kapi_kill_pid
-klog_read 89 i Ipipi kapi_klog_read
-launch 90 i s kapi_launch
-lib_open 91 l siI kapi_lib_open
-list_apps 92 i pi kapi_list_apps
-list_procs 93 i pi kapi_list_procs
-list_tasks 94 i pi kapi_list_tasks
-list_windows 95 i pi kapi_list_windows
-lock 96 v I kapi_lock
-mailbox_recv 97 i IIpii kapi_mailbox_recv
-mailbox_send 98 i iipi kapi_mailbox_send
-memcpy 99 l ppi kapi_memcpy
-meminfo 100 i LLLI kapi_meminfo
-memmove 101 l ppi kapi_memmove
-memset 102 l pii kapi_memset
-menu_command 103 i i kapi_menu_command
+kernel_info 85 i pi kapi_kernel_info buf,cap
+key_held 86 i i kapi_key_held key
+kill 87 i s kapi_kill name
+kill_pid 88 i ii kapi_kill_pid pid,force
+klog_read 89 i Ipipi kapi_klog_read sev,src,sc,msg,mc
+launch 90 i s kapi_launch n
+lib_open 91 l siI kapi_lib_open name,min_version,err
+list_apps 92 i pi kapi_list_apps b,s
+list_procs 93 i pi kapi_list_procs b,s
+list_tasks 94 i pi kapi_list_tasks b,s
+list_windows 95 i pi kapi_list_windows b,s
+lock 96 v I kapi_lock l
+mailbox_recv 97 i IIpii kapi_mailbox_recv from_pid,type,buf,cap,blocking
+mailbox_send 98 i iipi kapi_mailbox_send target_pid,type,in,len
+memcpy 99 l ppi kapi_memcpy dst,src,n
+meminfo 100 i LLLI kapi_meminfo total_kb,free_kb,app_kb,page_kb
+memmove 101 l ppi kapi_memmove dst,src,n
+memset 102 l pii kapi_memset dst,c,n
+menu_command 103 i i kapi_menu_command id
 midi_devices 104 i - kapi_midi_devices
-midi_read 105 i pi kapi_midi_read
-mkdir 106 i s kapi_mkdir
-move_window 107 v ii kapi_move_window
-msleep 108 v i kapi_msleep
+midi_read 105 i pi kapi_midi_read ev,max
+mkdir 106 i s kapi_mkdir p
+move_window 107 v ii kapi_move_window x,y
+msleep 108 v i kapi_msleep ms
 mutex_create 109 i - kapi_mutex_create
-mutex_lock 110 i ii kapi_mutex_lock
-mutex_unlock 111 i i kapi_mutex_unlock
-net_info 112 i pi kapi_net_info
-net_ping 113 i siipi kapi_net_ping
-net_resolve 114 i spi kapi_net_resolve
-net_stats 115 i ip kapi_net_stats
-net_status 116 i pi kapi_net_status
-open 117 l s kapi_open
-opendir 118 l s kapi_opendir
-pad_state 119 i ip kapi_pad_state
-path_mkdir 120 i si kapi_path_mkdir
-path_rename 121 i ss kapi_path_rename
-path_stat 122 i sp kapi_path_stat
-path_unlink 123 i si kapi_path_unlink
-path_utime 124 i si kapi_path_utime
+mutex_lock 110 i ii kapi_mutex_lock h,timeout_ms
+mutex_unlock 111 i i kapi_mutex_unlock h
+net_info 112 i pi kapi_net_info buf,cap
+net_ping 113 i siipi kapi_net_ping host,seq,timeout_ms,ip,cap
+net_resolve 114 i spi kapi_net_resolve host,ip,cap
+net_stats 115 i ip kapi_net_stats pid,out
+net_status 116 i pi kapi_net_status ip,cap
+open 117 l s kapi_open p
+opendir 118 l s kapi_opendir p
+pad_state 119 i ip kapi_pad_state index,out
+path_mkdir 120 i si kapi_path_mkdir path,mode
+path_rename 121 i ss kapi_path_rename from,to
+path_stat 122 i sp kapi_path_stat path,out
+path_unlink 123 i si kapi_path_unlink path,flags
+path_utime 124 i si kapi_path_utime path,mtime
 pipe 125 l - kapi_pipe
-poll 126 i pii kapi_poll
-pop_event 127 i p kapi_pop_event
-pop_post 128 i p kapi_pop_post
-post 129 i cpi kapi_post
+poll 126 i pii kapi_poll fds,n,timeout_ms
+pop_event 127 i p kapi_pop_event ev
+pop_post 128 i p kapi_pop_post p
+post 129 i cpi kapi_post fn,ctx,value
 present 130 v - kapi_present
 present_fb 131 v - kapi_present_fb
-proc_done 132 i p kapi_proc_done
-proc_stats 133 i ip kapi_proc_stats
-proc_wait 134 i pip kapi_proc_wait
+proc_done 132 i p kapi_proc_done proc
+proc_stats 133 i ip kapi_proc_stats pid,out
+proc_wait 134 i pip kapi_proc_wait proc,flags,out
 pump_events 135 v - kapi_pump_events
-pump_sleep 136 i i kapi_pump_sleep
-pump_wait 137 i i kapi_pump_wait
-raise_app 138 i s kapi_raise_app
-ram_detail 139 i LLLLI kapi_ram_detail
-random 140 i pi kapi_random
-read 141 i ppi kapi_read
-readdir 142 i pp kapi_readdir
+pump_sleep 136 i i kapi_pump_sleep timeout_ms
+pump_wait 137 i i kapi_pump_wait timeout_ms
+raise_app 138 i s kapi_raise_app n
+ram_detail 139 i LLLLI kapi_ram_detail detected_kb,apppool_kb,apppool_free_kb,above4g_kb,nsegments
+random 140 i pi kapi_random buf,len
+read 141 i ppi kapi_read h,b,n
+readdir 142 i pp kapi_readdir d,e
 reboot 143 v - kapi_reboot
 register_shell 144 i - kapi_register_shell
-remove 145 i s kapi_remove
-rename 146 i ss kapi_rename
-resize_window 147 l ii kapi_resize_window
-resize_window2 148 l iiI kapi_resize_window2
-save_file 149 i spi kapi_save_file
-sbrk 150 l i kapi_sbrk
-screen_grab 151 i Iii kapi_screen_grab
-screen_native 152 i II kapi_screen_native
-screen_set 153 i ii kapi_screen_set
-screen_size 154 v II kapi_screen_size
-seek 155 i pi kapi_seek
-set_click_handler 156 v c kapi_set_click_handler
-set_cursor 157 i i kapi_set_cursor
-set_key_handler 158 v c kapi_set_key_handler
-set_keymap 159 i s kapi_set_keymap
-set_keymap_data 160 i spi kapi_set_keymap_data
-set_menu 161 i sc kapi_set_menu
-set_pointer_handler 162 v c kapi_set_pointer_handler
-set_timezone 163 i i kapi_set_timezone
-set_verbose 164 i i kapi_set_verbose
-set_wheel_speed 165 v i kapi_set_wheel_speed
-set_window_alpha 166 v i kapi_set_window_alpha
-shell_request 167 i ipi kapi_shell_request
-shm_create 168 l ii kapi_shm_create
-shm_ctl 169 l iii kapi_shm_ctl
-shm_map 170 l iiiiii kapi_shm_map
-shm_open 171 l sii kapi_shm_open
-shm_unlink 172 i s kapi_shm_unlink
+remove 145 i s kapi_remove p
+rename 146 i ss kapi_rename from,to
+resize_window 147 l ii kapi_resize_window w,h
+resize_window2 148 l iiI kapi_resize_window2 w,h,stride
+save_file 149 i spi kapi_save_file p,b,n
+sbrk 150 l i kapi_sbrk inc
+screen_grab 151 i Iii kapi_screen_grab dst,w,h
+screen_native 152 i II kapi_screen_native w,h
+screen_set 153 i ii kapi_screen_set w,h
+screen_size 154 v II kapi_screen_size w,h
+seek 155 i pi kapi_seek h,pos
+set_click_handler 156 v c kapi_set_click_handler fn
+set_cursor 157 i i kapi_set_cursor shape
+set_key_handler 158 v c kapi_set_key_handler fn
+set_keymap 159 i s kapi_set_keymap name
+set_keymap_data 160 i spi kapi_set_keymap_data name,data,len
+set_menu 161 i sc kapi_set_menu spec,h
+set_pointer_handler 162 v c kapi_set_pointer_handler fn
+set_timezone 163 i i kapi_set_timezone minutes
+set_verbose 164 i i kapi_set_verbose on
+set_wheel_speed 165 v i kapi_set_wheel_speed lines_per_notch
+set_window_alpha 166 v i kapi_set_window_alpha a
+shell_request 167 i ipi kapi_shell_request type,in,len
+shm_create 168 l ii kapi_shm_create size,flags
+shm_ctl 169 l iii kapi_shm_ctl h,op,arg
+shm_map 170 l iiiiii kapi_shm_map h,addr,len,prot,flags,off
+shm_open 171 l sii kapi_shm_open name,oflags,mode
+shm_unlink 172 i s kapi_shm_unlink name
 should_exit 173 i - kapi_should_exit
-shutdown 174 v i kapi_shutdown
-sleep_us 175 i i kapi_sleep_us
-sock_accept 176 i ipi kapi_sock_accept
-sock_bind 177 i ip kapi_sock_bind
-sock_close 178 i i kapi_sock_close
-sock_connect 179 i ip kapi_sock_connect
-sock_getopt 180 i iiI kapi_sock_getopt
-sock_listen 181 i ii kapi_sock_listen
-sock_name 182 i iip kapi_sock_name
-sock_open 183 i ii kapi_sock_open
-sock_pair 184 i iiI kapi_sock_pair
-sock_recv 185 l ipiip kapi_sock_recv
-sock_recvmsg 186 l ipi kapi_sock_recvmsg
-sock_send 187 l ipiip kapi_sock_send
-sock_sendmsg 188 l ipi kapi_sock_sendmsg
-sock_setopt 189 i iii kapi_sock_setopt
-sock_shutdown 190 i ii kapi_sock_shutdown
+shutdown 174 v i kapi_shutdown mode
+sleep_us 175 i i kapi_sleep_us us
+sock_accept 176 i ipi kapi_sock_accept s,peer,flags
+sock_bind 177 i ip kapi_sock_bind s,addr
+sock_close 178 i i kapi_sock_close s
+sock_connect 179 i ip kapi_sock_connect s,to
+sock_getopt 180 i iiI kapi_sock_getopt s,opt,value
+sock_listen 181 i ii kapi_sock_listen s,backlog
+sock_name 182 i iip kapi_sock_name s,peer,out
+sock_open 183 i ii kapi_sock_open type,flags
+sock_pair 184 i iiI kapi_sock_pair type,flags,sv
+sock_recv 185 l ipiip kapi_sock_recv s,buf,len,flags,from
+sock_recvmsg 186 l ipi kapi_sock_recvmsg s,m,flags
+sock_send 187 l ipiip kapi_sock_send s,buf,len,flags,to
+sock_sendmsg 188 l ipi kapi_sock_sendmsg s,m,flags
+sock_setopt 189 i iii kapi_sock_setopt s,opt,value
+sock_shutdown 190 i ii kapi_sock_shutdown s,how
 sound_acquire 191 i - kapi_sound_acquire
-sound_client_volume 192 i iii kapi_sound_client_volume
-sound_clients 193 i pi kapi_sound_clients
-sound_config 194 i ii kapi_sound_config
-sound_instrument 195 i ip kapi_sound_instrument
+sound_client_volume 192 i iii kapi_sound_client_volume pid,volume,mute
+sound_clients 193 i pi kapi_sound_clients out,max
+sound_config 194 i ii kapi_sound_config chunk_frames,ahead
+sound_instrument 195 i ip kapi_sound_instrument voice,ins
 sound_map 196 l - kapi_sound_map
-sound_output 197 i i kapi_sound_output
+sound_output 197 i i kapi_sound_output out
 sound_release 198 v - kapi_sound_release
-sound_start 199 i iiii kapi_sound_start
-sound_status 200 i III kapi_sound_status
-sound_stop 201 i i kapi_sound_stop
-sound_volume 202 i ii kapi_sound_volume
-sound_write 203 i pi kapi_sound_write
-spawn 204 l sspp kapi_spawn
-spawn_ex 205 l p kapi_spawn_ex
-spawn_ex2 206 l ppi kapi_spawn_ex2
+sound_start 199 i iiii kapi_sound_start voice,millihz,wave,volume
+sound_status 200 i III kapi_sound_status rate,free_frames,owner
+sound_stop 201 i i kapi_sound_stop voice
+sound_volume 202 i ii kapi_sound_volume volume,mute
+sound_write 203 i pi kapi_sound_write frames,n
+spawn 204 l sspp kapi_spawn path,args,in,out
+spawn_ex 205 l p kapi_spawn_ex a
+spawn_ex2 206 l ppi kapi_spawn_ex2 a,handles,n
 stdin 207 l - kapi_stdin
-stdin_read 208 i pi kapi_stdin_read
+stdin_read 208 i pi kapi_stdin_read b,n
 stdout 209 l - kapi_stdout
-stdout_write 210 i pi kapi_stdout_write
-stream_close 211 v p kapi_stream_close
-stream_eof 212 v p kapi_stream_eof
-stream_read 213 i ppi kapi_stream_read
-stream_read_nb 214 i ppi kapi_stream_read_nb
-stream_write 215 i ppi kapi_stream_write
-stream_write_nb 216 i ppi kapi_stream_write_nb
-surface_create 217 i ii kapi_surface_create
-surface_destroy 218 i i kapi_surface_destroy
-surface_map 219 l i kapi_surface_map
-surface_present 220 v i kapi_surface_present
-surface_size 221 i iII kapi_surface_size
-sync_close 222 i i kapi_sync_close
-table_slot 223 l i kapi_table_slot
-tcp_accept 224 i ipi kapi_tcp_accept
-tcp_close 225 v i kapi_tcp_close
-tcp_connect 226 i si kapi_tcp_connect
-tcp_listen 227 i i kapi_tcp_listen
-tcp_recv 228 i ipi kapi_tcp_recv
-tcp_send 229 i ipi kapi_tcp_send
-thread_create 230 i cpis kapi_thread_create
-thread_create_ex 231 i p kapi_thread_create_ex
-thread_exit 232 v i kapi_thread_exit
-thread_info 233 i ip kapi_thread_info
-thread_join 234 i iiI kapi_thread_join
-thread_priority 235 i ii kapi_thread_priority
+stdout_write 210 i pi kapi_stdout_write b,n
+stream_close 211 v p kapi_stream_close h
+stream_eof 212 v p kapi_stream_eof h
+stream_read 213 i ppi kapi_stream_read h,b,n
+stream_read_nb 214 i ppi kapi_stream_read_nb h,b,n
+stream_write 215 i ppi kapi_stream_write h,b,n
+stream_write_nb 216 i ppi kapi_stream_write_nb h,buf,len
+surface_create 217 i ii kapi_surface_create w,h
+surface_destroy 218 i i kapi_surface_destroy id
+surface_map 219 l i kapi_surface_map id
+surface_present 220 v i kapi_surface_present id
+surface_size 221 i iII kapi_surface_size id,w,h
+sync_close 222 i i kapi_sync_close h
+table_slot 223 l i kapi_table_slot slot
+tcp_accept 224 i ipi kapi_tcp_accept listen_sock,ip,cap
+tcp_close 225 v i kapi_tcp_close sock
+tcp_connect 226 i si kapi_tcp_connect host,port
+tcp_listen 227 i i kapi_tcp_listen port
+tcp_recv 228 i ipi kapi_tcp_recv sock,buf,len
+tcp_send 229 i ipi kapi_tcp_send sock,buf,len
+thread_create 230 i cpis kapi_thread_create fn,arg,stack_size,name
+thread_create_ex 231 i p kapi_thread_create_ex attr
+thread_exit 232 v i kapi_thread_exit code
+thread_info 233 i ip kapi_thread_info tid,out
+thread_join 234 i iiI kapi_thread_join tid,timeout_ms,code
+thread_priority 235 i ii kapi_thread_priority tid,prio
 thread_self 236 i - kapi_thread_self
-toggle_app 237 i s kapi_toggle_app
-vfs_next 238 i pi kapi_vfs_next
-vfs_register 239 i s kapi_vfs_register
-vfs_reply 240 i iipi kapi_vfs_reply
-vfs_req_data 241 i ipii kapi_vfs_req_data
-vm_advise 242 i iii kapi_vm_advise
-vm_map 243 l iiii kapi_vm_map
-vm_protect 244 i iii kapi_vm_protect
-vm_query 245 i ip kapi_vm_query
-vm_stats 246 i ip kapi_vm_stats
-vm_unmap 247 i ii kapi_vm_unmap
-vol_info 248 i sp kapi_vol_info
-wait 249 i p kapi_wait
+toggle_app 237 i s kapi_toggle_app n
+vfs_next 238 i pi kapi_vfs_next req,blocking
+vfs_register 239 i s kapi_vfs_register prefix
+vfs_reply 240 i iipi kapi_vfs_reply id,status,data,len
+vfs_req_data 241 i ipii kapi_vfs_req_data id,buf,cap,offset
+vm_advise 242 i iii kapi_vm_advise addr,len,advice
+vm_map 243 l iiii kapi_vm_map addr,len,prot,flags
+vm_protect 244 i iii kapi_vm_protect addr,len,prot
+vm_query 245 i ip kapi_vm_query addr,out
+vm_stats 246 i ip kapi_vm_stats pid,out
+vm_unmap 247 i ii kapi_vm_unmap addr,len
+vol_info 248 i sp kapi_vol_info path,out
+wait 249 i p kapi_wait proc
 wait_for_exit 250 v - kapi_wait_for_exit
-wait_word 251 i Iii kapi_wait_word
-wake_word 252 i I kapi_wake_word
-wallpaper_buffer 253 l II kapi_wallpaper_buffer
+wait_word 251 i Iii kapi_wait_word addr,expected,timeout_ms
+wake_word 252 i I kapi_wake_word addr
+wallpaper_buffer 253 l II kapi_wallpaper_buffer w,h
 wallpaper_commit 254 v - kapi_wallpaper_commit
-wallpaper_generate 255 i iii kapi_wallpaper_generate
-win_close 256 i i kapi_win_close
-win_desk 257 i ii kapi_win_desk
-win_geometry 258 i p kapi_win_geometry
-win_list 259 i pi kapi_win_list
-win_minimise 260 i i kapi_win_minimise
-win_raise 261 i i kapi_win_raise
-win_read 262 i iiiiiiIi kapi_win_read
-win_resizable 263 i iii kapi_win_resizable
+wallpaper_generate 255 i iii kapi_wallpaper_generate base,pts,seed
+win_close 256 i i kapi_win_close id
+win_desk 257 i ii kapi_win_desk id,n
+win_geometry 258 i p kapi_win_geometry out
+win_list 259 i pi kapi_win_list out,max
+win_minimise 260 i i kapi_win_minimise id
+win_raise 261 i i kapi_win_raise id
+win_read 262 i iiiiiiIi kapi_win_read id,part,x,y,w,h,dst,stride
+win_resizable 263 i iii kapi_win_resizable on,min_w,min_h
 wlan_reconnect 264 i - kapi_wlan_reconnect
-wlan_scan 265 i pi kapi_wlan_scan
-write 266 i ipi kapi_write
+wlan_scan 265 i pi kapi_wlan_scan out,max
+write 266 i ipi kapi_write fd,b,n
 yield 267 v - kapi_yield
 app_ini_count 268 i - app_ini_count
-app_ini_get 269 s sss app_ini_get
-app_ini_get_int 270 i ssi app_ini_get_int
-app_ini_key 271 s i app_ini_key
-app_ini_load 272 i s app_ini_load
-app_ini_load_path 273 i s app_ini_load_path
-app_ini_section 274 s i app_ini_section
-app_ini_value 275 s i app_ini_value
-ax_app_path 276 v piss ax_app_path
-ax_fmt2 277 v pi ax_fmt2
-ax_itoa 278 i ip ax_itoa
-ax_load_keymap 279 i s ax_load_keymap
-ax_putln 280 v s ax_putln
-ax_puts 281 v s ax_puts
-ax_strcat 282 v piIs ax_strcat
-ax_streq 283 i ss ax_streq
-ax_strlen 284 i s ax_strlen
-lx_app_for 285 i spi lx_app_for
-lx_cat 286 v piIs lx_cat
-lx_cmdline 287 v piss lx_cmdline
-lx_entry 288 i ipipi lx_entry
-lx_exists 289 i s lx_exists
-lx_launch 290 i ss lx_launch
-lx_launch_dir 291 i sss lx_launch_dir
-lx_len 292 i s lx_len
-lx_lists_ext 293 i sisi lx_lists_ext
-lx_low 294 b i lx_low
-lx_open 295 i ss lx_open
-lx_open_as 296 i sss lx_open_as
-lx_runner 297 i spi lx_runner
+app_ini_get 269 s sss app_ini_get section,key,def
+app_ini_get_int 270 i ssi app_ini_get_int section,key,def
+app_ini_key 271 s i app_ini_key i
+app_ini_load 272 i s app_ini_load filename
+app_ini_load_path 273 i s app_ini_load_path path
+app_ini_section 274 s i app_ini_section i
+app_ini_value 275 s i app_ini_value i
+ax_app_path 276 v piss ax_app_path dst,cap,name,suffix
+ax_fmt2 277 v pi ax_fmt2 d,v
+ax_itoa 278 i ip ax_itoa v,b
+ax_load_keymap 279 i s ax_load_keymap name
+ax_putln 280 v s ax_putln s
+ax_puts 281 v s ax_puts s
+ax_strcat 282 v piIs ax_strcat dst,cap,pos,src
+ax_streq 283 i ss ax_streq a,b
+ax_strlen 284 i s ax_strlen s
+lx_app_for 285 i spi lx_app_for ext,out,cap
+lx_cat 286 v piIs lx_cat d,cap,n,s
+lx_cmdline 287 v piss lx_cmdline out,cap,path,args
+lx_entry 288 i ipipi lx_entry i,ext,ecap,prog,pcap
+lx_exists 289 i s lx_exists path
+lx_launch 290 i ss lx_launch name,args
+lx_launch_dir 291 i sss lx_launch_dir dir,name,args
+lx_len 292 i s lx_len s
+lx_lists_ext 293 i sisi lx_lists_ext v,len,ext,games
+lx_low 294 b i lx_low c
+lx_open 295 i ss lx_open path,args
+lx_open_as 296 i sss lx_open_as path,args,name
+lx_runner 297 i spi lx_runner path,out,cap
