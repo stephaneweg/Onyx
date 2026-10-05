@@ -228,7 +228,10 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
      publishing. **Print Screen** (Alt: the window that has the keyboard) and **the wheel's speed**
      (`wheelspeed=` of `SD:/etc/theme.txt`) are Elegant's now (`server.cpp`: `print_screen`,
      `wheel_speed`); the kernel's `PrintScreenPoll` is gone. **Tried on the Pi**: `uname` says kapi
-     90, the desktop, `el0test` and `faulttest kapi` pass.
+     90, the desktop, `el0test` and `faulttest kapi` pass; **every app started: 86, 0 failed**
+     (`pi_apps.py`, Jet among them; Elegant at 17 MB after it). Print Screen and the wheel: not tried
+     (a real USB keyboard is needed). That evening the Pi's Wi-Fi lost 10 to 50 % of the pings, with
+     the kernel of before Elegant too (kapi 88, put back to compare): telnet sessions dropped.
    - **Still to do**: the branch `kapi-compact` of another session (v87's compaction) touches the same
      table: it is superseded by v90 -- say so before anyone merges it; the role given to the
      process the kernel started; the capture channel for `rdpd`; `screen_set` under Elegant to try;
