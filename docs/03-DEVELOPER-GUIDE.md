@@ -776,7 +776,9 @@ the kernel through `KT`, the app through its imports. What the kernel accepts is
 
 **Using one from an app's Makefile rule:** link `lib/uikit.imp.a` (and `lib/ft.imp.a`) in place of
 the static archives; the package declares `needs = uikit` (and `ft`). Jet's hosted build
-(`tools/webkit/build-web.sh`) and the PC builds (the simulator, Koton for Windows, macOS) still
+(`tools/webkit/build-web.sh`) links the library too since 2026-10-05 — it compiles the import side
+(`lib/uikit_stubs.S`, `lib/uikit_bind.cpp`, `uikit/globals.cpp`) with its own toolchain. The PC builds
+(the simulator, Koton for Windows, macOS) still
 compile uikit statically (`user/uikit/*.cpp`: the same sources — `uikit/globals.cpp` then simply defines
 the variables).
 

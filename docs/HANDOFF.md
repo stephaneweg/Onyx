@@ -157,7 +157,8 @@ generator, writing and using a library), **`user/uikit/abi.h` (the rules — rea
 - **A new app**: link `lib/uikit.imp.a` (and `lib/ft.imp.a`) — the generic rules of `user/Makefile` do.
   A static constructor of an app may use uikit: the bind constructors run first (priority 101; `user.ld`
   now orders the priorities across files — it did not before).
-- **Still static**: Jet (the hosted build, `tools/webkit/build-web.sh`), the PC builds (the simulator,
+- **Jet** links `uikit.so` too since 2026-10-05 (`tools/webkit/build-web.sh` compiles the import side for
+  the POSIX toolchain; `make -C user lib/uikit.imp.a` first). **Still static**: the PC builds (the simulator,
   Koton for Windows, macOS) — they compile `user/uikit/*.cpp` as before.
 - **Tests**: `sh tools/tests/run_image_test.sh` (PC), on the Pi `libtest`, then from the PC
   `python tools/tests/shlib/pi_apps.py <pi-ip>` (every app started) and `sh tools/tests/shlib/compat.sh`

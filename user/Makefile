@@ -259,7 +259,7 @@ uikit/imgload.o: uikit/imgload.cpp img/imgload.hpp img/stb_image.h img/simpleweb
 uikit/libuikit.a: $(UIKIT_OBJ)
 	$(AR) rcs $@ $^
 # (uikit/libuikit.a, the static build: no app of this Makefile links it any more -- they link the shared
-# library's import library, lib/uikit.imp.a --; Jet's hosted build and the PC builds make their own.)
+# library's import library, lib/uikit.imp.a --; Jet's hosted build compiles that import side for its own toolchain, tools/webkit/build-web.sh; the PC builds make their own static toolkit.)
 
 $(APP_ELFS): %.elf: Apps/%/main.cpp crt0.S user.ld kapi.h applib.h launch.h httpc.h bmp.hpp umm.h onyxpp.hpp game.h cards.h rtf.h gamepad.h emucore.h lib/uikit.imp.a lib/audiokit.imp.a audiokit/audiokit.h basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a
 	$(CXX) $(CXXFLAGS) -I. -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) crt0.S $< lib/uikit.imp.a lib/audiokit.imp.a basic/libbasic.a gb/libgb.a gba/libgba.a nes/libnes.a snes/libsnes.a n64/libn64.a gc/libgc.a v3d/libv3d.a -o $@
