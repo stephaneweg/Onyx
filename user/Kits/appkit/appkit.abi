@@ -301,3 +301,4 @@
 295 lx_open
 296 lx_open_as
 297 lx_runner
+298 kapi_ws_ctl

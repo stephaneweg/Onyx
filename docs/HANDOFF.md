@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- stage 1 of 5 done
+## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- stage 1 done, 2a written (NOT yet tried on the Pi)
 
 **The server is named Elegant** (`SD:/bin/elegant`, sources `user/Servers/elegant/`). Work on the branch
 `UserSpaceElegant` only: commit and push there, merge `origin/main` into it, merge it into `main` only when
@@ -65,6 +65,24 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
    The PC test of the window manager (`sh tools/tests/desktop_sim/run.sh`) was broken since kapi v67 (a
    stand-in missing: `kstub/circle/sched/synchronizationevent.h`): repaired, it passes.
 2. The kernel's mechanisms above (kapi v89), unused by default, with a test tool on the Pi.
+   **2a written, built, NOT tried on the Pi** (kapi v89: `kernel/sys/wsrv.cpp`, `kern/wsrv.h`, one table
+   entry `ws_ctl`, AppKit's `kapi_ws_ctl`; docs/02 §8, v89): the role, the display (the kernel's
+   compositor pauses; the server's rectangles copied and sent), the raw input ring (USB and injected),
+   one wait, the way back (the server gone, or silent 5 s). The test: **`elegant --display`** -- the
+   three windows of the demonstration on the real display, from the raw input; Esc, the last window
+   closed or 60 s give the display back. To try it: the kernel (`~/src/Onyx-elegant/kernel` in WSL:
+   `rsync` this tree's `kernel/` there, `make kernel8-rpi4.img sizecheck`), `user/lib/appkit.so` and
+   `user/Servers/elegant/elegant.elf` put on the Pi (`kernel8-rpi4.img`, `lib/appkit.so`, `bin/elegant`),
+   a restart, then over telnet `run SD:/bin/elegant --display` and VNC (the pointer, the keys and the
+   capture go through `inject_*` / `screen_grab`, which follow the server). The session that wrote it
+   was not allowed to put a kernel on the Pi: the user's go is needed. What to check: the desktop back
+   after Esc; after `kill` of Elegant; after 60 s; a USB mouse and keyboard; `rdpd` not disturbed.
+   **2b, to write**: the window buffers (contiguous, mapped in the program and in Elegant), the
+   requests (a program's call waits for Elegant's answer -- the pattern of `kernel/sys/vfs.cpp`, the
+   user-space file systems: the caller's pid stamped by the kernel; no named sockets needed), the
+   per-process event queue Elegant pushes into (`pop_event` / `should_exit` / `pump_sleep` read it
+   when the process's windows are Elegant's), a process's end told to Elegant, the role given by the
+   kernel to the process it starts itself.
 3. Elegant serving the programs' windows + AppKit's client side, behind the one-boot trial; `vncd` /
    `rdpd` unchanged through AppKit, then the capture channel. PC test first: Elegant's core and the
    client joined to `tools/tests/desktop_sim/fakekapi.cpp`.

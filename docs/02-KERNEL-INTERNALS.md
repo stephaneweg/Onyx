@@ -1184,6 +1184,28 @@ from now on calls them in AppKit, so its package says `kapi >= 87`.
 v88 = **AppKit: program starting**: no entry added — the `lx_*` functions (an app or a file started by its
 runner) are AppKit's (they were `user/launch.h`). The same day **SystemKit** and **NetKit** appear (docs/03 §5.9.0).
 
+v89 = **the graphics server's mechanisms** (`kernel/sys/wsrv.cpp`, `kern/wsrv.h`): `ws_ctl` (slot 265). The
+windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant`, `user/Servers/elegant`;
+`docs/GUI-USERSPACE-STUDY.md`, the stages in `docs/HANDOFF.md`). The kernel gives it mechanisms only:
+
+- **the role** — one process at a time is the display server (`KAPI_WS_REGISTER`: the program named
+  `elegant`, when no live process has the role); the other operations are its own (`-KAPI_EPERM`);
+- **the display** — while the server owns it (`KAPI_WS_DISPLAY`), the kernel's compositor draws nothing; the
+  server sends the rectangles it composed (`KAPI_WS_PRESENT`: copied from its memory into the off-screen
+  buffer, sent by the frame buffer's DMA — `DisplayPresentRect`, `kernel.cpp`). A full screen
+  (`fullscreen_begin`) and a resolution change (`screen_set`) are refused meanwhile; `screen_grab` gives
+  the off-screen buffer (what the server shows: `vncd` keeps working);
+- **the raw input** — while the server owns the display, the mouse, the cooked keys, the modifiers and the
+  held keys, from the USB callbacks and from `inject_*` (`vncd`, `rdpd`), go to a ring of 256 events the
+  server reads (`KAPI_WS_INPUT`) instead of `CWindowManager::OnMouse` / `OnKey` (a pointer move replaces an
+  unread one; a full ring drops, counted);
+- **one wait** (`KAPI_WS_WAIT`, on the I/O generation: an input event wakes it at once);
+- **the way back** — the server's process ends (`WsOnProcessGone`, the teardown), or calls nothing for 5 s
+  (`WsWatch`, the compositor's loop): the display and the input are the kernel's again and the whole
+  screen is drawn.
+
+Nothing changes unless Elegant takes the display (`elegant --display`, a demonstration at this stage).
+
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
 bits -- the Windows build of the apps (`pc/Koton`, docs/03 *Koton for Windows*), whose table is filled
@@ -1576,6 +1598,7 @@ rewritten), `posixtest` (`mmap PROT_EXEC`).
 | Slot | Entry | What it does |
 |---|---|---|
 | 263 | `sound_clients (out, max)` | The programs that have a channel now → how many; `out`: up to `max` `struct kapi_sound_client` (`pid`, `name` — the program's, 24 bytes —, `volume` 0..100, `mute`, `peak` — its level now, 0..32767 —, `queued` frames). `0, 0`: only the count. |
+| 265 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program `elegant`. The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT`. AppKit: `kapi_ws_ctl`. |
 | 264 | `sound_client_volume (pid, volume, mute)` | That channel's volume 0..100 (−1: kept) and mute 0 / 1 (−1: kept), applied at once and remembered for the program's **name** until the restart → `volume \| 0x100` if muted, −1: no such channel. Any program may call it (the mixer's panel). |
 
 No existing call changes its shape; what they mean: `sound_acquire` gives **a channel** (1; 0 only when the 8

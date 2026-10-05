@@ -40,8 +40,10 @@ void el_core_window_remove (int id);
 // The pointer, in screen coordinates: buttons bit 0 left, 1 right, 2 middle; wheel in notches.
 void el_core_pointer (int x, int y, unsigned buttons, int wheel);
 
-// What changed since the last call drawn into `screen` (w x h, the row w pixels) -> 1, or 0:
-// nothing changed, nothing drawn.
-int el_core_compose (unsigned *screen, int w, int h);
+// What changed since the last call drawn into `screen` (w x h, the row w pixels) -> 0: nothing
+// changed, nothing drawn; -1: the whole screen; n > 0: n rectangles, in rects (x, y, w, h each; at
+// most EL_RECTS_MAX; rects 0: not wanted).
+#define EL_RECTS_MAX	16
+int el_core_compose (unsigned *screen, int w, int h, int *rects);
 
 #endif

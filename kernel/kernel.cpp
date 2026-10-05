@@ -31,6 +31,7 @@
 #include <kern/gui/gimage.h>
 #include <kern/net.h>
 #include <kern/ipc.h>		// IpcNotify ("Network up")
+#include <kern/wsrv.h>		// (v89) the graphics server: the display, the input may be its own
 #include <kern/sound.h>		// SoundCoreMain (core 1)
 #include <kern/ramfs.h>		// RAM:, the RAM volume (system.ini ramfs=)
 #include <kern/procx.h>		// (v75) a process's argv / environment blocks
@@ -603,6 +604,17 @@ public:
 				CScheduler::Get ()->MsSleep (100);
 				continue;
 			}
+			if (WsDisplayOwned ())
+			{
+				// The graphics server owns the display (kern/wsrv.h): nothing to draw. It is
+				// watched (silent too long: the display is ours again), and when it gives the
+				// display back the whole screen is drawn.
+				m_pWM->CompositorAlive ();
+				WsWatch ();
+				m_bFirst = TRUE;
+				CScheduler::Get ()->MsSleep (16);
+				continue;
+			}
 			if (m_pWM->FullscreenWindow () != 0)
 			{
 				// A full-screen app owns the display (kapi_present_fb): pause. Still alive for the
@@ -668,12 +680,31 @@ void DisplayPresentIdle (void)
 	while (CCompositorTask::s_bPresenting && CScheduler::IsActive ()) CScheduler::Get ()->Yield ();
 }
 
+// (kern/wsrv.h) A rectangle of the off-screen buffer sent by a task that is not the compositor: the
+// graphics server's present. As CCompositorTask::Present: the DMA started, then polled between yields.
+void DisplayPresentRect (unsigned x, unsigned y, unsigned w, unsigned h)
+{
+	DisplayPresentIdle ();
+	if (g_pGraphics == 0) return;
+	if (!g_bDisplayDma)
+	{
+		if (w == 0) g_pGraphics->UpdateDisplay (); else g_pGraphics->UpdateDisplay (x, y, w, h);
+		return;
+	}
+	CCompositorTask::s_bPresenting = TRUE;
+	if (g_pGraphics->UpdateDisplayStart (x, y, w, h))
+	{
+		while (!g_pGraphics->UpdateDisplayPoll ()) CScheduler::Get ()->Yield ();
+	}
+	CCompositorTask::s_bPresenting = FALSE;
+}
+
 int ScreenResizeRequest (int nW, int nH)
 {
 	if (nW < SCREEN_MIN_W || nH < SCREEN_MIN_H || nW > SCREEN_MAX_W || nH > SCREEN_MAX_H || (nW & 1) != 0)
 		return -1;
 	CWindowManager *pWM = CWindowManager::Get ();
-	if (!s_bCompositor || pWM == 0 || pWM->FullscreenWindow () != 0 || DebugConsoleActive ())
+	if (!s_bCompositor || pWM == 0 || pWM->FullscreenWindow () != 0 || DebugConsoleActive () || WsDisplayOwned ())
 		return -2;
 	static volatile boolean s_bBusy = FALSE;	// (one at a time)
 	if (s_bBusy) return -2;
@@ -1321,11 +1352,13 @@ private:
 		case MouseEventMouseUp:   s_nButtons &= ~nButtons; break;
 		case MouseEventMouseMove: s_nButtons = nButtons;   break;	// full state
 		case MouseEventMouseWheel:					// scroll notch, no button change
+			if (WsInputPointer ((int) nPosX, (int) nPosY, s_nButtons, nWheelMove)) return;
 			if (CWindowManager::Get () != 0)
 				CWindowManager::Get ()->OnMouseWheel ((int) nPosX, (int) nPosY, nWheelMove);
 			return;
 		default: break;
 		}
+		if (WsInputPointer ((int) nPosX, (int) nPosY, s_nButtons, 0)) return;	// (the graphics server's)
 		if (CWindowManager::Get () != 0)
 		{
 			CWindowManager::Get ()->OnMouse ((int) nPosX, (int) nPosY, s_nButtons);
@@ -1358,6 +1391,14 @@ private:
 			       | ((ucMods & 0x22) ? MOD_SHIFT : 0)
 			       | ((ucMods & 0x44) ? MOD_ALT : 0);
 		CWindowManager *pWM = CWindowManager::Get ();
+		static unsigned s_nWsMods = 0;
+		if (WsDisplayOwned ())			// (the graphics server's: kern/wsrv.h)
+		{
+			if (nMods != s_nWsMods) WsInputMods (nMods);
+			s_nWsMods = nMods;
+			WsInputHeldUsb (Keys);
+			pWM = 0;
+		}
 		if (pWM != 0 && pWM->Modifiers () != nMods) pWM->SetModifiers (nMods);
 		if (pWM != 0) pWM->SetUsbHeld (Keys);	// held keys (games, ABI v48)
 		static boolean s_bPrintHeld = FALSE;	// Print Screen: its press (not while it is held)
@@ -1371,6 +1412,7 @@ private:
 	{
 		// Route to the focused widget (a textbox); the WM edits its text + posts a
 		// TEXT_CHANGED event to the owning app.
+		if (WsInputKey (pString)) return;	// (the graphics server's)
 		if (CWindowManager::Get () != 0)
 		{
 			CWindowManager::Get ()->OnKey (pString);

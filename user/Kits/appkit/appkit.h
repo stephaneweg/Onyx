@@ -787,6 +787,11 @@ KAPI_FN int kapi_shell_request (int type, const void *in, unsigned len);
 KAPI_FN int kapi_mailbox_send (int target_pid, int type, const void *in, unsigned len);
 KAPI_FN int kapi_mailbox_recv (int *from_pid, int *type, void *buf, unsigned cap, int blocking);
 
+// (v89) The graphics server's own door to the kernel (Elegant, SD:/bin/elegant): the display, the raw
+// input, its wait -- KAPI_WS_* (kern/kapi_abi.h). Not for programs: a program's windows are the calls
+// above, whoever serves them. -> >= 0, or -KAPI_Exxx (-KAPI_ENOSYS: a kernel before v89).
+KAPI_FN long kapi_ws_ctl (int op, long a0, long a1, long a2);
+
 // Memory primitives (ABI v36): the kernel's (Circle's) memset/memcpy/memmove. Real
 // symbols (AppKit's; weak ones in a program that has the bodies inline) so the linker can see
 // them: the freestanding app Makefiles alias the C names onto them

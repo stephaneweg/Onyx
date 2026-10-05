@@ -202,7 +202,13 @@
 // v88: AppKit carries the starting of programs by their runner (lx_launch, lx_open...: it was
 //      user/launch.h). No entry added here:
 //      as v87, the number makes the packages of the programs rebuilt wait for this system's AppKit.
-#define KAPI_ABI_VERSION	88
+// v89: + ws_ctl (slot 265) -- what the kernel gives the graphics server, Elegant, a user process
+//      (kern/wsrv.h; the windows are leaving the kernel, docs/GUI-USERSPACE-STUDY.md): the role, the
+//      display (the kernel's compositor draws nothing while the server owns it; the server sends its
+//      rectangles), the raw input (mouse, keys, modifiers, held keys -- USB and injected -- to a ring
+//      the server reads instead of the kernel's window manager), one wait. Unused unless Elegant takes
+//      the display: nothing changes for the programs.
+#define KAPI_ABI_VERSION	89
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -935,6 +941,43 @@ struct kapi_sound_client
 	int	 queued;		// frames waiting in its stream
 	char	 name[KAPI_SOUND_NAME];	// the program's name ("media", "koton", "basic")
 	int	 reserved[4];
+};
+
+// (v89) The graphics server's operations (ws_ctl (op, a0, a1, a2) -> >= 0, or -KAPI_Exxx; kern/wsrv.h).
+// KAPI_WS_ACTIVE is anyone's; KAPI_WS_REGISTER makes the caller the server (the program "elegant",
+// when no live process is); the others are the server's own (-KAPI_EPERM).
+#define KAPI_WS_ACTIVE		0	// () -> the server's pid while it owns the display, else 0
+#define KAPI_WS_REGISTER	1	// () -> 1 the caller is the display server, 0 another one is
+#define KAPI_WS_DISPLAY		2	// (take 1 / give back 0, struct kapi_ws_display *out or 0) -> 0;
+					// -KAPI_EBUSY: a full-screen program has the display
+#define KAPI_WS_PRESENT		3	// (const struct kapi_ws_present *) -> 0: the rectangle shown
+#define KAPI_WS_INPUT		4	// (struct kapi_ws_input *out, max) -> how many events taken
+#define KAPI_WS_WAIT		5	// (timeout ms, at most 1000) -> KAPI_WS_PENDING_* bits
+#define KAPI_WS_PENDING_INPUT	1
+struct kapi_ws_display
+{
+	int	 w, h;			// the screen
+	int	 reserved[6];
+};
+struct kapi_ws_present
+{
+	const unsigned *pixels;		// the server's screen, 0x00RRGGBB, `stride` pixels a row (>= the
+	int	 stride;		// screen's width), from its row 0
+	int	 x, y, w, h;		// the rectangle to show (w <= 0: the whole screen)
+	int	 reserved[3];
+};
+#define KAPI_WS_IN_POINTER	1	// x, y (screen), buttons (bit 0 left, 1 right, 2 middle), a = wheel notches
+#define KAPI_WS_IN_KEY		2	// keys: the keyboard's cooked string (characters, VT100 escapes)
+#define KAPI_WS_IN_MODS		3	// a = the modifiers held (1 Ctrl, 2 Shift, 4 Alt)
+#define KAPI_WS_IN_HELD_USB	4	// keys[0..5]: the USB keyboards' report (usage codes held)
+#define KAPI_WS_IN_HELD		5	// a = a logical key code, buttons = 1 down / 0 up (injected: vncd, rdpd)
+struct kapi_ws_input
+{
+	unsigned type;			// KAPI_WS_IN_*
+	int	 x, y;
+	unsigned buttons;
+	int	 a;
+	char	 keys[44];
 };
 
 // (v84) The sound's outputs (sound_output; SD:/etc/sound.ini "output = auto | jack | usb | hdmi").
@@ -1904,6 +1947,9 @@ struct TKApiTable
 	// SD:/etc/mixer.ini: "media = 60", "media.mute = 1") -> volume | 0x100 if muted, -1: no such channel.
 	int (*sound_clients) (struct kapi_sound_client *out, int max);
 	int (*sound_client_volume) (unsigned pid, int volume, int mute);
+
+	// --- v89: the graphics server's mechanisms (sys/wsrv.cpp; KAPI_WS_*) ---
+	long (*ws_ctl) (int op, long a0, long a1, long a2);
 };
 
 // The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
@@ -1977,6 +2023,7 @@ KAPI_CHECK_SLOT (lib_open, 261);
 KAPI_CHECK_SLOT (sound_output, 262);
 KAPI_CHECK_SLOT (sound_clients, 263);
 KAPI_CHECK_SLOT (sound_client_volume, 264);
+KAPI_CHECK_SLOT (ws_ctl, 265);
 
 #ifdef __cplusplus
 }

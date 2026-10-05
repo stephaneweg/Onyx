@@ -398,6 +398,8 @@ KAPI_CALL (int, kapi_register_shell, (void), { return KT->register_shell (); })
 KAPI_CALL (int, kapi_shell_request, (int type, const void *in, unsigned len), { return KT->shell_request (type, in, len); })
 KAPI_CALL (int, kapi_mailbox_send, (int target_pid, int type, const void *in, unsigned len), { return KT->mailbox_send (target_pid, type, in, len); })
 KAPI_CALL (int, kapi_mailbox_recv, (int *from_pid, int *type, void *buf, unsigned cap, int blocking), { return KT->mailbox_recv (from_pid, type, buf, cap, blocking); })
+KAPI_CALL (long, kapi_ws_ctl, (int op, long a0, long a1, long a2),
+	{ return KT->version >= 89 && KT->ws_ctl ? KT->ws_ctl (op, a0, a1, a2) : -KAPI_ENOSYS; })
 
 // The memory primitives (appkit.h: real symbols, the C names are aliased onto them at link time).
 #ifndef _WIN32		// (the Windows build of the apps, pc/Koton: its C library's; no weak symbols there)

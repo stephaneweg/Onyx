@@ -101,7 +101,7 @@ void el_core_pointer (int x, int y, unsigned buttons, int wheel)
 }
 
 // (the kernel's compositor task, kernel/kernel.cpp: only what changed, by damaged rectangles)
-int el_core_compose (unsigned *screen, int w, int h)
+int el_core_compose (unsigned *screen, int w, int h, int *rects)
 {
 	if (s_pWM == 0 || screen == 0) return 0;
 	unsigned nGen = g_nScreenGen;
@@ -114,12 +114,17 @@ int el_core_compose (unsigned *screen, int w, int h)
 	{
 		s_bFirst = FALSE;
 		s_pWM->Composite (&Screen);
-		return 1;
+		return -1;
 	}
 	for (int i = 0; i < Damage.n; i++)
 	{
 		Screen.SetClip (Damage.x0[i], Damage.y0[i], Damage.x1[i], Damage.y1[i]);
 		s_pWM->Composite (&Screen, i == 0);
+		if (rects != 0)
+		{
+			rects[i * 4] = Damage.x0[i]; rects[i * 4 + 1] = Damage.y0[i];
+			rects[i * 4 + 2] = Damage.x1[i] - Damage.x0[i]; rects[i * 4 + 3] = Damage.y1[i] - Damage.y0[i];
+		}
 	}
-	return Damage.n > 0;
+	return Damage.n;
 }

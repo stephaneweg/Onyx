@@ -12,6 +12,7 @@
 //
 #include <kern/crashlog.h>
 #include <kern/vfs.h>
+#include <kern/wsrv.h>		// (v89) the graphics server: the display, the input may be its own
 #include <kern/ramfs.h>		// RAM:, the RAM volume
 #include <kern/sound.h>
 #include <kern/addrspace.h>
@@ -710,6 +711,11 @@ int kapi_screen_grab (unsigned *pDst, int nW, int nH)
 		return 2;
 	}
 	s_nGen = nGen; s_pLast = pDst;
+	if (WsDisplayOwned () && g_pGraphics != 0 && (int) g_pGraphics->GetWidth () == nW && (int) g_pGraphics->GetHeight () == nH)
+	{							// the graphics server's screen: the off-screen buffer
+		memcpy (pDst, g_pGraphics->GetBuffer (), (size_t) nW * nH * 4);
+		return 1;
+	}
 	unsigned nPitch = 0; const u8 *pSrc;
 	if (FsDirect (pWM) && (pSrc = (const u8 *) MapScreen (CurrentAS (), &nPitch)) != 0)	// the screen itself
 	{								// (mapped in the grabber, uncached)
@@ -735,6 +741,7 @@ void kapi_inject_pointer (int x, int y, unsigned nButtons, int nWheel)
 	{
 		return;
 	}
+	if (WsInputPointer (x, y, nButtons, nWheel)) return;	// (the graphics server's: kern/wsrv.h)
 	pWM->OnMouse (x, y, nButtons);
 	if (nWheel != 0)
 	{
@@ -748,6 +755,7 @@ void kapi_inject_key (const char *pKeys)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
 	CUserStr Keys (pKeys, 4096, TRUE);			// (read under the window manager's lock)
+	if (Keys.OK () && WsInputKey (Keys.Get ())) return;	// (the graphics server's)
 	if (pWM != 0 && Keys.OK ())
 	{
 		pWM->OnKey (Keys.Get ());
@@ -2511,9 +2519,9 @@ unsigned *kapi_fullscreen_begin (int *pW, int *pH)
 {
 	CAddressSpace *pAS = CurrentAS ();
 	CWindowManager *pWM = CWindowManager::Get ();
-	if (pAS == 0 || pWM == 0 || g_pGraphics == 0 || !OutOK (pW) || !OutOK (pH))
+	if (pAS == 0 || pWM == 0 || g_pGraphics == 0 || !OutOK (pW) || !OutOK (pH) || WsDisplayOwned ())
 	{
-		return 0;
+		return 0;			// (the graphics server owns the display: no full screen yet)
 	}
 	if (pAS->GetWindow () == 0 && CreateWindow (0, 0, 64, 64, "fullscreen", WIN_FLAG_BORDERLESS) == 0)
 	{
@@ -2713,6 +2721,7 @@ unsigned kapi_get_modifiers (void)
 void kapi_inject_modifiers (unsigned nMods)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
+	if (WsInputMods (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT))) return;
 	if (pWM != 0) pWM->SetModifiers (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT));
 }
 
@@ -2843,6 +2852,7 @@ int kapi_key_held (int nKey)
 void kapi_inject_key_held (int nKey, int bDown)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
+	if (WsInputHeld (nKey, bDown ? TRUE : FALSE)) return;
 	if (pWM != 0) pWM->SetInjectedHeld (nKey, bDown ? TRUE : FALSE);
 }
 

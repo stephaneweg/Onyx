@@ -5,6 +5,7 @@
 #include <kern/appcore.h>
 #include <kern/gui/window.h>		// CWindow + CWindowManager (process window)
 #include <kern/gui/surface.h>		// CSurfaceManager (free a dead owner's surfaces)
+#include <kern/wsrv.h>
 #include <kern/ipc.h>			// CMailbox + IpcOnProcessGone (activity-shell IPC)
 #include <kern/stream.h>		// CStream + CProcess (stdio teardown)
 #include <kern/kapi_abi.h>		// KAPI_TABLE_VA (fixed VA of the app's kapi table)
@@ -610,6 +611,7 @@ void AddressSpaceTaskTerminate (CTask *pTask)
 						pTask->GetName (), pAS->GetPid ());
 		NetCloseByPid (pAS->GetPid ());		// close any TCP sockets it leaked
 		IpcOnProcessGone (pAS->GetPid ());	// forget it in the IPC router (clears shell)
+		WsOnProcessGone (pAS->GetPid ());	// the graphics server gone: the display is the kernel's again
 		if (CSurfaceManager::Get () != 0)
 			CSurfaceManager::Get ()->DestroyByOwner (pAS->GetPid ());	// free its surfaces
 		pTask->SetUserData (0, TASK_USER_DATA_USER);
