@@ -16,8 +16,9 @@
 #   5. stages them into sdcard/ (make stage), next to the firmware and the files already there.
 #
 # Runs on Linux x86_64 or WSL 2 (Ubuntu). Keep the clone on the Linux side under WSL (~/, not
-# /mnt/c: ten times slower). Jet Browser (WebKit) is not rebuilt here: its build takes hours
-# (docs/08-WEBKIT-PORT.md); the card keeps the prebuilt one.
+# /mnt/c: ten times slower). Jet Browser (WebKit) is not built here -- its build takes hours
+# (docs/08-WEBKIT-PORT.md) -- and is not on the card: install the package `jet` on the Pi, from the
+# Package Manager (the Control Panel, the gear on the dock).
 #
 # MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 # granted, free of charge, to any person obtaining a copy of this software and associated documentation
@@ -111,3 +112,4 @@ fi
 say "done"
 echo "The card is in $ROOT/sdcard/: copy everything in it to the root of a FAT32 SD card"
 echo "(or run again with --card <dir>), put it in a Raspberry Pi 4 or a Pi 400, and power on."
+echo "Jet Browser is not on the card: install it from the Package Manager (the Control Panel, the gear on the dock)."

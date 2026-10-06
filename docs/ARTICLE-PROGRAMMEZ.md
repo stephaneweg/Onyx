@@ -290,6 +290,8 @@ https://claude.ai/code/artifact/99dc6049-2fea-4726-9aee-99ec4a1a705f
 - **Section finale « Pour essayer Onyx »** : le dépôt public, la carte prête (`sdcard/` à copier sur une carte
   FAT32), et la compilation sous Linux ou WSL 2 avec **`tools/build-sdcard.sh`** (écrit pour l'article :
   outils hôtes, toolchain Arm 14.2.rel1 téléchargée sans sudo, Circle, `make`, `make stage`, `--card`).
+  Testé dans un clone neuf : 5 min sur 4 cœurs. **Jet n'est pas sur la carte** (correction de l'utilisateur) :
+  il s'installe par le gestionnaire de paquets, dans le panneau de configuration (l'engrenage du dock).
 - Les exports DOCX envoyés : v0, v1 (avant capture et section finale).
 
 ## Ébauche de texte (v0, à reprendre)
