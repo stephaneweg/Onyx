@@ -4,6 +4,30 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Notes and Stickies, quick notes and the pinned ones on the desktop (AutoDev round 1, 2026-10-06): built, tested on the PC, branch `AutoDev` only
+
+Made by the AutoDev pipeline (`autodev/PIPELINE.md`; the round's documents: `autodev/rounds/01-notes/`, 02 the
+analysis and its 33 acceptance criteria, 03 the plan, 04 the design and its mock-ups, 06 what was built and tested).
+**Not in `main`, not published**: the user validates first. **Read docs/04 §12 *Notes* and §5 *Stickies***.
+
+- **Done**: `user/Apps/notes` (`main.cpp` the window, `notelist.h` the list, `notesmodel.*` the files -- one `.txt` a
+  note in `SD:/Notes`, `notes.ini`, the names, the dates, `config.ini` --, `stickies_proto.h` the two services) and
+  `user/Apps/stickies` (the cards on the desktop, the agenda's kind of window); UIKit `uk_text_wrap`,
+  `uk_text_over`, `WKT_TRASH`, `WKT_PIN` (`uikit.abi` 779-780); SystemKit `systemkit/autostart.h`
+  (`autostart_has`, `autostart_ensure`: `systemkit.abi` 59-60); `sdcard/etc/autostart` ships `#setup: run stickies`;
+  the package `[notes]` declared in `tools/pkg/packages.ini` (before `[onyx]`; needs `uikit >= 1.781, systemkit
+  >= 1.61` -- to confirm at publish time); the simulator's tooling (`fakekapi.cpp`: `SIM_SERVICES`, `SIM_ROFS`,
+  `SIM_CURSOR=follow`, the `copy` step, `SIM_STAT`, `SIM_MBOX` `@<ticks>:` lines, the windows' flags logged).
+- **Tested on the PC**: `sh tools/tests/run_notes_test.sh` (the model, the wrap, autostart, the simulator's
+  additions), `run_notes_sim_test.sh` (Notes, 67 checks), `run_stickies_sim_test.sh` (Stickies, 29 checks),
+  `shots.sh notes notes-empty stickies stickies-empty notes-desktop agenda desktop`.
+- **Not done here (no aarch64 compiler in the container)**: `make` / `make stage` -- libgen must accept the
+  hand-appended `.abi` lines; then on the Pi: a note pinned shows on the desktop within ~3 s, a reboot keeps the
+  pins and the Show / Hide setting, the drag of Stickies' header, Notes' 1 s autosave on the card.
+- **Ideas left for later**: IDEAS.md's *Notes rapides* row (the search, the checklist ticks, Sort by, the drag out,
+  Export, menu check marks, keyconf / Setup on `autostart.h`). `sdcard_lite/etc/autostart` gets the line at the next
+  publish (`mkrepo.py --lite`).
+
 ## Turtle Quest, the game that teaches programming with a turtle (2026-10-06): built, tested on the PC, published
 
 Asked as a task (IDEAS.md P9's "outil didactique ... tortue"): a game where the player types BASIC to move a turtle
@@ -1914,7 +1938,8 @@ Every new app: FreeType text through uikit's face, polished, its catalog entry i
 - **About / System**: a fuller successor to memmon (version, kernel, CPU, temperature, RAM,
   uptime, network, processes).
 - **Presentations** (as Impress), to complete Letters / Sheet / Cardfile.
-- **Quick notes** with a desktop widget that can be shown or hidden.
+- **Quick notes** with a desktop widget that can be shown or hidden -- **built** (AutoDev round 1, 2026-10-06, branch
+  `AutoDev`, waiting for the user's validation: *Notes* and *Stickies*, the section at the top).
 - (Storage applet: not for now. Updates: part of the future package manager / app store.)
 
 **Priority 3–4**: **Clock** (moved here by the user, 2026-10-02): alarms, timer, stopwatch, world clocks (notifications through notifyd; a small service for the alarms when the app is closed). **Video player** -- **done** (2026-10-02: the Media Player's videos); the **app store / package manager** (see IDEAS.md below; `docs/pkg/README.md`: `pkg`, the Package Manager `pkgman`, the daemon `pkgd` done and tested on the PC, the repository `onyx-packages` published (signed with the user's key, kept off the repositories), `sdcard_lite`; the Game Library finds its emulators from their app.txt; next: try it on the Pi; tryboot: not for now).

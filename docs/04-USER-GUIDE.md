@@ -287,7 +287,8 @@ On power-on:
    - **`run pkgd`** starts the **update daemon** (§11 *The Package Manager*);
    - **`run setup`** — on a new card only — starts **Setup**, the first-run wizard (below);
    - **`run menubar`** starts the **menu bar**, **`run dock`** the **dock**, **`run agenda`**
-     the **agenda widget**, **`run notifyd`** the notifications;
+     the **agenda widget**, **`run stickies`** the **pinned notes** (Stickies), **`run notifyd`**
+     the notifications;
    - **`keyb FR`** sets the keyboard layout.
 
    Optional: a line **`preload <program>`** loads a large program ahead and keeps it in memory, so
@@ -365,7 +366,8 @@ theme's colour, the others grey), the dock with the Internet drawer open, the me
 The "Onyx" desktop is made of the **menu bar** (`menubar`: the active app's menus, the Onyx
 menu, the time, the sound, the Wi-Fi), the **dock** (`dock`: the apps' drawers, the
 **workspaces**, lock / Control Panel / power, the Terminal, the File Viewer, the Trash) and the
-**agenda widget** (`agenda`). Everything is drawn in the theme's colours; the settings are in
+**agenda widget** (`agenda`), with the notes pinned in Notes beside it (**Stickies**, `stickies`).
+Everything is drawn in the theme's colours; the settings are in
 the **Control Panel** (§11).
 
 ### The menu bar (`menubar`)
@@ -520,6 +522,31 @@ the title** to move it (its place is kept in `SD:/apps/agenda.app/config.ini`).
 
 ![Agenda widget](../screenshots/agenda.png)
 *The agenda widget on a dark wallpaper.*
+
+### Stickies, the pinned notes (`stickies`)
+
+The notes **pinned** in **Notes** (§12, *Notes*) as paper cards on the wallpaper at the top right — the
+agenda's kind of widget (started by `autostart`, under every window; its header straight on the
+wallpaper, the ink chosen from it as the agenda's). Each card is a note in its colour: its title in
+bold, then up to six lines of its text, word-wrapped (**…** when it goes on). At most **six** cards, the
+pinned notes most recently changed, newest first; when they do not all fit, a line **+N more in Notes**.
+Nothing pinned: a dashed place, *No notes pinned — Click to open Notes*. It re-reads `SD:/Notes` every
+few seconds, and at once when Notes changes a note, so a note pinned, recoloured or edited shows by
+itself — also one changed by another program (the Text Editor, FTP).
+
+- **Click a card**: Notes opens on that note (the running Notes comes forward on it). **Click** the empty
+  place or *+N more*: Notes opens.
+- **Drag the header**: moves the widget; its place is kept in `SD:/apps/stickies.app/config.ini` (`x`, `y`).
+- Notes' **View ▸ Hide Stickies from the Desktop** ends it and keeps it off (`stickies = 0` in
+  `SD:/apps/notes.app/config.ini`: started at boot, it then quits at once); **View ▸ Show Stickies on the
+  Desktop** starts it again — and, if `SD:/etc/autostart` has no `run stickies` line (a card updated from
+  an older one), adds it after the agenda's line, saying so in Notes' status line. Hide never edits
+  `autostart`: remove its line by hand to keep it from starting at all.
+- Nothing is edited on the desktop: the cards only show the notes. Files read: `SD:/Notes/*.txt`,
+  `SD:/Notes/notes.ini`, `SD:/apps/notes.app/config.ini`; written: its own `config.ini`.
+
+![Stickies](../screenshots/stickies.png)
+*Stickies: three pinned notes at the top right of the desktop.*
 
 ### The clipboard (`clipd`, `clipboard`)
 
@@ -1827,7 +1854,7 @@ silver).
   ignored; the **`sleep <seconds>`** line (an init builtin) waits before the next line,
   to stagger the startup, and **`wait <command>`** runs the command and waits for its end
   (`wait pkg commit`, the first line: the packages staged for this boot moved in). Launch a **desktop app** with the `run` tool (`run <name>` →
-  `/apps/<name>.app/main`). Defaults: `run voronoy`, `run menubar`, `run notifyd`, `run dock`, `run agenda`, `keyb FR` (sets the
+  `/apps/<name>.app/main`). Defaults: `run voronoy`, `run menubar`, `run notifyd`, `run dock`, `run agenda`, `run stickies`, `keyb FR` (sets the
   keyboard layout at boot) `telnetd` (remote shell) and `vncd` (remote desktop) — see §8. Which program plays the `init` role is itself set
   by `init=` in `cmdline.txt` (see §3).
 
@@ -1960,6 +1987,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | App | Description and controls |
 |---|---|
 | **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. **Select** text with **Shift** + those keys, a mouse drag, Shift+click or ^A (Select All); typing replaces the selection. Menu **Edit**: Cut (^X), Copy (^C), Paste (^V), Select All (^A), Copy All. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). **Drop** a file on the window to open it, or text to insert it; New / Open / a drop first ask to **save unsaved changes** (Yes / No / Cancel). |
+| **Notes** (`notes`) | **Quick notes**, kept by themselves: the list of the notes on the left (newest first: a colour dot, the title — the first line —, the date, a pin when shown on the desktop), the note's text on the right in its colour; no Save: a note is written a second after the typing stops. **New Note** (^N), **Delete** (^D, Delete in the list: to the Trash), **Pin** (^P: on the desktop, by Stickies), six colours, Edit ▸ Copy Note, File ▸ Open in Text Editor (^E), View ▸ Show / Hide Stickies; `.txt` / `.md` files dropped on it become notes (see *Notes* below). Files: `SD:/Notes/*.txt`, `SD:/Notes/notes.ini`, `SD:/apps/notes.app/config.ini`. |
 | **PDF Viewer** (`pdf`) | The **reader of PDF documents** (MuPDF): a tab a document, the pages' thumbnails, the contents, a search with its hits by page, the zoom (fit the page / the width, 50 to 400 %), one page / continuous / two pages, rotation, full screen; text selected and copied, links followed, passwords, Properties; the home's recent documents reopened at their page. See *PDF Viewer* above. |
 | **Letters** | The **word processor**, in the way of AbiWord and Word: pages laid out and drawn with FreeType from the card's TrueType fonts, two toolbars (styles, fonts, sizes, bold / italic / underline / strike-through, superscript / subscript, colours, highlights, alignments, lists, indents, a table), a ruler (the indents, margins and a table's columns dragged), **tables** (merged cells, lines, shading, a heading row), **headers and footers** (the first page's own), **page numbers** and **fields** (date, time, pages), **tab stops** with leaders, a **table of contents**, images, Find and Replace, Special Character, Page Setup, Word Count, a **mail merge** (a Cardfile form's records into letters); **Word (.docx)**, **OpenDocument (.odt)** and **RTF** read and written with everything, text, HTML export. See *Letters, the word processor* below. |
 | **Koton** (`koton`) | The **music studio** (Koton Studio for Onyx): a song thought in harmony — a chord track of degree-locked chords with a next-chord co-pilot and cadences drives accompaniments (28 styles or a drawn grid of the chord's voices), melodic lines (the pitches from the harmony), riffs on a harmony-aware piano roll, drums (a catalog or drawn, euclidean), polyrhythmic rings; a SoundFont synthesizer on the third core, plugins as processes (instruments, effects, generators), **Compose with AI**, WAV export, a USB MIDI keyboard. Opens Koton's `.sq`, saves `.kson`. See *Koton, the studio* below. |
@@ -1981,6 +2009,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **setup** (Onyx Setup) | The **first-run wizard** (§4, *Setup*): country, keyboard, time zone, Wi-Fi, resolution, colours and wallpaper, the computer's name and the remote services; started by `run setup` in `SD:/etc/autostart` on a new card, it removes that line when done. Writes `SD:/etc/system.ini` (`timezone`, `ntp`, `hostname`), `SD:/etc/wpa_supplicant.conf`, `SD:/cmdline.txt` (the size kept), `SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini` and `SD:/etc/autostart`. The Wi-Fi page's **Connect** writes the network into `wpa_supplicant.conf` first, then joins it, waiting up to 60 s (a 2.4 GHz network's association and address can take a while); past that it says *Not connected yet (saved: joined at the next start)* — the network is kept either way. |
 | **wifimenu** (Wi-Fi Menu) | The box the menu bar's Wi-Fi icon opens (§5, *The menu bar*): the networks around, strongest first, the current one marked; a click joins one (a password field for a new secured network) without a reboot (`SD:/etc/wpa_supplicant.conf`, then the reconnect); **Wi-Fi Settings...** opens `wpaconf`. Esc closes it. |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
+| **stickies** (Stickies) | Desktop widget: the notes pinned in Notes, as cards at the top right; a click opens Notes on a note, the header drags it (see §5, *Stickies*). Reads `SD:/Notes`; writes `SD:/apps/stickies.app/config.ini`. |
 | **dock** (Dock) | The desktop's dock at the bottom: the drawers (a group's main app, the strip above opens the group's apps), the workspaces, lock / Control Panel / power, the Terminal, the File Viewer, the Trash (see §5, *The dock*). Reads `SD:/etc/dock.ini` (the Panel applet writes it). |
 | **lock** (Lock Screen) | The locked screen (the dock's padlock): the time and the date full screen; a click or a key unlocks it, or a PIN from `SD:/etc/lock.ini` (`pin = 1234`) then Enter (see §5). |
 | **fileviewer** (File Viewer) | NeXTSTEP-style column browser with a clickable path bar, file previews and copy/cut/paste (see §9). |
@@ -2012,6 +2041,75 @@ from the same code (the `.FMS` reader and the FM synthesizer of the Onyx kernel)
 drop `.fms` files on it; the folder's songs make the playlist (double-click one); Play /
 Pause, Stop, Previous / Next, Loop song; it shows the title, author, comment, position and
 each channel's note. Rebuild it with `tools/fmsplayer/build.sh` (MinGW-w64).
+
+### Notes, quick notes (`notes`)
+
+A note for what must not be forgotten — a shopping list, a code, a to-do — written at once and kept by
+itself; the ones that matter **pinned** on the desktop (by **Stickies**, §5). In the dock's
+**Productivity** drawer, or `run notes [note]`.
+
+![Notes](../screenshots/notes.png)
+*Notes: six notes, "Shopping" chosen (yellow, pinned on the desktop).*
+
+**The window**: a tool bar — **New Note** (the accent button), **Delete**, **Pin** (lit when the note is on
+the desktop), the **six colours** (yellow, green, blue, pink, purple, grey: the current one lit) —; the
+**list** of the notes on the left, newest first (each row: the colour's dot, the title in bold — the
+note's first line —, the date: *09:15* today, *Yesterday*, the day of the week, *15 Sep*, *15/09/2025* —,
+the next line, a pin when it is on the desktop); the chosen note's **text** on the right, on paper of its
+colour, under a line saying when it was changed, its colour and *On the desktop*; a status line (*6 notes
+· 3 on the desktop*, *✓ Saved*). The list and the text are split by a bar to drag.
+
+**Writing**: there is no Save. A note is written a second after the typing stops, when another note is
+chosen and when the window closes; its first line is its title (the list follows it as it is typed; the
+file keeps its name). A note left **empty** is not kept (a note emptied by hand goes to the Trash). A note
+holds up to **64 KB** of text (*This note is full* past it). If the card cannot be written (full,
+read-only) the status line says so in red and Notes tries again at the next pause; closing the window
+then puts the note's text on the **clipboard** and says so in a notification — nothing typed is lost.
+The first time (no `SD:/Notes` yet) Notes opens on an empty new note, the caret in it: nothing is
+written until something is typed.
+
+![Notes, the first time](../screenshots/notes-empty.png)
+*The first start: one new note, nothing written yet.*
+
+| Menu | Item | Keys | Does |
+|---|---|---|---|
+| File | New Note | Ctrl+N | an empty note at the top, the caret in it |
+| | Open in Text Editor | Ctrl+E | the note written, then opened in the Text Editor (`tinypad`) |
+| | Delete Note | Ctrl+D | the note to the **Trash** (no question: the Trash is the undo), the next one chosen, a notification |
+| Edit | Cut / Copy / Paste, Select All | Ctrl+X / C / V, Ctrl+A | in the text (the shared clipboard) |
+| | Copy Note | | the whole note to the clipboard |
+| Note | Pin to Desktop / Unpin from Desktop | Ctrl+P | shown on the desktop by Stickies, or not (the item says what it will do; the tool bar's Pin is lit when pinned) |
+| | Yellow, Green, Blue, Pink, Purple, Grey | | the note's colour (also the tool bar's dots) |
+| View | Show Stickies on the Desktop / Hide Stickies from the Desktop | | Stickies started or ended (below) |
+
+In the **list**: Up / Down / Page Up / Page Down / Home / End choose a note, **Enter** or **Tab** go to the
+text, **Delete** deletes the note; in the text, **Tab** goes back to the list. **Ctrl+Q** or the close
+button: quit (the note written first). Files (`.txt`, `.md`) **dropped** on the window become new notes
+(a file over 64 KB or not text is refused, in one box); dropped text goes in at the caret. Notes picks up
+notes changed by another program (the Text Editor, FTP, a PC) within a few seconds. One Notes at a time:
+`notes <note>` while it runs brings it forward on that note (Stickies' clicks do the same).
+
+**Stickies** (`View ▸ Show / Hide Stickies…`): *Show* starts Stickies and, when `SD:/etc/autostart` has no
+`run stickies` line yet (or a `#setup: run stickies` one, held back by Setup), adds it right after the
+agenda's line so that it starts at every boot — the status line says *Stickies shown, and started at every
+boot (SD:/etc/autostart).*, *Stickies shown.* (the line was there) or *Stickies shown (autostart not
+written).*; *Hide* ends it and keeps it off (*Stickies hidden.*; the `autostart` line is left as it is).
+Pinning a note while Stickies is hidden pins it only (Stickies shows it once shown again).
+
+![Notes and Stickies on the desktop](../screenshots/notes-desktop.png)
+*The desktop: the agenda at the top left, Stickies at the top right, the Notes window in front of it.*
+
+**Files**:
+
+| File | What |
+|---|---|
+| `SD:/Notes/note-YYYYMMDD-HHMMSS.txt` | a note: its text exactly (UTF-8, plain text, `\n` lines), named when it was made; any `.txt` put there (by FTP, the Text Editor) is a note too |
+| `SD:/Notes/notes.ini` | each note's `colour`, `pinned` (1: on the desktop) and `modified` (`YYYYMMDDHHMMSS`, the list's order) — a note without a section is yellow, not pinned |
+| `SD:/apps/notes.app/config.ini` | `stickies` (1 shown / 0 hidden), `last` (the note chosen at the next start), `width`, `height`, `split` |
+| `SD:/apps/stickies.app/config.ini` | Stickies' place (`x`, `y`) |
+| `SD:/etc/autostart` | `run stickies` (or `#setup: run stickies` on a new card), added by *View ▸ Show Stickies* when missing |
+
+Deleted notes are in the Trash (`SD:/.Trash`, the dock's Trash: restore one there).
 
 ### Letters, the word processor (`letters`)
 
