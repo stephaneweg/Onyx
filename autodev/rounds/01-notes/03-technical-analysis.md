@@ -9,9 +9,10 @@ below). Read: CLAUDE.md, `autodev/PIPELINE.md` §3, `user/Apps/agenda/main.cpp`,
 `tools/tests/{mock_kapi.h,run_trash_test.sh,run_ledger_test.sh}`.
 
 **Summary.** Everything needed exists except: an owner-drawn note list (beside the app), a `notes.ini`
-reader/writer (beside the app — AppKit's `.ini` reader is too small, see 1.3), a word-wrap helper (UIKit:
-the only kit change, append-only), and three small additions to the PC simulator's stand-in kernel (test tools
-only). **No kapi change, no kernel change.** Menus have no check marks and no sub-menus: the toggles change their
+reader/writer (beside the app — AppKit's `.ini` reader is too small, see 1.3), UIKit additions (`uk_text_wrap`,
+`uk_text_over`, two tool icons — append-only), one **SystemKit** helper (`systemkit/autostart.h`: the
+autostart line, §3.7), and a few additions to the PC simulator's stand-in kernel (test tools only, §3.6).
+**No kapi change, no kernel change.** (Revised after validation 1: see the last section.) Menus have no check marks and no sub-menus: the toggles change their
 label instead (a decision for the UX Designer, §3.4).
 
 ---
@@ -122,6 +123,10 @@ user/Apps/notes/stickies_proto.h  the two services' names and message types     
 user/Apps/stickies/main.cpp       Stickies widget (includes "Apps/notes/notesmodel.h")          (new, MIT)
 user/Kits/uikit/text.h/.cpp       + uk_text_wrap                                                (change)
 user/Kits/uikit/uikit.abi         + one line (append)                                           (change)
+user/Kits/systemkit/autostart.h/.inc  autostart_has / autostart_ensure (§3.7)                    (new, MIT)
+user/Kits/systemkit/systemkit.h, systemkit.cpp, systemkit.abi  + the include / the .inc / 2 lines (change)
+tools/docgen/kitdocs.py           "systemkit/autostart.h" added to SystemKit's header list       (change)
+tools/tests/notes/autostart_test.cpp  unit test of the helper (run by run_notes_test.sh)       (new, MIT)
 sdcard/apps/notes.app/{app.txt,icon.bmp}, sdcard/apps/stickies.app/{app.txt,icon.bmp}           (new)
 tools/icons/notes_icon.py         both icons (a note pad; a pinned sticky note), slides_icon.py's way (new)
 user/Makefile                     FT_APPS += notes stickies; FT_EXTRA_notes/stickies = Apps/notes/notesmodel.cpp; deps
@@ -185,9 +190,13 @@ unknown → sorted last, the date column empty). An unsaved new note is an in-me
   refusal, "Saved"). Sizes / split from `NotesCfg`.
 - **Start**: `ft_uikit_install`; if the service `notes` already exists, forward the argument
   (`NOTES_MSG_OPEN` + path), `kapi_raise_app ("notes")`, exit (one Notes at a time); else
-  `kapi_ipc_register ("notes")`; `notes_scan`; select: the argument's note (AC 14), else `cfg.last`, else the
+  `kapi_ipc_register ("notes")` — **a failed register means "go on alone"** (no forwarding service, Stickies then
+  uses `lx_launch`), never "exit"; `notes_scan`; select: the argument's note (AC 14), else `cfg.last`, else the
   newest (AC 2); none → a new empty note, caret in the editor, nothing written (AC 3).
-- **Editing / autosave** (AC 4, 5, 7, 15): `NoteEdit::onKey` marks `dirty` + `lastEdit = kapi_get_ticks ()`;
+- **Editing / autosave** (AC 4, 5, 7, 15): `NoteEdit::onKey` marks `dirty` + `lastEdit = kapi_get_ticks ()`
+  (**`KEY_TAB` intercepted first**: to the list; Enter / Tab in the list go to the editor). Dirty is also marked,
+  and the row re-titled, after **every other change of the text**: the menu's Cut / Paste, a `DND_TEXT` drop
+  (`insertText`), the 64 KB paste cut (R8), and `Textarea` mouse edits if any;
   the list row's title follows (`notes_title` each key, cheap); `onTick`: dirty and `now - lastEdit ≥ 100`
   ticks (1 s) → `notes_write` + `notes_save_ini`, then `STK_MSG_RELOAD` to Stickies if it runs. Also saved on a
   selection change and after `run ()` returns (the window closed / Ctrl+Q — the simulator's `quit` step runs
@@ -195,20 +204,27 @@ unknown → sorted last, the date column empty). An unsaved new note is an in-me
   selection, quit) removes it; if it had a file (a note emptied by the user), that file is removed with
   `kapi_remove` (the analyst's "not kept"; the UX Designer may prefer the Trash).
   Full: `len ≥ NOTE_MAX_BYTES` after a key/paste → status "This note is full (64 KB)".
-- **Menus** (rebuilt by one `build_menu ()` whenever a toggle changes; §3.4): *File*: New Note ^N, Delete Note ^D,
-  (should: Open in Text Editor, Export…); *Edit*: Cut ^X, Copy ^C, Paste ^V, Select All ^A, Copy Note; *Note*:
+- **Menus** (rebuilt by one `build_menu ()` whenever a toggle changes; §3.4): *File*: New Note ^N, (should:
+  Open in Text Editor ^E), Delete Note ^D; *Edit*: Cut ^X, Copy ^C, Paste ^V, Select All ^A, Copy Note; *Note*:
   Pin to Desktop / Unpin from Desktop ^P, Yellow … Grey (six items); *View*: Show Stickies on the Desktop /
-  Hide Stickies from the Desktop, (should: Find ^F, Sort by Title / Date). Ctrl+Q is the bar's.
+  Hide Stickies from the Desktop. Ctrl+Q is the bar's. (No Find, Sort by, Export this round: §5 step 9.)
+- **Dialogs**: FontKit's `ft_messagebox` (`fontkit/uikitface.h`), not a bare `uk_messagebox`, so they have the
+  app's face.
 - **Delete** (AC 8): `notes_trash`, select the next row, `notify ("Notes", "Note moved to the Trash")`.
 - **Colour / pin** (AC 9, 10): set, `notes_save_ini`, list redraw, `STK_MSG_RELOAD`.
 - **Show/Hide Stickies** (AC 11): `cfg.stickies` saved; off → `kapi_mailbox_send (pid, STK_MSG_QUIT)` if
-  `kapi_ipc_lookup ("stickies")`; on → `lx_launch ("stickies", 0)` if not running.
+  `kapi_ipc_lookup ("stickies")`, autostart untouched; on → `lx_launch ("stickies", 0)` if not running, **and
+  the autostart line ensured** (§3.7, the only place Notes writes `SD:/etc/autostart`), the status line saying so.
+  A **pin** never writes autostart: with `stickies = 0` it launches nothing (the label stays *Show Stickies…*);
+  with `stickies = 1` and the service absent it only `lx_launch`es Stickies.
 - **Drop** (AC 13): `Root::onDrop`: `DND_FILES` over the list (x < split) → each `.txt`/`.md` read
   (`notes_read`, max 64 KB) into a **new** note (new name, saved at once, selected); `DND_TEXT` (or a drop over
   the editor) → `insertText` at the caret.
 - **IPC drained in `onTick`**: `NOTES_MSG_OPEN` (path) → save the current one, rescan, select it.
-- **Rescan** when the window becomes active again or every ~5 s when idle (hand-put files, Stickies' should
-  checklist tick) — never while the current note is dirty.
+- **Rescan** every ~5 s when idle (optionally also on `GUI_EVENT_PTR_ENTER`) — hand-put files. There is **no
+  "window activated" event** (`Root` / AppKit have none), so no rescan on activation. Gated by a cheap signature
+  (the listing's names + sizes + `notes.ini`'s size, as Stickies does): a full `notes_scan` only when it changed.
+  Never while the current note is dirty.
 
 ### 3.4 Menus without check marks (decision for the UX Designer)
 
@@ -232,18 +248,45 @@ met by the label + the lit toggle). Adding real check marks is a UIKit + menubar
   pinned: the hint *"No notes pinned — open Notes"* (AC 21).
 - **Click** a card → `lx_launch ("notes", "SD:/Notes/<file>")`, or, when the `notes` service exists, send it
   `NOTES_MSG_OPEN` + `kapi_raise_app ("notes")` (AC 15, 23). The hint → `lx_launch ("notes", 0)`.
+- **Header ink after a wallpaper change**: the poll re-reads the wallpaper under the widget, as the agenda does
+  (`agenda/main.cpp:316`) — Theme restarts only `menubar` and `agenda` (`theme/main.cpp:539`), not Stickies.
+- The window is created with exactly `WIN_FLAG_BORDERLESS | WIN_FLAG_BACKMOST | WIN_FLAG_SYSTEM | WIN_FLAG_ALPHA`
+  (AC 27; asserted through the sim log, §3.6 item 6).
 
-### 3.6 Simulator additions (test tools only, `fakekapi.cpp`)
+### 3.6 Simulator additions (test tools only, `tools/tests/desktop_sim/fakekapi.cpp`)
 
-1. **`SIM_SERVICES="notify,stickies"`**: those names exist for `kapi_ipc_lookup` (pid 700+k) and
-   `kapi_mailbox_send` to them is **logged** (`sim: send <name> type <t> "<payload>"`). Needed because
-   `notify ()` without a `notify` service calls `kapi_launch ("notifyd")` then **waits 40 × `kapi_msleep (50)`**,
-   and in the simulator every `msleep` consumes one script step — the scenario would lose 40 steps. Without
-   `SIM_SERVICES` nothing changes for the existing scenarios.
+How it works today (read in the code): the script `SIM` is `;`-separated, **one step per `msleep`** of the
+app (`step ()`, line ~510: `wait`, `down/up/move`, `key`, `menu`, `drop`, `dump`, `waitlog`, `quit`, `exit`).
+`ipc_lookup` (line 1232) answers `control` for `SIM_APPLET`/`SIM_MAIL`, **pid 7 for any name when `SIM_MBOX` is
+set**, else 0. The table's `ipc_register` is **`ipc_register_note`** (line 1319/1387): 1 with `SIM_NOTE`, else
+`ipc_register` = 1 only for `control` / `dock` — so `notes` / `stickies` get **0** today. `mailbox_recv` is
+`mailbox_recv_note`: `SIM_MBOX`'s canned `type:pid:payload` lines, one per call (non-blocking `-1` when used up).
+`mailbox_send` returns 0 and logs nothing (without `SIM_IPC`). `save_file` / `f_mkdir` / `f_rename` /
+`file_out` write under `SIM_WRITES` through `wpath ()`. The additions (nothing changes when their variable is unset):
+
+1. **`SIM_SERVICES="notify,stickies"`** (a list, may be `-` for "none"):
+   - `ipc_lookup` answers **only** the listed names (pid 700 + index), **even with `SIM_MBOX`** (its "pid 7 for
+     any name" applies only when `SIM_SERVICES` is unset) — so Notes' single-instance check does not see a
+     `notes` service unless the test lists it, and Stickies' click takes the `lx_launch` path (AC 23's
+     `sim: exec … notes` / `sim: launch notes` log line appears);
+   - `ipc_register` (both `ipc_register` and `ipc_register_note`) returns **1 for any name**;
+   - `mailbox_send` to a listed pid is **logged**: `sim: send <name> type <t> "<payload>"`.
+   Needed also because `notify ()` without a `notify` service calls `kapi_launch ("notifyd")` then waits
+   **40 × `kapi_msleep (50)`** (`notify.inc:24`), and every `msleep` consumes one script step.
 2. **`SIM_CURSOR=follow`**: `kapi_cursor_pos` returns the last scripted pointer position in screen coordinates
    (window place + client point), so a header drag really moves the widget (AC 24). Default unchanged.
-3. **`path_stat`** (and `clock_info` with `tz_minutes = 0`) from the host's `stat ()` of `sdpath ()`: the
+3. **`SIM_ROFS=<prefix>`** (e.g. `SD:/Notes`): `save_file`, `f_mkdir`, `f_rename`, `f_remove` and `file_out`
+   on a path under that prefix (compared after `relpath ()`, case-insensitive) **fail** (-1 / null), and log
+   `sim: rofs <path>`. Replaces `chmod a-w`, which does nothing when the tests run as root (this container,
+   many CI runners) — G4's failed-save test.
+4. **Script step `copy SRC DST`**: SRC a host path, DST a card path; the file is copied to `wpath (DST)` (into
+   `SIM_WRITES`, folders made) **at that step**, logged `sim: copy DST`. AC 26 then runs deterministically:
+   `…;waits 200;copy $D/sd/notes2.ini SD:/Notes/notes.ini;waits 200;dump …`.
+5. **`path_stat`** (and `clock_info` with `tz_minutes = 0`) from the host's `stat ()` of `sdpath ()`: the
    mtime fallback testable (AC 17 for hand-put files). Optional.
+6. **`create_window_ex` logs its flags**: `sim: window <title> flags 0x<hex>` (AC 27's back-most / borderless
+   check; one line, harmless for the other scenarios).
+Each is documented in the comment block at the top of `fakekapi.cpp`.
 
 Waiting ~1 s in a script: a turn of `Root::run` is `msleep (16)` → +2 ticks; 1 s = 100 ticks ≈ 50 `wait`s. A
 helper in `shots.sh` / the sim test: `waits () { i=0; o=""; while [ $i -lt $1 ]; do o="$o;wait"; i=$((i+1)); done; printf '%s' "${o#;}"; }`.
@@ -251,6 +294,60 @@ The simulator's clock is fixed (2026-09-28 12:34:00): every note it creates is `
 second `…-123400-2.txt` (AC 18 shows itself). **The sample notes must be dated ≤ 2026-09-28** (not
 2026-10-05 as in AC 14's example): e.g. `note-20260928-091500.txt` (today: shows "09:15"),
 `note-20260927-183012.txt`, `note-20260915-101500.txt`, plus pinned ones for Stickies.
+Each scenario seeds a **fresh** `SIM_WRITES` (§2); `tools/tests/desktop_sim/sd/notes.txt` (tinypad's sample) and
+`sd/Notes/` coexist (different names, also on a case-insensitive file system).
+
+### 3.7 The autostart line — SystemKit `systemkit/autostart.h` (after validation 1, gap 1)
+
+Today exactly one app edits `SD:/etc/autostart`: Keyboard & Mouse (`user/Apps/keyconf/main.cpp:56–96`,
+a private `set_line` that replaces the `keyb` line, or appends it, only on an explicit choice, and says so in
+its status line). Setup has its own (`user/Apps/setup/system.h:210–290`, the `#setup:` lines). `preload /boot`
+is documented as **the last line** (`systemkit/preloadini.h:3`, the Preload applet's text
+`preloadconf/main.cpp:220`). The helper follows keyconf's manners and keeps that invariant.
+
+**Layout checked**: SystemKit = one header per subject beside `systemkit.h`, which includes them (the C
+subjects unconditionally, the C++ ones under `#ifdef __cplusplus`); functions declared `SK_API` (`sk_api.h`:
+`extern "C"` on AArch64 → **plain symbol names** in `systemkit.abi`; `static inline` on the PC with the body
+from the subject's `.inc`, so the simulator and the unit tests get it for free); the library's bodies come from
+`systemkit.cpp`, which `#include`s every `.h` then every `.inc`. Programs include **only `systemkit/systemkit.h`**
+(the one-header rule) — so the new header is **included by `systemkit.h`** and declared nowhere else.
+
+```c
+// user/Kits/systemkit/autostart.h  (MIT; C-compatible: in systemkit.h's C part, beside preloadini.h)
+#define AUTOSTART_PATH  "SD:/etc/autostart"
+#define AUTOSTART_MAX   16384                 // a bigger file is left alone (never cut, unlike keyconf's 8 KB)
+// Is `cmd` (e.g. "run stickies") started at boot? -> 1 an active line "<cmd>" (spaces before / words after
+// allowed), or a held-back "#setup: <cmd>" line (Setup gives it back); 0 none (or no file)
+SK_API int autostart_has (const char *cmd);
+// Make sure `cmd` is started at boot. Nothing written when autostart_has (cmd) -> 1. Else `cmd` (preceded by
+// the comment line `comment`, "# ..." or 0) is INSERTED: right after the first line whose command (after spaces
+// and an optional "#setup: ") starts with the words `after` (e.g. "run agenda") -- with that line's "#setup: "
+// prefix when it has one (Setup still pending: held back with it); else before the first "preload" line (it
+// stays last); else at the end. Every other line kept byte for byte.
+// -> 1 already there, 2 added, 0 not written (no room, file too big, save failed)
+SK_API int autostart_ensure (const char *cmd, const char *after, const char *comment);
+```
+
+- `autostart.inc`: the bodies (`kapi_open/read/close`, `kapi_save_file`, whole file), helpers `static`
+  (not exported). `systemkit.h` gains `#include "autostart.h"` (and its subject line in the header comment);
+  `systemkit.cpp` `#include "autostart.h"` / `"autostart.inc"`; **`systemkit.abi` appended**: `59 autostart_ensure`,
+  `60 autostart_has` (after `58 dock_layout_save`; libgen confirms at the user's `make`, R1);
+  `tools/docgen/kitdocs.py`: `"systemkit/autostart.h"` added to SystemKit's header list → `docs/12-SYSTEMKIT.md`
+  regenerated; docs/06 SystemKit: one line.
+- Notes calls `autostart_ensure ("run stickies", "run agenda", "# Stickies: the pinned notes on the desktop
+  (Notes, View menu)")` **only** in *View ▸ Show Stickies on the Desktop*; status line *"Stickies shown, and
+  started at every boot (SD:/etc/autostart)"* (1 or 2) or *"Stickies shown (autostart not written)"* (0).
+  Hide never edits it (the user removes the line by hand if wanted; docs/04 says so — as the agenda's line).
+- **Unit test** `tools/tests/notes/autostart_test.cpp` (in `run_notes_test.sh`, linked with `fakekapi.o`, each
+  case seeding `SIM_WRITES/etc/autostart`): inserted after `run agenda`; after `#setup: run agenda` → inserted as
+  `#setup: run stickies`; no agenda line → before `preload /boot`, which stays last; neither → at the end (also a
+  file without a final newline); no file → created with the line; `run stickies` present (also indented, also
+  `run stickies --x`) → returns 1, file byte-identical; `#setup: run stickies` present → 1, unchanged; called
+  twice → exactly one line; `# run stickies` (a plain comment) is **not** a match; a 20 KB file → 0, unchanged;
+  `SIM_ROFS=SD:/etc` → 0.
+- **Later (note only, IDEAS.md line)**: keyconf's `set_line` (replace a `keyb` line) and Setup's
+  `autostart_finish` could move onto this helper (an `autostart_set (prefix, line)` would be the third
+  function). Not this round.
 
 ---
 
@@ -260,7 +357,7 @@ second `…-123400-2.txt` (AC 18 shows itself). **The sample notes must be dated
 |---|---|---|
 | R1 | **No cross toolchain here**: the Pi build, `make stage`, the real `uikit.abi` append by libgen, and AC 29 / 33 cannot be checked in this container. | Everything else is verified on the PC (unit tests, simulator). The `uikit.abi` line is appended by hand with the Itanium-mangled name taken from the host `nm` (`_ZN5uikit12uk_text_wrapE…` — same mangling on AArch64 LP64), to be confirmed by the user's `make` (libgen checks the table). If in doubt, `uk_text_wrap` can stay `static` in Stickies for this round and move to UIKit later — the plan keeps it in UIKit per the kits-first rule. |
 | R2 | **Package grouping**: `[onyx]` has `apps = Shell Settings`, so `stickies.app` (`category = Shell`) would be swallowed by the base system package ("a file is taken by the first section that names it"). | Declare **`[notes]` before `[onyx]`** in `packages.ini` with `files = apps/notes.app/ apps/stickies.app/` (Stickies keeps `category = Shell`, hidden from the dock's drawers like Agenda). Check which package takes `apps/stickies.app/` with `tools/pkg/mkrepo.py` (without publishing — AutoDev rule). |
-| R3 | **Autostart on existing cards**: `etc/*` is `config` of `[onyx]` (the user's, never overwritten), so an updated card never gets the new `run stickies` line; no package key adds autostart lines. | Ship `#setup: run stickies` in `sdcard/etc/autostart` (new cards, Setup gives it back). And **Notes' "Show Stickies" launches Stickies itself**; optionally, Notes appends `run stickies` to `SD:/etc/autostart` once when the user switches it on and the line is absent (a small, guarded write — the UX Designer / the user decide; default plan: only launch, plus a note in docs/04). |
+| R3 | **Autostart on existing cards**: `etc/*` is `config` of `[onyx]` (the user's, never overwritten), so an updated card never gets the new `run stickies` line; no package key adds autostart lines. | Ship `#setup: run stickies` in `sdcard/etc/autostart` (new cards, Setup gives it back). On existing cards, **Notes' explicit *View ▸ Show Stickies on the Desktop*** launches Stickies and ensures the line through SystemKit's `autostart_ensure` (§3.7: inserted after the agenda's line, never after `preload /boot`, `#setup:`-aware, told in the status line); never on a pin, never on Hide. AC 31's "autostart line" is this, not a package key (none exists). |
 | R4 | Clock not set (`kapi_get_datetime` → 0, before NTP): names/`modified` from the time since boot (year 1970/0). | Names stay unique (the `-k` suffix); `modified` then sorts oddly until the next edit with a real clock. Accept; documented. |
 | R5 | `SD:/Notes` vs the sample `SD:/notes.txt` (tinypad's): FAT is case-insensitive but the names differ (`Notes` / `notes.txt`): no clash. | — |
 | R6 | Stickies' poll cost: listing + `notes.ini` + ≤ 6 × 2 KB every 3 s. | Negligible (agenda reads 16 KB every 3 s). |
@@ -275,15 +372,23 @@ Measured: `sh tools/tests/desktop_sim/shots.sh agenda` in this container (first 
 
 ## 5. Implementation plan (each step testable on its own)
 
-**Step 0 — test tooling.** `fakekapi.cpp`: `SIM_SERVICES` + logged sends, `SIM_CURSOR=follow`, `path_stat` /
-`clock_info`. Sample data `tools/tests/desktop_sim/sd/Notes/` (5 notes: 3 pinned yellow/green/pink, 2 not;
-`notes.ini`; one `.txt` with `\r\n` and no section). *Test*: `shots.sh agenda desktop` unchanged
-(pictures identical); a tiny probe that `SIM_SERVICES=notify` + `notify ()` logs one send and consumes no step.
+**Step 0 — test tooling.** `fakekapi.cpp` (§3.6): `SIM_SERVICES` (lookup only the listed names even with
+`SIM_MBOX`; register 1 for any name, in `ipc_register` and `ipc_register_note`; logged sends), `SIM_CURSOR=follow`,
+`SIM_ROFS=<prefix>`, the script step `copy SRC DST`, the window flags logged, `path_stat` / `clock_info`; the
+header comment updated. Sample data `tools/tests/desktop_sim/sd/Notes/` (the mock-up's notes, dated ≤ 2026-09-28:
+pinned yellow/green/pink and unpinned; `notes.ini`; one `.txt` with `\r\n` and no section) + `sd/notes2.ini` (AC
+26's changed copy). *Test*: `shots.sh agenda desktop` unchanged (pictures identical); a tiny probe program
+(`tools/tests/notes/sim_probe.cpp`, run by `run_notes_test.sh`): `SIM_SERVICES=notify` + `notify ()` logs one send
+and consumes no step; `SIM_SERVICES=- SIM_MBOX=…` → `kapi_ipc_lookup ("notes")` = 0 and `kapi_ipc_register
+("notes")` = 1; `SIM_ROFS=SD:/Notes` → `kapi_save_file ("SD:/Notes/a.txt")` < 0 and `SD:/x.txt` ≥ 0;
+`SIM="copy F SD:/Notes/b.txt;wait"` → the file in the writes after one `msleep`.
 
 **Step 1 — UIKit `uk_text_wrap`.** `int uk_text_wrap (const char *s, int n, int w, int maxLines, int *start,
 int *len, bool *more = 0, int style = 0)` in `text.h`/`text.cpp` (words broken at spaces, `\n` honoured, a word
 wider than `w` cut at a character — UTF-8 through `uk_u8_next`, widths by `uk_tw_n`; `*more` = text left).
-`uikit.abi` + one line; `python tools/docgen/kitdocs.py`; docs/06 UIKit paragraph one line. *Test*: a host test
+`uikit.abi` + one line (by hand: slots strictly sequential after the file's last, names from the host `nm` of
+`text.o`; flagged in `06-development.md` for the user's `make`, where libgen verifies); `python
+tools/docgen/kitdocs.py`; docs/06 UIKit paragraph one line. *Test*: a host test
 (`tools/tests/notes/wrap_test.cpp` linked with the host UIKit objects + `fakekapi.o`): bitmap font widths →
 exact breaks; a 300-char word; `\n\n`; `more` flag.
 
@@ -298,7 +403,10 @@ selection: argument / `last` / newest / new empty), `user/Makefile` (`FT_APPS +=
 `sdcard/apps/notes.app/app.txt` (`name = Notes`, `category = Productivity`), `tools/icons/notes_icon.py` →
 `icon.bmp`; `shots.sh`: `notes` in `APPS` and the FT case list, `extra=user/Apps/notes/notesmodel.cpp` for notes
 and stickies, scenario `notes` (seeded writes). *Test*: `shots.sh notes` → `screenshots/notes.png`; sim test
-cases AC 1, 2, 3 (no `SD:/Notes` → nothing in writes), 5, 14.
+cases AC 1, 2, 3 (no `SD:/Notes` → **`SD:/Notes` absent from the writes** — not "the writes empty": Notes
+legitimately writes `SD:/apps/notes.app/config.ini` at quit), 5, 14. `shots.sh`: `notes` and `stickies` in `APPS`
+**and** in the FT case list (`shots.sh:142`), `extra=user/Apps/notes/notesmodel.cpp` for both; commit only the
+intended PNGs (R7).
 
 **Step 4 — editing and autosave.** Dirty tracking, 1 s save, save on select / quit, empty-note rule, Ctrl+N, 64 KB
 status. *Test* (`run_notes_sim_test.sh`, asserting on the writes): AC 4 (`typ 'Shopping'; key 10; …; waits 60`
@@ -311,28 +419,46 @@ status. *Test* (`run_notes_sim_test.sh`, asserting on the writes): AC 4 (`typ 'S
 **Step 6 — Stickies.** `user/Apps/stickies/main.cpp`, Makefile (`FT_APPS += stickies`,
 `FT_EXTRA_stickies = Apps/notes/notesmodel.cpp`), `sdcard/apps/stickies.app/app.txt` (`name = Stickies`,
 `category = Shell`) + icon. *Test*: `shots.sh stickies` (AC 19); sim cases AC 20 (8 pinned), 21 (none pinned:
-hint; click → log `sim: exec …notes`), 22 (`stickies = 0` → no dump, exit 0), 23 (click → `notes` with the path
-in the log), 24 (`SIM_CURSOR=follow`, drag, `config.ini` in writes; second run opens there), 25 (`SIM_MBOX`
-quit / reload), 26 (a script step cannot change files mid-run: run with `SIM_SLEEP=1` and a background `cp`
-between polls, or poll twice with a changed seeded `notes.ini` via `SIM_WRITES` edited by the test before a
-`waits 200`), 27 (desktop scene).
+hint; click → log `sim: exec …notes`), 22 (`stickies = 0` → no dump, exit 0), 23 (`SIM_SERVICES=-`: click →
+`lx_launch` of `notes` with the path in the log; with `SIM_SERVICES=notes` → `sim: send notes type …` + `sim:
+raise_app notes`), 24 (`SIM_CURSOR=follow`, drag, `config.ini` in writes; second run opens there), 25
+(`SIM_SERVICES=- SIM_MBOX="<STK_MSG_RELOAD>:9:\n<STK_MSG_QUIT>:9:"`: registers `stickies` (= 1), reloads, then
+exits 0 before the script ends), 26 (deterministic: `…;waits 200;dump a;copy $D/sd/notes2.ini
+SD:/Notes/notes.ini;waits 200;dump b` → the cards differ as expected, no restart), 27 (desktop scene + the log's
+`sim: window stickies flags` = the four flags).
 
-**Step 7 — Notes ↔ Stickies.** Show/Hide toggle (AC 11: `SIM_SERVICES=stickies` → quit message logged; without
-it → `sim: launch/exec stickies` logged; `config.ini` in writes), reload message after saves/pins, the `notes`
-service (single instance, `NOTES_MSG_OPEN`). *Test*: sim cases AC 11, 25 (Notes side).
+**Step 7 — Notes ↔ Stickies.** First the SystemKit helper (§3.7: `autostart.h/.inc`, `systemkit.h`,
+`systemkit.cpp`, `systemkit.abi` + 2 lines, `kitdocs.py`, docs/06 line) and its unit test; then Show/Hide
+toggle (AC 11: `SIM_SERVICES=stickies` → quit message logged; `SIM_SERVICES=-` → `sim: launch/exec stickies`
+logged; `config.ini` in writes; Show → `autostart_ensure` + status line), reload message after saves/pins, the
+`notes` service (single instance, `NOTES_MSG_OPEN`; failed register → go on alone). *Test*: `run_notes_test.sh`
+(autostart cases); sim cases AC 11, 25 (Notes side: `SIM_SERVICES=notes` + `SIM_ARGS` → `sim: send notes` +
+`raise_app`, exit; `SIM_SERVICES=-` → Notes runs), G7.
 
 **Step 8 — integration and docs.** `sdcard/etc/autostart`: `#setup: run stickies` after `#setup: run agenda`;
 `tools/pkg/packages.ini`: `[notes]` (title Notes, category Productivity, summary, `icon = apps/notes.app/icon.bmp`,
-`files = apps/notes.app/ apps/stickies.app/`, `needs = uikit >= <new>, fontkit`) **placed before `[onyx]`** — not
-published; docs/04 (§5 *Stickies* beside *The agenda widget*, §12 catalog rows for `notes` and `stickies` + a
+`files = apps/notes.app/ apps/stickies.app/`, `needs = uikit >= <new>, systemkit >= <new>, fontkit` — the next
+versions, "to be confirmed at publish time" in `06-development.md`; `versions.ini` not bumped in AutoDev)
+**placed before `[onyx]`** — not published; `apps/stickies.app/`'s attribution checked with `tools/pkg/mkrepo.py`
+in a local / dry mode only (never `publish.sh`); `SD:/Notes/` is runtime data, not a package file; docs/04 (§5 *Stickies* beside *The agenda widget*, §12 catalog rows for `notes` and `stickies` + a
 *Notes* section: controls, files `SD:/Notes/*.txt`, `notes.ini`, the two `config.ini`s); docs/HANDOFF.md roadmap
-(Priority 2 item done); `shots.sh`: a `desktop`-style scene with Stickies top right (AC 27); `python
+(Priority 2 item done); IDEAS.md: the *Later* lines (step 9's dropped items, keyconf / Setup onto
+`autostart.h`, menu check marks); `shots.sh`: a `desktop`-style scene with Stickies top right (AC 27); `python
 docs/build_docs.py`. *Test*: `shots.sh notes stickies agenda desktop`; AC 28, 30, 31, 32 by review. AC 29 and
 AC 33 on the user's PC / Pi.
 
-**Step 9 (should, each independent).** Search field + Ctrl+F; Open in Text Editor (`fa_open` / `lx_launch
-("tinypad", path)`); Export… (`ft_file_save`); checklist boxes + click-to-tick in Stickies (writes the `.txt`
-and `notes.ini` through the model — then Stickies writes too: keep it last); sort menu; drag out.
+**Step 9 (the one optional *should*).** **Open in Text Editor (Ctrl+E)** only: save the current note, then
+`lx_launch ("tinypad", "SD:/Notes/<file>")`. *Test*: sim — `mods 1;key e` → `sim: launch/exec … tinypad
+SD:/Notes/…` in the log, the note saved first.
+
+**Out of this round** (validation 1, gap 2 — moved to *Later*, one IDEAS.md line each, written in step 8):
+the **search** (field, Ctrl+F, and the `HintBox` move into UIKit — when it moves, it needs its own header *not*
+included by `uikit.h`: Mail, Calendar and Photos each define a global `HintBox` under `using namespace uikit`);
+the **checklist boxes and click-to-tick** in Stickies (Stickies stays a pure reader; `[ ]` / `[x]` are drawn as
+plain text); **Sort by**; the **drag out**; **Export…**. None of them carries a must AC (02's AC 1–33 name none
+of them; AC 10's "check mark" is the menu label, not a checklist) — so no must AC is lost. Consequences: the tool
+bar has no search field, so `screenshots/notes.png` will differ from `mockups/notes-window.png` (no "Search notes"
+box) — the mock-ups are not redone.
 
 ---
 
@@ -340,7 +466,8 @@ and `notes.ini` through the model — then Stickies writes too: keep it last); s
 
 - **PC unit tests** — `sh tools/tests/run_notes_test.sh`: `tools/tests/notes/model_test.cpp` (+ `wrap_test.cpp`),
   host `g++ -fsanitize=address,undefined`, linked with `fakekapi.o` (its file table into a temp `SIM_WRITES`, its
-  fixed clock), each case seeding `SIM_WRITES/Notes`. Prints "notes: all checks passed".
+  fixed clock), each case seeding `SIM_WRITES/Notes`; also `autostart_test.cpp` (SystemKit's `autostart.h`, §3.7)
+  and `sim_probe.cpp` (step 0's `fakekapi` additions). Prints "notes: all checks passed".
 - **Simulator checks** — `sh tools/tests/run_notes_sim_test.sh`: builds `notes` and `stickies` for the host as
   `shots.sh` does (UIKit objects, `fakekapi.o`, FreeType), runs each AC's script with its own seeded
   `SIM_WRITES`, then asserts with `cmp` / `grep` on the written files and the run's stderr (`sim: exec`, `sim:
@@ -359,7 +486,7 @@ and `notes.ini` through the model — then Stickies writes too: keep it last); s
 |---|---|---|
 | 1 list newest first, title, date, dot, pin | 2, 3 | unit (order) + sim + `notes.png` |
 | 2 select `last` / newest | 3 | sim |
-| 3 no folder → empty note, nothing written | 3, 4 | sim (writes empty) |
+| 3 no folder → empty note, nothing written | 3, 4 | sim (`SD:/Notes` absent from the writes) |
 | 4 typing + 1 s → file + `notes.ini` | 4 | sim (`cmp`) |
 | 5 row title follows | 3, 4 | sim (dump) |
 | 6 Ctrl+N; empty note dropped | 4 | sim |
@@ -367,7 +494,7 @@ and `notes.ini` through the model — then Stickies writes too: keep it last); s
 | 8 delete → Trash + notification | 0, 5 | sim (`.Trash`, `sim: send notify`) |
 | 9 colour green | 5 | sim (`notes.ini`) |
 | 10 Ctrl+P pin toggle | 5 | sim (`notes.ini`, label/toggle) |
-| 11 show/hide Stickies | 0, 7 | sim (`config.ini`, log) |
+| 11 show/hide Stickies | 0, 7 | sim (`config.ini`, log; Show → the autostart line, §3.7) |
 | 12 Copy Note / paste | 5 | sim |
 | 13 drop `.txt` → new note | 5 | sim |
 | 14 `notes <path>` | 3 | sim (`SIM_ARGS`) |
@@ -379,16 +506,16 @@ and `notes.ini` through the model — then Stickies writes too: keep it last); s
 | 20 six most recent pinned | 2, 6 | unit + sim |
 | 21 hint + click launches notes | 6 | sim (log) |
 | 22 `stickies = 0` → exit | 6 | sim |
-| 23 click card → `notes <path>` | 6, 7 | sim (log) |
+| 23 click card → `notes <path>` | 0, 6, 7 | sim (log; `SIM_SERVICES=-` → launch, `=notes` → send + raise) |
 | 24 drag header → `config.ini` | 0, 6 | sim (`SIM_CURSOR=follow`) |
-| 25 service, quit, reload | 6, 7 | sim (`SIM_MBOX`, `SIM_SERVICES`) |
-| 26 picks up changes at next poll | 6 | sim |
-| 27 borderless, back-most, scene | 6, 8 | composed scene |
+| 25 service, quit, reload | 0, 6, 7 | sim (`SIM_SERVICES=-` + `SIM_MBOX`: register = 1, lookup not hijacked) |
+| 26 picks up changes at next poll | 0, 6 | sim (script step `copy`, deterministic) |
+| 27 borderless, back-most, scene | 0, 6, 8 | composed scene + `sim: window … flags` in the log |
 | 28 `shots.sh` notes/stickies + agenda/desktop pass | 3, 6, 8 | run |
 | 29 `make` / `make stage` | 3, 6, 8 | **user's PC** (no cross toolchain here) |
 | 30 docs/04 + exports | 8 | review + `build_docs.py` |
-| 31 `packages.ini` `[notes]` (not published) | 8 | review |
-| 32 MIT notices; no kapi/kernel change; UIKit `.abi` appended + docs regenerated | 1, all | review |
+| 31 `packages.ini` `[notes]` (not published) + the autostart line | 7, 8 | review (`#setup: run stickies` shipped; `autostart_ensure` unit test) |
+| 32 MIT notices; no kapi/kernel change; UIKit and SystemKit `.abi` appended + docs regenerated | 1, 7, all | review |
 | 33 on the Pi | — | **user** |
 
 ---
@@ -410,12 +537,12 @@ colour constants and `wall_text` are the drawing the design asks for.
 | `NoteEdit : Textarea` with the theme's colours | `NoteEdit` **in the note's paper** (`setColors`) and a **15-px `FtTextFace`** in a `UkFaceScope` around `onDraw` / `onMouse` / `onKey` | D6 |
 | New Note: a plain `ToolButton` | `ToolButton` `filled = true`, `setOn (true)`, not a toggle (the accent pill of Mail / Calendar) | D7 |
 | A note emptied → `kapi_remove` | → the **Trash** (`notes_trash`), no notification | D3 |
-| R3: only launch Stickies, no autostart write | Notes **appends `run stickies`** to `SD:/etc/autostart` when it starts Stickies and no active line runs it (never edits other lines; never on Hide) | D2 |
+| R3: only launch Stickies, no autostart write | **Revised after validation 1**: Notes ensures `run stickies` through SystemKit's `autostart_ensure` (§3.7) **only on the explicit *View ▸ Show Stickies on the Desktop*** — inserted after the agenda's line (`#setup:`-aware), else before `preload /boot`, else at the end; no-op when `run stickies` or `#setup: run stickies` exists; told in the status line; never on a pin, never on Hide | D2 (as amended), validation 1 gap 1 |
 | — | A failed save: red status line, retry at each pause; at quit, the text **to the clipboard** + a notification | D8 |
-| Menus: File (New ^N, Delete ^D, Open in Text Editor, Export…), Edit, Note, View | the same, **+ Ctrl+E** for Open in Text Editor, Delete Note last in File after a separator, Copy Note without shortcut, *Find… ^F* first in View; labels exactly as 04 §3 | D1, 04 §3 |
+| Menus: File (New ^N, Delete ^D, Open in Text Editor, Export…), Edit, Note, View | the same, **+ Ctrl+E** for Open in Text Editor, Delete Note last in File after a separator, Copy Note without shortcut; labels exactly as 04 §3 — **minus** *Find… ^F*, *Sort by* and *Export…* (out of this round, step 9) | D1, 04 §3, validation 1 gap 2 |
 | Stickies: fixed-height cards, window ~240 wide, `kapi_resize_window` on change | cards **of their own height** (60–145 px, ≤ 6 body lines), window **240 × (screen_h − 160)** made once, the area under the cards fully see-through (click-through); default **x = screen_w − 248, y = 40**; "+N more in Notes" when they do not fit | D9, D10, 04 §8.1 |
 | Stickies hint *"No notes pinned — open Notes"* (one line) | a dashed place with **"No notes pinned"** / *"Click to open Notes"* | 04 §8.1 (AC 21's text) |
-| Search: a field above the list | a `HintBox` at the tool bar's right (Mail's place); **`HintBox` moved into UIKit** when the search is built | D12 |
+| Search: a field above the list | **Out of this round** (validation 1, gap 2). The design (a `HintBox` at the tool bar's right, `HintBox` moved into UIKit under its own header) stays for a later round | D12 |
 | AC 10 "a check mark" | the **lit Pin toggle** + the label *Unpin from Desktop* | D1 |
 
 ### 8.2 The GUI steps
@@ -440,12 +567,12 @@ colour constants and `wall_text` are the drawing the design asks for.
   the sample notes of the mock-up (`notes_mock.cpp`'s `g_notes`, written as `tools/tests/desktop_sim/sd/Notes/*.txt`
   + `notes.ini`, dated for the simulator's clock).
 - **G4 (in step 4, editing)** — the status line's messages (*✓ Saved*, *This note is full (64 KB)* for 4 s, the
-  red *Not saved…*), D8 at quit. *Test*: a sim case with the writes' `Notes` folder made read-only (`chmod a-w`):
-  the status text in the dump's log / no file; after `quit`, `clip_get_text` (the fake clipboard) holds the text and
+  red *Not saved…*), D8 at quit. *Test*: a sim case with **`SIM_ROFS=SD:/Notes`** (§3.6 — not `chmod a-w`, which
+  root ignores): `sim: rofs` in the log, the red status in the dump, no file under `Notes`; after `quit`, `clip_get_text` (the fake clipboard) holds the text and
   the log has the notification.
 - **G5 (in step 5)** — the tool bar's Pin toggle and the six colour toggles kept in sync with the note (and the
   menu's labels re-published); Delete in the list; the emptied note to the Trash (D3); the import refusal
-  `uk_messagebox` (04 §6; several files: one box). *Test*: AC 9 / 10 (the toggles' `on` read back through the dump
+  `ft_messagebox` (FontKit, the app's face; 04 §6; several files: one box). *Test*: AC 9 / 10 (the toggles' `on` read back through the dump
   — or the `notes.ini` values), a drop of a 70 KB file → the box (the dump shows it) and no new note.
 - **G6 (in step 6, Stickies)** — the geometry of 04 §8.1 (header via `uk_text_over`, ink from the wallpaper as the
   agenda's; cards of their own height via `uk_text_wrap`; band, shadow, hover outline + chevron; the dashed
@@ -453,21 +580,58 @@ colour constants and `wall_text` are the drawing the design asks for.
   the top right → `screenshots/stickies.png`) and **`stickies-empty`**; the **desktop scene** of AC 27 = the
   mock-up's `desktop-stickies` (agenda, Stickies, the Notes window in front, the dock, the bar) — as a new
   `screenshots/notes-desktop.png`, leaving `desktop.png` as it is.
-- **G7 (in step 7)** — *View ▸ Show / Hide Stickies…* label toggle; **ensure the autostart line** (D2): read
-  `SD:/etc/autostart`, if no line whose first words are `run stickies` (after spaces, not starting with `#`) → append
-  `# Stickies: the pinned notes on the desktop (Notes, View menu)\nrun stickies\n`; the first pin while
-  `stickies = 1` and the service absent → launch + the same. *Test*: sim — Show twice → the writes' `etc/autostart`
-  has exactly one `run stickies`; with an overlay autostart that already runs it → unchanged; Hide → unchanged.
+- **G7 (in step 7)** — *View ▸ Show / Hide Stickies…* label toggle; **Show** (and only Show) ensures the autostart
+  line through SystemKit: `autostart_ensure ("run stickies", "run agenda", "# Stickies: the pinned notes on the
+  desktop (Notes, View menu)")` (§3.7: no-op when `run stickies` or `#setup: run stickies` exists; else after the
+  agenda's line, with its `#setup: ` prefix if it has one; else before `preload /boot`; else at the end), and the
+  status line *"Stickies shown, and started at every boot (SD:/etc/autostart)"* / *"Stickies shown (autostart not
+  written)"*, as keyconf. A pin never writes autostart (with `stickies = 1` and the service absent: `lx_launch`
+  only). *Test*: the helper's unit cases (§3.7); sim — with the card's `sdcard/etc/autostart` (it has `#setup: run
+  agenda`): Show → the writes' `etc/autostart` has `#setup: run stickies` right after `#setup: run agenda` and
+  `preload /boot` still last; Show twice → exactly one line; seeded autostart with `run stickies` → unchanged
+  (`cmp`); Hide → unchanged; a pin with `stickies = 0` → no `etc/autostart` in the writes, no launch.
 - **G8 (in step 8, docs)** — docs/04's *Notes* section and *Stickies* paragraph take the pictures of G3 / G6 and the
   menus / keys tables of 04 §3–§4; `tools/icons/notes_icon.py` draws the two icons of 04 §9.
-- **G9 (step 9, should)** — the search: `HintBox` into UIKit (`uikit/hintbox.h` or in `textbox.h`, a new class:
-  append-only, `uikit.abi` lines; Mail / Calendar / Photos switch to it in a later round), the *Found / n of N*
-  head and the empty line of 04 §5, Ctrl+F, Esc; *Open in Text Editor* Ctrl+E; *Export…* (`uk_file_save`); the
-  checklist boxes of 04 §8.1 in Stickies (drawing first, the click-to-tick last).
+- **G9 (step 9, should)** — *Open in Text Editor* Ctrl+E only. **Out of this round** (validation 1, gap 2; *Later*,
+  IDEAS.md): the search (`HintBox` into UIKit under its own header not included by `uikit.h`, the *Found / n of N*
+  head, Ctrl+F, Esc), *Export…*, *Sort by*, the drag out, the checklist boxes and the click-to-tick (Stickies draws
+  `[ ]` / `[x]` as plain text).
 
 ### 8.3 Acceptance criteria touched
 
 AC 10 (read as D1), AC 11 (the label toggle), AC 19 (the cards of 04 §8.1), AC 21 (the hint's text), AC 27 (the
 desktop scene `notes-desktop.png`), AC 28 (the scenarios `notes`, `notes-empty`, `stickies`, `stickies-empty`).
-New checks from the design: the failed-save path (G4), the autostart line (G7), the import refusal (G5), the
+New checks from the design: the failed-save path (G4, `SIM_ROFS`), the autostart line (G7, §3.7), the import refusal (G5), the
 date labels (G2).
+
+---
+
+## 9. Revision after validation 1 (Technical Analyst, 2026-10-06)
+
+What changed in this document after `05-validation.md` (NOT GREEN), role 3's gaps:
+
+1. **Gap 1 — autostart.** New §3.7: SystemKit helper `systemkit/autostart.h` + `.inc` (`autostart_has`,
+   `autostart_ensure`; C-compatible `SK_API`, included by `systemkit.h` per the one-header rule, built by
+   `systemkit.cpp`, `systemkit.abi` + `59 autostart_ensure` / `60 autostart_has`, `kitdocs.py` header list) and its
+   unit test `tools/tests/notes/autostart_test.cpp`. Notes writes autostart **only on View ▸ Show Stickies**: no-op
+   when `run stickies` / `#setup: run stickies` exists, else after the agenda's line (keeping its `#setup: `
+   prefix), else before `preload /boot`, else at the end; status line as keyconf's. Never on a pin or Hide.
+   Updated: §1 summary, §3.1, §3.3 (Show/Hide), R3, step 7, AC 11 / 31 / 32 rows, §8.1 R3 row, G7. Keyconf's
+   `set_line` and Setup's `autostart_finish` moving onto the helper: noted as *Later* only.
+2. **Gap 2 — scope.** Step 9 keeps only *Open in Text Editor (Ctrl+E)*; search (+ the `HintBox` move), checklist
+   boxes / click-to-tick, Sort by, drag out and Export… are out of this round (IDEAS.md lines). Checked: no must AC
+   (1–33) depends on them. Updated: §3.3 menus, step 9, §8.1 (menus, search rows), G9; the `notes.png` / mock-up
+   difference stated.
+3. **Gap 3 — test tooling.** §3.6 rewritten from the code (`ipc_lookup` line 1232, `ipc_register_note` 1319/1387,
+   `mailbox_recv_note`'s `SIM_MBOX`, `step ()`): `SIM_SERVICES` (lookup answers only the listed names, even with
+   `SIM_MBOX`; register 1 for any name; sends logged), `SIM_ROFS=<prefix>` (replaces `chmod a-w`), script step
+   `copy SRC DST` (AC 26 deterministic), window flags logged (AC 27). Notes treats a failed register as "go on
+   alone". Updated: step 0 (+ `sim_probe.cpp`), step 6 (AC 23 / 25 / 26 / 27 cases), step 7, G4, §6, AC 23 / 25 / 26
+   / 27 rows.
+4. **The 13 developer notes folded in**: no "window activated" event → 5 s signature-gated rescan (§3.3); dirty on
+   every text change + Tab handling (§3.3); `ft_messagebox` for dialogs (§3.3, G5); AC 3 asserts `SD:/Notes` absent
+   (step 3, AC 3 row); window flags (§3.5, §3.6); Stickies re-reads the wallpaper ink in its poll (§3.5);
+   `uikit.abi` by hand + flagged (step 1); `needs` with `systemkit`, `mkrepo.py` dry only, `SD:/Notes` not a
+   package file (step 8); `config.ini` without a section (§1.3, accepted); samples dated ≤ 2026-09-28 in a fresh
+   `SIM_WRITES` (§3.6); `shots.sh` APPS + FT list + `extra` (step 3); `HintBox`'s own header if it ever moves
+   (step 9).
