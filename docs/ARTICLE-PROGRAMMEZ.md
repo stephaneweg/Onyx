@@ -203,6 +203,22 @@ les dates des commits, le socle, l'IPC, la chaîne de compilation et les dépend
 **2026-10-02** (plusieurs agents en parallèle), et le navigateur WebKit tournait sur le Pi le lendemain.
 **Confirmé par l'utilisateur le 2026-10-06 : on peut en parler dans l'article.**
 
+## La nuit en autonomie (l'utilisateur, 2026-10-06 ; remplace le paragraphe du GC dans l'article)
+
+Récit de l'utilisateur : il a demandé à Claude de travailler seul la nuit pendant qu'il dormait (pour la
+vitesse de JS). Onyx avait déjà telnet (`telnetd`), FTP (`ftpd`) et VNC. **Parce que l'utilisateur l'y a
+autorisé (à mentionner, c'est important)**, Claude a mis en place de lui-même une boucle : déployer, tester,
+redémarrer, journaliser les erreurs, lancer des benchmarks.
+
+Traces dans le dépôt : la nuit du **3 au 4 octobre** (commits de 22 h à 9 h 22) : `clipd` et le
+`mailbox_recv` bloquant qui tournait en boucle (« every program four times slower »), le GC de
+JavaScriptCore non concurrent (3 h 14), le Wi-Fi de 4,4 à 8-9,5 Mo/s, le journal du noyau d'un essai
+gardé (`SD:/etc/net-trial.log`), des paquets publiés au fil de la nuit. L'outillage : `tools/onyx-telnet.py`,
+`tools/tests/elegant/pi_deploy.py` (plus tard : FTP lancé par telnet, sauvegarde du noyau, envoi, contrôle
+des tailles, `reboot`, `--restore`), `tools/tests/shlib/pi_apps.py`, `tools/tests/net/tcpbench.py`,
+`tools/webkit/tests/mbench.c`. Une nuit plus tôt (2 → 3 octobre), WebKit2 essayé sur le Pi « overnight, over
+telnet and VNC » (docs/08).
+
 ## Repères de chronologie (historique git, 2026-10-06)
 
 - **2026-06-22** : premier commit, « Bootstrap: multi-process kernel on Circle ». Le même jour : un
