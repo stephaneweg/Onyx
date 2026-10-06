@@ -12,6 +12,7 @@
     <AssemblyName>OnyxRemote</AssemblyName>
     <RootNamespace>OnyxRemote</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>onyxremote.ico</ApplicationIcon>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
     <AssemblyTitle>Onyx Remote</AssemblyTitle>
     <Product>Onyx Remote</Product>
