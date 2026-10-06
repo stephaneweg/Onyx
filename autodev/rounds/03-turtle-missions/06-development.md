@@ -99,3 +99,93 @@ Known, accepted (05 note 10): at 920 × 600 the card's title and its 6th line ca
 
 - **Step 12, docs**: docs/04 §12 row and §13 (gems, portals with their map letters `1…9`, `T`, `U` and the word *portal / portail*, `GEM ()` / `GEMME ()`, `FRONT ()` 5, `draw = color`, the 5 packs / 48 levels, the editor's panel order, the 12 tools, the drawing chooser, the check with its red ring, the **920 × 600 minimum**, the new screenshots `turtle-portals`, `turtle-editor-gems`, `turtle-fractal`, `turtle-rainbow`, `turtle-fr-gems`); docs/03 *Turtle Quest* (`EV_TELEPORT`, colour comparison, `check_level`, `edit_gem` / `edit_pad` in `world.h`); HANDOFF, IDEAS; `python docs/build_docs.py`. `world.h`'s header comment does not yet mention `edit_gem` / `edit_pad` (main.cpp's does).
 - **Step 13** (SHOULD), untouched. `tools/pkg/packages.ini` unchanged; nothing published; the card build (`make`) stays the user's.
+
+---
+
+## Developer C (steps 12–13) and the summary
+
+First: `git fetch origin main` — `origin/main` had moved (`c5f87a1b`: Circuits and FileKit's `fk_kv_*` built for the
+Pi, packages); merged into `AutoDev` without conflict (`Merge origin/main into AutoDev (round 3, Developer C)`), then
+`run_turtle_test.sh` and `run_basic_test.sh` re-run: green.
+
+### Step 12 — the docs
+
+| File | Change |
+|---|---|
+| `docs/04-USER-GUIDE.md` §12 | the catalog row: 48 levels in five packs, gems, portals, fractals, colour; the editor's gems / portals; the best programs |
+| `docs/04-USER-GUIDE.md` §13 | the intro (gems, portals, colour figures); the window (the pack's stars at the list's foot, *your best* by the count, the HUD *Coins / Gems / Keys*, the **920 × 600** minimum, the `FUNCTION` chip); the words table (`PICK` and gems, `FRONT ()` 5 a portal, **`GEM ()` / `GEMME ()`**); winning (gems, colour drawings and the colour rule); the new messages (gem order, colours, recursion); the five packs / 48 levels and the six new lesson cards; a *Gems and portals* paragraph (the word **portal**, the pairs, the jump's rules); the editor (Idea first, *3 and 2 stars* \| *Drawing: No / Shape / Colours*, the 12 tools, Gem's numbering and cycling, a pair keeps two pads, the red check and its ringed cell); the pack format (`draw = 1 / shape / color`, map characters `1`…`9`, `T`, `U`, the refusal); `progress.ini`'s best counts; the 5 new screenshots `../screenshots/turtle-{portals,fractal,rainbow,fr-gems,editor-gems}.png` with captions |
+| `docs/03-DEVELOPER-GUIDE.md` *Turtle Quest* | `EV_TELEPORT` (where it is emitted), `draw` 2 and `same_colours`, `check_level` / `level_fault_reason` / `level_fault_text`, `edit_gem` / `edit_pad`, `friendly`'s recursion line, `progress.ini`'s keys (`<id>.best`), the test's new cases and lint, the 8 shots. (Its i18n paragraph already names Turtle Quest's `L2`: unchanged.) |
+| `user/Apps/turtle/world.h` header | the best program (`new_best`, `<id>.best`) and the editor's rules (`check_level`, the two wordings, `edit_gem`, `edit_pad`) — the map characters, `draw` modes, concepts, `GEM`, `FRONT` 5 were already there (Developer A) |
+| `docs/HANDOFF.md` | a new section *Turtle Quest, Gems, portals and fractals (AutoDev round 3)*: done, tested, not done here, follow-ups; the old section's ideas point to it |
+| `IDEAS.md` | the row *Turtle Quest : plus de missions* → 🔨, what round 3 did and what remains (in French); P9's mention 48 levels / 5 packs |
+| `docs/exports/*` | `python docs/build_docs.py` run (pandoc 3.1.3 + LibreOffice present; `pypandoc` was missing and was installed with pip): every `.docx` / `.pdf` rebuilt and committed |
+
+### Step 13 — the SHOULD items (in the PM's order)
+
+| # | Item | Status | How / why |
+|---|---|---|---|
+| 1 | **Your best program** | **done** | `world.h` `new_best (was, count)` (pure, host-tested); `finish_run` keeps `<id>.best` per player when a won run (not in the editor) has fewer instructions; `refresh_count` shows it after the stars' counts: *"Instructions: 4   ★★★ ≤ 4   ★★ ≤ 7   Best: 6"* / *« … Record : 6 »* (the gaps narrow from 7 to 3 spaces only when a best is shown — without one the line is drawn exactly as before). Shown when the level is shown or the program edited, not right after the win (the message bar already gives that run's count), which keeps the older shots' count line identical. An old `progress.ini` (no `.best`) reads as before. Fixture `fractals.ini` gains `rainbow-spiral.best = 6` → `turtle-rainbow.png` shows it |
+| 2 | **Stars per pack** | **done (the list's foot)** | the pack drop-down (220 px) has no room beside *3. Variables, words and figures*, so the total is drawn at the **foot of the level list** (a rule, a star, *"This pack: 21 / 30"* / *« Ce recueil : 21 / 30 »*; just the numbers if the text were wider than the list) when the levels leave room (no scrolling — always at 920 × 600 with ≤ 11 levels). The first French try (*"… étoiles dans ce recueil"*) overflowed in the French shot and was shortened |
+| 3 | Progress on FileKit's `fk_kv` | **skipped** | the card link (`turtle.elf` + `lib/filekit.imp.a`, `[app.turtle] needs filekit >= 1.96`) cannot be built or checked here (no AArch64 compiler), and the byte identity does not hold in general: `kv_save` writes a section again where it comes back in insertion order (`[Sam] … [Alex] … [Sam]`), `fk_kv_set` appends to the section's first block — the rewritten file would differ after a second player joins. Left to a round with the card build (HANDOFF follow-up) |
+| 4 | A **FUNCTION** chip | **done** | `CONTROL_WORDS` / `CONTROL_FR` + `FUNCTION` / `FONCTION`, `NEED[5] = 14` (from `function` in `ORDER`, so `function` and `recursion` levels); the block `FUNCTION MyValue (x)` / `MyValue = x` / `END FUNCTION` (FR `FONCTION MaValeur (x)` … `FIN FONCTION`); a host test runs both blocks, as written, on `halves` (won, EN and FR). Seen in `turtle-fractal.png` (EN) and in French (*FONCTION*) |
+| 5 | A free-drawing **sandbox** | **skipped** | it needs a goal-free, target-free drawing rule in `run_program` (today a drawing level without a solution has no target and a grid level forbids free angles), and it changes AC1's fixed "48 levels, each solution three stars" — a risk to the green state for the PM's last item |
+
+### Commits (Developer C)
+
+- merge of `origin/main` into `AutoDev` (Circuits' card build, FileKit `fk_kv`; no conflict)
+- `751b2c6e` — Turtle Quest: your best program per level, the stars of the pack at the foot of the list, a FUNCTION chip (step 13; with `world.h`'s header comment)
+- `c35ec311` — Turtle Quest docs: docs/04 §12–§13, docs/03, HANDOFF, IDEAS, exports rebuilt (step 12)
+- this section (06)
+
+### Final regression (all run after the last change)
+
+| Test | Result |
+|---|---|
+| `sh tools/tests/run_turtle_test.sh` (ASan + UBSan, `-Wall -Wextra`) | **ok turtle (48 levels: solved, written back; the errors)** — incl. the new `test_should ()` (best; FUNCTION / FONCTION blocks) |
+| `sh tools/tests/run_basic_test.sh` | ok (t9_types, dialect, BASIC in French) |
+| `sh tools/tests/run_kvtext_test.sh` (main's, after the merge) | ok (101 + 115 checks) |
+| `g++ -Wall -Wextra -fsyntax-only user/Apps/turtle/main.cpp` (simulator flags) | 0 warnings |
+| `sh tools/tests/desktop_sim/shots.sh turtle` | the 8 shots; run twice → byte-identical. Against the previous commit: `turtle-editor.png`, `turtle-editor-gems.png` identical; `turtle.png`, `turtle-fr.png`, `turtle-portals.png`, `turtle-fr-gems.png` differ **only in the box (26, 608)–(222, 631)** = the list's new foot line (SHOULD 2); `turtle-fractal.png` also the FUNCTION chip, `turtle-rainbow.png` also *Best: 6*. The script's link errors are other apps' (`print_*`, PrinterKit), as before |
+| `SHOTS_LANG=fr SHOTS_PNG=<scratch> sh tools/tests/desktop_sim/shots.sh turtle` | the 8 French PNGs looked at: *Ce recueil : 25 / 33*, *Record : 6*, the *FONCTION* chip, *Gemmes 2 / 4*, the colour message's two lines — all fit. Seen, older than this round: the selected row's **bold** title touches its stars when long (*Le flocon de neige*: the cut is measured in the regular face) — noted in HANDOFF |
+| `sh tools/tests/desktop_sim/run.sh` | ok (`wmtest: all passed`, the gallery dumped) |
+| `python3 tools/lang/check.py --all` | exit 0, every app 0 missing; `turtle: no lang/fr.txt (0 words)` — expected: Turtle Quest uses its own `L2 / T` pairs, its completeness is checked by `turtletest`'s lint (AC9) |
+| `make` from `kernel/` (the card) | **not run**: no AArch64 compiler in the container (`aarch64-none-elf-g++`, `aarch64-linux-gnu-g++` absent) — the user's |
+
+### The acceptance criteria
+
+| AC | Status | Evidence |
+|---|---|---|
+| AC1 every level solvable, 3 stars | ✅ | `run_turtle_test.sh`: 48 levels, each solution `R_WON` with 3 stars; `total == 48` checked |
+| AC2 old packs unchanged | ✅ | `git diff 509e6ff5 -- sdcard/apps/turtle.app/levels/{1,2,3}-*` empty; their 27 solutions win; old negative cases pass |
+| AC3 round trip | ✅ | every pack written back and re-read equal on every field incl. the draw mode (0/1/2) |
+| AC4 gems | ✅ | `test_gems ()`: out of order EN/FR, in order wins, one left `gem(s)`, `GEM ()`, `ITEM ()`, `FRONT ()` 2, `GEMME ()`, *does not know GEM* |
+| AC5 gem numbering refused | ✅ | *"level 2 (gap): gem 2 is missing"*, *"level 1 (twice): two gems 2"* |
+| AC6 teleport | ✅ | `test_portals ()`: one `EV_TELEPORT` after the `EV_MOVE`, heading kept, `FORWARD 3` 2 past the twin, no jump back, no segment > 1, `FRONT ()` 5, `WALL ()` false |
+| AC7 unpaired pad refused | ✅ | *"the teleporter T has no twin"*, *"three teleporters U"* |
+| AC8 colour drawings | ✅ | rainbow solution wins; a colour changed → *not the right colours* (EN/FR); wrong shape → *Not quite the same figure*; `draw-square` + `COLOR 4` wins |
+| AC9 texts EN/FR | ✅ | the lint: texts present, not cut, pack titles, concept cards, `GEMME`, colour levels' pens 1–14 (not 7, 8) |
+| AC10 unique ids | ✅ | the lint across the five packs |
+| AC11 recursion | ✅ | tree / koch / snowflake / sierpinski / snail-rec win; no stop → *calls itself without end* (EN/FR), never *stack* |
+| AC12 the rest of the bench | ✅ (PC) / ⏳ card | `run_basic_test.sh` ok; the simulator build ok, 0 warnings; the card's `make` is the user's (no AArch64 compiler) |
+| AC13 existing shots | ✅ with a by-design change | `turtle-editor.png` changed by design (Developer B, note 5); `turtle.png` / `turtle-fr.png` now differ only by the list's foot line (SHOULD 2, (26, 608)–(222, 631)) — an intended addition, not a regression |
+| AC14 gems and portals shot | ✅ | `turtle-portals.png` (Developer B; foot line added) |
+| AC15 fractal shot | ✅ | `turtle-fractal.png` (snowflake, 3 stars), `turtle-rainbow.png` (tinted target, colour message) |
+| AC16 French shot | ✅ | `turtle-fr-gems.png`: *Aller et retour*, `GEMME` chip, *Gemmes 2 / 4*; the French run looked at |
+| AC17 editor round trip | ✅ | `test_editor ()` (gem placing / cycling, pads, written back equal); `turtle-editor-gems.png` (12 tools, Save refused, the ringed gem) |
+| AC18 docs | ✅ | docs/04 §12–§13, docs/03, `world.h` header, HANDOFF, IDEAS, `build_docs.py` run; `tools/pkg/packages.ini` unchanged (the `[*apps]` rule ships `levels/`); **nothing published** |
+
+### What could not be done
+
+- The card build (`make` / `make stage` from `kernel/`) — no AArch64 compiler here; nothing staged, no package
+  published (PIPELINE §0.5).
+- SHOULD 3 (`fk_kv`) and SHOULD 5 (sandbox) — skipped, reasons above.
+
+### What the user must check on the Pi
+
+1. `make` from `kernel/` builds `turtle.elf` without a new warning; `make stage`.
+2. Pack 4: the gems' ring and the HUD; a portal jump's animation at the real pace (speed 1 and 10), F8 through a jump.
+3. Pack 5: the snowflake and Sierpinski at full speed (event counts ≤ 1007); the rainbow's tinted target.
+4. The window at its **920 × 600** minimum: the French lesson cards (small faces), the *Idea* list opening down.
+5. The editor by mouse: Gem (place, cycle, drag), Portal 1 / 2 (a third pad moves the older), *No / Shape / Colours*,
+   Save refused with the ringed cell; then the level saved in `SD:/docs/turtle/my-levels.turtle` and re-opened.
+6. Win a level twice with fewer instructions: *Best* follows (`progress.ini` `<id>.best`); the list's foot counts.
