@@ -264,7 +264,7 @@ static void preview_clear (void)
 static int sd_volume (const char *path)			// length of the "SD:" / "SDn:" / "RAM:" prefix, 0 = not a local volume
 {
 	if (lower (path[0]) == 'r' && lower (path[1]) == 'a' && lower (path[2]) == 'm' && path[3] == ':') return 4;
-	if (lower (path[0]) == 'u' && lower (path[1]) == 's' && lower (path[2]) == 'b')	// (v92) USB:, USB2:, USB3:
+	if (lower (path[0]) == 'u' && lower (path[1]) == 's' && lower (path[2]) == 'b')	// (v93) USB:, USB2:, USB3:
 	{
 		if (path[3] == ':') return 4;
 		return path[3] >= '1' && path[3] <= '3' && path[4] == ':' ? 5 : 0;
@@ -586,7 +586,7 @@ static void op_show_sd3 ()   { show_volume ("SD3:/"); }
 // RAM:, the volume in memory (absent with "ramfs=0" in system.ini)
 static void op_show_ram ()   { if (volume_mounted ("RAM:/")) show_root ("RAM:/"); else status ("No RAM: volume", ""); }
 
-// ---- USB sticks (kapi v92: mounted when plugged in as USB:, USB2:, USB3:) -------------------------
+// ---- USB sticks (kapi v93: mounted when plugged in as USB:, USB2:, USB3:) -------------------------
 #define MAXVOL	16
 static struct kapi_volume g_vols[MAXVOL];
 static int g_nvols = 0;
@@ -781,7 +781,7 @@ static void places_build (void)
 		{ "VD2:/", "VD2: disk image" }, { "VD3:/", "VD3: disk image" }, { "RAM:/", "RAM: memory" } };
 	for (unsigned i = 0; i < sizeof VOLS / sizeof VOLS[0]; i++)
 		if (volume_mounted (VOLS[i][0])) add_place (PL_VOL, G_COMPUTER, -1, VOLS[i][1], VOLS[i][0]);
-	vols_read ();						// (v92) the USB sticks mounted
+	vols_read ();						// (v93) the USB sticks mounted
 	g_volSig = vols_sig ();
 	for (int i = 0; i < g_nvols; i++)
 	{
@@ -1740,7 +1740,7 @@ public:
 		invalidate (true);
 	}
 
-	// (v92) A USB stick plugged in, ejected or pulled out: the places again; a folder shown on a
+	// (v93) A USB stick plugged in, ejected or pulled out: the places again; a folder shown on a
 	// volume that is gone: back to the SD card.
 	void onTick () override
 	{

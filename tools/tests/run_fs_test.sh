@@ -37,7 +37,7 @@ for cl in 512 1024; do
 	done
 done
 done
-# the USB volumes (kapi v92): formats, labels, a stick pulled out, an unmount while a call waits
+# the USB volumes (kapi v93): formats, labels, a stick pulled out, an unmount while a call waits
 # for the volume lock -- with the OS locks on (FF_FS_REENTRANT 1: the fork's re-checks are there)
 mkdir -p "$T/usb"
 cp "$F/ffconf.h" "$T/usb/ffconf.h"

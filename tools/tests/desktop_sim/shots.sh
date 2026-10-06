@@ -120,6 +120,10 @@ build () {
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/qbstudio" "$OUT/fakekapi.o" user/Apps/qbstudio/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
 			user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp user/Libs/basic/baskits.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
+	if [ "$1" = gpiolab ]; then			# (newlib-like: FreeType; GPIOKit compiled in -- on a PC its simulator only)
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/gpiolab" "$OUT/fakekapi.o" user/Apps/gpiolab/main.cpp user/Kits/gpiokit/gkcore.cpp \
+			"$OUT/libuikit.a" "$OUT/libft.a"; return
+	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
 			"$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
@@ -135,7 +139,7 @@ build () {
 }
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu letters sheet slides qbstudio 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
+      tinycalc tinypad widgets wifimenu letters sheet slides qbstudio 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
       config wpaconf padconf soundconf displayconf keyconf preloadconf disks"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
@@ -218,6 +222,15 @@ if want eyes; then sim eyes eyes "$W" $P SIM_CURSOR=260,-40; png eyes; fi
 if want taskman; then			# (its two tabs: the processes -- a row chosen --, the memory after a few samples)
 	sim taskman taskman "$W;key 0x101;key 0x101;key 0x101;$W" $P; png taskman
 	sim taskman taskman-memory "$W;down 180 24;up 180 24;$W;$W;$W;$W;$W;$W;$W;$W" $P; png taskman-memory
+fi
+if want gpiolab; then			# (GPIO Lab on GPIOKit's simulator, its demonstration: an LED blinking on GPIO 17, a servo
+					#  on GPIO 18, a button on GPIO 27 pressed now and then; the timing chart after 5 s, the I2C
+					#  bus scanned -- the simulated BME280's readings, the SSD1306's test picture --, the edges
+					#  of GPIO 27 chosen on the header)
+	GL=$(printf 'wait;%.0s' $(seq 1 300))
+	sim gpiolab gpiolab "${GL}wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--demo --tab chart"; png gpiolab
+	sim gpiolab gpiolab-i2c "${GL}wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--demo --tab i2c"; png gpiolab-i2c
+	sim gpiolab gpiolab-edges "${GL}down 202 243;up 202 243;wait;wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--demo --tab edges"; png gpiolab-edges
 fi
 if want 2048; then
 	m=""; for k in 0x102 0x100 0x103 0x101 0x102 0x100 0x102 0x100 0x103 0x100 0x102 0x100 0x103 0x101 0x102 0x100 0x102 0x100 0x103 0x100 0x102 0x100 0x102 0x100 0x103 0x100; do m="$m;key $k;wait"; done
@@ -391,7 +404,7 @@ if want volume; then
 	sim menubar volume "wait;wait;down 925 15;up 925 15;$W" SIM_MENU="$MENU_TINYPAD"
 	scene volume "$OUT/volume.elsm" --crop=0,0,1024,150
 fi
-if want disks; then			# (v92: a USB stick plugged in -- SIM_USB --, SD1: there; the stick chosen)
+if want disks; then			# (v93: a USB stick plugged in -- SIM_USB --, SD1: there; the stick chosen)
 	sim disks disks "$W;down 140 90;up 140 90;$W" $P SIM_USB=1 SIM_VOLS=SD1; png disks
 fi
 if want usbmenu; then			# (the menu bar's USB box: a stick plugged in)

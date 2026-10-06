@@ -1,5 +1,5 @@
 //
-// volutil.h -- what df, mount, eject and mkfs share (kapi v92's volumes): a size as text, a state's
+// volutil.h -- what df, mount, eject and mkfs share (kapi v93's volumes): a size as text, a state's
 // name, an error's text. Header-only (the four are freestanding C tools).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see docs/LICENSING.md)
@@ -57,7 +57,7 @@ static __attribute__ ((unused)) const char *vu_err (int e)
 	case KAPI_EROFS:	return "the device is write-protected";
 	case KAPI_EIO:		return "input / output error";
 	case KAPI_ENOMEM:	return "out of memory";
-	case KAPI_ENOSYS:	return "this kernel has no volume calls (kapi v92)";
+	case KAPI_ENOSYS:	return "this kernel has no volume calls (kapi v93)";
 	default:		return "error";
 	}
 }

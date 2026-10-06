@@ -1,5 +1,5 @@
 //
-// volume.cpp -- the FatFs volumes as the system sees them (kapi v92, kern/volume.h): the SD
+// volume.cpp -- the FatFs volumes as the system sees them (kapi v93, kern/volume.h): the SD
 // card's partitions mounted at boot, the USB mass-storage volumes mounted and unmounted as
 // sticks come and go, the list, the eject, the format.
 //

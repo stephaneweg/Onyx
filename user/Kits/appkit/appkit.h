@@ -442,7 +442,7 @@ KAPI_FN unsigned long long kapi_fsize64 (void *h);
 // the Pi restarts), a path on it -> 0 and *out (total / free / used bytes, its type, KAPI_VOL_RAM),
 // -1 no such volume / an older kernel. (RAM: paths work with every file call above from v71.)
 KAPI_FN int kapi_vol_info (const char *path, struct kapi_vol_info *out);
-// (v92) The volumes: SD:, SD1:..SD3: (the card's partitions), USB:, USB2:, USB3: (USB sticks and disks,
+// (v93) The volumes: SD:, SD1:..SD3: (the card's partitions), USB:, USB2:, USB3: (USB sticks and disks,
 // mounted when plugged in), RAM:. vol_list: every volume (struct kapi_volume: its state KAPI_VST_*,
 // flags KAPI_VF_*, sizes, type, label, the files open on it; flags KAPI_VOLS_ROOM: the free space too)
 // -> how many there are (out: up to max). A USB volume pulled out stays listed as KAPI_VST_REMOVED

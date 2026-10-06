@@ -1,0 +1,39 @@
+# gpiokit.abi -- the export table of SD:/lib/gpiokit.so: "<slot> <symbol>", in the table's order.
+# APPEND-ONLY (tools/libgen/libgen.py adds the new functions at the end): never move or remove a
+# line -- programs built against an older table call the entries by their slot. The one edit allowed:
+# a function RENAMED keeps its line, with its new symbol (a reserved virtual given a meaning).
+# The table's version is its number of entries.
+0 gk_available
+1 gk_edges
+2 gk_error
+3 gk_events
+4 gk_gpio_function
+5 gk_header_gpio
+6 gk_header_label
+7 gk_header_pin
+8 gk_i2c_close
+9 gk_i2c_guess
+10 gk_i2c_open
+11 gk_i2c_read
+12 gk_i2c_reg_read
+13 gk_i2c_reg_write
+14 gk_i2c_scan
+15 gk_i2c_write
+16 gk_i2c_write_read
+17 gk_info
+18 gk_mode
+19 gk_mode_name
+20 gk_now_us
+21 gk_pwm
+22 gk_read
+23 gk_read_all
+24 gk_release
+25 gk_servo
+26 gk_sim
+27 gk_sim_display
+28 gk_sim_input
+29 gk_spi_close
+30 gk_spi_open
+31 gk_spi_transfer
+32 gk_toggle
+33 gk_write

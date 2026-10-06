@@ -83,6 +83,10 @@ static const BFn BFNS[] = {
 	{ "FILEPLAYING", B_FILEPLAYING, TY_NUM, "" }, { "FILEPOS", B_FILEPOS, TY_NUM, "" }, { "FILELENGTH", B_FILELENGTH, TY_NUM, "" },
 	{ "NOTEFREQ", B_NOTEFREQ, TY_NUM, "N" }, { "NOTENUMBER", B_NOTENUMBER, TY_NUM, "S" },
 	{ "MENUITEM", B_MENUITEM, TY_NUM, "SS[S" }, { "WINDOWWIDTH", B_WINDOWWIDTH, TY_NUM, "" }, { "WINDOWHEIGHT", B_WINDOWHEIGHT, TY_NUM, "" },
+	// (GPIOKit: the 40-pin header -- docs/04 §13 "GPIO")
+	{ "PIN", B_PIN, TY_NUM, "N" }, { "PINCHANGED", B_PINCHANGED, TY_NUM, "N" },
+	{ "I2CREAD", B_I2CREAD, TY_NUM, "NN" }, { "I2CREAD$", B_I2CREADS, TY_STR, "NNN" }, { "I2CSCAN$", B_I2CSCAN, TY_STR, "" },
+	{ "SPI$", B_SPI, TY_STR, "S[N" },
 	// (kits: known once the program has an #import -- B_ALLOC .. B_ADDRESSOF)
 	{ "ALLOC", B_ALLOC, TY_NUM, "N" }, { "CSTR$", B_CSTR, TY_STR, "N[N" },
 	{ "PEEKB", B_PEEKB, TY_NUM, "N" }, { "PEEKW", B_PEEKW, TY_NUM, "N" }, { "PEEKL", B_PEEKL, TY_NUM, "N" },
@@ -1983,6 +1987,20 @@ public:
 			if (ki == -2) { fail2 ("No such function in the kit: ", w); return; }
 			if (ki >= 0) { next (); kitCall (ki, false, callParens ()); return; }
 		}
+		if (bseq (w, "PIN"))					// PIN pin = level (or PIN pin, level); PIN (pin) ON / OFF / STOP
+		{
+			next ();
+			if (isOp ('('))
+			{
+				next (); needNum (expr ()); expectOp (')');
+				if (isKw ("ON") || isKw ("OFF") || isKw ("STOP")) { emit3 (OP_EVSTATE, 2, evState ()); return; }
+			}
+			else needNum (eAdd ());				// (not a comparison: the '=' is the assignment's)
+			if (!acceptOp ('=')) expectOp (',');
+			needNum (expr ());
+			emit3 (OP_ST, S_PINWRITE, 2);
+			return;
+		}
 		if (simpleStatement (w)) return;
 		// A SUB call without CALL.
 		int pi = findProc (w);
@@ -2109,6 +2127,10 @@ public:
 			{ "CYLINDER3D", S_CYLINDER3D, "[NNN" }, { "PLANE3D", S_PLANE3D, "[NN" },
 			{ "MOVECONTROL", S_MOVECONTROL, "NNNNN" }, { "SHOWCONTROL", S_SHOWCONTROL, "NN" }, { "ENABLECONTROL", S_ENABLECONTROL, "NN" },
 			{ "FOCUSCONTROL", S_FOCUSCONTROL, "N" },
+			// (GPIOKit: the 40-pin header; PIN n = v and ON PIN are parsed apart)
+			{ "PINMODE", S_PINMODE, "NS" }, { "PWM", S_PWM, "NN[N" }, { "SERVO", S_SERVO, "NN" }, { "PINFREE", S_PINFREE, "[N" },
+			{ "GPIOSIM", S_GPIOSIM, "[N" }, { "I2COPEN", S_I2COPEN, "[N" }, { "I2CWRITE", S_I2CWRITE, "NNN" },
+			{ "I2CSEND", S_I2CSEND, "NS" }, { "SPIOPEN", S_SPIOPEN, "[NN" },
 			// (kits: known once the program has an #import -- S_DEALLOC .. S_POKES)
 			{ "DEALLOC", S_DEALLOC, "N" }, { "POKEB", S_POKEB, "NN" }, { "POKEW", S_POKEW, "NN" }, { "POKEL", S_POKEL, "NN" },
 			{ "POKEQ", S_POKEQ, "NN" }, { "POKEF", S_POKEF, "NN" }, { "POKED", S_POKED, "NN" }, { "POKES", S_POKES, "NS" },
@@ -2485,6 +2507,16 @@ public:
 			expectKw ("GOTO");
 			if (cur ().t == T_NUM && cur ().num == 0) { next (); emit2 (OP_ONERR, -1); return; }
 			labelRef (OP_ONERR, true);
+			return;
+		}
+		if (isKw ("PIN"))					// ON PIN (pin [, edges]) GOSUB: its edges (1 rising, 2 falling, 3 both)
+		{
+			next ();
+			expectOp ('('); needNum (expr ());
+			if (acceptOp (',')) needNum (expr ()); else pushNum (3);
+			expectOp (')');
+			expectKw ("GOSUB");
+			labelRef (OP_ONEVENT, true, 2);
 			return;
 		}
 		if (isKw ("TIMER") || isKw ("KEY"))			// ON TIMER (n) GOSUB / ON KEY (n) GOSUB

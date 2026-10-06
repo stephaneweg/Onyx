@@ -4,16 +4,16 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## USB sticks: hot mount, eject, format (2026-10-06, kapi v92): built, tested on the PC, NOT yet on the Pi
+## USB sticks: hot mount, eject, format (2026-10-06, kapi v93): built, tested on the PC, NOT yet on the Pi
 
-Asked by the user: USB mass-storage volumes so the system is not limited to the SD card. **Read docs/02 §17**
+Asked by the user: USB mass-storage volumes so the system is not limited to the SD card. **Read docs/02 §18**
 (the design, the surprise removal, the eject, the format, the multi-partition proposal) and docs/05 §28 (the
 Circle fork's patches).
 
 - **Done**: `kernel/sys/volume.cpp` (+ `kern/volume.h`): `USB:` / `USB2:` / `USB3:` (Circle's `umsd1..3`) mounted
   when plugged in (`VolPoll`, the input task, beside `SoundPoll`), unmounted at an eject or when pulled out (its
-  open files lost -> `-EIO`, the programs go on); kapi v92 `vol_list` 229, `vol_eject` 230, `vol_mount` 231,
-  `vol_format` 232 (SD: always refused; SD1..SD3 with `KAPI_FMT_CARD`); the FatFs objects outside the open-file
+  open files lost -> `-EIO`, the programs go on); kapi v93 `vol_list` 230, `vol_eject` 231, `vol_mount` 232,
+  `vol_format` 233 (SD: always refused; SD1..SD3 with `KAPI_FMT_CARD`); the FatFs objects outside the open-file
   layer tracked (`VolTrack`); `kapi_shutdown` syncs everything first (`VolSyncAll`); `USB1:` = `USB:`.
   The fork (circle `onyx`): `FF_USE_MKFS`, `FF_USE_LABEL`, `ff.c` re-checks after the volume lock, `ffsystem.cpp`'s
   mutex kept across an unmount, a yield between USB transfers (`diskio.cpp`), SCSI SYNCHRONIZE CACHE.
@@ -34,9 +34,55 @@ Circle fork's patches).
   (its spin-up: the mount is tried 3 times); a stick behind a hub; the SYNCHRONIZE CACHE on sticks that refuse it
   (`kmsg`: no error loop). Worth timing: how long a transfer that was running when a stick is pulled takes to
   fail (Circle's xHCI 3 s timeout, its retries).
-- **Open / for later**: several partitions of one USB disk (proposal in docs/02 §17: `USB1P2:`... — **the naming
+- **Open / for later**: several partitions of one USB disk (proposal in docs/02 §18: `USB1P2:`... — **the naming
   is the user's choice**), GPT (`FF_LBA64`: a full rebuild), hidden `.~onyx-deleted` files left on a stick by a
   crash are not cleaned at its mount (only the card's at boot).
+
+## The GPIO workshop: GPIOKit, GPIO Lab, BASIC's GPIO (2026-10-06; built and tested on the PC, NOT yet on the Pi)
+
+Asked by the user: the Raspberry Pi 4's 40-pin header for the programs — kernel support, a kit, a graphical
+app, BASIC. **The user authorised GPIOKit to call the kernel's table directly** (not through AppKit): an
+explicit exception, written in docs/03 §5.9.0 / §5.10 and docs/06 §1 / §12.
+
+- **Kernel** (kapi **v92**, one entry `gpio_ctl` slot 229 — v91 / 228 went to `proc_tree`, merged the same day — one slot on purpose, other sessions add calls in
+  parallel): `kernel/sys/gpio.cpp`, `kern/gpio.h`, `KAPI_GPIO_*` in `kapi_abi.h`; docs/02 §8 *v92* and **§17**.
+  Pins 0..27, one owner each, given back (inputs, no pull) when the process ends (`GpioOnProcessGone` from
+  `IpcOnProcessGone`); reserved: 0 / 1 (HAT EEPROM), 14 / 15 (serial console); the rest of the system's pins
+  are off the header (30..33 Bluetooth, 40 / 41 the jack's PWM, 42 the LED). PWM on PWM0 at the jack's own
+  125 MHz clock (shared with PWM1, the jack's: never re-rated; `GpioPwmClockKeep` restarts it after the jack
+  stops it — `sound.cpp OutputStop`). Edges by the GPIO interrupt (`CGPIOManager`, made at the first need),
+  queued per process with the system timer's µs. I2C bus 1 (`CI2CMaster (1)`), SPI 0 (`CSPIMaster`).
+- **GPIOKit** (`user/Kits/gpiokit/`, `SD:/lib/gpiokit.so`, 34 entries, `gk_*` + `namespace gpiokit` classes,
+  `--bind-c`): in the package **onyx** (it ships with the kernel: `lib/` is onyx's). Its **simulator** (a board
+  in memory, an SSD1306 at 0x3C, a BME280 at 0x76 with the datasheet's calibration, SPI looped back) runs on a
+  PC, on a kernel < 91, or on request (`gk_sim (1)`). Reference: docs/19 (generated); guide: docs/06 §12.
+- **GPIO Lab** (`user/Apps/gpiolab`, `gpiolab.elf`, package `gpiolab`, category System): the header drawn,
+  modes, outputs / blink, PWM (frequency, duty in 0.1 %), timing chart, I2C scan (+ BME280 readings, an
+  SSD1306 test picture), edges log, the simulator (Board menu), the 3.3 V band. docs/04 *GPIO Lab*;
+  screenshots `gpiolab*.png` (`shots.sh gpiolab`; that script builds every app first — I ran its gpiolab
+  lines by hand). Its window is 1120 x 640, smaller on a smaller screen (not tried below 1280 wide).
+- **BASIC** (docs/04 §13 *GPIO*): `PINMODE`, `PIN n = v` / `PIN(n)`, `PWM`, `SERVO`, `ON PIN (n [, edges])
+  GOSUB` + `PIN (n) ON/OFF/STOP` (events 32 + pin of the VM), `PINCHANGED`, `PINFREE`, `GPIOSIM`, `I2COPEN`,
+  `I2CREAD`, `I2CREAD$`, `I2CWRITE`, `I2CSEND`, `I2CSCAN$`, `SPIOPEN`, `SPI$`. The runtime opens gpiokit.so at
+  the first GPIO statement and calls it by its `.abi` places (`GKF_*` in `runtime.cpp`). New enum values at
+  the ends of `S_*` / `B_*` (before `S_LAST` / `B_LAST`): merge carefully with the turtle-game session.
+  Samples: `SD:/basic/examples/gpio_{blink,button,servo,bme280,oled}.bas`.
+- **Tests (PC)**: `sh tools/tests/run_gpiokit_test.sh` (the simulator under ASan, the header in C, the BASIC
+  runtime's places), `sh tools/tests/run_basic_test.sh` (`t30_gpio`: all 62 pass), the samples run on the
+  test host (the BME280 sample prints the datasheet's 25.08 °C / 1006.53 hPa). Not run: the native BASIC
+  test (no qemu-aarch64 here).
+- **To test on the Pi, with hardware** (nothing of the kernel side ran anywhere): (1) the kernel boots and
+  `sysstat` lists `gpio_ctl`; GPIO Lab says RASPBERRY PI HEADER; (2) an LED on GPIO 17 (330 Ω): Output, Set
+  High / Low, Blink; `gpio_blink.bas`; (3) a button GPIO 27 → GND: Pull-up reads 1 / 0, **edges logged with
+  times** (the GPIO interrupt on the Pi 4's GIC: `CGPIOManager` was never used in Onyx before), `ON PIN` in
+  `gpio_button.bas`; (4) **PWM while the jack plays** (`tone` or the Media Player): the servo / an LED on 18
+  with sound at the same time, then the jack stopped (Sound applet → HDMI): the PWM must go on (the shared
+  clock: `GpioPwmClockKeep`), and no click in the jack's sound when a PWM starts; a scope or an LED's
+  brightness for 1 kHz / 25 %; (5) a servo on 18: `gpio_servo.bas`; (6) I2C: a BME280 (`gpio_bme280.bas`,
+  GPIO Lab's readings) and an SSD1306 (`gpio_oled.bas`, Test Display) — the scan's speed (112 addresses,
+  Circle's timeouts); (7) SPI: MOSI wired to MISO, `PRINT SPI$("hello")`; (8) the reserved pins refused
+  (14 / 15: the serial console must keep working), a pin taken by two programs (`EBUSY`), a program killed
+  while driving an output: the pin back to an input; (9) `kill` a program waiting in `gk_events (…, 1000)`.
 
 ## Terminal tabs and the process tree (2026-10-06): built, tested in the simulator, published
 

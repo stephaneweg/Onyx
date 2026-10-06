@@ -9,7 +9,7 @@ ROOT=$(cd "$HERE/../.." && pwd)
 BIN=${TMPDIR:-/tmp}/onyx_basic_host
 g++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/user/Runtime" -I"$ROOT/user/Include" -I"$ROOT/user/Libs" -I"$ROOT/user/Emulators" -I"$ROOT/user/Ports" \
     "$ROOT/user/Libs/basic/basnum.cpp" "$ROOT/user/Libs/basic/bascomp.cpp" "$ROOT/user/Libs/basic/basvm.cpp" "$ROOT/user/Libs/basic/basbax.cpp" \
-    "$HERE/basic/host_main.cpp" -o "$BIN"
+    -DGK_STANDALONE "$ROOT/user/Kits/gpiokit/gkcore.cpp" "$HERE/basic/host_main.cpp" -o "$BIN"
 cd "$HERE/basic/progs"
 fail=0
 for bas in *.bas; do

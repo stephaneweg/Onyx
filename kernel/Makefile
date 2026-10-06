@@ -51,6 +51,7 @@ OBJS = \
 	sys/bsdsock.o \
 	sys/lsock.o \
 	sys/shm.o \
+	sys/gpio.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/uaccess.o \
 	arch/aarch64/el0.o \

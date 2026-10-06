@@ -207,7 +207,7 @@ static bool volume_there (const char *p)
 	const char *c = p ? strchr (p, ':') : 0;
 	if (!c || c - p > 4) return true;
 	std::string v (p, (size_t) (c - p));
-	if (v == "USB" || v == "USB1") return getenv ("SIM_USB") != 0;	// (v92: a stick, SIM_USB=1)
+	if (v == "USB" || v == "USB1") return getenv ("SIM_USB") != 0;	// (v93: a stick, SIM_USB=1)
 	if (v == "USB2" || v == "USB3") return false;
 	if (v == "SD" || v == "SD0" || (v != "VD0" && v != "VD1" && v != "VD2" && v != "VD3" && v != "SD1" && v != "SD2" && v != "SD3")) return true;
 	std::string list = std::string (",") + (getenv ("SIM_VOLS") ? getenv ("SIM_VOLS") : "") + ",";
@@ -725,7 +725,7 @@ static int vol_info (const char *p, struct kapi_vol_info *o)
 	o->total = 8ull << 30; o->free = 4ull << 30; o->used = o->total - o->free; snprintf (o->type, sizeof o->type, "FAT32");
 	return 0;
 }
-// (v92) the volumes: the card (SD:, the SIM_VOLS partitions), a USB stick when SIM_USB is set (a 14.9 GB
+// (v93) the volumes: the card (SD:, the SIM_VOLS partitions), a USB stick when SIM_USB is set (a 14.9 GB
 // exFAT "KINGSTON"; Eject / Mount / Format change it as the kernel would), RAM:
 static unsigned g_usbState = KAPI_VST_MOUNTED, g_usbGen = 1;
 static char g_usbType[8] = "exFAT", g_usbLabel[36] = "KINGSTON";
@@ -1365,7 +1365,7 @@ static void setup (void)
 	T->proc_done = proc_done; T->wait = h_wait; T->proc_wait = proc_wait; T->proc_tree = proc_tree; T->stream_read = stream_read; T->file_in = file_in; T->file_out = file_out; T->stream_read_nb = stream_read_nb;
 	T->stream_write = stream_write; T->stream_eof = stream_eof; T->stdin_read = stdin_read;
 	T->vol_info = vol_info;
-	T->vol_list = vol_list;			// (v92)
+	T->vol_list = vol_list;			// (v93)
 	T->vol_eject = vol_eject;
 	T->vol_mount = vol_mount;
 	T->vol_format = vol_format;

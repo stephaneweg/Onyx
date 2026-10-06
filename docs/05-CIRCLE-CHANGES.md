@@ -986,7 +986,7 @@ Cloudflare 2.2–2.8 → 6.0 MB/s with §26's fast path.
 
 ## 28. USB volumes: format, labels, an unmount while a call waits, the eject
 
-**Why.** kapi v92 (docs/02 §17) mounts the USB mass-storage devices as `USB:`, `USB2:`, `USB3:` when they
+**Why.** kapi v93 (docs/02 §18) mounts the USB mass-storage devices as `USB:`, `USB2:`, `USB3:` when they
 are plugged in and unmounts them when they are ejected or pulled out, formats a volume and shows its label.
 Upstream's FatFs configuration has neither `f_mkfs` nor the labels, and FatFs assumes a volume is not
 unmounted while a call on it waits for its lock.

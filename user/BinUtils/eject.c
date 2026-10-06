@@ -2,7 +2,7 @@
 // eject -- a USB volume made safe to remove: its open files synced, the stick's cache flushed, the
 // volume unmounted. Usage: eject [-f] [USB: | USB2: | USB3:]   (none: the one USB volume mounted)
 //   -f   even with files still open on it (the programs' further calls on them fail)
-// kapi v92 vol_eject.
+// kapi v93 vol_eject.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see docs/LICENSING.md)
 //

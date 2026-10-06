@@ -30,6 +30,7 @@
 #ifndef SOUND_HOST_TEST				// (tools/tests/sound: the synth on a PC)
 #include <kern/crashlog.h>
 #include <kern/sound.h>
+#include <kern/gpio.h>
 #include <circle/sound/pwmsoundbasedevice.h>
 #include <circle/sound/usbsoundbasedevice.h>
 #include <circle/sound/hdmisoundbasedevice.h>
@@ -443,6 +444,7 @@ static void OutputStop (void)
 	for (unsigned n = 0; p->IsActive () && n < 100; n++) CScheduler::Get ()->MsSleep (5);
 	s_pDevice = 0;
 	delete p;
+	GpioPwmClockKeep ();				// (the jack stopped the PWM clock: the header's PWM may need it, kern/gpio.h)
 }
 
 static boolean OutputStart (int nOut)

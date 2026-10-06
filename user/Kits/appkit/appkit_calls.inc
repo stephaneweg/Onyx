@@ -420,13 +420,13 @@ KAPI_CALL (int, kapi_cursor_shown, (void), { KAPI_WS ((int) WS_OP (EL_OP_CURSOR_
 KAPI_CALL (long, kapi_ws_ctl, (int op, long a0, long a1, long a2),
 	{ return KT->version >= 89 && KT->ws_ctl ? KT->ws_ctl (op, a0, a1, a2) : -KAPI_ENOSYS; })
 KAPI_CALL (int, kapi_vol_list, (struct kapi_volume *out, int max, unsigned flags),
-	{ return KT->version >= 92 && KT->vol_list ? KT->vol_list (out, max, flags) : -KAPI_ENOSYS; })
+	{ return KT->version >= 93 && KT->vol_list ? KT->vol_list (out, max, flags) : -KAPI_ENOSYS; })
 KAPI_CALL (int, kapi_vol_eject, (const char *vol, unsigned flags),
-	{ return KT->version >= 92 && KT->vol_eject ? KT->vol_eject (vol, flags) : -KAPI_ENOSYS; })
+	{ return KT->version >= 93 && KT->vol_eject ? KT->vol_eject (vol, flags) : -KAPI_ENOSYS; })
 KAPI_CALL (int, kapi_vol_mount, (const char *vol),
-	{ return KT->version >= 92 && KT->vol_mount ? KT->vol_mount (vol) : -KAPI_ENOSYS; })
+	{ return KT->version >= 93 && KT->vol_mount ? KT->vol_mount (vol) : -KAPI_ENOSYS; })
 KAPI_CALL (int, kapi_vol_format, (const char *vol, const struct kapi_format *fmt),
-	{ return KT->version >= 92 && KT->vol_format ? KT->vol_format (vol, fmt) : -KAPI_ENOSYS; })
+	{ return KT->version >= 93 && KT->vol_format ? KT->vol_format (vol, fmt) : -KAPI_ENOSYS; })
 
 // The memory primitives (appkit.h: real symbols, the C names are aliased onto them at link time).
 #ifndef _WIN32		// (the Windows build of the apps, pc/Koton: its C library's; no weak symbols there)

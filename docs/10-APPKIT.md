@@ -78,7 +78,7 @@ lx_launch ("tinypad", "SD:/docs/notes.txt");          // an app, with its argume
 lx_open ("SD:/games/tetris.gb", 0);                   // a file: by its runner
 ```
 
-**The volumes, USB sticks** (kapi v92) — list them, eject a stick, format one:
+**The volumes, USB sticks** (kapi v93) — list them, eject a stick, format one:
 
 ```c
 struct kapi_volume v[16];
@@ -242,7 +242,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_code_alloc` | Writable + executable memory for generated code, a JIT (v58) | `appkit.h` |
 | `kapi_fsize64` | A file's whole size (v59 | `appkit.h` |
 | `kapi_vol_info` | (v71) vol_info | `appkit.h` |
-| `kapi_vol_list` | (v92) The volumes | `appkit.h` |
+| `kapi_vol_list` | (v93) The volumes | `appkit.h` |
 | `kapi_vol_eject` | vol_eject | `appkit.h` |
 | `kapi_vol_mount` | vol_mount | `appkit.h` |
 | `kapi_vol_format` | vol_format | `appkit.h` |
@@ -1091,7 +1091,7 @@ unsigned long long kapi_fsize64 (void *h);
 int kapi_vol_info (const char *path, struct kapi_vol_info *out);
 ```
 
-(v92) The volumes: SD:, SD1:..SD3: (the card's partitions), USB:, USB2:, USB3: (USB sticks and disks, mounted when plugged in), RAM:. vol_list: every volume (struct kapi_volume: its state KAPI_VST_*, flags KAPI_VF_*, sizes, type, label, the files open on it; flags KAPI_VOLS_ROOM: the free space too) -> how many there are (out: up to max). A USB volume pulled out stays listed as KAPI_VST_REMOVED (KAPI_VF_UNSAFE if it was mounted) until a device takes its place; its gen changes at each event.
+(v93) The volumes: SD:, SD1:..SD3: (the card's partitions), USB:, USB2:, USB3: (USB sticks and disks, mounted when plugged in), RAM:. vol_list: every volume (struct kapi_volume: its state KAPI_VST_*, flags KAPI_VF_*, sizes, type, label, the files open on it; flags KAPI_VOLS_ROOM: the free space too) -> how many there are (out: up to max). A USB volume pulled out stays listed as KAPI_VST_REMOVED (KAPI_VF_UNSAFE if it was mounted) until a device takes its place; its gen changes at each event.
 
 ```cpp
 int kapi_vol_list (struct kapi_volume *out, int max, unsigned flags);
