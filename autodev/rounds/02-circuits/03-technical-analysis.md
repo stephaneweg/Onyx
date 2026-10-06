@@ -486,3 +486,93 @@ Each with its test cases; docs/04 updated for what is built.
 
 The UX Designer appends the **GUI plan** below (the window's layout, widgets by UIKit class, menus, states, mockups)
 and amends steps 4, 5, 9 accordingly; the constraints of §5 hold.
+
+---
+
+## GUI plan (UX Designer, 2026-10-06)
+
+Source: `04-ux-design.md` (the decisions D1–D13, the layout §2, the board §5, the mouse §6, the keys §7, the menus
+§8, the cards and messages §9, the states §10) and its pictures `mockups/*.png`, rendered with UIKit by
+`mockups/circuits_mock.cpp` (a throwaway; its drawing functions — `gate_outline`, `drawSwitch`, `drawLamp`, the
+palette's `tool_icon`, `LevelList`, `TruthTable`, the cards — may be lifted into the app, with integer curves).
+§5's constraints all hold: no UIKit change, no virtual added, no capture (`catchOutside` while a button is held).
+
+### What this changes in the plan above
+
+| Where | Change |
+|---|---|
+| §4 `BOARD_W`, `BOARD_H` | **40 × 30** cells (was 40 × 24). |
+| §4 geometry (new, fixed) | Switch: x = 0, footprint 5 × 2, out pin (5, y + 1). Lamp: x = 34, footprint 6 × 2, in pin (34, y + 1). Gates (NOT included): footprint 5 × 4; 2-input pins (x, y + 1), (x, y + 3), NOT's (x, y + 2); out (x + 5, y + 2). Fixed parts of n at `y = (2k + 1)·30 / (2n) − 1`. A gate must lie in columns 6–33 (`E_OUTSIDE` otherwise) and overlap nothing (`E_OVERLAP`). |
+| §4 `route` | The algorithm of 04 §5.4: forward = 4 points with the vertical in the nearest free column to the middle (free = no vertical of another source overlapping, no footprint crossed); backward = 6 points under both parts. Plus `junctions ()` (the dot points) and two helpers the window needs: `int pinAt (gx16, gy16, bool *isOut, int *pin)` (the part whose pin is within 0.6 cell, coordinates in 1/16 cell) and `int wireAt (gx16, gy16)` (within 1/3 cell of a segment). `bool canConnect (src, dst, pin, Err *)` = `connect`'s verdict without doing it (the rubber wire's green / red ring). `bool fits (type, x, y)` (the ghost's colour). |
+| §4 `read_text` auto-placement | depth d in column `7 + 6 (d − 1)` (≤ 4 depths fit), rows spread as the fixed parts. |
+| §5 window | Minimum size **920 × 600** (was "like Turtle, 920 × 560": the 16-row table of 3.4 and the bench need 600). Layout: list left (full height, worlds as headers — no `Dropdown`), centre = card / palette / board / message bar, **right column = truth table, gate count, Step, Reset, Check** (02 §4.2 put the table under the list and Check in the message bar: moved, 04 D1). |
+| 02 §4.11 | A won Check also shows a **result card** over the board (04 D5); the message bar keeps its stars and *Next level* as specified. |
+| 02 §4.7 | Additions, all undoable: **1–6** arm the palette's gates, **arrows** move the selected gate, a press on a **fed input pin** picks its wire up (re-plug / drop), a **click on a truth-table row** sets the switches. Esc's order: card › drag › armed tool › selection. |
+| 02 §4.8 | French gate names on screen: NON, ET, OU, OUX, NON-ET, NON-OU (texts stay English). |
+| Steps 4, 5, 9 | Refined / split into G1–G6 below (step 6 French and step 7's sim test keep their place; G-steps say which test cases they add). |
+
+### Files (beside the app; the engine stays UI-free)
+
+| File | Holds |
+|---|---|
+| `user/Apps/circuits/gates.h` | the colours of 04 §11 (constants), `gate_outline ()` (integer curves), `draw_gate ()`, `draw_switch ()`, `draw_lamp ()`, `star ()` (Turtle's), `padlock ()`, `circuits_icon` (the `ToolIconFn`: the select arrow, the six gates, Step, Reset, Check) |
+| `user/Apps/circuits/board.h` (+ `board.cpp` if long) | `Board : Widget` (fit, draw, ghost, rubber wire, badges, empty hint, hit tests, the drag state machine), `PaletteButton : ToolButton` |
+| `user/Apps/circuits/views.h` | `LevelList`, `Card`, `MsgBar`, `TruthTable`, `CountView`, `LessonCard`, `ResultCard` (each a `Widget`) |
+| `user/Apps/circuits/main.cpp` | `CircuitsRoot`, `layout ()`, the menus, the keys, the game logic (show level, check, progress, autosave, packs, clipboard) |
+
+(`user/Makefile`'s dependency line of step 4 already takes `$(wildcard Apps/circuits/*.h)`; add `Apps/circuits/board.cpp`
+to `FT_EXTRA_circuits` if it exists.)
+
+### The GUI steps
+
+**G0 (amends step 2) — the engine's geometry.** Implement the §4 changes of the table above in `circuit.h/.cpp`.
+*Test* (circuitstest part A, new cases): fixed parts' cells for n = 1…4 (`y` = 14 / 6, 21 / 4, 14, 24 / 2, 10, 17,
+25); pins of each type; a gate at x = 3 or x = 30 refused `E_OUTSIDE`, two overlapping refused `E_OVERLAP`; `route`
+of a forward wire = 4 points with its vertical at the middle, and moved one column when another source's vertical
+is there; a backward wire = 6 points; `pinAt` / `wireAt` on known points and just outside; `canConnect` false for a
+loop and true for a fed input; `read_text` without positions gives no overlap and no gate outside the columns, for
+every shipped solution.
+
+**G1 (refines step 4) — the static window.** `gates.h`, `views.h`, `board.h` drawing only; `main.cpp` builds the tree
+of 04 §2.1 with `layout ()` (resizes: the board's cell refits, the cards re-centre), the faces 18 / 10 / 30 px, the
+palette from the level's `parts` (+ the *no gate* label), the list with world headers / padlocks / stars and its
+scroll, the table (goal only), the count, the card with Hint / Lesson, the message bar, the menus of 04 §8.
+*Check*: one sim run per fixture → `shot.py` → looked at against `mockups/circuits-main.png`, `-empty.png`,
+`-levels.png`; at 920 × 600 (`SIM_POS` + a resize step, or a temporary `MOCK` size) nothing overlaps on level 3.4.
+
+**G2 (refines step 5, first half) — the board's mouse and keys.** `PaletteButton` (arm on press), the ghost,
+click-click and drag placing (back to Select after one), wiring with the rubber route and the ring, the loop
+refusal message, picking a fed wire up, selecting / moving (ghost, refused → back) / Delete / Backspace / right
+click, the trash / undo / redo buttons and their disabled states, 1–6, arrows, Esc's order, the switches' key click,
+`catchOutside` while held. *Test* (`run_circuits_sim_test.sh`, new cases): on `and` from a fresh fixture — press on
+the AND button, move, release on the board, then drag A's pin → g1.1, B's → g1.2, g1's → Out; wait 1.2 s; the
+written `progress.ini` has `and.circuit` with `part g1 AND x y` and the three wires; then `key 0x1A` (Ctrl+Z) and the
+circuit text loses the last wire. A loop attempt (`not` level, NOT output → its own input) → the log or a dump shows
+the message, the circuit text unchanged.
+
+**G3 (refines step 5, second half) — simulate and check.** Live updates on switch clicks and **table row clicks**;
+step mode (F8 / F9 / F7, the Step toggle lit, Reset enabled only there, badges, grey dashed wires, *?* lamps, the
+mode line); Check: the refused outline / ring, the obtained columns and marks, the first wrong row set on the
+switches, the result card (texts of 04 §9.2, *New record!*, last level), the message bar's stars and *Next level*,
+the list's stars / world totals / unlocking updated, any edit clearing the marks. *Test* (sim): AC 19 and AC 21 as
+planned; plus a dump after F5 on `check.ini` (02 AC 17's fixture) with a pixel check of the red tint on the table's
+row 4 and of the switches A, B both green; a dump after `key 0x117` twice on the `solving.ini` fixture (full adder)
+showing the OR gate's face grey (`0xF0F2F4`) at its known cell.
+
+**G4 (refines step 5, the rest) — levels, lessons, packs.** A click on a locked row → the message only; the lesson
+card (gate symbol + table, or the idea's text) the first time and on F1, Enter / Esc; F2 hint in the message bar
+and the card's hint line; Next / Previous; Open Level Pack (header added at the end of the list); malformed pack and
+id clash dialogs (04 §9.4); About; *Copied* messages. *Test*: AC 18 and AC 20 cases as planned (the dump shows the
+padlocks in the list's disc column and the `wire` lesson card's purple header).
+
+**G5 (= step 6) — French**, with the words of 04 §13 and D13; checked visually against `mockups/circuits-fr*.png`
+(no truncated label in the palette, the bench, the step line).
+
+**G6 (amends step 9) — screenshots.** `shots.sh circuits` makes **`circuits.png`** (`solving.ini`: the full adder
+solved, A = 1, B = 0, Cin = 1 — the mock-up's main scene; one gate selected by a click), **`circuits-check.png`**
+(`check.ini`: 2.2 with OR, F5 → *"1 row is wrong…"*), **`circuits-fr.png`** (`lang fr`, as the first), and
+optionally **`circuits-step.png`** (the first + `key 0x117` twice) for docs/04's section on step mode. Click
+coordinates are derived from `layout ()` at 1000 × 620 (the board's cell is 12 px there; the grid's origin
+`ox = (w − 40 c) / 2`, `oy = (h − 30 c) / 2` inside the board).
+
+Steps 0, 1, 3, 7 (its cases are extended by G2–G4), 8, 10, 11 and 12 are otherwise unchanged.
