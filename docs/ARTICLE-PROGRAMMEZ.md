@@ -203,6 +203,15 @@ les dates des commits, le socle, l'IPC, la chaîne de compilation et les dépend
 **2026-10-02** (plusieurs agents en parallèle), et le navigateur WebKit tournait sur le Pi le lendemain.
 **Confirmé par l'utilisateur le 2026-10-06 : on peut en parler dans l'article.**
 
+## Pourquoi la suite logicielle est si fournie (l'utilisateur, 2026-10-06)
+
+L'utilisateur demandait souvent des **idées de logiciels** et de **comparer Onyx aux OS grand public** ; chaque
+réponse pouvait ouvrir un chantier. À citer, **sans faire un catalogue qui met l'OS en avant** (sa consigne) :
+les émulateurs, la suite bureautique, le navigateur WebKit, 3DForge (CAO + FAO : le G-code de sa fraiseuse
+CNC, une Two Trees), et des outils de programmation : QBasic (clin d'œil à ses débuts), QBStudio, GPIO Lab,
+Turtle Quest (pour les enfants). Dans l'article : la sous-section « Qu'est-ce qui manque à Onyx ? », en prose
+(sans noms de produits pour les outils), et la liste à puces de « Ce que ça a donné » réduite à une phrase.
+
 ## La nuit en autonomie (l'utilisateur, 2026-10-06 ; remplace le paragraphe du GC dans l'article)
 
 Récit de l'utilisateur : il a demandé à Claude de travailler seul la nuit pendant qu'il dormait (pour la
