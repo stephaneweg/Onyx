@@ -33,6 +33,7 @@ be aware of. For the details of how things work internally, see
 > programs (§3), stages them into `sdcard/` (§4), and with `--card` copies the card to a mounted
 > FAT32 SD card. Jet Browser is not built (WebKit: docs/08) and is not on the card: install the
 > package `jet` on the Pi, from the Package Manager (the Control Panel, the gear on the dock).
+> To build Jet from its sources too: **`sh tools/build-jet.sh`** (hours; docs/08 "Resume").
 > The sections below are the same steps by hand.
 
 - **AArch64 bare-metal toolchain**: `aarch64-none-elf-` (GCC), used under **WSL** on

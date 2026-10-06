@@ -175,6 +175,15 @@ collector's reservations, the main thread's stack size, timing.
 
 ### Resume
 
+**From a fresh clone, in one command: `sh tools/build-jet.sh`** [`--no-jit`] [`--jobs N`] (Linux x86_64 or
+WSL 2). It builds Onyx first (`tools/build-sdcard.sh`), fetches the `aarch64-onyx-elf` toolchain, installs
+the POSIX sysroot, builds the libraries from `third_party/` (`tools/ports/build-all.sh`), fetches WebKit at
+the pin with the patch series (`fetch.sh`, `TESTS=0`), builds WebKit with the JIT as the package is built
+(`BUILD=<WEBKIT_DIR>-build/webkit-jit`, `CMAKE_EXTRA="-DONYX_WEBKIT=ON -DENABLE_JIT=ON -DENABLE_DFG_JIT=ON
+-DENABLE_FTL_JIT=OFF"`, `TARGET=WebKit`), then Jet (`build-web.sh` → `sdcard/apps/jet.app/main`). Each step
+is skipped when done: a second run continues. The host packages it asks for: `git build-essential python3
+perl ruby gperf unifdef cmake ninja-build curl xz-utils bison flex pkg-config` (+ `ccache`). The steps by hand:
+
 ```sh
 sudo apt-get install -y gperf unifdef cmake ninja-build ruby ccache   # host tools (docs/LOCAL-AGENT-WEBKIT.md)
 sh tools/toolchain/fetch.sh                                 # aarch64-onyx-elf into /opt/toolchains
