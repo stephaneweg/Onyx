@@ -53,6 +53,7 @@ audiokit || exit 1
 AK="$OUT/libaudiokit.a -lpthread -lm"
 build () {
 	extra=""; [ "$1" = graphcalc ] && extra=user/Libs/basic/basnum.cpp
+	case "$1" in notes|stickies) extra=user/Apps/notes/notesmodel.cpp ;; esac	# (their model: SD:/Notes, notes.ini)
 	[ "$1" = gamelib ] && extra="user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
@@ -139,7 +140,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
@@ -148,7 +149,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf preloadconf disks"
+      config wpaconf padconf soundconf displayconf keyconf preloadconf disks notes"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -385,6 +386,16 @@ if want ledger; then			# (the demo company: its overview, its sales, an invoice,
 	sim ledger ledger-print0 "wait;down 60 316;up 60 316;wait;down 400 218;up 400 218;wait;key 13;wait;down 592 28;up 592 28;$W" $P $L
 	sim letters ledger-print "wait;wait;wait;wait;winctl 2;wait;wait;wheel 500 400 -3;$W" $P SIM_ARGS="--merge SD:/apps/ledger.app/merge.job" SIM_OVERLAY="$OUT/writes"
 	png ledger-print
+fi
+if want notes; then			# (Notes, AutoDev round 1: the six sample notes of sd/Notes -- copied into a writes folder of
+					#  their own: an overlay folder cannot be listed --, Shopping selected (config.ini's last), the
+					#  list focused; then the first start: no SD:/Notes, one empty new note, the caret in it)
+	NW="$OUT/notes_w"; rm -rf "$NW"; mkdir -p "$NW/apps/notes.app"; cp -r $D/sd/Notes "$NW/Notes"
+	printf 'last = note-20260928-091500.txt\n' > "$NW/apps/notes.app/config.ini"
+	sim notes notes "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes
+	rm -rf "$NW"; mkdir -p "$NW"
+	sim notes notes-empty "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes-empty
+	rm -rf "$NW"
 fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
 if want control; then sim control control "wait;move 200 130;$W" $P; png control; fi
