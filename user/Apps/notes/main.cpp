@@ -106,13 +106,13 @@ static void stickies_set_shown (bool on)
 	if (!on)
 	{
 		if (pid > 0) kapi_mailbox_send (pid, STK_MSG_QUIT, "", 0);
-		set_msg ("Stickies hidden.", 0, MSG_TIME);
+		set_msg (TR ("Stickies hidden."), 0, MSG_TIME);
 		return;
 	}
 	int r = autostart_ensure ("run stickies", "run agenda", "# Stickies: the pinned notes on the desktop (Notes, View menu)");
 	if (pid <= 0) lx_launch ("stickies", 0);
-	set_msg (r == 2 ? "Stickies shown, and started at every boot (SD:/etc/autostart)."
-		 : r == 1 ? "Stickies shown." : "Stickies shown (autostart not written).", 0, MSG_TIME);
+	set_msg (r == 2 ? TR ("Stickies shown, and started at every boot (SD:/etc/autostart).")
+		 : r == 1 ? TR ("Stickies shown.") : TR ("Stickies shown (autostart not written)."), 0, MSG_TIME);
 }
 
 // ---- the folder's signature (the idle rescan: notes changed by another program) --------------------------
@@ -140,23 +140,27 @@ static long long day_number (int y, int m, int d)			// days since 1970-01-01
 	long long doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
 	return era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
 }
-// "Today, 09:15", "Yesterday, 18:30", "Friday 25 September, 20:02", "15 September, 10:15", "2 May 2025, 08:00"
+// "Today, 09:15", "Yesterday, 18:30", "Friday 25 September, 20:02", "15 September, 10:15", "2 May 2025, 08:00" --
+// in the system's language (the French: "vendredi 25 septembre, 20:02", the names in small letters).
 static void long_date (long long when, long long now, char *out, int cap)
 {
-	static const char *const MON[12] = { "January", "February", "March", "April", "May", "June", "July",
-					     "August", "September", "October", "November", "December" };
-	static const char *const DAY[7] = { "Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday" };
+	static const char *const MON[12] = { TRN ("January"), TRN ("February"), TRN ("March"), TRN ("April"), TRN ("May"),
+					     TRN ("June"), TRN ("July"), TRN ("August"), TRN ("September"), TRN ("October"),
+					     TRN ("November"), TRN ("December") };
+	static const char *const DAY[7] = { TRN ("Thursday"), TRN ("Friday"), TRN ("Saturday"), TRN ("Sunday"), TRN ("Monday"),
+					    TRN ("Tuesday"), TRN ("Wednesday") };
 	out[0] = 0;
 	int y = (int) (when / 10000000000LL), mo = (int) (when / 100000000 % 100), d = (int) (when / 1000000 % 100);
 	int h = (int) (when / 10000 % 100), mi = (int) (when / 100 % 100);
 	if (when <= 0 || mo < 1 || mo > 12 || d < 1 || d > 31) return;
 	int ny = (int) (now / 10000000000LL), nmo = (int) (now / 100000000 % 100), nd = (int) (now / 1000000 % 100);
 	long long day = day_number (y, mo, d), diff = nmo >= 1 && nmo <= 12 ? day_number (ny, nmo, nd) - day : 1000;
-	if (diff == 0) snprintf (out, (size_t) cap, "Today, %02d:%02d", h, mi);
-	else if (diff == 1) snprintf (out, (size_t) cap, "Yesterday, %02d:%02d", h, mi);
-	else if (diff >= 2 && diff <= 6) snprintf (out, (size_t) cap, "%s %d %s, %02d:%02d", DAY[((day % 7) + 7) % 7], d, MON[mo - 1], h, mi);
-	else if (y == ny) snprintf (out, (size_t) cap, "%d %s, %02d:%02d", d, MON[mo - 1], h, mi);
-	else snprintf (out, (size_t) cap, "%d %s %d, %02d:%02d", d, MON[mo - 1], y, h, mi);
+	const char *M = TR (MON[mo - 1]);		// (the catalogue's French in small letters: "septembre")
+	if (diff == 0) snprintf (out, (size_t) cap, "%s, %02d:%02d", TR ("Today"), h, mi);
+	else if (diff == 1) snprintf (out, (size_t) cap, "%s, %02d:%02d", TR ("Yesterday"), h, mi);
+	else if (diff >= 2 && diff <= 6) snprintf (out, (size_t) cap, "%s %d %s, %02d:%02d", TR (DAY[((day % 7) + 7) % 7]), d, M, h, mi);
+	else if (y == ny) snprintf (out, (size_t) cap, "%d %s, %02d:%02d", d, M, h, mi);
+	else snprintf (out, (size_t) cap, "%d %s %d, %02d:%02d", d, M, y, h, mi);
 }
 
 // ---- the widgets beside the list -------------------------------------------------------------------------
@@ -186,11 +190,18 @@ public:
 		text_changed ();
 		bool typed = k == KEY_ENTER || (k >= 32 && k < 0x100 && k != 127);
 		if (typed && !readonly && len == before && len >= NOTE_MAX_BYTES - 3)
-			set_msg ("This note is full (64 KB).", 0, MSG_TIME);
+			set_msg (TR ("This note is full (64 KB)."), 0, MSG_TIME);
 		return r;
 	}
 };
 
+// The colours' names (notesmodel.cpp's notes_colour_label, given to TR () where shown):
+// TR: Yellow
+// TR: Green
+// TR: Blue
+// TR: Pink
+// TR: Purple
+// TR: Grey
 static unsigned paper_sheet (int c) { return uk_mix (C_FIELD, notes_colour_paper (c), 150); }
 
 // The line over the text: when the note was changed, its colour, "On the desktop" when pinned.
@@ -205,18 +216,18 @@ public:
 		unsigned dim = uk_mix (C_FIELD, C_FIELD_TEXT, 140);
 		NoteInfo *e = cur ();
 		if (!e) return;
-		if (!e->saved && !g_ed->len && !g_bad) { uk_text_l (canvas, 18, 0, height, "New note \xC2\xB7 type: it is kept by itself, no need to save", dim); return; }
+		if (!e->saved && !g_ed->len && !g_bad) { uk_text_l (canvas, 18, 0, height, TR ("New note \xC2\xB7 type: it is kept by itself, no need to save"), dim); return; }
 		canvas.fillRect (12, height - 1, width - 24, 1, uk_mix (C_FIELD, C_FIELD_TEXT, 30));
-		if (g_bad) { uk_text_l (canvas, 18, 0, height, "Larger than 64 KB: open it in the Text Editor (Ctrl+E)", dim); return; }
+		if (g_bad) { uk_text_l (canvas, 18, 0, height, TR ("Larger than 64 KB: open it in the Text Editor (Ctrl+E)"), dim); return; }
 		char d[64], s[120];
-		if (e->saved) long_date (e->modified, notes_now (), d, sizeof d); else snprintf (d, sizeof d, "New note");
-		snprintf (s, sizeof s, "%s  \xC2\xB7  %s", d[0] ? d : "Date unknown", notes_colour_label (e->colour));
+		if (e->saved) long_date (e->modified, notes_now (), d, sizeof d); else snprintf (d, sizeof d, "%s", TR ("New note"));
+		snprintf (s, sizeof s, "%s  \xC2\xB7  %s", d[0] ? d : TR ("Date unknown"), TR (notes_colour_label (e->colour)));
 		uk_text_l (canvas, 18, 0, height, s, dim);
 		if (e->pinned)
 		{
 			int x = 18 + uk_tw (s) + 14;
 			uk_tool_glyph (canvas, WKT_PIN, x, (height - 14) / 2, 14, C_ACCENT);
-			uk_text_l (canvas, x + 18, 0, height, "On the desktop", C_ACCENT);
+			uk_text_l (canvas, x + 18, 0, height, TR ("On the desktop"), C_ACCENT);
 		}
 	}
 };
@@ -234,10 +245,11 @@ public:
 		int saved = 0, pinned = 0;
 		for (int i = 0; i < g_notes.count; i++) if (g_notes.n[i].saved) { saved++; if (g_notes.n[i].pinned) pinned++; }
 		char l[96];
-		if (g_notes.total > g_notes.count) snprintf (l, sizeof l, "Showing the %d newest notes", g_notes.count);
-		else if (!saved) snprintf (l, sizeof l, "No notes yet");
-		else if (!pinned) snprintf (l, sizeof l, "%d note%s", saved, saved > 1 ? "s" : "");
-		else snprintf (l, sizeof l, "%d note%s \xC2\xB7 %d on the desktop", saved, saved > 1 ? "s" : "", pinned);
+		const char *notes = saved > 1 ? TR ("notes") : TR ("note");
+		if (g_notes.total > g_notes.count) snprintf (l, sizeof l, TR ("Showing the %d newest notes"), g_notes.count);
+		else if (!saved) snprintf (l, sizeof l, "%s", TR ("No notes yet"));
+		else if (!pinned) snprintf (l, sizeof l, "%d %s", saved, notes);
+		else snprintf (l, sizeof l, "%d %s \xC2\xB7 %d %s", saved, notes, pinned, TR ("on the desktop"));
 		uk_text_l (canvas, 12, 1, height - 1, l, dim);
 		if (!g_msg[0]) return;
 		unsigned c = g_msgKind == 2 ? C_ERROR : dim;
@@ -279,8 +291,8 @@ static bool save_current ()
 	if (r != 0)
 	{
 		g_failed = true; g_failedAt = g_lastEdit;
-		set_msg (r == -2 ? "Not saved: the note is larger than 64 KB"
-				 : "Not saved: the card is full or read-only \xE2\x80\x94 trying again", 2, 0);
+		set_msg (r == -2 ? TR ("Not saved: the note is larger than 64 KB")
+				 : TR ("Not saved: the card is full or read-only \xE2\x80\x94 trying again"), 2, 0);
 		return false;
 	}
 	notes_save_ini (g_notes);
@@ -288,7 +300,7 @@ static bool save_current ()
 	notes_sort (g_notes);
 	g_sel = notes_find (g_notes, file);
 	g_list->sel = g_sel; g_list->now = notes_now (); g_list->showSel ();
-	set_msg ("Saved", 1, 0);
+	set_msg (TR ("Saved"), 1, 0);
 	sig_taken ();
 	stickies_reload ();
 	update_chrome ();
@@ -322,7 +334,7 @@ static void load (int i)
 		if (n < 0)
 		{
 			g_buf[0] = 0; g_bad = true;
-			set_msg (n == -2 ? "This note is larger than 64 KB: open it in the Text Editor (Ctrl+E)" : "This note could not be read", 2, MSG_TIME);
+			set_msg (n == -2 ? TR ("This note is larger than 64 KB: open it in the Text Editor (Ctrl+E)") : TR ("This note could not be read"), 2, MSG_TIME);
 		}
 	}
 	g_ed->setContent (g_buf);
@@ -352,7 +364,7 @@ static void on_new ()
 	NoteInfo *e = cur ();
 	if (e && !e->saved && !g_ed->len) { g_ed->setFocus (); return; }	// (already on an empty new note)
 	leave_current ();
-	if (notes_add_new (g_notes, notes_now ()) != 0) { set_msg ("Too many notes: delete some first", 2, MSG_TIME); load (0); return; }
+	if (notes_add_new (g_notes, notes_now ()) != 0) { set_msg (TR ("Too many notes: delete some first"), 2, MSG_TIME); load (0); return; }
 	load (0);
 	g_ed->setFocus ();
 	g_list->invalidate (true);
@@ -367,10 +379,10 @@ static void on_delete ()
 	if (!e->saved) return;
 	char file[NOTE_FILE]; snprintf (file, sizeof file, "%s", e->file);
 	int at = g_sel;
-	if (!notes_trash (g_notes, file)) { set_msg ("The note could not be moved to the Trash", 2, MSG_TIME); return; }
+	if (!notes_trash (g_notes, file)) { set_msg (TR ("The note could not be moved to the Trash"), 2, MSG_TIME); return; }
 	g_sel = -1; g_dirty = false;
 	sig_taken ();
-	notify ("Notes", "Note moved to the Trash");
+	notify ("Notes", TR ("Note moved to the Trash"));
 	stickies_reload ();
 	if (g_notes.count == 0) { notes_add_new (g_notes, notes_now ()); load (0); g_ed->setFocus (); return; }
 	load (at < g_notes.count ? at : g_notes.count - 1);
@@ -416,7 +428,7 @@ static void on_paste ()
 	int room = NOTE_MAX_BYTES - (g_ed->len - (g_ed->selEnd () - g_ed->selStart ()));
 	g_ed->paste ();
 	text_changed ();
-	if (n > room) set_msg ("This note is full (64 KB): the paste was cut.", 0, MSG_TIME);
+	if (n > room) set_msg (TR ("This note is full (64 KB): the paste was cut."), 0, MSG_TIME);
 	g_ed->setFocus ();
 }
 static void on_copy_note () { if (g_ed->len) clip_set_text_n (g_ed->content (), g_ed->len); }
@@ -451,26 +463,26 @@ static void build_menu ()
 {
 	NoteInfo *e = cur ();
 	g_menu = Menu ();
-	g_menu.menu ("File");
-	g_menu.item ("New Note",            "^N", UK_CTRL ('N'), on_new);
+	g_menu.menu (TR ("File"));
+	g_menu.item (TR ("New Note"),            "^N", UK_CTRL ('N'), on_new);
 	g_menu.separator ();
-	g_menu.item ("Open in Text Editor", "^E", UK_CTRL ('E'), on_open_editor);
+	g_menu.item (TR ("Open in Text Editor"), "^E", UK_CTRL ('E'), on_open_editor);
 	g_menu.separator ();
-	g_menu.item ("Delete Note",         "^D", UK_CTRL ('D'), on_delete);
-	g_menu.menu ("Edit");
-	g_menu.item ("Cut",                 "^X", UK_CTRL ('X'), on_cut);
-	g_menu.item ("Copy",                "^C", UK_CTRL ('C'), on_copy);
-	g_menu.item ("Paste",               "^V", UK_CTRL ('V'), on_paste);
+	g_menu.item (TR ("Delete Note"),         "^D", UK_CTRL ('D'), on_delete);
+	g_menu.menu (TR ("Edit"));
+	g_menu.item (TR ("Cut"),                 "^X", UK_CTRL ('X'), on_cut);
+	g_menu.item (TR ("Copy"),                "^C", UK_CTRL ('C'), on_copy);
+	g_menu.item (TR ("Paste"),               "^V", UK_CTRL ('V'), on_paste);
 	g_menu.separator ();
-	g_menu.item ("Select All",          "^A", UK_CTRL ('A'), on_select_all);
-	g_menu.item ("Copy Note",           "",   0,             on_copy_note);
-	g_menu.menu ("Note");
-	g_menu.item (e && e->pinned ? "Unpin from Desktop" : "Pin to Desktop", "^P", UK_CTRL ('P'), on_pin);
+	g_menu.item (TR ("Select All"),          "^A", UK_CTRL ('A'), on_select_all);
+	g_menu.item (TR ("Copy Note"),           "",   0,             on_copy_note);
+	g_menu.menu (TR ("Note"));
+	g_menu.item (e && e->pinned ? TR ("Unpin from Desktop") : TR ("Pin to Desktop"), "^P", UK_CTRL ('P'), on_pin);
 	g_menu.separator ();
 	static const MenuAction COL[NC_COUNT] = { on_yellow, on_green, on_blue, on_pink, on_purple, on_grey };
-	for (int c = 0; c < NC_COUNT; c++) g_menu.item (notes_colour_label (c), "", 0, COL[c]);
-	g_menu.menu ("View");
-	g_menu.item (g_cfg.stickies ? "Hide Stickies from the Desktop" : "Show Stickies on the Desktop", "", 0, on_view_stickies);
+	for (int c = 0; c < NC_COUNT; c++) g_menu.item (TR (notes_colour_label (c)), "", 0, COL[c]);
+	g_menu.menu (TR ("View"));
+	g_menu.item (g_cfg.stickies ? TR ("Hide Stickies from the Desktop") : TR ("Show Stickies on the Desktop"), "", 0, on_view_stickies);
 	g_menu.publish ();
 }
 
@@ -519,7 +531,7 @@ static void import_files (const char *data)
 		if (notes_add_new (g_notes, notes_now ()) != 0) break;
 		char file[NOTE_FILE]; snprintf (file, sizeof file, "%s", g_notes.n[0].file);
 		if (notes_write (g_notes, file, g_buf, len, notes_now ()) != 0)
-		{ notes_forget (g_notes, 0); set_msg ("Not saved: the card is full or read-only", 2, MSG_TIME); break; }
+		{ notes_forget (g_notes, 0); set_msg (TR ("Not saved: the card is full or read-only"), 2, MSG_TIME); break; }
 		snprintf (last, sizeof last, "%s", file); done++;
 	}
 	if (done) { notes_save_ini (g_notes); sig_taken (); stickies_reload (); }
@@ -529,15 +541,15 @@ static void import_files (const char *data)
 	{
 		char t[1000];
 		if (nBig == 1 && !nOther)
-			snprintf (t, sizeof t, "%s is larger than 64 KB, the most a note can hold.\nIt was not imported; open it in the Text Editor instead.", big);
+			snprintf (t, sizeof t, TR ("%s is larger than 64 KB, the most a note can hold.\nIt was not imported; open it in the Text Editor instead."), big);
 		else
 		{
 			int k = 0;
-			if (nBig) k += snprintf (t + k, sizeof t - (size_t) k, "Larger than 64 KB, the most a note can hold: %s.\n", big);
-			if (nOther) snprintf (t + k, sizeof t - (size_t) k, "Not a text file (.txt, .md) or unreadable: %s.\n", other);
-			strncat (t, "They were not imported.", sizeof t - strlen (t) - 1);
+			if (nBig) k += snprintf (t + k, sizeof t - (size_t) k, TR ("Larger than 64 KB, the most a note can hold: %s.\n"), big);
+			if (nOther) snprintf (t + k, sizeof t - (size_t) k, TR ("Not a text file (.txt, .md) or unreadable: %s.\n"), other);
+			strncat (t, TR ("They were not imported."), sizeof t - strlen (t) - 1);
 		}
-		ft_messagebox ("Import a note", t, MB_OK);
+		ft_messagebox (TR ("Import a note"), t, MB_OK);
 	}
 }
 
@@ -620,6 +632,7 @@ int main (void)
 	}
 	kapi_ipc_register (NOTES_SERVICE);			// (failed: Notes runs alone, nothing forwarded to it)
 	ft_uikit_install ("DejaVu Sans", 13);			// (before the widgets; false: the bitmap font)
+	uk_lang_init ();					// the words in the system's language (before the widgets)
 	notes_cfg_load (g_cfg);
 
 	int w = g_cfg.width < MIN_W ? MIN_W : g_cfg.width > 2000 ? 2000 : g_cfg.width;
@@ -634,18 +647,18 @@ int main (void)
 	ToolBar *tb = new ToolBar (0, 0, w, TB_H); tb->line = true;
 	tb->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	root.addChild (tb);
-	ToolButton *nb = (new ToolButton (0, 30, "New note (Ctrl+N)", tb_new))->setGlyph (WKT_PLUS)->setText ("New Note")->fitWidth ();
+	ToolButton *nb = (new ToolButton (0, 30, TR ("New note (Ctrl+N)"), tb_new))->setGlyph (WKT_PLUS)->setText (TR ("New Note"))->fitWidth ();
 	nb->filled = true; nb->setOn (true);
 	tb->add (nb, 6);
 	tb->sep ();
-	g_del = (new ToolButton (0, 30, "Delete note: to the Trash (Ctrl+D)", tb_delete))->setGlyph (WKT_TRASH)->setText ("Delete")->fitWidth ();
+	g_del = (new ToolButton (0, 30, TR ("Delete note: to the Trash (Ctrl+D)"), tb_delete))->setGlyph (WKT_TRASH)->setText (TR ("Delete"))->fitWidth ();
 	tb->add (g_del, 4);
-	g_pin = (new ToolButton (0, 30, "Pin to the desktop (Ctrl+P)", tb_pin))->setGlyph (WKT_PIN)->setText ("Pin")->setToggle (true, false)->fitWidth ();
+	g_pin = (new ToolButton (0, 30, TR ("Pin to the desktop (Ctrl+P)"), tb_pin))->setGlyph (WKT_PIN)->setText (TR ("Pin"))->setToggle (true, false)->fitWidth ();
 	tb->add (g_pin, 2);
 	tb->sep ();
 	for (int c = 0; c < NC_COUNT; c++)
 	{
-		g_colBtn[c] = (new ToolButton (26, 26, notes_colour_label (c), tb_colour))->setIcon (colour_icon, c)->setToggle (true, c == NC_YELLOW);
+		g_colBtn[c] = (new ToolButton (26, 26, TR (notes_colour_label (c)), tb_colour))->setIcon (colour_icon, c)->setToggle (true, c == NC_YELLOW);
 		g_colBtn[c]->iconSize = 18; g_colBtn[c]->tag = c;
 		tb->add (g_colBtn[c], c ? 0 : 2);
 	}
@@ -695,7 +708,7 @@ int main (void)
 	if (e && !g_bad && g_dirty && g_ed->len && !save_current ())
 	{
 		clip_set_text_n (g_ed->content (), g_ed->len);
-		char t[200]; snprintf (t, sizeof t, "Notes could not save \xE2\x80\x9C%s\xE2\x80\x9D: its text is on the clipboard", e->title[0] ? e->title : "New Note");
+		char t[200]; snprintf (t, sizeof t, TR ("Notes could not save \xE2\x80\x9C%s\xE2\x80\x9D: its text is on the clipboard"), e->title[0] ? e->title : TR ("New Note"));
 		notify ("Notes", t);
 		g_dirty = false;
 	}

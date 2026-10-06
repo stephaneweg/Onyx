@@ -24,6 +24,7 @@
 #include "uikit/toolbar.h"
 #include "Apps/notes/notesmodel.h"
 #include <stdio.h>
+#include <string.h>
 
 // A note's colour dot (the list's, the tool bar's colour buttons): d px round at (x, y), the dot's
 // gradient and a darker rim.
@@ -32,6 +33,25 @@ static inline void notes_draw_dot (uikit::Canvas &cv, int x, int y, int d, int c
 	unsigned dot = notes_colour_dot (c);
 	uikit::uk_rbox (cv, x, y, d, d, d / 2, uikit::uk_tone (dot, 150), dot);
 	uikit::uk_rline (cv, x, y, d, d, d / 2, uikit::uk_tone (dot, 90), 160);
+}
+
+// The model's short date (notes_date_label: English, the tests' and the files' own) in the system's language:
+// "Yesterday", a day's name ("Fri") or a month's ("15 Sep") translated where it stands; "09:15" and
+// "15/09/2025" as they are.
+static inline void date_tr (char *d, int cap)
+{
+	static const char *const W[] = { TRN ("Yesterday"), TRN ("Mon"), TRN ("Tue"), TRN ("Wed"), TRN ("Thu"), TRN ("Fri"),
+		TRN ("Sat"), TRN ("Sun"), TRN ("Jan"), TRN ("Feb"), TRN ("Mar"), TRN ("Apr"), TRN ("May"), TRN ("Jun"),
+		TRN ("Jul"), TRN ("Aug"), TRN ("Sep"), TRN ("Oct"), TRN ("Nov"), TRN ("Dec") };
+	const char *sp = strchr (d, ' '), *word = sp ? sp + 1 : d;
+	for (unsigned i = 0; i < sizeof W / sizeof W[0]; i++)
+		if (!strcmp (word, W[i]))
+		{
+			char t[48];
+			snprintf (t, sizeof t, "%.*s%s", sp ? (int) (sp - d + 1) : 0, d, TR (W[i]));
+			snprintf (d, (size_t) cap, "%s", t);
+			return;
+		}
 }
 
 class NoteList : public uikit::Widget
@@ -94,16 +114,16 @@ public:
 			else if (r + 1 < n && r + 1 != sel) canvas.fillRect (34, y + ROW - 3, right - 46, 1, faint);
 			notes_draw_dot (canvas, 16, y + 11, 10, e.colour);
 			char date[24] = "", f[NOTE_TITLE + 8];
-			if (e.saved) notes_date_label (e.modified, now, date, sizeof date);
+			if (e.saved) { notes_date_label (e.modified, now, date, sizeof date); date_tr (date, sizeof date); }
 			int dw = date[0] ? uk_tw (date) : 0;
 			if (e.title[0])
 			{
 				uk_text_fit (e.title, right - 34 - dw - 22, f, sizeof f, 2);
 				uk_text (canvas, 34, y + 5, f, C_FIELD_TEXT, 2);
 			}
-			else uk_text (canvas, 34, y + 5, "New Note", uk_mix (C_FIELD, C_FIELD_TEXT, 170), 3);
+			else uk_text (canvas, 34, y + 5, TR ("New Note"), uk_mix (C_FIELD, C_FIELD_TEXT, 170), 3);
 			if (dw) uk_text (canvas, right - dw - 14, y + 5, date, isSel ? uk_mix (C_FIELD, C_FIELD_TEXT, 190) : dim);
-			const char *pv = e.preview[0] ? e.preview : !e.saved && !e.title[0] ? "Now" : "";
+			const char *pv = e.preview[0] ? e.preview : !e.saved && !e.title[0] ? TR ("Now") : "";
 			if (*pv)
 			{
 				uk_text_fit (pv, right - 34 - 14 - (e.pinned ? 22 : 0), f, sizeof f);
@@ -113,7 +133,7 @@ public:
 		}
 		// the head: what is listed, and how many
 		canvas.fillRect (0, 0, width, HEAD, C_FIELD);
-		uk_text (canvas, 14, (HEAD - uk_fh ()) / 2, "Notes", C_FIELD_TEXT, 2);
+		uk_text (canvas, 14, (HEAD - uk_fh ()) / 2, TR ("Notes"), C_FIELD_TEXT, 2);
 		char c[16]; snprintf (c, sizeof c, "%d", n);
 		int cw = uk_tw (c);
 		unsigned badge = uk_mix (C_FIELD, C_FIELD_TEXT, 36);

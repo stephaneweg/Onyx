@@ -70,6 +70,8 @@ Usage quotidien, tout existe déjà dans les kits, testable entièrement dans le
   DOCX/PDF régénérés.
 - Au passage : `run_trash_test.sh` affichait « réussi » alors que son test ne compilait pas — corrigé.
 - **Aucun changement de kapi ni de noyau.**
+- Traduction anglais / français ajoutée après coup (règle du 2026-10-06) : `TR ()` dans Notes et Stickies,
+  `sdcard/apps/notes.app/lang/fr.txt` et `stickies.app/lang/fr.txt`, dates en français (« vendredi 25 septembre »).
 
 ## Tests et résultats
 

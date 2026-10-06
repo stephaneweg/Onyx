@@ -207,7 +207,7 @@ public:
 		if (hov) uk_rline (canvas, CX + 1, y + 1, CW - 2, h - 2, CR - 1, 0x00FFFFFF, 140);
 		char t[NOTE_TITLE + 8];
 		int ty = y + CBAND + CPAD - 2;
-		uk_text_fit (e.title[0] ? e.title : "New Note", CW - 2 * CPAD - (hov ? 18 : 0), t, sizeof t, 2);
+		uk_text_fit (e.title[0] ? e.title : TR ("New Note"), CW - 2 * CPAD - (hov ? 18 : 0), t, sizeof t, 2);
 		uk_text (canvas, CX + CPAD, ty, t, NOTE_INK, 2);
 		if (hov) uk_glyph (canvas, WKG_CHEV_RIGHT, CX + CW - CPAD - 4, ty + uk_fh () / 2, 9, uk_mix (p, NOTE_INK, 150));
 		int st[LINES], ln[LINES]; bool more = false;
@@ -237,8 +237,8 @@ public:
 			for (int k = 0; k < 4; k++) { uk_blend_px (canvas, CX, yy + k, 0x00FFFFFF, 120); uk_blend_px (canvas, CX + CW - 1, yy + k, 0x00FFFFFF, 120); }
 		uk_rbox (canvas, CX + 1, y + 1, CW - 2, h - 2, 6, 0x00FFFFFF, 0x00FFFFFF, hov ? 40 : 18);
 		uk_tool_glyph (canvas, WKT_PIN, CX + 14, y + 12, 16, 0x00E8EEF4);
-		uk_text_over (canvas, CX + 38, y + 10, "No notes pinned", 0x00FAFCFF, 2, 1, g_back);
-		uk_text_over (canvas, CX + 38, y + 31, "Click to open Notes", 0x00B8C4D0, 0, 1, g_back);
+		uk_text_over (canvas, CX + 38, y + 10, TR ("No notes pinned"), 0x00FAFCFF, 2, 1, g_back);
+		uk_text_over (canvas, CX + 38, y + 31, TR ("Click to open Notes"), 0x00B8C4D0, 0, 1, g_back);
 	}
 
 	void onDraw () override
@@ -263,7 +263,7 @@ public:
 		canvas.fillRect (0, 0, W, bottom, CATCH);
 		uk_paint_alpha (true);
 		sticky_icon (canvas, 14, 9);
-		const char *a = "Pinned notes";
+		const char *a = TR ("Pinned notes");
 		int fy = 5 + (26 - uk_fh ()) / 2, sh = g_light ? 2 : 1;
 		uk_text_over (canvas, 38, fy, a, g_ink, 2, sh, g_back);
 		if (g_pinned)
@@ -280,7 +280,7 @@ public:
 		for (int k = 0; k < shown; k++) card (k, cardY[k], cardH[k], hot == k);
 		if (moreY >= 0)
 		{
-			char m[48]; snprintf (m, sizeof m, "+%d more in Notes", g_pinned - shown);
+			char m[96]; snprintf (m, sizeof m, TR ("+%d more in Notes"), g_pinned - shown);
 			uk_text_over (canvas, CX + 4, moreY + (MORE_H - uk_fh ()) / 2, m, hot == MORE ? g_ink : g_dim, 0, sh, g_back);
 		}
 		uk_paint_alpha (false);
@@ -360,6 +360,7 @@ int main (void)
 	if (!c.stickies) return 0;				// hidden (Notes' View menu): no window at all
 	kapi_ipc_register (STICKIES_SERVICE);			// (failed: no reload message, the poll still runs)
 	ft_uikit_install ("DejaVu Sans", 13);
+	uk_lang_init ();					// the words in the system's language
 	int sw = 1024, sh = 768;
 	kapi_screen_size (&sw, &sh);
 	int x = sw - W - 8, y = 40, h = sh - 40 - 120;		// top right, as tall as the room above the dock

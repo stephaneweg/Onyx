@@ -2201,7 +2201,8 @@ alone**.
 > `--all`) lists the words of the sources that a catalogue has not, and the catalogue's lines no source uses;
 > `--keys <app>` prints an app's words to start a catalogue. **Every new app is translated** (English + French)
 > **from its first version**; the older ones are translated as they are worked on -- done: Setup, the Control
-> Panel and its applets, the Terminal, Ledger, Turtle Quest (its own `L2 (en, fr)` pairs and its levels'
+> Panel and its applets, the Terminal, Ledger, Notes and Stickies (the dates' names in the catalogue, the
+> model's English short dates translated where drawn: `notelist.h`'s `date_tr`), Turtle Quest (its own `L2 (en, fr)` pairs and its levels'
 > `.fr` texts; `locale_language ()` at its start), Circuits (`TR` + `lang/fr.txt`, its packs' `.fr` keys). `SHOTS_LANG=fr SHOTS_PNG=<folder> sh
 > tools/tests/desktop_sim/shots.sh <app>` renders an app in French on the PC to check that the words fit.
 > Wrap only what is shown — never a file's keys, paths, XML or a string
