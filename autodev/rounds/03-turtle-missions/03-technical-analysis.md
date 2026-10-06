@@ -361,3 +361,36 @@ Each PNG looked at (gems numbered, the ring on the next gem, both pad pairs, the
 target tinted, 3 stars, the chips with `GEMME`, the editor's 12 tools, the drop-down not clipped).
 
 **Card build** — `make` from `kernel/` (the `turtle.elf` rule) by the user (no AArch64 compiler here; R10).
+
+---
+
+## GUI plan (added by the UX Designer, `04-ux-design.md`)
+
+The mock-ups (`mockups/*.png`, rendered by the real app patched with `mockups/turtle_mock.patch`) settle the window's
+side. What this changes or adds to the steps above (nothing removed; no kapi, kernel or UIKit change; still two files
+`world.h` + `main.cpp`):
+
+**R1 — decided:** the editor's *Idea* `Dropdown` becomes the **first field of the editor panel** (panel y 18, h 26) and
+`root.setMinSize (920, 560)` becomes **`(920, 600)`**; its 20-row list (528 px) then always opens downward unclipped
+(room 536 px at 600, 576 at 640) — shown at 920 × 600 in EN and FR (`tq-editor-idea-min*.png`). No `h = 22`, no UIKit
+scrolling list. **R2 — decided:** the Drawing choice goes on the stars' row (a 110-px `Dropdown` beside the 100-px
+par `Textbox`, two captions), the tools take 4 rows of 34; the panel's content ends at 544 px ≤ 580 (measured).
+**R3 — decided:** `turtle-editor`'s scenario: the Coin click stays (123, 431), Test moves (45, 505) → **(45, 539)**.
+**R9:** confirmed — the six keys after `"draw"` in `ORDER`: pack 4/5 levels show REPEAT FOR IF WHILE SUB (the
+pictures), `hex-spiral` (`variable`) shows no SUB, as intended.
+
+| Step | Change / addition |
+|---|---|
+| 2 | The gem messages exactly as 04 §7 (`Gem %d first! This is gem %d.` with the line prefix of the run's errors). |
+| 3 | `FRONT ()`'s help: *"…, 4 a door, 5 a portal"* / *"…, 4 une porte, 5 un portail"* (04 §7). |
+| 4 | The colour failure message is **two lines** (`\n`, the MsgBar's bold first line): 04 D7 / §7; on a colour level the wrong-shape message says *"compare with the light one"* (FR *"compare avec la figure claire"*). |
+| 5 | The six `CONCEPTS` cards use **04 §4's texts verbatim** (measured to fit the `Lesson` box; the gems card's code in block form; FR `params` title *Des mots à paramètres*; recursion taught with the snail). The colour card contains a **`@palette`** line. |
+| 6, 7 | The level **titles of 04 §5** (shortened where 02's did not fit the 124-px list); `text` / `text.fr` ≤ 6 wrapped lines at 202 px (≈ 150 characters); pack 4 maps ≤ 16 columns (stones ≥ 24 px at the default size). |
+| 9 | `main.cpp`'s board, per 04 §2: `GEM_C[10]`, `GEM_INK[10]`, `PAD_RING[2]`, `PAD_FACE[2]`; helpers **`gem ()`, `ring ()`, `pad ()`** (geometry 04 §2.2); `turtle (…, k)` gains a scale; `Board::tile` gains `bool edit` (no ring in the editor) and draws `'1'…'9'` (ring on `w.gems + 1`), `'T'`/`'U'`; the HUD of 04 §2.4 (Coins · ◆ Gems · Keys, `uk_text_l` bold, the next stone's icon / ✓); **`EV_TELEPORT` 420 × k ms** and its animation (04 §2.5: shrink in A, grow out of B, glows, the dotted arc); the colour target tint `uk_mix (0xFBFAF5, PEN[c], 85)`. **Also (app-wide safety nets, seen in the mock-ups):** `Card` — a title wider than its room is drawn in the UI face bold, then cut with "." (04 D9); the card text wraps to **6 lines** (was 4, in `onDraw` and `need ()`); `Lesson` — *"New idea:"* dropped when the title does not fit with it, and the `@palette` line drawn as 16 swatches (04 D8). |
+| 10 | The editor panel of **04 §6.1** (order, y's, `Dropdown g_edDrawSel` *No / Shape / Colours* replacing `Checkbox g_edDraw`, its captions, `g_edLabels[10]`, `retitle`'s arrays in the new order); **`setMinSize (920, 600)`**; `ToolPal` 12 tools / 4 rows (04 §6.2), its icons, and **a name wider than `cell − 22` drawn in an 11-px face** (`g_small`, DejaVu Sans 11, opened in `main`) — it also fixes the existing FR *Drapeau* / *Peinture* overflow; `edit_cell (c, r, drag)` + `Board::onMouse` per 04 D14; **`check_level` reports the cell at fault** (e.g. `int *badC, int *badR` out-parameters, −1 when none) so the editor rings it red (`g_badC`, `g_badR`, cleared by `edit_cell`) beside the red message of 04 §7. |
+| 11 | Shots: `turtle-editor`'s Test click → (45, 539); `turtle-portals` = F8 until the statement after a jump is lit (no freeze in the app); `turtle-editor-gems` may click the Gem tool at (45, 499) and Portal 1 at (123, 499); every new shot also looked at in French (04 §8's list). |
+| 12 | docs/04 §13: the editor's new panel order and the 920 × 600 minimum; the shortened titles. |
+
+New UX checks for the validation (05): the Idea list unclipped at 920 × 600 (EN/FR); no label overflowing its tool
+button in French; the six cards end above the OK button in both languages; the HUD fits a 320-px board; the ring on
+the next gem visible on every floor; pads told apart without colour (dots).
