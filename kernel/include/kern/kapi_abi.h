@@ -228,7 +228,8 @@
 //      inputs when it ends. Read by GPIOKit (SD:/lib/gpiokit.so) DIRECTLY, not through AppKit (the
 //      user's exception, docs/03 §5.10): GPIOKit, like AppKit, is shipped and rebuilt with the kernel.
 // v93: the volumes (kern/volume.h, sys/volume.cpp): + vol_list, vol_eject, vol_mount, vol_format (slots
-//      230..233). USB sticks and disks (USB:, USB2:, USB3: -- Circle's umsd1..umsd3) are mounted when they
+//      230..233). USB sticks and disks (USB1:, USB2:, USB3: -- Circle's umsd1..umsd3 -- whole, or USB1P1:..P4: a
+//      device's partitions when it has several; USB: is USB1:) are mounted when they
 //      are plugged in and unmounted when they are ejected or pulled out (their open files then fail with
 //      -EIO, the programs go on); vol_list lists every volume with its state, size, label; vol_eject
 //      syncs the volume's open files, flushes the stick's cache and unmounts it (-EBUSY while files are
@@ -338,7 +339,8 @@ struct kapi_vol_info
 };
 
 // (v93) A volume as kapi_vol_list gives it. The FatFs volumes (SD, SD1..SD3: the card's partitions;
-// USB, USB2, USB3: the USB mass-storage devices) then RAM. A USB volume stays listed once its device is
+// USB1, USB2, USB3: the USB mass-storage devices whole, USBnP1..P4: the partitions of one that has several;
+// a program groups them by `device`) then RAM. A USB volume stays listed once its device is
 // gone (KAPI_VST_REMOVED) until a device takes its place: a program that polls sees what happened.
 #define KAPI_VST_MOUNTED	1		// in use: its files can be read and written
 #define KAPI_VST_EJECTED	2		// ejected, the device still plugged in: it can be removed safely
@@ -2055,7 +2057,7 @@ struct TKApiTable
 	long (*gpio_ctl) (int op, long a0, long a1, long a2);
 	// --- v93: the volumes (sys/volume.cpp; struct kapi_volume, KAPI_VST_*, KAPI_VF_*) ---
 	// vol_list: every volume (out: up to max of them; flags KAPI_VOLS_ROOM: the free space too) -> how
-	// many there are. vol_eject: a USB volume ("USB:") synced, its device's cache flushed, unmounted ->
+	// many there are. vol_eject: a USB device (any of its volumes: "USB1:", "USB1P2:") synced, its cache flushed, unmounted ->
 	// 0: it can be removed; -KAPI_EBUSY files are open on it (synced, still mounted; KAPI_EJECT_FORCE
 	// unmounts anyway), -KAPI_EINVAL not removable, -KAPI_ENOENT not mounted. vol_mount: a USB volume
 	// ejected (still plugged in) or unreadable, or SD1..SD3, mounted again -> 0 / -KAPI_E*. vol_format:

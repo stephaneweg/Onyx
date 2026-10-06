@@ -73,7 +73,7 @@ struct TImgSource
 //    which is also what FatFs makes of a path without a volume (the kernel never changes FatFs's
 //    current directory);
 //  - only the spellings of ONE volume collapse: its name in any case, FatFs's numeric form ("0:"
-//    is the first name of FF_VOLUME_STRS, "1:" the second...) and the kernel's "SD0:" (= "SD:").
+//    is the first name of FF_VOLUME_STRS, "1:" the second...) and the kernel's "SD0:" (= "SD:") and "USB:" (= "USB1:").
 //    "SD:" and "SD1:" are two partitions: two volumes, two keys;
 //  - '/' between the names (FatFs takes '\' too: turned into '/'), no empty name, no "." or "..",
 //    no '/' at the end (the root alone is "sd:/"), a name's trailing dots and spaces dropped (as

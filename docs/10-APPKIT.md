@@ -82,16 +82,16 @@ lx_open ("SD:/games/tetris.gb", 0);                   // a file: by its runner
 
 ```c
 struct kapi_volume v[16];
-int n = kapi_vol_list (v, 16, KAPI_VOLS_ROOM);        // SD:, SD1:.., USB:.., RAM: (n: how many)
+int n = kapi_vol_list (v, 16, KAPI_VOLS_ROOM);        // SD:, SD1:.., USB1:.., USB1P1:.., RAM:
 for (int i = 0; i < n && i < 16; i++)
     if ((v[i].flags & KAPI_VF_REMOVABLE) && v[i].state == KAPI_VST_MOUNTED)
         ax_putln (v[i].label);                        // a stick plugged in: "USB" + its label
 
-if (kapi_vol_eject ("USB:", 0) == -KAPI_EBUSY)        // files open on it (they were synced)
-    kapi_vol_eject ("USB:", KAPI_EJECT_FORCE);        // ... after asking the user
+if (kapi_vol_eject ("USB1:", 0) == -KAPI_EBUSY)        // files open on it (they were synced)
+    kapi_vol_eject ("USB1:", KAPI_EJECT_FORCE);        // ... after asking the user
 
 struct kapi_format f = { KAPI_FMT_EXFAT, 0, 0, "PHOTOS" };
-kapi_vol_format ("USB:", &f);                         // erases it; SD: is always refused
+kapi_vol_format ("USB1:", &f);                         // erases it; SD: is always refused
 ```
 
 ## Index
@@ -1091,13 +1091,13 @@ unsigned long long kapi_fsize64 (void *h);
 int kapi_vol_info (const char *path, struct kapi_vol_info *out);
 ```
 
-(v93) The volumes: SD:, SD1:..SD3: (the card's partitions), USB:, USB2:, USB3: (USB sticks and disks, mounted when plugged in), RAM:. vol_list: every volume (struct kapi_volume: its state KAPI_VST_*, flags KAPI_VF_*, sizes, type, label, the files open on it; flags KAPI_VOLS_ROOM: the free space too) -> how many there are (out: up to max). A USB volume pulled out stays listed as KAPI_VST_REMOVED (KAPI_VF_UNSAFE if it was mounted) until a device takes its place; its gen changes at each event.
+(v93) The volumes: SD:, SD1:..SD3: (the card's partitions), USB1:, USB2:, USB3: (USB sticks and disks whole; USB1P1:, USB1P2:... the partitions of one that has several; USB: is USB1:; mounted when plugged in), RAM:. vol_list: every volume (struct kapi_volume: its state KAPI_VST_*, flags KAPI_VF_*, sizes, type, label, the files open on it; flags KAPI_VOLS_ROOM: the free space too) -> how many there are (out: up to max). A USB volume pulled out stays listed as KAPI_VST_REMOVED (KAPI_VF_UNSAFE if it was mounted) until a device takes its place; its gen changes at each event.
 
 ```cpp
 int kapi_vol_list (struct kapi_volume *out, int max, unsigned flags);
 ```
 
-vol_eject: "USB:" made safe to remove -- its written files synced, the device's cache flushed, unmounted -> 0; -KAPI_EBUSY files are open on it (synced, still mounted; KAPI_EJECT_FORCE: ejected anyway, they then fail with -KAPI_EIO), -KAPI_EINVAL not a removable volume, -KAPI_ENOENT not mounted.
+vol_eject: a USB device ("USB1:", or any of its partitions: all of them) made safe to remove -- its written files synced, the device's cache flushed, unmounted -> 0; -KAPI_EBUSY files are open on it (synced, still mounted; KAPI_EJECT_FORCE: ejected anyway, they then fail with -KAPI_EIO), -KAPI_EINVAL not a removable volume, -KAPI_ENOENT not mounted.
 
 ```cpp
 int kapi_vol_eject (const char *vol, unsigned flags);

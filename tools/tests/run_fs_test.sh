@@ -14,6 +14,8 @@ cp "$F/ff.c" "$F/ff.h" "$F/ffunicode.c" "$F/diskio.h" "$F/diskio.cpp" "$T/"
 # upstream's ff.c: the last version not committed by the fork's owner (the Onyx changes)
 UP=$(cd "$ROOT/circle" && git log --format='%H %an' -- addon/fatfs/ff.c | grep -v ' stephaneweg$' | head -1 | cut -d' ' -f1)
 ( cd "$ROOT/circle" && git show "$UP:addon/fatfs/ff.c" ) > "$T/up/ff.c"
+# (our ffconf.h has 21 volumes, past upstream's check of 10 -- which only guards its numeric "0:".."9:")
+sed -i 's/FF_VOLUMES > 10/FF_VOLUMES > 32/' "$T/up/ff.c"
 # the fork's configuration, with f_mkfs (to format the RAM disk) and without the OS locks
 sed -e 's/^#define FF_USE_MKFS[[:space:]]*0/#define FF_USE_MKFS 1/' \
     -e 's/^#define FF_FS_REENTRANT[[:space:]]*1/#define FF_FS_REENTRANT 0/' "$F/ffconf.h" > "$T/ffconf.h"

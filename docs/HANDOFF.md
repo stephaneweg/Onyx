@@ -33,36 +33,44 @@ words: dialects*, *The statement hook*, *Turtle Quest*: the code's pieces).
 
 ## USB sticks: hot mount, eject, format (2026-10-06, kapi v93): built, tested on the PC, NOT yet on the Pi
 
+**The names (the user's choice, 2026-10-06, after the first version)**: `USB1:` (`USB2:`, `USB3:`) = a USB device
+whole when it has one partition or none; `USB1P1:`, `USB1P2:`... its partitions when it has several (each FAT /
+exFAT one mounted); `USB:` is an alias of `USB1:` (as `SD0:` of `SD:`). Built: `FF_VOLUMES 21`, `VolToPart`, ff.c's
+limit of 10 lifted (docs/05 §28), one FatFs lock a physical drive (`fslock.cpp`), the device's sector 0 read by
+`UsbLayout`; eject acts on the whole device; a format of `USB1:` makes the device one partition again, of
+`USB1P2:` only that partition (Disks: "Whole device"). Tested on the PC (`usbtest`: two partitions, then the whole
+device again). **On the Pi, also test**: a stick of two partitions (made on a PC: FAT32 + exFAT) -> `USB1P1:` and
+`USB1P2:`, their eject together, a format of one, then "Whole device".
+
 Asked by the user: USB mass-storage volumes so the system is not limited to the SD card. **Read docs/02 §18**
 (the design, the surprise removal, the eject, the format, the multi-partition proposal) and docs/05 §28 (the
 Circle fork's patches).
 
-- **Done**: `kernel/sys/volume.cpp` (+ `kern/volume.h`): `USB:` / `USB2:` / `USB3:` (Circle's `umsd1..3`) mounted
+- **Done**: `kernel/sys/volume.cpp` (+ `kern/volume.h`): `USB1:` / `USB2:` / `USB3:` (Circle's `umsd1..3`; or `USBnP1:`.. per partition) mounted
   when plugged in (`VolPoll`, the input task, beside `SoundPoll`), unmounted at an eject or when pulled out (its
   open files lost -> `-EIO`, the programs go on); kapi v93 `vol_list` 230, `vol_eject` 231, `vol_mount` 232,
   `vol_format` 233 (SD: always refused; SD1..SD3 with `KAPI_FMT_CARD`); the FatFs objects outside the open-file
-  layer tracked (`VolTrack`); `kapi_shutdown` syncs everything first (`VolSyncAll`); `USB1:` = `USB:`.
+  layer tracked (`VolTrack`); `kapi_shutdown` syncs everything first (`VolSyncAll`); `USB:` = `USB1:`.
   The fork (circle `onyx`): `FF_USE_MKFS`, `FF_USE_LABEL`, `ff.c` re-checks after the volume lock, `ffsystem.cpp`'s
   mutex kept across an unmount, a yield between USB transfers (`diskio.cpp`), SCSI SYNCHRONIZE CACHE.
   User side: the menu bar's USB icon and box (Eject / Mount / Format..., notifications), the File Viewer (sidebar,
   Go > USB Stick / Eject USB Stick (Ctrl+E) / Disks), **Disks** (`user/Apps/disks`, in the `onyx` package),
-  `/bin/mount`, `/bin/eject`, `/bin/mkfs`, `df` lists every volume; Photos looks in `USB2:/DCIM` (was `USB1:`).
+  `/bin/mount`, `/bin/eject`, `/bin/mkfs`, `df` lists every volume; Photos looks in each USB volume's `DCIM`.
 - **Tested on the PC**: `sh tools/tests/run_fs_test.sh` (new `fs/usbtest.cpp`: formats, labels, MBR /
   superfloppy, a stick pulled out while writing, an unmount while a call waits for the lock — that one fails
   with upstream's `ff.c`), `run_ofile_test.sh`, `run_ipc_test.sh`; Disks and the USB box in the simulator
   (`SIM_USB=1`, `shots.sh disks usbmenu`). Kernel and apps built.
 - **To test on the Pi with a real stick** (nothing ran there yet): a FAT32 stick and an exFAT one plugged in
-  after boot and at boot (the notification, the icon, `mount`, `ls USB:`); copy SD <-> USB both ways with `cp`
+  after boot and at boot (the notification, the icon, `mount`, `ls USB1:`, `ls USB:`); copy SD <-> USB both ways with `cp`
   and the File Viewer (a big file: the desktop must stay responsive); `eject` then pull out (no warning); pull
-  out **while copying** a big file (the copy fails, no hang, no crash; `kmsg`: `volume: USB: removed without
+  out **while copying** a big file (the copy fails, no hang, no crash; `kmsg`: `volume: USB1: removed without
   an eject`; another stick then mounts and the old copy does not write to it); eject with a file open (Tinypad on
-  `USB:/x.txt`: -EBUSY, then forced); `mkfs -t exfat -L TEST USB:` and FAT32 on a 32 GB+ stick (the time it
+  `USB1:/x.txt`: -EBUSY, then forced); `mkfs -t exfat -L TEST USB1:` and FAT32 on a 32 GB+ stick (the time it
   takes; the stick then readable on a PC); `mkfs SD:` refused; two sticks at once (`USB2:`); a USB hard disk
   (its spin-up: the mount is tried 3 times); a stick behind a hub; the SYNCHRONIZE CACHE on sticks that refuse it
   (`kmsg`: no error loop). Worth timing: how long a transfer that was running when a stick is pulled takes to
   fail (Circle's xHCI 3 s timeout, its retries).
-- **Open / for later**: several partitions of one USB disk (proposal in docs/02 §18: `USB1P2:`... — **the naming
-  is the user's choice**), GPT (`FF_LBA64`: a full rebuild), hidden `.~onyx-deleted` files left on a stick by a
+- **Open / for later**: GPT (`FF_LBA64`: a full rebuild), hidden `.~onyx-deleted` files left on a stick by a
   crash are not cleaned at its mount (only the card's at boot).
 
 ## The GPIO workshop: GPIOKit, GPIO Lab, BASIC's GPIO (2026-10-06; built and tested on the PC, NOT yet on the Pi)

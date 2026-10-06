@@ -202,13 +202,18 @@ static void f_close (void *h) { fclose ((FILE *) h); }
 struct SimDir { DIR *d; std::string path; };
 // SIM_VOLS="SD1,VD0": the other volumes there (the card's partitions 2..4, the disk images) -- none
 // by default, as on a card with one partition ("SD:" and "SD0:" are the card).
+// (v93) the simulated USB stick (vol_list below)
+static unsigned g_usbState = KAPI_VST_MOUNTED, g_usbGen = 1;
+static bool g_usbParts = getenv ("SIM_USB") && getenv ("SIM_USB")[0] == '2';	// (USB1P1: + USB1P2:, else USB1:)
+static char g_usbType[8] = "exFAT", g_usbLabel[36] = "KINGSTON";
 static bool volume_there (const char *p)
 {
 	const char *c = p ? strchr (p, ':') : 0;
 	if (!c || c - p > 4) return true;
 	std::string v (p, (size_t) (c - p));
-	if (v == "USB" || v == "USB1") return getenv ("SIM_USB") != 0;	// (v93: a stick, SIM_USB=1)
-	if (v == "USB2" || v == "USB3") return false;
+	if (v == "USB" || v == "USB1") return getenv ("SIM_USB") != 0 && !g_usbParts;	// (v93: a stick, SIM_USB=1;
+	if (v == "USB1P1" || v == "USB1P2") return getenv ("SIM_USB") != 0 && g_usbParts;	//  two partitions: SIM_USB=2)
+	if (v.compare (0, 3, "USB") == 0) return false;
 	if (v == "SD" || v == "SD0" || (v != "VD0" && v != "VD1" && v != "VD2" && v != "VD3" && v != "SD1" && v != "SD2" && v != "SD3")) return true;
 	std::string list = std::string (",") + (getenv ("SIM_VOLS") ? getenv ("SIM_VOLS") : "") + ",";
 	return list.find ("," + v + ",") != std::string::npos;
@@ -727,8 +732,6 @@ static int vol_info (const char *p, struct kapi_vol_info *o)
 }
 // (v93) the volumes: the card (SD:, the SIM_VOLS partitions), a USB stick when SIM_USB is set (a 14.9 GB
 // exFAT "KINGSTON"; Eject / Mount / Format change it as the kernel would), RAM:
-static unsigned g_usbState = KAPI_VST_MOUNTED, g_usbGen = 1;
-static char g_usbType[8] = "exFAT", g_usbLabel[36] = "KINGSTON";
 static int vol_list (struct kapi_volume *o, int max, unsigned flags)
 {
 	int n = 0;
@@ -751,8 +754,16 @@ static int vol_list (struct kapi_volume *o, int max, unsigned flags)
 		char v[8]; snprintf (v, sizeof v, "%s:", parts[i]);
 		if (volume_there (v)) add (parts[i], KAPI_VST_MOUNTED, KAPI_VF_FORMATTABLE, 32ull << 30, 23ull << 30, 17ull << 30, "exFAT", "ROMS", "emmc1", 1);
 	}
-	if (getenv ("SIM_USB"))
-		add ("USB", g_usbState, KAPI_VF_REMOVABLE | KAPI_VF_FORMATTABLE, 16008609792ull, g_usbState == KAPI_VST_MOUNTED ? 16004415488ull : 0,
+	bool on = g_usbState == KAPI_VST_MOUNTED;
+	if (getenv ("SIM_USB") && g_usbParts)
+	{
+		add ("USB1P1", g_usbState, KAPI_VF_REMOVABLE | KAPI_VF_FORMATTABLE, 16008609792ull, on ? 7998537728ull : 0, on ? 2147483648ull : 0,
+		     on ? "FAT32" : "", on ? "PHOTOS" : "", "umsd1", g_usbGen);
+		add ("USB1P2", g_usbState, KAPI_VF_REMOVABLE | KAPI_VF_FORMATTABLE, 16008609792ull, on ? 8004829184ull : 0, on ? 6442450944ull : 0,
+		     on ? "exFAT" : "", on ? "DATA" : "", "umsd1", g_usbGen);
+	}
+	else if (getenv ("SIM_USB"))
+		add ("USB1", g_usbState, KAPI_VF_REMOVABLE | KAPI_VF_FORMATTABLE, 16008609792ull, g_usbState == KAPI_VST_MOUNTED ? 16004415488ull : 0,
 		     g_usbState == KAPI_VST_MOUNTED ? 11811160064ull : 0, g_usbState == KAPI_VST_MOUNTED ? g_usbType : "",
 		     g_usbState == KAPI_VST_MOUNTED ? g_usbLabel : "", "umsd1", g_usbGen);
 	add ("RAM", KAPI_VST_MOUNTED, KAPI_VF_RAM, 128ull << 20, 128ull << 20, 120ull << 20, "RAM", "", "", 1);
@@ -778,6 +789,7 @@ static int vol_format (const char *v, const struct kapi_format *f)
 	if (!is_usb (v) || !getenv ("SIM_USB")) return -KAPI_ENODEV;
 	snprintf (g_usbType, sizeof g_usbType, "%s", f->fs == KAPI_FMT_FAT32 ? "FAT32" : f->fs == KAPI_FMT_FAT ? "FAT16" : "exFAT");
 	snprintf (g_usbLabel, sizeof g_usbLabel, "%s", f->label);
+	if (!strchr (v, 'P') && !strchr (v, 'p')) g_usbParts = false;	// (USB1: the whole device: one partition)
 	g_usbState = KAPI_VST_MOUNTED; g_usbGen++;
 	return 0;
 }

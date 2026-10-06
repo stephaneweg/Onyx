@@ -561,7 +561,8 @@ big files (ROMs, disc images).
 
 **What.**
 
-- `ffconf.h`: `FF_VOLUMES 9`, `FF_VOLUME_STRS "SD","SD1","SD2","SD3","USB","USB2","USB3","FD","NVME"`;
+- `ffconf.h`: `FF_VOLUMES 9`, `FF_VOLUME_STRS "SD","SD1","SD2","SD3","USB","USB2","USB3","FD","NVME"` (since
+  §28: 21 volumes, the USB devices' `USB1`..`USB3` and their partitions `USB1P1`..`USB3P4`);
   `FF_FS_EXFAT 1` (needs `FF_USE_LFN`; `FSIZE_t` becomes 64-bit → rebuild the kernel clean).
 - `ffconf.h`: `FF_MULTI_PARTITION 1`. `diskio.cpp`: the physical drives are `emmc1` (the whole
   card, as upstream), `umsd1`…`umsd3`, `ufd1`, `nvme1`; **`VolToPart`** maps `SD:` to the card's
@@ -986,7 +987,7 @@ Cloudflare 2.2–2.8 → 6.0 MB/s with §26's fast path.
 
 ## 28. USB volumes: format, labels, an unmount while a call waits, the eject
 
-**Why.** kapi v93 (docs/02 §18) mounts the USB mass-storage devices as `USB:`, `USB2:`, `USB3:` when they
+**Why.** kapi v93 (docs/02 §18) mounts the USB mass-storage devices as `USB1:`, `USB2:`, `USB3:` (or `USB1P1:`… per partition) when they
 are plugged in and unmounts them when they are ejected or pulled out, formats a volume and shows its label.
 Upstream's FatFs configuration has neither `f_mkfs` nor the labels, and FatFs assumes a volume is not
 unmounted while a call on it waits for its lock.
@@ -1006,18 +1007,27 @@ unmounted while a call on it waits for its lock.
   unmount) no longer deletes it and `ff_mutex_take` / `_give` call the hooks before asserting it exists: a task
   that took the lock before the unmount gives it back after, which asserted (a kernel panic) before.
   `ff_mutex_create` keeps the existing one (a remount). Without the hooks: upstream's behaviour.
+- **The USB devices' partitions** (the user's naming, 2026-10-06): `ffconf.h` **`FF_VOLUMES 21`**, the strings
+  `"SD","SD1","SD2","SD3", "USB1","USB1P1".."USB1P4", "USB2",.., "USB3",.."USB3P4", "FD","NVME"`; `diskio.cpp`'s
+  **`VolToPart`**: `USBn` = `{n, 0}` (the device whole: its first FAT volume, a superfloppy or its only
+  partition), `USBnPm` = `{n, m}` (MBR partition m). The kernel mounts one or the other by the device's
+  sector 0 (docs/02 §18). `ff.c`: its check **`FF_VOLUMES <= 10` lifted to 32** — it only guards the numeric
+  `0:`..`9:` form (`get_ldnumber` reads one digit), which Onyx does not use; the volumes are reached by name.
+  The structures do not change (no clean rebuild; `tools/tests/run_fs_test.sh` lifts the same check in its copy
+  of upstream's `ff.c`).
 - `diskio.cpp`: after each transfer with a drive other than the SD card (`pdrv != 0`), the weak hook
   **`OnyxDriverPoll`** (the kernel's, §7b: it yields once the task has run 10 ms). The USB driver waits in a
   busy loop (`NO_BUSY_WAIT` off): a format, a big folder kept core 0 for seconds. Between two transfers is a
-  safe point: the volume lock is held, and a device removed meanwhile only fails the next transfer
-  (`disk_removed` cleared `s_pVolume`).
+  safe point: the drive's lock is held (the kernel's `fslock.cpp`: one lock per physical drive, so one for all
+  the volumes of a USB device), it is called once the bounce buffer and the sector cache are done with, and a
+  device removed meanwhile only fails the next transfer (`disk_removed` cleared `s_pVolume`).
 - `usbmassdevice.{h,cpp}`: **`IOCtl (DEVICE_IOCTL_SYNC)`** — FatFs' `CTRL_SYNC` — sends **SCSI SYNCHRONIZE CACHE
   (10)** (whole medium); a device that refuses it (no cache) is reset to a known state and the call succeeds.
   The kernel sends it at an eject, after a format and at the session's end.
 
 **Tested** on the PC: `tools/tests/run_fs_test.sh` builds `tools/tests/fs/usbtest.cpp` with the fork's FatFs
 and `FF_FS_REENTRANT 1` (a counting lock of its own): sticks formatted as FAT32 / exFAT / FAT16 with an MBR (as
-Windows), a FAT32 superfloppy, all found by `USB:`'s auto search, labels set and read; a stick pulled out while
+Windows), a FAT32 superfloppy, all found by `USB1:`'s auto search; a device of two partitions (`USB1P1:` FAT32, `USB1P2:` exFAT) then made one again by a format of `USB1:`, labels set and read; a stick pulled out while
 a file is written (errors, the lock free, the old objects invalid on the next stick); an unmount while a call
 waits for the lock — which fails with upstream's `ff.c` (the write accepted, the open succeeding). Not tested
 on the Pi yet (docs/HANDOFF.md).

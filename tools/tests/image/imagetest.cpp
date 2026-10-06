@@ -313,7 +313,7 @@ static void TestCanon (void)
 	// SD: and SD1: are two partitions: two keys
 	CHECK (Canon ("SD1:/Apps/x.app/main") == "sd1:/apps/x.app/main");
 	CHECK (Canon ("SD1:/apps/x.app/main") != Canon ("SD:/apps/x.app/main"));
-	CHECK (Canon ("USB:/a") == "usb:/a" && Canon ("usb2:/a") == "usb2:/a");
+	CHECK (Canon ("USB:/a") == "usb1:/a" && Canon ("usb1:/a") == "usb1:/a" && Canon ("USB1P2:/a") == "usb1p2:/a" && Canon ("usb2:/a") == "usb2:/a");
 	// the spellings of ONE volume collapse: FatFs's numbers, the kernel's SD0:
 	CHECK (Canon ("0:/bin/ls") == "sd:/bin/ls");
 	CHECK (Canon ("1:/bin/ls") == "sd1:/bin/ls");

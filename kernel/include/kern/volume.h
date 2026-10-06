@@ -1,7 +1,7 @@
 //
 // volume.h -- the FatFs volumes as the system sees them (kapi v93): the SD card's partitions
-// (SD:, SD1:..SD3:, mounted at boot) and the USB mass-storage volumes (USB:, USB2:, USB3: --
-// Circle's umsd1..umsd3), mounted when a stick is plugged in and unmounted when it is ejected
+// (SD:, SD1:..SD3:, mounted at boot) and the USB mass-storage volumes (USB1:, USB2:, USB3: --
+// Circle's umsd1..umsd3 -- whole, or USBnP1:..P4: the partitions of a device that has several), mounted when a stick is plugged in and unmounted when it is ejected
 // or pulled out; the list, the eject, the format (docs/02 "Volumes").
 //
 // ---------------------------------------------------------------------------------------------

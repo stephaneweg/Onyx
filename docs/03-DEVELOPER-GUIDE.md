@@ -422,9 +422,10 @@ download being unpacked.
 
 ### 5.3.1. USB sticks and the volumes (kernel v93)
 
-A USB stick (or disk) is mounted by the kernel when it is plugged in: **`USB:`** (then `USB2:`, `USB3:`
-for a second and a third one; `USB1:` is `USB:`), its first FAT / exFAT volume. Every file call works
-there as on the card; a program has nothing to do to support it, but:
+A USB stick (or disk) is mounted by the kernel when it is plugged in: **`USB1:`** (then `USB2:`, `USB3:`
+for a second and a third device; **`USB:`** is `USB1:`) — the device whole, when it has one partition or
+none. A device with **several** partitions gives **`USB1P1:`, `USB1P2:`**… instead (one per partition; no
+`USB1:` then). Every file call works there as on the card; a program has nothing to do to support it, but:
 
 - **The stick may leave at any time.** Pulled out without an eject, its files fail: a read or a write
   returns an error (`-1`, `-KAPI_EIO`), a folder listing ends, and that open file stays dead even if
@@ -435,18 +436,20 @@ there as on the card; a program has nothing to do to support it, but:
   event of that volume: poll it once a second to follow the sticks, as the menu bar, the File Viewer and
   Disks do; `KAPI_VOLS_ROOM` adds the free space, which may read the volume's FAT once: not in a loop).
   A volume shown to the user: `state == KAPI_VST_MOUNTED`; one that can be ejected:
-  `flags & KAPI_VF_REMOVABLE`.
-- **Eject**: `kapi_vol_eject ("USB:", 0)` → 0 (safe to remove), `-KAPI_EBUSY` (files are open on it —
+  `flags & KAPI_VF_REMOVABLE`; the volumes of one device have the same `device` (`"umsd1"`).
+- **Eject**: `kapi_vol_eject ("USB1:", 0)` — the whole device, whichever of its volumes you name → 0 (safe to remove), `-KAPI_EBUSY` (files are open on it —
   they were synced; ask the user, then `KAPI_EJECT_FORCE`). Close your own files on the stick first, and
-  move your view off it (a File Viewer showing `USB:` holds nothing open, but its next listing would fail).
-- **Format**: `kapi_vol_format ("USB:", &fmt)` (`struct kapi_format`: `KAPI_FMT_AUTO / FAT / FAT32 / EXFAT`,
+  move your view off it (a File Viewer showing `USB1:` holds nothing open, but its next listing would fail).
+- **Format**: `kapi_vol_format ("USB1:", &fmt)` (the whole device, one partition, whatever it had;
+  `"USB1P2:"`: that partition only) (`struct kapi_format`: `KAPI_FMT_AUTO / FAT / FAT32 / EXFAT`,
   a label of 11 characters at most, a cluster size or 0). The call blocks until done (seconds). The kernel
   refuses `SD:` (`-KAPI_EPERM`) whatever you pass; `SD1:`..`SD3:` need `KAPI_FMT_CARD` — set it only after
   the user confirmed a second time (Disks does).
-- **Mount again**: `kapi_vol_mount ("USB:")` — a stick ejected but still plugged in.
+- **Mount again**: `kapi_vol_mount ("USB1:")` — a stick ejected but still plugged in (all its volumes).
 - The kernel's side: docs/02 §18; the tools: `mount`, `eject`, `mkfs`, `df` (`user/BinUtils`, `volutil.h`);
   the app: Disks (`user/Apps/disks`). **On the PC** the simulator has a 14.9 GB exFAT stick when
-  `SIM_USB=1` (`fakekapi.cpp`: Eject, Mount and Format change its state as the kernel would).
+  `SIM_USB=1` (`SIM_USB=2`: two partitions, `USB1P1:` FAT32 and `USB1P2:` exFAT; `fakekapi.cpp`: Eject, Mount
+  and Format change its state as the kernel would).
 
 ### 5.4. The POSIX layer (`libonyxposix`)
 
@@ -2105,7 +2108,7 @@ alone**.
 > `uk_color_dialog (&color, title)` — RGB sliders + palette + preview, true = OK.
 > `uk_file_open` / `uk_file_save` / **`uk_folder_open (out, cap, startDir)`** (a folder, no file
 > name) — the file dialog (docs/04, *The file dialog*); its left column lists the **volumes** that are mounted
-> (`SD:`, `SD1:` … `SD3:` — the SD card's partitions, `USB:`…). `startDir` may be a **file's** path (the
+> (`SD:`, `SD1:` … `SD3:` — the SD card's partitions, `USB1:`, `USB1P2:`…). `startDir` may be a **file's** path (the
 > program's last document): the dialog opens in its folder, and a save dialog proposes its name. Paths may start with any
 > volume (`SD1:/roms/x.iso`); `kapi_fsize` is clamped to 4 GB − 1, **`kapi_fsize64`** (ABI v59)
 > gives an exFAT file's real size; `kapi_rename` fails across volumes (copy + remove instead).

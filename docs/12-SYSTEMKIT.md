@@ -165,7 +165,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `wp_multiply` | The colours multiplied by the grey (w x h) | `wallpaper.h` |
 | `DockConf` | (a type) | `dockconf.h` |
 | `dc_copy` | s (0: "") copied into d, cut at cap - 1 characters, NUL-terminated | `dockconf.h` |
-| `dockconf_defaults` | the dock without a file: 5 drawers (Productivity .. Demos), the terminal and fileviewer launchers, desks "1" .. "4" | `dockconf.h` |
+| `dockconf_defaults` | the dock without a file: 6 drawers (Productivity .. Demos), the terminal and fileviewer launchers, desks "1" .. "4" | `dockconf.h` |
 | `dc_split` | A value's two parts | `dockconf.h` |
 | `dockconf_load` | -> false | `dockconf.h` |
 | `dc_put` | -> false | `dockconf.h` |
@@ -633,7 +633,7 @@ struct DockConf
 	char desk[DOCK_MAXDESKS][24]; int ndesks;
 };
 void dc_copy (char *d, const char *s, int cap);	// s (0: "") copied into d, cut at cap - 1 characters, NUL-terminated
-void dockconf_defaults (DockConf &c);	// the dock without a file: 5 drawers (Productivity .. Demos), the terminal and fileviewer launchers, desks "1" .. "4"
+void dockconf_defaults (DockConf &c);	// the dock without a file: 6 drawers (Productivity .. Demos), the terminal and fileviewer launchers, desks "1" .. "4"
 ```
 
 A value's two parts: "Productivity, tinypad" -> "Productivity" and "tinypad".

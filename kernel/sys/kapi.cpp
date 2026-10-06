@@ -94,7 +94,7 @@ void ResolvePath (const char *pIn, char *pOut, unsigned nCap)		// (kern/ofile.h:
 	auto putVolume = [&] (const char *p, unsigned n)	// (upper case; SD0: -> SD:)
 	{
 		if (n == 4 && (p[0] == 'S' || p[0] == 's') && (p[1] == 'D' || p[1] == 'd') && p[2] == '0') { put ("SD:", 3); return; }
-		if (n == 5 && (p[0] | 32) == 'u' && (p[1] | 32) == 's' && (p[2] | 32) == 'b' && p[3] == '1') { put ("USB:", 4); return; }	// (v93: USB1: is USB:)
+		if (n == 4 && (p[0] | 32) == 'u' && (p[1] | 32) == 's' && (p[2] | 32) == 'b') { put ("USB1:", 5); return; }	// (v93: USB: is USB1:)
 		for (unsigned i = 0; i < n && r < sizeof (raw) - 1; i++) raw[r++] = p[i] >= 'a' && p[i] <= 'z' ? (char) (p[i] - 32) : p[i];
 	};
 	const char *cwd = CurCwd ();

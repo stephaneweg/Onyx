@@ -16,7 +16,8 @@
 // and applied at start); a click on the Wi-Fi icon opens the Wi-Fi menu (the wifimenu app: the
 // networks around, join one).
 //
-// A USB stick plugged in (kapi v93: mounted by the kernel as USB:, USB2:, USB3:) shows a drive icon
+// A USB stick plugged in (kapi v93: mounted by the kernel as USB1:, USB2:, USB3:, or USB1P1:.. per partition
+// when it has several) shows a drive icon
 // left of the speaker; a click on it opens the USB box: each stick, its label and size, an Eject
 // button (Mount when it was ejected, Format... when it cannot be read), a click on its name opens it in
 // the File Viewer; "Disks..." opens the Disks app. The bar also says what happened through notifyd:
@@ -502,7 +503,15 @@ static void usb_box (int *x, int *y, int *h) { *x = usb_x () + 16 - UW; if (*x <
 static bool in_usb_box (int x, int y) { int bx, by, bh; usb_box (&bx, &by, &bh); return x >= bx && x < bx + UW && y >= by && y < by + bh; }
 static void usb_btn (int row, int *x, int *y, int *w, int *h) { int bx, by, bh; usb_box (&bx, &by, &bh); *w = 84; *h = 26; *x = bx + UW - 12 - *w; *y = by + 5 + row * UROW + (UROW - *h) / 2; }
 static int usb_row_at (int x, int y) { int bx, by, bh; usb_box (&bx, &by, &bh); if (x < bx || x >= bx + UW || y < by + 5) return -1; int r = (y - by - 5) / UROW; return r < usb_count () ? r : -1; }
-static bool on_usb_btn (int row, int x, int y) { int bx, by, bw, bh; usb_btn (row, &bx, &by, &bw, &bh); return x >= bx && x < bx + bw && y >= by && y < by + bh; }
+// A device with several partitions has a row each (USB1P1:, USB1P2:) and one button, on its first row:
+// Eject / Mount act on the whole device.
+static bool usb_has_btn (int row)
+{
+	if (row <= 0) return row == 0;
+	int i = usb_index (row), p = usb_index (row - 1);
+	return i < 0 || p < 0 || !eq (g_vols[i].device, g_vols[p].device);
+}
+static bool on_usb_btn (int row, int x, int y) { if (!usb_has_btn (row)) return false; int bx, by, bw, bh; usb_btn (row, &bx, &by, &bw, &bh); return x >= bx && x < bx + bw && y >= by && y < by + bh; }
 static void usb_foot (int *x, int *y, int *w, int *h) { int bx, by, bh; usb_box (&bx, &by, &bh); *w = 120; *h = 26; *x = bx + UW - 12 - *w; *y = by + bh - UFOOT + 6; }
 static bool on_usb_foot (int x, int y) { int bx, by, bw, bh; usb_foot (&bx, &by, &bw, &bh); return x >= bx && x < bx + bw && y >= by && y < by + bh; }
 
@@ -612,6 +621,7 @@ static void draw_usb_box (void)
 		else if (v.state == KAPI_VST_EJECTED) cat (sub, sizeof sub, "Ejected: it can be removed");
 		else cat (sub, sizeof sub, (v.flags & KAPI_VF_IOERR) ? "Cannot be read" : "Not formatted");
 		uk_text_l (g_cv, bx + 14, ry + 6 + g_fh, g_fh + 2, sub, dim);
+		if (!usb_has_btn (r)) continue;
 		int x, y, w, h, lx, ly, lw, lh; usb_btn (r, &x, &y, &w, &h);
 		uk_framed (g_cv, x, y, w, h, C_BUTTON, g_usbBtnDown == r ? UK_PRESSED : UK_NORMAL, &lx, &ly, &lw, &lh);
 		uk_text_c (g_cv, lx, ly, lw, lh, v.state == KAPI_VST_MOUNTED ? "Eject" : v.state == KAPI_VST_EJECTED ? "Mount" : "Format...", C_BUTTON_TEXT);

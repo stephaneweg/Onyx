@@ -1,34 +1,39 @@
 //
 // volume.cpp -- the FatFs volumes as the system sees them (kapi v93, kern/volume.h): the SD
-// card's partitions mounted at boot, the USB mass-storage volumes mounted and unmounted as
-// sticks come and go, the list, the eject, the format.
+// card's partitions mounted at boot, the USB mass-storage devices' volumes mounted and unmounted
+// as they come and go, the list, the eject, the format.
 //
-// The USB volumes. Circle names the USB mass-storage devices umsd1.. in the order they come (a
-// number freed at an unplug is given to the next one); our FatFs volumes USB:, USB2:, USB3: are
-// umsd1..umsd3, each the first FAT / exFAT volume of its device (a "superfloppy", or the first FAT
-// partition of its MBR: FatFs' auto search, ffconf.h / diskio.cpp's VolToPart). VolPoll, every
-// 100 ms in the input task right after Circle's plug-and-play, sees a device appear (it mounts
-// it) or go (it unmounts it).
+// The USB devices and their names (the user's choice, 2026-10-06). Circle names the USB
+// mass-storage devices umsd1.. in the order they come (a number freed at an unplug is given to
+// the next one); device n (1..3) is umsdn, and its volumes are:
+//   - USBn: the device whole, when it has ONE partition or none (a "superfloppy": a file system
+//     from sector 0) -- FatFs' auto search (VolToPart {n, 0}: the first FAT volume);
+//   - USBnP1 .. USBnP4: its MBR partitions, when it has SEVERAL (VolToPart {n, m}); each FAT /
+//     exFAT one mounted, the others listed as unreadable (they can be formatted one by one).
+// USB: is an alias of USB1: (as SD0: is of SD:). The device's sector 0 decides (UsbScan). No
+// logical partitions, no GPT (FF_LBA64 off). VolPoll, every 100 ms in the input task right after
+// Circle's plug-and-play, sees a device appear (it scans and mounts it) or go (it unmounts it).
+// All the volumes of a device share one FatFs lock slot (fslock.cpp: one per physical drive).
 //
-// A stick pulled out without an eject. Nothing waits for it: the kernel is not preempted and the
+// A device pulled out without an eject. Nothing waits for it: the kernel is not preempted and the
 // USB driver waits for its transfers in a busy loop, so Circle deletes the device (inside
 // UpdatePlugAndPlay, in the input task) only between two transfers; diskio.cpp's removed handler
 // then makes every later transfer fail (RES_NOTRDY), and the FatFs calls in flight end with an
-// error. VolPoll takes the volume's lock (it waits for the call holding it), closes the open-file
-// layer's files of the volume (their nodes are lost: every call on them -EIO) and unregisters the
-// volume: the other FatFs objects of it (a read handle, a folder, a stream) are invalid from then
-// on (FatFs' validate: fs_type 0, or another mount's id -- our fork tests it again once the lock
-// is held, ff.c). The programs get errors and go on; the volume lock is never left held (its
-// holder is in a no-kill section and only waits for transfers that fail).
+// error. VolPoll takes the device's lock (it waits for the call holding it), closes the open-file
+// layer's files of its volumes (their nodes are lost: every call on them -EIO) and unregisters the
+// volumes: the other FatFs objects of them (a read handle, a folder, a stream) are invalid from
+// then on (FatFs' validate: fs_type 0, or another mount's id -- our fork tests it again once the
+// lock is held, ff.c). The programs get errors and go on; the lock is never left held (its holder
+// is in a no-kill section and only waits for transfers that fail).
 //
-// The eject. The open-file layer's written files synced (f_sync: the data, the FAT, the entry),
-// the device's own cache flushed (CTRL_SYNC: SCSI SYNCHRONIZE CACHE, our fork's usbmassdevice),
-// the volume unmounted. With files still open it refuses (-EBUSY: they are synced, the volume
-// stays mounted) unless forced.
+// The eject acts on the DEVICE (any of its volumes names it): the open-file layer's written files
+// synced (f_sync: the data, the FAT, the entry), the device's own cache flushed (CTRL_SYNC: SCSI
+// SYNCHRONIZE CACHE, our fork's usbmassdevice), its volumes unmounted. With files still open it
+// refuses (-EBUSY: they are synced, the volumes stay mounted) unless forced.
 //
-// The format. f_mkfs (FF_USE_MKFS, our fork): on a USB volume the whole device (an MBR with one
-// partition, as Windows does), on SD1..SD3 their partition of the card. Never SD: -- refused here,
-// whatever the caller.
+// The format. f_mkfs (FF_USE_MKFS, our fork): USBn: the whole device (an MBR with one partition,
+// as Windows does -- whatever partitions it had); USBnPm: that partition only; SD1..SD3 their
+// partition of the card. Never SD: -- refused here, whatever the caller.
 //
 // ---------------------------------------------------------------------------------------------
 // MIT License
@@ -67,47 +72,56 @@
 #include <fatfs/ff.h>
 #include <fatfs/diskio.h>
 
+
 static const char From[] = "volume";
 
 // the FatFs volume lock (sys/fslock.cpp: re-entrant, its waiters yield; it enters a no-kill section)
 void OnyxFsLockTake (int vol);
 void OnyxFsLockGive (int vol);
 
-static const char *const s_Names[] = { FF_VOLUME_STRS };	// "SD", "SD1".. "USB", "USB2", "USB3", "FD", "NVME"
+static const char *const s_Names[] = { FF_VOLUME_STRS };	// "SD", "SD1".., "USB1", "USB1P1".., "FD", "NVME"
 #define NVOL		(sizeof s_Names / sizeof s_Names[0])
 #define VOL_SD		0
-#define VOL_USB		4				// USB:, USB2:, USB3: = 4, 5, 6
-#define USB_SLOTS	3
+#define VOL_USB		4				// USB1 = 4, USB1P1..P4 = 5..8, USB2 = 9...
+#define USB_DEVS	3
+#define USB_STRIDE	5				// a device's volumes: the whole one + 4 partitions
 #define MOUNT_TRIES	3				// a device that does not answer at once: tried again 1 s later
 #define LABEL_MAX	36
 #define MKFS_WORK	(128 * 1024)			// f_mkfs' buffer (bigger: fewer transfers)
 
 #define ST_NONE		0				// (KAPI_VST_* otherwise)
-#define ST_NEW		100				// a device seen, not mounted yet
 
 struct TVolume
 {
 	FATFS	*pFs;				// registered with FatFs, mounted (0: not)
-	unsigned nState;			// ST_NONE, ST_NEW, KAPI_VST_*
+	unsigned nState;			// ST_NONE (not listed), KAPI_VST_*
 	unsigned nFlags;			// KAPI_VF_UNSAFE, KAPI_VF_IOERR
 	unsigned nGen;
-	boolean	 bOp;				// an eject / a mount / a format runs (VolPoll leaves it)
 	char	 Label[LABEL_MAX];
 	DWORD	 nSerial;
-	// a USB volume's device
+};
+
+struct TDevice
+{
 	CDevice	*pDev;				// seen (0: none)
 	volatile boolean bGone;			// its removed handler ran
+	boolean	 bOp;				// an eject / a mount / a format runs (VolPoll leaves it)
+	boolean	 bPending;			// seen, not scanned yet
 	unsigned nTries, nNextTry;
 };
 
 static TVolume	s_Vol[NVOL];
+static TDevice	s_Dev[USB_DEVS];
 static FATFS	s_Fs[NVOL];			// the mounts made here (SD: is the kernel's own)
 static unsigned	s_nGen;
 
-static boolean IsUsb (unsigned v)	{ return v >= VOL_USB && v < VOL_USB + USB_SLOTS; }
 static boolean IsCardPart (unsigned v)	{ return v >= 1 && v <= 3; }
+static int DevOf (unsigned v)		{ return v >= VOL_USB && v < VOL_USB + USB_DEVS * USB_STRIDE ? (int) ((v - VOL_USB) / USB_STRIDE) : -1; }
+static unsigned DevVol (int d, unsigned m) { return VOL_USB + (unsigned) d * USB_STRIDE + m; }	// m 0: whole, 1..4: partition m
+static boolean IsWhole (unsigned v)	{ return DevOf (v) >= 0 && (v - VOL_USB) % USB_STRIDE == 0; }
+static boolean DevThere (int d)		{ return d >= 0 && s_Dev[d].pDev != 0 && !s_Dev[d].bGone; }
 
-static void Root (unsigned v, char *pOut)	// "USB2:"
+static void Root (unsigned v, char *pOut)	// "USB2P1:"
 {
 	unsigned n = 0;
 	for (const char *p = s_Names[v]; *p != '\0' && n < 8; p++) pOut[n++] = *p;
@@ -116,8 +130,9 @@ static void Root (unsigned v, char *pOut)	// "USB2:"
 
 static void DevName (unsigned v, char *pOut, unsigned nCap)	// "emmc1", "umsd2"
 {
+	int d = DevOf (v);
 	if (v <= 3) { strncpy (pOut, "emmc1", nCap); return; }
-	if (IsUsb (v)) { CString s; s.Format ("umsd%u", v - VOL_USB + 1); strncpy (pOut, s, nCap); pOut[nCap - 1] = '\0'; return; }
+	if (d >= 0) { CString s; s.Format ("umsd%u", (unsigned) d + 1); strncpy (pOut, s, nCap); pOut[nCap - 1] = '\0'; return; }
 	pOut[0] = '\0';
 }
 
@@ -128,7 +143,7 @@ static unsigned Ticks (void) { return CTimer::Get ()->GetTicks (); }
 static void NoKillEnter (void) { if (CScheduler::IsActive ()) CScheduler::Get ()->EnterNoKill (); }
 static void NoKillLeave (void) { if (CScheduler::IsActive ()) CScheduler::Get ()->LeaveNoKill (); }
 
-// "USB", "usb:", "USB:/a/b", "SD0:" (= SD), "USB1" (= USB) -> the volume, -1 none
+// "USB1", "usb1:", "USB1P2:/a/b", "SD0:" (= SD), "USB" (= USB1) -> the volume, -1 none
 static int VolIndex (const char *p)
 {
 	if (p == 0) return -1;
@@ -142,7 +157,7 @@ static int VolIndex (const char *p)
 	if (p[n] != '\0' && p[n] != ':' && p[n] != '/') return -1;
 	Name[n] = '\0';
 	if (strcmp (Name, "SD0") == 0) return VOL_SD;
-	if (strcmp (Name, "USB1") == 0) return VOL_USB;
+	if (strcmp (Name, "USB") == 0) return VOL_USB;
 	for (unsigned v = 0; v < NVOL; v++) if (strcmp (Name, s_Names[v]) == 0) return (int) v;
 	return -1;
 }
@@ -213,6 +228,13 @@ static unsigned OpenOn (unsigned v)
 {
 	if (s_Vol[v].pFs == 0) return 0;
 	return (unsigned) OFileVolume ((int) v, OFV_COUNT) + TrackedOn (v);
+}
+
+static unsigned OpenOnDev (int d)
+{
+	unsigned n = 0;
+	for (unsigned m = 0; m < USB_STRIDE; m++) n += OpenOn (DevVol (d, m));
+	return n;
 }
 
 // ---- mount, unmount ----------------------------------------------------------------------------------
@@ -298,34 +320,85 @@ void VolMountCard (FATFS *pSdFs)
 
 static void DeviceRemoved (CDevice *pDevice, void *pContext)	// (Circle: inside UpdatePlugAndPlay)
 {
-	((TVolume *) pContext)->bGone = TRUE;
+	((TDevice *) pContext)->bGone = TRUE;
 }
 
-static void UsbGone (unsigned v)
+// Sector 0 is a FAT / exFAT boot sector (a "superfloppy": no partition table)?
+static boolean IsBootSector (const u8 *p)
 {
-	TVolume &V = s_Vol[v];
-	boolean bMounted = V.pFs != 0;
-	if (bMounted)
-	{
-		UnmountVol (v);
-		CLogger::Get ()->Write (From, LogWarning, "%s: removed without an eject (its open files now fail)", s_Names[v]);
-	}
-	else
-	{
-		CLogger::Get ()->Write (From, LogNotice, "%s: device removed", s_Names[v]);
-	}
-	V.pDev = 0;
-	V.bGone = FALSE;
-	V.nState = KAPI_VST_REMOVED;
-	V.nFlags = bMounted ? KAPI_VF_UNSAFE : 0;
-	V.Label[0] = '\0';
-	Bump (v);
+	if (p[510] != 0x55 || p[511] != 0xAA) return FALSE;
+	if (p[0] != 0xEB && p[0] != 0xE9 && p[0] != 0xE8) return FALSE;
+	return memcmp (p + 3, "EXFAT   ", 8) == 0 || memcmp (p + 82, "FAT32", 5) == 0 || memcmp (p + 54, "FAT", 3) == 0;
 }
 
-static void UsbTryMount (unsigned v)
+// The device's layout from its sector 0 -> 0: one volume (USBn: a superfloppy, one partition, none
+// -- FatFs' auto search finds it or says there is none), else the bits 1..4 of its MBR partitions
+// (USBnPm); -1: sector 0 could not be read.
+static int UsbLayout (int d)
+{
+	unsigned v = DevVol (d, 0);
+	BYTE pd = VolToPart[v].pd;
+	u8 Sector[FF_MAX_SS] __attribute__ ((aligned (8)));		// (on the stack: two devices may be scanned at once)
+	OnyxFsLockTake ((int) v);			// (the device's lock: nobody else reads it meanwhile)
+	int nRet = -1;
+	if (!(disk_initialize (pd) & STA_NOINIT) && disk_read (pd, Sector, 0, 1) == RES_OK)
+	{
+		nRet = 0;
+		if (!IsBootSector (Sector) && Sector[510] == 0x55 && Sector[511] == 0xAA)
+		{
+			unsigned nMask = 0, nParts = 0;
+			for (unsigned m = 1; m <= 4; m++)
+			{
+				const u8 *e = Sector + 0x1BE + (m - 1) * 16;
+				u32 nStart = e[8] | e[9] << 8 | e[10] << 16 | (u32) e[11] << 24;
+				if (e[4] != 0 && nStart != 0) { nMask |= 1u << m; nParts++; }
+			}
+			if (nParts >= 2) nRet = (int) nMask;
+		}
+	}
+	OnyxFsLockGive ((int) v);
+	return nRet;
+}
+
+// The device's volumes forgotten (a new device in its place, a format of the whole device)
+static void UsbClear (int d)
+{
+	for (unsigned m = 0; m < USB_STRIDE; m++)
+	{
+		TVolume &V = s_Vol[DevVol (d, m)];
+		V.nState = ST_NONE; V.nFlags = 0; V.Label[0] = '\0';
+	}
+}
+
+static void UsbGone (int d)
+{
+	boolean bAny = FALSE;
+	for (unsigned m = 0; m < USB_STRIDE; m++)
+	{
+		unsigned v = DevVol (d, m);
+		TVolume &V = s_Vol[v];
+		if (V.nState == ST_NONE) continue;
+		boolean bMounted = V.pFs != 0;
+		if (bMounted)
+		{
+			UnmountVol (v);
+			CLogger::Get ()->Write (From, LogWarning, "%s: removed without an eject (its open files now fail)", s_Names[v]);
+			bAny = TRUE;
+		}
+		V.nState = KAPI_VST_REMOVED;
+		V.nFlags = bMounted ? KAPI_VF_UNSAFE : 0;
+		V.Label[0] = '\0';
+		Bump (v);
+	}
+	if (!bAny) CLogger::Get ()->Write (From, LogNotice, "USB%d: device removed", d + 1);
+	s_Dev[d].pDev = 0;
+	s_Dev[d].bGone = FALSE;
+	s_Dev[d].bPending = FALSE;
+}
+
+static void UsbMountOne (unsigned v, FRESULT r)	// (r: MountVol's) the log, the state if it failed
 {
 	TVolume &V = s_Vol[v];
-	FRESULT r = MountVol (v);
 	if (r == FR_OK)
 	{
 		u64 nBytes = (u64) (V.pFs->n_fatent - 2) * V.pFs->csize * FF_MAX_SS;
@@ -333,50 +406,74 @@ static void UsbTryMount (unsigned v)
 					(unsigned) (nBytes >> 20), V.Label[0] ? ", " : "", V.Label);
 		return;
 	}
-	if (r != FR_NO_FILESYSTEM && ++V.nTries < MOUNT_TRIES)
-	{
-		V.nNextTry = Ticks () + HZ;		// (some sticks answer the first reads late)
-		return;
-	}
 	V.nState = KAPI_VST_UNREADABLE;
 	V.nFlags = r == FR_NO_FILESYSTEM ? 0 : KAPI_VF_IOERR;
 	Bump (v);
 	CLogger::Get ()->Write (From, LogNotice, "%s: %s", s_Names[v],
-				r == FR_NO_FILESYSTEM ? "no FAT / exFAT file system (it can be formatted)" : "the device could not be read");
+				r == FR_NO_FILESYSTEM ? "no FAT / exFAT file system (it can be formatted)" : "could not be read");
+}
+
+// The device scanned (its layout) and its volumes mounted -> FALSE: tried again later (no answer)
+static boolean UsbScan (int d, boolean bLast)
+{
+	int nLayout = UsbLayout (d);
+	UsbClear (d);
+	if (nLayout == 0)
+	{
+		unsigned v = DevVol (d, 0);
+		FRESULT r = MountVol (v);
+		if (r != FR_OK && r != FR_NO_FILESYSTEM && !bLast) return FALSE;
+		UsbMountOne (v, r);
+		return TRUE;
+	}
+	if (nLayout < 0)
+	{
+		if (!bLast) return FALSE;
+		UsbMountOne (DevVol (d, 0), FR_DISK_ERR);
+		return TRUE;
+	}
+	CLogger::Get ()->Write (From, LogNotice, "USB%d: several partitions: USB%dP1..P4", d + 1, d + 1);
+	for (unsigned m = 1; m <= 4; m++)
+	{
+		if (!(nLayout & (1 << m))) continue;
+		unsigned v = DevVol (d, m);
+		UsbMountOne (v, MountVol (v));
+	}
+	return TRUE;
 }
 
 void VolPoll (void)
 {
 	CDeviceNameService *pDNS = CDeviceNameService::Get ();
-	for (unsigned i = 0; i < USB_SLOTS; i++)
+	for (int d = 0; d < USB_DEVS; d++)
 	{
-		unsigned v = VOL_USB + i;
-		TVolume &V = s_Vol[v];
-		if (V.bOp) continue;				// (an eject / a format: it sees to it)
-		if (V.pDev != 0 && V.bGone)
+		TDevice &D = s_Dev[d];
+		if (D.bOp) continue;				// (an eject / a format: it sees to it)
+		if (D.pDev != 0 && D.bGone)
 		{
-			UsbGone (v);
+			UsbGone (d);
 		}
-		if (V.pDev == 0)
+		if (D.pDev == 0)
 		{
-			char Dev[12]; DevName (v, Dev, sizeof Dev);
+			CString Dev; Dev.Format ("umsd%u", (unsigned) d + 1);
 			CDevice *pDev = pDNS->GetDevice (Dev, TRUE);
 			if (pDev == 0) continue;
-			V.pDev = pDev;
-			V.bGone = FALSE;
-			pDev->RegisterRemovedHandler (DeviceRemoved, &V);
-			V.nState = ST_NEW;
-			V.nFlags = 0;
-			V.nTries = 0;
-			V.nNextTry = Ticks ();
-			CLogger::Get ()->Write (From, LogNotice, "%s: device %s plugged in (%u MB)", s_Names[v], Dev,
+			D.pDev = pDev;
+			D.bGone = FALSE;
+			pDev->RegisterRemovedHandler (DeviceRemoved, &D);
+			D.bPending = TRUE;
+			D.nTries = 0;
+			D.nNextTry = Ticks ();
+			UsbClear (d);
+			CLogger::Get ()->Write (From, LogNotice, "USB%d: device %s plugged in (%u MB)", d + 1, (const char *) Dev,
 						(unsigned) (pDev->GetSize () >> 20));
 		}
-		if (V.nState == ST_NEW && (int) (Ticks () - V.nNextTry) >= 0)
+		if (D.bPending && (int) (Ticks () - D.nNextTry) >= 0)
 		{
-			V.bOp = TRUE;
-			UsbTryMount (v);
-			V.bOp = FALSE;
+			D.bOp = TRUE;
+			if (UsbScan (d, ++D.nTries >= MOUNT_TRIES)) D.bPending = FALSE;
+			else D.nNextTry = Ticks () + HZ;		// (some sticks answer the first reads late)
+			D.bOp = FALSE;
 		}
 	}
 }
@@ -387,7 +484,7 @@ void VolSyncAll (void)
 	{
 		if (s_Vol[v].pFs == 0) continue;
 		OFileVolume ((int) v, OFV_SYNC);
-		if (IsUsb (v)) DeviceSync (v);
+		if (DevOf (v) >= 0) DeviceSync (v);
 	}
 }
 
@@ -396,16 +493,17 @@ void VolSyncAll (void)
 static void Fill (unsigned v, struct kapi_volume *e, unsigned nFlags)
 {
 	TVolume &V = s_Vol[v];
+	int d = DevOf (v);
 	memset (e, 0, sizeof *e);
 	strncpy (e->name, s_Names[v], sizeof e->name - 1);
-	e->state = V.nState == ST_NEW ? KAPI_VST_UNREADABLE : V.nState;
-	e->flags = V.nFlags | (v == VOL_SD ? KAPI_VF_SYSTEM : 0) | (IsUsb (v) ? KAPI_VF_REMOVABLE : 0)
-		 | ((IsCardPart (v) || (IsUsb (v) && V.pDev != 0)) ? KAPI_VF_FORMATTABLE : 0);
+	e->state = V.nState;
+	e->flags = V.nFlags | (v == VOL_SD ? KAPI_VF_SYSTEM : 0) | (d >= 0 ? KAPI_VF_REMOVABLE : 0)
+		 | ((IsCardPart (v) || DevThere (d)) ? KAPI_VF_FORMATTABLE : 0);
 	e->gen = V.nGen;
 	e->open = OpenOn (v);
 	e->free = ~0ull;
 	DevName (v, e->device, sizeof e->device);
-	if (v <= 3 || (IsUsb (v) && V.pDev != 0 && !V.bGone))
+	if (v <= 3 || DevThere (d))
 	{
 		LBA_t nSectors = 0;
 		if (disk_ioctl (VolToPart[v].pd, GET_SECTOR_COUNT, &nSectors) == RES_OK) e->device_size = (u64) nSectors * FF_MAX_SS;
@@ -464,68 +562,107 @@ int kapi_vol_list (struct kapi_volume *pUserOut, int nMax, unsigned nFlags)
 	return n;
 }
 
+// Any volume of a USB device names it: all its volumes are synced, unmounted, EJECTED.
 int kapi_vol_eject (const char *pUserVol, unsigned nFlags)
 {
 	CUserStr Vol (pUserVol, 64);
 	if (!Vol.OK ()) return -KAPI_EFAULT;
 	int v = VolIndex (Vol.Get ());
 	if (v < 0) return -KAPI_ENOENT;
-	TVolume &V = s_Vol[v];
-	if (!IsUsb (v)) return -KAPI_EINVAL;		// (the card's volumes: the card is not removed while the Pi runs)
-	if (V.bOp) return -KAPI_EBUSY;
-	if (V.pFs == 0) return V.nState == KAPI_VST_EJECTED ? 0 : -KAPI_ENOENT;
+	int d = DevOf (v);
+	if (d < 0) return -KAPI_EINVAL;			// (the card's volumes: the card is not removed while the Pi runs)
+	TDevice &D = s_Dev[d];
+	if (D.bOp) return -KAPI_EBUSY;
+	boolean bMounted = FALSE, bListed = FALSE, bEjected = FALSE;
+	for (unsigned m = 0; m < USB_STRIDE; m++)
+	{
+		const TVolume &V = s_Vol[DevVol (d, m)];
+		bMounted |= V.pFs != 0;
+		bListed |= V.nState == KAPI_VST_MOUNTED || V.nState == KAPI_VST_UNREADABLE;
+		bEjected |= V.nState == KAPI_VST_EJECTED;
+	}
+	if (!bListed) return bEjected ? 0 : -KAPI_ENOENT;
 	NoKillEnter ();
-	V.bOp = TRUE;
+	D.bOp = TRUE;
 	int nRet = 0;
-	unsigned nOpen = OpenOn (v);
-	int nFailed = OFileVolume (v, OFV_SYNC);	// (written files synced, whatever comes next)
-	if (V.bGone)
+	unsigned nOpen = OpenOnDev (d);
+	int nFailed = 0;
+	for (unsigned m = 0; m < USB_STRIDE; m++)		// (written files synced, whatever comes next)
+	{
+		unsigned w = DevVol (d, m);
+		if (s_Vol[w].pFs != 0) nFailed += OFileVolume ((int) w, OFV_SYNC);
+	}
+	if (D.bGone)
 	{
 		nRet = -KAPI_EIO;			// (pulled out meanwhile: VolPoll sees to it)
 	}
 	else if (nOpen > 0 && !(nFlags & KAPI_EJECT_FORCE))
 	{
-		DeviceSync (v);
+		DeviceSync (DevVol (d, 0));
 		nRet = -KAPI_EBUSY;
 	}
 	else
 	{
-		UnmountVol (v);
-		V.nState = KAPI_VST_EJECTED;
-		V.nFlags = 0;
-		Bump (v);
-		CLogger::Get ()->Write (From, LogNotice, "%s: ejected%s, it can be removed", s_Names[v],
+		for (unsigned m = 0; m < USB_STRIDE; m++)
+		{
+			unsigned w = DevVol (d, m);
+			TVolume &V = s_Vol[w];
+			if (V.nState != KAPI_VST_MOUNTED && V.nState != KAPI_VST_UNREADABLE) continue;
+			if (V.pFs != 0) UnmountVol (w);
+			V.nState = KAPI_VST_EJECTED;
+			V.nFlags = 0;
+			Bump (w);
+		}
+		if (!bMounted) DeviceSync (DevVol (d, 0));
+		CLogger::Get ()->Write (From, LogNotice, "USB%d: ejected%s, it can be removed", d + 1,
 					nOpen ? " (files were still open)" : "");
 		if (nFailed > 0) nRet = -KAPI_EIO;	// (ejected, but a file could not be written)
 	}
-	V.bOp = FALSE;
+	D.bOp = FALSE;
 	NoKillLeave ();
 	return nRet;
 }
 
+// A USB device's volume: the device scanned and mounted again (all its volumes); SD1..SD3: mounted.
 int kapi_vol_mount (const char *pUserVol)
 {
 	CUserStr Vol (pUserVol, 64);
 	if (!Vol.OK ()) return -KAPI_EFAULT;
 	int v = VolIndex (Vol.Get ());
 	if (v < 0) return -KAPI_ENOENT;
-	TVolume &V = s_Vol[v];
-	if (V.pFs != 0) return 0;			// (mounted)
-	if (!(IsCardPart (v) || (IsUsb (v) && V.pDev != 0 && !V.bGone))) return -KAPI_ENODEV;
-	if (V.bOp) return -KAPI_EBUSY;
-	NoKillEnter ();
-	V.bOp = TRUE;
-	FRESULT r = MountVol (v);
-	if (r != FR_OK && IsUsb (v) && V.nState != KAPI_VST_UNREADABLE)
+	if (s_Vol[v].pFs != 0) return 0;		// (mounted)
+	int d = DevOf (v);
+	if (IsCardPart (v))
 	{
-		V.nState = KAPI_VST_UNREADABLE;
-		V.nFlags = r == FR_NO_FILESYSTEM ? 0 : KAPI_VF_IOERR;
-		Bump (v);
+		NoKillEnter ();
+		FRESULT r = MountVol (v);
+		NoKillLeave ();
+		if (r == FR_OK) CLogger::Get ()->Write (From, LogNotice, "%s: mounted again", s_Names[v]);
+		return FatErr (r);
 	}
-	if (r == FR_OK) CLogger::Get ()->Write (From, LogNotice, "%s: mounted again", s_Names[v]);
-	V.bOp = FALSE;
+	if (!DevThere (d)) return -KAPI_ENODEV;
+	TDevice &D = s_Dev[d];
+	if (D.bOp) return -KAPI_EBUSY;
+	NoKillEnter ();
+	D.bOp = TRUE;
+	for (unsigned m = 0; m < USB_STRIDE; m++)		// (an eject may have left some mounted: a fresh scan)
+	{
+		unsigned w = DevVol (d, m);
+		if (s_Vol[w].pFs != 0) UnmountVol (w);
+	}
+	UsbScan (d, TRUE);
+	D.bPending = FALSE;
+	int nRet = -KAPI_EIO, nAny = 0;
+	for (unsigned m = 0; m < USB_STRIDE; m++)
+	{
+		const TVolume &V = s_Vol[DevVol (d, m)];
+		if (V.pFs != 0) nAny++;
+		else if (V.nState == KAPI_VST_UNREADABLE && !(V.nFlags & KAPI_VF_IOERR)) nRet = -KAPI_EINVAL;
+	}
+	if (s_Vol[v].pFs != 0 || nAny > 0) nRet = 0;		// (the name asked may be of the other layout)
+	D.bOp = FALSE;
 	NoKillLeave ();
-	return FatErr (r);
+	return nRet;
 }
 
 // A label FAT takes: at most 11 characters, none of "*+,./:;<=>?[\]| nor a control character
@@ -549,26 +686,40 @@ int kapi_vol_format (const char *pUserVol, const struct kapi_format *pUserFmt)
 	F.label[sizeof F.label - 1] = '\0';
 	int v = VolIndex (Vol.Get ());
 	if (v < 0) return -KAPI_ENOENT;
-	TVolume &V = s_Vol[v];
+	int d = DevOf (v);
 	// SD: is the system's volume: never, whoever asks. The card's other partitions only when the
 	// caller says the user confirmed it (KAPI_FMT_CARD).
 	if (v == VOL_SD) return -KAPI_EPERM;
 	if (IsCardPart (v) && !(F.flags & KAPI_FMT_CARD)) return -KAPI_EPERM;
-	if (!IsCardPart (v) && !(IsUsb (v) && V.pDev != 0 && !V.bGone)) return -KAPI_ENODEV;
+	if (!IsCardPart (v) && !DevThere (d)) return -KAPI_ENODEV;
+	// a partition of a USB device: one it has now (USBnPm listed); the whole device (USBn): always
+	if (d >= 0 && !IsWhole (v) && s_Vol[v].nState == ST_NONE) return -KAPI_ENODEV;
 	if (F.fs > KAPI_FMT_EXFAT || !LabelOK (F.label)) return -KAPI_EINVAL;
 	if (F.cluster != 0 && ((F.cluster & (F.cluster - 1)) != 0 || F.cluster < 512 || F.cluster > 0x1000000)) return -KAPI_EINVAL;
-	if (V.bOp) return -KAPI_EBUSY;
-	if (OpenOn (v) > 0 && !(F.flags & KAPI_FMT_FORCE)) return -KAPI_EBUSY;
+	if (d >= 0 && s_Dev[d].bOp) return -KAPI_EBUSY;
+	unsigned nOpen = d >= 0 && IsWhole (v) ? OpenOnDev (d) : OpenOn (v);
+	if (nOpen > 0 && !(F.flags & KAPI_FMT_FORCE)) return -KAPI_EBUSY;
 
 	u8 *pWork = new u8[MKFS_WORK];
 	if (pWork == 0) return -KAPI_ENOMEM;
 	NoKillEnter ();
-	V.bOp = TRUE;
+	if (d >= 0) s_Dev[d].bOp = TRUE;
 	char R[12]; Root (v, R);
-	CLogger::Get ()->Write (From, LogNotice, "%s: formatting (%s)", s_Names[v],
-				F.fs == KAPI_FMT_FAT ? "FAT" : F.fs == KAPI_FMT_FAT32 ? "FAT32" : F.fs == KAPI_FMT_EXFAT ? "exFAT" : "auto");
-	if (V.pFs != 0) UnmountVol (v);
-	OnyxFsLockTake (v);				// (the card's partitions: the whole card waits meanwhile)
+	CLogger::Get ()->Write (From, LogNotice, "%s: formatting (%s%s)", s_Names[v],
+				F.fs == KAPI_FMT_FAT ? "FAT" : F.fs == KAPI_FMT_FAT32 ? "FAT32" : F.fs == KAPI_FMT_EXFAT ? "exFAT" : "auto",
+				d >= 0 && IsWhole (v) ? ", the whole device" : "");
+	if (d >= 0 && IsWhole (v))			// (the whole device: every volume it had goes)
+	{
+		for (unsigned m = 0; m < USB_STRIDE; m++)
+		{
+			unsigned w = DevVol (d, m);
+			if (s_Vol[w].pFs != 0) UnmountVol (w);
+		}
+		UsbClear (d);
+		for (unsigned m = 1; m < USB_STRIDE; m++) Bump (DevVol (d, m));
+	}
+	else if (s_Vol[v].pFs != 0) UnmountVol (v);
+	OnyxFsLockTake (v);				// (the drive's lock: the whole card / device waits meanwhile)
 	MKFS_PARM Opt;
 	memset (&Opt, 0, sizeof Opt);
 	Opt.fmt = F.fs == KAPI_FMT_FAT ? FM_FAT : F.fs == KAPI_FMT_FAT32 ? FM_FAT32 : F.fs == KAPI_FMT_EXFAT ? FM_EXFAT : FM_ANY;
@@ -581,7 +732,8 @@ int kapi_vol_format (const char *pUserVol, const struct kapi_format *pUserFmt)
 	}
 	FRESULT r = f_mkfs (R, &Opt, pWork, MKFS_WORK);
 	delete [] pWork;
-	if (r == FR_OK && !V.bGone) r = MountVol (v);
+	boolean bGone = d >= 0 && s_Dev[d].bGone;
+	if (r == FR_OK && !bGone) r = MountVol (v);
 	if (r == FR_OK && F.label[0] != '\0')
 	{
 		char Set[64]; strcpy (Set, R); strcat (Set, F.label);
@@ -589,15 +741,15 @@ int kapi_vol_format (const char *pUserVol, const struct kapi_format *pUserFmt)
 	}
 	if (r == FR_OK) DeviceSync (v);
 	OnyxFsLockGive (v);
-	if (r != FR_OK && !V.bGone)
+	if (r != FR_OK && !bGone)
 	{
-		V.nState = IsUsb (v) ? KAPI_VST_UNREADABLE : ST_NONE;
-		V.nFlags = 0;
+		s_Vol[v].nState = d >= 0 ? KAPI_VST_UNREADABLE : ST_NONE;
+		s_Vol[v].nFlags = 0;
 		Bump (v);
 	}
 	CLogger::Get ()->Write (From, r == FR_OK ? LogNotice : LogWarning, "%s: format %s (%d)", s_Names[v],
 				r == FR_OK ? "done" : "failed", (int) r);
-	V.bOp = FALSE;
+	if (d >= 0) s_Dev[d].bOp = FALSE;
 	NoKillLeave ();
 	return FatErr (r);
 }

@@ -2,7 +2,9 @@
 // disks -- the volumes (kapi v93): the SD card's partitions, the USB sticks and disks, RAM:. Each with
 // its state, file system, label, size and room; a USB stick ejected (made safe to remove), mounted
 // again, or formatted (FAT32 / exFAT / FAT, a label). SD:, the system's volume, is never formatted (the
-// kernel refuses it too); SD1:..SD3: only after a second question. `disks USB:` opens on that volume.
+// kernel refuses it too); SD1:..SD3: only after a second question. `disks USB1:` opens on that volume.
+// A device with several partitions shows them (USB1P1:, USB1P2:...): each formatted alone, or "Whole
+// device" makes it one partition again (USB1:). Eject acts on the device: all its partitions.
 // The list follows the sticks as they come and go.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see docs/LICENSING.md)
@@ -29,6 +31,10 @@ static Progress *g_bar;
 static Button *g_open, *g_eject, *g_mount, *g_format;
 static Dropdown *g_fs;
 static Textbox *g_label;
+static Checkbox *g_whole;			// (a partition chosen) format the whole device instead
+
+// "USB1P2" -> true: a partition of a USB device (its device's volume: "USB1")
+static bool is_part (const char *n) { return n[0] == 'U' && n[1] == 'S' && n[2] == 'B' && n[3] && n[4] == 'P'; }
 
 static const char *const FS_NAMES[] = { "Automatic (FAT32, exFAT from 32 GB)", "FAT32", "exFAT", "FAT (small volumes)" };
 static const unsigned FS_CODES[] = { KAPI_FMT_AUTO, KAPI_FMT_FAT32, KAPI_FMT_EXFAT, KAPI_FMT_FAT };
@@ -119,6 +125,8 @@ static void show_details (void)
 		g_mount->disabled = !((v.flags & KAPI_VF_REMOVABLE) && (v.state == KAPI_VST_EJECTED || v.state == KAPI_VST_UNREADABLE));
 		g_format->disabled = !(v.flags & KAPI_VF_FORMATTABLE) || (v.flags & KAPI_VF_SYSTEM);
 		if (g_label->text[0] == 0 && v.label[0]) g_label->setText (v.label);
+		bool part = is_part (v.name);
+		if (g_whole->hidden == part) { g_whole->hidden = !part; g_whole->checked = false; g_whole->invalidate (true); }
 	}
 	g_open->invalidate (true); g_eject->invalidate (true); g_mount->invalidate (true); g_format->invalidate (true);
 }
@@ -146,9 +154,9 @@ static void refresh (bool force)
 		if (v.state == KAPI_VST_REMOVED) continue;
 		char row[64] = "", vn[12], sz[24];
 		vname (v, vn);
-		cat (row, sizeof row, vn); while (ax_strlen (row) < 7) cat (row, sizeof row, " ");
+		cat (row, sizeof row, vn); while (ax_strlen (row) < 9) cat (row, sizeof row, " ");
 		cat (row, sizeof row, v.label[0] ? v.label : (v.flags & KAPI_VF_REMOVABLE) ? "USB stick" : (v.flags & KAPI_VF_RAM) ? "Memory" : "SD card");
-		while (ax_strlen (row) < 22) cat (row, sizeof row, " ");
+		while (ax_strlen (row) < 24) cat (row, sizeof row, " ");
 		if (v.state == KAPI_VST_MOUNTED) { size_text (v.total, sz, sizeof sz); cat (row, sizeof row, sz); cat (row, sizeof row, " "); cat (row, sizeof row, v.type); }
 		else cat (row, sizeof row, state_text (v));
 		g_list->add (row);
@@ -212,11 +220,14 @@ static void on_format (Widget &w)
 	const struct kapi_volume &v = g_v[i];
 	char vn[12]; vname (v, vn);
 	if (v.flags & KAPI_VF_SYSTEM) { g_status->setText ("SD: is the system's volume: it is never formatted."); return; }
+	if (is_part (v.name) && g_whole->checked) { vn[0] = 'U'; vn[1] = 'S'; vn[2] = 'B'; vn[3] = v.name[3]; vn[4] = ':'; vn[5] = 0; }	// ("USB1:")
 	struct kapi_format f;
 	kapi_memset (&f, 0, sizeof f);
 	f.fs = FS_CODES[g_fs->sel >= 0 && g_fs->sel < 4 ? g_fs->sel : 0];
 	scopy (f.label, g_label->text, sizeof f.label);
-	char q[200] = "Everything on "; cat (q, sizeof q, vn); cat (q, sizeof q, " will be erased. Format it?");
+	char q[240] = "Everything on "; cat (q, sizeof q, vn);
+	cat (q, sizeof q, is_part (v.name) && g_whole->checked ? " -- the whole device, all its partitions -- will be erased; it becomes one partition. Format it?"
+								 : " will be erased. Format it?");
 	if (!uk_messagebox ("Format", q, MB_YESNO)) return;
 	if (!(v.flags & KAPI_VF_REMOVABLE))
 	{
@@ -296,6 +307,9 @@ int main (void)
 	g_label = new Textbox (124, ft + 34, 180, 28, "");
 	g_label->maxLen = 11;
 	gf->addChild (g_label);
+	g_whole = new Checkbox (316, ft + 38, 150, 22, "Whole device", false, 0, gf->bg);
+	g_whole->hidden = true;
+	gf->addChild (g_whole);
 	g_format = new Button (W - 20 - 12 - 130, ft + 34, 130, 30, "Format...", on_format);
 	gf->addChild (g_format);
 	gf->addChild (g_fs);					// (last: its list opens over the others)
@@ -310,6 +324,7 @@ int main (void)
 		char nm[8]; int n = 0;
 		while (args[n] && args[n] != ':' && args[n] != ' ' && n < 7) { nm[n] = args[n] >= 'a' && args[n] <= 'z' ? (char) (args[n] - 32) : args[n]; n++; }
 		nm[n] = 0;
+		if (same (nm, "USB")) scopy (nm, "USB1", sizeof nm);	// (USB: is USB1:)
 		scopy (g_selName, nm, sizeof g_selName);
 		refresh (true);
 	}

@@ -181,16 +181,16 @@ lx_open ("SD:/games/tetris.gb", 0);                   // a file: by its runner
 
 ```c
 struct kapi_volume v[16];
-int n = kapi_vol_list (v, 16, KAPI_VOLS_ROOM);        // SD:, SD1:.., USB:.., RAM: (n: how many)
+int n = kapi_vol_list (v, 16, KAPI_VOLS_ROOM);        // SD:, SD1:.., USB1:.., USB1P1:.., RAM:
 for (int i = 0; i < n && i < 16; i++)
     if ((v[i].flags & KAPI_VF_REMOVABLE) && v[i].state == KAPI_VST_MOUNTED)
         ax_putln (v[i].label);                        // a stick plugged in: "USB" + its label
 
-if (kapi_vol_eject ("USB:", 0) == -KAPI_EBUSY)        // files open on it (they were synced)
-    kapi_vol_eject ("USB:", KAPI_EJECT_FORCE);        // ... after asking the user
+if (kapi_vol_eject ("USB1:", 0) == -KAPI_EBUSY)        // files open on it (they were synced)
+    kapi_vol_eject ("USB1:", KAPI_EJECT_FORCE);        // ... after asking the user
 
 struct kapi_format f = { KAPI_FMT_EXFAT, 0, 0, "PHOTOS" };
-kapi_vol_format ("USB:", &f);                         // erases it; SD: is always refused
+kapi_vol_format ("USB1:", &f);                         // erases it; SD: is always refused
 ```
 
 ## 4. UIKit — the interface

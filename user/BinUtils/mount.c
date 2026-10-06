@@ -1,8 +1,9 @@
 //
 // mount -- the volumes. Usage:
 //   mount            every volume: its name, state, file system, size, free space, label, files open
-//   mount USB:       a USB volume ejected but still plugged in (or SD1:..SD3:) mounted again
-// USB sticks are mounted by themselves when they are plugged in (USB:, USB2:, USB3:). kapi v93.
+//   mount USB1:      a USB device ejected but still plugged in (or SD1:..SD3:) mounted again
+// USB devices are mounted by themselves when they are plugged in: USB1: (USB2:, USB3:) a device whole
+// (one partition or none), USB1P1:, USB1P2:... its partitions when it has several; USB: is USB1:. kapi v93.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see docs/LICENSING.md)
 //

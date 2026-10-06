@@ -442,13 +442,14 @@ KAPI_FN unsigned long long kapi_fsize64 (void *h);
 // the Pi restarts), a path on it -> 0 and *out (total / free / used bytes, its type, KAPI_VOL_RAM),
 // -1 no such volume / an older kernel. (RAM: paths work with every file call above from v71.)
 KAPI_FN int kapi_vol_info (const char *path, struct kapi_vol_info *out);
-// (v93) The volumes: SD:, SD1:..SD3: (the card's partitions), USB:, USB2:, USB3: (USB sticks and disks,
+// (v93) The volumes: SD:, SD1:..SD3: (the card's partitions), USB1:, USB2:, USB3: (USB sticks and disks whole; USB1P1:,
+// USB1P2:... the partitions of one that has several; USB: is USB1:;
 // mounted when plugged in), RAM:. vol_list: every volume (struct kapi_volume: its state KAPI_VST_*,
 // flags KAPI_VF_*, sizes, type, label, the files open on it; flags KAPI_VOLS_ROOM: the free space too)
 // -> how many there are (out: up to max). A USB volume pulled out stays listed as KAPI_VST_REMOVED
 // (KAPI_VF_UNSAFE if it was mounted) until a device takes its place; its gen changes at each event.
 KAPI_FN int kapi_vol_list (struct kapi_volume *out, int max, unsigned flags);
-// vol_eject: "USB:" made safe to remove -- its written files synced, the device's cache flushed,
+// vol_eject: a USB device ("USB1:", or any of its partitions: all of them) made safe to remove -- its written files synced, the device's cache flushed,
 // unmounted -> 0; -KAPI_EBUSY files are open on it (synced, still mounted; KAPI_EJECT_FORCE: ejected
 // anyway, they then fail with -KAPI_EIO), -KAPI_EINVAL not a removable volume, -KAPI_ENOENT not mounted.
 KAPI_FN int kapi_vol_eject (const char *vol, unsigned flags);

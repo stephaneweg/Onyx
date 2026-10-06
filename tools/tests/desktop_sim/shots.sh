@@ -430,10 +430,10 @@ if want volume; then
 	scene volume "$OUT/volume.elsm" --crop=0,0,1024,150
 fi
 if want disks; then			# (v93: a USB stick plugged in -- SIM_USB --, SD1: there; the stick chosen)
-	sim disks disks "$W;down 140 90;up 140 90;$W" $P SIM_USB=1 SIM_VOLS=SD1; png disks
+	sim disks disks "$W;down 140 110;up 140 110;$W" $P SIM_USB=2 SIM_VOLS=SD1; png disks	# (a stick of two partitions: USB1P1:, USB1P2:)
 fi
 if want usbmenu; then			# (the menu bar's USB box: a stick plugged in)
-	sim menubar usbmenu "wait;wait;down 899 15;up 899 15;$W" SIM_MENU="$MENU_TINYPAD" SIM_USB=1
+	sim menubar usbmenu "wait;wait;down 899 15;up 899 15;$W" SIM_MENU="$MENU_TINYPAD" SIM_USB=2
 	scene usbmenu "$OUT/usbmenu.elsm" --crop=524,0,1024,180
 fi
 if want clock; then

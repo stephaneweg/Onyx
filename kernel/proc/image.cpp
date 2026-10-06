@@ -146,6 +146,11 @@ static unsigned PutVolume (const char *p, unsigned n, char *pOut)
 	{
 		n = 2;
 	}
+	else if (n == 3 && Lower (p[0]) == 'u' && Lower (p[1]) == 's' && Lower (p[2]) == 'b')
+	{
+		pName = "USB1";				// (v93: "USB:" is "USB1:", the first USB device)
+		n = 4;
+	}
 	if (n + 2 > IMG_PATH_MAX) return 0;
 	for (unsigned i = 0; i < n; i++) pOut[i] = Lower (pName[i]);
 	pOut[n] = ':';

@@ -264,10 +264,12 @@ static void preview_clear (void)
 static int sd_volume (const char *path)			// length of the "SD:" / "SDn:" / "RAM:" prefix, 0 = not a local volume
 {
 	if (lower (path[0]) == 'r' && lower (path[1]) == 'a' && lower (path[2]) == 'm' && path[3] == ':') return 4;
-	if (lower (path[0]) == 'u' && lower (path[1]) == 's' && lower (path[2]) == 'b')	// (v93) USB:, USB2:, USB3:
+	if (lower (path[0]) == 'u' && lower (path[1]) == 's' && lower (path[2]) == 'b')	// (v93) USB1:..USB3:, USB1P2:.., USB: (= USB1:)
 	{
 		if (path[3] == ':') return 4;
-		return path[3] >= '1' && path[3] <= '3' && path[4] == ':' ? 5 : 0;
+		if (path[3] < '1' || path[3] > '3') return 0;
+		if (path[4] == ':') return 5;
+		return lower (path[4]) == 'p' && path[5] >= '1' && path[5] <= '4' && path[6] == ':' ? 7 : 0;
 	}
 	if (lower (path[0]) != 's' || lower (path[1]) != 'd') return 0;
 	if (path[2] == ':') return 3;
@@ -610,7 +612,7 @@ static void vol_root (const struct kapi_volume &v, char *out, int cap)	// "USB2:
 }
 static bool is_usb_path (const char *p)
 {
-	return (lower (p[0]) == 'u' && lower (p[1]) == 's' && lower (p[2]) == 'b') && (p[3] == ':' || (p[3] >= '1' && p[3] <= '3' && p[4] == ':'));
+	return lower (p[0]) == 'u' && lower (p[1]) == 's' && lower (p[2]) == 'b' && sd_volume (p) > 0;
 }
 static void op_show_usb ()
 {

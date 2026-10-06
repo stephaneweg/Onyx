@@ -177,7 +177,9 @@ static const char *const FD_VOLS[] = { "SD:", "C:", "D:", "E:", "F:", "G:", "H:"
 #elif defined(__APPLE__)	// (the macOS build, pc/macOS: SD: is ~/Documents/Onyx Ledger, HOME: the user's folder, MAC: the Mac's /)
 static const char *const FD_VOLS[] = { "SD:", "HOME:", "MAC:" };
 #else
-static const char *const FD_VOLS[] = { "SD:", "SD1:", "SD2:", "SD3:", "USB:", "USB2:", "USB3:" };
+static const char *const FD_VOLS[] = { "SD:", "SD1:", "SD2:", "SD3:",	// (the USB devices: USBn whole, or its partitions USBnPm)
+	"USB1:", "USB1P1:", "USB1P2:", "USB1P3:", "USB1P4:", "USB2:", "USB2P1:", "USB2P2:", "USB2P3:", "USB2P4:",
+	"USB3:", "USB3P1:", "USB3P2:", "USB3P3:", "USB3P4:" };
 #endif
 
 enum { FD_MAX = 126, FD_NAME = 92, FD_VOLMAX = 8 };	// (128 entries of 96 bytes: 126 files, 2 for FdExtra)
@@ -400,7 +402,7 @@ FileDialog::FileDialog (const char *startDir, const char *defName, bool save, bo
 	b = new Button (width - pad - 88,  by, 88, 28, TR ("Cancel"), dlg_btn);               b->tag = 0; addChild (b);
 	for (unsigned i = 0; i < sizeof FD_VOLS / sizeof FD_VOLS[0] && x.nvol < FD_VOLMAX; i++)	// the volumes mounted
 	{
-		char root[10]; fd_scopy (root, FD_VOLS[i], 7);
+		char root[12]; fd_scopy (root, FD_VOLS[i], 8);		// ("USB1P1:" + "/")
 		int n = 0; while (root[n]) n++; root[n] = '/'; root[n + 1] = '\0';
 		if (fd_isdir (root)) fd_scopy (x.vol[x.nvol++], FD_VOLS[i], 8);
 	}

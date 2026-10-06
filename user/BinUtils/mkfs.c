@@ -5,7 +5,8 @@
 //   -L      the volume's label (11 characters at most)
 //   -y      no question (else: type the volume's name to confirm)
 //   --card  allow a partition of the SD card (SD1: .. SD3:). SD:, the system's volume, never.
-// A USB volume (USB:, USB2:, USB3:) is formatted whole: one partition over the stick. kapi v93.
+// USB1: (USB2:, USB3:) formats the whole device: one partition over it, whatever it had; USB1P2: only
+// that partition of a device that has several. kapi v93.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (see docs/LICENSING.md)
 //

@@ -62,7 +62,7 @@ static __attribute__ ((unused)) const char *vu_err (int e)
 	}
 }
 
-// "usb" / "USB:" / "usb2:/x" -> "USB:" / "USB2:" in out (the volume's name, upper case, with ':')
+// "usb1" / "USB1:" / "usb1p2:/x" -> "USB1:" / "USB1P2:" in out (the volume's name, upper case, with ':')
 static __attribute__ ((unused)) void vu_volname (const char *in, char *out, int cap)
 {
 	int n = 0;
