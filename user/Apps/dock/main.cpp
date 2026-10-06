@@ -38,10 +38,7 @@ using namespace uikit;
 #define MAXAPPS		48
 
 enum {
-	DH = 80,		// the dock's height
-	GAP = 12,		// below it (see-through)
-	CW = 60,		// a launcher's width
-	ICON = 40,		// the apps' icons (icon.bmp)
+	GAP = 12,		// below the dock (see-through)
 	SI = 30,		// ... in a drawer
 	RH = 38,		// a row of a drawer
 	COLW = 206,		// a column of it
@@ -51,6 +48,10 @@ enum {
 	SQGAP = 5,
 	LABEL_H = 30,		// the name shown above a launcher
 };
+
+// The dock's height, a launcher's width, the apps' icons (icon.bmp) in it: 80, 60, 40 -- smaller together when
+// the dock would be wider than the screen (many drawers: layout), down to 60, 34, 22.
+static int DH = 80, CW = 60, ICON = 40;
 
 // ---- the apps ------------------------------------------------------------------------------------
 struct App { char name[32]; char label[40]; char cat[24]; unsigned *icon; int iw, ih; unsigned *small; bool tried, running; };
@@ -155,7 +156,26 @@ static void app_icon (Canvas &cv, int cx, int y, App *a)
 {
 	if (a == 0) return;
 	need_icon (*a);
-	if (a->icon) blit_icon (cv, cx - ICON / 2, y, a->icon, a->iw < ICON ? a->iw : ICON, a->ih < ICON ? a->ih : ICON);
+	if (a->icon == 0) return;
+	if (a->iw <= ICON && a->ih <= ICON) { blit_icon (cv, cx - a->iw / 2, y + (ICON - a->ih) / 2, a->icon, a->iw, a->ih); return; }
+	// smaller than its picture: each pixel the average of the picture's under it (the see-through key left out)
+	int sw = a->iw, sh = a->ih, dw = ICON * sw / (sw > sh ? sw : sh), dh = ICON * sh / (sw > sh ? sw : sh);
+	int x0 = cx - dw / 2, y0 = y + (ICON - dh) / 2;
+	for (int j = 0; j < dh; j++)
+		for (int i = 0; i < dw; i++)
+		{
+			int sx0 = i * sw / dw, sx1 = (i + 1) * sw / dw, sy0 = j * sh / dh, sy1 = (j + 1) * sh / dh;
+			unsigned r = 0, g = 0, b = 0, k = 0, all = 0;
+			for (int v = sy0; v < sy1; v++)
+				for (int u = sx0; u < sx1; u++)
+				{
+					unsigned c = a->icon[v * sw + u] & 0xFFFFFF; all++;
+					if (c == 0xFF00FF) continue;
+					r += c >> 16; g += (c >> 8) & 255; b += c & 255; k++;
+				}
+			if (k * 2 < all || k == 0) continue;		// (mostly see-through: left so)
+			cv.pixel (x0 + i, y0 + j, (r / k) << 16 | (g / k) << 8 | (b / k));
+		}
 }
 
 // (each click said in the kernel log, kmsg: a launcher that starts nothing can be told apart --
@@ -267,11 +287,13 @@ static bool poll_minis (void)
 static void trash_glyph (Canvas &cv, int cx, int y, bool full, unsigned face)
 {
 	unsigned c = uk_tone (face, 64), hi = uk_tone (face, 188);
-	if (full) uk_rbox (cv, cx - 8, y + 2, 16, 9, 2, 0x00FFFFFF, 0x00E4E4E4);	// paper sticking out
-	uk_rbox (cv, cx - 14, y + 8, 28, 5, 2, c, c);				// the lid, its handle
-	uk_rbox (cv, cx - 5, y + 4, 10, 5, 2, c, c);
-	uk_rbox (cv, cx - 11, y + 15, 22, 28, 4, uk_tone (face, 76), c);		// the can
-	for (int k = -1; k <= 1; k++) uk_rbox (cv, cx + k * 6 - 1, y + 19, 2, 20, 1, hi, uk_tone (face, 150));	// its ribs
+	auto S = [] (int v) { return v * ICON / 40; };		// (the icons' size: smaller in a narrow dock)
+	y += 40 - S (40);
+	if (full) uk_rbox (cv, cx - S (8), y + S (2), S (16), S (9), 2, 0x00FFFFFF, 0x00E4E4E4);	// paper sticking out
+	uk_rbox (cv, cx - S (14), y + S (8), S (28), S (5), 2, c, c);				// the lid, its handle
+	uk_rbox (cv, cx - S (5), y + S (4), S (10), S (5), 2, c, c);
+	uk_rbox (cv, cx - S (11), y + S (15), S (22), S (28), 4, uk_tone (face, 76), c);		// the can
+	for (int k = -1; k <= 1; k++) uk_rbox (cv, cx + k * S (6) - 1, y + S (19), 2, S (20), 1, hi, uk_tone (face, 150));	// its ribs
 }
 
 // ---- the dock's layout -------------------------------------------------------------------------------
@@ -296,13 +318,23 @@ static void layout (void)
 	}
 	all[n++] = { SL_TRASH, 0, -1, 0 };
 	g_nleft = (n + 1) / 2;
-	int x = 12; g_nslot = 0;
-	for (int i = 0; i < g_nleft; i++) { all[i].x = x; g_slot[g_nslot++] = all[i]; x += CW; }
 	g_ndesk = g_conf.ndesks < 1 ? 1 : g_conf.ndesks;
 	g_pgRows = g_ndesk <= 3 ? 1 : 2;
 	g_pgCols = (g_ndesk + g_pgRows - 1) / g_pgRows;
-	g_pgX = x + (g_nleft ? 8 : 0);
 	g_pgW = 30 + g_pgCols * (SQW + SQGAP) - SQGAP + 6 + 30;
+	// too wide for the screen: the launchers narrower, their icons and the dock smaller with them
+	DH = 80; CW = 60; ICON = 40;
+	int fixed = 24 + g_pgW + (g_nleft ? 8 : 0) + (n > g_nleft ? 8 : 0), room = g_sw - 16;
+	if (fixed + n * CW > room)
+	{
+		CW = (room - fixed) / n;
+		if (CW < 34) CW = 34;
+		ICON = CW * 40 / 60; if (ICON < 22) ICON = 22;
+		DH = 80 - (60 - CW) * 20 / 26; if (DH < 60) DH = 60;
+	}
+	int x = 12; g_nslot = 0;
+	for (int i = 0; i < g_nleft; i++) { all[i].x = x; g_slot[g_nslot++] = all[i]; x += CW; }
+	g_pgX = x + (g_nleft ? 8 : 0);
 	x = g_pgX + g_pgW + (n > g_nleft ? 8 : 0);
 	for (int i = g_nleft; i < n; i++) { all[i].x = x; g_slot[g_nslot++] = all[i]; x += CW; }
 	g_DW = x + 12;
@@ -580,28 +612,29 @@ public:
 			bool pr = hIcon && down.what == H_SLOT && down.index == i;
 			bool drop = dropHot.what == H_SLOT && dropHot.index == i;
 			if (hIcon || drop)
-				uk_rbox (canvas, x + 4, oy + 19, CW - 8, 54, 8, pr ? uk_tone (d, 108) : uk_tone (d, 200),
+				uk_rbox (canvas, x + 4, oy + 19, CW - 8, DH - 26, 8, pr ? uk_tone (d, 108) : uk_tone (d, 200),
 					 pr ? uk_tone (d, 118) : uk_tone (d, 160), drop ? 255 : 150);
-			if (drop) uk_rline (canvas, x + 4, oy + 19, CW - 8, 54, 8, C_ACCENT, 255);
+			if (drop) uk_rline (canvas, x + 4, oy + 19, CW - 8, DH - 26, 8, C_ACCENT, 255);
 			if (s.kind == SL_DRAWER)
 			{
 				const Drawer &k = g_dr[s.index];
-				app_icon (canvas, cx, oy + 26, k.main);
+				app_icon (canvas, cx, oy + DH - ICON - 14, k.main);
 				// the strip at the top edge: its drawer (open: in the accent)
 				bool o = g_open == s.index;
 				unsigned top = o ? uk_tone (C_ACCENT, 170) : uk_tone (d, hStrip ? 150 : 118);
 				unsigned bot = o ? C_ACCENT : uk_tone (d, hStrip ? 132 : 106);
-				uk_rbox (canvas, cx - 20, oy + 1, 40, STRIP_H - 1, 6, top, bot, 255, UK_BL | UK_BR);
-				uk_rline (canvas, cx - 20, oy + 1, 40, STRIP_H - 1, 6, hStrip ? C_ACCENT : uk_tone (d, 70), hStrip ? 220 : 140, UK_BL | UK_BR);
+				int sw2 = CW - 20 < 40 ? (CW - 8) / 2 : 20;		// (the strip: narrower with a narrow launcher)
+				uk_rbox (canvas, cx - sw2, oy + 1, 2 * sw2, STRIP_H - 1, 6, top, bot, 255, UK_BL | UK_BR);
+				uk_rline (canvas, cx - sw2, oy + 1, 2 * sw2, STRIP_H - 1, 6, hStrip ? C_ACCENT : uk_tone (d, 70), hStrip ? 220 : 140, UK_BL | UK_BR);
 				uk_glyph (canvas, o ? WKG_CHEV_DOWN : WKG_CHEV_UP, cx, oy + 1 + (STRIP_H - 1) / 2, 10, o ? 0x00FFFFFF : ink);
 				if (k.running) uk_rbox (canvas, cx - 3, oy + DH - 9, 6, 5, 2, C_ACCENT, C_ACCENT);
 			}
 			else if (s.kind == SL_APP)
 			{
-				app_icon (canvas, cx, oy + 26, s.app);
+				app_icon (canvas, cx, oy + DH - ICON - 14, s.app);
 				if (s.app && s.app->running) uk_rbox (canvas, cx - 3, oy + DH - 9, 6, 5, 2, C_ACCENT, C_ACCENT);
 			}
-			else trash_glyph (canvas, cx, oy + 24, trashFull, d);
+			else trash_glyph (canvas, cx, oy + DH - 56, trashFull, d);
 			if (i + 1 < g_nslot && g_slot[i + 1].x == s.x + CW) groove (x + CW - 1, oy);	// between launchers
 		}
 		if (g_nleft) groove (ox + g_pgX - 5, oy);				// round the middle

@@ -73,7 +73,8 @@ main app and the hidden ones (no maximum: 32, `DOCK_MAXCATS`). SystemKit 59: `Do
 `drawer =` lines as the order and main apps, new `hidden =` lines, the card's categories not named appended by name;
 not Shell / Settings / Emulators: `dock_category_docked`), `dock_layout_save`; `DockConf` / `dockconf_load` / `_save`
 kept for programs built before. The dock and the applet use it (they need systemkit >= 1.59: `[onyx]`'s needs).
-Not done: a dock wider than the screen (many categories) is not scaled -- hide some.
+Too wide for the screen, the dock scales its launchers' width, its icons (averaged down) and its height together
+(`layout`: 60 / 40 / 80 px down to 34 / 22 / 60; tried at 800 and 640 px wide in the simulator).
 
 ## The GPIO workshop: GPIOKit, GPIO Lab, BASIC's GPIO (2026-10-06; built and tested on the PC, NOT yet on the Pi)
 

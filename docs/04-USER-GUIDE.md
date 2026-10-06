@@ -458,6 +458,8 @@ the Trash, four on each side.
   the Text Editor, Jet Browser, Paint, QBStudio, the Game Library, the Media Player, the Widget Showcase, the
   Task Manager; else the first of its apps by name). Their order, their main apps and the categories
   **hidden** (no drawer: their apps stay in the Onyx menu) are the Panel applet's (below); up to 32 drawers.
+  When they no longer fit across the screen, the dock makes its launchers narrower and its icons and its height
+  smaller with them (down to about half their size).
   **Click the icon** to start that app — or, if it runs,
   to bring it back to the front (a **minimised** one too). **Click the strip** on the dock's top
   edge above it to open the group's **drawer**: its apps with their icons, by name (in columns
