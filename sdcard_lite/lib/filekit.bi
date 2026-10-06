@@ -1,7 +1,7 @@
 # filekit.bi -- filekit for Onyx BASIC (#import filekit): made by tools/kitbi/kitbi.py from filekit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit filekit 78
+kit filekit 96
 struct zip_entry 360 fk_zip_entry
 field name 0 a 300
 field size 304 l
@@ -107,3 +107,12 @@ fs_remove_tree 74 b si fs_remove_tree path,depth
 fs_skip_dot 75 b s fs_skip_dot n
 fs_text_fix 76 i pi fs_text_fix b,n
 fs_unique_name 77 v pisss fs_unique_name out,cap,dir,name,tag
+kv_block_name 80 l pi fk_kv_block_name kv,b
+kv_get 84 l psss fk_kv_get kv,section,key,def
+kv_key 85 l pi fk_kv_key kv,i
+kv_load 87 l si fk_kv_load path,flags
+kv_new 88 l i fk_kv_new flags
+kv_parse 89 l si fk_kv_parse text,flags
+kv_section 92 l pi fk_kv_section kv,i
+kv_text 94 l psI fk_kv_text kv,comment,len
+kv_value 95 l pi fk_kv_value kv,i
