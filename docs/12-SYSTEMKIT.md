@@ -16,19 +16,20 @@
 10. [`systemkit/wallpaper.h`](#systemkitwallpaperh)
 11. [`systemkit/dockconf.h`](#systemkitdockconfh)
 12. [`systemkit/preloadini.h`](#systemkitpreloadinih)
-13. [`systemkit/applet_proto.h`](#systemkitappletprotoh)
+13. [`systemkit/autostart.h`](#systemkitautostarth)
+14. [`systemkit/applet_proto.h`](#systemkitappletprotoh)
 
 ---
 
 ## What it is
 
-SystemKit is what a program says to the system and to the other programs: notifications, the clipboard, the trash, the file associations, the volume, the wallpaper, the dock, the programs loaded ahead, the Control Panel's applets.
+SystemKit is what a program says to the system and to the other programs: notifications, the clipboard, the trash, the file associations, the volume, the wallpaper, the dock, the programs loaded ahead and started at boot, the Control Panel's applets.
 
 | | |
 |---|---|
 | Include | `#include "systemkit/systemkit.h"` |
 | Link | `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C) |
-| Library | `SD:/lib/systemkit.so` — 59 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
+| Library | `SD:/lib/systemkit.so` — 61 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
 | Sources | `user/Kits/systemkit/` |
 
 ## Using it
@@ -180,6 +181,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `PreloadList` | (a type) | `preloadini.h` |
 | `preload_ini_load` | -> how many programs the file lists (0 | `preloadini.h` |
 | `preload_ini_save` | -> 1 written, 0 not | `preloadini.h` |
+| `autostart_has` | Is `cmd` ("run stickies", say) started at boot? A line whose words begin with cmd's words -- blanks before it, more words after it allowed ("run stickies --x")  | `autostart.h` |
+| `autostart_ensure` | Make sure `cmd` is started at boot. | `autostart.h` |
 
 ---
 
@@ -732,6 +735,29 @@ int preload_ini_load (struct PreloadList *l);
 
 ```cpp
 int preload_ini_save (const struct PreloadList *l);
+```
+
+## `systemkit/autostart.h`
+
+autostart.h -- SD:/etc/autostart, the programs started at boot (one shell command a line: `run agenda`, `keyb FR`, `preload /boot` the last one), as an app that offers "start it at every boot" changes it: a line looked for, a line added where it belongs -- never moved, never removed, every other line kept byte for byte. Setup's held-back lines count: on a card whose first-run wizard has not ended, a line is written "#setup: <command>" and given back by Setup at its end (apps/setup) -- such a line is "there", and a line added after one of them is held back the same way. Used by Notes (View > Show Stickies on the Desktop). C and C++.
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+```cpp
+#define AUTOSTART_PATH	"SD:/etc/autostart"
+#define AUTOSTART_MAX	16384			// a bigger file is left alone (never cut)
+```
+
+Is `cmd` ("run stickies", say) started at boot? A line whose words begin with cmd's words -- blanks before it, more words after it allowed ("run stickies --x") -- either active or held back by Setup ("#setup: run stickies"). A plain comment ("# run stickies") is not. -> 1 there, 0 not (or no file)
+
+```cpp
+int autostart_has (const char *cmd);
+```
+
+Make sure `cmd` is started at boot. Nothing written when autostart_has (cmd). Else the line `cmd`, after the comment line `comment` ("# ...", or 0: none), is INSERTED: right after the first line whose command starts with the words `after` (e.g. "run agenda"; 0: no such rule) -- with that line's "#setup: " when it has one (held back as it is); else just before the first `preload` line (it stays the last); else at the end (no file: a new one). -> 1 already there, 2 added, 0 not written (the file too big, the write failed)
+
+```cpp
+int autostart_ensure (const char *cmd, const char *after, const char *comment);
 ```
 
 ## `systemkit/applet_proto.h`

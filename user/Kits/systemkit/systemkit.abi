@@ -62,3 +62,5 @@
 56 dock_category_docked
 57 dock_layout_load
 58 dock_layout_save
+59 autostart_ensure
+60 autostart_has
