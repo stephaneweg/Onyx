@@ -1,0 +1,61 @@
+# The GPIO examples in French (tools/lang/bas_fr.py -> sdcard/basic/examples/fr/gpio_*.bas): English<TAB>French.
+# A whole comment (without its apostrophe), a whole string (without its quotes; ASCII only: PRINT writes code
+# page 437), or a name of the program.
+# ---- gpio_blink.bas
+gpio_blink.bas -- an LED blinking on the Raspberry Pi's header (GPIOKit; docs/04 section 13, "GPIO").	gpio_blink.bas -- une LED qui clignote sur le connecteur du Raspberry Pi (GPIOKit).
+Wiring: GPIO 17 (the header's pin 11) -> a 330 ohm resistor -> the LED's long leg (+);	Câblage : GPIO 17 (broche 11 du connecteur) -> une résistance de 330 ohms -> la patte longue de la LED (+) ;
+the LED's short leg (-) -> a GND pin (pin 9 or 14).	la patte courte de la LED (-) -> une broche GND (broche 9 ou 14).
+3.3 V only: never put 5 V on a GPIO pin. No hardware? GPIOSIM 1 runs the same program on the	3,3 V seulement : jamais de 5 V sur une broche GPIO. Pas de matériel ? GPIOSIM 1 lance le même programme sur le
+simulator (GPIO Lab shows it), and so does a PC.	simulateur (GPIO Lab le montre), comme sur un PC.
+Blinking the LED on GPIO 17 -- a key stops.	La LED du GPIO 17 clignote -- une touche pour finir.
+Done.	Fini.
+# ---- gpio_button.bas
+gpio_button.bas -- a push button read two ways: by polling PIN(), and as an event (ON PIN ... GOSUB).	gpio_button.bas -- un bouton poussoir lu de deux façons : en lisant BROCHE(), et par un événement (SUR BROCHE ... GOSUB).
+Wiring: GPIO 27 (pin 13) -> the button -> GND (pin 14). No resistor: the pin is pulled up inside the	Câblage : GPIO 27 (broche 13) -> le bouton -> GND (broche 14). Pas de résistance : la broche est rappelée à 1 dans la
+chip ("PULLUP"), so it reads 1 at rest and 0 while the button is pressed.	puce ("RAPPELHAUT") : elle lit 1 au repos et 0 tant que le bouton est enfoncé.
+An LED on GPIO 17 (gpio_blink.bas's wiring) follows the button.	Une LED sur le GPIO 17 (le câblage de gpio_blink.bas) suit le bouton.
+2 = the falling edges: each press (1 rising, 3 both)	2 = les fronts descendants : chaque appui (1 montants, 3 les deux)
+Press the button on GPIO 27 -- a key stops.	Appuyez sur le bouton du GPIO 27 -- une touche pour finir.
+the LED lit while the button is held	la LED allumée tant que le bouton est tenu
+presses.	appuis.
+Pressed!	Appui !
+(a button bounces: one press may count twice)	(un bouton rebondit : un appui peut compter double)
+presses	appuis
+Pressed	Appui
+# ---- gpio_servo.bas
+gpio_servo.bas -- a hobby servo (an SG90, an MG996R) swept from side to side by PWM.	gpio_servo.bas -- un servomoteur de modélisme (SG90, MG996R) balayé d'un côté à l'autre par PWM.
+Wiring: the servo's signal (orange / yellow) -> GPIO 18 (pin 12), its ground (brown / black) -> GND	Câblage : le signal du servo (orange / jaune) -> GPIO 18 (broche 12), sa masse (marron / noir) -> GND
+(pin 14), its power (red) -> 5 V (pin 2) -- the 5 V pin feeds the motor only: the signal stays 3.3 V.	(broche 14), son alimentation (rouge) -> 5 V (broche 2) -- le 5 V n'alimente que le moteur : le signal reste en 3,3 V.
+A big servo wants its own supply (its ground joined to the Pi's).	Un gros servo demande sa propre alimentation (sa masse reliée à celle du Pi).
+SERVO pin, angle: 50 pulses a second, 0.5 ms (0 degrees) .. 2.5 ms (180 degrees).	SERVO broche, angle : 50 impulsions par seconde, de 0,5 ms (0 degré) à 2,5 ms (180 degrés).
+PWM pin, duty% [, Hz] makes any square wave on GPIO 12, 13, 18 or 19 (an LED dimmed, a buzzer).	PWM broche, rapport% [, Hz] fait un signal carré sur les GPIO 12, 13, 18 ou 19 (une LED atténuée, un buzzer).
+Sweeping the servo on GPIO 18 -- a key stops.	Le servo du GPIO 18 balaie -- une touche pour finir.
+# ---- gpio_bme280.bas
+gpio_bme280.bas -- a BME280 (temperature, pressure, humidity) on the I2C bus, read every second.	gpio_bme280.bas -- un BME280 (température, pression, humidité) sur le bus I2C, lu chaque seconde.
+Wiring (a BME280 / BMP280 board): VIN -> 3V3 (pin 1), GND -> GND (pin 6), SDA -> GPIO 2 (pin 3),	Câblage (une carte BME280 / BMP280) : VIN -> 3V3 (broche 1), GND -> GND (broche 6), SDA -> GPIO 2 (broche 3),
+SCL -> GPIO 3 (pin 5). Its address: &H76 (&H77 when its SDO is tied to 3V3).	SCL -> GPIO 3 (broche 5). Son adresse : &H76 (&H77 quand son SDO est relié au 3V3).
+The formulas are the datasheet's (Bosch BST-BME280-DS002, 4.2.3).	Les formules sont celles de la notice (Bosch BST-BME280-DS002, 4.2.3).
+On the I2C bus: 	Sur le bus I2C :
+No BME280 at &H76 (its id: &H60; a BMP280 says &H58)	Pas de BME280 en &H76 (son identifiant : &H60 ; un BMP280 dit &H58)
+humidity sampled once	l'humidité mesurée une fois
+A key stops.	Une touche pour finir.
+temperature and pressure once, one measure ("forced")	température et pression une fois, une seule mesure ("forced")
+temperature	température
+pressure	pression
+humidity	humidité
+two bytes, the low one first	deux octets, le poids faible d'abord
+the same, signed	les mêmes, signés
+a signed byte	un octet signé
+# ---- gpio_oled.bas
+gpio_oled.bas -- an SSD1306 OLED display (128 x 64) on the I2C bus: a bouncing ball and a frame.	gpio_oled.bas -- un écran OLED SSD1306 (128 x 64) sur le bus I2C : une balle qui rebondit dans un cadre.
+Wiring: VCC -> 3V3 (pin 1), GND -> GND (pin 9), SDA -> GPIO 2 (pin 3), SCL -> GPIO 3 (pin 5).	Câblage : VCC -> 3V3 (broche 1), GND -> GND (broche 9), SDA -> GPIO 2 (broche 3), SCL -> GPIO 3 (broche 5).
+Its address: &H3C (some boards: &H3D). The picture is kept here (1024 bytes: 8 bands of 8 rows,	Son adresse : &H3C (certaines cartes : &H3D). L'image est gardée ici (1024 octets : 8 bandes de 8 lignes,
+a byte a column, bit 0 at the top) and sent whole: I2CSEND address, CHR$(&H40) + the bytes.	un octet par colonne, le bit 0 en haut) et envoyée entière : I2CENVOYER adresse, CHR$(&H40) + les octets.
+(the display takes the fast bus)	(l'écran accepte le bus rapide)
+its start: off, the clock, 64 rows, no offset, the charge pump, horizontal addressing, turned 180,	son démarrage : éteint, l'horloge, 64 lignes, sans décalage, la pompe de charge, adressage horizontal, tourné de 180,
+contrast, on	le contraste, allumé
+A ball on the display at &H3C -- a key stops.	Une balle sur l'ecran en &H3C -- une touche pour finir.
+the frame: top and bottom	le cadre : haut et bas
+the ball	la balle
+the whole screen, from its corner	tout l'écran, depuis son coin
+the display off	l'écran éteint

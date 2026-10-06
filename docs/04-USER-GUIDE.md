@@ -4404,6 +4404,25 @@ them, then **Board ▸ Release Every Pin**); a program run alone gives them back
 a click on an **input's dot** on the header is a wire to it: High, then Low — a button to press while the
 program runs.
 
+**In French.** GPIO Lab follows the system's language (the Control Panel's **Language & Region**): its menus,
+buttons, messages and the console's errors are in French when Onyx is. The Code view's BASIC can be written **in
+French or in English whatever the language** (even mixed in one program); in French, the first sketch and the
+**Examples...** are the French ones (`SD:/basic/examples/fr/gpio_*.bas`, where **Open Program...** starts), and the
+errors name the French words. The header's words:
+
+| French | English |
+|---|---|
+| `MODEBROCHE 17, "SORTIE"` — the modes `"SORTIE"`, `"ENTREE"`, `"RAPPELHAUT"`, `"RAPPELBAS"`, `"LIBRE"` | `PINMODE 17, "OUT"` — `"OUT"`, `"IN"`, `"PULLUP"`, `"PULLDOWN"`, `"FREE"` |
+| `BROCHE 17 = 1`, `BROCHE (27)` | `PIN 17 = 1`, `PIN (27)` |
+| `LIBERERBROCHE`, `BROCHECHANGEE` | `PINFREE`, `PINCHANGED` |
+| `SUR BROCHE (27, 2) GOSUB Appui`, `BROCHE (27) ARRET` | `ON PIN (27, 2) GOSUB Pressed`, `PIN (27) OFF` |
+| `I2COUVRIR`, `I2CECRIRE`, `I2CENVOYER`, `I2CLIRE`, `I2CLIRE$`, `SPIOUVRIR` | `I2COPEN`, `I2CWRITE`, `I2CSEND`, `I2CREAD`, `I2CREAD$`, `SPIOPEN` |
+| `TOUCHE$` | `INKEY$` |
+
+`PWM`, `SERVO`, `PAUSE`, `GPIOSIM` and `GOSUB` keep their names. The language's own words (`SI` ... `ALORS`,
+`POUR` ... `SUITE`, `FAIRE` ... `BOUCLE`, `AFFICHER`...) are the ones of Turtle Quest: see its table (§13, *Turtle
+Quest*). The texts a program prints stay without accents (the BASIC console's characters).
+
 **The simulator**: the **Simulator** switch above the header. On, GPIO Lab runs on GPIOKit's **simulated
 board** — the badge at the bottom right says **SIMULATOR**, the header's caption says *simulated* — and nothing
 touches the real pins: an output a program (or the Pins view) sets lights on the drawing only, and **a click on an

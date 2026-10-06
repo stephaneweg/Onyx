@@ -16,7 +16,7 @@ static const bas::ExtWord WORDS[] = {
 	{ "STEPIT", W_STEP, 's', "[N" }, { "POSX", W_POS, 'n', "" }, { "NAMEOF$", W_NAME, '$', "N" },
 	{ "BOOM", W_BOOM, 's', "" }, { "COLOR", W_STEP, 's', "N" }, { 0, 0, 0, 0 } };
 static const char *const ALIASES[] = { "AVANCE", "STEPIT", "SI", "IF", "ALORS", "THEN", "FIN", "END", "REPETE", "REPEAT", 0 };
-static const bas::Dialect DIALECT = { WORDS, ALIASES, true, false };
+static const bas::Dialect DIALECT = { WORDS, ALIASES, true, false, 0 };
 
 struct H : bas::Host
 {
@@ -46,7 +46,30 @@ static int run (H &h, const char *src, bas::Error *e)
 	return rc;
 }
 
-int main ()
+// A program in French (bas::frenchDialect: GPIO Lab's -- sdcard/basic/examples/fr/gpio_*.bas, made by
+// tools/lang/bas_fr.py) compiles; a message says BASIC's words in French.
+static void french (int argc, char **argv)
+{
+	bas::setDialect (bas::frenchDialect ());
+	bas::Error e;
+	for (int a = 1; a < argc; a++)
+	{
+		FILE *f = fopen (argv[a], "rb"); CHECK (f, "cannot read %s", argv[a]); if (!f) continue;
+		static char src[65536]; size_t n = fread (src, 1, sizeof src - 1, f); src[n] = 0; fclose (f);
+		bas::Program *p = bas::compile (src, &e);
+		CHECK (p, "%s: line %d: %s", argv[a], e.line, e.msg);
+		if (p) bas::destroy (p);
+	}
+	bas::Program *p = bas::compile ("POUR i = 1 JUSQUE 3\n  AFFICHER i\n", &e);
+	char fr[200]; bas::frenchMessage (e.msg, fr, sizeof fr);
+	CHECK (!p && !strcmp (fr, "POUR sans SUITE"), "a message in French: %s -> %s", e.msg, fr);
+	p = bas::compile ("SI BROCHE (4) = 1\n", &e);
+	bas::frenchMessage (e.msg, fr, sizeof fr);
+	CHECK (!p && strstr (fr, "il manque ALORS"), "a message in French: %s -> %s", e.msg, fr);
+	if (argc > 1) printf ("ok   BASIC in French (%d examples compile; the messages)\n", argc - 1);
+}
+
+int main (int argc, char **argv)
 {
 	bas::setDialect (&DIALECT);
 	bas::Error e;
@@ -64,5 +87,6 @@ int main ()
 	{ H h; bas::Program *p = bas::compile ("STEPIT = 3: PRINT STEPIT\n", &e); CHECK (p != 0, "plain BASIC: a variable %s", e.msg);
 	  if (p) { bas::run (p, h, &e); bas::destroy (p); } CHECK (strstr (h.log, " 3") != 0, "%s", h.log); }
 	printf (fails ? "dialect: %d failure(s)\n" : "ok   dialect (words, aliases, REPEAT, statement hook)\n", fails);
+	french (argc, argv);
 	return fails != 0;
 }

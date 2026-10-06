@@ -1888,7 +1888,8 @@ public:
 			for (char *c = t1; *c; c++) if (*c >= 'a' && *c <= 'z') *c = (char) (*c - 32);
 			int m = -1;
 			static const struct { const char *n; int m; } MODES[] = { { "FREE", 0 }, { "OFF", 0 }, { "IN", 1 }, { "INPUT", 1 },
-				{ "PULLUP", 2 }, { "INPUT_PULLUP", 2 }, { "PULLDOWN", 3 }, { "INPUT_PULLDOWN", 3 }, { "OUT", 4 }, { "OUTPUT", 4 } };
+				{ "PULLUP", 2 }, { "INPUT_PULLUP", 2 }, { "PULLDOWN", 3 }, { "INPUT_PULLDOWN", 3 }, { "OUT", 4 }, { "OUTPUT", 4 },
+				{ "LIBRE", 0 }, { "ENTREE", 1 }, { "RAPPELHAUT", 2 }, { "RAPPELBAS", 3 }, { "SORTIE", 4 } };	// (in French)
 			for (unsigned k = 0; k < sizeof MODES / sizeof MODES[0]; k++)
 			{
 				int j = 0; while (t1[j] && t1[j] == MODES[k].n[j]) j++;

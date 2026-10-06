@@ -169,6 +169,7 @@ namespace OnyxRemote
 		public MainForm ()
 		{
 			Text = "Onyx Remote";
+			if (Program.AppIcon != null) Icon = Program.AppIcon;
 			Font = new Font ("Segoe UI", 9f);
 			ClientSize = new Size (1040, 830);
 			ts = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Top };
@@ -622,6 +623,9 @@ namespace OnyxRemote
 
 	static class Program
 	{
+		// The program's icon (onyxremote.ico in the .exe: tools/icons/onyxremote_icon.py), for every window
+		static Icon appIcon; static bool appIconAsked;
+		public static Icon AppIcon { get { if (!appIconAsked) { appIconAsked = true; try { appIcon = Icon.ExtractAssociatedIcon (Application.ExecutablePath); } catch { } } return appIcon; } }
 		[STAThread]
 		static void Main ()
 		{

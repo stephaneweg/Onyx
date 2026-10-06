@@ -33,6 +33,7 @@ struct Dialect
 	const char *const *aliases;			// pairs "ALIAS", "WORD" (capitals), ended by 0; 0: none
 	bool repeat;					// REPEAT n ... END REPEAT
 	bool twoWords;					// at a statement's start, "ELSE IF" is ELSEIF and "END WHILE" is WEND
+	const char *const *aliases2;			// more pairs (a host's own words beside a language's -- FRENCH); 0: none
 };
 // An argument or a result of Host::ext: a number, or a string (s: len bytes, code page 437 as BASIC keeps them).
 struct ExtVal { bool str; double n; const char *s; int len; };
@@ -232,6 +233,15 @@ Program *compile (const char *src, Error *err);
 void     setKitSource (char *(*source) (const char *name, int *len));
 // The dialect the next compile () and wordList () use (0: plain BASIC). The structure is kept, not copied.
 void     setDialect (const Dialect *d);
+// BASIC in French, for a program that hosts BASIC and wants it (Turtle Quest, GPIO Lab -- the user's choice,
+// 2026-10-06: not QBasic, QBStudio nor /bin/basic for now): the pairs "SI", "IF" ... of the language's words, its
+// types and the 40-pin header's (BROCHE, MODEBROCHE...) -- a Dialect's `aliases` (with twoWords: SINON SI, FIN
+// TANTQUE); the English words stay known. frenchDialect (): that alone (a host with no words of its own).
+// frenchMessage: a compiler's or a run's message with BASIC's words in French ("Expected THEN": "il manque
+// ALORS"; "FOR without NEXT": "POUR sans SUITE"); more: the host's own words, pairs "FORWARD", "AVANCER".
+extern const char *const FRENCH[];
+const Dialect *frenchDialect ();
+void     frenchMessage (const char *msg, char *out, int cap, const char *const *more = 0);
 int      run (Program *p, Host &host, Error *err);
 void     destroy (Program *p);
 // Compiled programs (.bax, basbax.cpp): the bytecode as a file -- it runs without parsing.

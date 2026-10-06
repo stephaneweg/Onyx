@@ -5,6 +5,7 @@
 #include "uikit/lang.h"
 #include "appkit/appkit.h"
 #include "systemkit/locale.h"	// the system's language (SD:/etc/system.ini)
+#include "uikit/sysclip.h"	// uk_clip_ready: SystemKit opened for the library
 #include "uikit/text.h"		// uk_textface, uk_u8_get
 
 static char  s_code[8] = "en";
@@ -194,9 +195,10 @@ bool uk_lang_choose (const char *code)
 #else
 const char *uk_lang_chosen ()
 {
-	lg_copy (s_chosen, locale_language (), sizeof s_chosen);
+	// (SystemKit is opened here when the program did not: without it, English)
+	lg_copy (s_chosen, uikit::uk_clip_ready () ? locale_language () : "en", sizeof s_chosen);
 	return s_chosen;
 }
-bool uk_lang_choose (const char *code) { return locale_set_language (code ? code : "en") != 0; }
+bool uk_lang_choose (const char *code) { return uikit::uk_clip_ready () && locale_set_language (code ? code : "en") != 0; }
 #endif
 void uk_lang_init () { const char *c = uk_lang_chosen (); if (c[0]) uk_lang_load (c); }

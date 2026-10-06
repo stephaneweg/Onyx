@@ -105,8 +105,12 @@ static const ExtWord *findExt (const char *n)
 }
 static const char *aliasOf (const char *n)
 {
-	if (!dialect || !dialect->aliases) return 0;
-	for (int i = 0; dialect->aliases[i] && dialect->aliases[i + 1]; i += 2) if (bseq (dialect->aliases[i], n)) return dialect->aliases[i + 1];
+	if (!dialect) return 0;
+	for (int t = 0; t < 2; t++)
+	{
+		const char *const *al = t ? dialect->aliases2 : dialect->aliases;
+		for (int i = 0; al && al[i] && al[i + 1]; i += 2) if (bseq (al[i], n)) return al[i + 1];
+	}
 	return 0;
 }
 
@@ -228,7 +232,7 @@ public:
 				if (s[i] == '$' || s[i] == '%' || s[i] == '&' || s[i] == '!' || s[i] == '#') { if (n < 47) id[n++] = s[i]; i++; }
 				id[n] = 0;
 				if (const char *al = aliasOf (id)) bscpy (id, al, 48);	// (a dialect's alias: the word it stands for)
-				else if (dialect && dialect->aliases)			// (... or the word before a dot: "CECI.n" is THIS.n)
+				else if (dialect && (dialect->aliases || dialect->aliases2))	// (... or the word before a dot: "CECI.n" is THIS.n)
 				{
 					int d = 0; while (id[d] && id[d] != '.') d++;
 					if (id[d] == '.' && d > 0)
@@ -3306,6 +3310,55 @@ void destroy (Program *p) { delete p; }
 void setKitSource (char *(*source) (const char *name, int *len)) { kitSource = source; }
 void setDialect (const Dialect *d) { dialect = d; }
 
+// BASIC in French (bas.h). A word's first French name is the one shown (frenchMessage).
+const char *const FRENCH[] = {
+	"SI", "IF", "ALORS", "THEN", "SINON", "ELSE", "SINONSI", "ELSEIF", "FIN", "END",
+	"POUR", "FOR", "JUSQUE", "TO", "PAS", "STEP", "SUITE", "NEXT", "SUIVANT", "NEXT",
+	"REPETER", "REPEAT", "REPETE", "REPEAT", "TANTQUE", "WHILE", "FINTANTQUE", "WEND", "FAIRE", "DO", "BOUCLE", "LOOP", "JUSQUA", "UNTIL",
+	"FONCTION", "FUNCTION", "PROCEDURE", "SUB", "RETOUR", "RETURN", "APPELER", "CALL", "APPELLE", "CALL", "SORTIR", "EXIT",
+	"CLASSE", "CLASS", "HERITE", "EXTENDS", "IMPLEMENTE", "IMPLEMENTS", "VIRTUEL", "VIRTUAL", "REDEFINIT", "OVERRIDE", "ABSTRAIT", "ABSTRACT",
+	"NOUVEAU", "NEW", "CECI", "THIS", "RIEN", "NOTHING",
+	"COMME", "AS", "ENTIER", "INTEGER", "REEL", "REAL", "CHAINE", "STRING", "OCTET", "BYTE",
+	"ENTIER16", "INTEGER16", "ENTIER32", "INTEGER32", "ENTIER64", "INTEGER64", "REEL32", "REAL32", "REEL64", "REAL64",
+	"CONSTANTE", "CONST", "PARTAGE", "SHARED", "STATIQUE", "STATIC",
+	"SELON", "SELECT", "CAS", "CASE", "ET", "AND", "OU", "OR", "NON", "NOT", "SUR", "ON", "ARRET", "OFF",
+	"AFFICHER", "PRINT", "AFFICHE", "PRINT", "SAISIR", "INPUT", "TOUCHE$", "INKEY$",
+	// (the 40-pin header)
+	"BROCHE", "PIN", "MODEBROCHE", "PINMODE", "LIBERERBROCHE", "PINFREE", "BROCHECHANGEE", "PINCHANGED",
+	"I2COUVRIR", "I2COPEN", "I2CECRIRE", "I2CWRITE", "I2CENVOYER", "I2CSEND", "I2CLIRE", "I2CREAD", "I2CLIRE$", "I2CREAD$",
+	"SPIOUVRIR", "SPIOPEN", 0 };
+static const Dialect FRENCH_DIALECT = { 0, FRENCH, false, true, 0 };
+const Dialect *frenchDialect () { return &FRENCH_DIALECT; }
+void frenchMessage (const char *msg, char *out, int cap, const char *const *more)
+{
+	static const char *const TWO[] = { "ELSEIF", "SINON SI", "WEND", "FIN TANTQUE", 0 };	// (shown in two words)
+	static const char *const SAID[] = { "Expected ", "il manque ", " without its ", " sans son ", " without ", " sans ", 0 };
+	int o = 0;
+	const char *m = msg;
+	while (*m && o < cap - 30)
+	{
+		bool said = false;
+		for (int i = 0; SAID[i] && !said; i += 2)
+		{
+			int n = bslen (SAID[i]), k = 0;
+			while (k < n && m[k] == SAID[i][k]) k++;
+			if (k == n) { for (const char *f = SAID[i + 1]; *f; f++) out[o++] = *f; m += n; said = true; }
+		}
+		if (said) continue;
+		if (!(*m >= 'A' && *m <= 'Z') || (m > msg && ((m[-1] >= 'A' && m[-1] <= 'Z') || (m[-1] >= 'a' && m[-1] <= 'z')))) { out[o++] = *m++; continue; }
+		char w[24]; int n = 0; const char *q = m;
+		while (((*q >= 'A' && *q <= 'Z') || (*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9') || *q == '$') && n < 23) w[n++] = *q++;
+		w[n] = 0;
+		const char *t = w;
+		for (int i = 0; FRENCH[i]; i += 2) if (bseq (FRENCH[i + 1], w)) { t = FRENCH[i]; break; }
+		for (int i = 0; TWO[i]; i += 2) if (bseq (TWO[i], w)) t = TWO[i + 1];
+		for (int i = 0; more && more[i]; i += 2) if (bseq (more[i], w)) t = more[i + 1];
+		for (; *t && o < cap - 1; t++) out[o++] = *t;
+		m = q;
+	}
+	out[o] = 0;
+}
+
 } // namespace bas
 
 int bas::wordList (char *buf, int cap)
@@ -3320,6 +3373,7 @@ int bas::wordList (char *buf, int cap)
 	for (int i = 0; BFNS[i].name; i++) add (BFNS[i].name);
 	if (dialect && dialect->words) for (int i = 0; dialect->words[i].name; i++) add (dialect->words[i].name);
 	if (dialect && dialect->aliases) for (int i = 0; dialect->aliases[i] && dialect->aliases[i + 1]; i += 2) add (dialect->aliases[i]);
+	if (dialect && dialect->aliases2) for (int i = 0; dialect->aliases2[i] && dialect->aliases2[i + 1]; i += 2) add (dialect->aliases2[i]);
 	if (dialect && dialect->repeat) add ("REPEAT");
 	if (cap > 0) buf[n] = 0;
 	return n;

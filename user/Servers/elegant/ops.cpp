@@ -275,9 +275,24 @@ static long OpWinRead (unsigned nPid, const long *a, struct el_read *pR)
 	if (w <= 0 || h <= 0) return 0;
 	u32 *pDst = XferOf (nPid, (unsigned) w * h * 4);
 	if (pDst == 0) return -1;
+	pR->w = w; pR->h = h;
+	if (nPart == 0)				// the window as last presented, when its program keeps that copy:
+	{					// never a picture half painted (read again if a present came meanwhile)
+		boolean bRead = FALSE;
+		for (int nTry = 0; nTry < 3; nTry++)
+		{
+			unsigned nSeq = 0;
+			const u8 *pShot = (const u8 *) el_core_shot_read (pSrc, nPitch * (unsigned) H, &nSeq);
+			if (pShot == 0) break;
+			for (int r = 0; r < h; r++)
+				memcpy (pDst + (size_t) r * w, pShot + (size_t) (y + r) * nPitch + (size_t) x * 4, (size_t) w * 4);
+			bRead = TRUE;
+			if (el_core_shot_same (pSrc, nSeq)) break;
+		}
+		if (bRead) return 0;		// (after three presents in a row: rows of two whole pictures)
+	}
 	for (int r = 0; r < h; r++)
 		memcpy (pDst + (size_t) r * w, pSrc + (size_t) (y + r) * nPitch + (size_t) x * 4, (size_t) w * 4);
-	pR->w = w; pR->h = h;
 	return 0;
 }
 
@@ -504,6 +519,14 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 		else if (a[0] == EL_HANDLER_CLICK) pWin->SetClickHandler ((u64) a[1]);
 		else if (a[0] == EL_HANDLER_POINTER) pWin->SetPointerHandler ((u64) a[1]);
 		return 1;
+	case EL_OP_SHOT:
+		{
+			struct el_shot_info I;
+			if (!el_core_shot_info (pWin->CanvasBuffer (), &I.ctl_off, &I.copy_off, &I.cap)) return 0;
+			memcpy (pOut, &I, sizeof I);
+			*pnOutLen = sizeof I;
+			return 1;
+		}
 	case EL_OP_MOVE:
 		pWin->Move ((int) a[0], (int) a[1]);
 		return 1;

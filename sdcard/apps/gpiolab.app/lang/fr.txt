@@ -1,0 +1,165 @@
+# GPIO Lab's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the source's text, exactly (spaces included); a key "context|English" is a TRC's.
+GPIO Lab	GPIO Lab
+# the menus
+File	Fichier
+Open Program...	Ouvrir un programme...
+Save Program As...	Enregistrer le programme sous...
+Quit	Quitter
+Program	Programme
+Run	Exécuter
+Step	Pas à pas
+Stop	Arrêter
+Board	Carte
+Use the Simulator	Utiliser le simulateur
+Release Every Pin	Libérer toutes les broches
+Demonstration Set-up	Montage de démonstration
+BASIC programs|*.bas|All files|*	Programmes BASIC|*.bas|Tous les fichiers|*
+The program could not be saved.	Le programme n'a pas pu être enregistré.
+Saved: %s	Enregistré : %s
+# the band, the badge, the status line
+3.3 V only: never connect 5 V to a GPIO pin.	3,3 V seulement : jamais de 5 V sur une broche GPIO.
+16 mA a pin at most: an LED through 330 ohm.	16 mA au plus par broche : une LED via 330 ohms.
+SIMULATOR	SIMULATEUR
+RASPBERRY PI HEADER	CONNECTEUR DU RASPBERRY PI
+NO GPIO	PAS DE GPIO
+%s: %s	%s : %s
+Choose a pin on the header.	Choisissez une broche sur le connecteur.
+The simulator drives the pins: nothing touches the real header.	Le simulateur pilote les broches : rien ne touche le vrai connecteur.
+The Raspberry Pi's header.	Le connecteur du Raspberry Pi.
+No GPIO on this system (a PC, or a system older than kapi 92): the simulator stays.	Pas de GPIO sur ce système (un PC, ou un système antérieur à kapi 92) : le simulateur reste.
+Stop the program first: then switch the simulator.	Arrêtez d'abord le programme, puis basculez le simulateur.
+Every pin given back: they are inputs again.	Toutes les broches rendues : ce sont de nouveau des entrées.
+The demonstration: an LED on GPIO 17, a servo on GPIO 18, a button on GPIO 27.	La démonstration : une LED sur le GPIO 17, un servo sur le GPIO 18, un bouton sur le GPIO 27.
+GPIO %d set high by a click.	GPIO %d mis à l'état haut par un clic.
+GPIO %d set low by a click.	GPIO %d mis à l'état bas par un clic.
+A free pin: make it an Output (the Pins view, or PINMODE in a program), then click its dot to switch it.	Une broche libre : faites-en une Sortie (la vue Broches, ou MODEBROCHE dans un programme), puis cliquez sur son point pour la basculer.
+GPIO %d: PWM at %d Hz, %d.%d %% high.	GPIO %d : PWM à %d Hz, %d,%d %% à l'état haut.
+PWM is on GPIO 12, 13, 18 and 19 only.	Le PWM n'existe que sur les GPIO 12, 13, 18 et 19.
+GPIO %d: given back.	GPIO %d : rendue.
+GPIO %d: %s.	GPIO %d : %s.
+The I2C bus scanned.	Le bus I2C a été scanné.
+Output	Sortie
+Mode	Mode
+Edges	Fronts
+I2C scan	Scan I2C
+# the header
+40-PIN HEADER	CONNECTEUR 40 BROCHES
+simulated: click a dot to switch it	simulé : un clic sur un point le bascule
+click an output's dot to switch it	un clic sur le point d'une sortie la bascule
+Simulator	Simulateur
+On: a board in memory -- click an input's dot to drive it, nothing touches the real pins. Off: the Pi's header.	Activé : une carte en mémoire -- cliquez sur le point d'une entrée pour la piloter, rien ne touche les vraies broches. Désactivé : le connecteur du Pi.
+input	entrée
+output	sortie
+free	libre
+system	système
+console	console
+pull-up	rappel haut
+pull-down	rappel bas
+tag|pull-up	rap. haut
+tag|pull-down	rap. bas
+# the chosen pin
+header pin %d  -  %s	broche %d du connecteur  -  %s
+header pin %d	broche %d du connecteur
+HIGH	HAUT
+LOW	BAS
+Used by the system (%s): GPIO Lab cannot take it.	Utilisée par le système (%s) : GPIO Lab ne peut pas la prendre.
+serial console	console série
+HAT ID EEPROM	EEPROM d'identification du HAT
+Another program (pid %u) has this pin.	Un autre programme (pid %u) a cette broche.
+MODE	MODE
+A pin of the I2C bus (the I2C tab: Close Bus gives it back).	Une broche du bus I2C (l'onglet Bus I2C : Fermer le bus la rend).
+A pin of SPI 0.	Une broche de SPI 0.
+%u Hz, %u.%02u %% high: a pulse of %u us every %u us	%u Hz, %u,%02u %% à l'état haut : une impulsion de %u us toutes les %u us
+Free	Libre
+Input	Entrée
+Pull-up	Rappel haut
+Pull-down	Rappel bas
+The pin's mode (Free gives it back: an input with no pull)	Le mode de la broche (Libre la rend : une entrée sans rappel)
+Set High	Mettre à 1
+Set Low	Mettre à 0
+The output's level (Space)	Le niveau de la sortie (Espace)
+Blink (2 Hz)	Clignoter (2 Hz)
+Frequency	Fréquence
+Duty  %d.%d %%	Rapport cyclique  %d,%d %%
+How long the pin is high in each period (a servo: 2.5 % to 12.5 %, 7.5 % the middle)	La part de chaque période où la broche est à l'état haut (un servo : de 2,5 % à 12,5 %, 7,5 % au milieu)
+Driven outside	Signal extérieur
+Nothing	Aucun
+Low	Bas
+High	Haut
+The simulator: what a wire brings to the input (Nothing: it floats, or follows its pull)	Le simulateur : ce qu'un fil amène à l'entrée (Aucun : elle flotte, ou suit son rappel)
+Log its edges	Enregistrer ses fronts
+Its rising and falling edges, with their time, in the Edges tab	Ses fronts montants et descendants, avec leur instant, dans l'onglet Fronts
+Show in the timing chart	Afficher dans le chronogramme
+# the timing chart
+Timing Chart	Chronogramme
+Pause	Pause
+chart|Run	Reprendre
+PAUSED	EN PAUSE
+No pin chosen: tick "Show in the timing chart" on a pin.	Aucune broche choisie : cochez « Afficher dans le chronogramme » sur une broche.
+%u Hz  %u.%u %%	%u Hz  %u,%u %%
+# the I2C bus
+I2C Bus	Bus I2C
+Scan	Scanner
+Open the I2C bus (GPIO 2, 3) and ask every address	Ouvrir le bus I2C (GPIO 2, 3) et interroger chaque adresse
+Test Display	Tester l'écran
+Send a test picture to an SSD1306 display found at 0x3C / 0x3D	Envoyer une image de test à un écran SSD1306 trouvé en 0x3C / 0x3D
+Not scanned yet: Scan opens the bus (GPIO 2 SDA, GPIO 3 SCL).	Pas encore scanné : Scanner ouvre le bus (GPIO 2 SDA, GPIO 3 SCL).
+1 device answered.	1 périphérique a répondu.
+%d devices answered.	%d périphériques ont répondu.
+FOUND	TROUVÉS
+unknown device	périphérique inconnu
+THE DISPLAY AT 0x3C (SIMULATED)	L'ÉCRAN EN 0x3C (SIMULÉ)
+The display at 0x%02X did not answer.	L'écran en 0x%02X n'a pas répondu.
+A test picture was sent to the display at 0x%02X.	Une image de test a été envoyée à l'écran en 0x%02X.
+No SSD1306 display found (0x3C or 0x3D).	Aucun écran SSD1306 trouvé (0x3C ou 0x3D).
+MCP23017 / PCF8574 port expander	extension de ports MCP23017 / PCF8574
+SSD1306 / SH1106 OLED display	écran OLED SSD1306 / SH1106
+DS3231 / DS1307 clock, MPU-6050	horloge DS3231 / DS1307, MPU-6050
+MPU-6050 (AD0 high)	MPU-6050 (AD0 à l'état haut)
+BME280 / BMP280 sensor	capteur BME280 / BMP280
+# the edges
+TIME (S)	TEMPS (S)
+PIN	BROCHE
+EDGE	FRONT
+COUNTED	COMPTÉS
+rising  (to high)	montant (vers haut)
+falling (to low)	descendant (vers bas)
+(edges lost before)	(fronts perdus avant)
+No edge yet: tick "Log its edges" on an input.	Aucun front : cochez « Enregistrer ses fronts » sur une entrée.
+# the Code view
+Pins	Broches
+Code	Code
+Pins: drive them by hand. Code: write a BASIC program and watch it drive them.	Broches : pilotez-les à la main. Code : écrivez un programme BASIC et regardez-le les piloter.
+Running	En cours
+Continue	Continuer
+Run the program (F5)	Exécuter le programme (F5)
+A line at a time (F8)	Une ligne à la fois (F8)
+Stop the program (Esc)	Arrêter le programme (Échap)
+Speed: full	Vitesse : max
+Speed: %d	Vitesse : %d
+How fast the lines run (each lit as it runs); full: as fast as it can	La vitesse d'exécution des lignes (chacune allumée quand elle s'exécute) ; max : aussi vite que possible
+Examples...	Exemples...
+Blink an LED	Faire clignoter une LED
+A button	Un bouton
+A servo	Un servo
+A BME280 sensor (I2C)	Un capteur BME280 (I2C)
+An SSD1306 display (I2C)	Un écran SSD1306 (I2C)
+The first sketch	Le premier programme
+Cannot read %s	Impossible de lire %s
+(what the program PRINTs comes here)	(ce que le programme écrit avec AFFICHER vient ici)
+INPUT: no keyboard input in GPIO Lab -- the program stops here.	SAISIR (INPUT) : pas de saisie au clavier dans GPIO Lab -- le programme s'arrête ici.
+Line %d: %s	Ligne %d : %s
+Step by step: F8 (or Step) runs the lit line.	Pas à pas : F8 (ou Pas à pas) exécute la ligne allumée.
+Running...	Exécution...
+Stopped (%llu.%llu s).	Arrêté (%llu,%llu s).
+Ended (%llu.%llu s): the pins stay as it left them.	Terminé (%llu,%llu s) : les broches restent comme il les a laissées.
+# GPIOKit's errors
+the system uses this pin, or it is not this program's	le système utilise cette broche, ou elle n'est pas à ce programme
+no answer on the bus	pas de réponse sur le bus
+out of memory	mémoire insuffisante
+a bad buffer	un tampon incorrect
+another program has it	un autre programme l'a prise
+no GPIO on this system (update it, or use the simulator)	pas de GPIO sur ce système (mettez-le à jour, ou utilisez le simulateur)
+not possible on this pin, or a value out of range	impossible sur cette broche, ou une valeur hors limites
+failed	échec

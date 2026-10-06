@@ -34,6 +34,7 @@ namespace OnyxRemote
 		{
 			this.host = host; this.port = port;
 			Text = "Onyx console - " + host;
+			if (Program.AppIcon != null) Icon = Program.AppIcon;
 			ClientSize = new Size (820, 520);
 			Font = new Font ("Segoe UI", 9f);
 			var mono = new Font ("Consolas", 10f);

@@ -59,10 +59,16 @@ static int ws__replaying;
 
 static unsigned ws_len (const char *s);
 
+static volatile struct el_shot *ws__shot;	// (the window as last presented: below, ws_shot_ask)
+static unsigned char *ws__shot_copy;
+static unsigned ws__shot_cap;
+static void ws_shot_ask (void);
+
 static void ws_replay (void)
 {
 	if (!ws__made || ws__replaying) return;
 	ws__replaying = 1;
+	ws__shot = 0;
 	struct el_create c;
 	__builtin_memset (&c, 0, sizeof c);
 	c.flags = ws__flags;
@@ -76,6 +82,7 @@ static void ws_replay (void)
 		if (ws__alpha >= 0) ws_raw (EL_OP_ALPHA, ws__alpha, 0, 0, 0, 0, 0, 0, 0);
 		if (ws__sizable_set) ws_raw (EL_OP_RESIZABLE, ws__sizable, ws__min_w, ws__min_h, 0, 0, 0, 0, 0);
 		if (ws__cursor >= 0) ws_raw (EL_OP_CURSOR, ws__cursor, 0, 0, 0, 0, 0, 0, 0);
+		ws_shot_ask ();
 	}
 	ws__replaying = 0;
 }
@@ -88,8 +95,34 @@ static long ws_call (int op, long a0, long a1, long a2, long a3, const void *in,
 	return ws_raw (op, a0, a1, a2, a3, in, in_len, out, cap);
 }
 
+// The window as last presented, for who reads it from outside (elegant.h, EL_OP_SHOT): where the
+// control page and the copy are in the canvas' memory (asked after the window is made or grown: 0
+// before, and with an Elegant that has none); the copy made at each present Elegant wants.
+static void ws_shot_ask (void)
+{
+	struct el_shot_info i;
+	ws__shot = 0;
+	if (ws_raw (EL_OP_SHOT, 0, 0, 0, 0, 0, 0, &i, sizeof i) != 1 || i.cap == 0) return;
+	ws__shot_copy = (unsigned char *) EL_VA_CANVAS + i.copy_off;
+	ws__shot_cap = i.cap;
+	ws__shot = (volatile struct el_shot *) ((unsigned char *) EL_VA_CANVAS + i.ctl_off);
+}
+
+static void ws_shot_take (void)
+{
+	volatile struct el_shot *c = ws__shot;
+	if (c == 0 || c->magic != EL_SHOT_MAGIC || !c->want) return;
+	unsigned seq = c->seq;			// (this program alone writes it)
+	__atomic_store_n ((unsigned *) &c->seq, seq + 1, __ATOMIC_SEQ_CST);	// (odd: being made)
+	unsigned n = c->bytes;
+	if (n > ws__shot_cap) n = ws__shot_cap;
+	if (n > 0) WS_KT->memcpy (ws__shot_copy, (const void *) EL_VA_CANVAS, n);
+	__atomic_store_n ((unsigned *) &c->seq, seq + 2, __ATOMIC_SEQ_CST);
+}
+
 static void ws_present (void)
 {
+	ws_shot_take ();
 	long server = WS_KT->ws_ctl (KAPI_WS_KICK, 0, 0, 0);
 	if (server <= 0) return;
 	if (ws__server != 0 && server != ws__server)	// another server than before: the window asked again
@@ -120,6 +153,7 @@ static unsigned *ws_create (int x, int y, int w, int h, const char *t, unsigned 
 	c.flags = f;
 	for (unsigned i = 0; t != 0 && t[i] != 0 && i + 1 < sizeof c.title; i++) c.title[i] = t[i];
 	if (ws_raw (EL_OP_CREATE, x, y, w, h, &c, sizeof c, 0, 0) != 1) return 0;
+	ws_shot_ask ();
 	if (ws__cw == 0)					// (a second call: the window it has)
 	{
 		ws__cw = w; ws__ch = h;
@@ -171,7 +205,10 @@ static int ws_cursor (int shape)
 static unsigned *ws_grow (int w, int h, int *stride)
 {
 	int row = 0;
-	if (ws_call (EL_OP_GROW, w, h, 0, 0, 0, 0, &row, sizeof row) != 1) return 0;
+	ws__shot = 0;				// (the canvas may become another memory)
+	long r = ws_call (EL_OP_GROW, w, h, 0, 0, 0, 0, &row, sizeof row);
+	ws_shot_ask ();
+	if (r != 1) return 0;
 	if (row > 0)
 	{
 		if (h > ws__ch || row != ws__cw) ws__ch = h > ws__ch ? h : ws__ch;

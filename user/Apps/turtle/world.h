@@ -77,12 +77,11 @@ static const bas::ExtWord WORDS[] = {
 	{ "WALL", W_WALL, 'n', "" }, { "WALLLEFT", W_WALLLEFT, 'n', "" }, { "WALLRIGHT", W_WALLRIGHT, 'n', "" }, { "FRONT", W_FRONT, 'n', "" },
 	{ "ONGOAL", W_ONGOAL, 'n', "" }, { "ITEM", W_ITEM, 'n', "" }, { "KEYS", W_KEYS, 'n', "" }, { "HEADING", W_HEADING, 'n', "" },
 	{ 0, 0, 0, 0 } };
-// The French names: the turtle's (by id: W_FORWARD ...; the verbs in the infinitive, as BASIC's), then every word
-// French gives BASIC -- the turtle's (their short forms, the imperative of the first versions: AVANCE, RAMASSE...),
-// then the language's: SI ... ALORS / SINON SI / SINON / FIN SI, POUR i = 1 JUSQUE 5 PAS 2 ... SUITE,
-// REPETER n ... FIN REPETER, TANTQUE ... FIN TANTQUE, FAIRE ... BOUCLE JUSQUA, SUB ... FIN SUB, FONCTION ... FIN
-// FONCTION, CLASSE ... FIN CLASSE, DIM n COMME ENTIER, x COMME REEL, s COMME CHAINE, o COMME OCTET (and the sizes,
-// where the bytes count: ENTIER16 / 32 / 64, REEL32 / 64). The English words stay known.
+// The French names: the turtle's (by id: W_FORWARD ...; the verbs in the infinitive, as BASIC's), then the words
+// French gives the turtle -- those, their short forms, the imperative of the first versions (AVANCE, RAMASSE...).
+// BASIC's own French words are the library's (bas::FRENCH: SI ... ALORS / SINON SI / SINON / FIN SI, POUR i = 1
+// JUSQUE 5 PAS 2 ... SUITE, REPETER n ... FIN REPETER, TANTQUE ... FIN TANTQUE, SUB ... FIN SUB, FONCTION,
+// CLASSE, DIM n COMME ENTIER, x COMME REEL, s COMME CHAINE). The English words stay known.
 static const char *const FR_NAME[W_COUNT_] = { "", "AVANCER", "RECULER", "GAUCHE", "DROITE", "LEVERCRAYON", "BAISSERCRAYON", "COULEUR", "RAMASSER",
 	"MUR", "MURGAUCHE", "MURDROITE", "DEVANT", "SURBUT", "OBJET", "CLES", "CAP" };
 static const char *const ALIASES_FR[] = {
@@ -91,26 +90,14 @@ static const char *const ALIASES_FR[] = {
 	"LEVERCRAYON", "PENUP", "LEVECRAYON", "PENUP", "LC", "PENUP", "BAISSERCRAYON", "PENDOWN", "BAISSECRAYON", "PENDOWN", "BC", "PENDOWN",
 	"COULEUR", "COLOR", "RAMASSER", "PICK", "RAMASSE", "PICK",
 	"MUR", "WALL", "MURGAUCHE", "WALLLEFT", "MURDROITE", "WALLRIGHT", "DEVANT", "FRONT", "SURBUT", "ONGOAL", "OBJET", "ITEM",
-	"CLES", "KEYS", "CAP", "HEADING",
-	"REPETER", "REPEAT", "REPETE", "REPEAT", "SI", "IF", "ALORS", "THEN", "SINON", "ELSE", "SINONSI", "ELSEIF", "FIN", "END",
-	"POUR", "FOR", "JUSQUE", "TO", "PAS", "STEP", "SUITE", "NEXT", "SUIVANT", "NEXT",
-	"TANTQUE", "WHILE", "FINTANTQUE", "WEND", "FAIRE", "DO", "BOUCLE", "LOOP", "JUSQUA", "UNTIL",
-	"PROCEDURE", "SUB", "FONCTION", "FUNCTION", "RETOUR", "RETURN", "APPELER", "CALL", "APPELLE", "CALL", "SORTIR", "EXIT",
-	"CLASSE", "CLASS", "HERITE", "EXTENDS", "IMPLEMENTE", "IMPLEMENTS", "VIRTUEL", "VIRTUAL", "REDEFINIT", "OVERRIDE", "ABSTRAIT", "ABSTRACT",
-	"NOUVEAU", "NEW", "CECI", "THIS", "RIEN", "NOTHING",
-	"COMME", "AS", "ENTIER", "INTEGER", "REEL", "REAL", "CHAINE", "STRING", "OCTET", "BYTE",
-	"ENTIER16", "INTEGER16", "ENTIER32", "INTEGER32", "ENTIER64", "INTEGER64", "REEL32", "REAL32", "REEL64", "REAL64", "CONSTANTE", "CONST", "PARTAGE", "SHARED", "STATIQUE", "STATIC",
-	"SELON", "SELECT", "CAS", "CASE", "ET", "AND", "OU", "OR", "NON", "NOT",
-	"AFFICHER", "PRINT", "AFFICHE", "PRINT", "SAISIR", "INPUT", 0 };
-// BASIC's words as a French program shows them (a message's "FOR without NEXT": POUR, SUITE)
-static const char *const SHOWN_FR[] = { "REPEAT", "REPETER", "IF", "SI", "THEN", "ALORS", "ELSE", "SINON", "ELSEIF", "SINON SI", "END", "FIN",
-	"FOR", "POUR", "TO", "JUSQUE", "STEP", "PAS", "NEXT", "SUITE", "WHILE", "TANTQUE", "WEND", "FIN TANTQUE", "DO", "FAIRE", "LOOP", "BOUCLE",
-	"UNTIL", "JUSQUA", "FUNCTION", "FONCTION", "RETURN", "RETOUR", "CALL", "APPELER", "EXIT", "SORTIR", "CLASS", "CLASSE", "AS", "COMME",
-	"INTEGER", "ENTIER", "REAL", "REEL", "BYTE", "OCTET", "STRING", "CHAINE", "SELECT", "SELON", "CASE", "CAS", "AND", "ET", "OR", "OU", "NOT", "NON", "PRINT", "AFFICHER",
-	"INPUT", "SAISIR", 0 };
+	"CLES", "KEYS", "CAP", "HEADING", 0 };
+// The turtle's words as a French message shows them (bas::frenchMessage's `more`)
+static const char *const SHOWN_FR[] = { "FORWARD", "AVANCER", "BACK", "RECULER", "LEFT", "GAUCHE", "RIGHT", "DROITE", "PENUP", "LEVERCRAYON",
+	"PENDOWN", "BAISSERCRAYON", "COLOR", "COULEUR", "PICK", "RAMASSER", "WALL", "MUR", "WALLLEFT", "MURGAUCHE", "WALLRIGHT", "MURDROITE",
+	"FRONT", "DEVANT", "ONGOAL", "SURBUT", "ITEM", "OBJET", "KEYS", "CLES", "HEADING", "CAP", 0 };
 // One dialect, whatever the language: a program compiles in French as in English (and mixed) -- the language only
 // chooses the words shown (the palette, the lessons, the messages).
-static const bas::Dialect DIALECT = { WORDS, ALIASES_FR, true, true };
+static const bas::Dialect DIALECT = { WORDS, bas::FRENCH, true, true, ALIASES_FR };
 static inline void set_language (int) { bas::setDialect (&DIALECT); }
 static inline int word_id (const char *w)
 {
@@ -533,23 +520,7 @@ static inline void friendly (int lang, int line, const char *msg, char *out, int
 		return;
 	}
 	if (lang != LANG_FR) { snprintf (out, (size_t) cap, "Line %d: %s", line, msg); return; }
-	// the compiler's sentence with BASIC's words in French ("Expected THEN": "il manque ALORS")
-	char fr[240]; int o = 0;
-	const char *m = msg;
-	if (!strncmp (m, "Expected ", 9)) { o = snprintf (fr, sizeof fr, "il manque "); m += 9; }
-	while (*m && o < (int) sizeof fr - 30)
-	{
-		if (!(*m >= 'A' && *m <= 'Z')) { fr[o++] = *m++; continue; }
-		char w[24]; int n = 0; const char *q = m;
-		while (((*q >= 'A' && *q <= 'Z') || (*q >= 'a' && *q <= 'z')) && n < 23) w[n++] = *q++;
-		w[n] = 0;
-		const char *t = w;
-		for (int i = 0; SHOWN_FR[i]; i += 2) if (!strcmp (SHOWN_FR[i], w)) t = SHOWN_FR[i + 1];
-		for (int i = 0; WORDS[i].name; i++) if (!strcmp (WORDS[i].name, w)) t = FR_NAME[WORDS[i].id];
-		o += snprintf (fr + o, sizeof fr - o, "%s", t);
-		m = q;
-	}
-	fr[o] = 0;
+	char fr[240]; bas::frenchMessage (msg, fr, sizeof fr, SHOWN_FR);	// (BASIC's words, the turtle's: in French)
 	snprintf (out, (size_t) cap, "Ligne %d : %s", line, fr);
 }
 

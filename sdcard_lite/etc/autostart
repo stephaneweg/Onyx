@@ -37,6 +37,8 @@ run printd
 # and the panel.
 #setup: run dock
 #setup: run agenda
+# Stickies: the pinned notes on the desktop (Notes, View menu)
+#setup: run stickies
 keyb FR
 # Remote text shell on TCP port 23 (telnet / tools/onyx-telnet.py). NO password,
 # NO encryption: remove this line on an untrusted network.

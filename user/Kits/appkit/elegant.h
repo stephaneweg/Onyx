@@ -143,4 +143,28 @@ struct el_read
 // The pointer's shape shown now (kapi_cursor_shown: the remote desktop) -> KAPI_CURSOR_*.
 #define EL_OP_CURSOR_SHOWN	31
 
+// The window as it was last presented, for who reads it from outside (kapi_win_read: the remote
+// desktop). A program paints in its canvas, the memory Elegant reads: a reader that comes between a
+// repaint's first stroke and its present would see the picture half made (a flicker on the remote
+// screen). So the canvas' shared memory holds, after the canvas, a page of control (struct el_shot)
+// and a second copy of the pixels: while Elegant wants it (a reader is there), AppKit's kapi_present
+// copies the canvas there before it tells Elegant -- the reader is given that copy, always whole.
+// EL_OP_SHOT: out: struct el_shot_info -> 1, 0: this window has none (the read is the live canvas').
+// Asked again after the window is made or grown (the memory may be another one).
+#define EL_OP_SHOT		32
+struct el_shot_info
+{
+	unsigned ctl_off;			// from EL_VA_CANVAS: the control page,
+	unsigned copy_off;			// the copy,
+	unsigned cap;				// its bytes at most
+};
+#define EL_SHOT_MAGIC		0x544F4853u	// "SHOT"
+struct el_shot					// (the control page's first bytes)
+{
+	unsigned magic;				// EL_SHOT_MAGIC (Elegant's)
+	unsigned want;				// Elegant's: 1 while someone reads this window
+	unsigned bytes;				// Elegant's: the canvas' bytes to copy (its rows shown)
+	unsigned seq;				// AppKit's: raised before a copy (odd: being made) and after it
+};
+
 #endif
