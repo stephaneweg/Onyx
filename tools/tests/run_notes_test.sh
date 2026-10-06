@@ -54,6 +54,21 @@ grep -q "probe stat: ok" "$OUT/probe_stat.log" || fail "probe stat: no ok"
 probe nostat SIM=exit
 echo "notes: the simulator's additions: ok"
 
+# ---- UIKit's uk_text_wrap, uk_text_over, WKT_TRASH / WKT_PIN (step 1) -------------------------------------
+for f in user/Kits/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
+ar rcs "$OUT/libuikit.a" "$OUT"/obj/*.o
+$CXX $SAN -o "$OUT/wrap_test" $T/wrap_test.cpp "$OUT/fakekapi.o" "$OUT/libuikit.a" -lpthread
+env SIM_WRITES="$OUT/w_wrap" SIM=exit "$OUT/wrap_test" || fail "UIKit's wrap / text over / icons"
+
+# ---- SystemKit's autostart helper (step 1; used by step 7) -------------------------------------------------
+$CXX $SAN -o "$OUT/autostart_test" $T/autostart_test.cpp "$OUT/fakekapi.o" -lpthread
+mkdir -p "$OUT/nocard"
+env SIM_WRITES="$OUT/w_autostart" SIM_SD="$OUT/nocard" SIM=exit "$OUT/autostart_test" || fail "SystemKit's autostart helper"
+# (its code is C as well: a C program including systemkit.h has it inline on the PC)
+printf '#include "systemkit/systemkit.h"\nint main (void) { return autostart_has ("run x") + autostart_ensure ("run x", 0, 0); }\n' > "$OUT/as_c.c"
+gcc -std=c99 -Wall -Wextra -c $INC "$OUT/as_c.c" -o "$OUT/as_c.o" 2> "$OUT/as_c.warn" || { cat "$OUT/as_c.warn"; fail "autostart.h in C"; }
+grep -q "autostart" "$OUT/as_c.warn" && { cat "$OUT/as_c.warn"; fail "autostart.inc warns in C"; }
+
 # ---- the notes model (step 2) ------------------------------------------------------------------------------
 $CXX $SAN -Wall -Wextra -Wno-unused-function -Wno-format-truncation -c user/Apps/notes/notesmodel.cpp -o "$OUT/notesmodel.o" 2> "$OUT/notesmodel.warn" || { cat "$OUT/notesmodel.warn"; fail "notesmodel.cpp does not build"; }
 $CXX $SAN -o "$OUT/model_test" $T/model_test.cpp "$OUT/notesmodel.o" "$OUT/fakekapi.o" -lpthread
