@@ -8,6 +8,11 @@
 // line being run lit in the program, the turtle walking. An error says where and why ("Bump! The turtle hit a wall",
 // at its line); a level won gives 1 to 3 stars (fewer instructions: more stars -- a loop beats copied lines).
 //
+// Gems are picked in their numbers' order (the next one ringed white), a portal's pad sends the turtle to its twin (a
+// dotted arc, no line drawn across), a colour drawing shows its target tinted; the level editor has 12 tools (Gem: a
+// click on a gem cycles its number; Portal 1 / 2: a pair keeps two pads) and refuses a level whose gems or portals do
+// not add up (the cell at fault ringed red).
+//
 // Keys: F5 Run, F8 Step (a statement at a time), F7 Stop, F9 Reset, F1 the lesson, F2 the hint, Ctrl+N the next
 // level, Ctrl+O a pack of levels, Ctrl+E the level editor. Menus: Game, Levels, Player (several players, each with
 // their stars). The language is the system's (the Control Panel's Language & Region): in French the texts and the
@@ -38,7 +43,8 @@ static int g_lang = LANG_EN;				// the system's language (locale_language), take
 static inline const char *L2 (const char *en, const char *fr) { return g_lang == LANG_FR ? fr : en; }
 
 // ---- faces ------------------------------------------------------------------------------------------------------------
-static TextFace *g_ui, *g_mono, *g_big;
+static TextFace *g_ui, *g_mono, *g_big, *g_small, *g_smallMono;	// (small: 11 px, the tools' long names, a lesson that
+							//  does not fit a narrow window)
 
 // ---- the progress: (section, key) = value, kept in memory, written at each change --------------------------------------------
 struct KV { char sec[40], key[48]; char *val; };
@@ -190,20 +196,28 @@ static MsgBar *g_msg;
 static Lesson *g_lesson;
 static Widget *g_editPanel;				// the level editor's fields (in place of the list)
 static Textbox *g_edTitle, *g_edText, *g_edHint, *g_edWords, *g_edPar;
-static Checkbox *g_edDraw;
+static Dropdown *g_edDrawSel;				// a drawing level: No / Shape / Colours (Level::draw 0 / 1 / 2)
 static Dropdown *g_edConcept;
 static ToolPal *g_tools;
 static Label *g_edSize;
 static Button *g_edBtn[3];
-static const char *const CONCEPT_KEYS[] = { "move", "turn", "pick", "door", "repeat", "for", "if", "sensor", "while", "maze", "variable", "sub", "pen", "draw" };
-enum { NCONCEPTS = 14 };
-static Widget *g_edLabels[8]; static int g_nedLabels = 0;
+static const char *const CONCEPT_KEYS[] = { "move", "turn", "pick", "door", "repeat", "for", "if", "sensor", "while", "maze", "variable", "sub", "pen", "draw",
+	"gems", "teleport", "color", "params", "function", "recursion" };
+enum { NCONCEPTS = 20 };
+static Widget *g_edLabels[10]; static int g_nedLabels = 0;
 static bool g_editing = false;
 static bool g_showHint = false;
 
 // The pen's 16 colours (QBasic's, a little brighter on the board)
 static const unsigned PEN[16] = { 0x202020, 0x2F6FD0, 0x2E9E44, 0x1E9FAF, 0xD0342C, 0x9C3FB5, 0x9A6234, 0xA8A8A8,
 				  0x606060, 0x5B9BFF, 0x5CCB5F, 0x4FD8E8, 0xFF6B5E, 0xE07BEF, 0xF2C230, 0xFFFFFF };
+// The gems' colours, 1 ... 9 (from PEN, an orange between its red and yellow), their digit's ink
+static const unsigned GEM_C[10] = { 0, 0xD0342C, 0xE8822A, 0xF2C230, 0x2E9E44, 0x1E9FAF, 0x2F6FD0, 0x9C3FB5, 0xE07BEF, 0xF4F4F4 };
+static const unsigned GEM_INK[10] = { 0, 0xFFFFFF, 0xFFFFFF, 0x4A3500, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0x5A1D66, 0x505050 };
+// The portals' pairs: T (pair 1) cyan, U (pair 2) magenta -- the ring, the pad's face
+static const unsigned PAD_RING[2] = { 0x1E9FAF, 0x9C3FB5 }, PAD_FACE[2] = { 0x9FE9F1, 0xF0C2F7 };
+static int g_badC = -1, g_badR = -1;			// the editor: the cell its check refused (ringed red; -1 none)
+static int g_padLastC[2] = { -1, -1 }, g_padLastR[2] = { -1, -1 };	// the editor: each pair's pad placed last
 
 // ---- the playback --------------------------------------------------------------------------------------------------------
 enum { P_IDLE, P_RUN, P_PAUSE, P_DONE };
@@ -274,6 +288,56 @@ static void star (Canvas &cv, int cx, int cy, int r, unsigned c, bool filled)
 	else { VPath o; o.polyline (pts, 10, V (1) + 8, true); o.fill (cv, c); }
 }
 static int ftoi (double v) { return (int) floor (v + 0.5); }
+// A text cut to a width (in the face in use), ending with "." when cut
+static void cut_to (char *t, int room, int bold)
+{
+	bool cut = false;
+	while (strlen (t) > 2 && uk_tw (t, bold) > room)
+	{
+		int l = (int) strlen (t);
+		if (cut) t[--l] = 0;				// (the "." put last time)
+		while (l > 0 && ((unsigned char) t[l - 1] & 0xC0) == 0x80) t[--l] = 0;	// (a character: its UTF-8 bytes)
+		if (l > 0) t[--l] = 0;
+		t[l] = '.'; t[l + 1] = 0; cut = true;
+	}
+}
+// A gem: a cut stone (5 points, a darker rim, a lighter table), its number on it when the cell is big enough (s >= 16);
+// k: its size (a gem being picked shrinks away)
+static void gem (Canvas &cv, int cx, int cy, int s, int n, double k = 1, bool digit = true)
+{
+	if (n < 1 || n > 9 || k < 0.02) return;
+	double r = s * 0.34 * k;
+	unsigned c = GEM_C[n];
+	int a = (int) (V (r) * 0.62), b = (int) (V (r) * 0.12);
+	int P[10] = { V (cx) - a, V (cy) - a, V (cx) + a, V (cy) - a, V (cx) + V (r), V (cy) - b, V (cx), V (cy) + V (r), V (cx) - V (r), V (cy) - b };
+	VPath body; body.poly (P, 5); body.fill (cv, uk_mix (c, 0x000000, n == 9 ? 70 : 50));
+	int Q[10] = { P[0] + 16, P[1] + 16, P[2] - 16, P[3] + 16, P[4] - 20, P[5], P[6], P[7] - 24, P[8] + 20, P[9] };	// (1 px inside)
+	VPath in; in.poly (Q, 5); in.fill (cv, c);
+	int tb = (int) (V (r) * 0.42);
+	int TB[8] = { Q[0], Q[1], Q[2], Q[3], V (cx) + tb, V (cy) - b, V (cx) - tb, V (cy) - b };
+	VPath t; t.poly (TB, 4); t.fill (cv, uk_mix (c, 0xFFFFFF, 110));
+	if (digit && s >= 16 && k > 0.6) { char d[2] = { (char) ('0' + n), 0 }; uk_text_c (cv, cx - 8, cy - (int) (r * 0.5) - 1, 16, (int) (r * 1.2), d, GEM_INK[n], 2); }
+}
+// A ring round a cell: white with a dark edge round the next gem to pick (seen on every floor); red round the editor's fault
+static void ring (Canvas &cv, int cx, int cy, int s, unsigned c = 0xFFFFFF, unsigned edge = 0x6A5A30)
+{
+	int r = s * 46 / 100;
+	VPath o; o.circle (V (cx), V (cy), V (r) + 8); o.hole (V (cx), V (cy), V (r - 3) - 8); o.fill (cv, edge, 150);
+	VPath w; w.circle (V (cx), V (cy), V (r)); w.hole (V (cx), V (cy), V (r - 3)); w.fill (cv, c);
+}
+// A portal's pad (q: the pair, 0 T or 1 U): a round pad in its pair's colour, a ring in it, and one dot (pair 1) or two
+// (pair 2) -- told apart not by the colour alone; glow (0 ... 1): a halo fading out (the jump)
+static void pad (Canvas &cv, int cx, int cy, int s, int q, double glow = 0)
+{
+	int r = s * 40 / 100;
+	if (glow > 0) { VPath g; g.circle (V (cx), V (cy), V (r) + (int) (V (s) * 0.25 * glow)); g.fill (cv, PAD_FACE[q], (int) (200 * (1 - glow))); }
+	VPath d; d.circle (V (cx), V (cy), V (r)); d.fill (cv, PAD_RING[q]);
+	VPath f; f.circle (V (cx), V (cy), V (r) - V (s) / 9); f.fill (cv, PAD_FACE[q]);
+	VPath i; i.circle (V (cx), V (cy), V (r) * 55 / 100); i.hole (V (cx), V (cy), V (r) * 55 / 100 - V (s) / 20 - 8); i.fill (cv, PAD_RING[q], 170);
+	int dr = s / 16 + 1;
+	if (q == 0) { VPath p; p.circle (V (cx), V (cy), V (dr)); p.fill (cv, PAD_RING[q]); }
+	else { VPath p; p.circle (V (cx - dr - 1), V (cy), V (dr)); p.circle (V (cx + dr + 1), V (cy), V (dr)); p.fill (cv, PAD_RING[q]); }
+}
 
 // ---- the level list ---------------------------------------------------------------------------------------------------------
 class LevelList : public Widget
@@ -331,10 +395,10 @@ public:
 };
 
 // ---- the board ---------------------------------------------------------------------------------------------------------------
-static const char TOOL_CH[] = { '#', '.', '*', 'k', 'c', 'D', 'p', '>', ' ' };
-enum { NTOOLS = 9 };
+static const char TOOL_CH[] = { '#', '.', '*', 'k', 'c', 'D', 'p', '>', ' ', '1', 'T', 'U' };
+enum { NTOOLS = 12, TOOL_TURTLE = 7, TOOL_GEM = 9, TOOL_PAD1 = 10, TOOL_PAD2 = 11 };
 static int g_tool = 0;
-static void edit_cell (int c, int r);
+static void edit_cell (int c, int r, bool drag = false);
 
 class Board : public Widget
 {
@@ -399,6 +463,7 @@ public:
 			VPath sh; sh.line (V (cx - rr / 2), V (cy), V (cx + rr * 2), V (cy), V (rr) * 3 / 5); sh.fill (cv, 0xD9A21B);
 			VPath t; t.line (V (cx + rr * 3 / 2), V (cy), V (cx + rr * 3 / 2), V (cy + rr), V (rr) / 2); t.fill (cv, 0xD9A21B);
 		}
+		else if (k == 'T' || k == 'U') pad (cv, cx, cy, s, k - 'T');
 		else if (k == 'D')
 		{
 			uk_rbox (cv, x + 2, y + 2, s - 4, s - 4, s / 6, 0xB0773F, 0x8A5A2B);
@@ -407,9 +472,20 @@ public:
 			VPath ks; ks.line (V (cx + s / 5), V (cy), V (cx + s / 5), V (cy + s / 8), V (s / 18 + 1)); ks.fill (cv, 0x2A1A0C);
 		}
 	}
-	void turtle (Canvas &cv, double x, double y, double hd)
+	// A gem, over the pen's trail: the next one to pick ringed (not in the editor); a gem being picked shrinks away
+	void gemTile (Canvas &cv, int c, int r, char k, const World &w, double pickT, int pickCell, bool edit)
 	{
-		int cx = px (x), cy = py (y), s = cs;
+		if (k < '1' || k > '9' || g_L->draw) return;
+		double sc = (pickCell == c + r * 256) ? 1 - pickT : 1;
+		if (sc <= 0.02) return;
+		int cx = ox + c * cs + cs / 2, cy = oy + r * cs + cs / 2;
+		if (!edit && k - '0' == w.gems + 1 && pickCell != c + r * 256) ring (cv, cx, cy, cs);
+		gem (cv, cx, cy, cs, k - '0', sc);
+	}
+	void turtle (Canvas &cv, double x, double y, double hd, double k = 1)	// (k: its size -- the jump shrinks it)
+	{
+		if (k < 0.04) return;
+		int cx = px (x), cy = py (y), s = (int) (cs * k);
 		int a = ftoi (hd);
 		auto at = [&] (int deg, double dist, int &ox2, int &oy2) {
 			ox2 = V (cx) + (int) (uk_sin (a + deg) * dist * s * 16 / 16384);
@@ -454,7 +530,8 @@ public:
 			for (int i = 0; i < g_target.n; i++)
 			{
 				const Seg &s = g_target[i];
-				VPath p; p.line (V (px (s.x1)), V (py (s.y1)), V (px (s.x2)), V (py (s.y2)), V (cs / 6 + 3)); p.fill (canvas, 0xD9D6CC);
+				VPath p; p.line (V (px (s.x1)), V (py (s.y1)), V (px (s.x2)), V (py (s.y2)), V (cs / 6 + 3));
+				p.fill (canvas, g_L->draw == 2 ? uk_mix (0xFBFAF5, PEN[s.color & 15], 85) : 0xD9D6CC);	// (a colour level: each line tinted)
 			}
 		// the pen's lines
 		int lw = draw ? V (3) : V (cs / 10 + 2);
@@ -479,6 +556,26 @@ public:
 			double k = sin (t * 3.14159) * 0.28;
 			tx = e->a + (e->c - e->a) * k; ty = e->b + (e->d - e->b) * k;
 		}
+		for (int r = 0; r < g_L->h; r++)		// the gems, over the trail (their numbers stay readable)
+			for (int c = 0; c < g_L->w; c++) gemTile (canvas, c, r, edit ? g_L->map[r][c] : w.cell[r][c], w, t, pickCell, edit);
+		double tk = 1;
+		if (e && e->kind == EV_TELEPORT)		// the jump: into pad A, a dotted arc, out of its twin B -- no pen line
+		{
+			int q = w.pad_at ((int) e->a, (int) e->b) == 2 ? 1 : 0;
+			int ax = px (e->a), ay = py (e->b), bx = px (e->c), by = py (e->d);
+			double lift = sqrt ((double) (bx - ax) * (bx - ax) + (double) (by - ay) * (by - ay)) / 3;
+			double mx = (ax + bx) / 2.0, my = (ay + by) / 2.0 - lift;
+			for (int i = 1; i < 24; i++)
+			{
+				double u = i / 24.0;
+				if (u > t + 0.04) break;
+				double x = (1 - u) * (1 - u) * ax + 2 * u * (1 - u) * mx + u * u * bx, y = (1 - u) * (1 - u) * ay + 2 * u * (1 - u) * my + u * u * by;
+				VPath d; d.circle (V (ftoi (x)), V (ftoi (y)), V (2) + 4); d.fill (canvas, PAD_RING[q], 170);
+			}
+			if (t < 0.5) { pad (canvas, ax, ay, cs, q, t * 2); tx = e->a; ty = e->b; tk = 1 - t * 2; }
+			else { pad (canvas, bx, by, cs, q, (1 - t) * 2); tx = e->c; ty = e->d; tk = t * 2 - 1; }
+		}
+		if (edit && g_badC >= 0 && g_badC < g_L->w && g_badR >= 0 && g_badR < g_L->h) ring (canvas, px (g_badC), py (g_badR), cs, 0xD0342C, 0x7A1A14);
 		if (edit)
 		{
 			for (int r = 0; r < g_L->h; r++) for (int c = 0; c < g_L->w; c++)
@@ -490,21 +587,47 @@ public:
 			for (int c = 0; c <= g_L->w; c++) canvas.fillRect (ox + c * cs, oy, 1, cs * g_L->h, uk_mix (0x86B96A, gl, 60));
 			for (int r = 0; r <= g_L->h; r++) canvas.fillRect (ox, oy + r * cs, cs * g_L->w, 1, uk_mix (0x86B96A, gl, 60));
 		}
-		else turtle (canvas, tx, ty, th);
+		else turtle (canvas, tx, ty, th, tk);
 		if (e && e->kind == EV_BUMP && t > 0.3 && t < 0.9)	// a star where it bumped
 		{
 			int bx = px (e->a + (e->c - e->a) * 0.5), by = py (e->b + (e->d - e->b) * 0.5);
 			star (canvas, bx, by, cs / 4 + 2, 0xFFD23F, true);
 		}
 		// what the turtle carries
-		if (!g_editing && (w.keys || w.coinsTotal))
+		if (!g_editing && (w.keys || w.coinsTotal || w.gemsTotal))	// (Coins, a stone and Gems, Keys: what applies)
 		{
-			char b[64]; int n = 0;
-			if (w.coinsTotal) n += snprintf (b + n, sizeof b - n, "%s %d / %d", L2 ("Coins", "Pièces"), w.coins, w.coinsTotal);
-			if (w.keys) n += snprintf (b + n, sizeof b - n, "%s%s %d", n ? "    " : "", L2 ("Keys", "Clés"), w.keys);
-			int bw = uk_tw (b) + 20;
-			uk_rbox (canvas, width - bw - 8, 8, bw, 24, 12, 0xFFFFFF, 0xF0F0F0, 200);
-			uk_text_c (canvas, width - bw - 8, 8, bw, 24, b, 0x303030, 2);
+			char co[48] = "", ge[48] = "", ke[48] = "";
+			if (w.coinsTotal) snprintf (co, sizeof co, "%s %d / %d", L2 ("Coins", "Pièces"), w.coins, w.coinsTotal);
+			if (w.gemsTotal) snprintf (ge, sizeof ge, "%s %d / %d", L2 ("Gems", "Gemmes"), w.gems, w.gemsTotal);
+			if (w.keys) snprintf (ke, sizeof ke, "%s %d", L2 ("Keys", "Clés"), w.keys);
+			if (!w.gemsTotal)			// (as before the gems: the text centred)
+			{
+				char t[100]; snprintf (t, sizeof t, "%s%s%s", co, co[0] && ke[0] ? "    " : "", ke);
+				int tw = uk_tw (t) + 20;
+				uk_rbox (canvas, width - tw - 8, 8, tw, 24, 12, 0xFFFFFF, 0xF0F0F0, 200);
+				uk_text_c (canvas, width - tw - 8, 8, tw, 24, t, 0x303030, 2);
+				return;
+			}
+			const int GAP = 18, ICON = 20;
+			int bw = 20, parts = 0;
+			const char *part[3] = { co, ge, ke };
+			for (int i = 0; i < 3; i++) if (part[i][0]) { bw += (parts ? GAP : 0) + uk_tw (part[i], 2) + (i == 1 ? ICON : 0); parts++; }
+			int bx = width - bw - 8, x = bx + 10;
+			uk_rbox (canvas, bx, 8, bw, 24, 12, 0xFFFFFF, 0xF0F0F0, 200);
+			parts = 0;
+			for (int i = 0; i < 3; i++)
+			{
+				if (!part[i][0]) continue;
+				if (parts++) x += GAP;
+				if (i == 1)				// (the next gem's stone; all picked: a check mark)
+				{
+					if (w.gems < w.gemsTotal) gem (canvas, x + 8, 20, 22, w.gems + 1, 1, false);
+					else uk_glyph (canvas, WKG_CHECK, x + 8, 20, 12, 0x3E9B4F);
+					x += ICON;
+				}
+				uk_text_l (canvas, x, 8, 24, part[i], 0x303030, 2);
+				x += uk_tw (part[i], 2);
+			}
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -513,8 +636,9 @@ public:
 		if (mx < 0) { dragging = false; return false; }
 		int c = (mx - ox) / cs, r = (my - oy) / cs;
 		bool in = mx >= ox && my >= oy && c < g_L->w && r < g_L->h;
-		if (bl && !pressed) { pressed = true; if (in) { edit_cell (c, r); dragging = g_tool != 7; } }
-		else if (bl && dragging && in && g_L->map[r][c] != TOOL_CH[g_tool]) edit_cell (c, r);
+		// (a press, then a drag: the turtle and the portals are placed by a click only; a drag of gems never cycles one)
+		if (bl && !pressed) { pressed = true; if (in) { edit_cell (c, r); dragging = g_tool != TOOL_TURTLE && g_tool != TOOL_PAD1 && g_tool != TOOL_PAD2; } }
+		else if (bl && dragging && in && (g_tool == TOOL_GEM ? !(g_L->map[r][c] >= '1' && g_L->map[r][c] <= '9') : g_L->map[r][c] != TOOL_CH[g_tool])) edit_cell (c, r, true);
 		if (!bl) { pressed = false; dragging = false; }
 		return true;
 	}
@@ -543,7 +667,8 @@ public:
 		};
 		for (int i = 0; WORDS[i].name; i++) if (g_L->knows (WORDS[i].id)) add (word_name (WORDS[i].id, g_lang), WORDS[i].id);
 		// the control words the level's idea brings (and the ones before it)
-		static const char *const ORDER[] = { "repeat", "for", "if", "sensor", "while", "maze", "variable", "sub", "pen", "draw", 0 };
+		static const char *const ORDER[] = { "repeat", "for", "if", "sensor", "while", "maze", "variable", "sub", "pen", "draw",
+			"gems", "teleport", "color", "params", "function", "recursion", 0 };
 		int lv = -1; for (int i = 0; ORDER[i]; i++) if (!strcmp (ORDER[i], g_L->topic)) lv = i;
 		const int NEED[5] = { 0, 1, 2, 4, 7 };		// REPEAT from "repeat", FOR from "for", IF "if", WHILE "while", SUB "sub"
 		for (int k = 0; k < 5; k++) if (lv >= NEED[k]) add (g_lang == LANG_FR ? CONTROL_FR[k] : CONTROL_WORDS[k], 100 + k);
@@ -598,6 +723,7 @@ public:
 };
 
 // ---- the level's card: its title, what to do, the hint -----------------------------------------------------------------------------
+enum { CARD_LINES = 6 };				// (what to do: 6 lines at most -- a long French text is not cut)
 class Card : public Widget
 {
 public:
@@ -617,10 +743,19 @@ public:
 		char t[160];
 		if (g_editing) snprintf (t, sizeof t, "%s -- %s", L2 ("Level editor", "Éditeur de niveaux"), g_L->titleOf (g_lang));
 		else snprintf (t, sizeof t, "%d. %s", g_level + 1, g_L->titleOf (g_lang));
-		{ UkFaceScope fs (g_big); uk_text (canvas, 14, 8, t, 0x3A2E10, 2); }
+		{
+			// (a title too wide beside Hint and Lesson: the UI face, bold; then cut, ending with ".")
+			int room = width - 28 - (g_editing ? 0 : 170), bw; { UkFaceScope fs (g_big); bw = uk_tw (t, 2); }
+			if (bw <= room) { UkFaceScope fs (g_big); uk_text (canvas, 14, 8, t, 0x3A2E10, 2); }
+			else
+			{
+				cut_to (t, room, 2);
+				uk_text (canvas, 14, 12, t, 0x3A2E10, 2);
+			}
+		}
 		int y = 8 + (g_big ? g_big->height () : 20) + 4;
 		char lines[8][200]; int n;
-		wrap_lines (cardText (), width - 28 - (g_editing ? 0 : 170), lines, 4, &n);
+		wrap_lines (cardText (), width - 28 - (g_editing ? 0 : 170), lines, CARD_LINES, &n);
 		for (int i = 0; i < n; i++) { uk_text (canvas, 14, y, lines[i], 0x3A3A3A); y += uk_fh () + 2; }
 		if (g_showHint && !g_editing)
 		{
@@ -634,7 +769,7 @@ public:
 	{
 		if (!g_L) return 80;
 		char lines[8][200]; int n;
-		wrap_lines (cardText (), width - 28 - (g_editing ? 0 : 170), lines, 4, &n);
+		wrap_lines (cardText (), width - 28 - (g_editing ? 0 : 170), lines, CARD_LINES, &n);
 		int h = 8 + (g_big ? g_big->height () : 20) + 4 + n * (uk_fh () + 2) + 10;
 		if (g_showHint && !g_editing) { char hl[4][200]; int hn; char hh[500]; snprintf (hh, sizeof hh, "%s %s", L2 ("Hint:", "Indice :"), g_L->hintOf (g_lang)); wrap_lines (hh, width - 28, hl, 4, &hn); h += 2 + hn * (uk_fh () + 2); }
 		return h < 76 ? 76 : h;
@@ -696,26 +831,58 @@ public:
 		uk_rline (canvas, 0, 0, width, height, 14, 0x8E6CC8);
 		uk_rbox (canvas, 0, 0, width, 44, 14, 0x8E6CC8, 0x7A58B8, 255, UK_TL | UK_TR);
 		char t[120]; snprintf (t, sizeof t, "%s  %s", L2 ("New idea:", "Nouvelle idée :"), c->title[g_lang]);
-		{ UkFaceScope fs (g_big); uk_text_l (canvas, 18, 0, 44, t, 0xFFFFFF, 2); }
+		{
+			// ("New idea:" dropped when both do not fit; a title still too wide: the UI face, bold, then cut)
+			bool fits; { UkFaceScope fs (g_big); if (uk_tw (t, 2) > width - 36) tcpy (t, c->title[g_lang], sizeof t); fits = uk_tw (t, 2) <= width - 36; }
+			if (fits) { UkFaceScope fs (g_big); uk_text_l (canvas, 18, 0, 44, t, 0xFFFFFF, 2); }
+			else { cut_to (t, width - 36, 2); uk_text_l (canvas, 18, 0, 44, t, 0xFFFFFF, 2); }
+		}
+		// the text, in the UI face; in the small faces when it would not fit above OK (a narrow window)
+		bool small = flow (false, false) > height - 56 && g_small;
+		flow (true, small);
+	}
+	// The card's text laid out from y 58 (drawn when draw): where it ends (past height - 56: it does not fit)
+	int flow (bool draw, bool small)
+	{
 		int y = 58;
 		const char *s = c->text[g_lang];
-		while (*s && y < height - 56)
+		UkFaceScope fs (small ? g_small : 0);
+		while (*s)
 		{
 			const char *e = strchr (s, '\n'); int n = e ? (int) (e - s) : (int) strlen (s);
 			char line[400]; if (n > 399) n = 399; memcpy (line, s, n); line[n] = 0;
 			s = e ? e + 1 : s + n;
 			if (line[0] == ' ' && line[1] == ' ')		// code: in the monospaced face, on a tint
 			{
-				UkFaceScope fs (g_mono);
-				canvas.fillRect (18, y - 1, width - 36, uk_fh () + 3, 0xF1ECFA);
-				uk_text (canvas, 24, y, line + 2, 0x4B2E83);
+				UkFaceScope fm (small && g_smallMono ? g_smallMono : g_mono);
+				if (draw && y < height - 56)
+				{
+					canvas.fillRect (18, y - 1, width - 36, uk_fh () + 3, 0xF1ECFA);
+					uk_text (canvas, 24, y, line + 2, 0x4B2E83);
+				}
 				y += uk_fh () + 3;
 				continue;
 			}
-			if (!line[0]) { y += 8; continue; }
-			char lines[8][200]; int k; wrap_lines (line, width - 40, lines, 8, &k);
-			for (int i = 0; i < k; i++) { uk_text (canvas, 20, y, lines[i], 0x303030); y += uk_fh () + 3; }
+			if (!line[0]) { y += small ? 6 : 8; continue; }
+			if (!strcmp (line, "@palette"))		// the pen's 16 colours, each with its number (a narrow box: two rows of 8)
+			{
+				int per = (width - 40) / 16 >= 20 ? 16 : 8, sw = (width - 40) / per, sh = small ? 18 : 22;
+				for (int i = 0; i < 16; i++)
+				{
+					int x = 20 + (i % per) * sw, yy = y + 2 + (i / per) * (sh + 3);
+					if (!draw || yy >= height - 56) continue;
+					uk_rbox (canvas, x, yy, sw - 2, sh, 4, PEN[i], PEN[i]);
+					if (i == 7 || i == 15) uk_rline (canvas, x, yy, sw - 2, sh, 4, 0xB0B0B0);
+					char d[4]; snprintf (d, sizeof d, "%d", i);
+					UkFaceScope f2 (sw < 24 && g_small ? g_small : 0);
+					uk_text_c (canvas, x, yy, sw - 2, sh, d, (i == 7 || i >= 9) ? 0x202020 : 0xFFFFFF, 2);
+				}
+				y += (16 / per) * (sh + 3) + 7; continue;
+			}
+			char lines[12][200]; int k; wrap_lines (line, width - 40, lines, 12, &k);
+			for (int i = 0; i < k; i++) { if (draw && y < height - 56) uk_text (canvas, 20, y, lines[i], 0x303030); y += uk_fh () + 3; }
 		}
+		return y;
 	}
 	bool onMouse (int, int, int, int, int, int) override { return true; }	// (the board under it is not clicked)
 };
@@ -742,8 +909,8 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
-		static const char *const EN[NTOOLS] = { "Wall", "Floor", "Flag", "Key", "Coin", "Door", "Paint", "Turtle", "Water" };
-		static const char *const FR[NTOOLS] = { "Mur", "Sol", "Drapeau", "Clé", "Pièce", "Porte", "Peinture", "Tortue", "Eau" };
+		static const char *const EN[NTOOLS] = { "Wall", "Floor", "Flag", "Key", "Coin", "Door", "Paint", "Turtle", "Water", "Gem", "Portal 1", "Portal 2" };
+		static const char *const FR[NTOOLS] = { "Mur", "Sol", "Drapeau", "Clé", "Pièce", "Porte", "Peinture", "Tortue", "Eau", "Gemme", "Portail 1", "Portail 2" };
 		int c = cell ();
 		for (int i = 0; i < NTOOLS; i++)
 		{
@@ -751,8 +918,13 @@ public:
 			if (i == g_tool) uk_hilite (canvas, x, y, c, 30, 6);
 			else uk_raised (canvas, x, y, c, 30, 6, C_FACE);
 			unsigned sw = i == 0 ? 0x7C889A : i == 1 ? 0xF0E6C6 : i == 2 ? 0xE0483E : i == 3 ? 0xD9A21B : i == 4 ? 0xF6CF3C : i == 5 ? 0x9A6234 : i == 6 ? 0xB06BD8 : i == 7 ? 0x4FA052 : 0x4A90C8;
-			uk_rbox (canvas, x + 5, y + 9, 11, 12, 3, sw, sw);
-			uk_text_l (canvas, x + 19, y, 30, g_lang == LANG_FR ? FR[i] : EN[i], i == g_tool ? uk_hilite_ink () : C_TEXT);
+			if (i == TOOL_GEM) gem (canvas, x + 11, y + 15, 18, 1, 1, false);
+			else if (i == TOOL_PAD1 || i == TOOL_PAD2) pad (canvas, x + 11, y + 15, 18, i - TOOL_PAD1);
+			else uk_rbox (canvas, x + 5, y + 9, 11, 12, 3, sw, sw);
+			const char *nm = g_lang == LANG_FR ? FR[i] : EN[i];
+			bool small = uk_tw (nm) > c - 22;		// (a name wider than its button: the 11-px face)
+			UkFaceScope fs (small ? g_small : 0);
+			uk_text_l (canvas, x + 19, y, 30, nm, i == g_tool ? uk_hilite_ink () : C_TEXT);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -993,12 +1165,19 @@ static void edit_size ()
 	char t[40]; snprintf (t, sizeof t, "%d x %d", g_edLevel.w, g_edLevel.h);
 	g_edSize->setText (t);
 }
-static void edit_cell (int c, int r)
+static void edit_cell (int c, int r, bool drag)
 {
 	Level &L = g_edLevel;
 	char k = TOOL_CH[g_tool];
+	g_badC = g_badR = -1;				// (the fault ringed: cleared by an edit)
 	if (g_mode != P_IDLE) reset_view ();
-	if (k == '>')					// the turtle: moved here, or turned when it is here already
+	if (g_tool == TOOL_GEM) edit_gem (L, c, r, drag);	// (world.h: the lowest free number; a click on a gem: its next)
+	else if (g_tool == TOOL_PAD1 || g_tool == TOOL_PAD2)	// (a pair keeps two pads: a third removes the older)
+	{
+		int q = g_tool - TOOL_PAD1;
+		edit_pad (L, c, r, q + 1, g_padLastC[q], g_padLastR[q]);
+	}
+	else if (k == '>')					// the turtle: moved here, or turned when it is here already
 	{
 		char cur = L.map[r][c];
 		static const char ROT[] = "^>v<";
@@ -1048,7 +1227,7 @@ static void edit_collect ()			// the fields into the level
 	tcpy (L.hint[g_lang], g_edHint->text, sizeof L.hint[0]);
 	tcpy (L.words, g_edWords->text, sizeof L.words);
 	L.par3 = atoi (g_edPar->text); const char *q = strchr (g_edPar->text, ' '); L.par2 = q ? atoi (q) : L.par3 + 2;
-	L.draw = g_edDraw->checked ? (L.draw ? L.draw : 1) : 0;	// (a colour level stays one)
+	L.draw = g_edDrawSel->sel < 0 || g_edDrawSel->sel > 2 ? 0 : g_edDrawSel->sel;	// (No / Shape / Colours)
 	int ci = g_edConcept->sel; if (ci < 0 || ci >= NCONCEPTS) ci = 0;
 	tcpy (L.topic, CONCEPT_KEYS[ci], sizeof L.topic);
 	free (L.solution); L.solution = tdup (g_ed->text ());
@@ -1076,7 +1255,8 @@ static void open_editor (bool fresh)
 	g_edTitle->setText (g_edLevel.titleOf (g_lang)); g_edText->setText (g_edLevel.textOf (g_lang)); g_edHint->setText (g_edLevel.hintOf (g_lang));
 	g_edWords->setText (g_edLevel.words);
 	char p[24]; snprintf (p, sizeof p, "%d %d", g_edLevel.par3, g_edLevel.par2); g_edPar->setText (g_edLevel.par3 ? p : "");
-	g_edDraw->checked = g_edLevel.draw != 0; ((Widget *) g_edDraw)->invalidate (true);
+	g_edDrawSel->sel = g_edLevel.draw >= 0 && g_edLevel.draw <= 2 ? g_edLevel.draw : 1; ((Widget *) g_edDrawSel)->invalidate (true);
+	g_badC = g_badR = -1; g_padLastC[0] = g_padLastC[1] = g_padLastR[0] = g_padLastR[1] = -1;
 	int ci = 0; for (int i = 0; i < NCONCEPTS; i++) if (!strcmp (CONCEPT_KEYS[i], g_edLevel.topic)) ci = i;
 	g_edConcept->sel = ci; ((Widget *) g_edConcept)->invalidate (true);
 	g_ed->setText (g_edLevel.solution ? g_edLevel.solution : "");
@@ -1089,9 +1269,23 @@ static void open_editor (bool fresh)
 	layout ();
 	g_root->invalidate (true);
 }
+// The level's gems and portals checked (world.h's check_level, the pack reader's verdict): refused, the message in red
+// and the cell at fault ringed red; nothing run or written
+static bool edit_check ()
+{
+	LevelFault f;
+	if (check_level (g_edLevel, f)) return true;
+	if (g_mode != P_IDLE) reset_view ();
+	char m[200]; level_fault_text (f, g_lang, m, sizeof m);
+	g_badC = f.c; g_badR = f.r;
+	set_message (M_ERR, m);
+	((Widget *) g_board)->invalidate (true);
+	return false;
+}
 static void cb_ed_test (Widget &)
 {
 	edit_collect ();
+	if (!edit_check ()) return;
 	g_target.clear ();
 	if (g_edLevel.draw) target_of (g_edLevel, g_target);
 	g_edLevel.par3 = 0;				// (the solution sets them again)
@@ -1100,6 +1294,7 @@ static void cb_ed_test (Widget &)
 static void cb_ed_save (Widget &)
 {
 	edit_collect ();
+	if (!edit_check ()) return;
 	if (!g_edLevel.id[0]) snprintf (g_edLevel.id, sizeof g_edLevel.id, "my-%u", (unsigned) (kapi_get_ticks () % 100000));
 	// the player's pack: loaded (or made), the level put in place of the one with its id, or added
 	int pi = -1;
@@ -1285,12 +1480,15 @@ static void retitle ()
 		tcpy (g_edBtn[0]->text, L2 ("Test", "Tester"), sizeof g_edBtn[0]->text);
 		tcpy (g_edBtn[1]->text, L2 ("Save", "Enregistrer"), sizeof g_edBtn[1]->text);
 		tcpy (g_edBtn[2]->text, L2 ("Close", "Fermer"), sizeof g_edBtn[2]->text);
-		static const char *const EN[] = { "Title", "What to do", "Hint", "Words (empty: all)", "Idea taught", "Instructions for 3 and 2 stars", "Size", "Tool" };
-		static const char *const FR[] = { "Titre", "Ce qu'il faut faire", "Indice", "Mots (vide : tous)", "Idée enseignée", "Instructions pour 3 et 2 étoiles", "Taille", "Outil" };
-		for (int i = 0; i < g_nedLabels; i++) ((Label *) g_edLabels[i])->setText (g_lang == LANG_FR ? FR[i] : EN[i]);
-		tcpy (g_edDraw->text, L2 ("Drawing", "Dessin"), sizeof g_edDraw->text);
+		static const char *const EN[] = { "Idea taught", "Title", "What to do", "Hint", "Words (empty: all)", "3 and 2 stars", "Drawing", "Size", "Tool" };
+		static const char *const FR[] = { "Idée enseignée", "Titre", "Ce qu'il faut faire", "Indice", "Mots (vide : tous)", "3 et 2 étoiles", "Dessin", "Taille", "Outil" };
+		for (int i = 0; i < g_nedLabels && i < (int) (sizeof EN / sizeof EN[0]); i++) ((Label *) g_edLabels[i])->setText (g_lang == LANG_FR ? FR[i] : EN[i]);
+		static const char *const DEN[3] = { "No", "Shape", "Colours" }, *const DFR[3] = { "Non", "Forme", "Couleurs" };
+		g_edDrawSel->setOptions (g_lang == LANG_FR ? DFR : DEN, 3, g_edDrawSel->sel);
+		((Widget *) g_edDrawSel)->tip = L2 ("A drawing level: reproduce the solution's figure -- its shape, or its shape and colours",
+			"Un niveau de dessin : reproduire la figure de la solution -- sa forme, ou sa forme et ses couleurs");
 	}
-	Widget *bts[] = { g_btRun, g_btStep, g_btStop, g_btReset, g_btNext, g_btHint, g_btLesson, g_edBtn[0], g_edBtn[1], g_edBtn[2], g_edDraw };
+	Widget *bts[] = { g_btRun, g_btStep, g_btStop, g_btReset, g_btNext, g_btHint, g_btLesson, g_edBtn[0], g_edBtn[1], g_edBtn[2], g_edDrawSel };
 	for (unsigned i = 0; i < sizeof bts / sizeof bts[0]; i++) if (bts[i]) bts[i]->invalidate (true);
 	// the ideas' names in the editor's list
 	{
@@ -1343,9 +1541,11 @@ static void layout ()
 	g_board->left = right; g_board->top = by; g_board->resizeTo (rw, H - by - PAD - msgH - PAD);
 	g_msg->left = right; g_msg->top = H - PAD - msgH; g_msg->resizeTo (rw, msgH);
 	g_btNext->left = right + rw - 140; g_btNext->top = H - PAD - msgH + 15; g_btNext->resizeTo (126, 32);
-	int lw = rw - 40 < 560 ? rw - 40 : 560, lh = g_board->height - 30 < 360 ? g_board->height - 30 : 360;
+	// the lesson: centred on the whole right column (the card and the board), so a long card does not shrink it
+	int colH = H - PAD - msgH - PAD - PAD;
+	int lw = rw - 40 < 560 ? rw - 40 : 560, lh = colH - 30 < 360 ? colH - 30 : 360;
 	if (lh < 200) lh = 200;
-	g_lesson->left = right + (rw - lw) / 2; g_lesson->top = by + (g_board->height - lh) / 2;
+	g_lesson->left = right + (rw - lw) / 2; g_lesson->top = PAD + (colH - lh) / 2;
 	g_lesson->resizeTo (lw, lh);
 	g_lesson->ok->left = lw - 120; g_lesson->ok->top = lh - 46;
 	R.invalidate (true);
@@ -1385,11 +1585,11 @@ public:
 	EdPanel (int l, int t, int w, int h) : Widget (l, t, w, h) {}
 	void onDraw () override { canvas.clear (bgColor ()); }
 };
-static Widget *ed_label (Widget *p, int y, const char *en, const char *fr)
+static Widget *ed_label (Widget *p, int y, const char *en, const char *fr, int x = 0, int w = LISTW)
 {
-	Label *l = new Label (0, y, LISTW, 18, L2 (en, fr), C_DIS);
+	Label *l = new Label (x, y, w, 18, L2 (en, fr), C_DIS);
 	p->addChild (l);
-	if (g_nedLabels < 8) g_edLabels[g_nedLabels++] = l;
+	if (g_nedLabels < 10) g_edLabels[g_nedLabels++] = l;
 	return l;
 }
 
@@ -1399,6 +1599,8 @@ int main (void)
 	g_ui = ft_uikit_face ();
 	{ FtTextFace *m = new FtTextFace; if (m->open ("DejaVu Sans Mono", 14)) g_mono = m; else delete m; }
 	{ FtTextFace *b = new FtTextFace; if (b->open ("DejaVu Sans", 18)) g_big = b; else delete b; }
+	{ FtTextFace *b = new FtTextFace; if (b->open ("DejaVu Sans", 11)) g_small = b; else delete b; }
+	{ FtTextFace *b = new FtTextFace; if (b->open ("DejaVu Sans Mono", 12)) g_smallMono = b; else delete b; }
 	kv_load ();
 	g_lang = !strcmp (locale_language (), "fr") ? LANG_FR : LANG_EN;
 	set_language (g_lang);
@@ -1448,7 +1650,10 @@ int main (void)
 	// the level editor's panel
 	{
 		Widget *p = g_editPanel = new EdPanel (PAD, PAD, LISTW, 600);
+		// (the Idea first: its list of 20 opens downward, never clipped, from 600 px high -- the window's minimum)
 		int y = 0;
+		ed_label (p, y, "Idea taught", "Idée enseignée"); y += 18;
+		g_edConcept = new Dropdown (0, y, LISTW, 26, CONCEPT_KEYS, NCONCEPTS, 0, 0); p->addChild (g_edConcept); y += 32;
 		ed_label (p, y, "Title", "Titre"); y += 18;
 		g_edTitle = new Textbox (0, y, LISTW, 26); g_edTitle->maxLen = 70; p->addChild (g_edTitle); y += 32;
 		ed_label (p, y, "What to do", "Ce qu'il faut faire"); y += 18;
@@ -1457,11 +1662,10 @@ int main (void)
 		g_edHint = new Textbox (0, y, LISTW, 26); g_edHint->maxLen = 400; p->addChild (g_edHint); y += 32;
 		ed_label (p, y, "Words (empty: all)", "Mots (vide : tous)"); y += 18;
 		g_edWords = new Textbox (0, y, LISTW, 26); g_edWords->maxLen = 250; p->addChild (g_edWords); y += 32;
-		ed_label (p, y, "Idea taught", "Idée enseignée"); y += 18;
-		g_edConcept = new Dropdown (0, y, LISTW, 26, CONCEPT_KEYS, NCONCEPTS, 0, 0); p->addChild (g_edConcept); y += 32;
-		ed_label (p, y, "Instructions for 3 and 2 stars", "Instructions pour 3 et 2 étoiles"); y += 18;
+		ed_label (p, y, "3 and 2 stars", "3 et 2 étoiles", 0, 100); ed_label (p, y, "Drawing", "Dessin", 110, LISTW - 110); y += 18;
 		g_edPar = new Textbox (0, y, 100, 26); p->addChild (g_edPar);
-		g_edDraw = new Checkbox (110, y, LISTW - 110, 26, L2 ("Drawing", "Dessin"), false, 0); p->addChild (g_edDraw); y += 34;
+		{ static const char *const D[3] = { "No", "Shape", "Colours" }; g_edDrawSel = new Dropdown (110, y, LISTW - 110, 26, D, 3, 0, 0); p->addChild (g_edDrawSel); }
+		y += 34;
 		ed_label (p, y, "Size", "Taille"); y += 18;
 		g_edSize = new Label (0, y, 58, 26, "", C_TEXT); p->addChild (g_edSize);
 		{
@@ -1471,7 +1675,7 @@ int main (void)
 		}
 		y += 34;
 		ed_label (p, y, "Tool", "Outil"); y += 18;
-		g_tools = new ToolPal (0, y, LISTW, 3 * 34); p->addChild (g_tools); y += 3 * 34 + 6;
+		g_tools = new ToolPal (0, y, LISTW, 4 * 34); p->addChild (g_tools); y += 4 * 34 + 6;
 		{
 			int b0 = 62, b1 = 92;
 			g_edBtn[0] = new Button (0, y, b0, 30, "Test", cb_ed_test); p->addChild (g_edBtn[0]);
@@ -1482,7 +1686,7 @@ int main (void)
 		root.addChild (p);
 	}
 	root.setResizable (true);
-	root.setMinSize (920, 560);
+	root.setMinSize (920, 600);
 	retitle ();
 	build_menu ();
 	layout ();

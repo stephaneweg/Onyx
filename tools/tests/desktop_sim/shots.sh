@@ -352,9 +352,28 @@ if want turtle; then			# (Turtle Quest: the players' progress from desktop_sim/t
 	cp $D/turtle/star-fr.ini "$TQ/progress.ini"; lang fr
 	sim turtle turtle-fr "wait;wait;key 0x114;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-fr
 	lang "$SHOTS_LANG"
-	# the level editor (Ctrl+E) on "Paint the frame", a coin added, the solution tested
+	# the level editor (Ctrl+E) on "Paint the frame", a coin added, the solution tested (Test: the panel's last row)
 	cp $D/turtle/star-fr.ini "$TQ/progress.ini"; sed -i 's/^level = 8/level = 3/' "$TQ/progress.ini"
-	sim turtle turtle-editor "wait;wait;key 0x05;$W;down 123 431;up 123 431;wait;down 820 230;up 820 230;wait;down 45 505;up 45 505;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-editor
+	sim turtle turtle-editor "wait;wait;key 0x05;$W;down 123 431;up 123 431;wait;down 820 230;up 820 230;wait;down 45 539;up 45 539;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-editor
+	# gems and portals: the grand finale step by step (F8 thirteen times) until just after the first jump -- gems 1
+	# and 2 picked, the ring on gem 3, the turtle out of the twin pad, no line across
+	cp $D/turtle/portals.ini "$TQ/progress.ini"
+	ST=""; for i in $(seq 1 13); do ST="$ST;key 0x117;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait"; done
+	sim turtle turtle-portals "wait;wait$ST" $P; png turtle-portals
+	# the editor on it: the Gem tool, gem 5 clicked (it becomes 6), Save refused -- gem 5 missing, gem 6 ringed red
+	cp $D/turtle/portals.ini "$TQ/progress.ini"
+	sim turtle turtle-editor-gems "wait;wait;key 0x05;$W;down 45 499;up 45 499;wait;down 870 402;up 870 402;wait;down 114 539;up 114 539;$W;$W" $P; png turtle-editor-gems
+	# a fractal: the snowflake run (F5) and won with three stars; a colour drawing in the wrong colours (its target
+	# tinted, the two-line message)
+	cp $D/turtle/fractals.ini "$TQ/progress.ini"
+	sim turtle turtle-fractal "wait;wait;key 0x114;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-fractal
+	cp $D/turtle/fractals.ini "$TQ/progress.ini"; sed -i 's/^level = 9/level = 2/' "$TQ/progress.ini"
+	sim turtle turtle-rainbow "wait;wait;key 0x114;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-rainbow
+	# in French: the gems to count, GEMME (), step by step (F8 thirty-three times): gems 1 and 2 picked, the ring on gem 3
+	cp $D/turtle/gems-fr.ini "$TQ/progress.ini"; lang fr
+	ST=""; for i in $(seq 1 33); do ST="$ST;key 0x117;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait"; done
+	sim turtle turtle-fr-gems "wait;wait$ST" $P; png turtle-fr-gems
+	lang "$SHOTS_LANG"
 	rm -rf "$TQ"
 fi
 if want circuits; then			# (Circuits, AutoDev round 2: the progress from desktop_sim/circuits/*.ini in the writes' folder;

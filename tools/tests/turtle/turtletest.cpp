@@ -3,8 +3,8 @@
 // read, its solution run and won with three stars (a drawing level against its own figure), written back and read
 // again the same; then the player's mistakes: a wall hit at its line, a locked door, nothing to pick, a word the
 // level does not know, a loop that never ends, a syntax error, French words; the gems (in order), the portals, the
-// drawings in colour, a recursion without end (on small packs written here, so a change to the card's packs does not
-// break them); and the packs' lint (unique ids, every text in both languages and not cut, the lesson cards, the
+// drawings in colour, a recursion without end, the level editor's gem and portal tools (edit_gem, edit_pad) -- on
+// small packs written here, so a change to the card's packs does not break them; and the packs' lint (unique ids, every text in both languages and not cut, the lesson cards, the
 // colour levels' pens). Run by tools/tests/run_turtle_test.sh.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
@@ -240,6 +240,51 @@ static void lint_level (const Pack &pk, const Level &L)
 	CHECK (c && c->title[0][0] && c->title[1][0] && c->text[0][0] && c->text[1][0], "%s: the card '%s'", L.id, L.topic);
 }
 
+// The level editor's tools (step 10): edit_gem, edit_pad; a level made with them, checked, written back and read again
+static void test_editor ()
+{
+	char why[160] = "";
+	Pack *pk = pack_of ("[pack]\ntitle = t\n[level]\nid = t-ed\nmap =\n| ##########\n| #>.......#\n| #........#\n| ##########\n", why, sizeof why);
+	CHECK (pk, "the editor's pack: %s", why); if (!pk) return;
+	Level &L = *pk->levels[0];
+	// gems: the lowest free number, a click cycles, a drag only places, never on the turtle
+	CHECK (edit_gem (L, 3, 1, false) && L.map[1][3] == '1', "a first gem is 1: %c", L.map[1][3]);
+	CHECK (edit_gem (L, 4, 1, true) && L.map[1][4] == '2', "a drag places the next: %c", L.map[1][4]);
+	CHECK (!edit_gem (L, 4, 1, true) && L.map[1][4] == '2', "a drag over a gem does not cycle it: %c", L.map[1][4]);
+	CHECK (edit_gem (L, 4, 1, false) && L.map[1][4] == '3', "a click on gem 2 makes it 3: %c", L.map[1][4]);
+	CHECK (edit_gem (L, 5, 1, false) && L.map[1][5] == '2', "the lowest free number fills the gap: %c", L.map[1][5]);
+	CHECK (!edit_gem (L, 1, 1, false) && L.map[1][1] == '>', "the turtle's cell is kept: %c", L.map[1][1]);
+	L.map[1][3] = '9'; CHECK (edit_gem (L, 3, 1, false) && L.map[1][3] == '1', "9 cycles back to 1: %c", L.map[1][3]);
+	{
+		Level F; F.set (L); for (int c = 1; c <= 8; c++) F.map[2][c] = (char) ('0' + c); F.map[1][3] = '9';
+		CHECK (!edit_gem (F, 7, 1, false) && F.map[1][7] == '.', "all nine on the map: nothing placed (%c)", F.map[1][7]);
+	}
+	LevelFault f;
+	CHECK (check_level (L, f), "gems 1 2 3 made by the tool: fine (%d)", f.kind);
+	// pads: a pair keeps two, the older goes; the other pair untouched
+	int lc[2] = { -1, -1 }, lr[2] = { -1, -1 };
+	CHECK (edit_pad (L, 6, 1, 1, lc[0], lr[0]) && L.map[1][6] == 'T', "a first T");
+	CHECK (!check_level (L, f) && f.kind == LF_PAD_ALONE && f.c == 6 && f.r == 1, "a lone T refused, ringed (%d %d,%d)", f.kind, f.c, f.r);
+	char t[160]; level_fault_text (f, LANG_EN, t, sizeof t); CHECK (!strcmp (t, "Portal 1 has no twin: place its second pad."), "%s", t);
+	CHECK (edit_pad (L, 2, 2, 1, lc[0], lr[0]) && check_level (L, f), "the T's twin: fine (%d)", f.kind);
+	CHECK (edit_pad (L, 8, 2, 1, lc[0], lr[0]) && L.map[1][6] == '.' && L.map[2][2] == 'T' && L.map[2][8] == 'T', "a third T: the older (6,1) goes, the last placed (2,2) stays");
+	CHECK (count_pads (L, 1) == 2 && check_level (L, f), "never more than two T: %d", count_pads (L, 1));
+	CHECK (edit_pad (L, 7, 1, 2, lc[1], lr[1]) && edit_pad (L, 6, 2, 2, lc[1], lr[1]) && count_pads (L, 2) == 2 && count_pads (L, 1) == 2, "the U pair beside");
+	CHECK (!edit_pad (L, 1, 1, 2, lc[1], lr[1]) && L.map[1][1] == '>', "a pad never on the turtle");
+	{
+		Level M; M.set (L); int a = -1, b = -1;			// (a level read from a pack: no pad placed last -- the first one goes)
+		CHECK (edit_pad (M, 3, 2, 1, a, b) && M.map[2][2] == '.' && M.map[2][8] == 'T' && M.map[2][3] == 'T' && a == 3 && b == 2, "no last known: the first T in reading order goes");
+	}
+	// written back and read again: the digits, the pads, a colour level
+	L.draw = 0; char *txt = write_pack (*pk);
+	Pack p2; CHECK (parse_pack (p2, txt, why, sizeof why) && p2.levels.n == 1 && !memcmp (p2.levels[0]->map, L.map, sizeof L.map), "the edited level written back: %s", why);
+	free (txt);
+	L.draw = 2; txt = write_pack (*pk);
+	Pack p3; CHECK (parse_pack (p3, txt, why, sizeof why) && p3.levels.n == 1 && p3.levels[0]->draw == 2, "a colour level written back: %s", why);
+	free (txt);
+	delete pk;
+}
+
 int main (int argc, char **argv)
 {
 	Pack *packs[16]; int np = 0, total = 0;
@@ -284,6 +329,7 @@ int main (int argc, char **argv)
 	CHECK (total == 48, "%d levels, not 48", total);
 	test_gems ();
 	test_portals ();
+	test_editor ();
 	test_recursion_and_cards ();
 	Level *hello = find (packs, np, "hello"), *door = find (packs, np, "door"), *coins = find (packs, np, "coins"), *corner = find (packs, np, "corner");
 	Level *sq = find (packs, np, "draw-square"), *maze = find (packs, np, "maze");

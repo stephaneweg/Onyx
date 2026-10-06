@@ -355,6 +355,53 @@ static inline int count_pads (const Level &L, int pair)
 	return n;
 }
 
+// ---- the level editor's gem and portal tools (pure: the map changed, true when it did) -----------------------------------
+static inline bool is_turtle_ch (char k) { return k == '>' || k == '<' || k == '^' || k == 'v'; }
+// The gem tool on (c, r). A click: on a gem, its next number (1 -> ... -> 9 -> 1); elsewhere, the lowest number not on
+// the map (none when 1 ... 9 are all there). A drag (drag: a cell after the press) only places: never cycles a gem.
+// The turtle's cell is never overwritten.
+static inline bool edit_gem (Level &L, int c, int r, bool drag)
+{
+	if (c < 0 || r < 0 || c >= L.w || r >= L.h) return false;
+	char cur = L.map[r][c];
+	if (is_turtle_ch (cur)) return false;
+	if (cur >= '1' && cur <= '9')
+	{
+		if (drag) return false;
+		L.map[r][c] = cur == '9' ? '1' : (char) (cur + 1);
+		return true;
+	}
+	bool used[10] = { false };
+	for (int y = 0; y < L.h; y++) for (int x = 0; x < L.w; x++) if (L.map[y][x] >= '1' && L.map[y][x] <= '9') used[L.map[y][x] - '0'] = true;
+	for (int n = 1; n <= 9; n++) if (!used[n]) { L.map[r][c] = (char) ('0' + n); return true; }
+	return false;
+}
+// A portal's pad (pair: 1 T, 2 U) on (c, r). A pair keeps two pads at most: when it has two already, the older one
+// goes -- the one that is not (lastC, lastR), the pad placed last (-1: none known, the first in reading order goes).
+// (lastC, lastR) become (c, r). The turtle's cell is never overwritten.
+static inline bool edit_pad (Level &L, int c, int r, int pair, int &lastC, int &lastR)
+{
+	if (c < 0 || r < 0 || c >= L.w || r >= L.h) return false;
+	char k = pair == 2 ? 'U' : 'T', cur = L.map[r][c];
+	if (is_turtle_ch (cur)) return false;
+	if (cur == k) { lastC = c; lastR = r; return false; }
+	for (;;)
+	{
+		int n = 0, oc = -1, orr = -1;
+		for (int y = 0; y < L.h; y++)
+			for (int x = 0; x < L.w; x++)
+				if (L.map[y][x] == k)
+				{
+					n++;
+					if (oc < 0 && !(x == lastC && y == lastR)) { oc = x; orr = y; }
+				}
+		if (n < 2 || oc < 0) break;
+		L.map[orr][oc] = '.';
+	}
+	L.map[r][c] = k; lastC = c; lastR = r;
+	return true;
+}
+
 // A pack's text -> its levels (false: not one; why)
 static inline bool parse_pack (Pack &pk, const char *src, char *why, int cap)
 {
