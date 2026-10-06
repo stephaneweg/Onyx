@@ -233,6 +233,7 @@ static double ev_ms (const Ev &e)
 	case EV_TURN: { double d = fabs (e.b - e.a); if (d > 180) d = 360 - d; return 240 * k * (d / 90 < 0.4 ? 0.4 : d / 90); }
 	case EV_BUMP: return k ? 420 * (k < 0.5 ? 0.5 : k) : 0;
 	case EV_PICK: case EV_DOOR: return 260 * k;
+	case EV_TELEPORT: return 420 * k;
 	}
 	return 0;
 }
@@ -1047,7 +1048,7 @@ static void edit_collect ()			// the fields into the level
 	tcpy (L.hint[g_lang], g_edHint->text, sizeof L.hint[0]);
 	tcpy (L.words, g_edWords->text, sizeof L.words);
 	L.par3 = atoi (g_edPar->text); const char *q = strchr (g_edPar->text, ' '); L.par2 = q ? atoi (q) : L.par3 + 2;
-	L.draw = g_edDraw->checked;
+	L.draw = g_edDraw->checked ? (L.draw ? L.draw : 1) : 0;	// (a colour level stays one)
 	int ci = g_edConcept->sel; if (ci < 0 || ci >= NCONCEPTS) ci = 0;
 	tcpy (L.topic, CONCEPT_KEYS[ci], sizeof L.topic);
 	free (L.solution); L.solution = tdup (g_ed->text ());
@@ -1075,7 +1076,7 @@ static void open_editor (bool fresh)
 	g_edTitle->setText (g_edLevel.titleOf (g_lang)); g_edText->setText (g_edLevel.textOf (g_lang)); g_edHint->setText (g_edLevel.hintOf (g_lang));
 	g_edWords->setText (g_edLevel.words);
 	char p[24]; snprintf (p, sizeof p, "%d %d", g_edLevel.par3, g_edLevel.par2); g_edPar->setText (g_edLevel.par3 ? p : "");
-	g_edDraw->checked = g_edLevel.draw; ((Widget *) g_edDraw)->invalidate (true);
+	g_edDraw->checked = g_edLevel.draw != 0; ((Widget *) g_edDraw)->invalidate (true);
 	int ci = 0; for (int i = 0; i < NCONCEPTS; i++) if (!strcmp (CONCEPT_KEYS[i], g_edLevel.topic)) ci = i;
 	g_edConcept->sel = ci; ((Widget *) g_edConcept)->invalidate (true);
 	g_ed->setText (g_edLevel.solution ? g_edLevel.solution : "");
