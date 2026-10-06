@@ -109,6 +109,41 @@ de la liste des branches sur GitHub ferait une bonne illustration (à prendre **
 **À faire (l'utilisateur) : un élagage des branches**, sur sa décision. Les 14 branches fusionnées peuvent
 être supprimées sans perte ; les 2 autres sont à examiner d'abord.
 
+## Les traces de la méthode dans le dépôt (illustrations possibles)
+
+La méthode a laissé des traces écrites. Ce sont autant d'exemples ou de captures pour l'article :
+
+- **Étude → choix de l'utilisateur → plan → tests sur le Pi** : `docs/GUI-USERSPACE-STUDY.md` (une étude de
+  faisabilité ; elle se termine par une section « For the user to decide », puis une option barrée et
+  marquée *decided (2026-10-04)*) → `docs/SHARED-LIBS-PLAN.md` (un tableau **D1-D8 « What the user
+  decided »**, les choix par défaut P1-P6 « not contradicted », le plan par étapes 0/1a/1b/1c, la
+  section « Tests — to automate on the Pi », puis **« Results, and what is still not verified »** :
+  17 vérifications passées, 84 apps démarrées sans échec, ce qui a été trouvé en route, ce qui n'est pas
+  vérifié). C'est le cycle complet sur un seul sujet, le meilleur exemple.
+- **Les maquettes** : **14 dossiers `docs/<app>/mockups`, 96 images** (3dforge, archiver, clipboard,
+  daw, gui-redesign, mail, media, paint, pdf, photos, pkg, qbstudio, screenshot, slides). Chaque
+  `README.md` raconte l'étude, les maquettes et les décisions.
+  - `docs/gui-redesign/README.md` : l'utilisateur demande un avis (rétro ou mobile ?) ; Claude dessine
+    le même bureau en trois habillages (Workbench, CDE, Windows 3.1) ; l'utilisateur préfère CDE et
+    demande « à quoi ressemblerait un CDE modernisé ? » → la direction retenue. Puis la section
+    « The open questions, as answered ». Les images `mockups/retro-*.png` puis `cde-modern*.png` montrent
+    l'itération en une planche : une très bonne illustration.
+  - `docs/mail/README.md` : « study, first mock-ups », puis **« Decided (the user, 2026-10-02) »** :
+    le nom, les trois colonnes de la maquette, un moteur HTML maison plutôt que Jet, Gmail/Outlook.
+- **Le handoff et les tests sur le matériel** : `docs/HANDOFF.md` (environ 2 000 lignes), une section par
+  chantier dont le titre dit l'état honnêtement (« built, tested on the PC, **NOT yet on the Pi** »),
+  avec des listes « **To test on the Pi** » (quoi brancher, quoi faire, quoi attendre) et les retours de
+  l'utilisateur (« On the Pi (the user, 2026-10-05, a screenshot): the app runs… »).
+- **Les études mises de côté** : `docs/MULTI-USER-PLAN.md`, une étude complète que l'utilisateur a
+  décidé de ne pas lancer (« set aside, Onyx stays single-user »). Elle montre que l'humain arbitre :
+  tout ce que l'IA propose n'est pas fait.
+- **Les règles de travail** : `CLAUDE.md` (kits first, documentation à jour, git sur `main`, publication
+  des paquets, licences MIT). Ce sont les consignes permanentes données à chaque session, une sorte de
+  « contrat » entre l'humain et l'IA.
+- **La correction** : dans les rapports, les sections « Found on the way » et « Not verified » listent les
+  bugs trouvés et ce qui reste à vérifier. L'historique git montre aussi les commits de correction après
+  les retours du Pi.
+
 ## Ébauche de texte (v0, à reprendre)
 
 **La genèse.** Tout est parti d'un loisir : la construction d'une petite borne d'arcade, animée par un
@@ -169,4 +204,5 @@ sur le Pi et le résultat attendu.
 
 - 2026-10-06 : topo reçu, plan et ébauche v0, avantages/inconvénients ajoutés, puis le coût
   (Max 100 €, quota hebdomadaire épuisé, upgrade), les prix des formules, les branches comme
-  illustration de la dispersion (élagage à faire). **En attente des specs.**
+  illustration de la dispersion (élagage à faire), les traces de la méthode dans le dépôt.
+  **En attente des specs.**
