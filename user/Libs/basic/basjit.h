@@ -236,7 +236,9 @@ public:
 		movx (16, (u64) f); blr (16);
 		fmov (r, 0);
 	}
-	// The INTEGER (wide = false) / LONG value of dr, rounded half to even; out of range: a bail-out
+	// The whole number nearest to dr, half to even (an INTEGER: no range to check)
+	void roundWhole (int r) { put (0x1E644000u | (u32) r << 5 | (u32) r); }	// frintn dr, dr
+	// The INTEGER16 (wide = false) / INTEGER32 value of dr, rounded half to even; out of range: a bail-out
 	void roundTo (int r, bool wide)
 	{
 		int ops[1] = { r };
@@ -300,7 +302,7 @@ public:
 			bail (LS, ops, 1);							// (0 or less: the VM's error)
 			callMath (nlog, r);
 			break;
-		case B_CINT: roundTo (r, false); break;
+		case B_CINT: roundWhole (r); break;
 		case B_CLNG: roundTo (r, true); break;
 		case B_CDBL: break;
 		}
@@ -503,7 +505,7 @@ public:
 		case OP_AND: case OP_OR: case OP_XOR: case OP_EQV: case OP_IMP: case OP_NOT:
 		case OP_JMP: case OP_JZ: case OP_JNZ: case OP_NOP:
 			return true;
-		case OP_CONV: return code[pc + 1] == NT_INT || code[pc + 1] == NT_LNG;
+		case OP_CONV: return code[pc + 1] == NT_INT || code[pc + 1] == NT_LNG || code[pc + 1] == NT_I64;
 		case OP_BI: return builtinArgs (code[pc + 1]) == code[pc + 2];
 		case OP_REFG: return code[pc + 1] >= 0 && code[pc + 1] < P->nglobals;
 		case OP_REFL: return procAt[pc] >= 0 && code[pc + 1] >= 0 && code[pc + 1] < P->procs[procAt[pc]].nlocals;
@@ -857,7 +859,7 @@ public:
 				jumpTo (code[pc + 1], op == OP_JZ ? EQ : NE);
 				break;
 			}
-			case OP_CONV: { int r = popReg (); roundTo (r, code[pc + 1] == NT_LNG); pushReg (r); break; }
+			case OP_CONV: { int r = popReg (); if (code[pc + 1] == NT_I64) roundWhole (r); else roundTo (r, code[pc + 1] == NT_LNG); pushReg (r); break; }
 			case OP_ALDG: case OP_ALDL:
 			{
 				int nd = code[pc + 2], idx[2];

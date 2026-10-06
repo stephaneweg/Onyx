@@ -33,6 +33,33 @@ using namespace uikit;
 #define ROWH	78
 #define COLW2	(W / 2)
 
+// The links' names and texts are shown in the system's language (TR (l.name), TR (l.text)): the
+// card's applets' words, said here for tools/lang/check.py (a new applet: its two lines here, and
+// in lang/fr.txt).
+// TR: Theme
+// TR: Colours of the windows, menu bar, dock; the wallpaper
+// TR: Display
+// TR: The screen's resolution, changed at once
+// TR: Panel
+// TR: The dock's drawers and launchers; the workspaces
+// TR: Sound
+// TR: The volume, mute, a test sound
+// TR: Preload
+// TR: The programs loaded at boot and kept in memory
+// TR: Keyboard & Mouse
+// TR: The keyboard's layout; the mouse wheel's speed
+// TR: Language & Region
+// TR: The language of the programs; the time zone
+// TR: Printers
+// TR: The printers (PDF, network), the default one, a test page, the print queue
+// TR: Gamepad
+// TR: The USB gamepads: what they send, their buttons mapped
+// TR: Wi-Fi
+// TR: The Wi-Fi network: its name, its password, the country
+// TR: Packages
+// TR: Updates, the apps installed, more apps to install
+// TR: App Settings
+// TR: An app's own settings (its config.ini), key by key
 struct Link { char file[48]; char name[40]; char target[64]; char text[120]; unsigned *icon; int iw, ih; };
 static Link g_link[MAXL];
 static int  g_nl;
@@ -137,7 +164,7 @@ static void start_applet (int i)
 	char name[48]; int m = 0; lx_cat (name, sizeof name, &m, path ? "applet" : t);
 	if (!kapi_exec_as (exe, args, name))
 	{
-		fs_copy (g_status, "Cannot start this applet (its program is missing?)", sizeof g_status);
+		fs_copy (g_status, TR ("Cannot start this applet (its program is missing?)"), sizeof g_status);
 		g_cur = i; g_pid = 0; g_closing = false;
 		return;
 	}
@@ -186,7 +213,7 @@ public:
 	bool inPane = false;
 	int wanted = -1;			// the applet to show once the one shown has ended
 
-	ControlRoot () : Root (W, H, "Control Panel") {}
+	ControlRoot () : Root (W, H, TR ("Control Panel")) {}
 
 	// ---- drawing ---------------------------------------------------------------------------
 	void drawBar ()
@@ -195,7 +222,7 @@ public:
 		canvas.fillRect (0, 0, W, HDR, C_BG);
 		uk_sunken (canvas, 10, 7, W - 20, HDR - 14, 6, uk_mix (C_BG, C_FIELD, 150), false);
 		int fh = uk_fh (), y = (HDR - fh) / 2, x = 22;
-		const char *root = "Control Panel";
+		const char *root = TR ("Control Panel");
 		int rw = uk_text_w (root, 2);
 		bool link = g_cur >= 0;
 		unsigned ink = link ? (crumbHot ? C_ACCENT : C_FIELD_TEXT) : uk_tone (C_ACCENT, 84);
@@ -207,7 +234,7 @@ public:
 		{
 			uk_glyph (canvas, WKG_CHEV_RIGHT, x + 2, HDR / 2, 9, uk_mix (C_FIELD, C_FIELD_TEXT, 120));
 			x += 16;
-			const char *nm = g_link[g_cur].name;
+			const char *nm = TR (g_link[g_cur].name);
 			uk_text (canvas, x, y, nm, uk_tone (C_ACCENT, 84), 2);
 			canvas.fillRect (x, y + fh + 1, uk_text_w (nm, 2), 2, C_ACCENT);
 		}
@@ -219,7 +246,7 @@ public:
 		canvas.fillRect (0, HDR, W, PH, C_BG);
 		if (g_nl == 0)
 		{
-			uk_text_c (canvas, 0, HDR, W, 60, "No applet: SD:/apps/control.app/applets/*.lnk", C_DIS);
+			uk_text_c (canvas, 0, HDR, W, 60, TR ("No applet: SD:/apps/control.app/applets/*.lnk"), C_DIS);
 			return;
 		}
 		int fh = uk_fh ();
@@ -240,10 +267,10 @@ public:
 						if (c != 0xFF00FF && py >= HDR && py < H) canvas.pixel (x + 12 + k, py, c);
 					}
 			unsigned ink = on ? uk_hilite_ink (down == i) : C_TEXT;
-			uk_text (canvas, x + 64, y + 10, l.name, ink, 2);
+			uk_text (canvas, x + 64, y + 10, TR (l.name), ink, 2);
 			// the help, over two lines at most
 			int maxw = w - 76, line = 0;				// (measured in pixels: the face is proportional)
-			const char *p = l.text;
+			const char *p = TR (l.text);
 			while (*p && line < 2)
 			{
 				int len = 0, cut = -1;
@@ -267,7 +294,7 @@ public:
 		if (g_pid <= 0 || g_closing)
 		{
 			canvas.fillRect (0, HDR, W, PH, C_BG);
-			const char *s = g_status[0] ? g_status : g_closing ? "Closing..." : "Starting...";
+			const char *s = g_status[0] ? g_status : g_closing ? TR ("Closing...") : TR ("Starting...");
 			uk_text_c (canvas, 0, HDR, W, PH, s, C_DIS);
 			return;
 		}
@@ -312,7 +339,7 @@ public:
 			g_pid = 0; g_cur = -1; g_closing = false;
 		}
 		if (g_cur >= 0 && !g_closing && g_pid == 0 && !g_status[0] && now - g_t0 > 500)
-			fs_copy (g_status, "The applet did not start.", sizeof g_status);
+			fs_copy (g_status, TR ("The applet did not start."), sizeof g_status);
 		if (g_cur < 0 && wanted >= 0) { int w = wanted; wanted = -1; start_applet (w); }
 		if (g_fresh || g_cur < 0 || g_closing) { g_fresh = false; invalidate (true); }
 	}
@@ -357,7 +384,7 @@ public:
 		inPane = false; ptrButtons = 0;
 		if (mx < 0) { if (hot >= 0 || crumbHot) { hot = -1; crumbHot = false; invalidate (true); } pressed = false; return false; }
 		// the path bar: "Control Panel" -> the list
-		bool onCrumb = my < HDR && mx >= 16 && mx < 24 + uk_text_w ("Control Panel", 2) && g_cur >= 0;
+		bool onCrumb = my < HDR && mx >= 16 && mx < 24 + uk_text_w (TR ("Control Panel"), 2) && g_cur >= 0;
 		if (onCrumb != crumbHot) { crumbHot = onCrumb; invalidate (true); }
 		int h = -1;
 		if (g_cur < 0 && listH () > PH)
@@ -438,12 +465,13 @@ static void raise_other (void)
 	struct kapi_win_info L[24];
 	int n = kapi_win_list (L, 24);
 	for (int i = 0; i < n; i++)
-		if (fs_ci_cmp (L[i].title, "Control Panel") == 0) { kapi_win_raise (L[i].id); return; }
+		if (fs_ci_cmp (L[i].title, TR ("Control Panel")) == 0) { kapi_win_raise (L[i].id); return; }
 }
 
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	uk_lang_init ();				// the words in the system's language (the face first: UTF-8)
 	if (!kapi_ipc_register (AP_SERVICE)) { raise_other (); return 0; }
 	g_self = kapi_ipc_lookup (AP_SERVICE);
 	char args[64]; kapi_get_args (args, sizeof args);
@@ -453,13 +481,13 @@ int main (void)
 	g_root = &root;
 	g_sid = kapi_surface_create (W, PH);
 	g_spx = g_sid > 0 ? kapi_surface_map (g_sid) : 0;
-	if (g_spx == 0) { g_sid = 0; notify ("Control Panel", "No memory for the applets' pane."); }
-	g_menu.menu ("Settings");
-	g_menu.item ("All Settings", "", 0, on_home);
+	if (g_spx == 0) { g_sid = 0; notify (TR ("Control Panel"), TR ("No memory for the applets' pane.")); }
+	g_menu.menu (TR ("Settings"));
+	g_menu.item (TR ("All Settings"), "", 0, on_home);
 	g_menu.separator ();
-	for (int i = 0; i < g_nl && i < 16; i++) g_menu.item (g_link[i].name, "", 0, ON_L[i]);
+	for (int i = 0; i < g_nl && i < 16; i++) g_menu.item (TR (g_link[i].name), "", 0, ON_L[i]);
 	g_menu.separator ();
-	g_menu.item ("Quit", "^Q", UK_CTRL ('Q'), on_quit);
+	g_menu.item (TR ("Quit"), "^Q", UK_CTRL ('Q'), on_quit);
 	g_menu.publish ();
 	trim (args);
 	if (args[0])

@@ -1,0 +1,17 @@
+# App Settings's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included); a key "context|English" is a TRC's.
+  (no settings yet)	  (pas encore de paramètres)
+A key is needed.	Il faut une clé.
+App Settings	Paramètres des applications
+Apps	Applications
+Changed: Save writes it.	Modifié : Enregistrer l'écrit.
+Could not write the file.	Le fichier n'a pas pu être écrit.
+Delete	Supprimer
+Deleted: Save writes it.	Supprimé : Enregistrer l'écrit.
+Key	Clé
+Pick an app (* : it has settings)	Choisissez une application (* : elle a des paramètres)
+Pick an app on the left first.	Choisissez d'abord une application à gauche.
+Reload	Recharger
+Saved: the app takes it when it starts again.	Enregistré : l'application le prend à son prochain démarrage.
+Set	Définir
+Value	Valeur

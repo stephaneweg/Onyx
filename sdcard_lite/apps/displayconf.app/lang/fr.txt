@@ -1,0 +1,33 @@
+# The Display applet's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included); a key "context|English" is a TRC's.
+Display	Affichage
+Resolution	Résolution
+The screen now: 	L'écran actuellement : 
+Apply	Appliquer
+# four lines of one text
+At once: the desktop and the	Immédiatement : le bureau et les
+windows follow the new size.	fenêtres suivent la nouvelle taille.
+The monitor's own resolution	La résolution native de l'écran
+is the sharpest.	est la plus nette.
+Kept in SD:/cmdline.txt (width= / height=), read at the start.	Conservé dans SD:/cmdline.txt (width= / height=), lu au démarrage.
+Pick a size in the list first.	Choisissez d'abord une taille dans la liste.
+Applied, and kept for the next start.	Appliqué, et conservé pour le prochain démarrage.
+Applied -- but SD:/cmdline.txt could not be written.	Appliqué -- mais SD:/cmdline.txt n'a pas pu être écrit.
+Kept: applied at the next start (this kernel cannot change it now).	Conservé : appliqué au prochain démarrage (ce noyau ne peut pas la changer maintenant).
+SD:/cmdline.txt could not be written.	SD:/cmdline.txt n'a pas pu être écrit.
+Not now: a full-screen app owns the display. Kept for the next start.	Pas maintenant : une application occupe tout l'écran. Conservé pour le prochain démarrage.
+The firmware refused this size: the screen kept its own.	Le micrologiciel a refusé cette taille : l'écran a gardé la sienne.
+This size is not possible.	Cette taille n'est pas possible.
+# the sizes
+4:3, XGA (Onyx's default)	4:3, XGA (par défaut dans Onyx)
+16:9, HD	16:9, HD
+16:10, WXGA	16:10, WXGA
+5:4, SXGA	5:4, SXGA
+16:9, laptop screens	16:9, écrans de portables
+16:10, WXGA+	16:10, WXGA+
+16:9, HD+	16:9, HD+
+4:3, UXGA	4:3, UXGA
+16:10, WSXGA+	16:10, WSXGA+
+16:9, Full HD	16:9, Full HD
+16:10, WUXGA	16:10, WUXGA
+16:9, QHD	16:9, QHD

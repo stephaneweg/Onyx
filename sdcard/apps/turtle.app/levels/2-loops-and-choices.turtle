@@ -10,9 +10,9 @@ title.fr = Le long couloir
 concept = repeat
 words = FORWARD BACK LEFT RIGHT PICK
 text = Five coins, two squares apart. Copying the same lines five times works -- a REPEAT loop is shorter, and gets three stars.
-text.fr = Cinq pièces, à deux cases l'une de l'autre. Recopier cinq fois les mêmes lignes marche -- une boucle REPETE est plus courte, et vaut trois étoiles.
+text.fr = Cinq pièces, à deux cases l'une de l'autre. Recopier cinq fois les mêmes lignes marche -- une boucle REPETER est plus courte, et vaut trois étoiles.
 hint = REPEAT 5 ... END REPEAT around FORWARD 2 and PICK, then one last FORWARD 2.
-hint.fr = REPETE 5 ... FIN REPETE autour de AVANCE 2 et RAMASSE, puis un dernier AVANCE 2.
+hint.fr = REPETER 5 ... FIN REPETER autour de AVANCER 2 et RAMASSER, puis un dernier AVANCER 2.
 par = 4 7
 map =
 | ###############
@@ -36,7 +36,7 @@ words = FORWARD BACK LEFT RIGHT PICK
 text = A coin in three corners of the room. What do you repeat at each corner?
 text.fr = Une pièce dans trois coins de la salle. Que répètes-tu à chaque coin ?
 hint = At each corner: FORWARD 4, PICK, RIGHT.
-hint.fr = À chaque coin : AVANCE 4, RAMASSE, DROITE.
+hint.fr = À chaque coin : AVANCER 4, RAMASSER, DROITE.
 par = 4 7
 map =
 | #######
@@ -62,7 +62,7 @@ words = FORWARD BACK LEFT RIGHT
 text = Down the stairs, one step at a time. Find the pattern that repeats.
 text.fr = Descends l'escalier, une marche à la fois. Trouve ce qui se répète.
 hint = One step: FORWARD, RIGHT, FORWARD, LEFT. How many steps?
-hint.fr = Une marche : AVANCE, DROITE, AVANCE, GAUCHE. Combien de marches ?
+hint.fr = Une marche : AVANCER, DROITE, AVANCER, GAUCHE. Combien de marches ?
 par = 5 9
 map =
 | ########
@@ -90,7 +90,7 @@ words = FORWARD BACK LEFT RIGHT PICK
 text = 1 square, then 2, then 3, then 4, then 5 -- a coin at the end of each leg but the last. FOR counts for you.
 text.fr = 1 case, puis 2, puis 3, puis 4, puis 5 -- une pièce au bout de chaque trajet sauf le dernier. POUR compte pour toi.
 hint = FOR i = 1 TO 4 with FORWARD i, PICK and RIGHT inside; then the last leg: FORWARD 5.
-hint.fr = POUR i = 1 JUSQUA 4 avec AVANCE i, RAMASSE et DROITE dedans ; puis le dernier trajet : AVANCE 5.
+hint.fr = POUR i = 1 JUSQUE 4 avec AVANCER i, RAMASSER et DROITE dedans ; puis le dernier trajet : AVANCER 5.
 par = 5 8
 map =
 | ##########
@@ -118,9 +118,9 @@ title.fr = Des pièces ici et là
 concept = if
 words = FORWARD BACK LEFT RIGHT PICK ITEM
 text = The coins are not evenly spaced. Step one square at a time and PICK only IF there is an ITEM ().
-text.fr = Les pièces ne sont pas régulièrement espacées. Avance case par case et RAMASSE seulement SI il y a un OBJET ().
+text.fr = Les pièces ne sont pas régulièrement espacées. Avance case par case et RAMASSER seulement SI il y a un OBJET ().
 hint = REPEAT 11: FORWARD, then IF ITEM () THEN PICK.
-hint.fr = REPETE 11 : AVANCE, puis SI OBJET () ALORS RAMASSE.
+hint.fr = REPETER 11 : AVANCER, puis SI OBJET () ALORS RAMASSER.
 par = 3 5
 map =
 | ##############
@@ -139,9 +139,9 @@ title.fr = Attention au mur
 concept = sensor
 words = FORWARD BACK LEFT RIGHT WALL
 text = Do not count the squares: let the turtle look. IF WALL () THEN RIGHT ELSE FORWARD.
-text.fr = Ne compte pas les cases : laisse la tortue regarder. SI MUR () ALORS DROITE SINON AVANCE.
+text.fr = Ne compte pas les cases : laisse la tortue regarder. SI MUR () ALORS DROITE SINON AVANCER.
 hint = REPEAT 16 times: IF WALL () THEN RIGHT ELSE FORWARD.
-hint.fr = REPETE 16 fois : SI MUR () ALORS DROITE SINON AVANCE.
+hint.fr = REPETER 16 fois : SI MUR () ALORS DROITE SINON AVANCER.
 par = 2 4
 map =
 | #########
@@ -163,7 +163,7 @@ words = FORWARD BACK LEFT RIGHT WALL WALLLEFT WALLRIGHT
 text = At each wall the path turns -- sometimes right, sometimes left. WALLRIGHT () tells which.
 text.fr = À chaque mur le chemin tourne -- parfois à droite, parfois à gauche. MURDROITE () te dit de quel côté.
 hint = If there is a wall ahead: IF WALLRIGHT () THEN LEFT ELSE RIGHT. Else FORWARD. Repeat it 30 times.
-hint.fr = S'il y a un mur devant : SI MURDROITE () ALORS GAUCHE SINON DROITE. Sinon AVANCE. Répète-le 30 fois.
+hint.fr = S'il y a un mur devant : SI MURDROITE () ALORS GAUCHE SINON DROITE. Sinon AVANCER. Répète-le 30 fois.
 par = 5 7
 map =
 | ##########
@@ -191,7 +191,7 @@ words = FORWARD BACK LEFT RIGHT WALL ONGOAL
 text = A very long corridor. Rather than counting, repeat WHILE the turtle is NOT ONGOAL ().
 text.fr = Un très long couloir. Plutôt que de compter, répète TANTQUE la tortue n'est pas SURBUT ().
 hint = WHILE NOT ONGOAL () ... WEND, with inside: IF WALL () THEN RIGHT ELSE FORWARD.
-hint.fr = TANTQUE NON SURBUT () ... FINTANTQUE, avec dedans : SI MUR () ALORS DROITE SINON AVANCE.
+hint.fr = TANTQUE NON SURBUT () ... FIN TANTQUE, avec dedans : SI MUR () ALORS DROITE SINON AVANCER.
 par = 2 4
 map =
 | #######################
@@ -213,7 +213,7 @@ words = FORWARD BACK LEFT RIGHT WALL WALLLEFT WALLRIGHT ONGOAL
 text = Find the way out. Keep your right hand on the wall!
 text.fr = Trouve la sortie. Garde la main droite sur le mur !
 hint = WHILE NOT ONGOAL (): IF NOT WALLRIGHT () THEN RIGHT and FORWARD, ELSEIF NOT WALL () THEN FORWARD, ELSE LEFT.
-hint.fr = TANTQUE NON SURBUT () : SI NON MURDROITE () ALORS DROITE et AVANCE, SINONSI NON MUR () ALORS AVANCE, SINON GAUCHE.
+hint.fr = TANTQUE NON SURBUT () : SI NON MURDROITE () ALORS DROITE et AVANCER, SINON SI NON MUR () ALORS AVANCER, SINON GAUCHE.
 par = 7 10
 map =
 | ###########
@@ -246,7 +246,7 @@ words = FORWARD BACK LEFT RIGHT PICK WALL WALLLEFT WALLRIGHT ONGOAL ITEM
 text = The same trick, but coins lie in the maze: pick each one on the way.
 text.fr = La même astuce, mais des pièces traînent dans le labyrinthe : ramasse-les en chemin.
 hint = Add IF ITEM () THEN PICK at the start of the loop.
-hint.fr = Ajoute SI OBJET () ALORS RAMASSE au début de la boucle.
+hint.fr = Ajoute SI OBJET () ALORS RAMASSER au début de la boucle.
 par = 8 12
 map =
 | #############

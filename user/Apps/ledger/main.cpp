@@ -61,19 +61,24 @@ static const NavItem NAV[] = {
 	{ -1, "" }, { P_SETTINGS, "Settings" } };
 enum { NNAV = sizeof NAV / sizeof NAV[0], ITEM_H = 30, CAP_H = 24, NAV_Y = 104 };
 
-// The languages of Ledger's words (SD:/apps/ledger.app/lang/<code>.txt; English: the sources'), chosen at the
-// side bar's foot or in the File menu: Ledger starts again in that language, on the same books.
+// Ledger's words are in the system's language (SD:/apps/ledger.app/lang/<code>.txt; English: the sources'):
+// the Control Panel's Language & Region applet chooses it (uikit/lang.h). The Mac's Ledger (pc/macOS: no Control
+// Panel there) has its own switch -- the side bar's foot, the File menu: it starts again in that language, on the
+// same books.
+#ifdef __APPLE__
+#define LEDGER_LANG_SWITCH	1
 struct LangItem { const char *code, *tag, *name; };
 static const LangItem LANGS[] = { { "en", "EN", "English" }, { "fr", "FR", "Fran\xC3\xA7" "ais" } };
 enum { NLANG = sizeof LANGS / sizeof LANGS[0] };
 static void choose_lang (const char *code);
+#endif
 
 class SideBar : public Widget
 {
 public:
 	ChoiceBox *years; const char *ynames[MAXYEARS]; char ybuf[MAXYEARS][48];
-	int cur, hot, langHot; int badge[P_COUNT]; unsigned badgeCol[P_COUNT];
-	SideBar () : Widget (0, 0, SIDE_W, H), cur (P_OVERVIEW), hot (-1), langHot (-1)
+	int cur, hot, langHot = -1; int badge[P_COUNT]; unsigned badgeCol[P_COUNT];
+	SideBar () : Widget (0, 0, SIDE_W, H), cur (P_OVERVIEW), hot (-1)
 	{
 		anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_BOTTOM;
 		years = new ChoiceBox (12, 62, SIDE_W - 24); years->onChange = on_year; years->tip = TR ("The fiscal year the pages show");
@@ -165,7 +170,7 @@ public:
 				draw_pill (canvas, width - 16 - pw, y + (ITEM_H - 18) / 2, 18, b, badgeCol[n.page], true);
 			}
 		}
-		// the file, at the foot; the language at its right (EN | FR)
+		// the file, at the foot
 		int fy = height - 30;
 		uk_etch_h (canvas, 12, fy - 8, width - 24, bg);
 		if (g_path[0])
@@ -175,6 +180,7 @@ public:
 			uk_rbox (canvas, 16, fy + 7, 8, 8, 4, c, c);
 			text_fit_l (canvas, 30, fy, langX (0) - 36, 22, f, dim);
 		}
+#ifdef LEDGER_LANG_SWITCH
 		for (int k = 0; k < NLANG; k++)
 		{
 			bool on = ci_eq (uk_lang (), LANGS[k].code), h = k == langHot;
@@ -183,7 +189,9 @@ public:
 			else uk_rbox (canvas, x, fy + 1, LANG_W, 20, 5, h ? uk_tone (bg, 150) : bg, uk_tone (bg, 92));
 			uk_text_c (canvas, x, fy + 1, LANG_W, 20, LANGS[k].tag, on ? uk_ink_for (C_ACCENT) : dim, on ? 2 : 0);
 		}
+#endif
 	}
+#ifdef LEDGER_LANG_SWITCH
 	enum { LANG_W = 30 };
 	int langX (int k) const { return width - 14 - (NLANG - k) * (LANG_W + 4) + 4; }
 	int langAt (int mx, int my) const
@@ -192,6 +200,10 @@ public:
 		for (int k = 0; k < NLANG; k++) if (mx >= langX (k) && mx < langX (k) + LANG_W) return k;
 		return -1;
 	}
+#else
+	int langX (int) const { return width - 8; }
+	int langAt (int, int) const { return -1; }
+#endif
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
 		if (wheel) return false;
@@ -201,8 +213,10 @@ public:
 		if (bl && !pressed)
 		{
 			pressed = true;
-			if (lh >= 0) choose_lang (LANGS[lh].code);
-			else if (h >= 0 && (g_b.nacc || NAV[h].page == P_OVERVIEW)) go (NAV[h].page);
+#ifdef LEDGER_LANG_SWITCH
+			if (lh >= 0) { choose_lang (LANGS[lh].code); return in; }
+#endif
+			if (h >= 0 && (g_b.nacc || NAV[h].page == P_OVERVIEW)) go (NAV[h].page);
 		}
 		else if (!bl) pressed = false;
 		return in;
@@ -566,6 +580,7 @@ static void cmd_pay () { if (books ()) pay_suppliers (); }
 static void cmd_close_year () { if (!books ()) return; go (P_SETTINGS); if (g_sp) { g_sp->show (1); g_sp->years->setSel (g_year); g_sp->closeYear (); } }
 static void cmd_listings () { if (!books ()) return; go (P_VAT); if (g_vp) g_vp->lists (); }
 
+#ifdef LEDGER_LANG_SWITCH
 // ---- the language ----------------------------------------------------------------------------------------------------------------
 static void choose_lang (const char *code)
 {
@@ -577,6 +592,7 @@ static void choose_lang (const char *code)
 }
 static void cmd_lang_en () { choose_lang ("en"); }
 static void cmd_lang_fr () { choose_lang ("fr"); }
+#endif
 
 // ---- the window --------------------------------------------------------------------------------------------------------------------
 class LedgerRoot : public Root
@@ -611,7 +627,7 @@ using namespace lg;
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);	// (FreeType's text: uk_fw / uk_fh follow it)
-	uk_lang_init ();			// the words in the language chosen (before the window and its pages)
+	uk_lang_init ();			// the words in the system's language (before the window and its pages)
 	LedgerRoot root;
 	if (root.canvas.px == 0) return 1;
 	root.attach ();				// (a question asked before run (): its clicks and keys)
@@ -630,9 +646,11 @@ int main (void)
 	menu.item (TR ("Open..."), "^O", UK_CTRL ('O'), cmd_open);
 	menu.separator ();
 	menu.item (TR ("Save a Copy As..."), "", 0, cmd_save_copy);
+#ifdef LEDGER_LANG_SWITCH
 	menu.separator ();
 	menu.item ("English", "", 0, cmd_lang_en);			// (each in its own language)
 	menu.item (LANGS[1].name, "", 0, cmd_lang_fr);
+#endif
 	menu.menu (TRC ("menu", "Edit"));
 	menu.item (TR ("New"), "^N", UK_CTRL ('N'), cmd_new);
 	menu.item (TR ("Save the Document"), "^S", UK_CTRL ('S'), cmd_save);

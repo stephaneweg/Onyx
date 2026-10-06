@@ -16,7 +16,7 @@ static const bas::ExtWord WORDS[] = {
 	{ "STEPIT", W_STEP, 's', "[N" }, { "POSX", W_POS, 'n', "" }, { "NAMEOF$", W_NAME, '$', "N" },
 	{ "BOOM", W_BOOM, 's', "" }, { "COLOR", W_STEP, 's', "N" }, { 0, 0, 0, 0 } };
 static const char *const ALIASES[] = { "AVANCE", "STEPIT", "SI", "IF", "ALORS", "THEN", "FIN", "END", "REPETE", "REPEAT", 0 };
-static const bas::Dialect DIALECT = { WORDS, ALIASES, true };
+static const bas::Dialect DIALECT = { WORDS, ALIASES, true, false };
 
 struct H : bas::Host
 {

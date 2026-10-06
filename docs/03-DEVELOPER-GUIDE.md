@@ -1690,8 +1690,8 @@ alone**.
 > byte for byte, a file edited by hand, a type changed, fields moved, CSV, the order; ASan +
 > UBSan).
 > **Ledger** (`user/Apps/ledger/`, one TU: `main.cpp` includes the rest; **in English or French**: its words
-> `TR (...)`, `sdcard/apps/ledger.app/lang/fr.txt` — uikit's `lang.h` above —, the language chosen at the
-> side bar's foot or in the File menu, Ledger then started again by itself on the same books; the books'
+> `TR (...)`, `sdcard/apps/ledger.app/lang/fr.txt` — uikit's `lang.h` above —, the language the system's (Language &
+> Region), taken at its start; the books'
 > own words — the chart, the printed documents — follow the company's and the party's language as before;
 > integer only — money in
 > **cents** (`money`, a `long long`), VAT rates in hundredths of a percent, quantities in thousandths,
@@ -2179,18 +2179,31 @@ alone**.
 > reason to call it. `sound_status`' rate stays 44100 whatever the output.
 
 > **An app in another language** (`uikit/lang.h`). The sources keep their English words, wrapped:
-> **`TR ("Save")`** is the word in the language the user chose, else the English itself (a `const char *`
+> **`TR ("Save")`** is the word in the system's language, else the English itself (a `const char *`
 > valid for the app's life: it may be kept); **`TRC ("status", "Open")`** looks up `status|Open` first, for
 > a word whose translation depends on where it stands. The catalogues are UTF-8 text, a line a word —
 > `English<TAB>translation` (`\t \n \\` escaped, `#` a comment) —: **`SD:/res/lang/<code>.txt`** for
 > uikit's own words (the dialogs' buttons, the file dialog, the months and days of `Calendar`, the window
-> menu, Cardfile's editors), **`SD:/apps/<app>.app/lang/<code>.txt`** for the app's. The language chosen
-> is `SD:/apps/<app>.app/lang.txt` (`"fr"`; none: English): **`uk_lang_init ()`** first thing in `main`
-> (after a text face is installed, if any), **`uk_lang_choose (code)`** writes it (taken at the next start —
+> menu, Cardfile's editors), **`SD:/apps/<app>.app/lang/<code>.txt`** for the app's. The language
+> is **the system's**: `SD:/etc/system.ini`'s `language=` (`en`, `fr`; none: English), chosen in the Control
+> Panel's Language & Region applet (`langconf`) and in Setup, read through SystemKit
+> (**`systemkit/locale.h`**: `locale_language ()`, `locale_set_language (code)`, the list `locale_language_count /
+> _code / _name`; the time zones too, `locale_zone_*`). **`uk_lang_init ()`** first thing in `main`
+> (after a text face is installed, if any) loads it; an app has **no language switch of its own** (but a port to another system: the Mac's Ledger
+> keeps `SD:/apps/<app>.app/lang.txt` and its EN | FR, `#ifdef __APPLE__`). A program
+> takes the language when it starts (
 > the widgets are made with their words). An app drawing with the bitmap fonts gets the words converted to
 > Latin-1 at load (as its text is drawn: one byte a glyph; the euro `0x80`), one with a face keeps UTF-8.
-> A word missing from a catalogue stays English. Ledger is the first app translated (French: its
-> side bar's EN | FR, File menu); wrap only what is shown — never a file's keys, paths, XML or a string
+> A word missing from a catalogue stays English. A word kept in a table of English words and given to
+> `TR (T[i])` where it is drawn is marked **`TRN ("word")`** in the table (the word itself), or listed in a
+> comment `// TR: word` (a word that comes from a file or a kit). **`python tools/lang/check.py <app>`** (or
+> `--all`) lists the words of the sources that a catalogue has not, and the catalogue's lines no source uses;
+> `--keys <app>` prints an app's words to start a catalogue. **Every new app is translated** (English + French)
+> **from its first version**; the older ones are translated as they are worked on -- done: Setup, the Control
+> Panel and its applets, the Terminal, Ledger, Turtle Quest (its own `L2 (en, fr)` pairs and its levels'
+> `.fr` texts; `locale_language ()` at its start). `SHOTS_LANG=fr SHOTS_PNG=<folder> sh
+> tools/tests/desktop_sim/shots.sh <app>` renders an app in French on the PC to check that the words fit.
+> Wrap only what is shown — never a file's keys, paths, XML or a string
 > the code compares.
 
 > **Text faces — anti-aliased, proportional text in every widget** (`uikit/text.h`). By default uikit
@@ -3524,8 +3537,19 @@ barwidth = 40
 - **A host's own words: dialects** (`bas::setDialect`, 2026-10-06; made for Turtle Quest): a program that hosts
   BASIC adds statements and functions of its own without touching the language -- a table of `bas::ExtWord`
   (`name`, `id`, `kind` -- `'s'` a statement, `'n'` / `'$'` a function giving a number / a string -- and `args`,
-  the built-ins' spec), word **aliases** (pairs `"AVANCE", "FORWARD"`, `"SI", "IF"`: the lexer replaces the word
-  -- another language's keywords) and the block **`REPEAT n ... END REPEAT`** (`Dialect::repeat`; the count is
+  the built-ins' spec), word **aliases** (pairs `"AVANCER", "FORWARD"`, `"SI", "IF"`: the lexer replaces the word
+  -- another language's keywords; the word before a dot too: `CECI.n` is `THIS.n`), **`Dialect::twoWords`** (such
+  a language's ELSEIF and WEND written in two words: at a statement's start `ELSE IF` is `ELSEIF` and `END WHILE`
+  is `WEND` -- French's `SINON SI`, `FIN TANTQUE`; inside a one-line IF, `ELSE IF` stays a nested IF). Turtle Quest
+  sets one dialect whatever the language (a program compiles in French as in English).
+- **Two kinds of numbers** (the user, 2026-10-06; `basint.h`'s `NT_*`): `INTEGER` (= `INTEGER64`, `%`, `DEFINT`:
+  `NT_I64`, a whole number rounded at a store, kept as a double -- exact up to 2^53) and `REAL` (= `REAL64`, a
+  name without a type: `NT_SNG`, a double shown with 7 digits); `BYTE` (`NT_BYTE`, 0..255); the sizes, for
+  what is written byte for byte (a TYPE's field, GET / PUT: `ntKind ()` -> `LK_*`, `ntSize ()`): `INTEGER16`
+  (`NT_INT`), `INTEGER32` and QBasic's `LONG`, `&` (`NT_LNG`), `REAL32` and `SINGLE`, `!` (`NT_R32`), `DOUBLE`,
+  `#` (`NT_DBL`: a REAL shown with 15 digits). `LK_I64` is a whole number of 8 bytes, `LK_BYTE` one byte. The
+  JIT rounds an INTEGER inline (`roundWhole`, no range to check); a store into a BYTE leaves the function to
+  the VMare rounded at a store and which keep every digit; the JIT leaves a function that converts to them to the VM and the block **`REPEAT n ... END REPEAT`** (`Dialect::repeat`; the count is
   evaluated once, into a hidden variable). The words are reserved while the dialect is set and take precedence
   over a built-in of the same name (a turtle's `COLOR`). They compile to `OP_ST S_EXT` / `OP_BI B_EXT` with the
   word's id as the first argument; the VM calls **`Host::ext (id, args, argc, result, why, cap)`** -- false is a

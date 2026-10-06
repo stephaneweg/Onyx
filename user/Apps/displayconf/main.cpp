@@ -21,18 +21,18 @@ using namespace uikit;
 struct Mode { int w, h; const char *what; };
 static const Mode MODES[] =
 {
-	{ 1024,  768, "4:3, XGA (Onyx's default)" },
-	{ 1280,  720, "16:9, HD" },
-	{ 1280,  800, "16:10, WXGA" },
-	{ 1280, 1024, "5:4, SXGA" },
-	{ 1366,  768, "16:9, laptop screens" },
-	{ 1440,  900, "16:10, WXGA+" },
-	{ 1600,  900, "16:9, HD+" },
-	{ 1600, 1200, "4:3, UXGA" },
-	{ 1680, 1050, "16:10, WSXGA+" },
-	{ 1920, 1080, "16:9, Full HD" },
-	{ 1920, 1200, "16:10, WUXGA" },
-	{ 2560, 1440, "16:9, QHD" },
+	{ 1024,  768, TRN ("4:3, XGA (Onyx's default)") },
+	{ 1280,  720, TRN ("16:9, HD") },
+	{ 1280,  800, TRN ("16:10, WXGA") },
+	{ 1280, 1024, TRN ("5:4, SXGA") },
+	{ 1366,  768, TRN ("16:9, laptop screens") },
+	{ 1440,  900, TRN ("16:10, WXGA+") },
+	{ 1600,  900, TRN ("16:9, HD+") },
+	{ 1600, 1200, TRN ("4:3, UXGA") },
+	{ 1680, 1050, TRN ("16:10, WSXGA+") },
+	{ 1920, 1080, TRN ("16:9, Full HD") },
+	{ 1920, 1200, TRN ("16:10, WUXGA") },
+	{ 2560, 1440, TRN ("16:9, QHD") },
 };
 #define NMODES	((int) (sizeof MODES / sizeof MODES[0]))
 
@@ -45,7 +45,7 @@ static int put_int (char *b, int n, int v) { return n + ax_itoa (v, b + n); }
 static void show_now (void)
 {
 	int w = 0, h = 0; kapi_screen_size (&w, &h);
-	char s[64]; int n = put_str (s, 0, "The screen now: ");
+	char s[64]; int n = put_str (s, 0, TR ("The screen now: "));
 	n = put_int (s, n, w); n = put_str (s, n, " x "); n = put_int (s, n, h); s[n] = 0;
 	g_now->setText (s);
 	for (int i = 0; i < NMODES; i++) if (MODES[i].w == w && MODES[i].h == h) g_list->setSel (i);
@@ -81,36 +81,37 @@ static bool save_cmdline (int w, int h)
 static void on_apply (Widget &)
 {
 	int i = g_list->sel;
-	if (i < 0 || i >= NMODES) { g_status->setText ("Pick a size in the list first."); return; }
+	if (i < 0 || i >= NMODES) { g_status->setText (TR ("Pick a size in the list first.")); return; }
 	int w = MODES[i].w, h = MODES[i].h;
 	bool saved = save_cmdline (w, h);
 	int r = kapi_screen_set (w, h);
 	if (r == 0)
 	{
 		kapi_exec ("SD:apps/voronoy.app/main", "");	// the wallpaper, at the new size
-		g_status->setText (saved ? "Applied, and kept for the next start." : "Applied -- but SD:/cmdline.txt could not be written.");
+		g_status->setText (saved ? TR ("Applied, and kept for the next start.") : TR ("Applied -- but SD:/cmdline.txt could not be written."));
 	}
-	else if (r == -4) g_status->setText (saved ? "Kept: applied at the next start (this kernel cannot change it now)." : "SD:/cmdline.txt could not be written.");
-	else if (r == -2) g_status->setText ("Not now: a full-screen app owns the display. Kept for the next start.");
-	else if (r == -3) g_status->setText ("The firmware refused this size: the screen kept its own.");
-	else g_status->setText ("This size is not possible.");
+	else if (r == -4) g_status->setText (saved ? TR ("Kept: applied at the next start (this kernel cannot change it now).") : TR ("SD:/cmdline.txt could not be written."));
+	else if (r == -2) g_status->setText (TR ("Not now: a full-screen app owns the display. Kept for the next start."));
+	else if (r == -3) g_status->setText (TR ("The firmware refused this size: the screen kept its own."));
+	else g_status->setText (TR ("This size is not possible."));
 	show_now ();
 }
 
 class DisplayRoot : public Root
 {
 public:
-	DisplayRoot () : Root (W, H, "Display") {}
+	DisplayRoot () : Root (W, H, TR ("Display")) {}
 	void onDisplayResize (int, int) override { show_now (); }
 };
 
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	uk_lang_init ();				// the words in the system's language (the face first: UTF-8)
 	DisplayRoot root;
 	if (root.canvas.px == 0) return 1;
 	int X = root.width > W ? (root.width - W) / 2 : 0;
-	GroupBox *gs = new GroupBox (X + 10, 8, W - 20, 330, "Resolution");
+	GroupBox *gs = new GroupBox (X + 10, 8, W - 20, 330, TR ("Resolution"));
 	root.addChild (gs);
 	int ct = gs->contentTop () + 6;
 	g_now = new Label (14, ct, W - 60, 20, "", C_TEXT, gs->bg); gs->addChild (g_now);
@@ -119,19 +120,19 @@ int main (void)
 	{
 		char s[64]; int n = put_int (s, 0, MODES[i].w); n = put_str (s, n, " x "); n = put_int (s, n, MODES[i].h);
 		while (n < 13) s[n++] = ' ';
-		n = put_str (s, n, MODES[i].what); s[n] = 0;
+		n = put_str (s, n, TR (MODES[i].what)); s[n] = 0;
 		g_list->add (s);
 	}
 	gs->addChild (g_list);
-	gs->addChild (new Button (360, ct + 30, 150, 30, "Apply", on_apply));
-	gs->addChild (new Label (360, ct + 74, 300, 20, "At once: the desktop and the", C_DIS, gs->bg));
-	gs->addChild (new Label (360, ct + 94, 300, 20, "windows follow the new size.", C_DIS, gs->bg));
-	gs->addChild (new Label (360, ct + 124, 300, 20, "The monitor's own resolution", C_DIS, gs->bg));
-	gs->addChild (new Label (360, ct + 144, 300, 20, "is the sharpest.", C_DIS, gs->bg));
+	gs->addChild (new Button (360, ct + 30, 150, 30, TR ("Apply"), on_apply));
+	gs->addChild (new Label (360, ct + 74, 300, 20, TR ("At once: the desktop and the"), C_DIS, gs->bg));
+	gs->addChild (new Label (360, ct + 94, 300, 20, TR ("windows follow the new size."), C_DIS, gs->bg));
+	gs->addChild (new Label (360, ct + 124, 300, 20, TR ("The monitor's own resolution"), C_DIS, gs->bg));
+	gs->addChild (new Label (360, ct + 144, 300, 20, TR ("is the sharpest."), C_DIS, gs->bg));
 
 	g_status = new Label (X + 12, 350, W - 24, 22, "", C_TEXT, root.bg);
 	root.addChild (g_status);
-	root.addChild (new Label (X + 12, H - 60, W - 24, 20, "Kept in SD:/cmdline.txt (width= / height=), read at the start.", C_DIS, root.bg));
+	root.addChild (new Label (X + 12, H - 60, W - 24, 20, TR ("Kept in SD:/cmdline.txt (width= / height=), read at the start."), C_DIS, root.bg));
 	show_now ();
 	root.run ();
 	return 0;

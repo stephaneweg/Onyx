@@ -1,8 +1,9 @@
 //
 // apps/setup/system.h -- what the first-run wizard changes on the card and in the running system:
-// the time zones (their summer time), SD:/etc/system.ini's keys, SD:/etc/wpa_supplicant.conf,
-// SD:/cmdline.txt's size, the theme and the wallpaper, SD:/etc/autostart (the services, the lines
-// held back while the wizard runs), the processes. A newlib app: the C library's string functions.
+// SD:/etc/system.ini's keys (ntp, hostname), SD:/etc/wpa_supplicant.conf, SD:/cmdline.txt's size,
+// SD:/etc/autostart (the services, the lines held back while the wizard runs), the processes. The
+// language and the time zones (their summer time, system.ini's language=, timezone=, zone=) are
+// SystemKit's: systemkit/locale.h. A newlib app: the C library's string functions.
 //
 #ifndef _setup_system_h
 #define _setup_system_h
@@ -55,55 +56,6 @@ static bool ini_set (const char *path, const char *key, const char *value)
 	}
 	if (!done) o += snprintf (out + o, sizeof out - o, "%s=%s\n", key, value);
 	return file_write (path, out, o);
-}
-
-// ---- the time zones -----------------------------------------------------------------------------------------
-enum { DST_NONE, DST_EU, DST_US };
-struct Zone { const char *city; int std, dst; };
-static const Zone ZONES[] = {
-	{ "Brussels", 60, DST_EU }, { "Paris", 60, DST_EU }, { "Amsterdam", 60, DST_EU }, { "Luxembourg", 60, DST_EU },
-	{ "Berlin", 60, DST_EU }, { "Zurich", 60, DST_EU }, { "Vienna", 60, DST_EU }, { "Rome", 60, DST_EU },
-	{ "Madrid", 60, DST_EU }, { "Stockholm", 60, DST_EU }, { "Warsaw", 60, DST_EU }, { "London", 0, DST_EU },
-	{ "Dublin", 0, DST_EU }, { "Lisbon", 0, DST_EU }, { "Helsinki", 120, DST_EU }, { "Athens", 120, DST_EU },
-	{ "New York", -300, DST_US }, { "Toronto", -300, DST_US }, { "Chicago", -360, DST_US }, { "Denver", -420, DST_US },
-	{ "Los Angeles", -480, DST_US }, { "Tokyo", 540, DST_NONE }, { "UTC", 0, DST_NONE } };
-#define NZONES	((int) (sizeof ZONES / sizeof ZONES[0]))
-
-static int dow (int y, int m, int d)			// 0 = Sunday (Sakamoto)
-{
-	static const int t[] = { 0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4 };
-	if (m < 3) y--;
-	return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
-}
-// Is it summer time today by the rule? (The day only: the hour of the change is not looked at.)
-static bool summer (int rule)
-{
-	int y = 0, mo = 0, d = 0, h = 0, mi = 0;
-	kapi_get_datetime (&y, &mo, &d, &h, &mi, 0);
-	if (y < 2000 || mo < 1 || mo > 12) return false;	// (no clock yet)
-	if (rule == DST_EU)
-	{
-		int mar = 31 - dow (y, 3, 31), oct = 31 - dow (y, 10, 31);	// the last Sundays
-		return (mo > 3 && mo < 10) || (mo == 3 && d >= mar) || (mo == 10 && d < oct);
-	}
-	if (rule == DST_US)
-	{
-		int mar = 1 + (7 - dow (y, 3, 1)) % 7 + 7, nov = 1 + (7 - dow (y, 11, 1)) % 7;	// 2nd Sunday of March, 1st of November
-		return (mo > 3 && mo < 11) || (mo == 3 && d >= mar) || (mo == 11 && d < nov);
-	}
-	return false;
-}
-static int zone_offset (int z) { return ZONES[z].std + (summer (ZONES[z].dst) ? 60 : 0); }
-// "Brussels  (UTC+2, summer time)"
-static void zone_label (int z, char *out, int cap)
-{
-	int m = zone_offset (z), a = m < 0 ? -m : m;
-	char off[16];
-	if (a % 60) snprintf (off, sizeof off, "UTC%c%d:%02d", m < 0 ? '-' : '+', a / 60, a % 60);
-	else if (m) snprintf (off, sizeof off, "UTC%c%d", m < 0 ? '-' : '+', a / 60);
-	else snprintf (off, sizeof off, "UTC");
-	if (ZONES[z].dst == DST_NONE && !strcmp (ZONES[z].city, "UTC")) snprintf (out, cap, "UTC  (no summer time)");
-	else snprintf (out, cap, "%s  (%s%s)", ZONES[z].city, off, summer (ZONES[z].dst) ? ", summer time" : "");
 }
 
 // ---- Wi-Fi: SD:/etc/wpa_supplicant.conf (the Wi-Fi menu's format) -------------------------------------------

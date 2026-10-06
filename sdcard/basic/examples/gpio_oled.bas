@@ -13,7 +13,7 @@ FOR i = 1 TO 26: READ v: init$ = init$ + CHR$(v): NEXT
 DATA &HAE, &HD5, &H80, &HA8, &H3F, &HD3, 0, &H40, &H8D, &H14, &H20, 0, &HA1, &HC8
 DATA &HDA, &H12, &H81, &HCF, &HD9, &HF1, &HDB, &H40, &HA4, &HA6, &HAF, &HAF
 I2CSEND a, init$
-DIM fb(1023) AS INTEGER
+DIM fb(1023) AS BYTE
 x = 20: y = 20: dx = 3: dy = 2
 PRINT "A ball on the display at &H3C -- a key stops."
 DO
@@ -24,7 +24,7 @@ DO
         IF xx * xx + yy * yy <= 9 THEN px = x + xx: py = y + yy: k = (py \ 8) * 128 + px: fb(k) = fb(k) OR 2 ^ (py MOD 8)
     NEXT: NEXT
     x = x + dx: y = y + dy
-    IF x < 5 OR x > 122 THEN dx = -dx
+    IF x < 5 OR x > 120 THEN dx = -dx
     IF y < 5 OR y > 58 THEN dy = -dy
     s$ = CHR$(0) + CHR$(&H21) + CHR$(0) + CHR$(127) + CHR$(&H22) + CHR$(0) + CHR$(7)
     I2CSEND a, s$                                              ' the whole screen, from its corner

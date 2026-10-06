@@ -43,7 +43,19 @@ private:
 // Value types at compile time: TY_NUM, TY_STR, or a user TYPE (TY_REC + its index).
 enum { TY_NUM = 0, TY_STR = 1, TY_NIL = 2, TY_REC = 16 };		// (TY_NIL: the literal NOTHING)
 // Numeric sub-types (the storage of a variable): single (the default), INTEGER, LONG, DOUBLE.
-enum { NT_SNG = 0, NT_INT, NT_LNG, NT_DBL };
+// A number's type (2026-10-06: two kinds of numbers for the one who writes a program, the sizes said only where
+// the bytes count -- a TYPE's field written to a file, GET / PUT, a structure):
+//   NT_SNG   REAL (and REAL64; a name without a type): a double, shown with 7 digits; 8 bytes
+//   NT_I64   INTEGER (and INTEGER64, _INTEGER64, %, DEFINT): a whole number, rounded at a store; 8 bytes (kept as a
+//            double: exact up to 2^53)
+//   NT_INT   INTEGER16: 2 bytes, -32768..32767        NT_LNG   INTEGER32 (LONG, &): 4 bytes
+//   NT_BYTE  BYTE: 0..255, 1 byte                     NT_R32   REAL32 (SINGLE, !): 4 bytes
+//   NT_DBL   DOUBLE (#): as REAL, shown with 15 digits
+// (The numbers: a .bax holds OP_CONV's -- the new ones came at the end.)
+enum { NT_SNG = 0, NT_INT, NT_LNG, NT_DBL, NT_I64, NT_BYTE, NT_R32 };
+static inline bool ntWhole (int nt) { return nt == NT_INT || nt == NT_LNG || nt == NT_I64 || nt == NT_BYTE; }
+static inline bool ntWide (int nt) { return nt == NT_DBL; }			// (shown with every digit)
+static inline int  ntSize (int nt) { return nt == NT_BYTE ? 1 : nt == NT_INT ? 2 : nt == NT_LNG || nt == NT_R32 ? 4 : 8; }
 
 // ---- bytecode ------------------------------------------------------------------------------
 enum Op
@@ -120,7 +132,8 @@ static inline int opLen (int op)
 }
 
 // GET / PUT # layout of a variable: a scalar kind, or a record (ext = its type).
-enum { LK_SNG = 1, LK_INT, LK_LNG, LK_DBL, LK_VSTR, LK_FSTR, LK_REC };
+enum { LK_SNG = 1, LK_INT, LK_LNG, LK_DBL, LK_VSTR, LK_FSTR, LK_REC, LK_BYTE, LK_I64 };	// (LK_BYTE: one byte, 0..255; LK_I64: a whole number of 8 bytes)
+static inline int ntKind (int nt) { return nt == NT_BYTE ? LK_BYTE : nt == NT_INT ? LK_INT : nt == NT_LNG ? LK_LNG : nt == NT_I64 ? LK_I64 : nt == NT_R32 ? LK_SNG : LK_DBL; }
 
 // Builtin functions (OP_BI) and statements (OP_ST).
 enum Builtin
@@ -173,7 +186,7 @@ struct DataItem { char *text; bool isStr; };
 enum { K_NUM = 0, K_STR = 1, K_NUMARR = 2, K_STRARR = 3, K_REC = 4, K_RECARR = 5 };
 
 // User TYPEs at run time: the field layout (GET / PUT, LEN, new records).
-enum { FK_SNG = LK_SNG, FK_INT = LK_INT, FK_LNG = LK_LNG, FK_DBL = LK_DBL, FK_VSTR = LK_VSTR, FK_FSTR = LK_FSTR, FK_REC = LK_REC };
+enum { FK_SNG = LK_SNG, FK_INT = LK_INT, FK_LNG = LK_LNG, FK_DBL = LK_DBL, FK_VSTR = LK_VSTR, FK_FSTR = LK_FSTR, FK_REC = LK_REC, FK_BYTE = LK_BYTE, FK_I64 = LK_I64 };
 struct FieldInfo { int kind; int len; int sub; };	// len: FSTR length / REC type (sub)
 // A TYPE (a value), a CLASS (a reference: kind TK_CLASS) or an INTERFACE. A class: its parent (-1), its
 // virtual methods' procedures at vtab[vt .. vt + nvt) (-1: abstract), the interfaces it implements at

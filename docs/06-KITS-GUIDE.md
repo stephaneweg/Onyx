@@ -34,7 +34,7 @@ that uses them.
 |---|---|---|---|---|
 | **AppKit** | What makes a program run: the system's calls, strings, the console, `.ini` files, starting programs | `SD:/lib/appkit.so` | `user/Kits/appkit` | [10 — AppKit](10-APPKIT.md) |
 | **UIKit** | The interface: windows, widgets, dialogs, the theme, icons | `SD:/lib/uikit.so` | `user/Kits/uikit` | [11 — UIKit](11-UIKIT.md) |
-| **SystemKit** | Talking to the system and the other programs: notifications, clipboard, trash, volume, wallpaper, file associations, the dock | `SD:/lib/systemkit.so` | `user/Kits/systemkit` | [12 — SystemKit](12-SYSTEMKIT.md) |
+| **SystemKit** | Talking to the system and the other programs: notifications, clipboard, trash, volume, wallpaper, file associations, the dock, the language and the time zone | `SD:/lib/systemkit.so` | `user/Kits/systemkit` | [12 — SystemKit](12-SYSTEMKIT.md) |
 | **NetKit** | The network: HTTP, the FTP volumes | `SD:/lib/netkit.so` | `user/Kits/netkit` | [13 — NetKit](13-NETKIT.md) |
 | **FileKit** | Files and folders, paths, compression, archives | `SD:/lib/filekit.so` | `user/Kits/filekit` | [14 — FileKit](14-FILEKIT.md) |
 | **ImageKit** | Pictures: reading, writing, resizing, adjusting | `SD:/lib/imagekit.so` | `user/Kits/imagekit` | [15 — ImageKit](15-IMAGEKIT.md) |
@@ -413,6 +413,17 @@ int r = autostart_ensure ("run stickies", "run agenda", "# Stickies: the pinned 
 /* 2 added, 1 already there (autostart_has), 0 not written */
 ```
 
+**The system's language** (the Control Panel's Language & Region): an app's words go through UIKit's
+`TR ("...")` after `uk_lang_init ()` (section 3); a program with words of its own asks SystemKit:
+
+```c
+const char *code = locale_language ();                // "en", "fr" (system.ini's language=; none: "en")
+for (int i = 0; i < locale_language_count (); i++)    // the languages Onyx speaks, each in its own words
+    list->add (locale_language_name (i));
+locale_set_language ("fr");                           // kept: the programs started next speak it
+locale_set_zone (0);                                  // a time zone (locale_zone_count / _city / _offset): now, and kept
+```
+
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
 | `notify.h` | Notifications |
@@ -425,6 +436,7 @@ int r = autostart_ensure ("run stickies", "run agenda", "# Stickies: the pinned 
 | `preloadini.h` | The programs loaded ahead at boot |
 | `autostart.h` | The programs started at boot (`SD:/etc/autostart`) |
 | `applet_proto.h` | A settings applet shown inside the Control Panel |
+| `locale.h` | The system's language and time zone (`SD:/etc/system.ini`) |
 
 ## 6. NetKit — the network
 
@@ -809,6 +821,7 @@ The header of a kit a C program may use is written in C.
 | load an icon | UIKit | `ui::icon_load` |
 | show a notification | SystemKit | `notify`, `notify_action` |
 | copy / paste | SystemKit | `clip_set_text`, `clip_get_text` |
+| know the system's language | SystemKit (UIKit's `TR ()` for the words) | `locale_language`, `uk_lang_init` |
 | move a file to the trash | SystemKit | `trash_move` |
 | open a file with its application | SystemKit | `fa_open` |
 | fetch a web page | NetKit | `http_get`, `HttpClient` |

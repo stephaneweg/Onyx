@@ -86,7 +86,7 @@ static void load (int a)
 			g_nkv++;
 		}
 	static char t[64]; int n = 0;
-	ax_strcat (t, sizeof t, &n, g_app[a]); ax_strcat (t, sizeof t, &n, g_nkv ? "  (config.ini)" : "  (no settings yet)");
+	ax_strcat (t, sizeof t, &n, g_app[a]); ax_strcat (t, sizeof t, &n, g_nkv ? "  (config.ini)" : TR ("  (no settings yet)"));
 	g_title->setText (t);
 	fill_kv (0);
 	g_tbKey->setText (g_nkv ? g_key[0] : ""); g_tbVal->setText (g_nkv ? g_val[0] : "");
@@ -102,15 +102,15 @@ static void on_kv (Widget &)
 }
 static void on_set (Widget &)
 {
-	if (g_cur < 0) { g_status->setText ("Pick an app on the left first."); return; }
-	if (!g_tbKey->text[0]) { g_status->setText ("A key is needed."); return; }
+	if (g_cur < 0) { g_status->setText (TR ("Pick an app on the left first.")); return; }
+	if (!g_tbKey->text[0]) { g_status->setText (TR ("A key is needed.")); return; }
 	int i = 0;
 	while (i < g_nkv && fs_ci_cmp (g_key[i], g_tbKey->text) != 0) i++;
 	if (i == g_nkv) { if (g_nkv >= MAXKV) return; g_nkv++; }
 	fs_copy (g_key[i], g_tbKey->text, 32); fs_copy (g_val[i], g_tbVal->text, 64);
 	g_dirty = true;
 	fill_kv (i);
-	g_status->setText ("Changed: Save writes it.");
+	g_status->setText (TR ("Changed: Save writes it."));
 }
 static void on_delete (Widget &)
 {
@@ -119,7 +119,7 @@ static void on_delete (Widget &)
 	for (int k = i; k + 1 < g_nkv; k++) { fs_copy (g_key[k], g_key[k + 1], 32); fs_copy (g_val[k], g_val[k + 1], 64); }
 	g_nkv--; g_dirty = true;
 	fill_kv (i);
-	g_status->setText ("Deleted: Save writes it.");
+	g_status->setText (TR ("Deleted: Save writes it."));
 }
 static void on_save (Widget &)
 {
@@ -133,18 +133,19 @@ static void on_save (Widget &)
 	char p[160]; ini_path (g_cur, p, sizeof p);
 	bool ok = kapi_save_file (p, buf, (unsigned) b) >= 0;
 	g_dirty = !ok;
-	g_status->setText (ok ? "Saved: the app takes it when it starts again." : "Could not write the file.");
+	g_status->setText (ok ? TR ("Saved: the app takes it when it starts again.") : TR ("Could not write the file."));
 }
 static void on_reload (Widget &) { load (g_cur); }
 
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
-	Root root (W, H, "App Settings");
+	uk_lang_init ();				// the words in the system's language (before the window)
+	Root root (W, H, TR ("App Settings"));
 	if (root.canvas.px == 0) return 1;
 	int X = root.width > W ? (root.width - W) / 2 : 0;
 	scan_apps ();
-	root.addChild (new Label (X + 12, 8, 200, 20, "Apps", C_TEXT, root.bg));
+	root.addChild (new Label (X + 12, 8, 200, 20, TR ("Apps"), C_TEXT, root.bg));
 	g_lbApps = new ListBox (X + 12, 30, 190, H - 44, on_app); root.addChild (g_lbApps);
 	for (int i = 0; i < g_napps; i++)
 	{
@@ -152,17 +153,17 @@ int main (void)
 		ax_strcat (s, sizeof s, &n, g_app[i]); if (g_has[i]) ax_strcat (s, sizeof s, &n, " *");
 		g_lbApps->add (s);
 	}
-	g_title = new Label (X + 216, 8, 470, 20, "Pick an app (* : it has settings)", C_TEXT, root.bg); root.addChild (g_title);
+	g_title = new Label (X + 216, 8, 470, 20, TR ("Pick an app (* : it has settings)"), C_TEXT, root.bg); root.addChild (g_title);
 	g_lbKv = new ListBox (X + 216, 30, 472, 270, on_kv, 0); root.addChild (g_lbKv);
-	root.addChild (new Label (X + 216, 312, 60, 24, "Key", C_TEXT, root.bg));
+	root.addChild (new Label (X + 216, 312, 60, 24, TR ("Key"), C_TEXT, root.bg));
 	g_tbKey = new Textbox (X + 280, 308, 180, 28, "", on_set); root.addChild (g_tbKey);
-	root.addChild (new Label (X + 216, 346, 60, 24, "Value", C_TEXT, root.bg));
+	root.addChild (new Label (X + 216, 346, 60, 24, TR ("Value"), C_TEXT, root.bg));
 	g_tbVal = new Textbox (X + 280, 342, 408, 28, "", on_set); root.addChild (g_tbVal);
-	root.addChild (new Button (X + 470, 306, 100, 30, "Set", on_set));
-	root.addChild (new Button (X + 578, 306, 110, 30, "Delete", on_delete));
+	root.addChild (new Button (X + 470, 306, 100, 30, TR ("Set"), on_set));
+	root.addChild (new Button (X + 578, 306, 110, 30, TR ("Delete"), on_delete));
 	g_status = new Label (X + 216, 380, 472, 22, "", C_DIS, root.bg); root.addChild (g_status);
-	root.addChild (new Button (X + 216 + 472 - 196, H - 42, 90, 32, "Save", on_save));
-	root.addChild (new Button (X + 216 + 472 - 100, H - 42, 100, 32, "Reload", on_reload));
+	root.addChild (new Button (X + 216 + 472 - 212, H - 42, 106, 32, TR ("Save"), on_save));
+	root.addChild (new Button (X + 216 + 472 - 100, H - 42, 100, 32, TR ("Reload"), on_reload));
 	root.run ();
 	return 0;
 }

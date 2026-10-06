@@ -30,8 +30,8 @@ static int g_outVal[4], g_outN, g_outLast = -2;
 
 static const char *out_title (int o)
 {
-	return o == KAPI_SND_OUT_JACK ? "Headphone jack (3.5 mm)" : o == KAPI_SND_OUT_USB ? "USB headset / DAC"
-	     : o == KAPI_SND_OUT_HDMI ? "HDMI (the screen)" : "Automatic";
+	return o == KAPI_SND_OUT_JACK ? TR ("Headphone jack (3.5 mm)") : o == KAPI_SND_OUT_USB ? TR ("USB headset / DAC")
+	     : o == KAPI_SND_OUT_HDMI ? TR ("HDMI (the screen)") : TR ("Automatic");
 }
 
 // The list and the line under it, from the kernel (every half second: a USB device comes and goes).
@@ -57,14 +57,14 @@ static void read_output (void)
 	}
 	g_out->setOptions (g_outOpt, g_outN, sel);
 	g_out->invalidate (true);
-	static char line[96];
+	static char line[200];			// (room for another language's words)
 	int now = KAPI_SND_OUT_NOW (o), n = 0;
 	const char *a = now == 0 ? (asked == KAPI_SND_OUT_USB || asked == KAPI_SND_OUT_AUTO
-				    ? "Not playing yet (the sound starts with the first app that plays; a USB device must be plugged in)."
-				    : "Not playing yet: the sound starts with the first app that plays.")
-			       : "Playing on: ";
-	for (int i = 0; a[i] && n < 94; i++) line[n++] = a[i];
-	if (now != 0) { const char *t = out_title (now); for (int i = 0; t[i] && n < 94; i++) line[n++] = t[i]; }
+				    ? TR ("Not playing yet (the sound starts with the first app that plays; a USB device must be plugged in).")
+				    : TR ("Not playing yet: the sound starts with the first app that plays."))
+			       : TR ("Playing on: ");
+	for (int i = 0; a[i] && n < 198; i++) line[n++] = a[i];
+	if (now != 0) { const char *t = out_title (now); for (int i = 0; t[i] && n < 198; i++) line[n++] = t[i]; }
 	line[n] = 0;
 	g_outNow->setText (line);
 }
@@ -169,7 +169,7 @@ static void read_mixer (void)
 		if (g_mixDirty[i] && now - g_mixAt >= 100) { g_mixDirty[i] = 0; if (i < g_mixN) mixer_set (&g_mix[i], g_mix[i].volume, -1); }
 	struct kapi_sound_client c[16];
 	int n = kapi_sound_clients (c, 16);
-	if (n < 0) { if (g_mixN != 0) { g_mixN = 0; g_mixNone->setText ("This kernel has no mixer."); } return; }
+	if (n < 0) { if (g_mixN != 0) { g_mixN = 0; g_mixNone->setText (TR ("This kernel has no mixer.")); } return; }
 	if (n > MIX_ROWS) n = MIX_ROWS;
 	bool same = n == g_mixN;
 	for (int i = 0; same && i < n; i++) same = c[i].pid == g_mix[i].pid;
@@ -199,7 +199,7 @@ class SoundRoot : public Root
 {
 public:
 	unsigned last = 0;
-	SoundRoot () : Root (W, H, "Sound") {}
+	SoundRoot () : Root (W, H, TR ("Sound")) {}
 	void onTick () override
 	{
 		unsigned now = kapi_get_ticks ();
@@ -210,40 +210,41 @@ public:
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	uk_lang_init ();				// the words in the system's language (before the widgets)
 	SoundRoot root;
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
 	int X = root.width > W ? (root.width - W) / 2 : 0;
-	GroupBox *go = new GroupBox (X + 10, 8, W - 20, 90, "Output");
+	GroupBox *go = new GroupBox (X + 10, 8, W - 20, 90, TR ("Output"));
 	root.addChild (go);
 	int ct = go->contentTop () + 6;
-	go->addChild (new Label (14, ct + 4, 90, 20, "Play on", C_TEXT, go->bg));
+	go->addChild (new Label (14, ct + 4, 90, 20, TR ("Play on"), C_TEXT, go->bg));
 	g_outOpt[0] = out_title (KAPI_SND_OUT_AUTO); g_outVal[0] = KAPI_SND_OUT_AUTO; g_outN = 1;
 	// (on the window, not in the group box: a parent clips its children, the open list needs the room)
 	int outL = go->left + 110, outT = go->top + ct;
 	g_outNow = new Label (14, ct + 34, W - 60, 20, "", C_DIS, go->bg); go->addChild (g_outNow);
 
-	GroupBox *gv = new GroupBox (X + 10, 104, W - 20, 132, "Volume");
+	GroupBox *gv = new GroupBox (X + 10, 104, W - 20, 132, TR ("Volume"));
 	root.addChild (gv);
 	ct = gv->contentTop () + 8;
-	gv->addChild (new Label (14, ct + 4, 90, 20, "Master", C_TEXT, gv->bg));
+	gv->addChild (new Label (14, ct + 4, 90, 20, TR ("Master"), C_TEXT, gv->bg));
 	g_vol = new Slider (110, ct, 380, 28, 0, 10, 10, on_vol, gv->bg); gv->addChild (g_vol);
 	g_value = new Label (504, ct + 4, 80, 20, "", C_TEXT, gv->bg); gv->addChild (g_value);
-	g_mute = new Checkbox (110, ct + 40, 120, 24, "Mute", false, on_mute, gv->bg); gv->addChild (g_mute);
-	gv->addChild (new Button (250, ct + 38, 170, 30, "Play a test sound", on_test));
+	g_mute = new Checkbox (110, ct + 40, 120, 24, TR ("Mute"), false, on_mute, gv->bg); gv->addChild (g_mute);
+	gv->addChild (new Button (250, ct + 38, 170, 30, TR ("Play a test sound"), on_test));
 
 	// the mixer: a row per program that plays (the first MIX_ROWS of them)
-	g_mixBox = new GroupBox (X + 10, 242, W - 20, 168, "Programs playing");
+	g_mixBox = new GroupBox (X + 10, 242, W - 20, 168, TR ("Programs playing"));
 	root.addChild (g_mixBox);
 	ct = g_mixBox->contentTop () + 4;
-	g_mixNone = new Label (14, ct + 4, W - 60, 20, "No program is playing.", C_DIS, g_mixBox->bg); g_mixBox->addChild (g_mixNone);
+	g_mixNone = new Label (14, ct + 4, W - 60, 20, TR ("No program is playing."), C_DIS, g_mixBox->bg); g_mixBox->addChild (g_mixNone);
 	for (int i = 0; i < MIX_ROWS; i++)
 	{
 		int y = ct + i * 32;
 		g_mixName[i] = new Label (14, y + 4, 130, 20, "", C_TEXT, g_mixBox->bg);
 		g_mixVol[i] = new Slider (150, y, 260, 28, 0, 100, 100, on_mix_vol, g_mixBox->bg);
 		g_mixVal[i] = new Label (420, y + 4, 50, 20, "", C_TEXT, g_mixBox->bg);
-		g_mixMute[i] = new Checkbox (476, y + 2, 76, 24, "Mute", false, on_mix_mute, g_mixBox->bg);
+		g_mixMute[i] = new Checkbox (476, y + 2, 76, 24, TR ("Mute"), false, on_mix_mute, g_mixBox->bg);
 		g_mixLevel[i] = new Progress (560, y + 8, 100, 12, 0, 100, 0);
 		Widget *ws[5] = { g_mixName[i], g_mixVol[i], g_mixVal[i], g_mixMute[i], g_mixLevel[i] };
 		for (int k = 0; k < 5; k++) { ws[k]->hidden = true; g_mixBox->addChild (ws[k]); }
@@ -251,7 +252,7 @@ int main (void)
 
 	g_status = new Label (X + 12, 414, W - 24, 20, "", C_DIS, root.bg);
 	root.addChild (g_status);
-	root.addChild (new Label (X + 12, H - 34, W - 24, 20, "Kept in SD:/etc/sound.ini and mixer.ini. The menu bar's speaker changes the master too.", C_DIS, root.bg));
+	root.addChild (new Label (X + 12, H - 34, W - 24, 20, TR ("Kept in SD:/etc/sound.ini and mixer.ini. The menu bar's speaker changes the master too."), C_DIS, root.bg));
 	g_out = new Dropdown (outL, outT, 300, 26, g_outOpt, 1, 0, on_output);
 	root.addChild (g_out);				// (last: over the groups when its list is open)
 	read_volume ();

@@ -19,7 +19,7 @@
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
 #include "gpiokit/gpiokit.h"
-#ifdef __aarch64__
+#if defined (__aarch64__) && !defined (GK_STANDALONE)
 #include "appkit/appkit.h"
 #include "kern/kapi_abi.h"
 #include "lib.h"
@@ -37,7 +37,7 @@ enum { OP_INFO, OP_MODE, OP_WRITE, OP_READ, OP_READ_ALL, OP_PWM, OP_EDGES, OP_EV
 enum { BUS_I2C = 1, BUS_SPI = 2 };
 struct gk_i2c_xfer { unsigned addr, wlen, rlen; const void *wr; void *rd; };	// struct kapi_gpio_i2c
 struct gk_spi_xfer { unsigned cs, len; const void *tx; void *rx; };		// struct kapi_gpio_spi
-#ifdef __aarch64__
+#if defined (__aarch64__) && !defined (GK_STANDALONE)
 static_assert (OP_NOW == KAPI_GPIO_NOW && OP_RELEASE == KAPI_GPIO_RELEASE && OP_I2C_XFER == KAPI_GPIO_I2C_XFER
 	       && OP_SPI_XFER == KAPI_GPIO_SPI_XFER && BUS_SPI == KAPI_GPIO_BUS_SPI, "gpio_ctl's numbers");
 static_assert (sizeof (gk_i2c_xfer) == sizeof (struct kapi_gpio_i2c) && sizeof (gk_spi_xfer) == sizeof (struct kapi_gpio_spi), "transfers");
@@ -54,7 +54,7 @@ extern "C" unsigned long long gk_now_us (void);
 // ---- the kernel's entry ----------------------------------------------------------------------------
 static long hw (int op, long a0 = 0, long a1 = 0, long a2 = 0)
 {
-#ifdef __aarch64__
+#if defined (__aarch64__) && !defined (GK_STANDALONE)
 	const struct TKApiTable *t = (const struct TKApiTable *) KAPI_TABLE_VA;
 	if (t->version < GK_KAPI_VERSION || t->gpio_ctl == 0) return GK_ENODEV;
 	return t->gpio_ctl (op, a0, a1, a2);
@@ -65,7 +65,7 @@ static long hw (int op, long a0 = 0, long a1 = 0, long a2 = 0)
 }
 static bool hw_present (void)
 {
-#ifdef __aarch64__
+#if defined (__aarch64__) && !defined (GK_STANDALONE)
 	const struct TKApiTable *t = (const struct TKApiTable *) KAPI_TABLE_VA;
 	return t->version >= GK_KAPI_VERSION && t->gpio_ctl != 0;
 #else
@@ -260,7 +260,7 @@ unsigned long long gk_now_us (void)
 		long r = hw (OP_NOW);
 		if (r >= 0) return (unsigned long long) r;
 	}
-#ifdef __aarch64__
+#if defined (__aarch64__) && !defined (GK_STANDALONE)
 	unsigned long c, f;
 	__asm__ volatile ("isb\n\tmrs %0, cntpct_el0\n\tmrs %1, cntfrq_el0" : "=r" (c), "=r" (f));
 	return (unsigned long long) ((__uint128_t) c * 1000000u / f);
@@ -606,7 +606,7 @@ int gk_sim_display (unsigned char out[1024])
 } // extern "C"
 
 // (the library's table: its init -- the library runtime's, Runtime/librt.cpp)
-#ifdef __aarch64__
+#if defined (__aarch64__) && !defined (GK_STANDALONE)
 extern "C" int onyx_lib_init (const TLibImports *imp);
 extern "C" int gk_lib_init (const TLibImports *imp)
 {

@@ -12,7 +12,7 @@ words = FORWARD BACK LEFT RIGHT
 text = Each leg of the spiral is one square longer than the one before. A variable can remember the length.
 text.fr = Chaque trajet de la spirale a une case de plus que le précédent. Une variable peut retenir la longueur.
 hint = n = 1, then REPEAT 6: FORWARD n, RIGHT, n = n + 1.
-hint.fr = n = 1, puis REPETE 6 : AVANCE n, DROITE, n = n + 1.
+hint.fr = n = 1, puis REPETER 6 : AVANCER n, DROITE, n = n + 1.
 par = 5 9
 map =
 | #########
@@ -40,7 +40,7 @@ words = FORWARD BACK LEFT RIGHT PICK
 text = The coins are 1, 2, 3, then 4 squares apart, and the flag 5 squares further.
 text.fr = Les pièces sont à 1, 2, 3, puis 4 cases l'une de l'autre, et le drapeau 5 cases plus loin.
 hint = FOR i = 1 TO 4: FORWARD i, PICK. NEXT. Then FORWARD 5.
-hint.fr = POUR i = 1 JUSQUA 4 : AVANCE i, RAMASSE. SUIVANT. Puis AVANCE 5.
+hint.fr = POUR i = 1 JUSQUE 4 : AVANCER i, RAMASSER. SUITE. Puis AVANCER 5.
 par = 4 7
 map =
 | ##################
@@ -62,7 +62,7 @@ words = FORWARD BACK LEFT RIGHT PICK
 text = Four little rooms, each with a coin at its end, but not evenly spaced. Teach the turtle a word, Room, that visits one.
 text.fr = Quatre petites salles, chacune avec une pièce au fond, mais pas régulièrement espacées. Apprends à la tortue un mot, Visite, qui en visite une.
 hint = SUB Room: LEFT, FORWARD 2, PICK, BACK 2, RIGHT. END SUB. Then: FORWARD, Room, FORWARD 3, Room...
-hint.fr = PROCEDURE Visite : GAUCHE, AVANCE 2, RAMASSE, RECULE 2, DROITE. FIN PROCEDURE. Puis : AVANCE, Visite, AVANCE 3, Visite...
+hint.fr = SUB Visite : GAUCHE, AVANCER 2, RAMASSER, RECULER 2, DROITE. FIN SUB. Puis : AVANCER, Visite, AVANCER 3, Visite...
 par = 15 20
 map =
 | ##############
@@ -98,7 +98,7 @@ words = FORWARD BACK LEFT RIGHT PENUP PENDOWN COLOR
 text = The turtle paints where it walks. Paint every marked tile of the frame.
 text.fr = La tortue peint là où elle passe. Peins toutes les cases marquées du cadre.
 hint = Four sides of 3 squares: REPEAT 4.
-hint.fr = Quatre côtés de 3 cases : REPETE 4.
+hint.fr = Quatre côtés de 3 cases : REPETER 4.
 par = 3 5
 map =
 | ######
@@ -121,9 +121,9 @@ concept = pen
 words = FORWARD BACK LEFT RIGHT PENUP PENDOWN COLOR
 draw = 1
 text = Draw the dashed line: one square drawn, one square left blank -- PENUP and PENDOWN.
-text.fr = Dessine les pointillés : une case tracée, une case vide -- LEVECRAYON et BAISSECRAYON.
+text.fr = Dessine les pointillés : une case tracée, une case vide -- LEVERCRAYON et BAISSERCRAYON.
 hint = REPEAT 4: FORWARD, PENUP, FORWARD, PENDOWN.
-hint.fr = REPETE 4 : AVANCE, LEVECRAYON, AVANCE, BAISSECRAYON.
+hint.fr = REPETER 4 : AVANCER, LEVERCRAYON, AVANCER, BAISSERCRAYON.
 par = 5 9
 map =
 | ...........
@@ -153,7 +153,7 @@ draw = 1
 text = Draw the grey square: sides of 4 squares.
 text.fr = Dessine le carré gris : des côtés de 4 cases.
 hint = REPEAT 4: FORWARD 4, RIGHT.
-hint.fr = REPETE 4 : AVANCE 4, DROITE.
+hint.fr = REPETER 4 : AVANCER 4, DROITE.
 par = 3 8
 map =
 | ...........
@@ -181,7 +181,7 @@ draw = 1
 text = Three equal sides. At each corner the turtle turns by 360 / 3 degrees.
 text.fr = Trois côtés égaux. À chaque coin la tortue tourne de 360 / 3 degrés.
 hint = REPEAT 3: FORWARD 4, LEFT 120.
-hint.fr = REPETE 3 : AVANCE 4, GAUCHE 120.
+hint.fr = REPETER 3 : AVANCER 4, GAUCHE 120.
 par = 3 6
 map =
 | ...........
@@ -265,7 +265,7 @@ draw = 1
 text = Eight squares of 2, each turned by 45 degrees from the one before: a loop inside a loop.
 text.fr = Huit carrés de 2, chacun tourne de 45 degrés par rapport au précédent : une boucle dans une boucle.
 hint = REPEAT 8: (REPEAT 4: FORWARD 2, RIGHT), then RIGHT 45.
-hint.fr = REPETE 8 : (REPETE 4 : AVANCE 2, DROITE), puis DROITE 45.
+hint.fr = REPETER 8 : (REPETER 4 : AVANCER 2, DROITE), puis DROITE 45.
 par = 5 10
 map =
 | ...........
@@ -296,7 +296,7 @@ draw = 1
 text = Twelve legs, each half a square longer than the one before, from 1 square.
 text.fr = Douze trajets, chacun d'une demi-case plus long que le précédent, à partir d'une case.
 hint = n = 1, REPEAT 12: FORWARD n, RIGHT, n = n + 0.5.
-hint.fr = n = 1, REPETE 12 : AVANCE n, DROITE, n = n + 0.5.
+hint.fr = n = 1, REPETER 12 : AVANCER n, DROITE, n = n + 0.5.
 par = 5 14
 map =
 | ...........

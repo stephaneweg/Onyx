@@ -1,7 +1,7 @@
 # systemkit.bi -- systemkit for Onyx BASIC (#import systemkit): made by tools/kitbi/kitbi.py from systemkit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit systemkit 59
+kit systemkit 74
 struct PreloadList 4100 PreloadList
 field n 0 i
 clip_clear 0 v - clip_clear
@@ -52,3 +52,18 @@ dc_split 50 v spipi dc_split v,a,acap,b,bcap
 dock_reload 51 v - dock_reload
 dock_running 52 i - dock_running
 dock_category_docked 56 b s dock_category_docked cat
+locale_ini_get 59 i spi locale_ini_get key,out,cap
+locale_ini_set 60 i ss locale_ini_set key,value
+locale_language 61 s - locale_language
+locale_language_code 62 s i locale_language_code i
+locale_language_count 63 i - locale_language_count
+locale_language_index 64 i - locale_language_index
+locale_language_name 65 s i locale_language_name i
+locale_set_language 66 i s locale_set_language code
+locale_set_zone 67 i i locale_set_zone z
+locale_zone 68 i - locale_zone
+locale_zone_city 69 s i locale_zone_city z
+locale_zone_count 70 i - locale_zone_count
+locale_zone_offset 71 i i locale_zone_offset z
+locale_zone_summer 72 i i locale_zone_summer z
+locale_zone_utc 73 v ipi locale_zone_utc z,out,cap

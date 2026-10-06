@@ -88,11 +88,39 @@ int main (int argc, char **argv)
 		play (*hello, "FORWARD 1 +\n", LANG_EN, R);
 		CHECK (R.result == R_COMPILE && R.errLine == 1, "a syntax error: %d %s", R.result, R.msg);
 		play (*hello, "REPEAT 4\n FORWARD\n", LANG_FR, R);
-		CHECK (R.result == R_COMPILE && strstr (R.msg, "FIN REPETE"), "an unclosed REPEAT, in French: %s", R.msg);
-		play (*corner, "AVANCE 2\nDROITE\nAVANCE 2\nGAUCHE\nAVANCE 2\nDROITE\nAVANCE\n", LANG_FR, R);
+		CHECK (R.result == R_COMPILE && strstr (R.msg, "FIN REPETER"), "an unclosed REPEAT, in French: %s", R.msg);
+		play (*hello, "SI MUR ()\n", LANG_FR, R);
+		CHECK (R.result == R_COMPILE && strstr (R.msg, "ALORS") && !strstr (R.msg, "THEN"), "a compiler's message with French words: %s", R.msg);
+		play (*corner, "AVANCER 2\nDROITE\nAVANCER 2\nGAUCHE\nAVANCER 2\nDROITE\nAVANCER\n", LANG_FR, R);
 		CHECK (R.result == R_WON && R.stars == 3, "French words: %d %s", R.result, R.msg);
-		play (*maze, "TANTQUE NON SURBUT ()\n  SI NON MURDROITE () ALORS\n    DROITE\n    AVANCE\n  SINONSI NON MUR () ALORS\n    AVANCE\n  SINON\n    GAUCHE\n  FIN SI\nFINTANTQUE\n", LANG_FR, R);
+		play (*corner, "AVANCE 2\nTD\nAV 2\nTG\nAVANCE 2\nDROITE\nAVANCE\n", LANG_FR, R);
+		CHECK (R.result == R_WON && R.stars == 3, "the first French words, the short ones: %d %s", R.result, R.msg);
+		play (*maze, "TANTQUE NON SURBUT ()\n  SI NON MURDROITE () ALORS\n    DROITE\n    AVANCER\n  SINON SI NON MUR () ALORS\n    AVANCER\n  SINON\n    GAUCHE\n  FIN SI\nFIN TANTQUE\n", LANG_FR, R);
 		CHECK (R.result == R_WON, "the maze in French: %d line %d %s", R.result, R.errLine, R.msg);
+		{
+			Run E; play (*maze, "WHILE NOT ONGOAL ()\n  IF NOT WALLRIGHT () THEN\n    RIGHT\n    FORWARD\n  ELSEIF NOT WALL () THEN\n    FORWARD\n  ELSE\n    LEFT\n  END IF\nWEND\n", LANG_EN, E);
+			CHECK (E.result == R_WON && E.count == R.count, "the maze counts the same in both languages: %d / %d", E.count, R.count);
+		}
+		play (*maze, "TANTQUE NON SURBUT ()\n  SI NON MURDROITE () ALORS\n    DROITE\n    AVANCE\n  SINONSI NON MUR () ALORS\n    AVANCE\n  SINON\n    GAUCHE\n  FIN SI\nFINTANTQUE\n", LANG_FR, R);
+		CHECK (R.result == R_WON, "the maze in the first French words: %d line %d %s", R.result, R.errLine, R.msg);
+		// POUR ... JUSQUE ... PAS ... SUITE, SUB / FONCTION and their ends, the types, a class
+		play (*corner, "DIM n COMME ENTIER\nDIM s COMME CHAINE\ns = \"ok\"\n"
+			"FONCTION Double (x COMME ENTIER)\n  Double = x * 2\nFIN FONCTION\n"
+			"SUB Marche (cote)\n  AVANCER cote\nFIN SUB\n"
+			"POUR i = 1 JUSQUE 3 PAS 2\n  n = n + 1\nSUITE\n"
+			"Marche Double (1)\nDROITE\nMarche n\nGAUCHE\nAVANCER 2\nDROITE\nAVANCER\nAFFICHER s\n", LANG_FR, R);
+		CHECK (R.result == R_WON && R.out && strstr (R.out, "ok"), "POUR, SUB, FONCTION, ENTIER, CHAINE: %d line %d %s", R.result, R.errLine, R.msg);
+		play (*hello, "CLASSE Compteur\n  n COMME ENTIER\nFIN CLASSE\nSUB Compteur.Plus ()\n  CECI.n = CECI.n + 1\nFIN SUB\n"
+			"DIM c COMME Compteur\nc = NOUVEAU Compteur\nREPETER 4\n  c.Plus\nFIN REPETER\nAVANCER c.n\n", LANG_FR, R);
+		CHECK (R.result == R_WON, "CLASSE: %d line %d %s", R.result, R.errLine, R.msg);
+		play (*corner, "AVANCER 2\nRIGHT\nPOUR i = 1 TO 2\n  FORWARD\nSUITE\nGAUCHE\nAVANCER 2\nDROITE\nSI 1 THEN FORWARD\n", LANG_EN, R);
+		CHECK (R.result == R_WON, "French words when the language is English, mixed: %d line %d %s", R.result, R.errLine, R.msg);
+		play (*hello, "DIM a COMME ENTIER\nDIM x COMME REEL\nDIM d COMME REEL64\nDIM l COMME ENTIER32\nDIM o COMME OCTET\na = 7 / 2\nx = 0.5\nd = 3000000000 + x\na = a + d - 3000000000\nl = 70000\no = ASC (\"A\") + 0.2\nAVANCER a\nAFFICHER STR$ (a) + STR$ (l) + STR$ (o) + CHR$ (o)\n", LANG_FR, R);
+		CHECK (R.result == R_WON && R.out && strstr (R.out, " 4 70000 65A"), "ENTIER (a whole number of 64 bits), REEL, REEL64, ENTIER32, OCTET: %d line %d %s [%s]", R.result, R.errLine, R.msg, R.out ? R.out : "");
+		play (*hello, "DIM o AS BYTE\nDIM n AS INTEGER\nn = 100000 * 100000\no = 256\n", LANG_EN, R);
+		CHECK (R.result == R_ERROR && R.errLine == 4, "an INTEGER is wide, a BYTE holds 0 to 255: %d line %d %s", R.result, R.errLine, R.msg);
+		play (*hello, "SI 1 ALORS AVANCER 4 SINON SI 0 ALORS AVANCER 1\n", LANG_FR, R);
+		CHECK (R.result == R_WON, "SINON SI inside a line stays ELSE IF: %d line %d %s", R.result, R.errLine, R.msg);
 		play (*corner, "FORWARD 2\nRIGHT\nFORWARD 2\nLEFT\nFORWARD 2\nRIGHT\nFORWARD\nPRINT \"done\"; 4 * 2\n", LANG_EN, R);
 		CHECK (R.result == R_WON && R.out && strstr (R.out, "done"), "PRINT: %s", R.out ? R.out : "(none)");
 		play (*sq, "REPEAT 4\n  FORWARD 3\n  RIGHT\nEND REPEAT\n", LANG_EN, R);

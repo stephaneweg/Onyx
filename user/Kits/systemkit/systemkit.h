@@ -10,6 +10,7 @@
 //   preloadini.h    the programs loaded ahead        preload_ini_load, preload_ini_save
 //   autostart.h     the programs started at boot     autostart_has, autostart_ensure
 //   applet_proto.h  an applet in the Control Panel   (the protocol)
+//   locale.h        the language, the time zone      locale_language, locale_set_language, locale_zone...
 //   clipboard.h     the clipboard                    clip_set_text, clip_get_text, clip_get_image...   (C++)
 //   trash.h         the trash                        trash_move, trash_restore, trash_count...        (C++)
 //   fileassoc.h     which app opens which file       fa_open, fa_app_for                              (C++)
@@ -25,6 +26,7 @@
 #include "preloadini.h"
 #include "autostart.h"
 #include "applet_proto.h"
+#include "locale.h"
 #ifdef __cplusplus
 #include "clipboard.h"
 #include "trash.h"
