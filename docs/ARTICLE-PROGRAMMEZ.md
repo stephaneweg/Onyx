@@ -209,7 +209,10 @@ L'utilisateur demandait souvent des **idées de logiciels** et de **comparer Ony
 réponse pouvait ouvrir un chantier. À citer, **sans faire un catalogue qui met l'OS en avant** (sa consigne) :
 les émulateurs, la suite bureautique, le navigateur WebKit, 3DForge (CAO + FAO : le G-code de sa fraiseuse
 CNC, une Two Trees), et des outils de programmation : QBasic (clin d'œil à ses débuts), QBStudio, GPIO Lab,
-Turtle Quest (pour les enfants). Dans l'article : la sous-section « Qu'est-ce qui manque à Onyx ? », en prose
+Turtle Quest (pour les enfants).
+**Claude Product Manager** (l'utilisateur) : sur base de ses suggestions, Claude demande par quoi commencer ;
+l'utilisateur dit ce qui l'intéresse, et Claude lance aussitôt un agent dans une autre session pour l'analyse.
+Dans l'article : la sous-section « Qu'est-ce qui manque à Onyx ? » : quand Claude devient Product Manager, en prose
 (sans noms de produits pour les outils), et la liste à puces de « Ce que ça a donné » réduite à une phrase.
 
 ## La nuit en autonomie (l'utilisateur, 2026-10-06 ; remplace le paragraphe du GC dans l'article)
