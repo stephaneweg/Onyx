@@ -7,7 +7,9 @@
 // emptied by the user goes to the Trash). Delete sends a note to the Trash (SystemKit) with a notification;
 // a pinned note is shown on the desktop by Stickies (user/Apps/stickies, the "stickies" service: told to
 // re-read after each change). Files (.txt, .md) dropped on the window become new notes; dropped text goes in
-// at the caret. `notes <path>` opens on that note. The model (files, notes.ini, names, dates, colours,
+// at the caret. `notes <path>` opens on that note -- in the Notes already running, if any (the "notes" service:
+// one Notes at a time). View > Show / Hide Stickies on the Desktop starts or stops Stickies (Show also makes
+// sure of its line in SD:/etc/autostart, SystemKit's autostart_ensure). The model (files, notes.ini, names, dates, colours,
 // config.ini) is notesmodel.cpp, shared with Stickies.
 //
 // Keys: Ctrl+N new note, Ctrl+D delete, Ctrl+P pin / unpin, Ctrl+E open in the Text Editor, Ctrl+X / C / V / A
@@ -92,15 +94,25 @@ static void stickies_reload ()
 	int pid = kapi_ipc_lookup (STICKIES_SERVICE);
 	if (pid > 0) kapi_mailbox_send (pid, STK_MSG_RELOAD, "", 0);
 }
-// View > Show / Hide Stickies on the Desktop: the setting kept (Stickies reads it at its start).
-// (AutoDev round 1, step 7 -- Developer C: on Show, SystemKit's autostart_ensure ("run stickies", "run agenda",
-// "# Stickies: ...") and lx_launch ("stickies") when its service is absent, the status by autostart_ensure's
-// result (05-validation.md, validation 2 section 2); on Hide, STK_MSG_QUIT to the service.)
+// View > Show / Hide Stickies on the Desktop: the setting kept (Stickies reads it at its start, and in its
+// poll). Show: Stickies started when it is not running, and its line made sure of in SD:/etc/autostart
+// (SystemKit's autostart_ensure: after the agenda's line; the only place Notes writes that file, 04 D2), the
+// status line saying which; Hide: Stickies told to quit (autostart left as it is).
 static void stickies_set_shown (bool on)
 {
 	g_cfg.stickies = on ? 1 : 0;
 	notes_cfg_save (g_cfg);
-	set_msg (on ? "Stickies shown." : "Stickies hidden.", 0, MSG_TIME);
+	int pid = kapi_ipc_lookup (STICKIES_SERVICE);
+	if (!on)
+	{
+		if (pid > 0) kapi_mailbox_send (pid, STK_MSG_QUIT, "", 0);
+		set_msg ("Stickies hidden.", 0, MSG_TIME);
+		return;
+	}
+	int r = autostart_ensure ("run stickies", "run agenda", "# Stickies: the pinned notes on the desktop (Notes, View menu)");
+	if (pid <= 0) lx_launch ("stickies", 0);
+	set_msg (r == 2 ? "Stickies shown, and started at every boot (SD:/etc/autostart)."
+		 : r == 1 ? "Stickies shown." : "Stickies shown (autostart not written).", 0, MSG_TIME);
 }
 
 // ---- the folder's signature (the idle rescan: notes changed by another program) --------------------------
@@ -595,11 +607,20 @@ static void colour_icon (Canvas &cv, int id, int x, int y, int size, unsigned, b
 
 int main (void)
 {
+	// One Notes at a time: one already running (the "notes" service) is sent this one's argument (the note to
+	// open; empty: only come forward) and raised, and this one ends here.
+	int other = kapi_ipc_lookup (NOTES_SERVICE);
+	if (other > 0)
+	{
+		char a[160] = "";
+		kapi_get_args (a, sizeof a);
+		kapi_mailbox_send (other, NOTES_MSG_OPEN, a, (unsigned) strlen (a) + 1);
+		kapi_raise_app (NOTES_SERVICE);
+		return 0;
+	}
+	kapi_ipc_register (NOTES_SERVICE);			// (failed: Notes runs alone, nothing forwarded to it)
 	ft_uikit_install ("DejaVu Sans", 13);			// (before the widgets; false: the bitmap font)
 	notes_cfg_load (g_cfg);
-	// (AutoDev round 1, step 7 -- Developer C: a Notes already running ("notes" service found) is sent the
-	// argument (NOTES_MSG_OPEN) and raised (kapi_raise_app), and this one ends here.)
-	kapi_ipc_register (NOTES_SERVICE);			// (failed: Notes runs alone, nothing forwarded to it)
 
 	int w = g_cfg.width < MIN_W ? MIN_W : g_cfg.width > 2000 ? 2000 : g_cfg.width;
 	int h = g_cfg.height < MIN_H ? MIN_H : g_cfg.height > 1400 ? 1400 : g_cfg.height;

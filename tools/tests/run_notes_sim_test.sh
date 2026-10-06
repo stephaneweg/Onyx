@@ -170,6 +170,72 @@ check "rescan: a note put by another program listed (and chosen)" cfg_last resca
 seed reload notes last=$SHOP; run reload "$W3;key 16;$W3;$QUIT" SIM_SERVICES=notify,stickies
 check "the stickies service told to re-read (STK_MSG_RELOAD) after a pin" grep -q 'sim: send stickies type 2' "$OUT/log/reload.log"
 
+# ---- step 7: Notes <-> Stickies (AC 11, G7, the single instance) -------------------------------------------
+# (lx_launch starts an app whose SD:apps/<name>.app/main exists: a stand-in put in the writes)
+ncfg () { mkdir -p "$W/apps/notes.app"; printf "$1" > "$W/apps/notes.app/config.ini"; }	# Notes' config.ini
+mains () { for a in "$@"; do mkdir -p "$W/apps/$a.app"; : > "$W/apps/$a.app/main"; done; }
+VIEW="menu 15"
+AS=SD:/etc/autostart; OLDAS="$OUT/w/autostart.old"	# (the card's autostart as it was before this round)
+grep -v 'run stickies\|^# Stickies: ' sdcard/etc/autostart > "$OLDAS"
+asfile () { echo "$OUT/w/$1/etc/autostart"; }
+# AC 11 Hide: stickies = 0 written, the quit message to the running Stickies, autostart left alone
+seed ac11h notes; mains stickies; run ac11h "$W3;$VIEW;$W3;dump $OUT/ac11h.elsm;$QUIT" SIM_SERVICES=notify,stickies && png ac11h
+check "AC11 Hide: stickies = 0 in config.ini" grep -q '^stickies = 0$' "$OUT/w/ac11h/apps/notes.app/config.ini"
+check "AC11 ... the quit message sent to Stickies (STK_MSG_QUIT)" grep -q 'sim: send stickies type 3' "$OUT/log/ac11h.log"
+check "AC11 ... autostart not written" test ! -e "$(asfile ac11h)"
+# AC 11 Show (Stickies not running), on the card of before this round (no stickies line): stickies = 1,
+# Stickies started, the line inserted after the agenda's (held back as it is), preload /boot still last
+seed ac11s notes; mains stickies; ncfg 'stickies = 0\n'
+mkdir -p "$W/etc"; cp "$OLDAS" "$W/etc/autostart"
+run ac11s "$W3;$VIEW;$W3;dump $OUT/ac11s.elsm;$QUIT" SIM_SERVICES=notify && png ac11s
+check "AC11 Show: stickies = 1 in config.ini" grep -q '^stickies = 1$' "$OUT/w/ac11s/apps/notes.app/config.ini"
+check "AC11 ... Stickies started" grep -q 'sim: launch stickies' "$OUT/log/ac11s.log"
+check "G7   Show: '#setup: run stickies' right after '#setup: run agenda'" sh -c "grep -A2 '^#setup: run agenda\$' '$(asfile ac11s)' | tail -1 | grep -qx '#setup: run stickies'"
+check "G7   ... exactly one stickies line" test "$(grep -c 'run stickies' "$(asfile ac11s)")" = 1
+check "G7   ... preload /boot still the last line" test "$(tail -1 "$(asfile ac11s)")" = "preload /boot"
+check "G7   ... nothing else changed" sh -c "grep -v 'run stickies\|^# Stickies: ' '$(asfile ac11s)' | cmp -s - '$OLDAS'"
+# Show, Hide, Show again: one line still
+seed g7twice notes; mains stickies; ncfg 'stickies = 0\n'
+mkdir -p "$W/etc"; cp "$OLDAS" "$W/etc/autostart"
+run g7twice "$W3;$VIEW;$W3;$VIEW;$W3;$VIEW;$W3;$QUIT" SIM_SERVICES=notify
+check "G7   Show / Hide / Show: exactly one stickies line" test "$(grep -c 'run stickies' "$(asfile g7twice)")" = 1
+# the card as shipped now (#setup: run stickies already there), and a hand-made 'run stickies': unchanged
+seed g7card notes; mains stickies; ncfg 'stickies = 0\n'
+run g7card "$W3;$VIEW;$W3;dump $OUT/g7card.elsm;$QUIT" SIM_SERVICES=notify && png g7card
+check "G7   the shipped card's autostart (#setup: run stickies): not written" test ! -e "$(asfile g7card)"
+seed g7hand notes; mains stickies; ncfg 'stickies = 0\n'
+mkdir -p "$W/etc"; printf 'run menubar\nrun stickies\npreload /boot\n' > "$W/etc/autostart"; cp "$W/etc/autostart" "$OUT/w/g7hand.as"
+run g7hand "$W3;$VIEW;$W3;$QUIT" SIM_SERVICES=notify
+check "G7   a 'run stickies' line there: autostart unchanged" cmp -s "$(asfile g7hand)" "$OUT/w/g7hand.as"
+# Show while Stickies runs: not started a second time
+seed g7run notes; mains stickies; ncfg 'stickies = 0\n'
+run g7run "$W3;$VIEW;$W3;$QUIT" SIM_SERVICES=notify,stickies
+check "G7   Show while Stickies runs: not started again" sh -c "! grep -q 'sim: launch stickies' '$OUT/log/g7run.log'"
+# Show, the autostart read-only: Stickies shown all the same
+seed g7ro notes; mains stickies; ncfg 'stickies = 0\n'
+mkdir -p "$W/etc"; cp "$OLDAS" "$W/etc/autostart"
+run g7ro "$W3;$VIEW;$W3;dump $OUT/g7ro.elsm;$QUIT" SIM_SERVICES=notify SIM_ROFS=SD:/etc && png g7ro
+check "G7   autostart read-only: Stickies started all the same" grep -q 'sim: launch stickies' "$OUT/log/g7ro.log"
+check "G7   ... the file unchanged" cmp -s "$(asfile g7ro)" "$OLDAS"
+# a pin while Stickies is hidden: nothing started, autostart untouched; while shown but not running: started
+seed g7pin notes last=$GIFT; mains stickies; ncfg "stickies = 0\nlast = $GIFT\n"
+run g7pin "$W3;key 16;$W3;$QUIT" SIM_SERVICES=notify
+check "G7   a pin, Stickies hidden: nothing started" sh -c "! grep -q 'sim: launch stickies' '$OUT/log/g7pin.log'"
+check "G7   ... autostart untouched" test ! -e "$(asfile g7pin)"
+seed g7pin2 notes last=$GIFT; mains stickies
+run g7pin2 "$W3;key 16;$W3;$QUIT" SIM_SERVICES=notify
+check "G7   a pin, Stickies shown but not running: started (no autostart)" sh -c "grep -q 'sim: launch stickies' '$OUT/log/g7pin2.log' && test ! -e '$(asfile g7pin2)'"
+# one Notes at a time: a second Notes (the "notes" service found) forwards its argument, raises the first, ends
+seed one notes; run one "$W3;$QUIT" SIM_SERVICES=notify,notes SIM_ARGS=SD:/Notes/$GIFT
+check "AC25 a second Notes: its argument sent to the first (NOTES_MSG_OPEN)" grep -q "sim: send notes type 1 \"SD:/Notes/$GIFT\\\\0\"" "$OUT/log/one.log"
+check "AC25 ... the first raised" grep -q 'sim: raise_app notes' "$OUT/log/one.log"
+check "AC25 ... and no window of its own" sh -c "! grep -q 'sim: window' '$OUT/log/one.log'"
+seed alone notes; run alone "$W3;$QUIT" SIM_SERVICES=-
+check "AC25 no other Notes (register refused or not): Notes runs" grep -q 'sim: window Notes' "$OUT/log/alone.log"
+# NOTES_MSG_OPEN received (a Stickies click, a second Notes): that note chosen
+seed open notes last=$SHOP; run open "$W3;$W3;$QUIT" SIM_MBOX="1:9:SD:/Notes/$GIFT"
+check "AC23 NOTES_MSG_OPEN received: that note chosen" cfg_last open $GIFT
+
 echo
 if [ $FAILS -ne 0 ]; then echo "notes-sim: $FAILS of $((PASS + FAILS)) checks FAILED"; exit 1; fi
 echo "notes-sim: all $PASS checks passed"
