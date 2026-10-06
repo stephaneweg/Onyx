@@ -1973,7 +1973,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **terminal** | Terminal/shell (see §7). |
 | **Gamepad** (`padconf`) | A Control Panel applet (alone: a window of its own). The USB gamepads (Xbox 360 / One, PlayStation 3 / 4, Switch Pro and any USB HID gamepad; up to 4). Tabs **Pad 1–4** (or keys 1–4): the pad's USB ids and which mapping it uses, its buttons (numbered, lit while held), axes and hats live, and on a drawn pad **what the apps see**. **Pad ▸ Map Buttons...** (**M**): press each button when asked (the d-pad, then the bottom / right / left / top face buttons, the shoulders L1 / R1, the triggers L2 / R2 — buttons or analog triggers, both are recognised — Select, Start, the sticks' clicks, Home); **Esc** = the pad has none, **Backspace** = cancel. It writes the pad model's section of **`SD:/etc/gamepad.ini`** — every app uses it at once. **Forget Mapping** removes it. Pads Circle knows need no mapping; other pads start from `[default]` (the usual generic layout). An axis the d-pad / left stick (or a trigger) uses is never read as the right stick too: a pad whose d-pad is on axes 3 / 4, once mapped, no longer presses the Nintendo 64's C buttons when it moves. |
 | **taskman** (Task Manager) | The system's monitor, in **tabs** (as Windows' Task Manager). **Processes**: every task in a **grid that scrolls** — its name, an app or a kernel task, its state (Running, Sleeping, Waiting), the **memory** it owns, an app's **system calls per second**; **click a title to sort** (again: the other way round; by memory, the largest first, at the start); refreshed twice a second, the selection kept. Arrows (Page Up / Down, Home, End) or a click select; **Enter**, a double click or **Bring to Front** brings the app's window to the foreground; **`k`** / **Delete** or **End Task** stops the app (not a kernel task); `r` refreshes now. **Memory** (what the Memory Monitor showed, which it replaces): the memory **in use** (and its share of the total), **free**, the **apps'**, the **system's** (the kernel, the GPU); the use **over the last minute**, drawn; **what uses it** — a bar and its legend: the system, the four largest apps, the others —; below, the RAM detected, the apps' pool and the page size. **Processor**: a panel a core — what it does (core 0: the system and every app; core 1: the sound; an app core and the app that holds it, or *free*; the network's: busy while the network works, a few per cent when it is quiet), its **load** over the last second and, drawn, over the last minute. **Network**: the rates now (**receiving**, **sending**) and the bytes received and sent since the start; the two rates over the last minute, drawn (their scale's top written beside); then **by app** — the apps that used the network, the busiest first: the bytes received and sent, the two rates; at the foot, the address, the host name and the sockets open. These are the bytes the apps exchange through their sockets (no header, nothing of the system's own traffic). On a kernel older than kapi v80 these two tabs stay grey. The window resizes (and maximises): the views follow. |
-| **GPIO Lab** (`gpiolab`) | The Raspberry Pi's **40-pin header** on the screen: the pins drawn as on the board, a pin's mode (input, pull-up, pull-down, output, PWM), outputs set or blinking, a PWM's frequency and duty, a **timing chart** of the chosen pins, the **I2C bus** scanned, the **edges** logged; a **simulator** when there is no hardware. See *GPIO Lab* below. |
+| **GPIO Lab** (`gpiolab`) | The Raspberry Pi's **40-pin header** on the screen: the pins drawn as on the board, a pin's mode (input, pull-up, pull-down, output, PWM), outputs set or blinking, a PWM's frequency and duty, a **timing chart** of the chosen pins, the **I2C bus** scanned, the **edges** logged; a **Code view**: a mini IDE where a BASIC program runs line by line and the header shows its pins live; a **simulator** when there is no hardware. See *GPIO Lab* below. |
 | **theme** (Theme) | The Control Panel's Theme applet: the colours of the frames, the windows' content, the buttons, the fields, the selection, the menu bar, the dock (a palette or any colour), the theme (Classic, Modern) and its scheme (Classic: Peach … Slate; Modern: Milk — soft greys and coloured beads for the title buttons — and Dark Coffee, its dark sister), the outline, the wallpaper (Voronoi, gradient, bubbles, a colour, a picture, a coloured pattern), on a desktop preview (see §11). Writes `SD:/etc/theme.txt` and `SD:/etc/wallpaper.ini`. |
 | **control** (Control Panel) | The settings in one window: its applets drawn inside it (see §11). Its list: the link files of `SD:/apps/control.app/applets/`. |
 | **dockconf** (Panel) | The Control Panel's Panel applet: the dock's drawers (group + main app), launchers and workspaces (see §11). Writes `SD:/etc/dock.ini`. |
@@ -4249,12 +4249,33 @@ every second (temperature, pressure, humidity); **Test Display** sends a test pi
 **Edges**: the edges of the pins that log them, newest first, with their time (seconds since GPIO Lab
 started, to the microsecond — the kernel's own clock) and how many each pin had.
 
+**The Code view — a mini IDE** (the **Pins | Code** switch, top right):
+
+![GPIO Lab's Code view](../screenshots/gpiolab-code.png)
+*The Code view: the first sketch running — line 11 lit, the LED on GPIO 17 blinking on the header, the button on
+GPIO 27 pressed twice (on the simulator: two clicks on its dot) and counted by `ON PIN … GOSUB`.*
+
+Write a BASIC program on the right (the language and its GPIO statements: §13 *GPIO*) and **Run** it (**F5**):
+it runs **inside GPIO Lab**, so the header on the left shows its pins as it drives them — an output lit, an
+input's level, a PWM, a bus — and the Pins view and its timing chart and edges see them too. The line being run
+is **lit** in the editor; **Speed** slows the program down so that you can follow it (from a line almost every
+second to full speed); **Step** (**F8**) runs **a line at a time** (Step again for the next one, Run to go on);
+**Stop** (**Esc**) stops it. What the program `PRINT`s goes to the console under the editor, with the errors —
+a mistake is shown at its line, marked in the margin. Keys typed while it runs go to the program (`INKEY$`);
+`INPUT` is not available here. **Examples...** loads the GPIO samples (an LED, a button, a servo, a BME280, an
+SSD1306 display, the first sketch); **File ▸ Open Program...** (^O) and **Save Program As...** (^S) work on
+`.bas` files — a program saved here also runs alone, with `SD:/bin/basic`. The editor's text is kept between two
+sessions (`SD:/apps/gpiolab.app/sketch.bas`). When the program ends, its pins **stay as it left them** (look at
+them, then **Board ▸ Release Every Pin**); a program run alone gives them back at its end. On the **simulator**,
+a click on an **input's dot** on the header is a wire to it: High, then Low — a button to press while the
+program runs.
+
 **The simulator**: when the system has no GPIO (a PC, a system older than the GPIO's kernel), GPIO Lab
 runs on GPIOKit's **simulated board** — the badge at the bottom right says **SIMULATOR** — and
 **Board ▸ Use the Simulator** (^M) switches to it (or back) on the Pi: nothing then touches the real
 pins. **Board ▸ Release Every Pin** (^R) gives everything back; **Board ▸ Demonstration Set-up** wires
 the set-up of the pictures above (on the real header too: an LED on 17, a servo on 18, a button on 27).
-Arguments: `--sim`, `--demo`, `--tab chart | i2c | edges`.
+Arguments: `--sim`, `--demo`, `--tab chart | i2c | edges`, `--code` (the Code view), `--run` (its program run at once).
 
 ### Games
 
@@ -4760,6 +4781,8 @@ own).*
 A BASIC program drives the Raspberry Pi's header through **GPIOKit** (docs/06): pins, PWM, a servo,
 edges as events, the I2C bus and SPI. Pins are **BCM GPIO numbers** (GPIO 17 is the header's pin 11:
 GPIO Lab shows them). **3.3 V only**: never connect 5 V to a pin; an LED goes through a 330 Ω resistor.
+The easiest place to write them is **GPIO Lab's Code view** (§12, *GPIO Lab*): the program runs there line by
+line, the header beside it lit as it drives the pins, on the Pi or on the simulator.
 
 ```basic
 PINMODE 17, "OUT"                 ' "OUT", "IN", "PULLUP", "PULLDOWN", "FREE"

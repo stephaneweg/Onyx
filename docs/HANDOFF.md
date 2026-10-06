@@ -88,6 +88,12 @@ explicit exception, written in docs/03 §5.9.0 / §5.10 and docs/06 §1 / §12.
   SSD1306 test picture), edges log, the simulator (Board menu), the 3.3 V band. docs/04 *GPIO Lab*;
   screenshots `gpiolab*.png` (`shots.sh gpiolab`; that script builds every app first — I ran its gpiolab
   lines by hand). Its window is 1120 x 640, smaller on a smaller screen (not tried below 1280 wide).
+- **GPIO Lab's Code view** (asked the same day: "un mini IDE pour écrire du code, avec un affichage du GPIO"):
+  `CodeEdit` + a console; Onyx BASIC's compiler and VM built into `gpiolab.elf` (as Turtle Quest), the program run
+  from the main loop (`run_program`, never from a callback), the window pumped by `LabHost::poll` / `sleepMs`, the
+  line lit by the statement hook (`setManaged`: the VM), Speed / Step / Stop, the edges taken by the program's
+  `ON PIN` while it runs (`log_events` keeps the Edges tab). Same process: its pins are GPIO Lab's, so the header
+  shows them. On the simulator a click on an input's dot toggles it. Screenshot `gpiolab-code.png`.
 - **BASIC** (docs/04 §13 *GPIO*): `PINMODE`, `PIN n = v` / `PIN(n)`, `PWM`, `SERVO`, `ON PIN (n [, edges])
   GOSUB` + `PIN (n) ON/OFF/STOP` (events 32 + pin of the VM), `PINCHANGED`, `PINFREE`, `GPIOSIM`, `I2COPEN`,
   `I2CREAD`, `I2CREAD$`, `I2CWRITE`, `I2CSEND`, `I2CSCAN$`, `SPIOPEN`, `SPI$`. The runtime opens gpiokit.so at

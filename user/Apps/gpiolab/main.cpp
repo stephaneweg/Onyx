@@ -31,6 +31,8 @@
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"			// FreeType's text (DejaVu Sans) for every widget
 #include "gpiokit/gpiokit.h"
+#include "filekit/filekit.h"		// (the sketch, the examples: fk_load / fk_save)
+#include "basic/bas.h"			// Onyx BASIC built in: the Code view runs its program here
 #include <stdio.h>
 #include <string.h>
 
@@ -95,6 +97,23 @@ static Slider *g_slDuty;
 static Label *g_lbDuty, *g_lbFreq, *g_lbDrive;
 
 static void sync_controls (void);
+// The Code view (the mini IDE): its widgets, and the program's run
+static int  g_view = 0;				// 0 the pins, 1 the code
+static SegmentedControl *g_viewSw;
+static CodeEdit *g_ed;
+static class ConsoleView *g_con;
+static Button *g_btRun, *g_btStep, *g_btStop;
+static Slider *g_speed;
+static Label *g_lbSpeed;
+static Dropdown *g_ddEx;
+static TextFace *g_mono;
+static Root *g_root;
+static bool g_running, g_stepMode, g_waitStep, g_stopReq, g_quit;
+static int  g_runReq;				// 1 run, 2 step: the main loop starts it (never from a callback)
+static long g_keyQ[16]; static int g_nkeyQ;	// the keys typed while a program runs (INKEY$)
+static void apply_view (void);
+static void refresh_pins (void);
+static void log_events (const gk_event *ev, int n);
 static void set_status (const char *s) { snprintf (g_status, sizeof g_status, "%s", s); }
 static void fail (int r, const char *what) { char t[128]; snprintf (t, sizeof t, "%s: %s", what, gk_error (r)); set_status (t); }
 
@@ -200,7 +219,17 @@ public:
 		if (bl == 1)
 		{
 			int g = hit (mx, my);
-			if (g >= 0) { g_sel = g; sync_controls (); }
+			if (g >= 0)
+			{
+				// the simulator: a click on an input's own dot is a wire to it -- High, then Low (a button)
+				int hp = gk_header_pin (g), px, py; pinPos (hp, &px, &py);
+				if (gk_available () == 2 && is_input (g_pin[g].mode) && (mx - px) * (mx - px) + (my - py) * (my - py) <= 100)
+				{
+					gk_sim_input (g, g_pin[g].level ? 0 : 1);
+					refresh_pins ();
+				}
+				g_sel = g; sync_controls ();
+			}
 			setFocus ();
 			return true;
 		}
@@ -666,6 +695,7 @@ static void sync_controls (void)
 	for (Widget *w : all) w->invalidate (true);
 	g_header->invalidate (true);
 	g_panel->invalidate (true);
+	if (g_view == 1 && g_ed) apply_view ();		// (the Code view: the pin's controls stay hidden)
 }
 
 static void use_sim (void)
@@ -712,14 +742,14 @@ public:
 		Root::onDraw ();
 		// the warning: 3.3 V
 		unsigned amber = 0xF6C343, ink = 0x3A2A00;
-		uk_rbox (canvas, 12, 8, width - 24, BANNER - 14, 8, amber, uk_mix (amber, 0xE0A020, 128));
+		uk_rbox (canvas, 12, 8, width - 24 - 200, BANNER - 14, 8, amber, uk_mix (amber, 0xE0A020, 128));
 		VPath t; int tx = 32, ty = 25;
 		int tri[6] = { V (tx), V (ty - 10), V (tx + 11), V (ty + 9), V (tx - 11), V (ty + 9) };
 		t.poly (tri, 3); t.fill (canvas, ink);
 		uk_text_c (canvas, tx - 6, ty - 7, 12, 16, "!", amber, 2);
 		uk_text_l (canvas, 52, 11, 28, "3.3 V only: never connect 5 V to a GPIO pin.", ink, 2);
 		uk_text_l (canvas, 52 + uk_text_w ("3.3 V only: never connect 5 V to a GPIO pin.", 2) + 10, 11, 28,
-			   "At most 16 mA a pin: an LED through a 330 ohm resistor.", ink);
+			   "16 mA a pin at most: an LED through 330 ohm.", ink);
 		// what drives the pins, and the last message
 		const char *who = gk_available () == 2 ? "SIMULATOR" : gk_available () == 1 ? "RASPBERRY PI HEADER" : "NO GPIO";
 		int ww = uk_text_w (who, 2) + 20;
@@ -754,20 +784,15 @@ public:
 		}
 		// the edges
 		gk_event ev[64];
-		int n = gk_events (ev, 64, 0);
-		for (int i = 0; i < n; i++)
-		{
-			if (g_nlog < NLOG) g_log[(g_log0 + g_nlog++) % NLOG] = ev[i];
-			else { g_log[g_log0] = ev[i]; g_log0 = (g_log0 + 1) % NLOG; }
-			if (ev[i].pin < GK_PINS) g_edgeCount[ev[i].pin]++;
-		}
+		int n = g_running ? 0 : gk_events (ev, 64, 0);	// (a program running takes them: ON PIN; LabHost logs them)
+		log_events (ev, n);
 		unsigned before = 0, after = 0;
 		for (int p = 0; p < GK_PINS; p++) before = before * 31 + g_pin[p].level + g_pin[p].mode * 7 + g_pin[p].owner;
 		refresh_pins ();
 		for (int p = 0; p < GK_PINS; p++) after = after * 31 + g_pin[p].level + g_pin[p].mode * 7 + g_pin[p].owner;
 		if (after != before) { g_header->invalidate (true); g_panel->invalidate (true); if (g_pin[g_sel].mode == GK_OUT) sync_controls (); }
 		if (g_tab == 0 && !g_paused && (frames & 1)) g_chart->invalidate (true);
-		if (g_tab == 2 && n > 0) g_edges->invalidate (true);
+		if (g_tab == 2 && (n > 0 || g_running)) g_edges->invalidate (true);
 		if (g_tab == 1 && (frames % 60) == 0 && g_bme[0] && g_found > 0)
 		{
 			for (int a = 0x76; a <= 0x77; a++) if (g_map[a / 8] >> (a % 8) & 1) bme280 (a, g_bme, sizeof g_bme);
@@ -775,14 +800,356 @@ public:
 		}
 		if ((frames % 30) == 0) invalidate (true);	// (the status line)
 	}
-	bool onKey (long k) override
+	bool onKey (long k) override;
+};
+
+// ---- the Code view: a mini IDE ----------------------------------------------------------------------------------
+// The program is Onyx BASIC (its GPIO statements: docs/04 §13), compiled and run HERE, in GPIO Lab's own process:
+// its pins are GPIO Lab's, so the header shows them live. The VM runs from the main loop (main: never from a
+// button's callback); it gives the window a round through the host's poll () and its waits (pump), and the
+// statement hook (Host::onStatement) lights the line it runs -- slowed down by the Speed slider, or a line at a
+// time (Step). The program's pins stay as it left them when it ends (Board > Release Every Pin gives them back;
+// a program run by /bin/basic gives them back at its end).
+#define CON_LINES	300
+class ConsoleView : public Widget
+{
+public:
+	struct Line { char t[160]; unsigned char kind; };	// 0 the program's, 1 an error, 2 GPIO Lab's
+	Line lines[CON_LINES]; int n = 0, first = 0; bool open = false;	// open: the last line goes on
+	ConsoleView (int l, int t, int w, int h) : Widget (l, t, w, h) {}
+	Line &at (int i) { return lines[(first + i) % CON_LINES]; }
+	void newLine (int kind)
 	{
-		if (k == ' ') { toggle_level (); return true; }
-		return ((Widget *) g_header)->onKey (k);
+		if (n == CON_LINES) { first = (first + 1) % CON_LINES; n--; }
+		Line &L = at (n++); L.t[0] = 0; L.kind = (unsigned char) kind; open = true;
+	}
+	void put (const char *s, int len, int kind)
+	{
+		for (int i = 0; i < len; i++)
+		{
+			if (!open || at (n - 1).kind != kind) newLine (kind);
+			if (s[i] == '\n') { open = false; continue; }
+			if (s[i] == '\r') continue;
+			Line &L = at (n - 1); int k = (int) strlen (L.t);
+			if (k < (int) sizeof L.t - 1) { L.t[k] = s[i]; L.t[k + 1] = 0; }
+		}
+		invalidate (true);
+	}
+	void say (const char *s, int kind) { if (open) open = false; put (s, (int) strlen (s), kind); open = false; }
+	void clear () { n = 0; first = 0; open = false; invalidate (true); }
+	void onDraw () override
+	{
+		canvas.clear (bgColor ());
+		unsigned bg = 0x1B1F23;
+		uk_rbox (canvas, 0, 0, width, height, 6, bg, bg);
+		UkFaceScope fs (g_mono);
+		int lh = uk_fh () + 2, rows = (height - 10) / lh;
+		int from = n > rows ? n - rows : 0;
+		for (int i = from, y = 5; i < n; i++, y += lh)
+		{
+			Line &L = at (i);
+			unsigned c = L.kind == 1 ? 0xFF7A6E : L.kind == 2 ? 0x8FB7D9 : 0xE6E6E6;
+			uk_text_l (canvas, 10, y, lh, L.t, c);
+		}
+		if (n == 0) uk_text_l (canvas, 10, 5, lh, "(what the program PRINTs comes here)", 0x707880);
 	}
 };
 
-static void m_quit (void) { kapi_exit (0); }
+static bool pump (void)				// a round of the window while the program runs
+{
+	if (!g_root->step ()) { g_quit = true; return false; }
+	return true;
+}
+static const int SPEED_MS[11] = { 0, 900, 600, 400, 250, 150, 90, 50, 25, 8, 0 };	// a line's wait, by the Speed
+
+class LabHost : public bas::Host
+{
+public:
+	unsigned lastPump = 0;
+	int curLine = 0;
+	void out (const char *s, int n) override { g_con->put (s, n, 0); }
+	int inputLine (char *buf, int cap) override
+	{
+		(void) cap; buf[0] = 0;
+		g_con->say ("INPUT: no keyboard input in GPIO Lab -- the program stops here.", 1);
+		return -1;
+	}
+	int inkey (char *o) override
+	{
+		if (!g_nkeyQ) return 0;
+		long k = g_keyQ[0];
+		for (int i = 1; i < g_nkeyQ; i++) g_keyQ[i - 1] = g_keyQ[i];
+		g_nkeyQ--;
+		if (k > 0 && k < 256) { o[0] = (char) k; return 1; }
+		o[0] = 0; o[1] = k == KEY_UP ? 72 : k == KEY_DOWN ? 80 : k == KEY_LEFT ? 75 : k == KEY_RIGHT ? 77 : 0;
+		return o[1] ? 2 : 0;
+	}
+	int keyPending (char *o) override { if (!g_nkeyQ) return 0; long k = g_keyQ[0]; if (k > 0 && k < 256) { o[0] = (char) k; return 1; } return 0; }
+	void cls (int) override { g_con->clear (); }
+	bool poll () override
+	{
+		unsigned now = kapi_clock_us ();
+		if ((unsigned) (now - lastPump) >= 15000u) { lastPump = now; pump (); }
+		return !g_stopReq && !g_quit;
+	}
+	void sleepMs (int ms) override
+	{
+		unsigned long long end = gk_now_us () + (unsigned long long) (ms > 0 ? ms : 0) * 1000u;
+		for (;;)
+		{
+			if (!pump () || g_stopReq) return;
+			unsigned long long now = gk_now_us ();
+			if (now >= end) return;
+			unsigned long long left = (end - now) / 1000u;
+			kapi_msleep ((unsigned) (left > 10 ? 10 : left > 0 ? left : 1));
+		}
+	}
+	double timer () override { return (double) (gk_now_us () / 1000u) / 1000.0; }
+	unsigned clockUs () override { return kapi_clock_us (); }
+	unsigned seed () override { return (unsigned) gk_now_us (); }
+	void notify (const char *title, const char *text) override { char t[200]; snprintf (t, sizeof t, "%s: %s", title, text); g_con->say (t, 2); }
+	// a line about to run: lit, then the Speed's wait -- or, step by step, the wait for Step
+	bool onStatement (int line) override
+	{
+		curLine = line;
+		int sp = g_speed ? g_speed->value : 10;
+		if (g_stepMode || sp < 10)
+		{
+			if (g_ed->hiLine != line) { g_ed->hiLine = line; g_ed->showLine (line - 1); g_ed->invalidate (true); }
+			if (g_stepMode)
+			{
+				g_waitStep = true;
+				while (g_waitStep && g_stepMode && !g_stopReq && pump ()) kapi_msleep (10);
+			}
+			else sleepMs (SPEED_MS[sp]);
+		}
+		else if (poll () && g_ed->hiLine != line && (unsigned) (kapi_clock_us () - lastPump) < 2000u)
+		{ g_ed->hiLine = line; g_ed->invalidate (true); }	// (full speed: the line shown at each round of the window)
+		return !g_stopReq && !g_quit;
+	}
+	// GPIO: GPIOKit itself (linked in): the program's pins are GPIO Lab's
+	bool i2c = false, spi = false;
+	int gpio (int op, int a, int b, int c, const char *in, int inLen, char *out, int outCap) override
+	{
+		int r;
+		switch (op)
+		{
+		case GP_MODE:	return gk_mode (a, b);
+		case GP_WRITE:	return gk_write (a, b);
+		case GP_READ:	return gk_read (a);
+		case GP_PWM:	return gk_pwm (a, b, c);
+		case GP_SERVO:	return gk_servo (a, b);
+		case GP_EDGES:	return gk_edges (a, b);
+		case GP_EVENTS:
+		{
+			gk_event ev[32]; int max = outCap / 2 < 32 ? outCap / 2 : 32;
+			r = max > 0 ? gk_events (ev, max, 0) : 0;
+			for (int k = 0; k < r; k++) { out[2 * k] = (char) ev[k].pin; out[2 * k + 1] = (char) ev[k].edge; }
+			log_events (ev, r);			// (the Edges tab sees them too)
+			return r;
+		}
+		case GP_FREE:	if (a < 0) { i2c = spi = false; return gk_release (); } return gk_mode (a, GK_FREE);
+		case GP_SIM:	return gk_sim (a);
+		case GP_I2C_OPEN: r = gk_i2c_open (a); i2c = r >= 0; return r;
+		case GP_SPI_OPEN: r = gk_spi_open (a, b); spi = r >= 0; return r;
+		default: break;
+		}
+		if (op == GP_SPI_XFER) { if (!spi && (r = gk_spi_open (0, 0)) < 0) return r; spi = true; return gk_spi_transfer (a, in, out, inLen); }
+		if (!i2c) { if ((r = gk_i2c_open (0)) < 0) return r; i2c = true; }
+		switch (op)
+		{
+		case GP_I2C_REG_READ:	return gk_i2c_reg_read (a, b);
+		case GP_I2C_REG_WRITE:	return gk_i2c_reg_write (a, b, c);
+		case GP_I2C_XFER:	r = gk_i2c_write_read (a, in, inLen, out, b); return r < 0 ? r : b > 0 ? r : 0;
+		case GP_I2C_SCAN:	return outCap >= 16 ? gk_i2c_scan ((unsigned char *) out) : GP_NODEV;
+		default:		return GP_NODEV;
+		}
+	}
+	const char *gpioError (int code) override { return gk_error (code); }
+};
+
+static void log_events (const gk_event *ev, int n)
+{
+	for (int i = 0; i < n; i++)
+	{
+		if (g_nlog < NLOG) g_log[(g_log0 + g_nlog++) % NLOG] = ev[i];
+		else { g_log[g_log0] = ev[i]; g_log0 = (g_log0 + 1) % NLOG; }
+		if (ev[i].pin < GK_PINS) g_edgeCount[ev[i].pin]++;
+	}
+}
+
+// The sketch: kept beside the app between two sessions
+#define SKETCH "SD:/apps/gpiolab.app/sketch.bas"
+static const char *const DEFAULT_SKETCH =
+	"' GPIO Lab: write BASIC here and press Run (F5) -- the header on the left\n"
+	"' shows the pins as the program drives them. Step (F8): a line at a time.\n"
+	"' An LED on GPIO 17 (pin 11, through 330 ohm to GND) blinks; a button on\n"
+	"' GPIO 27 (pin 13, to GND) is counted. On the simulator, click GPIO 27's\n"
+	"' dot on the header to press it.\n"
+	"PINMODE 17, \"OUT\"\n"
+	"PINMODE 27, \"PULLUP\"\n"
+	"ON PIN (27, 2) GOSUB Pressed\n"
+	"FOR i = 1 TO 10\n"
+	"  PIN 17 = 1: PAUSE 300\n"
+	"  PIN 17 = 0: PAUSE 300\n"
+	"NEXT\n"
+	"PRINT \"Done:\"; presses; \"presses\"\n"
+	"END\n"
+	"\n"
+	"Pressed:\n"
+	"  presses = presses + 1\n"
+	"  PRINT \"Pressed!\"; presses\n"
+	"  RETURN\n";
+static void save_sketch (void) { if (g_ed) fk_save (SKETCH, g_ed->text (), (unsigned) g_ed->length ()); }
+static bool load_into_editor (const char *path)
+{
+	void *b = 0; unsigned n = 0;
+	if (fk_load (path, &b, &n) != 0 || b == 0) return false;
+	g_ed->setText ((const char *) b);
+	fk_free (b);
+	g_ed->clearMarks (); g_ed->hiLine = 0; g_ed->invalidate (true);
+	return true;
+}
+
+static void set_run_buttons (void)
+{
+	strcpy (g_btRun->text, g_running && !g_stepMode ? "Running" : g_running ? "Continue" : "Run");
+	g_btStop->disabled = !g_running;
+	g_ed->readonly = g_running;
+	Widget *const ws[] = { g_btRun, g_btStep, g_btStop };
+	for (Widget *w : ws) w->invalidate (true);
+}
+
+// The program in the editor, compiled and run (the main loop calls it: g_runReq)
+static void run_program (bool step)
+{
+	save_sketch ();
+	g_con->clear ();
+	g_ed->clearMarks (); g_ed->hiLine = 0;
+	bas::Error err; err.line = 0; err.msg[0] = 0;
+	bas::Program *p = bas::compile (g_ed->text (), &err);
+	if (!p)
+	{
+		char t[200]; snprintf (t, sizeof t, "Line %d: %s", err.line, err.msg);
+		g_con->say (t, 1);
+		if (err.line > 0) { g_ed->addMark (err.line); g_ed->hiLine = err.line; g_ed->gotoLine (err.line - 1); }
+		g_ed->invalidate (true);
+		return;
+	}
+	bas::setManaged (p, true);			// (the VM: the statement hook lights the lines)
+	LabHost host;
+	host.lineHook = true;
+	g_running = true; g_stepMode = step; g_waitStep = false; g_stopReq = false; g_nkeyQ = 0;
+	set_run_buttons ();
+	((Widget *) g_header)->setFocus ();		// (the keys go to the program: INKEY$)
+	g_con->say (step ? "Step by step: F8 (or Step) runs the lit line." : "Running...", 2);
+	unsigned long long t0 = gk_now_us ();
+	int r = bas::run (p, host, &err);
+	unsigned long long ms = (gk_now_us () - t0) / 1000u;
+	char t[200];
+	if (r != 0 && err.msg[0])
+	{
+		snprintf (t, sizeof t, "Line %d: %s", err.line, err.msg);
+		g_con->say (t, 1);
+		if (err.line > 0) { g_ed->addMark (err.line); g_ed->hiLine = err.line; g_ed->gotoLine (err.line - 1); }
+	}
+	else
+	{
+		snprintf (t, sizeof t, g_stopReq ? "Stopped (%llu.%llu s)." : "Ended (%llu.%llu s): the pins stay as it left them.", ms / 1000, ms % 1000 / 100);
+		g_con->say (t, 2);
+		g_ed->hiLine = 0;
+	}
+	bas::destroy (p);
+	g_running = false; g_stepMode = false; g_waitStep = false;
+	refresh_pins (); sync_controls (); set_run_buttons ();
+	g_ed->invalidate (true);
+	g_ed->setFocus ();
+}
+
+static void do_run (void)
+{
+	if (g_running) { g_stepMode = false; g_waitStep = false; set_run_buttons (); return; }	// (Continue)
+	g_runReq = 1;
+}
+static void do_step (void)
+{
+	if (g_running) { if (g_stepMode) g_waitStep = false; else g_stepMode = true; set_run_buttons (); return; }
+	g_runReq = 2;
+}
+static void do_stop (void) { if (g_running) g_stopReq = true; }
+static void cb_run (Widget &) { do_run (); }
+static void cb_step (Widget &) { do_step (); }
+static void cb_stop (Widget &) { do_stop (); }
+static void cb_speed (Widget &) { char t[24]; snprintf (t, sizeof t, g_speed->value >= 10 ? "Speed: full" : "Speed: %d", g_speed->value); g_lbSpeed->setText (t); }
+static const char *const EXAMPLES[] = { "Examples...", "Blink an LED", "A button", "A servo", "A BME280 sensor (I2C)", "An SSD1306 display (I2C)", "The first sketch" };
+static const char *const EXAMPLE_FILES[] = { 0, "SD:/basic/examples/gpio_blink.bas", "SD:/basic/examples/gpio_button.bas",
+	"SD:/basic/examples/gpio_servo.bas", "SD:/basic/examples/gpio_bme280.bas", "SD:/basic/examples/gpio_oled.bas", 0 };
+static void cb_example (Widget &)
+{
+	int i = g_ddEx->sel;
+	if (i <= 0 || g_running) return;
+	if (i == 6) { g_ed->replaceAll (DEFAULT_SKETCH, 0); }
+	else if (!load_into_editor (EXAMPLE_FILES[i])) { char t[160]; snprintf (t, sizeof t, "Cannot read %s", EXAMPLE_FILES[i]); g_con->say (t, 1); }
+	else { char t[160]; snprintf (t, sizeof t, "%s: %s", EXAMPLES[i], EXAMPLE_FILES[i]); g_con->say (t, 2); }
+	g_ddEx->sel = 0; g_ddEx->invalidate (true);
+}
+static void on_view (Widget &)
+{
+	g_view = g_viewSw->selected == 1 ? 1 : 0;
+	apply_view ();
+	if (g_view == 1) g_ed->setFocus (); else ((Widget *) g_header)->setFocus ();
+}
+
+// Which of the right side's widgets the view shows
+static void apply_view (void)
+{
+	bool code = g_view == 1;
+	Widget *const pins[] = { g_panel, g_modes, g_btLevel, g_cbBlink, g_ddFreq, g_slDuty, g_lbDuty, g_lbFreq, g_cbEdges, g_drive, g_lbDrive,
+				 g_cbWatch, g_tabs, g_btPause, g_btScan, g_btOled, g_chart, g_i2c, g_edges };
+	if (code) for (Widget *w : pins) w->hidden = true;
+	else
+	{
+		g_panel->hidden = false; g_tabs->hidden = false;
+		sync_controls ();			// (the pin's controls as its mode wants)
+		g_tabs->selected = g_tab; on_tab (*g_tabs);	// (the tab's view and buttons)
+	}
+	Widget *const ide[] = { g_ed, g_con, g_btRun, g_btStep, g_btStop, g_speed, g_lbSpeed, g_ddEx };
+	for (Widget *w : ide) w->hidden = !code;
+	if (g_root) g_root->invalidate (true);
+}
+
+bool LabRoot::onKey (long k)
+{
+	if (k == KEY_F1 + 4) { do_run (); return true; }			// F5
+	if (k == KEY_F1 + 7) { do_step (); return true; }			// F8
+	if (g_running)
+	{
+		if (k == 27) { do_stop (); return true; }			// Esc
+		if (g_nkeyQ < 16) g_keyQ[g_nkeyQ++] = k;			// INKEY$
+		return true;
+	}
+	if (g_view == 1) return false;
+	if (k == ' ') { toggle_level (); return true; }
+	return ((Widget *) g_header)->onKey (k);
+}
+
+static void m_quit (void) { save_sketch (); kapi_exit (0); }
+static void m_run (void) { do_run (); }
+static void m_step (void) { do_step (); }
+static void m_stop (void) { do_stop (); }
+static void m_open (void)
+{
+	char path[256];
+	if (g_running || !uk_file_open (path, sizeof path, "SD:/basic/examples", "BASIC programs|*.bas|All files|*")) return;
+	if (load_into_editor (path)) { g_view = 1; g_viewSw->selected = 1; g_viewSw->invalidate (true); apply_view (); g_ed->setFocus (); }
+}
+static void m_save (void)
+{
+	char path[256];
+	if (!uk_file_save (path, sizeof path, "SD:/basic", "gpio.bas", "BASIC programs|*.bas|All files|*")) return;
+	if (fk_save (path, g_ed->text (), (unsigned) g_ed->length ()) != 0) uk_messagebox ("GPIO Lab", "The program could not be saved.", MB_OK);
+	else { char t[300]; snprintf (t, sizeof t, "Saved: %s", path); g_con->say (t, 2); }
+}
 static void m_sim (void) { use_sim (); Root::current ()->invalidate (true); }
 static void m_release (void) { release_all (); }
 static void m_demo (void) { demo (); refresh_pins (); sync_controls (); redraw_all (); }
@@ -794,6 +1161,7 @@ int main (void)
 	kapi_get_args (args, sizeof args);
 	if (strstr (args, "--sim") || gk_available () == 0) gk_sim (1);
 	g_demo = strstr (args, "--demo") != 0;
+	bool codeArg = strstr (args, "--code") != 0;
 	if (strstr (args, "--tab i2c")) g_tab = 1;
 	else if (strstr (args, "--tab edges")) g_tab = 2;
 	for (int p = 0; p < GK_PINS; p++) { g_freqIx[p] = 3; g_duty[p] = 500; }
@@ -805,6 +1173,8 @@ int main (void)
 	if (sh > 0 && sh < H + 80) H = sh - 80 < 600 ? 600 : sh - 80;
 	LabRoot root;
 	if (root.canvas.px == 0) return 1;
+	g_root = &root;
+	{ FtTextFace *m = new FtTextFace; if (m->open ("DejaVu Sans Mono", 14)) g_mono = m; else delete m; }
 	refresh_pins ();
 	set_status (gk_available () == 2 ? "The simulator drives the pins: nothing touches the real header." : "Choose a pin on the header.");
 
@@ -862,9 +1232,50 @@ int main (void)
 	g_i2c = new I2CView (rx, vy, rw, vh);      root.addChild (g_i2c);
 	g_edges = new EdgeView (rx, vy, rw, vh);   root.addChild (g_edges);
 
+	// the view: the pins, or the code (the mini IDE)
+	static const char *const VIEWS[2] = { "Pins", "Code" };
+	g_viewSw = new SegmentedControl (W - 12 - 192, 10, 192, 30, VIEWS, 2, 0, on_view);
+	g_viewSw->tip = "Pins: drive them by hand. Code: write a BASIC program and watch it drive them.";
+	root.addChild (g_viewSw);
+	{
+		int cy = BANNER + 6, x = rx;
+		g_btRun = new Button (x, cy, 96, 30, "Run", cb_run); g_btRun->tip = "Run the program (F5)"; root.addChild (g_btRun); x += 102;
+		g_btStep = new Button (x, cy, 70, 30, "Step", cb_step); g_btStep->tip = "A line at a time (F8)"; root.addChild (g_btStep); x += 76;
+		g_btStop = new Button (x, cy, 70, 30, "Stop", cb_stop); g_btStop->tip = "Stop the program (Esc)"; root.addChild (g_btStop); x += 84;
+		g_lbSpeed = new Label (x, cy + 4, 86, 22, "Speed: 6", C_TEXT, root.bg); root.addChild (g_lbSpeed); x += 88;
+		g_speed = new Slider (x, cy, 120, 30, 1, 10, 6, cb_speed, root.bg);
+		g_speed->tip = "How fast the lines run (each lit as it runs); full: as fast as it can"; root.addChild (g_speed);
+		g_ddEx = new Dropdown (W - 12 - 190, cy, 190, 30, EXAMPLES, 7, 0, cb_example); root.addChild (g_ddEx);
+		int conH = 150, ey = cy + 40, eh = H - 40 - ey - conH - 8;
+		g_ed = new CodeEdit (rx, ey, rw, eh);
+		g_ed->mono = g_mono; g_ed->ui = ft_uikit_face ();
+		g_ed->isKeyword = [] (const char *w, int n) -> bool {
+			static char words[8000]; static int len = -1;
+			if (len < 0) len = bas::wordList (words, sizeof words);
+			for (int i = 0; i < len; )
+			{
+				int j = i; while (j < len && words[j] != ' ') j++;
+				if (j - i == n) { int k = 0; while (k < n && (w[k] >= 'a' && w[k] <= 'z' ? w[k] - 32 : w[k]) == words[i + k]) k++; if (k == n) return true; }
+				i = j + 1;
+			}
+			return false;
+		};
+		root.addChild (g_ed);
+		g_con = new ConsoleView (rx, ey + eh + 8, rw, conH); root.addChild (g_con);
+		if (!load_into_editor (SKETCH)) g_ed->setText (DEFAULT_SKETCH);
+		set_run_buttons ();
+	}
+
 	static Menu menu;
 	menu.menu ("File");
+	menu.item ("Open Program...", "^O", UK_CTRL ('O'), m_open);
+	menu.item ("Save Program As...", "^S", UK_CTRL ('S'), m_save);
+	menu.separator ();
 	menu.item ("Quit", "^Q", UK_CTRL ('Q'), m_quit);
+	menu.menu ("Program");
+	menu.item ("Run", "F5", KEY_F1 + 4, m_run);
+	menu.item ("Step", "F8", KEY_F1 + 7, m_step);
+	menu.item ("Stop", "Esc", 0, m_stop);
 	menu.menu ("Board");
 	menu.item ("Use the Simulator", "^M", UK_CTRL ('M'), m_sim);
 	menu.item ("Release Every Pin", "^R", UK_CTRL ('R'), m_release);
@@ -877,8 +1288,19 @@ int main (void)
 	sync_controls ();
 	g_tabs->selected = g_tab;
 	on_tab (*g_tabs);
-	g_header->setFocus ();
-	root.run ();
+	g_view = codeArg ? 1 : 0; g_viewSw->selected = g_view;
+	apply_view ();
+	if (g_view == 1) g_ed->setFocus (); else g_header->setFocus ();
+	if (strstr (args, "--run")) g_runReq = 1;
+	// the loop (Root::run's), with the programs started from it -- never from a callback: their run gives the
+	// window its rounds (pump)
+	root.attach ();
+	while (!g_quit && root.step ())
+	{
+		if (g_runReq) { int r = g_runReq; g_runReq = 0; run_program (r == 2); continue; }
+		kapi_msleep (16);
+	}
+	save_sketch ();
 	gk_release ();
 	return 0;
 }

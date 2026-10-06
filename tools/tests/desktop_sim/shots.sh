@@ -124,9 +124,13 @@ build () {
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/turtle" "$OUT/fakekapi.o" user/Apps/turtle/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
 			user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
-	if [ "$1" = gpiolab ]; then			# (newlib-like: FreeType; GPIOKit compiled in -- on a PC its simulator only)
-		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/gpiolab" "$OUT/fakekapi.o" user/Apps/gpiolab/main.cpp user/Kits/gpiokit/gkcore.cpp \
-			"$OUT/libuikit.a" "$OUT/libft.a"; return
+	if [ "$1" = gpiolab ]; then			# (newlib-like: FreeType; GPIOKit compiled in -- on a PC its simulator only; its Code
+						#  view: Onyx BASIC's compiler and VM, FileKit and zlib)
+		mkdir -p "$OUT/glz"
+		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/glz/$f.o" || return 1; done
+		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party/zlib-1.3.1 -o "$OUT/gpiolab" "$OUT/fakekapi.o" user/Apps/gpiolab/main.cpp user/Kits/gpiokit/gkcore.cpp \
+			user/Kits/filekit/fkcore.cpp "$OUT"/glz/*.o user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp \
+			"$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
@@ -235,6 +239,9 @@ if want gpiolab; then			# (GPIO Lab on GPIOKit's simulator, its demonstration: a
 	sim gpiolab gpiolab "${GL}wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--demo --tab chart"; png gpiolab
 	sim gpiolab gpiolab-i2c "${GL}wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--demo --tab i2c"; png gpiolab-i2c
 	sim gpiolab gpiolab-edges "${GL}down 202 243;up 202 243;wait;wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--demo --tab edges"; png gpiolab-edges
+	# the Code view: the first sketch run, the button on GPIO 27 pressed twice by clicks on its dot (the simulator)
+	G1=$(printf 'wait;%.0s' $(seq 1 60)); G2=$(printf 'wait;%.0s' $(seq 1 30)); C="down 202 248;up 202 248;$G2"
+	sim gpiolab gpiolab-code "${G1}${C}${C}${C}${C}wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--code --run"; png gpiolab-code
 fi
 if want 2048; then
 	m=""; for k in 0x102 0x100 0x103 0x101 0x102 0x100 0x102 0x100 0x103 0x100 0x102 0x100 0x103 0x101 0x102 0x100 0x102 0x100 0x103 0x100 0x102 0x100 0x102 0x100 0x103 0x100; do m="$m;key $k;wait"; done

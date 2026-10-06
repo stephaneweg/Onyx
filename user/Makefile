@@ -765,8 +765,10 @@ setup.elf: Apps/setup/system.h Kits/systemkit/wallpaper.h Kits/imagekit/img/imgl
 FT_EXTRA_gamelib = Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a
 FT_EXTRA_fmtracker = lib/audiokit.imp.a
 FT_EXTRA_soundconf = lib/audiokit.imp.a
-FT_EXTRA_gpiolab = lib/gpiokit.imp.a
-gpiolab.elf: lib/gpiokit.imp.a Kits/gpiokit/gpiokit.h
+# (GPIO Lab's Code view: Onyx BASIC's compiler and VM built in, as Turtle Quest's)
+FT_EXTRA_gpiolab = lib/gpiokit.imp.a Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp
+gpiolab.elf: lib/gpiokit.imp.a Kits/gpiokit/gpiokit.h Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp \
+	     Libs/basic/bas.h Libs/basic/basint.h Libs/basic/basjit.h Libs/basic/basnum.h
 soundconf.elf: lib/audiokit.imp.a Kits/audiokit/audiokit.h
 fmtracker.elf: lib/audiokit.imp.a Kits/audiokit/audiokit.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
