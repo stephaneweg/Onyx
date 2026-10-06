@@ -81,8 +81,8 @@ static const bas::ExtWord WORDS[] = {
 // French gives BASIC -- the turtle's (their short forms, the imperative of the first versions: AVANCE, RAMASSE...),
 // then the language's: SI ... ALORS / SINON SI / SINON / FIN SI, POUR i = 1 JUSQUE 5 PAS 2 ... SUITE,
 // REPETER n ... FIN REPETER, TANTQUE ... FIN TANTQUE, FAIRE ... BOUCLE JUSQUA, SUB ... FIN SUB, FONCTION ... FIN
-// FONCTION, CLASSE ... FIN CLASSE, DIM n COMME ENTIER (16 bits; OCTET: 8, LONG: 32, ENTIER64: 64), x COMME SIMPLE (DOUBLE),
-// s COMME CHAINE. The English words stay known.
+// FONCTION, CLASSE ... FIN CLASSE, DIM n COMME ENTIER, x COMME REEL, s COMME CHAINE, o COMME OCTET (and the sizes,
+// where the bytes count: ENTIER16 / 32 / 64, REEL32 / 64). The English words stay known.
 static const char *const FR_NAME[W_COUNT_] = { "", "AVANCER", "RECULER", "GAUCHE", "DROITE", "LEVERCRAYON", "BAISSERCRAYON", "COULEUR", "RAMASSER",
 	"MUR", "MURGAUCHE", "MURDROITE", "DEVANT", "SURBUT", "OBJET", "CLES", "CAP" };
 static const char *const ALIASES_FR[] = {
@@ -98,14 +98,15 @@ static const char *const ALIASES_FR[] = {
 	"PROCEDURE", "SUB", "FONCTION", "FUNCTION", "RETOUR", "RETURN", "APPELER", "CALL", "APPELLE", "CALL", "SORTIR", "EXIT",
 	"CLASSE", "CLASS", "HERITE", "EXTENDS", "IMPLEMENTE", "IMPLEMENTS", "VIRTUEL", "VIRTUAL", "REDEFINIT", "OVERRIDE", "ABSTRAIT", "ABSTRACT",
 	"NOUVEAU", "NEW", "CECI", "THIS", "RIEN", "NOTHING",
-	"COMME", "AS", "ENTIER", "INTEGER", "ENTIER64", "_INTEGER64", "OCTET", "BYTE", "SIMPLE", "SINGLE", "CHAINE", "STRING", "CONSTANTE", "CONST", "PARTAGE", "SHARED", "STATIQUE", "STATIC",
+	"COMME", "AS", "ENTIER", "INTEGER", "REEL", "REAL", "CHAINE", "STRING", "OCTET", "BYTE",
+	"ENTIER16", "INTEGER16", "ENTIER32", "INTEGER32", "ENTIER64", "INTEGER64", "REEL32", "REAL32", "REEL64", "REAL64", "CONSTANTE", "CONST", "PARTAGE", "SHARED", "STATIQUE", "STATIC",
 	"SELON", "SELECT", "CAS", "CASE", "ET", "AND", "OU", "OR", "NON", "NOT",
 	"AFFICHER", "PRINT", "AFFICHE", "PRINT", "SAISIR", "INPUT", 0 };
 // BASIC's words as a French program shows them (a message's "FOR without NEXT": POUR, SUITE)
 static const char *const SHOWN_FR[] = { "REPEAT", "REPETER", "IF", "SI", "THEN", "ALORS", "ELSE", "SINON", "ELSEIF", "SINON SI", "END", "FIN",
 	"FOR", "POUR", "TO", "JUSQUE", "STEP", "PAS", "NEXT", "SUITE", "WHILE", "TANTQUE", "WEND", "FIN TANTQUE", "DO", "FAIRE", "LOOP", "BOUCLE",
 	"UNTIL", "JUSQUA", "FUNCTION", "FONCTION", "RETURN", "RETOUR", "CALL", "APPELER", "EXIT", "SORTIR", "CLASS", "CLASSE", "AS", "COMME",
-	"INTEGER", "ENTIER", "BYTE", "OCTET", "SINGLE", "SIMPLE", "STRING", "CHAINE", "SELECT", "SELON", "CASE", "CAS", "AND", "ET", "OR", "OU", "NOT", "NON", "PRINT", "AFFICHER",
+	"INTEGER", "ENTIER", "REAL", "REEL", "BYTE", "OCTET", "STRING", "CHAINE", "SELECT", "SELON", "CASE", "CAS", "AND", "ET", "OR", "OU", "NOT", "NON", "PRINT", "AFFICHER",
 	"INPUT", "SAISIR", 0 };
 // One dialect, whatever the language: a program compiles in French as in English (and mixed) -- the language only
 // chooses the words shown (the palette, the lessons, the messages).

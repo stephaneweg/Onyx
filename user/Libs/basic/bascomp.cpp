@@ -337,9 +337,9 @@ public:
 		int n = bslen (name);
 		char c = n ? name[n - 1] : 0;
 		if (c == '$') t.ty = TY_STR;
-		else if (c == '%') t.nt = NT_INT;
+		else if (c == '%') t.nt = NT_I64;
 		else if (c == '&') t.nt = NT_LNG;
-		else if (c == '!') t.nt = NT_SNG;
+		else if (c == '!') t.nt = NT_R32;
 		else if (c == '#') t.nt = NT_DBL;
 		else if (name[0] >= 'A' && name[0] <= 'Z') t = deftype[name[0] - 'A'];
 		return t;
@@ -373,7 +373,7 @@ public:
 		{
 			TSpec t = nameSpec (name);
 			int n = bslen (nm);
-			nm[n] = t.ty == TY_STR ? '$' : t.nt == NT_INT ? '%' : t.nt == NT_LNG ? '&' : ntWide (t.nt) ? '#' : '!';
+			nm[n] = t.ty == TY_STR ? '$' : t.nt == NT_INT || t.nt == NT_I64 ? '%' : t.nt == NT_LNG ? '&' : ntWide (t.nt) ? '#' : '!';
 			nm[n + 1] = 0;
 		}
 		makeKey (key, nm, arr);
@@ -465,7 +465,6 @@ public:
 		for (int i = 0; i < t.nf; i++) if (bseq (fnames[t.first + i].name, n)) return t.first + i;
 		return -1;
 	}
-	static int ntSize (int nt) { return nt == NT_BYTE ? 1 : nt == NT_INT ? 2 : ntWide (nt) ? 8 : 4; }
 	int specSize (const TSpec &t) { return t.ty >= TY_REC ? (tkind (t.ty) ? 4 : P->types[t.ty - TY_REC].size) : t.ty == TY_STR ? t.flen : ntSize (t.nt); }
 	// TK_TYPE (also for numbers and strings), TK_CLASS or TK_IFACE; isObj: a reference (an object, NOTHING).
 	int tkind (int ty) { return ty >= TY_REC ? P->types[ty - TY_REC].kind : TK_TYPE; }
@@ -475,12 +474,14 @@ public:
 	{
 		ts.ty = TY_NUM; ts.nt = NT_SNG; ts.flen = 0;
 		if (bseq (w, "STRING")) { ts.ty = TY_STR; return true; }
-		if (bseq (w, "INTEGER")) { ts.nt = NT_INT; return true; }
-		if (bseq (w, "LONG")) { ts.nt = NT_LNG; return true; }
+		// (two kinds of numbers: INTEGER and REAL; their sizes where the bytes count; QBasic's LONG, SINGLE, DOUBLE)
+		if (bseq (w, "INTEGER") || bseq (w, "INTEGER64") || bseq (w, "_INTEGER64")) { ts.nt = NT_I64; return true; }
+		if (bseq (w, "REAL") || bseq (w, "REAL64")) return true;
 		if (bseq (w, "BYTE")) { ts.nt = NT_BYTE; return true; }		// (0..255: a character's code, a byte of a file or of a structure)
-		if (bseq (w, "SINGLE")) return true;
+		if (bseq (w, "INTEGER16")) { ts.nt = NT_INT; return true; }
+		if (bseq (w, "INTEGER32") || bseq (w, "LONG")) { ts.nt = NT_LNG; return true; }
+		if (bseq (w, "REAL32") || bseq (w, "SINGLE")) { ts.nt = NT_R32; return true; }
 		if (bseq (w, "DOUBLE")) { ts.nt = NT_DBL; return true; }
-		if (bseq (w, "_INTEGER64") || bseq (w, "INTEGER64")) { ts.nt = NT_I64; return true; }	// (a 64-bit whole number: rounded at a store, as INTEGER and LONG)
 		int t = findType (w);
 		if (t >= 0) { ts.ty = TY_REC + t; return true; }
 		return false;
@@ -524,7 +525,7 @@ public:
 			if (ts.ty == TY_STR && toks[p].t == T_OP && toks[p].op == '*' && toks[p + 1].t == T_NUM) { ts.flen = (int) toks[p + 1].num; p += 2; }
 			fnm.ty = ts.ty; fnm.nt = ts.nt; fnm.flen = ts.flen;
 			FieldInfo fi;
-			fi.kind = ts.ty >= TY_REC ? FK_REC : ts.ty == TY_STR ? (ts.flen > 0 ? FK_FSTR : FK_VSTR) : ts.nt == NT_BYTE ? FK_BYTE : ts.nt == NT_INT ? FK_INT : ts.nt == NT_LNG ? FK_LNG : ntWide (ts.nt) ? FK_DBL : FK_SNG;
+			fi.kind = ts.ty >= TY_REC ? FK_REC : ts.ty == TY_STR ? (ts.flen > 0 ? FK_FSTR : FK_VSTR) : ntKind (ts.nt);
 			fi.len = ts.flen; fi.sub = ts.ty >= TY_REC ? ts.ty - TY_REC : 0;
 			size += specSize (ts);
 			P->fields.push (fi); fnames.push (fnm); nf++;
@@ -801,7 +802,7 @@ public:
 					ok = ok && kf.n >= 0 && st != curT;
 					if (ok) { fi.kind = FK_REC; fi.sub = st; fn.ty = TY_REC + st; fn.nt = 0; }
 				}
-				else { bool known = false; for (const char *c = "bchwiulfd"; *c; c++) if (*c == k) known = true; ok = ok && known; if (k == 'f') { fi.kind = FK_SNG; fn.nt = NT_SNG; } }
+				else { bool known = false; for (const char *c = "bchwiulfd"; *c; c++) if (*c == k) known = true; ok = ok && known; if (k == 'f') { fi.kind = FK_SNG; fn.nt = NT_R32; } }
 				if (!ok) continue;				// (a kind of a later BASIC: no field, its bytes kept)
 				P->fields.push (fi); fnames.push (fn); P->kflds.push (kf); P->types[curT].nf++;
 				continue;
@@ -958,7 +959,7 @@ public:
 	bool deftypeWord (const char *w, TSpec &ts)
 	{
 		ts.ty = TY_NUM; ts.nt = NT_SNG; ts.flen = 0;
-		if (bseq (w, "DEFINT")) { ts.nt = NT_INT; return true; }
+		if (bseq (w, "DEFINT")) { ts.nt = NT_I64; return true; }
 		if (bseq (w, "DEFLNG")) { ts.nt = NT_LNG; return true; }
 		if (bseq (w, "DEFSNG")) return true;
 		if (bseq (w, "DEFDBL")) { ts.nt = NT_DBL; return true; }
@@ -2901,7 +2902,7 @@ public:
 				emit (get ? OP_FGET : OP_FPUT); emit (1);
 				if (tkind (r.ty)) { fail ("GET / PUT: not for an object (a CLASS)"); return; }
 				int kind = r.ty >= TY_REC ? LK_REC : r.ty == TY_STR ? (r.flen > 0 ? LK_FSTR : LK_VSTR)
-					 : r.nt == NT_BYTE ? LK_BYTE : r.nt == NT_INT ? LK_INT : r.nt == NT_LNG ? LK_LNG : ntWide (r.nt) ? LK_DBL : LK_SNG;
+					 : ntKind (r.nt);
 				emit (kind); emit (r.ty >= TY_REC ? r.ty - TY_REC : r.flen);
 				var = true;
 			}

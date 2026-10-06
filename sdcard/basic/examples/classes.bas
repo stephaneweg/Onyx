@@ -6,11 +6,11 @@ INTERFACE Scorable                ' what a class promises to have
 END INTERFACE
 
 CLASS Sprite                      ' the parent: a place, a speed, a colour
-  x AS SINGLE
-  y AS SINGLE
-  dx AS SINGLE
-  dy AS SINGLE
-  size AS SINGLE
+  x AS REAL
+  y AS REAL
+  dx AS REAL
+  dy AS REAL
+  size AS REAL
   col AS INTEGER
 END CLASS
 SUB Sprite.new (size)

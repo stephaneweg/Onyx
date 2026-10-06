@@ -6,7 +6,7 @@ SUB Main_Load
 END SUB
 
 SUB convert_Click
-  DIM c AS DOUBLE, f AS DOUBLE
+  DIM c AS REAL, f AS REAL
   c = VAL(celsius.Text)
   f = c * 9 / 5 + 32
   fahrenheit.Text = STR$(f)

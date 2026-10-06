@@ -1,12 +1,12 @@
 ' TYPE records, numeric types, DEF FN, MID$ statement, LSET / RSET, LEN
 TYPE Point
-  x AS INTEGER
-  y AS INTEGER
+  x AS INTEGER16
+  y AS INTEGER16
 END TYPE
 TYPE Player
   nom AS STRING * 8
   pos AS Point
-  score AS LONG
+  score AS INTEGER32
 END TYPE
 DIM p AS Player
 p.nom = "Ada"
@@ -49,4 +49,7 @@ DIM f AS STRING * 6
 f = "abcdefgh": PRINT "["; f; "]"
 w$ = SPACE$(6): LSET w$ = "ab": PRINT "["; w$; "]"
 RSET w$ = "cd": PRINT "["; w$; "]"
-PRINT LEN(a%); LEN(c&); LEN(x#); LEN(f)
+DIM o AS BYTE: DIM h AS INTEGER16: DIM r4 AS REAL32: DIM r AS REAL
+PRINT LEN(a%); LEN(c&); LEN(x#); LEN(f); LEN(o); LEN(h); LEN(r4); LEN(r)
+h = 32767: o = 255: a% = 3000000000 + .5: r = 1 / 3
+PRINT h; o; a%; r; CINT(40000.5)

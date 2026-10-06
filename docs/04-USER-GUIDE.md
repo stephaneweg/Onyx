@@ -4619,10 +4619,15 @@ NEXT k
 
 And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
 
-- **Types**: `%` INTEGER, `&` LONG, `!` SINGLE, `#` DOUBLE (or `AS INTEGER` …, `DEFINT A-Z` …,
-  `DEFSTR`); INTEGER (16 bits) / LONG (32 bits) round when stored and raise *Overflow*; DOUBLEs print 15 digits;
-  beyond QBasic: `AS BYTE` (0 to 255: a character's code -- `ASC`, `CHR$` --, one byte in a TYPE written to a file)
-  and `AS _INTEGER64` (or `INTEGER64`: a whole number of 64 bits, rounded when stored; exact up to 2^53);
+- **Types** (since 2026-10-06 **two kinds of numbers**, simpler than QBasic's four): **`INTEGER`** — a whole
+  number of 64 bits (exact up to 2^53), rounded when stored (`7 / 2` → 4) — and **`REAL`** — a number with
+  decimals, shown with 7 digits; a name without a type is a REAL (`DIM n AS INTEGER, x AS REAL`). **`BYTE`**: 0
+  to 255 — a character's code (`ASC`, `CHR$`), a byte of a file or of memory. **Where the bytes count** — a
+  `TYPE`'s field written to a file, `GET` / `PUT` of a variable — say the size: **`INTEGER16`**, **`INTEGER32`**,
+  **`INTEGER64`** (= INTEGER), **`REAL32`**, **`REAL64`** (= REAL); a value out of a sized type's range raises
+  *Overflow*. QBasic's words stay: `%` and `DEFINT` an INTEGER (**no longer 16 bits**: a program that wrote
+  `AS INTEGER` fields to a file says `INTEGER16` now), `&` and `LONG` = INTEGER32, `!` and `SINGLE` = REAL32, `#`
+  and `DOUBLE` a REAL shown with 15 digits; `CINT` rounds to an INTEGER (no 16-bit limit), `CLNG` to 32 bits;
   fixed strings `STRING * n`. **User types**: `TYPE … END TYPE` records (nested, in arrays,
   passed to SUBs, copied by `=`), `LEN (var)` their size; a TYPE **only holds data** — methods
   are for a `CLASS` (below; since 2026-10-05 `SUB Point.Test` on a TYPE is an error: write
@@ -5090,7 +5095,7 @@ In French, **BASIC's own words** have their names too — the whole program can 
 | `SUB Nom` ... `FIN SUB`, `FONCTION Nom` ... `FIN FONCTION`, `RETOUR`, `APPELER`, `SORTIR` | `SUB` ... `END SUB`, `FUNCTION` ... `END FUNCTION`, `RETURN`, `CALL`, `EXIT` |
 | `CLASSE` ... `FIN CLASSE`, `HERITE`, `NOUVEAU`, `CECI`, `RIEN` | `CLASS` ... `END CLASS`, `EXTENDS`, `NEW`, `THIS`, `NOTHING` |
 | `DIM n COMME ENTIER`, `s COMME CHAINE`, `CONSTANTE` | `DIM n AS INTEGER`, `s AS STRING`, `CONST` |
-| the types: `OCTET` (0 to 255), `ENTIER` (16 bits), `LONG` (32), `ENTIER64` (64), `SIMPLE`, `DOUBLE`, `CHAINE` | `BYTE`, `INTEGER`, `LONG`, `_INTEGER64`, `SINGLE`, `DOUBLE`, `STRING` |
+| the types: `ENTIER`, `REEL`, `CHAINE`, `OCTET`; with a size: `ENTIER16` / `ENTIER32` / `ENTIER64`, `REEL32` / `REEL64` | `INTEGER`, `REAL`, `STRING`, `BYTE`; `INTEGER16` / `INTEGER32` / `INTEGER64`, `REAL32` / `REAL64` |
 | `SELON CAS` ... `CAS` ... `FIN SELON` | `SELECT CASE` ... `CASE` ... `END SELECT` |
 | `ET`, `OU`, `NON`, `AFFICHER`, `SAISIR` | `AND`, `OR`, `NOT`, `PRINT`, `INPUT` |
 

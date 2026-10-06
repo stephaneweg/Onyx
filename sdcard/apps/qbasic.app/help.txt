@@ -15,10 +15,13 @@ EDITOR
   In a running program, Ctrl+C stops it (QBasic's Ctrl+Break).
 
 VALUES
-  Numbers: a (single), a% INTEGER, a& LONG, a! SINGLE, a# DOUBLE -- or DIM a AS
-  INTEGER / LONG / SINGLE / DOUBLE, DEFINT / DEFLNG / DEFSNG / DEFDBL / DEFSTR A-Z.
-  INTEGER / LONG round when stored (7 / 2 -> 4) and give "Overflow" out of range;
-  DOUBLEs print 15 digits. Strings: a$, DIM s AS STRING, fixed: DIM s AS STRING * 10.
+  Numbers: two kinds -- INTEGER (a whole number, 64 bits: it rounds when stored, 7 / 2 -> 4) and REAL (a
+  number with decimals, shown with 7 digits; a name without a type is one): DIM n AS INTEGER, x AS REAL.
+  BYTE: 0 to 255 (a character's code, a byte of a file). Where the bytes count -- a TYPE written to a file,
+  GET / PUT -- say the size: INTEGER16, INTEGER32, INTEGER64, REAL32, REAL64 (out of range: "Overflow").
+  QBasic's words stay: a% INTEGER, a& and LONG = INTEGER32, a! and SINGLE = REAL32, a# and DOUBLE (a REAL
+  shown with 15 digits), DEFINT / DEFLNG / DEFSNG / DEFDBL / DEFSTR A-Z.
+  Strings: a$, DIM s AS STRING, fixed: DIM s AS STRING * 10.
   Arrays: DIM a(10), DIM b$(1 TO 5, 3), REDIM, ERASE, LBOUND(a), UBOUND(a[, dim]).
   OPTION BASE 1. OPTION MANAGED (this program runs on the VM, not in machine code).
   CONST name = value. Operators: + - * / \ MOD ^, = <> < > <= >=,
@@ -29,8 +32,8 @@ VALUES
   A TYPE only holds data: methods are for a CLASS.
   Classes (Onyx): a TYPE is a value (a = b copies); a CLASS is a reference (a = b: the
     same object; NOTHING = no object).
-      CLASS Ball EXTENDS Sprite IMPLEMENTS Drawable / r AS SINGLE / END CLASS
-      INTERFACE Drawable / SUB Draw () / FUNCTION Area () AS SINGLE / END INTERFACE
+      CLASS Ball EXTENDS Sprite IMPLEMENTS Drawable / r AS REAL / END CLASS
+      INTERFACE Drawable / SUB Draw () / FUNCTION Area () AS REAL / END INTERFACE
     Methods outside the block: SUB Ball.Draw () / FUNCTION Ball.F (a) AS INTEGER ... END:
       "this" is the object (this.x = a, RETURN this.x + a). Call: p.Draw, y = p.F (2),
       t(i).Draw, CALL p.Test (3).
