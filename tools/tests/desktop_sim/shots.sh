@@ -446,8 +446,8 @@ if want wifimenu; then
 	scene wifimenu "$OUT/bar.elsm" "$OUT/wifimenu.elsm" --crop=0,0,1024,300
 fi
 if want dock; then			# (the pointer on the Games launcher's strip: its name grows the dock up)
-	sim dock dock "wait;wait;move 222 8;wait;down 222 38;up 222 38;$W" SIM_RUNNING=terminal,tetris,tinycalc SIM_WINS="$WINS"
-	scene dock "$OUT/dock.elsm" --crop=60,176,964,768
+	sim dock dock "wait;wait;move 282 8;wait;down 282 38;up 282 38;$W" SIM_RUNNING=terminal,tetris,tinycalc SIM_WINS="$WINS"
+	scene dock "$OUT/dock.elsm" --crop=0,176,1024,768	# (a drawer a category of the card's apps, 2026-10-06: the dock is wider)
 fi
 if want agenda; then
 	sim agenda agenda "$W"

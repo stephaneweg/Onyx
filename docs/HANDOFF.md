@@ -73,6 +73,17 @@ Circle fork's patches).
 - **Open / for later**: GPT (`FF_LBA64`: a full rebuild), hidden `.~onyx-deleted` files left on a stick by a
   crash are not cleaned at its mount (only the card's at boot).
 
+## The dock: a drawer for every category; the Programming category (2026-10-06; tested in the simulator, not yet on the Pi)
+
+Asked by the user: a **Programming** category (QBasic, QBStudio, Turtle Quest, GPIO Lab: their `app.txt`; the Onyx
+menu's order), then "toutes les catégories détectées" in the dock, the Panel applet choosing only their order, their
+main app and the hidden ones (no maximum: 32, `DOCK_MAXCATS`). SystemKit 59: `DockLayout`, `dock_layout_load` (dock.ini's
+`drawer =` lines as the order and main apps, new `hidden =` lines, the card's categories not named appended by name;
+not Shell / Settings / Emulators: `dock_category_docked`), `dock_layout_save`; `DockConf` / `dockconf_load` / `_save`
+kept for programs built before. The dock and the applet use it (they need systemkit >= 1.59: `[onyx]`'s needs).
+Too wide for the screen, the dock scales its launchers' width, its icons (averaged down) and its height together
+(`layout`: 60 / 40 / 80 px down to 34 / 22 / 60; tried at 800 and 640 px wide in the simulator).
+
 ## The GPIO workshop: GPIOKit, GPIO Lab, BASIC's GPIO (2026-10-06; built and tested on the PC, NOT yet on the Pi)
 
 Asked by the user: the Raspberry Pi 4's 40-pin header for the programs — kernel support, a kit, a graphical

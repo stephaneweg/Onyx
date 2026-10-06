@@ -3,7 +3,9 @@
 // the Shelf, since removed, and the panel). In its middle the workspaces and the system buttons; its buttons --
 // the drawers, the launchers, the Trash, in this order -- shared evenly on the two sides (the odd
 // one out at the left):
-//   * the DRAWERS (SD:/etc/dock.ini, dockconf.h -- the Control Panel's Panel applet sets them): a
+//   * the DRAWERS: one for each category of the card's apps (their app.txt; not Shell, Settings,
+//     Emulators), up to DOCK_MAXCATS -- their order, their main apps, the hidden ones in
+//     SD:/etc/dock.ini (dockconf.h dock_layout_load; the Control Panel's Panel applet sets them): a
 //     launcher each, the icon of its group's main app -- a click starts that app (or brings it
 //     back); the strip on its top edge opens the group's drawer above it (its apps and their
 //     icons; a click starts one, or brings it back, minimised too), as Xfce's launchers. A dot
@@ -36,10 +38,7 @@ using namespace uikit;
 #define MAXAPPS		48
 
 enum {
-	DH = 80,		// the dock's height
-	GAP = 12,		// below it (see-through)
-	CW = 60,		// a launcher's width
-	ICON = 40,		// the apps' icons (icon.bmp)
+	GAP = 12,		// below the dock (see-through)
 	SI = 30,		// ... in a drawer
 	RH = 38,		// a row of a drawer
 	COLW = 206,		// a column of it
@@ -49,6 +48,10 @@ enum {
 	SQGAP = 5,
 	LABEL_H = 30,		// the name shown above a launcher
 };
+
+// The dock's height, a launcher's width, the apps' icons (icon.bmp) in it: 80, 60, 40 -- smaller together when
+// the dock would be wider than the screen (many drawers: layout), down to 60, 34, 22.
+static int DH = 80, CW = 60, ICON = 40;
 
 // ---- the apps ------------------------------------------------------------------------------------
 struct App { char name[32]; char label[40]; char cat[24]; unsigned *icon; int iw, ih; unsigned *small; bool tried, running; };
@@ -108,7 +111,7 @@ static void scan_apps (void)
 		App &a = g_apps[g_napps++];
 		fs_copy (a.name, p, sizeof a.name);
 		fs_copy (a.label, p, sizeof a.label);
-		a.cat[0] = 0; a.icon = 0; a.small = 0; a.iw = a.ih = 0; a.tried = a.running = false;
+		fs_copy (a.cat, "Other", sizeof a.cat); a.icon = 0; a.small = 0; a.iw = a.ih = 0; a.tried = a.running = false;
 		char q[180]; int k = 0;
 		lx_cat (q, sizeof q, &k, "SD:/apps/"); lx_cat (q, sizeof q, &k, a.name); lx_cat (q, sizeof q, &k, ".app/app.txt");
 		if (app_ini_load_path (q) >= 0)
@@ -116,7 +119,7 @@ static void scan_apps (void)
 			const char *nm = app_ini_get (0, "name", 0);
 			if (nm && nm[0]) fs_copy (a.label, nm, sizeof a.label);
 			const char *ct = app_ini_get (0, "category", 0);
-			if (ct) fs_copy (a.cat, ct, sizeof a.cat);
+			if (ct && ct[0]) fs_copy (a.cat, ct, sizeof a.cat);
 		}
 		*e = c;
 		p = *e ? e + 1 : e;
@@ -153,7 +156,26 @@ static void app_icon (Canvas &cv, int cx, int y, App *a)
 {
 	if (a == 0) return;
 	need_icon (*a);
-	if (a->icon) blit_icon (cv, cx - ICON / 2, y, a->icon, a->iw < ICON ? a->iw : ICON, a->ih < ICON ? a->ih : ICON);
+	if (a->icon == 0) return;
+	if (a->iw <= ICON && a->ih <= ICON) { blit_icon (cv, cx - a->iw / 2, y + (ICON - a->ih) / 2, a->icon, a->iw, a->ih); return; }
+	// smaller than its picture: each pixel the average of the picture's under it (the see-through key left out)
+	int sw = a->iw, sh = a->ih, dw = ICON * sw / (sw > sh ? sw : sh), dh = ICON * sh / (sw > sh ? sw : sh);
+	int x0 = cx - dw / 2, y0 = y + (ICON - dh) / 2;
+	for (int j = 0; j < dh; j++)
+		for (int i = 0; i < dw; i++)
+		{
+			int sx0 = i * sw / dw, sx1 = (i + 1) * sw / dw, sy0 = j * sh / dh, sy1 = (j + 1) * sh / dh;
+			unsigned r = 0, g = 0, b = 0, k = 0, all = 0;
+			for (int v = sy0; v < sy1; v++)
+				for (int u = sx0; u < sx1; u++)
+				{
+					unsigned c = a->icon[v * sw + u] & 0xFFFFFF; all++;
+					if (c == 0xFF00FF) continue;
+					r += c >> 16; g += (c >> 8) & 255; b += c & 255; k++;
+				}
+			if (k * 2 < all || k == 0) continue;		// (mostly see-through: left so)
+			cv.pixel (x0 + i, y0 + j, (r / k) << 16 | (g / k) << 8 | (b / k));
+		}
 }
 
 // (each click said in the kernel log, kmsg: a launcher that starts nothing can be told apart --
@@ -173,25 +195,27 @@ static void launch_or_raise (const char *name)
 
 // ---- the drawers, the launchers, the workspaces (dock.ini) ----------------------------------------
 struct Drawer { char cat[24]; App *main; App *apps[MAXAPPS]; int n; bool running; };
-static Drawer   g_dr[DOCK_MAXDRAWERS];
+static Drawer   g_dr[DOCK_MAXCATS];
 static int      g_ndr;
-static DockConf g_conf;
+static DockLayout g_conf;			// (every category of the card's apps, in dock.ini's order: dockconf.h)
 
 static void build (void)
 {
-	dockconf_load (g_conf);
+	dock_layout_load (g_conf);
 	g_ndr = 0;
-	for (int d = 0; d < g_conf.ndrawers && g_ndr < DOCK_MAXDRAWERS; d++)
+	for (int d = 0; d < g_conf.ncats && g_ndr < DOCK_MAXCATS; d++)
 	{
+		if (g_conf.cat[d].hidden) continue;			// (hidden in the Panel applet)
 		Drawer &k = g_dr[g_ndr];
-		fs_copy (k.cat, g_conf.drawer[d].cat, sizeof k.cat);
+		fs_copy (k.cat, g_conf.cat[d].cat, sizeof k.cat);
 		k.n = 0; k.running = false;
 		for (int i = 0; i < g_napps && k.n < MAXAPPS; i++)
 			if (fs_ci_cmp (g_apps[i].cat, k.cat) == 0) k.apps[k.n++] = &g_apps[i];
 		for (int i = 1; i < k.n; i++)					// by name
 			for (int j = i; j > 0 && fs_ci_cmp (k.apps[j - 1]->label, k.apps[j]->label) > 0; j--)
 			{ App *t = k.apps[j]; k.apps[j] = k.apps[j - 1]; k.apps[j - 1] = t; }
-		k.main = find_app (g_conf.drawer[d].app);
+		if (k.n == 0) continue;					// (no app of it on the card: no drawer)
+		k.main = find_app (g_conf.cat[d].app);
 		if (k.main == 0 && k.n > 0) k.main = k.apps[0];
 		g_ndr++;
 	}
@@ -263,11 +287,13 @@ static bool poll_minis (void)
 static void trash_glyph (Canvas &cv, int cx, int y, bool full, unsigned face)
 {
 	unsigned c = uk_tone (face, 64), hi = uk_tone (face, 188);
-	if (full) uk_rbox (cv, cx - 8, y + 2, 16, 9, 2, 0x00FFFFFF, 0x00E4E4E4);	// paper sticking out
-	uk_rbox (cv, cx - 14, y + 8, 28, 5, 2, c, c);				// the lid, its handle
-	uk_rbox (cv, cx - 5, y + 4, 10, 5, 2, c, c);
-	uk_rbox (cv, cx - 11, y + 15, 22, 28, 4, uk_tone (face, 76), c);		// the can
-	for (int k = -1; k <= 1; k++) uk_rbox (cv, cx + k * 6 - 1, y + 19, 2, 20, 1, hi, uk_tone (face, 150));	// its ribs
+	auto S = [] (int v) { return v * ICON / 40; };		// (the icons' size: smaller in a narrow dock)
+	y += 40 - S (40);
+	if (full) uk_rbox (cv, cx - S (8), y + S (2), S (16), S (9), 2, 0x00FFFFFF, 0x00E4E4E4);	// paper sticking out
+	uk_rbox (cv, cx - S (14), y + S (8), S (28), S (5), 2, c, c);				// the lid, its handle
+	uk_rbox (cv, cx - S (5), y + S (4), S (10), S (5), 2, c, c);
+	uk_rbox (cv, cx - S (11), y + S (15), S (22), S (28), 4, uk_tone (face, 76), c);		// the can
+	for (int k = -1; k <= 1; k++) uk_rbox (cv, cx + k * S (6) - 1, y + S (19), 2, S (20), 1, hi, uk_tone (face, 150));	// its ribs
 }
 
 // ---- the dock's layout -------------------------------------------------------------------------------
@@ -275,7 +301,7 @@ static int g_sw = 1024, g_sh = 768, g_top = 30;			// the screen, the menu bar's 
 
 enum { SL_DRAWER, SL_APP, SL_TRASH };
 struct Slot { int kind, x, index; App *app; };
-static Slot g_slot[DOCK_MAXDRAWERS + DOCK_MAXLAUNCHERS + 2]; static int g_nslot, g_nleft;	// (g_nleft: left of the middle)
+static Slot g_slot[DOCK_MAXCATS + DOCK_MAXLAUNCHERS + 2]; static int g_nslot, g_nleft;	// (g_nleft: left of the middle)
 static int  g_DX, g_DY, g_DW;					// the dock on the screen
 static int  g_pgX, g_pgW, g_pgCols, g_pgRows, g_ndesk;		// the workspaces' panel (dock coordinates)
 
@@ -283,7 +309,7 @@ static int  g_pgX, g_pgW, g_pgCols, g_pgRows, g_ndesk;		// the workspaces' panel
 // of the middle (the workspaces, the lock, the gear, the power; the odd one out at the left).
 static void layout (void)
 {
-	Slot all[DOCK_MAXDRAWERS + DOCK_MAXLAUNCHERS + 2]; int n = 0;
+	Slot all[DOCK_MAXCATS + DOCK_MAXLAUNCHERS + 2]; int n = 0;
 	for (int d = 0; d < g_ndr; d++) all[n++] = { SL_DRAWER, 0, d, g_dr[d].main };
 	for (int i = 0; i < g_conf.nlaunchers; i++)
 	{
@@ -292,13 +318,23 @@ static void layout (void)
 	}
 	all[n++] = { SL_TRASH, 0, -1, 0 };
 	g_nleft = (n + 1) / 2;
-	int x = 12; g_nslot = 0;
-	for (int i = 0; i < g_nleft; i++) { all[i].x = x; g_slot[g_nslot++] = all[i]; x += CW; }
 	g_ndesk = g_conf.ndesks < 1 ? 1 : g_conf.ndesks;
 	g_pgRows = g_ndesk <= 3 ? 1 : 2;
 	g_pgCols = (g_ndesk + g_pgRows - 1) / g_pgRows;
-	g_pgX = x + (g_nleft ? 8 : 0);
 	g_pgW = 30 + g_pgCols * (SQW + SQGAP) - SQGAP + 6 + 30;
+	// too wide for the screen: the launchers narrower, their icons and the dock smaller with them
+	DH = 80; CW = 60; ICON = 40;
+	int fixed = 24 + g_pgW + (g_nleft ? 8 : 0) + (n > g_nleft ? 8 : 0), room = g_sw - 16;
+	if (fixed + n * CW > room)
+	{
+		CW = (room - fixed) / n;
+		if (CW < 34) CW = 34;
+		ICON = CW * 40 / 60; if (ICON < 22) ICON = 22;
+		DH = 80 - (60 - CW) * 20 / 26; if (DH < 60) DH = 60;
+	}
+	int x = 12; g_nslot = 0;
+	for (int i = 0; i < g_nleft; i++) { all[i].x = x; g_slot[g_nslot++] = all[i]; x += CW; }
+	g_pgX = x + (g_nleft ? 8 : 0);
 	x = g_pgX + g_pgW + (n > g_nleft ? 8 : 0);
 	for (int i = g_nleft; i < n; i++) { all[i].x = x; g_slot[g_nslot++] = all[i]; x += CW; }
 	g_DW = x + 12;
@@ -576,28 +612,29 @@ public:
 			bool pr = hIcon && down.what == H_SLOT && down.index == i;
 			bool drop = dropHot.what == H_SLOT && dropHot.index == i;
 			if (hIcon || drop)
-				uk_rbox (canvas, x + 4, oy + 19, CW - 8, 54, 8, pr ? uk_tone (d, 108) : uk_tone (d, 200),
+				uk_rbox (canvas, x + 4, oy + 19, CW - 8, DH - 26, 8, pr ? uk_tone (d, 108) : uk_tone (d, 200),
 					 pr ? uk_tone (d, 118) : uk_tone (d, 160), drop ? 255 : 150);
-			if (drop) uk_rline (canvas, x + 4, oy + 19, CW - 8, 54, 8, C_ACCENT, 255);
+			if (drop) uk_rline (canvas, x + 4, oy + 19, CW - 8, DH - 26, 8, C_ACCENT, 255);
 			if (s.kind == SL_DRAWER)
 			{
 				const Drawer &k = g_dr[s.index];
-				app_icon (canvas, cx, oy + 26, k.main);
+				app_icon (canvas, cx, oy + DH - ICON - 14, k.main);
 				// the strip at the top edge: its drawer (open: in the accent)
 				bool o = g_open == s.index;
 				unsigned top = o ? uk_tone (C_ACCENT, 170) : uk_tone (d, hStrip ? 150 : 118);
 				unsigned bot = o ? C_ACCENT : uk_tone (d, hStrip ? 132 : 106);
-				uk_rbox (canvas, cx - 20, oy + 1, 40, STRIP_H - 1, 6, top, bot, 255, UK_BL | UK_BR);
-				uk_rline (canvas, cx - 20, oy + 1, 40, STRIP_H - 1, 6, hStrip ? C_ACCENT : uk_tone (d, 70), hStrip ? 220 : 140, UK_BL | UK_BR);
+				int sw2 = CW - 20 < 40 ? (CW - 8) / 2 : 20;		// (the strip: narrower with a narrow launcher)
+				uk_rbox (canvas, cx - sw2, oy + 1, 2 * sw2, STRIP_H - 1, 6, top, bot, 255, UK_BL | UK_BR);
+				uk_rline (canvas, cx - sw2, oy + 1, 2 * sw2, STRIP_H - 1, 6, hStrip ? C_ACCENT : uk_tone (d, 70), hStrip ? 220 : 140, UK_BL | UK_BR);
 				uk_glyph (canvas, o ? WKG_CHEV_DOWN : WKG_CHEV_UP, cx, oy + 1 + (STRIP_H - 1) / 2, 10, o ? 0x00FFFFFF : ink);
 				if (k.running) uk_rbox (canvas, cx - 3, oy + DH - 9, 6, 5, 2, C_ACCENT, C_ACCENT);
 			}
 			else if (s.kind == SL_APP)
 			{
-				app_icon (canvas, cx, oy + 26, s.app);
+				app_icon (canvas, cx, oy + DH - ICON - 14, s.app);
 				if (s.app && s.app->running) uk_rbox (canvas, cx - 3, oy + DH - 9, 6, 5, 2, C_ACCENT, C_ACCENT);
 			}
-			else trash_glyph (canvas, cx, oy + 24, trashFull, d);
+			else trash_glyph (canvas, cx, oy + DH - 56, trashFull, d);
 			if (i + 1 < g_nslot && g_slot[i + 1].x == s.x + CW) groove (x + CW - 1, oy);	// between launchers
 		}
 		if (g_nleft) groove (ox + g_pgX - 5, oy);				// round the middle

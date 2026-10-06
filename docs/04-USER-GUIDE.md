@@ -453,10 +453,16 @@ buttons — the drawers, the launchers, the Trash, in this order — are shared 
 sides** (the odd one out at the left): with the five drawers, the Terminal, the File Viewer and
 the Trash, four on each side.
 
-- **The drawers** — by default **Productivity**, **Internet**, **Graphics**, **Programming**, **Games** and
-  **Demos**: each shows the icon of its group's **main app** (the Text Editor, Jet Browser, Paint, QBStudio,
-  the Game Library, the Widget Showcase). (A card set up before the Programming drawer existed keeps its
-  dock: add it in Control Panel ▸ Panel — group *Programming*, main app `qbstudio`.) **Click the icon** to start that app — or, if it runs,
+- **The drawers** — **one for each category of the card's apps** (the `category` of their `app.txt`:
+  Productivity, Internet, Graphics, Programming, Games, Multimedia, Demos, System… — not the desktop's own
+  parts, the Control Panel's applets nor the emulators), found by the dock at its start: a package that brings
+  a new category brings its drawer, at the end. Each shows the icon of its category's **main app** (by default
+  the Text Editor, Jet Browser, Paint, QBStudio, the Game Library, the Media Player, the Widget Showcase, the
+  Task Manager; else the first of its apps by name). Their order, their main apps and the categories
+  **hidden** (no drawer: their apps stay in the Onyx menu) are the Panel applet's (below); up to 32 drawers.
+  When they no longer fit across the screen, the dock makes its launchers narrower and its icons and its height
+  smaller with them (down to about half their size).
+  **Click the icon** to start that app — or, if it runs,
   to bring it back to the front (a **minimised** one too). **Click the strip** on the dock's top
   edge above it to open the group's **drawer**: its apps with their icons, by name (in columns
   when there are many); click one to start it, or bring it back. Click the strip again, or
@@ -475,8 +481,8 @@ the Trash, four on each side.
   **clipboard** (its history, a widget at the bottom right of the screen: *The clipboard* below).
 
 Rest the pointer on a launcher to see its name. **Right-click the dock**: **Panel Settings…** —
-the Control Panel's **Panel** applet, where the drawers (their group and main app: add, remove,
-reorder), the launchers after them and the workspaces (how many, their names) are set; kept in
+the Control Panel's **Panel** applet, where the drawers (their order, their main app, the ones hidden),
+the launchers after them and the workspaces (how many, their names) are set; kept in
 `SD:/etc/dock.ini`. The dock's colour is the theme's.
 
 ![Dock](../screenshots/dock.png)
@@ -1602,7 +1608,7 @@ the list **scrolls** (the wheel, the bar at its right, the arrow keys).
 |---|---|
 | **Theme** (`theme`) | The desktop's colours and wallpaper, with a preview (below). |
 | **Display** (`displayconf`) | The screen's **resolution**: pick a size in the list (1024 × 768 … 2560 × 1440, 4:3, 16:9, 16:10…), **Apply** (or a double click): the screen changes **at once** — the menu bar, the dock and the notifications follow it, a maximised window fills the new screen, a window too big for it is shrunk into it, the wallpaper is painted again — and it is kept in `SD:/cmdline.txt` (`width=` / `height=`) for the next start. Not while an app has the full screen. The monitor shows any size (the Pi scales the picture to it); its own resolution is the sharpest. |
-| **Panel** (`dockconf`) | The dock: its **drawers** (left to right: each a **group** of apps — the `category` of their `app.txt` — and its **main app**, whose icon the drawer shows; **Add** / **Remove** / move them, pick the group and the main app in the lists beside), the **launchers** after them (the Terminal, the File Viewer…: add any app, remove, move), the **workspaces** (how many, 1 to 6, and their names). **Apply** writes `SD:/etc/dock.ini` and starts the dock again: it takes it at once (a new group, a new launcher). |
+| **Panel** (`dockconf`) | The dock: its **drawers** — the list holds **every category of the card's apps** (the `category` of their `app.txt`; a new one appears by itself), left to right as in the dock: **^** / **v** move the chosen one, **Hidden** takes its drawer off the dock, and the list beside picks its **main app**, whose icon the drawer shows —, the **launchers** after them (the Terminal, the File Viewer…: add any app, remove, move), the **workspaces** (how many, 1 to 6, and their names). **Apply** writes `SD:/etc/dock.ini` and starts the dock again: it takes it at once (a new group, a new launcher). |
 | **Sound** (`soundconf`) | **Play on**: where the sound goes — **Automatic** (a USB headset or DAC if one is plugged in, else the headphone jack, else HDMI on a Pi without a jack: the Pi 400), **Headphone jack (3.5 mm)**, **USB headset / DAC**, **HDMI (the screen)**; only the outputs that are there are listed, the line under the list says where it plays now. The choice is applied at once (the music goes on) and kept in `SD:/etc/sound.ini` (`output = auto \| jack \| usb \| hdmi`). A USB headset unplugged: the sound is off — nothing else takes over — and comes back by itself when it (or another one) is plugged in again. The master **volume** (0–10) and **Mute**, applied at once to everything played and kept in the same file (the menu bar's speaker changes the same volume; a USB headset with a volume of its own is driven through it); **Play a test sound**. **Programs playing** — the mixer: several programs can play at the same time, and each one that does has a row here (the first four): its name, **its own volume** (0–100 %), **Mute** and its level now. A program's volume is applied at once and remembered by its name (`SD:/etc/mixer.ini`): it finds it again the next time it plays. |
 | **Preload** (`preloadconf`) | The programs **loaded ahead at boot and kept in memory**: they start without reading the card (worth it for the large ones, as Jet: 100 MB, 5 s of card each start otherwise). At the left the list (each program, its size, *loading* / *in memory*), at the right what can be added — the apps, then the `/bin` tools: **< Add** (or a double click), **Remove**. A change is done **at once** (the program added is loaded now, the one removed is released: its memory is freed when its last window closes) and kept in `SD:/etc/preload.ini`, which the last line of `SD:/etc/autostart`, `preload /boot`, reads at every boot. The line under the lists gives the memory the list takes. |
 | **Printers** (`printconf`) | The printers Onyx prints on (the **PDF** printer, network printers added by their address), the default one, a test page, and the **print queue** (below: *Printing*). |
@@ -1982,7 +1988,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **GPIO Lab** (`gpiolab`) | The Raspberry Pi's **40-pin header** on the screen: the pins drawn as on the board, a pin's mode (input, pull-up, pull-down, output, PWM), outputs set or blinking, a PWM's frequency and duty, a **timing chart** of the chosen pins, the **I2C bus** scanned, the **edges** logged; a **Code view**: a mini IDE where a BASIC program runs line by line and the header shows its pins live; a **simulator** when there is no hardware. See *GPIO Lab* below. |
 | **theme** (Theme) | The Control Panel's Theme applet: the colours of the frames, the windows' content, the buttons, the fields, the selection, the menu bar, the dock (a palette or any colour), the theme (Classic, Modern) and its scheme (Classic: Peach … Slate; Modern: Milk — soft greys and coloured beads for the title buttons — and Dark Coffee, its dark sister), the outline, the wallpaper (Voronoi, gradient, bubbles, a colour, a picture, a coloured pattern), on a desktop preview (see §11). Writes `SD:/etc/theme.txt` and `SD:/etc/wallpaper.ini`. |
 | **control** (Control Panel) | The settings in one window: its applets drawn inside it (see §11). Its list: the link files of `SD:/apps/control.app/applets/`. |
-| **dockconf** (Panel) | The Control Panel's Panel applet: the dock's drawers (group + main app), launchers and workspaces (see §11). Writes `SD:/etc/dock.ini`. |
+| **dockconf** (Panel) | The Control Panel's Panel applet: the dock's drawers (every category of the apps: their order, main app, hidden or not), launchers and workspaces (see §11). Writes `SD:/etc/dock.ini`. |
 | **soundconf** (Sound) | The Control Panel's Sound applet: the output, the master volume, mute, a test sound, and the mixer — each playing program's own volume (see §11). Writes `SD:/etc/sound.ini` and `SD:/etc/mixer.ini`. |
 | **printconf** (Printers) | The Control Panel's Printers applet: the printers, the default one, a test page, the print queue (see §11 *Printing*). Talks to `printd`; `SD:/etc/printers.ini`. |
 | **printd** (Print Service) | The print queue's service, no window (started at boot by `SD:/etc/autostart` and when an app prints): prints the jobs of `SD:/var/spool/print` — PDF files, network printers (IPP) — and notifies. Reads and writes `SD:/etc/printers.ini`. |
