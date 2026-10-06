@@ -1,7 +1,7 @@
 # appkit.bi -- appkit for Onyx BASIC (#import appkit): made by tools/kitbi/kitbi.py from appkit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit appkit 300
+kit appkit 305
 struct clock_info 48 kapi_clock_info
 field cnt 0 l
 field freq 8 l
@@ -293,6 +293,24 @@ field channel 40 b
 field connected 41 b
 field freq 44 i
 field level 48 i
+struct volume 112 kapi_volume
+field name 0 a 8
+field state 8 u
+field flags 12 u
+field gen 16 u
+field open 20 u
+field device_size 24 l
+field total 32 l
+field free 40 l
+field serial 48 u
+field type 52 a 8
+field label 60 a 36
+field device 96 a 12
+struct format 48 kapi_format
+field fs 0 u
+field flags 4 u
+field cluster 8 u
+field label 12 a 36
 abi_version 0 u - kapi_abi_version
 app_dir 1 i pi kapi_app_dir b,s
 barrier_create 2 i i kapi_barrier_create count
@@ -593,3 +611,8 @@ lx_open_as 296 i sss lx_open_as path,args,name
 lx_runner 297 i spi lx_runner path,out,cap
 ws_ctl 298 l iiii kapi_ws_ctl op,a0,a1,a2
 cursor_shown 299 i - kapi_cursor_shown
+proc_tree 300 i iiIi kapi_proc_tree pid,op,out,cap
+vol_list 301 i pii kapi_vol_list out,max,flags
+vol_eject 302 i si kapi_vol_eject vol,flags
+vol_mount 303 i s kapi_vol_mount vol
+vol_format 304 i sp kapi_vol_format vol,fmt

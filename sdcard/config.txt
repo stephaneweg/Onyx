@@ -8,7 +8,7 @@
 # the Raspberry Pi 4 and selects the required mode for the USB host
 # controller of the Compute Module 4.
 #
-
+core_freq=300
 arm_64bit=1
 kernel_address=0x80000
 initial_turbo=0
