@@ -2202,7 +2202,7 @@ alone**.
 > `--keys <app>` prints an app's words to start a catalogue. **Every new app is translated** (English + French)
 > **from its first version**; the older ones are translated as they are worked on -- done: Setup, the Control
 > Panel and its applets, the Terminal, Ledger, Turtle Quest (its own `L2 (en, fr)` pairs and its levels'
-> `.fr` texts; `locale_language ()` at its start). `SHOTS_LANG=fr SHOTS_PNG=<folder> sh
+> `.fr` texts; `locale_language ()` at its start), Circuits (`TR` + `lang/fr.txt`, its packs' `.fr` keys). `SHOTS_LANG=fr SHOTS_PNG=<folder> sh
 > tools/tests/desktop_sim/shots.sh <app>` renders an app in French on the PC to check that the words fit.
 > Wrap only what is shown — never a file's keys, paths, XML or a string
 > the code compares.
@@ -3949,6 +3949,22 @@ barwidth = 40
   written back and read again the same, and the player's errors (a wall at its line, a locked door, an endless
   loop, a syntax error, French words, a figure too small). Screenshots: `shots.sh turtle` (the players' progress
   from `tools/tests/desktop_sim/turtle/*.ini`).
+- **Circuits** (`user/Apps/circuits/`, a FreeType app: `FT_APPS`, `FT_EXTRA_circuits = Apps/circuits/circuit.cpp`;
+  docs/04 §12, AutoDev round 2). The **engine** `circuit.h` / `circuit.cpp` (`namespace circuits`) has no UI and no
+  file I/O: the parts and wires on a 40 × 30 grid (`Circuit`: `add`, `move`, `connect` -- the one place a wire is
+  made, so the loop test is there --, `route`, `pinAt`, `wireAt`), the evaluation (`evaluate` live, `evaluate_to`
+  depth by depth for step mode), `check` (every row of the truth table, the stars by gate count), the circuit text
+  (`write_text` / `read_text`, canonical), the undo `History` (64 steps), the packs (`parse_pack_kv` over a
+  FileKit `fk_kv` document read with `FK_KV_PIPES`: every error with its line), the progress (`Progress` over an
+  `fk_kv` with `FK_KV_ESCAPES`, written back with `fk_kv_save`) and the unlocking. `lessons.h` holds the 18 lesson
+  cards in English and French. The window is `main.cpp` + `gates.h` (the colours, the gates' outlines as integer
+  curves into `VPath`), `board.h` (the board and its drag state machine: no capture in UIKit, `catchOutside` while
+  a button is held) and `views.h` (the list, the card, the truth table, the cards). Calls only the inline FileKit
+  parts on the PC (`fk_kv_*`, `fs_*`), so the generic FT build of the simulator links it. Tests:
+  `sh tools/tests/run_circuits_test.sh` (the engine and the card's packs: every level solved by its solution with
+  three stars and the Min gate count; ASan + UBSan), `sh tools/tests/run_circuits_sim_test.sh` (the window driven
+  in the simulator: 61 checks on `progress.ini`, the clipboard and the dump's pixels), `python3 tools/lang/check.py
+  circuits`; screenshots: `shots.sh circuits` (fixtures `tools/tests/desktop_sim/circuits/*.ini`).
 
 ## 10. Extending the `kapi` ABI
 
