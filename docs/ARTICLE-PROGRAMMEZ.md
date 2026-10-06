@@ -55,7 +55,8 @@ le matériel est unique et connu, il n'y a pas une myriade de pilotes à dévelo
 
 ### La méthode (le « comment »)
 
-- **Le modèle** : Opus, jugé plus adapté à une réflexion intense et technique.
+- **Le modèle** : Opus, jugé plus adapté à une réflexion intense et technique. **Pas « le plus puissant »**
+  (l'utilisateur, 2026-10-06) : plus puissant que Sonnet ; Fable, le plus grand, serait démesuré ici.
 - **Le code sur GitHub** pour donner accès à Claude.
 - **1. Analyse** : Claude analyse le code ; l'utilisateur décrit ses objectifs.
 - **2. Plan** : Claude propose un plan étape par étape, chaque étape débloquant si nécessaire les
@@ -253,8 +254,8 @@ processus en **EL0** (le mode non privilégié de l'ARMv8) dans **son propre esp
 de pages par processus, étiquetée par ASID). Les programmes appellent le noyau via des appels système,
 pas par appel direct. Un programme fautif est tué ; le système continue.
 
-**La méthode.** J'utilise Claude Opus : pour un travail de réflexion aussi technique, le modèle le plus
-puissant me semblait le bon choix. Le dépôt GitHub est le terrain commun : Claude y lit le code, y
+**La méthode.** J'utilise Claude Opus : pour un travail de réflexion aussi technique, il me semblait plus
+adapté que Sonnet, plus puissant ; et Fable, le plus grand modèle de la gamme, aurait été démesuré. Le dépôt GitHub est le terrain commun : Claude y lit le code, y
 travaille et y pousse ses modifications. (1) Claude prend connaissance de l'existant et je lui décris
 mes objectifs. (2) Il propose un plan par étapes, chacune apportant si nécessaire ce dont la suivante a
 besoin. (3) Quand un sujet le demande, un « grilling » arrête les choix ; pour une application, je demande
