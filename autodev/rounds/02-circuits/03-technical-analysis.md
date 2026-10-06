@@ -512,7 +512,7 @@ palette's `tool_icon`, `LevelList`, `TruthTable`, the cards — may be lifted in
 | §4 geometry (new, fixed) | Switch: x = 0, footprint 5 × 2, out pin (5, y + 1). Lamp: x = 34, footprint 6 × 2, in pin (34, y + 1). Gates (NOT included): footprint 5 × 4; 2-input pins (x, y + 1), (x, y + 3), NOT's (x, y + 2); out (x + 5, y + 2). Fixed parts of n at `y = (2k + 1)·30 / (2n) − 1`. A gate must lie in columns 6–33 (`E_OUTSIDE` otherwise) and overlap nothing (`E_OVERLAP`). |
 | §4 `route` | The algorithm of 04 §5.4: forward = 4 points with the vertical in the nearest free column to the middle (free = no vertical of another source overlapping, no footprint crossed); backward = 6 points under both parts. Plus `junctions ()` (the dot points) and two helpers the window needs: `int pinAt (gx16, gy16, bool *isOut, int *pin)` (the part whose pin is within 0.6 cell, coordinates in 1/16 cell) and `int wireAt (gx16, gy16)` (within 1/3 cell of a segment). `bool canConnect (src, dst, pin, Err *)` = `connect`'s verdict without doing it (the rubber wire's green / red ring). `bool fits (type, x, y)` (the ghost's colour). |
 | §4 `read_text` auto-placement | depth d in column `7 + 6 (d − 1)` (≤ 4 depths fit), rows spread as the fixed parts. |
-| §5 window | Minimum size **920 × 600** (was "like Turtle, 920 × 560": the 16-row table of 3.4 and the bench need 600). Layout: list left (full height, worlds as headers — no `Dropdown`), centre = card / palette / board / message bar, **right column = truth table, gate count, Step, Reset, Check** (02 §4.2 put the table under the list and Check in the message bar: moved, 04 D1). |
+| §5 window | Minimum size **920 × 600** (was "like Turtle, 920 × 560": the 16-row table of 3.4 and the bench need 600; the width stays 920 because the palette's buttons are **at most 40 px wide** — 304 + 120 = 424 px ≤ the centre's 428, 04 D3, validation 1 gap 2). Layout: list left (full height, worlds as headers — no `Dropdown`), centre = card / palette / board / message bar, **right column = truth table, gate count, Step, Reset, Check** (02 §4.2 put the table under the list and Check in the message bar: moved, 04 D1). |
 | 02 §4.11 | A won Check also shows a **result card** over the board (04 D5); the message bar keeps its stars and *Next level* as specified. |
 | 02 §4.7 | Additions, all undoable: **1–6** arm the palette's gates, **arrows** move the selected gate, a press on a **fed input pin** picks its wire up (re-plug / drop), a **click on a truth-table row** sets the switches. Esc's order: card › drag › armed tool › selection. |
 | 02 §4.8 | French gate names on screen: NON, ET, OU, OUX, NON-ET, NON-OU (texts stay English). |
@@ -541,11 +541,13 @@ loop and true for a fed input; `read_text` without positions gives no overlap an
 every shipped solution.
 
 **G1 (refines step 4) — the static window.** `gates.h`, `views.h`, `board.h` drawing only; `main.cpp` builds the tree
-of 04 §2.1 with `layout ()` (resizes: the board's cell refits, the cards re-centre), the faces 18 / 10 / 30 px, the
+of 04 §2.1 with `layout ()` (resizes: the board's cell refits, the cards re-centre), the faces 18 / 10 / 30 / 9 px, the
 palette from the level's `parts` (+ the *no gate* label), the list with world headers / padlocks / stars and its
 scroll, the table (goal only), the count, the card with Hint / Lesson, the message bar, the menus of 04 §8.
 *Check*: one sim run per fixture → `shot.py` → looked at against `mockups/circuits-main.png`, `-empty.png`,
-`-levels.png`; at 920 × 600 (`SIM_POS` + a resize step, or a temporary `MOCK` size) nothing overlaps on level 3.4.
+`-levels.png`; at 920 × 600 (`SIM_POS` + a resize step, or a temporary `MOCK` size) nothing overlaps on level 3.4, and on a world-3 level
+(all six gates) the last gate button's right edge (`left + width`) is left of the trash button's `left`
+(304 px ≤ `mw − 120` = 308 at `mw` 428), with `lang fr` too — compare with `mockups/circuits-min.png` / `-min-fr.png`.
 
 **G2 (refines step 5, first half) — the board's mouse and keys.** `PaletteButton` (arm on press), the ghost,
 click-click and drag placing (back to Select after one), wiring with the rubber route and the ring, the loop

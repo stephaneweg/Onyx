@@ -31,7 +31,7 @@ developer can lift `gate_outline ()`, `drawSwitch ()`, `drawLamp ()` and the pal
 |---|---|---|
 | D1 | Where is the objective (02 §4.2 put it under the levels list)? | **A right-hand column, the "bench"**: the truth table on top, the gate count and the stars needed under it, then *Step*, *Reset* and the accent **Check** at the bottom. The left column is the levels list alone, full height, as Turtle Quest's; the centre is Turtle's own stack: the cream card, the palette, the board, the message bar. Reason: the table must be read *while* toggling switches on the board — beside the board, not under a list; and 16 rows do not fit under 23 list rows. |
 | D2 | The packs: a `Dropdown` (Turtle) or headers in the list (02 §4.1)? | **Headers in the list** (02's choice): one list for the three worlds, each world a grey header row with its name and its stars (*★ 15/18*), or a padlock while none of its levels is open. 23 rows fit at 620 px but for ~2 rows: the list scrolls (wheel, UIKit's bar). A pack opened from a file adds its header and rows at the end. |
-| D3 | The palette's buttons | **Icon over name** (not text beside): `ToolButton (48, 40)`, `iconSize = 36`, an app `ToolIconFn` that draws the gate's symbol in the top 24 px and its name in 10 px under it. Six gates + *Select* = 7 × 49 px: they fit the board's width with *Delete / Undo / Redo* at the right, in English and in French (*NON-ET*, *NON-OU*), down to the minimum window. The armed tool is the lit toggle. |
+| D3 | The palette's buttons | **Icon over name** (not text beside): `ToolButton (40, 40)` — **40 px wide at most** (validation 1, gap 2) —, `iconSize = 36`, an app `ToolIconFn` that draws the gate's symbol in the top 24 px and its name in 10 px under it (9 px for a name wider than the button: *NON-ET*, *NON-OU*). Width with UIKit's real `ToolBar` (`m_x` from 6, gap 1, `sep ()` 11, `addRight` from `w − 6` with gap 4): left 6 + 7 × 41 + 11 = **304 px**, right 3 × (4 + 34) + 6 = **120 px**, together **424 ≤ 428**, the centre column's width at the minimum window (920 px) — they fit on every level, in English and French ([`circuits-min.png`](mockups/circuits-min.png), [`circuits-min-fr.png`](mockups/circuits-min-fr.png)); at the default 1000 px 80 px are spare. A later 7th part (SHOULD *chips*) does not fit at 920: it would need the minimum raised to ~965 or Delete / Undo / Redo moved — to decide then. The armed tool is the lit toggle. |
 | D4 | The switches | **A key showing its digit**: a 2 × 2-cell rounded key, raised face (`uk_raised`, `C_FACE`) with **0** when off, filled lit green with a white **1** when on; the input's name in bold at its left. Clearer than a slide toggle at 12-px cells (a toggle with a name inside did not fit: the first mock-up). |
 | D5 | The result of a won Check | **A result card over the board** (the lesson card's form, green): big stars, *"4 gates — every row right"*, what three stars need, **Next level** (default) and **Try for ★★★** (or *Stay here* at 3 stars). The message bar says it too and keeps its *Next level* button after the card is closed (Turtle's way), so a player who dismissed the card still has it. A failed Check has **no card**: the table and the message bar say it, the board stays visible. |
 | D6 | Wrong rows | Red tint + a red ✕ disc at the row's end, the obtained bit in red; right rows a green ✓. The **first wrong row** is set on the switches (02 §4.11) and outlined in red; the board then shows that row live. |
@@ -58,6 +58,7 @@ developer can lift `gate_outline ()`, `drawSwitch ()`, `drawLamp ()` and the pal
 | `mockups/circuits-refused.png` | Check refused: lamp Cout not wired, ringed red |
 | `mockups/circuits-lesson.png` | Level 1.3 the first time: the lesson card *New gate: AND* (symbol, truth table, text); world 1 partly open |
 | `mockups/circuits-empty.png` | The first start (after the *wire* lesson is closed): level 1.1, no gate in the palette, the board's hint, only 1.1 open |
+| `mockups/circuits-min.png`, `circuits-min-fr.png` | The minimum window, 920 × 600, in English and French: the palette with all six gates fits beside Delete / Undo / Redo |
 | `mockups/circuits-levels.png` | The levels list alone, tall: the three worlds, won / current / locked levels, the worlds' star totals |
 | `mockups/circuits-dialog.png` | A malformed pack refused (`ft_messagebox`) |
 | `mockups/circuits-fr.png`, `circuits-fr-check.png` | The same in French (menus, palette, bench, card, list, message) |
@@ -69,12 +70,12 @@ developer can lift `gate_outline ()`, `drawSwitch ()`, `drawLamp ()` and the pal
 
 ## 2. The window
 
-**`CircuitsRoot : Root`** (`Root (1000, 620, "Circuits")`), `setResizable (true)`, **`setMinSize (920, 600)`** (03 said
+**`CircuitsRoot : Root`** (`Root (1000, 620, "Circuits")`), `setResizable (true)`, **`setMinSize (920, 600)`** (920: the palette's 424 px fit the centre column's 428 — D3; 03 said
 like Turtle's 920 × 560: 600 is needed for the 16-row table of 3.4 above the bench's buttons — §2.3), `fitWorkArea ()`
 at start. `onTick` (autosave), `onResized` → `layout ()`, `onKey` (§7), `onDrop` (a `.circuits` file, 02 §4.20).
 Text: `ft_uikit_install ("DejaVu Sans", 13)`, then `uk_lang_init ()`; three more faces opened at start:
 **`g_big`** DejaVu Sans 18 (the card's title, the cards' headers), **`g_small`** 10 (gate names, palette names, the
-table's group heads, depth badges, the board's strip captions), **`g_huge`** 30 (the gate count). A missing face
+table's group heads, depth badges, the board's strip captions), **`g_huge`** 30 (the gate count), **`g_tiny`** 9 (a palette name wider than its button). A missing face
 falls back to the UI face (`UkFaceScope (0)` is harmless).
 
 ### 2.1 The widget tree (client coordinates at the default 1000 × 620; `layout ()` recomputes them at each resize)
@@ -85,9 +86,9 @@ Constants: `PAD = 10`, `LISTW = 214`, `RIGHTW = 238`, `TBH = 46`, `MSGH = 50`. `
 | Widget | UIKit class | Place, size (px) | Notes |
 |---|---|---|---|
 | levels list | **`LevelList : Widget`** (beside the app) | `PAD, PAD, LISTW × H − 2·PAD` | §3 |
-| level card | **`Card : Widget`** (Turtle's) | `mid, PAD, mw × need ()` (≥ 66) | `need ()` = 7 + 18-px title + 3 + text lines (≤ 3, wrapped in `mw − 208`) × 17 + 8, + the hint's lines when shown |
+| level card | **`Card : Widget`** (Turtle's) | `mid, PAD, mw × need ()` (≥ 66) | `need ()` = 7 + 18-px title + 3 + text lines (≤ 3, wrapped in `mw − 208`) × 17 + 8, + the hint's lines when shown; the title is `uk_text_fit` to `mw − 208` (it ends in *…* beside Hint / Lesson at 920 px in French) |
 | Hint, Lesson | 2 × `Button (80, 28)` | top right of the card: `mid + mw − 176`, `mid + mw − 90`; `PAD + 10` | tips *F2*, *F1* |
-| palette | `ToolBar` (`line = false`, `bg` = `C_BG`) | `mid, PAD + cardH + 6, mw × TBH` | §4 |
+| palette | `ToolBar` (`line = false`, `bg` = `C_BG`) | `mid, PAD + cardH + 6, mw × TBH` | §4; its content is 424 px at most (D3): `mw` ≥ 428 at the minimum width |
 | board | **`Board : Widget`** | `mid`, toolbar bottom + 6, `mw` × (`H − PAD − MSGH − 8` − its top) | §5; ≈ 508 × 386 at the default size |
 | message bar | **`MsgBar : Widget`** (Turtle's) | `mid, H − PAD − MSGH, mw × MSGH` | §8 |
 | Next level | `Button (126, 30)` | in the message bar's right end (`mid + mw − 140`, `+10`) | hidden unless the level is won and a next level exists |
@@ -162,9 +163,9 @@ scroll bar (`uk_thumb`, `uk_draw_vscroll`) when the rows overflow.
 
 | Item | Class | Notes |
 |---|---|---|
-| **Select** | `PaletteButton (48, 40)`, `iconSize = 36`, `setIcon (circuits_icon, IC_SELECT)` (an arrow + *Select* under it), `setToggle (true, armed < 0)` | tip *Select and move (Esc)*; lit when no gate is armed |
+| **Select** | `PaletteButton (40, 40)`, `iconSize = 36`, `setIcon (circuits_icon, IC_SELECT)` (an arrow + *Select* under it), `setToggle (true, armed < 0)` | tip *Select and move (Esc)*; lit when no gate is armed |
 | `sep ()` | | |
-| one per allowed gate, in the order **NOT AND OR XOR NAND NOR** | `PaletteButton (48, 40)`, `iconSize = 36`, `setIcon (circuits_icon, T_NOT…T_NOR)` (the symbol, white face, outlined in the ink, + its name in 10 px), `setToggle (true, armed == type)`, gap 1 | tip *Put a gate: AND (2)* — the digit is its key (§7); a gate not in the level's `parts` is **not shown** (02 §4.4) |
+| one per allowed gate, in the order **NOT AND OR XOR NAND NOR** | `PaletteButton (40, 40)` (never wider: D3's budget), `iconSize = 36`, `setIcon (circuits_icon, T_NOT…T_NOR)` (the symbol, white face, outlined in the ink, + its name in 10 px, 9 px when wider than 36 px), `setToggle (true, armed == type)`, gap 1 | tip *Put a gate: AND (2)* — the digit is its key (§7); a gate not in the level's `parts` is **not shown** (02 §4.4) |
 | no gate at all (1.1) | `Label (290, 30, "No gate in this level: a wire is enough.", C_DIS)`, gap 8 | |
 | Redo, Undo, Delete (`addRight`, right to left) | `ToolButton (34, 34)` with `WKT_REDO`, `WKT_UNDO`, `WKT_TRASH` | tips *Redo (Ctrl+Y)*, *Undo (Ctrl+Z)*, *Delete (Del)*; `setDisabled` when nothing to redo / undo / no selection |
 

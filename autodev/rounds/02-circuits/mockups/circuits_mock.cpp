@@ -15,6 +15,7 @@
 //   empty    the first start, level 1.1 (no gate in the palette), only 1.1 open
 //   levels   the levels list alone, tall (the three worlds, locked / open / stars)
 //   dialog   a malformed pack refused (MessageBox)
+// MOCK_W / MOCK_H: the window's size (default 1000 x 620; the minimum 920 x 600)
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
 //
@@ -33,7 +34,7 @@ using namespace uikit;
 static const char *g_scene = "main";
 static bool g_fr = false;
 #define TR2(en, fr) (g_fr ? (fr) : (en))
-static FtTextFace *g_big, *g_small, *g_huge;
+static FtTextFace *g_big, *g_small, *g_huge, *g_tiny;
 
 // ---- the palette of the board (04-ux-design.md section 9) ----------------------------------------------------
 static const unsigned BOARD_BG   = 0x00EEF3EF;	// the board: a pale green paper
@@ -502,7 +503,7 @@ public:
 		canvas.clear (bgColor ());
 		uk_rbox (canvas, 0, 0, width, height, 10, uk_mix (C_FIELD, 0xFFF6D8, 120), uk_mix (C_FIELD, 0xFFEFC2, 120));
 		uk_rline (canvas, 0, 0, width, height, 10, 0xE0C77A);
-		{ UkFaceScope fs (g_big); uk_text (canvas, 14, 7, g_title, 0x3A2E10, 2); }
+		{ UkFaceScope fs (g_big); char f[120]; uk_text_fit (g_title, width - 28 - 180, f, sizeof f, 2); uk_text (canvas, 14, 7, f, 0x3A2E10, 2); }
 		int y = 7 + g_big->height () + 3;
 		wrap_draw (canvas, 14, y, width - 28 - 180, g_text, 0x3A3A3A, 3, uk_fh () + 2);
 		if (g_showHint)
@@ -718,7 +719,9 @@ static void tool_icon (Canvas &cv, int id, int x, int y, int size, unsigned ink,
 	// a gate: its symbol in the box's top, its name under it
 	if (size >= 30)
 	{
-		{ UkFaceScope fs (g_small); uk_text_c (cv, x - 8, y + size - 12, size + 16, 12, id == IC_SELECT ? "" : tname (id), ink, 0); }
+		{ UkFaceScope fs (g_small); const char *nm = tname (id);	// (a name wider than the button: the 9-px face)
+		  if (uk_tw (nm) > size) { UkFaceScope ft (g_tiny); uk_text_c (cv, x - 8, y + size - 12, size + 16, 12, nm, ink, 0); }
+		  else uk_text_c (cv, x - 8, y + size - 12, size + 16, 12, nm, ink, 0); }
 		int s2 = size * 2 / 3; x += (size - s2) / 2; y += 1; size = s2;
 	}
 	double s = size * 16.0;
@@ -743,7 +746,7 @@ static int g_lesson = 0;				// 1: the lesson card shown; 2: the result card
 
 static int window ()
 {
-	const int W = 1000, H = 620, PAD = 10, LISTW = 214, RIGHTW = 238, TBH = 46, MSGH = 50; int CARDH = 66;
+	const int W = getenv ("MOCK_W") ? atoi (getenv ("MOCK_W")) : 1000, H = getenv ("MOCK_H") ? atoi (getenv ("MOCK_H")) : 620, PAD = 10, LISTW = 214, RIGHTW = 238, TBH = 46, MSGH = 50; int CARDH = 66;
 	evaluate ();
 	Root root (W, H, "Circuits");
 	root.setResizable (true);
@@ -760,7 +763,7 @@ static int window ()
 	// the palette
 	int ty = PAD + CARDH + 6;
 	ToolBar *tb = new ToolBar (mid, ty, mw, TBH); root.addChild (tb);
-	ToolButton *sel = (new ToolButton (48, 40, TR2 ("Select and move (Esc)", "Choisir et déplacer (Échap)")))->setIcon (tool_icon, IC_SELECT)->setToggle (true, g_armed < 0);
+	ToolButton *sel = (new ToolButton (40, 40, TR2 ("Select and move (Esc)", "Choisir et déplacer (Échap)")))->setIcon (tool_icon, IC_SELECT)->setToggle (true, g_armed < 0);
 	sel->iconSize = 36; tb->add (sel, 0);
 	tb->sep ();
 	int ng = 0;
@@ -768,7 +771,7 @@ static int window ()
 	{
 		if (!(g_parts & (1u << t))) continue;
 		static char tips[8][80]; snprintf (tips[t], sizeof tips[t], "%s %s (%d)", TR2 ("Put a gate:", "Poser une porte"), tname (t), ++ng);
-		ToolButton *b = (new ToolButton (48, 40, tips[t]))->setIcon (tool_icon, t)->setToggle (true, g_armed == t);
+		ToolButton *b = (new ToolButton (40, 40, tips[t]))->setIcon (tool_icon, t)->setToggle (true, g_armed == t);
 		b->iconSize = 36; tb->add (b, 1);
 	}
 	if (!ng) { Label *l = new Label (0, 0, 290, 30, TR2 ("No gate in this level: a wire is enough.", "Pas de porte ici : un fil suffit."), C_DIS); tb->add (l, 8); }
@@ -867,6 +870,7 @@ int main (void)
 	g_big = new FtTextFace; if (!g_big->open ("DejaVu Sans", 18)) g_big = 0;
 	g_small = new FtTextFace; if (!g_small->open ("DejaVu Sans", 10)) g_small = 0;
 	g_huge = new FtTextFace; if (!g_huge->open ("DejaVu Sans", 30)) g_huge = 0;
+	g_tiny = new FtTextFace; if (!g_tiny->open ("DejaVu Sans", 9)) g_tiny = 0;
 	const char *m = getenv ("MOCK"); if (m) g_scene = m;
 	const char *lg = getenv ("MOCK_LANG"); g_fr = lg && !strcmp (lg, "fr");
 	const char *s = g_scene;

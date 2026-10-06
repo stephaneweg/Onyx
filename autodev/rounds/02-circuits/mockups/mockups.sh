@@ -49,6 +49,8 @@ for s in main place wire step check won refused lesson empty dialog; do
 done
 sim circuits_mock c_fr "$W" MOCK=main MOCK_LANG=fr SIM_POS=8,34
 sim circuits_mock c_frcheck "$W" MOCK=check MOCK_LANG=fr SIM_POS=8,34
+sim circuits_mock c_min "$W" MOCK=main MOCK_W=920 MOCK_H=600 SIM_POS=8,34
+sim circuits_mock c_minfr "$W" MOCK=main MOCK_LANG=fr MOCK_W=920 MOCK_H=600 SIM_POS=8,34
 sim circuits_mock c_levels "$W" MOCK=levels SIM_POS=20,40
 sim menubar bar "$W" SIM_MENU="$MENU"
 sim menubar barfr "$W" SIM_MENU="$MENU_FR"
@@ -57,6 +59,8 @@ for s in main place wire step check won refused lesson empty dialog; do
 done
 scene circuits-fr       "$OUT/c_fr.elsm" "$OUT/barfr.elsm" --crop=0,0,1024,700
 scene circuits-fr-check "$OUT/c_frcheck.elsm" "$OUT/barfr.elsm" --crop=0,0,1024,700
+scene circuits-min      "$OUT/c_min.elsm" "$OUT/bar.elsm" --crop=0,0,1024,680
+scene circuits-min-fr   "$OUT/c_minfr.elsm" "$OUT/barfr.elsm" --crop=0,0,1024,680
 scene circuits-levels   "$OUT/c_levels.elsm" "$OUT/bar.elsm" --crop=0,0,300,720
 # the menus open (a click on each title of the bar)
 i=0
