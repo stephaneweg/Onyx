@@ -21,6 +21,47 @@
 #include "basic/basscreen.h"
 #include "basic/baskits.h"
 #include "audiokit/audiokit.h"		// AudioKit: PLAYFILE, MIDINOTE ... (lib/audiokit.imp.a)
+#include "gpiokit/gpiokit.h"		// GPIOKit: PINMODE, PIN, PWM, ON PIN, I2C... (SD:/lib/gpiokit.so, opened at the first use)
+
+// GPIOKit's functions as the runtime calls them: on Onyx, through the library's table, opened at the first
+// GPIO statement (a program without one never loads it) -- each entry at its place in Kits/gpiokit/gpiokit.abi,
+// which is append-only, so these places never change; on a PC (BAS_GPIO_DIRECT), GPIOKit compiled in (its
+// simulator). Neither: no GPIO.
+#if defined (__aarch64__)
+static void *const *g_gk = 0;
+static bool g_gkTried = false;
+static bool gk_open (void)
+{
+	if (!g_gkTried) { g_gkTried = true; char why[96]; g_gk = bas::onyxKitOpen ("gpiokit", 34, why, sizeof why); }
+	return g_gk != 0;
+}
+#define GK(slot, type, name) ((type) g_gk[slot])
+#define GK_HAVE 1
+#elif defined (BAS_GPIO_DIRECT)
+static bool gk_open (void) { return true; }
+#define GK(slot, type, name) name
+#define GK_HAVE 1
+#endif
+#ifdef GK_HAVE
+// (gpiokit.abi: the places)
+#define GKF_EDGES	GK (1,  int (*) (int, int), gk_edges)
+#define GKF_ERROR	GK (2,  const char *(*) (int), gk_error)
+#define GKF_EVENTS	GK (3,  int (*) (gk_event *, int, int), gk_events)
+#define GKF_I2C_OPEN	GK (10, int (*) (int), gk_i2c_open)
+#define GKF_I2C_REG_RD	GK (12, int (*) (int, int), gk_i2c_reg_read)
+#define GKF_I2C_REG_WR	GK (13, int (*) (int, int, int), gk_i2c_reg_write)
+#define GKF_I2C_SCAN	GK (14, int (*) (unsigned char *), gk_i2c_scan)
+#define GKF_I2C_WR_RD	GK (16, int (*) (int, const void *, int, void *, int), gk_i2c_write_read)
+#define GKF_MODE		GK (18, int (*) (int, int), gk_mode)
+#define GKF_PWM		GK (21, int (*) (int, int, int), gk_pwm)
+#define GKF_READ		GK (22, int (*) (int), gk_read)
+#define GKF_RELEASE	GK (24, int (*) (void), gk_release)
+#define GKF_SERVO	GK (25, int (*) (int, int), gk_servo)
+#define GKF_SIM		GK (26, int (*) (int), gk_sim)
+#define GKF_SPI_OPEN	GK (30, int (*) (int, int), gk_spi_open)
+#define GKF_SPI_XFER	GK (31, int (*) (int, const void *, void *, int), gk_spi_transfer)
+#define GKF_WRITE	GK (33, int (*) (int, int), gk_write)
+#endif
 
 using namespace uikit;
 
@@ -323,6 +364,52 @@ public:
 	const char *akError () override { return ak_play_error (); }
 	double akNoteHz (int key) override { return ak_note_mhz (key) / 1000.0; }
 	int akNoteKey (const char *name) override { return ak_note_parse (name); }
+
+	// ---- GPIOKit (SD:/lib/gpiokit.so): PINMODE, PIN, PWM, ON PIN, I2C, SPI -------------------------------------
+#ifdef GK_HAVE
+	bool i2cOpen = false, spiOpen = false;
+	int gpio (int op, int a, int b, int c, const char *in, int inLen, char *out, int outCap) override
+	{
+		if (!gk_open ()) return GP_NODEV;
+		int r;
+		switch (op)
+		{
+		case GP_MODE:	return GKF_MODE (a, b);
+		case GP_WRITE:	return GKF_WRITE (a, b);
+		case GP_READ:	return GKF_READ (a);
+		case GP_PWM:	return GKF_PWM (a, b, c);
+		case GP_SERVO:	return GKF_SERVO (a, b);
+		case GP_EDGES:	return GKF_EDGES (a, b);
+		case GP_EVENTS:
+		{
+			gk_event ev[32]; int max = outCap / 2 < 32 ? outCap / 2 : 32;
+			r = max > 0 ? GKF_EVENTS (ev, max, 0) : 0;
+			for (int k = 0; k < r; k++) { out[2 * k] = (char) ev[k].pin; out[2 * k + 1] = (char) ev[k].edge; }
+			return r;
+		}
+		case GP_FREE:
+			if (a < 0) { i2cOpen = spiOpen = false; return GKF_RELEASE (); }
+			return GKF_MODE (a, GK_FREE);
+		case GP_SIM:	i2cOpen = spiOpen = false; GKF_RELEASE (); return GKF_SIM (a);
+		case GP_I2C_OPEN: r = GKF_I2C_OPEN (a); i2cOpen = r >= 0; return r;
+		case GP_SPI_OPEN: r = GKF_SPI_OPEN (a, b); spiOpen = r >= 0; return r;
+		default: break;
+		}
+		// (the buses are opened by their first use when the program did not: 100 kHz, 1 MHz mode 0)
+		if (op == GP_SPI_XFER) { if (!spiOpen && (r = GKF_SPI_OPEN (0, 0)) < 0) return r; spiOpen = true; }
+		else if (!i2cOpen) { if ((r = GKF_I2C_OPEN (0)) < 0) return r; i2cOpen = true; }
+		switch (op)
+		{
+		case GP_I2C_REG_READ:	return GKF_I2C_REG_RD (a, b);
+		case GP_I2C_REG_WRITE:	return GKF_I2C_REG_WR (a, b, c);
+		case GP_I2C_XFER:	r = GKF_I2C_WR_RD (a, in, inLen, out, b); return r < 0 ? r : b > 0 ? r : 0;
+		case GP_I2C_SCAN:	return outCap >= 16 ? GKF_I2C_SCAN ((unsigned char *) out) : GP_NODEV;
+		case GP_SPI_XFER:	return GKF_SPI_XFER (a, in, out, inLen);
+		default:		return GP_NODEV;
+		}
+	}
+	const char *gpioError (int code) override { return gk_open () ? GKF_ERROR (code) : "GPIOKit (SD:/lib/gpiokit.so) is not on this system"; }
+#endif
 
 	// ---- GUI controls (uikit) -------------------------------------------------------------------------------
 	int control (int kind, int x, int y, int w, int h, const char *text, int val) override

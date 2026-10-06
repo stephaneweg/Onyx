@@ -252,6 +252,8 @@ int kapi_sound_output (int nOut);
 // v85 the sound's mixer
 int kapi_sound_clients (struct kapi_sound_client *pOut, int nMax);
 long kapi_ws_ctl (int nOp, long a0, long a1, long a2);
+// v91 the 40-pin header (sys/gpio.cpp)
+long kapi_gpio_ctl (int nOp, long a0, long a1, long a2);
 int kapi_sound_client_volume (unsigned nPid, int nVolume, int nMute);
 
 }  // extern "C"
@@ -529,4 +531,5 @@ void KApiTableInit (void)
 	t->sound_clients       = kapi_sound_clients;	// (v85)
 	t->sound_client_volume = kapi_sound_client_volume;
 	t->ws_ctl            = kapi_ws_ctl;		// (v89)
+	t->gpio_ctl          = kapi_gpio_ctl;		// (v91)
 }

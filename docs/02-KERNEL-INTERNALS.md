@@ -26,6 +26,7 @@ constants) come from the code; the layout constants live in
 14. [App cores (cores 2 and 3)](#14-app-cores-cores-2-and-3)
 15. [The GPU (V3D)](#15-the-gpu-v3d)
 16. [The RAM: volume](#16-the-ram-volume)
+17. [GPIO: the 40-pin header (v91)](#17-gpio-the-40-pin-header-v91)
 
 ---
 
@@ -1183,6 +1184,12 @@ from now on calls them in AppKit, so its package says `kapi >= 87`.
 v88 = **AppKit: program starting**: no entry added — the `lx_*` functions (an app or a file started by its
 runner) are AppKit's (they were `user/launch.h`). The same day **SystemKit** and **NetKit** appear (docs/03 §5.9.0).
 
+v91 = **the 40-pin header** (2026-10-06): `gpio_ctl` (slot **228**; `kernel/sys/gpio.cpp`, `kern/gpio.h`,
+`KAPI_GPIO_*`): GPIO 0..27 given one process at a time (input, pulled up / down, output, an alternate
+function), PWM on GPIO 12 / 13 / 18 / 19, edges queued with their time, the I2C bus 1 and SPI 0 — §17
+*GPIO*. **Read by GPIOKit directly** (`SD:/lib/gpiokit.so`, not through AppKit: the user's exception,
+docs/03 §5.10), which ships with the kernel in the package `onyx`; AppKit has no `kapi_gpio_ctl`.
+
 v90 = **the table without the windows** (2026-10-05): the 36 entries of the windows (`create_window`,
 `present`, `set_menu`, `win_list`, `drag_begin`, `wallpaper_*`, `desk`, `set_wheel_speed`...) and the 2 of
 the activity shell (`register_shell`, `shell_request`: no program used them) are **removed** from
@@ -1655,6 +1662,12 @@ libgcc's `__builtin___clear_cache` does it). `code_alloc` (v58: an eager region 
 stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywhere; libonyxposix's
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
+
+### v91: gpio_ctl
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 228 | `gpio_ctl (op, a0, a1, a2)` | The 40-pin header (§17; `KAPI_GPIO_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. Anyone's: `KAPI_GPIO_INFO (struct kapi_gpio_pin *out, max)` → how many (28: GPIO 0..27, their mode, level, owner, PWM, the reserved ones' reason); `KAPI_GPIO_READ (pin)` → 0 / 1; `KAPI_GPIO_READ_ALL` → bit n = GPIO n; `KAPI_GPIO_NOW` → the edges' clock (µs). The pin's owner's (the first call that needs it takes it: `EBUSY` another process has it, `EPERM` the system's): `KAPI_GPIO_MODE (pin, KAPI_GPIO_M_*)` (`M_FREE` gives it back); `KAPI_GPIO_WRITE (pin, level)` (`EINVAL` not an output); `KAPI_GPIO_PWM (pin, Hz 1..1 000 000, duty 0..10000)`; `KAPI_GPIO_EDGES (pin, KAPI_GPIO_RISING \| _FALLING)`; `KAPI_GPIO_EVENTS (struct kapi_gpio_event *out, max, wait ms ≤ 1000)` → how many; `KAPI_GPIO_I2C_OPEN (Hz)`, `_I2C_XFER (struct kapi_gpio_i2c *)` → bytes (`EIO`: no answer), `_I2C_SCAN (u8 map[16])` → how many answered; `KAPI_GPIO_SPI_OPEN (Hz, mode 0..3)`, `_SPI_XFER (struct kapi_gpio_spi *)`; `KAPI_GPIO_CLOSE (KAPI_GPIO_BUS_I2C / _SPI)`; `KAPI_GPIO_RELEASE` (everything of the caller's). No AppKit wrapper: GPIOKit calls it. |
 
 ### v85: the mixer
 
@@ -2755,6 +2768,47 @@ after the removes), and every page given back at the end. On the Pi: `/bin/ramte
 full` also fills the volume).
 
 ---
+
+## 17. GPIO: the 40-pin header (v91)
+
+`kernel/sys/gpio.cpp` (`kern/gpio.h`) gives the programs the Raspberry Pi's header through one table
+entry, `gpio_ctl` (§8 *v91*), over Circle's `CGPIOPin`, `CGPIOManager`, `CI2CMaster` and `CSPIMaster`.
+The programs use it through **GPIOKit** (`SD:/lib/gpiokit.so`, docs/06 *GPIOKit*, docs/19), the only
+code that calls it.
+
+- **Pins** are BCM GPIO numbers 0..27 (the header's). Each has **one owner** (a pid): the first call that
+  needs the pin takes it (a mode, PWM, a bus); `KAPI_GPIO_M_FREE`, `KAPI_GPIO_RELEASE` or the process's
+  end give it back — `GpioOnProcessGone`, called by `IpcOnProcessGone` when the process is reaped, after
+  a crash too: its pins become **inputs with no pull** again (nothing left driving a wire), its PWM
+  channels stop, its buses close, its edge queue goes. Reading a level is anyone's.
+- **Reserved, never given** (`EPERM`, `KAPI_GPIO_F_RESERVED` with the reason in `kapi_gpio_pin.reason`):
+  GPIO 0 / 1 (the HAT's ID EEPROM) and 14 / 15 (the kernel's serial console, `CSerialDevice`). The other
+  pins the system uses are off the header and out of `gpio_ctl`'s reach: 30..33 (the Bluetooth UART,
+  docs/BLUETOOTH-AUDIO-STUDY.md), 34..39 / 48..53 (the SD card, the Wi-Fi's SDIO), 40 / 41 (the jack's PWM
+  audio), 42 (the activity LED).
+- **PWM** — the header's PWM pins are PWM0's (12 and 18 its channel 1, 13 and 19 its channel 2: one pin
+  of each pair at a time, `EBUSY`); the jack's sound is PWM1's (`sys/sound.cpp`, GPIO 40 / 41). The two
+  blocks share **one clock**, which the sound sets to 125 MHz and **stops** when the jack's output stops.
+  So the header's PWM never changes the clock's rate: it uses the sound's 125 MHz (mark-space mode,
+  range = 125 MHz / frequency, data = range × duty / 10000), starts the clock at that rate when it is
+  not running, and `OutputStop` (`sound.cpp`) calls `GpioPwmClockKeep` after it stopped the jack.
+  When the jack starts while a header PWM runs, the clock restarts at the same rate: a glitch of a few
+  microseconds on the header's wave.
+- **Edges** — an input of the caller's: `KAPI_GPIO_EDGES` makes the GPIO interrupt's manager
+  (`CGPIOManager`, created at the first need) call `EdgeIRQ` on both edges of the pin; the level just
+  after says which edge it was, and only the asked ones are queued, with `CTimer::GetClockTicks64 ()`
+  (µs), for the pin's owner: up to 8 processes, 256 events each (full: the newest are dropped and the
+  next event has `lost` = 1). `KAPI_GPIO_EVENTS` takes them, waiting up to 1 s (2 ms naps). No
+  debouncing: a button gives a few edges a press.
+- **I2C bus 1** (GPIO 2 SDA / 3 SCL; the board's 1.8 kΩ pull-ups) and **SPI 0** (GPIO 7 CE1, 8 CE0, 9 MISO,
+  10 MOSI, 11 SCLK) — one process at a time, their pins taken with them (`KAPI_GPIO_M_I2C` / `_SPI`).
+  A transfer is copied through a kernel buffer (4096 bytes at most each way); an I2C write then read of
+  at most 16 written bytes is one transaction with a repeated start
+  (`CI2CMaster::WriteReadRepeatedStart`). The scan reads one byte from each address 0x08..0x77.
+
+Not done: the alternate functions of pins beyond what `KAPI_GPIO_M_ALT0 + n` sets by hand, I2C bus 0,
+SPI 1 (the AUX SPI), the UARTs 2..5, a debounce, a pin's drive strength, the Pi 5's RP1 (Circle's
+`*-rp1.h`). **Tested on the PC only** (GPIOKit's simulator; docs/HANDOFF.md lists what the Pi must check).
 
 ## Annex — useful constants
 

@@ -1064,6 +1064,30 @@ inline with the header (also on request: `-DSK_INLINE` / `-DNK_INLINE` / `-DFS_I
 
 Still to come: `docguard.h` in the future DocumentKit; `http.hpp`'s class inside NetKit.
 
+**GPIOKit** (2026-10-06, `user/Kits/gpiokit/`, `SD:/lib/gpiokit.so`; the guide: docs/06 *GPIOKit*, the
+reference: docs/19) is made like SystemKit: one header that declares (`gpiokit/gpiokit.h`: C functions
+`gk_*`, and small C++ classes over them, `namespace gpiokit`), one source (`gkcore.cpp`), freestanding, an
+append-only `gpiokit.abi`, `lib/gpiokit.imp.a` and `lib/gpiokit.imp_c.a` (`--bind-c`). Two things are its
+own:
+
+- **It reads the kernel's table itself** — `gpio_ctl` (kapi v91, docs/02 §17) — instead of going through
+  AppKit: **the user's explicit exception** to "only AppKit reaches the kernel" (§5.10). So it is built and
+  shipped **with the kernel**: its `.so` is in the package `onyx` (as AppKit's), and a kernel that moves
+  or changes `gpio_ctl` ships the GPIOKit that follows it. It checks `KT->version >= 91` first (an older
+  kernel: `GK_ENODEV`). Its other needs (sleeping) are AppKit's, as for any kit.
+- **It carries a simulator**: a board in memory (inputs driven by `gk_sim_input`, the PWM's waves from the
+  clock, an I2C bus with an SSD1306 at 0x3C and a BME280 at 0x76 — its registers and the datasheet's
+  calibration —, SPI looped back). It runs when the system has no GPIO, when a program asks for it
+  (`gk_sim (1)`), and always in a PC build: `gkcore.cpp` compiles as it is against the simulator's
+  stand-in kernel (`tools/tests/desktop_sim`), or on its own with `-DGK_STANDALONE` (a clock of its own:
+  `tools/tests/run_gpiokit_test.sh`, the BASIC tests).
+
+BASIC reaches it by statements of its own (`PINMODE`, `PIN`, `PWM`, `SERVO`, `ON PIN`, `I2C…`, `SPI$`;
+docs/04 §13 *GPIO*): the runtime (`Libs/basic/runtime.cpp`) opens `gpiokit.so` at the first of them
+(`bas::onyxKitOpen`, `baskits.cpp`) and calls its entries by their places in `gpiokit.abi` (the macros
+`GKF_*`; `run_gpiokit_test.sh` checks them against the `.abi`), so a program without GPIO never loads it.
+`#import gpiokit` works too (`SD:/lib/gpiokit.bi`, made at the build like every kit's).
+
 ### 5.9.1. FontKit: FreeType for the apps (`SD:/lib/fontkit.so`)
 
 *(`user/Kits/fontkit/`; it was `user/ft`, `SD:/lib/ft.so` and the package `ft` until 2026-10-05 — the
@@ -1112,6 +1136,11 @@ alone**.
   the spin locks' primitives) stay inline: an app core may use them.
 - **`KT` is not for programs any more**: it only exists in AppKit (and `KAPI_INLINE`). The kernel's
   version is `kapi_abi_version ()` (it was `KT->version`).
+- **The one exception: GPIOKit** (the user's decision, 2026-10-06). `SD:/lib/gpiokit.so` calls the kernel's
+  `gpio_ctl` entry (kapi v91) itself, through the table at `KAPI_TABLE_VA`, without an AppKit wrapper —
+  there is no `kapi_gpio_ctl` in AppKit. The price is the one AppKit pays: GPIOKit is rebuilt and shipped
+  with the kernel (the package `onyx`). A program still never reads `KT`: it calls GPIOKit's `gk_*` (§5.9.0,
+  docs/06 *GPIOKit*).
 - **Adding a call**: the kernel's entry (`kern/kapi_abi.h`, `sys/kapi.cpp`, `sys/kapitable.cpp`), then
   its declaration in `appkit/appkit.h` and its `KAPI_CALL` in `appkit/appkit_calls.inc`; the build
   appends its name to `appkit/appkit.abi` and makes its stub.

@@ -41,6 +41,7 @@ DOCS = [
     "16-AUDIOKIT.md",
     "17-FONTKIT.md",
     "18-PRINTERKIT.md",
+    "19-GPIOKIT.md",
 ]
 
 

@@ -42,7 +42,7 @@ APPS = tinycalc tinypad cppdemo \
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman
+FT_APPS = control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
@@ -352,9 +352,30 @@ lib/netkit.imp_c.a: lib/netkit_stubs.o lib/netkit_bind_c.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/fontkit.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so lib/systemkit.so lib/netkit.so
+# ---- gpiokit.so: GPIOKit -- the 40-pin header (Kits/gpiokit/gpiokit.h; docs/06 "GPIOKit", docs/19): pins, PWM, edges,
+# I2C, SPI over the kernel's gpio_ctl (kapi v91: GPIOKit reads the kernel's table itself, the user's exception --
+# docs/03 §5.10), and a simulated board. Freestanding, integer only; shipped with the kernel (the package onyx).
+lib/gk/gkcore.o: Kits/gpiokit/gkcore.cpp Kits/gpiokit/gpiokit.h Kits/appkit/appkit.h $(LIB_DEP)
+	@mkdir -p lib/gk
+	$(CXX) $(LIB_CXXFLAGS) -fno-tree-loop-distribute-patterns -fno-builtin -c $< -o $@
+Kits/gpiokit/gpiokit.abi:
+	@touch $@
+lib/gpiokit_table.S: lib/gk/gkcore.o Kits/gpiokit/gpiokit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name gpiokit --abi Kits/gpiokit/gpiokit.abi --init gk_lib_init --allow-data . --export '^gk_' --exclude '^gk_lib_init$$' \
+		--table lib/gpiokit_table.S --stubs lib/gpiokit_stubs.S --bind lib/gpiokit_bind.cpp --bind-c lib/gpiokit_bind_c.c lib/gk/gkcore.o
+lib/gpiokit_stubs.S lib/gpiokit_bind.cpp lib/gpiokit_bind_c.c: lib/gpiokit_table.S ;
+lib/gpiokit.so: lib/gk/gkcore.o lib/gpiokit_table.o lib/librt.o $(LIB_KAPI)
+	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
+lib/gpiokit.imp.a: lib/gpiokit_stubs.o lib/gpiokit_bind.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+lib/gpiokit.imp_c.a: lib/gpiokit_stubs.o lib/gpiokit_bind_c.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+
+SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/fontkit.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so lib/systemkit.so lib/netkit.so lib/gpiokit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a
+libs: $(SHLIBS) lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a lib/gpiokit.imp.a lib/gpiokit.imp_c.a
 
 # The kits' descriptions for Onyx BASIC (lib/<kit>.bi -> SD:/lib/<kit>.bi; `#import filekit`): each kit's functions,
 # their places (its .abi) and their types (its headers' prototypes), by tools/kitbi/kitbi.py -- every kit of Kits/,
@@ -496,7 +517,7 @@ photos.elf: Apps/photos/main.cpp $(wildcard Apps/photos/*.h) Kits/imagekit/img/i
 ZLIB_SRC = ../third_party/zlib-1.3.1
 ZLIB_OBJ = $(addprefix Libs/zlib/,adler32.o crc32.o deflate.o inflate.o inffast.o inftrees.o trees.o zutil.o)
 Libs/zlib/%.o: $(ZLIB_SRC)/%.c
-	@mkdir -p zlib
+	@mkdir -p Libs/zlib
 	$(CC) $(NL_CFLAGS) -w -c $< -o $@
 Libs/zlib/libz.a: $(ZLIB_OBJ)
 	$(AR) rcs $@ $^
@@ -736,6 +757,8 @@ setup.elf: Apps/setup/system.h Kits/systemkit/wallpaper.h Kits/imagekit/img/imgl
 FT_EXTRA_gamelib = Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a
 FT_EXTRA_fmtracker = lib/audiokit.imp.a
 FT_EXTRA_soundconf = lib/audiokit.imp.a
+FT_EXTRA_gpiolab = lib/gpiokit.imp.a
+gpiolab.elf: lib/gpiokit.imp.a Kits/gpiokit/gpiokit.h
 soundconf.elf: lib/audiokit.imp.a Kits/audiokit/audiokit.h
 fmtracker.elf: lib/audiokit.imp.a Kits/audiokit/audiokit.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
