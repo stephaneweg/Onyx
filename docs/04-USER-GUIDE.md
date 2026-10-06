@@ -75,7 +75,7 @@ USB:`, `ls USB1:`, `cp SD:/docs/letter.docx USB1:/`, `cp USB1P2:/photo.jpg SD:/d
 GPT / APFS or an NTFS disk is not read; a partition in another format is listed as *not formatted*).
 
 - **Before pulling it out, eject it**: the menu bar's drive icon ▸ **Eject**, the File Viewer's
-  **Go ▸ Eject USB Stick** (Ctrl+E), **Disks**, or `eject` in the terminal. Onyx writes what is
+  **Go ▸ Eject USB Stick** (Ctrl+E) or a right click on the stick in its sidebar ▸ **Eject USB1**, **Disks**, or `eject` in the terminal. Onyx writes what is
   pending, the stick's own cache too, and says *"USB1: can be removed safely"* (a stick of several
   partitions is ejected whole: all of them). If a program still
   has a file open on it, it asks first (the files were saved; ejecting anyway makes that program's
@@ -1426,7 +1426,9 @@ the Trash — the dock's Trash does so).
   returns to the card, **Go ▸ SD1: (partition 2)** … to the card's other FAT / exFAT partitions and
   **Go ▸ RAM: (memory)** to the volume in memory (§2), **Go ▸ USB Stick** to the first USB stick,
   **Go ▸ Eject USB Stick** (**Ctrl-E**: the stick shown, else the one plugged in — the view goes back to
-  the card first) and **Go ▸ Disks (Format…)** opens Disks (listed when present;
+  the card first; also a **right click** on a USB volume in the sidebar, or on the path bar's first
+  segment when a stick is shown ▸ **Eject USB1** — on a partition, `USB1P2:`, the line reads
+  *Eject USB1 (all its partitions)*: a stick is always ejected whole) and **Go ▸ Disks (Format…)** opens Disks (listed when present;
   a move between two volumes is a copy then a delete; the Trash is on `SD:`, so an item of
   another volume is deleted with File ▸ Delete Permanently…).
   **File ▸ Delete Permanently…** skips the Trash (with confirmation). Names starting with

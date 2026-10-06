@@ -13,7 +13,7 @@
 // and RAM:, the volume in memory, when there is one;
 // Network -- the servers connected once (Go > Connect to Server..., under a name: a click
 // connects again, the login kept by /bin/ftpfs) and Connect to Server... A right click on a
-// place: Rename..., Unpin / Forget; files dropped on a pinned folder, the Trash or a volume go
+// place: Rename..., Unpin / Forget, Eject (a USB volume: its whole device); files dropped on a pinned folder, the Trash or a volume go
 // there. They are kept in SD:/etc/places.ini ("pin = name|path",
 // "net = name|FTP:host/folder", "folded = ..."). Above the columns the path bar: the current
 // folder's path, each folder a link (its name underlined under the pointer), the one shown in
@@ -626,24 +626,17 @@ static void op_show_usb ()
 		}
 	status ("No USB stick is plugged in (or it is not formatted: Format...)");
 }
-// Eject the USB volume shown (else the one plugged in): the view leaves it first.
-static void op_eject ()
+// The USB device of a path: 1..3 ("USB2:/x", "USB2P1:/x" -> 2; "USB:" is USB1:), 0 = not on a USB volume.
+static int usb_dev (const char *p)
 {
-	char vol[16] = "";
-	const char *cur = g_col[g_active].path;
-	if (is_usb_path (cur)) { int n = 0; while (cur[n] && cur[n] != ':' && n < 12) { vol[n] = cur[n]; n++; } vol[n++] = ':'; vol[n] = 0; }
-	else
-	{
-		vols_read ();
-		for (int i = 0; i < g_nvols && !vol[0]; i++)
-			if ((g_vols[i].flags & KAPI_VF_REMOVABLE) && g_vols[i].state == KAPI_VST_MOUNTED)
-			{
-				vol_root (g_vols[i], vol, sizeof vol);
-				vol[slen (vol) - 1] = 0;			// ("USB:")
-			}
-	}
-	if (!vol[0]) { status ("No USB stick to eject"); return; }
-	if (is_usb_path (cur)) show_root ("SD:/");
+	if (!is_usb_path (p)) return 0;
+	return p[3] == ':' ? 1 : p[3] - '0';
+}
+// Eject USB device dev, whole (the kernel ejects all its partitions): the view leaves it first.
+static void eject_dev (int dev)
+{
+	char vol[8] = "USB1:"; vol[3] = (char) ('0' + dev);
+	if (usb_dev (g_col[0].path) == dev) show_root ("SD:/");
 	int r = kapi_vol_eject (vol, 0);
 	if (r == -KAPI_EBUSY)
 	{
@@ -652,6 +645,32 @@ static void op_eject ()
 	}
 	if (r == 0) status (vol, " can be removed safely");
 	else status ("Could not eject ", vol);
+}
+// Eject the USB device shown (else the one plugged in).
+static void op_eject ()
+{
+	int dev = usb_dev (g_col[g_active].path);
+	if (!dev)
+	{
+		vols_read ();
+		for (int i = 0; i < g_nvols && !dev; i++)
+			if ((g_vols[i].flags & KAPI_VF_REMOVABLE) && g_vols[i].state == KAPI_VST_MOUNTED)
+			{
+				char r[16]; vol_root (g_vols[i], r, sizeof r);
+				dev = usb_dev (r);
+			}
+	}
+	if (!dev) { status ("No USB stick to eject"); return; }
+	eject_dev (dev);
+}
+// The right-click menu's line for a path on a USB volume: "Eject USB1" (a partition's: its whole device).
+static void eject_label (const char *path, char *out)
+{
+	const char *a = "Eject USB1"; int n = 0;
+	for (; a[n]; n++) out[n] = a[n];
+	out[n - 1] = (char) ('0' + usb_dev (path));
+	if (sd_volume (path) == 7) for (const char *b = " (all its partitions)"; *b; b++) out[n++] = *b;
+	out[n] = 0;
 }
 static void op_format ()				// the Disks app: the volumes, Eject, Format
 {
@@ -1521,15 +1540,19 @@ public:
 		if (sr.place < 0) return;
 		int i = sr.place;
 		const Place p = g_pl[i];
-		enum { M_OPEN = 1, M_RENAME, M_REMOVE, M_EMPTY };
+		enum { M_OPEN = 1, M_RENAME, M_REMOVE, M_EMPTY, M_EJECT };
 		PopupMenu m (mx, my);
 		m.add (p.kind == PL_NET ? "Connect" : "Open", M_OPEN);
+		int dev = p.kind == PL_VOL ? usb_dev (p.path) : 0;	// a USB volume: its device ejected from here
+		char ej[40];
+		if (dev) { eject_label (p.path, ej); m.separator (); m.add (ej, M_EJECT); }
 		if (p.kind == PL_PIN || p.kind == PL_NET) { m.add ("Rename...", M_RENAME); m.add (p.kind == PL_PIN ? "Unpin" : "Forget", M_REMOVE); }
 		if (p.kind == PL_TRASH) { m.separator (); m.add ("Empty Trash...", M_EMPTY, trash_count () > 0); }
 		if (p.kind == PL_CONNECT) return (void) (op_connect ());
 		int c = m.run ();
 		if (c == M_OPEN) open_place (i);
 		else if (c == M_EMPTY) op_empty_trash ();
+		else if (c == M_EJECT) { eject_dev (dev); places_build (); side_rows (); }
 		else if (c == M_RENAME)
 		{
 			char name[40];
@@ -1551,6 +1574,18 @@ public:
 			}
 			places_save (); places_build (); side_rows ();
 		}
+		invalidate (true);
+	}
+
+	// the path bar's first segment, a USB volume: Eject
+	void crumbMenu (int mx, int my)
+	{
+		int dev = usb_dev (g_col[0].path);
+		if (!dev) return;
+		char ej[40]; eject_label (g_col[0].path, ej);
+		PopupMenu m (mx, my);
+		m.add (ej, 1);
+		if (m.run () == 1) { eject_dev (dev); places_build (); side_rows (); }
 		invalidate (true);
 	}
 
@@ -1620,6 +1655,7 @@ public:
 		{
 			rdown = true;
 			if (sh >= 0) { placeMenu (sh, mx, my); return true; }
+			if (ch == 0) { crumbMenu (mx, my); return true; }
 			if (mx >= COLX && my >= COL_Y + ROW_PAD && my < COL_Y + COL_H)
 			{
 				int slot = g_first + (mx - COLX) / COLW;
