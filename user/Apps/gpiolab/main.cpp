@@ -139,7 +139,7 @@ public:
 		unsigned bg = bgColor ();
 		canvas.clear (bg);
 		uk_text_l (canvas, 4, 4, 20, "40-PIN HEADER", uk_mix (bg, C_TEXT, 150), 2);
-		uk_text_l (canvas, 4, 20, 18, gk_available () == 2 ? "simulated: click an input's dot to drive it" : "pin 1 top left, the USB ports down",
+		uk_text_l (canvas, 4, 20, 18, gk_available () == 2 ? "simulated: click a dot to switch it" : "click an output's dot to switch it",
 			   gk_available () == 2 ? 0x7A5CC8 : uk_mix (bg, C_TEXT, 120));
 		// the board
 		int bx = PINX0 - 24, by = HTOP, bw = PINX1 - PINX0 + 48, bh = 20 * ROWH + 8;
@@ -225,13 +225,25 @@ public:
 			int g = hit (mx, my);
 			if (g >= 0)
 			{
-				// the simulator: a click on an input's own dot is a wire to it -- High, then Low (a button)
+				// a click on a pin's own dot: an output of GPIO Lab's (or of its program's) turned over -- on the real
+				// header too; on the simulator, an input driven High, then Low (a wire, a button)
 				int hp = gk_header_pin (g), px, py; pinPos (hp, &px, &py);
-				if (gk_available () == 2 && is_input (g_pin[g].mode) && (mx - px) * (mx - px) + (my - py) * (my - py) <= 100)
+				bool onDot = (mx - px) * (mx - px) + (my - py) * (my - py) <= 100;
+				if (onDot && g_pin[g].mode == GK_OUT)
+				{
+					g_blink[g] = false;
+					int r = gk_toggle (g);
+					if (r < 0) fail (r, "Output");
+					else { char t[80]; snprintf (t, sizeof t, "GPIO %d set %s by a click.", g, r ? "high" : "low"); set_status (t); }
+					refresh_pins ();
+				}
+				else if (onDot && gk_available () == 2 && is_input (g_pin[g].mode))
 				{
 					gk_sim_input (g, g_pin[g].level ? 0 : 1);
 					refresh_pins ();
 				}
+				else if (onDot && g_pin[g].mode == GK_FREE && !(g_pin[g].flags & GK_F_RESERVED))
+					set_status ("A free pin: make it an Output (the Pins view, or PINMODE in a program), then click its dot to switch it.");
 				g_sel = g; sync_controls ();
 			}
 			setFocus ();

@@ -3345,7 +3345,7 @@ you put in `/etc/autostart` and what `kapi_list_apps` returns.
 
 ```ini
 name     = Text Editor          ; display name shown under the icon
-category = Productivity          ; Productivity, Internet, Graphics, Games, Demos, System, Settings, Emulators, Shell
+category = Productivity          ; Productivity, Internet, Graphics, Programming, Games, Demos, System, Settings, Emulators, Shell
 stack    = 8M                    ; optional: the app's stack (bytes, K or M), read by the KERNEL
 ```
 

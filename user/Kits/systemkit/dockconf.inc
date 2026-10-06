@@ -18,10 +18,10 @@
 SK_FN void dc_copy (char *d, const char *s, int cap) { int i = 0; for (; s && s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
 SK_FN void dockconf_defaults (DockConf &c)
 {
-	static const char *const D[5][2] = { { "Productivity", "tinypad" }, { "Internet", "jet" },
-		{ "Graphics", "paint" }, { "Games", "gamelib" }, { "Demos", "widgets" } };
-	c.ndrawers = 5;
-	for (int i = 0; i < 5; i++) { dc_copy (c.drawer[i].cat, D[i][0], 24); dc_copy (c.drawer[i].app, D[i][1], 32); }
+	static const char *const D[6][2] = { { "Productivity", "tinypad" }, { "Internet", "jet" },
+		{ "Graphics", "paint" }, { "Programming", "qbstudio" }, { "Games", "gamelib" }, { "Demos", "widgets" } };
+	c.ndrawers = 6;
+	for (int i = 0; i < 6; i++) { dc_copy (c.drawer[i].cat, D[i][0], 24); dc_copy (c.drawer[i].app, D[i][1], 32); }
 	c.nlaunchers = 2;
 	dc_copy (c.launcher[0], "terminal", 32); dc_copy (c.launcher[1], "fileviewer", 32);
 	c.ndesks = 4;

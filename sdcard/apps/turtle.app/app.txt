@@ -1,5 +1,5 @@
 # Onyx application metadata -- read by the category launcher (key=value, no section).
 name = Turtle Quest
-category = Games
+category = Programming
 opens = turtle
 stack = 4M

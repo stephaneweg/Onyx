@@ -411,7 +411,8 @@ does not change it.
   (or press on a title and release on an item). Click the title again or anywhere else to close
   the menu.
 - The first menu, **Onyx**, is always there: Terminal, **Control Panel**, File Viewer, Task
-  Manager; then **the apps by category** — Productivity, Internet, Graphics, Games, Demos,
+  Manager; then **the apps by category** — Productivity, Internet, Graphics, **Programming** (QBasic,
+  QBStudio, Turtle Quest, GPIO Lab), Games, Demos,
   **System** (the File Viewer, Disks, the Task Manager, the Terminal)
   (and any other category an app declares; the `category` of its `app.txt`, "Other"
   without one) — each opening a sub-menu of its apps, by their friendly name (the `name`
@@ -450,9 +451,10 @@ buttons — the drawers, the launchers, the Trash, in this order — are shared 
 sides** (the odd one out at the left): with the five drawers, the Terminal, the File Viewer and
 the Trash, four on each side.
 
-- **The drawers** — by default **Productivity**, **Internet**, **Graphics**, **Games** and
-  **Demos**: each shows the icon of its group's **main app** (the Text Editor, Jet Browser, Paint,
-  the Game Library, the Widget Showcase). **Click the icon** to start that app — or, if it runs,
+- **The drawers** — by default **Productivity**, **Internet**, **Graphics**, **Programming**, **Games** and
+  **Demos**: each shows the icon of its group's **main app** (the Text Editor, Jet Browser, Paint, QBStudio,
+  the Game Library, the Widget Showcase). (A card set up before the Programming drawer existed keeps its
+  dock: add it in Control Panel ▸ Panel — group *Programming*, main app `qbstudio`.) **Click the icon** to start that app — or, if it runs,
   to bring it back to the front (a **minimised** one too). **Click the strip** on the dock's top
   edge above it to open the group's **drawer**: its apps with their icons, by name (in columns
   when there are many); click one to start it, or bring it back. Click the strip again, or
@@ -4200,7 +4202,7 @@ GPIO 27 and a switch on GPIO 22 in the timing chart.*
 
 GPIO Lab shows the Raspberry Pi's **40-pin header** and lets you drive it: a quick way to try a wire, an
 LED, a button, a servo or an I2C sensor before writing a program (in BASIC: §13 *GPIO*; in C or C++:
-GPIOKit, docs/06). Start it from the dock or the app list (*System*).
+GPIOKit, docs/06). Start it from the dock or the app list (*Programming*).
 
 **Before wiring: 3.3 V only.** The band at the top says it: a GPIO pin never takes 5 V (the header's
 pins 2 and 4 are 5 V — power, not a signal), and gives at most about 16 mA — an LED goes through a
@@ -4212,7 +4214,9 @@ ground pins dark; a GPIO is coloured by its mode — blue an input (light while 
 (bright while high), violet PWM, teal I2C, pink SPI, pale a free pin — with its name, its header pin's
 number and a tag (its mode, or what else it is: `SDA1`, `PWM0`, `SPI0 CE0`…). **Greyed and crossed**:
 the pins the system uses — GPIO 14 / 15 (the serial console) and 0 / 1 (the HAT's EEPROM) —, which
-GPIO Lab cannot take. **Click a GPIO** (or move with the arrows) to choose it.
+GPIO Lab cannot take. **Click a GPIO** (or move with the arrows) to choose it. **A click on an output's dot switches it** (high /
+low), on the real header as on the simulator — whether the Pins view or a program set it as an output (a pin
+of another program's cannot be). On the simulator, a click on an input's dot drives it (High, then Low).
 
 **The pin** (top right): its name, its header pin, its level lit (green: high), and its **mode** —
 **Free** (given back: an input with no pull), **Input** (floating), **Pull-up**, **Pull-down**,
@@ -4404,7 +4408,7 @@ group: transport buttons, a time display, a segmented choice, knobs and level me
 ## 13. Programming in BASIC
 
 Onyx has a **BASIC in the style of QBasic**: the **QBasic** editor (`qbasic`, category
-*Productivity*), the runtime **`/bin/basic`**, and apps written in BASIC. Programs are
+*Programming*), the runtime **`/bin/basic`**, and apps written in BASIC. Programs are
 compiled to bytecode and run by a small virtual machine. The full list of keywords is in
 **Help ▸ Keywords** (`SD:/apps/qbasic.app/help.txt`).
 
@@ -5007,7 +5011,7 @@ Not yet: the debugger (breakpoints, stepping, the variables), several windows in
 
 ### Turtle Quest, learning to program with a turtle (`turtle`)
 
-**Turtle Quest** (category *Games*) teaches programming the way Logo did, as a game: in each level the player
+**Turtle Quest** (category *Programming*) teaches programming the way Logo did, as a game: in each level the player
 writes a short program that guides a **turtle** across a board — to its **flag**, picking up the **coins**,
 fetching a **key** for a **door**, painting the marked **tiles**, or drawing a **figure**. The language is Onyx
 BASIC itself (the same as QBasic's, `/bin/basic`'s and QBStudio's), with the turtle's words added; `FOR`, `IF`,
