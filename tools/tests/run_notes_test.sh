@@ -54,4 +54,9 @@ grep -q "probe stat: ok" "$OUT/probe_stat.log" || fail "probe stat: no ok"
 probe nostat SIM=exit
 echo "notes: the simulator's additions: ok"
 
+# ---- the notes model (step 2) ------------------------------------------------------------------------------
+$CXX $SAN -Wall -Wextra -Wno-unused-function -Wno-format-truncation -c user/Apps/notes/notesmodel.cpp -o "$OUT/notesmodel.o" 2> "$OUT/notesmodel.warn" || { cat "$OUT/notesmodel.warn"; fail "notesmodel.cpp does not build"; }
+$CXX $SAN -o "$OUT/model_test" $T/model_test.cpp "$OUT/notesmodel.o" "$OUT/fakekapi.o" -lpthread
+env SIM_WRITES="$OUT/w_model" SIM_STAT=1 SIM=exit "$OUT/model_test" || fail "the model"
+
 echo "notes: all checks passed"
