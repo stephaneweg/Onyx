@@ -14,7 +14,7 @@
 //                a BME280's readings, an SSD1306's picture (the simulator's) and a test text sent to it.
 //   Edges        the edges of the pins logged, with their time.
 // The simulator (GPIOKit's: a board in memory) runs when the system has no GPIO (a PC, a kernel older
-// than kapi 91), or when chosen (Board > Use the Simulator): nothing then touches the real pins.
+// than kapi 92), or when chosen (Board > Use the Simulator): nothing then touches the real pins.
 // Arguments: --sim (the simulator), --demo (a set-up to look at: an LED blinking on GPIO 17, a servo on
 // GPIO 18, a button on GPIO 27, the bus scanned), --tab chart | i2c | edges.
 //

@@ -1,6 +1,6 @@
 //
 // gkcore.cpp -- GPIOKit (SD:/lib/gpiokit.so; gpiokit/gpiokit.h): the header's pins, PWM, edges, I2C and
-// SPI over the kernel's gpio_ctl (kapi v91, KAPI_GPIO_*), and a simulated board for a PC or an Onyx
+// SPI over the kernel's gpio_ctl (kapi v92, KAPI_GPIO_*), and a simulated board for a PC or an Onyx
 // without the hardware.
 //
 // The one kit besides AppKit that reads the kernel's table itself (the user's exception: docs/03 §5.10):
@@ -30,7 +30,7 @@
 static unsigned long long s_nVirtUs;
 #endif
 
-#define GK_KAPI_VERSION	91			// gpio_ctl's
+#define GK_KAPI_VERSION	92			// gpio_ctl's
 // gpio_ctl's operations (kern/kapi_abi.h KAPI_GPIO_*: checked below on Onyx; a PC build has no kernel)
 enum { OP_INFO, OP_MODE, OP_WRITE, OP_READ, OP_READ_ALL, OP_PWM, OP_EDGES, OP_EVENTS, OP_I2C_OPEN, OP_I2C_XFER,
        OP_I2C_SCAN, OP_SPI_OPEN, OP_SPI_XFER, OP_CLOSE, OP_RELEASE, OP_NOW };

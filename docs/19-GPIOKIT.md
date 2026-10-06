@@ -32,7 +32,7 @@ the system then makes it an input again, after a crash too. The system's pins (G
 console; 0 / 1, the HAT EEPROM) and a pin another program has are refused: every call returns ≥ 0, or a
 negative `GK_E*` that `gk_error` says in words.
 
-GPIOKit is the one kit besides AppKit that calls the kernel itself (kapi v91 `gpio_ctl`; the user's
+GPIOKit is the one kit besides AppKit that calls the kernel itself (kapi v92 `gpio_ctl`; the user's
 exception, docs/03 §5.10); it is shipped with the kernel in the package `onyx`.
 
 **An LED, a button** (C):
@@ -158,7 +158,7 @@ Pins are BCM GPIO numbers (GPIO 17 is the header's pin 11). The levels are 3.3 V
 
 Every call that can fail returns a negative GK_E* code (gk_error says it in words); >= 0 is success. A C++ program also has small classes over these (namespace gpiokit: Pin, Pwm, I2CDevice).
 
-Link lib/gpiokit.imp.a (C++) or lib/gpiokit.imp_c.a (C). The interface is append-only (gpiokit.abi). GPIOKit is the one kit besides AppKit that calls the kernel's table itself (kapi gpio_ctl, v91; the user's exception, docs/03 §5.10): it is shipped and rebuilt with the kernel, in the package onyx.
+Link lib/gpiokit.imp.a (C++) or lib/gpiokit.imp_c.a (C). The interface is append-only (gpiokit.abi). GPIOKit is the one kit besides AppKit that calls the kernel's table itself (kapi gpio_ctl, v92; the user's exception, docs/03 §5.10): it is shipped and rebuilt with the kernel, in the package onyx.
 
 MIT License
 
@@ -198,7 +198,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define GK_ENOMEM	(-12)
 #define GK_EFAULT	(-14)
 #define GK_EBUSY	(-16)		// another program has it
-#define GK_ENODEV	(-19)		// no GPIO here (a system older than kapi 91): gk_sim (1) simulates
+#define GK_ENODEV	(-19)		// no GPIO here (a system older than kapi 92): gk_sim (1) simulates
 #define GK_EINVAL	(-22)		// a wrong pin, mode, frequency, duty...
 ```
 

@@ -930,6 +930,75 @@ int kapi_kill_pid (int nPid, int nForce)
 	return 1;
 }
 
+// --- v91: a process's tree (KAPI_TREE_*) ----------------------------------------
+// The tree is made of the parent pids the processes recorded at their spawn: the root, then
+// every live process whose parent is in the set, pass after pass (its children, then theirs...).
+// A kapi runs on core 0 and is not preempted: nobody spawns or ends while the set is made and
+// killed. A child whose start is still deferred (SpawnProcess) is not a task yet: it starts
+// with a dead parent and the reaper's orphan scan ends it (kernel.cpp, TerminateOrphans).
+#define TREE_MAX	256
+struct TreeCtx { unsigned *pPids; unsigned n; boolean bGrew; };
+static boolean TreeHas (const TreeCtx *c, unsigned nPid)
+{
+	for (unsigned i = 0; i < c->n; i++) if (c->pPids[i] == nPid) return TRUE;
+	return FALSE;
+}
+static boolean TreeGrowCb (CTask *pTask, const char *, TTaskState State, TTaskFlags, void *pParam)
+{
+	if (State == TaskStateTerminated) return TRUE;
+	TreeCtx *c = (TreeCtx *) pParam;
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pAS == 0 || pAS->GetParentPid () == 0 || c->n >= TREE_MAX) return TRUE;
+	if (TreeHas (c, pAS->GetPid ()) || !TreeHas (c, pAS->GetParentPid ())) return TRUE;
+	c->pPids[c->n++] = pAS->GetPid ();		// (a thread of a process already in: TreeHas)
+	c->bGrew = TRUE;
+	return TRUE;
+}
+
+int kapi_proc_tree (int nPid, int nOp, int *pOut, unsigned nCap)
+{
+	if (nPid <= 0 || nOp < KAPI_TREE_LIST || nOp > KAPI_TREE_KILL_CHILDREN) return -KAPI_EINVAL;
+	if (!CScheduler::IsActive ()) return -KAPI_ESRCH;
+	KillByPidCtx Root = { (unsigned) nPid, 0 };
+	CScheduler::Get ()->EnumerateTasks (FindByPid, &Root);
+	if (Root.pFound == 0 || Root.pFound->GetUserData (TASK_USER_DATA_USER) == 0) return -KAPI_ESRCH;
+
+	unsigned Pids[TREE_MAX];				// [0] the root, then its descendants
+	TreeCtx Ctx = { Pids, 1, TRUE };
+	Pids[0] = (unsigned) nPid;
+	for (unsigned nPass = 0; Ctx.bGrew && nPass < TREE_MAX; nPass++)
+	{
+		Ctx.bGrew = FALSE;
+		CScheduler::Get ()->EnumerateTasks (TreeGrowCb, &Ctx);
+	}
+
+	if (nOp == KAPI_TREE_LIST)
+	{
+		unsigned nDesc = Ctx.n - 1;
+		for (unsigned i = 0; i < nDesc && i < nCap; i++)
+			if (pOut == 0 || !UserPut (&pOut[i], (int) Pids[i + 1])) return -KAPI_EFAULT;
+		return (int) nDesc;
+	}
+
+	// A kill: never the caller's own process (it is the root, or one of its descendants).
+	CAddressSpace *pMe = CurrentAS ();
+	if (pMe != 0 && TreeHas (&Ctx, pMe->GetPid ())) return -KAPI_EPERM;
+	unsigned nFirst = nOp == KAPI_TREE_KILL ? 0 : 1, nKilled = 0;
+	for (unsigned i = Ctx.n; i-- > nFirst; )		// the leaves first
+	{
+		KillByPidCtx K = { Pids[i], 0 };
+		CScheduler::Get ()->EnumerateTasks (FindByPid, &K);
+		CAddressSpace *pAS = K.pFound != 0 ? (CAddressSpace *) K.pFound->GetUserData (TASK_USER_DATA_USER) : 0;
+		if (pAS == 0) continue;
+		pAS->SetTermReason (KAPI_PROC_KILLED, -9);		// (proc_wait)
+		CScheduler::Get ()->TerminateTask (K.pFound);	// (its whole process: TerminateGroup)
+		nKilled++;
+	}
+	if (nKilled > 0)
+		CLogger::Get ()->Write ("proc", LogNotice, "proc_tree: pid %d's tree, %u process(es) terminated", nPid, nKilled);
+	return (int) nKilled;
+}
+
 // --- keyboard layout (kernel.cpp drives the Circle CKeyMap; decls in applaunch.h) --
 // Switch the keyboard layout to a compiled-in country map ("FR","US","DE","UK",
 // "ES","IT","DV"). Returns 1 on success, 0 if unknown / no keyboard.

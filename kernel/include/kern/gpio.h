@@ -1,5 +1,5 @@
 //
-// gpio.h -- the 40-pin header for the programs (kapi v91 gpio_ctl; sys/gpio.cpp): GPIO 0..27 given one
+// gpio.h -- the 40-pin header for the programs (kapi v92 gpio_ctl; sys/gpio.cpp): GPIO 0..27 given one
 // process at a time, PWM on 12 / 13 / 18 / 19, edges queued to their owner, the I2C bus 1 and SPI 0.
 // The pins the system uses are never given (the serial console, the HAT EEPROM); a process's pins,
 // buses and queue go back when it ends (GpioOnProcessGone, from IpcOnProcessGone).

@@ -1070,10 +1070,10 @@ reference: docs/19) is made like SystemKit: one header that declares (`gpiokit/g
 append-only `gpiokit.abi`, `lib/gpiokit.imp.a` and `lib/gpiokit.imp_c.a` (`--bind-c`). Two things are its
 own:
 
-- **It reads the kernel's table itself** — `gpio_ctl` (kapi v91, docs/02 §17) — instead of going through
+- **It reads the kernel's table itself** — `gpio_ctl` (kapi v92, docs/02 §17) — instead of going through
   AppKit: **the user's explicit exception** to "only AppKit reaches the kernel" (§5.10). So it is built and
   shipped **with the kernel**: its `.so` is in the package `onyx` (as AppKit's), and a kernel that moves
-  or changes `gpio_ctl` ships the GPIOKit that follows it. It checks `KT->version >= 91` first (an older
+  or changes `gpio_ctl` ships the GPIOKit that follows it. It checks `KT->version >= 92` first (an older
   kernel: `GK_ENODEV`). Its other needs (sleeping) are AppKit's, as for any kit.
 - **It carries a simulator**: a board in memory (inputs driven by `gk_sim_input`, the PWM's waves from the
   clock, an I2C bus with an SSD1306 at 0x3C and a BME280 at 0x76 — its registers and the datasheet's
@@ -1137,7 +1137,7 @@ alone**.
 - **`KT` is not for programs any more**: it only exists in AppKit (and `KAPI_INLINE`). The kernel's
   version is `kapi_abi_version ()` (it was `KT->version`).
 - **The one exception: GPIOKit** (the user's decision, 2026-10-06). `SD:/lib/gpiokit.so` calls the kernel's
-  `gpio_ctl` entry (kapi v91) itself, through the table at `KAPI_TABLE_VA`, without an AppKit wrapper —
+  `gpio_ctl` entry (kapi v92) itself, through the table at `KAPI_TABLE_VA`, without an AppKit wrapper —
   there is no `kapi_gpio_ctl` in AppKit. The price is the one AppKit pays: GPIOKit is rebuilt and shipped
   with the kernel (the package `onyx`). A program still never reads `KT`: it calls GPIOKit's `gk_*` (§5.9.0,
   docs/06 *GPIOKit*).
@@ -2214,6 +2214,7 @@ alone**.
 > | **`Knob`** (`uikit/knob.h`) | `Knob (l, t, w, h, min, max, value, onChange)`; `setLabel ("Gain")`, `showValue`, `format (v, out, cap)`, `setDefault (v)`, `bipolar`, `arcColor`, `step`, `face` (captions) | A rotary control: a 270° track, the value's arc in the accent (from the start, or from 0 when `bipolar`: a pan), a cap with a pointer, the label and the value under it. Drag up / down (the range in 200 px; Shift: 1000 px), the wheel, a double click → the default; keys Up / Down / Left / Right, Page Up / Down, Home / End, Delete (the default). The dial is the width, less the captions' lines (about 24 … 64 px). `setValue (v, fire)`, `setRange`, `valueText`. |
 > | **`VuMeter`** (`uikit/vumeter.h`) | `VuMeter (l, t, w, h, vertical = true, stereo = true)`; `floorDb` / `topDb` (−48 / +6), `amberDb` / `redDb` (−12 / −3), `segPx` (3; 0 = continuous), `holdTicks`, `fallDb`, `peakFallDb`, `showPeak`, `showClip` | A level meter: segments on a dark well, green → amber → red along a dB scale, the peak held then falling, a clip light (a level over 0 dBFS; a click clears it). **`setQ16 (l, r)`** — linear, 65536 = 0 dBFS —, `setCdb (l, r)` (1/100 dB), `set (float l, float r)` in an FP-enabled unit only (uikit itself is integer-only). Call it at the UI's rate, silence included (the falls are timed by `kapi_get_ticks`); it repaints only when a lit segment or a peak moves. `uk_q16_to_cdb (v)`. |
 > | **`SegmentedControl`** (`uikit/segmented.h`) | `SegmentedControl (l, t, w, h, labels, n, selected, onChange)`; `equalWidths` (false: by the texts), `setLabels`, `setEnabled (i, on)` | Mutually exclusive segments drawn as one pill, the chosen one in the accent (bold). A click, the wheel, Left / Right. `selected`, `select (i, fire)`, `label (i)`, `count ()`. Labels copied (12 × 31 chars). |
+> | **`TabStrip`** (`uikit/tabstrip.h`) | `TabStrip (l, t, w, h, onChange)`; `add (title, data)` → its index, `remove (i)`, `setTitle`, `setMark (i, on)`, `data (i)` / `setData`, `closable`, `newButton`, `activeFace`, `onClose` (`closing` = the tab), `onNew` | A row of tabs over a view (the Terminal's shells): a title, a close cross, a dot (a mark), a "+" after them; the chosen one opens onto the content (`activeFace`). A click picks a tab, the wheel and `selectNext (±1)` step through them (round); the cross or a middle click only **asks** — the program decides and calls `remove`. `selected`, `select (i, fire)`, `count ()`, `tabAt (x)`. 32 tabs, titles copied (47 chars, cut with an ellipsis). |
 > | **`ToolBar`** + **`ToolButton`** (`uikit/toolbar.h`) | `ToolBar (l, t, w, h = 34)`: `add (w, gap)`, `addRight (w, gap)` (anchored right), `sep ()`, `space (px)`, `line`, `bg`; `ToolButton (w, h, tip, onClick)` then `->setGlyph (WKT_PLAY)`, `->setIcon (fn, id)` (the app's drawer), `->setText ("Loop")`, `->setToggle (true, on)`, `->setSplit (arrowCb)`, `->fitWidth ()`; `filled`, `raised`, `onColor`, `iconColor` | A strip of small buttons: an icon, a label beside it or alone, a toggle (on: the accent's tint, or `filled` — a play button), a split arrow (a palette, a menu), a tooltip. Flat until pointed (`raised`: always a face). The icons: `WKT_NEW OPEN SAVE UNDO REDO CUT COPY PASTE PLAY PAUSE STOP RECORD TO_START TO_END REWIND FORWARD LOOP METRONOME PLUS MINUS SEARCH MIXER SPARK GEAR`, drawn at any size by `uk_tool_glyph (cv, kind, x, y, size, ink)`. Generalised from Letters' (which keeps its own). |
 > | **`LcdDisplay`** (`uikit/lcd.h`) | `LcdDisplay (l, t, w, h, text, caption)`; `setText`, `setCaption`, `setSub` (repainted only on a change), `face` / `smallFace`, `scale`, `ink`, `centred` | A time / position display: a sunken well (dark in a dark theme, the accent's pale tint in a light one), large digits in the accent — the `face` given (an `FtTextFace` at 24 px), else the bitmap font scaled as large as fits —, a small caption over a second line at its right ("BAR.BEAT.16" / "0:14.83"). |
 

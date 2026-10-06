@@ -1,5 +1,5 @@
 //
-// gpio.cpp -- the 40-pin header for the programs (kapi v91 gpio_ctl; kern/gpio.h, KAPI_GPIO_* in
+// gpio.cpp -- the 40-pin header for the programs (kapi v92 gpio_ctl; kern/gpio.h, KAPI_GPIO_* in
 // kern/kapi_abi.h; docs/02 "GPIO"). Over Circle's CGPIOPin, CGPIOManager (the edges' interrupt),
 // CI2CMaster (bus 1) and CSPIMaster (SPI 0); the PWM's registers by hand (below: why).
 //

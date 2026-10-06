@@ -586,7 +586,31 @@ Launch **`terminal`** (the dock's Terminal button, or the menu bar's **Onyx ▸ 
 commands, executed by **programs in `SD:/bin/`**.
 
 ![Terminal](../screenshots/terminal.png)
-*The terminal: a pipe (`ls /bin | grep e`), `ps`, and `echo zircon | wc -c`.*
+*The terminal with three tabs: the first one shown (a pipe, `ls /bin | grep e`, `ps`, `echo onyx | wc -c`), a
+second one in `SD:/docs`, and `ping` running in the third (the dot).*
+
+### Tabs
+
+A terminal window holds **several tabs**, each with **its own shell** (`cmd`): its own screen and
+scrollback, its own line history and its own current working directory. What runs in a tab goes on
+while another tab is shown.
+
+| Action | How |
+|---|---|
+| **New tab** | the **+** after the tabs, **Shell ▸ New Tab**, or **Ctrl+Shift+T** (it starts in `SD:/`). |
+| **Change tabs** | a click on a tab, **Ctrl+Tab** / **Ctrl+Shift+Tab** (next / previous), **Ctrl+PgDn** / **Ctrl+PgUp**, or the wheel over the tabs. |
+| **Close a tab** | its **×**, a **middle click** on it, **Shell ▸ Close Tab**, or **Ctrl+Shift+W**. |
+
+- A tab's **title** is the **command running** in it, else its **current folder** (the prompt's last
+  name: `docs` for `SD:/docs`; `SD:/` at the root). A **dot** before the title marks a tab where a
+  command runs.
+- Closing a tab where something runs (a program, a pipeline, a script) **asks first**. Closing a tab
+  **stops its shell and everything running in it at once** — every stage of a pipeline
+  (`cat x | grep y | sort`), a script and the programs it started, a program started from it — nothing is
+  left running behind it (the kernel's `proc_tree`, docs/02 §8 *v91*). An app started with `run` (a window
+  of its own) is not part of the tab and stays.
+- A shell that **ends by itself** (`exit`) takes its tab away. When the **last tab** closes, the window
+  closes; closing the window stops every tab's shell the same way.
 
 ### The prompt and the current working directory
 
@@ -608,12 +632,12 @@ The line can be corrected **before it is sent**, and the lines sent before come 
 | `Ctrl-U` / `Ctrl-K` | empty the line / cut it from the cursor to its end. |
 | **Up** / **Down** | the **history**: the previous / the next line sent. A recalled line can be edited and sent again; **Down** past the newest one gives back the line that was being typed. |
 | **Enter** | sends the line (wherever the cursor is). |
-| `Ctrl-C` | **stops the running command** (and the script it belongs to); the line being typed is dropped. |
+| `Ctrl-C` | **stops the running command** (and the script it belongs to, with everything they started); the line being typed is dropped. |
 | `Ctrl-D` | ends the input of a program that reads the keyboard (`cat`, `ed`, `sort`…). |
 
 The history holds the last lines sent (about a hundred: 4 KB of text; an empty line or the same
-line twice in a row is not added). Each terminal window — and each remote session (`telnetd`) —
-has its own; it is not kept when the window closes. What is typed to a program (`ed`, `ftp`…) is
+line twice in a row is not added). Each terminal tab — and each remote session (`telnetd`) —
+has its own; it is not kept when the tab closes. What is typed to a program (`ed`, `ftp`…) is
 in it too. A line longer than the window wraps onto the next rows and is edited the same way.
 
 ### Built-in commands (builtins)
@@ -626,7 +650,7 @@ not by a program in `/bin`:
 | `cd [path]` | changes the current working directory (no argument: `SD:/`). The cwd is **inherited** by commands launched afterwards. |
 | `pwd` | prints the current working directory. |
 | `clear` | clears the screen (empties the scrollback). |
-| `exit [code]` | ends the shell (the terminal closes; a script stops there), with that exit code. |
+| `exit [code]` | ends the shell (its tab closes — the last one: the window; a script stops there), with that exit code. |
 | `source <script> [args]` (or `. <script>`) | runs a script's lines **in this shell**: its `cd` and its variables stay (see *Scripts*). |
 | `echo [-n] <text…>` | writes its arguments (`-n`: without the final newline). |
 | `test <expression>` (or `[ <expression> ]`) | a condition: exit code 0 when it is true (see *Scripts*). |
@@ -994,7 +1018,7 @@ it: `ed notes.txt < edits.txt`.
 | `ps` | `ps` | Lists the processes in columns `PID  K  S  PAGES  MEM  SYSC/s  NAME` (SYSC/s: the app's system calls per second) — `K`: `a` (app) / `k` (kernel); `S`: `R` (ready), `S` (sleeping), `B` (blocked), `N` (new); `PAGES` = 64 KB frames owned by the app, `MEM` = that in KB. A program's code and constants are not in it: they are in memory once, shared by all its processes (`preload` lists them). |
 | `preload` | `preload <program>…`, `preload /boot`, `preload` | **Loads programs ahead and keeps them in memory**: a preloaded program starts **without reading the card** (its code is mapped, shared by all its processes) and stays in memory when none runs. `<program>` is a path (`SD:/bin/jsc`; relative to the current folder), or a bare name: the app of that name (`apps/<name>.app/main`) if there is one, else the `/bin` tool. It returns at once — the load runs in the background (a start meanwhile waits for it); the memory is taken until `unload` or the next restart. With no argument: **lists the program images in memory** — every running program (shared by its processes) and the kept ones: size in KB, `uses` (processes running it), `state` (`loading` / `ready`), `kept` (`yes`: preloaded; `no`: freed when its last process ends; `gone`: unloaded or its file replaced — only its running processes still use it), and its path (lower case: the image's key; a **shared library** — `SD:/lib/<name>.so`, which `preload` keeps as it keeps a program — is marked `(library)`). **At every boot: `preload /boot`**, the last line of `SD:/etc/autostart`, loads the programs listed in **`SD:/etc/preload.ini`** (one a line — a path, an app's name or a tool's; `#` or `;` starts a comment) — the list the Control Panel's **Preload** applet edits (§11); an empty or missing file: nothing. (A card set up before this option: add that line at the end of its `autostart`; `preload <program>` lines there still work.) A program whose file is replaced, renamed or removed loses its image by itself; `pkg` preloads the new one again. |
 | `unload` | `unload <program>…` | **Releases a program's image** (see `preload`; the same names): its next start reads the file again; the processes running it go on, and its memory is freed when the last of them ends (at once if none runs). |
-| `kill` | `kill <pid> [--force\|-f]` | Terminates a process by **PID** (seen with `ps`). By default: **clean** shutdown (the app terminates itself); `--force`/`-f`: **immediate** stop. Kernel tasks and the terminal itself are protected. |
+| `kill` | `kill <pid> [--force\|-f\|--tree\|-t]` | Terminates a process by **PID** (seen with `ps`). By default: **clean** shutdown (the app terminates itself); `--force`/`-f`: **immediate** stop; `--tree`/`-t`: the process **and every process under it** (what it started, what they started…) stopped at once — the count is printed. Kernel tasks and the terminal itself are protected (a tree that holds `kill` itself is refused). |
 | `run` | `run <app\|path> [args]` | Launches an **application**: `run mandelbrot` = `SD:apps/mandelbrot.app/main`; a name containing `/` is taken as an explicit **ELF path**; the following arguments are passed as `argv` (e.g. `run tinypad SD:/notes.txt`). |
 | `keyb` | `keyb [XX]` | With no argument: shows the current layout + the list. `keyb FR`: switches to the layout (US, UK, DE, FR, BE, ES, IT, DV). |
 | `cmd` | `cmd`, `cmd <script> [args]`, `cmd -c "line"` | **The shell itself**, an ordinary `/bin` program: reads command lines from `stdin` (up to 2047 characters), runs their commands (`;`, `&&`, `\|\|`; variables, `if` / `while` / `for`: the script language of §7), builds the pipelines (`\|`, `<`, `>`, `>>`; `"…"`, `'…'` and `\` quote), spawns `/bin/<cmd>` for each stage with its exact argument list; builtins `cd`, `pwd`, `clear`, `exit`, `source`, `test`, `echo`, `read`, `set`, `unset`, `shift` (§7). With a file: **runs that script** and ends with its exit code (§7 *Scripts*); `-c`: one line. The terminal runs it; `telnetd` serves it over the network. |
@@ -1607,6 +1631,9 @@ a page.
   **Install N Updates**. Each shows its versions (installed → new), its size; the system's update
   is marked **restart**. While it works, each row says *Waiting*, its progress, *Installed*, or
   *Ready: at the restart*. An app that is **running** is not updated (*close it, then try again*).
+  A package whose **program is missing** from the card (Jet Browser on a card copied from the git
+  repository's `sdcard/`: its 100 MB program is too big for git and comes with its package only) is
+  shown here too, from version 0: install it to get the program.
 - **Installed** — every package: its version, its category, its **updates mode** — **Manual** (the
   default: you are asked), **Auto** (the update daemon installs its updates by itself), **Never**
   (this version kept) — and **Remove** (not for the system; asked first; a setting you changed is

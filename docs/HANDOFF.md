@@ -10,8 +10,8 @@ Asked by the user: the Raspberry Pi 4's 40-pin header for the programs — kerne
 app, BASIC. **The user authorised GPIOKit to call the kernel's table directly** (not through AppKit): an
 explicit exception, written in docs/03 §5.9.0 / §5.10 and docs/06 §1 / §12.
 
-- **Kernel** (kapi **v91**, one entry `gpio_ctl` slot 228 — one slot on purpose, other sessions add calls in
-  parallel): `kernel/sys/gpio.cpp`, `kern/gpio.h`, `KAPI_GPIO_*` in `kapi_abi.h`; docs/02 §8 *v91* and **§17**.
+- **Kernel** (kapi **v92**, one entry `gpio_ctl` slot 229 — v91 / 228 went to `proc_tree`, merged the same day — one slot on purpose, other sessions add calls in
+  parallel): `kernel/sys/gpio.cpp`, `kern/gpio.h`, `KAPI_GPIO_*` in `kapi_abi.h`; docs/02 §8 *v92* and **§17**.
   Pins 0..27, one owner each, given back (inputs, no pull) when the process ends (`GpioOnProcessGone` from
   `IpcOnProcessGone`); reserved: 0 / 1 (HAT EEPROM), 14 / 15 (serial console); the rest of the system's pins
   are off the header (30..33 Bluetooth, 40 / 41 the jack's PWM, 42 the LED). PWM on PWM0 at the jack's own
@@ -49,6 +49,17 @@ explicit exception, written in docs/03 §5.9.0 / §5.10 and docs/06 §1 / §12.
   Circle's timeouts); (7) SPI: MOSI wired to MISO, `PRINT SPI$("hello")`; (8) the reserved pins refused
   (14 / 15: the serial console must keep working), a pin taken by two programs (`EBUSY`), a program killed
   while driving an output: the pin back to an input; (9) `kill` a program waiting in `gk_events (…, 1000)`.
+
+## Terminal tabs and the process tree (2026-10-06): built, tested in the simulator, published
+
+Asked by the user: tabs in the Terminal, each its own `cmd`; closing a tab must end the shell **and everything running
+under it**. **Done**: kapi **v91 `proc_tree`** (slot 228, `sys/kapi.cpp`: list / kill a process's descendants at once,
+the leaves first, from the parent pids recorded at the spawns — before it only the reaper's orphan scan, a level every
+50 ms; docs/02 *v91*); **UIKit `TabStrip`** (`uikit/tabstrip.h`: titles, close crosses, a mark, "+"; uikit 1.744); the
+**Terminal** rewritten around a `Tab` record (its cmd, pipes, scrollback, line history), Ctrl+Shift+T / W, Ctrl+Tab,
+Ctrl+PgUp / PgDn, the Shell menu, a question before closing a busy tab, the title = the command running or the folder;
+`cmd`'s Ctrl-C and `/bin/kill -t` use the tree too. **Not yet run on the Pi**: check there that closing a tab running
+`cat x | grep y | sort` or a script leaves nothing in `ps`, and `kmsg`'s `proc: proc_tree: ...` line.
 
 ## 3DForge, a small parametric CAD (2026-10-05): built, on the Pi (the GPU draws it), published
 

@@ -23,7 +23,7 @@
 // A C++ program also has small classes over these (namespace gpiokit: Pin, Pwm, I2CDevice).
 //
 // Link lib/gpiokit.imp.a (C++) or lib/gpiokit.imp_c.a (C). The interface is append-only (gpiokit.abi).
-// GPIOKit is the one kit besides AppKit that calls the kernel's table itself (kapi gpio_ctl, v91; the
+// GPIOKit is the one kit besides AppKit that calls the kernel's table itself (kapi gpio_ctl, v92; the
 // user's exception, docs/03 §5.10): it is shipped and rebuilt with the kernel, in the package onyx.
 //
 // ---------------------------------------------------------------------------------------------
@@ -77,7 +77,7 @@ extern "C" {
 #define GK_ENOMEM	(-12)
 #define GK_EFAULT	(-14)
 #define GK_EBUSY	(-16)		// another program has it
-#define GK_ENODEV	(-19)		// no GPIO here (a system older than kapi 91): gk_sim (1) simulates
+#define GK_ENODEV	(-19)		// no GPIO here (a system older than kapi 92): gk_sim (1) simulates
 #define GK_EINVAL	(-22)		// a wrong pin, mode, frequency, duty...
 
 // gk_pin_info.flags

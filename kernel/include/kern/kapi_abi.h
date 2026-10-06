@@ -215,14 +215,19 @@
 //      (the slot numbers quoted in the notes above are those of their time; the checks below and
 //      docs/02 have today's). AppKit is rebuilt with the kernel; no program is (they call AppKit by
 //      name). A stand-in kernel on a PC still has the windows' entries, after the table's end.
-// v91: + gpio_ctl (slot 228) -- the 40-pin header (sys/gpio.cpp, kern/gpio.h; KAPI_GPIO_*): a pin's mode
+// v91: + proc_tree (slot 228): a process's tree -- its descendants (the processes it spawned, the ones
+//      they spawned...) listed, or the whole tree (or only its descendants) terminated at once, the
+//      leaves first. Before it a dead parent's children were ended by the reaper's orphan scan, one
+//      level a pass (still there, for a child whose start was deferred). The Terminal closes a tab's
+//      shell and everything running under it with it; cmd's Ctrl-C, /bin/kill -t.
+// v92: + gpio_ctl (slot 229) -- the 40-pin header (sys/gpio.cpp, kern/gpio.h; KAPI_GPIO_*): a pin's mode
 //      (input, pulled up / down, output, an alternate function), its level, PWM on GPIO 12 / 13 / 18 / 19
 //      (a frequency and a duty), edges queued to the process that asked (with their time), the I2C bus 1
 //      (GPIO 2 / 3: transfers, a scan) and SPI 0 (GPIO 7..11). One owner a pin; the pins the system
 //      uses are refused (the serial console 14 / 15, the HAT EEPROM 0 / 1); a process's pins go back to
 //      inputs when it ends. Read by GPIOKit (SD:/lib/gpiokit.so) DIRECTLY, not through AppKit (the
 //      user's exception, docs/03 §5.10): GPIOKit, like AppKit, is shipped and rebuilt with the kernel.
-#define KAPI_ABI_VERSION	91
+#define KAPI_ABI_VERSION	92
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -957,7 +962,17 @@ struct kapi_sound_client
 	int	 reserved[4];
 };
 
-// (v91) The 40-pin header's GPIO (gpio_ctl (op, a0, a1, a2) -> >= 0, or -KAPI_Exxx; sys/gpio.cpp, kern/gpio.h).
+// (v91) proc_tree (pid, op, out, cap): a process's descendants -- by the parent pid each process
+// records at its spawn (spawn, spawn_ex, spawn_ex2; exec / launch start a process without a parent).
+#define KAPI_TREE_LIST		0	// -> how many descendants pid has; up to cap of their pids written to
+					// out (its children, then theirs...)
+#define KAPI_TREE_KILL		1	// pid and all its descendants terminated now (KILLED, -9), the leaves
+					// first -> how many processes were terminated
+#define KAPI_TREE_KILL_CHILDREN	2	// its descendants only (pid goes on) -> how many
+					// Errors: -KAPI_ESRCH no such process, -KAPI_EINVAL a bad op / pid,
+					// -KAPI_EPERM a kill that would take the caller (pid is the caller or
+					// one of its ancestors), -KAPI_EFAULT
+// (v92) The 40-pin header's GPIO (gpio_ctl (op, a0, a1, a2) -> >= 0, or -KAPI_Exxx; sys/gpio.cpp, kern/gpio.h).
 // Pins are BCM GPIO numbers 0..27 (the header's); KAPI_GPIO_INFO, _READ, _READ_ALL are anyone's, the others
 // need the pin to be free or the caller's (-KAPI_EBUSY: another process has it; -KAPI_EPERM: the system's).
 #define KAPI_GPIO_PINS		28	// GPIO 0..27: the header's
@@ -1980,7 +1995,9 @@ struct TKApiTable
 	// --- v89: the graphics server's mechanisms (sys/wsrv.cpp; KAPI_WS_*) ---
 	long (*ws_ctl) (int op, long a0, long a1, long a2);
 
-	// --- v91: the 40-pin header's GPIO, PWM, I2C, SPI (sys/gpio.cpp; KAPI_GPIO_*). Called by GPIOKit only ---
+	// --- v91: a process's tree (sys/kapi.cpp; KAPI_TREE_*) ---
+	int (*proc_tree) (int pid, int op, int *out, unsigned cap);
+	// --- v92: the 40-pin header's GPIO, PWM, I2C, SPI (sys/gpio.cpp; KAPI_GPIO_*). Called by GPIOKit only ---
 	long (*gpio_ctl) (int op, long a0, long a1, long a2);
 
 #ifndef __aarch64__
@@ -2194,7 +2211,8 @@ KAPI_CHECK_SLOT (sound_output, 224);
 KAPI_CHECK_SLOT (sound_clients, 225);
 KAPI_CHECK_SLOT (sound_client_volume, 226);
 KAPI_CHECK_SLOT (ws_ctl, 227);
-KAPI_CHECK_SLOT (gpio_ctl, 228);
+KAPI_CHECK_SLOT (proc_tree, 228);
+KAPI_CHECK_SLOT (gpio_ctl, 229);
 
 #ifdef __cplusplus
 }
