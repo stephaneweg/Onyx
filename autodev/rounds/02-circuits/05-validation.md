@@ -4,7 +4,7 @@ Date: 2026-10-06. Reviewed together: `02-product-analysis.md`, `03-technical-ana
 plan*), `04-ux-design.md` and `mockups/*.png` (main, fr-check looked at). Every claim below was checked against the
 code on branch `AutoDev`, not only against the documents.
 
-## Verdict: **NOT GREEN** — 2 gaps (one for role 3, one for role 4)
+## Verdict (loop 2): **GREEN** — see §4. (Loop 1: NOT GREEN, 2 gaps — §1.)
 
 Both are small and local; once fixed, the plan is ready for the developer. Everything else checks out (§2).
 
@@ -180,3 +180,54 @@ The menus and the F-keys agree across the three documents.
 14. **`History`** holds 65 × up to 8 KB. Keep it global or on the heap, not on the stack.
 15. Run `kitdocs.py` after the header is final. Then `git diff --stat docs/` should show only `docs/14`, plus the
     docs edited on purpose.
+
+16. *(loop 2)* **Step 11's new FileKit-core grep gives false failures.**
+    `grep -nE "\bfk_[a-z]" … | grep -v "fk_kv_"` also matches lines that name only the type, such as
+    `fk_kv *doc;` (`fk_k…`, with no `fk_kv_`). Filter with `grep -v "fk_kv"` instead, or match
+    `\bfk_(load|save|path|arc|zip|…)`.
+17. *(loop 2)* G1 still mentions "a resize step"; see note 10 (use `SIM_SCREEN`, since `fitWorkArea` only
+    shrinks the window). 04 §4's *Icons* paragraph says "10 px" without the 9-px exception that D3 and the
+    palette table give. Follow D3.
+
+---
+
+## 4. Loop 2 (re-check after the amendments, commits `405a4f88`, `d46088fb`)
+
+### Gap 1 — **closed**
+
+- 03 §1.2 now limits FileKit to the inline-on-the-PC parts:
+  - packs are read with `fk_kv_load (path, FK_KV_PIPES)`;
+  - `progress.ini` is read with `fk_kv_load (…, FK_KV_ESCAPES)` and written with `fk_kv_save`;
+  - the file name comes from `fs_basename`, and the ending is tested with `fs_ci_cmp`;
+  - it explicitly bans the `fkcore.cpp` functions.
+- Checked in the code:
+  - `fs_basename` and `fs_ci_cmp` exist in `fsutil.h` / `fsutil.inc` and are `static inline` on the PC.
+  - Fileviewer and Notes already use `fs_*` in `shots.sh`'s generic FT branch, so that branch links them.
+  - `filekit.h` includes `fsutil.h` for C++.
+  - On the Pi, `fs_*` are exported by `filekit.so`, through the `'^(fk_|fs_)'` regex.
+- §4 adds `parse_pack_kv (Pack &, const fk_kv *, …)`, with `parse_pack (text)` as a wrapper for the host test.
+  This is consistent: the engine itself still does no I/O.
+- Steps 4 and 7 state the PC source lists: every `.cpp` of `user/Apps/circuits/` except `main.cpp` goes into
+  `FT_EXTRA_circuits`, `shots.sh`'s `extra` and the sim test, with no `fkcore.cpp` and no zlib.
+- Step 11 has a grep guard. It is a little too broad (note 16), which does not block.
+
+### Gap 2 — **closed**
+
+- The palette buttons are `PaletteButton (40, 40)` (D3 and §4).
+- With UIKit's real `ToolBar` arithmetic: left 6 + 7 × 41 + 11 = 304 px; right 120 px; 424 ≤ 428, the centre
+  column at 920 px. The last gate ends at 304 and the trash starts at 308. Checked.
+- The 9-px face (`g_tiny`) is declared in §2, and G1 lists the faces 18 / 10 / 30 / 9.
+- The GUI plan's "§5 window" row and G1's check (right edge of the last gate < left of the trash, EN and FR) are
+  updated.
+- The new mock-up `mockups/circuits-min-fr.png` shows the six French gate names (*NON-ET*, *NON-OU*) beside
+  Delete / Undo / Redo with no overlap. The fitted title, the list and the bench also hold at 920 × 600.
+- D3 records that a 7th part (the SHOULD *chips*) would not fit, to be decided then. Accepted: that is outside
+  this round's MUST.
+
+### Regressions
+
+None found. The rest of 03 is unchanged: §3's `.abi` slots (78–95, from the `kvtext.o` + `fsutil.o` + `fkcore.o`
+library objects; that is the library's build, not the app's, and is still right), steps 0–3 and 8–12, the AC
+table, and §8's commands. 02 is untouched. The notes of §3 still apply, plus notes 16 and 17 above.
+
+**Verdict: GREEN** — the developer may start (PIPELINE §6), with the notes of §3.
