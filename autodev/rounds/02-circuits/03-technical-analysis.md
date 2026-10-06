@@ -52,7 +52,7 @@ for the kit, one for the engine and the packs, a scripted simulator test, `shots
 | Kit / file | Used for |
 |---|---|
 | **AppKit** `appkit/appkit.h` | `kapi_opendir/readdir/closedir` (the `levels/` folder), `kapi_get_args` (`circuits <path>`), `KEY_F1` (0x110), `KEY_DEL` (0x108), `KEY_BACKSPACE`; the file reads/writes go through FileKit. **Its `.ini` reader is not used**: `INI_MAX` 64 entries, 64-char values, 2 KB, read-only (round 1 §1.3 measured the same limits). |
-| **FileKit** `filekit/filekit.h` | `fk_load` (a pack opened, a dropped file), `fk_path_name`, `fk_path_ext`; **new**: `fk_kv_*` (§3). Already linked into every FT app (`lib/filekit.imp.a`). |
+| **FileKit** `filekit/filekit.h` | **only the inline-on-the-PC parts**: the new `fk_kv_*` (§3) — a pack is read by `fk_kv_load (path, FK_KV_PIPES)`, `progress.ini` by `fk_kv_load (path, FK_KV_ESCAPES)` and written by `fk_kv_save` — and `fsutil.h`'s `fs_basename` (a pack's file name), `fs_ci_cmp` (its `.circuits` ending, compared on the name's tail). **No `fkcore.cpp` function** (`fk_load`, `fk_path_name`, `fk_path_ext`…): on the PC they exist only in `fkcore.cpp`, which needs zlib, and the generic FT-app builds of `shots.sh` / the sim test do not link it (validation 1, gap 1). On the Pi everything is in `lib/filekit.imp.a`, already linked into every FT app. |
 | **UIKit** `uikit/uikit.h` | `Root` (`onKey`, `onTick` ~60 Hz for the autosave pause, `onDrop`, `setResizable`, `setMinSize`, `fitWorkArea`), `Widget` subclasses for the custom views (`onDraw`, `onMouse (mx, my, bl, br, bm, wheel)`, `catchOutside`, `tip`), `VPath` (`poly`, `circle`, `hole`, `line`, `polyline`, `arc`, `fill`; 1/16 px, `V ()`), `uk_sin/uk_cos`, `ToolBar` / `ToolButton` (`setToggle`, an app `ToolIconFn` to draw the gate icons, `tip`), `Button`, `Label`, `Splitter` (if the UX wants one), `Menu`, `uk_file_open`, `uk_rbox`, `uk_text*`; **`lang.h`**: `TR`, `TRC`, `TRN`, `uk_lang_init`, `uk_lang ()`. **No UIKit change is needed.** |
 | **FontKit** `fontkit/uikitface.h` | `ft_uikit_install ("DejaVu Sans", 13)` before `uk_lang_init ()` (Ledger's order), `ft_messagebox` (errors, About) so dialogs use the same face |
 | **SystemKit** `systemkit/systemkit.h` | `clip_set_text` (Copy Truth Table, Copy Circuit); `clip_get_text` for the SHOULD *Paste Circuit*; the language comes through `uk_lang_init` (it reads `locale_language`) |
@@ -87,7 +87,7 @@ for the kit, one for the engine and the packs, a scripted simulator test, `shots
 **Not needed / not done:** no UIKit widget is missing (the board, the lists and the table are owner-drawn `Widget`s,
 as Turtle Quest's). The stars are a 10-point `VPath` polygon drawn by Circuits (as Turtle draws its own); a shared
 `WKT_STAR` glyph in UIKit would be a clean-up for both games later, not this round. No new kapi call: files are
-read through `fk_load` / `kapi_opendir`, written through `fk_kv_save` (FileKit → AppKit's `kapi_save_file`).
+read through `fk_kv_load` / `kapi_opendir`, written through `fk_kv_save` (FileKit → AppKit's `kapi_save_file`).
 
 ### 2.1 kapi changes
 
@@ -241,8 +241,9 @@ int  truth_table_text (const Level &L, const CheckResult *r, char *out, int cap)
 Levels and packs: `struct Level` (`id[24]`, `title/text/hint[2][…]`, `concept[16]`, `ninputs`, `noutputs`,
 `inName[4][5]`, `outName[4][5]`, `parts` bit mask, `par3`, `par2`, `want[MAXIO]` (bit r = the output's value on row
 r), `solution` (malloc'd text), `chips[...]` (SHOULD)) with `titleOf (lang)` fallbacks; `struct Pack` (`title[2]`,
-`path`, `opened` (from a file: all its levels open), levels). `bool parse_pack (Pack &, const char *text, char *why,
-int cap)` = `fk_kv_parse (text, FK_KV_PIPES)` then a walk over blocks: `[pack]` keys, each `[level]` block checked —
+`path`, `opened` (from a file: all its levels open), levels). `bool parse_pack_kv (Pack &, const fk_kv *doc, char *why, int cap)` does the work on a document the window
+loaded with `fk_kv_load (path, FK_KV_PIPES)`; `bool parse_pack (Pack &, const char *text, char *why,
+int cap)` = `fk_kv_parse (text, FK_KV_PIPES)` + `parse_pack_kv` (the host test's entry) — then a walk over blocks: `[pack]` keys, each `[level]` block checked —
 required keys (error at the block's header line), `inputs`/`outputs` 1–4 names ≤ 4 chars, `parts` names, `par` two
 numbers with 3★ ≤ 2★, `table` header names equal to inputs/outputs, exactly 2^n rows, rows in counting order, 0/1
 values (error at the row's own line = `fk_kv_line + j`), unknown keys ignored; `id` unique across the loaded packs
@@ -380,7 +381,11 @@ the gate symbols, wires coloured by a live `evaluate`), message bar, lesson card
 Levels / Help as 02 §4 and the UX's plan), About. `user/Makefile`: `circuits` in `FT_APPS`,
 `FT_EXTRA_circuits = Apps/circuits/circuit.cpp`, a dependency line
 `circuits.elf: Apps/circuits/circuit.cpp $(wildcard Apps/circuits/*.h) Kits/filekit/kvtext.h Kits/filekit/kvtext.inc`.
-`shots.sh`: `circuits` in `APPS` and in the FT list, `extra=user/Apps/circuits/circuit.cpp` (as `notes`).
+`shots.sh`: `circuits` in `APPS` and in the FT list, `extra="user/Apps/circuits/circuit.cpp"` (as `notes`; plus
+`user/Apps/circuits/board.cpp` if the window is split so — **every `.cpp` of `user/Apps/circuits/` other than
+`main.cpp` goes into `FT_EXTRA_circuits`, `shots.sh`'s `extra` and the sim test's source list**). This generic FT
+branch links no FileKit core: it works because Circuits calls only `fk_kv_*` and `fs_*` (inline on the PC) — no
+dedicated branch on gpiolab's pattern is needed.
 *Check*: build as `run_circuits_sim_test.sh` will (below) with `-Wall -Wextra` on `main.cpp` (no warning), one run
 `SIM="wait;wait;wait;dump $T/c0.elsm;exit"` → `python3 tools/tests/desktop_sim/shot.py $T/c0.elsm $T/c0.png`
 looked at.
@@ -400,7 +405,8 @@ last level shown at start. *Check*: step 7's sim test cases written alongside, r
 
 **Step 7 — scripted simulator test `tools/tests/run_circuits_sim_test.sh`** (Notes' `run_notes_sim_test.sh` as the
 model: UIKit/FreeType/fakekapi built once into `$T/onyx_circuits_sim`, `main.cpp` built with `-Wall -Wextra` (no
-warning), each case its own `SIM_WRITES`, assertions on the written `apps/circuits.app/progress.ini`, on the log, on
+warning) and linked with `circuit.cpp` (+ `board.cpp` if split), fakekapi, UIKit and FreeType only — no `fkcore.cpp`,
+no zlib (Circuits calls only the inline `fk_kv_*` / `fs_*`), each case its own `SIM_WRITES`, assertions on the written `apps/circuits.app/progress.ini`, on the log, on
 `SIM_CLIPFILE`, and on dump pixels via a small python helper (`shot.py` then numpy on known coordinates the developer
 derives from the layout)). Cases: AC 18 (no `progress.ini` → the dump shows the lesson card; then OK and a dump: 1.1
 open, the others padlocked — pixel check on the padlock/star column; with fixture `tools/tests/desktop_sim/circuits/
@@ -442,7 +448,8 @@ here — say so). *Check*: the exports regenerated (or the reason they are not).
 `git diff --stat origin/main -- kernel/include/kern/kapi_abi.h kernel/sys user/Kits/appkit user/Apps/turtle` →
 empty; `grep -L "MIT License" user/Apps/circuits/* user/Kits/filekit/kvtext.* tools/tests/circuits/* tools/tests/filekit/*
 tools/icons/circuits_icon.py` → nothing; `grep -n "kapi_" user/Apps/circuits/*` limited to `kapi_opendir/readdir/
-closedir/get_args` (AppKit, allowed); `run_kvtext_test.sh`, `run_circuits_test.sh`, `run_circuits_sim_test.sh` green.
+closedir/get_args` (AppKit, allowed); `grep -nE "\bfk_[a-z]" user/Apps/circuits/* | grep -v "fk_kv_"` → nothing (no
+FileKit core call: the PC builds would not link — validation 1, gap 1); `run_kvtext_test.sh`, `run_circuits_test.sh`, `run_circuits_sim_test.sh` green.
 
 **Step 12 (SHOULD, only if time remains, in this order).** (a) *Paste Circuit* — `clip_get_text` + `read_text`
 (the engine already refuses parts not allowed) + a sim case; (b) *chips*: `P_CHIP` with a sub-circuit from
