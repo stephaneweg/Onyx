@@ -144,6 +144,67 @@ La méthode a laissé des traces écrites. Ce sont autant d'exemples ou de captu
   bugs trouvés et ce qui reste à vérifier. L'historique git montre aussi les commits de correction après
   les retours du Pi.
 
+## Étude de cas n°2 : de NetSurf à WebKit (relevé du dépôt, 2026-10-06)
+
+Le récit de l'utilisateur : on est partis de NetSurf ; il a demandé ce qu'il faudrait pour WebKit ; on a
+abordé POSIX ; Claude a analysé ce qu'il fallait de POSIX, les manques, et on les a comblés un à un ;
+puis le portage des dépendances, etc. ; puis le GC concurrent qui faisait laguer le JavaScript, résolu en
+désactivant la concurrence. **Le dépôt confirme chaque étape, avec les dates (historique git) :**
+
+1. **NetSurf poussé à ses limites** (jusqu'au 2026-10-01) : le navigateur « Jet » était un portage de
+   NetSurf, enrichi commit après commit (Selectors 4, grid, transitions et animations CSS, un cache de
+   code JS…). Le 2026-09-30, `docs/07` compare ce navigateur à Ladybird, Chromium, WebKit et Opera : les
+   écarts restent grands.
+2. **« Que faudrait-il pour WebKit ? » → l'analyse POSIX** (2026-10-02 matin) : `docs/POSIX-PLAN.md`
+   (environ 1 650 lignes). Sa section 0, « Findings from the code », liste ce qui manque, vérifié dans le
+   code : la chaîne de compilation sans threads ni TLS, newlib sans `sys/mman.h`, `poll.h`,
+   `sys/socket.h`… (une vingtaine d'en-têtes), `libc.a` sans `mmap`, `clock_gettime`, `posix_memalign`…
+   (17 fonctions), les sockets de Circle sans `select` ni `connect` non bloquant. Puis les « work
+   packages » : **WP-MEM** (pagination à la demande, mmap, TLS), **WP-FILE/PROC** (descripteurs, pipes,
+   spawn), **WP-NET** (sockets BSD, poll), **WP-LIBC** (la couche POSIX, `libonyxposix`), **WP-TC** (une
+   vraie chaîne `aarch64-onyx-elf` : GCC 14.2, threads POSIX, TLS natif). Avec une estimation :
+   « about 45-60 agent-days… about 6-8 weeks elapsed ».
+3. **Les décisions de l'utilisateur, datées dans le plan** : « The goal: WebKit replaces Jet » (§8),
+   « Decision: WebKit2 » sur le modèle du portage PlayStation (§9), un test externe (l'Open POSIX Test
+   Suite, §7), `fork()` « pour plus tard » (§12)…
+4. **Les manques comblés un à un** : commits `WP-0` (le squelette de l'ABI), `WP-MEM`, `WP-NET`,
+   `WP-FILE/PROC`, `libonyxposix`, puis les « smoke ports » (SQLite, libxml2, curl + mbedTLS) qui
+   prouvent la couche, puis le premier tour de tests sur le Pi (un bug de compteurs trouvé et corrigé),
+   puis la chaîne de compilation, puis **WP-IPC** (sockets locaux, passage de descripteurs, mémoire
+   partagée : ce que WebKit2 demande).
+5. **Les dépendances portées** : ICU 78.3, FreeType, libpng, libjpeg-turbo, libwebp, HarfBuzz, Skia.
+6. **WebKit lui-même**, par étapes validées sur le Pi : JavaScriptCore (`jsc`, « five test steps pass »
+   sur le Pi) → WebCore rend une page (Skia sur le CPU) → WebKit2 et le navigateur (kotonstudio.com en
+   HTTPS sur le Pi, 2026-10-03) → le JIT → le compositeur sur le GPU V3D → la vidéo. Le 2026-10-04,
+   NetSurf quitte le dépôt et le navigateur WebKit prend le nom de **Jet**. Une série de **25 patches**
+   sur WebKit (`tools/webkit/patches/`).
+7. **Le GC concurrent qui faisait laguer le JS** (`docs/08-WEBKIT-PORT.md`, « And the collector »,
+   corrigé le 2026-10-04) : le ramasse-miettes de JavaScriptCore est concurrent par défaut ; il marque à
+   côté du script et, pour suivre, lui prend le processeur. Or sur Onyx, les threads d'un programme
+   partagent un seul cœur. Mesure sur le Pi : 400 000 petites chaînes en **3,9 s**, contre **0,2 s**
+   avec `--useConcurrentGC=0` ; `--logGC=1` montrait le script réduit à **2 %** du temps, un cycle de
+   3,6 s. Correction : `useConcurrentGC = false` et un seul thread de marquage par défaut (patch `0023`).
+   Une belle anecdote : le diagnostic est venu d'une **mesure**, et la solution est un réglage, pas du
+   code.
+
+**Le point frappant pour l'article** : le plan estimait 6 à 8 semaines pour le seul socle POSIX. Selon
+les dates des commits, le socle, l'IPC, la chaîne de compilation et les dépendances ont été faits le
+**2026-10-02** (plusieurs agents en parallèle), et le navigateur WebKit tournait sur le Pi le lendemain.
+**À confirmer par l'utilisateur** (ce sont les dates des commits ; le travail a pu commencer avant) avant
+de l'écrire.
+
+## Repères de chronologie (historique git, 2026-10-06)
+
+- **2026-06-22** : premier commit, « Bootstrap: multi-process kernel on Circle ». Le même jour : un
+  ordonnanceur préemptif à la place de celui de Circle, des espaces d'adressage par processus
+  (TTBR0/ASID), un premier processus EL0, le compositeur et deux démos fenêtrées.
+- Une marche arrière honnête, le même jour : « Option C: apps run in EL1 with per-app page tables + direct
+  kernel calls » (les apps repassent en EL1 pour avancer). **Le mode protégé EL0 n'est revenu que le
+  2026-10-02** (`docs/EL0-PROTECTED-MODE.md` : « every app runs at EL0, the EL1 legacy mode is
+  removed »). À raconter : on accepte un raccourci pour avancer, puis on paie la dette quand le système
+  est mûr.
+- **1 444 commits** sur `main` au 2026-10-06, en un peu plus de trois mois.
+
 ## Ébauche de texte (v0, à reprendre)
 
 **La genèse.** Tout est parti d'un loisir : la construction d'une petite borne d'arcade, animée par un
@@ -189,8 +250,8 @@ sur le Pi et le résultat attendu.
 - Environ **33 documents** de référence dans `docs/`.
 - Environ **326 000 lignes** C/C++/asm dans `kernel/` + `user/` hors Circle. Ce total **inclut des
   bibliothèques tierces** (zlib, etc.) : séparer ce qui a été écrit pour Onyx.
-- **Durée du projet** : inconnue de Claude (l'historique git des clones est tronqué). À fournir par
-  l'utilisateur : la date de reprise et le temps qu'il y consacre.
+- **Durée du projet** : premier commit le **2026-06-22**, 1 444 commits au 2026-10-06 (voir « Repères de
+  chronologie »). À fournir par l'utilisateur : le temps qu'il y consacre.
 
 ## À compléter (par l'utilisateur)
 
@@ -204,5 +265,5 @@ sur le Pi et le résultat attendu.
 
 - 2026-10-06 : topo reçu, plan et ébauche v0, avantages/inconvénients ajoutés, puis le coût
   (Max 100 €, quota hebdomadaire épuisé, upgrade), les prix des formules, les branches comme
-  illustration de la dispersion (élagage à faire), les traces de la méthode dans le dépôt.
-  **En attente des specs.**
+  illustration de la dispersion (élagage à faire), les traces de la méthode dans le dépôt, l'étude de cas
+  NetSurf → WebKit (POSIX, dépendances, GC), la chronologie. **En attente des specs.**
