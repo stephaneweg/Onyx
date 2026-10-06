@@ -1,0 +1,18 @@
+GPIO17 after PIN 17 = 1: 1 
+GPIO17 after PIN 17, 0: 0 
+GPIO17 again: 1 
+GPIO27 pulled up: 1 
+GPIO22 pulled down: 0 
+[pwm 18 1000 2500][pwm 13 50 1250][servo 18 1500]
+error 57 
+error 5 
+error 57 
+[pwm 5 1000 5000]error 57 
+[servo 12 1000]error 57 
+I2C:3C 76
+BME280 id:60
+dig_T1: 27504 
+SPI:hello
+pressed:-1 
+changed:-1 
+done

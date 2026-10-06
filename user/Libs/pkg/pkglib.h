@@ -306,7 +306,21 @@ static inline bool in_list (const char *list, const char *name)
 struct Inst
 {
 	Ini ini; char name[40];
-	const char *version () const { return ini.get ("package", "version", "0"); }
+	bool missing = false;		// one of its programs is not on the card: seen as version 0, so offered again
+	const char *version () const { return missing ? "0" : ini.get ("package", "version", "0"); }
+	// Its programs (apps/<x>.app/main, bin/<x>) all on the card? A card copied from git has Jet's entry
+	// but not its program (too big for git): without this, Jet looked installed and never launched.
+	void check_programs ()
+	{
+		for (int i = 0; i < ini.n && !missing; i++)
+		{
+			const char *k = ini.kv[i].key; size_t l = strlen (k);
+			if (!eq (ini.kv[i].sec, "files")) continue;
+			if (!(starts (k, "apps/") && l > 10 && !strcmp (k + l - 5, "/main")) && !starts (k, "bin/")) continue;
+			char p[300]; snprintf (p, sizeof p, "SD:/%s", k);
+			if (!exists (p)) missing = true;
+		}
+	}
 	const char *mode () const { return ini.get ("package", "mode", "manual"); }
 	bool required () const { return eq (ini.get ("package", "required", "0"), "1"); }
 	const char *needs () const { return ini.get ("package", "needs"); }
@@ -340,6 +354,7 @@ struct Db
 			if (!x->ini.load (p)) { delete x; continue; }
 			cpy (x->name, x->ini.get ("package", "name", ""), sizeof x->name);
 			if (!x->name[0]) { e.name[l - 4] = 0; cpy (x->name, e.name, sizeof x->name); }
+			x->check_programs ();
 			v = (Inst **) realloc (v, sizeof (Inst *) * (n + 1)); v[n++] = x;
 		}
 		kapi_closedir (d);

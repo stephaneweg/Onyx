@@ -5,6 +5,7 @@
 //   basic_host prog.bas [args]
 //
 #include "basic/bas.h"
+#include "gpiokit/gpiokit.h"		// (GPIOKit compiled in: its simulator, GK_STANDALONE -- run_basic_test.sh)
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -135,6 +136,40 @@ struct ConsoleHost : bas::Host
 	int nbg = 0;
 	bool bgNote (double f, int on, int off, int w) override { printf ("[bg %.1f %d %d %d]", f, on, off, w); nbg++; return true; }
 	int bgNotes () override { return nbg; }
+	// GPIO: GPIOKit's simulator. A button on GPIO 27 is pressed and released at each look at the edges
+	// (each GP_EVENTS turns it over), so ON PIN and PINCHANGED have something to see.
+	int gpio (int op, int a, int b, int c, const char *in, int inLen, char *out, int outCap) override
+	{
+		static int btn = 1;
+		switch (op)
+		{
+		case GP_MODE: return gk_mode (a, b);
+		case GP_WRITE: return gk_write (a, b);
+		case GP_READ: return gk_read (a);
+		case GP_PWM: printf ("[pwm %d %d %d]", a, b, c); return gk_pwm (a, b, c);
+		case GP_SERVO: printf ("[servo %d %d]", a, b); return gk_servo (a, b);
+		case GP_EDGES: return gk_edges (a, b);
+		case GP_EVENTS:
+		{
+			gk_sim_input (27, btn ^= 1);
+			gk_event ev[32]; int r = gk_events (ev, outCap / 2 < 32 ? outCap / 2 : 32, 0);
+			for (int k = 0; k < r; k++) { out[2 * k] = (char) ev[k].pin; out[2 * k + 1] = (char) ev[k].edge; }
+			return r;
+		}
+		case GP_FREE: return a < 0 ? gk_release () : gk_mode (a, GK_FREE);
+		case GP_SIM: return gk_sim (a);
+		case GP_I2C_OPEN: return gk_i2c_open (a);
+		case GP_I2C_REG_READ: gk_i2c_open (0); return gk_i2c_reg_read (a, b);
+		case GP_I2C_REG_WRITE: gk_i2c_open (0); return gk_i2c_reg_write (a, b, c);
+		case GP_I2C_XFER: { gk_i2c_open (0); int r = gk_i2c_write_read (a, in, inLen, out, b); return r < 0 ? r : b > 0 ? r : 0; }
+		case GP_I2C_SCAN: gk_i2c_open (0); return gk_i2c_scan ((unsigned char *) out);
+		case GP_SPI_OPEN: return gk_spi_open (a, b);
+		case GP_SPI_XFER: gk_spi_open (0, 0); return gk_spi_transfer (a, in, out, inLen);
+		}
+		(void) c;
+		return GP_NODEV;
+	}
+	const char *gpioError (int code) override { return gk_error (code); }
 	bool keyDown (const char *k, int n) override { return n == 4 && k[0] == 'L'; }	// "LEFT" held
 	void sleepMs (int ms) override { if (!quietSleep) printf ("(%d)", ms); vms += ms; }
 	// A virtual clock (advanced by the sleeps) and scripted keys (<prog>.keys: one key per

@@ -52,6 +52,7 @@
 #include "uikit/knob.h"
 #include "uikit/vumeter.h"
 #include "uikit/segmented.h"
+#include "uikit/tabstrip.h"	// a row of closable tabs (the Terminal's shells)
 #include "uikit/lcd.h"
 #include "uikit/codeedit.h"	// a code editor (BASIC: colours, line numbers, a line lit, marks)
 #include "uikit/flat.h"		// the same behind C functions on handles (BASIC, C programs)

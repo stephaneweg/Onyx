@@ -3,6 +3,7 @@
 // mailbox_recv). See kern/ipc.h. The kernel just routes opaque {from_pid,type,bytes}
 // messages between per-process mailboxes; the registered shell is a single pid.
 //
+#include <kern/gpio.h>
 #include <kern/sound.h>
 #include <kern/vfs.h>
 #include <kern/ramfs.h>
@@ -121,6 +122,7 @@ void IpcOnProcessGone (unsigned nPid)
 	VfsOnProcessGone (nPid);		// a file-system provider that died (kern/vfs.h)
 	RamFsOnProcessGone (nPid);		// its RAM: files / folders left open (kern/ramfs.h)
 	SoundOnProcessGone (nPid);		// it owned the audio output: silence + free it
+	GpioOnProcessGone (nPid);		// its header pins back to inputs, its buses closed (kern/gpio.h)
 	for (unsigned i = 0; nPid != 0 && i < IPC_MAX_SERVICES; i++)
 	{
 		if (s_Services[i].pid == nPid)

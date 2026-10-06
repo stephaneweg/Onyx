@@ -146,6 +146,12 @@ KAPI_FN int kapi_kill (const char *name);	// kill the app of that name -> 1, 0 (
 // force 0 = clean close, 1 = hard terminate; 1 ok / 0 no such pid / -1 protected.
 KAPI_FN int kapi_list_procs (char *b, unsigned s);
 KAPI_FN int kapi_kill_pid (int pid, int force);
+// (v91) A process's tree: its descendants (the processes it spawned, the ones they spawned...).
+// op KAPI_TREE_LIST -> how many descendants pid has (up to cap of their pids into out); KAPI_TREE_KILL:
+// pid and all of them terminated now, the leaves first -> how many were; KAPI_TREE_KILL_CHILDREN: its
+// descendants only. -KAPI_ESRCH no such process, -KAPI_EPERM a kill that would take the caller,
+// -KAPI_EINVAL, -KAPI_ENOSYS (a kernel before v91). A terminal closing a tab: its shell and all it runs.
+KAPI_FN int kapi_proc_tree (int pid, int op, int *out, unsigned cap);
 // Keyboard layout: switch among the compiled-in country maps; read the current one.
 KAPI_FN int kapi_set_keymap (const char *name);
 KAPI_FN int kapi_get_keymap (char *b, unsigned s);

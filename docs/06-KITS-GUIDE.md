@@ -1,7 +1,7 @@
 # Onyx — The Kits: a developer's guide
 
 *How an Onyx program is built on the system's shared libraries — the **kits** — with a short example
-for each. Each kit has its reference, with every operation it exposes (documents 10 to 18, linked in the
+for each. Each kit has its reference, with every operation it exposes (documents 10 to 19, linked in the
 table below). Companion of the [Developer Guide](03-DEVELOPER-GUIDE.md) (the build, the application
 model, the ports) and of [Kernel Internals](02-KERNEL-INTERNALS.md).*
 
@@ -18,8 +18,9 @@ model, the ports) and of [Kernel Internals](02-KERNEL-INTERNALS.md).*
 9. [AudioKit — sound](#9-audiokit--sound)
 10. [FontKit — fonts and text](#10-fontkit--fonts-and-text)
 11. [PrinterKit — printing](#11-printerkit--printing)
-12. [Adding to a kit, creating a kit](#12-adding-to-a-kit-creating-a-kit)
-13. [Quick reference](#13-quick-reference)
+12. [GPIOKit — the 40-pin header](#12-gpiokit--the-40-pin-header)
+13. [Adding to a kit, creating a kit](#13-adding-to-a-kit-creating-a-kit)
+14. [Quick reference](#14-quick-reference)
 
 ---
 
@@ -40,13 +41,16 @@ that uses them.
 | **AudioKit** | Sound: playing files, notes, synthesis, the sound output | `SD:/lib/audiokit.so` | `user/Kits/audiokit` | [16 — AudioKit](16-AUDIOKIT.md) |
 | **FontKit** | Fonts: FreeType, the font manager, anti-aliased text | `SD:/lib/fontkit.so` | `user/Kits/fontkit` | [17 — FontKit](17-FONTKIT.md) |
 | **PrinterKit** | Printing: the Print dialog, a job's pages | `SD:/lib/printerkit.so` | `user/Kits/printerkit` | [18 — PrinterKit](18-PRINTERKIT.md) |
+| **GPIOKit** | The Raspberry Pi's 40-pin header: pins, PWM, edges, I2C, SPI; a simulated board | `SD:/lib/gpiokit.so` | `user/Kits/gpiokit` | [19 — GPIOKit](19-GPIOKIT.md) |
 
 Three rules follow from this layout, and they hold for every new development:
 
 - **Reusable code goes into the adequate kit** — not into a new shared header, not copied into an
-  application. If no kit fits the domain, a new kit is created (§12).
+  application. If no kit fits the domain, a new kit is created (§13).
 - **A program draws on the kits as much as it can**, and never reaches the kernel itself. Only AppKit
-  reads the kernel's table; so the kernel can change without any program being rebuilt.
+  reads the kernel's table; so the kernel can change without any program being rebuilt. (One exception,
+  decided by the user: **GPIOKit** calls the kernel's `gpio_ctl` entry itself — it ships with the kernel,
+  as AppKit does: §12.)
 - **What one program alone uses stays beside that program**, in its own folder.
 
 A kit has **one header**, `<kit>/<kit>.h`, which **declares**; the code is in the library. The memory cost of a kit is paid once: its
@@ -223,6 +227,26 @@ if (uk_messagebox ("Delete", "Delete this file?", MB_YESNO))
 unsigned colour = 0x2060C0;
 if (uk_color_dialog (&colour, "Pick a colour")) root.setBg (colour);
 ```
+
+**Tabs** (`TabStrip`, `uikit/tabstrip.h`): a row of closable tabs over the program's own view — the
+strip shows them, the program shows the chosen one's content. Each tab carries a pointer for the
+program; a close is only **asked** (the cross, a middle click): the program decides, then removes it.
+
+```cpp
+static TabStrip *g_tabs;
+static void onTab (Widget &)   { show (g_tabs->data (g_tabs->selected)); }
+static void onClose (Widget &) { int i = g_tabs->closing; Doc *d = (Doc *) g_tabs->data (i);
+                                 if (doc_close (d)) g_tabs->remove (i); }    // (a question first, if need be)
+static void onNew (Widget &)   { g_tabs->select (g_tabs->add ("Untitled", new_doc ()), true); }
+...
+g_tabs = new TabStrip (0, 0, root.width, 30, onTab);
+g_tabs->onClose = onClose; g_tabs->onNew = onNew;
+g_tabs->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
+root.addChild (g_tabs);
+```
+
+`setTitle (i, s)`, `setMark (i, on)` (a dot: something runs, something new), `selectNext (±1)` (the
+program's Ctrl+Tab), `activeFace` (the chosen tab opens onto the content's colour). The Terminal's tabs.
 
 **The theme**: draw with the palette (`C_BG`, `C_TEXT`, `C_ACCENT`, `C_FACE`…), never with fixed
 colours, so that the program follows the user's theme.
@@ -627,7 +651,75 @@ if (print_dialog (&s, &di))                           // the printer, the paper,
 Rectangles, paths (lines and curves, filled or stroked) and pictures are drawn the same way
 (`print_rect`, `print_path_*`, `print_image`).
 
-## 12. Adding to a kit, creating a kit
+## 12. GPIOKit — the 40-pin header
+
+`#include "gpiokit/gpiokit.h"` — link `lib/gpiokit.imp.a` (C++) or `lib/gpiokit.imp_c.a` (C).
+
+The Raspberry Pi's header from a program: a pin's mode, its level, PWM, edges, the I2C bus and SPI.
+Pins are **BCM GPIO numbers** (GPIO 17 is the header's pin 11: `gk_header_pin`). **The levels are
+3.3 V**: never wire 5 V to a pin; at most about 16 mA a pin (an LED through a 330 Ω resistor). A pin is
+the program's from its first use until it gives it back (`gk_mode (pin, GK_FREE)`, `gk_release`) or ends —
+the system then makes it an input again, after a crash too. The system's pins (GPIO 14 / 15, the serial
+console; 0 / 1, the HAT EEPROM) and a pin another program has are refused: every call returns ≥ 0, or a
+negative `GK_E*` that `gk_error` says in words.
+
+GPIOKit is the one kit besides AppKit that calls the kernel itself (kapi v92 `gpio_ctl`; the user's
+exception, docs/03 §5.10); it is shipped with the kernel in the package `onyx`.
+
+**An LED, a button** (C):
+
+```c
+#include "gpiokit/gpiokit.h"
+
+gk_mode (17, GK_OUT);                                 // the LED: GPIO 17 -> 330 ohm -> LED -> GND
+gk_mode (27, GK_IN_PULLUP);                           // the button: GPIO 27 -> button -> GND (reads 0 pressed)
+gk_edges (27, GK_FALLING);                            // its presses queued, with their time
+for (;;)
+{
+    gk_event e[8];
+    int n = gk_events (e, 8, 1000);                   // waits up to 1 s for the first
+    for (int i = 0; i < n; i++) gk_toggle (17);       // each press turns the LED over
+}
+```
+
+**PWM and a servo** (GPIO 12, 13, 18, 19; 12 / 18 and 13 / 19 share a channel):
+
+```c
+gk_pwm (18, 1000, 2500);                              // 1 kHz, 25 % high (duty in 1/10000)
+gk_servo (18, 1500);                                  // a servo: 50 Hz, a 1.5 ms pulse (the middle)
+```
+
+**I2C** (GPIO 2 SDA, GPIO 3 SCL) — a BME280's id, a scan:
+
+```c
+if (gk_i2c_open (0) == 0)                             // 0: 100 kHz
+{
+    unsigned char map[16];
+    int n = gk_i2c_scan (map);                        // bit a of map: something answers at a
+    if (gk_i2c_reg_read (0x76, 0xD0) == 0x60) ax_putln ("a BME280 at 0x76");
+    gk_i2c_close ();
+}
+```
+
+**SPI 0** (GPIO 8 CE0, 7 CE1, 9 MISO, 10 MOSI, 11 SCLK): `gk_spi_open (1000000, 0)`, then
+`gk_spi_transfer (0, tx, rx, n)`.
+
+**C++** has small classes that give the pin back by themselves:
+
+```cpp
+gpiokit::Pin led (17, GK_OUT);
+if (!led.ok ()) ax_putln (gk_error (led.status ()));
+led.write (1);
+gpiokit::I2CDevice bme (0x76);
+int id = bme.reg (0xD0);
+```
+
+**No hardware?** GPIOKit has a **simulator** — a board in memory: the inputs set by `gk_sim_input`, the PWM's
+waves, an I2C bus with an SSD1306 display (0x3C: `gk_sim_display` gives its pixels) and a BME280 sensor
+(0x76), SPI looped back. `gk_sim (1)` switches to it; it runs by itself where the system has no GPIO, and
+on a PC. GPIO Lab (docs/04) is built on GPIOKit; BASIC has statements for it (docs/04 §13 *GPIO*).
+
+## 13. Adding to a kit, creating a kit
 
 **Before writing a helper, look for it in the kits.** If two programs could use it, it belongs to a
 kit.
@@ -659,7 +751,7 @@ When a domain has no kit (SystemKit and NetKit are the models — small, with no
 
 The header of a kit a C program may use is written in C.
 
-## 13. Quick reference
+## 14. Quick reference
 
 | I want to… | Kit | Call |
 |---|---|---|
@@ -687,3 +779,7 @@ The header of a kit a C program may use is written in C.
 | send samples to the output | AudioKit | `ak_out_open`, `ak_out_write` |
 | draw smooth text | FontKit | `ft_uikit_install`, `fnt::get` |
 | print | PrinterKit | `print_dialog`, `print_begin`, `print_page`, `print_end` |
+| light an LED, read a button | GPIOKit | `gk_mode`, `gk_write`, `gk_read` |
+| wait for a button's press | GPIOKit | `gk_edges`, `gk_events` |
+| dim an LED, move a servo | GPIOKit | `gk_pwm`, `gk_servo` |
+| talk to an I2C / SPI device | GPIOKit | `gk_i2c_reg_read`, `gk_i2c_write_read`, `gk_spi_transfer` |

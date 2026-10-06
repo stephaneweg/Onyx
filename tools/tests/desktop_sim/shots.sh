@@ -124,6 +124,10 @@ build () {
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/turtle" "$OUT/fakekapi.o" user/Apps/turtle/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
 			user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
+	if [ "$1" = gpiolab ]; then			# (newlib-like: FreeType; GPIOKit compiled in -- on a PC its simulator only)
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/gpiolab" "$OUT/fakekapi.o" user/Apps/gpiolab/main.cpp user/Kits/gpiokit/gkcore.cpp \
+			"$OUT/libuikit.a" "$OUT/libft.a"; return
+	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
 			"$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
@@ -139,7 +143,7 @@ build () {
 }
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
+      tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
       config wpaconf padconf soundconf displayconf keyconf preloadconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
@@ -192,7 +196,10 @@ applet () {
 # ---- the apps, a window each -------------------------------------------------------------------
 if want tinycalc; then sim tinycalc tinycalc "wait;$(typ '12*3.5=');$W" $P; png tinycalc; fi
 if want terminal; then
-	sim terminal terminal "$W" $P SIM_PIPE='/ $ ls /bin | grep e\necho\nsleep\nyes\n/ $ ps\n  1 k R  idle\n  2 k S  compositor\n 14 a R  menubar\n 15 a R  dock\n 16 a S  agenda\n 21 a R  terminal\n/ $ echo onyx | wc -c\n5\n/ $ '
+	# three tabs: the "+" twice, `ping` typed in the third (SIM_BUSY: it runs), back to the first
+	sim terminal terminal "$W;down 219 17;up 219 17;$W;down 419 17;up 419 17;$W;$(typ 'ping 192.168.1.1');key 13;$W;$W;$W;$W;$W;$W;$W;down 60 17;up 60 17;$W" $P \
+		SIM_PIPE='SD:/ $ ls /bin | grep e\necho\nsleep\nyes\nSD:/ $ ps\n  1 k R  idle\n  2 k S  usb\n 14 a R  elegant\n 15 a R  dock\n 21 a R  terminal\n 22 a S  cmd\n 23 a S  cmd\n 24 a S  cmd\n 25 a R  ping\n 26 a R  ps\nSD:/ $ echo onyx | wc -c\n5\nSD:/ $ ' \
+		SIM_PIPE2='SD:/docs $ ' SIM_PIPE3='SD:/ $ ' SIM_BUSY=3
 	png terminal
 fi
 if want tinypad; then sim tinypad tinypad "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x104;$W" $P SIM_ARGS=SD:/notes.txt; png tinypad
@@ -219,6 +226,15 @@ if want eyes; then sim eyes eyes "$W" $P SIM_CURSOR=260,-40; png eyes; fi
 if want taskman; then			# (its two tabs: the processes -- a row chosen --, the memory after a few samples)
 	sim taskman taskman "$W;key 0x101;key 0x101;key 0x101;$W" $P; png taskman
 	sim taskman taskman-memory "$W;down 180 24;up 180 24;$W;$W;$W;$W;$W;$W;$W;$W" $P; png taskman-memory
+fi
+if want gpiolab; then			# (GPIO Lab on GPIOKit's simulator, its demonstration: an LED blinking on GPIO 17, a servo
+					#  on GPIO 18, a button on GPIO 27 pressed now and then; the timing chart after 5 s, the I2C
+					#  bus scanned -- the simulated BME280's readings, the SSD1306's test picture --, the edges
+					#  of GPIO 27 chosen on the header)
+	GL=$(printf 'wait;%.0s' $(seq 1 300))
+	sim gpiolab gpiolab "${GL}wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--demo --tab chart"; png gpiolab
+	sim gpiolab gpiolab-i2c "${GL}wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--demo --tab i2c"; png gpiolab-i2c
+	sim gpiolab gpiolab-edges "${GL}down 202 243;up 202 243;wait;wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--demo --tab edges"; png gpiolab-edges
 fi
 if want 2048; then
 	m=""; for k in 0x102 0x100 0x103 0x101 0x102 0x100 0x102 0x100 0x103 0x100 0x102 0x100 0x103 0x101 0x102 0x100 0x102 0x100 0x103 0x100 0x102 0x100 0x102 0x100 0x103 0x100; do m="$m;key $k;wait"; done

@@ -215,7 +215,19 @@
 //      (the slot numbers quoted in the notes above are those of their time; the checks below and
 //      docs/02 have today's). AppKit is rebuilt with the kernel; no program is (they call AppKit by
 //      name). A stand-in kernel on a PC still has the windows' entries, after the table's end.
-#define KAPI_ABI_VERSION	90
+// v91: + proc_tree (slot 228): a process's tree -- its descendants (the processes it spawned, the ones
+//      they spawned...) listed, or the whole tree (or only its descendants) terminated at once, the
+//      leaves first. Before it a dead parent's children were ended by the reaper's orphan scan, one
+//      level a pass (still there, for a child whose start was deferred). The Terminal closes a tab's
+//      shell and everything running under it with it; cmd's Ctrl-C, /bin/kill -t.
+// v92: + gpio_ctl (slot 229) -- the 40-pin header (sys/gpio.cpp, kern/gpio.h; KAPI_GPIO_*): a pin's mode
+//      (input, pulled up / down, output, an alternate function), its level, PWM on GPIO 12 / 13 / 18 / 19
+//      (a frequency and a duty), edges queued to the process that asked (with their time), the I2C bus 1
+//      (GPIO 2 / 3: transfers, a scan) and SPI 0 (GPIO 7..11). One owner a pin; the pins the system
+//      uses are refused (the serial console 14 / 15, the HAT EEPROM 0 / 1); a process's pins go back to
+//      inputs when it ends. Read by GPIOKit (SD:/lib/gpiokit.so) DIRECTLY, not through AppKit (the
+//      user's exception, docs/03 §5.10): GPIOKit, like AppKit, is shipped and rebuilt with the kernel.
+#define KAPI_ABI_VERSION	92
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -948,6 +960,96 @@ struct kapi_sound_client
 	int	 queued;		// frames waiting in its stream
 	char	 name[KAPI_SOUND_NAME];	// the program's name ("media", "koton", "basic")
 	int	 reserved[4];
+};
+
+// (v91) proc_tree (pid, op, out, cap): a process's descendants -- by the parent pid each process
+// records at its spawn (spawn, spawn_ex, spawn_ex2; exec / launch start a process without a parent).
+#define KAPI_TREE_LIST		0	// -> how many descendants pid has; up to cap of their pids written to
+					// out (its children, then theirs...)
+#define KAPI_TREE_KILL		1	// pid and all its descendants terminated now (KILLED, -9), the leaves
+					// first -> how many processes were terminated
+#define KAPI_TREE_KILL_CHILDREN	2	// its descendants only (pid goes on) -> how many
+					// Errors: -KAPI_ESRCH no such process, -KAPI_EINVAL a bad op / pid,
+					// -KAPI_EPERM a kill that would take the caller (pid is the caller or
+					// one of its ancestors), -KAPI_EFAULT
+// (v92) The 40-pin header's GPIO (gpio_ctl (op, a0, a1, a2) -> >= 0, or -KAPI_Exxx; sys/gpio.cpp, kern/gpio.h).
+// Pins are BCM GPIO numbers 0..27 (the header's); KAPI_GPIO_INFO, _READ, _READ_ALL are anyone's, the others
+// need the pin to be free or the caller's (-KAPI_EBUSY: another process has it; -KAPI_EPERM: the system's).
+#define KAPI_GPIO_PINS		28	// GPIO 0..27: the header's
+#define KAPI_GPIO_INFO		0	// (struct kapi_gpio_pin *out, max) -> how many filled (KAPI_GPIO_PINS)
+#define KAPI_GPIO_MODE		1	// (pin, KAPI_GPIO_M_*) -> 0: the pin is the caller's in that mode
+					// (KAPI_GPIO_M_FREE gives it back: an input, no pull)
+#define KAPI_GPIO_WRITE		2	// (pin, 0 / 1) -> 0 (an output of the caller's)
+#define KAPI_GPIO_READ		3	// (pin) -> 0 / 1, its level now
+#define KAPI_GPIO_READ_ALL	4	// () -> the 28 levels, bit n = GPIO n
+#define KAPI_GPIO_PWM		5	// (pin 12 / 13 / 18 / 19, frequency in Hz (1 .. 1 000 000), duty in
+					// 1/10000 (0 .. 10000)) -> 0; the pin becomes the caller's, in PWM
+					// (12 and 18 share a channel, 13 and 19 the other: -KAPI_EBUSY if taken)
+#define KAPI_GPIO_EDGES		6	// (pin, KAPI_GPIO_RISING | KAPI_GPIO_FALLING, 0: none) -> 0: its edges are
+					// queued for the caller (an input of the caller's)
+#define KAPI_GPIO_EVENTS	7	// (struct kapi_gpio_event *out, max, wait ms <= 1000) -> how many taken
+					// (0: none came in time)
+#define KAPI_GPIO_I2C_OPEN	8	// (clock Hz: 0 = 100 kHz) -> 0: I2C bus 1 (GPIO 2 SDA, 3 SCL) is the caller's
+#define KAPI_GPIO_I2C_XFER	9	// (struct kapi_gpio_i2c *) -> bytes read (or written), -KAPI_EIO: no answer
+#define KAPI_GPIO_I2C_SCAN	10	// (unsigned char out[16]) -> how many devices: bit a of the 128 = address a
+#define KAPI_GPIO_SPI_OPEN	11	// (clock Hz: 0 = 1 MHz, mode 0..3 (CPOL << 1 | CPHA)) -> 0: SPI 0 (GPIO 7 CE1,
+					// 8 CE0, 9 MISO, 10 MOSI, 11 SCLK) is the caller's
+#define KAPI_GPIO_SPI_XFER	12	// (struct kapi_gpio_spi *) -> bytes moved
+#define KAPI_GPIO_CLOSE		13	// (KAPI_GPIO_BUS_I2C / _SPI) -> 0: the bus and its pins given back
+#define KAPI_GPIO_RELEASE	14	// () -> 0: every pin, bus and edge of the caller's given back
+#define KAPI_GPIO_NOW		15	// () -> the events' clock now (the system timer, microseconds)
+#define KAPI_GPIO_BUS_I2C	1
+#define KAPI_GPIO_BUS_SPI	2
+// A pin's modes
+#define KAPI_GPIO_M_FREE	0	// nobody's: an input, no pull
+#define KAPI_GPIO_M_IN		1
+#define KAPI_GPIO_M_IN_PULLUP	2
+#define KAPI_GPIO_M_IN_PULLDOWN	3
+#define KAPI_GPIO_M_OUT		4
+#define KAPI_GPIO_M_PWM		5	// (KAPI_GPIO_PWM)
+#define KAPI_GPIO_M_I2C		6	// (KAPI_GPIO_I2C_OPEN)
+#define KAPI_GPIO_M_SPI		7	// (KAPI_GPIO_SPI_OPEN)
+#define KAPI_GPIO_M_ALT0	8	// .. KAPI_GPIO_M_ALT0 + 5: an alternate function chosen by hand
+// Edges
+#define KAPI_GPIO_RISING	1
+#define KAPI_GPIO_FALLING	2
+// kapi_gpio_pin.flags
+#define KAPI_GPIO_F_RESERVED	1	// the system's (reason says whose): never given
+#define KAPI_GPIO_F_PWM_CAPABLE	2	// 12, 13, 18, 19
+#define KAPI_GPIO_F_EDGES	4	// its edges are queued for its owner
+struct kapi_gpio_pin
+{
+	unsigned char pin;		// GPIO number
+	unsigned char mode;		// KAPI_GPIO_M_*
+	unsigned char level;		// 0 / 1 now
+	unsigned char flags;		// KAPI_GPIO_F_*
+	unsigned      owner;		// the process that has it (0: none)
+	unsigned      pwm_freq;		// Hz (KAPI_GPIO_M_PWM)
+	unsigned      pwm_duty;		// 1/10000
+	char          reason[24];	// why it is reserved ("serial console")
+};
+struct kapi_gpio_event
+{
+	unsigned char pin;
+	unsigned char edge;		// KAPI_GPIO_RISING / _FALLING
+	unsigned char level;		// the level just after it
+	unsigned char lost;		// 1: events were dropped before this one (the queue was full)
+	unsigned      reserved;
+	unsigned long long us;		// when (the system timer, microseconds)
+};
+struct kapi_gpio_i2c			// one transfer: the bytes written (if any), then those read (if any)
+{
+	unsigned addr;			// 7-bit address
+	unsigned wlen, rlen;		// 0 .. 4096 each
+	const void *wr;
+	void *rd;
+};
+struct kapi_gpio_spi
+{
+	unsigned cs;			// 0 (CE0, GPIO 8) / 1 (CE1, GPIO 7)
+	unsigned len;			// 1 .. 4096
+	const void *tx;			// 0: zeros sent
+	void *rx;			// 0: what comes back is dropped
 };
 
 // (v89) The graphics server's operations (ws_ctl (op, a0, a1, a2) -> >= 0, or -KAPI_Exxx; kern/wsrv.h).
@@ -1893,6 +1995,11 @@ struct TKApiTable
 	// --- v89: the graphics server's mechanisms (sys/wsrv.cpp; KAPI_WS_*) ---
 	long (*ws_ctl) (int op, long a0, long a1, long a2);
 
+	// --- v91: a process's tree (sys/kapi.cpp; KAPI_TREE_*) ---
+	int (*proc_tree) (int pid, int op, int *out, unsigned cap);
+	// --- v92: the 40-pin header's GPIO, PWM, I2C, SPI (sys/gpio.cpp; KAPI_GPIO_*). Called by GPIOKit only ---
+	long (*gpio_ctl) (int op, long a0, long a1, long a2);
+
 #ifndef __aarch64__
 	// --- NOT ON ONYX: the windows, for a stand-in kernel that has a window manager (the PC's simulator,
 	// the hosts of the tests, Koton for Windows) -- the builds that take AppKit's calls inline against
@@ -2104,6 +2211,8 @@ KAPI_CHECK_SLOT (sound_output, 224);
 KAPI_CHECK_SLOT (sound_clients, 225);
 KAPI_CHECK_SLOT (sound_client_volume, 226);
 KAPI_CHECK_SLOT (ws_ctl, 227);
+KAPI_CHECK_SLOT (proc_tree, 228);
+KAPI_CHECK_SLOT (gpio_ctl, 229);
 
 #ifdef __cplusplus
 }

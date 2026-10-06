@@ -3,7 +3,7 @@
 //
 //   pkg list [-a] [filter]       the packages installed (-a: every package of the repository)
 //   pkg info <name>              a package: its versions, size, needs, mode
-//   pkg add <name>...            install (and what it needs); already installed: said, nothing done
+//   pkg add <name>...            install (and what it needs); already installed: said, nothing done (its program missing: installed again)
 //   pkg add <file.opk>           install a package file (not from the repository)
 //   pkg delete [-p] <name>...    remove (-p: the settings you changed too); not installed: said
 //   pkg update <name>... | -a    update those (-a: every one with an update, but those set "never")
@@ -132,7 +132,7 @@ static int cmd_add (int ac, char **av)
 			int r = M->install_file (p, 0, 0, R); if (r != OK) rc = r; any = true; continue;
 		}
 		Inst *in = M->db.find (av[i]);
-		if (in) { printf ("%s is already installed (%s)\n", av[i], in->version ()); if (rc == OK) rc = E_ALREADY; continue; }
+		if (in && !in->missing) { printf ("%s is already installed (%s)\n", av[i], in->version ()); if (rc == OK) rc = E_ALREADY; continue; }
 		if (!M->haveIndex && need_index () != OK) return 2;
 		const Pkg *list[32]; int err = 0;
 		int n = M->resolve (av[i], list, 32, &err, R);

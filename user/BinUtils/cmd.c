@@ -524,7 +524,7 @@ static int run_pipeline (const char *input)
 	// Pump: forward our stdin to the first stage (Ctrl-D ends it), drain the last
 	// stage's output to our stdout, until every stage has finished. Ctrl-C (or a stage that
 	// could not start: the others would wait for it for ever): handed to the first stage, then
-	// the stages still there are terminated -- the programs after 40 ms, a cmd running a script
+	// the stages still there are terminated with what they started -- the programs after 40 ms, a cmd running a script
 	// after 2 s only (it stops what IT started, then ends by itself).
 	char b[256]; int n, intr = -1;			// intr: ticks since the interruption
 	int in_done = 0;
@@ -567,7 +567,8 @@ static int run_pipeline (const char *input)
 			{
 				struct kapi_proc_status ps;
 				if (kapi_proc_done (proc[k]) || intr < (is_cmd[k] ? 250 : 5)) continue;
-				if (kapi_proc_wait (proc[k], KAPI_WAIT_NOHANG | KAPI_WAIT_KEEP, &ps) == 0 && ps.pid > 0)
+				if (kapi_proc_wait (proc[k], KAPI_WAIT_NOHANG | KAPI_WAIT_KEEP, &ps) == 0 && ps.pid > 0
+				    && kapi_proc_tree (ps.pid, KAPI_TREE_KILL, 0, 0) < 0)	// (the stage and what it runs)
 					kapi_kill_pid (ps.pid, 1);
 			}
 		kapi_msleep (8);

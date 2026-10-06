@@ -64,6 +64,11 @@ KITS = [
    ["printerkit/printerkit.h"],
    "PrinterKit is printing: the Print dialog, a job and its pages — text, lines, shapes, pictures — "
    "handed to the print service, which makes of them what the printer takes, or a PDF file."),
+  ("19-GPIOKIT", "GPIOKit", 12, "gpiokit", '#include "gpiokit/gpiokit.h"', "`lib/gpiokit.imp.a` (C++) or `lib/gpiokit.imp_c.a` (C)",
+   ["gpiokit/gpiokit.h"],
+   "GPIOKit is the Raspberry Pi's 40-pin header: a pin's mode and level, PWM, a servo, edges queued with "
+   "their time, the I2C bus and SPI, the header's own table — and a simulated board (an SSD1306 display "
+   "and a BME280 sensor on its I2C bus) for a PC or a system without the hardware. The levels are 3.3 V."),
 ]
 
 PREFIX = re.compile(r"^(KAPI_FN|KAPI_C|SK_API|NK_API|FS_API|UIKIT_API)\s+")

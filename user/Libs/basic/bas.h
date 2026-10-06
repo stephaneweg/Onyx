@@ -153,6 +153,20 @@ struct Host
 	virtual const char *akError () { return ""; }
 	virtual double akNoteHz (int key) { (void) key; return 0; }		// a MIDI key's frequency
 	virtual int  akNoteKey (const char *name) { (void) name; return -1; }	// "C4", "F#3" -> the key
+	// GPIOKit (gpiokit/gpiokit.h; the Onyx runtime): the 40-pin header. gpio (GP_*, a, b, c, bytes in,
+	// bytes out) -> >= 0, or GPIOKit's negative code (gpioError: its text). No GPIOKit: GP_NODEV.
+	enum { GP_MODE, GP_WRITE, GP_READ, GP_PWM, GP_SERVO, GP_EDGES, GP_EVENTS, GP_FREE, GP_SIM, GP_I2C_OPEN,
+	       GP_I2C_REG_READ, GP_I2C_REG_WRITE, GP_I2C_XFER, GP_I2C_SCAN, GP_SPI_OPEN, GP_SPI_XFER, GP_NODEV = -19 };
+	// GP_MODE (pin, mode 0 free / 1 input / 2 pull-up / 3 pull-down / 4 output), GP_WRITE (pin, level), GP_READ (pin),
+	// GP_PWM (pin, Hz, duty in 1/10000), GP_SERVO (pin, pulse us), GP_EDGES (pin, 1 rising | 2 falling),
+	// GP_EVENTS -> how many edges came, out[2 k] their pin, out[2 k + 1] their edge (outCap / 2 at most),
+	// GP_FREE (pin; -1: every one), GP_SIM (on), GP_I2C_OPEN (Hz), GP_I2C_REG_READ (addr, reg) -> its value,
+	// GP_I2C_REG_WRITE (addr, reg, value), GP_I2C_XFER (addr: in written, then b bytes read into out) -> b,
+	// GP_I2C_SCAN -> how many answered (out: 16 bytes, bit a = address a), GP_SPI_OPEN (Hz, mode),
+	// GP_SPI_XFER (chip select: in sent, as many bytes into out) -> how many.
+	virtual int  gpio (int op, int a, int b, int c, const char *in, int inLen, char *out, int outCap)
+	{ (void) op; (void) a; (void) b; (void) c; (void) in; (void) inLen; (void) out; (void) outCap; return GP_NODEV; }
+	virtual const char *gpioError (int code) { (void) code; return "no GPIO on this system"; }
 	// GUI (Onyx): WINDOW, controls and their events.
 	virtual void window (const char *title, int w, int h) { (void) title; (void) w; (void) h; }
 	virtual int  control (int kind, int x, int y, int w, int h, const char *text, int val)

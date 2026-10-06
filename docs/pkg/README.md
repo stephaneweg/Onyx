@@ -38,7 +38,7 @@ apps' real icons).
 | ![](mockups/pkg-installed.png) | **Installed**: every package, its version, size, category, its **updates mode** — **Automatic** (updated in the background), **Manual** (you are asked), **Never** (keep this version) — and **Remove**. The system cannot be removed; a package installed by hand (not in the repository) says so. |
 | ![](mockups/pkg-available.png) | **Available** (the store): the repository's packages by category, searchable; a card each (icon, name, author, size, description): **Install**, a progress, **Installed**, or **Update**. |
 | ![](mockups/pkg-notify.png) | **The daemon's notification** (notifyd): *3 updates available* — the manual ones; the automatic ones were done (*Tetris and 2048 were updated*). **Show** opens the applet on Updates. |
-| ![](mockups/pkg-cli.png) | **`pkg`** in the terminal: `list`, `add` (already installed: says so, does nothing), `update -a`, `delete` (not installed: says so), `list -a <filter>`. |
+| ![](mockups/pkg-cli.png) | **`pkg`** in the terminal: `list`, `add` (already installed: says so, does nothing -- unless one of its programs is missing from the card: then installed again), `update -a`, `delete` (not installed: says so), `list -a <filter>`. |
 
 ## The package
 

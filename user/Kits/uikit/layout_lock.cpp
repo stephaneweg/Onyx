@@ -45,6 +45,7 @@
 #include "Kits/uikit/splitter.h"
 #include "Kits/uikit/sysclip.h"
 #include "Kits/uikit/tabhost.h"
+#include "Kits/uikit/tabstrip.h"
 #include "Kits/uikit/text.h"
 #include "Kits/uikit/textarea.h"
 #include "Kits/uikit/textbox.h"
@@ -96,6 +97,7 @@ static_assert (sizeof (uikit::Skin) == 48, "sizeof (Skin) changed: programs buil
 static_assert (sizeof (uikit::Slider) == 256, "sizeof (Slider) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::Splitter) == 280, "sizeof (Splitter) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::TabHost) == 632, "sizeof (TabHost) changed: programs built before break (uikit/abi.h)");
+static_assert (sizeof (uikit::TabStrip) == 2240, "sizeof (TabStrip) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::TextFace) == 8, "sizeof (TextFace) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::Textarea) == 296, "sizeof (Textarea) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::Textbox) == 776, "sizeof (Textbox) changed: programs built before break (uikit/abi.h)");

@@ -586,7 +586,31 @@ Launch **`terminal`** (the dock's Terminal button, or the menu bar's **Onyx ▸ 
 commands, executed by **programs in `SD:/bin/`**.
 
 ![Terminal](../screenshots/terminal.png)
-*The terminal: a pipe (`ls /bin | grep e`), `ps`, and `echo zircon | wc -c`.*
+*The terminal with three tabs: the first one shown (a pipe, `ls /bin | grep e`, `ps`, `echo onyx | wc -c`), a
+second one in `SD:/docs`, and `ping` running in the third (the dot).*
+
+### Tabs
+
+A terminal window holds **several tabs**, each with **its own shell** (`cmd`): its own screen and
+scrollback, its own line history and its own current working directory. What runs in a tab goes on
+while another tab is shown.
+
+| Action | How |
+|---|---|
+| **New tab** | the **+** after the tabs, **Shell ▸ New Tab**, or **Ctrl+Shift+T** (it starts in `SD:/`). |
+| **Change tabs** | a click on a tab, **Ctrl+Tab** / **Ctrl+Shift+Tab** (next / previous), **Ctrl+PgDn** / **Ctrl+PgUp**, or the wheel over the tabs. |
+| **Close a tab** | its **×**, a **middle click** on it, **Shell ▸ Close Tab**, or **Ctrl+Shift+W**. |
+
+- A tab's **title** is the **command running** in it, else its **current folder** (the prompt's last
+  name: `docs` for `SD:/docs`; `SD:/` at the root). A **dot** before the title marks a tab where a
+  command runs.
+- Closing a tab where something runs (a program, a pipeline, a script) **asks first**. Closing a tab
+  **stops its shell and everything running in it at once** — every stage of a pipeline
+  (`cat x | grep y | sort`), a script and the programs it started, a program started from it — nothing is
+  left running behind it (the kernel's `proc_tree`, docs/02 §8 *v91*). An app started with `run` (a window
+  of its own) is not part of the tab and stays.
+- A shell that **ends by itself** (`exit`) takes its tab away. When the **last tab** closes, the window
+  closes; closing the window stops every tab's shell the same way.
 
 ### The prompt and the current working directory
 
@@ -608,12 +632,12 @@ The line can be corrected **before it is sent**, and the lines sent before come 
 | `Ctrl-U` / `Ctrl-K` | empty the line / cut it from the cursor to its end. |
 | **Up** / **Down** | the **history**: the previous / the next line sent. A recalled line can be edited and sent again; **Down** past the newest one gives back the line that was being typed. |
 | **Enter** | sends the line (wherever the cursor is). |
-| `Ctrl-C` | **stops the running command** (and the script it belongs to); the line being typed is dropped. |
+| `Ctrl-C` | **stops the running command** (and the script it belongs to, with everything they started); the line being typed is dropped. |
 | `Ctrl-D` | ends the input of a program that reads the keyboard (`cat`, `ed`, `sort`…). |
 
 The history holds the last lines sent (about a hundred: 4 KB of text; an empty line or the same
-line twice in a row is not added). Each terminal window — and each remote session (`telnetd`) —
-has its own; it is not kept when the window closes. What is typed to a program (`ed`, `ftp`…) is
+line twice in a row is not added). Each terminal tab — and each remote session (`telnetd`) —
+has its own; it is not kept when the tab closes. What is typed to a program (`ed`, `ftp`…) is
 in it too. A line longer than the window wraps onto the next rows and is edited the same way.
 
 ### Built-in commands (builtins)
@@ -626,7 +650,7 @@ not by a program in `/bin`:
 | `cd [path]` | changes the current working directory (no argument: `SD:/`). The cwd is **inherited** by commands launched afterwards. |
 | `pwd` | prints the current working directory. |
 | `clear` | clears the screen (empties the scrollback). |
-| `exit [code]` | ends the shell (the terminal closes; a script stops there), with that exit code. |
+| `exit [code]` | ends the shell (its tab closes — the last one: the window; a script stops there), with that exit code. |
 | `source <script> [args]` (or `. <script>`) | runs a script's lines **in this shell**: its `cd` and its variables stay (see *Scripts*). |
 | `echo [-n] <text…>` | writes its arguments (`-n`: without the final newline). |
 | `test <expression>` (or `[ <expression> ]`) | a condition: exit code 0 when it is true (see *Scripts*). |
@@ -994,7 +1018,7 @@ it: `ed notes.txt < edits.txt`.
 | `ps` | `ps` | Lists the processes in columns `PID  K  S  PAGES  MEM  SYSC/s  NAME` (SYSC/s: the app's system calls per second) — `K`: `a` (app) / `k` (kernel); `S`: `R` (ready), `S` (sleeping), `B` (blocked), `N` (new); `PAGES` = 64 KB frames owned by the app, `MEM` = that in KB. A program's code and constants are not in it: they are in memory once, shared by all its processes (`preload` lists them). |
 | `preload` | `preload <program>…`, `preload /boot`, `preload` | **Loads programs ahead and keeps them in memory**: a preloaded program starts **without reading the card** (its code is mapped, shared by all its processes) and stays in memory when none runs. `<program>` is a path (`SD:/bin/jsc`; relative to the current folder), or a bare name: the app of that name (`apps/<name>.app/main`) if there is one, else the `/bin` tool. It returns at once — the load runs in the background (a start meanwhile waits for it); the memory is taken until `unload` or the next restart. With no argument: **lists the program images in memory** — every running program (shared by its processes) and the kept ones: size in KB, `uses` (processes running it), `state` (`loading` / `ready`), `kept` (`yes`: preloaded; `no`: freed when its last process ends; `gone`: unloaded or its file replaced — only its running processes still use it), and its path (lower case: the image's key; a **shared library** — `SD:/lib/<name>.so`, which `preload` keeps as it keeps a program — is marked `(library)`). **At every boot: `preload /boot`**, the last line of `SD:/etc/autostart`, loads the programs listed in **`SD:/etc/preload.ini`** (one a line — a path, an app's name or a tool's; `#` or `;` starts a comment) — the list the Control Panel's **Preload** applet edits (§11); an empty or missing file: nothing. (A card set up before this option: add that line at the end of its `autostart`; `preload <program>` lines there still work.) A program whose file is replaced, renamed or removed loses its image by itself; `pkg` preloads the new one again. |
 | `unload` | `unload <program>…` | **Releases a program's image** (see `preload`; the same names): its next start reads the file again; the processes running it go on, and its memory is freed when the last of them ends (at once if none runs). |
-| `kill` | `kill <pid> [--force\|-f]` | Terminates a process by **PID** (seen with `ps`). By default: **clean** shutdown (the app terminates itself); `--force`/`-f`: **immediate** stop. Kernel tasks and the terminal itself are protected. |
+| `kill` | `kill <pid> [--force\|-f\|--tree\|-t]` | Terminates a process by **PID** (seen with `ps`). By default: **clean** shutdown (the app terminates itself); `--force`/`-f`: **immediate** stop; `--tree`/`-t`: the process **and every process under it** (what it started, what they started…) stopped at once — the count is printed. Kernel tasks and the terminal itself are protected (a tree that holds `kill` itself is refused). |
 | `run` | `run <app\|path> [args]` | Launches an **application**: `run mandelbrot` = `SD:apps/mandelbrot.app/main`; a name containing `/` is taken as an explicit **ELF path**; the following arguments are passed as `argv` (e.g. `run tinypad SD:/notes.txt`). |
 | `keyb` | `keyb [XX]` | With no argument: shows the current layout + the list. `keyb FR`: switches to the layout (US, UK, DE, FR, BE, ES, IT, DV). |
 | `cmd` | `cmd`, `cmd <script> [args]`, `cmd -c "line"` | **The shell itself**, an ordinary `/bin` program: reads command lines from `stdin` (up to 2047 characters), runs their commands (`;`, `&&`, `\|\|`; variables, `if` / `while` / `for`: the script language of §7), builds the pipelines (`\|`, `<`, `>`, `>>`; `"…"`, `'…'` and `\` quote), spawns `/bin/<cmd>` for each stage with its exact argument list; builtins `cd`, `pwd`, `clear`, `exit`, `source`, `test`, `echo`, `read`, `set`, `unset`, `shift` (§7). With a file: **runs that script** and ends with its exit code (§7 *Scripts*); `-c`: one line. The terminal runs it; `telnetd` serves it over the network. |
@@ -1607,6 +1631,9 @@ a page.
   **Install N Updates**. Each shows its versions (installed → new), its size; the system's update
   is marked **restart**. While it works, each row says *Waiting*, its progress, *Installed*, or
   *Ready: at the restart*. An app that is **running** is not updated (*close it, then try again*).
+  A package whose **program is missing** from the card (Jet Browser on a card copied from the git
+  repository's `sdcard/`: its 100 MB program is too big for git and comes with its package only) is
+  shown here too, from version 0: install it to get the program.
 - **Installed** — every package: its version, its category, its **updates mode** — **Manual** (the
   default: you are asked), **Auto** (the update daemon installs its updates by itself), **Never**
   (this version kept) — and **Remove** (not for the system; asked first; a setting you changed is
@@ -1887,6 +1914,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **terminal** | Terminal/shell (see §7). |
 | **Gamepad** (`padconf`) | A Control Panel applet (alone: a window of its own). The USB gamepads (Xbox 360 / One, PlayStation 3 / 4, Switch Pro and any USB HID gamepad; up to 4). Tabs **Pad 1–4** (or keys 1–4): the pad's USB ids and which mapping it uses, its buttons (numbered, lit while held), axes and hats live, and on a drawn pad **what the apps see**. **Pad ▸ Map Buttons...** (**M**): press each button when asked (the d-pad, then the bottom / right / left / top face buttons, the shoulders L1 / R1, the triggers L2 / R2 — buttons or analog triggers, both are recognised — Select, Start, the sticks' clicks, Home); **Esc** = the pad has none, **Backspace** = cancel. It writes the pad model's section of **`SD:/etc/gamepad.ini`** — every app uses it at once. **Forget Mapping** removes it. Pads Circle knows need no mapping; other pads start from `[default]` (the usual generic layout). An axis the d-pad / left stick (or a trigger) uses is never read as the right stick too: a pad whose d-pad is on axes 3 / 4, once mapped, no longer presses the Nintendo 64's C buttons when it moves. |
 | **taskman** (Task Manager) | The system's monitor, in **tabs** (as Windows' Task Manager). **Processes**: every task in a **grid that scrolls** — its name, an app or a kernel task, its state (Running, Sleeping, Waiting), the **memory** it owns, an app's **system calls per second**; **click a title to sort** (again: the other way round; by memory, the largest first, at the start); refreshed twice a second, the selection kept. Arrows (Page Up / Down, Home, End) or a click select; **Enter**, a double click or **Bring to Front** brings the app's window to the foreground; **`k`** / **Delete** or **End Task** stops the app (not a kernel task); `r` refreshes now. **Memory** (what the Memory Monitor showed, which it replaces): the memory **in use** (and its share of the total), **free**, the **apps'**, the **system's** (the kernel, the GPU); the use **over the last minute**, drawn; **what uses it** — a bar and its legend: the system, the four largest apps, the others —; below, the RAM detected, the apps' pool and the page size. **Processor**: a panel a core — what it does (core 0: the system and every app; core 1: the sound; an app core and the app that holds it, or *free*; the network's: busy while the network works, a few per cent when it is quiet), its **load** over the last second and, drawn, over the last minute. **Network**: the rates now (**receiving**, **sending**) and the bytes received and sent since the start; the two rates over the last minute, drawn (their scale's top written beside); then **by app** — the apps that used the network, the busiest first: the bytes received and sent, the two rates; at the foot, the address, the host name and the sockets open. These are the bytes the apps exchange through their sockets (no header, nothing of the system's own traffic). On a kernel older than kapi v80 these two tabs stay grey. The window resizes (and maximises): the views follow. |
+| **GPIO Lab** (`gpiolab`) | The Raspberry Pi's **40-pin header** on the screen: the pins drawn as on the board, a pin's mode (input, pull-up, pull-down, output, PWM), outputs set or blinking, a PWM's frequency and duty, a **timing chart** of the chosen pins, the **I2C bus** scanned, the **edges** logged; a **simulator** when there is no hardware. See *GPIO Lab* below. |
 | **theme** (Theme) | The Control Panel's Theme applet: the colours of the frames, the windows' content, the buttons, the fields, the selection, the menu bar, the dock (a palette or any colour), the theme (Classic, Modern) and its scheme (Classic: Peach … Slate; Modern: Milk — soft greys and coloured beads for the title buttons — and Dark Coffee, its dark sister), the outline, the wallpaper (Voronoi, gradient, bubbles, a colour, a picture, a coloured pattern), on a desktop preview (see §11). Writes `SD:/etc/theme.txt` and `SD:/etc/wallpaper.ini`. |
 | **control** (Control Panel) | The settings in one window: its applets drawn inside it (see §11). Its list: the link files of `SD:/apps/control.app/applets/`. |
 | **dockconf** (Panel) | The Control Panel's Panel applet: the dock's drawers (group + main app), launchers and workspaces (see §11). Writes `SD:/etc/dock.ini`. |
@@ -4105,6 +4133,70 @@ track.
 the same notes. **Files**: the plugins' settings are saved in the song (`.kson`: each track's
 `OnyxInstrument` / `OnyxInserts`, a generator block's `GeneratorState`).
 
+### GPIO Lab, the 40-pin header (`gpiolab`)
+
+![GPIO Lab](../screenshots/gpiolab.png)
+*GPIO Lab on its simulator: an LED blinking on GPIO 17, a servo on GPIO 18 (PWM, 50 Hz), a button on
+GPIO 27 and a switch on GPIO 22 in the timing chart.*
+
+GPIO Lab shows the Raspberry Pi's **40-pin header** and lets you drive it: a quick way to try a wire, an
+LED, a button, a servo or an I2C sensor before writing a program (in BASIC: §13 *GPIO*; in C or C++:
+GPIOKit, docs/06). Start it from the dock or the app list (*System*).
+
+**Before wiring: 3.3 V only.** The band at the top says it: a GPIO pin never takes 5 V (the header's
+pins 2 and 4 are 5 V — power, not a signal), and gives at most about 16 mA — an LED goes through a
+330 Ω resistor. Wire with the Pi off.
+
+**The header** (left), as on the board with its USB ports down: pin 1 (3V3, the square pad) top left,
+the odd pins on the left column, the even ones on the right. Power pins are orange (3V3) and red (5V),
+ground pins dark; a GPIO is coloured by its mode — blue an input (light while high), yellow an output
+(bright while high), violet PWM, teal I2C, pink SPI, pale a free pin — with its name, its header pin's
+number and a tag (its mode, or what else it is: `SDA1`, `PWM0`, `SPI0 CE0`…). **Greyed and crossed**:
+the pins the system uses — GPIO 14 / 15 (the serial console) and 0 / 1 (the HAT's EEPROM) —, which
+GPIO Lab cannot take. **Click a GPIO** (or move with the arrows) to choose it.
+
+**The pin** (top right): its name, its header pin, its level lit (green: high), and its **mode** —
+**Free** (given back: an input with no pull), **Input** (floating), **Pull-up**, **Pull-down**,
+**Output**, **PWM** (GPIO 12, 13, 18 and 19 only; 12 and 18 share a channel, 13 and 19 the other).
+
+- An **output**: **Set High** / **Set Low** (or **Space**), **Blink (2 Hz)**.
+- **PWM**: the **frequency** (50 Hz for a servo, 100 Hz … 25 kHz) and the **duty** — the share of each
+  period the pin is high, in tenths of a per cent (a servo: 2.5 % to 12.5 %, 7.5 % in the middle). The
+  line below says it in microseconds.
+- An **input**: **Log its edges** (the Edges tab); on the simulator, **Driven outside** — Nothing (it
+  floats, or follows its pull), Low or High: what a wire would bring.
+- **Show in the timing chart** (any pin; six at most).
+
+A pin another program has says so and cannot be changed. GPIO Lab gives every pin back when it closes;
+so does the system if it stops otherwise.
+
+**Timing Chart**: the chosen pins' levels over the last eight seconds, sampled with the screen (about
+60 times a second — fast enough for buttons and blinks, not for a PWM: a PWM pin is drawn as its band,
+its frequency and duty written). **Pause** freezes it.
+
+![GPIO Lab's I2C bus](../screenshots/gpiolab-i2c.png)
+*The I2C bus scanned: an SSD1306 display at 0x3C showing GPIO Lab's test picture, a BME280 at 0x76
+read every second (the simulator's).*
+
+**I2C Bus**: **Scan** opens the bus (GPIO 2 = SDA, GPIO 3 = SCL) and asks every address: the 128
+addresses as a grid (the reserved ones greyed), those that answered lit, listed with what usually
+answers there (an SSD1306 display, a BME280 sensor, a DS3231 clock…). A **BME280** found is read
+every second (temperature, pressure, humidity); **Test Display** sends a test picture to an
+**SSD1306** display found at 0x3C / 0x3D — on the simulator, its picture is shown.
+
+![GPIO Lab's edges](../screenshots/gpiolab-edges.png)
+*GPIO 27 chosen (a pull-up input, its edges logged): the button's presses and releases.*
+
+**Edges**: the edges of the pins that log them, newest first, with their time (seconds since GPIO Lab
+started, to the microsecond — the kernel's own clock) and how many each pin had.
+
+**The simulator**: when the system has no GPIO (a PC, a system older than the GPIO's kernel), GPIO Lab
+runs on GPIOKit's **simulated board** — the badge at the bottom right says **SIMULATOR** — and
+**Board ▸ Use the Simulator** (^M) switches to it (or back) on the Pi: nothing then touches the real
+pins. **Board ▸ Release Every Pin** (^R) gives everything back; **Board ▸ Demonstration Set-up** wires
+the set-up of the pictures above (on the real header too: an LED on 17, a servo on 18, a button on 27).
+Arguments: `--sim`, `--demo`, `--tab chart | i2c | edges`.
+
 ### Games
 
 | Game | Goal and controls |
@@ -4603,6 +4695,51 @@ their classic colours.
 ![BASIC Demo](../screenshots/basicdemo.png)
 *The BASIC Demo, a windowed app written in BASIC, in the theme's colours (its picture keeps its
 own).*
+
+### GPIO: the 40-pin header from BASIC
+
+A BASIC program drives the Raspberry Pi's header through **GPIOKit** (docs/06): pins, PWM, a servo,
+edges as events, the I2C bus and SPI. Pins are **BCM GPIO numbers** (GPIO 17 is the header's pin 11:
+GPIO Lab shows them). **3.3 V only**: never connect 5 V to a pin; an LED goes through a 330 Ω resistor.
+
+```basic
+PINMODE 17, "OUT"                 ' "OUT", "IN", "PULLUP", "PULLDOWN", "FREE"
+PIN 17 = 1                        ' (also PIN 17, 1); PIN(17) reads a level: 0 / 1
+PINMODE 27, "PULLUP"              ' a button to ground reads 0 while pressed
+ON PIN (27, 2) GOSUB Pressed      ' its edges: 1 rising, 2 falling, 3 both (the default)
+PWM 18, 25                        ' 25 % high at 1 kHz; PWM pin, duty% [, Hz] -- GPIO 12, 13, 18, 19
+SERVO 18, 90                      ' a hobby servo: 0..180 degrees (50 Hz, 0.5 .. 2.5 ms)
+PRINT I2CSCAN$                    ' "3C 76": the I2C devices that answer (GPIO 2 SDA, 3 SCL)
+t = I2CREAD(&H76, &HD0)           ' a register of a device; I2CWRITE address, register, value
+```
+
+| Statement / function | What it does |
+|---|---|
+| `PINMODE pin, mode$` | The pin the program's, in that mode: `"OUT"` (starts low), `"IN"` (floating), `"PULLUP"`, `"PULLDOWN"`; `"FREE"` gives it back. |
+| `PIN pin = level` (or `PIN pin, level`) | An output set high (non-zero) or low. |
+| `PIN (pin)` | A pin's level now: 0 or 1 (any pin of the header, whoever has it). |
+| `PWM pin, duty [, hz]` | A square wave on GPIO 12, 13, 18 or 19: `duty` per cent high (decimals allowed), at `hz` (1 kHz by default; 1 .. 1 000 000). 12 and 18 share a channel, 13 and 19 the other. |
+| `SERVO pin, angle` | A servo on a PWM pin: `angle` 0 .. 180 (50 Hz, a pulse of 0.5 .. 2.5 ms). |
+| `ON PIN (pin [, edges]) GOSUB label` | `label` is called at each edge of an input pin (`edges`: 1 rising, 2 falling, 3 both); `PIN (pin) ON / OFF / STOP` as `KEY (n)`. It is on from `ON PIN`. A button bounces: several edges a press. |
+| `PINCHANGED (pin)` | How many edges the pin had since the last call (the first call starts counting) — for a program that polls, a QBStudio app's loop or timer. |
+| `PINFREE [pin]` | The pin given back (no pin: every pin and bus). The program's end gives everything back. |
+| `I2COPEN [hz]` | The I2C bus at `hz` (100 kHz by default; 400000 for fast devices). The first I2C call opens it if the program did not. |
+| `I2CREAD (address, register)` | A device's 8-bit register. |
+| `I2CREAD$ (address, register, n)` | `n` bytes from `register` on (`register` −1: read without writing a register first), as a string (`ASC (MID$ (…))`). |
+| `I2CWRITE address, register, value` | A register written. |
+| `I2CSEND address, bytes$` | The bytes written as they are (a display's commands and pixels). |
+| `I2CSCAN$` | The addresses that answer, in hexadecimal: `"3C 76"`. |
+| `SPIOPEN [hz [, mode]]`, `SPI$ (bytes$ [, cs])` | SPI 0 (GPIO 8 CE0, 7 CE1, 9 MISO, 10 MOSI, 11 SCLK): the bytes sent while as many come back. |
+| `GPIOSIM [on]` | GPIOKit's **simulator** (1) or the real header (0) — a board in memory with an SSD1306 display at &H3C and a BME280 sensor at &H76; on a system without GPIO it runs by itself. |
+
+An error (a pin the system uses — GPIO 14 / 15, 0 / 1 —, a pin another program has, a pin that is
+not an output, no answer on the bus) is error **57** (*Device I/O error*) with GPIOKit's words; `ON
+ERROR` catches it. **Examples** (`SD:/basic/examples/`): `gpio_blink.bas` (an LED), `gpio_button.bas`
+(a button, polled and by `ON PIN`), `gpio_servo.bas` (a servo swept), `gpio_bme280.bas` (a BME280's
+temperature, pressure and humidity), `gpio_oled.bas` (an SSD1306 display: a ball bouncing). A QBStudio
+app uses the same statements in its SUBs — an event handler reads `PIN (n)`, and `PINCHANGED (n)` tells
+what came since the last look (`ON PIN … GOSUB` needs a label of the main module: a plain program's). `#import
+gpiokit` gives GPIOKit's own functions too (`GPIOKit.mode (17, 4)`; docs/19).
 
 ### Apps written in BASIC
 

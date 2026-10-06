@@ -238,9 +238,13 @@ public:
 	bool winOn, winScreen; double wx1, wy1, wx2, wy2;
 	double lastX, lastY;
 	int drawAngle, drawTA, drawScale, drawColor;
-	// events: 0 = TIMER, 1..31 = KEY(n)
+	// events: 0 = TIMER, 1..31 = KEY(n), 32 + n = PIN(n) (GPIO 0..27: ON PIN)
+	enum { EV_PIN = 32, EV_N = 32 + 28 };
 	struct Ev { int target; int state; bool pending, busy; };
-	Ev ev[32]; bool evAny, evKick; double timerInt, timerNext; int keyScan[32];
+	Ev ev[EV_N]; bool evAny, evKick; double timerInt, timerNext; int keyScan[32];
+	// GPIO (GPIOKit, the 40-pin header): the edges asked of each pin, what ON PIN wants, those counted (PINCHANGED)
+	unsigned char pinEdges[28] = {}, pinWant[28] = {}; unsigned pinCount[28] = {}; bool pinPoll = false;
+	char gpioMsg[160];
 	// CHAIN / RUN / TRON
 	char chainPath[240]; bool chainCommon; bool tron; int traceLine;
 	// GET / PUT # serialisation buffer
@@ -261,7 +265,7 @@ public:
 		inBuf[0] = 0; errMsgSaved[0] = 0; chainPath[0] = 0;
 		for (int i = 0; i < 4; i++) strigLast[i] = false;
 		for (int i = 0; i < MAXFILES; i++) { files[i].open = false; files[i].buf = 0; files[i].rec = 0; }
-		for (int i = 0; i < 32; i++) { ev[i].target = -1; ev[i].state = 0; ev[i].pending = ev[i].busy = false; keyScan[i] = 0; }
+		for (int i = 0; i < EV_N; i++) { ev[i].target = -1; ev[i].state = 0; ev[i].pending = ev[i].busy = false; if (i < 32) keyScan[i] = 0; }
 		G = new V[P->nglobals > 0 ? P->nglobals : 1];
 		for (int i = 0; i < P->nglobals; i++) initSlot (G[i], P->gkind[i], P->gext[i]);
 		H.screenSize (&scrW, &scrH);
@@ -310,6 +314,19 @@ public:
 		errCode = code ? code : errCodeOf (msg);
 		err->line = P->lineAt (opPc);
 		bscpy (err->msg, msg, sizeof err->msg);
+	}
+	// A GPIOKit call's result: >= 0 true; else the error, its text said (BASIC's "Device I/O error", 57).
+	bool gpioOk (int r, const char *what)
+	{
+		if (r >= 0) return true;
+		const char *why = H.gpioError (r);
+		int k = 0;
+		for (const char *s = what; *s && k < 40; s++) gpioMsg[k++] = *s;
+		for (const char *s = ": "; *s; s++) gpioMsg[k++] = *s;
+		for (const char *s = why; *s && k < (int) sizeof gpioMsg - 1; s++) gpioMsg[k++] = *s;
+		gpioMsg[k] = 0;
+		fail (gpioMsg, 57);
+		return false;
 	}
 	// ERL: the line number label before the error, or its source line.
 	int erlOf (int at)
@@ -1138,12 +1155,32 @@ public:
 			int i = keyIndex (k, n);
 			if (i && ev[i].state != 0) { H.inkey (k); ev[i].pending = true; }
 		}
-		for (int i = 0; i < 32; i++)
+		if (pinPoll) pollPins ();
+		for (int i = 0; i < EV_N; i++)
 			if (ev[i].pending && ev[i].state == 1 && !ev[i].busy && ev[i].target >= 0) { fire (i); return; }
+	}
+	// The edges that came (GPIOKit's queue): counted (PINCHANGED), and ON PIN's events made pending.
+	void pollPins ()
+	{
+		char out[128];
+		int n = H.gpio (Host::GP_EVENTS, 0, 0, 0, 0, 0, out, sizeof out);
+		for (int k = 0; k < n; k++)
+		{
+			int p = (unsigned char) out[2 * k], e = (unsigned char) out[2 * k + 1];
+			if (p >= 28) continue;
+			pinCount[p]++;
+			Ev &v = ev[EV_PIN + p];
+			if (v.target >= 0 && v.state != 0 && (pinWant[p] & e)) v.pending = true;
+		}
 	}
 	bool eventDue ()
 	{
 		if (!evAny) return false;
+		if (pinPoll)
+		{
+			pollPins ();
+			for (int p = 0; p < 28; p++) { const Ev &v = ev[EV_PIN + p]; if (v.pending && v.state == 1 && !v.busy && v.target >= 0) return true; }
+		}
 		if (ev[0].target >= 0 && ev[0].state == 1 && timerInt > 0 && H.timer () >= timerNext) return true;
 		char k[4]; int n = H.keyPending (k);
 		return n > 0 && keyIndex (k, n) != 0;
@@ -1330,6 +1367,56 @@ public:
 		case B_FILELENGTH: pushN (H.akQuery (2)); break;
 		case B_NOTEFREQ: pushN (H.akNoteHz ((int) a[0].n)); break;
 		case B_NOTENUMBER: { char t[16]; cstr (a[0], t, sizeof t); pushN (H.akNoteKey (t)); break; }
+		// GPIOKit: the 40-pin header (docs/04 §13 "GPIO")
+		case B_PIN: { int r = H.gpio (Host::GP_READ, (int) a[0].n, 0, 0, 0, 0, 0, 0); if (gpioOk (r, "PIN")) pushN (r); break; }
+		case B_PINCHANGED:
+		{
+			long long p = (long long) a[0].n;
+			if (p < 0 || p > 27) { fail ("Illegal function call (PINCHANGED: a GPIO 0..27)"); break; }
+			if (pinEdges[p] != 3)
+			{
+				if (!gpioOk (H.gpio (Host::GP_EDGES, (int) p, 3, 0, 0, 0, 0, 0), "PINCHANGED")) break;
+				pinEdges[p] = 3; pinPoll = true;
+			}
+			pollPins ();
+			pushN (pinCount[p]); pinCount[p] = 0;
+			break;
+		}
+		case B_I2CREAD: { int r = H.gpio (Host::GP_I2C_REG_READ, (int) a[0].n, (int) a[1].n, 0, 0, 0, 0, 0); if (gpioOk (r, "I2CREAD")) pushN (r); break; }
+		case B_I2CREADS:
+		{
+			long long n = (long long) a[2].n;
+			if (n < 0 || n > 4096) { fail ("Illegal function call (I2CREAD$: 0 .. 4096 bytes)"); break; }
+			char reg = (char) (int) a[1].n, *buf = new char[n + 1];
+			int r = H.gpio (Host::GP_I2C_XFER, (int) a[0].n, (int) n, 0, &reg, (long long) a[1].n >= 0 ? 1 : 0, buf, (int) n);
+			if (gpioOk (r, "I2CREAD$")) pushS (buf, r);
+			delete [] buf;
+			break;
+		}
+		case B_I2CSCAN:
+		{
+			char map[16], t[128]; int k = 0;
+			int r = H.gpio (Host::GP_I2C_SCAN, 0, 0, 0, 0, 0, map, 16);
+			if (!gpioOk (r, "I2CSCAN$")) break;
+			for (int ad = 0; ad < 128 && k < 120; ad++)
+				if ((unsigned char) map[ad / 8] >> (ad % 8) & 1)
+				{
+					static const char HEX[] = "0123456789ABCDEF";
+					if (k) t[k++] = ' ';
+					t[k++] = HEX[ad >> 4]; t[k++] = HEX[ad & 15];
+				}
+			pushS (t, k);
+			break;
+		}
+		case B_SPI:
+		{
+			if (l0 < 1 || l0 > 4096) { fail ("Illegal function call (SPI$: 1 .. 4096 bytes)"); break; }
+			char *buf = new char[l0];
+			int r = H.gpio (Host::GP_SPI_XFER, argc > 1 ? (int) a[1].n : 0, 0, 0, s0, l0, buf, l0);
+			if (gpioOk (r, "SPI$")) pushS (buf, r);
+			delete [] buf;
+			break;
+		}
 		// kits: memory shared with a kit (addresses are numbers; nothing is checked)
 		case B_ALLOC:
 		{
@@ -1790,6 +1877,56 @@ public:
 			if (H.akPlay (t1, argc > 1 ? N (1, 0) : 0) != 0) fail (H.akError ()[0] ? H.akError () : "PLAYFILE: no sound library on this system");
 			break;
 		case S_STOPFILE: H.akCommand (0, 0); break;
+		// GPIOKit: the 40-pin header -- PINMODE pin, "OUT" | "IN" | "PULLUP" | "PULLDOWN" | "FREE"; PIN pin = level;
+		// PWM pin, duty % [, Hz]; SERVO pin, angle (0..180); PINFREE [pin]; GPIOSIM [on]; I2COPEN [Hz];
+		// I2CWRITE address, register, value; I2CSEND address, bytes$; SPIOPEN [Hz [, mode]] (docs/04 §13 "GPIO")
+		case S_PINMODE:
+		{
+			craw (a[1], t1, sizeof t1);
+			for (char *c = t1; *c; c++) if (*c >= 'a' && *c <= 'z') *c = (char) (*c - 32);
+			int m = -1;
+			static const struct { const char *n; int m; } MODES[] = { { "FREE", 0 }, { "OFF", 0 }, { "IN", 1 }, { "INPUT", 1 },
+				{ "PULLUP", 2 }, { "INPUT_PULLUP", 2 }, { "PULLDOWN", 3 }, { "INPUT_PULLDOWN", 3 }, { "OUT", 4 }, { "OUTPUT", 4 } };
+			for (unsigned k = 0; k < sizeof MODES / sizeof MODES[0]; k++)
+			{
+				int j = 0; while (t1[j] && t1[j] == MODES[k].n[j]) j++;
+				if (!t1[j] && !MODES[k].n[j]) m = MODES[k].m;
+			}
+			if (m < 0) { fail ("Illegal function call (PINMODE: \"OUT\", \"IN\", \"PULLUP\", \"PULLDOWN\" or \"FREE\")"); break; }
+			gpioOk (H.gpio (Host::GP_MODE, N (0, -1), m, 0, 0, 0, 0, 0), "PINMODE");
+			break;
+		}
+		case S_PINWRITE: gpioOk (H.gpio (Host::GP_WRITE, N (0, -1), a[1].n != 0 ? 1 : 0, 0, 0, 0, 0, 0), "PIN"); break;
+		case S_PWM:
+		{
+			double d = a[1].n; if (d < 0) d = 0; if (d > 100) d = 100;
+			gpioOk (H.gpio (Host::GP_PWM, N (0, -1), argc > 2 ? N (2, 1000) : 1000, (int) (d * 100 + 0.5), 0, 0, 0, 0), "PWM");
+			break;
+		}
+		case S_SERVO:
+		{
+			double g = a[1].n; if (g < 0) g = 0; if (g > 180) g = 180;
+			gpioOk (H.gpio (Host::GP_SERVO, N (0, -1), (int) (500 + g * 2000 / 180 + 0.5), 0, 0, 0, 0, 0), "SERVO");
+			break;
+		}
+		case S_PINFREE:
+		{
+			int p = argc ? N (0, -1) : -1;
+			if (gpioOk (H.gpio (Host::GP_FREE, p, 0, 0, 0, 0, 0, 0), "PINFREE"))
+				for (int k = 0; k < 28; k++) if (p < 0 || k == p) { pinEdges[k] = pinWant[k] = 0; ev[EV_PIN + k].target = -1; ev[EV_PIN + k].pending = false; }
+			break;
+		}
+		case S_GPIOSIM: gpioOk (H.gpio (Host::GP_SIM, argc ? N (0, 1) : 1, 0, 0, 0, 0, 0, 0), "GPIOSIM"); break;
+		case S_I2COPEN: gpioOk (H.gpio (Host::GP_I2C_OPEN, N (0, 0), 0, 0, 0, 0, 0, 0), "I2COPEN"); break;
+		case S_I2CWRITE: gpioOk (H.gpio (Host::GP_I2C_REG_WRITE, N (0, 0), N (1, 0), N (2, 0), 0, 0, 0, 0), "I2CWRITE"); break;
+		case S_I2CSEND:
+		{
+			int n; const char *s = sdata (a[1], &n);
+			if (n < 1 || n > 4096) { fail ("Illegal function call (I2CSEND: 1 .. 4096 bytes)"); break; }
+			gpioOk (H.gpio (Host::GP_I2C_XFER, N (0, 0), 0, 0, s, n, 0, 0), "I2CSEND");
+			break;
+		}
+		case S_SPIOPEN: gpioOk (H.gpio (Host::GP_SPI_OPEN, N (0, 0), N (1, 0), 0, 0, 0, 0, 0), "SPIOPEN"); break;
 		case S_PAUSEFILE: H.akCommand (1, argc > 0 ? N (0, 1) : 1); break;
 		case S_FILEVOLUME: H.akCommand (2, N (0, 100)); break;
 		case S_MIDINOTE:
@@ -2021,7 +2158,7 @@ public:
 		ngs = 0; chan = 0; dataPtr = 0; onErr = -1; inErr = false;
 		closeAll ();
 		resetGlobals ();
-		for (int i = 0; i < 32; i++) { ev[i].target = -1; ev[i].state = 0; ev[i].pending = ev[i].busy = false; }
+		for (int i = 0; i < EV_N; i++) { ev[i].target = -1; ev[i].state = 0; ev[i].pending = ev[i].busy = false; }
 		evAny = false;
 	}
 	// A CHAINed program takes the COMMON values (in order) and the open files.
@@ -2825,6 +2962,16 @@ public:
 			{
 				int kind = code[pc++], t = code[pc++];
 				long long n = popI ();
+				if (kind == 2)					// ON PIN (pin, edges): n = the edges, then the pin
+				{
+					long long p = popI ();
+					if (p < 0 || p > 27 || n < 1 || n > 3) { fail ("Illegal function call (ON PIN: a GPIO 0..27, edges 1..3)"); break; }
+					if (!gpioOk (H.gpio (Host::GP_EDGES, (int) p, pinEdges[p] | (int) n, 0, 0, 0, 0, 0), "ON PIN")) break;
+					pinEdges[p] |= (unsigned char) n; pinWant[p] = (unsigned char) n;
+					Ev &v = ev[EV_PIN + p]; v.target = t; v.state = 1; v.pending = false;
+					pinPoll = evAny = true;
+					break;
+				}
 				if (kind == 0)
 				{
 					if (n < 1 || n > 86400) { fail ("Illegal function call (ON TIMER)"); break; }
@@ -2842,8 +2989,9 @@ public:
 			{
 				int kind = code[pc++], st = code[pc++];
 				long long n = popI ();
-				int i = kind == 0 ? 0 : (int) n;
-				if (i < 0 || i > 31) { fail ("Illegal function call (KEY)"); break; }
+				int i = kind == 0 ? 0 : kind == 2 ? EV_PIN + (int) n : (int) n;
+				if (kind == 2 && (n < 0 || n > 27)) { fail ("Illegal function call (PIN (n) ON / OFF / STOP: a GPIO 0..27)"); break; }
+				if (i < 0 || i >= EV_N) { fail ("Illegal function call (KEY)"); break; }
 				if (kind == 1 && n == 0) { for (int k = 1; k < 32; k++) { ev[k].state = st; if (!st) ev[k].pending = false; } break; }
 				ev[i].state = st;
 				if (st == 0) ev[i].pending = false;

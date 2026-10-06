@@ -26,6 +26,7 @@ constants) come from the code; the layout constants live in
 14. [App cores (cores 2 and 3)](#14-app-cores-cores-2-and-3)
 15. [The GPU (V3D)](#15-the-gpu-v3d)
 16. [The RAM: volume](#16-the-ram-volume)
+17. [GPIO: the 40-pin header (v92)](#17-gpio-the-40-pin-header-v92)
 
 ---
 
@@ -970,7 +971,7 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
 
 - **The process ends with its main task** (return from `main`, `kapi_exit`), or when any thread
   calls `kapi_exit`: `ThreadsEndProcess` → `TerminateGroup` (all but the caller). A kill (task
-  manager, `kill_pid`, an orphan) ends the group the same way (§5). A fault in any of its threads
+  manager, `kill_pid`, `proc_tree`, an orphan) ends the group the same way (§5). A fault in any of its threads
   kills the whole process (§6, *Protected mode*), never the machine.
 - **The per-process state** — `CProcThreads`, made on first use, freed by `~CAddressSpace`
   (`ThreadsFree`, first): the thread records (tid → task, done, exit code; 64: the ended ones are
@@ -1183,6 +1184,29 @@ from now on calls them in AppKit, so its package says `kapi >= 87`.
 v88 = **AppKit: program starting**: no entry added — the `lx_*` functions (an app or a file started by its
 runner) are AppKit's (they were `user/launch.h`). The same day **SystemKit** and **NetKit** appear (docs/03 §5.9.0).
 
+v92 = **the 40-pin header** (2026-10-06): `gpio_ctl` (slot **229**; `kernel/sys/gpio.cpp`, `kern/gpio.h`,
+`KAPI_GPIO_*`): GPIO 0..27 given one process at a time (input, pulled up / down, output, an alternate
+function), PWM on GPIO 12 / 13 / 18 / 19, edges queued with their time, the I2C bus 1 and SPI 0 — §17
+*GPIO*. **Read by GPIOKit directly** (`SD:/lib/gpiokit.so`, not through AppKit: the user's exception,
+docs/03 §5.10), which ships with the kernel in the package `onyx`; AppKit has no `kapi_gpio_ctl`.
+
+v91 = **a process's tree** (2026-10-06): + `proc_tree` (slot **228**, the table's 229th entry). Each process records
+its spawner's pid (`CAddressSpace::GetParentPid`: `spawn`, `spawn_ex`, `spawn_ex2`; `exec` / `launch` /
+`exec_as` — the drawer, `run`, the file manager — start a process **without** a parent). Before v91 the only
+use of it was the reaper's orphan scan (`TerminateOrphans`, `kernel.cpp`): every 50 ms, a live process whose
+parent is gone is terminated — a whole subtree ends a level a pass, after its root. `proc_tree (pid, op, out,
+cap)` (`sys/kapi.cpp`) makes the tree **now**: the root, then every live process whose parent is in the set,
+pass after pass (256 processes at most); a kapi runs on core 0 without preemption, so nothing spawns or
+ends meanwhile. `KAPI_TREE_LIST` → how many descendants (up to `cap` pids written, children first);
+`KAPI_TREE_KILL` → the root and all its descendants terminated at once, **the leaves first** (each:
+`KAPI_PROC_KILLED` / −9 for `proc_wait`, `TerminateTask` → its whole thread group), the count returned and
+logged (`proc: proc_tree: …`); `KAPI_TREE_KILL_CHILDREN`: the descendants only. Errors: `ESRCH` (no such
+process, or a kernel task), `EINVAL`, `EPERM` (a kill whose tree holds the caller), `EFAULT`. A child whose
+start is still deferred (`SpawnProcess`: not a task yet) is not in the tree: it starts with a dead parent and
+the orphan scan ends it — which stays for that. Users: the **Terminal** (closing a tab ends its `cmd` and
+everything under it: a pipeline's stages, a script's `cmd` and its programs), **`cmd`** (Ctrl-C ends each
+stage with what it started), **`/bin/kill -t`**. AppKit: `kapi_proc_tree` (`-KAPI_ENOSYS` before v91).
+
 v90 = **the table without the windows** (2026-10-05): the 36 entries of the windows (`create_window`,
 `present`, `set_menu`, `win_list`, `drag_begin`, `wallpaper_*`, `desk`, `set_wheel_speed`...) and the 2 of
 the activity shell (`register_shell`, `shell_request`: no program used them) are **removed** from
@@ -1280,7 +1304,7 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 |---|---|
 | Windowing | `create_window(_ex)` (the canvas; **0** when the client area is bigger than the screen — `g_nScreenWidth/Height`; before v66, 1024 × 768 — or memory is short — an app must check it: drawing into a null canvas faults, and the app is killed), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `uk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
 | Menu bar (v39) | `set_menu(spec, handler)` stores the app's menu spec (≤ 2 KB; lines `M<title>`, `I<id>\t<label>\t<shortcut>`, `-`) + a `GUI_EVENT_MENU` (14) handler on its `CWindow`; `get_menu(buf, cap, title, tcap)` returns the **active app**'s spec + title and a serial that changes with the active window or its menu (0 = none); `menu_command(id)` queues `GUI_EVENT_MENU(id)` to the active window (`MENU_QUIT` = -1 → `RequestExit`, like the close box). Used by `menubar` + `uikit::Menu`. |
-| Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid` |
+| Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid`, `proc_tree` (v91) |
 | Threads (v67) | `thread_create(fn, arg, stack_size, name)` → tid ≥ 2 (main: 1), −1 no memory, −2 too many (32); `thread_exit(code)` (the main thread: the process); `thread_join(tid, timeout_ms, &code)` → 0, −1 timeout, −2 none / joined already, −3 itself; `thread_self`. `mutex_create`/`mutex_lock(h, timeout)`/`mutex_unlock` (recursive), `event_create(manual, initial)`/`event_set`/`event_reset`/`event_wait(h, timeout)`, `barrier_create(count)`/`barrier_wait` (1 for the last one in), `sync_close` — handles, 256 per process; timeouts in ms, 0 = only try, `KAPI_WAIT_FOREVER`. `post(fn, ctx, value)` → queued for the pump (−1 full: 256); `pump_wait(timeout)` sleeps until an event / a post / the close box, pumps → what was pending. See §7. |
 | Word waits, priority (v68) | `wait_word(addr, expected, timeout_ms)` sleeps while the 4-byte word `*addr == expected` → 0 (woken, or the value differs), 1 timeout (0 ms: only check), −1 bad address (unaligned, unmapped); `wake_word(addr)` → the sleepers woken. Keyed by the **physical** address (a word of a shared surface wakes across processes); the 100 Hz tick also reads every sleeping word and wakes those that changed — an app core's write needs no `wake_word` (≤ 10 ms). `thread_priority(tid 0 self / 1 main / ≥ 2, prio 0 / 1 / −1 ask)` → the previous one, −1 bad prio, −2 no such thread: a "real time" task is picked first when ready and a tick preempts an app for it, while it yields by itself (§5). See §7. |
 | Enumeration | `list_apps`, `list_windows`, `list_tasks`, `list_procs`, `get_datetime` |
@@ -1656,12 +1680,19 @@ stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywher
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
 
+### v92: gpio_ctl
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 229 | `gpio_ctl (op, a0, a1, a2)` | The 40-pin header (§17; `KAPI_GPIO_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. Anyone's: `KAPI_GPIO_INFO (struct kapi_gpio_pin *out, max)` → how many (28: GPIO 0..27, their mode, level, owner, PWM, the reserved ones' reason); `KAPI_GPIO_READ (pin)` → 0 / 1; `KAPI_GPIO_READ_ALL` → bit n = GPIO n; `KAPI_GPIO_NOW` → the edges' clock (µs). The pin's owner's (the first call that needs it takes it: `EBUSY` another process has it, `EPERM` the system's): `KAPI_GPIO_MODE (pin, KAPI_GPIO_M_*)` (`M_FREE` gives it back); `KAPI_GPIO_WRITE (pin, level)` (`EINVAL` not an output); `KAPI_GPIO_PWM (pin, Hz 1..1 000 000, duty 0..10000)`; `KAPI_GPIO_EDGES (pin, KAPI_GPIO_RISING \| _FALLING)`; `KAPI_GPIO_EVENTS (struct kapi_gpio_event *out, max, wait ms ≤ 1000)` → how many; `KAPI_GPIO_I2C_OPEN (Hz)`, `_I2C_XFER (struct kapi_gpio_i2c *)` → bytes (`EIO`: no answer), `_I2C_SCAN (u8 map[16])` → how many answered; `KAPI_GPIO_SPI_OPEN (Hz, mode 0..3)`, `_SPI_XFER (struct kapi_gpio_spi *)`; `KAPI_GPIO_CLOSE (KAPI_GPIO_BUS_I2C / _SPI)`; `KAPI_GPIO_RELEASE` (everything of the caller's). No AppKit wrapper: GPIOKit calls it. |
+
 ### v85: the mixer
 
 | Slot | Entry | What it does |
 |---|---|---|
 | 225 | `sound_clients (out, max)` | The programs that have a channel now → how many; `out`: up to `max` `struct kapi_sound_client` (`pid`, `name` — the program's, 24 bytes —, `volume` 0..100, `mute`, `peak` — its level now, 0..32767 —, `queued` frames). `0, 0`: only the count. |
 | 227 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program `elegant`. The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT` \| `_CALL`; `KAPI_WS_ATTACH (pid)`, `KAPI_WS_POST (pid, struct kapi_event *)` → 1 queued / 0 full, `KAPI_WS_EXIT (pid)`, `KAPI_WS_BUF_MAP (struct kapi_ws_buf *)`, `KAPI_WS_BUF_FREE (id)`, `KAPI_WS_NEXT (struct kapi_ws_req *)` → 1 / 0, `KAPI_WS_REPLY (struct kapi_ws_reply *)`. A program's (through AppKit): `KAPI_WS_CALL (struct kapi_ws_call *)` → the server's status, `ESRCH` no server; `KAPI_WS_KICK`. AppKit: `kapi_ws_ctl`. |
+| 228 | `proc_tree (pid, op, out, cap)` | (v91) A process's tree, by the parent pids recorded at the spawns (above). `KAPI_TREE_LIST` → how many descendants `pid` has, up to `cap` of their pids into `out` (its children, then theirs…); `KAPI_TREE_KILL` → `pid` and all its descendants terminated now, the leaves first → how many; `KAPI_TREE_KILL_CHILDREN` → its descendants only. `ESRCH` no such process, `EPERM` a kill whose tree holds the caller, `EINVAL`, `EFAULT`. AppKit: `kapi_proc_tree`. |
 | 226 | `sound_client_volume (pid, volume, mute)` | That channel's volume 0..100 (−1: kept) and mute 0 / 1 (−1: kept), applied at once and remembered for the program's **name** until the restart → `volume \| 0x100` if muted, −1: no such channel. Any program may call it (the mixer's panel). |
 
 No existing call changes its shape; what they mean: `sound_acquire` gives **a channel** (1; 0 only when the 8
@@ -2755,6 +2786,47 @@ after the removes), and every page given back at the end. On the Pi: `/bin/ramte
 full` also fills the volume).
 
 ---
+
+## 17. GPIO: the 40-pin header (v92)
+
+`kernel/sys/gpio.cpp` (`kern/gpio.h`) gives the programs the Raspberry Pi's header through one table
+entry, `gpio_ctl` (§8 *v92*), over Circle's `CGPIOPin`, `CGPIOManager`, `CI2CMaster` and `CSPIMaster`.
+The programs use it through **GPIOKit** (`SD:/lib/gpiokit.so`, docs/06 *GPIOKit*, docs/19), the only
+code that calls it.
+
+- **Pins** are BCM GPIO numbers 0..27 (the header's). Each has **one owner** (a pid): the first call that
+  needs the pin takes it (a mode, PWM, a bus); `KAPI_GPIO_M_FREE`, `KAPI_GPIO_RELEASE` or the process's
+  end give it back — `GpioOnProcessGone`, called by `IpcOnProcessGone` when the process is reaped, after
+  a crash too: its pins become **inputs with no pull** again (nothing left driving a wire), its PWM
+  channels stop, its buses close, its edge queue goes. Reading a level is anyone's.
+- **Reserved, never given** (`EPERM`, `KAPI_GPIO_F_RESERVED` with the reason in `kapi_gpio_pin.reason`):
+  GPIO 0 / 1 (the HAT's ID EEPROM) and 14 / 15 (the kernel's serial console, `CSerialDevice`). The other
+  pins the system uses are off the header and out of `gpio_ctl`'s reach: 30..33 (the Bluetooth UART,
+  docs/BLUETOOTH-AUDIO-STUDY.md), 34..39 / 48..53 (the SD card, the Wi-Fi's SDIO), 40 / 41 (the jack's PWM
+  audio), 42 (the activity LED).
+- **PWM** — the header's PWM pins are PWM0's (12 and 18 its channel 1, 13 and 19 its channel 2: one pin
+  of each pair at a time, `EBUSY`); the jack's sound is PWM1's (`sys/sound.cpp`, GPIO 40 / 41). The two
+  blocks share **one clock**, which the sound sets to 125 MHz and **stops** when the jack's output stops.
+  So the header's PWM never changes the clock's rate: it uses the sound's 125 MHz (mark-space mode,
+  range = 125 MHz / frequency, data = range × duty / 10000), starts the clock at that rate when it is
+  not running, and `OutputStop` (`sound.cpp`) calls `GpioPwmClockKeep` after it stopped the jack.
+  When the jack starts while a header PWM runs, the clock restarts at the same rate: a glitch of a few
+  microseconds on the header's wave.
+- **Edges** — an input of the caller's: `KAPI_GPIO_EDGES` makes the GPIO interrupt's manager
+  (`CGPIOManager`, created at the first need) call `EdgeIRQ` on both edges of the pin; the level just
+  after says which edge it was, and only the asked ones are queued, with `CTimer::GetClockTicks64 ()`
+  (µs), for the pin's owner: up to 8 processes, 256 events each (full: the newest are dropped and the
+  next event has `lost` = 1). `KAPI_GPIO_EVENTS` takes them, waiting up to 1 s (2 ms naps). No
+  debouncing: a button gives a few edges a press.
+- **I2C bus 1** (GPIO 2 SDA / 3 SCL; the board's 1.8 kΩ pull-ups) and **SPI 0** (GPIO 7 CE1, 8 CE0, 9 MISO,
+  10 MOSI, 11 SCLK) — one process at a time, their pins taken with them (`KAPI_GPIO_M_I2C` / `_SPI`).
+  A transfer is copied through a kernel buffer (4096 bytes at most each way); an I2C write then read of
+  at most 16 written bytes is one transaction with a repeated start
+  (`CI2CMaster::WriteReadRepeatedStart`). The scan reads one byte from each address 0x08..0x77.
+
+Not done: the alternate functions of pins beyond what `KAPI_GPIO_M_ALT0 + n` sets by hand, I2C bus 0,
+SPI 1 (the AUX SPI), the UARTs 2..5, a debounce, a pin's drive strength, the Pi 5's RP1 (Circle's
+`*-rp1.h`). **Tested on the PC only** (GPIOKit's simulator; docs/HANDOFF.md lists what the Pi must check).
 
 ## Annex — useful constants
 
