@@ -4,6 +4,17 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Terminal tabs and the process tree (2026-10-06): built, tested in the simulator, published
+
+Asked by the user: tabs in the Terminal, each its own `cmd`; closing a tab must end the shell **and everything running
+under it**. **Done**: kapi **v91 `proc_tree`** (slot 228, `sys/kapi.cpp`: list / kill a process's descendants at once,
+the leaves first, from the parent pids recorded at the spawns — before it only the reaper's orphan scan, a level every
+50 ms; docs/02 *v91*); **UIKit `TabStrip`** (`uikit/tabstrip.h`: titles, close crosses, a mark, "+"; uikit 1.744); the
+**Terminal** rewritten around a `Tab` record (its cmd, pipes, scrollback, line history), Ctrl+Shift+T / W, Ctrl+Tab,
+Ctrl+PgUp / PgDn, the Shell menu, a question before closing a busy tab, the title = the command running or the folder;
+`cmd`'s Ctrl-C and `/bin/kill -t` use the tree too. **Not yet run on the Pi**: check there that closing a tab running
+`cat x | grep y | sort` or a script leaves nothing in `ps`, and `kmsg`'s `proc: proc_tree: ...` line.
+
 ## 3DForge, a small parametric CAD (2026-10-05): built, on the Pi (the GPU draws it), published
 
 Asked by the user: an easy parametric CAD (sketch + extrude, union / subtract / intersect, bodies only, fillets and

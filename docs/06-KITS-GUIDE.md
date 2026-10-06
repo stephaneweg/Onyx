@@ -224,6 +224,26 @@ unsigned colour = 0x2060C0;
 if (uk_color_dialog (&colour, "Pick a colour")) root.setBg (colour);
 ```
 
+**Tabs** (`TabStrip`, `uikit/tabstrip.h`): a row of closable tabs over the program's own view — the
+strip shows them, the program shows the chosen one's content. Each tab carries a pointer for the
+program; a close is only **asked** (the cross, a middle click): the program decides, then removes it.
+
+```cpp
+static TabStrip *g_tabs;
+static void onTab (Widget &)   { show (g_tabs->data (g_tabs->selected)); }
+static void onClose (Widget &) { int i = g_tabs->closing; Doc *d = (Doc *) g_tabs->data (i);
+                                 if (doc_close (d)) g_tabs->remove (i); }    // (a question first, if need be)
+static void onNew (Widget &)   { g_tabs->select (g_tabs->add ("Untitled", new_doc ()), true); }
+...
+g_tabs = new TabStrip (0, 0, root.width, 30, onTab);
+g_tabs->onClose = onClose; g_tabs->onNew = onNew;
+g_tabs->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
+root.addChild (g_tabs);
+```
+
+`setTitle (i, s)`, `setMark (i, on)` (a dot: something runs, something new), `selectNext (±1)` (the
+program's Ctrl+Tab), `activeFace` (the chosen tab opens onto the content's colour). The Terminal's tabs.
+
 **The theme**: draw with the palette (`C_BG`, `C_TEXT`, `C_ACCENT`, `C_FACE`…), never with fixed
 colours, so that the program follows the user's theme.
 

@@ -19,7 +19,7 @@ AppKit is what makes a program run: its one link to the system. Every call a pro
 |---|---|
 | Include | `#include "appkit/appkit.h"` |
 | Link | nothing to link: the kernel binds AppKit to every program |
-| Library | `SD:/lib/appkit.so` — 300 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
+| Library | `SD:/lib/appkit.so` — 301 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
 | Sources | `user/Kits/appkit/` |
 
 ## Using it
@@ -98,6 +98,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_kill` | kill the app of that name -> 1, 0 (not running, a kernel task, the caller) | `appkit.h` |
 | `kapi_list_procs` | ps / kill by PID. | `appkit.h` |
 | `kapi_kill_pid` | ps / kill by PID. | `appkit.h` |
+| `kapi_proc_tree` | (v91) A process's tree | `appkit.h` |
 | `kapi_set_keymap` | Keyboard layout | `appkit.h` |
 | `kapi_get_keymap` | Keyboard layout | `appkit.h` |
 | `kapi_exec` | Run an ELF at an absolute path with an argv string (fire-and-forget). | `appkit.h` |
@@ -579,6 +580,12 @@ ps / kill by PID. list_procs: lines "<pid> <a|k> <state> <name>". kill_pid: forc
 ```cpp
 int kapi_list_procs (char *b, unsigned s);
 int kapi_kill_pid (int pid, int force);
+```
+
+(v91) A process's tree: its descendants (the processes it spawned, the ones they spawned...). op KAPI_TREE_LIST -> how many descendants pid has (up to cap of their pids into out); KAPI_TREE_KILL: pid and all of them terminated now, the leaves first -> how many were; KAPI_TREE_KILL_CHILDREN: its descendants only. -KAPI_ESRCH no such process, -KAPI_EPERM a kill that would take the caller, -KAPI_EINVAL, -KAPI_ENOSYS (a kernel before v91). A terminal closing a tab: its shell and all it runs.
+
+```cpp
+int kapi_proc_tree (int pid, int op, int *out, unsigned cap);
 ```
 
 Keyboard layout: switch among the compiled-in country maps; read the current one.

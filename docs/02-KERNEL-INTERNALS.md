@@ -970,7 +970,7 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
 
 - **The process ends with its main task** (return from `main`, `kapi_exit`), or when any thread
   calls `kapi_exit`: `ThreadsEndProcess` → `TerminateGroup` (all but the caller). A kill (task
-  manager, `kill_pid`, an orphan) ends the group the same way (§5). A fault in any of its threads
+  manager, `kill_pid`, `proc_tree`, an orphan) ends the group the same way (§5). A fault in any of its threads
   kills the whole process (§6, *Protected mode*), never the machine.
 - **The per-process state** — `CProcThreads`, made on first use, freed by `~CAddressSpace`
   (`ThreadsFree`, first): the thread records (tid → task, done, exit code; 64: the ended ones are
@@ -1183,6 +1183,23 @@ from now on calls them in AppKit, so its package says `kapi >= 87`.
 v88 = **AppKit: program starting**: no entry added — the `lx_*` functions (an app or a file started by its
 runner) are AppKit's (they were `user/launch.h`). The same day **SystemKit** and **NetKit** appear (docs/03 §5.9.0).
 
+v91 = **a process's tree** (2026-10-06): + `proc_tree` (slot **228**, the table's 229th entry). Each process records
+its spawner's pid (`CAddressSpace::GetParentPid`: `spawn`, `spawn_ex`, `spawn_ex2`; `exec` / `launch` /
+`exec_as` — the drawer, `run`, the file manager — start a process **without** a parent). Before v91 the only
+use of it was the reaper's orphan scan (`TerminateOrphans`, `kernel.cpp`): every 50 ms, a live process whose
+parent is gone is terminated — a whole subtree ends a level a pass, after its root. `proc_tree (pid, op, out,
+cap)` (`sys/kapi.cpp`) makes the tree **now**: the root, then every live process whose parent is in the set,
+pass after pass (256 processes at most); a kapi runs on core 0 without preemption, so nothing spawns or
+ends meanwhile. `KAPI_TREE_LIST` → how many descendants (up to `cap` pids written, children first);
+`KAPI_TREE_KILL` → the root and all its descendants terminated at once, **the leaves first** (each:
+`KAPI_PROC_KILLED` / −9 for `proc_wait`, `TerminateTask` → its whole thread group), the count returned and
+logged (`proc: proc_tree: …`); `KAPI_TREE_KILL_CHILDREN`: the descendants only. Errors: `ESRCH` (no such
+process, or a kernel task), `EINVAL`, `EPERM` (a kill whose tree holds the caller), `EFAULT`. A child whose
+start is still deferred (`SpawnProcess`: not a task yet) is not in the tree: it starts with a dead parent and
+the orphan scan ends it — which stays for that. Users: the **Terminal** (closing a tab ends its `cmd` and
+everything under it: a pipeline's stages, a script's `cmd` and its programs), **`cmd`** (Ctrl-C ends each
+stage with what it started), **`/bin/kill -t`**. AppKit: `kapi_proc_tree` (`-KAPI_ENOSYS` before v91).
+
 v90 = **the table without the windows** (2026-10-05): the 36 entries of the windows (`create_window`,
 `present`, `set_menu`, `win_list`, `drag_begin`, `wallpaper_*`, `desk`, `set_wheel_speed`...) and the 2 of
 the activity shell (`register_shell`, `shell_request`: no program used them) are **removed** from
@@ -1280,7 +1297,7 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 |---|---|
 | Windowing | `create_window(_ex)` (the canvas; **0** when the client area is bigger than the screen — `g_nScreenWidth/Height`; before v66, 1024 × 768 — or memory is short — an app must check it: drawing into a null canvas faults, and the app is killed), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `uk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
 | Menu bar (v39) | `set_menu(spec, handler)` stores the app's menu spec (≤ 2 KB; lines `M<title>`, `I<id>\t<label>\t<shortcut>`, `-`) + a `GUI_EVENT_MENU` (14) handler on its `CWindow`; `get_menu(buf, cap, title, tcap)` returns the **active app**'s spec + title and a serial that changes with the active window or its menu (0 = none); `menu_command(id)` queues `GUI_EVENT_MENU(id)` to the active window (`MENU_QUIT` = -1 → `RequestExit`, like the close box). Used by `menubar` + `uikit::Menu`. |
-| Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid` |
+| Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid`, `proc_tree` (v91) |
 | Threads (v67) | `thread_create(fn, arg, stack_size, name)` → tid ≥ 2 (main: 1), −1 no memory, −2 too many (32); `thread_exit(code)` (the main thread: the process); `thread_join(tid, timeout_ms, &code)` → 0, −1 timeout, −2 none / joined already, −3 itself; `thread_self`. `mutex_create`/`mutex_lock(h, timeout)`/`mutex_unlock` (recursive), `event_create(manual, initial)`/`event_set`/`event_reset`/`event_wait(h, timeout)`, `barrier_create(count)`/`barrier_wait` (1 for the last one in), `sync_close` — handles, 256 per process; timeouts in ms, 0 = only try, `KAPI_WAIT_FOREVER`. `post(fn, ctx, value)` → queued for the pump (−1 full: 256); `pump_wait(timeout)` sleeps until an event / a post / the close box, pumps → what was pending. See §7. |
 | Word waits, priority (v68) | `wait_word(addr, expected, timeout_ms)` sleeps while the 4-byte word `*addr == expected` → 0 (woken, or the value differs), 1 timeout (0 ms: only check), −1 bad address (unaligned, unmapped); `wake_word(addr)` → the sleepers woken. Keyed by the **physical** address (a word of a shared surface wakes across processes); the 100 Hz tick also reads every sleeping word and wakes those that changed — an app core's write needs no `wake_word` (≤ 10 ms). `thread_priority(tid 0 self / 1 main / ≥ 2, prio 0 / 1 / −1 ask)` → the previous one, −1 bad prio, −2 no such thread: a "real time" task is picked first when ready and a tick preempts an app for it, while it yields by itself (§5). See §7. |
 | Enumeration | `list_apps`, `list_windows`, `list_tasks`, `list_procs`, `get_datetime` |
@@ -1662,6 +1679,7 @@ rewritten), `posixtest` (`mmap PROT_EXEC`).
 |---|---|---|
 | 225 | `sound_clients (out, max)` | The programs that have a channel now → how many; `out`: up to `max` `struct kapi_sound_client` (`pid`, `name` — the program's, 24 bytes —, `volume` 0..100, `mute`, `peak` — its level now, 0..32767 —, `queued` frames). `0, 0`: only the count. |
 | 227 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program `elegant`. The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT` \| `_CALL`; `KAPI_WS_ATTACH (pid)`, `KAPI_WS_POST (pid, struct kapi_event *)` → 1 queued / 0 full, `KAPI_WS_EXIT (pid)`, `KAPI_WS_BUF_MAP (struct kapi_ws_buf *)`, `KAPI_WS_BUF_FREE (id)`, `KAPI_WS_NEXT (struct kapi_ws_req *)` → 1 / 0, `KAPI_WS_REPLY (struct kapi_ws_reply *)`. A program's (through AppKit): `KAPI_WS_CALL (struct kapi_ws_call *)` → the server's status, `ESRCH` no server; `KAPI_WS_KICK`. AppKit: `kapi_ws_ctl`. |
+| 228 | `proc_tree (pid, op, out, cap)` | (v91) A process's tree, by the parent pids recorded at the spawns (above). `KAPI_TREE_LIST` → how many descendants `pid` has, up to `cap` of their pids into `out` (its children, then theirs…); `KAPI_TREE_KILL` → `pid` and all its descendants terminated now, the leaves first → how many; `KAPI_TREE_KILL_CHILDREN` → its descendants only. `ESRCH` no such process, `EPERM` a kill whose tree holds the caller, `EINVAL`, `EFAULT`. AppKit: `kapi_proc_tree`. |
 | 226 | `sound_client_volume (pid, volume, mute)` | That channel's volume 0..100 (−1: kept) and mute 0 / 1 (−1: kept), applied at once and remembered for the program's **name** until the restart → `volume \| 0x100` if muted, −1: no such channel. Any program may call it (the mixer's panel). |
 
 No existing call changes its shape; what they mean: `sound_acquire` gives **a channel** (1; 0 only when the 8

@@ -57,6 +57,8 @@ KAPI_CALL (int, kapi_list_tasks, (char *b, unsigned s), { return KT->list_tasks 
 KAPI_CALL (int, kapi_kill, (const char *name), { return KT->kill (name); })
 KAPI_CALL (int, kapi_list_procs, (char *b, unsigned s), { return KT->list_procs (b, s); })
 KAPI_CALL (int, kapi_kill_pid, (int pid, int force), { return KT->kill_pid (pid, force); })
+KAPI_CALL (int, kapi_proc_tree, (int pid, int op, int *out, unsigned cap),
+	{ return KT->version >= 91 && KT->proc_tree ? KT->proc_tree (pid, op, out, cap) : -KAPI_ENOSYS; })
 KAPI_CALL (int, kapi_set_keymap, (const char *name), { return KT->set_keymap (name); })
 KAPI_CALL (int, kapi_get_keymap, (char *b, unsigned s), { return KT->get_keymap (b, s); })
 KAPI_CALL (int, kapi_exec, (const char *path, const char *args), { return KT->exec (path, args); })

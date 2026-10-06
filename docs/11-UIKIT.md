@@ -48,13 +48,14 @@
 42. [`uikit/splitter.h`](#uikitsplitterh)
 43. [`uikit/sysclip.h`](#uikitsyscliph)
 44. [`uikit/tabhost.h`](#uikittabhosth)
-45. [`uikit/textarea.h`](#uikittextareah)
-46. [`uikit/textbox.h`](#uikittextboxh)
-47. [`uikit/toggle.h`](#uikittoggleh)
-48. [`uikit/toolbar.h`](#uikittoolbarh)
-49. [`uikit/treeview.h`](#uikittreeviewh)
-50. [`uikit/vpaint.h`](#uikitvpainth)
-51. [`uikit/vumeter.h`](#uikitvumeterh)
+45. [`uikit/tabstrip.h`](#uikittabstriph)
+46. [`uikit/textarea.h`](#uikittextareah)
+47. [`uikit/textbox.h`](#uikittextboxh)
+48. [`uikit/toggle.h`](#uikittoggleh)
+49. [`uikit/toolbar.h`](#uikittoolbarh)
+50. [`uikit/treeview.h`](#uikittreeviewh)
+51. [`uikit/vpaint.h`](#uikitvpainth)
+52. [`uikit/vumeter.h`](#uikitvumeterh)
 
 ---
 
@@ -66,7 +67,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 729 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 744 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -117,6 +118,26 @@ if (uk_messagebox ("Delete", "Delete this file?", MB_YESNO))
 unsigned colour = 0x2060C0;
 if (uk_color_dialog (&colour, "Pick a colour")) root.setBg (colour);
 ```
+
+**Tabs** (`TabStrip`, `uikit/tabstrip.h`): a row of closable tabs over the program's own view — the
+strip shows them, the program shows the chosen one's content. Each tab carries a pointer for the
+program; a close is only **asked** (the cross, a middle click): the program decides, then removes it.
+
+```cpp
+static TabStrip *g_tabs;
+static void onTab (Widget &)   { show (g_tabs->data (g_tabs->selected)); }
+static void onClose (Widget &) { int i = g_tabs->closing; Doc *d = (Doc *) g_tabs->data (i);
+                                 if (doc_close (d)) g_tabs->remove (i); }    // (a question first, if need be)
+static void onNew (Widget &)   { g_tabs->select (g_tabs->add ("Untitled", new_doc ()), true); }
+...
+g_tabs = new TabStrip (0, 0, root.width, 30, onTab);
+g_tabs->onClose = onClose; g_tabs->onNew = onNew;
+g_tabs->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
+root.addChild (g_tabs);
+```
+
+`setTitle (i, s)`, `setMark (i, on)` (a dot: something runs, something new), `selectNext (±1)` (the
+program's Ctrl+Tab), `activeFace` (the chosen tab opens onto the content's colour). The Terminal's tabs.
 
 **The theme**: draw with the palette (`C_BG`, `C_TEXT`, `C_ACCENT`, `C_FACE`…), never with fixed
 colours, so that the program follows the user's theme.
@@ -359,6 +380,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `VSplitter` | (a type) | `splitter.h` |
 | `uk_clip_ready` | SystemKit is there (false: no clipboard -- the field does nothing) | `sysclip.h` |
 | `TabHost` | uikit/tabhost.h -- a section that hosts several "tasks" (apps) and shows ONE at a time, chosen from a popup menu in its header (the activity-shell tab strip, po | `tabhost.h` |
+| `TabStrip` | uikit/tabstrip.h -- TabStrip | `tabstrip.h` |
 | `Textarea` | uikit/textarea.h -- multi-line editable text (own '\n'-separated buffer), caret-driven vertical+horizontal scroll, click to position. | `textarea.h` |
 | `Textbox` | uikit/textbox.h -- single-line editable field | `textbox.h` |
 | `ToggleSwitch` | uikit/toggle.h -- ToggleSwitch | `toggle.h` |
@@ -2412,6 +2434,61 @@ private:
 	const char *titlePtr[MAXTABS];		// stable pointers into titles[] for the Dropdown
 	int	    ntabs, active;
 	static void onPick (Widget &w);		// Dropdown cb -> select the picked tab
+};
+```
+
+## `uikit/tabstrip.h`
+
+uikit/tabstrip.h -- TabStrip: a row of tabs over a view (a terminal's shells, a reader's documents): each a title, a close cross, a mark (a dot: something runs, something new), and a "+" after them. A click picks a tab; the wheel, or selectNext (Ctrl+Tab, Ctrl+PgUp / PgDn: the app's keys), steps through them. The cross or a middle click ASKS for a tab's close: onClose fires with `closing` set, and the app decides (a question first, its own state freed) and calls remove (). The strip only shows the tabs: the app shows the chosen one's content. Each tab carries a pointer for the app (data ()), moved with it when a tab before it goes. The titles are copied; a long one is cut with an ellipsis.
+
+```
+  TabStrip *ts = new TabStrip (0, 0, w, 30, onTab);
+  ts->onClose = onTabClose; ts->onNew = onNewTab;
+  int i = ts->add ("SD:/", myTab); ts->select (i);
+```
+
+MIT licence (Onyx).
+
+```cpp
+class TabStrip : public Widget
+{
+public:
+	static const int MAXTABS = 32;
+	int	 selected;			// the chosen tab (-1: none)
+	int	 closing;			// the tab whose close was asked (onClose's)
+	bool	 closable;			// a close cross on each tab (true)
+	bool	 newButton;			// the "+" after the tabs (true)
+	unsigned activeFace;			// the chosen tab's face: the content's background below it,
+						// which it opens onto (0: the window's, C_BG)
+	Action	 onChange;			// `selected` changed (a click, the wheel, selectNext)
+	Action	 onClose;			// a close asked: the cross, a middle click (closing = the tab)
+	Action	 onNew;				// the "+"
+
+	TabStrip (int l, int t, int w, int h, Action change = 0);
+	int  add (const char *title, void *data = 0);	// at the end -> its index (-1: full)
+	void remove (int i);			// the tabs after it move down; selected follows its tab
+						// (the removed one's: the tab now there, else the one before)
+	int  count () const { return m_n; }
+	void setTitle (int i, const char *title);
+	const char *title (int i) const { return i >= 0 && i < m_n ? m_title[i] : ""; }
+	void *data (int i) const { return i >= 0 && i < m_n ? m_data[i] : 0; }
+	void setData (int i, void *p) { if (i >= 0 && i < m_n) m_data[i] = p; }
+	void setMark (int i, bool on);		// the dot before the title
+	void select (int i, bool fire = false);	// repainted; onChange if fire and it changed
+	void selectNext (int d, bool fire = true);	// d = +1 / -1, round
+	int  tabAt (int mx) const;		// the tab under x (-1: none)
+
+	void onDraw () override;
+	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
+private:
+	char	 m_title[MAXTABS][48];
+	void	*m_data[MAXTABS];
+	bool	 m_mark[MAXTABS];
+	int	 m_n, m_hot, m_hotPart;		// the tab under the pointer; 1 its cross, 2 the "+"
+	int	 m_x[MAXTABS + 1], m_plusX;	// the tabs' edges (m_x[i] .. m_x[i + 1] - gap), the "+"'s
+	bool	 m_mid;				// the middle button held (one close a press)
+	void	 place ();
+	bool	 inCross (int i, int mx, int my) const;
 };
 ```
 
