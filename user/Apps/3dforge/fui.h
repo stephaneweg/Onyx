@@ -16,7 +16,7 @@ namespace forge {
 enum { CMD_NEW = 100, CMD_OPEN, CMD_SAVE, CMD_UNDO, CMD_REDO, CMD_EXPORT, CMD_SK_CANCEL, CMD_SK_FINISH, CMD_SK_CLOSE, CMD_OK, CMD_CANCEL,
        CMD_DELETE, CMD_EDIT_SKETCH, CMD_ROLL_HERE, CMD_ROLL_END, CMD_DEL_ELEMENT, CMD_SHAPES, CMD_SK_START,
        CMD_MODE_DESIGN, CMD_MODE_CAM, CMD_CAM_SETUP, CMD_CAM_TOOL, CMD_CAM_CLEAR, CMD_CAM_CONTOUR, CMD_CAM_SIM, CMD_GCODE, CMD_CAM_BODY, CMD_CAM_DELETE,
-       CMD_PR_SETUP, CMD_PR_RESIN, CMD_PR_SUPPORTS, CMD_PR_LAYERS, CMD_PR_FILE, CMD_PR_GENERATE, CMD_PR_CLEAR, CMD_PR_PRESET, CMD_GEN };
+       CMD_CAM_VALIDATE, CMD_CAM_REVERT, CMD_PR_SETUP, CMD_PR_RESIN, CMD_PR_SUPPORTS, CMD_PR_LAYERS, CMD_PR_FILE, CMD_PR_GENERATE, CMD_PR_CLEAR, CMD_PR_PRESET, CMD_GEN };
 static void cam_presets_save ();			// (main.cpp)
 static void print_presets_save ();
 static void fdm_presets_save ();
@@ -115,7 +115,7 @@ class Ribbon : public Widget
 public:
 	enum { H = 62, MAXHIT = 32 };
 	struct Zone { int x, y, w, h, id; bool tool; } z[MAXHIT]; int nz, hot, down;
-	ABtn *bExport, *bCancel, *bFinish, *bGcode, *bPrint;
+	ABtn *bExport, *bCancel, *bFinish, *bGcode, *bPrint, *bValid, *bRevert;
 	Ribbon (int w) : Widget (0, 0, w, H), nz (0), hot (-1), down (-1)
 	{
 		bExport = new ABtn (w - 108, 14, 98, 28, "Export", CMD_EXPORT, true, I_EXPORT);
@@ -123,10 +123,14 @@ public:
 		bFinish = new ABtn (w - 140, 14, 130, 28, "Finish sketch", CMD_SK_FINISH, true);
 		bGcode = new ABtn (w - 118, 14, 108, 28, "G-code", CMD_GCODE, true, I_GCODE);
 		bPrint = new ABtn (w - 128, 14, 118, 28, "Print file", CMD_PR_FILE, true, I_GCODE);
-		for (ABtn *b : { bExport, bCancel, bFinish, bGcode, bPrint }) { b->anchor = ANCHOR_TOP | ANCHOR_RIGHT; addChild (b); }
+		// (milling: values changed and not yet computed -- beside G-code, as a sketch's Cancel and Finish)
+		bRevert = new ABtn (w - 118 - 10 - 100 - 8 - 84, 14, 84, 28, "Cancel", CMD_CAM_REVERT);
+		bValid = new ABtn (w - 118 - 10 - 100, 14, 100, 28, "Validate", CMD_CAM_VALIDATE, true);
+		for (ABtn *b : { bExport, bCancel, bFinish, bGcode, bPrint, bValid, bRevert }) { b->anchor = ANCHOR_TOP | ANCHOR_RIGHT; addChild (b); }
 		sync ();
 	}
-	void sync () { bExport->hidden = A.sketching || A.camMode; bGcode->hidden = !A.camMode || A.gen != 0; bPrint->hidden = !resin (); bCancel->hidden = bFinish->hidden = !A.sketching; invalidate (true); }
+	void sync () { bExport->hidden = A.sketching || A.camMode; bGcode->hidden = !A.camMode || A.gen != 0; bPrint->hidden = !resin ();
+		bValid->hidden = bRevert->hidden = !(A.camMode && A.gen == 0 && A.camDirty); bCancel->hidden = bFinish->hidden = !A.sketching; invalidate (true); }
 	void zone (int x, int y, int w, int h, int id, bool tool) { if (nz < MAXHIT) { Zone q = { x, y, w, h, id, tool }; z[nz++] = q; } }
 	void onDraw () override
 	{
@@ -763,8 +767,8 @@ public:
 			e.rel = c; A.rectCentre = c; p->applied (); tool_hint (); ui (R_PANELS);
 		}
 		if (w.tag == 3) { A.skPlane = s.selected; ui (R_ALL); }
-		if (w.tag == 10) { A.job.fixed = s.selected == 1; if (A.job.fixed) A.job.size = A.paths.hi - A.paths.lo; cam_refresh (); ui (R_ALL); }
-		if (w.tag == 11 && cam_op ()) { cam_op ()->useFace = s.selected == 1; cam_refresh (); if (s.selected == 1) set_hint ("Click the flat face, turned up, to work on."); ui (R_ALL); }
+		if (w.tag == 10) { A.job.fixed = s.selected == 1; if (A.job.fixed) A.job.size = A.paths.hi - A.paths.lo; cam_touch (); ui (R_ALL); }
+		if (w.tag == 11 && cam_op ()) { cam_op ()->useFace = s.selected == 1; cam_touch (); if (s.selected == 1) set_hint ("Click the flat face, turned up, to work on."); ui (R_ALL); }
 		if (w.tag == 12 && cam_op ()) { cam_op ()->climb = s.selected == 0; cam_touch (); }
 		if (w.tag == 13 && cam_op ()) { cam_op ()->inside = s.selected == 1; cam_touch (); }
 	}
@@ -1061,9 +1065,9 @@ public:
 			{
 				unsigned ic = uk_mix (pc, 0xFFFFFF, 110); bool bad = op->failed;
 				uk_rbox (canvas, 12, camSumY, width - 24, 42, 6, ic, ic); uk_rline (canvas, 12, camSumY, width - 24, 42, 6, uk_tone (C_BG, 104));
-				icon (canvas, bad ? I_WARN : I_CHECK, 20, camSumY + 12, 17, bad ? 0x4A3A10 : C_GREEN, C_ACCENT, ic);
+				icon (canvas, bad || A.camDirty ? I_WARN : I_CHECK, 20, camSumY + 12, 17, bad || A.camDirty ? 0x4A3A10 : C_GREEN, C_ACCENT, ic);
 				UkFaceScope fs (g_small);
-				if (A.camDirty) { uk_text (canvas, 44, camSumY + 13, "computing...", dim_col ()); }
+				if (A.camDirty) { uk_text (canvas, 44, camSumY + 6, "changed", 0x8A5A10); uk_text (canvas, 44, camSumY + 22, "Validate to compute", dim_col ()); }
 				else if (bad) { char fit[64]; uk_text_fit (op->err, width - 70, fit, sizeof fit); uk_text (canvas, 44, camSumY + 13, fit, 0x8A5A10); }
 				else
 				{

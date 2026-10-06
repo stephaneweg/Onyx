@@ -67,6 +67,7 @@ struct App
 	// Manufacture (fcam.h): the setup and its operations, their moves; what the panel shows -- camSel: 0 the setup,
 	// k: its operation k - 1; camPage: 0 the setup, 1 the tool, 2 the operation
 	CamSetup job; CamPaths paths; RMesh stockMesh;
+	CamSetup jobOk;				// (the setup the moves were made from: what Cancel puts back. camDirty: values changed since)
 	bool camMode = false, camSim = false, camDirty = false; int camSel = 0, camPage = 0; unsigned camDirtyT = 0;
 	std::vector<float> simHm; size_t simAt = 0; bool simPlay = false; unsigned simT = 0;	// (the simulation played: the stock so far, the moves done)
 	// ... for a resin printer (fprint.h) -- gen: what Manufacture makes: 0 a router's G-code, 1 a printer's layers.
@@ -496,6 +497,7 @@ static void cam_refresh ()
 	A.paths.lo = lo; A.paths.hi = hi;
 	if (A.job.ops.empty () || !cam_compute (A.doc, A.job, A.paths)) { A.paths.moves.clear (); A.paths.hm.clear (); }
 	A.simHm.clear (); A.simAt = 0; A.simPlay = false;
+	A.jobOk = A.job;
 	cam_hint ();
 }
 // The simulation at its move `target`: the stock as the moves before it leave it (going back: from the start again).
@@ -510,7 +512,19 @@ static void sim_to (size_t target)
 	}
 	cam_sim_advance (p, A.job.tool.dia / 2, A.simHm, A.simAt, target); A.simAt = target;
 }
-static void cam_touch () { A.camDirty = true; A.camDirtyT = kapi_get_ticks (); A.doc.changes++; }
+// A value changed: the moves are NOT made again by themselves (it takes a while, and a value is often half typed) --
+// Validate (or Enter in a field) does it, Cancel puts the values back as they were.
+static void cam_touch ()
+{
+	A.camDirty = true; A.doc.changes++;
+	set_hint ("Changed. Validate computes the moves again with these values; Cancel puts them back.");
+}
+static void cam_revert ()
+{
+	if (!A.camMode || A.gen != 0 || !A.camDirty) return;
+	A.job = A.jobOk; A.camDirty = false; if (A.camSel > (int) A.job.ops.size ()) { A.camSel = 0; A.camPage = 0; }
+	cam_hint (); ui (R_ALL);
+}
 static void cam_enter (bool on)
 {
 	if (A.sketching || on == A.camMode) return;

@@ -50,6 +50,7 @@ static void app_refresh (int what)
 {
 	if (what & R_PANELS) g_rebuild = true;
 	else if ((what & R_FIELDS) && g_props && !g_rebuild) g_props->sync ();
+	if (g_ribbon) g_ribbon->sync ();			// (its buttons follow what is going on: a sketch, values not yet validated)
 	for (Widget *w : { (Widget *) g_time, (Widget *) g_status, (Widget *) g_ribbon, (Widget *) g_props, (Widget *) g_view }) if (w) w->invalidate (true);
 }
 
@@ -459,7 +460,7 @@ static void confirm ()
 static void cancel ()
 {
 	if (printer ()) { if (A.layerPlay) { A.layerPlay = false; A.fdmDrawn = -1; g_view->invalidate (true); ui (0); } return; }
-	if (A.camMode) { if (A.camSim) { A.camSim = false; ui (R_ALL); } return; }
+	if (A.camMode) { if (A.camSim) { A.camSim = false; ui (R_ALL); } else cam_revert (); return; }
 	if (A.sketching)
 	{
 		if (A.selEl >= 0) { A.selEl = -1; ui (R_ALL); return; }
@@ -494,6 +495,8 @@ static void cmd (int id)
 	case CMD_PR_CLEAR: if (resin ()) { A.print.tips.clear (); A.doc.changes++; print_refresh (); ui (R_ALL); } break;
 	case CMD_PR_PRESET: if (resin ()) cmd_print_preset (); break;
 	case CMD_GEN: cmd_gen (); break;
+	case CMD_CAM_VALIDATE: if (A.camMode && A.gen == 0) { cam_refresh (); ui (R_ALL); } break;
+	case CMD_CAM_REVERT: cam_revert (); break;
 	case CMD_CAM_SETUP: if (A.camMode) { A.camSel = 0; A.camPage = 0; A.camSim = false; cam_hint (); ui (R_ALL); } break;
 	case CMD_CAM_TOOL: if (A.camMode) { A.camPage = 1; A.camSim = false; cam_hint (); ui (R_ALL); } break;
 	case CMD_CAM_CLEAR: if (A.camMode) cam_add (CAM_CLEAR); break;
@@ -541,7 +544,6 @@ public:
 	void onTick () override
 	{
 		// (Manufacture: the moves made again once the values have stopped changing for a moment)
-		if (A.camMode && A.gen == 0 && A.camDirty && kapi_get_ticks () - A.camDirtyT > 40) { cam_refresh (); ui (0); }
 		if (A.camMode && A.gen == 0 && A.camSim && A.simPlay && kapi_get_ticks () - A.simT >= 3)		// (the cut played)
 		{
 			size_t n = A.paths.moves.size (), by = n / 300 < 1 ? 1 : n / 300; A.simT = kapi_get_ticks ();

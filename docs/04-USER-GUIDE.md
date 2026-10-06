@@ -2395,8 +2395,11 @@ order they are run. Everything is kept in the `.3df`.
 ![Manufacture: a clearing and a contour](../screenshots/3dforge-cam-ops.png)
 *The moves: cuts in blue, fast moves in orange; the selected operation's are the strong ones.*
 
-The moves are computed again a moment after a value changes; each operation shows the length cut, its time and
-its lowest Z. **Simulate** shows what is left of the stock once every operation is done; the bar at the left goes
+**Nothing is computed while you change values**: when one has changed, **Validate** and **Cancel** appear beside
+*G-code* — *Validate* (or Enter in a field) computes the moves again with the new values, *Cancel* (or Esc) puts
+the values back as they were at the last computation. (The origin and the direction of X need no computation: they
+apply at once. Asking for the G-code or the simulation validates first.) Each operation shows the length cut, its
+time and its lowest Z. **Simulate** shows what is left of the stock once every operation is done; the bar at the left goes
 through the cut — drag it — and its **Play** button runs it, the tool shown where it is (Esc comes back to the
 moves) — a hole that only a tool lying on its side could cut stays full: the router has three axes.
 
