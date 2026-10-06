@@ -4620,7 +4620,9 @@ NEXT k
 And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
 
 - **Types**: `%` INTEGER, `&` LONG, `!` SINGLE, `#` DOUBLE (or `AS INTEGER` …, `DEFINT A-Z` …,
-  `DEFSTR`); INTEGER / LONG round when stored and raise *Overflow*; DOUBLEs print 15 digits;
+  `DEFSTR`); INTEGER (16 bits) / LONG (32 bits) round when stored and raise *Overflow*; DOUBLEs print 15 digits;
+  beyond QBasic: `AS BYTE` (0 to 255: a character's code -- `ASC`, `CHR$` --, one byte in a TYPE written to a file)
+  and `AS _INTEGER64` (or `INTEGER64`: a whole number of 64 bits, rounded when stored; exact up to 2^53);
   fixed strings `STRING * n`. **User types**: `TYPE … END TYPE` records (nested, in arrays,
   passed to SUBs, copied by `=`), `LEN (var)` their size; a TYPE **only holds data** — methods
   are for a `CLASS` (below; since 2026-10-05 `SUB Point.Test` on a TYPE is an error: write
@@ -5061,9 +5063,10 @@ two stars ask. On the right: the level's card (its title, what to do; **Hint** �
 — F1 — the card of the level's idea, shown by itself the first time a new idea comes), the board, and the
 message bar.
 
-**The turtle's words** (the French names in brackets, when the system's language is French — the Control
-Panel's **Language & Region**, §11; the English words keep working, and so do the first versions' `AVANCE`,
-`RECULE`, `RAMASSE`, `REPETE`...):
+**The turtle's words** (the French names in brackets). A program may be written **in English or in French
+whatever the system's language** (even mixed): the language — the Control Panel's **Language & Region**, §11 —
+only chooses the words the game shows (the palette, the lessons, the hints, the messages). The first versions' `AVANCE`,
+`RECULE`, `RAMASSE`, `REPETE`... keep working:
 
 | Word | What it does |
 |---|---|
@@ -5087,10 +5090,11 @@ In French, **BASIC's own words** have their names too — the whole program can 
 | `SUB Nom` ... `FIN SUB`, `FONCTION Nom` ... `FIN FONCTION`, `RETOUR`, `APPELER`, `SORTIR` | `SUB` ... `END SUB`, `FUNCTION` ... `END FUNCTION`, `RETURN`, `CALL`, `EXIT` |
 | `CLASSE` ... `FIN CLASSE`, `HERITE`, `NOUVEAU`, `CECI`, `RIEN` | `CLASS` ... `END CLASS`, `EXTENDS`, `NEW`, `THIS`, `NOTHING` |
 | `DIM n COMME ENTIER`, `s COMME CHAINE`, `CONSTANTE` | `DIM n AS INTEGER`, `s AS STRING`, `CONST` |
+| the types: `OCTET` (0 to 255), `ENTIER` (16 bits), `LONG` (32), `ENTIER64` (64), `SIMPLE`, `DOUBLE`, `CHAINE` | `BYTE`, `INTEGER`, `LONG`, `_INTEGER64`, `SINGLE`, `DOUBLE`, `STRING` |
 | `SELON CAS` ... `CAS` ... `FIN SELON` | `SELECT CASE` ... `CASE` ... `END SELECT` |
 | `ET`, `OU`, `NON`, `AFFICHER`, `SAISIR` | `AND`, `OR`, `NOT`, `PRINT`, `INPUT` |
 
-These words are then reserved (a variable cannot be called `pas`, `cas`, `fin`, `si`...). The error messages name
+These words are reserved in both languages (a variable cannot be called `pas`, `cas`, `fin`, `si`...). The error messages name
 the French words ("ce POUR n'a pas de SUITE pour le fermer"). (The parentheses of a sensor may be left out: `WALL`.)
 
 **Winning and the stars.** A level is won when the program **ends** with the turtle on the flag (if the level

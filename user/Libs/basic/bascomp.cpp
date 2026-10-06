@@ -373,7 +373,7 @@ public:
 		{
 			TSpec t = nameSpec (name);
 			int n = bslen (nm);
-			nm[n] = t.ty == TY_STR ? '$' : t.nt == NT_INT ? '%' : t.nt == NT_LNG ? '&' : t.nt == NT_DBL ? '#' : '!';
+			nm[n] = t.ty == TY_STR ? '$' : t.nt == NT_INT ? '%' : t.nt == NT_LNG ? '&' : ntWide (t.nt) ? '#' : '!';
 			nm[n + 1] = 0;
 		}
 		makeKey (key, nm, arr);
@@ -443,12 +443,12 @@ public:
 		}
 		return var (nm, false, &ts);
 	}
-	void loadVar (const Var &v) { emit2 (v.global ? OP_LDG : OP_LDL, v.slot); if (v.ty == TY_NUM && v.nt == NT_DBL) dblSeen = true; }
+	void loadVar (const Var &v) { emit2 (v.global ? OP_LDG : OP_LDL, v.slot); if (v.ty == TY_NUM && ntWide (v.nt)) dblSeen = true; }
 	void storeVar (const Var &v) { emit2 (v.global ? OP_STG : OP_STL, v.slot); }
 	// Before a store: INTEGER / LONG round and check the range, fixed strings pad / cut.
 	void convFor (int ty, int nt, int flen)
 	{
-		if (ty == TY_NUM && (nt == NT_INT || nt == NT_LNG)) emit2 (OP_CONV, nt);
+		if (ty == TY_NUM && ntWhole (nt)) emit2 (OP_CONV, nt);
 		else if (ty == TY_STR && flen > 0) emit2 (OP_FIXSTR, flen);
 	}
 
@@ -465,7 +465,7 @@ public:
 		for (int i = 0; i < t.nf; i++) if (bseq (fnames[t.first + i].name, n)) return t.first + i;
 		return -1;
 	}
-	static int ntSize (int nt) { return nt == NT_INT ? 2 : nt == NT_DBL ? 8 : 4; }
+	static int ntSize (int nt) { return nt == NT_BYTE ? 1 : nt == NT_INT ? 2 : ntWide (nt) ? 8 : 4; }
 	int specSize (const TSpec &t) { return t.ty >= TY_REC ? (tkind (t.ty) ? 4 : P->types[t.ty - TY_REC].size) : t.ty == TY_STR ? t.flen : ntSize (t.nt); }
 	// TK_TYPE (also for numbers and strings), TK_CLASS or TK_IFACE; isObj: a reference (an object, NOTHING).
 	int tkind (int ty) { return ty >= TY_REC ? P->types[ty - TY_REC].kind : TK_TYPE; }
@@ -477,8 +477,10 @@ public:
 		if (bseq (w, "STRING")) { ts.ty = TY_STR; return true; }
 		if (bseq (w, "INTEGER")) { ts.nt = NT_INT; return true; }
 		if (bseq (w, "LONG")) { ts.nt = NT_LNG; return true; }
+		if (bseq (w, "BYTE")) { ts.nt = NT_BYTE; return true; }		// (0..255: a character's code, a byte of a file or of a structure)
 		if (bseq (w, "SINGLE")) return true;
-		if (bseq (w, "DOUBLE") || bseq (w, "_INTEGER64")) { ts.nt = NT_DBL; return true; }
+		if (bseq (w, "DOUBLE")) { ts.nt = NT_DBL; return true; }
+		if (bseq (w, "_INTEGER64") || bseq (w, "INTEGER64")) { ts.nt = NT_I64; return true; }	// (a 64-bit whole number: rounded at a store, as INTEGER and LONG)
 		int t = findType (w);
 		if (t >= 0) { ts.ty = TY_REC + t; return true; }
 		return false;
@@ -522,7 +524,7 @@ public:
 			if (ts.ty == TY_STR && toks[p].t == T_OP && toks[p].op == '*' && toks[p + 1].t == T_NUM) { ts.flen = (int) toks[p + 1].num; p += 2; }
 			fnm.ty = ts.ty; fnm.nt = ts.nt; fnm.flen = ts.flen;
 			FieldInfo fi;
-			fi.kind = ts.ty >= TY_REC ? FK_REC : ts.ty == TY_STR ? (ts.flen > 0 ? FK_FSTR : FK_VSTR) : ts.nt == NT_INT ? FK_INT : ts.nt == NT_LNG ? FK_LNG : ts.nt == NT_DBL ? FK_DBL : FK_SNG;
+			fi.kind = ts.ty >= TY_REC ? FK_REC : ts.ty == TY_STR ? (ts.flen > 0 ? FK_FSTR : FK_VSTR) : ts.nt == NT_BYTE ? FK_BYTE : ts.nt == NT_INT ? FK_INT : ts.nt == NT_LNG ? FK_LNG : ntWide (ts.nt) ? FK_DBL : FK_SNG;
 			fi.len = ts.flen; fi.sub = ts.ty >= TY_REC ? ts.ty - TY_REC : 0;
 			size += specSize (ts);
 			P->fields.push (fi); fnames.push (fnm); nf++;
@@ -1234,7 +1236,7 @@ public:
 		int pi = findProc (name);
 		if (pi >= 0 && pdecls[pi].isFunc)
 		{
-			if (pdecls[pi].retTy == TY_NUM && pdecls[pi].retNt == NT_DBL) dblSeen = true;
+			if (pdecls[pi].retTy == TY_NUM && ntWide (pdecls[pi].retNt)) dblSeen = true;
 			if (curProc == pi && !peekIsOp ('('))
 			{ next (); emit2 (OP_LDL, 0); return pdecls[pi].retTy; }
 			next ();
@@ -1255,7 +1257,7 @@ public:
 			int bm = baseMethod ();
 			if (bm < 0) return TY_NUM;
 			if (!pdecls[bm].isFunc) { fail2 ("A SUB has no value: ", pdecls[bm].name); return TY_NUM; }
-			if (pdecls[bm].retTy == TY_NUM && pdecls[bm].retNt == NT_DBL) dblSeen = true;
+			if (pdecls[bm].retTy == TY_NUM && ntWide (pdecls[bm].retNt)) dblSeen = true;
 			return postfix (callMethod (bm, true, true));
 		}
 		if (isKeyword (name)) { fail2 ("Syntax error near ", name); return TY_NUM; }
@@ -1264,7 +1266,7 @@ public:
 		if (r.method >= 0)					// obj.Method (args)
 		{
 			if (!pdecls[r.method].isFunc) { fail2 ("A SUB has no value: ", pdecls[r.method].name); return TY_NUM; }
-			if (pdecls[r.method].retTy == TY_NUM && pdecls[r.method].retNt == NT_DBL) dblSeen = true;
+			if (pdecls[r.method].retTy == TY_NUM && ntWide (pdecls[r.method].retNt)) dblSeen = true;
 			emitThis (r);
 			return postfix (callMethod (r.method, true));
 		}
@@ -1287,12 +1289,12 @@ public:
 				if (*c == '.') c++;
 				if (t < TY_REC) { fail2 ("Not a record: .", part); return TY_NUM; }
 				int f = findField (t - TY_REC, part);
-				if (f >= 0) { emit2 (OP_FLD, f - P->types[t - TY_REC].first); t = fnames[f].ty; if (t == TY_NUM && fnames[f].nt == NT_DBL) dblSeen = true; continue; }
+				if (f >= 0) { emit2 (OP_FLD, f - P->types[t - TY_REC].first); t = fnames[f].ty; if (t == TY_NUM && ntWide (fnames[f].nt)) dblSeen = true; continue; }
 				int m = findMethod (t, part);
 				if (m < 0) { fail2 ("No such field or method: ", part); return TY_NUM; }
 				if (*c) { fail2 ("A method call ends the name: ", part); return TY_NUM; }
 				if (!pdecls[m].isFunc) { fail2 ("A SUB has no value: ", pdecls[m].name); return TY_NUM; }
-				if (pdecls[m].retTy == TY_NUM && pdecls[m].retNt == NT_DBL) dblSeen = true;
+				if (pdecls[m].retTy == TY_NUM && ntWide (pdecls[m].retNt)) dblSeen = true;
 				t = callMethod (m, true);
 			}
 		}
@@ -1402,7 +1404,7 @@ public:
 		if (r.arr) emit3 (r.global ? OP_ALDG : OP_ALDL, r.slot, r.nd);
 		else emit2 (r.global ? OP_LDG : OP_LDL, r.slot);
 		for (int i = 0; i < r.nfld; i++) emit2 (OP_FLD, r.fld[i]);
-		if (r.ty == TY_NUM && r.nt == NT_DBL) dblSeen = true;
+		if (r.ty == TY_NUM && ntWide (r.nt)) dblSeen = true;
 	}
 	void emitAddr (const Ref &r)
 	{
@@ -2796,7 +2798,7 @@ public:
 			const char *s = 0; int sl = 0;
 			if (!constAdd (&c.ty, &c.n, &s, &sl)) { fail ("CONST needs a constant value"); return; }
 			c.sidx = c.ty == TY_STR ? strConst (s, sl) : -1;
-			c.dbl = nameSpec (c.name).nt == NT_DBL;
+			c.dbl = ntWide (nameSpec (c.name).nt);
 			if (findConst (c.name) >= 0) { fail2 ("Duplicate CONST: ", c.name); return; }
 			consts.push (c);
 			if (!acceptOp (',')) break;
@@ -2899,7 +2901,7 @@ public:
 				emit (get ? OP_FGET : OP_FPUT); emit (1);
 				if (tkind (r.ty)) { fail ("GET / PUT: not for an object (a CLASS)"); return; }
 				int kind = r.ty >= TY_REC ? LK_REC : r.ty == TY_STR ? (r.flen > 0 ? LK_FSTR : LK_VSTR)
-					 : r.nt == NT_INT ? LK_INT : r.nt == NT_LNG ? LK_LNG : r.nt == NT_DBL ? LK_DBL : LK_SNG;
+					 : r.nt == NT_BYTE ? LK_BYTE : r.nt == NT_INT ? LK_INT : r.nt == NT_LNG ? LK_LNG : ntWide (r.nt) ? LK_DBL : LK_SNG;
 				emit (kind); emit (r.ty >= TY_REC ? r.ty - TY_REC : r.flen);
 				var = true;
 			}

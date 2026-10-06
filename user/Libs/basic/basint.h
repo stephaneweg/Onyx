@@ -43,7 +43,12 @@ private:
 // Value types at compile time: TY_NUM, TY_STR, or a user TYPE (TY_REC + its index).
 enum { TY_NUM = 0, TY_STR = 1, TY_NIL = 2, TY_REC = 16 };		// (TY_NIL: the literal NOTHING)
 // Numeric sub-types (the storage of a variable): single (the default), INTEGER, LONG, DOUBLE.
-enum { NT_SNG = 0, NT_INT, NT_LNG, NT_DBL };
+// A number's type. NT_I64 (_INTEGER64) and NT_BYTE (BYTE: 0..255, a character's code) came after the .bax format:
+// added at the end. A whole type is rounded at a store (OP_CONV); a wide one keeps every digit (a double: a whole
+// number is exact up to 2^53).
+enum { NT_SNG = 0, NT_INT, NT_LNG, NT_DBL, NT_I64, NT_BYTE };
+static inline bool ntWhole (int nt) { return nt == NT_INT || nt == NT_LNG || nt == NT_I64 || nt == NT_BYTE; }
+static inline bool ntWide (int nt) { return nt == NT_DBL || nt == NT_I64; }
 
 // ---- bytecode ------------------------------------------------------------------------------
 enum Op
@@ -120,7 +125,7 @@ static inline int opLen (int op)
 }
 
 // GET / PUT # layout of a variable: a scalar kind, or a record (ext = its type).
-enum { LK_SNG = 1, LK_INT, LK_LNG, LK_DBL, LK_VSTR, LK_FSTR, LK_REC };
+enum { LK_SNG = 1, LK_INT, LK_LNG, LK_DBL, LK_VSTR, LK_FSTR, LK_REC, LK_BYTE };	// (LK_BYTE: one byte, 0..255)
 
 // Builtin functions (OP_BI) and statements (OP_ST).
 enum Builtin
@@ -173,7 +178,7 @@ struct DataItem { char *text; bool isStr; };
 enum { K_NUM = 0, K_STR = 1, K_NUMARR = 2, K_STRARR = 3, K_REC = 4, K_RECARR = 5 };
 
 // User TYPEs at run time: the field layout (GET / PUT, LEN, new records).
-enum { FK_SNG = LK_SNG, FK_INT = LK_INT, FK_LNG = LK_LNG, FK_DBL = LK_DBL, FK_VSTR = LK_VSTR, FK_FSTR = LK_FSTR, FK_REC = LK_REC };
+enum { FK_SNG = LK_SNG, FK_INT = LK_INT, FK_LNG = LK_LNG, FK_DBL = LK_DBL, FK_VSTR = LK_VSTR, FK_FSTR = LK_FSTR, FK_REC = LK_REC, FK_BYTE = LK_BYTE };
 struct FieldInfo { int kind; int len; int sub; };	// len: FSTR length / REC type (sub)
 // A TYPE (a value), a CLASS (a reference: kind TK_CLASS) or an INTERFACE. A class: its parent (-1), its
 // virtual methods' procedures at vtab[vt .. vt + nvt) (-1: abstract), the interfaces it implements at

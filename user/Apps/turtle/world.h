@@ -6,7 +6,7 @@
 // A program is Onyx BASIC (user/Libs/basic) with the turtle's words (bas::setDialect): FORWARD, BACK, LEFT, RIGHT,
 // PENUP, PENDOWN, COLOR, PICK, the sensors WALL (), WALLLEFT (), WALLRIGHT (), FRONT (), ONGOAL (), ITEM (), KEYS (),
 // HEADING (), and REPEAT n ... END REPEAT; French names beside (AVANCER, GAUCHE, REPETER, SI, TANTQUE, FONCTION...)
-// when the system's language is French. run_program () compiles it and runs it at once on a copy of the level, with the VM's
+// -- both are known whatever the system's language, which chooses the ones shown. run_program () compiles it and runs it at once on a copy of the level, with the VM's
 // statement hook (Host::lineHook): every statement started, every move, turn, pick is an event of the record --
 // the app shows them one by one (the line lit, the turtle walking), at the speed chosen or a statement a step.
 // A wall hit, a locked door, nothing to pick: a run-time error at that line; a run that never ends is stopped.
@@ -81,7 +81,8 @@ static const bas::ExtWord WORDS[] = {
 // French gives BASIC -- the turtle's (their short forms, the imperative of the first versions: AVANCE, RAMASSE...),
 // then the language's: SI ... ALORS / SINON SI / SINON / FIN SI, POUR i = 1 JUSQUE 5 PAS 2 ... SUITE,
 // REPETER n ... FIN REPETER, TANTQUE ... FIN TANTQUE, FAIRE ... BOUCLE JUSQUA, SUB ... FIN SUB, FONCTION ... FIN
-// FONCTION, CLASSE ... FIN CLASSE, DIM n COMME ENTIER, s COMME CHAINE. The English words stay known.
+// FONCTION, CLASSE ... FIN CLASSE, DIM n COMME ENTIER (16 bits; OCTET: 8, LONG: 32, ENTIER64: 64), x COMME SIMPLE (DOUBLE),
+// s COMME CHAINE. The English words stay known.
 static const char *const FR_NAME[W_COUNT_] = { "", "AVANCER", "RECULER", "GAUCHE", "DROITE", "LEVERCRAYON", "BAISSERCRAYON", "COULEUR", "RAMASSER",
 	"MUR", "MURGAUCHE", "MURDROITE", "DEVANT", "SURBUT", "OBJET", "CLES", "CAP" };
 static const char *const ALIASES_FR[] = {
@@ -97,18 +98,19 @@ static const char *const ALIASES_FR[] = {
 	"PROCEDURE", "SUB", "FONCTION", "FUNCTION", "RETOUR", "RETURN", "APPELER", "CALL", "APPELLE", "CALL", "SORTIR", "EXIT",
 	"CLASSE", "CLASS", "HERITE", "EXTENDS", "IMPLEMENTE", "IMPLEMENTS", "VIRTUEL", "VIRTUAL", "REDEFINIT", "OVERRIDE", "ABSTRAIT", "ABSTRACT",
 	"NOUVEAU", "NEW", "CECI", "THIS", "RIEN", "NOTHING",
-	"COMME", "AS", "ENTIER", "INTEGER", "CHAINE", "STRING", "CONSTANTE", "CONST", "PARTAGE", "SHARED", "STATIQUE", "STATIC",
+	"COMME", "AS", "ENTIER", "INTEGER", "ENTIER64", "_INTEGER64", "OCTET", "BYTE", "SIMPLE", "SINGLE", "CHAINE", "STRING", "CONSTANTE", "CONST", "PARTAGE", "SHARED", "STATIQUE", "STATIC",
 	"SELON", "SELECT", "CAS", "CASE", "ET", "AND", "OU", "OR", "NON", "NOT",
 	"AFFICHER", "PRINT", "AFFICHE", "PRINT", "SAISIR", "INPUT", 0 };
 // BASIC's words as a French program shows them (a message's "FOR without NEXT": POUR, SUITE)
 static const char *const SHOWN_FR[] = { "REPEAT", "REPETER", "IF", "SI", "THEN", "ALORS", "ELSE", "SINON", "ELSEIF", "SINON SI", "END", "FIN",
 	"FOR", "POUR", "TO", "JUSQUE", "STEP", "PAS", "NEXT", "SUITE", "WHILE", "TANTQUE", "WEND", "FIN TANTQUE", "DO", "FAIRE", "LOOP", "BOUCLE",
 	"UNTIL", "JUSQUA", "FUNCTION", "FONCTION", "RETURN", "RETOUR", "CALL", "APPELER", "EXIT", "SORTIR", "CLASS", "CLASSE", "AS", "COMME",
-	"INTEGER", "ENTIER", "STRING", "CHAINE", "SELECT", "SELON", "CASE", "CAS", "AND", "ET", "OR", "OU", "NOT", "NON", "PRINT", "AFFICHER",
+	"INTEGER", "ENTIER", "BYTE", "OCTET", "SINGLE", "SIMPLE", "STRING", "CHAINE", "SELECT", "SELON", "CASE", "CAS", "AND", "ET", "OR", "OU", "NOT", "NON", "PRINT", "AFFICHER",
 	"INPUT", "SAISIR", 0 };
-static const bas::Dialect DIALECT_EN = { WORDS, 0, true, false };
-static const bas::Dialect DIALECT_FR = { WORDS, ALIASES_FR, true, true };
-static inline void set_language (int lang) { bas::setDialect (lang == LANG_FR ? &DIALECT_FR : &DIALECT_EN); }
+// One dialect, whatever the language: a program compiles in French as in English (and mixed) -- the language only
+// chooses the words shown (the palette, the lessons, the messages).
+static const bas::Dialect DIALECT = { WORDS, ALIASES_FR, true, true };
+static inline void set_language (int) { bas::setDialect (&DIALECT); }
 static inline int word_id (const char *w)
 {
 	char u[24]; int n = 0; for (; w[n] && n < 23; n++) u[n] = tup (w[n]); u[n] = 0;

@@ -113,6 +113,12 @@ int main (int argc, char **argv)
 		play (*hello, "CLASSE Compteur\n  n COMME ENTIER\nFIN CLASSE\nSUB Compteur.Plus ()\n  CECI.n = CECI.n + 1\nFIN SUB\n"
 			"DIM c COMME Compteur\nc = NOUVEAU Compteur\nREPETER 4\n  c.Plus\nFIN REPETER\nAVANCER c.n\n", LANG_FR, R);
 		CHECK (R.result == R_WON, "CLASSE: %d line %d %s", R.result, R.errLine, R.msg);
+		play (*corner, "AVANCER 2\nRIGHT\nPOUR i = 1 TO 2\n  FORWARD\nSUITE\nGAUCHE\nAVANCER 2\nDROITE\nSI 1 THEN FORWARD\n", LANG_EN, R);
+		CHECK (R.result == R_WON, "French words when the language is English, mixed: %d line %d %s", R.result, R.errLine, R.msg);
+		play (*hello, "DIM a COMME ENTIER64\nDIM x COMME SIMPLE\nDIM d COMME DOUBLE\nDIM l COMME LONG\nDIM o COMME OCTET\na = 7 / 2\nx = 0.5\nd = 3000000000 + x\na = a + d - 3000000000\nl = 70000\no = ASC (\"A\") + 0.2\nAVANCER a\nAFFICHER STR$ (a) + STR$ (l) + STR$ (o) + CHR$ (o)\n", LANG_FR, R);
+		CHECK (R.result == R_WON && R.out && strstr (R.out, " 4 70000 65A"), "ENTIER64 (a whole number), SIMPLE, DOUBLE, LONG, OCTET: %d line %d %s [%s]", R.result, R.errLine, R.msg, R.out ? R.out : "");
+		play (*hello, "DIM o AS BYTE\no = 256\n", LANG_EN, R);
+		CHECK (R.result == R_ERROR && R.errLine == 2, "a BYTE holds 0 to 255: %d line %d %s", R.result, R.errLine, R.msg);
 		play (*hello, "SI 1 ALORS AVANCER 4 SINON SI 0 ALORS AVANCER 1\n", LANG_FR, R);
 		CHECK (R.result == R_WON, "SINON SI inside a line stays ELSE IF: %d line %d %s", R.result, R.errLine, R.msg);
 		play (*corner, "FORWARD 2\nRIGHT\nFORWARD 2\nLEFT\nFORWARD 2\nRIGHT\nFORWARD\nPRINT \"done\"; 4 * 2\n", LANG_EN, R);

@@ -732,11 +732,11 @@ public:
 	void serNum (double v, int kind)
 	{
 		unsigned char b[8];
-		if (kind == LK_INT || kind == LK_LNG)
+		if (kind == LK_INT || kind == LK_LNG || kind == LK_BYTE)
 		{
 			double r = roundEven (v);
 			long long x = (long long) r;
-			int n = kind == LK_INT ? 2 : 4;
+			int n = kind == LK_BYTE ? 1 : kind == LK_INT ? 2 : 4;
 			for (int i = 0; i < n; i++) b[i] = (unsigned char) (x >> (8 * i));
 			sput (b, n);
 		}
@@ -745,6 +745,7 @@ public:
 	}
 	static double deNum (const unsigned char *b, int kind)
 	{
+		if (kind == LK_BYTE) return (double) b[0];
 		if (kind == LK_INT) return (double) (short) (b[0] | (b[1] << 8));
 		if (kind == LK_LNG) return (double) (int) ((unsigned) b[0] | ((unsigned) b[1] << 8) | ((unsigned) b[2] << 16) | ((unsigned) b[3] << 24));
 		if (kind == LK_SNG) { union { float f; unsigned u; } c; c.u = (unsigned) b[0] | ((unsigned) b[1] << 8) | ((unsigned) b[2] << 16) | ((unsigned) b[3] << 24); return c.f; }
@@ -752,12 +753,12 @@ public:
 		for (int i = 0; i < 8; i++) c.u |= (unsigned long long) b[i] << (8 * i);
 		return c.d;
 	}
-	static int kindSize (int kind) { return kind == LK_INT ? 2 : kind == LK_DBL ? 8 : 4; }
+	static int kindSize (int kind) { return kind == LK_BYTE ? 1 : kind == LK_INT ? 2 : kind == LK_DBL ? 8 : 4; }
 	void serialize (const V &v, int kind, int ext, bool random)
 	{
 		switch (kind)
 		{
-		case LK_SNG: case LK_INT: case LK_LNG: case LK_DBL: serNum (v.n, kind); break;
+		case LK_SNG: case LK_INT: case LK_LNG: case LK_DBL: case LK_BYTE: serNum (v.n, kind); break;
 		case LK_VSTR:
 		{
 			int n; const char *s = sdata (v, &n);
@@ -792,7 +793,7 @@ public:
 		auto get = [&] (unsigned char *o, int k) { for (int i = 0; i < k; i++) o[i] = *at + i < n ? (unsigned char) b[*at + i] : 0; *at += k; };
 		switch (kind)
 		{
-		case LK_SNG: case LK_INT: case LK_LNG: case LK_DBL:
+		case LK_SNG: case LK_INT: case LK_LNG: case LK_DBL: case LK_BYTE:
 		{
 			unsigned char t[8]; get (t, kindSize (kind));
 			vclear (v); v.t = VN; v.n = deNum (t, kind); break;
@@ -2634,6 +2635,8 @@ public:
 				double v = popN (), r = roundEven (v);
 				if (nt == NT_INT && (r < -32768 || r > 32767)) { fail ("Overflow"); break; }
 				if (nt == NT_LNG && (r < -2147483648.0 || r > 2147483647.0)) { fail ("Overflow"); break; }
+				if (nt == NT_BYTE && (r < 0 || r > 255)) { fail ("Overflow"); break; }
+				if (nt == NT_I64 && (r < -9223372036854775808.0 || r >= 9223372036854775808.0)) { fail ("Overflow"); break; }
 				pushN (r);
 				break;
 			}

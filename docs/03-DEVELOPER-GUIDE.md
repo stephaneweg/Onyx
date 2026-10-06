@@ -3529,7 +3529,11 @@ barwidth = 40
   the built-ins' spec), word **aliases** (pairs `"AVANCER", "FORWARD"`, `"SI", "IF"`: the lexer replaces the word
   -- another language's keywords; the word before a dot too: `CECI.n` is `THIS.n`), **`Dialect::twoWords`** (such
   a language's ELSEIF and WEND written in two words: at a statement's start `ELSE IF` is `ELSEIF` and `END WHILE`
-  is `WEND` -- French's `SINON SI`, `FIN TANTQUE`; inside a one-line IF, `ELSE IF` stays a nested IF) and the block **`REPEAT n ... END REPEAT`** (`Dialect::repeat`; the count is
+  is `WEND` -- French's `SINON SI`, `FIN TANTQUE`; inside a one-line IF, `ELSE IF` stays a nested IF). Turtle Quest
+  sets one dialect whatever the language (a program compiles in French as in English). Number types since
+  2026-10-06 (`basint.h`): `NT_I64` (`_INTEGER64`: a whole number, rounded at a store -- it was a synonym of
+  DOUBLE) and `NT_BYTE` (`BYTE`: 0..255, `LK_BYTE` one byte in a record); `ntWhole ()` / `ntWide ()` say which
+  are rounded at a store and which keep every digit; the JIT leaves a function that converts to them to the VM and the block **`REPEAT n ... END REPEAT`** (`Dialect::repeat`; the count is
   evaluated once, into a hidden variable). The words are reserved while the dialect is set and take precedence
   over a built-in of the same name (a turtle's `COLOR`). They compile to `OP_ST S_EXT` / `OP_BI B_EXT` with the
   word's id as the first argument; the VM calls **`Host::ext (id, args, argc, result, why, cap)`** -- false is a
