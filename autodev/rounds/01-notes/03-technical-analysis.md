@@ -390,3 +390,84 @@ and `notes.ini` through the model — then Stickies writes too: keep it last); s
 | 31 `packages.ini` `[notes]` (not published) | 8 | review |
 | 32 MIT notices; no kapi/kernel change; UIKit `.abi` appended + docs regenerated | 1, all | review |
 | 33 on the Pi | — | **user** |
+
+---
+
+## 8. GUI plan (added by the UX Designer, 2026-10-06 — see `04-ux-design.md`)
+
+The UX design (`04-ux-design.md`, its pictures in `mockups/`, rendered by UIKit in the simulator by
+`mockups/mockups.sh` + `mockups/notes_mock.cpp`) fixes the window, the menus, the states and the widget. The steps
+of §5 stay in their order; this section **adds to** them (G-items, run inside the step named) and lists what it
+**changes**. `notes_mock.cpp` is MIT and may be lifted from: its `NoteList::onDraw`, the Stickies `card ()`, the
+colour constants and `wall_text` are the drawing the design asks for.
+
+### 8.1 Changed against the original plan
+
+| Was (03 §1–§5) | Now | Why (04) |
+|---|---|---|
+| UIKit change: `uk_text_wrap` only | **+ `uk_text_over`** (text over a see-through canvas, blended by coverage, with a face or the bitmap fonts; shadow: none / soft / engraved) **+ `WKT_TRASH`, `WKT_PIN`** tool icons (appended before `WKT_COUNT`) | D11 (a face's `uk_text` ignores the alpha mode: the header came out garbled), D13 (reusable icons, kits first) |
+| Toolbar "colour palette as a split button or 6 dots" | **six round `ToolButton` toggles** (`ToolIconFn` drawing the dot), the current one lit | D5 |
+| `NoteEdit : Textarea` with the theme's colours | `NoteEdit` **in the note's paper** (`setColors`) and a **15-px `FtTextFace`** in a `UkFaceScope` around `onDraw` / `onMouse` / `onKey` | D6 |
+| New Note: a plain `ToolButton` | `ToolButton` `filled = true`, `setOn (true)`, not a toggle (the accent pill of Mail / Calendar) | D7 |
+| A note emptied → `kapi_remove` | → the **Trash** (`notes_trash`), no notification | D3 |
+| R3: only launch Stickies, no autostart write | Notes **appends `run stickies`** to `SD:/etc/autostart` when it starts Stickies and no active line runs it (never edits other lines; never on Hide) | D2 |
+| — | A failed save: red status line, retry at each pause; at quit, the text **to the clipboard** + a notification | D8 |
+| Menus: File (New ^N, Delete ^D, Open in Text Editor, Export…), Edit, Note, View | the same, **+ Ctrl+E** for Open in Text Editor, Delete Note last in File after a separator, Copy Note without shortcut, *Find… ^F* first in View; labels exactly as 04 §3 | D1, 04 §3 |
+| Stickies: fixed-height cards, window ~240 wide, `kapi_resize_window` on change | cards **of their own height** (60–145 px, ≤ 6 body lines), window **240 × (screen_h − 160)** made once, the area under the cards fully see-through (click-through); default **x = screen_w − 248, y = 40**; "+N more in Notes" when they do not fit | D9, D10, 04 §8.1 |
+| Stickies hint *"No notes pinned — open Notes"* (one line) | a dashed place with **"No notes pinned"** / *"Click to open Notes"* | 04 §8.1 (AC 21's text) |
+| Search: a field above the list | a `HintBox` at the tool bar's right (Mail's place); **`HintBox` moved into UIKit** when the search is built | D12 |
+| AC 10 "a check mark" | the **lit Pin toggle** + the label *Unpin from Desktop* | D1 |
+
+### 8.2 The GUI steps
+
+- **G1 (in step 1, UIKit)** — `uk_text_over (Canvas &cv, int x, int y, const char *s, unsigned ink, int style, int
+  shade, unsigned back)` in `text.h` / `text.cpp` (shade 0 none, 1 soft shadow, 2 engraved on `back`; with a face:
+  the glyphs drawn into a scratch canvas, their coverage blended with `uk_blend_px`; without: the bitmap glyphs as
+  agenda's `wall_text`); `WKT_TRASH`, `WKT_PIN` in `toolbar.h` (before `WKT_COUNT`) and their geometry in
+  `toolbar.cpp`. `uikit.abi` + the `uk_text_over` line (append). `python tools/docgen/kitdocs.py`; docs/06 UIKit
+  one line each. *Test*: the wrap test of step 1 + an alpha-canvas case for `uk_text_over` (a pixel of a glyph is
+  opaque ink, a pixel beside it keeps `0xFE`/`0xFF` transparency); `studio.sh`-style look at the two icons
+  (Widget Showcase unchanged). The agenda keeps its own `wall_text` this round (moving it: a later clean-up).
+- **G2 (in step 2, the model)** — the colours of 04 §7 in `notesmodel.cpp` (`notes_colour_paper`,
+  `notes_colour_dot`, `NOTE_INK 0x2B2925`); `notes_date_label (modified, now, out)` → *09:15 / Yesterday / Fri /
+  15 Sep / 15/09/2025 / ""* (04 §2.2) — unit-tested (each case, the year change, `modified = 0`).
+- **G3 (in step 3, the window)** — the widget tree of 04 §2.1 exactly (`ToolBar` 44, `HSplitter` split 250 min
+  180 / 260, `NoteList`, `Panel` + `Label` info line + `NoteEdit`, status `Label`s 24); `NoteList` drawn as 04 §2.2
+  (head 44 with the count badge, rows 56, dot, bold title, date, preview, pin, tinted selection, scroll bar); the
+  first-start state of 04 §5 (the *New Note* row, the info line's hint, Delete greyed). `build_menu ()` with the
+  labels of 04 §3. `shots.sh`: scenarios **`notes`** (the mock-up's `window` scene: six sample notes, *Shopping*
+  selected → `screenshots/notes.png`) and **`notes-empty`** (no `Notes` folder → `screenshots/notes-empty.png`),
+  the sample notes of the mock-up (`notes_mock.cpp`'s `g_notes`, written as `tools/tests/desktop_sim/sd/Notes/*.txt`
+  + `notes.ini`, dated for the simulator's clock).
+- **G4 (in step 4, editing)** — the status line's messages (*✓ Saved*, *This note is full (64 KB)* for 4 s, the
+  red *Not saved…*), D8 at quit. *Test*: a sim case with the writes' `Notes` folder made read-only (`chmod a-w`):
+  the status text in the dump's log / no file; after `quit`, `clip_get_text` (the fake clipboard) holds the text and
+  the log has the notification.
+- **G5 (in step 5)** — the tool bar's Pin toggle and the six colour toggles kept in sync with the note (and the
+  menu's labels re-published); Delete in the list; the emptied note to the Trash (D3); the import refusal
+  `uk_messagebox` (04 §6; several files: one box). *Test*: AC 9 / 10 (the toggles' `on` read back through the dump
+  — or the `notes.ini` values), a drop of a 70 KB file → the box (the dump shows it) and no new note.
+- **G6 (in step 6, Stickies)** — the geometry of 04 §8.1 (header via `uk_text_over`, ink from the wallpaper as the
+  agenda's; cards of their own height via `uk_text_wrap`; band, shadow, hover outline + chevron; the dashed
+  empty place; "+N more"; click-through below the cards). `shots.sh`: **`stickies`** (three pinned cards, crop of
+  the top right → `screenshots/stickies.png`) and **`stickies-empty`**; the **desktop scene** of AC 27 = the
+  mock-up's `desktop-stickies` (agenda, Stickies, the Notes window in front, the dock, the bar) — as a new
+  `screenshots/notes-desktop.png`, leaving `desktop.png` as it is.
+- **G7 (in step 7)** — *View ▸ Show / Hide Stickies…* label toggle; **ensure the autostart line** (D2): read
+  `SD:/etc/autostart`, if no line whose first words are `run stickies` (after spaces, not starting with `#`) → append
+  `# Stickies: the pinned notes on the desktop (Notes, View menu)\nrun stickies\n`; the first pin while
+  `stickies = 1` and the service absent → launch + the same. *Test*: sim — Show twice → the writes' `etc/autostart`
+  has exactly one `run stickies`; with an overlay autostart that already runs it → unchanged; Hide → unchanged.
+- **G8 (in step 8, docs)** — docs/04's *Notes* section and *Stickies* paragraph take the pictures of G3 / G6 and the
+  menus / keys tables of 04 §3–§4; `tools/icons/notes_icon.py` draws the two icons of 04 §9.
+- **G9 (step 9, should)** — the search: `HintBox` into UIKit (`uikit/hintbox.h` or in `textbox.h`, a new class:
+  append-only, `uikit.abi` lines; Mail / Calendar / Photos switch to it in a later round), the *Found / n of N*
+  head and the empty line of 04 §5, Ctrl+F, Esc; *Open in Text Editor* Ctrl+E; *Export…* (`uk_file_save`); the
+  checklist boxes of 04 §8.1 in Stickies (drawing first, the click-to-tick last).
+
+### 8.3 Acceptance criteria touched
+
+AC 10 (read as D1), AC 11 (the label toggle), AC 19 (the cards of 04 §8.1), AC 21 (the hint's text), AC 27 (the
+desktop scene `notes-desktop.png`), AC 28 (the scenarios `notes`, `notes-empty`, `stickies`, `stickies-empty`).
+New checks from the design: the failed-save path (G4), the autostart line (G7), the import refusal (G5), the
+date labels (G2).
