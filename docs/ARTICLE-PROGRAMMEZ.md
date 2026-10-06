@@ -88,6 +88,27 @@ On présentera Circle et Onyx brièvement.
 - Lien à faire dans l'article : coût et dispersion vont ensemble. Cinq conversations en parallèle, c'est
   cinq fois plus de quota. Le vrai arbitrage est entre **patience/discipline** et **budget**.
 
+- **Les prix des formules Claude** (l'utilisateur accepte qu'on les cite). Relevés le 2026-10-06 sur des
+  sites tiers, en dollars US, **à revérifier sur la page officielle (claude.com/pricing) et en euros TTC
+  pour la France avant publication** :
+  - **Free** : 0 $ (accès limité) ;
+  - **Pro** : 20 $/mois (17 $/mois en paiement annuel) ; inclut Claude Code ;
+  - **Max 5x** : 100 $/mois, 5 fois l'usage de Pro (la formule « Max à 100 € » de l'utilisateur) ;
+  - **Max 20x** : 200 $/mois, 20 fois l'usage de Pro (la formule vers laquelle il a upgradé, à confirmer) ;
+  - pour info : Team (Standard 25 $/siège, Premium 125 $/siège), Enterprise sur devis.
+
+### La dispersion en chiffres : les branches GitHub
+
+L'utilisateur propose d'illustrer la dispersion par **le nombre de branches** du dépôt. Relevé du
+2026-10-06 : **16 branches en plus de `main`**, dont 9 créées par des sessions Claude
+(`claude/<nom-aléatoire>`, par ex. `claude/quirky-feynman-0f3259`) et d'autres nommées par sujet
+(`webkit-port`, `usb-volumes`, `kapi-compact`, `term_updates`…). 14 sont déjà fusionnées dans `main`,
+2 portent encore des commits à elle (`kapi-compact` : 5, `claude/bold-gould-4a406c` : 1). Une capture
+de la liste des branches sur GitHub ferait une bonne illustration (à prendre **avant** l'élagage).
+
+**À faire (l'utilisateur) : un élagage des branches**, sur sa décision. Les 14 branches fusionnées peuvent
+être supprimées sans perte ; les 2 autres sont à examiner d'abord.
+
 ## Ébauche de texte (v0, à reprendre)
 
 **La genèse.** Tout est parti d'un loisir : la construction d'une petite borne d'arcade, animée par un
@@ -141,11 +162,11 @@ sur le Pi et le résultat attendu.
 - Ce qui a coincé : bugs difficiles, allers-retours, erreurs de Claude et comment elles sont apparues
   (souvent au test sur le Pi).
 - Son rôle réel : arbitrer, refuser, recadrer (les règles de `CLAUDE.md` : « kits first », licences MIT…).
-- Le temps passé. (Le coût : voir « Le coût » plus haut ; préciser le montant de l'abonnement supérieur
-  si on veut le citer.)
+- Le temps passé. (Le coût : voir « Le coût » plus haut ; confirmer la formule choisie à l'upgrade.)
 - Un conseil à un lecteur qui voudrait faire pareil.
 
 ## Suivi
 
 - 2026-10-06 : topo reçu, plan et ébauche v0, avantages/inconvénients ajoutés, puis le coût
-  (Max 100 €, quota hebdomadaire épuisé, upgrade). **En attente des specs.**
+  (Max 100 €, quota hebdomadaire épuisé, upgrade), les prix des formules, les branches comme
+  illustration de la dispersion (élagage à faire). **En attente des specs.**
