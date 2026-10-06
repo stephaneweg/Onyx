@@ -58,6 +58,12 @@ le matériel est unique et connu, il n'y a pas une myriade de pilotes à dévelo
 - **Le modèle** : Opus, jugé plus adapté à une réflexion intense et technique. **Pas « le plus puissant »**
   (l'utilisateur, 2026-10-06) : plus puissant que Sonnet ; Fable, le plus grand, serait démesuré ici.
 - **Le code sur GitHub** pour donner accès à Claude.
+- **La question « magique »** (l'utilisateur, 2026-10-06) : un chantier commence par « Quel est le coût pour
+  faire ceci sur Onyx ? ». Claude revient avec **l'analyse et le plan en un seul morceau** : état des lieux,
+  manques, difficulté, proposition, choix à trancher. Ce n'est pas une habitude (aucune mémoire entre
+  sessions, aucune consigne dans `CLAUDE.md`) : la question contient la méthode (un coût = un inventaire des
+  écarts, la décision reste à l'humain), et chaque session lit dans le dépôt des études de la même forme et la
+  reproduit. « La mémoire de l'habitude, c'est le projet lui-même. » Dans l'article : étapes 1 et 2 fusionnées.
 - **1. Analyse** : Claude analyse le code ; l'utilisateur décrit ses objectifs.
 - **2. Plan** : Claude propose un plan étape par étape, chaque étape débloquant si nécessaire les
   fonctionnalités dont la suivante a besoin.
