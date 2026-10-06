@@ -782,3 +782,5 @@
 776 _ZNK5uikit8CodeEdit9caretLineEv
 777 _ZNK5uikit8CodeEdit9lineCountEv
 778 _ZNK5uikit8CodeEdit9lineStartEi
+779 _ZN5uikit12uk_text_overERNS_6CanvasEiiPKcjiij
+780 _ZN5uikit12uk_text_wrapEPKciiiPiS2_Pbi

@@ -68,7 +68,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 779 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 781 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -252,6 +252,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_text` | s at (x, y) -- the line's top-left -- in `style` (the bitmap path | `text.h` |
 | `uk_text_clip` | ... | `text.h` |
 | `uk_text_fit` | Fit s into w px (a copy in out, cap bytes) | `text.h` |
+| `uk_text_wrap` | Word-wrap the first n bytes of s into lines of w px at most, maxLines at most | `text.h` |
+| `uk_text_over` | s at (x, y) -- the line's top-left -- straight over a see-through canvas (a WIN_FLAG_ALPHA window | `text.h` |
 | `uk_u8_len` | A sequence's length from its first byte and what follows it (1 for a byte that does not start a valid sequence | `text.h` |
 | `uk_u8_get` | The character at s (its length in *len), a stray byte as its Latin-1 character. | `text.h` |
 | `uk_u8_next` | The next / the previous character's start from byte i (of n). | `text.h` |
@@ -979,6 +981,18 @@ Fit s into w px (a copy in out, cap bytes): cut at a character, "..." at its end
 
 ```cpp
 int  uk_text_fit (const char *s, int w, char *out, int cap, int style = 0);
+```
+
+Word-wrap the first n bytes of s into lines of w px at most, maxLines at most: line k is the bytes [start[k], start[k] + len[k]) of s (start and len: maxLines entries each). A '\n' ends a line (an empty line for "\n\n"); a line is broken at its last space that fits (the spaces at the break dropped); a word wider than w is cut at a character (UTF-8). *more (when given): text is left past the last line (more than blanks). -> the number of lines. (A card showing a paragraph: Stickies.)
+
+```cpp
+int  uk_text_wrap (const char *s, int n, int w, int maxLines, int *start, int *len, bool *more = 0, int style = 0);
+```
+
+s at (x, y) -- the line's top-left -- straight over a see-through canvas (a WIN_FLAG_ALPHA window: the wallpaper shows through; uk_paint_alpha on), its glyphs blended by their coverage with the bitmap fonts or the installed face alike (a face's own draw ignores the alpha mode). shade: 0 none; 1 a soft shadow (for a light ink on a dark wallpaper); 2 engraved: a light edge under each glyph, of `back` (the wallpaper's colour there; for a dark ink on a light wallpaper). The agenda's header, Stickies'.
+
+```cpp
+void uk_text_over (Canvas &cv, int x, int y, const char *s, unsigned ink, int style = 0, int shade = 0, unsigned back = 0);
 ```
 
 ### UTF-8 (the face's text)
@@ -2715,6 +2729,7 @@ The toolbar icons, drawn in a size x size box at (x, y) in `ink` (anti-aliased, 
 enum { WKT_NONE = -1, WKT_NEW = 0, WKT_OPEN, WKT_SAVE, WKT_UNDO, WKT_REDO, WKT_CUT, WKT_COPY, WKT_PASTE,
        WKT_PLAY, WKT_PAUSE, WKT_STOP, WKT_RECORD, WKT_TO_START, WKT_TO_END, WKT_REWIND, WKT_FORWARD,
        WKT_LOOP, WKT_METRONOME, WKT_PLUS, WKT_MINUS, WKT_SEARCH, WKT_MIXER, WKT_SPARK, WKT_GEAR,
+       WKT_TRASH, WKT_PIN,		// (2026-10-06: a waste bin -- delete to the Trash --, a push pin -- on the desktop)
        WKT_COUNT };
 void uk_tool_glyph (Canvas &cv, int kind, int x, int y, int size, unsigned ink);	// draw the icon `kind` (WKT_*); size: 6 px at least
 ```

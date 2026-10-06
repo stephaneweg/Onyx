@@ -118,6 +118,22 @@ void uk_tool_glyph (Canvas &cv, int kind, int x, int y, int size, unsigned ink)
 		g.poly (t, 8); g.fill (); break;
 	}
 	case WKT_GEAR: uk_glyph (cv, WKG_GEAR, x + size / 2, y + size / 2, size * 16 / 20, ink); break;
+	case WKT_TRASH:						// a waste bin: its lid and handle, the can, two ribs
+	{
+		g.line (V (3), V (5), V (17), V (5), T);
+		int hd[8] = { V (8), V (5), V (8), V (2) + 8, V (12), V (2) + 8, V (12), V (5) }; g.loop (hd, 4, T, false);
+		int can[8] = { V (5), V (5), V (6), V (18), V (14), V (18), V (15), V (5) }; g.loop (can, 4, T, false);
+		g.line (V (8) + 8, V (8), V (8) + 12, V (15), T - 4); g.line (V (11) + 8, V (8), V (11) + 4, V (15), T - 4);
+		g.fill (); break;
+	}
+	case WKT_PIN:						// a push pin, upright: its cap, body, collar, needle
+	{
+		g.rrect (V (6), V (2), V (8), V (3), V (1));
+		int b[8] = { V (7) + 8, V (5), V (12) + 8, V (5), V (13) + 8, V (10), V (6) + 8, V (10) }; g.poly (b, 4);
+		g.rrect (V (4), V (9), V (12), V (2) + 8, V (1));
+		g.line (V (10), V (11), V (10), V (18), T);
+		g.fill (); break;
+	}
 	}
 }
 
