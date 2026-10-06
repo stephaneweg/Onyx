@@ -1,0 +1,111 @@
+# Circuits' words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included); a key "context|English" is a TRC's.
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+ and 	 et 
+%d %s — every row right	%d %s — toutes les lignes justes
+%d rows are wrong:	%d lignes sont fausses :
+%s: click a free place on the board to put it (Esc: cancel).	%s : clique une place libre du plateau pour la poser (Échap : annuler).
+1 row is wrong:	1 ligne est fausse :
+A wire goes from an output to an input.	Un fil va d'une sortie vers une entrée.
+About Circuits	À propos de Circuits
+AND	ET
+Back to step 0 (F9)	Retour au pas 0 (F9)
+Build your circuit	Construis ton circuit
+Check	Vérifier
+Check every row (F5)	Vérifier toutes les lignes (F5)
+Circuit copied.	Circuit copié.
+Circuits 1.0 — wire logic gates until the lamps match the truth table.\nMIT License.	Circuits 1.0 — relie des portes logiques jusqu'à ce que les lampes suivent la table de vérité.\nLicence MIT.
+Circuits levels|*.circuits|All files|*	Niveaux de Circuits|*.circuits|Tous les fichiers|*
+Clear Board	Vider le plateau
+Copy Circuit	Copier le circuit
+Copy Truth Table	Copier la table de vérité
+Del	Suppr
+Delete	Supprimer
+Delete (Del)	Supprimer (Suppr)
+Depth %d · Step (F8) to watch it	Profondeur %d · Pas à pas (F8)
+Edit	Édition
+Every lamp follows the switches. When you think it is right: Check (F5).	Les lampes suivent les interrupteurs. Quand tu crois que c'est juste : Vérifier (F5).
+Game	Jeu
+gate	porte
+gates	portes
+Gates go between the inputs and the outputs.	Les portes se posent entre les entrées et les sorties.
+GOAL	BUT
+Help	Aide
+Hint	Indice
+Hint:	Indice :
+IN	ENTRÉES
+INPUTS	ENTRÉES
+Lamp %s is not connected: wire a gate's output to it, then Check again.	La lampe %s n'est pas reliée : relie-lui la sortie d'une porte, puis vérifie encore.
+Lay a wire	Pose un fil
+Lesson	Leçon
+Let go on an input pin to lay the wire (Esc: cancel).	Lâche sur une borne d'entrée pour poser le fil (Échap : annuler).
+Level complete!	Niveau réussi !
+Levels	Niveaux
+Live	En direct
+Live: click a switch or a row.	En direct : clique une entrée.
+Locked: win “%s” first.	Verrouillé : réussis d'abord « %s ».
+NAND	NON-ET
+New gate:	Nouvelle porte :
+New gate: %s. Read the card, then build.	Nouvelle porte : %s. Lis la carte, puis construis.
+New idea:	Nouvelle idée :
+New idea: %s. Read the card, then build.	Nouvelle idée : %s. Lis la carte, puis construis.
+New record!	Nouveau record !
+Next level	Niveau suivant
+Next Level	Niveau suivant
+No gate in this level: a wire is enough.	Pas de porte ici : un fil suffit.
+No level found in SD:/apps/circuits.app/levels.	Aucun niveau dans SD:/apps/circuits.app/levels.
+No next level open yet.	Pas encore de niveau suivant ouvert.
+No room there: parts cannot overlap.	Pas de place ici : les pièces ne peuvent pas se chevaucher.
+NOR	NON-OU
+NOT	NON
+One gate depth more (F8)	Une profondeur de plus (F8)
+one|IN	ENTRÉE
+Open Level Pack	Ouvrir un recueil
+Open Level Pack...	Ouvrir un recueil...
+OR	OU
+OUTPUTS	SORTIES
+Press on the switch's pin, drag to the lamp's pin, let go.	Appuie sur la borne de l'interrupteur, glisse jusqu'à celle de la lampe, lâche.
+Previous Level	Niveau précédent
+Progress not saved: the card is full or read-only.	Progression non enregistrée : la carte est pleine ou en lecture seule.
+Put a gate: %s (%d)	Poser une porte : %s (%d)
+Quit	Quitter
+Redo	Rétablir
+Redo (Ctrl+Y)	Rétablir (Ctrl+Y)
+Reset	Au départ
+Restart Level	Recommencer le niveau
+Select	Choisir
+Select and move (Esc)	Choisir et déplacer (Échap)
+Simulate	Simulation
+Stay here	Rester ici
+Step	Pas à pas
+Step %d of %d · F7: back to live	Pas %d sur %d · F7 : en direct
+Step %d of %d: every lamp is computed. F9: back to the start · F7: live.	Pas %d sur %d : toutes les lampes sont calculées. F9 : au départ · F7 : en direct.
+Step %d of %d: the gates of depth %d are computed. F8: the next depth · F9: back to the start · F7: live.	Pas %d sur %d : les portes de profondeur %d sont calculées. F8 : la suivante · F9 : au départ · F7 : en direct.
+Step 0 of %d: no gate is computed yet. F8: the first depth · F7: live.	Pas 0 sur %d : aucune porte n'est encore calculée. F8 : la première profondeur · F7 : en direct.
+Take a gate from the palette and put it on the board, then drag from a pin to a pin to wire it.	Prends une porte dans la palette, pose-la sur le plateau, puis glisse d'une borne à une autre pour la relier.
+That wire would make a loop: in this game signals only go forward.	Ce fil ferait une boucle : dans ce jeu, les signaux vont seulement vers l'avant.
+The best possible: %d %s.	Le meilleur possible : %d %s.
+The board is full: 48 gates at most.	Le plateau est plein : 48 portes au plus.
+The switches are set on that row.	Les interrupteurs sont mis sur cette ligne.
+This %s gate (outlined in red) has an input not connected: wire it, then Check again.	Cette porte %s (entourée de rouge) a une entrée non reliée : relie-la, puis vérifie encore.
+This gate is not allowed in this level.	Cette porte n'est pas permise dans ce niveau.
+This level has no lesson of its own: its idea was taught before.	Ce niveau n'a pas de leçon à lui : son idée a déjà été vue.
+This level is locked.	Ce niveau est verrouillé.
+Three stars need %d %s or fewer. The best known circuit is smaller: can you find it?	Trois étoiles : %d %s ou moins. Le meilleur circuit connu est plus petit : sauras-tu le trouver ?
+Truth table	Table de vérité
+Truth table copied.	Table de vérité copiée.
+Try for ★★★	Viser ★★★
+Undo	Annuler
+Undo (Ctrl+Z)	Annuler (Ctrl+Z)
+Welcome to Circuits! Wire the switch A to the lamp, then Check (F5).	Bienvenue dans Circuits ! Relie l'interrupteur A à la lampe, puis Vérifier (F5).
+Well done! %d %s — the best possible.	Bravo ! %d %s — le meilleur possible.
+Well done! %d %s. Three stars need %d.	Bravo ! %d %s. Trois étoiles : %d.
+with %s lamp %s must light.	avec %s la lampe %s doit s'allumer.
+with %s lamp %s must stay off.	avec %s la lampe %s doit rester éteinte.
+with %s the lamp must light.	avec %s la lampe doit s'allumer.
+with %s the lamp must stay off.	avec %s la lampe doit rester éteinte.
+XOR	OUX
+You finished every level!	Tu as fini tous les niveaux !
+YOURS	OBTENU
+“%s” cannot be opened:\n%s.\n\nNo level was added.	« %s » ne peut pas être ouvert :\n%s.\n\nAucun niveau n'a été ajouté.
+“%s” cannot be read.	« %s » ne peut pas être lu.
