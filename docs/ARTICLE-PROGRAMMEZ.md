@@ -209,6 +209,8 @@ Récit de l'utilisateur : il a demandé à Claude de travailler seul la nuit pen
 vitesse de JS). Onyx avait déjà telnet (`telnetd`), FTP (`ftpd`) et VNC. **Parce que l'utilisateur l'y a
 autorisé (à mentionner, c'est important)**, Claude a mis en place de lui-même une boucle : déployer, tester,
 redémarrer, journaliser les erreurs, lancer des benchmarks.
+**La philosophie** (l'utilisateur) : ce sont des opérations sensibles, mais on était sur un terrain de jeu ;
+aller vite était plus important, et le risque était limité, ce n'est pas une machine de production.
 
 Traces dans le dépôt : la nuit du **3 au 4 octobre** (commits de 22 h à 9 h 22) : `clipd` et le
 `mailbox_recv` bloquant qui tournait en boucle (« every program four times slower »), le GC de
