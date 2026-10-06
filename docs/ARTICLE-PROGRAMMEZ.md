@@ -204,6 +204,28 @@ les dates des commits, le socle, l'IPC, la chaîne de compilation et les dépend
   est mûr.
 - **1 444 commits** sur `main` au 2026-10-06, en un peu plus de trois mois.
 
+## Les specs de Programmez! (reçues le 2026-10-06)
+
+- 1 page = **4 500 signes espaces compris** ; la longueur est un multiple (3 pages = 13 500 signes).
+  Le nombre de pages n'est pas fixé : à convenir avec le magazine.
+- Format : **RTF ou DOCX uniquement**. Aucune mise en page : pas de pied de page, pas d'en-tête, **pas de
+  cadre** (donc pas d'« encadré » : le passage technique est une section normale), **1 colonne**.
+- Structure : **titre** ; **nom complet de l'auteur + mini bio + photo** ; **introduction courte** ;
+  **texte avec intertitres**.
+- Images en **PNG ou JPG** uniquement. Codes sources fournis dans un **fichier zip**.
+
+## Le brouillon de l'article
+
+Le texte de l'article vit dans un **document Claude** partagé, qui s'exporte en DOCX :
+https://claude.ai/code/artifact/99dc6049-2fea-4726-9aee-99ec4a1a705f
+
+- **v0 (2026-10-06)** : titre, bloc auteur à remplir, chapeau, puis 8 sections avec intertitres (la
+  genèse, le renouveau, de Circle à Onyx, la méthode, l'étude de cas NetSurf → WebKit, ce que ça a donné,
+  les forces et le revers, ce que je retiens). Environ 12 000 signes, soit environ 2,7 pages.
+- À faire : le nom et la bio de l'auteur, sa photo ; le nombre de pages visé ; les images (captures du
+  bureau, planche des maquettes rétro → CDE modernisé, liste des branches GitHub) ; le zip de code source
+  si on cite du code.
+
 ## Ébauche de texte (v0, à reprendre)
 
 **La genèse.** Tout est parti d'un loisir : la construction d'une petite borne d'arcade, animée par un
@@ -266,4 +288,5 @@ sur le Pi et le résultat attendu.
   (Max 100 €, quota hebdomadaire épuisé, upgrade), les prix des formules, les branches comme
   illustration de la dispersion (élagage à faire), les traces de la méthode dans le dépôt, l'étude de cas
   NetSurf → WebKit (POSIX, dépendances, GC), la chronologie ; la vitesse du chantier POSIX/WebKit
-  confirmée par l'utilisateur, citable. **En attente des specs.**
+  confirmée par l'utilisateur, citable. Specs reçues ; article v0 rédigé dans le document Claude
+  (voir « Le brouillon de l'article »).
