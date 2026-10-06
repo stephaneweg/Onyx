@@ -227,6 +227,14 @@ les dates des commits, le socle, l'IPC, la chaîne de compilation et les dépend
 
 ## Le brouillon de l'article
 
+**Consignes de rédaction de l'utilisateur** (2026-10-06) :
+- Le lecteur s'intéresse à **l'usage de l'IA pour mener un gros projet**, pas au fonctionnement de l'OS :
+  la partie technique (« De Circle à Onyx ») reste courte, sans jargon.
+- **Ne pas inventorier le dépôt** : pas de « 96 maquettes dans 14 dossiers », de « plan de 1 650 lignes »,
+  de « décisions D1 à D8 ». On décrit la méthode, pas le contenu du dépôt.
+- Opus : « plus adapté que Sonnet, plus puissant ; Fable, le plus grand, démesuré ici » (pas « le plus
+  puissant »).
+
 Le texte de l'article vit dans un **document Claude** partagé, qui s'exporte en DOCX :
 https://claude.ai/code/artifact/99dc6049-2fea-4726-9aee-99ec4a1a705f
 
