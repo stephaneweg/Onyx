@@ -280,3 +280,162 @@ Developer A's hints above. Built and run on the host only (no aarch64 compiler h
 - `notes_draw_dot` in `notelist.h` is usable by Stickies if wanted (it includes UIKit's toolbar header).
 - `sdcard/apps/stickies.app/icon.bmp`: `python3 tools/icons/notes_icon.py` (draws both icons).
 - docs/04 (step 8): Notes' controls are in the header comment of `main.cpp`; the menu ids above.
+
+## Developer C — steps 6–8
+
+Date: 2026-10-06. Branch `AutoDev`. Inputs: 03 §3.5, §3.7, §5 steps 6–8, §8 G6–G8; 04 §3, §5, §8 (and the mock-ups
+`stickies*.png`, `desktop-stickies.png`); 05 (validation 2's binding notes); Developers A and B's hints above. Built and
+run on the host only (no aarch64 compiler here).
+
+### Step 6 — Stickies
+
+- **`user/Apps/stickies/main.cpp`** (MIT, an FT app): agenda's skeleton. `main`: `notes_cfg_load` → `stickies = 0` →
+  `return 0` before any window (AC 22); `kapi_ipc_register ("stickies")`; window **240 × (screen_h − 160)** at
+  **x = screen_w − 248, y = 40** or `SD:/apps/stickies.app/config.ini`'s `x` / `y`; flags exactly
+  `BORDERLESS | BACKMOST | SYSTEM | ALPHA` (logged `flags 0x33`).
+- Drawing per 04 §8.1: the header (the yellow note icon, "Pinned notes" + "(N)" through **`uk_text_over`**, shade 1 on a
+  dark wallpaper / 2 engraved on a light one, the agenda's etched line), cards of their own height (band 5 + pad 10 +
+  title 18 + 17 × 1..6 lines + pad 10) with **`uk_text_wrap`** at 196 px, "…" on the last line when the text goes on,
+  the shadow, the hover outline + chevron; the dashed empty place ("No notes pinned" / "Click to open Notes", the
+  `WKT_PIN` glyph); "+N more in Notes" when the cards (≤ 6, `notes_pinned`) do not all fit or more than 6 are pinned.
+  Only the header and the cards (and the gaps between them) are `0xFE000000`; below: `0xFF000000` (click-through).
+  The pictures match the mock-ups pixel for pixel in layout (compared side by side).
+- Poll every 300 ticks: a signature (the folder's names + sizes, `notes.ini`'s bytes, the shown notes' first 2 KB)
+  → `notes_scan` + `notes_pinned` + the heads read again only on change; the wallpaper's ink re-read (`read_back`, the
+  agenda's); `config.ini`'s `stickies` read again (0 → `kapi_exit (0)`: a Hide that came without the message).
+  Mailbox drained each tick: `STK_MSG_RELOAD` → forced reload now, `STK_MSG_QUIT` → `kapi_exit (0)`.
+- Click a card → `NOTES_MSG_OPEN` "SD:/Notes/<file>" + `kapi_raise_app ("notes")` when the `notes` service exists, else
+  `lx_launch ("notes", path)`; the empty place / "+N more" → the same with no note. Header drag: the agenda's code
+  (`kapi_cursor_pos` screen coordinates, `kapi_move_window`, `x` / `y` saved on release), `uk_cursor
+  (KAPI_CURSOR_MOVE)` over the header.
+- `user/Makefile`: `stickies` in `FT_APPS`, `FT_EXTRA_stickies = Apps/notes/notesmodel.cpp`, `stickies.elf` deps.
+  `sdcard/apps/stickies.app/app.txt` (`Stickies`, `Shell`) + `icon.bmp` (`python3 tools/icons/notes_icon.py`; Notes'
+  icon came out identical).
+- **Test tooling**: `fakekapi.cpp` — a `SIM_MBOX` line `@<ticks>:type:pid:payload` is held back until that many ticks
+  after the start (needed for AC 25's reload: all canned messages were otherwise drained at the first tick, before
+  the change on the card; the ticks start at 1000, 2 a script step; documented in the header).
+  **`tools/tests/notes/cards.py`** reads a Stickies dump back: the cards (opaque runs down x = 224) and their colours
+  (the nearest paper), the window's place, a pixel. **`tools/tests/run_stickies_sim_test.sh`** (new).
+- `shots.sh`: `stickies` in `APPS`; scenarios **`stickies`** (crop of the top right, the menu bar), **`stickies-empty`**,
+  **`notes-desktop`** (agenda, Stickies, the Notes window at 60,166, the dock, the bar with Notes' menus — 04's
+  `desktop-stickies` scene; `desktop.png` left as it is) → `screenshots/stickies.png`, `stickies-empty.png`,
+  `notes-desktop.png` (committed; compared with the mock-ups: same layout, the only difference the status line's
+  "✓ Saved", which the real start does not show).
+
+### Step 7 — Notes ↔ Stickies
+
+- `stickies_set_shown`: **Show** → `stickies = 1` saved, `autostart_ensure ("run stickies", "run agenda", "# Stickies:
+  the pinned notes on the desktop (Notes, View menu)")`, `lx_launch ("stickies", 0)` only when the service is absent,
+  status by the result (validation 2, binding): 2 "Stickies shown, and started at every boot (SD:/etc/autostart).", 1
+  "Stickies shown.", 0 "Stickies shown (autostart not written)." (dim, 4 s). **Hide** → `stickies = 0` saved,
+  `STK_MSG_QUIT` to the service if any, "Stickies hidden."; autostart never touched. (The pin's rule was Developer B's
+  and is kept: with `stickies = 1` and no service → `lx_launch` only.)
+- **Single instance** at the top of `main ()`: `kapi_ipc_lookup ("notes")` > 0 → the argument sent as `NOTES_MSG_OPEN`
+  (with its 0; empty = only come forward), `kapi_raise_app ("notes")`, `return 0` before any window; else
+  `kapi_ipc_register` (its failure ignored: Notes goes on alone). The reception (Developer B's `onTick`) is now tested.
+- Reload after save / pin / colour / delete / import: Developer B's `stickies_reload ()`, unchanged (tested).
+- `main.cpp`'s header comment updated.
+
+### Step 8 — integration
+
+- `sdcard/etc/autostart`: `# Stickies: the pinned notes on the desktop (Notes, View menu)` + `#setup: run stickies`
+  right after `#setup: run agenda` — byte for byte what `autostart_ensure` inserts (Setup gives it back with the
+  others). `autostart_test.cpp`'s card case now takes its "already shipped" branch (56 checks instead of 59).
+  `sdcard_lite/etc/autostart` gets the line at the next publish (`mkrepo.py --lite`; validation 2, note 6).
+- `tools/pkg/packages.ini`: **`[notes]` before `[onyx]`** — title Notes, Productivity, summary, `icon =
+  apps/notes.app/icon.bmp`, `files = apps/notes.app/ apps/stickies.app/`, `config = apps/notes.app/config.ini
+  apps/stickies.app/config.ini`, `needs = uikit >= 1.781, systemkit >= 1.61, fontkit` (the tables with the new lines:
+  `uikit.abi` 780, `systemkit.abi` 60 → **to be confirmed at publish time**). `SD:/Notes` is runtime data, not packaged.
+  **Not published**: `versions.ini`, `sdcard/var/pkg/db`, `sdcard_lite` untouched. Checked with
+  `python3 tools/pkg/mkrepo.py --out <scratch>/repo --no-sign --versions <scratch>/versions.ini --bump` (a copy of
+  versions.ini, an unsigned scratch repository, nothing pushed): `notes-1.0.0.opk` holds `apps/notes.app/{app.txt,
+  icon.bmp}` and `apps/stickies.app/{app.txt,icon.bmp}`; the `onyx` package holds neither.
+- **docs/04**: §4 (the autostart lines), §5's intro, a **§5 *Stickies, the pinned notes*** after the agenda widget
+  (behaviour, clicks, drag, Show / Hide, files, `stickies.png`), §11's autostart defaults, §12 catalog rows **notes**
+  and **stickies**, a **§12 *Notes, quick notes*** section (window, writing, the menus / keys table of 04 §3–§4, drops,
+  rescan, single instance, the Stickies switch and its three texts, the files table, `notes.png`, `notes-empty.png`,
+  `notes-desktop.png`). **docs/03**: the simulator's tooling for services / read-only folders / drags / `copy` /
+  `@ticks` mail, the two test scripts; `stickies` in the Shell category list. **docs/HANDOFF.md**: a section for the
+  round (top) + Priority 2's *Quick notes* marked built. **IDEAS.md** (in French, as the file): a row *Notes rapides
+  + widget de bureau* with the items left for later — the search (+ `HintBox` into UIKit under its own header), the
+  checklist boxes and the tick, Sort by, the drag out, Export…, real menu check marks, keyconf / Setup onto
+  `autostart.h`, the agenda's `wall_text` → `uk_text_over`.
+- `python docs/build_docs.py`: needed `pip install pypandoc python-docx` first (absent); then **every export
+  regenerated, the PDFs by LibreOffice** (1 min, no error); committed.
+
+### Commits
+
+| Commit | What |
+|---|---|
+| `56f6d360` | step 6: Stickies, Makefile, `stickies.app`, fakekapi `@ticks`, `cards.py`, `run_stickies_sim_test.sh`, shots.sh scenarios + 3 screenshots |
+| `c7466279` | step 7: Notes' Show / Hide, single instance, `sdcard/etc/autostart`, `run_notes_sim_test.sh` cases |
+| `e6a9b2e2` | step 8: `packages.ini`, docs/04, docs/03, HANDOFF, IDEAS |
+| `a91900f5` | step 8: the exports |
+| (this file) | `06-development.md` |
+
+### Tests run (from the repository's root) and results
+
+| Command | Result |
+|---|---|
+| `sh tools/tests/run_stickies_sim_test.sh` (new, ~20 s) | **`stickies-sim: all 29 checks passed`**. Stickies built with `-Wall -Wextra` (no warning in its source). AC 19 (two pinned + one not → `2 yellow green`, at 776,40; the samples → `3 blue yellow green`), AC 20 (8 pinned, short → the 6 newest in order; 8 long → 3–5 cards + "+N more", its click → `launch notes`), AC 21 (no card, the hint catches clicks, click → `sim: launch notes`), AC 22 (no window, no dump), AC 23 (no Notes → `sim: exec SD:apps/notes.app/main SD:/Notes/<Shopping>`; `SIM_SERVICES=notes` → `sim: send notes type 1 "SD:/Notes/<Onyx>\0"` + `raise_app`, nothing started), AC 24 (`SIM_CURSOR=follow` drag (−60, +10) → `x = 716`, `y = 50`, no note opened; next start dumped at 716,50), AC 25 (`@20:3` → `sim: exit 0` before the dump, after its window; `@16:2` reload → the `notes2.ini` change shown at once; without it not yet), AC 26 (`copy notes2.ini` then 200 waits → `3 green blue blue`, not restarted; a note's text changed in place, same size → redrawn), AC 27 (`flags 0x33`, `0xFF000000` below the cards, `0xFE…` under the header), `stickies = 0` written mid-run → it ends at its next poll. Dumps looked at (`/tmp/onyx_notes_sim/*.png`: ac19, ac20, ac20b, ac21, ac26a/b, light on a light wallpaper — engraved ink). |
+| `sh tools/tests/run_notes_sim_test.sh` | **`notes-sim: all 67 checks passed`** (Developer B's 44 + 23): AC 11 Hide (`stickies = 0`, `sim: send stickies type 3`, no autostart), AC 11 Show (`stickies = 1`, `sim: launch stickies`), G7 on the pre-round card (inserted right after `#setup: run agenda`, one line, `preload /boot` last, nothing else changed), Show/Hide/Show (one line), the shipped card (not written), a hand-made `run stickies` (unchanged), Show while running (not started again), `SIM_ROFS=SD:/etc` (started, file unchanged), a pin while hidden (nothing started, no autostart) / shown but not running (started, no autostart), the single instance (`sim: send notes type 1 "SD:/Notes/<Gift>\0"`, `raise_app notes`, no window; `SIM_SERVICES=-` → Notes runs), `NOTES_MSG_OPEN` received (`SIM_MBOX`) → that note chosen. The four status texts looked at on the dumps. |
+| `sh tools/tests/run_notes_test.sh` | `notes: all checks passed` (wrap 58, autostart 56 — the card branch —, model 143, probe) |
+| `sh tools/tests/desktop_sim/shots.sh stickies stickies-empty notes-desktop` | exit 0 (1 min) → the three new pictures, compared with `mockups/stickies.png`, `stickies-empty.png`, `desktop-stickies.png` |
+| `sh tools/tests/desktop_sim/shots.sh notes notes-empty agenda desktop` | exit 0; `notes.png`, `notes-empty.png`, `agenda.png`, `desktop.png` **byte-identical** (no git diff). (Letters / Photos' PrinterKit link errors in the background: pre-existing, 03 R7.) |
+| `sh tools/tests/run_trash_test.sh`, `run_clipboard_test.sh`, `run_mail_test.sh`, `run_letters_test.sh` (they build fakekapi) | all exit 0 |
+| `python3 tools/pkg/mkrepo.py --out <scratch> --no-sign --versions <scratch copy> --bump` | 77 packages into the scratch folder; `[notes]` takes both bundles (above) |
+| `python3 docs/build_docs.py` | every `.docx` and `.pdf` regenerated (LibreOffice), "Done." |
+
+### Not done here
+
+- **The Pi build** (`make`, `make stage` for `notes.elf` / `stickies.elf`, libgen confirming `uikit.abi` 779–780 and
+  `systemkit.abi` 59–60) — no cross compiler: AC 29 stays with the user, as AC 33 (on the Pi).
+- **Publishing** (AutoDev rule): `[notes]` declared only; its `needs` versions to be confirmed when the kits are
+  rebuilt and published.
+
+## Summary of the round's development
+
+Steps 0–8 of 03 §5 (+ step 9's Ctrl+E) are done on the branch `AutoDev`: the simulator's tooling, UIKit (`uk_text_wrap`,
+`uk_text_over`, `WKT_TRASH`, `WKT_PIN`), SystemKit (`autostart_has`, `autostart_ensure`), the notes model, Notes,
+Stickies, their link, the autostart line, the declared package and the docs. No kapi or kernel change. Tests: `sh
+tools/tests/run_notes_test.sh`, `sh tools/tests/run_notes_sim_test.sh` (67), `sh tools/tests/run_stickies_sim_test.sh`
+(29), the screenshots (`notes`, `notes-empty`, `stickies`, `stickies-empty`, `notes-desktop`; `agenda`, `desktop`
+unchanged).
+
+| AC | Status | By |
+|---|---|---|
+| 1 list newest first, title, date, dot, pin | passed | `model_test` (order), `run_notes_sim_test` AC1, `notes.png` |
+| 2 `last` / newest selected | passed | `run_notes_sim_test` AC1, AC2 |
+| 3 no folder → empty note, nothing written | passed | `run_notes_sim_test` AC3 |
+| 4 typing + 1 s → exact file + `notes.ini` | passed | `run_notes_sim_test` AC4 |
+| 5 the row's title follows | passed | `run_notes_sim_test` AC5 (+ the dump looked at) |
+| 6 Ctrl+N; an empty note dropped | passed | `run_notes_sim_test` AC6 |
+| 7 no rename on title change | passed | `run_notes_sim_test` AC7 |
+| 8 Delete → Trash + notification | passed | `run_notes_sim_test` AC8 |
+| 9 colour green | passed | `run_notes_sim_test` AC9 |
+| 10 Ctrl+P pin / unpin | passed | `run_notes_sim_test` AC10 |
+| 11 Show / Hide Stickies | passed | `run_notes_sim_test` AC11, G7 |
+| 12 Copy Note / Ctrl+V | passed | `run_notes_sim_test` AC12 |
+| 13 a dropped `.txt` → new note | passed | `run_notes_sim_test` AC13, G5 |
+| 14 `notes <path>` | passed | `run_notes_sim_test` AC14, AC10 |
+| 15 closed right after typing → written | passed | `run_notes_sim_test` AC15 |
+| 16 `\r\n`, > 64 KB refused | passed | `model_test` |
+| 17 orphan `.txt` / orphan section | passed | `model_test` |
+| 18 same-second names | passed | `model_test` |
+| 19 two cards drawn | passed | `run_stickies_sim_test` AC19, `stickies.png` |
+| 20 the six most recent pinned | passed | `model_test` (`notes_pinned`), `run_stickies_sim_test` AC20 |
+| 21 hint + click launches Notes | passed | `run_stickies_sim_test` AC21, `stickies-empty.png` |
+| 22 `stickies = 0` → exit, no window | passed | `run_stickies_sim_test` AC22 |
+| 23 a card's click → Notes on that note | passed | `run_stickies_sim_test` AC23 (launch / send + raise), `run_notes_sim_test` AC23 (received) |
+| 24 header drag → `config.ini`, reopens there | passed | `run_stickies_sim_test` AC24 |
+| 25 the service, quit, reload (+ Notes' single instance) | passed | `run_stickies_sim_test` AC25, `run_notes_sim_test` AC25 |
+| 26 a change picked up at the next poll | passed | `run_stickies_sim_test` AC26 |
+| 27 borderless, back-most, the desktop scene | passed | `run_stickies_sim_test` AC27 (flags 0x33, click-through), `notes-desktop.png` |
+| 28 `shots.sh` notes / stickies + agenda / desktop | passed | `shots.sh` runs above (agenda, desktop byte-identical) |
+| 29 `make` / `make stage` | **deferred to the user** | no aarch64 cross compiler in the container (03 §0); the autostart line part is done |
+| 30 docs/04 + exports | passed | review; `python docs/build_docs.py` |
+| 31 `[notes]` declared, not published; the autostart line | passed | review; `mkrepo.py` into a scratch folder; `sdcard/etc/autostart`; `autostart_test` |
+| 32 MIT notices; no kapi / kernel change; `.abi` appended, kit docs regenerated | passed (review) | the `.abi` lines are libgen's own output on host objects — **the user's `make` confirms them** |
+| 33 on the Pi | **deferred to the user** | needs the hardware: a pin visible on the desktop within seconds, a reboot keeps the pins and Show / Hide |
+
+**31 passed, 2 deferred to the user (AC 29: the Pi build; AC 33: on the Pi).**
