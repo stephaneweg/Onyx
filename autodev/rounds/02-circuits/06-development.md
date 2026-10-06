@@ -248,3 +248,118 @@ These lines were copied into `user/Kits/filekit/filekit.abi`. The user's `make` 
   - `title[lang]` goes after *"New gate: "* / *"New idea: "* (`TR`).
 - **Fixtures for G6.** `solving.ini` on `full` can reuse the shipped solution text (positions: g1 XOR 8 12, g2 XOR 16 20, g3 AND 8 2, g4 AND 16 11, g5 OR 24 5). `check.ini` on `xor`: `part g1 OR 10 4` + 3 wires, which fails exactly on row `1 1` (asserted by the engine test).
 - **Not done here** (later steps): `FT_APPS`, `app.txt`, `icon.bmp`, `lang/fr.txt`, `fileassoc.ini`, `packages.ini`, docs/04, HANDOFF, `build_docs.py`.
+
+## Developer B (steps 4–7, G1–G5)
+
+Date: 2026-10-06, branch `AutoDev`. Plan: `03-technical-analysis.md` steps 4–7 as refined by the GUI plan's G1–G5,
+`04-ux-design.md`, the mock-ups, the notes of `05-validation.md` §3 and Developer A's hints above. Host only (no
+AArch64 compiler): the window is built and tested in the desktop simulator; `make` for the Pi is the user's.
+
+### Commits
+
+| Commit | Step |
+|---|---|
+| `09da4a43` | step 4 + G1: `user/Apps/circuits/main.cpp`, `gates.h`, `board.h`, `views.h`; `user/Makefile` (`FT_APPS += circuits`, `FT_EXTRA_circuits = Apps/circuits/circuit.cpp` + its dependency line); `shots.sh` (FT list, `APPS`, `extra`) |
+| `b6ac07a2` | step 5 + G2–G4: the interactions, the game logic; the fixtures `tools/tests/desktop_sim/circuits/{solving,check,stars,and}.ini`, `tools/tests/desktop_sim/sd/docs/circuits/{extra,bad}.circuits` |
+| `9f178483` | step 6 + G5: `sdcard/apps/circuits.app/lang/fr.txt` |
+| `94a1ca51` | step 7: `tools/tests/run_circuits_sim_test.sh` |
+
+### Step 4 / G1 — the window
+
+- One translation unit, as Turtle Quest: `main.cpp` holds the game's state, then includes `gates.h` (colours, faces
+  18/10/30/9, `gate_outline` with **integer** quadratic curves and `uk_sin/uk_cos`, `draw_gate_shape`, star, padlock,
+  wrapped text, `circuits_icon`), `board.h` (`Board`, `PaletteButton`) and `views.h` (`LevelList`, `Card`, `MsgBar`,
+  `TruthTable`, `CountView`, `LessonCard`, `ResultCard`). No `board.cpp`: `FT_EXTRA_circuits` stays `circuit.cpp`.
+- Layout of 04 §2.1 in `layout ()` (`PAD 10`, list 214, bench 238, palette 46, message 50); `Root (1000, 620)`,
+  `setMinSize (920, 600)`, `fitWorkArea`. The palette is built once (Select, sep, the six gates, the *no gate* label,
+  Delete/Undo/Redo at the right); per level the gates not allowed are hidden and the others re-placed — no widget is
+  deleted (Root keeps pointers to hovered widgets).
+- The card wraps the level's text on up to 4 lines (French at 920 px needs 4; 04 said 3).
+
+### Step 5 / G2–G4 — interactive
+
+All of G2–G4: arm on press (`PaletteButton::onMouse`), the ghost, click-click and drag from the palette (placed on
+the release seen by the board), back to Select after one; wiring with the rubber route and the green/red ring
+(`canConnect`), the loop message; picking a fed input's wire up (re-plug / drop = remove, one undo step); select,
+move by drag (ghost, refused → back + message), arrows, Del/Backspace, trash, right click; undo/redo
+(`History` on the heap) with the buttons' disabled states; keys 1–6; Esc's order (card › drag › armed › selection);
+`catchOutside` while a board drag is held. Live switches, table-row clicks; step mode (F8 enters at step 0, each F8
+one depth more; F9, F7; any edit leaves it; a switch / row in step mode → step 0), badges, grey dashed wires, `?`
+lamps, the mode line (hidden when the 16-row table needs the room). Check: refusals with the red outline / ring, the
+obtained columns and marks, first wrong row set on the switches, the message (the first wrong output, "must light /
+stay off"), won → stars recorded (never lowered), `unlock_after`, saved, result card (*New record!*, last level),
+message bar stars + *Next level* (shown only for an OK message with a next level open). Levels: locked row → message
+only; lesson card first time (`seen.*`) and F1, Enter/Esc; F2 hint (card + message bar); Ctrl+N/P; Ctrl+O
+(`ft_file_open` in `SD:/docs/circuits`, made by `kapi_mkdir` first — validation note 6), drop, argument; malformed /
+clashing pack → `ft_messagebox` with the engine's line; About; *Copied* messages. Autosave 1 s after the last change
+(`onTick`, `kapi_get_ticks`), on level change and on quit; a failed save says so once.
+
+### Step 6 / G5 — French
+
+`sdcard/apps/circuits.app/lang/fr.txt`, the words of 04 §13/D13 (NON, ET, OU, OUX, NON-ET, NON-OU on the palette, the
+board and the lessons; the loop message exactly as 02 §4.6). `python3 tools/lang/check.py circuits` →
+**`circuits [fr]: 108 words, 0 missing, 0 not used`** (exit 0). The levels' texts and the lesson cards come from the
+packs' `.fr` keys / `lessons.h` (Developer A). Looked at in French (the system's `language=fr` in the writes, the
+mechanism `SHOTS_LANG=fr` uses) at 1000 × 620 and 920 × 600: menus, palette (*NON-OU* fits in 40 px with the 9-px
+face), bench (*Pas à pas*, *Au départ*, *Vérifier*), the step line, the table heads, the message bar — nothing
+truncated but the level titles, fitted with "…" as 04 planned. Left in English: the engine's pack-error detail inside
+the French dialog ("line 20: the table has 1 rows, 2 expected") — the engine is language-free (03 §5).
+
+### Step 7 — the scripted simulator test
+
+`tools/tests/run_circuits_sim_test.sh` (Notes' model; `build` as its argument only builds): UIKit/FreeType/fakekapi
+cached in `$TMPDIR/onyx_circuits_sim`, every `user/Apps/circuits/*.cpp` built with `-Wall -Wextra` (a warning in
+`Apps/circuits/` fails it), no FileKit core, no zlib, no ASan (fakekapi, see A's deviation 1). Each case has its own
+`SIM_WRITES`; the board's top is probed from a dump (the card's height varies), the grid points computed as the board
+does; assertions on `progress.ini`, `SIM_CLIPFILE` and dump pixels (numpy). 61 checks: AC 16 (both copies), 18
+(lesson card, Enter, `open = wire`, padlocked rows, a fixture's 3/2/1/0 stars), 19 (lamp and wire dark → lit after
+two switch clicks; a table-row click), 20 (argument, its second level open via Ctrl+N, a malformed pack refused, a
+drop), 21 (win: `wire = 3`, `wire.circuit = wire A Out`, `open` holds `not`, the result card, Enter → next), G2
+(drag from the palette + 3 wires, Ctrl+Z, Ctrl+Y, keys 2 then 1, arrows, body drag, a wire picked up and re-plugged /
+dropped, Esc, right click + undo, wire click + Del, Clear Board, a loop refused with the red message and the board
+unchanged, save at quit), G3 (check.ini: row 1 1 tinted, both switches green, red message, nothing recorded;
+solving.ini F8 twice: the OR's face `F0F2F4`, a depth-1 AND computed, F7 back), G4 (locked row, open row, F1/Esc,
+F2), French and 920 × 600 runs (`SIM_SCREEN=928x746`).
+
+### Commands and results (from `/home/user/onyx`, after the last commit)
+
+```
+sh tools/tests/run_circuits_sim_test.sh      ->  circuits-sim: all 61 checks passed     (~25 s once UIKit/FreeType are built)
+python3 tools/lang/check.py circuits         ->  circuits [fr]: 108 words, 0 missing, 0 not used
+sh tools/tests/run_circuits_test.sh          ->  ok   circuits (582 checks: ...)          (engine untouched)
+grep -L "MIT License" user/Apps/circuits/* tools/tests/run_circuits_sim_test.sh tools/tests/desktop_sim/sd/docs/circuits/*   -> nothing
+kapi_ calls in the app: opendir/readdir/closedir, get_args, get_ticks, mkdir, exit (AppKit); no fkcore call
+the shots.sh build line (FT branch, extra = circuit.cpp) compiled and linked by hand -> ok
+```
+
+The window was compared by eye with `mockups/circuits-main`, `-empty`, `-check`, `-step`, `-won`, `-lesson`,
+`-min`, `-min-fr`, `-fr`, `-fr-check` (the dumps of the test are PNGs in `$TMPDIR/onyx_circuits_sim/`); they match
+in layout, colours and words.
+
+### Deviations
+
+1. Step mode is entered at **step 0** (all gates unknown); "F8 twice" = step 1.
+2. The gate-open refusal reads *"This AND gate (outlined in red) has an input not connected: wire it, then Check
+   again."* (no English article problem; the outline names it). The pack-clash dialog uses the malformed one's form
+   (*"“x” cannot be opened: a level "and" is already loaded."*).
+3. The lesson pins' name stays *Out* in French (the packs' output names are data, as 04 §13 says).
+4. A pack given as the argument is opened after the window shows its level, so a refusal's dialog is over the window.
+5. The card wraps on 4 lines (above).
+
+### For Developer C (steps 8+)
+
+- **Fixtures ready for G6**: `tools/tests/desktop_sim/circuits/solving.ini` (3.3 solved, the mock-up's scene),
+  `check.ini` (2.2 with OR, F5 → "1 row is wrong…"), `stars.ini`, `and.ini`; packs in `sd/docs/circuits/`.
+  `shots.sh` already builds `circuits` (FT list + `extra`); only the `if want circuits` block is missing — copy the
+  fixture into `$OUT/writes/apps/circuits.app/progress.ini`, `SIM_POS=8,34`, `rm -rf` that folder after.
+- **Click coordinates at 1000 × 620** (client): the board is at x 234, its top `by` = 144 for a 2-line card (3.3,
+  2.2: 144); cell 12 px, `ox` 14, `oy` 24 → cell (gx, gy) = (248 + 12 gx, 168 + 12 gy). For `circuits.png` (A = 1,
+  B = 0, Cin = 1, the AND g4 selected): `down 290 228;up 290 228;wait;down 290 468;up 290 468;wait;down 470 324;up 470 324`.
+  `circuits-check.png`: `key 0x114`. `circuits-step.png`: the first + `key 0x117` three times (= step 2, the mock-up's).
+  `run_circuits_sim_test.sh`'s `geo cell` computes any other point.
+- The tooltips for AC 17's French shot: `move` over a palette button (x 234 + 58 + 41 k + 20, y `by` − 29) then
+  ~30 `wait`s.
+- docs/04: the board holds **35** gates at most in practice (A's deviation 2); menus and keys are 04 §7/§8 exactly
+  (menu ids for `menu N`: 0 Next … 7 Clear Board, 8 Copy Truth Table, 9 Copy Circuit, 10 Check, 11 Step, 12 Live,
+  13 Reset, 14 Open Level Pack, 15 Lesson, 16 Hint, 17 About).
+- Not built here: the Pi `make` of `circuits.elf` (newlib: the window uses only `snprintf`, `strcmp`… and the kits).
