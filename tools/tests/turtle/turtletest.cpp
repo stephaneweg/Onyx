@@ -354,6 +354,22 @@ int main (int argc, char **argv)
 		CHECK (count_instructions ("REPEAT 3 ' three\n  FORWARD: PICK\nEND REPEAT\n\nEND\n") == 4, "count: %d", count_instructions ("REPEAT 3 ' three\n  FORWARD: PICK\nEND REPEAT\n\nEND\n"));
 	}
 	else CHECK (0, "the levels the checks use are missing");
+	// on the card's packs 4 and 5: a colour changed on the rainbow; a recursion without its stop on the tree; gem 3
+	// first on the first gems' level
+	Level *rainbow = find (packs, np, "rainbow-spiral"), *tree = find (packs, np, "tree"), *gl = find (packs, np, "gems-line");
+	if (rainbow && tree && gl)
+	{
+		Run R;
+		play (*rainbow, "FOR i = 1 TO 16\n  COLOR i MOD 6 + 2\n  FORWARD i\n  RIGHT\nNEXT\n", LANG_EN, R);
+		CHECK (R.result == R_LOST && strstr (R.msg, "not the right colours"), "the rainbow in other colours: %d %s", R.result, R.msg);
+		play (*rainbow, "FOR i = 1 TO 15\n  COLOR i MOD 6 + 1\n  FORWARD i\n  RIGHT\nNEXT\n", LANG_FR, R);
+		CHECK (R.result == R_LOST && strstr (R.msg, "figure claire"), "the rainbow one leg short: %d %s", R.result, R.msg);
+		play (*tree, "SUB Tree (size)\n  FORWARD size\n  LEFT 30\n  Tree size * 0.6\n  RIGHT 60\n  Tree size * 0.6\n  LEFT 30\n  BACK size\nEND SUB\nTree 6\n", LANG_EN, R);
+		CHECK (R.result == R_ERROR && strstr (R.msg, "calls itself without end"), "a tree without its stop: %d line %d %s", R.result, R.errLine, R.msg);
+		play (*gl, "FORWARD 4\nPICK\n", LANG_EN, R);
+		CHECK (R.result == R_ERROR && R.errLine == 2 && strstr (R.msg, "Gem 1 first! This is gem 2."), "gem 2 first: %s", R.msg);
+	}
+	else CHECK (0, "the levels of packs 4 and 5 the checks use are missing");
 	for (int i = 0; i < np; i++) delete packs[i];
 	printf (fails ? "turtle: %d failure(s)\n" : "ok   turtle (%d levels: solved, written back; the errors)\n", fails ? fails : total);
 	return fails != 0;
