@@ -4,6 +4,40 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## USB sticks: hot mount, eject, format (2026-10-06, kapi v91): built, tested on the PC, NOT yet on the Pi
+
+Asked by the user: USB mass-storage volumes so the system is not limited to the SD card. **Read docs/02 §17**
+(the design, the surprise removal, the eject, the format, the multi-partition proposal) and docs/05 §28 (the
+Circle fork's patches).
+
+- **Done**: `kernel/sys/volume.cpp` (+ `kern/volume.h`): `USB:` / `USB2:` / `USB3:` (Circle's `umsd1..3`) mounted
+  when plugged in (`VolPoll`, the input task, beside `SoundPoll`), unmounted at an eject or when pulled out (its
+  open files lost -> `-EIO`, the programs go on); kapi v91 `vol_list` 228, `vol_eject` 229, `vol_mount` 230,
+  `vol_format` 231 (SD: always refused; SD1..SD3 with `KAPI_FMT_CARD`); the FatFs objects outside the open-file
+  layer tracked (`VolTrack`); `kapi_shutdown` syncs everything first (`VolSyncAll`); `USB1:` = `USB:`.
+  The fork (circle `onyx`): `FF_USE_MKFS`, `FF_USE_LABEL`, `ff.c` re-checks after the volume lock, `ffsystem.cpp`'s
+  mutex kept across an unmount, a yield between USB transfers (`diskio.cpp`), SCSI SYNCHRONIZE CACHE.
+  User side: the menu bar's USB icon and box (Eject / Mount / Format..., notifications), the File Viewer (sidebar,
+  Go > USB Stick / Eject USB Stick (Ctrl+E) / Disks), **Disks** (`user/Apps/disks`, in the `onyx` package),
+  `/bin/mount`, `/bin/eject`, `/bin/mkfs`, `df` lists every volume; Photos looks in `USB2:/DCIM` (was `USB1:`).
+- **Tested on the PC**: `sh tools/tests/run_fs_test.sh` (new `fs/usbtest.cpp`: formats, labels, MBR /
+  superfloppy, a stick pulled out while writing, an unmount while a call waits for the lock — that one fails
+  with upstream's `ff.c`), `run_ofile_test.sh`, `run_ipc_test.sh`; Disks and the USB box in the simulator
+  (`SIM_USB=1`, `shots.sh disks usbmenu`). Kernel and apps built.
+- **To test on the Pi with a real stick** (nothing ran there yet): a FAT32 stick and an exFAT one plugged in
+  after boot and at boot (the notification, the icon, `mount`, `ls USB:`); copy SD <-> USB both ways with `cp`
+  and the File Viewer (a big file: the desktop must stay responsive); `eject` then pull out (no warning); pull
+  out **while copying** a big file (the copy fails, no hang, no crash; `kmsg`: `volume: USB: removed without
+  an eject`; another stick then mounts and the old copy does not write to it); eject with a file open (Tinypad on
+  `USB:/x.txt`: -EBUSY, then forced); `mkfs -t exfat -L TEST USB:` and FAT32 on a 32 GB+ stick (the time it
+  takes; the stick then readable on a PC); `mkfs SD:` refused; two sticks at once (`USB2:`); a USB hard disk
+  (its spin-up: the mount is tried 3 times); a stick behind a hub; the SYNCHRONIZE CACHE on sticks that refuse it
+  (`kmsg`: no error loop). Worth timing: how long a transfer that was running when a stick is pulled takes to
+  fail (Circle's xHCI 3 s timeout, its retries).
+- **Open / for later**: several partitions of one USB disk (proposal in docs/02 §17: `USB1P2:`... — **the naming
+  is the user's choice**), GPT (`FF_LBA64`: a full rebuild), hidden `.~onyx-deleted` files left on a stick by a
+  crash are not cleaned at its mount (only the card's at boot).
+
 ## 3DForge, a small parametric CAD (2026-10-05): built, on the Pi (the GPU draws it), published
 
 Asked by the user: an easy parametric CAD (sketch + extrude, union / subtract / intersect, bodies only, fillets and

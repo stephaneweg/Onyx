@@ -1,6 +1,6 @@
 //
-// df -- the volumes' room. Usage: df [volume-or-path ...]   (default: SD:, SD1:..SD3: when
-// mounted, RAM:). One line each: the volume, its type, size, used, free (KB / MB / GB), and for
+// df -- the volumes' room. Usage: df [volume-or-path ...]   (default: every volume mounted -- SD:,
+// SD1:..SD3:, USB:.. (v91 vol_list), RAM:). One line each: the volume, its type, size, used, free (KB / MB / GB), and for
 // RAM: (the kernel's RAM volume, lost at a restart) its files and folders. kapi v71 vol_info.
 //
 #include "appkit/appkit.h"
@@ -55,8 +55,21 @@ int main (void)
 	}
 	if (!any)
 	{
-		static const char *const vols[] = { "SD:", "SD1:", "SD2:", "SD3:", "RAM:" };
-		for (unsigned k = 0; k < sizeof vols / sizeof vols[0]; k++) show (vols[k], 1);
+		struct kapi_volume v[16];
+		int n = kapi_vol_list (v, 16, 0);
+		if (n < 0)				// (a kernel before v91)
+		{
+			static const char *const vols[] = { "SD:", "SD1:", "SD2:", "SD3:", "RAM:" };
+			for (unsigned k = 0; k < sizeof vols / sizeof vols[0]; k++) show (vols[k], 1);
+		}
+		for (int k = 0; k < n && k < 16; k++)
+		{
+			if (v[k].state != KAPI_VST_MOUNTED) continue;
+			char name[12]; int m = 0;
+			while (v[k].name[m] && m < 8) { name[m] = v[k].name[m]; m++; }
+			name[m++] = ':'; name[m] = 0;
+			show (name, 1);
+		}
 	}
 	return rc;
 }

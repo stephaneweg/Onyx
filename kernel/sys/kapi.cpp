@@ -31,6 +31,7 @@
 #include <kern/uaccess.h>		// the app's pointers: checked, copied fault-safe
 #include <kern/ofile.h>		// (v75) ResolvePath & co. shared with sys/ofile.cpp, OFileNoteDir
 #include <kern/image.h>		// (v77) program images: the image kapis, ImageFileChanged
+#include <kern/volume.h>		// (v91) the volumes: VolTrack, VolSyncAll
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/timer.h>
@@ -93,6 +94,7 @@ void ResolvePath (const char *pIn, char *pOut, unsigned nCap)		// (kern/ofile.h:
 	auto putVolume = [&] (const char *p, unsigned n)	// (upper case; SD0: -> SD:)
 	{
 		if (n == 4 && (p[0] == 'S' || p[0] == 's') && (p[1] == 'D' || p[1] == 'd') && p[2] == '0') { put ("SD:", 3); return; }
+		if (n == 5 && (p[0] | 32) == 'u' && (p[1] | 32) == 's' && (p[2] | 32) == 'b' && p[3] == '1') { put ("USB:", 4); return; }	// (v91: USB1: is USB:)
 		for (unsigned i = 0; i < n && r < sizeof (raw) - 1; i++) raw[r++] = p[i] >= 'a' && p[i] <= 'z' ? (char) (p[i] - 32) : p[i];
 	};
 	const char *cwd = CurCwd ();
@@ -1172,6 +1174,7 @@ void *kapi_open (const char *pUserPath)
 		delete pFile;
 		return 0;
 	}
+	VolTrack (&pFile->obj, 0);			// (v91: an eject counts it; handle.cpp untracks it)
 	return HandleNew (pFile, HANDLE_FILE, HKIND_FATFS);
 }
 
@@ -1648,6 +1651,7 @@ void *kapi_opendir (const char *pUserPath)
 		return 0;
 	}
 	OFileNoteDir (pDir, abs);			// (v75: dir_read's ino)
+	VolTrack (&pDir->obj, 0);			// (v91)
 	return HandleNew (pDir, HANDLE_DIR, HKIND_FATFS);
 }
 
@@ -1779,8 +1783,10 @@ int kapi_save_file (const char *pUserPath, const void *pBuf, unsigned nLen)
 		return -1;
 	}
 	UINT nWritten = 0;
+	VolTrack (&File.obj, &File);			// (v91: an eject meanwhile sees it busy)
 	FRESULT Res = ChunkedWrite (&File, pBuf, nLen, &nWritten);
 	f_close (&File);
+	VolUntrack (&File.obj);
 	ImageFileChanged (abs);				// (one made from the half-written file meanwhile)
 	return (Res == FR_OK) ? (int) nWritten : -1;
 }
@@ -2122,6 +2128,7 @@ void kapi_shutdown (int nMode)
 	CScheduler::Get ()->MsSleep (300);		// let the last frame / log line out
 	CrashLogCleanEnd ();				// (a clean end: no crash report, no watchdog)
 	CrashLogClockSave ();				// (the time for the next boot)
+	VolSyncAll ();					// (v91) the files open for writing synced, the USB caches flushed
 	f_mount (0, "SD:", 0);				// unmount: flush + release the volumes
 	f_mount (0, "SD1:", 0); f_mount (0, "SD2:", 0); f_mount (0, "SD3:", 0);
 	if (nMode == 1)

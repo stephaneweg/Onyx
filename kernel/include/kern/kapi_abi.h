@@ -215,7 +215,14 @@
 //      (the slot numbers quoted in the notes above are those of their time; the checks below and
 //      docs/02 have today's). AppKit is rebuilt with the kernel; no program is (they call AppKit by
 //      name). A stand-in kernel on a PC still has the windows' entries, after the table's end.
-#define KAPI_ABI_VERSION	90
+// v91: the volumes (kern/volume.h, sys/volume.cpp): + vol_list, vol_eject, vol_mount, vol_format (slots
+//      228..231). USB sticks and disks (USB:, USB2:, USB3: -- Circle's umsd1..umsd3) are mounted when they
+//      are plugged in and unmounted when they are ejected or pulled out (their open files then fail with
+//      -EIO, the programs go on); vol_list lists every volume with its state, size, label; vol_eject
+//      syncs the volume's open files, flushes the stick's cache and unmounts it (-EBUSY while files are
+//      open, unless forced); vol_format makes a FAT / FAT32 / exFAT file system with a label -- never on
+//      SD: (the system's volume), on SD1:..SD3: only with KAPI_FMT_CARD.
+#define KAPI_ABI_VERSION	91
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -316,6 +323,53 @@ struct kapi_vol_info
 	unsigned files, dirs;		// RAM: only (0 elsewhere)
 	unsigned flags;			// KAPI_VOL_*
 	char     type[12];		// "RAM", "FAT12", "FAT16", "FAT32", "exFAT"
+};
+
+// (v91) A volume as kapi_vol_list gives it. The FatFs volumes (SD, SD1..SD3: the card's partitions;
+// USB, USB2, USB3: the USB mass-storage devices) then RAM. A USB volume stays listed once its device is
+// gone (KAPI_VST_REMOVED) until a device takes its place: a program that polls sees what happened.
+#define KAPI_VST_MOUNTED	1		// in use: its files can be read and written
+#define KAPI_VST_EJECTED	2		// ejected, the device still plugged in: it can be removed safely
+#define KAPI_VST_UNREADABLE	3		// a device without a FAT / exFAT file system (or one that could not be read): format it
+#define KAPI_VST_REMOVED	4		// the device is gone (KAPI_VF_UNSAFE: pulled out while mounted)
+#define KAPI_VF_SYSTEM		(1u << 0)	// SD:, the system's volume: never ejected, never formatted
+#define KAPI_VF_REMOVABLE	(1u << 1)	// a USB volume: can be ejected
+#define KAPI_VF_RAM		(1u << 2)	// RAM:, in memory
+#define KAPI_VF_UNSAFE		(1u << 3)	// (REMOVED) it was pulled out while mounted: what was being written may be lost
+#define KAPI_VF_FORMATTABLE	(1u << 4)	// vol_format accepts it (SD1..SD3: with KAPI_FMT_CARD)
+#define KAPI_VF_IOERR		(1u << 5)	// (UNREADABLE) the device did not answer the reads
+#define KAPI_VOLS_ROOM		1		// vol_list's flags: the free space too (may read the volume's FAT once)
+struct kapi_volume
+{
+	char     name[8];		// "SD", "SD1", "USB", "RAM" (without the ':')
+	unsigned state;			// KAPI_VST_*
+	unsigned flags;			// KAPI_VF_*
+	unsigned gen;			// changes each time the volume is mounted, ejected, removed, formatted
+	unsigned open;			// the files and folders open on it now
+	unsigned long long device_size;	// the device's bytes (the whole stick, the whole card), 0 unknown
+	unsigned long long total;	// the file system's bytes (0: not mounted)
+	unsigned long long free;	// bytes free (KAPI_VOLS_ROOM), else ~0ull
+	unsigned serial;		// the volume's serial number
+	char     type[8];		// "FAT12", "FAT16", "FAT32", "exFAT", "RAM", "" (none)
+	char     label[36];		// the volume's label ("" none), as the file names: code page 850
+	char     device[12];		// "emmc1", "umsd1"... ("" RAM)
+};
+
+#define KAPI_EJECT_FORCE	1		// vol_eject's flags: even with files open (they then fail with -EIO)
+
+// (v91) kapi_vol_format's request.
+#define KAPI_FMT_AUTO		0		// fs: FAT16 / FAT32 by the size, exFAT from 32 GB (as Windows)
+#define KAPI_FMT_FAT		1		// FAT12 / FAT16 (small volumes)
+#define KAPI_FMT_FAT32		2
+#define KAPI_FMT_EXFAT		3
+#define KAPI_FMT_FORCE		1		// flags: even with files open on it
+#define KAPI_FMT_CARD		2		// flags: a partition of the SD card (SD1..SD3) may be formatted
+struct kapi_format
+{
+	unsigned fs;			// KAPI_FMT_AUTO..EXFAT
+	unsigned flags;			// KAPI_FMT_*
+	unsigned cluster;		// bytes (a power of 2), 0: chosen by the size
+	char     label[36];		// "" none; at most 11 characters, not "*+,./:;<=>?[\]|
 };
 
 // A directory entry from kapi_readdir.
@@ -1893,6 +1947,20 @@ struct TKApiTable
 	// --- v89: the graphics server's mechanisms (sys/wsrv.cpp; KAPI_WS_*) ---
 	long (*ws_ctl) (int op, long a0, long a1, long a2);
 
+	// --- v91: the volumes (sys/volume.cpp; struct kapi_volume, KAPI_VST_*, KAPI_VF_*) ---
+	// vol_list: every volume (out: up to max of them; flags KAPI_VOLS_ROOM: the free space too) -> how
+	// many there are. vol_eject: a USB volume ("USB:") synced, its device's cache flushed, unmounted ->
+	// 0: it can be removed; -KAPI_EBUSY files are open on it (synced, still mounted; KAPI_EJECT_FORCE
+	// unmounts anyway), -KAPI_EINVAL not removable, -KAPI_ENOENT not mounted. vol_mount: a USB volume
+	// ejected (still plugged in) or unreadable, or SD1..SD3, mounted again -> 0 / -KAPI_E*. vol_format:
+	// the volume made empty with a new file system (struct kapi_format) -> 0 (mounted again) /
+	// -KAPI_EPERM (SD:, or SD1..SD3 without KAPI_FMT_CARD), -KAPI_EBUSY, -KAPI_ENODEV, -KAPI_EINVAL
+	// (the label, the cluster), -KAPI_ENOSPC (too small / too big for that file system), -KAPI_EIO.
+	int (*vol_list) (struct kapi_volume *out, int max, unsigned flags);
+	int (*vol_eject) (const char *vol, unsigned flags);
+	int (*vol_mount) (const char *vol);
+	int (*vol_format) (const char *vol, const struct kapi_format *fmt);
+
 #ifndef __aarch64__
 	// --- NOT ON ONYX: the windows, for a stand-in kernel that has a window manager (the PC's simulator,
 	// the hosts of the tests, Koton for Windows) -- the builds that take AppKit's calls inline against
@@ -2104,6 +2172,10 @@ KAPI_CHECK_SLOT (sound_output, 224);
 KAPI_CHECK_SLOT (sound_clients, 225);
 KAPI_CHECK_SLOT (sound_client_volume, 226);
 KAPI_CHECK_SLOT (ws_ctl, 227);
+KAPI_CHECK_SLOT (vol_list, 228);
+KAPI_CHECK_SLOT (vol_eject, 229);
+KAPI_CHECK_SLOT (vol_mount, 230);
+KAPI_CHECK_SLOT (vol_format, 231);
 
 #ifdef __cplusplus
 }

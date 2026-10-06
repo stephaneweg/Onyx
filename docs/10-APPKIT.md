@@ -19,7 +19,7 @@ AppKit is what makes a program run: its one link to the system. Every call a pro
 |---|---|
 | Include | `#include "appkit/appkit.h"` |
 | Link | nothing to link: the kernel binds AppKit to every program |
-| Library | `SD:/lib/appkit.so` — 300 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
+| Library | `SD:/lib/appkit.so` — 304 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
 | Sources | `user/Kits/appkit/` |
 
 ## Using it
@@ -225,6 +225,10 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_code_alloc` | Writable + executable memory for generated code, a JIT (v58) | `appkit.h` |
 | `kapi_fsize64` | A file's whole size (v59 | `appkit.h` |
 | `kapi_vol_info` | (v71) vol_info | `appkit.h` |
+| `kapi_vol_list` | (v91) The volumes | `appkit.h` |
+| `kapi_vol_eject` | vol_eject | `appkit.h` |
+| `kapi_vol_mount` | vol_mount | `appkit.h` |
+| `kapi_vol_format` | vol_format | `appkit.h` |
 | `kapi_pop_event` | (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, ker | `appkit.h` |
 | `kapi_event_mods` | (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, ker | `appkit.h` |
 | `kapi_pop_post` | (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, ker | `appkit.h` |
@@ -1062,6 +1066,30 @@ unsigned long long kapi_fsize64 (void *h);
 
 ```cpp
 int kapi_vol_info (const char *path, struct kapi_vol_info *out);
+```
+
+(v91) The volumes: SD:, SD1:..SD3: (the card's partitions), USB:, USB2:, USB3: (USB sticks and disks, mounted when plugged in), RAM:. vol_list: every volume (struct kapi_volume: its state KAPI_VST_*, flags KAPI_VF_*, sizes, type, label, the files open on it; flags KAPI_VOLS_ROOM: the free space too) -> how many there are (out: up to max). A USB volume pulled out stays listed as KAPI_VST_REMOVED (KAPI_VF_UNSAFE if it was mounted) until a device takes its place; its gen changes at each event.
+
+```cpp
+int kapi_vol_list (struct kapi_volume *out, int max, unsigned flags);
+```
+
+vol_eject: "USB:" made safe to remove -- its written files synced, the device's cache flushed, unmounted -> 0; -KAPI_EBUSY files are open on it (synced, still mounted; KAPI_EJECT_FORCE: ejected anyway, they then fail with -KAPI_EIO), -KAPI_EINVAL not a removable volume, -KAPI_ENOENT not mounted.
+
+```cpp
+int kapi_vol_eject (const char *vol, unsigned flags);
+```
+
+vol_mount: a USB volume ejected but still plugged in (or SD1..SD3) mounted again -> 0 / -KAPI_E*.
+
+```cpp
+int kapi_vol_mount (const char *vol);
+```
+
+vol_format: the volume emptied, a new file system made (struct kapi_format: KAPI_FMT_AUTO / FAT / FAT32 / EXFAT, the cluster, the label) and mounted -> 0, -KAPI_EPERM (SD:, never; SD1..SD3 without KAPI_FMT_CARD), -KAPI_EBUSY (files open: KAPI_FMT_FORCE), -KAPI_ENODEV, -KAPI_EINVAL (the label: 11 characters, none of "*+,./:;<=>?[\]|), -KAPI_ENOSPC (too small or too big for it), -KAPI_EIO. The caller waits while it runs (seconds on a big stick).
+
+```cpp
+int kapi_vol_format (const char *vol, const struct kapi_format *fmt);
 ```
 
 (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, kern/el0.h). pop_event: the window's next event -> 1 (*ev; its handler NOT called), 0 none; event_mods: what kapi_get_modifiers says while a key handler runs (ev->mods), returns the previous value to put back; pop_post: the next kapi_post call -> 1 (*p, not run), 0 none; pump_sleep: kapi_pump_wait without the pump (-> how many are pending). An older kernel: 0 / 0xFFFFFFFF / 0 / 0 (no sleep).

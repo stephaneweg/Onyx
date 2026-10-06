@@ -73,6 +73,10 @@ PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  threadtest.elf futextest.elf miditest.elf ringtest.elf ramtest.elf df.elf faulttest.elf el0test.elf sysstat.elf wstest.elf \
 	  filetest.elf proctest.elf memtest.elf uname.elf
 
+# kapi v91 the volumes: USB sticks mounted, ejected, formatted (volutil.h: what they share with df)
+PROGS  += mount.elf eject.elf mkfs.elf
+df.elf mount.elf eject.elf mkfs.elf: volutil.h
+
 # The text tools (tool.h: argv, a buffered stdout, files and stdin by lines; regex.h and subst.h:
 # the regular expressions of grep, sed and ed). Tested on the PC: tools/tests/run_tools_test.sh.
 TEXT_PROGS = ls.elf cat.elf grep.elf wc.elf head.elf tail.elf sed.elf ed.elf sort.elf uniq.elf cut.elf tr.elf \

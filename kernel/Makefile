@@ -34,6 +34,7 @@ OBJS = \
 	sys/net.o \
 	sys/sound.o \
 	sys/stream.o \
+	sys/volume.o \
 	sys/debugcon.o \
 	sys/fslock.o \
 	sys/appcore.o \

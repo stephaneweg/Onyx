@@ -252,6 +252,10 @@ int kapi_sound_output (int nOut);
 // v85 the sound's mixer
 int kapi_sound_clients (struct kapi_sound_client *pOut, int nMax);
 long kapi_ws_ctl (int nOp, long a0, long a1, long a2);
+int kapi_vol_list (struct kapi_volume *pOut, int nMax, unsigned nFlags);
+int kapi_vol_eject (const char *pVol, unsigned nFlags);
+int kapi_vol_mount (const char *pVol);
+int kapi_vol_format (const char *pVol, const struct kapi_format *pFmt);
 int kapi_sound_client_volume (unsigned nPid, int nVolume, int nMute);
 
 }  // extern "C"
@@ -529,4 +533,8 @@ void KApiTableInit (void)
 	t->sound_clients       = kapi_sound_clients;	// (v85)
 	t->sound_client_volume = kapi_sound_client_volume;
 	t->ws_ctl            = kapi_ws_ctl;		// (v89)
+	t->vol_list          = kapi_vol_list;		// (v91, sys/volume.cpp)
+	t->vol_eject         = kapi_vol_eject;
+	t->vol_mount         = kapi_vol_mount;
+	t->vol_format        = kapi_vol_format;
 }

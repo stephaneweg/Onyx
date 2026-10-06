@@ -206,6 +206,8 @@ static bool volume_there (const char *p)
 	const char *c = p ? strchr (p, ':') : 0;
 	if (!c || c - p > 4) return true;
 	std::string v (p, (size_t) (c - p));
+	if (v == "USB" || v == "USB1") return getenv ("SIM_USB") != 0;	// (v91: a stick, SIM_USB=1)
+	if (v == "USB2" || v == "USB3") return false;
 	if (v == "SD" || v == "SD0" || (v != "VD0" && v != "VD1" && v != "VD2" && v != "VD3" && v != "SD1" && v != "SD2" && v != "SD3")) return true;
 	std::string list = std::string (",") + (getenv ("SIM_VOLS") ? getenv ("SIM_VOLS") : "") + ",";
 	return list.find ("," + v + ",") != std::string::npos;
@@ -720,6 +722,62 @@ static int vol_info (const char *p, struct kapi_vol_info *o)
 	}
 	if (!volume_there (p)) return -1;
 	o->total = 8ull << 30; o->free = 4ull << 30; o->used = o->total - o->free; snprintf (o->type, sizeof o->type, "FAT32");
+	return 0;
+}
+// (v91) the volumes: the card (SD:, the SIM_VOLS partitions), a USB stick when SIM_USB is set (a 14.9 GB
+// exFAT "KINGSTON"; Eject / Mount / Format change it as the kernel would), RAM:
+static unsigned g_usbState = KAPI_VST_MOUNTED, g_usbGen = 1;
+static char g_usbType[8] = "exFAT", g_usbLabel[36] = "KINGSTON";
+static int vol_list (struct kapi_volume *o, int max, unsigned flags)
+{
+	int n = 0;
+	auto add = [&] (const char *name, unsigned state, unsigned fl, unsigned long long dev, unsigned long long total, unsigned long long fr,
+			const char *type, const char *label, const char *devname, unsigned gen) {
+		if (n < max && o)
+		{
+			struct kapi_volume &e = o[n]; memset (&e, 0, sizeof e);
+			snprintf (e.name, sizeof e.name, "%s", name); e.state = state; e.flags = fl; e.gen = gen;
+			e.device_size = dev; e.total = total; e.free = (flags & KAPI_VOLS_ROOM) ? fr : ~0ull;
+			snprintf (e.type, sizeof e.type, "%s", type); snprintf (e.label, sizeof e.label, "%s", label);
+			snprintf (e.device, sizeof e.device, "%s", devname); e.serial = 0x1A2B3C4D;
+		}
+		n++;
+	};
+	add ("SD", KAPI_VST_MOUNTED, KAPI_VF_SYSTEM, 32ull << 30, 8ull << 30, 4ull << 30, "FAT32", "BOOT", "emmc1", 1);
+	static const char *const parts[] = { "SD1", "SD2", "SD3" };
+	for (int i = 0; i < 3; i++)
+	{
+		char v[8]; snprintf (v, sizeof v, "%s:", parts[i]);
+		if (volume_there (v)) add (parts[i], KAPI_VST_MOUNTED, KAPI_VF_FORMATTABLE, 32ull << 30, 23ull << 30, 17ull << 30, "exFAT", "ROMS", "emmc1", 1);
+	}
+	if (getenv ("SIM_USB"))
+		add ("USB", g_usbState, KAPI_VF_REMOVABLE | KAPI_VF_FORMATTABLE, 16008609792ull, g_usbState == KAPI_VST_MOUNTED ? 16004415488ull : 0,
+		     g_usbState == KAPI_VST_MOUNTED ? 11811160064ull : 0, g_usbState == KAPI_VST_MOUNTED ? g_usbType : "",
+		     g_usbState == KAPI_VST_MOUNTED ? g_usbLabel : "", "umsd1", g_usbGen);
+	add ("RAM", KAPI_VST_MOUNTED, KAPI_VF_RAM, 128ull << 20, 128ull << 20, 120ull << 20, "RAM", "", "", 1);
+	return n;
+}
+static bool is_usb (const char *v) { return v && (v[0] | 32) == 'u' && (v[1] | 32) == 's' && (v[2] | 32) == 'b' && (v[3] == ':' || v[3] == 0 || v[3] == '1'); }
+static int vol_eject (const char *v, unsigned)
+{
+	if (!is_usb (v) || !getenv ("SIM_USB")) return -KAPI_EINVAL;
+	if (g_usbState != KAPI_VST_MOUNTED) return -KAPI_ENOENT;
+	g_usbState = KAPI_VST_EJECTED; g_usbGen++;
+	return 0;
+}
+static int vol_mount (const char *v)
+{
+	if (!is_usb (v) || !getenv ("SIM_USB")) return -KAPI_ENODEV;
+	if (g_usbState != KAPI_VST_MOUNTED) { g_usbState = KAPI_VST_MOUNTED; g_usbGen++; }
+	return 0;
+}
+static int vol_format (const char *v, const struct kapi_format *f)
+{
+	if (!v || (v[0] | 32) == 's') return (v && (v[2] == ':' || v[2] == 0)) || !(f->flags & KAPI_FMT_CARD) ? -KAPI_EPERM : 0;
+	if (!is_usb (v) || !getenv ("SIM_USB")) return -KAPI_ENODEV;
+	snprintf (g_usbType, sizeof g_usbType, "%s", f->fs == KAPI_FMT_FAT32 ? "FAT32" : f->fs == KAPI_FMT_FAT ? "FAT16" : "exFAT");
+	snprintf (g_usbLabel, sizeof g_usbLabel, "%s", f->label);
+	g_usbState = KAPI_VST_MOUNTED; g_usbGen++;
 	return 0;
 }
 static int list_tasks (char *b, unsigned n)
@@ -1271,6 +1329,10 @@ static void setup (void)
 	T->proc_done = proc_done; T->wait = h_wait; T->stream_read = stream_read; T->file_in = file_in; T->file_out = file_out; T->stream_read_nb = stream_read_nb;
 	T->stream_write = stream_write; T->stream_eof = stream_eof; T->stdin_read = stdin_read;
 	T->vol_info = vol_info;
+	T->vol_list = vol_list;			// (v91)
+	T->vol_eject = vol_eject;
+	T->vol_mount = vol_mount;
+	T->vol_format = vol_format;
 	T->seek = f_seek; T->fsize64 = f_fsize64; T->net_info = net_info; T->exit = h_exit; T->toggle_app = toggle_app;
 	T->ram_detail = ram_detail; T->draw_text = draw_text; T->win_list = win_list;
 	T->list_procs = list_procs; T->proc_stats = proc_stats; T->meminfo = meminfo; T->mailbox_recv = mailbox_recv_note;

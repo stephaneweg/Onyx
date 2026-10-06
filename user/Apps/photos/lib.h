@@ -156,7 +156,7 @@ public:
 		nroots = nadded = 0;
 		add_root ("SD:/Pictures", false);
 		if (dir_exists ("SD:/Pictures/Camera")) scpy (roots[nroots++], "SD:/Pictures/Camera", sizeof roots[0]);	// (shown apart; walked with Pictures)
-		static const char *const V[] = { "SD:/DCIM", "SD1:/DCIM", "SD2:/DCIM", "SD3:/DCIM", "USB:/DCIM", "USB1:/DCIM" };
+		static const char *const V[] = { "SD:/DCIM", "SD1:/DCIM", "SD2:/DCIM", "SD3:/DCIM", "USB:/DCIM", "USB2:/DCIM", "USB3:/DCIM" };
 		for (unsigned i = 0; i < sizeof V / sizeof V[0]; i++) if (dir_exists (V[i])) add_root (V[i], false);
 		int len; char *b = file_read (PH_FOLDERS, &len);
 		if (b)

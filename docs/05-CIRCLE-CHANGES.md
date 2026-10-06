@@ -53,6 +53,7 @@ git -C circle diff Step51..onyx
 | 25 | **TCP: a closed connection's retransmission timer** stopped, a late one ignored — it was a kernel panic (`Unexpected state 0`); a reset wakes a waiting sender | `lib/net/tcpconnection.cpp` | `libnet` |
 | 26 | **Wi-Fi: the chip polled** when the network has its own core (the SDIO card interrupt came 2.5–5 ms late), **a scan over both bands** with the configured networks probed by name, **5 GHz preferred**, **a frame in one SDIO command**, the frames' locks without a yield, **the SDIO bus at 50 MHz**, **no A-MPDU for the frames sent** (half of them were lost during a download) | `addon/wlan/ether4330.c`, `addon/wlan/emmc.c`, `addon/wlan/p9util.cpp` | `libwlan` |
 | 27 | **TCP: window scaling** (RFC 7323), **a receive window that follows the receive queue** (it was a constant), a 256 KB transmit threshold, **delayed acknowledgements** (one for eight segments) | `lib/net/tcpconnection.cpp`, `include/circle/net/tcpconnection.h`, `include/circle/net/sizes.h` | `libnet` |
+| 28 | **USB volumes**: `f_mkfs` and the labels on (`FF_USE_MKFS`, `FF_USE_LABEL`), FatFs' objects checked again once the volume lock is held, the volume mutex kept across an unmount, a yield between two USB transfers, SCSI SYNCHRONIZE CACHE for the eject | `addon/fatfs/ffconf.h`, `ff.c`, `ffsystem.cpp`, `diskio.cpp`, `lib/usb/usbmassdevice.cpp`, `include/circle/usb/usbmassdevice.h` | `libfatfs`, `libusb` + the kernel (no structure changes: no clean rebuild) |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
 ---
@@ -982,6 +983,44 @@ download, a video's loader that waits).
 
 **Measured**: the table of §26 (the Pi sends 4.3 → 6.6 MB/s by this alone); the download from
 Cloudflare 2.2–2.8 → 6.0 MB/s with §26's fast path.
+
+## 28. USB volumes: format, labels, an unmount while a call waits, the eject
+
+**Why.** kapi v91 (docs/02 §17) mounts the USB mass-storage devices as `USB:`, `USB2:`, `USB3:` when they
+are plugged in and unmounts them when they are ejected or pulled out, formats a volume and shows its label.
+Upstream's FatFs configuration has neither `f_mkfs` nor the labels, and FatFs assumes a volume is not
+unmounted while a call on it waits for its lock.
+
+**What.**
+
+- `ffconf.h`: **`FF_USE_MKFS 1`**, **`FF_USE_LABEL 1`** (`f_mkfs`, `f_getlabel`, `f_setlabel`). Neither changes
+  a structure: no clean rebuild, `libwlan` / `wpa_supplicant` unaffected (unlike §13).
+- `ff.c`: an unmount while another task waits for the volume lock (a USB stick ejected or pulled out: the
+  kernel unmounts it holding the lock, the waiter goes on once it is given). **`validate`** tests the object
+  again once the lock is held (`fs_type`, `id`; before, only the drive's status): a write on a volume
+  unmounted meanwhile was carried out on the stale `FATFS` — on an ejected stick still plugged in, written to
+  it behind the user's back. **`mount_volume`** checks `FatFs[vol]` is still the object it locked: it was
+  re-mounting the unregistered object (an open after the eject found the volume back by itself). Both now
+  return `FR_INVALID_OBJECT` / `FR_NOT_ENABLED` and give the lock back.
+- `ffsystem.cpp`: with the kernel's lock hooks (§7) the `CGenericLock` is never used; `ff_mutex_delete` (at an
+  unmount) no longer deletes it and `ff_mutex_take` / `_give` call the hooks before asserting it exists: a task
+  that took the lock before the unmount gives it back after, which asserted (a kernel panic) before.
+  `ff_mutex_create` keeps the existing one (a remount). Without the hooks: upstream's behaviour.
+- `diskio.cpp`: after each transfer with a drive other than the SD card (`pdrv != 0`), the weak hook
+  **`OnyxDriverPoll`** (the kernel's, §7b: it yields once the task has run 10 ms). The USB driver waits in a
+  busy loop (`NO_BUSY_WAIT` off): a format, a big folder kept core 0 for seconds. Between two transfers is a
+  safe point: the volume lock is held, and a device removed meanwhile only fails the next transfer
+  (`disk_removed` cleared `s_pVolume`).
+- `usbmassdevice.{h,cpp}`: **`IOCtl (DEVICE_IOCTL_SYNC)`** — FatFs' `CTRL_SYNC` — sends **SCSI SYNCHRONIZE CACHE
+  (10)** (whole medium); a device that refuses it (no cache) is reset to a known state and the call succeeds.
+  The kernel sends it at an eject, after a format and at the session's end.
+
+**Tested** on the PC: `tools/tests/run_fs_test.sh` builds `tools/tests/fs/usbtest.cpp` with the fork's FatFs
+and `FF_FS_REENTRANT 1` (a counting lock of its own): sticks formatted as FAT32 / exFAT / FAT16 with an MBR (as
+Windows), a FAT32 superfloppy, all found by `USB:`'s auto search, labels set and read; a stick pulled out while
+a file is written (errors, the lock free, the old objects invalid on the next stick); an unmount while a call
+waits for the lock — which fails with upstream's `ff.c` (the write accepted, the open succeeding). Not tested
+on the Pi yet (docs/HANDOFF.md).
 
 ## Contributions to upstream Circle
 
