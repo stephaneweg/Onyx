@@ -101,8 +101,8 @@ static void put_mb (char *s, int cap, int *n, unsigned long long bytes)
 {
 	char b[16];
 	unsigned kb = (unsigned) ((bytes + 1023) >> 10);
-	if (kb >= 1024) { ax_itoa ((int) ((kb + 512) >> 10), b); lx_cat (s, cap, n, b); lx_cat (s, cap, n, " MB"); }
-	else { ax_itoa ((int) kb, b); lx_cat (s, cap, n, b); lx_cat (s, cap, n, " KB"); }
+	if (kb >= 1024) { ax_itoa ((int) ((kb + 512) >> 10), b); lx_cat (s, cap, n, b); lx_cat (s, cap, n, TR (" MB")); }
+	else { ax_itoa ((int) kb, b); lx_cat (s, cap, n, b); lx_cat (s, cap, n, TR (" KB")); }
 }
 
 static void fill_list (int sel, bool force = true)
@@ -118,13 +118,13 @@ static void fill_list (int sel, bool force = true)
 		lx_cat (s, cap, &n, label_of (g_list.prog[i]));
 		struct kapi_stat st;
 		struct kapi_image_info im;
-		if (kapi_path_stat (path, &st) < 0) lx_cat (s, cap, &n, "  --  missing");
+		if (kapi_path_stat (path, &st) < 0) lx_cat (s, cap, &n, TR ("  --  missing"));
 		else
 		{
 			total += st.size;
 			lx_cat (s, cap, &n, "  --  "); put_mb (s, cap, &n, st.size);
 			if (kapi_image_list (path, &im, 1) == 1)
-				lx_cat (s, cap, &n, (im.flags & KAPI_IMG_LOADING) ? ", loading" : (im.flags & KAPI_IMG_KEPT) ? ", in memory" : "");
+				lx_cat (s, cap, &n, (im.flags & KAPI_IMG_LOADING) ? TR (", loading") : (im.flags & KAPI_IMG_KEPT) ? TR (", in memory") : "");
 		}
 	}
 	bool same = !force && g_lbList->count == g_list.n;	// (the tick: the list again only when a line changed)
@@ -133,18 +133,18 @@ static void fill_list (int sel, bool force = true)
 	g_lbList->clear ();
 	for (int i = 0; i < g_list.n; i++) { fs_copy (shown[i], now[i], 64); g_lbList->add (now[i]); }
 	g_lbList->setSel (sel < g_list.n ? sel : g_list.n - 1);
-	char t[96]; int n = 0; char b[12];
+	char t[160]; int n = 0; char b[12];
 	ax_itoa (g_list.n, b); lx_cat (t, sizeof t, &n, b);
-	lx_cat (t, sizeof t, &n, g_list.n == 1 ? " program, " : " programs, ");
+	lx_cat (t, sizeof t, &n, g_list.n == 1 ? TR (" program, ") : TR (" programs, "));
 	put_mb (t, sizeof t, &n, total);
-	lx_cat (t, sizeof t, &n, " kept in memory from the boot on");
-	g_total->setText (g_list.n ? t : "Nothing is preloaded.");
+	lx_cat (t, sizeof t, &n, TR (" kept in memory from the boot on"));
+	g_total->setText (g_list.n ? t : TR ("Nothing is preloaded."));
 }
 
 static bool save (void)
 {
 	if (preload_ini_save (&g_list)) return true;
-	g_status->setText ("Could not write SD:/etc/preload.ini.");
+	g_status->setText (TR ("Could not write SD:/etc/preload.ini."));
 	return false;
 }
 
@@ -152,32 +152,32 @@ static bool save (void)
 static void on_add (Widget &)
 {
 	int a = g_lbAll->sel;
-	if (a < 0 || a >= g_nprogs) { g_status->setText ("Pick a program in the list on the right first."); return; }
+	if (a < 0 || a >= g_nprogs) { g_status->setText (TR ("Pick a program in the list on the right first.")); return; }
 	for (int i = 0; i < g_list.n; i++)
-		if (fs_ci_cmp (g_list.prog[i], g_progs[a].name) == 0) { g_lbList->setSel (i); g_status->setText ("It is in the list already."); return; }
-	if (g_list.n >= PRELOAD_MAX) { g_status->setText ("32 programs at most."); return; }
+		if (fs_ci_cmp (g_list.prog[i], g_progs[a].name) == 0) { g_lbList->setSel (i); g_status->setText (TR ("It is in the list already.")); return; }
+	if (g_list.n >= PRELOAD_MAX) { g_status->setText (TR ("32 programs at most.")); return; }
 	fs_copy (g_list.prog[g_list.n++], g_progs[a].name, PRELOAD_NAME);
 	if (!save ()) { g_list.n--; return; }
 	char path[300];
 	img_program (g_progs[a].name, path, sizeof path, 0);
 	int r = kapi_image_preload (path);
-	g_status->setText (r == 0 ? "Added: it is being loaded now, and will be at every boot."
-			 : r == -KAPI_ENOMEM ? "Added, but there is no memory to load it now."
-			 : "Added: it will be loaded at the next boot.");
+	g_status->setText (r == 0 ? TR ("Added: it is being loaded now, and will be at every boot.")
+			 : r == -KAPI_ENOMEM ? TR ("Added, but there is no memory to load it now.")
+			 : TR ("Added: it will be loaded at the next boot."));
 	fill_list (g_list.n - 1);
 }
 
 static void on_remove (Widget &)
 {
 	int l = g_lbList->sel;
-	if (l < 0 || l >= g_list.n) { g_status->setText ("Pick a program in the list on the left first."); return; }
+	if (l < 0 || l >= g_list.n) { g_status->setText (TR ("Pick a program in the list on the left first.")); return; }
 	char path[300];
 	img_program (g_list.prog[l], path, sizeof path, 1);
 	for (int i = l; i + 1 < g_list.n; i++) fs_copy (g_list.prog[i], g_list.prog[i + 1], PRELOAD_NAME);
 	g_list.n--;
 	if (!save ()) { preload_ini_load (&g_list); fill_list (l); return; }
 	kapi_image_unload (path);
-	g_status->setText ("Removed: its memory is freed when its last window closes.");
+	g_status->setText (TR ("Removed: its memory is freed when its last window closes."));
 	fill_list (l);
 }
 
@@ -185,7 +185,7 @@ class PreloadRoot : public Root
 {
 public:
 	unsigned last = 0;
-	PreloadRoot () : Root (W, H, "Preload") {}
+	PreloadRoot () : Root (W, H, TR ("Preload")) {}
 	void onTick () override				// ("loading" becomes "in memory")
 	{
 		unsigned now = kapi_get_ticks ();
@@ -196,28 +196,29 @@ public:
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	uk_lang_init ();				// the words in the system's language (before the widgets)
 	PreloadRoot root;
 	if (root.canvas.px == 0) return 1;
 	int X = root.width > W ? (root.width - W) / 2 : 0;
 
-	root.addChild (new Label (X + 12, 8, W - 24, 20, "A program loaded ahead starts without reading the card: its code is read once, at boot,", C_TEXT, root.bg));
-	root.addChild (new Label (X + 12, 28, W - 24, 20, "and stays in memory (shared by all its windows). Worth it for the large ones, as Web.", C_TEXT, root.bg));
+	root.addChild (new Label (X + 12, 8, W - 24, 20, TR ("A program loaded ahead starts without reading the card: its code is read once, at boot,"), C_TEXT, root.bg));
+	root.addChild (new Label (X + 12, 28, W - 24, 20, TR ("and stays in memory (shared by all its windows). Worth it for the large ones, as Jet."), C_TEXT, root.bg));
 
-	GroupBox *gl = new GroupBox (X + 10, 56, 330, 330, "Loaded at boot");
+	GroupBox *gl = new GroupBox (X + 10, 56, 330, 330, TR ("Loaded at boot"));
 	root.addChild (gl);
 	int ct = gl->contentTop () + 4;
 	g_lbList = new ListBox (10, ct, 310, 240); gl->addChild (g_lbList);
-	gl->addChild (new Button (10, ct + 248, 100, 28, "Remove", on_remove));
+	gl->addChild (new Button (10, ct + 248, 100, 28, TR ("Remove"), on_remove));
 
-	GroupBox *ga = new GroupBox (X + 350, 56, W - 360, 330, "Programs");
+	GroupBox *ga = new GroupBox (X + 350, 56, W - 360, 330, TR ("Programs"));
 	root.addChild (ga);
 	g_lbAll = new ListBox (10, ct, W - 380, 240, 0, on_add); ga->addChild (g_lbAll);
-	g_lbAll->tip = "The apps, then the /bin tools: pick one, then < Add (or double-click it)";
-	ga->addChild (new Button (10, ct + 248, 100, 28, "< Add", on_add));
+	g_lbAll->tip = TR ("The apps, then the /bin tools: pick one, then < Add (or double-click it)");
+	ga->addChild (new Button (10, ct + 248, 100, 28, TR ("< Add"), on_add));
 
 	g_total = new Label (X + 12, 394, W - 24, 22, "", C_TEXT, root.bg); root.addChild (g_total);
 	g_status = new Label (X + 12, 418, W - 24, 22, "", C_DIS, root.bg); root.addChild (g_status);
-	root.addChild (new Label (X + 12, H - 26, W - 24, 20, "Kept in SD:/etc/preload.ini; read at boot by the last line of SD:/etc/autostart: preload /boot.", C_DIS, root.bg));
+	root.addChild (new Label (X + 12, H - 26, W - 24, 20, TR ("Kept in SD:/etc/preload.ini; read at boot by the last line of SD:/etc/autostart: preload /boot."), C_DIS, root.bg));
 
 	scan_progs ();
 	for (int i = 0; i < g_nprogs; i++) g_lbAll->add (g_progs[i].label);

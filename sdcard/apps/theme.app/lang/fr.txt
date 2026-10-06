@@ -1,0 +1,72 @@
+# The Theme applet's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included); a key "context|English" is a TRC's.
+Theme	Thème
+Classic	Classique
+Modern	Moderne
+Scheme	Coloris
+Item	Élément
+Custom...	Autre...
+Automatic (the window's)	Automatique (celle de la fenêtre)
+auto	auto
+Outline	Contour
+Apply	Appliquer
+Discard	Rétablir
+Applied: the apps opened from now on take it.	Appliqué : pris par les applications ouvertes ensuite.
+# the schemes (saved by their English names)
+Peach	Pêche
+Steel	Acier
+Sage	Sauge
+Brick	Brique
+Slate	Ardoise
+Milk	Lait
+Dark Coffee	Café noir
+# the parts
+Window in front: frame	Fenêtre de devant : cadre
+Windows behind: frame	Fenêtres derrière : cadre
+Windows: content	Fenêtres : contenu
+Buttons	Boutons
+Text fields and lists	Champs de texte et listes
+Selection and focus	Sélection et focus
+Menu bar	Barre de menus
+Dock	Dock
+Desktop	Bureau
+# the outline (un contour)
+outline|None	Aucun
+Dark	Sombre
+Black	Noir
+# the preview
+File  Edit  View	Fichier  Édition  Affichage
+Behind	Derrière
+In front	Devant
+Some text	Du texte
+Dimmed	Grisé
+Text	Texte
+field	saisi
+Check	Case
+Radio	Radio
+# the desktop
+Wallpaper	Fond
+Voronoi cells	Cellules de Voronoï
+Gradient	Dégradé
+Bubbles	Bulles
+Solid colour	Couleur unie
+Picture	Image
+Pattern	Motif
+Colour 1	Couleur 1
+Colour 2	Couleur 2
+Tint	Teinte
+Around	Autour
+Direction	Sens
+Top to bottom	De haut en bas
+Left to right	De gauche à droite
+Cells	Cellules
+Style	Disposition
+Fill the screen	Remplir l'écran
+Tile	Mosaïque
+Tinted	Teintée
+Browse...	Parcourir...
+Images	Images
+All files	Tous les fichiers
+(none in SD:/wallpapers)	(aucun dans SD:/wallpapers)
+The palette; Item: Desktop, Custom... for any colour	La palette ; Élément : Bureau, puis Autre... pour toute autre couleur
+The picture's grey multiplies the colour (a pattern of SD:/wallpapers: coloured)	Le gris de l'image multiplie la couleur (un motif de SD:/wallpapers : coloré)

@@ -333,11 +333,11 @@ Everything the headers declare, in their order — the details are in each heade
 | `Knob` | uikit/knob.h -- Knob | `knob.h` |
 | `uk_tr` | the translation, else en itself | `lang.h` |
 | `uk_trc` | "ctx\|en"'s, else en's, else en | `lang.h` |
-| `uk_lang_init` | the language chosen (lang.txt) loaded -- before the UI is built | `lang.h` |
+| `uk_lang_init` | the system's language loaded -- before the UI is built | `lang.h` |
 | `uk_lang_load` | that language's catalogues ("en": none) -> false: none found | `lang.h` |
 | `uk_lang` | the language in use: "en", "fr"... | `lang.h` |
-| `uk_lang_chosen` | the one lang.txt names ("" none) | `lang.h` |
-| `uk_lang_choose` | written in lang.txt (taken at the next start) | `lang.h` |
+| `uk_lang_chosen` | the system's (locale_language: "en" when none is said) | `lang.h` |
+| `uk_lang_choose` | the system's language changed (locale_set_language; taken by the programs started next) | `lang.h` |
 | `VerticalStackPanel` | uikit/layout.h -- automatic layout containers (Panels that re-flow their children on resize and on child add/remove, via the Widget::layout() hook). | `layout.h` |
 | `HorizontalStackPanel` | (a type) | `layout.h` |
 | `UniformGridLayout` | (a type) | `layout.h` |
@@ -1770,19 +1770,20 @@ The catalogues are UTF-8 text files, a line a word: "English<TAB>translation" (\
   SD:/apps/<app>.app/lang/<code>.txt      the app's
 ```
 
-The language an app was told to use is in SD:/apps/<app>.app/lang.txt ("fr"); none: English. An app drawing with uikit's bitmap fonts gets the words in Latin-1 (as they draw it), one with a text face (FreeType's) in UTF-8: install the face before uk_lang_init.
+The language is the system's (SD:/etc/system.ini's "language=", systemkit/locale.h: the Control Panel's Language & Region applet, Setup); none said: English. An app has no choice of its own. (An app ported to another system -- the Mac's Ledger -- keeps its own there: SD:/apps/<app>.app/lang.txt, uk_lang_choose.) An app drawing with uikit's bitmap fonts gets the words in Latin-1 (as they draw it), one with a text face (FreeType's) in UTF-8: install the face before uk_lang_init. tools/lang/check.py <app> says the words of an app its catalogue has not.
 
 ```cpp
 const char *uk_tr (const char *en);			// the translation, else en itself
 const char *uk_trc (const char *ctx, const char *en);	// "ctx|en"'s, else en's, else en
 #define TR(s)		uk_tr (s)
 #define TRC(c, s)	uk_trc (c, s)
+#define TRN(s)		(s)			// a word kept in English in a table and given to TR () where it is drawn: marked for tools/lang/check.py
 
-void        uk_lang_init ();				// the language chosen (lang.txt) loaded -- before the UI is built
+void        uk_lang_init ();				// the system's language loaded -- before the UI is built
 bool        uk_lang_load (const char *code);		// that language's catalogues ("en": none) -> false: none found
 const char *uk_lang ();					// the language in use: "en", "fr"...
-const char *uk_lang_chosen ();				// the one lang.txt names ("" none)
-bool        uk_lang_choose (const char *code);		// written in lang.txt (taken at the next start)
+const char *uk_lang_chosen ();				// the system's (locale_language: "en" when none is said)
+bool        uk_lang_choose (const char *code);		// the system's language changed (locale_set_language; taken by the programs started next)
 ```
 
 ## `uikit/layout.h`

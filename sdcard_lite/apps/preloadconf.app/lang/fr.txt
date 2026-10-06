@@ -1,0 +1,29 @@
+# Preload's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the source's text, exactly (spaces included); a key "context|English" is a TRC's.
+Preload	Préchargement
+A program loaded ahead starts without reading the card: its code is read once, at boot,	Un programme préchargé démarre sans lire la carte : son code est lu une fois, au démarrage,
+and stays in memory (shared by all its windows). Worth it for the large ones, as Jet.	et reste en mémoire (partagé par toutes ses fenêtres). Utile pour les gros, comme Jet.
+Loaded at boot	Chargés au démarrage
+Programs	Programmes
+Remove	Retirer
+< Add	< Ajouter
+The apps, then the /bin tools: pick one, then < Add (or double-click it)	Les apps, puis les outils de /bin : choisissez-en un, puis < Ajouter (ou double-cliquez dessus)
+Kept in SD:/etc/preload.ini; read at boot by the last line of SD:/etc/autostart: preload /boot.	Dans SD:/etc/preload.ini ; lu au démarrage par la fin de SD:/etc/autostart : preload /boot.
+ MB	 Mo
+ KB	 Ko
+  --  missing	  --  introuvable
+, loading	, chargement
+, in memory	, en mémoire
+ program, 	 programme, 
+ programs, 	 programmes, 
+ kept in memory from the boot on	 gardés en mémoire dès le démarrage
+Nothing is preloaded.	Rien n'est préchargé.
+Could not write SD:/etc/preload.ini.	Impossible d'écrire SD:/etc/preload.ini.
+Pick a program in the list on the right first.	Choisissez d'abord un programme dans la liste de droite.
+Pick a program in the list on the left first.	Choisissez d'abord un programme dans la liste de gauche.
+It is in the list already.	Il est déjà dans la liste.
+32 programs at most.	32 programmes au plus.
+Added: it is being loaded now, and will be at every boot.	Ajouté : il est chargé maintenant, et le sera à chaque démarrage.
+Added, but there is no memory to load it now.	Ajouté, mais la mémoire manque pour le charger maintenant.
+Added: it will be loaded at the next boot.	Ajouté : il sera chargé au prochain démarrage.
+Removed: its memory is freed when its last window closes.	Retiré : sa mémoire est libérée à la fermeture de sa dernière fenêtre.

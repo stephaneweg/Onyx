@@ -5,8 +5,8 @@
 //
 // A program is Onyx BASIC (user/Libs/basic) with the turtle's words (bas::setDialect): FORWARD, BACK, LEFT, RIGHT,
 // PENUP, PENDOWN, COLOR, PICK, the sensors WALL (), WALLLEFT (), WALLRIGHT (), FRONT (), ONGOAL (), ITEM (), KEYS (),
-// HEADING (), and REPEAT n ... END REPEAT; French names beside (AVANCE, GAUCHE, REPETE, SI, TANTQUE...) when the
-// player chose French. run_program () compiles it and runs it at once on a copy of the level, with the VM's
+// HEADING (), and REPEAT n ... END REPEAT; French names beside (AVANCER, GAUCHE, REPETER, SI, TANTQUE, FONCTION...)
+// when the system's language is French. run_program () compiles it and runs it at once on a copy of the level, with the VM's
 // statement hook (Host::lineHook): every statement started, every move, turn, pick is an event of the record --
 // the app shows them one by one (the line lit, the turtle walking), at the speed chosen or a statement a step.
 // A wall hit, a locked door, nothing to pick: a run-time error at that line; a run that never ends is stopped.
@@ -77,19 +77,37 @@ static const bas::ExtWord WORDS[] = {
 	{ "WALL", W_WALL, 'n', "" }, { "WALLLEFT", W_WALLLEFT, 'n', "" }, { "WALLRIGHT", W_WALLRIGHT, 'n', "" }, { "FRONT", W_FRONT, 'n', "" },
 	{ "ONGOAL", W_ONGOAL, 'n', "" }, { "ITEM", W_ITEM, 'n', "" }, { "KEYS", W_KEYS, 'n', "" }, { "HEADING", W_HEADING, 'n', "" },
 	{ 0, 0, 0, 0 } };
-// The French names: the turtle's (by id: W_FORWARD ...), then BASIC's keywords
-static const char *const FR_NAME[W_COUNT_] = { "", "AVANCE", "RECULE", "GAUCHE", "DROITE", "LEVECRAYON", "BAISSECRAYON", "COULEUR", "RAMASSE",
+// The French names: the turtle's (by id: W_FORWARD ...; the verbs in the infinitive, as BASIC's), then every word
+// French gives BASIC -- the turtle's (their short forms, the imperative of the first versions: AVANCE, RAMASSE...),
+// then the language's: SI ... ALORS / SINON SI / SINON / FIN SI, POUR i = 1 JUSQUE 5 PAS 2 ... SUITE,
+// REPETER n ... FIN REPETER, TANTQUE ... FIN TANTQUE, FAIRE ... BOUCLE JUSQUA, SUB ... FIN SUB, FONCTION ... FIN
+// FONCTION, CLASSE ... FIN CLASSE, DIM n COMME ENTIER, s COMME CHAINE. The English words stay known.
+static const char *const FR_NAME[W_COUNT_] = { "", "AVANCER", "RECULER", "GAUCHE", "DROITE", "LEVERCRAYON", "BAISSERCRAYON", "COULEUR", "RAMASSER",
 	"MUR", "MURGAUCHE", "MURDROITE", "DEVANT", "SURBUT", "OBJET", "CLES", "CAP" };
 static const char *const ALIASES_FR[] = {
-	"AVANCE", "FORWARD", "AV", "FORWARD", "RECULE", "BACK", "RE", "BACK", "GAUCHE", "LEFT", "TG", "LEFT", "DROITE", "RIGHT", "TD", "RIGHT",
-	"LEVECRAYON", "PENUP", "LC", "PENUP", "BAISSECRAYON", "PENDOWN", "BC", "PENDOWN", "COULEUR", "COLOR", "RAMASSE", "PICK",
+	"AVANCER", "FORWARD", "AVANCE", "FORWARD", "AV", "FORWARD", "RECULER", "BACK", "RECULE", "BACK", "RE", "BACK",
+	"GAUCHE", "LEFT", "TG", "LEFT", "DROITE", "RIGHT", "TD", "RIGHT",
+	"LEVERCRAYON", "PENUP", "LEVECRAYON", "PENUP", "LC", "PENUP", "BAISSERCRAYON", "PENDOWN", "BAISSECRAYON", "PENDOWN", "BC", "PENDOWN",
+	"COULEUR", "COLOR", "RAMASSER", "PICK", "RAMASSE", "PICK",
 	"MUR", "WALL", "MURGAUCHE", "WALLLEFT", "MURDROITE", "WALLRIGHT", "DEVANT", "FRONT", "SURBUT", "ONGOAL", "OBJET", "ITEM",
 	"CLES", "KEYS", "CAP", "HEADING",
-	"REPETE", "REPEAT", "SI", "IF", "ALORS", "THEN", "SINON", "ELSE", "SINONSI", "ELSEIF", "FIN", "END", "POUR", "FOR", "JUSQUA", "TO",
-	"SUIVANT", "NEXT", "TANTQUE", "WHILE", "FINTANTQUE", "WEND", "FAIRE", "DO", "BOUCLE", "LOOP", "JUSQUE", "UNTIL",
-	"PROCEDURE", "SUB", "APPELLE", "CALL", "ET", "AND", "OU", "OR", "NON", "NOT", "AFFICHE", "PRINT", "SORTIR", "EXIT", 0 };
-static const bas::Dialect DIALECT_EN = { WORDS, 0, true };
-static const bas::Dialect DIALECT_FR = { WORDS, ALIASES_FR, true };
+	"REPETER", "REPEAT", "REPETE", "REPEAT", "SI", "IF", "ALORS", "THEN", "SINON", "ELSE", "SINONSI", "ELSEIF", "FIN", "END",
+	"POUR", "FOR", "JUSQUE", "TO", "PAS", "STEP", "SUITE", "NEXT", "SUIVANT", "NEXT",
+	"TANTQUE", "WHILE", "FINTANTQUE", "WEND", "FAIRE", "DO", "BOUCLE", "LOOP", "JUSQUA", "UNTIL",
+	"PROCEDURE", "SUB", "FONCTION", "FUNCTION", "RETOUR", "RETURN", "APPELER", "CALL", "APPELLE", "CALL", "SORTIR", "EXIT",
+	"CLASSE", "CLASS", "HERITE", "EXTENDS", "IMPLEMENTE", "IMPLEMENTS", "VIRTUEL", "VIRTUAL", "REDEFINIT", "OVERRIDE", "ABSTRAIT", "ABSTRACT",
+	"NOUVEAU", "NEW", "CECI", "THIS", "RIEN", "NOTHING",
+	"COMME", "AS", "ENTIER", "INTEGER", "CHAINE", "STRING", "CONSTANTE", "CONST", "PARTAGE", "SHARED", "STATIQUE", "STATIC",
+	"SELON", "SELECT", "CAS", "CASE", "ET", "AND", "OU", "OR", "NON", "NOT",
+	"AFFICHER", "PRINT", "AFFICHE", "PRINT", "SAISIR", "INPUT", 0 };
+// BASIC's words as a French program shows them (a message's "FOR without NEXT": POUR, SUITE)
+static const char *const SHOWN_FR[] = { "REPEAT", "REPETER", "IF", "SI", "THEN", "ALORS", "ELSE", "SINON", "ELSEIF", "SINON SI", "END", "FIN",
+	"FOR", "POUR", "TO", "JUSQUE", "STEP", "PAS", "NEXT", "SUITE", "WHILE", "TANTQUE", "WEND", "FIN TANTQUE", "DO", "FAIRE", "LOOP", "BOUCLE",
+	"UNTIL", "JUSQUA", "FUNCTION", "FONCTION", "RETURN", "RETOUR", "CALL", "APPELER", "EXIT", "SORTIR", "CLASS", "CLASSE", "AS", "COMME",
+	"INTEGER", "ENTIER", "STRING", "CHAINE", "SELECT", "SELON", "CASE", "CAS", "AND", "ET", "OR", "OU", "NOT", "NON", "PRINT", "AFFICHER",
+	"INPUT", "SAISIR", 0 };
+static const bas::Dialect DIALECT_EN = { WORDS, 0, true, false };
+static const bas::Dialect DIALECT_FR = { WORDS, ALIASES_FR, true, true };
 static inline void set_language (int lang) { bas::setDialect (lang == LANG_FR ? &DIALECT_FR : &DIALECT_EN); }
 static inline int word_id (const char *w)
 {
@@ -118,10 +136,10 @@ static inline const char *word_help (int id, int lang)
 		"ONGOAL () -- true when the turtle is on the goal", "ITEM () -- true when there is something to pick under the turtle",
 		"KEYS () -- how many keys the turtle carries", "HEADING () -- where the turtle looks, in degrees (0 north, 90 east)" };
 	static const char *const FR[W_COUNT_] = { "",
-		"AVANCE [n] -- avance de n cases (1 sans n)", "RECULE [n] -- recule de n cases",
+		"AVANCER [n] -- avance de n cases (1 sans n)", "RECULER [n] -- recule de n cases",
 		"GAUCHE [degrés] -- tourne à gauche (90 sans nombre)", "DROITE [degrés] -- tourne à droite (90 sans nombre)",
-		"LEVECRAYON -- lève le crayon : plus de tracé", "BAISSECRAYON -- baisse le crayon : la tortue dessine",
-		"COULEUR n -- la couleur du crayon (0 à 15)", "RAMASSE -- ramasse la clé ou la pièce sous la tortue",
+		"LEVERCRAYON -- lève le crayon : plus de tracé", "BAISSERCRAYON -- baisse le crayon : la tortue dessine",
+		"COULEUR n -- la couleur du crayon (0 à 15)", "RAMASSER -- ramasse la clé ou la pièce sous la tortue",
 		"MUR () -- vrai quand un mur (ou une porte fermée) est juste devant", "MURGAUCHE () -- vrai quand un mur est à gauche",
 		"MURDROITE () -- vrai quand un mur est à droite", "DEVANT () -- ce qu'il y a devant : 0 libre, 1 mur, 2 objet, 3 l'arrivée, 4 une porte",
 		"SURBUT () -- vrai quand la tortue est sur l'arrivée", "OBJET () -- vrai quand il y a quelque chose à ramasser ici",
@@ -134,43 +152,43 @@ struct Concept { const char *key; const char *title[2]; const char *text[2]; };
 static const Concept CONCEPTS[] = {
 	{ "move", { "Moving", "Avancer" },
 	  { "The turtle obeys your program, one line after the other.\n\nFORWARD 3 moves it three squares ahead. FORWARD alone: one square.\n\nWrite the instructions, then press Run.",
-	    "La tortue obéit à ton programme, une ligne après l'autre.\n\nAVANCE 3 la fait avancer de trois cases. AVANCE seul : une case.\n\nÉcris les instructions, puis appuie sur Lancer." } },
+	    "La tortue obéit à ton programme, une ligne après l'autre.\n\nAVANCE 3 la fait avancer de trois cases. AVANCER seul : une case.\n\nÉcris les instructions, puis appuie sur Lancer." } },
 	{ "turn", { "Turning", "Tourner" },
 	  { "LEFT and RIGHT turn the turtle a quarter of a turn, where it stands.\n\nFORWARD then goes the new way. Think as if you were the turtle: its left is not always yours!",
 	    "GAUCHE et DROITE font tourner la tortue d'un quart de tour, sur place.\n\nAVANCE part alors dans la nouvelle direction. Mets-toi à la place de la tortue : sa gauche n'est pas toujours la tienne !" } },
 	{ "pick", { "Picking up", "Ramasser" },
 	  { "Coins and keys lie on the floor. Stop on one and write PICK to take it.\n\nA level is won only when every coin is picked.",
-	    "Des pièces et des clés traînent par terre. Arrête-toi dessus et écris RAMASSE pour la prendre.\n\nUn niveau n'est gagné que si toutes les pièces sont ramassées." } },
+	    "Des pièces et des clés traînent par terre. Arrête-toi dessus et écris RAMASSER pour la prendre.\n\nUn niveau n'est gagné que si toutes les pièces sont ramassées." } },
 	{ "door", { "Doors and keys", "Portes et clés" },
 	  { "A door is locked. Walk into it with a key and it opens (the key stays in the lock).\n\nPick the key first!",
 	    "Une porte est fermée à clé. Avance dedans avec une clé et elle s'ouvre (la clé reste dans la serrure).\n\nRamasse d'abord la clé !" } },
-	{ "repeat", { "Loops: REPEAT", "Les boucles : REPETE" },
+	{ "repeat", { "Loops: REPEAT", "Les boucles : REPETER" },
 	  { "Writing the same lines again and again is long. A loop repeats them for you:\n\n  REPEAT 4\n    FORWARD 2\n    RIGHT\n  END REPEAT\n\nFewer instructions = more stars.",
-	    "Écrire les mêmes lignes encore et encore, c'est long. Une boucle les répète pour toi :\n\n  REPETE 4\n    AVANCE 2\n    DROITE\n  FIN REPETE\n\nMoins d'instructions = plus d'étoiles." } },
+	    "Écrire les mêmes lignes encore et encore, c'est long. Une boucle les répète pour toi :\n\n  REPETER 4\n    AVANCER 2\n    DROITE\n  FIN REPETER\n\nMoins d'instructions = plus d'étoiles." } },
 	{ "for", { "Loops that count: FOR", "Les boucles qui comptent : POUR" },
 	  { "FOR counts for you, and the counter is a variable you can use:\n\n  FOR i = 1 TO 5\n    FORWARD i\n    RIGHT\n  NEXT\n\ni is 1, then 2, then 3...",
-	    "POUR compte pour toi, et le compteur est une variable que tu peux utiliser :\n\n  POUR i = 1 JUSQUA 5\n    AVANCE i\n    DROITE\n  SUIVANT\n\ni vaut 1, puis 2, puis 3..." } },
+	    "POUR compte pour toi, et le compteur est une variable que tu peux utiliser :\n\n  POUR i = 1 JUSQUE 5\n    AVANCER i\n    DROITE\n  SUITE\n\ni vaut 1, puis 2, puis 3..." } },
 	{ "if", { "Deciding: IF", "Décider : SI" },
 	  { "IF tests something and does the lines after THEN only when it is true:\n\n  IF ITEM () THEN PICK\n\nWith ELSE, other lines when it is false. A block IF ends with END IF.",
-	    "SI teste quelque chose et fait les lignes après ALORS seulement quand c'est vrai :\n\n  SI OBJET () ALORS RAMASSE\n\nAvec SINON, d'autres lignes quand c'est faux. Un bloc SI se termine par FIN SI." } },
+	    "SI teste quelque chose et fait les lignes après ALORS seulement quand c'est vrai :\n\n  SI OBJET () ALORS RAMASSER\n\nAvec SINON, d'autres lignes quand c'est faux. Un bloc SI se termine par FIN SI." } },
 	{ "sensor", { "The turtle's senses", "Les sens de la tortue" },
 	  { "The turtle can look around: WALL () is true when a wall is just ahead, WALLLEFT () and WALLRIGHT () look aside.\n\n  IF WALL () THEN RIGHT\n\nThe program works whatever the level looks like.",
 	    "La tortue peut regarder autour d'elle : MUR () est vrai quand un mur est juste devant, MURGAUCHE () et MURDROITE () regardent sur les côtés.\n\n  SI MUR () ALORS DROITE\n\nLe programme marche quelle que soit la forme du niveau." } },
 	{ "while", { "Until it is done: WHILE", "Tant que : TANTQUE" },
 	  { "WHILE repeats its lines as long as a condition is true -- no need to count:\n\n  WHILE NOT ONGOAL ()\n    FORWARD\n  WEND",
-	    "TANTQUE répète ses lignes aussi longtemps qu'une condition est vraie -- pas besoin de compter :\n\n  TANTQUE NON SURBUT ()\n    AVANCE\n  FINTANTQUE" } },
+	    "TANTQUE répète ses lignes aussi longtemps qu'une condition est vraie -- pas besoin de compter :\n\n  TANTQUE NON SURBUT ()\n    AVANCER\n  FIN TANTQUE" } },
 	{ "maze", { "Mazes", "Les labyrinthes" },
 	  { "A trick to leave any maze: keep a hand on the wall on your right.\n\nIf there is no wall on the right, turn right and step. Else, if the way ahead is free, step. Else turn left.",
 	    "Une astuce pour sortir de n'importe quel labyrinthe : garde une main sur le mur de droite.\n\nS'il n'y a pas de mur à droite, tourne à droite et avance. Sinon, si la voie est libre, avance. Sinon tourne à gauche." } },
 	{ "variable", { "Variables", "Les variables" },
 	  { "A variable is a box with a name that holds a number:\n\n  n = 1\n  REPEAT 6\n    FORWARD n\n    RIGHT\n    n = n + 1\n  END REPEAT\n\nEach turn, n grows: a spiral!",
-	    "Une variable est une boîte avec un nom qui garde un nombre :\n\n  n = 1\n  REPETE 6\n    AVANCE n\n    DROITE\n    n = n + 1\n  FIN REPETE\n\nÀ chaque tour n grandit : une spirale !" } },
-	{ "sub", { "Your own words: SUB", "Tes propres mots : PROCEDURE" },
+	    "Une variable est une boîte avec un nom qui garde un nombre :\n\n  n = 1\n  REPETER 6\n    AVANCER n\n    DROITE\n    n = n + 1\n  FIN REPETER\n\nÀ chaque tour n grandit : une spirale !" } },
+	{ "sub", { "Your own words: SUB", "Tes propres mots : SUB" },
 	  { "Teach the turtle a new word with SUB, then use it as many times as you like:\n\n  SUB Step3\n    FORWARD 3\n    PICK\n  END SUB\n\n  Step3\n  Step3\n\nA SUB can take values: SUB Square (size).",
-	    "Apprends un nouveau mot à la tortue avec PROCEDURE, puis utilise-le autant que tu veux :\n\n  PROCEDURE Pas3\n    AVANCE 3\n    RAMASSE\n  FIN PROCEDURE\n\n  Pas3\n  Pas3\n\nUne procédure peut recevoir des valeurs : PROCEDURE Carre (cote)." } },
+	    "Apprends un nouveau mot à la tortue avec SUB, puis utilise-le autant que tu veux :\n\n  SUB Pas3\n    AVANCER 3\n    RAMASSER\n  FIN SUB\n\n  Pas3\n  Pas3\n\nUn SUB peut recevoir des valeurs : SUB Carre (cote)." } },
 	{ "pen", { "The pen", "Le crayon" },
 	  { "The turtle draws where it walks: its pen is down. PENUP lifts it (to move without drawing), PENDOWN puts it back, COLOR changes its colour.\n\nPaint every marked tile!",
-	    "La tortue dessine là où elle passe : son crayon est baissé. LEVECRAYON le lève (pour bouger sans dessiner), BAISSECRAYON le remet, COULEUR change sa couleur.\n\nPeins toutes les cases marquées !" } },
+	    "La tortue dessine là où elle passe : son crayon est baissé. LEVERCRAYON le lève (pour bouger sans dessiner), BAISSERCRAYON le remet, COULEUR change sa couleur.\n\nPeins toutes les cases marquées !" } },
 	{ "draw", { "Drawing figures", "Dessiner des figures" },
 	  { "Reproduce the grey figure. The turtle can turn by any angle: RIGHT 120 for a triangle's corner, RIGHT 60 for a hexagon's.\n\nThe turns of a closed figure always add up to 360 degrees.",
 	    "Reproduis la figure grise. La tortue peut tourner de n'importe quel angle : DROITE 120 pour le coin d'un triangle, DROITE 60 pour un hexagone.\n\nLes virages d'une figure fermée font toujours 360 degrés en tout." } },
@@ -371,9 +389,11 @@ static inline int count_instructions (const char *src)
 			char *s = part; while (*s == ' ' || *s == '\t') s++;
 			int l = (int) strlen (s); while (l && (s[l - 1] == ' ' || s[l - 1] == '\t' || s[l - 1] == '\r')) s[--l] = 0;
 			char w1[24] = ""; sscanf (s, "%23s", w1);
+			char w2[24] = ""; sscanf (s, "%*s %23s", w2);
 			bool closing = !*s || !strcmp (w1, "NEXT") || !strcmp (w1, "WEND") || !strcmp (w1, "LOOP") || !strcmp (w1, "ELSE") || !strcmp (w1, "REM")
-				|| !strcmp (w1, "END") || !strcmp (w1, "FIN") || !strcmp (w1, "SUIVANT") || !strcmp (w1, "FINTANTQUE") || !strcmp (w1, "BOUCLE") || !strcmp (w1, "SINON");
-			if (!strcmp (w1, "END") && !s[3]) closing = false;	// END alone: the program's end, a statement
+				|| !strcmp (w1, "END") || !strcmp (w1, "FIN") || !strcmp (w1, "SUITE") || !strcmp (w1, "SUIVANT") || !strcmp (w1, "FINTANTQUE") || !strcmp (w1, "BOUCLE") || !strcmp (w1, "SINON");
+			if ((!strcmp (w1, "END") || !strcmp (w1, "FIN")) && !s[3]) closing = false;	// END alone: the program's end, a statement
+			if ((!strcmp (w1, "SINON") && !strcmp (w2, "SI")) || (!strcmp (w1, "ELSE") && !strcmp (w2, "IF"))) closing = false;	// ELSEIF in two words: a test, as ELSEIF
 			if (!closing) count++;
 			if (!c || c == '\'') break;
 			st = i + 1;
@@ -492,11 +512,12 @@ static inline void friendly (int lang, int line, const char *msg, char *out, int
 	struct M { const char *in; const char *en; const char *fr; };
 	static const M MAP[] = {
 		{ "Syntax error", "I do not understand line %d.", "Je ne comprends pas la ligne %d." },
-		{ "FOR without NEXT", "Line %d: this FOR has no NEXT to close it.", "Ligne %d : ce POUR n'a pas de SUIVANT pour le fermer." },
-		{ "REPEAT without END REPEAT", "Line %d: this REPEAT has no END REPEAT to close it.", "Ligne %d : ce REPETE n'a pas de FIN REPETE pour le fermer." },
+		{ "FOR without NEXT", "Line %d: this FOR has no NEXT to close it.", "Ligne %d : ce POUR n'a pas de SUITE pour le fermer." },
+		{ "REPEAT without END REPEAT", "Line %d: this REPEAT has no END REPEAT to close it.", "Ligne %d : ce REPETER n'a pas de FIN REPETER pour le fermer." },
 		{ "IF without END IF", "Line %d: this IF has no END IF to close it.", "Ligne %d : ce SI n'a pas de FIN SI pour le fermer." },
-		{ "WHILE without WEND", "Line %d: this WHILE has no WEND to close it.", "Ligne %d : ce TANTQUE n'a pas de FINTANTQUE pour le fermer." },
-		{ "SUB without END SUB", "Line %d: this SUB has no END SUB.", "Ligne %d : cette PROCEDURE n'a pas de FIN PROCEDURE." },
+		{ "WHILE without WEND", "Line %d: this WHILE has no WEND to close it.", "Ligne %d : ce TANTQUE n'a pas de FIN TANTQUE pour le fermer." },
+		{ "SUB without END SUB", "Line %d: this SUB has no END SUB.", "Ligne %d : ce SUB n'a pas de FIN SUB." },
+		{ "FUNCTION without END FUNCTION", "Line %d: this FUNCTION has no END FUNCTION.", "Ligne %d : cette FONCTION n'a pas de FIN FONCTION." },
 		{ "Wrong number of arguments", "Line %d: not the right number of values for this word.", "Ligne %d : pas le bon nombre de valeurs pour ce mot." },
 		{ "Type mismatch", "Line %d: a number was expected here.", "Ligne %d : il fallait un nombre ici." },
 		{ "Division by zero", "Line %d: a division by zero.", "Ligne %d : une division par zéro." },
@@ -508,7 +529,25 @@ static inline void friendly (int lang, int line, const char *msg, char *out, int
 		snprintf (out, (size_t) cap, T (lang, "Line %d: I do not know this word (%s).", "Ligne %d : je ne connais pas ce mot (%s)."), line, msg);
 		return;
 	}
-	snprintf (out, (size_t) cap, T (lang, "Line %d: %s", "Ligne %d : %s"), line, msg);
+	if (lang != LANG_FR) { snprintf (out, (size_t) cap, "Line %d: %s", line, msg); return; }
+	// the compiler's sentence with BASIC's words in French ("Expected THEN": "il manque ALORS")
+	char fr[240]; int o = 0;
+	const char *m = msg;
+	if (!strncmp (m, "Expected ", 9)) { o = snprintf (fr, sizeof fr, "il manque "); m += 9; }
+	while (*m && o < (int) sizeof fr - 30)
+	{
+		if (!(*m >= 'A' && *m <= 'Z')) { fr[o++] = *m++; continue; }
+		char w[24]; int n = 0; const char *q = m;
+		while (((*q >= 'A' && *q <= 'Z') || (*q >= 'a' && *q <= 'z')) && n < 23) w[n++] = *q++;
+		w[n] = 0;
+		const char *t = w;
+		for (int i = 0; SHOWN_FR[i]; i += 2) if (!strcmp (SHOWN_FR[i], w)) t = SHOWN_FR[i + 1];
+		for (int i = 0; WORDS[i].name; i++) if (!strcmp (WORDS[i].name, w)) t = FR_NAME[WORDS[i].id];
+		o += snprintf (fr + o, sizeof fr - o, "%s", t);
+		m = q;
+	}
+	fr[o] = 0;
+	snprintf (out, (size_t) cap, "Ligne %d : %s", line, fr);
 }
 
 // ---- the run: a bas::Host that is the turtle -----------------------------------------------------------------------------------------

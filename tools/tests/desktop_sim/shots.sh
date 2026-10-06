@@ -10,17 +10,23 @@
 #
 #   sh tools/tests/desktop_sim/shots.sh [name ...]	(default: all of them)
 #
+# SHOTS_LANG=fr: the apps in that language (the system's: etc/system.ini's "language=", written in the
+# writes' folder) -- with SHOTS_PNG=<folder> to look at them without touching screenshots/.
+#
 # Needs g++, python3 with Pillow + numpy. Not made here: nintendoemu.png (an emulator's) and
 # arkanoid.png (a BASIC program's): tools/screenshot/render.py's.
 set -e
 cd "$(dirname "$0")/../../.."
 D=tools/tests/desktop_sim
 OUT=${SHOTS_TMP:-/tmp/onyx_shots}
-PNG=screenshots
+PNG=${SHOTS_PNG:-screenshots}
 WANT=" $* "
 rm -rf "$OUT/writes"; mkdir -p "$OUT/obj" "$OUT/writes"
 : > "$OUT/log.txt"
 export SIM_WRITES="$OUT/writes"			# (what the apps save: there, never on the card)
+# the system's language for the apps run next ("": the card's -- English)
+lang () { mkdir -p "$OUT/writes/etc"; if [ -n "$1" ]; then { grep -v '^language' sdcard/etc/system.ini; echo "language=$1"; } > "$OUT/writes/etc/system.ini"; else rm -f "$OUT/writes/etc/system.ini"; fi; }
+lang "$SHOTS_LANG"; mkdir -p "$PNG"
 CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 
 want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
@@ -139,7 +145,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
@@ -148,7 +154,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf preloadconf disks"
+      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -341,10 +347,11 @@ if want turtle; then			# (Turtle Quest: the players' progress from desktop_sim/t
 	ST=""; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do ST="$ST;key 0x117;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait"; done
 	sim turtle turtle "wait;wait$ST" $P; png turtle
 	# in French: the star drawn (two stars: one instruction too many)
-	cp $D/turtle/star-fr.ini "$TQ/progress.ini"
+	cp $D/turtle/star-fr.ini "$TQ/progress.ini"; lang fr
 	sim turtle turtle-fr "wait;wait;key 0x114;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-fr
+	lang "$SHOTS_LANG"
 	# the level editor (Ctrl+E) on "Paint the frame", a coin added, the solution tested
-	cp $D/turtle/star-fr.ini "$TQ/progress.ini"; sed -i 's/^lang = fr/lang = en/; s/^level = 8/level = 3/' "$TQ/progress.ini"
+	cp $D/turtle/star-fr.ini "$TQ/progress.ini"; sed -i 's/^level = 8/level = 3/' "$TQ/progress.ini"
 	sim turtle turtle-editor "wait;wait;key 0x05;$W;down 123 431;up 123 431;wait;down 820 230;up 820 230;wait;down 45 505;up 45 505;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-editor
 	rm -rf "$TQ"
 fi
@@ -402,7 +409,7 @@ if want theme; then			# (the wallpaper a pattern: SD:/wallpapers' hexagons, colo
 fi
 if want dockconf; then applet dockconf dockconf "$W"; png dockconf; fi
 # (the other Control Panel applets, each in the Control Panel's window)
-for a in displayconf soundconf keyconf preloadconf wpaconf config; do
+for a in displayconf soundconf keyconf langconf preloadconf wpaconf config; do
 	if want $a; then applet $a $a "$W"; png $a; fi
 done
 if want padconf; then			# (an Xbox 360 pad plugged in, SIM_PAD: two buttons held, the stick pushed)

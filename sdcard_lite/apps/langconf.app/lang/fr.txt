@@ -1,0 +1,22 @@
+# Language & Region's words in French (uikit/lang.h): English<TAB>French, a line each (	 
+ \ escaped).
+Language \& Region	Langue et région
+Language	Langue
+Time zone	Fuseau horaire
+Click a language: the programs started	Cliquez sur une langue : les programmes
+from now on speak it. The ones already	lancés ensuite la parlent. Ceux déjà ouverts
+open keep theirs until started again.	gardent la leur jusqu'à leur redémarrage.
+Click a city of your time zone: the clock	Cliquez sur une ville de votre fuseau :
+follows at once.	l'horloge suit aussitôt.
+no summer time	pas d'heure d'été
+summer time	heure d'été
+The language could not be written (SD:/etc/system.ini).	La langue n'a pas pu être enregistrée (SD:/etc/system.ini).
+Language taken: the programs you start now speak it.	Langue retenue : les programmes lancés maintenant la parlent.
+Time zone taken, and set at every boot.	Fuseau retenu, et appliqué à chaque démarrage.
+Time zone taken (system.ini not written).	Fuseau retenu (system.ini non écrit).
+Brussels	Bruxelles
+Vienna	Vienne
+Warsaw	Varsovie
+London	Londres
+Lisbon	Lisbonne
+Athens	Athènes

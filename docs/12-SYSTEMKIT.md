@@ -28,7 +28,7 @@ SystemKit is what a program says to the system and to the other programs: notifi
 |---|---|
 | Include | `#include "systemkit/systemkit.h"` |
 | Link | `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C) |
-| Library | `SD:/lib/systemkit.so` — 59 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
+| Library | `SD:/lib/systemkit.so` — 74 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
 | Sources | `user/Kits/systemkit/` |
 
 ## Using it
@@ -91,6 +91,17 @@ wp_save (wp);
 dock_reload ();                                       // the dock reads its settings again
 ```
 
+**The system's language** (the Control Panel's Language & Region): an app's words go through UIKit's
+`TR ("...")` after `uk_lang_init ()` (section 3); a program with words of its own asks SystemKit:
+
+```c
+const char *code = locale_language ();                // "en", "fr" (system.ini's language=; none: "en")
+for (int i = 0; i < locale_language_count (); i++)    // the languages Onyx speaks, each in its own words
+    list->add (locale_language_name (i));
+locale_set_language ("fr");                           // kept: the programs started next speak it
+locale_set_zone (0);                                  // a time zone (locale_zone_count / _city / _offset): now, and kept
+```
+
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
 | `notify.h` | Notifications |
@@ -102,6 +113,7 @@ dock_reload ();                                       // the dock reads its sett
 | `dockconf.h` | The dock's settings |
 | `preloadini.h` | The programs loaded ahead at boot |
 | `applet_proto.h` | A settings applet shown inside the Control Panel |
+| `locale.h` | The system's language and time zone (`SD:/etc/system.ini`) |
 
 ## Index
 

@@ -228,6 +228,23 @@ public:
 				if (s[i] == '$' || s[i] == '%' || s[i] == '&' || s[i] == '!' || s[i] == '#') { if (n < 47) id[n++] = s[i]; i++; }
 				id[n] = 0;
 				if (const char *al = aliasOf (id)) bscpy (id, al, 48);	// (a dialect's alias: the word it stands for)
+				else if (dialect && dialect->aliases)			// (... or the word before a dot: "CECI.n" is THIS.n)
+				{
+					int d = 0; while (id[d] && id[d] != '.') d++;
+					if (id[d] == '.' && d > 0)
+					{
+						char head[48], rest[48]; bscpy (rest, id + d, 48); bscpy (head, id, 48); head[d] = 0;
+						const char *h = aliasOf (head);
+						if (h && bslen (h) + bslen (rest) < 47) { bscpy (id, h, 48); bscpy (id + bslen (h), rest, 48 - bslen (h)); }
+					}
+				}
+				if (dialect && dialect->twoWords && toks.n > 0 && toks[toks.n - 1].t == T_ID && toks[toks.n - 1].line == line)
+				{							// "ELSE IF" -> ELSEIF, "END WHILE" -> WEND, a statement's first words
+					Tok &pv = toks[toks.n - 1];
+					bool first = toks.n < 2 || toks[toks.n - 2].t == T_NL || (toks[toks.n - 2].t == T_OP && toks[toks.n - 2].op == ':');
+					if (first && bseq (pv.id, "ELSE") && bseq (id, "IF")) { bscpy (pv.id, "ELSEIF", 48); continue; }
+					if (first && bseq (pv.id, "END") && bseq (id, "WHILE")) { bscpy (pv.id, "WEND", 48); continue; }
+				}
 				if (bseq (id, "REM")) { while (s[i] && s[i] != '\n') i++; continue; }
 				addTok (T_ID, line); bscpy (toks[toks.n - 1].id, id, 48);
 				if (bseq (id, "DATA"))				// the rest of the line, raw

@@ -20,6 +20,7 @@ using namespace uikit;
 
 #define W	600
 #define H	440
+#define TABW	116			// a pad's tab, from one to the next ("Manette 1 -" fits)
 
 static Root *g_root = 0;
 static int g_pad = 0;
@@ -44,15 +45,15 @@ static void cathex (char *d, int *n, int cap, unsigned v, int digits)
 // ---- mapping (the wizard) -----------------------------------------------------------------------
 // The steps, in PAD_* bit order: up down left right a b x y l r l2 r2 select start l3 r3 home.
 static const char *const STEP_TEXT[PAD_NBUTTONS] = {
-	"UP on the d-pad", "DOWN on the d-pad", "LEFT on the d-pad", "RIGHT on the d-pad",
-	"the BOTTOM face button (Xbox A, PlayStation Cross, Nintendo B)",
-	"the RIGHT face button (Xbox B, PlayStation Circle, Nintendo A)",
-	"the LEFT face button (Xbox X, PlayStation Square, Nintendo Y)",
-	"the TOP face button (Xbox Y, PlayStation Triangle, Nintendo X)",
-	"the LEFT shoulder button (L / L1 / LB)", "the RIGHT shoulder button (R / R1 / RB)",
-	"the LEFT trigger (L2 / LT / ZL: a button or an analog trigger)", "the RIGHT trigger (R2 / RT / ZR)",
-	"SELECT (Back / Share / -)", "START (Options / +)",
-	"the LEFT stick's click (L3)", "the RIGHT stick's click (R3)", "HOME (Guide / PS)" };
+	TRN ("UP on the d-pad"), TRN ("DOWN on the d-pad"), TRN ("LEFT on the d-pad"), TRN ("RIGHT on the d-pad"),
+	TRN ("the BOTTOM face button (Xbox A, PlayStation Cross, Nintendo B)"),
+	TRN ("the RIGHT face button (Xbox B, PlayStation Circle, Nintendo A)"),
+	TRN ("the LEFT face button (Xbox X, PlayStation Square, Nintendo Y)"),
+	TRN ("the TOP face button (Xbox Y, PlayStation Triangle, Nintendo X)"),
+	TRN ("the LEFT shoulder button (L / L1 / LB)"), TRN ("the RIGHT shoulder button (R / R1 / RB)"),
+	TRN ("the LEFT trigger (L2 / LT / ZL: a button or an analog trigger)"), TRN ("the RIGHT trigger (R2 / RT / ZR)"),
+	TRN ("SELECT (Back / Share / -)"), TRN ("START (Options / +)"),
+	TRN ("the LEFT stick's click (L3)"), TRN ("the RIGHT stick's click (R3)"), TRN ("HOME (Guide / PS)") };
 
 static bool g_mapping = false;
 static int g_step = 0;
@@ -77,7 +78,7 @@ static bool at_rest (const struct kapi_pad &p)
 
 static void map_start (void)
 {
-	if (!g_there) { int n = 0; g_msg[0] = 0; cat (g_msg, &n, sizeof g_msg, "No gamepad here: plug one in."); return; }
+	if (!g_there) { int n = 0; g_msg[0] = 0; cat (g_msg, &n, sizeof g_msg, TR ("No gamepad here: plug one in.")); return; }
 	g_mapping = true; g_step = 0; g_waitRelease = false;
 	g_base = g_raw;
 	for (int i = 0; i < g_base.nhats; i++) g_base.hats[i] = 8;	// (a rest hat: centred)
@@ -192,8 +193,8 @@ static void save_mapping (void)
 		cati (body, &n, sizeof body, g_new.btn[i]); cat (body, &n, sizeof body, "\n");
 	}
 	int m = 0; g_msg[0] = 0;
-	if (write_section (body)) cat (g_msg, &m, sizeof g_msg, "Saved in SD:/etc/gamepad.ini: every app uses it now.");
-	else cat (g_msg, &m, sizeof g_msg, "Could not write SD:/etc/gamepad.ini");
+	if (write_section (body)) cat (g_msg, &m, sizeof g_msg, TR ("Saved in SD:/etc/gamepad.ini: every app uses it now."));
+	else cat (g_msg, &m, sizeof g_msg, TR ("Could not write SD:/etc/gamepad.ini"));
 	pad_config_reload ();
 }
 
@@ -229,7 +230,7 @@ static void pad_shape (Canvas &c, int x, int y, unsigned b)
 class PadRoot : public Root
 {
 public:
-	PadRoot () : Root (W, H, "Gamepad") {}
+	PadRoot () : Root (W, H, TR ("Gamepad")) {}
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
@@ -240,33 +241,33 @@ public:
 		for (int i = 0; i < PAD_MAX; i++)				// the tabs: the current one in the accent
 		{
 			struct kapi_pad p; bool there = kapi_pad_state (i, &p) != 0, cur = i == g_pad;
-			int tx = 10 + i * 100;
+			int tx = 10 + i * TABW;
 			if (cur)
 			{
-				uk_hilite (canvas, tx, 8, 94, 24, 6, true);
-				uk_rline (canvas, tx, 8, 94, 24, 6, uk_tone (C_ACCENT, 70), 200);
+				uk_hilite (canvas, tx, 8, TABW - 6, 24, 6, true);
+				uk_rline (canvas, tx, 8, TABW - 6, 24, 6, uk_tone (C_ACCENT, 70), 200);
 			}
-			else uk_raised (canvas, tx, 8, 94, 24, 6, C_FACE);
-			n = 0; s[0] = 0; cat (s, &n, sizeof s, "Pad "); cati (s, &n, sizeof s, i + 1); if (!there) cat (s, &n, sizeof s, " -");
+			else uk_raised (canvas, tx, 8, TABW - 6, 24, 6, C_FACE);
+			n = 0; s[0] = 0; cat (s, &n, sizeof s, TR ("Pad ")); cati (s, &n, sizeof s, i + 1); if (!there) cat (s, &n, sizeof s, " -");
 			uk_text_l (canvas, tx + 12, 8, 24, s, cur ? C_SEL_TEXT : there ? C_TEXT : C_DIS, cur ? 2 : 0);
 		}
 		int y = 44;
 		if (!g_there)
 		{
-			canvas.text (14, y, "No gamepad in this slot. Plug a USB gamepad in (Xbox 360 / One,", C_TEXT);
-			canvas.text (14, y + 18, "PlayStation 3 / 4, Switch Pro, or any USB HID gamepad).", C_TEXT);
+			canvas.text (14, y, TR ("No gamepad in this slot. Plug a USB gamepad in (Xbox 360 / One,"), C_TEXT);
+			canvas.text (14, y + 18, TR ("PlayStation 3 / 4, Switch Pro, or any USB HID gamepad)."), C_TEXT);
 			if (g_msg[0]) canvas.text (14, height - 70, g_msg, msg);
 			return;
 		}
 		struct pad_map m; int src = pad_map_for (&g_raw, &m);
 		n = 0; s[0] = 0;
 		cathex (s, &n, sizeof s, g_raw.vid, 4); cat (s, &n, sizeof s, ":"); cathex (s, &n, sizeof s, g_raw.pid, 4);
-		cat (s, &n, sizeof s, (g_raw.props & 1) ? "   known to Circle" : "   generic HID pad");
-		cat (s, &n, sizeof s, "   mapping: ");
-		cat (s, &n, sizeof s, src == 2 ? "its own (gamepad.ini)" : src == 1 ? "[default] of gamepad.ini" : "built-in");
+		cat (s, &n, sizeof s, (g_raw.props & 1) ? TR ("   known to Circle") : TR ("   generic HID pad"));
+		cat (s, &n, sizeof s, TR ("   mapping: "));
+		cat (s, &n, sizeof s, src == 2 ? TR ("its own (gamepad.ini)") : src == 1 ? TR ("[default] of gamepad.ini") : TR ("built-in"));
 		canvas.text (14, y, s, C_TEXT); y += 26;
 		// raw buttons
-		canvas.text (14, y, "Buttons", C_DIS);
+		canvas.text (14, y, TR ("Buttons"), C_DIS);
 		int nb = g_raw.nbuttons > 32 ? 32 : g_raw.nbuttons;
 		if (nb < 1) nb = 16;
 		for (int i = 0; i < nb; i++)
@@ -278,7 +279,7 @@ public:
 		}
 		y += nb > 16 ? 50 : 28;
 		// axes (a gauge each: a sunken track, a tint of the accent up to the value), hats
-		canvas.text (14, y, "Axes", C_DIS);
+		canvas.text (14, y, TR ("Axes"), C_DIS);
 		for (int i = 0; i < g_raw.naxes && i < 8; i++)
 		{
 			int bx = 90 + (i % 4) * 124, by = y + (i / 4) * 22;
@@ -294,15 +295,15 @@ public:
 		}
 		y += g_raw.naxes > 4 ? 48 : 26;
 		n = 0; s[0] = 0;
-		static const char *const DIR[8] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
-		for (int i = 0; i < g_raw.nhats; i++) { cat (s, &n, sizeof s, i ? ", " : "  "); int h = g_raw.hats[i]; cat (s, &n, sizeof s, h >= 0 && h < 8 ? DIR[h] : "centre"); }
-		if (!g_raw.nhats) cat (s, &n, sizeof s, "  none");
-		canvas.text (14, y, "Hats", C_DIS);
-		canvas.text (14 + 4 * uk_fw (), y, s, C_TEXT); y += 28;
+		static const char *const DIR[8] = { TRN ("N"), TRN ("NE"), TRN ("E"), TRN ("SE"), TRN ("S"), TRN ("SW"), TRN ("W"), TRN ("NW") };
+		for (int i = 0; i < g_raw.nhats; i++) { cat (s, &n, sizeof s, i ? ", " : "  "); int h = g_raw.hats[i]; cat (s, &n, sizeof s, h >= 0 && h < 8 ? TR (DIR[h]) : TR ("centre")); }
+		if (!g_raw.nhats) cat (s, &n, sizeof s, TR ("  none"));
+		canvas.text (14, y, TR ("Hats"), C_DIS);
+		canvas.text (14 + uk_tw (TR ("Hats")), y, s, C_TEXT); y += 28;
 		// what the apps see
 		int lx, ly, rx, ry;
 		unsigned b = pad_apply (&g_raw, &m, &lx, &ly, &rx, &ry);
-		canvas.text (14, y, "What the apps see:", C_DIS);
+		canvas.text (14, y, TR ("What the apps see:"), C_DIS);
 		pad_shape (canvas, 150, y, b);
 		y += 160;
 		if (g_mapping)						// the step: a band of a tint of the accent
@@ -310,18 +311,18 @@ public:
 			uk_rbox (canvas, 6, y - 5, W - 12, 44, 6, uk_mix (C_FIELD, C_ACCENT, 70), uk_mix (C_FIELD, C_ACCENT, 46));
 			uk_rline (canvas, 6, y - 5, W - 12, 44, 6, C_ACCENT, 200);
 			n = 0; s[0] = 0;
-			if (g_step >= PAD_NBUTTONS) cat (s, &n, sizeof s, "Release every button...");
-			else { cat (s, &n, sizeof s, g_waitRelease ? "Release, then press " : "Press "); cat (s, &n, sizeof s, STEP_TEXT[g_step]); }
+			if (g_step >= PAD_NBUTTONS) cat (s, &n, sizeof s, TR ("Release every button..."));
+			else { cat (s, &n, sizeof s, g_waitRelease ? TR ("Release, then press ") : TR ("Press ")); cat (s, &n, sizeof s, TR (STEP_TEXT[g_step])); }
 			uk_text_l (canvas, 14, y, 16, s, C_FIELD_TEXT, 2);
-			canvas.text (14, y + 18, "Esc: the pad has none (skip)   Backspace: cancel", uk_mix (C_FIELD, C_FIELD_TEXT, 150));
+			canvas.text (14, y + 18, TR ("Esc: the pad has none (skip)   Backspace: cancel"), uk_mix (C_FIELD, C_FIELD_TEXT, 150));
 		}
-		else canvas.text (14, y, "Map Buttons... (M) if the buttons above are not in their places.", C_DIS);
+		else canvas.text (14, y, TR ("Map Buttons... (M) if the buttons above are not in their places."), C_DIS);
 		if (g_msg[0]) canvas.text (14, height - 70, g_msg, msg);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
 		static bool down = false;
-		if (bl && !down && my >= 8 && my < 32 && mx >= 10 && mx < 10 + PAD_MAX * 100) { g_pad = (mx - 10) / 100; g_mapping = false; invalidate (true); }
+		if (bl && !down && my >= 8 && my < 32 && mx >= 10 && mx < 10 + PAD_MAX * TABW) { g_pad = (mx - 10) / TABW; g_mapping = false; invalidate (true); }
 		down = bl != 0;
 		return true;
 	}
@@ -330,7 +331,7 @@ public:
 		if (g_mapping)
 		{
 			if (k == 27) { if (!g_waitRelease && g_step < PAD_NBUTTONS) next_step (); g_waitRelease = false; invalidate (true); return true; }
-			if (k == KEY_BACKSPACE) { g_mapping = false; int n = 0; g_msg[0] = 0; cat (g_msg, &n, sizeof g_msg, "Mapping cancelled."); invalidate (true); return true; }
+			if (k == KEY_BACKSPACE) { g_mapping = false; int n = 0; g_msg[0] = 0; cat (g_msg, &n, sizeof g_msg, TR ("Mapping cancelled.")); invalidate (true); return true; }
 		}
 		if (k >= '1' && k <= '4') { g_pad = (int) (k - '1'); g_mapping = false; invalidate (true); return true; }
 		if (k == 'm' || k == 'M') { map_start (); invalidate (true); return true; }
@@ -343,11 +344,11 @@ static void on_forget ()
 {
 	if (!g_there) return;
 	int n = 0; g_msg[0] = 0;
-	if (write_section ("")) cat (g_msg, &n, sizeof g_msg, "This pad model's mapping was removed.");
+	if (write_section ("")) cat (g_msg, &n, sizeof g_msg, TR ("This pad model's mapping was removed."));
 	pad_config_reload ();
 	g_root->invalidate (true);
 }
-static void on_reload () { pad_config_reload (); int n = 0; g_msg[0] = 0; cat (g_msg, &n, sizeof g_msg, "gamepad.ini read again."); g_root->invalidate (true); }
+static void on_reload () { pad_config_reload (); int n = 0; g_msg[0] = 0; cat (g_msg, &n, sizeof g_msg, TR ("gamepad.ini read again.")); g_root->invalidate (true); }
 static void on_quit () { kapi_exit (0); }
 static void bt_map (Widget &) { on_map (); }
 static void bt_forget (Widget &) { on_forget (); }
@@ -356,21 +357,22 @@ static void bt_reload (Widget &) { on_reload (); }
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	uk_lang_init ();				// the words in the system's language (before the widgets)
 	PadRoot root;
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
 	static Menu menu;
-	menu.menu ("Pad");
-	menu.item ("Map Buttons...",      "M",  0, on_map);
-	menu.item ("Forget Mapping",      "",   0, on_forget);
-	menu.item ("Reload gamepad.ini",  "",   0, on_reload);
+	menu.menu (TRC ("menu", "Pad"));
+	menu.item (TR ("Map Buttons..."),      "M",  0, on_map);
+	menu.item (TR ("Forget Mapping"),      "",   0, on_forget);
+	menu.item (TR ("Reload gamepad.ini"),  "",   0, on_reload);
 	menu.separator ();
-	menu.item ("Quit",                "^Q", UK_CTRL ('Q'), on_quit);
+	menu.item (TR ("Quit"),                "^Q", UK_CTRL ('Q'), on_quit);
 	menu.publish ();
 	int by = root.height - 40;			// (the commands, also as buttons: an applet has no menu)
-	root.addChild (new Button (root.width - 440, by, 150, 30, "Map Buttons...", bt_map));
-	root.addChild (new Button (root.width - 282, by, 150, 30, "Forget Mapping", bt_forget));
-	root.addChild (new Button (root.width - 124, by, 112, 30, "Reload", bt_reload));
+	root.addChild (new Button (root.width - 440, by, 150, 30, TR ("Map Buttons..."), bt_map));
+	root.addChild (new Button (root.width - 282, by, 150, 30, TR ("Forget Mapping"), bt_forget));
+	root.addChild (new Button (root.width - 124, by, 112, 30, TR ("Reload"), bt_reload));
 	root.attach ();
 	unsigned lastSeq = 0; bool lastThere = false; int lastPad = -1;
 	while (!uk_quit ())

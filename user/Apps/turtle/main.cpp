@@ -9,17 +9,19 @@
 // at its line); a level won gives 1 to 3 stars (fewer instructions: more stars -- a loop beats copied lines).
 //
 // Keys: F5 Run, F8 Step (a statement at a time), F7 Stop, F9 Reset, F1 the lesson, F2 the hint, Ctrl+N the next
-// level, Ctrl+O a pack of levels, Ctrl+E the level editor. Menus: Game, Levels, Language (English / Français: the
-// words in French -- AVANCE, REPETE, SI -- and the texts), Player (several players, each with their stars).
+// level, Ctrl+O a pack of levels, Ctrl+E the level editor. Menus: Game, Levels, Player (several players, each with
+// their stars). The language is the system's (the Control Panel's Language & Region): in French the texts and the
+// program's words -- AVANCER, REPETER, SI ... ALORS ... SINON, POUR ... JUSQUE ... SUITE, FIN SUB, FONCTION...
 //
 // Files: the packs SD:/apps/turtle.app/levels/*.turtle (and any .turtle opened, dropped or given as the argument --
 // a double click on one in the File Viewer); the player's own levels SD:/docs/turtle/my-levels.turtle (written by
-// the level editor); the players' progress -- their stars, their programs, the lessons seen, the language --
+// the level editor); the players' progress -- their stars, their programs, the lessons seen --
 // SD:/apps/turtle.app/progress.ini.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 //
 #include "appkit/appkit.h"
+#include "systemkit/systemkit.h"	// the system's language (locale.h)
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"
 #include "world.h"
@@ -32,7 +34,7 @@ using namespace turtle;
 #define USERDIR		"SD:/docs/turtle"
 #define USERPACK	USERDIR "/my-levels.turtle"
 
-static int g_lang = LANG_EN;
+static int g_lang = LANG_EN;				// the system's language (locale_language), taken at the start
 static inline const char *L2 (const char *en, const char *fr) { return g_lang == LANG_FR ? fr : en; }
 
 // ---- faces ------------------------------------------------------------------------------------------------------------
@@ -519,7 +521,7 @@ public:
 
 // ---- the words the level knows: a click writes one ------------------------------------------------------------------------------
 static const char *const CONTROL_WORDS[] = { "REPEAT", "FOR", "IF", "WHILE", "SUB", 0 };
-static const char *const CONTROL_FR[] = { "REPETE", "POUR", "SI", "TANTQUE", "PROCEDURE", 0 };
+static const char *const CONTROL_FR[] = { "REPETER", "POUR", "SI", "TANTQUE", "SUB", 0 };
 class WordBar : public Widget
 {
 public:
@@ -579,7 +581,7 @@ public:
 			if (c.id >= 100)
 			{
 				static const char *const TPL_EN[] = { "REPEAT 4\n  \nEND REPEAT", "FOR i = 1 TO 5\n  \nNEXT", "IF  THEN\n  \nEND IF", "WHILE NOT ONGOAL ()\n  \nWEND", "SUB MyWord\n  \nEND SUB" };
-				static const char *const TPL_FR[] = { "REPETE 4\n  \nFIN REPETE", "POUR i = 1 JUSQUA 5\n  \nSUIVANT", "SI  ALORS\n  \nFIN SI", "TANTQUE NON SURBUT ()\n  \nFINTANTQUE", "PROCEDURE MonMot\n  \nFIN PROCEDURE" };
+				static const char *const TPL_FR[] = { "REPETER 4\n  \nFIN REPETER", "POUR i = 1 JUSQUE 5\n  \nSUITE", "SI  ALORS\n  \nFIN SI", "TANTQUE NON SURBUT ()\n  \nFIN TANTQUE", "SUB MonMot\n  \nFIN SUB" };
 				tcpy (ins, (g_lang == LANG_FR ? TPL_FR : TPL_EN)[c.id - 100], sizeof ins);
 			}
 			else
@@ -1061,7 +1063,7 @@ static void open_editor (bool fresh)
 		blank.map[3][1] = '>'; blank.map[3][8] = '*';
 		tcpy (blank.title[0], "My level", sizeof blank.title[0]); tcpy (blank.title[1], "Mon niveau", sizeof blank.title[1]);
 		tcpy (blank.topic, "move", sizeof blank.topic);
-		blank.solution = tdup (g_lang == LANG_FR ? "AVANCE 7\n" : "FORWARD 7\n");
+		blank.solution = tdup (g_lang == LANG_FR ? "AVANCER 7\n" : "FORWARD 7\n");
 		g_edLevel.set (blank);
 		snprintf (g_edLevel.id, sizeof g_edLevel.id, "my-%u", (unsigned) (kapi_get_ticks () % 100000));
 	}
@@ -1157,19 +1159,6 @@ static void m_open ()
 }
 static void m_edit () { open_editor (false); }
 static void m_new () { open_editor (true); }
-static void set_lang (int l)
-{
-	if (l == g_lang) return;
-	save_code ();
-	g_lang = l; set_language (l);
-	kv_set ("", "lang", l == LANG_FR ? "fr" : "en"); kv_save ();
-	retitle (); build_menu ();
-	if (!g_editing && g_L) show_level (g_pack, g_level, true);
-	layout ();
-	g_root->invalidate (true);
-}
-static void m_en () { set_lang (LANG_EN); }
-static void m_fr () { set_lang (LANG_FR); }
 // players
 enum { MAXPLAYERS = 8 };
 static char g_players[MAXPLAYERS][32]; static int g_nplayers = 0;
@@ -1261,9 +1250,6 @@ static void build_menu ()
 	g_menu.separator ();
 	g_menu.item (L2 ("Edit This Level", "Modifier ce niveau"), "^E", UK_CTRL ('E'), m_edit);
 	g_menu.item (L2 ("New Level", "Nouveau niveau"), "", 0, m_new);
-	g_menu.menu (L2 ("Language", "Langue"));
-	g_menu.item (g_lang == LANG_EN ? "English  *" : "English", "", 0, m_en);
-	g_menu.item (g_lang == LANG_FR ? "Français  *" : "Français", "", 0, m_fr);
 	g_menu.menu (L2 ("Player", "Joueur"));
 	for (int i = 0; i < g_nplayers; i++)
 	{
@@ -1413,7 +1399,7 @@ int main (void)
 	{ FtTextFace *m = new FtTextFace; if (m->open ("DejaVu Sans Mono", 14)) g_mono = m; else delete m; }
 	{ FtTextFace *b = new FtTextFace; if (b->open ("DejaVu Sans", 18)) g_big = b; else delete b; }
 	kv_load ();
-	g_lang = !strcmp (kv_get ("", "lang", "en"), "fr") ? LANG_FR : LANG_EN;
+	g_lang = !strcmp (locale_language (), "fr") ? LANG_FR : LANG_EN;
 	set_language (g_lang);
 	players_read ();
 	tcpy (g_player, kv_get ("", "player", g_players[0]), sizeof g_player);

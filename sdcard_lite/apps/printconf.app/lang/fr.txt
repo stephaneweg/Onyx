@@ -1,0 +1,53 @@
+# Printers's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the source's text, exactly (spaces included); a key "context|English" is a TRC's.
+Printers	Imprimantes
+Default	Par défaut
+Test page	Page de test
+Check	Vérifier
+Remove	Retirer
+  (default)	  (par défaut)
+Asks for the file's name when you print.	Demande le nom du fichier à l'impression.
+%s, %d dpi, up to %d copies	%s, %d ppp, jusqu'à %d copies
+Black and white	Noir et blanc
+Add a network printer	Ajouter une imprimante réseau
+Find searches the network; or type a printer's	Rechercher explore le réseau ; ou saisissez une
+address (IPP Everywhere / AirPrint: no driver).	adresse (IPP Everywhere / AirPrint, sans pilote).
+Address	Adresse
+Name	Nom
+Add	Ajouter
+Find	Rechercher
+The printer's IP address (192.168.0.14; its network page or its screen shows it), or ipp://host:631/ipp/print	L'adresse IP de l'imprimante (192.168.0.14 ; sa page réseau ou son écran l'indique), ou ipp://host:631/ipp/print
+The name shown in the Print dialog (empty: the printer's own name)	Le nom affiché dans la boîte Imprimer (vide : le nom propre de l'imprimante)
+Find searches the network: the printers found are listed here	Rechercher explore le réseau : les imprimantes trouvées s'affichent ici
+Print queue	File d'impression
+Cancel job	Annuler
+Clear done	Effacer les finis
+waiting	en attente
+preparing	préparation
+sending	envoi
+printing	impression
+done	terminé
+failed	échec
+cancelled	annulé
+The default printer is set.	L'imprimante par défaut est définie.
+The PDF printer is part of Onyx: it stays.	L'imprimante PDF fait partie d'Onyx : elle reste.
+Remove the printer %.60s?	Retirer l'imprimante %.60s ?
+Removed.	Retirée.
+Asking the printer...	Interrogation de l'imprimante...
+Not ready: 	Pas prête : 
+Type the printer's address first (its IP address, as 192.168.0.14).	Saisissez d'abord l'adresse de l'imprimante (son adresse IP, comme 192.168.0.14).
+Asking the printer what it can do...	Interrogation des capacités de l'imprimante...
+%s is added.	%s est ajoutée.
+Not added: %s.	Non ajoutée : %s.
+Searching the network for printers...	Recherche d'imprimantes sur le réseau...
+  (not usable)	  (inutilisable)
+No printer found on the network: is it on, and on the same network?	Aucune imprimante trouvée sur le réseau : est-elle allumée, et sur le même réseau ?
+%d printer found: click it, then Add.	%d imprimante trouvée : cliquez dessus, puis Ajouter.
+%d printers found: click one, then Add.	%d imprimantes trouvées : cliquez sur l'une d'elles, puis Ajouter.
+Add adds this printer.	Ajouter ajoute cette imprimante.
+This printer takes neither PWG Raster nor PDF: Onyx cannot print on it.	Cette imprimante n'accepte ni PWG Raster ni PDF : Onyx ne peut pas y imprimer.
+Pick a job of the queue first.	Choisissez d'abord un travail de la file.
+The print queue cannot be written (SD:/var/spool/print).	La file d'impression ne peut pas être écrite (SD:/var/spool/print).
+The test page could not be queued (is the print service installed?).	La page de test n'a pas pu être mise en file (le service d'impression est-il installé ?).
+The test page is being saved as SD:/docs/Test page.pdf.	La page de test est enregistrée dans SD:/docs/Test page.pdf.
+The test page is in the queue.	La page de test est dans la file.

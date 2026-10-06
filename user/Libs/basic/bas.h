@@ -21,8 +21,8 @@ struct G3Vertex; struct G3Batch;		// (basic/bas3d.h)
 
 // ---- a host's own words: a dialect (setDialect) ---------------------------------------------
 // A program that hosts BASIC may add statements and functions of its own (a game's "FORWARD 3", "WALL ()"),
-// word aliases (another language's keywords: "AVANCE" for FORWARD, "SI" for IF) and the block REPEAT n ...
-// END REPEAT. The words are reserved while the dialect is set; they are compiled into calls of Host::ext.
+// word aliases (another language's keywords: "AVANCER" for FORWARD, "SI" for IF) and the block REPEAT n ...
+// END REPEAT; twoWords: such a language's ELSEIF and WEND written in two words ("SINON SI", "FIN TANTQUE"). The words are reserved while the dialect is set; they are compiled into calls of Host::ext.
 //   kind  's' a statement, 'n' a function giving a number, '$' a function giving a string;
 //   args  as the built-ins' (N a number, S a string, '[' optional from here) -- at most 7.
 // A dialect's word takes precedence over a built-in of the same name (a turtle's COLOR).
@@ -32,6 +32,7 @@ struct Dialect
 	const ExtWord *words;				// ended by a 0 name; 0: none
 	const char *const *aliases;			// pairs "ALIAS", "WORD" (capitals), ended by 0; 0: none
 	bool repeat;					// REPEAT n ... END REPEAT
+	bool twoWords;					// at a statement's start, "ELSE IF" is ELSEIF and "END WHILE" is WEND
 };
 // An argument or a result of Host::ext: a number, or a string (s: len bytes, code page 437 as BASIC keeps them).
 struct ExtVal { bool str; double n; const char *s; int len; };

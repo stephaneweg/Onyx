@@ -1,0 +1,9 @@
+# Terminal's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included); a key "context|English" is a TRC's.
+"%s" is still running in this tab. Close the tab and stop it?	« %s » est encore en cours d'exécution dans cet onglet. Fermer l'onglet et l'arrêter ?
+Close Tab	Fermer l'onglet
+New Tab	Nouvel onglet
+Next Tab	Onglet suivant
+Previous Tab	Onglet précédent
+Shell	Shell
+terminal: cannot start /bin/cmd\n	terminal : impossible de démarrer /bin/cmd\n

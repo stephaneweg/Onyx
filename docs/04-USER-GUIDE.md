@@ -230,6 +230,8 @@ verbose=0          # 1 = log app start/stop/kill to the kernel log (see kmsg)
 timezone=120       # minutes offset from UTC (60 = CET, 120 = CEST summer time)
 ntp=pool.ntp.org   # time server to sync against once the WLAN link is up ("off": none)
 hostname=onyx      # the name the Pi gives the network (DHCP); default "raspberrypi"
+language=fr        # the language of the programs' words: en, fr (no line: English) -- §11
+zone=Brussels      # the time zone's city (written with timezone= by Language & Region and Setup)
 ramfs=128          # the size of RAM:, the volume in memory (§2): MB, or "10%" of the free
                    # memory; "0" = no RAM:. No line: 128 MB, at most a quarter of the free memory
 ```
@@ -302,7 +304,9 @@ window stays in the middle of the screen — it cannot be moved, and it is centr
 resolution changes. The steps are on the left (a green tick once done); **Back** and **Continue**
 at the bottom; everything can be changed later in the Control Panel.
 
-1. **Welcome.**
+1. **Welcome.** The **language** (English / Français, at the top right): a click starts the wizard
+   again in that language, and every program translated speaks it afterwards (`system.ini`'s
+   `language=`; later: the Control Panel's **Language & Region**).
 2. **Region & keyboard.** The **country** (type its first letter, or the arrows) proposes the
    keyboard layout and the time zone and gives the Wi-Fi its country code (the radio's channels:
    `country=` of `SD:/etc/wpa_supplicant.conf`). The **layout** is taken at once (type in *Try it*;
@@ -330,11 +334,13 @@ at the bottom; everything can be changed later in the Control Panel.
    file sharing (FTP, 21, user `onyx` password `onyx`): only FTP asks for a password, so turn on
    only what you use, on a network you trust.
 7. **Ready.** A summary, a **Change** link on each line. **Start Onyx** writes `system.ini`
-   (`timezone`, `ntp`, `hostname`) and the autostart — its own `run setup` line and its comments
+   (`timezone` and `zone`, `ntp`, `hostname`) and the autostart — its own `run setup` line and its comments
    removed, the held-back lines given back, the `keyb` line set, each service's line on or
    commented out (`#telnetd`) — starts the menu bar, the dock and the agenda and the services
    turned on (stops those turned off), and ends: it does not come back. To see it again, put
    `run setup` back in the autostart (`run setup` in a terminal works too).
+
+![Setup: the welcome page, the language at its top right](../screenshots/setup-0.png)
 
 ![Setup: the country and the keyboard](../screenshots/setup-1.png)
 *Setup: the country proposes the layout and the time zone; the layout is taken at once.*
@@ -635,6 +641,12 @@ second one in `SD:/docs`, and `ping` running in the third (the dot).*
 A terminal window holds **several tabs**, each with **its own shell** (`cmd`): its own screen and
 scrollback, its own line history and its own current working directory. What runs in a tab goes on
 while another tab is shown.
+
+The window follows the desktop's **theme**: the tabs, the menus and the thin margin around the console
+take the theme's colours; only the **console** itself stays dark (light text on a deep teal), whatever
+the theme. The Terminal's own words (its menu, the tabs' default title, its questions) are in the
+system's language (English or French: the Control Panel's Language & Region); what the shell and the
+commands print is not translated.
 
 | Action | How |
 |---|---|
@@ -1615,10 +1627,15 @@ the list **scrolls** (the wheel, the bar at its right, the arrow keys).
 | **Preload** (`preloadconf`) | The programs **loaded ahead at boot and kept in memory**: they start without reading the card (worth it for the large ones, as Jet: 100 MB, 5 s of card each start otherwise). At the left the list (each program, its size, *loading* / *in memory*), at the right what can be added — the apps, then the `/bin` tools: **< Add** (or a double click), **Remove**. A change is done **at once** (the program added is loaded now, the one removed is released: its memory is freed when its last window closes) and kept in `SD:/etc/preload.ini`, which the last line of `SD:/etc/autostart`, `preload /boot`, reads at every boot. The line under the lists gives the memory the list takes. |
 | **Printers** (`printconf`) | The printers Onyx prints on (the **PDF** printer, network printers added by their address), the default one, a test page, and the **print queue** (below: *Printing*). |
 | **Keyboard & Mouse** (`keyconf`) | The keyboard **layout** (the maps of `SD:/etc/keymaps`: a click takes one at once and keeps it in `SD:/etc/autostart`'s `keyb` line; a field to try it) and the **wheel**'s speed (lines a notch: at once, kept in `SD:/etc/theme.txt`). |
+| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, Ledger, Turtle Quest (its BASIC too) and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). |
 | **Gamepad** (`padconf`) | The USB gamepads (§12). |
 | **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
 | **App Settings** (`config`) | An app's own settings, its `SD:/apps/<name>.app/config.ini`: the apps (those with settings first, marked `*`), then the chosen one's `key = value` lines — pick one, change its key or its value, **Set** (Enter; a new key adds a line), **Delete**; **Save** writes the file (the app reads it when it starts again), **Reload**. |
 | **Packages** (`pkgman`) | The **Onyx Package Manager**: the updates, the packages installed, more to install (below). |
+
+![The Language & Region applet](../screenshots/langconf.png)
+
+*Language & Region: the language of the programs, the time zone.*
 
 Each applet also runs **alone**, in a window of its own (`run theme`, `run keyconf`…). The list
 is made of **link files** in `SD:/apps/control.app/applets/` (sorted by their names:
@@ -1978,7 +1995,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. The pictures are read by **ImageKit**: a photo is shown **the way the camera was held** (its EXIF orientation), and a picture made the wallpaper is brought to the screen's size by a true average. |
 | **paint** (Paint) | Drawing on **layers** with **blend modes** (normal, multiply, screen, add, subtract, lighten, mask, cut out; a mask on the layer below only), assembled by the GPU: brushes (pencil, brush, soft, calligraphy, airbrush, marker, crayon, patterns), eraser, fill (a colour, a pattern or a **gradient along a line**), gradients (GIMP's `.ggr`, an editor), text (TrueType fonts), shapes, selections (rectangle, lasso, magic wand), colours (brightness, contrast, hue, desaturate, colorize, the channels remapped, invert, sepia, posterize, threshold — on the selection, the layer or every layer), filters (blur, sharpen, pixelate), colour picker, zoom to 3200 %. Opens PNG, JPEG, BMP, GIF (WebP, PCX), a picture as a layer; saves OpenRaster (`.ora`); exports PNG, JPEG, BMP or GIF. See *Paint* below. |
 | **calendar** | The **planner**: appointments by the **day, the week or the month** (blocks in their calendar's colour, now as a red line; double-click or drag to make one, drag to move it, its edge to resize it), all-day ones, **repetitions** (days, weekdays, weeks on chosen days, months, years; until a date), **reminders** (notifications), **calendars** (Work, Personal... shown or hidden), **tasks** (due dates, ticked off). Kept as **iCalendar** in `calendar.ics`; **import / export `.ics`** (Google Calendar, Outlook). An argument `YYYYMMDD` opens that day. See *Calendar, the planner* below. |
-| **setup** (Onyx Setup) | The **first-run wizard** (§4, *Setup*): country, keyboard, time zone, Wi-Fi, resolution, colours and wallpaper, the computer's name and the remote services; started by `run setup` in `SD:/etc/autostart` on a new card, it removes that line when done. Writes `SD:/etc/system.ini` (`timezone`, `ntp`, `hostname`), `SD:/etc/wpa_supplicant.conf`, `SD:/cmdline.txt` (the size kept), `SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini` and `SD:/etc/autostart`. The Wi-Fi page's **Connect** writes the network into `wpa_supplicant.conf` first, then joins it, waiting up to 60 s (a 2.4 GHz network's association and address can take a while); past that it says *Not connected yet (saved: joined at the next start)* — the network is kept either way. |
+| **setup** (Onyx Setup) | The **first-run wizard** (§4, *Setup*): language, country, keyboard, time zone, Wi-Fi, resolution, colours and wallpaper, the computer's name and the remote services; started by `run setup` in `SD:/etc/autostart` on a new card, it removes that line when done. Writes `SD:/etc/system.ini` (`timezone`, `ntp`, `hostname`), `SD:/etc/wpa_supplicant.conf`, `SD:/cmdline.txt` (the size kept), `SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini` and `SD:/etc/autostart`. The Wi-Fi page's **Connect** writes the network into `wpa_supplicant.conf` first, then joins it, waiting up to 60 s (a 2.4 GHz network's association and address can take a while); past that it says *Not connected yet (saved: joined at the next start)* — the network is kept either way. |
 | **wifimenu** (Wi-Fi Menu) | The box the menu bar's Wi-Fi icon opens (§5, *The menu bar*): the networks around, strongest first, the current one marked; a click joins one (a password field for a new secured network) without a reboot (`SD:/etc/wpa_supplicant.conf`, then the reconnect); **Wi-Fi Settings...** opens `wpaconf`. Esc closes it. |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
 | **dock** (Dock) | The desktop's dock at the bottom: the drawers (a group's main app, the strip above opens the group's apps), the workspaces, lock / Control Panel / power, the Terminal, the File Viewer, the Trash (see §5, *The dock*). Reads `SD:/etc/dock.ini` (the Panel applet writes it). |
@@ -1995,6 +2012,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **printconf** (Printers) | The Control Panel's Printers applet: the printers, the default one, a test page, the print queue (see §11 *Printing*). Talks to `printd`; `SD:/etc/printers.ini`. |
 | **printd** (Print Service) | The print queue's service, no window (started at boot by `SD:/etc/autostart` and when an app prints): prints the jobs of `SD:/var/spool/print` — PDF files, network printers (IPP) — and notifies. Reads and writes `SD:/etc/printers.ini`. |
 | **preloadconf** (Preload) | The Control Panel's Preload applet: the programs loaded at boot and kept in memory (see §11). Reads the apps' `app.txt` and `SD:/bin`; writes `SD:/etc/preload.ini`. |
+| **langconf** (Language & Region) | The Control Panel's Language & Region applet: the language of the programs (English, Français) and the time zone, kept in `SD:/etc/system.ini` (`language=`, `zone=`, `timezone=`) (see §11). Its words: `SD:/apps/langconf.app/lang/fr.txt`. |
 | **keyconf** (Keyboard & Mouse) | The Control Panel's Keyboard & Mouse applet: the layout (kept in `SD:/etc/autostart`), the wheel's speed (kept in `SD:/etc/theme.txt`) (see §11). |
 | **config** (App Settings) | The Control Panel's App Settings applet: an app's `config.ini`, key by key (see §11). |
 | **eyes** | Gadget: two eyes whose pupils follow the mouse. |
@@ -3371,11 +3389,11 @@ overdue.*
 > Alt; the menus are in the Mac's menu bar; a `.ledger` opens by a double click in the Finder or dropped
 > on the window. A printed document (an `.rtf`) is put on paper or made a PDF from Pages, TextEdit or
 > Word; a report for the Spreadsheet (`.xlsx`) opens in Numbers or Excel. In French: the side bar's **FR**
-> (the Mac's language at the first start). Its `README.txt` says the rest.
+> (the Mac's language at the first start; on the Mac only -- on Onyx the language is the system's). Its `README.txt` says the rest.
 
-> **In French.** Ledger speaks **English or French**: click **EN** or **FR** at the foot of the side
-> bar (or **File ▸ English / Français**). Ledger starts again at once in that language, on the same
-> books (a document being typed is saved or given up first). Its menus, pages, dialogs, messages and
+> **In French.** Ledger speaks **English or French**: the **system's language** (the Control Panel's
+> **Language & Region**, §11), taken when Ledger starts -- on Onyx it has no language switch of its own (the Mac's Ledger, with no
+> Control Panel, keeps one: **EN** / **FR** at the foot of the side bar, **File ▸ English / Français**). Its menus, pages, dialogs, messages and
 > reports change; the chart of accounts and the printed documents keep their own language (the
 > company's, the customer's). On the Mac, Ledger starts in French the first time when the Mac's
 > language is French.
@@ -5043,23 +5061,37 @@ two stars ask. On the right: the level's card (its title, what to do; **Hint** �
 — F1 — the card of the level's idea, shown by itself the first time a new idea comes), the board, and the
 message bar.
 
-**The turtle's words** (the French names in brackets, when Language ▸ Français is chosen — the English words
-keep working):
+**The turtle's words** (the French names in brackets, when the system's language is French — the Control
+Panel's **Language & Region**, §11; the English words keep working, and so do the first versions' `AVANCE`,
+`RECULE`, `RAMASSE`, `REPETE`...):
 
 | Word | What it does |
 |---|---|
-| `FORWARD [n]` (`AVANCE`, `AV`) / `BACK [n]` (`RECULE`, `RE`) | moves n squares ahead / back (1 without n; any number in a drawing). |
+| `FORWARD [n]` (`AVANCER`, `AV`) / `BACK [n]` (`RECULER`, `RE`) | moves n squares ahead / back (1 without n; any number in a drawing). |
 | `LEFT [degrees]` (`GAUCHE`, `TG`) / `RIGHT [degrees]` (`DROITE`, `TD`) | turns on the spot (90 without a number). |
-| `PENUP` (`LEVECRAYON`, `LC`) / `PENDOWN` (`BAISSECRAYON`, `BC`), `COLOR n` (`COULEUR`) | the pen: the turtle draws where it walks while it is down (at the start); its colour, 0 to 15. |
-| `PICK` (`RAMASSE`) | picks the coin or the key under the turtle. |
+| `PENUP` (`LEVERCRAYON`, `LC`) / `PENDOWN` (`BAISSERCRAYON`, `BC`), `COLOR n` (`COULEUR`) | the pen: the turtle draws where it walks while it is down (at the start); its colour, 0 to 15. |
+| `PICK` (`RAMASSER`) | picks the coin or the key under the turtle. |
 | `WALL ()` (`MUR`), `WALLLEFT ()` (`MURGAUCHE`), `WALLRIGHT ()` (`MURDROITE`) | true when a wall (or a locked door) is ahead / on the left / on the right. |
 | `FRONT ()` (`DEVANT`) | what is ahead: 0 free, 1 a wall, 2 something to pick, 3 the goal, 4 a door. |
 | `ONGOAL ()` (`SURBUT`), `ITEM ()` (`OBJET`), `KEYS ()` (`CLES`), `HEADING ()` (`CAP`) | on the flag? something to pick here? the keys carried; the heading in degrees (0 north, 90 east). |
-| `REPEAT n` ... `END REPEAT` (`REPETE` ... `FIN REPETE`) | the lines between, n times. |
+| `REPEAT n` ... `END REPEAT` (`REPETER` ... `FIN REPETER`) | the lines between, n times. |
 
-In French, BASIC's own words have their names too: `SI` / `ALORS` / `SINON` / `SINONSI` / `FIN SI`, `POUR` /
-`JUSQUA` / `SUIVANT`, `TANTQUE` / `FINTANTQUE`, `FAIRE` / `BOUCLE` / `JUSQUE`, `PROCEDURE` / `FIN PROCEDURE`,
-`APPELLE`, `ET`, `OU`, `NON`, `AFFICHE`, `SORTIR`. (The parentheses of a sensor may be left out: `WALL`.)
+In French, **BASIC's own words** have their names too — the whole program can be written in French:
+
+| French | English |
+|---|---|
+| `SI` ... `ALORS` / `SINON SI` ... `ALORS` / `SINON` / `FIN SI` | `IF` ... `THEN` / `ELSEIF` / `ELSE` / `END IF` |
+| `POUR i = 1 JUSQUE 5 PAS 2` ... `SUITE` | `FOR i = 1 TO 5 STEP 2` ... `NEXT` |
+| `TANTQUE` ... `FIN TANTQUE` | `WHILE` ... `WEND` |
+| `FAIRE` ... `BOUCLE JUSQUA` | `DO` ... `LOOP UNTIL` |
+| `SUB Nom` ... `FIN SUB`, `FONCTION Nom` ... `FIN FONCTION`, `RETOUR`, `APPELER`, `SORTIR` | `SUB` ... `END SUB`, `FUNCTION` ... `END FUNCTION`, `RETURN`, `CALL`, `EXIT` |
+| `CLASSE` ... `FIN CLASSE`, `HERITE`, `NOUVEAU`, `CECI`, `RIEN` | `CLASS` ... `END CLASS`, `EXTENDS`, `NEW`, `THIS`, `NOTHING` |
+| `DIM n COMME ENTIER`, `s COMME CHAINE`, `CONSTANTE` | `DIM n AS INTEGER`, `s AS STRING`, `CONST` |
+| `SELON CAS` ... `CAS` ... `FIN SELON` | `SELECT CASE` ... `CASE` ... `END SELECT` |
+| `ET`, `OU`, `NON`, `AFFICHER`, `SAISIR` | `AND`, `OR`, `NOT`, `PRINT`, `INPUT` |
+
+These words are then reserved (a variable cannot be called `pas`, `cas`, `fin`, `si`...). The error messages name
+the French words ("ce POUR n'a pas de SUITE pour le fermer"). (The parentheses of a sensor may be left out: `WALL`.)
 
 **Winning and the stars.** A level is won when the program **ends** with the turtle on the flag (if the level
 has one), every coin picked and every marked tile painted — and, in a drawing level, the grey figure drawn (in
@@ -5092,8 +5124,7 @@ as a copy), **Close** goes back to playing.
 *The level editor: a coin added to "Paint the frame", the solution tested — it no longer wins.*
 
 **Menus.** *Game*: Run, Step, Stop, Reset, Next / Previous Level (**Ctrl+N** / **Ctrl+P**), Lesson, Hint, Quit
-(**Ctrl+Q**). *Levels*: Open Level Pack... (**Ctrl+O**), Edit This Level, New Level. *Language*: English,
-Français (the words, the texts, the lessons). *Player*: the players (up to eight; each has its stars, its programs
+(**Ctrl+Q**). *Levels*: Open Level Pack... (**Ctrl+O**), Edit This Level, New Level. *Player*: the players (up to eight; each has its stars, its programs
 and the lessons seen), New Player..., About.
 
 **Files.** Reads the packs `SD:/apps/turtle.app/levels/*.turtle`, `SD:/docs/turtle/my-levels.turtle` and any

@@ -16,7 +16,15 @@
 // ends by itself (exit) takes its tab away; the last tab gone, the window closes.
 //
 // Its own decorated uikit window, with a loop of its own (not Root::run): the terminal must also
-// pump the shells' output pipes every frame.
+// pump the shells' output pipes every frame. The window, the tabs and the menus are the theme's (uikit's
+// look); the console alone (TermView) is dark, in colours of its own, a margin of the window's face
+// around it.
+//
+// Its words in the user's language (uikit/lang.h: TR (), SD:/apps/terminal.app/lang/<code>.txt), in
+// Latin-1 as the bitmap font draws them (no text face here: the console is a grid of cells). What the
+// shells print is theirs.
+//
+// MIT licence (Onyx).
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"		// recursive widget toolkit (TermView draws into a Canvas)
@@ -25,6 +33,7 @@
 #define W		620		// standalone window size
 #define H		420
 #define STRIP_H		30		// the tabs' strip
+#define PAD		4		// the window's face around the console
 #define MAXTABS		16
 #define SCROLLBACK	200		// bounded scrollback (rows)
 #define COLS		112		// stored chars per line
@@ -97,7 +106,7 @@ static void start_cmd (Tab *t)
 	t->to_cmd   = kapi_pipe ();
 	t->from_cmd = kapi_pipe ();
 	t->cmd = kapi_spawn ("SD:/bin/cmd", "", t->to_cmd, t->from_cmd);
-	if (t->cmd == 0) term_puts (t, "terminal: cannot start /bin/cmd\n");
+	if (t->cmd == 0) term_puts (t, TR ("terminal: cannot start /bin/cmd\n"));
 }
 
 static int shell_pid (Tab *t)
@@ -150,7 +159,7 @@ static void tab_title (const Tab *t, char *out, int cap)
 		if (end > 0 && t->cur[end - 1] == '/') from = 0;	// (a volume's root: "SD:/")
 		for (int i = from; i < end && n < cap - 1; i++) out[n++] = t->cur[i];
 	}
-	if (n == 0) { const char *s = "Shell"; while (*s && n < cap - 1) out[n++] = *s++; }
+	if (n == 0) { const char *s = TR ("Shell"); while (*s && n < cap - 1) out[n++] = *s++; }
 	out[n] = '\0';
 }
 
@@ -205,7 +214,7 @@ static void new_tab ()
 	Tab *t = new Tab ();				// (value-initialised: all zeros)
 	if (t == 0) return;
 	le_init (&t->le);
-	int i = g_strip->add ("Shell", t);
+	int i = g_strip->add (TR ("Shell"), t);
 	if (i < 0) { delete t; return; }
 	start_cmd (t);
 	show_tab (i);
@@ -229,14 +238,17 @@ static void ask_close (int i)
 	update_busy (t);
 	if (t->busy)
 	{
-		char msg[160]; int n = 0;
-		const char *a = "\"", *b = "\" is still running in this tab. Close the tab and stop it?";
+		char msg[224]; int n = 0;
+		const char *f = TR ("\"%s\" is still running in this tab. Close the tab and stop it?");
 		char what[48]; tab_title (t, what, sizeof what);
-		for (int k = 0; a[k]; k++) msg[n++] = a[k];
-		for (int k = 0; what[k] && n < 60; k++) msg[n++] = what[k];
-		for (int k = 0; b[k] && n < (int) sizeof msg - 1; k++) msg[n++] = b[k];
+		for (int k = 0; f[k] && n < (int) sizeof msg - 1; k++)	// (%s: what runs there)
+		{
+			if (f[k] != '%' || f[k + 1] != 's') { msg[n++] = f[k]; continue; }
+			for (int j = 0; what[j] && n < (int) sizeof msg - 1; j++) msg[n++] = what[j];
+			k++;
+		}
 		msg[n] = '\0';
-		if (uk_messagebox ("Close Tab", msg, MB_OKCANCEL) != 1) return;
+		if (uk_messagebox (TR ("Close Tab"), msg, MB_OKCANCEL) != 1) return;
 		i = tab_index (t);			// (the tabs may have moved meanwhile)
 		if (i < 0) return;
 	}
@@ -318,11 +330,12 @@ static bool tab_keys (long k)
 
 // ---- view (uikit widget) -------------------------------------------------------
 // Renders the shown tab's scrollback into its Canvas. Recomputes the visible rows/cols from its
-// current logical size each frame, so a window resize just reflows the text.
+// current logical size each frame, so a window resize just reflows the text. The one dark part of
+// the window: TERM_BG / TERM_FG, whatever the theme.
 class TermView : public Widget
 {
 public:
-	TermView (int w, int h) : Widget (0, 0, w, h) { canFocus = true; }
+	TermView (int l, int t, int w, int h) : Widget (l, t, w, h) { canFocus = true; }
 
 	void recompute ()
 	{
@@ -411,20 +424,18 @@ static void sa_key (unsigned long, int ev, long v)
 // ---- entry -------------------------------------------------------------------
 int main (void)
 {
+	uk_lang_init ();				// the words in the language chosen (before the window)
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
 	Root root (W, H, "terminal");
 	if (root.canvas.px == 0) return 1;
-	root.setBg (TERM_BG);				// (the console covers the window)
 	g_strip = new TabStrip (0, 0, W, STRIP_H, on_strip);
 	g_strip->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
-	g_strip->activeFace = TERM_BG;			// (the chosen tab opens onto the console)
 	g_strip->onClose = on_strip_close;
 	g_strip->onNew = on_strip_new;
 	root.addChild (g_strip);
-	TermView *view = new TermView (W, H - STRIP_H);
-	view->top = STRIP_H;
+	TermView *view = new TermView (PAD, STRIP_H + PAD, W - 2 * PAD, H - STRIP_H - 2 * PAD);	// (the window's face around it)
 	view->anchor = ANCHOR_FILL;
 	root.addChild (view);
 	g_view = view;
@@ -433,12 +444,12 @@ int main (void)
 	g_saroot = &root;
 
 	static Menu menu;
-	menu.menu ("Shell");
-	menu.item ("New Tab", "Shift+^T", 0, m_new);
-	menu.item ("Close Tab", "Shift+^W", 0, m_close);
+	menu.menu (TR ("Shell"));
+	menu.item (TR ("New Tab"), "Shift+^T", 0, m_new);
+	menu.item (TR ("Close Tab"), "Shift+^W", 0, m_close);
 	menu.separator ();
-	menu.item ("Next Tab", "^Tab", 0, m_next);
-	menu.item ("Previous Tab", "Shift+^Tab", 0, m_prev);
+	menu.item (TR ("Next Tab"), "^Tab", 0, m_next);
+	menu.item (TR ("Previous Tab"), "Shift+^Tab", 0, m_prev);
 	menu.publish ();
 
 	new_tab ();
