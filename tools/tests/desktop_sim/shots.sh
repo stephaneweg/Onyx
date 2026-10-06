@@ -60,6 +60,7 @@ AK="$OUT/libaudiokit.a -lpthread -lm"
 build () {
 	extra=""; [ "$1" = graphcalc ] && extra=user/Libs/basic/basnum.cpp
 	case "$1" in notes|stickies) extra=user/Apps/notes/notesmodel.cpp ;; esac	# (their model: SD:/Notes, notes.ini)
+	[ "$1" = circuits ] && extra=user/Apps/circuits/circuit.cpp		# (its engine: the board, the packs, the progress)
 	[ "$1" = gamelib ] && extra="user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
@@ -146,7 +147,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
@@ -155,7 +156,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies"
+      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies circuits"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
