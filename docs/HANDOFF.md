@@ -4,6 +4,37 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Turtle Quest, *Gems, portals and fractals* (AutoDev round 3, 2026-10-06): built, tested on the PC, branch `AutoDev` only
+
+Made by the AutoDev pipeline (`autodev/rounds/03-turtle-missions/`: 02 the analysis and its 18 acceptance criteria,
+03 the plan and the GUI plan, 04 the design and its mock-ups, 05 the validation, 06 what was built and tested). **Not
+in `main`, not published**: the user validates first. **Read docs/04 §13 *Turtle Quest*** and docs/03 *Turtle Quest*.
+
+- **Done**: in `user/Apps/turtle/world.h` -- **gems** `1`…`9` picked in order (`GEM ()` / `GEMME ()`, `PICK` out of
+  order an error, the not-won message), **portals** `T` / `U` (a pair each; `EV_TELEPORT`, the steps left go on from
+  the twin, no line across; `FRONT ()` = 5), **colour drawings** (`draw = color`: the shape then the colours,
+  `same_colours`), the friendly recursion message, six lesson cards (EN/FR), `check_level` (one verdict for the pack
+  reader and the editor), `edit_gem` / `edit_pad`, `new_best`; two packs, **48 levels** in all:
+  `4-gems-and-portals.turtle` (10) and `5-spirals-and-fractals.turtle` (11: polygons with parameters, a rainbow
+  snail, `FUNCTION`, a tree, Koch, the snowflake, Sierpinski). In `main.cpp`: the gems, the portals and their jump's
+  animation, the HUD *Gems n / N*, the tinted colour target, the 6-line card, the lesson box centred on the column
+  (small faces in a narrow window), the editor's 12 tools, the *No / Shape / Colours* chooser and the red check, the
+  window's minimum **920 × 600**; the SHOULD items done: **your best** (`<id>.best`, *Best: 6* / *Record : 6* by the
+  count), **the pack's stars** at the list's foot, a **FUNCTION / FONCTION** chip in the function and recursion levels.
+- **Tested on the PC**: `run_turtle_test.sh` (48 levels solved with three stars, written back the same, the lint,
+  gems / portals / colours / recursion / editor / best cases), `run_basic_test.sh`, `shots.sh turtle` (8 shots, EN;
+  the French ones looked at). `tools/pkg/packages.ini` unchanged (the `[*apps]` rule ships `levels/`); nothing
+  published.
+- **Not done here (no aarch64 compiler in the container)**: `make` from `kernel/` (the `turtle` target) and `make
+  stage`; then on the Pi: the jump's animation and the gems' ring at the real pace, the 920 × 600 minimum, the
+  editor's Gem / Portal tools by mouse, the French lesson cards in a small window.
+- **Follow-ups**: the progress on FileKit's `fk_kv` (not done: needs the card link of `filekit.imp.a` built and a
+  byte-identical proof -- `kv_save` writes a section again when it comes back, `fk_kv_set` appends to its first
+  block); a free-drawing **sandbox** (not done: a goal-free, target-free level needs a `run_program` rule and breaks
+  the test's "48 levels, three stars each"); several turtles, a daily challenge, GPIO bonus levels, coloured keys /
+  doors, switches, the UI words onto `TR ()` + `lang/fr.txt`; the selected row's bold title can touch its stars in
+  French (the cut is measured in the regular face -- older than this round).
+
 ## Circuits, a logic-gate puzzle game (AutoDev round 2, 2026-10-06): built, tested on the PC, branch `AutoDev` only
 
 Made by the AutoDev pipeline (`autodev/rounds/02-circuits/`: 02 the analysis and its 26 acceptance criteria, 03 the
@@ -83,8 +114,8 @@ words: dialects*, *The statement hook*, *Turtle Quest*: the code's pieces).
   packs written back and read again, the errors), `sh tools/tests/run_basic_test.sh` (+ the dialect test),
   `run_qbstudio_test.sh`, the app driven in the desktop simulator (`shots.sh turtle`: three screenshots). **Not yet
   run on the Pi**: check the playback's pace (`kapi_clock_us`), the fonts, a pack opened from the File Viewer.
-- **Ideas**: more packs (the user's levels shared as `.turtle` files), a "free drawing" sandbox with no goal, the
-  turtle's speech (`SAY`), sounds; QBasic's debugger on the hook.
+- **Ideas**: more packs (the user's levels shared as `.turtle` files; packs 4 and 5 came with AutoDev round 3, see
+  above), a "free drawing" sandbox with no goal, the turtle's speech (`SAY`), sounds; QBasic's debugger on the hook.
 
 ## USB sticks: hot mount, eject, format (2026-10-06, kapi v93): built, tested on the PC, NOT yet on the Pi
 

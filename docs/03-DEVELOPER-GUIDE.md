@@ -3945,22 +3945,36 @@ barwidth = 40
   into it; docs/04 §13). `world.h` is the game without its window: the **turtle's dialect** (`WORDS`, the French
   aliases `ALIASES_FR` -- the turtle's words and BASIC's keywords), the lessons (`CONCEPTS`), the **packs**
   (`parse_pack` / `write_pack`: `.turtle` text files, their format in the header), the **world** (the map, the
-  turtle, the pen's lines, the painted tiles, the keys and coins) and **`run_program`**: the program compiled with
+  turtle, the pen's lines, the painted tiles, the keys, coins and gems, the portals' pads) and **`run_program`**: the program compiled with
   the dialect and run **at once** by a `Recorder` -- a `bas::Host` that is the turtle (`ext ()`: a move is checked
   square by square against the walls; a wall, a locked door, nothing to pick is a run-time error with a sentence for
   the player) with the statement hook on, so that every statement started is an event (`EV_LINE`) beside the moves,
-  turns, picks, doors, prints; a run is stopped past 40 000 events or 3 000 polls (about 12 M instructions: "the
+  turns, picks, doors, prints and portal jumps (`EV_TELEPORT`, from the pad to its twin, emitted in `Recorder::move`
+  right after the step's `EV_MOVE` that ended on a pad: the steps left go on from the twin, the heading kept, no
+  `Seg` across -- the window animates it); a run is stopped past 40 000 events or 3 000 polls (about 12 M instructions: "the
   turtle is tired"). The window (`main.cpp`) **plays the record back**: `playback_tick ()` (Root::onTick) applies the
   events to its own world at the speed chosen, lights each `EV_LINE`'s line in the editor (UIKit's `CodeEdit`,
   `hiLine`), and in step mode pauses at the next one -- so the program never runs while the window waits, and a
   step is exact. A drawing level's figure is its solution's lines (`target_of`); a program's lines must cover them
-  and stay on them (`same_drawing`: points every 0.1 square, 0.15 apart at most). Stars: `count_instructions` (the
+  and stay on them (`same_drawing`: points every 0.1 square, 0.15 apart at most); a `draw = color` level (`Level::draw`
+  2; 1 is the shape only) checks the shape first, then the colours (`same_colours`: each point near a line of the
+  same pen), so the player is told which is wrong. The **level checks** are pure functions there too, shared by
+  `parse_pack` and the editor so they never disagree: `check_level` (gems 1 … N without a gap or a repeat, each
+  portal letter twice or not at all; the fault's kind and its cell), worded by `level_fault_reason` (the pack's
+  refusal, English) and `level_fault_text` (the editor's red message, EN/FR); the editor's Gem and Portal tools are
+  `edit_gem` / `edit_pad` (host-tested). The VM's raw "Out of stack space" becomes the friendly recursion
+  sentence (`friendly`). Stars: `count_instructions` (the
   statements, not the blocks' ends nor the comments) against the level's `par`. The progress is a small
-  `(section, key) = value` store in `SD:/apps/turtle.app/progress.ini` (a section a player). Host test:
+  `(section, key) = value` store in `SD:/apps/turtle.app/progress.ini` (a section a player: `<id>` the stars,
+  `<id>.best` the fewest instructions of a won run -- `new_best` --, `<id>.code` the last program, `seen.<concept>`;
+  not yet on FileKit's `fk_kv`, see docs/HANDOFF.md). Host test:
   `sh tools/tests/run_turtle_test.sh` -- every level of the card's packs solved by its solution with three stars,
   written back and read again the same, and the player's errors (a wall at its line, a locked door, an endless
-  loop, a syntax error, French words, a figure too small). Screenshots: `shots.sh turtle` (the players' progress
-  from `tools/tests/desktop_sim/turtle/*.ini`).
+  loop, a syntax error, French words, a figure too small; gems out of order, portal jumps, colour drawings, a
+  recursion without a stop, the editor's tools), a lint of every level (ids unique across the packs, both
+  languages' texts present and not cut, a colour level's pens) and exactly 48 levels. Screenshots: `shots.sh
+  turtle` (the players' progress from `tools/tests/desktop_sim/turtle/*.ini`: 8 shots, `turtle-portals`,
+  `turtle-fractal`, `turtle-rainbow`, `turtle-editor-gems`, `turtle-fr-gems` among them).
 - **Circuits** (`user/Apps/circuits/`, a FreeType app: `FT_APPS`, `FT_EXTRA_circuits = Apps/circuits/circuit.cpp`;
   docs/04 §12, AutoDev round 2). The **engine** `circuit.h` / `circuit.cpp` (`namespace circuits`) has no UI and no
   file I/O: the parts and wires on a 40 × 30 grid (`Circuit`: `add`, `move`, `connect` -- the one place a wire is

@@ -4545,7 +4545,7 @@ each starting with `|`. The circuit text (in `progress.ini`, Copy Circuit, `solu
 | **Solitaire** | Klondike. **Drag** cards: the seven columns build down in alternating colours (a king on an empty column), the four foundations up by suit from the ace. **Click the stock** to turn one card (or three: Game ▸ Draw Three); an empty stock turns the waste over again. **Double-click** sends a card to its foundation, **right-click** sends every card that can go. Hidden cards turn over by themselves. **^Z** undo, **^N** deal. Windows scoring + timer; the cards bounce when you win. |
 | **FreeCell** | All the cards face up in eight columns, four **free cells** (top left, one card each), four foundations (top right). **Drag** cards: a column takes a card one lower in the other colour (anything on an empty column); a **run** moves at once when free cells and empty columns allow it. **Double-click**: to the foundation, else to a free cell. Cards no longer needed go home by themselves. **^Z** undo; Game ▸ **Select Game...** plays deal 1–32000 — the same deals as Microsoft FreeCell; Restart Game. |
 | **Pipes** | After *Pipe Dream*: lay pipe pieces before the water comes. The next pieces wait in the queue on the left (the bottom one goes next); **click** a square (or arrows + **Space**) to put it there — on an unfilled piece it replaces it (−50). When the countdown (the blue bar) runs out the water leaves the red valve: 50 points per piece it crosses, 500 more for a cross used both ways. If it went through the **required number of pieces** (top right) when it spills, the round is won. **F**: let the water run now, fast (double points). Walls from round 3, faster water every round. **P** pause. |
-| **Turtle Quest** (`turtle`) | Learn to program: write a little program in **BASIC** that brings a turtle to its flag, picks the coins, opens the doors, paints the tiles and draws figures — 27 levels in three packs, from moves to loops, conditions, variables, procedures and Logo's figures, in English or **French** (AVANCE, REPETE, SI...). **F5** run, **F8** step by step (the line being run lit), **F7** stop, **F9** reset, **F1** the lesson, **F2** the hint, **Ctrl+N** next level; a level editor (**Ctrl+E**); several players, each with their stars. See §13, *Turtle Quest*. |
+| **Turtle Quest** (`turtle`) | Learn to program: write a little program in **BASIC** that brings a turtle to its flag, picks the coins, opens the doors, paints the tiles and draws figures — 48 levels in five packs, from moves to loops, conditions, variables, procedures and Logo's figures, then numbered **gems** picked in order, **portals** that move the turtle, and **fractals** (trees, the Koch snowflake, Sierpinski) drawn by words that take values, give one back and call themselves, some in **colour** — in English or **French** (AVANCE, REPETE, SI...). **F5** run, **F8** step by step (the line being run lit), **F7** stop, **F9** reset, **F1** the lesson, **F2** the hint, **Ctrl+N** next level; a level editor (**Ctrl+E**: gems, portals, colour drawings too); several players, each with their stars and their best programs. See §13, *Turtle Quest*. |
 | **Circuits** (`circuits`) | Learn how a computer computes: build circuits of **logic gates** (NOT, AND, OR, XOR, NAND, NOR) that light the lamps as each level's **truth table** asks — 20 levels in three worlds, from one wire to a two-bit adder, in English or **French**. Place gates from the palette, drag wires from output pins to input pins; **click a switch** (or a table row) to see the circuit live, **F8** step by step (depth by depth), **F5** Check (every row tried; the wrong ones marked), stars by the number of gates; **F1** the lesson, **F2** the hint, **Ctrl+Z / Ctrl+Y** undo / redo, **Ctrl+N** next level, **Ctrl+O** a level pack (`.circuits`). Progress in `SD:/apps/circuits.app/progress.ini`. See §12, *Circuits*. |
 | **Arkanoid** | Written in BASIC (`main.bax`, from `SD:/basic/examples/arkanoid.bas`), in `SCREEN 13` shown full screen (**F**: a window, and back). Break the bricks. The paddle follows the **mouse** or the **←/→** arrows (held); **Space** or a click launches the ball (and fires, with the laser). Silver bricks take several hits, gold ones never break. Catch the falling capsules: **E** longer paddle, **S** slower ball, **C** catch the ball, **L** laser, **D** three balls, **P** extra life. 5 rounds (then again, faster), 3 lives. **P** pause, **Esc** title / quit. No file read or written. |
 | **Planets 3D** | Written in BASIC (`main.bax`, from `SD:/basic/examples/planets3d.bas`): a little solar system in 3D, drawn by the **GPU** — the sun, four planets turning on their orbits, a moon, a ringed gas giant, stars; the planets' textures are drawn by the program itself. **Arrows** turn the camera, **+ / −** nearer / farther, **Space** pause, **F** full screen, **Esc** quit. The top line says GPU or software and the frames a second. No file read or written. |
@@ -5267,7 +5267,8 @@ Not yet: the debugger (breakpoints, stepping, the variables), several windows in
 
 **Turtle Quest** (category *Programming*) teaches programming the way Logo did, as a game: in each level the player
 writes a short program that guides a **turtle** across a board — to its **flag**, picking up the **coins**,
-fetching a **key** for a **door**, painting the marked **tiles**, or drawing a **figure**. The language is Onyx
+fetching a **key** for a **door**, painting the marked **tiles**, picking numbered **gems** in their order, jumping
+through **portals**, or drawing a **figure** — in some levels, in its colours. The language is Onyx
 BASIC itself (the same as QBasic's, `/bin/basic`'s and QBStudio's), with the turtle's words added; `FOR`, `IF`,
 `WHILE`, `SUB`, variables, `PRINT` work as everywhere else.
 
@@ -5275,15 +5276,18 @@ BASIC itself (the same as QBasic's, `/bin/basic`'s and QBStudio's), with the tur
 *The maze (pack 2), run step by step: the line being run is lit, the turtle on its way — the program follows the
 wall on its right.*
 
-**The window.** On the left, the **pack** of levels (a drop-down) and its levels, with the stars won. In the
+**The window.** On the left, the **pack** of levels (a drop-down) and its levels, with the stars won (at the list's foot, the
+stars of the whole pack: *This pack: 21 / 30*). In the
 middle, the program: **Run** (F5), **Step** (F8: one statement at a time — the line about to run is lit in
 yellow, the turtle does what it says; Run then goes on at full speed), **Stop** (F7, or Esc), **Reset** (F9: the
 turtle back at its start), the **speed** (the slider: from slow to instant); under the program, the **words
 the level knows** — a click writes one at the caret (the purple ones, `REPEAT`, `FOR`, `IF`, `WHILE`, `SUB`,
-write a whole block) and pointing at one says what it does; and the **instruction count** with what three and
-two stars ask. On the right: the level's card (its title, what to do; **Hint** — F2 — shows a clue, **Lesson**
+write a whole block; `FUNCTION` too in the levels of words that give a value back) and pointing at one says what it
+does; and the **instruction count** with what three and two stars ask — and, once the level is won, **your best**:
+the fewest instructions of your won runs (*Best: 6*, in French *Record : 6*; kept per player). On the right: the level's card (its title, what to do; **Hint** — F2 — shows a clue, **Lesson**
 — F1 — the card of the level's idea, shown by itself the first time a new idea comes), the board, and the
-message bar.
+message bar. Above the board, the **HUD** counts what is left to do: *Coins 2 / 5*, *Gems 2 / 5* (with the colour of
+the next gem to pick, a ✓ once all are picked), *Keys 1*. The window is at least **920 × 600**.
 
 **The turtle's words** (the French names in brackets). A program may be written **in English or in French
 whatever the system's language** (even mixed): the language — the Control Panel's **Language & Region**, §11 —
@@ -5295,9 +5299,10 @@ only chooses the words the game shows (the palette, the lessons, the hints, the 
 | `FORWARD [n]` (`AVANCER`, `AV`) / `BACK [n]` (`RECULER`, `RE`) | moves n squares ahead / back (1 without n; any number in a drawing). |
 | `LEFT [degrees]` (`GAUCHE`, `TG`) / `RIGHT [degrees]` (`DROITE`, `TD`) | turns on the spot (90 without a number). |
 | `PENUP` (`LEVERCRAYON`, `LC`) / `PENDOWN` (`BAISSERCRAYON`, `BC`), `COLOR n` (`COULEUR`) | the pen: the turtle draws where it walks while it is down (at the start); its colour, 0 to 15. |
-| `PICK` (`RAMASSER`) | picks the coin or the key under the turtle. |
+| `PICK` (`RAMASSER`) | picks the coin, the key or the gem under the turtle (a gem only when it is the next one: 1, then 2...). |
 | `WALL ()` (`MUR`), `WALLLEFT ()` (`MURGAUCHE`), `WALLRIGHT ()` (`MURDROITE`) | true when a wall (or a locked door) is ahead / on the left / on the right. |
-| `FRONT ()` (`DEVANT`) | what is ahead: 0 free, 1 a wall, 2 something to pick, 3 the goal, 4 a door. |
+| `FRONT ()` (`DEVANT`) | what is ahead: 0 free, 1 a wall, 2 something to pick, 3 the goal, 4 a door, 5 a portal. |
+| `GEM ()` (`GEMME`) | the number of the gem under the turtle (0: none, or already picked). |
 | `ONGOAL ()` (`SURBUT`), `ITEM ()` (`OBJET`), `KEYS ()` (`CLES`), `HEADING ()` (`CAP`) | on the flag? something to pick here? the keys carried; the heading in degrees (0 north, 90 east). |
 | `REPEAT n` ... `END REPEAT` (`REPETER` ... `FIN REPETER`) | the lines between, n times. |
 
@@ -5320,34 +5325,73 @@ These words are reserved in both languages (a variable cannot be called `pas`, `
 the French words ("ce POUR n'a pas de SUITE pour le fermer"). (The parentheses of a sensor may be left out: `WALL`.)
 
 **Winning and the stars.** A level is won when the program **ends** with the turtle on the flag (if the level
-has one), every coin picked and every marked tile painted — and, in a drawing level, the grey figure drawn (in
-any order, any colour; nothing more). The stars count the **instructions** (each statement; the ends of the
+has one), every coin and every gem picked and every marked tile painted — and, in a drawing level, the grey figure
+drawn (in any order, any colour; nothing more). In a **colour drawing** the light figure is drawn in tints of its
+colours: each line must be drawn in the colour of the light line under it (`COLOR 4` is red; a loop's counter makes
+a rainbow: `COLOR i MOD 6 + 1`). The stars count the **instructions** (each statement; the ends of the
 blocks — `END REPEAT`, `NEXT`, `END IF`, `WEND`... — and the comments do not count): one star for a win, two and
 three when the program is as short as the level asks — a loop beats lines copied again and again. The best stars
 of each level are kept, per player. **Errors** are said simply, at their line, which is marked in the program:
 *"Line 4: Bump! The turtle hit a wall."*, *"The door is locked: the turtle needs a key."*, *"There is nothing to
-pick up here."*, *"This level does not know LEFT yet."*, a syntax error (*"I do not understand line 3."*), and a
-program that never ends is stopped (*"The turtle is tired..."*). `PRINT` shows its text in the message bar.
+pick up here."*, *"Gem 2 first! This is gem 3."*, *"This level does not know LEFT yet."*, a syntax error (*"I do not
+understand line 3."*), *"The right figure, but not the right colours."*, a word that calls itself with no test to stop
+it (*"the word calls itself without end -- does it have a test that stops it?"*), and a program that never ends is
+stopped (*"The turtle is tired..."*). `PRINT` shows its text in the message bar.
 
 ![Turtle Quest in French: the star](../screenshots/turtle-fr.png)
 *In French: a star drawn — two stars only, the program has one instruction too many for the level.*
 
-**The levels.** Three packs come with the game (27 levels): **1. First steps** (moving, turning, picking up,
+**The levels.** Five packs come with the game (48 levels): **1. First steps** (moving, turning, picking up,
 keys and doors), **2. Loops and choices** (`REPEAT`, `FOR`, `IF`, the sensors, `WHILE`, mazes), **3. Variables,
-words and figures** (variables, `SUB`, the pen, the figures: square, triangle, hexagon, star, flower, spirals). All
-levels are open; a level's lesson card comes the first time its idea appears.
+words and figures** (variables, `SUB`, the pen, the figures: square, triangle, hexagon, star, flower, spirals),
+**4. Gems and portals** (10 levels: gems in a row, the wrong way round, a counter `n` with `GEM ()` that remembers
+which gem is next, portals that skip a long way, the grand finale with both pairs, a key and five gems) and
+**5. Spirals and fractals** (11 drawing levels on a big page: `SUB Polygon (sides, size)`, a rainbow snail and a
+two-colour flower in colour, `FUNCTION Half (x)`, then words that call themselves: a snail, a tree, the Koch curve
+and snowflake, the Sierpinski triangle in colour). All levels are open; a level's lesson card comes the first time
+its idea appears (the new ones: *Gems in order*, *Portals*, *Colours are numbers* — with the 16 colours and their
+numbers —, *Words that take values*, *Words that give back*, *A word that calls itself*).
+
+**Gems and portals.** A **gem** carries its number, 1 to 9, and must be picked in that order: the next one is ringed
+in white; `PICK` on another is an error. A **portal** is a round pad; the two pads of a pair look alike (pair 1 cyan
+with one dot, pair 2 magenta with two): a step that ends on a pad goes on from its twin at once, in the same
+direction (a `FORWARD 3` with the pad one square ahead ends two squares past the twin); arriving on the twin does
+not jump back, and the pen draws no line across the board. In a drawing level gems and portals do nothing.
+
+![Turtle Quest: gems and portals](../screenshots/turtle-portals.png)
+*The grand finale (pack 4), step by step: gems 1 and 2 picked (Gems 2 / 5), the ring on gem 3, the turtle just out of
+the twin pad of pair 1 — the loop is three instructions.*
+
+![Turtle Quest: the Koch snowflake](../screenshots/turtle-fractal.png)
+*The snowflake (pack 5): a word that calls itself, three stars. The list's foot counts the pack's stars.*
+
+![Turtle Quest: a colour drawing](../screenshots/turtle-rainbow.png)
+*The rainbow snail, a colour drawing, in the wrong colours over its light target: the right figure, not the right
+colours. Under the program: the stars' counts and the player's best.*
+
+![Turtle Quest in French: the gems](../screenshots/turtle-fr-gems.png)
+*In French: "Aller et retour" with `GEMME ()` and a counter — Gemmes 2 / 4, the ring on gem 3.*
 
 **The level editor** (Levels ▸ Edit This Level, **Ctrl+E**, or Levels ▸ New Level): the left column becomes the
-level's fields — title, what to do, hint (in the language chosen), the words it knows (empty: all), the idea it
-teaches, the instructions for three and two stars, **Drawing** (the solution's figure is the one to draw) and the
-size (W− W+ H− H+) — and a palette of **tools**: wall, floor, flag, key, coin, door, tile to paint, turtle (a
-click on the turtle turns it), water (outside the board). Click or drag on the board to draw; the program pane
+level's fields — the **idea** it teaches (first), title, what to do, hint (in the language chosen), the words it
+knows (empty: all), the instructions for three and two stars beside **Drawing** (**No**; **Shape**: the solution's
+figure is the one to draw, any colour; **Colours**: the figure and its colours — in French *Non / Forme / Couleurs*)
+and the size (W− W+ H− H+) — and a palette of 12 **tools** in four rows: wall, floor, flag, key, coin, door, tile to
+paint, turtle (a click on the turtle turns it), water (outside the board), **gem** (a click on a free cell places
+the lowest number not on the board; a click on a gem changes its number, 1 → 9 → 1; a drag places), **portal 1** and
+**portal 2** (a pair keeps two pads: a third one moves the older). Click or drag on the board to draw; the program pane
 holds the level's **solution**: **Test** runs it (a win sets the stars' counts from it), **Save** writes the level
 into **`SD:/docs/turtle/my-levels.turtle`** (the pack *My levels*; a level of the built-in packs is saved there
-as a copy), **Close** goes back to playing.
+as a copy), **Close** goes back to playing. Test and Save first check the gems and the portals: a gap in the gems'
+numbers, a gem twice or a portal without its twin is said in red (*"Gem 5 is missing: number the gems 1, 2, 3...
+without a gap."*, *"Portal 1 has no twin: place its second pad."*) with the cell at fault ringed red, and nothing is saved until it is
+fixed.
 
 ![Turtle Quest: the level editor](../screenshots/turtle-editor.png)
 *The level editor: a coin added to "Paint the frame", the solution tested — it no longer wins.*
+
+![Turtle Quest: the editor's gems and portals](../screenshots/turtle-editor-gems.png)
+*The editor on the grand finale: the 12 tools, gem 5 clicked into a 6 — Save refuses the gap and rings the gem.*
 
 **Menus.** *Game*: Run, Step, Stop, Reset, Next / Previous Level (**Ctrl+N** / **Ctrl+P**), Lesson, Hint, Quit
 (**Ctrl+Q**). *Levels*: Open Level Pack... (**Ctrl+O**), Edit This Level, New Level. *Player*: the players (up to eight; each has its stars, its programs
@@ -5356,12 +5400,15 @@ and the lessons seen), New Player..., About.
 **Files.** Reads the packs `SD:/apps/turtle.app/levels/*.turtle`, `SD:/docs/turtle/my-levels.turtle` and any
 `.turtle` file opened (Levels ▸ Open, dropped on the window, or a double click in the File Viewer: the package
 associates `.turtle` with the game). Writes **`SD:/apps/turtle.app/progress.ini`** (the players, their stars,
-their last program of each level, the lessons seen, the language, the pack and level last played, the speed) and,
+their best instruction counts, their last program of each level, the lessons seen, the language, the pack and level last played, the speed) and,
 from the editor, `SD:/docs/turtle/my-levels.turtle`. A pack is a text file: `[pack]` (`title`, `title.fr`) and
 one `[level]` section a level — `id`, `title`, `text`, `hint` (and their `.fr`), `concept`, `words`, `par` (the
-counts for three and two stars), `draw`, `map`, `start` (the program given), `solution`; a value on several lines
+counts for three and two stars), `draw` (`1` or `shape`: a drawing, any colour; `color`: a drawing in its colours), `map`, `start` (the program given), `solution`; a value on several lines
 is given by the lines after it, each starting with `|`. The map's characters: `#` wall, `.` floor, `*` flag, `k`
-key, `c` coin, `D` door, `p` tile to paint, `^ > v <` the turtle and its heading, a space: water.
+key, `c` coin, `D` door, `p` tile to paint, `1` … `9` a gem and its number (a level's gems are 1 … N, no gap, no
+repeat), `T` / `U` the pads of portal pair 1 / 2 (each letter twice or not at all), `^ > v <` the turtle and its
+heading, a space: water. A pack that breaks the gems' or the portals' rule is refused with the reason (*"level 3
+(gems-line): gem 2 is missing"*).
 
 ## 14. Troubleshooting
 
