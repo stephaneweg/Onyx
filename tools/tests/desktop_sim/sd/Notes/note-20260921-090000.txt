@@ -1,0 +1,6 @@
+Onyx to-do
+[x] notes.ini reader
+[x] the note list
+[ ] Stickies: drag the header
+[ ] icons for both apps
+[ ] docs/04 catalog

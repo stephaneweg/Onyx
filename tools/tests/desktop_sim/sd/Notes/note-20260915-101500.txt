@@ -1,0 +1,4 @@
+Pi 4 GPIO pins
+pin 1 3.3 V, pin 6 GND
+GPIO 17 = pin 11, GPIO 27 = pin 13
+I2C: SDA pin 3, SCL pin 5
