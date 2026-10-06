@@ -60,6 +60,7 @@ AK="$OUT/libaudiokit.a -lpthread -lm"
 build () {
 	extra=""; [ "$1" = graphcalc ] && extra=user/Libs/basic/basnum.cpp
 	case "$1" in notes|stickies) extra=user/Apps/notes/notesmodel.cpp ;; esac	# (their model: SD:/Notes, notes.ini)
+	[ "$1" = circuits ] && extra=user/Apps/circuits/circuit.cpp		# (its engine: the board, the packs, the progress)
 	[ "$1" = gamelib ] && extra="user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
@@ -146,7 +147,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
@@ -155,7 +156,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies"
+      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies circuits"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -355,6 +356,27 @@ if want turtle; then			# (Turtle Quest: the players' progress from desktop_sim/t
 	cp $D/turtle/star-fr.ini "$TQ/progress.ini"; sed -i 's/^level = 8/level = 3/' "$TQ/progress.ini"
 	sim turtle turtle-editor "wait;wait;key 0x05;$W;down 123 431;up 123 431;wait;down 820 230;up 820 230;wait;down 45 505;up 45 505;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-editor
 	rm -rf "$TQ"
+fi
+if want circuits; then			# (Circuits, AutoDev round 2: the progress from desktop_sim/circuits/*.ini in the writes' folder;
+					#  the window at 1000 x 620, the board's cell (gx, gy) at (248 + 12 gx, 168 + 12 gy) for a
+					#  2-line card -- 06-development.md, Developer B's notes)
+	CQ="$OUT/writes/apps/circuits.app"; CP=SIM_POS=8,34
+	# 3.3 Full adder solved: A = 1, B = 0, Cin = 1 (A and Cin clicked), the AND g4 selected
+	CS="wait;wait;down 290 228;up 290 228;wait;down 290 468;up 290 468;wait;down 470 324;up 470 324;$W"
+	mkdir -p "$CQ"; cp $D/circuits/solving.ini "$CQ/progress.ini"
+	sim circuits circuits "$CS" $CP; png circuits
+	# the same, step by step: F8 three times (step 2: the depth-3 OR not computed yet)
+	cp $D/circuits/solving.ini "$CQ/progress.ini"
+	sim circuits circuits-step "$CS;key 0x117;wait;key 0x117;wait;key 0x117;$W" $CP; png circuits-step
+	# 2.2 The hallway light with an OR: Check (F5) -> 1 row is wrong, the row marked, the switches set on it
+	cp $D/circuits/check.ini "$CQ/progress.ini"
+	sim circuits circuits-check "wait;wait;key 0x114;$W" $CP; png circuits-check
+	# in French: the first scene, the pointer resting on the palette's last gate, NOR (its tooltip)
+	cp $D/circuits/solving.ini "$CQ/progress.ini"; lang fr
+	TT=""; for i in 1 2 3 4 5 6 7 8 9 10; do TT="$TT;$W"; done
+	sim circuits circuits-fr "$CS;move 517 115;move 518 115$TT" $CP; png circuits-fr
+	lang "$SHOTS_LANG"
+	rm -rf "$CQ"
 fi
 if want slides; then			# (the sample deck: slide 3, its callout chosen; the sorter; the effects; the show, mid-transition)
 	SL=SIM_ARGS=SD:/docs/cafe-2026.odp

@@ -1,0 +1,237 @@
+# Circuits -- a pack of levels (the format: user/Apps/circuits/circuit.h, docs/04 "Circuits")
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+[pack]
+title = 3. Arithmetic
+title.fr = 3. Calculer
+
+[level]
+id = parity
+title = Odd one out
+title.fr = Nombre impair
+concept = parity
+inputs = A B C
+outputs = Out
+parts = NOT AND OR XOR NAND NOR
+par = 2 3
+text = The lamp must light when an odd number of switches are on: one, or all three.
+text.fr = La lampe doit s'allumer quand un nombre impair d'interrupteurs sont en marche : un seul, ou les trois.
+hint = XOR tells whether two bits make an odd count. Chain it.
+hint.fr = OUX dit si deux bits font un nombre impair. Enchaîne-le.
+table =
+| A B C | Out
+| 0 0 0 | 0
+| 0 0 1 | 1
+| 0 1 0 | 1
+| 0 1 1 | 0
+| 1 0 0 | 1
+| 1 0 1 | 0
+| 1 1 0 | 0
+| 1 1 1 | 1
+solution =
+| part g1 XOR 10 8
+| part g2 XOR 20 13
+| wire A g1.1
+| wire B g1.2
+| wire g1 g2.1
+| wire C g2.2
+| wire g2 Out
+
+[level]
+id = half
+title = Half adder
+title.fr = Demi-additionneur
+concept = adder
+inputs = A B
+outputs = C S
+parts = NOT AND OR XOR NAND NOR
+par = 2 3
+text = Add A and B in binary. The lamps C and S read as the sum: 1 + 1 = 10 lights C, not S.
+text.fr = Additionne A et B en binaire. Les lampes C et S se lisent comme la somme : 1 + 1 = 10 allume C, pas S.
+hint = S is 1 when exactly one input is 1; C is 1 when both are.
+hint.fr = S vaut 1 quand exactement une entrée vaut 1 ; C vaut 1 quand les deux valent 1.
+table =
+| A B | C S
+| 0 0 | 0 0
+| 0 1 | 0 1
+| 1 0 | 0 1
+| 1 1 | 1 0
+solution =
+| part g1 AND 16 4
+| part g2 XOR 16 19
+| wire A g1.1
+| wire B g1.2
+| wire A g2.1
+| wire B g2.2
+| wire g1 C
+| wire g2 S
+
+[level]
+id = full
+title = Full adder
+title.fr = Additionneur complet
+concept = fulladder
+inputs = A B Cin
+outputs = Cout S
+parts = NOT AND OR XOR NAND NOR
+par = 5 6
+text = Add three bits: A, B and the carry Cin. Cout and S read as the sum, from 00 to 11.
+text.fr = Additionne trois bits : A, B et la retenue Cin. Cout et S se lisent comme la somme, de 00 à 11.
+hint = S = A XOR B XOR Cin. Cout is 1 when A and B are both 1, or when Cin is 1 and A XOR B is 1.
+hint.fr = S = A OUX B OUX Cin. Cout vaut 1 quand A et B valent 1, ou quand Cin vaut 1 et A OUX B vaut 1.
+table =
+| A B Cin | Cout S
+| 0 0 0 | 0 0
+| 0 0 1 | 0 1
+| 0 1 0 | 0 1
+| 0 1 1 | 1 0
+| 1 0 0 | 0 1
+| 1 0 1 | 1 0
+| 1 1 0 | 1 0
+| 1 1 1 | 1 1
+solution =
+| part g1 XOR 8 12
+| part g2 XOR 16 20
+| part g3 AND 8 2
+| part g4 AND 16 11
+| part g5 OR 24 5
+| wire A g1.1
+| wire B g1.2
+| wire g1 g2.1
+| wire Cin g2.2
+| wire A g3.1
+| wire B g3.2
+| wire g1 g4.1
+| wire Cin g4.2
+| wire g3 g5.1
+| wire g4 g5.2
+| wire g5 Cout
+| wire g2 S
+
+[level]
+id = add2
+title = Two-bit adder
+title.fr = Additionneur 2 bits
+inputs = A1 A0 B1 B0
+outputs = C S1 S0
+parts = NOT AND OR XOR NAND NOR
+par = 7 9
+text = Add two numbers of two bits, A1 A0 and B1 B0 (0 to 3 each). C S1 S0 read as the sum, 0 to 6.
+text.fr = Additionne deux nombres de deux bits, A1 A0 et B1 B0 (de 0 à 3 chacun). C S1 S0 se lisent comme la somme, de 0 à 6.
+hint = A half adder for A0 and B0; its carry goes into a full adder with A1 and B1.
+hint.fr = Un demi-additionneur pour A0 et B0 ; sa retenue va dans un additionneur complet avec A1 et B1.
+table =
+| A1 A0 B1 B0 | C S1 S0
+| 0 0 0 0 | 0 0 0
+| 0 0 0 1 | 0 0 1
+| 0 0 1 0 | 0 1 0
+| 0 0 1 1 | 0 1 1
+| 0 1 0 0 | 0 0 1
+| 0 1 0 1 | 0 1 0
+| 0 1 1 0 | 0 1 1
+| 0 1 1 1 | 1 0 0
+| 1 0 0 0 | 0 1 0
+| 1 0 0 1 | 0 1 1
+| 1 0 1 0 | 1 0 0
+| 1 0 1 1 | 1 0 1
+| 1 1 0 0 | 0 1 1
+| 1 1 0 1 | 1 0 0
+| 1 1 1 0 | 1 0 1
+| 1 1 1 1 | 1 1 0
+solution =
+| part g1 XOR 7 23
+| part g2 AND 7 15
+| part g3 XOR 7 7
+| part g4 AND 7 0
+| part g5 XOR 15 13
+| part g6 AND 15 6
+| part g7 OR 23 1
+| wire A0 g1.1
+| wire B0 g1.2
+| wire A0 g2.1
+| wire B0 g2.2
+| wire A1 g3.1
+| wire B1 g3.2
+| wire A1 g4.1
+| wire B1 g4.2
+| wire g3 g5.1
+| wire g2 g5.2
+| wire g3 g6.1
+| wire g2 g6.2
+| wire g4 g7.1
+| wire g6 g7.2
+| wire g7 C
+| wire g5 S1
+| wire g1 S0
+
+[level]
+id = decoder
+title = Decoder
+title.fr = Décodeur
+concept = decoder
+inputs = A B
+outputs = Y0 Y1 Y2 Y3
+parts = NOT AND OR XOR NAND NOR
+par = 4 6
+text = A B is a number from 0 to 3 (A the high bit). Light only the lamp with that number.
+text.fr = A B est un nombre de 0 à 3 (A le bit de poids fort). N'allume que la lampe qui porte ce numéro.
+hint = Y0 is lit when neither is on, Y3 when both are. Y1 and Y2 can reuse Y3.
+hint.fr = Y0 s'allume quand aucun n'est en marche, Y3 quand les deux le sont. Y1 et Y2 peuvent réutiliser Y3.
+table =
+| A B | Y0 Y1 Y2 Y3
+| 0 0 | 1 0 0 0
+| 0 1 | 0 1 0 0
+| 1 0 | 0 0 1 0
+| 1 1 | 0 0 0 1
+solution =
+| part g1 NOR 10 1
+| part g2 AND 10 20
+| part g3 XOR 20 9
+| part g4 XOR 20 16
+| wire A g1.1
+| wire B g1.2
+| wire A g2.1
+| wire B g2.2
+| wire B g3.1
+| wire g2 g3.2
+| wire A g4.1
+| wire g2 g4.2
+| wire g1 Y0
+| wire g3 Y1
+| wire g4 Y2
+| wire g2 Y3
+
+[level]
+id = compare
+title = Comparator
+title.fr = Comparateur
+concept = compare
+inputs = A B
+outputs = G E L
+parts = NOT AND OR XOR NAND NOR
+par = 4 5
+text = Compare the bits A and B: G lights when A > B, E when A = B, L when A < B.
+text.fr = Compare les bits A et B : G s'allume quand A > B, E quand A = B, L quand A < B.
+hint = A > B means A is 1 and B is 0. E is lit when neither G nor L is.
+hint.fr = A > B veut dire A vaut 1 et B vaut 0. E est allumée quand ni G ni L ne le sont.
+table =
+| A B | G E L
+| 0 0 | 0 1 0
+| 0 1 | 0 0 1
+| 1 0 | 1 0 0
+| 1 1 | 0 1 0
+solution =
+| part g1 AND 8 12
+| part g2 XOR 16 3
+| part g3 XOR 16 23
+| part g4 NOR 24 13
+| wire A g1.1
+| wire B g1.2
+| wire A g2.1
+| wire g1 g2.2
+| wire B g3.1
+| wire g1 g3.2
+| wire g2 g4.1
+| wire g3 g4.2
+| wire g2 G
+| wire g4 E
+| wire g3 L

@@ -998,6 +998,7 @@ built without the FPU calls it); a buffer the library returns (`void **out`) is 
 | **A ZIP in memory** | `fk_zipmem_count`, `fk_zipmem_entry`, `fk_zipmem_get (zip, n, name, &out, &n)`; `fk_zipbuf_new`, `fk_zipbuf_add (b, name, data, n, level)`, `fk_zipbuf_finish (b, &out, &n)` | A document read whole and built whole — `.docx`, `.xlsx`, `.odt`, OpenRaster: the plain format (no ZIP64, no password). Level 0 stores (an OpenDocument's `mimetype` first). |
 | **Files** | `fk_exists` (1 a file, 2 a folder), `fk_file_size`, `fk_load`, `fk_save`, `fk_mkdirs`, `fk_copy (src, dst, cb, user)`, `fk_move`, `fk_remove`, `fk_tree_size (path, &files, &folders)` | A file or a whole tree; `dst` is the new path itself. A folder is not copied into itself; a volume's root is never removed. |
 | **Paths** | `fk_path_name`, `fk_path_ext`, `fk_path_folder`, `fk_path_join`, `fk_path_unique` (`a.txt` → `a (2).txt`), `fk_human_size`, `fk_dos_time_str` | |
+| **Key / value text documents** (`filekit/kvtext.h`, C and C++, 2026-10-06) | `fk_kv_new`, `fk_kv_parse (text, flags)`, `fk_kv_load (path, flags)`, `fk_kv_free`; `fk_kv_count`, `fk_kv_key`, `fk_kv_value`, `fk_kv_section`, `fk_kv_block`, `fk_kv_line`; `fk_kv_blocks`, `fk_kv_block_name`, `fk_kv_block_line`; `fk_kv_get (kv, section, key, def)`, `fk_kv_set`, `fk_kv_remove`; `fk_kv_text (kv, comment, &len)`, `fk_kv_save (kv, path, comment)` | A file of `[section]` headers and `key = value` lines read, changed and **written back with the keys a program does not know kept** — bigger than AppKit's `.ini` reader takes (no limit but memory). A section may come back (a pack's many `[level]` blocks, one block a header line); `FK_KV_ESCAPES`: values hold new lines written `\n` (a progress file); `FK_KV_PIPES`: a value goes on over the `\|` lines that follow (a pack's tables); every value keeps its line for the error messages. Like `fsutil.h`: `kvtext.h` declares, `kvtext.inc` has the code (`kvtext.cpp` in the library; inline on a PC). Circuits' packs and progress use it; Turtle Quest's and Notes' own readers can move onto it. Test: `sh tools/tests/run_kvtext_test.sh`. |
 
 - **Inside**: `filekit/fkcore.cpp` (the C interface), the archives' engine — `filekit/arc.h` (the `Archive`
   interface a format implements), `zip.h`, `tar.h`, `ops.h` (the formats' table `FORMATS`, opening by the
@@ -1091,7 +1092,7 @@ program says to the system and to the other programs; **NetKit** is the network;
 A program includes the kit's one header — `"systemkit/systemkit.h"`, `"netkit/netkit.h"`,
 `"filekit/filekit.h"` — which brings the subjects' headers named in the table.
 
-**How a kit of this kind is made** (SystemKit, NetKit, `filekit/fsutil.h`): each header `x.h` declares
+**How a kit of this kind is made** (SystemKit, NetKit, `filekit/fsutil.h`, `filekit/kvtext.h`): each header `x.h` declares
 (`SK_API int notify (...)`), `x.inc` beside it has the code, and the kit's one source (`systemkit.cpp`)
 compiles every `.inc` into `SD:/lib/systemkit.so`, exported by name. A program links
 `lib/systemkit.imp.a` / `lib/netkit.imp.a` / `lib/filekit.imp.a` (the apps' rules of `user/Makefile` do).
@@ -1101,8 +1102,8 @@ library given `umm.h`'s allocator (a heap of that object's own), or newlib's `ma
 bind is compiled with `-DONYX_BIND_LIBC`. The console tools do it (`user/BinUtils/Makefile`:
 `volume.elf preload.elf notifytest.elf: KITLIBS = ../lib/systemkit.imp_c.a`, `ftp` and `wget` with
 NetKit's); the header a C program includes must be C (SystemKit's and NetKit's are, but the clipboard;
-`filekit/fsutil.h` is C++). Where there is no shared library at all — a PC build — the code comes
-inline with the header (also on request: `-DSK_INLINE` / `-DNK_INLINE` / `-DFS_INLINE`).
+`filekit/fsutil.h` is C++, `filekit/kvtext.h` is C). Where there is no shared library at all — a PC build — the code comes
+inline with the header (also on request: `-DSK_INLINE` / `-DNK_INLINE` / `-DFS_INLINE` / `-DFK_KV_INLINE`).
 
 Still to come: `docguard.h` in the future DocumentKit; `http.hpp`'s class inside NetKit.
 
@@ -2202,7 +2203,7 @@ alone**.
 > **from its first version**; the older ones are translated as they are worked on -- done: Setup, the Control
 > Panel and its applets, the Terminal, Ledger, Notes and Stickies (the dates' names in the catalogue, the
 > model's English short dates translated where drawn: `notelist.h`'s `date_tr`), Turtle Quest (its own `L2 (en, fr)` pairs and its levels'
-> `.fr` texts; `locale_language ()` at its start). `SHOTS_LANG=fr SHOTS_PNG=<folder> sh
+> `.fr` texts; `locale_language ()` at its start), Circuits (`TR` + `lang/fr.txt`, its packs' `.fr` keys). `SHOTS_LANG=fr SHOTS_PNG=<folder> sh
 > tools/tests/desktop_sim/shots.sh <app>` renders an app in French on the PC to check that the words fit.
 > Wrap only what is shown — never a file's keys, paths, XML or a string
 > the code compares.
@@ -3960,6 +3961,22 @@ barwidth = 40
   written back and read again the same, and the player's errors (a wall at its line, a locked door, an endless
   loop, a syntax error, French words, a figure too small). Screenshots: `shots.sh turtle` (the players' progress
   from `tools/tests/desktop_sim/turtle/*.ini`).
+- **Circuits** (`user/Apps/circuits/`, a FreeType app: `FT_APPS`, `FT_EXTRA_circuits = Apps/circuits/circuit.cpp`;
+  docs/04 §12, AutoDev round 2). The **engine** `circuit.h` / `circuit.cpp` (`namespace circuits`) has no UI and no
+  file I/O: the parts and wires on a 40 × 30 grid (`Circuit`: `add`, `move`, `connect` -- the one place a wire is
+  made, so the loop test is there --, `route`, `pinAt`, `wireAt`), the evaluation (`evaluate` live, `evaluate_to`
+  depth by depth for step mode), `check` (every row of the truth table, the stars by gate count), the circuit text
+  (`write_text` / `read_text`, canonical), the undo `History` (64 steps), the packs (`parse_pack_kv` over a
+  FileKit `fk_kv` document read with `FK_KV_PIPES`: every error with its line), the progress (`Progress` over an
+  `fk_kv` with `FK_KV_ESCAPES`, written back with `fk_kv_save`) and the unlocking. `lessons.h` holds the 18 lesson
+  cards in English and French. The window is `main.cpp` + `gates.h` (the colours, the gates' outlines as integer
+  curves into `VPath`), `board.h` (the board and its drag state machine: no capture in UIKit, `catchOutside` while
+  a button is held) and `views.h` (the list, the card, the truth table, the cards). Calls only the inline FileKit
+  parts on the PC (`fk_kv_*`, `fs_*`), so the generic FT build of the simulator links it. Tests:
+  `sh tools/tests/run_circuits_test.sh` (the engine and the card's packs: every level solved by its solution with
+  three stars and the Min gate count; ASan + UBSan), `sh tools/tests/run_circuits_sim_test.sh` (the window driven
+  in the simulator: 61 checks on `progress.ini`, the clipboard and the dump's pixels), `python3 tools/lang/check.py
+  circuits`; screenshots: `shots.sh circuits` (fixtures `tools/tests/desktop_sim/circuits/*.ini`).
 
 ## 10. Extending the `kapi` ABI
 

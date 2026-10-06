@@ -1,0 +1,58 @@
+# Circuits -- a pack of levels opened from a file (a fixture of tools/tests/desktop_sim: `circuits <path>`, a drop)
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+[pack]
+title = Extra: a teacher's pack
+title.fr = Extra : le recueil du prof
+
+[level]
+id = x-both
+title = Both lamps
+title.fr = Les deux lampes
+inputs = A
+outputs = X Y
+parts = NOT
+par = 1 1
+text = Lamp X follows the switch, lamp Y does the opposite.
+text.fr = La lampe X suit l'interrupteur, la lampe Y fait le contraire.
+hint = One wire, one NOT gate.
+hint.fr = Un fil, une porte NON.
+table =
+| A | X Y
+| 0 | 0 1
+| 1 | 1 0
+solution =
+| part g1 NOT 15 19
+| wire A g1.1
+| wire A X
+| wire g1 Y
+
+[level]
+id = x-nor3
+title = None of the three
+title.fr = Aucun des trois
+inputs = A B C
+outputs = Out
+parts = OR NOR
+par = 2 2
+text = The lamp lights only when all three switches are off.
+text.fr = La lampe s'allume seulement quand les trois interrupteurs sont arrêtés.
+hint = An OR, then a NOR.
+hint.fr = Un OU, puis un NON-OU.
+table =
+| A B C | Out
+| 0 0 0 | 1
+| 0 0 1 | 0
+| 0 1 0 | 0
+| 0 1 1 | 0
+| 1 0 0 | 0
+| 1 0 1 | 0
+| 1 1 0 | 0
+| 1 1 1 | 0
+solution =
+| part g1 OR 8 6
+| part g2 NOR 16 12
+| wire A g1.1
+| wire B g1.2
+| wire g1 g2.1
+| wire C g2.2
+| wire g2 Out

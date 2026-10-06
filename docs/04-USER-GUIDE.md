@@ -422,7 +422,7 @@ does not change it.
   the menu.
 - The first menu, **Onyx**, is always there: Terminal, **Control Panel**, File Viewer, Task
   Manager; then **the apps by category** — Productivity, Internet, Graphics, **Programming** (QBasic,
-  QBStudio, Turtle Quest, GPIO Lab), Games, Demos,
+  QBStudio, Turtle Quest, Circuits, GPIO Lab), Games, Demos,
   **System** (the File Viewer, Disks, the Task Manager, the Terminal)
   (and any other category an app declares; the `category` of its `app.txt`, "Other"
   without one) — each opening a sub-menu of its apps, by their friendly name (the `name`
@@ -1655,7 +1655,7 @@ the list **scrolls** (the wheel, the bar at its right, the arrow keys).
 | **Preload** (`preloadconf`) | The programs **loaded ahead at boot and kept in memory**: they start without reading the card (worth it for the large ones, as Jet: 100 MB, 5 s of card each start otherwise). At the left the list (each program, its size, *loading* / *in memory*), at the right what can be added — the apps, then the `/bin` tools: **< Add** (or a double click), **Remove**. A change is done **at once** (the program added is loaded now, the one removed is released: its memory is freed when its last window closes) and kept in `SD:/etc/preload.ini`, which the last line of `SD:/etc/autostart`, `preload /boot`, reads at every boot. The line under the lists gives the memory the list takes. |
 | **Printers** (`printconf`) | The printers Onyx prints on (the **PDF** printer, network printers added by their address), the default one, a test page, and the **print queue** (below: *Printing*). |
 | **Keyboard & Mouse** (`keyconf`) | The keyboard **layout** (the maps of `SD:/etc/keymaps`: a click takes one at once and keeps it in `SD:/etc/autostart`'s `keyb` line; a field to try it) and the **wheel**'s speed (lines a notch: at once, kept in `SD:/etc/theme.txt`). |
-| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, Ledger, Turtle Quest (its BASIC too) and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). |
+| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, Ledger, Turtle Quest (its BASIC too), Circuits and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). |
 | **Gamepad** (`padconf`) | The USB gamepads (§12). |
 | **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
 | **App Settings** (`config`) | An app's own settings, its `SD:/apps/<name>.app/config.ini`: the apps (those with settings first, marked `*`), then the chosen one's `key = value` lines — pick one, change its key or its value, **Set** (Enter; a new key adds a line), **Delete**; **Save** writes the file (the app reads it when it starts again), **Reload**. |
@@ -4433,6 +4433,103 @@ does the same; a program must be stopped first. **Board ▸ Release Every Pin** 
 the set-up of the pictures above (on the real header too: an LED on 17, a servo on 18, a button on 27).
 Arguments: `--sim`, `--demo`, `--tab chart | i2c | edges`, `--code` (the Code view), `--run` (its program run at once).
 
+### Circuits, logic gates as a puzzle game (`circuits`)
+
+**Circuits** (category *Programming*) teaches how a computer computes, as a game: in each level the player builds a
+**circuit of logic gates** — NOT, AND, OR, XOR, NAND, NOR — that lights the **lamps** exactly as the level's
+**truth table** asks, for every position of the **switches**. The 20 missions go from one wire to a two-bit adder.
+It is Turtle Quest's sister game (the same window's plan, the same stars, lessons and keys), with no program to
+write: the circuit itself is the answer, and it is simulated live.
+
+![Circuits: the full adder solved, A = 1, B = 0, Cin = 1](../screenshots/circuits.png)
+*Level 3.3, the full adder, solved: the green wires are at 1, the dark ones at 0; the truth table's row `1 0 1` is
+the switches' current position; the AND selected (its frame).*
+
+**The window.** On the left, the **levels** — the three worlds as headers, each with its stars won out of its
+total; a level's number, its title and its stars; a padlock on the levels not open yet. In the middle, the
+level's **card** (its title, what to do; **Hint** — F2 — and **Lesson** — F1), the **palette** (*Select*, then
+the gates the level allows; the trash, Undo, Redo on the right), the **board** (the switches in the *Inputs*
+column on the left, the lamps in the *Outputs* column on the right, the gates between them) and the message bar.
+On the right, the **truth table** (the goal: the inputs, then the outputs; after a Check, *Yours* — the outputs
+the circuit gave — with a mark on each row), the **gate count** with what three and two stars ask, the circuit's
+depth, then **Step**, **Reset** and **Check**.
+
+**Building.** *Placing a gate*: click its button in the palette (or press **1**–**6**), then click a free place on
+the board — or drag the button onto the board. The tool goes back to *Select* after each gate. Gates stand
+between the two columns and never overlap. *Wiring*: press on an **output pin** (the right end of a switch or a
+gate), drag, release on an **input pin** (the left side of a gate, or a lamp); the pin under the pointer is ringed
+green (accepted) or red. An input takes **one wire** (a new wire replaces the old one); an output may feed as many
+inputs as needed (a dot marks where wires split). A wire that would make a **loop** is refused: *"That wire would
+make a loop: in this game signals only go forward."* Pressing on an input pin that is fed picks its wire up:
+release it on another input to move it, elsewhere to remove it. *Editing*: click a gate to select it, drag it to
+move it (its wires follow), the **arrows** move it one step; click a wire to select it; **Del** / **Backspace**
+(or the trash) removes the selection, a **right click** removes a gate or a wire at once. **Ctrl+Z** / **Ctrl+Y**
+undo / redo (64 steps); *Edit ▸ Clear Board* empties the board. **Esc** closes a card, cancels a wire being drawn,
+disarms a gate, then deselects. The board holds **35 gates** at most (as many as fit between the columns: more
+than any level needs).
+
+**Live, step by step, Check.** The circuit is always live: **click a switch** to turn it on or off, or **click a
+row of the truth table** to set all the switches at once — every wire and lamp follows (green at 1, dark at 0).
+**Step** (**F8**) shows how the signal travels: all the gates become unknown (grey, dashed wires, *?* lamps), then
+each F8 computes one **depth** more (the gates numbered by their depth: a gate fed only by switches is depth 1);
+**F9** (Reset) goes back to the start, **F7** to live, and any change to the board leaves step mode.
+
+![Circuits: step by step](../screenshots/circuits-step.png)
+*The full adder step by step, at step 2 of 3: the OR (depth 3) is not computed yet, so Cout shows* ?.
+
+**Check** (**F5**) tries every row of the table. A lamp or a gate input not wired is refused first (outlined in
+red; nothing is counted). Otherwise the obtained outputs appear beside the goal, the wrong rows are marked in red,
+the switches are set on the first wrong row and the message says what went wrong (*"1 row is wrong: with A = 1 and
+B = 1 the lamp must stay off."*). When every row is right, the level is **won**: a card gives the stars and the
+gate count (*New record!* when it is better than before), the next level opens, and **Enter** (or *Next level*)
+goes on.
+
+![Circuits: a wrong row](../screenshots/circuits-check.png)
+*Level 2.2, The hallway light, with an OR where an exclusive OR is wanted: Check finds row* 1 1 *wrong.*
+
+**The stars** count the **gates** on the board (switches, lamps and wires are free): one star for a win, two and
+three when the circuit is as small as the level asks (the counts are under the gate count). The best stars of each
+level are kept; a worse result never lowers them.
+
+**The levels.** Three packs come with the game (20 levels), opened one after the other — winning a level opens the
+next one, the last of a world opens the next world's first:
+
+| World | Levels |
+|---|---|
+| **1. Gates** | First light (just a wire), Upside down (NOT), Both at once (AND), One or the other (OR), Three keys, Not both (NAND), Neither one (NOR), NAND does it all |
+| **2. Combining** | An OR made of NAND, The hallway light (XOR), XOR made of NAND, Same or not, Majority vote, Railway points (a multiplexer) |
+| **3. Arithmetic** | Odd one out (parity), Half adder, Full adder, Two-bit adder, Decoder, Comparator |
+
+A level that brings a new gate or a new idea shows its **lesson card** the first time (the gate's symbol and its
+truth table, or the idea explained); **F1** shows it again, **F2** shows the level's hint in the message bar. Each
+level keeps the player's last circuit: going back to a level finds the board as it was left.
+
+**Menus.** *Game*: Next / Previous Level (**Ctrl+N** / **Ctrl+P**; the next one only if it is open), Restart Level,
+Quit (**Ctrl+Q**). *Edit*: Undo, Redo, Delete, Clear Board, **Copy Truth Table** (the table as text — tab-separated
+columns, the obtained ones too after a Check: it pastes as columns into the Spreadsheet), **Copy Circuit** (the
+circuit as text). *Simulate*: Check (F5), Step (F8), Live (F7), Reset (F9). *Levels*: Open Level Pack...
+(**Ctrl+O**). *Help*: Lesson (F1), Hint (F2), About Circuits.
+
+**In French.** With the system in French (Control Panel ▸ **Language & Region**, §11), everything is in French: the
+menus, the palette (the gates are NON, ET, OU, OUX, NON-ET, NON-OU), the messages, the levels and the lessons.
+
+![Circuits in French](../screenshots/circuits-fr.png)
+*In French: the full adder (Additionneur complet), the pointer resting on the palette's NON-OU.*
+
+**Files.** Reads the packs `SD:/apps/circuits.app/levels/*.circuits` (in their names' order) and any `.circuits`
+file opened (Levels ▸ Open Level Pack..., which starts in `SD:/docs/circuits`; dropped on the window; or a double
+click in the File Viewer: the package associates `.circuits` with the game) — a pack opened so has all its levels
+open, and a malformed one is refused with its line (*"line 20: the table has 3 rows, 4 expected"*). Writes
+**`SD:/apps/circuits.app/progress.ini`** (the stars of each level, its circuit, the lessons seen, the levels open,
+the pack and level last played) a second after each change, at each change of level and on quitting. A pack is a
+text file in Turtle Quest's syntax: `[pack]` (`title`, `title.fr`) and one `[level]` section a level — `id`,
+`title`, `text`, `hint` (and their `.fr`), `concept` (the lesson), `inputs` and `outputs` (1 to 4 names each),
+`parts` (the gates allowed), `par` (the gate counts for three and two stars), `table` (the truth table, one `|`
+line a row, the rows in counting order) and `solution`; a value on several lines is given by the lines after it,
+each starting with `|`. The circuit text (in `progress.ini`, Copy Circuit, `solution`) has one line a statement:
+`part g1 AND 8 4` (a gate, its name, its type, its place) and `wire A g1.1` (from a switch or a gate to an input pin
+`.1` / `.2`, or to a lamp).
+
 ### Games
 
 | Game | Goal and controls |
@@ -4449,6 +4546,7 @@ Arguments: `--sim`, `--demo`, `--tab chart | i2c | edges`, `--code` (the Code vi
 | **FreeCell** | All the cards face up in eight columns, four **free cells** (top left, one card each), four foundations (top right). **Drag** cards: a column takes a card one lower in the other colour (anything on an empty column); a **run** moves at once when free cells and empty columns allow it. **Double-click**: to the foundation, else to a free cell. Cards no longer needed go home by themselves. **^Z** undo; Game ▸ **Select Game...** plays deal 1–32000 — the same deals as Microsoft FreeCell; Restart Game. |
 | **Pipes** | After *Pipe Dream*: lay pipe pieces before the water comes. The next pieces wait in the queue on the left (the bottom one goes next); **click** a square (or arrows + **Space**) to put it there — on an unfilled piece it replaces it (−50). When the countdown (the blue bar) runs out the water leaves the red valve: 50 points per piece it crosses, 500 more for a cross used both ways. If it went through the **required number of pieces** (top right) when it spills, the round is won. **F**: let the water run now, fast (double points). Walls from round 3, faster water every round. **P** pause. |
 | **Turtle Quest** (`turtle`) | Learn to program: write a little program in **BASIC** that brings a turtle to its flag, picks the coins, opens the doors, paints the tiles and draws figures — 27 levels in three packs, from moves to loops, conditions, variables, procedures and Logo's figures, in English or **French** (AVANCE, REPETE, SI...). **F5** run, **F8** step by step (the line being run lit), **F7** stop, **F9** reset, **F1** the lesson, **F2** the hint, **Ctrl+N** next level; a level editor (**Ctrl+E**); several players, each with their stars. See §13, *Turtle Quest*. |
+| **Circuits** (`circuits`) | Learn how a computer computes: build circuits of **logic gates** (NOT, AND, OR, XOR, NAND, NOR) that light the lamps as each level's **truth table** asks — 20 levels in three worlds, from one wire to a two-bit adder, in English or **French**. Place gates from the palette, drag wires from output pins to input pins; **click a switch** (or a table row) to see the circuit live, **F8** step by step (depth by depth), **F5** Check (every row tried; the wrong ones marked), stars by the number of gates; **F1** the lesson, **F2** the hint, **Ctrl+Z / Ctrl+Y** undo / redo, **Ctrl+N** next level, **Ctrl+O** a level pack (`.circuits`). Progress in `SD:/apps/circuits.app/progress.ini`. See §12, *Circuits*. |
 | **Arkanoid** | Written in BASIC (`main.bax`, from `SD:/basic/examples/arkanoid.bas`), in `SCREEN 13` shown full screen (**F**: a window, and back). Break the bricks. The paddle follows the **mouse** or the **←/→** arrows (held); **Space** or a click launches the ball (and fires, with the laser). Silver bricks take several hits, gold ones never break. Catch the falling capsules: **E** longer paddle, **S** slower ball, **C** catch the ball, **L** laser, **D** three balls, **P** extra life. 5 rounds (then again, faster), 3 lives. **P** pause, **Esc** title / quit. No file read or written. |
 | **Planets 3D** | Written in BASIC (`main.bax`, from `SD:/basic/examples/planets3d.bas`): a little solar system in 3D, drawn by the **GPU** — the sun, four planets turning on their orbits, a moon, a ringed gas giant, stars; the planets' textures are drawn by the program itself. **Arrows** turn the camera, **+ / −** nearer / farther, **Space** pause, **F** full screen, **Esc** quit. The top line says GPU or software and the frames a second. No file read or written. |
 | **Invaders** | Space Invaders. **←/→** (held) or the mouse move the cannon; **Space** or a click fires (one shot at a time). The fleet marches faster as it thins out (the four-note march on the synth); the shields crumble; the red saucer is worth 50–300. An invader reaching the ground ends the game. **P** pause. |

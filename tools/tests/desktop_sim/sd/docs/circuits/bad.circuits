@@ -1,0 +1,22 @@
+# Circuits -- a pack of levels opened from a file (a fixture with an error of tools/tests/desktop_sim: `circuits <path>`, a drop)
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+[pack]
+title = Extra: a broken pack (a row missing)
+title.fr = Extra : le recueil du prof
+
+[level]
+id = x-both
+title = Both lamps
+title.fr = Les deux lampes
+inputs = A
+outputs = X Y
+parts = NOT
+par = 1 1
+text = Lamp X follows the switch, lamp Y does the opposite.
+text.fr = La lampe X suit l'interrupteur, la lampe Y fait le contraire.
+hint = One wire, one NOT gate.
+hint.fr = Un fil, une porte NON.
+table =
+| A | X Y
+| 0 | 0 1
+

@@ -42,7 +42,7 @@ APPS = tinycalc tinypad cppdemo \
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies
+FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
@@ -237,11 +237,11 @@ lib/audiokit.imp.a: lib/audiokit_stubs.o lib/audiokit_bind.o
 
 # ---- filekit.so: FileKit, what programs do with files (Kits/filekit/filekit.h; docs/03 "FileKit"): zlib
 # (third_party, compiled for the library), the archives' engine (Kits/filekit/arc.h, zip.h, tar.h, ops.h: ZIP read
-# and written, tar / tar.gz / gzip read -- the Archiver calls it through fk_arc_*), ZIP archives in memory, whole files, trees copied / moved / removed, paths.
+# and written, tar / tar.gz / gzip read -- the Archiver calls it through fk_arc_*), ZIP archives in memory, whole files, trees copied / moved / removed, paths, key / value text documents (Kits/filekit/kvtext.h).
 # Integer only in its interface; newlib's libc linked in. Exported: fk_*.
 ZLIB_SRC = ../third_party/zlib-1.3.1
 FK_ZOBJ = $(addprefix lib/fk/z_,adler32.o crc32.o deflate.o inflate.o inffast.o inftrees.o trees.o zutil.o)
-FK_OBJ = lib/fk/fkcore.o lib/fk/fsutil.o $(FK_ZOBJ)
+FK_OBJ = lib/fk/fkcore.o lib/fk/fsutil.o lib/fk/kvtext.o $(FK_ZOBJ)
 lib/fk/z_%.o: $(ZLIB_SRC)/%.c
 	@mkdir -p lib/fk
 	$(CC) $(AK_FLAGS) -w -I$(ZLIB_SRC) -c $< -o $@
@@ -249,6 +249,9 @@ lib/fk/fkcore.o: Kits/filekit/fkcore.cpp Kits/filekit/filekit.h $(wildcard Kits/
 	@mkdir -p lib/fk
 	$(CXX) $(AK_CXXFLAGS) -Wall -IKits/filekit -I$(ZLIB_SRC) -c $< -o $@
 lib/fk/fsutil.o: Kits/filekit/fsutil.cpp Kits/filekit/fsutil.h Kits/filekit/fsutil.inc Kits/appkit/appkit.h $(LIB_DEP)
+	@mkdir -p lib/fk
+	$(CXX) $(AK_CXXFLAGS) -Wall -c $< -o $@
+lib/fk/kvtext.o: Kits/filekit/kvtext.cpp Kits/filekit/kvtext.h Kits/filekit/kvtext.inc Kits/appkit/appkit.h $(LIB_DEP)
 	@mkdir -p lib/fk
 	$(CXX) $(AK_CXXFLAGS) -Wall -c $< -o $@
 lib/fk/fkso.o: Kits/filekit/fkso.c Runtime/lib.h Kits/appkit/appkit.h
@@ -777,6 +780,10 @@ notes.elf: Apps/notes/notesmodel.cpp $(wildcard Apps/notes/*.h) Include/docguard
 # Stickies (AutoDev round 1): the pinned notes on the desktop -- it reads them through Notes' model
 FT_EXTRA_stickies = Apps/notes/notesmodel.cpp
 stickies.elf: Apps/notes/notesmodel.cpp Apps/notes/notesmodel.h Apps/notes/stickies_proto.h Kits/uikit/toolbar.h
+# Circuits (AutoDev round 2): its engine (the board, the evaluation, the packs, the progress) beside the window;
+# gates.h, board.h, views.h, lessons.h are the window's own headers (one translation unit with main.cpp)
+FT_EXTRA_circuits = Apps/circuits/circuit.cpp
+circuits.elf: Apps/circuits/circuit.cpp $(wildcard Apps/circuits/*.h) Kits/filekit/kvtext.h Kits/filekit/kvtext.inc Kits/uikit/toolbar.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
 printconf.elf: lib/printerkit.imp.a Kits/printerkit/printerkit.h
 $(FT_APP_ELFS): %.elf: Apps/%/main.cpp Kits/uikit/bmp.h Runtime/umm.h Runtime/onyxpp.hpp lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a 		       Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h

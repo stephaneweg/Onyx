@@ -4,6 +4,37 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Circuits, a logic-gate puzzle game (AutoDev round 2, 2026-10-06): built, tested on the PC, branch `AutoDev` only
+
+Made by the AutoDev pipeline (`autodev/rounds/02-circuits/`: 02 the analysis and its 26 acceptance criteria, 03 the
+plan and the GUI plan, 04 the design and its mock-ups, 05 the validation, 06 what was built and tested). **Not in
+`main`, not published**: the user validates first. **Read docs/04 §12 *Circuits***.
+
+- **Done**: `user/Apps/circuits` -- the engine `circuit.h` / `circuit.cpp` (parts, wires on a 40 × 30 grid, live and
+  step-by-step evaluation, Check, stars by gate count, circuit text, a 64-step undo, the packs, the progress, the
+  unlocking; no UI, no I/O), `lessons.h` (18 lesson cards EN + FR), the window `main.cpp` + `gates.h`, `board.h`,
+  `views.h`; the 20 levels in `sdcard/apps/circuits.app/levels/{1-gates,2-combining,3-arithmetic}.circuits`;
+  `lang/fr.txt` (108 words); `app.txt`, `icon.bmp` (`tools/icons/circuits_icon.py`); `.circuits` in
+  `sdcard/etc/fileassoc.ini`; `[app.circuits]` declared in `tools/pkg/packages.ini` (`needs = ..., filekit >= 1.96`,
+  to confirm at publish). **FileKit** gained a subject: `filekit/kvtext.h` (`fk_kv_*`: a sectioned key/value text
+  document read, changed and written back, with repeated sections, `|` continuation lines and their line numbers,
+  `\n` escapes, unknown keys kept), `filekit.abi` slots 78-95 appended by hand (`libgen --nm nm` on host objects);
+  docs/14 regenerated, docs/06 §7 / §14, docs/03 §5.8. No kapi change, `appkit.abi` untouched.
+- **Tested on the PC**: `sh tools/tests/run_kvtext_test.sh`, `run_circuits_test.sh` (the engine and the 20 levels
+  solved with three stars), `run_circuits_sim_test.sh` (the window in the simulator, 61 checks),
+  `python3 tools/lang/check.py circuits`, `shots.sh circuits` (`circuits.png`, `circuits-step.png`,
+  `circuits-check.png`, `circuits-fr.png`); Turtle Quest's test unchanged.
+- **Not done here (no aarch64 compiler in the container)**: `make` / `make stage` -- libgen must accept the
+  hand-appended `filekit.abi` lines 78-95 (then `filekit >= 1.96` holds); then on the Pi: the window, the mouse
+  (drag from the palette, wiring), the 1 s autosave on the card, a `.circuits` opened from the File Viewer.
+- **Known limit**: the board holds **35 gates** (5 × 7 places between the columns), not the 48 of the analysis; the
+  engine's `E_FULL` (49th gate) is unreachable by placing. The largest reference solution has 7 gates.
+- **Follow-ups**: move Turtle Quest's private `kv_*` store and `parse_pack`, and Notes' `notes.ini` reader, onto
+  FileKit's `fk_kv` (the reason it was made a kit); **sequential logic** (latches, flip-flops, a clock: a world 4,
+  which needs the evaluator to keep state between steps); the SHOULD items left: **chips** (a solved level --
+  half / full adder -- as a part, 02 §4.1), *Paste Circuit*, a **sandbox** with `.circuit` files, several players;
+  a **level editor** (as Turtle Quest's, Ctrl+E); a shared star glyph in UIKit for both games.
+
 ## Notes and Stickies, quick notes and the pinned ones on the desktop (AutoDev round 1, 2026-10-06): built, tested on the PC, branch `AutoDev` only
 
 Made by the AutoDev pipeline (`autodev/PIPELINE.md`; the round's documents: `autodev/rounds/01-notes/`, 02 the

@@ -550,6 +550,23 @@ fk_zipw_close (w, 0, 0, err, sizeof err);
 Other archive formats (tar, tar.gz, gzip) are read through the same calls (`fk_arc_*`); a program asks
 the library which formats it handles (`fk_arc_formats`) instead of keeping its own list.
 
+**A settings or progress file with sections, read and written back** (`filekit/kvtext.h`, C and C++): the
+entries stay in the file's order, the keys a program does not know are kept, values may hold new lines.
+
+```cpp
+fk_kv *kv = fk_kv_load ("SD:/apps/game.app/progress.ini", FK_KV_ESCAPES);
+if (!kv) kv = fk_kv_new (FK_KV_ESCAPES);                    // no file yet: a fresh start
+int stars = atoi (fk_kv_get (kv, "Player", "level1", "0"));
+fk_kv_set (kv, "Player", "level1", "3");
+fk_kv_set (kv, "", "last", "level1");                       // "": before the first [header]
+fk_kv_save (kv, "SD:/apps/game.app/progress.ini", "# my game's progress");
+fk_kv_free (kv);
+```
+
+A level pack (`FK_KV_PIPES`): many `[level]` blocks (`fk_kv_block`, `fk_kv_blocks`, `fk_kv_block_name`), a value
+going on over the `|` lines that follow, and the line of each value (`fk_kv_line`) for an error message. Circuits
+reads its packs and its `progress.ini` so.
+
 ## 8. ImageKit — pictures
 
 `#include "imagekit/imagekit.h"` — link `lib/imagekit.imp.a`.
@@ -813,6 +830,7 @@ The header of a kit a C program may use is written in C.
 | copy or remove a folder | FileKit | `fk_copy`, `fk_remove` |
 | build a path | FileKit | `fs_join`, `fk_path_join` |
 | read or write a ZIP | FileKit | `fk_zip_open`, `fk_zipw_create` |
+| read and write a settings / progress file with sections | FileKit | `fk_kv_load`, `fk_kv_set`, `fk_kv_save` |
 | print to the console | AppKit | `ax_puts`, `ax_putln` |
 | read an `.ini` file | AppKit | `app_ini_load`, `app_ini_get` |
 | start another program | AppKit | `lx_launch`, `lx_open` |

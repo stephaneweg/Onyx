@@ -9,18 +9,19 @@
 3. [Index](#index)
 4. [`filekit/filekit.h`](#filekitfilekith)
 5. [`filekit/fsutil.h`](#filekitfsutilh)
+6. [`filekit/kvtext.h`](#filekitkvtexth)
 
 ---
 
 ## What it is
 
-FileKit is files and folders: whole files read and written, trees copied, moved and removed, paths, compression (zlib), and archives — ZIP read and written, tar / tar.gz / gzip read.
+FileKit is files and folders: whole files read and written, trees copied, moved and removed, paths, compression (zlib), archives — ZIP read and written, tar / tar.gz / gzip read — and sectioned key / value text documents read and written back (a progress file, a level pack).
 
 | | |
 |---|---|
 | Include | `#include "filekit/filekit.h"` |
 | Link | `lib/filekit.imp.a` |
-| Library | `SD:/lib/filekit.so` — 78 entries in its table (`user/Kits/filekit/filekit.abi`, append-only) |
+| Library | `SD:/lib/filekit.so` — 96 entries in its table (`user/Kits/filekit/filekit.abi`, append-only) |
 | Sources | `user/Kits/filekit/` |
 
 ## Using it
@@ -78,6 +79,23 @@ fk_zipw_close (w, 0, 0, err, sizeof err);
 
 Other archive formats (tar, tar.gz, gzip) are read through the same calls (`fk_arc_*`); a program asks
 the library which formats it handles (`fk_arc_formats`) instead of keeping its own list.
+
+**A settings or progress file with sections, read and written back** (`filekit/kvtext.h`, C and C++): the
+entries stay in the file's order, the keys a program does not know are kept, values may hold new lines.
+
+```cpp
+fk_kv *kv = fk_kv_load ("SD:/apps/game.app/progress.ini", FK_KV_ESCAPES);
+if (!kv) kv = fk_kv_new (FK_KV_ESCAPES);                    // no file yet: a fresh start
+int stars = atoi (fk_kv_get (kv, "Player", "level1", "0"));
+fk_kv_set (kv, "Player", "level1", "3");
+fk_kv_set (kv, "", "last", "level1");                       // "": before the first [header]
+fk_kv_save (kv, "SD:/apps/game.app/progress.ini", "# my game's progress");
+fk_kv_free (kv);
+```
+
+A level pack (`FK_KV_PIPES`): many `[level]` blocks (`fk_kv_block`, `fk_kv_blocks`, `fk_kv_block_name`), a value
+going on over the `|` lines that follow, and the line of each value (`fk_kv_line`) for an error message. Circuits
+reads its packs and its `progress.ini` so.
 
 ## Index
 
@@ -166,6 +184,24 @@ Everything the headers declare, in their order — the details are in each heade
 | `fs_remove_tree` | Delete a file or a whole folder tree (depth <= 12). | `fsutil.h` |
 | `fs_unique_name` | A free path in dir for `name` | `fsutil.h` |
 | `fs_text_fix` | A text file saved by a Windows editor | `fsutil.h` |
+| `fk_kv_new` | an empty document (FK_KV_ESCAPES, FK_KV_PIPES); 0: no memory | `kvtext.h` |
+| `fk_kv_parse` | never fails on syntax (lines without '=' skipped); 0: no memory | `kvtext.h` |
+| `fk_kv_load` | a file read and parsed; 0: no such file / unreadable / no memory | `kvtext.h` |
+| `fk_kv_free` | the document and all its strings (0 accepted) | `kvtext.h` |
+| `fk_kv_count` | how many entries | `kvtext.h` |
+| `fk_kv_key` | entry i's key, trimmed ("" out of range) | `kvtext.h` |
+| `fk_kv_value` | its value: unescaped, its "\|" lines joined by '\n' | `kvtext.h` |
+| `fk_kv_section` | the name of its section ("" before any header) | `kvtext.h` |
+| `fk_kv_block` | its block: 0 before any header, then 1, 2...: one per "[...]" line | `kvtext.h` |
+| `fk_kv_line` | The 1-based line of the value's FIRST line | `kvtext.h` |
+| `fk_kv_blocks` | the "[...]" headers read / made | `kvtext.h` |
+| `fk_kv_block_name` | block b's name, "level" (b 1-based; "" for 0 / out of range) | `kvtext.h` |
+| `fk_kv_block_line` | its header's line (0: made, not read) | `kvtext.h` |
+| `fk_kv_get` | The value of the first entry with that section and key, def if none (section "" or 0 = before any header, case-sensitive). | `kvtext.h` |
+| `fk_kv_set` | The first match's value replaced, or a new entry at the end of that section's first block -> 0, -1 (no memory, no key). | `kvtext.h` |
+| `fk_kv_remove` | the first match removed -> 1, 0 none | `kvtext.h` |
+| `fk_kv_text` | The document as text | `kvtext.h` |
+| `fk_kv_save` | fk_kv_text written to path (kapi_save_file) -> 0, -1 | `kvtext.h` |
 
 ---
 
@@ -184,6 +220,7 @@ filekit.h -- FileKit: what programs do with files, one copy for the whole system
                an archive IN MEMORY found into and built (the office formats, OpenRaster)
   files        one loaded whole, saved; a file or a tree copied, moved, removed, measured; folders made
   paths        the name, the extension, the folder of a path; two parts joined; a size for people
+  key / value  a text of [section] headers and "key = value" lines read, changed, written back (kvtext.h)
 ```
 
 Everything is integer and pointers: a program built without the FPU calls it. A buffer the library returns (void **out) is freed with fk_free, never with free / delete. The first version: 2026-10-05; the second (the same day): archives of any format, asked from the library (fk_arc_*), tar and gzip read.
@@ -418,6 +455,8 @@ void fk_dos_time_str (unsigned dos_time, char *out, int cap);		// "28/09/2026 14
 
 (the file helpers -- fs_join, fs_exists, fs_copy_tree...: fsutil.h, C++)
 
+(a text document of [section] headers and "key = value" lines, read and written back -- fk_kv_*: kvtext.h, C and C++)
+
 ## `filekit/fsutil.h`
 
 fsutil.h -- file-system helpers shared by the file tools (File Viewer, trash, dock): path join, exists / is_dir, recursive copy and delete, a free "name copy" name. FileKit's (filekit.so): this header declares, fsutil.inc has the code (it was user/fsutil.h, a header of inline functions, until 2026-10-05). C++.
@@ -480,4 +519,91 @@ A text file saved by a Windows editor: drop a UTF-8 BOM, turn UTF-16 (Notepad) i
 
 ```cpp
 int fs_text_fix (char *b, int n);
+```
+
+## `filekit/kvtext.h`
+
+kvtext.h -- FileKit: a text document of [section] headers and "key = value" lines, read and written back (a game's progress, a level pack, a settings file bigger than AppKit's .ini reader takes). The entries are kept in the file's order; a section may come back many times (a pack's [level] blocks: each "[...]" line is a block of its own); a value may hold new lines -- written "\n" (FK_KV_ESCAPES: a progress file) or as the lines that follow, each starting with "|" (FK_KV_PIPES: a pack's tables and solutions); the line of every value is kept (an error message's "line 42"). Unknown keys are kept: a program writes back what it read with only its own keys changed. No limit on sizes but memory. C and C++.
+
+```
+  [pack]                       '#' and ';' start a comment line; a blank line or a comment ends a "|" block
+  title = 1. Gates
+  [level]                      fk_kv_block: 2 (the second "[...]" line); fk_kv_section: "level"
+  table =                      fk_kv_value: "A | Out\n0 | 0\n1 | 1"; fk_kv_line: 5 (its first "|" line),
+  | A | Out                    the value's line j at fk_kv_line + j
+  | 0 | 0
+  | 1 | 1
+```
+
+FileKit's (filekit.so) since 2026-10-06 (AutoDev round 2, Circuits): this header declares, kvtext.inc has the code (on the PC the code is inline in the program, as fsutil.h's).
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+(a program for Onyx: FileKit's functions, by name. A PC build, or FK_KV_INLINE: the code inline in the program -- no shared library there. FK_KV_IMPL: the library's own build, kvtext.cpp.)
+
+```cpp
+#    define FK_KV_API	extern "C"
+#    define FK_KV_API	extern
+#  define FK_KV_API	static inline
+
+typedef struct fk_kv fk_kv;			// a document (its entries, its blocks), made by fk_kv_new / parse / load
+#define FK_KV_ESCAPES	1			// values may hold new lines and '\': written "\n", "\\", read back (progress.ini)
+#define FK_KV_PIPES	2			// a value may go on in the lines that follow, each starting with "|" (packs)
+```
+
+### making and freeing
+
+```cpp
+fk_kv *fk_kv_new (int flags);					// an empty document (FK_KV_ESCAPES, FK_KV_PIPES); 0: no memory
+fk_kv *fk_kv_parse (const char *text, int flags);		// never fails on syntax (lines without '=' skipped); 0: no memory
+fk_kv *fk_kv_load (const char *path, int flags);		// a file read and parsed; 0: no such file / unreadable / no memory
+void fk_kv_free (fk_kv *kv);					// the document and all its strings (0 accepted)
+```
+
+### the entries, in the file's order
+
+```cpp
+int fk_kv_count (const fk_kv *kv);				// how many entries
+const char *fk_kv_key (const fk_kv *kv, int i);		// entry i's key, trimmed ("" out of range)
+const char *fk_kv_value (const fk_kv *kv, int i);		// its value: unescaped, its "|" lines joined by '\n'
+const char *fk_kv_section (const fk_kv *kv, int i);		// the name of its section ("" before any header)
+int fk_kv_block (const fk_kv *kv, int i);			// its block: 0 before any header, then 1, 2...: one per "[...]" line
+```
+
+The 1-based line of the value's FIRST line: the key's line, or its first "|" line when "key =" is empty; the value's line j is at fk_kv_line + j. 0: an entry made by fk_kv_set, not read.
+
+```cpp
+int fk_kv_line (const fk_kv *kv, int i);
+```
+
+### the blocks (one per "[...]" line)
+
+```cpp
+int fk_kv_blocks (const fk_kv *kv);				// the "[...]" headers read / made
+const char *fk_kv_block_name (const fk_kv *kv, int b);	// block b's name, "level" (b 1-based; "" for 0 / out of range)
+int fk_kv_block_line (const fk_kv *kv, int b);		// its header's line (0: made, not read)
+```
+
+### looking up and changing
+
+The value of the first entry with that section and key, def if none (section "" or 0 = before any header, case-sensitive).
+
+```cpp
+const char *fk_kv_get (const fk_kv *kv, const char *section, const char *key, const char *def);
+```
+
+The first match's value replaced, or a new entry at the end of that section's first block -> 0, -1 (no memory, no key). Section "" or 0 = before the first header; no block of that name = a new block at the end.
+
+```cpp
+int fk_kv_set (fk_kv *kv, const char *section, const char *key, const char *value);
+int fk_kv_remove (fk_kv *kv, const char *section, const char *key);	// the first match removed -> 1, 0 none
+```
+
+### writing
+
+The document as text: the comment as a first line ("# " put before it unless it starts with '#'; 0: none), the entries before any header, then each block "[name]" with its entries (ESCAPES: values escaped; PIPES: a multi-line value as "key =" and its "| " lines; neither: its new lines written as spaces). Written then parsed with the same flags, it gives the same entries. The pointer is the document's, valid until its next change / free; *len its length (0 accepted).
+
+```cpp
+const char *fk_kv_text (fk_kv *kv, const char *comment, int *len);
+int fk_kv_save (fk_kv *kv, const char *path, const char *comment);	// fk_kv_text written to path (kapi_save_file) -> 0, -1
 ```
