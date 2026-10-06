@@ -4270,10 +4270,13 @@ them, then **Board ▸ Release Every Pin**); a program run alone gives them back
 a click on an **input's dot** on the header is a wire to it: High, then Low — a button to press while the
 program runs.
 
-**The simulator**: when the system has no GPIO (a PC, a system older than the GPIO's kernel), GPIO Lab
-runs on GPIOKit's **simulated board** — the badge at the bottom right says **SIMULATOR** — and
-**Board ▸ Use the Simulator** (^M) switches to it (or back) on the Pi: nothing then touches the real
-pins. **Board ▸ Release Every Pin** (^R) gives everything back; **Board ▸ Demonstration Set-up** wires
+**The simulator**: the **Simulator** switch above the header. On, GPIO Lab runs on GPIOKit's **simulated
+board** — the badge at the bottom right says **SIMULATOR**, the header's caption says *simulated* — and nothing
+touches the real pins: an output a program (or the Pins view) sets lights on the drawing only, and **a click on an
+input's dot drives it** (High, then Low: a button), which the program reads (`PIN (n)`, `ON PIN`, `PINCHANGED`).
+Off (on the Pi), the outputs drive the real pins and the inputs show what the wires bring. Where the system has no
+GPIO (a PC, a system older than the GPIO's kernel) the switch stays on, greyed. **Board ▸ Use the Simulator** (^M)
+does the same; a program must be stopped first. **Board ▸ Release Every Pin** (^R) gives everything back; **Board ▸ Demonstration Set-up** wires
 the set-up of the pictures above (on the real header too: an LED on 17, a servo on 18, a button on 27).
 Arguments: `--sim`, `--demo`, `--tab chart | i2c | edges`, `--code` (the Code view), `--run` (its program run at once).
 

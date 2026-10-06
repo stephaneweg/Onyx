@@ -100,6 +100,9 @@ static void sync_controls (void);
 // The Code view (the mini IDE): its widgets, and the program's run
 static int  g_view = 0;				// 0 the pins, 1 the code
 static SegmentedControl *g_viewSw;
+static ToggleSwitch *g_simSw;			// the simulator, on / off: above the header
+static bool g_running;
+static bool g_hasHw;				// the system has a GPIO (kapi >= 92): measured once, at the start
 static CodeEdit *g_ed;
 static class ConsoleView *g_con;
 static Button *g_btRun, *g_btStep, *g_btStop;
@@ -108,7 +111,7 @@ static Label *g_lbSpeed;
 static Dropdown *g_ddEx;
 static TextFace *g_mono;
 static Root *g_root;
-static bool g_running, g_stepMode, g_waitStep, g_stopReq, g_quit;
+static bool g_stepMode, g_waitStep, g_stopReq, g_quit;
 static int  g_runReq;				// 1 run, 2 step: the main loop starts it (never from a callback)
 static long g_keyQ[16]; static int g_nkeyQ;	// the keys typed while a program runs (INKEY$)
 static void apply_view (void);
@@ -136,7 +139,8 @@ public:
 		unsigned bg = bgColor ();
 		canvas.clear (bg);
 		uk_text_l (canvas, 4, 4, 20, "40-PIN HEADER", uk_mix (bg, C_TEXT, 150), 2);
-		uk_text_l (canvas, 4, 20, 18, "pin 1 top left, the USB ports down", uk_mix (bg, C_TEXT, 120));
+		uk_text_l (canvas, 4, 20, 18, gk_available () == 2 ? "simulated: click an input's dot to drive it" : "pin 1 top left, the USB ports down",
+			   gk_available () == 2 ? 0x7A5CC8 : uk_mix (bg, C_TEXT, 120));
 		// the board
 		int bx = PINX0 - 24, by = HTOP, bw = PINX1 - PINX0 + 48, bh = 20 * ROWH + 8;
 		uk_rbox (canvas, bx, by, bw, bh, 8, C_PCB, C_PCB);
@@ -698,16 +702,29 @@ static void sync_controls (void)
 	if (g_view == 1 && g_ed) apply_view ();		// (the Code view: the pin's controls stay hidden)
 }
 
-static void use_sim (void)
+static void sync_sim_switch (void)
 {
-	bool on = gk_available () != 2;
+	if (!g_simSw) return;
+	g_simSw->setOn (gk_available () == 2);
+	g_simSw->disabled = !g_hasHw;		// (no GPIO here: the simulator only)
+	g_simSw->invalidate (true);
+}
+static void use_sim_as (bool on)
+{
+	if (g_running) { set_status ("Stop the program first: then switch the simulator."); sync_sim_switch (); return; }
+	if (on == (gk_available () == 2)) { sync_sim_switch (); return; }
 	gk_release ();
 	gk_sim (on ? 1 : 0);
 	set_status (gk_available () == 2 ? "The simulator drives the pins: nothing touches the real header." : "The Raspberry Pi's header.");
 	memset (g_blink, 0, sizeof g_blink);
 	g_found = -1;
+	if (!on && !g_hasHw) set_status ("No GPIO on this system (a PC, or a system older than kapi 92): the simulator stays.");
+	sync_sim_switch ();
 	refresh_pins (); sync_controls (); redraw_all ();
+	if (g_root) g_root->invalidate (true);
 }
+static void use_sim (void) { use_sim_as (gk_available () != 2); }
+static void on_sim_switch (Widget &) { use_sim_as (g_simSw->on); }
 static void release_all (void)
 {
 	gk_release ();
@@ -1159,6 +1176,7 @@ int main (void)
 	ft_uikit_install ("DejaVu Sans", 13);
 	char args[128] = "";
 	kapi_get_args (args, sizeof args);
+	g_hasHw = gk_available () == 1;
 	if (strstr (args, "--sim") || gk_available () == 0) gk_sim (1);
 	g_demo = strstr (args, "--demo") != 0;
 	bool codeArg = strstr (args, "--code") != 0;
@@ -1180,6 +1198,10 @@ int main (void)
 
 	g_header = new HeaderView (12, BANNER + 6, 412, H - BANNER - 44);
 	root.addChild (g_header);
+	g_simSw = new ToggleSwitch (12 + 412 - 132, BANNER + 8, 132, 26, "Simulator", gk_available () == 2, on_sim_switch, root.bg);
+	g_simSw->tip = "On: a board in memory -- click an input's dot to drive it, nothing touches the real pins. Off: the Pi's header.";
+	root.addChild (g_simSw);
+	sync_sim_switch ();
 
 	int rx = 436, rw = W - rx - 12;
 	g_panel = new PinPanel (rx, BANNER + 6, rw, 214);
