@@ -394,20 +394,22 @@ if want ledger; then			# (the demo company: its overview, its sales, an invoice,
 	sim letters ledger-print "wait;wait;wait;wait;winctl 2;wait;wait;wheel 500 400 -3;$W" $P SIM_ARGS="--merge SD:/apps/ledger.app/merge.job" SIM_OVERLAY="$OUT/writes"
 	png ledger-print
 fi
+# (Notes' and Stickies' writes folder of their own: the system's language, SHOTS_LANG's, copied into it)
+nlang () { if [ -f "$OUT/writes/etc/system.ini" ]; then mkdir -p "$1/etc"; cp "$OUT/writes/etc/system.ini" "$1/etc/"; fi; }
 if want notes; then			# (Notes, AutoDev round 1: the six sample notes of sd/Notes -- copied into a writes folder of
 					#  their own: an overlay folder cannot be listed --, Shopping selected (config.ini's last), the
 					#  list focused; then the first start: no SD:/Notes, one empty new note, the caret in it)
-	NW="$OUT/notes_w"; rm -rf "$NW"; mkdir -p "$NW/apps/notes.app"; cp -r $D/sd/Notes "$NW/Notes"
+	NW="$OUT/notes_w"; rm -rf "$NW"; mkdir -p "$NW/apps/notes.app"; cp -r $D/sd/Notes "$NW/Notes"; nlang "$NW"
 	printf 'last = note-20260928-091500.txt\n' > "$NW/apps/notes.app/config.ini"
 	sim notes notes "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes
-	rm -rf "$NW"; mkdir -p "$NW"
+	rm -rf "$NW"; mkdir -p "$NW"; nlang "$NW"
 	sim notes notes-empty "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes-empty
 	rm -rf "$NW"
 fi
 if want stickies || want stickies-empty || want notes-desktop; then	# (Stickies, AutoDev round 1: the pinned notes on the
 					#  desktop, top right -- the sample notes, three of them pinned --; then none pinned: the
 					#  hint; then the whole desktop: the agenda, Stickies, the Notes window in front, the dock)
-	NW="$OUT/notes_w"; rm -rf "$NW"; mkdir -p "$NW"; cp -r $D/sd/Notes "$NW/Notes"
+	NW="$OUT/notes_w"; rm -rf "$NW"; mkdir -p "$NW"; cp -r $D/sd/Notes "$NW/Notes"; nlang "$NW"
 	NMENU='Notes|MFile/I0~New Note~^N/-/I1~Open in Text Editor~^E/-/I2~Delete Note~^D/MEdit/I3~Cut~^X/I4~Copy~^C/I5~Paste~^V/-/I6~Select All~^A/I7~Copy Note~/MNote/I8~Unpin from Desktop~^P/-/I9~Yellow~/I10~Green~/I11~Blue~/I12~Pink~/I13~Purple~/I14~Grey~/MView/I15~Hide Stickies from the Desktop~'
 	sim menubar s_bar "$W" SIM_MENU="$NMENU"
 	sim stickies s_cards "$W" SIM_WRITES="$NW" SIM_SERVICES=-

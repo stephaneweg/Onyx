@@ -536,7 +536,8 @@ agenda's kind of widget (started by `autostart`, under every window; its header 
 wallpaper, the ink chosen from it as the agenda's). Each card is a note in its colour: its title in
 bold, then up to six lines of its text, word-wrapped (**…** when it goes on). At most **six** cards, the
 pinned notes most recently changed, newest first; when they do not all fit, a line **+N more in Notes**.
-Nothing pinned: a dashed place, *No notes pinned — Click to open Notes*. It re-reads `SD:/Notes` every
+Nothing pinned: a dashed place, *No notes pinned — Click to open Notes* (in French: *Aucune note épinglée —
+Cliquez pour ouvrir Notes*: the system's language). It re-reads `SD:/Notes` every
 few seconds, and at once when Notes changes a note, so a note pinned, recoloured or edited shows by
 itself — also one changed by another program (the Text Editor, FTP).
 
@@ -2064,7 +2065,8 @@ each channel's note. Rebuild it with `tools/fmsplayer/build.sh` (MinGW-w64).
 
 A note for what must not be forgotten — a shopping list, a code, a to-do — written at once and kept by
 itself; the ones that matter **pinned** on the desktop (by **Stickies**, §5). In the dock's
-**Productivity** drawer, or `run notes [note]`.
+**Productivity** drawer, or `run notes [note]`. Notes and Stickies speak the system's language (English or French: Control Panel ▸
+Language & Region), the dates included (*Aujourd'hui, 09:15*, *vendredi 25 septembre*).
 
 ![Notes](../screenshots/notes.png)
 *Notes: six notes, "Shopping" chosen (yellow, pinned on the desktop).*
