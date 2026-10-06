@@ -5,7 +5,7 @@
 #include <kern/ramfs.h>
 #include <kern/iowait.h>		// (v75) a pipe's waits and wakes
 #include <kern/image.h>			// (v77) ImageFileChanged: a program file written
-#include <kern/volume.h>		// (v91) VolTrack
+#include <kern/volume.h>		// (v92) VolTrack
 #include <circle/sched/scheduler.h>
 
 // A pipe's waits: until the generation moves (kern/iowait.h: a pipe written, drained or closed
@@ -135,7 +135,7 @@ CFileStream::CFileStream (const char *pPath, int nMode)
 	if (f_open (&m_File, pPath, flags) == FR_OK)
 	{
 		m_bOpen = TRUE;
-		VolTrack (&m_File.obj, nMode != 0 ? &m_File : 0);	// (v91: an eject counts it)
+		VolTrack (&m_File.obj, nMode != 0 ? &m_File : 0);	// (v92: an eject counts it)
 	}
 }
 

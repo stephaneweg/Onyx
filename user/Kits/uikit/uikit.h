@@ -52,6 +52,7 @@
 #include "uikit/knob.h"
 #include "uikit/vumeter.h"
 #include "uikit/segmented.h"
+#include "uikit/tabstrip.h"	// a row of closable tabs (the Terminal's shells)
 #include "uikit/lcd.h"
 #include "uikit/flat.h"		// the same behind C functions on handles (BASIC, C programs)
 #include "uikit/lang.h"		// TR (): the words in the language chosen

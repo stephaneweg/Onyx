@@ -31,7 +31,7 @@
 #include <kern/uaccess.h>		// the app's pointers: checked, copied fault-safe
 #include <kern/ofile.h>		// (v75) ResolvePath & co. shared with sys/ofile.cpp, OFileNoteDir
 #include <kern/image.h>		// (v77) program images: the image kapis, ImageFileChanged
-#include <kern/volume.h>		// (v91) the volumes: VolTrack, VolSyncAll
+#include <kern/volume.h>		// (v92) the volumes: VolTrack, VolSyncAll
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/timer.h>
@@ -94,7 +94,7 @@ void ResolvePath (const char *pIn, char *pOut, unsigned nCap)		// (kern/ofile.h:
 	auto putVolume = [&] (const char *p, unsigned n)	// (upper case; SD0: -> SD:)
 	{
 		if (n == 4 && (p[0] == 'S' || p[0] == 's') && (p[1] == 'D' || p[1] == 'd') && p[2] == '0') { put ("SD:", 3); return; }
-		if (n == 5 && (p[0] | 32) == 'u' && (p[1] | 32) == 's' && (p[2] | 32) == 'b' && p[3] == '1') { put ("USB:", 4); return; }	// (v91: USB1: is USB:)
+		if (n == 5 && (p[0] | 32) == 'u' && (p[1] | 32) == 's' && (p[2] | 32) == 'b' && p[3] == '1') { put ("USB:", 4); return; }	// (v92: USB1: is USB:)
 		for (unsigned i = 0; i < n && r < sizeof (raw) - 1; i++) raw[r++] = p[i] >= 'a' && p[i] <= 'z' ? (char) (p[i] - 32) : p[i];
 	};
 	const char *cwd = CurCwd ();
@@ -932,6 +932,75 @@ int kapi_kill_pid (int nPid, int nForce)
 	return 1;
 }
 
+// --- v91: a process's tree (KAPI_TREE_*) ----------------------------------------
+// The tree is made of the parent pids the processes recorded at their spawn: the root, then
+// every live process whose parent is in the set, pass after pass (its children, then theirs...).
+// A kapi runs on core 0 and is not preempted: nobody spawns or ends while the set is made and
+// killed. A child whose start is still deferred (SpawnProcess) is not a task yet: it starts
+// with a dead parent and the reaper's orphan scan ends it (kernel.cpp, TerminateOrphans).
+#define TREE_MAX	256
+struct TreeCtx { unsigned *pPids; unsigned n; boolean bGrew; };
+static boolean TreeHas (const TreeCtx *c, unsigned nPid)
+{
+	for (unsigned i = 0; i < c->n; i++) if (c->pPids[i] == nPid) return TRUE;
+	return FALSE;
+}
+static boolean TreeGrowCb (CTask *pTask, const char *, TTaskState State, TTaskFlags, void *pParam)
+{
+	if (State == TaskStateTerminated) return TRUE;
+	TreeCtx *c = (TreeCtx *) pParam;
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pAS == 0 || pAS->GetParentPid () == 0 || c->n >= TREE_MAX) return TRUE;
+	if (TreeHas (c, pAS->GetPid ()) || !TreeHas (c, pAS->GetParentPid ())) return TRUE;
+	c->pPids[c->n++] = pAS->GetPid ();		// (a thread of a process already in: TreeHas)
+	c->bGrew = TRUE;
+	return TRUE;
+}
+
+int kapi_proc_tree (int nPid, int nOp, int *pOut, unsigned nCap)
+{
+	if (nPid <= 0 || nOp < KAPI_TREE_LIST || nOp > KAPI_TREE_KILL_CHILDREN) return -KAPI_EINVAL;
+	if (!CScheduler::IsActive ()) return -KAPI_ESRCH;
+	KillByPidCtx Root = { (unsigned) nPid, 0 };
+	CScheduler::Get ()->EnumerateTasks (FindByPid, &Root);
+	if (Root.pFound == 0 || Root.pFound->GetUserData (TASK_USER_DATA_USER) == 0) return -KAPI_ESRCH;
+
+	unsigned Pids[TREE_MAX];				// [0] the root, then its descendants
+	TreeCtx Ctx = { Pids, 1, TRUE };
+	Pids[0] = (unsigned) nPid;
+	for (unsigned nPass = 0; Ctx.bGrew && nPass < TREE_MAX; nPass++)
+	{
+		Ctx.bGrew = FALSE;
+		CScheduler::Get ()->EnumerateTasks (TreeGrowCb, &Ctx);
+	}
+
+	if (nOp == KAPI_TREE_LIST)
+	{
+		unsigned nDesc = Ctx.n - 1;
+		for (unsigned i = 0; i < nDesc && i < nCap; i++)
+			if (pOut == 0 || !UserPut (&pOut[i], (int) Pids[i + 1])) return -KAPI_EFAULT;
+		return (int) nDesc;
+	}
+
+	// A kill: never the caller's own process (it is the root, or one of its descendants).
+	CAddressSpace *pMe = CurrentAS ();
+	if (pMe != 0 && TreeHas (&Ctx, pMe->GetPid ())) return -KAPI_EPERM;
+	unsigned nFirst = nOp == KAPI_TREE_KILL ? 0 : 1, nKilled = 0;
+	for (unsigned i = Ctx.n; i-- > nFirst; )		// the leaves first
+	{
+		KillByPidCtx K = { Pids[i], 0 };
+		CScheduler::Get ()->EnumerateTasks (FindByPid, &K);
+		CAddressSpace *pAS = K.pFound != 0 ? (CAddressSpace *) K.pFound->GetUserData (TASK_USER_DATA_USER) : 0;
+		if (pAS == 0) continue;
+		pAS->SetTermReason (KAPI_PROC_KILLED, -9);		// (proc_wait)
+		CScheduler::Get ()->TerminateTask (K.pFound);	// (its whole process: TerminateGroup)
+		nKilled++;
+	}
+	if (nKilled > 0)
+		CLogger::Get ()->Write ("proc", LogNotice, "proc_tree: pid %d's tree, %u process(es) terminated", nPid, nKilled);
+	return (int) nKilled;
+}
+
 // --- keyboard layout (kernel.cpp drives the Circle CKeyMap; decls in applaunch.h) --
 // Switch the keyboard layout to a compiled-in country map ("FR","US","DE","UK",
 // "ES","IT","DV"). Returns 1 on success, 0 if unknown / no keyboard.
@@ -1174,7 +1243,7 @@ void *kapi_open (const char *pUserPath)
 		delete pFile;
 		return 0;
 	}
-	VolTrack (&pFile->obj, 0);			// (v91: an eject counts it; handle.cpp untracks it)
+	VolTrack (&pFile->obj, 0);			// (v92: an eject counts it; handle.cpp untracks it)
 	return HandleNew (pFile, HANDLE_FILE, HKIND_FATFS);
 }
 
@@ -1651,7 +1720,7 @@ void *kapi_opendir (const char *pUserPath)
 		return 0;
 	}
 	OFileNoteDir (pDir, abs);			// (v75: dir_read's ino)
-	VolTrack (&pDir->obj, 0);			// (v91)
+	VolTrack (&pDir->obj, 0);			// (v92)
 	return HandleNew (pDir, HANDLE_DIR, HKIND_FATFS);
 }
 
@@ -1783,7 +1852,7 @@ int kapi_save_file (const char *pUserPath, const void *pBuf, unsigned nLen)
 		return -1;
 	}
 	UINT nWritten = 0;
-	VolTrack (&File.obj, &File);			// (v91: an eject meanwhile sees it busy)
+	VolTrack (&File.obj, &File);			// (v92: an eject meanwhile sees it busy)
 	FRESULT Res = ChunkedWrite (&File, pBuf, nLen, &nWritten);
 	f_close (&File);
 	VolUntrack (&File.obj);
@@ -2128,7 +2197,7 @@ void kapi_shutdown (int nMode)
 	CScheduler::Get ()->MsSleep (300);		// let the last frame / log line out
 	CrashLogCleanEnd ();				// (a clean end: no crash report, no watchdog)
 	CrashLogClockSave ();				// (the time for the next boot)
-	VolSyncAll ();					// (v91) the files open for writing synced, the USB caches flushed
+	VolSyncAll ();					// (v92) the files open for writing synced, the USB caches flushed
 	f_mount (0, "SD:", 0);				// unmount: flush + release the volumes
 	f_mount (0, "SD1:", 0); f_mount (0, "SD2:", 0); f_mount (0, "SD3:", 0);
 	if (nMode == 1)

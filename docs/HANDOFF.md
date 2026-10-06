@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## USB sticks: hot mount, eject, format (2026-10-06, kapi v91): built, tested on the PC, NOT yet on the Pi
+## USB sticks: hot mount, eject, format (2026-10-06, kapi v92): built, tested on the PC, NOT yet on the Pi
 
 Asked by the user: USB mass-storage volumes so the system is not limited to the SD card. **Read docs/02 §17**
 (the design, the surprise removal, the eject, the format, the multi-partition proposal) and docs/05 §28 (the
@@ -12,8 +12,8 @@ Circle fork's patches).
 
 - **Done**: `kernel/sys/volume.cpp` (+ `kern/volume.h`): `USB:` / `USB2:` / `USB3:` (Circle's `umsd1..3`) mounted
   when plugged in (`VolPoll`, the input task, beside `SoundPoll`), unmounted at an eject or when pulled out (its
-  open files lost -> `-EIO`, the programs go on); kapi v91 `vol_list` 228, `vol_eject` 229, `vol_mount` 230,
-  `vol_format` 231 (SD: always refused; SD1..SD3 with `KAPI_FMT_CARD`); the FatFs objects outside the open-file
+  open files lost -> `-EIO`, the programs go on); kapi v92 `vol_list` 229, `vol_eject` 230, `vol_mount` 231,
+  `vol_format` 232 (SD: always refused; SD1..SD3 with `KAPI_FMT_CARD`); the FatFs objects outside the open-file
   layer tracked (`VolTrack`); `kapi_shutdown` syncs everything first (`VolSyncAll`); `USB1:` = `USB:`.
   The fork (circle `onyx`): `FF_USE_MKFS`, `FF_USE_LABEL`, `ff.c` re-checks after the volume lock, `ffsystem.cpp`'s
   mutex kept across an unmount, a yield between USB transfers (`diskio.cpp`), SCSI SYNCHRONIZE CACHE.
@@ -37,6 +37,17 @@ Circle fork's patches).
 - **Open / for later**: several partitions of one USB disk (proposal in docs/02 §17: `USB1P2:`... — **the naming
   is the user's choice**), GPT (`FF_LBA64`: a full rebuild), hidden `.~onyx-deleted` files left on a stick by a
   crash are not cleaned at its mount (only the card's at boot).
+
+## Terminal tabs and the process tree (2026-10-06): built, tested in the simulator, published
+
+Asked by the user: tabs in the Terminal, each its own `cmd`; closing a tab must end the shell **and everything running
+under it**. **Done**: kapi **v91 `proc_tree`** (slot 228, `sys/kapi.cpp`: list / kill a process's descendants at once,
+the leaves first, from the parent pids recorded at the spawns — before it only the reaper's orphan scan, a level every
+50 ms; docs/02 *v91*); **UIKit `TabStrip`** (`uikit/tabstrip.h`: titles, close crosses, a mark, "+"; uikit 1.744); the
+**Terminal** rewritten around a `Tab` record (its cmd, pipes, scrollback, line history), Ctrl+Shift+T / W, Ctrl+Tab,
+Ctrl+PgUp / PgDn, the Shell menu, a question before closing a busy tab, the title = the command running or the folder;
+`cmd`'s Ctrl-C and `/bin/kill -t` use the tree too. **Not yet run on the Pi**: check there that closing a tab running
+`cat x | grep y | sort` or a script leaves nothing in `ps`, and `kmsg`'s `proc: proc_tree: ...` line.
 
 ## 3DForge, a small parametric CAD (2026-10-05): built, on the Pi (the GPU draws it), published
 

@@ -1,5 +1,5 @@
 //
-// usbtest -- the USB volumes' FatFs side on the PC (kapi v91, kernel/sys/volume.cpp; the fork's
+// usbtest -- the USB volumes' FatFs side on the PC (kapi v92, kernel/sys/volume.cpp; the fork's
 // patches: ff.c's checks after the volume lock, ffsystem.cpp's mutex kept, FF_USE_MKFS / LABEL):
 //   - a stick formatted as Windows does (an MBR, one partition) in FAT32 and exFAT, with a label,
 //     found by USB:'s auto search; a "superfloppy" (no MBR) too;

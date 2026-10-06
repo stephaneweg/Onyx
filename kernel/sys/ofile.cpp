@@ -61,7 +61,7 @@
 #include <kern/stream.h>
 #include <kern/ramfs.h>
 #include <kern/vfs.h>
-#include <kern/volume.h>		// (v91) OFileVolume: an eject, a stick pulled out
+#include <kern/volume.h>		// (v92) OFileVolume: an eject, a stick pulled out
 #include <kern/uaccess.h>
 #include <kern/kapi_abi.h>
 #include <kern/image.h>			// (v77) ImageFileChanged: a program file removed, renamed, written
@@ -322,7 +322,7 @@ static FRESULT NodeReopen (TFNode *n)
 {
 	if (n->pFile == 0 || n->Path[0] == '\0')
 	{
-		return FR_INVALID_OBJECT;		// (lost -- its volume unmounted, v91 -- it stays lost)
+		return FR_INVALID_OBJECT;		// (lost -- its volume unmounted, v92 -- it stays lost)
 	}
 	memset (n->pFile, 0, sizeof (FIL));
 	FRESULT r = f_open (n->pFile, n->Path, FA_READ | (n->bWritable ? FA_WRITE : 0) | FA_OPEN_EXISTING);
@@ -574,7 +574,7 @@ static unsigned ClusterBytes (int v, const FATFS *pFs)
 	return s_nBlk[v] != 0 ? s_nBlk[v] : 512;
 }
 
-// (v91, kern/volume.h) The open files of FatFs volume nVol: counted, synced, or dropped (an eject, a
+// (v92, kern/volume.h) The open files of FatFs volume nVol: counted, synced, or dropped (an eject, a
 // format, a stick pulled out: each FIL closed -- flushed if the device is there -- and the node lost:
 // every later call on it -EIO; the descriptions stay until the program closes them).
 int OFileVolume (int nVol, int nOp)

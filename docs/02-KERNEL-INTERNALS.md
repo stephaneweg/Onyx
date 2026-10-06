@@ -971,7 +971,7 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
 
 - **The process ends with its main task** (return from `main`, `kapi_exit`), or when any thread
   calls `kapi_exit`: `ThreadsEndProcess` → `TerminateGroup` (all but the caller). A kill (task
-  manager, `kill_pid`, an orphan) ends the group the same way (§5). A fault in any of its threads
+  manager, `kill_pid`, `proc_tree`, an orphan) ends the group the same way (§5). A fault in any of its threads
   kills the whole process (§6, *Protected mode*), never the machine.
 - **The per-process state** — `CProcThreads`, made on first use, freed by `~CAddressSpace`
   (`ThreadsFree`, first): the thread records (tid → task, done, exit code; 64: the ended ones are
@@ -1184,11 +1184,28 @@ from now on calls them in AppKit, so its package says `kapi >= 87`.
 v88 = **AppKit: program starting**: no entry added — the `lx_*` functions (an app or a file started by its
 runner) are AppKit's (they were `user/launch.h`). The same day **SystemKit** and **NetKit** appear (docs/03 §5.9.0).
 
-v91 = **the volumes** (2026-10-06; `kernel/sys/volume.cpp`, `kern/volume.h`, §17): `vol_list` 228, `vol_eject` 229,
-`vol_mount` 230, `vol_format` 231 (`struct kapi_volume`, `struct kapi_format`, `KAPI_VST_*`, `KAPI_VF_*`,
+v92 = **the volumes** (2026-10-06; `kernel/sys/volume.cpp`, `kern/volume.h`, §17): `vol_list` 229, `vol_eject` 230,
+`vol_mount` 231, `vol_format` 232 (`struct kapi_volume`, `struct kapi_format`, `KAPI_VST_*`, `KAPI_VF_*`,
 `KAPI_FMT_*`). The USB mass-storage volumes `USB:`, `USB2:`, `USB3:` are mounted when a stick is plugged in
 and unmounted when it is ejected or pulled out; `SD:` is never formatted (refused by the kernel). AppKit:
 `kapi_vol_list`, `kapi_vol_eject`, `kapi_vol_mount`, `kapi_vol_format`.
+
+v91 = **a process's tree** (2026-10-06): + `proc_tree` (slot **228**, the table's 229th entry). Each process records
+its spawner's pid (`CAddressSpace::GetParentPid`: `spawn`, `spawn_ex`, `spawn_ex2`; `exec` / `launch` /
+`exec_as` — the drawer, `run`, the file manager — start a process **without** a parent). Before v91 the only
+use of it was the reaper's orphan scan (`TerminateOrphans`, `kernel.cpp`): every 50 ms, a live process whose
+parent is gone is terminated — a whole subtree ends a level a pass, after its root. `proc_tree (pid, op, out,
+cap)` (`sys/kapi.cpp`) makes the tree **now**: the root, then every live process whose parent is in the set,
+pass after pass (256 processes at most); a kapi runs on core 0 without preemption, so nothing spawns or
+ends meanwhile. `KAPI_TREE_LIST` → how many descendants (up to `cap` pids written, children first);
+`KAPI_TREE_KILL` → the root and all its descendants terminated at once, **the leaves first** (each:
+`KAPI_PROC_KILLED` / −9 for `proc_wait`, `TerminateTask` → its whole thread group), the count returned and
+logged (`proc: proc_tree: …`); `KAPI_TREE_KILL_CHILDREN`: the descendants only. Errors: `ESRCH` (no such
+process, or a kernel task), `EINVAL`, `EPERM` (a kill whose tree holds the caller), `EFAULT`. A child whose
+start is still deferred (`SpawnProcess`: not a task yet) is not in the tree: it starts with a dead parent and
+the orphan scan ends it — which stays for that. Users: the **Terminal** (closing a tab ends its `cmd` and
+everything under it: a pipeline's stages, a script's `cmd` and its programs), **`cmd`** (Ctrl-C ends each
+stage with what it started), **`/bin/kill -t`**. AppKit: `kapi_proc_tree` (`-KAPI_ENOSYS` before v91).
 
 v90 = **the table without the windows** (2026-10-05): the 36 entries of the windows (`create_window`,
 `present`, `set_menu`, `win_list`, `drag_begin`, `wallpaper_*`, `desk`, `set_wheel_speed`...) and the 2 of
@@ -1287,7 +1304,7 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 |---|---|
 | Windowing | `create_window(_ex)` (the canvas; **0** when the client area is bigger than the screen — `g_nScreenWidth/Height`; before v66, 1024 × 768 — or memory is short — an app must check it: drawing into a null canvas faults, and the app is killed), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `uk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
 | Menu bar (v39) | `set_menu(spec, handler)` stores the app's menu spec (≤ 2 KB; lines `M<title>`, `I<id>\t<label>\t<shortcut>`, `-`) + a `GUI_EVENT_MENU` (14) handler on its `CWindow`; `get_menu(buf, cap, title, tcap)` returns the **active app**'s spec + title and a serial that changes with the active window or its menu (0 = none); `menu_command(id)` queues `GUI_EVENT_MENU(id)` to the active window (`MENU_QUIT` = -1 → `RequestExit`, like the close box). Used by `menubar` + `uikit::Menu`. |
-| Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid` |
+| Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid`, `proc_tree` (v91) |
 | Threads (v67) | `thread_create(fn, arg, stack_size, name)` → tid ≥ 2 (main: 1), −1 no memory, −2 too many (32); `thread_exit(code)` (the main thread: the process); `thread_join(tid, timeout_ms, &code)` → 0, −1 timeout, −2 none / joined already, −3 itself; `thread_self`. `mutex_create`/`mutex_lock(h, timeout)`/`mutex_unlock` (recursive), `event_create(manual, initial)`/`event_set`/`event_reset`/`event_wait(h, timeout)`, `barrier_create(count)`/`barrier_wait` (1 for the last one in), `sync_close` — handles, 256 per process; timeouts in ms, 0 = only try, `KAPI_WAIT_FOREVER`. `post(fn, ctx, value)` → queued for the pump (−1 full: 256); `pump_wait(timeout)` sleeps until an event / a post / the close box, pumps → what was pending. See §7. |
 | Word waits, priority (v68) | `wait_word(addr, expected, timeout_ms)` sleeps while the 4-byte word `*addr == expected` → 0 (woken, or the value differs), 1 timeout (0 ms: only check), −1 bad address (unaligned, unmapped); `wake_word(addr)` → the sleepers woken. Keyed by the **physical** address (a word of a shared surface wakes across processes); the 100 Hz tick also reads every sleeping word and wakes those that changed — an app core's write needs no `wake_word` (≤ 10 ms). `thread_priority(tid 0 self / 1 main / ≥ 2, prio 0 / 1 / −1 ask)` → the previous one, −1 bad prio, −2 no such thread: a "real time" task is picked first when ready and a tick preempts an app for it, while it yields by itself (§5). See §7. |
 | Enumeration | `list_apps`, `list_windows`, `list_tasks`, `list_procs`, `get_datetime` |
@@ -1297,7 +1314,7 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 | System-call statistics (v74) | `proc_stats(pid, out)` (pid 0: the caller) → 0 and `struct kapi_syscall_stats { syscalls, emulated; rate, slots; top_slot[8], top_count[8]; reserved[4] }` (104 bytes): the `svc`s since the process started, the ID register reads emulated, the calls per second (the last full window ≥ 1 s), the table's slot count, the 8 slots most called (a slot = the field's index in `TKApiTable` in 8-byte words, `version` = 0; `user/BinUtils/kapi_names.h`, generated by `tools/gen_kapi_names.py`, names them) → −1 no such process / a kernel task, −2 a bad pointer. |
 | Protected mode (v73) | `pop_event(struct kapi_event *ev)` → 1 and the next window event `{ handler, sender, value, event, mods }` (the handler **not** called), 0 none / no window; `event_mods(mods)` sets what `get_modifiers` reports while a key handler runs → the previous value (`0xFFFFFFFF` = live); `pop_post(struct kapi_posted *p)` → 1 and the next posted call `{ fn, ctx, value }` (not run), 0 none; `pump_sleep(timeout_ms)` = `pump_wait` without the pump → what is pending, −1 not a process. The user-side `pump_events` / `wait_for_exit` / `pump_wait` of a protected app (§6) are built on them. `user/Kits/appkit/appkit.h`: the wrappers (version ≥ 73) and `kapi_is_protected()`. |
 | Files | `open/read/fsize/close`, `save_file`, `opendir/readdir/closedir`, `mkdir/remove/rename`, `chdir/getcwd` (current working directory, inherited by children). `fsize` (and `readdir`'s size) is clamped to 4 GB − 1; **`fsize64(h)` (v59)** gives an exFAT file's real 64-bit size. `rename` across two volumes fails (−1): the caller copies then deletes (FatFs' `f_rename` would otherwise rename inside the source volume). All of these (and the streams, `seek`, `fsize64`, `chdir`) work on **`RAM:`** paths too (v71, §16): the path is resolved first (`ResolvePath`: relative to a current folder on `RAM:` as well), then a `RAM:` path goes to `sys/ramfs.cpp`, a provider's (`FTP:`) to `sys/vfs.cpp`, the rest to FatFs; since v73 a handle is a per-process handle (§6, *Per-process handles*) whose entry records the kind (FatFs, RAM, provider). **v75:** POSIX open files beside them: `file_open/read/write/seek/truncate/sync/stat/close` (64-bit offsets, pread / pwrite, `O_CREAT/EXCL/TRUNC/APPEND`), `path_stat/unlink/mkdir/rename/utime`, `dir_read` (255-character names), unlink / rename of open files, `-KAPI_Exxx` errors (*v75: files and processes* below). |
-| Volumes (v59) | FatFs volume strings (`FF_STR_VOLUME_ID`, docs/05 §13): **`SD:`** = the SD card's first FAT volume (partition 1, the boot FAT32 one, found as before; **`SD0:`** is an alias), **`SD1:` `SD2:` `SD3:`** = MBR partitions 2–4 (`FF_MULTI_PARTITION`) (FAT12/16/32 or **exFAT**, mounted at boot when present), **`USB:` `USB2:` `USB3:`** (v91, §17: the USB sticks and disks, mounted when plugged in; **`USB1:`** is an alias of `USB:`), `FD:`, `NVME:` (declared, not mounted). `ResolvePath`: a volume prefix is upper-cased (`sd1:` → `SD1:`, `SD0:` → `SD:`), a path starting with `/` is relative to the **current directory's volume** root, anything else to the current directory. **`RAM:`** (v71) is the RAM volume (§16), not a FatFs one. The four SD volumes share one FatFs lock slot (`LockSlot`, `sys/fslock.cpp`): they are one card, one command at a time. |
+| Volumes (v59) | FatFs volume strings (`FF_STR_VOLUME_ID`, docs/05 §13): **`SD:`** = the SD card's first FAT volume (partition 1, the boot FAT32 one, found as before; **`SD0:`** is an alias), **`SD1:` `SD2:` `SD3:`** = MBR partitions 2–4 (`FF_MULTI_PARTITION`) (FAT12/16/32 or **exFAT**, mounted at boot when present), **`USB:` `USB2:` `USB3:`** (v92, §17: the USB sticks and disks, mounted when plugged in; **`USB1:`** is an alias of `USB:`), `FD:`, `NVME:` (declared, not mounted). `ResolvePath`: a volume prefix is upper-cased (`sd1:` → `SD1:`, `SD0:` → `SD:`), a path starting with `/` is relative to the **current directory's volume** root, anything else to the current directory. **`RAM:`** (v71) is the RAM volume (§16), not a FatFs one. The four SD volumes share one FatFs lock slot (`LockSlot`, `sys/fslock.cpp`): they are one card, one command at a time. |
 | Streams/processes | `pipe`, `file_in/out`, `stream_read(_nb)/write/close/eof`, `stdin_read`, `stdout_write`, `spawn`, `wait`, `proc_done`, `get_args` |
 | Modal dialogs | none (v9/v10 `message_box`, `file_open`, `file_save` removed: §10.5) |
 | Desktop | `screen_size`, `wallpaper_generate`, `wallpaper_buffer`, `wallpaper_commit`, `cursor_pos` |
@@ -1663,14 +1680,14 @@ stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywher
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
 
-### v91: the volumes
+### v92: the volumes
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 228 | `vol_list (out, max, flags)` | Every volume → how many there are; `out`: up to `max` `struct kapi_volume` (`name` without the `:`, `state` `KAPI_VST_MOUNTED` / `EJECTED` / `UNREADABLE` / `REMOVED`, `flags` `KAPI_VF_SYSTEM` / `REMOVABLE` / `RAM` / `UNSAFE` / `FORMATTABLE` / `IOERR`, `gen` — changes at each event of that volume —, `open` — the files and folders open on it —, `device_size`, `total`, `free` — only with `KAPI_VOLS_ROOM`, else `~0` —, `serial`, `type`, `label`, `device`). The FatFs volumes first (`SD`, `SD1`..`SD3`, `USB`..`USB3` — a USB volume whose device left stays listed as `REMOVED` until another takes its place), then `RAM`. Without `KAPI_VOLS_ROOM` it never reads a disk (polled every second by the menu bar). |
-| 229 | `vol_eject (vol, flags)` | A USB volume (`"USB:"`, `"usb2"`, `"USB:/x"`): the open-file layer's written files synced, the device's cache flushed (SCSI SYNCHRONIZE CACHE), unmounted → 0 (it can be removed: `EJECTED`); `-EBUSY` files or folders are open on it (the written ones synced, still mounted; `KAPI_EJECT_FORCE`: ejected anyway — their later calls fail); `-EINVAL` not removable (the card's volumes); `-ENOENT` not mounted (0 when already ejected); `-EIO` pulled out meanwhile, or a file could not be written (ejected all the same). |
-| 230 | `vol_mount (vol)` | A USB volume ejected but still plugged in, or one `UNREADABLE` (tried again), or `SD1:`..`SD3:` → 0 (mounted), `-EINVAL` no FAT / exFAT file system, `-ENODEV` no device there, `-EIO`. |
-| 231 | `vol_format (vol, fmt)` | `struct kapi_format { fs, flags, cluster, label }`: a new file system (`KAPI_FMT_AUTO` — FatFs' choice: FAT16 / FAT32 by the size, exFAT from 32 GB —, `FAT`, `FAT32`, `EXFAT`; `cluster` bytes, 0 auto; a label of 11 characters at most) made and mounted → 0. **`SD:` → `-EPERM` always**; `SD1:`..`SD3:` → `-EPERM` unless `KAPI_FMT_CARD` (the caller asked the user twice); `-EBUSY` files open (`KAPI_FMT_FORCE`), `-ENODEV`, `-EINVAL` (label, cluster), `-ENOSPC` (too small / too big for that file system), `-EROFS`, `-EIO`. The caller waits (seconds on a big stick: the driver yields every 10 ms). |
+| 229 | `vol_list (out, max, flags)` | Every volume → how many there are; `out`: up to `max` `struct kapi_volume` (`name` without the `:`, `state` `KAPI_VST_MOUNTED` / `EJECTED` / `UNREADABLE` / `REMOVED`, `flags` `KAPI_VF_SYSTEM` / `REMOVABLE` / `RAM` / `UNSAFE` / `FORMATTABLE` / `IOERR`, `gen` — changes at each event of that volume —, `open` — the files and folders open on it —, `device_size`, `total`, `free` — only with `KAPI_VOLS_ROOM`, else `~0` —, `serial`, `type`, `label`, `device`). The FatFs volumes first (`SD`, `SD1`..`SD3`, `USB`..`USB3` — a USB volume whose device left stays listed as `REMOVED` until another takes its place), then `RAM`. Without `KAPI_VOLS_ROOM` it never reads a disk (polled every second by the menu bar). |
+| 230 | `vol_eject (vol, flags)` | A USB volume (`"USB:"`, `"usb2"`, `"USB:/x"`): the open-file layer's written files synced, the device's cache flushed (SCSI SYNCHRONIZE CACHE), unmounted → 0 (it can be removed: `EJECTED`); `-EBUSY` files or folders are open on it (the written ones synced, still mounted; `KAPI_EJECT_FORCE`: ejected anyway — their later calls fail); `-EINVAL` not removable (the card's volumes); `-ENOENT` not mounted (0 when already ejected); `-EIO` pulled out meanwhile, or a file could not be written (ejected all the same). |
+| 231 | `vol_mount (vol)` | A USB volume ejected but still plugged in, or one `UNREADABLE` (tried again), or `SD1:`..`SD3:` → 0 (mounted), `-EINVAL` no FAT / exFAT file system, `-ENODEV` no device there, `-EIO`. |
+| 232 | `vol_format (vol, fmt)` | `struct kapi_format { fs, flags, cluster, label }`: a new file system (`KAPI_FMT_AUTO` — FatFs' choice: FAT16 / FAT32 by the size, exFAT from 32 GB —, `FAT`, `FAT32`, `EXFAT`; `cluster` bytes, 0 auto; a label of 11 characters at most) made and mounted → 0. **`SD:` → `-EPERM` always**; `SD1:`..`SD3:` → `-EPERM` unless `KAPI_FMT_CARD` (the caller asked the user twice); `-EBUSY` files open (`KAPI_FMT_FORCE`), `-ENODEV`, `-EINVAL` (label, cluster), `-ENOSPC` (too small / too big for that file system), `-EROFS`, `-EIO`. The caller waits (seconds on a big stick: the driver yields every 10 ms). |
 
 ### v85: the mixer
 
@@ -1678,6 +1695,7 @@ rewritten), `posixtest` (`mmap PROT_EXEC`).
 |---|---|---|
 | 225 | `sound_clients (out, max)` | The programs that have a channel now → how many; `out`: up to `max` `struct kapi_sound_client` (`pid`, `name` — the program's, 24 bytes —, `volume` 0..100, `mute`, `peak` — its level now, 0..32767 —, `queued` frames). `0, 0`: only the count. |
 | 227 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program `elegant`. The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT` \| `_CALL`; `KAPI_WS_ATTACH (pid)`, `KAPI_WS_POST (pid, struct kapi_event *)` → 1 queued / 0 full, `KAPI_WS_EXIT (pid)`, `KAPI_WS_BUF_MAP (struct kapi_ws_buf *)`, `KAPI_WS_BUF_FREE (id)`, `KAPI_WS_NEXT (struct kapi_ws_req *)` → 1 / 0, `KAPI_WS_REPLY (struct kapi_ws_reply *)`. A program's (through AppKit): `KAPI_WS_CALL (struct kapi_ws_call *)` → the server's status, `ESRCH` no server; `KAPI_WS_KICK`. AppKit: `kapi_ws_ctl`. |
+| 228 | `proc_tree (pid, op, out, cap)` | (v91) A process's tree, by the parent pids recorded at the spawns (above). `KAPI_TREE_LIST` → how many descendants `pid` has, up to `cap` of their pids into `out` (its children, then theirs…); `KAPI_TREE_KILL` → `pid` and all its descendants terminated now, the leaves first → how many; `KAPI_TREE_KILL_CHILDREN` → its descendants only. `ESRCH` no such process, `EPERM` a kill whose tree holds the caller, `EINVAL`, `EFAULT`. AppKit: `kapi_proc_tree`. |
 | 226 | `sound_client_volume (pid, volume, mute)` | That channel's volume 0..100 (−1: kept) and mute 0 / 1 (−1: kept), applied at once and remembered for the program's **name** until the restart → `volume \| 0x100` if muted, −1: no such channel. Any program may call it (the mixer's panel). |
 
 No existing call changes its shape; what they mean: `sound_acquire` gives **a channel** (1; 0 only when the 8
@@ -2776,10 +2794,10 @@ full` also fills the volume).
 
 Source: [`kernel/sys/volume.cpp`](../kernel/sys/volume.cpp), [`kern/volume.h`](../kernel/include/kern/volume.h);
 the hooks in `sys/ofile.cpp` (`OFileVolume`), `sys/kapi.cpp`, `sys/handle.cpp`, `sys/stream.cpp`, `kernel.cpp`;
-the Circle fork's side: docs/05 §28. Host test: `tools/tests/run_fs_test.sh` (`fs/usbtest.cpp`). kapi v91 (§8).
+the Circle fork's side: docs/05 §28. Host test: `tools/tests/run_fs_test.sh` (`fs/usbtest.cpp`). kapi v92 (§8).
 
 **Who mounts what.** `SD:` is mounted by `CKernel::Initialize` as before; `VolMountCard` then mounts the card's
-partitions 2–4 as `SD1:`..`SD3:` (they were mounted in `kernel.cpp` until v91). The USB mass-storage devices are
+partitions 2–4 as `SD1:`..`SD3:` (they were mounted in `kernel.cpp` until v92). The USB mass-storage devices are
 Circle's `umsd1`..`umsd3` (numbered in the order they come: a number freed by an unplug is given to the next
 device), our FatFs volumes `USB:`, `USB2:`, `USB3:` (FatFs volumes 4–6, physical drives 1–3). Each is the
 **first FAT / exFAT volume of its device**: `VolToPart` is `{n, 0}`, FatFs' auto search — a "superfloppy" (a
@@ -2799,7 +2817,7 @@ Each change bumps the volume's `gen`; the kernel logs it (`volume: USB: mounted 
   off), so the device is deleted (in the input task) only **between** two transfers. `diskio.cpp`'s own removed
   handler clears its device: every later transfer fails (`RES_NOTRDY`), and the FatFs call in flight ends with an
   error (a transfer that was running when the stick left times out, ≤ 3 s, in Circle's xHCI driver);
-- since v91 the FatFs disk layer yields between two transfers of a USB drive once the task has run 10 ms
+- since v92 the FatFs disk layer yields between two transfers of a USB drive once the task has run 10 ms
   (`OnyxDriverPoll`, docs/05 §28) — a long operation (a format, a folder of thousands of files) no longer holds
   core 0 — which is safe for the same reason: the volume lock is held, a stick gone only fails the next transfer;
 - `VolPoll` sees the flag: `OFileVolume (vol, OFV_DROP)` closes the open-file layer's files of that volume (their

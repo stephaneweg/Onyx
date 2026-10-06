@@ -1,5 +1,5 @@
 //
-// disks -- the volumes (kapi v91): the SD card's partitions, the USB sticks and disks, RAM:. Each with
+// disks -- the volumes (kapi v92): the SD card's partitions, the USB sticks and disks, RAM:. Each with
 // its state, file system, label, size and room; a USB stick ejected (made safe to remove), mounted
 // again, or formatted (FAT32 / exFAT / FAT, a label). SD:, the system's volume, is never formatted (the
 // kernel refuses it too); SD1:..SD3: only after a second question. `disks USB:` opens on that volume.

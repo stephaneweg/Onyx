@@ -16,7 +16,7 @@
 // and applied at start); a click on the Wi-Fi icon opens the Wi-Fi menu (the wifimenu app: the
 // networks around, join one).
 //
-// A USB stick plugged in (kapi v91: mounted by the kernel as USB:, USB2:, USB3:) shows a drive icon
+// A USB stick plugged in (kapi v92: mounted by the kernel as USB:, USB2:, USB3:) shows a drive icon
 // left of the speaker; a click on it opens the USB box: each stick, its label and size, an Eject
 // button (Mount when it was ejected, Format... when it cannot be read), a click on its name opens it in
 // the File Viewer; "Disks..." opens the Disks app. The bar also says what happened through notifyd:
@@ -474,7 +474,7 @@ static void draw_calendar_box (void)
 	uk_text_c (g_cv, lx, ly, lw, lh, "Open Calendar", C_BUTTON_TEXT);
 }
 
-// ---- the USB sticks (kapi v91) ---------------------------------------------------------------------
+// ---- the USB sticks (kapi v92) ---------------------------------------------------------------------
 #define MAXVOL		16
 #define UW		320
 #define UROW		46
@@ -988,7 +988,7 @@ int main (void)
 			lastNet = now;
 			int w = kapi_net_status (0, 0) ? 1 : 0;
 			if (w != g_wifi) { g_wifi = w; g_dirty = true; }
-			usb_poll ();						// (v91) the USB sticks
+			usb_poll ();						// (v92) the USB sticks
 			int r = kapi_sound_volume (-1, -1);			// (the volume command may change it)
 			if ((r & 0xFF) != g_vol || ((r & 0x100) ? 1 : 0) != g_mute) { g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; g_dirty = true; }
 		}

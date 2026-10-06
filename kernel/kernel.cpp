@@ -36,7 +36,7 @@
 #include <kern/ramfs.h>		// RAM:, the RAM volume (system.ini ramfs=)
 #include <kern/procx.h>		// (v75) a process's argv / environment blocks
 #include <kern/ofile.h>		// (v75) OFileBootCleanup
-#include <kern/volume.h>		// (v91) the volumes: VolMountCard, VolPoll
+#include <kern/volume.h>		// (v92) the volumes: VolMountCard, VolPoll
 #ifdef ARM_ALLOW_MULTI_CORE
 #include <circle/multicore.h>
 #endif
@@ -1196,7 +1196,7 @@ public:
 			DetectPads ();
 			DetectMidi ();
 			SoundPoll ();		// (v84: a USB audio device plugged / unplugged)
-			VolPoll ();		// (v91: a USB stick plugged in: mounted; pulled out: unmounted)
+			VolPoll ();		// (v92: a USB stick plugged in: mounted; pulled out: unmounted)
 			CScheduler::Get ()->MsSleep (100);
 		}
 	}
@@ -2095,7 +2095,7 @@ boolean CKernel::Initialize (void)
 					CEMMCDevice::IsHighSpeed () ? "High Speed 50 MHz" : "25 MHz",
 					m_Options.GetAppOptionDecimal ("sdcache", 1) ? "on" : "off");
 
-			// the card's other partitions: each FAT / exFAT one mounted as SD1: .. SD3: (v91: the
+			// the card's other partitions: each FAT / exFAT one mounted as SD1: .. SD3: (v92: the
 			// volumes are sys/volume.cpp's, which also mounts the USB sticks as they come)
 			VolMountCard (&m_FileSystem);
 

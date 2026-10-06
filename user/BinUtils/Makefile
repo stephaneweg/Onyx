@@ -73,7 +73,7 @@ PROGS   = ls.elf cat.elf echo.elf grep.elf wc.elf page.elf \
 	  threadtest.elf futextest.elf miditest.elf ringtest.elf ramtest.elf df.elf faulttest.elf el0test.elf sysstat.elf wstest.elf \
 	  filetest.elf proctest.elf memtest.elf uname.elf
 
-# kapi v91 the volumes: USB sticks mounted, ejected, formatted (volutil.h: what they share with df)
+# kapi v92 the volumes: USB sticks mounted, ejected, formatted (volutil.h: what they share with df)
 PROGS  += mount.elf eject.elf mkfs.elf
 df.elf mount.elf eject.elf mkfs.elf: volutil.h
 

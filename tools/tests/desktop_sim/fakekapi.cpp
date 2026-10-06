@@ -28,7 +28,8 @@
 // SIM_SD: the SD card's directory (default sdcard), only read; SIM_WRITES: where what the apps
 // save goes (default /tmp/onyx_sim_writes); SIM_OVERLAY: directories ("a:b") whose files are read
 // instead of the card's (sample data: tools/tests/desktop_sim/sd); SIM_PIPE: what a spawned
-// program (the terminal's shell) writes, read back from its pipe; SIM_NET: what a server sends
+// program (the terminal's shell) writes, read back from its pipe (SIM_PIPE2...: the next ones'; SIM_BUSY:
+// below); SIM_NET: what a server sends
 // on a TCP connection (irc) -- "\n" a new line, "\r" a return, "\e" an escape; SIM_CURSOR="x,y":
 // the pointer for kapi_cursor_pos; SIM_SLEEP=1: msleep really sleeps (an app whose timers read
 // the clock: NetSurf); SIM_MENU, SIM_RUNNING, SIM_WALL: below.
@@ -206,7 +207,7 @@ static bool volume_there (const char *p)
 	const char *c = p ? strchr (p, ':') : 0;
 	if (!c || c - p > 4) return true;
 	std::string v (p, (size_t) (c - p));
-	if (v == "USB" || v == "USB1") return getenv ("SIM_USB") != 0;	// (v91: a stick, SIM_USB=1)
+	if (v == "USB" || v == "USB1") return getenv ("SIM_USB") != 0;	// (v92: a stick, SIM_USB=1)
 	if (v == "USB2" || v == "USB3") return false;
 	if (v == "SD" || v == "SD0" || (v != "VD0" && v != "VD1" && v != "VD2" && v != "VD3" && v != "SD1" && v != "SD2" && v != "SD3")) return true;
 	std::string list = std::string (",") + (getenv ("SIM_VOLS") ? getenv ("SIM_VOLS") : "") + ",";
@@ -724,7 +725,7 @@ static int vol_info (const char *p, struct kapi_vol_info *o)
 	o->total = 8ull << 30; o->free = 4ull << 30; o->used = o->total - o->free; snprintf (o->type, sizeof o->type, "FAT32");
 	return 0;
 }
-// (v91) the volumes: the card (SD:, the SIM_VOLS partitions), a USB stick when SIM_USB is set (a 14.9 GB
+// (v92) the volumes: the card (SD:, the SIM_VOLS partitions), a USB stick when SIM_USB is set (a 14.9 GB
 // exFAT "KINGSTON"; Eject / Mount / Format change it as the kernel would), RAM:
 static unsigned g_usbState = KAPI_VST_MOUNTED, g_usbGen = 1;
 static char g_usbType[8] = "exFAT", g_usbLabel[36] = "KINGSTON";
@@ -864,8 +865,35 @@ static int screen_native (int *w, int *h)
 	return 1;
 }
 static int set_timezone (int m) { return m >= -720 && m <= 840; }
-static int proc_done (void *p) { return p == (void *) 0x5000 ? 0 : 1; }	// (the SIM_PIPE program: running)
+// The programs spawned (the terminal's shells): handles 0x5000 + k, pid 100 + k, running until a
+// proc_tree kill; SIM_BUSY="2,3": the 2nd and the 3rd have a child (a command running).
+static bool g_spawnKilled[64];
+static int spawn_index (void *p) { unsigned long v = (unsigned long) p; return v >= 0x5000 && v < 0x5040 ? (int) (v - 0x5000) : -1; }
+static int proc_done (void *p) { int k = spawn_index (p); return k >= 0 && !g_spawnKilled[k] ? 0 : 1; }	// (a SIM_PIPE program: running)
 static int h_wait (void *) { return 0; }
+static int proc_wait (void *p, unsigned, struct kapi_proc_status *o)
+{
+	int k = spawn_index (p);
+	if (k < 0) return -KAPI_EBADF;
+	if (o) { o->code = g_spawnKilled[k] ? -9 : 0; o->reason = g_spawnKilled[k] ? KAPI_PROC_KILLED : -1; o->pid = 100 + k; o->reserved = 0; }
+	return g_spawnKilled[k] ? 1 : 0;
+}
+static bool spawn_busy (int k)
+{
+	const char *e = getenv ("SIM_BUSY");
+	for (const char *q = e; q && *q; ) { if (atoi (q) == k + 1) return true; while (*q && *q != ',') q++; if (*q) q++; }
+	return false;
+}
+static int proc_tree (int pid, int op, int *out, unsigned cap)
+{
+	int k = pid - 100;
+	if (k < 0 || k >= 64 || g_spawnKilled[k]) return -KAPI_ESRCH;
+	int kids = spawn_busy (k) ? 1 : 0;
+	if (op == KAPI_TREE_LIST) { if (kids && out && cap) out[0] = 200 + k; return kids; }
+	fprintf (stderr, "sim: proc_tree %d %s -> %d killed\n", pid, op == KAPI_TREE_KILL ? "kill" : "kill-children", kids + (op == KAPI_TREE_KILL));
+	if (op == KAPI_TREE_KILL) g_spawnKilled[k] = true;
+	return kids + (op == KAPI_TREE_KILL);
+}
 // A canned stream (SIM_PIPE, SIM_NET): its text ("\n" a new line, "\r" a return, "\e" an escape)
 // read once, then nothing more
 struct Canned { const char *env; std::string s; size_t pos; bool init; };
@@ -885,12 +913,18 @@ static int canned_read (Canned &c, void *b, unsigned n)
 	memcpy (b, c.s.data () + c.pos, k); c.pos += k;
 	return (int) k;
 }
-// SIM_PIPE: a spawned program's output (the terminal's shell), from the pipes (handles 1, 2, ...)
-static Canned g_pipeOut = { "SIM_PIPE" };
+// SIM_PIPE: a spawned program's output (the terminal's shell), from the pipes (handles 1, 2, ...);
+// the 2nd program spawned writes SIM_PIPE2, the 3rd SIM_PIPE3... (the terminal's tabs)
+static Canned g_pipeOut[8] = { { "SIM_PIPE" }, { "SIM_PIPE2" }, { "SIM_PIPE3" }, { "SIM_PIPE4" },
+			       { "SIM_PIPE5" }, { "SIM_PIPE6" }, { "SIM_PIPE7" }, { "SIM_PIPE8" } };
+static void *g_spawnOut[64];			// each spawned program's output pipe
+static int g_nspawn;
 static int pipe_read (void *h, void *b, unsigned n)
 {
 	if (!h || (unsigned long) h > 64) return 0;
-	return canned_read (g_pipeOut, b, n);
+	for (int k = 0; k < g_nspawn && k < 8; k++)
+		if (g_spawnOut[k] == h) return g_spawnKilled[k] ? 0 : canned_read (g_pipeOut[k], b, n);
+	return g_nspawn > 0 ? 0 : canned_read (g_pipeOut[0], b, n);
 }
 // SIM_NET: what the server sends (irc) on a connection; none: no network
 static Canned g_netIn = { "SIM_NET" };
@@ -1061,10 +1095,12 @@ static int drag_data (int *type, void *buf, unsigned cap)
 	if (buf && cap) memcpy (buf, g_dragData.c_str (), n < cap ? n : cap);
 	return (int) n;
 }
-static void *spawn (const char *p, const char *a, void *, void *)
+static void *spawn (const char *p, const char *a, void *, void *out)
 {
 	fprintf (stderr, "sim: spawn %s %s\n", p, a ? a : "");
-	return getenv ("SIM_PIPE") ? (void *) 0x5000 : 0;
+	if (!getenv ("SIM_PIPE") || g_nspawn >= 64) return 0;
+	g_spawnOut[g_nspawn] = out;
+	return (void *) (unsigned long) (0x5000 + g_nspawn++);
 }
 static unsigned long g_pipes;
 static void *h_pipe (void) { return getenv ("SIM_PIPE") && g_pipes < 64 ? (void *) ++g_pipes : 0; }
@@ -1326,10 +1362,10 @@ static void setup (void)
 	T->app_dir = app_dir; T->mkdir = f_mkdir; T->remove = f_remove; T->rename = f_rename; T->list_tasks = list_tasks;
 	T->sound_acquire = sound_acquire; T->sound_release = sound_release; T->sound_start = sound_start;
 	T->sound_stop = sound_stop; T->sound_write = sound_write; T->sound_status = sound_status;
-	T->proc_done = proc_done; T->wait = h_wait; T->stream_read = stream_read; T->file_in = file_in; T->file_out = file_out; T->stream_read_nb = stream_read_nb;
+	T->proc_done = proc_done; T->wait = h_wait; T->proc_wait = proc_wait; T->proc_tree = proc_tree; T->stream_read = stream_read; T->file_in = file_in; T->file_out = file_out; T->stream_read_nb = stream_read_nb;
 	T->stream_write = stream_write; T->stream_eof = stream_eof; T->stdin_read = stdin_read;
 	T->vol_info = vol_info;
-	T->vol_list = vol_list;			// (v91)
+	T->vol_list = vol_list;			// (v92)
 	T->vol_eject = vol_eject;
 	T->vol_mount = vol_mount;
 	T->vol_format = vol_format;

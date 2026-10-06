@@ -215,14 +215,19 @@
 //      (the slot numbers quoted in the notes above are those of their time; the checks below and
 //      docs/02 have today's). AppKit is rebuilt with the kernel; no program is (they call AppKit by
 //      name). A stand-in kernel on a PC still has the windows' entries, after the table's end.
-// v91: the volumes (kern/volume.h, sys/volume.cpp): + vol_list, vol_eject, vol_mount, vol_format (slots
-//      228..231). USB sticks and disks (USB:, USB2:, USB3: -- Circle's umsd1..umsd3) are mounted when they
+// v91: + proc_tree (slot 228): a process's tree -- its descendants (the processes it spawned, the ones
+//      they spawned...) listed, or the whole tree (or only its descendants) terminated at once, the
+//      leaves first. Before it a dead parent's children were ended by the reaper's orphan scan, one
+//      level a pass (still there, for a child whose start was deferred). The Terminal closes a tab's
+//      shell and everything running under it with it; cmd's Ctrl-C, /bin/kill -t.
+// v92: the volumes (kern/volume.h, sys/volume.cpp): + vol_list, vol_eject, vol_mount, vol_format (slots
+//      229..232). USB sticks and disks (USB:, USB2:, USB3: -- Circle's umsd1..umsd3) are mounted when they
 //      are plugged in and unmounted when they are ejected or pulled out (their open files then fail with
 //      -EIO, the programs go on); vol_list lists every volume with its state, size, label; vol_eject
 //      syncs the volume's open files, flushes the stick's cache and unmounts it (-EBUSY while files are
 //      open, unless forced); vol_format makes a FAT / FAT32 / exFAT file system with a label -- never on
 //      SD: (the system's volume), on SD1:..SD3: only with KAPI_FMT_CARD.
-#define KAPI_ABI_VERSION	91
+#define KAPI_ABI_VERSION	92
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -325,7 +330,7 @@ struct kapi_vol_info
 	char     type[12];		// "RAM", "FAT12", "FAT16", "FAT32", "exFAT"
 };
 
-// (v91) A volume as kapi_vol_list gives it. The FatFs volumes (SD, SD1..SD3: the card's partitions;
+// (v92) A volume as kapi_vol_list gives it. The FatFs volumes (SD, SD1..SD3: the card's partitions;
 // USB, USB2, USB3: the USB mass-storage devices) then RAM. A USB volume stays listed once its device is
 // gone (KAPI_VST_REMOVED) until a device takes its place: a program that polls sees what happened.
 #define KAPI_VST_MOUNTED	1		// in use: its files can be read and written
@@ -357,7 +362,7 @@ struct kapi_volume
 
 #define KAPI_EJECT_FORCE	1		// vol_eject's flags: even with files open (they then fail with -EIO)
 
-// (v91) kapi_vol_format's request.
+// (v92) kapi_vol_format's request.
 #define KAPI_FMT_AUTO		0		// fs: FAT16 / FAT32 by the size, exFAT from 32 GB (as Windows)
 #define KAPI_FMT_FAT		1		// FAT12 / FAT16 (small volumes)
 #define KAPI_FMT_FAT32		2
@@ -1003,6 +1008,17 @@ struct kapi_sound_client
 	char	 name[KAPI_SOUND_NAME];	// the program's name ("media", "koton", "basic")
 	int	 reserved[4];
 };
+
+// (v91) proc_tree (pid, op, out, cap): a process's descendants -- by the parent pid each process
+// records at its spawn (spawn, spawn_ex, spawn_ex2; exec / launch start a process without a parent).
+#define KAPI_TREE_LIST		0	// -> how many descendants pid has; up to cap of their pids written to
+					// out (its children, then theirs...)
+#define KAPI_TREE_KILL		1	// pid and all its descendants terminated now (KILLED, -9), the leaves
+					// first -> how many processes were terminated
+#define KAPI_TREE_KILL_CHILDREN	2	// its descendants only (pid goes on) -> how many
+					// Errors: -KAPI_ESRCH no such process, -KAPI_EINVAL a bad op / pid,
+					// -KAPI_EPERM a kill that would take the caller (pid is the caller or
+					// one of its ancestors), -KAPI_EFAULT
 
 // (v89) The graphics server's operations (ws_ctl (op, a0, a1, a2) -> >= 0, or -KAPI_Exxx; kern/wsrv.h).
 // KAPI_WS_ACTIVE is anyone's; KAPI_WS_REGISTER makes the caller the server (the program "elegant",
@@ -1947,7 +1963,9 @@ struct TKApiTable
 	// --- v89: the graphics server's mechanisms (sys/wsrv.cpp; KAPI_WS_*) ---
 	long (*ws_ctl) (int op, long a0, long a1, long a2);
 
-	// --- v91: the volumes (sys/volume.cpp; struct kapi_volume, KAPI_VST_*, KAPI_VF_*) ---
+	// --- v91: a process's tree (sys/kapi.cpp; KAPI_TREE_*) ---
+	int (*proc_tree) (int pid, int op, int *out, unsigned cap);
+	// --- v92: the volumes (sys/volume.cpp; struct kapi_volume, KAPI_VST_*, KAPI_VF_*) ---
 	// vol_list: every volume (out: up to max of them; flags KAPI_VOLS_ROOM: the free space too) -> how
 	// many there are. vol_eject: a USB volume ("USB:") synced, its device's cache flushed, unmounted ->
 	// 0: it can be removed; -KAPI_EBUSY files are open on it (synced, still mounted; KAPI_EJECT_FORCE
@@ -2172,10 +2190,11 @@ KAPI_CHECK_SLOT (sound_output, 224);
 KAPI_CHECK_SLOT (sound_clients, 225);
 KAPI_CHECK_SLOT (sound_client_volume, 226);
 KAPI_CHECK_SLOT (ws_ctl, 227);
-KAPI_CHECK_SLOT (vol_list, 228);
-KAPI_CHECK_SLOT (vol_eject, 229);
-KAPI_CHECK_SLOT (vol_mount, 230);
-KAPI_CHECK_SLOT (vol_format, 231);
+KAPI_CHECK_SLOT (proc_tree, 228);
+KAPI_CHECK_SLOT (vol_list, 229);
+KAPI_CHECK_SLOT (vol_eject, 230);
+KAPI_CHECK_SLOT (vol_mount, 231);
+KAPI_CHECK_SLOT (vol_format, 232);
 
 #ifdef __cplusplus
 }

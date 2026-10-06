@@ -188,7 +188,10 @@ applet () {
 # ---- the apps, a window each -------------------------------------------------------------------
 if want tinycalc; then sim tinycalc tinycalc "wait;$(typ '12*3.5=');$W" $P; png tinycalc; fi
 if want terminal; then
-	sim terminal terminal "$W" $P SIM_PIPE='/ $ ls /bin | grep e\necho\nsleep\nyes\n/ $ ps\n  1 k R  idle\n  2 k S  compositor\n 14 a R  menubar\n 15 a R  dock\n 16 a S  agenda\n 21 a R  terminal\n/ $ echo onyx | wc -c\n5\n/ $ '
+	# three tabs: the "+" twice, `ping` typed in the third (SIM_BUSY: it runs), back to the first
+	sim terminal terminal "$W;down 219 17;up 219 17;$W;down 419 17;up 419 17;$W;$(typ 'ping 192.168.1.1');key 13;$W;$W;$W;$W;$W;$W;$W;down 60 17;up 60 17;$W" $P \
+		SIM_PIPE='SD:/ $ ls /bin | grep e\necho\nsleep\nyes\nSD:/ $ ps\n  1 k R  idle\n  2 k S  usb\n 14 a R  elegant\n 15 a R  dock\n 21 a R  terminal\n 22 a S  cmd\n 23 a S  cmd\n 24 a S  cmd\n 25 a R  ping\n 26 a R  ps\nSD:/ $ echo onyx | wc -c\n5\nSD:/ $ ' \
+		SIM_PIPE2='SD:/docs $ ' SIM_PIPE3='SD:/ $ ' SIM_BUSY=3
 	png terminal
 fi
 if want tinypad; then sim tinypad tinypad "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x104;$W" $P SIM_ARGS=SD:/notes.txt; png tinypad
@@ -388,7 +391,7 @@ if want volume; then
 	sim menubar volume "wait;wait;down 925 15;up 925 15;$W" SIM_MENU="$MENU_TINYPAD"
 	scene volume "$OUT/volume.elsm" --crop=0,0,1024,150
 fi
-if want disks; then			# (v91: a USB stick plugged in -- SIM_USB --, SD1: there; the stick chosen)
+if want disks; then			# (v92: a USB stick plugged in -- SIM_USB --, SD1: there; the stick chosen)
 	sim disks disks "$W;down 140 90;up 140 90;$W" $P SIM_USB=1 SIM_VOLS=SD1; png disks
 fi
 if want usbmenu; then			# (the menu bar's USB box: a stick plugged in)

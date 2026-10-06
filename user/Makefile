@@ -496,7 +496,7 @@ photos.elf: Apps/photos/main.cpp $(wildcard Apps/photos/*.h) Kits/imagekit/img/i
 ZLIB_SRC = ../third_party/zlib-1.3.1
 ZLIB_OBJ = $(addprefix Libs/zlib/,adler32.o crc32.o deflate.o inflate.o inffast.o inftrees.o trees.o zutil.o)
 Libs/zlib/%.o: $(ZLIB_SRC)/%.c
-	@mkdir -p $(dir $@)
+	@mkdir -p Libs/zlib
 	$(CC) $(NL_CFLAGS) -w -c $< -o $@
 Libs/zlib/libz.a: $(ZLIB_OBJ)
 	$(AR) rcs $@ $^

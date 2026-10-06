@@ -19,7 +19,7 @@ AppKit is what makes a program run: its one link to the system. Every call a pro
 |---|---|
 | Include | `#include "appkit/appkit.h"` |
 | Link | nothing to link: the kernel binds AppKit to every program |
-| Library | `SD:/lib/appkit.so` — 304 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
+| Library | `SD:/lib/appkit.so` — 305 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
 | Sources | `user/Kits/appkit/` |
 
 ## Using it
@@ -78,6 +78,22 @@ lx_launch ("tinypad", "SD:/docs/notes.txt");          // an app, with its argume
 lx_open ("SD:/games/tetris.gb", 0);                   // a file: by its runner
 ```
 
+**The volumes, USB sticks** (kapi v92) — list them, eject a stick, format one:
+
+```c
+struct kapi_volume v[16];
+int n = kapi_vol_list (v, 16, KAPI_VOLS_ROOM);        // SD:, SD1:.., USB:.., RAM: (n: how many)
+for (int i = 0; i < n && i < 16; i++)
+    if ((v[i].flags & KAPI_VF_REMOVABLE) && v[i].state == KAPI_VST_MOUNTED)
+        ax_putln (v[i].label);                        // a stick plugged in: "USB" + its label
+
+if (kapi_vol_eject ("USB:", 0) == -KAPI_EBUSY)        // files open on it (they were synced)
+    kapi_vol_eject ("USB:", KAPI_EJECT_FORCE);        // ... after asking the user
+
+struct kapi_format f = { KAPI_FMT_EXFAT, 0, 0, "PHOTOS" };
+kapi_vol_format ("USB:", &f);                         // erases it; SD: is always refused
+```
+
 ## Index
 
 Everything the headers declare, in their order — the details are in each header's part below.
@@ -98,6 +114,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_kill` | kill the app of that name -> 1, 0 (not running, a kernel task, the caller) | `appkit.h` |
 | `kapi_list_procs` | ps / kill by PID. | `appkit.h` |
 | `kapi_kill_pid` | ps / kill by PID. | `appkit.h` |
+| `kapi_proc_tree` | (v91) A process's tree | `appkit.h` |
 | `kapi_set_keymap` | Keyboard layout | `appkit.h` |
 | `kapi_get_keymap` | Keyboard layout | `appkit.h` |
 | `kapi_exec` | Run an ELF at an absolute path with an argv string (fire-and-forget). | `appkit.h` |
@@ -225,7 +242,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_code_alloc` | Writable + executable memory for generated code, a JIT (v58) | `appkit.h` |
 | `kapi_fsize64` | A file's whole size (v59 | `appkit.h` |
 | `kapi_vol_info` | (v71) vol_info | `appkit.h` |
-| `kapi_vol_list` | (v91) The volumes | `appkit.h` |
+| `kapi_vol_list` | (v92) The volumes | `appkit.h` |
 | `kapi_vol_eject` | vol_eject | `appkit.h` |
 | `kapi_vol_mount` | vol_mount | `appkit.h` |
 | `kapi_vol_format` | vol_format | `appkit.h` |
@@ -583,6 +600,12 @@ ps / kill by PID. list_procs: lines "<pid> <a|k> <state> <name>". kill_pid: forc
 ```cpp
 int kapi_list_procs (char *b, unsigned s);
 int kapi_kill_pid (int pid, int force);
+```
+
+(v91) A process's tree: its descendants (the processes it spawned, the ones they spawned...). op KAPI_TREE_LIST -> how many descendants pid has (up to cap of their pids into out); KAPI_TREE_KILL: pid and all of them terminated now, the leaves first -> how many were; KAPI_TREE_KILL_CHILDREN: its descendants only. -KAPI_ESRCH no such process, -KAPI_EPERM a kill that would take the caller, -KAPI_EINVAL, -KAPI_ENOSYS (a kernel before v91). A terminal closing a tab: its shell and all it runs.
+
+```cpp
+int kapi_proc_tree (int pid, int op, int *out, unsigned cap);
 ```
 
 Keyboard layout: switch among the compiled-in country maps; read the current one.
@@ -1068,7 +1091,7 @@ unsigned long long kapi_fsize64 (void *h);
 int kapi_vol_info (const char *path, struct kapi_vol_info *out);
 ```
 
-(v91) The volumes: SD:, SD1:..SD3: (the card's partitions), USB:, USB2:, USB3: (USB sticks and disks, mounted when plugged in), RAM:. vol_list: every volume (struct kapi_volume: its state KAPI_VST_*, flags KAPI_VF_*, sizes, type, label, the files open on it; flags KAPI_VOLS_ROOM: the free space too) -> how many there are (out: up to max). A USB volume pulled out stays listed as KAPI_VST_REMOVED (KAPI_VF_UNSAFE if it was mounted) until a device takes its place; its gen changes at each event.
+(v92) The volumes: SD:, SD1:..SD3: (the card's partitions), USB:, USB2:, USB3: (USB sticks and disks, mounted when plugged in), RAM:. vol_list: every volume (struct kapi_volume: its state KAPI_VST_*, flags KAPI_VF_*, sizes, type, label, the files open on it; flags KAPI_VOLS_ROOM: the free space too) -> how many there are (out: up to max). A USB volume pulled out stays listed as KAPI_VST_REMOVED (KAPI_VF_UNSAFE if it was mounted) until a device takes its place; its gen changes at each event.
 
 ```cpp
 int kapi_vol_list (struct kapi_volume *out, int max, unsigned flags);
