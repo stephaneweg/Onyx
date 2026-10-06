@@ -132,7 +132,7 @@ Pi, packages); merged into `AutoDev` without conflict (`Merge origin/main into A
 
 ### Commits (Developer C)
 
-- merge of `origin/main` into `AutoDev` (Circuits' card build, FileKit `fk_kv`; no conflict)
+- `f3ec473f` — merge of `origin/main` into `AutoDev` (Circuits' card build, FileKit `fk_kv`; no conflict)
 - `751b2c6e` — Turtle Quest: your best program per level, the stars of the pack at the foot of the list, a FUNCTION chip (step 13; with `world.h`'s header comment)
 - `c35ec311` — Turtle Quest docs: docs/04 §12–§13, docs/03, HANDOFF, IDEAS, exports rebuilt (step 12)
 - this section (06)
