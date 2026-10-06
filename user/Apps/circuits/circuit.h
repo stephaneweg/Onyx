@@ -27,6 +27,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include "filekit/filekit.h"			// (fk_kv_*: the packs, the progress)
 
 namespace circuits {
 
@@ -175,6 +176,60 @@ private:
 	History (const History &);
 	History &operator= (const History &);
 };
+
+// ---- the packs (*.circuits: a [pack] block, then a [level] block a level -- 02 §7.1) ----
+enum { MAXLEVELS = 64 };
+struct Pack
+{
+	char title[2][80];					// [0] English, [1] French
+	char path[256];						// where it was read (the window's)
+	bool opened;						// opened from a file (Ctrl+O, a drop, the argument): all its levels open
+	Level *lv[MAXLEVELS]; int n;
+	Pack () { title[0][0] = title[1][0] = 0; path[0] = 0; opened = false; n = 0; }
+	~Pack () { for (int i = 0; i < n; i++) delete lv[i]; }
+	const char *titleOf (int lang) const { return title[lang][0] ? title[lang] : title[0]; }
+	int find (const char *id) const;			// a level by its id -> index, -1
+private:
+	Pack (const Pack &);
+	Pack &operator= (const Pack &);
+};
+// A pack's document (read by the window with fk_kv_load (path, FK_KV_PIPES)) -> its levels; false: why ("line 42:
+// the table has 3 rows, 4 expected"), the pack as it was.
+bool parse_pack_kv (Pack &pk, const fk_kv *doc, char *why, int cap);
+bool parse_pack (Pack &pk, const char *text, char *why, int cap);	// the same from the text (fk_kv_parse)
+// Every level's id unique over the packs -> true; false: why ("a level \"and\" is already loaded")
+bool ids_unique (Pack *const *packs, int n, char *why, int cap);
+
+// ---- the player's progress (progress.ini, over an fk_kv document with FK_KV_ESCAPES -- 02 §7.2) ----
+// Top keys: pack, level (the last played), open (the open levels' ids); section [Player]: <id> = the best stars,
+// <id>.circuit = the board as circuit text, seen.<concept> = 1. Unknown keys are kept.
+struct Progress
+{
+	fk_kv *kv;
+	char player[32];
+	Progress () : kv (0) { strcpy (player, "Player"); }
+	~Progress () { fk_kv_free (kv); }
+	void attach (fk_kv *doc);				// the document read (taken; 0: a fresh start, an empty one)
+	int  stars (const char *id) const;			// 0..3
+	bool record (const char *id, int stars);		// the best kept (never lowered) -> true: raised (a new record)
+	const char *circuit (const char *id) const;		// the board saved ("": none)
+	void setCircuit (const char *id, const char *text);
+	bool seen (const char *topic) const;
+	void setSeen (const char *topic);
+	bool isOpen (const char *id) const;
+	void open (const char *id);
+	const char *lastPack () const;
+	const char *lastLevel () const;
+	void setLast (const char *pack, const char *level);
+private:
+	Progress (const Progress &);
+	Progress &operator= (const Progress &);
+};
+bool level_open (const Progress &pr, const Pack &pk, int l);	// opened from a file, or open in the progress
+void open_first (Progress &pr, Pack *const *packs, int n);	// a fresh start: the first level open
+// Level l of pack p won: the next one opened (the last of a built-in pack: the first of the next built-in pack) ->
+// its id, 0 none (the very last level, or a pack opened from a file)
+const char *unlock_after (Progress &pr, Pack *const *packs, int n, int p, int l);
 
 } // namespace circuits
 

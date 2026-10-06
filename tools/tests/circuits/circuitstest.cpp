@@ -10,6 +10,7 @@
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 //
 #include "circuits/circuit.h"
+#include "circuits/lessons.h"
 #include <stdio.h>
 
 using namespace circuits;
@@ -372,6 +373,228 @@ static void test_table ()
 	CHECK (n == 40 && strlen (small) == 7, "cut to its buffer, its length told (%d)", n);
 }
 
+// ---- part B: the packs --------------------------------------------------------------------------------------------------
+static char *slurp (const char *path)
+{
+	FILE *f = fopen (path, "rb"); if (!f) return 0;
+	fseek (f, 0, SEEK_END); long n = ftell (f); fseek (f, 0, SEEK_SET);
+	char *b = (char *) malloc ((size_t) n + 1); size_t got = fread (b, 1, (size_t) n, f); b[got] = 0; fclose (f);
+	return b;
+}
+// The objectives of 02 §6, recomputed here (row r: the first input the MSB)
+struct Objective { const char *id; int min; int (*f) (unsigned r, int o); };
+static int ones (unsigned r) { int n = 0; for (; r; r >>= 1) n += r & 1; return n; }
+static const Objective OBJ[] = {
+	{ "wire", 0, [] (unsigned r, int) { return (int) (r & 1); } },
+	{ "not", 1, [] (unsigned r, int) { return (int) (!(r & 1)); } },
+	{ "and", 1, [] (unsigned r, int) { return r == 3 ? 1 : 0; } },
+	{ "or", 1, [] (unsigned r, int) { return r != 0 ? 1 : 0; } },
+	{ "and3", 2, [] (unsigned r, int) { return r == 7 ? 1 : 0; } },
+	{ "nand", 2, [] (unsigned r, int) { return r != 3 ? 1 : 0; } },
+	{ "nor", 2, [] (unsigned r, int) { return r == 0 ? 1 : 0; } },
+	{ "nandonly", 3, [] (unsigned r, int o) { int a = r >> 1, b = r & 1; return o == 0 ? (int) !a : (int) (a && b); } },
+	{ "nandor", 3, [] (unsigned r, int) { return r != 0 ? 1 : 0; } },
+	{ "xor", 3, [] (unsigned r, int) { return r == 1 || r == 2 ? 1 : 0; } },
+	{ "nandxor", 4, [] (unsigned r, int) { return r == 1 || r == 2 ? 1 : 0; } },
+	{ "same", 2, [] (unsigned r, int) { return r == 0 || r == 3 ? 1 : 0; } },
+	{ "majority", 4, [] (unsigned r, int) { return ones (r) >= 2 ? 1 : 0; } },
+	{ "mux", 3, [] (unsigned r, int) { int s = r >> 2, a = (r >> 1) & 1, b = r & 1; return s ? b : a; } },
+	{ "parity", 2, [] (unsigned r, int) { return ones (r) & 1; } },
+	{ "half", 2, [] (unsigned r, int o) { int sum = (int) ((r >> 1) + (r & 1)); return o == 0 ? sum >> 1 : sum & 1; } },
+	{ "full", 5, [] (unsigned r, int o) { int sum = ones (r); return o == 0 ? sum >> 1 : sum & 1; } },
+	{ "add2", 7, [] (unsigned r, int o) { int sum = (int) ((r >> 2) + (r & 3)); return (sum >> (2 - o)) & 1; } },
+	{ "decoder", 4, [] (unsigned r, int o) { return (int) r == o ? 1 : 0; } },
+	{ "compare", 4, [] (unsigned r, int o) { int a = r >> 1, b = r & 1; return (int) (o == 0 ? a > b : o == 1 ? a == b : a < b); } },
+};
+enum { NOBJ = sizeof OBJ / sizeof OBJ[0] };
+static const char *const PARTS[NOBJ] = { "", "NOT", "NOT AND", "NOT AND OR", "NOT AND OR", "NOT AND OR", "NOT AND OR NAND", "NAND",
+	"NAND", "NOT AND OR NAND NOR", "NAND", "*", "*", "*", "*", "*", "*", "*", "*", "*" };
+static const int PAR2[NOBJ] = { 0, 1, 1, 1, 2, 3, 3, 4, 4, 5, 5, 3, 5, 4, 3, 3, 6, 9, 6, 5 };
+static unsigned mask_of (const char *parts)
+{
+	unsigned m = 0; char b[64]; snprintf (b, sizeof b, "%s", parts);
+	if (!strcmp (b, "*")) { for (int t = P_NOT; t < P_COUNT_; t++) m |= 1u << t; return m; }
+	for (char *t = strtok (b, " "); t; t = strtok (0, " ")) m |= 1u << type_of (t);
+	return m;
+}
+// The solution without its places ("part g1 AND 8 4" -> "part g1 AND")
+static void strip_places (const char *in, char *out, int cap)
+{
+	int o = 0;
+	for (const char *p = in; *p && o < cap - 1; )
+	{
+		const char *q = p; while (*q && *q != '\n') q++;
+		char ln[200]; int n = (int) (q - p); if (n > 199) n = 199; memcpy (ln, p, (size_t) n); ln[n] = 0;
+		if (!strncmp (ln, "part ", 5)) { char *sp = strchr (ln + 5, ' '); if (sp) sp = strchr (sp + 1, ' '); if (sp) *sp = 0; }
+		o += snprintf (out + o, (size_t) (cap - o), "%s%s", o ? "\n" : "", ln);
+		if (o >= cap) o = cap - 1;
+		p = *q ? q + 1 : q;
+	}
+}
+static void test_packs (Pack **packs, int np)
+{
+	// AC 1: 3 packs, 8 + 6 + 6, the ids unique, in the order of 02 §6
+	CHECK (np == 3, "%d packs, 3 expected", np);
+	if (np != 3) return;
+	CHECK (packs[0]->n == 8 && packs[1]->n == 6 && packs[2]->n == 6, "8 + 6 + 6 levels (%d %d %d)", packs[0]->n, packs[1]->n, packs[2]->n);
+	char why[160] = "";
+	CHECK (ids_unique (packs, np, why, sizeof why), "ids unique: %s", why);
+	CHECK (!strcmp (packs[0]->title[0], "1. Gates") && !strcmp (packs[1]->title[1], "2. Combiner") && !strcmp (packs[2]->title[0], "3. Arithmetic"), "the packs' titles");
+	int k = 0;
+	for (int p = 0; p < np; p++)
+		for (int i = 0; i < packs[p]->n; i++, k++)
+		{
+			const Level &L = *packs[p]->lv[i];
+			if (k >= NOBJ) { CHECK (0, "more levels than 02 §6 has"); return; }
+			const Objective &O = OBJ[k];
+			CHECK (!strcmp (L.id, O.id), "level %d is \"%s\", \"%s\" expected", k + 1, L.id, O.id);
+			// AC 2: the table is the objective
+			bool same = true;
+			for (int o = 0; o < L.noutputs; o++)
+				for (int r = 0; r < L.rows (); r++) same = same && (int) ((L.want[o] >> r) & 1) == O.f ((unsigned) r, o);
+			CHECK (same, "%s: its table is not its objective", L.id);
+			CHECK (L.parts == mask_of (PARTS[k]), "%s: parts %x, %x expected", L.id, L.parts, mask_of (PARTS[k]));
+			CHECK (L.par3 == O.min && L.par2 == PAR2[k], "%s: par %d %d, %d %d expected", L.id, L.par3, L.par2, O.min, PAR2[k]);
+			// AC 3: the reference solution parses, uses the level's parts, wins every row with 3 stars, at the minimum
+			CHECK (L.solution != 0, "%s: no solution", L.id);
+			if (!L.solution) continue;
+			Circuit c; Err e; int line;
+			bool ok = read_text (c, L, L.solution, &e, &line);
+			CHECK (ok, "%s: its solution: %s at line %d (pack line %d)", L.id, err_name (e), line, L.solutionLine + line - 1);
+			if (!ok) continue;
+			for (int g = c.ni + c.no; g < c.n; g++) CHECK (L.allows (c.p[g].type), "%s: %s not allowed", L.id, type_name (c.p[g].type));
+			CheckResult r = check (c, L);
+			CHECK (r.err == E_OK && r.won && r.nwrong == 0 && r.stars == 3 && r.gates == O.min, "%s: %s, %d wrong, %d stars, %d gates (min %d)",
+				L.id, err_name (r.err), r.nwrong, r.stars, r.gates, O.min);
+			char t[TEXTCAP]; write_text (c, t, sizeof t);
+			CHECK (!strcmp (t, L.solution), "%s: the solution is not in the canonical form:\n%s\n--\n%s", L.id, L.solution, t);
+			// G0: without its places, placed by depth: nothing outside, nothing overlapping, still won
+			char bare[TEXTCAP]; strip_places (L.solution, bare, sizeof bare);
+			Circuit a;
+			ok = read_text (a, L, bare, &e, &line);
+			CHECK (ok, "%s: auto-placed: %s at line %d", L.id, err_name (e), line);
+			bool fine = ok;
+			for (int g = a.ni + a.no; ok && g < a.n; g++)
+			{
+				fine = fine && a.p[g].x >= GATE_MINX && a.p[g].x + GATE_W <= GATE_MAXX && a.p[g].y >= 0 && a.p[g].y + GATE_H <= BOARD_H;
+				for (int h = g + 1; h < a.n; h++)
+					fine = fine && !(a.p[g].x < a.p[h].x + GATE_W && a.p[h].x < a.p[g].x + GATE_W && a.p[g].y < a.p[h].y + GATE_H && a.p[h].y < a.p[g].y + GATE_H);
+			}
+			CHECK (fine && check (a, L).won, "%s: auto-placed: outside, overlapping or lost", L.id);
+			// AC 22 (b): French texts; a lesson for every concept, in both languages
+			CHECK (L.title[1][0] && L.text[1][0] && L.hint[0][0] && L.hint[1][0], "%s: title.fr, text.fr, hint, hint.fr", L.id);
+			if (L.topic[0])
+			{
+				const Lesson *ls = find_lesson (L.topic);
+				CHECK (ls && ls->title[0][0] && ls->title[1][0] && ls->text[0][0] && ls->text[1][0], "%s: no lesson \"%s\" in EN and FR", L.id, L.topic);
+			}
+		}
+	CHECK (k == NOBJ, "%d levels, %d expected", k, (int) NOBJ);
+	// the 18 concepts, each used once
+	const char *concepts[] = { "wire", "not", "and", "or", "chain", "nand", "nor", "universal", "xor", "nandxor", "equal", "majority",
+		"mux", "parity", "adder", "fulladder", "decoder", "compare" };
+	int nl = 0; while (LESSONS[nl].key) nl++;
+	CHECK (nl == 18, "%d lessons, 18 expected", nl);
+	for (unsigned c = 0; c < sizeof concepts / sizeof concepts[0]; c++)
+	{
+		int used = 0;
+		for (int p = 0; p < np; p++) for (int i = 0; i < packs[p]->n; i++) used += !strcmp (packs[p]->lv[i]->topic, concepts[c]);
+		CHECK (used == 1 && find_lesson (concepts[c]), "concept %s: used %d times", concepts[c], used);
+	}
+	const int gates_of[] = { -1, P_NOT, P_AND, P_OR, -1, P_NAND, P_NOR, -1, P_XOR, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
+	for (int c = 0; c < 18; c++) CHECK (find_lesson (concepts[c]) && find_lesson (concepts[c])->gate == gates_of[c], "lesson %s's gate", concepts[c]);
+}
+static const char *GOOD =
+	"[pack]\ntitle = Extra\n\n[level]\nid = x1\ntitle = One\ntext = Do it.\ninputs = A B\noutputs = Out\nparts = AND\npar = 1 2\nfuture = a key of a later version\n"
+	"table =\n| A B | Out\n| 0 0 | 0\n| 0 1 | 0\n| 1 0 | 0\n| 1 1 | 1\nsolution =\n| part g1 AND\n| wire A g1.1\n| wire B g1.2\n| wire g1 Out\n";
+static void test_pack_errors ()
+{
+	// AC 12
+	Pack pk; char why[160] = "";
+	CHECK (parse_pack (pk, GOOD, why, sizeof why) && pk.n == 1 && !strcmp (pk.title[0], "Extra") && !strcmp (pk.lv[0]->id, "x1"), "a pack with an unknown key loads: %s", why);
+	CHECK (pk.lv[0]->solutionLine == 20 && pk.lv[0]->want[0] == 8, "its solution's line, its table");
+	struct { const char *from, *to; const char *msg; } bad[] = {
+		{ "| 1 1 | 1\n", "", "line 14: the table has 3 rows, 4 expected" },
+		{ "| 0 1 | 0\n| 1 0 | 0\n", "| 1 0 | 0\n| 0 1 | 0\n", "line 16: the rows must count up in binary: row 2 out of order" },
+		{ "inputs = A B\n", "", "line 4: this level has no \"inputs\"" },
+		{ "inputs = A B\n", "inputs = A B C D E\n", "line 8: 5 inputs, 1 to 4 expected" },
+		{ "| 1 1 | 1\n", "| 1 1 | 1\n| 1 1 | 1\n", "line 19: the table has more than 4 rows" },
+		{ "| 1 0 | 0\n", "| 1 0 | 2\n", "line 17: a row holds 0 and 1 only" },
+		{ "| A B | Out\n", "| A C | Out\n", "line 14: the table's first line must name the inputs and the outputs, as \"| A ... | Out ...\"" },
+		{ "parts = AND\n", "parts = AND FOO\n", "line 10: unknown part \"FOO\" (NOT AND OR XOR NAND NOR)" },
+		{ "par = 1 2\n", "par = 3 2\n", "line 11: par is two gate counts, for three stars then for two: \"par = 3 5\"" },
+		{ "par = 1 2\n", "par = 1\n", "line 11: par is two gate counts, for three stars then for two: \"par = 3 5\"" },
+		{ "id = x1\n", "id = X 1\n", "line 5: an id is made of a-z, 0-9 and '-' (23 at most)" },
+		{ "outputs = Out\n", "outputs = out\n", "line 9: \"out\": a name starts with a capital, 4 letters or digits at most" },
+		{ "outputs = Out\n", "outputs = A\n", "line 4: \"A\" is named twice" },
+		{ "[level]\n", "[levels]\n", "no [level] in the pack" },
+	};
+	for (unsigned k = 0; k < sizeof bad / sizeof bad[0]; k++)
+	{
+		char text[1024]; const char *at = strstr (GOOD, bad[k].from);
+		CHECK (at, "case %u: \"%s\" not in the pack", k, bad[k].from);
+		if (!at) continue;
+		snprintf (text, sizeof text, "%.*s%s%s", (int) (at - GOOD), GOOD, bad[k].to, at + strlen (bad[k].from));
+		Pack q; why[0] = 0;
+		CHECK (!parse_pack (q, text, why, sizeof why) && !strcmp (why, bad[k].msg) && q.n == 0, "case %u: \"%s\", expected \"%s\"", k, why, bad[k].msg);
+	}
+	// two levels with one id; a second pack with an id already loaded
+	char two[2048]; const char *lv = strstr (GOOD, "[level]");
+	snprintf (two, sizeof two, "%s\n%s", GOOD, lv);
+	Pack q;
+	CHECK (!parse_pack (q, two, why, sizeof why) && !strcmp (why, "line 26: the id \"x1\" is used twice"), "an id twice: %s", why);
+	Pack *both[2] = { &pk, &pk };
+	CHECK (!ids_unique (both, 2, why, sizeof why) && !strcmp (why, "a level \"x1\" is already loaded"), "ids_unique: %s", why);
+	// a failed parse leaves the pack as it was
+	CHECK (!parse_pack (pk, "[pack]\ntitle = Other\n", why, sizeof why) && pk.n == 1 && !strcmp (pk.title[0], "Extra"), "a refused pack changes nothing");
+}
+static void test_progress (Pack **packs, int np)
+{
+	if (np != 3) return;
+	// AC 13: a fresh start, then the values written and read back
+	Progress pr; pr.attach (0);
+	open_first (pr, packs, np);
+	CHECK (pr.isOpen ("wire") && !pr.isOpen ("not") && !pr.isOpen ("") && !pr.isOpen ("wir"), "a fresh start: only wire open");
+	CHECK (level_open (pr, *packs[0], 0) && !level_open (pr, *packs[0], 1), "level_open");
+	CHECK (pr.stars ("wire") == 0 && !pr.seen ("wire") && !pr.circuit ("and")[0] && !pr.lastLevel ()[0], "nothing yet");
+	CHECK (pr.record ("wire", 3) && pr.record ("and", 2) && pr.record ("or", 1), "records");
+	const char *circ = "part g1 AND 16 12\nwire A g1.1\nwire B g1.2\nwire g1 Out";
+	pr.setCircuit ("and", circ);
+	pr.setCircuit ("odd", "a \\ backslash\nand a new line");
+	pr.setSeen ("wire"); pr.setSeen ("and");
+	pr.open ("not"); pr.open ("and"); pr.open ("not");
+	pr.setLast ("1-gates.circuits", "and");
+	fk_kv_set (pr.kv, "Player", "future", "kept");		// (a key of a later version)
+	int len = 0;
+	const char *t = fk_kv_text (pr.kv, "# Circuits -- the player's progress (written by the game)", &len);
+	CHECK (strstr (t, "\nopen = wire not and\n") && strstr (t, "\nand.circuit = part g1 AND 16 12\\nwire A g1.1\\nwire B g1.2\\nwire g1 Out\n")
+		&& strstr (t, "[Player]\nwire = 3\n") && !strncmp (t, "# Circuits", 10) && strstr (t, "\npack = 1-gates.circuits\nlevel = and\n"), "the text:\n%s", t);
+	Progress back; back.attach (fk_kv_parse (t, FK_KV_ESCAPES));
+	CHECK (back.stars ("wire") == 3 && back.stars ("and") == 2 && back.stars ("or") == 1 && back.stars ("xor") == 0, "stars back");
+	CHECK (!strcmp (back.circuit ("and"), circ) && !strcmp (back.circuit ("odd"), "a \\ backslash\nand a new line"), "circuits back");
+	CHECK (back.seen ("wire") && back.seen ("and") && !back.seen ("or"), "lessons seen back");
+	CHECK (back.isOpen ("wire") && back.isOpen ("not") && back.isOpen ("and") && !back.isOpen ("or"), "open levels back");
+	CHECK (!strcmp (back.lastPack (), "1-gates.circuits") && !strcmp (back.lastLevel (), "and"), "the last level back");
+	CHECK (!strcmp (fk_kv_get (back.kv, "Player", "future", ""), "kept"), "an unknown key kept");
+	// AC 14: unlocking; the stars never lowered
+	Progress u; u.attach (0); open_first (u, packs, np);
+	const char *next = unlock_after (u, packs, np, 0, 0);
+	CHECK (next && !strcmp (next, "not") && u.isOpen ("not") && !u.isOpen ("and"), "winning wire opens not");
+	next = unlock_after (u, packs, np, 0, 7);
+	CHECK (next && !strcmp (next, "nandor") && u.isOpen ("nandor"), "the last of pack 1 opens nandor");
+	next = unlock_after (u, packs, np, 1, 5);
+	CHECK (next && !strcmp (next, "parity"), "the last of pack 2 opens parity");
+	CHECK (unlock_after (u, packs, np, 2, 5) == 0, "the very last: nothing");
+	CHECK (u.record ("xor", 2) && !u.record ("xor", 1) && u.stars ("xor") == 2 && !u.record ("xor", 2) && u.record ("xor", 3) && u.stars ("xor") == 3, "never lowered");
+	// a pack opened from a file: all open; not in the path
+	Pack extra; char why[160];
+	CHECK (parse_pack (extra, GOOD, why, sizeof why), "the extra pack: %s", why);
+	extra.opened = true;
+	Pack *four[4] = { packs[0], packs[1], packs[2], &extra };
+	CHECK (level_open (u, extra, 0) && unlock_after (u, four, 4, 3, 0) == 0 && unlock_after (u, four, 4, 2, 5) == 0, "an opened pack: all open, out of the path");
+	CHECK (ids_unique (four, 4, why, sizeof why), "x1 clashes with nothing: %s", why);
+}
+
 int main (int argc, char **argv)
 {
 	test_geometry ();
@@ -382,8 +605,23 @@ int main (int argc, char **argv)
 	test_text ();
 	test_history ();
 	test_table ();
-	(void) argc; (void) argv;
+	test_pack_errors ();
+	// the packs given
+	Pack *packs[16]; int np = 0;
+	for (int a = 1; a < argc && np < 16; a++)
+	{
+		char *src = slurp (argv[a]);
+		CHECK (src, "cannot read %s", argv[a]); if (!src) continue;
+		Pack *pk = new Pack; char why[160] = "";
+		CHECK (parse_pack (*pk, src, why, sizeof why), "%s: %s", argv[a], why);
+		free (src);
+		packs[np++] = pk;
+	}
+	test_packs (packs, np);
+	test_progress (packs, np);
+	int levels = 0;
+	for (int p = 0; p < np; p++) { levels += packs[p]->n; delete packs[p]; }
 	if (fails) { printf ("FAIL circuits (%d of %d checks)\n", fails, checks); return 1; }
-	printf ("ok   circuits (%d checks: the engine)\n", checks);
+	printf ("ok   circuits (%d checks: the engine; %d packs, %d levels solved with three stars)\n", checks, np, levels);
 	return 0;
 }

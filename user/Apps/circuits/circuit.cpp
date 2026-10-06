@@ -667,4 +667,301 @@ bool History::redo (Circuit &c, const Level &L)
 	return true;
 }
 
+// ---- the packs ---------------------------------------------------------------------------------------------------------
+int Pack::find (const char *id) const
+{
+	for (int i = 0; i < n; i++) if (!strcmp (lv[i]->id, id)) return i;
+	return -1;
+}
+static bool io_name_ok (const char *s)
+{
+	int n = (int) strlen (s);
+	if (n < 1 || n > IONAMEL - 1 || s[0] < 'A' || s[0] > 'Z') return false;
+	for (int i = 1; i < n; i++) if (!((s[i] >= 'a' && s[i] <= 'z') || (s[i] >= 'A' && s[i] <= 'Z') || (s[i] >= '0' && s[i] <= '9'))) return false;
+	return true;
+}
+static bool id_ok (const char *s)
+{
+	int n = (int) strlen (s);
+	if (n < 1 || n > 23) return false;
+	for (int i = 0; i < n; i++) if (!((s[i] >= 'a' && s[i] <= 'z') || (s[i] >= '0' && s[i] <= '9') || s[i] == '-')) return false;
+	return true;
+}
+// The words of a value, separated by spaces (into buf; up to max) -> how many (max + 1: more)
+static int split (const char *v, char *buf, int cap, char **w, int max)
+{
+	scpy (buf, v, cap);
+	for (char *p = buf; *p; p++) if (*p == '\t' || *p == '\n' || *p == '\r') *p = ' ';
+	return words (buf, w, max);
+}
+enum { K_ID = 1, K_TITLE = 2, K_TEXT = 4, K_INPUTS = 8, K_OUTPUTS = 16, K_PARTS = 32, K_PAR = 64, K_TABLE = 128 };
+static const char *const REQUIRED[] = { "id", "title", "text", "inputs", "outputs", "parts", "par", "table" };
+// A level's table (its value, its first line) -> L.want; false: why
+static bool parse_table (Level &L, const char *v, int line, char *why, int cap)
+{
+	int rows = 0, j = 0;
+	for (const char *p = v; ; j++)
+	{
+		const char *q = p; while (*q && *q != '\n') q++;
+		char ln[160]; int len = (int) (q - p); if (len > (int) sizeof ln - 1) len = (int) sizeof ln - 1;
+		memcpy (ln, p, (size_t) len); ln[len] = 0;
+		char *bar = strchr (ln, '|');
+		char *w[MAXIO + 2], *u[MAXIO + 2]; int nw = 0, nu = 0;
+		if (bar) { *bar = 0; nw = words (ln, w, MAXIO + 1); nu = words (bar + 1, u, MAXIO + 1); }
+		if (j == 0)
+		{
+			bool same = bar && nw == L.ninputs && nu == L.noutputs;
+			for (int k = 0; same && k < nw; k++) same = !strcmp (w[k], L.inName[k]);
+			for (int k = 0; same && k < nu; k++) same = !strcmp (u[k], L.outName[k]);
+			if (!same) { snprintf (why, (size_t) cap, "line %d: the table's first line must name the inputs and the outputs, as \"| %s ... | %s ...\"", line, L.inName[0], L.outName[0]); return false; }
+		}
+		else if (nw || nu || bar)
+		{
+			if (rows == L.rows ()) { snprintf (why, (size_t) cap, "line %d: the table has more than %d rows", line + j, L.rows ()); return false; }
+			if (!bar || nw != L.ninputs || nu != L.noutputs) { snprintf (why, (size_t) cap, "line %d: a row has %d inputs and %d outputs: \"0 1 | 1\"", line + j, L.ninputs, L.noutputs); return false; }
+			int val = 0;
+			for (int k = 0; k < nw; k++)
+			{
+				if (strcmp (w[k], "0") && strcmp (w[k], "1")) { snprintf (why, (size_t) cap, "line %d: a row holds 0 and 1 only", line + j); return false; }
+				val = val * 2 + (w[k][0] - '0');
+			}
+			if (val != rows) { snprintf (why, (size_t) cap, "line %d: the rows must count up in binary: row %d out of order", line + j, rows + 1); return false; }
+			for (int k = 0; k < nu; k++)
+			{
+				if (strcmp (u[k], "0") && strcmp (u[k], "1")) { snprintf (why, (size_t) cap, "line %d: a row holds 0 and 1 only", line + j); return false; }
+				if (u[k][0] == '1') L.want[k] |= 1u << rows;
+			}
+			rows++;
+		}
+		if (!*q) break;
+		p = q + 1;
+	}
+	if (rows != L.rows ()) { snprintf (why, (size_t) cap, "line %d: the table has %d rows, %d expected", line, rows, L.rows ()); return false; }
+	return true;
+}
+// One [level] block's entries -> L; false: why
+static bool parse_level (Level &L, const fk_kv *doc, int b, char *why, int cap)
+{
+	unsigned seen = 0; int table = -1;
+	for (int i = 0; i < fk_kv_count (doc); i++)
+	{
+		if (fk_kv_block (doc, i) != b) continue;
+		const char *k = fk_kv_key (doc, i), *v = fk_kv_value (doc, i);
+		int line = fk_kv_line (doc, i), lang = 0;
+		char key[32]; scpy (key, k, sizeof key);
+		int kl = (int) strlen (key);
+		if (kl > 3 && !strcmp (key + kl - 3, ".fr")) { key[kl - 3] = 0; lang = 1; }
+		char buf[200], *w[18];
+		if (lang && strcmp (key, "title") && strcmp (key, "text") && strcmp (key, "hint")) continue;	// (unknown: ignored)
+		if (!strcmp (key, "id"))
+		{
+			if (!id_ok (v)) { snprintf (why, (size_t) cap, "line %d: an id is made of a-z, 0-9 and '-' (23 at most)", line); return false; }
+			scpy (L.id, v, sizeof L.id); seen |= K_ID;
+		}
+		else if (!strcmp (key, "title")) { scpy (L.title[lang], v, sizeof L.title[0]); if (!lang) seen |= K_TITLE; }
+		else if (!strcmp (key, "text")) { scpy (L.text[lang], v, sizeof L.text[0]); if (!lang) seen |= K_TEXT; }
+		else if (!strcmp (key, "hint")) scpy (L.hint[lang], v, sizeof L.hint[0]);
+		else if (!strcmp (key, "concept")) scpy (L.topic, v, sizeof L.topic);
+		else if (!strcmp (key, "inputs") || !strcmp (key, "outputs"))
+		{
+			bool in = key[0] == 'i';
+			int n = split (v, buf, sizeof buf, w, 16);
+			if (n < 1 || n > MAXIO) { snprintf (why, (size_t) cap, "line %d: %d %s, 1 to %d expected", line, n, in ? "inputs" : "outputs", MAXIO); return false; }
+			for (int j = 0; j < n; j++)
+			{
+				if (!io_name_ok (w[j])) { snprintf (why, (size_t) cap, "line %d: \"%s\": a name starts with a capital, 4 letters or digits at most", line, w[j]); return false; }
+				scpy (in ? L.inName[j] : L.outName[j], w[j], IONAMEL);
+			}
+			if (in) { L.ninputs = n; seen |= K_INPUTS; } else { L.noutputs = n; seen |= K_OUTPUTS; }
+		}
+		else if (!strcmp (key, "parts"))
+		{
+			char *g[P_COUNT_ + 2];
+			int n = split (v, buf, sizeof buf, g, P_COUNT_);
+			L.parts = 0;
+			for (int j = 0; j < n && j < P_COUNT_; j++)
+			{
+				int t = type_of (g[j]);
+				if (t < 0) { snprintf (why, (size_t) cap, "line %d: unknown part \"%s\" (NOT AND OR XOR NAND NOR)", line, g[j]); return false; }
+				L.parts |= 1u << t;
+			}
+			if (n > P_COUNT_) { snprintf (why, (size_t) cap, "line %d: too many parts", line); return false; }
+			seen |= K_PARTS;
+		}
+		else if (!strcmp (key, "par"))
+		{
+			int n = split (v, buf, sizeof buf, w, 2), a = -1, c = -1;
+			if (n != 2 || !number (w[0], &a) || !number (w[1], &c) || a < 0 || c < a)
+			{ snprintf (why, (size_t) cap, "line %d: par is two gate counts, for three stars then for two: \"par = 3 5\"", line); return false; }
+			L.par3 = a; L.par2 = c; seen |= K_PAR;
+		}
+		else if (!strcmp (key, "table")) { table = i; seen |= K_TABLE; }
+		else if (!strcmp (key, "solution"))
+		{
+			free (L.solution);
+			size_t n = strlen (v);
+			L.solution = (char *) malloc (n + 1);
+			if (L.solution) memcpy (L.solution, v, n + 1);
+			L.solutionLine = line;
+		}
+		// (any other key: ignored -- a later version's)
+	}
+	for (int k = 0; k < 8; k++)
+		if (!(seen & (1u << k))) { snprintf (why, (size_t) cap, "line %d: this level has no \"%s\"", fk_kv_block_line (doc, b), REQUIRED[k]); return false; }
+	for (int a = 0; a < L.ninputs + L.noutputs; a++)
+		for (int c = a + 1; c < L.ninputs + L.noutputs; c++)
+		{
+			const char *x = a < L.ninputs ? L.inName[a] : L.outName[a - L.ninputs], *y = c < L.ninputs ? L.inName[c] : L.outName[c - L.ninputs];
+			if (!strcmp (x, y)) { snprintf (why, (size_t) cap, "line %d: \"%s\" is named twice", fk_kv_block_line (doc, b), x); return false; }
+		}
+	return parse_table (L, fk_kv_value (doc, table), fk_kv_line (doc, table), why, cap);
+}
+bool parse_pack_kv (Pack &pk, const fk_kv *doc, char *why, int cap)
+{
+	Level *got[MAXLEVELS]; int n = 0;
+	char title[2][80] = { "", "" };
+	bool ok = doc != 0;
+	if (!ok) snprintf (why, (size_t) cap, "not a pack");
+	for (int b = 1; ok && b <= fk_kv_blocks (doc); b++)
+	{
+		const char *name = fk_kv_block_name (doc, b);
+		if (!strcmp (name, "pack"))
+		{
+			for (int i = 0; i < fk_kv_count (doc); i++)
+				if (fk_kv_block (doc, i) == b)
+				{
+					if (!strcmp (fk_kv_key (doc, i), "title")) scpy (title[0], fk_kv_value (doc, i), sizeof title[0]);
+					else if (!strcmp (fk_kv_key (doc, i), "title.fr")) scpy (title[1], fk_kv_value (doc, i), sizeof title[1]);
+				}
+		}
+		else if (!strcmp (name, "level"))
+		{
+			if (n == MAXLEVELS) { snprintf (why, (size_t) cap, "line %d: more than %d levels", fk_kv_block_line (doc, b), MAXLEVELS); ok = false; break; }
+			Level *L = new Level;
+			got[n++] = L;
+			if (!parse_level (*L, doc, b, why, cap)) { ok = false; break; }
+			for (int k = 0; k + 1 < n; k++)
+				if (!strcmp (got[k]->id, L->id))
+				{
+					int line = fk_kv_block_line (doc, b);
+					for (int i = 0; i < fk_kv_count (doc); i++) if (fk_kv_block (doc, i) == b && !strcmp (fk_kv_key (doc, i), "id")) line = fk_kv_line (doc, i);
+					snprintf (why, (size_t) cap, "line %d: the id \"%s\" is used twice", line, L->id); ok = false; break;
+				}
+		}
+	}
+	if (ok && !n) { snprintf (why, (size_t) cap, "no [level] in the pack"); ok = false; }
+	if (!ok) { for (int k = 0; k < n; k++) delete got[k]; return false; }
+	for (int k = 0; k < pk.n; k++) delete pk.lv[k];
+	for (int k = 0; k < n; k++) pk.lv[k] = got[k];
+	pk.n = n;
+	scpy (pk.title[0], title[0], sizeof pk.title[0]); scpy (pk.title[1], title[1], sizeof pk.title[1]);
+	return true;
+}
+bool parse_pack (Pack &pk, const char *text, char *why, int cap)
+{
+	fk_kv *doc = fk_kv_parse (text, FK_KV_PIPES);
+	if (!doc) { snprintf (why, (size_t) cap, "out of memory"); return false; }
+	bool ok = parse_pack_kv (pk, doc, why, cap);
+	fk_kv_free (doc);
+	return ok;
+}
+bool ids_unique (Pack *const *packs, int n, char *why, int cap)
+{
+	for (int a = 0; a < n; a++)
+		for (int i = 0; i < packs[a]->n; i++)
+			for (int b = 0; b <= a; b++)
+				for (int j = 0; j < (b == a ? i : packs[b]->n); j++)
+					if (!strcmp (packs[a]->lv[i]->id, packs[b]->lv[j]->id))
+					{ snprintf (why, (size_t) cap, "a level \"%s\" is already loaded", packs[a]->lv[i]->id); return false; }
+	return true;
+}
+
+// ---- the progress ----------------------------------------------------------------------------------------------------------
+void Progress::attach (fk_kv *doc)
+{
+	fk_kv_free (kv);
+	kv = doc ? doc : fk_kv_new (FK_KV_ESCAPES);
+}
+int Progress::stars (const char *id) const
+{
+	int s = atoi (fk_kv_get (kv, player, id, "0"));
+	return s < 0 ? 0 : s > 3 ? 3 : s;
+}
+bool Progress::record (const char *id, int s)
+{
+	if (s <= stars (id)) return false;
+	char b[16]; snprintf (b, sizeof b, "%d", s);
+	fk_kv_set (kv, player, id, b);
+	return true;
+}
+const char *Progress::circuit (const char *id) const
+{
+	char k[48]; snprintf (k, sizeof k, "%s.circuit", id);
+	return fk_kv_get (kv, player, k, "");
+}
+void Progress::setCircuit (const char *id, const char *text)
+{
+	char k[48]; snprintf (k, sizeof k, "%s.circuit", id);
+	fk_kv_set (kv, player, k, text);
+}
+bool Progress::seen (const char *topic) const
+{
+	char k[48]; snprintf (k, sizeof k, "seen.%s", topic);
+	return atoi (fk_kv_get (kv, player, k, "0")) != 0;
+}
+void Progress::setSeen (const char *topic)
+{
+	char k[48]; snprintf (k, sizeof k, "seen.%s", topic);
+	fk_kv_set (kv, player, k, "1");
+}
+bool Progress::isOpen (const char *id) const
+{
+	const char *o = fk_kv_get (kv, "", "open", "");
+	int n = (int) strlen (id);
+	for (const char *p = o; *p; )
+	{
+		while (*p == ' ') p++;
+		const char *q = p; while (*q && *q != ' ') q++;
+		if (q - p == n && n && !strncmp (p, id, (size_t) n)) return true;
+		p = q;
+	}
+	return false;
+}
+void Progress::open (const char *id)
+{
+	if (!id || !id[0] || isOpen (id)) return;
+	const char *o = fk_kv_get (kv, "", "open", "");
+	size_t n = strlen (o) + strlen (id) + 2;
+	char *b = (char *) malloc (n);
+	if (!b) return;
+	snprintf (b, n, "%s%s%s", o, o[0] ? " " : "", id);
+	fk_kv_set (kv, "", "open", b);
+	free (b);
+}
+const char *Progress::lastPack () const { return fk_kv_get (kv, "", "pack", ""); }
+const char *Progress::lastLevel () const { return fk_kv_get (kv, "", "level", ""); }
+void Progress::setLast (const char *pack, const char *level)
+{
+	fk_kv_set (kv, "", "pack", pack);
+	fk_kv_set (kv, "", "level", level);
+}
+bool level_open (const Progress &pr, const Pack &pk, int l)
+{
+	return l >= 0 && l < pk.n && (pk.opened || pr.isOpen (pk.lv[l]->id));
+}
+void open_first (Progress &pr, Pack *const *packs, int n)
+{
+	for (int p = 0; p < n; p++) if (!packs[p]->opened && packs[p]->n) { pr.open (packs[p]->lv[0]->id); return; }
+}
+const char *unlock_after (Progress &pr, Pack *const *packs, int n, int p, int l)
+{
+	if (p < 0 || p >= n || packs[p]->opened) return 0;
+	const Level *next = 0;
+	if (l + 1 < packs[p]->n) next = packs[p]->lv[l + 1];
+	else for (int q = p + 1; q < n && !next; q++) if (!packs[q]->opened && packs[q]->n) next = packs[q]->lv[0];
+	if (!next) return 0;
+	pr.open (next->id);
+	return next->id;
+}
+
 } // namespace circuits
