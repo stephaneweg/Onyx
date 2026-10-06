@@ -674,3 +674,33 @@ relevant), `docs/HANDOFF.md`, `IDEAS.md`, `docs/exports/*` (by `build_docs.py`).
 
 **Untouched (checked by the Reviewer):** `kernel/`, `user/Kits/` (all kits and their `.abi`), `user/Apps/games/game.h`
 (or additions only), `user/Include/gamepad.h`, `tools/pkg/versions.ini`, the other apps.
+
+---
+
+## GUI plan (added by the UX Designer, 2026-10-06 — `04-ux-design.md`, mock-ups in `mockups/`)
+
+The core (steps 1–9) is **unchanged**. What the UX design changes or adds to the window steps, and why:
+
+| Step | Change | Source |
+|---|---|---|
+| 6 (rules) | **Expose to the UI** (no new logic): `Game::ballSaveActive ()` (SHOOT AGAIN blinks), `extraBalls` (SHOOT AGAIN lit), `ruleCount[]` / `ruleDone[]` (the panel's progress dots), the nudges in the last 300 frames (the panel's three tilt dots). | 04 D7, D8, D17 |
+| 7 (tables) | **Start from the UX drafts**: `python3 autodev/rounds/04-pinball/mockups/mktables.py sdcard/apps/pinball.app/tables` writes the three tables on the §6.1 skeleton with their colours, artwork (`[shape]`), words (`[label]`, EN + FR), elements, rules and messages (04 §5.1). Then tune positions until AC 6 / 7 / 9 pass (the drafts are drawn, not simulated); keep the palettes. | 04 §5.1 |
+| 8 (scores) | One more `[settings]` key: `table = <section>` (the last table played: the picker's chosen row at start). | 04 §3 |
+| 10 (window, play) | **Window**: `GameRoot root (600, 680, "Pinball")` (was "about 600 × 700, fixed"), `setResizable (true)`, `setMinSize (480, 560)`, `fitWorkArea ()`; `onResized` places the field and the panel again and rebuilds the static layer at the new scale. **`PinballView : GameView` covers the playfield only** (0, 0, W − 260, H); the table letterboxed with bars of `uk_tone (bg, 70)`. **The panel is UIKit widgets beside it** (new header **`user/Apps/pinball/panel.h`**, same translation unit): `Heading`, two **`LcdDisplay`**s (score: `FtTextFace` 26 px, `smallFace` 11 px, caption *BALL* / sub *n / 3*; message: 16 px, `centred`, red ink for TILT / *Tilt warning*), `Stats` (Bonus, Multiplier, Best, Tilt dots), `Heading` *Goal* + `RuleList` (each `[rule]` with a message: dots / check), `Legend` (keys, or the pad's buttons once a pad button is seen); updated from the `Game` after each frame only when a value changed. **`draw.h` follows 04 §5.2** (the mock's `draw_static` / `draw_dynamic`, `lamp`, `pill`, `ball`, `flipper`, `words` are the reference): ramps' tracks and rails and the `[label]`s (rotated ones too) in the static layer; the **automatic inserts** (multiplier row, SHOOT AGAIN — D17), the nudge shake (D18), tilt greying; the end-of-ball **bonus card** (D13). Numbers grouped by `TRC ("digits", ",")` (D15). | 04 D1–D9, D13, D15–D18, §2.1, §4, §5 |
+| 11 (picker, name entry) | **The picker is a screen of the same window** (the field and panel hidden; new header **`user/Apps/pinball/picker.h`**): `TableList : Widget` (drawn rows: a 22 × 44 picture, the name, *Best …* / *No score yet* / the error in red; the player's tables after a caption; scrolls), `Thumb : Widget` (the preview with lamps off — or, for a broken table, the warning card), `Heading` (name + goal), `ScoreList : Widget` (top 5, "—" for empty ranks), a **`ToolButton` *Play*** (`WKT_PLAY`, `filled`, disabled for a broken table), a `Legend` row. States: no shipped table → `ft_messagebox` and quit; a broken table → greyed row + warning card (D11); `pinball <bad file>` → the picker with that row chosen. **Overlays** drawn by `PinballView` with **real widgets as root children** shown with them: pause card + `Button`s *Resume* / *Back to the tables* (one overlay for P, Start, Esc and Select — D12); game over + **`Textbox`** (16 chars, the last name) + `Button` *OK* (D14); the top-5 card with the new line `uk_hilite`d. While one shows, the focused widget gets the keys first; `GameRoot::onKey` then hands the keys it did not take to the view (`view->key` when the view lacks the focus), so **`PinballView::key` must ignore every key while an overlay with widgets is up** (else Enter in the name field would also act on the view); the pad's d-pad / A / B are turned into ↑ ↓ / Enter / Esc for them; closing it gives the focus back to the view. **Menu** (04 §6): *Game*: New Game ^N, Pause P, Choose a Table… Esc, **Open a Table File… ^O** (new: `ft_file_open`, filter *.table*), —, Sound On / Off S, —, Quit ^Q. | 04 D10–D12, D14, §3, §6, §7 |
+| 12 (French) | Add the words of 04 §8 (the mock's `mockups/sd/apps/pinball.app/lang/fr.txt` is the start of `sdcard/apps/pinball.app/lang/fr.txt`) and `digits|,` → U+202F. Check the French shots against `mockups/pb-*-fr.png` (nothing cut). | 04 §8 |
+| 14 (shots, docs) | `shots.sh pinball` should reproduce the mock's scenes: `pinball.png` ≈ `pb-picker.png`, `pinball-play.png` ≈ `pb-play.png`, `pinball-multiball.png` ≈ `pb-multiball.png`, `pinball-fr.png` ≈ `pb-picker-fr.png`; **add `pinball-broken.png`** (the picker with `SD:/docs/pinball/broken.table` via `SIM_ARGS`: the error state — it shows AC 30 in the docs). docs/04's *Pinball* section takes the controls of 04 §7 and the screen descriptions of 04 §2–§4. | 04 §1 |
+
+**Added files** (beside the app, UI only, in `main.cpp`'s one translation unit): `user/Apps/pinball/panel.h`,
+`user/Apps/pinball/picker.h` (to the list of §10). **No UIKit change, no kit change, no kapi change**: every widget used
+exists (`LcdDisplay`, `ToolButton`, `Button`, `Textbox`, `Menu`, `ft_messagebox`, `ft_file_open`); the drawn widgets
+are `Widget` subclasses in the app, as Circuits' `LevelList` / `Card`.
+
+**New risk R11 — focus between the `GameView` and the overlays' widgets**: a `Textbox` over a `GameView` that polls
+`kapi_key_held` — the name typed must not move a flipper (the game is over then: no world step), and Space / Enter in
+the pause card must not launch a ball (paused: no step). Rule: the world steps only in `V_PLAY` without an overlay; the
+overlays' widgets take the focus when shown, the view takes it back when they hide. Tested in the simulator by the
+name-entry scenario of 03 §9.3 (`key 13` at the name entry writes `scores.ini`).
+
+**Throwaway**: the mock program and its data stay in `autodev/rounds/04-pinball/mockups/` (`pinmock.cpp`,
+`mockups.sh`, `mktables.py`, `sd/`); they are not built by `user/Makefile` nor by `shots.sh`, and are not shipped.
