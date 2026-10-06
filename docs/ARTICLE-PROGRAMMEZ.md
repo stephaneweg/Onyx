@@ -76,6 +76,18 @@ On présentera Circle et Onyx brièvement.
   la branche principale (`main`). Voir aussi la règle git de `CLAUDE.md` : chaque session fusionne
   `origin/main` avant de commencer et avant de committer, puis pousse dans `main`.
 
+### Le coût (témoignage de l'utilisateur, 2026-10-06)
+
+- Il faut l'expliquer clairement : sur un projet de cette taille, **les tokens peuvent se consommer
+  vite**. La vraie question est : **accepte-t-on parfois d'attendre ?**
+- Son vécu : il était sur l'abonnement **Max à 100 €**. Ça marchait très bien, puis à un moment il n'avait
+  plus assez de quota pour la semaine. Ne voulant pas **attendre 3 jours** que le quota se renouvelle, il a
+  **upgradé** son abonnement.
+- Sa conclusion : sans son impatience, et s'il avait été moins « dispersé » dans ses idées, **l'abonnement
+  à 100 € aurait sans doute suffi**.
+- Lien à faire dans l'article : coût et dispersion vont ensemble. Cinq conversations en parallèle, c'est
+  cinq fois plus de quota. Le vrai arbitrage est entre **patience/discipline** et **budget**.
+
 ## Ébauche de texte (v0, à reprendre)
 
 **La genèse.** Tout est parti d'un loisir : la construction d'une petite borne d'arcade, animée par un
@@ -129,9 +141,11 @@ sur le Pi et le résultat attendu.
 - Ce qui a coincé : bugs difficiles, allers-retours, erreurs de Claude et comment elles sont apparues
   (souvent au test sur le Pi).
 - Son rôle réel : arbitrer, refuser, recadrer (les règles de `CLAUDE.md` : « kits first », licences MIT…).
-- Le temps et le coût.
+- Le temps passé. (Le coût : voir « Le coût » plus haut ; préciser le montant de l'abonnement supérieur
+  si on veut le citer.)
 - Un conseil à un lecteur qui voudrait faire pareil.
 
 ## Suivi
 
-- 2026-10-06 : topo reçu, plan et ébauche v0, avantages/inconvénients ajoutés. **En attente des specs.**
+- 2026-10-06 : topo reçu, plan et ébauche v0, avantages/inconvénients ajoutés, puis le coût
+  (Max 100 €, quota hebdomadaire épuisé, upgrade). **En attente des specs.**
