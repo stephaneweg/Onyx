@@ -229,7 +229,13 @@ telnet and VNC » (docs/08).
   2026-10-02** (`docs/EL0-PROTECTED-MODE.md` : « every app runs at EL0, the EL1 legacy mode is
   removed »). À raconter : on accepte un raccourci pour avancer, puis on paie la dette quand le système
   est mûr.
-- **1 444 commits** sur `main` au 2026-10-06, en un peu plus de trois mois.
+- **1 444 commits** sur `main` au 2026-10-06, mais **pas en trois mois continus** (vérifié le 2026-10-06, à
+  la demande de l'utilisateur) : deux périodes de travail seulement.
+  - **22-28 juin** : 7 jours, 170 commits (le noyau, l'EL0, le compositeur, le passage en EL1…).
+  - **Pause du 29 juin au 24 septembre** : aucun commit.
+  - **25 septembre - 6 octobre** : 12 jours, environ 1 270 commits (pointe : 233 le 1er octobre).
+  - Soit **19 jours actifs**, moins de trois semaines de travail effectif. Dans l'article : « en moins de
+    trois semaines de travail effectif ».
 
 ## Les specs de Programmez! (reçues le 2026-10-06)
 
