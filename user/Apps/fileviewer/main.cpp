@@ -259,10 +259,16 @@ static void preview_clear (void)
 // A path served by a file-system provider (FTP:..., FTPS:...), not the SD card: opening a
 // file there downloads it whole, so previews are limited to small files.
 // The SD card's volumes: SD: (partition 1, the boot one) and SD1: .. SD3: (partitions 2..4, FAT or exFAT).
-// RAM:, the volume in memory, is local like them (its files are read in place, not downloaded).
+// RAM:, the volume in memory, is local like them (its files are read in place, not downloaded); so are
+// the USB sticks (USB:, USB2:, USB3:).
 static int sd_volume (const char *path)			// length of the "SD:" / "SDn:" / "RAM:" prefix, 0 = not a local volume
 {
 	if (lower (path[0]) == 'r' && lower (path[1]) == 'a' && lower (path[2]) == 'm' && path[3] == ':') return 4;
+	if (lower (path[0]) == 'u' && lower (path[1]) == 's' && lower (path[2]) == 'b')	// (v93) USB:, USB2:, USB3:
+	{
+		if (path[3] == ':') return 4;
+		return path[3] >= '1' && path[3] <= '3' && path[4] == ':' ? 5 : 0;
+	}
 	if (lower (path[0]) != 's' || lower (path[1]) != 'd') return 0;
 	if (path[2] == ':') return 3;
 	return path[2] >= '0' && path[2] <= '3' && path[3] == ':' ? 4 : 0;
@@ -580,6 +586,79 @@ static void op_show_sd3 ()   { show_volume ("SD3:/"); }
 // RAM:, the volume in memory (absent with "ramfs=0" in system.ini)
 static void op_show_ram ()   { if (volume_mounted ("RAM:/")) show_root ("RAM:/"); else status ("No RAM: volume", ""); }
 
+// ---- USB sticks (kapi v93: mounted when plugged in as USB:, USB2:, USB3:) -------------------------
+#define MAXVOL	16
+static struct kapi_volume g_vols[MAXVOL];
+static int g_nvols = 0;
+static unsigned g_volSig = 0;			// the volumes' generations, summed: a change -> the places again
+static void vols_read (void)
+{
+	int n = kapi_vol_list (g_vols, MAXVOL, 0);
+	g_nvols = n < 0 ? 0 : n > MAXVOL ? MAXVOL : n;
+}
+static unsigned vols_sig (void)
+{
+	unsigned s = 0;
+	for (int i = 0; i < g_nvols; i++) s = s * 31 + g_vols[i].gen + g_vols[i].state;
+	return s;
+}
+static void vol_root (const struct kapi_volume &v, char *out, int cap)	// "USB2:/"
+{
+	int n = 0;
+	for (; v.name[n] && n < cap - 3; n++) out[n] = v.name[n];
+	out[n++] = ':'; out[n++] = '/'; out[n] = 0;
+}
+static bool is_usb_path (const char *p)
+{
+	return (lower (p[0]) == 'u' && lower (p[1]) == 's' && lower (p[2]) == 'b') && (p[3] == ':' || (p[3] >= '1' && p[3] <= '3' && p[4] == ':'));
+}
+static void op_show_usb ()
+{
+	vols_read ();
+	for (int i = 0; i < g_nvols; i++)
+		if ((g_vols[i].flags & KAPI_VF_REMOVABLE) && g_vols[i].state == KAPI_VST_MOUNTED)
+		{
+			char r[16]; vol_root (g_vols[i], r, sizeof r);
+			show_root (r);
+			return;
+		}
+	status ("No USB stick is plugged in (or it is not formatted: Format...)");
+}
+// Eject the USB volume shown (else the one plugged in): the view leaves it first.
+static void op_eject ()
+{
+	char vol[16] = "";
+	const char *cur = g_col[g_active].path;
+	if (is_usb_path (cur)) { int n = 0; while (cur[n] && cur[n] != ':' && n < 12) { vol[n] = cur[n]; n++; } vol[n++] = ':'; vol[n] = 0; }
+	else
+	{
+		vols_read ();
+		for (int i = 0; i < g_nvols && !vol[0]; i++)
+			if ((g_vols[i].flags & KAPI_VF_REMOVABLE) && g_vols[i].state == KAPI_VST_MOUNTED)
+			{
+				vol_root (g_vols[i], vol, sizeof vol);
+				vol[slen (vol) - 1] = 0;			// ("USB:")
+			}
+	}
+	if (!vol[0]) { status ("No USB stick to eject"); return; }
+	if (is_usb_path (cur)) show_root ("SD:/");
+	int r = kapi_vol_eject (vol, 0);
+	if (r == -KAPI_EBUSY)
+	{
+		if (!uk_messagebox ("Eject", "Files are still open on this stick (they were saved). Eject it anyway?", MB_YESNO)) { status (vol, " is still in use"); return; }
+		r = kapi_vol_eject (vol, KAPI_EJECT_FORCE);
+	}
+	if (r == 0) status (vol, " can be removed safely");
+	else status ("Could not eject ", vol);
+}
+static void op_format ()				// the Disks app: the volumes, Eject, Format
+{
+	const char *cur = g_col[g_active].path;
+	char vol[16] = "";
+	if (is_usb_path (cur)) { int n = 0; while (cur[n] && cur[n] != ':' && n < 12) { vol[n] = cur[n]; n++; } vol[n++] = ':'; vol[n] = 0; }
+	if (kapi_raise_app ("disks") == 0) lx_launch ("disks", vol[0] ? vol : 0);
+}
+
 // A path shown as columns from its volume's root: "SD1:/roms/gb" -> SD1: | roms | gb.
 static void open_path (const char *path)
 {
@@ -702,6 +781,20 @@ static void places_build (void)
 		{ "VD2:/", "VD2: disk image" }, { "VD3:/", "VD3: disk image" }, { "RAM:/", "RAM: memory" } };
 	for (unsigned i = 0; i < sizeof VOLS / sizeof VOLS[0]; i++)
 		if (volume_mounted (VOLS[i][0])) add_place (PL_VOL, G_COMPUTER, -1, VOLS[i][1], VOLS[i][0]);
+	vols_read ();						// (v93) the USB sticks mounted
+	g_volSig = vols_sig ();
+	for (int i = 0; i < g_nvols; i++)
+	{
+		if (!(g_vols[i].flags & KAPI_VF_REMOVABLE) || g_vols[i].state != KAPI_VST_MOUNTED) continue;
+		char r[16], label[48]; vol_root (g_vols[i], r, sizeof r);
+		int n = 0;
+		for (const char *q = r; *q && *q != '/'; q++) label[n++] = *q;
+		label[n++] = ' ';
+		const char *t = g_vols[i].label[0] ? g_vols[i].label : "USB stick";
+		while (*t && n < (int) sizeof label - 1) label[n++] = *t++;
+		label[n] = 0;
+		add_place (PL_VOL, G_COMPUTER, -1, label, r);
+	}
 	for (int i = 0; i < g_nnet; i++) add_place (PL_NET, G_NETWORK, i, g_netName[i], g_netPath[i]);
 	add_place (PL_CONNECT, G_NETWORK, -1, "Add a Server...", "");
 }
@@ -1647,6 +1740,22 @@ public:
 		invalidate (true);
 	}
 
+	// (v93) A USB stick plugged in, ejected or pulled out: the places again; a folder shown on a
+	// volume that is gone: back to the SD card.
+	void onTick () override
+	{
+		static unsigned last = 0;
+		unsigned now = kapi_get_ticks ();
+		if (now - last < 100) return;
+		last = now;
+		vols_read ();
+		if (vols_sig () == g_volSig) return;
+		places_build (); side_rows ();
+		const char *cur = g_col[g_active].path;
+		if (is_usb_path (cur) && !volume_mounted (cur)) { show_root ("SD:/"); status ("The USB stick is not there any more"); }
+		invalidate (true);
+	}
+
 	bool onKey (long key) override
 	{
 		Column &k = g_col[g_active];
@@ -1727,6 +1836,9 @@ int main (void)
 	if (volume_mounted ("SD2:/")) menu.item ("SD2: (partition 3)", "", 0, op_show_sd2);
 	if (volume_mounted ("SD3:/")) menu.item ("SD3: (partition 4)", "", 0, op_show_sd3);
 	if (volume_mounted ("RAM:/")) menu.item ("RAM: (memory)", "", 0, op_show_ram);
+	menu.item ("USB Stick",  "",      0,             op_show_usb);
+	menu.item ("Eject USB Stick", "^E", UK_CTRL ('E'), op_eject);
+	menu.item ("Disks (Format...)", "", 0,           op_format);
 	menu.item ("Trash",      "",      0,             op_open_trash);
 	menu.item ("Connect to Server...", "", 0,       op_connect);
 	menu.separator ();

@@ -98,6 +98,7 @@ void VfsClose (void *)				{}
 void VfsCloseDir (void *)			{}
 FRESULT f_close (FIL *)				{ return 0; }
 FRESULT f_closedir (DIR *)			{ return 0; }
+void VolUntrack (FFOBJID *)			{}	// (kern/volume.h, v93)
 void OFileRef (void *p)				{ (*(int *) p)++; s_nOFileRefs++; }
 void OFileClose (void *p, boolean)		{ (*(int *) p)--; s_nOFileRefs--; }
 void OFileRunDeferred (void)			{}

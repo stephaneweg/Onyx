@@ -420,6 +420,34 @@ download being unpacked.
   unset, each run gets a fresh temporary folder,
   deleted at its end (a boot of its own). `vol_info` answers 128 MB.
 
+### 5.3.1. USB sticks and the volumes (kernel v93)
+
+A USB stick (or disk) is mounted by the kernel when it is plugged in: **`USB:`** (then `USB2:`, `USB3:`
+for a second and a third one; `USB1:` is `USB:`), its first FAT / exFAT volume. Every file call works
+there as on the card; a program has nothing to do to support it, but:
+
+- **The stick may leave at any time.** Pulled out without an eject, its files fail: a read or a write
+  returns an error (`-1`, `-KAPI_EIO`), a folder listing ends, and that open file stays dead even if
+  the stick comes back (open it again). Check the results of writes and of `kapi_file_sync` /
+  `kapi_close` when saving to a stick; keep your own copy until the save succeeded.
+- **The volumes**: `kapi_vol_list (out, max, flags)` (`struct kapi_volume`: name, state
+  `KAPI_VST_*`, flags `KAPI_VF_*`, sizes, type, label, the files open on it, `gen` — it changes at each
+  event of that volume: poll it once a second to follow the sticks, as the menu bar, the File Viewer and
+  Disks do; `KAPI_VOLS_ROOM` adds the free space, which may read the volume's FAT once: not in a loop).
+  A volume shown to the user: `state == KAPI_VST_MOUNTED`; one that can be ejected:
+  `flags & KAPI_VF_REMOVABLE`.
+- **Eject**: `kapi_vol_eject ("USB:", 0)` → 0 (safe to remove), `-KAPI_EBUSY` (files are open on it —
+  they were synced; ask the user, then `KAPI_EJECT_FORCE`). Close your own files on the stick first, and
+  move your view off it (a File Viewer showing `USB:` holds nothing open, but its next listing would fail).
+- **Format**: `kapi_vol_format ("USB:", &fmt)` (`struct kapi_format`: `KAPI_FMT_AUTO / FAT / FAT32 / EXFAT`,
+  a label of 11 characters at most, a cluster size or 0). The call blocks until done (seconds). The kernel
+  refuses `SD:` (`-KAPI_EPERM`) whatever you pass; `SD1:`..`SD3:` need `KAPI_FMT_CARD` — set it only after
+  the user confirmed a second time (Disks does).
+- **Mount again**: `kapi_vol_mount ("USB:")` — a stick ejected but still plugged in.
+- The kernel's side: docs/02 §18; the tools: `mount`, `eject`, `mkfs`, `df` (`user/BinUtils`, `volutil.h`);
+  the app: Disks (`user/Apps/disks`). **On the PC** the simulator has a 14.9 GB exFAT stick when
+  `SIM_USB=1` (`fakekapi.cpp`: Eject, Mount and Format change its state as the kernel would).
+
 ### 5.4. The POSIX layer (`libonyxposix`)
 
 `user/Runtime/libc/posix/` is a **POSIX C library layer** over newlib and the kapi (docs/POSIX-PLAN.md

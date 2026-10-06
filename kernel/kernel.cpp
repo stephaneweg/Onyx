@@ -36,6 +36,7 @@
 #include <kern/ramfs.h>		// RAM:, the RAM volume (system.ini ramfs=)
 #include <kern/procx.h>		// (v75) a process's argv / environment blocks
 #include <kern/ofile.h>		// (v75) OFileBootCleanup
+#include <kern/volume.h>		// (v93) the volumes: VolMountCard, VolPoll
 #ifdef ARM_ALLOW_MULTI_CORE
 #include <circle/multicore.h>
 #endif
@@ -1195,6 +1196,7 @@ public:
 			DetectPads ();
 			DetectMidi ();
 			SoundPoll ();		// (v84: a USB audio device plugged / unplugged)
+			VolPoll ();		// (v93: a USB stick plugged in: mounted; pulled out: unmounted)
 			CScheduler::Get ()->MsSleep (100);
 		}
 	}
@@ -2093,19 +2095,9 @@ boolean CKernel::Initialize (void)
 					CEMMCDevice::IsHighSpeed () ? "High Speed 50 MHz" : "25 MHz",
 					m_Options.GetAppOptionDecimal ("sdcache", 1) ? "on" : "off");
 
-			// the card's other partitions: each FAT / exFAT one mounted as SD1: .. SD3:
-			for (int i = 1; i <= 3; i++)
-			{
-				char Vol[8] = { 'S', 'D', (char) ('0' + i), ':', 0 };
-				if (f_mount (&m_FileSystemN[i - 1], Vol, 1) == FR_OK)
-				{
-					m_Logger.Write (FromKernel, LogNotice, "SD card partition %d mounted (%s)", i + 1, Vol);
-				}
-				else
-				{
-					f_mount (0, Vol, 0);	// (not FAT, or no such partition)
-				}
-			}
+			// the card's other partitions: each FAT / exFAT one mounted as SD1: .. SD3: (v93: the
+			// volumes are sys/volume.cpp's, which also mounts the USB sticks as they come)
+			VolMountCard (&m_FileSystem);
 
 			CrashLogClockRestore ();	// the last time seen (no clock on the Pi) until NTP
 			CrashLogReport ();		// the previous session, if it froze: SD:/etc/lastcrash.txt

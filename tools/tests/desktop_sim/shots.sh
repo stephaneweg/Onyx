@@ -135,7 +135,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
@@ -144,7 +144,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf preloadconf"
+      config wpaconf padconf soundconf displayconf keyconf preloadconf disks"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -421,6 +421,13 @@ fi
 if want volume; then
 	sim menubar volume "wait;wait;down 925 15;up 925 15;$W" SIM_MENU="$MENU_TINYPAD"
 	scene volume "$OUT/volume.elsm" --crop=0,0,1024,150
+fi
+if want disks; then			# (v93: a USB stick plugged in -- SIM_USB --, SD1: there; the stick chosen)
+	sim disks disks "$W;down 140 90;up 140 90;$W" $P SIM_USB=1 SIM_VOLS=SD1; png disks
+fi
+if want usbmenu; then			# (the menu bar's USB box: a stick plugged in)
+	sim menubar usbmenu "wait;wait;down 899 15;up 899 15;$W" SIM_MENU="$MENU_TINYPAD" SIM_USB=1
+	scene usbmenu "$OUT/usbmenu.elsm" --crop=524,0,1024,180
 fi
 if want clock; then
 	sim menubar clock "wait;wait;down 990 15;up 990 15;$W" SIM_MENU="$MENU_TINYPAD"

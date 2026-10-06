@@ -29,6 +29,7 @@
 #include <kern/ofile.h>		// OFileClose (v75)
 #include <kern/lsock.h>		// IpcLocalRelease, ShmRelease (v76)
 #include <kern/addrspace.h>
+#include <kern/volume.h>		// (v93) VolUntrack
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/util.h>
@@ -77,6 +78,7 @@ void HandleObjectClose (void *pObj, unsigned nType, unsigned nKind, boolean bTea
 			// flushes nothing, it only takes the volume lock to invalidate the object -- left
 			// out in a teardown, where nothing may wait for that lock.
 			if (!bTeardown) f_close (pFile);
+			VolUntrack (&pFile->obj);		// (v93, kern/volume.h)
 			delete [] pFile->cltbl;			// (kapi_seek's fast-seek map)
 			delete pFile;
 		}
@@ -94,6 +96,7 @@ void HandleObjectClose (void *pObj, unsigned nType, unsigned nKind, boolean bTea
 		else
 		{
 			if (!bTeardown) f_closedir ((DIR *) pObj);	// (as a FIL: nothing else to do)
+			VolUntrack (&((DIR *) pObj)->obj);
 			delete (DIR *) pObj;
 		}
 		break;

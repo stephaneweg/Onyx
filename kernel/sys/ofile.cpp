@@ -61,6 +61,7 @@
 #include <kern/stream.h>
 #include <kern/ramfs.h>
 #include <kern/vfs.h>
+#include <kern/volume.h>		// (v93) OFileVolume: an eject, a stick pulled out
 #include <kern/uaccess.h>
 #include <kern/kapi_abi.h>
 #include <kern/image.h>			// (v77) ImageFileChanged: a program file removed, renamed, written
@@ -319,10 +320,9 @@ static u64 MaxSize (const FIL *f)		// FAT32: 4 GB - 1
 // (the node locked) the FIL (re-)opened at n->Path, as it was (read, or read + write)
 static FRESULT NodeReopen (TFNode *n)
 {
-	if (n->pFile == 0)
+	if (n->pFile == 0 || n->Path[0] == '\0')
 	{
-		n->pFile = new FIL;
-		if (n->pFile == 0) return FR_NOT_ENOUGH_CORE;
+		return FR_INVALID_OBJECT;		// (lost -- its volume unmounted, v93 -- it stays lost)
 	}
 	memset (n->pFile, 0, sizeof (FIL));
 	FRESULT r = f_open (n->pFile, n->Path, FA_READ | (n->bWritable ? FA_WRITE : 0) | FA_OPEN_EXISTING);
@@ -572,6 +572,39 @@ static unsigned ClusterBytes (int v, const FATFS *pFs)
 		}
 	}
 	return s_nBlk[v] != 0 ? s_nBlk[v] : 512;
+}
+
+// (v93, kern/volume.h) The open files of FatFs volume nVol: counted, synced, or dropped (an eject, a
+// format, a stick pulled out: each FIL closed -- flushed if the device is there -- and the node lost:
+// every later call on it -EIO; the descriptions stay until the program closes them).
+int OFileVolume (int nVol, int nOp)
+{
+	CNoKill NK;
+	TLockGuard G (&s_Table);
+	int n = 0;
+	for (TFNode *nd = s_pNodes; nd != 0; nd = nd->pNext)
+	{
+		if (VolumeOf (nd->Path) != nVol) continue;
+		if (nOp == OFV_COUNT) { n++; continue; }
+		TLockGuard GN (&nd->Lock);
+		if (nd->pFile == 0) continue;
+		if (nOp == OFV_SYNC)
+		{
+			if (!nd->bWritable) continue;
+			if (f_sync (nd->pFile) == FR_OK) nd->bDirty = FALSE;
+			else n++;
+		}
+		else
+		{
+			f_close (nd->pFile);
+			delete nd->pFile;
+			nd->pFile = 0;
+			nd->bDeleteOnClose = FALSE;		// (its hidden file is on that volume: gone with it)
+			nd->Path[0] = '\0';			// (no later open finds it: a new stick, a new node)
+		}
+	}
+	if (nOp == OFV_DROP && nVol >= 0 && nVol < (int) NVOLUMES) s_nBlk[nVol] = 0;	// (a format may change it)
+	return n;
 }
 
 static void FillFat (struct kapi_stat *st, const char *pAbs, u64 nSize, BYTE nAttr, s64 nMTime, const FATFS *pFs)

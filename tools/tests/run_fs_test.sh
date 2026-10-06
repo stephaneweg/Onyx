@@ -37,4 +37,14 @@ for cl in 512 1024; do
 	done
 done
 done
+# the USB volumes (kapi v93): formats, labels, a stick pulled out, an unmount while a call waits
+# for the volume lock -- with the OS locks on (FF_FS_REENTRANT 1: the fork's re-checks are there)
+mkdir -p "$T/usb"
+cp "$F/ffconf.h" "$T/usb/ffconf.h"
+cp "$F/ff.c" "$F/ff.h" "$F/ffunicode.c" "$F/diskio.h" "$F/diskio.cpp" "$T/usb/"
+gcc -O2 -c -I"$T/usb" "$T/usb/ff.c" -o "$T/usb/ff.o"
+gcc -O2 -c -I"$T/usb" "$T/usb/ffunicode.c" -o "$T/usb/ffunicode.o"
+g++ -O2 -std=c++17 -c -I"$T/usb" -I"$HERE/fs/stub" "$T/usb/diskio.cpp" -o "$T/usb/diskio.o"
+g++ -O2 -std=c++17 -I"$T/usb" -I"$HERE/fs/stub" "$HERE/fs/usbtest.cpp" "$T/usb/ff.o" "$T/usb/ffunicode.o" "$T/usb/diskio.o" -o "$T/usbtest"
+"$T/usbtest" || fail=1
 exit $fail

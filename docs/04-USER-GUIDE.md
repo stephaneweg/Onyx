@@ -64,6 +64,28 @@ switched off) — it is for what can be lost. Use it like any volume in the term
 `cat`, `> RAM:/notes.txt`) and in any path; `df` shows how full it is. A file moved between `RAM:`
 and the card is copied (`cp`), not renamed (`mv` stays within one volume).
 
+**USB sticks and disks — `USB:`.** Plug a USB stick (or a USB hard disk) in at any time: Onyx
+mounts it as **`USB:`** (a second one as `USB2:`, a third as `USB3:`), a notification says so
+(*"KINGSTON is connected as USB: (14.9 GB, exFAT). Click to open it."*) and a drive icon appears
+in the menu bar. It works everywhere a path works: the File Viewer (its sidebar, **Go ▸ USB
+Stick**), the file dialogs, the terminal (`cd USB:`, `ls USB:`, `cp SD:/docs/letter.docx USB:/`,
+`cp USB:/photo.jpg SD:/docs/pictures/`), Photos (`USB:/DCIM`). The stick must be **FAT32, exFAT or
+FAT16** (what Windows and cameras use; a Mac's GPT / APFS or an NTFS disk is not read) — Onyx reads
+its **first** FAT / exFAT partition.
+
+- **Before pulling it out, eject it**: the menu bar's drive icon ▸ **Eject**, the File Viewer's
+  **Go ▸ Eject USB Stick** (Ctrl+E), **Disks**, or `eject` in the terminal. Onyx writes what is
+  pending, the stick's own cache too, and says *"USB: can be removed safely"*. If a program still
+  has a file open on it, it asks first (the files were saved; ejecting anyway makes that program's
+  next reads and writes fail).
+- **Pulled out without an eject**, nothing breaks: the programs that were using it get errors
+  (an app saving there says the save failed), Onyx warns *"USB: was removed without being
+  ejected: what was being written to it may be lost"*. A file that was being written may be
+  incomplete; the rest of the stick is fine (FAT keeps it consistent as long as a save is not
+  cut in the middle).
+- **A stick that cannot be read** (not formatted, or in a format Onyx does not know): the
+  notification offers to **format** it (Disks, §9).
+
 Card contents:
 
 | Item | Role |
@@ -358,6 +380,14 @@ speaker: 1–3 waves by the volume, a cross when muted).
 - **Click the speaker**: a box with a **slider 0–10** (drag
   it or click it; moving it unmutes) and **Mute**. Kept in `SD:/etc/sound.ini`, applied again at
   boot. The terminal command `volume` does the same. Click elsewhere to close it.
+- **Click the drive icon** (shown while a USB stick is plugged in, left of the speaker): a box
+  with each stick — its name (`USB:`), its label, its size and file system — and a button:
+  **Eject** (it can then be removed; *in use* when a program has a file open on it: click Eject
+  again to eject anyway), **Mount** (an ejected stick still plugged in, used again), or
+  **Format…** (a stick that cannot be read: opens Disks). A click on a stick's name opens it in the
+  File Viewer; **Disks…** opens Disks. The bar also tells, by notifications, when a stick is
+  connected (click: open it), can be removed safely, cannot be read (click: format it), or was
+  pulled out without an eject.
 - **Click the Wi-Fi icon**: the **Wi-Fi menu** — the networks around, strongest first (the
   scan takes ~3 s), signal bars, a padlock for the secured ones, *Connected* / *Known*. Click a
   network to join it: a secured one not known yet asks its **password** (Show password; Enter
@@ -368,9 +398,10 @@ speaker: 1–3 waves by the volume, a cross when muted).
   **Wi-Fi Settings…** opens `wpaconf`; Esc or a click elsewhere closes the menu.
 
 ![The volume box](../screenshots/volume.png)
+![The USB box](../screenshots/usbmenu.png)
 ![The Wi-Fi menu](../screenshots/wifimenu.png)
 ![The calendar under the time](../screenshots/clock.png)
-*The volume box, the Wi-Fi menu, the calendar of the month under the time.*
+*The volume box, the USB box (a stick plugged in), the Wi-Fi menu, the calendar of the month under the time.*
 
 The active application is the frontmost decorated window; clicking the dock or the desktop
 does not change it.
@@ -381,7 +412,7 @@ does not change it.
   the menu.
 - The first menu, **Onyx**, is always there: Terminal, **Control Panel**, File Viewer, Task
   Manager; then **the apps by category** — Productivity, Internet, Graphics, Games, Demos,
-  **System** (the File Viewer, the Task Manager, the Terminal)
+  **System** (the File Viewer, Disks, the Task Manager, the Terminal)
   (and any other category an app declares; the `category` of its `app.txt`, "Other"
   without one) — each opening a sub-menu of its apps, by their friendly name (the `name`
   of `app.txt`), where a click launches the app, or brings it to the front if it is already
@@ -919,7 +950,10 @@ the terminal's **current working directory**.
 | `touch` | `touch <path…>` | Creates **empty** files if they do not exist (no timestamp). |
 | `uname` | `uname [-a] [-s] [-n] [-r] [-v] [-m] [-p]` | **What system this is**: `-s` its name (Onyx, the default), `-n` the host name, `-r` the kernel's release (its kapi version: `kapi 79`), `-v` the kernel's build (the git revision — `+` when built from changed sources — and the date of the image), `-m` the machine (`aarch64`), `-p` the system package installed (`onyx 2026.10.36`), `-a` all of them and the board with its memory. A kernel copied onto the card by hand shows in `-v` (its date) while `-p` still says the package's version. |
 | `find` | `find [folder…] [-name PATTERN] [-type f\|d] [-maxdepth N]` | **Walks a folder and its sub-folders** (default: the current one) and prints each entry's path. `-name "*.txt"`: only the entries whose name matches (`*` any characters, `?` one; upper / lower case alike — quote the pattern); `-type f` files only, `-type d` folders only; `-maxdepth N` no deeper than N levels. `find SD:/docs -name "*.md"`, `find . -type d`. |
-| `df` | `df [volume…]` | The volumes' room: for each (default: `SD:`, `SD1:`…`SD3:` when present, `RAM:`) its type (`FAT32`, `exFAT`, `RAM`), size, used and free space; for `RAM:` (the volume in memory, §2) its files and folders too. The first `df` of a big card can take a moment (its free space is counted once). |
+| `mount` | `mount`, `mount USB:` | Without argument: **every volume** — its state (mounted, ejected, not formatted, removed without an eject), file system, size, free space, label, *system* / *removable* / *in memory*, the files open on it, its device (`emmc1` the card, `umsd1` the first USB device). `mount USB:` mounts again a stick that was ejected but is still plugged in (a stick is mounted by itself when it is plugged in). |
+| `eject` | `eject [-f] [USB: \| USB2: \| USB3:]` | Makes a USB stick **safe to remove**: what is pending written, the stick's cache flushed, unmounted — *"USB: can be removed safely"*. Without a name: the one stick mounted. Files still open on it: refused (they were saved; close the program, or **`-f`** to eject anyway). |
+| `mkfs` | `mkfs [-t auto\|fat32\|exfat\|fat] [-L label] [-c cluster] [-y] [--card] VOLUME` | **Formats** a volume (**everything on it is erased**): asks you to type the volume's name to confirm (`-y`: no question). `-t auto` (the default) is FAT16 / FAT32 by the size and exFAT from 32 GB (as Windows); `-L` a label (11 characters, none of `" * + , . / : ; < = > ? [ \ ] \|`); `-c` the cluster size (`32K`). A USB stick is formatted whole (one partition, as Windows does). `SD1:` … `SD3:` (the card's other partitions) need `--card`; **`SD:` — the card Onyx runs from — is never formatted** (the kernel refuses it). Example: `mkfs -t exfat -L PHOTOS USB:`. |
+| `df` | `df [volume…]` | The volumes' room: for each (default: every volume mounted — `SD:`, `SD1:`…`SD3:`, the USB sticks, `RAM:`) its type (`FAT32`, `exFAT`, `RAM`), size, used and free space; for `RAM:` (the volume in memory, §2) its files and folders too. The first `df` of a big card can take a moment (its free space is counted once). |
 
 **Archives** (ZIP; the Archiver's engine, §9)
 
@@ -1346,7 +1380,9 @@ the Trash — the dock's Trash does so).
     right-click menu ▸ **Pin to Sidebar…**, or **Go ▸ Pin This Folder…** (**Ctrl-D**), asks the
     name —, and the **Trash**;
   - **Computer**: the SD card's partitions (`SD:`, and `SD1:` … `SD3:` when present; the disk
-    images `VD0:` … to come) and **`RAM:`**, the volume in memory (§2), when there is one;
+    images `VD0:` … to come), **`RAM:`**, the volume in memory (§2), when there is one, and the
+    **USB sticks** (`USB: KINGSTON`) while they are plugged in (the list follows them; a folder shown
+    on a stick that is pulled out goes back to the card);
   - **Network**: the servers connected once (**Go ▸ Connect to Server…**, under the name given
     in its **Name** field — the address when empty): a click **connects again** (the login kept
     by `ftpfs`, "Remember password") and opens its folder; and **Add a Server…**.
@@ -1378,7 +1414,9 @@ the Trash — the dock's Trash does so).
   folder is recreated if needed; a clash gets a "(restored)" name), **Del** there deletes it
   for good; **Go ▸ Empty Trash…** deletes everything; **Go ▸ SD Card** (or the sidebar)
   returns to the card, **Go ▸ SD1: (partition 2)** … to the card's other FAT / exFAT partitions and
-  **Go ▸ RAM: (memory)** to the volume in memory (§2) (listed when present;
+  **Go ▸ RAM: (memory)** to the volume in memory (§2), **Go ▸ USB Stick** to the first USB stick,
+  **Go ▸ Eject USB Stick** (**Ctrl-E**: the stick shown, else the one plugged in — the view goes back to
+  the card first) and **Go ▸ Disks (Format…)** opens Disks (listed when present;
   a move between two volumes is a copy then a delete; the Trash is on `SD:`, so an item of
   another volume is deleted with File ▸ Delete Permanently…).
   **File ▸ Delete Permanently…** skips the Trash (with confirmation). Names starting with
@@ -1397,6 +1435,27 @@ the Trash — the dock's Trash does so).
 ![File Viewer](../screenshots/fileviewer.png)
 *The File Viewer: the sidebar (Personal, Computer, Network), `SD:` ▸ `etc` in the path bar, one
 folder per column, and the preview of the selected `autostart` file.*
+
+### Disks, the volumes (`disks`)
+
+![Disks](../screenshots/disks.png)
+
+**Disks** (the Onyx menu ▸ System, the menu bar's USB box ▸ **Disks…**, the File Viewer's **Go ▸ Disks**)
+lists every volume: the SD card (`SD:`, *the system's volume*), its other partitions (`SD1:` …), the USB
+sticks (`USB:` …) and `RAM:`, each with its label, size and file system; the one chosen shows its free
+space (a bar), the files open on it and its device. It follows the sticks as they come and go.
+
+- **Open**: the volume in the File Viewer (a double click on it too).
+- **Eject**: a USB stick made safe to remove (it asks when files are open on it).
+- **Mount**: a stick ejected but still plugged in, used again.
+- **Format…**: choose the **file system** — *Automatic* (FAT32, or exFAT from 32 GB), **FAT32** (every
+  device reads it; files up to 4 GB), **exFAT** (big files; recent cameras, Windows, Macs), **FAT** (small
+  sticks) — and a **label** (11 characters), then **Format…** and confirm: **everything on the volume is
+  erased**. A USB stick gets one partition over the whole stick, as Windows does. A partition of the SD card
+  (`SD1:` …) asks a second time; **`SD:`, the card Onyx runs from, can never be formatted** (the button is
+  greyed, and the system refuses it anyway).
+
+The terminal has the same: `mount`, `eject`, `mkfs`, `df` (§8).
 
 ### Archiver, the archive manager (`archiver`)
 
@@ -5022,6 +5081,11 @@ key, `c` coin, `D` door, `p` tile to paint, `^ > v <` the turtle and its heading
   `compositor STALLED` (with every task's state) or `app '<title>' NOT PUMPING events`,
   and the `heartbeat` line shows whether frames and input still flow. Kill a frozen app
   with `ps` + `kill <pid>` (or `taskman`); otherwise, restart.
+- **A USB stick is not seen.** Run `mount`: *not formatted* means no FAT / exFAT file system (a Mac's
+  or Linux's format, NTFS): format it in Disks (it erases it) or on a PC in exFAT / FAT32; *the device
+  does not answer*: plug it in again, or try another port (a USB 3 stick on a USB 2 port is fine). Not
+  listed at all: `kmsg` shows `umsd` lines when Circle sees it; a hub without its own power may not
+  feed a hard disk. A disk with several partitions: only its first FAT / exFAT one is `USB:`.
 - **No mouse/keyboard.** Check that they are standard **USB HID** devices and that they
   are plugged in at startup (hot-plug is handled, but the initial connection is the most
   reliable).
