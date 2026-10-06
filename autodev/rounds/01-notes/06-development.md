@@ -167,3 +167,116 @@ UIKit), `user/Apps/notes/stickies_proto.h`. Everything of 03 §3.2 and G2, with 
   do not link on the host: do not call PrinterKit from Notes / Stickies.
 - `shots.sh` overwrites `screenshots/*.png` it is asked for, and several committed pictures are already stale
   against the card (`preloadconf.png`, `widgets.png`): commit only the Notes / Stickies pictures.
+
+## Developer B — steps 3–5
+
+Date: 2026-10-06. Branch `AutoDev`. Inputs: 03 §3.3, §5 steps 3–5 (+ G3–G5) and step 9 (Ctrl+E), 04 §2–§7 and the
+mock-ups (`notes-window.png`, `notes-empty.png`, the menus, `notes-dialog.png`, `notes-error.png`), 05 (binding notes),
+Developer A's hints above. Built and run on the host only (no aarch64 compiler here).
+
+### Step 3 — the window
+
+- `user/Apps/notes/main.cpp` (MIT): the widget tree of 04 §2.1 exactly — `ToolBar` 44 (New Note as the filled accent
+  `ToolButton`, Delete `WKT_TRASH`, Pin `WKT_PIN` toggle, six round colour toggles drawn by a `ToolIconFn`),
+  `HSplitter` (split from `config.ini`, min 180 / 260), `NoteList` | `Panel` (`InfoLine` 34 + `NoteEdit`), a
+  `StatusLine` 24. `NoteEdit : Textarea` in the note's paper (`uk_mix (C_FIELD, paper, 150)`, `NOTE_INK`), a 15-px
+  `FtTextFace` in a `UkFaceScope` around draw / mouse / keys, capacity `NOTE_MAX_BYTES + 1`. The info line: "Today,
+  09:15 · Yellow · (pin) On the desktop" (a long date helper in main.cpp), the empty state's hint; the status line:
+  "6 notes · 3 on the desktop" / "No notes yet" / "Showing the 512 newest notes" at the left, the message (dim, ✓
+  Saved, or red ✕) at the right. Window from `config.ini` width / height, resizable, `setMinSize (520, 320)`.
+- `user/Apps/notes/notelist.h` (MIT): `NoteList`, owner-drawn as 04 §2.2 (head with the count badge, 56-px rows: dot,
+  bold title / *New Note* bold italic dim, date via `notes_date_label`, preview / "Now", pin glyph, tinted rounded
+  selection 90 / 60, separators), UIKit's scroll bar (`uk_draw_vscroll`, `UkBarDrag`), the wheel; keys Up / Down /
+  PgUp / PgDn / Home / End, Enter / Tab → editor, Delete → delete. Callbacks to the app (`onPick`, `onEnter`,
+  `onDelete`). Also `notes_draw_dot` (the list's and the tool bar's dot).
+- Menus (`build_menu`, re-published on every state change): File (New Note ^N / Open in Text Editor ^E / Delete
+  Note ^D), Edit (Cut, Copy, Paste, Select All, Copy Note), Note (Pin to Desktop ↔ Unpin from Desktop ^P, the six
+  colours), View (Show ↔ Hide Stickies…). **Item ids** (the simulator's `menu N`): 0 New, 1 Open in TE, 2 Delete, 3
+  Cut, 4 Copy, 5 Paste, 6 Select All, 7 Copy Note, 8 Pin, 9–14 Yellow…Grey, 15 View.
+- Start-up: `notes_scan`; the argument's note (`notes <path>` / bare name), else `config.ini`'s `last`, else the
+  newest; none → `notes_add_new` (in memory only), caret in the editor; otherwise the list has the focus.
+- `user/Makefile`: `notes` in `FT_APPS`, `FT_EXTRA_notes = Apps/notes/notesmodel.cpp`, `notes.elf` deps (its `.h`,
+  `docguard.h`, `toolbar.h`). `sdcard/apps/notes.app/app.txt` (`Notes`, `Productivity`) + `icon.bmp` from the new
+  `tools/icons/notes_icon.py`, which draws **both** icons (04 §9) — the Stickies one is written to
+  `sdcard/apps/stickies.app/icon.bmp` but **not committed** (an `.app` folder without `app.txt` / `main` was left
+  out on purpose): Developer C runs `python3 tools/icons/notes_icon.py` when creating `stickies.app`.
+- `shots.sh`: `notes` in `APPS` and in the FT list (`stickies` already in the FT list), `extra=notesmodel.cpp` for
+  `notes|stickies`, scenario `notes` (the sample notes copied into a writes folder of their own, `last` = Shopping)
+  → `screenshots/notes.png`, and `notes-empty` (no `Notes`) → `screenshots/notes-empty.png`. Both compared with the
+  mock-ups: identical layout (no search field and no "✓ Saved" in `notes.png`, as validation 1 / the plan say).
+
+### Step 4 — editing and autosave
+
+- Every change of the text (keys, mouse, the menu's Cut / Paste, a text drop) goes through `text_changed ()`: a
+  `doc_hash` compare → dirty, `g_lastEdit`, the row's title / preview follow (first `NOTE_HEAD` bytes).
+- `onTick`: dirty and 100 ticks (1 s) since the last change → `save_current ()` (`notes_write` + `notes_save_ini`,
+  `notes_sort`, the note moves to the top, selection kept by name, "✓ Saved", `stickies_reload ()`). Saved also when
+  another note is chosen, on Ctrl+N, on a drop, before Delete / Open in Text Editor, and after `run ()` (quit).
+- Empty-note rule (`leave_current`): never-written empty note → forgotten; a saved note emptied by the user → the
+  Trash silently (D3). Ctrl+N on an empty new note only focuses the editor.
+- Failed save (G4 / D8): red "Not saved: the card is full or read-only — trying again", retried at the next pause in
+  typing (not every second); at quit the text goes to the clipboard and `notify ("Notes", "Notes could not save
+  “<title>”: its text is on the clipboard")`.
+- 64 KB: a typed key refused at the cap → "This note is full (64 KB)." (4 s, dim); a paste past it → "…the paste was
+  cut." A note on the card larger than 64 KB (or unreadable) is shown empty, read-only, never written nor trashed,
+  the info line pointing to Ctrl+E.
+- Idle rescan every 5 s (`folder_sig`: names + sizes of `SD:/Notes`), only while not dirty; keeps the selection and
+  an unsaved new note; reloads the current note's text if it changed on the card.
+
+### Step 5 (+ step 9's Ctrl+E)
+
+- Delete (menu, ^D, toolbar, Delete key in the list): saved first, `notes_trash`, `notify ("Notes", "Note moved to
+  the Trash")`, the next row selected (none left → a new empty note).
+- Colours (menu, six toolbar toggles, kept in sync), pin (^P, menu label toggle, lit toolbar toggle): `notes.ini`
+  written at once for a saved note, `stickies_reload ()`; a pin with `stickies = 1` and no `stickies` service →
+  `lx_launch ("stickies", 0)` (never autostart).
+- Clipboard: the menu's Cut / Copy / Paste / Select All on the editor; Copy Note → `clip_set_text_n`.
+- Drops: `DND_FILES` anywhere on the window → each `.txt` / `.md` read with `notes_read` into a new saved note, the
+  last one selected; the refused ones (> 64 KB, not text, unreadable) listed in one `ft_messagebox ("Import a note",
+  …)` with 04 §6's text for the single-file case. `DND_TEXT` → `insertText` at the caret.
+- Ctrl+E: saved, then `lx_launch ("tinypad", "SD:/Notes/<file>")`.
+
+### Hooks left for Developer C (step 7)
+
+- `stickies_reload ()` — done: `STK_MSG_RELOAD` to the `stickies` service after every save / pin / colour / delete /
+  import (tested).
+- `stickies_set_shown (bool)` — only saves `stickies` in `config.ini` and shows "Stickies shown." / "Stickies
+  hidden.". **To complete**: Show → `autostart_ensure (...)` + `lx_launch ("stickies")` if the service is absent + the
+  three status texts keyed on its result (validation 2 §2); Hide → `STK_MSG_QUIT`. The menu label toggle and
+  `build_menu ()` already work.
+- `main ()`: `kapi_ipc_register ("notes")` is done (a failure ignored); the single-instance forward (lookup `notes`
+  before, `NOTES_MSG_OPEN` + `kapi_raise_app`, exit) is a marked comment to fill. Receiving `NOTES_MSG_OPEN` is
+  done in `onTick` (selects the note, rescanning first if unknown) — not tested yet.
+
+### Commits
+
+| Commit | What |
+|---|---|
+| `bc07c342` | the Notes window: `main.cpp`, `notelist.h`, Makefile, `notes.app`, `notes_icon.py` |
+| `64835118` | `run_notes_sim_test.sh`, `shots.sh` notes / notes-empty, `screenshots/notes.png`, `notes-empty.png` |
+| (this file) | `06-development.md` |
+
+### Tests run (from the repository's root)
+
+| Command | Result |
+|---|---|
+| `sh tools/tests/run_notes_sim_test.sh` (new; ~15 s) | **`notes-sim: all 44 checks passed`**. Builds Notes with `-Wall -Wextra` (no warning allowed) and runs: AC 1, 2, 3, 4 (exact bytes + the three `notes.ini` keys), 5 (nothing written before the pause; the title on the dump), 6, 7, 8 (+ the Delete key), 9 (menu + toolbar), 10 (Ctrl+P once / twice, toolbar), 12, 13, G5 (70 KB drop refused: the box, no note), 14, 15, D3 (emptied → Trash, no notification), G4 / D8 (`SIM_ROFS`), Ctrl+E, the reload message to `stickies`, the idle rescan (a file `copy`'d in mid-run, `SIM_STAT=1`). Dumps of AC 3, 4, 5, 6, 8, 9, 10, 13, G4, G5 as PNGs in `/tmp/onyx_notes_sim/` — looked at. |
+| `sh tools/tests/desktop_sim/shots.sh notes` | exit 0 (1 min; the pre-existing PrinterKit link errors of Letters / Photos in the background, as before) → `screenshots/notes.png`, `notes-empty.png`, compared with the mock-ups. |
+| `sh tools/tests/run_notes_test.sh` | still `notes: all checks passed` (model, wrap, autostart, probe). |
+
+### Not done here
+
+- The Pi build (`make` for `notes.elf`) — no cross compiler; the Makefile entries follow gpiolab's pattern.
+- AC 11 (show / hide) and the single-instance forward: step 7 (hooks above). Docs (docs/04 catalog, docs/03): step 8.
+- AC 5's "row follows the title" is checked on the dump by eye (`ac5.png`), not by an assertion.
+
+### Hints for Developer C (Stickies + integration)
+
+- Run `sh tools/tests/run_notes_sim_test.sh` after touching Notes; add the AC 11 / single-instance cases there
+  (helpers `seed`, `run`, `check`, `ini`, `cfg_last`, `row`). Remember `key 5` is the **character** '5': write Ctrl
+  keys as `key 0x05`.
+- In `shots.sh`, `stickies` is already in the FT case list and gets `extra=notesmodel.cpp`; only add it to `APPS`.
+  Seed scenarios as the `notes` one does (`$OUT/notes_w`, passed as `SIM_WRITES=`).
+- `notes_draw_dot` in `notelist.h` is usable by Stickies if wanted (it includes UIKit's toolbar header).
+- `sdcard/apps/stickies.app/icon.bmp`: `python3 tools/icons/notes_icon.py` (draws both icons).
+- docs/04 (step 8): Notes' controls are in the header comment of `main.cpp`; the menu ids above.
