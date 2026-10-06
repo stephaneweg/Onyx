@@ -2400,8 +2400,8 @@ order they are run. Everything is kept in the `.3df`.
 the values back as they were at the last computation. (The origin and the direction of X need no computation: they
 apply at once. Asking for the G-code or the simulation validates first.) Each operation shows the length cut, its
 time and its lowest Z. **Simulate** shows what is left of the stock once every operation is done; the bar at the left goes
-through the cut — drag it — and its **Play** button runs it, the tool shown where it is (Esc comes back to the
-moves) — a hole that only a tool lying on its side could cut stays full: the router has three axes.
+through the cut — drag it — and its **Play** button runs it, the tool shown where it is; the small button under
+Play is its **speed**: a click goes from a quarter (×¼) to eight times (×8) (Esc comes back to the moves) — a hole that only a tool lying on its side could cut stays full: the router has three axes.
 
 ![Manufacture: simulated](../screenshots/3dforge-cam-sim.png)
 
@@ -2443,7 +2443,8 @@ Setup, Resin, Supports and Layers, and the button at the right **Print file**.
   the body). A click on the body adds a pillar there, a click on a pillar's tip removes it. The pillars go down to
   the plate: what hangs above another part of the body is not held by them.
 - **Layers** — the layers are cut (a bar shows how far it is; the window stays alive) and shown **as the screen
-  will light them**: white is lit. The bar at the right, or the wheel, goes through them; **Play** runs them.
+  will light them**: white is lit. The bar at the right, or the wheel, goes through them; **Play** runs them, at the
+  speed of the button under it (×¼ to ×8).
   *Show it in the 3D view* shows instead the body as it is printed up to that layer. At the right: the number of
   layers, the resin (ml), the time, and what was **checked** — it fits the plate and the room; the first layers lie
   on the plate; each layer rests on the last (a part that would start **in mid-air** is counted, with its height:
@@ -2478,7 +2479,8 @@ from this path; the path is what is shown and played).
   the first layer (its loops, how far away).
 - **Layers** — the path seen from above, a colour a kind of line: outer wall, inner walls, solid, infill, skirt.
   The bar at the right, or the wheel, goes through the layers. **Play** draws the layer as the printer would — the
-  bead laid along its path, the nozzle at its end — then the next ones. *Show it in the 3D view* shows the body
+  bead laid along its path, the nozzle at its end — then the next ones, slower or faster with the button under Play
+  (×¼ to ×8). *Show it in the 3D view* shows the body
   printed so far with the layer's lines on it. At the right: the number of layers, the length drawn, the filament
   it takes.
 

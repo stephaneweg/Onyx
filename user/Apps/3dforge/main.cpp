@@ -546,8 +546,9 @@ public:
 		// (Manufacture: the moves made again once the values have stopped changing for a moment)
 		if (A.camMode && A.gen == 0 && A.camSim && A.simPlay && kapi_get_ticks () - A.simT >= 3)		// (the cut played)
 		{
-			size_t n = A.paths.moves.size (), by = n / 300 < 1 ? 1 : n / 300; A.simT = kapi_get_ticks ();
-			sim_to (A.simAt + by); if (A.simAt >= n) A.simPlay = false;
+			size_t n = A.paths.moves.size (); long by = play_steps (n / 300.0 < 1 ? 1 : n / 300.0); A.simT = kapi_get_ticks ();
+			if (by > 0) sim_to (A.simAt + by);
+			if (A.simAt >= n) A.simPlay = false;
 			g_view->invalidate (true);
 		}
 		if (filament ())	// (a filament printer's: the body put again, its path made again; the path played -- a layer drawn, then the next)
@@ -556,7 +557,7 @@ public:
 			if (A.layerPlay && A.fdmReady && A.camPage == 3 && kapi_get_ticks () - A.layerT >= 2)
 			{
 				int n = (int) A.fjob.layers.size (); A.layerT = kapi_get_ticks ();
-				double total = A.layer < n ? fdm_layer_length (A.fjob.layers[A.layer]) : 0, by = total / 50 < 6 ? 6 : total / 50;
+				double total = A.layer < n ? fdm_layer_length (A.fjob.layers[A.layer]) : 0, by = (total / 50 < 6 ? 6 : total / 50) * play_speed ();
 				if (A.fdmDrawn < 0) A.fdmDrawn = 0;
 				A.fdmDrawn += by;
 				if (A.fdmDrawn >= total) { if (A.layer < n - 1) { A.layer++; A.fdmDrawn = 0; ui (0); } else { A.layerPlay = false; A.fdmDrawn = -1; ui (0); } }
@@ -581,7 +582,7 @@ public:
 			}
 			else if (A.layerPlay && A.sliced && kapi_get_ticks () - A.layerT >= 4)
 			{
-				int n = (int) A.pjob.file.layers.size (); A.layerT = kapi_get_ticks (); A.layer += n > 300 ? n / 150 : 1;
+				int n = (int) A.pjob.file.layers.size (); A.layerT = kapi_get_ticks (); A.layer += (int) play_steps (n > 300 ? n / 150.0 : 1);
 				if (A.layer >= n - 1) { A.layer = n - 1; A.layerPlay = false; }
 				ui (0); g_view->invalidate (true);
 			}

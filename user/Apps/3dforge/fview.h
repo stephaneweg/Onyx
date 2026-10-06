@@ -67,6 +67,7 @@ struct App
 	// Manufacture (fcam.h): the setup and its operations, their moves; what the panel shows -- camSel: 0 the setup,
 	// k: its operation k - 1; camPage: 0 the setup, 1 the tool, 2 the operation
 	CamSetup job; CamPaths paths; RMesh stockMesh;
+	int speedIx = 2; double playAcc = 0;	// (what is played -- the cut, the layers, the bead --: how fast, PLAY_SPEEDS; what is left over a turn)
 	CamSetup jobOk;				// (the setup the moves were made from: what Cancel puts back. camDirty: values changed since)
 	bool camMode = false, camSim = false, camDirty = false; int camSel = 0, camPage = 0; unsigned camDirtyT = 0;
 	std::vector<float> simHm; size_t simAt = 0; bool simPlay = false; unsigned simT = 0;	// (the simulation played: the stock so far, the moves done)
@@ -554,6 +555,14 @@ static void cam_delete_op ()
 }
 
 // ---- Manufacture for a resin printer ------------------------------------------------------------------------------------------
+static const double PLAY_SPEEDS[6] = { 0.25, 0.5, 1, 2, 4, 8 };
+static const char *const PLAY_NAMES[6] = { "\xC3\x97\xC2\xBC", "\xC3\x97\xC2\xBD", "\xC3\x97" "1", "\xC3\x97" "2", "\xC3\x97" "4", "\xC3\x97" "8" };
+static double play_speed () { return PLAY_SPEEDS[A.speedIx < 0 || A.speedIx > 5 ? 2 : A.speedIx]; }
+// How many steps this turn at the speed chosen, `each` being a turn's at normal speed (the fraction left is kept).
+static long play_steps (double each)
+{
+	A.playAcc += each * play_speed (); long n = (long) A.playAcc; A.playAcc -= n; return n;
+}
 static bool resin () { return A.camMode && A.gen == 1; }
 static bool filament () { return A.camMode && A.gen == 2; }
 static bool printer () { return A.camMode && A.gen >= 1; }
@@ -805,7 +814,7 @@ public:
 	void barGeom (int *bx, int *y0, int *y1) const
 	{
 		bool side = !(printer () && A.camPage == 3 && !A.layer3d);
-		*bx = side ? 14 : width - 40; *y0 = side ? 66 : 48; *y1 = height - (side ? 124 : 74);
+		*bx = side ? 14 : width - 40; *y0 = side ? 66 : 48; *y1 = height - (side ? 150 : 98);
 	}
 	void vbar (bool dark, double frac, const char *top, bool playing)
 	{
@@ -823,12 +832,17 @@ public:
 		uk_rbox (canvas, bx - 2, y1 + 12, 28, 26, 6, 0xFFFFFF, 0xFFFFFF); uk_rline (canvas, bx - 2, y1 + 12, 28, 26, 6, 0x7A8090);
 		if (playing) { canvas.fillRect (bx + 6, y1 + 19, 4, 12, 0x2A2E38); canvas.fillRect (bx + 14, y1 + 19, 4, 12, 0x2A2E38); }
 		else icon (canvas, I_PLAY, bx + 3, y1 + 16, 18, 0x2A2E38, C_ACCENT, 0xFFFFFF);
+		// its speed: a click goes to the next one (a quarter .. eight times)
+		const char *sp = PLAY_NAMES[A.speedIx < 0 || A.speedIx > 5 ? 2 : A.speedIx];
+		uk_rbox (canvas, bx - 2, y1 + 42, 28, 20, 5, 0xFFFFFF, 0xFFFFFF); uk_rline (canvas, bx - 2, y1 + 42, 28, 20, 5, 0x7A8090);
+		uk_text (canvas, bx + 12 - uk_tw (sp, 2) / 2, y1 + 42 + (20 - uk_fh ()) / 2, sp, A.speedIx == 2 ? 0x2A2E38 : 0x1E5AB4, 2);
 	}
-	// The mouse on it: 1 Play pressed, 2 the bar held (*frac: where), 0 elsewhere.
+	// The mouse on it: 1 Play pressed, 2 the bar held (*frac: where), 3 the speed changed, 0 elsewhere.
 	int barMouse (int mx, int my, int bl, bool press, double *frac)
 	{
 		int bx, y0, y1; barGeom (&bx, &y0, &y1);
 		if (!bl) barHeld = false;
+		if (press && mx >= bx - 4 && mx < bx + 30 && my >= y1 + 41 && my < y1 + 64) { A.speedIx = (A.speedIx + 1) % 6; A.playAcc = 0; invalidate (true); return 3; }
 		if (press && mx >= bx - 4 && mx < bx + 30 && my >= y1 + 10 && my < y1 + 40) return 1;
 		if (press && mx >= bx - 6 && mx < bx + 32 && my >= y0 - 8 && my <= y1 + 8) barHeld = true;
 		if (!barHeld) return 0;
@@ -852,6 +866,7 @@ public:
 			A.layerPlay = !A.layerPlay; if (A.layerPlay && A.layer >= n - 1 && A.gen != 2) A.layer = 0;
 			A.fdmDrawn = A.layerPlay && A.gen == 2 ? 0 : -1; ui (0); invalidate (true); return true;
 		}
+		if (hit == 3) return true;
 		if (hit == 2) { A.layer = (int) (f * n); A.layerPlay = false; A.fdmDrawn = -1; }
 		else if (wheel && !A.layer3d) { A.layer += wheel * (n > 400 ? n / 200 : 1); A.layerPlay = false; A.fdmDrawn = -1; }
 		if (A.layer < 0) A.layer = 0; if (A.layer > n - 1) A.layer = n - 1;
@@ -863,6 +878,7 @@ public:
 	{
 		size_t n = A.paths.moves.size (); double f = 0; int hit = barMouse (mx, my, bl, press, &f);
 		if (!hit || !n) return false;
+		if (hit == 3) return true;
 		if (hit == 1) { A.simPlay = !A.simPlay; if (A.simPlay && A.simAt >= n) sim_to (0); }
 		else { A.simPlay = false; sim_to ((size_t) (f * n)); }
 		invalidate (true); return true;

@@ -73,7 +73,7 @@ def scene (name):
 	# layer being played (the bar dragged, Play)
 	fd = ";".join ([cam, "menu 48", w])
 	if name == "fdm": return ";".join ([fd, "menu 49", w])
-	if name == "fdm-layers": return ";".join ([fd, "menu 47", w, "move 748 425;down 748 425;move 748 420;wait;up 748 420;wait", ck ("748 487")] + ["wait"] * 28)
+	if name == "fdm-layers": return ";".join ([fd, "menu 47", w, "move 748 425;down 748 425;move 748 420;wait;up 748 420;wait", ck ("748 461")] + ["wait"] * 28)
 	raise SystemExit ("no such scene: " + name)
 
 if __name__ == "__main__":
