@@ -13,16 +13,16 @@
 class LevelList : public Widget
 {
 public:
-	int top, hot;					// the scroll (px), the row under the pointer (-1)
+	int sc, hot;					// the scroll (px), the row under the pointer (-1)
 	enum { HEAD = 30, ROW = 28 };
-	LevelList (int l, int t, int w, int h) : Widget (l, t, w, h), top (0), hot (-1) {}
+	LevelList (int l, int t, int w, int h) : Widget (l, t, w, h), sc (0), hot (-1) {}
 	int total () { int n = 0; for (int p = 0; p < g_npacks; p++) n += HEAD + g_packs[p]->n * ROW; return n; }
 	int view () { return height - 4; }
-	void clamp () { int m = total () - view (); if (top > m) top = m; if (top < 0) top = 0; }
+	void clamp () { int m = total () - view (); if (sc > m) sc = m; if (sc < 0) sc = 0; }
 	// The row at y (the list's own coordinates, scrolled): *p, *l (-1: a header) -> its index, -1 none
 	int row_at (int y, int *P, int *Lv)
 	{
-		int yy = -top, idx = 0;
+		int yy = -sc, idx = 0;
 		for (int p = 0; p < g_npacks; p++)
 		{
 			if (y >= yy && y < yy + HEAD) { *P = p; *Lv = -1; return idx; }
@@ -39,7 +39,7 @@ public:
 		Canvas clip; clip.adopt (canvas.px + 2 * canvas.stride + 2, width - 4, height - 4, canvas.stride);
 		clamp ();
 		bool scroll = total () > view ();
-		int y = -top, rw = clip.w - (scroll ? UK_SBW + 2 : 0), idx = 0;
+		int y = -sc, rw = clip.w - (scroll ? UK_SBW + 2 : 0), idx = 0;
 		unsigned dim = uk_mix (C_FIELD, C_FIELD_TEXT, 130);
 		for (int p = 0; p < g_npacks; p++, idx++)
 		{
@@ -74,7 +74,7 @@ public:
 					char num[8]; snprintf (num, sizeof num, "%d", l + 1);
 					UkFaceScope fs (g_small); uk_text_c (clip, cx - 10, cy - 10, 20, 20, num, sel ? C_ACCENT : 0x00FFFFFF, 2);
 				}
-				char f[90]; uk_text_fit (L.titleOf (g_lang), rw - 38 - (open ? 54 : 4), f, sizeof f, sel ? 2 : 0);
+				char f[90]; uk_text_fit (L.titleOf (g_lang), rw - 38 - 54, f, sizeof f, sel ? 2 : 0);
 				uk_text_l (clip, 36, y, ROW, f, ink, sel ? 2 : 0);
 				if (open)
 					for (int k = 0; k < 3; k++) star (clip, rw - 44 + k * 14, cy, 6, k < s ? STAR_GOLD : uk_mix (sel ? C_ACCENT : C_FIELD, ink, 80), k < s);
@@ -82,14 +82,14 @@ public:
 		}
 		if (scroll)
 		{
-			UkThumb th = uk_thumb (total (), view (), top, height - 4);
+			UkThumb th = uk_thumb (total (), view (), sc, height - 4);
 			uk_draw_vscroll (canvas, width - UK_SBW - 2, 2, UK_SBW, height - 4, th, C_FIELD);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
 		if (mx < 0) { if (hot >= 0) { hot = -1; invalidate (true); } return false; }
-		if (wheel) { top -= wheel * ROW; clamp (); invalidate (true); return true; }
+		if (wheel) { sc -= wheel * ROW; clamp (); invalidate (true); return true; }
 		int p = -1, l = -1, i = row_at (my - 2, &p, &l);
 		if (i != hot) { hot = i; invalidate (true); }
 		if (bl && !pressed) { pressed = true; if (i >= 0 && l >= 0) level_clicked (p, l); }
@@ -101,7 +101,7 @@ public:
 		int y = 0;
 		for (int p = 0; p < g_npacks; p++)
 		{
-			if (p == g_pack) { int ry = y + HEAD + g_level * ROW; if (ry < top + (g_level == 0 ? HEAD : 0)) top = ry - (g_level == 0 ? HEAD : 0); if (ry + ROW > top + view ()) top = ry + ROW - view (); break; }
+			if (p == g_pack) { int ry = y + HEAD + g_level * ROW; if (ry < sc + (g_level == 0 ? HEAD : 0)) sc = ry - (g_level == 0 ? HEAD : 0); if (ry + ROW > sc + view ()) sc = ry + ROW - view (); break; }
 			y += HEAD + g_packs[p]->n * ROW;
 		}
 		clamp (); invalidate (true);
@@ -118,7 +118,7 @@ public:
 	int need ()
 	{
 		if (!g_L) return 66;
-		int h = 7 + face_h (g_big) + 3 + wrap_count (g_L->textOf (g_lang), textW (), 3) * (uk_fh () + 2) + 8;
+		int h = 7 + face_h (g_big) + 3 + wrap_count (g_L->textOf (g_lang), textW (), 4) * (uk_fh () + 2) + 8;
 		if (g_showHint) { char t[600]; hint_text (t, sizeof t); h += 2 + wrap_count (t, width - 28, 3) * (uk_fh () + 2); }
 		return h < 66 ? 66 : h;
 	}
@@ -131,7 +131,7 @@ public:
 		char t[120], f[120]; snprintf (t, sizeof t, "%d.%d  %s", g_pack + 1, g_level + 1, g_L->titleOf (g_lang));
 		{ UkFaceScope fs (g_big); uk_text_fit (t, textW (), f, sizeof f, 2); uk_text (canvas, 14, 7, f, 0x3A2E10, 2); }
 		int y = 7 + face_h (g_big) + 3;
-		int n = wrap_draw (canvas, 14, y, textW (), g_L->textOf (g_lang), 0x3A3A3A, 3, uk_fh () + 2);
+		int n = wrap_draw (canvas, 14, y, textW (), g_L->textOf (g_lang), 0x3A3A3A, 4, uk_fh () + 2);
 		if (g_showHint) { char h[600]; hint_text (h, sizeof h); wrap_draw (canvas, 14, y + n * (uk_fh () + 2) + 2, width - 28, h, 0x8A5A00, 3, uk_fh () + 2); }
 	}
 };

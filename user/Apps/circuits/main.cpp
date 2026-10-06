@@ -636,9 +636,6 @@ int main (void)
 	load_packs ();
 	g_pr.attach (fk_kv_load (PROGRESS, FK_KV_ESCAPES));
 	if (g_npacks && g_packs[0]->n && !g_pr.isOpen (g_packs[0]->lv[0]->id)) open_first (g_pr, g_packs, g_npacks);
-	int argPack = -1;
-	char args[256] = ""; int an = kapi_get_args (args, sizeof args);
-	if (an > 0 && args[0]) argPack = add_pack (args, true, false);
 
 	CircuitsRoot root;
 	if (root.canvas.px == 0) return 1;
@@ -684,20 +681,19 @@ int main (void)
 		ft_messagebox ("Circuits", TR ("No level found in SD:/apps/circuits.app/levels."), MB_OK);
 		return 1;
 	}
-	// where the player was (or the pack given)
+	// where the player was; then the pack given (after: a refusal's dialog over the level shown)
 	int p = 0, l = 0;
-	if (argPack >= 0) p = argPack;
-	else
-	{
-		const char *lp = g_pr.lastPack (), *ll = g_pr.lastLevel ();
-		for (int i = 0; i < g_npacks; i++)
-			if (!strcmp (fs_basename (g_packs[i]->path), lp))
-			{
-				int k = g_packs[i]->find (ll);
-				if (k >= 0 && level_open (g_pr, *g_packs[i], k)) { p = i; l = k; }
-			}
-	}
+	const char *lp = g_pr.lastPack (), *ll = g_pr.lastLevel ();
+	for (int i = 0; i < g_npacks; i++)
+		if (!strcmp (fs_basename (g_packs[i]->path), lp))
+		{
+			int k = g_packs[i]->find (ll);
+			if (k >= 0 && level_open (g_pr, *g_packs[i], k)) { p = i; l = k; }
+		}
+	char args[256] = ""; int an = kapi_get_args (args, sizeof args);
+	if (an > 0 && args[0] && ends_circuits (args)) { int ap = add_pack (args, true, true); if (ap >= 0) { p = ap; l = 0; } }
 	show_level (p, l);
+	if (an > 0 && args[0] && (!ends_circuits (args) || p < 0 || strcmp (g_packs[p]->path, args))) open_pack (args);	// (refused: the dialog says why)
 	root.run ();
 	save_board ();
 	return 0;
