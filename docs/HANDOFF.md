@@ -46,10 +46,11 @@ choices, what changed while building) and docs/03 *3DForge* (the code's pieces).
   `PrintFormat`, `printers.ini`). **Nothing printed yet**: whether the printer wants the picture mirrored is unknown
   (his sample is symmetric) — ask him to print something with a letter. Kept for later: a filament printer's
   generator (large), supports that branch or stand on the body, hollowing.
-- **Filament printing, the engine only (2026-10-06)**: `ffdm.h` (walls, solid layers, infill, skirt; a plain Marlin
-  G-code), tested, **not in the app**: he has an Anycubic **Kobra X** — ask him for a `.gcode` that printed well on
-  it (its start and end blocks), then the mock-up of the screen before building it (docs/3dforge/README.md,
-  *Filament printing*).
+- **Filament printing (2026-10-06)**: `ffdm.h` (walls, solid layers, infill as lines / grid / honeycomb, skirt; a
+  plain Marlin G-code), and — he asked for it "without a writer at first: enter the values, see the path, see it
+  played, the bead being laid" — the third Process in the app: Setup, Filament, Layers (Play). **No file is
+  written**: he has an Anycubic **Kobra X**; ask him for a `.gcode` that printed well on it (its start and end
+  blocks) to make its writer. Not there: supports, bridges, speeds, several filaments.
 - **The simulations play** (his wish): the router's cut (`cam_sim_advance`, a bar and Play), the layers (Play, and
   the body shown printed up to a layer).
 - **Computations on another core** (his question, 2026-10-06): threads all run on core 0; an app core (2, 3) may

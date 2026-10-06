@@ -18,7 +18,7 @@ enum { I_BOX, I_CYL, I_SKETCH, I_EXTRUDE, I_FILLET, I_CHAMFER, I_MOVE, I_UNION, 
        I_LINE, I_RECT, I_CIRCLE, I_ARC, I_CLOSE, I_HOME, I_FIT, I_SHADED, I_CHECK, I_INFO, I_EYE, I_WARN, I_COMBINE,
        I_PYRAMID, I_PRISM, I_TAPER, I_TORUS, I_SPHERE, I_SHAPES,
        I_CAM_SETUP, I_CAM_TOOL, I_CAM_CLEAR, I_CAM_CONTOUR, I_GCODE, I_PLAY, I_ARC3, I_SPLINE, I_POINT,
-       I_PR_PLATE, I_PR_RESIN, I_PR_SUP, I_PR_LAYERS,
+       I_PR_PLATE, I_PR_RESIN, I_PR_SUP, I_PR_LAYERS, I_PR_FIL,
        I_NEW, I_OPEN, I_SAVE, I_UNDO, I_REDO };
 
 // Icon `kind` in the s x s box at (x, y): ink the lines, acc the accent, bg what is behind it.
@@ -189,6 +189,9 @@ static void icon (Canvas &cv, int kind, int x, int y, int s, unsigned ink, unsig
 		poly (sh, 4, soft, true, ink, true);
 		seg (6, 13.6, 6, 20, acc, w * 5 / 4); seg (12, 12, 12, 20, acc, w * 5 / 4); seg (18, 10.4, 18, 20, acc, w * 5 / 4); seg (3, 20.5, 21, 20.5, ink, w * 5 / 4); break;
 	}
+	case I_PR_FIL:				// a spool of filament, its end coming off
+		dot (11, 12, 8.5 + 0.8, ink); dot (11, 12, 8.5 - 0.8, soft); dot (11, 12, 5.2, ink); dot (11, 12, 3.8, bg); dot (11, 12, 1.6, ink);
+		seg (17, 18, 22, 21, acc, w * 5 / 4); break;
 	case I_PR_LAYERS:			// sheets, one lit
 		for (int i = 0; i < 3; i++) { double yy = 6 + i * 5; const double sh[] = { 12, yy - 3, 21, yy, 12, yy + 3, 3, yy }; poly (sh, 4, i == 1 ? acc : uk_mix (ink, bg, 200), true, ink, true); }
 		break;

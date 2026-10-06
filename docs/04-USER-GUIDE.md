@@ -2348,7 +2348,7 @@ checked the original stays where it is and a copy of it, a new body, is what mov
 | **View** | Home, Fit, Top, Front, Right, Edges, Grid, See Through, Draw with the Processor |
 | **Create** | the seven shapes, Sketch, Extrude |
 | **Modify** | Fillet, Chamfer, Move, Union, Subtract, Intersect, Measure |
-| **Manufacture** | Design, Manufacture, Setup, Tool and Machine, New Clearing, New Contour, Simulate, G-code / Print File (Ctrl+G), Process: Milling, Process: Resin Printing, Supports, Generate Supports, Layers |
+| **Manufacture** | Design, Manufacture, Setup, Tool and Machine, New Clearing, New Contour, Simulate, G-code / Print File (Ctrl+G), Process: Milling, Process: Resin Printing, Supports, Generate Supports, Layers, Process: Filament Printing, Filament |
 
 Keys: **Enter** the step goes on (as OK), **Esc** leaves the tool (in a sketch: ends the run), **Del** deletes the
 selected step (in a sketch: the selected element).
@@ -2366,7 +2366,8 @@ then shows a warning in the timeline).
 
 **Manufacture** (the switch at the left of the tools; **Design** comes back to the part) makes **one body**. What it
 makes is the **Process**, chosen in the setup beside the body: **Milling** — the G-code of a router, described
-here — or **Resin printing** — the layers of a resin printer, described after. Milling prepares the cutting of the
+here —, **Resin printing** — the layers of a resin printer — or **Filament printing** — the path of a filament
+printer's nozzle —, both described after. Milling prepares the cutting of the
 body on a 3-axis router driven by **GRBL**, with a **flat end mill**. The view shows that body alone, in
 its **stock** (the block it is cut from, see-through); the timeline shows the setup, then the operations in the
 order they are run. Everything is kept in the `.3df`.
@@ -2458,8 +2459,33 @@ makers' files. Another printer of the same family can be added without a new ver
 instance `My Printer = 4096 2560 35 143.36 89.1 165 pm3n`) — only the Photon Mono 2 has been checked against a real
 file.
 
+#### Manufacture: the path for a filament printer
+
+![Filament printing: its values](../screenshots/3dforge-fdm.png)
+
+With the process **Filament printing**, Manufacture builds **the path of the nozzle**, layer by layer, for a printer
+that lays melted filament — whatever the printer: **no file is written yet** (a printer's own G-code will be made
+from this path; the path is what is shown and played).
+
+- **Setup** — the body, the **bed**'s size, where the body is on it (moved, tilted, turned).
+- **Filament** — the **layers**' height and the line's width; the **shell**: how many *walls* at the sides, how
+  many *solid* layers *above* and *below* (they are put wherever the body stops within that many layers, not only
+  at its very top and bottom); the **infill**: its *share* in percent, *turned* by an angle, **as** *Lines* (one way
+  a layer, the other way the next), a *Grid* (both ways each layer) or a *Honeycomb*; the **skirt** drawn around
+  the first layer (its loops, how far away).
+- **Layers** — the path seen from above, a colour a kind of line: outer wall, inner walls, solid, infill, skirt.
+  The bar at the right, or the wheel, goes through the layers. **Play** draws the layer as the printer would — the
+  bead laid along its path, the nozzle at its end — then the next ones. *Show it in the 3D view* shows the body
+  printed so far with the layer's lines on it. At the right: the number of layers, the length drawn, the filament
+  it takes.
+
+![Filament printing: a layer being drawn](../screenshots/3dforge-fdm-layers.png)
+
+*What it does not do yet*: a printer's file; supports; bridges, thin walls, the seam's place, speeds, a brim,
+several filaments.
+
 Files: `SD:/docs/3d/*.3df` (yours), `SD:/docs/3d/bracket.3df` (the sample); exports, G-code (`.nc`) and print files
-where you choose; `SD:/apps/3dforge.app/cam.ini` (the tool and the machine, remembered), `print.ini` (the resin and
+where you choose; `SD:/apps/3dforge.app/filament.ini` (a filament printer's values, remembered); `SD:/apps/3dforge.app/cam.ini` (the tool and the machine, remembered), `print.ini` (the resin and
 the printer, remembered), `printers.ini` (more printers, yours to write).
 
 ### Screenshot, the screen capture tool (`screenshot`)

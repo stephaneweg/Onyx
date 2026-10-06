@@ -37,6 +37,16 @@ int main (int argc, char **argv)
 		check (count (a.layers[10], FDM_INNER) == 2 && count (a.layers[1], FDM_SOLID) > 30 && count (a.layers[2], FDM_SOLID) == 0 && fabs (a.length - b2.length) < a.length * 0.03
 		       && count (b2.layers[10], FDM_SPARSE) > count (a.layers[10], FDM_SPARSE) / 2, "the options: the walls, the solid layers, the infill's share and its pattern");
 	}
+	{
+		// a honeycomb: the same share of matter as lines, the same cells on every layer; the shell given in millimetres
+		FdmSettings o; o.infill = 0.25; FdmJob a, b2; Manifold big = Manifold::Cube ({60, 60, 6});
+		fdm_paths (big, o, a, [] (int, int) { return true; }); o.pattern = FDM_HONEYCOMB; fdm_paths (big, o, b2, [] (int, int) { return true; });
+		auto len = [] (const FdmLayer &l) { double t = 0; for (const FdmPath &p : l.paths) if (p.kind == FDM_SPARSE) for (size_t k = 1; k < p.pts.size (); k++) t += hypot (p.pts[k].x - p.pts[k - 1].x, p.pts[k].y - p.pts[k - 1].y); return t; };
+		bool in = true; for (const FdmPath &p : b2.layers[10].paths) for (const V2 &q : p.pts) in = in && q.x > -1e-6 && q.x < 60 + 1e-6 && q.y > -1e-6 && q.y < 60 + 1e-6;
+		printf ("     infill of 25 %%, a layer: %.0f mm as lines, %.0f mm as a honeycomb\n", len (a.layers[10]), len (b2.layers[10]));
+		check (in && fabs (len (b2.layers[10]) - len (a.layers[10])) < len (a.layers[10]) * 0.1 && fabs (len (b2.layers[10]) - len (b2.layers[11])) < 1e-6, "a honeycomb: the share asked, the same cells on every layer, inside the walls");
+		fdm_shell (o, 1.2, 0.8); check (o.walls == 3 && o.top == 4 && o.bottom == 4, "the shell in millimetres: 1.2 at the sides is three walls, 0.8 above and below four layers");
+	}
 	// filled whole, what is pushed out is the body
 	s.infill = 1; fdm_paths (cube, s, j, [] (int, int) { return true; });
 	double skirt = 0; for (const FdmPath &p : j.layers[0].paths) if (p.kind == FDM_SKIRT) for (size_t k = 1; k <= p.pts.size (); k++) skirt += hypot (p.pts[k % p.pts.size ()].x - p.pts[k - 1].x, p.pts[k % p.pts.size ()].y - p.pts[k - 1].y);
@@ -50,7 +60,8 @@ int main (int argc, char **argv)
 	if (!f) { printf ("FAIL the sample part is missing\n"); return 1; }
 	std::string text (200000, 0); text.resize (fread (&text[0], 1, text.size (), f)); fclose (f);
 	Doc d; check (d.load (text.c_str ()) && d.bodies.size () == 1, "the sample part");
-	s = FdmSettings (); ok = fdm_paths (d.bodies[0].m, s, j, [] (int, int) { return true; });
+	s = FdmSettings (); if (argc > 4) s.pattern = atoi (argv[4]);
+	ok = fdm_paths (d.bodies[0].m, s, j, [] (int, int) { return true; });
 	size_t paths = 0; for (const FdmLayer &l : j.layers) paths += l.paths.size ();
 	printf ("     the bracket: %d layers, %d paths, %.1f m drawn, %.1f cm3 pushed out (the body: %.1f), %.2f m of filament\n", (int) j.layers.size (), (int) paths, j.length / 1000,
 		j.volume / 1000, d.bodies[0].m.Volume () / 1000, j.filament / 1000);

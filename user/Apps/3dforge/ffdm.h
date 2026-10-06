@@ -26,13 +26,21 @@ struct FdmSettings
 	double layer, width;			// a layer's height, a line's width (mm)
 	double walls, top, bottom;		// how many walls; solid layers above and below
 	double infill;				// the share filled inside (0 .. 1)
-	int pattern;				// ... as: 0 lines, one way a layer then the other; 1 a grid, both ways each layer
+	int pattern;				// ... as: 0 lines, one way a layer then the other; 1 a grid, both ways each layer;
+						// 2 a honeycomb (the same on every layer: its walls stand on one another)
 	double angle;				// ... turned by (degrees; 45 at first)
 	double skirt, skirtGap;			// the skirt's loops, how far from the part
 	double filament;			// the filament's diameter
 	FdmSettings () : layer (0.2), width (0.45), walls (2), top (4), bottom (4), infill (0.2), pattern (0), angle (45), skirt (2), skirtGap (5), filament (1.75) {}
 };
 enum { FDM_OUTER, FDM_INNER, FDM_SOLID, FDM_SPARSE, FDM_SKIRT };
+enum { FDM_LINES, FDM_GRID, FDM_HONEYCOMB };
+// The shell given as thicknesses (mm): the walls' at the sides, the solid layers' above and below.
+static void fdm_shell (FdmSettings &s, double sides, double skin)
+{
+	s.walls = floor (sides / s.width + 0.5); if (s.walls < 1) s.walls = 1;
+	s.top = s.bottom = floor (skin / s.layer + 0.5); if (s.top < 1) s.top = s.bottom = 1;
+}
 struct FdmPath { std::vector<V2> pts; bool closed; unsigned char kind; };
 struct FdmLayer { double z; std::vector<FdmPath> paths; };
 struct FdmJob
@@ -84,6 +92,66 @@ static void fdm_lines (const CrossSection &region, double gap, double deg, int k
 		for (FdmPath &f : row) out.push_back (f);
 	}
 }
+// A honeycomb of side `a` across the region, turned by `deg`: rows of a line that goes level, up a slant, level, down
+// a slant; a row and the next mirror each other and meet along their level stretches (drawn twice: a cell's wall
+// there is two lines thick, as slicers make it). Each row is cut to the region.
+static void fdm_honeycomb (const CrossSection &region, double a, double deg, int kind, std::vector<FdmPath> &out)
+{
+	Polygons ps = region.ToPolygons (); if (ps.empty () || a < 0.2) return;
+	double an = deg * PI / 180, c = cos (an), s = sin (an), h = a * sqrt (3.0) / 2, x0 = 1e30, x1 = -1e30, y0 = 1e30, y1 = -1e30;
+	struct Edge { V2 p, q; }; std::vector<Edge> edges;
+	for (const SimplePolygon &p : ps)
+		for (size_t i = 0, j = p.size () - 1; i < p.size (); j = i++)
+		{
+			Edge e = { V2 (p[j].x * c + p[j].y * s, -p[j].x * s + p[j].y * c), V2 (p[i].x * c + p[i].y * s, -p[i].x * s + p[i].y * c) };
+			edges.push_back (e); x0 = std::min (x0, e.q.x); x1 = std::max (x1, e.q.x); y0 = std::min (y0, e.q.y); y1 = std::max (y1, e.q.y);
+		}
+	auto inside = [&] (double x, double y)
+	{
+		bool in = false;
+		for (const Edge &e : edges) if ((e.p.y > y) != (e.q.y > y) && x < (e.q.x - e.p.x) * (y - e.p.y) / (e.q.y - e.p.y) + e.p.x) in = !in;
+		return in;
+	};
+	std::vector<double> ts; bool back = false;
+	// (the rows start on the same lattice whatever the region: a layer's cells stand on the one below's)
+	for (long r = (long) floor (y0 / h) - 1; r * h < y1 + h; r++)
+	{
+		// row r lies between r h and (r + 1) h; the even ones start low, the odd ones high
+		double lo = r * h, hi = lo + h; bool up = (r & 1) == 0; std::vector<V2> line;
+		for (long k = (long) floor (x0 / (3 * a)) - 1; k * 3 * a < x1 + 3 * a; k++)
+		{
+			double x = k * 3 * a;
+			line.push_back (V2 (x, up ? lo : hi)); line.push_back (V2 (x + a, up ? lo : hi));
+			line.push_back (V2 (x + 1.5 * a, up ? hi : lo)); line.push_back (V2 (x + 2.5 * a, up ? hi : lo));
+		}
+		if (back) std::reverse (line.begin (), line.end ());
+		back = !back;
+		FdmPath cur; cur.closed = false; cur.kind = (unsigned char) kind;
+		auto flush = [&] () { if (cur.pts.size () >= 2) out.push_back (cur); cur.pts.clear (); };
+		for (size_t i = 0; i + 1 < line.size (); i++)
+		{
+			const V2 &p = line[i], &q = line[i + 1]; double dx = q.x - p.x, dy = q.y - p.y;
+			ts.clear (); ts.push_back (0); ts.push_back (1);
+			for (const Edge &e : edges)
+			{
+				double ex = e.q.x - e.p.x, ey = e.q.y - e.p.y, den = dx * ey - dy * ex; if (fabs (den) < 1e-12) continue;
+				double t = ((e.p.x - p.x) * ey - (e.p.y - p.y) * ex) / den, u = ((e.p.x - p.x) * dy - (e.p.y - p.y) * dx) / den;
+				if (t > 1e-9 && t < 1 - 1e-9 && u >= 0 && u <= 1) ts.push_back (t);
+			}
+			std::sort (ts.begin (), ts.end ());
+			for (size_t k = 0; k + 1 < ts.size (); k++)
+			{
+				double t0 = ts[k], t1 = ts[k + 1], tm = (t0 + t1) / 2; if (t1 - t0 < 1e-9) continue;
+				if (!inside (p.x + dx * tm, p.y + dy * tm)) { flush (); continue; }
+				V2 a0 (p.x + dx * t0, p.y + dy * t0), a1 (p.x + dx * t1, p.y + dy * t1);
+				if (cur.pts.empty ()) cur.pts.push_back (V2 (a0.x * c - a0.y * s, a0.x * s + a0.y * c));
+				cur.pts.push_back (V2 (a1.x * c - a1.y * s, a1.x * s + a1.y * c));
+				if (t1 < 1 - 1e-9) flush ();			// (it leaves the region inside this stretch)
+			}
+		}
+		flush ();
+	}
+}
 // The nozzle's path for `solid` (anywhere: its box's underside is the first layer's). progress (done, of): false stops.
 template <class F> static bool fdm_paths (const Manifold &solid, const FdmSettings &s, FdmJob &job, F progress)
 {
@@ -133,7 +201,9 @@ template <class F> static bool fdm_paths (const Manifold &solid, const FdmSettin
 			if (sparse.Area () > w * w)
 			{
 				CrossSection r = sparse.Offset (w * 0.15, RND, 2.0, 12);
-				if (s.pattern == 1) { fdm_lines (r, sparse_gap * 2, s.angle, FDM_SPARSE, l.paths); fdm_lines (r, sparse_gap * 2, s.angle + 90, FDM_SPARSE, l.paths); }
+				// (a honeycomb's lines per area: 4 a for a cell of 2.6 a2 -- its side for the share asked)
+				if (s.pattern == FDM_HONEYCOMB) fdm_honeycomb (r, 4 / 2.598 * sparse_gap, s.angle - 45, FDM_SPARSE, l.paths);
+				else if (s.pattern == 1) { fdm_lines (r, sparse_gap * 2, s.angle, FDM_SPARSE, l.paths); fdm_lines (r, sparse_gap * 2, s.angle + 90, FDM_SPARSE, l.paths); }
 				else fdm_lines (r, sparse_gap, deg, FDM_SPARSE, l.paths);
 			}
 		}
@@ -144,6 +214,12 @@ template <class F> static bool fdm_paths (const Manifold &solid, const FdmSettin
 	return true;
 }
 
+static double fdm_layer_length (const FdmLayer &l)
+{
+	double t = 0;
+	for (const FdmPath &p : l.paths) for (size_t k = 1; k < p.pts.size () + (p.closed ? 1 : 0); k++) { const V2 &a = p.pts[k - 1], &b = p.pts[k % p.pts.size ()]; t += hypot (b.x - a.x, b.y - a.y); }
+	return t;
+}
 // ---- a plain G-code (Marlin's words): what any writer for a printer starts from ----------------------------------------
 struct FdmMachine
 {
@@ -200,6 +276,23 @@ static std::string fdm_gcode (const FdmJob &j, const FdmSettings &s, const FdmMa
 	put ("G0 X0 Y0"); put ("M84");
 	if (minutes) *minutes = secs / 60;
 	return g;
+}
+
+// Kept: in the part's file, and from a part to the next.
+static std::string fdm_save (const FdmSettings &s, const FdmMachine &m)
+{
+	char b[300];
+	snprintf (b, sizeof b, "fdm %.9g %.9g %.9g %.9g %.9g %.9g %d %.9g %.9g %.9g %.9g bed %.9g %.9g %.9g\n", s.layer, s.width, s.walls, s.top, s.bottom, s.infill, s.pattern, s.angle, s.skirt, s.skirtGap,
+		  s.filament, m.bedX, m.bedY, m.sizeZ);
+	return b;
+}
+static void fdm_load (FdmSettings &s, FdmMachine &m, const char *text)
+{
+	const char *p = text && !strncmp (text, "fdm ", 4) ? text : text ? strstr (text, "\nfdm ") : 0; if (!p) return;
+	if (*p == '\n') p++;
+	FdmSettings t = s; FdmMachine u = m;
+	if (sscanf (p, "fdm %lf %lf %lf %lf %lf %lf %d %lf %lf %lf %lf bed %lf %lf %lf", &t.layer, &t.width, &t.walls, &t.top, &t.bottom, &t.infill, &t.pattern, &t.angle, &t.skirt, &t.skirtGap, &t.filament,
+		    &u.bedX, &u.bedY, &u.sizeZ) == 14 && t.layer >= 0.02 && t.width >= 0.05) { s = t; m = u; }
 }
 
 } // namespace forge

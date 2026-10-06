@@ -11,6 +11,8 @@
 // (the camera, the frame for the GPU or the processor, picking), fview.h (the tools, the view, the bodies' panel over
 // it), fui.h (the tools' bar, the timeline, the selection's panel, the status bar), ficons.h (the icons).
 //
+// Manufacture for a filament printer (ffdm.h): the nozzle's path made from the layers' height, the shell and the infill,
+// looked at layer by layer and played; no printer's file yet. Its values: SD:/apps/3dforge.app/filament.ini.
 // Manufacture for a resin printer (fprint.h; the process is chosen in the setup): the body on the plate, its supports,
 // its layers cut and looked at, the printer's file written. The resin is kept in SD:/apps/3dforge.app/print.ini; more
 // printers of the same family: SD:/apps/3dforge.app/printers.ini.
@@ -36,7 +38,7 @@ using namespace forge;
 static int W = 1006, H = 701;
 static Ribbon *g_ribbon; static Timeline *g_time; static Props *g_props; static StatusBar *g_status;
 static bool g_rebuild = true;
-static const char *DOCS = "SD:/docs/3d", *CAM_INI = "SD:/apps/3dforge.app/cam.ini", *PRINT_INI = "SD:/apps/3dforge.app/print.ini", *PRINTERS_INI = "SD:/apps/3dforge.app/printers.ini";
+static const char *DOCS = "SD:/docs/3d", *CAM_INI = "SD:/apps/3dforge.app/cam.ini", *PRINT_INI = "SD:/apps/3dforge.app/print.ini", *FDM_INI = "SD:/apps/3dforge.app/filament.ini", *PRINTERS_INI = "SD:/apps/3dforge.app/printers.ini";
 
 static const char *base_name (const char *p) { const char *b = p; for (const char *q = p; *q; q++) if (*q == '/' || *q == ':') b = q + 1; return b; }
 static bool ends_with (const char *s, const char *e) { size_t a = strlen (s), b = strlen (e); return a >= b && !strcasecmp (s + a - b, e); }
@@ -69,7 +71,12 @@ static void job_reset ()
 	A.gen = 0; A.print = PrintSetup (); A.pjob = PrintJob (); A.slicer = PrintSlicer (); A.sliced = A.printDirty = A.wantFile = A.layerPlay = A.layer3d = false; A.layer = 0;
 	A.placed = A.held = Manifold (); A.placedMesh = A.supMesh = A.cutMesh = RMesh ();
 	if (read_text (PRINT_INI, s)) { PrintSetup t; print_load (t, s.c_str ()); A.print.resin = t.resin; A.print.machine = t.machine; }
+	// (a filament printer's: its values as they were left)
+	A.fdm = FdmSettings (); A.fmach = FDM_MACHINE0; A.fjob = FdmJob (); A.fdmReady = false; A.fdmDrawn = -1;
+	if (read_text (FDM_INI, s)) fdm_load (A.fdm, A.fmach, s.c_str ());
+	A.fdmPct = A.fdm.infill * 100;
 }
+namespace forge { static void fdm_presets_save () { A.fdm.infill = A.fdmPct / 100; std::string s = fdm_save (A.fdm, A.fmach); kapi_save_file (FDM_INI, s.data (), (unsigned) s.size ()); } }
 namespace forge { static void print_presets_save () { PrintSetup t; t.on = true; t.resin = A.print.resin; t.machine = A.print.machine; std::string s = print_save (t); kapi_save_file (PRINT_INI, s.data (), (unsigned) s.size ()); } }
 namespace forge { static void cam_presets_save () { std::string s = cam_presets (A.job); kapi_save_file (CAM_INI, s.data (), (unsigned) s.size ()); } }
 static bool load_path (const char *path)
@@ -84,6 +91,7 @@ static bool load_path (const char *path)
 	A.doc = d; A.saved = A.doc.changes; A.undo.clear (); A.redo.clear (); A.selFeat = A.selBody = -1;
 	job_reset (); cam_load (A.job, s.c_str ()); print_load (A.print, s.c_str ());
 	if (strstr (s.c_str (), "\nmanufacture resin")) A.gen = 1;
+	if (strstr (s.c_str (), "\nmanufacture filament")) { A.gen = 2; fdm_load (A.fdm, A.fmach, s.c_str ()); A.fdmPct = A.fdm.infill * 100; }
 	snprintf (A.path, sizeof A.path, "%s", path);
 	if (!A.doc.bodies.empty ()) A.selBody = A.doc.bodies[0].id;
 	A.sketching = false; tool_set (T_SELECT); if (g_view) g_view->home ();
@@ -93,7 +101,7 @@ static void cmd_save_as ();
 static void cmd_save ()
 {
 	if (!A.path[0]) { cmd_save_as (); return; }
-	std::string s = A.doc.save () + cam_save (A.job) + print_save (A.print) + (A.gen == 1 ? "manufacture resin\n" : "");
+	std::string s = A.doc.save () + cam_save (A.job) + print_save (A.print) + (A.gen == 1 ? "manufacture resin\n" : A.gen == 2 ? "manufacture filament\n" + fdm_save (A.fdm, A.fmach) : std::string ());
 	if (kapi_save_file (A.path, s.data (), (unsigned) s.size ()) >= 0) A.saved = A.doc.changes;
 	else uk_messagebox ("Save", "The file could not be written.", MB_OK);
 	ui (0);
@@ -397,9 +405,11 @@ static void cmd_gen ()
 	std::string ini; read_text (PRINTERS_INI, ini); std::vector<PrintMachine> ms = print_machines (ini.c_str ());
 	PopupMenu pm (g_props->left + 110, g_props->top + 112); char t[80];
 	pm.add ("Milling \xC2\xB7 G-code for a router (GRBL)", 2000);
+	pm.add ("Filament printing \xC2\xB7 the nozzle's path", 1999);
 	for (size_t i = 0; i < ms.size () && i < 30; i++) { snprintf (t, sizeof t, "Resin printing \xC2\xB7 %s", ms[i].name); pm.add (t, 2001 + (int) i); }
 	int c = pm.run ();
 	if (c == 2000) gen_set (0);
+	else if (c == 1999) gen_set (2);
 	else if (c > 2000 && c - 2001 < (int) ms.size ())
 	{
 		bool other = strcmp (A.print.machine.name, ms[c - 2001].name) != 0; A.print.machine = ms[c - 2001];
@@ -421,7 +431,7 @@ static void cmd_cam_body ()
 	PopupMenu pm (g_props->left + 12, g_props->top + 112);
 	for (size_t i = 0; i < A.doc.bodies.size () && i < 40; i++) pm.add (body_name (A.doc.bodies[i].id), 1000 + (int) i);
 	int c = pm.run ();
-	if (c >= 1000 && c - 1000 < (int) A.doc.bodies.size () && A.gen == 1) { A.print.body = A.doc.bodies[c - 1000].id; A.print.tips.clear (); A.doc.changes++; print_refresh (); if (g_view) g_view->fit (); ui (R_ALL); return; }
+	if (c >= 1000 && c - 1000 < (int) A.doc.bodies.size () && A.gen >= 1) { A.print.body = A.doc.bodies[c - 1000].id; A.print.tips.clear (); A.doc.changes++; print_refresh (); if (g_view) g_view->fit (); ui (R_ALL); return; }
 	if (c >= 1000 && c - 1000 < (int) A.doc.bodies.size ()) { A.job.body = A.doc.bodies[c - 1000].id; A.doc.changes++; cam_refresh (); if (g_view) g_view->fit (); ui (R_ALL); }
 }
 
@@ -448,7 +458,7 @@ static void confirm ()
 }
 static void cancel ()
 {
-	if (resin ()) { if (A.layerPlay) { A.layerPlay = false; ui (0); } return; }
+	if (printer ()) { if (A.layerPlay) { A.layerPlay = false; A.fdmDrawn = -1; g_view->invalidate (true); ui (0); } return; }
 	if (A.camMode) { if (A.camSim) { A.camSim = false; ui (R_ALL); } return; }
 	if (A.sketching)
 	{
@@ -495,7 +505,7 @@ static void cmd (int id)
 		A.camSim = !A.camSim; A.simPlay = false; if (A.camSim) sim_to (A.paths.moves.size ());
 		set_hint (A.camSim ? "What is left of the stock. Play (at the left) runs the cut; drag the bar to go through it. Esc: back to the moves." : ""); if (!A.camSim) cam_hint ();
 		ui (R_ALL); break;
-	case CMD_GCODE: if (A.gen == 1) cmd_print_file (); else cmd_gcode (); break;
+	case CMD_GCODE: if (A.gen == 1) cmd_print_file (); else if (A.gen == 0) cmd_gcode (); break;
 	case CMD_CAM_BODY: if (A.camMode) cmd_cam_body (); break;
 	case CMD_CAM_DELETE: if (A.camMode) cam_delete_op (); break;
 	case CMD_EXPORT: cmd_export (); break;
@@ -510,7 +520,7 @@ static void cmd (int id)
 	}
 	case CMD_OK: confirm (); break;
 	case CMD_CANCEL: cancel (); break;
-	case CMD_DELETE: if (resin ()) break; if (A.camMode) cam_delete_op (); else if (!A.sketching && A.selFeat >= 0) delete_feature (A.selFeat); break;
+	case CMD_DELETE: if (printer ()) break; if (A.camMode) cam_delete_op (); else if (!A.sketching && A.selFeat >= 0) delete_feature (A.selFeat); break;
 	case CMD_DEL_ELEMENT:
 		if (A.sketching && A.selEl >= 0 && A.selEl < (int) A.sk.els.size ()) { A.sk.els.erase (A.sk.els.begin () + A.selEl); A.selEl = -1; sk_eval (); A.chain = false; sk_arm (); ui (R_ALL); }
 		break;
@@ -537,6 +547,19 @@ public:
 			size_t n = A.paths.moves.size (), by = n / 300 < 1 ? 1 : n / 300; A.simT = kapi_get_ticks ();
 			sim_to (A.simAt + by); if (A.simAt >= n) A.simPlay = false;
 			g_view->invalidate (true);
+		}
+		if (filament ())	// (a filament printer's: the body put again, its path made again; the path played -- a layer drawn, then the next)
+		{
+			if (A.printDirty && kapi_get_ticks () - A.camDirtyT > 40) { print_refresh (); if (A.camPage == 3) fdm_start (); ui (0); g_view->invalidate (true); }
+			if (A.layerPlay && A.fdmReady && A.camPage == 3 && kapi_get_ticks () - A.layerT >= 2)
+			{
+				int n = (int) A.fjob.layers.size (); A.layerT = kapi_get_ticks ();
+				double total = A.layer < n ? fdm_layer_length (A.fjob.layers[A.layer]) : 0, by = total / 50 < 6 ? 6 : total / 50;
+				if (A.fdmDrawn < 0) A.fdmDrawn = 0;
+				A.fdmDrawn += by;
+				if (A.fdmDrawn >= total) { if (A.layer < n - 1) { A.layer++; A.fdmDrawn = 0; ui (0); } else { A.layerPlay = false; A.fdmDrawn = -1; ui (0); } }
+				g_view->invalidate (true);
+			}
 		}
 		if (resin ())		// (a resin printer's: the body put again; the layers cut a few at a turn; the layers played)
 		{
@@ -677,6 +700,8 @@ int main (void)
 	menu.item ("Supports", "", 0, [] { cmd (CMD_PR_SUPPORTS); });
 	menu.item ("Generate Supports", "", 0, [] { cmd (CMD_PR_GENERATE); });
 	menu.item ("Layers", "", 0, [] { cmd (CMD_PR_LAYERS); });
+	menu.item ("Process: Filament Printing", "", 0, [] { gen_set (2); if (A.camMode) g_view->fit (); });
+	menu.item ("Filament", "", 0, [] { cmd (CMD_PR_RESIN); });
 	menu.menu ("Help");
 	menu.item ("About 3DForge", "", 0, [] { uk_messagebox ("3DForge", "A small parametric CAD for Onyx.\nGeometry: Manifold (Apache-2.0), Clipper2 (BSL-1.0).", MB_OK); });
 	menu.publish ();

@@ -29,6 +29,7 @@
 #include "ficons.h"
 #include "fcam.h"
 #include "fprint.h"
+#include "ffdm.h"
 
 namespace forge {
 
@@ -74,6 +75,8 @@ struct App
 	Manifold placed, held;			// the body on the plate; with what holds it
 	RMesh placedMesh, supMesh, cutMesh;	// ... shown; cutMesh: up to the layer looked at
 	bool printDirty = false, sliced = false, wantFile = false, layer3d = false, layerPlay = false; int layer = 0, cutAt = -1; unsigned layerT = 0;
+	// ... for a filament printer (ffdm.h; gen 2): the nozzle's path. Its pages: 0 the setup, 1 the filament, 3 the layers.
+	FdmSettings fdm; FdmMachine fmach = FDM_MACHINE0; FdmJob fjob; bool fdmReady = false; double fdmPct = 20, fdmDrawn = -1;	// (fdmDrawn: played -- the mm of the layer drawn so far; -1: all)
 	double pAt[6] = { 0, 0, 0, 0, 0, 0 };	// (where the body was when its supports' tips were placed)
 	char hint[200], path[200], caption[96];
 	unsigned saved; bool gpu;
@@ -517,7 +520,7 @@ static void cam_enter (bool on)
 		if (A.doc.bodies.empty ()) { set_hint ("Manufacture needs a body: make one first."); ui (R_ALL); return; }
 		if (!A.job.on || !A.doc.body (A.job.body)) { A.job.on = true; A.job.body = A.doc.body (A.selBody) ? A.selBody : A.doc.bodies[0].id; }
 		A.camMode = true; A.camSel = 0; A.camPage = 0; A.camSim = false; cam_refresh ();
-		if (A.gen == 1) print_enter ();
+		if (A.gen >= 1) print_enter ();
 	}
 	else { A.camMode = false; A.caption[0] = 0; A.prevErr = 0; tool_hint (); }
 	ui (R_ALL);
@@ -538,9 +541,25 @@ static void cam_delete_op ()
 
 // ---- Manufacture for a resin printer ------------------------------------------------------------------------------------------
 static bool resin () { return A.camMode && A.gen == 1; }
+static bool filament () { return A.camMode && A.gen == 2; }
+static bool printer () { return A.camMode && A.gen >= 1; }
+// The plate (a resin printer's screen, a filament printer's bed): half its sides, the room above it.
+static void plate_half (double *hw, double *hh, double *hz)
+{
+	if (A.gen == 2) { *hw = A.fmach.bedX / 2; *hh = A.fmach.bedY / 2; *hz = A.fmach.sizeZ; return; }
+	const PrintMachine &m = A.print.machine; *hw = m.resX * m.pixel / 2000; *hh = m.resY * m.pixel / 2000; *hz = m.sizeZ;
+}
 static void print_hint ()
 {
 	A.prevErr = 0; const PrintSetup &s = A.print;
+	if (A.gen == 2)
+	{
+		A.caption[0] = 0;
+		if (A.camPage == 0) { set_hint ("The body on the printer's bed: move, tilt or turn it at the right."); snprintf (A.caption, sizeof A.caption, "Setup \xC2\xB7 a filament printer"); }
+		else if (A.camPage == 1) { set_hint ("The layers, the shell and the infill: they are remembered for the next part."); snprintf (A.caption, sizeof A.caption, "Filament \xC2\xB7 %.3g mm layers", A.fdm.layer); }
+		else set_hint (A.fjob.err[0] ? A.fjob.err : "The nozzle's path, layer by layer. The bar, the wheel; Play draws it as the printer would.");
+		return;
+	}
 	if (A.camPage == 0) { set_hint ("The body on the printer's plate: move, lift, tilt or turn it at the right."); snprintf (A.caption, sizeof A.caption, "Setup \xC2\xB7 %s", s.machine.name); }
 	else if (A.camPage == 1) { set_hint ("The resin's values are remembered: the next part starts with them."); snprintf (A.caption, sizeof A.caption, "Resin \xC2\xB7 %s", s.resin.name); }
 	else if (A.camPage == 2)
@@ -554,10 +573,12 @@ static void print_hint ()
 static void print_refresh ()
 {
 	A.printDirty = false; A.slicer = PrintSlicer (); A.sliced = false; A.wantFile = false; A.layerPlay = false; A.cutAt = -1; A.pjob = PrintJob ();
+	A.fdmReady = false; A.fdmDrawn = -1; A.fjob = FdmJob ();
 	const PrintSetup &s = A.print; Body *b = A.doc.body (s.body);
 	A.pAt[0] = s.x; A.pAt[1] = s.y; A.pAt[2] = s.lift; A.pAt[3] = s.tiltX; A.pAt[4] = s.tiltY; A.pAt[5] = s.turn;
 	A.placedMesh = RMesh (); A.supMesh = RMesh (); A.placed = A.held = Manifold ();
 	if (!b) { print_hint (); return; }
+	if (A.gen == 2) { PrintSetup flat = s; flat.lift = 0; A.placed = A.held = print_place (b->m, flat); build_mesh (A.placed, A.placedMesh); print_hint (); return; }
 	A.placed = print_place (b->m, s); build_mesh (A.placed, A.placedMesh);
 	Manifold sup = print_support_solid (A.placed, s);
 	if (sup.IsEmpty ()) A.held = A.placed; else { build_mesh (sup, A.supMesh); A.held = A.placed + sup; }
@@ -571,6 +592,16 @@ static void print_slice_start ()
 	if (A.sliced || A.slicer.running ()) return;
 	if (!A.slicer.begin (A.held, A.print, A.pjob)) { A.prevErr = A.pjob.err; set_hint (A.pjob.err); A.wantFile = false; }
 }
+// A filament printer's paths, made (it takes a moment: when its page is opened, and after a change).
+static void fdm_start ()
+{
+	if (A.printDirty) print_refresh ();
+	if (A.fdmReady) return;
+	A.fdm.infill = A.fdmPct / 100; if (A.fdm.infill < 0) A.fdm.infill = 0; if (A.fdm.infill > 1) A.fdm.infill = 1;
+	A.fdmReady = fdm_paths (A.placed, A.fdm, A.fjob, [] (int, int) { return true; }); A.fdmDrawn = -1; A.cutAt = -1;
+	int n = (int) A.fjob.layers.size (); if (A.layer > n - 1) A.layer = n > 0 ? n - 1 : 0;
+	print_hint ();
+}
 static void print_enter ()
 {
 	if (!A.print.on || !A.doc.body (A.print.body)) { A.print.on = true; A.print.body = A.doc.body (A.selBody) ? A.selBody : A.doc.bodies[0].id; A.print.tips.clear (); }
@@ -580,14 +611,14 @@ static void gen_set (int g)
 {
 	if (!A.camMode || A.doc.bodies.empty ()) return;
 	A.gen = g; A.doc.changes++; A.camSel = A.camPage = 0; A.camSim = false; A.caption[0] = 0;
-	if (g == 1) print_enter (); else cam_refresh ();
+	if (g >= 1) print_enter (); else cam_refresh ();
 	ui (R_ALL);
 }
 static void print_page (int page)
 {
-	if (!resin ()) return;
-	A.camPage = page; A.camSel = page == 2 ? 1 : 0; A.layerPlay = false; print_hint ();
-	if (page == 3) print_slice_start ();
+	if (!printer () || (A.gen == 2 && page == 2)) return;
+	A.camPage = page; A.camSel = page == 2 ? 1 : 0; A.layerPlay = false; A.fdmDrawn = -1; print_hint ();
+	if (page == 3) { if (A.gen == 2) fdm_start (); else print_slice_start (); }
 	ui (R_ALL);
 }
 
@@ -608,9 +639,10 @@ public:
 	void fit ()
 	{
 		V3 lo (0, 0, 0), hi (100, 60, 40); bool any = false;
-		if (resin ())					// the printer's plate, the body on it
+		if (printer ())					// the printer's plate, the body on it
 		{
-			const PrintMachine &m = A.print.machine; double hw = m.resX * m.pixel / 2000, hh = m.resY * m.pixel / 2000;
+			double hw, hh, hz; plate_half (&hw, &hh, &hz);
+			if (A.gen == 2 && A.placedMesh.tris ()) { hw = std::min (hw, (A.placedMesh.hi.x - A.placedMesh.lo.x) / 2 + 30); hh = std::min (hh, (A.placedMesh.hi.y - A.placedMesh.lo.y) / 2 + 30); }
 			lo = V3 (-hw, -hh, 0); hi = V3 (hw, hh, std::max (30.0, A.placedMesh.tris () ? A.placedMesh.hi.z : 0.0));
 			A.cam.t = (lo + hi) * 0.5; A.cam.scale = std::min (width, height) * 0.86 / len (hi - lo);
 			pristine = true; fitW = width; fitH = height; invalidate (true); return;
@@ -758,7 +790,7 @@ public:
 	bool barHeld = false;
 	void barGeom (int *bx, int *y0, int *y1) const
 	{
-		bool side = !(resin () && A.camPage == 3 && !A.layer3d);
+		bool side = !(printer () && A.camPage == 3 && !A.layer3d);
 		*bx = side ? 14 : width - 40; *y0 = side ? 66 : 48; *y1 = height - (side ? 124 : 74);
 	}
 	void vbar (bool dark, double frac, const char *top, bool playing)
@@ -788,20 +820,26 @@ public:
 		if (!barHeld) return 0;
 		double f = (double) (y1 - my) / (y1 - y0); *frac = f < 0 ? 0 : f > 1 ? 1 : f; return 2;
 	}
+	int layerCount () const { return A.gen == 2 ? (int) A.fjob.layers.size () : (int) A.pjob.file.layers.size (); }
+	bool layersReady () const { return A.gen == 2 ? A.fdmReady : A.sliced; }
 	void layerBar (bool dark)
 	{
-		int n = (int) A.pjob.file.layers.size (); char t[32]; snprintf (t, sizeof t, "%d", n);
-		vbar (dark, n > 0 && A.sliced ? (double) (A.layer + 1) / n : -1, t, A.layerPlay);
+		int n = layerCount (); char t[32]; snprintf (t, sizeof t, "%d", n);
+		vbar (dark, n > 0 && layersReady () ? (double) (A.layer + 1) / n : -1, t, A.layerPlay);
 	}
 	// The mouse on the Layers page. true: taken.
 	bool layerMouse (int mx, int my, int bl, bool press, int wheel)
 	{
-		int n = (int) A.pjob.file.layers.size (); double f = 0;
-		if (!A.sliced || n < 1) { barHeld = false; return !A.layer3d; }
+		int n = layerCount (); double f = 0;
+		if (!layersReady () || n < 1) { barHeld = false; return !A.layer3d; }
 		int was = A.layer, hit = barMouse (mx, my, bl, press, &f);
-		if (hit == 1) { A.layerPlay = !A.layerPlay; if (A.layerPlay && A.layer >= n - 1) A.layer = 0; ui (0); invalidate (true); return true; }
-		if (hit == 2) { A.layer = (int) (f * n); A.layerPlay = false; }
-		else if (wheel && !A.layer3d) { A.layer += wheel * (n > 400 ? n / 200 : 1); A.layerPlay = false; }
+		if (hit == 1)
+		{
+			A.layerPlay = !A.layerPlay; if (A.layerPlay && A.layer >= n - 1 && A.gen != 2) A.layer = 0;
+			A.fdmDrawn = A.layerPlay && A.gen == 2 ? 0 : -1; ui (0); invalidate (true); return true;
+		}
+		if (hit == 2) { A.layer = (int) (f * n); A.layerPlay = false; A.fdmDrawn = -1; }
+		else if (wheel && !A.layer3d) { A.layer += wheel * (n > 400 ? n / 200 : 1); A.layerPlay = false; A.fdmDrawn = -1; }
 		if (A.layer < 0) A.layer = 0; if (A.layer > n - 1) A.layer = n - 1;
 		if (A.layer != was) { ui (0); invalidate (true); }
 		return hit != 0 || !A.layer3d;
@@ -815,9 +853,47 @@ public:
 		else { A.simPlay = false; sim_to ((size_t) (f * n)); }
 		invalidate (true); return true;
 	}
+	// A filament printer's layer: the nozzle's path seen from above, a colour a kind of line; played, as far as it is
+	// drawn, the nozzle at its end. to3d: a point of the layer on the canvas (the flat view, or the 3D one).
+	static unsigned fdmColour (int kind) { static const unsigned c[5] = { 0x1E50C8, 0x5A96EB, 0xE28428, 0x46AA5A, 0x9A9AA6 }; return c[kind < 5 ? kind : 0]; }
+	template <class P> void fdmDrawPaths (const FdmLayer &l, double lw, P at)
+	{
+		double left = A.fdmDrawn; bool cutShort = left >= 0, done = false; double hx = 0, hy = 0; bool head = false;
+		for (size_t pi = 0; pi < l.paths.size () && !done; pi++)
+		{
+			const FdmPath &p = l.paths[pi]; unsigned col = fdmColour (p.kind);
+			for (size_t k = 1; k < p.pts.size () + (p.closed ? 1 : 0) && !done; k++)
+			{
+				V2 a = p.pts[k - 1], b = p.pts[k % p.pts.size ()]; double len = hypot (b.x - a.x, b.y - a.y);
+				if (cutShort && left < len) { double t = len > 1e-9 ? left / len : 0; b = V2 (a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t); done = true; }
+				double x0, y0, x1, y1; at (a, &x0, &y0); at (b, &x1, &y1); ov_line (canvas, x0, y0, x1, y1, lw, col);
+				if (lw >= 2.6) ov_line (canvas, x0, y0, x1, y1, lw * 0.36, mix_rgb (col, 0xFFFFFF, 0.42));		// (round: it catches the light)
+				hx = x1; hy = y1; head = true; left -= len;
+			}
+		}
+		if (cutShort && head) { ov_dot (canvas, hx, hy, 5, 0xFFFFFF, 0x282C36, 2); ov_dot (canvas, hx, hy, 1.8, 0x282C36, 0x282C36, 1); }
+	}
+	void fdmLayer ()
+	{
+		canvas.clear (0xF6F7FA); const FdmJob &j = A.fjob; int n = (int) j.layers.size (); char t[120], a[24];
+		UkFaceScope fs (g_small);
+		if (!A.fdmReady || n < 1) { const char *m = j.err[0] ? j.err : "Computing the paths..."; uk_text (canvas, (width - uk_tw (m)) / 2, height / 2 - 8, m, 0x5A5E68); layerBar (false); return; }
+		if (A.layer > n - 1) A.layer = n - 1;
+		double m0 = A.fdm.skirtGap + A.fdm.skirt * A.fdm.width + 3, bx0 = j.lo.x - m0, bx1 = j.hi.x + m0, by0 = j.lo.y - m0, by1 = j.hi.y + m0;
+		int aw = width - 28 - 64, ah = height - 44 - 44; double s = std::min (aw / (bx1 - bx0), ah / (by1 - by0));
+		double ox = 28 + (aw - (bx1 - bx0) * s) / 2, oy = 44 + (ah - (by1 - by0) * s) / 2;
+		const FdmLayer &l = j.layers[A.layer]; double lw = A.fdm.width * s * 0.8; if (lw < 3.2) lw = 3.2;	// (a bead that shows, even small)
+		fdmDrawPaths (l, lw, [&] (const V2 &p, double *x, double *y) { *x = ox + (p.x - bx0) * s; *y = oy + (by1 - p.y) * s; });
+		fmt (l.z, a, 12); snprintf (t, sizeof t, "Layer %d of %d  \xC2\xB7  %s mm  \xC2\xB7  %.1f m of line", A.layer + 1, n, a, fdm_layer_length (l) / 1000);
+		uk_text (canvas, 28, 20, t, 0x3C4050);
+		static const char *const NM[5] = { "outer wall", "inner wall", "solid", "infill", "skirt" }; int x = 28;
+		for (int k = 0; k < 5; k++) { canvas.fillRect (x, height - 24, 16, 5, fdmColour (k)); uk_text (canvas, x + 21, height - 29, NM[k], 0x5A5E68); x += uk_tw (NM[k]) + 40; }
+		layerBar (false);
+	}
 	// A layer's picture: the screen, what is lit in white.
 	void drawLayer ()
 	{
+		if (A.gen == 2) { fdmLayer (); return; }
 		canvas.clear (0x14161C); const PrintMachine &m = A.print.machine; const PmFile &f = A.pjob.file; int n = (int) f.layers.size ();
 		int ox, oy, pw, ph; layerRect (&ox, &oy, &pw, &ph); char t[120], a[24];
 		canvas.fillRect (ox, oy, pw, ph, 0x000000); canvas.frameRect (ox - 1, oy - 1, pw + 2, ph + 2, 0x4A5062);
@@ -854,7 +930,7 @@ public:
 	}
 	void printScene ()
 	{
-		const PrintMachine &m = A.print.machine; double hw = m.resX * m.pixel / 2000, hh = m.resY * m.pixel / 2000, bias = 2.0 / A.cam.scale;
+		double hw, hh, hz, bias = 2.0 / A.cam.scale; plate_half (&hw, &hh, &hz);
 		sc.batch (0, true);						// the plate, its squares of 10 mm
 		unsigned pc = shade_rgb (0xC9CDD6, lit (A.cam, V3 (0, 0, 1)));
 		const V3 q[4] = { V3 (-hw, -hh, -0.05), V3 (hw, -hh, -0.05), V3 (hw, hh, -0.05), V3 (-hw, hh, -0.05) };
@@ -865,10 +941,11 @@ public:
 		for (int k = 0; k < 4; k++) sc.line (V3 (q[k].x, q[k].y, 0), V3 (q[(k + 1) % 4].x, q[(k + 1) % 4].y, 0), 0.9 * SS, 0x5E6676, 255, bias);
 		const BodyProp *bp = 0; for (const BodyProp &p : A.doc.props) if (p.id == A.print.body) bp = &p;
 		unsigned col = bp ? bp->colour : 0x92AACC;
-		bool cut = A.camPage == 3 && A.layer3d && A.sliced;
+		bool cut = A.camPage == 3 && A.layer3d && layersReady ();
 		if (cut)							// what is printed up to the layer looked at
 		{
-			if (A.cutAt != A.layer) { A.cutAt = A.layer; build_mesh (A.held.TrimByPlane ({0, 0, -1}, -(A.layer + 1) * A.print.resin.layer), A.cutMesh); }
+			double lh = A.gen == 2 ? A.fdm.layer : A.print.resin.layer, upto = (A.layer + 1 - (A.gen == 2 ? 1 : 0)) * lh;	// (a filament's layer being drawn is not there yet: its lines are)
+			if (A.cutAt != A.layer) { A.cutAt = A.layer; build_mesh (upto > 1e-6 ? A.held.TrimByPlane ({0, 0, -1}, -upto) : Manifold (), A.cutMesh); }
 			if (A.cutMesh.tris ()) { sc.batch (KAPI_GPU_B_CULL_BACK, true); scene_body (sc, A.cutMesh, col, 255); }
 			return;
 		}
@@ -886,6 +963,11 @@ public:
 	void printOverlays ()
 	{
 		if (A.camPage == 3) layerBar (false);
+		if (filament () && A.camPage == 3 && A.fdmReady && A.layer < (int) A.fjob.layers.size ())		// the layer's lines, where they are
+		{
+			const FdmLayer &l = A.fjob.layers[A.layer]; double lw = A.fdm.width * A.cam.scale * 0.8; if (lw < 1) lw = 1;
+			fdmDrawPaths (l, lw, [&] (const V2 &p, double *x, double *y) { sx (V3 (p.x, p.y, l.z), x, y); });
+		}
 		if (A.camPage == 2 && tipHot >= 0 && tipHot < (int) A.print.tips.size ()) { double x, y; sx (A.print.tips[tipHot], &x, &y); ov_dot (canvas, x, y, 6, 0xFFFFFF, C_RED, 2); }
 		if (A.slicer.running ())
 		{
@@ -897,7 +979,7 @@ public:
 	int tipHot = -1;
 	void camMove (int mx, int my)
 	{
-		if (resin ())
+		if (printer ())
 		{
 			int near = -1; double bd = 9;
 			if (A.camPage == 2) for (size_t i = 0; i < A.print.tips.size (); i++) { double x, y; sx (A.print.tips[i], &x, &y); double d = hypot (mx - x, my - y); if (d < bd) { bd = d; near = (int) i; } }
@@ -910,7 +992,7 @@ public:
 	}
 	void camClick (int mx, int my)
 	{
-		if (resin ()) { printClick (mx, my); return; }
+		if (printer ()) { if (A.gen == 1) printClick (mx, my); return; }
 		if (A.camPage == 0)
 		{
 			int best = -1; double bd = 12;
@@ -1204,7 +1286,7 @@ public:
 		bool inside = mx >= 0 && my >= 0 && mx < width && my < height;
 		bool pressL = bl && !wasL, releaseL = !bl && wasL, pressR = (br || bm) && !wasR;
 		wasL = bl != 0; wasR = (br || bm) != 0;
-		if (resin () && A.camPage == 3 && (inside || barHeld) && layerMouse (mx, my, bl, pressL, wheel)) return true;
+		if (printer () && A.camPage == 3 && (inside || barHeld) && layerMouse (mx, my, bl, pressL, wheel)) return true;
 		if (A.camMode && A.gen == 0 && A.camSim && (inside || barHeld) && simMouse (mx, my, bl, pressL)) return true;
 		if (!inside && !drag) return false;
 		if (wheel && inside)
@@ -1290,12 +1372,12 @@ public:
 	{
 		A.cam.w = width; A.cam.h = height;
 		if (pristine && !A.sketching && (fitW != width || fitH != height)) fit ();
-		if (resin () && A.camPage == 3 && !A.layer3d) { drawLayer (); return; }
+		if (printer () && A.camPage == 3 && !A.layer3d) { drawLayer (); return; }
 		const Cam &c = A.cam;
 		sc.begin (c, radius ());
 		sc.backdrop (0xF7F8FA, 0xE2E6ED);
 		// the grid: the ground's, or the sketch's plane
-		if ((A.showGrid || A.sketching) && !resin ())
+		if ((A.showGrid || A.sketching) && !printer ())
 		{
 			sc.batch (KAPI_GPU_B_ZFUNC (KAPI_GPU_Z_LESS), false);
 			Plane pl = A.sketching ? A.sk.pl : Plane ();
@@ -1330,7 +1412,7 @@ public:
 		for (size_t bi = 0; bi < A.doc.bodies.size (); bi++)
 		{
 			const Body &b = A.doc.bodies[bi]; BodyProp &bp = A.doc.prop (b.id);
-			if (resin () || (A.camMode ? b.id != A.job.body || A.camSim : !bp.visible)) continue;	// (Manufacture: the body cut, alone; simulated: what is left)
+			if (printer () || (A.camMode ? b.id != A.job.body || A.camSim : !bp.visible)) continue;	// (Manufacture: the body cut, alone; simulated: what is left)
 			sc.batch (flags, true);
 			int tintFace = -1; unsigned tint = ACC ();
 			if (camFacePick ())					// the face the operation works on; the one pointed
@@ -1350,7 +1432,7 @@ public:
 				scene_edges (sc, b.mesh, fade ? 0x8C98AC : 0x222E42, 0.6);
 			}
 		}
-		if (resin ()) printScene (); else if (A.camMode) camScene ();
+		if (printer ()) printScene (); else if (A.camMode) camScene ();
 		// what the tool would make
 		if (A.hasPrev && A.prev.tris ())
 		{
@@ -1531,7 +1613,7 @@ void View::overlays ()
 {
 	const Feature &f = A.pend; char a[24], t[64];
 	arrowX = arrowY = -1;
-	if (resin ()) { printOverlays (); chrome (); return; }
+	if (printer ()) { printOverlays (); chrome (); return; }
 	if (A.camMode) { camOverlays (); chrome (); return; }
 	// the sketches not yet used; the one being drawn
 	if (A.sketching) sketchDraw (A.sk, A.ev, true);

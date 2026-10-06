@@ -143,7 +143,7 @@ printer*. What differs from the mock-ups: the machine and the kind of work are o
 body; the resin's presets are the maker's three (yours are simply the values as you leave them, remembered); no
 "from the body too" for the supports, no "closed hollow" check; *Lay a face on the plate* is not there yet.
 
-## Filament printing: the nozzle's path — the engine only (2026-10-06; no screen, not in the app yet)
+## Filament printing: the nozzle's path (2026-10-06; in the app as a third Process, without a printer's file)
 
 Asked by the user for his **Anycubic Kobra X** (260 × 260 × 260 mm, fast, four filaments; what its firmware wants at
 the start of a file is not documented where I looked — **a `.gcode` that printed well on it is needed**, as his
@@ -163,9 +163,12 @@ is built; the rest is only a transformation to the printer's format". That is `u
 plate's top (solid where the body stops above, sparse under the wall).*
 
 On the bracket: 225 layers, 286 m drawn, 10.7 m of filament, under half a second on the PC. **Not there**: supports,
-bridges, thin walls and gaps filled, the seam's place, speeds by kind of line, several filaments, a brim. **Next**:
-his sample file → the Kobra X's writer; a mock-up of the screen (Setup, Filament, Layers with the paths) before it
-is built — the third *Process* of Manufacture.
+bridges, thin walls and gaps filled, the seam's place, speeds by kind of line, several filaments, a brim.
+
+**In the app** the same day, at his word ("first without a writer: the values entered, the path seen, the animation
+— the bead being extruded"): the Process *Filament printing* — Setup (the bed, the body on it), Filament (layers,
+shell, infill's share and pattern — lines, grid, **honeycomb** —, skirt), Layers (the path in colours, Play).
+**Next**: his sample file → the Kobra X's writer.
 
 ## What is next
 

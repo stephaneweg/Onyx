@@ -19,6 +19,7 @@ enum { CMD_NEW = 100, CMD_OPEN, CMD_SAVE, CMD_UNDO, CMD_REDO, CMD_EXPORT, CMD_SK
        CMD_PR_SETUP, CMD_PR_RESIN, CMD_PR_SUPPORTS, CMD_PR_LAYERS, CMD_PR_FILE, CMD_PR_GENERATE, CMD_PR_CLEAR, CMD_PR_PRESET, CMD_GEN };
 static void cam_presets_save ();			// (main.cpp)
 static void print_presets_save ();
+static void fdm_presets_save ();
 
 static unsigned soft_col (unsigned bg);
 // The shapes, unfolded under their button: a picture and its name each. run (): the tool chosen, -1 none.
@@ -103,6 +104,8 @@ static const ToolDef CAMTOOLS[] = {
 	{ -14, I_PLAY, "Simulate" }, { -2, 0, 0 } };
 static const ToolDef PRINTTOOLS[] = {
 	{ -20, I_PR_PLATE, "Setup" }, { -21, I_PR_RESIN, "Resin" }, { -1, 0, 0 }, { -22, I_PR_SUP, "Supports" }, { -1, 0, 0 }, { -23, I_PR_LAYERS, "Layers" }, { -2, 0, 0 } };
+static const ToolDef FDMTOOLS[] = {
+	{ -20, I_PR_PLATE, "Setup" }, { -21, I_PR_FIL, "Filament" }, { -1, 0, 0 }, { -23, I_PR_LAYERS, "Layers" }, { -2, 0, 0 } };
 static const ToolDef SKTOOLS[] = {
 	{ T_LINE, I_LINE, "Line" }, { T_RECT, I_RECT, "Rectangle" }, { T_CIRCLE, I_CIRCLE, "Circle" }, { T_ARC, I_ARC, "Arc" }, { T_ARC3, I_ARC3, "3-pt arc" },
 	{ T_SPLINE, I_SPLINE, "Spline" }, { T_POINT, I_POINT, "Point" }, { -3, I_CLOSE, "Close" }, { -2, 0, 0 } };
@@ -123,7 +126,7 @@ public:
 		for (ABtn *b : { bExport, bCancel, bFinish, bGcode, bPrint }) { b->anchor = ANCHOR_TOP | ANCHOR_RIGHT; addChild (b); }
 		sync ();
 	}
-	void sync () { bExport->hidden = A.sketching || A.camMode; bGcode->hidden = !A.camMode || A.gen == 1; bPrint->hidden = !resin (); bCancel->hidden = bFinish->hidden = !A.sketching; invalidate (true); }
+	void sync () { bExport->hidden = A.sketching || A.camMode; bGcode->hidden = !A.camMode || A.gen != 0; bPrint->hidden = !resin (); bCancel->hidden = bFinish->hidden = !A.sketching; invalidate (true); }
 	void zone (int x, int y, int w, int h, int id, bool tool) { if (nz < MAXHIT) { Zone q = { x, y, w, h, id, tool }; z[nz++] = q; } }
 	void onDraw () override
 	{
@@ -153,7 +156,7 @@ public:
 			}
 			x += sw + 6; uk_etch_v (canvas, x, 8, 46, C_BG); x += 7;
 		}
-		const ToolDef *list = A.sketching ? SKTOOLS : A.camMode ? (A.gen == 1 ? PRINTTOOLS : CAMTOOLS) : TOOLS;
+		const ToolDef *list = A.sketching ? SKTOOLS : A.camMode ? (A.gen == 2 ? FDMTOOLS : A.gen == 1 ? PRINTTOOLS : CAMTOOLS) : TOOLS;
 		for (int i = 0; list[i].tool != -2; i++)
 		{
 			if (list[i].tool == -1) { uk_etch_v (canvas, x + 4, 8, 46, C_BG); x += 10; continue; }
@@ -209,15 +212,15 @@ public:
 	int scroll, hot, lastI, shownSel, shownN, pressX, pressScroll, pressI; unsigned lastT; bool wasL, wasR, moved;
 	bool barDrag = false, barHot = false;		// (the blue bar -- where the part is rebuilt up to -- held, pointed)
 	Timeline (int l, int t, int w) : Widget (l, t, w, H), scroll (0), hot (-1), lastI (-1), shownSel (-1), shownN (0), pressX (0), pressScroll (0), pressI (-1), lastT (0), wasL (false), wasR (false), moved (false) {}
-	int count () const { return resin () ? 2 : A.camMode ? 1 + (int) A.job.ops.size () : A.sketching ? (int) A.sk.els.size () : (int) A.doc.feats.size (); }
+	int count () const { return filament () ? 1 : resin () ? 2 : A.camMode ? 1 + (int) A.job.ops.size () : A.sketching ? (int) A.sk.els.size () : (int) A.doc.feats.size (); }
 	int sel () const { return A.camMode ? A.camSel : A.sketching ? A.selEl : A.selFeat; }
 	// what a step, or an element, says of itself
 	void text (int i, char *out, int cap) const
 	{
 		char t[96], a[24], b[24], c[24];
-		if (resin ())					// the setup, the supports
+		if (printer ())					// the setup, the supports
 		{
-			if (i == 0) snprintf (out, cap, "Setup  \xC2\xB7  %s \xC2\xB7 %s", body_name (A.print.body), A.print.machine.name);
+			if (i == 0) snprintf (out, cap, "Setup  \xC2\xB7  %s \xC2\xB7 %s", body_name (A.print.body), A.gen == 2 ? "a filament printer" : A.print.machine.name);
 			else if (A.print.tips.empty ()) snprintf (out, cap, "Supports  \xC2\xB7  none");
 			else snprintf (out, cap, "Supports  \xC2\xB7  %d pillars%s", (int) A.print.tips.size (), A.print.raft ? " \xC2\xB7 a raft" : "");
 			return;
@@ -280,11 +283,11 @@ public:
 			int x = x0 + i * CELL - scroll;
 			if (x < x0 || x + CELL > x1 + 6) continue;
 			bool on = i == sel (), off = !A.camMode && !A.sketching && i >= A.doc.upto;
-			bool bad = resin () ? false : A.camMode ? i > 0 && A.job.ops[i - 1].failed : !A.sketching && A.doc.feats[i].failed && !off;
+			bool bad = printer () ? false : A.camMode ? i > 0 && A.job.ops[i - 1].failed : !A.sketching && A.doc.feats[i].failed && !off;
 			unsigned bg = C_FIELD;
 			if (on) { bg = soft_col (C_FIELD); uk_rbox (canvas, x + 1, 5, CELL - 4, H - 10, 6, bg, bg); uk_rline (canvas, x + 1, 5, CELL - 4, H - 10, 6, C_ACCENT); }
 			else if (i == hot) { bg = uk_tone (C_FIELD, 112); uk_rbox (canvas, x + 1, 5, CELL - 4, H - 10, 6, bg, bg); }
-			int ic = resin () ? (i == 0 ? I_PR_PLATE : I_PR_SUP) : A.camMode ? (i == 0 ? I_CAM_SETUP : A.job.ops[i - 1].kind == CAM_CLEAR ? I_CAM_CLEAR : I_CAM_CONTOUR) : A.sketching ? EI[A.sk.els[i].kind] : icon_of_kind (A.doc.feats[i].kind);
+			int ic = printer () ? (i == 0 ? I_PR_PLATE : I_PR_SUP) : A.camMode ? (i == 0 ? I_CAM_SETUP : A.job.ops[i - 1].kind == CAM_CLEAR ? I_CAM_CLEAR : I_CAM_CONTOUR) : A.sketching ? EI[A.sk.els[i].kind] : icon_of_kind (A.doc.feats[i].kind);
 			icon (canvas, ic, x + (CELL - 2 - 24) / 2, (H - 24) / 2, 24, off ? uk_mix (ink, bg, 170) : ink, off ? uk_mix (C_ACCENT, bg, 170) : C_ACCENT, bg);
 			if (bad) icon (canvas, I_WARN, x + CELL - 19, H - 20, 14, 0x4A3A10, C_ACCENT, bg);
 		}
@@ -326,7 +329,7 @@ public:
 	}
 	void pick (int i, bool dbl, bool right, int mx, int my)
 	{
-		if (resin ()) { print_page (i == 0 ? 0 : 2); return; }
+		if (printer ()) { print_page (i == 0 ? 0 : 2); return; }
 		if (A.camMode)
 		{
 			A.camSel = i; A.camPage = i == 0 ? 0 : 2; A.camSim = false; cam_hint (); ui (R_ALL);
@@ -419,7 +422,7 @@ public:
 		{
 			Bind &q = p->b[i];
 			if (q.tb != &w) continue;
-			if (q.name) { snprintf (q.name, 24, "%s", q.tb->text); A.doc.changes++; if (resin ()) print_presets_save (); else if (A.camMode) cam_presets_save (); ui (0); if (g_view) g_view->invalidate (true); return; }
+			if (q.name) { snprintf (q.name, 24, "%s", q.tb->text); A.doc.changes++; if (resin ()) print_presets_save (); else if (A.camMode && A.gen == 0) cam_presets_save (); ui (0); if (g_view) g_view->invalidate (true); return; }
 			double v = parse (q.tb->text);
 			if (q.mag) v = (*q.val < 0 ? -1 : 1) * fabs (v);
 			*q.val = v; if (q.typed >= 0) A.typed[q.typed] = true;
@@ -430,16 +433,24 @@ public:
 	void applied ()
 	{
 		if (!A.camMode && !A.sketching && A.hasPend && A.step == 0) A.ghost = true;		// (a shape made from its values: shown from now)
-		if (resin ())				// (the body on the plate, what holds it, its layers: made again a little after)
+		if (printer ())				// (the body on the plate, what holds it, its layers: made again a little after)
 		{
 			PrintSetup &s = A.print;
+			if (A.gen == 2 && A.camPage == 1)		// a filament printer's values, kept within what makes sense
+			{
+				FdmSettings &f = A.fdm;
+				if (f.layer < 0.05) f.layer = 0.05; if (f.width < 0.1) f.width = 0.1; if (f.walls < 1) f.walls = 1; if (f.top < 0) f.top = 0; if (f.bottom < 0) f.bottom = 0;
+				if (A.fdmPct < 0) A.fdmPct = 0; if (A.fdmPct > 100) A.fdmPct = 100; if (f.skirt < 0) f.skirt = 0;
+				fdm_presets_save (); print_touch (); if (g_view) g_view->invalidate (true); ui (0); return;
+			}
+			if (A.gen == 2 && A.camPage == 0) fdm_presets_save ();
 			if (A.camPage == 0)		// moved or lifted: its supports' tips go with it; tilted or turned: they are to make again
 			{
 				if (s.tiltX != A.pAt[3] || s.tiltY != A.pAt[4] || s.turn != A.pAt[5]) s.tips.clear ();
 				else for (V3 &t : s.tips) t = t + V3 (s.x - A.pAt[0], s.y - A.pAt[1], s.lift - A.pAt[2]);
 				A.pAt[0] = s.x; A.pAt[1] = s.y; A.pAt[2] = s.lift; A.pAt[3] = s.tiltX; A.pAt[4] = s.tiltY; A.pAt[5] = s.turn;
 			}
-			if (A.camPage == 1)		// (one lift for the first layers and the others; the header's speeds are its second stage's)
+			if (A.camPage == 1 && A.gen == 1)	// (one lift for the first layers and the others; the header's speeds are its second stage's)
 			{
 				s.resin.bottom = s.resin.normal; s.resin.liftSpeed = s.resin.normal.up2; s.resin.retractSpeed = s.resin.normal.down2;
 				if (s.resin.layer < 0.01) s.resin.layer = 0.01;
@@ -460,7 +471,8 @@ public:
 		if (g_view) g_view->invalidate (true);
 		ui (0);
 	}
-	static void onEnter (Widget &) { if (resin ()) { print_refresh (); if (A.camPage == 3) print_slice_start (); ui (0); return; } if (A.camMode) { cam_refresh (); ui (0); return; } cmd (A.tool == T_SKETCH && !A.sketching ? CMD_SK_START : CMD_OK); }
+	static void onPattern (Widget &w) { A.fdm.pattern = ((Dropdown &) w).sel; fdm_presets_save (); print_touch (); if (g_view) g_view->invalidate (true); ui (0); }
+	static void onEnter (Widget &) { if (filament ()) { print_refresh (); if (A.camPage == 3) fdm_start (); ui (0); return; } if (resin ()) { print_refresh (); if (A.camPage == 3) print_slice_start (); ui (0); return; } if (A.camMode) { cam_refresh (); ui (0); return; } cmd (A.tool == T_SKETCH && !A.sketching ? CMD_SK_START : CMD_OK); }
 	static void onDrop (Widget &w) { A.job.xdir = ((Dropdown &) w).sel; A.doc.changes++; cam_hint (); ui (R_ALL); }
 	int camOrgY = -1, camSumY = -1, camSizeY = -1;
 	void seg2 (int y, const char *name, const char *a, const char *b, int sel, int tag, int sw = 150)
@@ -476,13 +488,53 @@ public:
 		int hw = (width - 24 - 8) / 2;
 		label (12, y, "Body", UK_AUTO, 2); label (12 + hw + 8, y, "Process", UK_AUTO, 2); y += 20;
 		ABtn *b = new ABtn (12, y, hw, 26, body_name (body), CMD_CAM_BODY); b->bg = panel_col (); addChild (b);
-		ABtn *g = new ABtn (12 + hw + 8, y, hw, 26, A.gen == 1 ? "Resin print" : "Milling", CMD_GEN); g->bg = panel_col (); addChild (g);
+		ABtn *g = new ABtn (12 + hw + 8, y, hw, 26, A.gen == 2 ? "Filament" : A.gen == 1 ? "Resin print" : "Milling", CMD_GEN); g->bg = panel_col (); addChild (g);
 		return y + 34;
 	}
 	int prSumY = -1, prInfoY = -1;
+	// A filament printer's pages: the setup on the bed, the filament's values, the layers.
+	void fdmPages (int y)
+	{
+		PrintSetup &s = A.print; FdmSettings &f = A.fdm;
+		if (A.camPage == 0)
+		{
+			head (I_PR_PLATE, "Setup", "the body, on the bed");
+			y = bodyProcess (y, s.body);
+			label (12, y, "Bed", UK_AUTO, 2); y += 20;
+			field (y, "Width", &A.fmach.bedX, "mm", -1); y += 27; field (y, "Depth", &A.fmach.bedY, "mm", -1); y += 27; field (y, "Height", &A.fmach.sizeZ, "mm", -1); y += 33;
+			label (12, y, "On the bed", UK_AUTO, 2); y += 20;
+			field (y, "X", &s.x, "mm", -1); y += 27; field (y, "Y", &s.y, "mm", -1); y += 27;
+			field (y, "Tilted, X", &s.tiltX, "\xC2\xB0", -1); y += 27; field (y, "Tilted, Y", &s.tiltY, "\xC2\xB0", -1); y += 27; field (y, "Turned", &s.turn, "\xC2\xB0", -1); y += 34;
+			prSumY = y;
+		}
+		else if (A.camPage == 1)
+		{
+			head (I_PR_FIL, "Filament", "layers, shell, infill");
+			label (12, y, "Layers", UK_AUTO, 2); y += 20;
+			field (y, "Height", &f.layer, "mm", -1); y += 27; field (y, "Line's width", &f.width, "mm", -1); y += 33;
+			label (12, y, "Shell", UK_AUTO, 2); y += 20;
+			field (y, "Walls", &f.walls, 0, -1); y += 27; field (y, "Solid above", &f.top, "lay.", -1); y += 27; field (y, "Solid below", &f.bottom, "lay.", -1); y += 33;
+			label (12, y, "Infill", UK_AUTO, 2); y += 20;
+			field (y, "Share", &A.fdmPct, "%", -1); y += 27; field (y, "Turned", &f.angle, "\xC2\xB0", -1); y += 29;
+			static const char *const PT[3] = { "Lines", "Grid", "Honeycomb" };
+			label (12, y + 5, "As"); int py = y; y += 37;
+			label (12, y, "Skirt", UK_AUTO, 2); y += 20;
+			field (y, "Loops", &f.skirt, 0, -1); y += 27; field (y, "Away by", &f.skirtGap, "mm", -1);
+			Dropdown *d = new Dropdown (width - 12 - 122, py, 122, 26, PT, 3, f.pattern < 0 || f.pattern > 2 ? 0 : f.pattern, onPattern); addChild (d);	// (last: its list opens over the rest)
+		}
+		else
+		{
+			head (I_PR_LAYERS, "Layers", "the nozzle's path");
+			prInfoY = y; y += 4 * 22 + 12;
+			check (y, "Show it in the 3D view", A.layer3d, 33); y += 32;
+			label (12, y, "Play draws the layer as the", dim_col (), 0, true); y += 15; label (12, y, "printer would, then the next.", dim_col (), 0, true); y += 24;
+			label (12, y, "The file for a printer comes", dim_col (), 0, true); y += 15; label (12, y, "later: the path is what is shown.", dim_col (), 0, true);
+		}
+	}
 	void printPages (int y)
 	{
 		PrintSetup &s = A.print; char t[96]; prSumY = prInfoY = -1;
+		if (A.gen == 2) { fdmPages (y); return; }
 		if (A.camPage == 0)
 		{
 			head (I_PR_PLATE, "Setup", "the body, on the plate");
@@ -536,9 +588,18 @@ public:
 	void printDraw (unsigned pc)
 	{
 		const PrintSetup &s = A.print; char t[96], a[24], b[24], c[24]; unsigned ic = uk_mix (pc, 0xFFFFFF, 110);
-		const PrintMachine &m = s.machine; V3 sz = A.placedMesh.tris () ? A.placedMesh.hi - A.placedMesh.lo : V3 (0, 0, 0);
-		bool fits = A.placedMesh.tris () && A.placedMesh.lo.x >= -m.resX * m.pixel / 2000 - 1e-6 && A.placedMesh.hi.x <= m.resX * m.pixel / 2000 + 1e-6
-			    && A.placedMesh.lo.y >= -m.resY * m.pixel / 2000 - 1e-6 && A.placedMesh.hi.y <= m.resY * m.pixel / 2000 + 1e-6 && A.placedMesh.hi.z <= m.sizeZ + 1e-6;
+		V3 sz = A.placedMesh.tris () ? A.placedMesh.hi - A.placedMesh.lo : V3 (0, 0, 0); double hw, hh, hz; plate_half (&hw, &hh, &hz);
+		bool fits = A.placedMesh.tris () && A.placedMesh.lo.x >= -hw - 1e-6 && A.placedMesh.hi.x <= hw + 1e-6 && A.placedMesh.lo.y >= -hh - 1e-6 && A.placedMesh.hi.y <= hh + 1e-6 && A.placedMesh.hi.z <= hz + 1e-6;
+		double lh = A.gen == 2 ? A.fdm.layer : s.resin.layer;
+		if (prInfoY >= 0 && A.gen == 2)			// a filament printer's layers: what the path comes to
+		{
+			const FdmJob &j = A.fjob; int y = prInfoY, n = (int) j.layers.size ();
+			auto row = [&] (const char *k, const char *v) { uk_text (canvas, 12, y, k, dim_col ()); uk_text (canvas, width - 12 - uk_tw (v), y, v, C_TEXT); y += 22; };
+			if (!A.fdmReady) { row ("Layers", j.err[0] ? "\xE2\x80\x94" : "..."); return; }
+			snprintf (t, sizeof t, "%d", n); row ("Layers", t); fmt (n * A.fdm.layer, a, 12); snprintf (t, sizeof t, "%s mm", a); row ("Height", t);
+			snprintf (t, sizeof t, "%.1f m", j.length / 1000); row ("Line drawn", t); snprintf (t, sizeof t, "%.2f m \xC2\xB7 %.1f cm\xC2\xB3", j.filament / 1000, j.volume / 1000); row ("Filament", t);
+			return;
+		}
 		if (prSumY >= 0)
 		{
 			uk_rbox (canvas, 12, prSumY, width - 24, 42, 6, ic, ic); uk_rline (canvas, 12, prSumY, width - 24, 42, 6, uk_tone (C_BG, 104));
@@ -548,7 +609,7 @@ public:
 				icon (canvas, fits ? I_CHECK : I_WARN, 20, prSumY + 12, 17, fits ? C_GREEN : 0x4A3A10, C_ACCENT, ic);
 				fmt (sz.x, a, 12); fmt (sz.y, b, 12); fmt (sz.z, c, 12); snprintf (t, sizeof t, "%s \xC3\x97 %s \xC3\x97 %s: %s", a, b, c, fits ? "it fits" : "too large");
 				uk_text (canvas, 44, prSumY + 6, t, fits ? 0x286E38 : 0x8A5A10);
-				snprintf (t, sizeof t, "%d layers of %.3g mm", (int) ceil ((A.placedMesh.tris () ? A.placedMesh.hi.z : 0) / s.resin.layer - 1e-6), s.resin.layer); uk_text (canvas, 44, prSumY + 22, t, dim_col ());
+				snprintf (t, sizeof t, "%d layers of %.3g mm", (int) ceil ((A.placedMesh.tris () ? A.placedMesh.hi.z : 0) / lh - 1e-6), lh); uk_text (canvas, 44, prSumY + 22, t, dim_col ());
 			}
 			else
 			{
@@ -581,7 +642,7 @@ public:
 	{
 		CamSetup &c = A.job; CamOp *op = cam_op (); char t[96];
 		camOrgY = camSumY = camSizeY = -1; prSumY = prInfoY = -1;
-		if (A.gen == 1) { printPages (y); return; }
+		if (A.gen >= 1) { printPages (y); return; }
 		if (A.camPage == 0)
 		{
 			head (I_CAM_SETUP, "Setup", "the body, its stock");
@@ -972,7 +1033,7 @@ public:
 			int x = l.x < 0 ? width + l.x - uk_tw (l.s, l.style) : l.x;
 			uk_text (canvas, x, l.y, l.s, l.col == UK_AUTO ? C_TEXT : l.col, l.style);
 		}
-		if (resin ()) printDraw (pc);
+		if (printer ()) printDraw (pc);
 		else if (A.camMode)			// Manufacture's own: the stock's size, the origin's 27 points, an operation's sum
 		{
 			char t[96], a[24], b[24], c[24];

@@ -7,6 +7,7 @@ a sketch on the plate's top face is drawn in.
     python3 tools/tests/desktop_sim/forge_scene.py main | shapes | box | cut | sketch | fillet | export
                                                    | cam | cam-ops | cam-sim | cam-gcode        (Manufacture)
                                                    | print | print-supports | print-layers   (... for a resin printer)
+                                                   | fdm | fdm-layers                         (... for a filament printer)
 """
 import math, sys
 
@@ -68,6 +69,11 @@ def scene (name):
 	if name == "print": return pr
 	if name == "print-supports": return sup
 	if name == "print-layers": return ";".join ([sup, "menu 47"] + ["wait"] * 140 + ["move 753 380;down 753 380;move 753 372;wait;up 753 372", w])
+	# ... for a filament printer ("Process: Filament Printing", "Filament": the menu's items 48, 49): its values; a
+	# layer being played (the bar dragged, Play)
+	fd = ";".join ([cam, "menu 48", w])
+	if name == "fdm": return ";".join ([fd, "menu 49", w])
+	if name == "fdm-layers": return ";".join ([fd, "menu 47", w, "move 748 425;down 748 425;move 748 420;wait;up 748 420;wait", ck ("748 487")] + ["wait"] * 28)
 	raise SystemExit ("no such scene: " + name)
 
 if __name__ == "__main__":
