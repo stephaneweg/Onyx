@@ -51,6 +51,11 @@ choices, what changed while building) and docs/03 *3DForge* (the code's pieces).
   played, the bead being laid" — the third Process in the app: Setup, Filament, Layers (Play). **No file is
   written**: he has an Anycubic **Kobra X**; ask him for a `.gcode` that printed well on it (its start and end
   blocks) to make its writer. Not there: supports, bridges, speeds, several filaments.
+- **Canvases** (2026-10-06): a picture on a plane to draw over (File > Import Canvas, or dropped), moved and sized
+  with the mouse or by its values, seen through in the 3D view and in a sketch. Ideas: turned with the mouse, set to
+  scale by two points and a known distance, kept inside the `.3df` (today: its path).
+- **Milling computes on Validate** (his wish): values changed are pending (`camDirty`), Validate / Cancel beside
+  G-code; the resin's and the filament's pages still compute by themselves a moment after a change.
 - **The simulations play** (his wish): the router's cut (`cam_sim_advance`, a bar and Play), the layers (Play, and
   the body shown printed up to a layer).
 - **Computations on another core** (his question, 2026-10-06): threads all run on core 0; an app core (2, 3) may

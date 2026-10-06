@@ -16,7 +16,7 @@ namespace forge {
 enum { CMD_NEW = 100, CMD_OPEN, CMD_SAVE, CMD_UNDO, CMD_REDO, CMD_EXPORT, CMD_SK_CANCEL, CMD_SK_FINISH, CMD_SK_CLOSE, CMD_OK, CMD_CANCEL,
        CMD_DELETE, CMD_EDIT_SKETCH, CMD_ROLL_HERE, CMD_ROLL_END, CMD_DEL_ELEMENT, CMD_SHAPES, CMD_SK_START,
        CMD_MODE_DESIGN, CMD_MODE_CAM, CMD_CAM_SETUP, CMD_CAM_TOOL, CMD_CAM_CLEAR, CMD_CAM_CONTOUR, CMD_CAM_SIM, CMD_GCODE, CMD_CAM_BODY, CMD_CAM_DELETE,
-       CMD_CAM_VALIDATE, CMD_CAM_REVERT, CMD_PR_SETUP, CMD_PR_RESIN, CMD_PR_SUPPORTS, CMD_PR_LAYERS, CMD_PR_FILE, CMD_PR_GENERATE, CMD_PR_CLEAR, CMD_PR_PRESET, CMD_GEN };
+       CMD_CAM_VALIDATE, CMD_CAM_REVERT, CMD_CANVAS_IMPORT, CMD_CANVAS_DELETE, CMD_PR_SETUP, CMD_PR_RESIN, CMD_PR_SUPPORTS, CMD_PR_LAYERS, CMD_PR_FILE, CMD_PR_GENERATE, CMD_PR_CLEAR, CMD_PR_PRESET, CMD_GEN };
 static void cam_presets_save ();			// (main.cpp)
 static void print_presets_save ();
 static void fdm_presets_save ();
@@ -347,7 +347,7 @@ public:
 		}
 		if (A.sketching) { A.selEl = A.selEl == i && !right ? -1 : i; sk_arm (); ui (R_ALL); return; }
 		if (A.tool != T_SELECT) tool_set (T_SELECT);
-		A.selFeat = i; A.selBody = -1; ui (R_ALL);
+		A.selFeat = i; A.selBody = -1; A.selCanvas = -1; ui (R_ALL);
 		if (right)
 		{
 			Root *r = Root::current (); int ax = 0, ay = 0; for (Widget *w = this; w && w != r; w = w->parent) { ax += w->left; ay += w->top; }
@@ -436,6 +436,8 @@ public:
 	// A value changed (a field, the operation, a check box): what it belongs to is made again.
 	void applied ()
 	{
+		if (canvasPage ()) { Canvas3 &c = A.doc.canvases[A.selCanvas]; if (c.w < 1) c.w = 1; if (c.opacity < 0) c.opacity = 0; if (c.opacity > 100) c.opacity = 100;
+			A.doc.changes++; if (g_view) g_view->invalidate (true); ui (0); return; }
 		if (!A.camMode && !A.sketching && A.hasPend && A.step == 0) A.ghost = true;		// (a shape made from its values: shown from now)
 		if (printer ())				// (the body on the plate, what holds it, its layers: made again a little after)
 		{
@@ -486,6 +488,8 @@ public:
 		SegmentedControl *s = new SegmentedControl (name ? width - 12 - sw : 12, y, name ? sw : width - 24, 26, l, 2, sel, onSeg); s->tag = tag; addChild (s);
 	}
 	// Manufacture's pages: the setup, the tool and the machine, an operation.
+	// A canvas is what the panel shows (nothing else is selected, no tool is at work).
+	bool canvasPage () const { return !A.camMode && !A.sketching && !A.hasPend && A.tool == T_SELECT && A.selCanvas >= 0 && A.selCanvas < (int) A.doc.canvases.size () && A.selFeat < 0 && A.selBody < 0; }
 	// The body cut or printed, and what makes it: a router (G-code), a resin printer (its layers).
 	int bodyProcess (int y, int body)
 	{
@@ -738,6 +742,7 @@ public:
 		case 6: A.seeThrough = c.checked; break;
 		case 7: if (p->el) { p->el->rel = c.checked; } break;
 		case 8: if (f) { f->clone = c.checked; } break;
+		case 34: if (p->canvasPage ()) { A.doc.canvases[A.selCanvas].visible = c.checked; A.doc.changes++; if (g_view) g_view->invalidate (true); ui (0); } return;
 		case 30: A.print.mirror = c.checked; break;
 		case 31: A.print.supLow = c.checked; break;
 		case 32: A.print.raft = c.checked; break;
@@ -767,6 +772,7 @@ public:
 			e.rel = c; A.rectCentre = c; p->applied (); tool_hint (); ui (R_PANELS);
 		}
 		if (w.tag == 3) { A.skPlane = s.selected; ui (R_ALL); }
+		if (w.tag == 16 && p->canvasPage ()) { A.doc.canvases[A.selCanvas].plane = s.selected; A.doc.changes++; if (g_view) g_view->invalidate (true); ui (R_ALL); }
 		if (w.tag == 10) { A.job.fixed = s.selected == 1; if (A.job.fixed) A.job.size = A.paths.hi - A.paths.lo; cam_touch (); ui (R_ALL); }
 		if (w.tag == 11 && cam_op ()) { cam_op ()->useFace = s.selected == 1; cam_touch (); if (s.selected == 1) set_hint ("Click the flat face, turned up, to work on."); ui (R_ALL); }
 		if (w.tag == 12 && cam_op ()) { cam_op ()->climb = s.selected == 0; cam_touch (); }
@@ -954,6 +960,23 @@ public:
 			else head (icon_of_kind (f.kind), t);
 			featureFields (f, y, true);
 			okCancel ();
+		}
+		else if (canvasPage ())			// a canvas: a picture on a plane, to draw over
+		{
+			Canvas3 &c = A.doc.canvases[A.selCanvas]; char a[24], d[24];
+			head (I_SKETCH, c.name, "a canvas, to draw over");
+			label (12, y + 5, "Name"); Textbox *tb = new Textbox (width - 12 - 122, y, 122, 26, c.name); tb->maxLen = 22; tb->changed = onChanged; addChild (tb);
+			{ Bind q = { tb, 0, -1, false, c.name }; b[nb++] = q; } y += 34;
+			static const char *const PL[] = { "XY", "XZ", "YZ" };
+			label (12, y + 5, "Plane"); SegmentedControl *s = new SegmentedControl (width - 12 - 126, y, 126, 28, PL, 3, c.plane, onSeg); s->tag = 16; addChild (s); y += 36;
+			field (y, c.plane == 0 ? "Height (Z)" : c.plane == 1 ? "Along Y" : "Along X", &c.off, "mm", -1); y += 34;
+			label (12, y, "On its plane", UK_AUTO, 2); y += 20;
+			field (y, "X", &c.x, "mm", -1); y += 28; field (y, "Y", &c.y, "mm", -1); y += 28; field (y, "Width", &c.w, "mm", -1); y += 28; field (y, "Turned", &c.turn, "\xC2\xB0", -1); y += 30;
+			fmt (c.w, a, 12); fmt (c.w * c.aspect, d, 12); snprintf (t, sizeof t, "%s \xC3\x97 %s mm", a, d); label (12, y, "Its size follows its width.", dim_col (), 0, true); y += 24;
+			label (12, y, "Seen", UK_AUTO, 2); y += 20;
+			field (y, "Opacity", &c.opacity, "%", -1); y += 30; check (y, "Shown", c.visible, 34); y += 30;
+			label (12, y, "Drag it in the view to move it,", dim_col (), 0, true); y += 15; label (12, y, "a corner to size it.", dim_col (), 0, true);
+			ABtn *dl = new ABtn (12, height - 40, width - 24, 28, "Remove this canvas", CMD_CANVAS_DELETE); dl->bg = panel_col (); dl->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (dl);
 		}
 		else if (A.selFeat >= 0 && A.selFeat < (int) A.doc.feats.size ())
 		{

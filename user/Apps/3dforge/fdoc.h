@@ -704,6 +704,28 @@ static Manifold moved (const Body &b, const Feature &f)
 	return m.Translate ({f.mv.x, f.mv.y, f.mv.z});
 }
 struct BodyProp { int id; char name[24]; unsigned colour; bool visible; };
+// A canvas: a picture laid on a plane of the axes, to draw over (seen through, in a sketch too). Not a step:
+// nothing is made from it. The picture is a file; the part's file keeps its path.
+struct Canvas3
+{
+	char name[32], path[200];
+	int plane; double off;			// 0 XY, 1 XZ, 2 YZ -- and how far along the third axis
+	double x, y, w, turn;			// its middle on the plane, its width (mm), turned by (degrees)
+	double aspect;				// its height for a width of 1 (the picture's)
+	double opacity; bool visible;		// 0 .. 100
+	Canvas3 () : plane (0), off (0), x (0), y (0), w (100), turn (0), aspect (1), opacity (45), visible (true) { name[0] = 0; path[0] = 0; }
+};
+static Plane canvas_plane (const Canvas3 &c)
+{
+	return c.plane == 1 ? plane_of (V3 (0, c.off, 0), V3 (0, -1, 0)) : c.plane == 2 ? plane_of (V3 (c.off, 0, 0), V3 (1, 0, 0)) : plane_of (V3 (0, 0, c.off), V3 (0, 0, 1));
+}
+// Its corners: top left, top right, bottom right, bottom left.
+static void canvas_corners (const Canvas3 &c, V3 q[4])
+{
+	Plane pl = canvas_plane (c); double a = c.turn * PI / 180, cs = cos (a), sn = sin (a), hw = c.w / 2, hh = c.w * c.aspect / 2;
+	const double k[4][2] = { { -hw, hh }, { hw, hh }, { hw, -hh }, { -hw, -hh } };
+	for (int i = 0; i < 4; i++) q[i] = pl.at (c.x + k[i][0] * cs - k[i][1] * sn, c.y + k[i][0] * sn + k[i][1] * cs);
+}
 static const unsigned BODY_COLOURS[5] = { 0x92AACC, 0xC4C8D0, 0xD6AA78, 0x96BE96, 0xD4847C };
 
 struct Doc
@@ -712,6 +734,7 @@ struct Doc
 	int upto;				// the steps replayed (feats.size (): all)
 	int segs;				// sides to a circle
 	std::vector<BodyProp> props;
+	std::vector<Canvas3> canvases;	// the pictures laid on planes to draw over
 	std::vector<Body> bodies;		// (made by rebuild)
 	unsigned changes;
 	Doc () : upto (0), segs (96), changes (0) {}
@@ -898,6 +921,11 @@ struct Doc
 		std::string s = "3dforge 1\n"; char b[400];
 		snprintf (b, sizeof b, "segs %d\nupto %d\n", segs, upto); s += b;
 		for (const BodyProp &p : props) { snprintf (b, sizeof b, "body %d %06X %d %s\n", p.id, p.colour, p.visible ? 1 : 0, p.name); s += b; }
+		for (const Canvas3 &c : canvases)
+		{
+			snprintf (b, sizeof b, "canvas %d %.9g %.9g %.9g %.9g %.9g %.9g %.9g %d %s\n", c.plane, c.off, c.x, c.y, c.w, c.turn, c.aspect, c.opacity, c.visible ? 1 : 0, c.name); s += b;
+			s += "canvasfile "; s += c.path; s += "\n";
+		}
 		for (const Feature &f : feats)
 		{
 			snprintf (b, sizeof b, "step %s op %d target %d xy %.9g %.9g size %.9g %.9g %.9g flags %d %d sketch %d r %.9g mv %.9g %.9g %.9g tool %d name %s\n",
@@ -921,7 +949,7 @@ struct Doc
 	bool load (const char *text)
 	{
 		if (strncmp (text, "3dforge ", 8)) return false;
-		feats.clear (); props.clear (); bodies.clear (); upto = -1; segs = 96;
+		feats.clear (); props.clear (); bodies.clear (); canvases.clear (); upto = -1; segs = 96;
 		const char *p = text;
 		while (*p)
 		{
@@ -931,6 +959,13 @@ struct Doc
 			p = e ? e + 1 : p + n;
 			if (!strncmp (line, "segs ", 5)) segs = atoi (line + 5);
 			else if (!strncmp (line, "upto ", 5)) upto = atoi (line + 5);
+			else if (!strncmp (line, "canvas ", 7))
+			{
+				Canvas3 c; int v = 1, off = 0;
+				if (sscanf (line, "canvas %d %lf %lf %lf %lf %lf %lf %lf %d %n", &c.plane, &c.off, &c.x, &c.y, &c.w, &c.turn, &c.aspect, &c.opacity, &v, &off) >= 9 && canvases.size () < 32)
+				{ c.visible = v != 0; snprintf (c.name, sizeof c.name, "%s", off ? line + off : "Canvas"); if (c.plane < 0 || c.plane > 2) c.plane = 0; canvases.push_back (c); }
+			}
+			else if (!strncmp (line, "canvasfile ", 11)) { if (!canvases.empty ()) snprintf (canvases.back ().path, sizeof canvases.back ().path, "%s", line + 11); }
 			else if (!strncmp (line, "body ", 5))
 			{
 				BodyProp bp; int vis = 1, off = 0; bp.name[0] = 0;

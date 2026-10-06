@@ -2314,6 +2314,18 @@ last sketch (or the one selected) up, or pushes it into the body; an outline ins
 
 ![A sketch](../screenshots/3dforge-sketch.png)
 
+**A canvas** is a picture — a drawing, a photograph, a scan — laid on a plane to **draw over it**: *File > Import
+Canvas…* (PNG, JPEG, BMP, GIF, WebP), or a picture **dropped** on the window. It lies on the plane being drawn on —
+the sketch's when one is open, the one chosen for a sketch, else the ground —, 100 mm wide, and is seen **through**
+(45 % at first), in the 3D view and in a sketch, where its lines can be followed. The **Canvases** are listed
+under the bodies and the sketches: the eye hides or shows one, a click on its name selects it. Selected, it is
+**dragged** in the view to move it on its plane, and by a **corner** to size it; at the right, at any time: its
+*plane* (XY, XZ, YZ) and its place along the **third axis**, its *X* and *Y* on the plane, its *width* (its height
+follows), an angle, its *opacity*, *Shown*, and *Remove this canvas*. A canvas is not a step: nothing is made from
+it. The part's file keeps the picture's path, not the picture: keep the file where it is.
+
+![A canvas](../screenshots/3dforge-canvas.png)
+
 **Fillet and Chamfer.** Click the edges (the one pointed turns orange; an edge that cannot be done, grey), then drag
 the arrow or type the size. An inner edge is filled, an outer one cut. 3DForge rounds **straight edges between
 two flat faces**, **edges on a circle** (the rim of a hole, the top of a cylinder) and **arcs** (the rim of a
@@ -2343,7 +2355,7 @@ checked the original stays where it is and a copy of it, a new body, is what mov
 
 | Menu | Items |
 |---|---|
-| **File** | New (Ctrl+N), Open (Ctrl+O), Save (Ctrl+S), Save As, Export (Ctrl+E) |
+| **File** | New (Ctrl+N), Open (Ctrl+O), Save (Ctrl+S), Save As, Export (Ctrl+E), Import Canvas |
 | **Edit** | Undo (Ctrl+Z), Redo (Ctrl+Y), Delete Step (Del), Roll Back to the Step, Roll to the End |
 | **View** | Home, Fit, Top, Front, Right, Edges, Grid, See Through, Draw with the Processor |
 | **Create** | the seven shapes, Sketch, Extrude |

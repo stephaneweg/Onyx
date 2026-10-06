@@ -89,7 +89,7 @@ static bool load_path (const char *path)
 	if (got != (int) n) return false;
 	Doc d;
 	if (!d.load (s.c_str ())) return false;
-	A.doc = d; A.saved = A.doc.changes; A.undo.clear (); A.redo.clear (); A.selFeat = A.selBody = -1;
+	A.doc = d; A.saved = A.doc.changes; A.undo.clear (); A.redo.clear (); A.selFeat = A.selBody = -1; A.selCanvas = -1;
 	job_reset (); cam_load (A.job, s.c_str ()); print_load (A.print, s.c_str ());
 	if (strstr (s.c_str (), "\nmanufacture resin")) A.gen = 1;
 	if (strstr (s.c_str (), "\nmanufacture filament")) { A.gen = 2; fdm_load (A.fdm, A.fmach, s.c_str ()); A.fdmPct = A.fdm.infill * 100; }
@@ -120,7 +120,7 @@ static void cmd_new ()
 {
 	if (!guard ()) return;
 	if (A.sketching) sketch_end (false);
-	A.doc = Doc (); A.saved = 0; A.path[0] = 0; A.undo.clear (); A.redo.clear (); A.selFeat = A.selBody = -1;
+	A.doc = Doc (); A.saved = 0; A.path[0] = 0; A.undo.clear (); A.redo.clear (); A.selFeat = A.selBody = -1; A.selCanvas = -1;
 	job_reset (); A.caption[0] = 0;
 	tool_set (T_SELECT); g_view->home ();
 }
@@ -131,6 +131,37 @@ static void cmd_open ()
 	if (A.sketching) sketch_end (false);
 	if (uk_file_open (path, sizeof path, DOCS) && !load_path (path)) uk_messagebox ("Open", "That file is not a 3DForge part (.3df).", MB_OK);
 	A.caption[0] = 0; ui (R_ALL);
+}
+
+// ---- a canvas: a picture laid on a plane, to draw over ---------------------------------------------------------------------
+static const char *PICTURES = "Pictures|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp|All files|*";
+static bool is_picture (const char *p) { for (const char *e : { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" }) if (ends_with (p, e)) return true; return false; }
+// On the plane being drawn on (a sketch's, or the one chosen for a sketch), else on the ground; its middle on the
+// plane's origin, 100 mm wide: it is then moved and sized.
+static bool canvas_add (const char *path)
+{
+	if (A.camMode) return false;
+	const App::CanvasPic *pic = canvas_pic (path);
+	if (!pic || !pic->px || pic->w < 1 || pic->h < 1) { uk_messagebox ("Canvas", "That file is not a picture 3DForge can read (PNG, JPEG, BMP, GIF, WebP).", MB_OK); return false; }
+	if (A.doc.canvases.size () >= 32) { uk_messagebox ("Canvas", "A part holds 32 canvases at most.", MB_OK); return false; }
+	Canvas3 c; snprintf (c.path, sizeof c.path, "%s", path); snprintf (c.name, sizeof c.name, "%.22s", base_name (path)); char *dot = strrchr (c.name, '.'); if (dot && dot != c.name) *dot = 0;
+	c.aspect = (double) pic->h / pic->w;
+	if (A.sketching)
+	{
+		const Plane &pl = A.sk.pl;
+		if (fabs (pl.n.y) > 0.999) { c.plane = 1; c.off = pl.o.y; } else if (fabs (pl.n.x) > 0.999) { c.plane = 2; c.off = pl.o.x; } else if (fabs (pl.n.z) > 0.999) c.off = pl.o.z;
+	}
+	else { undo_push (); if (A.tool == T_SKETCH) { c.plane = A.skPlane; c.off = A.skOffset; } }
+	A.doc.canvases.push_back (c); A.doc.changes++;
+	if (!A.sketching) { tool_set (T_SELECT); A.selCanvas = (int) A.doc.canvases.size () - 1; A.selBody = A.selFeat = -1; set_hint ("Drag the canvas to move it on its plane, a corner to size it; its values are at the right."); }
+	ui (R_ALL); if (g_view) g_view->invalidate (true);
+	return true;
+}
+static void cmd_canvas_import ()
+{
+	char path[200];
+	if (A.camMode) { set_hint ("A canvas belongs to Design."); ui (0); return; }
+	if (uk_file_open (path, sizeof path, "SD:/docs/pictures", PICTURES)) canvas_add (path);
 }
 
 // ---- Export: the meshes (STL, OBJ), a flat drawing from a side (DXF, SVG, PDF), a picture (PNG) ----------------------------
@@ -495,6 +526,11 @@ static void cmd (int id)
 	case CMD_PR_CLEAR: if (resin ()) { A.print.tips.clear (); A.doc.changes++; print_refresh (); ui (R_ALL); } break;
 	case CMD_PR_PRESET: if (resin ()) cmd_print_preset (); break;
 	case CMD_GEN: cmd_gen (); break;
+	case CMD_CANVAS_IMPORT: cmd_canvas_import (); break;
+	case CMD_CANVAS_DELETE:
+		if (!A.camMode && !A.sketching && A.selCanvas >= 0 && A.selCanvas < (int) A.doc.canvases.size ())
+		{ undo_push (); A.doc.canvases.erase (A.doc.canvases.begin () + A.selCanvas); A.selCanvas = -1; A.doc.changes++; ui (R_ALL); }
+		break;
 	case CMD_CAM_VALIDATE: if (A.camMode && A.gen == 0) { cam_refresh (); ui (R_ALL); } break;
 	case CMD_CAM_REVERT: cam_revert (); break;
 	case CMD_CAM_SETUP: if (A.camMode) { A.camSel = 0; A.camPage = 0; A.camSim = false; cam_hint (); ui (R_ALL); } break;
@@ -523,7 +559,8 @@ static void cmd (int id)
 	}
 	case CMD_OK: confirm (); break;
 	case CMD_CANCEL: cancel (); break;
-	case CMD_DELETE: if (printer ()) break; if (A.camMode) cam_delete_op (); else if (!A.sketching && A.selFeat >= 0) delete_feature (A.selFeat); break;
+	case CMD_DELETE: if (printer ()) break;
+		if (!A.camMode && !A.sketching && A.selCanvas >= 0 && A.selFeat < 0 && A.selBody < 0) { cmd (CMD_CANVAS_DELETE); break; } if (A.camMode) cam_delete_op (); else if (!A.sketching && A.selFeat >= 0) delete_feature (A.selFeat); break;
 	case CMD_DEL_ELEMENT:
 		if (A.sketching && A.selEl >= 0 && A.selEl < (int) A.sk.els.size ()) { A.sk.els.erase (A.sk.els.begin () + A.selEl); A.selEl = -1; sk_eval (); A.chain = false; sk_arm (); ui (R_ALL); }
 		break;
@@ -601,7 +638,9 @@ public:
 	void onDrop (int, int, int type, const char *data, int, unsigned) override
 	{
 		char path[200];
-		if (type != DND_FILES || !doc_first_path (data, path, sizeof path) || !guard ()) return;
+		if (type != DND_FILES || !doc_first_path (data, path, sizeof path)) return;
+		if (is_picture (path)) { canvas_add (path); return; }		// (a picture dropped: a canvas)
+		if (!guard ()) return;
 		if (!load_path (path)) uk_messagebox ("Open", "That file is not a 3DForge part (.3df).", MB_OK);
 	}
 };
@@ -645,6 +684,7 @@ int main (void)
 	menu.item ("Save As...", "", 0, cmd_save_as);
 	menu.separator ();
 	menu.item ("Export...", "^E", UK_CTRL ('E'), cmd_export);
+	menu.item ("Import Canvas...", "", 0, cmd_canvas_import);
 	menu.menu ("Edit");
 	menu.item ("Undo", "^Z", UK_CTRL ('Z'), [] { cmd (CMD_UNDO); });
 	menu.item ("Redo", "^Y", UK_CTRL ('Y'), [] { cmd (CMD_REDO); });

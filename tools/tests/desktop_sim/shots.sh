@@ -292,7 +292,7 @@ fi
 if want 3dforge; then			# (the sample bracket; the shapes unfolded; a box, a cut, a sketch, a fillet being made; the export)
 	FG=SIM_ARGS=SD:/docs/3d/bracket.3df
 	sim 3dforge 3dforge "$(python3 $D/forge_scene.py main)" $P $FG; png 3dforge
-	for s in shapes box cut sketch fillet export cam cam-ops cam-sim cam-gcode print print-supports print-layers fdm fdm-layers; do
+	for s in shapes box cut sketch fillet export canvas cam cam-ops cam-sim cam-gcode print print-supports print-layers fdm fdm-layers; do
 		sim 3dforge 3dforge-$s "$(python3 $D/forge_scene.py $s)" $P $FG; png 3dforge-$s
 	done
 fi

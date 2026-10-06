@@ -4,7 +4,7 @@ desktop simulator, on the sample part SD:/docs/3d/bracket.3df. A point of the mo
 app shows it at -- its home view of the bracket (the camera of user/Apps/3dforge/frender.h), or the view from above
 a sketch on the plate's top face is drawn in.
 
-    python3 tools/tests/desktop_sim/forge_scene.py main | shapes | box | cut | sketch | fillet | export
+    python3 tools/tests/desktop_sim/forge_scene.py main | shapes | box | cut | sketch | fillet | export | canvas
                                                    | cam | cam-ops | cam-sim | cam-gcode        (Manufacture)
                                                    | print | print-supports | print-layers   (... for a resin printer)
                                                    | fdm | fdm-layers                         (... for a filament printer)
@@ -62,18 +62,20 @@ def scene (name):
 	if name == "cam-sim": return ";".join ([ops, ck (CAM["simulate"]), "wait;wait"])
 	if name == "cam-gcode": return ";".join ([ops, ck (CAM["gcode"]), "wait;wait"])
 	# ... for a resin printer (the menu's "Process: Resin Printing", "Supports", "Generate Supports", "Layers": its
-	# items 44 to 47): the body on the plate; lifted 5 mm and tilted 24 degrees, its supports; its layers
-	pr = ";".join ([cam, "menu 44", w])
+	# items 45 to 48): the body on the plate; lifted 5 mm and tilted 24 degrees, its supports; its layers
+	pr = ";".join ([cam, "menu 45", w])
 	tilt = ";".join ([ck ("926 353"), typed ("<5!"), "wait", ck ("926 380"), typed ("<24!")] + ["wait"] * 8)
-	sup = ";".join ([pr, tilt, "menu 45", "wait", "menu 46", w])
+	sup = ";".join ([pr, tilt, "menu 46", "wait", "menu 47", w])
 	if name == "print": return pr
 	if name == "print-supports": return sup
-	if name == "print-layers": return ";".join ([sup, "menu 47"] + ["wait"] * 140 + ["move 753 380;down 753 380;move 753 372;wait;up 753 372", w])
-	# ... for a filament printer ("Process: Filament Printing", "Filament": the menu's items 48, 49): its values; a
+	if name == "print-layers": return ";".join ([sup, "menu 48"] + ["wait"] * 140 + ["move 753 380;down 753 380;move 753 372;wait;up 753 372", w])
+	# ... for a filament printer ("Process: Filament Printing", "Filament": the menu's items 49, 50): its values; a
 	# layer being played (the bar dragged, Play)
-	fd = ";".join ([cam, "menu 48", w])
-	if name == "fdm": return ";".join ([fd, "menu 49", w])
-	if name == "fdm-layers": return ";".join ([fd, "menu 47", w, "move 748 425;down 748 425;move 748 420;wait;up 748 420;wait", ck ("748 461")] + ["wait"] * 28)
+	fd = ";".join ([cam, "menu 49", w])
+	if name == "fdm": return ";".join ([fd, "menu 50", w])
+	if name == "fdm-layers": return ";".join ([fd, "menu 48", w, "move 748 425;down 748 425;move 748 420;wait;up 748 420;wait", ck ("748 461")] + ["wait"] * 28)
+	# a canvas: a picture dropped on the view, moved a little
+	if name == "canvas": return ";".join ([w, "drop 300 300 SD:/docs/pictures/sunset-sea.jpg", w, "move 250 400;down 250 400;move 290 410;move 330 420;wait;up 330 420", w])
 	raise SystemExit ("no such scene: " + name)
 
 if __name__ == "__main__":

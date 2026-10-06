@@ -67,6 +67,8 @@ struct App
 	// Manufacture (fcam.h): the setup and its operations, their moves; what the panel shows -- camSel: 0 the setup,
 	// k: its operation k - 1; camPage: 0 the setup, 1 the tool, 2 the operation
 	CamSetup job; CamPaths paths; RMesh stockMesh;
+	int selCanvas = -1;			// the canvas shown at the right (dragged in the view to move it, by a corner to size it)
+	struct CanvasPic { std::string path; unsigned *px; int w, h; }; std::vector<CanvasPic> pics;	// (the canvases' pictures, read once)
 	int speedIx = 2; double playAcc = 0;	// (what is played -- the cut, the layers, the bead --: how fast, PLAY_SPEEDS; what is left over a turn)
 	CamSetup jobOk;				// (the setup the moves were made from: what Cancel puts back. camDirty: values changed since)
 	bool camMode = false, camSim = false, camDirty = false; int camSel = 0, camPage = 0; unsigned camDirtyT = 0;
@@ -555,6 +557,24 @@ static void cam_delete_op ()
 }
 
 // ---- Manufacture for a resin printer ------------------------------------------------------------------------------------------
+// UIKit's ui::icon_load (uikit/bmp.h: a picture file read through ImageKit, new[]) under a name of ours: its
+// namespace is called `ui`, as this program's own ui () -- the header cannot be included here.
+unsigned *picture_load (const char *path, int *pw, int *ph) __asm__ ("_ZN2ui9icon_loadEPKcPiS2_");
+// A canvas' picture (0x00RRGGBB, magenta: see-through), read at its first use; px 0: it cannot be read. One too
+// large is thinned (a watermark needs no more than the screen shows).
+static const App::CanvasPic *canvas_pic (const char *path)
+{
+	for (const App::CanvasPic &p : A.pics) if (p.path == path) return &p;
+	App::CanvasPic p; p.path = path; p.w = p.h = 0; p.px = path[0] ? picture_load (path, &p.w, &p.h) : 0;
+	if (p.px && (p.w > 1600 || p.h > 1600))
+	{
+		int k = (std::max (p.w, p.h) + 1599) / 1600, w = p.w / k, h = p.h / k; unsigned *q = new unsigned[(size_t) w * h];
+		for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) q[(size_t) y * w + x] = p.px[(size_t) (y * k) * p.w + x * k];
+		delete[] p.px; p.px = q; p.w = w; p.h = h;
+	}
+	if (A.pics.size () > 40) { for (App::CanvasPic &o : A.pics) delete[] o.px; A.pics.clear (); }
+	A.pics.push_back (p); return &A.pics.back ();
+}
 static const double PLAY_SPEEDS[6] = { 0.25, 0.5, 1, 2, 4, 8 };
 static const char *const PLAY_NAMES[6] = { "\xC3\x97\xC2\xBC", "\xC3\x97\xC2\xBD", "\xC3\x97" "1", "\xC3\x97" "2", "\xC3\x97" "4", "\xC3\x97" "8" };
 static double play_speed () { return PLAY_SPEEDS[A.speedIx < 0 || A.speedIx > 5 ? 2 : A.speedIx]; }
@@ -777,6 +797,78 @@ public:
 		return V3 (lo.x + (hi.x - lo.x) * (k % 3) / 2, lo.y + (hi.y - lo.y) * (k / 3 % 3) / 2, lo.z + (hi.z - lo.z) * (k / 9) / 2);
 	}
 	bool camFacePick () const { CamOp *op = cam_op (); return A.camMode && A.camPage == 2 && op && op->useFace; }
+	// ---- the canvases: pictures on planes, seen through; the selected one moved and sized with the mouse ----
+	// (The view has no perspective: a picture on a plane lands on the screen by a plain affine map -- each pixel of
+	//  the screen under it finds its point of the picture.)
+	void drawCanvases ()
+	{
+		for (size_t ci = 0; ci < A.doc.canvases.size (); ci++)
+		{
+			const Canvas3 &c = A.doc.canvases[ci]; if (!c.visible) continue;
+			V3 q[4]; canvas_corners (c, q); double X[4], Y[4]; for (int k = 0; k < 4; k++) sx (q[k], &X[k], &Y[k]);
+			double ax = X[1] - X[0], ay = Y[1] - Y[0], bx = X[3] - X[0], by = Y[3] - Y[0], det = ax * by - ay * bx;
+			const App::CanvasPic *pic = canvas_pic (c.path); bool sel = (int) ci == A.selCanvas && !A.sketching;
+			if (fabs (det) > 6 && pic && pic->px)
+			{
+				int x0 = (int) floor (std::min (std::min (X[0], X[1]), std::min (X[2], X[3]))), x1 = (int) ceil (std::max (std::max (X[0], X[1]), std::max (X[2], X[3])));
+				int y0 = (int) floor (std::min (std::min (Y[0], Y[1]), std::min (Y[2], Y[3]))), y1 = (int) ceil (std::max (std::max (Y[0], Y[1]), std::max (Y[2], Y[3])));
+				if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0; if (x1 > width - 1) x1 = width - 1; if (y1 > height - 1) y1 = height - 1;
+				int al = (int) (c.opacity * 2.56); if (al < 0) al = 0; if (al > 256) al = 256;
+				double ux = by / det, uy = -bx / det, vx = -ay / det, vy = ax / det;		// (u, v) of a pixel: its place across and down the picture
+				for (int y = y0; y <= y1; y++)
+				{
+					unsigned *row = canvas.px + (size_t) y * canvas.stride;
+					double dy = y + 0.5 - Y[0], u = (x0 + 0.5 - X[0]) * ux + dy * uy, v = (x0 + 0.5 - X[0]) * vx + dy * vy;
+					for (int x = x0; x <= x1; x++, u += ux, v += vx)
+					{
+						if (u < 0 || v < 0 || u >= 1 || v >= 1) continue;
+						unsigned s = pic->px[(size_t) (int) (v * pic->h) * pic->w + (int) (u * pic->w)] & 0xFFFFFF; if (s == 0xFF00FF) continue;
+						unsigned d = row[x];
+						unsigned rb = ((d & 0xFF00FF) * (256 - al) + (s & 0xFF00FF) * al) >> 8 & 0xFF00FF, g = ((d & 0x00FF00) * (256 - al) + (s & 0x00FF00) * al) >> 8 & 0x00FF00;
+						row[x] = rb | g;
+					}
+				}
+			}
+			else if (fabs (det) > 6)		// (its picture is not there: its frame, crossed)
+			{
+				ov_dash (canvas, X[0], Y[0], X[2], Y[2], 1, 0x9A9AA6); ov_dash (canvas, X[1], Y[1], X[3], Y[3], 1, 0x9A9AA6);
+				for (int k = 0; k < 4; k++) ov_dash (canvas, X[k], Y[k], X[(k + 1) % 4], Y[(k + 1) % 4], 1, 0x9A9AA6);
+			}
+			if (sel)
+			{
+				for (int k = 0; k < 4; k++) ov_line (canvas, X[k], Y[k], X[(k + 1) % 4], Y[(k + 1) % 4], 1.4, C_ACCENT);
+				for (int k = 0; k < 4; k++) ov_dot (canvas, X[k], Y[k], 4.5, 0xFFFFFF, C_ACCENT, 1.8);
+			}
+		}
+	}
+	int cvDrag = 0; V2 cvQ0; double cvX0 = 0, cvY0 = 0, cvW0 = 0, cvD0 = 0;	// (1 moved, 2 sized: where it began)
+	bool canvasMouse (int mx, int my, int bl, bool press)
+	{
+		if (A.selCanvas < 0 || A.selCanvas >= (int) A.doc.canvases.size ()) { cvDrag = 0; return false; }
+		Canvas3 &c = A.doc.canvases[A.selCanvas]; Plane pl = canvas_plane (c); V3 p;
+		if (!bl) { if (cvDrag) { cvDrag = 0; ui (R_FIELDS); return true; } return false; }
+		if (press)
+		{
+			cvDrag = 0;
+			if ((mx >= BX && mx < BX + BW && my >= BY && my < BY + bodiesH ()) || (mx > width - 110 && my < 224) || !c.visible) return false;	// (the panel, the cube and its buttons)
+			if (!A.cam.onPlane (mx, my, pl, &p)) return false;
+			V3 q[4]; canvas_corners (c, q); V2 at = pl.to (p);
+			for (int k = 0; k < 4; k++) { double x, y; sx (q[k], &x, &y); if (hypot (mx - x, my - y) < 10) cvDrag = 2; }
+			if (!cvDrag)
+			{
+				double a = -c.turn * PI / 180, dx = at.x - c.x, dy = at.y - c.y, u = dx * cos (a) - dy * sin (a), v = dx * sin (a) + dy * cos (a);
+				if (fabs (u) <= c.w / 2 && fabs (v) <= c.w * c.aspect / 2) cvDrag = 1;
+			}
+			if (!cvDrag) return false;
+			undo_push (); cvQ0 = at; cvX0 = c.x; cvY0 = c.y; cvW0 = c.w; cvD0 = hypot (at.x - c.x, at.y - c.y); return true;
+		}
+		if (!cvDrag) return false;
+		if (!A.cam.onPlane (mx, my, pl, &p)) return true;
+		V2 at = pl.to (p);
+		if (cvDrag == 1) { c.x = snapv (cvX0 + at.x - cvQ0.x); c.y = snapv (cvY0 + at.y - cvQ0.y); }
+		else if (cvD0 > 1e-6) { double w = cvW0 * hypot (at.x - c.x, at.y - c.y) / cvD0; c.w = w < 1 ? 1 : snapv (w); }
+		A.doc.changes++; ui (R_FIELDS); invalidate (true); return true;
+	}
 	// ---- a resin printer's: the plate, the supports clicked, a layer's picture, the layers' bar ----
 	bool pickMesh (const RMesh &m, double mx, double my, V3 *out, V3 *nrm) const
 	{
@@ -1186,7 +1278,7 @@ public:
 		{
 		case T_SELECT:
 			if (pick (A.doc, A.cam, mx, my, &h)) { A.selBody = A.doc.bodies[h.body].id; A.selFeat = -1; }
-			else { A.selBody = -1; A.selFeat = -1; }
+			else { A.selBody = -1; A.selFeat = -1; A.selCanvas = -1; }
 			ui (R_ALL); break;
 		case T_BOX: case T_CYL: case T_PYRAMID: case T_PRISM: case T_TAPER: case T_TORUS: case T_SPHERE:
 			if (A.step == 0)
@@ -1249,7 +1341,7 @@ public:
 	int bodiesH () const
 	{
 		if (A.sketching || A.camMode) return 0;
-		int ns = sketchCount (), h = bodiesPart () + (ns ? 24 + BROW * ns : 0);
+		int ns = sketchCount (), nc = (int) A.doc.canvases.size (), h = bodiesPart () + (ns ? 24 + BROW * ns : 0) + (nc ? 24 + BROW * nc : 0);
 		return h ? h + 6 : 0;
 	}
 	void drawBodies ()
@@ -1269,6 +1361,20 @@ public:
 				char fit[32]; uk_text_fit (f.name, BW - 34 - 40, fit, sizeof fit);
 				uk_text (canvas, BX + 32, y + (BROW - uk_fh ()) / 2, fit, 0x1A1A1E, i == A.selFeat ? 2 : 0);
 				UkFaceScope fs (g_small); uk_text (canvas, BX + BW - 10 - uk_tw ("Edit"), y + (BROW - uk_fh ()) / 2, "Edit", 0x2862B0);
+			}
+		}
+		int nc = (int) A.doc.canvases.size (), cy = sy + (ns ? 24 + BROW * ns : 0);
+		if (nc)				// the canvases: the eye shows / hides one, its name selects it
+		{
+			if (cy > BY) canvas.fillRect (BX + 8, cy + 1, BW - 16, 1, 0xDCDFE5);
+			{ UkFaceScope fs (g_small); uk_text (canvas, BX + 10, cy + 6, "Canvases", 0x5A5E68, 2); }
+			for (int k = 0; k < nc; k++)
+			{
+				const Canvas3 &c = A.doc.canvases[k]; int y = cy + 24 + k * BROW; unsigned bg = 0xFFFFFF;
+				if (k == A.selCanvas) { bg = uk_mix (C_ACCENT, 0xFFFFFF, 190); uk_rbox (canvas, BX + 4, y, BW - 8, BROW, 5, bg, bg); }
+				icon (canvas, I_EYE, BX + 8, y + 3, 18, c.visible ? 0x464C5A : 0xB4B8C0, C_ACCENT, bg);
+				char fit[40]; uk_text_fit (c.name, BW - 44, fit, sizeof fit);
+				uk_text (canvas, BX + 34, y + (BROW - uk_fh ()) / 2, fit, c.visible ? 0x1A1A1E : 0x8A8E96, k == A.selCanvas ? 2 : 0);
 			}
 		}
 		if (A.doc.bodies.empty ()) return;
@@ -1294,8 +1400,15 @@ public:
 			static int lastK = -1; static unsigned lastT = 0; unsigned now = kapi_get_ticks ();
 			int i = sketchAt (k); bool open = mx >= BX + BW - 44 || (lastK == i && now - lastT < 45); lastK = i; lastT = now;
 			if (A.tool != T_SELECT) tool_set (T_SELECT);
-			A.selFeat = i; A.selBody = -1;
+			A.selFeat = i; A.selBody = -1; A.selCanvas = -1;
 			if (open) { lastK = -1; sketch_begin (A.doc.feats[i].pl, A.doc.feats[i].target, i); }
+			ui (R_ALL); return true;
+		}
+		int cy = sy + (sketchCount () ? 24 + BROW * sketchCount () : 0), ck = (my - cy - 24) / BROW;
+		if (my >= cy + 24 && ck < (int) A.doc.canvases.size ())
+		{
+			if (mx < BX + 30) { A.doc.canvases[ck].visible = !A.doc.canvases[ck].visible; A.doc.changes++; }
+			else { if (A.tool != T_SELECT) tool_set (T_SELECT); A.selCanvas = ck; A.selBody = A.selFeat = -1; set_hint ("Drag the canvas to move it on its plane, a corner to size it; its values are at the right."); }
 			ui (R_ALL); return true;
 		}
 		int i = (my - BY - 24) / BROW;
@@ -1303,7 +1416,7 @@ public:
 		{
 			int id = A.doc.bodies[i].id;
 			if (mx < BX + 30) { BodyProp &p = A.doc.prop (id); p.visible = !p.visible; A.doc.changes++; }
-			else { A.selBody = id; A.selFeat = -1; if (A.tool != T_SELECT) tool_set (T_SELECT); }
+			else { A.selBody = id; A.selFeat = -1; A.selCanvas = -1; if (A.tool != T_SELECT) tool_set (T_SELECT); }
 			ui (R_ALL);
 		}
 		return true;
@@ -1316,6 +1429,7 @@ public:
 		bool inside = mx >= 0 && my >= 0 && mx < width && my < height;
 		bool pressL = bl && !wasL, releaseL = !bl && wasL, pressR = (br || bm) && !wasR;
 		wasL = bl != 0; wasR = (br || bm) != 0;
+		if (!A.camMode && !A.sketching && A.tool == T_SELECT && (inside || cvDrag) && canvasMouse (mx, my, bl, pressL)) return true;
 		if (printer () && A.camPage == 3 && (inside || barHeld) && layerMouse (mx, my, bl, pressL, wheel)) return true;
 		if (A.camMode && A.gen == 0 && A.camSim && (inside || barHeld) && simMouse (mx, my, bl, pressL)) return true;
 		if (!inside && !drag) return false;
@@ -1475,6 +1589,7 @@ public:
 			scene_edges (sc, A.prev, edge, 0.6);
 		}
 		A.gpu = scene_show (sc, 0xF0F2F6, canvas.px, canvas.stride);
+		if (!A.camMode) drawCanvases ();
 		overlays ();
 	}
 };

@@ -72,6 +72,16 @@ int main (int argc, char **argv)
 		Doc d4; g = &add (d4, F_PRISM); g->n = 4; g->w = 10; g->h = 5; g->turn = 45; d4.rebuild ();
 		check (!d4.bodies.empty () && fabs (d4.bodies[0].mesh.hi.x - 10 / sqrt (2.0)) < 1e-6 && fabs (d4.bodies[0].m.Volume () - 1000) < 1e-6, "a base with sides, turned about its axis");
 	}
+	{
+		// a canvas: kept in the part's file; its corners on its plane
+		Doc d5; add (d5, F_BOX).w = 10; Canvas3 c; snprintf (c.name, sizeof c.name, "Plan A"); snprintf (c.path, sizeof c.path, "SD:/docs/pictures/plan a.png");
+		c.plane = 1; c.off = 12; c.x = 5; c.y = 20; c.w = 80; c.aspect = 0.5; c.turn = 90; c.opacity = 30; c.visible = false; d5.canvases.push_back (c);
+		Doc d6; bool ok = d6.load (d5.save ().c_str ()) && d6.canvases.size () == 1; const Canvas3 &k = d6.canvases[0];
+		V3 q[4]; canvas_corners (k, q);
+		check (ok && k.plane == 1 && k.off == 12 && k.w == 80 && k.aspect == 0.5 && k.opacity == 30 && !k.visible && !strcmp (k.name, "Plan A") && !strcmp (k.path, "SD:/docs/pictures/plan a.png")
+		       && fabs (q[0].y - 12) < 1e-9 && fabs (len (q[1] - q[0]) - 80) < 1e-9 && fabs (len (q[3] - q[0]) - 40) < 1e-9,
+		       "a canvas: kept in the file; on its plane, turned");
+	}
 	SkEval ev; sketch_eval (f->els, 96, ev);
 	check (ev.nclosed == 3 && ev.nopen == 0, "a sketch: two circles and a slot, three closed outlines");
 	{
