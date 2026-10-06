@@ -190,8 +190,7 @@ désactivant la concurrence. **Le dépôt confirme chaque étape, avec les dates
 **Le point frappant pour l'article** : le plan estimait 6 à 8 semaines pour le seul socle POSIX. Selon
 les dates des commits, le socle, l'IPC, la chaîne de compilation et les dépendances ont été faits le
 **2026-10-02** (plusieurs agents en parallèle), et le navigateur WebKit tournait sur le Pi le lendemain.
-**À confirmer par l'utilisateur** (ce sont les dates des commits ; le travail a pu commencer avant) avant
-de l'écrire.
+**Confirmé par l'utilisateur le 2026-10-06 : on peut en parler dans l'article.**
 
 ## Repères de chronologie (historique git, 2026-10-06)
 
@@ -266,4 +265,5 @@ sur le Pi et le résultat attendu.
 - 2026-10-06 : topo reçu, plan et ébauche v0, avantages/inconvénients ajoutés, puis le coût
   (Max 100 €, quota hebdomadaire épuisé, upgrade), les prix des formules, les branches comme
   illustration de la dispersion (élagage à faire), les traces de la méthode dans le dépôt, l'étude de cas
-  NetSurf → WebKit (POSIX, dépendances, GC), la chronologie. **En attente des specs.**
+  NetSurf → WebKit (POSIX, dépendances, GC), la chronologie ; la vitesse du chantier POSIX/WebKit
+  confirmée par l'utilisateur, citable. **En attente des specs.**
