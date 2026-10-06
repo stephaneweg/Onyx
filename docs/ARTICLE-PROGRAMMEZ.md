@@ -49,6 +49,10 @@ en **EL0** dans **son propre espace d'adressage**.
 
 On présentera Circle et Onyx brièvement.
 
+**Pourquoi le Raspberry Pi** (l'utilisateur, 2026-10-06) : un choix pratique aussi ; contrairement au PC x86,
+le matériel est unique et connu, il n'y a pas une myriade de pilotes à développer. (Dans l'article : section
+« De Circle à Onyx ».)
+
 ### La méthode (le « comment »)
 
 - **Le modèle** : Opus, jugé plus adapté à une réflexion intense et technique.
