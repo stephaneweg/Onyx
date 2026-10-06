@@ -1,0 +1,100 @@
+# Notes' words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The months' and days' names in small letters ("vendredi 25 septembre"); "Today" is uikit's own.
+Stickies hidden.	Stickies masqué.
+Stickies shown, and started at every boot (SD:/etc/autostart).	Stickies affiché, et lancé à chaque démarrage (SD:/etc/autostart).
+Stickies shown.	Stickies affiché.
+Stickies shown (autostart not written).	Stickies affiché (autostart non écrit).
+January	janvier
+February	février
+March	mars
+April	avril
+May	mai
+June	juin
+July	juillet
+August	août
+September	septembre
+October	octobre
+November	novembre
+December	décembre
+Thursday	jeudi
+Friday	vendredi
+Saturday	samedi
+Sunday	dimanche
+Monday	lundi
+Tuesday	mardi
+Wednesday	mercredi
+Yesterday	Hier
+This note is full (64 KB).	Cette note est pleine (64 Ko).
+New note · type: it is kept by itself, no need to save	Nouvelle note · tapez : elle s'enregistre toute seule
+Larger than 64 KB: open it in the Text Editor (Ctrl+E)	Plus de 64 Ko : ouvrez-la dans l'éditeur de texte (Ctrl+E)
+New note	Nouvelle note
+Date unknown	Date inconnue
+On the desktop	Sur le bureau
+notes	notes
+note	note
+Showing the %d newest notes	Les %d notes les plus récentes
+No notes yet	Aucune note pour l'instant
+on the desktop	sur le bureau
+Not saved: the note is larger than 64 KB	Non enregistrée : la note dépasse 64 Ko
+Not saved: the card is full or read-only — trying again	Non enregistrée : la carte est pleine ou protégée — nouvel essai
+Saved	Enregistrée
+This note is larger than 64 KB: open it in the Text Editor (Ctrl+E)	Cette note dépasse 64 Ko : ouvrez-la dans l'éditeur de texte (Ctrl+E)
+This note could not be read	Cette note n'a pas pu être lue
+Too many notes: delete some first	Trop de notes : supprimez-en d'abord
+The note could not be moved to the Trash	La note n'a pas pu être mise à la corbeille
+Note moved to the Trash	Note mise à la corbeille
+This note is full (64 KB): the paste was cut.	Cette note est pleine (64 Ko) : le collage a été tronqué.
+File	Fichier
+New Note	Nouvelle note
+Open in Text Editor	Ouvrir dans l'éditeur de texte
+Delete Note	Supprimer la note
+Edit	Édition
+Cut	Couper
+Copy	Copier
+Paste	Coller
+Select All	Tout sélectionner
+Copy Note	Copier la note
+Note	Note
+Unpin from Desktop	Détacher du bureau
+Pin to Desktop	Épingler au bureau
+View	Affichage
+Hide Stickies from the Desktop	Masquer Stickies du bureau
+Show Stickies on the Desktop	Afficher Stickies sur le bureau
+Not saved: the card is full or read-only	Non enregistrée : la carte est pleine ou protégée
+%s is larger than 64 KB, the most a note can hold.\nIt was not imported; open it in the Text Editor instead.	%s dépasse 64 Ko, le maximum d'une note.\nIl n'a pas été importé ; ouvrez-le plutôt dans l'éditeur de texte.
+Larger than 64 KB, the most a note can hold: %s.\n	Plus de 64 Ko, le maximum d'une note : %s.\n
+Not a text file (.txt, .md) or unreadable: %s.\n	Pas un fichier texte (.txt, .md) ou illisible : %s.\n
+They were not imported.	Ils n'ont pas été importés.
+Import a note	Importer une note
+New note (Ctrl+N)	Nouvelle note (Ctrl+N)
+Delete note: to the Trash (Ctrl+D)	Supprimer la note : à la corbeille (Ctrl+D)
+Delete	Supprimer
+Pin to the desktop (Ctrl+P)	Épingler au bureau (Ctrl+P)
+Pin	Épingler
+Notes could not save “%s”: its text is on the clipboard	Notes n'a pas pu enregistrer « %s » : son texte est dans le presse-papiers
+Yellow	Jaune
+Green	Vert
+Blue	Bleu
+Pink	Rose
+Purple	Violet
+Grey	Gris
+Mon	lun.
+Tue	mar.
+Wed	mer.
+Thu	jeu.
+Fri	ven.
+Sat	sam.
+Sun	dim.
+Jan	janv.
+Feb	févr.
+Mar	mars
+Apr	avr.
+Jun	juin
+Jul	juil.
+Aug	août
+Sep	sept.
+Oct	oct.
+Nov	nov.
+Dec	déc.
+Now	Maintenant
+Notes	Notes

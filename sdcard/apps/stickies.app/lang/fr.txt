@@ -1,0 +1,6 @@
+# Stickies' words in French (uikit/lang.h): English<TAB>French, a line each.
+New Note	Nouvelle note
+No notes pinned	Aucune note épinglée
+Click to open Notes	Cliquez pour ouvrir Notes
+Pinned notes	Notes épinglées
++%d more in Notes	+%d autres dans Notes
