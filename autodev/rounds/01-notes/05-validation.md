@@ -109,3 +109,71 @@ Add these to 03 §3.6 / step 0 and to the AC 23 / 25 / 26 and G4 test lines.
 11. **Sample notes** for the simulator dated ≤ 2026-09-28 (the fixed clock), seeded into a fresh `SIM_WRITES` per scenario (03 §2). `tools/tests/desktop_sim/sd/notes.txt` (tinypad's sample) and `sd/Notes/` coexist (different names, also on a case-insensitive FS).
 12. `shots.sh`: add `notes` and `stickies` to `APPS` **and** to the FT case list (`shots.sh:142`), with `extra=user/Apps/notes/notesmodel.cpp` for both. Commit only the intended PNGs (R7).
 13. If `HintBox` ever moves into UIKit (not this round, gap 2), it needs **its own header not included by `uikit.h`**. Mail, Calendar and Photos each define a global `HintBox` with `using namespace uikit`, and the name would become ambiguous.
+
+---
+
+# Validation 2 (Technical Analyst, fresh, 2026-10-06)
+
+Reviewed: `03-technical-analysis.md` (§3.3, §3.5–§3.7, R3, §5 steps 0–9, §6, §7, §8, §9 "Revision after
+validation 1") and `04-ux-design.md` (D2, D12, §1 scope note, §3–§5, §10, "Revision after validation 1"), checked
+again against the code.
+
+## Verdict: **GREEN**
+
+The three gaps of validation 1 are closed. 03 and 04 agree on the autostart behaviour, the scope and the function
+names. They differ only on one status text, which is settled below as a binding note: the user-facing text is 04's,
+and the signature is 03's. No AC is lost. Nothing new contradicts CLAUDE.md or the AutoDev rules.
+
+## 1. The gaps of validation 1
+
+| Gap | Closed? | Checked against |
+|---|---|---|
+| **1. Autostart** | **Yes.** | 03 §3.7 / R3 / §3.3 / G7 and 04 D2 / §3 / §5 / §10 all say the same: the line is written only by *View ▸ Show Stickies on the Desktop*, never by a pin, never by Hide. It is a no-op when `run stickies` or `#setup: run stickies` exists. Otherwise it goes after the agenda's line (keeping its `#setup: ` prefix), else before `preload /boot`, else at the end, and the status line says so.<br>The helper is SystemKit's `autostart_has` / `autostart_ensure`, and the plan matches the real layout:<br>- `systemkit.h` includes its C subjects unconditionally, so `autostart.h` goes beside `preloadini.h`;<br>- `sk_api.h` gives `extern "C"` on AArch64 and `static inline` + `SK_BODIES_INLINE` on the PC, and the `.inc` is pulled into the header as `preloadini.h` does;<br>- `systemkit.cpp` `#include`s each `.h` then each `.inc`;<br>- `systemkit.abi`'s last line is `58 dock_layout_save`, so 59 / 60 is right and libgen confirms it at `make`;<br>- `kitdocs.py` lists SystemKit's headers explicitly (line 37–38), so adding `"systemkit/autostart.h"` is needed and is planned.<br>The insert rule fits the real `sdcard/etc/autostart` (`#setup: run agenda` then `keyb`…`preload /boot` last) and Setup's `autostart_finish` (`setup/system.h:229`: every `#setup: ` line is given back, plain `#` comments are kept, so the inserted comment line is harmless). The unit cases cover the position, no duplicate, `#setup:`, `preload` last, a plain-comment non-match, the size cap and `SIM_ROFS`. Keyconf and Setup moving onto the helper is a *Later* item only. |
+| **2. Scope** | **Yes.** | 03 step 9 / G9 and 04 D12 / §1 / §3 / §4 / §10 keep only *Open in Text Editor (Ctrl+E)*. The following are *Later*, with an IDEAS.md line each in step 8: search + `HintBox` (with the own-header caveat), checklist boxes / tick, *Sort by*, drag out, *Export…*. No must AC names any of them; this was re-checked against 02's AC 1–33. The menus in 03 §3.3 and in 04 §3 are identical. `notes.png` without a search field is stated in both. |
+| **3. Test tooling** | **Yes.** | 03 §3.6 is now written from the code.<br>- `ipc_lookup` (`fakekapi.cpp:1232`, `SIM_MBOX` → 7 at 1237).<br>- `ipc_register` (1231) and `ipc_register_note` (1319, installed over the first at 1387): `SIM_SERVICES` restricts the lookup even with `SIM_MBOX`, and registers any name as 1 in both functions.<br>- Notes treats a failed register as "go on alone".<br>- `SIM_ROFS=<prefix>` covers `save_file` (199), `f_mkdir` (692), `f_remove` (696), `f_rename` and `file_out` (1071), after `relpath ()`.<br>- The script step `copy SRC DST` runs in `step ()` (510) and makes AC 26 deterministic.<br>- Window flags are logged (AC 27).<br>Step 0 adds `sim_probe.cpp` to test each addition. The AC 23 / 25 / 26 / 27 and G4 test lines use them. |
+
+## 2. Consistency 03 ↔ 04
+
+- **Same:**
+  - Show / Hide / pin behaviour (pin with `stickies = 0`: nothing launched; with `stickies = 1` and no service: `lx_launch` only).
+  - The scope.
+  - `autostart_has` / `autostart_ensure` and the comment line's text.
+  - The menus and the keys.
+  - The Trash for an emptied note: 03 §8.1 supersedes §3.3's `kapi_remove` sentence.
+  - `ft_messagebox`.
+  - The 5 s rescan.
+  - The status texts for "written", "failed" and "hidden".
+- **Different, settled here (binding):** the status text when the line **was already there**:
+  - 04 D2 / §5: *"Stickies shown."*
+  - 03 §3.7 / G7: the long text for both return values 1 and 2.
+
+  **Follow 04.** The texts are the UX Designer's, and `autostart_ensure` already tells the cases apart:
+  - 2 → *"Stickies shown, and started at every boot (SD:/etc/autostart)."*
+  - 1 → *"Stickies shown."*
+  - 0 → *"Stickies shown (autostart not written)."*
+
+  All three end with a period, as keyconf's do.
+- **Wording only:**
+  - 04 D2 writes `autostart_ensure ("run stickies", "run agenda")` with the comment line described beside it, and calls `autostart_has` first. The signature is **03 §3.7's, three arguments** (`cmd, after, comment`).
+  - The separate `autostart_has` call before it is redundant, because `ensure` returns 1 itself. Calling `ensure` alone is fine.
+
+## 3. AC coverage and CLAUDE.md (re-check)
+
+- 03 §7 still maps AC 1–33. AC 11 / 23 / 25 / 26 / 27 / 31 / 32 now name the new tooling and the helper. AC 29 / 33 stay with the user (no cross compiler).
+- Kits first: the autostart helper is in SystemKit, `uk_text_wrap` / `uk_text_over` / `WKT_TRASH` / `WKT_PIN` are in UIKit, and the model stays beside the app.
+- No kapi or kernel change.
+- MIT on new files.
+- `.abi` files are append-only.
+- `kitdocs.py`, then `build_docs.py`. The docs/06 line for SystemKit's new subject is in the plan, as CLAUDE.md asks for a kit gaining a subject.
+- docs/04 catalog.
+- The package is declared and not published (AutoDev §0.5 over CLAUDE.md's publish rule). Nothing is pushed to `main`.
+
+## 4. Notes for the developer (non-blocking)
+
+1. **The status texts:** follow §2 above (04's three texts, keyed on `autostart_ensure`'s return value).
+2. **`autostart.inc` must be valid C as well as C++.** `autostart.h` sits in `systemkit.h`'s C part, and on the PC the `.inc` is pulled into every includer, C programs included (`SK_BODIES_INLINE`). So: no `bool` without `<stdbool.h>`, no C++ casts or references, no `nullptr`.
+3. **Name the `.inc`'s `static` helpers with an `as_` prefix.** `systemkit.cpp` compiles every `.inc` in one translation unit, so a generic name (`line_eq`, `read_all`) can clash with another subject's helper.
+4. **`SIM_SERVICES` vs `SIM_IPC`:** `ipc_register` / `ipc_lookup` test `sim_ipc ()` first (lines 1231, 1234). Either check `SIM_SERVICES` before it, or document that the two are not combined. None of the planned cases sets both.
+5. **03 §3.3 holds two superseded sentences**, both overridden by §8.1 / 04: the toolbar "split button or 6 dots, Copy Note", and the emptied note going to `kapi_remove`. Implement §8.1 / 04 §2.1 / D3 and ignore those sentences.
+6. **`sdcard_lite/etc/autostart` also has `#setup: run agenda` (line 39).** It is regenerated by `mkrepo.py --lite` at publish time, which AutoDev does not run. Leave it, and mention in `06-development.md` that the lite card gets `#setup: run stickies` at the next publish. If it is copied from `sdcard/etc`, check that at publish time.
+7. **Setup's `autostart_finish` reads at most 8 KB** (`setup/system.h:231`). The helper's 16 KB cap only means that the helper refuses later than Setup would cut. The real file is ~3 KB, so there is nothing to do.
