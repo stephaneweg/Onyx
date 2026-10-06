@@ -22,7 +22,8 @@
 # checkout + patches  7. WebKit (WTF, JavaScriptCore, PAL, WebCore, WebKit2)  8. Jet, staged on the card.
 # Each step is skipped or resumed when already done: running it again continues where it stopped.
 #
-# Expect hours the first time (WebKit: ~45 min on 16 cores, ~3 h on 4) and ~25 GB of disk. Runs on
+# Expect hours the first time (tried from a fresh clone on 4 cores and 15 GB of memory: 1 h 56 for
+# every step, WebKit's 7394 the most; ~45 min for WebKit alone on 16 cores) and ~25 GB of disk. Runs on
 # Linux x86_64 or WSL 2 (Ubuntu); under WSL keep the clone on the Linux side, and give WSL memory
 # (%UserProfile%\.wslconfig: memory=, swap=). Variables: WEBKIT_DIR (the checkout, default ../webkit
 # beside the clone), BUILD (the build tree, default <WEBKIT_DIR>-build/webkit-jit).

@@ -292,6 +292,10 @@ https://claude.ai/code/artifact/99dc6049-2fea-4726-9aee-99ec4a1a705f
   outils hôtes, toolchain Arm 14.2.rel1 téléchargée sans sudo, Circle, `make`, `make stage`, `--card`).
   Testé dans un clone neuf : 5 min sur 4 cœurs. **Jet n'est pas sur la carte** (correction de l'utilisateur) :
   il s'installe par le gestionnaire de paquets, dans le panneau de configuration (l'engrenage du dock).
+- **`tools/build-jet.sh`** (demandé par l'utilisateur) : Jet recompilé depuis les sources (WebKit épinglé + nos
+  25 patches, les dépendances de `third_party/`, la toolchain `aarch64-onyx-elf`). Testé depuis un clone neuf :
+  **1 h 56 sur 4 cœurs**, un `main` de 105 Mo, sans erreur. Cité dans « Pour essayer Onyx ».
+- Une **version mise en page** (PDF A4, deux colonnes, captures du dépôt) a été faite pour un ami de l'utilisateur.
 - Les exports DOCX envoyés : v0, v1 (avant capture et section finale).
 
 ## Ébauche de texte (v0, à reprendre)
