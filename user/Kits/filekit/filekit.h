@@ -13,6 +13,7 @@
 //                an archive IN MEMORY found into and built (the office formats, OpenRaster)
 //   files        one loaded whole, saved; a file or a tree copied, moved, removed, measured; folders made
 //   paths        the name, the extension, the folder of a path; two parts joined; a size for people
+//   key / value  a text of [section] headers and "key = value" lines read, changed, written back (kvtext.h)
 //
 // Everything is integer and pointers: a program built without the FPU calls it. A buffer the library
 // returns (void **out) is freed with fk_free, never with free / delete. The first version: 2026-10-05;
@@ -202,5 +203,9 @@ void fk_dos_time_str (unsigned dos_time, char *out, int cap);		// "28/09/2026 14
 #ifdef __cplusplus
 #include "fsutil.h"
 #endif
+
+// (a text document of [section] headers and "key = value" lines, read and written back -- fk_kv_*: kvtext.h, C and
+//  C++)
+#include "kvtext.h"
 
 #endif

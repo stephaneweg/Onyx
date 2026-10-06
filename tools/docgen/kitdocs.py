@@ -45,9 +45,10 @@ KITS = [
    "class with its TLS transport (`netkit/http.hpp`, included apart: still a header with its code). "
    "The sockets themselves are AppKit's (`kapi_tcp_*`)."),
   ("14-FILEKIT", "FileKit", 7, "filekit", '#include "filekit/filekit.h"', "`lib/filekit.imp.a`",
-   ["filekit/filekit.h", "filekit/fsutil.h"],
+   ["filekit/filekit.h", "filekit/fsutil.h", "filekit/kvtext.h"],
    "FileKit is files and folders: whole files read and written, trees copied, moved and removed, "
-   "paths, compression (zlib), and archives — ZIP read and written, tar / tar.gz / gzip read."),
+   "paths, compression (zlib), archives — ZIP read and written, tar / tar.gz / gzip read — and "
+   "sectioned key / value text documents read and written back (a progress file, a level pack)."),
   ("15-IMAGEKIT", "ImageKit", 8, "imagekit", '#include "imagekit/imagekit.h"', "`lib/imagekit.imp.a`",
    ["imagekit/imagekit.h"],
    "ImageKit is the system's one picture codec: BMP, GIF, PNG, JPEG, PCX and WebP read; PNG, JPEG, BMP "
@@ -71,7 +72,7 @@ KITS = [
    "and a BME280 sensor on its I2C bus) for a PC or a system without the hardware. The levels are 3.3 V."),
 ]
 
-PREFIX = re.compile(r"^(KAPI_FN|KAPI_C|SK_API|NK_API|FS_API|UIKIT_API)\s+")
+PREFIX = re.compile(r"^(KAPI_FN|KAPI_C|SK_API|NK_API|FS_API|FK_KV_API|UIKIT_API)\s+")
 SECTION = re.compile(r"^//\s*-{2,}\s*(.*?)\s*-*\s*$")
 FUNC = re.compile(r"([A-Za-z_][\w:~]*)\s*\(")
 SKIP_PP = re.compile(r"^#\s*(ifndef|ifdef|if|else|elif|endif|include|pragma|undef)\b")
