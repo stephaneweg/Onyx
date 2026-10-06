@@ -2,7 +2,7 @@
 
 rounds_max: 5
 rounds_done: 0
-lock:
+lock: round 1, 2026-10-06T16:16Z
 
 ## History
 
