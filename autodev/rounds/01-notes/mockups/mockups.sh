@@ -43,7 +43,7 @@ sim () {	# sim APP DUMP "SCRIPT" [VAR=value ...]
 scene () { out=$1; shift; python3 $D/compose.py "$M/$out.png" "$@" >/dev/null && echo "  $M/$out.png"; }
 
 # Notes' menus as the menu bar shows them (uikit::Menu's spec: M a menu, I<id>~label~shortcut, - a line)
-MENU='Notes|MFile/I0~New Note~^N/-/I1~Open in Text Editor~^E/I2~Export...~/-/I3~Delete Note~^D/MEdit/I4~Cut~^X/I5~Copy~^C/I6~Paste~^V/-/I7~Select All~^A/I8~Copy Note~/MNote/I9~Unpin from Desktop~^P/-/I10~Yellow~/I11~Green~/I12~Blue~/I13~Pink~/I14~Purple~/I15~Grey~/MView/I16~Find...~^F/-/I17~Hide Stickies from the Desktop~'
+MENU='Notes|MFile/I0~New Note~^N/-/I1~Open in Text Editor~^E/-/I3~Delete Note~^D/MEdit/I4~Cut~^X/I5~Copy~^C/I6~Paste~^V/-/I7~Select All~^A/I8~Copy Note~/MNote/I9~Unpin from Desktop~^P/-/I10~Yellow~/I11~Green~/I12~Blue~/I13~Pink~/I14~Purple~/I15~Grey~/MView/I17~Hide Stickies from the Desktop~'
 
 # the window (over a flat grey, cropped to it with its frame) -- the scenes of notes_mock.cpp
 for s in window empty search error dialog; do

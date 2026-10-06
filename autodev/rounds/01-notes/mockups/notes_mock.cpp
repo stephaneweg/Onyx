@@ -6,7 +6,7 @@
 // the plan builds them. Built and run by mockups.sh beside it; MOCK=<scene> picks the picture:
 //   window   the window with six notes, "Shopping" selected
 //   empty    the first start: no SD:/Notes, one empty new note, the caret in the editor
-//   search   (should) the search field holding "wifi": one note left
+//   search   (later, not round 1) the search field holding "club": one note left; the other scenes have no search field
 //   error    the status line when a save failed
 //   dialog   the refusal of a dropped file larger than 64 KB (a MessageBox)
 //   stickies / stickies-empty / stickies-hover   the widget (a borderless, back-most, see-through window)
@@ -253,9 +253,8 @@ static int notes_window ()
 		b->iconSize = 18; b->setToggle (true, c == cur); tb->add (b, c ? 0 : 2);
 	}
 	if (g_empty) { del->setDisabled (true); }
-	HintBox *find = new HintBox (0, 0, 190, 28, "Search notes");
-	if (search) find->setText ("club");
-	tb->addRight (find, 10);
+	HintBox *find = 0;			// the search: a later idea (validation 1), drawn only in the "search" scene
+	if (search) { find = new HintBox (0, 0, 190, 28, "Search notes"); find->setText ("club"); tb->addRight (find, 10); }
 
 	HSplitter *sp = new HSplitter (0, TB, W, H - TB - ST, SPLIT, C_FIELD);
 	sp->anchor = ANCHOR_FILL; root.addChild (sp);
@@ -367,8 +366,8 @@ public:
 			char l[128]; int m = ln[i] < 127 ? ln[i] : 127; memcpy (l, body + st[i], m); l[m] = 0;
 			int ly = ty + 20 + i * 17, lx = CX + CPAD;
 			unsigned ink = uk_mix (p, NOTE_INK, 215);
-			bool box = !strncmp (l, "[ ] ", 4) || !strncmp (l, "[x] ", 4);
-			if (box)						// a checklist line (a should): its box
+			bool box = false;	// checklist boxes: a later idea (validation 1): "[ ] " / "[x] " stay plain text
+			if (box)
 			{
 				bool done = l[1] == 'x';
 				int bx = lx, by = ly + (uk_fh () - 12) / 2;

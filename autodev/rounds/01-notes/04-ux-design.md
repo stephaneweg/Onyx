@@ -28,7 +28,7 @@ sh autodev/rounds/01-notes/mockups/mockups.sh      # ~15 s; writes autodev/round
 | # | Question | Decision |
 |---|---|---|
 | D1 | Menus have **no check marks** (03 §3.4, R10) — how is a toggle's state shown? | **Label toggles in the menus + the state in the tool bar.** *Note ▸ Pin to Desktop* ↔ *Unpin from Desktop*; *View ▸ Show Stickies on the Desktop* ↔ *Hide Stickies from the Desktop* (the label says what the item **will do**). The colour items carry no mark: the tool bar's six colour buttons show the current one lit (a `ToolButton` toggle `on`), and the editor's info line names it. The tool bar's **Pin** toggle is lit when the note is pinned. AC 10's "check mark" is read as *the lit Pin toggle + the label "Unpin from Desktop"*. Real check marks: a later UIKit + menu bar feature. |
-| D2 | Does Notes append `run stickies` to `SD:/etc/autostart` (03 R3)? | **Yes, guarded.** Whenever Notes *starts Stickies on the user's behalf* (View ▸ Show Stickies, or the first pin while the setting is on and Stickies does not run), it makes sure `SD:/etc/autostart` has an **active** `run stickies` line: if no uncommented line runs stickies, it appends `run stickies` (one line, with a comment line before it, `# Stickies: the pinned notes on the desktop (Notes, View menu)`); it never edits or removes other lines, never touches `#setup:` lines. Turning Stickies **off** does not edit autostart (Stickies reads `stickies = 0` and quits at once, AC 22). Why: "Show Stickies on the Desktop" must survive a reboot on a card updated by a package too (where `etc/*` is the user's and never gets the new line), or the switch would lie. New cards still ship `#setup: run stickies` (Setup gives it back). |
+| D2 | Does Notes write `run stickies` into `SD:/etc/autostart` (03 R3)? | **Only on the explicit *View ▸ Show Stickies on the Desktop*, never as a side effect** (revised after validation 1). On that action, and only then, Notes calls SystemKit's helper (`systemkit/autostart.h`, 03 G7): `autostart_has ("run stickies")` — true for an active `run stickies` line **or** a held-back `#setup: run stickies` line → **nothing is written**. Otherwise `autostart_ensure ("run stickies", "run agenda")` inserts the line (with one comment line before it, `# Stickies: the pinned notes on the desktop (Notes, View menu)`) **right after the agenda's line** (`run agenda` or `#setup: run agenda`); with no agenda line, **before `preload /boot`** (which stays the last line, as `preloadini.h` and the Preload applet say); with neither, at the end. It never edits, moves or removes another line. Then Stickies is launched and the **status line** says what happened, in keyconf's words (`user/Apps/keyconf/main.cpp:94`): written → *"Stickies shown, and started at every boot (SD:/etc/autostart)."*; already there → *"Stickies shown."*; the write failed → *"Stickies shown (autostart not written)."* (dim, not red: Stickies runs anyway). **A pin never touches autostart**: pinned while Stickies is off → the note is pinned, nothing is launched, the View item still reads *Show Stickies…*; pinned while on but not running → `lx_launch ("stickies")` only. ***Hide* never writes autostart** (Stickies reads `stickies = 0` and quits, AC 22); its status: *"Stickies hidden."* Why write at all: "Show" must survive a reboot on a card updated by a package (where `etc/*` is the user's and never gets the new line). New cards ship `#setup: run stickies` (Setup gives it back), which `autostart_has` counts as present, so Stickies is never started during Setup. |
 | D3 | A note **emptied** by the user (it had a file) — `kapi_remove` or the Trash (03 §3.3)? | **The Trash** (`notes_trash`), silently (no notification): the file still holds the last text written before it was emptied, so the Trash keeps it recoverable. A note that never had text has no file: it just disappears. |
 | D4 | **Delete** confirmation? | None (02 §4.5): the Trash is the undo; the notification *"Note moved to the Trash"* says where it went. |
 | D5 | The **colour** control | Six small round `ToolButton`s in the tool bar (a click = that colour), plus the six flat items of the *Note* menu. No split button, no pop-up palette (UIKit has none ready), no colour shortcuts (`UK_CTRL ('1')` is `^Q`). |
@@ -38,7 +38,7 @@ sh autodev/rounds/01-notes/mockups/mockups.sh      # ~15 s; writes autodev/round
 | D9 | Stickies' **cards** | Each its own height (its title + up to **6** wrapped body lines), not a fixed height: three short notes take little room. Cards are paper on the wallpaper (a soft shadow, a coloured band at the top); the header is the agenda's (text and etched line straight on the wallpaper). |
 | D10 | Stickies' window size | One window **240 px wide**, as tall as the screen allows above the dock (`screen_h − 40 − 120`); the pixels below the last card fully see-through (`0xFF000000`: the clicks fall through to the desktop), the header and the cards `0xFE…`-backed like the agenda's (the clicks land). No resize at each change. |
 | D11 | Stickies' **header text** (FreeType on a see-through canvas) | `uk_text` with a face does not heed `uk_paint_alpha` (the mock-up's first try came out garbled): the glyphs must be blended by coverage. The agenda's `wall_text` (bitmap glyphs only) becomes a UIKit helper that works with a face too — **`uk_text_over`** (§10, GUI plan G1). |
-| D12 | The search (a *should*) | A `HintBox` ("Search notes") at the right of the tool bar, **Ctrl+F**; Mail, Calendar and Photos each have their own copy of `HintBox`: if the search is built, `HintBox` moves into UIKit (kits first) and Notes uses that one. |
+| D12 | The search | **Later (not this round**, validation 1 gap 2): no search field, no *Find…*, no Ctrl+F. When it comes: a `HintBox` ("Search notes") at the right of the tool bar, `HintBox` moved into UIKit in a header of its own not included by `uikit.h` (Mail, Calendar and Photos each define one). |
 | D13 | The trash and pin icons | Added to UIKit's tool icons (`WKT_TRASH`, `WKT_PIN`, appended before `WKT_COUNT`), reusable by any app; the colour buttons' round dots are drawn by Notes' own `ToolIconFn` (a colour per button: app-specific). |
 
 ---
@@ -49,7 +49,7 @@ sh autodev/rounds/01-notes/mockups/mockups.sh      # ~15 s; writes autodev/round
 |---|---|
 | `mockups/notes-window.png` | The Notes window, six notes, *Shopping* selected (pinned, yellow), the list focused |
 | `mockups/notes-empty.png` | The first start: no `SD:/Notes`, one new empty note, the caret in the editor |
-| `mockups/notes-search.png` | (*should*) the search field holding "club": one note found |
+| `mockups/notes-search.png` | **Later idea, not this round**: the search field holding "club": one note found (kept for the record) |
 | `mockups/notes-error.png` | A save that failed: the status line |
 | `mockups/notes-dialog.png` | The one dialog: a dropped file larger than 64 KB refused (`MessageBox`) |
 | `mockups/notes-menu-file.png`, `-edit`, `-note`, `-view` | The four menus in the menu bar (the real `menubar` app, Notes' spec) |
@@ -58,6 +58,12 @@ sh autodev/rounds/01-notes/mockups/mockups.sh      # ~15 s; writes autodev/round
 | `mockups/stickies-empty.png` | Nothing pinned: the hint |
 | `mockups/desktop-stickies.png` | The whole desktop: agenda top left, Stickies top right, the Notes window in front (it covers the cards: back-most, AC 27), the dock |
 | `mockups/desktop-clean.png` | The desktop with no window: agenda and Stickies side by side |
+
+> **Scope of round 1 (validation 1):** of the *should* items only **Open in Text Editor (Ctrl+E)** is kept; the
+> search, the checklist boxes and their tick, *Sort by*, the drag out and *Export…* are **later, not this round**. The
+> mock-ups were re-rendered without them (no search field in the tool bar, no *Export…* / *Find…* in the menus,
+> `[ ]` / `[x]` drawn as plain text on the cards), except `notes-search.png`, kept as a later idea. **The real
+> `notes` screenshot (`shots.sh`) has no search field either.**
 
 ![The desktop with Notes and Stickies](mockups/desktop-stickies.png)
 
@@ -82,7 +88,6 @@ sh autodev/rounds/01-notes/mockups/mockups.sh      # ~15 s; writes autodev/round
 | Pin | `ToolButton` 30 high, `setGlyph (WKT_PIN)` (new), `setText ("Pin")`, `setToggle (true, pinned)`, `fitWidth` | gap 2 | tip *Pin to the desktop (Ctrl+P)*; lit = pinned (D1) |
 | — | `sep ()` | | |
 | six colours | 6 × `ToolButton (26, 26)`, `setIcon (notes_icon, IC_DOT0 + c)`, `iconSize = 18`, `setToggle (true, c == current)` | gap 2 then 0 | tips *Yellow* … *Grey*; a click sets the colour and lights only that one (the others `setOn (false)`) |
-| search (*should*) | `HintBox` (D12; UIKit's when moved), 190 × 28, hint *Search notes* | `addRight (…, 10)` | Ctrl+F; Esc clears; filters as you type (Mail's 0.3 s pause) |
 | body | `HSplitter`, `split = 250`, `minA = 180`, `minB = 260`, `bg = C_FIELD` | 0, 44, 760 × 412; `ANCHOR_FILL` | the grip: UIKit's |
 | the list | **`NoteList`** — owner-drawn, beside the app (`user/Apps/notes/notelist.h`, a `Widget`) | pane A | §2.2 |
 | the editor's pane | `Panel` (`bg = C_FIELD`) | pane B | |
@@ -94,9 +99,8 @@ sh autodev/rounds/01-notes/mockups/mockups.sh      # ~15 s; writes autodev/round
 
 On `C_FIELD`, scrolls with UIKit's own bar (`uk_draw_vscroll`, `UkBarDrag`) when the rows overflow.
 
-- **Head**, 44 px: *Notes* in bold at x = 14 (*Found* while searching); at the right a count badge — a pill 19 px
-  high, radius 9, `uk_mix (C_FIELD, C_FIELD_TEXT, 36)`, the number in `C_FIELD_TEXT` (*6*; *1 of 6* while
-  searching); a 1-px line under it (`uk_mix (C_FIELD, C_FIELD_TEXT, 30)`).
+- **Head**, 44 px: *Notes* in bold at x = 14; at the right a count badge — a pill 19 px
+  high, radius 9, `uk_mix (C_FIELD, C_FIELD_TEXT, 36)`, the number in `C_FIELD_TEXT` (*6*); a 1-px line under it (`uk_mix (C_FIELD, C_FIELD_TEXT, 30)`).
 - **Rows**, 56 px each, from y = 48 (newest first):
   - the colour **dot**: 10 px round at (16, y + 11), the dot colour's gradient (`uk_rbox`, `uk_tone (dot, 150)` →
     `dot`), a darker rim;
@@ -115,7 +119,6 @@ On `C_FIELD`, scrolls with UIKit's own bar (`uk_draw_vscroll`, `UkBarDrag`) when
   round.
 - **Keys** (focused): Up / Down / Page Up / Page Down / Home / End move the selection; **Enter** or **Tab** → the
   editor (caret where it was); **Delete** → Delete Note.
-- **Empty search**: the rows replaced by one centred dim line *No note contains this text.*
 
 ### 2.3 The editor
 
@@ -138,8 +141,7 @@ selectAll`). A drop of text lands at the caret.
 |---|---|---|---|
 | **File** | New Note | **Ctrl+N** | an empty note on top, selected, the caret in the editor |
 | | — | | |
-| | Open in Text Editor (*should*) | **Ctrl+E** | saves, then `lx_launch ("tinypad", path)` |
-| | Export... (*should*) | | `uk_file_save` (UIKit `FileDialog`), `SD:/docs/<title>.txt` proposed |
+| | Open in Text Editor (the one *should* kept) | **Ctrl+E** | saves, then `lx_launch ("tinypad", path)` |
 | | — | | |
 | | Delete Note | **Ctrl+D** | to the Trash (`notes_trash`), the next note selected, the notification; on a new empty note: nothing |
 | **Edit** | Cut / Copy / Paste | **Ctrl+X / C / V** | the editor's (`Textarea::cut / copy / paste`, the shared clipboard) |
@@ -149,9 +151,7 @@ selectAll`). A drop of text lands at the caret.
 | **Note** | Pin to Desktop **/** Unpin from Desktop | **Ctrl+P** | the label says what it will do (D1); the tool bar's Pin toggle follows |
 | | — | | |
 | | Yellow, Green, Blue, Pink, Purple, Grey | — | the colour (D5); no mark: the tool bar shows the current one |
-| **View** | Find... (*should*) | **Ctrl+F** | the focus to the search field |
-| | — (only with Find) | | |
-| | Show Stickies on the Desktop **/** Hide Stickies from the Desktop | — | AC 11; the label says what it will do (D1); "Show" also ensures the autostart line (D2) |
+| **View** | Show Stickies on the Desktop **/** Hide Stickies from the Desktop | — | AC 11; the label says what it will do (D1); "Show" also ensures the autostart line and says so in the status line (D2); "Hide" writes nothing |
 
 The menu bar adds *Notes ▸ Quit* (**Ctrl+Q**) itself. The menus are built by one `build_menu ()` and **re-published
 whenever a label changes** (a selection change, a pin, the Stickies switch) — the Game Library's pattern
@@ -165,8 +165,7 @@ whenever a label changes** (a selection change, a pin, the Stickies switch) — 
 | Ctrl+D | anywhere (a menu shortcut: Root routes keys through the menu first) | Delete Note |
 | Delete | the list | Delete Note |
 | Ctrl+P | anywhere | Pin / Unpin |
-| Ctrl+E (*should*) | anywhere | Open in Text Editor |
-| Ctrl+F (*should*) | anywhere | the search field; **Esc** there clears it and returns to the list |
+| Ctrl+E (the one *should* kept) | anywhere | Open in Text Editor |
 | Ctrl+X / C / V / A | the editor | cut / copy / paste / select all |
 | Up / Down / Page Up / Page Down / Home / End | the list | move the selection (the note left is saved) |
 | Enter, Tab | the list | to the editor |
@@ -181,23 +180,22 @@ whenever a label changes** (a selection change, a pin, the Stickies switch) — 
 | **Normal** | The list focused on the last note (`last`) or the newest; status left *"6 notes · 3 on the desktop"*, right *"✓ Saved"* (dim) once written, nothing while dirty. | `notes-window.png` |
 | **Typing** | The row's title follows; after ~1 s idle the file is written, *✓ Saved* comes back. | — |
 | **Loading** | None shown: the scan reads names, `notes.ini` and each note's first 2 KB — instant for hundreds of notes. Beyond `NOTES_MAX` (512): the 512 newest listed and the status says *"Showing the 512 newest notes"*. | — |
-| **Search, nothing found** (*should*) | Head *Found*, badge *0 of 6*, the line *No note contains this text.*; the editor keeps the note it had. | (`notes-search.png`: found) |
+| **Stickies shown / hidden** (View menu) | Status right, dim, 4 s: *"Stickies shown, and started at every boot (SD:/etc/autostart)."*, *"Stickies shown."* (the line was there), *"Stickies shown (autostart not written)."*, *"Stickies hidden."* (D2) | — |
 | **Save failed** | Status right, in red (`0x00B02A1E`) with a small cross: *"Not saved: the card is full or read-only — trying again"*; retried at each pause; on quit D8 (clipboard + notification). | `notes-error.png` |
 | **Note full** (64 KB) | The key / paste refused past the cap (the Textarea's capacity); status right *"This note is full (64 KB)"* (dim, not red) for 4 s. | — |
 | **Clock not set** (03 R4) | Dates shown from what is stored; a note made before the clock is set shows no date until it is next edited. | — |
-| **A note changed elsewhere** (tinypad, FTP) | Picked up at the next rescan (focus back / 5 s idle), never while the current note is dirty. | — |
+| **A note changed elsewhere** (tinypad, FTP) | Picked up at the next rescan (the ~5 s idle rescan; there is no "window activated" event), never while the current note is dirty. | — |
 
 ## 6. The dialogs
 
 Notes has almost none (the Trash is the undo, saving is automatic):
 
-- **Import refused** — a dropped file larger than 64 KB (or unreadable): `uk_messagebox ("Import a note",
+- **Import refused** — a dropped file larger than 64 KB (or unreadable): `ft_messagebox ("Import a note",
   "“server-log.txt” is larger than 64 KB, the most a note can hold.\nIt was not imported; open it in the Text Editor
   instead.", MB_OK)`. Several files dropped: the others are imported, one box lists the refused ones.
 
   ![Import refused](mockups/notes-dialog.png)
 
-- **Export...** (*should*): UIKit's `FileDialog` through `uk_file_save`.
 - No confirmation for Delete (D4), none at quit (D8).
 
 ---
@@ -246,7 +244,7 @@ text).
 | Band | the top 5 px, top corners rounded, the colour's dot shade (§7) |
 | Title | bold, at (22, top + 13), cut with `uk_text_fit` to 196 px (to 178 when hovered: room for the chevron) |
 | Body | at x = 22, from top + 33, 17 px a line, **word-wrapped** to 196 px (`uk_text_wrap`, 03 step 1), at most 6 lines; the last line ends with "…" when the text goes on; ink `uk_mix (paper, NOTE_INK, 215)` |
-| Checklist lines (*should*) | `[ ] ` / `[x] ` drawn as a 12 × 12 box (radius 3) at the line's start, the text 18 px further: empty box = paper light + a rim; ticked = the dot colour, a white check (`WKG_CHECK`), the line's text dimmed |
+| Checklist lines | **plain text this round**: `[ ] ` / `[x] ` drawn as typed. *Later idea:* a 12 × 12 box (radius 3), ticked = the dot colour + a white `WKG_CHECK`, the text dimmed, and click-to-tick (which would make Stickies a second writer) |
 | Shadow | two blended boxes under the paper: (x + 1, y + 3, 216 × h, r 7) black 45/255 (70 when hovered) and (x, y + 1, 216 × h + 1) black 40/255 — inside the see-through window: no compositor cost beyond the agenda's |
 | Hover | a white outline 230/255 + an inner one 140/255, the shadow deeper, a chevron `WKG_CHEV_RIGHT` (9 px) at the title's right: "click to open" |
 | More pinned than fit | the cards stop before passing the window's bottom; a dim line *"+2 more in Notes"* under the last (a click opens Notes); never more than 6 cards (02 §4.7) |
@@ -258,7 +256,7 @@ text).
 - **Click a card** → Notes on that note (AC 15, 23). **Click the empty place / "+N more"** → Notes (AC 21).
 - **Drag the header** (y < 34) → moves the widget, `x` / `y` written on release (the agenda's code, AC 24). The
   pointer over the header: `uk_cursor (KAPI_CURSOR_MOVE)` (kapi v81).
-- **No editing** on the desktop (02 §8); the checklist tick is a *should*.
+- **No editing** on the desktop (02 §8); the checklist tick is a later idea, not this round.
 - Hidden (*View ▸ Hide Stickies*): the process quits; nothing drawn at all.
 
 ---
@@ -280,8 +278,23 @@ Drawn by `tools/icons/notes_icon.py` (03 §3.1), in the style of the other app i
   a see-through canvas, by coverage, a soft shadow or engraved — the agenda's `wall_text` generalised to faces).
 - `NoteEdit` has its own colours (the paper) and a 15-px face; New Note is a filled `ToolButton`.
 - Six colour `ToolButton`s replace "a split button or 6 dots"; the colour items in the *Note* menu stay.
-- Ctrl+E (Open in Text Editor) added; Copy Note has no shortcut; Ctrl+D is a menu shortcut everywhere.
+- Ctrl+E (Open in Text Editor) added — the only *should* kept; search, checklists, Sort by, drag out and Export are later; Copy Note has no shortcut; Ctrl+D is a menu shortcut everywhere.
 - An emptied note goes to the Trash (not `kapi_remove`); a failed save at quit goes to the clipboard.
-- Notes writes the `run stickies` autostart line when it starts Stickies (D2).
+- Notes writes the `run stickies` autostart line only on *View ▸ Show Stickies* (never on a pin, never on Hide), after the agenda's line, through SystemKit's `autostart_has` / `autostart_ensure`, and says so in the status line (D2).
 - Stickies: cards of their own height, a window of fixed maximum height partly click-through, x = screen_w − 248.
 - `shots.sh`: the scenarios take the mock-ups' scenes (window, empty, stickies, desktop).
+
+---
+
+## Revision after validation 1
+
+- **D2 rewritten** (gap 1): autostart is written only by the explicit *View ▸ Show Stickies on the Desktop*, never by
+  a pin, never by Hide; nothing if `run stickies` or `#setup: run stickies` exists; else inserted after the agenda's
+  line, else before `preload /boot`, else at the end; through SystemKit's `autostart_has` / `autostart_ensure`; the
+  status line says it in keyconf's wording (§5 lists the four messages).
+- **Scope cut** (gap 2): search (D12, Find…, Ctrl+F, the tool bar field, the list's *Found* head), checklist boxes and
+  click-to-tick, *Sort by*, the drag out and *Export…* marked **later, not this round**; Open in Text Editor (Ctrl+E)
+  is the one *should* kept. The real `notes` screenshot has no search field.
+- **Mock-ups re-rendered** (`mockups.sh`): the menus without *Export…* / *Find…*, the window without the search
+  field, the cards with `[ ]` / `[x]` as plain text; `notes-search.png` kept, flagged as a later idea.
+- Smaller: the dialog through `ft_messagebox` (FontKit, validation note 4); the rescan is the idle one (note 1).
