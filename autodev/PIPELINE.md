@@ -28,6 +28,9 @@ are complete, and loops when a check fails.
 6. CLAUDE.md's other rules hold: kits first, the documentation kept up to date (docs/04 catalog,
    docs/02/03 for kapi, kit docs regenerated), MIT notices, `python docs/build_docs.py`, the
    screenshots through `tools/tests/desktop_sim/shots.sh`. Docs in English, **the report in French**.
+   **Every app is bilingual English / French from its first version** (CLAUDE.md, "every app in English and
+   French"): `TR ()` + `lang/fr.txt`, its data texts (levels, help) with French keys, `tools/lang/check.py <app>`
+   at 0 missing, the French screenshots checked (`SHOTS_LANG=fr`).
 7. At the end: `rounds_done += 1`, the round added to `STATE.md`'s history, `lock:` cleared,
    commit, push.
 
