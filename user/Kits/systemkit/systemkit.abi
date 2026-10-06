@@ -77,3 +77,5 @@
 71 locale_zone_offset
 72 locale_zone_summer
 73 locale_zone_utc
+74 autostart_ensure
+75 autostart_has

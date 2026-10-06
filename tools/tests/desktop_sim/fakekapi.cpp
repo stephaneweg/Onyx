@@ -51,6 +51,29 @@
 // Threads (kapi v67) are the PC's too (pthreads); kapi_post runs at the next pump_events; a
 // thread's msleep only sleeps (the script is stepped by the app's main thread only).
 //
+// For the tests of the apps that talk to services and write the card (Notes, Stickies -- AutoDev round 1);
+// nothing changes while their variable is unset:
+// SIM_SERVICES="notify,stickies" (or "-": none): the services that run. kapi_ipc_lookup answers ONLY those
+//   names (pid 700 + their index in the list), even with SIM_MBOX (whose "any service is pid 7" holds only
+//   without SIM_SERVICES); kapi_ipc_register gives 1 for any name; a kapi_mailbox_send to a listed pid is
+//   logged: `sim: send <name> type <t> "<payload>"` (a NUL written \0, other non-printables \xNN), and
+//   answers 0. (Not combined with SIM_IPC, which is tested first: the in-process services.)
+// SIM_ROFS="SD:/Notes[,SD:/etc]": read-only folders -- kapi_save_file, kapi_mkdir, kapi_remove, kapi_rename
+//   and kapi_file_out on a path under one of them (compared without the volume, case-insensitively) fail,
+//   logged `sim: rofs <path>` (chmod a-w is no test when the tests run as root).
+// SIM_CURSOR=follow: kapi_cursor_pos gives the script's pointer in SCREEN coordinates: the client origin
+//   the window had at the last "down" (before any: at the first pointer step) plus the scripted point -- a
+//   drag "down 50 10;move 150 10;up 150 10" moves a widget that drags itself (the agenda's way) by 100 px.
+// The script step "copy SRC DST": the host file SRC copied to the card path DST (into SIM_WRITES, its
+//   folders made) at that step, logged `sim: copy DST` -- a file changed "by another program" mid-run.
+// SIM_STAT=1: kapi_path_stat is the host's stat () of the file the app would read (writes, overlays, card):
+//   size, mtime (the host file's, UTC), mode; kapi_clock_info the fixed clock (2026-09-28 12:34:00 UTC,
+//   tz_minutes 0; the PC's with SIM_REALNET). Unset: both -KAPI_ENOSYS as before (the Preload applet's
+//   screenshot shows its programs "missing" -- unchanged).
+// Each window made is logged: `sim: window <title> flags 0x<hex>` (WIN_FLAG_*: a widget's kind checked).
+// A SIM_MBOX line "@<ticks>:type:pid:payload" is held back until <ticks> ticks after the start (a script step
+//   is 2 ticks; the lines after it wait as well): a message that comes mid-run (Stickies' STK_MSG_RELOAD after a change on the card).
+//
 #include <sys/mman.h>
 #include <pthread.h>
 #include <sys/socket.h>
@@ -61,6 +84,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+#include <time.h>
 #include <dirent.h>
 #include <ftw.h>
 #include <sys/stat.h>
@@ -155,6 +180,25 @@ static std::string ramdir (void)
 	return g_ramdir;
 }
 
+// SIM_ROFS: is p under one of the read-only folders? (logged when it is)
+static bool rofs (const char *p)
+{
+	const char *e = getenv ("SIM_ROFS");
+	if (!e || !*e || !p || is_ram (p)) return false;
+	std::string r = relpath (p);
+	for (std::string list = e; !list.empty (); )
+	{
+		size_t comma = list.find (',');
+		std::string pre = relpath (list.substr (0, comma).c_str ());
+		while (!pre.empty () && pre[pre.size () - 1] == '/') pre.erase (pre.size () - 1);
+		bool under = pre.empty () || (r.size () >= pre.size () && (r.size () == pre.size () || r[pre.size ()] == '/'));
+		for (size_t i = 0; under && i < pre.size (); i++) if (tolower ((unsigned char) r[i]) != tolower ((unsigned char) pre[i])) under = false;
+		if (under) { fprintf (stderr, "sim: rofs %s\n", p); return true; }
+		list = comma == std::string::npos ? "" : list.substr (comma + 1);
+	}
+	return false;
+}
+
 // ---- the kernel's 8 x 16 font (circle/lib/font8x16.cpp: 16 bytes a glyph from 0x21) --------------
 static unsigned char g_font[256][16];
 static void load_font (void)
@@ -196,7 +240,7 @@ static void *f_open (const char *p) { return fopen (sdpath (p).c_str (), "rb"); 
 static int f_read (void *h, void *b, unsigned n) { return (int) fread (b, 1, n, (FILE *) h); }
 static int f_write (int fd, const void *b, unsigned n) { return (int) fwrite (b, 1, n, fd == 2 ? stderr : stdout); }
 // As the kernel's: the bytes written, or -1 (it answered 0: a caller testing "== 0" passed here, failed on the Pi).
-static int save_file (const char *p, const void *b, unsigned n) { FILE *f = fopen (wpath (p).c_str (), "wb"); if (!f) return -1; size_t w = n ? fwrite (b, 1, n, f) : 0; if (fclose (f) != 0) return -1; return (int) w; }
+static int save_file (const char *p, const void *b, unsigned n) { if (rofs (p)) return -1; FILE *f = fopen (wpath (p).c_str (), "wb"); if (!f) return -1; size_t w = n ? fwrite (b, 1, n, f) : 0; if (fclose (f) != 0) return -1; return (int) w; }
 static unsigned f_fsize (void *h) { FILE *f = (FILE *) h; long c = ftell (f); fseek (f, 0, SEEK_END); long n = ftell (f); fseek (f, c, SEEK_SET); return (unsigned) n; }
 static void f_close (void *h) { fclose ((FILE *) h); }
 struct SimDir { DIR *d; std::string path; };
@@ -273,6 +317,7 @@ static unsigned *create_ex (int x, int y, int w, int h, const char *t, unsigned 
 	}
 	g_canvas = (unsigned *) calloc ((size_t) w * h, 4); g_cw = w; g_ch = h; g_stride = w; g_lw = w; g_lh = h; g_flags = f;
 	snprintf (g_title, sizeof g_title, "%s", t ? t : "");
+	fprintf (stderr, "sim: window %s flags 0x%x\n", g_title, f);
 	make_chrome ();
 	if (getenv ("SIM_POS")) place (g_ow, g_oh); else { g_x = x; g_y = y; }
 	return g_canvas;
@@ -507,6 +552,25 @@ static int h_thread_self (void)
 	return r;
 }
 static void pump (void) { if (on_main ()) run_posts (); }
+// (SIM_CURSOR=follow) the script's last pointer point, and the client origin it is relative to
+static int g_ptrX = -1, g_ptrY = -1, g_orgX, g_orgY; static bool g_orgSet;
+static void ptr_track (int x, int y, bool press)
+{
+	if (press || !g_orgSet) { g_orgX = g_x + (g_act ? SIM_BORDER : 0); g_orgY = g_y + (g_act ? SIM_TITLE_H : 0); g_orgSet = true; }
+	g_ptrX = x; g_ptrY = y;
+}
+// the script's "copy SRC DST": a host file into the writes (a file changed by another program)
+static void sim_copy (const char *src, const char *dst)
+{
+	FILE *a = fopen (src, "rb");
+	if (!a) { fprintf (stderr, "sim: copy %s: no such file\n", src); return; }
+	std::string to = wpath (dst);
+	FILE *b = fopen (to.c_str (), "wb");
+	char buf[65536]; size_t n;
+	while (b && (n = fread (buf, 1, sizeof buf, a)) > 0) fwrite (buf, 1, n, b);
+	fclose (a); if (b) fclose (b);
+	fprintf (stderr, b ? "sim: copy %s\n" : "sim: copy %s failed\n", dst);
+}
 static void step (void)
 {
 	if (g_step >= g_script.size ()) { fprintf (stderr, "sim: end of the script\n"); exit (0); }
@@ -516,6 +580,7 @@ static void step (void)
 	auto ptrev = [] (int ev, int x, int y, int btn, int chg, int wheel)
 	{
 		long v = ((long) (wheel & 0xFF) << 48) | ((long) chg << 40) | ((long) btn << 32) | ((long) x << 16) | (long) y;
+		ptr_track (x, y, ev == GUI_EVENT_PTR_DOWN);
 		if (g_ptr) g_ptr (0, ev, v);
 	};
 	auto click = [] (int ev, int x, int y)				// (the legacy canvas-click handler too)
@@ -556,6 +621,7 @@ static void step (void)
 	else if (!strcmp (cmd, "winstate")) { sscanf (st.c_str (), "%*s %d", &a); g_winstate = (unsigned) a; }
 	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (0, GUI_EVENT_WINCTL, a); }
 	else if (!strcmp (cmd, "dump")) { sscanf (st.c_str (), "%*s %255s", arg); dump (arg); }
+	else if (!strcmp (cmd, "copy")) { char dst[256] = ""; sscanf (st.c_str (), "%*s %255s %255s", arg, dst); sim_copy (arg, dst); }
 	// "waitlog N TEXT": stay on this step (one main-loop turn each) until the app's log (SIM_LOG, the
 	// file its stdout/stderr go to) holds TEXT, or N turns passed -- a test waits for what it
 	// expects rather than a fixed count of turns (a loaded machine is slower)
@@ -689,17 +755,19 @@ static int app_dir (char *b, unsigned n)				// SD:apps/<the program's name>.app/
 	if (b && n) snprintf (b, n, "SD:apps/%s.app/", name);
 	return b ? (int) strlen (b) : 0;
 }
-static int f_mkdir (const char *p) { return mkdir (wpath (p).c_str (), 0755) == 0 ? 0 : -1; }
+static int f_mkdir (const char *p) { if (rofs (p)) return -1; return mkdir (wpath (p).c_str (), 0755) == 0 ? 0 : -1; }
 // (the card is only read: a file is removed / renamed on RAM:, or among what the apps wrote --
 //  SIM_WRITES --, never on the card)
 static bool written (const char *p) { std::string f = sdpath (p), w = writes () + "/"; return f.compare (0, w.size (), w) == 0; }
 static int f_remove (const char *p)
 {
+	if (rofs (p)) return -1;
 	if (!is_ram (p) && !written (p)) return -1;
 	std::string f = sdpath (p); return (remove (f.c_str ()) == 0 || rmdir (f.c_str ()) == 0) ? 0 : -1;
 }
 static int f_rename (const char *a, const char *b)
 {
+	if (rofs (a) || rofs (b)) return -1;
 	if (!(is_ram (a) && is_ram (b)) && !(written (a) && !is_ram (b)))
 		return -1;
 	if (!is_ram (b))						// (into the writes: its own path there)
@@ -711,6 +779,31 @@ static int f_rename (const char *a, const char *b)
 	struct stat st; std::string to = sdpath (b);
 	if (stat (to.c_str (), &st) == 0) return -1;			// (there already: as the kernel's)
 	return rename (sdpath (a).c_str (), to.c_str ()) == 0 ? 0 : -1;
+}
+// (v75) a file's facts: the host's stat () of what the app would read (the writes, an overlay, the card)
+static int path_stat (const char *p, struct kapi_stat *o)
+{
+	if (!p || !o) return -KAPI_EINVAL;
+	if (!volume_there (p)) return -KAPI_ENOENT;
+	struct stat st;
+	if (stat (sdpath (p).c_str (), &st) != 0) return -KAPI_ENOENT;
+	memset (o, 0, sizeof *o);
+	o->size = (unsigned long long) st.st_size; o->mtime = (long long) st.st_mtime; o->ctime = o->mtime;
+	o->mode = (S_ISDIR (st.st_mode) ? KAPI_S_IFDIR : KAPI_S_IFREG) | 0777;
+	o->attr = S_ISDIR (st.st_mode) ? 0x10 : 0x20; o->blksize = 4096; o->blocks = ((unsigned long long) st.st_size + 511) / 512;
+	return 0;
+}
+// (v75) the clock: the simulator's fixed date (get_datetime's: 2026-09-28 12:34:00, UTC), the PC's with SIM_REALNET
+static int clock_info (struct kapi_clock_info *o)
+{
+	if (!o) return -KAPI_EINVAL;
+	memset (o, 0, sizeof *o);
+	struct tm tm; memset (&tm, 0, sizeof tm);
+	tm.tm_year = 2026 - 1900; tm.tm_mon = 8; tm.tm_mday = 28; tm.tm_hour = 12; tm.tm_min = 34;
+	long long t = getenv ("SIM_REALNET") ? (long long) time (0) : (long long) timegm (&tm);
+	o->freq = 54000000; o->cnt = (unsigned long long) g_ticks * 540000; o->utc_us = t * 1000000;
+	o->tz_minutes = 0; o->flags = KAPI_CLOCK_REALTIME_VALID;
+	return 0;
 }
 // (v71) a volume's room: RAM: (128 MB, what its folder holds), the card (its folder's file system)
 static unsigned long long g_ramUsed;
@@ -1070,6 +1163,7 @@ static void *fstream_make (FILE *f)
 static void *file_in (const char *p) { return fstream_make (fopen (sdpath (p).c_str (), "rb")); }
 static void *file_out (const char *p, int append)
 {
+	if (rofs (p)) return 0;
 	std::string w = wpath (p);
 	if (append)						// (appending to a card file: from its copy)
 	{
@@ -1098,7 +1192,51 @@ static int get_wheel (void) { return s_wheel; }
 static int h_kill (const char *n) { fprintf (stderr, "sim: kill %s\n", n); return 1; }
 static int set_keymap_data (const char *, const void *, unsigned) { return 1; }
 static int sipc_send (int, int, const void *, unsigned);
-static int mailbox_send (int to, int type, const void *d, unsigned n) { return getenv ("SIM_IPC") ? sipc_send (to, type, d, n) : 0; }
+// SIM_SERVICES="a,b" (or "-"): the services running, pid 700 + their index -> the pid (0: not running);
+// svc_name: the name of a pid of theirs ("" none)
+static int svc_pid (const char *n)
+{
+	const char *e = getenv ("SIM_SERVICES");
+	int k = 0;
+	for (std::string list = e ? e : ""; !list.empty (); k++)
+	{
+		size_t comma = list.find (',');
+		if (n && list.substr (0, comma) == n) return 700 + k;
+		list = comma == std::string::npos ? "" : list.substr (comma + 1);
+	}
+	return 0;
+}
+static std::string svc_name (int pid)
+{
+	const char *e = getenv ("SIM_SERVICES");
+	int k = 0;
+	for (std::string list = e ? e : ""; !list.empty (); k++)
+	{
+		size_t comma = list.find (',');
+		if (700 + k == pid) return list.substr (0, comma);
+		list = comma == std::string::npos ? "" : list.substr (comma + 1);
+	}
+	return "";
+}
+static int mailbox_send (int to, int type, const void *d, unsigned n)
+{
+	if (getenv ("SIM_IPC")) return sipc_send (to, type, d, n);
+	std::string name = getenv ("SIM_SERVICES") ? svc_name (to) : "";
+	if (!name.empty ())						// (a listed service: the message logged)
+	{
+		std::string t;
+		for (unsigned i = 0; d && i < n; i++)
+		{
+			unsigned char c = ((const unsigned char *) d)[i];
+			char x[8];
+			if (c == 0) t += "\\0";
+			else if (c < 32 || c == 127) { snprintf (x, sizeof x, "\\x%02X", c); t += x; }
+			else t += (char) c;
+		}
+		fprintf (stderr, "sim: send %s type %d \"%s\"\n", name.c_str (), type, t.c_str ());
+	}
+	return 0;
+}
 static int drag_begin (int, const void *, unsigned, const char *) { return 0; }
 static int drag_data (int *type, void *buf, unsigned cap)
 {
@@ -1175,7 +1313,8 @@ static int key_held (int) { return 0; }
 static void cursor_pos (int *x, int *y)
 {
 	int cx = -1, cy = -1; const char *e = getenv ("SIM_CURSOR");
-	if (e) sscanf (e, "%d,%d", &cx, &cy);
+	if (e && !strcmp (e, "follow")) { if (g_ptrX >= 0) { cx = g_orgX + g_ptrX; cy = g_orgY + g_ptrY; } }	// (screen coordinates)
+	else if (e) sscanf (e, "%d,%d", &cx, &cy);
 	if (x) *x = cx; if (y) *y = cy;
 }
 static void set_alpha (int) {}
@@ -1228,10 +1367,11 @@ static int sipc_recv (int *from, int *type, void *buf, unsigned cap, int blockin
 	memcpy (buf, m.bytes.data (), k);
 	return (int) k;
 }
-static int ipc_register (const char *n) { if (sim_ipc ()) return sipc_register (n); return !strcmp (n, "control") || !strcmp (n, "dock"); }	// (the only ones)
+static int ipc_register (const char *n) { if (sim_ipc ()) return sipc_register (n); if (getenv ("SIM_SERVICES")) return 1; return !strcmp (n, "control") || !strcmp (n, "dock"); }	// (the only ones)
 static int ipc_lookup (const char *n)
 {
 	if (sim_ipc ()) return sipc_lookup (n);
+	if (getenv ("SIM_SERVICES")) return svc_pid (n);			// (only the services listed)
 	if (getenv ("SIM_APPLET") && !strcmp (n, "control")) return 99;	// (the applet's host: there)
 	if (getenv ("SIM_MAIL") && !strcmp (n, "control")) return 5;		// (the Control Panel: us)
 	if (getenv ("SIM_MBOX")) return 7;					// (SIM_MBOX's sender: any service)
@@ -1294,7 +1434,13 @@ static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int
 		if (!mbox.init) { char c; canned_read (mbox, &c, 0); }
 		if (mbox.pos >= mbox.s.size ()) return -1;
 		size_t eol = mbox.s.find ('\n', mbox.pos); if (eol == std::string::npos) eol = mbox.s.size ();
-		std::string l = mbox.s.substr (mbox.pos, eol - mbox.pos); mbox.pos = eol + 1;
+		std::string l = mbox.s.substr (mbox.pos, eol - mbox.pos);
+		if (!l.empty () && l[0] == '@')				// "@<ticks>:...": not before that time
+		{
+			if (g_ticks - 1000 < (unsigned) strtoul (l.c_str () + 1, 0, 10)) return -1;	// (the ticks start at 1000)
+			l = l.substr (l.find (':') + 1);
+		}
+		mbox.pos = eol + 1;
 		int t = 0, pid = 0, at = 0; sscanf (l.c_str (), "%d:%d:%n", &t, &pid, &at);
 		std::string m = l.substr (at), d;
 		for (size_t i = 0; i < m.size (); i++)
@@ -1348,6 +1494,7 @@ static void setup (void)
 	T->version = KAPI_ABI_VERSION;
 	// (v75) the POSIX entries absent here: 0, so appkit.h's wrappers return -KAPI_ENOSYS
 	for (size_t i = __builtin_offsetof (TKApiTable, vm_map) / 8; i < sizeof (TKApiTable) / 8; i++) ((void **) T)[i] = 0;
+	if (getenv ("SIM_STAT")) { T->path_stat = path_stat; T->clock_info = clock_info; }	// (... but these two, asked)
 	T->create_window = create; T->create_window_ex = create_ex; T->resize_window = resize; T->move_window = move_window;
 	T->set_pointer_handler = set_ptr; T->set_key_handler = set_key; T->screen_size = screen_size;
 	T->font_width = font_w; T->font_height = font_h; T->present = h_present; T->pump_events = pump;

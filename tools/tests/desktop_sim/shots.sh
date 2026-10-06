@@ -59,6 +59,7 @@ audiokit || exit 1
 AK="$OUT/libaudiokit.a -lpthread -lm"
 build () {
 	extra=""; [ "$1" = graphcalc ] && extra=user/Libs/basic/basnum.cpp
+	case "$1" in notes|stickies) extra=user/Apps/notes/notesmodel.cpp ;; esac	# (their model: SD:/Notes, notes.ini)
 	[ "$1" = gamelib ] && extra="user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
@@ -145,7 +146,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
@@ -154,7 +155,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks"
+      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -392,6 +393,39 @@ if want ledger; then			# (the demo company: its overview, its sales, an invoice,
 	sim ledger ledger-print0 "wait;down 60 316;up 60 316;wait;down 400 218;up 400 218;wait;key 13;wait;down 592 28;up 592 28;$W" $P $L
 	sim letters ledger-print "wait;wait;wait;wait;winctl 2;wait;wait;wheel 500 400 -3;$W" $P SIM_ARGS="--merge SD:/apps/ledger.app/merge.job" SIM_OVERLAY="$OUT/writes"
 	png ledger-print
+fi
+if want notes; then			# (Notes, AutoDev round 1: the six sample notes of sd/Notes -- copied into a writes folder of
+					#  their own: an overlay folder cannot be listed --, Shopping selected (config.ini's last), the
+					#  list focused; then the first start: no SD:/Notes, one empty new note, the caret in it)
+	NW="$OUT/notes_w"; rm -rf "$NW"; mkdir -p "$NW/apps/notes.app"; cp -r $D/sd/Notes "$NW/Notes"
+	printf 'last = note-20260928-091500.txt\n' > "$NW/apps/notes.app/config.ini"
+	sim notes notes "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes
+	rm -rf "$NW"; mkdir -p "$NW"
+	sim notes notes-empty "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes-empty
+	rm -rf "$NW"
+fi
+if want stickies || want stickies-empty || want notes-desktop; then	# (Stickies, AutoDev round 1: the pinned notes on the
+					#  desktop, top right -- the sample notes, three of them pinned --; then none pinned: the
+					#  hint; then the whole desktop: the agenda, Stickies, the Notes window in front, the dock)
+	NW="$OUT/notes_w"; rm -rf "$NW"; mkdir -p "$NW"; cp -r $D/sd/Notes "$NW/Notes"
+	NMENU='Notes|MFile/I0~New Note~^N/-/I1~Open in Text Editor~^E/-/I2~Delete Note~^D/MEdit/I3~Cut~^X/I4~Copy~^C/I5~Paste~^V/-/I6~Select All~^A/I7~Copy Note~/MNote/I8~Unpin from Desktop~^P/-/I9~Yellow~/I10~Green~/I11~Blue~/I12~Pink~/I13~Purple~/I14~Grey~/MView/I15~Hide Stickies from the Desktop~'
+	sim menubar s_bar "$W" SIM_MENU="$NMENU"
+	sim stickies s_cards "$W" SIM_WRITES="$NW" SIM_SERVICES=-
+	if want stickies; then scene stickies "$OUT/s_cards.elsm" "$OUT/s_bar.elsm" --crop=704,0,1024,620; fi
+	if want notes-desktop; then
+		mkdir -p "$NW/apps/notes.app"; printf 'last = note-20260928-091500.txt
+' > "$NW/apps/notes.app/config.ini"
+		sim agenda s_agenda "$W"
+		sim notes s_notes "$W" SIM_POS=60,166 SIM_WRITES="$NW" SIM_SERVICES=notify
+		sim dock s_dock "wait;wait;$W" SIM_RUNNING=notes SIM_WINS="60,166,760,508,0,1"
+		scene notes-desktop "$OUT/s_agenda.elsm" "$OUT/s_cards.elsm" "$OUT/s_notes.elsm" "$OUT/s_dock.elsm" "$OUT/s_bar.elsm"
+	fi
+	if want stickies-empty; then
+		sed -i 's/^pinned = 1/pinned = 0/' "$NW/Notes/notes.ini"
+		sim stickies s_none "$W" SIM_WRITES="$NW" SIM_SERVICES=-
+		scene stickies-empty "$OUT/s_none.elsm" "$OUT/s_bar.elsm" --crop=704,0,1024,200
+	fi
+	rm -rf "$NW"
 fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
 if want control; then sim control control "wait;move 200 130;$W" $P; png control; fi

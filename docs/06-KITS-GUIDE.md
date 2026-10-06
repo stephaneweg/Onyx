@@ -267,6 +267,19 @@ program's Ctrl+Tab), `activeFace` (the chosen tab opens onto the content's colou
 **The theme**: draw with the palette (`C_BG`, `C_TEXT`, `C_ACCENT`, `C_FACE`…), never with fixed
 colours, so that the program follows the user's theme.
 
+**Text in an owner-drawn widget** (`uikit/text.h`): `uk_text_fit` cuts a line with "…", `uk_text_wrap`
+word-wraps a paragraph into lines of a width (Stickies' cards), `uk_text_over` writes straight on a
+see-through window — the wallpaper — blended by coverage, with a soft shadow or engraved (the agenda's and
+Stickies' headers). The tool bar's icons (`uikit/toolbar.h`, `WKT_*`) include `WKT_TRASH` and `WKT_PIN`:
+
+```cpp
+int st[6], ln[6]; bool more;
+int k = uk_text_wrap (text, len, 196, 6, st, ln, &more);   // up to 6 lines of 196 px
+for (int i = 0; i < k; i++) { char l[256]; int n = ln[i] < 255 ? ln[i] : 255;
+	memcpy (l, text + st[i], n); l[n] = 0; uk_text (canvas, 22, 33 + 17 * i, l, ink); }
+uk_text_over (canvas, 38, 9, "Pinned notes", 0x00FAFCFF, 2, 1);   // bold, a soft shadow, on the wallpaper
+```
+
 **Without C++** (`uikit/flat.h`, in `uikit/uikit.h`): the same window and widgets as handles, behind plain
 C functions — what a BASIC program calls (`#import UIKit`), what QBStudio's generated code is made of,
 and what a C program can use:
@@ -329,7 +342,7 @@ kind, detail)` for each item offered after `object.` (or Ctrl+Space: `object` em
 
 `#include "systemkit/systemkit.h"` — link `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C).
 The one header brings every subject below (a C program gets those written in C: notifications,
-volume, preload list, the applets' protocol).
+volume, preload list, autostart, the applets' protocol).
 
 **A notification** (a bubble under the menu bar; `notify_action` adds what a click starts):
 
@@ -389,6 +402,17 @@ wp_save (wp);
 dock_reload ();                                       // the dock reads its settings again
 ```
 
+**Starting a program at every boot** — a line of `SD:/etc/autostart` looked for, or added where it
+belongs (after a given line, else before `preload /boot`, which stays last; Setup's held-back `#setup:`
+lines respected), and the user told so:
+
+```c
+#include "systemkit/systemkit.h"
+
+int r = autostart_ensure ("run stickies", "run agenda", "# Stickies: the pinned notes on the desktop");
+/* 2 added, 1 already there (autostart_has), 0 not written */
+```
+
 **The system's language** (the Control Panel's Language & Region): an app's words go through UIKit's
 `TR ("...")` after `uk_lang_init ()` (section 3); a program with words of its own asks SystemKit:
 
@@ -410,6 +434,7 @@ locale_set_zone (0);                                  // a time zone (locale_zon
 | `wallpaper.h` | The wallpaper's settings and its painter |
 | `dockconf.h` | The dock's settings |
 | `preloadini.h` | The programs loaded ahead at boot |
+| `autostart.h` | The programs started at boot (`SD:/etc/autostart`) |
 | `applet_proto.h` | A settings applet shown inside the Control Panel |
 | `locale.h` | The system's language and time zone (`SD:/etc/system.ini`) |
 

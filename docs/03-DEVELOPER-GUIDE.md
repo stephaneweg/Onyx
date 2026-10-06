@@ -3389,7 +3389,7 @@ engine may use 4).
 
 The menu bar's **Onyx** menu and the dock's drawers group the apps by `category` and show
 their `name`. Three categories are **not listed** there: `Shell` (the desktop's own parts:
-`menubar`, `dock`, `notifyd`, `agenda`, `lock`…), `Settings` (the Control Panel's applets: reached through it) and
+`menubar`, `dock`, `notifyd`, `agenda`, `stickies`, `lock`…), `Settings` (the Control Panel's applets: reached through it) and
 `Emulators` (reached through the Game Library, which starts the right one for a game). A shell
 component also creates its window with **`WIN_FLAG_SYSTEM`** (`kapi_create_window_ex` / the
 positioned `uikit::Root` constructor), so it is left out of `kapi_list_windows` (the menu bar's
@@ -3447,6 +3447,17 @@ barwidth = 40
   PC's: an HTTP client against a local server (`python3 -m http.server`...), with `SIM_SLEEP=1`
   for the answers to come in real time. Without it, `SIM_NET` is what any connection receives
   (Courier's screenshots: a canned HTTP response).
+  **Services, the card, a drag** (AutoDev round 1, for Notes and Stickies; the full list in `fakekapi.cpp`'s
+  header): `SIM_SERVICES="notify,stickies"` (or `-`) — `kapi_ipc_lookup` finds only those services, any
+  `kapi_ipc_register` succeeds, and each `kapi_mailbox_send` to one is logged `sim: send <name> type <t>
+  "<payload>"` (and `notify ()` does not wait for a notifyd); a `SIM_MBOX` line `@<ticks>:type:pid:payload`
+  comes only that many ticks after the start (2 a script step); `SIM_ROFS="SD:/Notes"` makes a folder
+  read-only (a full card: root ignores `chmod`); `SIM_CURSOR=follow` gives `kapi_cursor_pos` in screen
+  coordinates, so a widget that drags itself moves; the step `copy SRC DST` puts a host file on the card
+  mid-run (a file changed by another program); `SIM_STAT=1` answers `kapi_path_stat` / `kapi_clock_info`;
+  each window is logged with its flags (`sim: window <title> flags 0x33`). Tests built on them, asserting
+  on `SIM_WRITES` and the log: `tools/tests/run_notes_sim_test.sh`, `run_stickies_sim_test.sh` (its cards
+  read back from the dump's pixels by `tools/tests/notes/cards.py`).
   **The Pi's own binary on the PC**: `sh tools/tests/desktop_sim/elfrun.sh <app> [stack bytes]`
   (the same `SIM` script) runs `user/<app>.elf` — newlib and the code the Pi's compiler made —
   under `qemu-aarch64` with the simulator's kapi (`elfrun.cpp`: the ELF's segments at their

@@ -70,6 +70,18 @@ void uk_text_clip (Canvas &cv, int x, int y, const char *s, unsigned c, int styl
 // Fit s into w px (a copy in out, cap bytes): cut at a character, "..." at its end when it did
 // not fit. Returns its width.
 int  uk_text_fit (const char *s, int w, char *out, int cap, int style = 0);
+// Word-wrap the first n bytes of s into lines of w px at most, maxLines at most: line k is the bytes
+// [start[k], start[k] + len[k]) of s (start and len: maxLines entries each). A '\n' ends a line (an empty
+// line for "\n\n"); a line is broken at its last space that fits (the spaces at the break dropped); a word
+// wider than w is cut at a character (UTF-8). *more (when given): text is left past the last line (more
+// than blanks). -> the number of lines. (A card showing a paragraph: Stickies.)
+int  uk_text_wrap (const char *s, int n, int w, int maxLines, int *start, int *len, bool *more = 0, int style = 0);
+// s at (x, y) -- the line's top-left -- straight over a see-through canvas (a WIN_FLAG_ALPHA window: the
+// wallpaper shows through; uk_paint_alpha on), its glyphs blended by their coverage with the bitmap fonts
+// or the installed face alike (a face's own draw ignores the alpha mode). shade: 0 none; 1 a soft shadow
+// (for a light ink on a dark wallpaper); 2 engraved: a light edge under each glyph, of `back` (the
+// wallpaper's colour there; for a dark ink on a light wallpaper). The agenda's header, Stickies'.
+void uk_text_over (Canvas &cv, int x, int y, const char *s, unsigned ink, int style = 0, int shade = 0, unsigned back = 0);
 
 // ---- UTF-8 (the face's text) ------------------------------------------------------------------------------
 // A sequence's length from its first byte and what follows it (1 for a byte that does not start a
