@@ -363,3 +363,176 @@ in layout, colours and words.
   (menu ids for `menu N`: 0 Next … 7 Clear Board, 8 Copy Truth Table, 9 Copy Circuit, 10 Check, 11 Step, 12 Live,
   13 Reset, 14 Open Level Pack, 15 Lesson, 16 Hint, 17 About).
 - Not built here: the Pi `make` of `circuits.elf` (newlib: the window uses only `snprintf`, `strcmp`… and the kits).
+
+## Developer C (steps 8–11/12)
+
+Date: 2026-10-06, branch `AutoDev`. Plan: `03-technical-analysis.md` steps 8–11 and the GUI plan's G6, the notes of
+`05-validation.md` (16: the grep guard) and Developers A and B's hints. Host only: **there is no AArch64 compiler in
+this container** — `make` / `make stage` for the Pi (which builds `circuits.elf`, `lib/fk/kvtext.o`, lets libgen
+confirm `filekit.abi` 78–95 and puts `SD:/apps/circuits.app/main` on the card) are **deferred to the user**.
+
+### Commits
+
+| Commit | Step |
+|---|---|
+| `e38067df` | step 8: `sdcard/apps/circuits.app/app.txt`, `icon.bmp` + `tools/icons/circuits_icon.py`, `sdcard/etc/fileassoc.ini`, `[app.circuits]` in `tools/pkg/packages.ini` |
+| `f9edaf32` | step 9 + G6: the `if want circuits` block of `shots.sh`; `screenshots/circuits.png`, `circuits-step.png`, `circuits-check.png`, `circuits-fr.png` |
+| `d70b7043` | step 10: docs/04, docs/03, `docs/HANDOFF.md`; every export regenerated |
+| (this one) | step 11's results, this section and the summary |
+
+### Step 8 — the card and the package (declared, not published)
+
+- `sdcard/apps/circuits.app/app.txt`: `name = Circuits`, `category = Programming`, `opens = circuits`, `stack = 4M`
+  (Turtle Quest's form).
+- `tools/icons/circuits_icon.py` (Pillow, notes_icon.py's method: drawn at 160 px, brought to 40 × 40, magenta key)
+  → `sdcard/apps/circuits.app/icon.bmp`: an AND gate on the board's pale green paper, a lit and a dark input wire, a
+  lit output into a yellow lamp (the board's colours of `gates.h`). Looked at enlarged beside Turtle Quest's.
+- `sdcard/etc/fileassoc.ini`: `# Circuits (logic puzzle level packs)` + `circuits = circuits` after Turtle Quest's.
+- `tools/pkg/packages.ini`: `[app.circuits]` after `[app.turtle]`, `needs = uikit >= 1.779, systemkit >= 1.74,
+  filekit >= 1.96`, `opens = circuits`, with a comment: filekit 1.96 = the `fk_kv_*` slots 78–95, to be confirmed by
+  the Pi build and at publish. **Not published**: no `publish.sh`, `versions.ini`, `sdcard/var/pkg/db` untouched.
+- Dry run (nothing pushed, nothing kept): `python3 tools/pkg/mkrepo.py --out <scratch>/repo --no-sign --versions
+  <scratch copy of versions.ini> --bump` → 78 packages; `[circuits]` 1.0.0, category Programming, `needs = …,
+  filekit >= 1.96, kapi >= 93`, `assoc = circuits=circuits` (its `main` comes with the user's `make stage`).
+  Note: `main` now ships uikit 1.781 / systemkit 1.76 (Notes' round); the `needs` above are minimums and stay right.
+
+### Step 9 / G6 — the screenshots
+
+`shots.sh`'s `if want circuits` block (after Turtle Quest's): the fixtures `desktop_sim/circuits/solving.ini` and
+`check.ini` copied into `$OUT/writes/apps/circuits.app/progress.ini`, `SIM_POS=8,34`, Developer B's coordinates at
+1000 × 620; the folder removed after.
+
+| PNG | Scene |
+|---|---|
+| `screenshots/circuits.png` | 3.3 *Full adder* solved; A and Cin clicked (A = 1, B = 0, Cin = 1: Cout lit, S dark, the table's row `1 0 1` marked); the AND g4 clicked (selected) |
+| `screenshots/circuits-step.png` | the same + F8 three times: *Step 2 of 3*, depth badges 1/2/3, the OR grey with a dashed wire, Cout `?`, Step lit, Reset enabled |
+| `screenshots/circuits-check.png` | 2.2 *The hallway light* with an OR, F5: the *Yours* column, row `1 1` red with its ✗, both switches set on it, *"1 row is wrong: with A = 1 and B = 1 the lamp must stay off. …"* in red |
+| `screenshots/circuits-fr.png` | the first scene in French (`lang fr`) + the pointer resting on the palette's NON-OU: the tooltip *"Poser une porte : NON-OU (6)"* (AC 17's "palette tooltips"; validation note 12) |
+
+All four looked at with the Read tool: layout, colours, words correct; nothing overlaps. A first try hovered the
+palette's first gate: its tooltip hid the other gates' names, so the last gate (NOR) is hovered instead (the tooltip
+then lies over the empty part of the tool bar). The French card wraps on 3 lines (the board 18 px lower): the clicks
+still hit (the switches are 24 px high, the AND large enough), checked on the picture.
+
+**French check (`SHOTS_LANG=fr`)**: `SHOTS_LANG=fr SHOTS_PNG=<scratch> sh tools/tests/desktop_sim/shots.sh circuits`
+→ all four scenes rendered in French and looked at: *Vérifier*, *Pas à pas*, *Au départ*, *Table de vérité*
+(*ENTRÉES / BUT / OBTENU*), *1 ligne est fausse : avec A = 1 et B = 1 la lampe doit rester éteinte. Les
+interrupteurs sont mis sur cette ligne.*, *Pas 2 sur 3 : les portes de profondeur 2 sont calculées. F8 : la suivante
+· F9 : au départ · F7 : en direct.*, the palette NON / ET / OU / OUX / NON-ET / NON-OU — nothing truncated except the
+list's long titles, fitted with "…" as designed. (Not committed: only the English run's PNGs are in `screenshots/`,
+plus `circuits-fr.png`.)
+
+Found while running it (pre-existing, not Circuits'): `shots.sh`'s build of **paint, letters, sheet, slides,
+media, pdf, photos** fails to link (`print_begin`, `print_dialog`, `print_font_data`… — PrinterKit is not linked
+by `shots.sh`'s generic build lines). It is the same on `origin/main`; it only matters when one of those apps is
+asked for. Not fixed here (outside this round's scope); worth a line to the user.
+
+### Step 10 — the documentation
+
+- `docs/04-USER-GUIDE.md`:
+  - §12's catalog: a **Circuits** row right after Turtle Quest's (the table they share), pointing to the section;
+  - a section **"Circuits, logic gates as a puzzle game (`circuits`)"** in §12, after GPIO Lab and before *Games*
+    (with the other Programming apps; not in §13 *Programming in BASIC*, validation note 13): the window, building
+    (placing, wiring, one wire per input, the loop message, picking a wire up, editing, undo 64), **the 35-gate
+    limit** ("as many as fit between the columns"), live / step by step / Check, the stars, the three worlds and
+    their 20 levels (a table), the lessons and hints, the menus, French, the files (packs, `progress.ini`, the pack
+    and circuit-text formats); the four screenshots with captions. 2.2's stars are not called "1 star" (note 1);
+  - the menu bar's *Programming* list (§5) and the **Language & Region** row's translated apps gain Circuits.
+- `docs/03-DEVELOPER-GUIDE.md`: a **Circuits** paragraph after Turtle Quest's (the engine / window split, `fk_kv`,
+  the PC build, the three tests, the screenshots) and Circuits in the translated-apps note (§ text faces / lang).
+  (§5.6 / §5.8 / docs/06 / docs/14 were done in step 1 by Developer A.)
+- `docs/HANDOFF.md`: a section at the top *"Circuits, a logic-gate puzzle game (AutoDev round 2)"*: what is done,
+  tested, not done (the Pi build), the 35-gate limit, and the **follow-ups**: Turtle Quest's `kv_*` / `parse_pack`
+  and Notes' `notes.ini` onto `fk_kv`; sequential logic (latches, flip-flops, a clock); chips; Paste Circuit, the
+  sandbox, several players; a level editor; a shared star glyph in UIKit.
+- `python3 docs/build_docs.py`: `pypandoc` was missing → `pip install pypandoc` (`python-docx` was there); then
+  **every `.docx` and `.pdf` regenerated, the PDFs by LibreOffice** ("Done.", ~70 s, no error). Committed.
+
+### Step 11 — regression and rules (AC 24, 26)
+
+| Check | Result |
+|---|---|
+| `git diff --stat origin/main -- kernel/include/kern/kapi_abi.h kernel/sys user/Kits/appkit user/Apps/turtle` | shows `user/Apps/turtle/world.h` — **from `main`, not from AutoDev**: `origin/main` moved on after the round's resync (`4b2b26bf` "GPIO Lab in French…, the French words in the BASIC library"). Against the merge base (`git diff $(git merge-base HEAD origin/main) HEAD -- …`) the diff is **empty**, and `git log origin/main..HEAD -- user/Apps/turtle` is empty: AutoDev touched none of these. The next resync with `main` brings it in. |
+| `grep -L "MIT License" user/Apps/circuits/* user/Kits/filekit/kvtext.* tools/tests/circuits/* tools/tests/filekit/* tools/icons/circuits_icon.py tools/tests/run_{kvtext,circuits,circuits_sim}_test.sh` | nothing (every file has it) |
+| `grep -n "kapi_" user/Apps/circuits/*` | only AppKit's `kapi_opendir`, `kapi_readdir`, `kapi_closedir`, `kapi_dirent` (its type), `kapi_get_args`, `kapi_get_ticks` (the autosave's clock), `kapi_mkdir` (`SD:/docs/circuits` before Ctrl+O), `kapi_exit` — the allow-list widened per validation note 7 |
+| `grep -nE "\bfk_[a-z]" user/Apps/circuits/* \| grep -v "fk_kv"` (note 16) | nothing: no FileKit core call |
+| `python3 tools/lang/check.py circuits` | `circuits [fr]: 108 words, 0 missing, 0 not used` (exit 0) |
+| `sh tools/tests/run_kvtext_test.sh` | `ok kvtext, ASan build, no files (101 checks)`, `ok kvtext (115 checks)` |
+| `sh tools/tests/run_circuits_test.sh` | `ok circuits (582 checks: the engine; 3 packs, 20 levels solved with three stars)` |
+| `sh tools/tests/run_circuits_sim_test.sh` | `circuits-sim: all 61 checks passed` |
+| `sh tools/tests/run_turtle_test.sh` | `ok turtle (27 levels: solved, written back; the errors)` — unchanged |
+| `sh tools/tests/desktop_sim/shots.sh turtle` (into a scratch folder) | `turtle.png`, `turtle-fr.png`, `turtle-editor.png` **byte-identical** to `screenshots/` |
+| `sh tools/tests/run_archiver_test.sh` (FileKit's core includes `filekit.h` → `kvtext.h`) | all `ok`, `0 failure(s)` |
+| `sh tools/tests/run_notes_test.sh`, `run_notes_sim_test.sh`, `run_stickies_sim_test.sh` (FileKit's `fsutil` users, round 1) | `notes: all checks passed`; `notes-sim: all 67 checks passed`; `stickies-sim: all 29 checks passed` |
+| `sh tools/tests/run_pkg_test.sh` (`packages.ini`, `fileassoc.ini` changed) | `0 failure(s)` |
+
+### Step 12 — not done
+
+The SHOULD items (Paste Circuit, chips, sandbox, several players) were **not** started: each needs its own engine,
+window, test, French and docs work, and the round's MUST is complete and green; starting one half-way is less safe
+than leaving it for a later round (they are in HANDOFF's follow-ups).
+
+## Summary
+
+### Acceptance criteria (02 §10)
+
+| AC | Status | How / why |
+|---|---|---|
+| 1 three packs, 20 levels, ids unique, in order | **done** | `run_circuits_test.sh` part B |
+| 2 tables = objectives | **done** | idem (a C++ lambda per level, every row) |
+| 3 solutions win, 3★, = Min | **done** | idem |
+| 4 stars by gate count | **done** | part A |
+| 5 wrong rows (`xor` with OR: row 11; `and` with OR: 01, 10) | **done** | part A; in the app: sim G3 + `circuits-check.png` |
+| 6 incomplete board refused | **done** | part A; the app's red outline (sim) |
+| 7 loops refused | **done** | part A; sim G2 (message, board unchanged) |
+| 8 one input one wire, fan-out | **done** | part A |
+| 9 parts allowed, pins, 49th gate refused | **done**, with a limit | the engine refuses a 49th gate (`E_FULL`, tested on a board filled by hand), but **only 35 gates fit** on the 40 × 30 board, so placing stops at 35 (`E_OVERLAP`/`E_OUTSIDE`); documented in docs/04 and HANDOFF |
+| 10 step by step depths | **done** | part A; sim G3; `circuits-step.png` |
+| 11 circuit text round-trip, errors with lines | **done** | part A |
+| 12 pack errors with lines | **done** | part B (14 malformed variants); sim AC 20 (malformed pack refused) |
+| 13 progress round-trip | **done** | part B; `run_kvtext_test.sh` |
+| 14 unlocking, stars never lower | **done** | part B; sim AC 21 |
+| 15 undo / redo, 64 steps | **done** | part A; sim G2 (Ctrl+Z / Ctrl+Y) |
+| 16 Copy Truth Table text | **done** | part A; sim AC 16 (`SIM_CLIPFILE`) |
+| 17 three screenshots | **done** | `circuits.png`, `circuits-check.png`, `circuits-fr.png` (+ `circuits-step.png`); the French one with a palette tooltip; checked with `SHOTS_LANG=fr` too |
+| 18 fresh start / fixture stars | **done** | sim AC 18 |
+| 19 live switch → lamp | **done** | sim AC 19 (pixels), `circuits.png` |
+| 20 `circuits <pack>` | **done** | sim AC 20 (+ drop) |
+| 21 progress after a win | **done** | sim AC 21 |
+| 22 French complete, `.fr` keys | **done** | `check.py circuits` 0 missing; part B |
+| 23 Makefile / card / fileassoc / package | **partly — the Pi build deferred to the user** | `user/Makefile` (`FT_APPS`, `FT_EXTRA_circuits`, `FK_OBJ += lib/fk/kvtext.o`), `app.txt`, `icon.bmp`, `levels/`, `lang/fr.txt`, `fileassoc.ini`, `[app.circuits]` all done; `make` / `make stage` need the AArch64 compiler, absent here |
+| 24 MIT, no kapi change, kits only | **done** | step 11 (no AutoDev change to kapi / AppKit / Turtle; the `filekit.abi` lines 78–95 to be confirmed by libgen on the user's `make`) |
+| 25 docs, build_docs | **done** | docs/04, 03, 06, 14, HANDOFF; exports (docx + PDF via LibreOffice) regenerated |
+| 26 Turtle unchanged | **done** | `run_turtle_test.sh` passes; `shots.sh turtle` byte-identical |
+
+### Tests
+
+| Test | Result |
+|---|---|
+| `sh tools/tests/run_kvtext_test.sh` | ok (101 + 115 checks) |
+| `sh tools/tests/run_circuits_test.sh` | ok (582 checks) |
+| `sh tools/tests/run_circuits_sim_test.sh` | all 61 checks passed |
+| `python3 tools/lang/check.py circuits` | 108 words, 0 missing, 0 not used |
+| `sh tools/tests/desktop_sim/shots.sh circuits` (EN, and `SHOTS_LANG=fr`) | 4 PNGs each, looked at |
+| `sh tools/tests/run_turtle_test.sh` | ok (27 levels) |
+| `sh tools/tests/desktop_sim/shots.sh turtle` | 3 PNGs byte-identical |
+| `sh tools/tests/run_archiver_test.sh` | 0 failures |
+| `sh tools/tests/run_notes_test.sh` / `run_notes_sim_test.sh` / `run_stickies_sim_test.sh` | all passed (67 / 29 sim checks) |
+| `sh tools/tests/run_pkg_test.sh` | 0 failures |
+| `mkrepo.py --no-sign` dry run into a scratch folder | 78 packages, `[circuits]` well formed |
+| `python3 docs/build_docs.py` | Done (docx + PDF) |
+
+### What the user must check by hand on the Pi
+
+1. From `kernel/`: `make` — `lib/fk/kvtext.o` compiles for AArch64, **libgen accepts the hand-appended
+   `filekit.abi` lines 78–95** (if it reorders them, keep libgen's and adjust `needs = filekit >= 1.96` to the version
+   it gives), `circuits.elf` links (newlib); then `make stage` → `SD:/apps/circuits.app/main`.
+2. Start Circuits from *Onyx ▸ Programming*: the first-start lesson card, only 1.1 open; the window at its size.
+3. The mouse on real hardware: drag a gate from the palette, click-then-click, wire output → input (the green / red
+   ring), pick a wire up, move a gate, right click; the switches and table rows live.
+4. F5 / F8 / F9 / F7, the result card and the next level opened; Ctrl+Z / Ctrl+Y.
+5. The 1 s autosave on the card: quit, restart — the board and stars are back (`SD:/apps/circuits.app/progress.ini`).
+6. A `.circuits` file double-clicked in the File Viewer (the association) and Ctrl+O (`SD:/docs/circuits` created).
+7. In French (Language & Region ▸ Français, then restart Circuits): the words fit as on `circuits-fr.png`.
+8. Then publishing (outside AutoDev): `tools/pkg/publish.sh` after the user's validation, merging `AutoDev` into
+   `main` first.
