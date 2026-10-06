@@ -54,6 +54,10 @@ Raspberry Pi 4 with an HDMI screen, a USB keyboard and mouse, and power on. The 
 runs **Setup** (keyboard, time zone, Wi-Fi, resolution). [`sdcard_lite/`](sdcard_lite/) is the
 minimal card (the system only), every app then installed with the Package Manager.
 
+**Jet Browser** is the one exception: its program (100 MB, WebKit) is too big for git, so
+`sdcard/apps/jet.app` holds only its icon. Once the Pi is on the network, open the **Package
+Manager** and install Jet from the **Updates** tab (or type `pkg add jet` in the Terminal).
+
 ## Build
 
 Prerequisites: the `aarch64-none-elf` GCC toolchain (Linux or WSL), `make`, Python 3. Details:

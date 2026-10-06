@@ -1631,6 +1631,9 @@ a page.
   **Install N Updates**. Each shows its versions (installed → new), its size; the system's update
   is marked **restart**. While it works, each row says *Waiting*, its progress, *Installed*, or
   *Ready: at the restart*. An app that is **running** is not updated (*close it, then try again*).
+  A package whose **program is missing** from the card (Jet Browser on a card copied from the git
+  repository's `sdcard/`: its 100 MB program is too big for git and comes with its package only) is
+  shown here too, from version 0: install it to get the program.
 - **Installed** — every package: its version, its category, its **updates mode** — **Manual** (the
   default: you are asked), **Auto** (the update daemon installs its updates by itself), **Never**
   (this version kept) — and **Remove** (not for the system; asked first; a setting you changed is
