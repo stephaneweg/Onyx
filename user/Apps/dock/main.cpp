@@ -3,7 +3,9 @@
 // the Shelf, since removed, and the panel). In its middle the workspaces and the system buttons; its buttons --
 // the drawers, the launchers, the Trash, in this order -- shared evenly on the two sides (the odd
 // one out at the left):
-//   * the DRAWERS (SD:/etc/dock.ini, dockconf.h -- the Control Panel's Panel applet sets them): a
+//   * the DRAWERS: one for each category of the card's apps (their app.txt; not Shell, Settings,
+//     Emulators), up to DOCK_MAXCATS -- their order, their main apps, the hidden ones in
+//     SD:/etc/dock.ini (dockconf.h dock_layout_load; the Control Panel's Panel applet sets them): a
 //     launcher each, the icon of its group's main app -- a click starts that app (or brings it
 //     back); the strip on its top edge opens the group's drawer above it (its apps and their
 //     icons; a click starts one, or brings it back, minimised too), as Xfce's launchers. A dot
@@ -108,7 +110,7 @@ static void scan_apps (void)
 		App &a = g_apps[g_napps++];
 		fs_copy (a.name, p, sizeof a.name);
 		fs_copy (a.label, p, sizeof a.label);
-		a.cat[0] = 0; a.icon = 0; a.small = 0; a.iw = a.ih = 0; a.tried = a.running = false;
+		fs_copy (a.cat, "Other", sizeof a.cat); a.icon = 0; a.small = 0; a.iw = a.ih = 0; a.tried = a.running = false;
 		char q[180]; int k = 0;
 		lx_cat (q, sizeof q, &k, "SD:/apps/"); lx_cat (q, sizeof q, &k, a.name); lx_cat (q, sizeof q, &k, ".app/app.txt");
 		if (app_ini_load_path (q) >= 0)
@@ -116,7 +118,7 @@ static void scan_apps (void)
 			const char *nm = app_ini_get (0, "name", 0);
 			if (nm && nm[0]) fs_copy (a.label, nm, sizeof a.label);
 			const char *ct = app_ini_get (0, "category", 0);
-			if (ct) fs_copy (a.cat, ct, sizeof a.cat);
+			if (ct && ct[0]) fs_copy (a.cat, ct, sizeof a.cat);
 		}
 		*e = c;
 		p = *e ? e + 1 : e;
@@ -173,25 +175,27 @@ static void launch_or_raise (const char *name)
 
 // ---- the drawers, the launchers, the workspaces (dock.ini) ----------------------------------------
 struct Drawer { char cat[24]; App *main; App *apps[MAXAPPS]; int n; bool running; };
-static Drawer   g_dr[DOCK_MAXDRAWERS];
+static Drawer   g_dr[DOCK_MAXCATS];
 static int      g_ndr;
-static DockConf g_conf;
+static DockLayout g_conf;			// (every category of the card's apps, in dock.ini's order: dockconf.h)
 
 static void build (void)
 {
-	dockconf_load (g_conf);
+	dock_layout_load (g_conf);
 	g_ndr = 0;
-	for (int d = 0; d < g_conf.ndrawers && g_ndr < DOCK_MAXDRAWERS; d++)
+	for (int d = 0; d < g_conf.ncats && g_ndr < DOCK_MAXCATS; d++)
 	{
+		if (g_conf.cat[d].hidden) continue;			// (hidden in the Panel applet)
 		Drawer &k = g_dr[g_ndr];
-		fs_copy (k.cat, g_conf.drawer[d].cat, sizeof k.cat);
+		fs_copy (k.cat, g_conf.cat[d].cat, sizeof k.cat);
 		k.n = 0; k.running = false;
 		for (int i = 0; i < g_napps && k.n < MAXAPPS; i++)
 			if (fs_ci_cmp (g_apps[i].cat, k.cat) == 0) k.apps[k.n++] = &g_apps[i];
 		for (int i = 1; i < k.n; i++)					// by name
 			for (int j = i; j > 0 && fs_ci_cmp (k.apps[j - 1]->label, k.apps[j]->label) > 0; j--)
 			{ App *t = k.apps[j]; k.apps[j] = k.apps[j - 1]; k.apps[j - 1] = t; }
-		k.main = find_app (g_conf.drawer[d].app);
+		if (k.n == 0) continue;					// (no app of it on the card: no drawer)
+		k.main = find_app (g_conf.cat[d].app);
 		if (k.main == 0 && k.n > 0) k.main = k.apps[0];
 		g_ndr++;
 	}
@@ -275,7 +279,7 @@ static int g_sw = 1024, g_sh = 768, g_top = 30;			// the screen, the menu bar's 
 
 enum { SL_DRAWER, SL_APP, SL_TRASH };
 struct Slot { int kind, x, index; App *app; };
-static Slot g_slot[DOCK_MAXDRAWERS + DOCK_MAXLAUNCHERS + 2]; static int g_nslot, g_nleft;	// (g_nleft: left of the middle)
+static Slot g_slot[DOCK_MAXCATS + DOCK_MAXLAUNCHERS + 2]; static int g_nslot, g_nleft;	// (g_nleft: left of the middle)
 static int  g_DX, g_DY, g_DW;					// the dock on the screen
 static int  g_pgX, g_pgW, g_pgCols, g_pgRows, g_ndesk;		// the workspaces' panel (dock coordinates)
 
@@ -283,7 +287,7 @@ static int  g_pgX, g_pgW, g_pgCols, g_pgRows, g_ndesk;		// the workspaces' panel
 // of the middle (the workspaces, the lock, the gear, the power; the odd one out at the left).
 static void layout (void)
 {
-	Slot all[DOCK_MAXDRAWERS + DOCK_MAXLAUNCHERS + 2]; int n = 0;
+	Slot all[DOCK_MAXCATS + DOCK_MAXLAUNCHERS + 2]; int n = 0;
 	for (int d = 0; d < g_ndr; d++) all[n++] = { SL_DRAWER, 0, d, g_dr[d].main };
 	for (int i = 0; i < g_conf.nlaunchers; i++)
 	{

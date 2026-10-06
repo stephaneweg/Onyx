@@ -59,3 +59,6 @@
 53 dockconf_defaults
 54 dockconf_load
 55 dockconf_save
+56 dock_category_docked
+57 dock_layout_load
+58 dock_layout_save
