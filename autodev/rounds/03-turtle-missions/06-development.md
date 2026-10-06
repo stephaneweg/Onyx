@@ -63,3 +63,39 @@ characters), the six new concepts are not yet in `CONCEPT_KEYS` / `WordBar::ORDE
   is; its 3-instruction loop goes through both jumps), docs/04 §12–§13, docs/03, HANDOFF, IDEAS,
   `build_docs.py`. `tools/pkg/packages.ini` needs no line (the `[*apps]` rule ships `levels/`); nothing published.
 - The card build (`make` from `kernel/`) stays the user's (no AArch64 compiler here — R10).
+
+---
+
+## Developer B (steps 9–11)
+
+### What was done, by step
+
+| Step | Done | Where |
+|---|---|---|
+| 9 — the board | `GEM_C` / `GEM_INK` / `PAD_RING` / `PAD_FACE` (04 §2.1); `gem ()` (cut stone, rim, table, bold digit when the cell ≥ 16 px), `ring ()`, `pad ()` (one dot T / two dots U, `glow`); gems are drawn **after the pen's trail** (`Board::gemTile`: a trail over a stone hid its digit — seen in the French shot), the white ring on `w.gems + 1` (not in the editor, not on the stone being picked), the pick shrink; `turtle (…, k)` scaled; `EV_TELEPORT` animation (04 §2.5: shrink into A with A's glow, the dotted arc, grow out of B; the pen draws nothing); the colour target tinted `uk_mix (0xFBFAF5, PEN[c], 85)` when `draw == 2`; the HUD *Coins · ◆ Gems · Keys* laid out part by part (the stone of the next gem, a green ✓ when all are picked) — without gems the pill is drawn exactly as before, so `turtle.png` stays byte-identical | `user/Apps/turtle/main.cpp` |
+| 9 — concepts, card, lesson | `CONCEPT_KEYS` + the six keys, `NCONCEPTS = 20`; `WordBar::ORDER` + the six keys after `"draw"` (R9); `Card`: a title too wide beside Hint / Lesson falls back to the UI face bold, then is cut with "." (`cut_to ()`, UTF-8 safe), the text wraps to `CARD_LINES = 6` (draw and `need ()`); `Lesson`: *"New idea:"* dropped when it does not fit, a title still too wide in the UI face bold; **note 1**: the box is centred on the **whole right column** (from `PAD` to the message bar), its text laid out by `flow ()` and redrawn in `g_small` (DejaVu Sans 11) + `g_smallMono` (Mono 12) when it would pass the OK button; `@palette` = 16 numbered swatches in one row (≥ 20 px each, digits in the small face under 24 px) or **two rows of 8** in a narrow box | idem |
+| 10 — editor | `edit_gem (L, c, r, drag)` / `edit_pad (L, c, r, pair, lastC, lastR)` **pure, in `world.h`** (lowest free number; a click on a gem cycles 1→9→1; a drag places only; never on the turtle; a pair keeps two pads — the older (not the last placed; unknown: the first in reading order) goes); `TOOL_CH` 12 tools / `ToolPal` 4 rows with the gem / pad icons and the 11-px face for names wider than `cell − 22` (*Portal 1/2*, *Gemme*, *Portail 1/2*, *Drapeau*, *Peinture*); `edit_cell (c, r, drag)`, `Board::onMouse` (a gem drag skips gems; the pads and the turtle are click-only); the panel of 04 §6.1 (Idea first at y 18; *3 and 2 stars* \| *Drawing* row; `Dropdown g_edDrawSel` *No / Shape / Colours* — FR *Non / Forme / Couleurs*, its tooltip — replacing `g_edDraw` in the five places of note 7, Developer A's safety line removed; `g_edLabels[10]` and its guard; `retitle ()`'s arrays in the new order); **Test and Save** run `edit_check ()` = `check_level (g_edLevel, f)` → `level_fault_text (f, g_lang, …)` in red (`M_ERR`) and a red ring on `f.c, f.r` (`g_badC/R`, cleared by the next edit, reset when the editor opens); `setMinSize (920, 600)`. A pack 4/5 level opened in the editor now keeps its concept (20 keys). | `world.h`, `main.cpp` |
+| 10 — tests | `test_editor ()` in `turtletest.cpp`: gem 1 first, a drag places 2 and never cycles, a click 2→3, the gap filled by the lowest free number, the turtle's cell kept, 9→1, all nine placed → nothing; the T pair: lone T refused (fault cell, EN text), its twin → fine, a third T removes the older and keeps the last placed, never more than two, the U pair beside, never on the turtle, no "last" known → the first in reading order goes; the edited level (digits, T, U) and a `draw = 2` level written back and read again equal | `tools/tests/turtle/turtletest.cpp` |
+| 11 — shots | `shots.sh`'s turtle block: `turtle-editor`'s Test click (45, 505) → **(45, 539)** (R3); new: **`turtle-portals`** (grand finale, F8 × 13: gems 1–2 picked, *Gems 2 / 5* with the yellow stone, the ring on gem 3, the turtle out of the twin T pad, the trail ending at pad A), **`turtle-editor-gems`** (Ctrl+E, Gem tool (45, 499), gem 5 clicked → 6, Save (114, 539) refused: *"Gem 5 is missing…"*, gem 6 ringed red), **`turtle-fractal`** (the snowflake run, 3 stars), **`turtle-rainbow`** (rainbow snail in the wrong colours over its tinted target: the two-line colour message), **`turtle-fr-gems`** (French, *Aller et retour* programmed with `GEMME ()`, F8 × 33: *Gemmes 2 / 4*, ring on gem 3, the `GEMME` chip). Fixtures: `tools/tests/desktop_sim/turtle/portals.ini`, `fractals.ini`, `gems-fr.ini` | `tools/tests/desktop_sim/` |
+
+### Commits
+
+- `944e5268` — Turtle Quest: the window and the editor for gems, portals and colour drawings; the new screenshots (steps 9–11)
+
+### Tests and results
+
+| Test | Result |
+|---|---|
+| `sh tools/tests/run_turtle_test.sh` (ASan + UBSan, `-Wall -Wextra`) | **ok turtle (48 levels: solved, written back; the errors)**, incl. the new `test_editor ()` cases; 0 warnings |
+| `sh tools/tests/run_basic_test.sh` | ok (dialect, BASIC in French) |
+| `sh tools/tests/desktop_sim/shots.sh turtle` | the 8 turtle shots made; **`turtle.png`, `turtle-fr.png` byte-identical** to before (AC13); `turtle-editor.png` changed by design (panel order, 4th tool row); two runs give identical PNGs (the simulator's clock is deterministic). The script's unrelated link errors (`print_*`: PrinterKit apps) are as before |
+| `g++ -Wall -Wextra -fsyntax-only main.cpp` | 0 warnings |
+| French (`SHOTS_LANG=fr`, scratch folder) | every turtle shot looked at: tools *Gemme / Portail 1 / Portail 2 / Drapeau / Peinture* in the 11-px face fit, *Non / Forme / Couleurs*, *3 et 2 étoiles* \| *Dessin*, *Gemmes 2 / 5*, the red *« Il manque la gemme 5 … »*, the colour message's two lines, the GEMME chip |
+| Note 1 (scratch, not committed) | the six lesson cards, EN and FR, at **1000 × 640 and 920 × 600** (`SIM_SCREEN=928x746`): all end above OK; at 920 × 600 *gems*, *params*, *recursion* (EN) and *gems*, *teleport*, *color*, *params*, *recursion* (FR) switch to the small faces; the palette in two rows there. Also at 920 × 600: the *Idea* list's 20 rows open downward unclipped (EN, FR); the Drawing list open; the grand finale stepped (stones 25 px, digits legible). The jump's animation checked mid-way (speed 1: the arc, the shrinking / growing turtle, the glow) |
+
+Known, accepted (05 note 10): at 920 × 600 the card's title and its 6th line can be cut (*"1. Gems in a ro."*, the grand finale's FR text) — the existing narrow-window behaviour.
+
+### Left for steps 12–13
+
+- **Step 12, docs**: docs/04 §12 row and §13 (gems, portals with their map letters `1…9`, `T`, `U` and the word *portal / portail*, `GEM ()` / `GEMME ()`, `FRONT ()` 5, `draw = color`, the 5 packs / 48 levels, the editor's panel order, the 12 tools, the drawing chooser, the check with its red ring, the **920 × 600 minimum**, the new screenshots `turtle-portals`, `turtle-editor-gems`, `turtle-fractal`, `turtle-rainbow`, `turtle-fr-gems`); docs/03 *Turtle Quest* (`EV_TELEPORT`, colour comparison, `check_level`, `edit_gem` / `edit_pad` in `world.h`); HANDOFF, IDEAS; `python docs/build_docs.py`. `world.h`'s header comment does not yet mention `edit_gem` / `edit_pad` (main.cpp's does).
+- **Step 13** (SHOULD), untouched. `tools/pkg/packages.ini` unchanged; nothing published; the card build (`make`) stays the user's.
