@@ -365,6 +365,13 @@ frame), Elegant only says who owns the display. The clipboard stays where it is.
      requests to Elegant (about 130 a second; 110 ms of read + compare a round: each read is a round
      trip and a copy through the transfer buffer -- what the capture channel is for), its clicks
      and keys go through `inject_*`.
+   - **Onyx Remote flickered when the pointer moved** (the user, 2026-10-06): `win_read` gave the
+     program's canvas while it was being repainted. Since then a program keeps a copy of its window as
+     last presented, in the canvas' shared memory, made by AppKit's `kapi_present` while a reader is
+     there, and `win_read` gives that one (docs/02 §8, *the window as last presented*; AppKit and
+     Elegant only). `python tools/tests/rdpd/flicker_bench.py <pi-ip> --title <a window's title>`
+     counts the pictures half painted (Onyx Remote closed: `rdpd` has one client) -- 56 of 450 before,
+     0 after, on the Pi. A capture channel must read that copy, not the canvas.
    - **The pointer's shape in Onyx Remote** (asked by the user, 2026-10-05): `kapi_cursor_shown` (a new
      AppKit call: Elegant's `EL_OP_CURSOR_SHOWN`; -1 under the kernel's window manager), `rdpd` looks
      20 times a second and sends message 11 when it changed (an older client skips it), Onyx Remote

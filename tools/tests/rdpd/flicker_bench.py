@@ -51,13 +51,17 @@ class Client:
 		return b
 	def round (self, timeout):
 		"""One round applied -> the ids whose content changed; None: nothing came in `timeout`."""
-		touched = set ()
-		self.s.settimeout (timeout)
-		try: head = self.recv (5)
-		except socket.timeout: return None
-		self.s.settimeout (10)
+		touched = set (); inside = False
 		while True:
+			# (a PING or the pointer's shape comes between rounds: the wait for a round goes on)
+			self.s.settimeout (10 if inside else timeout)
+			try: head = self.recv (5)
+			except socket.timeout:
+				if inside: raise
+				return None
+			self.s.settimeout (10)
 			t, n = struct.unpack ("<BI", head); p = self.recv (n) if n else b""
+			if t in (1, 2, 3, 4, 8): inside = True
 			if t == 1:
 				id, x, y, w, h, ow, oh, il, it, fl, al, st, tn = struct.unpack ("<IhhHHHHHHIBBB", p[:27])
 				self.wins[id] = dict (w = w, h = h, title = p[27:27 + tn].decode ("utf-8", "replace"))
@@ -75,7 +79,6 @@ class Client:
 			elif t == 5:
 				self.s.sendall (b"\x01")
 				return touched
-			head = self.recv (5)
 	def ptr (self, id, x, y):
 		self.s.sendall (struct.pack ("<BIhhBb", 2, id, x, y, 0, 0))
 

@@ -14,6 +14,7 @@
 #include <kern/layout.h>
 #include <circle/util.h>
 #include "core.h"
+#include "appkit/elegant.h"
 
 CWindowManager *g_pElWM = 0;
 CWindow *g_pElWin[EL_WINDOWS_MAX];
@@ -24,9 +25,43 @@ static unsigned s_nOwner = 0;			// (el_core_owner)
 
 // A window's pixels (kern/gui/window.h, WIN_PIXELS_HOOK): a program's are shared with it. The
 // window asks for a spare page to align its start; shared memory is aligned already.
+//
+// A program's canvas is followed, in the same shared memory, by a page of control and a second copy
+// of its pixels: the window as last presented, for who reads it from outside (appkit/elegant.h,
+// EL_OP_SHOT). s_Shot: the canvases that have one (the retired ones too, until freed).
+#define SHOTS_MAX	(EL_WINDOWS_MAX * 2)
+#define SHOT_ALLOC_MAX	0x4000000ULL		// (a shared buffer's largest size: the kernel's USER_WS_SLOT)
+static struct TShot { void *pCanvas; unsigned nBytes; unsigned nReads; unsigned nSince; } s_Shot[SHOTS_MAX];
+
+static TShot *ShotOf (const void *pCanvas)
+{
+	if (pCanvas != 0)
+		for (int i = 0; i < SHOTS_MAX; i++)
+			if (s_Shot[i].pCanvas == pCanvas) return &s_Shot[i];
+	return 0;
+}
+
 void *WinPixelsAlloc (int nPart, unsigned nBytes)
 {
-	if (s_nOwner != 0) return el_shared_alloc (s_nOwner, nPart, nBytes > KPAGE_SIZE ? nBytes - KPAGE_SIZE : nBytes);
+	if (s_nOwner != 0)
+	{
+		unsigned n = nBytes > KPAGE_SIZE ? nBytes - KPAGE_SIZE : nBytes;
+		TShot *pShot = 0;
+		for (int i = 0; i < SHOTS_MAX && pShot == 0; i++)
+			if (s_Shot[i].pCanvas == 0) pShot = &s_Shot[i];
+		if (nPart == 0 && pShot != 0 && (n & KPAGE_MASK) == 0 && 2ULL * n + KPAGE_SIZE <= SHOT_ALLOC_MAX)
+		{
+			void *p = el_shared_alloc (s_nOwner, nPart, 2UL * n + KPAGE_SIZE);
+			if (p != 0)
+			{
+				struct el_shot *pCtl = (struct el_shot *) ((u8 *) p + n);
+				pCtl->want = 0; pCtl->bytes = 0; pCtl->magic = EL_SHOT_MAGIC;
+				pShot->pCanvas = p; pShot->nBytes = n; pShot->nReads = 0; pShot->nSince = 0;
+				return p;
+			}
+		}
+		return el_shared_alloc (s_nOwner, nPart, n);
+	}
 	u8 *p = new u8[nBytes];
 	memset (p, 0, nBytes);
 	return p;
@@ -34,6 +69,8 @@ void *WinPixelsAlloc (int nPart, unsigned nBytes)
 
 void WinPixelsFree (void *pRaw)
 {
+	TShot *pShot = ShotOf (pRaw);
+	if (pShot != 0) memset (pShot, 0, sizeof *pShot);
 	if (el_shared_is (pRaw)) el_shared_free (pRaw);
 	else delete [] (u8 *) pRaw;
 }
@@ -41,6 +78,56 @@ void WinPixelsFree (void *pRaw)
 void el_core_owner (unsigned pid)
 {
 	s_nOwner = pid;
+}
+
+int el_core_shot_info (const void *pCanvas, unsigned *pnCtlOff, unsigned *pnCopyOff, unsigned *pnCap)
+{
+	TShot *pShot = ShotOf (pCanvas);
+	if (pShot == 0) return 0;
+	*pnCtlOff = pShot->nBytes; *pnCopyOff = pShot->nBytes + KPAGE_SIZE; *pnCap = pShot->nBytes;
+	return 1;
+}
+
+// A reader wants `nBytes` of this canvas (its rows shown): the program is asked to keep its copy from
+// its next present on -> the copy when it is whole and of a present made since it was asked, with
+// *pnSeq to check after it was read (el_core_shot_same); 0: none yet, the canvas itself is read.
+const void *el_core_shot_read (const void *pCanvas, unsigned nBytes, unsigned *pnSeq)
+{
+	TShot *pShot = ShotOf (pCanvas);
+	if (pShot == 0 || nBytes == 0 || nBytes > pShot->nBytes) return 0;
+	struct el_shot *pCtl = (struct el_shot *) ((u8 *) pCanvas + pShot->nBytes);
+	pShot->nReads++;
+	if (!pCtl->want || pCtl->bytes != nBytes)
+	{
+		pCtl->bytes = nBytes;
+		pShot->nSince = __atomic_load_n (&pCtl->seq, __ATOMIC_SEQ_CST);
+		__atomic_store_n (&pCtl->want, 1u, __ATOMIC_SEQ_CST);
+		return 0;
+	}
+	unsigned nSeq = __atomic_load_n (&pCtl->seq, __ATOMIC_SEQ_CST);
+	if ((nSeq & 1) != 0 || nSeq - pShot->nSince < 2 + (pShot->nSince & 1)) return 0;
+	*pnSeq = nSeq;
+	return (const u8 *) pCanvas + pShot->nBytes + KPAGE_SIZE;
+}
+
+int el_core_shot_same (const void *pCanvas, unsigned nSeq)
+{
+	TShot *pShot = ShotOf (pCanvas);
+	if (pShot == 0) return 0;
+	struct el_shot *pCtl = (struct el_shot *) ((u8 *) pCanvas + pShot->nBytes);
+	return __atomic_load_n (&pCtl->seq, __ATOMIC_SEQ_CST) == nSeq;
+}
+
+// Every few seconds: the copies nobody read since the last time are no longer asked of their programs.
+void el_core_shot_tick (void)
+{
+	for (int i = 0; i < SHOTS_MAX; i++)
+	{
+		if (s_Shot[i].pCanvas == 0) continue;
+		if (s_Shot[i].nReads == 0)
+			__atomic_store_n (&((struct el_shot *) ((u8 *) s_Shot[i].pCanvas + s_Shot[i].nBytes))->want, 0u, __ATOMIC_SEQ_CST);
+		s_Shot[i].nReads = 0;
+	}
 }
 
 // (peek, then drop: the kernel's queue of the program may be full -- the event then waits here)

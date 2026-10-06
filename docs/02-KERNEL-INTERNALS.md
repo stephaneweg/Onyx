@@ -1278,6 +1278,18 @@ windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant
   - two more slots for a program's shared memory: its copy of the wallpaper (`KAPI_WS_SLOT_WALLPAPER`, at
     `USER_WALLPAPER_CANVAS`) and a transfer buffer (`KAPI_WS_SLOT_XFER`, 13 GB + 256 MB: the pixels of
     `kapi_win_read`);
+  - **the window as last presented** (2026-10-06, no kernel change): a program paints in its canvas, the
+    memory Elegant reads, so a reader that came between a repaint's first stroke and its present got a
+    picture half made -- Onyx Remote flickered when the pointer moved over a window (`rdpd` reads a
+    window for about 100 ms a round; measured with `tools/tests/rdpd/flicker_bench.py`: 56 of 450
+    pictures of the Control Panel half painted in 25 s, 0 since). The canvas' shared buffer is now
+    *canvas, one 64 KB page of control, a second copy of the pixels* (`WinPixelsAlloc`, `core.cpp`; a
+    canvas that would not fit twice in a slot's 64 MB has none). AppKit asks where they are after the
+    window is made or grown (`EL_OP_SHOT`, `appkit/elegant.h`); while Elegant wants it (`el_shot.want`: a
+    `win_read` of that window in the last 5 s), AppKit's `kapi_present` copies the rows shown into the
+    second copy before its `KAPI_WS_KICK`, raising `el_shot.seq` before and after (odd: being made).
+    `win_read` (part 0) gives that copy once a present has filled it since it was asked, and reads it
+    again if a present came meanwhile; before that, the canvas itself as it always did;
   - *who has the keyboard* (`KAPI_WS_FOCUS`: the server says; `key_held` and a pad's `focus` answer by it --
     the kernel's window manager keeps the keys' state and the modifiers, fed as before) and *a process's
     name* (`KAPI_WS_PROC_NAME`: the lists of the open programs);

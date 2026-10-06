@@ -49,6 +49,13 @@ void *el_shared_alloc (unsigned pid, int part, unsigned long bytes);
 void el_shared_free (void *p);
 int el_shared_is (const void *p);
 
+// A canvas' copy as last presented (appkit/elegant.h, EL_OP_SHOT; core.cpp): where it is from the
+// canvas -> 1, 0 it has none; a reader's access to it; the tick that stops the copies nobody reads.
+int el_core_shot_info (const void *pCanvas, unsigned *pnCtlOff, unsigned *pnCopyOff, unsigned *pnCap);
+const void *el_core_shot_read (const void *pCanvas, unsigned nBytes, unsigned *pnSeq);
+int el_core_shot_same (const void *pCanvas, unsigned nSeq);
+void el_core_shot_tick (void);
+
 int el_core_window_of (unsigned pid);		// a program's window, -1: none
 unsigned el_core_window_pid (int id);		// a window's program (0: no such window)
 struct el_core_frame				// (the protocol's struct el_frame, appkit/elegant.h)

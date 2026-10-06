@@ -194,6 +194,7 @@ static void stats (void)
 	unsigned now = kapi_get_ticks ();
 	if (now - s_nStatAt < 500) return;
 	s_nStatAt = now;
+	el_core_shot_tick ();
 	if (s_nIn + s_nReq + s_nPosted + s_nFrames == 0) return;
 	char line[96], *p = line;
 	put_num (p, "elegant 5s: input ", s_nIn); put_num (p, ", requests ", s_nReq);
