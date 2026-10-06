@@ -25,6 +25,15 @@ be aware of. For the details of how things work internally, see
 
 ## 1. Prerequisites and toolchain
 
+> **In one command** (Linux x86_64 or WSL 2 with Ubuntu, from a fresh clone):
+> `sudo apt install -y git build-essential python3 curl xz-utils`, then **`sh tools/build-sdcard.sh`**
+> [`--card <dir>`] [`--clean`]. The script checks the host tools, finds the `aarch64-none-elf`
+> toolchain (on the `PATH`, in `/opt/toolchains`, or in `~/.cache/onyx`; else it downloads Arm's
+> 14.2.rel1 there, no sudo), fetches and builds Circle (§2, once), builds the kernel and the
+> programs (§3), stages them into `sdcard/` (§4), and with `--card` copies the card to a mounted
+> FAT32 SD card. Jet Browser is not rebuilt (WebKit: docs/08); the card keeps the prebuilt one.
+> The sections below are the same steps by hand.
+
 - **AArch64 bare-metal toolchain**: `aarch64-none-elf-` (GCC), used under **WSL** on
   a Windows development machine.
 - *(Only for POSIX / C++ ports)* **the Onyx toolchain `aarch64-onyx-elf-`** (below).

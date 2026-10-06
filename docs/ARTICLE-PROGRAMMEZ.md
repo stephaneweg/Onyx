@@ -281,6 +281,17 @@ https://claude.ai/code/artifact/99dc6049-2fea-4726-9aee-99ec4a1a705f
   bureau, planche des maquettes rétro → CDE modernisé, liste des branches GitHub) ; le zip de code source
   si on cite du code.
 
+## Ajouts du 2026-10-06 (après la v0)
+
+- **Capture d'écran** fournie par l'utilisateur, **à la place de sa photo** : Jet affichant programmez.com sur
+  le Pi (le bureau d'Onyx, le dock). Légende : « Jet, le navigateur d'Onyx basé sur WebKit, affiche le site de
+  Programmez! sur un Raspberry Pi 4. » À envoyer au magazine en PNG séparé. (Les specs demandent aussi une
+  photo de l'auteur : à confirmer avec le magazine.)
+- **Section finale « Pour essayer Onyx »** : le dépôt public, la carte prête (`sdcard/` à copier sur une carte
+  FAT32), et la compilation sous Linux ou WSL 2 avec **`tools/build-sdcard.sh`** (écrit pour l'article :
+  outils hôtes, toolchain Arm 14.2.rel1 téléchargée sans sudo, Circle, `make`, `make stage`, `--card`).
+- Les exports DOCX envoyés : v0, v1 (avant capture et section finale).
+
 ## Ébauche de texte (v0, à reprendre)
 
 **La genèse.** Tout est parti d'un loisir : la construction d'une petite borne d'arcade, animée par un
