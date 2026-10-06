@@ -36,6 +36,6 @@ fi
 if [ "$1" != "--update" ]; then
 	g++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I"$ROOT/user" -I"$ROOT/user/Libs" \
 	    "$ROOT/user/Libs/basic/basnum.cpp" "$ROOT/user/Libs/basic/bascomp.cpp" "$ROOT/user/Libs/basic/basvm.cpp" "$ROOT/user/Libs/basic/basbax.cpp" \
-	    "$HERE/basic/dialect_test.cpp" -o "$BIN.dialect" && "$BIN.dialect" || fail=1
+	    "$HERE/basic/dialect_test.cpp" -o "$BIN.dialect" && "$BIN.dialect" "$ROOT"/sdcard/basic/examples/fr/*.bas || fail=1
 fi
 exit $fail

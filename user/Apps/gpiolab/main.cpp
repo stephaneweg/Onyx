@@ -17,6 +17,10 @@
 // than kapi 92), or when chosen (Board > Use the Simulator): nothing then touches the real pins.
 // Arguments: --sim (the simulator), --demo (a set-up to look at: an LED blinking on GPIO 17, a servo on
 // GPIO 18, a button on GPIO 27, the bus scanned), --tab chart | i2c | edges.
+// The words are in the system's language (uikit/lang.h: English here, SD:/apps/gpiolab.app/lang/fr.txt). The
+// Code view's BASIC takes the French words beside the English ones whatever the language (bas::frenchDialect:
+// MODEBROCHE, BROCHE, SI ... ALORS); in French its errors, the first sketch and the examples
+// (SD:/basic/examples/fr) are the French ones.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -55,11 +59,12 @@ static gk_event g_log[NLOG]; static int g_nlog = 0, g_log0 = 0;
 static unsigned g_edgeCount[GK_PINS];
 static unsigned long long g_t0;			// the edges' times: from the app's start
 static unsigned char g_map[16]; static int g_found = -1;	// the I2C scan (-1: not done)
-static char g_bme[96], g_i2cMsg[96];
+static char g_bme[96], g_i2cMsg[160];
 static int  g_freqIx[GK_PINS], g_duty[GK_PINS];	// a PWM pin's choices (the frequency's entry, duty 0..1000: tenths of %)
 static bool g_demo, g_btnSim;
 static int  g_tab = 0;
-static char g_status[128];
+static char g_status[256];
+static bool g_fr;				// the language is French (uk_lang): BASIC's messages, the first sketch, the examples
 
 static const char *const FREQS[] = { "50 Hz (servo)", "100 Hz", "500 Hz", "1 kHz", "10 kHz", "25 kHz" };
 static const int FREQ_HZ[] = { 50, 100, 500, 1000, 10000, 25000 };
@@ -118,7 +123,32 @@ static void apply_view (void);
 static void refresh_pins (void);
 static void log_events (const gk_event *ev, int n);
 static void set_status (const char *s) { snprintf (g_status, sizeof g_status, "%s", s); }
-static void fail (int r, const char *what) { char t[128]; snprintf (t, sizeof t, "%s: %s", what, gk_error (r)); set_status (t); }
+static void fail (int r, const char *what) { char t[240]; snprintf (t, sizeof t, TR ("%s: %s"), what, TR (gk_error (r))); set_status (t); }
+// GPIOKit's own words, shown through uk_tr: its errors (gk_error),
+// TR: the system uses this pin, or it is not this program's
+// TR: no answer on the bus
+// TR: out of memory
+// TR: a bad buffer
+// TR: another program has it
+// TR: no GPIO on this system (update it, or use the simulator)
+// TR: not possible on this pin, or a value out of range
+// TR: failed
+// a mode's name (gk_mode_name; "tag|": shorter, in the header's tags),
+// TR: free
+// TR: input
+// TR: pull-up
+// TR: pull-down
+// TR: output
+// TR: tag|pull-up
+// TR: tag|pull-down
+// why a pin is the system's (gk_pin_info.reason) and what answers at an I2C address (gk_i2c_guess)
+// TR: serial console
+// TR: HAT ID EEPROM
+// TR: MCP23017 / PCF8574 port expander
+// TR: SSD1306 / SH1106 OLED display
+// TR: DS3231 / DS1307 clock, MPU-6050
+// TR: MPU-6050 (AD0 high)
+// TR: BME280 / BMP280 sensor
 
 static bool watched (int pin) { for (int i = 0; i < NWATCH; i++) if (g_watch[i] == pin) return true; return false; }
 static bool is_input (int m) { return m == GK_IN || m == GK_IN_PULLUP || m == GK_IN_PULLDOWN; }
@@ -138,8 +168,8 @@ public:
 	{
 		unsigned bg = bgColor ();
 		canvas.clear (bg);
-		uk_text_l (canvas, 4, 4, 20, "40-PIN HEADER", uk_mix (bg, C_TEXT, 150), 2);
-		uk_text_l (canvas, 4, 20, 18, gk_available () == 2 ? "simulated: click a dot to switch it" : "click an output's dot to switch it",
+		uk_text_l (canvas, 4, 4, 20, TR ("40-PIN HEADER"), uk_mix (bg, C_TEXT, 150), 2);
+		uk_text_l (canvas, 4, 20, 18, gk_available () == 2 ? TR ("simulated: click a dot to switch it") : TR ("click an output's dot to switch it"),
 			   gk_available () == 2 ? 0x7A5CC8 : uk_mix (bg, C_TEXT, 120));
 		// the board
 		int bx = PINX0 - 24, by = HTOP, bw = PINX1 - PINX0 + 48, bh = 20 * ROWH + 8;
@@ -183,15 +213,16 @@ public:
 		// the key
 		int ky = HTOP + 20 * ROWH + 18;
 		static const struct { const char *n; unsigned c; } KEY[] = {
-			{ "input", 0x5AA9FF }, { "output", 0xFFD94A }, { "PWM", 0xB57BFF }, { "I2C", 0x3CC8B4 },
-			{ "SPI", 0xFF7BB0 }, { "free", 0xC9D6CD }, { "system", 0x6A6F6C } };
+			{ TRN ("input"), 0x5AA9FF }, { TRN ("output"), 0xFFD94A }, { "PWM", 0xB57BFF }, { "I2C", 0x3CC8B4 },
+			{ "SPI", 0xFF7BB0 }, { TRN ("free"), 0xC9D6CD }, { TRN ("system"), 0x6A6F6C } };
 		int kx = 4;
 		for (unsigned i = 0; i < sizeof KEY / sizeof KEY[0]; i++)
 		{
-			int w = uk_text_w (KEY[i].n) + 22;
+			const char *kn = TR (KEY[i].n);
+			int w = uk_text_w (kn) + 22;
 			if (kx + w > width) { kx = 4; ky += 20; }
 			VPath p; p.circle (V (kx + 6), V (ky + 9), V (5)); p.fill (canvas, KEY[i].c);
-			uk_text_l (canvas, kx + 15, ky, 18, KEY[i].n, uk_mix (bg, C_TEXT, 150));
+			uk_text_l (canvas, kx + 15, ky, 18, kn, uk_mix (bg, C_TEXT, 150));
 			kx += w;
 		}
 	}
@@ -199,7 +230,7 @@ public:
 	void side (int g, int x, int y, bool leftward, bool reserved)
 	{
 		unsigned bg = bgColor ();
-		const char *f = reserved ? (g == 14 || g == 15 ? "console" : "EEPROM") : g_pin[g].mode != GK_FREE ? gk_mode_name (g_pin[g].mode) : gk_gpio_function (g);
+		const char *f = reserved ? (g == 14 || g == 15 ? TR ("console") : "EEPROM") : g_pin[g].mode != GK_FREE ? TRC ("tag", gk_mode_name (g_pin[g].mode)) : gk_gpio_function (g);
 		if (!f || !*f) return;
 		int w = uk_text_w (f) + 10;
 		int tx = leftward ? x - w : x;
@@ -233,8 +264,8 @@ public:
 				{
 					g_blink[g] = false;
 					int r = gk_toggle (g);
-					if (r < 0) fail (r, "Output");
-					else { char t[80]; snprintf (t, sizeof t, "GPIO %d set %s by a click.", g, r ? "high" : "low"); set_status (t); }
+					if (r < 0) fail (r, TR ("Output"));
+					else { char t[160]; snprintf (t, sizeof t, r ? TR ("GPIO %d set high by a click.") : TR ("GPIO %d set low by a click."), g); set_status (t); }
 					refresh_pins ();
 				}
 				else if (onDot && gk_available () == 2 && is_input (g_pin[g].mode))
@@ -243,7 +274,7 @@ public:
 					refresh_pins ();
 				}
 				else if (onDot && g_pin[g].mode == GK_FREE && !(g_pin[g].flags & GK_F_RESERVED))
-					set_status ("A free pin: make it an Output (the Pins view, or PINMODE in a program), then click its dot to switch it.");
+					set_status (TR ("A free pin: make it an Output (the Pins view, or PINMODE in a program), then click its dot to switch it."));
 				g_sel = g; sync_controls ();
 			}
 			setFocus ();
@@ -275,36 +306,38 @@ public:
 		uk_rbox (canvas, 0, 0, width, height, 8, bg, bg);
 		uk_rline (canvas, 0, 0, width, height, 8, uk_tone (C_BG, 80), 200);
 		const gk_pin_info &p = g_pin[g_sel];
-		char t[96];
+		char t[240];
 		snprintf (t, sizeof t, "GPIO %d", g_sel);
 		uk_text_l (canvas, 14, 10, 26, t, C_TEXT, 2);
 		int x = 14 + uk_text_w (t, 2) + 12;
 		const char *f = gk_gpio_function (g_sel);
-		snprintf (t, sizeof t, "header pin %d%s%s", gk_header_pin (g_sel), *f ? "  -  " : "", f);
+		if (*f) snprintf (t, sizeof t, TR ("header pin %d  -  %s"), gk_header_pin (g_sel), f);
+		else snprintf (t, sizeof t, TR ("header pin %d"), gk_header_pin (g_sel));
 		uk_text_l (canvas, x, 14, 20, t, uk_mix (bg, C_TEXT, 150));
 		// its level, as a lamp
 		int lv = p.level;
 		unsigned lc = lv ? 0x5BD46A : 0x50585A;
 		VPath l; l.circle (V (width - 30), V (23), V (9)); l.fill (canvas, lc);
-		uk_text_l (canvas, width - 92, 13, 20, lv ? "HIGH" : "LOW", lv ? C_TEXT : C_DIS, 2);
+		const char *ls = lv ? TR ("HIGH") : TR ("LOW");
+		uk_text_l (canvas, width - 46 - uk_text_w (ls, 2), 13, 20, ls, lv ? C_TEXT : C_DIS, 2);	// (its end against the lamp)
 		if (p.flags & GK_F_RESERVED)
 		{
-			snprintf (t, sizeof t, "Used by the system (%s): GPIO Lab cannot take it.", p.reason);
+			snprintf (t, sizeof t, TR ("Used by the system (%s): GPIO Lab cannot take it."), TR (p.reason));
 			uk_text_l (canvas, 14, 52, 20, t, C_DIS);
 			return;
 		}
 		if (p.owner != 0 && !mine (g_sel))
 		{
-			snprintf (t, sizeof t, "Another program (pid %u) has this pin.", p.owner);
+			snprintf (t, sizeof t, TR ("Another program (pid %u) has this pin."), p.owner);
 			uk_text_l (canvas, 14, 52, 20, t, C_DIS);
 			return;
 		}
-		uk_text_l (canvas, 14, 46, 18, "MODE", uk_mix (bg, C_TEXT, 140), 2);
+		uk_text_l (canvas, 14, 46, 18, TR ("MODE"), uk_mix (bg, C_TEXT, 140), 2);
 		if (p.mode == GK_I2C || p.mode == GK_SPI)
-			uk_text_l (canvas, 14, 120, 20, p.mode == GK_I2C ? "A pin of the I2C bus (the I2C tab: Close Bus gives it back)." : "A pin of SPI 0.", C_TEXT);
+			uk_text_l (canvas, 14, 120, 20, p.mode == GK_I2C ? TR ("A pin of the I2C bus (the I2C tab: Close Bus gives it back).") : TR ("A pin of SPI 0."), C_TEXT);
 		if (p.mode == GK_PWM)
 		{
-			snprintf (t, sizeof t, "%u Hz, %u.%02u %% high: a pulse of %u us every %u us", p.pwm_freq, p.pwm_duty / 100, p.pwm_duty % 100,
+			snprintf (t, sizeof t, TR ("%u Hz, %u.%02u %% high: a pulse of %u us every %u us"), p.pwm_freq, p.pwm_duty / 100, p.pwm_duty % 100,
 				  (unsigned) ((unsigned long long) p.pwm_duty * 100 / (p.pwm_freq ? p.pwm_freq : 1)), 1000000u / (p.pwm_freq ? p.pwm_freq : 1));
 			uk_text_l (canvas, 14, height - 30, 18, t, uk_mix (bg, C_TEXT, 150));
 		}
@@ -333,7 +366,7 @@ public:
 			uk_text_l (canvas, x - uk_text_w (t) / 2, height - 20, 16, t, dim);
 		}
 		int n = 0; for (int i = 0; i < NWATCH; i++) if (g_watch[i] >= 0) n++;
-		if (n == 0) { uk_text_c (canvas, 0, 0, width, height, "No pin chosen: tick \"Show in the timing chart\" on a pin.", dim); return; }
+		if (n == 0) { uk_text_c (canvas, 0, 0, width, height, TR ("No pin chosen: tick \"Show in the timing chart\" on a pin."), dim); return; }
 		int rowh = (height - 30) / n; if (rowh > 50) rowh = 50;
 		int y = 8;
 		for (int i = 0; i < NWATCH; i++)
@@ -343,7 +376,7 @@ public:
 			const gk_pin_info &p = g_pin[g];
 			char t[24]; snprintf (t, sizeof t, "GPIO%d", g);
 			uk_text_l (canvas, 10, y + rowh / 2 - 15, 18, t, C_FIELD_TEXT, 2);
-			uk_text_l (canvas, 10, y + rowh / 2 + 1, 16, p.flags & GK_F_RESERVED ? "system" : gk_mode_name (p.mode), dim);
+			uk_text_l (canvas, 10, y + rowh / 2 + 1, 16, p.flags & GK_F_RESERVED ? TR ("system") : TR (gk_mode_name (p.mode)), dim);
 			unsigned col = mode_col (p.mode == GK_FREE ? GK_IN : p.mode, 1);
 			int hi = y + 6, lo = y + rowh - 8;
 			canvas.fillRect (lx, y + rowh - 1, cw, 1, grid);
@@ -357,7 +390,7 @@ public:
 					if (w > 0) canvas.fillRect (x, hi, w, 2, col);
 					canvas.fillRect (x + w, lo - 1, 6 - w, 2, col);
 				}
-				char f[48]; snprintf (f, sizeof f, "%u Hz  %u.%u %%", p.pwm_freq, p.pwm_duty / 100, (p.pwm_duty % 100) / 10);
+				char f[48]; snprintf (f, sizeof f, TR ("%u Hz  %u.%u %%"), p.pwm_freq, p.pwm_duty / 100, (p.pwm_duty % 100) / 10);
 				int fw = uk_text_w (f, 2) + 12;
 				uk_rbox (canvas, lx + cw - fw - 4, y + rowh / 2 - 10, fw, 20, 6, C_FIELD, C_FIELD);
 				uk_text_c (canvas, lx + cw - fw - 4, y + rowh / 2 - 10, fw, 20, f, C_FIELD_TEXT, 2);
@@ -382,7 +415,7 @@ public:
 			}
 			y += rowh;
 		}
-		if (g_paused) uk_text_l (canvas, width - 80, 4, 18, "PAUSED", C_ACCENT, 2);
+		if (g_paused) { const char *ps = TR ("PAUSED"); uk_text_l (canvas, width - 14 - uk_text_w (ps, 2), 4, 18, ps, C_ACCENT, 2); }
 	}
 };
 
@@ -458,7 +491,7 @@ static void oled_test (int a)
 	static const unsigned char INIT[] = { 0x00, 0xAE, 0xD5, 0x80, 0xA8, 0x3F, 0xD3, 0x00, 0x40, 0x8D, 0x14, 0x20, 0x00,
 					       0xA1, 0xC8, 0xDA, 0x12, 0x81, 0xCF, 0xD9, 0xF1, 0xDB, 0x40, 0xA4, 0xA6, 0xAF,
 					       0x21, 0, 127, 0x22, 0, 7 };
-	if (gk_i2c_write (a, INIT, sizeof INIT) < 0) { snprintf (g_i2cMsg, sizeof g_i2cMsg, "The display at 0x%02X did not answer.", a); return; }
+	if (gk_i2c_write (a, INIT, sizeof INIT) < 0) { snprintf (g_i2cMsg, sizeof g_i2cMsg, TR ("The display at 0x%02X did not answer."), a); return; }
 	static unsigned char buf[1 + 1024];
 	buf[0] = 0x40;
 	unsigned char *fb = buf + 1;
@@ -469,7 +502,7 @@ static void oled_test (int a)
 	oled_text (fb + 4 * 128, "GPIO LAB", 16);
 	for (int x = 8; x < 120; x += 4) fb[6 * 128 + x] |= 0x18;
 	gk_i2c_write (a, buf, sizeof buf);
-	snprintf (g_i2cMsg, sizeof g_i2cMsg, "A test picture was sent to the display at 0x%02X.", a);
+	snprintf (g_i2cMsg, sizeof g_i2cMsg, TR ("A test picture was sent to the display at 0x%02X."), a);
 }
 
 class I2CView : public Widget
@@ -496,21 +529,21 @@ public:
 			}
 		}
 		int ty = gy + 8 * cs + 10, rx = gx + 16 * cs + 18;
-		if (g_found < 0) uk_text_l (canvas, 0, ty, 20, "Not scanned yet: Scan opens the bus (GPIO 2 SDA, GPIO 3 SCL).", dim);
+		if (g_found < 0) uk_text_l (canvas, 0, ty, 20, TR ("Not scanned yet: Scan opens the bus (GPIO 2 SDA, GPIO 3 SCL)."), dim);
 		else
 		{
-			char t[96]; snprintf (t, sizeof t, g_found == 1 ? "1 device answered." : "%d devices answered.", g_found);
+			char t[96]; snprintf (t, sizeof t, g_found == 1 ? TR ("1 device answered.") : TR ("%d devices answered."), g_found);
 			uk_text_l (canvas, 0, ty, 20, t, C_TEXT, 2);
 		}
 		if (g_i2cMsg[0]) uk_text_l (canvas, 0, ty + 22, 20, g_i2cMsg, dim);
 		// what was found, what it is
 		int y = 2;
-		uk_text_l (canvas, rx, y, 18, "FOUND", dim, 2); y += 22;
+		uk_text_l (canvas, rx, y, 18, TR ("FOUND"), dim, 2); y += 22;
 		for (int a = 0; a < 128 && g_found > 0; a++)
 		{
 			if (!(g_map[a / 8] >> (a % 8) & 1)) continue;
-			char t[96]; const char *gs = gk_i2c_guess (a);
-			snprintf (t, sizeof t, "0x%02X  %s", a, *gs ? gs : "unknown device");
+			char t[128]; const char *gs = gk_i2c_guess (a);
+			snprintf (t, sizeof t, "0x%02X  %s", a, *gs ? TR (gs) : TR ("unknown device"));
 			uk_text_l (canvas, rx, y, 20, t, C_TEXT); y += 22;
 			if ((a == 0x76 || a == 0x77) && g_bme[0]) { uk_text_l (canvas, rx + 46, y, 20, g_bme, C_ACCENT, 2); y += 24; }
 		}
@@ -519,7 +552,7 @@ public:
 		if (gk_available () == 2 && g_found > 0 && (g_map[0x3C / 8] >> (0x3C % 8) & 1) && gk_sim_display (oled))
 		{
 			int ox = rx, oy = y + 6, s = 2;
-			uk_text_l (canvas, ox, oy, 18, "THE DISPLAY AT 0x3C (SIMULATED)", dim, 2); oy += 22;
+			uk_text_l (canvas, ox, oy, 18, TR ("THE DISPLAY AT 0x3C (SIMULATED)"), dim, 2); oy += 22;
 			uk_rbox (canvas, ox - 6, oy - 6, 128 * s + 12, 64 * s + 12, 6, 0x0A0A0C, 0x0A0A0C);
 			for (int py = 0; py < 64; py++)
 				for (int px = 0; px < 128; px++)
@@ -538,11 +571,11 @@ public:
 		unsigned bg = bgColor (), dim = uk_mix (C_FIELD, C_FIELD_TEXT, 130);
 		canvas.clear (bg);
 		uk_sunken (canvas, 0, 0, width, height, 6, C_FIELD);
-		uk_text_l (canvas, 12, 6, 18, "TIME (S)", dim, 2);
-		uk_text_l (canvas, 110, 6, 18, "PIN", dim, 2);
-		uk_text_l (canvas, 190, 6, 18, "EDGE", dim, 2);
+		uk_text_l (canvas, 12, 6, 18, TR ("TIME (S)"), dim, 2);
+		uk_text_l (canvas, 110, 6, 18, TR ("PIN"), dim, 2);
+		uk_text_l (canvas, 190, 6, 18, TR ("EDGE"), dim, 2);
 		int rows = (height - 34) / 20;
-		if (g_nlog == 0) uk_text_c (canvas, 0, 0, width, height, "No edge yet: tick \"Log its edges\" on an input.", dim);
+		if (g_nlog == 0) uk_text_c (canvas, 0, 0, width, height, TR ("No edge yet: tick \"Log its edges\" on an input."), dim);
 		for (int i = 0; i < rows && i < g_nlog; i++)
 		{
 			const gk_event &e = g_log[(g_log0 + g_nlog - 1 - i) % NLOG];	// (the newest first)
@@ -550,12 +583,13 @@ public:
 			char t[48]; int y = 28 + i * 20;
 			snprintf (t, sizeof t, "%llu.%06llu", us / 1000000, us % 1000000); uk_text_l (canvas, 12, y, 20, t, C_FIELD_TEXT);
 			snprintf (t, sizeof t, "GPIO%d", e.pin); uk_text_l (canvas, 110, y, 20, t, C_FIELD_TEXT, 2);
-			uk_text_l (canvas, 190, y, 20, e.edge == GK_RISING ? "rising  (to high)" : "falling (to low)", e.edge == GK_RISING ? 0x3B9A4A : 0xC05A2A);
-			if (e.lost) uk_text_l (canvas, 340, y, 20, "(edges lost before)", dim);
+			const char *es = e.edge == GK_RISING ? TR ("rising  (to high)") : TR ("falling (to low)");
+			uk_text_l (canvas, 190, y, 20, es, e.edge == GK_RISING ? 0x3B9A4A : 0xC05A2A);
+			if (e.lost) { int lx = 190 + uk_text_w (es) + 14; uk_text_l (canvas, lx < 340 ? 340 : lx, y, 20, TR ("(edges lost before)"), dim); }
 		}
 		// the counts
 		int x = width - 170, y = 28;
-		uk_text_l (canvas, x, 6, 18, "COUNTED", dim, 2);
+		uk_text_l (canvas, x, 6, 18, TR ("COUNTED"), dim, 2);
 		for (int p = 0; p < GK_PINS; p++)
 		{
 			if (!g_edgeCount[p]) continue;
@@ -584,8 +618,9 @@ static void apply_pwm (int g)
 {
 	int r = gk_pwm (g, FREQ_HZ[g_freqIx[g]], g_duty[g] * 10);
 	if (r < 0) fail (r, "PWM");
-	else { char t[96]; snprintf (t, sizeof t, "GPIO %d: PWM at %d Hz, %d.%d %% high.", g, FREQ_HZ[g_freqIx[g]], g_duty[g] / 10, g_duty[g] % 10); set_status (t); }
+	else { char t[160]; snprintf (t, sizeof t, TR ("GPIO %d: PWM at %d Hz, %d.%d %% high."), g, FREQ_HZ[g_freqIx[g]], g_duty[g] / 10, g_duty[g] % 10); set_status (t); }
 }
+static void show_duty (void) { char t[64]; snprintf (t, sizeof t, TR ("Duty  %d.%d %%"), g_duty[g_sel] / 10, g_duty[g_sel] % 10); g_lbDuty->setText (t); }
 static void on_mode (Widget &)
 {
 	static const int MODES[] = { GK_FREE, GK_IN, GK_IN_PULLUP, GK_IN_PULLDOWN, GK_OUT, GK_PWM };
@@ -594,14 +629,20 @@ static void on_mode (Widget &)
 	g_blink[g_sel] = false;
 	if (m == GK_PWM)
 	{
-		if (!(g_pin[g_sel].flags & GK_F_PWM)) { set_status ("PWM is on GPIO 12, 13, 18 and 19 only."); refresh_pins (); sync_controls (); return; }
+		if (!(g_pin[g_sel].flags & GK_F_PWM)) { set_status (TR ("PWM is on GPIO 12, 13, 18 and 19 only.")); refresh_pins (); sync_controls (); return; }
 		apply_pwm (g_sel);
 	}
 	else
 	{
 		r = gk_mode (g_sel, m);
-		if (r < 0) fail (r, "Mode");
-		else { char t[64]; snprintf (t, sizeof t, "GPIO %d: %s.", g_sel, m == GK_FREE ? "given back" : gk_mode_name (m)); set_status (t); }
+		if (r < 0) fail (r, TR ("Mode"));
+		else
+		{
+			char t[96];
+			if (m == GK_FREE) snprintf (t, sizeof t, TR ("GPIO %d: given back."), g_sel);
+			else snprintf (t, sizeof t, TR ("GPIO %d: %s."), g_sel, TR (gk_mode_name (m)));
+			set_status (t);
+		}
 	}
 	refresh_pins (); sync_controls (); redraw_all ();
 }
@@ -610,7 +651,7 @@ static void toggle_level (void)
 	if (g_pin[g_sel].mode != GK_OUT) return;
 	g_blink[g_sel] = false;
 	int r = gk_toggle (g_sel);
-	if (r < 0) fail (r, "Output");
+	if (r < 0) fail (r, TR ("Output"));
 	refresh_pins (); sync_controls (); redraw_all ();
 }
 static void on_level (Widget &) { toggle_level (); }
@@ -618,7 +659,7 @@ static void on_blink (Widget &) { g_blink[g_sel] = g_cbBlink->checked; }
 static void on_edges (Widget &)
 {
 	int r = gk_edges (g_sel, g_cbEdges->checked ? GK_BOTH : 0);
-	if (r < 0) { fail (r, "Edges"); g_cbEdges->checked = false; g_cbEdges->invalidate (true); }
+	if (r < 0) { fail (r, TR ("Edges")); g_cbEdges->checked = false; g_cbEdges->invalidate (true); }
 	refresh_pins ();
 }
 static void on_watch (Widget &)
@@ -636,7 +677,7 @@ static void on_freq (Widget &) { g_freqIx[g_sel] = g_ddFreq->sel; if (g_pin[g_se
 static void on_duty (Widget &)
 {
 	g_duty[g_sel] = g_slDuty->value;
-	char t[32]; snprintf (t, sizeof t, "Duty  %d.%d %%", g_duty[g_sel] / 10, g_duty[g_sel] % 10); g_lbDuty->setText (t);
+	show_duty ();
 	if (g_pin[g_sel].mode == GK_PWM) apply_pwm (g_sel);
 	refresh_pins (); redraw_all ();
 }
@@ -646,7 +687,7 @@ static void on_drive (Widget &)
 	gk_sim_input (g_sel, d == 0 ? -1 : d == 1 ? 0 : 1);
 	refresh_pins (); redraw_all ();
 }
-static void on_pause (Widget &) { g_paused = !g_paused; strcpy (g_btPause->text, g_paused ? "Run" : "Pause"); g_btPause->invalidate (true); g_chart->invalidate (true); }
+static void on_pause (Widget &) { g_paused = !g_paused; snprintf (g_btPause->text, sizeof g_btPause->text, "%s", g_paused ? TRC ("chart", "Run") : TR ("Pause")); g_btPause->invalidate (true); g_chart->invalidate (true); }
 static void do_scan (void)
 {
 	int r = gk_i2c_open (0);
@@ -654,10 +695,10 @@ static void do_scan (void)
 	else
 	{
 		g_found = gk_i2c_scan (g_map);
-		if (g_found < 0) { fail (g_found, "I2C scan"); g_found = -1; }
+		if (g_found < 0) { fail (g_found, TR ("I2C scan")); g_found = -1; }
 		g_bme[0] = 0;
 		for (int a = 0x76; a <= 0x77 && g_found > 0; a++) if (g_map[a / 8] >> (a % 8) & 1) bme280 (a, g_bme, sizeof g_bme);
-		set_status ("The I2C bus scanned.");
+		set_status (TR ("The I2C bus scanned."));
 	}
 	refresh_pins (); sync_controls (); redraw_all ();
 }
@@ -665,7 +706,7 @@ static void on_scan (Widget &) { do_scan (); }
 static void on_oled (Widget &)
 {
 	int a = g_found > 0 && (g_map[0x3C / 8] >> 4 & 1) ? 0x3C : g_found > 0 && (g_map[0x3D / 8] >> 5 & 1) ? 0x3D : -1;
-	if (a < 0) { snprintf (g_i2cMsg, sizeof g_i2cMsg, "No SSD1306 display found (0x3C or 0x3D)."); }
+	if (a < 0) { snprintf (g_i2cMsg, sizeof g_i2cMsg, "%s", TR ("No SSD1306 display found (0x3C or 0x3D).")); }
 	else oled_test (a);
 	g_i2c->invalidate (true);
 }
@@ -694,14 +735,14 @@ static void sync_controls (void)
 	}
 	bool out = usable && p.mode == GK_OUT, pwm = usable && (p.flags & GK_F_PWM) && p.mode == GK_PWM, in = usable && is_input (p.mode);
 	g_btLevel->hidden = !out; g_cbBlink->hidden = !out;
-	strcpy (g_btLevel->text, p.level ? "Set Low" : "Set High");
+	snprintf (g_btLevel->text, sizeof g_btLevel->text, "%s", p.level ? TR ("Set Low") : TR ("Set High"));
 	g_cbBlink->checked = g_blink[g_sel];
 	g_ddFreq->hidden = !pwm; g_slDuty->hidden = !pwm; g_lbDuty->hidden = !pwm; g_lbFreq->hidden = !pwm;
 	if (pwm)
 	{
 		g_ddFreq->sel = g_freqIx[g_sel];
 		g_slDuty->value = g_duty[g_sel];
-		char t[32]; snprintf (t, sizeof t, "Duty  %d.%d %%", g_duty[g_sel] / 10, g_duty[g_sel] % 10); g_lbDuty->setText (t);
+		show_duty ();
 	}
 	g_cbEdges->hidden = !in; g_cbEdges->checked = (p.flags & GK_F_EDGES) != 0;
 	bool sim = gk_available () == 2;
@@ -723,14 +764,14 @@ static void sync_sim_switch (void)
 }
 static void use_sim_as (bool on)
 {
-	if (g_running) { set_status ("Stop the program first: then switch the simulator."); sync_sim_switch (); return; }
+	if (g_running) { set_status (TR ("Stop the program first: then switch the simulator.")); sync_sim_switch (); return; }
 	if (on == (gk_available () == 2)) { sync_sim_switch (); return; }
 	gk_release ();
 	gk_sim (on ? 1 : 0);
-	set_status (gk_available () == 2 ? "The simulator drives the pins: nothing touches the real header." : "The Raspberry Pi's header.");
+	set_status (gk_available () == 2 ? TR ("The simulator drives the pins: nothing touches the real header.") : TR ("The Raspberry Pi's header."));
 	memset (g_blink, 0, sizeof g_blink);
 	g_found = -1;
-	if (!on && !g_hasHw) set_status ("No GPIO on this system (a PC, or a system older than kapi 92): the simulator stays.");
+	if (!on && !g_hasHw) set_status (TR ("No GPIO on this system (a PC, or a system older than kapi 92): the simulator stays."));
 	sync_sim_switch ();
 	refresh_pins (); sync_controls (); redraw_all ();
 	if (g_root) g_root->invalidate (true);
@@ -742,7 +783,7 @@ static void release_all (void)
 	gk_release ();
 	memset (g_blink, 0, sizeof g_blink);
 	g_found = -1;
-	set_status ("Every pin given back: they are inputs again.");
+	set_status (TR ("Every pin given back: they are inputs again."));
 	refresh_pins (); sync_controls (); redraw_all ();
 }
 
@@ -758,14 +799,14 @@ static void demo (void)
 	do_scan ();
 	if (g_found > 0) oled_test (0x3C);
 	g_sel = 18;
-	set_status ("The demonstration: an LED on GPIO 17, a servo on GPIO 18, a button on GPIO 27.");
+	set_status (TR ("The demonstration: an LED on GPIO 17, a servo on GPIO 18, a button on GPIO 27."));
 }
 
 class LabRoot : public Root
 {
 public:
 	unsigned frames;
-	LabRoot () : Root (W, H, "GPIO Lab"), frames (0) {}
+	LabRoot () : Root (W, H, TR ("GPIO Lab")), frames (0) {}
 	void onDraw () override
 	{
 		Root::onDraw ();
@@ -776,11 +817,12 @@ public:
 		int tri[6] = { V (tx), V (ty - 10), V (tx + 11), V (ty + 9), V (tx - 11), V (ty + 9) };
 		t.poly (tri, 3); t.fill (canvas, ink);
 		uk_text_c (canvas, tx - 6, ty - 7, 12, 16, "!", amber, 2);
-		uk_text_l (canvas, 52, 11, 28, "3.3 V only: never connect 5 V to a GPIO pin.", ink, 2);
-		uk_text_l (canvas, 52 + uk_text_w ("3.3 V only: never connect 5 V to a GPIO pin.", 2) + 10, 11, 28,
-			   "16 mA a pin at most: an LED through 330 ohm.", ink);
+		const char *w1 = TR ("3.3 V only: never connect 5 V to a GPIO pin."), *w2 = TR ("16 mA a pin at most: an LED through 330 ohm.");
+		int x2 = 52 + uk_text_w (w1, 2) + 10;
+		uk_text_l (canvas, 52, 11, 28, w1, ink, 2);
+		if (x2 + uk_text_w (w2) <= width - 224) uk_text_l (canvas, x2, 11, 28, w2, ink);	// (where the band has the room)
 		// what drives the pins, and the last message
-		const char *who = gk_available () == 2 ? "SIMULATOR" : gk_available () == 1 ? "RASPBERRY PI HEADER" : "NO GPIO";
+		const char *who = gk_available () == 2 ? TR ("SIMULATOR") : gk_available () == 1 ? TR ("RASPBERRY PI HEADER") : TR ("NO GPIO");
 		int ww = uk_text_w (who, 2) + 20;
 		unsigned bc = gk_available () == 2 ? 0x8E6BD8 : gk_available () == 1 ? 0x3B9A4A : 0x9A3B3B;
 		uk_rbox (canvas, width - ww - 12, height - 30, ww, 22, 11, bc, bc);
@@ -880,7 +922,7 @@ public:
 			unsigned c = L.kind == 1 ? 0xFF7A6E : L.kind == 2 ? 0x8FB7D9 : 0xE6E6E6;
 			uk_text_l (canvas, 10, y, lh, L.t, c);
 		}
-		if (n == 0) uk_text_l (canvas, 10, 5, lh, "(what the program PRINTs comes here)", 0x707880);
+		if (n == 0) uk_text_l (canvas, 10, 5, lh, TR ("(what the program PRINTs comes here)"), 0x707880);
 	}
 };
 
@@ -900,7 +942,7 @@ public:
 	int inputLine (char *buf, int cap) override
 	{
 		(void) cap; buf[0] = 0;
-		g_con->say ("INPUT: no keyboard input in GPIO Lab -- the program stops here.", 1);
+		g_con->say (TR ("INPUT: no keyboard input in GPIO Lab -- the program stops here."), 1);
 		return -1;
 	}
 	int inkey (char *o) override
@@ -936,7 +978,7 @@ public:
 	double timer () override { return (double) (gk_now_us () / 1000u) / 1000.0; }
 	unsigned clockUs () override { return kapi_clock_us (); }
 	unsigned seed () override { return (unsigned) gk_now_us (); }
-	void notify (const char *title, const char *text) override { char t[200]; snprintf (t, sizeof t, "%s: %s", title, text); g_con->say (t, 2); }
+	void notify (const char *title, const char *text) override { char t[200]; snprintf (t, sizeof t, TR ("%s: %s"), title, text); g_con->say (t, 2); }
 	// a line about to run: lit, then the Speed's wait -- or, step by step, the wait for Step
 	bool onStatement (int line) override
 	{
@@ -994,7 +1036,7 @@ public:
 		default:		return GP_NODEV;
 		}
 	}
-	const char *gpioError (int code) override { return gk_error (code); }
+	const char *gpioError (int code) override { return TR (gk_error (code)); }
 };
 
 static void log_events (const gk_event *ev, int n)
@@ -1029,6 +1071,28 @@ static const char *const DEFAULT_SKETCH =
 	"  presses = presses + 1\n"
 	"  PRINT \"Pressed!\"; presses\n"
 	"  RETURN\n";
+// The same in French (the comments in UTF-8; the texts it PRINTs in ASCII: BASIC's console is code page 437)
+static const char *const DEFAULT_SKETCH_FR =
+	"' GPIO Lab : écrivez du BASIC ici et appuyez sur Exécuter (F5) -- le connecteur\n"
+	"' à gauche montre les broches comme le programme les pilote. Pas à pas (F8) :\n"
+	"' une ligne à la fois. Une LED sur le GPIO 17 (broche 11, par 330 ohms vers GND)\n"
+	"' clignote ; un bouton sur le GPIO 27 (broche 13, vers GND) est compté. Sur le\n"
+	"' simulateur, cliquez sur le point du GPIO 27 du connecteur pour l'enfoncer.\n"
+	"MODEBROCHE 17, \"SORTIE\"\n"
+	"MODEBROCHE 27, \"RAPPELHAUT\"\n"
+	"SUR BROCHE (27, 2) GOSUB Appui\n"
+	"POUR i = 1 JUSQUE 10\n"
+	"  BROCHE 17 = 1: PAUSE 300\n"
+	"  BROCHE 17 = 0: PAUSE 300\n"
+	"SUITE\n"
+	"AFFICHER \"Fini :\"; appuis; \"appuis\"\n"
+	"FIN\n"
+	"\n"
+	"Appui:\n"
+	"  appuis = appuis + 1\n"
+	"  AFFICHER \"Appui !\"; appuis\n"
+	"  RETOUR\n";
+static const char *first_sketch (void) { return g_fr ? DEFAULT_SKETCH_FR : DEFAULT_SKETCH; }
 static void save_sketch (void) { if (g_ed) fk_save (SKETCH, g_ed->text (), (unsigned) g_ed->length ()); }
 static bool load_into_editor (const char *path)
 {
@@ -1042,11 +1106,21 @@ static bool load_into_editor (const char *path)
 
 static void set_run_buttons (void)
 {
-	strcpy (g_btRun->text, g_running && !g_stepMode ? "Running" : g_running ? "Continue" : "Run");
+	snprintf (g_btRun->text, sizeof g_btRun->text, "%s", g_running && !g_stepMode ? TR ("Running") : g_running ? TR ("Continue") : TR ("Run"));
 	g_btStop->disabled = !g_running;
 	g_ed->readonly = g_running;
 	Widget *const ws[] = { g_btRun, g_btStep, g_btStop };
 	for (Widget *w : ws) w->invalidate (true);
+}
+
+// A compiler's or a run's error in the console, at its line (in French: BASIC's words in French too)
+static void say_error (const bas::Error &err)
+{
+	char m[240], t[320];
+	if (g_fr) bas::frenchMessage (err.msg, m, sizeof m);
+	else snprintf (m, sizeof m, "%s", err.msg);
+	snprintf (t, sizeof t, TR ("Line %d: %s"), err.line, m);
+	g_con->say (t, 1);
 }
 
 // The program in the editor, compiled and run (the main loop calls it: g_runReq)
@@ -1059,8 +1133,7 @@ static void run_program (bool step)
 	bas::Program *p = bas::compile (g_ed->text (), &err);
 	if (!p)
 	{
-		char t[200]; snprintf (t, sizeof t, "Line %d: %s", err.line, err.msg);
-		g_con->say (t, 1);
+		say_error (err);
 		if (err.line > 0) { g_ed->addMark (err.line); g_ed->hiLine = err.line; g_ed->gotoLine (err.line - 1); }
 		g_ed->invalidate (true);
 		return;
@@ -1071,20 +1144,19 @@ static void run_program (bool step)
 	g_running = true; g_stepMode = step; g_waitStep = false; g_stopReq = false; g_nkeyQ = 0;
 	set_run_buttons ();
 	((Widget *) g_header)->setFocus ();		// (the keys go to the program: INKEY$)
-	g_con->say (step ? "Step by step: F8 (or Step) runs the lit line." : "Running...", 2);
+	g_con->say (step ? TR ("Step by step: F8 (or Step) runs the lit line.") : TR ("Running..."), 2);
 	unsigned long long t0 = gk_now_us ();
 	int r = bas::run (p, host, &err);
 	unsigned long long ms = (gk_now_us () - t0) / 1000u;
 	char t[200];
 	if (r != 0 && err.msg[0])
 	{
-		snprintf (t, sizeof t, "Line %d: %s", err.line, err.msg);
-		g_con->say (t, 1);
+		say_error (err);
 		if (err.line > 0) { g_ed->addMark (err.line); g_ed->hiLine = err.line; g_ed->gotoLine (err.line - 1); }
 	}
 	else
 	{
-		snprintf (t, sizeof t, g_stopReq ? "Stopped (%llu.%llu s)." : "Ended (%llu.%llu s): the pins stay as it left them.", ms / 1000, ms % 1000 / 100);
+		snprintf (t, sizeof t, g_stopReq ? TR ("Stopped (%llu.%llu s).") : TR ("Ended (%llu.%llu s): the pins stay as it left them."), ms / 1000, ms % 1000 / 100);
 		g_con->say (t, 2);
 		g_ed->hiLine = 0;
 	}
@@ -1109,17 +1181,28 @@ static void do_stop (void) { if (g_running) g_stopReq = true; }
 static void cb_run (Widget &) { do_run (); }
 static void cb_step (Widget &) { do_step (); }
 static void cb_stop (Widget &) { do_stop (); }
-static void cb_speed (Widget &) { char t[24]; snprintf (t, sizeof t, g_speed->value >= 10 ? "Speed: full" : "Speed: %d", g_speed->value); g_lbSpeed->setText (t); }
-static const char *const EXAMPLES[] = { "Examples...", "Blink an LED", "A button", "A servo", "A BME280 sensor (I2C)", "An SSD1306 display (I2C)", "The first sketch" };
-static const char *const EXAMPLE_FILES[] = { 0, "SD:/basic/examples/gpio_blink.bas", "SD:/basic/examples/gpio_button.bas",
-	"SD:/basic/examples/gpio_servo.bas", "SD:/basic/examples/gpio_bme280.bas", "SD:/basic/examples/gpio_oled.bas", 0 };
+static void cb_speed (Widget &) { char t[48]; snprintf (t, sizeof t, g_speed->value >= 10 ? TR ("Speed: full") : TR ("Speed: %d"), g_speed->value); g_lbSpeed->setText (t); }
+#define NEX	7
+static const char *const EXAMPLES[NEX] = { TRN ("Examples..."), TRN ("Blink an LED"), TRN ("A button"), TRN ("A servo"), TRN ("A BME280 sensor (I2C)"),
+	TRN ("An SSD1306 display (I2C)"), TRN ("The first sketch") };
+static const char *g_exNames[NEX];		// EXAMPLES in the language (main; the Dropdown keeps the pointers)
+// (in SD:/basic/examples; written in French: in its fr/)
+static const char *const EXAMPLE_FILES[NEX] = { 0, "gpio_blink.bas", "gpio_button.bas", "gpio_servo.bas", "gpio_bme280.bas", "gpio_oled.bas", 0 };
 static void cb_example (Widget &)
 {
 	int i = g_ddEx->sel;
 	if (i <= 0 || g_running) return;
-	if (i == 6) { g_ed->replaceAll (DEFAULT_SKETCH, 0); }
-	else if (!load_into_editor (EXAMPLE_FILES[i])) { char t[160]; snprintf (t, sizeof t, "Cannot read %s", EXAMPLE_FILES[i]); g_con->say (t, 1); }
-	else { char t[160]; snprintf (t, sizeof t, "%s: %s", EXAMPLES[i], EXAMPLE_FILES[i]); g_con->say (t, 2); }
+	if (i == 6) { g_ed->replaceAll (first_sketch (), 0); }
+	else
+	{
+		// in French, the example written in French -- else (or none there) the English one
+		char path[96], t[240];
+		snprintf (path, sizeof path, "SD:/basic/examples/fr/%s", EXAMPLE_FILES[i]);
+		bool ok = g_fr && load_into_editor (path);
+		if (!ok) { snprintf (path, sizeof path, "SD:/basic/examples/%s", EXAMPLE_FILES[i]); ok = load_into_editor (path); }
+		if (!ok) { snprintf (t, sizeof t, TR ("Cannot read %s"), path); g_con->say (t, 1); }
+		else { snprintf (t, sizeof t, TR ("%s: %s"), g_exNames[i], path); g_con->say (t, 2); }
+	}
 	g_ddEx->sel = 0; g_ddEx->invalidate (true);
 }
 static void on_view (Widget &)
@@ -1169,15 +1252,15 @@ static void m_stop (void) { do_stop (); }
 static void m_open (void)
 {
 	char path[256];
-	if (g_running || !uk_file_open (path, sizeof path, "SD:/basic/examples", "BASIC programs|*.bas|All files|*")) return;
+	if (g_running || !uk_file_open (path, sizeof path, g_fr ? "SD:/basic/examples/fr" : "SD:/basic/examples", TR ("BASIC programs|*.bas|All files|*"))) return;
 	if (load_into_editor (path)) { g_view = 1; g_viewSw->selected = 1; g_viewSw->invalidate (true); apply_view (); g_ed->setFocus (); }
 }
 static void m_save (void)
 {
 	char path[256];
-	if (!uk_file_save (path, sizeof path, "SD:/basic", "gpio.bas", "BASIC programs|*.bas|All files|*")) return;
-	if (fk_save (path, g_ed->text (), (unsigned) g_ed->length ()) != 0) uk_messagebox ("GPIO Lab", "The program could not be saved.", MB_OK);
-	else { char t[300]; snprintf (t, sizeof t, "Saved: %s", path); g_con->say (t, 2); }
+	if (!uk_file_save (path, sizeof path, "SD:/basic", "gpio.bas", TR ("BASIC programs|*.bas|All files|*"))) return;
+	if (fk_save (path, g_ed->text (), (unsigned) g_ed->length ()) != 0) uk_messagebox (TR ("GPIO Lab"), TR ("The program could not be saved."), MB_OK);
+	else { char t[300]; snprintf (t, sizeof t, TR ("Saved: %s"), path); g_con->say (t, 2); }
 }
 static void m_sim (void) { use_sim (); Root::current ()->invalidate (true); }
 static void m_release (void) { release_all (); }
@@ -1186,6 +1269,10 @@ static void m_demo (void) { demo (); refresh_pins (); sync_controls (); redraw_a
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);
+	uk_lang_init ();				// the words in the system's language (before the widgets)
+	g_fr = !strcmp (uk_lang (), "fr");
+	bas::setDialect (bas::frenchDialect ());	// BASIC in French too, whatever the language (before the editor's words: wordList)
+	for (int i = 0; i < NEX; i++) g_exNames[i] = TR (EXAMPLES[i]);
 	char args[128] = "";
 	kapi_get_args (args, sizeof args);
 	g_hasHw = gk_available () == 1;
@@ -1206,12 +1293,12 @@ int main (void)
 	g_root = &root;
 	{ FtTextFace *m = new FtTextFace; if (m->open ("DejaVu Sans Mono", 14)) g_mono = m; else delete m; }
 	refresh_pins ();
-	set_status (gk_available () == 2 ? "The simulator drives the pins: nothing touches the real header." : "Choose a pin on the header.");
+	set_status (gk_available () == 2 ? TR ("The simulator drives the pins: nothing touches the real header.") : TR ("Choose a pin on the header."));
 
 	g_header = new HeaderView (12, BANNER + 6, 412, H - BANNER - 44);
 	root.addChild (g_header);
-	g_simSw = new ToggleSwitch (12 + 412 - 132, BANNER + 8, 132, 26, "Simulator", gk_available () == 2, on_sim_switch, root.bg);
-	g_simSw->tip = "On: a board in memory -- click an input's dot to drive it, nothing touches the real pins. Off: the Pi's header.";
+	g_simSw = new ToggleSwitch (12 + 412 - 132, BANNER + 8, 132, 26, TR ("Simulator"), gk_available () == 2, on_sim_switch, root.bg);
+	g_simSw->tip = TR ("On: a board in memory -- click an input's dot to drive it, nothing touches the real pins. Off: the Pi's header.");
 	root.addChild (g_simSw);
 	sync_sim_switch ();
 
@@ -1219,47 +1306,52 @@ int main (void)
 	g_panel = new PinPanel (rx, BANNER + 6, rw, 214);
 	root.addChild (g_panel);
 	int py = BANNER + 6;
-	static const char *const MODES[6] = { "Free", "Input", "Pull-up", "Pull-down", "Output", "PWM" };
+	// (the words of the segments, in the language: a SegmentedControl copies them)
+	const char *const MODES[6] = { TR ("Free"), TR ("Input"), TR ("Pull-up"), TR ("Pull-down"), TR ("Output"), "PWM" };
 	g_modes = new SegmentedControl (rx + 14, py + 68, rw - 28, 28, MODES, 6, 0, on_mode);
-	g_modes->tip = "The pin's mode (Free gives it back: an input with no pull)";
+	g_modes->tip = TR ("The pin's mode (Free gives it back: an input with no pull)");
 	root.addChild (g_modes);
-	g_btLevel = new Button (rx + 14, py + 108, 110, 30, "Set High", on_level);
-	g_btLevel->tip = "The output's level (Space)";
+	g_btLevel = new Button (rx + 14, py + 108, 110, 30, TR ("Set High"), on_level);
+	g_btLevel->tip = TR ("The output's level (Space)");
 	root.addChild (g_btLevel);
-	g_cbBlink = new Checkbox (rx + 136, py + 112, 150, 24, "Blink (2 Hz)", false, on_blink, uk_mix (C_BG, C_FIELD, 140));
+	g_cbBlink = new Checkbox (rx + 136, py + 112, 150, 24, TR ("Blink (2 Hz)"), false, on_blink, uk_mix (C_BG, C_FIELD, 140));
 	root.addChild (g_cbBlink);
-	g_lbFreq = new Label (rx + 14, py + 112, 80, 22, "Frequency", C_TEXT, uk_mix (C_BG, C_FIELD, 140));
+	g_lbFreq = new Label (rx + 14, py + 112, 80, 22, TR ("Frequency"), C_TEXT, uk_mix (C_BG, C_FIELD, 140));
 	root.addChild (g_lbFreq);
 	g_ddFreq = new Dropdown (rx + 94, py + 108, 150, 30, FREQS, 6, 3, on_freq);
 	root.addChild (g_ddFreq);
-	g_lbDuty = new Label (rx + 260, py + 112, 90, 22, "Duty  50.0 %", C_TEXT, uk_mix (C_BG, C_FIELD, 140));
+	// the duty's label as wide as its words ("Rapport cyclique"), the slider after it
+	char dt[64]; snprintf (dt, sizeof dt, TR ("Duty  %d.%d %%"), 100, 0);
+	int dw = uk_text_w (dt) + 8; if (dw < 90) dw = 90;
+	snprintf (dt, sizeof dt, TR ("Duty  %d.%d %%"), 50, 0);
+	g_lbDuty = new Label (rx + 260, py + 112, dw, 22, dt, C_TEXT, uk_mix (C_BG, C_FIELD, 140));
 	root.addChild (g_lbDuty);
-	g_slDuty = new Slider (rx + 350, py + 108, rw - 364, 30, 0, 1000, 500, on_duty, uk_mix (C_BG, C_FIELD, 140));
-	g_slDuty->tip = "How long the pin is high in each period (a servo: 2.5 % to 12.5 %, 7.5 % the middle)";
+	g_slDuty = new Slider (rx + 260 + dw, py + 108, rw - 274 - dw, 30, 0, 1000, 500, on_duty, uk_mix (C_BG, C_FIELD, 140));
+	g_slDuty->tip = TR ("How long the pin is high in each period (a servo: 2.5 % to 12.5 %, 7.5 % the middle)");
 	root.addChild (g_slDuty);
-	g_lbDrive = new Label (rx + 14, py + 112, 120, 22, "Driven outside", C_TEXT, uk_mix (C_BG, C_FIELD, 140));
+	g_lbDrive = new Label (rx + 14, py + 112, 120, 22, TR ("Driven outside"), C_TEXT, uk_mix (C_BG, C_FIELD, 140));
 	root.addChild (g_lbDrive);
-	static const char *const DRIVE[3] = { "Nothing", "Low", "High" };
+	const char *const DRIVE[3] = { TR ("Nothing"), TR ("Low"), TR ("High") };
 	g_drive = new SegmentedControl (rx + 134, py + 108, 220, 28, DRIVE, 3, 0, on_drive);
-	g_drive->tip = "The simulator: what a wire brings to the input (Nothing: it floats, or follows its pull)";
+	g_drive->tip = TR ("The simulator: what a wire brings to the input (Nothing: it floats, or follows its pull)");
 	root.addChild (g_drive);
-	g_cbEdges = new Checkbox (rx + 14, py + 150, 170, 24, "Log its edges", false, on_edges, uk_mix (C_BG, C_FIELD, 140));
-	g_cbEdges->tip = "Its rising and falling edges, with their time, in the Edges tab";
+	g_cbEdges = new Checkbox (rx + 14, py + 150, 184, 24, TR ("Log its edges"), false, on_edges, uk_mix (C_BG, C_FIELD, 140));
+	g_cbEdges->tip = TR ("Its rising and falling edges, with their time, in the Edges tab");
 	root.addChild (g_cbEdges);
-	g_cbWatch = new Checkbox (rx + 200, py + 150, 260, 24, "Show in the timing chart", true, on_watch, uk_mix (C_BG, C_FIELD, 140));
+	g_cbWatch = new Checkbox (rx + 200, py + 150, 260, 24, TR ("Show in the timing chart"), true, on_watch, uk_mix (C_BG, C_FIELD, 140));
 	root.addChild (g_cbWatch);
 
-	static const char *const TABS[3] = { "Timing Chart", "I2C Bus", "Edges" };
+	const char *const TABS[3] = { TR ("Timing Chart"), TR ("I2C Bus"), TR ("Edges") };
 	int ty = BANNER + 6 + 214 + 12;
 	g_tabs = new SegmentedControl (rx, ty, 360, 28, TABS, 3, g_tab, on_tab);
 	root.addChild (g_tabs);
-	g_btPause = new Button (W - 12 - 90, ty, 90, 28, "Pause", on_pause);
+	g_btPause = new Button (W - 12 - 90, ty, 90, 28, TR ("Pause"), on_pause);
 	root.addChild (g_btPause);
-	g_btScan = new Button (W - 12 - 90, ty, 90, 28, "Scan", on_scan);
-	g_btScan->tip = "Open the I2C bus (GPIO 2, 3) and ask every address";
+	g_btScan = new Button (W - 12 - 90, ty, 90, 28, TR ("Scan"), on_scan);
+	g_btScan->tip = TR ("Open the I2C bus (GPIO 2, 3) and ask every address");
 	root.addChild (g_btScan);
-	g_btOled = new Button (W - 12 - 90 - 8 - 130, ty, 130, 28, "Test Display", on_oled);
-	g_btOled->tip = "Send a test picture to an SSD1306 display found at 0x3C / 0x3D";
+	g_btOled = new Button (W - 12 - 90 - 8 - 130, ty, 130, 28, TR ("Test Display"), on_oled);
+	g_btOled->tip = TR ("Send a test picture to an SSD1306 display found at 0x3C / 0x3D");
 	root.addChild (g_btOled);
 	int vy = ty + 38, vh = H - vy - 40;
 	g_chart = new ChartView (rx, vy, rw, vh);  root.addChild (g_chart);
@@ -1267,19 +1359,24 @@ int main (void)
 	g_edges = new EdgeView (rx, vy, rw, vh);   root.addChild (g_edges);
 
 	// the view: the pins, or the code (the mini IDE)
-	static const char *const VIEWS[2] = { "Pins", "Code" };
+	const char *const VIEWS[2] = { TR ("Pins"), TR ("Code") };
 	g_viewSw = new SegmentedControl (W - 12 - 192, 10, 192, 30, VIEWS, 2, 0, on_view);
-	g_viewSw->tip = "Pins: drive them by hand. Code: write a BASIC program and watch it drive them.";
+	g_viewSw->tip = TR ("Pins: drive them by hand. Code: write a BASIC program and watch it drive them.");
 	root.addChild (g_viewSw);
 	{
-		int cy = BANNER + 6, x = rx;
-		g_btRun = new Button (x, cy, 96, 30, "Run", cb_run); g_btRun->tip = "Run the program (F5)"; root.addChild (g_btRun); x += 102;
-		g_btStep = new Button (x, cy, 70, 30, "Step", cb_step); g_btStep->tip = "A line at a time (F8)"; root.addChild (g_btStep); x += 76;
-		g_btStop = new Button (x, cy, 70, 30, "Stop", cb_stop); g_btStop->tip = "Stop the program (Esc)"; root.addChild (g_btStop); x += 84;
-		g_lbSpeed = new Label (x, cy + 4, 86, 22, "Speed: 6", C_TEXT, root.bg); root.addChild (g_lbSpeed); x += 88;
-		g_speed = new Slider (x, cy, 120, 30, 1, 10, 6, cb_speed, root.bg);
-		g_speed->tip = "How fast the lines run (each lit as it runs); full: as fast as it can"; root.addChild (g_speed);
-		g_ddEx = new Dropdown (W - 12 - 190, cy, 190, 30, EXAMPLES, 7, 0, cb_example); root.addChild (g_ddEx);
+		int cy = BANNER + 6, x = rx, ddx = W - 12 - 190;
+		// (Step and the Speed's label as wide as their words -- "Pas à pas", "Vitesse : max" --, the slider in what is left)
+		int wStep = uk_text_w (TR ("Step")) + 28; if (wStep < 70) wStep = 70;
+		int wSpeed = uk_text_w (TR ("Speed: full")) + 8; if (wSpeed < 86) wSpeed = 86;
+		char sp[48]; snprintf (sp, sizeof sp, TR ("Speed: %d"), 6);
+		g_btRun = new Button (x, cy, 96, 30, TR ("Run"), cb_run); g_btRun->tip = TR ("Run the program (F5)"); root.addChild (g_btRun); x += 102;
+		g_btStep = new Button (x, cy, wStep, 30, TR ("Step"), cb_step); g_btStep->tip = TR ("A line at a time (F8)"); root.addChild (g_btStep); x += wStep + 6;
+		g_btStop = new Button (x, cy, 70, 30, TR ("Stop"), cb_stop); g_btStop->tip = TR ("Stop the program (Esc)"); root.addChild (g_btStop); x += 84;
+		g_lbSpeed = new Label (x, cy + 4, wSpeed, 22, sp, C_TEXT, root.bg); root.addChild (g_lbSpeed); x += wSpeed + 2;
+		int wSlider = ddx - 12 - x; if (wSlider > 120) wSlider = 120; if (wSlider < 60) wSlider = 60;
+		g_speed = new Slider (x, cy, wSlider, 30, 1, 10, 6, cb_speed, root.bg);
+		g_speed->tip = TR ("How fast the lines run (each lit as it runs); full: as fast as it can"); root.addChild (g_speed);
+		g_ddEx = new Dropdown (ddx, cy, 190, 30, g_exNames, NEX, 0, cb_example); root.addChild (g_ddEx);
 		int conH = 150, ey = cy + 40, eh = H - 40 - ey - conH - 8;
 		g_ed = new CodeEdit (rx, ey, rw, eh);
 		g_ed->mono = g_mono; g_ed->ui = ft_uikit_face ();
@@ -1296,25 +1393,25 @@ int main (void)
 		};
 		root.addChild (g_ed);
 		g_con = new ConsoleView (rx, ey + eh + 8, rw, conH); root.addChild (g_con);
-		if (!load_into_editor (SKETCH)) g_ed->setText (DEFAULT_SKETCH);
+		if (!load_into_editor (SKETCH)) g_ed->setText (first_sketch ());
 		set_run_buttons ();
 	}
 
 	static Menu menu;
-	menu.menu ("File");
-	menu.item ("Open Program...", "^O", UK_CTRL ('O'), m_open);
-	menu.item ("Save Program As...", "^S", UK_CTRL ('S'), m_save);
+	menu.menu (TR ("File"));
+	menu.item (TR ("Open Program..."), "^O", UK_CTRL ('O'), m_open);
+	menu.item (TR ("Save Program As..."), "^S", UK_CTRL ('S'), m_save);
 	menu.separator ();
-	menu.item ("Quit", "^Q", UK_CTRL ('Q'), m_quit);
-	menu.menu ("Program");
-	menu.item ("Run", "F5", KEY_F1 + 4, m_run);
-	menu.item ("Step", "F8", KEY_F1 + 7, m_step);
-	menu.item ("Stop", "Esc", 0, m_stop);
-	menu.menu ("Board");
-	menu.item ("Use the Simulator", "^M", UK_CTRL ('M'), m_sim);
-	menu.item ("Release Every Pin", "^R", UK_CTRL ('R'), m_release);
+	menu.item (TR ("Quit"), "^Q", UK_CTRL ('Q'), m_quit);
+	menu.menu (TR ("Program"));
+	menu.item (TR ("Run"), "F5", KEY_F1 + 4, m_run);
+	menu.item (TR ("Step"), "F8", KEY_F1 + 7, m_step);
+	menu.item (TR ("Stop"), "Esc", 0, m_stop);
+	menu.menu (TR ("Board"));
+	menu.item (TR ("Use the Simulator"), "^M", UK_CTRL ('M'), m_sim);
+	menu.item (TR ("Release Every Pin"), "^R", UK_CTRL ('R'), m_release);
 	menu.separator ();
-	menu.item ("Demonstration Set-up", "", 0, m_demo);
+	menu.item (TR ("Demonstration Set-up"), "", 0, m_demo);
 	menu.publish ();
 
 	if (g_demo) demo ();

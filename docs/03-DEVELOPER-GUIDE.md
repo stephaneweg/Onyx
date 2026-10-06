@@ -3542,6 +3542,17 @@ barwidth = 40
   a language's ELSEIF and WEND written in two words: at a statement's start `ELSE IF` is `ELSEIF` and `END WHILE`
   is `WEND` -- French's `SINON SI`, `FIN TANTQUE`; inside a one-line IF, `ELSE IF` stays a nested IF). Turtle Quest
   sets one dialect whatever the language (a program compiles in French as in English).
+- **BASIC in French** (the library's, 2026-10-06; for the hosts that want it -- **Turtle Quest and GPIO Lab**, not
+  QBasic, QBStudio nor `/bin/basic` for now: the user's choice): `bas::FRENCH[]` (`bascomp.cpp`) holds the pairs
+  `"SI", "IF"` ... of the language's words, its types and the 40-pin header's (`BROCHE`, `MODEBROCHE`...; a word's
+  first French name is the one shown), `bas::frenchDialect ()` a ready `Dialect` for a host with no words of its
+  own (GPIO Lab), `Dialect::aliases2` a second table for a host's own words beside it (Turtle Quest's `AVANCER`...),
+  and `bas::frenchMessage (msg, out, cap, more)` says a compiler's or a run's message with BASIC's words in French
+  ("FOR without NEXT" -> "POUR sans SUITE"). `PINMODE`'s modes are also "SORTIE", "ENTREE", "RAPPELHAUT",
+  "RAPPELBAS", "LIBRE". **`python tools/lang/bas_fr.py`** makes the French GPIO examples
+  (`sdcard/basic/examples/fr/gpio_*.bas`) from the English ones: the keywords translated, the comments, strings and
+  names from `tools/lang/gpio_fr/gpio.fr.txt` -- run it again when an example changes; `run_basic_test.sh` compiles
+  them.
 - **Two kinds of numbers** (the user, 2026-10-06; `basint.h`'s `NT_*`): `INTEGER` (= `INTEGER64`, `%`, `DEFINT`:
   `NT_I64`, a whole number rounded at a store, kept as a double -- exact up to 2^53) and `REAL` (= `REAL64`, a
   name without a type: `NT_SNG`, a double shown with 7 digits); `BYTE` (`NT_BYTE`, 0..255); the sizes, for
