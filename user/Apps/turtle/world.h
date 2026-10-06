@@ -33,7 +33,15 @@
 // draw = color each line in the colour of the solution's line under it). FRONT () says 0 free, 1 a wall, 2 something
 // to pick, 3 the goal, 4 a door, 5 a portal; GEM () the number of the gem under the turtle (0: none).
 // Stars: 1 won; 2 in no more instructions than par's second number; 3 no more than its first (one statement,
-// or one line of a block, is an instruction: a loop counts as its lines, not its turns).
+// or one line of a block, is an instruction: a loop counts as its lines, not its turns). The app also keeps each
+// player's best program, the fewest instructions of a won run (new_best (); "<id>.best" in progress.ini).
+//
+// The level editor's rules live here too, pure, so the host test checks them: check_level () (one verdict: a gem
+// missing or twice, a portal without its twin or a third pad -- the cell at fault; level_fault_reason () words it for
+// parse_pack, level_fault_text () for the editor, in English or French), edit_gem () (the Gem tool: a click on a free
+// cell places the lowest number not on the map, a click on a gem cycles it 1 -> 9 -> 1, a drag only places) and
+// edit_pad () (the Portal 1 / 2 tools: 'T' / 'U', a pair keeps two pads -- a third one moves the older). Neither
+// ever writes over the turtle.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 //
@@ -522,6 +530,15 @@ static inline char *write_pack (const Pack &pk)
 		block ("start", L.start); block ("solution", L.solution);
 	}
 	return o;
+}
+
+// ---- the best program kept per level and player ("<id>.best" in progress.ini: the fewest instructions of a won run) ----
+// was: the value kept ("" or 0: never won -- an older progress file has none); count: this won run's instructions.
+// True when count is the new best (the first win, or fewer instructions than before).
+static inline bool new_best (const char *was, int count)
+{
+	int b = was && *was ? atoi (was) : 0;
+	return count > 0 && (b <= 0 || count < b);
 }
 
 // ---- counting the instructions --------------------------------------------------------------------------------------------

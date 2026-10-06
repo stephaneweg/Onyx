@@ -241,6 +241,21 @@ static void lint_level (const Pack &pk, const Level &L)
 }
 
 // The level editor's tools (step 10): edit_gem, edit_pad; a level made with them, checked, written back and read again
+// Round 3's SHOULD items: the best program kept (new_best), the FUNCTION / FONCTION chip's block (main.cpp's TPL_EN /
+// TPL_FR: written as they are, it compiles and runs in both languages)
+static void test_should (Pack **packs, int np)
+{
+	CHECK (new_best ("", 6) && new_best (0, 6) && new_best ("0", 6), "a first win is the best");
+	CHECK (new_best ("7", 6) && !new_best ("6", 6) && !new_best ("5", 6) && !new_best ("", 0), "fewer instructions only");
+	Level *halves = find (packs, np, "halves");
+	CHECK (halves, "the level halves"); if (!halves) return;
+	Run R;
+	play (*halves, "FUNCTION MyValue (x)\n  MyValue = x\nEND FUNCTION\nn = 8\nREPEAT 5\n  FORWARD MyValue (n)\n  RIGHT\n  n = n / 2\nEND REPEAT\n", LANG_EN, R);
+	CHECK (R.result == R_WON, "the FUNCTION chip's block: %d line %d %s", R.result, R.errLine, R.msg);
+	play (*halves, "FONCTION MaValeur (x)\n  MaValeur = x\nFIN FONCTION\nn = 8\nREPETER 5\n  AVANCER MaValeur (n)\n  DROITE\n  n = n / 2\nFIN REPETER\n", LANG_FR, R);
+	CHECK (R.result == R_WON, "the FONCTION chip's block, in French: %d line %d %s", R.result, R.errLine, R.msg);
+}
+
 static void test_editor ()
 {
 	char why[160] = "";
@@ -331,6 +346,7 @@ int main (int argc, char **argv)
 	test_portals ();
 	test_editor ();
 	test_recursion_and_cards ();
+	test_should (packs, np);
 	Level *hello = find (packs, np, "hello"), *door = find (packs, np, "door"), *coins = find (packs, np, "coins"), *corner = find (packs, np, "corner");
 	Level *sq = find (packs, np, "draw-square"), *maze = find (packs, np, "maze");
 	test_colours (sq);

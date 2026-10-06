@@ -374,6 +374,17 @@ public:
 			uk_text_l (clip, 38, y, RH, t, ink, sel ? 2 : 0);
 			for (int k = 0; k < 3; k++) star (clip, clip.w - 46 + k * 15, y + RH / 2, 6, k < s ? 0xF2B705 : uk_mix (sel ? C_ACCENT : C_FIELD, ink, 70), k < s);
 		}
+		// the pack's stars, at the foot of the list (when the levels leave room for it: no scrolling)
+		if (n > 0 && n * RH + 30 <= clip.h)
+		{
+			int got = 0; for (int i = 0; i < n; i++) got += stars_of (g_packs[g_pack]->levels[i]->id);
+			char f[80]; snprintf (f, sizeof f, L2 ("This pack: %d / %d", "Ce recueil : %d / %d"), got, 3 * n);
+			if (uk_tw (f) > clip.w - 44) snprintf (f, sizeof f, "%d / %d", got, 3 * n);
+			int fy = clip.h - 28;
+			clip.fillRect (10, fy - 2, clip.w - 20, 1, uk_mix (C_FIELD, C_FIELD_TEXT, 40));
+			star (clip, 20, fy + 13, 6, got ? 0xF2B705 : uk_mix (C_FIELD, C_FIELD_TEXT, 70), got > 0);
+			uk_text_l (clip, 34, fy, 26, f, uk_mix (C_FIELD, C_FIELD_TEXT, 170), 0);
+		}
 		if (n > rows)
 		{
 			UkThumb th = uk_thumb (n, rows, topRow, height - 4);
@@ -645,8 +656,8 @@ public:
 };
 
 // ---- the words the level knows: a click writes one ------------------------------------------------------------------------------
-static const char *const CONTROL_WORDS[] = { "REPEAT", "FOR", "IF", "WHILE", "SUB", 0 };
-static const char *const CONTROL_FR[] = { "REPETER", "POUR", "SI", "TANTQUE", "SUB", 0 };
+static const char *const CONTROL_WORDS[] = { "REPEAT", "FOR", "IF", "WHILE", "SUB", "FUNCTION", 0 };
+static const char *const CONTROL_FR[] = { "REPETER", "POUR", "SI", "TANTQUE", "SUB", "FONCTION", 0 };
 class WordBar : public Widget
 {
 public:
@@ -670,8 +681,9 @@ public:
 		static const char *const ORDER[] = { "repeat", "for", "if", "sensor", "while", "maze", "variable", "sub", "pen", "draw",
 			"gems", "teleport", "color", "params", "function", "recursion", 0 };
 		int lv = -1; for (int i = 0; ORDER[i]; i++) if (!strcmp (ORDER[i], g_L->topic)) lv = i;
-		const int NEED[5] = { 0, 1, 2, 4, 7 };		// REPEAT from "repeat", FOR from "for", IF "if", WHILE "while", SUB "sub"
-		for (int k = 0; k < 5; k++) if (lv >= NEED[k]) add (g_lang == LANG_FR ? CONTROL_FR[k] : CONTROL_WORDS[k], 100 + k);
+		const int NEED[6] = { 0, 1, 2, 4, 7, 14 };	// REPEAT from "repeat", FOR from "for", IF "if", WHILE "while", SUB "sub",
+								// FUNCTION "function" (and "recursion" after it)
+		for (int k = 0; k < 6; k++) if (lv >= NEED[k]) add (g_lang == LANG_FR ? CONTROL_FR[k] : CONTROL_WORDS[k], 100 + k);
 	}
 	void onDraw () override
 	{
@@ -706,8 +718,8 @@ public:
 			char ins[160];
 			if (c.id >= 100)
 			{
-				static const char *const TPL_EN[] = { "REPEAT 4\n  \nEND REPEAT", "FOR i = 1 TO 5\n  \nNEXT", "IF  THEN\n  \nEND IF", "WHILE NOT ONGOAL ()\n  \nWEND", "SUB MyWord\n  \nEND SUB" };
-				static const char *const TPL_FR[] = { "REPETER 4\n  \nFIN REPETER", "POUR i = 1 JUSQUE 5\n  \nSUITE", "SI  ALORS\n  \nFIN SI", "TANTQUE NON SURBUT ()\n  \nFIN TANTQUE", "SUB MonMot\n  \nFIN SUB" };
+				static const char *const TPL_EN[] = { "REPEAT 4\n  \nEND REPEAT", "FOR i = 1 TO 5\n  \nNEXT", "IF  THEN\n  \nEND IF", "WHILE NOT ONGOAL ()\n  \nWEND", "SUB MyWord\n  \nEND SUB", "FUNCTION MyValue (x)\n  MyValue = x\nEND FUNCTION" };
+				static const char *const TPL_FR[] = { "REPETER 4\n  \nFIN REPETER", "POUR i = 1 JUSQUE 5\n  \nSUITE", "SI  ALORS\n  \nFIN SI", "TANTQUE NON SURBUT ()\n  \nFIN TANTQUE", "SUB MonMot\n  \nFIN SUB", "FONCTION MaValeur (x)\n  MaValeur = x\nFIN FONCTION" };
 				tcpy (ins, (g_lang == LANG_FR ? TPL_FR : TPL_EN)[c.id - 100], sizeof ins);
 			}
 			else
@@ -1003,7 +1015,12 @@ static void finish_run ()
 		if (!g_editing)
 		{
 			int was = stars_of (g_L->id);
-			if (R.stars > was) { char v[8]; snprintf (v, sizeof v, "%d", R.stars); kv_set (g_player, g_L->id, v); kv_save (); }
+			bool changed = false;
+			if (R.stars > was) { char v[8]; snprintf (v, sizeof v, "%d", R.stars); kv_set (g_player, g_L->id, v); changed = true; }
+			// the best program: the fewest instructions of a won run (shown the next time the level is shown or edited)
+			char bk[64]; snprintf (bk, sizeof bk, "%s.best", g_L->id);
+			if (new_best (kv_get (g_player, bk, ""), R.count)) { char v[12]; snprintf (v, sizeof v, "%d", R.count); kv_set (g_player, bk, v); changed = true; }
+			if (changed) kv_save ();
 			((Widget *) g_btNext)->hidden = g_level + 1 >= g_packs[g_pack]->levels.n;
 			((Widget *) g_list)->invalidate (true);
 		}
@@ -1115,10 +1132,15 @@ static void refresh_count ()
 {
 	if (!g_L) return;
 	int n = count_instructions (g_ed->text ());
-	char t[160];
-	if (g_L->par3) snprintf (t, sizeof t, L2 ("Instructions: %d       \xE2\x98\x85\xE2\x98\x85\xE2\x98\x85 \xE2\x89\xA4 %d       \xE2\x98\x85\xE2\x98\x85 \xE2\x89\xA4 %d",
-		"Instructions : %d       \xE2\x98\x85\xE2\x98\x85\xE2\x98\x85 \xE2\x89\xA4 %d       \xE2\x98\x85\xE2\x98\x85 \xE2\x89\xA4 %d"), n, g_L->par3, g_L->par2);
+	char t[200];
+	// the player's best program (a won run's fewest instructions), when the level was won before
+	int best = 0;
+	if (!g_editing) { char bk[64]; snprintf (bk, sizeof bk, "%s.best", g_L->id); best = atoi (kv_get (g_player, bk, "0")); }
+	const char *gap = best > 0 ? "   " : "       ";
+	if (g_L->par3) snprintf (t, sizeof t, L2 ("Instructions: %d%s\xE2\x98\x85\xE2\x98\x85\xE2\x98\x85 \xE2\x89\xA4 %d%s\xE2\x98\x85\xE2\x98\x85 \xE2\x89\xA4 %d",
+		"Instructions : %d%s\xE2\x98\x85\xE2\x98\x85\xE2\x98\x85 \xE2\x89\xA4 %d%s\xE2\x98\x85\xE2\x98\x85 \xE2\x89\xA4 %d"), n, gap, g_L->par3, gap, g_L->par2);
 	else snprintf (t, sizeof t, L2 ("Instructions: %d", "Instructions : %d"), n);
+	if (best > 0) { size_t l = strlen (t); snprintf (t + l, sizeof t - l, L2 ("%sBest: %d", "%sRecord : %d"), gap, best); }
 	g_lbCount->setText (t);
 }
 
