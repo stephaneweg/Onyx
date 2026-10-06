@@ -3429,14 +3429,32 @@ barwidth = 40
   sources into it): `form.h` (the `.form` text read / written, the layout engine: `form_layout` places every
   element for a size), `gen.h` (the controls' library -- `#import UIKit`, `CLASS Control` with PROPERTYs over UIKit's flat functions, each control's object made by `DIM SHARED name AS Control ()` --, `generate ()`: the
   window's code, each place an affine function of the window's size, found by laying the form out at two sizes;
-  the program's parts, `part_of ()` turns a line of the whole program back into its file's), `codeedit.h` (the
-  code editor), `designer.h` (the window drawn with real uikit widgets under a transparent `Overlay` that takes the
+  the program's parts, `part_of ()` turns a line of the whole program back into its file's), `codeedit.h` (UIKit's
+  `CodeEdit` set up for QBStudio: its faces, BASIC's words, the `.form` flags, the completion -- the editor itself
+  moved into UIKit on 2026-10-06, `uikit/codeedit.h`), `designer.h` (the window drawn with real uikit widgets under a transparent `Overlay` that takes the
   mouse; the toolbox), `props.h` (the properties). Host test: `sh tools/tests/run_qbstudio_test.sh` (the example
   project read, written back, laid out, generated, compiled and run on a scripted host).
 - **Properties** (`PROPERTY T.Name AS type ... END PROPERTY` the getter, `PROPERTY T.Name (v AS type)` the
   setter): `rewriteProperties ()` (bascomp.cpp) turns them, before the pre-scan, into a `FUNCTION T.Name` and a
   `SUB T.SETPROP_Name`; `methodStatement` sends `x.Name = v` to the setter, and a read of `x.Name` finds the getter
   as a method.
+- **A host's own words: dialects** (`bas::setDialect`, 2026-10-06; made for Turtle Quest): a program that hosts
+  BASIC adds statements and functions of its own without touching the language -- a table of `bas::ExtWord`
+  (`name`, `id`, `kind` -- `'s'` a statement, `'n'` / `'$'` a function giving a number / a string -- and `args`,
+  the built-ins' spec), word **aliases** (pairs `"AVANCE", "FORWARD"`, `"SI", "IF"`: the lexer replaces the word
+  -- another language's keywords) and the block **`REPEAT n ... END REPEAT`** (`Dialect::repeat`; the count is
+  evaluated once, into a hidden variable). The words are reserved while the dialect is set and take precedence
+  over a built-in of the same name (a turtle's `COLOR`). They compile to `OP_ST S_EXT` / `OP_BI B_EXT` with the
+  word's id as the first argument; the VM calls **`Host::ext (id, args, argc, result, why, cap)`** -- false is a
+  run-time error at the word's line, `why` its message. No new opcode: the `.bax` format and the machine code are
+  unchanged (the translator leaves `B_EXT` / `S_EXT` to the VM). `bas::wordList` lists the dialect's words too
+  (an editor's colours). `setDialect (0)`: plain BASIC.
+- **The statement hook** (2026-10-06): `Host::lineHook = true` before `bas::run` and **`Host::onStatement (line)`**
+  is called before each statement the program starts (the starts of `Program::stmts`, marked once at the run's
+  start) -- false stops the program there (`run` returns 0). Such a run is the VM's (no machine code), like TRON's.
+  A loop with no statement inside (`DO: LOOP`) only calls `Host::poll` (every 4096 instructions): a host that
+  limits a run counts there too. Made for Turtle Quest's playback; the base of a debugger for QBasic / QBStudio
+  (breakpoints: stop at a line; stepping: stop at the next statement).
 - **Adding a function**: an entry in `BFNS[]` (bascomp.cpp: name, id, result type, argument
   spec `N`/`S`/`?`, `[` = optional from here), a `B_*` id (basint.h), its case in
   `VM::builtin` (basvm.cpp); something the VM cannot do itself goes through a new
@@ -3800,7 +3818,29 @@ barwidth = 40
   the library pictures; `NEMU_ROMS=<folder>` of ROMs).
 - **Tests**: `sh tools/tests/run_basic_test.sh` builds the core with a console host
   (`tools/tests/basic/host_main.cpp`, graphics / controls logged as text) under ASan + UBSan
-  and compares `tools/tests/basic/progs/*.bas` with their `.out` (`--update` rewrites them).
+  and compares `tools/tests/basic/progs/*.bas` with their `.out` (`--update` rewrites them); then
+  `tools/tests/basic/dialect_test.cpp` (a dialect's statements, functions, aliases, `REPEAT`, errors; the statement
+  hook's lines and its stop).
+- **Turtle Quest** (`user/Apps/turtle/`, a newlib app as QBStudio: the `turtle.elf` rule compiles the core's sources
+  into it; docs/04 §13). `world.h` is the game without its window: the **turtle's dialect** (`WORDS`, the French
+  aliases `ALIASES_FR` -- the turtle's words and BASIC's keywords), the lessons (`CONCEPTS`), the **packs**
+  (`parse_pack` / `write_pack`: `.turtle` text files, their format in the header), the **world** (the map, the
+  turtle, the pen's lines, the painted tiles, the keys and coins) and **`run_program`**: the program compiled with
+  the dialect and run **at once** by a `Recorder` -- a `bas::Host` that is the turtle (`ext ()`: a move is checked
+  square by square against the walls; a wall, a locked door, nothing to pick is a run-time error with a sentence for
+  the player) with the statement hook on, so that every statement started is an event (`EV_LINE`) beside the moves,
+  turns, picks, doors, prints; a run is stopped past 40 000 events or 3 000 polls (about 12 M instructions: "the
+  turtle is tired"). The window (`main.cpp`) **plays the record back**: `playback_tick ()` (Root::onTick) applies the
+  events to its own world at the speed chosen, lights each `EV_LINE`'s line in the editor (UIKit's `CodeEdit`,
+  `hiLine`), and in step mode pauses at the next one -- so the program never runs while the window waits, and a
+  step is exact. A drawing level's figure is its solution's lines (`target_of`); a program's lines must cover them
+  and stay on them (`same_drawing`: points every 0.1 square, 0.15 apart at most). Stars: `count_instructions` (the
+  statements, not the blocks' ends nor the comments) against the level's `par`. The progress is a small
+  `(section, key) = value` store in `SD:/apps/turtle.app/progress.ini` (a section a player). Host test:
+  `sh tools/tests/run_turtle_test.sh` -- every level of the card's packs solved by its solution with three stars,
+  written back and read again the same, and the player's errors (a wall at its line, a locked door, an endless
+  loop, a syntax error, French words, a figure too small). Screenshots: `shots.sh turtle` (the players' progress
+  from `tools/tests/desktop_sim/turtle/*.ini`).
 
 ## 10. Extending the `kapi` ABI
 

@@ -19,42 +19,43 @@
 13. [`uikit/bmp.h`](#uikitbmph)
 14. [`uikit/calendar.h`](#uikitcalendarh)
 15. [`uikit/checkbox.h`](#uikitcheckboxh)
-16. [`uikit/colorpick.h`](#uikitcolorpickh)
-17. [`uikit/combobox.h`](#uikitcomboboxh)
-18. [`uikit/datagrid.h`](#uikitdatagridh)
-19. [`uikit/dropdown.h`](#uikitdropdownh)
-20. [`uikit/flat.h`](#uikitflath)
-21. [`uikit/font.h`](#uikitfonth)
-22. [`uikit/global.h`](#uikitglobalh)
-23. [`uikit/groupbox.h`](#uikitgroupboxh)
-24. [`uikit/icon.h`](#uikiticonh)
-25. [`uikit/imagebox.h`](#uikitimageboxh)
-26. [`uikit/knob.h`](#uikitknobh)
-27. [`uikit/lang.h`](#uikitlangh)
-28. [`uikit/layout.h`](#uikitlayouth)
-29. [`uikit/lcd.h`](#uikitlcdh)
-30. [`uikit/listbox.h`](#uikitlistboxh)
-31. [`uikit/menu.h`](#uikitmenuh)
-32. [`uikit/numeric.h`](#uikitnumerich)
-33. [`uikit/paint.h`](#uikitpainth)
-34. [`uikit/panel.h`](#uikitpanelh)
-35. [`uikit/progress.h`](#uikitprogressh)
-36. [`uikit/radio.h`](#uikitradioh)
-37. [`uikit/richtextbox.h`](#uikitrichtextboxh)
-38. [`uikit/scrollbar.h`](#uikitscrollbarh)
-39. [`uikit/segmented.h`](#uikitsegmentedh)
-40. [`uikit/skin.h`](#uikitskinh)
-41. [`uikit/slider.h`](#uikitsliderh)
-42. [`uikit/splitter.h`](#uikitsplitterh)
-43. [`uikit/sysclip.h`](#uikitsyscliph)
-44. [`uikit/tabhost.h`](#uikittabhosth)
-45. [`uikit/textarea.h`](#uikittextareah)
-46. [`uikit/textbox.h`](#uikittextboxh)
-47. [`uikit/toggle.h`](#uikittoggleh)
-48. [`uikit/toolbar.h`](#uikittoolbarh)
-49. [`uikit/treeview.h`](#uikittreeviewh)
-50. [`uikit/vpaint.h`](#uikitvpainth)
-51. [`uikit/vumeter.h`](#uikitvumeterh)
+16. [`uikit/codeedit.h`](#uikitcodeedith)
+17. [`uikit/colorpick.h`](#uikitcolorpickh)
+18. [`uikit/combobox.h`](#uikitcomboboxh)
+19. [`uikit/datagrid.h`](#uikitdatagridh)
+20. [`uikit/dropdown.h`](#uikitdropdownh)
+21. [`uikit/flat.h`](#uikitflath)
+22. [`uikit/font.h`](#uikitfonth)
+23. [`uikit/global.h`](#uikitglobalh)
+24. [`uikit/groupbox.h`](#uikitgroupboxh)
+25. [`uikit/icon.h`](#uikiticonh)
+26. [`uikit/imagebox.h`](#uikitimageboxh)
+27. [`uikit/knob.h`](#uikitknobh)
+28. [`uikit/lang.h`](#uikitlangh)
+29. [`uikit/layout.h`](#uikitlayouth)
+30. [`uikit/lcd.h`](#uikitlcdh)
+31. [`uikit/listbox.h`](#uikitlistboxh)
+32. [`uikit/menu.h`](#uikitmenuh)
+33. [`uikit/numeric.h`](#uikitnumerich)
+34. [`uikit/paint.h`](#uikitpainth)
+35. [`uikit/panel.h`](#uikitpanelh)
+36. [`uikit/progress.h`](#uikitprogressh)
+37. [`uikit/radio.h`](#uikitradioh)
+38. [`uikit/richtextbox.h`](#uikitrichtextboxh)
+39. [`uikit/scrollbar.h`](#uikitscrollbarh)
+40. [`uikit/segmented.h`](#uikitsegmentedh)
+41. [`uikit/skin.h`](#uikitskinh)
+42. [`uikit/slider.h`](#uikitsliderh)
+43. [`uikit/splitter.h`](#uikitsplitterh)
+44. [`uikit/sysclip.h`](#uikitsyscliph)
+45. [`uikit/tabhost.h`](#uikittabhosth)
+46. [`uikit/textarea.h`](#uikittextareah)
+47. [`uikit/textbox.h`](#uikittextboxh)
+48. [`uikit/toggle.h`](#uikittoggleh)
+49. [`uikit/toolbar.h`](#uikittoolbarh)
+50. [`uikit/treeview.h`](#uikittreeviewh)
+51. [`uikit/vpaint.h`](#uikitvpainth)
+52. [`uikit/vumeter.h`](#uikitvumeterh)
 
 ---
 
@@ -66,7 +67,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 729 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 764 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -158,6 +159,25 @@ unsigned *px = ui::icon_load ("SD:/apps/tinypad.app/icon.bmp", &w, &h);
 if (px) { /* draw it ... */ delete [] px; }
 ```
 
+**A code editor** (`uikit/codeedit.h`, 2026-10-06 — QBStudio's, made a widget of the kit for every program that
+edits code: QBStudio, Turtle Quest): BASIC in a monospaced face with its colours, the line numbers, the
+indentation's guides, a line lit (`hiLine`: an error's, a debugger's current line), the lines with a problem
+marked, undo / redo, the clipboard, the completion, UTF-8 comments:
+
+```cpp
+CodeEdit *ed = new CodeEdit (10, 10, 400, 300);
+ed->mono = myMonoFace;                  // (0: the UI's face)
+ed->isKeyword = is_basic_word;          // bool (const char *w, int n): the words coloured and put in capitals
+ed->setText ("FOR i = 1 TO 3\n  PRINT i\nNEXT\n");
+ed->onChange = changed;                 // Action: the text changed
+root.addChild (ed);
+ed->hiLine = 2; ed->showLine (1);       // line 2 lit and shown (hiLine 1-based, showLine 0-based)
+ed->clearMarks (); ed->addMark (3);     // line 3 has a problem
+```
+
+The completion: set `complete` (`void (CodeEdit &, const char *object)`), which calls `ed.addCompletion (name,
+kind, detail)` for each item offered after `object.` (or Ctrl+Space: `object` empty).
+
 **A timer or polling**: derive from `Root` and override `onTick ()` (called about 60 times a second).
 
 ## Index
@@ -234,6 +254,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `Calendar` | uikit/calendar.h -- Calendar | `calendar.h` |
 | `DatePicker` | (a type) | `calendar.h` |
 | `Checkbox` | uikit/checkbox.h -- a box + check mark + label | `checkbox.h` |
+| `CodeEdit` | (a type) | `codeedit.h` |
 | `ColorPicker` | uikit/colorpick.h -- a colour swatch | `colorpick.h` |
 | `Combobox` | uikit/combobox.h -- an editable Textbox with a drop-down list of suggestions (WinForms ComboBox, DropDown style) | `combobox.h` |
 | `DataGrid` | (a type) | `datagrid.h` |
@@ -1203,6 +1224,85 @@ public:
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
 	bool onKey (long k) override;		// Space / Enter toggle
+};
+```
+
+## `uikit/codeedit.h`
+
+uikit/codeedit.h -- CodeEdit: a code editor. BASIC (or QBStudio's .form text) in a monospaced face, the language's colours, the line numbers, the indentation's guides, the lines with a problem marked (a red dot in the margin, the text underlined), a line lit (an error's, a debugger's current line), undo / redo, the clipboard, and the completion (after a name and a dot, or Ctrl+Space: the program gives the items). The words of the language are written in capitals as you type (as QBasic does) when isKeyword is set. Made from QBStudio's editor (2026-10-06) for every program that edits code: QBStudio, Turtle Quest.
+
+```
+  CodeEdit *ed = new CodeEdit (x, y, w, h);
+  ed->mono = myMonoFace; ed->isKeyword = is_basic_word;	// (0: the UI's face; no keyword colours)
+  ed->setText (src); ed->onChange = changed;
+  ed->hiLine = 4; ed->invalidate (true);				// line 4 lit (1-based; 0 none)
+  ed->clearMarks (); ed->addMark (7);			// line 7 has a problem
+```
+
+Keys: the arrows (Ctrl: by word), Home / End (Ctrl: the text's), Page Up / Down, Shift: select; Ctrl+A, C, X, V, Z, Y; Tab / Shift+Tab: indent / unindent the lines chosen; Enter keeps the indentation (two spaces more after a line that opens a block); Ctrl+Space: the completion. Mouse: click, drag, double click (a word), the wheel, the scroll bar.
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
+
+```cpp
+enum { CODE_BASIC = 0, CODE_FORM = 1 };			// CodeEdit::lang (CODE_FORM: QBStudio's .form text)
+struct CodeEditState;					// (the editor's text, lines, undo: codeedit.cpp)
+
+class CodeEdit : public Widget
+{
+public:
+	bool	 readonly;
+	int	 lang;					// CODE_BASIC / CODE_FORM
+	int	 hiLine;				// a line lit (1-based; 0 none)
+	Action	 onChange;				// the text changed
+	Action	 onCaret;				// the caret moved
+	TextFace *mono;					// the code's face (0: the UI's)
+	TextFace *ui;					// the completion list's face (0: the UI's)
+	bool	 (*isKeyword) (const char *w, int n);	// a word of the language? (colours, capitals; 0: none)
+	bool	 (*isFlag) (const char *w, int n);	// CODE_FORM: a flag word (0: none)
+	// The completion: called with the name before the dot ("" for Ctrl+Space); it calls addCompletion for each
+	// item -- kind: 'p' property, 'm' method, 'c' control, 's' a SUB, 'k' a word, 'f' a function, 't' a type...
+	void	 (*complete) (CodeEdit &ed, const char *object);
+	void	*user;					// the program's (e.g. the document this editor shows)
+
+	CodeEdit (int l, int t, int w, int h);
+	~CodeEdit () override;
+
+	const char *text () const;
+	int  length () const;
+	void setText (const char *s);			// a new text: no undo, the caret at the start
+	void replaceAll (const char *s, int caret);	// the whole text replaced as one step that can be undone
+	void insertText (const char *s);		// at the caret, replacing the selection
+	int  caret () const;
+	int  caretLine () const;			// 0-based
+	int  caretCol () const;
+	int  lineCount () const;
+	int  lineStart (int ln) const;			// the offset of a line (0-based)
+	void gotoLine (int ln, bool select = false);	// the caret at a line's text (0-based), shown in the middle
+	void setCaret (int p);
+	void showLine (int ln);				// a line (0-based) scrolled into view, the caret left where it is
+	bool hasSel () const;
+	void selectAll ();
+	void copy ();
+	void cut ();
+	void paste ();
+	void undo ();
+	void redo ();
+	bool find (const char *w);			// the next w (any case) from the caret, chosen; false: none
+	void wordAt (int p, char *obj, int ocap, int *wordStart);	// the name before p, and the object before its dot
+	// The lines with a problem (1-based)
+	void clearMarks ();
+	void addMark (int line);
+	bool hasMark (int line) const;
+	void addCompletion (const char *name, char kind, const char *detail);	// (from complete)
+
+	void onDraw () override;
+	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
+	bool onKey (long k) override;
+	void resizeTo (int w, int h) override;
+private:
+	friend struct CodeEditOps;
+	CodeEditState *m;
+	unsigned long m_reserved[4] = { 0, 0, 0, 0 };	// (uikit/abi.h)
 };
 ```
 

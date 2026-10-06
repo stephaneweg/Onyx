@@ -53,6 +53,7 @@
 #include "uikit/vumeter.h"
 #include "uikit/segmented.h"
 #include "uikit/lcd.h"
+#include "uikit/codeedit.h"	// a code editor (BASIC: colours, line numbers, a line lit, marks)
 #include "uikit/flat.h"		// the same behind C functions on handles (BASIC, C programs)
 #include "uikit/lang.h"		// TR (): the words in the language chosen
 // (uikit/toolbar.h -- ToolBar, ToolButton, the WKT_* icons -- is included by the app itself: Letters,

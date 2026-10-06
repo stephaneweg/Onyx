@@ -390,8 +390,7 @@ static Doc &add_doc (const char *file, int type, const char *text)
 {
 	Doc d; memset (&d, 0, sizeof d);
 	cpy (d.file, file, sizeof d.file); d.type = type; d.gen = -1;
-	d.ed = new CodeEdit (0, 0, 100, 100);
-	d.ed->lang = type == DOC_FORM ? LANG_FORM : LANG_BASIC;
+	d.ed = qs_editor (type == DOC_FORM ? LANG_FORM : LANG_BASIC);
 	d.ed->readonly = type == DOC_GEN;
 	d.ed->setText (text ? text : "");
 	d.ed->onChange = on_text_changed; d.ed->onCaret = on_caret;
@@ -408,8 +407,8 @@ static void read_form (Doc &d)
 {
 	Form *f = new Form;
 	bool ok = form_read (*f, d.ed->text ());
-	d.ed->marks.clear ();
-	for (int i = 0; i < f->errors.n; i++) d.ed->marks.push (f->errors[i].line);
+	d.ed->clearMarks ();
+	for (int i = 0; i < f->errors.n; i++) d.ed->addMark (f->errors[i].line);
 	set_problems_for (d.file, f);
 	if (!ok) { delete f; d.ed->invalidate (true); return; }
 	delete d.form; d.form = f;
@@ -526,7 +525,7 @@ static bool compile_check (bas::Program **keep, bool quiet)
 {
 	Str prog;
 	if (!build (prog, quiet)) return false;
-	for (int i = 0; i < g_p.docs.n; i++) if (g_p.docs[i].type != DOC_FORM) { g_p.docs[i].ed->marks.clear (); g_p.docs[i].ed->invalidate (true); drop_problems (g_p.docs[i].file); }
+	for (int i = 0; i < g_p.docs.n; i++) if (g_p.docs[i].type != DOC_FORM) { g_p.docs[i].ed->clearMarks (); drop_problems (g_p.docs[i].file); }
 	for (int i = g_probs.n - 1; i >= 0; i--) if (g_probs[i].file[0] == '(') g_probs.erase (i);
 	bas::Error err;
 	bas::Program *p = bas::compile (prog.str (), &err);
@@ -536,7 +535,7 @@ static bool compile_check (bas::Program **keep, bool quiet)
 		part_of (g_parts, err.line, &file, &at);
 		add_problem (0, file, at, err.msg);
 		int d = find_doc (file);
-		if (d >= 0) { g_p.docs[d].ed->marks.push (at); g_p.docs[d].ed->invalidate (true); }
+		if (d >= 0) g_p.docs[d].ed->addMark (at);
 		g_msgs->invalidate (true);
 		if (!quiet && d >= 0) { show_doc (d); g_p.docs[d].ed->gotoLine (at - 1); g_p.docs[d].ed->setFocus (); }
 		char m[200]; snprintf (m, sizeof m, "%s %d: %s", file, at, err.msg); status (m);
@@ -1362,7 +1361,7 @@ public:
 			{
 				add_problem (0, file, at, msg);
 				int d = find_doc (file);
-				if (d >= 0) { show_doc (d); g_p.docs[d].ed->marks.push (at); g_p.docs[d].ed->hiLine = at; g_p.docs[d].ed->gotoLine (at - 1); }
+				if (d >= 0) { show_doc (d); g_p.docs[d].ed->addMark (at); g_p.docs[d].ed->hiLine = at; g_p.docs[d].ed->gotoLine (at - 1); }
 			}
 			char t[260]; snprintf (t, sizeof t, "Runtime error: %s %d: %s", file, at, msg); status (t);
 			g_msgs->invalidate (true);

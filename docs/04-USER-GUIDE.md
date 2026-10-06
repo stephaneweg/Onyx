@@ -4120,6 +4120,7 @@ the same notes. **Files**: the plugins' settings are saved in the song (`.kson`:
 | **Solitaire** | Klondike. **Drag** cards: the seven columns build down in alternating colours (a king on an empty column), the four foundations up by suit from the ace. **Click the stock** to turn one card (or three: Game ▸ Draw Three); an empty stock turns the waste over again. **Double-click** sends a card to its foundation, **right-click** sends every card that can go. Hidden cards turn over by themselves. **^Z** undo, **^N** deal. Windows scoring + timer; the cards bounce when you win. |
 | **FreeCell** | All the cards face up in eight columns, four **free cells** (top left, one card each), four foundations (top right). **Drag** cards: a column takes a card one lower in the other colour (anything on an empty column); a **run** moves at once when free cells and empty columns allow it. **Double-click**: to the foundation, else to a free cell. Cards no longer needed go home by themselves. **^Z** undo; Game ▸ **Select Game...** plays deal 1–32000 — the same deals as Microsoft FreeCell; Restart Game. |
 | **Pipes** | After *Pipe Dream*: lay pipe pieces before the water comes. The next pieces wait in the queue on the left (the bottom one goes next); **click** a square (or arrows + **Space**) to put it there — on an unfilled piece it replaces it (−50). When the countdown (the blue bar) runs out the water leaves the red valve: 50 points per piece it crosses, 500 more for a cross used both ways. If it went through the **required number of pieces** (top right) when it spills, the round is won. **F**: let the water run now, fast (double points). Walls from round 3, faster water every round. **P** pause. |
+| **Turtle Quest** (`turtle`) | Learn to program: write a little program in **BASIC** that brings a turtle to its flag, picks the coins, opens the doors, paints the tiles and draws figures — 27 levels in three packs, from moves to loops, conditions, variables, procedures and Logo's figures, in English or **French** (AVANCE, REPETE, SI...). **F5** run, **F8** step by step (the line being run lit), **F7** stop, **F9** reset, **F1** the lesson, **F2** the hint, **Ctrl+N** next level; a level editor (**Ctrl+E**); several players, each with their stars. See §13, *Turtle Quest*. |
 | **Arkanoid** | Written in BASIC (`main.bax`, from `SD:/basic/examples/arkanoid.bas`), in `SCREEN 13` shown full screen (**F**: a window, and back). Break the bricks. The paddle follows the **mouse** or the **←/→** arrows (held); **Space** or a click launches the ball (and fires, with the laser). Silver bricks take several hits, gold ones never break. Catch the falling capsules: **E** longer paddle, **S** slower ball, **C** catch the ball, **L** laser, **D** three balls, **P** extra life. 5 rounds (then again, faster), 3 lives. **P** pause, **Esc** title / quit. No file read or written. |
 | **Planets 3D** | Written in BASIC (`main.bax`, from `SD:/basic/examples/planets3d.bas`): a little solar system in 3D, drawn by the **GPU** — the sun, four planets turning on their orbits, a moon, a ringed gas giant, stars; the planets' textures are drawn by the program itself. **Arrows** turn the camera, **+ / −** nearer / farther, **Space** pause, **F** full screen, **Esc** quit. The top line says GPU or software and the frames a second. No file read or written. |
 | **Invaders** | Space Invaders. **←/→** (held) or the mouse move the cannon; **Space** or a click fires (one shot at a time). The fleet marches faster as it thins out (the four-note march on the synth); the shields crumble; the red saucer is worth 50–300. An invader reaching the ground ends the game. **P** pause. |
@@ -4781,6 +4782,91 @@ file at its line. **Make App** writes `SD:/apps/<name>.app/`: `main.bax` (compil
 `main.bas`), `app.txt` (its title, its category) and `icon.bmp` (the project's `icon.bmp`, else BASIC's) — the
 app is listed, launched and packaged like any other. Help: `SD:/apps/qbstudio.app/help.txt` (Help ▸ QBStudio Help).
 Not yet: the debugger (breakpoints, stepping, the variables), several windows in a project, a Timer.
+
+### Turtle Quest, learning to program with a turtle (`turtle`)
+
+**Turtle Quest** (category *Games*) teaches programming the way Logo did, as a game: in each level the player
+writes a short program that guides a **turtle** across a board — to its **flag**, picking up the **coins**,
+fetching a **key** for a **door**, painting the marked **tiles**, or drawing a **figure**. The language is Onyx
+BASIC itself (the same as QBasic's, `/bin/basic`'s and QBStudio's), with the turtle's words added; `FOR`, `IF`,
+`WHILE`, `SUB`, variables, `PRINT` work as everywhere else.
+
+![Turtle Quest: the maze, step by step](../screenshots/turtle.png)
+*The maze (pack 2), run step by step: the line being run is lit, the turtle on its way — the program follows the
+wall on its right.*
+
+**The window.** On the left, the **pack** of levels (a drop-down) and its levels, with the stars won. In the
+middle, the program: **Run** (F5), **Step** (F8: one statement at a time — the line about to run is lit in
+yellow, the turtle does what it says; Run then goes on at full speed), **Stop** (F7, or Esc), **Reset** (F9: the
+turtle back at its start), the **speed** (the slider: from slow to instant); under the program, the **words
+the level knows** — a click writes one at the caret (the purple ones, `REPEAT`, `FOR`, `IF`, `WHILE`, `SUB`,
+write a whole block) and pointing at one says what it does; and the **instruction count** with what three and
+two stars ask. On the right: the level's card (its title, what to do; **Hint** — F2 — shows a clue, **Lesson**
+— F1 — the card of the level's idea, shown by itself the first time a new idea comes), the board, and the
+message bar.
+
+**The turtle's words** (the French names in brackets, when Language ▸ Français is chosen — the English words
+keep working):
+
+| Word | What it does |
+|---|---|
+| `FORWARD [n]` (`AVANCE`, `AV`) / `BACK [n]` (`RECULE`, `RE`) | moves n squares ahead / back (1 without n; any number in a drawing). |
+| `LEFT [degrees]` (`GAUCHE`, `TG`) / `RIGHT [degrees]` (`DROITE`, `TD`) | turns on the spot (90 without a number). |
+| `PENUP` (`LEVECRAYON`, `LC`) / `PENDOWN` (`BAISSECRAYON`, `BC`), `COLOR n` (`COULEUR`) | the pen: the turtle draws where it walks while it is down (at the start); its colour, 0 to 15. |
+| `PICK` (`RAMASSE`) | picks the coin or the key under the turtle. |
+| `WALL ()` (`MUR`), `WALLLEFT ()` (`MURGAUCHE`), `WALLRIGHT ()` (`MURDROITE`) | true when a wall (or a locked door) is ahead / on the left / on the right. |
+| `FRONT ()` (`DEVANT`) | what is ahead: 0 free, 1 a wall, 2 something to pick, 3 the goal, 4 a door. |
+| `ONGOAL ()` (`SURBUT`), `ITEM ()` (`OBJET`), `KEYS ()` (`CLES`), `HEADING ()` (`CAP`) | on the flag? something to pick here? the keys carried; the heading in degrees (0 north, 90 east). |
+| `REPEAT n` ... `END REPEAT` (`REPETE` ... `FIN REPETE`) | the lines between, n times. |
+
+In French, BASIC's own words have their names too: `SI` / `ALORS` / `SINON` / `SINONSI` / `FIN SI`, `POUR` /
+`JUSQUA` / `SUIVANT`, `TANTQUE` / `FINTANTQUE`, `FAIRE` / `BOUCLE` / `JUSQUE`, `PROCEDURE` / `FIN PROCEDURE`,
+`APPELLE`, `ET`, `OU`, `NON`, `AFFICHE`, `SORTIR`. (The parentheses of a sensor may be left out: `WALL`.)
+
+**Winning and the stars.** A level is won when the program **ends** with the turtle on the flag (if the level
+has one), every coin picked and every marked tile painted — and, in a drawing level, the grey figure drawn (in
+any order, any colour; nothing more). The stars count the **instructions** (each statement; the ends of the
+blocks — `END REPEAT`, `NEXT`, `END IF`, `WEND`... — and the comments do not count): one star for a win, two and
+three when the program is as short as the level asks — a loop beats lines copied again and again. The best stars
+of each level are kept, per player. **Errors** are said simply, at their line, which is marked in the program:
+*"Line 4: Bump! The turtle hit a wall."*, *"The door is locked: the turtle needs a key."*, *"There is nothing to
+pick up here."*, *"This level does not know LEFT yet."*, a syntax error (*"I do not understand line 3."*), and a
+program that never ends is stopped (*"The turtle is tired..."*). `PRINT` shows its text in the message bar.
+
+![Turtle Quest in French: the star](../screenshots/turtle-fr.png)
+*In French: a star drawn — two stars only, the program has one instruction too many for the level.*
+
+**The levels.** Three packs come with the game (27 levels): **1. First steps** (moving, turning, picking up,
+keys and doors), **2. Loops and choices** (`REPEAT`, `FOR`, `IF`, the sensors, `WHILE`, mazes), **3. Variables,
+words and figures** (variables, `SUB`, the pen, the figures: square, triangle, hexagon, star, flower, spirals). All
+levels are open; a level's lesson card comes the first time its idea appears.
+
+**The level editor** (Levels ▸ Edit This Level, **Ctrl+E**, or Levels ▸ New Level): the left column becomes the
+level's fields — title, what to do, hint (in the language chosen), the words it knows (empty: all), the idea it
+teaches, the instructions for three and two stars, **Drawing** (the solution's figure is the one to draw) and the
+size (W− W+ H− H+) — and a palette of **tools**: wall, floor, flag, key, coin, door, tile to paint, turtle (a
+click on the turtle turns it), water (outside the board). Click or drag on the board to draw; the program pane
+holds the level's **solution**: **Test** runs it (a win sets the stars' counts from it), **Save** writes the level
+into **`SD:/docs/turtle/my-levels.turtle`** (the pack *My levels*; a level of the built-in packs is saved there
+as a copy), **Close** goes back to playing.
+
+![Turtle Quest: the level editor](../screenshots/turtle-editor.png)
+*The level editor: a coin added to "Paint the frame", the solution tested — it no longer wins.*
+
+**Menus.** *Game*: Run, Step, Stop, Reset, Next / Previous Level (**Ctrl+N** / **Ctrl+P**), Lesson, Hint, Quit
+(**Ctrl+Q**). *Levels*: Open Level Pack... (**Ctrl+O**), Edit This Level, New Level. *Language*: English,
+Français (the words, the texts, the lessons). *Player*: the players (up to eight; each has its stars, its programs
+and the lessons seen), New Player..., About.
+
+**Files.** Reads the packs `SD:/apps/turtle.app/levels/*.turtle`, `SD:/docs/turtle/my-levels.turtle` and any
+`.turtle` file opened (Levels ▸ Open, dropped on the window, or a double click in the File Viewer: the package
+associates `.turtle` with the game). Writes **`SD:/apps/turtle.app/progress.ini`** (the players, their stars,
+their last program of each level, the lessons seen, the language, the pack and level last played, the speed) and,
+from the editor, `SD:/docs/turtle/my-levels.turtle`. A pack is a text file: `[pack]` (`title`, `title.fr`) and
+one `[level]` section a level — `id`, `title`, `text`, `hint` (and their `.fr`), `concept`, `words`, `par` (the
+counts for three and two stars), `draw`, `map`, `start` (the program given), `solution`; a value on several lines
+is given by the lines after it, each starting with `|`. The map's characters: `#` wall, `.` floor, `*` flag, `k`
+key, `c` coin, `D` door, `p` tile to paint, `^ > v <` the turtle and its heading, a space: water.
 
 ## 14. Troubleshooting
 

@@ -1,0 +1,147 @@
+# Turtle Quest -- a pack of levels (user/Apps/turtle/world.h says the format)
+[pack]
+title = 1. First steps
+title.fr = 1. Premiers pas
+
+[level]
+id = hello
+title = Hello, turtle
+title.fr = Bonjour, tortue
+concept = move
+words = FORWARD
+text = Bring the turtle to the flag. Write FORWARD and how many squares, then press Run.
+text.fr = Amène la tortue jusqu'au drapeau. Écris AVANCE et le nombre de cases, puis appuie sur Lancer.
+hint = Count the squares between the turtle and the flag: 4.
+hint.fr = Compte les cases entre la tortue et le drapeau : 4.
+par = 1 1
+map =
+| #######
+| #>...*#
+| #######
+solution =
+| FORWARD 4
+
+[level]
+id = backup
+title = Reverse gear
+title.fr = Marche arrière
+concept = move
+words = FORWARD BACK
+text = The flag is behind the turtle. It can walk backwards: BACK.
+text.fr = Le drapeau est derrière la tortue. Elle sait reculer : RECULE.
+hint = BACK 3
+hint.fr = RECULE 3
+par = 1 1
+map =
+| #######
+| #*..>.#
+| #######
+solution =
+| BACK 3
+
+[level]
+id = corner
+title = Around the corner
+title.fr = Au coin de la rue
+concept = turn
+words = FORWARD BACK LEFT RIGHT
+text = The way turns. RIGHT and LEFT make the turtle turn on the spot.
+text.fr = Le chemin tourne. DROITE et GAUCHE font tourner la tortue sur place.
+hint = FORWARD 2, then RIGHT: the turtle now looks down.
+hint.fr = AVANCE 2, puis DROITE : la tortue regarde maintenant vers le bas.
+par = 7 8
+map =
+| #######
+| #>..###
+| ###.###
+| ###...#
+| #####*#
+| #######
+solution =
+| FORWARD 2
+| RIGHT
+| FORWARD 2
+| LEFT
+| FORWARD 2
+| RIGHT
+| FORWARD
+
+[level]
+id = coins
+title = Pocket money
+title.fr = Argent de poche
+concept = pick
+words = FORWARD BACK LEFT RIGHT PICK
+text = Pick up both coins on the way to the flag: stop on a coin, then PICK.
+text.fr = Ramasse les deux pièces en chemin vers le drapeau : arrête-toi sur une pièce, puis RAMASSE.
+hint = FORWARD 2, PICK, FORWARD 3, PICK...
+hint.fr = AVANCE 2, RAMASSE, AVANCE 3, RAMASSE...
+par = 5 6
+map =
+| #########
+| #>.c..c*#
+| #########
+solution =
+| FORWARD 2
+| PICK
+| FORWARD 3
+| PICK
+| FORWARD
+
+[level]
+id = door
+title = The locked door
+title.fr = La porte fermée
+concept = door
+words = FORWARD BACK LEFT RIGHT PICK
+text = A door blocks the way. The key lies in the small room below.
+text.fr = Une porte bloque le chemin. La clé est dans la petite salle en bas.
+hint = Go down, PICK the key, come BACK up, then go through the door.
+hint.fr = Descends, RAMASSE la clé, RECULE pour remonter, puis passe la porte.
+par = 7 8
+map =
+| #########
+| #>...D.*#
+| ###.#####
+| ###k#####
+| #########
+solution =
+| FORWARD 2
+| RIGHT
+| FORWARD 2
+| PICK
+| BACK 2
+| LEFT
+| FORWARD 4
+
+[level]
+id = treasure
+title = Treasure hunt
+title.fr = Chasse au trésor
+concept = pick
+words = FORWARD BACK LEFT RIGHT PICK
+text = Four coins, one long way. Pick them all and reach the flag.
+text.fr = Quatre pièces, un long chemin. Ramasse-les toutes et rejoins le drapeau.
+hint = The way goes right, down, then back left.
+hint.fr = Le chemin va à droite, descend, puis revient à gauche.
+par = 13 15
+map =
+| #########
+| #>.c.c..#
+| #######.#
+| #*.c.c..#
+| #########
+solution =
+| FORWARD 2
+| PICK
+| FORWARD 2
+| PICK
+| FORWARD 2
+| RIGHT
+| FORWARD 2
+| RIGHT
+| FORWARD 2
+| PICK
+| FORWARD 2
+| PICK
+| FORWARD 2

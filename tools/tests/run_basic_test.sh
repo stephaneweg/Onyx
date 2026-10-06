@@ -32,4 +32,10 @@ if [ "$1" != "--update" ]; then
 		else echo "FAIL $name (.bax)"; printf '%s\n' "$out" | diff "$name.out" - | head -20; fail=1; fi
 	done
 fi
+# a host's own words (bas::setDialect) and the statement hook (Host::lineHook)
+if [ "$1" != "--update" ]; then
+	g++ -std=c++17 -O1 -g -Wall -Wextra -fsanitize=address,undefined -I"$ROOT/user" -I"$ROOT/user/Libs" \
+	    "$ROOT/user/Libs/basic/basnum.cpp" "$ROOT/user/Libs/basic/bascomp.cpp" "$ROOT/user/Libs/basic/basvm.cpp" "$ROOT/user/Libs/basic/basbax.cpp" \
+	    "$HERE/basic/dialect_test.cpp" -o "$BIN.dialect" && "$BIN.dialect" || fail=1
+fi
 exit $fail

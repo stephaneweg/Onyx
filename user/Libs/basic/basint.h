@@ -153,10 +153,12 @@ enum Builtin
 	S_MIDINOTE, S_MIDIPROGRAM, S_MIDICONTROL, S_MIDIOFF,		// (... notes on the General MIDI synthesizer)
 	S_DEALLOC, S_POKEB, S_POKEW, S_POKEL, S_POKEQ, S_POKEF, S_POKED, S_POKES,	// (kits: memory a program shares with a kit)
 	S_PEEKT, S_POKET,						// (... a kit's structure read from / written at an address)
+	S_EXT,								// (a dialect's statement: its id, then its arguments)
 	S_LAST,
 	B_MENUITEM = 300, B_WINDOWWIDTH, B_WINDOWHEIGHT,		// (the built-in functions past 100)
 	B_FILEPLAYING, B_FILEPOS, B_FILELENGTH, B_NOTEFREQ, B_NOTENUMBER,	// (AudioKit)
 	B_ALLOC, B_CSTR, B_PEEKB, B_PEEKW, B_PEEKL, B_PEEKQ, B_PEEKF, B_PEEKD, B_ADDRESSOF,	// (kits; known after an #import)
+	B_EXT,								// (a dialect's function: its id, then its arguments)
 	B_LAST
 };
 

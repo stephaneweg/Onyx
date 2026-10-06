@@ -120,6 +120,10 @@ build () {
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/qbstudio" "$OUT/fakekapi.o" user/Apps/qbstudio/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
 			user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp user/Libs/basic/baskits.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
+	if [ "$1" = turtle ]; then			# (newlib-like: FreeType; Onyx BASIC's compiler and VM built in, the turtle's words)
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/turtle" "$OUT/fakekapi.o" user/Apps/turtle/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
+			user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
+	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
 			"$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
@@ -135,7 +139,7 @@ build () {
 }
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu letters sheet slides qbstudio 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
+      tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
       config wpaconf padconf soundconf displayconf keyconf preloadconf"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
@@ -306,6 +310,20 @@ if want qbstudio; then			# (the example project: the designer, Convert chosen; t
 	# ... a project with user controls (pages): the window's two Hosts, then the user control Settings in the designer
 	sim qbstudio qbstudio-hosts "wait;wait;wait" $P SIM_ARGS=SD:/projects/pages
 	png qbstudio-hosts
+fi
+if want turtle; then			# (Turtle Quest: the players' progress from desktop_sim/turtle/*.ini, in the writes' folder)
+	TQ="$OUT/writes/apps/turtle.app"
+	# the maze, step by step (F8 fourteen times): the line lit, the turtle on its way
+	mkdir -p "$TQ"; cp $D/turtle/maze.ini "$TQ/progress.ini"
+	ST=""; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do ST="$ST;key 0x117;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait"; done
+	sim turtle turtle "wait;wait$ST" $P; png turtle
+	# in French: the star drawn (two stars: one instruction too many)
+	cp $D/turtle/star-fr.ini "$TQ/progress.ini"
+	sim turtle turtle-fr "wait;wait;key 0x114;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-fr
+	# the level editor (Ctrl+E) on "Paint the frame", a coin added, the solution tested
+	cp $D/turtle/star-fr.ini "$TQ/progress.ini"; sed -i 's/^lang = fr/lang = en/; s/^level = 8/level = 3/' "$TQ/progress.ini"
+	sim turtle turtle-editor "wait;wait;key 0x05;$W;down 123 431;up 123 431;wait;down 820 230;up 820 230;wait;down 45 505;up 45 505;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-editor
+	rm -rf "$TQ"
 fi
 if want slides; then			# (the sample deck: slide 3, its callout chosen; the sorter; the effects; the show, mid-transition)
 	SL=SIM_ARGS=SD:/docs/cafe-2026.odp

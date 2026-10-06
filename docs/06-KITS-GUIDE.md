@@ -264,6 +264,25 @@ unsigned *px = ui::icon_load ("SD:/apps/tinypad.app/icon.bmp", &w, &h);
 if (px) { /* draw it ... */ delete [] px; }
 ```
 
+**A code editor** (`uikit/codeedit.h`, 2026-10-06 — QBStudio's, made a widget of the kit for every program that
+edits code: QBStudio, Turtle Quest): BASIC in a monospaced face with its colours, the line numbers, the
+indentation's guides, a line lit (`hiLine`: an error's, a debugger's current line), the lines with a problem
+marked, undo / redo, the clipboard, the completion, UTF-8 comments:
+
+```cpp
+CodeEdit *ed = new CodeEdit (10, 10, 400, 300);
+ed->mono = myMonoFace;                  // (0: the UI's face)
+ed->isKeyword = is_basic_word;          // bool (const char *w, int n): the words coloured and put in capitals
+ed->setText ("FOR i = 1 TO 3\n  PRINT i\nNEXT\n");
+ed->onChange = changed;                 // Action: the text changed
+root.addChild (ed);
+ed->hiLine = 2; ed->showLine (1);       // line 2 lit and shown (hiLine 1-based, showLine 0-based)
+ed->clearMarks (); ed->addMark (3);     // line 3 has a problem
+```
+
+The completion: set `complete` (`void (CodeEdit &, const char *object)`), which calls `ed.addCompletion (name,
+kind, detail)` for each item offered after `object.` (or Ctrl+Space: `object` empty).
+
 **A timer or polling**: derive from `Root` and override `onTick ()` (called about 60 times a second).
 
 ## 5. SystemKit — talking to the system and the other programs

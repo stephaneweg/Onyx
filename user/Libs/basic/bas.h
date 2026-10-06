@@ -19,6 +19,23 @@ namespace bas {
 struct Error { int line; char msg[120]; };	// line: 1-based source line (0 = none)
 struct G3Vertex; struct G3Batch;		// (basic/bas3d.h)
 
+// ---- a host's own words: a dialect (setDialect) ---------------------------------------------
+// A program that hosts BASIC may add statements and functions of its own (a game's "FORWARD 3", "WALL ()"),
+// word aliases (another language's keywords: "AVANCE" for FORWARD, "SI" for IF) and the block REPEAT n ...
+// END REPEAT. The words are reserved while the dialect is set; they are compiled into calls of Host::ext.
+//   kind  's' a statement, 'n' a function giving a number, '$' a function giving a string;
+//   args  as the built-ins' (N a number, S a string, '[' optional from here) -- at most 7.
+// A dialect's word takes precedence over a built-in of the same name (a turtle's COLOR).
+struct ExtWord { const char *name; int id; char kind; const char *args; };
+struct Dialect
+{
+	const ExtWord *words;				// ended by a 0 name; 0: none
+	const char *const *aliases;			// pairs "ALIAS", "WORD" (capitals), ended by 0; 0: none
+	bool repeat;					// REPEAT n ... END REPEAT
+};
+// An argument or a result of Host::ext: a number, or a string (s: len bytes, code page 437 as BASIC keeps them).
+struct ExtVal { bool str; double n; const char *s; int len; };
+
 // ---- the outside world -------------------------------------------------------------------
 // Colours: 0..15 = the QBasic palette; RGB(r,g,b) values have bit 24 set (0x1RRGGBB).
 struct Profile
@@ -175,6 +192,16 @@ struct Host
 	virtual void *const *kitOpen (const char *name, int minVersion, char *why, int cap)
 	{ (void) name; (void) minVersion; bscpyHost (why, "no kits on this system", cap); return 0; }
 	static void bscpyHost (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; if (cap > 0) d[i] = 0; }
+	// A dialect's word (setDialect): its id, its arguments -> true (a function: *result set; a string result's
+	// bytes stay the host's until the next call), or false: a run-time error, why says it (at the word's line).
+	virtual bool ext (int id, const ExtVal *args, int argc, ExtVal *result, char *why, int cap)
+	{ (void) id; (void) args; (void) argc; (void) result; bscpyHost (why, "Unknown word", cap); return false; }
+	// The statement hook (a debugger, a step-by-step run): with lineHook set before run (), onStatement is called
+	// before each statement the program starts (its source line, 1-based) -- false stops the program there (run
+	// returns 0, no error). The program then runs on the VM (no machine code). A loop with no statement inside
+	// ("DO: LOOP") calls poll () only: a host that limits a run counts there too.
+	bool lineHook = false;
+	virtual bool onStatement (int line) { (void) line; return true; }
 	// Program arguments (COMMAND$) and the end of the run.
 	virtual const char *command () { return ""; }
 	virtual void finished (bool error) { (void) error; }
@@ -188,6 +215,8 @@ Program *compile (const char *src, Error *err);
 // Kits (#import name): where the compiler reads a kit's description -- the text of SD:/lib/<name>.bi
 // (name in lower case) as a new[] buffer and its length, or 0: no such kit. None set: #import fails.
 void     setKitSource (char *(*source) (const char *name, int *len));
+// The dialect the next compile () and wordList () use (0: plain BASIC). The structure is kept, not copied.
+void     setDialect (const Dialect *d);
 int      run (Program *p, Host &host, Error *err);
 void     destroy (Program *p);
 // Compiled programs (.bax, basbax.cpp): the bytecode as a file -- it runs without parsing.

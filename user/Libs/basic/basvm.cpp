@@ -1482,9 +1482,26 @@ public:
 			else if (a[0].t == VN && a[0].n == -2) v = (STACK - sp) * 16.0;
 			pushN (v); break;
 		}
+		case B_EXT: extCall (a, argc, true); break;
 		default: fail ("Unknown function", 51);
 		}
 		for (int i = 0; i < argc; i++) vclear (a[i]);
+	}
+	// A dialect's word (bas::setDialect): a[0] its id, its arguments after it, given to Host::ext.
+	void extCall (V *a, int argc, bool func)
+	{
+		ExtVal in[8], out;
+		out.str = false; out.n = 0; out.s = ""; out.len = 0;
+		for (int i = 1; i < argc && i < 8; i++)
+		{
+			ExtVal &e = in[i - 1];
+			e.str = a[i].t == VS; e.n = e.str ? 0 : a[i].n; e.len = 0;
+			e.s = e.str ? sdata (a[i], &e.len) : "";
+		}
+		char why[120]; why[0] = 0;
+		if (!H.ext ((int) a[0].n, in, argc - 1, &out, why, sizeof why)) { fail (why[0] ? why : "Illegal function call"); return; }
+		if (!func) return;
+		if (out.str) pushS (out.s ? out.s : "", out.s ? out.len : 0); else pushN (out.n);
 	}
 
 	void statement (int id, int argc)
@@ -1825,6 +1842,7 @@ public:
 		case S_RMDIR: cstr (a[0], t1, sizeof t1); if (!H.remove (t1)) fail ("Path not found"); break;
 		case S_MKDIR: cstr (a[0], t1, sizeof t1); if (!H.makeDir (t1)) fail ("Path/File access error"); break;
 		case S_NAME: cstr (a[0], t1, sizeof t1); cstr (a[1], t2, sizeof t2); if (!H.rename (t1, t2)) fail ("File not found"); break;
+		case S_EXT: extCall (a, argc, false); break;
 		default: fail ("Unknown statement", 51);
 		}
 		for (int i = 0; i < argc; i++) vclear (a[i]);
@@ -2280,6 +2298,7 @@ public:
 	Profile *pf; unsigned pfStart, pfLast;		// basic -p: the time in the primitives
 	long budget;					// loop (n): the iterations left (< 0: no limit)
 	Native *native = 0;				// the program's machine code (basjit.h), or 0
+	unsigned char *stmtStart = 0;			// Host::lineHook: 1 where a statement starts
 	unsigned lastTick = 0;
 	// An error no handler takes (what stops the loop).
 	bool fatal () { return failed && (onErr < 0 || inErr || errCode == 51); }
@@ -2289,7 +2308,13 @@ public:
 		dtorProg = P; dtorQ.n = 0;
 		pf = H.prof;
 		pfStart = pfLast = pf ? H.clockUs () : 0;
-		if (!H.managed && !P->managed) native = nativeTranslate (*this);
+		if (H.lineHook)					// (the statement hook: where each statement starts; the VM only)
+		{
+			stmtStart = new unsigned char[P->code.n + 1];
+			for (int i = 0; i <= P->code.n; i++) stmtStart[i] = 0;
+			for (int i = 0; i < P->stmts.n; i++) if (P->stmts[i].start >= 0 && P->stmts[i].start < P->code.n) stmtStart[P->stmts[i].start] = 1;
+		}
+		else if (!H.managed && !P->managed) native = nativeTranslate (*this);
 		if (!native) loop (-1);
 		else
 			// the machine code runs from an entry point (a statement, a jump's target, a return) until it
@@ -2301,6 +2326,7 @@ public:
 				else loop (1);
 			}
 		nativeFree (native); native = 0;
+		delete [] stmtStart; stmtStart = 0;
 		return runEnd ();
 	}
 	// What the machine code calls. One instruction on the VM (the one at `at`), then what the loop does
@@ -2389,6 +2415,7 @@ public:
 				if (l != traceLine) { traceLine = l; char b[16]; int n = 0; b[n++] = '['; n += formatNum (l, b + n); b[n++] = ']'; H.out (b, n); }
 			}
 			if (dtorQ.n) { destructor (); continue; }
+			if (stmtStart && pc >= 0 && pc < P->code.n && stmtStart[pc] && !H.onStatement (P->lineAt (pc))) { ended = true; break; }
 			opPc = pc;
 			int op = code[pc++];
 			bool pr = pf && (op == OP_BI || op == OP_ST || op == OP_KCALL || (op >= OP_PRINT && op <= OP_CLOSE) || (op >= OP_USING && op <= OP_SEEK));

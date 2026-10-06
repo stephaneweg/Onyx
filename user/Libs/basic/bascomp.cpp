@@ -91,15 +91,29 @@ static const BFn BFNS[] = {
 
 // Where #import reads a kit's description (setKitSource).
 static char *(*kitSource) (const char *name, int *len) = 0;
+// The host's words, aliases and REPEAT (setDialect; 0: plain BASIC).
+static const Dialect *dialect = 0;
+static const ExtWord *findExt (const char *n)
+{
+	if (!dialect || !dialect->words) return 0;
+	for (int i = 0; dialect->words[i].name; i++) if (bseq (dialect->words[i].name, n)) return &dialect->words[i];
+	return 0;
+}
+static const char *aliasOf (const char *n)
+{
+	if (!dialect || !dialect->aliases) return 0;
+	for (int i = 0; dialect->aliases[i] && dialect->aliases[i + 1]; i += 2) if (bseq (dialect->aliases[i], n)) return dialect->aliases[i + 1];
+	return 0;
+}
 
 // Block terminators (what ends a statement block).
 enum
 {
 	TM_ENDIF = 1, TM_ELSE = 2, TM_ELSEIF = 4, TM_LOOP = 8, TM_WEND = 16, TM_NEXT = 32, TM_CASE = 64,
-	TM_ENDSELECT = 128, TM_ENDSUB = 256, TM_ENDFUNC = 512, TM_ENDDEF = 1024
+	TM_ENDSELECT = 128, TM_ENDSUB = 256, TM_ENDFUNC = 512, TM_ENDDEF = 1024, TM_ENDREPEAT = 2048
 };
 
-enum { LOOP_FOR = 1, LOOP_DO, LOOP_WHILE };
+enum { LOOP_FOR = 1, LOOP_DO, LOOP_WHILE, LOOP_REPEAT };
 
 class Compiler
 {
@@ -209,6 +223,7 @@ public:
 				while (idChar (s[i])) { if (n < 46) id[n++] = bup (s[i]); i++; }
 				if (s[i] == '$' || s[i] == '%' || s[i] == '&' || s[i] == '!' || s[i] == '#') { if (n < 47) id[n++] = s[i]; i++; }
 				id[n] = 0;
+				if (const char *al = aliasOf (id)) bscpy (id, al, 48);	// (a dialect's alias: the word it stands for)
 				if (bseq (id, "REM")) { while (s[i] && s[i] != '\n') i++; continue; }
 				addTok (T_ID, line); bscpy (toks[toks.n - 1].id, id, 48);
 				if (bseq (id, "DATA"))				// the rest of the line, raw
@@ -264,6 +279,8 @@ public:
 	static bool isKeyword (const char *id)
 	{
 		for (int i = 0; KEYWORDS[i]; i++) if (bseq (KEYWORDS[i], id)) return true;
+		if (findExt (id)) return true;
+		if (dialect && dialect->repeat && bseq (id, "REPEAT")) return true;
 		return false;
 	}
 
@@ -1166,6 +1183,11 @@ public:
 			else { expectOp (')'); emit3 (OP_BI, B_POINT1, 1); }
 			return TY_NUM;
 		}
+		if (const ExtWord *xw = findExt (name))
+		{
+			if (xw->kind == 's') { fail2 ("A statement has no value: ", xw->name); return TY_NUM; }
+			next (); return extCall (xw, true);
+		}
 		const BFn *b = findBuiltin (name);
 		if (b) { next (); return callBuiltin (b); }
 		if (kitsOn)
@@ -1790,6 +1812,7 @@ public:
 			if ((mask & TM_ENDSUB) && peekKw (1, "SUB")) return true;
 			if ((mask & TM_ENDFUNC) && peekKw (1, "FUNCTION")) return true;
 			if ((mask & TM_ENDDEF) && peekKw (1, "DEF")) return true;
+			if ((mask & TM_ENDREPEAT) && peekKw (1, "REPEAT")) return true;
 		}
 		return false;
 	}
@@ -1822,7 +1845,7 @@ public:
 				{ defineLabel (cur ().id); next (); next (); continue; }
 			}
 			if (atTerm (mask)) return;
-			if (isKw ("END") && (peekKw (1, "IF") || peekKw (1, "SELECT") || peekKw (1, "SUB") || peekKw (1, "FUNCTION") || peekKw (1, "DEF") || peekKw (1, "TYPE")))
+			if (isKw ("END") && (peekKw (1, "IF") || peekKw (1, "SELECT") || peekKw (1, "SUB") || peekKw (1, "FUNCTION") || peekKw (1, "DEF") || peekKw (1, "TYPE") || (dialect && dialect->repeat && peekKw (1, "REPEAT"))))
 			{ fail2 ("Unexpected END ", peek ().id); return; }
 			if (isKw ("ELSE") || isKw ("ELSEIF") || isKw ("LOOP") || isKw ("WEND") || isKw ("NEXT") || isKw ("CASE"))
 			{ fail2 (cur ().id, " without its block"); return; }
@@ -1853,6 +1876,12 @@ public:
 		Tok &k = cur ();
 		if (k.t != T_ID) { fail ("Syntax error"); return; }
 		const char *w = k.id;
+		if (const ExtWord *xw = findExt (w))			// a dialect's word (before the built-ins: a turtle's COLOR)
+		{
+			if (xw->kind != 's') { fail2 ("A function has no statement form: ", xw->name); return; }
+			next (); extCall (xw, false); return;
+		}
+		if (dialect && dialect->repeat && bseq (w, "REPEAT")) { next (); stRepeat (); return; }
 		if (bseq (w, "PRINT") || bseq (w, "LPRINT")) { next (); stPrint (false); return; }
 		if (bseq (w, "WRITE")) { next (); stPrint (true); return; }
 		if (bseq (w, "LET")) { next (); stAssign (); return; }
@@ -2348,6 +2377,55 @@ public:
 			// Let the enclosing stFor handle its NEXT: put a synthetic NEXT back.
 			pos--; toks[pos].t = T_ID; bscpy (toks[pos].id, "NEXT", 48);
 		}
+	}
+
+	// A dialect's word (findExt): its id, then its arguments -- in parentheses for a function (they may be left
+	// out when it takes none: WALL, WALL ()), after the word for a statement.
+	int extCall (const ExtWord *xw, bool func)
+	{
+		const char *spec = xw->args ? xw->args : "";
+		int minA = 0, maxA = 0; bool opt = false;
+		for (int j = 0; spec[j]; j++) { if (spec[j] == '[') { opt = true; continue; } maxA++; if (!opt) minA++; }
+		int ret = xw->kind == '$' ? TY_STR : TY_NUM;
+		pushNum (xw->id);
+		int argc = 0;
+		bool paren = func ? acceptOp ('(') : false;
+		bool none = func ? (!paren || isOp (')')) : endOfStmt ();
+		if (!none)
+			for (;;)
+			{
+				char want = 0; int idx = 0;
+				for (int j = 0; spec[j]; j++) { if (spec[j] == '[') continue; if (idx == argc) { want = spec[j]; break; } idx++; }
+				if (!want) { fail2 ("Too many arguments to ", xw->name); return ret; }
+				int t = expr ();
+				if (want == 'N') needNum (t); else needStr (t);
+				argc++;
+				if (!acceptOp (',')) break;
+			}
+		if (paren) expectOp (')');
+		if (argc < minA || argc > maxA || argc > 7) { fail2 ("Wrong number of arguments to ", xw->name); return ret; }
+		emit3 (func ? OP_BI : OP_ST, func ? B_EXT : S_EXT, argc + 1);
+		return ret;
+	}
+	// REPEAT n ... END REPEAT (a dialect's): the block n times (n counted once, at the start).
+	void stRepeat ()
+	{
+		int l0 = toks[pos - 1].line;
+		Var cnt = tempVar (TY_NUM);
+		needNum (expr ()); storeVar (cnt);
+		int top = pc ();
+		loadVar (cnt); pushNum (0.5); emit (OP_LT);
+		int jx = emitJump (OP_JNZ);
+		loadVar (cnt); pushNum (1); emit (OP_SUB); storeVar (cnt);
+		Loop *l = pushLoop (LOOP_REPEAT); if (!l) return;
+		addExit (l, jx);
+		block (TM_ENDREPEAT);
+		if (failed) return;
+		if (!(isKw ("END") && peekKw (1, "REPEAT"))) { fail ("REPEAT without END REPEAT", l0); return; }
+		markLine ();
+		next (); next ();
+		emit2 (OP_JMP, top);
+		popLoop (pc ());
 	}
 
 	void stWhile ()
@@ -3174,6 +3252,7 @@ Program *compile (const char *src, Error *err)
 
 void destroy (Program *p) { delete p; }
 void setKitSource (char *(*source) (const char *name, int *len)) { kitSource = source; }
+void setDialect (const Dialect *d) { dialect = d; }
 
 } // namespace bas
 
@@ -3187,6 +3266,9 @@ int bas::wordList (char *buf, int cap)
 		"BYREF", "ADDRESSOF", "DEALLOC", "POKEB", "POKEW", "POKEL", "POKEQ", "POKEF", "POKED", "POKES", "PEEKT", "POKET", 0 };	// (... and of the kits)
 	for (int i = 0; CLASSWORDS[i]; i++) add (CLASSWORDS[i]);
 	for (int i = 0; BFNS[i].name; i++) add (BFNS[i].name);
+	if (dialect && dialect->words) for (int i = 0; dialect->words[i].name; i++) add (dialect->words[i].name);
+	if (dialect && dialect->aliases) for (int i = 0; dialect->aliases[i] && dialect->aliases[i + 1]; i += 2) add (dialect->aliases[i]);
+	if (dialect && dialect->repeat) add ("REPEAT");
 	if (cap > 0) buf[n] = 0;
 	return n;
 }

@@ -4,6 +4,33 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Turtle Quest, the game that teaches programming with a turtle (2026-10-06): built, tested on the PC, published
+
+Asked as a task (IDEAS.md P9's "outil didactique ... tortue"): a game where the player types BASIC to move a turtle
+to its goal, through levels. **Read docs/04 §13 *Turtle Quest*** (the game) and docs/03 *Onyx BASIC* (*A host's own
+words: dialects*, *The statement hook*, *Turtle Quest*: the code's pieces).
+
+- **Done**: `user/Apps/turtle` (`main.cpp` the window, `world.h` the engine: levels, packs, the turtle's world, the
+  run recorded), 27 levels in three packs `sdcard/apps/turtle.app/levels/*.turtle` (moves, turns, coins, keys and
+  doors; REPEAT, FOR, IF, the sensors, WHILE, mazes; variables, SUB, the pen, Logo's figures), English and French
+  (the words -- AVANCE, REPETE, SI... -- the texts, the lessons), step by step with the line lit, the speed, lessons
+  per new idea, hints, 1-3 stars by the instruction count, friendly errors at their line, a level editor (saved to
+  `SD:/docs/turtle/my-levels.turtle`), several players (`SD:/apps/turtle.app/progress.ini`), `.turtle` opened by the
+  game (the package's `opens`).
+- **In Onyx BASIC** (`user/Libs/basic`): **dialects** (`bas::setDialect`: a host's statements and functions ->
+  `Host::ext`, word aliases, `REPEAT n ... END REPEAT`; `S_EXT` / `B_EXT`, no new opcode) and the **statement hook**
+  (`Host::lineHook`, `Host::onStatement`: VM only) -- the hook is meant to become QBasic's / QBStudio's debugger
+  (breakpoints, stepping: QBStudio's help says "Not yet: the debugger").
+- **In UIKit**: QBStudio's code editor moved into the kit as **`uikit::CodeEdit`** (`uikit/codeedit.h`, 35 entries
+  appended to `uikit.abi`, the layout lock regenerated: uikit 1.764), now UTF-8 aware (a comment's accents); QBStudio
+  uses it (`Apps/qbstudio/codeedit.h` is its set-up) -- its screenshots came out identical.
+- **Tested**: `sh tools/tests/run_turtle_test.sh` (every level solved by its own solution with three stars, the
+  packs written back and read again, the errors), `sh tools/tests/run_basic_test.sh` (+ the dialect test),
+  `run_qbstudio_test.sh`, the app driven in the desktop simulator (`shots.sh turtle`: three screenshots). **Not yet
+  run on the Pi**: check the playback's pace (`kapi_clock_us`), the fonts, a pack opened from the File Viewer.
+- **Ideas**: more packs (the user's levels shared as `.turtle` files), a "free drawing" sandbox with no goal, the
+  turtle's speech (`SAY`), sounds; QBasic's debugger on the hook.
+
 ## 3DForge, a small parametric CAD (2026-10-05): built, on the Pi (the GPU draws it), published
 
 Asked by the user: an easy parametric CAD (sketch + extrude, union / subtract / intersect, bodies only, fillets and
