@@ -42,7 +42,7 @@ APPS = tinycalc tinypad cppdemo \
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes
+FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
@@ -774,6 +774,9 @@ fmtracker.elf: lib/audiokit.imp.a Kits/audiokit/audiokit.h
 # Notes (AutoDev round 1): its model -- SD:/Notes, notes.ini, config.ini -- shared with Stickies, its list beside it
 FT_EXTRA_notes = Apps/notes/notesmodel.cpp
 notes.elf: Apps/notes/notesmodel.cpp $(wildcard Apps/notes/*.h) Include/docguard.h Kits/uikit/toolbar.h
+# Stickies (AutoDev round 1): the pinned notes on the desktop -- it reads them through Notes' model
+FT_EXTRA_stickies = Apps/notes/notesmodel.cpp
+stickies.elf: Apps/notes/notesmodel.cpp Apps/notes/notesmodel.h Apps/notes/stickies_proto.h Kits/uikit/toolbar.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
 printconf.elf: lib/printerkit.imp.a Kits/printerkit/printerkit.h
 $(FT_APP_ELFS): %.elf: Apps/%/main.cpp Kits/uikit/bmp.h Runtime/umm.h Runtime/onyxpp.hpp lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a 		       Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h

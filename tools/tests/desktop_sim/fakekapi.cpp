@@ -71,6 +71,8 @@
 //   tz_minutes 0; the PC's with SIM_REALNET). Unset: both -KAPI_ENOSYS as before (the Preload applet's
 //   screenshot shows its programs "missing" -- unchanged).
 // Each window made is logged: `sim: window <title> flags 0x<hex>` (WIN_FLAG_*: a widget's kind checked).
+// A SIM_MBOX line "@<ticks>:type:pid:payload" is held back until <ticks> ticks after the start (a script step
+//   is 2 ticks; the lines after it wait as well): a message that comes mid-run (Stickies' STK_MSG_RELOAD after a change on the card).
 //
 #include <sys/mman.h>
 #include <pthread.h>
@@ -1432,7 +1434,13 @@ static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int
 		if (!mbox.init) { char c; canned_read (mbox, &c, 0); }
 		if (mbox.pos >= mbox.s.size ()) return -1;
 		size_t eol = mbox.s.find ('\n', mbox.pos); if (eol == std::string::npos) eol = mbox.s.size ();
-		std::string l = mbox.s.substr (mbox.pos, eol - mbox.pos); mbox.pos = eol + 1;
+		std::string l = mbox.s.substr (mbox.pos, eol - mbox.pos);
+		if (!l.empty () && l[0] == '@')				// "@<ticks>:...": not before that time
+		{
+			if (g_ticks - 1000 < (unsigned) strtoul (l.c_str () + 1, 0, 10)) return -1;	// (the ticks start at 1000)
+			l = l.substr (l.find (':') + 1);
+		}
+		mbox.pos = eol + 1;
 		int t = 0, pid = 0, at = 0; sscanf (l.c_str (), "%d:%d:%n", &t, &pid, &at);
 		std::string m = l.substr (at), d;
 		for (size_t i = 0; i < m.size (); i++)

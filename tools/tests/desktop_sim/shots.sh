@@ -149,7 +149,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf preloadconf disks notes"
+      config wpaconf padconf soundconf displayconf keyconf preloadconf disks notes stickies"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -395,6 +395,29 @@ if want notes; then			# (Notes, AutoDev round 1: the six sample notes of sd/Note
 	sim notes notes "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes
 	rm -rf "$NW"; mkdir -p "$NW"
 	sim notes notes-empty "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes-empty
+	rm -rf "$NW"
+fi
+if want stickies || want stickies-empty || want notes-desktop; then	# (Stickies, AutoDev round 1: the pinned notes on the
+					#  desktop, top right -- the sample notes, three of them pinned --; then none pinned: the
+					#  hint; then the whole desktop: the agenda, Stickies, the Notes window in front, the dock)
+	NW="$OUT/notes_w"; rm -rf "$NW"; mkdir -p "$NW"; cp -r $D/sd/Notes "$NW/Notes"
+	NMENU='Notes|MFile/I0~New Note~^N/-/I1~Open in Text Editor~^E/-/I2~Delete Note~^D/MEdit/I3~Cut~^X/I4~Copy~^C/I5~Paste~^V/-/I6~Select All~^A/I7~Copy Note~/MNote/I8~Unpin from Desktop~^P/-/I9~Yellow~/I10~Green~/I11~Blue~/I12~Pink~/I13~Purple~/I14~Grey~/MView/I15~Hide Stickies from the Desktop~'
+	sim menubar s_bar "$W" SIM_MENU="$NMENU"
+	sim stickies s_cards "$W" SIM_WRITES="$NW" SIM_SERVICES=-
+	if want stickies; then scene stickies "$OUT/s_cards.elsm" "$OUT/s_bar.elsm" --crop=704,0,1024,620; fi
+	if want notes-desktop; then
+		mkdir -p "$NW/apps/notes.app"; printf 'last = note-20260928-091500.txt
+' > "$NW/apps/notes.app/config.ini"
+		sim agenda s_agenda "$W"
+		sim notes s_notes "$W" SIM_POS=60,166 SIM_WRITES="$NW" SIM_SERVICES=notify
+		sim dock s_dock "wait;wait;$W" SIM_RUNNING=notes SIM_WINS="60,166,760,508,0,1"
+		scene notes-desktop "$OUT/s_agenda.elsm" "$OUT/s_cards.elsm" "$OUT/s_notes.elsm" "$OUT/s_dock.elsm" "$OUT/s_bar.elsm"
+	fi
+	if want stickies-empty; then
+		sed -i 's/^pinned = 1/pinned = 0/' "$NW/Notes/notes.ini"
+		sim stickies s_none "$W" SIM_WRITES="$NW" SIM_SERVICES=-
+		scene stickies-empty "$OUT/s_none.elsm" "$OUT/s_bar.elsm" --crop=704,0,1024,200
+	fi
 	rm -rf "$NW"
 fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
