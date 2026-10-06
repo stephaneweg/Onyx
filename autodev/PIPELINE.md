@@ -33,6 +33,9 @@ are complete, and loops when a check fails.
 
 ## 1. Product Manager — pick the best application
 
+**First read `autodev/QUEUE.md`**: when it lists an item not yet done, that item is the pick
+(the user's order); the scoring below then only frames its scope.
+
 Inputs: `IDEAS.md`, `docs/HANDOFF.md` (the priority lists, "Next"), `docs/04-USER-GUIDE.md` §12
 (the catalog), `user/Apps/`, `user/BinUtils/`, `autodev/STATE.md` (what earlier rounds did —
 **never pick the same thing twice**, and never what the user set aside: the multi-user plan).
