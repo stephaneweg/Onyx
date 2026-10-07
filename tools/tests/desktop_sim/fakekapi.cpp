@@ -15,6 +15,9 @@
 //                        press is also a canvas click, a move with a button held a drag)
 //   rdown X Y / rup X Y  the right button
 //   key CODE             a key (a KEY_* number, or a character)
+//   hold CODE            a key pressed and kept down: its key event now, and kapi_key_held true for it until
+//                        "release CODE" (folded as the kernel's KeyHeldAny: A-Z as a-z, '\n' / '\r' as KEY_ENTER)
+//   release CODE         the held key let go (no event: the kernel sends none either)
 //   mods N               the modifier keys held from now on (kapi_get_modifiers: 1 Ctrl, 2 Shift, 4 Alt)
 //   winctl N             a title button for the app (GUI_EVENT_WINCTL: 0 the window menu, 2 maximise)
 //   menu N               the app's menu item N chosen in the menu bar (GUI_EVENT_MENU)
@@ -571,6 +574,15 @@ static void sim_copy (const char *src, const char *dst)
 	fclose (a); if (b) fclose (b);
 	fprintf (stderr, b ? "sim: copy %s\n" : "sim: copy %s failed\n", dst);
 }
+// The keys the script holds ("hold" / "release"), as the kernel's held-key table (window.h HELD_KEYS)
+enum { SIM_HELD_KEYS = 0x110 };
+static unsigned g_held[(SIM_HELD_KEYS + 31) / 32];
+static int held_fold (int k)				// (kwin.cpp KeyHeldAny's folding)
+{
+	if (k >= 'A' && k <= 'Z') k += 'a' - 'A';
+	if (k == '\n' || k == '\r') k = KEY_ENTER;
+	return k;
+}
 static void step (void)
 {
 	if (g_step >= g_script.size ()) { fprintf (stderr, "sim: end of the script\n"); exit (0); }
@@ -603,6 +615,16 @@ static void step (void)
 	}
 	else if (!strcmp (cmd, "wheel")) { sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c); ptrev (GUI_EVENT_PTR_WHEEL, a, b, 0, 0, c); }
 	else if (!strcmp (cmd, "key")) { sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0]; if (g_key) g_key (0, GUI_EVENT_KEY, k); }
+	else if (!strcmp (cmd, "hold") || !strcmp (cmd, "release"))
+	{
+		sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0];
+		int h = held_fold ((int) k);
+		if (h > 0 && h < SIM_HELD_KEYS)
+		{
+			if (cmd[0] == 'h') g_held[h >> 5] |= 1u << (h & 31); else g_held[h >> 5] &= ~(1u << (h & 31));
+		}
+		if (cmd[0] == 'h' && g_key) g_key (0, GUI_EVENT_KEY, k);	// (the kernel sends the press too)
+	}
 	else if (!strcmp (cmd, "menu")) { sscanf (st.c_str (), "%*s %d", &a); if (g_menuFn) g_menuFn (0, GUI_EVENT_MENU, a); }
 	// drag & drop (ABI v42) from another app: "dragover X Y [FLAGS]" (FLAGS 1 = Ctrl, 4 = left),
 	// "drop X Y PATH|PATH... [FLAGS]" (the paths a DND_FILES payload, '|' for the newlines)
@@ -1308,7 +1330,7 @@ static int clipboard_get (int *t, void *b, unsigned cap, unsigned *serial)
 	return (int) g_clip.size ();
 }
 static void set_click (gui_handler h) { g_click = h; }
-static int key_held (int) { return 0; }
+static int key_held (int k) { k = held_fold (k); return k > 0 && k < SIM_HELD_KEYS && ((g_held[k >> 5] >> (k & 31)) & 1); }
 // SIM_CURSOR="x,y": the pointer, relative to the client area (the eyes look at it); none: away
 static void cursor_pos (int *x, int *y)
 {
