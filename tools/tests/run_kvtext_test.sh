@@ -26,9 +26,9 @@ g++ -fsanitize=undefined -o "$OUT/kvtest" "$OUT/kvtest.o" "$OUT/fakekapi.o" -lpt
 # C: the header and its inline code
 printf '#include "filekit/filekit.h"\nint kv_c_test (void) { fk_kv *kv = fk_kv_new (FK_KV_PIPES); int n = fk_kv_count (kv); fk_kv_free (kv); return n; }\n' > "$OUT/c.c"
 gcc -std=c99 -Wall -Wextra -Werror -fsyntax-only $INC "$OUT/c.c"
-# the library's object: the 18 functions exported (libgen's '^(fk_|fs_)'), no helper among them
+# the library's object: the 21 functions exported (libgen's '^(fk_|fs_)'), no helper among them
 g++ -std=gnu++17 -O1 -Wall -Wextra -Werror $INC -c user/Kits/filekit/kvtext.cpp -o "$OUT/kvtext.o"
 EXP=$(nm -g --defined-only "$OUT/kvtext.o" | awk '{print $3}' | grep -E '^(fk_|fs_)' | sort | tr '\n' ' ')
 N=$(echo $EXP | wc -w)
-[ "$N" = 18 ] || { echo "FAIL kvtext: kvtext.o exports $N symbols, 18 expected: $EXP"; exit 1; }
+[ "$N" = 21 ] || { echo "FAIL kvtext: kvtext.o exports $N symbols, 21 expected: $EXP"; exit 1; }
 SIM_WRITES="$OUT/w" SIM_SD=sdcard "$OUT/kvtest"

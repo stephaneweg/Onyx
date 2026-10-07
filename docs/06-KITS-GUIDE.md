@@ -608,6 +608,17 @@ A level pack (`FK_KV_PIPES`): many `[level]` blocks (`fk_kv_block`, `fk_kv_block
 going on over the `|` lines that follow, and the line of each value (`fk_kv_line`) for an error message. Circuits
 reads its packs and its `progress.ini` so.
 
+Blocks of the same name written (the Clock's `[alarm]` list; `fk_kv_set` reaches only a name's first block): a new
+block made at the end, its keys set and read by its number —
+
+```c
+fk_kv *kv = fk_kv_new (0);
+int b = fk_kv_block_new (kv, "alarm");                      // its number (1-based), -1 no memory
+fk_kv_block_set (kv, b, "time", "07:00");                   // replaced in block b, else added at its end
+const char *t = fk_kv_block_get (kv, b, "time", "");        // block b's value ("" if none)
+fk_kv_save (kv, "SD:/apps/clock.app/alarms.txt", "# Clock -- the alarms");
+```
+
 ## 8. ImageKit — pictures
 
 `#include "imagekit/imagekit.h"` — link `lib/imagekit.imp.a`.

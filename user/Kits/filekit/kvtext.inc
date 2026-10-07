@@ -244,6 +244,42 @@ FK_KV_FN int fk_kv_blocks (const fk_kv *kv) { return kv ? kv->nb - 1 : 0; }
 FK_KV_FN const char *fk_kv_block_name (const fk_kv *kv, int b) { return kv && b > 0 && b < kv->nb ? kv->b[b].name : ""; }
 FK_KV_FN int fk_kv_block_line (const fk_kv *kv, int b) { return kv && b > 0 && b < kv->nb ? kv->b[b].line : 0; }
 
+FK_KV_FN int fk_kv_block_new (fk_kv *kv, const char *name)
+{
+	if (!kv) return -1;
+	if (!name) name = "";
+	return fkkv_add_block_ (kv, name, fkkv_len_ (name), 0);
+}
+// The entry of key in block b -> its index, -1 none
+static inline int fkkv_find_in_ (const fk_kv *kv, int b, const char *key)
+{
+	int i;
+	if (!kv || b <= 0 || b >= kv->nb) return -1;
+	for (i = 0; i < kv->n; i++)
+		if (kv->e[i].block == b && fkkv_eq_ (kv->e[i].key, key)) return i;
+	return -1;
+}
+FK_KV_FN const char *fk_kv_block_get (const fk_kv *kv, int b, const char *key, const char *def)
+{
+	int i = fkkv_find_in_ (kv, b, key);
+	return i >= 0 ? kv->e[i].val : def;
+}
+FK_KV_FN int fk_kv_block_set (fk_kv *kv, int b, const char *key, const char *value)
+{
+	int i, at;
+	if (!kv || !key || !key[0] || b <= 0 || b >= kv->nb) return -1;
+	i = fkkv_find_in_ (kv, b, key);
+	if (i >= 0)
+	{
+		char *v = fkkv_dup_ (value);
+		if (!v) return -1;
+		free (kv->e[i].val); kv->e[i].val = v;
+		return 0;
+	}
+	for (at = 0; at < kv->n && kv->e[at].block <= b; at++) ;	// (after the block's last entry)
+	return fkkv_insert_ (kv, at, fkkv_dup_ (key), fkkv_dup_ (value), b, 0);
+}
+
 // ---- looking up and changing ----
 FK_KV_FN const char *fk_kv_get (const fk_kv *kv, const char *section, const char *key, const char *def)
 {
