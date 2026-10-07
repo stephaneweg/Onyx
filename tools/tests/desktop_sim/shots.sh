@@ -597,6 +597,35 @@ fi
 if want clock; then
 	sim menubar clock "wait;wait;down 990 15;up 990 15;$W" SIM_MENU="$MENU_TINYPAD"
 	scene clock "$OUT/clock.elsm" --crop=624,0,1024,330
+	# The Clock (AutoDev round 6): desktop_sim/clock's config.ini (cities = Tokyo,New York,London) and alarms.txt (07:00
+	# School weekdays, 14:30 Medicine once today, 09:00 Gym weekends, off) in the writes' folder before each run; clockd
+	# and notifyd "running" (SIM_SERVICES: no clockd started). The simulator's frozen Monday 2026-09-28 12:34:00, the
+	# card's timezone=120 (Brussels). Never clock.png (the menu bar's calendar, above): clock-<tab>.png, each -fr.
+	KQ="$OUT/writes/apps/clock.app"; KS="SIM_SERVICES=notify,clockd"
+	kfix () { rm -rf "$KQ"; mkdir -p "$KQ"; cp $D/clock/config.ini $D/clock/alarms.txt "$KQ/"; }
+	kw () { printf 'wait;%.0s' $(seq 1 $1); }		# (n script steps: 20 ms each)
+	KT="wait;down 421 193;up 421 193;key 32;$(kw 120)"	# (the Timer: the 5 min preset clicked, Space, ~2.4 s)
+	KW="wait;key 32;$(kw 600)key l;$(kw 590)key l;$(kw 640)key l;key 32;$W"	# (the Stopwatch: three laps, stopped)
+	kfix; sim clock clock-world     "wait;wait;$W" $KS SIM_ARGS=world;                        png clock-world
+	kfix; sim clock clock-cities    "wait;mods 1;key 14;mods 0;wait;$W" $KS SIM_ARGS=world;   png clock-cities		# (Ctrl+N: Add a City)
+	kfix; sim clock clock-alarms    "wait;wait;$W" $KS SIM_ARGS=alarms;                       png clock-alarms
+	kfix; sim clock clock-edit      "wait;key 13;wait;$W" $KS SIM_ARGS=alarms;                png clock-edit		# (Enter: School edited)
+	kfix; sim clock clock-ring      "wait;wait;$W" $KS "SIM_ARGS=--ring 1";                   png clock-ring
+	kfix; sim clock clock-timer     "$KT" $KS SIM_ARGS=timer;                                 png clock-timer
+	kfix; cp $D/clock/config-3s.ini "$KQ/config.ini"
+	      sim clock clock-timesup   "wait;key 32;$(kw 170)" $KS SIM_ARGS=timer;               png clock-timesup
+	kfix; sim clock clock-stopwatch "$KW" $KS SIM_ARGS=stopwatch;                             png clock-stopwatch
+	kfix; lang fr
+	sim clock clock-world-fr     "wait;wait;$W" $KS SIM_ARGS=world;                        png clock-world-fr
+	kfix; sim clock clock-cities-fr    "wait;mods 1;key 14;mods 0;wait;$W" $KS SIM_ARGS=world;   png clock-cities-fr	# (Ajouter une ville)
+	kfix; sim clock clock-alarms-fr    "wait;wait;$W" $KS SIM_ARGS=alarms;                       png clock-alarms-fr
+	kfix; sim clock clock-edit-fr      "wait;key 13;wait;$W" $KS SIM_ARGS=alarms;                png clock-edit-fr		# (Modifier l'alarme)
+	kfix; sim clock clock-ring-fr      "wait;wait;$W" $KS "SIM_ARGS=--ring 1";                   png clock-ring-fr		# (Rappel dans 10 min)
+	kfix; sim clock clock-timer-fr     "$KT" $KS SIM_ARGS=timer;                                 png clock-timer-fr		# (Remettre à zéro fits)
+	kfix; cp $D/clock/config-3s.ini "$KQ/config.ini"
+	      sim clock clock-timesup-fr   "wait;key 32;$(kw 170)" $KS SIM_ARGS=timer;               png clock-timesup-fr	# (Temps écoulé)
+	kfix; sim clock clock-stopwatch-fr "$KW" $KS SIM_ARGS=stopwatch;                             png clock-stopwatch-fr	# (Chronomètre, Tour)
+	lang "$SHOTS_LANG"; rm -rf "$KQ"
 fi
 if want wifimenu; then
 	sim menubar bar "$W" SIM_MENU="$MENU_TINYPAD"

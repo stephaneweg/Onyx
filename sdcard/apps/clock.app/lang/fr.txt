@@ -89,7 +89,7 @@ Start / Stop (Space)	Démarrer / arrêter (Espace)
 of %s	sur %s
 Paused	En pause
 Ends at %s	Sonne à %s
-Space: start / pause · R: reset · it rings even with the Clock closed	Espace : démarrer / pause · R : remettre à zéro · il sonne même Horloge fermée
+Space: start / pause · R: reset · it rings even with the Clock closed	Espace : démarrer / pause · R : remettre à zéro · il sonne même l'Horloge fermée
 Lap	Tour
 Lap (L)	Tour (L)
 Lap %d	Tour %d
