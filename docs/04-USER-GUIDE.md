@@ -1655,7 +1655,7 @@ the list **scrolls** (the wheel, the bar at its right, the arrow keys).
 | **Preload** (`preloadconf`) | The programs **loaded ahead at boot and kept in memory**: they start without reading the card (worth it for the large ones, as Jet: 100 MB, 5 s of card each start otherwise). At the left the list (each program, its size, *loading* / *in memory*), at the right what can be added — the apps, then the `/bin` tools: **< Add** (or a double click), **Remove**. A change is done **at once** (the program added is loaded now, the one removed is released: its memory is freed when its last window closes) and kept in `SD:/etc/preload.ini`, which the last line of `SD:/etc/autostart`, `preload /boot`, reads at every boot. The line under the lists gives the memory the list takes. |
 | **Printers** (`printconf`) | The printers Onyx prints on (the **PDF** printer, network printers added by their address), the default one, a test page, and the **print queue** (below: *Printing*). |
 | **Keyboard & Mouse** (`keyconf`) | The keyboard **layout** (the maps of `SD:/etc/keymaps`: a click takes one at once and keeps it in `SD:/etc/autostart`'s `keyb` line; a field to try it) and the **wheel**'s speed (lines a notch: at once, kept in `SD:/etc/theme.txt`). |
-| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, Ledger, Turtle Quest (its BASIC too), Circuits and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). |
+| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, Ledger, Turtle Quest (its BASIC too), Circuits, Pinball and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). |
 | **Gamepad** (`padconf`) | The USB gamepads (§12). |
 | **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
 | **App Settings** (`config`) | An app's own settings, its `SD:/apps/<name>.app/config.ini`: the apps (those with settings first, marked `*`), then the chosen one's `key = value` lines — pick one, change its key or its value, **Set** (Enter; a new key adds a line), **Delete**; **Save** writes the file (the app reads it when it starts again), **Reload**. |
@@ -4530,6 +4530,164 @@ each starting with `|`. The circuit text (in `progress.ini`, Copy Circuit, `solu
 `part g1 AND 8 4` (a gate, its name, its type, its place) and `wire A g1.1` (from a switch or a gate to an input pin
 `.1` / `.2`, or to a lamp).
 
+### Pinball, a pinball table with real physics (`pinball`)
+
+**Pinball** (category *Games*) is a pinball machine in a window: a ball that rolls under gravity and bounces, two
+**flippers** that strike it, a **plunger** to pull, pop bumpers, slingshots, drop targets, rollover lanes, ramps and
+saucers — and goals that light up as the player reaches them. Three tables come with the game, and **any table the
+player writes in a text file** (the `.table` format below) is played the same way.
+
+![Pinball: the table picker](../screenshots/pinball.png)
+*The picker: the three tables, the player's two (one refused by the reader: its error in red), Space Station
+chosen — its preview, its goal, its top 5.*
+
+**The picker** (the home screen). On the left, the tables: the three shipped ones, then, under *Your tables
+(SD:/docs/pinball)*, the player's `.table` files, then a table opened from elsewhere — each with a small picture,
+its name and its best score. On the right, the chosen table's **preview**, its name and **goal**, its **top 5**
+and **Play**. **↑ / ↓** (Home, End) choose, **Enter** / **Space** or a double click plays, **Esc** quits. The table
+last played is chosen when the game starts. A table the reader refuses is greyed with a warning sign and its error
+(*"line 12: unknown block [bumber]"*); chosen, the preview says *"This table cannot be played."* with the full reason,
+and Play is disabled — correct the file in Tinypad: the list is read again each time the picker comes back.
+
+![Pinball: a refused table](../screenshots/pinball-broken.png)
+*A player's table with a typo on line 12: the picker says why it cannot be played.*
+
+**Playing.** The playfield on the left (scaled to the window, which can be resized or maximised: the table grows
+with the height), the **panel** on the right: the table's name, the **score** and the ball (*BALL 2 / 3*), the
+**message line** (*"Ball 2: launch it!"*, the rules' messages, *MULTIBALL!*, *TILT*…), the **bonus**, the bonus
+**multiplier**, the table's **best** score, the **tilt** dots (one red a nudge), the **goal** and each of the table's
+rules as a goal — its count as dots that fill as it is reached, a check when a once-only rule is done — and the keys.
+On the table, two inserts the game draws itself: the **2× 3× 4× 5×** multiplier row (lit up to the current one)
+and **SHOOT AGAIN** (lit while an extra ball is pending, blinking while the ball save runs).
+
+![Pinball: playing Volcano](../screenshots/pinball-play.png)
+*Volcano: the left flipper up, two top lanes lit, SHOOT AGAIN blinking (the ball save), the rules' progress in the panel.*
+
+| Keys | Keyboard | Gamepad |
+|---|---|---|
+| Left / right flipper (held) | **←** or **Z** / **→** or **M** | **L**, **L2**, d-pad ← / **R**, **R2**, **B** |
+| Plunger | **Space**, **↓** or **Enter**: hold to pull (a full pull in 1 s), release to launch; a tap launches at once | **A** |
+| Nudge | **↑** or **N** | **Y** |
+| Pause | **P** (the pause card: *Resume*, *Back to the tables*); **Esc** the same card | **Start**; **Select** |
+| Sound on / off | **S** | |
+| New game, a table file, quit | **Ctrl+N**, **Ctrl+O**, **Ctrl+Q** | |
+
+The panel's key legend shows the gamepad's buttons once a pad button is pressed.
+
+**The rules.** Each ball starts on the plunger. Every bumper, sling, target, lane, ramp and saucer scores, and adds
+a tenth of its points to the **bonus** (rounded down to 10). When a ball drains, the bonus × the multiplier is added
+(a card shows the count for 1.5 s; any key skips it), then the next ball; the game ends after the last ball. During
+the first seconds of a ball the **ball save** gives a drained ball back (once). **Top lanes**: crossing one lights it;
+the flippers shift the lit lamps left or right (aim for the dark one); all lit → the rule of the table (most often
+the multiplier +1). **Drop targets** fall when hit; a bank cleared rises again a second later. **Multiball**: the
+extra balls are put in play one after the other; the ball is lost only when the last one drains. **Nudge** pushes the
+ball a little; a second nudge within 5 s is a *Tilt warning*, a third is **TILT**: the flippers and the toys go dead
+until the ball drains, and that ball's bonus is lost. A ball that stays still for 4 s (stuck) is kicked loose.
+A game whose score enters the table's **top 5** asks for the name (the last one typed is kept: Enter or OK), then
+shows the top 5 with the new line lit.
+
+![Pinball: multiball](../screenshots/pinball-multiball.png)
+*Space Station in multiball: two balls, MULTIBALL! in the message line.*
+
+**The tables.**
+
+| Table | Goal and rules |
+|---|---|
+| **Space Station** — the starter (ball save 10 s) | *Dock the shuttle twice for multiball.* The top lanes complete → multiplier +1; the drop targets cleared → 5,000 bonus; the left **orbit** ×3 → extra ball; the *Dock* saucer ×2 → 2-ball multiball |
+| **Haunted Manor** (ball save 8 s) | *Clear the ghosts and the bats, then lock 2 balls in the crypt: 3-ball multiball.* Two banks of 4 drop targets (*Ghosts*, *Bats*), each cleared → 10,000; the bats cleared twice → extra ball; the *Crypt* ×2 → 3-ball multiball |
+| **Volcano** — faster (ball save 6 s) | *Hit the lava ramp 5 times: eruption multiball!* A third flipper (upper right); the lava ramp ×5 → 2-ball multiball, ×10 → extra ball; 4 top lanes → multiplier +1; the bank cleared → ball save 10 s |
+
+**In French.** With the system in French (Control Panel ▸ **Language & Region**, §11), the game is in French, the
+tables' names, goals, words and messages too (*Station spatiale*, *Manoir hanté*, *Volcan*); the scores are grouped
+with a narrow space (*1 543 200*).
+
+![Pinball in French](../screenshots/pinball-fr.png)
+*The picker in French, Manoir hanté chosen.*
+
+**Files.** Reads the shipped tables `SD:/apps/pinball.app/tables/*.table`, the player's `SD:/docs/pinball/*.table`
+and any `.table` opened (Game ▸ **Open a Table File...**, dropped on the picker, `pinball <file>` or a double click
+in the File Viewer: the package associates `.table` with the game) — played at once, or the picker with its error.
+Writes **`SD:/apps/pinball.app/scores.ini`** (never on the card: made at the first score): a section per table (the
+shipped ones by their file's name, the others `user.<name>`) with lines `1` … `5` = `<score> <name>`, and
+`[settings]`: `name` (the last name typed), `sound` (0 = muted), `table` (the last table played). For the tests:
+`pinball --seed N <file>` fixes the game's random numbers, `pinball --start multiball <file>` starts a 2-ball
+multiball at the first launch.
+
+**Writing a table.** A `.table` file is UTF-8 text: `[block]` headers and `key = value` lines (`#` starts a comment),
+in **table units** (a table is typically 520 × 1040; x to the right, y **down**; angles in degrees, 0 = right,
+90 = down). Values: numbers without exponent, points `x y` (several separated by commas), colours `#RRGGBB`, `0` / `1`,
+ids `[a-z0-9_-]` (≤ 24, unique). The blocks:
+
+| Block | Keys (R = required; the default) |
+|---|---|
+| `[table]` (exactly one, first) | `format = 1` R, `name` R (+ `name.fr`), `goal` (+ `goal.fr`), `size` R (`w h`, 200…2000), `gravity` 1400, `ball` (radius) 13, `balls` 3, `ballsave` (s) 8, `drain` R (the y below which a ball is lost), `rotate` (the lane group the flippers shift), `background` |
+| `[wall]` | `points` R (≥ 2), `id` (`outline`: the table's closed outline — exactly one, every ball stays inside), `closed` 0, `bounce` 0.5, `friction` 0.1, `colour`, `width` 4 |
+| `[arc]` | `centre` R, `radius` R, `from` R, `to` R (drawn clockwise), as `[wall]` |
+| `[post]` | `at` R, `radius` R, `bounce` 0.6, `colour` |
+| `[bumper]` | `id` R, `at` R, `radius` R, `kick` 900, `score` 100, `colour` |
+| `[sling]` | `id` R, `a` R, `b` R (its face), `kick` 700, `score` 10, `colour` |
+| `[target]` | `id` R, `a` R, `b` R, `kind` R (`drop` / `standup`), `bank` (a drop target's bank: 2…8 targets), `score` 500 / 250, `colour` |
+| `[lane]` | `id` R, `rect` R (`x y w h`), `group` (`top`, `in`…), `score` 50, `colour` |
+| `[gate]` | `a` R, `b` R, `pass` R (`up` / `down` / `left` / `right`: the way the ball may cross) |
+| `[flipper]` (2 or 3, a left and a right) | `side` R, `pivot` R, `length` R, `rest` 30, `up` −25 (degrees below the horizontal), `radius` `12 6`, `speed` 1800, `bounce` 0.4, `colour` |
+| `[plunger]` (exactly one) | `at` R (the ball's place), `max` 2600, `auto` 2300 (launch speeds) |
+| `[ramp]` | `id` R, `a` R, `b` R (its entry), `pass` R, `path` R (the last point: where the ball comes back), `time` 0.8, `out` R (`vx vy`), `score` 1000, `colour`, `width` 24 |
+| `[saucer]` | `id` R, `at` R, `radius` R, `hold` 1.5, `out` R, `score` 750, `colour` |
+| `[shape]`, `[label]` | artwork: a filled polygon (`points`, `colour`); words (`at`, `text` + `text.fr`, `size` 1…4, `colour`, `angle` 0 / 90) |
+| `[rule]` | `when` R (`bank <id>`, `lanes <group>`, `ramp <id>`, `saucer <id>`, `hit <id>`), `count` 1, `do` R (`score <n>`, `bonus <n>`, `multiplier`, `multiball 2` / `3`, `extraball`, `ballsave <s>`; several separated by `;`), `once` 0, `message` (+ `message.fr`, ≤ 32 characters) |
+
+A file that breaks a rule is refused with its line and why: `unknown block [<name>]`, `[<block>] needs <key>`,
+`bad value for <key>`, `<key> out of range`, `id <id> used twice`, `unknown <id>`, `the table needs one closed wall
+with id = outline`, `the table needs 2 or 3 flippers, a left one and a right one`, `the table needs one [plunger]`,
+`bank <id> needs 2 to 8 targets`, `too many <things> (max <n>)`, `the file is too big` (over 64 KB). A missing
+outline, flipper or plunger is reported on the `[table]` line; a second one on its own block's line. Limits: 2,000
+wall segments, 64 posts + bumpers + saucers, 64 targets, 32 lanes, 16 gates, 4 ramps, 32 rules, 128 shapes, 64 labels.
+A small example:
+
+```ini
+[table]
+format = 1
+name   = My First Table
+size   = 520 1040
+drain  = 1010
+
+[wall]
+id     = outline
+closed = 1
+points = 0 0, 520 0, 520 1040, 0 1040
+
+# the shooter lane's inner wall, its one-way gate
+[wall]
+points = 476 1040, 476 300
+[gate]
+a = 476 300
+b = 518 300
+pass = up
+
+[flipper]
+side  = left
+pivot = 150 905
+length = 70
+[flipper]
+side  = right
+pivot = 326 905
+length = 70
+[plunger]
+at = 498 980
+
+[bumper]
+id = b1
+at = 190 330
+radius = 28
+
+[rule]
+when    = hit b1
+count   = 10
+do      = extraball
+once    = 1
+message = Extra ball!
+```
+
 ### Games
 
 | Game | Goal and controls |
@@ -4547,6 +4705,7 @@ each starting with `|`. The circuit text (in `progress.ini`, Copy Circuit, `solu
 | **Pipes** | After *Pipe Dream*: lay pipe pieces before the water comes. The next pieces wait in the queue on the left (the bottom one goes next); **click** a square (or arrows + **Space**) to put it there — on an unfilled piece it replaces it (−50). When the countdown (the blue bar) runs out the water leaves the red valve: 50 points per piece it crosses, 500 more for a cross used both ways. If it went through the **required number of pieces** (top right) when it spills, the round is won. **F**: let the water run now, fast (double points). Walls from round 3, faster water every round. **P** pause. |
 | **Turtle Quest** (`turtle`) | Learn to program: write a little program in **BASIC** that brings a turtle to its flag, picks the coins, opens the doors, paints the tiles and draws figures — 48 levels in five packs, from moves to loops, conditions, variables, procedures and Logo's figures, then numbered **gems** picked in order, **portals** that move the turtle, and **fractals** (trees, the Koch snowflake, Sierpinski) drawn by words that take values, give one back and call themselves, some in **colour** — in English or **French** (AVANCE, REPETE, SI...). **F5** run, **F8** step by step (the line being run lit), **F7** stop, **F9** reset, **F1** the lesson, **F2** the hint, **Ctrl+N** next level; a level editor (**Ctrl+E**: gems, portals, colour drawings too); several players, each with their stars and their best programs. See §13, *Turtle Quest*. |
 | **Circuits** (`circuits`) | Learn how a computer computes: build circuits of **logic gates** (NOT, AND, OR, XOR, NAND, NOR) that light the lamps as each level's **truth table** asks — 20 levels in three worlds, from one wire to a two-bit adder, in English or **French**. Place gates from the palette, drag wires from output pins to input pins; **click a switch** (or a table row) to see the circuit live, **F8** step by step (depth by depth), **F5** Check (every row tried; the wrong ones marked), stars by the number of gates; **F1** the lesson, **F2** the hint, **Ctrl+Z / Ctrl+Y** undo / redo, **Ctrl+N** next level, **Ctrl+O** a level pack (`.circuits`). Progress in `SD:/apps/circuits.app/progress.ini`. See §12, *Circuits*. |
+| **Pinball** (`pinball`) | A pinball table with real physics: **←/Z** and **→/M** the flippers, **Space** (held) the plunger, **↑/N** nudge (three in 5 s: TILT), **P** pause — three tables (Space Station, Haunted Manor, Volcano) and any table written in a text file (`.table`), each with its goal, its rules and its top 5; a gamepad too; in English or **French**. Scores in `SD:/apps/pinball.app/scores.ini`. See §12, *Pinball*. |
 | **Arkanoid** | Written in BASIC (`main.bax`, from `SD:/basic/examples/arkanoid.bas`), in `SCREEN 13` shown full screen (**F**: a window, and back). Break the bricks. The paddle follows the **mouse** or the **←/→** arrows (held); **Space** or a click launches the ball (and fires, with the laser). Silver bricks take several hits, gold ones never break. Catch the falling capsules: **E** longer paddle, **S** slower ball, **C** catch the ball, **L** laser, **D** three balls, **P** extra life. 5 rounds (then again, faster), 3 lives. **P** pause, **Esc** title / quit. No file read or written. |
 | **Planets 3D** | Written in BASIC (`main.bax`, from `SD:/basic/examples/planets3d.bas`): a little solar system in 3D, drawn by the **GPU** — the sun, four planets turning on their orbits, a moon, a ringed gas giant, stars; the planets' textures are drawn by the program itself. **Arrows** turn the camera, **+ / −** nearer / farther, **Space** pause, **F** full screen, **Esc** quit. The top line says GPU or software and the frames a second. No file read or written. |
 | **Invaders** | Space Invaders. **←/→** (held) or the mouse move the cannon; **Space** or a click fires (one shot at a time). The fleet marches faster as it thins out (the four-note march on the synth); the shields crumble; the red saucer is worth 50–300. An invader reaching the ground ends the game. **P** pause. |
