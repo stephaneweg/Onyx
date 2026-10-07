@@ -4,6 +4,33 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Critters, lead the little creatures to the exit (AutoDev round 5, 2026-10-07): built, tested on the PC, branch `AutoDev` only
+
+Made by the AutoDev pipeline (`autodev/rounds/05-critters/`: 02 the analysis and its 37 acceptance criteria, 03 the
+plan and the GUI plan, 04 the design and its mock-ups, 05 the validation, 06 what was built and tested). **Not in
+`main`, not published**: the user validates first. **Read docs/04 §12 *Critters*** (the `.level` and `.sol` formats).
+
+- **Done**: `user/Apps/critters` -- the core (`terrain`, `level`, `world`, `solution`, `progress`: no UI, no I/O,
+  integers only, deterministic to the bit) and the window (`main.cpp`, `draw.h`, `bar.h`, `picker.h`): the picker (the
+  chain of the 12 shipped levels, the player's `SD:/docs/critters/*.level`, a refused level with its line and reason),
+  the start card, the play area (the terrain x2, scrolled), the status line, the skill bar (8 role slots, the rate, P /
+  F / N, the minimap), the Paused / All explode / end / How to play cards, the Game and Help menus, `progress.ini`,
+  `--replay <sol> --until <step|end>`; the 12 levels (`tools/critters/mklevels.py`) and their solutions
+  (`tools/tests/critters/solutions/`, the headless runner `tools/critters/crsim`); `lang/fr.txt`; `app.txt`,
+  `icon.bmp` (`tools/icons/critters_icon.py`); `.level` in `sdcard/etc/fileassoc.ini`; `[app.critters]` declared in
+  `tools/pkg/packages.ini`. No kapi, kit, kernel or simulator change.
+- **Tested on the PC**: `sh tools/tests/run_critters_test.sh` (930 checks, the determinism fingerprint equal at -O1 +
+  sanitizers and -O2), `sh tools/tests/run_critters_sim_test.sh` (the window, 25 checks), `python3 tools/lang/check.py
+  critters`, `shots.sh critters` (`critters.png`, `-play`, `-build`, `-end`, `-help`, `-fr`, `-play-fr`); `shots.sh
+  pinball invaders` unchanged.
+- **Not done here (no aarch64 compiler in the container)**: `make` / `make stage` (the user/Makefile lines are
+  written: `FT_APPS`, `FT_EXTRA_critters`); then on the Pi: the frame rate (a 400-column x2 blit and up to 80 blended
+  frames a tick), the held arrows through the real kernel, the sounds.
+- **Follow-ups**: the SHOULD items -- the basher and the miner (slots 7 and 8 are there, greyed), `critters --check`
+  and a sample `SD:/docs/critters/my-first-level.level`, the gamepad (a crosshair cursor, 04 §7), the best run's
+  replay in `progress.ini` and *Watch the best* (`Recorder` exists in the core); `progress.h` into FileKit when a
+  fourth game wants the same.
+
 ## Turtle Quest, *Gems, portals and fractals* (AutoDev round 3, 2026-10-06): built, tested on the PC, branch `AutoDev` only
 
 Made by the AutoDev pipeline (`autodev/rounds/03-turtle-missions/`: 02 the analysis and its 18 acceptance criteria,

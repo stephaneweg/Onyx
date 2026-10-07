@@ -1655,7 +1655,7 @@ the list **scrolls** (the wheel, the bar at its right, the arrow keys).
 | **Preload** (`preloadconf`) | The programs **loaded ahead at boot and kept in memory**: they start without reading the card (worth it for the large ones, as Jet: 100 MB, 5 s of card each start otherwise). At the left the list (each program, its size, *loading* / *in memory*), at the right what can be added — the apps, then the `/bin` tools: **< Add** (or a double click), **Remove**. A change is done **at once** (the program added is loaded now, the one removed is released: its memory is freed when its last window closes) and kept in `SD:/etc/preload.ini`, which the last line of `SD:/etc/autostart`, `preload /boot`, reads at every boot. The line under the lists gives the memory the list takes. |
 | **Printers** (`printconf`) | The printers Onyx prints on (the **PDF** printer, network printers added by their address), the default one, a test page, and the **print queue** (below: *Printing*). |
 | **Keyboard & Mouse** (`keyconf`) | The keyboard **layout** (the maps of `SD:/etc/keymaps`: a click takes one at once and keeps it in `SD:/etc/autostart`'s `keyb` line; a field to try it) and the **wheel**'s speed (lines a notch: at once, kept in `SD:/etc/theme.txt`). |
-| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, Ledger, Turtle Quest (its BASIC too), Circuits, Pinball and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). |
+| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, Ledger, Turtle Quest (its BASIC too), Circuits, Pinball, Critters and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). |
 | **Gamepad** (`padconf`) | The USB gamepads (§12). |
 | **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
 | **App Settings** (`config`) | An app's own settings, its `SD:/apps/<name>.app/config.ini`: the apps (those with settings first, marked `*`), then the chosen one's `key = value` lines — pick one, change its key or its value, **Set** (Enter; a new key adds a line), **Delete**; **Save** writes the file (the app reads it when it starts again), **Reload**. |
@@ -4688,6 +4688,208 @@ once    = 1
 message = Extra ball!
 ```
 
+### Critters, lead the little creatures to the exit (`critters`)
+
+**Critters** (category *Games*; *Bestioles* in French) is a puzzle game of little round creatures with a green sprout
+on their heads. They drop from a **hatch** one after the other and walk straight on — turning at a wall, falling off
+ledges, walking into water and lava. The player saves them by giving some of them a **role**: a climber goes up walls,
+a builder lays a stair, a digger digs through the floor… A level is won when **enough of them reach the glowing
+exit** before the time runs out. Twelve levels come with the game — six *Training* levels, each teaching one role,
+and six *Expedition* levels that mix them —, each opened by solving the one before; **any level the player writes in
+a text file** (the `.level` format below) is played the same way.
+
+![Critters: the level picker](../screenshots/critters.png)
+*The picker: Training 1 to 3 solved (the tick and the best result), Up the Wall open and new, the rest locked; under
+My levels, a player's level refused by the reader (its error in red).*
+
+**The picker** (the home screen). On the left, the levels: *Training* 1–6, *Expedition* 1–6, then under *My levels
+(SD:/docs/critters)* the player's `.level` files, then a level opened from elsewhere. Each row shows its number, its
+name and its state: a **tick and the best result** (*9/10*) when solved, an orange **new** when open but not solved
+yet, a **lock** when the level before it is not solved yet. On the right, the chosen level's **preview** (its
+terrain, its hatches and exits; dimmed with a lock when locked), its facts (*Save 8 of 10 · Time 3:00 · Rate 50*),
+the roles it gives (×count), its hint and the best result — or *Solve "Hold the Line" to open this level.* —, and
+**Play**. **↑ / ↓** (Home, End, Page Up / Down) choose, **Enter** / **Space** or a double click plays, **Esc** quits.
+The level last played is chosen when the game starts (else the first open one not solved). A level the reader refuses
+is listed with a warning sign, its file's name and its error (*"line 24: unknown block [shap]"*); chosen, the preview
+says *"This level cannot be played."* with the full reason, and Play is disabled — correct the file in Tinypad: the
+list is read again each time the picker comes back.
+
+**The start card.** Before each level a card over the terrain gives its name, how many to save (*Save 8 of 10*), the
+time, the roles it gives and its hint; the hatch is closed. **Any key or a click** starts (**Esc**: back to the
+levels); the door swings open and the first creature drops two seconds later.
+
+![Critters: playing Two Ways](../screenshots/critters-play.png)
+*Two Ways: a blocker holds the left stream back from the lava, a builder's stair bridges the gap, a digger opened the
+shelf on the right; Digger chosen, the brackets on the walker under the pointer; the minimap at the bottom right.*
+
+**Playing.** The window is 800 × 448 (fixed): at the top the **play area** — the terrain drawn twice its size, scrolled
+sideways (a level up to 1600 px wide; 400 px are seen at once); under it the **status line** — the chosen role and how
+many are left, what is under the pointer (*Walker*, *Falling — cannot dig now*: a refusal is said before the click;
+*(3 here)* when several overlap), then **Out** (in play), **Saved** (*2 / 16*: green once enough are saved) and
+**Time** (counting down, red under 0:30); at the bottom the **skill bar**: the eight **role slots** (the key, the
+count, the role's picture; greyed at 0; the basher and the miner are not built yet: "–"), the **release rate** (its
+minimum under it, the − / + buttons), **P** pause, **F** fast forward, **N** all explode, and the **minimap** (the whole
+level, the creatures as yellow dots, the exits as cyan dots, the visible part framed — a click or a drag scrolls
+there).
+
+**Giving a role.** Choose a role (a click on its slot, or **1**…**8**), then **click a creature**: the **brackets**
+round the creature under the pointer show beforehand which one the click will reach — white when it can take the role,
+**red** when it would refuse (the status line says why: falling, already a blocker, none left…). The keyboard: **Tab** /
+**Shift+Tab** highlight the next / previous creature in view (a small triangle over the brackets), **Enter** gives it
+the chosen role. A role is given only while the world runs (paused, a click blips); each one given takes one from its
+count.
+
+| The roles | Key | What it does |
+|---|---|---|
+| **Climber** (a cyan headband) | **1** | climbs a wall instead of turning; at an overhang it lets go and falls back. Permanent, adds to the others |
+| **Floater** (a second leaf) | **2** | survives any fall: its leaf opens as a parachute. Permanent, adds to the others |
+| **Blocker** | **3** | stands still, arms out: the others turn back at it. It stays until it bursts (*All explode*) or its floor is dug away |
+| **Builder** | **4** | lays a stair of 12 bricks, each 3 px further and 2 px higher (the last three warn); stops at a wall; given again: 12 more |
+| **Digger** | **5** | digs straight down through earth (never steel), and falls through when it breaks into a cave |
+| **Exploder** | **6** | counts down 5 seconds (the digit over its head) and bursts, taking a disc of earth with it (never steel) |
+
+**The rules.** A creature walks 1 px a step (20 steps a second); it steps up to 6 px and down 3 px, falls 3 px a step,
+and dies from a fall of more than 60 px (unless it floats); water and lava kill, and below the map is the void; the
+map's sides are walls. It enters an exit when it reaches it. The level ends when every creature is out and saved or
+dead, or when the time runs out (those still out are lost): **won** when the saved count reaches the needed one.
+**A blocker never ends a level by itself**: when only blockers are left, the status line says so in amber (*Only
+blockers are left: N (All explode) ends the level.*) and the N slot pulses — **All explode** (**N**, the N slot or
+Game ▸ All Explode, confirmed by a card: N or Enter, Esc cancels) stops the release and gives every creature still out
+a 5-second fuse, one a step; the level ends after the last burst. The **release rate** (1…99, ± 5 a press) sets the
+time between two creatures; it cannot go below the level's own rate.
+
+![Critters: Steel Floor](../screenshots/critters-build.png)
+*Steel Floor: a digger stopped on the steel, a builder's stair over the lava trench, an exploder's countdown (3);
+Builder chosen, the keyboard's highlight (the triangle) on a walker.*
+
+| Keys | Keyboard | Mouse |
+|---|---|---|
+| Choose a role | **1**…**8** | a click on its slot; the wheel over the bar: the previous / next role |
+| Give the role | **Tab** / **Shift+Tab** then **Enter** | a click on the creature |
+| Pause | **P** or **Space** (a banner; scrolling and choosing still work) | the **P** slot |
+| Fast forward (×3) | **F** | the **F** slot |
+| All explode | **N** (a card: **N** or **Enter** confirms, **Esc** cancels) | the **N** slot |
+| Release rate | **−** / **+** (or **=**) | the **−** / **+** buttons |
+| Scroll | **←** / **→** held (**Shift**: faster), **Home** / **End** | the pointer at the area's edge, the wheel, a right-button drag, the minimap |
+| The *Paused* card (Resume, Restart Level, Back to the levels) | **Esc** | |
+| Sound on / off, restart, a level file, how to play, quit | **M**, **Ctrl+R**, **Ctrl+O**, **F1**, **Ctrl+Q** | Game and Help menus |
+
+![Critters: How to play](../screenshots/critters-help.png)
+*How to play (F1): the goal, the six roles with their key and what they do.*
+
+**The end card.** *Level complete!* or *Not enough critters saved*: the saved count (*9 / 10*, red when lost), the
+percentage, the needed count and the time taken, **New best!** when a level solved before is beaten (more saved, or
+faster), and **Retry**, **Next** (won, when a next level exists: focused) and **Levels** (**Esc**). A won level opens
+the next one in the chain.
+
+![Critters: the end of Mind the Gap](../screenshots/critters-end.png)
+*Mind the Gap won, 9 of 10 saved in 0:36 — a new best.*
+
+**The levels.**
+
+| Level | Roles given | Save | The puzzle |
+|---|---|---|---|
+| **Training 1 — Straight Down** | digger 3 | 8 of 10 | dig through the floor down to the cave with the exit |
+| **Training 2 — Mind the Gap** | builder 4 | 8 of 10 | bridge a ravine of lava |
+| **Training 3 — Hold the Line** | blocker 2, digger 1 | 6 of 10 | the hatch faces a lake: hold them back, dig to the exit; then All explode |
+| **Training 4 — Up the Wall** | climber 10 | 10 of 10 | a steel wall to climb |
+| **Training 5 — Soft Landing** | floater 10 | 10 of 10 | a ledge 100 px above the exit |
+| **Training 6 — Blast Through** | exploder 2 | 9 of 10 | a closed pen: blast its floor |
+| **Expedition 1 — Two Ways** | builder 4, digger 2, blocker 2 | 16 of 20 | two hatches: block the left stream before the lava, bridge its gap, dig the right shelf |
+| **Expedition 2 — Steel Floor** | digger 3, builder 3, exploder 2 | 15 of 20 | find the gap in the steel, then bridge the lava trench |
+| **Expedition 3 — The Climb** | climber 14, floater 14, builder 2 | 12 of 16 | a steel-faced ridge and a 100-px cliff behind it |
+| **Expedition 4 — Lava Lake** | builder 8, blocker 2, digger 1 | 24 of 30 | a lava lake with three islands |
+| **Expedition 5 — The Maze** | two of each | 30 of 40 | tunnels, a pool, an earth plug, a ledge |
+| **Expedition 6 — Grand Tour** | climber 4, floater 4, blocker 2, builder 10, digger 4, exploder 3 | 50 of 60 | 1600 px wide: two exits, two ways |
+
+**In French.** With the system in French (Control Panel ▸ **Language & Region**, §11), the game is in French — the
+levels' names, hints and painted words too (*Tout droit vers le bas*, *Attention à la marche*…).
+
+![Critters in French](../screenshots/critters-fr.png)
+*The picker in French, Tenir la ligne chosen with its best result.*
+
+![Critters: a start card in French](../screenshots/critters-play-fr.png)
+*The start card of Tout droit vers le bas.*
+
+**Files.** Reads the shipped levels `SD:/apps/critters.app/levels/*.level`, the player's `SD:/docs/critters/*.level`
+and any `.level` opened (Game ▸ **Open a Level File...**, dropped on the picker, `critters <file>` or a double click in
+the File Viewer: the package associates `.level` with the game) — played at once (its start card), or the picker with
+its error. Writes **`SD:/apps/critters.app/progress.ini`** (never on the card: made at the first win or setting): a
+section per level (the shipped ones by their file's name, the others `user.<name>`) with `solved = 1`, `saved` (the
+most saved) and `time` (the shortest winning time, s) — a lost run writes nothing —, and `[settings]`: `sound`
+(0 = muted), `last` (the level last played). **For the tests and the level makers**: `critters <file.level> --replay
+<file.sol>` plays the level with a recorded solution (below), `--until <step>` runs it at once to that step and pauses
+there, `--until end` to its end (the end card; a win is written as any win).
+
+**Writing a level.** A `.level` file is UTF-8 text: `[block]` headers and `key = value` lines (`#` starts a comment),
+in **pixels** (x to the right, y **down**; the origin top left), times in seconds. Values: whole numbers, points `x y`
+(several separated by commas), colours `#RRGGBB`, words in lower case. Unknown keys are ignored; an unknown block is an
+error. The blocks:
+
+| Block | Keys (**required**; the default otherwise) |
+|---|---|
+| `[level]` (one, the first) | **`format`** `1`; **`name`** (≤ 32 characters), `name.fr`; `hint` (≤ 160), `hint.fr`; **`size`** `width height` (320…1600 × 100…160); **`count`** (1…80); **`save`** (1…count); **`time`** (30…1200 s); `rate` (1…99, 50); the role counts `climber floater blocker builder digger exploder` (0…99, 0); `start` (the view's left edge, px; else centred on the first hatch); `background` (`#101830`); `brick` (the builders' bricks, `#C8A060`) |
+| `[shape]` (≤ 256, drawn in order: a later one paints over) | one of **`rect`** `x y w h`, **`points`** (a polygon, 3…64 points, the even-odd rule), **`circle`** `cx cy r`; `material` `earth` (default), `steel`, `water`, `lava` or `erase` (back to empty: holes, caves); `colour`; `texture` `plain`, `speckle`, `stripes`, `bricks` with `colour2` |
+| `[hatch]` (1…4) | **`at`** the point where the creatures appear; `dir` `left` / `right` (`right`) |
+| `[exit]` (1…4) | **`at`** the threshold, at ground level |
+| `[label]` (≤ 32) | **`at`**, **`text`**, `text.fr`, `colour` — words painted on the earth (they wear away with it) |
+
+A file breaking a rule is refused as a whole with its line and reason: `unknown block [shap]`, `[level] must be the
+first block, once`, `[level] needs name` (a required key missing), `[shape] needs one of rect, points, circle`, `bad
+value for size`, `save out of range`, `the level needs 1 to 4 [exit]`, `[hatch] is inside the terrain`, `too many shapes
+(max 256)`, `the file is too big` (over 64 KB)… An example:
+
+```ini
+# My first level -- dig through the floor, bridge the gap.
+[level]
+format     = 1
+name       = My First Level
+name.fr    = Mon premier niveau
+hint       = Dig down through the floor, then build across the gap.
+size       = 480 160
+count      = 10
+save       = 7
+time       = 180
+digger     = 2
+builder    = 3
+background = #142040
+
+[shape]
+rect    = 0 120 200 40
+texture = speckle
+[shape]
+rect    = 240 120 240 40
+texture = speckle
+[shape]
+rect    = 0 70 200 12
+colour  = #6E8A3C
+[shape]
+points   = 200 160, 200 120, 210 140, 230 140, 240 120, 240 160
+material = lava
+
+[hatch]
+at  = 40 60
+dir = right
+
+[exit]
+at  = 440 119
+
+[label]
+at      = 100 150
+text    = DIG
+text.fr = CREUSEZ
+```
+
+**A solution** (`.sol`, for `--replay`) is plain text, one action a line, `#` comments: `<step> <role> <creature>`
+(the creature's number in release order, 0 = the first out), `<step> rate <1…99>`, `<step> nuke`; the steps ascending
+(the world runs 20 steps a second: step 60 is 3 s in). The world is deterministic: the same level and the same actions
+always give the same run, on the PC as on the Pi.
+
+```
+# training-02-mind-the-gap
+186 builder 0      # at step 186 (9.3 s in), the first creature out builds
+```
+
 ### Games
 
 | Game | Goal and controls |
@@ -4706,6 +4908,7 @@ message = Extra ball!
 | **Turtle Quest** (`turtle`) | Learn to program: write a little program in **BASIC** that brings a turtle to its flag, picks the coins, opens the doors, paints the tiles and draws figures — 48 levels in five packs, from moves to loops, conditions, variables, procedures and Logo's figures, then numbered **gems** picked in order, **portals** that move the turtle, and **fractals** (trees, the Koch snowflake, Sierpinski) drawn by words that take values, give one back and call themselves, some in **colour** — in English or **French** (AVANCE, REPETE, SI...). **F5** run, **F8** step by step (the line being run lit), **F7** stop, **F9** reset, **F1** the lesson, **F2** the hint, **Ctrl+N** next level; a level editor (**Ctrl+E**: gems, portals, colour drawings too); several players, each with their stars and their best programs. See §13, *Turtle Quest*. |
 | **Circuits** (`circuits`) | Learn how a computer computes: build circuits of **logic gates** (NOT, AND, OR, XOR, NAND, NOR) that light the lamps as each level's **truth table** asks — 20 levels in three worlds, from one wire to a two-bit adder, in English or **French**. Place gates from the palette, drag wires from output pins to input pins; **click a switch** (or a table row) to see the circuit live, **F8** step by step (depth by depth), **F5** Check (every row tried; the wrong ones marked), stars by the number of gates; **F1** the lesson, **F2** the hint, **Ctrl+Z / Ctrl+Y** undo / redo, **Ctrl+N** next level, **Ctrl+O** a level pack (`.circuits`). Progress in `SD:/apps/circuits.app/progress.ini`. See §12, *Circuits*. |
 | **Pinball** (`pinball`) | A pinball table with real physics: **←/Z** and **→/M** the flippers, **Space** (held) the plunger, **↑/N** nudge (three in 5 s: TILT), **P** pause — three tables (Space Station, Haunted Manor, Volcano) and any table written in a text file (`.table`), each with its goal, its rules and its top 5; a gamepad too; in English or **French**. Scores in `SD:/apps/pinball.app/scores.ini`. See §12, *Pinball*. |
+| **Critters** (`critters`) | Lead the little creatures from the hatch to the exit by giving some of them a role — climber, floater, blocker, builder, digger, exploder: **1**…**8** or a click on a slot chooses the role, a **click** on a creature (or **Tab** then **Enter**) gives it; **P** pause, **F** fast forward, **N** all explode, **−/+** the release rate, **←/→** scroll — twelve levels (six Training, six Expedition, each opened by the one before) and any level written in a text file (`.level`); in English or **French**. Progress in `SD:/apps/critters.app/progress.ini`. See §12, *Critters*. |
 | **Arkanoid** | Written in BASIC (`main.bax`, from `SD:/basic/examples/arkanoid.bas`), in `SCREEN 13` shown full screen (**F**: a window, and back). Break the bricks. The paddle follows the **mouse** or the **←/→** arrows (held); **Space** or a click launches the ball (and fires, with the laser). Silver bricks take several hits, gold ones never break. Catch the falling capsules: **E** longer paddle, **S** slower ball, **C** catch the ball, **L** laser, **D** three balls, **P** extra life. 5 rounds (then again, faster), 3 lives. **P** pause, **Esc** title / quit. No file read or written. |
 | **Planets 3D** | Written in BASIC (`main.bax`, from `SD:/basic/examples/planets3d.bas`): a little solar system in 3D, drawn by the **GPU** — the sun, four planets turning on their orbits, a moon, a ringed gas giant, stars; the planets' textures are drawn by the program itself. **Arrows** turn the camera, **+ / −** nearer / farther, **Space** pause, **F** full screen, **Esc** quit. The top line says GPU or software and the frames a second. No file read or written. |
 | **Invaders** | Space Invaders. **←/→** (held) or the mouse move the cannon; **Space** or a click fires (one shot at a time). The fleet marches faster as it thins out (the four-note march on the synth); the shields crumble; the red saucer is worth 50–300. An invader reaching the ground ends the game. **P** pause. |
