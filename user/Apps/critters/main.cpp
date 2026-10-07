@@ -824,7 +824,7 @@ void CrittersView::paint ()
 	{
 		const char *h = lv->hint.get (g_lang);
 		int st[6], lnn[6]; int nl = *h ? uk_text_wrap (h, (int) strlen (h), 440 - 48, 3, st, lnn) : 0;
-		int cw = 440, chh = 214 - (3 - nl) * uk_fh () - (nl ? 0 : 6);
+		int cw = 440, chh = 218 - (3 - nl) * uk_fh () - (nl ? 0 : 6);
 		drawCard (x, y, cw, chh, lv->name.get (g_lang));
 		mmss (lv->timeSec, tm, sizeof tm);
 		snprintf (b, sizeof b, TR ("Save %d of %d"), lv->save, lv->count);
@@ -838,7 +838,7 @@ void CrittersView::paint ()
 			snprintf (b, sizeof b, "\xC3\x97%d", lv->roles[r]); uk_text_c (canvas, rx, y + 86, 52, 18, b, C_TEXT, 2); rx += 52;
 		}
 		for (int i = 0; i < nl; i++) { snprintf (b, sizeof b, "%.*s", lnn[i], h + st[i]); uk_text_c (canvas, x + 24, y + 110 + i * uk_fh (), cw - 48, uk_fh (), b, C_TEXT); }
-		UkFaceScope sc (face (11)); uk_text_c (canvas, x, y + 110 + nl * uk_fh () + 8, cw, 18, TR ("Click or press a key to start"), C_DIS);
+		UkFaceScope sc (face (11)); uk_text_c (canvas, x, y + 110 + nl * uk_fh () + 12, cw, 18, TR ("Click or press a key to start"), C_DIS);
 		break;
 	}
 	case O_MENU:

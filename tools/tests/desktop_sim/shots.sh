@@ -62,6 +62,7 @@ build () {
 	case "$1" in notes|stickies) extra=user/Apps/notes/notesmodel.cpp ;; esac	# (their model: SD:/Notes, notes.ini)
 	[ "$1" = circuits ] && extra=user/Apps/circuits/circuit.cpp		# (its engine: the board, the packs, the progress)
 	[ "$1" = pinball ] && extra="user/Apps/pinball/table.cpp user/Apps/pinball/physics.cpp user/Apps/pinball/rules.cpp user/Apps/pinball/scores.cpp"	# (its core)
+	[ "$1" = critters ] && extra="user/Apps/critters/terrain.cpp user/Apps/critters/level.cpp user/Apps/critters/world.cpp user/Apps/critters/solution.cpp user/Apps/critters/progress.cpp"	# (its core)
 	[ "$1" = gamelib ] && extra="user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
@@ -148,7 +149,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits pinball " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits pinball critters " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
@@ -157,7 +158,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies circuits pinball"
+      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies circuits pinball critters"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -412,6 +413,28 @@ if want pinball; then			# (Pinball, AutoDev round 4: the top 5s of desktop_sim/p
 	pfix; sim pinball pinball-broken "wait;wait;$W" $PB SIM_ARGS=SD:/docs/pinball/broken.table; png pinball-broken	# (the error state)
 	pfix; lang fr; sim pinball pinball-fr "wait;wait;key 0x101;$W" $PB; png pinball-fr; lang "$SHOTS_LANG"	# (Manoir hanté)
 	rm -rf "$PQ" "$PD"
+fi
+if want critters; then			# (Critters, AutoDev round 5: desktop_sim/critters/progress.ini and two player's levels -- sd/docs/critters --
+					#  in the writes' folder; one script step = 20 ms, a world step = 2.5 steps: the states mid-level come from
+					#  "--replay <sol> --until <step>", which stops paused -- "key p" resumes it; the solutions are copied into the
+					#  writes' folder, as SD:/tmp/critters/<base>.sol)
+	CQ="$OUT/writes/apps/critters.app"; CD="$OUT/writes/docs/critters"; CT="$OUT/writes/tmp/critters"; L=SD:/apps/critters.app/levels; S=SD:/tmp/critters
+	CB="SIM_POS=60,30"
+	cw () { printf 'wait;%.0s' $(seq 1 $1); }
+	cfix () { rm -rf "$CQ" "$CD" "$CT"; mkdir -p "$CQ" "$CD" "$CT"; cp $D/critters/progress.ini "$CQ/progress.ini"
+		  cp $D/sd/docs/critters/my-first-level.level $D/sd/docs/critters/broken.level "$CD/"
+		  cp tools/tests/critters/solutions/*.sol $D/critters/steel-floor-show.sol "$CT/"; }
+	cfix; sim critters critters "wait;wait;$W" $CB; png critters						# the picker: Up the Wall, new
+	# Two Ways at step 500: Digger chosen, the pointer on critter 10 (crsim --where 502: x 223, y 77 -> 449, 146)
+	cfix; sim critters critters-play "wait;wait;move 449 146;key p;key 5;$(cw 5)" $CB "SIM_ARGS=$L/expedition-01-two-ways.level --replay $S/expedition-01-two-ways.sol --until 500"; png critters-play
+	# Steel Floor at step 650: a shaft stopped on the steel, a builder's stair, an exploder counting; the view moved by the
+	# minimap; Builder chosen, the keyboard's highlight (Tab)
+	cfix; sim critters critters-build "wait;wait;key p;down 714 396;up 714 396;$(cw 10)key 4;key 0x09;wait;wait" $CB "SIM_ARGS=$L/expedition-02-steel-floor.level --replay $S/steel-floor-show.sol --until 650"; png critters-build
+	cfix; sim critters critters-end "$(cw 5)" $CB "SIM_ARGS=$L/training-02-mind-the-gap.level --replay $S/training-02-mind-the-gap.sol --until end"; png critters-end	# (a new best)
+	cfix; sim critters critters-help "wait;wait;key p;wait;key 0x110;wait;wait" $CB "SIM_ARGS=$L/expedition-01-two-ways.level --replay $S/expedition-01-two-ways.sol --until 500"; png critters-help
+	cfix; lang fr; sim critters critters-fr "wait;wait;key 0x100;$W" $CB; png critters-fr				# (Tenir la ligne, its best)
+	cfix; sim critters critters-play-fr "$(cw 5)" $CB "SIM_ARGS=$L/training-01-straight-down.level"; png critters-play-fr	# (the start card)
+	lang "$SHOTS_LANG"; rm -rf "$CQ" "$CD" "$CT"
 fi
 if want slides; then			# (the sample deck: slide 3, its callout chosen; the sorter; the effects; the show, mid-transition)
 	SL=SIM_ARGS=SD:/docs/cafe-2026.odp
