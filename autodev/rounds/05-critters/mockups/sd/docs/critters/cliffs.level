@@ -1,0 +1,49 @@
+# A level with a typo -- dig through the floor, bridge the gap.
+[level]
+format     = 1
+name       = My First Level
+name.fr    = Mon premier niveau
+hint       = Dig down through the floor, then build across the gap.
+hint.fr    = Creusez le sol, puis construisez un pont au-dessus du trou.
+size       = 480 160
+count      = 10
+save       = 7
+time       = 180
+rate       = 50
+digger     = 2
+builder    = 3
+background = #142040
+
+# the ground, the upper floor, a ravine
+[shape]
+rect    = 0 120 200 40
+texture = speckle
+[shape]
+rect    = 240 120 240 40
+texture = speckle
+[shap]
+rect    = 0 70 200 12
+colour  = #6E8A3C
+[shape]
+points  = 200 160, 200 120, 210 140, 230 140, 240 120, 240 160
+material = lava
+
+# a steel post the diggers must avoid, and a cave under it
+[shape]
+rect     = 120 70 16 12
+material = steel
+[shape]
+circle   = 60 140 10
+material = erase
+
+[hatch]
+at  = 40 60
+dir = right
+
+[exit]
+at  = 440 119
+
+[label]
+at      = 100 150
+text    = DIG
+text.fr = CREUSEZ

@@ -777,8 +777,80 @@ other apps and their screenshots.
 
 ## GUI plan
 
-*(To be filled by the UX Designer — `04-ux-design.md`, mock-ups in `mockups/`: the window's size and the ×2 scale, the
-play area / skill bar / HUD / minimap layout, the sprites and their frames, the hatch and exit drawings, the textures'
-palettes for `mklevels.py`, the picker, the hint card, the pause menu and the nuke confirmation, the end screen, the
-menus, how *All explode* is made obvious when only blockers remain (fact 7), the French widths — and what each changes
-in steps 10–14.)*
+*(The UX Designer, 2026-10-07 — `04-ux-design.md` "D n" / "§ n", the pictures in `mockups/` rendered by UIKit through
+the desktop simulator: `sh autodev/rounds/05-critters/mockups/mockups.sh`.)*
+
+### What the design changes in this plan
+
+| Where in this plan | Was | Now (04) |
+|---|---|---|
+| §5.3 the play area | "e.g. 640 × 320 screen px = 320 × 160 logical", window size open | **fixed `Root (800, 448)`**; the `GameView` is **800 × 320 = 400 × 160 logical at ×2**; a level narrower than 400 is centred with bars `uk_tone (bg, 70)` (D1, D2) |
+| §5.3 the minimap | "160 × 16 for a 1600-wide level, one sample per 10 × 10 block" | a **182 × 92** widget: `sx = 174 / w`, `sy = min (84 / h, 2·sx)`, one sample per `1/sx × 1/sy` block (the first non-empty pixel's colour), the creatures as 2 × 2 dots, exits and hatches marked, the view frame (D8); still rebuilt on `take_dirty`, ≤ every 10 steps |
+| §5.3 sprites | "a palette-indexed table … or a BMP sheet (UX choice)" | **vector drawings (`VPath`) pre-rendered once at start into ARGB frames** (colour + opacity), both directions, the climber / floater marks as overlay frames, blended per frame (04 §5.5; ≈ 90 frames, ≈ 400 KB, ≈ 20 ms once) — no BMP |
+| §5.3 labels | "into the colour layer … or over the terrain each frame; the UX decides" | **painted into the colour layer once, over earth / steel only** (DejaVu Sans Bold 9 px at ×1): they erode with the earth (D22) |
+| §5.2 states | `V_PICKER → V_CARD → V_PLAY (+ pause menu, nuke) → V_END` | the same, with the overlays named: the **pause banner** (P / Space: not modal, scroll and choosing allowed), the **Esc card** (modal: Resume / Restart Level / Back to the levels), the **nuke card** (modal), **How to play** (F1, modal); the world ticks only in `V_PLAY` with no modal card |
+| 02 §10 / §5.4 the nuke's keys | "N, then N again (or Enter) within 2 s" | **N opens a modal card that pauses the world; N again or Enter confirms, Esc / Cancel cancels — no timer** (D12) |
+| §5.4 the rate keys | − / + (step unstated) | **±5 a press or click**, clamped to [level's `rate`, 99]; the `ToolButton`s disabled at the ends (D5) |
+| §5.4 scrolling | "4 px a step held key or edge-scroll — the UX sizes it" | **4 logical px a frame** (Shift: 12), edge zone 8 screen px, **Home / End** jump to the ends, the wheel 24 px a notch, a **right-button drag** grabs the terrain, the minimap click / drag (04 §4.1) |
+| fact 7 / R6 "make All explode obvious" | — | when all are out (or nuking) and every creature in play is a blocker: the status line's amber message, *Out* amber, the **N slot pulses** (D13) — `World` gets an accessor `onlyBlockersLeft ()` (a scan of the creatures in play; **no rule change**) |
+| §5.1 log lines | — | add `critters: overlay card|pause|menu|nuke|end|help` when one shows (the sim tests wait for them) |
+| §4.1 `mklevels.py` | "the UX designer's palettes go there" | the five palettes of 04 §5.3 (soil, moss, sand, ice, cave + steel, water, lava, bricks), a 3-px cap on every ground; the **steel's rivets** are a drawing rule of `build_terrain`'s colour layer (steel + `bricks` texture: a light pixel at each plate's corner — materials unchanged, AC-5 unaffected); polygons ≤ 64 points (02's limit — the mock's first ground waves broke it) |
+| `fr.txt` | 02 §11's words | + 04 §8's (the status line, the cards, the picker, the help card) |
+| AC-25 shots | the six PNGs | unchanged, each matching a mock scene (04 §9) |
+
+Nothing changes in the core's rules, the formats, the tests' cases or the file list (§11) — `bar.h` and `picker.h` hold
+the drawn widgets below.
+
+### The GUI steps (within steps 10–14; each one checked by a scratch shot `SHOTS_PNG=$SCRATCH sh tools/tests/desktop_sim/shots.sh critters`, or faster by a throwaway run like `mockups.sh`)
+
+**G1 — the frame (step 10, first).** `Root (800, 448, TR ("Critters"))`, not resizable; `CrittersView : GameView` at
+(0, 0, 800, 320); `StatusLine` (0, 320, 800, 24); the `SkillBar` face (0, 344, 800, 104) with its etched separators at
+x 362, 460, 602; the widgets placed as 04 §2.1's table. Test: a shot of T1 at `--until 0`: the layout of `cr-card.png`
+without the card.
+
+**G2 — the terrain view (step 10).** The ×2 blit of the visible 400 columns (03 §5.3), the letterbox, `vx` clamped,
+scrolling by ← / → (Shift), Home / End, edge zone, wheel, right drag. The labels painted into `col[]` after
+`build_terrain` (D22), the steel rivets. Test: shots of T1 (whole, 400 px), E6 at `vx` = 0 and at the right end.
+
+**G3 — the sprites (step 10).** `draw.h`: the `VPath` drawings of 04 §5.1 / §5.2 (lift `critter`, `hatch`, `portal`,
+`burst`, `brackets`, `digit` from `mockups/crmock.cpp`), pre-rendered at start into ARGB frames (04 §5.5) and blended; the
+animation frames from `Critter::frame`; the countdown digit (13 px `FtTextFace`); the particles (drawing only, seeded
+from the burst's position); the exit's pulse; the hatch's door (closed until the start card is dismissed, then open).
+Test: a shot of E2 with its `.sol` at the step where a builder, a digger and an exploder are all at work — compare with
+`cr-build.png`; and the style sheet of states by a test scene if useful.
+
+**G4 — the skill bar and the status line (step 10).** `SkillSlot` (D4, D6; 11 instances: 8 roles + P, F, N), the rate
+`LcdDisplay` + two `ToolButton`s (D5), `StatusLine` (D7, D13 — with `World::onlyBlockersLeft ()`), the hover text of a
+slot. Repaint on change only (`LcdDisplay::setText` already does; the slots and the line keep their last values).
+Test: AC-28's sim case (click the Digger slot, click creature 0 → `critters: role digger c0 ok (2 left)`) and a shot
+like `cr-play.png`; the French shot like `cr-play-fr.png` (*DÉBIT*, *Bâtisseur encore 2* fit).
+
+**G5 — giving roles and the highlight (step 10).** `World::pick` under the pointer each frame (the brackets white / red,
+the status line's state and refusal words), Tab / Shift+Tab / Enter with the accent triangle (fact 4), 1…8 with the blip
+on an empty slot, a click while paused blips. Test: a sim case Tab, Tab, Enter → the log's `role … ok`; a shot with the
+red brackets like `cr-refuse.png`.
+
+**G6 — the minimap (step 10).** `MiniMap` (D8): its own `Canvas` at the D8 scale, rebuilt from the terrain on dirty at
+most every 10 steps; dots, marks, the frame; click / drag scrolls. Test: shots of E6 (1600 px) and T1 (400 px).
+
+**G7 — the overlays (steps 10–11).** The start card (D14), the pause banner (D10), the fast pill (D6), the Esc card
+(D11) and the nuke card (D12) with their `Button`s as root children shown with them (Tab / Enter / Esc to the focused
+button, the view returns false for Tab), *How to play* (F1), the end card (D15: Next focused when won and a next level
+exists, Retry focused when lost, Esc = Levels), the dimming. The log line `critters: overlay <name>`. Test: the sim
+test's case 2 (`overlay card`), case 3 (`end won`), shots like `cr-card`, `cr-menu`, `cr-nuke`, `cr-won`, `cr-lost`.
+
+**G8 — the picker (step 11).** `LevelList` (D16: groups, badges, ✓ + best, *new*, lock, the broken 40-px row, scrolling
+to the chosen row, the wheel), `Preview` (cached thumbnails; dimmed + lock when locked, the warning card when broken),
+`LevelInfo`, `Legend`, the *Play* `ToolButton` (disabled when locked / broken); the keys of 04 §3; `[settings] last`
+chosen at start; the empty state's message box. Test: AC-25's `critters.png` from the fixture `progress.ini` (≈
+`cr-picker.png`), AC-26's broken argument (≈ `cr-picker-broken.png`), a locked level chosen (≈ `cr-picker-locked.png`).
+
+**G9 — the menus (step 11).** *Game* and *Help* of 04 §6 (Ctrl+R, P, F, N, Esc, Ctrl+O, M, Ctrl+Q, F1, *About
+Critters*), disabled items on the picker. Test: `SIM_MENU` dump shows the items; Ctrl+R restarts (the log's `playing`
+again).
+
+**G10 — French and the final shots (steps 12, 14).** `fr.txt` from `mockups/sd/apps/critters.app/lang/fr.txt` + the menus
+and the load errors; `check.py critters` → 0 missing; the French shots of AC-25 checked against 04 §8.1's list (the
+rate's *DÉBIT*, the legend, the end card's buttons, the status line's amber message). Optional (G3's style sheet):
+`screenshots/critters-sheet.png` is **not** an AC — skip it unless the docs want the roles' pictures (docs/04 could
+reuse `cr-help.png`'s card instead: the *How to play* card shot in the *Critters* section).
