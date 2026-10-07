@@ -1,7 +1,7 @@
 # systemkit.bi -- systemkit for Onyx BASIC (#import systemkit): made by tools/kitbi/kitbi.py from systemkit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit systemkit 76
+kit systemkit 78
 struct PreloadList 4100 PreloadList
 field n 0 i
 clip_clear 0 v - clip_clear
@@ -69,3 +69,5 @@ locale_zone_summer 72 i i locale_zone_summer z
 locale_zone_utc 73 v ipi locale_zone_utc z,out,cap
 autostart_ensure 74 i sss autostart_ensure cmd,after,comment
 autostart_has 75 i s autostart_has cmd
+locale_zone_offset_at 76 i ii locale_zone_offset_at z,utc_minutes
+locale_zone_sync 77 i - locale_zone_sync
