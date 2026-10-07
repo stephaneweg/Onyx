@@ -178,3 +178,102 @@ and a 0; empty = come forward), `CLOCKD_MSG_RELOAD 2`, `CLOCKD_MSG_QUIT 3`.
 
 `sh tools/tests/run_clock_test.sh` is the place to add the next steps' unit tests; the scripted simulator cases of
 03 §8.4 (`clockd-*`, `clock-*`) go into a new `tools/tests/run_clock_sim_test.sh` (step 4 on).
+
+## Developer B (steps 4–8)
+
+Steps 4, 5, 6, 7 and 8 of 03 §5 with their GUI work of 03 §10.2: clockd; the Clock's skeleton; the World tab and its
+city picker; the Alarms tab and its editor; the ringing. No kernel, kapi, AppKit, UIKit, SystemKit or FileKit change
+(`git diff 02a68379 -- kernel user/Kits` is empty); no change to the core of step 3 (`alarms.*`, `clocktime.*`,
+`clock_proto.h`). Every new file carries the MIT notice. Every user-visible word is in `TR ()` with its French in
+`sdcard/apps/clock.app/lang/fr.txt` (`python3 tools/lang/check.py clock` → **119 words, 0 missing**; the 39 lines
+"not used" are the Timer's, the Stopwatch's and the menus' of steps 9–11, from the mock catalogue).
+
+### What was done, by step
+
+| Step | Files | What |
+|---|---|---|
+| **4** — clockd | `user/Apps/clockd/main.cpp`, `sdcard/apps/clockd.app/{app.txt,icon.bmp}`, `user/Makefile` (`clockd.elf`: newlib as `clipd`, the core's two `.cpp` after `$<`, `lib/filekit.imp.a lib/systemkit.imp.a`; in `all:` and the order-only `appkit_stubs` line), `sdcard/etc/autostart` (`run clockd` after `run notifyd`, a comment line), `tools/icons/clock_icon.py` (both icons), `tools/tests/run_clock_sim_test.sh` (created) | The `clockd` service (a second one quits); `alarms.txt` read at start, on `CLOCKD_MSG_RELOAD`, and when its signature (size + sum) changed (looked at every 30 s); `CLOCKD_MSG_QUIT`; every 0.5 s the core's `ringer_step` (trusted = a real date **and** ticks ≥ the guard, 9000 by default, `--grace N`); each `Due` → the running Clock sent `CLOCK_MSG_OPEN "--ring <id>"` / `"--ring timer"`, else `lx_launch ("clock", "--ring …")`; neither → a word-free `notify_action ("HH:MM", label, "clock alarms" / "clock timer")`. `locale_zone_sync ()` at start and every 6000 ticks. Log: `clockd: reload (start|message|changed): N alarms[, a timer]`, `clockd: ring <id> HH:MM[ (snoozed)] at HH:MM:SS`, `clockd: ring timer HH:MM at …`, `clockd: quit`. |
+| **5** — the skeleton | `user/Apps/clock/main.cpp`, `ui.h` (new), `world.h` / `alarmsview.h` / `ring.h` (stubs, filled by 6–8), `timerview.h` / `swview.h` (**the hooks for Developer C**), `sdcard/apps/clock.app/{app.txt,icon.bmp,lang/fr.txt}`, `user/Makefile` (`FT_APPS += clock`, `FT_EXTRA_clock`, `clock.elf` deps), `tools/tests/desktop_sim/shots.sh` (`build ()`: `clock`'s extra, the FT `case` list, `APPS`) | `ClockRoot` (`Root (w, h, TR ("Clock"))`, size from `config.ini`, `setResizable`, `setMinSize (560, 440)`, the 1-px line under the tab bar), the `SegmentedControl` tab bar (440 × 28, re-centred in `onResized`) over four `Page`s (hidden / shown), the menus (View; Alarm and City from 6–7; `timer_menu` / `sw_menu` hooks), the keys in `onKey` (Ctrl+1…4, Ctrl+Tab / Shift: back; then the tab's `*_key`), one Clock at a time (`CLOCK_MSG_OPEN` + `kapi_raise_app`), the arguments (a tab, `--ring <id>`, `--ring timer`; at start `--ring` = ring-only), `config.ini` through FileKit (`cfg_get / cfg_set / cfg_set_int`, unknown keys kept), `autostart_ensure ("run clockd", "run notifyd", …)`, clockd started by `lx_launch` when `kapi_ipc_lookup ("clockd")` finds none, `uk_lang_init` after `ft_uikit_install`, the window's own loop (`attach` + `step`: a ring-only Clock leaves it by itself), at the end `sound_stop`, `timer_at_exit`, `sw_at_exit`, the tab and size kept (not by a ring-only Clock), `cfg_save`. `ui.h`: the faces (lazy `FtTextFace` cache), the meaning colours with their dark twins, the drawings (bell, slash, globe, sun, moon, hourglass, warning, struck speaker, pin, the chevrons for `setIcon`), `tool_button`, `FootText` (text + a green / red message), **`Spin : NumericUpDown`** (G9), `Page`, `Caption`, **`Veil`** (G3: modal, its controls its children placed from the card's corner, the snapshot of what is under it dimmed 96/256 and frozen, the card recentred in `layout ()`, `show (root, focus)` / `hide ()` with the focus given back to the card under it or `onHidden ()`). |
+| **6** — World | `world.h` | `HereCard` (D4: 54-px bold time, the date in the system's language, pin + city · `UTC+h` · *Summer time* — here's offset from `kapi_clock_info`'s `tz_minutes` else `timezone=`, its standard offset = the smaller of `locale_zone_offset_at` in January and July; D7: no zone → amber warning + `Button` *Language & Region…* → `lx_launch ("control", "langconf")`; *Clock not set yet* when `kapi_get_datetime` returns 0), `CityList` (D5: 50-px rows, sun / moon, day word, difference with a true minus sign, *Same time*, 26-px time; scroll bar + wheel + `UkBarDrag`; Up / Down / Home / End / PgUp / PgDn), the empty state (D6), the **Add a City** card (D8: search glyph + `Textbox` filter — case and Latin-1 accents ignored, on the shown and the English name —, `DataGrid` City · Time · UTC sorted by the shown name, Enter / double click / *Add*, Esc / *Cancel*), the footer (*n cities · up to 12*, Add City, Remove, ▲ ▼ disabled at the ends), Ctrl+N, Delete, Ctrl+Up / Down, the City menu; `config.ini` `cities =` written at each change; 12 at most (Add disabled, Ctrl+N refused and logged). Log: `clock: here 12:34:00 UTC+2 summer (Brussels)`, `clock: city Tokyo 19:34 +7 h[ tomorrow|yesterday]`, `clock: cities …`, `clock: add a city (N zones)`, `clock: city refused (12 already)`. |
+| **7** — Alarms | `alarmsview.h` | `NextAlarmBar` (D9: *Next alarm: today 14:30 — in 1 h 56 min*, *Snoozed until 12:44 — School*, the struck bell and *No alarm set*; a click selects that alarm), `AlarmList` (D10: 60-px rows sorted by time — invalid last —, greyed when off or a once alarm gone by, the repeat words, *Snoozed until* / *Missed at* / *Invalid* + its red line, `uk_switch_mark`; click selects, a click on the switch toggles, two clicks on a row within 0.4 s edit; Space / Enter / Delete / Ctrl+N; scrolling), the empty state (D11), the **editor** card (D12: `LcdDisplay` + two `Spin`s + *Next: tomorrow 07:00*, the label `Textbox` (160 bytes, `alarm_set_label` cuts at 40 characters), seven day toggles + *Every day* / *Weekdays*, the sounds' `SegmentedControl` + *Test*, Delete (editing) / Cancel / OK; focus on Hours; Enter = OK and Esc = Cancel also over the spin boxes), the footer (*n alarms · n on*, New Alarm / Edit / Delete), *Not saved: the card is full or read-only* in red when `alarms_save` fails, the Alarm menu. Each change: `alarms_write ()` (a once alarm gone by written `on = 0`, a stale `[timer]` dropped — validation 3 note 1) + `CLOCKD_MSG_RELOAD`. Log: `clock: next today 14:30 in 1 h 56 min` / `next snoozed 12:44 (School)` / `next none`, `clock: alarm 1 07:00 School [Weekdays] on[ snoozed 12:44| missed 12:34]`, `clock: alarm 9 invalid`, `clock: editor new|edit <id>|cancelled`, `clock: alarm <id> saved|deleted|turned on|off`, `clock: alarm refused (20 already)`, `clock: alarms saved (n)` / `alarms.txt not saved`. |
+| **8** — ringing | `ring.h`, `sounds.h` | `ring_alarm (id)`: `alarms.txt` read again, `notify_action (TR ("Clock"), "07:00 School", "clock alarms")` **first**, the snooze / missed marks cleared in memory, the sound (`sound_play (token, loop)`: `ak_out_open (0, 0)` as a probe — 1 closed at once, then the FM voices; 0 *busy*; −1 *none* — logged `clock: sound unavailable busy|none` / `clock: sound chimes (looped)`), the Alarms tab, the **ring card** (D13 / D14: bell with waves, 50-px time, label, repeat · sound, the amber no-sound line and the card 28 px taller, *Snooze N min* (focused: Enter) / *Stop* (Esc)), `kapi_raise_app`. Snooze → `alarm_snooze (…, config's snooze)`; Stop → `alarm_stop`; 12000 ticks unanswered → *Missed alarm: 07:00 School* notified, `missed =` the ring's minute; each → the card hidden, the sound stopped, saved + RELOAD; ring-only → closes (`clock: ring-only, closing`). An unknown id → nothing (ring-only: closes). A ring while a ring shows replaces it; a ring over the editor stacks (R-8). `sounds.h`: Chimes (C6 E6 G6 C7, an inharmonic 2-op FM bell), Beeps (four 2093-Hz square blips), Marimba (a five-note phrase, a woody FM patch), voices 4–7, stepped from the ticks by `ring_tick`; one round for the editor's *Test* (its *Next:* line turns amber *Sound unavailable*). |
+
+### The commits
+
+| Commit | Message |
+|---|---|
+| `2eac784d` | AutoDev round 6: step 4 — clockd, the Clock's alarm service |
+| `967de35b` | AutoDev round 6: step 5 — the Clock's skeleton (window, tabs, menus, one instance, args, config.ini) |
+| `7b9b50da` | AutoDev round 6: step 6 — the World tab (here, the cities, Add a City) |
+| `8e58c49a` | AutoDev round 6: step 7 — the Alarms tab and the alarm editor |
+| `f53ff7dc` | AutoDev round 6: step 8 — an alarm ringing (--ring, the ring card, the sounds, Snooze / Stop / missed) |
+
+### The tests run, and their results
+
+| Command | Result |
+|---|---|
+| `sh tools/tests/run_clock_sim_test.sh` (new; builds clockd and the Clock for the PC — their own sources at `-Wall -Wextra`, no warning allowed — and runs each case with a fresh `SIM_WRITES`) | **`clock-sim: all 117 checks passed`** (≈ 30 s) |
+| — clockd (step 4, 26) | `clockd-ring` (one `sim: exec SD:apps/clock.app/main --ring 1`, `clockd: ring 1 12:35 at 12:35:00` — within 2 s —, no bubble of its own), `clockd-running` (`sim: send clock type 1 "--ring 1\0"`, no exec), `clockd-reload` (`@2000` RELOAD after a `copy` adding 12:36: 12:35 once, 12:36 once), `clockd-changed` (the same with no message: the 30-s signature), `clockd-disabled` (6000 steps, nothing), `clockd-late` (09:00 start, 07:00 alarm: nothing), `clockd-guard` (no `--grace 0`: nothing in the first 90 s), `clockd-sync` (2026-10-25 02:59:30, zone=Brussels: one `sim: set_timezone 60`, `timezone=60` written), `clockd-sync-nozone` (the card's `system.ini`: nothing set, nothing written), `clockd-timer` (`[timer] end = 1300`: one `--ring timer` in 200 steps; with a RELOAD at `@3000`: still one), `clockd-fallback` (no `clock.app/main`: `sim: send notify type 1 "12:35\0Tea\0clock alarms\0"`), `clockd-quit` |
+| — the skeleton (step 5, 14) | `clock-args` (`clock stopwatch` → `clock: tab stopwatch`, the tab kept in `config.ini`; `clock` alone → the last tab), `clock-one` (`SIM_SERVICES=clock`: `sim: send clock type 1 "alarms\0"`, `sim: raise_app clock`, no window), `clock-clockd` (`sim: launch clockd`; not when it runs), `clock-keys` (Ctrl+2/3/4/1, Ctrl+Tab, and `CLOCK_MSG_OPEN "timer"` from `SIM_MBOX` → the tab, raised), `clock-lang` (`check.py clock`: 0 missing) |
+| — World (step 6, 19) | `clock-world` (AC-6/7: `here 12:34:00 UTC+2 summer (Brussels)`, Tokyo 19:34 +7 h, New York 06:34 −6 h, London 11:34 −1 h), 23:30 → *Tokyo 06:30 tomorrow*, 01:00 → *Los Angeles 16:00 yesterday* (AC-8 on the window, `SIM_CLOCK`), the minute's rows printed again 60 s later (19:35), `clock-cities` (AC-9: the picker lists the 20 not chosen; Enter adds Amsterdam at the end; Ctrl+Up; Delete; `cities = Tokyo,New York,London`; restarted, the same list), the filter (`dub` + Enter → Dublin), the 13th refused, `clock-nozone` (AC-10: *Time zone not set*, its button → `sim: exec SD:apps/control.app/main langconf`, the cities with their UTC offset only) |
+| — Alarms (step 7, 31) | `clock-alarm-new` (AC-11/15: Ctrl+N, the label, *Weekdays*, Enter → one block `time = 07:00`, `label = School`, `on = 1`, `days = mon tue wed thu fri`, `sound = chimes`, `sim: send clockd type 2`; the same tokens with `language=fr`, shown *En semaine*), AC-13 (10:00 made at 12:34 → `date = 20260929`; 13:00 → `20260928`), `clock-next` (AC-12: *today 14:30 in 1 h 56 min*; *tomorrow 07:00 in 18 h 26 min*; Space twice → *none*, `on = 0` written twice, RELOAD each time; the rows sorted by time), the repeat words (AC-14: *Mon, Wed, Fri*, *Every day*, *Alarm*; French *lun., mer., ven.*, *Tous les jours*, *Alarme*), Delete, `clock-21`, `clock-invalid` (AC-16: *Invalid*, `colour = red` kept, `25:99` written back as read), `clock-edit-keys` (a) Enter over Hours after typing 8 → `time = 08:00`; (b) Esc → `alarms.txt` byte-identical), the editor's Delete, a read-only card (`SIM_ROFS`) → *not saved* |
+| — ringing (step 8, 27) | `clock-ring` (AC-24/25: `sim: send notify type 1 "Clock\007:00 School\0clock alarms\0"`, the ring, raised, Alarms tab, Esc = Stop, a weekly alarm stays on, RELOAD; French: `Horloge`), `clock-ring-only` (G2: `clock: ring-only, closing` before the script's end), Stop on the once Medicine → `on = 0` and shown off, `clock-snooze` (Enter → `snooze = 202609281244`, *next snoozed 12:44 (School)*, the row), the snooze's ring answered → `snooze =` cleared, `clock-nosound` (no `SIM_SOUND` → `clock: sound unavailable none`, the ring still comes; `SIM_SOUND=1` → `sim: sound acquired`, `clock: sound chimes (looped)`), the editor's Test (none → unavailable; with sound: one round, not looped), `clock-missed` (6100 steps → `Missed alarm: 07:00 School` notified, `missed = 202609281234`, exactly two bubbles), a ring by message to a running Clock (stays after Stop), `clock-veil-stack` (R-8: a ring over the editor, Esc stops it, Esc then cancels the editor), an unknown id |
+| `sh tools/tests/run_clock_test.sh` | `clock: all checks passed` (alarm 158, clocktime 129, at `-O1` UBSan and `-O2` — unchanged) |
+| `SHOTS_TMP=… SHOTS_PNG=<scratch> sh tools/tests/desktop_sim/shots.sh clock` | builds every app with the new `clock` entry (the Clock built), renders the menu bar's `clock.png`: **pixel-identical** to `screenshots/clock.png` (only the PNG encoding differs). The other `ld` errors of that run are the known PrinterKit ones (letters, ledger, paint… — Developer A's note) |
+| Looked at (scratch PNGs, EN and FR, compared with `mockups/clk-*.png`) | World, World FR, no zone FR, Add a City EN / FR (filtered *at* → *Athènes*), Alarms, Alarms FR, the editor EN / FR (*Écouter* fits), New Alarm, the ring EN / FR (no sound), the ring over the editor, the editor's *Sound unavailable*, a 760 × 520 window (anchors, scroll bar, centred card): all match the mock-ups; every French word fits. The test leaves its dumps as PNGs in `/tmp/onyx_clock_sim/*.png` (world, cities, nozone, new, alarms, alarms-fr, ring, ring-fr, edit-nosound, stack, args). |
+| AArch64 (`clang++ --target=aarch64-none-elf` with `NL_CXXFLAGS` + `-Wall -Wextra`, the host's headers for declarations) | `Apps/clockd/main.cpp`, `Apps/clock/main.cpp`, `alarms.cpp`, `clocktime.cpp`: **no error, no warning of their own** (only FontKit's `fonts.h` unused-function warnings, as every FT app); every undefined symbol is an AppKit / SystemKit / FileKit / AudioKit export, FreeType's or libc's. The Pi `make` is the user's (no `aarch64-none-elf` here). |
+
+### Deviations from the plan, and why
+
+1. **The overlays are one object a kind, kept** (`g_cityVeil`, `g_edit`, `g_ring`): `show ()` adds it (or brings it to the
+   front), `hide ()` removes it — never deleted, because a card closes from its own buttons' callbacks (a `delete`
+   there would free the widget UIKit is still in, and the root's `prevHandled` keeps a pointer). A second ring while
+   one shows **replaces** it (logged `ring B replaces ring A`).
+2. **Log lines**: clockd adds the wall second (`… at 12:35:00`) so the "within 2 s" of AC-17/24 is asserted; the next
+   line is printed with English tokens (`next today 14:30 in 1 h 56 min`), the rows with the **shown** repeat words
+   (`[En semaine]` in French: AC-14 checked in both languages); the no-zone line prints its button's centre (the test
+   clicks it).
+3. **Add a City** lists every zone not chosen — here's zone included (02 #7; the mock left Brussels out); the filter
+   matches the shown and the English name.
+4. **The ring card shows the alarm's own time** (`07:00`), also for a snooze's ring; `ring_alarm` clears `snooze` and
+   `missed` in memory, written at the answer (Snooze / Stop / missed).
+5. **Two French words more than the mock catalogue's plural forms**: `1 city · up to 12`, `1 alarm · %d on`; plus
+   `Clock not set yet`, `No city matches`, `Not saved: the card is full or read-only`.
+6. **clockd's fallback bubble** uses the action `clock timer` for a timer (`clock alarms` for an alarm).
+7. **`clockd-one`** (a second clockd quits) is not testable in the simulator (`kapi_ipc_register` gives 1 for any name):
+   Pi only. clockd's `kapi_get_args` reads `--grace N` anywhere in its arguments.
+8. **The tab of `clock` alone** is the one of the last *user* session: a ring-only Clock does not overwrite `tab`,
+   `width`, `height`.
+9. **The sounds' notes and FM patches** (`sounds.h`) are a first take, to be judged by ear on the Pi.
+10. The Timer and Stopwatch tabs are **empty pages** until steps 9–10 (the Timer's shows its footer's keys line).
+
+### For Developer C (steps 9–13, S1–S3)
+
+- **The hooks** are in `timerview.h` / `swview.h` (stubs now), each called by `main.cpp`: `timer_build (Page *)` /
+  `sw_build` (the tab's widgets; the page is `w × (h − 48)`, the footer at `page->height − FOOT + 8`), `timer_shown` /
+  `sw_shown` (the focus), `timer_tick` / `sw_tick` (every turn; `g_now` read just before), `timer_key (k, ctrl)` /
+  `sw_key` (the keys no focused widget took — Ctrl+1…4 / Ctrl+Tab are handled before), `timer_menu (Menu &)` /
+  `sw_menu` (04 §6; bind only Copy Laps, `UK_CTRL ('C')`), `timer_resume_handed ()` (at start, before the arguments: a
+  `[timer]` PENDING taken back → open the Timer tab — `tab_show (TAB_TIMER)`), `timer_at_exit ()` / `sw_at_exit ()`
+  (before `cfg_save`: the hand-over, `sw_*` keys with `cfg_set` / `cfg_set_int`; `g_cfg.timer` is written by
+  `cfg_save`), and **`ring_timer ()`** (called by `open_args` for `--ring timer`, at start with `g_ringOnly` already
+  true: G2 — clear `g_ringOnly` on *+1 min*, validation 3 note 4; set `g_closeNow = true` to close a ring-only Clock).
+- **Shared pieces**: `Spin` (the Timer's three spin boxes), `tool_button`, `FootText` (`set` / `say (text, bad)`),
+  `Caption`, `Veil` (`place (w, x, y)` from the card's corner, `drawCard`, `onKey`, `onHidden`; `show (g_root, focus)` /
+  `hide ()`; keep one object), `face (px)`, `draw_hourglass`, `dim_on`, `GREEN () / RED () / AMBER ()`, `DOT`, `cat`;
+  `sound_play (token, loop)` / `sound_stop ()` (one sound at a time: the newest wins), `say ()` (`clock: …` log),
+  `g_now` (`tick`, `minute`, `utc`, `real`), `g_al` + `alarms_write ()` (saves and sends RELOAD; it also drops a STALE
+  `[timer]`), `g_alPrint = true` + `alarms_changed ()` after changing `g_al` behind the Alarms tab's back.
+- **The Time's up card over the editor** (R-8) works as the ring's does (`clock-veil-stack` is the pattern). `ring_tick`
+  steps `sound_step ()` every turn — a Time's up loop needs nothing more.
+- **Tests**: add the cases of 03 §8.4 / §10.3 for steps 9–11 to `tools/tests/run_clock_sim_test.sh` (helpers `seed`,
+  `fixture` — the three alarms of 03 §8.3 —, `alarms`, `config`, `run PROGRAM CASE SCRIPT VAR=…`, `kv CASE FILE BLOCK KEY`,
+  `logs`, `nolog`, `count`, `counts`, `waits`, `png`); still open there: `clock-edit-keys` (c) (a Timer spin box,
+  Ctrl+2), `clock-keys`' Space / L, `clock-timer*`, `clock-timesup*`, `clock-sw`, `clock-quit-hand`. The Pi-only checks
+  of steps 4–8: AC-28–31, `clockd-one`, the sounds, R-7's latency.
+- **Screenshots (step 12)**: the fixtures are in `tools/tests/desktop_sim/clock/` (`alarms.txt`, `config.ini`; add
+  `config-3s.ini`); `shots.sh` already builds `clock`; the `want clock` block's new lines go after the menu bar's (G5,
+  §10.4). The positions in 03 §10.4 for the World / Alarms / editor / ring shots hold (the editor opens with Enter on the
+  focused list; Ctrl+N opens the city picker).
+- **Docs / package (step 13)**: nothing of docs/04, docs/03, `packages.ini`, `IDEAS.md` was written by this step group.
+  `sdcard_lite/etc/autostart` was not touched (the publish tool's). The dock's label stays *Clock* (validation 1 note 7).
