@@ -24,6 +24,8 @@ run setup
 #setup: run menubar
 # Notification bubbles (the "notify" IPC service; apps call notify() from notify.h).
 run notifyd
+# The Clock's alarms (rung with the app closed): clockd, the alarm service (the Clock's alarms.txt).
+run clockd
 # The update daemon: once a day, the packages set "auto" updated, a notification for the others
 # (docs/pkg/README.md; SD:/etc/pkg/pkg.ini: check = never stops it).
 run pkgd
