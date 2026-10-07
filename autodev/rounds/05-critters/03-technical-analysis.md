@@ -48,7 +48,7 @@ picture, replay check, and a small search) — the way the 12 recorded solutions
 | `user/Apps/pinball/picker.h`, `panel.h` | a drawn `Widget` list with a greyed refused row and its reason, a preview `Widget`, the *Play* `ToolButton`; overlays drawn by the view with real widgets as root children (round 4's R11 focus rule) | patterns for the UX designer's picker and end screen |
 | `user/Apps/pinball/scores.{h,cpp}` | `scores_section (path, shipped, …)` (`"1-space-station"` / `"user.my-table"`), `scores_setting` / `scores_set_setting` over `[settings]` | Critters' `progress.cpp` has the same two helpers (copied, 20 lines) — §2.2 on why no kit |
 | `user/Apps/circuits/circuit.h` | the idea of levels opened one after the other (`level_open`, `unlock_after`), `progress.ini` with `FK_KV_ESCAPES`, unknown sections kept on write | Critters' rule is simpler: one chain over the 12 shipped levels (02 #27: *Expedition* 1 opens after *Training* 6 = the next in the chain) |
-| `user/Kits/filekit/kvtext.h` (+ `kvtext.inc`) | `fk_kv_parse` (levels), `fk_kv_load / new / get / set / text / save (…, FK_KV_ESCAPES)` (progress) | on the PC the code is inline (the host test needs no library); on the Pi `filekit.so` (`filekit >= 1.96`, already linked by every FT app). The core does no I/O: it parses text the UI read. |
+| `user/Kits/filekit/kvtext.h` (+ `kvtext.inc`) | `fk_kv_parse` (levels), `fk_kv_load (path, FK_KV_ESCAPES)` / `fk_kv_new (FK_KV_ESCAPES)`, `fk_kv_get / set / text`, `fk_kv_save (kv, path, comment)` → 0 / −1 (progress; the flag is the document's, given at load / new — as Circuits) | on the PC the code is inline (the host test needs no library); on the Pi `filekit.so` (`filekit >= 1.96`, already linked by every FT app). The core does no I/O: it parses text the UI read. |
 | `user/Kits/filekit/fsutil.h` | `fs_basename`, `fs_ci_cmp` (the `.level` ending) | as Pinball |
 | **UIKit** `canvas.h` | `Canvas::px / stride / w / h` (direct pixel writes: the terrain ×2 blit, §5.3), `alloc` (the minimap and the picker's thumbnails as owned canvases), `putOther` (blit them, magenta transparency for sprites), `fillRect`, `pixel` | **no UIKit change**. There is **no scaled blit** in UIKit (checked: `canvas.h`, `imagebox.h` only fits a picture into a box) — the ×2 is a 15-line loop in the app (§5.3). |
 | **UIKit** `paint.h`, `lang.h`, `menu.h`, `root.h`, `toolbar.h`, `bmp.h` | `uk_text_l / _c / _w`, `uk_rbox`, `uk_tone`, `TR` / `TRC` / `TRN` / `uk_lang_init` / `uk_lang ()`, `Menu`, `ToolButton`, `Button`; `bmp_decode` if the UX designer prefers a BMP sprite sheet to sprites drawn in code | |
@@ -184,6 +184,7 @@ extern const char *const ROLE_WORD[NROLES];        // "climber" ... the file / .
 enum ShapeKind { SH_RECT, SH_POLY, SH_CIRCLE };
 enum Texture { TX_PLAIN, TX_SPECKLE, TX_STRIPES, TX_BRICKS };
 struct Text { char en[HINTL], fr[HINTL]; const char *get (int lang) const; };     // lang 1 = fr, falls back to en
+                                                    // (the UI passes !strcmp (uk_lang (), "fr"): uk_lang () returns "en" / "fr")
 struct Shape { uint8_t kind, mat /* M_*, or 255 = erase */, tex; uint32_t colour, colour2;
                int16_t p[2 * MAXPTS]; int n; /* rect: x y w h; circle: cx cy r; poly: n points */ int x0, y0, x1, y1; /* bbox */ };
 struct Point { int16_t x, y; };
@@ -283,7 +284,8 @@ int interval_for (int rate);                        // 4 + (99 - rate) * 40 / 98
      deeper → `S_FALL` (`fallFrom = y`);
    - `S_FALL`: up to 3 px (a floater: 3 px for the first 12, then 1 px), **pixel by pixel** (a 2-px brick is never
      tunnelled through); landing → fall `y − fallFrom > 60` and not a floater → `S_SPLAT`; else `S_WALK`;
-   - `S_CLIMB`: solid above the head (`y − 12`) → let go, turn, `S_FALL`; else up 1 px; the wall's top reached
+   - `S_CLIMB`: a blocker within reach as for `S_WALK` (02 #12 says "walking or climbing") → let go, turn, `S_FALL`
+     *(added during validation)*; solid above the head (`y − 12`) → let go, turn, `S_FALL`; else up 1 px; the wall's top reached
      (the column ahead empty at the feet) → step over, `S_WALK`;
    - `S_BUILD` (every 8 steps): head-height check (column `x + 3·dir`, rows `y−4 … y−9` solid → turn, `S_WALK`);
      else `t.brick (…)` + `x += 3·dir`, `y −= 2`, `bricks−−` (`E_BRICK_WARN` at 3, 2, 1); at 0 → `S_SHRUG` (10 steps)
@@ -318,7 +320,10 @@ namespace critters {
 enum ActKind { A_ROLE, A_RATE, A_NUKE, A_PAUSE, A_FAST };
 struct Action { int step; uint8_t kind; int8_t role; int16_t arg /* creature, or rate */; int line; };
 struct Solution { Action a[1024]; int n; };
-bool load_solution (const char *text, Solution &s, LoadError &e);   // 02 §7.3: "bad step" (also out of order), "bad action", "bad creature"
+bool load_solution (const char *text, Solution &s, LoadError &e);   // 02 §7.3: "bad step" (also a step LOWER than the line before:
+                                                                    // equal steps are allowed -- two roles in one step), "bad action",
+                                                                    // "bad creature"; a "#" ends a line (02's example has trailing
+                                                                    // comments); more than 1024 actions -> "too many actions (max 1024)"
 struct Replay { const Solution *s; int next; int refused;            // applied before each tick
 	void apply_due (World &w); };                               // every action with step == w.step (A_PAUSE / A_FAST ignored)
 struct Recorder { Solution s; void add (int step, int kind, int role, int arg); int text (char *out, int cap) const; };
@@ -352,11 +357,17 @@ A lost run writes nothing (AC-23). The chain is the 12 shipped sections in picke
 ### 3.6 The clock — `world.h`, used by the window and tested (AC-21)
 
 ```cpp
-struct Clock { int acc; bool fast, paused;                    // milliseconds owed
-	int due (unsigned dt); };                             // -> steps to run now: acc += dt (paused: 0, acc kept 0);
-	                                                      //    step = fast ? 50/3 : 50 -> integer: acc3 += dt*3, 150 or 50 per step;
-	                                                      //    at most 4 (fast: 12) a call, the rest dropped (the game slows)
+struct Clock { int acc3; bool fast, paused;                   // time owed, in thirds of a millisecond
+	int due (unsigned dt); };                             // -> steps to run now. paused: 0 and acc3 = 0. Else acc3 += dt * 3;
+	                                                      //    one step costs 150 (50 ms) normally, 50 (16.7 ms) when fast;
+	                                                      //    n = acc3 / cost, capped at 4 (fast: 12 = 4 frames' worth),
+	                                                      //    acc3 -= n * cost; capped -> acc3 = 0 (the owed time dropped:
+	                                                      //    the game slows, a step is never skipped -- 02 #2)
 ```
+
+*(Fixed during validation: the sketch named the field `acc` but used `acc3`, and the cost per step was ambiguous.
+02 #2's "at most 4 steps caught up per frame" is read for the normal speed; fast-forward allows 12, three times as
+much, so it is not throttled by a 100 ms frame.)*
 
 The window does `for (n = clock.due (dt); n > 0; n--) { replay.apply_due (w); w.tick (); events → sounds; }`. Pause
 and fast-forward change only **when** steps run, never **what** a step does; AC-21's test drives the same `Solution`
