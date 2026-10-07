@@ -18,17 +18,21 @@ word ONYX — ringed with vents).
 | `make_case.py` | The parametric generator (everything above): `pip install manifold3d trimesh numpy matplotlib`, then `python3 hardware/case/make_case.py`. |
 | `render_preview.py` | The renderer of `preview.png`. |
 
-Outside: **92.0 × 63.3 × 28.2 mm**. Walls 2 mm, the top 2.2 mm.
+Outside: **92 × 92 × 28.2 mm** — square: the board sits against three walls (its ports), the room behind it
+takes the cover's own screws. Walls 2 mm, the top 2.2 mm.
 
 ## What it has
 
 - **Ports** (the Pi's own sides): USB-C and the two micro-HDMI and the audio jack on one long side (openings
   wide enough for the plugs' overmoulds), the two USB stacks and Ethernet on the short side, the micro-SD
   card under the board on the other short side (a notch for the finger), a little window for the PWR/ACT LEDs.
-- **Fixing**: four standoffs (5 mm, the M2.5 holes of the board, 58 × 49 mm) in the base; four posts in the
-  cover come down onto the board at the same holes. **Four M2.5 × 16 mm screws** (up to 20 mm), from below
-  (counterbored heads), through the base and the board, into the cover's posts (2.2 mm pilot holes:
-  self-tapping screws, or tap them M2.5) — they hold the board and close the case in one go.
+- **Fixing, every screw from below** (counterbored heads, nothing shows on the top or the sides):
+  - **the board**: four standoffs (5 mm, the board's M2.5 holes, 58 × 49 mm) in the base, four posts in the
+    cover coming down onto the board at the same holes; **four M2.5 × 16 mm screws** (up to 20 mm) go through
+    the base and the board into the posts (2.2 mm pilot holes: self-tapping, or tap them M2.5);
+  - **the cover**: two 8 mm columns in the corners behind the board; **two M3 × 16 mm screws** go through the
+    base into the cover (2.6 mm pilot holes: self-tapping M3, or tap them; for heat-set inserts, widen the
+    pilot to 4.0 mm in `make_case.py`).
 - **Vents**: twelve arc slots around the disc on the top (the SoC lies beneath), a round grille in the
   bottom, vertical slots in the front.
 - **Registration**: a lip on the base (the back and the SD side) slides into the cover; a shadow line

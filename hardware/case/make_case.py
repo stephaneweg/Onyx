@@ -43,14 +43,21 @@ Z_SPLIT   = Z_PCB_TOP                   # the halves meet at the PCB's top
 Z_CEIL    = Z_PCB_TOP + TALLEST + HEADROOM   # 26.0 inner top
 Z_TOP     = Z_CEIL + TOP                # 28.2
 
-# the cavity (inner faces); the ports' side walls hug the board
+# the cavity (inner faces); the ports' side walls hug the board, and the case is square:
+# the room left behind the board (the front, y-max) takes the cover's own screws
 IN_X0, IN_X1 = -2.0, 86.0
-IN_Y0, IN_Y1 = -0.8, 58.5
+IN_Y0 = -0.8
 X0, X1 = IN_X0 - WALL, IN_X1 + WALL
-Y0, Y1 = IN_Y0 - WALL, IN_Y1 + WALL
+Y0 = IN_Y0 - WALL
+Y1 = Y0 + (X1 - X0)                     # square
+IN_Y1 = Y1 - WALL
 CX, CY = (X0 + X1) / 2, (Y0 + Y1) / 2
 
 HOLES = [(3.5, 3.5), (61.5, 3.5), (3.5, 52.5), (61.5, 52.5)]   # M2.5 mounting holes
+# the cover's screws (M3, from below), in the two corners away from the board
+BOSS_D = 8.0
+BOSSES = [(IN_X0 + BOSS_D / 2 + 0.3, IN_Y1 - BOSS_D / 2 - 0.3),
+          (IN_X1 - BOSS_D / 2 - 0.3, IN_Y1 - BOSS_D / 2 - 0.3)]
 
 # ---------------------------------------------------------------- helpers
 def rrect(x0, y0, x1, y1, r):
@@ -127,7 +134,7 @@ def slot_y(y, z0, z1, w, r=1.0):
 def logo_2d():
     """The Onyx mark: a cut gem (crown and pavilion, its facets) above the word ONYX."""
     W = 0.95                                   # stroke width (a 0.4 nozzle: 2 lines)
-    s = 1.0
+    s = 1.35
     # the gem, centred on (0, 5): table, crown, girdle, pavilion
     gx, gy = 0.0, 4.6
     tw, gw, ch, ph = 7.0, 15.0, 3.6, 8.2       # table, girdle widths; crown, pavilion heights
@@ -159,10 +166,10 @@ def logo_2d():
     word = word.translate((-(bx0 + bx1) / 2, -by1 - 6.0))
     return (gem + word).scale((s, s))
 
-LOGO_R    = 18.0     # the disc's groove radius
+LOGO_R    = 24.0     # the disc's groove radius
 GROOVE_W  = 1.0
 ENGRAVE   = 0.6      # the logo's and groove's depth
-LOGO_CX, LOGO_CY = CX, CY + 0.4
+LOGO_CX, LOGO_CY = CX, CY
 
 def top_marks_2d():
     lg = logo_2d()
@@ -204,12 +211,19 @@ def build():
     # cover: posts that press the board down and take the screws
     for (hx, hy) in HOLES:
         shell = shell + cyl(hx, hy, Z_PCB_TOP + 0.15, Z_CEIL + 0.1, 5.4)
+    # the cover's screw bosses: a column from the floor to the top, split with the rest
+    for (bx, by) in BOSSES:
+        shell = shell + cyl(bx, by, FLOOR - 0.1, Z_CEIL + 0.1, BOSS_D)
 
     cuts = []
     for (hx, hy) in HOLES:
         cuts.append(cyl(hx, hy, -1, Z_PCB_TOP + 0.2, 2.8))         # M2.5 clearance
         cuts.append(cyl(hx, hy, -1, 2.6, 5.4))                      # the screw head's counterbore
         cuts.append(cyl(hx, hy, Z_PCB_TOP + 0.1, Z_CEIL - 2.0, 2.2))  # pilot (self-tapping M2.5)
+    for (bx, by) in BOSSES:
+        cuts.append(cyl(bx, by, -1, Z_SPLIT + 0.2, 3.4))            # M3 clearance
+        cuts.append(cyl(bx, by, -1, 3.0, 6.4))                      # the screw head's counterbore
+        cuts.append(cyl(bx, by, Z_SPLIT - 0.1, Z_CEIL - 2.0, 2.6))   # pilot (self-tapping M3)
 
     t = Z_PCB_TOP
     # the y-min side: USB-C, micro-HDMI 0 and 1, audio
@@ -227,8 +241,8 @@ def build():
     cuts.append(box(X0 - 1, 6.0, t + 0.6, IN_X0 + 0.5, 12.5, t + 2.4))
 
     # the back (y-max): vertical vents in the cover's wall
-    for k in range(13):
-        x = 14.0 + k * 4.6
+    for k in range(15):
+        x = 10.0 + k * 4.6
         cs = rrect(-0.9, Z_SPLIT + 4.0, 0.9, Z_CEIL - 3.0, 0.9)
         cuts.append(cs.extrude(WALL + 4).rotate((90, 0, 0)).translate((x, Y1 + 2, 0)))
 
@@ -246,7 +260,7 @@ def build():
             px, py = gcx + i * 3.4 + (1.7 if j % 2 else 0), gcy + j * 2.95
             if math.hypot(px - gcx, py - gcy) <= 15.0:
                 cuts.append(cyl(px, py, -1, FLOOR + 1, 2.0, 16))
-    for fx, fy in [(14.0, 6.5), (74.0, 6.5), (14.0, 52.0), (74.0, 52.0)]:
+    for fx, fy in [(14.0, 6.5), (74.0, 6.5), (14.0, IN_Y1 - 8.0), (74.0, IN_Y1 - 8.0)]:
         cuts.append(cyl(fx, fy, -1, 0.8, 10.4))
 
     shell = shell - Manifold.batch_boolean(cuts, m3d.OpType.Add)
@@ -264,6 +278,8 @@ def build():
     # keep the back side and the micro-SD side only (no room among the ports), away from the SD notch
     keep = box(X0 - 1, 55.0, 0, X1 + 1, Y1 + 1, 100) + box(X0 - 1, Y0 - 1, 0, -0.3, Y1 + 1, 100)
     lip = (lip ^ keep) - box(X0 - 1, 28 - 9.0, 0, 0, 28 + 9.0, 100) - box(X0 - 1, 5.0, 0, 0, 13.5, 100)
+    for (bx, by) in BOSSES:
+        lip = lip - cyl(bx, by, 0, 100, BOSS_D + 0.6)
     base = base + lip
 
     inlay = logo.extrude(ENGRAVE - 0.05).translate((0, 0, Z_TOP - ENGRAVE))
