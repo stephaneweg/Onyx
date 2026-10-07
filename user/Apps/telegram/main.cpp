@@ -10,7 +10,7 @@
 //   telegram            the account in SD:/apps/telegram.app/session.dat (else the sign-in)
 //   telegram --demo     made-up conversations, no network (demo.h)
 //
-// config.ini ([telegram]): api_id, api_hash (my.telegram.org's: asked at the first start), test (1: Telegram's
+// config.ini ([telegram]): api_id, api_hash (another key than the app's own, built in), test (1: Telegram's
 // test servers), pictures (0: the display pictures' column hidden). log.txt: what the connection did.
 //
 // MIT licence.
@@ -52,17 +52,29 @@ static Root *g_root;
 
 // ---- the settings ----------------------------------------------------------------------------------------
 
+// The app's own key at my.telegram.org (the project's, public: the user's choice, 2026-10-07). config.ini's
+// api_id / api_hash, when they are there, take its place.
+#define TG_API_ID	35701384
+#define TG_API_HASH	"e33e9fae5727447538e9aea5c0f5a0fc"
+
 static void save_config ()
 {
 	char t[400];
-	int n = snprintf (t, sizeof t, "[telegram]\napi_id=%d\napi_hash=%s\ntest=%d\npictures=%d\n", g_c.apiId, g_c.apiHash, (int) g_c.test, (int) g_pictures);
+	int n;
+	if (g_c.apiId == TG_API_ID && !strcmp (g_c.apiHash, TG_API_HASH))	// (the app's own key: not written)
+		n = snprintf (t, sizeof t, "[telegram]\ntest=%d\npictures=%d\n", (int) g_c.test, (int) g_pictures);
+	else n = snprintf (t, sizeof t, "[telegram]\napi_id=%d\napi_hash=%s\ntest=%d\npictures=%d\n", g_c.apiId, g_c.apiHash, (int) g_c.test, (int) g_pictures);
 	tg_save (TG_DIR "config.ini", t, n);
 }
+
 static void load_config ()
 {
+	g_c.apiId = TG_API_ID;
+	snprintf (g_c.apiHash, sizeof g_c.apiHash, "%s", TG_API_HASH);
 	if (app_ini_load ("config.ini") < 0) return;
-	g_c.apiId = app_ini_get_int ("telegram", "api_id", 0);
-	snprintf (g_c.apiHash, sizeof g_c.apiHash, "%s", app_ini_get ("telegram", "api_hash", ""));
+	g_c.apiId = app_ini_get_int ("telegram", "api_id", TG_API_ID);
+	snprintf (g_c.apiHash, sizeof g_c.apiHash, "%s", app_ini_get ("telegram", "api_hash", TG_API_HASH));
+	if (!g_c.apiId || !g_c.apiHash[0]) { g_c.apiId = TG_API_ID; snprintf (g_c.apiHash, sizeof g_c.apiHash, "%s", TG_API_HASH); }
 	g_c.test = app_ini_get_int ("telegram", "test", 0) != 0;
 	g_pictures = app_ini_get_int ("telegram", "pictures", 1) != 0;
 }

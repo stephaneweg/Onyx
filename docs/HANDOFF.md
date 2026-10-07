@@ -23,6 +23,9 @@ studying Discord / WhatsApp / Messenger (their terms forbid third-party clients;
   the session used TDLib's public test pair) over MTProto's HTTP transport through the proxy: keys with the test and
   production servers, the code sent, a wrong code refused, PHONE_MIGRATE followed. **Telegram's test servers refuse
   their own sign-in codes since late 2024** (tdlib/td#3083): the signed-in part is tried with `TG_TEST_LOGIN=1` only.
+- **The app's key** (2026-10-07, the user's choice: public): api_id 35701384, built in (`main.cpp` `TG_API_ID` / `TG_API_HASH`),
+  checked against production (an impossible number refused with PHONE_NUMBER_INVALID, not API_ID_INVALID). If Telegram
+  ever answers API_ID_PUBLISHED_FLOOD, a new key at my.telegram.org (the user's account) and `config.ini` meanwhile.
 - **Not tried (to do on the Pi)**: the TCP transport (`tgplat.h`'s `TcpTransport`, port 443 of the data centres) and a
   real account end to end: sign in, the conversations, a message both ways, a photo from another data centre, the
   status, Sign out; the frame rate of the list with many conversations; `log.txt` says what the connection did.

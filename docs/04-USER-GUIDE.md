@@ -3491,10 +3491,9 @@ says:" over what she wrote, the emoticons as pictures. It talks to Telegram's se
 (MTProto 2.0, Telegram's open API: no other program needed), through the WLAN. It is an
 **unofficial** client: Telegram allows them, with a key of their own (below).
 
-**The first start: the app's key.** Telegram asks every app for its own key. Once: on a phone or a
-PC, sign in at **my.telegram.org** with your phone number, open **API development tools**, create
-an app (any name and short name), and copy its **api_id** (a number) and **api_hash** (32 letters
-and digits) into the first page. They are kept in `SD:/apps/telegram.app/config.ini`.
+**The app's key.** Telegram asks every app for a key of its own (an *api_id* and an *api_hash*, made at
+my.telegram.org). Telegram for Onyx has its own built in: there is nothing to give. (Another key can be put in
+`SD:/apps/telegram.app/config.ini`: `api_id = …`, `api_hash = …`.)
 
 ![Telegram, the sign-in](../screenshots/telegram-signin.png)
 *The sign-in: the phone number, and the status to sign in with.*
@@ -3555,7 +3554,7 @@ bar: **Telegram** (Search **Ctrl+F**, Sign Out, Quit **Ctrl+Q**), **Status** (On
 ![Telegram, a group](../screenshots/telegram-group.png)
 *A group: each one's name over their messages, their picture beside it.*
 
-**Files** (in `SD:/apps/telegram.app`): `config.ini` (`[telegram]`: `api_id`, `api_hash`, `test = 1`
+**Files** (in `SD:/apps/telegram.app`): `config.ini` (`[telegram]`: `api_id`, `api_hash` — another key than the app's own —, `test = 1`
 for Telegram's test servers, `pictures = 0` to hide the display pictures), `session.dat` (the
 account's keys: secret), `cache/` (the profile photos), `seed.bin` (the random generator's seed,
 renewed at each start), `log.txt` (what the connection did: to look at when something goes wrong).
