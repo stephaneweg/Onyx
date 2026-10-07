@@ -626,16 +626,17 @@ mock-ups, which build and run against today's UIKit in the simulator (`mockups/m
 | G6 | 02 #11: the time as "two spin boxes" | Two `NumericUpDown`s **and an `LcdDisplay`** showing `07:00` beside them. | `NumericUpDown::onDraw` (controls.cpp:150) prints the value unpadded (`7`, `0`); no UIKit change for a padded spinner. |
 | G7 | — | The Timer's start and Reset buttons **stacked** full width; the Stopwatch's two buttons 164 px. | *Remettre à zéro* did not fit two 121-px buttons side by side (the French mock-ups, 04 §2.1). |
 | G8 | — | Widgets resized after creation use **`resizeTo`**, not `width =`. | A `ToolButton` / `Button` whose `width` is changed keeps its canvas (the mock-ups' first run drew cut buttons). |
+| G9 | 04 D12: "focus on *Hours*; Enter = OK, Esc = Cancel"; G4's Ctrl+1…4 in the root's `onKey` | Every spin box is a **`Spin : NumericUpDown`** (`ui.h`) that passes on Ctrl keys, Esc (typed digits dropped) and Enter (typed digits committed first). | `NumericUpDown::onKey` (user/Kits/uikit/controls.cpp:195–220) returns true for `KEY_ENTER`, 27 and every digit (Ctrl not looked at), and `Widget::handleKey` (widget.cpp:143–158) asks the focused child before the veil / root: Enter and Esc never reached the card, Ctrl+1 typed a `1` into a focused Timer spin box (validation 1, gap 5). |
 
 ### 10.2 Which step gets which GUI work (the steps of §5; files beside the app)
 
 | Step | GUI work (04's decisions) | Files |
 |---|---|---|
-| 5 | `ClockRoot` 560 × 440, `setResizable (true)`, `setMinSize (560, 440)`, size from `config.ini`; the `SegmentedControl` tab bar + its line (D2); **one container `Widget` per tab** (shown / hidden, anchored fill); the footer pattern `FootText` + right-aligned `ToolButton`s (D3); the `Menu` of 04 §6 (G4) and the key dispatcher of 04 §7; the lazy face cache (04 §4); **`ui.h`**: `Veil`, `FootText`, the drawings (`bell`, `slash`, `globe`, `sun`, `moon`, `hourglass`, `warn`, `speaker_off`, `pin`), the meaning colours with their dark-theme twins; the app icon (`tools/icons/clock_icon.py`, 04 §1.1); `lang/fr.txt` started from `mockups/sd/apps/clock.app/lang/fr.txt` | `main.cpp`, `ui.h` (new), `tools/icons/clock_icon.py` |
+| 5 | `ClockRoot` 560 × 440, `setResizable (true)`, `setMinSize (560, 440)`, size from `config.ini`; the `SegmentedControl` tab bar + its line (D2); **one container `Widget` per tab** (shown / hidden, anchored fill); the footer pattern `FootText` + right-aligned `ToolButton`s (D3); the `Menu` of 04 §6 (G4) and the key dispatcher of 04 §7; the lazy face cache (04 §4); **`ui.h`**: `Veil`, `FootText`, **`Spin : NumericUpDown`** (G9: its `onKey` returns false for any key with `MOD_CTRL` held, for Esc after the base's Esc, and for Enter after `NumericUpDown::onKey (KEY_ENTER)` — used for every spin box of the editor and the Timer), the chevron drawer for `ToolButton::setIcon` (`uk_glyph (WKG_CHEV_UP / DOWN)`: D5's ▲ / ▼), the drawings (`bell`, `slash`, `globe`, `sun`, `moon`, `hourglass`, `warn`, `speaker_off`, `pin`), the meaning colours with their dark-theme twins; the app icon (`tools/icons/clock_icon.py`, 04 §1.1); `lang/fr.txt` started from `mockups/sd/apps/clock.app/lang/fr.txt` | `main.cpp`, `ui.h` (new), `tools/icons/clock_icon.py` |
 | 6 | `HereCard` (D4), `CityList` (D5, Ctrl+Up / Down), the empty state (D6), the no-zone warning + `Button` (D7), the **Add a City** veil: `Textbox` filter + `DataGrid` City · Time · UTC (D8); the cities' names through `TR` with `// TR:` marks (as `langconf`) | `world.h` |
-| 7 | `NextAlarmBar` (D9), `AlarmList` with the switch's hit area, the states *Snoozed* / *Missed* / *Invalid* (D10), the empty state (D11), the **editor** veil: `LcdDisplay` + 2 `NumericUpDown` + *Next:* line, `Textbox`, 7 toggle `ToolButton`s + *Every day* / *Weekdays*, `SegmentedControl` sounds + *Test* (D12); *Not saved* in the footer | `alarmsview.h` |
+| 7 | `NextAlarmBar` (D9), `AlarmList` with the switch's hit area, the states *Snoozed* / *Missed* / *Invalid* (D10), the empty state (D11), the **editor** veil: `LcdDisplay` + 2 `Spin`s + *Next:* line, `Textbox`, 7 toggle `ToolButton`s + *Every day* / *Weekdays*, `SegmentedControl` sounds + *Test* (D12); *Not saved* in the footer | `alarmsview.h` |
 | 8 | The **ring** veil (D13) and its no-sound line (D14); `g_ringOnly` closing (G2) | `main.cpp` |
-| 9 | `TimerRing` (`VPath::arc`, D17), the right column (3 `NumericUpDown` disabled while running, 5 preset toggles, the stacked start / Reset), the **Time's up** veil (D18); a veil over a veil (R-8's test) | `timerview.h` |
+| 9 | `TimerRing` (`VPath::arc`, D17), the right column (3 `Spin`s disabled while running, 5 preset toggles (double-click = two clicks on one within 400 ms, the app's), the stacked start / Reset), the **Time's up** veil (D18); a veil over a veil (R-8's test) | `timerview.h` |
 | 10 | `StopwatchFace` (D19), the Lap / Reset and Start / Stop `ToolButton`s, the laps `DataGrid` + `cellDraw` (fastest / slowest: colour + arrow + word), *Copy Laps* and *Laps copied* in `FootText` | `swview.h` |
 | 11 | The keys of 04 §7; **no question** (G1); the hand-over at every exit | `main.cpp` |
 | 12 | The `shots.sh` block (G5), below | `tools/tests/desktop_sim/shots.sh`, `tools/tests/desktop_sim/clock/` |
@@ -651,6 +652,11 @@ mock-ups, which build and run against today's UIKit in the simulator (`mockups/m
 - **`clock-veil-stack`** (R-8): the editor open (`key 13` on Alarms), a 3-s timer running (fixture `timer = 3`, started
   from the Timer tab first) → *Time's up* logged over the editor; Esc closes it, the editor is still there.
 - `clock-keys`: Ctrl+1…4 sent as `mods 1;key 49…52;mods 0` (not `UK_CTRL`): the tab logs.
+- **`clock-edit-keys`** (G9, AC-41): (a) `SIM_ARGS=alarms`, `key 13` (the editor on *School*, the focus on *Hours*),
+  `key 56` (typed `8`), `key 13` → the editor closes and `alarms.txt`'s *School* block has `time = 08:00` (the typed
+  digit committed, then OK); (b) the same with `key 56;key 27` → the editor closes, `alarms.txt` unchanged (byte-compared
+  with the fixture); (c) `SIM_ARGS=timer`, a click on the minutes spin box (focus), `mods 1;key 50;mods 0` → the log
+  says the Alarms tab, and the Timer's duration is unchanged (no `2` typed).
 
 ### 10.4 The screenshots (§8.3 amended)
 
@@ -668,9 +674,30 @@ a second config fixture `config-3s.ini` with `timer = 3` for *Time's up*):
 | `clock-timesup` | `timer` (config-3s) | `wait;key 32;` + 170 waits |
 | `clock-stopwatch` | `stopwatch` | as §8.3 (Space, 3 × L, Space) |
 
-`SHOTS_LANG=fr` renders the same names with `-fr` (AC-3: the four tabs + the ring, plus the editor, the city
-picker and *Time's up*). The pictures must look like `mockups/clk-*.png` (the real data: the timer at 04:58 rather than
-the mock's 03:12).
+The French pictures (AC-3) are **explicit lines** at the end of the block — `SHOTS_LANG` does not add `-fr`: `lang`
+(shots.sh:28–29) only rewrites the writes' `system.ini` with `language=`, so `SHOTS_LANG=fr` renders the **same file
+names** in French (and over the English ones with `PNG=screenshots`). The Critters / Pinball pattern (shots.sh:424,
+445–447): `lang fr` before, `lang "$SHOTS_LANG"` after. `lang fr` starts from the card's `system.ini` (no `zone=`,
+`timezone=120`: Brussels inferred on 2026-09-28, as in the English lines), so the French shots show the same zone.
+
+```sh
+	kfix; lang fr
+	sim clock clock-world-fr     "wait;wait;$W" $KS SIM_ARGS=world;                        png clock-world-fr
+	kfix; sim clock clock-cities-fr    "wait;mods 1;key 14;mods 0;wait;$W" $KS SIM_ARGS=world;   png clock-cities-fr     # Ajouter une ville
+	kfix; sim clock clock-alarms-fr    "wait;wait;$W" $KS SIM_ARGS=alarms;                       png clock-alarms-fr
+	kfix; sim clock clock-edit-fr      "wait;key 13;wait;$W" $KS SIM_ARGS=alarms;                png clock-edit-fr       # Modifier l'alarme
+	kfix; sim clock clock-ring-fr      "wait;wait;$W" $KS "SIM_ARGS=--ring 1";                   png clock-ring-fr       # Rappel dans 10 min
+	kfix; sim clock clock-timer-fr     "wait;down 421 193;up 421 193;key 32;$(kw 120)" $KS SIM_ARGS=timer; png clock-timer-fr   # Remettre à zéro fits
+	kfix; cp $D/clock/config-3s.ini "$KQ/config.ini"
+	      sim clock clock-timesup-fr   "wait;key 32;$(kw 170)" $KS SIM_ARGS=timer;               png clock-timesup-fr    # Temps écoulé
+	kfix; sim clock clock-stopwatch-fr "wait;key 32;$(kw 600)key l;$(kw 590)key l;$(kw 640)key l;key 32;$W" $KS SIM_ARGS=stopwatch; png clock-stopwatch-fr   # Chronomètre, Tour
+	lang "$SHOTS_LANG"; rm -rf "$KQ"
+```
+
+(The first line's `kfix` is before `lang fr` — `kfix` removes only `apps/clock.app`, not `etc/system.ini`. The French
+preset is at the same place: the column's layout does not depend on the language.) **`SHOTS_LANG=fr SHOTS_PNG=<scratch>
+sh tools/tests/desktop_sim/shots.sh clock`** stays only as CLAUDE.md's look-at-the-whole-app-in-French check. The
+pictures must look like `mockups/clk-*.png` (the real data: the timer at 04:58 rather than the mock's 03:12).
 
 ### 10.5 Acceptance criteria touched
 
@@ -678,7 +705,9 @@ the mock's 03:12).
   four tabs and the ring.
 - **AC-25**: + "started only to ring, the Clock closes by itself after Stop / Snooze" (G2).
 - **AC-40**: as G1 (no question; the hand-over on every exit): "…the timer still rings, **and the reopened Clock shows it running**" (gap 3: `[timer]` taken back, `clock-timer-resume`).
-- **AC-41**: Ctrl+1…4 are handled in `onKey` (G4); unchanged otherwise.
+- **AC-41**: Ctrl+1…4 are handled in `onKey` (G4); Enter / Esc / Ctrl over a focused spin box through `Spin` (G9,
+  `clock-edit-keys`); unchanged otherwise.
+- **AC-3**'s French shots: the explicit `-fr` lines of §10.4 (validation 1, gap 4).
 
 ---
 
