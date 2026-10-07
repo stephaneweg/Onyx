@@ -286,6 +286,8 @@ public:
 	// ---- the frames ----
 	void events ()
 	{
+		for (int i = 0; i < g->w.nev; i++)			// (the launch's speed: the simulator's tests read it)
+			if (g->w.ev[i].kind == pinball::P_LAUNCH) { printf ("pinball: launch %d\n", (int) g->w.ev[i].speed); fflush (stdout); }
 		if (g_startMultiball && !multiballDone)		// --start multiball: a 2-ball multiball at the first launch
 			for (int i = 0; i < g->w.nev; i++)
 				if (g->w.ev[i].kind == pinball::P_LAUNCH) { pinball::Action a = { pinball::A_MULTIBALL, 2 }; g->fire (a); multiballDone = true; break; }
@@ -418,6 +420,8 @@ static void place_overlay_widgets ()
 
 void PinballView::setOverlay (int o)
 {
+	static const char *const NAMES[] = { "none", "pause", "over", "name", "scores" };
+	if (o != overlay) { printf ("pinball: overlay %s\n", NAMES[o]); fflush (stdout); }	// (the simulator's tests wait for it)
 	overlay = o;
 	show (g_btResume, o == O_PAUSE); show (g_btBack, o == O_PAUSE);
 	show (g_tbName, o == O_NAME); show (g_btOk, o == O_NAME);
@@ -691,7 +695,8 @@ static void play_selected ()
 static void start_game (int i)
 {
 	TableEntry &e = *g_ent[i];
-	pinball::scores_set_setting (g_scores, "table", e.section);
+	if (strcmp (pinball::scores_setting (g_scores, "table", ""), e.section))	// (the picker's choice next time)
+	{ pinball::scores_set_setting (g_scores, "table", e.section); save_scores (); }
 	g_view->start (i);
 	g_hdName->set (e.t->name.get (g_lang), "");
 	g_hdName->sw0 = e.look.lampCol; g_hdName->sw1 = e.look.slingCol;
@@ -714,6 +719,7 @@ static void go_picker ()
 	g_list->scroll = 0;
 	select_entry (g_sel);
 	g_list->setFocus ();
+	printf ("pinball: picker (%d tables)\n", g_nent); fflush (stdout);
 }
 // A table file given (the argument, Open, a drop): played at once, or the picker with its error
 static void open_path (const char *path)
