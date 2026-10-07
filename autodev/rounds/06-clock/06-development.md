@@ -364,3 +364,145 @@ one line "not used", *Alarms and timers…*, is S1's, the menu bar's).
   `alarms.txt`'s `[timer]`. Pi-only checks of steps 9–11: AC-36 (a 10-minute timer within 1 s), the Chimes of *Time's
   up*, the hand-over across a real close (clockd → `clock --ring timer`).
 - **S1** (the menu bar's bell): `Alarms and timers…` is already in `fr.txt` (the only "not used" line).
+
+## Developer D (steps 12–13, S1–S3)
+
+Step 12 (the screenshots), step 13 (the docs, the package declared, IDEAS) and the three *should* items S1 (the menu
+bar's bell and *Alarms and timers…*), S2 (the alarms missed while the Pi was off) and S3 (the analogue face), each
+with its tests and pictures, in English and French. No kernel, kapi or AppKit change (`git diff origin/main --
+kernel/ user/Kits/appkit/` is **empty**); no kit change (UIKit, SystemKit, FileKit untouched by this step group).
+Every new or changed file keeps its MIT notice. Nothing published (no `publish.sh`, no onyx-packages).
+
+### What was done, by step
+
+| Step | Files | What |
+|---|---|---|
+| **12** — screenshots | `tools/tests/desktop_sim/shots.sh` (the `want clock` block), `tools/tests/desktop_sim/clock/config-3s.ini` (new: `timer = 3`), `screenshots/clock-*.png` | The block of 03 §10.4 after the menu bar's `clock.png`: `kfix` (the fixtures copied into the writes before each run), `KS="SIM_SERVICES=notify,clockd"`, the eight English lines (`clock-world`, `-cities`, `-alarms`, `-edit`, `-ring`, `-timer`, `-timesup`, `-stopwatch`) and the eight explicit `-fr` lines (`lang fr` … `lang "$SHOTS_LANG"`), `rm -rf "$KQ"` at the end (the later groups — `desktop`, `milk` — see no alarms). Every picture looked at, English and French: they match the mock-ups, every French word fits. One French line reworded on the way: the Timer's footer *il sonne même Horloge fermée* → *il sonne même l'Horloge fermée* (it still fits: it ends at x 545 of 560). |
+| **S2** — missed while off | `user/Apps/clock/alarms.{h,cpp}` (`alarms_missed_since`), `user/Apps/clockd/main.cpp`, `user/Apps/clock/main.cpp`, `ring.h` (`ring_missed`), `clock_proto.h` (comments), `tools/tests/clock/alarm_test.cpp` (`t20_missed_since`), `tools/tests/run_clock_sim_test.sh` | `alarms_missed_since (s, since, upto, Due *, max)`: the **once** alarms, on and valid, whose ring (their minute, or their snooze when it is the later one) lies in `[since, upto]`, with no `missed =` at or after it and no snooze still to come. clockd looks **once, at the first step whose date is trusted** (a real date and the 90-s guard past): `[now − 12 h, the Ringer's last minute]` (so nothing the Ringer still rings is said missed), and hands **all of them in one** `--missed <id> <YYYYMMDDHHMM> …` to the Clock (the running one by `CLOCK_MSG_OPEN`, else `lx_launch`: one start only — a second start would have found the first one ending); neither → word-free bubbles (`07:00` / the label), as its ring fallback. The Clock (`clock --missed …`, before any window; or the running one, not raised): each one *Missed alarm: 07:00 School* (`Horloge — Alarme manquée : …` in French) notified, `missed =` its ring, the snooze cleared, `alarms_write` (a once alarm gone by written off, clockd told), no sound, no window; told twice, it says it once (`missed 1: nothing to say`); an alarm its ring card shows is left alone. Logged `clockd: missed 1 07:00[ (snoozed)]`, `clock: missed 1 07:00 School (while off)`. The Clock's argument buffer went from 160 to 400 bytes (20 pairs). |
+| **S3** — analogue face | `user/Apps/clock/world.h` (`draw_face`, `HereCard::analogueCols / drawAnalogue`, `world_face`, `world_view_menu`), `main.cpp` (`Config::analogue`, `face =` read and written, the View menu), `sdcard/apps/clock.app/lang/fr.txt` (*Horloge analogique*, *Horloge numérique*), `shots.sh` (`clock-analogue`, `clock-analogue-fr`), `run_clock_sim_test.sh` | **View ▸ Analogue Clock / Digital Clock** (the World tab shown; `face = analogue \| digital` in `config.ini`, written at once). The face (VPath, 1/16 px): the field's colour, an accent rim, 60 minute ticks and 12 hour ones (the quarters longer), the hour and minute hands, the second hand in the accent with its tail, the pin; radius 55 in the 122-px card, the time (Bold 34), the date and the zone's line in a column right of it, the whole block centred; no zone: the warning and *Language & Region…* in the column (the block widens to hold them). Redrawn every second as the digital one. |
+| **S1** — the menu bar | `user/Apps/menubar/main.cpp`, `sdcard/apps/menubar.app/lang/fr.txt` (new, 41 words), `sdcard/apps/clock.app/lang/fr.txt` (*Alarms and timers…* moved out: it is the menu bar's), `user/Makefile` (`FT_EXTRA_menubar` = the Clock's core; `menubar.elf`'s deps), `shots.sh` (`build ()`: menubar's extra; the menu bar's `clock.png` now made after `kfix`), `screenshots/clock.png`, `run_clock_sim_test.sh` (the menu bar built and driven) | **The bell**: `alarms.txt` read through the Clock's own model (`alarms_load` + `alarms_next`, then `alarms_free`) at the start, at each new minute and when the calendar opens; shown when the next ring (the snoozes counted) is within 24 h and the date is real; drawn (VPath, 14 px) left of the time, the Wi-Fi and the rest moved 20 px left only then — **no alarm, nothing moves** (every other menu-bar picture byte-identical); a click on it → `lx_launch ("clock", "alarms")` (a running Clock is told and raised: one instance). **The calendar's second button** *Alarms and timers…* under *Open Calendar* (both the same width: the longer label + 32, 150 at least), shown when `SD:apps/clock.app/app.txt` exists (the Clock installed), → the same launch. **The menu bar translated** (CLAUDE.md: an older app is translated when it is worked on): `uk_lang_init ()` after the text face; `TR` on the Onyx menu (Terminal, Control Panel, File Viewer, Task Manager, the categories — `TRN` table + `// TR: Other / Multimedia`, the category's name translated where drawn only —, Open Windows, Shut Down…), Quit, *(no open window)*, *(empty)*, the volume box, the calendar's buttons, the USB box and its notifications (the sentences made `snprintf` formats, the English output unchanged). The Calendar widget inside takes UIKit's own French (months, days). |
+| **13** — docs, package | `docs/04-USER-GUIDE.md`, `docs/03-DEVELOPER-GUIDE.md`, `docs/HANDOFF.md`, `IDEAS.md`, `tools/pkg/packages.ini`, `tools/pkg/versions.ini`, `docs/exports/0{3,4}-*.{docx,pdf}` | **docs/04**: §5 the menu bar (the bell, *Alarms and timers…*, its words in the system's language, the picture's caption); §11 *Language & Region* (the translated list: + the menu bar, Notes and Stickies, the Clock; "**while clockd runs, the summer time changes the clock by itself**", a `zone=` needed); §12 the catalog rows **Clock** and **clockd** (as printd's); a section ***Clock, the time, alarms, a timer and a stopwatch*** after Notes: the window, each tab (World + the analogue face + Add a City, Alarms + the editor, the ring, what rings and when — once, 2 minutes, missed while off, the summer-time nights —, Timer + Time's up + the hand-over, Stopwatch + Copy Laps), the menus and keys, clockd, the files (`alarms.txt`, `config.ini` with every key, `system.ini`, `autostart`), French; 10 pictures. **docs/03**: the Clock and clockd as **the pattern of an app with a service without a window** (the core both link, clockd's loop, "clockd has no words: the rings handed to the Clock", the missed ones, `locale_zone_sync`, **the close rule R-1**: a close cannot be refused, so every exit hands over), the tests and shots; `SIM_CLOCK` / `SIM_TZ` in the simulator's paragraph; the menu bar and the Clock in the translated list; clockd / clipd in the `Shell` category's list. docs/06 needed nothing more (Developer A's SystemKit and FileKit paragraphs). **HANDOFF**: the Clock's priority line says built (AutoDev round 6, awaiting validation). **IDEAS.md** (French, as the file): a row *Horloge* (done, what is left for the Pi, the *later* list of 02), clockd as the seed of the task scheduler, and four subjects: **a date kit** (the date code written several times: clocktime, SystemKit's `locale_days_`, the Calendar, the agenda, Notes; the menu bar linking the Clock's model), **a notification history** (R-2), **a refusable close** (R-1), **a priority sound output for alarms** (R-4). **Package**: `[clock]` before `[onyx]` (clockd is `Shell`, which `[onyx]`'s `apps = Shell` would take): `files = apps/clock.app/ apps/clockd.app/`, `config = apps/clock.app/config.ini apps/clock.app/alarms.txt`, `needs = uikit >= 1.793, systemkit >= 1.78, filekit >= 1.99, audiokit >= 1.232, fontkit` (a kit's version is 1.<its table's slot + 1>, as `[notes]`' "uikit.abi 780 → 1.781": `locale_zone_sync` is slot 77, `fk_kv_block_set` slot 98); `[onyx]`'s `filekit >= 1.78` → **1.99** (the menu bar now links `alarms.cpp`, which calls `fk_kv_block_*`); `versions.ini` `filekit = 1.99.0`, `systemkit = 1.78.0` (the skill: "to give a bigger version, write it in versions.ini first" — else `--bump` would only raise the last number and the needs could not be met). Checked with `mkrepo.plan ()` (no file left in no package; clock's 5 files, menubar's `lang/fr.txt` in `onyx`) and `run_pkg_test.sh` (0 failures) — **not published**. `sdcard_lite` untouched: `mkrepo.py --lite` makes it at publishing (the plan asks nothing of it); `sdcard/etc/autostart` already has `run clockd` (Developer B). **Exports**: `python3 docs/build_docs.py` (pandoc + LibreOffice present) — only `03-DEVELOPER-GUIDE` and `04-USER-GUIDE` `.docx` / `.pdf` committed (the others differed by their build stamps only, reverted). |
+
+### The commits
+
+| Commit | Message |
+|---|---|
+| `a1031a62` | AutoDev round 6: step 12 — the Clock's screenshots, English and French (shots.sh clock block, config-3s.ini) |
+| `a086932d` | AutoDev round 6: S2 — the alarms missed while the Pi was off (alarms_missed_since, clockd at its start, clock --missed) |
+| `abfd6746` | AutoDev round 6: S3 — the analogue face (View > Analogue / Digital Clock, config.ini face =) |
+| `da97fada` | AutoDev round 6: S3 — the analogue face's screenshots (clock-analogue, -fr); the French Timer footer reworded |
+| `b228a731` | AutoDev round 6: S1 — the menu bar's bell and Alarms and timers… (the menu bar translated, English and French) |
+| `a9889e1b` | AutoDev round 6: step 13 — the docs (docs/04 Clock, the menu bar, Language & Region; docs/03 clockd), the clock package declared, IDEAS |
+
+### The tests run, and their results
+
+| Command | Result |
+|---|---|
+| `sh tools/tests/run_clock_test.sh` | `clock: all checks passed` — alarm **174** checks (was 158: + `t20_missed_since`, 16), clocktime 129, at `-O1` UBSan and `-O2` |
+| `sh tools/tests/run_clock_sim_test.sh` | **`clock-sim: all 220 checks passed`** (was 188). New: **S2** (22) — `clockd-late` and `clockd-guard` now also say the missed alarm (`--missed 1 202609280700`; the guard's 12:35 once the 90 s are past), `clockd-missed` (the 07:00 one and the 12:10 snooze in **one** `--missed 1 202609280700 6 202609281210`, exactly one exec; not last night's 23:00 — 13 h —, not a weekly, an off, an already-told or a later one; the running Clock told by message; the fixture: nothing; no Clock: the word-free bubble), `clock-missed-start` (both notified, `missed =` written, the once alarms off, the others not said, RELOAD, no window / sound, ended by itself; told twice → said once; French *Horloge\0Alarme manquée : 07:00 Pills*; a running Clock: notified, the row *missed 07:00*, not raised); **S3** (5) `clock-face` (View ▸ Analogue Clock from the Alarms tab → World, `face = analogue`, read back at the next start, Digital → `face = digital`, no zone, French); **S1** (5) `menubar-bell` (an alarm today → the bell, its click → `sim: exec SD:apps/clock.app/main alarms`; no alarms / the next one in 3 days → no bell, the click opens nothing), `menubar-alarms` (the calendar's second button → the Clock's Alarms; *Open Calendar* still the Calendar). The Clock's and clockd's sources still build with `-Wall -Wextra` and no warning. |
+| `sh tools/tests/run_kvtext_test.sh` | `ok kvtext, ASan build, no files (148 checks)` · `ok kvtext (162 checks)` |
+| `sh tools/tests/run_notes_test.sh` · `run_notes_sim_test.sh` · `run_stickies_sim_test.sh` · `run_clipboard_test.sh` · `run_pkg_test.sh` | `notes: all checks passed` · `notes-sim: all 67` · `stickies-sim: all 29` · clipboard 0 failures · pkg 0 failures |
+| `sh tools/tests/desktop_sim/run.sh` | `desktop_sim: done` |
+| `python3 tools/lang/check.py clock menubar` | `clock [fr]: 160 words, 0 missing, 0 not used` · `menubar [fr]: 41 words, 0 missing, 0 not used` (clockd has no words) |
+| `shots.sh clock` (+ `SHOTS_LANG=fr` for the menu bar) | 19 pictures (`clock.png` + 9 English + 9 French), each looked at; the menu bar in French looked at too (the calendar, *Ouvrir le Calendrier* / *Alarmes et minuteurs…*, the Onyx menu — *Panneau de configuration*, *Gestionnaire des tâches*, *Multimédia* —, the USB box): every word fits |
+| **The menu bar's other pictures** (AC-5), rendered and compared channel by channel: `menubar`, `menubar-tray`, `usbmenu`, `wifimenu`, `volume`, `stickies`, `stickies-empty`, `notes-desktop`, `desktop`, `milk` | **identical** to `screenshots/` except `desktop.png` (the terminal window's area, 392…1012 × 156…576) and `milk.png` (92…931 × 67…756): both **render the same on `origin/main`** (a scratch worktree) — a drift older than this round, not touched. |
+| **The *Open Calendar* frame** (Developer C's note) | Rendered on `origin/main` in a scratch worktree: `origin/main` and this branch draw `clock.png` **the same**, and both differ from the committed picture only in that button's frame (210…360 × 216…244) — the committed picture is older than a UIKit button style change in `main`: **not this round's**. `clock.png` is regenerated anyway by S1 (its popup has two buttons now: intended). (Note: comparing RGBA pictures with `ImageChops.difference (a, b).getbbox ()` looks at the alpha channel only — Developer C's "only the PNG encoding differs" came from it; compare each channel.) |
+| AArch64 (`clang++ --target=aarch64-none-elf`, `NL_CXXFLAGS` + `-Wall -Wextra`, the host's headers for declarations) | `Apps/clockd/main.cpp`, `Apps/clock/main.cpp` (+ its views), `alarms.cpp`, `clocktime.cpp`, `Apps/menubar/main.cpp`: no error, **no warning of their own** (only FontKit's six `fonts.h` unused functions, the same count before the change for the menu bar). The Pi `make` is the user's. |
+
+### Deviations from the plan, and why
+
+1. **S1 translates the whole menu bar** (not only the new button): CLAUDE.md's rule (an older app is translated when
+   it is worked on). *Alarms and timers…* moved from the Clock's catalogue to the menu bar's own
+   (`SD:/apps/menubar.app/lang/fr.txt`: the catalogue is the running program's). The bell has a click (the Clock's
+   alarms), which 02 did not ask.
+2. **S1's bell reads the Clock's model** (`FT_EXTRA_menubar` = `alarms.cpp`, `clocktime.cpp`), as 03 §5 says; a third
+   program now links that core — noted in IDEAS as the *date kit* subject. `[onyx]` therefore needs `filekit >= 1.99`.
+3. **S2 goes through the Clock** (`--missed`), not a notification of clockd's own: clockd has no words (03 §3.5,
+   fact 7) — the miss is said in the system's language and written on the row (*Missed at*); all the missed ones in
+   one argument (one start). The check runs when the date is first **trusted**, not at clockd's very first step: at
+   boot the restored clock is not the real time for 90 s (R-5). An alarm due in those 90 s, before not rung at all
+   (R-5's residual), is now said missed.
+4. **S3's menu**: two items *Analogue Clock* / *Digital Clock* (UIKit's `Menu` has no check mark), no key.
+5. **`versions.ini`** raised for FileKit and SystemKit so that the declared needs can be met at publishing (see 13).
+
+### For the Pi (to check by hand)
+
+AC-28 (an alarm with the Clock closed, another app in front; Snooze / Stop at once; R-7's delay), AC-29 (2 minutes,
+then *Missed alarm*; the bubble does not stay: R-2), AC-30 (the three FM sounds on the jack and HDMI, muted, the
+output busy with the Media Player playing → *Sound unavailable: the sound output is busy*), AC-31 (a reboot: the
+alarms kept, the next one rung; one passed while off **not rung, said missed** after the 90 s — S2), AC-36 (a 10-min
+timer within 1 s), *Time's up* by clockd after a real close, `clockd-one` (a second clockd quits), the summer-time
+night (`locale_zone_sync`: the clock moves within a minute), the menu bar's bell appearing within a minute of an
+alarm made in the Clock, the menu bar in French after a reboot, and the `make` itself (the `.abi` lines — R-11).
+
+## Summary
+
+**Round 6 built the Clock and clockd** (Developers A–D): 6 + 5 + 3 + 6 commits from `02a68379`'s parent to
+`a9889e1b`. Two programs around one UI-free core (`user/Apps/clock/alarms.*`, `clocktime.*`), two small kit
+additions (SystemKit `locale_zone_offset_at` / `locale_zone_sync`; FileKit `fk_kv_block_new / _get / _set`), one
+simulator addition (`SIM_CLOCK`), **no kernel, kapi or AppKit change**. All the *must* items and the three *should*
+items S1–S3 are done (02's first *should*, the timer handed to clockd and the stopwatch kept, was promoted to must
+by 03 R-1). Not done: 02's last *should* (named timers, several at once) — not in 03's plan; noted in IDEAS.
+
+**Every test, last run** (2026-10-07, this container): `run_clock_test.sh` (alarm 174, clocktime 129, zones, the
+simulator's clock — all passed), `run_clock_sim_test.sh` (**220 / 220**), `run_kvtext_test.sh` (148 + 162),
+`run_notes_test.sh`, `run_notes_sim_test.sh` (67), `run_stickies_sim_test.sh` (29), `run_clipboard_test.sh`,
+`run_pkg_test.sh` (0 failures), `desktop_sim/run.sh` (done), `check.py clock menubar` (0 missing), `shots.sh clock`
+(19 pictures, looked at in both languages), the menu-bar pictures compared (unchanged but for two drifts older than
+the round), `git diff origin/main -- kernel/ user/Kits/appkit/` empty, AArch64 compiles without a warning of their
+own. Developer A's other runs (circuits, critters, pinball, mail, media, letters, slides, archiver…) touched code
+the later steps did not change.
+
+**Screenshots** (`screenshots/`): `clock.png` (the menu bar's calendar: the bell, *Alarms and timers…*),
+`clock-world`, `clock-analogue`, `clock-cities`, `clock-alarms`, `clock-edit`, `clock-ring`, `clock-timer`,
+`clock-timesup`, `clock-stopwatch`, and each `-fr`.
+
+**Acceptance criteria** (02 §9, as amended by 03 §9 / §10.5):
+
+| AC | Status | How |
+|---|---|---|
+| 1 build, Makefile, app.txt | sim + AArch64 compile (Pi `make` the user's) | the PC builds in both test scripts at `-Wall -Wextra`; `clock.elf`, `clockd.elf` in `user/Makefile`; `app.txt` `Clock` / `Productivity` |
+| 2 check.py 0 missing | passed (tool) | `clock` 160 words, `menubar` 41, 0 missing; clockd has no words by design |
+| 3 shots EN / FR | passed in sim | 9 + 9 pictures + `clock.png`, looked at; no French word cut |
+| 4 docs, autostart, package | passed | docs/04 catalog + section, docs/03, `run clockd` in `autostart`, `[clock]` declared, `build_docs.py` ran |
+| 5 no kernel / kapi change, other shots unchanged | passed | the diff empty; the other pictures identical (two older drifts, on `main` too) |
+| 6 here 12:34:00, date, UTC+2 summer | passed in sim | `clock-world` (EN / FR), zone_test |
+| 7 Tokyo / New York / London | passed in sim + unit test | `clock-world`, clocktime_test |
+| 8 tomorrow / yesterday | unit test + sim | clocktime_test; `clock-world` at 23:30 / 01:00 |
+| 9 cities in config.ini, 12 at most | passed in sim | `clock-cities` |
+| 10 no zone | passed in sim | `clock-nozone`, `clock-face` (analogue) |
+| 11 the alarm block written | passed in sim + unit test | `clock-alarm-new` (EN / FR), alarm_test |
+| 12 the next-alarm line | passed in sim + unit test | `clock-next`, alarm_test |
+| 13 a once alarm's date | passed in sim + unit test | `clock-alarm-new`, alarm_test |
+| 14 the repeat words | passed in sim + unit test | EN / FR rows, alarm_test |
+| 15 rewrite + RELOAD, 21st refused | passed in sim | `clock-alarm-new`, `clock-21`, `clockd-reload` |
+| 16 unknown key kept, 25:99 invalid | passed in sim + unit test | `clock-invalid`, alarm_test |
+| 17 exactly once, reload | unit test + sim | alarm_test 1–2, `clockd-reload` |
+| 18 not on weekends, next Monday | unit test | alarm_test 3 |
+| 19 disabled / deleted never | unit test + sim | alarm_test 4, `clockd-disabled` |
+| 20 a once alarm rings once | unit test | alarm_test 5 |
+| 21 snooze | unit test + sim | alarm_test 6, `clock-snooze` |
+| 22 late / missed window | unit test + sim | alarm_test 7–9, `clockd-late` (and S2's notice) |
+| 23 the summer-time days | unit test | alarm_test 10, 13 |
+| 24 clockd rings (changed: the Clock notifies) | passed in sim | `clockd-ring`, `clockd-running`, `clock-ring` |
+| 25 the ring card, Esc / Enter, on = 0 (+ ring-only closes) | passed in sim | `clock-ring`, `clock-snooze`, `clock-ring-only` |
+| 26 one instance | passed in sim | `clock-one` |
+| 27 starts clockd | passed in sim | `clock-clockd` |
+| 28 rings with the app closed | **Pi only** | (clockd → Clock in sim: `clockd-ring`) |
+| 29 2 minutes, *Missed* stays | **reduced** (R-2) — PC part passed in sim, Pi to check | `clock-missed`: the bubble + *Missed at* on the row; no notification history (IDEAS) |
+| 30 sounds, muted, no SoundFont | **reduced / changed** (R-3, R-4) — PC part passed in sim, Pi to check | FM voices (no SoundFont to remove); `clock-nosound` (no output); *busy* on the Pi |
+| 31 reboot | **Pi only** — PC part passed in sim | `clockd-late`, `clockd-guard`, S2's `clockd-missed` |
+| 32 timer presets, run, pause, reset | passed in sim | `clock-timer` |
+| 33 Time's up, +1 min | passed in sim + unit test | `clock-timesup`, `clockd-timer`, `clock-timesup-hand`, alarm_test 19 |
+| 34 time from the ticks | unit test | clocktime_test |
+| 35 timer = 300 kept | passed in sim | `clock-timer-close` |
+| 36 10-min accuracy | **Pi only** | — |
+| 37 laps, marks, reset | passed in sim | `clock-sw` |
+| 38 Copy Laps | passed in sim + unit test | `clock-sw` (the clipboard byte-equal, EN / FR header) |
+| 39 formats, sum | unit test | clocktime_test |
+| 40 close with timer / stopwatch running | **reduced** (R-1, G1: no question, every exit hands over) — passed in sim | `clock-quit-hand`, `clock-timer-close`, `clock-timer-resume`, `clock-timesup-hand` |
+| 41 keys | passed in sim | `clock-keys`, `clock-edit-keys`, `clock-args` |
+
+**Left for the Pi** (the user): the `make` / `make stage` (no AArch64 toolchain here: R-11's `.abi` lines to
+confirm), AC-28, 29, 30, 31, 36 and the items of *For the Pi* above; then, after the user's validation, the
+publishing (`publish.sh`: the `clock` package, `onyx` with the menu bar, FileKit 1.99 and SystemKit 1.78).
