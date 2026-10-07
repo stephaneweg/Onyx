@@ -93,6 +93,12 @@ public:
         return ws.send_text (pkt.p, pkt.n);
     }
 
+    // Emit an event with NO arguments: 42["event"].
+    bool emit_bare (const char *event)
+    {
+        Buf pkt; pkt.add ("42[\""); pkt.add (event); pkt.add ("\"]");
+        return ws.send_text (pkt.p, pkt.n);
+    }
     // Emit expecting a server ack ('42<id>[...]'); the ack comes back via onAck. id returned.
     int emit_ack (const char *event, const char *payloadObj)
     {

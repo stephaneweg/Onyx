@@ -27,14 +27,19 @@ public:
     char host[128]; int port;
     char prefix[16];                 // "/api"
     char device_id[40], device_fp[9];
-    char cookie[1024], csrf[80];
+    char csrf[80];
+    // cookie jar (PHPSESSID etc.): the server may regenerate the session mid-flow (login ->
+    // mfa), so every response's Set-Cookie must be merged and resent, or the MFA challenge
+    // ends up in a session we no longer present ("verification expiree").
+    struct Cookie { char name[64], val[480]; };
+    Cookie jar[8]; int njar;
     // results
-    char token[600], challenge_id[160], err[200];
+    char token[600], challenge_id[160], email_masque[96], err[200];
 
     ITransport *(*mk) (void *); void *mk_ctx;    // transport factory (fresh, unconnected)
 
-    TaatuAuth () : port (443), mk (0), mk_ctx (0)
-    { host[0] = cookie[0] = csrf[0] = token[0] = challenge_id[0] = err[0] = 0; strcpy (prefix, "/api"); strcpy (device_id, ""); strcpy (device_fp, "00000000"); }
+    TaatuAuth () : port (443), njar (0), mk (0), mk_ctx (0)
+    { host[0] = csrf[0] = token[0] = challenge_id[0] = email_masque[0] = err[0] = 0; strcpy (prefix, "/api"); strcpy (device_id, ""); strcpy (device_fp, "00000000"); }
 
     void set_target (const char *h, int p) { cpystr (host, sizeof host, h); port = p; }
 
@@ -69,7 +74,7 @@ public:
         bool ok = http_request (*tp, host, port, "GET", path, hdr.p ? hdr.p : "", 0, 0, rp);
         delete tp;
         if (!ok) { strcpy (err, "network"); return false; }
-        if (rp.cookie[0]) cpystr (cookie, sizeof cookie, rp.cookie);
+        merge_cookies (rp.cookie);
         json::Doc d; if (!d.parse (rp.body.p ? rp.body.p : "", (unsigned long) rp.body.n, json::TOLERANT)) { strcpy (err, "csrf parse"); return false; }
         cpystr (csrf, sizeof csrf, d.root ()["token"].asStr (""));
         return csrf[0] != 0;
@@ -99,29 +104,61 @@ public:
 private:
     static void cpystr (char *d, int cap, const char *s) { int i = 0; if (!s) { d[0] = 0; return; } while (s[i] && i + 1 < cap) { d[i] = s[i]; i++; } d[i] = 0; }
 
+    // merge '\n'-separated "name=value" cookies from a response into the jar.
+    void merge_cookies (const char *setc)
+    {
+        if (!setc || !setc[0]) return;
+        const char *p = setc;
+        while (*p)
+        {
+            const char *eol = p; while (*eol && *eol != '\n') eol++;
+            const char *eq = p; while (eq < eol && *eq != '=') eq++;
+            if (eq < eol) {
+                char nm[64]; int nl = (int) (eq - p); if (nl > 63) nl = 63; memcpy (nm, p, nl); nm[nl] = 0;
+                int vi = -1; for (int i = 0; i < njar; i++) if (!strcmp (jar[i].name, nm)) { vi = i; break; }
+                if (vi < 0 && njar < 8) vi = njar++;
+                if (vi >= 0) { cpystr (jar[vi].name, sizeof jar[vi].name, nm); int vl = (int) (eol - (eq + 1)); if (vl < 0) vl = 0; if (vl > 479) vl = 479; memcpy (jar[vi].val, eq + 1, vl); jar[vi].val[vl] = 0; }
+            }
+            p = *eol ? eol + 1 : eol;
+        }
+    }
+    void cookie_header (Buf &h)
+    {
+        if (!njar) return;
+        h.add ("Cookie: ");
+        for (int i = 0; i < njar; i++) { if (i) h.add ("; "); h.add (jar[i].name); h.addc ('='); h.add (jar[i].val); }
+        h.add ("\r\n");
+    }
     void common_headers (Buf &h, bool with_csrf)
     {
         if (device_id[0]) { h.add ("X-Taatu-Device: "); h.add (device_id); h.add ("\r\n"); }
         if (device_fp[0]) { h.add ("X-Taatu-Fp: "); h.add (device_fp); h.add ("\r\n"); }
-        if (cookie[0])    { h.add ("Cookie: "); h.add (cookie); h.add ("\r\n"); }
+        cookie_header (h);
         if (with_csrf && csrf[0]) { h.add ("X-CSRF-Token: "); h.add (csrf); h.add ("\r\n"); }
     }
 
+    bool do_post (const char *path, Buf &body, HttpResp &rp)
+    {
+        rp.body.clear (); rp.status = 0; rp.cookie[0] = 0;
+        ITransport *tp = mk ? mk (mk_ctx) : 0; if (!tp) { strcpy (err, "no transport"); return false; }
+        Buf hdr; hdr.add ("Content-Type: application/json\r\n"); common_headers (hdr, true);
+        bool ok = http_request (*tp, host, port, "POST", path, hdr.p, body.p, body.n, rp);
+        delete tp;
+        if (ok) merge_cookies (rp.cookie);       // the server may rotate the session here
+        return ok;
+    }
     int post_auth (const char *path, Buf &body)
     {
         err[0] = token[0] = challenge_id[0] = 0;
-        ITransport *tp = mk ? mk (mk_ctx) : 0; if (!tp) { strcpy (err, "no transport"); return LOGIN_NET; }
-        Buf hdr; hdr.add ("Content-Type: application/json\r\n"); common_headers (hdr, true);
         HttpResp rp;
-        bool ok = http_request (*tp, host, port, "POST", path, hdr.p, body.p, body.n, rp);
-        delete tp;
-        if (!ok) { strcpy (err, "network"); return LOGIN_NET; }
+        if (!do_post (path, body, rp)) { strcpy (err, "network"); return LOGIN_NET; }
+        if (rp.status == 403) { fetch_csrf (); if (!do_post (path, body, rp)) { strcpy (err, "network"); return LOGIN_NET; } }  // CSRF rotated: refresh + replay
 
         json::Doc d; d.parse (rp.body.p ? rp.body.p : "", (unsigned long) rp.body.n, json::TOLERANT);
         const json::Value &r = d.root ();
         if (r["session_token"].isStr ()) { cpystr (token, sizeof token, r["session_token"].asStr ("")); return LOGIN_OK; }
-        if (r["mfa_required"].asBool (false) || r["challenge_id"].isStr ())
-        { cpystr (challenge_id, sizeof challenge_id, r["challenge_id"].asStr ("")); return LOGIN_MFA; }
+        if (r["mfa_required"].isStr () || r["mfa_required"].asBool (false) || r["challenge_id"].isStr ())
+        { cpystr (challenge_id, sizeof challenge_id, r["challenge_id"].asStr ("")); cpystr (email_masque, sizeof email_masque, r["email_masque"].asStr ("")); return LOGIN_MFA; }
         cpystr (err, sizeof err, r["error"].asStr (rp.status == 200 ? "unexpected response" : "login failed"));
         return LOGIN_FAIL;
     }

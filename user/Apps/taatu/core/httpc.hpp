@@ -50,6 +50,23 @@ inline bool httpc_header (const char *b, int he, const char *name, char *out, in
     return false;
 }
 
+// collect every Set-Cookie's "name=value" (up to ';') into out, '\n'-separated.
+inline void httpc_all_cookies (const char *b, int he, char *out, int cap)
+{
+    out[0] = 0; int o = 0;
+    for (int k = 0; k + 11 < he; k++)
+    {
+        if (k && b[k - 1] != '\n') continue;
+        bool m = true; const char *name = "set-cookie:";
+        for (int j = 0; j < 11; j++) { char c = b[k + j]; if (c >= 'A' && c <= 'Z') c += 32; if (c != name[j]) { m = false; break; } }
+        if (!m) continue;
+        int p = k + 11; while (p < he && b[p] == ' ') p++;
+        if (o && o + 1 < cap) out[o++] = '\n';
+        while (p < he && b[p] != ';' && b[p] != '\r' && b[p] != '\n' && o + 1 < cap) out[o++] = b[p++];
+        out[o] = 0;
+    }
+}
+
 // Perform one request. `tp` must be freshly made (unconnected). Returns true on a complete
 // HTTP response (out.status/body/cookie filled), false on a transport failure.
 inline bool http_request (ITransport &tp, const char *host, int port, const char *method,
@@ -89,9 +106,7 @@ inline bool http_request (ITransport &tp, const char *host, int port, const char
                     char v[64];
                     if (httpc_header (raw.p, he, "transfer-encoding", v, sizeof v) && strstr (v, "chunked")) chunked = true;
                     if (!chunked && httpc_header (raw.p, he, "content-length", v, sizeof v)) want = atoll (v);
-                    httpc_header (raw.p, he, "set-cookie", out.cookie, sizeof out.cookie);
-                    // trim the cookie at ';'
-                    for (char *c = out.cookie; *c; c++) if (*c == ';') { *c = 0; break; }
+                    httpc_all_cookies (raw.p, he, out.cookie, sizeof out.cookie);  // all Set-Cookie name=value, '\n'-separated
                 }
             }
             if (he >= 0)

@@ -30,6 +30,8 @@ public:
     void (*lock_fn) (void *); void (*unlock_fn) (void *); void *lock_ctx;
     // notify the UI that world changed (optional)
     void (*on_change) (void *); void *change_ctx;
+    // raw hook for events the model doesn't handle itself (map-occupancy, ...). args = ["name",payload]
+    void (*on_event_raw) (void *, const char *name, const char *args); void *raw_ctx;
     // trusted-input timestamp hook (ms clock) + last real input time, for _ui ti.
     unsigned (*now_ms) (void); unsigned last_input_ms;
 
@@ -37,8 +39,11 @@ public:
     int path_x[TAATU_PATH_MAX], path_z[TAATU_PATH_MAX], path_len, path_idx;
 
     TaatuClient () : port (443), tls (true), lock_fn (0), unlock_fn (0), lock_ctx (0),
-        on_change (0), change_ctx (0), now_ms (0), last_input_ms (0), path_len (0), path_idx (0)
+        on_change (0), change_ctx (0), on_event_raw (0), raw_ctx (0), now_ms (0), last_input_ms (0), path_len (0), path_idx (0)
     { host[0] = origin[0] = token[0] = 0; strcpy (path, "/socket.io/"); strcpy (version, "0.1-onyx"); }
+
+    // World home: subscribe to live room/appart occupancy without joining a room.
+    void request_map_occupancy () { sio.emit_bare ("request-map-occupancy"); }
 
     void set_target (const char *h, int p, bool use_tls, const char *orig)
     { cpy (host, sizeof host, h); port = p; tls = use_tls; cpy (origin, sizeof origin, orig ? orig : ""); }
@@ -225,6 +230,7 @@ private:
         else if (!strcmp (name, "player-typing")) { Avatar *a = world.find (p["user_id"].asLong (0)); if (a) a->typing = p["typing"].asBool (false); }
         else if (!strcmp (name, "player-absent")) { Avatar *a = world.find (p["user_id"].asLong (0)); if (a) a->is_absent = p["absent"].asBool (false); }
         unlock ();
+        if (on_event_raw) on_event_raw (raw_ctx, name, args);     // map-occupancy, friends, market, ...
         changed ();
     }
 };

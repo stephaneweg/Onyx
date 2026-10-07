@@ -35,6 +35,36 @@ static PcAssetCache g_assets;
 static RoomMap g_room;
 static volatile LONG g_room_loaded = 0;
 static bool g_flipx = false, g_flipy = false;
+// app state + in-window login
+enum { ST_LOGIN = 0, ST_CONNECTING = 1, ST_WORLD = 2, ST_MFA = 3, ST_MAP = 4, ST_BUILDING = 5 };
+static volatile LONG g_state = ST_CONNECTING;
+static char g_lp[64] = "", g_lw[128] = "";       // login pseudo / password
+static int  g_lfield = 0;                         // 0 = pseudo, 1 = password
+static volatile bool g_creds_ready = false;
+static char g_login_err[160] = "";
+static char g_mfa_code[16] = "";                  // emailed 2FA code
+static char g_mfa_hint[96] = "";                  // masked email the code was sent to
+static volatile bool g_mfa_ready = false;
+static volatile bool g_busy = false;              // a network login/verify is in flight
+// ---- world home (map) data (sprites all fetched at runtime, like the web client) --------
+// Building layout from the web map.js (mapConfig.buildings): sprite + percent position on
+// the map background. Season "summer": the sprite base name gets "_summer" before .png.
+struct BldInfo { int id; const char *display; const char *sprite; float xp, yp; };
+static const BldInfo BLD[] = {
+    { 1, "Le Parc",            "map_square_summer.png",     34.0f, 31.3f },
+    { 2, "Les Apparts",        "map_appart_summer.png",     55.2f, 11.5f },
+    { 3, "Event Center",       "map_cine_summer.png",       78.8f, 35.8f },
+    { 4, "Le Night Club",      "map_dancefloor_summer.png", 54.9f, 66.7f },
+    { 5, "Le Backstage",       "map_backstage_summer.png",  36.5f, 58.5f },
+    { 6, "Le Shopping Center", "map_mall_summer.png",       77.7f, 61.5f },
+};
+enum { NBLD = 6 };
+struct RoomInfo { int id, building_id, player_count; bool is_appart; char name[64]; };
+static RoomInfo g_rooms[320]; static int g_nrooms = 0;
+static int g_sel_bld = -1;            // building-view: index into BLD (-1 = none)
+static RECT g_bld_rect[NBLD];         // building hit rectangles on the map (screen)
+static RECT g_row_rect[32]; static int g_row_room[32]; static int g_nrow = 0;  // building-view room rows
+static int g_bgw = 0, g_bgh = 0, g_bgx = 0, g_bgy = 0;   // map background placement
 static void proj (int x, int z, int *sx, int *sy)
 {
     int hw = g_room.tileW / 2, hh = g_room.tileH / 2;
@@ -99,9 +129,42 @@ static bool draw_avatar_sprite (const Avatar &a, int sx, int sy)
     blit_rgba_fb (sx - AV_CELL_W / 2, sy - AV_CELL_H + 12, f);
     return true;
 }
+// nearest-neighbour scaled alpha-over blit into fb.
+static void blit_scaled_fb (int dx, int dy, int dw, int dh, const Rgba &img)
+{
+    if (dw <= 0 || dh <= 0 || img.w <= 0 || img.h <= 0) return;
+    for (int y = 0; y < dh; y++) { int ty = dy + y; if ((unsigned) ty >= (unsigned) WIN_H) continue; int sy = y * img.h / dh;
+        for (int x = 0; x < dw; x++) { int tx = dx + x; if ((unsigned) tx >= (unsigned) WIN_W) continue; int sx = x * img.w / dw;
+            unsigned s = img.px[sy * img.w + sx]; if (!(s >> 24)) continue;
+            unsigned *d = &fb[ty * WIN_W + tx]; *d = blend_px (*d | 0xFF000000u, s) & 0x00FFFFFF; } }
+}
+// draw the world map (terrain + building sprites, scaled to fit) into fb; fills g_bld_rect
+static void draw_map ()
+{
+    const Rgba *bg = g_assets.get ("/images/game/map_summerbgr.png");
+    float scale = 1.0f;
+    if (bg) {
+        float sx = (float) WIN_W / bg->w, sy = (float) (WIN_H - 46) / bg->h; scale = sx < sy ? sx : sy;
+        g_bgw = (int) (bg->w * scale); g_bgh = (int) (bg->h * scale);
+        g_bgx = (WIN_W - g_bgw) / 2; g_bgy = 46 + ((WIN_H - 46) - g_bgh) / 2;
+        blit_scaled_fb (g_bgx, g_bgy, g_bgw, g_bgh, *bg);
+    } else { g_bgw = WIN_W; g_bgh = WIN_H - 46; g_bgx = 0; g_bgy = 46; }
+    for (int i = 0; i < NBLD; i++) {
+        char pth[96]; snprintf (pth, sizeof pth, "/images/game/%s", BLD[i].sprite);
+        const Rgba *sp = g_assets.get (pth);
+        int cx = g_bgx + (int) (BLD[i].xp / 100.0f * g_bgw);
+        int cy = g_bgy + (int) (BLD[i].yp / 100.0f * g_bgh);
+        if (sp) { int sw = (int) (sp->w * scale), sh = (int) (sp->h * scale); int x = cx - sw / 2, y = cy - sh / 2;
+            blit_scaled_fb (x, y, sw, sh, *sp);
+            g_bld_rect[i].left = x; g_bld_rect[i].top = y; g_bld_rect[i].right = x + sw; g_bld_rect[i].bottom = y + sh; }
+        else { g_bld_rect[i].left = cx - 40; g_bld_rect[i].top = cy - 30; g_bld_rect[i].right = cx + 40; g_bld_rect[i].bottom = cy + 30; fb_fill (cx - 40, cy - 30, 80, 60, 0x00404a5e); }
+    }
+}
 static void render ()
 {
-    fb_fill (0, 0, WIN_W, WIN_H, 0x00101018);
+    fb_fill (0, 0, WIN_W, WIN_H, g_state == ST_WORLD ? 0x00101018 : 0x000d1018);
+    if (g_state == ST_MAP || g_state == ST_BUILDING) { draw_map (); return; }   // WM_PAINT draws labels/list
+    if (g_state != ST_WORLD) return;             // login / connecting: WM_PAINT draws the form
     EnterCriticalSection (&g_cs);
     const Rgba *bg = 0;
     if (g_room_loaded && g_room.bgGame[0]) { char p[160]; snprintf (p, sizeof p, "/images/game/%s", g_room.bgGame); bg = g_assets.get (p); }
@@ -184,13 +247,14 @@ static void load_room_demo ()
         InterlockedExchange (&g_room_loaded, 1); }
 }
 // ---- GUI->net command queue + live config ----------------------------------------------
-enum { CMD_CHAT = 1, CMD_MOVE = 2 };
+enum { CMD_CHAT = 1, CMD_MOVE = 2, CMD_ENTER = 3, CMD_LEAVE = 4 };
 struct Cmd { int kind, a, b; char text[256]; };
 static Cmd g_cmd[32]; static volatile int g_ch = 0, g_ct = 0; static CRITICAL_SECTION g_ccs; static bool g_ccs_init = false;
 static void cmd_init () { if (!g_ccs_init) { InitializeCriticalSection (&g_ccs); g_ccs_init = true; } }
 static void push_cmd (const Cmd &c) { cmd_init (); EnterCriticalSection (&g_ccs); int nx = (g_ct + 1) % 32; if (nx != g_ch) { g_cmd[g_ct] = c; g_ct = nx; } LeaveCriticalSection (&g_ccs); }
 static bool pop_cmd (Cmd &o) { cmd_init (); bool g = false; EnterCriticalSection (&g_ccs); if (g_ch != g_ct) { o = g_cmd[g_ch]; g_ch = (g_ch + 1) % 32; g = true; } LeaveCriticalSection (&g_ccs); return g; }
 static char g_token[600]; static const char *g_pseudo = "", *g_password = "";
+static bool g_autoroom = false;                 // --autoroom: skip the map, enter --room directly
 
 static void load_room_live (int id)
 {
@@ -212,40 +276,145 @@ static void load_room_live (int id)
     InterlockedExchange (&g_room_loaded, 1);
 }
 
+// ---- world home: fetch rooms, download the map assets, live occupancy -------------------
+static void parse_rooms_json (const char *body, int len)
+{
+    json::Doc d; if (!d.parse (body ? body : "", (unsigned long) len, json::TOLERANT)) return;
+    const json::Value &arr = d.root ()["rooms"]; int n = 0;
+    EnterCriticalSection (&g_cs);
+    for (unsigned i = 0; i < arr.size () && n < 320; i++) {
+        const json::Value &r = arr[i];
+        if (!r["is_active"].asBool (false)) continue;
+        RoomInfo &ri = g_rooms[n++];
+        ri.id = r["id"].asInt (0); ri.building_id = r["building_id"].asInt (0);
+        ri.player_count = r["player_count"].asInt (0); ri.is_appart = r["is_appart"].asBool (false);
+        const char *nm = r["name"].asStr (""); int k = 0; while (nm[k] && k < 63) { ri.name[k] = nm[k]; k++; } ri.name[k] = 0;
+    }
+    g_nrooms = n;
+    LeaveCriticalSection (&g_cs);
+}
+static void on_raw (void *, const char *name, const char *args)   // map-occupancy -> room counts
+{
+    if (strcmp (name, "map-occupancy")) return;
+    json::Doc d; if (!d.parse (args ? args : "", (unsigned long) strlen (args), json::TOLERANT)) return;
+    const json::Value &p = d.root ()[1];
+    const json::Value &rooms = p["rooms"]; const json::Value &apparts = p["apparts"];
+    EnterCriticalSection (&g_cs);
+    for (int i = 0; i < g_nrooms; i++) {
+        char key[16]; snprintf (key, sizeof key, "%d", g_rooms[i].id);
+        const json::Value &src = g_rooms[i].is_appart ? apparts : rooms;
+        if (src.has (key)) g_rooms[i].player_count = src[key].asInt (g_rooms[i].player_count);
+    }
+    LeaveCriticalSection (&g_cs);
+}
+static void fetch_home ()
+{
+    ITransport *tp = mk_auto (0);
+    Buf h; if (g_token[0]) { h.add ("X-Session-Token: "); h.add (g_token); h.add ("\r\n"); }
+    HttpResp rp; bool ok = http_request (*tp, g_host, g_port, "GET", "/api/rooms?include_inactive=1", h.p ? h.p : "", 0, 0, rp); delete tp;
+    if (ok && rp.status == 200) parse_rooms_json (rp.body.p, rp.body.n);
+    g_assets.ensure ("/images/game/map_summerbgr.png");
+    for (int i = 0; i < NBLD; i++) { char p[96]; snprintf (p, sizeof p, "/images/game/%s", BLD[i].sprite); g_assets.ensure (p); }
+}
+
+static bool g_mapdemo = false;
 static DWORD WINAPI net_thread (LPVOID)
 {
     g_assets.init (g_host, g_port, g_tls);
+    if (g_mapdemo)                               // --map: render the world map, no login (public assets)
+    {
+        g_assets.ensure ("/images/game/map_summerbgr.png");
+        for (int i = 0; i < NBLD; i++) { char p[96]; snprintf (p, sizeof p, "/images/game/%s", BLD[i].sprite); g_assets.ensure (p); }
+        g_state = ST_MAP;
+        return 0;
+    }
     if (g_demo)
     {
         load_room_demo ();
         json::Doc d; d.parse (SAMPLE_AVATAR, (unsigned long) strlen (SAMPLE_AVATAR), json::TOLERANT);
         EnterCriticalSection (&g_cs); g_cli.world.self_id = 1065; g_cli.world.apply_full (d.root ()); LeaveCriticalSection (&g_cs);
-        ensure_avatar_assets ();
+        ensure_avatar_assets (); g_state = ST_WORLD;
         return 0;
     }
-    // --- live: token (env/arg) or REST login, then WebSocket ---
+    // --- live: token (env/arg) or in-window REST login, then WebSocket ---
     const char *envtok = getenv ("TAATU_TOKEN"); if (envtok) lstrcpynA (g_token, envtok, sizeof g_token);
-    if (!g_token[0] && g_pseudo[0])
+    if (!g_token[0] && g_pseudo[0]) { lstrcpynA (g_lp, g_pseudo, sizeof g_lp); lstrcpynA (g_lw, g_password, sizeof g_lw); g_creds_ready = true; }
+
+    while (g_run && !g_token[0])               // login screen loop (retry on failure)
     {
+        g_state = ST_LOGIN; g_busy = false;
+        while (g_run && !g_creds_ready) Sleep (40);
+        if (!g_run) return 0;
+        g_creds_ready = false; g_busy = true; g_login_err[0] = 0;
         TaatuAuth auth; auth.set_target (g_host, g_port); auth.mk = mk_auto;
         char uuid[37]; TaatuAuth::gen_uuid (uuid); lstrcpynA (auth.device_id, uuid, sizeof auth.device_id);
         auth.set_fingerprint ("TaatuOnyx/0.1 (PC)", "fr", "onyx", "Europe/Brussels", WIN_W, WIN_H, 32, 4, 0, 0);
-        int r = auth.login (g_pseudo, g_password, true);
-        if (r == LOGIN_OK) lstrcpynA (g_token, auth.token, sizeof g_token);
-        else { printf ("[gui] login failed: %s\n", auth.err); return 1; }
+        int r = auth.login (g_lp, g_lw, true);
+        memset (g_lw, 0, sizeof g_lw);          // wipe the password from memory
+        g_busy = false;
+        if (r == LOGIN_OK) { lstrcpynA (g_token, auth.token, sizeof g_token); break; }
+        if (r == LOGIN_MFA)                     // 2FA: ask for the emailed code
+        {
+            g_login_err[0] = 0; lstrcpynA (g_mfa_hint, auth.email_masque, sizeof g_mfa_hint); g_state = ST_MFA; g_mfa_code[0] = 0; g_mfa_ready = false;
+            for (;;)
+            {
+                g_busy = false;
+                while (g_run && !g_mfa_ready) Sleep (40);
+                if (!g_run) return 0;
+                g_mfa_ready = false; g_busy = true; g_login_err[0] = 0;
+                int r2 = auth.mfa_verify (auth.challenge_id, g_mfa_code, true);
+                memset (g_mfa_code, 0, sizeof g_mfa_code); g_busy = false;
+                if (r2 == LOGIN_OK) { lstrcpynA (g_token, auth.token, sizeof g_token); break; }
+                lstrcpynA (g_login_err, auth.err[0] ? auth.err : "Code invalide", sizeof g_login_err);
+                if (r2 == LOGIN_NET) break;     // network issue -> back to the login screen
+            }
+            if (g_token[0]) break;
+        }
+        else lstrcpynA (g_login_err, auth.err[0] ? auth.err : "Echec du login", sizeof g_login_err);
     }
-    g_cli.now_ms = now_ms; g_cli.set_target (g_host, g_port, g_tls, "https://taatu.world"); g_cli.set_token (g_token);
+    if (!g_run) return 0;
+
+    g_state = ST_CONNECTING;
+    g_cli.now_ms = now_ms; g_cli.on_event_raw = on_raw; g_cli.set_target (g_host, g_port, g_tls, "https://taatu.world"); g_cli.set_token (g_token);
     ITransport *tp = mk_auto (0);
-    if (!g_cli.connect (*tp)) { printf ("[gui] ws connect failed\n"); delete tp; return 1; }
-    bool joined = false; unsigned last_step = 0, last_assets = 0;
+    if (!g_cli.connect (*tp)) { lstrcpynA (g_login_err, "Connexion au serveur impossible", sizeof g_login_err); g_state = ST_LOGIN; g_token[0] = 0; delete tp; return 1; }
+    bool onMap = false, inRoom = false; unsigned last_step = 0, last_assets = 0, last_occ = 0;
     while (g_run && !g_cli.closed ())
     {
         g_cli.poll ();
-        if (g_cli.connected () && !joined) { g_cli.note_input (); g_cli.join_room (g_roomId, 27, 27, 1); load_room_live (g_roomId); joined = true; }
-        Cmd c; while (pop_cmd (c)) { g_cli.note_input (); if (c.kind == CMD_CHAT) g_cli.send_chat (c.text); else if (c.kind == CMD_MOVE) g_cli.begin_move (c.a, c.b); }
+        if (g_cli.connected () && !onMap)       // arrive on the WORLD HOME (map), do NOT auto-join
+        {
+            fetch_home (); g_cli.request_map_occupancy (); g_state = ST_MAP; onMap = true;
+            // honour an explicit --room on the command line (skip the map)
+            if (g_roomId > 0 && g_autoroom) { Cmd c; c.kind = CMD_ENTER; c.a = g_roomId; c.b = 0; push_cmd (c); }
+        }
+        Cmd c;
+        while (pop_cmd (c))
+        {
+            g_cli.note_input ();
+            if (c.kind == CMD_CHAT) g_cli.send_chat (c.text);
+            else if (c.kind == CMD_MOVE) g_cli.begin_move (c.a, c.b);
+            else if (c.kind == CMD_ENTER)
+            {
+                EnterCriticalSection (&g_cs); g_cli.world.clear_room (); LeaveCriticalSection (&g_cs);
+                InterlockedExchange (&g_room_loaded, 0);
+                load_room_live (c.a);
+                int ex = g_room.entryX ? g_room.entryX : 20, ez = g_room.entryZ ? g_room.entryZ : 20;
+                g_cli.join_room (c.a, ex, ez, 1, c.b != 0);
+                inRoom = true; g_state = ST_WORLD;
+            }
+            else if (c.kind == CMD_LEAVE)
+            {
+                if (inRoom) g_cli.leave_room ();
+                inRoom = false; InterlockedExchange (&g_room_loaded, 0);
+                EnterCriticalSection (&g_cs); g_cli.world.clear_room (); LeaveCriticalSection (&g_cs);
+                g_cli.request_map_occupancy (); g_state = ST_MAP;
+            }
+        }
         unsigned t = now_ms ();
-        if (t - last_step > 230) { g_cli.step_move (); last_step = t; }
-        if (joined && t - last_assets > 500) { ensure_avatar_assets (); last_assets = t; }
+        if (inRoom && t - last_step > 230) { g_cli.step_move (); last_step = t; }
+        if (inRoom && t - last_assets > 500) { ensure_avatar_assets (); last_assets = t; }
+        if (!inRoom && t - last_occ > 5000) { g_cli.request_map_occupancy (); last_occ = t; }
         Sleep (10);
     }
     delete tp; return 0;
@@ -261,7 +430,87 @@ static LRESULT CALLBACK WndProc (HWND h, UINT m, WPARAM w, LPARAM l)
     {
         PAINTSTRUCT ps; HDC hdc = BeginPaint (h, &ps);
         StretchDIBits (hdc, 0, 0, WIN_W, WIN_H, 0, 0, WIN_W, WIN_H, fb, &g_bmi, DIB_RGB_COLORS, SRCCOPY);
-        SetBkMode (hdc, TRANSPARENT); SetTextColor (hdc, RGB (235, 238, 248));
+        SetBkMode (hdc, TRANSPARENT);
+        if (g_state == ST_MAP || g_state == ST_BUILDING)
+        {
+            SetTextColor (hdc, RGB (240, 244, 252));
+            HFONT tf = CreateFontA (22, 0, 0, 0, FW_BOLD, 0, 0, 0, 0, 0, 0, 0, 0, "Segoe UI");
+            HGDIOBJ ot = SelectObject (hdc, tf);
+            TextOutA (hdc, 14, 10, "TAATU - Choisis un lieu", 23);
+            SelectObject (hdc, ot); DeleteObject (tf);
+            // building labels + live counts
+            EnterCriticalSection (&g_cs);
+            for (int i = 0; i < NBLD; i++) {
+                int tot = 0; for (int r = 0; r < g_nrooms; r++) if (g_rooms[r].building_id == BLD[i].id) tot += g_rooms[r].player_count;
+                int cx = (g_bld_rect[i].left + g_bld_rect[i].right) / 2, by = g_bld_rect[i].bottom;
+                char lab[80]; snprintf (lab, sizeof lab, "%s (%d)", BLD[i].display, tot);
+                SetTextColor (hdc, RGB (20, 24, 32)); TextOutA (hdc, cx - (int) strlen (lab) * 3 + 1, by + 3, lab, (int) strlen (lab));
+                SetTextColor (hdc, RGB (255, 255, 255)); TextOutA (hdc, cx - (int) strlen (lab) * 3, by + 2, lab, (int) strlen (lab));
+            }
+            if (g_state == ST_BUILDING && g_sel_bld >= 0)
+            {
+                int px = WIN_W - 340, pw = 330, py = 60, ph = WIN_H - 120;
+                RECT pr = { px, py, px + pw, py + ph }; HBRUSH pb = CreateSolidBrush (RGB (24, 28, 40)); FillRect (hdc, &pr, pb); DeleteObject (pb);
+                FrameRect (hdc, &pr, (HBRUSH) GetStockObject (GRAY_BRUSH));
+                SetTextColor (hdc, RGB (240, 244, 252));
+                HFONT bf = CreateFontA (20, 0, 0, 0, FW_BOLD, 0, 0, 0, 0, 0, 0, 0, 0, "Segoe UI"); HGDIOBJ ob = SelectObject (hdc, bf);
+                TextOutA (hdc, px + 12, py + 8, BLD[g_sel_bld].display, (int) strlen (BLD[g_sel_bld].display));
+                SelectObject (hdc, ob); DeleteObject (bf);
+                SetTextColor (hdc, RGB (170, 180, 200)); TextOutA (hdc, px + 12, py + 32, "Clique une salle pour entrer - Echap: retour", 44);
+                g_nrow = 0; int y = py + 56;
+                for (int r = 0; r < g_nrooms && g_nrow < 32; r++) {
+                    if (g_rooms[r].building_id != BLD[g_sel_bld].id) continue;
+                    RECT rr = { px + 8, y, px + pw - 8, y + 22 };
+                    if (g_rooms[r].player_count > 0) { HBRUSH hb = CreateSolidBrush (RGB (36, 44, 60)); FillRect (hdc, &rr, hb); DeleteObject (hb); }
+                    char line[90]; snprintf (line, sizeof line, "%s  (%d)", g_rooms[r].name, g_rooms[r].player_count);
+                    SetTextColor (hdc, g_rooms[r].player_count > 0 ? RGB (255, 255, 255) : RGB (180, 188, 204));
+                    TextOutA (hdc, px + 12, y + 3, line, (int) strlen (line));
+                    g_row_rect[g_nrow] = rr; g_row_room[g_nrow] = r; g_nrow++;
+                    y += 23; if (y > py + ph - 24) break;
+                }
+            }
+            LeaveCriticalSection (&g_cs);
+            EndPaint (h, &ps); return 0;
+        }
+        if (g_state != ST_WORLD)
+        {
+            int bx = WIN_W / 2 - 160, by = 210;
+            HFONT big = CreateFontA (34, 0, 0, 0, FW_BOLD, 0, 0, 0, 0, 0, 0, 0, 0, "Segoe UI");
+            HGDIOBJ of = SelectObject (hdc, big); SetTextColor (hdc, RGB (240, 244, 252));
+            TextOutA (hdc, bx, by - 70, "TAATU", 5); SelectObject (hdc, of); DeleteObject (big);
+            if (g_state == ST_MFA)
+            {
+                SetTextColor (hdc, RGB (205, 212, 226));
+                char lbl[140]; if (g_mfa_hint[0]) snprintf (lbl, sizeof lbl, "Code envoye a %s", g_mfa_hint); else lstrcpynA (lbl, "Code recu par email", sizeof lbl);
+                TextOutA (hdc, bx, by, lbl, (int) strlen (lbl));
+                RECT r = { bx, by + 20, bx + 200, by + 46 }; HBRUSH b = CreateSolidBrush (RGB (58, 70, 96)); FillRect (hdc, &r, b); DeleteObject (b);
+                FrameRect (hdc, &r, (HBRUSH) GetStockObject (GRAY_BRUSH));
+                HFONT cf = CreateFontA (22, 0, 0, 0, FW_NORMAL, 0, 0, 0, 0, 0, 0, 0, 0, "Consolas");
+                HGDIOBJ oc = SelectObject (hdc, cf); SetTextColor (hdc, RGB (255, 255, 255));
+                TextOutA (hdc, bx + 8, by + 24, g_mfa_code, (int) strlen (g_mfa_code)); SelectObject (hdc, oc); DeleteObject (cf);
+                SetTextColor (hdc, RGB (165, 176, 198));
+                TextOutA (hdc, bx, by + 62, g_busy ? "Verification..." : "Entree : valider le code", g_busy ? 15 : 24);
+            }
+            else
+            {
+                SetTextColor (hdc, RGB (205, 212, 226));
+                TextOutA (hdc, bx, by, "Pseudo", 6);
+                TextOutA (hdc, bx, by + 62, "Mot de passe", 12);
+                for (int fld = 0; fld < 2; fld++) { int y = by + 20 + fld * 62; RECT r = { bx, y, bx + 320, y + 26 };
+                    HBRUSH b = CreateSolidBrush (g_lfield == fld && !g_busy ? RGB (58, 70, 96) : RGB (38, 44, 58)); FillRect (hdc, &r, b); DeleteObject (b);
+                    FrameRect (hdc, &r, (HBRUSH) GetStockObject (GRAY_BRUSH)); }
+                SetTextColor (hdc, RGB (255, 255, 255));
+                TextOutA (hdc, bx + 7, by + 24, g_lp, (int) strlen (g_lp));
+                char stars[130]; int pl = (int) strlen (g_lw); for (int i = 0; i < pl && i < 129; i++) stars[i] = '*'; stars[pl < 129 ? pl : 129] = 0;
+                TextOutA (hdc, bx + 7, by + 86, stars, (int) strlen (stars));
+                SetTextColor (hdc, RGB (165, 176, 198));
+                const char *hint = g_busy ? "Connexion..." : "Tab : champ suivant     Entree : valider";
+                TextOutA (hdc, bx, by + 130, hint, (int) strlen (hint));
+            }
+            if (g_login_err[0]) { SetTextColor (hdc, RGB (255, 120, 120)); TextOutA (hdc, bx, by + (g_state == ST_MFA ? 92 : 158), g_login_err, (int) strlen (g_login_err)); }
+            EndPaint (h, &ps); return 0;
+        }
+        SetTextColor (hdc, RGB (235, 238, 248));
         char hdr[96]; snprintf (hdr, sizeof hdr, "TAATU (PC) - %s - salle %d - %d avatars", g_demo ? "demo" : "live", g_roomId, g_cli.world.n_av);
         TextOutA (hdc, 10, 8, hdr, (int) strlen (hdr));
         EnterCriticalSection (&g_cs);
@@ -280,12 +529,47 @@ static LRESULT CALLBACK WndProc (HWND h, UINT m, WPARAM w, LPARAM l)
     case WM_LBUTTONDOWN:
     {
         int x = LOWORD (l), y = HIWORD (l);
+        if (g_state == ST_MAP) {
+            for (int i = 0; i < NBLD; i++) if (x >= g_bld_rect[i].left && x < g_bld_rect[i].right && y >= g_bld_rect[i].top && y < g_bld_rect[i].bottom)
+                { g_sel_bld = i; g_state = ST_BUILDING; InvalidateRect (h, 0, FALSE); break; }
+            return 0;
+        }
+        if (g_state == ST_BUILDING) {
+            for (int i = 0; i < g_nrow; i++) if (x >= g_row_rect[i].left && x < g_row_rect[i].right && y >= g_row_rect[i].top && y < g_row_rect[i].bottom)
+                { RoomInfo &ri = g_rooms[g_row_room[i]]; Cmd c; c.kind = CMD_ENTER; c.a = ri.id; c.b = ri.is_appart ? 1 : 0; c.text[0] = 0; push_cmd (c); return 0; }
+            return 0;
+        }
         if (g_room_loaded) { int tx, tz; g_room.unproject (x - g_ox, y - g_oy, &tx, &tz);
             if (tx >= 0 && tz >= 0 && (!g_room.gw || walk (tx, tz))) { Cmd c; c.kind = CMD_MOVE; c.a = tx; c.b = tz; c.text[0] = 0; push_cmd (c); } }
         return 0;
     }
+    case WM_KEYDOWN:
+    {
+        if (w == VK_ESCAPE) {
+            if (g_state == ST_BUILDING) { g_state = ST_MAP; g_sel_bld = -1; InvalidateRect (h, 0, FALSE); }
+            else if (g_state == ST_WORLD) { Cmd c; c.kind = CMD_LEAVE; c.text[0] = 0; push_cmd (c); }
+        }
+        return 0;
+    }
     case WM_CHAR:
     {
+        if (g_state == ST_MFA)
+        {
+            int len = (int) strlen (g_mfa_code);
+            if (w == 13) { if (len) g_mfa_ready = true; }
+            else if (w == 8) { if (len) g_mfa_code[len - 1] = 0; }
+            else if (w >= 32 && w < 127 && len < (int) sizeof g_mfa_code - 1) { g_mfa_code[len] = (char) w; g_mfa_code[len + 1] = 0; }
+            InvalidateRect (h, 0, FALSE); return 0;
+        }
+        if (g_state == ST_LOGIN)
+        {
+            char *f = g_lfield == 0 ? g_lp : g_lw; int cap = g_lfield == 0 ? (int) sizeof g_lp : (int) sizeof g_lw; int len = (int) strlen (f);
+            if (w == 9) g_lfield ^= 1;                                    // Tab
+            else if (w == 13) { if (g_lfield == 0 && g_lp[0]) g_lfield = 1; else if (g_lp[0] && g_lw[0]) g_creds_ready = true; }
+            else if (w == 8) { if (len) f[len - 1] = 0; }
+            else if (w >= 32 && w < 127 && len < cap - 1) { f[len] = (char) w; f[len + 1] = 0; }
+            InvalidateRect (h, 0, FALSE); return 0;
+        }
         if (w == 13) { if (g_input_len) { Cmd c; c.kind = CMD_CHAT; lstrcpynA (c.text, g_input, sizeof c.text); push_cmd (c); g_input_len = 0; g_input[0] = 0; } }
         else if (w == 8) { if (g_input_len) g_input[--g_input_len] = 0; }
         else if (w >= 32 && w < 127 && g_input_len < 198) { g_input[g_input_len++] = (char) w; g_input[g_input_len] = 0; }
@@ -298,7 +582,7 @@ static LRESULT CALLBACK WndProc (HWND h, UINT m, WPARAM w, LPARAM l)
 
 int main (int argc, char **argv)
 {
-    g_demo = flag (argc, argv, "--demo");
+    g_demo = flag (argc, argv, "--demo"); g_mapdemo = flag (argc, argv, "--map");
     lstrcpynA (g_host, arg (argc, argv, "--host", "taatu.world"), sizeof g_host);
     g_port = atoi (arg (argc, argv, "--port", "443"));
     g_tls = (g_port == 443) || !strcmp (arg (argc, argv, "--tls", "0"), "1");
@@ -310,6 +594,7 @@ int main (int argc, char **argv)
     g_tw = atoi (arg (argc, argv, "--tw", "-1")); g_th = atoi (arg (argc, argv, "--th", "-1"));
     g_orgx = atoi (arg (argc, argv, "--orgx", "-1")); g_orgy = atoi (arg (argc, argv, "--orgy", "-1"));
     g_pseudo = arg (argc, argv, "--pseudo", ""); g_password = arg (argc, argv, "--password", "");
+    g_autoroom = flag (argc, argv, "--autoroom");
 
     InitializeCriticalSection (&g_cs);
     fb = (unsigned *) calloc (WIN_W * WIN_H, 4);
