@@ -33,7 +33,7 @@ at an instant, and applied to the system's clock — today it is **never** appli
 1), and **FileKit** `fk_kv_block_new / _get / _set` (an `fk_kv` document cannot today set a key in its *second*
 `[alarm]` block: §1.1 fact 6). **One simulator addition** (`SIM_CLOCK`: a date and time that advance with the ticks —
 today the simulator's clock is frozen at 12:34:00). Three **scope reductions** forced by the code (§6): the
-"Quit anyway?" question on the close box (AC-34/40), the *Missed alarm* "staying" in the notifications (AC-29), and
+"Quit anyway?" question on closing (AC-34/40: no question at all, the state handed over — §10 G1), the *Missed alarm* "staying" in the notifications (AC-29), and
 the SoundFont as the alarm's synthesizer (02 #24, AC-30) — each with its replacement.
 
 ### Environment (checked in this container)
@@ -56,7 +56,7 @@ the SoundFont as the alarm's synthesizer (02 #24, AC-30) — each with its repla
 | `user/Kits/systemkit/clipboard.h` | `clip_set_text_n (text, n)` | clipd itself notifies *Text copied* (`user/Apps/clipd/main.cpp` `tell ()`); the Clock's *Laps copied* is its own status line, not a second bubble (AC-38) |
 | `user/Kits/systemkit/autostart.h` (round 1) | `autostart_ensure ("run clockd", "run notifyd", comment)`, `autostart_has` | a card **updated** by the package manager keeps its own `SD:/etc/autostart` (the `onyx` package's): the Clock adds the line at its first start (as Notes adds `run stickies`) |
 | `user/Kits/filekit/kvtext.h` | `fk_kv_parse / load / new / free`, `fk_kv_blocks`, `fk_kv_block_name`, `fk_kv_block (kv, i)`, `fk_kv_key / value / section / line`, `fk_kv_get / set / save` | reading `alarms.txt` (repeated `[alarm]` blocks) works today; **writing** one needs §2.2. `config.ini` (one `[clock]` section) works today with `fk_kv_load / get / set / save`. |
-| `user/Kits/audiokit/audiokit.h` | **`ak_fm_instrument`, `ak_fm_start (voice, milli_hz, wave, volume)`, `ak_fm_stop`, `ak_fm_silence`** (the FM voices, no file) — §6 R-3; **`ak_out_open (0, 0)`** (1 ours, 0 busy, −1 no sound) for *Sound unavailable* — not `ak_play_state`, the file's state only | as `user/Apps/games/game.h` `sfx / sfx_later / sfx_tick` (a note queue stepped by the loop) — the Clock has its own 3-pattern sequencer (`sounds.h`), not game.h (game.h is the games') |
+| `user/Kits/audiokit/audiokit.h` | **`ak_fm_instrument`, `ak_fm_start (voice, milli_hz, wave, volume)`, `ak_fm_stop`, `ak_fm_silence`** (the FM voices, no file) — §6 R-3; **`ak_out_open (0, 0)`** (1 ours, 0 busy, −1 no sound) for *Sound unavailable* — not `ak_play_state`, the file's state only; used as a **probe** (1 → `ak_out_close ()` at once, then the FM voices: the player re-acquires with its own low-latency `kapi_sound_config (512, 3)` — validation 2, note 1) | as `user/Apps/games/game.h` `sfx / sfx_later / sfx_tick` (a note queue stepped by the loop) — the Clock has its own 3-pattern sequencer (`sounds.h`), not game.h (game.h is the games') |
 | `user/Kits/uikit/segmented.h` | `SegmentedControl` (the four tabs, as the Task Manager's `g_tabs`, `user/Apps/taskman/main.cpp:547`) | `TabHost` is a drop-down task picker, not a tab bar: not used |
 | `user/Kits/uikit/numeric.h`, `toggle.h`, `checkbox.h`, `listbox.h`, `textbox.h`, `button.h`, `menu.h`, `vpaint.h`, `lang.h` | `NumericUpDown` (hours / minutes / seconds), `ToggleSwitch` (an alarm on / off), `Checkbox` (the seven days), `ListBox` / a drawn list widget (cities, alarms, laps — as Pinball's `picker.h`), `Textbox` (the label, 40 characters), `VPath::arc` (the timer's progress ring), `Menu`, `TR` / `TRC` / `TRN` / `uk_lang_init` | **no UIKit change** |
 | `user/Kits/fontkit/uikitface.h` | `ft_uikit_install ("DejaVu Sans", 13)`, an `FtTextFace` at a large size for `12:34:00` / `05:00` / `00:12.34` | as Critters' / Ledger's big numbers |
@@ -249,9 +249,10 @@ int  alarm_repeat_kind (unsigned days);                   // the UI turns it int
 
 ```cpp
 struct Due { int id; long minute; bool snooze; };  // id ALARM_TIMER (-1) for the [timer] entry
-struct Ringer { long last; bool started; };
-void ringer_start (Ringer &r, long now_min);       // what is past stays past (the agenda's rule)
-int  ringer_step  (Ringer &r, const AlarmSet &s, long now_min, bool trusted, Due *out, int max);
+struct Ringer { long last; bool started; long timer_rung; };   // timer_rung: the [timer] end it rang, -1 none
+void ringer_start (Ringer &r, long now_min);       // what is past stays past (the agenda's rule); timer_rung = -1
+int  ringer_step  (Ringer &r, const AlarmSet &s, long now_min, bool trusted,
+                   long now_tick, long long now_utc /* seconds, -1 unknown */, Due *out, int max);
 ```
 
 `ringer_step` (≈ 30 lines):
@@ -264,6 +265,10 @@ int  ringer_step  (Ringer &r, const AlarmSet &s, long now_min, bool trusted, Due
    due. Its `snooze` the same way. Then `last = now`. A forward jump of more than 2 minutes therefore rings nothing
    older than 2 minutes (AC-22: 06:59:50 → 07:01:30 rings 07:00; 06:59 → 07:03 does not).
 4. **Exactly once**: a minute is in `(last, now]` once, and `last` survives a reload of the file (AC-17).
+5. **The `[timer]` once** (validation 2, gap 1): checked before rule 1 (ticks do not jump: neither `started` nor
+   `trusted` gates it). Due when the block's rule below holds **and** `s.timer_end_tick != r.timer_rung`; then
+   `timer_rung = end`. `timer_rung` lives in the `Ringer`, like `last`, so it **survives a reload**: the same `end` is
+   due once per clockd run, even if the file still has it; a new `end` (a new hand-over) is due again.
 
 clockd's `trusted` = `kapi_get_datetime` returned 1 **and** the uptime is past a guard (`kapi_get_ticks () >= 9000`:
 90 s), so that the minutes right after the restored "last time seen" are not rung before NTP corrects the clock
@@ -273,14 +278,18 @@ The `[timer]` block: `end = <ticks>`, `set = <seconds>`, `label = …`, and `utc
 `kapi_clock_info` is valid; due when `kapi_get_ticks () >= end` and `end - now <= set * 100 + 100` (else a stale entry
 of an earlier boot: ignored) **and**, when `utc =` is there and the UTC is valid now, `|utc − (now_utc + (end −
 now)/100)| <= 5 s` — so an `end` set within a minute of a boot cannot pass the ticks check in the next boot
-(validation 1, note 4).
+(validation 1, note 4). That condition **stays true after `end`** (`end − now` < 0): rule 5's `timer_rung` is what keeps
+clockd from ringing it every 0.5 s, and the Clock **removes the block** when it rings it (§3.6, *Time's up*).
 
 ### 3.4 World, timer, stopwatch (`clocktime.h`)
 
 - **UTC now** = `kapi_clock_info.utc_us` when it answers with `KAPI_CLOCK_REALTIME_VALID`; else the wall time minus
-  `timezone=` (`locale_ini_get`). The **here** line is the wall time (`kapi_get_datetime`: what the menu bar shows),
-  its `UTC±h` = `locale_zone_utc` style from `locale_zone_offset_at (here, utc)`, *Summer time* when that offset is
-  above the zone's standard one. A **city** = `utc + locale_zone_offset_at (city, utc)`; its day word from the day
+  `timezone=` (`locale_ini_get`). The **here** line is the wall time (`kapi_get_datetime`: what the menu bar shows);
+  **here's offset** = `kapi_clock_info`'s `tz_minutes` when valid, else `timezone=` — the offset the wall time really
+  has (validation 2, note 4: `locale_zone_offset_at (guess, utc)` could say `UTC+3` for a UTC+2 wall clock around a
+  change night when `zone=` is absent and the zone is `locale_zone ()`'s day-judged guess). Its `UTC±h` in
+  `locale_zone_utc` style, *Summer time* when it is above the here zone's standard one; the zone (`zone=`, else the
+  guess) only **names** the city. A **city** = `utc + locale_zone_offset_at (city, utc)`; its day word from the day
   difference to here's wall day; the difference = city offset − here's offset (`+7 h`, `−6 h`, `+5 h 30`, *Same time*).
   In the simulator (no `SIM_STAT`): `clock_info` is `-KAPI_ENOSYS` → wall − 120 = 10:34 UTC → Tokyo 19:34, New York
   06:34, London 11:34 (AC-7 ✓).
@@ -301,7 +310,7 @@ loop (kapi_msleep (500)):
   mailbox: CLOCKD_MSG_RELOAD -> alarms_load (the Ringer kept); CLOCKD_MSG_QUIT -> exit
   every 30 s: the file's signature changed -> alarms_load (02 #14: a file edited by hand, a message lost)
   every minute: locale_zone_sync ()                                        (§2.1, separable)
-  now = wall minute (kapi_get_datetime); n = ringer_step (...); for each Due:
+  now = wall minute (kapi_get_datetime); n = ringer_step (..., kapi_get_ticks (), utc s or -1, ...); for each Due:
       args = "--ring <id>" (or "--ring timer")
       pid = kapi_ipc_lookup ("clock"): pid > 0 -> kapi_mailbox_send (pid, CLOCK_MSG_OPEN, args)
       else lx_launch ("clock", args); log "clockd: ring <id> <HH:MM>"
@@ -333,12 +342,21 @@ loop (kapi_msleep (500)):
   `[timer]` from `alarms.txt`. Still to come (`end > now`, §3.3's stale rule passed) → it **takes it back**: the Timer
   tab running with `end − now` (`start_tick`/`total_cs` rebuilt from `end` and `set`), the `[timer]` block removed,
   `alarms_save` + `CLOCKD_MSG_RELOAD` — so clockd forgets it and only the Clock rings it (*Time's up*), never twice;
-  at the next exit it is handed over again (R-1). Already past (`end <= now`, not stale) → left to clockd, which rings
-  it at its next step (`clock --ring timer`, *Time's up*). Logged `clock: timer running MM:SS`.
+  at the next exit it is handed over again (R-1). Taken back with no argument (the last tab), the Clock **opens on the
+  Timer tab** so the user sees it running (validation 2, note 6). Already past (`end <= now`, not stale) and no
+  `--ring timer` → left to clockd, which rings it **once** (§3.3 rule 5: `clock --ring timer`, by message to this very
+  Clock). Logged `clock: timer running MM:SS`.
+- **The timer rung** (`--ring timer`, argument or `CLOCK_MSG_OPEN`; validation 2, gap 1): reload `alarms.txt`; the
+  *Time's up* veil (D18) with the `[timer]`'s `set` / `label`, `notify_action (… "Timer — MM:SS done" …)`; the
+  **`[timer]` block removed**, `alarms_save` + `CLOCKD_MSG_RELOAD` (logged `clock: time's up`) — so nothing is left for
+  clockd to ring again, whatever its `timer_rung`. *+1 min* then runs a fresh 60-s timer **in the Clock** (handed over
+  again at exit, a new `end`). Started only for it (no Clock running), the Clock closes by itself after Stop (G2).
 - **Overlays, not Modals** (§1.1 fact 4): the ring, *Time's up*, the alarm editor, the add-city list.
 - `config.ini` through `fk_kv` (`[clock]` `tab, cities, snooze, timer, width, height` + R-1's `sw_*`, `timer_*`).
 - Keys (02 #4): `Root::onKey` / the view's key handler with `kapi_get_modifiers () & MOD_CTRL` (Ctrl+1…4, Ctrl+Tab,
-  Ctrl+N, Ctrl+C, Ctrl+Q), Space / L / R / Delete when no text field has the focus.
+  Ctrl+N, Ctrl+C, Ctrl+Q), Space / L / R / Delete when no **`Textbox`** has the focus — over a focused spin box they
+  act too (`Spin` refuses letters and Space, the root acts on what it refuses: 04 §7's `Spin` table wins over its
+  prose; validation 2, note 3).
 - Build: `FT_APPS += clock`, `FT_EXTRA_clock = Apps/clock/alarms.cpp Apps/clock/clocktime.cpp lib/audiokit.imp.a`,
   `clock.elf: … $(wildcard Apps/clock/*.h) Kits/filekit/kvtext.h Kits/systemkit/locale.h`;
   `clockd.elf: Apps/clockd/main.cpp Apps/clock/alarms.cpp Apps/clock/clocktime.cpp Apps/clock/*.h …` (the `clipd.elf`
@@ -385,15 +403,15 @@ clock.app/main` (the simulator reads the writes first) so that `sim: exec SD:app
 | **1b** | SystemKit `locale_zone_sync` (separable, §2.1) | `locale.h/.inc`, `systemkit.abi` (+77), docs/12 | same test linked with `fakekapi.o` + `SIM_CLOCK`: at 2026-10-25 00:59:30 UTC (wall 02:59:30, `SIM_TZ=120`, `zone=Brussels` in a writes `system.ini`) → 0 and nothing logged; one minute later → 1, `sim: set_timezone 60`, `timezone=60` written; called again → 0 (**no oscillation**); no `zone=` and no `timezone=` → 0; **`timezone=120` and no `zone=`, `SIM_CLOCK` 2026-10-25 00:30 UTC (wall 02:30, `SIM_TZ=120`) → 0, nothing logged, `system.ini` not written** (no inference, gap 1); `zone=Nowhere` → 0 |
 | **2** | FileKit `fk_kv_block_new / _get / _set` | `kvtext.h`, `kvtext.inc`, `filekit.abi` (+96..98), docs/14 | `tools/tests/filekit/kvtest.cpp` new cases: two `[alarm]` blocks made, a key set in the 2nd only, written then parsed back equal; `_get` on block 0 / out of range → def; `sh tools/tests/run_kvtext_test.sh` |
 | **3** | The core: `clocktime.{h,cpp}`, `alarms.{h,cpp}`, `clock_proto.h` | `user/Apps/clock/` | `tools/tests/clock/alarm_test.cpp` (§8.1), `clocktime_test.cpp` (§8.2) in `run_clock_test.sh`, `-Wall -Wextra -Werror`, UBSan; built twice (`-O1`, `-O2`) |
-| **4** | clockd | `user/Apps/clockd/main.cpp`, `sdcard/apps/clockd.app/app.txt` (+ `icon.bmp`), `user/Makefile` (`clockd.elf`, `all:`), `sdcard/etc/autostart` (`run clockd`) | `run_clock_sim_test.sh` cases `clockd-ring`, `clockd-once`, `clockd-reload`, `clockd-disabled`, `clockd-running` (§8.4) |
+| **4** | clockd | `user/Apps/clockd/main.cpp`, `sdcard/apps/clockd.app/app.txt` (+ `icon.bmp`), `user/Makefile` (`clockd.elf`, `all:`), `sdcard/etc/autostart` (`run clockd`) | `run_clock_sim_test.sh` cases `clockd-ring`, `clockd-once`, `clockd-reload`, `clockd-disabled`, `clockd-running`, **`clockd-timer`** (the `[timer]` rung once, §3.3 rule 5) (§8.4) |
 | **5** | The Clock's skeleton: window, tabs, menus, one instance, args, `config.ini`, `autostart_ensure`, clockd started, `uk_lang_init`, `lang/fr.txt`, `app.txt`, icon | `user/Apps/clock/main.cpp`, `sdcard/apps/clock.app/`, `tools/icons/clock_icon.py`, `user/Makefile` (`FT_APPS`, `FT_EXTRA_clock`), `shots.sh` (`build` extra + FT list + `APPS`) | sim: `clock stopwatch` opens on Stopwatch (log `clock: tab stopwatch`); a second start with `SIM_SERVICES=clock` logs `sim: send clock type 1 "alarms\0"` + `sim: raise_app clock`; no `clockd` service → `sim: exec SD:apps/clockd.app/main` (or `launch clockd`); `check.py clock` 0 missing |
 | **6** | World tab | `main.cpp` (+ `world.h`) | sim: `cities = Tokyo,New York,London` → log rows `Tokyo 19:34 +7 h` …; add / move / remove → `config.ini`; 13th refused; no zone → *Time zone not set*, the button → `sim: exec … control … langconf` |
 | **7** | Alarms tab + editor overlay | `main.cpp` (+ `alarmsview.h`) | sim: the editor creates 07:00 *School* Mon–Fri → `alarms.txt` block (AC-11), `sim: send clockd type 2`; the next-alarm line logged; FR UI writes the same tokens; 21st refused; `time = 25:99` *Invalid*; unknown key kept |
-| **8** | Ringing: `--ring`, overlay, `sounds.h` (`ak_out_open (0, 0)` first: R-3), notification, Snooze / Stop / 2-min timeout | `main.cpp`, `sounds.h` | sim: `SIM_ARGS="--ring 1"` → `sim: send notify type 1 "Clock\007:00 School\0clock alarms\0"`; `key 27` → `on = 0` written; `key 13` → `snooze = …`; 6 000 steps (2 min) → *Missed alarm* sent, `missed =` written; without `SIM_SOUND` → `clock: sound unavailable none` logged; with `SIM_SOUND=1` → `sim: sound acquired`, no such line |
-| **9** | Timer tab + *Time's up* + hand-over at close | `main.cpp` (+ `timerview.h`) | sim: preset 5 min → spin boxes 0/5/0; Start + 50 waits → `04:59`; a 3-s timer → `Timer — 00:03 done` sent; +1 min → `01:00`; `quit` while running → `[timer] end = …` in `alarms.txt`, `sim: send clockd type 2`; `timer = 300` in config; reopened with a pending `[timer]` → taken back (`clock-timer-resume`) |
+| **8** | Ringing: `--ring`, overlay, `sounds.h` (`ak_out_open (0, 0)` first: R-3), notification, Snooze / Stop / 2-min timeout | `main.cpp`, `sounds.h` | sim: `SIM_ARGS="--ring 1"` → `sim: send notify type 1 "Clock\007:00 School\0clock alarms\0"`; `key 27` → `on = 0` written; `key 13` → `snooze = …`; 6 000 steps (2 min) → *Missed alarm* sent, `missed =` written; without `SIM_SOUND` → `clock: sound unavailable none` logged; with `SIM_SOUND=1` → `sim: sound acquired`, no such line. (On the Pi: `ak_out_open` as a probe, closed before the FM voices — validation 2, note 1.) |
+| **9** | Timer tab + *Time's up* + hand-over at close | `main.cpp` (+ `timerview.h`) | sim: preset 5 min → spin boxes 0/5/0; Start + 50 waits → `04:59`; a 3-s timer → `Timer — 00:03 done` sent; +1 min → `01:00`; `quit` while running → `[timer] end = …` in `alarms.txt`, `sim: send clockd type 2`; `timer = 300` in config; reopened with a pending `[timer]` → taken back (`clock-timer-resume`); `--ring timer` → *Time's up*, `[timer]` removed + RELOAD (`clock-timesup-hand`) |
 | **10** | Stopwatch tab, laps, Copy Laps, start saved at close | `main.cpp` (+ `swview.h`) | sim: Space, 3 × L, Space → 3 rows logged with marks; Ctrl+C → the clipboard's text (kernel clipboard in the sim: `clip_get_text` from a probe, or the log line) |
-| **11** | Keys, Ctrl+Q's question, close behaviour (R-1) | `main.cpp` | sim: Ctrl+1…4, Space, L; Ctrl+Q with the timer running → *Quit anyway?* overlay, Esc keeps it; `winclose`/`quit` → no question, state handed over |
-| **12** | Screenshots EN + FR | `shots.sh` `clock` block (§8.3) | `SHOTS_PNG=<scratch> sh …/shots.sh clock`, then `SHOTS_LANG=fr …`; looked at; then into `screenshots/` |
+| **11** | Keys of 04 §7, the hand-over at every exit (G1: **no question**) | `main.cpp` | sim: Ctrl+1…4, Space, L (`clock-keys`, `clock-edit-keys`); Ctrl+Q / `winclose` / `quit` with the timer or the stopwatch running → no veil, state handed over (`clock-quit-hand`, §10.3) |
+| **12** | Screenshots EN + FR | `shots.sh` `clock` block (§10.4: the English lines and the explicit `-fr` lines) | `SHOTS_PNG=<scratch> sh …/shots.sh clock` (both languages in one run); looked at; then into `screenshots/` |
 | **13** | Docs, package | `docs/04-USER-GUIDE.md` (§12 catalog row + a *Clock* section: tabs, keys, files, clockd; the translated-apps list; *Language & Region*: "while clockd runs, the summer time changes the clock by itself"), `docs/03` (clockd as the example of a service without a window, the R-1 rule), `docs/06`, `tools/pkg/packages.ini` `[clock]`, `IDEAS.md` (the date kit subject; a notification history), `python docs/build_docs.py` | `python tools/lang/check.py clock` → 0 missing; `git diff main -- kernel/ user/Kits/appkit/` empty |
 | *S1* | *Should*: the menu bar's bell + *Alarms and timers…* | `user/Apps/menubar/main.cpp` (the calendar pop-up's *Open Calendar* button, line ~475: a second one; the bell from `alarms_next` read every minute) | menubar sim shot unchanged when no alarm; with an alarm the bell |
 | *S2* | *Should*: missed alarm at clockd's start (once alarm passed within 12 h, no sound) | `clockd/main.cpp` (`alarms.cpp` gets `alarms_missed_since`) | alarm_test case |
@@ -407,7 +425,7 @@ Steps 0–3 need no window and can be done by one developer, 4–8 by a second, 
 
 | # | Risk / infeasible ask | Decision |
 |---|---|---|
-| **R-1** | **AC-34 / AC-40: "Quit anyway?" on closing** cannot be asked for the close box nor the menu bar's Quit: the window's exit flag is sticky and ends every loop (§1.1 fact 3); refusing it needs a kapi (a "close requested" event that the app may decline) — out of this round. | **Reduction**: (a) the Clock's **own Ctrl+Q / Clock ▸ Quit** asks (*The timer is still running. Quit anyway?*, an overlay; Cancel keeps it); (b) the **close box never loses anything**: a running timer is handed to clockd (`[timer]` in `alarms.txt`, rung by clockd: 02's first *should* promoted to must), the stopwatch's `sw_start` (ticks) / `sw_base` / laps saved in `config.ini` and resumed at the next start within the same boot. AC-40 becomes: "Ctrl+Q with the timer or the stopwatch running asks; Cancel keeps it; the close box closes at once and the timer still rings (clockd) and the stopwatch shows the right time when reopened". A kapi for a refusable close is noted for IDEAS. |
+| **R-1** | **AC-34 / AC-40: "Quit anyway?" on closing** cannot be asked for the close box nor the menu bar's Quit: the window's exit flag is sticky and ends every loop (§1.1 fact 3); refusing it needs a kapi (a "close requested" event that the app may decline) — out of this round. | **Reduction**: (a) *superseded by §10 G1*: **no question at all** — Ctrl+Q / Clock ▸ Quit end the window as the close box does (`Menu::shortcut` → `MENU_QUIT`); (b) **no exit loses anything**: a running timer is handed to clockd (`[timer]` in `alarms.txt`, rung by clockd: 02's first *should* promoted to must), the stopwatch's `sw_start` (ticks) / `sw_base` / laps saved in `config.ini` and resumed at the next start within the same boot. AC-40 becomes (G1): "closing (close box or Ctrl+Q) with the timer or the stopwatch running asks nothing; the timer still rings (clockd → `clock --ring timer` → *Time's up*, once), the reopened Clock shows it running, and the stopwatch shows the right time when reopened". A kapi for a refusable close is noted for IDEAS. |
 | **R-2** | **AC-29: "*Missed alarm* stays in the notifications"** — notifyd has no history: a bubble with an action stays 8 s and is gone (`notifyd/main.cpp`, `HOLD_MS`). | **Reduction**: the *Missed alarm* bubble (with its action) is sent; the alarm's row shows *Missed at 07:00* (`missed =` in `alarms.txt`, cleared at its next ring or when the user toggles / edits it). A notification centre is noted for IDEAS (it is notifyd's, not the Clock's). |
 | **R-3** | **02 #24 / AC-30: the sounds on the SoundFont** — 32 MB loaded in the ringing process (≈ 64 MB at the peak, seconds of reading) at the moment it rings, and absent from a lite card (§1.1 fact 5). | **Decision**: the three sounds on AudioKit's **FM voices** (`ak_fm_instrument` — a bell-like 2-operator patch for *Chimes*, square for *Beeps*, a soft decay for *Marimba* — and `ak_fm_start / _stop`), as the games' effects: no file, instant, a few KB. AC-30's "SoundFont removed" case becomes moot (nothing to remove); "no audio output / muted" stays: before a ring and on ▶ Test the Clock calls **`ak_out_open (0, 0)`** (akcore.cpp: `kapi_sound_acquire`, chunk 0 = the output as it is) — **1**: the output is the Clock's (the player thread then mixes the FM voices into it, `s_out == 1`, and lets it go ~0.6 s after the sound ends); **0**: another program holds it → D14 *Sound unavailable: the sound output is busy*; **−1**: no sound → D14 *Sound unavailable* (two wordings, both in `fr.txt`). Not `ak_play_state ()` (the **file's** state, `AK_BUSY` only with a file playing — audiokit.h:111, akcore.cpp:310) nor `ak_fm_start`'s result (a voice in range). Logged `clock: sound unavailable busy` / `clock: sound unavailable none`. Same tokens in the file; the SoundFont can come later behind the same `sounds.h`. |
 | R-4 | **Another program holds the sound output** (the Media Player playing): `ak_out_open (0, 0)` returns 0, the alarm is **silent** (the dialog and the notification still come). | Said in the ring card (*Sound unavailable: the sound output is busy*), in docs/04. Tested: the **no-sound** case (−1) in the sim — fakekapi's `sound_acquire` returns −1 without `SIM_SOUND` (case `clock-nosound`); the **busy** case (0) cannot be made in one simulated process (`g_sndOwned` is the process's own) — checked by `clk-ring-nosound`'s mock and on the Pi (AC-30). A priority output for alarms would be AudioKit's / the kernel's — IDEAS. |
@@ -475,7 +493,7 @@ every 60 calls — what clockd does every 0.5 s).
 | 16 | `alarm_repeat_kind`: mon–fri WEEKDAYS, all DAILY, sat sun WEEKENDS, mon wed fri CUSTOM, none ONCE | | 14 |
 | 17 | parse a hand-written file: an unknown key `colour = red`, a block `time = 25:99`, 22 blocks | unknown key back after `alarms_save` (text compared); 25:99 `valid = false`, never due; 20 kept | 16, 15 |
 | 18 | create 07:00 *School* mon–fri chimes, `alarms_save` | exactly the five lines of AC-11, the `id`, `date =`, `snooze =` empty | 11 |
-| 19 | `[timer] end = T, set = 600`: due at tick T, not before; a stale entry (`end` > now + set·100 + 100) never | | 33, R-1 |
+| 19 | `[timer] end = T, set = 600`: due at tick T, not before; a stale entry (`end` > now + set·100 + 100) never; **stepped every 50 ticks from T − 100 to T + 1 000: due exactly once; `alarms_parse` again with the same `end` (the reload, the `Ringer` kept) and stepped to T + 2 000: not again; a new `end` = T + 3 000: due once at it** | `timer_rung` (§3.3 rule 5) | 33, R-1 |
 
 ### 8.2 World and formats — `tools/tests/clock/clocktime_test.cpp`, `zone_test.cpp`
 
@@ -498,27 +516,18 @@ Fixtures: `tools/tests/desktop_sim/clock/{config.ini, alarms.txt}` — `cities =
 07:00 *School* mon–fri chimes on, 14:30 *Medicine* once `date = 20260928` marimba on, 09:00 *Gym* sat sun beeps off.
 Copied into `$OUT/writes/apps/clock.app/` before each run (`kfix`, as Critters' `cfix`). `SIM_SERVICES=notify,clockd`.
 
+**Superseded by §10.4** (validation 2, gap 2): the shot names (`clock-world`, …, never `clock.png`: G5), the scripts
+and the explicit `-fr` lines are §10.4's — the old block here (`clock.png`, `clock-fr`, and "`SHOTS_LANG=fr` renders
+every one in French") is withdrawn. What §10.4 takes from here: the fixtures above and the block's helpers —
+
 ```sh
-if want clock; then			# (Clock, AutoDev round 6: the fixed clock Mon 2026-09-28 12:34:00, Brussels summer time)
 	KQ="$OUT/writes/apps/clock.app"; KS="SIM_SERVICES=notify,clockd"
 	kfix () { rm -rf "$KQ"; mkdir -p "$KQ"; cp $D/clock/config.ini $D/clock/alarms.txt "$KQ/"; }
 	kw () { printf 'wait;%.0s' $(seq 1 $1); }
-	kfix; sim clock clock "wait;wait;$W" $KS SIM_ARGS=world; png clock                          # World: here + 3 cities
-	kfix; sim clock clock-alarms "wait;wait;$W" $KS SIM_ARGS=alarms; png clock-alarms             # 3 alarms, the next-alarm line
-	kfix; sim clock clock-timer "wait;wait;<preset 5 min click>;key 32;$(kw 120)" $KS SIM_ARGS=timer; png clock-timer   # 04:58, the ring
-	kfix; sim clock clock-stopwatch "wait;key 32;$(kw 600)key l;$(kw 590)key l;$(kw 640)key l;key 32;$W" $KS SIM_ARGS=stopwatch; png clock-stopwatch   # 3 laps
-	kfix; sim clock clock-ring "wait;wait;$W" $KS "SIM_ARGS=--ring 1"; png clock-ring            # the ringing overlay
-	kfix; sim clock clock-edit "wait;wait;key 13;$W" $KS SIM_ARGS=alarms; png clock-edit          # the alarm editor
-	kfix; lang fr; sim clock clock-fr "wait;wait;$W" $KS SIM_ARGS=world; png clock-fr
-	kfix; sim clock clock-alarms-fr "wait;wait;$W" $KS SIM_ARGS=alarms; png clock-alarms-fr
-	kfix; sim clock clock-ring-fr "wait;wait;$W" $KS "SIM_ARGS=--ring 1"; png clock-ring-fr
-	lang "$SHOTS_LANG"; rm -rf "$KQ"
-fi
+	# clock-stopwatch: "wait;key 32;$(kw 600)key l;$(kw 590)key l;$(kw 640)key l;key 32;$W" SIM_ARGS=stopwatch
 ```
 
-(The click positions are the UX designer's layout's; `SHOTS_LANG=fr sh tools/tests/desktop_sim/shots.sh clock` renders
-every one of them in French as well — AC-3: the four tabs + the ring, EN and FR, *Chronomètre*, *Rappel dans 10 min*
-checked to fit.) The stopwatch shot: 600 + 590 + 640 waits ≈ 12.0 / 11.8 / 12.8 s laps (20 ms a step, the `key` steps included) — deterministic.
+The stopwatch shot: 600 + 590 + 640 waits ≈ 12.0 / 11.8 / 12.8 s laps (20 ms a step, the `key` steps included) — deterministic.
 
 ### 8.4 Scripted checks — `tools/tests/run_clock_sim_test.sh` (the Critters one's shape)
 
@@ -530,7 +539,8 @@ checked to fit.) The stopwatch shot: 600 + 590 + 640 waits ≈ 12.0 / 11.8 / 12.
 | clockd-disabled | `on = 0` | nothing over 6 000 steps | 19, 22 |
 | clockd-late | `SIM_CLOCK=20260928090000`, a 07:00 alarm | nothing | 22, 31 |
 | clockd-sync | `SIM_CLOCK=20261025025930` (wall, `SIM_TZ=120`), `zone=Brussels` | `sim: set_timezone 60` once | R-6 |
-| clockd-sync-nozone | `SIM_CLOCK=20261025023000` (wall, `SIM_TZ=120`), `system.ini` with `timezone=120` and no `zone=` | no `sim: set_timezone` over 200 steps, `system.ini` not in the writes | R-6, gap 1 |
+| clockd-sync-nozone | `SIM_CLOCK=20261025023000` (wall, `SIM_TZ=120`), the card's own `sdcard/etc/system.ini` (`timezone=120`, no `zone=`, as shipped) | no `sim: set_timezone` over 200 steps, `system.ini` not in the writes (if the case puts a fixture in `SIM_WRITES/etc/` instead: the written one byte-identical to the fixture — validation 2, note 5) | R-6, gap 1 |
+| clockd-timer | `clockd --grace 0`, `alarms.txt` with only `[timer] end = 1300` (300 ticks ahead of the simulator's 1 000), `set = 5`, no `utc =`; placeholder `apps/clock.app/main`, `SIM_SERVICES=notify`; 200 steps; a second run adds `SIM_MBOX="@3000:2:0:"` (RELOAD after the ring, the file unchanged) | **exactly one** `sim: exec SD:apps/clock.app/main --ring timer` in each run (not one every 0.5 s; not again after the reload) | 33, 35, validation 2 gap 1 |
 | clock-one | `clock alarms`, `SIM_SERVICES=clock` | `sim: send clock type 1 "alarms\0"`, `sim: raise_app clock`, no window | 26 |
 | clock-clockd | `clock`, `SIM_SERVICES=notify` (no clockd), a placeholder `SIM_WRITES/apps/clockd.app/main` (`lx_exists`) | `sim: launch clockd` (no arguments → `kapi_launch`) | 27 |
 | clock-ring | `clock --ring 1`, `key 27` | notify `Clock\007:00 School\0clock alarms\0`; Stop: once alarm `on = 0` written; `sim: send clockd type 2` | 24, 25 |
@@ -547,10 +557,11 @@ checked to fit.) The stopwatch shot: 600 + 590 + 640 waits ≈ 12.0 / 11.8 / 12.
 | clock-timer | preset 5, Start, 50 waits, Pause, Reset | `05:00`, `04:59`, held, `05:00`; spin boxes disabled while running (log) | 32 |
 | clock-timesup | 3-s timer, 160 waits | `Timer — 00:03 done` sent; `+1 min` → `01:00` | 33 |
 | clock-timer-close | running timer, `quit` | `[timer]` in `alarms.txt`, `sim: send clockd type 2`, `timer = 300` in config | 35, R-1 |
+| clock-timesup-hand | `SIM_ARGS="--ring timer"`, `SIM_SERVICES=notify,clockd`, fixture `alarms.txt` = the three alarms + a past `[timer] end = 500`, `set = 300` (not stale: 500 − 1 000 ≤ 30 100) | `clock: time's up` logged, `Timer — 05:00 done` sent to notify; the written `alarms.txt` has **no `[timer]`** and the three alarms unchanged; `sim: send clockd type 2` | 33, validation 2 gap 1 |
 | clock-timer-resume | `clock timer`, fixture `alarms.txt` with `[timer] end = <ticks ahead: 1000 + 12 000>`, `set = 300` | log `clock: timer running 02:00` (rounded up), the `[timer]` block gone from the written `alarms.txt`, `sim: send clockd type 2`; a past `end` → left in the file, nothing sent | 35, 40, gap 3 |
 | clock-sw | Space, 3 × L, Space, Ctrl+C, R | 3 rows newest first, marks, the clipboard text (kernel clipboard), cleared; R ignored while running | 37, 38 |
 | clock-keys | Ctrl+1…4, Space on Timer, L, `clock stopwatch` | the tab logs | 41 |
-| clock-quit | Ctrl+Q with the stopwatch running, Esc; then Ctrl+Q, Enter | asked; kept; then quits, `sw_start` saved | 40 (reduced) |
+| clock-quit-hand | (replaces `clock-quit`, superseded by G1) the stopwatch running, `key 17` (Ctrl+Q); then the timer running | no veil logged, the program ends; `sw_start` in `config.ini`; `[timer]` in `alarms.txt`, `sim: send clockd type 2` (§10.3) | 40 (reduced) |
 
 ---
 
@@ -560,7 +571,7 @@ checked to fit.) The stopwatch shot: 600 + 590 + 640 waits ≈ 12.0 / 11.8 / 12.
 |---|---|---|---|
 | 1 build, Makefile, app.txt | 4, 5 | host builds in `run_clock_*`; Pi `make` by the user | AArch64 build not here |
 | 2 check.py 0 | 5–11, 13 | `python tools/lang/check.py clock` | clockd has no words (§3.5) |
-| 3 shots EN/FR | 12 | §8.3 | |
+| 3 shots EN/FR | 12 | §10.4 (the `-fr` lines explicit) | |
 | 4 docs, autostart, package | 4, 13 | review; `build_docs.py` runs | |
 | 5 no kernel/kapi change, other shots unchanged | all (0: opt-in) | `git diff main -- kernel/ user/Kits/appkit/`; shots diff | SystemKit/FileKit change, not AppKit |
 | 6 here 12:34:00, date, UTC+2 summer | 1a, 6 | clocktime_test; clock-world; shot | |
@@ -590,18 +601,18 @@ checked to fit.) The stopwatch shot: 600 + 590 + 640 waits ≈ 12.0 / 11.8 / 12.
 | 30 [Pi] sounds, muted, no SoundFont | 8 | clock-nosound (no output, PC); Pi by hand (sounds, busy) | **changed** (R-3): FM voices; *no SoundFont* moot; *output busy* added (R-4), both found by `ak_out_open (0, 0)` |
 | 31 [Pi] reboot | 4 | clockd-late (PC part); Pi by hand | |
 | 32 timer presets, run, pause, reset | 9 | clock-timer | |
-| 33 time's up, +1 min | 9 | clock-timesup; alarm_test 19 | |
+| 33 time's up, +1 min | 4, 9 | clock-timesup; alarm_test 19 (once, reload); clockd-timer; clock-timesup-hand | the handed-over timer rung once, its block removed by the Clock (validation 2) |
 | 34 time from ticks | 3 | clocktime_test | |
-| 35 timer = 300 kept | 9 | clock-timer-close | |
+| 35 timer = 300 kept | 9 | clock-timer-close; clockd-timer | |
 | 36 [Pi] 10 min accuracy | 9 | Pi by hand | |
 | 37 laps, marks, reset | 10 | clock-sw | |
 | 38 copy laps | 10 | clock-sw; clocktime_test | *Laps copied* in the status line (clipd already bubbles *Text copied*) |
 | 39 formats, sum | 3 | clocktime_test | |
-| 40 close with timer / stopwatch running | 9, 10, 11 | clock-quit-hand (§10.3), clock-timer-close, clock-timer-resume | **reduced** (R-1): Ctrl+Q asks; the close box hands over |
-| 41 keys | 11 | clock-keys | |
+| 40 close with timer / stopwatch running | 9, 10, 11 | clock-quit-hand (§10.3), clock-timer-close, clock-timer-resume, clockd-timer, clock-timesup-hand | **reduced** (R-1, G1): no question; every exit hands over; the reopened Clock shows the timer running |
+| 41 keys | 11 | clock-keys, clock-edit-keys | |
 
 **02's must items vs this plan**: 02 #1–33 kept, with #17 (who sends the bubble: the Clock), #20 (*Missed* not kept by
-notifyd), #24–25 (FM voices) and #34 (the question only on Ctrl+Q; the timer handed to clockd, the stopwatch resumed —
+notifyd), #24–25 (FM voices) and #34 (no question at all, G1; the timer handed to clockd, the stopwatch resumed —
 02's first two *should* items promoted) adjusted as above. Not added: anything from 02's *later* list.
 
 ---
@@ -724,3 +735,20 @@ pictures must look like `mockups/clk-*.png` (the real data: the timer at 04:58 r
 - **Notes taken in**: 1 (`clock-clockd`'s placeholder, `sim: launch clockd`), 2 and 9 (§4: all behind `SIM_CLOCK`;
   `SIM_MBOX` ticks), 4 (`[timer] utc =` checked with the ticks, §3.3), 5 (Makefile and `shots.sh build ()`, §3.6),
   7 (the dock's label untranslated, §7), 8 (*Clock not set yet*, §3.6), 10 (docs/06 FileKit sentence, §7).
+
+## Changes after validation 2
+
+- **Gap 1** (the `[timer]` re-ringing every 0.5 s): the `Ringer` keeps `timer_rung` (the `end` it rang, across a
+  reload) — §3.3 (struct, `ringer_step`'s ticks / UTC arguments, rule 5, the block's paragraph), §3.5; the Clock on
+  `--ring timer` shows *Time's up*, removes `[timer]`, saves, sends `CLOCKD_MSG_RELOAD`; *+1 min* is a fresh timer in
+  the Clock — §3.6. Tests: alarm_test 19 extended (§8.1), `clockd-timer` and `clock-timesup-hand` (§8.4), steps 4 / 9,
+  §9 rows 33 / 35 / 40.
+- **Gap 2** (stale "asks" text): one truth, §10's — the summary, R-1 (a) and its AC-40 wording, step 11, step 12,
+  §8.3's old block and its `SHOTS_LANG=fr` sentence (now a pointer to §10.4 keeping the fixtures and helpers),
+  `clock-quit` → `clock-quit-hand` in §8.4, §9 rows 3 / 40 / 41 and the 02 #34 sentence. G1's "Was" column keeps the
+  old wording on purpose (it is the record of the change).
+- **Notes taken in**: 1 (`ak_out_open` as a probe, closed before the FM voices — §1, step 8); 2 (the plain *Sound
+  unavailable* added to 04 D14, its table and the mock's `lang/fr.txt`); 3 (letters / Space over a focused spin box:
+  `Spin`'s table wins, only the `Textbox` exception — §3.6); 4 (here's offset from `tz_minutes` / `timezone=`, the zone
+  only names the city — §3.4); 5 (`clockd-sync-nozone` on the card's `system.ini`, or byte-identical — §8.4); 6 (a
+  timer taken back with no argument opens the Timer tab — §3.6).

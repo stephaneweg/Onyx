@@ -69,6 +69,7 @@ Next: %s %s	Prochaine : %s %s
 Snooze %d min	Rappel dans %d min
 Stop	Arrêter
 Enter: snooze · Esc: stop	Entrée : rappel · Échap : arrêter
+Sound unavailable	Son indisponible
 Sound unavailable: the sound output is busy	Son indisponible : la sortie audio est occupée
 Time's up	Temps écoulé
 The %s timer ended at %s	Le minuteur de %s s'est terminé à %s
