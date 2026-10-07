@@ -480,6 +480,44 @@ seed tkeys; run clock tkeys "wait;down $MINF;up $MINF;mods 1;key 50;mods 0;wait;
 check "clock-edit-keys (c): Ctrl+2 over a focused spin box -> the Alarms tab" logs tkeys "clock: tab alarms"
 check "clock-edit-keys (c): ... the duration unchanged (05:00)" logs tkeys "clock: timer started 05:00"
 
+# ==== the Stopwatch (step 10) =====================================================================================
+# clock-sw (AC-37, 38): Space, three laps (about 12.0 / 11.8 / 12.8 s), Space -> 3 rows newest first, the fastest and
+# the slowest marked; R refused while it runs; Ctrl+C -> the laps on the clipboard (tab-separated, the header); R clears
+seed sw; run clock sw "wait;key 32;$(waits 600)key l;key r;$(waits 590)key l;$(waits 640)key l;key 32;wait;dump $OUT/stopwatch.elsm;mods 1;key 0x03;mods 0;wait;dump $OUT/stopwatch-copied.elsm;key r;wait;dump $OUT/stopwatch-zero.elsm;exit" \
+	SIM_SERVICES=notify,clockd SIM_ARGS=stopwatch SIM_CLIPFILE="$OUT/sw.clip"; png stopwatch; png stopwatch-copied; png stopwatch-zero
+check "clock-sw: started, three laps" sh -c "grep -q 'clock: stopwatch started 00:00.00' '$OUT/log/sw.log' && grep -q 'clock: lap 3 ' '$OUT/log/sw.log'"
+check "clock-sw: R refused while it runs" logs sw "clock: stopwatch reset refused (running)"
+check "clock-sw: stopped with 3 laps" logs sw "(3 laps)"
+check "clock-sw: the rows newest first (3, 2, 1)" test "$(grep -A3 'stopwatch stopped' "$OUT/log/sw.log" | sed -n 2,4p | cut -d' ' -f3 | tr '\n' ' ')" = "3 2 1 "
+check "clock-sw: lap 2 (11.84) the fastest, lap 3 (12.82) the slowest" sh -c "grep -A3 'stopwatch stopped' '$OUT/log/sw.log' | grep -q 'lap 2 00:11.84 00:23.86 fastest' && grep -A3 'stopwatch stopped' '$OUT/log/sw.log' | grep -q 'lap 3 00:12.82 00:36.68 slowest'"
+check "clock-sw: the lap times add up to the total" sh -c "grep -A3 'stopwatch stopped' '$OUT/log/sw.log' | grep -q 'lap 1 00:12.02 00:12.02\$'"
+check "clock-sw: Ctrl+C -> laps copied" logs sw "clock: laps copied (3)"
+check "clock-sw: the clipboard: the header, then a lap a line, tab-separated, oldest first" sh -c "printf 'Lap\tLap time\tTotal\n1\t00:12.02\t00:12.02\n2\t00:11.84\t00:23.86\n3\t00:12.82\t00:36.68\n' | cmp -s - '$OUT/sw.clip'"
+check "clock-sw: R clears it (stopped)" logs sw "clock: stopwatch reset"
+# French: the header in the system's language
+seed swfr fr; run clock swfr "wait;key 32;$(waits 60)key l;$(waits 60)key l;key 32;wait;dump $OUT/stopwatch-fr.elsm;mods 1;key 0x03;mods 0;wait;exit" \
+	SIM_SERVICES=notify,clockd SIM_ARGS=stopwatch SIM_CLIPFILE="$OUT/swfr.clip"; png stopwatch-fr
+check "clock-sw (fr): the clipboard's header in French" sh -c "head -1 '$OUT/swfr.clip' | grep -q '^Tour	Temps du tour	Total\$'"
+# Ctrl+C on another tab: nothing copied
+seed swother; run clock swother "wait;key 32;$(waits 30)key l;mods 1;key 49;mods 0;wait;mods 1;key 0x03;mods 0;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=stopwatch
+check "clock-sw: Ctrl+C off the Stopwatch tab copies nothing" nolog swother "laps copied"
+# the stopwatch kept at the close (R-1): running in the same boot (its start in ticks) -> it goes on
+seed swkeep; config swkeep '[clock]\nsw_run = 1\nsw_start = 500\nsw_base = 0\nsw_total = 380\nsw_tick = 880\nsw_utc = -1\nsw_laps = 200\n'
+run clock swkeep "wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=stopwatch
+check "clock-sw: the same boot -> it goes on from its start (00:05, 1 lap)" grep -qE "clock: stopwatch kept 00:05\.[0-9]{2} running \(1 laps\)" "$OUT/log/swkeep.log"
+# ... another boot, the real time known both times (60 s later): it went on meanwhile
+UTC=$(python3 -c "import calendar;print(calendar.timegm((2026,9,28,10,34,0)) - 60)")
+seed swboot; config swboot "[clock]\nsw_run = 1\nsw_start = 50000\nsw_base = 0\nsw_total = 1000\nsw_tick = 51000\nsw_utc = $UTC\nsw_laps =\n"
+run clock swboot "wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=stopwatch SIM_CLOCK=20260928123400
+check "clock-sw: another boot, the real time known -> 00:10 + 60 s, running" grep -qE "clock: stopwatch kept 01:10\.[0-9]{2} running" "$OUT/log/swboot.log"
+# ... another boot, no real time: stopped at the time it had
+seed swlost; config swlost '[clock]\nsw_run = 1\nsw_start = 50000\nsw_base = 0\nsw_total = 1000\nsw_tick = 51000\nsw_utc = -1\nsw_laps =\n'
+run clock swlost "wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=stopwatch
+check "clock-sw: another boot, no real time -> stopped at 00:10.00" logs swlost "clock: stopwatch kept 00:10.00 (0 laps)"
+# the close keeps it: sw_* in config.ini (the laps' totals)
+seed swclose; run clock swclose "wait;key 32;$(waits 50)key l;$(waits 20)quit;wait" SIM_SERVICES=notify,clockd SIM_ARGS=stopwatch
+check "clock-sw: kept at the close, running (sw_run = 1, sw_start, sw_laps)" sh -c "[ '$(kv swclose $CF 1 sw_run)' = 1 ] && [ -n '$(kv swclose $CF 1 sw_start)' ] && [ '$(kv swclose $CF 1 sw_laps)' -gt 0 ]"
+
 echo
 if [ $FAILS -ne 0 ]; then echo "clock-sim: $FAILS of $((PASS + FAILS)) checks FAILED"; exit 1; fi
 echo "clock-sim: all $PASS checks passed"
