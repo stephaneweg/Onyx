@@ -615,6 +615,8 @@ if want clock; then
 	kfix; cp $D/clock/config-3s.ini "$KQ/config.ini"
 	      sim clock clock-timesup   "wait;key 32;$(kw 170)" $KS SIM_ARGS=timer;               png clock-timesup
 	kfix; sim clock clock-stopwatch "$KW" $KS SIM_ARGS=stopwatch;                             png clock-stopwatch
+	kfix; echo "face = analogue" >> "$KQ/config.ini"
+	      sim clock clock-analogue  "wait;wait;$W" $KS SIM_ARGS=world;                        png clock-analogue		# (View > Analogue Clock)
 	kfix; lang fr
 	sim clock clock-world-fr     "wait;wait;$W" $KS SIM_ARGS=world;                        png clock-world-fr
 	kfix; sim clock clock-cities-fr    "wait;mods 1;key 14;mods 0;wait;$W" $KS SIM_ARGS=world;   png clock-cities-fr	# (Ajouter une ville)
@@ -625,6 +627,8 @@ if want clock; then
 	kfix; cp $D/clock/config-3s.ini "$KQ/config.ini"
 	      sim clock clock-timesup-fr   "wait;key 32;$(kw 170)" $KS SIM_ARGS=timer;               png clock-timesup-fr	# (Temps écoulé)
 	kfix; sim clock clock-stopwatch-fr "$KW" $KS SIM_ARGS=stopwatch;                             png clock-stopwatch-fr	# (Chronomètre, Tour)
+	kfix; echo "face = analogue" >> "$KQ/config.ini"
+	      sim clock clock-analogue-fr  "wait;wait;$W" $KS SIM_ARGS=world;                        png clock-analogue-fr	# (Horloge analogique)
 	lang "$SHOTS_LANG"; rm -rf "$KQ"
 fi
 if want wifimenu; then

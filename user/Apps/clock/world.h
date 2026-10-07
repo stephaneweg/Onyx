@@ -56,9 +56,40 @@ static void world_add_open ();
 static void world_lr (Widget &) { say ("Language & Region opened"); lx_launch ("control", "langconf"); }
 
 // ---- here, big ---------------------------------------------------------------------------------------------------------
+// The analogue face (S3, View > Analogue Clock; config.ini face = analogue): a dial of radius r centred at (cx, cy) --
+// the field's colour, an accent rim, 60 minute ticks and 12 hour ones, the hour and minute hands, a red-free accent
+// second hand with its tail, the pin in the middle. Angles clockwise from 12 o'clock.
+static void draw_face (Canvas &cv, double cx, double cy, double r, int h, int m, int s)
+{
+	unsigned ink = C_FIELD_TEXT, faint = uk_mix (C_FIELD, C_FIELD_TEXT, 110);
+	VPath dial; dial.circle (VV (cx), VV (cy), VV (r)); dial.fill (cv, C_FIELD);
+	VPath rim; rim.arc (VV (cx), VV (cy), VV (r - 1.5), 0, 360, VV (3)); rim.fill (cv, C_ACCENT);
+	VPath minor, major;
+	for (int i = 0; i < 60; i++)
+	{
+		double t = M_PI * i / 30, sn = sin (t), cs = cos (t);
+		bool hour = i % 5 == 0;
+		double r0 = r - (hour ? (i % 15 == 0 ? 13 : 11) : 7.5), r1 = r - 5;
+		(hour ? major : minor).line (VV (cx + r0 * sn), VV (cy - r0 * cs), VV (cx + r1 * sn), VV (cy - r1 * cs), VV (hour ? 2.4 : 1));
+	}
+	minor.fill (cv, faint);
+	major.fill (cv, ink);
+	auto hand = [&] (double turn, double len, double tail, double w, unsigned c)
+	{
+		double t = 2 * M_PI * turn, sn = sin (t), cs = cos (t);
+		VPath p; p.line (VV (cx - tail * sn), VV (cy + tail * cs), VV (cx + len * sn), VV (cy - len * cs), VV (w)); p.fill (cv, c);
+	};
+	hand (((h % 12) + m / 60.0) / 12, r * 0.50, r * 0.08, 5.5, ink);
+	hand ((m + s / 60.0) / 60, r * 0.76, r * 0.08, 3.6, ink);
+	hand (s / 60.0, r * 0.84, r * 0.20, 1.6, C_ACCENT);
+	VPath pin; pin.circle (VV (cx), VV (cy), VV (4.5)); pin.fill (cv, C_ACCENT);
+	VPath dot; dot.circle (VV (cx), VV (cy), VV (1.8)); dot.fill (cv, C_FIELD);
+}
+
 class HereCard : public Widget
 {
 public:
+	enum { FACE_R = 55, GAP = 26 };	// the analogue face's radius, the space between it and the words
 	Button *lr;			// "Language & Region..." (no zone chosen)
 	HereCard (int x, int y, int w, int h) : Widget (x, y, w, h)
 	{
@@ -70,23 +101,58 @@ public:
 	}
 	bool nozone () const { return g_now.zone < 0; }
 	int warnW () { UkFaceScope sc (face (13)); return uk_tw (TR ("Time zone not set"), 2) + 26; }
-	void place ()			// the warning and its button, centred together
+	// the words under the time: the date, and the zone's line (its city, UTC+h, Summer time)
+	void dateText (char *b, int cap)
+	{
+		if (g_now.real) snprintf (b, cap, "%s %d %s %d", TR (DAYNAME[clk_wday (g_now.day)]), g_now.d, TR (MONTHNAME[(g_now.mo + 11) % 12]), g_now.y);
+		else snprintf (b, cap, "%s", TR ("Clock not set yet"));
+	}
+	void zoneText (char *b, int cap)
+	{
+		char u[16];
+		clk_fmt_utc (g_now.here_off, u, sizeof u);
+		snprintf (b, cap, "%s" DOT "%s", city_name (g_now.zone), u);
+		if (g_now.here_off > zone_std (g_now.zone, g_now.y)) { cat (b, cap, DOT); cat (b, cap, TR ("Summer time")); }
+	}
+	// Analogue: the face and the words' column, centred together -> the face's left, the column's left
+	void analogueCols (int &x0, int &tx)
+	{
+		char t[32], b[160];
+		clk_fmt_hms (g_now.h, g_now.mi, g_now.s, t, sizeof t);
+		int cw;
+		{ UkFaceScope sc (face (34)); cw = uk_tw ("00:00:00", 2); }
+		dateText (b, sizeof b);
+		{ UkFaceScope sc (face (16)); int w = uk_tw (b); if (w > cw) cw = w; }
+		if (nozone ()) { int w = warnW () + 12 + lr->width; if (w > cw) cw = w; }
+		else { zoneText (b, sizeof b); int w = uk_tw (b) + 18; if (w > cw) cw = w; }
+		int bw = 2 * FACE_R + GAP + cw;
+		x0 = (width - bw) / 2;
+		if (x0 < 4) x0 = 4;
+		tx = x0 + 2 * FACE_R + GAP;
+	}
+	void place ()			// the warning and its button, centred together (analogue: in the words' column)
 	{
 		lr->hidden = !nozone ();
+		if (g_cfg.analogue)
+		{
+			int x0, tx; analogueCols (x0, tx);
+			lr->left = tx + warnW () + 12; lr->top = 82;
+			return;
+		}
 		int sw = warnW (), x = (width - sw - 12 - lr->width) / 2;
-		lr->left = x + sw + 12;
+		lr->left = x + sw + 12; lr->top = 92;
 	}
 	void layout () override { Widget::layout (); place (); }
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
 		place ();
+		if (g_cfg.analogue) { drawAnalogue (); return; }
 		char t[32], b[160];
 		clk_fmt_hms (g_now.h, g_now.mi, g_now.s, t, sizeof t);
 		{ UkFaceScope sc (face (54)); uk_text_c (canvas, 0, 0, width, 66, t, C_TEXT, 2); }
 		unsigned d = dim_on (C_BG);
-		if (g_now.real) snprintf (b, sizeof b, "%s %d %s %d", TR (DAYNAME[clk_wday (g_now.day)]), g_now.d, TR (MONTHNAME[(g_now.mo + 11) % 12]), g_now.y);
-		else snprintf (b, sizeof b, "%s", TR ("Clock not set yet"));
+		dateText (b, sizeof b);
 		{ UkFaceScope sc (face (16)); uk_text_c (canvas, 0, 64, width, 24, b, g_now.real ? C_TEXT : d); }
 		if (nozone ())
 		{
@@ -96,13 +162,32 @@ public:
 			uk_text_l (canvas, x + 24, 92, 28, TR ("Time zone not set"), AMBER (), 2);
 			return;
 		}
-		char u[16];
-		clk_fmt_utc (g_now.here_off, u, sizeof u);
-		snprintf (b, sizeof b, "%s" DOT "%s", city_name (g_now.zone), u);
-		if (g_now.here_off > zone_std (g_now.zone, g_now.y)) { cat (b, sizeof b, DOT); cat (b, sizeof b, TR ("Summer time")); }
+		zoneText (b, sizeof b);
 		int w = uk_tw (b) + 18, x = (width - w) / 2;
 		draw_pin (canvas, x + 6, 104, 14, C_ACCENT);
 		uk_text_l (canvas, x + 18, 92, 24, b, d);
+	}
+	// The analogue face left, the time (smaller), the date and the zone's line in a column right of it
+	void drawAnalogue ()
+	{
+		int x0, tx; analogueCols (x0, tx);
+		draw_face (canvas, x0 + FACE_R, height / 2.0, FACE_R, g_now.h, g_now.mi, g_now.s);
+		char t[32], b[160];
+		clk_fmt_hms (g_now.h, g_now.mi, g_now.s, t, sizeof t);
+		{ UkFaceScope sc (face (34)); uk_text_l (canvas, tx, 10, 42, t, C_TEXT, 2); }
+		unsigned d = dim_on (C_BG);
+		dateText (b, sizeof b);
+		{ UkFaceScope sc (face (16)); uk_text_l (canvas, tx, 54, 24, b, g_now.real ? C_TEXT : d); }
+		if (nozone ())
+		{
+			draw_warn (canvas, tx + 9, 82 + 14, 16);
+			UkFaceScope sc (face (13));
+			uk_text_l (canvas, tx + 24, 82, 28, TR ("Time zone not set"), AMBER (), 2);
+			return;
+		}
+		zoneText (b, sizeof b);
+		draw_pin (canvas, tx + 6, 94, 14, C_ACCENT);
+		uk_text_l (canvas, tx + 18, 82, 24, b, d);
 	}
 };
 
@@ -460,6 +545,25 @@ static bool world_key (long k, bool ctrl)
 	if (!ctrl && (k == KEY_UP || k == KEY_DOWN || k == KEY_HOME || k == KEY_END || k == KEY_PGUP || k == KEY_PGDN))
 	{ g_cities->setFocus (); return g_cities->onKey (k); }
 	return false;
+}
+// View > Analogue Clock / Digital Clock (S3): here's face, kept in config.ini (face = analogue | digital)
+static void world_face (bool analogue)
+{
+	tab_show (TAB_WORLD);
+	if (g_cfg.analogue == analogue) return;
+	g_cfg.analogue = analogue;
+	say ("face %s", analogue ? "analogue" : "digital");
+	g_here->place ();
+	g_here->invalidate (true);
+	if (!cfg_save ()) say ("config.ini not saved");
+}
+static void m_face_analogue () { world_face (true); }
+static void m_face_digital () { world_face (false); }
+static void world_view_menu (Menu &m)
+{
+	m.separator ();
+	m.item (TR ("Analogue Clock"), "", 0, m_face_analogue);
+	m.item (TR ("Digital Clock"), "", 0, m_face_digital);
 }
 static void m_city_add () { world_add_open (); }
 static void m_city_remove () { world_remove (); }

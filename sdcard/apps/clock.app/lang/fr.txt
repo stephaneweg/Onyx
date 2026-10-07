@@ -158,3 +158,5 @@ No city matches	Aucune ville ne correspond
 1 alarm · %d on	1 alarme · %d active
 Not saved: the card is full or read-only	Non enregistré : la carte est pleine ou en lecture seule
 1 lap	1 tour
+Analogue Clock	Horloge analogique
+Digital Clock	Horloge numérique

@@ -17,7 +17,7 @@
 //   clock --missed <id> <YYYYMMDDHHMM> [...]   (clockd at its start) once alarms missed while the Pi was off: each
 //                                  "Missed alarm: 07:00 School" notified and written on its row -- no sound, no window
 // One Clock at a time: a second one sends the running one its arguments (CLOCK_MSG_OPEN), raises it and ends.
-// SD:/apps/clock.app/config.ini ([clock]: tab, cities, snooze, timer, width, height; a paused timer: timer_left,
+// SD:/apps/clock.app/config.ini ([clock]: tab, cities, snooze, timer, face, width, height; a paused timer: timer_left,
 // timer_of; the stopwatch: sw_run, sw_start, sw_base, sw_total, sw_tick, sw_utc, sw_laps): AppKit's .ini, through FileKit.
 // Keys (04 §7): Ctrl+1..4 and Ctrl+Tab the tabs; Ctrl+N a city / an alarm; Space toggles the alarm, starts / pauses
 // the timer, starts / stops the stopwatch; R resets them (not while they run); L a lap; Ctrl+C copies the laps; in a
@@ -124,7 +124,7 @@ static inline const char *day_word (long day)
 }
 
 // ---- config.ini ([clock]) --------------------------------------------------------------------------------------------
-struct Config { int tab; int city[CITIES_MAX]; int ncity; int snooze; int timer; int width, height; };
+struct Config { int tab; int city[CITIES_MAX]; int ncity; int snooze; int timer; int width, height; bool analogue; };
 static Config g_cfg;
 static fk_kv *g_cfgDoc;					// the file read (its other keys written back as they were)
 static const char *cfg_get (const char *key, const char *def) { return fk_kv_get (g_cfgDoc, "clock", key, def); }
@@ -160,6 +160,7 @@ static void cfg_load ()
 	if (g_cfg.snooze < 1 || g_cfg.snooze > 30) g_cfg.snooze = 10;
 	g_cfg.timer = atoi (cfg_get ("timer", "300"));
 	if (g_cfg.timer < 1 || g_cfg.timer > 86399) g_cfg.timer = 300;
+	g_cfg.analogue = !strcmp (cfg_get ("face", "digital"), "analogue");
 	g_cfg.width = atoi (cfg_get ("width", "560"));
 	g_cfg.height = atoi (cfg_get ("height", "440"));
 }
@@ -175,9 +176,10 @@ static bool cfg_save ()
 	cfg_cities_text (t, sizeof t); cfg_set ("cities", t);
 	cfg_set_int ("snooze", g_cfg.snooze);
 	cfg_set_int ("timer", g_cfg.timer);
+	cfg_set ("face", g_cfg.analogue ? "analogue" : "digital");
 	cfg_set_int ("width", g_cfg.width);
 	cfg_set_int ("height", g_cfg.height);
-	return fk_kv_save (g_cfgDoc, CONFIG_PATH, "Onyx Clock settings (tab: world | alarms | timer | stopwatch; cities: SystemKit's zones; snooze: minutes, 1..30; timer: seconds).") == 0;
+	return fk_kv_save (g_cfgDoc, CONFIG_PATH, "Onyx Clock settings (tab: world | alarms | timer | stopwatch; cities: SystemKit's zones; snooze: minutes, 1..30; timer: seconds; face: digital | analogue).") == 0;
 }
 
 // ---- the alarms (alarms.txt: the Clock writes it, clockd rings it) ----------------------------------------------------
@@ -251,6 +253,7 @@ static void menu_build ()
 	g_menu.item (TR ("Stopwatch"), "^4", 0, m_sw);
 	g_menu.separator ();
 	g_menu.item (TR ("Next Tab"),  "Ctrl+Tab", 0, m_next);
+	world_view_menu (g_menu);
 	alarms_menu (g_menu);
 	world_menu (g_menu);
 	timer_menu (g_menu);

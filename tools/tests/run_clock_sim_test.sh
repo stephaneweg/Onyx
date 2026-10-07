@@ -592,6 +592,22 @@ check "clock-missed-start: a running Clock notifies it" logs cmissrun 'sim: send
 check "clock-missed-start: ... the row says Missed at 07:00" logs cmissrun "missed 07:00"
 check "clock-missed-start: ... not raised for it" nolog cmissrun "sim: raise_app"
 
+# ==== S3: the analogue face ========================================================================================
+# clock-face: View > Analogue Clock (the View menu's 6th item, I5) from the Alarms tab -> the World tab, the face kept
+# in config.ini (face = analogue), shown so at the next start; View > Digital Clock (I6) -> back
+seed face; fixture face
+run clock face "wait;menu 5;wait;dump $OUT/face.elsm;quit;wait" SIM_SERVICES=notify,clockd SIM_ARGS=alarms; png face
+check "clock-face: View > Analogue Clock -> the World tab" sh -c "grep -q 'clock: tab world' '$OUT/log/face.log' && grep -q 'clock: face analogue' '$OUT/log/face.log'"
+check "clock-face: kept in config.ini (face = analogue)" test "$(kv face $CF 1 face)" = analogue
+run clock face "wait;wait;dump $OUT/face2.elsm;menu 6;wait;quit;wait" SIM_SERVICES=notify,clockd SIM_ARGS=world; png face2
+check "clock-face: View > Digital Clock -> back (face = digital)" sh -c "grep -q 'clock: face digital' '$OUT/log/face.log' && [ '$(kv face $CF 1 face)' = digital ]"
+seed facenz; mkdir -p "$OUT/w/facenz/etc"; printf 'language=en\n' > "$OUT/w/facenz/etc/system.ini"; config facenz '[clock]\nface = analogue\ncities = Tokyo\n'
+run clock facenz "wait;wait;dump $OUT/facenz.elsm;exit" SIM_SERVICES=notify,clockd SIM_ARGS=world; png facenz
+check "clock-face: no zone -> the warning and its button in the words' column" logs facenz "time zone not set (Language & Region at"
+seed facefr fr; config facefr '[clock]\nface = analogue\ncities = Tokyo,New York,London\n'
+run clock facefr "wait;wait;dump $OUT/facefr.elsm;exit" SIM_SERVICES=notify,clockd SIM_ARGS=world; png facefr
+check "clock-face: in French (the face read from config.ini)" logs facefr "clock: tab world"
+
 echo
 if [ $FAILS -ne 0 ]; then echo "clock-sim: $FAILS of $((PASS + FAILS)) checks FAILED"; exit 1; fi
 echo "clock-sim: all $PASS checks passed"
