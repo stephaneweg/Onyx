@@ -206,6 +206,55 @@ check "clock-keys: CLOCK_MSG_OPEN timer -> Timer, raised" sh -c "[ \$(grep -c 'c
 # the words: every one in French (tools/lang/check.py clock: 0 missing)
 check "clock-lang: check.py clock -> 0 missing" sh -c "python3 tools/lang/check.py clock | tail -1 | grep -q ' 0 missing'"
 
+# ==== the World tab (step 6) ======================================================================================
+CITIES='[clock]\ncities = Tokyo,New York,London\n'
+# clock-world (AC-6, 7): Brussels (the card's timezone=120), the simulator's Monday 12:34:00 -> the rows
+seed world; config world "$CITIES"
+run clock world "wait;wait;dump $OUT/world.elsm;exit" SIM_SERVICES=notify,clockd SIM_ARGS=world; png world
+check "clock-world: here 12:34:00 UTC+2, summer time, Brussels" logs world "clock: here 12:34:00 UTC+2 summer (Brussels)"
+check "clock-world: Tokyo 19:34 +7 h" logs world "clock: city Tokyo 19:34 +7 h"
+check "clock-world: New York 06:34 -6 h" logs world "clock: city New York 06:34 -6 h"
+check "clock-world: London 11:34 -1 h" logs world "clock: city London 11:34 -1 h"
+# AC-8 on the window (unit-tested in clocktime_test): at 23:30 Brussels Tokyo is tomorrow; at 01:00 Los Angeles yesterday
+seed late; config late '[clock]\ncities = Tokyo,Los Angeles\n'
+run clock late "wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=world SIM_CLOCK=20260928233000 SIM_TZ=120
+check "clock-world: 23:30 -> Tokyo 06:30 tomorrow" logs late "clock: city Tokyo 06:30 +7 h tomorrow"
+seed early; config early '[clock]\ncities = Tokyo,Los Angeles\n'
+run clock early "wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=world SIM_CLOCK=20260929010000 SIM_TZ=120
+check "clock-world: 01:00 -> Los Angeles 16:00 yesterday" logs early "clock: city Los Angeles 16:00 -9 h yesterday"
+# the seconds tick, the minute's rows printed again (SIM_CLOCK advances: 3000 steps = 60 s)
+seed tick; config tick "$CITIES"
+run clock tick "wait;$(waits 3010)exit" SIM_SERVICES=notify,clockd SIM_ARGS=world SIM_CLOCK=20260928123400 SIM_TZ=120
+check "clock-world: a minute later, the rows again (Tokyo 19:35)" logs tick "clock: city Tokyo 19:35 +7 h"
+# clock-cities (AC-9): Ctrl+N + Enter adds the first of the picker (Amsterdam, the names sorted) at the end; Ctrl+Up
+# moves it up; Delete removes the selection; restarted, the same list; the picker never lists a city chosen
+seed cities; config cities "$CITIES"
+run clock cities "wait;mods 1;key 14;mods 0;wait;dump $OUT/cities.elsm;key 13;wait;mods 1;key 0x100;mods 0;wait;key 0x108;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=world; png cities
+check "clock-cities: the picker lists the 20 zones not chosen" logs cities "clock: add a city (20 zones)"
+check "clock-cities: Enter adds Amsterdam at the end" logs cities "clock: cities Tokyo,New York,London,Amsterdam"
+check "clock-cities: Ctrl+Up moves it up" logs cities "clock: cities Tokyo,New York,Amsterdam,London"
+check "clock-cities: Delete removes it" sh -c "[ \$(grep -c 'clock: cities Tokyo,New York,London\$' '$OUT/log/cities.log') = 1 ]"
+check "clock-cities: config.ini cities = in the order shown" test "$(kv cities $CF 1 cities)" = "Tokyo,New York,London"
+run clock cities "wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=world
+check "clock-cities: restarted, the same list" sh -c "grep -q 'clock: city Tokyo' '$OUT/log/cities.log' && grep -q 'clock: city London' '$OUT/log/cities.log' && ! grep -q 'Amsterdam' '$OUT/log/cities.log'"
+# the filter: "lon" keeps London's neighbours only
+seed filter; config filter '[clock]\ncities = Tokyo\n'
+run clock filter "wait;mods 1;key 14;mods 0;key d;key u;key b;wait;key 13;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=world
+check "clock-cities: typing filters (dub + Enter -> Dublin)" logs filter "clock: cities Tokyo,Dublin"
+# the 13th refused
+seed full; config full '[clock]\ncities = Brussels,Paris,Amsterdam,Luxembourg,Berlin,Zurich,Vienna,Rome,Madrid,Stockholm,Warsaw,London\n'
+run clock full "wait;mods 1;key 14;mods 0;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=world
+check "clock-cities: a 13th city refused" logs full "clock: city refused (12 already)"
+check "clock-cities: ... no picker" nolog full "clock: add a city"
+# clock-nozone (AC-10): no zone= and no timezone= -> Time zone not set; its button runs control langconf
+seed nozone; config nozone "$CITIES"; mkdir -p "$OUT/w/nozone/etc"; printf 'language=en\n' > "$OUT/w/nozone/etc/system.ini"
+run clock nozone "wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=world
+xy=$(sed -n 's/.*Language & Region at \([0-9]*\),\([0-9]*\).*/\1 \2/p' "$OUT/log/nozone.log" | head -1)
+check "clock-nozone: Time zone not set" logs nozone "time zone not set"
+run clock nozone "wait;wait;down $xy;up $xy;wait;dump $OUT/nozone.elsm;exit" SIM_SERVICES=notify,clockd SIM_ARGS=world; png nozone
+check "clock-nozone: its button runs control langconf" logs nozone "sim: exec SD:apps/control.app/main langconf"
+check "clock-nozone: the cities with their UTC offset only" logs nozone "clock: city Tokyo 21:34 "
+
 echo
 if [ $FAILS -ne 0 ]; then echo "clock-sim: $FAILS of $((PASS + FAILS)) checks FAILED"; exit 1; fi
 echo "clock-sim: all $PASS checks passed"

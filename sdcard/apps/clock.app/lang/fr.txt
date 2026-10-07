@@ -152,3 +152,6 @@ Start / Stop	Démarrer / arrêter
 1 minute	1 minute
 Space	Espace
 Alarms and timers…	Alarmes et minuteurs…
+Clock not set yet	Horloge pas encore réglée
+No city matches	Aucune ville ne correspond
+1 city · up to 12	1 ville · 12 au plus
