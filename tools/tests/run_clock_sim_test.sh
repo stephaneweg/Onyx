@@ -255,6 +255,77 @@ run clock nozone "wait;wait;down $xy;up $xy;wait;dump $OUT/nozone.elsm;exit" SIM
 check "clock-nozone: its button runs control langconf" logs nozone "sim: exec SD:apps/control.app/main langconf"
 check "clock-nozone: the cities with their UTC offset only" logs nozone "clock: city Tokyo 21:34 "
 
+# ==== the Alarms tab and the editor (step 7) =======================================================================
+FX=$D/clock/alarms.txt					# (07:00 School weekdays on, 14:30 Medicine once today on, 09:00 Gym weekends off)
+fixture () { cp $FX "$OUT/w/$1/$AL"; cp $FX "$OUT/fix/$1.alarms"; }
+# the editor's controls (the card centred in 560 x 440; client coordinates): Weekdays, OK
+WEEKDAYS="293 253"
+# clock-alarm-new (AC-11, 15): Ctrl+N, Tab Tab (the label), School, Weekdays, Enter -> one [alarm] block, clockd told
+seed new; run clock new "wait;mods 1;key 14;mods 0;wait;key 0x09;key 0x09;key S;key c;key h;key o;key o;key l;down $WEEKDAYS;up $WEEKDAYS;wait;dump $OUT/new.elsm;key 13;wait;wait;exit" \
+	SIM_SERVICES=notify,clockd SIM_ARGS=alarms; png new
+check "clock-alarm-new: the editor (New Alarm)" logs new "clock: editor new"
+check "clock-alarm-new: one [alarm] block" test "$(grep -c '^\[alarm\]' "$OUT/w/new/$AL")" = 1
+check "clock-alarm-new: time = 07:00, label = School, on = 1" sh -c "[ '$(kv new $AL 1 time)' = 07:00 ] && [ '$(kv new $AL 1 label)' = School ] && [ '$(kv new $AL 1 on)' = 1 ]"
+check "clock-alarm-new: days = mon tue wed thu fri, sound = chimes" sh -c "[ '$(kv new $AL 1 days)' = 'mon tue wed thu fri' ] && [ '$(kv new $AL 1 sound)' = chimes ]"
+check "clock-alarm-new: clockd told (RELOAD)" logs new "sim: send clockd type 2"
+check "clock-alarm-new: shown: 07:00 School, Weekdays" logs new "clock: alarm 1 07:00 School [Weekdays] on"
+seed newfr fr; run clock newfr "wait;mods 1;key 14;mods 0;wait;key 0x09;key 0x09;key S;key c;key h;key o;key o;key l;down $WEEKDAYS;up $WEEKDAYS;wait;key 13;wait;wait;exit" \
+	SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-alarm-new (fr): the same tokens written (days = mon tue wed thu fri, sound = chimes)" sh -c "[ '$(kv newfr $AL 1 days)' = 'mon tue wed thu fri' ] && [ '$(kv newfr $AL 1 sound)' = chimes ]"
+check "clock-alarm-new (fr): shown in French (En semaine)" logs newfr "clock: alarm 1 07:00 School [En semaine] on"
+# AC-13: a once alarm made at 12:34 for 10:00 -> tomorrow; for 13:00 -> today (the hours typed, Enter: committed, OK)
+seed once10; run clock once10 "wait;mods 1;key 14;mods 0;wait;key 1;key 0;key 13;wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-once: 10:00 made at 12:34 -> date = 20260929" sh -c "[ '$(kv once10 $AL 1 time)' = 10:00 ] && [ '$(kv once10 $AL 1 date)' = 20260929 ]"
+seed once13; run clock once13 "wait;mods 1;key 14;mods 0;wait;key 1;key 3;key 13;wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-once: 13:00 made at 12:34 -> date = 20260928" sh -c "[ '$(kv once13 $AL 1 time)' = 13:00 ] && [ '$(kv once13 $AL 1 date)' = 20260928 ]"
+# clock-next (AC-12): the fixtures -> today 14:30 in 1 h 56; School alone -> tomorrow 07:00 in 18 h 26; all off -> none
+seed next3; fixture next3; run clock next3 "wait;wait;dump $OUT/alarms.elsm;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms; png alarms
+check "clock-next: Next alarm: today 14:30 -- in 1 h 56 min" logs next3 "clock: next today 14:30 in 1 h 56 min"
+check "clock-next: the rows sorted by time (07:00, 09:00, 14:30)" test "$(grep 'clock: alarm [0-9]' "$OUT/log/next3.log" | head -3 | cut -d' ' -f4 | tr '\n' ' ')" = "07:00 09:00 14:30 "
+check "clock-next: Gym off, Medicine once (AC-14's words)" sh -c "grep -q 'clock: alarm 3 09:00 Gym \[Weekends\] off' '$OUT/log/next3.log' && grep -q 'clock: alarm 2 14:30 Medicine \[Once\] on' '$OUT/log/next3.log'"
+seed next1; alarms next1 '[alarm]\nid = 1\ntime = 07:00\nlabel = School\non = 1\ndays = mon tue wed thu fri\n'
+run clock next1 "wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-next: School alone -> tomorrow 07:00 in 18 h 26 min" logs next1 "clock: next tomorrow 07:00 in 18 h 26 min"
+seed next0; fixture next0; run clock next0 "wait;key 32;wait;key 0x101;key 0x101;key 32;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-next: Space turns the selection off (School, then Medicine) -> No alarm set" logs next0 "clock: next none"
+check "clock-next: ... written on = 0 (block 1 and 2)" sh -c "[ '$(kv next0 $AL 1 on)' = 0 ] && [ '$(kv next0 $AL 2 on)' = 0 ]"
+check "clock-next: ... clockd told each time" test "$(count next0 'sim: send clockd type 2')" = 2
+# AC-14: the repeat words; a custom set (Mon, Wed, Fri), every day -- in English and French
+seed rep; alarms rep '[alarm]\nid = 1\ntime = 06:00\non = 1\ndays = mon wed fri\n[alarm]\nid = 2\ntime = 06:30\non = 1\ndays = mon tue wed thu fri sat sun\n'
+run clock rep "wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-repeat: Mon, Wed, Fri; Every day; no label -> Alarm" sh -c "grep -q 'clock: alarm 1 06:00 Alarm \[Mon, Wed, Fri\] on' '$OUT/log/rep.log' && grep -q 'clock: alarm 2 06:30 Alarm \[Every day\] on' '$OUT/log/rep.log'"
+seed repfr fr; cp "$OUT/w/rep/$AL" "$OUT/w/repfr/$AL"
+run clock repfr "wait;wait;dump $OUT/alarms-fr.elsm;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms; png alarms-fr
+check "clock-repeat (fr): lun., mer., ven.; Tous les jours; Alarme" sh -c "grep -q 'clock: alarm 1 06:00 Alarme \[lun., mer., ven.\] on' '$OUT/log/repfr.log' && grep -q 'Tous les jours' '$OUT/log/repfr.log'"
+# Delete: the selection deleted, written, clockd told
+seed del; fixture del; run clock del "wait;key 0x108;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-delete: Delete deletes the selected alarm (School)" sh -c "! grep -q School '$OUT/w/del/$AL' && grep -q Medicine '$OUT/w/del/$AL'"
+check "clock-delete: clockd told" logs del "sim: send clockd type 2"
+# clock-21 (AC-15): 20 alarms -> Ctrl+N refused
+seed a21; : > "$OUT/w/a21/$AL"; for i in $(seq 1 20); do printf '[alarm]\nid = %d\ntime = 06:%02d\non = 1\ndays = sun\n' $i $i >> "$OUT/w/a21/$AL"; done
+run clock a21 "wait;mods 1;key 14;mods 0;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-21: a 21st alarm refused" logs a21 "clock: alarm refused (20 already)"
+check "clock-21: ... no editor" nolog a21 "clock: editor new"
+# clock-invalid (AC-16): time = 25:99 shown Invalid; an unknown key kept when the app saves (a toggle)
+seed inv; alarms inv '[alarm]\nid = 1\ntime = 07:00\nlabel = School\non = 1\ndays = mon\ncolour = red\n[alarm]\nid = 9\ntime = 25:99\nlabel = Broken\non = 1\n'
+run clock inv "wait;key 32;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-invalid: 25:99 shown Invalid" logs inv "clock: alarm 9 invalid"
+check "clock-invalid: the unknown key kept after a save (colour = red)" test "$(kv inv $AL 1 colour)" = red
+check "clock-invalid: ... the invalid time written back as it was" test "$(kv inv $AL 2 time)" = 25:99
+check "clock-invalid: ... and the toggle written (on = 0)" test "$(kv inv $AL 1 on)" = 0
+# clock-edit-keys (G9, AC-41): (a) the editor on School, the focus on Hours, 8 typed, Enter -> time = 08:00 saved;
+# (b) 8 typed, Esc -> nothing written
+seed ekeys; fixture ekeys; run clock ekeys "wait;key 13;wait;key 56;key 13;wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-edit-keys (a): Enter over Hours: the 8 committed, then OK (time = 08:00)" sh -c "[ '$(kv ekeys $AL 1 time)' = 08:00 ] && [ '$(kv ekeys $AL 1 label)' = School ]"
+seed ekeys2; fixture ekeys2; run clock ekeys2 "wait;key 13;wait;key 56;key 27;wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-edit-keys (b): Esc over Hours: the editor closed, alarms.txt unchanged" sh -c "grep -q 'clock: editor cancelled' '$OUT/log/ekeys2.log' && cmp -s '$OUT/w/ekeys2/$AL' '$OUT/fix/ekeys2.alarms'"
+# the editor's Delete (the double click: the editor; its Delete button)
+seed edel; fixture edel; run clock edel "wait;key 13;wait;down 120 364;up 120 364;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-edit: the editor's Delete deletes School" sh -c "grep -q 'clock: alarm 1 deleted' '$OUT/log/edel.log' && ! grep -q School '$OUT/w/edel/$AL'"
+# alarms.txt cannot be written: the change kept, Not saved in the footer (logged)
+seed rofs; fixture rofs; run clock rofs "wait;key 32;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms SIM_ROFS=SD:/apps/clock.app
+check "clock-rofs: a read-only card -> not saved, said" logs rofs "clock: alarms.txt not saved"
+
 echo
 if [ $FAILS -ne 0 ]; then echo "clock-sim: $FAILS of $((PASS + FAILS)) checks FAILED"; exit 1; fi
 echo "clock-sim: all $PASS checks passed"

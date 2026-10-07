@@ -13,3 +13,4 @@
 static void ring_alarm (int id) { say ("ring %d", id); tab_show (TAB_ALARMS); }
 static void ring_tick () {}
 static void sound_stop () {}
+static int sound_test (const char *) { return -1; }

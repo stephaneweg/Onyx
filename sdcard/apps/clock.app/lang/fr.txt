@@ -155,3 +155,5 @@ Alarms and timers…	Alarmes et minuteurs…
 Clock not set yet	Horloge pas encore réglée
 No city matches	Aucune ville ne correspond
 1 city · up to 12	1 ville · 12 au plus
+1 alarm · %d on	1 alarme · %d active
+Not saved: the card is full or read-only	Non enregistré : la carte est pleine ou en lecture seule
