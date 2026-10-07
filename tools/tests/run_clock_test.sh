@@ -2,6 +2,9 @@
 # run_clock_test.sh -- the PC unit tests of the Clock and clockd (AutoDev round 6, docs: autodev/rounds/06-clock/):
 #   step 0  the stand-in kernel's SIM_CLOCK / SIM_TZ / set_timezone (clock/sim_probe.cpp)
 #   step 1  SystemKit's locale_zone_offset_at and locale_zone_sync (clock/zone_test.cpp)
+#   step 3  the core beside the app, user/Apps/clock/{alarms,clocktime}.cpp: clock/alarm_test.cpp (03 §8.1),
+#           clock/clocktime_test.cpp (§8.2) -- the Clock's sources at -Wall -Wextra -Werror, built twice (-O1 with
+#           UBSan, -O2)
 # Each test program is linked with the desktop simulator's fakekapi.o when it needs the kapi (the files go to a
 # fresh SIM_WRITES of their own). UndefinedBehaviorSanitizer on (AddressSanitizer cannot be: its shadow memory
 # covers the address where fakekapi maps the kernel's table).
@@ -76,5 +79,22 @@ zone card SIM_CLOCK=20261025023000 SIM_TZ=120;								none card
 fix nowhere 'zone=Nowhere\ntimezone=120\n'; zone nowhere SIM_CLOCK=20261025025930 SIM_TZ=120;		none nowhere; same nowhere
 fix noclock 'zone=Brussels\ntimezone=60\n'; zone noclock;							none noclock; same noclock
 echo "clock: SystemKit's locale_zone_sync: ok"
+
+# ---- step 3: the core (alarms, clocktime) -------------------------------------------------------------------
+CORE="user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp"
+for O in "-O1 $SAN" "-O2"; do
+	tag=$(echo "$O" | cut -c2-3)
+	for f in $CORE; do $CXX $O -I user/Apps -Wall -Wextra -Werror -c $f -o "$OUT/$(basename $f .cpp)_$tag.o" || fail "$f does not build ($O)"; done
+	$CXX $O -I user/Apps -Wall -Wextra -Werror -o "$OUT/alarm_test_$tag" $T/alarm_test.cpp "$OUT/alarms_$tag.o" "$OUT/clocktime_$tag.o" "$OUT/fakekapi.o" -lpthread
+	$CXX $O -I user/Apps -Wall -Wextra -Werror -o "$OUT/clocktime_test_$tag" $T/clocktime_test.cpp "$OUT/clocktime_$tag.o" "$OUT/fakekapi.o" -lpthread
+	W="$OUT/wa_$tag"; rm -rf "$W"; mkdir -p "$W"
+	env -u SIM_CLOCK -u SIM_TZ SIM_WRITES="$W" SIM=exit "$OUT/alarm_test_$tag" > "$OUT/alarm_$tag.log" 2>&1 || { cat "$OUT/alarm_$tag.log"; fail "the alarms ($O)"; }
+	env -u SIM_CLOCK -u SIM_TZ SIM_WRITES="$W" SIM=exit "$OUT/clocktime_test_$tag" > "$OUT/clocktime_$tag.log" 2>&1 || { cat "$OUT/clocktime_$tag.log"; fail "clocktime ($O)"; }
+	echo "clock: the core ($O): $(cat "$OUT/alarm_$tag.log"); $(cat "$OUT/clocktime_$tag.log")"
+done
+# (the core needs no UI and no kernel call of its own: no uikit, no kapi_ in its sources)
+for f in $CORE user/Apps/clock/alarms.h user/Apps/clock/clocktime.h; do
+	if sed 's://.*$::' $f | grep -n 'uikit\|kapi_'; then fail "$f reaches UIKit or the kernel"; fi
+done
 
 echo "clock: all checks passed"
