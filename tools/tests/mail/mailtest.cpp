@@ -218,6 +218,13 @@ static void test_oauth ()
 	Imap im; CHECK (im.connect ("127.0.0.1", port ("IMAP_PORT", 10143), SEC_NONE, "me@onyx.test", "tok-2", true), "xoauth2 imap: %s", im.err); im.logout ();
 	Imap bad; CHECK (!bad.connect ("127.0.0.1", port ("IMAP_PORT", 10143), SEC_NONE, "me@onyx.test", "tok-9", true), "bad token refused");
 	Smtp s; CHECK (s.connect ("127.0.0.1", port ("SMTP_PORT", 10587), SEC_NONE, "me@onyx.test", "tok-1", true), "xoauth2 smtp: %s", s.err); s.quit ();
+	// a token as long as Microsoft's (2-3 KB: once over SMTP's and POP3's command buffers)
+	static char lt[2600]; strcpy (lt, "tok-L"); memset (lt + 5, 'x', 2500); lt[2505] = 0;
+	Smtp sl; CHECK (sl.connect ("127.0.0.1", port ("SMTP_PORT", 10587), SEC_NONE, "me@onyx.test", lt, true), "xoauth2 smtp, a long token: %s", sl.err); sl.quit ();
+	Smtp sb; CHECK (!sb.connect ("127.0.0.1", port ("SMTP_PORT", 10587), SEC_NONE, "me@onyx.test", "tok-9", true) && strstr (sb.err, "535"), "xoauth2 smtp, a bad token: %s", sb.err); sb.quit ();
+	Pop3 pl; CHECK (pl.connect ("127.0.0.1", port ("POP_PORT", 10110), SEC_NONE, "me@onyx.test", lt, true), "xoauth2 pop3, a long token: %s", pl.err); pl.quit ();
+	Pop3 pb; CHECK (!pb.connect ("127.0.0.1", port ("POP_PORT", 10110), SEC_NONE, "me@onyx.test", "tok-9", true) && strstr (pb.err, "Token refused"), "xoauth2 pop3, a bad token: %s", pb.err); pb.quit ();
+	Imap il; CHECK (il.connect ("127.0.0.1", port ("IMAP_PORT", 10143), SEC_NONE, "me@onyx.test", lt, true), "xoauth2 imap, a long token: %s", il.err); il.logout ();
 }
 
 static void test_tls ()
