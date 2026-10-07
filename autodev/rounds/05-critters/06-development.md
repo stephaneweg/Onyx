@@ -126,3 +126,85 @@ without its role and its count at 0).
   `user/Makefile`, `app.txt`, `icon.bmp`, `fileassoc.ini`, `packages.ini` (declared only), docs, HANDOFF, IDEAS.
 - AC-28's click on T1: with `training-01-straight-down.sol` minus its line (or `--until 60`), creature 0 walks on the
   floor at `y = 79` from step 49 (x ≈ 80 + (step − 49)); `crsim … --where N` gives any other position.
+
+## Developer B — steps 10–14 (the window, French, the card, the package declared, the screenshots, the docs)
+
+Everything of the window is beside the app (`user/Apps/critters/main.cpp`, `draw.h`, `bar.h`, `picker.h`; MIT notice),
+on UIKit's existing widgets (`LcdDisplay`, `ToolButton`, `Button`, `Menu`, `VPath`) and drawn widgets of its own. **No
+kapi, kernel, AppKit, UIKit, kit, simulator or `game.h` change** (`git diff --stat origin/main -- kernel user/Kits` is
+empty); the core is untouched (its test passes unchanged, fingerprint `1492ed8e6873c835`).
+
+### What was done, by step (and the GUI plan's G1–G10)
+
+| Step | Files | What |
+|---|---|---|
+| 10 — the window, play first (G1–G7) | `main.cpp`, `draw.h`, `bar.h` | `Root (800, 448)` fixed; `CrittersView : GameView` (800 × 320) with the terrain blitted x2 from `vx` (a narrower level centred, the bars in the sky's tone), the labels painted into the colour layer once (D22), the exits pulsing, the hatches (closed until the start card goes), the creatures (04 §5.1's `VPath` drawings lifted from `crmock.cpp`, **pre-rendered once per pose into frames with an opacity** — drawn on black and on white, 05 note 1 — and blended; the exit's shrink, drowning, burning, splat), the countdown digits, the burst particles (drawing only), the brackets (white / red, the Tab triangle); scrolling by ← / → held (Shift ×3), Home / End, the 8-px edges, the wheel (`onMouse` overridden, 05 note 6), a right-button drag, the minimap. `Clock::due` steps the world (`Replay::apply_due` before each tick); the world runs only with no card and not paused. `StatusLine` (the chosen role, what is under the pointer and the refusal said before the click, *(n here)*, Out / Saved / Time; D13's amber message from `onlyBlockersLeft ()`), `SkillSlot` × 11 (counts, greyed at 0, the basher and the miner "–", P / F lit, N pulsing), the rate `LcdDisplay` (±5, the buttons disabled at the ends), `MiniMap` (rebuilt on `take_dirty ()`, at most every 10 steps). Giving roles by a click or Tab / Shift+Tab / Enter (fact 4); a click while paused blips. The overlays: the start card, the pause banner (not modal), the fast pill, the Paused card (Resume / Restart Level / Back to the levels), the All explode card (pauses the world, N / Enter confirm, Esc / a click outside cancel — D12), How to play (F1), the end card (Retry / Next / Levels: Next focused when won and a next level exists, Retry when lost). The cards' buttons are root children shown with them; the arrows / Tab move between them, the view returns true for every key while a card shows. The sounds per `Event` (at most 3 a tick) + `sfx_win` / `sfx_lose`; `--until` runs headless with **no sound** (05 note 3). Log lines `critters: picker (N levels)`, `playing <name>`, `refused <file>: line N: <reason>`, `role <word> c<i> ok|refused (<n> left)`, `end won|lost s/n Ts`, `progress written`, `overlay card|pause|none|menu|nuke|end|help` |
+| 11 — picker, end screen, progress (G8, G9) | `picker.h`, `main.cpp`, `tools/tests/run_critters_sim_test.sh`, fixtures | `LevelList` (the groups' headings, the number badges, tick + best / *new* / lock, a refused file in a 40-px row with its reason in red, scrolling: wheel, keys, bar), `Preview` (the terrain sampled once into a cached canvas from the scratch level, hatches and exits; locked: dimmed + lock badge; refused: the warning card), `LevelInfo`, `Legend`, *Play* (disabled when locked / refused); only the facts are kept per entry (05 note 5: one full `Level` for the game, one scratch for the picker). The chain = the shipped levels in order (`progress_open`); the chosen row at start: `[settings] last`, else the first open level not solved. `progress.ini` (`FK_KV_ESCAPES`) written at each won level, on the sound's switch and when `last` changes; a lost run writes no result. The menus *Game* (Restart Level ^R, Pause, Fast Forward, All Explode, Levels… Esc, Open a Level File… ^O, Sound On / Off, Quit ^Q) and *Help* (How to Play F1, About Critters). The command line `[file.level] [--replay file.sol] [--until N|end]` (a path may hold spaces: it ends at " --"); a bad `.sol` → a message box with its line, then the level normally |
+| 12 — French (G10) | `sdcard/apps/critters.app/lang/fr.txt` | 122 words (the UI, the menus, the 19 loader / `.sol` reasons and the "too many" words); `check.py critters` → 0 missing. A **no-break space** before the French `:` `?` `!` `;` (in `fr.txt`, and in the levels' `.fr` texts through `mklevels.py`'s `nbsp ()`) so a wrapped line never starts with ":" — seen on the French start card |
+| 13 — card, build, package | `app.txt`, `icon.bmp` + `tools/icons/critters_icon.py`, `user/Makefile`, `sdcard/etc/fileassoc.ini`, `tools/pkg/packages.ini` | `FT_APPS += critters`, `FT_EXTRA_critters` = the core + `lib/audiokit.imp.a`, `critters.elf`'s dependencies; `# Critters` / `level = critters`; `[app.critters]` `needs = uikit >= 1.781, audiokit >= 1.232, filekit >= 1.96, fontkit >= 1.135`, `opens = level` — **declared, not published** (`versions.ini` untouched) |
+| 14 — screenshots, docs | `tools/tests/desktop_sim/shots.sh` (build `extra`, the FT list, `APPS`, a `critters` block), `screenshots/critters*.png`, docs/04 §12 (catalogue row + a *Critters* section: rules, roles, controls, levels, files, the `.level` format with the example and the errors, the `.sol` format, `--replay` / `--until`, "All explode ends a level a blocker keeps alive", the translated-apps list), docs/03 (the apps list + the translated list), `docs/HANDOFF.md`, `IDEAS.md` (*Lemmings-like* → done), `python3 docs/build_docs.py` (.docx by pandoc, .pdf by LibreOffice: all regenerated) | the shots follow 05 notes 2 and 4: `--until` then `key p`, a role chosen, the pointer on a creature (its place from `crsim --where`), the solutions and two player's levels copied into the writes' folder |
+
+### Commits (on `AutoDev`)
+
+- `dd3eb0fa` Critters: the window (steps 10-11) — play view, skill bar, status line, minimap, cards, picker, end screen, progress file, --replay / --until; the simulator test (AC-26, 27, 28)
+- `228ebd7b` Critters: French (fr.txt, no-break spaces in the levels' French), the card (app.txt, icon), user/Makefile, fileassoc, the package declared (steps 12-13)
+- `6e38946d` Critters: the simulator's scenario (shots.sh critters) and the screenshots (step 14)
+- `23029ec0` Critters: docs — docs/04, docs/03, HANDOFF, IDEAS; exports regenerated (step 14)
+- (this section's commit)
+
+### Tests run (real results)
+
+| Test | Result |
+|---|---|
+| `sh tools/tests/run_critters_test.sh` | **passes**: `ok   critters (930 checks: 12 levels, 12 solutions, 66145 steps)`, fingerprint `1492ed8e6873c835` equal in both builds (also after the levels' French no-break spaces) |
+| `sh tools/tests/run_critters_sim_test.sh` (new; the app's sources at `-Wall -Wextra`, no warning) | **`critters-sim: all 25 checks passed`** — AC-26 (broken.level refused `line 24: unknown block [shap]`, no level started, the picker; the same in French, looked at; my-first-level.level played at once with its start card, `[settings] last`), AC-27 (`quick.level --replay quick.sol --until end` → `end won 5/1 9s`, the end card, `[user.quick] solved 1 / saved 5 / time 9`, `last = user.quick`; the same level played live on the clock → won; Mind the Gap with nothing done → lost, no result written), AC-28 (Digger slot clicked, creature 0 clicked → `critters: role digger c0 ok (2 left)`; the same by 5, Tab, Enter; a role with no count is not chosen), P / P, Esc / Esc, N / Esc, N / Enter, Ctrl+R restarts, a locked level not played |
+| `python3 tools/lang/check.py critters` | `critters [fr]: 122 words, 0 missing, 0 not used` |
+| `sh tools/tests/desktop_sim/shots.sh critters` | the 7 PNGs below, each looked at (EN and FR): nothing cut or overflowing (the French status line, *DÉBIT*, the cards, the help card, the picker's longest names fit) |
+| `shots.sh pinball invaders` (scratch PNGs, AC-36) | `cmp` equal to `screenshots/` for all 6 (`invaders`, `pinball`, `-play`, `-multiball`, `-broken`, `-fr`) |
+| `sh tools/tests/run_pinball_sim_test.sh` (shots.sh / fileassoc shared) | `pinball-sim: all 19 checks passed` |
+| `sh tools/tests/run_pinball_test.sh`, `sh tools/tests/run_circuits_test.sh` (FileKit's reader shared) | `ok pinball (516 checks …)`, fingerprint `73999beb7987e858` in both builds; `ok circuits (582 checks …)` |
+| `sh tools/tests/desktop_sim/run.sh` | `desktop_sim: done` |
+| AC-34 / AC-37 greps | `git diff --stat origin/main -- kernel user/Kits` empty; every new source has "MIT License"; `grep -ril lemming` over the app, its card folder, its tools, tests and fixtures: nothing |
+
+(`shots.sh` builds every app: 3dforge / paint / pdf / printconf fail to link on the PC — `print_*` undefined, PrinterKit
+not linked by the host build — before this round too; not touched.)
+
+### Screenshots
+
+`screenshots/critters.png` (the picker: Training 1–3 solved, Up the Wall new, My levels with a refused file),
+`critters-play.png` (Two Ways at step 500: Digger chosen, the brackets on a walker), `critters-build.png` (Steel Floor:
+a shaft stopped on steel, a builder's stair, an exploder's 3, the Tab highlight — from the shots-only
+`tools/tests/desktop_sim/critters/steel-floor-show.sol`), `critters-end.png` (Mind the Gap won 9/10 in 0:36, New best!),
+`critters-help.png` (How to play), `critters-fr.png` (the picker in French, Tenir la ligne), `critters-play-fr.png`
+(the French start card of Tout droit vers le bas).
+
+### Deviations (and why)
+
+1. **A seventh screenshot**, `critters-help.png` (the *How to play* card), for docs/04's roles table (the GUI plan's
+   option); the six of AC-25 are there.
+2. **`critters-build` uses a shots-only `.sol`** (`steel-floor-show.sol`: the recorded digger + builder, then a second
+   digger and an exploder) — the real solution has neither an exploder nor a shaft stopped on steel; it is not a
+   solution (it loses) and lives with the simulator's fixtures, not with the tested solutions.
+3. **The levels' French gained no-break spaces** (`mklevels.py` `nbsp ()`; 6 level files regenerated, their geometry
+   unchanged — the core test's fingerprint is the same).
+4. **`New best!` only for a level solved before** (Developer A's `progress_won`); a first win shows *The next level is
+   open.* (or *Well done!* at the last level / a player's level) in its place. The French: *Le niveau suivant est
+   ouvert.* / *Bravo !*.
+5. **The status line's refusal words** are role-independent except *cannot block / build / dig now* (04 named only
+   *Falling — cannot dig now*); the state words are *Walker*, *Falling*, *Floating*, *Climbing*, *Blocker*, *Builder*,
+   *Digger*, *Out of bricks*, *Leaving* (+ the countdown digit).
+6. **The role chosen at the start** is the first one the level gives (so a click works at once); the slot hovered shows
+   *Builder · key 4* in the status line's "under the pointer" part.
+7. **Help over the picker**: F1 on the picker shows the same card as a widget of its own (no dimming there).
+8. **Not done (small)**: the slot's 0.2-s flash on `E_ROLE`, the exit's flare on `E_SAVED`, the brick's white flash on
+   `E_BRICK_WARN`; the player's actions are not recorded (`Recorder` unused: SHOULD 4 / `--record` not built); the
+   gamepad (SHOULD 3); `critters --check` (SHOULD 2); the basher and the miner (SHOULD 1: slots 7–8 greyed).
+
+### What could not be done here
+
+- **The Pi build**: no `aarch64-none-elf-g++` in this container — `make` / `make stage` from `kernel/` are the user's.
+  The `user/Makefile` lines are written as Pinball's (`FT_APPS`, `FT_EXTRA_critters`, `critters.elf`'s dependencies);
+  the window's code builds on the PC with `-Wall -Wextra` and no warning, against the same headers. To check on the Pi:
+  the frame rate (a 400-column ×2 blit, ≤ 80 blended frames and the particles a tick), the held arrows through the real
+  kernel, the sounds.
+- **Publishing**: forbidden in AutoDev — `[app.critters]` is declared only; `tools/pkg/versions.ini` unchanged.
