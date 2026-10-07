@@ -352,6 +352,11 @@ Toolchain absente de la machine de dev Windows → voir
       avatar sans login) et `--login` (live, clic→déplacement, chat). Dump PNG `--shot` pour
       calibrer. **Vérifié** : rend la salle Patio + avatar sur la piste (voir hero.png).
       Origine iso auto-dérivée (`originX += zSize·tileW/4`) — à affiner (formule exacte du moteur `Iso`).
+- [ ] **Port Onyx vers les Kits** (sync `origin/main` du 2026-10 : réorg `wtk`→`uikit`,
+      `ft`→`fontkit`, `libc`→`Runtime/libc`, `json.hpp`→`Include/`, `tls`→`Libs/tls`, kapi v83,
+      import libs `lib/*.imp.a`, AppKit stubs). Le **cœur portable + le build PC sont OK**
+      (PC : ajouter `-Iuser/Include`). Le GUI `platform/onyx/` utilise encore l'API `wtk` et doit
+      passer à `uikit`/`fontkit` (règle `taatu.elf` déjà mise à jour ; hors `all:` tant que non porté).
 - [ ] Écran de login natif Onyx (champs pseudo/mot de passe, invite MFA) + `config.ini`.
 - [ ] Bulles de chat au-dessus des têtes ; animation de marche (frames) ; escaliers (iso Z).
 - [ ] Connexion + entrée en salle de bout en bout (prod ou serveur dev), reconnexion Wi-Fi.

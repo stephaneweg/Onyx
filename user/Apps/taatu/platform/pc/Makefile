@@ -6,7 +6,8 @@
 #
 USER     ?= ../../../..
 CXX      ?= g++
-CXXFLAGS ?= -std=c++14 -O2 -Wall -Wextra -Wno-unused-parameter -Wno-misleading-indentation -I$(USER)
+# -I$(USER)/Include: json.hpp lives under user/Include/ since the Kits reorg.
+CXXFLAGS ?= -std=c++14 -O2 -Wall -Wextra -Wno-unused-parameter -Wno-misleading-indentation -I$(USER) -I$(USER)/Include
 SRC       = main_pc.cpp crypto_pc.cpp
 HDRS      = $(wildcard ../../core/*.hpp) transport_tcp.hpp
 
