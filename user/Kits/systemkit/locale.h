@@ -45,6 +45,12 @@ SK_API int locale_zone_offset (int z);			// minutes from UTC today (the summer t
 SK_API void locale_zone_utc (int z, char *out, int cap);	// "UTC+2", "UTC-3:30", "UTC"
 SK_API int locale_zone (void);				// the one chosen: system.ini's zone=, else the first of its timezone= (-1 none)
 SK_API int locale_set_zone (int z);			// the clock's offset at once, zone= and timezone= kept -> 1 written
+// The zone's offset from UTC at that instant (minutes since 1970, UTC), the hour of the change counted: the EU's
+// summer time from the last Sunday of March 01:00 UTC to the last Sunday of October 01:00 UTC; the US' from the
+// second Sunday of March 02:00 local standard time to the first Sunday of November 02:00 local summer time
+// -> minutes (0 for a zone out of range). Judged from UTC, which never goes back: a city's time is
+// UTC + locale_zone_offset_at (city, UTC), right on the night of a change whatever the local day says.
+SK_API int locale_zone_offset_at (int z, long long utc_minutes);
 
 #if defined (SK_BODIES_INLINE) && !defined (SK_IMPL)
 #include "locale.inc"

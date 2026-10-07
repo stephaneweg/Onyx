@@ -170,6 +170,41 @@ SK_FN void locale_zone_utc (int z, char *out, int cap)
 	ax_itoa (a / 60, num); ax_strcat (out, cap, &n, num);
 	if (a % 60) { ax_strcat (out, cap, &n, ":"); ax_fmt2 (num, a % 60); num[2] = 0; ax_strcat (out, cap, &n, num); }
 }
+// The days from 1970-01-01 of a date, and the year of such a day (H. Hinnant's days_from_civil / civil_from_days).
+static inline long long locale_days_ (int y, int m, int d)
+{
+	long long yy = y - (m <= 2), era = (yy >= 0 ? yy : yy - 399) / 400, yoe = yy - era * 400;
+	long long doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1, doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+	return era * 146097 + doe - 719468;
+}
+static inline int locale_year_ (long long days)
+{
+	long long z = days + 719468, era = (z >= 0 ? z : z - 146096) / 146097, doe = z - era * 146097;
+	long long yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365, doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+	long long mp = (5 * doy + 2) / 153, m = mp < 10 ? mp + 3 : mp - 9;
+	return (int) (yoe + era * 400 + (m <= 2));
+}
+SK_FN int locale_zone_offset_at (int z, long long utc_minutes)
+{
+	const struct LocaleZone *p = locale_zone_at (z);
+	long long day, start, end;
+	int y;
+	if (!p) return 0;
+	if (p->dst == LOCALE_DST_NONE) return p->std;
+	day = utc_minutes >= 0 ? utc_minutes / 1440 : -((-utc_minutes + 1439) / 1440);	// (floored)
+	y = locale_year_ (day);
+	if (p->dst == LOCALE_DST_EU)			// the last Sundays of March and October, 01:00 UTC
+	{
+		start = locale_days_ (y, 3, 31 - locale_dow (y, 3, 31)) * 1440 + 60;
+		end = locale_days_ (y, 10, 31 - locale_dow (y, 10, 31)) * 1440 + 60;
+	}
+	else						// the 2nd Sunday of March 02:00 standard, the 1st of November 02:00 summer
+	{
+		start = locale_days_ (y, 3, 1 + (7 - locale_dow (y, 3, 1)) % 7 + 7) * 1440 + 120 - p->std;
+		end = locale_days_ (y, 11, 1 + (7 - locale_dow (y, 11, 1)) % 7) * 1440 + 120 - (p->std + 60);
+	}
+	return p->std + (utc_minutes >= start && utc_minutes < end ? 60 : 0);
+}
 SK_FN int locale_zone (void)
 {
 	char v[32];

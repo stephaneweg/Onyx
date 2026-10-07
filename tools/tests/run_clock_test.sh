@@ -1,6 +1,7 @@
 #!/bin/sh
 # run_clock_test.sh -- the PC unit tests of the Clock and clockd (AutoDev round 6, docs: autodev/rounds/06-clock/):
 #   step 0  the stand-in kernel's SIM_CLOCK / SIM_TZ / set_timezone (clock/sim_probe.cpp)
+#   step 1  SystemKit's locale_zone_offset_at and locale_zone_sync (clock/zone_test.cpp)
 # Each test program is linked with the desktop simulator's fakekapi.o when it needs the kapi (the files go to a
 # fresh SIM_WRITES of their own). UndefinedBehaviorSanitizer on (AddressSanitizer cannot be: its shadow memory
 # covers the address where fakekapi maps the kernel's table).
@@ -40,5 +41,21 @@ probe noclock
 grep -q '^sim: set_timezone 60$' "$OUT/probe_noclock.log" || fail "set_timezone not logged (SIM_CLOCK unset)"
 probe stat SIM_STAT=1
 echo "clock: the simulator's clock: ok"
+
+# ---- step 1: SystemKit's time zones at an instant -----------------------------------------------------------
+$CXX -O1 -Wall -Wextra -Werror $SAN -o "$OUT/zone_test" $T/zone_test.cpp "$OUT/fakekapi.o" -lpthread
+zone () {	# zone CASE SYSTEM.INI-TEXT ("-": none in the writes, the card's) [VAR=value ...] -- the log in $OUT/zone_CASE.log
+	c=$1; ini=$2; shift 2
+	W="$OUT/wz_$c"; rm -rf "$W"; mkdir -p "$W/etc"
+	[ "$ini" = - ] || printf "$ini" > "$W/etc/system.ini"
+	env -u SIM_CLOCK -u SIM_TZ -u SIM_STAT SIM_WRITES="$W" SIM="$(steps 30)" "$@" "$OUT/zone_test" $c > "$OUT/zone_$c.log" 2>&1 || { cat "$OUT/zone_$c.log"; fail "zone $c"; }
+	grep -q "zone $c: ok" "$OUT/zone_$c.log" || { cat "$OUT/zone_$c.log"; fail "zone $c: no ok"; }
+}
+zone at -
+# (locale.inc is C as well: a C program including systemkit.h has it inline on the PC)
+printf '#include "systemkit/systemkit.h"\nint main (void) { return locale_zone_offset_at (0, 0LL); }\n' > "$OUT/zone_c.c"
+gcc -std=c99 -Wall -Wextra -c $INC "$OUT/zone_c.c" -o "$OUT/zone_c.o" 2> "$OUT/zone_c.warn" || { cat "$OUT/zone_c.warn"; fail "locale.h in C"; }
+grep -q "locale" "$OUT/zone_c.warn" && { cat "$OUT/zone_c.warn"; fail "locale.inc warns in C"; }
+echo "clock: SystemKit's locale_zone_offset_at: ok"
 
 echo "clock: all checks passed"

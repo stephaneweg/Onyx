@@ -35,7 +35,8 @@ KITS = [
    "the event loop."),
   ("12-SYSTEMKIT", "SystemKit", 5, "systemkit", '#include "systemkit/systemkit.h"', "`lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C)",
    ["systemkit/notify.h", "systemkit/clipboard.h", "systemkit/clipproto.h", "systemkit/trash.h", "systemkit/fileassoc.h",
-    "systemkit/volume.h", "systemkit/wallpaper.h", "systemkit/dockconf.h", "systemkit/preloadini.h", "systemkit/autostart.h", "systemkit/applet_proto.h"],
+    "systemkit/volume.h", "systemkit/wallpaper.h", "systemkit/dockconf.h", "systemkit/preloadini.h", "systemkit/autostart.h", "systemkit/locale.h",
+    "systemkit/applet_proto.h"],
    "SystemKit is what a program says to the system and to the other programs: notifications, the "
    "clipboard, the trash, the file associations, the volume, the wallpaper, the dock, the programs loaded "
    "ahead and started at boot, the Control Panel's applets."),

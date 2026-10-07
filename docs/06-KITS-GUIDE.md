@@ -445,6 +445,21 @@ locale_set_language ("fr");                           // kept: the programs star
 locale_set_zone (0);                                  // a time zone (locale_zone_count / _city / _offset): now, and kept
 ```
 
+**The time zones at an instant** (the Clock's World tab): `locale_zone_offset (z)` judges the summer time by
+today's date only; `locale_zone_offset_at (z, utc_minutes)` gives a zone's offset at an exact instant, the hour of
+the change counted (the EU's at 01:00 UTC, the US' at 02:00 local) — a city's time is its UTC plus that offset,
+right on the night of a change whatever the local day says:
+
+```c
+struct kapi_clock_info ci;
+if (kapi_clock_info (&ci) == 0 && (ci.flags & KAPI_CLOCK_REALTIME_VALID))
+{
+    long long utc = ci.utc_us / 60000000;                        // minutes since 1970, UTC
+    int ny = 16;                                                 // locale_zone_city (16): "New York"
+    long long there = utc + locale_zone_offset_at (ny, utc);     // its wall minute now
+}
+```
+
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
 | `notify.h` | Notifications |

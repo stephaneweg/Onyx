@@ -17,7 +17,8 @@
 11. [`systemkit/dockconf.h`](#systemkitdockconfh)
 12. [`systemkit/preloadini.h`](#systemkitpreloadinih)
 13. [`systemkit/autostart.h`](#systemkitautostarth)
-14. [`systemkit/applet_proto.h`](#systemkitappletprotoh)
+14. [`systemkit/locale.h`](#systemkitlocaleh)
+15. [`systemkit/applet_proto.h`](#systemkitappletprotoh)
 
 ---
 
@@ -29,7 +30,7 @@ SystemKit is what a program says to the system and to the other programs: notifi
 |---|---|
 | Include | `#include "systemkit/systemkit.h"` |
 | Link | `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C) |
-| Library | `SD:/lib/systemkit.so` — 76 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
+| Library | `SD:/lib/systemkit.so` — 77 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
 | Sources | `user/Kits/systemkit/` |
 
 ## Using it
@@ -112,6 +113,21 @@ for (int i = 0; i < locale_language_count (); i++)    // the languages Onyx spea
     list->add (locale_language_name (i));
 locale_set_language ("fr");                           // kept: the programs started next speak it
 locale_set_zone (0);                                  // a time zone (locale_zone_count / _city / _offset): now, and kept
+```
+
+**The time zones at an instant** (the Clock's World tab): `locale_zone_offset (z)` judges the summer time by
+today's date only; `locale_zone_offset_at (z, utc_minutes)` gives a zone's offset at an exact instant, the hour of
+the change counted (the EU's at 01:00 UTC, the US' at 02:00 local) — a city's time is its UTC plus that offset,
+right on the night of a change whatever the local day says:
+
+```c
+struct kapi_clock_info ci;
+if (kapi_clock_info (&ci) == 0 && (ci.flags & KAPI_CLOCK_REALTIME_VALID))
+{
+    long long utc = ci.utc_us / 60000000;                        // minutes since 1970, UTC
+    int ny = 16;                                                 // locale_zone_city (16): "New York"
+    long long there = utc + locale_zone_offset_at (ny, utc);     // its wall minute now
+}
 ```
 
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
@@ -207,6 +223,22 @@ Everything the headers declare, in their order — the details are in each heade
 | `preload_ini_save` | -> 1 written, 0 not | `preloadini.h` |
 | `autostart_has` | Is `cmd` ("run stickies", say) started at boot? A line whose words begin with cmd's words -- blanks before it, more words after it allowed ("run stickies --x")  | `autostart.h` |
 | `autostart_ensure` | Make sure `cmd` is started at boot. | `autostart.h` |
+| `locale_ini_get` | system.ini's "key=value" | `locale.h` |
+| `locale_ini_set` | system.ini's "key=value" | `locale.h` |
+| `locale_language_count` |  | `locale.h` |
+| `locale_language_code` | "en", "fr" ("" out of range) | `locale.h` |
+| `locale_language_name` | in the language itself, UTF-8: "English", "Français" | `locale.h` |
+| `locale_language` | The system's language | `locale.h` |
+| `locale_language_index` | its place in the list | `locale.h` |
+| `locale_set_language` | kept in system.ini -> 1 written (the programs started next take it) | `locale.h` |
+| `locale_zone_count` |  | `locale.h` |
+| `locale_zone_city` | "Brussels" ("" out of range) | `locale.h` |
+| `locale_zone_summer` | 1: the zone is on summer time today (by the clock's date) | `locale.h` |
+| `locale_zone_offset` | minutes from UTC today (the summer time counted) | `locale.h` |
+| `locale_zone_utc` | "UTC+2", "UTC-3:30", "UTC" | `locale.h` |
+| `locale_zone` | the one chosen: system.ini's zone=, else the first of its timezone= (-1 none) | `locale.h` |
+| `locale_set_zone` | the clock's offset at once, zone= and timezone= kept -> 1 written | `locale.h` |
+| `locale_zone_offset_at` | The zone's offset from UTC at that instant (minutes since 1970, UTC), the hour of the change counted | `locale.h` |
 
 ---
 
@@ -782,6 +814,66 @@ Make sure `cmd` is started at boot. Nothing written when autostart_has (cmd). El
 
 ```cpp
 int autostart_ensure (const char *cmd, const char *after, const char *comment);
+```
+
+## `systemkit/locale.h`
+
+locale.h -- the system's language and region, kept in SD:/etc/system.ini:
+
+```
+  language = fr        the language of the programs' words ("en" when no line): uikit/lang.h's TR () reads
+                       it (uk_lang_init), a program with words of its own asks locale_language ()
+  zone     = Brussels  the time zone's city (locale_zone_*), beside "timezone=" -- its offset in minutes,
+                       the summer time counted, which the kernel reads at boot
+```
+
+Chosen in the Control Panel's Language & Region applet and in Setup (the first-run wizard). A language is taken by a program when it starts.
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+```cpp
+#define LOCALE_INI	"SD:/etc/system.ini"
+```
+
+system.ini's "key=value": the value in out ("" none) -> 1 found; the key's line replaced (else added) -> 1 written.
+
+```cpp
+int locale_ini_get (const char *key, char *out, int cap);
+int locale_ini_set (const char *key, const char *value);
+```
+
+### the languages Onyx speaks
+
+```cpp
+int locale_language_count (void);
+const char *locale_language_code (int i);	// "en", "fr" ("" out of range)
+const char *locale_language_name (int i);	// in the language itself, UTF-8: "English", "Français"
+```
+
+The system's language: one of the codes ("en" when none, or an unknown one, is said). Read from the file at each call: a program keeps it.
+
+```cpp
+const char *locale_language (void);
+int locale_language_index (void);		// its place in the list
+int locale_set_language (const char *code);	// kept in system.ini -> 1 written (the programs started next take it)
+```
+
+### the time zones
+
+```cpp
+int locale_zone_count (void);
+const char *locale_zone_city (int z);		// "Brussels" ("" out of range)
+int locale_zone_summer (int z);			// 1: the zone is on summer time today (by the clock's date)
+int locale_zone_offset (int z);			// minutes from UTC today (the summer time counted)
+void locale_zone_utc (int z, char *out, int cap);	// "UTC+2", "UTC-3:30", "UTC"
+int locale_zone (void);				// the one chosen: system.ini's zone=, else the first of its timezone= (-1 none)
+int locale_set_zone (int z);			// the clock's offset at once, zone= and timezone= kept -> 1 written
+```
+
+The zone's offset from UTC at that instant (minutes since 1970, UTC), the hour of the change counted: the EU's summer time from the last Sunday of March 01:00 UTC to the last Sunday of October 01:00 UTC; the US' from the second Sunday of March 02:00 local standard time to the first Sunday of November 02:00 local summer time -> minutes (0 for a zone out of range). Judged from UTC, which never goes back: a city's time is UTC + locale_zone_offset_at (city, UTC), right on the night of a change whatever the local day says.
+
+```cpp
+int locale_zone_offset_at (int z, long long utc_minutes);
 ```
 
 ## `systemkit/applet_proto.h`
