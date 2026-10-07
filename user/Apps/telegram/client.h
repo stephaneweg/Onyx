@@ -99,6 +99,10 @@ struct Conv
 	long long typingUntil;		// (ms)
 	int typingKind;			// 0 typing, 1 recording a voice message...
 	unsigned rev;
+	// a person not in the contacts: the bar "Add to contacts / Block" (bar: 0 not known yet, 1 shown, 2 not),
+	// blocked by us
+	signed char bar;
+	bool blocked, asking;
 };
 
 // An open-addressing map of 64-bit keys to indexes (+1; 0 empty).
@@ -167,7 +171,7 @@ enum ReqKind
 {
 	R_NONE, R_SENDCODE, R_SIGNIN, R_SIGNUP, R_GETPASSWORD, R_CHECKPASSWORD, R_SELF, R_STATE, R_DIALOGS, R_CONTACTS,
 	R_HISTORY, R_SEND, R_READ, R_DIFF, R_STATUS, R_TYPING, R_EXPORT, R_IMPORT, R_FILE, R_CONFIG, R_LOGOUT, R_OTHER,
-	R_PART, R_SENDMEDIA, R_ADDCONTACT
+	R_PART, R_SENDMEDIA, R_ADDCONTACT, R_FULLUSER, R_ADDPEER, R_BLOCK, R_HIDEBAR
 };
 
 enum { MAXDC = 6, MAXPEND = 256 };
@@ -411,6 +415,64 @@ public:
 		c->peer = peer;
 		if (!c->loaded && !c->loading) loadHistory (c, 0);
 		markRead (c);
+		askBar (c);
+	}
+
+	// ---- a person who is not a contact: add, block, or the bar hidden ---------------------------------
+
+	// Does the bar show for this conversation? (a user, not us, not a contact, Telegram's settings say so)
+	bool showBar (Conv *c)
+	{
+		if (!c || ptype (c->peer) != P_USER) return false;
+		User *u = user (pid (c->peer));
+		if (!u || u->id == selfId || u->deleted) return false;
+		if (c->blocked) return true;
+		return !u->contact && c->bar == 1;
+	}
+	void askBar (Conv *c)
+	{
+		if (ptype (c->peer) != P_USER || c->bar || c->asking || demo) return;
+		User *u = user (pid (c->peer));
+		if (!u || u->id == selfId || u->contact) return;
+		tl::Arena a;
+		tl::Val *q = tl::make (a, "users.getFullUser");
+		q->set ("id", inputUser (a, u->id));
+		if (call (m_home, *q, R_FULLUSER, c->peer)) c->asking = true;
+	}
+	// Added to the contacts under the name Telegram gives them.
+	void addToContacts (long long peer)
+	{
+		User *u = user (pid (peer));
+		if (!u) return;
+		tl::Arena a;
+		tl::Val *q = tl::make (a, "contacts.addContact");
+		q->set ("id", inputUser (a, u->id));
+		q->set ("first_name", tl::S (a, u->first && u->first[0] ? u->first : u->username ? u->username : "?"));
+		q->set ("last_name", tl::S (a, u->last ? u->last : ""));
+		q->set ("phone", tl::S (a, ""));
+		if (demo) { u->contact = true; Conv *c = conv (peer); if (c) { c->bar = 2; c->rev++; } rev++; return; }
+		call (m_home, *q, R_ADDPEER, peer);
+	}
+	void block (long long peer, bool on)
+	{
+		Conv *c = convs.add (peer);
+		c->peer = peer;
+		if (demo) { c->blocked = on; c->rev++; rev++; return; }
+		tl::Arena a;
+		tl::Val *q = tl::make (a, on ? "contacts.block" : "contacts.unblock");
+		q->set ("id", inputPeer (a, peer));
+		call (m_home, *q, R_BLOCK, peer, on ? 1 : 0);
+	}
+	void hideBar (long long peer)
+	{
+		Conv *c = conv (peer);
+		if (!c) return;
+		c->bar = 2; c->rev++; rev++;
+		if (demo) return;
+		tl::Arena a;
+		tl::Val *q = tl::make (a, "messages.hidePeerSettingsBar");
+		q->set ("peer", inputPeer (a, peer));
+		call (m_home, *q, R_HIDEBAR);
 	}
 	void loadOlder (long long peer)
 	{
@@ -542,6 +604,7 @@ public:
 	// (the number has no Telegram account), -2 (an error: error[]).
 	long long added = 0;
 	bool adding = false;
+	bool barError = false;			// (adding or blocking from the bar failed: error[] says why)
 	void addContact (const char *phone, const char *first, const char *last)
 	{
 		char num[32]; int o = 0;
@@ -637,6 +700,29 @@ public:
 		case R_FILE: gotFile (v, pe); break;
 		case R_PART: m_upBusy = false; if (m_nup) { m_up[0].next++; uploadProgress (); } break;
 		case R_SENDMEDIA: m_upBusy = false; popUpload (); updates (v); break;
+		case R_FULLUSER:
+		{
+			addUsers (v["users"]);
+			Conv *c = conv (pe.a);
+			if (!c) break;
+			c->asking = false;
+			const tl::Val &fu = v["full_user"], &st = fu["settings"];
+			c->blocked = fu["blocked"].b ();
+			c->bar = st["add_contact"].b () || st["block_contact"].b () ? 1 : 2;
+			c->rev++; rev++;
+			break;
+		}
+		case R_ADDPEER:
+		{
+			updates (v);
+			User *u = user (pid (pe.a));
+			if (u) u->contact = true;
+			Conv *c = conv (pe.a);
+			if (c) { c->bar = 2; c->rev++; }
+			rev++;
+			break;
+		}
+		case R_BLOCK: { Conv *c = conv (pe.a); if (c && v.b ()) { c->blocked = pe.b != 0; c->rev++; } rev++; break; }
 		case R_ADDCONTACT:
 		{
 			addUsers (v["users"]);
@@ -719,6 +805,8 @@ public:
 			break;
 		}
 		case R_ADDCONTACT: adding = false; added = -2; snprintf (error, sizeof error, "%s", msg); rev++; break;
+		case R_FULLUSER: { Conv *c = conv (pe.a); if (c) { c->asking = false; c->bar = 2; } break; }
+		case R_ADDPEER: case R_BLOCK: snprintf (error, sizeof error, "%s", msg); barError = true; rev++; break;
 		case R_PART: case R_SENDMEDIA:
 		{
 			m_upBusy = false;
@@ -1054,6 +1142,16 @@ private:
 				if (!only && ptype (c->peer) == P_CHANNEL) continue;
 				for (int k = 0; k < ids.count (); k++) removeMsg (c, (int) ids[k].i ());
 			}
+		}
+		else if (!strcmp (n, "updatePeerBlocked"))
+		{
+			Conv *c = conv (peerKey (u["peer_id"]));
+			if (c) { c->blocked = u["blocked"].b (); c->rev++; rev++; }
+		}
+		else if (!strcmp (n, "updatePeerSettings"))
+		{
+			Conv *c = conv (peerKey (u["peer"]));
+			if (c) { const tl::Val &st = u["settings"]; c->bar = st["add_contact"].b () || st["block_contact"].b () ? 1 : 2; c->rev++; rev++; }
 		}
 		else if (!strcmp (n, "updateUserStatus"))
 		{
@@ -1440,6 +1538,13 @@ private:
 			return *p;
 		}
 		}
+	}
+	tl::Val inputUser (tl::Arena &a, long long id)
+	{
+		User *u = user (id);
+		tl::Val *p = tl::make (a, "inputUser");
+		p->set ("user_id", tl::L (id)); p->set ("access_hash", tl::L (u ? u->access : 0));
+		return *p;
 	}
 	tl::Val inputChannel (tl::Arena &a, long long id)
 	{

@@ -3532,6 +3532,16 @@ your list; Tab goes from one field to the next), **Add**. If the number has a Te
 your Contacts and their conversation opens: write to them. If not — or if its owner does not let
 strangers find them by their number (Telegram's privacy setting) — a message says so.
 
+![Telegram, someone not in the contacts](../screenshots/telegram-stranger.png)
+*A message from someone who is not in your contacts: the bar.*
+
+**When someone adds you.** Telegram has no friend requests: someone may put you in their contacts without
+you being told. When they **write** to you, their conversation comes in with a notification (with their name
+and picture); if they are not in your contacts, a yellow **bar** over the conversation says so: **Add to
+contacts** (in one click, under the name they gave themselves: no phone number needed), **Block** (asked
+first: they can no longer write to you or call you; the bar then offers **Unblock**), or the cross (the bar
+hidden, for good, as on your phone). A contact of yours who joins Telegram shows as *"... joined Telegram"*.
+
 **A conversation (on the right).** A click on a conversation or a contact opens it (**Ctrl+Up /
 Ctrl+Down**: the previous / next one). On top: the picture, the name, the status ("last seen 10 min
 ago", "14 members") or **"Alice is typing a message..."**. The messages, Messenger's way: **"Alice
