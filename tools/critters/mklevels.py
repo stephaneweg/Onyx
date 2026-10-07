@@ -30,10 +30,14 @@ ERASE = dict(material="erase")
 def pts(p):
 	return ", ".join("%d %d" % (round(x), round(y)) for x, y in p)
 
+def nbsp(v):		# French: a no-break space before : ? ! ; (the window never wraps a line before them)
+	for c in ":?!;": v = v.replace(" " + c, "\u00a0" + c)
+	return v
+
 def block(_blk, **kv):
 	s = "[%s]\n" % _blk
 	for k, v in kv.items():
-		s += "%-10s = %s\n" % (k.replace("_fr", ".fr"), v)
+		s += "%-10s = %s\n" % (k.replace("_fr", ".fr"), nbsp(v) if k.endswith("_fr") else v)
 	return s + "\n"
 
 def rect(x, y, w, h):	return "%d %d %d %d" % (x, y, w, h)
