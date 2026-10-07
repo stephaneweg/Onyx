@@ -242,7 +242,9 @@
 //      kapi_win_new / kapi_win_select / kapi_win_destroy speak to Elegant.
 // v95: the status area's icons (the menu bar's tray, kapi_tray_*: KAPI_TRAY_*, struct kapi_tray_info,
 //      GUI_EVENT_TRAY) -- Elegant's, reached by AppKit; no table entry changes.
-#define KAPI_ABI_VERSION	95
+// v96: kapi_win_move (AppKit, Elegant's EL_OP_WIN_MOVE): any window (by its id, kapi_win_list's) moved -- the
+//      remote desktop puts a Pi window where the PC's copy of it was dragged.
+#define KAPI_ABI_VERSION	96
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -2247,6 +2249,9 @@ struct TKApiTable
 	int (*tray_list) (struct kapi_tray_info *out, int max);
 	int (*tray_icon) (unsigned pid, unsigned *px);
 	int (*tray_activate) (unsigned pid, int kind);
+
+	// --- v96 ---
+	int (*win_move) (unsigned id, int x, int y);
 #endif
 };
 

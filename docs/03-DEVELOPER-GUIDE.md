@@ -4288,7 +4288,9 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   modifiers, letters / digits as held keys only) and the characters typed (the PC's layout).
   The protocol is described at the top of `user/BinUtils/rdpd.c`. **Loss tolerance** (Wi-Fi): a
   round is sent only when something changed, and only while the server has **credit** (each
-  READY gives one); a client setting hello option bit 2 gets `CAPS` (9) and 3 rounds in flight
+  READY gives one); a client setting hello option bit 2 gets `CAPS` (9: protocol 2 since kapi v96 -- the client may
+  send `MOVE` (client 9: u32 id, s16 x y), a window dragged on the PC put at the same place on the Pi, `kapi_win_move`)
+  and 3 rounds in flight
   (an older client: lock-step, its READYs alone); a round unanswered for 250 ms makes rdpd send
   small `PING`s (10) -- the PC's dup ACKs make Circle resend its lost tail segment at once
   instead of after its 1 s minimum RTO, and the client's `PONG`s (client 8) do the same for a

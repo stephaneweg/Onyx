@@ -438,6 +438,8 @@ KAPI_CALL (int, kapi_tray_list, (struct kapi_tray_info *out, int max),
 	{ KAPI_WS (ws_tray_list (out, max)); KAPI_HOST (if (KT->tray_list) return KT->tray_list (out, max); return 0;) })
 KAPI_CALL (int, kapi_tray_icon, (unsigned pid, unsigned *px),
 	{ KAPI_WS (ws_tray_icon (pid, px)); KAPI_HOST (if (KT->tray_icon) return KT->tray_icon (pid, px); return 0;) })
+KAPI_CALL (int, kapi_win_move, (unsigned id, int x, int y),
+	{ KAPI_WS ((int) WS_OP (EL_OP_WIN_MOVE, id, x, y, 0)); KAPI_HOST (if (KT->win_move) return KT->win_move (id, x, y); return -1;) })
 KAPI_CALL (int, kapi_tray_activate, (unsigned pid, int kind),
 	{ KAPI_WS ((int) ws_raw (EL_OP_TRAY_ACTIVATE, (long) pid, kind, 0, 0, 0, 0, 0, 0)); KAPI_HOST (if (KT->tray_activate) return KT->tray_activate (pid, kind); return 0;) })
 

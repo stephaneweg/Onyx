@@ -6,7 +6,8 @@
 // the close button closes the Onyx app, the other title buttons (the window menu, minimise,
 // maximise) are pressed on the Pi; the rest goes to the app: the pointer in the window's
 // coordinates (rdpd puts it back on the Pi's screen), the keys, the focus (the Onyx window is
-// raised and gets the keyboard). Moved on the Pi (dragged there, maximised), it follows.
+// raised and gets the keyboard). Moved on the Pi (dragged there, maximised), it follows; dragged here, the
+// Pi's window is put at the same place (rdpd's MOVE, protocol 2: an older rdpd leaves it where it is).
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -59,7 +60,7 @@ namespace OnyxRemote
 		readonly Connection conn;
 		readonly bool onyxFrames;
 		Bitmap content, chromeA, chromeI;
-		int w, h, ow, oh, il, it, piX, piY;
+		int w, h, ow, oh, il, it, piX, piY, viewTop;
 		bool frame, native, keys, placed;
 		bool dragging; Point dragFrom;
 		int buttons;
@@ -102,7 +103,7 @@ namespace OnyxRemote
 				was?.Dispose ();
 			}
 			if (placed && (m.X != piX || m.Y != piY)) placed = false;	// (moved on the Pi: follows)
-			piX = m.X; piY = m.Y;
+			piX = m.X; piY = m.Y; viewTop = top;
 			if (!placed)						// where the Pi has it, then where it is put
 			{
 				int bx = native ? (Width - ClientSize.Width) / 2 : 0;
@@ -185,10 +186,23 @@ namespace OnyxRemote
 		}
 		protected override void OnMouseUp (MouseEventArgs e)
 		{
-			if (dragging) { dragging = false; return; }
+			if (dragging) { dragging = false; SendPlace (); return; }
 			SendPointer (e.Location, Buttons (MouseButtons), 0);
 		}
 		protected override void OnMouseWheel (MouseEventArgs e) { SendPointer (e.Location, Buttons (MouseButtons), e.Delta > 0 ? 1 : -1); }
+
+		// Dragged here (by the Onyx frame's title bar, or the native one's: ResizeEnd): the Pi's window put at
+		// the same place -- the inverse of Apply's placing; what the Pi then reports is that place, so the
+		// window stays (and if the Pi moved it elsewhere -- kept on its screen --, it follows that).
+		void SendPlace ()
+		{
+			int bx = native ? (Width - ClientSize.Width) / 2 : 0;
+			int by = native ? Height - ClientSize.Height - bx : 0;
+			int x = Location.X + bx + (frame ? il : 0), y = Location.Y + by + viewTop + (frame ? it : 0);
+			if (x == piX && y == piY) return;
+			if (conn.Move (Id, x, y)) { piX = x; piY = y; }
+		}
+		protected override void OnResizeEnd (EventArgs e) { base.OnResizeEnd (e); if (native) SendPlace (); }
 
 		// ---- the keyboard ----
 		protected override bool ProcessCmdKey (ref Message msg, Keys keyData)

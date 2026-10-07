@@ -316,3 +316,4 @@
 310 kapi_tray_icon
 311 kapi_tray_list
 312 kapi_tray_set
+313 kapi_win_move

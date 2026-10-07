@@ -1262,8 +1262,8 @@ again (see below) the bar stays shown, the Pi's name followed by *(reconnecting.
   normal window (its title, its close button) showing the Onyx window's content — or, with
   **Onyx frames**, with the frame drawn by Onyx (its rounded corners; its title buttons: close
   closes the app, the window menu, minimise and maximise are pressed on the Pi). Move it by its
-  title bar inside Onyx Remote (the Pi's window stays where it is; moved or maximised on the Pi,
-  it follows); its close button (or Alt+F4) closes the Onyx app; clicking a window brings it to
+  title bar inside Onyx Remote: **the Pi's window is put at the same place** (with an up-to-date
+  rdpd — an older one leaves it where it was); moved or maximised on the Pi, it follows; its close button (or Alt+F4) closes the Onyx app; clicking a window brings it to
   the front on the Pi too, so it gets the keyboard. The keys are typed with the PC's layout.
   A minimised window, or one on another workspace, is not shown (as on the Pi).
 - **Over the windows, see-through as on the Pi**: the menu bar's menus (and its volume box and

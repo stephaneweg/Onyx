@@ -437,6 +437,14 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 			ScreenDirty ();
 			return 0;
 		}
+	case EL_OP_WIN_MOVE:			// (v96) a window put there (the remote desktop's)
+		{
+			CWindow *pW = a[0] == 0 ? pWin : WinById ((unsigned) a[0]);
+			if (pW == 0 || pW->Backmost () || pW->Topmost () || pW == pWM->FullscreenWindow ()) return -1;
+			int x = (int) a[1] - pW->ChromeL (), y = (int) a[2] - pW->ChromeT ();
+			if (x != pW->X () || y != pW->Y ()) { pW->Move (x, y); ScreenDirty (); }
+			return 0;
+		}
 	case EL_OP_WIN_CLOSE:
 		{
 			CWindow *pW = WinById ((unsigned) a[0]);

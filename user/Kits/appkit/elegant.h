@@ -192,6 +192,10 @@ struct el_shot					// (the control page's first bytes)
 #define EL_OP_TRAY_LIST		36
 #define EL_OP_TRAY_ICON		37
 #define EL_OP_TRAY_ACTIVATE	38
+
+// A window moved (kapi_win_move, v96): a = its id (0: the caller's), x, y -- its client area's top left on the
+// screen -> 0, -1 no such window (or the desktop's, a topmost one).
+#define EL_OP_WIN_MOVE		39
 struct el_tray
 {
 	char	 tip[56];

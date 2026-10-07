@@ -65,6 +65,7 @@ namespace OnyxRemote
 		public volatile bool Online;
 		public volatile bool Pipelined;			// the server answered CAPS
 		public volatile int InFlight = 1;		// rounds the server may have in flight
+		public volatile int Protocol;			// CAPS' protocol (2: MOVE understood; 0: no CAPS)
 		public volatile int Reconnects;
 		public volatile int Pings;			// PINGs answered (probes after a loss, liveness)
 		public volatile int Damaged;			// messages skipped: a field out of range
@@ -140,7 +141,7 @@ namespace OnyxRemote
 					if (stop) throw new IOException ("closed");	// (Disconnect during the handshake)
 					tcp = t; net = s;
 					outBuf.Clear (); pendingMove = null; lastButtons = 0;
-					Pipelined = false; InFlight = 1;
+					Pipelined = false; InFlight = 1; Protocol = 0;
 					Session++;
 					Online = true;
 				}
@@ -220,7 +221,7 @@ namespace OnyxRemote
 					byte[] p = len > 0 ? ReadExactly (s, len) : new byte[0];
 					if (type == 9)					// CAPS: pipelined rounds
 					{
-						if (p.Length >= 2) { InFlight = Math.Max (1, (int) p[1]); Pipelined = true; }
+						if (p.Length >= 2) { InFlight = Math.Max (1, (int) p[1]); Protocol = p[0]; Pipelined = true; }
 						continue;
 					}
 					if (type == 10)					// PING: answered at once (PONG)
@@ -332,6 +333,17 @@ namespace OnyxRemote
 		public void Char (uint c) { byte[] b = new byte[5]; b[0] = 6; BitConverter.GetBytes (c).CopyTo (b, 1); Queue (b); }
 		public void Raise (uint id) { byte[] b = new byte[5]; b[0] = 4; BitConverter.GetBytes (id).CopyTo (b, 1); Queue (b); }
 		public void CloseWindow (uint id) { byte[] b = new byte[5]; b[0] = 5; BitConverter.GetBytes (id).CopyTo (b, 1); Queue (b); }
+		// MOVE: the window's client area put at x, y on the Pi's screen (dragged here) -- only to an rdpd that
+		// said protocol 2 in its CAPS (an older one ends the session on an unknown message) -> sent or not
+		public bool Move (uint id, int x, int y)
+		{
+			if (Protocol < 2) return false;
+			byte[] b = new byte[9];
+			b[0] = 9; BitConverter.GetBytes (id).CopyTo (b, 1);
+			b[5] = (byte) x; b[6] = (byte) (x >> 8); b[7] = (byte) y; b[8] = (byte) (y >> 8);
+			Queue (b);
+			return true;
+		}
 
 		// ---- the model ----
 		byte[] unpack = new byte[0];

@@ -19,7 +19,7 @@ AppKit is what makes a program run: its one link to the system. Every call a pro
 |---|---|
 | Include | `#include "appkit/appkit.h"` |
 | Link | nothing to link: the kernel binds AppKit to every program |
-| Library | `SD:/lib/appkit.so` — 313 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
+| Library | `SD:/lib/appkit.so` — 314 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
 | Sources | `user/Kits/appkit/` |
 
 ## Using it
@@ -254,6 +254,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_tray_list` | (v95) The status area of the menu bar | `appkit.h` |
 | `kapi_tray_icon` | (v95) The status area of the menu bar | `appkit.h` |
 | `kapi_tray_activate` | (v95) The status area of the menu bar | `appkit.h` |
+| `kapi_win_move` | (v96) A window moved | `appkit.h` |
 | `kapi_pop_event` | (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, ker | `appkit.h` |
 | `kapi_event_mods` | (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, ker | `appkit.h` |
 | `kapi_pop_post` | (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, ker | `appkit.h` |
@@ -1139,6 +1140,12 @@ void kapi_tray_clear (void);
 int kapi_tray_list (struct kapi_tray_info *out, int max);
 int kapi_tray_icon (unsigned pid, unsigned *px);
 int kapi_tray_activate (unsigned pid, int kind);
+```
+
+(v96) A window moved: id (kapi_win_list's; 0 the caller's), its client area's top left to x, y on the screen -> 0, -1 (no such window, a topmost or backmost one). The remote desktop's (rdpd: a window dragged on the PC).
+
+```cpp
+int kapi_win_move (unsigned id, int x, int y);
 ```
 
 (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, kern/el0.h). pop_event: the window's next event -> 1 (*ev; its handler NOT called), 0 none; event_mods: what kapi_get_modifiers says while a key handler runs (ev->mods), returns the previous value to put back; pop_post: the next kapi_post call -> 1 (*p, not run), 0 none; pump_sleep: kapi_pump_wait without the pump (-> how many are pending). An older kernel: 0 / 0xFFFFFFFF / 0 / 0 (no sleep).

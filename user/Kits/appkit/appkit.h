@@ -484,6 +484,9 @@ KAPI_FN void kapi_tray_clear (void);
 KAPI_FN int kapi_tray_list (struct kapi_tray_info *out, int max);
 KAPI_FN int kapi_tray_icon (unsigned pid, unsigned *px);
 KAPI_FN int kapi_tray_activate (unsigned pid, int kind);
+// (v96) A window moved: id (kapi_win_list's; 0 the caller's), its client area's top left to x, y on the screen
+// -> 0, -1 (no such window, a topmost or backmost one). The remote desktop's (rdpd: a window dragged on the PC).
+KAPI_FN int kapi_win_move (unsigned id, int x, int y);
 // (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the
 // app's own (a protected app's table runs its pump that way, kern/el0.h). pop_event: the window's
 // next event -> 1 (*ev; its handler NOT called), 0 none; event_mods: what kapi_get_modifiers says

@@ -108,7 +108,8 @@ def test_new_server(exe, old_exe):
     sv = Server(exe, True, PORT + 2)
     c = Client(PORT + 2, 4)
     first = c.msg()
-    check(first is not None and first[0] == 9 and first[1] == bytes([1, 3]), "pipelined: CAPS (protocol 1, 3 rounds) first")
+    check(first is not None and first[0] == 9 and first[1] == bytes([2, 3]), "pipelined: CAPS (protocol 2, 3 rounds) first")
+    c.s.sendall(struct.pack("<BIhh", 9, 2, 120, -5))	# MOVE window 2 (dragged on the PC)
     c.ready()
     ms = c.collect(1.0)
     t = types(ms)
@@ -138,6 +139,7 @@ def test_new_server(exe, old_exe):
     log = sv.stop()
     check("host: held 258 1" in log and "host: held 258 0" in log, "session end: a held key released")
     check(log.count("host: ptr 0 0 0 0") >= 1, "session end: the button released")
+    check("host: move 2 120 -5" in log, "MOVE: the window put where the PC has it")
     check("pipelined: 3 rounds in flight" in log, "kmsg: the session's mode")
     check("rdpd   credit" in log, "kmsg: the credit line (at the end of a session, every 5 s)")
 
