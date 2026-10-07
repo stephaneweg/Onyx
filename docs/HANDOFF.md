@@ -867,6 +867,14 @@ an example) and `docs/04` §11 *Printing*.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## More windows, several windows per program: studied (2026-10-07) — `docs/MULTI-WINDOW-STUDY.md`
+
+Elegant holds at most 16 windows (`WM_MAX_WINDOWS` / `EL_WINDOWS_MAX`, Elegant's alone), and every layer
+assumes one window per program (the fixed `KAPI_WS_VA_*` addresses, `WinOf(pid)`, an event with no
+window, `Root::active()`, the close box ending the program). The study finds both lifts feasible: Part A
+(no fixed count; ~1 session) then B1-B6 (window ids from the kernel to UIKit, then Telegram with one
+window per conversation; ~5-6 sessions). Nothing built; waiting for the user's go.
+
 ## Several users: studied, then set aside by the user (2026-10-05) — `docs/MULTI-USER-PLAN.md`
 
 **The user's decision: Onyx stays a simple, single-user system — no multi-user.** The study is kept
