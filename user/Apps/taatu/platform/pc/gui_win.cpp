@@ -149,16 +149,31 @@ static void draw_map ()
         g_bgx = (WIN_W - g_bgw) / 2; g_bgy = 46 + ((WIN_H - 46) - g_bgh) / 2;
         blit_scaled_fb (g_bgx, g_bgy, g_bgw, g_bgh, *bg);
     } else { g_bgw = WIN_W; g_bgh = WIN_H - 46; g_bgx = 0; g_bgy = 46; }
+    (void) scale;
+    // each building is a FULL-FRAME overlay (same size as the terrain, mostly transparent):
+    // stack them all at the terrain rect. The label sits at the building's xPercent/yPercent.
     for (int i = 0; i < NBLD; i++) {
         char pth[96]; snprintf (pth, sizeof pth, "/images/game/%s", BLD[i].sprite);
         const Rgba *sp = g_assets.get (pth);
+        if (sp) blit_scaled_fb (g_bgx, g_bgy, g_bgw, g_bgh, *sp);
         int cx = g_bgx + (int) (BLD[i].xp / 100.0f * g_bgw);
         int cy = g_bgy + (int) (BLD[i].yp / 100.0f * g_bgh);
-        if (sp) { int sw = (int) (sp->w * scale), sh = (int) (sp->h * scale); int x = cx - sw / 2, y = cy - sh / 2;
-            blit_scaled_fb (x, y, sw, sh, *sp);
-            g_bld_rect[i].left = x; g_bld_rect[i].top = y; g_bld_rect[i].right = x + sw; g_bld_rect[i].bottom = y + sh; }
-        else { g_bld_rect[i].left = cx - 40; g_bld_rect[i].top = cy - 30; g_bld_rect[i].right = cx + 40; g_bld_rect[i].bottom = cy + 30; fb_fill (cx - 40, cy - 30, 80, 60, 0x00404a5e); }
+        g_bld_rect[i].left = cx - 46; g_bld_rect[i].top = cy - 20; g_bld_rect[i].right = cx + 46; g_bld_rect[i].bottom = cy + 20;  // label anchor
     }
+}
+// which building overlay is non-transparent at screen (x,y)? topmost wins. -1 none.
+static int building_at (int x, int y)
+{
+    int hit = -1;
+    for (int i = 0; i < NBLD; i++) {
+        char pth[96]; snprintf (pth, sizeof pth, "/images/game/%s", BLD[i].sprite);
+        const Rgba *sp = g_assets.get (pth); if (!sp || g_bgw <= 0 || g_bgh <= 0) continue;
+        int ox = (x - g_bgx) * sp->w / g_bgw, oy = (y - g_bgy) * sp->h / g_bgh;
+        if ((unsigned) ox < (unsigned) sp->w && (unsigned) oy < (unsigned) sp->h) {
+            unsigned a = sp->px[oy * sp->w + ox] >> 24; if (a > 48) hit = i;   // last (topmost) non-transparent
+        }
+    }
+    return hit;
 }
 static void render ()
 {
@@ -530,8 +545,8 @@ static LRESULT CALLBACK WndProc (HWND h, UINT m, WPARAM w, LPARAM l)
     {
         int x = LOWORD (l), y = HIWORD (l);
         if (g_state == ST_MAP) {
-            for (int i = 0; i < NBLD; i++) if (x >= g_bld_rect[i].left && x < g_bld_rect[i].right && y >= g_bld_rect[i].top && y < g_bld_rect[i].bottom)
-                { g_sel_bld = i; g_state = ST_BUILDING; InvalidateRect (h, 0, FALSE); break; }
+            int b = building_at (x, y);
+            if (b >= 0) { g_sel_bld = b; g_state = ST_BUILDING; InvalidateRect (h, 0, FALSE); }
             return 0;
         }
         if (g_state == ST_BUILDING) {
