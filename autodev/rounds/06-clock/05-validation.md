@@ -171,3 +171,95 @@ editor's keys that UIKit does not deliver as 04 describes.
 
 The five gaps closed in 03 (§2.1, step 1b and its test, kitdocs, R-3 / R-4 / step 8, §3.6 / step 9, §10.5) and 04
 (§10.4's French lines, D12 / §7 and §10.2's `Spin`). Nothing else needs redoing: the mock-ups stand.
+
+---
+
+## Validation 2
+
+Date: 2026-10-07 (a fresh Technical Analyst). Read: the five gaps above, `03-technical-analysis.md` (whole, with its
+*Changes after validation 1*), `04-ux-design.md` (D12, D14, §7 and its *Changes after validation 1*), commits
+`bc7bc181`, `5e0f91c7`, `b094c417`. Re-checked against the code: `user/Kits/uikit/controls.cpp:195–220`
+(`NumericUpDown::onKey`), `widget.cpp:143–158` (`Widget::handleKey`), `user/Kits/audiokit/akcore.cpp:231–310`
+(`out_acquire`, `ak_out_open`, `player_main`), `audiokit.h:133`, `tools/tests/desktop_sim/fakekapi.cpp:1041–1052`
+(`sound_acquire`, `SIM_SOUND`), `user/Kits/systemkit/locale.inc:173–195`, `sdcard/etc/system.ini`,
+`tools/docgen/kitdocs.py:36–38`, `tools/tests/desktop_sim/shots.sh:28–29, 424, 445–447, 596`, `user/Makefile:50–52,
+552`. Run here: `run_kvtext_test.sh` (101 + 115) and `run_notes_test.sh` pass; `kitdocs.py` runs and is idempotent
+today (no diff).
+
+### The five gaps
+
+1. **Closed.** §2.1 says `locale_zone_sync` reads `zone=` itself and never uses `locale_zone ()`'s inference
+   (locale.inc:178–183 confirmed: that is where the guess is); step 1b's test and `clockd-sync-nozone` add the
+   `timezone=120`, no `zone=` case at 2026-10-25 00:30 UTC; kitdocs gets `"systemkit/locale.h"` (it is indeed absent
+   from SystemKit's list today); docs/04 (*Language & Region*, Clock) and docs/06 are in §2.1, §7 and step 13.
+2. **Closed.** R-3 / R-4 / step 8 / §1 use `ak_out_open (0, 0)`: akcore.cpp confirms 1 (ours, `s_out = 1`, the player
+   thread then mixes the FM voices into it and closes it after ~60 × 10 ms idle), 0 (busy), −1 (no sound:
+   `kapi_sound_acquire`'s). In the simulator `sound_acquire` returns −1 without `SIM_SOUND` and logs
+   `sim: sound acquired` with it — `clock-nosound` is runnable as written; the busy case is mock + Pi, stated.
+3. **Closed as asked** (the take-back: §3.6, step 9, `clock-timer-resume` — its numbers check: `end` = 13 000 at
+   tick ≈ 1 000 passes the stale rule, 120 s left, `02:00` rounded up; AC-40 in §9 and §10.5). **But see new gap 1
+   below**: the other half of the timer's life — after it has rung — is not specified.
+4. **Closed.** §10.4 has the explicit `lang fr … -fr … lang "$SHOTS_LANG"` lines (eight French shots, the Critters /
+   Pinball pattern, verified at shots.sh:424, 445–447); `lang fr` writes the card's `system.ini` + `language=fr`
+   (shots.sh:28), so the French shots have the same inferred zone as the English ones, as §10.4 says.
+5. **Closed.** `Spin : NumericUpDown` in `ui.h` (03 G9, §10.2 step 5 / 7 / 9; 04 D12, §7's table): Ctrl keys passed on
+   before the base (no digit typed), Enter after the base's commit, Esc after the base's drop — exactly what
+   `NumericUpDown::onKey` + `Widget::handleKey` need (the focused child returns false → the veil's / root's `onKey`).
+   `clock-edit-keys` (a)–(c) is runnable (`mods`, `key`, `down`/`up` exist in fakekapi).
+
+### Verdict: **NOT GREEN** — two small gaps (both 03, the Technical Analyst; no mock-up or UX change needed)
+
+1. **[03 — Technical Analyst] The `[timer]` after it has rung: who removes it, and clockd ringing it once.**
+   The ringer's "exactly once" is the minutes' `last` (§3.3 rule 4); the `[timer]` entry is due on **ticks** ("due when
+   `kapi_get_ticks () >= end` and `end − now <= set·100 + 100`"), a condition that **stays true** after `end` (`end −
+   now` is negative) for the rest of the boot. clockd never writes `alarms.txt` (§3.2), and nothing says the Clock
+   removes `[timer]` when it rings it. As written, clockd sends `CLOCK_MSG_OPEN "--ring timer"` (or `exec`s the Clock)
+   **every 0.5 s** from `end` on; and gap 3's new rule "already past → left to clockd" makes a Clock started by that
+   very ring leave the block in place. Fix (§3.3, §3.6, step 4 / 9, §8.1, §8.4): (a) the `Ringer` remembers the `end`
+   it rang (`timer_rung`, kept across a reload like `last`): the same `end` is due **once**; (b) the Clock, on
+   `--ring timer` (argument or message), shows *Time's up*, **removes `[timer]`**, `alarms_save` + `CLOCKD_MSG_RELOAD`
+   (*+1 min* then runs it in the Clock as a fresh timer, handed over again at exit); (c) tests: alarm_test 19 extended
+   ("stepped from T − 100 to T + 1 000: due exactly once; reloaded with the same `end`: not again"), a clockd case
+   `clockd-timer` (`[timer] end` 300 ticks ahead, placeholder `clock.app/main`, 200 steps → exactly one
+   `sim: exec SD:apps/clock.app/main --ring timer`), and `clock-timesup-hand` (`SIM_ARGS="--ring timer"`, fixture with
+   a past `[timer]` → *Time's up* logged, the block gone from the written `alarms.txt`, `sim: send clockd type 2`).
+
+2. **[03 — Technical Analyst] Superseded text still contradicting §10 in places the developer reads first.**
+   The §9 AC-40 row was edited in this pass (now naming `clock-quit-hand`, which asserts *no* question) yet still says
+   "**Ctrl+Q asks**; the close box hands over" — G1 says no question at all. Likewise still live: R-1 (a), step 11
+   ("Ctrl+Q … *Quit anyway?* overlay"), §8.4's `clock-quit` row, §8.3's old block (`clock.png`, `clock-fr`) and its
+   sentence "`SHOTS_LANG=fr …` renders every one of them in French as well — AC-3", and step 12's "then
+   `SHOTS_LANG=fr …`". Fix: strike or mark each "superseded by §10 (G1 / G5 / §10.4)" — AC-40's row to read
+   "**reduced** (R-1, G1): no question; every exit hands over; the reopened Clock shows the timer running"; step 11 to
+   "keys of 04 §7, the hand-over at every exit (G1)"; `clock-quit` replaced by `clock-quit-hand`; §8.3's block replaced
+   by a pointer to §10.4. Text only.
+
+### Notes for the developer (not blocking)
+
+1. **`ak_out_open (0, 0)` and the player.** audiokit.h:132 says "not together with the player: both want the output";
+   it works here only because `s_out` is shared in the process (the player sees `s_out == 1` and does not re-acquire),
+   but then the output keeps its current configuration instead of the player's low-latency `kapi_sound_config
+   (512, 3)`. If the FM sound lags on the Pi, use the call as a probe: `r = ak_out_open (0, 0); if (r == 1)
+   ak_out_close ();` then start the voices (the player re-acquires with its own settings; the race with another
+   program in between is negligible). Do not hold the output when the ring card closes without sound.
+2. **D14's second wording.** 03 R-3 has two wordings (−1: *Sound unavailable*; 0: *…the sound output is busy*); 04 D14
+   and the mock's `fr.txt` have only the busy one. Add `Sound unavailable	Son indisponible` to `fr.txt` (check.py will
+   ask anyway); the simulator's `clock-nosound` shows the plain one.
+3. **04 §7: letters over a focused spin box.** The prose says "the letter keys act only when no `Textbox` / spin box has
+   the focus", the new `Spin` table says Space / letters are passed on (Space starts the timer, R resets it). Follow
+   the table (simpler: the root acts on what the spin box refuses) and keep only the `Textbox` exception.
+4. **The HereCard on a card with no `zone=`** uses `locale_zone ()`'s guess for the city name and
+   `locale_zone_offset_at (guess, utc)` for `UTC±h` / *Summer time* / the cities' differences: in the hours around a
+   change night (the day-judged guess vs the instant) it can say `UTC+3` for a UTC+2 wall clock. Take the here offset
+   from `kapi_clock_info`'s `tz_minutes` when valid (else `timezone=`), and the guess only for the city's name; the
+   cities' times stay from UTC.
+5. **`clockd-sync-nozone`** says "`system.ini` not in the writes": that holds if the case uses the card's own
+   `sdcard/etc/system.ini` (`timezone=120`, no `zone=`, as shipped). If it puts a fixture in `SIM_WRITES/etc/`,
+   assert "byte-identical to the fixture" instead.
+6. **The take-back's tab.** A `[timer]` taken back with no argument (the last tab) — open on the Timer tab, or show
+   the footer hint; 03 does not say: choose the Timer tab (the user would otherwise not see it running).
+
+### What the next pass checks
+
+New gaps 1 and 2 in 03 (§3.3, §3.6, steps 4 / 9 / 11 / 12, §8.1 case 19, §8.4, §9 row 40, R-1, §8.3). 04 and the
+mock-ups stand.
