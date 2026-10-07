@@ -562,8 +562,8 @@ static void m_face_digital () { world_face (false); }
 static void world_view_menu (Menu &m)
 {
 	m.separator ();
-	m.item (TR ("Analogue Clock"), "", 0, m_face_analogue);
-	m.item (TR ("Digital Clock"), "", 0, m_face_digital);
+	m.item (TR ("Analogue Clock"), 0, 0, m_face_analogue);
+	m.item (TR ("Digital Clock"), 0, 0, m_face_digital);
 }
 static void m_city_add () { world_add_open (); }
 static void m_city_remove () { world_remove (); }

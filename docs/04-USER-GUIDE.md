@@ -381,8 +381,11 @@ the **Control Panel** (§11).
 A system **menu bar** runs across the top of the screen (started by `autostart`), light, in
 the theme's face, its text drawn with FreeType (DejaVu Sans, anti-aliased): it shows the **active application's name** (in bold) and **its menus**,
 and the time on the right — **click the time** for a **calendar** of the month (the arrows or
-the wheel change the month; **Open Calendar** starts the Calendar app) — with the **Wi-Fi
-state** just left of it: the usual arcs when
+the wheel change the month; **Open Calendar** starts the Calendar app; **Alarms and timers…** opens the
+**Clock** on its Alarms tab, §12) — a small **bell** left of the time when an alarm of the Clock rings
+within the next 24 hours (the Clock's `alarms.txt` read once a minute; a click on the bell opens the Clock's
+alarms too), and the **Wi-Fi
+state** left of them: the usual arcs when
 the Pi is connected, a grey barred circle when it is not (checked about once a second, so
 a lost or restored connection shows up by itself), and the **volume** left of that (a
 speaker: 1–3 waves by the volume, a cross when muted).
@@ -418,7 +421,8 @@ speaker: 1–3 waves by the volume, a cross when muted).
 ![The USB box](../screenshots/usbmenu.png)
 ![The Wi-Fi menu](../screenshots/wifimenu.png)
 ![The calendar under the time](../screenshots/clock.png)
-*The volume box, the USB box (a stick plugged in), the Wi-Fi menu, the calendar of the month under the time.*
+*The volume box, the USB box (a stick plugged in), the Wi-Fi menu, the calendar of the month under the time (the
+bell: an alarm today; Alarms and timers… opens the Clock).*
 
 The active application is the frontmost decorated window; clicking the dock or the desktop
 does not change it.
@@ -452,6 +456,9 @@ does not change it.
   out; a click dismisses it; several notifications are shown one after the other
   (`notifyd`, started by `autostart`).
 - Windows open and are dragged **below** the bar, never under it; they open above the dock.
+- The bar's own words (the Onyx menu, the categories, Quit, the boxes, the USB notifications) are in the
+  **system's language** (English or French: Control Panel ▸ Language & Region, taken at the next boot); the
+  apps' names are their `app.txt`'s, the menus the active app's own.
 
 ![Menu bar](../screenshots/menubar.png)
 *The menu bar with tinypad active and its File menu open.*
@@ -1662,7 +1669,7 @@ the list **scrolls** (the wheel, the bar at its right, the arrow keys).
 | **Preload** (`preloadconf`) | The programs **loaded ahead at boot and kept in memory**: they start without reading the card (worth it for the large ones, as Jet: 100 MB, 5 s of card each start otherwise). At the left the list (each program, its size, *loading* / *in memory*), at the right what can be added — the apps, then the `/bin` tools: **< Add** (or a double click), **Remove**. A change is done **at once** (the program added is loaded now, the one removed is released: its memory is freed when its last window closes) and kept in `SD:/etc/preload.ini`, which the last line of `SD:/etc/autostart`, `preload /boot`, reads at every boot. The line under the lists gives the memory the list takes. |
 | **Printers** (`printconf`) | The printers Onyx prints on (the **PDF** printer, network printers added by their address), the default one, a test page, and the **print queue** (below: *Printing*). |
 | **Keyboard & Mouse** (`keyconf`) | The keyboard **layout** (the maps of `SD:/etc/keymaps`: a click takes one at once and keeps it in `SD:/etc/autostart`'s `keyb` line; a field to try it) and the **wheel**'s speed (lines a notch: at once, kept in `SD:/etc/theme.txt`). |
-| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, Ledger, Turtle Quest (its BASIC too), Circuits, Pinball, Critters and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). |
+| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, the menu bar, Ledger, Notes and Stickies, the Clock, Turtle Quest (its BASIC too), Circuits, Pinball, Critters and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). **While `clockd` runs** (the Clock's alarm service, started at boot), **the summer time changes the clock by itself**: on the night it begins or ends, the system's clock moves within a minute of 02:00 / 03:00 and `timezone=` is written (a city chosen here, `zone=`, is needed: with only a `timezone=` nothing is guessed). |
 | **Gamepad** (`padconf`) | The USB gamepads (§12). |
 | **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
 | **App Settings** (`config`) | An app's own settings, its `SD:/apps/<name>.app/config.ini`: the apps (those with settings first, marked `*`), then the chosen one's `key = value` lines — pick one, change its key or its value, **Set** (Enter; a new key adds a line), **Delete**; **Save** writes the file (the app reads it when it starts again), **Reload**. |
@@ -2015,6 +2022,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 |---|---|
 | **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. **Select** text with **Shift** + those keys, a mouse drag, Shift+click or ^A (Select All); typing replaces the selection. Menu **Edit**: Cut (^X), Copy (^C), Paste (^V), Select All (^A), Copy All. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). **Drop** a file on the window to open it, or text to insert it; New / Open / a drop first ask to **save unsaved changes** (Yes / No / Cancel). |
 | **Notes** (`notes`) | **Quick notes**, kept by themselves: the list of the notes on the left (newest first: a colour dot, the title — the first line —, the date, a pin when shown on the desktop), the note's text on the right in its colour; no Save: a note is written a second after the typing stops. **New Note** (^N), **Delete** (^D, Delete in the list: to the Trash), **Pin** (^P: on the desktop, by Stickies), six colours, Edit ▸ Copy Note, File ▸ Open in Text Editor (^E), View ▸ Show / Hide Stickies; `.txt` / `.md` files dropped on it become notes (see *Notes* below). Files: `SD:/Notes/*.txt`, `SD:/Notes/notes.ini`, `SD:/apps/notes.app/config.ini`. |
+| **Clock** (`clock`) | **The time here and around the world, alarms, a timer, a stopwatch**, in four tabs: **World** (here big — the date, the city, UTC+h, *Summer time*; an **analogue face** if you like, View ▸ Analogue Clock — and up to 12 cities with their time, their day and the difference), **Alarms** (up to 20: a time, a label, once or on chosen days, Chimes / Beeps / Marimba; they **ring with the Clock closed**, by `clockd`), **Timer** (presets, Start / Pause, *Time's up*; it rings with the Clock closed too), **Stopwatch** (laps, the fastest and slowest marked, Copy Laps). Ctrl+1…4 the tabs, Ctrl+N, Space, L, R. Files: `SD:/apps/clock.app/alarms.txt`, `config.ini`. See *Clock* below. |
 | **PDF Viewer** (`pdf`) | The **reader of PDF documents** (MuPDF): a tab a document, the pages' thumbnails, the contents, a search with its hits by page, the zoom (fit the page / the width, 50 to 400 %), one page / continuous / two pages, rotation, full screen; text selected and copied, links followed, passwords, Properties; the home's recent documents reopened at their page. See *PDF Viewer* above. |
 | **Letters** | The **word processor**, in the way of AbiWord and Word: pages laid out and drawn with FreeType from the card's TrueType fonts, two toolbars (styles, fonts, sizes, bold / italic / underline / strike-through, superscript / subscript, colours, highlights, alignments, lists, indents, a table), a ruler (the indents, margins and a table's columns dragged), **tables** (merged cells, lines, shading, a heading row), **headers and footers** (the first page's own), **page numbers** and **fields** (date, time, pages), **tab stops** with leaders, a **table of contents**, images, Find and Replace, Special Character, Page Setup, Word Count, a **mail merge** (a Cardfile form's records into letters); **Word (.docx)**, **OpenDocument (.odt)** and **RTF** read and written with everything, text, HTML export. See *Letters, the word processor* below. |
 | **Koton** (`koton`) | The **music studio** (Koton Studio for Onyx): a song thought in harmony — a chord track of degree-locked chords with a next-chord co-pilot and cadences drives accompaniments (28 styles or a drawn grid of the chord's voices), melodic lines (the pitches from the harmony), riffs on a harmony-aware piano roll, drums (a catalog or drawn, euclidean), polyrhythmic rings; a SoundFont synthesizer on the third core, plugins as processes (instruments, effects, generators), **Compose with AI**, WAV export, a USB MIDI keyboard. Opens Koton's `.sq`, saves `.kson`. See *Koton, the studio* below. |
@@ -2049,6 +2057,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **dockconf** (Panel) | The Control Panel's Panel applet: the dock's drawers (every category of the apps: their order, main app, hidden or not), launchers and workspaces (see §11). Writes `SD:/etc/dock.ini`. |
 | **soundconf** (Sound) | The Control Panel's Sound applet: the output, the master volume, mute, a test sound, and the mixer — each playing program's own volume (see §11). Writes `SD:/etc/sound.ini` and `SD:/etc/mixer.ini`. |
 | **printconf** (Printers) | The Control Panel's Printers applet: the printers, the default one, a test page, the print queue (see §11 *Printing*). Talks to `printd`; `SD:/etc/printers.ini`. |
+| **clockd** (Clock Service) | The Clock's **alarm service**, no window (started at boot by `SD:/etc/autostart`, `run clockd`; the Clock starts it when it does not run): reads `SD:/apps/clock.app/alarms.txt`, rings each alarm on its minute — the Clock opened (or told, when it runs) with the ring card —, rings a timer the Clock handed over when it closed, says at its start the once alarms missed while the Pi was off (the last 12 hours), and keeps the system's clock on the summer time of the zone chosen in Language & Region. Writes nothing of the Clock's; writes `timezone=` in `SD:/etc/system.ini` on the summer time's nights. |
 | **printd** (Print Service) | The print queue's service, no window (started at boot by `SD:/etc/autostart` and when an app prints): prints the jobs of `SD:/var/spool/print` — PDF files, network printers (IPP) — and notifies. Reads and writes `SD:/etc/printers.ini`. |
 | **preloadconf** (Preload) | The Control Panel's Preload applet: the programs loaded at boot and kept in memory (see §11). Reads the apps' `app.txt` and `SD:/bin`; writes `SD:/etc/preload.ini`. |
 | **langconf** (Language & Region) | The Control Panel's Language & Region applet: the language of the programs (English, Français) and the time zone, kept in `SD:/etc/system.ini` (`language=`, `zone=`, `timezone=`) (see §11). Its words: `SD:/apps/langconf.app/lang/fr.txt`. |
@@ -2140,6 +2149,137 @@ Pinning a note while Stickies is hidden pins it only (Stickies shows it once sho
 | `SD:/etc/autostart` | `run stickies` (or `#setup: run stickies` on a new card), added by *View ▸ Show Stickies* when missing |
 
 Deleted notes are in the Trash (`SD:/.Trash`, the dock's Trash: restore one there).
+
+### Clock, the time, alarms, a timer and a stopwatch (`clock`)
+
+The **Clock** tells the time here and in the cities you follow, wakes you with **alarms that ring even when the
+Clock is closed**, counts down with a kitchen **timer** and measures with a **stopwatch**. In the dock's
+**Productivity** drawer (*Horloge* in French: the window's title; the dock shows `app.txt`'s *Clock*), or
+`run clock [world | alarms | timer | stopwatch]`. It speaks the system's language (English or French: Control
+Panel ▸ Language & Region), the dates included (*lundi 28 septembre 2026*, *Tous les jours*). One Clock at a time:
+starting it again (the dock, the menu bar's bell, `run clock alarms`) brings the running one forward on that tab.
+
+![Clock, World](../screenshots/clock-world.png)
+*World: here (Brussels, UTC+2, summer time) and three cities, Tokyo chosen.*
+
+**The window** (560 × 440 at least; it resizes and maximises, its size kept) has four tabs under a segmented
+bar — **World**, **Alarms**, **Timer**, **Stopwatch** —, the one of last time shown at the start. Each tab has a
+status line at its foot and its buttons at the right. The dialogs are cards over the window (the clock goes on
+under them).
+
+**World.** *Here*, big: the time with its seconds, the date, the city of the zone chosen in Language & Region,
+its offset (*UTC+2*) and *Summer time* when it is. **View ▸ Analogue Clock** shows a clock face beside the time
+instead (**View ▸ Digital Clock**: back; kept in `config.ini`). Under it, the **cities** you follow (up to 12):
+each with a sun or a moon (day or night there), its difference to here (*+7 h*, *−6 h*, *Same time*), its offset,
+*Tomorrow* / *Yesterday* when its day is not yours, and its time. **Add City** (Ctrl+N) opens *Add a City*: the
+zones not followed yet with their time and offset; type to filter (*dub*, *ath* — the French names too), **Enter**
+or a double click adds it, Esc cancels. **Remove** (Delete) takes the city chosen away, **▲ / ▼** (Ctrl+Up /
+Ctrl+Down) move it; Up / Down / Home / End choose one. The cities are SystemKit's zones (the summer time of each
+counted at the instant: on the night it changes there, the city's time changes then). With **no time zone
+chosen** the tab says *Time zone not set* with a **Language & Region…** button (it opens the applet), and the
+cities show only their offset.
+
+![Clock, the analogue face](../screenshots/clock-analogue.png)
+![Add a City](../screenshots/clock-cities.png)
+*View ▸ Analogue Clock; Add a City (Ctrl+N), the zones not followed yet.*
+
+**Alarms.** At the top, the **next alarm** (*Next alarm: today 14:30 — in 1 h 56 min*; *Snoozed until 12:44 —
+School*; *No alarm set*): a click chooses it in the list. The list (sorted by time) shows each alarm's time, its
+label, its days (*Once*, *Every day*, *Weekdays*, *Weekends*, *Mon, Wed, Fri*) and an on / off switch; an alarm
+off, or a once alarm gone by, is greyed; a row says *Snoozed until 12:44*, *Missed at 07:00* or *Invalid* (a line
+of `alarms.txt` written wrong by hand: never rung, kept as it was). **New Alarm** (Ctrl+N; 20 at most), **Edit**
+(Enter, or a double click), **Delete** (Delete: no question), **Space** turns the alarm chosen on or off.
+
+The **alarm editor** (*New Alarm* / *Edit Alarm*): the time (the hours and minutes boxes: type or use the arrows;
+*Next: tomorrow 07:00* under them), the **label** (40 characters), the **days** (seven toggles, *Every day*,
+*Weekdays*; none chosen: **once**, on the next 07:00 to come), the **sound** (**Chimes**, **Beeps**, **Marimba**;
+**Test** plays it once), then **OK** (Enter) or **Cancel** (Esc); **Delete** when editing. Each change is written at
+once and clockd told.
+
+![Clock, Alarms](../screenshots/clock-alarms.png)
+![The alarm editor](../screenshots/clock-edit.png)
+*Alarms: the next one, three alarms (Gym off); the editor on School, weekdays, Chimes.*
+
+**When an alarm rings** (the Clock open or closed — `clockd` rings it within a second of its minute): a
+notification *Clock — 07:00 School*, the Clock comes forward on its Alarms tab with the **ring card** — a bell, the
+time, the label, its days and sound — and the sound plays in a loop. **Snooze 10 min** (Enter) rings it again 10
+minutes later (*Snoozed until …* on its row and in the next-alarm line; the minutes: `snooze =` in `config.ini`,
+1 to 30); **Stop** (Esc) ends it (a once alarm turns off, a repeating one waits for its next day). Not answered
+within **2 minutes**: the sound stops, *Missed alarm: 07:00 School* is notified and the row says *Missed at 07:00*.
+A Clock started only to ring closes by itself after the answer. No sound can be heard (no output, or another
+program — the Media Player — holds it): the card says *Sound unavailable* (*… the sound output is busy*), the
+card and the notification still come.
+
+![An alarm ringing](../screenshots/clock-ring.png)
+*An alarm ringing: Snooze 10 min (Enter) or Stop (Esc); here the PC has no sound.*
+
+**What rings and when** (`clockd`): an alarm rings **once** on its minute — never twice, also when the file
+changes; a **once** alarm rings on its day and then turns off; the days are the calendar days of the wall clock
+the menu bar shows. An alarm whose minute went by **while the Pi was off** (or in the first 90 s after the boot,
+before the clock is trusted) is not rung late: when `clockd` starts it notifies the once alarms missed in the
+last 12 hours (*Missed alarm: 07:00 School*, no sound; *Missed at* on the row). On the night the **summer time
+begins**, an alarm inside the skipped hour (02:30) does not ring that day; on the night it **ends**, the repeated
+hour rings nothing twice.
+
+**Timer.** A ring shows the time left, shrinking from 12 o'clock, *of 05:00* and *Ends at 12:38* (the wall time it
+will ring). At the right the **duration** (hours, minutes, seconds: locked while it runs), five **presets** (1, 3,
+5, 10, 15 min: a click sets the duration, a double click sets it and starts), **Start** / **Pause** / **Resume**
+(Space) and **Reset** (R, not while it runs). At zero, **Time's up**: a notification *Clock — Timer — 05:00 done*,
+the Chimes in a loop, the card **Stop** (Enter or Esc: back to the duration) or **+1 min** (+ or =: one more
+minute); unanswered 2 minutes, the sound stops. The duration is kept. **Closing the Clock while the timer runs
+asks nothing: it goes on** — `clockd` rings it (*Time's up* then comes by itself); the Clock reopened before its
+end shows it running. A paused timer is kept paused.
+
+![Clock, Timer](../screenshots/clock-timer.png)
+![Time's up](../screenshots/clock-timesup.png)
+*The timer running (5 min preset); Time's up.*
+
+**Stopwatch.** The time big (*00:36.68*), the lap running under it; **Start / Stop** (Space), **Lap** (L, while it
+runs), **Reset** (R, stopped). The laps, newest first: the lap, its time, the total; from three laps the
+**fastest** in green (*▲ Fastest*), the **slowest** in red (*▼ Slowest*). **Copy Laps** (Ctrl+C) puts them on the
+clipboard as tab-separated text (*Lap · Lap time · Total*, in the system's language: a spreadsheet takes it).
+Closing keeps it: reopened it goes on (across a restart too when the clock was set both times; else it comes back
+stopped at its time).
+
+![Clock, Stopwatch](../screenshots/clock-stopwatch.png)
+*The stopwatch stopped after three laps: lap 2 the fastest, lap 3 the slowest.*
+
+| Menu | Items |
+|---|---|
+| View | World (Ctrl+1), Alarms (Ctrl+2), Timer (Ctrl+3), Stopwatch (Ctrl+4), Next Tab (Ctrl+Tab; Shift: back), Analogue Clock, Digital Clock |
+| Alarm | New Alarm… (Ctrl+N), Edit Alarm… (Enter), Turn On / Off (Space), Delete Alarm (Delete) |
+| City | Add City… (Ctrl+N), Remove City (Delete), Move up (Ctrl+Up), Move down (Ctrl+Down) |
+| Timer | Start / Pause (Space), Reset (R), 1 minute, 3 / 5 / 10 / 15 minutes |
+| Stopwatch | Start / Stop (Space), Lap (L), Reset (R), Copy Laps (Ctrl+C) |
+
+The letter keys and Space act when no field has the focus; in a card, **Enter** is its default (OK, Add, Snooze,
+Stop), **Esc** cancels, **Tab** goes to its next control. **Ctrl+Q**, Clock ▸ Quit and the close box close at once,
+nothing lost (the timer handed to clockd, the stopwatch kept).
+
+**clockd**, the alarm service (no window; `run clockd` in `SD:/etc/autostart`, after `notifyd`; the Clock adds
+the line if a card updated from an older one lacks it, and starts clockd when it does not run). It reads the
+Clock's `alarms.txt` (again when the Clock says so, and when the file changed — a hand edit is seen within 30 s),
+looks at the clock twice a second, and hands each ring to the Clock — which shows it, in the system's language
+(the Clock cannot be started: clockd's own notification, the time and the label). It also keeps the **system's
+clock on the summer time** of the zone chosen in Language & Region (§11).
+
+**Files**:
+
+| File | What |
+|---|---|
+| `SD:/apps/clock.app/alarms.txt` | the alarms (written by the Clock only; clockd reads it): one `[alarm]` block each — `id`, `time = 07:00`, `label`, `on = 1`, `days = mon tue wed thu fri` (empty: once, on `date = 20260929`), `sound = chimes \| beeps \| marimba`, `snooze = 202609290710` (it rings again then), `missed =` (a ring not answered); a `[timer]` block (`end`, `set`, `utc`, `label`) while a timer handed to clockd runs. Keys the Clock does not know are kept. |
+| `SD:/apps/clock.app/config.ini` | `[clock]`: `tab`, `cities = Tokyo,New York,London`, `snooze` (minutes, 1–30), `timer` (the duration, seconds), `face = digital \| analogue`, `width`, `height`; a paused timer `timer_left`, `timer_of`; the stopwatch `sw_run`, `sw_start`, `sw_base`, `sw_total`, `sw_tick`, `sw_utc`, `sw_laps` |
+| `SD:/etc/system.ini` | read: `language=`, `zone=`, `timezone=`; written by clockd: `timezone=` on the summer time's nights |
+| `SD:/etc/autostart` | `run clockd` (added by the Clock when missing) |
+
+**In French.** With the system in French (Control Panel ▸ **Language & Region**, §11) everything is in French — the
+tabs (*Monde, Alarmes, Minuteur, Chronomètre*), the dates, the days (*lun., mer., ven.*), the cities that have a
+French name (*Bruxelles, Londres*), the notifications (*Horloge — Alarme manquée : 07:00 École*) and the laps'
+header copied (*Tour · Temps du tour · Total*); `alarms.txt` keeps the same English tokens (`mon`, `chimes`).
+
+![Clock in French](../screenshots/clock-alarms-fr.png)
+![Le minuteur](../screenshots/clock-timer-fr.png)
+*In French: Alarmes; le Minuteur.*
 
 ### Letters, the word processor (`letters`)
 
