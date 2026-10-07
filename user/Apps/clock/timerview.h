@@ -148,7 +148,7 @@ public:
 	bool onKey (long k) override
 	{
 		if (k == KEY_ENTER || k == 27) { tu_stop (*this); return true; }
-		if (k == '+') { tu_more (*this); return true; }
+		if (k == '+' || k == '=') { tu_more (*this); return true; }	// (= : the + key without Shift)
 		return false;
 	}
 	void onHidden () override;

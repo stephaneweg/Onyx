@@ -15,7 +15,12 @@
 //                                  the sound, a notification; started only for it, the Clock closes after the answer
 //   clock --ring timer             the timer handed to clockd has ended: the Time's up card
 // One Clock at a time: a second one sends the running one its arguments (CLOCK_MSG_OPEN), raises it and ends.
-// SD:/apps/clock.app/config.ini ([clock]: tab, cities, snooze, timer, width, height): AppKit's .ini, through FileKit.
+// SD:/apps/clock.app/config.ini ([clock]: tab, cities, snooze, timer, width, height; a paused timer: timer_left,
+// timer_of; the stopwatch: sw_run, sw_start, sw_base, sw_total, sw_tick, sw_utc, sw_laps): AppKit's .ini, through FileKit.
+// Keys (04 §7): Ctrl+1..4 and Ctrl+Tab the tabs; Ctrl+N a city / an alarm; Space toggles the alarm, starts / pauses
+// the timer, starts / stops the stopwatch; R resets them (not while they run); L a lap; Ctrl+C copies the laps; in a
+// card Enter / Esc its default / Cancel, + one more minute on Time's up. Closing asks nothing (03 §10 G1): Ctrl+Q,
+// Clock > Quit and the close box all hand over -- a running timer to clockd, the stopwatch kept in config.ini.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated

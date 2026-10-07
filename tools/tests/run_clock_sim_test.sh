@@ -518,6 +518,28 @@ check "clock-sw: another boot, no real time -> stopped at 00:10.00" logs swlost 
 seed swclose; run clock swclose "wait;key 32;$(waits 50)key l;$(waits 20)quit;wait" SIM_SERVICES=notify,clockd SIM_ARGS=stopwatch
 check "clock-sw: kept at the close, running (sw_run = 1, sw_start, sw_laps)" sh -c "[ '$(kv swclose $CF 1 sw_run)' = 1 ] && [ -n '$(kv swclose $CF 1 sw_start)' ] && [ '$(kv swclose $CF 1 sw_laps)' -gt 0 ]"
 
+# ==== the keys and the hand-over at every exit (step 11) ===========================================================
+# clock-keys (AC-41): Space on the Timer starts / pauses it, Ctrl+4, Space on the Stopwatch, L a lap, Space, R resets;
+# Ctrl+N on those tabs does nothing; = (the + key without Shift) is one more minute on Time's up
+seed keys2; run clock keys2 "wait;key 32;wait;key 32;wait;mods 1;key 14;mods 0;wait;mods 1;key 52;mods 0;wait;key 32;$(waits 10)key l;wait;key 32;wait;mods 1;key 14;mods 0;key R;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=timer
+check "clock-keys: Space on the Timer: started, then paused" sh -c "grep -q 'clock: timer started 05:00' '$OUT/log/keys2.log' && grep -q 'clock: timer paused 05:00' '$OUT/log/keys2.log'"
+check "clock-keys: Space / L / Space / R on the Stopwatch" sh -c "grep -q 'clock: stopwatch started' '$OUT/log/keys2.log' && grep -q 'clock: lap 1 ' '$OUT/log/keys2.log' && grep -q 'clock: stopwatch stopped' '$OUT/log/keys2.log' && grep -q 'clock: stopwatch reset\$' '$OUT/log/keys2.log'"
+check "clock-keys: Ctrl+N on the Timer and the Stopwatch does nothing" sh -c "! grep -q 'editor new\|add a city' '$OUT/log/keys2.log'"
+seed keys3; config keys3 '[clock]\ntimer = 3\n'
+run clock keys3 "wait;key 32;waitlog 300 clock: time's up;wait;key 61;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=timer
+check "clock-keys: = on Time's up -> one more minute" logs keys3 "one more minute"
+# clock-quit-hand (AC-40 reduced, G1): the stopwatch running, Ctrl+Q (the menu bar's Quit: MENU_QUIT; the window then
+# closed) -> no question, the program ends, the stopwatch kept; the timer running too -> [timer] handed to clockd
+seed qhand; run clock qhand "wait;key 32;mods 1;key 52;mods 0;wait;key 32;$(waits 30)mods 1;key 17;mods 0;wait;quit;wait;wait" SIM_SERVICES=notify,clockd SIM_ARGS=timer
+check "clock-quit-hand: Ctrl+Q -> Quit (MENU_QUIT), nothing asked" sh -c "grep -q 'sim: menu_command -1' '$OUT/log/qhand.log' && ! grep -qi 'quit anyway\|veil\|editor' '$OUT/log/qhand.log'"
+check "clock-quit-hand: the program ended (not at the script's end)" nolog qhand "sim: end of the script"
+check "clock-quit-hand: the stopwatch kept running (sw_run = 1, sw_start)" sh -c "[ '$(kv qhand $CF 1 sw_run)' = 1 ] && [ '$(kv qhand $CF 1 sw_start)' -gt 1000 ]"
+check "clock-quit-hand: the timer handed to clockd ([timer] set = 300, RELOAD)" sh -c "[ '$(kv qhand $AL 1 set)' = 300 ] && grep -q 'sim: send clockd type 2' '$OUT/log/qhand.log'"
+# ... and the next start: the timer taken back, the stopwatch going on (a later boot in the simulator: stopped at its time)
+run clock qhand "wait;wait;exit" SIM_SERVICES=notify,clockd
+check "clock-quit-hand: reopened, the timer running again (taken back)" sh -c "grep -q 'clock: timer running 0' '$OUT/log/qhand.log' && ! grep -q '^\[timer\]' '$OUT/w/qhand/$AL'"
+check "clock-quit-hand: ... the stopwatch shown at its time" grep -qE "clock: stopwatch kept 00:00\.[0-9]{2} " "$OUT/log/qhand.log"
+
 echo
 if [ $FAILS -ne 0 ]; then echo "clock-sim: $FAILS of $((PASS + FAILS)) checks FAILED"; exit 1; fi
 echo "clock-sim: all $PASS checks passed"
