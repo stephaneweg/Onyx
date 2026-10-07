@@ -1,0 +1,158 @@
+# The Clock's French -- the UX Designer's MOCK catalogue (AutoDev round 6): a draft for lang/fr.txt.
+Clock	Horloge
+World	Monde
+Alarms	Alarmes
+Timer	Minuteur
+Stopwatch	Chronomètre
+Summer time	Heure d'été
+Time zone not set	Fuseau horaire non défini
+Language & Region…	Langue et région…
+Tomorrow	Demain
+Yesterday	Hier
+Same time	Même heure
+%d cities · up to 12	%d villes · 12 au plus
+No cities	Aucune ville
+No cities yet	Aucune ville pour l'instant
+Add the cities you want to follow with + Add City (Ctrl+N).	Ajoutez les villes à suivre avec + Ajouter une ville (Ctrl+N).
+Add City	Ajouter une ville
+Add a city (Ctrl+N)	Ajouter une ville (Ctrl+N)
+Remove	Retirer
+Remove the city (Delete)	Retirer la ville (Suppr)
+Move up	Monter
+Move down	Descendre
+Add a City	Ajouter une ville
+City	Ville
+Time	Heure
+Add	Ajouter
+Cancel	Annuler
+Type to filter · Enter: add · Esc: cancel	Tapez pour filtrer · Entrée : ajouter · Échap : annuler
+Next alarm:	Prochaine alarme :
+today	aujourd'hui
+tomorrow	demain
+in 1 h 56 min	dans 1 h 56 min
+in %d h %d min	dans %d h %d min
+in %d min	dans %d min
+No alarm set	Aucune alarme active
+No alarms	Aucune alarme
+%d alarms · %d on	%d alarmes · %d actives
+Create one with + New Alarm (Ctrl+N).	Créez-en une avec + Nouvelle alarme (Ctrl+N).
+Alarms ring even when the Clock is closed.	Les alarmes sonnent même quand l'Horloge est fermée.
+New Alarm	Nouvelle alarme
+A new alarm (Ctrl+N)	Une nouvelle alarme (Ctrl+N)
+Edit	Modifier
+Edit the alarm (Enter)	Modifier l'alarme (Entrée)
+Delete	Supprimer
+Delete the alarm (Delete)	Supprimer l'alarme (Suppr)
+Edit Alarm	Modifier l'alarme
+Once	Une fois
+Every day	Tous les jours
+Weekdays	En semaine
+Weekends	Le week-end
+Every day of the week	Chaque jour de la semaine
+Monday to Friday	Du lundi au vendredi
+Alarm	Alarme
+Snoozed until %s	Reportée à %s
+Missed at %s	Manquée à %s
+Invalid	Non valable
+Cannot be read: correct alarms.txt or delete it	Illisible : corrigez alarms.txt ou supprimez-la
+Hours	Heures
+Minutes	Minutes
+Label	Nom
+Repeat	Répéter
+Sound	Son
+Test	Écouter
+Play the sound once	Jouer le son une fois
+Chimes	Carillon
+Beeps	Bips
+Marimba	Marimba
+Next: %s %s	Prochaine : %s %s
+Snooze %d min	Rappel dans %d min
+Stop	Arrêter
+Enter: snooze · Esc: stop	Entrée : rappel · Échap : arrêter
+Sound unavailable: the sound output is busy	Son indisponible : la sortie audio est occupée
+Time's up	Temps écoulé
+The %s timer ended at %s	Le minuteur de %s s'est terminé à %s
+Enter or Esc: stop · +: one more minute	Entrée ou Échap : arrêter · + : une minute de plus
+Duration	Durée
+hours	heures
+minutes	minutes
+seconds	secondes
+Presets	Préréglages
+Set (a double click: set and start)	Régler (double clic : régler et démarrer)
+Start	Démarrer
+Pause	Pause
+Resume	Reprendre
+Reset	Remettre à zéro
+Reset (R)	Remettre à zéro (R)
+Start / Pause (Space)	Démarrer / pause (Espace)
+Start / Stop (Space)	Démarrer / arrêter (Espace)
+of %s	sur %s
+Paused	En pause
+Ends at %s	Sonne à %s
+Space: start / pause · R: reset · it rings even with the Clock closed	Espace : démarrer / pause · R : remettre à zéro · il sonne même Horloge fermée
+Lap	Tour
+Lap (L)	Tour (L)
+Lap %d	Tour %d
+Lap time	Temps du tour
+Total	Total
+Fastest	Plus rapide
+Slowest	Plus lent
+%d laps	%d tours
+No laps	Aucun tour
+No laps yet: Lap (L) while it runs	Aucun tour : Tour (L) pendant qu'il tourne
+Laps copied	Tours copiés
+Copy Laps	Copier les tours
+Copy the laps as text (Ctrl+C)	Copier les tours en texte (Ctrl+C)
+Space: start · L: lap · R: reset	Espace : démarrer · L : tour · R : remettre à zéro
+Monday	lundi
+Tuesday	mardi
+Wednesday	mercredi
+Thursday	jeudi
+Friday	vendredi
+Saturday	samedi
+Sunday	dimanche
+Mon	lun.
+Tue	mar.
+Wed	mer.
+Thu	jeu.
+Fri	ven.
+Sat	sam.
+Sun	dim.
+January	janvier
+February	février
+March	mars
+April	avril
+May	mai
+June	juin
+July	juillet
+August	août
+September	septembre
+October	octobre
+November	novembre
+December	décembre
+Brussels	Bruxelles
+London	Londres
+Vienna	Vienne
+Warsaw	Varsovie
+Lisbon	Lisbonne
+Athens	Athènes
+School	École
+Gym	Sport
+Medicine	Médicament
+# (not drawn by the mock-ups: the notifications, the menus -- 04-ux-design.md §6, §7)
+Missed alarm: %s	Alarme manquée : %s
+Timer — %s done	Minuteur — %s terminé
+View	Affichage
+Next Tab	Onglet suivant
+New Alarm…	Nouvelle alarme…
+Edit Alarm…	Modifier l'alarme…
+Turn On / Off	Activer / désactiver
+Delete Alarm	Supprimer l'alarme
+Add City…	Ajouter une ville…
+Remove City	Retirer la ville
+Start / Pause	Démarrer / pause
+Start / Stop	Démarrer / arrêter
+%d minutes	%d minutes
+1 minute	1 minute
+Space	Espace
+Alarms and timers…	Alarmes et minuteurs…

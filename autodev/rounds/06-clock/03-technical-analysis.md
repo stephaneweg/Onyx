@@ -564,3 +564,79 @@ checked to fit.) The stopwatch shot: 600 + 590 + 640 waits ≈ 12.0 / 11.8 / 12.
 **02's must items vs this plan**: 02 #1–33 kept, with #17 (who sends the bubble: the Clock), #20 (*Missed* not kept by
 notifyd), #24–25 (FM voices) and #34 (the question only on Ctrl+Q; the timer handed to clockd, the stopwatch resumed —
 02's first two *should* items promoted) adjusted as above. Not added: anything from 02's *later* list.
+
+---
+
+## 10. GUI plan (appended by the UX Designer, 2026-10-07 — `04-ux-design.md`, mock-ups in `mockups/`)
+
+**No UIKit addition.** Everything in `04-ux-design.md` is UIKit's existing widgets (`SegmentedControl`, `ToolButton`,
+`Button`, `NumericUpDown`, `Textbox`, `LcdDisplay`, `DataGrid` + `cellDraw`, `Menu`) and drawing (`VPath::arc`,
+`uk_switch_mark`, `uk_sunken`, `uk_rbox`, `uk_title_strip`, `uk_glyph`), plus a few widgets drawn **beside the app**
+(`HereCard`, `CityList`, `NextAlarmBar`, `AlarmList`, `TimerRing`, `StopwatchFace`, `FootText`, `Veil`) — proven by the
+mock-ups, which build and run against today's UIKit in the simulator (`mockups/mockups.sh`).
+
+### 10.1 What was changed in this plan (and why)
+
+| # | Was | Now | Why (checked in the code) |
+|---|---|---|---|
+| G1 | R-1 (a): "the Clock's own Ctrl+Q / Clock ▸ Quit asks *Quit anyway?*" (step 11, test `clock-quit`, AC-40 reduced) | **No question at all.** The close box and Ctrl+Q both close at once and **hand over** (R-1 (b) unchanged: `[timer]` to clockd, the stopwatch's `sw_*` saved). AC-40 becomes: "closing (close box or Ctrl+Q) with the timer or the stopwatch running asks nothing; the timer still rings (clockd → `clock --ring timer` → *Time's up*), the stopwatch shows the right time when reopened within the boot". | `Menu::shortcut` (user/Kits/uikit/menu.cpp:61) turns `UK_CTRL ('Q')` into `kapi_menu_command (MENU_QUIT)` **before** the key reaches the app (root.cpp:452: menu shortcuts first) — the same sticky exit as the close box; asking would need a UIKit change, and with the hand-over nothing is lost. |
+| G2 | 03 §3.6: "the UX designer may choose a ring-only small window" | **The full window** on the Alarms tab with the ring card (one code path); **started only to ring** (`--ring` with no Clock running), it **closes by itself** after Stop / Snooze / the 2-minute timeout. | 04 D15. A flag set in `main` (`g_ringOnly`); the card is modal, so the user cannot have started anything else. |
+| G3 | "Overlays (real widgets as the root's children, focus taken, driven by onTick)" | Concretely: **`Veil : Widget`**, the client area's size, added last, **`modal = true`**, the card's controls **its children**; its `onDraw` copies the root's canvas under it (already composed: `Widget::draw` blits the earlier siblings first) mixed 96/256 toward black, then the card. Veils stack; closing = `removeChild` + focus back. | `modal` gives the routing (widget.cpp `handleMouse` / `handleKey`: only the topmost modal child; Tab walks its controls) and **switches the menu shortcuts off** (`menu.cpp` `modal_open ()`): Ctrl+C in the label `Textbox` is the field's, Ctrl+Q is inert while a card shows. Not `Modal::run`: the root's loop and `onTick` go on (fact 4). |
+| G4 | Keys "Ctrl+1…4, Ctrl+N… through `Root::onKey`" (§3.6) | Menu items for them are `item (label, "^1", 0, cb)` — **key 0** — and the keys are handled in the root's `onKey` (`kapi_get_modifiers () & MOD_CTRL` and `k == '1'…'4'`); only *Copy Laps* is bound (`UK_CTRL ('C')`). | `UK_CTRL ('1')` = `'1' & 0x1F` = 0x11 = **`UK_CTRL ('Q')`** (and '2'…'4' = ^R ^S ^T); the Spreadsheet (`sheet/main.cpp:1440, 1750`) and the PDF Viewer do the same. Ctrl+N means two things by tab; Space / L / R / Delete in a menu would be taken from the fields. |
+| G5 | §8.3: the screenshots `clock.png`, `clock-fr.png`, … | **`clock-world.png`**, `clock-alarms`, `clock-edit`, `clock-cities`, `clock-ring`, `clock-timer`, `clock-timesup`, `clock-stopwatch`, and each `-fr`. **Never `clock.png`.** | `screenshots/clock.png` **already exists**: the menu bar's calendar pop-up, made by the existing `if want clock` block (`tools/tests/desktop_sim/shots.sh:596`). The new block goes after it in the same `want clock`; AC-5 ("other screenshots unchanged") then holds. |
+| G6 | 02 #11: the time as "two spin boxes" | Two `NumericUpDown`s **and an `LcdDisplay`** showing `07:00` beside them. | `NumericUpDown::onDraw` (controls.cpp:150) prints the value unpadded (`7`, `0`); no UIKit change for a padded spinner. |
+| G7 | — | The Timer's start and Reset buttons **stacked** full width; the Stopwatch's two buttons 164 px. | *Remettre à zéro* did not fit two 121-px buttons side by side (the French mock-ups, 04 §2.1). |
+| G8 | — | Widgets resized after creation use **`resizeTo`**, not `width =`. | A `ToolButton` / `Button` whose `width` is changed keeps its canvas (the mock-ups' first run drew cut buttons). |
+
+### 10.2 Which step gets which GUI work (the steps of §5; files beside the app)
+
+| Step | GUI work (04's decisions) | Files |
+|---|---|---|
+| 5 | `ClockRoot` 560 × 440, `setResizable (true)`, `setMinSize (560, 440)`, size from `config.ini`; the `SegmentedControl` tab bar + its line (D2); **one container `Widget` per tab** (shown / hidden, anchored fill); the footer pattern `FootText` + right-aligned `ToolButton`s (D3); the `Menu` of 04 §6 (G4) and the key dispatcher of 04 §7; the lazy face cache (04 §4); **`ui.h`**: `Veil`, `FootText`, the drawings (`bell`, `slash`, `globe`, `sun`, `moon`, `hourglass`, `warn`, `speaker_off`, `pin`), the meaning colours with their dark-theme twins; the app icon (`tools/icons/clock_icon.py`, 04 §1.1); `lang/fr.txt` started from `mockups/sd/apps/clock.app/lang/fr.txt` | `main.cpp`, `ui.h` (new), `tools/icons/clock_icon.py` |
+| 6 | `HereCard` (D4), `CityList` (D5, Ctrl+Up / Down), the empty state (D6), the no-zone warning + `Button` (D7), the **Add a City** veil: `Textbox` filter + `DataGrid` City · Time · UTC (D8); the cities' names through `TR` with `// TR:` marks (as `langconf`) | `world.h` |
+| 7 | `NextAlarmBar` (D9), `AlarmList` with the switch's hit area, the states *Snoozed* / *Missed* / *Invalid* (D10), the empty state (D11), the **editor** veil: `LcdDisplay` + 2 `NumericUpDown` + *Next:* line, `Textbox`, 7 toggle `ToolButton`s + *Every day* / *Weekdays*, `SegmentedControl` sounds + *Test* (D12); *Not saved* in the footer | `alarmsview.h` |
+| 8 | The **ring** veil (D13) and its no-sound line (D14); `g_ringOnly` closing (G2) | `main.cpp` |
+| 9 | `TimerRing` (`VPath::arc`, D17), the right column (3 `NumericUpDown` disabled while running, 5 preset toggles, the stacked start / Reset), the **Time's up** veil (D18); a veil over a veil (R-8's test) | `timerview.h` |
+| 10 | `StopwatchFace` (D19), the Lap / Reset and Start / Stop `ToolButton`s, the laps `DataGrid` + `cellDraw` (fastest / slowest: colour + arrow + word), *Copy Laps* and *Laps copied* in `FootText` | `swview.h` |
+| 11 | The keys of 04 §7; **no question** (G1); the hand-over at every exit | `main.cpp` |
+| 12 | The `shots.sh` block (G5), below | `tools/tests/desktop_sim/shots.sh`, `tools/tests/desktop_sim/clock/` |
+
+### 10.3 Tests changed or added (§8.4)
+
+- `clock-quit` → **`clock-quit-hand`**: the stopwatch running, `key 17` (Ctrl+Q's code); assert: no veil logged, the
+  program ends (if the simulator's `kapi_menu_command (MENU_QUIT)` does not end it, `quit` as the close box), `sw_start`
+  in `config.ini`; the same with the timer running → `[timer]` in `alarms.txt` and `sim: send clockd type 2`.
+- **`clock-ring-only`**: `clock --ring 1` (no `clock` service), `key 27` → the program ends by itself (log
+  `clock: ring-only, closing`); `clock-ring` with `SIM_SERVICES=notify,clock`… (the ring delivered to a running Clock by
+  `CLOCK_MSG_OPEN`, `SIM_MBOX`) → after Esc it keeps running.
+- **`clock-veil-stack`** (R-8): the editor open (`key 13` on Alarms), a 3-s timer running (fixture `timer = 3`, started
+  from the Timer tab first) → *Time's up* logged over the editor; Esc closes it, the editor is still there.
+- `clock-keys`: Ctrl+1…4 sent as `mods 1;key 49…52;mods 0` (not `UK_CTRL`): the tab logs.
+
+### 10.4 The screenshots (§8.3 amended)
+
+After the existing menu-bar `want clock` lines, in the same block (`SIM_SERVICES=notify,clockd`, the fixtures of §8.3;
+a second config fixture `config-3s.ini` with `timer = 3` for *Time's up*):
+
+| Shot | `SIM_ARGS` | Script (positions at the default 560 × 440) |
+|---|---|---|
+| `clock-world` | `world` | `wait;wait;$W` |
+| `clock-cities` | `world` | `wait;mods 1;key 14;mods 0;wait;$W` (Ctrl+N) |
+| `clock-alarms` | `alarms` | `wait;wait;$W` |
+| `clock-edit` | `alarms` | `wait;key 13;wait;$W` (Enter on the focused list: *School*) |
+| `clock-ring` | `--ring 1` | `wait;wait;$W` |
+| `clock-timer` | `timer` | `wait;down 421 193;up 421 193;key 32;` + 120 waits (the *5 min* preset at its centre, Space) |
+| `clock-timesup` | `timer` (config-3s) | `wait;key 32;` + 170 waits |
+| `clock-stopwatch` | `stopwatch` | as §8.3 (Space, 3 × L, Space) |
+
+`SHOTS_LANG=fr` renders the same names with `-fr` (AC-3: the four tabs + the ring, plus the editor, the city
+picker and *Time's up*). The pictures must look like `mockups/clk-*.png` (the real data: the timer at 04:58 rather than
+the mock's 03:12).
+
+### 10.5 Acceptance criteria touched
+
+- **AC-3**: the screenshot names of G5 (not `clock.png`); the editor, the city picker and *Time's up* added to the
+  four tabs and the ring.
+- **AC-25**: + "started only to ring, the Clock closes by itself after Stop / Snooze" (G2).
+- **AC-40**: as G1 (no question; the hand-over on every exit).
+- **AC-41**: Ctrl+1…4 are handled in `onKey` (G4); unchanged otherwise.
