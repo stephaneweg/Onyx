@@ -42,7 +42,7 @@ APPS = tinycalc tinypad cppdemo \
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits
+FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
@@ -784,6 +784,13 @@ stickies.elf: Apps/notes/notesmodel.cpp Apps/notes/notesmodel.h Apps/notes/stick
 # gates.h, board.h, views.h, lessons.h are the window's own headers (one translation unit with main.cpp)
 FT_EXTRA_circuits = Apps/circuits/circuit.cpp
 circuits.elf: Apps/circuits/circuit.cpp $(wildcard Apps/circuits/*.h) Kits/filekit/kvtext.h Kits/filekit/kvtext.inc Kits/uikit/toolbar.h
+# Pinball (AutoDev round 4): its core (the table loader, the physics, the rules, the scores) beside the window; draw.h,
+# panel.h, picker.h are the window's own headers. The same floating-point results as the host test
+# (tools/tests/run_pinball_test.sh): no fused multiply-add. Its sounds: game.h's sfx, AudioKit's voices.
+FT_EXTRA_pinball = Apps/pinball/table.cpp Apps/pinball/physics.cpp Apps/pinball/rules.cpp Apps/pinball/scores.cpp lib/audiokit.imp.a
+pinball.elf: Apps/pinball/table.cpp Apps/pinball/physics.cpp Apps/pinball/rules.cpp Apps/pinball/scores.cpp $(wildcard Apps/pinball/*.h) \
+	     Apps/games/game.h Include/gamepad.h lib/audiokit.imp.a Kits/audiokit/audiokit.h Kits/filekit/kvtext.h Kits/filekit/kvtext.inc Kits/uikit/toolbar.h
+pinball.elf: NL_CXXFLAGS += -ffp-contract=off
 FT_EXTRA_printconf = lib/printerkit.imp.a
 printconf.elf: lib/printerkit.imp.a Kits/printerkit/printerkit.h
 $(FT_APP_ELFS): %.elf: Apps/%/main.cpp Kits/uikit/bmp.h Runtime/umm.h Runtime/onyxpp.hpp lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a 		       Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
