@@ -42,8 +42,12 @@ public:
 		dKind = dInSec = dOutSec = 0; cKeep = 0; bBack = bNext = bCancel = bExtra = 0;
 		build ();
 	}
-	~Wizard () { g_wizard = 0; }
-	void clear_children () { while (firstChild) { Widget *c = firstChild; removeChild (c); delete c; } tName = tEmail = tPw = tInHost = tInPort = tInUser = tOutHost = tOutPort = tOutUser = tOutPw = 0; dKind = dInSec = dOutSec = 0; cKeep = 0; bExtra = 0; }
+	~Wizard () { g_wizard = 0; free_dead (); }
+	// A page's widgets are rebuilt from a button's own callback (Button::onMouse still uses itself after it): the old ones
+	// are kept, out of the window, until the next rebuild or the end -- never deleted under the button being clicked.
+	Widget *dead[48]; int ndead = 0;
+	void free_dead () { while (ndead) delete dead[--ndead]; }
+	void clear_children () { free_dead (); while (firstChild) { Widget *c = firstChild; removeChild (c); if (ndead < 48) dead[ndead++] = c; else delete c; } tName = tEmail = tPw = tInHost = tInPort = tInUser = tOutHost = tOutPort = tOutUser = tOutPw = 0; dKind = dInSec = dOutSec = 0; cKeep = 0; bExtra = 0; }
 	Textbox *field (int x, int y, int w, const char *v, bool pw = false) { Textbox *t = new Textbox (x, y, w, 30, v); t->password = pw; t->maxLen = 200; addChild (t); return t; }
 	Button *button (int x, int y, int w, const char *l, int tag) { Button *b = new Button (x, y, w, 34, l, wiz_btn); b->tag = tag; addChild (b); return b; }
 	void build ()
@@ -317,10 +321,14 @@ public:
 	HitList hits;
 	static const int W = 680, H = 500, LW = 200, PAD = 20;
 	SettingsBox () : Modal (W, H), cur (0) { tName = tLabel = tPw = 0; tSig = 0; dEvery = 0; build (); }
-	~SettingsBox () { g_settings = 0; }
+	~SettingsBox () { g_settings = 0; free_dead (); }
+	// (rebuilt from a button's callback too: the old widgets kept until the next rebuild, as the Wizard's)
+	Widget *dead[48]; int ndead = 0;
+	void free_dead () { while (ndead) delete dead[--ndead]; }
 	void build ()
 	{
-		while (firstChild) { Widget *c = firstChild; removeChild (c); delete c; }
+		free_dead ();
+		while (firstChild) { Widget *c = firstChild; removeChild (c); if (ndead < 48) dead[ndead++] = c; else delete c; }
 		int x = LW + PAD, y = titleH () + 16, w = W - x - PAD;
 		Button *b;
 		b = new Button (PAD, H - 48, LW - PAD, 32, "Add an account...", set_btn); b->tag = 1; addChild (b);
