@@ -61,6 +61,9 @@ if [ -f user/Apps/clock/main.cpp ]; then
 	fi
 	wbuild user/Apps/clock/main.cpp "$OUT/clock_main.o"
 	g++ -o "$OUT/clock" "$OUT/fakekapi.o" "$OUT/clock_main.o" "$OUT/alarms.o" "$OUT/clocktime.o" "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libaudiokit.a" -lpthread -lm
+	# the menu bar (S1: its bell and its Alarms and timers... button read the Clock's alarms.txt through the core)
+	$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/menubar" "$OUT/fakekapi.o" user/Apps/menubar/main.cpp "$OUT/alarms.o" "$OUT/clocktime.o" \
+		"$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libaudiokit.a" -lpthread -lm || { echo "clock-sim: FAIL the build of the menu bar"; exit 1; }
 fi
 if grep -q "Apps/clock.*warning" "$OUT/clock.warn"; then cat "$OUT/clock.warn"; echo "clock-sim: FAIL warnings in the Clock"; exit 1; fi
 [ "$1" = build ] && { echo "clock-sim: built $OUT/clockd $OUT/clock"; exit 0; }
@@ -607,6 +610,26 @@ check "clock-face: no zone -> the warning and its button in the words' column" l
 seed facefr fr; config facefr '[clock]\nface = analogue\ncities = Tokyo,New York,London\n'
 run clock facefr "wait;wait;dump $OUT/facefr.elsm;exit" SIM_SERVICES=notify,clockd SIM_ARGS=world; png facefr
 check "clock-face: in French (the face read from config.ini)" logs facefr "clock: tab world"
+
+# ==== S1: the menu bar's bell and its Alarms and timers... ==========================================================
+# menubar-bell: the fixture's alarms (14:30 Medicine today: within 24 hours) -> the bell left of the time (x 942..960 on
+# the 1024-px screen); a click on it opens the Clock's Alarms ("clock alarms": one Clock at a time, raised). No alarms
+# -> no bell, the same click does nothing. The calendar's second button (under Open Calendar) -> the same.
+seed mbell; fixture mbell
+run menubar mbell "wait;wait;dump $OUT/mbell.elsm;down 951 15;up 951 15;wait;exit" SIM_MENU=""
+check "menubar-bell: an alarm within 24 h -> the bell; its click opens the Clock's Alarms" logs mbell "sim: exec SD:apps/clock.app/main alarms"
+seed mnobell
+run menubar mnobell "wait;wait;down 951 15;up 951 15;wait;exit" SIM_MENU=""
+check "menubar-bell: no alarm -> no bell (the click opens nothing)" nolog mnobell "clock.app"
+seed mfar; alarms mfar '[alarm]\nid = 1\ntime = 07:00\nlabel = Far\non = 1\ndays =\ndate = 20261001\n'
+run menubar mfar "wait;wait;down 951 15;up 951 15;wait;exit" SIM_MENU=""
+check "menubar-bell: the next alarm further than 24 h -> no bell" nolog mfar "clock.app"
+seed mcal
+run menubar mcal "wait;wait;down 990 15;up 990 15;wait;down 908 264;up 908 264;wait;exit" SIM_MENU=""
+check "menubar-alarms: the calendar's Alarms and timers... opens the Clock's Alarms" logs mcal "sim: exec SD:apps/clock.app/main alarms"
+seed mcal2
+run menubar mcal2 "wait;wait;down 990 15;up 990 15;wait;down 908 230;up 908 230;wait;exit" SIM_MENU=""
+check "menubar-alarms: Open Calendar still opens the Calendar" sh -c "grep -q 'calendar' '$OUT/log/mcal2.log' && ! grep -q 'clock.app' '$OUT/log/mcal2.log'"
 
 echo
 if [ $FAILS -ne 0 ]; then echo "clock-sim: $FAILS of $((PASS + FAILS)) checks FAILED"; exit 1; fi

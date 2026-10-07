@@ -64,6 +64,7 @@ build () {
 	[ "$1" = pinball ] && extra="user/Apps/pinball/table.cpp user/Apps/pinball/physics.cpp user/Apps/pinball/rules.cpp user/Apps/pinball/scores.cpp"	# (its core)
 	[ "$1" = critters ] && extra="user/Apps/critters/terrain.cpp user/Apps/critters/level.cpp user/Apps/critters/world.cpp user/Apps/critters/solution.cpp user/Apps/critters/progress.cpp"	# (its core)
 	[ "$1" = clock ] && extra="user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp"	# (its core, shared with clockd)
+	[ "$1" = menubar ] && extra="user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp"	# (the bell: the Clock's alarms)
 	[ "$1" = gamelib ] && extra="user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
@@ -595,14 +596,15 @@ if want usbmenu; then			# (the menu bar's USB box: a stick plugged in)
 	scene usbmenu "$OUT/usbmenu.elsm" --crop=524,0,1024,180
 fi
 if want clock; then
-	sim menubar clock "wait;wait;down 990 15;up 990 15;$W" SIM_MENU="$MENU_TINYPAD"
-	scene clock "$OUT/clock.elsm" --crop=624,0,1024,330
 	# The Clock (AutoDev round 6): desktop_sim/clock's config.ini (cities = Tokyo,New York,London) and alarms.txt (07:00
 	# School weekdays, 14:30 Medicine once today, 09:00 Gym weekends, off) in the writes' folder before each run; clockd
 	# and notifyd "running" (SIM_SERVICES: no clockd started). The simulator's frozen Monday 2026-09-28 12:34:00, the
-	# card's timezone=120 (Brussels). Never clock.png (the menu bar's calendar, above): clock-<tab>.png, each -fr.
+	# card's timezone=120 (Brussels). clock.png is the menu bar's calendar (its bell: an alarm within 24 hours; its
+	# Alarms and timers... button: the Clock on the card); the Clock's own: clock-<tab>.png, each -fr.
 	KQ="$OUT/writes/apps/clock.app"; KS="SIM_SERVICES=notify,clockd"
 	kfix () { rm -rf "$KQ"; mkdir -p "$KQ"; cp $D/clock/config.ini $D/clock/alarms.txt "$KQ/"; }
+	kfix; sim menubar clock "wait;wait;down 990 15;up 990 15;$W" SIM_MENU="$MENU_TINYPAD"
+	scene clock "$OUT/clock.elsm" --crop=624,0,1024,330
 	kw () { printf 'wait;%.0s' $(seq 1 $1); }		# (n script steps: 20 ms each)
 	KT="wait;down 421 193;up 421 193;key 32;$(kw 120)"	# (the Timer: the 5 min preset clicked, Space, ~2.4 s)
 	KW="wait;key 32;$(kw 600)key l;$(kw 590)key l;$(kw 640)key l;key 32;$W"	# (the Stopwatch: three laps, stopped)

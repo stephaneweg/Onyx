@@ -819,6 +819,9 @@ critters.elf: Apps/critters/terrain.cpp Apps/critters/level.cpp Apps/critters/wo
 FT_EXTRA_clock = Apps/clock/alarms.cpp Apps/clock/clocktime.cpp lib/audiokit.imp.a
 clock.elf: Apps/clock/alarms.cpp Apps/clock/clocktime.cpp $(wildcard Apps/clock/*.h) lib/audiokit.imp.a Kits/audiokit/audiokit.h \
 	   Kits/filekit/kvtext.h Kits/filekit/kvtext.inc Kits/systemkit/locale.h Kits/uikit/toolbar.h
+# The menu bar's bell (AutoDev round 6, S1): an alarm of the Clock within 24 hours -- the Clock's model read.
+FT_EXTRA_menubar = Apps/clock/alarms.cpp Apps/clock/clocktime.cpp
+menubar.elf: Apps/clock/alarms.cpp Apps/clock/clocktime.cpp Apps/clock/alarms.h Apps/clock/clocktime.h Kits/filekit/kvtext.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
 printconf.elf: lib/printerkit.imp.a Kits/printerkit/printerkit.h
 $(FT_APP_ELFS): %.elf: Apps/%/main.cpp Kits/uikit/bmp.h Runtime/umm.h Runtime/onyxpp.hpp lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a 		       Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
