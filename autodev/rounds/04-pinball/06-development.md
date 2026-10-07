@@ -185,3 +185,66 @@ void scores_clean_name (const char *name, char *out);
 ```
 
 `Table` and `Game` are large (≈ 0.43 MB and ≈ 4 KB): allocate them with `new`, never on the stack.
+
+## Developer B — steps 9–14 (the simulator, the window, French, the card, the shots and the docs)
+
+A first Developer B was interrupted by a container restart after step 9 and a work-in-progress commit of the window;
+a second one (resumed) read that state, found it complete enough (it compiled in the simulator with no warning at
+`-Wall -Wextra`, and its five shots already rendered the mock-ups' scenes), and finished it rather than rewriting it.
+No kernel, kapi, AppKit or kit change (`git diff origin/main -- kernel user/Kits` is empty).
+
+### What was done, by step
+
+| Step | Files | What |
+|---|---|---|
+| 9 — held keys in the simulator | `tools/tests/desktop_sim/fakekapi.cpp` | the script's `hold CODE` / `release CODE` (a held-key table folded as `kwin.cpp`'s `KeyHeldAny`; `hold` also sends the press event) and `kapi_key_held` answering it. Nothing changes for a script that does not use them |
+| 10 — the window, play | `user/Apps/pinball/main.cpp`, `draw.h`, `panel.h` | FT app: `ft_uikit_install` + `uk_lang_init`; `GameRoot (600, 680)` resizable, **min 600 × 680** (binding note 1), `fitWorkArea`; `PinballView : GameView` = the playfield only, letterboxed in `uk_tone (bg, 70)`, its **static layer** cached per table and size (`draw_static`: background, shapes, labels incl. rotated ones, ramps' tracks and rails, walls, arcs, posts, rubbers, gates, saucers' holes, the plunger's housing); `draw_dynamic` each frame (sling flash, lane lamps, drop / standup targets, bumpers and their flash, saucer rings, ramp arrows, the D17 inserts *2× … 5×* and *SHOOT AGAIN* — blinking during the ball save —, flippers at their angle, the plunger's knob and spring, balls, a ball on a ramp above everything); the nudge shake (D18), tilt greying. The panel: `Heading` (name + swatch), score `LcdDisplay` (26 px, *BALL n / N*), message `LcdDisplay` (16 px, 13 px fallback, cut at 31 bytes on a UTF-8 boundary — binding note 2; red for TILT / *Tilt warning*), `Stats` (bonus, ×mult, best, three tilt dots), *Goal* + `RuleList` (dots / n/N / check), `Legend` (keys, or the pad's once a pad button is seen); hidden below 640 / 600 px. The frame accumulator (16 667 µs, ≤ 3 frames a tick, then dropped), **`g.ev[]` handled after each `Game::frame`**; input per 03 §4.3 (`kapi_key_held` + `pad_buttons`; a plunger key event while the key is not held at the next frame = `Input::tap` — binding note 12); sounds from `GE_SOUND` via game.h's `sfx` / `sfx_later`, `sfx_win` on multiball / extra ball, `sfx_lose` at game over; messages (`GE_MULTIBALL` with `index < 0` → *MULTIBALL!*, never both — note 10); the bonus card (D13); `--seed N`, `--start multiball` (fires `{A_MULTIBALL, 2}` on the first `P_LAUNCH`); the Game menu (New Game ^N, Pause P, Choose a Table… Esc, Open a Table File… ^O via `ft_file_open`, Sound On / Off S, Quit ^Q) |
+| 11 — picker, overlays, scores | `picker.h`, `main.cpp` | `TableList` (52-px rows, a 22 × 44 picture cached per table, *Best* / *No score yet* / the error in red with a warning sign, the caption *Your tables (SD:/docs/pinball)* or *Other tables*, scroll bar, wheel, keys, double click), `Thumb` (the preview at rest, cached; for a refused table the warning card), `Heading`, `ScoreList`, the *Play* `ToolButton` (`setOn` + `setDisabled` — note 7), the key row. Tables read at start and each time the picker comes back (`kapi_open/fsize/read`, over `MAXFILE` → `load_error_file (e, true)`), the reason translated (`TR (e.fmt)` + its args, "line %d: "), a log line `pinball: refused <file>: line N: <English reason>`. The overlays (pause card with *Resume* / *Back to the tables* `Button`s, game over, name entry with a `Textbox` + callback — note 8 — and *OK*, the top 5 with the new line `uk_hilite`d) drawn by the view, their widgets root children shown with them; `PinballView::key` ignores what an overlay's widget did not take (R11); the pad's d-pad / A / B turned into ↑ ↓ / Enter / Esc for them. `scores.ini`: `fk_kv_load (…, FK_KV_ESCAPES)` or `fk_kv_new`, `scores_*`, `fk_kv_save` at each new entry, at the sound's switch and when a game starts on another table than the last (`[settings] table`); a score of 0 never enters (core). A dropped `.table` on the picker opens it |
+| 12 — French | `sdcard/apps/pinball.app/lang/fr.txt` | 91 lines: the UI's words, the menu, the messages, the keycaps, every `// TR:` format of `table.h` and its "too many" words, `digits` → U+202F; the tables' `.fr` texts by `Text::get (g_lang)` |
+| 13 — the card, the build, the package | `user/Makefile`, `sdcard/apps/pinball.app/{app.txt,icon.bmp}`, `tools/icons/pinball_icon.py`, `sdcard/etc/fileassoc.ini`, `tools/pkg/packages.ini` | `pinball` in `FT_APPS`; `FT_EXTRA_pinball` = the four core sources + `lib/audiokit.imp.a`; `pinball.elf`'s dependencies (its headers, game.h, gamepad.h, AudioKit, kvtext); `pinball.elf: NL_CXXFLAGS += -ffp-contract=off` (the FT rule compiles the extra sources in the same command, so the flag covers the core) — checked against Circuits' and Sound's lines. `app.txt` (Games, `opens = table`, `stack = 4M`), the icon (a navy playfield, cyan bumpers, the flippers, the ball; 40 × 40 through `circuits_icon.save`), `table = pinball`, `[app.pinball] needs = uikit >= 1.781, audiokit >= 1.232, filekit >= 1.96, fontkit >= 1.135`, `opens = table` — **declared, not published**; `versions.ini` unchanged |
+| 14 — shots, tests, docs | `tools/tests/desktop_sim/shots.sh`, `screenshots/pinball{,-play,-multiball,-broken,-fr}.png`, `tools/tests/run_pinball_sim_test.sh`, `docs/04`, `docs/03`, `docs/HANDOFF.md`, `IDEAS.md`, `docs/exports/*` | the `pinball` scenario (the fixture `scores.ini` and the two player tables copied into the writes' folder each shot — note 11; `SIM_SCREEN=1280x900` so the window keeps 600 × 680; `hold 32 … release 32` pulls the plunger, `hold 0x102` raises the left flipper); the sim test (below); docs/04 §12 *Pinball* (the screens, the keys and pad, the rules, the three tables, French, the files, `--seed` / `--start` "for tests", **the `.table` format**: the blocks and keys, the errors and their lines — deviation 8 —, the limits, a small example checked to load), the Games table's row, *Language & Region*'s translated list; docs/03 §the apps (the core and the window, the tests) and the translated apps; HANDOFF's Pinball section; IDEAS' *Pinball* row 🔨; `python3 docs/build_docs.py` run (pandoc + LibreOffice; `pypandoc` installed with pip first) |
+
+The resumed developer's own changes to the WIP code: a log line per overlay change (`pinball: overlay pause / name / over / scores / none`), at the picker (`pinball: picker (N tables)`) and per launch (`pinball: launch <speed>`) for the simulator's tests; `[settings] table` saved when a game starts (it was only set in memory, lost unless a score or the sound was saved later).
+
+### Commits (on `AutoDev`)
+
+- `044e082a` Desktop simulator: the hold / release script steps and kapi_key_held answering them (step 9)
+- `41e9c7bd` Pinball: UI work in progress (steps 10–12, saved after a container restart)
+- `73bc37b4` Pinball (steps 10–12): the window finished; `run_pinball_sim_test.sh`
+- `a719cfa3` Pinball (step 13): user/Makefile, app.txt, the icon, `.table` → Pinball, the package declared
+- `b6d7af17` Pinball (step 14): the screenshots, docs/04, docs/03, HANDOFF, IDEAS
+- `51eddd2e` docs: the exports regenerated
+- (this document's commit)
+
+### Tests run
+
+| Test | Result |
+|---|---|
+| `sh tools/tests/run_pinball_test.sh` (AC 1–27) | **passes** (516 checks, ASan/UBSan quick + -O2 full; fingerprint `73999beb7987e858` equal) |
+| `sh tools/tests/run_pinball_sim_test.sh` (AC 30, 31 + R11, note 12) | **passes: 19 checks** (≈ 22 s with the builds; the app's sources at `-Wall -Wextra -ffp-contract=off`, no warning): a refused `broken.table` as argument → `refused broken.table: line 12: unknown block [bumber]`, no game; `my-first-table.table` → played at once, `[settings] table` written; no argument → the picker with 3 tables; a **tap** of Space → launch at `auto` 2300, a **hold** of 35 steps → 1863 (a pull, not a tap); P → pause card, P → resumed, Esc → the card; Esc + ↓ + Enter → *Back to the tables*; `quick.table` played to the end (`waitlog 3000 pinball: game over`, score 550) → the name entry, Enter → `[user.quick] 1 = 550 Player`, `[settings] name = Player`, the top 5, Enter → the picker; in French the field holds *Joueur*, emptied and *Ana* typed → `1 = 550 Ana`. Dumps made PNGs in `$TMPDIR/onyx_pinball_sim/` (pause, name, scores, name in French, broken in French: looked at — nothing cut) |
+| `python3 tools/lang/check.py pinball` (AC 33) | `91 words, 0 missing, 0 not used` |
+| `shots.sh pinball` (AC 29) | the five PNGs, looked at: the picker ≈ `pb-picker.png` (5 rows, the broken one in red, Space Station's top 5); *Volcano* in play with the left flipper up, two top lanes lit, SHOOT AGAIN blinking; *Space Station* with two balls and *MULTIBALL!*; the error state; the French picker (*Manoir hanté*: the 3-line goal, *1 543 200*, *Pas encore de score*, *ligne 12 : bloc inconnu [bumber]* — all fit) |
+| `shots.sh invaders pipes` (AC 28, 37) | **identical** to the committed PNGs (`git status` clean on them) |
+| `sh tools/tests/run_circuits_test.sh` | still passes (582 checks) |
+| the docs' `.table` example | loads (`load_table` in a scratch program) |
+
+`shots.sh` builds every app (≈ 4 min); for the iterations a scratch copy of it built only the named apps
+(`for a in ${SHOTS_BUILD:-$APPS}`) — ≈ 20 s; the committed `shots.sh` is unchanged apart from the scenario.
+
+### Deviations
+
+1. **Minimum size 600 × 680** (binding note 1's first choice), not 480 × 560: the picker does not reflow.
+2. The pause card's *Pause* menu item is not greyed on the picker (it does nothing there).
+3. The *Volcano* play shot is reached by a plunger pull and 2.2 s of play with `--seed 7`, not a scripted 2-minute
+   game: it shows a raised flipper and lit lamps, but no bumper flash or drop target down at that moment.
+4. The table picker's thumbnails skip labels (D16's "smaller than 7 px"); the preview draws them.
+5. `run_pinball_sim_test.sh` asserts on the app's log lines and `scores.ini` (no pixel checks): the overlays' look
+   is checked by eye on its dumps.
+
+### What could not be done
+
+- **The Pi build** (`make` / `make stage` from `kernel/`): no AArch64 compiler in this container — the Makefile lines
+  are written and checked against the other FT apps; the user builds, then checks on the Pi the frame rate, the held
+  keys through the real kernel, a USB pad and the sounds.
+- **Publishing**: by rule, not done (`[app.pinball]` declared only).
+- The SHOULD items (the checker `--check`, a sample table on the card, attract mode, skill shot): not started.
