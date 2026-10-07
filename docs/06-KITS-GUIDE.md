@@ -338,6 +338,23 @@ kind, detail)` for each item offered after `object.` (or Ctrl+Space: `object` em
 
 **A timer or polling**: derive from `Root` and override `onTick ()` (called about 60 times a second).
 
+**Several windows** (2026-10-07, kapi v94): one more window of the program is a `Root` made with `NewWindow`; the first
+window's `run ()` serves them all (their events, `onTick`, drawing), a click in one makes it `Root::current ()`, its close
+box calls `onClose ()` (by default `closeWindow ()`; closing the first window ends the program). Telegram has one a
+conversation (docs/03 §6 *Several windows*).
+
+```cpp
+class ChatWin : public Root
+{
+public:
+	ChatWin (const char *who) : Root (NewWindow (), -1, -1, 500, 400, who) { if (!winOpened ()) return; /* its widgets */ }
+	void onClose () override { closeWindow (); gone = true; }	// (deleted later, by the main window's onTick)
+	bool gone = false;
+};
+ChatWin *w = new ChatWin ("Alice");
+if (!w->winOpened ()) { delete w; /* one window only: show it beside */ }
+```
+
 ## 5. SystemKit — talking to the system and the other programs
 
 `#include "systemkit/systemkit.h"` — link `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C).

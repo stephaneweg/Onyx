@@ -68,7 +68,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 781 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 790 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -213,6 +213,23 @@ The completion: set `complete` (`void (CodeEdit &, const char *object)`), which 
 kind, detail)` for each item offered after `object.` (or Ctrl+Space: `object` empty).
 
 **A timer or polling**: derive from `Root` and override `onTick ()` (called about 60 times a second).
+
+**Several windows** (2026-10-07, kapi v94): one more window of the program is a `Root` made with `NewWindow`; the first
+window's `run ()` serves them all (their events, `onTick`, drawing), a click in one makes it `Root::current ()`, its close
+box calls `onClose ()` (by default `closeWindow ()`; closing the first window ends the program). Telegram has one a
+conversation (docs/03 §6 *Several windows*).
+
+```cpp
+class ChatWin : public Root
+{
+public:
+	ChatWin (const char *who) : Root (NewWindow (), -1, -1, 500, 400, who) { if (!winOpened ()) return; /* its widgets */ }
+	void onClose () override { closeWindow (); gone = true; }	// (deleted later, by the main window's onTick)
+	bool gone = false;
+};
+ChatWin *w = new ChatWin ("Alice");
+if (!w->winOpened ()) { delete w; /* one window only: show it beside */ }
+```
 
 ## Index
 
@@ -660,6 +677,12 @@ The host's messages other than AP_PTR / AP_KEY / AP_CLOSE (an applet's own proto
 
 ```cpp
 void uk_applet_on_message (void (*fn) (int type, const void *data, int len));
+```
+
+(v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md): a Root made with NewWindow is one more window of the program (AppKit's kapi_win_new), beside the first Root (its main window). The first Root's run () / step () serves every one: their events (routed by the window they are for), their onTick, their drawing. Its close box asks onClose () (the default: closeWindow ()); the program's end is still the first window's close.
+
+```cpp
+struct NewWindow {};
 
 class Root : public Widget
 {
@@ -667,6 +690,16 @@ public:
 	unsigned bg;				// client-area background colour
 	Root (int w, int h, const char *title);				// decorated window
 	Root (int x, int y, int w, int h, const char *title, unsigned flags); // positioned / borderless
+	// (v94) Another window of the program (x, y negative: placed by the system). If it cannot be
+	// made (no graphics server's windows left, no memory), winOpened () says false (nothing is drawn).
+	Root (NewWindow, int x, int y, int w, int h, const char *title, unsigned flags = 0);
+	int winNumber () const { return (int) m_reserved[0]; }	// its number in the program (0: the first)
+	bool winOpened () const { return m_reserved[1] == 0; }	// (false: not made, or closed)
+	void closeWindow ();			// this window closed (not the first: the program ends then)
+	void winSelect ();				// AppKit's window calls act on this window (kapi_win_select)
+	static Root *winFirst ();			// the program's first window
+	static int winCount ();			// how many windows are open
+	static void paintAll ();		// every window that changed drawn and shown
 	void setBg (unsigned c) { bg = c; invalidate (true); }
 	unsigned bgColor () override { return bg; }
 	void onDraw () override;
@@ -712,7 +745,8 @@ public:
 	virtual void onDisplayResize (int w, int h) { (void) w; (void) h; }
 	// The reserve of virtual functions for the window (uikit/abi.h; Widget's own come before): a
 	// virtual added to Root by a later version of the library takes one of these.
-	virtual void uk_rootReserved0 () {}
+	virtual void onClose ();		// (v94) its close box (not the first window's): closeWindow ()
+	void uk_rootReserved0 ();		// (the slot's former name: an entry of the table, never removed)
 	virtual void uk_rootReserved1 () {}
 	virtual void uk_rootReserved2 () {}
 	virtual void uk_rootReserved3 () {}
@@ -744,7 +778,7 @@ private:
 	void initApplet ();			// ... an applet's: the host's surface, no window
 	static Root *&active ();		// single active window per app (reachable from C callbacks)
 	void	*m_ext = 0;			// the reserve (uikit/abi.h): the window's later fields
-	unsigned long m_reserved[4] = { 0, 0, 0, 0 };
+	unsigned long m_reserved[4] = { 0, 0, 0, 0 };	// [0] the window's number (v94), [1] 1: not opened / closed
 public:
 	static void ptrEvent (unsigned long, int ev, gui_value v);	// (the kernel's event streams; an
 	static void keyEvent (unsigned long, int ev, gui_value v);	// applet's host's, re-packed alike)

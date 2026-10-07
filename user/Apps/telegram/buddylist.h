@@ -15,7 +15,33 @@
 
 // From main.cpp
 static tg::Client g_c;
-static long long g_open = 0;			// the conversation shown (0: none)
+// A conversation's pane: what shows one conversation (its header, its messages, the line to write in...)
+// -- the main window's right side, or a conversation's own window (main.cpp, ConvWindow). The pane being
+// served (its widgets' drawing, their events, their window's tick) is g_pane: the widgets of a pane name
+// theirs (m_pane) and make it the current one before they work; what reads g_open, g_chat... then reads
+// that pane's.
+class ConvHeader; class PeerBar; class ChatView; class DpColumn; class InputBar; class EmoPicker;
+// The picture to send with the next message (attached by the button, Ctrl+V, a drop): the JPEG made of it,
+// its size, a small view of it, its name.
+struct Attach { unsigned char *jpg; int n, w, h; unsigned *thumb; int tw, th; char name[80]; };
+struct TgPane
+{
+	long long open;				// the conversation shown (0: none)
+	Attach att;
+	ConvHeader *head; PeerBar *bar; ChatView *chat; InputBar *input; DpColumn *dp; EmoPicker *picker;
+	uikit::Root *root;			// its window
+};
+static TgPane g_mainPane;			// the main window's
+static TgPane *g_pane = &g_mainPane;
+static inline void tg_use (TgPane *p) { if (p) g_pane = p; }
+#define g_open		(g_pane->open)
+#define g_att		(g_pane->att)
+#define g_head		(g_pane->head)
+#define g_bar		(g_pane->bar)
+#define g_chat		(g_pane->chat)
+#define g_input		(g_pane->input)
+#define g_dp		(g_pane->dp)
+#define g_picker	(g_pane->picker)
 static void open_conversation (long long peer);
 static void status_menu (int x, int y);
 static bool g_hasMenuBar = true;
@@ -110,13 +136,13 @@ public:
 	void tick () { if (m_rev != g_c.rev) { m_rev = g_c.rev; refresh (); } }
 	void scrollToOpen ()
 	{
-		for (int i = 0; i < m_n; i++) if (m_rows[i].peer == g_open) { ensure (i); break; }
+		for (int i = 0; i < m_n; i++) if (m_rows[i].peer == g_mainPane.open) { ensure (i); break; }
 	}
 	// keys from the window: up / down move the selection, Enter opens
 	bool moveSel (int d)
 	{
 		int cur = -1;
-		for (int i = 0; i < m_n; i++) if (m_rows[i].kind != R_GROUP && m_rows[i].peer == g_open) cur = i;
+		for (int i = 0; i < m_n; i++) if (m_rows[i].kind != R_GROUP && m_rows[i].peer == g_mainPane.open) cur = i;
 		for (int i = cur + d; i >= 0 && i < m_n; i += d)
 			if (m_rows[i].kind != R_GROUP) { open_conversation (m_rows[i].peer); ensure (i); return true; }
 		return false;
@@ -341,7 +367,7 @@ private:
 			ftext (cv, g_face.ui, 24, y + (h - g_face.ui->height ()) / 2, t, i == m_hot ? TC_LINK : TC_TITLE, 2);
 			return;
 		}
-		bool sel = r.peer == g_open, hot = i == m_hot;
+		bool sel = r.peer == g_mainPane.open, hot = i == m_hot;
 		if (sel) { uk_rbox (cv, 3, y + 1, w - 2, h - 2, 3, TC_SEL_TOP, TC_SEL_BOT); uk_rline (cv, 3, y + 1, w - 2, h - 2, 3, TC_SEL_RIM); }
 		else if (hot) { uk_rbox (cv, 3, y + 1, w - 2, h - 2, 3, TC_HOT_TOP, TC_HOT_BOT); uk_rline (cv, 3, y + 1, w - 2, h - 2, 3, TC_HOT_RIM); }
 		int now = g_c.serverTime ();

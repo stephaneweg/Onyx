@@ -20,14 +20,14 @@
 #ifndef ELEGANT_CORE_H
 #define ELEGANT_CORE_H
 
-#define EL_WINDOWS_MAX	16		// (the kernel's WM_MAX_WINDOWS, until the list is the server's own)
+#define EL_WINDOWS_MAX	64		// (= wm/kern/gui/window.h WM_MAX_WINDOWS; 16 until v94)
 
 // The window manager made, for a screen of w x h. 1, or 0: no memory.
 int el_core_start (int w, int h);
 // A generated wallpaper (the kernel's: cells tinted onto `base`).
 void el_core_wallpaper (unsigned base, int points, unsigned seed);
 
-// A window: its outer top left, its client size, WIN_FLAG_* -> its number (0 .. EL_WINDOWS_MAX - 1),
+// A window: its outer top left, its client size, WIN_FLAG_* -> Elegant's number for it (0 .. EL_WINDOWS_MAX - 1),
 // or -1. Its pixels: the client area, and the frame's two copies (active 1 / inactive 0; 0 for a
 // borderless window), 0x00RRGGBB, the row `*w` pixels.
 int el_core_window_add (int x, int y, int w, int h, const char *title, unsigned flags, unsigned owner_pid);
@@ -41,7 +41,8 @@ void el_core_window_remove (int id);
 
 // The pixels of the windows made or grown from now on are `pid`'s: shared with that program (0:
 // Elegant's own memory -- its demonstration's windows).
-void el_core_owner (unsigned pid);
+// win: which of the program's windows (0: its first; 1 .. EL_WINDOWS_MORE its others, appkit/elegant.h).
+void el_core_owner (unsigned pid, int win = 0);
 // Shared memory for a window's pixels, given by the server's kernel side (server.cpp): `bytes` for
 // `pid`'s window, part 0 its canvas / 1, 2 its frame's active and inactive copies -> its address
 // here (64 KB aligned, zeroed), 0: none; freed by that address. el_shared_is: is p such memory?
@@ -56,7 +57,11 @@ const void *el_core_shot_read (const void *pCanvas, unsigned nBytes, unsigned *p
 int el_core_shot_same (const void *pCanvas, unsigned nSeq);
 void el_core_shot_tick (void);
 
-int el_core_window_of (unsigned pid);		// a program's window, -1: none
+int el_core_window_of (unsigned pid);		// a program's window (any of them), -1: none
+int el_core_window_of_win (unsigned pid, int win);	// a program's window number win (0: its first), -1: none
+int el_core_window_win (int id);		// ... a window's number in its program (0: its first)
+void el_core_window_closing_clear (int id);	// its close was told to its program (a window that is not its first)
+unsigned long long el_core_window_pointer_handler (int id);
 unsigned el_core_window_pid (int id);		// a window's program (0: no such window)
 struct el_core_frame				// (the protocol's struct el_frame, appkit/elegant.h)
 {

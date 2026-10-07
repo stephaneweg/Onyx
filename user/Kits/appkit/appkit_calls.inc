@@ -427,6 +427,10 @@ KAPI_CALL (int, kapi_vol_mount, (const char *vol),
 	{ return KT->version >= 93 && KT->vol_mount ? KT->vol_mount (vol) : -KAPI_ENOSYS; })
 KAPI_CALL (int, kapi_vol_format, (const char *vol, const struct kapi_format *fmt),
 	{ return KT->version >= 93 && KT->vol_format ? KT->vol_format (vol, fmt) : -KAPI_ENOSYS; })
+KAPI_CALL (int, kapi_win_new, (int x, int y, int w, int h, const char *t, unsigned f, unsigned **canvas),
+	{ KAPI_WS (ws_win_new (x, y, w, h, t, f, canvas)); KAPI_HOST (if (KT->win_new) return KT->win_new (x, y, w, h, t, f, canvas); if (canvas) *canvas = 0; return -1;) })
+KAPI_CALL (int, kapi_win_select, (int win), { KAPI_WS (ws_win_select (win)); KAPI_HOST (if (KT->win_select) return KT->win_select (win); return win <= 0 ? 0 : -1;) })
+KAPI_CALL (void, kapi_win_destroy, (int win), { KAPI_WSV (ws_win_destroy (win)); KAPI_HOST (if (KT->win_destroy) KT->win_destroy (win);) })
 
 // The memory primitives (appkit.h: real symbols, the C names are aliased onto them at link time).
 #ifndef _WIN32		// (the Windows build of the apps, pc/Koton: its C library's; no weak symbols there)

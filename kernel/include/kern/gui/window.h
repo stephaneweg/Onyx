@@ -52,7 +52,7 @@ void DisplayPresentIdle (void);
 extern volatile unsigned g_nScreenGen;
 void ScreenDirty (void);
 
-#define WIN_EVENT_QUEUE		32
+#define WIN_EVENT_QUEUE		64		// (v94; 32 before)
 
 // Window flags and event kinds: the programs' (kern/kapi_abi.h has the frame's metrics; these are
 // kept numerically identical to user/Kits/appkit/appkit.h).

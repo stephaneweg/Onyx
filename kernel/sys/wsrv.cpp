@@ -18,6 +18,7 @@
 #include <kern/ipc.h>			// IpcPidAlive
 #include <kern/uaccess.h>
 #include <kern/layout.h>
+#include <kern/el0.h>			// USER_THREAD_STACKS (the other windows end below them)
 #include <kern/applaunch.h>		// ExecPath (the server's start)
 #include <kern/debugcon.h>		// the console, when no server can be had
 #include <fatfs/ff.h>
@@ -438,11 +439,24 @@ struct TWsBuf
 
 static TWsBuf s_Buf[USER_WS_SLOTS];
 
-static const u64 s_SlotVA[KAPI_WS_SLOTS] = { USER_WINDOW_CANVAS, USER_WINDOW_CHROME, USER_WINDOW_CHROME_INACTIVE,
-						  USER_WALLPAPER_CANVAS, KAPI_WS_VA_XFER };
+static const u64 s_SlotVA[KAPI_WS_SLOT_MORE] = { USER_WINDOW_CANVAS, USER_WINDOW_CHROME, USER_WINDOW_CHROME_INACTIVE,
+						     USER_WALLPAPER_CANVAS, KAPI_WS_VA_XFER };
 static_assert (KAPI_WS_VA_CANVAS == USER_WINDOW_CANVAS && KAPI_WS_VA_FRAME == USER_WINDOW_CHROME
 	       && KAPI_WS_VA_FRAME_OFF == USER_WINDOW_CHROME_INACTIVE && KAPI_WS_VA_WALLPAPER == USER_WALLPAPER_CANVAS
 	       && KAPI_WS_VA_XFER > USER_WALLPAPER_CANVAS && KAPI_WS_VA_XFER + USER_WS_SLOT <= USER_SURFACE_BASE, "the windows' addresses (kern/kapi_abi.h)");
+static_assert (KAPI_WS_VA_MORE == USER_WINDOW_MORE_BASE && KAPI_WS_WINDOWS_MORE == USER_WINDOW_MORE
+	       && USER_WINDOW_MORE_STEP >= 3 * USER_WS_SLOT
+	       && USER_WINDOW_MORE_BASE + USER_WINDOW_MORE * USER_WINDOW_MORE_STEP <= USER_THREAD_STACKS
+	       && USER_LIB_END <= USER_WINDOW_MORE_BASE, "a program's other windows (kern/layout.h)");
+
+// Where a slot's buffer is in its program: its first window's and its other buffers' fixed places,
+// then its other windows' (v94).
+static u64 SlotVA (int nSlot)
+{
+	if (nSlot < KAPI_WS_SLOT_MORE) return s_SlotVA[nSlot];
+	int nWin = (nSlot - KAPI_WS_SLOT_MORE) / 3 + 1, nPart = (nSlot - KAPI_WS_SLOT_MORE) % 3;
+	return KAPI_WS_VA_WIN (nWin, nPart);
+}
 
 static void BufFreeIfUnused (TWsBuf *b)
 {
@@ -488,12 +502,12 @@ static long BufMap (struct kapi_ws_buf *pUser)
 	{
 		TWsBuf *o = &s_Buf[i];
 		if (o->pRaw == 0 || !o->bProgram || o->nPid != B.pid || o->nSlot != B.slot) continue;
-		pProg->UnmapContig (s_SlotVA[B.slot], o->nPages);
+		pProg->UnmapContig (SlotVA (B.slot), o->nPages);
 		o->bProgram = FALSE;
 		BufFreeIfUnused (o);
 	}
 	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;
-	pProg->MapContig (s_SlotVA[B.slot], ulPhys, nPages, Attr);
+	pProg->MapContig (SlotVA (B.slot), ulPhys, nPages, Attr);
 	pProg->FlushTLB ();
 	u64 ulSrvVA = USER_WS_BASE + (u64) n * USER_WS_SLOT;
 	pSrv->MapContig (ulSrvVA, ulPhys, nPages, Attr);
@@ -516,7 +530,7 @@ static long BufFree (unsigned nId)
 	if (b->bProgram)
 	{
 		CAddressSpace *pProg = IpcFindAS (b->nPid);
-		if (pProg != 0) pProg->UnmapContig (s_SlotVA[b->nSlot], b->nPages);
+		if (pProg != 0) pProg->UnmapContig (SlotVA (b->nSlot), b->nPages);
 		b->bProgram = FALSE;
 	}
 	BufFreeIfUnused (b);
@@ -664,13 +678,14 @@ static long ProcName (unsigned nPid, char *pUser, unsigned nCap)
 }
 
 // A program's pixels changed: an event for the server (one waiting already is enough).
-static long Kick (void)
+static long Kick (long nWindow)
 {
 	unsigned nPid = MyPid ();
 	if (!s_bOwned || ClientSlot (nPid) < 0) return -KAPI_ESRCH;
 	struct kapi_ws_input Ev;
 	memset (&Ev, 0, sizeof Ev);
 	Ev.type = KAPI_WS_IN_KICK; Ev.a = (int) nPid;
+	Ev.x = nWindow > 0 && nWindow <= KAPI_WS_WINDOWS_MORE ? (int) nWindow : 0;	// (v94) which of its windows
 	Push (Ev);
 	CScheduler::Get ()->Yield ();			// (the server composes now)
 	return (long) s_nServerPid;
@@ -746,7 +761,7 @@ extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)
 	if (nOp == KAPI_WS_ACTIVE) return s_bOwned ? (long) s_nServerPid : 0;
 	if (nOp == KAPI_WS_REGISTER) return Register ();
 	if (nOp == KAPI_WS_CALL) return Call ((struct kapi_ws_call *) a0);
-	if (nOp == KAPI_WS_KICK) return Kick ();
+	if (nOp == KAPI_WS_KICK) return Kick (a0);
 	if (!IsServer ()) return -KAPI_EPERM;
 	s_nLastCall = CTimer::Get ()->GetTicks ();
 	switch (nOp)

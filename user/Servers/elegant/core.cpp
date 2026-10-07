@@ -22,6 +22,8 @@ static unsigned s_nLastGen = 0;
 static boolean s_bFirst = TRUE;
 
 static unsigned s_nOwner = 0;			// (el_core_owner)
+static int s_nOwnerWin = 0;			// ... which of its windows (0: its first)
+static int s_nWin[EL_WINDOWS_MAX];		// each window's number in its program (0: its first)
 
 // A window's pixels (kern/gui/window.h, WIN_PIXELS_HOOK): a program's are shared with it. The
 // window asks for a spare page to align its start; shared memory is aligned already.
@@ -49,9 +51,10 @@ void *WinPixelsAlloc (int nPart, unsigned nBytes)
 		TShot *pShot = 0;
 		for (int i = 0; i < SHOTS_MAX && pShot == 0; i++)
 			if (s_Shot[i].pCanvas == 0) pShot = &s_Shot[i];
-		if (nPart == 0 && pShot != 0 && (n & KPAGE_MASK) == 0 && 2ULL * n + KPAGE_SIZE <= SHOT_ALLOC_MAX)
+		int nSlot = s_nOwnerWin > 0 ? KAPI_WS_SLOT_WIN (s_nOwnerWin, nPart) : nPart;
+		if (nPart == 0 && s_nOwnerWin == 0 && pShot != 0 && (n & KPAGE_MASK) == 0 && 2ULL * n + KPAGE_SIZE <= SHOT_ALLOC_MAX)
 		{
-			void *p = el_shared_alloc (s_nOwner, nPart, 2UL * n + KPAGE_SIZE);
+			void *p = el_shared_alloc (s_nOwner, nSlot, 2UL * n + KPAGE_SIZE);
 			if (p != 0)
 			{
 				struct el_shot *pCtl = (struct el_shot *) ((u8 *) p + n);
@@ -60,7 +63,7 @@ void *WinPixelsAlloc (int nPart, unsigned nBytes)
 				return p;
 			}
 		}
-		return el_shared_alloc (s_nOwner, nPart, n);
+		return el_shared_alloc (s_nOwner, nSlot, n);
 	}
 	u8 *p = new u8[nBytes];
 	memset (p, 0, nBytes);
@@ -75,9 +78,10 @@ void WinPixelsFree (void *pRaw)
 	else delete [] (u8 *) pRaw;
 }
 
-void el_core_owner (unsigned pid)
+void el_core_owner (unsigned pid, int win)
 {
 	s_nOwner = pid;
+	s_nOwnerWin = pid != 0 && win > 0 && win <= EL_WINDOWS_MORE ? win : 0;
 }
 
 int el_core_shot_info (const void *pCanvas, unsigned *pnCtlOff, unsigned *pnCopyOff, unsigned *pnCap)
@@ -225,6 +229,7 @@ int el_core_window_add (int x, int y, int w, int h, const char *title, unsigned 
 		if (pWin == 0 || !pWin->IsValid ()) { delete pWin; return -1; }
 		pWin->SetOwnerPid (owner_pid);
 		g_pElWin[id] = pWin;
+		s_nWin[id] = owner_pid != 0 ? s_nOwnerWin : 0;
 		g_pElWM->Add (pWin);
 		return id;
 	}
@@ -268,6 +273,7 @@ void el_core_window_remove (int id)
 	if (pWin == 0) return;
 	g_pElWM->Remove (pWin);
 	g_pElWin[id] = 0;
+	s_nWin[id] = 0;
 	s_bPeek[id] = FALSE;
 	delete pWin;						// (one thread: no composition is reading it)
 }
@@ -277,6 +283,30 @@ int el_core_window_of (unsigned pid)
 	for (int id = 0; id < EL_WINDOWS_MAX; id++)
 		if (g_pElWin[id] != 0 && g_pElWin[id]->OwnerPid () == pid) return id;
 	return -1;
+}
+
+int el_core_window_of_win (unsigned pid, int win)
+{
+	for (int id = 0; id < EL_WINDOWS_MAX; id++)
+		if (g_pElWin[id] != 0 && g_pElWin[id]->OwnerPid () == pid && s_nWin[id] == win) return id;
+	return -1;
+}
+
+int el_core_window_win (int id)
+{
+	return Win (id) != 0 ? s_nWin[id] : 0;
+}
+
+void el_core_window_closing_clear (int id)
+{
+	CWindow *pWin = Win (id);
+	if (pWin != 0) pWin->ClearExit ();
+}
+
+unsigned long long el_core_window_pointer_handler (int id)
+{
+	CWindow *pWin = Win (id);
+	return pWin != 0 ? pWin->PointerHandler () : 0;
 }
 
 unsigned el_core_window_pid (int id)

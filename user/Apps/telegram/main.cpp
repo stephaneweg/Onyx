@@ -43,13 +43,13 @@ using namespace uikit;
 #define DP_W		150
 #define SB_H		22
 
-static bool g_demo = false, g_pictures = true;
-static ConvHeader *g_head;
-static PeerBar *g_bar;
 #define BAR_H		34
-static ChatView *g_chat;
-static DpColumn *g_dp;
-static InputBar *g_input;
+#define LIST_WIN_W	360		// the main window when the conversations have their own windows
+#define CW_W		640		// a conversation's window
+#define CW_H		560
+
+static bool g_demo = false, g_pictures = true;
+static bool g_windowed = true;		// (config.ini windows=) a conversation opens in its own window
 static Widget *g_welcome, *g_status;
 static Root *g_root;
 
@@ -65,8 +65,8 @@ static void save_config ()
 	char t[400];
 	int n;
 	if (g_c.apiId == TG_API_ID && !strcmp (g_c.apiHash, TG_API_HASH))	// (the app's own key: not written)
-		n = snprintf (t, sizeof t, "[telegram]\ntest=%d\npictures=%d\n", (int) g_c.test, (int) g_pictures);
-	else n = snprintf (t, sizeof t, "[telegram]\napi_id=%d\napi_hash=%s\ntest=%d\npictures=%d\n", g_c.apiId, g_c.apiHash, (int) g_c.test, (int) g_pictures);
+		n = snprintf (t, sizeof t, "[telegram]\ntest=%d\npictures=%d\nwindows=%d\n", (int) g_c.test, (int) g_pictures, (int) g_windowed);
+	else n = snprintf (t, sizeof t, "[telegram]\napi_id=%d\napi_hash=%s\ntest=%d\npictures=%d\nwindows=%d\n", g_c.apiId, g_c.apiHash, (int) g_c.test, (int) g_pictures, (int) g_windowed);
 	tg_save (TG_DIR "config.ini", t, n);
 }
 
@@ -80,6 +80,7 @@ static void load_config ()
 	if (!g_c.apiId || !g_c.apiHash[0]) { g_c.apiId = TG_API_ID; snprintf (g_c.apiHash, sizeof g_c.apiHash, "%s", TG_API_HASH); }
 	g_c.test = app_ini_get_int ("telegram", "test", 0) != 0;
 	g_pictures = app_ini_get_int ("telegram", "pictures", 1) != 0;
+	g_windowed = app_ini_get_int ("telegram", "windows", 1) != 0;
 }
 static void save_api (int id, const char *hash)
 {
@@ -91,40 +92,85 @@ static void save_api (int id, const char *hash)
 
 static void place (Widget *w, int x, int y, int ww, int hh) { w->left = x; w->top = y; w->resizeTo (ww < 1 ? 1 : ww, hh < 1 ? 1 : hh); w->invalidate (true); }
 
+// A conversation's pane (buddylist.h, TgPane) placed at x in a window w x h (its height from the top): the
+// header, the bar (a person who is not a contact), the messages, the line to write in, the pictures' column.
+static void pane_layout (TgPane *p, int x, int w, int h, bool conv)
+{
+	TgPane *was = g_pane;
+	tg_use (p);
+	bool dp = conv && g_pictures && w >= 640;
+	int cw = dp ? w - DP_W : w;
+	g_head->hidden = g_chat->hidden = g_input->hidden = !conv;
+	g_dp->hidden = !dp;
+	bool bar = conv && g_c.showBar (g_c.conv (g_open));
+	int bh = bar ? BAR_H : 0;
+	g_bar->hidden = !bar;
+	place (g_head, x, 0, w, HEAD_H);
+	place (g_bar, x, HEAD_H, cw, BAR_H);
+	place (g_chat, x, HEAD_H + bh, cw, h - HEAD_H - INPUT_H - bh);
+	place (g_input, x, h - INPUT_H, cw, INPUT_H);
+	place (g_dp, x + cw, HEAD_H, DP_W, h - HEAD_H);
+	g_pane = was;
+}
+
 static void relayout ()
 {
 	Root &r = *g_root;
 	int w = r.width, h = r.height - SB_H;
 	bool ready = g_c.state == tg::AS_READY;
+	bool list_only = ready && g_windowed;		// (the conversations in their own windows)
 	g_signin->hidden = ready;
 	place (g_signin, 0, 0, w, r.height);
 	g_list->hidden = !ready;
-	place (g_list, 0, 0, LIST_W, h);
-	bool conv = ready && g_open;
-	bool dp = conv && g_pictures && w - LIST_W >= 640;
-	int rw = w - LIST_W, cw = dp ? rw - DP_W : rw;
-	g_head->hidden = g_chat->hidden = g_input->hidden = !conv;
-	g_dp->hidden = !dp;
-	g_welcome->hidden = !ready || conv;
-	bool bar = conv && g_c.showBar (g_c.conv (g_open));
-	int bh = bar ? BAR_H : 0;
-	g_bar->hidden = !bar;
-	place (g_head, LIST_W, 0, rw, HEAD_H);
-	place (g_bar, LIST_W, HEAD_H, cw, BAR_H);
-	place (g_chat, LIST_W, HEAD_H + bh, cw, h - HEAD_H - INPUT_H - bh);
-	place (g_input, LIST_W, h - INPUT_H, cw, INPUT_H);
-	place (g_dp, LIST_W + cw, HEAD_H, DP_W, h - HEAD_H);
-	place (g_welcome, LIST_W, 0, rw, h);
+	place (g_list, 0, 0, list_only ? w : LIST_W, h);
+	bool conv = ready && !list_only && g_mainPane.open;
+	pane_layout (&g_mainPane, LIST_W, w - LIST_W, h, conv);
+	g_welcome->hidden = !ready || conv || list_only;
+	place (g_welcome, LIST_W, 0, w - LIST_W, h);
 	g_status->hidden = !ready;
 	place (g_status, 0, h, w, SB_H);
 	r.invalidate (true);
 }
 
+// The main window made w x h (its client area): the frame dragged, as the frame does it (uikit's Root).
+static void main_size (int cw, int ch)
+{
+	Root &r = *g_root;
+	if (r.maximised ()) r.maximise (false);
+	if (cw == r.width && ch == r.height) return;
+	r.winSelect ();
+	int stride = cw;
+	unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+	if (!fb) return;
+	r.canvas.adopt (fb, cw, ch, stride);
+	r.width = cw; r.height = ch;
+	r.layout ();
+	uk_decorate_window ();
+	relayout ();
+	r.fitWorkArea ();
+}
+
+// The main window as the mode wants it: the list alone (its conversations in their own windows), or the
+// list and the conversation beside it.
+static void apply_mode ()
+{
+	Root &r = *g_root;
+	bool list_only = g_windowed && g_c.state == tg::AS_READY;
+	if (list_only && r.width > LIST_WIN_W + 40) { r.setMinSize (300, 400); main_size (LIST_WIN_W, r.height); }
+	else if (!list_only && r.width < 720) { main_size (W0, r.height < H0 ? H0 : r.height); r.setMinSize (720, 500); }
+	relayout ();
+}
+
 // ---- the actions ----------------------------------------------------------------------------------------
+
+static bool open_window (long long peer);
+static void close_windows ();
 
 static void open_conversation (long long peer)
 {
 	if (!peer) return;
+	if (g_windowed && g_c.state == tg::AS_READY && open_window (peer)) return;
+	tg_use (&g_mainPane);
 	g_open = peer;
 	if (g_demo) { tg::Conv *c = g_c.conv (peer); if (c) { c->unread = 0; c->rev++; } g_c.rev++; }
 	else g_c.open (peer);
@@ -318,7 +364,8 @@ public:
 		if (g_demo) return;
 		if (ft_messagebox (TR ("Sign out"), TR ("Sign out of Telegram on this Onyx? Your conversations stay on Telegram."), MB_YESNO) != 1) return;
 		g_c.logOut ();
-		g_open = 0;
+		close_windows ();
+		g_mainPane.open = 0;
 		relayout ();
 	}
 private:
@@ -439,7 +486,7 @@ public:
 		VPath p; p.circle (V (12), V (height / 2), V (4)); p.fill (cv, on ? TC_ONLINE : TC_AWAY);
 		ftext (cv, g_face.small, 22, (height - g_face.small->height ()) / 2, g_demo ? TR ("Demonstration: nothing is sent") : on ? TR ("Connected to Telegram") : TR ("Connecting to Telegram..."), TC_GREY);
 		const char *r = "Telegram for Onyx";
-		ftext (cv, g_face.small, width - ftw (g_face.small, r) - 10, (height - g_face.small->height ()) / 2, r, TC_LIGHT, 1);
+		if (width >= 520) ftext (cv, g_face.small, width - ftw (g_face.small, r) - 10, (height - g_face.small->height ()) / 2, r, TC_LIGHT, 1);
 	}
 };
 
@@ -450,7 +497,17 @@ static void m_online () { g_c.setOnline (true); g_list->invalidate (true); }
 static void m_offline () { g_c.setOnline (false); g_list->invalidate (true); }
 static void m_signout () { PopMenu::sign_out (); }
 static void m_quit () { kapi_exit (0); }
-static void m_pictures () { g_pictures = !g_pictures; save_config (); relayout (); extern void build_menu (); build_menu (); }
+static void relayout_windows ();
+static void m_pictures () { g_pictures = !g_pictures; save_config (); relayout (); relayout_windows (); extern void build_menu (); build_menu (); }
+static void close_windows ();
+static void m_windows ()
+{
+	g_windowed = !g_windowed;
+	save_config ();
+	if (!g_windowed) close_windows ();
+	apply_mode ();
+	extern void build_menu (); build_menu ();
+}
 static void m_search () { if (g_c.state == tg::AS_READY) g_list->search->setFocus (); }
 static void m_about ()
 {
@@ -471,9 +528,153 @@ void build_menu ()
 	g_menu.item (TR ("Appear Offline"), "", 0, m_offline);
 	g_menu.menu (TR ("View"));
 	g_menu.item (g_pictures ? TR ("Hide the Display Pictures") : TR ("Show the Display Pictures"), "", 0, m_pictures);
+	g_menu.item (g_windowed ? TR ("Conversations Beside the List") : TR ("Conversations in Their Own Windows"), "", 0, m_windows);
 	g_menu.menu (TR ("Help"));
 	g_menu.item (TR ("About Telegram for Onyx"), "", 0, m_about);
 	g_menu.publish ();
+}
+
+// ---- a conversation in its own window ------------------------------------------------------------------------
+// (Onyx's windows of a program, uikit's Root (NewWindow): docs/MULTI-WINDOW-STUDY.md.) The main window keeps
+// the list; a conversation opened there comes in a window of its own -- one for each, brought forward when
+// it is opened again. Its close box closes it (Telegram goes on); closing the main window ends Telegram.
+
+class ConvWindow : public Root
+{
+public:
+	TgPane pane;
+	bool gone = false;				// closed: deleted by the main window's next tick
+	ConvWindow (long long peer, const char *title) : Root (NewWindow (), -1, -1, CW_W, CW_H, title)
+	{
+		memset (&pane, 0, sizeof pane);
+		pane.open = peer; pane.root = this;
+		if (!winOpened ()) return;
+		TgPane *was = g_pane;
+		g_pane = &pane;					// (the widgets made now are this pane's)
+		setBg (TC_BG);
+		int h = CW_H;
+		g_head = new ConvHeader (0, 0, CW_W, HEAD_H);
+		addChild (g_head);
+		g_chat = new ChatView (0, HEAD_H, CW_W - DP_W, h - HEAD_H - INPUT_H);
+		addChild (g_chat);
+		g_bar = new PeerBar (0, HEAD_H, CW_W - DP_W, BAR_H);
+		g_bar->hidden = true;
+		addChild (g_bar);
+		g_input = new InputBar (0, h - INPUT_H, CW_W - DP_W, INPUT_H);
+		addChild (g_input);
+		g_dp = new DpColumn (CW_W - DP_W, HEAD_H, DP_W, h - HEAD_H, INPUT_H);
+		addChild (g_dp);
+		g_picker = new EmoPicker (g_input->edit);
+		addChild (g_picker);
+		setResizable (true);
+		setMinSize (420, 360);
+		if (g_demo) { tg::Conv *c = g_c.conv (peer); if (c) { c->unread = 0; c->rev++; } g_c.rev++; }
+		else g_c.open (peer);
+		place_me ();
+		g_chat->reset ();
+		g_input->edit->setFocus ();
+		g_pane = was;
+	}
+	void place_me () { pane_layout (&pane, 0, width, height, true); invalidate (true); }
+	void onResized () override { place_me (); }
+	void onTick () override
+	{
+		tg_use (&pane);
+		if (g_c.state != tg::AS_READY || gone) return;
+		g_chat->tick ();
+		if (g_c.rev != m_rev)
+		{
+			m_rev = g_c.rev;
+			g_head->invalidate (true); g_dp->invalidate (true); g_bar->invalidate (true);
+			bool bar = g_c.showBar (g_c.conv (g_open));
+			if (bar == g_bar->hidden) place_me ();		// (the bar came or went)
+		}
+		g_input->edit->tickBlink ();
+	}
+	void onClose () override
+	{
+		tg_use (&pane);
+		attach_clear ();
+		closeWindow ();
+		gone = true;
+		tg_use (&g_mainPane);
+		g_list->invalidate (true);
+	}
+	bool onKey (long k) override
+	{
+		tg_use (&pane);
+		if (k == 27 && !g_picker->hidden) { g_picker->hide (); return true; }
+		if (k == KEY_PGUP) { g_chat->pageUp (); return true; }
+		if (k == KEY_PGDN) { g_chat->pageDown (); return true; }
+		return false;
+	}
+	void onDrop (int x, int y, int type, const char *data, int len, unsigned flags) override;
+private:
+	unsigned m_rev = 0;
+};
+
+static ConvWindow *g_wins[KAPI_WS_WINDOWS_MORE];
+
+// A conversation in its window: the one it has brought forward, else a new one -> false: no window could be
+// made (the conversation is then shown beside the list).
+static bool open_window (long long peer)
+{
+	for (int i = 0; i < KAPI_WS_WINDOWS_MORE; i++)
+	{
+		ConvWindow *w = g_wins[i];
+		if (!w || w->gone || w->pane.open != peer) continue;
+		int was = kapi_win_select (-1);
+		w->winSelect ();
+		kapi_win_raise (0);
+		kapi_win_select (was);
+		return true;
+	}
+	int slot = -1;
+	for (int i = 0; i < KAPI_WS_WINDOWS_MORE && slot < 0; i++) if (!g_wins[i]) slot = i;
+	if (slot < 0) { notify ("Telegram", TR ("Too many conversations are open: close one of their windows.")); return true; }
+	char name[160];
+	g_c.peerName (peer, name, sizeof name);
+	ConvWindow *w = new ConvWindow (peer, name);
+	if (!w->winOpened ())				// (no window: the conversations beside the list again)
+	{
+		delete w;
+		g_windowed = false;
+		apply_mode ();
+		extern void build_menu (); build_menu ();
+		return false;
+	}
+	g_wins[slot] = w;
+	g_list->invalidate (true);
+	return true;
+}
+
+// Is this conversation on the screen? (its window, or beside the list)
+static bool peer_shown (long long peer)
+{
+	if (!g_windowed && peer == g_mainPane.open) return true;
+	for (int i = 0; i < KAPI_WS_WINDOWS_MORE; i++)
+		if (g_wins[i] && !g_wins[i]->gone && g_wins[i]->pane.open == peer) return true;
+	return false;
+}
+
+static void reap_windows ()
+{
+	for (int i = 0; i < KAPI_WS_WINDOWS_MORE; i++)
+		if (g_wins[i] && g_wins[i]->gone) { delete g_wins[i]; g_wins[i] = 0; }
+	tg_use (&g_mainPane);
+}
+
+static void close_windows ()
+{
+	for (int i = 0; i < KAPI_WS_WINDOWS_MORE; i++)
+		if (g_wins[i] && !g_wins[i]->gone) g_wins[i]->onClose ();
+	tg_use (&g_mainPane);
+}
+
+static void relayout_windows ()
+{
+	for (int i = 0; i < KAPI_WS_WINDOWS_MORE; i++)
+		if (g_wins[i] && !g_wins[i]->gone) g_wins[i]->place_me ();
 }
 
 // ---- the window -----------------------------------------------------------------------------------------
@@ -485,14 +686,16 @@ public:
 	void onResized () override { relayout (); }
 	void onTick () override
 	{
+		tg_use (&g_mainPane);
 		g_c.tick ();
+		reap_windows ();
 		if ((int) g_c.state != m_state)
 		{
 			bool was = m_state == tg::AS_READY;
 			m_state = (int) g_c.state;
 			if (m_state == tg::AS_READY && !was && g_signin && g_signin->offline ()) g_c.setOnline (false);
-			if (m_state != tg::AS_READY) g_open = 0;
-			relayout ();
+			if (m_state != tg::AS_READY) { g_open = 0; close_windows (); }
+			apply_mode ();
 			g_list->refresh ();
 		}
 		if (g_c.state == tg::AS_READY)
@@ -532,6 +735,11 @@ public:
 	void onDrop (int x, int y, int type, const char *data, int len, unsigned flags) override
 	{
 		(void) x; (void) y; (void) len; (void) flags;
+		tg_use (&g_mainPane);
+		drop_pictures (type, data);
+	}
+	static void drop_pictures (int type, const char *data)
+	{
 		if (type != DND_FILES || !g_open || g_c.state != tg::AS_READY) return;
 		char path[300];
 		for (const char *p = data; *p; )
@@ -547,6 +755,11 @@ public:
 		}
 	}
 	bool onKey (long k) override
+	{
+		tg_use (&g_mainPane);
+		return keys (k);
+	}
+	static bool keys (long k)
 	{
 		if (k == 27 && !g_picker->hidden) { g_picker->hide (); return true; }
 		if (g_c.state == tg::AS_READY)
@@ -572,7 +785,7 @@ private:
 			memmove (g_c.inbox, g_c.inbox + 1, sizeof g_c.inbox[0] * (size_t) (g_c.ninbox - 1));
 			g_c.ninbox--;
 			if (g_demo) continue;
-			if (in.peer == g_open) { tg::Conv *c = g_c.conv (in.peer); if (c) g_c.markRead (c); continue; }
+			if (peer_shown (in.peer)) { tg::Conv *c = g_c.conv (in.peer); if (c) g_c.markRead (c); continue; }
 			tg::Conv *c = g_c.conv (in.peer);
 			if (!c) continue;
 			char name[160], pv[200], title[200];
@@ -583,6 +796,13 @@ private:
 		}
 	}
 };
+
+void ConvWindow::onDrop (int x, int y, int type, const char *data, int len, unsigned flags)
+{
+	(void) x; (void) y; (void) len; (void) flags;
+	tg_use (&pane);
+	TgRoot::drop_pictures (type, data);
+}
 
 int main ()
 {
@@ -603,6 +823,7 @@ int main ()
 	TgRoot root (W0, H0);
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
+	g_mainPane.root = &root;
 	root.setBg (TC_BG);
 	root.setResizable (true);
 	root.setMinSize (720, 500);
@@ -647,6 +868,7 @@ int main ()
 	else g_c.begin ();
 	relayout ();
 	root.fitWorkArea ();
+	apply_mode ();
 	root.run ();
 	g_c.end ();
 	tg_log_flush (true);

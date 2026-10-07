@@ -24,6 +24,9 @@
 //   dump FILE            the window: "ELSM" w h x y (int32), then w * h pixels 0xTTRRGGBB
 //                        (TT = transparency: 0 opaque) -- its frame (the active copy, or the
 //                        inactive one with SIM_INACTIVE=1) around its client canvas
+//   win N                the program's window N (kapi v94 kapi_win_new: 0 its first) gets the events and
+//                        the dumps from now on (its handlers called with sender N)
+//   winclose             the close box of that window (N > 0: GUI_EVENT_WINCTL KAPI_FRAME_CLOSE)
 //   quit                 the window closed (kapi_should_exit () from now on: the app's loop ends
 //                        and what it does before returning from main runs)
 //   exit                 the process ends here (what follows the app's loop never runs)
@@ -391,6 +394,71 @@ static int get_chrome (struct kapi_chrome *out)
 	return 1;
 }
 
+// ---- a program's other windows (kapi v94: kapi_win_new / kapi_win_select / kapi_win_destroy) -----------
+// The window the calls act on is the one in the globals above; the others wait in g_wins.
+struct SimWin { bool used; unsigned *canvas; int cw, ch, stride, x, y, lw, lh; unsigned flags; unsigned *act, *ina; int ow, oh; char title[48]; gui_handler ptr, key; };
+enum { SIM_WINS = KAPI_WS_WINDOWS_MORE + 1 };
+static SimWin g_wins[SIM_WINS];
+static int g_curWin, g_evWin;				// the selected window, the script's (its events, its dumps)
+static void win_save (int n)
+{
+	SimWin &w = g_wins[n];
+	w.canvas = g_canvas; w.cw = g_cw; w.ch = g_ch; w.stride = g_stride; w.x = g_x; w.y = g_y; w.lw = g_lw; w.lh = g_lh;
+	w.flags = g_flags; w.act = g_act; w.ina = g_ina; w.ow = g_ow; w.oh = g_oh; memcpy (w.title, g_title, sizeof w.title);
+	w.ptr = g_ptr; w.key = g_key;
+}
+static void win_load (int n)
+{
+	SimWin &w = g_wins[n];
+	g_canvas = w.canvas; g_cw = w.cw; g_ch = w.ch; g_stride = w.stride; g_x = w.x; g_y = w.y; g_lw = w.lw; g_lh = w.lh;
+	g_flags = w.flags; g_act = w.act; g_ina = w.ina; g_ow = w.ow; g_oh = w.oh; memcpy (g_title, w.title, sizeof g_title);
+	g_ptr = w.ptr; g_key = w.key;
+}
+static int win_select (int n)
+{
+	if (n < 0) return g_curWin;
+	if (n >= SIM_WINS || (n > 0 && !g_wins[n].used)) return -1;
+	int was = g_curWin;
+	if (n == was) return was;
+	win_save (was);
+	win_load (n);
+	g_curWin = n;
+	return was;
+}
+static int win_new (int x, int y, int w, int h, const char *t, unsigned f, unsigned **canvas)
+{
+	if (canvas) *canvas = 0;
+	int n = 1;
+	while (n < SIM_WINS && g_wins[n].used) n++;
+	if (n >= SIM_WINS) return -1;
+	int was = g_curWin;
+	win_save (was);
+	g_canvas = 0; g_act = g_ina = 0; g_ptr = g_key = 0;	// (a window of its own)
+	g_curWin = n;
+	if (x < 0 || y < 0) { x = 376 + 30 * (n - 1); y = 40 + 30 * (n - 1); }	// (beside a window at the left: the screenshots)
+	unsigned *px = create_ex (x, y, w, h, t, f);
+	g_x = x; g_y = y;
+	if (!px) { g_curWin = was; win_load (was); return -1; }
+	g_wins[n].used = true;
+	win_save (n);
+	g_curWin = was; win_load (was);
+	if (canvas) *canvas = px;
+	fprintf (stderr, "sim: window %d made: %s\n", n, t ? t : "");
+	return n;
+}
+static void win_destroy (int n)
+{
+	if (n <= 0 || n >= SIM_WINS || !g_wins[n].used) return;
+	if (g_curWin == n) win_select (0);
+	SimWin &w = g_wins[n];
+	free (w.canvas); free (w.act); free (w.ina);
+	memset (&w, 0, sizeof w);
+	if (g_evWin == n) g_evWin = 0;
+	fprintf (stderr, "sim: window %d closed\n", n);
+}
+
+static int win_raise (unsigned id) { fprintf (stderr, "sim: win_raise %u (window %d)\n", id, g_curWin); return 0; }
+
 static unsigned *g_surf; static int g_surfW = 700, g_surfH = 470;	// (the one surface: applets)
 static unsigned *g_fs; static int g_fsW, g_fsH;			// (a full-screen app's buffer, while it is)
 static unsigned *fs_begin (int *w, int *h)
@@ -589,11 +657,15 @@ static void step (void)
 	std::string st = g_script[g_step++];
 	char cmd[32] = "", arg[256] = ""; int a = 0, b = 0, c = 0;
 	sscanf (st.c_str (), "%31s", cmd);
-	auto ptrev = [] (int ev, int x, int y, int btn, int chg, int wheel)
+	int sel = g_curWin;					// (v94) the script's window: its events, then the app's selection back
+	if (g_evWin != g_curWin && win_select (g_evWin) < 0) g_evWin = 0;
+	struct Back { int n; ~Back () { if (g_wins[n].used || n == 0) win_select (n); } } back { sel };
+	unsigned long snd = (unsigned long) g_evWin;
+	auto ptrev = [snd] (int ev, int x, int y, int btn, int chg, int wheel)
 	{
 		long v = ((long) (wheel & 0xFF) << 48) | ((long) chg << 40) | ((long) btn << 32) | ((long) x << 16) | (long) y;
 		ptr_track (x, y, ev == GUI_EVENT_PTR_DOWN);
-		if (g_ptr) g_ptr (0, ev, v);
+		if (g_ptr) g_ptr (snd, ev, v);
 	};
 	auto click = [] (int ev, int x, int y)				// (the legacy canvas-click handler too)
 	{ if (g_click) g_click (0, ev, ((long) g_btn << 32) | ((long) x << 16) | (long) y); };
@@ -614,7 +686,7 @@ static void step (void)
 		if (g_btn) click (GUI_EVENT_CANVAS_MOTION, a, b);
 	}
 	else if (!strcmp (cmd, "wheel")) { sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c); ptrev (GUI_EVENT_PTR_WHEEL, a, b, 0, 0, c); }
-	else if (!strcmp (cmd, "key")) { sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0]; if (g_key) g_key (0, GUI_EVENT_KEY, k); }
+	else if (!strcmp (cmd, "key")) { sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0]; if (g_key) g_key (snd, GUI_EVENT_KEY, k); }
 	else if (!strcmp (cmd, "hold") || !strcmp (cmd, "release"))
 	{
 		sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0];
@@ -623,7 +695,7 @@ static void step (void)
 		{
 			if (cmd[0] == 'h') g_held[h >> 5] |= 1u << (h & 31); else g_held[h >> 5] &= ~(1u << (h & 31));
 		}
-		if (cmd[0] == 'h' && g_key) g_key (0, GUI_EVENT_KEY, k);	// (the kernel sends the press too)
+		if (cmd[0] == 'h' && g_key) g_key (snd, GUI_EVENT_KEY, k);	// (the kernel sends the press too)
 	}
 	else if (!strcmp (cmd, "menu")) { sscanf (st.c_str (), "%*s %d", &a); if (g_menuFn) g_menuFn (0, GUI_EVENT_MENU, a); }
 	// drag & drop (ABI v42) from another app: "dragover X Y [FLAGS]" (FLAGS 1 = Ctrl, 4 = left),
@@ -631,17 +703,19 @@ static void step (void)
 	else if (!strcmp (cmd, "dragover"))
 	{
 		c = 0; sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c);
-		if (g_ptr) g_ptr (0, GUI_EVENT_DRAG_OVER, ((long) c << 32) | ((long) a << 16) | (long) b);
+		if (g_ptr) g_ptr (snd, GUI_EVENT_DRAG_OVER, ((long) c << 32) | ((long) a << 16) | (long) b);
 	}
 	else if (!strcmp (cmd, "drop"))
 	{
 		c = 0; sscanf (st.c_str (), "%*s %d %d %255s %d", &a, &b, arg, &c);
 		g_dragData = arg; for (char &ch : g_dragData) if (ch == '|') ch = '\n';
-		if (g_ptr) g_ptr (0, GUI_EVENT_DROP, ((long) c << 32) | ((long) a << 16) | (long) b);
+		if (g_ptr) g_ptr (snd, GUI_EVENT_DROP, ((long) c << 32) | ((long) a << 16) | (long) b);
 	}
 	else if (!strcmp (cmd, "mods")) { sscanf (st.c_str (), "%*s %d", &a); g_mods = (unsigned) a; }
 	else if (!strcmp (cmd, "winstate")) { sscanf (st.c_str (), "%*s %d", &a); g_winstate = (unsigned) a; }
-	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (0, GUI_EVENT_WINCTL, a); }
+	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (snd, GUI_EVENT_WINCTL, a); }
+	else if (!strcmp (cmd, "win")) { sscanf (st.c_str (), "%*s %d", &a); g_evWin = a >= 0 && a < SIM_WINS ? a : 0; back.n = sel; }
+	else if (!strcmp (cmd, "winclose")) { if (g_evWin > 0 && g_ptr) g_ptr (snd, GUI_EVENT_WINCTL, KAPI_FRAME_CLOSE); }
 	else if (!strcmp (cmd, "dump")) { sscanf (st.c_str (), "%*s %255s", arg); dump (arg); }
 	else if (!strcmp (cmd, "copy")) { char dst[256] = ""; sscanf (st.c_str (), "%*s %255s %255s", arg, dst); sim_copy (arg, dst); }
 	// "waitlog N TEXT": stay on this step (one main-loop turn each) until the app's log (SIM_LOG, the
@@ -1552,6 +1626,7 @@ static void setup (void)
 	T->vol_format = vol_format;
 	T->seek = f_seek; T->fsize64 = f_fsize64; T->net_info = net_info; T->exit = h_exit; T->toggle_app = toggle_app;
 	T->ram_detail = ram_detail; T->draw_text = draw_text; T->win_list = win_list;
+	T->win_new = win_new; T->win_select = win_select; T->win_destroy = win_destroy; T->win_raise = win_raise;
 	T->list_procs = list_procs; T->proc_stats = proc_stats; T->meminfo = meminfo; T->mailbox_recv = mailbox_recv_note;
 	T->ipc_register = ipc_register_note; T->pad_state = pad_state_sim;
 	T->tcp_connect = tcp_connect; T->tcp_send = tcp_send; T->tcp_recv = tcp_recv; T->tcp_close = tcp_close;

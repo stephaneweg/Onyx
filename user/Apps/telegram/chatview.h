@@ -59,9 +59,11 @@ static void short_name (long long peer, char *out, int cap)
 class ConvHeader : public Widget
 {
 public:
+	TgPane *m_pane = g_pane;		// (its pane: buddylist.h)
 	ConvHeader (int l, int t, int w, int h) : Widget (l, t, w, h) {}
 	void onDraw () override
 	{
+		tg_use (m_pane);
 		Canvas &cv = canvas;
 		sky (cv, 0, 0, width, height);
 		if (!g_open) return;
@@ -103,9 +105,11 @@ public:
 class PeerBar : public Widget
 {
 public:
+	TgPane *m_pane = g_pane;		// (its pane: buddylist.h)
 	PeerBar (int l, int t, int w, int h) : Widget (l, t, w, h), m_hot (-1), m_down (false) {}
 	void onDraw () override
 	{
+		tg_use (m_pane);
 		Canvas &cv = canvas;
 		fill_grad (cv, 0, 0, width, height, 0xFFF9DB, 0xFFF1B8);
 		cv.fillRect (0, height - 1, width, 1, 0xE6CF7A);
@@ -138,6 +142,7 @@ public:
 	}
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
 	{
+		tg_use (m_pane);
 		(void) br; (void) bm; (void) wheel; (void) my;
 		int hot = -1;
 		for (int i = 0; i < 3; i++) if (m_bw[i] && mx >= m_bx[i] && mx < m_bx[i] + m_bw[i]) hot = i;
@@ -172,12 +177,14 @@ private:
 class ChatView : public Widget
 {
 public:
+	TgPane *m_pane = g_pane;		// (its pane: buddylist.h)
 	ChatView (int l, int t, int w, int h) : Widget (l, t, w, h), m_it (0), m_n (0), m_cap (0), m_total (0), m_scroll (0), m_stick (true),
 						    m_peer (0), m_rev (0), m_w (0), m_down (false), m_hotLink (false) {}
 
 	void reset () { m_peer = 0; m_stick = true; m_scroll = 0; refresh (); }
 	void tick ()
 	{
+		tg_use (m_pane);
 		tg::Conv *c = g_open ? g_c.conv (g_open) : 0;
 		unsigned r = c ? c->rev : 0;
 		if (g_open != m_peer || r != m_rev || width != m_w) refresh ();
@@ -201,6 +208,7 @@ public:
 
 	void onDraw () override
 	{
+		tg_use (m_pane);
 		Canvas &cv = canvas;
 		cv.clear (TC_BG);
 		if (!g_open) return;
@@ -223,6 +231,7 @@ public:
 
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
 	{
+		tg_use (m_pane);
 		(void) br; (void) bm;
 		if (mx < 0) { m_down = false; return false; }
 		if (wheel) { scrollBy (-wheel * 48); return true; }
@@ -612,10 +621,12 @@ private:
 class DpColumn : public Widget
 {
 public:
+	TgPane *m_pane = g_pane;		// (its pane: buddylist.h)
 	int inputH;
 	DpColumn (int l, int t, int w, int h, int inH) : Widget (l, t, w, h), inputH (inH) {}
 	void onDraw () override
 	{
+		tg_use (m_pane);
 		Canvas &cv = canvas;
 		fill_grad (cv, 0, 0, width, height, 0xF4F9FD, 0xE6F0F9);
 		cv.fillRect (0, 0, 1, height, TC_LINE);

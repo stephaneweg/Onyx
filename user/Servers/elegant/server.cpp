@@ -25,9 +25,9 @@ int el_demo_closed (unsigned self);		// ... those closed since the last call, re
 // ---- the windows' shared pixels (core.h) --------------------------------------------------------
 // A buffer's address here says its number (kern/layout.h: USER_WS_BASE + number * USER_WS_SLOT).
 
-#define WS_BASE		0xD00000000ULL		// 52 GB
+#define WS_BASE		0xB00000000ULL		// 44 GB (v94; 52 GB with 128 slots before)
 #define WS_SLOT		0x4000000ULL		// 64 MB
-#define WS_SLOTS	128
+#define WS_SLOTS	256
 
 void *el_shared_alloc (unsigned pid, int part, unsigned long bytes)
 {
@@ -94,11 +94,22 @@ static void forward_events (unsigned self)
 		{
 			struct kapi_event k;
 			kapi_memset (&k, 0, sizeof k);
-			k.handler = e.handler; k.sender = e.sender; k.value = e.value; k.event = e.event; k.mods = e.mods;
+			k.handler = e.handler; k.value = e.value; k.event = e.event; k.mods = e.mods;
+			k.sender = (unsigned long long) el_core_window_win (id);	// (v94) which of its windows (0: its first)
 			long r = kws_post (pid, &k);
 			if (r == 0) break;				// (its queue is full: later)
 			if (r == 1) s_nPosted++;
 			el_core_window_event_drop (id);			// (queued, or the program is gone)
+		}
+		int win = el_core_window_win (id);
+		if (win > 0 && el_core_window_closing (id))	// (v94) a program's other window: told, it closes it
+		{
+			struct kapi_event k;
+			kapi_memset (&k, 0, sizeof k);
+			k.handler = el_core_window_pointer_handler (id); k.sender = (unsigned long long) win;
+			k.event = GUI_EVENT_WINCTL; k.value = KAPI_FRAME_CLOSE;
+			if (k.handler == 0 || kws_post (pid, &k) != 0) el_core_window_closing_clear (id);	// (full: at the next turn)
+			continue;
 		}
 		if (el_core_window_closing (id) && s_nExitAsked[id] != pid)
 		{
@@ -267,7 +278,7 @@ int el_serve (int demo, int restart)
 					print_screen (in[i].keys, mods);
 					break;
 				case KAPI_WS_IN_KICK:
-					el_core_window_present (el_core_window_of ((unsigned) in[i].a));
+					el_core_window_present (el_core_window_of_win ((unsigned) in[i].a, in[i].x));
 					break;
 				case KAPI_WS_IN_SCREEN:
 					if (in[i].x > 0 && in[i].y > 0 && (in[i].x != w || in[i].y != h))

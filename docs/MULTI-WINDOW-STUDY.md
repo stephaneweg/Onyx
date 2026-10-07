@@ -1,6 +1,6 @@
 # Onyx: more windows, and several windows per program — a feasibility study
 
-*Status (2026-10-07): **a study only, nothing built.** The user asked two questions:
+*Status (2026-10-07, the evening): **B1–B5 built** (not yet tried on the Pi) — what was built: docs/HANDOFF.md *Several windows per program*, docs/03 §6 *Several windows*; of Part A, Elegant's 64 windows and the kernel's 256 buffers (the rest of A and B6 to come). The study as it was: The user asked two questions:
 
 1. Can Elegant hold more than 16 windows, or have no fixed limit at all?
 2. Can one program own several top-level windows? The example is Telegram: one window for the contacts,

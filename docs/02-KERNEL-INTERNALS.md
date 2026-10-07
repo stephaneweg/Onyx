@@ -1185,6 +1185,15 @@ from now on calls them in AppKit, so its package says `kapi >= 87`.
 v88 = **AppKit: program starting**: no entry added — the `lx_*` functions (an app or a file started by its
 runner) are AppKit's (they were `user/launch.h`). The same day **SystemKit** and **NetKit** appear (docs/03 §5.9.0).
 
+v94 = **several windows a program** (2026-10-07; `docs/MULTI-WINDOW-STUDY.md`): no table entry changes — the
+windows are Elegant's, reached by AppKit (`kapi_win_new`, `kapi_win_select`, `kapi_win_destroy`: docs/03 §6 *Several
+windows*). The kernel's part (`sys/wsrv.cpp`, `kern/layout.h`): a program's windows 1..16 beside its first have their
+canvas and their frame's two copies at fixed addresses of their own (`KAPI_WS_VA_WIN (w, p)` = 28 GB + (w − 1) × 256
+MB + p × 64 MB; the library arena now ends at 28 GB), the buffers' slots `KAPI_WS_SLOT_WIN (w, p)` (`KAPI_WS_SLOTS` =
+53), `KAPI_WS_KICK (window)` says which window was presented, the event queue holds 64 events (32), and the graphics
+server's view has 256 buffers (`USER_WS_SLOTS`; 128 before: `USER_WS_BASE` = 44 GB). Elegant holds 64 windows (16
+before; `WM_MAX_WINDOWS` = `EL_WINDOWS_MAX`). An event of a window other than the first comes with `sender` = its number.
+
 v93 = **the volumes** (2026-10-06; `kernel/sys/volume.cpp`, `kern/volume.h`, §18): `vol_list` 230, `vol_eject` 231,
 `vol_mount` 232, `vol_format` 233 (`struct kapi_volume`, `struct kapi_format`, `KAPI_VST_*`, `KAPI_VF_*`,
 `KAPI_FMT_*`). The USB mass-storage volumes `USB1:`, `USB2:`, `USB3:` (or `USB1P1:`… per partition; `USB:` = `USB1:`) are mounted when a stick is plugged in

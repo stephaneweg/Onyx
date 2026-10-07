@@ -462,8 +462,8 @@ static const MenuAction ON_L[16] = { on_l0, on_l1, on_l2, on_l3, on_l4, on_l5, o
 static void raise_other (void)
 {
 	if (kapi_raise_app ("control")) return;
-	struct kapi_win_info L[24];
-	int n = kapi_win_list (L, 24);
+	struct kapi_win_info L[40];
+	int n = kapi_win_list (L, 40);
 	for (int i = 0; i < n; i++)
 		if (fs_ci_cmp (L[i].title, TR ("Control Panel")) == 0) { kapi_win_raise (L[i].id); return; }
 }

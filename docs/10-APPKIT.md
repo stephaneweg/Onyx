@@ -19,7 +19,7 @@ AppKit is what makes a program run: its one link to the system. Every call a pro
 |---|---|
 | Include | `#include "appkit/appkit.h"` |
 | Link | nothing to link: the kernel binds AppKit to every program |
-| Library | `SD:/lib/appkit.so` — 305 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
+| Library | `SD:/lib/appkit.so` — 308 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
 | Sources | `user/Kits/appkit/` |
 
 ## Using it
@@ -246,6 +246,9 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_vol_eject` | vol_eject | `appkit.h` |
 | `kapi_vol_mount` | vol_mount | `appkit.h` |
 | `kapi_vol_format` | vol_format | `appkit.h` |
+| `kapi_win_new` | (v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md). | `appkit.h` |
+| `kapi_win_select` | (v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md). | `appkit.h` |
+| `kapi_win_destroy` | (v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md). | `appkit.h` |
 | `kapi_pop_event` | (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, ker | `appkit.h` |
 | `kapi_event_mods` | (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, ker | `appkit.h` |
 | `kapi_pop_post` | (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, ker | `appkit.h` |
@@ -1113,6 +1116,14 @@ vol_format: the volume emptied, a new file system made (struct kapi_format: KAPI
 
 ```cpp
 int kapi_vol_format (const char *vol, const struct kapi_format *fmt);
+```
+
+(v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md). Beside its first window (the one kapi_create_window made: number 0), a program may have up to KAPI_WS_WINDOWS_MORE others. win_new: one more window (as kapi_create_window_ex: x, y negative = placed by the system, the flags WIN_FLAG_*) -> its number (1..), *canvas its pixels; -1 (none left, no memory, no graphics server). The window calls (present, resize, move, the handlers, the chrome, the cursor, the menu, the geometry...) act on the window win_select chose: win_select (n) -> the number it had (-1: no such window; n < 0: only asked). An event of a window comes with sender = its number (0: the first one). The close box of a window other than the first does not end the program: its pointer handler gets GUI_EVENT_WINCTL with value KAPI_FRAME_CLOSE -- win_destroy (n) closes it.
+
+```cpp
+int kapi_win_new (int x, int y, int w, int h, const char *t, unsigned f, unsigned **canvas);
+int kapi_win_select (int win);
+void kapi_win_destroy (int win);
 ```
 
 (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, kern/el0.h). pop_event: the window's next event -> 1 (*ev; its handler NOT called), 0 none; event_mods: what kapi_get_modifiers says while a key handler runs (ev->mods), returns the previous value to put back; pop_post: the next kapi_post call -> 1 (*p, not run), 0 none; pump_sleep: kapi_pump_wait without the pump (-> how many are pending). An older kernel: 0 / 0xFFFFFFFF / 0 / 0 (no sleep).

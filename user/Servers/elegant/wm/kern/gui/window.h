@@ -84,8 +84,8 @@ extern u32 g_WinTitleTextColor;
 #define WIN_SKIN_TINT_ACTIVE	0x00FFC878
 #define WIN_SKIN_TINT_INACTIVE	0x008090A0
 
-#define WM_MAX_WINDOWS		16
-#define WIN_EVENT_QUEUE		32
+#define WM_MAX_WINDOWS		64		// (= core.h EL_WINDOWS_MAX; 16 until v94)
+#define WIN_EVENT_QUEUE		64		// (v94; 32 before)
 
 // Window creation flags (kept numerically identical to user/kapi.h).
 #define WIN_FLAG_BORDERLESS	(1u << 0)	// no title bar / border / close box
@@ -393,6 +393,7 @@ public:
 	// sleeps on it (kern/thread.h). 0: none.
 	void SetWake (CSynchronizationEvent *pEv)	{ m_pWake = pEv; }
 	boolean ShouldExit (void) const	{ return m_bExitRequested; }
+	void ClearExit (void)			{ m_bExitRequested = FALSE; }	// (v94: a program's other window, its close told)
 
 	// Close box hit-test (screen coords). True if (sx,sy) is on the [x] box.
 	boolean HitCloseBox (int sx, int sy) const;

@@ -499,6 +499,7 @@ fi
 if want telegram; then				# (Telegram: --demo's made-up conversations, Alice's open; the emoticons' picker; a picture dropped and sent; adding a contact; a stranger's message and its bar; a group; the contacts; the
 					#  sign-in's phone page)
 	TW="$OUT/tg_w"; rm -rf "$TW"; mkdir -p "$TW/apps/telegram.app"; nlang "$TW"
+	printf '[telegram]\nwindows=0\n' > "$TW/apps/telegram.app/config.ini"	# (these: the conversation beside the list)
 	sim telegram telegram "$W" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram
 	sim telegram telegram-emoticons "$W;move 322 503;down 322 503;up 322 503;wait;move 418 425;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-emoticons
 	sim telegram telegram-group "$W;down 120 170;up 120 170;wait;move 600 300" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-group
@@ -507,6 +508,12 @@ if want telegram; then				# (Telegram: --demo's made-up conversations, Alice's o
 	sim telegram telegram-stranger "$W;down 120 300;up 120 300;wait;move 600 400;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-stranger
 	sim telegram telegram-contacts "$W;down 80 215;up 80 215;wait;move 120 320;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-contacts
 	sim telegram telegram-signin "$W;$(typ +33612345678)" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_SERVICES=notify; png telegram-signin
+	# (the conversations in their own windows -- Onyx's windows of a program, kapi v94: the list, Alice's window beside it)
+	TW2="$OUT/tg_w2"; rm -rf "$TW2"; mkdir -p "$TW2/apps/telegram.app"; nlang "$TW2"
+	sim telegram tg_list "$W" SIM_POS=4,32 SIM_WRITES="$TW2" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify SIM_INACTIVE=1
+	rm -rf "$TW2"; mkdir -p "$TW2/apps/telegram.app"; nlang "$TW2"
+	sim telegram tg_conv "$W;win 1" SIM_POS=4,32 SIM_WRITES="$TW2" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify
+	scene telegram-windows "$OUT/tg_list.elsm" "$OUT/tg_conv.elsm"
 	rm -rf "$TW"
 fi
 if want stickies || want stickies-empty || want notes-desktop; then	# (Stickies, AutoDev round 1: the pinned notes on the

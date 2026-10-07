@@ -2052,7 +2052,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **inidemo** | Demonstration of the `.ini` reader (displays values from `config.ini`). |
 | **archiver** | The **archive manager** (on the command line: `zip` / `unzip`, §8): ZIP archives opened, browsed as folders, extracted (the selection or all; the archive's folders kept, from the current folder down, or flat), changed — files and folders **dropped from the File Viewer go into the folder under the pointer**, Add Files, Delete, Rename, New Folder; a file opened from the archive and saved is put back. 7z, tar and RAR next. See *Archiver, the archive manager* (§9). Files: `recent.txt` in `SD:/apps/archiver.app`. |
 | **irc** | The **IRC client**, a messaging app's look: the server (a combo box of the servers used) and your **nickname** on top — sent at once on connecting, `nickname_` tried when it is taken —, your conversations on the left (unread counts), a channel's messages grouped by author under coloured avatars, its users on the right; **Rooms** lists the server's channels (search, minimum of users, sort; double-click to join). A private conversation opens in a **window of its own**, with bubbles, as a messenger's. Files: `config.ini`, `servers.txt`, `nick.txt` in `SD:/apps/irc.app`. See *IRC, the chat client* below. Needs the network up (see §3). |
-| **telegram** | **Telegram**, the instant messenger in the way of **Windows Live Messenger**: your contact list on the left (your picture in its glass frame and your status, Favourites, Conversations with their last message and unread count, Contacts and who is online), the conversation on the right ("Alice says:", the times and the read ticks, the display pictures, **emoticons** drawn as pictures — the picker, or typed `:)` `;)` `(Y)` `<3`), notifications for the other conversations. Your real Telegram account (phone number, code, cloud password); `telegram --demo` to look without one. Files: `config.ini`, `session.dat`, `cache/` in `SD:/apps/telegram.app`. See *Telegram, the instant messenger* below. Needs the network up (see §3). |
+| **telegram** | **Telegram**, the instant messenger in the way of **Windows Live Messenger**: your contact list on the left (your picture in its glass frame and your status, Favourites, Conversations with their last message and unread count, Contacts and who is online), the conversation on the right ("Alice says:", the times and the read ticks, the display pictures, **emoticons** drawn as pictures — the picker, or typed `:)` `;)` `(Y)` `<3`), notifications for the other conversations; each conversation in **a window of its own** (or beside the list: **View** menu). Your real Telegram account (phone number, code, cloud password); `telegram --demo` to look without one. Files: `config.ini`, `session.dat`, `cache/` in `SD:/apps/telegram.app`. See *Telegram, the instant messenger* below. Needs the network up (see §3). |
 | **jet** (Jet Browser) | **Jet Browser**, the Onyx web browser, on **WebKit** (the dock's Internet drawer, or `run jet [address]`): `http://` and `https://`, JavaScript, video and sound, one page per window — its own section below, *Jet Browser (`jet`)*. (Until 2026-10-04 Jet was a NetSurf port, and this browser was the package **web**: `pkg update jet` brings the new one; `pkg delete web` then removes the old copy.) |
 | **wpaconf** (Wi-Fi Settings) | A Control Panel applet (alone: a window of its own). Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID — a combo box: **Scan** lists the networks around (about 3 s), pick one with its arrow (or Down / Up) and the proto / key mgmt follow its security (an open network gets `key_mgmt=NONE`, no password) — password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** rewrites the file; **Save & Reboot** writes it then restarts so the kernel re-reads it at boot (the only way new credentials take effect); **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |
 | **Lisa** | A chat with an AI assistant (a modern *Eliza*), through the **Groq** API over HTTPS. Type in the box at the bottom: **Enter** sends, **Shift+Enter** starts a new line; Lisa's answer appears in the conversation above (word-wrapped; "Lisa is thinking..." meanwhile). Every request sends Lisa's **role** and the **whole conversation**, so she keeps the context. Menus: **Chat** ▸ New Conversation (^N), Save Transcript... (^S); **Edit** ▸ Copy (the selected text), Paste, Copy Last Answer; **Settings** ▸ Edit Configuration... (opens `config.ini` in tinypad). **Setup**: get a free API key at console.groq.com and put it in `SD:/apps/lisa.app/config.ini` as `key = gsk_...` (see `config.ini.example` in the same folder: `model`, `role`, `temperature`, `max_tokens`). That file holds your key: keep it private — it is never committed. Needs the network up (see §3). |
@@ -3542,7 +3542,19 @@ contacts** (in one click, under the name they gave themselves: no phone number n
 first: they can no longer write to you or call you; the bar then offers **Unblock**), or the cross (the bar
 hidden, for good, as on your phone). A contact of yours who joins Telegram shows as *"... joined Telegram"*.
 
-**A conversation (on the right).** A click on a conversation or a contact opens it (**Ctrl+Up /
+**A window for each conversation.** Telegram opens each conversation in **a window of its own**: the main
+window keeps your list (narrowed to it), a click on a conversation or a contact opens its window — or brings
+it forward when it is open already. Several can be open side by side (up to 16), each with its line to
+write in, its emoticons, its pictures; a message that comes into a conversation whose window is open
+shows there, without a notification. A conversation's **close box** closes that window only; closing the
+**main window** ends Telegram (its conversations' windows with it). **View ▸ Conversations Beside the
+List** goes back to one window (the list on the left, the conversation on the right, as below); **View ▸
+Conversations in Their Own Windows** comes back to the windows (kept in `config.ini`: `windows=`).
+
+![Telegram, a conversation in its own window](../screenshots/telegram-windows.png)
+*The list in the main window, Alice's conversation in a window of its own (`telegram --demo`).*
+
+**A conversation (on the right, or in its window).** A click on a conversation or a contact opens it (**Ctrl+Up /
 Ctrl+Down**: the previous / next one). On top: the picture, the name, the status ("last seen 10 min
 ago", "14 members") or **"Alice is typing a message..."**. The messages, Messenger's way: **"Alice
 says:"** (in purple; you in blue) over what she wrote, again when the sender changes or after ten
@@ -3584,7 +3596,7 @@ bar: **Telegram** (Search **Ctrl+F**, Add a Contact **Ctrl+N**, Sign Out, Quit *
 *A group: each one's name over their messages, their picture beside it.*
 
 **Files** (in `SD:/apps/telegram.app`): `config.ini` (`[telegram]`: `api_id`, `api_hash` — another key than the app's own —, `test = 1`
-for Telegram's test servers, `pictures = 0` to hide the display pictures), `session.dat` (the
+for Telegram's test servers, `pictures = 0` to hide the display pictures, `windows = 0`: the conversation beside the list instead of its own window), `session.dat` (the
 account's keys: secret), `cache/` (the profile photos), `seed.bin` (the random generator's seed,
 renewed at each start), `log.txt` (what the connection did: to look at when something goes wrong).
 `telegram --demo` shows made-up conversations, without the network or an account.

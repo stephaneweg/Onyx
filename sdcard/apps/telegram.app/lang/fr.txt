@@ -232,3 +232,6 @@ Add to contacts	Ajouter aux contacts
 Block	Bloquer
 Block %s? They will not be able to write to you or call you.	Bloquer %s ? Il ou elle ne pourra plus vous écrire ni vous appeler.
 Hi! We met at the Onyx meetup, I'm the one with the robot arm :)	Salut ! On s'est vus à la rencontre Onyx, c'est moi qui avais le bras robot :)
+Conversations Beside the List	Conversations à côté de la liste
+Conversations in Their Own Windows	Conversations dans leur propre fenêtre
+Too many conversations are open: close one of their windows.	Trop de conversations sont ouvertes : fermez l'une de leurs fenêtres.

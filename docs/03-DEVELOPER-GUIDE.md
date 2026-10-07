@@ -1252,6 +1252,24 @@ alone**.
 > desktop, `DND_F_CANCEL` = Esc). `kapi_get_modifiers ()` returns `MOD_CTRL` / `MOD_SHIFT` /
 > `MOD_ALT`. Examples: `fileviewer` (source + target) and the document apps.
 >
+> **Several windows (kapi v94).** A program may have up to 16 windows besides its first (Elegant holds 64
+> in all). In UIKit, one more window is a `Root` made with the tag `NewWindow`: `new MyWin (...)` whose
+> constructor is `Root (NewWindow (), x, y, w, h, title)` (x, y negative: placed by Elegant); `winOpened ()`
+> says whether it could be made (no graphics server's windows left, no memory: fall back to one window —
+> on the PC's simulator too, unless it is the multi-window one, below). The first `Root`'s `run ()` serves
+> every window: their events (each comes with its window's number as `sender`; UIKit routes it to that
+> `Root`, which becomes `Root::current ()` — the dialogs open in it), their `onTick`, their drawing
+> (`Root::paintAll`). Its **close box** calls the virtual `onClose ()` — by default `closeWindow ()`, the
+> window gone (the object stays: delete it later, not from inside its own handler); closing the **first**
+> window still ends the program. The menu bar shows the first window's menu for all of them. AppKit's
+> calls (`kapi_present`, `kapi_resize_window2`, `kapi_get_chrome`, `kapi_set_cursor`...) act on the window
+> `kapi_win_select (n)` chose: a `Root` selects itself (`winSelect ()`) before it acts; an app that calls
+> AppKit directly selects the window it means. Without UIKit: `kapi_win_new (x, y, w, h, title, flags,
+> &canvas)` → the number, `kapi_win_destroy (n)`; its close box sends `GUI_EVENT_WINCTL` with
+> `KAPI_FRAME_CLOSE` to its pointer handler. **The simulator** (`fakekapi.cpp`) has the windows too: the
+> script's `win N` sends the next events (and the dumps) to window N, `winclose` is its close box. The
+> first app with several: Telegram (one window a conversation). The design: `docs/MULTI-WINDOW-STUDY.md`.
+>
 > **File associations**: `#include "fileassoc.h"` — `fa_open (path)` opens a path like a
 > double-click (folder → File Viewer, `.app` / ELF → run, else the app `SD:/etc/fileassoc.ini`
 > maps its extension to, as `SD:apps/<app>.app/main <path>`); `fa_app_for (path, app, cap)`
@@ -2826,7 +2844,7 @@ The core (the first four headers) is portable C++ with no uikit: the PC's tests 
 | `client.h` | `tg::Client`: the sign-in (`auth.sendCode`, `signIn`, `signUp`, `account.getPassword` + `auth.checkPassword`), `*_MIGRATE_X` (the request sent again on the data centre named), the sessions by data centre (the photos' ones: `auth.exportAuthorization` / `importAuthorization`), the model (users, chats, conversations and their messages, statuses, typing, read marks) kept by the updates (`updateShort*`, `updates`, `getDifference` after a cut), sending (`random_id`, `updateMessageID`), **photos sent** (`sendPhoto`: the JPEG in parts of 128 KB, `upload.saveFilePart`, then `messages.sendMedia` with `inputMediaUploadedPhoto`, its progress) and **shown** (`msgPhoto`: the size up to 800 px, `inputPhotoFileLocation` from its data centre, `cache/m<id><type>.jpg`), reading, typing, the status, a contact added by phone number (`addContact`: `contacts.importContacts`, the answer in `added`), the bar of a person not in the contacts (`showBar`: `users.getFullUser`'s `blocked` and `settings`, `updatePeerBlocked` / `updatePeerSettings`; `addToContacts`: `contacts.addContact`; `block`: `contacts.block` / `unblock`; `hideBar`: `messages.hidePeerSettingsBar`), the profile photos (`upload.getFile`, `cache/<id>.jpg`), `session.dat`. The window watches `rev`. |
 | `tgplat.h` | Onyx's side: the UTC clock (`kapi_clock_info`), `log.txt` (a ring written every 5 s), the entropy, `seed.bin`, FileKit's `fk_inflate` (gzip), **TCP's "intermediate" transport** (`0xeeeeeeee`, then each packet's length) on `kapi_tcp_*` to port 443. |
 | `look.h`, `emoticons.h`, `rich.h` | The look (the sky, the glass frames by status, the buddies, the avatars: photos cut square and kept, else initials on Telegram's seven colours); the **emoticons drawn by vectors** (`uikit/vpaint.h`: 32 pictures, the emoji's code points and MSN's typed forms; any other emoji a badge; joiners and skin tones skipped); a message laid out (words wrapped, emoticons inline, links). |
-| `buddylist.h`, `chatview.h`, `chatinput.h`, `signin.h`, `demo.h`, `main.cpp` | The window (`main.cpp`: the app's own api_id / api_hash, `TG_API_ID` / `TG_API_HASH` -- the project's, public by the user's choice; config.ini may give another): the contact list; the header, the messages, the display pictures; the editor (wrapped, emoticons as pictures while typed, Enter / Shift+Enter, Ctrl+V) and the picker; the picture to send (`main.cpp`: a file, the clipboard's picture or file, a drop; brought to 1280 px, JPEG by ImageKit through `pngsave.hpp`); the sign-in's steps; `--demo`'s made-up model; the layout, the menus, the notifications (`notify_action`). |
+| `buddylist.h`, `chatview.h`, `chatinput.h`, `signin.h`, `demo.h`, `main.cpp` | The window (`main.cpp`: the app's own api_id / api_hash, `TG_API_ID` / `TG_API_HASH` -- the project's, public by the user's choice; config.ini may give another): the contact list; the header, the messages, the display pictures; the editor (wrapped, emoticons as pictures while typed, Enter / Shift+Enter, Ctrl+V) and the picker; the picture to send (`main.cpp`: a file, the clipboard's picture or file, a drop; brought to 1280 px, JPEG by ImageKit through `pngsave.hpp`); the sign-in's steps; `--demo`'s made-up model; the layout, the menus, the notifications (`notify_action`). **Several windows** (kapi v94): a conversation's pane (`TgPane`, `buddylist.h`: its conversation, its attached picture, its header, bar, messages, line to write in, pictures' column, picker) is the main window's right side or a `ConvWindow` (`main.cpp`: a `Root (NewWindow)`, one a conversation, up to 16); the pane being served is `g_pane` — `g_open`, `g_chat`, `g_input`, `g_att`... are its fields (macros) — and every widget of a pane names its own (`m_pane`) and makes it the current one before it draws, ticks or answers an event (`tg_use`). `config.ini` `windows=0`: the conversation beside the list. |
 
 **Tests on the PC**: `sh tools/tests/telegram/run_tgclient_test.sh` — `tgunit_test.cpp` (the schema, TL both ways with
 flags / vectors / bare types / gzip, AES-IGE's known vector, `pq`, the keys' fingerprints: 21 checks),

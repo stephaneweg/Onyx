@@ -869,13 +869,21 @@ an example) and `docs/04` §11 *Printing*.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
-## More windows, several windows per program: studied (2026-10-07) — `docs/MULTI-WINDOW-STUDY.md`
+## Several windows per program: built (2026-10-07) — `docs/MULTI-WINDOW-STUDY.md`
 
-Elegant holds at most 16 windows (`WM_MAX_WINDOWS` / `EL_WINDOWS_MAX`, Elegant's alone), and every layer
-assumes one window per program (the fixed `KAPI_WS_VA_*` addresses, `WinOf(pid)`, an event with no
-window, `Root::active()`, the close box ending the program). The study finds both lifts feasible: Part A
-(no fixed count; ~1 session) then B1-B6 (window ids from the kernel to UIKit, then Telegram with one
-window per conversation; ~5-6 sessions). Nothing built; waiting for the user's go.
+**Done, in `main`, NOT yet tried on the Pi** (the session had no Pi; the PC's simulator only). Elegant holds 64
+windows (16 before); a program may have 16 windows besides its first: the kernel maps their buffers at fixed
+addresses of their own (`KAPI_WS_VA_WIN`, kapi v94), Elegant keys a window by (pid, number) — the number in the
+request's op (`EL_OP_WINDOW_SHIFT`) —, stamps it in the events' `sender`, turns a close box into
+`GUI_EVENT_WINCTL KAPI_FRAME_CLOSE` for a window that is not the first, and copies the first window's menu to the
+others; AppKit has `kapi_win_new` / `kapi_win_select` / `kapi_win_destroy` and a per-window state (replayed when
+Elegant starts again — the first window as before, the others made again); UIKit's `Root (NewWindow, ...)`, the
+events routed by `sender`, `Root::paintAll`, `onClose`. **Telegram** opens each conversation in its own window
+(`windows=0` in its `config.ini`: as before). The PC's simulator has the windows (`win N`, `winclose`); the
+screenshot `telegram-windows.png`. What the study's Part A also lists and is not done: the window list paged past
+36 (`EL_OP_WIN_LIST`), the per-program ceiling, a "no memory for a window" notification, Elegant's own growable
+lists. **To check first on the Pi**: two conversations open, typing in each, closing one, Elegant killed and started
+again with three windows open, the dock and the menu bar with a conversation window active.
 
 ## Several users: studied, then set aside by the user (2026-10-05) — `docs/MULTI-USER-PLAN.md`
 

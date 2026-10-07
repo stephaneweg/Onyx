@@ -167,4 +167,18 @@ struct el_shot					// (the control page's first bytes)
 	unsigned seq;				// AppKit's: raised before a copy (odd: being made) and after it
 };
 
+// ---- a program's other windows (v94, docs/MULTI-WINDOW-STUDY.md) --------------------------------
+// A program may have several windows: its first one (number 0, the one it always had) and its
+// windows 1 .. EL_WINDOWS_MORE. A request's window is in its operation's high bits:
+// op = EL_OP_* | window << EL_OP_WINDOW_SHIFT (0: the first; AppKit's kapi_win_select). EL_OP_CREATE
+// with a window number makes that one: its canvas at EL_VA_WIN (w, 0), its frame's copies at
+// EL_VA_WIN (w, 1) and (w, 2). Its events come with sender = its number; its close box (or "Quit" while
+// it is the active one) does not end the program: GUI_EVENT_WINCTL KAPI_FRAME_CLOSE to its pointer
+// handler -- the program destroys it (EL_OP_DESTROY) or keeps it.
+#define EL_OP_WINDOW_SHIFT	16
+#define EL_OP_MASK		0xFFFF
+#define EL_WINDOWS_MORE		KAPI_WS_WINDOWS_MORE
+#define EL_VA_WIN(w, p)		KAPI_WS_VA_WIN (w, p)
+#define EL_OP_DESTROY		33	// the caller's window (its number in the op) closed -> 1, 0 none
+
 #endif

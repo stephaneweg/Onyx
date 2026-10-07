@@ -50,7 +50,7 @@ int Modal::run ()
 	while (!done && !uk_quit ())
 	{
 		uk_pump ();
-		if (!r->valid) { r->draw (); uk_present (); }
+		Root::paintAll ();			// (v94: each of the program's windows that changed)
 		msleep (16);
 	}
 	r->removeChild (this);

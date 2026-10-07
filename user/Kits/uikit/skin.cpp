@@ -302,6 +302,8 @@ void uk_decorate_window ()
 	unsigned sig = C_FRAME_ACTIVE * 31u + C_FRAME_INACTIVE * 7u + (unsigned) UK_OUTLINE * 3u + (unsigned) s_winFlags
 		       + (UK_STYLE == UK_STYLE_MILK ? 101u + C_BG * 13u : 0u);	// (Milk's: the window's colour too)
 	for (int i = 0; c.title[i]; i++) sig = sig * 33u + (unsigned char) c.title[i];
+	extern int uk_win_select (int n);
+	sig = sig * 31u + (unsigned) uk_win_select (-1);	// (v94: which of the program's windows)
 	if (c.chrome_w == s_w && c.chrome_h == s_h && sig == s_sig) return;
 	s_w = c.chrome_w; s_h = c.chrome_h; s_sig = sig;
 	draw_frame (c.active, c.chrome_w, c.chrome_h, c.inset_t, c.title, C_FRAME_ACTIVE, true);

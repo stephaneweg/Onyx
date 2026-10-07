@@ -17,10 +17,6 @@ static void typed_something ();
 static bool paste_picture ();		// (main.cpp: the clipboard's picture, or a picture file copied: attached)
 static void choose_picture ();		// (main.cpp: the file dialog)
 
-// The picture to send with the next message (attached by the button, Ctrl+V, a drop): the JPEG made of it,
-// its size, a small view of it, its name.
-struct Attach { unsigned char *jpg; int n, w, h; unsigned *thumb; int tw, th; char name[80]; };
-static Attach g_att;
 static void attach_clear () { delete [] g_att.jpg; delete [] g_att.thumb; memset (&g_att, 0, sizeof g_att); }
 
 // ---- the text --------------------------------------------------------------------------------------------
@@ -28,6 +24,7 @@ static void attach_clear () { delete [] g_att.jpg; delete [] g_att.thumb; memset
 class ChatEdit : public Widget
 {
 public:
+	TgPane *m_pane = g_pane;		// (its pane: buddylist.h)
 	enum { CAP = 4096 };
 	char buf[CAP];
 	int len, caret;
@@ -47,10 +44,11 @@ public:
 		len += n; caret += n;
 		changed ();
 	}
-	void tickBlink () { if (hasFocus && ++m_blink % 30 == 0) invalidate (true); }
+	void tickBlink () { tg_use (m_pane); if (hasFocus && ++m_blink % 30 == 0) invalidate (true); }
 
 	void onDraw () override
 	{
+		tg_use (m_pane);
 		Canvas &cv = canvas;
 		cv.clear (0xFFFFFF);
 		lay ();
@@ -67,6 +65,7 @@ public:
 
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
 	{
+		tg_use (m_pane);
 		(void) br; (void) bm;
 		if (mx < 0) { m_down = false; return false; }
 		uk_cursor (KAPI_CURSOR_TEXT);
@@ -78,6 +77,7 @@ public:
 
 	bool onKey (long k) override
 	{
+		tg_use (m_pane);
 		m_blink = 0;
 		unsigned mods = kapi_get_modifiers ();
 		if (k == KEY_ENTER)
@@ -212,6 +212,7 @@ private:
 class EmoPicker : public Widget
 {
 public:
+	TgPane *m_pane = g_pane;		// (its pane: buddylist.h)
 	enum { COLS = 8, CELL = 30 };
 	ChatEdit *target;
 	EmoPicker (ChatEdit *t) : Widget (0, 0, COLS * CELL + 12, ((EMO_COUNT + COLS - 1) / COLS) * CELL + 36), target (t), m_hot (-1), m_down (true)
@@ -220,6 +221,7 @@ public:
 	void hide () { hidden = true; if (parent) parent->invalidate (true); }
 	void onDraw () override
 	{
+		tg_use (m_pane);
 		Canvas &cv = canvas;
 		cv.clear (UK_TRANSPARENT_KEY);
 		uk_rbox (cv, 0, 0, width, height, 6, 0xFFFFFF, 0xEEF4FA);
@@ -235,6 +237,7 @@ public:
 	}
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
 	{
+		tg_use (m_pane);
 		(void) br; (void) bm; (void) wheel;
 		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
 		if (!in) { if (bl && !m_down) hide (); m_down = bl != 0; if (m_hot != -1) { m_hot = -1; invalidate (true); } return bl != 0; }
@@ -250,18 +253,18 @@ public:
 		m_down = bl != 0;
 		return true;
 	}
-	bool onKey (long k) override { if (k == 27) { hide (); return true; } return false; }
+	bool onKey (long k) override { tg_use (m_pane); if (k == 27) { hide (); return true; } return false; }
 private:
 	int m_hot;
 	bool m_down;
 };
-static EmoPicker *g_picker;
 
 // ---- the strip, the text, Send ------------------------------------------------------------------------------
 
 class InputBar : public Widget
 {
 public:
+	TgPane *m_pane = g_pane;		// (its pane: buddylist.h)
 	enum { STRIP = 30 };
 	ChatEdit *edit;
 	Button *sendBtn;
@@ -270,12 +273,13 @@ public:
 		edit = new ChatEdit (10, STRIP + 2, w - 110, h - STRIP - 10);
 		edit->anchor = ANCHOR_FILL;
 		addChild (edit);
-		sendBtn = new Button (w - 92, STRIP + 2, 82, 30, TR ("Send"), [] (Widget &) { send_current (); });
+		sendBtn = new Button (w - 92, STRIP + 2, 82, 30, TR ("Send"), [] (Widget &w) { tg_use (((InputBar *) w.parent)->m_pane); send_current (); });
 		sendBtn->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
 		addChild (sendBtn);
 	}
 	void onDraw () override
 	{
+		tg_use (m_pane);
 		Canvas &cv = canvas;
 		fill_grad (cv, 0, 0, width, height, 0xF2F7FC, TC_INPUT_BG);
 		cv.fillRect (0, 0, width, 1, TC_LINE);
@@ -311,6 +315,7 @@ public:
 	}
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
 	{
+		tg_use (m_pane);
 		(void) br; (void) bm; (void) wheel;
 		if (mx < 0) { if (m_hot != -1) { m_hot = -1; invalidate (true); } return false; }
 		int hot = my < STRIP && mx >= 6 && mx < 48 ? 0 : my < STRIP && mx >= 52 && mx < 82 ? 1 :
