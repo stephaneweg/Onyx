@@ -1079,10 +1079,16 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   model); the screenshots: `shots.sh mail` (two made-up mailboxes: `fakemail.py --demo`).
 - **On the Pi** (2026-10-02, the user): **works well with Gmail** (an app password). Yahoo: its app passwords are
   currently unavailable at Yahoo (the option greyed: Yahoo's own doing, no date given). Outlook: the user registered
-  "Onyx Mail" at Microsoft Entra (2026-10-02): its id built in, to try on the Pi. Watch: big mailboxes (the first
+  "Onyx Mail" at Microsoft Entra (2026-10-02): its id built in. **Outlook works on the Pi** (2026-10-07, the user)
+  once the SMTP / POP3 commands took Microsoft's 2-3 KB tokens (they were cut at 1 KB: "500 5.3.3 Unrecognized
+  command"); the Outlook page opens Microsoft's page in Jet and copies the code; an unknown domain can be said
+  to be Microsoft 365 (the device code) or Google Workspace (an app password). The same day, on an HDMI screen:
+  the GUI (Elegant, in user space) is responsive, Jet (WebKit) responsive enough to be usable, the HDMI sound
+  works (the output follows what is connected: USB, HDMI or the jack). Watch: big mailboxes (the first
   look takes a folder's newest 100), the TLS handshakes' time, the memory of large HTML mails (a newsletter
   wider than the pane is drawn once at its width and averaged down).
-- **Next**: try Outlook on the Pi (the id is in), IDLE for the Inbox (the code is in `imap.h`, the
+- **Next**: Gmail by OAuth (Google refuses the device code for the mail scope: the authorization code with PKCE
+  and a loopback redirect, a "Desktop app" client registered by the user, published unverified), IDLE for the Inbox (the code is in `imap.h`, the
   worker polls today), older messages on demand, rich text when writing (bold, lists, links: the HTML part is
   generated from the text today), "always show pictures from this sender", search on the server, printing / PDF.
 

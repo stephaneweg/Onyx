@@ -118,6 +118,24 @@ static void account_guess (Account &a, const char *email)
 	a.inPort = a.kind == K_POP3 ? 995 : 993; a.inSec = SEC_TLS;
 	snprintf (a.outHost, sizeof a.outHost, "smtp.%s", dom); a.outPort = 587; a.outSec = SEC_STARTTLS;
 }
+// an address of another domain whose mail Microsoft 365 (a work or school account: Exchange Online) or Google
+// Workspace hosts: their servers and sign-in, the label kept (the domain's)
+static void account_hosted (Account &a, int pv)
+{
+	a.kind = K_IMAP;
+	if (pv == PV_OUTLOOK)
+	{
+		a.provider = PV_OUTLOOK; a.auth = AU_OAUTH;
+		scpy (a.inHost, "outlook.office365.com", sizeof a.inHost); a.inPort = 993; a.inSec = SEC_TLS;
+		scpy (a.outHost, "smtp.office365.com", sizeof a.outHost); a.outPort = 587; a.outSec = SEC_STARTTLS;
+	}
+	else
+	{
+		a.provider = PV_GMAIL; a.auth = AU_PASSWORD;
+		scpy (a.inHost, "imap.gmail.com", sizeof a.inHost); a.inPort = 993; a.inSec = SEC_TLS;
+		scpy (a.outHost, "smtp.gmail.com", sizeof a.outHost); a.outPort = 465; a.outSec = SEC_TLS;
+	}
+}
 static void account_defaults (Account &a)
 {
 	memset (&a, 0, sizeof a);

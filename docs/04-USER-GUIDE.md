@@ -3338,13 +3338,19 @@ and fills their servers in:
 |:---:|:---:|
 | ![Gmail](../screenshots/mail-wizard.png) | ![Outlook](../screenshots/mail-outlook.png) |
 | *Gmail: an app password* | *Outlook.com: Microsoft's sign-in by a code* |
+| ![Another address](../screenshots/mail-hosted.png) | |
+| *Another address: Microsoft 365 or Google Workspace* | |
 
 * **Gmail, iCloud, Yahoo, Fastmail** ask for an **app password** (not your usual one): turn on 2-step
   verification, make the password on the provider's page (*Open the page in Jet*), type it.
 * **Outlook.com / Hotmail / Live** do not take passwords from mail apps: Mail shows a **code**; on a phone
-  or a PC open `microsoft.com/devicelogin`, type the code, sign in, allow "Onyx Mail" — Mail goes on by
-  itself. (Mail carries the "Onyx Mail" application's id, registered at Microsoft; `SD:/etc/mail/oauth.ini` may give another: `docs/mail/README.md`.)
-* **Another provider**: its password; Mail tries `imap.<domain>` and `smtp.<domain>`. **Settings by hand**:
+  or a PC open `microsoft.com/devicelogin` (or here: *Open the page in Jet*; *Copy the code* puts the code in
+  the clipboard, to paste it there), type the code, sign in, allow "Onyx Mail" — Mail goes on by itself. (Mail carries the "Onyx Mail" application's id, registered at Microsoft; `SD:/etc/mail/oauth.ini` may give another: `docs/mail/README.md`.)
+* **Another provider**: its password; Mail tries `imap.<domain>` and `smtp.<domain>`. A **work or school
+  address** whose mail **Microsoft 365** (Exchange Online) or **Google Workspace** keeps: choose
+  *Microsoft 365 (Outlook)* — Microsoft's sign-in by a code, as Outlook.com (`outlook.office365.com`,
+  `smtp.office365.com`; the organisation's administrator may have to allow "Onyx Mail" first) — or *Google
+  Workspace (Gmail)* — an app password, as Gmail (if the administrator lets the accounts make one). **Settings by hand**:
   IMAP or **POP3**, each server, its port and security (SSL/TLS, STARTTLS), the user names and passwords,
   POP3's *Leave the messages on the server*.
 

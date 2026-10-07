@@ -692,6 +692,7 @@ if want mail; then			# (Mail against two made-up mailboxes: tools/tests/mail/fak
 	WZ="down 606 414;up 606 414;$W40;$(typ 'Stephane');down 500 260;up 500 260"
 	ms mail-wizard new "$WZ;$(typ 'steph.demo@gmail.com');$W40;down 714 514;up 714 514;$W40"
 	ms mail-outlook new "$WZ;$(typ 'steph.demo@outlook.com');$W40;down 714 514;up 714 514;$W40;down 330 291;up 330 291;wait;wait;wait;wait;wait"
+	ms mail-hosted new "$WZ;$(typ 'steph@acme-demo.be');$W40;down 714 514;up 714 514;$W40"
 	kill $MS1 $MS2
 fi
 if want photos; then			# (Photos over a made-up library -- tools/tests/photos/make_samples.py: drawn photos as JPEGs with
