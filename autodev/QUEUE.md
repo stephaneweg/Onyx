@@ -27,8 +27,9 @@ Items 1-4 above are done (rounds 2-5). Round 6 (in progress when this was writte
 **The user's new queue (2026-10-07)** -- the Product Manager takes the first item not done; when none is left,
 free pick (PIPELINE.md §1), never an app an earlier round built:
 
-5. **A vector drawing program worthy of Inkscape / Adobe Illustrator -- part 1** (the user: "en haut de la
-   liste"). Two rounds (this one and item 6): this round lays the foundation and a usable first version.
+5. **A vector drawing program worthy of Inkscape / Adobe Illustrator** (the user: "en haut de la liste").
+   **ONE round, as long as it needs** (the user, 2026-10-07: no time limit): items 5 and 6 together -- the
+   foundation below AND item 6's features; split into many Developer subagents, not into two rounds.
    A document of shapes (rectangle, ellipse, polygon, star, line, **Bézier paths drawn with a pen tool**),
    selection / move / scale / rotate with handles, **node editing** (move nodes and handles, add / delete,
    corner / smooth), fill and stroke (colour, width, dashes, caps, joins, opacity), layers, z-order, groups,
@@ -39,7 +40,7 @@ free pick (PIPELINE.md §1), never an app an earlier round built:
    app (item 7) and others reuse -- a new kit (e.g. VectorKit) or DocumentKit's start (see IDEAS.md), the
    Technical Analyst decides. Existing code to look at: UIKit's VPath, 3DForge's 2D drawings
    (`user/Apps/3dforge/fdraw.h`: SVG / DXF / PDF writing), `user/Libs/pdf` (PDF writing), Paint (layers, its UI).
-6. **The vector drawing program -- part 2**: gradients (linear, radial) and their on-canvas editing, text
+6. **(Same round as item 5)** the vector drawing program's advanced features: gradients (linear, radial) and their on-canvas editing, text
    (FontKit faces, text on the canvas, converted to paths), **boolean operations** (union, difference,
    intersection, exclusion), align and distribute, guides and smart snapping (to nodes, centres, edges), the
    layers panel and an objects panel, clones / duplicates, PDF export (`user/Libs/pdf`), import of a raster

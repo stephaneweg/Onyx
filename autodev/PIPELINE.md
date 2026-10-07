@@ -18,8 +18,8 @@ are complete, and loops when a check fails.
 2. **Resync with main first**: `git merge origin/main` (resolve conflicts; main has priority
    for anything fixed there). Commit the merge, push `AutoDev`.
 3. **The round's number**: read `autodev/STATE.md`. If `rounds_done >= rounds_max`, stop: write
-   nothing, say "AutoDev: the rounds are done". If `lock:` holds a round started less than 8 hours
-   ago, stop (another round runs). Otherwise write `lock: round N, <UTC time>`, commit, push.
+   nothing, say "AutoDev: the rounds are done". If `lock:` holds a round whose session is still
+   running, stop (another round runs). Otherwise write `lock: round N, <UTC time>`, commit, push.
 4. **The round's folder**: `autodev/rounds/NN-<app-slug>/` holds every role's document (below).
 5. **Never** push to `main`, never merge into `main`, **never publish packages** (the
    onyx-packages skill and `tools/pkg/publish.sh` are NOT run in AutoDev, whatever CLAUDE.md says:
@@ -33,6 +33,9 @@ are complete, and loops when a check fails.
    at 0 missing, the French screenshots checked (`SHOTS_LANG=fr`).
 7. At the end: `rounds_done += 1`, the round added to `STATE.md`'s history, `lock:` cleared,
    commit, push.
+
+**No time limit (the user, 2026-10-07)**: a round takes as long as its scope needs. Never cut the scope to
+save time; use as many Developer subagents, one after the other, as the plan needs.
 
 ## 1. Product Manager — pick the best application
 
