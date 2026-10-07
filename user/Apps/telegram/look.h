@@ -169,6 +169,45 @@ static unsigned *av_load (const char *path, int size)
 	return out;
 }
 
+// src (sw x sh) brought to dw x dh: the average of what each pixel covers (smaller), the nearest (larger).
+static unsigned *scale_box (const unsigned *src, int sw, int sh, int dw, int dh)
+{
+	unsigned *out = new unsigned[(size_t) dw * dh];
+	for (int y = 0; y < dh; y++)
+		for (int x = 0; x < dw; x++)
+		{
+			int x0 = x * sw / dw, x1 = (x + 1) * sw / dw, y0 = y * sh / dh, y1 = (y + 1) * sh / dh;
+			if (x1 <= x0) x1 = x0 + 1;
+			if (y1 <= y0) y1 = y0 + 1;
+			if (x1 > sw) x1 = sw;
+			if (y1 > sh) y1 = sh;
+			unsigned r = 0, g = 0, b = 0, n = 0;
+			for (int yy = y0; yy < y1; yy++) for (int xx = x0; xx < x1; xx++)
+			{ unsigned c = src[yy * sw + xx]; r += (c >> 16) & 255; g += (c >> 8) & 255; b += c & 255; n++; }
+			out[y * dw + x] = n ? ((r / n) << 16) | ((g / n) << 8) | (b / n) : 0xFFFFFF;
+		}
+	return out;
+}
+
+// A rectangle of pixels (w x h) laid at (x, y), its corners rounded (r).
+static void blit_rect_round (Canvas &cv, const unsigned *px, int x, int y, int w, int h, int r)
+{
+	for (int j = 0; j < h; j++)
+		for (int i = 0; i < w; i++)
+		{
+			int dx = i < r ? r - i : i >= w - r ? i - (w - r - 1) : 0, dy = j < r ? r - j : j >= h - r ? j - (h - r - 1) : 0;
+			int a = 255;
+			if (dx && dy)
+			{
+				int d2 = (dx - 1) * (dx - 1) + (dy - 1) * (dy - 1), r2 = r * r;
+				if (d2 >= r2) continue;
+				if (d2 > (r - 1) * (r - 1)) a = 255 * (r2 - d2) / (r2 - (r - 1) * (r - 1) + 1);
+			}
+			if (a >= 255) cv.pixel (x + i, y + j, px[j * w + i]);
+			else uk_blend_px (cv, x + i, y + j, px[j * w + i], a);
+		}
+}
+
 // The peer's photo at size (cached), 0 if it has none (yet).
 static unsigned *av_photo (tg::Client &c, long long peer, int size)
 {

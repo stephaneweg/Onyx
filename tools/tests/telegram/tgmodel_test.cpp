@@ -209,6 +209,60 @@ int main ()
 		c.updates (wire (*ups));
 		CHECK (ca->n == 7 && ca->m[6].id == 15 && !ca->m[6].pending, "updateMessageID + updateNewMessage: one message, id 15 (%d)", ca->n);
 	}
+	// a photo sent: shown at once (its file), its parts, sendMedia, the server's message; a photo received
+	{
+		unsigned char jpg[300000];
+		for (int i = 0; i < (int) sizeof jpg; i++) jpg[i] = (unsigned char) (i * 13);
+		int before = ca->n;
+		c.sendPhoto (pa, jpg, sizeof jpg, 1280, 800, "the lake");
+		tg::Msg &pm = ca->m[ca->n - 1];
+		CHECK (ca->n == before + 1 && pm.pending && pm.media == tg::M_PHOTO && pm.local && pm.pw == 1280, "a photo sent: shown at once, pending");
+		char path[160];
+		CHECK (c.msgPhoto (pm, path, sizeof path) && strstr (path, "cache/out"), "its picture: the file kept (%s)", path);
+		long long rid = pm.randomId;
+		int parts = 0;
+		for (int guard = 0; guard < 10; guard++)
+		{
+			c.nextPart ();
+			CHECK (c.m_upBusy, "a request made (part %d)", parts);
+			int req = 0, kind = 0;
+			for (int i = 0; i < tg::MAXPEND; i++) if (c.m_pend[i].req && (c.m_pend[i].kind == tg::R_PART || c.m_pend[i].kind == tg::R_SENDMEDIA)) { req = c.m_pend[i].req; kind = c.m_pend[i].kind; }
+			if (kind == tg::R_SENDMEDIA)
+			{
+				// the server: updateMessageID + updateNewMessage with the photo
+				tl::Val *sz1 = tl::make (A, "photoSize"), *sz2 = tl::make (A, "photoSizeProgressive"), *sz3 = tl::make (A, "photoStrippedSize");
+				sz1->set ("type", tl::S (A, "m")); sz1->set ("w", tl::I (320)); sz1->set ("h", tl::I (200)); sz1->set ("size", tl::I (9000));
+				sz2->set ("type", tl::S (A, "x")); sz2->set ("w", tl::I (800)); sz2->set ("h", tl::I (500)); sz2->set ("sizes", vec ({ tl::I (1000), tl::I (40000) }));
+				sz3->set ("type", tl::S (A, "i")); sz3->set ("bytes", tl::S (A, "abc"));
+				tl::Val *ph = tl::make (A, "photo");
+				ph->set ("id", tl::L (777)); ph->set ("access_hash", tl::L (888)); ph->set ("file_reference", tl::S (A, "ref!", 4));
+				ph->set ("date", tl::I (1)); ph->set ("sizes", vec ({ *sz3, *sz1, *sz2 })); ph->set ("dc_id", tl::I (4));
+				tl::Val *md = tl::make (A, "messageMediaPhoto"); md->set ("photo", *ph);
+				tl::Val nm = message (16, peerUser (ALICE), 0, true, "the lake", 1790001000); nm.set ("media", *md);
+				tl::Val *mid = tl::make (A, "updateMessageID"); mid->set ("id", tl::I (16)); mid->set ("random_id", tl::L (rid));
+				tl::Val *un = tl::make (A, "updateNewMessage"); un->set ("message", nm); un->set ("pts", tl::I (63)); un->set ("pts_count", tl::I (1));
+				tl::Val *ups = tl::make (A, "updates");
+				ups->set ("updates", vec ({ *mid, *un })); ups->set ("users", tl::Vec (A, 0)); ups->set ("chats", tl::Vec (A, 0)); ups->set ("date", tl::I (1)); ups->set ("seq", tl::I (0));
+				c.result (2, req, wire (*ups));
+				break;
+			}
+			parts++;
+			c.result (2, req, tl::B (true));
+		}
+		CHECK (parts == 3, "300 000 bytes: 3 parts of 128 KB (%d)", parts);
+		tg::Msg &sm = ca->m[ca->n - 1];
+		CHECK (ca->n == before + 1 && sm.id == 16 && !sm.pending && sm.photoId == 777 && sm.photoAccess == 888 && sm.photoDc == 4, "the server's photo: one message, id 16");
+		CHECK (!strcmp (sm.thumb, "x") && sm.pw == 800 && sm.photoRefN == 4 && !memcmp (sm.photoRef, "ref!", 4), "the size shown: x (800 x 500), its file reference");
+		CHECK (sm.local && !strcmp (sm.text, "the lake"), "our file still shown, the caption");
+		CHECK (c.m_nup == 0, "the upload done");
+		// a photo received: asked for once, from data centre 4
+		tg::Msg rm = sm; rm.local = 0; rm.photoId = 999;
+		int q0 = c.m_nphotoQ;
+		CHECK (!c.msgPhoto (rm, path, sizeof path) && c.m_nphotoQ == q0 + 1 && c.m_photoQ[q0].kind == 1 && c.m_photoQ[q0].dc == 4 && !strcmp (c.m_photoQ[q0].thumb, "x"), "a photo received: asked for (inputPhotoFileLocation, data centre 4)");
+		c.msgPhoto (rm, path, sizeof path);
+		CHECK (c.m_nphotoQ == q0 + 1, "... once");
+	}
+
 	// the session file
 	{
 		unsigned char key[256]; for (int i = 0; i < 256; i++) key[i] = (unsigned char) (i * 7);

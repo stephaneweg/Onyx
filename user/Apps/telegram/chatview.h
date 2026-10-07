@@ -13,6 +13,7 @@
 #include "buddylist.h"
 
 static void open_link (const char *url);
+static void open_picture (const char *path);
 
 // "HH:MM" of a server time, in the local time.
 static void hhmm (int t, char *out, int cap)
@@ -156,13 +157,15 @@ public:
 		(void) br; (void) bm;
 		if (mx < 0) { m_down = false; return false; }
 		if (wheel) { scrollBy (-wheel * 48); return true; }
-		char url[512];
+		char url[512], pic[160];
 		bool link = linkAt (mx, my + m_scroll, url, sizeof url);
-		uk_cursor (link ? KAPI_CURSOR_HAND : KAPI_CURSOR_ARROW);
+		bool picture = !link && pictureAt (mx, my + m_scroll, pic, sizeof pic);
+		uk_cursor (link || picture ? KAPI_CURSOR_HAND : KAPI_CURSOR_ARROW);
 		if (bl && !m_down)
 		{
 			m_down = true;
 			if (link) open_link (url);
+			else if (picture) open_picture (pic);
 		}
 		else if (!bl) m_down = false;
 		return true;
@@ -171,7 +174,7 @@ public:
 
 private:
 	enum { I_DAY, I_HEAD, I_MSG, I_SERVICE, I_GAP };
-	struct Item { int kind, y, h, msg; Rich *rich; int textX, big; };
+	struct Item { int kind, y, h, msg; Rich *rich; int textX, big, phW, phH; };
 	Item *m_it;
 	int m_n, m_cap, m_total, m_scroll;
 	bool m_stick;
@@ -275,6 +278,15 @@ private:
 			it.rich = new Rich;
 			const char *text = m.text;
 			char mt[300];
+			if (isPicture (m))			// a photo: the picture, its caption under it
+			{
+				fitPicture (m, it.phW, it.phH);
+				rich_layout (*it.rich, g_face.ui, text, textW, 19);
+				it.textX = LEFT;
+				it.h = it.phH + 6 + (text[0] ? it.rich->height () + 2 : 0);
+				m_total += it.h;
+				continue;
+			}
 			if (m.media && m.media != tg::M_SERVICE)
 			{
 				mediaText (m, c->peer, mt, sizeof mt);
@@ -362,6 +374,13 @@ private:
 		{
 			const char *t = itemText ((int) (&it - m_it), m);
 			unsigned ink = m.pending ? TC_GREY : m.failed ? TC_BUSY : TC_INK;
+			if (it.phW)
+			{
+				drawPicture (cv, m, it.textX, y + 2, it.phW, it.phH);
+				if (m.text && m.text[0]) rich_draw (cv, *it.rich, g_face.ui, m.text, it.textX, y + it.phH + 6, ink);
+				drawTime (cv, c, m, y, 0, it.rich->lineH);
+				return;
+			}
 			rich_draw (cv, *it.rich, g_face.ui, t, it.textX, y, ink, m.media && m.media != tg::M_SERVICE && !it.big ? 0 : 0);
 			// the media label in grey italics over the black: drawn again (first line) when it is a label
 			if (m.media && !it.big)
@@ -373,30 +392,107 @@ private:
 				mediaIcon (cv, m.media, ic, y + (it.rich->lineH - 14) / 2);
 				ftext (cv, g_face.ui, ic + 18, y + (it.rich->lineH - g_face.ui->height ()) / 2, lab, TC_GREY, 1, width - ic - TIMEW - 30);
 			}
-			// the time, the ticks
-			char tm[8]; hhmm (m.date, tm, sizeof tm);
-			int tx = width - UK_SBW - TIMEW + 6, ty = y + (it.rich->lineH - g_face.small->height ()) / 2;
-			if (it.big) ty = y + 4;
-			ftext (cv, g_face.small, tx, ty, tm, TC_LIGHT);
-			if (m.out)
-			{
-				int kx = tx + ftw (g_face.small, tm) + 5, ky = ty + 3;
-				if (m.failed) ftext (cv, g_face.small, kx, ty, "!", TC_BUSY, 2);
-				else if (m.pending) { VPath p; p.arc (V (kx + 4), V (ky + 4), V (4), 0, 360, V (1)); p.line (V (kx + 4), V (ky + 4), V (kx + 4), V (ky + 1), V (1)); p.line (V (kx + 4), V (ky + 4), V (kx + 6), V (ky + 5), V (1)); p.fill (cv, TC_LIGHT); }
-				else
-				{
-					bool read = c->readOutMax >= m.id;
-					unsigned k = read ? 0x3FA34D : TC_LIGHT;
-					VPath p;
-					p.line (V (kx), V (ky + 4), V (kx + 3), V (ky + 7), V (1) + 6); p.line (V (kx + 3), V (ky + 7), V (kx + 8), V (ky), V (1) + 6);
-					if (read) { p.line (V (kx + 5), V (ky + 6), V (kx + 6), V (ky + 7), V (1) + 6); p.line (V (kx + 6), V (ky + 7), V (kx + 11), V (ky), V (1) + 6); }
-					p.fill (cv, k);
-				}
-			}
-			if (m.edited) ftext (cv, g_face.small, tx - ftw (g_face.small, TR ("edited")) - 6, ty, TR ("edited"), TC_LIGHT, 1);
+			drawTime (cv, c, m, y, it.big, it.rich->lineH);
 			return;
 		}
 		}
+	}
+
+	// the time on the right, and for ours the ticks (a clock while it goes, a red ! if it could not)
+	void drawTime (Canvas &cv, tg::Conv *c, tg::Msg &m, int y, int big, int lineH)
+	{
+		char tm[8]; hhmm (m.date, tm, sizeof tm);
+		int tx = width - UK_SBW - TIMEW + 6, ty = y + (lineH - g_face.small->height ()) / 2;
+		if (big) ty = y + 4;
+		ftext (cv, g_face.small, tx, ty, tm, TC_LIGHT);
+		if (m.out)
+		{
+			int kx = tx + ftw (g_face.small, tm) + 5, ky = ty + 3;
+			if (m.failed) ftext (cv, g_face.small, kx, ty, "!", TC_BUSY, 2);
+			else if (m.pending) { VPath p; p.arc (V (kx + 4), V (ky + 4), V (4), 0, 360, V (1)); p.line (V (kx + 4), V (ky + 4), V (kx + 4), V (ky + 1), V (1)); p.line (V (kx + 4), V (ky + 4), V (kx + 6), V (ky + 5), V (1)); p.fill (cv, TC_LIGHT); }
+			else
+			{
+				bool read = c->readOutMax >= m.id;
+				unsigned k = read ? 0x3FA34D : TC_LIGHT;
+				VPath p;
+				p.line (V (kx), V (ky + 4), V (kx + 3), V (ky + 7), V (1) + 6); p.line (V (kx + 3), V (ky + 7), V (kx + 8), V (ky), V (1) + 6);
+				if (read) { p.line (V (kx + 5), V (ky + 6), V (kx + 6), V (ky + 7), V (1) + 6); p.line (V (kx + 6), V (ky + 7), V (kx + 11), V (ky), V (1) + 6); }
+				p.fill (cv, k);
+			}
+		}
+		if (m.edited) ftext (cv, g_face.small, tx - ftw (g_face.small, TR ("edited")) - 6, ty, TR ("edited"), TC_LIGHT, 1);
+	}
+
+	// ---- the pictures ----
+
+	static bool isPicture (const tg::Msg &m) { return m.media == tg::M_PHOTO && (m.photoId || m.local); }
+	void fitPicture (const tg::Msg &m, int &w, int &h)
+	{
+		int mw = width - LEFT - TIMEW - UK_SBW - 12, mh = 260;
+		if (mw > 320) mw = 320;
+		if (mw < 80) mw = 80;
+		int pw = m.pw > 0 ? m.pw : 4, ph = m.ph > 0 ? m.ph : 3;
+		w = mw; h = (int) ((long) ph * w / pw);
+		if (h > mh) { h = mh; w = (int) ((long) pw * h / ph); }
+		if (w < 40) w = 40;
+		if (h < 30) h = 30;
+	}
+	struct Pic { char path[160]; int w, h; unsigned *px; };
+	Pic m_pic[24];
+	int m_npic = 0;
+	unsigned *picture (const char *path, int w, int h)
+	{
+		for (int i = 0; i < m_npic; i++) if (m_pic[i].w == w && m_pic[i].h == h && !strcmp (m_pic[i].path, path)) return m_pic[i].px;
+		ImgFrames im;
+		if (!img_load (path, &im)) return 0;
+		unsigned *px = scale_box (im.px[0], im.w, im.h, w, h);
+		img_free (&im);
+		if (m_npic == 24) { delete [] m_pic[0].px; memmove (m_pic, m_pic + 1, sizeof m_pic[0] * 23); m_npic--; }
+		Pic &p = m_pic[m_npic++];
+		snprintf (p.path, sizeof p.path, "%s", path); p.w = w; p.h = h; p.px = px;
+		return px;
+	}
+	void drawPicture (Canvas &cv, tg::Msg &m, int x, int y, int w, int h)
+	{
+		char path[160];
+		unsigned *px = g_c.msgPhoto (m, path, sizeof path) ? picture (path, w, h) : 0;
+		if (px) blit_rect_round (cv, px, x, y, w, h, 6);
+		else
+		{
+			uk_rbox (cv, x, y, w, h, 6, 0xE3ECF5, 0xCCD9E6);
+			mediaIcon (cv, tg::M_PHOTO, x + w / 2 - 8, y + h / 2 - 14);
+			const char *l = TR ("Loading the picture...");
+			ftext (cv, g_face.small, x + (w - ftw (g_face.small, l)) / 2, y + h / 2 + 6, l, TC_GREY, 1);
+		}
+		uk_rline (cv, x, y, w, h, 6, TC_LINE);
+		if (m.pending || m.failed)
+		{
+			char s[80];
+			if (m.failed) snprintf (s, sizeof s, "%s", TR ("Not sent"));
+			else snprintf (s, sizeof s, TR ("Sending... %d%%"), m.progress);
+			int sw = ftw (g_face.small, s, 2) + 16;
+			uk_rbox (cv, x + 8, y + h - 28, sw, 20, 10, 0x000000, 0x000000, 150);
+			ftext (cv, g_face.small, x + 16, y + h - 26, s, m.failed ? 0xFF8A80 : 0xFFFFFF, 2);
+			if (!m.failed)
+			{
+				int bw = w - 16;
+				cv.fillRect (x + 8, y + h - 5, bw, 3, 0x7A8A9A);
+				cv.fillRect (x + 8, y + h - 5, bw * m.progress / 100, 3, 0x6FD34A);
+			}
+		}
+	}
+	// the picture under (mx, my) (content coordinates) -> its file
+	bool pictureAt (int mx, int my, char *path, int cap)
+	{
+		tg::Conv *c = g_open ? g_c.conv (g_open) : 0;
+		if (!c) return false;
+		for (int i = 0; i < m_n; i++)
+		{
+			Item &it = m_it[i];
+			if (it.kind != I_MSG || !it.phW || my < it.y + 2 || my >= it.y + 2 + it.phH || mx < it.textX || mx >= it.textX + it.phW) continue;
+			return g_c.msgPhoto (c->m[it.msg], path, cap);
+		}
+		return false;
 	}
 
 	static void mediaIcon (Canvas &cv, int media, int x, int y)

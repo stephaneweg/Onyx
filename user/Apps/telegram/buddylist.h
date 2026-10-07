@@ -42,6 +42,7 @@ static void preview (tg::Conv *cv, char *out, int cap)
 		what = tmp;
 	}
 	else if (m.media == tg::M_SERVICE) { snprintf (tmp, sizeof tmp, "%s", TR ("(group event)")); what = tmp; who[0] = 0; }
+	else if (m.media == tg::M_PHOTO) { snprintf (tmp, sizeof tmp, "[%s] %s", TR ("Photo"), m.text); what = tmp; }
 	snprintf (out, (size_t) cap, "%s%s", who, what ? what : "");
 	for (char *p = out; *p; p++) if (*p == '\n') *p = ' ';
 }

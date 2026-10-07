@@ -18,7 +18,7 @@ studying Discord / WhatsApp / Messenger (their terms forbid third-party clients;
   the conversation "X says:", read ticks, display pictures, emoticons drawn by vectors and typed `:)`, the picker,
   notifications, `--demo`), `lang/fr.txt` (209 words), `app.txt`, `icon.bmp` (`tools/icons/telegram_icon.py`),
   `[app.telegram]` in `tools/pkg/packages.ini`, the `user/Makefile` rule (`telegram.elf`), `shots.sh telegram`.
-- **Tested on the PC**: `sh tools/tests/telegram/run_tgclient_test.sh` -- offline 21 + 34 checks (the codec, the crypto,
+- **Tested on the PC**: `sh tools/tests/telegram/run_tgclient_test.sh` -- offline 21 + 47 checks (the codec, the crypto,
   the model fed the server's objects, SRP against the server's side); live (TG_API_ID / TG_API_HASH: my.telegram.org's,
   the session used TDLib's public test pair) over MTProto's HTTP transport through the proxy: keys with the test and
   production servers, the code sent, a wrong code refused, PHONE_MIGRATE followed. **Telegram's test servers refuse
@@ -29,8 +29,10 @@ studying Discord / WhatsApp / Messenger (their terms forbid third-party clients;
 - **Not tried (to do on the Pi)**: the TCP transport (`tgplat.h`'s `TcpTransport`, port 443 of the data centres) and a
   real account end to end: sign in, the conversations, a message both ways, a photo from another data centre, the
   status, Sign out; the frame rate of the list with many conversations; `log.txt` says what the connection did.
-- **Follow-ups**: show the photos / stickers (`upload.getFile` of the message's photo, ImageKit), send pictures and
-  files, reply / edit / delete, reactions, a sound for a new message (AudioKit), the notification's click opening the
+- **Pictures** (2026-10-07, after the user's test on the Pi -- "il marche bien"): sent (the picture button, Ctrl+V of a
+  picture or a picture file, a drop; 1280 px JPEG, parts of 128 KB, sendMedia, the progress) and shown (received and
+  sent; a click: the Image Viewer). Offline-tested (tgmodel_test: 47 checks); the upload against Telegram: on the Pi.
+- **Follow-ups**: show the stickers and videos, send other files, reply / edit / delete, reactions, a sound for a new message (AudioKit), the notification's click opening the
   conversation, a kernel entropy source (the RNG200) to replace the pool's stopgap, the chat's pop-out windows (one
   process each, as IRC's private conversations), the reusable pieces into kits (the TL codec + MTProto into NetKit if a
   second program wants them; the emoticons into UIKit).

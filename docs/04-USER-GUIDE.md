@@ -3530,8 +3530,8 @@ says:"** (in purple; you in blue) over what she wrote, again when the sender cha
 minutes; the time on the right, and for yours the ticks — one grey when sent, two green when read
 (a clock while it goes, a red `!` if it could not); a line with the day between the days; a group's
 events (someone joined, renamed it...) in grey; a message of only one to three emoticons drawn
-big; photos, videos, voice messages, files, stickers, places and polls as a labelled line (*[Photo]*:
-this version does not show them yet); links underlined (a click opens them in **Jet Browser**). The
+big; **photos** as pictures (a click opens one in the Image Viewer); videos, voice messages, files,
+stickers, places and polls as a labelled line; links underlined (a click opens them in **Jet Browser**). The
 wheel, **Page Up / Page Down** scroll; scrolling to the top loads the older messages. On the right,
 the **display pictures**: theirs on top, yours at the bottom (**View ▸ Hide the Display Pictures**
 gives their room to the messages).
@@ -3545,6 +3545,16 @@ emoji: your contacts see them on their phones). The old typed forms become pictu
 `;)` `:(` `:'(` `:P` `:O` `:@` `(H)` `:*` `:S` `:|` `:$` `<3` `</3` `(Y)` `(N)` `(*)` `(#)` `(C)`
 `(F)` `(G)` (pointing at an emoticon in the picker shows its name and typed form). While you write,
 the other side sees that you are typing.
+
+![Telegram, a picture sent](../screenshots/telegram-picture.png)
+*A picture dropped from the File Viewer, sent with its caption: on its way.*
+
+**Sending a picture.** Three ways: the **picture button** (beside the smiley: choose a file — JPEG,
+PNG, GIF, BMP, WebP, PCX), **Ctrl+V** (a picture copied — in Paint, by Screenshot... — or a picture
+file copied in the File Viewer), or **drop** a picture file on the window. It waits in the strip
+(its little view, its name and size; the cross takes it back): what you type is its **caption**, and
+**Enter** (or Send) sends both. It is sent as a photo (brought down to 1280 pixels at most, JPEG): it
+shows at once in the conversation, with *Sending... 45 %* and a bar until it is there.
 
 **Notifications.** A message in another conversation than the one shown: a notification bubble
 (*"Alice says: ..."*, a click brings Telegram back), and its unread count in the list. The menu
@@ -3560,8 +3570,8 @@ account's keys: secret), `cache/` (the profile photos), `seed.bin` (the random g
 renewed at each start), `log.txt` (what the connection did: to look at when something goes wrong).
 `telegram --demo` shows made-up conversations, without the network or an account.
 
-**What it does not do yet:** show the photos, videos and stickers themselves (they are named),
-send files, voice and video calls, secret chats (end-to-end: phones only), edit or delete a
+**What it does not do yet:** show the videos and stickers themselves (they are named), send other
+files, voice and video calls, secret chats (end-to-end: phones only), edit or delete a
 message, reactions. **Randomness:** the keys of the connection are made with a random generator fed
 from several sources (the system's, the processor's timing jitter, your typing, a seed kept from the
 previous start), as the Pi's hardware generator cannot be used yet — good, not perfect (docs/03).

@@ -14,6 +14,14 @@
 
 static void send_current ();
 static void typed_something ();
+static bool paste_picture ();		// (main.cpp: the clipboard's picture, or a picture file copied: attached)
+static void choose_picture ();		// (main.cpp: the file dialog)
+
+// The picture to send with the next message (attached by the button, Ctrl+V, a drop): the JPEG made of it,
+// its size, a small view of it, its name.
+struct Attach { unsigned char *jpg; int n, w, h; unsigned *thumb; int tw, th; char name[80]; };
+static Attach g_att;
+static void attach_clear () { delete [] g_att.jpg; delete [] g_att.thumb; memset (&g_att, 0, sizeof g_att); }
 
 // ---- the text --------------------------------------------------------------------------------------------
 
@@ -80,6 +88,7 @@ public:
 		}
 		if (k == UK_CTRL ('V'))
 		{
+			if (paste_picture ()) return true;
 			static char b[CAP];
 			if (clip_get_text (b, sizeof b)) { insert (b); typed_something (); }
 			return true;
@@ -275,7 +284,25 @@ public:
 		if (m_hot == 0) { uk_rbox (cv, x - 2, 3, 42, 24, 4, TC_HOT_TOP, TC_HOT_BOT); uk_rline (cv, x - 2, 3, 42, 24, 4, TC_HOT_RIM); }
 		emo_draw (cv, EMO_SMILE, x + 2, 6, 18);
 		uk_glyph (cv, WKG_CHEV_DOWN, x + 30, 15, 7, TC_GREY);
-		ftext (cv, g_face.small, x + 48, 9, TR ("Enter: send - Shift+Enter: a new line"), TC_LIGHT, 1, width - x - 60);
+		// the picture button
+		int px = x + 46;
+		if (m_hot == 1) { uk_rbox (cv, px - 2, 3, 30, 24, 4, TC_HOT_TOP, TC_HOT_BOT); uk_rline (cv, px - 2, 3, 30, 24, 4, TC_HOT_RIM); }
+		pictureIcon (cv, px + 4, 7);
+		int hx = px + 36;
+		if (g_att.jpg)						// the picture attached: its view, its name, the cross
+		{
+			int cw = width - hx - 8;
+			uk_rbox (cv, hx, 3, cw, 24, 12, 0xFFFFFF, 0xEAF2FA);
+			uk_rline (cv, hx, 3, cw, 24, 12, TC_SEL_RIM);
+			if (g_att.thumb) blit_rect_round (cv, g_att.thumb, hx + 4, 5, g_att.tw, g_att.th, 3);
+			char lab[160];
+			snprintf (lab, sizeof lab, TR ("Picture: %s (%d x %d) - sent with the next message"), g_att.name, g_att.w, g_att.h);
+			ftext (cv, g_face.small, hx + 8 + g_att.tw, 9, lab, TC_INK, 0, cw - g_att.tw - 34);
+			int cx = hx + cw - 14;
+			uk_glyph (cv, WKG_CLOSE, cx, 15, 9, m_hot == 2 ? TC_BUSY : TC_GREY);
+			m_closeX = cx;
+		}
+		else ftext (cv, g_face.small, hx, 9, TR ("Enter: send - Shift+Enter: a new line - Ctrl+V: a picture too"), TC_LIGHT, 1, width - hx - 10);
 		// the text's frame
 		Widget *e = edit;
 		uk_rbox (cv, e->left - 3, e->top - 3, e->width + 6, e->height + 6, 4, TC_LINE, TC_LINE);
@@ -286,8 +313,12 @@ public:
 	{
 		(void) br; (void) bm; (void) wheel;
 		if (mx < 0) { if (m_hot != -1) { m_hot = -1; invalidate (true); } return false; }
-		int hot = my < STRIP && mx >= 6 && mx < 48 ? 0 : -1;
+		int hot = my < STRIP && mx >= 6 && mx < 48 ? 0 : my < STRIP && mx >= 52 && mx < 82 ? 1 :
+			  my < STRIP && g_att.jpg && mx >= m_closeX - 10 && mx < m_closeX + 10 ? 2 : -1;
 		if (hot != m_hot) { m_hot = hot; invalidate (true); }
+		if (hot >= 1) uk_cursor (KAPI_CURSOR_HAND);
+		if (bl && !m_down && hot == 1) choose_picture ();
+		if (bl && !m_down && hot == 2) { attach_clear (); invalidate (true); }
 		if (bl && !m_down && hot == 0)
 		{
 			// the picker over the strip
@@ -298,9 +329,19 @@ public:
 		m_down = bl != 0;
 		return my < STRIP;
 	}
+	static void pictureIcon (Canvas &cv, int x, int y)
+	{
+		uk_rbox (cv, x, y, 20, 16, 3, 0x9FD0F5, 0x4A8FD0);
+		uk_rline (cv, x, y, 20, 16, 3, 0x2E6EAE);
+		VPath p;
+		p.circle (V (x + 6), V (y + 5), V (2)); p.fill (cv, 0xFFE27A);
+		p.clear (); { int t[6] = { V (x + 2), V (y + 14), V (x + 9), V (y + 6), V (x + 15), V (y + 14) }; p.poly (t, 3); } p.fill (cv, 0x2E7D32);
+		p.clear (); { int t[6] = { V (x + 10), V (y + 14), V (x + 14), V (y + 9), V (x + 19), V (y + 14) }; p.poly (t, 3); } p.fill (cv, 0x4CAF50);
+	}
 private:
 	int m_hot;
 	bool m_down;
+	int m_closeX = 0;
 };
 
 #endif

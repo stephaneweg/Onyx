@@ -34,7 +34,6 @@ typing...	écrit...
 Type a message here	Écrivez un message ici
 Emoticons	Émoticônes
 Send	Envoyer
-Enter: send - Shift+Enter: a new line	Entrée : envoyer - Maj+Entrée : nouvelle ligne
 Today	Aujourd'hui
 Yesterday	Hier
 January	janvier
@@ -208,3 +207,12 @@ Telegram sent you a code.	Telegram vous a envoyé un code.
 Your account is protected by a password (two-step verification). Its hint: %s	Votre compte est protégé par un mot de passe (validation en deux étapes). Son indice : %s
 Your account is protected by a password (two-step verification).	Votre compte est protégé par un mot de passe (validation en deux étapes).
 This number has no Telegram account yet. Your name makes one: it is what your contacts will see.	Ce numéro n'a pas encore de compte Telegram. Votre nom en crée un : c'est ce que vos contacts verront.
+Enter: send - Shift+Enter: a new line - Ctrl+V: a picture too	Entrée : envoyer - Maj+Entrée : nouvelle ligne - Ctrl+V : une image aussi
+Picture: %s (%d x %d) - sent with the next message	Image : %s (%d x %d) - envoyée avec le prochain message
+Loading the picture...	Chargement de l'image...
+Not sent	Non envoyée
+Sending... %d%%	Envoi... %d %%
+This file is not a picture Onyx can read.	Ce fichier n'est pas une image qu'Onyx sait lire.
+the clipboard's picture	l'image du presse-papiers
+Pictures|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.pcx|All files|*	Images|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.pcx|Tous les fichiers|*
+The Image Viewer is not installed.	La Visionneuse d'images n'est pas installée.

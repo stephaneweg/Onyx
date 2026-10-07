@@ -21,6 +21,7 @@
 #include "uikit/lang.h"
 #include "fontkit/uikitface.h"
 #include "systemkit/systemkit.h"
+#include "imagekit/img/pngsave.hpp"		// (the JPEG writer: ImageKit's on Onyx, PNGSAVE_USE_IMAGEKIT)
 #include "tgplat.h"
 #include "client.h"
 #include "look.h"
@@ -129,14 +130,112 @@ static void open_conversation (long long peer)
 	g_input->edit->setFocus ();
 }
 
+// ---- the pictures sent ------------------------------------------------------------------------------------
+
+#define PIC_MAX		1280		// the longest side sent (Telegram's photos go to 2560; this keeps them light)
+#define PIC_QUALITY	87
+
+// Pixels (0x00RRGGBB / 0xAARRGGBB) made the picture to send: brought down to PIC_MAX, JPEG; its view for
+// the strip. False: no memory.
+static bool attach_pixels (const unsigned *px, int w, int h, const char *name)
+{
+	if (!px || w <= 0 || h <= 0) return false;
+	int dw = w, dh = h;
+	if (dw > PIC_MAX || dh > PIC_MAX)
+	{
+		if (dw >= dh) { dh = (int) ((long) h * PIC_MAX / w); dw = PIC_MAX; }
+		else { dw = (int) ((long) w * PIC_MAX / h); dh = PIC_MAX; }
+		if (dw < 1) dw = 1;
+		if (dh < 1) dh = 1;
+	}
+	unsigned *small = (dw != w || dh != h) ? scale_box (px, w, h, dw, dh) : 0;
+	const unsigned *src = small ? small : px;
+	// (the clear pixels laid on white: JPEG has no transparency)
+	unsigned *opaque = new unsigned[(size_t) dw * dh];
+	for (int i = 0; i < dw * dh; i++)
+	{
+		unsigned c = src[i], a = c >> 24;
+		opaque[i] = a == 0 && (c & 0xFFFFFF) == 0 ? 0xFF000000u : a == 255 || a == 0 ? (c | 0xFF000000u) : (0xFF000000u | uk_mix (0xFFFFFF, c & 0xFFFFFF, (int) a));
+	}
+	unsigned n = 0;
+	unsigned char *jpg = pngsave::jpeg_encode (opaque, dw, dh, PIC_QUALITY, &n);
+	delete [] opaque;
+	if (!jpg || !n) { delete [] small; return false; }
+	attach_clear ();
+	g_att.jpg = jpg; g_att.n = (int) n; g_att.w = dw; g_att.h = dh;
+	g_att.th = 20; g_att.tw = dw * 20 / dh; if (g_att.tw < 8) g_att.tw = 8; if (g_att.tw > 40) g_att.tw = 40;
+	g_att.thumb = scale_box (src, dw, dh, g_att.tw, g_att.th);
+	snprintf (g_att.name, sizeof g_att.name, "%s", name);
+	delete [] small;
+	g_input->invalidate (true);
+	g_input->edit->setFocus ();
+	return true;
+}
+static bool picture_name (const char *p) { return img_is_image_name (p); }
+static bool attach_file (const char *path)
+{
+	ImgFrames im;
+	if (!img_load (path, &im)) { notify ("Telegram", TR ("This file is not a picture Onyx can read.")); return false; }
+	const char *base = path;
+	for (const char *q = path; *q; q++) if (*q == '/' || *q == ':') base = q + 1;
+	bool ok = attach_pixels (im.px[0], im.w, im.h, base);
+	img_free (&im);
+	return ok;
+}
+// Ctrl+V: a picture copied (Paint, Screenshot), or a picture file copied (the File Viewer) -> attached.
+static bool paste_picture ()
+{
+	if (!g_open) return false;
+	int w = 0, h = 0;
+	unsigned *px = clip_get_image (&w, &h);
+	if (px)
+	{
+		bool ok = attach_pixels (px, w, h, TR ("the clipboard's picture"));
+		delete [] px;
+		return ok;
+	}
+	char path[300]; int cut = 0;
+	if (clip_get_file (path, sizeof path, &cut) && picture_name (path)) return attach_file (path);
+	return false;
+}
+static void choose_picture ()
+{
+	if (!g_open) return;
+	static char dir[260] = "SD:/Pictures";
+	char path[300] = "";
+	if (!ft_file_open (path, sizeof path, dir, TR ("Pictures|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.pcx|All files|*"))) return;
+	snprintf (dir, sizeof dir, "%s", path);
+	for (int i = (int) strlen (dir) - 1; i > 0; i--) if (dir[i] == '/') { dir[i] = 0; break; }
+	attach_file (path);
+}
+static void open_picture (const char *path)
+{
+	if (!lx_launch ("imageview", path)) notify ("Telegram", TR ("The Image Viewer is not installed."));
+}
+
 static void send_current ()
 {
 	ChatEdit *e = g_input->edit;
-	if (!g_open || !e->len) return;
+	if (!g_open || (!e->len && !g_att.jpg)) return;
 	// (the spaces and line breaks around the text dropped)
 	int a = 0, b = e->len;
 	while (a < b && (e->buf[a] == ' ' || e->buf[a] == '\n')) a++;
 	while (b > a && (e->buf[b - 1] == ' ' || e->buf[b - 1] == '\n')) b--;
+	if (g_att.jpg)					// a picture, the text its caption
+	{
+		char *cap = tg::sdup (e->buf + a, b - a);
+		g_c.sendPhoto (g_open, g_att.jpg, g_att.n, g_att.w, g_att.h, cap);
+		if (g_demo)
+		{
+			tg::Conv *c = g_c.conv (g_open);
+			if (c && c->n) { c->m[c->n - 1].progress = 60; c->rev++; }
+		}
+		free (cap);
+		attach_clear ();
+		e->clear ();
+		g_input->invalidate (true);
+		return;
+	}
 	if (a == b) return;
 	char *t = tg::sdup (e->buf + a, b - a);
 	if (g_demo)
@@ -326,6 +425,24 @@ public:
 #ifndef TG_NO_LOG
 		tg_log_flush (false);
 #endif
+	}
+	// pictures dropped from the File Viewer: the first one attached
+	void onDrop (int x, int y, int type, const char *data, int len, unsigned flags) override
+	{
+		(void) x; (void) y; (void) len; (void) flags;
+		if (type != DND_FILES || !g_open || g_c.state != tg::AS_READY) return;
+		char path[300];
+		for (const char *p = data; *p; )
+		{
+			int n = 0;
+			while (p[n] && p[n] != '\n') n++;
+			if (n > 0 && n < (int) sizeof path)
+			{
+				memcpy (path, p, (size_t) n); path[n] = 0;
+				if (picture_name (path)) { attach_file (path); return; }
+			}
+			p += n; if (*p) p++;
+		}
 	}
 	bool onKey (long k) override
 	{

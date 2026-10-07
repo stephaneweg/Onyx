@@ -78,6 +78,14 @@ struct Msg
 	long long svcUser;		// (a service's user: who was added / removed)
 	int replyTo;
 	long long randomId;		// (ours, until the server gives its id)
+	// a photo: the server's (its id, access hash, file reference, data centre, the size fetched: its type, w, h),
+	// or ours being sent (local: its file in the cache; progress 0..100)
+	long long photoId, photoAccess;
+	char *photoRef; int photoRefN, photoDc;
+	short pw, ph;
+	char thumb[4];
+	char *local;
+	signed char progress;
 };
 
 struct Conv
@@ -158,7 +166,8 @@ enum AuthState
 enum ReqKind
 {
 	R_NONE, R_SENDCODE, R_SIGNIN, R_SIGNUP, R_GETPASSWORD, R_CHECKPASSWORD, R_SELF, R_STATE, R_DIALOGS, R_CONTACTS,
-	R_HISTORY, R_SEND, R_READ, R_DIFF, R_STATUS, R_TYPING, R_EXPORT, R_IMPORT, R_FILE, R_CONFIG, R_LOGOUT, R_OTHER
+	R_HISTORY, R_SEND, R_READ, R_DIFF, R_STATUS, R_TYPING, R_EXPORT, R_IMPORT, R_FILE, R_CONFIG, R_LOGOUT, R_OTHER,
+	R_PART, R_SENDMEDIA
 };
 
 enum { MAXDC = 6, MAXPEND = 256 };
@@ -273,6 +282,7 @@ public:
 			if (m_needDiff && m_haveState) { m_needDiff = false; getDifference (); }
 			if (m_wantOnline && t - m_lastStatus > 240000) setOnline (true);
 			if (!m_photoBusy && m_nphotoQ) nextPhoto ();
+			if (!m_upBusy && m_nup) nextPart ();
 		}
 		// the typing marks run out
 		for (int i = 0; i < convs.n; i++)
@@ -496,13 +506,70 @@ public:
 		unsigned char *b = tg_load (out, &n);
 		if (b) { free (b); m_haveFile.put (id, 1); return true; }
 		m_haveFile.put (id, 2);
-		if (m_nphotoQ < 512)
-		{
-			m_photoQ = (PhotoReq *) realloc (m_photoQ, sizeof (PhotoReq) * (size_t) (m_nphotoQ + 1));
-			m_photoQ[m_nphotoQ].peer = peer; m_photoQ[m_nphotoQ].id = id; m_photoQ[m_nphotoQ].dc = pdc;
-			m_nphotoQ++;
-		}
+		PhotoReq r; memset (&r, 0, sizeof r);
+		r.peer = peer; r.id = id; r.dc = pdc;
+		queuePhoto (r);
 		return false;
+	}
+
+	// A message's photo in the cache (out): true if it is there (ours being sent: its own file); else it is
+	// asked for (once).
+	bool msgPhoto (const Msg &m, char *out, int cap)
+	{
+		if (m.local) { snprintf (out, (size_t) cap, "%s", m.local); return true; }
+		if (!m.photoId) return false;
+		snprintf (out, (size_t) cap, "%scache/m%llx%s.jpg", dir, (unsigned long long) m.photoId, m.thumb);
+		int st = m_haveMsgFile.get (m.photoId);
+		if (st == 1) return true;
+		if (st == 2) return false;
+		int n = 0;
+		unsigned char *b = tg_load (out, &n);
+		if (b) { free (b); m_haveMsgFile.put (m.photoId, 1); return true; }
+		m_haveMsgFile.put (m.photoId, 2);
+		PhotoReq r; memset (&r, 0, sizeof r);
+		r.kind = 1; r.id = m.photoId; r.access = m.photoAccess; r.dc = m.photoDc;
+		r.ref = (unsigned char *) malloc ((size_t) (m.photoRefN ? m.photoRefN : 1));
+		if (r.ref && m.photoRefN) memcpy (r.ref, m.photoRef, (size_t) m.photoRefN);
+		r.refn = m.photoRefN;
+		memcpy (r.thumb, m.thumb, 4);
+		queuePhoto (r);
+		return false;
+	}
+
+	// ---- sending a photo --------------------------------------------------------------------------
+
+	// A JPEG (w x h) sent to peer with its caption: shown at once (its file kept in the cache), sent in
+	// parts (upload.saveFilePart), then messages.sendMedia. One photo at a time, in order.
+	void sendPhoto (long long peer, const unsigned char *jpg, int n, int w, int h, const char *caption)
+	{
+		if (!jpg || n <= 0) return;
+		Conv *c = convs.add (peer);
+		c->peer = peer; c->inList = true;
+		long long rid = tgc::random64 ();
+		char path[160];
+		snprintf (path, sizeof path, "%scache/out%llx.jpg", dir, (unsigned long long) rid);
+		tg_save (path, jpg, n);
+		Msg m; memset (&m, 0, sizeof m);
+		m.id = 0x7fff0000 + (m_randomSeq++ & 0xffff);
+		m.from = pkey (P_USER, selfId); m.out = true; m.pending = true; m.randomId = rid;
+		m.date = serverTime ();
+		m.media = M_PHOTO;
+		m.text = sdup (caption ? caption : ""); m.extra = sdup ("");
+		m.local = sdup (path);
+		m.pw = (short) w; m.ph = (short) h;
+		insertMsg (c, m);
+		c->topDate = m.date;
+		Upload u; memset (&u, 0, sizeof u);
+		u.peer = peer; u.rid = rid; u.fileId = tgc::random64 ();
+		u.data = (unsigned char *) malloc ((size_t) n);
+		if (!u.data) return;
+		memcpy (u.data, jpg, (size_t) n);
+		u.n = n; u.parts = (n + PART - 1) / PART;
+		u.caption = sdup (caption ? caption : "");
+		m_up = (Upload *) realloc (m_up, sizeof (Upload) * (size_t) (m_nup + 1));
+		m_up[m_nup++] = u;
+		c->rev++; rev++;
+		dialogs ();
 	}
 
 	// Any request (the tests'; R_OTHER): its answer or its error to otherFn.
@@ -542,6 +609,8 @@ public:
 		case R_EXPORT: gotExport (v, pe); break;
 		case R_IMPORT: m_auth[dc] = true; m_exporting[dc] = false; m_saveDirty = true; flushDc (dc); break;
 		case R_FILE: gotFile (v, pe); break;
+		case R_PART: m_upBusy = false; if (m_nup) { m_up[0].next++; uploadProgress (); } break;
+		case R_SENDMEDIA: m_upBusy = false; popUpload (); updates (v); break;
 		case R_CONFIG: gotConfig (v); break;
 		case R_READ: if (v.ok () && v["pts"].ok ()) bumpPts ((int) v["pts"].i ()); break;
 		case R_OTHER: if (otherFn) otherFn (otherCtx, pe.req, v, 0, 0); break;
@@ -604,6 +673,18 @@ public:
 			rev++;
 			break;
 		}
+		case R_PART: case R_SENDMEDIA:
+		{
+			m_upBusy = false;
+			if (!m_nup) break;
+			if (pe.kind == R_PART && code != 400 && m_up[0].tries++ < 3) break;	// (a part again, a few times)
+			Conv *c = conv (m_up[0].peer);
+			for (int i = 0; c && i < c->n; i++) if (c->m[i].randomId == m_up[0].rid && c->m[i].pending) { c->m[i].pending = false; c->m[i].failed = true; c->rev++; }
+			popUpload ();
+			snprintf (error, sizeof error, "%s", msg);
+			rev++;
+			break;
+		}
 		case R_FILE: case R_EXPORT: case R_IMPORT:
 			m_photoBusy = false;
 			if (pe.kind != R_FILE) m_exporting[pe.dc] = false;
@@ -651,7 +732,11 @@ public:
 
 private:
 	struct Pend { int req, kind, dc; long long a, b; unsigned char *body; int n; const tl::Ctor *fn; };
-	struct PhotoReq { long long peer, id; int dc; };
+	struct PhotoReq { long long peer, id, access; int dc, kind; unsigned char *ref; int refn; char thumb[4]; };	// kind 0: a profile photo, 1: a message's
+	struct Upload { long long peer, rid, fileId; unsigned char *data; int n, parts, next, tries; char *caption; };
+	enum { PART = 131072 };
+	Upload *m_up = 0; int m_nup = 0; bool m_upBusy = false;
+	IdMap m_haveMsgFile;
 
 	mt::Session m_s[MAXDC];
 	DcListener m_l[MAXDC];
@@ -675,7 +760,7 @@ private:
 	IdMap m_haveFile;
 	bool m_photoBusy;
 	PhotoReq *m_photoQ; int m_nphotoQ;
-	PhotoReq m_curPhoto;
+	PhotoReq m_curPhoto = {};
 	unsigned char *m_fileBuf; int m_fileN;
 	unsigned m_randomSeq;
 	bool m_needDiff, m_saveDirty;
@@ -1070,7 +1155,7 @@ private:
 		if (md.ok ())
 		{
 			const char *n = md.name ();
-			if (!strcmp (n, "messageMediaPhoto")) m.media = M_PHOTO;
+			if (!strcmp (n, "messageMediaPhoto")) { m.media = M_PHOTO; readPhoto (md["photo"], m); }
 			else if (!strcmp (n, "messageMediaGeo") || !strcmp (n, "messageMediaVenue") || !strcmp (n, "messageMediaGeoLive")) { m.media = M_GEO; extra = md["title"].str (); }
 			else if (!strcmp (n, "messageMediaContact")) { m.media = M_CONTACT; extra = md["first_name"].str (); }
 			else if (!strcmp (n, "messageMediaPoll")) { m.media = M_POLL; extra = md["poll"]["question"]["text"].str (); }
@@ -1095,13 +1180,17 @@ private:
 		return true;
 	}
 
-	static void freeMsg (Msg &m) { free (m.text); free (m.extra); m.text = m.extra = 0; }
+	static void freeMsg (Msg &m) { free (m.text); free (m.extra); free (m.photoRef); free (m.local); m.text = m.extra = 0; m.photoRef = m.local = 0; }
 
 	// A message into its conversation (kept sorted by id; the same id replaced).
 	void insertMsg (Conv *c, Msg &m)
 	{
 		for (int i = c->n - 1; i >= 0; i--)
-			if (c->m[i].id == m.id) { freeMsg (c->m[i]); c->m[i] = m; return; }
+			if (c->m[i].id == m.id)
+			{
+				if (c->m[i].local && !m.local) { m.local = c->m[i].local; c->m[i].local = 0; }	// (our photo's file: still shown)
+				freeMsg (c->m[i]); c->m[i] = m; return;
+			}
 		if (c->n == c->cap) { c->cap = c->cap ? c->cap * 2 : 32; c->m = (Msg *) realloc (c->m, sizeof (Msg) * (size_t) c->cap); }
 		int i = c->n;
 		while (i > 0 && c->m[i - 1].id > m.id) { c->m[i] = c->m[i - 1]; i--; }
@@ -1137,7 +1226,11 @@ private:
 		c->peer = peer;
 		if (isNew && m.out)				// (our own, sent from here: the pending one replaced)
 			for (int i = 0; i < c->n; i++)
-				if (c->m[i].pending && !strcmp (c->m[i].text, m.text)) { freeMsg (c->m[i]); c->m[i] = m; sortMsgs (c); goto placed; }
+				if (c->m[i].pending && c->m[i].media == m.media && !strcmp (c->m[i].text, m.text))
+				{
+					if (c->m[i].local && !m.local) { m.local = c->m[i].local; c->m[i].local = 0; }
+					freeMsg (c->m[i]); c->m[i] = m; sortMsgs (c); goto placed;
+				}
 		if (!isNew)
 		{
 			bool have = false;
@@ -1310,11 +1403,91 @@ private:
 		return *p;
 	}
 
+	// A Photo: its id, access hash, reference, data centre, and the size to show -- the largest up to 800 px
+	// ("x"), else the largest.
+	void readPhoto (const tl::Val &ph, Msg &m)
+	{
+		if (!ph.is ("photo")) return;
+		m.photoId = ph["id"].i ();
+		m.photoAccess = ph["access_hash"].i ();
+		const tl::Val &ref = ph["file_reference"];
+		m.photoRefN = ref.len ();
+		m.photoRef = (char *) malloc ((size_t) (m.photoRefN ? m.photoRefN : 1));
+		if (m.photoRef && m.photoRefN) memcpy (m.photoRef, ref.s, (size_t) m.photoRefN);
+		m.photoDc = (int) ph["dc_id"].i ();
+		const tl::Val &sz = ph["sizes"];
+		int best = -1, bestS = 0, any = -1, anyS = 0;
+		for (int i = 0; i < sz.count (); i++)
+		{
+			const tl::Val &z = sz[i];
+			if (!z.is ("photoSize") && !z.is ("photoSizeProgressive")) continue;
+			int w = (int) z["w"].i (), h = (int) z["h"].i (), s = w > h ? w : h;
+			if (s <= 800 && s > bestS) { best = i; bestS = s; }
+			if (s > anyS) { any = i; anyS = s; }
+		}
+		if (best < 0) best = any;
+		if (best < 0) return;
+		const tl::Val &z = sz[best];
+		snprintf (m.thumb, sizeof m.thumb, "%s", z["type"].str ());
+		m.pw = (short) z["w"].i (); m.ph = (short) z["h"].i ();
+	}
+
+	// the next part of the photo being sent, or sendMedia once all are there
+	void nextPart ()
+	{
+		Upload &u = m_up[0];
+		tl::Arena a;
+		if (u.next < u.parts)
+		{
+			int off = u.next * PART, n = u.n - off < PART ? u.n - off : PART;
+			tl::Val *q = tl::make (a, "upload.saveFilePart");
+			q->set ("file_id", tl::L (u.fileId));
+			q->set ("file_part", tl::I (u.next));
+			q->set ("bytes", tl::S (a, u.data + off, n));
+			if (call (m_home, *q, R_PART, u.peer, u.rid)) m_upBusy = true;
+			return;
+		}
+		tl::Val *f = tl::make (a, "inputFile");
+		f->set ("id", tl::L (u.fileId));
+		f->set ("parts", tl::I (u.parts));
+		f->set ("name", tl::S (a, "photo.jpg"));
+		f->set ("md5_checksum", tl::S (a, ""));
+		tl::Val *media = tl::make (a, "inputMediaUploadedPhoto");
+		media->set ("file", *f);
+		tl::Val *q = tl::make (a, "messages.sendMedia");
+		q->set ("peer", inputPeer (a, u.peer));
+		q->set ("media", *media);
+		q->set ("message", tl::S (a, u.caption));
+		q->set ("random_id", tl::L (u.rid));
+		if (call (m_home, *q, R_SENDMEDIA, u.peer, u.rid)) m_upBusy = true;
+	}
+	void uploadProgress ()
+	{
+		Upload &u = m_up[0];
+		Conv *c = conv (u.peer);
+		for (int i = 0; c && i < c->n; i++)
+			if (c->m[i].randomId == u.rid && c->m[i].pending) { c->m[i].progress = (signed char) (u.next * 100 / (u.parts ? u.parts : 1)); c->rev++; rev++; }
+	}
+	void popUpload ()
+	{
+		if (!m_nup) return;
+		free (m_up[0].data); free (m_up[0].caption);
+		memmove (m_up, m_up + 1, sizeof (Upload) * (size_t) (m_nup - 1));
+		m_nup--;
+	}
+
 	// ---- the photos: one at a time, from the data centre they are on ------------------------
 
+	void queuePhoto (PhotoReq &r)
+	{
+		if (m_nphotoQ >= 512) { free (r.ref); return; }
+		m_photoQ = (PhotoReq *) realloc (m_photoQ, sizeof (PhotoReq) * (size_t) (m_nphotoQ + 1));
+		m_photoQ[m_nphotoQ++] = r;
+	}
 	void nextPhoto ()
 	{
 		if (!m_nphotoQ) return;
+		free (m_curPhoto.ref);
 		m_curPhoto = m_photoQ[m_nphotoQ - 1];		// (the latest asked first: what is on the screen)
 		m_nphotoQ--;
 		int dc = m_curPhoto.dc > 0 && m_curPhoto.dc < MAXDC ? m_curPhoto.dc : m_home;
@@ -1358,9 +1531,21 @@ private:
 	void getFilePart (int dc, int offset)
 	{
 		tl::Arena a;
-		tl::Val *loc = tl::make (a, "inputPeerPhotoFileLocation");
-		loc->set ("peer", inputPeer (a, m_curPhoto.peer));
-		loc->set ("photo_id", tl::L (m_curPhoto.id));
+		tl::Val *loc;
+		if (m_curPhoto.kind == 1)
+		{
+			loc = tl::make (a, "inputPhotoFileLocation");
+			loc->set ("id", tl::L (m_curPhoto.id));
+			loc->set ("access_hash", tl::L (m_curPhoto.access));
+			loc->set ("file_reference", tl::S (a, m_curPhoto.ref ? m_curPhoto.ref : (const unsigned char *) "", m_curPhoto.refn));
+			loc->set ("thumb_size", tl::S (a, m_curPhoto.thumb));
+		}
+		else
+		{
+			loc = tl::make (a, "inputPeerPhotoFileLocation");
+			loc->set ("peer", inputPeer (a, m_curPhoto.peer));
+			loc->set ("photo_id", tl::L (m_curPhoto.id));
+		}
 		tl::Val *q = tl::make (a, "upload.getFile");
 		q->set ("location", *loc);
 		q->set ("offset", tl::L (offset));
@@ -1376,8 +1561,16 @@ private:
 		m_fileN += b.len ();
 		if (b.len () == 131072 && m_fileN < (4 << 20)) { getFilePart (pe.dc, m_fileN); return; }
 		char path[160];
-		snprintf (path, sizeof path, "%scache/%llx.jpg", dir, (unsigned long long) m_curPhoto.id);
-		if (m_fileN > 0 && tg_save (path, m_fileBuf, m_fileN)) m_haveFile.put (m_curPhoto.id, 1);
+		if (m_curPhoto.kind == 1)
+		{
+			snprintf (path, sizeof path, "%scache/m%llx%s.jpg", dir, (unsigned long long) m_curPhoto.id, m_curPhoto.thumb);
+			if (m_fileN > 0 && tg_save (path, m_fileBuf, m_fileN)) m_haveMsgFile.put (m_curPhoto.id, 1);
+		}
+		else
+		{
+			snprintf (path, sizeof path, "%scache/%llx.jpg", dir, (unsigned long long) m_curPhoto.id);
+			if (m_fileN > 0 && tg_save (path, m_fileBuf, m_fileN)) m_haveFile.put (m_curPhoto.id, 1);
+		}
 		free (m_fileBuf); m_fileBuf = 0; m_fileN = 0;
 		m_photoBusy = false;
 		rev++;
