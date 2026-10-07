@@ -80,6 +80,15 @@
 // A SIM_MBOX line "@<ticks>:type:pid:payload" is held back until <ticks> ticks after the start (a script step
 //   is 2 ticks; the lines after it wait as well): a message that comes mid-run (Stickies' STK_MSG_RELOAD after a change on the card).
 //
+// For the Clock and clockd (AutoDev round 6); nothing changes while SIM_CLOCK is unset:
+// SIM_CLOCK="YYYYMMDDHHMMSS": the wall time at the start, which then ADVANCES with the ticks (kapi_get_datetime =
+//   that time + (ticks - 1000) / 100 seconds: msleep (n) adds n / 10 + 1 ticks, so a script step of msleep (16) is
+//   20 ms, clockd's msleep (500) 0.51 s); kapi_clock_info answers (valid, even without SIM_STAT) with the UTC =
+//   the wall time - SIM_TZ minutes (default 120: Brussels in summer) and tz_minutes = SIM_TZ; kapi_set_timezone (m)
+//   changes that offset for the run (the UTC goes on, the wall time follows it). Unset: the date frozen at
+//   2026-09-28 12:34:00, kapi_clock_info as SIM_STAT says, kapi_set_timezone changing nothing -- as before.
+// Every kapi_set_timezone is logged, `sim: set_timezone <m>` (SIM_CLOCK set or not: only the log line).
+//
 #include <sys/mman.h>
 #include <pthread.h>
 #include <sys/socket.h>
@@ -797,8 +806,34 @@ static int h_pump_wait (unsigned ms) { h_msleep (ms < 16 ? ms : 16); pump (); re
 static void yield (void) {}
 
 // ---- the system --------------------------------------------------------------------------------------
+// SIM_CLOCK (the header): the UTC at the start (tick 1000), seconds since 1970; -1 unset. SIM_TZ: the offset.
+static long long g_simUtc0 = -2; static int g_simTz = 120;
+static bool sim_clock (void)
+{
+	if (g_simUtc0 == -2)
+	{
+		g_simUtc0 = -1;
+		const char *e = getenv ("SIM_CLOCK"), *z = getenv ("SIM_TZ");
+		struct tm tm; memset (&tm, 0, sizeof tm);
+		if (z && *z) g_simTz = atoi (z);
+		if (e && sscanf (e, "%4d%2d%2d%2d%2d%2d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min, &tm.tm_sec) == 6)
+		{
+			tm.tm_year -= 1900; tm.tm_mon -= 1;
+			g_simUtc0 = (long long) timegm (&tm) - g_simTz * 60LL;
+		}
+		else if (e && *e) fprintf (stderr, "sim: SIM_CLOCK=%s is not YYYYMMDDHHMMSS (ignored)\n", e);
+	}
+	return g_simUtc0 >= 0;
+}
+static long long sim_utc_cs (void) { return g_simUtc0 * 100 + (long long) (g_ticks - 1000); }	// (hundredths)
 static int get_datetime (int *y, int *mo, int *d, int *h, int *mi, int *s)
 {
+	if (sim_clock ()) {			// SIM_CLOCK: the wall time = the UTC + SIM_TZ, advancing with the ticks
+		time_t t = (time_t) (sim_utc_cs () / 100 + g_simTz * 60LL); struct tm tm; gmtime_r (&t, &tm);
+		if (y) *y = tm.tm_year + 1900; if (mo) *mo = tm.tm_mon + 1; if (d) *d = tm.tm_mday;
+		if (h) *h = tm.tm_hour; if (mi) *mi = tm.tm_min; if (s) *s = tm.tm_sec;
+		return 1;
+	}
 	if (getenv ("SIM_REALNET")) {		// the real network: the real clock (TLS checks the dates)
 		time_t t = time (0); struct tm tm; localtime_r (&t, &tm);
 		if (y) *y = tm.tm_year + 1900; if (mo) *mo = tm.tm_mon + 1; if (d) *d = tm.tm_mday;
@@ -932,6 +967,12 @@ static int clock_info (struct kapi_clock_info *o)
 {
 	if (!o) return -KAPI_EINVAL;
 	memset (o, 0, sizeof *o);
+	if (sim_clock ())			// SIM_CLOCK: the advancing UTC, the offset SIM_TZ (kapi_set_timezone's)
+	{
+		o->freq = 54000000; o->cnt = (unsigned long long) g_ticks * 540000; o->utc_us = sim_utc_cs () * 10000;
+		o->tz_minutes = g_simTz; o->flags = KAPI_CLOCK_REALTIME_VALID;
+		return 0;
+	}
 	struct tm tm; memset (&tm, 0, sizeof tm);
 	tm.tm_year = 2026 - 1900; tm.tm_mon = 8; tm.tm_mday = 28; tm.tm_hour = 12; tm.tm_min = 34;
 	long long t = getenv ("SIM_REALNET") ? (long long) time (0) : (long long) timegm (&tm);
@@ -1103,7 +1144,13 @@ static int screen_native (int *w, int *h)
 	if (!e || sscanf (e, "%dx%d", w, h) != 2) { *w = 1920; *h = 1080; }
 	return 1;
 }
-static int set_timezone (int m) { return m >= -720 && m <= 840; }
+static int set_timezone (int m)
+{
+	fprintf (stderr, "sim: set_timezone %d\n", m);
+	if (m < -720 || m > 840) return 0;
+	if (sim_clock ()) g_simTz = m;		// (SIM_CLOCK: the wall time follows; unset: nothing changes, as before)
+	return 1;
+}
 // The programs spawned (the terminal's shells): handles 0x5000 + k, pid 100 + k, running until a
 // proc_tree kill; SIM_BUSY="2,3": the 2nd and the 3rd have a child (a command running).
 static bool g_spawnKilled[64];
@@ -1629,6 +1676,7 @@ static void setup (void)
 	// (v75) the POSIX entries absent here: 0, so appkit.h's wrappers return -KAPI_ENOSYS
 	for (size_t i = __builtin_offsetof (TKApiTable, vm_map) / 8; i < sizeof (TKApiTable) / 8; i++) ((void **) T)[i] = 0;
 	if (getenv ("SIM_STAT")) { T->path_stat = path_stat; T->clock_info = clock_info; }	// (... but these two, asked)
+	if (sim_clock ()) T->clock_info = clock_info;			// (SIM_CLOCK: the clock's UTC answers)
 	T->create_window = create; T->create_window_ex = create_ex; T->resize_window = resize; T->move_window = move_window;
 	T->set_pointer_handler = set_ptr; T->set_key_handler = set_key; T->screen_size = screen_size;
 	T->font_width = font_w; T->font_height = font_h; T->present = h_present; T->pump_events = pump;
