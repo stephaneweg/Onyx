@@ -1,5 +1,7 @@
-// MainForm.cs -- Onyx Remote: one window holding the Onyx session. At the top a tool bar (the
-// Pi's address, the options, Connect / Disconnect, Full screen, the updates a second); below, a
+// MainForm.cs -- Onyx Remote: one window holding the Onyx session, shown once connected (the Pi's
+// address and the options are asked by ConnectDialog.cs, shown at the start and back after a
+// disconnection). At the top a tool bar (Disconnect, Terminal, Desktop, Full screen, Screenshot,
+// the updates a second); below, a
 // scrolling area holding the Pi's screen at its size (DeskView: scroll bars when the window is
 // smaller): the Onyx menu bar at its top, the Onyx windows as its child windows where they are on
 // the Pi, over the Onyx desktop (the wallpaper and the widgets below the windows) when "Desktop"
@@ -138,12 +140,13 @@ namespace OnyxRemote
 
 	class MainForm : Form
 	{
-		readonly ToolStripTextBox host = new ToolStripTextBox (), port = new ToolStripTextBox ();
-		readonly ToolStripButton bits16 = new ToolStripButton ("16-bit colours") { CheckOnClick = true };
-		readonly ToolStripButton desktop = new ToolStripButton ("Desktop") { CheckOnClick = true };
-		readonly ToolStripButton frames = new ToolStripButton ("Onyx frames") { CheckOnClick = true };
-		readonly ToolStripButton go = new ToolStripButton ("Connect");
-		readonly ToolStripButton console = new ToolStripButton ("Console") { ToolTipText = "A telnet console on the Pi (the Onyx shell; telnetd, port 23)" };
+		readonly Settings set;					// (shared with the connection dialog)
+		string host = "";					// (the Pi's address, connected)
+		Connection opening; Action<string> opened; Rectangle openedNear;	// (a connection being made: Begin)
+		public event Action<string> Ended;			// (disconnected: why -- the dialog comes back)
+		readonly ToolStripButton desktop = new ToolStripButton ("Desktop") { CheckOnClick = true, ToolTipText = "The Onyx desktop (the wallpaper, the widgets) behind the windows" };
+		readonly ToolStripButton go = new ToolStripButton ("Disconnect");
+		readonly ToolStripButton console = new ToolStripButton ("Terminal") { ToolTipText = "A telnet console on the Pi (the Onyx shell; telnetd, port 23)" };
 		readonly ToolStripButton full = new ToolStripButton ("Full screen") { CheckOnClick = true, ToolTipText = "The Onyx session over the whole screen, without this tool bar (F11 toggles it)" };
 		readonly ToolStripSplitButton shot = new ToolStripSplitButton ("Screenshot") { ToolTipText = "Save the Pi's screen as a PNG (Ctrl+Shift+S: straight to Pictures\\Onyx; the arrow: more)" };
 		readonly ToolStripLabel status = new ToolStripLabel ("Not connected");
@@ -164,18 +167,19 @@ namespace OnyxRemote
 		List<Overlay> stacked = new List<Overlay> ();					// (their order, bottom to top)
 		int rounds; DateTime since = DateTime.Now;
 		string link;						// (the connection lost: what is being done; null: connected)
-		static readonly string SettingsPath = Path.Combine (Environment.GetFolderPath (Environment.SpecialFolder.ApplicationData), "OnyxRemote.txt");
 
-		public MainForm ()
+		public MainForm (Settings settings)
 		{
+			set = settings;
+			StartPosition = FormStartPosition.Manual;
 			Text = "Onyx Remote";
 			if (Program.AppIcon != null) Icon = Program.AppIcon;
 			Font = new Font ("Segoe UI", 9f);
 			ClientSize = new Size (1040, 830);
 			ts = new ToolStrip { GripStyle = ToolStripGripStyle.Hidden, Dock = DockStyle.Top };
-			host.Width = 130; port.Width = 45; port.Text = "3390";
-			ts.Items.AddRange (new ToolStripItem[] { new ToolStripLabel ("Onyx:"), host, port, new ToolStripSeparator (), go, console,
-				new ToolStripSeparator (), bits16, desktop, frames, full, new ToolStripSeparator (), shot, new ToolStripSeparator (), status });
+			ts.Items.AddRange (new ToolStripItem[] { go, console, new ToolStripSeparator (), desktop, full,
+				new ToolStripSeparator (), shot, new ToolStripSeparator (), status });
+			desktop.Checked = set.Desktop; full.Checked = set.Full;
 			shot.ButtonClick += (s, e) => SaveShot (false, true);
 			shot.DropDownItems.AddRange (new ToolStripItem[] {
 				new ToolStripMenuItem ("Save screen as...", null, (s, e) => SaveShot (false, true)),
@@ -190,11 +194,10 @@ namespace OnyxRemote
 			scroller.Controls.Add (desk);
 			Controls.Add (scroller);
 			Controls.Add (ts);
-			go.Click += (s, e) => { if (Conn == null) Connect (); else Disconnect ("Disconnected"); };
-			console.Click += (s, e) => OpenConsole ();
-			full.CheckedChanged += (s, e) => { SaveSettings (); if (Conn != null) FullScreen (full.Checked); };
-			desktop.CheckedChanged += (s, e) => { if (Conn != null) { Conn.Desktop (desktop.Checked); Sync (); } };
-			host.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter && Conn == null) { e.SuppressKeyPress = true; Connect (); } };
+			go.Click += (s, e) => Disconnect ("Disconnected");
+			console.Click += (s, e) => Program.OpenTerminal (host);
+			full.CheckedChanged += (s, e) => { set.Full = full.Checked; set.Save (); if (Conn != null) FullScreen (full.Checked); };
+			desktop.CheckedChanged += (s, e) => { set.Desktop = desktop.Checked; set.Save (); if (Conn != null) { Conn.Desktop (desktop.Checked); Sync (); } };
 			Move += (s, e) => Sync ();					// (the overlays follow)
 			Resize += (s, e) => Sync ();
 			scroller.Scroll += (s, e) => Sync ();
@@ -202,25 +205,10 @@ namespace OnyxRemote
 			scroller.Layout += (s, e) => CenterDesk ();
 			desk.Resize += (s, e) => CenterDesk ();
 			fullTimer.Tick += (s, e) => FullBarTick ();
-			try
-			{
-				foreach (var line in File.ReadAllLines (SettingsPath))
-				{
-					int eq = line.IndexOf ('=');
-					if (eq < 0) continue;
-					string k = line.Substring (0, eq), v = line.Substring (eq + 1);
-					if (k == "host") host.Text = v;
-					else if (k == "port") port.Text = v;
-					else if (k == "bits16") bits16.Checked = v == "1";
-					else if (k == "desktop") desktop.Checked = v == "1";
-					else if (k == "frames") frames.Checked = v == "1";
-					else if (k == "fullscreen") full.Checked = v == "1";
-				}
-			}
-			catch { }
 			var tick = new Timer { Interval = 1000 };
 			tick.Tick += (s, e) => ShowStatus ();
 			tick.Start ();
+			var made = Handle;				// (made now: the connection's threads post to it before the window shows)
 		}
 
 		// The status line, every second: the updates a second (rounds shown), how the rounds flow
@@ -251,7 +239,7 @@ namespace OnyxRemote
 			else if (c.KernelAbi < 56) status.Text = "The Onyx kernel is too old (kapi v" + c.KernelAbi + ", rdpd needs v56)";
 			else
 			{
-				string s = string.Format ("{0}: {1} windows, {2:0.0} updates / s, ", host.Text, wins.Count, rounds / Math.Max (sec, 0.001));
+				string s = string.Format ("{0}: {1} windows, {2:0.0} updates / s, ", host, wins.Count, rounds / Math.Max (sec, 0.001));
 				s += c.Pipelined ? c.InFlight + " rounds in flight" : "lock-step (an older rdpd)";
 				if (c.Pings > 0) s += ", " + c.Pings + " pings";
 				if (c.Damaged > 0) s += ", " + c.Damaged + " damaged messages skipped";
@@ -262,39 +250,65 @@ namespace OnyxRemote
 			rounds = 0; since = DateTime.Now;
 		}
 
-		// a telnet console on the Pi: its own window (the address typed, port 23 -- "host:port" for another)
-		void OpenConsole ()
+		// Connect to the Pi the settings name (the dialog's Connect), without holding the dialog: done
+		// (null) once the session's window is up -- on the screen that rectangle is on --, done (why)
+		// when it could not be. Cancel () gives it up.
+		public void Begin (Rectangle near, Action<string> done)
 		{
-			string h = host.Text.Trim (); int p = 23;
-			int colon = h.LastIndexOf (':');
-			if (colon > 0 && int.TryParse (h.Substring (colon + 1), out int pp)) { p = pp; h = h.Substring (0, colon); }
-			if (h.Length == 0) { status.Text = "Type the Pi's address first"; return; }
-			SaveSettings ();
-			new TelnetForm (h, p).Show ();
-		}
-
-		void Connect ()
-		{
-			int p; if (!int.TryParse (port.Text, out p) || p <= 0 || p > 65535) p = 3390;
-			SaveSettings ();
+			Cancel ();
+			desktop.Checked = set.Desktop; full.Checked = set.Full;
+			host = set.Host.Trim ();
 			var c = new Connection ();
-			status.Text = "Connecting...";
-			Refresh ();
-			try { c.Open (host.Text.Trim (), p, bits16.Checked, desktop.Checked, frames.Checked); }
-			catch (Exception e) { status.Text = "Cannot connect: " + e.Message; return; }
-			Conn = c; link = null;
-			c.RoundDone += session => BeginInvoke ((Action) (() => { if (Conn != c) return; Sync (); rounds++; c.Ready (session); }));
-			c.Closed += why => BeginInvoke ((Action) (() => { if (Conn == c) Disconnect (why); }));
+			opening = c; opened = done; openedNear = near;
+			c.RoundDone += session => BeginInvoke ((Action) (() => { if (opening == c) Attach (c); if (Conn != c) return; Sync (); rounds++; c.Ready (session); }));
+			c.Closed += why => BeginInvoke ((Action) (() => { if (opening == c) { opening = null; c.Close (); done (why); } else if (Conn == c) Disconnect (why); }));
 			c.LinkChanged += what => BeginInvoke ((Action) (() => { if (Conn != c) return; link = what; ShowStatus (); }));
 			c.CursorChanged += shape => BeginInvoke ((Action) (() => { if (Conn == c) ShowCursor (shape); }));
-			go.Text = "Disconnect";
+			string h = host; int p = set.Port; bool b16 = set.Bits16, back = set.Desktop, fr = set.Frames;
+			System.Threading.ThreadPool.QueueUserWorkItem (_ =>
+			{
+				string err = null;
+				try { c.Open (h, p, b16, back, fr); }
+				catch (Exception e) { err = e.Message; }
+				try
+				{
+					BeginInvoke ((Action) (() =>
+					{
+						if (opening != c) { if (Conn != c) c.Close (); return; }	// (given up meanwhile; or shown already)
+						if (err != null) { opening = null; done (err); }
+						else Attach (c);
+					}));
+				}
+				catch { c.Close (); }				// (the program is leaving)
+			});
+		}
+
+		public void Cancel ()
+		{
+			var c = opening;
+			opening = null;
+			c?.Close ();
+		}
+
+		// connected: the session's window, the size of the Pi's screen
+		void Attach (Connection c)
+		{
+			opening = null;
+			Conn = c; link = null;
+			status.Text = "Connected";
 			scroller.AutoScrollPosition = Point.Empty;
 			desk.Location = Point.Empty;
 			desk.Size = new Size (Math.Max (1, c.ScreenW), Math.Max (1, c.ScreenH));
 			desk.Visible = true;
+			var area = Screen.FromRectangle (openedNear).WorkingArea;
+			WindowState = FormWindowState.Normal;
+			Location = area.Location;
 			FitToPi (c.ScreenW, c.ScreenH);
+			Location = new Point (area.Left + Math.Max (0, (area.Width - Width) / 2), area.Top + Math.Max (0, (area.Height - Height) / 2));
+			Show ();
+			Activate ();
 			if (full.Checked) FullScreen (true);
-			host.Enabled = port.Enabled = bits16.Enabled = frames.Enabled = false;
+			opened?.Invoke (null);
 		}
 
 		// The Pi's screen in the middle of the area when the area is bigger (black around it: the full
@@ -323,7 +337,7 @@ namespace OnyxRemote
 			bool onBar = fullBar.Visible && fullBar.Bounds.Contains (p);
 			bool lost = link != null;			// (reconnecting: the bar shows it)
 			if (onEdge || onBar || fullBar.Pinned || lost) fullAway = DateTime.Now;
-			string name = host.Text.Trim () + (lost ? " (reconnecting...)" : "");
+			string name = host + (lost ? " (reconnecting...)" : "");
 			if (fullBar.Visible && (DateTime.Now - fullAway).TotalMilliseconds > 1000) fullBar.Hide ();
 			else if (onEdge || lost || fullBar.Visible) fullBar.ShowOn (scr, name);
 		}
@@ -332,7 +346,7 @@ namespace OnyxRemote
 		// screen / of the active window (the keys go to the Pi otherwise)
 		protected override bool ProcessCmdKey (ref Message msg, Keys keyData)
 		{
-			if (keyData == Keys.F11) { full.Checked = !full.Checked; if (Conn == null) FullScreen (false); return true; }
+			if (keyData == Keys.F11) { full.Checked = !full.Checked; return true; }
 			if (keyData == (Keys.Control | Keys.Shift | Keys.S)) { SaveShot (false, false); return true; }
 			if (keyData == (Keys.Control | Keys.Shift | Keys.W)) { SaveShot (true, false); return true; }
 			return base.ProcessCmdKey (ref msg, keyData);
@@ -442,22 +456,13 @@ namespace OnyxRemote
 			toast.ShowOn (area, message, path);
 		}
 
-		void SaveSettings ()
-		{
-			int p; if (!int.TryParse (port.Text, out p) || p <= 0 || p > 65535) p = 3390;
-			try
-			{
-				File.WriteAllLines (SettingsPath, new[] { "host=" + host.Text, "port=" + p,
-					"bits16=" + (bits16.Checked ? 1 : 0), "desktop=" + (desktop.Checked ? 1 : 0), "frames=" + (frames.Checked ? 1 : 0),
-					"fullscreen=" + (full.Checked ? 1 : 0) });
-			}
-			catch { }
-		}
-
+		// Disconnected (the button, the full screen's bar, the connection closed: why): the window
+		// hidden, the connection dialog back (Ended).
 		void Disconnect (string why)
 		{
-			FullScreen (false);				// (the tool bar back: Connect again)
-			Conn?.Close (); Conn = null;
+			if (Conn == null) return;
+			FullScreen (false);
+			Conn.Close (); Conn = null;
 			foreach (var w in wins.Values) { w.GoneOnPi = true; w.Close (); }
 			wins.Clear (); winOrder.Clear ();
 			foreach (var o in overlays.Values) o.Close ();
@@ -465,9 +470,10 @@ namespace OnyxRemote
 			barDrop?.Close (); barDrop = null;
 			Bar.Present = false;
 			desk.Back = null; desk.Visible = false;
-			go.Text = "Connect";
-			host.Enabled = port.Enabled = bits16.Enabled = frames.Enabled = true;
 			status.Text = why; link = null; Text = "Onyx Remote";
+			toast?.Hide ();
+			Hide ();
+			Ended?.Invoke (why);
 		}
 
 		// An overlay where the Pi has its window (x, y on the Pi's screen, w x h), cut to the part of
@@ -550,7 +556,7 @@ namespace OnyxRemote
 					keep.Add (id);
 					if (!wins.TryGetValue (id, out RemoteWindow w))
 					{
-						w = new RemoteWindow (Conn, id, frames.Checked, desk);
+						w = new RemoteWindow (Conn, id, set.Frames, desk);
 						w.Cursor = pointer;
 						wins[id] = w;
 						w.Apply (m, 0);
@@ -618,7 +624,8 @@ namespace OnyxRemote
 			}
 		}
 
-		protected override void OnFormClosed (FormClosedEventArgs e) { Conn?.Close (); base.OnFormClosed (e); }
+		// closed (its X): the session ends, and the program with it (unless a terminal is still open)
+		protected override void OnFormClosed (FormClosedEventArgs e) { Cancel (); Conn?.Close (); base.OnFormClosed (e); Program.MaybeExit (this); }
 	}
 
 	static class Program
@@ -626,12 +633,61 @@ namespace OnyxRemote
 		// The program's icon (onyxremote.ico in the .exe: tools/icons/onyxremote_icon.py), for every window
 		static Icon appIcon; static bool appIconAsked;
 		public static Icon AppIcon { get { if (!appIconAsked) { appIconAsked = true; try { appIcon = Icon.ExtractAssociatedIcon (Application.ExecutablePath); } catch { } } return appIcon; } }
+		// The program's icon as a picture, the smallest of the .ico's at least that size (the
+		// connection dialog's header; the .ico's pictures are PNGs, which Icon.ToBitmap does not
+		// read at the small sizes); null: none
+		public static Bitmap AppPicture (int size)
+		{
+			try
+			{
+				byte[] d;
+				using (var st = typeof (Program).Assembly.GetManifestResourceStream ("onyxremote.ico"))
+				using (var ms = new MemoryStream ()) { st.CopyTo (ms); d = ms.ToArray (); }
+				int n = BitConverter.ToUInt16 (d, 4), best = -1, bestW = 0;
+				for (int i = 0; i < n; i++)
+				{
+					int w = d[6 + 16 * i] == 0 ? 256 : d[6 + 16 * i];
+					if (best < 0 || (bestW < size ? w > bestW : w >= size && w < bestW)) { best = i; bestW = w; }
+				}
+				int len = BitConverter.ToInt32 (d, 6 + 16 * best + 8), at = BitConverter.ToInt32 (d, 6 + 16 * best + 12);
+				using (var ms = new MemoryStream (d, at, len))
+				using (var b = new Bitmap (ms))
+					return new Bitmap (b);
+			}
+			catch { try { return AppIcon?.ToBitmap (); } catch { return null; } }
+		}
+
+		// A telnet console on the Pi, in its own window: the address typed, port 23 ("host:port" for
+		// another). false: no address.
+		public static bool OpenTerminal (string address)
+		{
+			string h = (address ?? "").Trim (); int p = 23;
+			int colon = h.LastIndexOf (':');
+			if (colon > 0 && int.TryParse (h.Substring (colon + 1), out int pp)) { p = pp; h = h.Substring (0, colon); }
+			if (h.Length == 0) return false;
+			var f = new TelnetForm (h, p);
+			f.FormClosed += (s, e) => MaybeExit (f);
+			f.Show ();
+			return true;
+		}
+
+		// A window closed: the program ends with its last one (the connection dialog, the session,
+		// the terminals).
+		public static void MaybeExit (Form closed)
+		{
+			foreach (Form f in Application.OpenForms)
+				if (f != closed && f.Visible && (f is ConnectDialog || f is MainForm || f is TelnetForm)) return;
+			Application.ExitThread ();
+		}
+
 		[STAThread]
 		static void Main ()
 		{
 			Application.EnableVisualStyles ();
 			Application.SetCompatibleTextRenderingDefault (false);
-			Application.Run (new MainForm ());
+			var set = Settings.Load ();
+			new ConnectDialog (set, new MainForm (set)).Show ();
+			Application.Run ();
 		}
 	}
 }
