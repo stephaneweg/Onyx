@@ -49,7 +49,7 @@ lift (a starting point, not finished code): the drawings `bell`, `slash`, `globe
 | D9 | Alarms: the next one (02 #10) | **`NextAlarmBar : Widget`** (full width, 40 px): a rounded box tinted `uk_mix (C_BG, C_ACCENT, 46)` (outline 120), a **bell** in the accent, ***Next alarm: today 14:30*** (Bold 14 px) ***— in 1 h 56 min***. Snoozed: ***Snoozed until 12:40 — Medicine*** (`clk-alarms-states.png`). None on: a neutral box, a **struck bell**, ***No alarm set*** dim (`clk-alarms-empty.png`). A click on it selects that alarm in the list. |
 | D10 | Alarms: the list (02 #9) | **`AlarmList : Widget`** (owner-drawn, the same field as D5), **rows of 60 px**: the **time** (Bold 30 px; greyed `uk_mix (C_FIELD, C_FIELD_TEXT, 105)` when off), the **label** (Bold 14 px; *Alarm* when empty), under it the **repeat** dim (*Weekdays*, *Weekends*, *Every day*, *Once*, *Mon, Wed, Fri*) and, after a dot, the **state** in bold: ***Snoozed until 12:40*** (accent), ***Missed at 07:00*** (red `#C0302A`, R-2's replacement); at the right the **on / off switch** drawn by **`uk_switch_mark`** (46 × 24 — `ToggleSwitch`'s look; a widget per row would not scroll with the list). An **invalid** block (AC-16): `--:--` greyed, ***Invalid***, *Cannot be read: correct alarms.txt or delete it* in red, no switch (it can only be deleted). Sorted by time. Footer: ***3 alarms · 2 on*** and **`+ New Alarm`**, **`Edit`**, **`Delete`** (`WKT_TRASH`; Edit / Delete disabled with no row). Click: select; a click on the switch: toggle (and select); double-click / Enter: the editor; Space: toggle the selected one; Delete: delete it (no question, 02 #13). |
 | D11 | Alarms: empty | In the field: a big **bell** (faint), ***No alarms***, *Create one with + New Alarm (Ctrl+N).* and *Alarms ring even when the Clock is closed.* (the one thing to know). `clk-alarms-empty.png`, `-fr`. |
-| D12 | The alarm editor (02 #11) | An **overlay card** ***New Alarm*** / ***Edit Alarm*** (460 × 352), a form with **bold captions** at the left (88 px column): **Time** — an **`LcdDisplay`** (128 × 54, face 34 px, centred) showing **`07:00`** (zero-padded: `NumericUpDown` shows `7` / `0`), beside it two **`NumericUpDown`s** *Hours* (0–23) and *Minutes* (0–59, step 1; Page Up / Down ±10), 72 × 30, captions above; under them, dim, ***Next: tomorrow 07:00*** (what the choices mean, refreshed as they change). **Label** — a **`Textbox`** (the card's width, `maxLen` 160 bytes ≈ 40 characters). **Repeat** — **seven `ToolButton` toggles** (44 × 30, `raised`, *Mon … Sun* / *lun. … dim.*, Monday first in both languages, lit = the accent's tint) and under them two small text `ToolButton`s ***Every day*** · ***Weekdays*** (set the seven); none lit = once. **Sound** — a **`SegmentedControl`** ***Chimes · Beeps · Marimba*** (240 × 30) and a **`ToolButton` ▶ *Test*** (`WKT_PLAY`; plays one round; *Sound unavailable* in amber in the *Next:* line's place if it cannot). A 1-px line, then **`Button`s**: ***Delete*** at the left (editing only), ***Cancel*** · ***OK*** at the right. The focus starts on *Hours*; Tab walks the fields; **Enter = OK, Esc = Cancel** (the `Textbox` keeps Enter for itself: OK still by Enter elsewhere, and by its button). 21st alarm: `+ New Alarm` disabled, Ctrl+N blips. `clk-edit.png`, `-fr`. |
+| D12 | The alarm editor (02 #11) | An **overlay card** ***New Alarm*** / ***Edit Alarm*** (460 × 352), a form with **bold captions** at the left (88 px column): **Time** — an **`LcdDisplay`** (128 × 54, face 34 px, centred) showing **`07:00`** (zero-padded: `NumericUpDown` shows `7` / `0`), beside it two **`NumericUpDown`s** *Hours* (0–23) and *Minutes* (0–59, step 1; Page Up / Down ±10), 72 × 30, captions above; under them, dim, ***Next: tomorrow 07:00*** (what the choices mean, refreshed as they change). **Label** — a **`Textbox`** (the card's width, `maxLen` 160 bytes ≈ 40 characters). **Repeat** — **seven `ToolButton` toggles** (44 × 30, `raised`, *Mon … Sun* / *lun. … dim.*, Monday first in both languages, lit = the accent's tint) and under them two small text `ToolButton`s ***Every day*** · ***Weekdays*** (set the seven); none lit = once. **Sound** — a **`SegmentedControl`** ***Chimes · Beeps · Marimba*** (240 × 30) and a **`ToolButton` ▶ *Test*** (`WKT_PLAY`; plays one round; *Sound unavailable* in amber in the *Next:* line's place if it cannot). A 1-px line, then **`Button`s**: ***Delete*** at the left (editing only), ***Cancel*** · ***OK*** at the right. The focus starts on *Hours*; Tab walks the fields; **Enter = OK, Esc = Cancel** (the `Textbox` keeps Enter for itself: OK still by Enter elsewhere, and by its button). The two spin boxes are **`Spin`s**, not bare `NumericUpDown`s: UIKit's `NumericUpDown::onKey` takes Enter (commit) and Esc (drop the typed digits) and returns true, and the focused child gets the key before the veil's `onKey` (`Widget::handleKey`), so a bare one would eat both. `Spin : NumericUpDown` (in `ui.h`) passes Enter on **after** committing the typed digits (`Hours` `7` typed, Enter → 07:00 saved), Esc on after dropping them, and every key with Ctrl held (§7). 21st alarm: `+ New Alarm` disabled, Ctrl+N blips. `clk-edit.png`, `-fr`. |
 | D13 | The ringing overlay (02 #17–20) | Over the **Alarms tab** (the window raised: `kapi_raise_app`), a card ***Alarm*** / ***Alarme*** (380 × 280): a **bell with sound waves** (accent, 38 px), the time **`07:00`** (Bold 50 px), the **label** (Bold 18 px), the repeat and the sound dim (*Weekdays · Chimes*), **`Button`s *Snooze 10 min*** (focused: Enter) and ***Stop***, the hint *Enter: snooze · Esc: stop*. No other way out (it is modal: the menus' shortcuts are off). Unanswered 2 minutes: the card goes, *Missed at* on the row (R-2). `clk-ring.png`, `-fr`. |
 | D14 | The ring with no sound (02 #25, R-3, R-4) | The same card 28 px taller with, under the repeat line, an amber **struck speaker** and ***Sound unavailable: the sound output is busy*** (*Son indisponible : la sortie audio est occupée*). The ring is otherwise the same. `clk-ring-nosound.png`, `-fr`. |
 | D15 | Ring when the Clock was not open | `clock --ring <id>` opens **the full window on the Alarms tab** with the ring card (03 §3.6's one code path: no separate small window). **Started only to ring, it closes by itself after Stop / Snooze / the 2-minute timeout** (a flag set at start; the user could do nothing else meanwhile: the card is modal). Started by the user, it stays. |
@@ -207,10 +207,29 @@ things by tab; and Space / L / R / Delete bound in a menu would be taken from th
 | Ctrl+C | Stopwatch | copy the laps |
 | Enter / Esc | a card | its default (OK, Add, Snooze, Stop) / Cancel, Stop |
 | + | Time's up | one more minute |
+| Enter / Esc over the editor's *Hours* / *Minutes* | the editor | the typed digits committed, then OK / dropped, then Cancel (`Spin`, below) |
 | Tab | a card | its next control |
 
-The letter keys act only when no `Textbox` / `NumericUpDown` has the focus (they take digits; a letter they refuse
+The letter keys act only when no `Textbox` / spin box has the focus (they take digits; a letter they refuse
 comes back to the root). Ctrl+Q: D20.
+
+**The spin boxes (`Spin`).** Every spin box of the app (the editor's *Hours* / *Minutes*, the Timer's three) is a
+`Spin : NumericUpDown` beside the app (`ui.h`), because UIKit's `NumericUpDown::onKey` (controls.cpp:195–220) returns
+true for Enter, Esc, Up / Down / Page Up / Down, Backspace and **every digit, Ctrl held or not**, and the focused child
+is asked first (`Widget::handleKey`, widget.cpp:143–158; in a card the veil is asked after its focused control).
+`Spin::onKey (k)`:
+
+| Key over a focused `Spin` | `NumericUpDown` alone | `Spin` |
+|---|---|---|
+| any key with **Ctrl** held (`kapi_get_modifiers () & MOD_CTRL`) | Ctrl+1…4 typed as a digit | **passed on** (false): Ctrl+1…4, Ctrl+N, Ctrl+Tab reach the root |
+| **Enter** | commits the typed digits, eaten | `NumericUpDown::onKey (KEY_ENTER)` (commit, the `cb` fires), then **passed on**: the card's OK |
+| **Esc** | drops the typed digits, eaten | drops them (the base's Esc), then **passed on**: the card's Cancel |
+| digits, Backspace, Up / Down, Page Up / Down | the spin box's | unchanged |
+| Space, letters, Tab, + | passed on | unchanged (passed on): Space starts the timer, R resets it |
+
+`NumericUpDown` is not a text field (`isField ()` false), so in the **window** (the Timer tab, no card) Tab does not
+leave a spin box — a click elsewhere, or Ctrl+1…4, does; in a **card** Tab walks every control (the veil is modal).
+Nothing here needs a UIKit change.
 
 ---
 
@@ -249,3 +268,18 @@ The mock's catalogue is complete for every word drawn and for §5–§6; the Dev
 Never translated (stored or compared, 02 §5): the day tokens `mon…sun`, the sound tokens, the tab names in
 `config.ini`, the cities in `cities =`, the laps' numbers. The **laps' header** copied to the clipboard *is*
 translated (02 #33: *Tour · Temps du tour · Total*).
+
+## Changes after validation 1 (05-validation.md, 2026-10-07)
+
+- **Gap 5 — keys over a spin box.** D12 and §7: every spin box is a `Spin : NumericUpDown` (`ui.h`) that passes on
+  Ctrl keys, Esc (after dropping the typed digits) and Enter (after committing them); the table in §7 says which key
+  goes where. 03 §10.2 (steps 5, 7, 9) and §10.3 (`clock-edit-keys`) updated.
+- **Gap 4 — the French screenshots.** 03 §10.4 lists the block's French lines explicitly (`lang fr; sim … -fr; png
+  … -fr; … lang "$SHOTS_LANG"`, the Critters / Pinball pattern); `SHOTS_LANG=fr SHOTS_PNG=<scratch>` stays only as
+  CLAUDE.md's look-at-it check (it renders the same names, it does not add `-fr`).
+- **The developer's notes taken in.** D5's ▲ / ▼ footer buttons: `ToolButton::setIcon (ToolIconFn, id)` with a 3-line
+  drawer in `ui.h` calling `uk_glyph (WKG_CHEV_UP / WKG_CHEV_DOWN)`. The presets' double-click (D17) is the app's own:
+  a second click on the same preset within 400 ms (`kapi_get_ticks`). **The dock's label stays *Clock* in French**
+  (the dock shows `app.txt`'s `name` untranslated); the window's title is *Horloge*. No real date yet
+  (`kapi_get_datetime` returns 0): the HereCard adds a dim ***Clock not set yet*** / *Horloge pas encore réglée* line
+  (one `TR` word, in `fr.txt`) instead of a date.
