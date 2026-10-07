@@ -115,5 +115,11 @@ void ringer_start (Ringer &r, long now_min);		// what is past stays past; timer_
 //   - an alarm minute in (last, now] and at most 2 minutes old rings once; a jump back of up to 2 h (the summer
 //     time ending) rings nothing twice, a bigger one (the clock set) starts again from there.
 int  ringer_step (Ringer &r, const AlarmSet &s, long now_min, bool trusted, long now_tick, long long now_utc, Due *out, int max);
+// The once alarms that should have rung in [since_min, upto_min] and did not -- clockd, the first time the date is
+// trusted after its start: the alarms whose minute went by while the Pi was off (02 "should": within the last 12 h).
+// Missed: on, valid, once; its ring (its own minute, or its snooze when that is the later one) in the range; no
+// "missed =" at or after that ring (a Clock already said it); no snooze still to come after upto_min. -> how many
+// (at most max): each Due's id, its minute (the ring missed), snooze (it was the snooze's).
+int  alarms_missed_since (const AlarmSet &s, long since_min, long upto_min, Due *out, int max);
 
 #endif

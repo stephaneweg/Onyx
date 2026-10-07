@@ -142,10 +142,13 @@ check "clockd-disabled: ... nothing started" nolog disabled "sim: exec"
 seed late; alarms late "$(echo "$ONE" | sed 's/12:35/07:00/')"
 run clockd late "$(waits 300)exit" SIM_CLOCK=20260928090000 SIM_SERVICES=notify SIM_ARGS="--grace 0"
 check "clockd-late: a minute past at the start is not rung late" nolog late "clockd: ring"
+check "clockd-late: ... it is said missed instead (S2: once, to the Clock, no ring)" counts late "sim: exec SD:apps/clock.app/main --missed 1 202609280700" 1
+check "clockd-late: ... logged" logs late "clockd: missed 1 07:00"
 # the boot guard: without --grace 0 the first 90 s ring nothing (the ticks start at 1000: 8000 more, ~157 steps)
 seed guard; alarms guard "$ONE"
 run clockd guard "$(waits 200)exit" SIM_CLOCK=20260928123450 SIM_SERVICES=notify
 check "clockd-guard: an alarm within the 90 s after the boot is not rung" nolog guard "clockd: ring"
+check "clockd-guard: ... said missed once the guard is past (S2)" counts guard "sim: exec SD:apps/clock.app/main --missed 1 202609281235" 1
 # clockd-sync (R-6): zone=Brussels, 2026-10-25 02:59:30 wall (UTC+2) -> one minute later the clock set to UTC+1
 seed sync; mkdir -p "$OUT/w/sync/etc"; printf 'timezone=120\nzone=Brussels\n' > "$OUT/w/sync/etc/system.ini"
 run clockd sync "$(waits 300)exit" SIM_CLOCK=20261025025930 SIM_TZ=120 SIM_SERVICES=notify SIM_ARGS="--grace 0"
@@ -539,6 +542,55 @@ check "clock-quit-hand: the timer handed to clockd ([timer] set = 300, RELOAD)" 
 run clock qhand "wait;wait;exit" SIM_SERVICES=notify,clockd
 check "clock-quit-hand: reopened, the timer running again (taken back)" sh -c "grep -q 'clock: timer running 0' '$OUT/log/qhand.log' && ! grep -q '^\[timer\]' '$OUT/w/qhand/$AL'"
 check "clock-quit-hand: ... the stopwatch shown at its time" grep -qE "clock: stopwatch kept 00:00\.[0-9]{2} " "$OUT/log/qhand.log"
+
+# ==== S2: the alarms missed while the Pi was off ===================================================================
+# clockd-missed: at its start (12:34), the once alarms whose ring went by in the last 12 hours, all in one "--missed"
+# to the Clock (07:00 Pills; 12:10 the snooze of 11:00 Nap) -- not the one of last night (23:00, 13 h ago), not a
+# weekly one, not one off, not one a Clock already said missed, not one still to come; once only (300 steps)
+MISS='[alarm]\nid = 1\ntime = 07:00\nlabel = Pills\non = 1\ndays =\ndate = 20260928\nsound = chimes\nsnooze =\n\n[alarm]\nid = 2\ntime = 23:00\nlabel = Late\non = 1\ndays =\ndate = 20260927\n\n[alarm]\nid = 3\ntime = 08:00\nlabel = Gym\non = 1\ndays = mon tue wed thu fri\n\n[alarm]\nid = 4\ntime = 09:00\nlabel = Off\non = 0\ndays =\ndate = 20260928\n\n[alarm]\nid = 5\ntime = 10:00\nlabel = Told\non = 1\ndays =\ndate = 20260928\nmissed = 202609281000\n\n[alarm]\nid = 6\ntime = 11:00\nlabel = Nap\non = 1\ndays =\ndate = 20260928\nsnooze = 202609281210\n\n[alarm]\nid = 7\ntime = 15:00\nlabel = Later\non = 1\ndays =\ndate = 20260928\n'
+seed cdmiss; alarms cdmiss "$MISS"
+run clockd cdmiss "$(waits 300)exit" SIM_CLOCK=20260928123400 SIM_SERVICES=notify SIM_ARGS="--grace 0"
+check "clockd-missed: one --missed with the two missed (07:00, the 12:10 snooze)" counts cdmiss "sim: exec SD:apps/clock.app/main --missed 1 202609280700 6 202609281210" 1
+check "clockd-missed: ... and nothing else started" counts cdmiss "sim: exec" 1
+check "clockd-missed: logged (the snooze said so)" sh -c "grep -q 'clockd: missed 1 07:00$' '$OUT/log/cdmiss.log' && grep -q 'clockd: missed 6 12:10 (snoozed)' '$OUT/log/cdmiss.log'"
+check "clockd-missed: no sound, no ring" nolog cdmiss "clockd: ring"
+# the Clock running: told by message, nothing started
+seed cdmissrun; alarms cdmissrun "$MISS"
+run clockd cdmissrun "$(waits 20)exit" SIM_CLOCK=20260928123400 SIM_SERVICES=notify,clock SIM_ARGS="--grace 0"
+check "clockd-missed: the running Clock told (CLOCK_MSG_OPEN)" logs cdmissrun 'sim: send clock type 1 "--missed 1 202609280700 6 202609281210\0"'
+check "clockd-missed: ... nothing started" nolog cdmissrun "sim: exec"
+# nothing missed (the fixture: weekly, later today, off) -> nothing
+seed cdnomiss; fixture cdnomiss
+run clockd cdnomiss "$(waits 20)exit" SIM_CLOCK=20260928123400 SIM_SERVICES=notify SIM_ARGS="--grace 0"
+check "clockd-missed: nothing missed -> nothing said" sh -c "! grep -q 'missed\|sim: exec' '$OUT/log/cdnomiss.log'"
+# no Clock to start: word-free bubbles
+seed cdmissfb; rm "$OUT/w/cdmissfb/apps/clock.app/main"; alarms cdmissfb "$MISS"
+run clockd cdmissfb "$(waits 20)exit" SIM_CLOCK=20260928123400 SIM_SERVICES=notify SIM_ARGS="--grace 0"
+check "clockd-missed: the fallback, its own word-free bubble" logs cdmissfb 'sim: send notify type 1 "07:00\0Pills\0clock alarms\0"'
+# clock-missed-start: "clock --missed ..." (no Clock running) -> each notified in the system's language, missed =
+# written (a once alarm gone by: on = 0), clockd told, no window, no sound
+seed cmiss; alarms cmiss "$MISS"
+run clock cmiss "wait;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--missed 1 202609280700 6 202609281210"
+check "clock-missed-start: Missed alarm: 07:00 Pills notified" logs cmiss 'sim: send notify type 1 "Clock\0Missed alarm: 07:00 Pills\0clock alarms\0"'
+check "clock-missed-start: ... and 11:00 Nap (its snooze missed)" logs cmiss 'sim: send notify type 1 "Clock\0Missed alarm: 11:00 Nap\0clock alarms\0"'
+check "clock-missed-start: missed = written, the once alarms off" sh -c "[ '$(kv cmiss $AL 1 missed)' = 202609280700 ] && [ '$(kv cmiss $AL 1 on)' = 0 ] && [ '$(kv cmiss $AL 6 missed)' = 202609281210 ] && [ -z '$(kv cmiss $AL 6 snooze)' ]"
+check "clock-missed-start: the others not said (23:00 Late: no missed =, written off as gone by; 15:00 Later on)" sh -c "[ -z '$(kv cmiss $AL 2 missed)' ] && [ '$(kv cmiss $AL 7 on)' = 1 ] && [ '$(kv cmiss $AL 5 missed)' = 202609281000 ] && ! grep -q 'Missed alarm: 23:00\|Missed alarm: 10:00\|Missed alarm: 15:00' '$OUT/log/cmiss.log'"
+check "clock-missed-start: clockd told (RELOAD)" logs cmiss "sim: send clockd type 2"
+check "clock-missed-start: no window, no sound, ended by itself" sh -c "! grep -q 'sim: window\|sim: sound\|clock: sound' '$OUT/log/cmiss.log' && ! grep -q 'sim: end of the script' '$OUT/log/cmiss.log'"
+# said once: the same again -> nothing (missed = already that ring)
+seed cmiss2; cp "$OUT/w/cmiss/$AL" "$OUT/w/cmiss2/$AL"
+run clock cmiss2 "wait;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--missed 1 202609280700 6 202609281210"
+check "clock-missed-start: told twice, said once" sh -c "! grep -q 'Missed alarm' '$OUT/log/cmiss2.log' && grep -q 'clock: missed 1: nothing to say' '$OUT/log/cmiss2.log'"
+# French
+seed cmissfr fr; alarms cmissfr "$MISS"
+run clock cmissfr "wait;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--missed 1 202609280700"
+check "clock-missed-start: in French (Alarme manquée)" logs cmissfr 'sim: send notify type 1 "Horloge\0Alarme manquée : 07:00 Pills\0clock alarms\0"'
+# a running Clock told by clockd: notified, the row says Missed, the window not raised
+seed cmissrun; alarms cmissrun "$MISS"
+run clock cmissrun "wait;waitlog 100 clock: missed 1;wait;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms "SIM_MBOX=@40:1:9:--missed 1 202609280700"
+check "clock-missed-start: a running Clock notifies it" logs cmissrun 'sim: send notify type 1 "Clock\0Missed alarm: 07:00 Pills\0clock alarms\0"'
+check "clock-missed-start: ... the row says Missed at 07:00" logs cmissrun "missed 07:00"
+check "clock-missed-start: ... not raised for it" nolog cmissrun "sim: raise_app"
 
 echo
 if [ $FAILS -ne 0 ]; then echo "clock-sim: $FAILS of $((PASS + FAILS)) checks FAILED"; exit 1; fi

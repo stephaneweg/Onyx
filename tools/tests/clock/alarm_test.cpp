@@ -380,6 +380,45 @@ static void t19_timer ()
 	alarms_free (s);
 }
 
+// S2: the missed alarms at clockd's start -- the once alarms whose minute went by while the Pi was off (12 h back)
+static void t20_missed_since ()
+{
+	AlarmSet s; alarms_init (s);
+	alarms_parse (s,
+		"[alarm]\nid = 1\ntime = 07:00\nlabel = School\non = 1\ndays =\ndate = 20260928\n"		// once, this morning: missed
+		"[alarm]\nid = 2\ntime = 23:00\nlabel = Late\non = 1\ndays =\ndate = 20260927\n"		// once, last night 23:00 (13 h 34 ago): too old
+		"[alarm]\nid = 3\ntime = 08:00\nlabel = Gym\non = 1\ndays = mon tue wed thu fri\n"		// weekly: never "missed" here
+		"[alarm]\nid = 4\ntime = 09:00\nlabel = Off\non = 0\ndays =\ndate = 20260928\n"		// off
+		"[alarm]\nid = 5\ntime = 10:00\nlabel = Told\non = 1\ndays =\ndate = 20260928\nmissed = 202609281000\n"	// a Clock said it
+		"[alarm]\nid = 6\ntime = 15:00\nlabel = Later\non = 1\ndays =\ndate = 20260928\n"		// still to come
+		"[alarm]\nid = 7\ntime = 11:00\nlabel = Snoozed\non = 1\ndays =\ndate = 20260928\nsnooze = 202609281210\n"	// its snooze went by
+		"[alarm]\nid = 8\ntime = 11:30\nlabel = Snoozing\non = 1\ndays =\ndate = 20260928\nsnooze = 202609281240\n"	// snooze to come
+		"[alarm]\nid = 9\ntime = 25:99\nlabel = Bad\non = 1\ndays =\ndate = 20260928\n"		// invalid
+		"[alarm]\nid = 10\ntime = 12:34\nlabel = Now\non = 1\ndays =\ndate = 20260928\n");	// the very minute clockd looks
+	long now = W (2026, 9, 28, 12, 34);
+	Due d[8];
+	int n = alarms_missed_since (s, now - 720, now, d, 8);
+	EQI (n, 3);
+	EQI (d[0].id, 1);  EQI (d[0].minute, W (2026, 9, 28, 7, 0));   CHECK (!d[0].snooze);
+	EQI (d[1].id, 7);  EQI (d[1].minute, W (2026, 9, 28, 12, 10)); CHECK (d[1].snooze);
+	EQI (d[2].id, 10); EQI (d[2].minute, now);
+	// the range's ends: 12 h exactly is in, a minute more is out; upto excludes what the Ringer still rings
+	EQI (alarms_missed_since (s, W (2026, 9, 28, 7, 0), W (2026, 9, 28, 7, 0), d, 8), 1);
+	EQI (alarms_missed_since (s, W (2026, 9, 28, 7, 1), W (2026, 9, 28, 12, 33), d, 8), 1);	// (only 7's snooze)
+	EQI (alarms_missed_since (s, now - 720, now, d, 2), 2);						// (max)
+	// a Clock wrote the miss (missed = its ring) -> not again at the next start
+	s.a[0].missed = W (2026, 9, 28, 7, 0);
+	n = alarms_missed_since (s, now - 720, now, d, 8);
+	EQI (n, 2); EQI (d[0].id, 7);
+	// the miss of an earlier ring does not hide a later one (the snooze's)
+	s.a[6].missed = W (2026, 9, 28, 11, 0);
+	EQI (alarms_missed_since (s, now - 720, now, d, 8), 2);
+	alarms_free (s);
+	AlarmSet e; alarms_init (e);
+	EQI (alarms_missed_since (e, now - 720, now, d, 8), 0);						// (no alarms)
+	alarms_free (e);
+}
+
 int main ()
 {
 	t1_t2_once_on_its_minute ();
@@ -398,6 +437,7 @@ int main ()
 	t17_hand_written ();
 	t18_new_alarm_block ();
 	t19_timer ();
+	t20_missed_since ();
 	if (g_fails) { printf ("alarm: FAIL (%d of %d checks)\n", g_fails, g_checks); return 1; }
 	printf ("alarm: %d checks passed\n", g_checks);
 	return 0;

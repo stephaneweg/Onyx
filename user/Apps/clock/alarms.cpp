@@ -388,3 +388,19 @@ int ringer_step (Ringer &r, const AlarmSet &s, long now_min, bool trusted, long 
 	r.last = now_min;
 	return n;
 }
+int alarms_missed_since (const AlarmSet &s, long since_min, long upto_min, Due *out, int max)
+{
+	int n = 0;
+	for (int i = 0; i < s.n && n < max; i++)
+	{
+		const Alarm &a = s.a[i];
+		if (!a.on || !a.valid || (a.days & AL_EVERYDAY) || a.date < 0) continue;
+		if (a.snooze > upto_min) continue;			// (snoozed: still to come)
+		long m = a.date * 1440 + a.hh * 60 + a.mm;
+		bool sn = a.snooze >= 0 && a.snooze > m;		// (snoozed, and that snooze went by too)
+		if (sn) m = a.snooze;
+		if (m < since_min || m > upto_min || a.missed >= m) continue;
+		out[n].id = a.id; out[n].minute = m; out[n].snooze = sn; n++;
+	}
+	return n;
+}

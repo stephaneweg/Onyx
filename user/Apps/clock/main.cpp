@@ -14,6 +14,8 @@
 //   clock --ring <id>              alarm <id> rings (started by clockd): the window on the Alarms tab, the ring card,
 //                                  the sound, a notification; started only for it, the Clock closes after the answer
 //   clock --ring timer             the timer handed to clockd has ended: the Time's up card
+//   clock --missed <id> <YYYYMMDDHHMM> [...]   (clockd at its start) once alarms missed while the Pi was off: each
+//                                  "Missed alarm: 07:00 School" notified and written on its row -- no sound, no window
 // One Clock at a time: a second one sends the running one its arguments (CLOCK_MSG_OPEN), raises it and ends.
 // SD:/apps/clock.app/config.ini ([clock]: tab, cities, snooze, timer, width, height; a paused timer: timer_left,
 // timer_of; the stopwatch: sw_run, sw_start, sw_base, sw_total, sw_tick, sw_utc, sw_laps): AppKit's .ini, through FileKit.
@@ -300,6 +302,8 @@ public:
 	// The arguments, at the start or from a second Clock / clockd: a tab, a ring.
 	static void open_args (const char *a, bool atStart)
 	{
+		while (*a == ' ') a++;
+		if (!strncmp (a, "--missed", 8)) { ring_missed (a + 8, true); return; }	// (clockd: no window raised for it)
 		char w[64]; int k;
 		bool ring = false;
 		while (*a)
@@ -329,13 +333,14 @@ int main (void)
 {
 	// One Clock at a time: one already running (the "clock" service) is sent this one's arguments (empty: only come
 	// forward) and raised, and this one ends here.
-	char args[160] = "";
+	char args[400] = "";
 	kapi_get_args (args, sizeof args);
+	bool missedOnly = !strncmp (args, "--missed", 8);	// (clockd at its start: the alarms missed while the Pi was off)
 	int other = kapi_ipc_lookup (CLOCK_SERVICE);
 	if (other > 0)
 	{
 		kapi_mailbox_send (other, CLOCK_MSG_OPEN, args, (unsigned) strlen (args) + 1);
-		kapi_raise_app (CLOCK_SERVICE);
+		if (!missedOnly) kapi_raise_app (CLOCK_SERVICE);
 		return 0;
 	}
 	kapi_ipc_register (CLOCK_SERVICE);			// (failed: the Clock runs alone, nothing forwarded to it)
@@ -345,6 +350,12 @@ int main (void)
 	alarms_init (g_al);
 	alarms_load (g_al, ALARMS_PATH);
 	now_read ();
+	if (missedOnly)						// told, written, and gone: no window
+	{
+		ring_missed (args + 8, false);
+		alarms_free (g_al);
+		return 0;
+	}
 	// clockd rings the alarms with the Clock closed: started when it does not run, its boot line made sure of (a card
 	// updated by the package manager keeps its own SD:/etc/autostart)
 	autostart_ensure ("run clockd", "run notifyd", "# The Clock's alarms (rung with the app closed): clockd, the alarm service.");

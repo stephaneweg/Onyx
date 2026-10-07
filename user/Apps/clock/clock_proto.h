@@ -4,7 +4,8 @@
 //
 //   The Clock registers "clock"; a second Clock started sends it CLOCK_MSG_OPEN with its arguments, raises it
 //   (kapi_raise_app ("clock")) and quits -- one Clock at a time. clockd, ringing an alarm, sends the running Clock
-//   CLOCK_MSG_OPEN "--ring <id>" (or "--ring timer"), else starts "clock --ring <id>".
+//   CLOCK_MSG_OPEN "--ring <id>" (or "--ring timer"), else starts "clock --ring <id>"; at its start, the once alarms
+//   missed while the Pi was off: "--missed <id> <YYYYMMDDHHMM> [...]" the same way (the Clock notifies them, no window).
 //   clockd registers "clockd" (a second one quits); the Clock sends it CLOCKD_MSG_RELOAD after it has written
 //   SD:/apps/clock.app/alarms.txt (clockd also looks at the file every 30 s), CLOCKD_MSG_QUIT to stop it.
 //
@@ -23,7 +24,8 @@
 #define CLOCK_SERVICE		"clock"
 #define CLOCKD_SERVICE		"clockd"
 
-// To "clock": the Clock's arguments as one string and a 0 ("alarms", "stopwatch", "--ring 3", "--ring timer");
+// To "clock": the Clock's arguments as one string and a 0 ("alarms", "stopwatch", "--ring 3", "--ring timer",
+// "--missed 2 202609280700");
 // empty (a lone 0): only come forward.
 #define CLOCK_MSG_OPEN		1
 // To "clockd": read alarms.txt again now (no payload). What was already rung stays rung.

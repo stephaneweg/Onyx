@@ -12,7 +12,8 @@
 //   CLOCKD_MSG_RELOAD   alarms.txt read again now (the Ringer kept: nothing rung twice); the file is also looked
 //                       at every 30 s (a hand edit, a message lost)
 //   CLOCKD_MSG_QUIT     the service ends
-// Once a minute: SystemKit's locale_zone_sync () -- the system's clock follows the summer time of the zone chosen
+// Once, when the date is first trusted: the once alarms missed while the Pi was off (the last 12 hours) handed to the
+// Clock ("--missed ...": it notifies them, no sound). Once a minute: SystemKit's locale_zone_sync () -- the system's clock follows the summer time of the zone chosen
 // in Language & Region (zone= of SD:/etc/system.ini).
 //
 //   clockd [--grace N]   N: the ticks (hundredths of a second since the boot) before which no alarm rings -- the
@@ -76,6 +77,17 @@ static void reload (const char *why)
 	say ("reload (%s): %d alarm%s%s", why, g_set.n, g_set.n == 1 ? "" : "s", g_set.timer ? ", a timer" : "");
 }
 
+// Something for the Clock to do ("--ring 3", "--missed 2 202609280700"): the running one told, else started -> false:
+// neither (clockd's own notification then).
+static bool tell_clock (const char *args)
+{
+	int pid = kapi_ipc_lookup (CLOCK_SERVICE);
+	bool told = false;
+	if (pid > 0) told = kapi_mailbox_send (pid, CLOCK_MSG_OPEN, args, (unsigned) strlen (args) + 1) >= 0;
+	if (!told) told = lx_launch ("clock", args) > 0;
+	return told;
+}
+
 // One ring handed to the Clock: the running one told, else started; neither: clockd's own notification.
 static void ring (const Due &d, int now_s)
 {
@@ -86,15 +98,43 @@ static void ring (const Due &d, int now_s)
 	if (d.id == ALARM_TIMER) snprintf (args, sizeof args, "--ring timer");
 	else snprintf (args, sizeof args, "--ring %d", d.id);
 	snprintf (label, sizeof label, "%s", d.id == ALARM_TIMER ? g_set.timer_label : i >= 0 ? g_set.a[i].label : "");
-	int pid = kapi_ipc_lookup (CLOCK_SERVICE);
-	bool told = false;
-	if (pid > 0) told = kapi_mailbox_send (pid, CLOCK_MSG_OPEN, args, (unsigned) strlen (args) + 1) >= 0;
-	if (!told) told = lx_launch ("clock", args) > 0;
+	bool told = tell_clock (args);
 	char at[16];
 	clk_fmt_hms (now_s / 3600, now_s / 60 % 60, now_s % 60, at, sizeof at);
 	if (d.id == ALARM_TIMER) say ("ring timer %s at %s%s", hm, at, told ? "" : " (the Clock cannot start: notified)");
 	else say ("ring %d %s%s at %s%s", d.id, hm, d.snooze ? " (snoozed)" : "", at, told ? "" : " (the Clock cannot start: notified)");
 	if (!told) notify_action (hm, label, d.id == ALARM_TIMER ? "clock timer" : "clock alarms");
+}
+
+// The alarms missed while the Pi was off (S2), looked for once, at the first step whose date is trusted: a once alarm
+// whose ring went by in the last 12 hours (up to the minute the Ringer has already looked at) is handed to the Clock
+// -- all of them in one "--missed <id> <its minute> [<id> <minute>...]" (a Clock started for it ends at once: a second
+// start would find it ending) -- which says "Missed alarm: 07:00 School" in the system's language (no sound, no window
+// when it was not open) and writes the miss on the alarm's row. Neither told nor started: word-free notifications.
+#define MISSED_BACK	720			// minutes: 12 hours
+static void missed (long now_min, long upto)
+{
+	Due d[ALARMS_MAX];
+	int n = alarms_missed_since (g_set, now_min - MISSED_BACK, upto, d, ALARMS_MAX);
+	if (!n) return;
+	char args[400] = "--missed";
+	for (int k = 0; k < n; k++)
+	{
+		char one[40], stamp[16];
+		clk_fmt_minute (d[k].minute, stamp, sizeof stamp);
+		snprintf (one, sizeof one, " %d %s", d[k].id, stamp);
+		if (strlen (args) + strlen (one) < sizeof args) strcat (args, one);
+	}
+	bool told = tell_clock (args);
+	for (int k = 0; k < n; k++)
+	{
+		char hm[8];
+		int i = alarm_find (g_set, d[k].id);
+		long m = d[k].minute % 1440;
+		clk_fmt_hm ((int) (m / 60), (int) (m % 60), hm, sizeof hm);
+		say ("missed %d %s%s%s", d[k].id, hm, d[k].snooze ? " (snoozed)" : "", told ? "" : " (the Clock cannot start: notified)");
+		if (!told) notify_action (hm, i >= 0 ? g_set.a[i].label : "", "clock alarms");
+	}
 }
 
 int main (void)
@@ -136,8 +176,15 @@ int main (void)
 		struct kapi_clock_info ci;
 		long long utc = -1;
 		if (kapi_clock_info (&ci) == 0 && (ci.flags & KAPI_CLOCK_REALTIME_VALID)) utc = (long long) (ci.utc_us / 1000000);
+		bool trusted = real && (long) now_t >= grace;
+		static bool s_missedLooked;
+		if (trusted && !s_missedLooked)				// (once: what went by while the Pi was off)
+		{
+			s_missedLooked = true;
+			missed (now_min, g_ringer.started ? g_ringer.last : now_min);
+		}
 		Due due[8];
-		int k = ringer_step (g_ringer, g_set, now_min, real && (long) now_t >= grace, (long) now_t, utc, due, 8);
+		int k = ringer_step (g_ringer, g_set, now_min, trusted, (long) now_t, utc, due, 8);
 		for (int i = 0; i < k; i++) ring (due[i], h * 3600 + mi * 60 + s);
 		kapi_msleep (500);
 	}

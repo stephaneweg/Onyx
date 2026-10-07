@@ -160,3 +160,40 @@ static void ring_tick ()
 	}
 	ring_end ();
 }
+
+// ---- the alarms missed while the Pi was off (S2): clockd at its start, "--missed <id> <YYYYMMDDHHMM> [...]" --------------
+// Each: "Missed alarm: 07:00 School" notified (no sound, no card), the miss written on the alarm's row (missed =; a once
+// alarm gone by is then written off by alarms_write). live: the window is there (its Alarms tab shown again).
+static void ring_missed (const char *a, bool live)
+{
+	alarms_load (g_al, ALARMS_PATH);			// (the file as clockd saw it)
+	bool changed = false;
+	for (;;)
+	{
+		char w1[16], w2[16]; int k;
+		while (*a == ' ') a++;
+		for (k = 0; *a && *a != ' '; a++) if (k < 15) w1[k++] = *a;
+		w1[k] = 0;
+		while (*a == ' ') a++;
+		for (k = 0; *a && *a != ' '; a++) if (k < 15) w2[k++] = *a;
+		w2[k] = 0;
+		if (!w1[0] || !w2[0]) break;
+		int id = atoi (w1), i = alarm_find (g_al, id);
+		long minute = clk_parse_minute (w2);
+		if (i < 0 || !g_al.a[i].valid || minute < 0 || g_al.a[i].missed >= minute || (ring_busy () && g_ring->id == id))
+		{
+			say ("missed %d: nothing to say", id);
+			continue;
+		}
+		char w[200], t[260];
+		ring_words (g_al.a[i], w, sizeof w);
+		snprintf (t, sizeof t, TR ("Missed alarm: %s"), w);
+		notify_action (TR ("Clock"), t, "clock alarms");
+		g_al.a[i].missed = minute;
+		g_al.a[i].snooze = -1;
+		say ("missed %d %s (while off)", id, w);
+		changed = true;
+	}
+	if (changed) alarms_write ();
+	if (live) { g_alPrint = true; alarms_changed (); }
+}
