@@ -68,7 +68,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 790 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 793 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -231,6 +231,10 @@ ChatWin *w = new ChatWin ("Alice");
 if (!w->winOpened ()) { delete w; /* one window only: show it beside */ }
 ```
 
+**An icon in the menu bar's status area** (kapi v95): `uk_tray ("SD:/apps/myapp.app/icon.bmp", "My App - 3 new")`; a double
+click on it shows the program's first window again (even minimised) and calls the first `Root`'s `onTray (KAPI_TRAY_OPEN)`,
+a right click `onTray (KAPI_TRAY_MENU)`; `uk_tray_clear ()` takes it away.
+
 ## Index
 
 Everything the headers declare, in their order — the details are in each header's part below.
@@ -253,6 +257,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_quit` | time to end: the close box, or the host's AP_CLOSE / its end | `root.h` |
 | `uk_applet_send` | a message to the host | `root.h` |
 | `uk_applet_on_message` | The host's messages other than AP_PTR / AP_KEY / AP_CLOSE (an applet's own protocol | `root.h` |
+| `uk_tray` | (v95) The program's icon in the menu bar's status area | `root.h` |
+| `uk_tray_clear` | (v95) The program's icon in the menu bar's status area | `root.h` |
 | `Root` | (a type) | `root.h` |
 | `Canvas` | (a type) | `canvas.h` |
 | `UIKIT_VAR` | an app's background (its face) | `theme.h` |
@@ -683,6 +689,13 @@ void uk_applet_on_message (void (*fn) (int type, const void *data, int len));
 
 ```cpp
 struct NewWindow {};
+```
+
+(v95) The program's icon in the menu bar's status area: a picture file (an app's icon.bmp: brought to KAPI_TRAY_PX square, its magenta see-through) and a tip -> true; false (an older system, no picture). A double click on it shows the program's first window again (even minimised) and calls its onTray (KAPI_TRAY_OPEN); a right click onTray (KAPI_TRAY_MENU). uk_tray_clear: taken away (the program's end does it too).
+
+```cpp
+bool uk_tray (const char *picture, const char *tip);
+void uk_tray_clear ();
 
 class Root : public Widget
 {
@@ -746,8 +759,11 @@ public:
 	// The reserve of virtual functions for the window (uikit/abi.h; Widget's own come before): a
 	// virtual added to Root by a later version of the library takes one of these.
 	virtual void onClose ();		// (v94) its close box (not the first window's): closeWindow ()
-	void uk_rootReserved0 ();		// (the slot's former name: an entry of the table, never removed)
-	virtual void uk_rootReserved1 () {}
+	void uk_rootReserved0 ();		// (the slots' former names: entries of the table, never removed)
+	void uk_rootReserved1 ();
+	// (v95) A click on the program's icon of the status area (uk_tray): KAPI_TRAY_OPEN (a double click:
+	// the first window already shown again), KAPI_TRAY_MENU (a right click). To the first window.
+	virtual void onTray (int kind);
 	virtual void uk_rootReserved2 () {}
 	virtual void uk_rootReserved3 () {}
 	virtual void uk_rootReserved4 () {}

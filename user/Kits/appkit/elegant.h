@@ -181,4 +181,25 @@ struct el_shot					// (the control page's first bytes)
 #define EL_VA_WIN(w, p)		KAPI_WS_VA_WIN (w, p)
 #define EL_OP_DESTROY		33	// the caller's window (its number in the op) closed -> 1, 0 none
 
+// ---- the status area's icons (v95; appkit.h kapi_tray_*) -----------------------------------------
+// One icon a program, kept by Elegant (dropped when the program ends). EL_OP_TRAY_SET: a[0] = the handler;
+// in: struct el_tray -> 1, 0 no room. EL_OP_TRAY_CLEAR -> 1. EL_OP_TRAY_LIST: a[0] = max; out: struct
+// kapi_tray_info each -> how many. EL_OP_TRAY_ICON: a[0] = pid; out: the pixels -> 1, 0 none.
+// EL_OP_TRAY_ACTIVATE: a = pid, KAPI_TRAY_* (OPEN: the program's first window raised, back from minimised)
+// -> 1, 0 none.
+#define EL_OP_TRAY_SET		34
+#define EL_OP_TRAY_CLEAR	35
+#define EL_OP_TRAY_LIST		36
+#define EL_OP_TRAY_ICON		37
+#define EL_OP_TRAY_ACTIVATE	38
+
+// A window moved (kapi_win_move, v96): a = its id (0: the caller's), x, y -- its client area's top left on the
+// screen -> 0, -1 no such window (or the desktop's, a topmost one).
+#define EL_OP_WIN_MOVE		39
+struct el_tray
+{
+	char	 tip[56];
+	unsigned px[KAPI_TRAY_PX * KAPI_TRAY_PX];
+};
+
 #endif

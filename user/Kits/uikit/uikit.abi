@@ -793,3 +793,6 @@
 787 _ZN5uikit4Root9winSelectEv
 788 _ZN5uikit4RootC1ENS_9NewWindowEiiiiPKcj
 789 _ZN5uikit4RootC2ENS_9NewWindowEiiiiPKcj
+790 _ZN5uikit13uk_tray_clearEv
+791 _ZN5uikit4Root6onTrayEi
+792 _ZN5uikit7uk_trayEPKcS1_

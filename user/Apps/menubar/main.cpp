@@ -597,6 +597,63 @@ static void draw_usb (int x, int y)
 	g_cv.fillRect (x + 2, y + 5, 3, 3, uk_tone (C_MENUBAR, 176));	// a light
 }
 
+// ---- the status area: the programs' icons (kapi v95, kapi_tray_*) ---------------------------------
+// Each program may put an icon there (UIKit's uk_tray: Telegram's); a double click shows its first window
+// again -- even minimised -- (Elegant does it, and tells the program), a right click tells the program.
+struct TrayIcon { unsigned pid, gen; char tip[56]; unsigned px[KAPI_TRAY_PX * KAPI_TRAY_PX]; };
+static TrayIcon g_tray[KAPI_TRAY_MAX];
+static int g_ntray = 0;
+static int g_trayHot = -1;				// the icon under the pointer (its tip shown)
+static int g_trayClick = -1; static unsigned g_trayClickT;	// (a double click: two presses in 0.4 s)
+#define TRAY_STEP	(KAPI_TRAY_PX + 6)
+
+static int tray_right (void) { return (usb_shown () ? usb_x () : spk_x ()) - 8; }
+static int tray_x (int i) { return tray_right () - (i + 1) * TRAY_STEP + 3; }
+static int tray_at (int x, int y)
+{
+	if (y < 0 || y >= BAR_H) return -1;
+	for (int i = 0; i < g_ntray; i++) if (x >= tray_x (i) - 3 && x < tray_x (i) + KAPI_TRAY_PX + 3) return i;
+	return -1;
+}
+
+// The icons as Elegant has them now -> true: something changed.
+static bool tray_poll (void)
+{
+	struct kapi_tray_info L[KAPI_TRAY_MAX];
+	int n = kapi_tray_list (L, KAPI_TRAY_MAX);
+	if (n < 0) n = 0;
+	bool changed = n != g_ntray;
+	for (int i = 0; i < n; i++)
+	{
+		TrayIcon &t = g_tray[i];
+		if (!changed && t.pid == L[i].pid && t.gen == L[i].gen) continue;
+		changed = true;
+		t.pid = L[i].pid; t.gen = L[i].gen;
+		scopy (t.tip, L[i].tip, sizeof t.tip);
+		if (!kapi_tray_icon (t.pid, t.px)) for (int k = 0; k < KAPI_TRAY_PX * KAPI_TRAY_PX; k++) t.px[k] = CLEAR;
+	}
+	g_ntray = n;
+	if (changed) { g_trayHot = -1; g_trayClick = -1; }
+	return changed;
+}
+
+static void draw_tray (void)
+{
+	int y0 = (BAR_H - 1 - KAPI_TRAY_PX) / 2;
+	for (int i = 0; i < g_ntray; i++)
+	{
+		int x0 = tray_x (i);
+		if (i == g_trayHot) uk_rbox (g_cv, x0 - 3, 3, KAPI_TRAY_PX + 6, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
+		const unsigned *px = g_tray[i].px;
+		for (int y = 0; y < KAPI_TRAY_PX; y++)
+			for (int x = 0; x < KAPI_TRAY_PX; x++)
+			{
+				unsigned p = px[y * KAPI_TRAY_PX + x], t = p >> 24;
+				if (t < 255) uk_blend_px (g_cv, x0 + x, y0 + y, p & 0x00FFFFFFu, (int) (255 - t));
+			}
+	}
+}
+
 static void draw_usb_box (void)
 {
 	int bx, by, bh; usb_box (&bx, &by, &bh);
@@ -660,8 +717,10 @@ static void usb_action (int row)		// the row's button
 static void draw (void)
 {
 	bool full = g_open >= 0 || g_volOpen || g_calOpen || g_usbOpen;
-	int h = full ? g_sh : BAR_H;
+	int tipH = !full && g_trayHot >= 0 && g_trayHot < g_ntray && g_tray[g_trayHot].tip[0] ? g_fh + 16 : 0;	// (an icon's tip)
+	int h = full ? g_sh : BAR_H + tipH;
 	if (full) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, CATCH);	// (catches a click elsewhere)
+	else if (tipH) g_cv.fillRect (0, BAR_H, g_sw, tipH, CLEAR);
 	uk_paint_alpha (true);
 	// the bar: a light gradient of the face, a light line on top, a darker one below
 	uk_rbox (g_cv, 0, 0, g_sw, BAR_H - 1, 0, uk_tone (C_MENUBAR, 196), uk_tone (C_MENUBAR, 150));
@@ -685,6 +744,16 @@ static void draw (void)
 	draw_wifi (wifi_x (), (BAR_H - 1 - 12) / 2, g_wifi == 1);
 	draw_speaker (spk_x (), (BAR_H - 1 - 12) / 2);
 	if (usb_shown ()) draw_usb (usb_x (), (BAR_H - 1 - 12) / 2);
+	draw_tray ();
+	if (tipH)
+	{
+		const char *tip = g_tray[g_trayHot].tip;
+		int tw = uk_tw (tip) + 16, tx = tray_x (g_trayHot) + KAPI_TRAY_PX / 2 - tw / 2;
+		if (tx + tw > g_sw - 2) tx = g_sw - 2 - tw;
+		if (tx < 2) tx = 2;
+		panel (tx, BAR_H + 2, tw, tipH - 4);
+		uk_text_l (g_cv, tx + 8, BAR_H + 2, tipH - 4, tip, C_FIELD_TEXT);
+	}
 	if (g_volOpen) draw_volume_box ();
 	if (g_usbOpen) draw_usb_box ();
 	if (g_calOpen) draw_calendar_box ();
@@ -791,7 +860,23 @@ static void ptr (unsigned long, int ev, long v)
 	switch (ev)
 	{
 	case GUI_EVENT_PTR_DOWN:
+		if ((c & 2) && tray_at (x, y) >= 0)			// a right click on an icon: its program told
+		{
+			kapi_tray_activate (g_tray[tray_at (x, y)].pid, KAPI_TRAY_MENU);
+			break;
+		}
 		if (!(c & 1)) break;
+		if (tray_at (x, y) >= 0)				// an icon of the status area: a double click shows its program
+		{
+			int ti = tray_at (x, y);
+			if (g_open >= 0) close_menu ();
+			g_volOpen = false; g_calOpen = false; g_usbOpen = false;
+			unsigned now = kapi_get_ticks ();
+			if (ti == g_trayClick && now - g_trayClickT < 40) { kapi_tray_activate (g_tray[ti].pid, KAPI_TRAY_OPEN); g_trayClick = -1; }
+			else { g_trayClick = ti; g_trayClickT = now; }
+			g_trayHot = -1; g_dirty = true;
+			break;
+		}
 		if (g_calOpen && in_cal_box (x, y))			// the calendar: its month, its button
 		{
 			int bx, by; cal_box (&bx, &by);
@@ -899,6 +984,10 @@ static void ptr (unsigned long, int ev, long v)
 		g_pressedTitle = false;
 		break;
 	case GUI_EVENT_PTR_MOVE:
+		{
+			int th = g_open < 0 && !g_volOpen && !g_calOpen && !g_usbOpen ? tray_at (x, y) : -1;
+			if (th != g_trayHot) { g_trayHot = th; g_dirty = true; }
+		}
 		if (g_calOpen)
 		{
 			bool h = on_cal_btn (x, y);
@@ -931,6 +1020,7 @@ static void ptr (unsigned long, int ev, long v)
 		if (t != g_titleHot) { g_titleHot = t; g_dirty = true; }	// the title pointed at
 		break;
 	case GUI_EVENT_PTR_LEAVE:
+		if (g_trayHot != -1) { g_trayHot = -1; g_dirty = true; }
 		if (g_hover != -1) { g_hover = -1; g_dirty = true; }
 		if (g_titleHot != -1) { g_titleHot = -1; g_dirty = true; }
 		break;
@@ -991,8 +1081,9 @@ int main (void)
 		int hh = 0, mm = 0;
 		kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
 		if (mm != g_lastMin) g_dirty = true;
-		static unsigned lastNet = 0;				// Wi-Fi state: about once a second
+		static unsigned lastNet = 0, lastTray = 0;		// Wi-Fi state: about once a second
 		unsigned now = kapi_get_ticks ();
+		if (now - lastTray >= 25) { lastTray = now; if (tray_poll ()) g_dirty = true; }	// (v95) the programs' icons
 		if (now - lastNet >= 100)
 		{
 			lastNet = now;

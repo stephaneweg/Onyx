@@ -311,3 +311,9 @@
 305 kapi_win_destroy
 306 kapi_win_new
 307 kapi_win_select
+308 kapi_tray_activate
+309 kapi_tray_clear
+310 kapi_tray_icon
+311 kapi_tray_list
+312 kapi_tray_set
+313 kapi_win_move

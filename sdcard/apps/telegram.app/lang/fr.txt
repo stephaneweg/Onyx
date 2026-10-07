@@ -235,3 +235,5 @@ Hi! We met at the Onyx meetup, I'm the one with the robot arm :)	Salut ! On s'es
 Conversations Beside the List	Conversations à côté de la liste
 Conversations in Their Own Windows	Conversations dans leur propre fenêtre
 Too many conversations are open: close one of their windows.	Trop de conversations sont ouvertes : fermez l'une de leurs fenêtres.
+Telegram - 1 unread message	Telegram - 1 message non lu
+Telegram - %d unread messages	Telegram - %d messages non lus

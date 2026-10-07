@@ -103,10 +103,13 @@ static void ws_replay_one (void)		// (the current window)
 	}
 }
 
+static struct el_tray ws__tray; static long ws__tray_handler; static int ws__tray_set;	// (v95: the status area's icon)
+
 static void ws_replay (int all)
 {
 	if (ws__replaying) return;
 	ws__replaying = 1;
+	if (all && ws__tray_set) ws_raw (EL_OP_TRAY_SET, ws__tray_handler, 0, 0, 0, &ws__tray, sizeof ws__tray, 0, 0);
 	int cur = ws__cur;
 	for (int w = 0; w <= EL_WINDOWS_MORE; w++)
 	{
@@ -454,6 +457,41 @@ static void ws_win_destroy (int win)
 	ws_raw (EL_OP_DESTROY, 0, 0, 0, 0, 0, 0, 0, 0);
 	__builtin_memset (&ws__w[win], 0, sizeof ws__w[win]);
 	ws__cur = cur == win ? 0 : cur;
+}
+
+// ---- the status area's icon (v95) -----------------------------------------------------------------
+
+static int ws_tray_set (const unsigned *px, const char *tip, gui_handler h)
+{
+	if (px == 0) return 0;
+	WS_KT->memset (&ws__tray, 0, sizeof ws__tray);		// (the kernel's: AppKit links none)
+	for (unsigned i = 0; tip != 0 && tip[i] != 0 && i + 1 < sizeof ws__tray.tip; i++) ws__tray.tip[i] = tip[i];
+	ws_copy (ws__tray.px, px, sizeof ws__tray.px);
+	ws__tray_handler = (long) h; ws__tray_set = 1;
+	return ws_raw (EL_OP_TRAY_SET, (long) h, 0, 0, 0, &ws__tray, sizeof ws__tray, 0, 0) == 1;
+}
+
+static void ws_tray_clear (void)
+{
+	ws__tray_set = 0;
+	ws_raw (EL_OP_TRAY_CLEAR, 0, 0, 0, 0, 0, 0, 0, 0);
+}
+
+static int ws_tray_list (struct kapi_tray_info *out, int max)
+{
+	static unsigned char s_List[KAPI_WS_DATA_MAX];
+	if (out == 0 || max <= 0) return 0;
+	long n = ws_raw (EL_OP_TRAY_LIST, max, 0, 0, 0, 0, 0, s_List, sizeof s_List);
+	if (n <= 0) return 0;
+	if (n > max) n = max;
+	ws_copy (out, s_List, (unsigned long) n * sizeof *out);
+	return (int) n;
+}
+
+static int ws_tray_icon (unsigned pid, unsigned *px)
+{
+	if (px == 0) return 0;
+	return ws_raw (EL_OP_TRAY_ICON, (long) pid, 0, 0, 0, 0, 0, px, KAPI_TRAY_PX * KAPI_TRAY_PX * 4) == 1;
 }
 
 #undef ws__cw

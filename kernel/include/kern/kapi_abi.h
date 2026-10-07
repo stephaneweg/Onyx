@@ -240,7 +240,11 @@
 //      KAPI_WS_VA_WIN in its memory -- the library arena ends at 28 GB), KAPI_WS_KICK names the window,
 //      the event queue 64 deep (32), USER_WS_SLOTS 256 (128). No table entry changes: AppKit's
 //      kapi_win_new / kapi_win_select / kapi_win_destroy speak to Elegant.
-#define KAPI_ABI_VERSION	94
+// v95: the status area's icons (the menu bar's tray, kapi_tray_*: KAPI_TRAY_*, struct kapi_tray_info,
+//      GUI_EVENT_TRAY) -- Elegant's, reached by AppKit; no table entry changes.
+// v96: kapi_win_move (AppKit, Elegant's EL_OP_WIN_MOVE): any window (by its id, kapi_win_list's) moved -- the
+//      remote desktop puts a Pi window where the PC's copy of it was dragged.
+#define KAPI_ABI_VERSION	96
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -564,6 +568,20 @@ struct kapi_gpu_batch
 #define KAPI_DESK_MAX		8	// (v65) workspaces at most (kapi desk)
 #define KAPI_WIN_DESKTOP	0xFFFFFFFFu	// the id of the desktop (listed first: the wallpaper
 						// + the backmost windows, screen-sized; read whole only)
+// (v95) The status area of the menu bar (AppKit's kapi_tray_*): an icon a program, KAPI_TRAY_PX square,
+// 0xTTRRGGBB (TT its transparency: 0 opaque .. 255 see-through), a tip; a double click on it shows the
+// program's first window (back from minimised) and tells the program: GUI_EVENT_TRAY with value
+// KAPI_TRAY_OPEN to the handler it gave; a right click: KAPI_TRAY_MENU (the program only).
+#define KAPI_TRAY_PX		20
+#define KAPI_TRAY_MAX		16
+#define KAPI_TRAY_OPEN		1
+#define KAPI_TRAY_MENU		2
+struct kapi_tray_info
+{
+	unsigned pid;			// its program
+	unsigned gen;			// changes when its icon or its tip does
+	char	 tip[56];
+};
 struct kapi_win_info
 {
 	unsigned id;			// never reused
@@ -2224,6 +2242,16 @@ struct TKApiTable
 	int (*win_new) (int x, int y, int w, int h, const char *title, unsigned flags, unsigned **canvas);
 	int (*win_select) (int win);
 	void (*win_destroy) (int win);
+
+	// --- v95: the status area's icons (appkit.h kapi_tray_*) ---
+	int (*tray_set) (const unsigned *px, const char *tip, gui_handler h);
+	void (*tray_clear) (void);
+	int (*tray_list) (struct kapi_tray_info *out, int max);
+	int (*tray_icon) (unsigned pid, unsigned *px);
+	int (*tray_activate) (unsigned pid, int kind);
+
+	// --- v96 ---
+	int (*win_move) (unsigned id, int x, int y);
 #endif
 };
 

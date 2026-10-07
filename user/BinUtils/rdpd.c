@@ -38,7 +38,7 @@
 //     5 END     (one round of updates is complete: the client shows it, then asks again)
 //     8 SCREEN  u16 w h (the screen's new size: kapi_screen_set, kernel v66; an older client
 //               skips it)
-//     9 CAPS    u8 protocol (1), u8 rounds in flight (the window: sent once, first, only to a
+//     9 CAPS    u8 protocol (1; 2: MOVE understood), u8 rounds in flight (the window: sent once, first, only to a
 //               client that set option bit 2)
 //    10 PING    u32 the server's clock in ms (between rounds, never inside one; a client
 //               skips an unknown type, so an older one ignores it)
@@ -60,6 +60,9 @@
 //     5 CLOSE   u32 id (its close box)
 //     8 PONG    u32 the PING's value echoed (pipelined clients only: an older rdpd would
 //               end the session on it)
+//     9 MOVE    u32 id, s16 x y: the window's client area put there on the Pi's screen (its copy was
+//               dragged on the PC; only to an rdpd whose CAPS said protocol 2: an older one would end
+//               the session on it)
 //
 // Rounds and credits. A round is sent only when something changed (no empty rounds: an idle
 // screen costs no traffic), and only while the server has credit: each READY gives one, each
@@ -528,7 +531,7 @@ static void session (void)
 	g_credit = g_window - 1;			// (+ the client's first READY)
 	g_endn = 0; g_probes = 0;
 	g_lastRx = g_lastEnd = g_lastPing = kapi_clock_us ();
-	if (g_pipe) { msg (9, 2); put8 (1); put8 ((unsigned) g_window); flush_out (); }
+	if (g_pipe) { msg (9, 2); put8 (2); put8 ((unsigned) g_window); flush_out (); }	// (protocol 2: MOVE)
 	memset (&g_st, 0, sizeof g_st); g_st.t0 = kapi_clock_us ();
 	rdlog ("rdpd: session start (%d bits a pixel%s, %s)", g_bpp16 ? 16 : 32, g_noFrames ? ", no frames" : "",
 	       g_pipe ? "pipelined: 3 rounds in flight" : "lock-step: an older client");
@@ -546,6 +549,7 @@ static void session (void)
 			else if (t == 4 || t == 5 || t == 6) len = 5;
 			else if (t == 7) len = 2;
 			else if (t == 8 && g_pipe) len = 5;
+			else if (t == 9 && g_pipe) len = 9;
 			else { rdlog ("rdpd: unknown message %d: the session ends", t); g_dead = 1; break; }
 			if (g_inlen < len) break;
 			const unsigned char *m = g_in + 1;
@@ -577,6 +581,11 @@ static void session (void)
 			else if (t == 6) { unsigned c = get32 (m); char one[2] = { (char) c, 0 }; if (c > 0 && c < 256) kapi_inject_key (one); }
 			else if (t == 4) { struct Win *w = find (get32 (m)); if (w && !(w->info.flags & 6)) kapi_win_raise (get32 (m)); }
 			else if (t == 5) kapi_win_close (get32 (m));
+			else if (t == 9)				// MOVE: dragged on the PC, put there on the Pi too
+			{
+				struct Win *w = find (get32 (m));
+				if (w && !(w->info.flags & 6)) kapi_win_move (get32 (m), (short) get16 (m + 4), (short) get16 (m + 6));
+			}
 			else if (t == 7) g_desktop = m[0] != 0;
 			consume (len);
 		}

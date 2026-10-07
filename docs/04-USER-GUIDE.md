@@ -398,6 +398,13 @@ speaker: 1–3 waves by the volume, a cross when muted).
   File Viewer; **Disks…** opens Disks. The bar also tells, by notifications, when a stick is
   connected (click: open it), can be removed safely, cannot be read (click: format it), or was
   pulled out without an eject.
+- **The status area** (left of those, kapi v95): the icons of the programs that put one there
+  (**Telegram**'s, with the unread messages in its tip). The pointer over an icon shows its tip; a
+  **double click** shows the program's main window again — even minimised, even on another workspace;
+  a right click is for the program (what it does with it is its own).
+
+![The menu bar's status area](../screenshots/menubar-tray.png)
+*Telegram's icon in the status area, its tip.*
 - **Click the Wi-Fi icon**: the **Wi-Fi menu** — the networks around, strongest first (the
   scan takes ~3 s), signal bars, a padlock for the secured ones, *Connected* / *Known*. Click a
   network to join it: a secured one not known yet asks its **password** (Show password; Enter
@@ -1255,8 +1262,8 @@ again (see below) the bar stays shown, the Pi's name followed by *(reconnecting.
   normal window (its title, its close button) showing the Onyx window's content — or, with
   **Onyx frames**, with the frame drawn by Onyx (its rounded corners; its title buttons: close
   closes the app, the window menu, minimise and maximise are pressed on the Pi). Move it by its
-  title bar inside Onyx Remote (the Pi's window stays where it is; moved or maximised on the Pi,
-  it follows); its close button (or Alt+F4) closes the Onyx app; clicking a window brings it to
+  title bar inside Onyx Remote: **the Pi's window is put at the same place** (with an up-to-date
+  rdpd — an older one leaves it where it was); moved or maximised on the Pi, it follows; its close button (or Alt+F4) closes the Onyx app; clicking a window brings it to
   the front on the Pi too, so it gets the keyboard. The keys are typed with the PC's layout.
   A minimised window, or one on another workspace, is not shown (as on the Pi).
 - **Over the windows, see-through as on the Pi**: the menu bar's menus (and its volume box and
@@ -3550,6 +3557,8 @@ shows there, without a notification. A conversation's **close box** closes that 
 **main window** ends Telegram (its conversations' windows with it). **View ▸ Conversations Beside the
 List** goes back to one window (the list on the left, the conversation on the right, as below); **View ▸
 Conversations in Their Own Windows** comes back to the windows (kept in `config.ini`: `windows=`).
+Telegram's **icon in the menu bar's status area** (its tip: the unread messages) brings the main window
+back with a **double click**, even when it was minimised.
 
 ![Telegram, a conversation in its own window](../screenshots/telegram-windows.png)
 *The list in the main window, Alice's conversation in a window of its own (`telegram --demo`).*

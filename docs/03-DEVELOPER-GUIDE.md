@@ -1270,6 +1270,18 @@ alone**.
 > script's `win N` sends the next events (and the dumps) to window N, `winclose` is its close box. The
 > first app with several: Telegram (one window a conversation). The design: `docs/MULTI-WINDOW-STUDY.md`.
 >
+> **The status area (kapi v95).** A program may put **one icon** in the menu bar's status area:
+> `uk_tray ("SD:/apps/<app>.app/icon.bmp", "tip")` (UIKit, `uikit/root.h`: any picture ImageKit reads,
+> brought to `KAPI_TRAY_PX` = 20 pixels square, the icons' magenta see-through) → true; call it again to
+> change the tip (Telegram: its unread messages), `uk_tray_clear ()` to take it away (the program's end
+> does it). A **double click** on it makes Elegant show the program's **first window** again (back from
+> minimised, its workspace shown) and calls the first `Root`'s virtual `onTray (KAPI_TRAY_OPEN)`; a right
+> click `onTray (KAPI_TRAY_MENU)` (a menu of its own: a `PopupMenu` in the window). The icons are
+> Elegant's (`EL_OP_TRAY_*`), kept for an Elegant started again by AppKit; the menu bar reads them
+> (`kapi_tray_list`, `kapi_tray_icon`) and reports the clicks (`kapi_tray_activate`). Without UIKit:
+> `kapi_tray_set (pixels 0xTTRRGGBB, tip, handler)` — the handler gets `GUI_EVENT_TRAY`. On the PC's
+> simulator: `SIM_TRAY="tip"` gives the menu bar an icon, `SIM_TRAYDUMP=file.elsm` writes the program's.
+>
 > **File associations**: `#include "fileassoc.h"` — `fa_open (path)` opens a path like a
 > double-click (folder → File Viewer, `.app` / ELF → run, else the app `SD:/etc/fileassoc.ini`
 > maps its extension to, as `SD:apps/<app>.app/main <path>`); `fa_app_for (path, app, cap)`
@@ -4276,7 +4288,9 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   modifiers, letters / digits as held keys only) and the characters typed (the PC's layout).
   The protocol is described at the top of `user/BinUtils/rdpd.c`. **Loss tolerance** (Wi-Fi): a
   round is sent only when something changed, and only while the server has **credit** (each
-  READY gives one); a client setting hello option bit 2 gets `CAPS` (9) and 3 rounds in flight
+  READY gives one); a client setting hello option bit 2 gets `CAPS` (9: protocol 2 since kapi v96 -- the client may
+  send `MOVE` (client 9: u32 id, s16 x y), a window dragged on the PC put at the same place on the Pi, `kapi_win_move`)
+  and 3 rounds in flight
   (an older client: lock-step, its READYs alone); a round unanswered for 250 ms makes rdpd send
   small `PING`s (10) -- the PC's dup ACKs make Circle resend its lost tail segment at once
   instead of after its 1 s minimum RTO, and the client's `PONG`s (client 8) do the same for a

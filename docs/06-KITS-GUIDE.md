@@ -355,6 +355,10 @@ ChatWin *w = new ChatWin ("Alice");
 if (!w->winOpened ()) { delete w; /* one window only: show it beside */ }
 ```
 
+**An icon in the menu bar's status area** (kapi v95): `uk_tray ("SD:/apps/myapp.app/icon.bmp", "My App - 3 new")`; a double
+click on it shows the program's first window again (even minimised) and calls the first `Root`'s `onTray (KAPI_TRAY_OPEN)`,
+a right click `onTray (KAPI_TRAY_MENU)`; `uk_tray_clear ()` takes it away.
+
 ## 5. SystemKit — talking to the system and the other programs
 
 `#include "systemkit/systemkit.h"` — link `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C).

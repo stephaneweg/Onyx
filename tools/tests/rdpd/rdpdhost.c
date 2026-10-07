@@ -112,6 +112,7 @@ static int h_win_read (unsigned id, int part, int x, int y, int w, int h, unsign
 }
 static int h_win_raise (unsigned id) { fprintf (stderr, "host: raise %u\n", id); return 0; }
 static int h_win_close (unsigned id) { fprintf (stderr, "host: close %u\n", id); return 0; }
+static int h_win_move (unsigned id, int x, int y) { fprintf (stderr, "host: move %u %d %d\n", id, x, y); return 0; }
 static void h_ptr (int x, int y, unsigned b, int wh) { fprintf (stderr, "host: ptr %d %d %u %d\n", x, y, b, wh); }
 static void h_key (const char *k) { fprintf (stderr, "host: key \"%s\"\n", k); }
 static void h_held (int k, int d) { fprintf (stderr, "host: held %d %d\n", k, d); }
@@ -152,7 +153,7 @@ int main (int argc, char **argv)
 	T->get_ticks = h_ticks; T->msleep = h_msleep; T->write = h_write; T->stdout_write = h_stdout;
 	T->get_args = h_args; T->screen_size = h_screen; T->net_status = h_net;
 	T->tcp_listen = h_listen; T->tcp_accept = h_accept; T->tcp_send = h_send; T->tcp_recv = h_recv; T->tcp_close = h_close;
-	T->win_list = h_win_list; T->win_read = h_win_read; T->win_raise = h_win_raise; T->win_close = h_win_close;
+	T->win_list = h_win_list; T->win_read = h_win_read; T->win_raise = h_win_raise; T->win_close = h_win_close; T->win_move = h_win_move;
 	T->thread_create = h_thread;
 	T->inject_pointer = h_ptr; T->inject_key = h_key; T->inject_key_held = h_held; T->inject_modifiers = h_mods;
 	setvbuf (stderr, 0, _IOLBF, 0);

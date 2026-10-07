@@ -221,8 +221,52 @@ static TProg *ProgOf (unsigned nPid, boolean bMake)
 	return pFree;
 }
 
+// The status area's icons (v95, appkit/elegant.h EL_OP_TRAY_*): one a program, shown by the menu bar.
+static struct TTray { unsigned nPid, nGen; u64 ulHandler; struct el_tray T; } s_Tray[KAPI_TRAY_MAX];
+static unsigned s_nTrayGen = 1;
+
+static TTray *TrayOf (unsigned nPid, boolean bMake)
+{
+	TTray *pFree = 0;
+	for (int i = 0; i < KAPI_TRAY_MAX; i++)
+	{
+		if (s_Tray[i].nPid == nPid) return &s_Tray[i];
+		if (s_Tray[i].nPid == 0 && pFree == 0) pFree = &s_Tray[i];
+	}
+	if (!bMake || pFree == 0) return 0;
+	memset (pFree, 0, sizeof *pFree);
+	pFree->nPid = nPid;
+	return pFree;
+}
+
+// A click on a program's icon: OPEN shows its first window (else its latest), back from minimised, and
+// tells the program; MENU only tells it.
+static long TrayActivate (unsigned nPid, int nKind)
+{
+	TTray *t = TrayOf (nPid, FALSE);
+	if (t == 0) return 0;
+	CWindow *pWin = WinOf (nPid);
+	if (pWin == 0)
+	{
+		CWindow *List[WM_MAX_WINDOWS];
+		unsigned n = g_pElWM->Snapshot (List, WM_MAX_WINDOWS);
+		for (unsigned j = n; j-- > 0 && pWin == 0; ) if (List[j]->OwnerPid () == nPid) pWin = List[j];
+	}
+	if (pWin == 0) return 0;
+	if (nKind == KAPI_TRAY_OPEN) { g_pElWM->Raise (pWin); ScreenDirty (); }
+	if (t->ulHandler != 0)
+	{
+		GUIEvent Ev;
+		Ev.ulHandler = t->ulHandler; Ev.ulSender = 0; Ev.nEvent = GUI_EVENT_TRAY; Ev.lValue = nKind; Ev.nMods = 0;
+		pWin->PushEvent (Ev);
+	}
+	return 1;
+}
+
 void el_core_program_gone (unsigned nPid)
 {
+	TTray *pT = TrayOf (nPid, FALSE);
+	if (pT != 0) { memset (pT, 0, sizeof *pT); s_nTrayGen++; }
 	TProg *p = ProgOf (nPid, FALSE);
 	if (p == 0) return;
 	if (p->pWall != 0) el_shared_free (p->pWall);
@@ -393,6 +437,14 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 			ScreenDirty ();
 			return 0;
 		}
+	case EL_OP_WIN_MOVE:			// (v96) a window put there (the remote desktop's)
+		{
+			CWindow *pW = a[0] == 0 ? pWin : WinById ((unsigned) a[0]);
+			if (pW == 0 || pW->Backmost () || pW->Topmost () || pW == pWM->FullscreenWindow ()) return -1;
+			int x = (int) a[1] - pW->ChromeL (), y = (int) a[2] - pW->ChromeT ();
+			if (x != pW->X () || y != pW->Y ()) { pW->Move (x, y); ScreenDirty (); }
+			return 0;
+		}
 	case EL_OP_WIN_CLOSE:
 		{
 			CWindow *pW = WinById ((unsigned) a[0]);
@@ -517,6 +569,51 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 		}
 	case EL_OP_CURSOR_SHOWN:
 		return (long) pWM->CursorShown ();
+
+	case EL_OP_TRAY_SET:			// (v95) the caller's icon of the status area
+		{
+			if (nInLen < sizeof (struct el_tray)) return 0;
+			TTray *t = TrayOf (nPid, TRUE);
+			if (t == 0) return 0;
+			memcpy (&t->T, pIn, sizeof t->T);
+			t->T.tip[sizeof t->T.tip - 1] = '\0';
+			t->ulHandler = (u64) a[0];
+			t->nGen = ++s_nTrayGen;
+			return 1;
+		}
+	case EL_OP_TRAY_CLEAR:
+		{
+			TTray *t = TrayOf (nPid, FALSE);
+			if (t != 0) { memset (t, 0, sizeof *t); s_nTrayGen++; }
+			return 1;
+		}
+	case EL_OP_TRAY_LIST:
+		{
+			int nMax = (int) a[0], k = 0;
+			struct kapi_tray_info *pList = (struct kapi_tray_info *) pOut;
+			if (nMax > (int) (KAPI_WS_DATA_MAX / sizeof (struct kapi_tray_info))) nMax = (int) (KAPI_WS_DATA_MAX / sizeof (struct kapi_tray_info));
+			for (int i = 0; i < KAPI_TRAY_MAX && k < nMax; i++)
+			{
+				if (s_Tray[i].nPid == 0) continue;
+				struct kapi_tray_info &I = pList[k++];
+				memset (&I, 0, sizeof I);
+				I.pid = s_Tray[i].nPid; I.gen = s_Tray[i].nGen;
+				memcpy (I.tip, s_Tray[i].T.tip, sizeof I.tip);
+				I.tip[sizeof I.tip - 1] = '\0';
+			}
+			*pnOutLen = (unsigned) k * sizeof (struct kapi_tray_info);
+			return k;
+		}
+	case EL_OP_TRAY_ICON:
+		{
+			TTray *t = TrayOf ((unsigned) a[0], FALSE);
+			if (t == 0 || a[0] == 0) return 0;
+			memcpy (pOut, t->T.px, sizeof t->T.px);
+			*pnOutLen = sizeof t->T.px;
+			return 1;
+		}
+	case EL_OP_TRAY_ACTIVATE:
+		return a[0] != 0 ? TrayActivate ((unsigned) a[0], (int) a[1]) : 0;
 
 	case EL_OP_POINTER:			// the pointer, from the caller's client area's corner
 		{

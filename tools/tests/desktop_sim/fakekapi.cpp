@@ -459,6 +459,44 @@ static void win_destroy (int n)
 
 static int win_raise (unsigned id) { fprintf (stderr, "sim: win_raise %u (window %d)\n", id, g_curWin); return 0; }
 
+// ---- the status area's icon (kapi v95): the program's own (SIM_TRAYDUMP=FILE.elsm: written there, a
+// KAPI_TRAY_PX square), or SIM_TRAY="tip" (the menu bar: one made-up icon of pid 42) ---------------------
+static unsigned g_trayPx[KAPI_TRAY_PX * KAPI_TRAY_PX]; static char g_trayTip[56]; static bool g_traySet;
+static int tray_set (const unsigned *px, const char *tip, gui_handler)
+{
+	memcpy (g_trayPx, px, sizeof g_trayPx); snprintf (g_trayTip, sizeof g_trayTip, "%s", tip ? tip : ""); g_traySet = true;
+	fprintf (stderr, "sim: tray \"%s\"\n", g_trayTip);
+	if (const char *d = getenv ("SIM_TRAYDUMP"))
+		if (FILE *f = fopen (d, "wb"))
+		{
+			int hdr[5] = { 0x4D534C45, KAPI_TRAY_PX, KAPI_TRAY_PX, 0, 0 };
+			fwrite (hdr, 4, 5, f); fwrite (g_trayPx, 4, KAPI_TRAY_PX * KAPI_TRAY_PX, f); fclose (f);
+		}
+	return 1;
+}
+static void tray_clear (void) { g_traySet = false; }
+static int tray_list (struct kapi_tray_info *o, int max)
+{
+	const char *e = getenv ("SIM_TRAY");
+	if ((!g_traySet && !e) || max < 1) return 0;
+	memset (o, 0, sizeof *o); o->pid = 42; o->gen = 1;
+	snprintf (o->tip, sizeof o->tip, "%s", g_traySet ? g_trayTip : e);
+	return 1;
+}
+static int tray_icon (unsigned pid, unsigned *px)
+{
+	if (pid != 42) return 0;
+	if (g_traySet) { memcpy (px, g_trayPx, sizeof g_trayPx); return 1; }
+	for (int y = 0; y < KAPI_TRAY_PX; y++)			// (a made-up icon: a blue disc, a white dot)
+		for (int x = 0; x < KAPI_TRAY_PX; x++)
+		{
+			int dx = 2 * x - KAPI_TRAY_PX + 1, dy = 2 * y - KAPI_TRAY_PX + 1, r2 = dx * dx + dy * dy, R = KAPI_TRAY_PX - 1;
+			px[y * KAPI_TRAY_PX + x] = r2 > R * R ? 0xFF000000u : r2 < R * R / 9 ? 0x00FFFFFFu : 0x002AABEEu;
+		}
+	return 1;
+}
+static int tray_activate (unsigned pid, int kind) { fprintf (stderr, "sim: tray_activate %u %d\n", pid, kind); return 1; }
+
 static unsigned *g_surf; static int g_surfW = 700, g_surfH = 470;	// (the one surface: applets)
 static unsigned *g_fs; static int g_fsW, g_fsH;			// (a full-screen app's buffer, while it is)
 static unsigned *fs_begin (int *w, int *h)
@@ -1627,6 +1665,7 @@ static void setup (void)
 	T->seek = f_seek; T->fsize64 = f_fsize64; T->net_info = net_info; T->exit = h_exit; T->toggle_app = toggle_app;
 	T->ram_detail = ram_detail; T->draw_text = draw_text; T->win_list = win_list;
 	T->win_new = win_new; T->win_select = win_select; T->win_destroy = win_destroy; T->win_raise = win_raise;
+	T->tray_set = tray_set; T->tray_clear = tray_clear; T->tray_list = tray_list; T->tray_icon = tray_icon; T->tray_activate = tray_activate;
 	T->list_procs = list_procs; T->proc_stats = proc_stats; T->meminfo = meminfo; T->mailbox_recv = mailbox_recv_note;
 	T->ipc_register = ipc_register_note; T->pad_state = pad_state_sim;
 	T->tcp_connect = tcp_connect; T->tcp_send = tcp_send; T->tcp_recv = tcp_recv; T->tcp_close = tcp_close;
