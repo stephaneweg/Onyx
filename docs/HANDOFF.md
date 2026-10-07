@@ -884,6 +884,9 @@ screenshot `telegram-windows.png`. What the study's Part A also lists and is not
 36 (`EL_OP_WIN_LIST`), the per-program ceiling, a "no memory for a window" notification, Elegant's own growable
 lists. **To check first on the Pi**: two conversations open, typing in each, closing one, Elegant killed and started
 again with three windows open, the dock and the menu bar with a conversation window active.
+**The status area** (2026-10-08, kapi v95): a program's icon in the menu bar (`uk_tray`; Elegant's `EL_OP_TRAY_*`,
+AppKit's `kapi_tray_*`, the menu bar's `tray_poll` / `draw_tray`); a double click raises the program's first
+window even minimised, `Root::onTray`. Telegram's icon (its tip: the unread messages). Not yet tried on the Pi.
 
 ## Several users: studied, then set aside by the user (2026-10-05) — `docs/MULTI-USER-PLAN.md`
 

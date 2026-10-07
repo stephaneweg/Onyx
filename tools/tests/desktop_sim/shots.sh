@@ -582,6 +582,10 @@ if want volume; then
 	sim menubar volume "wait;wait;down 925 15;up 925 15;$W" SIM_MENU="$MENU_TINYPAD"
 	scene volume "$OUT/volume.elsm" --crop=0,0,1024,150
 fi
+if want menubar-tray; then		# (v95: an icon in the status area -- SIM_TRAY --, the pointer over it: its tip)
+	sim menubar menubar-tray "wait;wait;move 896 15;$W" SIM_MENU="$MENU_TINYPAD" SIM_TRAY="Telegram - 2 unread messages"
+	scene menubar-tray "$OUT/menubar-tray.elsm" --crop=524,0,1024,80
+fi
 if want disks; then			# (v93: a USB stick plugged in -- SIM_USB --, SD1: there; the stick chosen)
 	sim disks disks "$W;down 140 110;up 140 110;$W" $P SIM_USB=2 SIM_VOLS=SD1; png disks	# (a stick of two partitions: USB1P1:, USB1P2:)
 fi

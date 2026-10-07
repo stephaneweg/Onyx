@@ -473,6 +473,17 @@ KAPI_FN int kapi_vol_format (const char *vol, const struct kapi_format *fmt);
 KAPI_FN int kapi_win_new (int x, int y, int w, int h, const char *t, unsigned f, unsigned **canvas);
 KAPI_FN int kapi_win_select (int win);
 KAPI_FN void kapi_win_destroy (int win);
+// (v95) The status area of the menu bar: the program's icon there (KAPI_TRAY_PX x KAPI_TRAY_PX pixels
+// 0xTTRRGGBB, TT the transparency), its tip, the handler told of a click on it (GUI_EVENT_TRAY: value
+// KAPI_TRAY_OPEN -- a double click, the program's first window already shown again --, KAPI_TRAY_MENU a
+// right click) -> 1, 0 (no graphics server, no room); tray_clear: the icon taken away (also when the
+// program ends). For the menu bar: tray_list -> how many icons (up to max into out, struct kapi_tray_info),
+// tray_icon: an icon's pixels (pid's) -> 1 / 0; tray_activate: a click on pid's icon (KAPI_TRAY_*) -> 1 / 0.
+KAPI_FN int kapi_tray_set (const unsigned *px, const char *tip, gui_handler h);
+KAPI_FN void kapi_tray_clear (void);
+KAPI_FN int kapi_tray_list (struct kapi_tray_info *out, int max);
+KAPI_FN int kapi_tray_icon (unsigned pid, unsigned *px);
+KAPI_FN int kapi_tray_activate (unsigned pid, int kind);
 // (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the
 // app's own (a protected app's table runs its pump that way, kern/el0.h). pop_event: the window's
 // next event -> 1 (*ev; its handler NOT called), 0 none; event_mods: what kapi_get_modifiers says
@@ -587,6 +598,7 @@ KAPI_FN int kapi_set_cursor (int shape);
 // handler gets GUI_EVENT_WINRESIZE: GUI_WINRESIZE_X / _Y (the frame's new top left), _W / _H (the
 // client area's new size) of its value; the app applies them. uikit: Root::setResizable.
 #define GUI_EVENT_WINRESIZE	20
+#define GUI_EVENT_TRAY		21	// (v95) the program's icon of the status area: value KAPI_TRAY_OPEN (a double click) / _MENU
 #define GUI_WINRESIZE_X(v)	((int) (short) ((unsigned long long) (v) >> 48))
 #define GUI_WINRESIZE_Y(v)	((int) (short) ((unsigned long long) (v) >> 32))
 #define GUI_WINRESIZE_W(v)	((int) (((unsigned long long) (v) >> 16) & 0xFFFF))

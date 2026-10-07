@@ -137,6 +137,7 @@ extern u32 g_WinTitleTextColor;
 #define GUI_EVENT_WINCTL	18	// (v64) a title button for the app: lValue = KAPI_FRAME_MENU
 					// (the window menu) or KAPI_FRAME_MAXIMISE (also a double
 					// click on the title bar)
+#define GUI_EVENT_TRAY		21	// (v95) the program's icon of the status area (lValue = KAPI_TRAY_*)
 #define GUI_EVENT_WINRESIZE	20	// (v82) the frame was dragged to a new size: lValue = (x << 48) |
 					// (y << 32) | (client w << 16) | client h -- the app applies it
 #define GUI_EVENT_DISPLAY_RESIZE 19	// (v66) the screen's size changed (kapi_screen_set): lValue =

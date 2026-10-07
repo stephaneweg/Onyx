@@ -677,6 +677,24 @@ static void relayout_windows ()
 		if (g_wins[i] && !g_wins[i]->gone) g_wins[i]->place_me ();
 }
 
+// ---- the icon of the menu bar's status area ---------------------------------------------------------------
+// (kapi v95, UIKit's uk_tray) Telegram's icon there, the unread messages in its tip; a double click shows the
+// main window again, even minimised (Elegant does it).
+static void tray_update (bool force)
+{
+	static int s_unread = -1;
+	int n = 0;
+	if (g_c.state == tg::AS_READY)
+		for (int i = 0; i < g_c.convs.n; i++) if (g_c.convs.a[i]->inList) n += g_c.convs.a[i]->unread;
+	if (n == s_unread && !force) return;
+	s_unread = n;
+	char tip[56];
+	if (n == 0) snprintf (tip, sizeof tip, "Telegram");
+	else if (n == 1) snprintf (tip, sizeof tip, "%s", TR ("Telegram - 1 unread message"));
+	else snprintf (tip, sizeof tip, TR ("Telegram - %d unread messages"), n);
+	uk_tray (TG_DIR "icon.bmp", tip);
+}
+
 // ---- the window -----------------------------------------------------------------------------------------
 
 class TgRoot : public Root
@@ -705,6 +723,7 @@ public:
 			if (g_c.rev != m_rev)
 			{
 				m_rev = g_c.rev;
+				tray_update (false);
 				g_head->invalidate (true); g_dp->invalidate (true); g_status->invalidate (true); g_bar->invalidate (true);
 				bool bar = g_open && g_c.showBar (g_c.conv (g_open));
 				if (bar == g_bar->hidden) relayout ();		// (the bar came or went)
@@ -857,6 +876,7 @@ int main ()
 	g_pop = new PopMenu ();
 	root.addChild (g_pop);
 	build_menu ();
+	tray_update (true);
 
 	if (g_demo)
 	{

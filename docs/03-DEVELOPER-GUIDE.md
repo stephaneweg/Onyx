@@ -1270,6 +1270,18 @@ alone**.
 > script's `win N` sends the next events (and the dumps) to window N, `winclose` is its close box. The
 > first app with several: Telegram (one window a conversation). The design: `docs/MULTI-WINDOW-STUDY.md`.
 >
+> **The status area (kapi v95).** A program may put **one icon** in the menu bar's status area:
+> `uk_tray ("SD:/apps/<app>.app/icon.bmp", "tip")` (UIKit, `uikit/root.h`: any picture ImageKit reads,
+> brought to `KAPI_TRAY_PX` = 20 pixels square, the icons' magenta see-through) → true; call it again to
+> change the tip (Telegram: its unread messages), `uk_tray_clear ()` to take it away (the program's end
+> does it). A **double click** on it makes Elegant show the program's **first window** again (back from
+> minimised, its workspace shown) and calls the first `Root`'s virtual `onTray (KAPI_TRAY_OPEN)`; a right
+> click `onTray (KAPI_TRAY_MENU)` (a menu of its own: a `PopupMenu` in the window). The icons are
+> Elegant's (`EL_OP_TRAY_*`), kept for an Elegant started again by AppKit; the menu bar reads them
+> (`kapi_tray_list`, `kapi_tray_icon`) and reports the clicks (`kapi_tray_activate`). Without UIKit:
+> `kapi_tray_set (pixels 0xTTRRGGBB, tip, handler)` — the handler gets `GUI_EVENT_TRAY`. On the PC's
+> simulator: `SIM_TRAY="tip"` gives the menu bar an icon, `SIM_TRAYDUMP=file.elsm` writes the program's.
+>
 > **File associations**: `#include "fileassoc.h"` — `fa_open (path)` opens a path like a
 > double-click (folder → File Viewer, `.app` / ELF → run, else the app `SD:/etc/fileassoc.ini`
 > maps its extension to, as `SD:apps/<app>.app/main <path>`); `fa_app_for (path, app, cap)`

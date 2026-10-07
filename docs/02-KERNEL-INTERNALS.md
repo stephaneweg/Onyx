@@ -1185,6 +1185,11 @@ from now on calls them in AppKit, so its package says `kapi >= 87`.
 v88 = **AppKit: program starting**: no entry added — the `lx_*` functions (an app or a file started by its
 runner) are AppKit's (they were `user/launch.h`). The same day **SystemKit** and **NetKit** appear (docs/03 §5.9.0).
 
+v95 = **the status area's icons** (2026-10-08): no table entry changes — Elegant keeps one icon a program
+(`EL_OP_TRAY_*`), AppKit's `kapi_tray_set` / `_clear` (a program) and `kapi_tray_list` / `_icon` / `_activate`
+(the menu bar); `KAPI_TRAY_PX` (20), `KAPI_TRAY_MAX` (16), `struct kapi_tray_info`, `GUI_EVENT_TRAY` (21) with
+`KAPI_TRAY_OPEN` (a double click: Elegant raises the program's first window, back from minimised) or `KAPI_TRAY_MENU`.
+
 v94 = **several windows a program** (2026-10-07; `docs/MULTI-WINDOW-STUDY.md`): no table entry changes — the
 windows are Elegant's, reached by AppKit (`kapi_win_new`, `kapi_win_select`, `kapi_win_destroy`: docs/03 §6 *Several
 windows*). The kernel's part (`sys/wsrv.cpp`, `kern/layout.h`): a program's windows 1..16 beside its first have their

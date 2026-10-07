@@ -4,6 +4,7 @@
 #include "uikit/lang.h"		// TR (the window menu's words)
 #include "uikit/font.h"		// uikit::init (load the global font family at startup)
 #include "uikit/dialog.h"		// PopupMenu (the window menu)
+#include "uikit/bmp.h"		// ui::icon_load (the status area's icon)
 #include "appkit/appkit.h"
 #include "systemkit/systemkit.h"
 
@@ -191,7 +192,54 @@ void Root::winSelect ()
 }
 
 void Root::onClose () { closeWindow (); }
+void Root::onTray (int kind) { (void) kind; }
 void Root::uk_rootReserved0 () {}
+void Root::uk_rootReserved1 () {}
+
+// ---- the status area's icon (v95) ----------------------------------------------------------------
+static void tray_event (unsigned long, int ev, gui_value v)
+{
+	if (ev != GUI_EVENT_TRAY || s_win[0] == 0) return;
+	Root *r = s_win[0];
+	r->winSelect ();
+	r->onTray ((int) v);
+}
+
+bool uk_tray (const char *picture, const char *tip)
+{
+	if (uk_applet () || kapi_abi_version () < 95 || picture == 0) return false;
+	int w = 0, h = 0;
+	unsigned *src = ui::icon_load (picture, &w, &h);
+	if (src == 0 || w <= 0 || h <= 0) { delete [] src; return false; }
+	static unsigned px[KAPI_TRAY_PX * KAPI_TRAY_PX];
+	const int N = KAPI_TRAY_PX;
+	for (int y = 0; y < N; y++)			// (each pixel: the mean of what it covers; the key colour see-through)
+		for (int x = 0; x < N; x++)
+		{
+			int x0 = x * w / N, x1 = (x + 1) * w / N, y0 = y * h / N, y1 = (y + 1) * h / N;
+			if (x1 <= x0) x1 = x0 + 1;
+			if (y1 <= y0) y1 = y0 + 1;
+			unsigned r = 0, g = 0, b = 0, n = 0, all = 0;
+			for (int j = y0; j < y1 && j < h; j++)
+				for (int i = x0; i < x1 && i < w; i++)
+				{
+					unsigned c = src[(long) j * w + i] & 0x00FFFFFFu;
+					all++;
+					if (c == 0x00FF00FFu) continue;
+					r += (c >> 16) & 0xFF; g += (c >> 8) & 0xFF; b += c & 0xFF; n++;
+				}
+			if (n == 0) { px[y * N + x] = 0xFF000000u; continue; }
+			unsigned t = 255 - n * 255 / (all ? all : 1);
+			px[y * N + x] = t << 24 | (r / n) << 16 | (g / n) << 8 | (b / n);
+		}
+	delete [] src;
+	return kapi_tray_set (px, tip, tray_event) == 1;
+}
+
+void uk_tray_clear ()
+{
+	if (!uk_applet () && kapi_abi_version () >= 95) kapi_tray_clear ();
+}
 
 void Root::closeWindow ()
 {
