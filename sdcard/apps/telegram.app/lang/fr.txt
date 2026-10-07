@@ -20,7 +20,7 @@ Sun	dim.
 Mon	lun.
 Tue	mar.
 Wed	mer.
-Search contacts and conversations	Chercher contacts et conversations
+Search...	Rechercher...
 Nobody by that name.	Personne de ce nom.
 No conversations yet.	Pas encore de conversation.
 Loading your conversations...	Chargement de vos conversations...
@@ -216,3 +216,12 @@ This file is not a picture Onyx can read.	Ce fichier n'est pas une image qu'Onyx
 the clipboard's picture	l'image du presse-papiers
 Pictures|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.pcx|All files|*	Images|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.pcx|Tous les fichiers|*
 The Image Viewer is not installed.	La Visionneuse d'images n'est pas installée.
+Add	Ajouter
+Cancel	Annuler
+Add a Contact	Ajouter un contact
+Add a Contact...	Ajouter un contact...
+The phone number, with its country code: +33 6 12 34 56 78	Le numéro de téléphone, avec son indicatif : +33 6 12 34 56 78
+Their phone number, with its country code.	Son numéro de téléphone, avec son indicatif.
+Last name	Nom
+This phone number has no Telegram account (or its owner does not let others find them by their number).	Ce numéro n'a pas de compte Telegram (ou son propriétaire ne se laisse pas trouver par son numéro).
+The contact could not be added. %s	Le contact n'a pas pu être ajouté. %s

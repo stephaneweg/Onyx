@@ -19,6 +19,7 @@ static long long g_open = 0;			// the conversation shown (0: none)
 static void open_conversation (long long peer);
 static void status_menu (int x, int y);
 static bool g_hasMenuBar = true;
+static void add_contact_dialog ();
 
 // The last message of a conversation in a line ("You: ok", "Bob: Lunch?", "[Photo]").
 static void preview (tg::Conv *cv, char *out, int cap)
@@ -77,7 +78,7 @@ public:
 	void onDraw () override
 	{
 		Textbox::onDraw ();
-		if (!text[0] && !hasFocus) ftext (canvas, g_face.ui, 8, (height - g_face.ui->height ()) / 2, TR ("Search contacts and conversations"), TC_LIGHT, 1, width - 30);
+		if (!text[0] && !hasFocus) ftext (canvas, g_face.ui, 8, (height - g_face.ui->height ()) / 2, TR ("Search..."), TC_LIGHT, 1, width - 30);
 		VPath p;
 		int cx = width - 14, cy = height / 2 - 1;
 		p.arc (V (cx), V (cy), V (5), 0, 360, V (1) + 8);
@@ -98,7 +99,7 @@ public:
 						      m_meHot (false), m_rev (0), m_lastClick (0), m_lastRow (-1)
 	{
 		folded[0] = folded[1] = folded[2] = false;
-		search = new SearchBox (10, HEAD_H + 5, w - 20, 24);
+		search = new SearchBox (10, HEAD_H + 5, w - 52, 24);
 		search->maxLen = 60;
 		search->changed = searchChanged;
 		search->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
@@ -137,6 +138,12 @@ public:
 		drawMe (cv);
 		fill_grad (cv, 0, HEAD_H, width, SEARCH_H, TC_SKY_BOT, 0xFFFFFF);
 		cv.fillRect (0, HEAD_H + SEARCH_H - 1, width, 1, TC_LINE);
+		// "+": a contact added by phone number
+		int ax = width - 38, ay = HEAD_H + 4;
+		if (m_addHot) { uk_rbox (cv, ax, ay, 28, 26, 5, TC_HOT_TOP, TC_HOT_BOT); uk_rline (cv, ax, ay, 28, 26, 5, TC_HOT_RIM); }
+		buddy (cv, ax + 3, ay + 5, 16, TC_ONLINE);
+		{ VPath p; p.circle (V (ax + 21), V (ay + 17), V (6)); p.fill (cv, 0xFFFFFF); p.clear (); p.circle (V (ax + 21), V (ay + 17), V (5)); p.fill (cv, 0x2F8CE0);
+		  p.clear (); p.line (V (ax + 18), V (ay + 17), V (ax + 24), V (ay + 17), V (1) + 8); p.line (V (ax + 21), V (ay + 14), V (ax + 21), V (ay + 20), V (1) + 8); p.fill (cv, 0xFFFFFF); }
 		// the scroll bar
 		int total = contentH (), view = height - top;
 		if (total > view)
@@ -154,11 +161,14 @@ public:
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
 	{
 		(void) br; (void) bm;
-		if (mx < 0) { setHot (-1); m_meHot = false; invalidate (true); return false; }
+		if (mx < 0) { setHot (-1); m_meHot = m_addHot = false; invalidate (true); return false; }
 		int top = HEAD_H + SEARCH_H;
 		if (wheel) { scrollBy (-wheel * 3 * CONTACT_H); return true; }
 		bool me = my < HEAD_H && mx >= 76 && mx < 76 + m_meW && my >= 30 && my < 52;
 		if (me != m_meHot) { m_meHot = me; invalidate (true); }
+		bool add = my >= HEAD_H + 4 && my < HEAD_H + 30 && mx >= width - 38 && mx < width - 10;
+		if (add != m_addHot) { m_addHot = add; invalidate (true); }
+		if (add) { uk_cursor (KAPI_CURSOR_HAND); if (bl && !m_down) { m_down = true; add_contact_dialog (); } else if (!bl) m_down = false; return true; }
 		if (my < top) { setHot (-1); if (bl && !m_down && me) { m_down = true; status_menu (76, 52); } if (!bl) m_down = false; return my >= HEAD_H ? false : true; }
 		int row = rowAt (my);
 		setHot (row);
@@ -184,7 +194,7 @@ private:
 	int m_n, m_cap;
 	Row *m_rows;
 	int m_scroll, m_hot;
-	bool m_down, m_meHot;
+	bool m_down, m_meHot, m_addHot = false;
 	int m_meW = 100;
 	unsigned m_rev;
 	unsigned m_lastClick;

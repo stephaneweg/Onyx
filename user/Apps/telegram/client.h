@@ -167,7 +167,7 @@ enum ReqKind
 {
 	R_NONE, R_SENDCODE, R_SIGNIN, R_SIGNUP, R_GETPASSWORD, R_CHECKPASSWORD, R_SELF, R_STATE, R_DIALOGS, R_CONTACTS,
 	R_HISTORY, R_SEND, R_READ, R_DIFF, R_STATUS, R_TYPING, R_EXPORT, R_IMPORT, R_FILE, R_CONFIG, R_LOGOUT, R_OTHER,
-	R_PART, R_SENDMEDIA
+	R_PART, R_SENDMEDIA, R_ADDCONTACT
 };
 
 enum { MAXDC = 6, MAXPEND = 256 };
@@ -536,6 +536,32 @@ public:
 		return false;
 	}
 
+	// ---- adding a contact by phone number -------------------------------------------------------------
+
+	// contacts.importContacts: the answer comes in added (0 while it goes): the new contact's peer, or -1
+	// (the number has no Telegram account), -2 (an error: error[]).
+	long long added = 0;
+	bool adding = false;
+	void addContact (const char *phone, const char *first, const char *last)
+	{
+		char num[32]; int o = 0;
+		for (const char *p = phone; *p && o < (int) sizeof num - 1; p++) if (*p >= '0' && *p <= '9') num[o++] = *p;
+		num[o] = 0;
+		added = 0; adding = true; error[0] = 0;
+		tl::Arena a;
+		tl::Val *pc = tl::make (a, "inputPhoneContact");
+		pc->set ("client_id", tl::L (tgc::random64 () & 0x7fffffffffffll));
+		pc->set ("phone", tl::S (a, num));
+		pc->set ("first_name", tl::S (a, first && first[0] ? first : num));
+		pc->set ("last_name", tl::S (a, last ? last : ""));
+		tl::Val v = tl::Vec (a, 1);
+		v.v[0] = *pc;
+		tl::Val *q = tl::make (a, "contacts.importContacts");
+		q->set ("contacts", v);
+		if (!call (m_home, *q, R_ADDCONTACT)) { adding = false; added = -2; snprintf (error, sizeof error, "NOT_CONNECTED"); }
+		rev++;
+	}
+
 	// ---- sending a photo --------------------------------------------------------------------------
 
 	// A JPEG (w x h) sent to peer with its caption: shown at once (its file kept in the cache), sent in
@@ -611,6 +637,25 @@ public:
 		case R_FILE: gotFile (v, pe); break;
 		case R_PART: m_upBusy = false; if (m_nup) { m_up[0].next++; uploadProgress (); } break;
 		case R_SENDMEDIA: m_upBusy = false; popUpload (); updates (v); break;
+		case R_ADDCONTACT:
+		{
+			addUsers (v["users"]);
+			const tl::Val &im = v["imported"];
+			adding = false;
+			if (im.count ())
+			{
+				User *u = user (im[0]["user_id"].i ());
+				if (u) u->contact = true;
+				added = pkey (P_USER, im[0]["user_id"].i ());
+				Conv *c = convs.add (added);
+				c->peer = added; c->inList = true;
+				if (!c->topDate) c->topDate = serverTime ();
+				dialogs ();
+			}
+			else added = -1;
+			rev++;
+			break;
+		}
 		case R_CONFIG: gotConfig (v); break;
 		case R_READ: if (v.ok () && v["pts"].ok ()) bumpPts ((int) v["pts"].i ()); break;
 		case R_OTHER: if (otherFn) otherFn (otherCtx, pe.req, v, 0, 0); break;
@@ -673,6 +718,7 @@ public:
 			rev++;
 			break;
 		}
+		case R_ADDCONTACT: adding = false; added = -2; snprintf (error, sizeof error, "%s", msg); rev++; break;
 		case R_PART: case R_SENDMEDIA:
 		{
 			m_upBusy = false;

@@ -263,6 +263,29 @@ int main ()
 		CHECK (c.m_nphotoQ == q0 + 1, "... once");
 	}
 
+	// a contact added by phone number: contacts.importContacts, the user found -> a contact, a conversation
+	{
+		c.addContact ("+33 6 12 34 56 78", "Dora", "");
+		int req = 0;
+		for (int i = 0; i < tg::MAXPEND; i++) if (c.m_pend[i].req && c.m_pend[i].kind == tg::R_ADDCONTACT) req = c.m_pend[i].req;
+		CHECK (req && c.adding, "contacts.importContacts asked");
+		tl::Val *ic = tl::make (A, "importedContact"); ic->set ("user_id", tl::L (404)); ic->set ("client_id", tl::L (1));
+		tl::Val *r = tl::make (A, "contacts.importedContacts");
+		r->set ("imported", vec ({ *ic })); r->set ("popular_invites", tl::Vec (A, 0)); r->set ("retry_contacts", tl::Vec (A, 0));
+		r->set ("users", vec ({ user (404, "Dora", "", "userStatusRecently") }));
+		c.result (2, req, wire (*r));
+		long long pd = tg::pkey (tg::P_USER, 404);
+		CHECK (!c.adding && c.added == pd && c.user (404) && c.user (404)->contact && c.conv (pd) && c.conv (pd)->inList, "Dora: a contact, her conversation");
+		c.added = 0;
+		c.addContact ("+33 6 00 00 00 00", "Nobody", "");
+		for (int i = 0; i < tg::MAXPEND; i++) if (c.m_pend[i].req && c.m_pend[i].kind == tg::R_ADDCONTACT) req = c.m_pend[i].req;
+		tl::Val *r2 = tl::make (A, "contacts.importedContacts");
+		r2->set ("imported", tl::Vec (A, 0)); r2->set ("popular_invites", tl::Vec (A, 0)); r2->set ("retry_contacts", tl::Vec (A, 0)); r2->set ("users", tl::Vec (A, 0));
+		c.result (2, req, wire (*r2));
+		CHECK (c.added == -1, "a number without an account: said so");
+		c.added = 0;
+	}
+
 	// the session file
 	{
 		unsigned char key[256]; for (int i = 0; i < 256; i++) key[i] = (unsigned char) (i * 7);

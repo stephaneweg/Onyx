@@ -3523,6 +3523,15 @@ unfolded by a click on its title:
 ![Telegram, the contacts](../screenshots/telegram-contacts.png)
 *The Conversations folded: the contacts, who is online, who was seen when.*
 
+![Telegram, adding a contact](../screenshots/telegram-addcontact.png)
+*Adding a contact by their phone number.*
+
+**Adding a contact.** The **+** beside the search field (or **Telegram ▸ Add a Contact...**, **Ctrl+N**):
+their **phone number** with its country code, a **first name** and a last name (how they will be named in
+your list; Tab goes from one field to the next), **Add**. If the number has a Telegram account, they join
+your Contacts and their conversation opens: write to them. If not — or if its owner does not let
+strangers find them by their number (Telegram's privacy setting) — a message says so.
+
 **A conversation (on the right).** A click on a conversation or a contact opens it (**Ctrl+Up /
 Ctrl+Down**: the previous / next one). On top: the picture, the name, the status ("last seen 10 min
 ago", "14 members") or **"Alice is typing a message..."**. The messages, Messenger's way: **"Alice
@@ -3558,7 +3567,7 @@ shows at once in the conversation, with *Sending... 45 %* and a bar until it is 
 
 **Notifications.** A message in another conversation than the one shown: a notification bubble
 (*"Alice says: ..."*, a click brings Telegram back), and its unread count in the list. The menu
-bar: **Telegram** (Search **Ctrl+F**, Sign Out, Quit **Ctrl+Q**), **Status** (Online, Appear Offline),
+bar: **Telegram** (Search **Ctrl+F**, Add a Contact **Ctrl+N**, Sign Out, Quit **Ctrl+Q**), **Status** (Online, Appear Offline),
 **View** (the display pictures), **Help** (About).
 
 ![Telegram, a group](../screenshots/telegram-group.png)

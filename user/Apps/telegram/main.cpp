@@ -322,6 +322,81 @@ private:
 static PopMenu *g_pop;
 static void status_menu (int x, int y) { g_pop->show (x, y); }
 
+// ---- adding a contact by phone number ----------------------------------------------------------------------
+
+class AddContact : public Modal
+{
+public:
+	Textbox *phone, *first, *last;
+	AddContact () : Modal (380, 250)
+	{
+		Root *r = Root::current ();
+		left = ((r ? r->width : 940) - width) / 2; top = ((r ? r->height : 640) - height) / 2;
+		int y = titleH () + 34;
+		phone = new Textbox (130, y, 230, 26, ""); phone->maxLen = 30; addChild (phone);
+		first = new Textbox (130, y + 38, 230, 26, ""); first->maxLen = 60; addChild (first);
+		last = new Textbox (130, y + 76, 230, 26, ""); last->maxLen = 60; addChild (last);
+		phone->cb = first->cb = last->cb = [] (Widget &w) { ((AddContact *) w.parent)->ok (); };
+		Button *b = new Button (width - 196, height - 40, 90, 28, TR ("Add"), [] (Widget &w) { ((AddContact *) w.parent)->ok (); });
+		addChild (b);
+		b = new Button (width - 98, height - 40, 88, 28, TR ("Cancel"), [] (Widget &w) { ((Modal *) w.parent)->close (0); });
+		addChild (b);
+	}
+	void ok ()
+	{
+		int digits = 0;
+		for (const char *p = phone->text; *p; p++) if (*p >= '0' && *p <= '9') digits++;
+		if (digits < 6) { m_err = true; invalidate (true); phone->setFocus (); return; }
+		close (1);
+	}
+	bool onKey (long k) override
+	{
+		if (k == 27) { close (0); return true; }
+		if (k == KEY_TAB)				// (the next field)
+		{
+			Textbox *f[3] = { phone, first, last };
+			int i = phone->hasFocus ? 0 : first->hasFocus ? 1 : last->hasFocus ? 2 : -1;
+			bool back = (kapi_get_modifiers () & MOD_SHIFT) != 0;
+			f[((i < 0 ? 0 : i) + (back ? 2 : 1)) % 3]->setFocus ();
+			invalidate (true);
+			return true;
+		}
+		return false;
+	}
+	void onDraw () override
+	{
+		drawBox (TR ("Add a Contact"));
+		int y = titleH () + 10;
+		ftext (canvas, g_face.small, 16, y, m_err ? TR ("The phone number, with its country code: +33 6 12 34 56 78") : TR ("Their phone number, with its country code."), m_err ? TC_BUSY : TC_GREY, m_err ? 2 : 0, width - 32);
+		const char *l[3] = { TR ("Phone number"), TR ("First name"), TR ("Last name") };
+		for (int i = 0; i < 3; i++) ftext (canvas, g_face.ui, 16, titleH () + 39 + i * 38, l[i], TC_INK);
+	}
+private:
+	bool m_err = false;
+};
+
+static void add_contact_dialog ()
+{
+	if (g_c.state != tg::AS_READY) return;
+	AddContact *d = new AddContact ();
+	int r;
+	{ UkFaceScope f (ft_dialog_face ()); r = d->run (); }
+	if (r == 1)
+	{
+		if (g_demo)				// (the demo: the person made up)
+		{
+			static long long id = 2000;
+			demo_user (id, d->first->text[0] ? d->first->text : d->phone->text, d->last->text, "", tg::ST_RECENTLY, g_c.serverTime (), true);
+			long long peer = tg::pkey (tg::P_USER, id++);
+			tg::Conv *c = g_c.convs.add (peer); c->peer = peer; c->inList = true; c->loaded = c->complete = true; c->topDate = g_c.serverTime ();
+			g_c.added = peer; g_c.rev++; g_c.dialogs ();
+		}
+		else g_c.addContact (d->phone->text, d->first->text, d->last->text);
+	}
+	delete d;
+}
+static void m_add_contact () { add_contact_dialog (); }
+
 // ---- the welcome (no conversation open) and the status bar ------------------------------------------------------
 
 class Welcome : public Widget
@@ -381,6 +456,7 @@ void build_menu ()
 	g_menu = Menu ();
 	g_menu.menu ("Telegram");
 	g_menu.item (TR ("Search"), "^F", UK_CTRL ('F'), m_search);
+	g_menu.item (TR ("Add a Contact..."), "^N", UK_CTRL ('N'), m_add_contact);
 	g_menu.separator ();
 	g_menu.item (TR ("Sign Out"), "", 0, m_signout);
 	g_menu.item (TR ("Quit"), "^Q", UK_CTRL ('Q'), m_quit);
@@ -420,6 +496,14 @@ public:
 			if (g_c.rev != m_rev) { m_rev = g_c.rev; g_head->invalidate (true); g_dp->invalidate (true); g_status->invalidate (true); }
 			g_input->edit->tickBlink ();
 			notifications ();
+			if (g_c.added)					// (a contact added: their conversation; or why not)
+			{
+				long long a = g_c.added;
+				g_c.added = 0;
+				if (a > 0) { g_list->refresh (); open_conversation (a); }
+				else if (a == -1) ft_messagebox (TR ("Add a Contact"), TR ("This phone number has no Telegram account (or its owner does not let others find them by their number)."), MB_OK);
+				else { char t[300], e[200]; friendly_error (g_c.error, g_c.floodWait, e, sizeof e); snprintf (t, sizeof t, TR ("The contact could not be added. %s"), e); ft_messagebox (TR ("Add a Contact"), t, MB_OK); }
+			}
 		}
 		else g_signin->tick ();
 #ifndef TG_NO_LOG
