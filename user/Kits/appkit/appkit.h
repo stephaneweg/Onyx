@@ -461,6 +461,18 @@ KAPI_FN int kapi_vol_mount (const char *vol);
 // characters, none of "*+,./:;<=>?[\]|), -KAPI_ENOSPC (too small or too big for it), -KAPI_EIO.
 // The caller waits while it runs (seconds on a big stick).
 KAPI_FN int kapi_vol_format (const char *vol, const struct kapi_format *fmt);
+// (v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md). Beside its first window (the one
+// kapi_create_window made: number 0), a program may have up to KAPI_WS_WINDOWS_MORE others.
+// win_new: one more window (as kapi_create_window_ex: x, y negative = placed by the system, the flags
+// WIN_FLAG_*) -> its number (1..), *canvas its pixels; -1 (none left, no memory, no graphics server).
+// The window calls (present, resize, move, the handlers, the chrome, the cursor, the menu, the
+// geometry...) act on the window win_select chose: win_select (n) -> the number it had (-1: no such
+// window; n < 0: only asked). An event of a window comes with sender = its number (0: the first one).
+// The close box of a window other than the first does not end the program: its pointer handler gets
+// GUI_EVENT_WINCTL with value KAPI_FRAME_CLOSE -- win_destroy (n) closes it.
+KAPI_FN int kapi_win_new (int x, int y, int w, int h, const char *t, unsigned f, unsigned **canvas);
+KAPI_FN int kapi_win_select (int win);
+KAPI_FN void kapi_win_destroy (int win);
 // (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the
 // app's own (a protected app's table runs its pump that way, kern/el0.h). pop_event: the window's
 // next event -> 1 (*ev; its handler NOT called), 0 none; event_mods: what kapi_get_modifiers says

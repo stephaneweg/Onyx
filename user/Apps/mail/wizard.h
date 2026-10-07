@@ -32,18 +32,22 @@ public:
 	Textbox *tName, *tEmail, *tPw, *tInHost, *tInPort, *tInUser, *tOutHost, *tOutPort, *tOutUser, *tOutPw;
 	Dropdown *dKind, *dInSec, *dOutSec; Checkbox *cKeep;
 	Button *bBack, *bNext, *bCancel, *bExtra;
-	DeviceCode dc; bool haveCode, waiting;
+	DeviceCode dc; bool haveCode, waiting, copied;
 	static const int W = 600, H = 470, PAD = 26;
 
-	Wizard () : Modal (W, H), page (P_START), prevPage (P_START), provider (-1), haveCode (false), waiting (false)
+	Wizard () : Modal (W, H), page (P_START), prevPage (P_START), provider (-1), haveCode (false), waiting (false), copied (false)
 	{
 		account_defaults (a); err[0] = 0;
 		tName = tEmail = tPw = tInHost = tInPort = tInUser = tOutHost = tOutPort = tOutUser = tOutPw = 0;
 		dKind = dInSec = dOutSec = 0; cKeep = 0; bBack = bNext = bCancel = bExtra = 0;
 		build ();
 	}
-	~Wizard () { g_wizard = 0; }
-	void clear_children () { while (firstChild) { Widget *c = firstChild; removeChild (c); delete c; } tName = tEmail = tPw = tInHost = tInPort = tInUser = tOutHost = tOutPort = tOutUser = tOutPw = 0; dKind = dInSec = dOutSec = 0; cKeep = 0; bExtra = 0; }
+	~Wizard () { g_wizard = 0; free_dead (); }
+	// A page's widgets are rebuilt from a button's own callback (Button::onMouse still uses itself after it): the old ones
+	// are kept, out of the window, until the next rebuild or the end -- never deleted under the button being clicked.
+	Widget *dead[48]; int ndead = 0;
+	void free_dead () { while (ndead) delete dead[--ndead]; }
+	void clear_children () { free_dead (); while (firstChild) { Widget *c = firstChild; removeChild (c); if (ndead < 48) dead[ndead++] = c; else delete c; } tName = tEmail = tPw = tInHost = tInPort = tInUser = tOutHost = tOutPort = tOutUser = tOutPw = 0; dKind = dInSec = dOutSec = 0; cKeep = 0; bExtra = 0; }
 	Textbox *field (int x, int y, int w, const char *v, bool pw = false) { Textbox *t = new Textbox (x, y, w, 30, v); t->password = pw; t->maxLen = 200; addChild (t); return t; }
 	Button *button (int x, int y, int w, const char *l, int tag) { Button *b = new Button (x, y, w, 34, l, wiz_btn); b->tag = tag; addChild (b); return b; }
 	void build ()
@@ -61,10 +65,16 @@ public:
 		case P_APPPW: case P_PASSWORD:
 			tPw = field (PAD + 150, page == P_APPPW ? y0 + 190 : y0 + 90, W - 2 * PAD - 150, a.inSecret, true); tPw->setFocus ();
 			if (page == P_APPPW) bExtra = button (PAD, y0 + 140, 250, "Open the page in Jet", 10);
-			else bExtra = button (PAD, y0 + 150, 200, "Settings by hand...", 11);
+			else
+			{
+				bExtra = button (PAD, y0 + 150, 200, "Settings by hand...", 11);
+				// (a work or school address whose mail Microsoft 365 or Google Workspace hosts)
+				button (PAD, y0 + 228, 260, "Microsoft 365 (Outlook)", 15); button (PAD + 272, y0 + 228, 260, "Google Workspace (Gmail)", 16);
+			}
 			break;
 		case P_OUTLOOK:
 			if (!haveCode) bExtra = button (PAD, y0 + 150, 200, "Get a code", 12);
+			else { bExtra = button (PAD, y0 + 310, 250, "Open the page in Jet", 13); button (PAD + 262, y0 + 310, 180, "Copy the code", 14); }
 			break;
 		case P_MANUAL:
 		{
@@ -123,6 +133,11 @@ public:
 		if (tag == 2) { go (page == P_MANUAL ? (prevPage == P_MANUAL ? P_START : prevPage) : P_START); return; }
 		if (tag == 10) { const char *url = (a.provider == PV_GMAIL ? "https://myaccount.google.com/apppasswords" : a.provider == PV_ICLOUD ? "https://account.apple.com" : a.provider == PV_YAHOO ? "https://login.yahoo.com/account/security" : "https://www.fastmail.com/settings/security/devicekeys"); kapi_exec (WIZ_WEB, url); return; }
 		if (tag == 11) { go (P_MANUAL); return; }
+		if (tag == 15) { account_hosted (a, PV_OUTLOOK); a.inSecret[0] = 0; haveCode = false; go (P_OUTLOOK); return; }
+		if (tag == 16) { account_hosted (a, PV_GMAIL); a.inSecret[0] = 0; provider = provider_of ("x@gmail.com"); go (P_APPPW); return; }
+		// (Outlook: Microsoft's page opened here, the code copied to be pasted in it)
+		if (tag == 13 && haveCode) { kapi_exec (WIZ_WEB, dc.verifyUri[0] ? dc.verifyUri : "https://login.microsoft.com/device"); return; }
+		if (tag == 14 && haveCode) { ::clip_set_text (dc.userCode); copied = true; invalidate (true); return; }
 		if (tag == 12) { waiting = true; Job *j = new Job; memset (j, 0, sizeof *j); j->kind = J_OAUTH_START; j->acct = a; g_m.worker.cancel = 0; g_m.worker.push (j); invalidate (true); return; }
 		if (tag == 20) { int k = dKind->sel; bool pop = k == 1; if (pop != (a.kind == K_POP3)) { a.kind = pop ? K_POP3 : K_IMAP; char host[120]; const char *at = strrchr (a.email, '@'); snprintf (host, sizeof host, pop ? "pop.%s" : "imap.%s", at ? at + 1 : ""); if (provider < 0) { scpy (a.inHost, host, sizeof a.inHost); } a.inPort = pop ? 995 : 993; a.inSec = SEC_TLS; build (); } return; }
 		if (tag == 21 || tag == 22) { if (tag == 21) { a.inSec = dInSec->sel; a.inPort = a.kind == K_POP3 ? (a.inSec == SEC_TLS ? 995 : 110) : (a.inSec == SEC_TLS ? 993 : 143); } else { a.outSec = dOutSec->sel; a.outPort = a.outSec == SEC_TLS ? 465 : 587; } build (); return; }
@@ -156,7 +171,7 @@ public:
 		{
 			waiting = false;
 			if (!r->ok) { scpy (err, r->err, sizeof err); invalidate (true); return; }
-			dc = r->dc; haveCode = true; build ();
+			dc = r->dc; haveCode = true; copied = false; build ();
 			Job *j = new Job; memset (j, 0, sizeof *j); j->kind = J_OAUTH_POLL; j->acct = a; j->dc = dc; g_m.worker.push (j);
 			return;
 		}
@@ -238,10 +253,11 @@ public:
 			char t[300]; snprintf (t, sizeof t, "Mail will try %s (IMAP) and %s (SMTP).", a.inHost, a.outHost);
 			para (PAD, y0 + 32, w, t, dim, F_SMALL);
 			text_v (canvas, PAD, y0 + 90, 30, "Password", C_TEXT);
+			para (PAD, y0 + 200, w, "A work or school address whose mail Microsoft 365 or Google Workspace keeps? Choose it:", dim, F_SMALL);
 			break;
 		}
 		case P_OUTLOOK:
-			text (canvas, PAD, y0, "Outlook.com: sign in at Microsoft", C_TEXT, F_H2, 1);
+			text (canvas, PAD, y0, provider < 0 ? "Microsoft 365: sign in at Microsoft" : "Outlook.com: sign in at Microsoft", C_TEXT, F_H2, 1);
 			para (PAD, y0 + 32, w, "Microsoft does not take passwords from mail apps: you sign in on its own page, on a phone or a PC, with a code Mail gets for you.", C_TEXT);
 			if (waiting) text (canvas, PAD, y0 + 160, "Asking Microsoft for a code...", dim);
 			if (haveCode)
@@ -252,7 +268,7 @@ public:
 				uk_fill_round (canvas, PAD, y0 + 154, w, 64, 8, C_FIELD);
 				text_c (canvas, PAD, y0 + 154, w, 64, dc.userCode, C_ACCENT, F_H1, 1);
 				text (canvas, PAD, y0 + 230, "3. Sign in with your Microsoft account and allow \"Onyx Mail\".", C_TEXT, F_UI, 1, w);
-				text (canvas, PAD, y0 + 262, "Mail goes on by itself as soon as it is done.", dim, F_SMALL);
+				para (PAD, y0 + 258, w, copied ? "The code is in the clipboard: paste it in Microsoft's page. Mail goes on by itself as soon as it is done." : "Mail goes on by itself as soon as it is done.", dim, F_SMALL);
 			}
 			break;
 		case P_MANUAL:
@@ -305,10 +321,14 @@ public:
 	HitList hits;
 	static const int W = 680, H = 500, LW = 200, PAD = 20;
 	SettingsBox () : Modal (W, H), cur (0) { tName = tLabel = tPw = 0; tSig = 0; dEvery = 0; build (); }
-	~SettingsBox () { g_settings = 0; }
+	~SettingsBox () { g_settings = 0; free_dead (); }
+	// (rebuilt from a button's callback too: the old widgets kept until the next rebuild, as the Wizard's)
+	Widget *dead[48]; int ndead = 0;
+	void free_dead () { while (ndead) delete dead[--ndead]; }
 	void build ()
 	{
-		while (firstChild) { Widget *c = firstChild; removeChild (c); delete c; }
+		free_dead ();
+		while (firstChild) { Widget *c = firstChild; removeChild (c); if (ndead < 48) dead[ndead++] = c; else delete c; }
 		int x = LW + PAD, y = titleH () + 16, w = W - x - PAD;
 		Button *b;
 		b = new Button (PAD, H - 48, LW - PAD, 32, "Add an account...", set_btn); b->tag = 1; addChild (b);

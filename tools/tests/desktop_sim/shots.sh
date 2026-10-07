@@ -103,6 +103,16 @@ build () {
 		$CXX -Iuser/Kits/fontkit -I$FT/include -I$M/include -o "$OUT/mail" "$OUT/fakekapi.o" user/Apps/mail/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmb.a" -lpthread || return 1
 		$CXX -I$M/include -o "$OUT/mkaccounts" "$OUT/fakekapi.o" tools/tests/mail/mkaccounts.cpp "$OUT/libmb.a" -lpthread; return
 	fi
+	if [ "$1" = telegram ]; then			# (Telegram: mbedTLS built for the PC -- its own copy, built once --, FileKit and zlib compiled in)
+		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mbtg" "$OUT/tgz"
+		if [ ! -f "$OUT/libmbtg.a" ]; then
+			ls $M/library/*.c | xargs -P 8 -I{} sh -c 'gcc -O1 -w -I'"$M"'/include -I'"$M"'/library -c {} -o '"$OUT"'/mbtg/$(basename {} .c).o' || return 1
+			ar rcs "$OUT/libmbtg.a" "$OUT"/mbtg/*.o
+		fi
+		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/tgz/$f.o" || return 1; done
+		$CXX -Iuser/Kits/fontkit -I$FT/include -I$M/include -Ithird_party/zlib-1.3.1 -Iuser/Kits/filekit -o "$OUT/telegram" "$OUT/fakekapi.o" user/Apps/telegram/main.cpp \
+			user/Kits/filekit/fkcore.cpp "$OUT"/tgz/*.o "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmbtg.a" -lpthread; return
+	fi
 	if [ "$1" = pdf ]; then				# (the PDF Viewer: MuPDF for the PC -- user/Apps/pdf/mupdf.mk with gcc; its FreeType)
 		make -s -j8 -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_AR=ar MU_OUT="$OUT/mupdf" MU_CFLAGS=-O2 || return 1
 		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pdf.bin" "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
@@ -158,7 +168,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies circuits pinball critters"
+      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies circuits pinball critters telegram"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -486,6 +496,26 @@ if want notes; then			# (Notes, AutoDev round 1: the six sample notes of sd/Note
 	sim notes notes-empty "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes-empty
 	rm -rf "$NW"
 fi
+if want telegram; then				# (Telegram: --demo's made-up conversations, Alice's open; the emoticons' picker; a picture dropped and sent; adding a contact; a stranger's message and its bar; a group; the contacts; the
+					#  sign-in's phone page)
+	TW="$OUT/tg_w"; rm -rf "$TW"; mkdir -p "$TW/apps/telegram.app"; nlang "$TW"
+	printf '[telegram]\nwindows=0\n' > "$TW/apps/telegram.app/config.ini"	# (these: the conversation beside the list)
+	sim telegram telegram "$W" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram
+	sim telegram telegram-emoticons "$W;move 322 503;down 322 503;up 322 503;wait;move 418 425;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-emoticons
+	sim telegram telegram-group "$W;down 120 170;up 120 170;wait;move 600 300" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-group
+	sim telegram telegram-picture "$W;drop 600 300 SD:/docs/pictures/sunset-sea.jpg;wait;$(typ 'Sunset at the beach');key 13;wait;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-picture
+	sim telegram telegram-addcontact "$W;down 276 108;up 276 108;wait;$(typ '+33612345678');key 0x09;$(typ Dora);key 0x09;$(typ Laurent);wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-addcontact
+	sim telegram telegram-stranger "$W;down 120 300;up 120 300;wait;move 600 400;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-stranger
+	sim telegram telegram-contacts "$W;down 80 215;up 80 215;wait;move 120 320;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-contacts
+	sim telegram telegram-signin "$W;$(typ +33612345678)" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_SERVICES=notify; png telegram-signin
+	# (the conversations in their own windows -- Onyx's windows of a program, kapi v94: the list, Alice's window beside it)
+	TW2="$OUT/tg_w2"; rm -rf "$TW2"; mkdir -p "$TW2/apps/telegram.app"; nlang "$TW2"
+	sim telegram tg_list "$W" SIM_POS=4,32 SIM_WRITES="$TW2" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify SIM_INACTIVE=1
+	rm -rf "$TW2"; mkdir -p "$TW2/apps/telegram.app"; nlang "$TW2"
+	sim telegram tg_conv "$W;win 1" SIM_POS=4,32 SIM_WRITES="$TW2" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify
+	scene telegram-windows "$OUT/tg_list.elsm" "$OUT/tg_conv.elsm"
+	rm -rf "$TW"
+fi
 if want stickies || want stickies-empty || want notes-desktop; then	# (Stickies, AutoDev round 1: the pinned notes on the
 					#  desktop, top right -- the sample notes, three of them pinned --; then none pinned: the
 					#  hint; then the whole desktop: the agenda, Stickies, the Notes window in front, the dock)
@@ -692,6 +722,8 @@ if want mail; then			# (Mail against two made-up mailboxes: tools/tests/mail/fak
 	WZ="down 606 414;up 606 414;$W40;$(typ 'Stephane');down 500 260;up 500 260"
 	ms mail-wizard new "$WZ;$(typ 'steph.demo@gmail.com');$W40;down 714 514;up 714 514;$W40"
 	ms mail-outlook new "$WZ;$(typ 'steph.demo@outlook.com');$W40;down 714 514;up 714 514;$W40;down 330 291;up 330 291;wait;wait;wait;wait;wait"
+	ms mail-hosted new "$WZ;$(typ 'steph@acme-demo.be');$W40;down 714 514;up 714 514;$W40"
+	ms mail-m365 new "$WZ;$(typ 'steph@acme-demo.be');$W40;down 714 514;up 714 514;$W40;down 360 368;up 360 368;$W40;down 330 291;up 330 291;wait;wait;wait;wait;wait"
 	kill $MS1 $MS2
 fi
 if want photos; then			# (Photos over a made-up library -- tools/tests/photos/make_samples.py: drawn photos as JPEGs with

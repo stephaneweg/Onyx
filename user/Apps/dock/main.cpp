@@ -257,17 +257,17 @@ static bool poll_running (void)
 
 // The windows on each workspace, small (the squares): their place on the screen, focused or not.
 struct Mini { int desk; short x, y, w, h; bool keys; };
-static Mini     g_mini[24];
+static Mini     g_mini[40];		// (kapi_win_list: 37 at most)
 static int      g_nmini;
 static unsigned g_miniSig;
 
 static bool poll_minis (void)
 {
-	struct kapi_win_info L[24];
-	int n = kapi_win_list (L, 24);
+	struct kapi_win_info L[40];
+	int n = kapi_win_list (L, 40);
 	g_nmini = 0;
 	unsigned sig = 5381;
-	for (int i = 0; i < n && g_nmini < 24; i++)
+	for (int i = 0; i < n && g_nmini < 40; i++)
 	{
 		const kapi_win_info &w = L[i];
 		if (w.id == KAPI_WIN_DESKTOP || (w.flags & (WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_BACKMOST | WIN_FLAG_SYSTEM))) continue;

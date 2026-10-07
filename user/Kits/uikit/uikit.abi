@@ -784,3 +784,12 @@
 778 _ZNK5uikit8CodeEdit9lineStartEi
 779 _ZN5uikit12uk_text_overERNS_6CanvasEiiPKcjiij
 780 _ZN5uikit12uk_text_wrapEPKciiiPiS2_Pbi
+781 _ZN5uikit13uk_win_selectEi
+782 _ZN5uikit4Root11closeWindowEv
+783 _ZN5uikit4Root7onCloseEv
+784 _ZN5uikit4Root8paintAllEv
+785 _ZN5uikit4Root8winCountEv
+786 _ZN5uikit4Root8winFirstEv
+787 _ZN5uikit4Root9winSelectEv
+788 _ZN5uikit4RootC1ENS_9NewWindowEiiiiPKcj
+789 _ZN5uikit4RootC2ENS_9NewWindowEiiiiPKcj

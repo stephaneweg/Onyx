@@ -143,7 +143,7 @@ static void stats_tick (int force)
 }
 
 #define TILE		64
-#define MAXWIN		20		// (the window manager's 16 + the desktop)
+#define MAXWIN		40		// (kapi_win_list gives 37 at most: the desktop + 36 windows; Elegant has 64 since v94)
 #define MIN_ROUND_TICKS	2		// >= 20 ms between rounds (<= 50 a second)
 #define BUSY_FACTOR	2		// ... and twice the last round's time (core 0 kept for the apps)
 

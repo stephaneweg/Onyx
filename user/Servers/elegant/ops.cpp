@@ -34,11 +34,17 @@ static const char *ProcName (unsigned nPid)
 	return pBase;
 }
 
-static CWindow *WinOf (unsigned nPid)
+// A program's window: its first (0), or another one (1 .. EL_WINDOWS_MORE; appkit/elegant.h).
+static CWindow *WinOf (unsigned nPid, int nWin = 0)
 {
-	for (int i = 0; i < EL_WINDOWS_MAX; i++)
-		if (g_pElWin[i] != 0 && g_pElWin[i]->OwnerPid () == nPid) return g_pElWin[i];
-	return 0;
+	int id = el_core_window_of_win (nPid, nWin);
+	return id >= 0 ? g_pElWin[id] : 0;
+}
+
+static int IdOf (CWindow *pWin)
+{
+	for (int i = 0; i < EL_WINDOWS_MAX; i++) if (pWin != 0 && g_pElWin[i] == pWin) return i;
+	return -1;
 }
 
 static CWindow *WinById (unsigned nId)
@@ -114,6 +120,7 @@ void el_core_save_states (unsigned nSelf)
 	{
 		CWindow *pWin = g_pElWin[i];
 		if (pWin == 0 || pWin->OwnerPid () == 0 || pWin->OwnerPid () == nSelf) continue;
+		if (el_core_window_win (i) != 0) continue;	// (a program's other windows: AppKit makes them again)
 		TSavedKey K;
 		KeyOf (pWin, &K);
 		if (memcmp (&K, &s_Key[i], sizeof K) == 0) continue;
@@ -148,8 +155,8 @@ static int Restore (unsigned nPid)
 // An Elegant started again: every attached program's window made anew -> how many.
 int el_core_restore_all (void)
 {
-	unsigned Pids[64];
-	int n = el_sys_clients (Pids, 64), nMade = 0;
+	static unsigned Pids[256];
+	int n = el_sys_clients (Pids, 256), nMade = 0;
 	for (int i = 0; i < n; i++)
 		if (WinOf (Pids[i]) == 0 && Restore (Pids[i]) >= 0) nMade++;
 	return nMade;
@@ -157,9 +164,10 @@ int el_core_restore_all (void)
 
 // The caller's window made (kapi.cpp CreateWindow: no bigger than the screen; placed in the work
 // area, clear of the screen's left fifth, when the caller gives no place).
-static long OpCreate (unsigned nPid, const long *a, const u8 *pIn, unsigned nInLen)
+static long OpCreate (unsigned nPid, int nWin, const long *a, const u8 *pIn, unsigned nInLen)
 {
-	if (WinOf (nPid) != 0) return 1;				// (one window a program)
+	if (nWin < 0 || nWin > EL_WINDOWS_MORE) return 0;
+	if (WinOf (nPid, nWin) != 0) return 1;				// (it has that one)
 	if (nInLen < sizeof (struct el_create)) return 0;
 	struct el_create C;
 	memcpy (&C, pIn, sizeof C);
@@ -184,11 +192,13 @@ static long OpCreate (unsigned nPid, const long *a, const u8 *pIn, unsigned nInL
 		y = ay + (nYRange > 0 ? (int) (s_nRng % (unsigned) nYRange) : 0);
 	}
 	if (!el_sys_attach (nPid)) return 0;
-	el_core_owner (nPid);
+	el_core_owner (nPid, nWin);
 	int id = el_core_window_add (x, y, w, h, C.title[0] != '\0' ? C.title : "app", C.flags, nPid);
 	el_core_owner (0);
 	if (id < 0) return 0;
 	memset (&s_Key[id], 0, sizeof s_Key[id]);			// (saved at the next turn)
+	CWindow *pFirst = nWin > 0 ? WinOf (nPid) : 0;			// (v94) another window: its program's menu
+	if (pFirst != 0 && (pFirst->Menu ()[0] != '\0' || pFirst->MenuHandler () != 0)) g_pElWin[id]->SetMenu (pFirst->Menu (), pFirst->MenuHandler ());
 	return 1;
 }
 
@@ -308,13 +318,24 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 	*pnOutLen = 0;
 	CWindowManager *pWM = g_pElWM;
 	if (pWM == 0) return EL_E_BADOP;
-	CWindow *pWin = WinOf (nPid);
+	int nWin = (int) ((unsigned) nOp >> EL_OP_WINDOW_SHIFT) & 0xFF;	// (v94) which of the caller's windows
+	nOp &= EL_OP_MASK;
+	CWindow *pWin = WinOf (nPid, nWin);
 
 	switch (nOp)
 	{
 	// ---- what needs no window of the caller's ----
 	case EL_OP_CREATE:
-		return OpCreate (nPid, a, pIn, nInLen);
+		return OpCreate (nPid, nWin, a, pIn, nInLen);
+
+	case EL_OP_DESTROY:			// (v94) one of the caller's windows closed (not its first)
+		{
+			int id = IdOf (pWin);
+			if (id < 0 || nWin == 0) return 0;
+			el_core_window_remove (id);
+			ScreenDirty ();
+			return 1;
+		}
 
 	case EL_OP_MENU_GET:
 		{
@@ -366,7 +387,7 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 		}
 	case EL_OP_WIN_RAISE:
 		{
-			CWindow *pW = WinById ((unsigned) a[0]);
+			CWindow *pW = a[0] == 0 ? pWin : WinById ((unsigned) a[0]);	// (0: the caller's, v94)
 			if (pW == 0) return -1;
 			pWM->Raise (pW);
 			ScreenDirty ();
@@ -432,11 +453,16 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 			memcpy (Name, pIn, nInLen); Name[nInLen] = '\0';
 			CWindow *List[WM_MAX_WINDOWS];
 			unsigned n = pWM->Snapshot (List, WM_MAX_WINDOWS);
-			for (unsigned i = 0; i < n; i++)
+			for (unsigned j = n; j-- > 0; )		// (from the top: a program's latest window raised)
 			{
-				CWindow *pW = List[i];
+				CWindow *pW = List[j];
 				if (pW->OwnerPid () == 0 || !StrEq (ProcName (pW->OwnerPid ()), Name)) continue;
-				if (nOp == EL_OP_APP_CLOSE) { pW->RequestExit (); return 1; }
+				if (nOp == EL_OP_APP_CLOSE)		// (its first window: the program ends)
+				{
+					CWindow *pFirst = WinOf (pW->OwnerPid ());
+					(pFirst != 0 ? pFirst : pW)->RequestExit ();
+					return 1;
+				}
 				if (pW->OffDesk ()) continue;		// (an instance on another desk is not raised)
 				pWM->Raise (pW);
 				return 1;
@@ -509,7 +535,7 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 	case EL_OP_FRAME:
 		{
 			struct el_core_frame F;
-			if (!el_core_window_frame_info (el_core_window_of (nPid), &F)) return 0;
+			if (!el_core_window_frame_info (IdOf (pWin), &F)) return 0;
 			memcpy (pOut, &F, sizeof F);			// (struct el_frame: the same fields)
 			*pnOutLen = sizeof (struct el_frame);
 			return 1;
@@ -541,7 +567,7 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 			if (h > g_nScreenHeight) h = g_nScreenHeight;
 			if (w > pWin->Canvas ()->Width () || h > pWin->Canvas ()->Height ())
 			{
-				el_core_owner (nPid);
+				el_core_owner (nPid, nWin);
 				boolean bOK = pWin->Grow (w, h);
 				el_core_owner (0);
 				if (!bOK) return 0;
@@ -586,6 +612,12 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 			unsigned n = nInLen < WIN_MENU_MAX - 1 ? nInLen : WIN_MENU_MAX - 1;
 			memcpy (s_Spec, pIn, n); s_Spec[n] = '\0';
 			pWin->SetMenu (s_Spec, (u64) a[0]);
+			if (nWin == 0)				// (v94) the program's other windows show its menu too
+				for (int w = 1; w <= EL_WINDOWS_MORE; w++)
+				{
+					CWindow *pW = WinOf (nPid, w);
+					if (pW != 0) pW->SetMenu (s_Spec, (u64) a[0]);
+				}
 			return 1;
 		}
 	case EL_OP_DRAG_BEGIN:

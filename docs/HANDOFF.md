@@ -4,6 +4,43 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Telegram for Onyx, an instant messenger in the way of Windows Live Messenger (2026-10-07): built, tested on the PC, in `main`, published
+
+Asked by the user ("une app de messagerie pour Telegram, avec un look soigné comme Live ou Yahoo Messenger"), after
+studying Discord / WhatsApp / Messenger (their terms forbid third-party clients; Telegram allows them). **Read docs/04 §12
+*Telegram*** (the use) and **docs/03 *Telegram*** (the code: its own MTProto 2.0, no TDLib).
+
+- **Done**: `user/Apps/telegram` -- the TL codec driven by the API's schema (layer 229, `tools/telegram/mkschema.py`), the
+  crypto on mbedTLS (AES-IGE, RSA_PAD, DH, pq, SRP, an entropy pool + CTR_DRBG + `seed.bin`), the MTProto session
+  (key exchange, encrypted messages, service messages, TCP intermediate transport), the client (sign-in with code,
+  cloud password and sign-up; migrations; the model kept by the updates and getDifference; sending, reading, typing,
+  status; profile photos from any data centre), the window (contact list with Favourites / Conversations / Contacts,
+  the conversation "X says:", read ticks, display pictures, emoticons drawn by vectors and typed `:)`, the picker,
+  notifications, `--demo`), `lang/fr.txt` (209 words), `app.txt`, `icon.bmp` (`tools/icons/telegram_icon.py`),
+  `[app.telegram]` in `tools/pkg/packages.ini`, the `user/Makefile` rule (`telegram.elf`), `shots.sh telegram`.
+- **Tested on the PC**: `sh tools/tests/telegram/run_tgclient_test.sh` -- offline 21 + 56 checks (the codec, the crypto,
+  the model fed the server's objects, SRP against the server's side); live (TG_API_ID / TG_API_HASH: my.telegram.org's,
+  the session used TDLib's public test pair) over MTProto's HTTP transport through the proxy: keys with the test and
+  production servers, the code sent, a wrong code refused, PHONE_MIGRATE followed. **Telegram's test servers refuse
+  their own sign-in codes since late 2024** (tdlib/td#3083): the signed-in part is tried with `TG_TEST_LOGIN=1` only.
+- **The app's key** (2026-10-07, the user's choice: public): api_id 35701384, built in (`main.cpp` `TG_API_ID` / `TG_API_HASH`),
+  checked against production (an impossible number refused with PHONE_NUMBER_INVALID, not API_ID_INVALID). If Telegram
+  ever answers API_ID_PUBLISHED_FLOOD, a new key at my.telegram.org (the user's account) and `config.ini` meanwhile.
+- **Not tried (to do on the Pi)**: the TCP transport (`tgplat.h`'s `TcpTransport`, port 443 of the data centres) and a
+  real account end to end: sign in, the conversations, a message both ways, a photo from another data centre, the
+  status, Sign out; the frame rate of the list with many conversations; `log.txt` says what the connection did.
+- **Pictures** (2026-10-07, after the user's test on the Pi -- "il marche bien"): sent (the picture button, Ctrl+V of a
+  picture or a picture file, a drop; 1280 px JPEG, parts of 128 KB, sendMedia, the progress) and shown (received and
+  sent; a click: the Image Viewer). Offline-tested (tgmodel_test: 47 checks); the upload against Telegram: on the Pi.
+- **Contacts added by phone number** (2026-10-07): the "+" by the search, Ctrl+N, `contacts.importContacts`; tgmodel_test 50
+  checks.
+- **A person not in the contacts** (2026-10-07): the bar Add to contacts / Block / Unblock / hide (getFullUser's settings);
+  tgmodel_test 56 checks.
+- **Follow-ups**: show the stickers and videos, send other files, reply / edit / delete, reactions, a sound for a new message (AudioKit), the notification's click opening the
+  conversation, a kernel entropy source (the RNG200) to replace the pool's stopgap, the chat's pop-out windows (one
+  process each, as IRC's private conversations), the reusable pieces into kits (the TL codec + MTProto into NetKit if a
+  second program wants them; the emoticons into UIKit).
+
 ## Critters, lead the little creatures to the exit (AutoDev round 5, 2026-10-07): built, tested on the PC, branch `AutoDev` only
 
 Made by the AutoDev pipeline (`autodev/rounds/05-critters/`: 02 the analysis and its 37 acceptance criteria, 03 the
@@ -832,6 +869,22 @@ an example) and `docs/04` §11 *Printing*.
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
+## Several windows per program: built (2026-10-07) — `docs/MULTI-WINDOW-STUDY.md`
+
+**Done, in `main`, NOT yet tried on the Pi** (the session had no Pi; the PC's simulator only). Elegant holds 64
+windows (16 before); a program may have 16 windows besides its first: the kernel maps their buffers at fixed
+addresses of their own (`KAPI_WS_VA_WIN`, kapi v94), Elegant keys a window by (pid, number) — the number in the
+request's op (`EL_OP_WINDOW_SHIFT`) —, stamps it in the events' `sender`, turns a close box into
+`GUI_EVENT_WINCTL KAPI_FRAME_CLOSE` for a window that is not the first, and copies the first window's menu to the
+others; AppKit has `kapi_win_new` / `kapi_win_select` / `kapi_win_destroy` and a per-window state (replayed when
+Elegant starts again — the first window as before, the others made again); UIKit's `Root (NewWindow, ...)`, the
+events routed by `sender`, `Root::paintAll`, `onClose`. **Telegram** opens each conversation in its own window
+(`windows=0` in its `config.ini`: as before). The PC's simulator has the windows (`win N`, `winclose`); the
+screenshot `telegram-windows.png`. What the study's Part A also lists and is not done: the window list paged past
+36 (`EL_OP_WIN_LIST`), the per-program ceiling, a "no memory for a window" notification, Elegant's own growable
+lists. **To check first on the Pi**: two conversations open, typing in each, closing one, Elegant killed and started
+again with three windows open, the dock and the menu bar with a conversation window active.
+
 ## Several users: studied, then set aside by the user (2026-10-05) — `docs/MULTI-USER-PLAN.md`
 
 **The user's decision: Onyx stays a simple, single-user system — no multi-user.** The study is kept
@@ -1079,10 +1132,16 @@ from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear i
   model); the screenshots: `shots.sh mail` (two made-up mailboxes: `fakemail.py --demo`).
 - **On the Pi** (2026-10-02, the user): **works well with Gmail** (an app password). Yahoo: its app passwords are
   currently unavailable at Yahoo (the option greyed: Yahoo's own doing, no date given). Outlook: the user registered
-  "Onyx Mail" at Microsoft Entra (2026-10-02): its id built in, to try on the Pi. Watch: big mailboxes (the first
+  "Onyx Mail" at Microsoft Entra (2026-10-02): its id built in. **Outlook works on the Pi** (2026-10-07, the user)
+  once the SMTP / POP3 commands took Microsoft's 2-3 KB tokens (they were cut at 1 KB: "500 5.3.3 Unrecognized
+  command"); the Outlook page opens Microsoft's page in Jet and copies the code; an unknown domain can be said
+  to be Microsoft 365 (the device code) or Google Workspace (an app password). The same day, on an HDMI screen:
+  the GUI (Elegant, in user space) is responsive, Jet (WebKit) responsive enough to be usable, the HDMI sound
+  works (the output follows what is connected: USB, HDMI or the jack). Watch: big mailboxes (the first
   look takes a folder's newest 100), the TLS handshakes' time, the memory of large HTML mails (a newsletter
   wider than the pane is drawn once at its width and averaged down).
-- **Next**: try Outlook on the Pi (the id is in), IDLE for the Inbox (the code is in `imap.h`, the
+- **Next**: Gmail by OAuth (Google refuses the device code for the mail scope: the authorization code with PKCE
+  and a loopback redirect, a "Desktop app" client registered by the user, published unverified), IDLE for the Inbox (the code is in `imap.h`, the
   worker polls today), older messages on demand, rich text when writing (bold, lists, links: the HTML part is
   generated from the text today), "always show pictures from this sender", search on the server, printing / PDF.
 

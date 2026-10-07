@@ -110,7 +110,14 @@
 // each library here once, when it loads its file -- the same address in every process that maps
 // it (not a link-time address: another build or another boot may give another place).
 #define USER_LIB_BASE		(16ULL * GIGABYTE)	// 0x4_0000_0000
-#define USER_LIB_END		(32ULL * GIGABYTE)	// 0x8_0000_0000
+#define USER_LIB_END		(28ULL * GIGABYTE)	// 0x7_0000_0000 (12 GB; it was 32 GB until v94)
+
+// (v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md): its window 1..USER_WINDOW_MORE has
+// its canvas and its frame's two copies at USER_WINDOW_MORE_BASE + (window - 1) * USER_WINDOW_MORE_STEP
+// + part * USER_WS_SLOT (64 MB each; window 0 is the one at USER_WINDOW_CANVAS). [28 GB, 32 GB).
+#define USER_WINDOW_MORE_BASE	(28ULL * GIGABYTE)	// 0x7_0000_0000
+#define USER_WINDOW_MORE_STEP	0x10000000ULL		// 256 MB a window
+#define USER_WINDOW_MORE	16
 
 // (v75) The mmap arena: only vm_map places mappings here (kern/vm.h), lazy, 26 GB. The threads'
 // stack slots (kern/el0.h USER_THREAD_STACKS: 64 x 32 MB from 32 GB) end exactly at its base;
@@ -119,8 +126,8 @@
 // USER_WS_SLOT bytes at the top of the mmap arena, in the server's address space only (it maps
 // nothing with vm_map). A buffer's slot is its number.
 #define USER_WS_SLOT		0x4000000ULL		// 64 MB: a buffer's largest size
-#define USER_WS_SLOTS		128
-#define USER_WS_BASE		(USER_VA_END - USER_WS_SLOTS * USER_WS_SLOT)	// 52 GB
+#define USER_WS_SLOTS		256			// (v94; 128 before)
+#define USER_WS_BASE		(USER_VA_END - USER_WS_SLOTS * USER_WS_SLOT)	// 44 GB
 
 #define USER_MMAP_BASE		(34ULL * GIGABYTE)	// 0x8_8000_0000
 #define USER_MMAP_END		USER_VA_END		// 60 GB

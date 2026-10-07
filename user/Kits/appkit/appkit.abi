@@ -308,3 +308,6 @@
 302 kapi_vol_eject
 303 kapi_vol_mount
 304 kapi_vol_format
+305 kapi_win_destroy
+306 kapi_win_new
+307 kapi_win_select

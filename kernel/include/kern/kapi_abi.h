@@ -235,7 +235,12 @@
 //      syncs the volume's open files, flushes the stick's cache and unmounts it (-EBUSY while files are
 //      open, unless forced); vol_format makes a FAT / FAT32 / exFAT file system with a label -- never on
 //      SD: (the system's volume), on SD1:..SD3: only with KAPI_FMT_CARD.
-#define KAPI_ABI_VERSION	93
+// v94: several windows a program (docs/MULTI-WINDOW-STUDY.md): the graphics server's buffers in
+//      KAPI_WS_SLOTS slots (a program's windows 1..16 beside its first: KAPI_WS_SLOT_WIN, at
+//      KAPI_WS_VA_WIN in its memory -- the library arena ends at 28 GB), KAPI_WS_KICK names the window,
+//      the event queue 64 deep (32), USER_WS_SLOTS 256 (128). No table entry changes: AppKit's
+//      kapi_win_new / kapi_win_select / kapi_win_destroy speak to Elegant.
+#define KAPI_ABI_VERSION	94
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -1131,8 +1136,9 @@ struct kapi_gpio_spi
 #define KAPI_WS_REPLY		12	// (const struct kapi_ws_reply *) -> 0: its caller goes on
 #define KAPI_WS_CALL		13	// (struct kapi_ws_call *) -> the server's status (>= 0, or its
 					// own negative codes); -KAPI_ESRCH: no server owns the display
-#define KAPI_WS_KICK		14	// () -> the server's pid (> 0): it is told this program's pixels changed
-					// (another pid than before: the server was started again)
+#define KAPI_WS_KICK		14	// (window) -> the server's pid (> 0): it is told this program's pixels
+					// changed (another pid than before: the server was started again);
+					// window: the program's window's number (v94; 0 its first one)
 #define KAPI_WS_FOCUS		15	// (pid, 0: none) -> 0: the program that has the keyboard (kapi_key_held,
 					// a pad's focus answer by it)
 #define KAPI_WS_PROC_NAME	16	// (pid, char *out, cap) -> its length: a live process's name
@@ -1147,7 +1153,11 @@ struct kapi_gpio_spi
 #define KAPI_WS_SLOT_FRAME_OFF	2	// its frame's inactive copy
 #define KAPI_WS_SLOT_WALLPAPER	3	// the program's copy of the wallpaper (kapi_wallpaper_buffer)
 #define KAPI_WS_SLOT_XFER	4	// pixels the server hands the program (kapi_win_read)
-#define KAPI_WS_SLOTS		5
+#define KAPI_WS_SLOT_MORE	5	// (v94) a program's other windows: window w (1 .. KAPI_WS_WINDOWS_MORE),
+					// part p (0 canvas, 1 / 2 its frame's copies) -> KAPI_WS_SLOT_WIN (w, p)
+#define KAPI_WS_WINDOWS_MORE	16
+#define KAPI_WS_SLOT_WIN(w, p)	(KAPI_WS_SLOT_MORE + ((w) - 1) * 3 + (p))
+#define KAPI_WS_SLOTS		(KAPI_WS_SLOT_MORE + KAPI_WS_WINDOWS_MORE * 3)
 // ... and where each is in the program's memory (kern/layout.h USER_WINDOW_*: where a window's canvas
 // and frame always were)
 #define KAPI_WS_VA_CANVAS	0x300000000ULL
@@ -1155,6 +1165,8 @@ struct kapi_gpio_spi
 #define KAPI_WS_VA_FRAME_OFF	0x330000000ULL
 #define KAPI_WS_VA_WALLPAPER	0x340000000ULL
 #define KAPI_WS_VA_XFER		0x350000000ULL
+#define KAPI_WS_VA_MORE		0x700000000ULL	// (v94) window w's part p: + (w - 1) * 256 MB + p * 64 MB
+#define KAPI_WS_VA_WIN(w, p)	(KAPI_WS_VA_MORE + (unsigned long long) ((w) - 1) * 0x10000000ULL + (unsigned long long) (p) * 0x4000000ULL)
 #define KAPI_WS_BUF_ADOPT	1	// the buffer the program already has in that slot, of that size, left by a
 					// server that ended: taken as it is (its pixels kept) instead of a new one
 struct kapi_ws_buf
@@ -2207,6 +2219,11 @@ struct TKApiTable
 	// GUI_EVENT_WINRESIZE, lValue = (x << 48) | (y << 32) | (client_w << 16) | client_h (x, y: the
 	// frame's top left on the screen, 16 bits signed each), and the app resizes and moves itself.
 	int (*win_resizable) (int on, int min_w, int min_h);
+
+	// --- v94: a program's other windows (appkit.h kapi_win_new / _select / _destroy) ---
+	int (*win_new) (int x, int y, int w, int h, const char *title, unsigned flags, unsigned **canvas);
+	int (*win_select) (int win);
+	void (*win_destroy) (int win);
 #endif
 };
 

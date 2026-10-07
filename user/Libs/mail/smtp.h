@@ -14,9 +14,9 @@ namespace mail {
 
 struct Smtp
 {
-	Conn c; char err[300]; char ext[1024];		// EHLO's extensions, '\n'-separated, upper case
+	Conn c; char err[300]; int last; char ext[1024];		// EHLO's extensions, '\n'-separated, upper case
 	long maxSize;
-	Smtp () : maxSize (0) { err[0] = ext[0] = 0; }
+	Smtp () : maxSize (0) { last = 0; err[0] = ext[0] = 0; }
 	bool fail (const char *m) { scpy (err, m, sizeof err); return false; }
 	bool has (const char *e) const
 	{
@@ -39,11 +39,11 @@ struct Smtp
 	// a command and its reply: true when the code is `want`'s class (2 -> 2xx, 3 -> 3xx)
 	bool cmd (int want, const char *fmt, ...)
 	{
-		char t[1100]; va_list a; va_start (a, fmt); int k = vsnprintf (t, sizeof t, fmt, a); va_end (a);
-		if (k > (int) sizeof t - 3) return fail ("A command too long.");
-		t[k++] = '\r'; t[k++] = '\n';
-		if (!c.send (t, k)) return fail (c.err);
-		Buf txt; int code = reply (&txt);
+		// (a Buf: an XOAUTH2 answer -- Microsoft's token -- is a few KB)
+		va_list a; va_start (a, fmt); int k = vsnprintf (0, 0, fmt, a); va_end (a);
+		Buf t; if (k < 0 || !t.reserve (k + 3)) return fail ("Out of memory."); va_start (a, fmt); vsnprintf (t.p, k + 1, fmt, a); va_end (a); t.n = k; t.add ("\r\n");
+		if (!c.send (t.p, t.n)) return fail (c.err);
+		Buf txt; int code = reply (&txt); last = code;
 		if (code < 0) return false;
 		if (code / 100 != want) { char m[300]; snprintf (m, sizeof m, "%d %s", code, txt.c ()); for (char *q = m; *q; q++) if (*q == '\n') *q = ' '; return fail (m); }
 		return true;
@@ -84,8 +84,9 @@ struct Smtp
 		{
 			Buf s; s.addf ("user=%s\001auth=Bearer %s\001\001", user, secret);
 			Buf b; b64_encode (b, s.c (), s.n, 0);
-			ok = cmd (2, "AUTH XOAUTH2 %s", b.c ());
-			if (!ok && c.open_) { cmd (2, ""); }		// (a 334 error challenge: answered empty)
+			// the token after the 334 (as Microsoft documents it), not on the AUTH line: no line length limit to meet
+			ok = cmd (3, "AUTH XOAUTH2") && cmd (2, "%s", b.c ());
+			if (!ok && last == 334 && c.open_) cmd (2, "");	// (an error challenge: answered empty, the final refusal kept)
 		}
 		else if (has ("AUTH") && !ifind (ext, "PLAIN") && ifind (ext, "LOGIN"))
 		{

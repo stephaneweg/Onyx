@@ -22,14 +22,37 @@
 
 #define WS_KT	((const struct TKApiTable *) KAPI_TABLE_VA)
 
-static int ws__cw, ws__ch;		// the canvas: its row in pixels, its rows (kapi_draw_text)
-static int ws__lost;			// no server came back: the calls fail at once
+// (v94) A program's windows: its first (0, the one it always had) and its others (1 .. EL_WINDOWS_MORE:
+// kapi_win_new); the window calls act on the one kapi_win_select chose (0 until then). What each one
+// is, kept for Elegant started again (below).
+struct ws_win
+{
+	int	 made;				// the program has (asked for) it
+	int	 cw, ch;			// its canvas: its row in pixels, its rows (kapi_draw_text)
+	int	 x, y, lw, lh;			// where it was asked, its client size (0: as made)
+	unsigned flags;
+	char	 title[64];
+	long	 handler[3]; int handler_set;	// (bits: EL_HANDLER_*)
+	int	 alpha, cursor;
+	int	 sizable_set, sizable, min_w, min_h;
+};
+static struct ws_win ws__w[EL_WINDOWS_MORE + 1];
+static int ws__cur;				// the window the calls act on
+static int ws__lost;				// no server came back: the calls fail at once
+
+#define ws__cw	(ws__w[ws__cur].cw)
+#define ws__ch	(ws__w[ws__cur].ch)
+
+static unsigned *ws_canvas_va (int win)		// where a window's canvas is in this program
+{
+	return win == 0 ? (unsigned *) EL_VA_CANVAS : (unsigned *) EL_VA_WIN (win, 0);
+}
 
 static long ws_raw (int op, long a0, long a1, long a2, long a3, const void *in, unsigned in_len, void *out, unsigned cap)
 {
 	struct kapi_ws_call c;
 	__builtin_memset (&c, 0, sizeof c);
-	c.op = op; c.in = in; c.in_len = in_len; c.out = out; c.out_cap = cap;
+	c.op = op | ws__cur << EL_OP_WINDOW_SHIFT; c.in = in; c.in_len = in_len; c.out = out; c.out_cap = cap;
 	c.a[0] = a0; c.a[1] = a1; c.a[2] = a2; c.a[3] = a3;
 	long r = WS_KT->ws_ctl (KAPI_WS_CALL, (long) &c, 0, 0);
 	if (r != -KAPI_ESRCH || ws__lost) return r;
@@ -40,58 +63,66 @@ static long ws_raw (int op, long a0, long a1, long a2, long a3, const void *in, 
 }
 
 // ---- Elegant started again ----------------------------------------------------------------------
-// The kernel starts Elegant again when it ends. The new one knows nothing of this program's window:
-// what the program asked for is kept here and asked again (the window with its flags and title, its
-// size, its handlers, its menu, its opacity, its frame's resizing, its pointer); the pixels are the
-// same memory (the kernel kept the buffers: the new server takes them as they are) and the window
-// goes back where it was (the server kept its place in the kernel). Seen at the program's next
-// call: a request that finds no server or no window, or a present answered by another server.
-static int ws__made;				// the program has (asked for) a window
-static int ws__x, ws__y, ws__lw, ws__lh;	// where it asked it, its client size (0: as made)
-static unsigned ws__flags;
-static char ws__title[64];
-static long ws__handler[3]; static int ws__handler_set;	// (bits: EL_HANDLER_*)
-static char ws__menu[2048]; static long ws__menu_handler; static int ws__menu_set;
-static int ws__alpha = -1, ws__cursor = -1;
-static int ws__sizable_set, ws__sizable, ws__min_w, ws__min_h;
+// The kernel starts Elegant again when it ends. The new one knows nothing of this program's windows
+// (but its first one, kept in the kernel): what the program asked for is kept here and asked again
+// (each window with its flags and title, its size, its handlers, its menu (the first window's), its
+// opacity, its frame's resizing, its pointer); the first window's pixels are the same memory (the
+// kernel kept the buffers: the new server takes them as they are) and it goes back where it was (the
+// server kept its place in the kernel). Seen at the program's next call: a request that finds no
+// server or no window, or a present answered by another server.
+static char ws__menu[2048]; static long ws__menu_handler; static int ws__menu_set;	// (the first window's)
 static long ws__server;				// the server's pid, as the last present saw it
 static int ws__replaying;
 
 static unsigned ws_len (const char *s);
 
-static volatile struct el_shot *ws__shot;	// (the window as last presented: below, ws_shot_ask)
+static volatile struct el_shot *ws__shot;	// (the first window as last presented: below, ws_shot_ask)
 static unsigned char *ws__shot_copy;
 static unsigned ws__shot_cap;
 static void ws_shot_ask (void);
 
-static void ws_replay (void)
+static void ws_replay_one (void)		// (the current window)
 {
-	if (!ws__made || ws__replaying) return;
-	ws__replaying = 1;
-	ws__shot = 0;
+	struct ws_win *W = &ws__w[ws__cur];
+	if (!W->made) return;
+	if (ws__cur == 0) ws__shot = 0;
 	struct el_create c;
 	__builtin_memset (&c, 0, sizeof c);
-	c.flags = ws__flags;
-	for (unsigned i = 0; ws__title[i] != 0 && i + 1 < sizeof c.title; i++) c.title[i] = ws__title[i];
-	if (ws_raw (EL_OP_CREATE, ws__x, ws__y, ws__cw, ws__ch, &c, sizeof c, 0, 0) == 1)
+	c.flags = W->flags;
+	for (unsigned i = 0; W->title[i] != 0 && i + 1 < sizeof c.title; i++) c.title[i] = W->title[i];
+	if (ws_raw (EL_OP_CREATE, W->x, W->y, W->cw, W->ch, &c, sizeof c, 0, 0) == 1)
 	{
-		if (ws__lw > 0) ws_raw (EL_OP_RESIZE, ws__lw, ws__lh, 0, 0, 0, 0, 0, 0);
+		if (W->lw > 0) ws_raw (EL_OP_RESIZE, W->lw, W->lh, 0, 0, 0, 0, 0, 0);
 		for (int k = 0; k < 3; k++)
-			if (ws__handler_set & (1 << k)) ws_raw (EL_OP_HANDLER, k, ws__handler[k], 0, 0, 0, 0, 0, 0);
-		if (ws__menu_set) ws_raw (EL_OP_MENU_SET, ws__menu_handler, 0, 0, 0, ws__menu, ws_len (ws__menu), 0, 0);
-		if (ws__alpha >= 0) ws_raw (EL_OP_ALPHA, ws__alpha, 0, 0, 0, 0, 0, 0, 0);
-		if (ws__sizable_set) ws_raw (EL_OP_RESIZABLE, ws__sizable, ws__min_w, ws__min_h, 0, 0, 0, 0, 0);
-		if (ws__cursor >= 0) ws_raw (EL_OP_CURSOR, ws__cursor, 0, 0, 0, 0, 0, 0, 0);
-		ws_shot_ask ();
+			if (W->handler_set & (1 << k)) ws_raw (EL_OP_HANDLER, k, W->handler[k], 0, 0, 0, 0, 0, 0);
+		if (ws__cur == 0 && ws__menu_set) ws_raw (EL_OP_MENU_SET, ws__menu_handler, 0, 0, 0, ws__menu, ws_len (ws__menu), 0, 0);
+		if (W->alpha >= 0) ws_raw (EL_OP_ALPHA, W->alpha, 0, 0, 0, 0, 0, 0, 0);
+		if (W->sizable_set) ws_raw (EL_OP_RESIZABLE, W->sizable, W->min_w, W->min_h, 0, 0, 0, 0, 0);
+		if (W->cursor >= 0) ws_raw (EL_OP_CURSOR, W->cursor, 0, 0, 0, 0, 0, 0, 0);
+		if (ws__cur == 0) ws_shot_ask ();
 	}
+}
+
+static void ws_replay (int all)
+{
+	if (ws__replaying) return;
+	ws__replaying = 1;
+	int cur = ws__cur;
+	for (int w = 0; w <= EL_WINDOWS_MORE; w++)
+	{
+		if (!ws__w[w].made || (!all && w != cur)) continue;
+		ws__cur = w;
+		ws_replay_one ();
+	}
+	ws__cur = cur;
 	ws__replaying = 0;
 }
 
 static long ws_call (int op, long a0, long a1, long a2, long a3, const void *in, unsigned in_len, void *out, unsigned cap)
 {
 	long r = ws_raw (op, a0, a1, a2, a3, in, in_len, out, cap);
-	if (r != EL_E_NOWINDOW || !ws__made || ws__replaying || ws__lost) return r;
-	ws_replay ();				// (a server started again that does not have this program's window)
+	if (r != EL_E_NOWINDOW || !ws__w[ws__cur].made || ws__replaying || ws__lost) return r;
+	ws_replay (0);				// (a server started again that does not have this window)
 	return ws_raw (op, a0, a1, a2, a3, in, in_len, out, cap);
 }
 
@@ -111,6 +142,7 @@ static void ws_shot_ask (void)
 static void ws_shot_take (void)
 {
 	volatile struct el_shot *c = ws__shot;
+	if (ws__cur != 0) return;			// (the first window's only)
 	if (c == 0 || c->magic != EL_SHOT_MAGIC || !c->want) return;
 	unsigned seq = c->seq;			// (this program alone writes it)
 	__atomic_store_n ((unsigned *) &c->seq, seq + 1, __ATOMIC_SEQ_CST);	// (odd: being made)
@@ -123,12 +155,12 @@ static void ws_shot_take (void)
 static void ws_present (void)
 {
 	ws_shot_take ();
-	long server = WS_KT->ws_ctl (KAPI_WS_KICK, 0, 0, 0);
+	long server = WS_KT->ws_ctl (KAPI_WS_KICK, ws__cur, 0, 0);
 	if (server <= 0) return;
-	if (ws__server != 0 && server != ws__server)	// another server than before: the window asked again
+	if (ws__server != 0 && server != ws__server)	// another server than before: the windows asked again
 	{
-		ws_replay ();
-		WS_KT->ws_ctl (KAPI_WS_KICK, 0, 0, 0);
+		ws_replay (1);
+		WS_KT->ws_ctl (KAPI_WS_KICK, ws__cur, 0, 0);
 	}
 	ws__server = server;
 }
@@ -153,70 +185,73 @@ static unsigned *ws_create (int x, int y, int w, int h, const char *t, unsigned 
 	c.flags = f;
 	for (unsigned i = 0; t != 0 && t[i] != 0 && i + 1 < sizeof c.title; i++) c.title[i] = t[i];
 	if (ws_raw (EL_OP_CREATE, x, y, w, h, &c, sizeof c, 0, 0) != 1) return 0;
-	ws_shot_ask ();
-	if (ws__cw == 0)					// (a second call: the window it has)
+	if (ws__cur == 0) ws_shot_ask ();
+	struct ws_win *W = &ws__w[ws__cur];
+	if (W->cw == 0)						// (a second call: the window it has)
 	{
-		ws__cw = w; ws__ch = h;
-		ws__x = x; ws__y = y; ws__flags = f;
-		__builtin_memset (ws__title, 0, sizeof ws__title);
-		for (unsigned i = 0; i + 1 < sizeof ws__title && c.title[i] != 0; i++) ws__title[i] = c.title[i];
-		ws__made = 1;
+		W->cw = w; W->ch = h;
+		W->x = x; W->y = y; W->flags = f;
+		__builtin_memset (W->title, 0, sizeof W->title);
+		for (unsigned i = 0; i + 1 < sizeof W->title && c.title[i] != 0; i++) W->title[i] = c.title[i];
+		W->alpha = W->cursor = -1;
+		W->made = 1;
 	}
-	return (unsigned *) EL_VA_CANVAS;
+	return ws_canvas_va (ws__cur);
 }
 
 static unsigned *ws_resize (int w, int h)
 {
 	if (WS_OP (EL_OP_RESIZE, w, h, 0, 0) != 1) return 0;
-	ws__lw = w; ws__lh = h;
-	return (unsigned *) EL_VA_CANVAS;
+	ws__w[ws__cur].lw = w; ws__w[ws__cur].lh = h;
+	return ws_canvas_va (ws__cur);
 }
 
 static void ws_move (int x, int y)
 {
-	ws__x = x; ws__y = y;
+	ws__w[ws__cur].x = x; ws__w[ws__cur].y = y;
 	WS_OP (EL_OP_MOVE, x, y, 0, 0);
 }
 
 static void ws_handler (int kind, gui_handler fn)
 {
-	ws__handler[kind] = (long) fn; ws__handler_set |= 1 << kind;
+	ws__w[ws__cur].handler[kind] = (long) fn; ws__w[ws__cur].handler_set |= 1 << kind;
 	WS_OP (EL_OP_HANDLER, kind, fn, 0, 0);
 }
 
 static void ws_alpha (int a)
 {
-	ws__alpha = a < 0 ? 0 : a > 255 ? 255 : a;
+	ws__w[ws__cur].alpha = a < 0 ? 0 : a > 255 ? 255 : a;
 	WS_OP (EL_OP_ALPHA, a, 0, 0, 0);
 }
 
 static int ws_resizable (int on, int min_w, int min_h)
 {
-	ws__sizable_set = 1; ws__sizable = on; ws__min_w = min_w; ws__min_h = min_h;
+	struct ws_win *W = &ws__w[ws__cur];
+	W->sizable_set = 1; W->sizable = on; W->min_w = min_w; W->min_h = min_h;
 	return (int) WS_OP (EL_OP_RESIZABLE, on, min_w, min_h, 0);
 }
 
 static int ws_cursor (int shape)
 {
-	if (shape >= 0 && shape < KAPI_CURSOR_COUNT) ws__cursor = shape;
+	if (shape >= 0 && shape < KAPI_CURSOR_COUNT) ws__w[ws__cur].cursor = shape;
 	return (int) WS_OP (EL_OP_CURSOR, shape, 0, 0, 0);
 }
 
 static unsigned *ws_grow (int w, int h, int *stride)
 {
 	int row = 0;
-	ws__shot = 0;				// (the canvas may become another memory)
+	if (ws__cur == 0) ws__shot = 0;		// (the canvas may become another memory)
 	long r = ws_call (EL_OP_GROW, w, h, 0, 0, 0, 0, &row, sizeof row);
-	ws_shot_ask ();
+	if (ws__cur == 0) ws_shot_ask ();
 	if (r != 1) return 0;
 	if (row > 0)
 	{
 		if (h > ws__ch || row != ws__cw) ws__ch = h > ws__ch ? h : ws__ch;
 		ws__cw = row;
-		ws__lw = w; ws__lh = h;
+		ws__w[ws__cur].lw = w; ws__w[ws__cur].lh = h;
 	}
 	if (stride != 0) *stride = row;
-	return (unsigned *) EL_VA_CANVAS;
+	return ws_canvas_va (ws__cur);
 }
 
 static int ws_get_chrome (struct kapi_chrome *out)
@@ -224,12 +259,12 @@ static int ws_get_chrome (struct kapi_chrome *out)
 	struct el_frame f;
 	if (ws_call (EL_OP_FRAME, 0, 0, 0, 0, 0, 0, &f, sizeof f) != 1 || out == 0) return 0;
 	__builtin_memset (out, 0, sizeof *out);
-	out->content = (unsigned *) EL_VA_CANVAS;
+	out->content = ws_canvas_va (ws__cur);
 	out->content_w = f.content_w; out->content_h = f.content_h;
 	if (f.frame_w > 0)
 	{
-		out->active = (unsigned *) EL_VA_FRAME;
-		out->inactive = (unsigned *) EL_VA_FRAME_OFF;
+		out->active = ws__cur == 0 ? (unsigned *) EL_VA_FRAME : (unsigned *) EL_VA_WIN (ws__cur, 1);
+		out->inactive = ws__cur == 0 ? (unsigned *) EL_VA_FRAME_OFF : (unsigned *) EL_VA_WIN (ws__cur, 2);
 		out->chrome_w = f.frame_w; out->chrome_h = f.frame_h;
 		out->inset_l = f.inset_l; out->inset_r = f.inset_r; out->inset_t = f.inset_t; out->inset_b = f.inset_b;
 	}
@@ -241,7 +276,7 @@ static int ws_get_chrome (struct kapi_chrome *out)
 // canvas as into any buffer of the program's.
 static void ws_draw_text (int x, int y, const char *s, unsigned c)
 {
-	if (ws__cw > 0) WS_KT->draw_text_buf ((unsigned *) EL_VA_CANVAS, ws__cw, ws__ch, x, y, s, c);
+	if (ws__cw > 0) WS_KT->draw_text_buf (ws_canvas_va (ws__cur), ws__cw, ws__ch, x, y, s, c);
 }
 
 static int ws_app_text (int op, char *b, unsigned size)		// (kapi_list_windows)
@@ -276,8 +311,11 @@ static int ws_set_menu (const char *spec, gui_handler h)
 {
 	unsigned n = ws_len (spec);
 	if (n > 2047) n = 2047;
-	for (unsigned i = 0; i < n; i++) ws__menu[i] = spec[i];
-	ws__menu[n] = 0; ws__menu_handler = (long) h; ws__menu_set = 1;
+	if (ws__cur == 0)
+	{
+		for (unsigned i = 0; i < n; i++) ws__menu[i] = spec[i];
+		ws__menu[n] = 0; ws__menu_handler = (long) h; ws__menu_set = 1;
+	}
 	return (int) ws_call (EL_OP_MENU_SET, (long) h, 0, 0, 0, spec, n, 0, 0);
 }
 
@@ -381,5 +419,44 @@ static void ws_cursor_pos (int *x, int *y)
 	if (y != 0) *y = pt[1];
 }
 
+// ---- a program's other windows (v94) ----------------------------------------------------------------
+
+static int ws_win_new (int x, int y, int w, int h, const char *t, unsigned f, unsigned **canvas)
+{
+	if (canvas != 0) *canvas = 0;
+	int win = 1;
+	while (win <= EL_WINDOWS_MORE && ws__w[win].made) win++;
+	if (win > EL_WINDOWS_MORE) return -1;
+	int cur = ws__cur;
+	ws__cur = win;
+	__builtin_memset (&ws__w[win], 0, sizeof ws__w[win]);
+	unsigned *px = ws_create (x, y, w, h, t, f);
+	ws__cur = cur;
+	if (px == 0) { __builtin_memset (&ws__w[win], 0, sizeof ws__w[win]); return -1; }
+	if (canvas != 0) *canvas = px;
+	return win;
+}
+
+static int ws_win_select (int win)
+{
+	if (win < 0) return ws__cur;
+	if (win > EL_WINDOWS_MORE || (win != 0 && !ws__w[win].made)) return -1;
+	int was = ws__cur;
+	ws__cur = win;
+	return was;
+}
+
+static void ws_win_destroy (int win)
+{
+	if (win <= 0 || win > EL_WINDOWS_MORE || !ws__w[win].made) return;
+	int cur = ws__cur;
+	ws__cur = win;
+	ws_raw (EL_OP_DESTROY, 0, 0, 0, 0, 0, 0, 0, 0);
+	__builtin_memset (&ws__w[win], 0, sizeof ws__w[win]);
+	ws__cur = cur == win ? 0 : cur;
+}
+
+#undef ws__cw
+#undef ws__ch
 #undef WS_KT
 #pragma GCC diagnostic pop

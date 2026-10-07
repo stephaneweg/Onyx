@@ -1,0 +1,237 @@
+# Telegram's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+You	Vous
+Photo	Photo
+Video	Vidéo
+Voice message	Message vocal
+Audio	Audio
+File	Fichier
+Sticker	Autocollant
+GIF	GIF
+Location	Position
+Contact	Contact
+Poll	Sondage
+Link	Lien
+Message	Message
+(group event)	(événement du groupe)
+Thu	jeu.
+Fri	ven.
+Sat	sam.
+Sun	dim.
+Mon	lun.
+Tue	mar.
+Wed	mer.
+Search...	Rechercher...
+Nobody by that name.	Personne de ce nom.
+No conversations yet.	Pas encore de conversation.
+Loading your conversations...	Chargement de vos conversations...
+Connecting...	Connexion...
+Online	En ligne
+Appear offline	Apparaître hors ligne
+Favourites	Favoris
+Conversations	Conversations
+Contacts	Contacts
+typing...	écrit...
+Type a message here	Écrivez un message ici
+Emoticons	Émoticônes
+Send	Envoyer
+Today	Aujourd'hui
+Yesterday	Hier
+January	janvier
+February	février
+March	mars
+April	avril
+May	mai
+June	juin
+July	juillet
+August	août
+September	septembre
+October	octobre
+November	novembre
+December	décembre
+Thursday	jeudi
+Friday	vendredi
+Saturday	samedi
+Sunday	dimanche
+Monday	lundi
+Tuesday	mardi
+Wednesday	mercredi
+%s is recording a voice message...	%s enregistre un message vocal...
+%s is typing a message...	%s est en train d'écrire un message...
+%d subscribers	%d abonnés
+%d members	%d membres
+channel	canal
+group	groupe
+Loading the messages...	Chargement des messages...
+No messages here yet. Say hello!	Pas encore de message ici. Dites bonjour !
+%s created the group "%s"	%s a créé le groupe « %s »
+%s changed the group's name to "%s"	%s a renommé le groupe en « %s »
+%s changed the group's picture	%s a changé l'image du groupe
+%s added %s	%s a ajouté %s
+%s left the group	%s a quitté le groupe
+%s removed %s	%s a retiré %s
+%s joined the group	%s a rejoint le groupe
+%s pinned a message	%s a épinglé un message
+A call	Un appel
+%s joined Telegram	%s a rejoint Telegram
+%s took a screenshot	%s a fait une capture d'écran
+(an event of the group)	(un événement du groupe)
+Something Onyx cannot show yet	Un contenu qu'Onyx ne sait pas encore afficher
+says:	dit :
+edited	modifié
+Onyx builders	Bâtisseurs d'Onyx
+Saturday hikers	Randonneurs du samedi
+Did you get the Pi to boot from the new card?	Tu as réussi à démarrer le Pi sur la nouvelle carte ?
+Yes! Onyx starts in a few seconds now :D	Oui ! Onyx démarre en quelques secondes maintenant :D
+Great (Y)	Génial (Y)
+Good morning! Are we still on for lunch today?	Bonjour ! On déjeune toujours ensemble aujourd'hui ?
+Of course :) The usual place at 12:30?	Bien sûr :) Au même endroit à 12 h 30 ?
+Perfect. I'll bring the photos from the trip	Parfait. J'apporte les photos du voyage
+Wow, the lake looks amazing 😍	Waouh, le lac est magnifique 😍
+I'm writing this from the Telegram app on Onyx, by the way 😎	Au fait, je t'écris depuis l'app Telegram d'Onyx 😎
+No way! It looks just like the old Messenger 😂	Non ! On dirait l'ancien Messenger 😂
+The new kernel is on the package server <3	Le nouveau noyau est sur le serveur de paquets <3
+Installed, everything works here	Installé, tout marche ici
+Who wants to test the Bluetooth audio?	Qui veut tester l'audio Bluetooth ?
+Rain is forecast on Saturday :(	Il va pleuvoir samedi :(
+Then the museum? (*)	Alors le musée ? (*)
+Thanks for the help with the router!	Merci pour le coup de main avec le routeur !
+Any time ;)	Quand tu veux ;)
+Can you send me the slides from yesterday?	Tu peux m'envoyer les diapos d'hier ?
+Happy birthday David! (G)	Joyeux anniversaire David ! (G)
+Thank you so much!	Merci beaucoup !
+Smile	Sourire
+Big smile	Grand sourire
+Wink	Clin d'œil
+Sad	Triste
+Crying	En larmes
+Tongue out	Langue tirée
+Surprised	Surpris
+Angry	En colère
+Cool	Cool
+Tears of joy	Mort de rire
+In love	Amoureux
+Kiss	Bisou
+Confused	Perplexe
+Neutral	Neutre
+Embarrassed	Gêné
+Thinking	Pensif
+Heart	Cœur
+Broken heart	Cœur brisé
+Thumbs up	Pouce levé
+Thumbs down	Pouce baissé
+Star	Étoile
+Sunshine	Soleil
+Coffee	Café
+Rose	Rose
+Gift	Cadeau
+Party	Fête
+Fire	Feu
+Applause	Bravo
+OK	OK
+Thank you	Merci
+Sleepy	Endormi
+Sick	Malade
+bot	bot
+last seen just now	vu à l'instant
+last seen %d min ago	vu il y a %d min
+last seen %d h ago	vu il y a %d h
+last seen %d days ago	vu il y a %d jours
+last seen recently	vu récemment
+last seen within a week	vu cette semaine
+last seen within a month	vu ce mois-ci
+last seen a long time ago	vu il y a longtemps
+Jet Browser is not installed: install it from the Package Manager.	Jet Browser n'est pas installé : installez-le depuis le Gestionnaire de paquets.
+Sign out	Se déconnecter
+Sign out of Telegram on this Onyx? Your conversations stay on Telegram.	Se déconnecter de Telegram sur cet Onyx ? Vos conversations restent sur Telegram.
+Pick a conversation	Choisissez une conversation
+Choose someone in your list to write to them. Their new messages come in at once.	Choisissez quelqu'un dans votre liste pour lui écrire. Ses nouveaux messages arrivent aussitôt.
+Demonstration: nothing is sent	Démonstration : rien n'est envoyé
+Connected to Telegram	Connecté à Telegram
+Connecting to Telegram...	Connexion à Telegram...
+About Telegram for Onyx	À propos de Telegram pour Onyx
+Telegram for Onyx 1.0 - an unofficial Telegram client in the way of the old Messenger, written for Onyx on Telegram's open API (MTProto 2.0). MIT licence.	Telegram pour Onyx 1.0 - un client Telegram non officiel à la manière de l'ancien Messenger, écrit pour Onyx sur l'API ouverte de Telegram (MTProto 2.0). Licence MIT.
+Search	Rechercher
+Sign Out	Se déconnecter
+Quit	Quitter
+Status	Statut
+Appear Offline	Apparaître hors ligne
+View	Affichage
+Hide the Display Pictures	Masquer les images perso
+Show the Display Pictures	Afficher les images perso
+Help	Aide
+%s says:	%s dit :
+This phone number is not valid. Give it with its country code: +33 6 12 34 56 78.	Ce numéro de téléphone n'est pas valide. Donnez-le avec son indicatif : +33 6 12 34 56 78.
+This code is not the right one.	Ce code n'est pas le bon.
+Type the code Telegram sent.	Tapez le code envoyé par Telegram.
+This code has expired: ask for a new one (Use another number).	Ce code a expiré : demandez-en un nouveau (Utiliser un autre numéro).
+This password is not the right one.	Ce mot de passe n'est pas le bon.
+Telegram has banned this phone number.	Telegram a banni ce numéro de téléphone.
+Too many codes asked for this number: try again later.	Trop de codes demandés pour ce numéro : réessayez plus tard.
+Too many tries: try again later.	Trop d'essais : réessayez plus tard.
+This api_id and api_hash are not valid: check them at my.telegram.org.	Cet api_id et cet api_hash ne sont pas valides : vérifiez-les sur my.telegram.org.
+This api_id cannot be used: make your own at my.telegram.org.	Cet api_id ne peut pas être utilisé : créez le vôtre sur my.telegram.org.
+This first name is not valid.	Ce prénom n'est pas valide.
+Telegram asks for a payment to sign in with this number, which this app cannot do.	Telegram demande un paiement pour se connecter avec ce numéro, ce que cette app ne sait pas faire.
+Telegram sent a kind of password this app does not know.	Telegram a envoyé un type de mot de passe que cette app ne connaît pas.
+You were signed out: sign in again.	Vous avez été déconnecté : reconnectez-vous.
+This session was closed from another device: sign in again.	Cette session a été fermée depuis un autre appareil : reconnectez-vous.
+Too many tries: wait %d minutes.	Trop d'essais : attendez %d minutes.
+Too many tries: wait %d seconds.	Trop d'essais : attendez %d secondes.
+Telegram says: %s	Telegram répond : %s
+Sign in	Se connecter
+Please wait...	Patientez...
+The api_id is a number, the api_hash 32 letters and digits.	L'api_id est un nombre, l'api_hash 32 lettres et chiffres.
+Type your phone number with its country code.	Tapez votre numéro de téléphone avec son indicatif.
+Sign in to Telegram	Connexion à Telegram
+Welcome to Telegram	Bienvenue dans Telegram
+Enter the code	Entrez le code
+Your cloud password	Votre mot de passe cloud
+Your name	Votre nom
+Sign in as:	Statut :
+Telegram for Onyx - an unofficial client, made on Telegram's open API.	Telegram pour Onyx - un client non officiel, construit sur l'API ouverte de Telegram.
+Continue	Continuer
+Create my account	Créer mon compte
+Next	Suivant
+Use another number	Utiliser un autre numéro
+Phone number	Numéro de téléphone
+Code	Code
+Password	Mot de passe
+First name	Prénom
+Last name (optional)	Nom (facultatif)
+Telegram asks every app for its own key. Once only: sign in at my.telegram.org with your phone, open "API development tools", create an app (any name), then copy its api_id and api_hash here.	Telegram demande à chaque app sa propre clé. Une seule fois : connectez-vous sur my.telegram.org avec votre téléphone, ouvrez « API development tools », créez une app (n'importe quel nom), puis copiez ici son api_id et son api_hash.
+Type your phone number with its country code. Telegram will send you a code, in the Telegram app on your phone or by SMS.	Tapez votre numéro de téléphone avec son indicatif. Telegram vous enverra un code, dans l'app Telegram de votre téléphone ou par SMS.
+Telegram sent a code to your Telegram app on another device (+%s).	Telegram a envoyé un code dans votre app Telegram sur un autre appareil (+%s).
+Telegram sent a code by SMS to +%s.	Telegram a envoyé un code par SMS au +%s.
+Telegram is calling +%s to tell you a code.	Telegram appelle le +%s pour vous dicter un code.
+Telegram sent you a code.	Telegram vous a envoyé un code.
+Your account is protected by a password (two-step verification). Its hint: %s	Votre compte est protégé par un mot de passe (validation en deux étapes). Son indice : %s
+Your account is protected by a password (two-step verification).	Votre compte est protégé par un mot de passe (validation en deux étapes).
+This number has no Telegram account yet. Your name makes one: it is what your contacts will see.	Ce numéro n'a pas encore de compte Telegram. Votre nom en crée un : c'est ce que vos contacts verront.
+Enter: send - Shift+Enter: a new line - Ctrl+V: a picture too	Entrée : envoyer - Maj+Entrée : nouvelle ligne - Ctrl+V : une image aussi
+Picture: %s (%d x %d) - sent with the next message	Image : %s (%d x %d) - envoyée avec le prochain message
+Loading the picture...	Chargement de l'image...
+Not sent	Non envoyée
+Sending... %d%%	Envoi... %d %%
+This file is not a picture Onyx can read.	Ce fichier n'est pas une image qu'Onyx sait lire.
+the clipboard's picture	l'image du presse-papiers
+Pictures|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.pcx|All files|*	Images|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.webp;*.pcx|Tous les fichiers|*
+The Image Viewer is not installed.	La Visionneuse d'images n'est pas installée.
+Add	Ajouter
+Cancel	Annuler
+Add a Contact	Ajouter un contact
+Add a Contact...	Ajouter un contact...
+The phone number, with its country code: +33 6 12 34 56 78	Le numéro de téléphone, avec son indicatif : +33 6 12 34 56 78
+Their phone number, with its country code.	Son numéro de téléphone, avec son indicatif.
+Last name	Nom
+This phone number has no Telegram account (or its owner does not let others find them by their number).	Ce numéro n'a pas de compte Telegram (ou son propriétaire ne se laisse pas trouver par son numéro).
+The contact could not be added. %s	Le contact n'a pas pu être ajouté. %s
+You blocked %s: they cannot write to you.	Vous avez bloqué %s : il ou elle ne peut plus vous écrire.
+%s is not in your contacts.	%s n'est pas dans vos contacts.
+Unblock	Débloquer
+Add to contacts	Ajouter aux contacts
+Block	Bloquer
+Block %s? They will not be able to write to you or call you.	Bloquer %s ? Il ou elle ne pourra plus vous écrire ni vous appeler.
+Hi! We met at the Onyx meetup, I'm the one with the robot arm :)	Salut ! On s'est vus à la rencontre Onyx, c'est moi qui avais le bras robot :)
+Conversations Beside the List	Conversations à côté de la liste
+Conversations in Their Own Windows	Conversations dans leur propre fenêtre
+Too many conversations are open: close one of their windows.	Trop de conversations sont ouvertes : fermez l'une de leurs fenêtres.

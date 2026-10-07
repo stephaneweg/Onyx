@@ -17,7 +17,7 @@ struct PopMsg { int num; long size; char uidl[72]; };
 
 struct Pop3
 {
-	Conn c; char err[300]; char caps[512];
+	Conn c; char err[300]; bool cont = false; char caps[512];
 	Pop3 () { err[0] = caps[0] = 0; }
 	bool fail (const char *m) { scpy (err, m, sizeof err); return false; }
 	bool has (const char *cap) const
@@ -30,17 +30,17 @@ struct Pop3
 	bool status (Buf &ln)
 	{
 		if (!c.line (ln)) return fail (c.err);
-		if (istarts (ln.c (), "+OK")) return true;
+		if (istarts (ln.c (), "+OK") || (cont && ln.n && ln.p[0] == '+')) return true;	// (cont: a SASL "+ " challenge too)
 		const char *m = ln.c (); if (istarts (m, "-ERR")) m += 4; while (*m == ' ') m++;
 		if (*m == '[') { while (*m && *m != ']') m++; if (*m) m++; while (*m == ' ') m++; }		// ([AUTH], [IN-USE]...)
 		return fail (*m ? m : "The server refused.");
 	}
 	bool cmd (Buf &ln, const char *fmt, ...)
 	{
-		char t[1024]; va_list a; va_start (a, fmt); int k = vsnprintf (t, sizeof t, fmt, a); va_end (a);
-		if (k > (int) sizeof t - 3) return fail ("A command too long.");
-		t[k++] = '\r'; t[k++] = '\n';
-		if (!c.send (t, k)) return fail (c.err);
+		// (a Buf: an XOAUTH2 answer -- Microsoft's token -- is a few KB)
+		va_list a; va_start (a, fmt); int k = vsnprintf (0, 0, fmt, a); va_end (a);
+		Buf t; if (k < 0 || !t.reserve (k + 3)) return fail ("Out of memory."); va_start (a, fmt); vsnprintf (t.p, k + 1, fmt, a); va_end (a); t.n = k; t.add ("\r\n");
+		if (!c.send (t.p, t.n)) return fail (c.err);
 		return status (ln);
 	}
 	// a multi-line reply's lines (after its +OK) up to the lone ".", the dot-stuffing undone: CRLF-ended in out
@@ -75,7 +75,10 @@ struct Pop3
 		{
 			Buf s; s.addf ("user=%s\001auth=Bearer %s\001\001", user, secret);
 			Buf b; b64_encode (b, s.c (), s.n, 0);
-			ok = cmd (ln, "AUTH XOAUTH2 %s", b.c ());
+			// the token after the "+" (as Microsoft documents it), not on the AUTH line
+			cont = true; ok = cmd (ln, "AUTH XOAUTH2"); cont = false;
+			if (ok) ok = cmd (ln, "%s", b.c ());
+			if (!ok && ln.n && ln.p[0] == '+' && c.open_) cmd (ln, "%s", "");	// (an error challenge: answered empty, the final refusal kept)
 		}
 		else if (has ("SASL") && ifind (caps, "PLAIN"))
 		{
