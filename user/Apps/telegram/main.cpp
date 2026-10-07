@@ -45,6 +45,8 @@ using namespace uikit;
 
 static bool g_demo = false, g_pictures = true;
 static ConvHeader *g_head;
+static PeerBar *g_bar;
+#define BAR_H		34
 static ChatView *g_chat;
 static DpColumn *g_dp;
 static InputBar *g_input;
@@ -104,8 +106,12 @@ static void relayout ()
 	g_head->hidden = g_chat->hidden = g_input->hidden = !conv;
 	g_dp->hidden = !dp;
 	g_welcome->hidden = !ready || conv;
+	bool bar = conv && g_c.showBar (g_c.conv (g_open));
+	int bh = bar ? BAR_H : 0;
+	g_bar->hidden = !bar;
 	place (g_head, LIST_W, 0, rw, HEAD_H);
-	place (g_chat, LIST_W, HEAD_H, cw, h - HEAD_H - INPUT_H);
+	place (g_bar, LIST_W, HEAD_H, cw, BAR_H);
+	place (g_chat, LIST_W, HEAD_H + bh, cw, h - HEAD_H - INPUT_H - bh);
 	place (g_input, LIST_W, h - INPUT_H, cw, INPUT_H);
 	place (g_dp, LIST_W + cw, HEAD_H, DP_W, h - HEAD_H);
 	place (g_welcome, LIST_W, 0, rw, h);
@@ -493,7 +499,19 @@ public:
 		{
 			g_list->tick ();
 			g_chat->tick ();
-			if (g_c.rev != m_rev) { m_rev = g_c.rev; g_head->invalidate (true); g_dp->invalidate (true); g_status->invalidate (true); }
+			if (g_c.rev != m_rev)
+			{
+				m_rev = g_c.rev;
+				g_head->invalidate (true); g_dp->invalidate (true); g_status->invalidate (true); g_bar->invalidate (true);
+				bool bar = g_open && g_c.showBar (g_c.conv (g_open));
+				if (bar == g_bar->hidden) relayout ();		// (the bar came or went)
+			}
+			if (g_c.barError)
+			{
+				g_c.barError = false;
+				char e[200]; friendly_error (g_c.error, g_c.floodWait, e, sizeof e);
+				ft_messagebox ("Telegram", e, MB_OK);
+			}
 			g_input->edit->tickBlink ();
 			notifications ();
 			if (g_c.added)					// (a contact added: their conversation; or why not)
@@ -602,6 +620,9 @@ int main ()
 	root.addChild (g_head);
 	g_chat = new ChatView (LIST_W, HEAD_H, W0 - LIST_W - DP_W, h - HEAD_H - INPUT_H);
 	root.addChild (g_chat);
+	g_bar = new PeerBar (LIST_W, HEAD_H, W0 - LIST_W - DP_W, BAR_H);
+	g_bar->hidden = true;
+	root.addChild (g_bar);
 	g_input = new InputBar (LIST_W, h - INPUT_H, W0 - LIST_W - DP_W, INPUT_H);
 	root.addChild (g_input);
 	g_dp = new DpColumn (W0 - DP_W, HEAD_H, DP_W, h - HEAD_H, INPUT_H);

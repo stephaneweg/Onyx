@@ -91,6 +91,11 @@ static void demo_fill ()
 	g_c.conv (pd)->readOutMax = 61;
 	demo_msg (pe, 70, pe, false, day - 4 * 86400 + 18 * 3600, "", tg::M_VOICE);
 
+	// someone who is not a contact wrote: the bar
+	demo_user (1009, "Iris", "Novak", "", tg::ST_RECENTLY, now - 900, false);
+	long long pi = tg::pkey (tg::P_USER, 1009);
+	demo_msg (pi, 80, pi, false, day + 8 * 3600 + 50 * 60, TR ("Hi! We met at the Onyx meetup, I'm the one with the robot arm :)"));
+	g_c.conv (pi)->bar = 1; g_c.conv (pi)->unread = 1;
 	g_c.dialogsLoaded = g_c.contactsLoaded = true;
 	g_c.online = true;
 	g_c.state = tg::AS_READY;

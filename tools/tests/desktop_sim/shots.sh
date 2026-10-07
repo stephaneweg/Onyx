@@ -496,7 +496,7 @@ if want notes; then			# (Notes, AutoDev round 1: the six sample notes of sd/Note
 	sim notes notes-empty "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes-empty
 	rm -rf "$NW"
 fi
-if want telegram; then				# (Telegram: --demo's made-up conversations, Alice's open; the emoticons' picker; a picture dropped and sent; adding a contact; a group; the contacts; the
+if want telegram; then				# (Telegram: --demo's made-up conversations, Alice's open; the emoticons' picker; a picture dropped and sent; adding a contact; a stranger's message and its bar; a group; the contacts; the
 					#  sign-in's phone page)
 	TW="$OUT/tg_w"; rm -rf "$TW"; mkdir -p "$TW/apps/telegram.app"; nlang "$TW"
 	sim telegram telegram "$W" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram
@@ -504,6 +504,7 @@ if want telegram; then				# (Telegram: --demo's made-up conversations, Alice's o
 	sim telegram telegram-group "$W;down 120 170;up 120 170;wait;move 600 300" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-group
 	sim telegram telegram-picture "$W;drop 600 300 SD:/docs/pictures/sunset-sea.jpg;wait;$(typ 'Sunset at the beach');key 13;wait;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-picture
 	sim telegram telegram-addcontact "$W;down 276 108;up 276 108;wait;$(typ '+33612345678');key 0x09;$(typ Dora);key 0x09;$(typ Laurent);wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-addcontact
+	sim telegram telegram-stranger "$W;down 120 300;up 120 300;wait;move 600 400;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-stranger
 	sim telegram telegram-contacts "$W;down 80 215;up 80 215;wait;move 120 320;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-contacts
 	sim telegram telegram-signin "$W;$(typ +33612345678)" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_SERVICES=notify; png telegram-signin
 	rm -rf "$TW"

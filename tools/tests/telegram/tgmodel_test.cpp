@@ -286,6 +286,45 @@ int main ()
 		c.added = 0;
 	}
 
+	// someone not in the contacts wrote: the bar (getFullUser's settings), added in one click, blocked, unblocked
+	{
+		tl::Val *u = tl::make (A, "updateShortMessage");
+		u->set ("id", tl::I (50)); u->set ("user_id", tl::L (505)); u->set ("message", tl::S (A, "hello, remember me?"));
+		u->set ("pts", tl::I (70)); u->set ("pts_count", tl::I (1)); u->set ("date", tl::I (1790002000));
+		tl::Val *usr = tl::make (A, "updates");	// (the user, as getDifference would bring them)
+		usr->set ("updates", tl::Vec (A, 0)); usr->set ("users", vec ({ user (505, "Iris", "Novak", "userStatusRecently") })); usr->set ("chats", tl::Vec (A, 0));
+		usr->set ("date", tl::I (1)); usr->set ("seq", tl::I (0));
+		c.updates (wire (*usr));
+		c.updates (wire (*u));
+		long long pi = tg::pkey (tg::P_USER, 505);
+		tg::Conv *ci = c.conv (pi);
+		CHECK (ci && ci->n == 1 && !c.user (505)->contact, "a stranger's message: their conversation");
+		c.open (pi);
+		int req = 0;
+		for (int i = 0; i < tg::MAXPEND; i++) if (c.m_pend[i].req && c.m_pend[i].kind == tg::R_FULLUSER) req = c.m_pend[i].req;
+		CHECK (req && ci->asking, "users.getFullUser asked (the bar's settings)");
+		tl::Val *st = tl::make (A, "peerSettings"); st->set ("add_contact", tl::T ()); st->set ("block_contact", tl::T ());
+		tl::Val *fu = tl::make (A, "userFull"); fu->set ("id", tl::L (505)); fu->set ("settings", *st);
+		tl::Val *uf = tl::make (A, "users.userFull"); uf->set ("full_user", *fu); uf->set ("chats", tl::Vec (A, 0)); uf->set ("users", vec ({ user (505, "Iris", "Novak", "userStatusRecently") }));
+		c.result (2, req, *uf);			// (as made: a real userFull has some twenty more fields)
+		CHECK (ci->bar == 1 && !ci->blocked && c.showBar (ci), "the bar shown");
+		c.addToContacts (pi);
+		for (int i = 0; i < tg::MAXPEND; i++) if (c.m_pend[i].req && c.m_pend[i].kind == tg::R_ADDPEER) req = c.m_pend[i].req;
+		tl::Val *ups = tl::make (A, "updates");
+		ups->set ("updates", tl::Vec (A, 0)); ups->set ("users", tl::Vec (A, 0)); ups->set ("chats", tl::Vec (A, 0)); ups->set ("date", tl::I (1)); ups->set ("seq", tl::I (0));
+		c.result (2, req, wire (*ups));
+		CHECK (c.user (505)->contact && ci->bar == 2 && !c.showBar (ci), "added to the contacts: the bar gone");
+		c.block (pi, true);
+		for (int i = 0; i < tg::MAXPEND; i++) if (c.m_pend[i].req && c.m_pend[i].kind == tg::R_BLOCK) req = c.m_pend[i].req;
+		c.result (2, req, tl::B (true));
+		CHECK (ci->blocked && c.showBar (ci), "blocked: the bar says so (Unblock)");
+		tl::Val *pb = tl::make (A, "updatePeerBlocked"); pb->set ("peer_id", peerUser (505));
+		tl::Val *ups2 = tl::make (A, "updates");
+		ups2->set ("updates", vec ({ *pb })); ups2->set ("users", tl::Vec (A, 0)); ups2->set ("chats", tl::Vec (A, 0)); ups2->set ("date", tl::I (1)); ups2->set ("seq", tl::I (0));
+		c.updates (wire (*ups2));
+		CHECK (!ci->blocked && !c.showBar (ci), "unblocked elsewhere (updatePeerBlocked): the bar gone");
+	}
+
 	// the session file
 	{
 		unsigned char key[256]; for (int i = 0; i < 256; i++) key[i] = (unsigned char) (i * 7);

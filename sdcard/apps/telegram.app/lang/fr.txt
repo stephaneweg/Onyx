@@ -225,3 +225,10 @@ Their phone number, with its country code.	Son numéro de téléphone, avec son 
 Last name	Nom
 This phone number has no Telegram account (or its owner does not let others find them by their number).	Ce numéro n'a pas de compte Telegram (ou son propriétaire ne se laisse pas trouver par son numéro).
 The contact could not be added. %s	Le contact n'a pas pu être ajouté. %s
+You blocked %s: they cannot write to you.	Vous avez bloqué %s : il ou elle ne peut plus vous écrire.
+%s is not in your contacts.	%s n'est pas dans vos contacts.
+Unblock	Débloquer
+Add to contacts	Ajouter aux contacts
+Block	Bloquer
+Block %s? They will not be able to write to you or call you.	Bloquer %s ? Il ou elle ne pourra plus vous écrire ni vous appeler.
+Hi! We met at the Onyx meetup, I'm the one with the robot arm :)	Salut ! On s'est vus à la rencontre Onyx, c'est moi qui avais le bras robot :)

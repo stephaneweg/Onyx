@@ -98,6 +98,75 @@ public:
 	}
 };
 
+// ---- the bar of a person who is not a contact: "Add to contacts", "Block" (or "Unblock"), the cross ---------
+
+class PeerBar : public Widget
+{
+public:
+	PeerBar (int l, int t, int w, int h) : Widget (l, t, w, h), m_hot (-1), m_down (false) {}
+	void onDraw () override
+	{
+		Canvas &cv = canvas;
+		fill_grad (cv, 0, 0, width, height, 0xFFF9DB, 0xFFF1B8);
+		cv.fillRect (0, height - 1, width, 1, 0xE6CF7A);
+		tg::Conv *c = g_open ? g_c.conv (g_open) : 0;
+		if (!c) return;
+		char name[80], t[200];
+		short_name (g_open, name, sizeof name);
+		// the information sign
+		VPath p; p.circle (V (16), V (height / 2), V (8)); p.fill (cv, 0xE0A100);
+		ftext (cv, g_face.ui, 13, (height - g_face.ui->height ()) / 2, "!", 0xFFFFFF, 2);
+		if (c->blocked) snprintf (t, sizeof t, TR ("You blocked %s: they cannot write to you."), name);
+		else snprintf (t, sizeof t, TR ("%s is not in your contacts."), name);
+		int nb = c->blocked ? 1 : 3;
+		const char *lab[3] = { c->blocked ? TR ("Unblock") : TR ("Add to contacts"), TR ("Block"), "" };
+		// the buttons from the right
+		int x = width - 8;
+		for (int i = nb - 1; i >= 0; i--)
+		{
+			int bw = i == 2 ? 24 : ftw (g_face.ui, lab[i], 2) + 22;
+			x -= bw;
+			m_bx[i] = x; m_bw[i] = bw;
+			if (i == 2) { uk_glyph (cv, WKG_CLOSE, x + 12, height / 2, 9, m_hot == 2 ? TC_BUSY : 0x8A7020); x -= 6; continue; }
+			uk_rbox (cv, x, 5, bw, height - 10, 4, m_hot == i ? 0xFFFFFF : 0xFFFDF2, m_hot == i ? 0xF2F7FD : 0xF6EDCF);
+			uk_rline (cv, x, 5, bw, height - 10, 4, m_hot == i ? TC_SEL_RIM : 0xD7BE6A);
+			ftext (cv, g_face.ui, x + 11, (height - g_face.ui->height ()) / 2, lab[i], i == 1 ? TC_BUSY : TC_LINK, 2);
+			x -= 8;
+		}
+		for (int i = nb; i < 3; i++) m_bw[i] = 0;
+		ftext (cv, g_face.ui, 32, (height - g_face.ui->height ()) / 2, t, 0x5A4500, 0, x - 36);
+	}
+	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
+	{
+		(void) br; (void) bm; (void) wheel; (void) my;
+		int hot = -1;
+		for (int i = 0; i < 3; i++) if (m_bw[i] && mx >= m_bx[i] && mx < m_bx[i] + m_bw[i]) hot = i;
+		if (mx < 0) hot = -1;
+		if (hot != m_hot) { m_hot = hot; invalidate (true); }
+		if (hot >= 0) uk_cursor (KAPI_CURSOR_HAND);
+		if (bl && !m_down && hot >= 0 && g_open)
+		{
+			tg::Conv *c = g_c.conv (g_open);
+			if (c && c->blocked) g_c.block (g_open, false);
+			else if (hot == 0) g_c.addToContacts (g_open);
+			else if (hot == 1)
+			{
+				char name[80], q[200];
+				short_name (g_open, name, sizeof name);
+				snprintf (q, sizeof q, TR ("Block %s? They will not be able to write to you or call you."), name);
+				if (ft_messagebox (TR ("Block"), q, MB_YESNO) == 1) g_c.block (g_open, true);
+			}
+			else if (hot == 2) g_c.hideBar (g_open);
+		}
+		m_down = bl != 0;
+		return mx >= 0;
+	}
+private:
+	int m_hot;
+	bool m_down;
+	int m_bx[3] = { 0, 0, 0 }, m_bw[3] = { 0, 0, 0 };
+};
+
 // ---- the messages ------------------------------------------------------------------------------------------
 
 class ChatView : public Widget
