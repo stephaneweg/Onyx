@@ -19,3 +19,9 @@ The details of each item are in `IDEAS.md` (Applications table).
 4. **Lemmings-like** — creatures guided to the exit by giving them roles (dig, block, build, climb,
    float, explode), pixel-destructible terrain, levels with objectives (n saved out of m), a level
    editor; our own name and graphics (Lemmings is a trademark).
+
+
+## Series 2 (2026-10-07, rounds 6-10)
+
+Items 1-4 above are done (rounds 2-5). The queue is empty: the Product Manager picks freely (PIPELINE.md §1),
+never an app an earlier round built (STATE.md's history).

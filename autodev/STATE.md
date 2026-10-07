@@ -1,6 +1,6 @@
 # AutoDev — state
 
-rounds_max: 5
+rounds_max: 10
 rounds_done: 5
 lock:
 
