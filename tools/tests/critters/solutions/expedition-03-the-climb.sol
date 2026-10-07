@@ -1,0 +1,31 @@
+# expedition-03-the-climb -- climber + floater for 14 critters, critter 0 bridges the pond; all explode for the 2 left behind (recorded with tools/critters/crsim; checked by tools/tests/run_critters_test.sh, AC-30)
+60 climber 0
+61 floater 0
+84 climber 1
+85 floater 1
+108 climber 2
+109 floater 2
+132 climber 3
+133 floater 3
+156 climber 4
+157 floater 4
+180 climber 5
+181 floater 5
+204 climber 6
+205 floater 6
+228 climber 7
+229 floater 7
+252 climber 8
+253 floater 8
+276 climber 9
+277 floater 9
+300 climber 10
+301 floater 10
+324 climber 11
+325 floater 11
+348 climber 12
+349 floater 12
+372 climber 13
+373 floater 13
+845 builder 0
+1600 nuke
