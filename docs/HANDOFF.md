@@ -4,6 +4,34 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Telegram for Onyx, an instant messenger in the way of Windows Live Messenger (2026-10-07): built, tested on the PC, in `main`, published
+
+Asked by the user ("une app de messagerie pour Telegram, avec un look soigné comme Live ou Yahoo Messenger"), after
+studying Discord / WhatsApp / Messenger (their terms forbid third-party clients; Telegram allows them). **Read docs/04 §12
+*Telegram*** (the use) and **docs/03 *Telegram*** (the code: its own MTProto 2.0, no TDLib).
+
+- **Done**: `user/Apps/telegram` -- the TL codec driven by the API's schema (layer 229, `tools/telegram/mkschema.py`), the
+  crypto on mbedTLS (AES-IGE, RSA_PAD, DH, pq, SRP, an entropy pool + CTR_DRBG + `seed.bin`), the MTProto session
+  (key exchange, encrypted messages, service messages, TCP intermediate transport), the client (sign-in with code,
+  cloud password and sign-up; migrations; the model kept by the updates and getDifference; sending, reading, typing,
+  status; profile photos from any data centre), the window (contact list with Favourites / Conversations / Contacts,
+  the conversation "X says:", read ticks, display pictures, emoticons drawn by vectors and typed `:)`, the picker,
+  notifications, `--demo`), `lang/fr.txt` (209 words), `app.txt`, `icon.bmp` (`tools/icons/telegram_icon.py`),
+  `[app.telegram]` in `tools/pkg/packages.ini`, the `user/Makefile` rule (`telegram.elf`), `shots.sh telegram`.
+- **Tested on the PC**: `sh tools/tests/telegram/run_tgclient_test.sh` -- offline 21 + 34 checks (the codec, the crypto,
+  the model fed the server's objects, SRP against the server's side); live (TG_API_ID / TG_API_HASH: my.telegram.org's,
+  the session used TDLib's public test pair) over MTProto's HTTP transport through the proxy: keys with the test and
+  production servers, the code sent, a wrong code refused, PHONE_MIGRATE followed. **Telegram's test servers refuse
+  their own sign-in codes since late 2024** (tdlib/td#3083): the signed-in part is tried with `TG_TEST_LOGIN=1` only.
+- **Not tried (to do on the Pi)**: the TCP transport (`tgplat.h`'s `TcpTransport`, port 443 of the data centres) and a
+  real account end to end: sign in, the conversations, a message both ways, a photo from another data centre, the
+  status, Sign out; the frame rate of the list with many conversations; `log.txt` says what the connection did.
+- **Follow-ups**: show the photos / stickers (`upload.getFile` of the message's photo, ImageKit), send pictures and
+  files, reply / edit / delete, reactions, a sound for a new message (AudioKit), the notification's click opening the
+  conversation, a kernel entropy source (the RNG200) to replace the pool's stopgap, the chat's pop-out windows (one
+  process each, as IRC's private conversations), the reusable pieces into kits (the TL codec + MTProto into NetKit if a
+  second program wants them; the emoticons into UIKit).
+
 ## Critters, lead the little creatures to the exit (AutoDev round 5, 2026-10-07): built, tested on the PC, branch `AutoDev` only
 
 Made by the AutoDev pipeline (`autodev/rounds/05-critters/`: 02 the analysis and its 37 acceptance criteria, 03 the

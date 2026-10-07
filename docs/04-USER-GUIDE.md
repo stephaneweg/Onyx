@@ -1928,6 +1928,8 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | *sheet — spreadsheet* | *irc — IRC client* | *ledger — accounting* |
 | ![archiver](../screenshots/archiver.png) | ![screenshot](../screenshots/screenshot-edit.png) | ![media](../screenshots/media-albums.png) |
 | *archiver — archive manager* | *screenshot — screen capture* | *media — the music and video library* |
+| ![telegram](../screenshots/telegram.png) | ![telegram, contacts](../screenshots/telegram-contacts.png) | ![telegram, sign-in](../screenshots/telegram-signin.png) |
+| *telegram — the instant messenger* | *telegram — the contacts, who is online* | *telegram — the sign-in* |
 
 ### PDF Viewer, the reader of PDF documents (`pdf`)
 
@@ -2050,6 +2052,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **inidemo** | Demonstration of the `.ini` reader (displays values from `config.ini`). |
 | **archiver** | The **archive manager** (on the command line: `zip` / `unzip`, §8): ZIP archives opened, browsed as folders, extracted (the selection or all; the archive's folders kept, from the current folder down, or flat), changed — files and folders **dropped from the File Viewer go into the folder under the pointer**, Add Files, Delete, Rename, New Folder; a file opened from the archive and saved is put back. 7z, tar and RAR next. See *Archiver, the archive manager* (§9). Files: `recent.txt` in `SD:/apps/archiver.app`. |
 | **irc** | The **IRC client**, a messaging app's look: the server (a combo box of the servers used) and your **nickname** on top — sent at once on connecting, `nickname_` tried when it is taken —, your conversations on the left (unread counts), a channel's messages grouped by author under coloured avatars, its users on the right; **Rooms** lists the server's channels (search, minimum of users, sort; double-click to join). A private conversation opens in a **window of its own**, with bubbles, as a messenger's. Files: `config.ini`, `servers.txt`, `nick.txt` in `SD:/apps/irc.app`. See *IRC, the chat client* below. Needs the network up (see §3). |
+| **telegram** | **Telegram**, the instant messenger in the way of **Windows Live Messenger**: your contact list on the left (your picture in its glass frame and your status, Favourites, Conversations with their last message and unread count, Contacts and who is online), the conversation on the right ("Alice says:", the times and the read ticks, the display pictures, **emoticons** drawn as pictures — the picker, or typed `:)` `;)` `(Y)` `<3`), notifications for the other conversations. Your real Telegram account (phone number, code, cloud password); `telegram --demo` to look without one. Files: `config.ini`, `session.dat`, `cache/` in `SD:/apps/telegram.app`. See *Telegram, the instant messenger* below. Needs the network up (see §3). |
 | **jet** (Jet Browser) | **Jet Browser**, the Onyx web browser, on **WebKit** (the dock's Internet drawer, or `run jet [address]`): `http://` and `https://`, JavaScript, video and sound, one page per window — its own section below, *Jet Browser (`jet`)*. (Until 2026-10-04 Jet was a NetSurf port, and this browser was the package **web**: `pkg update jet` brings the new one; `pkg delete web` then removes the old copy.) |
 | **wpaconf** (Wi-Fi Settings) | A Control Panel applet (alone: a window of its own). Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID — a combo box: **Scan** lists the networks around (about 3 s), pick one with its arrow (or Down / Up) and the proto / key mgmt follow its security (an open network gets `key_mgmt=NONE`, no password) — password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** rewrites the file; **Save & Reboot** writes it then restarts so the kernel re-reads it at boot (the only way new credentials take effect); **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |
 | **Lisa** | A chat with an AI assistant (a modern *Eliza*), through the **Groq** API over HTTPS. Type in the box at the bottom: **Enter** sends, **Shift+Enter** starts a new line; Lisa's answer appears in the conversation above (word-wrapped; "Lisa is thinking..." meanwhile). Every request sends Lisa's **role** and the **whole conversation**, so she keeps the context. Menus: **Chat** ▸ New Conversation (^N), Save Transcript... (^S); **Edit** ▸ Copy (the selected text), Paste, Copy Last Answer; **Settings** ▸ Edit Configuration... (opens `config.ini` in tinypad). **Setup**: get a free API key at console.groq.com and put it in `SD:/apps/lisa.app/config.ini` as `key = gsk_...` (see `config.ini.example` in the same folder: `model`, `role`, `temperature`, `max_tokens`). That file holds your key: keep it private — it is never committed. Needs the network up (see §3). |
@@ -3474,6 +3477,95 @@ closes the conversation windows too.
 Plain-text IRC only (port 6667: there is no TLS in IRC yet). The text is UTF-8 on the network and
 Latin-1 on the screen (the font's: a character beyond it shows as `?`); colours and bold of
 mIRC are removed.
+
+### Telegram, the instant messenger (`telegram`)
+
+![Telegram](../screenshots/telegram.png)
+*Telegram with made-up conversations (`telegram --demo`): Alice's open, she is typing; the group
+"Onyx builders" pinned in the Favourites with 3 unread messages.*
+
+**Telegram for Onyx** is a client of your real **Telegram** account, drawn in the way of **Windows
+Live Messenger**: the sky-blue headers, the pictures in glass frames whose colour says the status
+(green online, orange away a moment, grey offline), the little buddies of the contact list, "Alice
+says:" over what she wrote, the emoticons as pictures. It talks to Telegram's servers itself
+(MTProto 2.0, Telegram's open API: no other program needed), through the WLAN. It is an
+**unofficial** client: Telegram allows them, with a key of their own (below).
+
+**The first start: the app's key.** Telegram asks every app for its own key. Once: on a phone or a
+PC, sign in at **my.telegram.org** with your phone number, open **API development tools**, create
+an app (any name and short name), and copy its **api_id** (a number) and **api_hash** (32 letters
+and digits) into the first page. They are kept in `SD:/apps/telegram.app/config.ini`.
+
+![Telegram, the sign-in](../screenshots/telegram-signin.png)
+*The sign-in: the phone number, and the status to sign in with.*
+
+**Signing in.** Your **phone number** with its country code (`+33 6 12 34 56 78`); **Sign in as**:
+*Online* or *Appear offline* (a click changes it). Telegram sends a **code** — in the Telegram app
+of your phone, or by SMS —: type it. If your account has a **cloud password** (two-step
+verification), it is asked next (its hint shown; it is checked with SRP: the password itself never
+leaves Onyx). A number without an account: your **first name** (and last name) makes one. **Use
+another number** goes back. The errors say what is wrong in plain words (a wrong code, too many
+tries: how long to wait). Once signed in, Telegram starts signed in: the session is kept in
+`session.dat` (its keys are secret: whoever has this file has your account — **Sign out** removes
+it).
+
+**The contact list (on the left).** On top, **you**: your picture, your name, your status — a click
+on *(Online)* gives *Online*, *Appear offline* and *Sign out* —, your `@username`. The search field
+keeps the conversations and contacts whose name has what you type. Then the groups, each folded or
+unfolded by a click on its title:
+- **Favourites**: your pinned conversations;
+- **Conversations**: the others, the latest first — the picture (a photo, or the initials on a
+  colour), a green dot when the person is online, the name (two little buddies for a group), the
+  time of the last message, the last message itself (*typing...* while they write), the number of
+  unread messages in a blue pill;
+- **Contacts**: your Telegram contacts, those online first — the buddy in the status's colour, the
+  name, when they were last seen.
+
+![Telegram, the contacts](../screenshots/telegram-contacts.png)
+*The Conversations folded: the contacts, who is online, who was seen when.*
+
+**A conversation (on the right).** A click on a conversation or a contact opens it (**Ctrl+Up /
+Ctrl+Down**: the previous / next one). On top: the picture, the name, the status ("last seen 10 min
+ago", "14 members") or **"Alice is typing a message..."**. The messages, Messenger's way: **"Alice
+says:"** (in purple; you in blue) over what she wrote, again when the sender changes or after ten
+minutes; the time on the right, and for yours the ticks — one grey when sent, two green when read
+(a clock while it goes, a red `!` if it could not); a line with the day between the days; a group's
+events (someone joined, renamed it...) in grey; a message of only one to three emoticons drawn
+big; photos, videos, voice messages, files, stickers, places and polls as a labelled line (*[Photo]*:
+this version does not show them yet); links underlined (a click opens them in **Jet Browser**). The
+wheel, **Page Up / Page Down** scroll; scrolling to the top loads the older messages. On the right,
+the **display pictures**: theirs on top, yours at the bottom (**View ▸ Hide the Display Pictures**
+gives their room to the messages).
+
+![Telegram, the emoticons](../screenshots/telegram-emoticons.png)
+*The emoticons' picker.*
+
+**Writing.** Type in the box at the bottom: **Enter** sends, **Shift+Enter** starts a new line,
+**Ctrl+V** pastes. The smiley over it opens the **emoticons**: a click puts one in (Telegram's
+emoji: your contacts see them on their phones). The old typed forms become pictures too: `:)` `:D`
+`;)` `:(` `:'(` `:P` `:O` `:@` `(H)` `:*` `:S` `:|` `:$` `<3` `</3` `(Y)` `(N)` `(*)` `(#)` `(C)`
+`(F)` `(G)` (pointing at an emoticon in the picker shows its name and typed form). While you write,
+the other side sees that you are typing.
+
+**Notifications.** A message in another conversation than the one shown: a notification bubble
+(*"Alice says: ..."*, a click brings Telegram back), and its unread count in the list. The menu
+bar: **Telegram** (Search **Ctrl+F**, Sign Out, Quit **Ctrl+Q**), **Status** (Online, Appear Offline),
+**View** (the display pictures), **Help** (About).
+
+![Telegram, a group](../screenshots/telegram-group.png)
+*A group: each one's name over their messages, their picture beside it.*
+
+**Files** (in `SD:/apps/telegram.app`): `config.ini` (`[telegram]`: `api_id`, `api_hash`, `test = 1`
+for Telegram's test servers, `pictures = 0` to hide the display pictures), `session.dat` (the
+account's keys: secret), `cache/` (the profile photos), `seed.bin` (the random generator's seed,
+renewed at each start), `log.txt` (what the connection did: to look at when something goes wrong).
+`telegram --demo` shows made-up conversations, without the network or an account.
+
+**What it does not do yet:** show the photos, videos and stickers themselves (they are named),
+send files, voice and video calls, secret chats (end-to-end: phones only), edit or delete a
+message, reactions. **Randomness:** the keys of the connection are made with a random generator fed
+from several sources (the system's, the processor's timing jitter, your typing, a seed kept from the
+previous start), as the Pi's hardware generator cannot be used yet — good, not perfect (docs/03).
 
 ### Ledger, the accounts (`ledger`)
 
