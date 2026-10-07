@@ -320,6 +320,34 @@ int main (int argc, char **argv)
 
     Gdiplus::GdiplusStartupInput gsi; ULONG_PTR gtok; Gdiplus::GdiplusStartup (&gtok, &gsi, 0);
 
+    // --dirs <file>: a montage of the sample avatar in all 8 directions (row 1) and the 7
+    // walk frames of direction 2 (row 2), 4x scale, to check mirroring + animation.
+    const char *dirsFile = arg (argc, argv, "--dirs", "");
+    if (dirsFile[0])
+    {
+        g_assets.init (g_host, g_port, g_tls);
+        json::Doc d; d.parse (SAMPLE_AVATAR, (unsigned long) strlen (SAMPLE_AVATAR), json::TOLERANT);
+        g_cli.world.self_id = 1065; g_cli.world.apply_full (d.root ());
+        ensure_avatar_assets ();
+        for (int i = 0; i < WIN_W * WIN_H; i++) fb[i] = 0x00384050;
+        Avatar base = g_cli.world.av[0]; int S = 4;
+        for (int dir = 0; dir < 8; dir++) {
+            Avatar t = base; t.direction = dir; LayerSrc L[RL_COUNT]; build_layers (t, L);
+            Rgba f; compose_avatar (f, L, dir, 0);
+            int x0 = 16 + dir * (AV_CELL_W * S + 14), y0 = 50;
+            for (int yy = 0; yy < AV_CELL_H; yy++) for (int xx = 0; xx < AV_CELL_W; xx++) { unsigned s = f.px[yy * f.w + xx]; if (!(s >> 24)) continue;
+                for (int dy = 0; dy < S; dy++) for (int dx = 0; dx < S; dx++) { int X = x0 + xx * S + dx, Y = y0 + yy * S + dy; if ((unsigned) X < WIN_W && (unsigned) Y < WIN_H) fb[Y * WIN_W + X] = s & 0xFFFFFF; } }
+        }
+        for (int fr = 0; fr < 7; fr++) {
+            Avatar t = base; t.direction = 2; LayerSrc L[RL_COUNT]; build_layers (t, L);
+            Rgba f; compose_avatar (f, L, 2, fr);
+            int x0 = 16 + fr * (AV_CELL_W * S + 14), y0 = 420;
+            for (int yy = 0; yy < AV_CELL_H; yy++) for (int xx = 0; xx < AV_CELL_W; xx++) { unsigned s = f.px[yy * f.w + xx]; if (!(s >> 24)) continue;
+                for (int dy = 0; dy < S; dy++) for (int dx = 0; dx < S; dx++) { int X = x0 + xx * S + dx, Y = y0 + yy * S + dy; if ((unsigned) X < WIN_W && (unsigned) Y < WIN_H) fb[Y * WIN_W + X] = s & 0xFFFFFF; } }
+        }
+        save_shot (dirsFile); Gdiplus::GdiplusShutdown (gtok); return 0;
+    }
+
     g_cli.now_ms = now_ms; g_cli.lock_fn = wlock; g_cli.unlock_fn = wunlock;
 
     CreateThread (0, 0, net_thread, 0, 0, 0);
