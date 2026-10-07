@@ -322,14 +322,19 @@ static void on_raw (void *, const char *name, const char *args)   // map-occupan
     }
     LeaveCriticalSection (&g_cs);
 }
+static DWORD WINAPI dl_map_assets (LPVOID)   // heavy map images, off the net thread
+{
+    g_assets.ensure ("/images/game/map_summerbgr.png");
+    for (int i = 0; i < NBLD; i++) { char p[96]; snprintf (p, sizeof p, "/images/game/%s", BLD[i].sprite); g_assets.ensure (p); }
+    return 0;
+}
 static void fetch_home ()
 {
     ITransport *tp = mk_auto (0);
     Buf h; if (g_token[0]) { h.add ("X-Session-Token: "); h.add (g_token); h.add ("\r\n"); }
     HttpResp rp; bool ok = http_request (*tp, g_host, g_port, "GET", "/api/rooms?include_inactive=1", h.p ? h.p : "", 0, 0, rp); delete tp;
     if (ok && rp.status == 200) parse_rooms_json (rp.body.p, rp.body.n);
-    g_assets.ensure ("/images/game/map_summerbgr.png");
-    for (int i = 0; i < NBLD; i++) { char p[96]; snprintf (p, sizeof p, "/images/game/%s", BLD[i].sprite); g_assets.ensure (p); }
+    CreateThread (0, 0, dl_map_assets, 0, 0, 0);     // map terrain + overlays download in the background
 }
 
 static bool g_mapdemo = false;
@@ -399,7 +404,9 @@ static DWORD WINAPI net_thread (LPVOID)
         g_cli.poll ();
         if (g_cli.connected () && !onMap)       // arrive on the WORLD HOME (map), do NOT auto-join
         {
-            fetch_home (); g_cli.request_map_occupancy (); g_state = ST_MAP; onMap = true;
+            onMap = true; g_state = ST_MAP;     // switch the UI to the map at once (assets stream in)
+            fetch_home ();                      // then download terrain + building overlays + the rooms
+            g_cli.request_map_occupancy ();
             // honour an explicit --room on the command line (skip the map)
             if (g_roomId > 0 && g_autoroom) { Cmd c; c.kind = CMD_ENTER; c.a = g_roomId; c.b = 0; push_cmd (c); }
         }
@@ -453,6 +460,7 @@ static LRESULT CALLBACK WndProc (HWND h, UINT m, WPARAM w, LPARAM l)
             HGDIOBJ ot = SelectObject (hdc, tf);
             TextOutA (hdc, 14, 10, "TAATU - Choisis un lieu", 23);
             SelectObject (hdc, ot); DeleteObject (tf);
+            if (!g_assets.get ("/images/game/map_summerbgr.png")) { SetTextColor (hdc, RGB (180, 190, 210)); TextOutA (hdc, WIN_W / 2 - 90, WIN_H / 2, "Chargement de la carte...", 25); }
             // building labels + live counts
             EnterCriticalSection (&g_cs);
             for (int i = 0; i < NBLD; i++) {
