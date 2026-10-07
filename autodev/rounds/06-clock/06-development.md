@@ -437,8 +437,8 @@ alarm made in the Clock, the menu bar in French after a reboot, and the `make` i
 
 ## Summary
 
-**Round 6 built the Clock and clockd** (Developers A–D): 6 + 5 + 3 + 6 commits from `02a68379`'s parent to
-`a9889e1b`. Two programs around one UI-free core (`user/Apps/clock/alarms.*`, `clocktime.*`), two small kit
+**Round 6 built the Clock and clockd** (Developers A–D: their commits in each section above, the last code commit
+`a9889e1b`). Two programs around one UI-free core (`user/Apps/clock/alarms.*`, `clocktime.*`), two small kit
 additions (SystemKit `locale_zone_offset_at` / `locale_zone_sync`; FileKit `fk_kv_block_new / _get / _set`), one
 simulator addition (`SIM_CLOCK`), **no kernel, kapi or AppKit change**. All the *must* items and the three *should*
 items S1–S3 are done (02's first *should*, the timer handed to clockd and the stopwatch kept, was promoted to must
