@@ -277,3 +277,90 @@ city picker; the Alarms tab and its editor; the ringing. No kernel, kapi, AppKit
   focused list; Ctrl+N opens the city picker).
 - **Docs / package (step 13)**: nothing of docs/04, docs/03, `packages.ini`, `IDEAS.md` was written by this step group.
   `sdcard_lite/etc/autostart` was not touched (the publish tool's). The dock's label stays *Clock* (validation 1 note 7).
+
+## Developer C (steps 9–11)
+
+Steps 9, 10 and 11 of 03 §5 with their GUI work of 03 §10.2: the Timer tab and *Time's up*, the timer handed to clockd
+and taken back; the Stopwatch tab; the keys of 04 §7 and the hand-over at every exit (no question, G1). No kernel,
+kapi, AppKit, UIKit, SystemKit or FileKit change (`git diff b9feaead -- kernel user/Kits` is empty); no change to the
+core of step 3 (`alarms.*`, `clocktime.*`, `clock_proto.h`) nor to clockd. Every user-visible word is in `TR ()` with
+its French in `sdcard/apps/clock.app/lang/fr.txt` (`python3 tools/lang/check.py clock` → **158 words, 0 missing**; the
+one line "not used", *Alarms and timers…*, is S1's, the menu bar's).
+
+### What was done, by step
+
+| Step | Files | What |
+|---|---|---|
+| **9** — Timer, *Time's up*, the hand-over | `user/Apps/clock/timerview.h` (the hooks filled), `ring.h` (`ring_busy ()`, one line) | **`TimerRing`** (D17, the mock's drawing lifted: the track and the time left as a `VPath::arc` from 12 o'clock with a white dot at its moving end; *of 05:00*, the time Bold 46 px, *Ends at 12:37* with a small bell; paused: the arc mixed toward the face and *Paused*; idle: the full arc, the time set, no *of* line; redrawn only when the second shown, the half-degree or the state changes). The column: *Duration* — three **`Spin`s** (hours / minutes / seconds, locked while it runs or is paused; typed digits taken when Space starts it), *Presets* — five toggle `ToolButton`s (lit when the duration is one; a click sets; two clicks on one within 40 ticks set and start; refused, logged, while it runs), the start button (filled, 42 px: *Start* / *Pause* / *Resume*), *Reset* (36 px, disabled while it runs and when idle at the time set). The ring + column are one 534-px block centred by a small **`Centred`** container (its `layout ()` shifts its children when the window is resized). **`TimesUpVeil`** (D18: hourglass, *Time's up* Bold 28 px, *The 05:00 timer ended at 12:39*, `+1 min` / `Stop` (focused), the hint; Enter / Esc = Stop, `+` or `=` = one more minute): the notification *Clock — Timer — 05:00 done* (action `clock timer`) first, the Chimes looped, the window raised, the Timer tab shown — **unless another card shows** (the editor, the city picker: R-8, the card stacks over it); Stop → back to the time set (config's `timer =`); +1 min → a fresh 60-s timer (`timer =` unchanged); 12 000 ticks unanswered → the sound stops, the card goes. `timer =` is the duration last chosen. **At every exit** (`timer_at_exit`): a running timer → `alarms_timer_put` (its end in ticks, its time set, its end in UTC when `kapi_clock_info` is valid) + `alarms_write` (RELOAD); a **paused** one → `timer_left` / `timer_of` in `config.ini`, back paused at the next start. **At the start** (`timer_resume_handed`): a `[timer]` PENDING → `timer_resume`, the block removed, saved + RELOAD, `clock: timer running 02:00`, the Timer tab; DUE → left to clockd; STALE → dropped at the next save (Developer B's `alarms_write`). **`ring_timer ()`** (`--ring timer`, argument or message): `alarms.txt` read again, no `[timer]` → nothing (ring-only: closes); else the block removed + saved + RELOAD, then *Time's up* with its `set`; a ring-only Clock closes after Stop / the timeout, **stays after +1 min** (`g_ringOnly` cleared: validation 3 note 4). |
+| **10** — Stopwatch | `user/Apps/clock/swview.h` (the hooks filled), `fr.txt` (`1 lap`) | **`StopwatchFace`** (D19: `MM:SS` Bold 60 px and `.hh` Bold 36 px a shade lighter on one baseline, `H:MM:SS` from an hour; under it *Lap 4 · 00:04.45*, at zero the keys; redrawn when the hundredths change). *Lap* (L, while it runs) / *Reset* (R, stopped; disabled at zero) and *Start* / *Stop* (Space, filled), 164 × 38, centred (`Centred`). The laps' **`DataGrid`** (`stripes`, *Lap · Lap time · Total* + an untitled fourth column that follows the window's width), newest first, a `cellDraw`: from 3 laps the fastest lap time **green bold** with a green pill *▲ Fastest*, the slowest **red bold** with *▼ Slowest*; empty: *No laps yet: Lap (L) while it runs*. Footer: *No laps* / *1 lap* / *3 laps*, **Copy Laps** (`WKT_COPY`, disabled with no lap; the menu's only bound key, `UK_CTRL ('C')`, acting on the Stopwatch tab only): `sw_laps_text` with `TR ("Lap")`, `TR ("Lap time")`, `TR ("Total")` → SystemKit's `clip_set_text_n`, *Laps copied* (green check) in the footer until the next action. **Kept at every exit** (`sw_at_exit`): `sw_run`, `sw_start` (ticks), `sw_base`, `sw_total`, `sw_tick` (the close's tick), `sw_utc` (the close's UTC, −1 unknown), `sw_laps` (the totals, comma-separated). **At the start** (`sw_restore`): running and the same boot (the ticks went on since the close, and the UTC agrees within 5 s when known both times) → it goes on from `sw_start`; another boot with the UTC known both times → `sw_total` + the UTC difference, running; else → stopped at `sw_total`. The menu *Stopwatch* (Start / Stop, Lap, Reset, —, Copy Laps). |
+| **11** — keys, the hand-over at every exit | `main.cpp` (its header: the keys, config.ini's keys), `timerview.h` (`=` as `+`) | Space / R on the Timer, Space / L / R on the Stopwatch (`timer_key` / `sw_key`: the keys no focused widget took; over a focused `Spin` they pass through, Ctrl+1…4 too — `clock-edit-keys` (c)); the menus *Timer* (Start / Pause, Reset, —, 1 minute, 3 / 5 / 10 / 15 minutes) and *Stopwatch*, their items showing their tab first. **No question on closing** (G1): Ctrl+Q (`MENU_QUIT` in `Menu::shortcut`), *Clock ▸ Quit* and the close box all end the window's loop, after which `main` runs `timer_at_exit` and `sw_at_exit` (also for a ring-only Clock closing itself). |
+
+### The commits
+
+| Commit | Message |
+|---|---|
+| `bbfa697b` | AutoDev round 6: step 9 — the Timer tab, Time's up, the timer handed to clockd and taken back |
+| `5d3a94b2` | AutoDev round 6: step 10 — the Stopwatch tab (laps, fastest / slowest, Copy Laps, kept at the close) |
+| `f51fcd02` | AutoDev round 6: step 11 — the keys of 04 §7 and the hand-over at every exit |
+
+### The tests run, and their results
+
+| Command | Result |
+|---|---|
+| `sh tools/tests/run_clock_sim_test.sh` | **`clock-sim: all 188 checks passed`** (was 117; ≈ 16 s). The Clock's sources still build with `-Wall -Wextra` and no warning. |
+| — Timer (step 9, 46) | `clock-timer` (AC-32: the 5 min preset clicked at (421, 193) → `timer set 05:00`; Space → `started 05:00 (the duration locked)`; the minutes' up arrow while it runs changes nothing; R refused; Pause after ~1 s → `paused 04:59`; R → `reset 05:00`; `timer = 300` in config.ini), the preset's double click (3 min set **and** started; a preset refused while it runs; `timer = 180`), `2` typed in the minutes + Space → `started 02:00` (`timer = 120`), `clock-timesup` (AC-33: a 3-s timer → `sim: send notify type 1 "Clock\0Timer — 00:03 done\0clock timer\0"`, raised; `+` → `started 01:00 (one more minute)` then Space pauses it at 01:00; Esc = Stop → back to 00:03; French: `Horloge\0Minuteur — 00:03 terminé`), unanswered 6 100 steps → `time's up unanswered`, `clock-timer-close` (AC-35, R-1: `quit` → `timer handed to clockd (05:00 left)`, a 4th block `[timer]` with `end` > 30 000, `set = 300` and — `SIM_CLOCK` — `utc =`, the three alarms kept, `sim: send clockd type 2`, `timer = 300`), a paused timer kept and back paused (`timer paused 04:59 (kept)`, then `resumed 04:59`; no `alarms.txt` written), `clock-timer-resume` (`end = 13000` → `timer running 02:00`, the block gone, RELOAD, `tab timer` with no argument; `end = 500` → the file byte-identical, nothing sent), a stale `[timer]` dropped at the next save, `clock-timesup-hand` (`--ring timer` + a past `[timer]` → `time's up (05:00`, the notification, no `[timer]` left and the three alarms kept, RELOAD, `ring-only, closing` after Stop; with `+` instead: it stays and hands the new minute over at `quit`, `set = 60`; by message to a running Clock: it stays after Stop), `clock-veil-stack` (timer) (the editor opened on *School* while a 3-s timer runs → *Time's up* over it, the tab left on Alarms; Esc stops it, Esc then cancels the editor), `clock-edit-keys` (c) (the minutes' field focused, Ctrl+2 → Alarms; the duration still 05:00) |
+| — Stopwatch (step 10, 15) | `clock-sw` (AC-37 / 38: Space, laps after 600 / 590 / 640 steps, R refused while running, Space → the rows **newest first** `3 2 1`, `lap 2 00:11.84 00:23.86 fastest`, `lap 3 00:12.82 00:36.68 slowest`, `lap 1 00:12.02 00:12.02`; Ctrl+C (`key 0x03`) → `laps copied (3)` and the clipboard file (`SIM_CLIPFILE`) **byte-equal** to `Lap\tLap time\tTotal\n1\t00:12.02\t00:12.02\n…`; R → reset), French header `Tour\tTemps du tour\tTotal`, Ctrl+C off the tab copies nothing, kept across a close: the same boot (`stopwatch kept 00:05.xx running (1 laps)`), another boot with the UTC known (`01:10.xx running`: 10 s + 60 s), another boot without (`00:10.00`, stopped), the close writing `sw_run = 1`, `sw_start`, `sw_laps` |
+| — keys, hand-over (step 11, 10) | `clock-keys` (Space on the Timer starts then pauses; Ctrl+4; Space / L / Space / R on the Stopwatch; Ctrl+N inert on both tabs; `=` on Time's up = one more minute), `clock-quit-hand` (the timer and the stopwatch running, Ctrl+Q → `sim: menu_command -1`, nothing asked, then `quit` (the simulator's `menu_command` only logs: 03 §10.3) → the program ends before the script's end, `sw_run = 1` and `sw_start` > 1000 in config.ini, `[timer]` `set = 300` + RELOAD; reopened: `timer running 0…` and the block gone, the stopwatch shown) |
+| `sh tools/tests/run_clock_test.sh` | `clock: all checks passed` (alarm 158, clocktime 129, at `-O1` UBSan and `-O2` — unchanged: no core change) |
+| `python3 tools/lang/check.py clock` | `158 words, 0 missing, 1 not used` (*Alarms and timers…*: S1) |
+| `SHOTS_TMP=… SHOTS_PNG=<scratch> sh tools/tests/desktop_sim/shots.sh clock` | builds every app with the new Clock (the known PrinterKit `ld` errors aside), `shots: done`. The menu bar's `clock.png` differs from the committed one by **the *Open Calendar* button's frame only** (the committed picture shows it focused / pointed, today's not): the menu bar is not touched by this round (no file of it changed) — to look at in step 12. |
+| Looked at (scratch PNGs, compared with `mockups/clk-timer*.png`, `clk-timesup*.png`, `clk-stopwatch*.png`) | Timer running (04:58 of 05:00, *Ends at 12:38*, 5 min lit, Pause, Reset disabled), paused, Time's up, the timer taken back (02:00 of 05:00), Time's up over the editor, Stopwatch running / stopped with three laps / *Laps copied* / zero (**identical to `clk-stopwatch-zero.png`**), and in **French** the Timer (*Remettre à zéro* fits, the footer line whole), *Temps écoulé* (*Le minuteur de 00:03 s'est terminé à 12:34*, *Entrée ou Échap : arrêter · + : une minute de plus* fit), the Stopwatch (*Temps du tour*, *Plus lent*, *Plus rapide*, *Copier les tours* fit); a 760 × 520 window (the block centred, the grid's last column filling). All match the mock-ups (the block 1 px left of the mock's: (560 − 534) / 2 = 13). The test leaves `timer-paused`, `timesup`, `timesup-fr`, `timer-resume`, `timer-stack`, `stopwatch`, `stopwatch-copied`, `stopwatch-zero`, `stopwatch-fr` PNGs in `/tmp/onyx_clock_sim/`. |
+| AArch64 (`clang++ --target=aarch64-none-elf`, `NL_CXXFLAGS` + `-Wall -Wextra`, the host's headers for declarations) | `Apps/clock/main.cpp` with the three views: no error, **no warning of its own** (only FontKit's `fonts.h` unused functions, as every FT app); the new undefined symbol is SystemKit's `clip_set_text_n`. The Pi `make` is the user's. |
+
+### Deviations from the plan, and why
+
+1. **A paused timer is kept** (`timer_left`, `timer_of` in `config.ini`) and comes back paused — R-1 speaks of the
+   running one only; a paused one cannot ring, so it stays out of `alarms.txt`, and nothing is lost on closing (G1's
+   spirit).
+2. **The stopwatch across a reboot**: R-1 says "within the same boot"; when the real time was known at the close and
+   is now (`sw_utc`), it goes on by the UTC difference; else it comes back **stopped** at the time it had (never a
+   wrong running time). The same-boot test is "the ticks went on since the close" (+ the UTC agreeing within 5 s).
+3. **Presets while the timer runs or is paused are refused** (logged), not a reset: one click must not lose a running
+   timer. The spins are locked then as D17 says.
+4. ***Time's up* does not change the tab when another card shows** (the editor, the city picker): R-8's stack keeps the
+   user's place; with no card it shows the Timer tab (D18).
+5. **Unanswered 2 minutes**: the sound stops and the card goes ("as D13"), with **no second bubble** — the *done*
+   notification was already sent; there is no `missed` mark for a timer.
+6. **+1 min does not change `timer =`** (the duration chosen); *Stop* after it goes back to `timer =`. *Time's up*
+   rings the **Chimes** looped (the alarm sounds' first; no choice in the UI).
+7. **`=`** is taken as **`+`** on *Time's up* (the `+` key without Shift).
+8. **The close box in the simulator** is `quit` (`winclose` only acts on a program's second windows); Ctrl+Q's
+   `menu_command -1` is logged and followed by `quit` (03 §10.3).
+9. **The ticks restart at 1000 in every simulated process**, so a `[timer]` handed over in one run and taken back in
+   the next shows a second more (`05:01` for a 5-min timer taken back at once): `timer_resume` raises the time set
+   rather than ring early — a simulator artefact (on the Pi the ticks go on).
+10. **Small additions beside the app**: `Centred` (a container keeping a block of children centred: the Timer's ring +
+    column, the Stopwatch's two buttons), `ring_busy ()` in `ring.h` (ending *Time's up* leaves an alarm's sound
+    alone). One French line more: `1 lap	1 tour`.
+11. **Log lines** (read by the tests): `clock: timer set|started|resumed|paused|reset MM:SS`, `timer reset refused
+    (running)`, `preset refused (the timer runs)`, `time's up (05:00, ended at 12:39)`, `time's up stopped|unanswered`,
+    `timer started 01:00 (one more minute)`, `timer handed to clockd (MM:SS left)`, `timer running MM:SS` (taken
+    back), `timer paused MM:SS (kept)`, `ring timer: no timer`; `stopwatch started|stopped …`, `lap n LAP TOTAL[
+    fastest|slowest]` (at each lap, and the rows newest first at Stop — ten at most), `stopwatch reset[ refused
+    (running)]`, `laps copied (n)`, `stopwatch kept … [running] (n laps)`, `stopwatch kept at the close …`.
+
+### For Developer D (steps 12–13, S1–S3)
+
+- **Screenshots (step 12)**: §10.4's positions hold — `down 421 193` is the *5 min* preset's centre; `clock-timesup`
+  needs the fixture **`tools/tests/desktop_sim/clock/config-3s.ini`** (`[clock]` + `timer = 3`; not created yet), 170
+  waits after Space show the card; the stopwatch script of §8.3 gives laps 12.02 / 11.82 / 12.82 (lap 2 fastest, lap 3
+  slowest, as the mock). The PNGs of `run_clock_sim_test.sh` in `/tmp/onyx_clock_sim/` show what to expect. Check the
+  menu bar's `clock.png` (the *Open Calendar* button's frame differs from the committed picture; not this round's code).
+- **docs/04 (step 13)**: the Timer (presets: a double click starts; Space / R; the duration kept; *Time's up*: Stop,
+  +1 min (`+` / `=`), the notification, 2 minutes; closing hands it to clockd, which rings it — *Time's up* then comes
+  by itself; reopened before its end, the Clock shows it running; a paused timer stays paused), the Stopwatch (Space /
+  L / R, laps newest first, fastest / slowest marked, *Copy Laps* / Ctrl+C: tab-separated text; kept when closed, and
+  across a restart when the clock was set), the files: `config.ini`'s `timer_left`, `timer_of`, `sw_*` keys,
+  `alarms.txt`'s `[timer]`. Pi-only checks of steps 9–11: AC-36 (a 10-minute timer within 1 s), the Chimes of *Time's
+  up*, the hand-over across a real close (clockd → `clock --ring timer`).
+- **S1** (the menu bar's bell): `Alarms and timers…` is already in `fr.txt` (the only "not used" line).
