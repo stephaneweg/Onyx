@@ -263,3 +263,65 @@ today (no diff).
 
 New gaps 1 and 2 in 03 (§3.3, §3.6, steps 4 / 9 / 11 / 12, §8.1 case 19, §8.4, §9 row 40, R-1, §8.3). 04 and the
 mock-ups stand.
+
+---
+
+## Validation 3
+
+Date: 2026-10-07 (a fresh Technical Analyst, the last allowed loop). Read: validations 1 and 2 above, commit
+`80afaf5f` (`03-technical-analysis.md` §3.3, §3.4, §3.5, §3.6, §5 steps 4 / 8 / 9 / 11 / 12, R-1, §8.1 case 19, §8.3,
+§8.4, §9, §10 and *Changes after validation 2*; `04-ux-design.md` D14 + its words table; the mock's `lang/fr.txt`).
+Grepped 02 / 03 / 04 for every stale form ("Quit anyway", "asks", `clock-quit`, `clock.png`, `clock-fr`,
+`SHOTS_LANG=fr`); checked against `tools/tests/desktop_sim/fakekapi.cpp:825` (`exec` logs `sim: exec <path> <args>`:
+`clockd-timer`'s expected line is what the simulator prints).
+
+### Validation 2's gaps
+
+1. **Closed.** §3.3: `Ringer { last, started, timer_rung }`, `ringer_start` sets `timer_rung = -1`, `ringer_step` takes
+   `now_tick` / `now_utc`; rule 5 makes the `[timer]` due only when `timer_end_tick != timer_rung`, then records it — the
+   same `end` once per clockd run, kept across a reload like `last`; a new hand-over (a new `end`) is due again. The
+   block's paragraph states why (the ticks condition stays true after `end`). §3.5's loop passes the ticks / UTC. §3.6
+   adds *The timer rung*: on `--ring timer` (argument or `CLOCK_MSG_OPEN`) the Clock shows *Time's up*, **removes
+   `[timer]`**, `alarms_save` + `CLOCKD_MSG_RELOAD`; *+1 min* is a fresh timer in the Clock (a new `end` at exit). The
+   take-back rule ("already past and no `--ring timer` → left to clockd, rung once") now agrees with it. Tests:
+   alarm_test 19 (once over T − 100 … T + 1 000, not again after a re-parse, a new `end` once), `clockd-timer` (two runs,
+   exactly one `sim: exec SD:apps/clock.app/main --ring timer` each; its numbers hold: `end` 1 300 − 1 000 ≤ 5·100 + 100,
+   51 ticks a step), `clock-timesup-hand` (past `end = 500`, not stale; `Timer — 05:00 done`, no `[timer]` written, the
+   three alarms unchanged, `sim: send clockd type 2`); steps 4 and 9 and §9 rows 33 / 35 / 40 name them. The two
+   paths cannot ring twice: the Clock's take-back removes the block before clockd can see it due, and clockd's
+   `timer_rung` plus the Clock's removal cover the other order.
+2. **Closed.** §10 is the single truth on quitting: the summary, R-1 (a) ("superseded by §10 G1: no question at all"),
+   step 11 ("G1: no question", `clock-quit-hand`), §8.4 (`clock-quit` replaced by `clock-quit-hand`), §9 row 40
+   ("reduced (R-1, G1): no question; every exit hands over; the reopened Clock shows the timer running"), row 41
+   (`clock-edit-keys`), §8.3 now a pointer to §10.4 (only the fixtures, the helpers and the stopwatch's script kept),
+   step 12 ("both languages in one run", §10.4's `-fr` lines). The only remaining "asks" in 03 are G1's *Was* column
+   (the record, on purpose) and R-7 (unrelated). 04 D20 says the same (no question, every way out hands over, *Time's
+   up* comes with `clock --ring timer`). 02 #34 / AC-40 keep the PM's original wording — that is the request; 03 R-1 /
+   §9 record the reduction, as validation 1 accepted.
+
+No new contradiction between 02, 03 (incl. §10) and 04: D14's two wordings match R-3 (−1 plain, 0 busy) and the
+mock's `fr.txt`; 03 §3.6's "letters over a focused spin box" follows 04 §7's `Spin` table; §3.4's here offset from
+`tz_minutes` / `timezone=` does not touch any shot (the simulator has no `clock_info` without `SIM_STAT`).
+
+### Verdict: **GREEN**
+
+Every AC has a step and a test (03 §9 + §10.5), every widget exists in UIKit (no UIKit or kapi change), the kit
+additions are planned with their `.abi` lines, kitdocs and docs, the tests are runnable in today's simulator plus the
+planned `SIM_CLOCK`. The developer can start at step 0.
+
+### Final notes for the developer (not blocking)
+
+1. **A `[timer]` left by an earlier boot with no `utc =`** (a reboot before the timer ended, and no valid real-time
+   clock then or now): its `end` in old ticks is "stale" early in the new boot but becomes non-stale, then due, once the
+   new uptime reaches it — it would ring once (and the Clock started at that uptime would take it back). Rare and
+   harmless (rung once, then removed), but cheap to avoid: when the Clock reads a `[timer]` whose `end − now` exceeds
+   `set·100 + 100` (stale now), it **drops the block** at its next save; and always write `utc =` when it is known.
+2. **`clock-quit-hand`'s timer half** needs `clockd` in `SIM_SERVICES` for `sim: send clockd type 2` to appear (as
+   `clock-timer-close`); with Ctrl+Q's `menu_command` only logged in the simulator, use `quit` after it as §10.3 says.
+3. **`clockd-timer`'s second run**: `@3000` is a tick, about 39 clockd steps in — after the ring at ~step 6; keep the
+   200 steps so the check "not again after the reload" covers well past `end`.
+4. **A Clock started by `--ring timer` while no Clock ran** closes itself after Stop (G2); after *+1 min* it is a
+   running timer, so it must not close by itself then — it hands the new timer over only when the user (or the close)
+   ends it, as any running timer. Say so in the `g_ringOnly` flag's logic (cleared on *+1 min*).
+5. Keep 03 §10 and the *Changes after validation 1 / 2* lists open while coding: where §5 / §8 and §10 differ, §10
+   wins (G1–G9).
