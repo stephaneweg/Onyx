@@ -37,6 +37,14 @@ static int zone_of (const char *city)
 	fprintf (stderr, "zone: no zone %s\n", city);
 	return -1;
 }
+static void ini_is (const char *key, const char *want)
+{
+	char v[64];
+	int r = locale_ini_get (key, v, sizeof v);
+	CHECK (want ? r == 1 && !strcmp (v, want) : r == 0);
+	if (want && strcmp (v, want)) fprintf (stderr, "zone: %s=%s, %s expected\n", key, v, want);
+}
+
 static void test_at (void)
 {
 	int bx = zone_of ("Brussels"), ny = zone_of ("New York"), tk = zone_of ("Tokyo"), ut = zone_of ("UTC");
@@ -94,10 +102,50 @@ static void test_at (void)
 	EQI (locale_zone_offset_at (bx, -60), 60);
 }
 
+// kapi_clock_info's offset now (-9999: no answer)
+static int clock_tz (void)
+{
+	struct kapi_clock_info ci;
+	return kapi_clock_info (&ci) == 0 && (ci.flags & KAPI_CLOCK_REALTIME_VALID) ? ci.tz_minutes : -9999;
+}
+static void minute (void) { kapi_msleep (59990); }		// (6 000 ticks: 60 s of the simulator's clock)
+
+// A change night: before it, nothing; a minute later the clock and timezone= changed once; then never again
+// (no oscillation, the wall time gone back included). from / to: the offsets; tzw: timezone= written after.
+static void test_change (int from, int to, const char *tzw)
+{
+	EQI (clock_tz (), from);
+	EQI (locale_zone_sync (), 0);			// (a minute before the change: already right)
+	EQI (clock_tz (), from);
+	minute ();
+	EQI (locale_zone_sync (), 1);			// the change: the clock's offset and system.ini's timezone=
+	EQI (clock_tz (), to);
+	ini_is ("timezone", tzw);
+	EQI (locale_zone_sync (), 0);			// called again: nothing (no oscillation)
+	for (int i = 0; i < 90; i++) { minute (); if (locale_zone_sync () != 0) { CHECK (!"changed again"); break; } }
+	EQI (clock_tz (), to);
+}
+
 int main (int argc, char **argv)
 {
 	const char *c = argc > 1 ? argv[1] : "";
 	if (!strcmp (c, "at")) test_at ();
+	// SIM_CLOCK=20261025025930 SIM_TZ=120, zone=Brussels: summer time ends at 01:00 UTC (03:00 CEST -> 02:00 CET)
+	else if (!strcmp (c, "autumn")) { test_change (120, 60, "60"); ini_is ("zone", "Brussels"); }
+	// SIM_CLOCK=20270328015930 SIM_TZ=60, zone=Paris: it begins at 01:00 UTC (02:00 CET -> 03:00 CEST)
+	else if (!strcmp (c, "spring")) { test_change (60, 120, "120"); ini_is ("zone", "Paris"); }
+	// SIM_CLOCK=20261101015930 SIM_TZ=-240, zone=New York: 02:00 EDT -> 01:00 EST at 06:00 UTC
+	else if (!strcmp (c, "newyork")) { test_change (-240, -300, "-300"); ini_is ("zone", "New York"); }
+	// SIM_CLOCK=20260928123400 SIM_TZ=60, zone=Brussels, timezone=60: a clock left on the winter offset, put right
+	else if (!strcmp (c, "wrong")) { EQI (locale_zone_sync (), 1); EQI (clock_tz (), 120); ini_is ("timezone", "120"); EQI (locale_zone_sync (), 0); }
+	// already right / no zone= / an unknown city / no real date: 0, the clock untouched (the shell: nothing logged,
+	// system.ini not written)
+	else if (!strcmp (c, "right") || !strcmp (c, "nozone") || !strcmp (c, "guess") || !strcmp (c, "card") || !strcmp (c, "nowhere") || !strcmp (c, "noclock"))
+	{
+		int tz = clock_tz ();
+		for (int i = 0; i < 5; i++) { EQI (locale_zone_sync (), 0); minute (); }
+		EQI (clock_tz (), tz);
+	}
 	else { fprintf (stderr, "zone: no case %s\n", c); return 2; }
 	if (g_fail) { fprintf (stderr, "zone %s: %d of %d checks failed\n", c, g_fail, g_checks); return 1; }
 	fprintf (stderr, "zone %s: ok (%d checks)\n", c, g_checks);

@@ -205,6 +205,25 @@ SK_FN int locale_zone_offset_at (int z, long long utc_minutes)
 	}
 	return p->std + (utc_minutes >= start && utc_minutes < end ? 60 : 0);
 }
+SK_FN int locale_zone_sync (void)
+{
+	char v[32], num[16];
+	struct kapi_clock_info ci;
+	long long um;
+	int z = -1, m, n = 0;
+	if (!locale_ini_get ("zone", v, sizeof v)) return 0;	// (no zone chosen: nothing guessed, left as it is)
+	for (int k = 0; k < LOCALE_NZONES; k++) if (ax_streq (v, locale_zone_at (k)->city)) { z = k; break; }
+	if (z < 0) return 0;
+	if (kapi_clock_info (&ci) != 0 || !(ci.flags & KAPI_CLOCK_REALTIME_VALID)) return 0;	// (no real date yet)
+	um = ci.utc_us >= 0 ? ci.utc_us / 60000000 : -((-ci.utc_us + 59999999) / 60000000);
+	m = locale_zone_offset_at (z, um);
+	if (m == ci.tz_minutes) return 0;
+	if (kapi_set_timezone (m) != 1) return 0;
+	if (m < 0) { num[n++] = '-'; m = -m; }
+	ax_itoa (m, num + n);
+	locale_ini_set ("timezone", num);
+	return 1;
+}
 SK_FN int locale_zone (void)
 {
 	char v[32];

@@ -80,3 +80,4 @@
 74 autostart_ensure
 75 autostart_has
 76 locale_zone_offset_at
+77 locale_zone_sync

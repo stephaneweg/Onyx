@@ -30,7 +30,7 @@ SystemKit is what a program says to the system and to the other programs: notifi
 |---|---|
 | Include | `#include "systemkit/systemkit.h"` |
 | Link | `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C) |
-| Library | `SD:/lib/systemkit.so` — 77 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
+| Library | `SD:/lib/systemkit.so` — 78 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
 | Sources | `user/Kits/systemkit/` |
 
 ## Using it
@@ -129,6 +129,11 @@ if (kapi_clock_info (&ci) == 0 && (ci.flags & KAPI_CLOCK_REALTIME_VALID))
     long long there = utc + locale_zone_offset_at (ny, utc);     // its wall minute now
 }
 ```
+
+The kernel reads `timezone=` once at boot; `locale_zone_sync ()` puts the system's clock on the zone chosen in
+Language & Region or Setup (`zone=` only — a card with a `timezone=` and no `zone=` is left as it is) when the summer
+time begins or ends: called once a minute (clockd, the Clock's service, does), on 25 October 2026 at 03:00 CEST the
+clock becomes 02:00 CET, `timezone=` rewritten (1 changed, 0 not).
 
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
@@ -239,6 +244,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `locale_zone` | the one chosen: system.ini's zone=, else the first of its timezone= (-1 none) | `locale.h` |
 | `locale_set_zone` | the clock's offset at once, zone= and timezone= kept -> 1 written | `locale.h` |
 | `locale_zone_offset_at` | The zone's offset from UTC at that instant (minutes since 1970, UTC), the hour of the change counted | `locale.h` |
+| `locale_zone_sync` | The zone named by system.ini's zone= (that one only | `locale.h` |
 
 ---
 
@@ -824,7 +830,8 @@ locale.h -- the system's language and region, kept in SD:/etc/system.ini:
   language = fr        the language of the programs' words ("en" when no line): uikit/lang.h's TR () reads
                        it (uk_lang_init), a program with words of its own asks locale_language ()
   zone     = Brussels  the time zone's city (locale_zone_*), beside "timezone=" -- its offset in minutes,
-                       the summer time counted, which the kernel reads at boot
+                       the summer time counted, which the kernel reads at boot (and locale_zone_sync keeps
+                       right when the summer time begins or ends)
 ```
 
 Chosen in the Control Panel's Language & Region applet and in Setup (the first-run wizard). A language is taken by a program when it starts.
@@ -874,6 +881,12 @@ The zone's offset from UTC at that instant (minutes since 1970, UTC), the hour o
 
 ```cpp
 int locale_zone_offset_at (int z, long long utc_minutes);
+```
+
+The zone named by system.ini's zone= (that one only: never locale_zone ()'s guess from timezone=), its offset now (kapi_clock_info's UTC, locale_zone_offset_at) given to the clock (kapi_set_timezone) and to system.ini's timezone= when it differs from the clock's (kapi_clock_info's tz_minutes) -> 1 changed, 0 not (no zone= or an unknown city, no real date yet, already right). Called once a minute (clockd does), the clock follows the summer time by itself: on the night it ends, 03:00 becomes 02:00 at 01:00 UTC.
+
+```cpp
+int locale_zone_sync (void);
 ```
 
 ## `systemkit/applet_proto.h`

@@ -460,6 +460,11 @@ if (kapi_clock_info (&ci) == 0 && (ci.flags & KAPI_CLOCK_REALTIME_VALID))
 }
 ```
 
+The kernel reads `timezone=` once at boot; `locale_zone_sync ()` puts the system's clock on the zone chosen in
+Language & Region or Setup (`zone=` only — a card with a `timezone=` and no `zone=` is left as it is) when the summer
+time begins or ends: called once a minute (clockd, the Clock's service, does), on 25 October 2026 at 03:00 CEST the
+clock becomes 02:00 CET, `timezone=` rewritten (1 changed, 0 not).
+
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
 | `notify.h` | Notifications |
