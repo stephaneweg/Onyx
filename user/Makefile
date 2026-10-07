@@ -42,7 +42,7 @@ APPS = tinycalc tinypad cppdemo \
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters
+FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters clock
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
@@ -813,6 +813,12 @@ pinball.elf: NL_CXXFLAGS += -ffp-contract=off
 FT_EXTRA_critters = Apps/critters/terrain.cpp Apps/critters/level.cpp Apps/critters/world.cpp Apps/critters/solution.cpp Apps/critters/progress.cpp lib/audiokit.imp.a
 critters.elf: Apps/critters/terrain.cpp Apps/critters/level.cpp Apps/critters/world.cpp Apps/critters/solution.cpp Apps/critters/progress.cpp \
 	      $(wildcard Apps/critters/*.h) Apps/games/game.h lib/audiokit.imp.a Kits/audiokit/audiokit.h Kits/filekit/kvtext.h Kits/filekit/kvtext.inc Kits/uikit/toolbar.h Kits/uikit/lcd.h
+# Clock (AutoDev round 6): its core beside the window, shared with clockd (the alarms model and the Ringer, the wall
+# time, the world rows, the timer and the stopwatch); ui.h, world.h, alarmsview.h, timerview.h, swview.h, ring.h,
+# sounds.h are the window's own headers (one translation unit with main.cpp). Its sounds: AudioKit's FM voices.
+FT_EXTRA_clock = Apps/clock/alarms.cpp Apps/clock/clocktime.cpp lib/audiokit.imp.a
+clock.elf: Apps/clock/alarms.cpp Apps/clock/clocktime.cpp $(wildcard Apps/clock/*.h) lib/audiokit.imp.a Kits/audiokit/audiokit.h \
+	   Kits/filekit/kvtext.h Kits/filekit/kvtext.inc Kits/systemkit/locale.h Kits/uikit/toolbar.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
 printconf.elf: lib/printerkit.imp.a Kits/printerkit/printerkit.h
 $(FT_APP_ELFS): %.elf: Apps/%/main.cpp Kits/uikit/bmp.h Runtime/umm.h Runtime/onyxpp.hpp lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a 		       Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h

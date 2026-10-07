@@ -63,7 +63,7 @@ if [ -f user/Apps/clock/main.cpp ]; then
 	g++ -o "$OUT/clock" "$OUT/fakekapi.o" "$OUT/clock_main.o" "$OUT/alarms.o" "$OUT/clocktime.o" "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libaudiokit.a" -lpthread -lm
 fi
 if grep -q "Apps/clock.*warning" "$OUT/clock.warn"; then cat "$OUT/clock.warn"; echo "clock-sim: FAIL warnings in the Clock"; exit 1; fi
-[ "$1" = build ] && { echo "clock-sim: built $OUT/clockd${CLOCK_BUILT:+, $OUT/clock}"; exit 0; }
+[ "$1" = build ] && { echo "clock-sim: built $OUT/clockd $OUT/clock"; exit 0; }
 
 # ---- the running -------------------------------------------------------------------------------------------------
 PASS=0; FAILS=0
@@ -176,6 +176,35 @@ check "clockd-fallback: its own notification, the time and the label" logs fallb
 seed quit; alarms quit "$ONE"
 run clockd quit "$(waits 50)exit" SIM_SERVICES=notify "SIM_MBOX=@1200:3:9:" SIM_ARGS="--grace 0"
 check "clockd-quit: CLOCKD_MSG_QUIT ends the service" logs quit "clockd: quit"
+
+# ==== the Clock's skeleton (step 5) =================================================================================
+# clock-args (AC-41): "clock stopwatch" opens on the Stopwatch tab; the tab kept in config.ini at the end
+seed args; run clock args "wait;wait;dump $OUT/args.elsm;quit;wait" SIM_SERVICES=notify,clockd SIM_ARGS=stopwatch; png args
+check "clock-args: clock stopwatch -> the Stopwatch tab" logs args "clock: tab stopwatch"
+check "clock-args: the window titled Clock" logs args "sim: window Clock"
+check "clock-args: the tab kept (config.ini tab = stopwatch)" test "$(kv args $CF 1 tab)" = stopwatch
+seed lasttab; config lasttab '[clock]\ntab = alarms\n'
+run clock lasttab "wait;wait;exit" SIM_SERVICES=notify,clockd
+check "clock-args: clock alone -> the tab of last time" logs lasttab "clock: tab alarms"
+# clock-one (AC-26): a Clock runs -> its arguments sent to it, it is raised, no window
+seed one; run clock one "wait;wait;exit" SIM_SERVICES=clock SIM_ARGS=alarms
+check "clock-one: the arguments sent to the running Clock" logs one 'sim: send clock type 1 "alarms\0"'
+check "clock-one: the running Clock raised" logs one "sim: raise_app clock"
+check "clock-one: no window of its own" nolog one "sim: window"
+# clock-clockd (AC-27): no clockd service -> clockd started (lx_launch, no arguments: kapi_launch)
+seed clockd; run clock clockd "wait;wait;exit" SIM_SERVICES=notify
+check "clock-clockd: clockd started" logs clockd "sim: launch clockd"
+seed clockdon; run clock clockdon "wait;wait;exit" SIM_SERVICES=notify,clockd
+check "clock-clockd: clockd running -> not started again" nolog clockdon "sim: launch clockd"
+# clock-keys (AC-41, the tabs): Ctrl+1..4, Ctrl+Tab, a second Clock's message (CLOCK_MSG_OPEN "timer")
+seed keys; run clock keys "wait;mods 1;key 50;mods 0;wait;mods 1;key 51;mods 0;wait;mods 1;key 52;mods 0;wait;mods 1;key 49;mods 0;wait;mods 1;key 0x09;mods 0;wait;waitlog 50 clock: tab timer;wait;exit" \
+	SIM_SERVICES=notify,clockd SIM_ARGS=world "SIM_MBOX=@40:1:9:timer"
+check "clock-keys: Ctrl+2 -> Alarms" logs keys "clock: tab alarms"
+check "clock-keys: Ctrl+3 -> Timer, Ctrl+4 -> Stopwatch" sh -c "[ \$(grep -c 'clock: tab timer' '$OUT/log/keys.log') -ge 1 ] && grep -q 'clock: tab stopwatch' '$OUT/log/keys.log'"
+check "clock-keys: Ctrl+1 -> World, Ctrl+Tab -> the next (Alarms)" test "$(grep 'clock: tab' "$OUT/log/keys.log" | sed -n 5,6p | tr '\n' ' ')" = "clock: tab world clock: tab alarms "
+check "clock-keys: CLOCK_MSG_OPEN timer -> Timer, raised" sh -c "[ \$(grep -c 'clock: tab timer' '$OUT/log/keys.log') = 2 ] && grep -q 'sim: raise_app clock' '$OUT/log/keys.log'"
+# the words: every one in French (tools/lang/check.py clock: 0 missing)
+check "clock-lang: check.py clock -> 0 missing" sh -c "python3 tools/lang/check.py clock | tail -1 | grep -q ' 0 missing'"
 
 echo
 if [ $FAILS -ne 0 ]; then echo "clock-sim: $FAILS of $((PASS + FAILS)) checks FAILED"; exit 1; fi
