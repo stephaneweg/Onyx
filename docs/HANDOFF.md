@@ -2020,7 +2020,7 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   the machine emulates the game's CPU whatever is drawn; SVE / SVE2 -- the Cortex-A72 has NEON
   only, and the JIT already keeps the FPRs and paired singles in NEON registers.
 - **Testing on the Pi yourself** (on the user's network; ask its IP -- it was 192.168.0.7):
-  - a console: `telnet <pi-ip>` (telnetd, port 23; or OnyxRemote's Console button). If telnetd
+  - a console: `telnet <pi-ip>` (telnetd, port 23; or OnyxRemote's Terminal button). If telnetd
     stops answering (a process spinning, see below): in the Pi's Terminal `ps`, then
     `kill <pid> --force`; or `reboot`.
   - files: an anonymous FTP server on the PC (e.g. Python's `pyftpdlib`, port 2121) and on the Pi

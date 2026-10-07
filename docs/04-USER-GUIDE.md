@@ -1243,8 +1243,16 @@ v89, `kapi_cursor_shown`); under the kernel's own window manager the pointer sta
 
 `rdpd` (started by `SD:/etc/autostart`, port **3390**) serves the Onyx windows one by one to
 **Onyx Remote** (`OnyxRemote.exe` in `pc/dist/`, .NET Framework 4.8 — already on Windows 10 /
-11): **one window** on the PC holding the Onyx session. Type the Pi's address in its tool bar,
-**Connect**. Below the tool bar, the **Pi's screen at its size**, pixel for pixel (the Onyx
+11). It starts with a small **connection dialog**: the Pi's **address** (the arrow at its right,
+or the Down key, lists the last ones used), **Options** unfolding the **port** (3390) and what the
+session shows — **Show the Onyx desktop**, **Onyx window frames**, **16-bit colours** —, and at the
+bottom **Full screen**, **Terminal** (a telnet console on the Pi in its own window; the dialog
+stays) and **Connect** (or Enter). While it connects, Connect is **Cancel** (or Esc); what went
+wrong is said in the dialog. Connected, the dialog gives way to **one window** on the PC holding
+the Onyx session, its tool bar reduced to **Disconnect**, **Terminal**, **Desktop**, **Full
+screen**, **Screenshot** and the status; **Disconnect** (or the connection ended by the Pi) brings
+the dialog back, closing the window ends Onyx Remote. Everything chosen is kept
+(`%APPDATA%\OnyxRemote.txt`). Below the tool bar, the **Pi's screen at its size**, pixel for pixel (the Onyx
 windows, the dock at the bottom, where they are on the Pi), in a scrolling area: connected, the
 window takes that size as far as the PC's screen allows; smaller (or made smaller), **scroll
 bars** show the rest; bigger, the Pi's screen sits in its middle, black around it. **Full screen** (the tool

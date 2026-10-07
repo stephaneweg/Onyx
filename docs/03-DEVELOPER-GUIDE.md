@@ -4273,7 +4273,9 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   newlib program linked with the vendored zlib (`ZLIB_PROGS` in `user/BinUtils/Makefile`).
 - **Window-level remote desktop**: `/bin/rdpd` (autostarted, port 3390) + the Windows client
   `pc/OnyxRemote` (.NET Framework 4.8, built by `sh pc/build.sh` into `pc/dist/OnyxRemote.exe`):
-  one MDI window (+ `TelnetForm`: a telnet console on telnetd, its own window -- IAC dropped,
+  a connection dialog first (`ConnectDialog.cs`: the address, the options, Full screen, Terminal,
+  Connect -- the connection made on a thread, `MainForm.Begin`; `Settings`, shared with the
+  session's window), then one MDI window (+ `TelnetForm`: a telnet console on telnetd, its own window -- IAC dropped,
   `ESC [2J` clears, the line sent whole + CR LF, telnetd echoes it) -- the Onyx menu bar across its top (stretched: `BarView`, its drop-down menus
   in a colour-keyed layer over the children), each Onyx window a child window (native frame or
   the Onyx one), the desktop + bubbles as the MDI area's background -- composited by the PC:
