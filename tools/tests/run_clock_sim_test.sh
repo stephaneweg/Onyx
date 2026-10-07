@@ -326,6 +326,59 @@ check "clock-edit: the editor's Delete deletes School" sh -c "grep -q 'clock: al
 seed rofs; fixture rofs; run clock rofs "wait;key 32;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms SIM_ROFS=SD:/apps/clock.app
 check "clock-rofs: a read-only card -> not saved, said" logs rofs "clock: alarms.txt not saved"
 
+# ==== an alarm ringing (step 8) ===================================================================================
+# clock-ring (AC-24, 25): clock --ring 1 -> the notification first, the ring card, raised; Esc = Stop
+seed ring1; fixture ring1; run clock ring1 "wait;wait;dump $OUT/ring.elsm;key 27;wait;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--ring 1"; png ring
+check "clock-ring: the notification Clock -- 07:00 School, its click: clock alarms" logs ring1 'sim: send notify type 1 "Clock\007:00 School\0clock alarms\0"'
+check "clock-ring: rung, the window raised, on the Alarms tab" sh -c "grep -q 'clock: ring 1 07:00 School' '$OUT/log/ring1.log' && grep -q 'sim: raise_app clock' '$OUT/log/ring1.log' && grep -q 'clock: tab alarms' '$OUT/log/ring1.log'"
+check "clock-ring: Esc = Stop" logs ring1 "clock: stop 1"
+check "clock-ring: ... a weekly alarm stays on, clockd told" sh -c "[ '$(kv ring1 $AL 1 on)' = 1 ] && grep -q 'sim: send clockd type 2' '$OUT/log/ring1.log'"
+check "clock-ring-only: started only to ring, it closes after the answer" logs ring1 "clock: ring-only, closing"
+check "clock-ring-only: ... before the script's end" nolog ring1 "sim: end of the script"
+seed ring2; fixture ring2; run clock ring2 "wait;wait;key 27;wait;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--ring 2"
+check "clock-ring: Stop on a once alarm -> written on = 0 (Medicine)" test "$(kv ring2 $AL 2 on)" = 0
+check "clock-ring: ... and shown off" logs ring2 "clock: alarm 2 14:30 Medicine [Once] off"
+seed ringfr fr; fixture ringfr; run clock ringfr "wait;wait;dump $OUT/ring-fr.elsm;key 27;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--ring 1"; png ring-fr
+check "clock-ring (fr): the notification in French (Horloge)" logs ringfr 'sim: send notify type 1 "Horloge\007:00 School\0clock alarms\0"'
+# clock-snooze (AC-18, 21, 25): Enter = Snooze -> snooze = 12:34 + 10 min written; the next-alarm line says so
+seed snooze; fixture snooze; run clock snooze "wait;wait;key 13;wait;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--ring 1"
+check "clock-snooze: Enter = Snooze, snooze = 202609281244" sh -c "grep -q 'clock: snooze 1 until 12:44' '$OUT/log/snooze.log' && [ '$(kv snooze $AL 1 snooze)' = 202609281244 ]"
+check "clock-snooze: Snoozed until 12:44 (the bar, the row)" sh -c "grep -q 'clock: next snoozed 12:44 (School)' '$OUT/log/snooze.log' && grep -q 'School \[Weekdays\] on snoozed 12:44' '$OUT/log/snooze.log'"
+# the snooze rung: cleared
+seed snoozed; fixture snoozed; sed -i '0,/^snooze =$/s//snooze = 202609281234/' "$OUT/w/snoozed/$AL"
+run clock snoozed "wait;wait;key 27;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--ring 1"
+check "clock-snooze: the snooze's ring answered -> snooze = cleared" test -z "$(kv snoozed $AL 1 snooze)"
+# clock-nosound (AC-25, 30, R-4): no sound output -> the card's line, logged; with one: acquired, the chimes looped
+seed nosound; fixture nosound; run clock nosound "wait;wait;key 27;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--ring 1"
+check "clock-nosound: no output -> Sound unavailable (none)" logs nosound "clock: sound unavailable none"
+check "clock-nosound: ... the ring still comes (the notification, the card)" logs nosound 'sim: send notify type 1 "Clock\007:00 School'
+seed sound; fixture sound; run clock sound "wait;wait;wait;wait;key 27;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--ring 1" SIM_SOUND=1
+check "clock-sound: with an output -> acquired, the chimes looped" sh -c "grep -q 'sim: sound acquired' '$OUT/log/sound.log' && grep -q 'clock: sound chimes (looped)' '$OUT/log/sound.log'"
+check "clock-sound: ... no unavailable line" nolog sound "sound unavailable"
+# the editor's Test: one round, or the amber line when nothing can be heard
+TEST="443 297"
+seed test; fixture test; run clock test "wait;key 13;wait;down $TEST;up $TEST;wait;dump $OUT/edit-nosound.elsm;key 27;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms; png edit-nosound
+check "clock-test: the editor's Test without an output -> unavailable" logs test "clock: sound unavailable none"
+seed test2; fixture test2; run clock test2 "wait;key 13;wait;down $TEST;up $TEST;wait;key 27;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms SIM_SOUND=1
+check "clock-test: with an output -> one round of the chimes" logs test2 "clock: sound chimes"
+check "clock-test: ... not looped" nolog test2 "(looped)"
+# clock-missed (AC-20, 29 PC part, R-2): unanswered 2 minutes (6000 steps of 20 ms) -> Missed alarm notified, missed =
+seed missed; fixture missed; run clock missed "wait;$(waits 6100)exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--ring 1"
+check "clock-missed: Missed alarm: 07:00 School notified" logs missed 'sim: send notify type 1 "Clock\0Missed alarm: 07:00 School\0clock alarms\0"'
+check "clock-missed: missed = 202609281234 written, the row says so" sh -c "[ '$(kv missed $AL 1 missed)' = 202609281234 ] && grep -q 'missed 12:34' '$OUT/log/missed.log'"
+check "clock-missed: not before 2 minutes (one notification of the ring, one of the miss)" test "$(count missed 'sim: send notify')" = 2
+# a ring delivered to the running Clock (CLOCK_MSG_OPEN "--ring 1"): after Stop it stays
+seed msg; fixture msg; run clock msg "wait;waitlog 100 clock: ring 1;wait;key 27;wait;$(waits 10)" SIM_SERVICES=notify,clockd SIM_ARGS=world "SIM_MBOX=@40:1:9:--ring 1"
+check "clock-ring (message): rung by the running Clock" logs msg "clock: ring 1 07:00 School"
+check "clock-ring (message): ... it stays after Stop" sh -c "grep -q 'clock: stop 1' '$OUT/log/msg.log' && ! grep -q 'ring-only' '$OUT/log/msg.log' && grep -q 'sim: end of the script' '$OUT/log/msg.log'"
+# R-8: a ring over the open editor -> both cards; Esc stops the ring, the editor is still there (Esc: cancelled)
+seed stack; fixture stack; run clock stack "wait;key 13;wait;waitlog 100 clock: ring 1;wait;dump $OUT/stack.elsm;key 27;wait;key 27;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms "SIM_MBOX=@40:1:9:--ring 1"; png stack
+check "clock-veil-stack: a ring over the editor, Esc stops it" sh -c "grep -q 'clock: editor edit 1' '$OUT/log/stack.log' && grep -q 'clock: stop 1' '$OUT/log/stack.log'"
+check "clock-veil-stack: ... then the editor's Esc cancels it" logs stack "clock: editor cancelled"
+# a ring of an alarm deleted meanwhile: nothing (started only for it: closes)
+seed gone; fixture gone; run clock gone "wait;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--ring 7"
+check "clock-ring: an unknown alarm -> nothing rung, closed" sh -c "grep -q 'clock: ring 7: no such alarm' '$OUT/log/gone.log' && grep -q 'ring-only, closing' '$OUT/log/gone.log' && ! grep -q 'sim: send notify' '$OUT/log/gone.log'"
+
 echo
 if [ $FAILS -ne 0 ]; then echo "clock-sim: $FAILS of $((PASS + FAILS)) checks FAILED"; exit 1; fi
 echo "clock-sim: all $PASS checks passed"
