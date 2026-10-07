@@ -1,0 +1,15 @@
+# Moon Base -- a player's table with a typo on line 12 ([bumber]): the picker's error state (AutoDev round 4's tests) MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+[table]
+format = 1
+name   = Moon Base
+size   = 520 1040
+drain  = 1010
+
+[wall]
+id     = outline
+closed = 1
+points = 0 0, 520 0, 520 1040, 0 1040
+[bumber]
+id     = b1
+at     = 260 300
+radius = 28

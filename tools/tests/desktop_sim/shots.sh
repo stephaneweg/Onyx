@@ -61,6 +61,7 @@ build () {
 	extra=""; [ "$1" = graphcalc ] && extra=user/Libs/basic/basnum.cpp
 	case "$1" in notes|stickies) extra=user/Apps/notes/notesmodel.cpp ;; esac	# (their model: SD:/Notes, notes.ini)
 	[ "$1" = circuits ] && extra=user/Apps/circuits/circuit.cpp		# (its engine: the board, the packs, the progress)
+	[ "$1" = pinball ] && extra="user/Apps/pinball/table.cpp user/Apps/pinball/physics.cpp user/Apps/pinball/rules.cpp user/Apps/pinball/scores.cpp"	# (its core)
 	[ "$1" = gamelib ] && extra="user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
@@ -147,7 +148,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits pinball " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
@@ -156,7 +157,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies circuits"
+      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies circuits pinball"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -396,6 +397,21 @@ if want circuits; then			# (Circuits, AutoDev round 2: the progress from desktop
 	sim circuits circuits-fr "$CS;move 517 115;move 518 115$TT" $CP; png circuits-fr
 	lang "$SHOTS_LANG"
 	rm -rf "$CQ"
+fi
+if want pinball; then			# (Pinball, AutoDev round 4: the top 5s of desktop_sim/pinball/scores.ini and two player's tables
+					#  -- sd/docs/pinball -- in the writes' folder; one script step = 20 ms of the game, 50 waits = 1 s;
+					#  "hold 32" ... "release 32" pulls the plunger, "hold 0x102" raises the left flipper; a taller
+					#  screen so that the window keeps its 600 x 680)
+	PQ="$OUT/writes/apps/pinball.app"; PD="$OUT/writes/docs/pinball"; T=SD:/apps/pinball.app/tables
+	PB="SIM_POS=60,30 SIM_SCREEN=1280x900"
+	pw () { printf 'wait;%.0s' $(seq 1 $1); }
+	pfix () { rm -rf "$PQ" "$PD"; mkdir -p "$PQ" "$PD"; cp $D/pinball/scores.ini "$PQ/scores.ini"; cp $D/sd/docs/pinball/my-first-table.table $D/sd/docs/pinball/broken.table "$PD/"; }
+	pfix; sim pinball pinball "wait;wait;$W" $PB; png pinball				# the picker: Space Station, its top 5
+	pfix; sim pinball pinball-play "wait;hold 32;$(pw 35)release 32;$(pw 110)hold 0x102;$W" $PB "SIM_ARGS=--seed 7 $T/3-volcano.table"; png pinball-play
+	pfix; sim pinball pinball-multiball "wait;hold 32;$(pw 35)release 32;$(pw 40)" $PB "SIM_ARGS=--seed 7 --start multiball $T/1-space-station.table"; png pinball-multiball
+	pfix; sim pinball pinball-broken "wait;wait;$W" $PB SIM_ARGS=SD:/docs/pinball/broken.table; png pinball-broken	# (the error state)
+	pfix; lang fr; sim pinball pinball-fr "wait;wait;key 0x101;$W" $PB; png pinball-fr; lang "$SHOTS_LANG"	# (Manoir hanté)
+	rm -rf "$PQ" "$PD"
 fi
 if want slides; then			# (the sample deck: slide 3, its callout chosen; the sorter; the effects; the show, mid-transition)
 	SL=SIM_ARGS=SD:/docs/cafe-2026.odp

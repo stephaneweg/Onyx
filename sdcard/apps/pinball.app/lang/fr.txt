@@ -1,0 +1,93 @@
+# Pinball's words in French (uikit/lang.h: English<TAB>French; tools/lang/check.py pinball).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+digits|,	 
+SHOOT AGAIN	REJOUEZ
+line %d: 	ligne %d : 
+1st	1re
+2nd	2e
+3rd	3e
+4th	4e
+5th	5e
+MULTIBALL!	MULTIBALL !
+Extra ball!	Bille supplémentaire !
+Ball saved	Bille sauvée
+Tilt warning	Attention, tilt
+TILT	TILT
+Ball lost	Bille perdue
+Game over	Partie terminée
+Player	Joueur
+Bonus	Bonus
+any key: skip	une touche : passer
+Paused	Pause
+P or Start: resume	P ou Start : reprendre
+Enter or A: back to the tables	Entrée ou A : retour aux tables
+New high score: %s place!	Nouveau record : %s place !
+Your name:	Votre nom :
+Best scores	Meilleurs scores
+Ball %d: launch it!	Bille %d : lancez-la !
+Left flipper	Batteur gauche
+Right flipper	Batteur droit
+Plunger (hold)	Lanceur (maintenir)
+Nudge	Secouer
+Start	Start
+Pause	Pause
+Space	Espace
+Goal	Objectif
+Pinball tables|*.table|All files|*	Tables de flipper|*.table|Tous les fichiers|*
+Game	Partie
+New Game	Nouvelle partie
+Choose a Table...	Choisir une table...
+Esc	Échap
+Open a Table File...	Ouvrir un fichier de table...
+Sound On / Off	Son activé / désactivé
+Quit	Quitter
+BALL	BILLE
+Choose a table	Choisissez une table
+Play this table (Enter)	Jouer sur cette table (Entrée)
+Play	Jouer
+choose	choisir
+Enter	Entrée
+play	jouer
+quit	quitter
+Resume	Reprendre
+Back to the tables	Retour aux tables
+OK	OK
+No table found in SD:/apps/pinball.app/tables.	Aucune table dans SD:/apps/pinball.app/tables.
+Multiplier	Multiplicateur
+Best	Record
+Tilt	Tilt
+Your tables (SD:/docs/pinball)	Vos tables (SD:/docs/pinball)
+Other tables	Autres tables
+No score yet	Pas encore de score
+This table cannot be played.	Cette table ne peut pas être jouée.
+Correct the file in a text editor (Tinypad): the list is read again when you come back to it.	Corrigez le fichier dans un éditeur de texte (Tinypad) : la liste est relue quand vous y revenez.
+unknown block [%s]	bloc inconnu [%s]
+[table] must be the first block, once	[table] doit être le premier bloc, une seule fois
+[%s] needs %s	[%s] demande %s
+bad value for %s	valeur incorrecte pour %s
+%s out of range	%s hors limites
+id %s used twice	id %s utilisé deux fois
+the table needs one closed wall with id = outline	la table demande un mur fermé avec id = outline
+the table needs 2 or 3 flippers, a left one and a right one	la table demande 2 ou 3 batteurs, un gauche et un droit
+the table needs one [plunger]	la table demande un [plunger]
+unknown %s	%s inconnu
+bank %s needs 2 to 8 targets	le groupe %s demande 2 à 8 cibles
+too many %s (max %s)	trop de %s (%s au plus)
+the file is too big	le fichier est trop gros
+cannot read the file	impossible de lire le fichier
+wall segments	segments de mur
+walls	murs
+arcs	arcs
+posts, bumpers and saucers	plots, bumpers et trous
+slings	slingshots
+targets	cibles
+banks	groupes de cibles
+lanes	couloirs
+lane groups	groupes de couloirs
+gates	portillons
+ramps	rampes
+rules	règles
+actions	actions
+shapes	formes
+labels	textes
+points	points
