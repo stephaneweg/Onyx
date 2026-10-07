@@ -25,6 +25,7 @@
 using namespace pinball;
 static int fails = 0, checks = 0;
 static bool quick = false;
+static unsigned long long fingerprint = 1469598103934665603ull;	// the 2-minute runs of every table (the two builds compare it)
 static long launches = 0, relaunches = 0;
 #define CHECK(c, ...) do { checks++; if (!(c)) { fails++; printf ("FAIL %s:%d ", __FILE__, __LINE__); printf (__VA_ARGS__); printf ("\n"); } } while (0)
 
@@ -267,7 +268,7 @@ static void test_example (const char *ex)
 struct Watch
 {
 	const Table *t;
-	long outside, fast, crossed, subs;
+	long outside, fast, crossed, subs, searches;
 	bool track;			// segments crossed (AC 8)
 	Vec prev[MAXBALL]; int prevState[MAXBALL];
 };
@@ -381,6 +382,7 @@ static int one_launch (const Table &t, unsigned seed, bool flippers, int maxFram
 		inPlay = n ? inPlay + 1 : 0;
 		if (inPlay > longest) longest = inPlay;
 	}
+	W.searches += g->w.searches;
 	delete g;
 	return longest;
 }
@@ -392,6 +394,7 @@ static void test_physics (const Table &t, bool isExample)
 	long s1, s2;
 	unsigned long long h1 = scripted_game (t, s1), h2 = scripted_game (t, s2);
 	CHECK (h1 == h2 && s1 == s2, "%s: two runs differ (score %ld / %ld)", nm, s1, s2);
+	fingerprint = fnv (fingerprint, &h1, sizeof h1);
 
 	// AC 6: containment, the speed cap
 	if (!isExample)
@@ -413,27 +416,7 @@ static void test_physics (const Table &t, bool isExample)
 			if (l > worst) worst = l;
 		}
 		CHECK (worst < 60 * FPS, "%s: a ball still in play after %d frames without flippers", nm, worst);
-		// the ball search must not be needed: one more run per launch counting it
-		long searches = 0;
-		g_seed = 0x5EED0007;
-		for (int k = 0; k < (quick ? 10 : 50); k++)
-		{
-			Game *g = new Game;
-			g->start (t, 0x5EED1001 + k);
-			Input in = NOINPUT; in.plunger = true;
-			int pull = 12 + rnd_n (49);
-			for (int i = 0; i < pull; i++) g->frame (in, false);
-			in.plunger = false;
-			for (int f = 0; f < 60 * FPS && g->state != G_OVER; f++)
-			{
-				in.tap = g->w.plungerBusy () && g->w.playBalls () == 0 && f % 40 == 0;
-				if (g->state == G_BALLEND) g->skip ();
-				g->frame (in, false);
-			}
-			searches += g->w.searches;
-			delete g;
-		}
-		CHECK (searches == 0, "%s: the ball search fired %ld times", nm, searches);
+		CHECK (W2.searches == 0, "%s: the ball search fired %ld times without flippers", nm, W2.searches);
 	}
 
 	// AC 8: wall tunnelling at full speed (the example)
@@ -1078,5 +1061,6 @@ int main (int argc, char **argv)
 	if (fails) { printf ("FAIL pinball: %d of %d checks failed\n", fails, checks); return 1; }
 	printf ("ok   pinball (%d checks: %d tables, %ld launches (%ld relaunched), %.1f s%s)\n", checks, ntables, launches, relaunches,
 		secs, quick ? ", quick" : "");
+	printf ("     determinism fingerprint %016llx\n", fingerprint);
 	return 0;
 }
