@@ -2,8 +2,8 @@
 
 A two-part case for the **Raspberry Pi 4 Model B** (a **base** and a **cover**), its look borrowed from the
 Mac mini (a soft rounded slab, the cables at the back and the sides, a round vented foot) and the GameCube
-(the disc on the top, here a circular groove with the **Onyx mark** engraved inside — a cut gem and the
-word ONYX — ringed with vents).
+(the disc on the top, here a circular groove with the **Onyx gem** engraved inside — the mark of the Onyx
+web site: a hexagon cut in facets, one facet in peach — ringed with vents).
 
 ![The case](preview.png)
 
@@ -13,9 +13,10 @@ word ONYX — ringed with vents).
 |---|---|
 | `onyx_case_base.stl` | The base, in its printing position (its bottom on the bed). |
 | `onyx_case_cover.stl` | The cover, in its printing position (upside down, its top on the bed). |
-| `onyx_case_logo_inlay.stl` | The logo alone, placed to fill the engraving of the cover as printed: load it with the cover as one multi-part object for a two-colour print (gold, white...). |
+| `onyx_case_logo_inlay.stl` | The gem's lines alone, placed to fill their engraving in the cover as printed: load it with the cover as one multi-part object for a second colour (the site's slate blue, white...). |
+| `onyx_case_logo_accent.stl` | The peach facet, the same way, for a third colour (the site's peach). |
 | `onyx_case_assembled.stl` | The two parts closed, to look at (not to print). |
-| `make_case.py` | The parametric generator (everything above): `pip install manifold3d trimesh numpy matplotlib`, then `python3 hardware/case/make_case.py`. |
+| `make_case.py` | The parametric generator (everything above): `pip install manifold3d trimesh numpy`, then `python3 hardware/case/make_case.py`. |
 | `render_preview.py` | The renderer of `preview.png`. |
 
 Outside: **92 × 92 × 28.2 mm** — square: the board sits against three walls (its ports), the room behind it
@@ -42,11 +43,10 @@ takes the cover's own screws. Walls 2 mm, the top 2.2 mm.
 ## Printing
 
 PLA or PETG, 0.2 mm layers, 0.4 mm nozzle, 3 walls, 15–20 % infill, **no supports** (the edges that face
-the bed are rounded down to a 45° chamfer; the cover prints top down). The logo and the groove are engraved
-0.6 mm deep in the top: printed plain, they show by the light, or fill them with paint; with a
-multi-material printer, add the inlay to the cover.
+the bed are rounded down to a 45° chamfer; the cover prints top down). The gem and the groove are engraved
+0.6 mm deep in the top: printed plain, they show by the light, or fill them with paint (the facet in
+peach); with a multi-material printer, add the inlays to the cover.
 
 ## Licence
 
-MIT (the Onyx project's). The word ONYX is drawn from DejaVu Sans Bold (Bitstream Vera licence), turned into
-geometry.
+MIT (the Onyx project's).

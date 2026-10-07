@@ -43,7 +43,8 @@ if __name__=="__main__":
         for f in files.split('+'):
             fn, _, dz = f.partition(':')
             col = (0.62,0.63,0.68) if 'base' in fn else (0.13,0.13,0.15)
-            if 'inlay' in fn: col=(0.85,0.72,0.35)
+            if 'inlay' in fn: col=(0.42,0.53,0.66)
+            if 'accent' in fn: col=(0.93,0.63,0.42)
             parts.append((trimesh.load(fn), col, np.array([0,0,float(dz or 0)])))
         tiles.append(render(parts, el, az))
     Image.fromarray(np.hstack(tiles)).save(out)
