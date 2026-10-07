@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Onyx case -- a small z-buffer renderer for the previews (MIT licence).
-# python3 render_preview.py out.png "file.stl[:dz][+file...]@elev,azim" ...
+# python3 render_preview.py out.png "file.stl[:dz[:rrggbb]][+file...]@elev,azim" ...
 import sys, numpy as np, trimesh
 from PIL import Image
 def render(parts, elev, azim, W=900, H=650):
@@ -41,10 +41,12 @@ if __name__=="__main__":
         files, ang = sp.split('@'); el, az = map(float, ang.split(','))
         parts=[]
         for f in files.split('+'):
-            fn, _, dz = f.partition(':')
+            fn, _, rest = f.partition(':')
+            dz, _, hexcol = rest.partition(':')
             col = (0.62,0.63,0.68) if 'base' in fn else (0.13,0.13,0.15)
             if 'inlay' in fn: col=(0.42,0.53,0.66)
             if 'accent' in fn: col=(0.93,0.63,0.42)
+            if hexcol: col = tuple(int(hexcol[i:i+2], 16) / 255 for i in (0, 2, 4))
             parts.append((trimesh.load(fn), col, np.array([0,0,float(dz or 0)])))
         tiles.append(render(parts, el, az))
     Image.fromarray(np.hstack(tiles)).save(out)
