@@ -379,6 +379,107 @@ check "clock-veil-stack: ... then the editor's Esc cancels it" logs stack "clock
 seed gone; fixture gone; run clock gone "wait;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--ring 7"
 check "clock-ring: an unknown alarm -> nothing rung, closed" sh -c "grep -q 'clock: ring 7: no such alarm' '$OUT/log/gone.log' && grep -q 'ring-only, closing' '$OUT/log/gone.log' && ! grep -q 'sim: send notify' '$OUT/log/gone.log'"
 
+# ==== the Timer, Time's up, the timer handed to clockd (step 9) =====================================================
+# the Timer's controls (the block centred in 560 x 440; client coordinates): the 5 min and 3 min presets, the minutes
+# spin box (its field; its up arrow)
+P5="421 193"; P3="370 193"; MINF="402 105"; MINUP="449 97"
+# clock-timer (AC-32): the 5 min preset sets 0 / 5 / 0; Start, about a second -> 04:59; the duration locked while it runs
+# (the minutes' up arrow does nothing); R refused while it runs; Pause holds; Reset back to 05:00; timer = 300 kept
+seed timer; run clock timer "wait;down $P5;up $P5;wait;key 32;$(waits 50)down $MINUP;up $MINUP;key r;$(waits 10)key 32;wait;dump $OUT/timer-paused.elsm;$(waits 30)key r;wait;quit;wait" \
+	SIM_SERVICES=notify,clockd SIM_ARGS=timer; png timer-paused
+check "clock-timer: the 5 min preset -> 05:00" logs timer "clock: timer set 05:00"
+check "clock-timer: Start -> 05:00, the duration locked" logs timer "clock: timer started 05:00 (the duration locked)"
+check "clock-timer: R refused while it runs" logs timer "clock: timer reset refused (running)"
+check "clock-timer: about a second later, Pause holds 04:59 (the up arrow changed nothing)" logs timer "clock: timer paused 04:59"
+check "clock-timer: Reset -> 05:00" logs timer "clock: timer reset 05:00"
+check "clock-timer: timer = 300 in config.ini" test "$(kv timer $CF 1 timer)" = 300
+# the preset's double click (two clicks within 0.4 s): set and start; a preset refused while it runs
+seed tdouble; run clock tdouble "wait;down $P3;up $P3;down $P3;up $P3;wait;down $P5;up $P5;wait;quit;wait" SIM_SERVICES=notify,clockd SIM_ARGS=timer
+check "clock-timer: a double click on 3 min sets and starts" sh -c "grep -q 'clock: timer set 03:00' '$OUT/log/tdouble.log' && grep -q 'clock: timer started 03:00' '$OUT/log/tdouble.log'"
+check "clock-timer: ... a preset refused while it runs" logs tdouble "clock: preset refused (the timer runs)"
+check "clock-timer: ... timer = 180 kept" test "$(kv tdouble $CF 1 timer)" = 180
+# the duration typed in the spin boxes: minutes 2, Space (the typed digits taken) -> 02:00
+seed ttyped; run clock ttyped "wait;down $MINF;up $MINF;key 2;key 32;wait;quit;wait" SIM_SERVICES=notify,clockd SIM_ARGS=timer
+check "clock-timer: 2 typed in the minutes, Space -> started 02:00" logs ttyped "clock: timer started 02:00"
+check "clock-timer: ... timer = 120 kept" test "$(kv ttyped $CF 1 timer)" = 120
+# clock-timesup (AC-33): a 3-s timer -> Time's up, notified (its click: clock timer), raised; + -> one more minute (01:00)
+seed tup; config tup '[clock]\ntimer = 3\n'
+run clock tup "wait;key 32;waitlog 300 clock: time's up;wait;dump $OUT/timesup.elsm;key 43;wait;$(waits 5)key 32;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=timer; png timesup
+check "clock-timesup: the notification Timer -- 00:03 done (clock timer)" logs tup 'sim: send notify type 1 "Clock\0Timer — 00:03 done\0clock timer\0"'
+check "clock-timesup: Time's up, the window raised" sh -c "grep -q \"clock: time's up (00:03\" '$OUT/log/tup.log' && grep -q 'sim: raise_app clock' '$OUT/log/tup.log'"
+check "clock-timesup: after it started" test "$(lineof tup 'timer started 00:03')" -lt "$(lineof tup "time's up (")"
+check "clock-timesup: + -> one more minute, 01:00" logs tup "clock: timer started 01:00 (one more minute)"
+check "clock-timesup: ... it runs (Space pauses it at 01:00)" logs tup "clock: timer paused 01:00"
+# Stop (Esc): back to the time set (Space starts 00:03 again); French: Minuteur -- 00:03 terminé
+seed tstop fr; config tstop '[clock]\ntimer = 3\n'
+run clock tstop "wait;key 32;waitlog 300 clock: time's up;wait;dump $OUT/timesup-fr.elsm;key 27;wait;key 32;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=timer; png timesup-fr
+check "clock-timesup: Esc = Stop" logs tstop "clock: time's up stopped"
+check "clock-timesup: ... back to the time set (Space: 00:03 again)" test "$(count tstop 'clock: timer started 00:03')" = 2
+check "clock-timesup (fr): Minuteur -- 00:03 terminé" logs tstop 'sim: send notify type 1 "Horloge\0Minuteur — 00:03 terminé\0clock timer\0"'
+# unanswered two minutes: the card goes by itself
+seed tlong; config tlong '[clock]\ntimer = 3\n'
+run clock tlong "wait;key 32;waitlog 300 clock: time's up;$(waits 6100)exit" SIM_SERVICES=notify,clockd SIM_ARGS=timer
+check "clock-timesup: unanswered 2 minutes -> it stops by itself" logs tlong "clock: time's up unanswered"
+# clock-timer-close (AC-35, R-1): the timer running, the window closed (quit; the close box) -> [timer] in alarms.txt
+# (its end in ticks, its time set, its end in UTC with a real clock), clockd told; timer = 300 kept
+seed tclose; fixture tclose
+run clock tclose "wait;key 32;$(waits 20)quit;wait" SIM_SERVICES=notify,clockd SIM_ARGS=timer SIM_CLOCK=20260928123400
+check "clock-timer-close: the timer handed to clockd" logs tclose "clock: timer handed to clockd (05:00 left)"
+check "clock-timer-close: [timer] end = (ticks) and set = 300 written after the three alarms" sh -c "[ \$(grep -c '^\[alarm\]' '$OUT/w/tclose/$AL') = 3 ] && [ '$(kv tclose $AL 4 set)' = 300 ] && [ -n '$(kv tclose $AL 4 end)' ] && [ '$(kv tclose $AL 4 end)' -gt 30000 ]"
+check "clock-timer-close: its end in UTC too (a real clock)" test -n "$(kv tclose $AL 4 utc)"
+check "clock-timer-close: clockd told (RELOAD)" logs tclose "sim: send clockd type 2"
+check "clock-timer-close: timer = 300 in config.ini" test "$(kv tclose $CF 1 timer)" = 300
+# (the close box of the main window is the simulator's "quit": kapi_should_exit, as the cases above)
+# a paused timer is kept (config.ini) and comes back paused
+seed tpause; run clock tpause "wait;key 32;$(waits 60)key 32;wait;quit;wait" SIM_SERVICES=notify,clockd SIM_ARGS=timer
+run clock tpause "wait;wait;key 32;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=timer
+check "clock-timer: a paused timer kept at the close, back paused (04:59)" sh -c "grep -q 'clock: timer paused 04:59 (kept)' '$OUT/log/tpause.log' && grep -q 'clock: timer resumed 04:59' '$OUT/log/tpause.log'"
+check "clock-timer: ... nothing handed to clockd" test ! -e "$OUT/w/tpause/$AL"
+# clock-timer-resume (validation 1 gap 3, AC-40): a [timer] still to come (end = 13000: 120 s ahead) -> taken back,
+# running 02:00, the block removed, clockd told, the Timer tab shown (no argument)
+seed tres; alarms tres '[timer]\nend = 13000\nset = 300\nlabel =\n'
+run clock tres "wait;wait;dump $OUT/timer-resume.elsm;wait;exit" SIM_SERVICES=notify,clockd; png timer-resume
+check "clock-timer-resume: taken back, running 02:00" logs tres "clock: timer running 02:00"
+check "clock-timer-resume: the [timer] block gone from alarms.txt" sh -c "! grep -q '^\[timer\]' '$OUT/w/tres/$AL'"
+check "clock-timer-resume: clockd told (RELOAD)" logs tres "sim: send clockd type 2"
+check "clock-timer-resume: the Timer tab shown" logs tres "clock: tab timer"
+# ... already past (end = 500): left to clockd -- the file as it was, nothing sent
+seed tpast; alarms tpast '[timer]\nend = 500\nset = 300\nlabel =\n'
+run clock tpast "wait;wait;exit" SIM_SERVICES=notify,clockd
+check "clock-timer-resume: a past [timer] left to clockd (the file unchanged)" cmp -s "$OUT/w/tpast/$AL" "$OUT/fix/tpast.alarms"
+check "clock-timer-resume: ... nothing sent" nolog tpast "sim: send clockd"
+# a stale [timer] (an earlier boot: end 990 s ahead for a 5-s timer) is dropped at the next save
+seed tstale; fixture tstale; printf '\n[timer]\nend = 100000\nset = 5\nlabel =\n' >> "$OUT/w/tstale/$AL"
+run clock tstale "wait;key 32;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=alarms
+check "clock-timer: a stale [timer] dropped at the next save" sh -c "grep -q 'clock: alarm 1 turned off' '$OUT/log/tstale.log' && ! grep -q '^\[timer\]' '$OUT/w/tstale/$AL'"
+# clock-timesup-hand (validation 2 gap 1): clock --ring timer, the [timer] past -> Time's up with its time set, the block
+# removed (the three alarms kept), clockd told; started only for it: closes after Stop
+seed thand; fixture thand; printf '\n[timer]\nend = 500\nset = 300\nlabel =\n' >> "$OUT/w/thand/$AL"
+run clock thand "wait;wait;key 27;wait;wait;exit" SIM_SERVICES=notify,clockd "SIM_ARGS=--ring timer"
+check "clock-timesup-hand: Time's up, Timer -- 05:00 done sent" sh -c "grep -q \"clock: time's up (05:00\" '$OUT/log/thand.log' && grep -q 'sim: send notify type 1 \"Clock.0Timer — 05:00 done.0clock timer' '$OUT/log/thand.log'"
+check "clock-timesup-hand: no [timer] in alarms.txt, the three alarms kept" sh -c "! grep -q '^\[timer\]' '$OUT/w/thand/$AL' && [ \$(grep -c '^\[alarm\]' '$OUT/w/thand/$AL') = 3 ] && [ '$(kv thand $AL 1 label)' = School ]"
+check "clock-timesup-hand: clockd told (RELOAD)" logs thand "sim: send clockd type 2"
+check "clock-timesup-hand: started only for it, closed after Stop" sh -c "grep -q \"clock: time's up stopped\" '$OUT/log/thand.log' && grep -q 'ring-only, closing' '$OUT/log/thand.log'"
+# ... +1 min instead: it stays (a timer runs: g_ringOnly cleared -- validation 3 note 4), and hands it over at the close
+seed thand2; fixture thand2; printf '\n[timer]\nend = 500\nset = 300\nlabel =\n' >> "$OUT/w/thand2/$AL"
+run clock thand2 "wait;wait;key 43;$(waits 20)quit;wait" SIM_SERVICES=notify,clockd "SIM_ARGS=--ring timer"
+check "clock-timesup-hand: +1 min -> the Clock stays" sh -c "grep -q 'one more minute' '$OUT/log/thand2.log' && ! grep -q 'ring-only' '$OUT/log/thand2.log'"
+check "clock-timesup-hand: ... the new minute handed over at the close (set = 60)" sh -c "grep -q 'timer handed to clockd (01:00 left)' '$OUT/log/thand2.log' && [ '$(kv thand2 $AL 4 set)' = 60 ]"
+# by message to the running Clock (CLOCK_MSG_OPEN "--ring timer"): the same, and it stays
+seed tmsg; fixture tmsg; printf '\n[timer]\nend = 500\nset = 300\nlabel =\n' >> "$OUT/w/tmsg/$AL"
+run clock tmsg "wait;waitlog 100 clock: time's up;wait;key 27;$(waits 10)" SIM_SERVICES=notify,clockd SIM_ARGS=world "SIM_MBOX=@40:1:13:--ring timer"
+check "clock-timesup-hand (message): rung by the running Clock, it stays after Stop" sh -c "grep -q \"clock: time's up stopped\" '$OUT/log/tmsg.log' && ! grep -q 'ring-only' '$OUT/log/tmsg.log' && grep -q 'sim: end of the script' '$OUT/log/tmsg.log'"
+# clock-veil-stack (R-8): Time's up over the open alarm editor; Esc stops it, then Esc cancels the editor (still there)
+seed tstack; fixture tstack; config tstack '[clock]\ntimer = 3\n'
+run clock tstack "wait;key 32;mods 1;key 50;mods 0;wait;key 13;wait;waitlog 300 clock: time's up;wait;dump $OUT/timer-stack.elsm;key 27;wait;key 27;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=timer; png timer-stack
+check "clock-veil-stack: Time's up over the editor" test "$(lineof tstack 'clock: editor edit 1')" -lt "$(lineof tstack "clock: time's up (")"
+check "clock-veil-stack: ... the tab left as it was (the editor's)" test "$(count tstack 'clock: tab timer')" = 1
+check "clock-veil-stack: Esc stops it, then Esc cancels the editor" test "$(lineof tstack "time's up stopped")" -lt "$(lineof tstack 'clock: editor cancelled')"
+# clock-edit-keys (c) (G9): a Timer spin box focused, Ctrl+2 -> the Alarms tab, no 2 typed in the duration
+seed tkeys; run clock tkeys "wait;down $MINF;up $MINF;mods 1;key 50;mods 0;wait;mods 1;key 51;mods 0;wait;key 32;wait;exit" SIM_SERVICES=notify,clockd SIM_ARGS=timer
+check "clock-edit-keys (c): Ctrl+2 over a focused spin box -> the Alarms tab" logs tkeys "clock: tab alarms"
+check "clock-edit-keys (c): ... the duration unchanged (05:00)" logs tkeys "clock: timer started 05:00"
+
 echo
 if [ $FAILS -ne 0 ]; then echo "clock-sim: $FAILS of $((PASS + FAILS)) checks FAILED"; exit 1; fi
 echo "clock-sim: all $PASS checks passed"

@@ -81,6 +81,7 @@ public:
 	void onHidden () override { g_list->setFocus (); }
 };
 static RingVeil *g_ring;
+static bool ring_busy () { return g_ring && g_ring->id; }	// (timerview.h: Time's up ending leaves an alarm's sound alone)
 
 // "07:00 School": the notifications' words
 static void ring_words (const Alarm &a, char *o, int cap) { char t[8]; clk_fmt_hm (a.hh, a.mm, t, sizeof t); snprintf (o, cap, "%s %s", t, label_of (a)); }
