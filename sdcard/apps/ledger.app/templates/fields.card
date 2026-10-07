@@ -2,7 +2,7 @@
 [form]
 version = 1
 title = Ledger's merge fields
-description = The fields a document's template can hold (print.h), with a quote's values: Writer's Tools > Mail Merge lists them.
+description = The fields a document's template can hold (print.h), with a quote's values: Letters' Tools > Mail Merge lists them.
 
 [field]
 column = Kind

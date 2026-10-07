@@ -1,0 +1,38 @@
+# print.abi -- the export table of SD:/lib/printerkit.so: "<slot> <symbol>", in the table's order.
+# APPEND-ONLY (tools/libgen/libgen.py adds the new functions at the end): never move or remove a
+# line -- programs built against an older table call the entries by their slot. The one edit allowed:
+# a function RENAMED keeps its line, with its new symbol (a reserved virtual given a meaning).
+# The table's version is its number of entries.
+0 print_abort
+1 print_begin
+2 print_dialog
+3 print_end
+4 print_font
+5 print_font_data
+6 print_font_metrics
+7 print_frame
+8 print_glyph
+9 print_image
+10 print_job_cancel
+11 print_jobs
+12 print_jobs_forget
+13 print_line
+14 print_page
+15 print_path_close
+16 print_path_curve
+17 print_path_fill
+18 print_path_line
+19 print_path_move
+20 print_path_stroke
+21 print_printer_add
+22 print_printer_default
+23 print_printer_media
+24 print_printer_remove
+25 print_printer_status
+26 print_printers
+27 print_rect
+28 print_setup_default
+29 print_setup_paper
+30 print_text
+31 print_text_width
+32 print_printers_find

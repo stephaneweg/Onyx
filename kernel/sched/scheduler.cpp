@@ -104,6 +104,8 @@ CScheduler::CScheduler (void)
 	m_nPrioTasks (0),
 	m_bPrioPreempt (FALSE),
 	m_nLastYield (0),
+	m_nBusyUs (0),
+	m_nSleptUs (0),
 	m_nLastSample (0),
 	m_nStallIn (0),
 	m_nStallOut (0),
@@ -147,6 +149,10 @@ void CScheduler::Yield (void)
 	// Stall watchdog: the task that is leaving ran since the previous Yield() entry.
 	// Too long (kernel code is not preempted) -> file a report for the reaper to log.
 	unsigned nNow = CTimer::Get ()->GetClockTicks ();
+	if (m_pCurrent != m_pIdleTask && m_nLastYield != 0)	// (v80 cpu_stats: the leaving task's time)
+	{
+		m_nBusyUs = m_nBusyUs + (unsigned) (nNow - m_nLastYield);
+	}
 	if (   m_pCurrent != m_pIdleTask
 	    && (unsigned) (nNow - m_nLastYield) > SCHED_STALL_US
 	    && m_nLastYield != 0)
@@ -212,6 +218,19 @@ void CScheduler::Yield (void)
 	}
 
 	IrqRestore (nFlags);
+}
+
+u64 CScheduler::GetBusyUs (void) const
+{
+	u64 n = m_nBusyUs;
+	unsigned nLast = m_nLastYield;
+	if (m_pCurrent != m_pIdleTask && nLast != 0)		// (the task running now, so far)
+	{
+		unsigned nRun = CTimer::Get ()->GetClockTicks () - nLast;
+		if (nRun < 0x80000000u) n += nRun;		// (read on another core: it may have yielded since)
+	}
+	u64 nSlept = m_nSleptUs;
+	return n > nSlept ? n - nSlept : 0;
 }
 
 void CScheduler::StallSample (u64 ulPC, u64 ulLR)

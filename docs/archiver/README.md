@@ -38,7 +38,7 @@ the beige faces, the white lists, the teal selection, the global menu bar at the
 
 ## How it would be built (to settle after the mock-ups)
 
-- **The app**: `user/Apps/archiver`, wtk widgets (toolbar, tree, list view with columns, dialogs);
+- **The app**: `user/Apps/archiver`, uikit widgets (toolbar, tree, list view with columns, dialogs);
   the global menu bar's menus (`set_menu`). A format layer behind one interface (`list`, `extract
   (entries, dest, options)`, `add (files, folder, options)`, `remove (entries)`), one class per
   format — ZIP first, then 7z / tar, then RAR read only.
@@ -73,4 +73,4 @@ the beige faces, the white lists, the teal selection, the global menu bar at the
 - File dates: the kapi has no file times, so extracted files get the time they are written, and files
   added get the time they are added.
 - An archive inside the archive: it opens with its app (the Archiver itself, from `RAM:`), not in place.
-- *Add Files...*' file dialog picks one file at a time (wtk's `FileDialog`); a drop takes many.
+- *Add Files...*' file dialog picks one file at a time (uikit's `FileDialog`); a drop takes many.

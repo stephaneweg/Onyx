@@ -9,3 +9,9 @@
 *.img  binary
 *.elf  binary
 *.cod  binary
+
+# ICU's filtered data file (tools/ports/icu/gen-data.sh): binary
+third_party/icu-78.3/source/data/in/icudt78l.dat binary
+
+# A sample note written on a PC: its "\r\n" lines are what the test reads (Notes, AutoDev round 1).
+tools/tests/desktop_sim/sd/notes-crlf.txt -text

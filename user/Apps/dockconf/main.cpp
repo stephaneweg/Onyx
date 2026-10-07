@@ -1,51 +1,58 @@
 //
 // dockconf -- the Control Panel's Panel applet (applet_proto.h; alone, a window of its own): the
 // dock's settings (SD:/etc/dock.ini, dockconf.h).
-//   * the DRAWERS, left to right: each a group of apps (the "category" of their app.txt) and its
-//     main app (the drawer's icon; a click on it starts the app, the strip above it opens the
-//     drawer). Add one, remove it, move it; pick its group and its main app in the lists beside;
+//   * the DRAWERS, left to right: the dock has one for every category of the card's apps (the
+//     "category" of their app.txt; dockconf.h dock_layout_load) -- here their order (^ v), the ones
+//     Hidden, and each one's main app (the drawer's icon; a click on it starts the app, the strip above
+//     it opens the drawer);
 //   * the LAUNCHERS after the drawers (the Terminal, the File Viewer...): add an app from the list
 //     of them all, remove one, move it;
 //   * the WORKSPACES (virtual desktops): how many (1 to 6) and their names.
 // Apply writes dock.ini and starts the dock again (dock_reload, dockconf.h): it takes them at once, the
 // number of workspaces too. Discard reloads what is saved.
 //
-#include "kapi.h"
-#include "applib.h"
-#include "fsutil.h"
-#include "launch.h"
-#include "dockconf.h"
-#include "wtk/wtk.h"
-#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
+#include "appkit/appkit.h"
+#include "filekit/filekit.h"
+#include "systemkit/systemkit.h"
+#include "uikit/uikit.h"
+#include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	700
 #define H	470
 #define MAXAPPS	160
-#define MAXCATS	16
 
 struct App { char name[32]; char label[40]; char cat[24]; };
 static App  g_apps[MAXAPPS];
 static int  g_napps;
-static char g_cats[MAXCATS][24];
-static int  g_ncats;
-static DockConf g_c;
+static DockLayout g_c;
+static int  g_vis[DOCK_MAXCATS], g_nvis;	// the list's rows -> g_c.cat (the categories with apps on the card)
 
 static int g_catApps[MAXAPPS], g_ncatApps;	// the apps of the group picked (g_apps indexes)
 static int g_allApps[MAXAPPS], g_nallApps;	// every app but the shell's parts, by name
 
-static ListBox *g_lbDrawers, *g_lbGroups, *g_lbMain, *g_lbLaunchers, *g_lbAll;
+static ListBox *g_lbDrawers, *g_lbMain, *g_lbLaunchers, *g_lbAll;
+static Checkbox *g_cbHidden;
 static NumericUpDown *g_nuDesks;
 static Textbox *g_tbDesk[DOCK_MAXDESKS];
 static Label   *g_lbDeskN[DOCK_MAXDESKS];
 static Label   *g_status;
 static Root    *g_root;
 
-static bool hidden_cat (const char *c)
-{
-	return fs_ci_cmp (c, "Shell") == 0 || fs_ci_cmp (c, "Settings") == 0 || fs_ci_cmp (c, "Emulators") == 0;
-}
+// A drawer's category is shown in the system's language (TR (c.cat); dock.ini keeps the English one):
+// the card's categories, said here for tools/lang/check.py.
+// TR: Demos
+// TR: Emulators
+// TR: Games
+// TR: Graphics
+// TR: Internet
+// TR: Multimedia
+// TR: Productivity
+// TR: Programming
+// TR: Settings
+// TR: System
+// TR: Other
 
 static App *find_app (const char *name)
 {
@@ -58,7 +65,7 @@ static void scan_apps (void)
 {
 	static char list[4096];
 	kapi_list_apps (list, sizeof list);
-	g_napps = 0; g_ncats = 0;
+	g_napps = 0;
 	for (char *p = list; *p && g_napps < MAXAPPS; )
 	{
 		char *e = p; while (*e && *e != '\n') e++;
@@ -72,18 +79,9 @@ static void scan_apps (void)
 			const char *nm = app_ini_get (0, "name", 0); if (nm && nm[0]) fs_copy (a.label, nm, sizeof a.label);
 			const char *ct = app_ini_get (0, "category", 0); if (ct && ct[0]) fs_copy (a.cat, ct, sizeof a.cat);
 		}
-		if (!hidden_cat (a.cat))
-		{
-			bool seen = false;
-			for (int i = 0; i < g_ncats; i++) if (fs_ci_cmp (g_cats[i], a.cat) == 0) seen = true;
-			if (!seen && g_ncats < MAXCATS) fs_copy (g_cats[g_ncats++], a.cat, 24);
-		}
 		*e = c;
 		p = *e ? e + 1 : e;
 	}
-	for (int i = 1; i < g_ncats; i++)
-		for (int j = i; j > 0 && fs_ci_cmp (g_cats[j - 1], g_cats[j]) > 0; j--)
-		{ char t[24]; fs_copy (t, g_cats[j], 24); fs_copy (g_cats[j], g_cats[j - 1], 24); fs_copy (g_cats[j - 1], t, 24); }
 	g_nallApps = 0;
 	for (int i = 0; i < g_napps; i++) if (fs_ci_cmp (g_apps[i].cat, "Shell") != 0) g_allApps[g_nallApps++] = i;
 	for (int i = 1; i < g_nallApps; i++)
@@ -92,44 +90,50 @@ static void scan_apps (void)
 }
 
 // ---- the lists shown ---------------------------------------------------------------------------
+// The main app shown for a category: the one chosen, else the first of its apps by name (the dock's choice).
 static void fill_drawers (int sel)
 {
+	g_nvis = 0;
+	for (int i = 0; i < g_c.ncats; i++) if (g_c.cat[i].napps > 0) g_vis[g_nvis++] = i;
 	g_lbDrawers->clear ();
-	for (int i = 0; i < g_c.ndrawers; i++)
+	for (int r = 0; r < g_nvis; r++)
 	{
-		char s[64]; int n = 0;
-		lx_cat (s, sizeof s, &n, g_c.drawer[i].cat); lx_cat (s, sizeof s, &n, ": ");
-		lx_cat (s, sizeof s, &n, g_c.drawer[i].app[0] ? label_of (g_c.drawer[i].app) : "(none)");
+		const DockCat &c = g_c.cat[g_vis[r]];
+		char s[96]; int n = 0;
+		lx_cat (s, sizeof s, &n, TR (c.cat)); lx_cat (s, sizeof s, &n, TR (": "));
+		if (c.app[0]) lx_cat (s, sizeof s, &n, label_of (c.app));
+		else
+		{
+			const App *f = 0;		// (none chosen: the dock takes the first of its apps by name)
+			for (int i = 0; i < g_napps; i++)
+				if (fs_ci_cmp (g_apps[i].cat, c.cat) == 0 && (!f || fs_ci_cmp (g_apps[i].label, f->label) < 0)) f = &g_apps[i];
+			lx_cat (s, sizeof s, &n, f ? f->label : "?");
+		}
+		if (c.hidden) lx_cat (s, sizeof s, &n, TR ("  -- hidden"));
 		g_lbDrawers->add (s);
 	}
-	g_lbDrawers->setSel (sel < g_c.ndrawers ? sel : g_c.ndrawers - 1);
+	g_lbDrawers->setSel (sel < g_nvis ? sel : g_nvis - 1);
 }
+static DockCat *cur (void) { int r = g_lbDrawers->sel; return r >= 0 && r < g_nvis ? &g_c.cat[g_vis[r]] : 0; }
 
-static void fill_main (int d)
+static void fill_main (void)
 {
 	g_lbMain->clear (); g_ncatApps = 0;
-	if (d < 0 || d >= g_c.ndrawers) return;
+	DockCat *c = cur ();
+	g_cbHidden->checked = c && c->hidden; g_cbHidden->invalidate (true);
+	if (!c) return;
 	int sel = -1;
 	for (int i = 0; i < g_napps; i++)
-		if (fs_ci_cmp (g_apps[i].cat, g_c.drawer[d].cat) == 0) g_catApps[g_ncatApps++] = i;
+		if (fs_ci_cmp (g_apps[i].cat, c->cat) == 0) g_catApps[g_ncatApps++] = i;
 	for (int i = 1; i < g_ncatApps; i++)
 		for (int j = i; j > 0 && fs_ci_cmp (g_apps[g_catApps[j - 1]].label, g_apps[g_catApps[j]].label) > 0; j--)
 		{ int t = g_catApps[j]; g_catApps[j] = g_catApps[j - 1]; g_catApps[j - 1] = t; }
 	for (int i = 0; i < g_ncatApps; i++)
 	{
 		g_lbMain->add (g_apps[g_catApps[i]].label);
-		if (fs_ci_cmp (g_apps[g_catApps[i]].name, g_c.drawer[d].app) == 0) sel = i;
+		if (fs_ci_cmp (g_apps[g_catApps[i]].name, c->app) == 0) sel = i;
 	}
-	g_lbMain->setSel (sel);
-}
-
-static void fill_groups (int d)
-{
-	int sel = -1;
-	if (d >= 0 && d < g_c.ndrawers)
-		for (int i = 0; i < g_ncats; i++) if (fs_ci_cmp (g_cats[i], g_c.drawer[d].cat) == 0) sel = i;
-	g_lbGroups->setSel (sel);
-	fill_main (d);
+	g_lbMain->setSel (sel < 0 && g_ncatApps ? 0 : sel);
 }
 
 static void fill_launchers (int sel)
@@ -154,62 +158,36 @@ static void show_desks (void)
 static void fill_all (void)
 {
 	scan_apps ();
-	g_lbGroups->clear ();
-	for (int i = 0; i < g_ncats; i++) g_lbGroups->add (g_cats[i]);
 	g_lbAll->clear ();
 	for (int i = 0; i < g_nallApps; i++) g_lbAll->add (g_apps[g_allApps[i]].label);
 	fill_drawers (0);
-	fill_groups (0);
+	fill_main ();
 	fill_launchers (0);
 	show_desks ();
 }
 
 // ---- the actions ----------------------------------------------------------------------------------
-static void on_drawer (Widget &) { fill_groups (g_lbDrawers->sel); }
-static void on_group (Widget &)
-{
-	int d = g_lbDrawers->sel, g = g_lbGroups->sel;
-	if (d < 0 || g < 0 || g >= g_ncats) return;
-	if (fs_ci_cmp (g_c.drawer[d].cat, g_cats[g]) != 0)
-	{
-		fs_copy (g_c.drawer[d].cat, g_cats[g], 24);
-		g_c.drawer[d].app[0] = 0;
-		fill_main (d);
-		if (g_ncatApps > 0) { fs_copy (g_c.drawer[d].app, g_apps[g_catApps[0]].name, 32); g_lbMain->setSel (0); }
-		fill_drawers (d);
-	}
-}
+static void on_drawer (Widget &) { fill_main (); }
 static void on_main (Widget &)
 {
-	int d = g_lbDrawers->sel, m = g_lbMain->sel;
-	if (d < 0 || m < 0 || m >= g_ncatApps) return;
-	fs_copy (g_c.drawer[d].app, g_apps[g_catApps[m]].name, 32);
-	fill_drawers (d);
+	DockCat *c = cur (); int m = g_lbMain->sel;
+	if (!c || m < 0 || m >= g_ncatApps) return;
+	fs_copy (c->app, g_apps[g_catApps[m]].name, 32);
+	fill_drawers (g_lbDrawers->sel);
 }
-static void on_add_drawer (Widget &)
+static void on_hidden (Widget &)
 {
-	if (g_c.ndrawers >= DOCK_MAXDRAWERS) { g_status->setText ("8 drawers at most."); return; }
-	int g = g_lbGroups->sel >= 0 ? g_lbGroups->sel : 0;
-	DockDrawer &d = g_c.drawer[g_c.ndrawers++];
-	fs_copy (d.cat, g_ncats ? g_cats[g] : "Other", 24); d.app[0] = 0;
-	for (int i = 0; i < g_napps; i++) if (fs_ci_cmp (g_apps[i].cat, d.cat) == 0) { fs_copy (d.app, g_apps[i].name, 32); break; }
-	fill_drawers (g_c.ndrawers - 1);
-	fill_groups (g_c.ndrawers - 1);
+	DockCat *c = cur ();
+	if (!c) return;
+	c->hidden = g_cbHidden->checked ? 1 : 0;
+	fill_drawers (g_lbDrawers->sel);
 }
-static void on_remove_drawer (Widget &)
-{
-	int d = g_lbDrawers->sel;
-	if (d < 0 || d >= g_c.ndrawers) return;
-	for (int i = d; i + 1 < g_c.ndrawers; i++) g_c.drawer[i] = g_c.drawer[i + 1];
-	g_c.ndrawers--;
-	fill_drawers (d);
-	fill_groups (g_lbDrawers->sel);
-}
+// One place up or down in the list (among the categories shown: those without apps keep their places).
 static void move_drawer (int dir)
 {
-	int d = g_lbDrawers->sel, e = d + dir;
-	if (d < 0 || e < 0 || e >= g_c.ndrawers) return;
-	DockDrawer t = g_c.drawer[d]; g_c.drawer[d] = g_c.drawer[e]; g_c.drawer[e] = t;
+	int r = g_lbDrawers->sel, e = r + dir;
+	if (r < 0 || e < 0 || e >= g_nvis) return;
+	DockCat t = g_c.cat[g_vis[r]]; g_c.cat[g_vis[r]] = g_c.cat[g_vis[e]]; g_c.cat[g_vis[e]] = t;
 	fill_drawers (e);
 }
 static void on_up (Widget &) { move_drawer (-1); }
@@ -218,8 +196,8 @@ static void on_down (Widget &) { move_drawer (1); }
 static void on_add_launcher (Widget &)
 {
 	int a = g_lbAll->sel;
-	if (a < 0 || a >= g_nallApps) { g_status->setText ("Pick an app in the list on the right first."); return; }
-	if (g_c.nlaunchers >= DOCK_MAXLAUNCHERS) { g_status->setText ("6 launchers at most."); return; }
+	if (a < 0 || a >= g_nallApps) { g_status->setText (TR ("Pick an app in the list on the right first.")); return; }
+	if (g_c.nlaunchers >= DOCK_MAXLAUNCHERS) { g_status->setText (TR ("6 launchers at most.")); return; }
 	fs_copy (g_c.launcher[g_c.nlaunchers++], g_apps[g_allApps[a]].name, 32);
 	fill_launchers (g_c.nlaunchers - 1);
 }
@@ -257,62 +235,66 @@ static void on_apply (Widget &)
 		fs_copy (g_c.desk[i], g_tbDesk[i]->text, 24);
 		if (!g_c.desk[i][0]) { g_c.desk[i][0] = (char) ('1' + i); g_c.desk[i][1] = 0; }
 	}
-	if (g_c.ndrawers == 0) { g_status->setText ("Keep one drawer at least."); return; }
-	if (!dockconf_save (g_c)) { g_status->setText ("Could not write SD:/etc/dock.ini."); return; }
+	bool any = false;
+	for (int r = 0; r < g_nvis; r++) if (!g_c.cat[g_vis[r]].hidden) any = true;
+	if (!any) { g_status->setText (TR ("Keep one drawer at least.")); return; }
+	if (!dock_layout_save (g_c)) { g_status->setText (TR ("Could not write SD:/etc/dock.ini.")); return; }
 	dock_reload ();
-	g_status->setText ("Applied: the dock has it.");
+	g_status->setText (TR ("Applied: the dock has it."));
 }
-static void on_discard (Widget &) { dockconf_load (g_c); fill_all (); g_status->setText (""); }
+static void on_discard (Widget &) { dock_layout_load (g_c); fill_all (); g_status->setText (""); }
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
-	Root root (W, H, "Panel");
+	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	uk_lang_init ();				// the words in the system's language (the face first: UTF-8)
+	Root root (W, H, TR ("Panel"));
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
 	int X = root.width > W ? (root.width - W) / 2 : 0;
-	dockconf_load (g_c);
+	dock_layout_load (g_c);
 
-	GroupBox *gd = new GroupBox (X + 10, 6, 470, 262, "Drawers");
+	GroupBox *gd = new GroupBox (X + 10, 6, 470, 262, TR ("Drawers"));
 	root.addChild (gd);
 	int ct = gd->contentTop () + 4;
-	g_lbDrawers = new ListBox (10, ct, 200, 180, on_drawer); gd->addChild (g_lbDrawers);
-	gd->addChild (new Button (10, ct + 188, 58, 28, "Add", on_add_drawer));
-	gd->addChild (new Button (72, ct + 188, 76, 28, "Remove", on_remove_drawer));
-	gd->addChild (new Button (152, ct + 188, 28, 28, "^", on_up));
-	gd->addChild (new Button (182, ct + 188, 28, 28, "v", on_down));
-	gd->addChild (new Label (222, ct - 2, 110, 18, "Group", C_TEXT, gd->bg));
-	g_lbGroups = new ListBox (222, ct + 18, 112, 198, on_group); gd->addChild (g_lbGroups);
-	gd->addChild (new Label (342, ct - 2, 120, 18, "Main app", C_TEXT, gd->bg));
-	g_lbMain = new ListBox (342, ct + 18, 118, 198, on_main); gd->addChild (g_lbMain);
+	// every category of the card's apps (the dock has a drawer for each one not hidden): their order, their main app
+	g_lbDrawers = new ListBox (10, ct, 290, 180, on_drawer); gd->addChild (g_lbDrawers);
+	g_lbDrawers->tip = TR ("The dock's drawers, left to right: one for each category of the apps");
+	Button *bu = new Button (10, ct + 188, 34, 28, "^", on_up); bu->tip = TR ("Further left"); gd->addChild (bu);
+	Button *bd = new Button (48, ct + 188, 34, 28, "v", on_down); bd->tip = TR ("Further right"); gd->addChild (bd);
+	g_cbHidden = new Checkbox (96, ct + 190, 150, 24, TR ("Hidden"), false, on_hidden, gd->bg);
+	g_cbHidden->tip = TR ("No drawer for this category (its apps stay in the Onyx menu)"); gd->addChild (g_cbHidden);
+	gd->addChild (new Label (312, ct - 2, 152, 18, TR ("Main app"), C_TEXT, gd->bg));
+	g_lbMain = new ListBox (312, ct + 18, 148, 198, on_main); gd->addChild (g_lbMain);
+	g_lbMain->tip = TR ("The drawer's icon: a click on it starts this app");
 
-	GroupBox *gw = new GroupBox (X + 490, 6, 200, 262, "Workspaces");
+	GroupBox *gw = new GroupBox (X + 490, 6, 200, 262, TR ("Workspaces"));
 	root.addChild (gw);
-	gw->addChild (new Label (10, ct + 4, 70, 20, "Number", C_TEXT, gw->bg));
+	gw->addChild (new Label (10, ct + 4, 70, 20, TR ("Number"), C_TEXT, gw->bg));
 	for (int i = 0; i < DOCK_MAXDESKS; i++)
 	{
 		char n[2] = { (char) ('1' + i), 0 };
 		g_lbDeskN[i] = new Label (10, ct + 44 + i * 32, 20, 20, n, C_TEXT, gw->bg); gw->addChild (g_lbDeskN[i]);
-		g_tbDesk[i] = new Textbox (30, ct + 40 + i * 32, 158, 28, ""); g_tbDesk[i]->tip = "Its name (the dock's square shows it)";
+		g_tbDesk[i] = new Textbox (30, ct + 40 + i * 32, 158, 28, ""); g_tbDesk[i]->tip = TR ("Its name (the dock's square shows it)");
 		gw->addChild (g_tbDesk[i]);
 	}
 	g_nuDesks = new NumericUpDown (90, ct, 70, 28, 1, DOCK_MAXDESKS, 4, 1, on_desks); gw->addChild (g_nuDesks);
 
-	GroupBox *gl = new GroupBox (X + 10, 272, W - 20, 150, "Launchers (after the drawers)");
+	GroupBox *gl = new GroupBox (X + 10, 272, W - 20, 150, TR ("Launchers (after the drawers)"));
 	root.addChild (gl);
 	int lt = gl->contentTop () + 4;
 	g_lbLaunchers = new ListBox (10, lt, 200, 112); gl->addChild (g_lbLaunchers);
-	gl->addChild (new Button (218, lt, 96, 28, "< Add", on_add_launcher));
-	gl->addChild (new Button (218, lt + 32, 96, 28, "Remove", on_remove_launcher));
+	gl->addChild (new Button (218, lt, 96, 28, TR ("< Add"), on_add_launcher));
+	gl->addChild (new Button (218, lt + 32, 96, 28, TR ("Remove"), on_remove_launcher));
 	gl->addChild (new Button (218, lt + 64, 46, 28, "^", on_lup));
 	gl->addChild (new Button (268, lt + 64, 46, 28, "v", on_ldown));
 	g_lbAll = new ListBox (322, lt, W - 20 - 332, 112, 0, on_add_launcher); gl->addChild (g_lbAll);
-	g_lbAll->tip = "Every app: pick one, then < Add (or double-click it)";
+	g_lbAll->tip = TR ("Every app: pick one, then < Add (or double-click it)");
 
 	g_status = new Label (X + 12, H - 38, 440, 24, "", C_DIS, root.bg);
 	root.addChild (g_status);
-	root.addChild (new Button (X + W - 196, H - 42, 90, 32, "Apply", on_apply));
-	root.addChild (new Button (X + W - 100, H - 42, 90, 32, "Discard", on_discard));
+	root.addChild (new Button (X + W - 196, H - 42, 90, 32, TR ("Apply"), on_apply));
+	root.addChild (new Button (X + W - 100, H - 42, 90, 32, TR ("Discard"), on_discard));
 
 	fill_all ();
 	root.run ();

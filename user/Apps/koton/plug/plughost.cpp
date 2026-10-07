@@ -1,11 +1,11 @@
 //
 // plug/plughost.cpp -- Koton's plugins as processes: the host (plughost.h).
 //
-#include "wtk/wtk.h"			// (first: its onyxpp.hpp gives placement new -- kbase.h then leaves <new> out)
+#include "uikit/uikit.h"			// (first: its onyxpp.hpp gives placement new -- kbase.h then leaves <new> out)
 #include "plughost.h"
-#include "kapi.h"
-#include "applet_proto.h"
-#include "../../../json.hpp"
+#include "appkit/appkit.h"
+#include "systemkit/systemkit.h"
+#include "json.hpp"
 
 namespace kt {
 
@@ -72,7 +72,7 @@ bool PlugHost::init (int sampleRate)
 {
 	m_rate = sampleRate > 0 ? sampleRate : 44100;
 	if (m_ok) return true;
-	if (KT->version < 68) return false;			// (word waits, priorities: kapi v68)
+	if (kapi_abi_version () < 68) return false;			// (word waits, priorities: kapi v68)
 	if (!kapi_ipc_register (KP_SERVICE)) return false;	// (another Koton hosts plugins)
 	m_self = kapi_ipc_lookup (KP_SERVICE);
 	if (m_self <= 0) return false;
@@ -581,7 +581,7 @@ bool PlugHost::generate (const GeneratorModule &m, const Project &p, double star
 	return true;
 }
 
-PlugEditorView *PlugHost::openGeneratorEditor (const GeneratorModule &m, wtk::Widget &parent, int x, int y, int w, int h)
+PlugEditorView *PlugHost::openGeneratorEditor (const GeneratorModule &m, uikit::Widget &parent, int x, int y, int w, int h)
 {
 	PlugInstance *g = generator (m.generatorId);
 	if (!g) return 0;
@@ -622,7 +622,7 @@ void PlugHost::editorSize (const PlugInfo *info, int *w, int *h) const
 	else if (info)
 	{
 		// (as kplug.h lays its knobs out: 96 px a knob, 170 a drop-down, 150 a check box, rows of 600 px)
-		int fh = wtk::wk_fh (), x = 10, rows = 1, rowW = 600;
+		int fh = uikit::uk_fh (), x = 10, rows = 1, rowW = 600;
 		for (int i = 0; i < info->params.size (); i++)
 		{
 			const PlugParam &q = info->params[i];
@@ -637,7 +637,7 @@ void PlugHost::editorSize (const PlugInfo *info, int *w, int *h) const
 	if (h) *h = H;
 }
 
-PlugEditorView *PlugHost::openEditor (PlugInstance *p, wtk::Widget &parent, int x, int y, int w, int h)
+PlugEditorView *PlugHost::openEditor (PlugInstance *p, uikit::Widget &parent, int x, int y, int w, int h)
 {
 	if (!p || p->m_dying || w < 32 || h < 32) return 0;
 	if (p->m_editor) closeEditor (p->m_editor);
@@ -652,12 +652,12 @@ PlugEditorView *PlugHost::openEditor (PlugInstance *p, wtk::Widget &parent, int 
 	}
 	if (w > p->m_edW) w = p->m_edW;
 	if (h > p->m_edH) h = p->m_edH;
-	for (int r = 0; r < h; r++) for (int c = 0; c < w; c++) p->m_edPx[r * p->m_edW + c] = wtk::C_BG;
+	for (int r = 0; r < h; r++) for (int c = 0; c < w; c++) p->m_edPx[r * p->m_edW + c] = uikit::C_BG;
 	PlugEditorView *v = new PlugEditorView (this, p, x, y, w, h);
 	p->m_editor = v;
 	parent.addChild (v);
 	// the app's colours now (its palette: what it applied, not the theme file's) -- the plugin draws with them
-	KpEditor e = { p->m_edSid, w, h, 1, wtk::C_BG, wtk::C_BUTTON, wtk::C_FIELD, wtk::C_ACCENT };
+	KpEditor e = { p->m_edSid, w, h, 1, uikit::C_BG, uikit::C_BUTTON, uikit::C_FIELD, uikit::C_ACCENT };
 	kapi_mailbox_send (p->m_pid, KP_EDITOR, &e, sizeof e);
 	return v;
 }
@@ -688,14 +688,14 @@ PlugEditorView::~PlugEditorView () { if (m_host) m_host->editorGone (this); }
 
 void PlugEditorView::onDraw ()
 {
-	using namespace wtk;
+	using namespace uikit;
 	PlugInstance *p = m_inst;
 	if (!p || !m_up || !p->m_edPx || p->m_state != PLUG_READY)
 	{
 		canvas.clear (C_BG);
 		const char *s = !p ? "No plugin" : p->m_state == PLUG_CRASHED || p->m_state == PLUG_FAILED ? p->m_err
 			: p->m_state == PLUG_STARTING ? "Starting..." : m_closed ? "The editor closed." : "Opening the editor...";
-		wk_text_c (canvas, 0, 0, width, height, s[0] ? s : "The plugin stopped.", C_DIS);
+		uk_text_c (canvas, 0, 0, width, height, s[0] ? s : "The plugin stopped.", C_DIS);
 		return;
 	}
 	for (int y = 0; y < height && y < p->m_edH; y++)

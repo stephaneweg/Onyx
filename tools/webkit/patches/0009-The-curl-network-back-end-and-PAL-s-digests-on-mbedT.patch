@@ -1,0 +1,796 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Onyx contributors <onyx@localhost>
+Date: Fri, 2 Oct 2026 22:33:01 +0200
+Subject: [PATCH 09/25] The curl network back end and PAL's digests on mbedTLS
+ (USE(MBEDTLS))
+
+What:
+- platform/network/curl/CurlTLSBackend.h: the TLS library as the curl back end sees it (the
+  connection type CURLINFO_TLS_SSL_PTR gives, curl's back-end id, a namespace TLSHelper) for
+  OpenSSL or mbedTLS; CurlContext, CurlSSLVerifier, CertificateInfoCurl use it instead of naming
+  OpenSSL.
+- MbedTLSHelper.{h,cpp}: the counterpart of OpenSSLHelper on an mbedtls_ssl_context: the peer's
+  chain as PEM, the certificate summary (subject CN / O, validity, the DNS and IP alternative
+  names), the verification flags and their description, the TLS version and ciphersuite.
+- CurlSSLVerifier: with mbedTLS nothing is installed on the configuration curl hands over (curl
+  has its own verification callback there); the chain and the verification result are read from
+  the connection after the handshake. CurlSSLHandle.h: no <openssl/crypto.h>.
+- Curl.cmake: OpenSSLHelper / OpenSSL::SSL or MbedTLSHelper / MbedTLS::mbedtls by USE_MBEDTLS;
+  PublicSuffixStoreCurl and libpsl only when the port has libpsl.
+- PAL: crypto/mbedtls/CryptoDigestMbedTLS.cpp (SHA-1 / 256 / 384 / 512 on mbedtls_md).
+
+Why: Onyx's curl is built with mbedTLS (the system's TLS library); there is no OpenSSL. curl's
+mbedTLS back end gives what WebKit needs (CURLOPT_SSL_CTX_FUNCTION, CURLINFO_TLS_SSL_PTR).
+---
+ .../crypto/mbedtls/CryptoDigestMbedTLS.cpp    | 105 +++++++
+ Source/WebCore/platform/Curl.cmake            |  38 ++-
+ .../network/curl/CertificateInfoCurl.cpp      |   9 +-
+ .../platform/network/curl/CurlContext.cpp     |  12 +-
+ .../platform/network/curl/CurlContext.h       |   3 +-
+ .../platform/network/curl/CurlSSLHandle.h     |   6 +-
+ .../platform/network/curl/CurlSSLVerifier.cpp |  15 +
+ .../platform/network/curl/CurlSSLVerifier.h   |   4 +-
+ .../platform/network/curl/CurlTLSBackend.h    |  54 ++++
+ .../platform/network/curl/MbedTLSHelper.cpp   | 261 ++++++++++++++++++
+ .../platform/network/curl/MbedTLSHelper.h     |  52 ++++
+ 11 files changed, 542 insertions(+), 17 deletions(-)
+ create mode 100644 Source/WebCore/PAL/pal/crypto/mbedtls/CryptoDigestMbedTLS.cpp
+ create mode 100644 Source/WebCore/platform/network/curl/CurlTLSBackend.h
+ create mode 100644 Source/WebCore/platform/network/curl/MbedTLSHelper.cpp
+ create mode 100644 Source/WebCore/platform/network/curl/MbedTLSHelper.h
+
+diff --git a/Source/WebCore/PAL/pal/crypto/mbedtls/CryptoDigestMbedTLS.cpp b/Source/WebCore/PAL/pal/crypto/mbedtls/CryptoDigestMbedTLS.cpp
+new file mode 100644
+index 00000000..491144cf
+--- /dev/null
++++ b/Source/WebCore/PAL/pal/crypto/mbedtls/CryptoDigestMbedTLS.cpp
+@@ -0,0 +1,105 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CryptoDigest.h"
++
++#include <mbedtls/md.h>
++
++// The SHA digests on mbedTLS's message digest layer (the TLS library of the ports without
++// OpenSSL: USE(MBEDTLS)).
++
++namespace PAL::Crypto {
++
++struct CryptoDigestContext {
++    WTF_DEPRECATED_MAKE_STRUCT_FAST_ALLOCATED(CryptoDigestContext);
++
++    explicit CryptoDigestContext(mbedtls_md_type_t type)
++    {
++        mbedtls_md_init(&context);
++        info = mbedtls_md_info_from_type(type);
++        RELEASE_ASSERT(info);
++        int result = mbedtls_md_setup(&context, info, 0);
++        RELEASE_ASSERT(!result);
++        result = mbedtls_md_starts(&context);
++        RELEASE_ASSERT(!result);
++    }
++
++    ~CryptoDigestContext()
++    {
++        mbedtls_md_free(&context);
++    }
++
++    mbedtls_md_context_t context;
++    const mbedtls_md_info_t* info { nullptr };
++};
++
++CryptoDigest::CryptoDigest() = default;
++
++CryptoDigest::~CryptoDigest() = default;
++
++std::unique_ptr<CryptoDigest> CryptoDigest::create(CryptoDigest::Algorithm algorithm)
++{
++    mbedtls_md_type_t type = MBEDTLS_MD_NONE;
++    switch (algorithm) {
++    case CryptoDigest::Algorithm::SHA_1:
++        type = MBEDTLS_MD_SHA1;
++        break;
++    case CryptoDigest::Algorithm::DEPRECATED_SHA_224:
++        RELEASE_ASSERT_NOT_REACHED_WITH_MESSAGE("SHA224 is not supported.");
++        break;
++    case CryptoDigest::Algorithm::SHA_256:
++        type = MBEDTLS_MD_SHA256;
++        break;
++    case CryptoDigest::Algorithm::SHA_384:
++        type = MBEDTLS_MD_SHA384;
++        break;
++    case CryptoDigest::Algorithm::SHA_512:
++        type = MBEDTLS_MD_SHA512;
++        break;
++    }
++
++    std::unique_ptr<CryptoDigest> digest = WTF::makeUnique<CryptoDigest>();
++    digest->m_context = WTF::makeUnique<CryptoDigestContext>(type);
++    return digest;
++}
++
++void CryptoDigest::addBytes(std::span<const uint8_t> input)
++{
++    ASSERT(m_context);
++    int result = mbedtls_md_update(&m_context->context, input.data(), input.size());
++    RELEASE_ASSERT(!result);
++}
++
++Vector<uint8_t> CryptoDigest::computeHash()
++{
++    ASSERT(m_context);
++    Vector<uint8_t> result(mbedtls_md_get_size(m_context->info));
++    int status = mbedtls_md_finish(&m_context->context, result.mutableSpan().data());
++    RELEASE_ASSERT(!status);
++    return result;
++}
++
++} // namespace PAL::Crypto
+diff --git a/Source/WebCore/platform/Curl.cmake b/Source/WebCore/platform/Curl.cmake
+index 6f41d983..857f6bb0 100644
+--- a/Source/WebCore/platform/Curl.cmake
++++ b/Source/WebCore/platform/Curl.cmake
+@@ -18,9 +18,7 @@ list(APPEND WebCore_SOURCES
+     platform/network/curl/CurlStream.cpp
+     platform/network/curl/CurlStreamScheduler.cpp
+     platform/network/curl/DNSResolveQueueCurl.cpp
+-    platform/network/curl/OpenSSLHelper.cpp
+     platform/network/curl/ProtectionSpaceCurl.cpp
+-    platform/network/curl/PublicSuffixStoreCurl.cpp
+     platform/network/curl/ResourceErrorCurl.cpp
+     platform/network/curl/ResourceRequestCurl.cpp
+     platform/network/curl/ResourceResponseCurl.cpp
+@@ -46,7 +44,6 @@ list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
+     platform/network/curl/CurlStream.h
+     platform/network/curl/CurlStreamScheduler.h
+     platform/network/curl/DNSResolveQueueCurl.h
+-    platform/network/curl/OpenSSLHelper.h
+     platform/network/curl/ProtectionSpaceCurl.h
+     platform/network/curl/ResourceError.h
+     platform/network/curl/ResourceRequest.h
+@@ -55,6 +52,37 @@ list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
+ 
+ list(APPEND WebCore_LIBRARIES
+     CURL::libcurl
+-    LibPSL::LibPSL
+-    OpenSSL::SSL
+ )
++
++# The TLS library behind curl: OpenSSL, or mbedTLS (USE_MBEDTLS: the certificate helpers in
++# MbedTLSHelper.cpp). The public suffix list: libpsl, unless the port has its own store.
++if (USE_MBEDTLS)
++    list(APPEND WebCore_SOURCES
++        platform/network/curl/MbedTLSHelper.cpp
++    )
++    list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
++        platform/network/curl/MbedTLSHelper.h
++    )
++    list(APPEND WebCore_LIBRARIES
++        MbedTLS::mbedtls
++    )
++else ()
++    list(APPEND WebCore_SOURCES
++        platform/network/curl/OpenSSLHelper.cpp
++    )
++    list(APPEND WebCore_PRIVATE_FRAMEWORK_HEADERS
++        platform/network/curl/OpenSSLHelper.h
++    )
++    list(APPEND WebCore_LIBRARIES
++        OpenSSL::SSL
++    )
++endif ()
++
++if (TARGET LibPSL::LibPSL)
++    list(APPEND WebCore_SOURCES
++        platform/network/curl/PublicSuffixStoreCurl.cpp
++    )
++    list(APPEND WebCore_LIBRARIES
++        LibPSL::LibPSL
++    )
++endif ()
+diff --git a/Source/WebCore/platform/network/curl/CertificateInfoCurl.cpp b/Source/WebCore/platform/network/curl/CertificateInfoCurl.cpp
+index 5076ddb3..6a36ce55 100644
+--- a/Source/WebCore/platform/network/curl/CertificateInfoCurl.cpp
++++ b/Source/WebCore/platform/network/curl/CertificateInfoCurl.cpp
+@@ -28,8 +28,7 @@
+ 
+ #if USE(CURL)
+ 
+-#include "OpenSSLHelper.h"
+-#include <openssl/ssl.h>
++#include "CurlTLSBackend.h"
+ #include <wtf/CrossThreadCopier.h>
+ 
+ namespace WebCore {
+@@ -47,7 +46,11 @@ CertificateInfo CertificateInfo::isolatedCopy() const
+ 
+ String CertificateInfo::verificationErrorDescription() const
+ {
++#if USE(MBEDTLS)
++    return MbedTLS::verificationErrorDescription(m_verificationError);
++#else
+     return String::fromLatin1(X509_verify_cert_error_string(m_verificationError));
++#endif
+ }
+ 
+ CertificateInfo::Certificate CertificateInfo::makeCertificate(std::span<const uint8_t> buffer)
+@@ -62,7 +65,7 @@ std::optional<CertificateSummary> CertificateInfo::summary() const
+     if (!m_certificateChain.size())
+         return std::nullopt;
+ 
+-    return OpenSSL::createSummaryInfo(m_certificateChain.at(0));
++    return TLSHelper::createSummaryInfo(m_certificateChain.at(0));
+ }
+ 
+ }
+diff --git a/Source/WebCore/platform/network/curl/CurlContext.cpp b/Source/WebCore/platform/network/curl/CurlContext.cpp
+index 2e6a2537..8304af7a 100644
+--- a/Source/WebCore/platform/network/curl/CurlContext.cpp
++++ b/Source/WebCore/platform/network/curl/CurlContext.cpp
+@@ -798,7 +798,7 @@ std::optional<long> CurlHandle::getSSLVerifyResult() const
+     return verifyResult;
+ }
+ 
+-std::optional<SSL*> CurlHandle::sslConnection() const
++std::optional<TLSConnection*> CurlHandle::sslConnection() const
+ {
+     curl_tlssessioninfo* info = nullptr;
+ 
+@@ -806,10 +806,10 @@ std::optional<SSL*> CurlHandle::sslConnection() const
+     if (errorCode != CURLE_OK)
+         return std::nullopt;
+ 
+-    if (!info || info->backend != CURLSSLBACKEND_OPENSSL || !info->internals)
++    if (!info || info->backend != curlTLSBackend || !info->internals)
+         return std::nullopt;
+ 
+-    return static_cast<SSL*>(info->internals);
++    return static_cast<TLSConnection*>(info->internals);
+ }
+ 
+ std::optional<NetworkLoadMetrics> CurlHandle::getNetworkLoadMetrics(MonotonicTime startTime)
+@@ -905,8 +905,8 @@ void CurlHandle::addExtraNetworkLoadMetrics(NetworkLoadMetrics& networkLoadMetri
+     if (!m_tlsConnectionInfo) {
+         if (auto ssl = sslConnection()) {
+             lazyInitialize(m_tlsConnectionInfo, makeUnique<TLSConnectionInfo>());
+-            m_tlsConnectionInfo->protocol = OpenSSL::tlsVersion(*ssl);
+-            m_tlsConnectionInfo->cipher = OpenSSL::tlsCipherName(*ssl);
++            m_tlsConnectionInfo->protocol = TLSHelper::tlsVersion(*ssl);
++            m_tlsConnectionInfo->cipher = TLSHelper::tlsCipherName(*ssl);
+         }
+     }
+ 
+@@ -938,7 +938,7 @@ std::optional<CertificateInfo> CurlHandle::certificateInfo() const
+ 
+     // If you use an existing HTTP/2 connection, SSLVerifier does not exist.
+     if (auto ssl = sslConnection()) {
+-        if (auto certificateInfo = OpenSSL::createCertificateInfo(getSSLVerifyResult(), *ssl)) {
++        if (auto certificateInfo = TLSHelper::createCertificateInfo(getSSLVerifyResult(), *ssl)) {
+             m_certificateInfo = WTF::move(certificateInfo);
+             return *m_certificateInfo;
+         }
+diff --git a/Source/WebCore/platform/network/curl/CurlContext.h b/Source/WebCore/platform/network/curl/CurlContext.h
+index 757359cf..acf19669 100644
+--- a/Source/WebCore/platform/network/curl/CurlContext.h
++++ b/Source/WebCore/platform/network/curl/CurlContext.h
+@@ -29,6 +29,7 @@
+ #include "CertificateInfo.h"
+ #include "CurlProxySettings.h"
+ #include "CurlSSLHandle.h"
++#include "CurlTLSBackend.h"
+ 
+ #include <wtf/Lock.h>
+ #include <wtf/MonotonicTime.h>
+@@ -333,7 +334,7 @@ private:
+     static CURLcode willSetupSslCtxCallback(CURL*, void* sslCtx, void* userData);
+     CURLcode willSetupSslCtx(void* sslCtx);
+ 
+-    std::optional<SSL*> sslConnection() const;
++    std::optional<TLSConnection*> sslConnection() const;
+ 
+     CURL* m_handle { nullptr };
+     char m_errorBuffer[CURL_ERROR_SIZE] { };
+diff --git a/Source/WebCore/platform/network/curl/CurlSSLHandle.h b/Source/WebCore/platform/network/curl/CurlSSLHandle.h
+index 0708fd99..1e80c067 100644
+--- a/Source/WebCore/platform/network/curl/CurlSSLHandle.h
++++ b/Source/WebCore/platform/network/curl/CurlSSLHandle.h
+@@ -27,14 +27,18 @@
+ #pragma once
+ 
+ #include "CertificateInfo.h"
++#if !USE(MBEDTLS)
+ #include <openssl/crypto.h>
++#endif
+ #include <wtf/HashMap.h>
+ #include <wtf/HashSet.h>
+ #include <wtf/NeverDestroyed.h>
+ #include <wtf/text/StringHash.h>
+ 
+ // all version of LibreSSL and OpenSSL prior to 1.1.0 need thread support
+-#if defined(LIBRESSL_VERSION_NUMBER) || (defined(OPENSSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER < 0x1010000fL)
++#if USE(MBEDTLS)
++#define NEED_OPENSSL_THREAD_SUPPORT 0
++#elif defined(LIBRESSL_VERSION_NUMBER) || (defined(OPENSSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER < 0x1010000fL)
+ #define NEED_OPENSSL_THREAD_SUPPORT 1
+ #else
+ #define NEED_OPENSSL_THREAD_SUPPORT 0
+diff --git a/Source/WebCore/platform/network/curl/CurlSSLVerifier.cpp b/Source/WebCore/platform/network/curl/CurlSSLVerifier.cpp
+index d6d5147a..ddb4e5dc 100644
+--- a/Source/WebCore/platform/network/curl/CurlSSLVerifier.cpp
++++ b/Source/WebCore/platform/network/curl/CurlSSLVerifier.cpp
+@@ -36,6 +36,17 @@ namespace WebCore {
+ 
+ WTF_MAKE_TZONE_ALLOCATED_IMPL(x);
+ 
++#if USE(MBEDTLS)
++
++// With mbedTLS, curl has its own verification callback on the configuration it hands over
++// (replacing it would undo curl's checks): nothing is installed here, and the peer's chain is
++// read from the connection once the handshake is done (CurlHandle::certificateInfo()).
++CurlSSLVerifier::CurlSSLVerifier(void*)
++{
++}
++
++#else
++
+ CurlSSLVerifier::CurlSSLVerifier(void* sslCtx)
+ {
+     auto* ctx = static_cast<SSL_CTX*>(sslCtx);
+@@ -50,6 +61,8 @@ CurlSSLVerifier::CurlSSLVerifier(void* sslCtx)
+ #endif
+ }
+ 
++#endif // USE(MBEDTLS)
++
+ std::unique_ptr<WebCore::CertificateInfo> CurlSSLVerifier::createCertificateInfo(std::optional<long>&& verifyResult)
+ {
+     if (!verifyResult)
+@@ -61,6 +74,7 @@ std::unique_ptr<WebCore::CertificateInfo> CurlSSLVerifier::createCertificateInfo
+     return makeUnique<CertificateInfo>(*verifyResult, WTF::move(m_certificateChain));
+ }
+ 
++#if !USE(MBEDTLS)
+ void CurlSSLVerifier::collectInfo(X509_STORE_CTX* ctx)
+ {
+     if (!ctx)
+@@ -79,6 +93,7 @@ int CurlSSLVerifier::verifyCallback(int preverified, X509_STORE_CTX* ctx)
+     // whether the verification of the certificate in question was passed (preverified=1) or not (preverified=0)
+     return preverified;
+ }
++#endif // !USE(MBEDTLS)
+ 
+ }
+ #endif
+diff --git a/Source/WebCore/platform/network/curl/CurlSSLVerifier.h b/Source/WebCore/platform/network/curl/CurlSSLVerifier.h
+index 0dc0ea7f..8fce2518 100644
+--- a/Source/WebCore/platform/network/curl/CurlSSLVerifier.h
++++ b/Source/WebCore/platform/network/curl/CurlSSLVerifier.h
+@@ -27,7 +27,7 @@
+ #pragma once
+ 
+ #include "CertificateInfo.h"
+-#include "OpenSSLHelper.h"
++#include "CurlTLSBackend.h"
+ #include <wtf/Noncopyable.h>
+ #include <wtf/TZoneMalloc.h>
+ #include <wtf/text/WTFString.h>
+@@ -43,8 +43,10 @@ public:
+     std::unique_ptr<WebCore::CertificateInfo> createCertificateInfo(std::optional<long>&&);
+ 
+ private:
++#if !USE(MBEDTLS)
+     static int verifyCallback(int, X509_STORE_CTX*);
+     void collectInfo(X509_STORE_CTX*);
++#endif
+ 
+     CertificateInfo::CertificateChain m_certificateChain;
+ };
+diff --git a/Source/WebCore/platform/network/curl/CurlTLSBackend.h b/Source/WebCore/platform/network/curl/CurlTLSBackend.h
+new file mode 100644
+index 00000000..c34a2ef4
+--- /dev/null
++++ b/Source/WebCore/platform/network/curl/CurlTLSBackend.h
+@@ -0,0 +1,54 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++// The TLS library curl is built with, as the curl back end sees it: the type of a connection
++// (what CURLINFO_TLS_SSL_PTR gives), curl's name for the back end, and the helper functions
++// (TLSHelper::createCertificateInfo, createSummaryInfo, tlsVersion, tlsCipherName).
++
++#include <curl/curl.h>
++
++#if USE(MBEDTLS)
++
++#include "MbedTLSHelper.h"
++
++namespace WebCore {
++namespace TLSHelper = MbedTLS;
++using TLSConnection = mbedtls_ssl_context;
++static constexpr curl_sslbackend curlTLSBackend = CURLSSLBACKEND_MBEDTLS;
++}
++
++#else
++
++#include "OpenSSLHelper.h"
++
++namespace WebCore {
++namespace TLSHelper = OpenSSL;
++using TLSConnection = SSL;
++static constexpr curl_sslbackend curlTLSBackend = CURLSSLBACKEND_OPENSSL;
++}
++
++#endif
+diff --git a/Source/WebCore/platform/network/curl/MbedTLSHelper.cpp b/Source/WebCore/platform/network/curl/MbedTLSHelper.cpp
+new file mode 100644
+index 00000000..6c4957cf
+--- /dev/null
++++ b/Source/WebCore/platform/network/curl/MbedTLSHelper.cpp
+@@ -0,0 +1,261 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "MbedTLSHelper.h"
++
++#if USE(MBEDTLS)
++
++#include <mbedtls/oid.h>
++#include <mbedtls/x509_crt.h>
++#include <wtf/DateMath.h>
++#include <wtf/HexNumber.h>
++#include <wtf/Seconds.h>
++#include <wtf/text/Base64.h>
++#include <wtf/text/MakeString.h>
++#include <wtf/text/StringBuilder.h>
++
++WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
++
++namespace MbedTLS {
++
++static constexpr auto pemHeader = "-----BEGIN CERTIFICATE-----"_s;
++static constexpr auto pemFooter = "-----END CERTIFICATE-----"_s;
++
++// A certificate (DER) as PEM text: 64 base64 characters a line.
++static WebCore::CertificateInfo::Certificate pemFromDER(std::span<const uint8_t> der)
++{
++    auto encoded = base64EncodeToString(der);
++
++    StringBuilder builder;
++    builder.append(pemHeader, '\n');
++    for (unsigned i = 0; i < encoded.length(); i += 64)
++        builder.append(StringView(encoded).substring(i, 64), '\n');
++    builder.append(pemFooter, '\n');
++
++    auto text = builder.toString().utf8();
++    WebCore::CertificateInfo::Certificate certificate;
++    certificate.append(text.span());
++    return certificate;
++}
++
++// The DER of the first certificate of a PEM text.
++static std::optional<Vector<uint8_t>> derFromPEM(const Vector<uint8_t>& pem)
++{
++    auto text = String::fromUTF8(pem.span());
++    auto begin = text.find(pemHeader);
++    if (begin == notFound)
++        return std::nullopt;
++    begin += pemHeader.length();
++    auto end = text.find(pemFooter, begin);
++    if (end == notFound)
++        return std::nullopt;
++
++    return base64Decode(StringView(text).substring(begin, end - begin), { Base64DecodeOption::IgnoreWhitespace });
++}
++
++WebCore::CertificateInfo::CertificateChain createCertificateChain(const mbedtls_x509_crt* chain)
++{
++    WebCore::CertificateInfo::CertificateChain result;
++    for (auto* certificate = chain; certificate; certificate = certificate->next) {
++        if (!certificate->raw.p || !certificate->raw.len)
++            return { };
++        result.append(pemFromDER({ certificate->raw.p, certificate->raw.len }));
++    }
++    return result;
++}
++
++std::unique_ptr<WebCore::CertificateInfo> createCertificateInfo(std::optional<long>&& verifyResult, const mbedtls_ssl_context* ssl)
++{
++    if (!ssl)
++        return nullptr;
++
++    // curl does not report mbedTLS's verification flags (CURLINFO_SSL_VERIFYRESULT): take them
++    // from the connection.
++    long flags = mbedtls_ssl_get_verify_result(ssl);
++    if (!flags && verifyResult)
++        flags = *verifyResult;
++
++    auto* chain = mbedtls_ssl_get_peer_cert(ssl);
++    if (!chain)
++        return nullptr;
++
++    return makeUnique<WebCore::CertificateInfo>(static_cast<int>(flags), createCertificateChain(chain));
++}
++
++String verificationErrorDescription(int flags)
++{
++    if (!flags)
++        return "ok"_s;
++
++    char buffer[512];
++    int length = mbedtls_x509_crt_verify_info(buffer, sizeof(buffer), "", static_cast<uint32_t>(flags));
++    if (length <= 0)
++        return makeString("certificate verification failed (0x"_s, hex(static_cast<unsigned>(flags)), ')');
++
++    // One reason a line: the first one, without its end of line.
++    auto text = String::fromUTF8(std::span { reinterpret_cast<const char8_t*>(buffer), static_cast<size_t>(length) });
++    auto lineEnd = text.find('\n');
++    return lineEnd == notFound ? text : text.left(lineEnd);
++}
++
++static String toString(const mbedtls_asn1_buf& value)
++{
++    if (!value.p || !value.len)
++        return String();
++    return String::fromUTF8(std::span { reinterpret_cast<const char8_t*>(value.p), value.len });
++}
++
++static String subjectEntry(const mbedtls_x509_crt& certificate, const char* oid, size_t oidLength)
++{
++    for (auto* name = &certificate.subject; name; name = name->next) {
++        if (name->oid.len == oidLength && !memcmp(name->oid.p, oid, oidLength))
++            return toString(name->val);
++    }
++    return String();
++}
++
++static String subjectName(const mbedtls_x509_crt& certificate)
++{
++    char buffer[1024];
++    int length = mbedtls_x509_dn_gets(buffer, sizeof(buffer), &certificate.subject);
++    if (length <= 0)
++        return String();
++    return String::fromUTF8(std::span { reinterpret_cast<const char8_t*>(buffer), static_cast<size_t>(length) });
++}
++
++static Seconds toSeconds(const mbedtls_x509_time& time)
++{
++    // (UTC: the dates of a certificate are GMT)
++    double days = dateToDaysFrom1970(time.year, time.mon - 1, time.day);
++    return Seconds(days * 86400.0 + time.hour * 3600.0 + time.min * 60.0 + time.sec);
++}
++
++static void subjectAltNames(const mbedtls_x509_crt& certificate, Vector<String>& dnsNames, Vector<String>& ipAddresses)
++{
++    for (auto* entry = &certificate.subject_alt_names; entry; entry = entry->next) {
++        if (!entry->buf.p)
++            continue;
++
++        mbedtls_x509_subject_alternative_name name;
++        if (mbedtls_x509_parse_subject_alt_name(&entry->buf, &name))
++            continue;
++
++        if (name.type == MBEDTLS_X509_SAN_DNS_NAME) {
++            auto dnsName = toString(name.san.unstructured_name);
++            if (!dnsName.isNull())
++                dnsNames.append(WTF::move(dnsName));
++        } else if (name.type == MBEDTLS_X509_SAN_IP_ADDRESS) {
++            auto& address = name.san.unstructured_name;
++            if (address.len == 4)
++                ipAddresses.append(makeString(address.p[0], '.', address.p[1], '.', address.p[2], '.', address.p[3]));
++            else if (address.len == 16)
++                ipAddresses.append(canonicalizeIPv6Address(std::span<uint8_t, 16> { address.p, 16 }));
++        }
++        mbedtls_x509_free_subject_alt_name(&name);
++    }
++}
++
++// RFC 5952: the longest run of zero groups (two or more) as "::", no leading zeros.
++String canonicalizeIPv6Address(std::span<uint8_t, 16> data)
++{
++    int bestStart = -1;
++    int bestLength = 0;
++    for (int i = 0; i < 8;) {
++        if (data[2 * i] || data[2 * i + 1]) {
++            i++;
++            continue;
++        }
++        int start = i;
++        while (i < 8 && !data[2 * i] && !data[2 * i + 1])
++            i++;
++        if (i - start > bestLength) {
++            bestStart = start;
++            bestLength = i - start;
++        }
++    }
++    if (bestLength < 2)
++        bestStart = -1;
++
++    StringBuilder address;
++    for (int i = 0; i < 8; i++) {
++        if (i == bestStart) {
++            address.append(i ? ":"_s : "::"_s);
++            i += bestLength - 1;
++            continue;
++        }
++        address.append(hex(static_cast<unsigned>(data[2 * i] << 8 | data[2 * i + 1]), Lowercase));
++        if (i != 7)
++            address.append(':');
++    }
++    return address.toString();
++}
++
++std::optional<WebCore::CertificateSummary> createSummaryInfo(const Vector<uint8_t>& pem)
++{
++    auto der = derFromPEM(pem);
++    if (!der)
++        return std::nullopt;
++
++    mbedtls_x509_crt certificate;
++    mbedtls_x509_crt_init(&certificate);
++    if (mbedtls_x509_crt_parse_der(&certificate, der->span().data(), der->size())) {
++        mbedtls_x509_crt_free(&certificate);
++        return std::nullopt;
++    }
++
++    WebCore::CertificateSummary summaryInfo;
++
++    // Prefer the CN attribute, then O (as the OpenSSL helper does, to match macOS).
++    summaryInfo.subject = subjectEntry(certificate, MBEDTLS_OID_AT_CN, MBEDTLS_OID_SIZE(MBEDTLS_OID_AT_CN));
++    if (summaryInfo.subject.isNull())
++        summaryInfo.subject = subjectEntry(certificate, MBEDTLS_OID_AT_ORGANIZATION, MBEDTLS_OID_SIZE(MBEDTLS_OID_AT_ORGANIZATION));
++    if (summaryInfo.subject.isNull())
++        summaryInfo.subject = subjectName(certificate);
++
++    summaryInfo.validFrom = toSeconds(certificate.valid_from);
++    summaryInfo.validUntil = toSeconds(certificate.valid_to);
++
++    subjectAltNames(certificate, summaryInfo.dnsNames, summaryInfo.ipAddresses);
++
++    mbedtls_x509_crt_free(&certificate);
++    return summaryInfo;
++}
++
++String tlsVersion(const mbedtls_ssl_context* ssl)
++{
++    return String::fromLatin1(mbedtls_ssl_get_version(ssl));
++}
++
++String tlsCipherName(const mbedtls_ssl_context* ssl)
++{
++    return String::fromLatin1(mbedtls_ssl_get_ciphersuite(ssl));
++}
++
++} // namespace MbedTLS
++
++WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
++
++#endif // USE(MBEDTLS)
+diff --git a/Source/WebCore/platform/network/curl/MbedTLSHelper.h b/Source/WebCore/platform/network/curl/MbedTLSHelper.h
+new file mode 100644
+index 00000000..50597d1a
+--- /dev/null
++++ b/Source/WebCore/platform/network/curl/MbedTLSHelper.h
+@@ -0,0 +1,52 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#if USE(MBEDTLS)
++
++#include "CertificateInfo.h"
++#include <mbedtls/ssl.h>
++#include <wtf/Vector.h>
++
++// What the curl back end asks of the TLS library when curl is built with mbedTLS: the
++// counterpart of OpenSSLHelper.h (the same functions, on an mbedtls_ssl_context).
++
++namespace MbedTLS {
++
++// The peer's chain (PEM, the leaf first) and the handshake's verification flags
++// (MBEDTLS_X509_BADCERT_...: 0 when the chain was accepted).
++std::unique_ptr<WebCore::CertificateInfo> createCertificateInfo(std::optional<long>&&, const mbedtls_ssl_context*);
++WebCore::CertificateInfo::CertificateChain createCertificateChain(const mbedtls_x509_crt*);
++std::optional<WebCore::CertificateSummary> createSummaryInfo(const Vector<uint8_t>& pem);
++String verificationErrorDescription(int flags);
++
++String tlsVersion(const mbedtls_ssl_context*);
++String tlsCipherName(const mbedtls_ssl_context*);
++WEBCORE_EXPORT String canonicalizeIPv6Address(std::span<uint8_t, 16> data);
++
++} // namespace MbedTLS
++
++#endif // USE(MBEDTLS)

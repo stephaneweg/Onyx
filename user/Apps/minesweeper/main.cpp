@@ -2,9 +2,8 @@
 // minesweeper -- left-click reveals, right-click flags. Reveal a 0-cell to flood its
 // neighbours; hit a mine and you lose; clear all safe cells to win. 'r' restarts.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
-#include "applib.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
 
 #define GW	16
 #define GH	12
@@ -16,7 +15,7 @@
 #define NMINES	30
 
 static unsigned *fb;
-static wtk::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
+static uikit::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
 static char g_mine[GH][GW], g_open[GH][GW], g_flag[GH][GW], g_adj[GH][GW];
 static int  g_lost, g_won;
 static unsigned g_rng;
@@ -103,23 +102,23 @@ static void fill_rect (int x, int y, int w, int h, unsigned c)
 			if (xx >= 0 && yy >= 0) fb[yy * W + xx] = c;
 }
 
-// The theme's look (wtk/paint.h): the face around, the board in a sunken well (its own dark
+// The theme's look (uikit/paint.h): the face around, the board in a sunken well (its own dark
 // between the squares); drawn once into g_bg, copied at each frame.
 static void paint_bg (void)
 {
-	using namespace wtk;
+	using namespace uikit;
 	g_bg.alloc (W, H);
 	g_bg.clear (C_BG);
-	wk_sunken (g_bg, OX - 3, OY - 3, GW * CELL + 5, GH * CELL + 5, 5, 0x00202830);
+	uk_sunken (g_bg, OX - 3, OY - 3, GW * CELL + 5, GH * CELL + 5, 5, 0x00202830);
 }
 
 static void redraw (void)
 {
-	using namespace wtk;
+	using namespace uikit;
 	g_cv.putOther (g_bg, 0, 0, false);
-	if (g_lost) wk_text_l (g_cv, 8, 3, 20, "Boom!  r: restart", wk_mix (C_TEXT, 0x00E03C3C, 150), 2);
-	else if (g_won) wk_text_l (g_cv, 8, 3, 20, "Cleared!  r: restart", wk_mix (C_TEXT, 0x0030A050, 160), 2);
-	else wk_text_l (g_cv, 8, 3, 20, "L: reveal  R: flag  r: restart", C_DIS);
+	if (g_lost) uk_text_l (g_cv, 8, 3, 20, "Boom!  r: restart", uk_mix (C_TEXT, 0x00E03C3C, 150), 2);
+	else if (g_won) uk_text_l (g_cv, 8, 3, 20, "Cleared!  r: restart", uk_mix (C_TEXT, 0x0030A050, 160), 2);
+	else uk_text_l (g_cv, 8, 3, 20, "L: reveal  R: flag  r: restart", C_DIS);
 
 	static const unsigned numcol[9] = { 0, 0x004090ff, 0x0040c060, 0x00ff6060, 0x00d080ff,
 					    0x00ffa040, 0x0040d0d0, 0x00d0d0d0, 0x00a0a0a0 };
@@ -134,7 +133,7 @@ static void redraw (void)
 				else if (g_adj[r][c])
 				{
 					char d[2] = { (char) ('0' + g_adj[r][c]), 0 };
-					wtk::draw_text (fb, W, H, x + CELL / 2 - 3, y + 4, d, numcol[(int) g_adj[r][c]]);
+					uikit::draw_text (fb, W, H, x + CELL / 2 - 3, y + 4, d, numcol[(int) g_adj[r][c]]);
 				}
 			}
 			else
@@ -149,7 +148,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "minesweeper");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 	g_rng = kapi_get_ticks () | 1u;

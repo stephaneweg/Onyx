@@ -1,9 +1,11 @@
 //
 // dock -- the dock: the modernised CDE's Front Panel, along the bottom of the screen (it replaces
-// the Shelf and the panel). In its middle the workspaces and the system buttons; its buttons --
+// the Shelf, since removed, and the panel). In its middle the workspaces and the system buttons; its buttons --
 // the drawers, the launchers, the Trash, in this order -- shared evenly on the two sides (the odd
 // one out at the left):
-//   * the DRAWERS (SD:/etc/dock.ini, dockconf.h -- the Control Panel's Panel applet sets them): a
+//   * the DRAWERS: one for each category of the card's apps (their app.txt; not Shell, Settings,
+//     Emulators), up to DOCK_MAXCATS -- their order, their main apps, the hidden ones in
+//     SD:/etc/dock.ini (dockconf.h dock_layout_load; the Control Panel's Panel applet sets them): a
 //     launcher each, the icon of its group's main app -- a click starts that app (or brings it
 //     back); the strip on its top edge opens the group's drawer above it (its apps and their
 //     icons; a click starts one, or brings it back, minimised too), as Xfce's launchers. A dot
@@ -25,26 +27,18 @@
 // elsewhere. It stands on the screen's bottom edge, so the work area (maximised windows) ends
 // above it. IPC service "dock": DOCK_MSG_RELOAD reads dock.ini and the theme again.
 //
-#include "kapi.h"
-#include "applib.h"
-#include "bmp.hpp"
-#include "fsutil.h"
-#include "fileassoc.h"
-#include "launch.h"
-#include "trash.h"
-#include "notify.h"
-#include "dockconf.h"
-#include "wtk/wtk.h"
+#include "appkit/appkit.h"
+#include "systemkit/systemkit.h"
+#include "uikit/bmp.h"
+#include "filekit/filekit.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define MAXAPPS		48
 
 enum {
-	DH = 80,		// the dock's height
-	GAP = 12,		// below it (see-through)
-	CW = 60,		// a launcher's width
-	ICON = 40,		// the apps' icons (icon.bmp)
+	GAP = 12,		// below the dock (see-through)
 	SI = 30,		// ... in a drawer
 	RH = 38,		// a row of a drawer
 	COLW = 206,		// a column of it
@@ -54,6 +48,10 @@ enum {
 	SQGAP = 5,
 	LABEL_H = 30,		// the name shown above a launcher
 };
+
+// The dock's height, a launcher's width, the apps' icons (icon.bmp) in it: 80, 60, 40 -- smaller together when
+// the dock would be wider than the screen (many drawers: layout), down to 60, 34, 22.
+static int DH = 80, CW = 60, ICON = 40;
 
 // ---- the apps ------------------------------------------------------------------------------------
 struct App { char name[32]; char label[40]; char cat[24]; unsigned *icon; int iw, ih; unsigned *small; bool tried, running; };
@@ -113,7 +111,7 @@ static void scan_apps (void)
 		App &a = g_apps[g_napps++];
 		fs_copy (a.name, p, sizeof a.name);
 		fs_copy (a.label, p, sizeof a.label);
-		a.cat[0] = 0; a.icon = 0; a.small = 0; a.iw = a.ih = 0; a.tried = a.running = false;
+		fs_copy (a.cat, "Other", sizeof a.cat); a.icon = 0; a.small = 0; a.iw = a.ih = 0; a.tried = a.running = false;
 		char q[180]; int k = 0;
 		lx_cat (q, sizeof q, &k, "SD:/apps/"); lx_cat (q, sizeof q, &k, a.name); lx_cat (q, sizeof q, &k, ".app/app.txt");
 		if (app_ini_load_path (q) >= 0)
@@ -121,7 +119,7 @@ static void scan_apps (void)
 			const char *nm = app_ini_get (0, "name", 0);
 			if (nm && nm[0]) fs_copy (a.label, nm, sizeof a.label);
 			const char *ct = app_ini_get (0, "category", 0);
-			if (ct) fs_copy (a.cat, ct, sizeof a.cat);
+			if (ct && ct[0]) fs_copy (a.cat, ct, sizeof a.cat);
 		}
 		*e = c;
 		p = *e ? e + 1 : e;
@@ -150,7 +148,7 @@ static void blit_small (Canvas &cv, int x, int y, const unsigned *px, int s)
 			int xx = x + i, yy = y + j;
 			if (xx < 0 || yy < 0 || xx >= cv.w || yy >= cv.h) continue;
 			unsigned *p = cv.px + (long) yy * cv.stride + xx;
-			*p = t == 0 ? (c & 0xFFFFFF) : wk_over (*p, c & 0xFFFFFF, 255 - (int) t);
+			*p = t == 0 ? (c & 0xFFFFFF) : uk_over (*p, c & 0xFFFFFF, 255 - (int) t);
 		}
 }
 
@@ -158,7 +156,26 @@ static void app_icon (Canvas &cv, int cx, int y, App *a)
 {
 	if (a == 0) return;
 	need_icon (*a);
-	if (a->icon) blit_icon (cv, cx - ICON / 2, y, a->icon, a->iw < ICON ? a->iw : ICON, a->ih < ICON ? a->ih : ICON);
+	if (a->icon == 0) return;
+	if (a->iw <= ICON && a->ih <= ICON) { blit_icon (cv, cx - a->iw / 2, y + (ICON - a->ih) / 2, a->icon, a->iw, a->ih); return; }
+	// smaller than its picture: each pixel the average of the picture's under it (the see-through key left out)
+	int sw = a->iw, sh = a->ih, dw = ICON * sw / (sw > sh ? sw : sh), dh = ICON * sh / (sw > sh ? sw : sh);
+	int x0 = cx - dw / 2, y0 = y + (ICON - dh) / 2;
+	for (int j = 0; j < dh; j++)
+		for (int i = 0; i < dw; i++)
+		{
+			int sx0 = i * sw / dw, sx1 = (i + 1) * sw / dw, sy0 = j * sh / dh, sy1 = (j + 1) * sh / dh;
+			unsigned r = 0, g = 0, b = 0, k = 0, all = 0;
+			for (int v = sy0; v < sy1; v++)
+				for (int u = sx0; u < sx1; u++)
+				{
+					unsigned c = a->icon[v * sw + u] & 0xFFFFFF; all++;
+					if (c == 0xFF00FF) continue;
+					r += c >> 16; g += (c >> 8) & 255; b += c & 255; k++;
+				}
+			if (k * 2 < all || k == 0) continue;		// (mostly see-through: left so)
+			cv.pixel (x0 + i, y0 + j, (r / k) << 16 | (g / k) << 8 | (b / k));
+		}
 }
 
 // (each click said in the kernel log, kmsg: a launcher that starts nothing can be told apart --
@@ -178,25 +195,27 @@ static void launch_or_raise (const char *name)
 
 // ---- the drawers, the launchers, the workspaces (dock.ini) ----------------------------------------
 struct Drawer { char cat[24]; App *main; App *apps[MAXAPPS]; int n; bool running; };
-static Drawer   g_dr[DOCK_MAXDRAWERS];
+static Drawer   g_dr[DOCK_MAXCATS];
 static int      g_ndr;
-static DockConf g_conf;
+static DockLayout g_conf;			// (every category of the card's apps, in dock.ini's order: dockconf.h)
 
 static void build (void)
 {
-	dockconf_load (g_conf);
+	dock_layout_load (g_conf);
 	g_ndr = 0;
-	for (int d = 0; d < g_conf.ndrawers && g_ndr < DOCK_MAXDRAWERS; d++)
+	for (int d = 0; d < g_conf.ncats && g_ndr < DOCK_MAXCATS; d++)
 	{
+		if (g_conf.cat[d].hidden) continue;			// (hidden in the Panel applet)
 		Drawer &k = g_dr[g_ndr];
-		fs_copy (k.cat, g_conf.drawer[d].cat, sizeof k.cat);
+		fs_copy (k.cat, g_conf.cat[d].cat, sizeof k.cat);
 		k.n = 0; k.running = false;
 		for (int i = 0; i < g_napps && k.n < MAXAPPS; i++)
 			if (fs_ci_cmp (g_apps[i].cat, k.cat) == 0) k.apps[k.n++] = &g_apps[i];
 		for (int i = 1; i < k.n; i++)					// by name
 			for (int j = i; j > 0 && fs_ci_cmp (k.apps[j - 1]->label, k.apps[j]->label) > 0; j--)
 			{ App *t = k.apps[j]; k.apps[j] = k.apps[j - 1]; k.apps[j - 1] = t; }
-		k.main = find_app (g_conf.drawer[d].app);
+		if (k.n == 0) continue;					// (no app of it on the card: no drawer)
+		k.main = find_app (g_conf.cat[d].app);
 		if (k.main == 0 && k.n > 0) k.main = k.apps[0];
 		g_ndr++;
 	}
@@ -267,12 +286,14 @@ static bool poll_minis (void)
 
 static void trash_glyph (Canvas &cv, int cx, int y, bool full, unsigned face)
 {
-	unsigned c = wk_tone (face, 64), hi = wk_tone (face, 188);
-	if (full) wk_rbox (cv, cx - 8, y + 2, 16, 9, 2, 0x00FFFFFF, 0x00E4E4E4);	// paper sticking out
-	wk_rbox (cv, cx - 14, y + 8, 28, 5, 2, c, c);				// the lid, its handle
-	wk_rbox (cv, cx - 5, y + 4, 10, 5, 2, c, c);
-	wk_rbox (cv, cx - 11, y + 15, 22, 28, 4, wk_tone (face, 76), c);		// the can
-	for (int k = -1; k <= 1; k++) wk_rbox (cv, cx + k * 6 - 1, y + 19, 2, 20, 1, hi, wk_tone (face, 150));	// its ribs
+	unsigned c = uk_tone (face, 64), hi = uk_tone (face, 188);
+	auto S = [] (int v) { return v * ICON / 40; };		// (the icons' size: smaller in a narrow dock)
+	y += 40 - S (40);
+	if (full) uk_rbox (cv, cx - S (8), y + S (2), S (16), S (9), 2, 0x00FFFFFF, 0x00E4E4E4);	// paper sticking out
+	uk_rbox (cv, cx - S (14), y + S (8), S (28), S (5), 2, c, c);				// the lid, its handle
+	uk_rbox (cv, cx - S (5), y + S (4), S (10), S (5), 2, c, c);
+	uk_rbox (cv, cx - S (11), y + S (15), S (22), S (28), 4, uk_tone (face, 76), c);		// the can
+	for (int k = -1; k <= 1; k++) uk_rbox (cv, cx + k * S (6) - 1, y + S (19), 2, S (20), 1, hi, uk_tone (face, 150));	// its ribs
 }
 
 // ---- the dock's layout -------------------------------------------------------------------------------
@@ -280,7 +301,7 @@ static int g_sw = 1024, g_sh = 768, g_top = 30;			// the screen, the menu bar's 
 
 enum { SL_DRAWER, SL_APP, SL_TRASH };
 struct Slot { int kind, x, index; App *app; };
-static Slot g_slot[DOCK_MAXDRAWERS + DOCK_MAXLAUNCHERS + 2]; static int g_nslot, g_nleft;	// (g_nleft: left of the middle)
+static Slot g_slot[DOCK_MAXCATS + DOCK_MAXLAUNCHERS + 2]; static int g_nslot, g_nleft;	// (g_nleft: left of the middle)
 static int  g_DX, g_DY, g_DW;					// the dock on the screen
 static int  g_pgX, g_pgW, g_pgCols, g_pgRows, g_ndesk;		// the workspaces' panel (dock coordinates)
 
@@ -288,7 +309,7 @@ static int  g_pgX, g_pgW, g_pgCols, g_pgRows, g_ndesk;		// the workspaces' panel
 // of the middle (the workspaces, the lock, the gear, the power; the odd one out at the left).
 static void layout (void)
 {
-	Slot all[DOCK_MAXDRAWERS + DOCK_MAXLAUNCHERS + 2]; int n = 0;
+	Slot all[DOCK_MAXCATS + DOCK_MAXLAUNCHERS + 2]; int n = 0;
 	for (int d = 0; d < g_ndr; d++) all[n++] = { SL_DRAWER, 0, d, g_dr[d].main };
 	for (int i = 0; i < g_conf.nlaunchers; i++)
 	{
@@ -297,13 +318,23 @@ static void layout (void)
 	}
 	all[n++] = { SL_TRASH, 0, -1, 0 };
 	g_nleft = (n + 1) / 2;
-	int x = 12; g_nslot = 0;
-	for (int i = 0; i < g_nleft; i++) { all[i].x = x; g_slot[g_nslot++] = all[i]; x += CW; }
 	g_ndesk = g_conf.ndesks < 1 ? 1 : g_conf.ndesks;
 	g_pgRows = g_ndesk <= 3 ? 1 : 2;
 	g_pgCols = (g_ndesk + g_pgRows - 1) / g_pgRows;
-	g_pgX = x + (g_nleft ? 8 : 0);
 	g_pgW = 30 + g_pgCols * (SQW + SQGAP) - SQGAP + 6 + 30;
+	// too wide for the screen: the launchers narrower, their icons and the dock smaller with them
+	DH = 80; CW = 60; ICON = 40;
+	int fixed = 24 + g_pgW + (g_nleft ? 8 : 0) + (n > g_nleft ? 8 : 0), room = g_sw - 16;
+	if (fixed + n * CW > room)
+	{
+		CW = (room - fixed) / n;
+		if (CW < 34) CW = 34;
+		ICON = CW * 40 / 60; if (ICON < 22) ICON = 22;
+		DH = 80 - (60 - CW) * 20 / 26; if (DH < 60) DH = 60;
+	}
+	int x = 12; g_nslot = 0;
+	for (int i = 0; i < g_nleft; i++) { all[i].x = x; g_slot[g_nslot++] = all[i]; x += CW; }
+	g_pgX = x + (g_nleft ? 8 : 0);
 	x = g_pgX + g_pgW + (n > g_nleft ? 8 : 0);
 	for (int i = g_nleft; i < n; i++) { all[i].x = x; g_slot[g_nslot++] = all[i]; x += CW; }
 	g_DW = x + 12;
@@ -430,6 +461,7 @@ public:
 	Hit dropHot = { H_NONE, -1 };		// what a drag hovers
 	bool trashFull = false;
 	unsigned lastPoll = 0, lastTrash = 0, lastMini = 0;
+	unsigned settleUntil = 0;				// (placeWindow)
 	int lastDeskInfo = -1;
 	const char *tip = 0;			// the name shown above the dock (the pointer's launcher)
 
@@ -437,13 +469,17 @@ public:
 	  : Root (x, y, w, h, "dock", WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_SYSTEM | WIN_FLAG_ALPHA),
 	    wx (x), wy (y) {}
 
-	// The window for what is shown: the dock (+ the name above it), or the screen (a drawer).
+	// The window for what is shown: the dock and the room for a name above it, or the screen (a
+	// drawer). The room for the name is always there (see-through, the clicks go through it): the
+	// window grew and moved up when a name came -- the pointer's moves already on their way were
+	// then read 30 pixels off, and a pointer on a drawer's strip was taken to be on the launcher
+	// under it.
 	void placeWindow ()
 	{
-		int x = g_DX, y = g_DY, w = g_DW, h = DH + GAP;
+		int x = g_DX, y = g_DY - LABEL_H, w = g_DW, h = DH + GAP + LABEL_H;
 		if (g_open >= 0 || g_menuUp) { x = 0; y = g_top; w = g_sw; h = g_sh - g_top; }
-		else if (tip) { y -= LABEL_H; h += LABEL_H; }
 		if (x == wx && y == wy && w == width && h == height) return;
+		settleUntil = kapi_get_ticks () + 6;		// (onMouse: the moves sent for the old place)
 		int stride = w;
 		unsigned *fb = kapi_resize_window2 (w, h, &stride);
 		if (fb == 0) return;
@@ -477,7 +513,7 @@ public:
 
 	void reload ()
 	{
-		wk_theme_reload ();
+		uk_theme_reload ();
 		closeDrawer ();
 		scan_apps ();
 		build ();
@@ -491,12 +527,12 @@ public:
 	// ---- drawing -----------------------------------------------------------------------------
 	void panel (int x, int y, int w, int h, int r, unsigned top, unsigned bottom, unsigned edge)
 	{
-		wk_rbox (canvas, x, y, w, h, r, top, bottom);
-		wk_rline (canvas, x, y, w, h, r, edge, 170);
+		uk_rbox (canvas, x, y, w, h, r, top, bottom);
+		uk_rline (canvas, x, y, w, h, r, edge, 170);
 		for (int i = x + r; i < x + w - r; i++)
 		{
 			unsigned *p = canvas.px + (long) (y + 1) * canvas.stride + i;
-			if (i >= 0 && i < canvas.w && y + 1 >= 0 && y + 1 < canvas.h) *p = wk_over (*p, 0x00FFFFFF, 130);
+			if (i >= 0 && i < canvas.w && y + 1 >= 0 && y + 1 < canvas.h) *p = uk_over (*p, 0x00FFFFFF, 130);
 		}
 	}
 
@@ -505,25 +541,25 @@ public:
 		unsigned d = C_DOCK;
 		for (int j = oy + 12; j < oy + DH - 12; j++)
 		{
-			canvas.pixel (x, j, wk_over (canvas.px[(long) j * canvas.stride + x], wk_tone (d, 76), 150));
-			canvas.pixel (x + 1, j, wk_over (canvas.px[(long) j * canvas.stride + x + 1], 0x00FFFFFF, 110));
+			canvas.pixel (x, j, uk_over (canvas.px[(long) j * canvas.stride + x], uk_tone (d, 76), 150));
+			canvas.pixel (x + 1, j, uk_over (canvas.px[(long) j * canvas.stride + x + 1], 0x00FFFFFF, 110));
 		}
 	}
 
 	void drawDesks (int ox, int oy)
 	{
-		unsigned d = C_DOCK, ink = wk_ink_on (d);
+		unsigned d = C_DOCK, ink = uk_ink_on (d);
 		int sx = ox + g_pgX;
-		wk_rbox (canvas, sx, oy + 8, g_pgW, DH - 16, 10, wk_tone (d, 104), wk_tone (d, 122), 200);
-		wk_rline (canvas, sx, oy + 8, g_pgW, DH - 16, 10, wk_tone (d, 76), 120);
+		uk_rbox (canvas, sx, oy + 8, g_pgW, DH - 16, 10, uk_tone (d, 104), uk_tone (d, 122), 200);
+		uk_rline (canvas, sx, oy + 8, g_pgW, DH - 16, 10, uk_tone (d, 76), 120);
 		int info = kapi_desk (-1, 0), cur = KAPI_DESK_CUR (info);
 		for (int i = 0; i < g_ndesk; i++)
 		{
 			int bx, by; desk_box (i, &bx, &by);
 			bx += ox; by += oy;
 			bool on = i == cur, h = hot.what == H_DESK && hot.index == i;
-			unsigned wall = on ? wk_mix (C_ACCENT, 0x00FFFFFF, 60) : wk_tone (d, h ? 150 : 128);
-			wk_rbox (canvas, bx, by, SQW, SQH, 4, wk_tone (wall, on ? 150 : 140), wall);
+			unsigned wall = on ? uk_mix (C_ACCENT, 0x00FFFFFF, 60) : uk_tone (d, h ? 150 : 128);
+			uk_rbox (canvas, bx, by, SQW, SQH, 4, uk_tone (wall, on ? 150 : 140), wall);
 			// its windows, small (the one with the keys in the front frame's colour)
 			bool any = false;
 			for (int m = 0; m < g_nmini; m++)
@@ -539,35 +575,35 @@ public:
 				if (y1 > by + SQH - 2) y1 = by + SQH - 2;
 				if (x1 - x0 < 3 || y1 - y0 < 3) continue;
 				unsigned f = w.keys && on ? C_FRAME_ACTIVE : C_FRAME_INACTIVE;
-				canvas.fillRect (x0, y0, x1 - x0, y1 - y0, wk_tone (f, 176));
-				canvas.frameRect (x0, y0, x1 - x0, y1 - y0, wk_tone (f, 70));
-				canvas.fillRect (x0 + 1, y0 + 1, x1 - x0 - 2, 2, wk_tone (f, 128));
+				canvas.fillRect (x0, y0, x1 - x0, y1 - y0, uk_tone (f, 176));
+				canvas.frameRect (x0, y0, x1 - x0, y1 - y0, uk_tone (f, 70));
+				canvas.fillRect (x0 + 1, y0 + 1, x1 - x0 - 2, 2, uk_tone (f, 128));
 				any = true;
 			}
 			if (!any)
 			{
 				char n[2] = { (char) ('1' + i), 0 };
-				wk_text_c (canvas, bx, by, SQW, SQH, n, on ? wk_ink_on (wall) : wk_mix (wall, wk_ink_on (wall), 150), on ? 2 : 0);
+				uk_text_c (canvas, bx, by, SQW, SQH, n, on ? uk_ink_on (wall) : uk_mix (wall, uk_ink_on (wall), 150), on ? 2 : 0);
 			}
-			wk_rline (canvas, bx, by, SQW, SQH, 4, on ? C_ACCENT : wk_tone (d, 70), on ? 255 : 170);
-			if (on) wk_rline (canvas, bx - 1, by - 1, SQW + 2, SQH + 2, 5, C_ACCENT, 110);
+			uk_rline (canvas, bx, by, SQW, SQH, 4, on ? C_ACCENT : uk_tone (d, 70), on ? 255 : 170);
+			if (on) uk_rline (canvas, bx - 1, by - 1, SQW + 2, SQH + 2, 5, C_ACCENT, 110);
 		}
 		// the left column: the lock, the gear (the Control Panel); the right one: the power, the clipboard
 		bool hl = hot.what == H_LOCK, hg = hot.what == H_GEAR, hp = hot.what == H_POWER, hc = hot.what == H_CLIP;
-		if (hl) wk_rbox (canvas, sx + 3, oy + 14, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
-		if (hg) wk_rbox (canvas, sx + 3, oy + 41, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
-		if (hp) wk_rbox (canvas, sx + g_pgW - 29, oy + 14, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
-		if (hc) wk_rbox (canvas, sx + g_pgW - 29, oy + 41, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
-		wk_glyph (canvas, WKG_LOCK, sx + 15, oy + 27, 15, ink);
-		wk_glyph (canvas, WKG_GEAR, sx + 15, oy + 53, 17, ink);
-		wk_glyph (canvas, WKG_POWER, sx + g_pgW - 17, oy + 27, 16, 0x00BE322C);
+		if (hl) uk_rbox (canvas, sx + 3, oy + 14, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
+		if (hg) uk_rbox (canvas, sx + 3, oy + 41, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
+		if (hp) uk_rbox (canvas, sx + g_pgW - 29, oy + 14, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
+		if (hc) uk_rbox (canvas, sx + g_pgW - 29, oy + 41, 24, 25, 6, 0x00FFFFFF, 0x00FFFFFF, 80);
+		uk_glyph (canvas, WKG_LOCK, sx + 15, oy + 27, 15, ink);
+		uk_glyph (canvas, WKG_GEAR, sx + 15, oy + 53, 17, ink);
+		uk_glyph (canvas, WKG_POWER, sx + g_pgW - 17, oy + 27, 16, 0x00BE322C);
 		clip_glyph (canvas, sx + g_pgW - 17, oy + 53, ink);
 	}
 
 	void drawDock (int ox, int oy)
 	{
-		unsigned d = C_DOCK, ink = wk_ink_on (d);
-		panel (ox, oy, g_DW, DH, 14, wk_tone (d, 172), wk_tone (d, 120), wk_tone (d, 70));
+		unsigned d = C_DOCK, ink = uk_ink_on (d);
+		panel (ox, oy, g_DW, DH, 14, uk_tone (d, 172), uk_tone (d, 120), uk_tone (d, 70));
 		for (int i = 0; i < g_nslot; i++)
 		{
 			Slot &s = g_slot[i];
@@ -576,28 +612,29 @@ public:
 			bool pr = hIcon && down.what == H_SLOT && down.index == i;
 			bool drop = dropHot.what == H_SLOT && dropHot.index == i;
 			if (hIcon || drop)
-				wk_rbox (canvas, x + 4, oy + 19, CW - 8, 54, 8, pr ? wk_tone (d, 108) : wk_tone (d, 200),
-					 pr ? wk_tone (d, 118) : wk_tone (d, 160), drop ? 255 : 150);
-			if (drop) wk_rline (canvas, x + 4, oy + 19, CW - 8, 54, 8, C_ACCENT, 255);
+				uk_rbox (canvas, x + 4, oy + 19, CW - 8, DH - 26, 8, pr ? uk_tone (d, 108) : uk_tone (d, 200),
+					 pr ? uk_tone (d, 118) : uk_tone (d, 160), drop ? 255 : 150);
+			if (drop) uk_rline (canvas, x + 4, oy + 19, CW - 8, DH - 26, 8, C_ACCENT, 255);
 			if (s.kind == SL_DRAWER)
 			{
 				const Drawer &k = g_dr[s.index];
-				app_icon (canvas, cx, oy + 26, k.main);
+				app_icon (canvas, cx, oy + DH - ICON - 14, k.main);
 				// the strip at the top edge: its drawer (open: in the accent)
 				bool o = g_open == s.index;
-				unsigned top = o ? wk_tone (C_ACCENT, 170) : wk_tone (d, hStrip ? 150 : 118);
-				unsigned bot = o ? C_ACCENT : wk_tone (d, hStrip ? 132 : 106);
-				wk_rbox (canvas, cx - 20, oy + 1, 40, STRIP_H - 1, 6, top, bot, 255, WK_BL | WK_BR);
-				wk_rline (canvas, cx - 20, oy + 1, 40, STRIP_H - 1, 6, hStrip ? C_ACCENT : wk_tone (d, 70), hStrip ? 220 : 140, WK_BL | WK_BR);
-				wk_glyph (canvas, o ? WKG_CHEV_DOWN : WKG_CHEV_UP, cx, oy + 1 + (STRIP_H - 1) / 2, 10, o ? 0x00FFFFFF : ink);
-				if (k.running) wk_rbox (canvas, cx - 3, oy + DH - 9, 6, 5, 2, C_ACCENT, C_ACCENT);
+				unsigned top = o ? uk_tone (C_ACCENT, 170) : uk_tone (d, hStrip ? 150 : 118);
+				unsigned bot = o ? C_ACCENT : uk_tone (d, hStrip ? 132 : 106);
+				int sw2 = CW - 20 < 40 ? (CW - 8) / 2 : 20;		// (the strip: narrower with a narrow launcher)
+				uk_rbox (canvas, cx - sw2, oy + 1, 2 * sw2, STRIP_H - 1, 6, top, bot, 255, UK_BL | UK_BR);
+				uk_rline (canvas, cx - sw2, oy + 1, 2 * sw2, STRIP_H - 1, 6, hStrip ? C_ACCENT : uk_tone (d, 70), hStrip ? 220 : 140, UK_BL | UK_BR);
+				uk_glyph (canvas, o ? WKG_CHEV_DOWN : WKG_CHEV_UP, cx, oy + 1 + (STRIP_H - 1) / 2, 10, o ? 0x00FFFFFF : ink);
+				if (k.running) uk_rbox (canvas, cx - 3, oy + DH - 9, 6, 5, 2, C_ACCENT, C_ACCENT);
 			}
 			else if (s.kind == SL_APP)
 			{
-				app_icon (canvas, cx, oy + 26, s.app);
-				if (s.app && s.app->running) wk_rbox (canvas, cx - 3, oy + DH - 9, 6, 5, 2, C_ACCENT, C_ACCENT);
+				app_icon (canvas, cx, oy + DH - ICON - 14, s.app);
+				if (s.app && s.app->running) uk_rbox (canvas, cx - 3, oy + DH - 9, 6, 5, 2, C_ACCENT, C_ACCENT);
 			}
-			else trash_glyph (canvas, cx, oy + 24, trashFull, d);
+			else trash_glyph (canvas, cx, oy + DH - 56, trashFull, d);
 			if (i + 1 < g_nslot && g_slot[i + 1].x == s.x + CW) groove (x + CW - 1, oy);	// between launchers
 		}
 		if (g_nleft) groove (ox + g_pgX - 5, oy);				// round the middle
@@ -609,17 +646,17 @@ public:
 	void drawerFrame (int x, int y, const char *title)
 	{
 		unsigned f = C_FIELD;
-		panel (x, y, g_pw, g_ph, 12, wk_tone (f, 140), f, wk_tone (C_DOCK, 64));
+		panel (x, y, g_pw, g_ph, 12, uk_tone (f, 140), f, uk_tone (C_DOCK, 64));
 		int cx = g_pcx - wx;					// the pointer, below it
 		for (int j = 0; j < 8; j++)
 			for (int i = -8 + j; i <= 8 - j; i++) canvas.pixel (cx + i, y + g_ph - 1 + j, f);
 		for (int j = 0; j < 8; j++)
 		{
-			wk_blend_px (canvas, cx - 9 + j, y + g_ph - 1 + j, wk_tone (C_DOCK, 64), 170);
-			wk_blend_px (canvas, cx + 9 - j, y + g_ph - 1 + j, wk_tone (C_DOCK, 64), 170);
+			uk_blend_px (canvas, cx - 9 + j, y + g_ph - 1 + j, uk_tone (C_DOCK, 64), 170);
+			uk_blend_px (canvas, cx + 9 - j, y + g_ph - 1 + j, uk_tone (C_DOCK, 64), 170);
 		}
-		wk_text_l (canvas, x + 14, y + 6, 26, title, C_FIELD_TEXT, 2);
-		wk_etch_h (canvas, x + 10, y + 36, g_pw - 20, f);
+		uk_text_l (canvas, x + 14, y + 6, 26, title, C_FIELD_TEXT, 2);
+		uk_etch_h (canvas, x + 10, y + 36, g_pw - 20, f);
 	}
 
 	void drawDrawer (int x, int y)
@@ -632,18 +669,18 @@ public:
 			need_icon (a);
 			int ix = x + 6 + (i / MAXROWS) * COLW, iy = y + 42 + (i % MAXROWS) * RH;
 			bool h = hot.what == H_ITEM && hot.index == i;
-			if (h) wk_hilite (canvas, ix, iy, COLW - 6, RH - 2, 7, true);
+			if (h) uk_hilite (canvas, ix, iy, COLW - 6, RH - 2, 7, true);
 			blit_small (canvas, ix + 8, iy + 3, a.small, SI);
 			unsigned ink = h ? C_SEL_TEXT : C_FIELD_TEXT;
-			wk_text_l (canvas, ix + 46, iy, RH - 2, a.label, ink, &a == k.main ? 2 : 0);
-			if (a.running) wk_rbox (canvas, ix + COLW - 20, iy + RH / 2 - 4, 6, 6, 3, h ? ink : C_ACCENT, h ? ink : C_ACCENT);
+			uk_text_l (canvas, ix + 46, iy, RH - 2, a.label, ink, &a == k.main ? 2 : 0);
+			if (a.running) uk_rbox (canvas, ix + COLW - 20, iy + RH / 2 - 4, 6, 6, 3, h ? ink : C_ACCENT, h ? ink : C_ACCENT);
 		}
-		if (k.n == 0) wk_text_l (canvas, x + 14, y + 42, RH, "No apps in this group", wk_mix (C_FIELD, C_FIELD_TEXT, 140));
+		if (k.n == 0) uk_text_l (canvas, x + 14, y + 42, RH, "No apps in this group", uk_mix (C_FIELD, C_FIELD_TEXT, 140));
 	}
 
 	void drawTip (int ox, int oy)
 	{
-		int tw = wk_text_w (tip) + 20, th = wk_fh () + 8, cx = ox + g_DW / 2;
+		int tw = uk_text_w (tip) + 20, th = uk_fh () + 8, cx = ox + g_DW / 2;
 		if (hot.what == H_SLOT || hot.what == H_STRIP) cx = ox + g_slot[hot.index].x + CW / 2;
 		else if (hot.what == H_DESK) { int bx, by; desk_box (hot.index, &bx, &by); cx = ox + bx + SQW / 2; }
 		else if (hot.what == H_LOCK || hot.what == H_GEAR) cx = ox + g_pgX + 15;
@@ -652,21 +689,21 @@ public:
 		if (x < 0) x = 0;
 		if (x + tw > width) x = width - tw;
 		int y = oy - LABEL_H + 2;
-		wk_rbox (canvas, x, y, tw, th, 7, wk_tone (C_FIELD, 150), C_FIELD);
-		wk_rline (canvas, x, y, tw, th, 7, wk_tone (C_DOCK, 64), 170);
-		wk_text_c (canvas, x, y, tw, th, tip, C_FIELD_TEXT);
+		uk_rbox (canvas, x, y, tw, th, 7, uk_tone (C_FIELD, 150), C_FIELD);
+		uk_rline (canvas, x, y, tw, th, 7, uk_tone (C_DOCK, 64), 170);
+		uk_text_c (canvas, x, y, tw, th, tip, C_FIELD_TEXT);
 	}
 
 	void onDraw () override
 	{
 		// see-through where nothing is; almost clear (catching a click) while a drawer is open
 		canvas.clear (g_open >= 0 || g_menuUp ? 0xFE000000u : 0xFF000000u);
-		wk_paint_alpha (true);
+		uk_paint_alpha (true);
 		int ox = g_DX - wx, oy = g_DY - wy;
 		drawDock (ox, oy);
 		if (g_open >= 0) drawDrawer (g_px - wx, g_py - wy);
 		else if (tip) drawTip (ox, oy);
-		wk_paint_alpha (false);
+		uk_paint_alpha (false);
 	}
 
 	// ---- each frame ---------------------------------------------------------------------------
@@ -697,7 +734,7 @@ public:
 		if (h.what == hot.what && h.index == hot.index) return;
 		hot = h;
 		const char *t = g_open < 0 && !g_menuUp ? hit_tip (h) : 0;
-		if (t != tip) { tip = t; placeWindow (); }
+		tip = t;
 		invalidate (true);
 	}
 
@@ -736,7 +773,7 @@ public:
 		closeDrawer ();
 		g_menuUp = true; tip = 0;				// (the menu needs room: the window
 		placeWindow ();						// covers the screen while it is shown)
-		draw (); wk_present ();
+		draw (); uk_present ();
 		PopupMenu menu (sx - wx - 20, g_DY - 70 - wy);
 		menu.add ("Panel Settings...", 1);
 		menu.add ("Control Panel", 2);
@@ -755,6 +792,13 @@ public:
 			Hit none = { H_NONE, -1 };
 			if (!pressed) setHot (none);
 			return false;
+		}
+		// (the window has just changed place -- a drawer opened or closed: the moves that were sent
+		// for where it was are not read with the new origin)
+		if ((int) (kapi_get_ticks () - settleUntil) < 0)
+		{
+			if (!bl && pressed) { pressed = false; down.what = H_NONE; invalidate (true); }
+			return true;
 		}
 		int sx = mx + wx, sy = my + wy;
 		Hit h = hit_test (sx, sy);
@@ -814,13 +858,16 @@ public:
 int main (void)
 {
 	kapi_screen_size (&g_sw, &g_sh);
-	wtk::init ();
+	uikit::init ();
 	kapi_ipc_register (DOCK_SERVICE);		// (DOCK_MSG_RELOAD: the Panel applet)
 	scan_apps ();
 	build ();
 	layout ();
+	// (made at the dock's own height, then grown by the name's room: the kernel's work area leaves
+	// out a bottom window's smallest height -- the dock, not the room above it)
 	DockRoot root (g_DX, g_DY, g_DW, DH + GAP);
 	if (root.canvas.px == 0) return 1;
+	root.placeWindow ();
 	struct kapi_win_geom g;
 	if (kapi_win_geometry (&g) == 0 && g.ay > 0) g_top = g.ay;
 	root.trashFull = trash_count () > 0;

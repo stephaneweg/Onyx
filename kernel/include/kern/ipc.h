@@ -8,7 +8,7 @@
 // async events with kapi_mailbox_send; both drain their mailbox with kapi_mailbox_recv.
 //
 // The kernel is payload-agnostic: a message is just {from_pid, type, bytes}. The
-// meaning of `type` is the user-side shell protocol (user/shell_proto.h). from_pid 0
+// meaning of `type` is the user-side shell protocol (it was user/shell_proto.h; the activity shell was removed on 2026-10-05). from_pid 0
 // means "from the kernel" (e.g. a future process-gone notice).
 //
 #ifndef _kern_ipc_h
@@ -55,6 +55,8 @@ void IpcOnProcessGone (unsigned nPid);
 
 // Is process nPid still alive? (a live task owning an address space with that pid)
 boolean IpcPidAlive (unsigned nPid);
+class CAddressSpace;
+CAddressSpace *IpcFindAS (unsigned nPid);	// a live process's address space, 0: none (task context)
 
 // Kernel-side notification: post {title '\0' text '\0'} (type 1) to the "notify"
 // service (the notifyd app) if it is running, from pid 0. Safe from any task context.

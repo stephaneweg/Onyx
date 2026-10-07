@@ -1,8 +1,8 @@
 #!/bin/sh
-# run_fms_test.sh -- fmtracker's file formats and the kernel FM synthesizer on the PC:
+# run_fms_test.sh -- fmtracker's file formats and the FM synthesizer (AudioKit's) on the PC:
 #   * every SD:/music/fms/*.FMS is parsed and written back byte for byte, every
 #     apps/fmtracker.app/ins/*.FMI round-trips (user/Apps/fmtracker/fms.h);
-#   * kernel/sys/sound.cpp renders a few instruments (tools/tests/sound/synth_test.cpp):
+#   * user/Kits/audiokit/fmsynth.h renders a few instruments (tools/tests/sound/synth_test.cpp):
 #     each must make sound while held, and the sine must have the right pitch.
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)

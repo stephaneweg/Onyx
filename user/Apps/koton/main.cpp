@@ -19,8 +19,8 @@
 // Files: SD:/koton/songs (the songs, .kson / .sq), SD:/res/soundfonts (the .sf2: the package generaluser-gs, shared with Media Player), SD:/koton/settings.json;
 // "koton SD:/koton/songs/a.kson" opens it.
 //
-#include "wtk/wtk.h"
-#include "ft/wtkface.h"
+#include "uikit/uikit.h"
+#include "fontkit/uikitface.h"
 #include "ui/chrome.h"
 #include "ui/ai_dialog.h"
 #include "ui/chain.h"
@@ -169,7 +169,7 @@ static bool saveAs ();
 static bool askSave ()
 {
 	if (!g_doc.dirty) return true;
-	int r = wk_messagebox ("Koton", "The song has unsaved changes. Save them?", MB_YESNOCANCEL);
+	int r = uk_messagebox ("Koton", "The song has unsaved changes. Save them?", MB_YESNOCANCEL);
 	if (r == 0) return false;
 	if (r == 1)
 	{
@@ -190,7 +190,7 @@ static void afterLoad ()
 static bool openFile (const char *path)
 {
 	char err[160];
-	if (!g_doc.load (path, err, sizeof err)) { char m[300]; snprintf (m, sizeof m, "Cannot open the song: %s", err); wk_messagebox ("Koton", m, MB_OK); return false; }
+	if (!g_doc.load (path, err, sizeof err)) { char m[300]; snprintf (m, sizeof m, "Cannot open the song: %s", err); uk_messagebox ("Koton", m, MB_OK); return false; }
 	const char *ext = strrchr (path, '.');
 	if (ext && !strcmp (ext, ".sq")) { g_doc.path[0] = 0; setStatus ("Opened a Koton Studio song (.sq): Save writes a .kson."); }
 	else setStatus ("Opened %s", path);
@@ -203,7 +203,7 @@ static void cmdOpen ()
 	if (!askSave ()) return;
 	char p[256];
 	kapi_mkdir ("SD:/koton"); kapi_mkdir ("SD:/koton/songs");
-	if (!wk_file_open (p, sizeof p, g_settings.lastDir)) return;
+	if (!uk_file_open (p, sizeof p, g_settings.lastDir, "Koton songs|*.kson;*.sq|All files|*")) return;
 	if (openFile (p))
 	{
 		char *s = strrchr (p, '/'); if (s) { *s = 0; snprintf (g_settings.lastDir, sizeof g_settings.lastDir, "%s", p); g_settings.save (); }
@@ -214,11 +214,11 @@ static bool saveAs ()
 	savePluginStates ();
 	char p[256];
 	kapi_mkdir ("SD:/koton"); kapi_mkdir ("SD:/koton/songs");
-	if (!wk_file_save (p, sizeof p, g_settings.lastDir, "song.kson")) return false;
+	if (!uk_file_save (p, sizeof p, g_settings.lastDir, "song.kson", "Koton songs|*.kson|All files|*")) return false;
 	int n = (int) strlen (p);
 	if (n < 5 || strcmp (p + n - 5, ".kson")) { const char *d = strrchr (p, '.'); const char *sl = strrchr (p, '/'); if (d && (!sl || d > sl)) p[d - p] = 0; snprintf (p + strlen (p), sizeof p - strlen (p), ".kson"); }
 	g_doc.pruneRiffs ();
-	if (!g_doc.save (p)) { wk_messagebox ("Koton", "The song could not be saved.", MB_OK); return false; }
+	if (!g_doc.save (p)) { uk_messagebox ("Koton", "The song could not be saved.", MB_OK); return false; }
 	setStatus ("Saved %s", p);
 	refreshAll ();
 	return true;
@@ -228,7 +228,7 @@ static void cmdSave ()
 	savePluginStates ();
 	if (!g_doc.path[0]) { saveAs (); return; }
 	g_doc.pruneRiffs ();
-	if (g_doc.save (g_doc.path)) setStatus ("Saved %s", g_doc.path); else wk_messagebox ("Koton", "The song could not be saved.", MB_OK);
+	if (g_doc.save (g_doc.path)) setStatus ("Saved %s", g_doc.path); else uk_messagebox ("Koton", "The song could not be saved.", MB_OK);
 	refreshAll ();
 }
 static void cmdSaveAs () { saveAs (); }
@@ -236,12 +236,12 @@ static void exportProgress (int pct)
 {
 	snprintf (g_status, sizeof g_status, "Exporting the song... %d %%", pct);
 	Root *r = Root::current ();
-	if (r && g_statusBar) { g_statusBar->invalidate (true); r->draw (); wk_present (); }
+	if (r && g_statusBar) { g_statusBar->invalidate (true); r->draw (); uk_present (); }
 }
 static void cmdExport ()
 {
 	char p[256];
-	if (!wk_file_save (p, sizeof p, g_settings.lastDir, "song.wav")) return;
+	if (!uk_file_save (p, sizeof p, g_settings.lastDir, "song.wav", "WAV audio|*.wav|All files|*")) return;
 	g_audio.sync (g_doc);
 	if (g_audio.exportWav (g_doc, p, exportProgress)) setStatus ("Exported %s", p);
 	else setStatus ("The export failed (no SoundFont, or the file could not be written).");
@@ -305,17 +305,17 @@ static void cmdSoundFont ()
 {
 	char p[256];
 	kapi_mkdir ("SD:/res"); kapi_mkdir ("SD:/res/soundfonts");
-	if (!wk_file_open (p, sizeof p, "SD:/res/soundfonts")) return;
+	if (!uk_file_open (p, sizeof p, "SD:/res/soundfonts", "SoundFonts|*.sf2|All files|*")) return;
 	int n = (int) strlen (p);
-	if (n < 4 || strcasecmp (p + n - 4, ".sf2")) { wk_messagebox ("SoundFont", "Choose a .sf2 file.", MB_OK); return; }
+	if (n < 4 || strcasecmp (p + n - 4, ".sf2")) { uk_messagebox ("SoundFont", "Choose a .sf2 file.", MB_OK); return; }
 	snprintf (g_settings.soundfont, sizeof g_settings.soundfont, "%s", p);
 	g_settings.save ();
-	wk_messagebox ("SoundFont", "Koton will use it from its next start.", MB_OK);
+	uk_messagebox ("SoundFont", "Koton will use it from its next start.", MB_OK);
 }
 // GeneralUser GS fetched by SD:/bin/llm (a TLS download) into SD:/res/soundfonts (the package generaluser-gs puts it there too)
 static void cmdGetSoundFont ()
 {
-	if (wk_messagebox ("SoundFont", "Download GeneralUser GS (32 MB, free) into SD:/res/soundfonts? The network must be up.", MB_YESNO) != 1) return;
+	if (uk_messagebox ("SoundFont", "Download GeneralUser GS (32 MB, free) into SD:/res/soundfonts? The network must be up.", MB_YESNO) != 1) return;
 	kapi_mkdir ("SD:/res"); kapi_mkdir ("SD:/res/soundfonts");
 	json::Writer w (false);
 	aiBuildFetchJson ("https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/main/GeneralUser-GS.sf2", "SD:/res/soundfonts/GeneralUser-GS.sf2", w, 600);
@@ -329,10 +329,10 @@ static void cmdGetSoundFont ()
 	if (!ran) { setStatus ("The download was cancelled (or SD:/bin/llm is missing)."); return; }
 	out.push (0);
 	unsigned long bytes = 0; Str err;
-	if (!aiParseFetchOutput (out.data (), out.size () - 1, &bytes, err)) { char m[300]; snprintf (m, sizeof m, "The download failed: %s", err.c ()); wk_messagebox ("SoundFont", m, MB_OK); return; }
+	if (!aiParseFetchOutput (out.data (), out.size () - 1, &bytes, err)) { char m[300]; snprintf (m, sizeof m, "The download failed: %s", err.c ()); uk_messagebox ("SoundFont", m, MB_OK); return; }
 	snprintf (g_settings.soundfont, sizeof g_settings.soundfont, "SD:/res/soundfonts/GeneralUser-GS.sf2");
 	g_settings.save ();
-	wk_messagebox ("SoundFont", "Downloaded: Koton uses it from its next start.", MB_OK);
+	uk_messagebox ("SoundFont", "Downloaded: Koton uses it from its next start.", MB_OK);
 }
 static void cmdZoomIn () { if (g_arrange) { g_arrange->ppb = dmin (160, g_arrange->ppb * 1.25); g_arrange->invalidate (true); } }
 static void cmdZoomOut () { if (g_arrange) { g_arrange->ppb = dmax (2, g_arrange->ppb * 0.8); g_arrange->invalidate (true); } }
@@ -435,7 +435,7 @@ static void openPluginEditor (PlugInstance *p, const char *title)
 static void openGeneratorEditor (int t, int i)
 {
 	Module *m = g_doc.module (t, i);
-	if (!g_plug || !g_plug->available () || !m || m->kind != M_GENERATOR) { wk_messagebox ("Generator", "Plugins are not available here.", MB_OK); return; }
+	if (!g_plug || !g_plug->available () || !m || m->kind != M_GENERATOR) { uk_messagebox ("Generator", "Plugins are not available here.", MB_OK); return; }
 	if (g_pluginWindow) g_pluginWindow->closeMe ();
 	GeneratorModule *gm = (GeneratorModule *) m;
 	Root *r = Root::current ();
@@ -645,14 +645,14 @@ int main (void)
 	// (the kernel makes windows up to 1024 x 768: the studio opens maximised)
 	int sw = 1024, sh = 768;
 	{ int SW = 0, SH = 0; kapi_screen_size (&SW, &SH); if (SW > 0 && SH > 0) { sw = imin (sw, SW); sh = imin (sh, SH - 60); } }
-	if (ft_wtk_install ("DejaVu Sans", 13))		// anti-aliased text (else the bitmap font)
+	if (ft_uikit_install ("DejaVu Sans", 13))		// anti-aliased text (else the bitmap font)
 	{
 		FtTextFace *big = new FtTextFace;
 		if (big->open ("DejaVu Sans Mono", 26) || big->open ("DejaVu Sans", 26)) g_bigFace = big; else delete big;
 	}
 	KotonRoot root (sw, sh);
 	root.attach ();
-	wtk::init ();
+	uikit::init ();
 	applyTheme ();
 	root.setBg (BG);
 
@@ -716,23 +716,23 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New song", "^N", WK_CTRL ('N'), cmdNew);
-	menu.item ("Open...", "^O", WK_CTRL ('O'), cmdOpen);
+	menu.item ("New song", "^N", UK_CTRL ('N'), cmdNew);
+	menu.item ("Open...", "^O", UK_CTRL ('O'), cmdOpen);
 	menu.separator ();
-	menu.item ("Save", "^S", WK_CTRL ('S'), cmdSave);
+	menu.item ("Save", "^S", UK_CTRL ('S'), cmdSave);
 	menu.item ("Save As...", "", 0, cmdSaveAs);
 	menu.item ("Export as WAV...", "", 0, cmdExport);
 	menu.separator ();
 	menu.item ("SoundFont...", "", 0, cmdSoundFont);
 	menu.item ("Get a SoundFont...", "", 0, cmdGetSoundFont);
 	menu.menu ("Edit");
-	menu.item ("Undo", "^Z", WK_CTRL ('Z'), cmdUndo);
-	menu.item ("Redo", "^Y", WK_CTRL ('Y'), cmdRedo);
+	menu.item ("Undo", "^Z", UK_CTRL ('Z'), cmdUndo);
+	menu.item ("Redo", "^Y", UK_CTRL ('Y'), cmdRedo);
 	menu.separator ();
-	menu.item ("Duplicate the block", "^D", WK_CTRL ('D'), cmdDuplicate);
+	menu.item ("Duplicate the block", "^D", UK_CTRL ('D'), cmdDuplicate);
 	menu.item ("Delete the block", "Del", 0, cmdDelete);
 	menu.menu ("Song");
-	menu.item ("Key, meter, tempo...", "^K", WK_CTRL ('K'), cmdSong);
+	menu.item ("Key, meter, tempo...", "^K", UK_CTRL ('K'), cmdSong);
 	menu.item ("Cadence on the chord track...", "", 0, cmdCadence);
 	menu.menu ("Track");
 	menu.item ("Add an instrument track", "", 0, cmdAddTrack);
@@ -744,7 +744,7 @@ int main (void)
 	menu.item ("Play / Stop", "Space", 0, cmdPlayStop);
 	menu.item ("Stop", "Esc", 0, cmdStop);
 	menu.item ("Back to the start", "Home", 0, cmdRewind);
-	menu.item ("Loop", "^L", WK_CTRL ('L'), cmdLoop);
+	menu.item ("Loop", "^L", UK_CTRL ('L'), cmdLoop);
 	menu.item ("Metronome", "^M", 0, cmdMetronome);
 	menu.menu ("View");
 	menu.item ("Zoom in", "^+", 0, cmdZoomIn);

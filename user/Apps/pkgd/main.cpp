@@ -11,9 +11,8 @@
 // SD:/etc/pkg/pkg.ini: check = daily (the default) or never (the daemon then only ends). The day of
 // the last round: SD:/var/pkg/lastcheck (yyyymmdd).
 //
-#include "kapi.h"
-#include "applib.h"
-#include "notify.h"
+#include "appkit/appkit.h"
+#include "systemkit/systemkit.h"
 #include "pkg/pkglib.h"
 
 using namespace pkg;
@@ -34,6 +33,7 @@ static void round (bool count_day)
 	Manager &m = *mp;
 	Quiet q;
 	if (m.refresh (q) != OK || !m.verified) return;		// no index, or not checked: next time
+	static bool synced; if (!synced) { synced = true; m.sync_meta (); }	// (fileassoc.ini, runners.ini: what the packages installed open and run)
 	if (count_day) { char t[16]; snprintf (t, sizeof t, "%d\n", today ()); write_file (PKG_VAR "/lastcheck", t, strlen (t)); }
 	char done[300] = "", wait[300] = ""; int nd = 0, nw = 0; bool staged = false;
 	for (int i = 0; i < m.db.n; i++)

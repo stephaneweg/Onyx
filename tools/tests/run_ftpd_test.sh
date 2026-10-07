@@ -1,14 +1,14 @@
 #!/bin/sh
-# Host test of user/bin/ftpd.c: built against a mock kapi (real sockets + a temp dir as
+# Host test of user/BinUtils/ftpd.c: built against a mock kapi (real sockets + a temp dir as
 # the SD card), started on port 21 (root) and driven by Python's ftplib (ftpd_test.py).
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 b=$(mktemp -d)
 sed -e 's|#include "applib.h"|#include "mini_applib.h"|' -e 's|#include "umm.h"|#include "mini_umm.h"|' \
     -e 's|^int main (void)|static int ftpd_main (void)|' -e 's|^static int session (char \*a)|static int mock_session (char *a)|' \
-    -e 's|return session (a);|return mock_session (a);|' "$here/../../user/bin/ftpd.c" > "$b/ftpd.c"
+    -e 's|return session (a);|return mock_session (a);|' "$here/../../user/BinUtils/ftpd.c" > "$b/ftpd.c"
 cp "$here/mock_kapi.h" "$here/mock_net_kapi.h" "$here/mini_applib.h" "$here/mini_umm.h" "$b/"
-cp "$here/mock_net_kapi.h" "$b/kapi.h"
+cp "$here/mock_net_kapi.h" "$b/kapi.h" && mkdir -p "$b/appkit" && printf '#include "../kapi.h"\n#include "../mini_applib.h"\n' > "$b/appkit/appkit.h"
 cat > "$b/main.c" <<'X'
 #include "ftpd.c"
 int main (int argc, char **argv) { snprintf (mock_args, sizeof mock_args, "%s", argc > 1 ? argv[1] : ""); return ftpd_main (); }

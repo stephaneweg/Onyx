@@ -1,6 +1,6 @@
 //
 // wpaconf/main.cpp -- GUI editor for the WLAN credentials in SD:/etc/wpa_supplicant.conf
-// (C++ port, on the wtk toolkit).
+// (C++ port, on the uikit toolkit).
 //
 // The kernel reads that file once, at boot (WLAN bring-up runs before any user
 // process), so it must stay the canonical wpa_supplicant-format file. This editor
@@ -19,19 +19,19 @@
 //
 // The Control Panel's Wi-Fi applet (applet_proto.h), or a window of its own when run alone.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"		// recursive widget toolkit + wk_messagebox
-#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"		// recursive widget toolkit + uk_messagebox
+#include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 
-using namespace wtk;
+using namespace uikit;
 
 #define WPA_PATH	"SD:/etc/wpa_supplicant.conf"
 #define BGCOL		C_BG			// (the theme's face)
 #define W		380
 #define H		308
 #define SCANW		70
-#define LBLW		78
-#define FX		96
+#define LBLW		90			// ("Mot de passe" fits)
+#define FX		106
 #define FW		(W - FX - 12)
 #define FH		24
 
@@ -86,8 +86,8 @@ static Root *g_root = 0;
 
 static void on_scan (Widget &)
 {
-	set_status ("Scanning (3 s)...");
-	if (g_root) { g_root->draw (); wk_present (); }
+	set_status (TR ("Scanning (3 s)..."));
+	if (g_root) { g_root->draw (); uk_present (); }
 	g_nap = kapi_wlan_scan (g_ap, 32);
 	g_ssid->clearOptions ();
 	int n = 0;
@@ -112,8 +112,8 @@ static void on_scan (Widget &)
 	while (t) nb[m++] = tmp[--t];
 	nb[m] = 0;
 	m = scat (msg, 0, nb);
-	scat (msg, m, n == 1 ? " network found: click the SSID arrow" : " networks found: click the SSID arrow");
-	set_status (n ? msg : "No network found");
+	scat (msg, m, n == 1 ? TR (" network found: click the SSID arrow") : TR (" networks found: click the SSID arrow"));
+	set_status (n ? msg : TR ("No network found"));
 }
 
 static void on_pick (Widget &)
@@ -121,16 +121,16 @@ static void on_pick (Widget &)
 	int k = g_ssid->picked;
 	if (k < 0) return;
 	const kapi_wlan_ap &a = g_ap[g_opt2ap[k]];
-	static const char *sec[] = { "open", "WEP", "WPA", "WPA2" };
+	static const char *sec[] = { TRN ("open"), "WEP", "WPA", "WPA2" };
 	if (a.security == WLAN_SEC_WPA2) { g_proto->setText ("WPA2"); g_keymgmt->setText ("WPA-PSK"); }
 	else if (a.security == WLAN_SEC_WPA) { g_proto->setText ("WPA"); g_keymgmt->setText ("WPA-PSK"); }
 	else if (a.security == WLAN_SEC_OPEN) { g_proto->setText (""); g_keymgmt->setText ("NONE"); g_psk->setText (""); }
 	static char msg[96]; int m = 0;
 	char nb[12]; int v = a.level < 0 ? -a.level : a.level, t = 0; char tmp[12];
 	while (v) { tmp[t++] = (char) ('0' + v % 10); v /= 10; } nb[0] = '-'; int q = 1; while (t) nb[q++] = tmp[--t]; nb[q] = 0;
-	m = scat (msg, 0, sec[a.security & 3]); m = scat (msg, m, ", "); m = scat (msg, m, nb); m = scat (msg, m, " dBm");
-	if (a.security == WLAN_SEC_WEP) m = scat (msg, m, " (WEP is not supported)");
-	else if (a.security != WLAN_SEC_OPEN) m = scat (msg, m, " -- type the password");
+	m = scat (msg, 0, TR (sec[a.security & 3])); m = scat (msg, m, ", "); m = scat (msg, m, nb); m = scat (msg, m, " dBm");
+	if (a.security == WLAN_SEC_WEP) m = scat (msg, m, TR (" (WEP is not supported)"));
+	else if (a.security != WLAN_SEC_OPEN) m = scat (msg, m, TR (" -- type the password"));
 	set_status (msg);
 	if (a.security != WLAN_SEC_OPEN) g_psk->setFocus ();
 }
@@ -151,9 +151,9 @@ static void load_conf (void)
 		conf_get (buf, "country", country, sizeof country);
 		conf_get (buf, "proto", proto, sizeof proto);
 		conf_get (buf, "key_mgmt", keymgmt, sizeof keymgmt);
-		set_status ("Loaded /etc/wpa_supplicant.conf");
+		set_status (TR ("Loaded /etc/wpa_supplicant.conf"));
 	}
-	else set_status ("No config yet -- fill in and Save");
+	else set_status (TR ("No config yet -- fill in and Save"));
 	g_ssid->setText (ssid); g_psk->setText (psk); g_country->setText (country);
 	g_proto->setText (proto); g_keymgmt->setText (keymgmt);
 }
@@ -163,10 +163,10 @@ static int save_conf (void)
 	const char *ssid = g_ssid->text, *psk = g_psk->text, *country = g_country->text;
 	const char *proto = g_proto->text, *keymgmt = g_keymgmt->text;
 	int sl = slen (ssid), pl = slen (psk);
-	if (sl < 1 || sl > 32) { set_status ("SSID must be 1..32 chars"); return 0; }
+	if (sl < 1 || sl > 32) { set_status (TR ("SSID must be 1..32 chars")); return 0; }
 	int psk_mode = 0;
 	for (int i = 0; keymgmt[i]; i++) if (keymgmt[i] == 'P' && keymgmt[i+1] == 'S' && keymgmt[i+2] == 'K') psk_mode = 1;
-	if (psk_mode && (pl < 8 || pl > 63)) { set_status ("PSK must be 8..63 chars"); return 0; }
+	if (psk_mode && (pl < 8 || pl > 63)) { set_status (TR ("PSK must be 8..63 chars")); return 0; }
 
 	static char out[2048]; int n = 0;
 	n = scat (out, n,
@@ -187,21 +187,21 @@ static int save_conf (void)
 	}
 	n = scat (out, n, "\tkey_mgmt=");   n = scat (out, n, keymgmt); n = scat (out, n, "\n");
 	n = scat (out, n, "}\n");
-	if (kapi_save_file (WPA_PATH, out, (unsigned) n) < 0) { set_status ("Save FAILED (write error)"); return 0; }
+	if (kapi_save_file (WPA_PATH, out, (unsigned) n) < 0) { set_status (TR ("Save FAILED (write error)")); return 0; }
 	return 1;
 }
 
 // ---- callbacks ---------------------------------------------------------------
 static void on_show   (Widget &) { g_psk->password = !g_show->checked; g_psk->invalidate (true); }
-static void on_save   (Widget &) { if (save_conf ()) set_status (kapi_wlan_reconnect () == 0 ? "Saved: joining it now (no reboot)" : "Saved. Reboot to apply."); }
+static void on_save   (Widget &) { if (save_conf ()) set_status (kapi_wlan_reconnect () == 0 ? TR ("Saved: joining it now (no reboot)") : TR ("Saved. Reboot to apply.")); }
 static void on_reload (Widget &) { load_conf (); }
 static void on_reboot (Widget &)
 {
 	if (!save_conf ()) return;
-	if (wk_messagebox ("Reboot", "Settings saved. Reboot now to apply them?", MB_YESNO))
+	if (uk_messagebox (TR ("Reboot"), TR ("Settings saved. Reboot now to apply them?"), MB_YESNO))
 		kapi_reboot ();					// does not return
 	else
-		set_status ("Saved. Reboot later to apply.");
+		set_status (TR ("Saved. Reboot later to apply."));
 }
 
 // Add a left-column label (matching the form background).
@@ -212,42 +212,43 @@ static void form_label (Root &root, int x, int y, int w, int h, const char *s)
 class WpaRoot : public Root
 {
 public:
-	WpaRoot () : Root (W, H, "Wi-Fi Settings") {}
+	WpaRoot () : Root (W, H, TR ("Wi-Fi Settings")) {}
 	void onDraw () override
 	{
 		Root::onDraw ();
-		wk_rbox (canvas, 0, 0, width, 32, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
-		wk_etch_h (canvas, 0, 32, width, C_FACE);
-		wk_text_l (canvas, 14, 0, 32, "Wi-Fi Settings", C_TEXT, 2);
+		uk_rbox (canvas, 0, 0, width, 32, 0, uk_tone (C_FACE, 170), uk_tone (C_FACE, 130));
+		uk_etch_h (canvas, 0, 32, width, C_FACE);
+		uk_text_l (canvas, 14, 0, 32, TR ("Wi-Fi Settings"), C_TEXT, 2);
 		if (width > W + 40)		// (the Control Panel's pane: a word about the menu bar's Wi-Fi menu)
 		{
-			canvas.text (W + 30, 50, "The Wi-Fi menu of the menu bar", C_DIS);
-			canvas.text (W + 30, 70, "(its icon, near the clock) lists", C_DIS);
-			canvas.text (W + 30, 90, "the networks around and joins", C_DIS);
-			canvas.text (W + 30, 110, "one in a click.", C_DIS);
+			canvas.text (W + 30, 50, TR ("The Wi-Fi menu of the menu bar"), C_DIS);
+			canvas.text (W + 30, 70, TR ("(its icon, near the clock) lists"), C_DIS);
+			canvas.text (W + 30, 90, TR ("the networks around and joins"), C_DIS);
+			canvas.text (W + 30, 110, TR ("one in a click."), C_DIS);
 		}
 	}
 };
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	uk_lang_init ();				// the words in the system's language (before the window)
 	WpaRoot root;
 	if (root.canvas.px == 0) return 1;
 	root.setBg (BGCOL);
 
 	int y = 42;
 	form_label (root, 12, y, LBLW, FH, "SSID");     g_ssid    = new Combobox (FX, y, FW - SCANW - 6, FH, "", 0, on_pick);
-	root.addChild (new Button (FX + FW - SCANW, y - 1, SCANW, FH + 2, "Scan", on_scan));                                  y += 34;
-	form_label (root, 12, y, LBLW, FH, "Password"); g_psk     = new Textbox (FX, y, FW, FH, ""); root.addChild (g_psk);     y += 30;
-	g_show = new Checkbox (FX, y, 160, 20, "Show password", false, on_show, BGCOL); root.addChild (g_show);                 y += 30;
-	form_label (root, 12, y, LBLW, FH, "Country");  g_country = new Textbox (FX, y, FW, FH, ""); root.addChild (g_country); y += 34;
-	form_label (root, 12, y, LBLW, FH, "Proto");    g_proto   = new Textbox (FX, y, FW, FH, ""); root.addChild (g_proto);   y += 34;
-	form_label (root, 12, y, LBLW, FH, "Key mgmt"); g_keymgmt = new Textbox (FX, y, FW, FH, ""); root.addChild (g_keymgmt); y += 38;
+	root.addChild (new Button (FX + FW - SCANW, y - 1, SCANW, FH + 2, TR ("Scan"), on_scan));                                  y += 34;
+	form_label (root, 12, y, LBLW, FH, TR ("Password")); g_psk     = new Textbox (FX, y, FW, FH, ""); root.addChild (g_psk);     y += 30;
+	g_show = new Checkbox (FX, y, FW, 20, TR ("Show password"), false, on_show, BGCOL); root.addChild (g_show);                 y += 30;
+	form_label (root, 12, y, LBLW, FH, TR ("Country"));  g_country = new Textbox (FX, y, FW, FH, ""); root.addChild (g_country); y += 34;
+	form_label (root, 12, y, LBLW, FH, TR ("Proto"));    g_proto   = new Textbox (FX, y, FW, FH, ""); root.addChild (g_proto);   y += 34;
+	form_label (root, 12, y, LBLW, FH, TR ("Key mgmt")); g_keymgmt = new Textbox (FX, y, FW, FH, ""); root.addChild (g_keymgmt); y += 38;
 
-	root.addChild (new Button (12,  y, 84,  30, "Save",          on_save));
-	root.addChild (new Button (104, y, 150, 30, "Save & Reboot", on_reboot));
-	root.addChild (new Button (262, y, 106, 30, "Reload",        on_reload));            y += 38;
+	root.addChild (new Button (12,  y, 96,  30, TR ("Save"),          on_save));
+	root.addChild (new Button (116, y, 164, 30, TR ("Save & Reboot"), on_reboot));
+	root.addChild (new Button (288, y, 80,  30, TR ("Reload"),        on_reload));            y += 38;
 
 	g_status = new Label (12, y, W - 24, 18, "", C_TEXT, BGCOL); root.addChild (g_status);
 	root.addChild (g_ssid);				// last: its list opens over the fields below

@@ -13,7 +13,7 @@
 #include "ai.h"
 #include "gen.h"
 #include "compile.h"
-#include "../../../json.hpp"
+#include "json.hpp"
 #include <stdio.h>
 #include <string.h>
 

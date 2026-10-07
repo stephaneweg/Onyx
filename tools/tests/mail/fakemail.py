@@ -16,7 +16,7 @@ import argparse, base64, email, email.utils, json, os, re, select, socket, socke
 from email import policy
 
 USER, PASSWORD = "me@onyx.test", "secret"
-TOKENS = {"tok-1", "tok-2"}
+TOKENS = {"tok-1", "tok-2", "tok-L" + "x" * 2500}	# (tok-L: as long as Microsoft's tokens)
 
 # ---- the store -------------------------------------------------------------------------------------------------------------
 class Msg:
@@ -376,11 +376,18 @@ class Pop(socketserver.StreamRequestHandler):
             l = self.rfile.readline()
             if not l: return
             l = l.decode().rstrip("\r\n"); c, _, a = l.partition(" "); c = c.upper()
-            if c == "CAPA": self.out("+OK\r\nUSER\r\nUIDL\r\nTOP\r\nSASL PLAIN\r\n.\r\n")
+            if c == "CAPA": self.out("+OK\r\nUSER\r\nUIDL\r\nTOP\r\nSASL PLAIN XOAUTH2\r\n.\r\n")
             elif c == "USER": user = a; self.out("+OK\r\n")
             elif c == "PASS":
                 if user == USER and a == PASSWORD: auth = True; self.out("+OK logged in\r\n")
                 else: self.out("-ERR [AUTH] Invalid login\r\n")
+            elif c == "AUTH" and a.upper().startswith("XOAUTH2"):
+                f = a.split()
+                if len(f) > 1: b = f[1]
+                else: self.out("+ \r\n"); b = self.rfile.readline().decode().strip()
+                m = re.match(rb"user=([^\x01]*)\x01auth=Bearer ([^\x01]*)\x01\x01", base64.b64decode(b))
+                if m and m.group(1).decode() == USER and m.group(2).decode() in TOKENS: auth = True; self.out("+OK logged in\r\n")
+                else: self.out("+ eyJzdGF0dXMiOiI0MDEifQ==\r\n"); self.rfile.readline(); self.out("-ERR [AUTH] Token refused\r\n")
             elif c == "AUTH":
                 f = base64.b64decode(a.split()[1]).split(b"\0") if len(a.split()) > 1 else []
                 if len(f) == 3 and f[1].decode() == USER and f[2].decode() == PASSWORD: auth = True; self.out("+OK logged in\r\n")
@@ -432,7 +439,10 @@ class Smtp(socketserver.StreamRequestHandler):
                 if u == USER and p == PASSWORD: auth = True; self.out("235 2.7.0 Accepted\r\n")
                 else: self.out("535 5.7.8 Username and Password not accepted\r\n")
             elif l.upper().startswith("AUTH XOAUTH2"):
-                d = base64.b64decode(l.split()[2]); m = re.match(rb"user=([^\x01]*)\x01auth=Bearer ([^\x01]*)\x01\x01", d)
+                f = l.split()		# (the answer on the line, or after the 334 as Microsoft does it)
+                if len(f) > 2: a = f[2]
+                else: self.out("334 \r\n"); a = self.line()
+                d = base64.b64decode(a); m = re.match(rb"user=([^\x01]*)\x01auth=Bearer ([^\x01]*)\x01\x01", d)
                 if m and m.group(2).decode() in TOKENS: auth = True; self.out("235 2.7.0 Accepted\r\n")
                 else: self.out("334 eyJzdGF0dXMiOiI0MDEifQ==\r\n"); self.line(); self.out("535 5.7.8 Token refused\r\n")
             elif c == "MAIL":

@@ -8,12 +8,11 @@
 #ifndef _photos_app_h
 #define _photos_app_h
 
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 #include "Apps/photos/ui.h"
 #include "Apps/photos/thumbs.h"
-#include "notify.h"
-#include "clipboard.h"
-#include "trash.h"
+#include "appkit/appkit.h"
+#include "systemkit/systemkit.h"
 
 namespace photos {
 

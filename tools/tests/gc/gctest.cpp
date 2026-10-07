@@ -1,4 +1,4 @@
-// gctest.cpp -- host tests of the GameCube core (user/gc).
+// gctest.cpp -- host tests of the GameCube core (user/Emulators/gc).
 //   gctest cpu <cputest.elf> <expected.bin>   runs cputest.c's run_tests (linked at 0x80003100)
 //       in the interpreter and compares its output with qemu-ppc's (run_gc_test.sh)
 //   gctest ps <pstest.elf>                    the paired singles against the manual's results

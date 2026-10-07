@@ -10,14 +10,14 @@
 #ifndef _archiver_widgets_h
 #define _archiver_widgets_h
 
-#include "wtk/wtk.h"
-#include "wtk/toolbar.h"
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
 #include "icons.h"
 #include "model.h"
 
 namespace ui {
 
-using namespace wtk;
+using namespace uikit;
 
 // ---- the app's side (main.cpp) -----------------------------------------------------------------------
 void app_tool (int id);
@@ -35,15 +35,15 @@ extern Model g_model;
 extern int   g_folder;				// the folder shown (a node)
 extern TextFace *g_small;			// an 11-px face (the details)
 
-static inline unsigned dim_ink () { return wk_mix (C_FIELD_TEXT, C_FIELD, 110); }
-static inline unsigned dim_on (unsigned bg) { return wk_mix (wk_ink_for (bg), bg, 100); }
-static inline int fh () { return wk_fh (); }
+static inline unsigned dim_ink () { return uk_mix (C_FIELD_TEXT, C_FIELD, 110); }
+static inline unsigned dim_on (unsigned bg) { return uk_mix (uk_ink_for (bg), bg, 100); }
+static inline int fh () { return uk_fh (); }
 static inline void text_v (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int style = 0)
-{ wk_text (cv, x, y + (h - wk_fh ()) / 2, s, c, style); }
+{ uk_text (cv, x, y + (h - uk_fh ()) / 2, s, c, style); }
 static inline void small_v (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int style = 0)
-{ WkFaceScope sc (g_small); wk_text (cv, x, y + (h - wk_fh ()) / 2, s, c, style); }
-static inline int small_w (const char *s, int style = 0) { WkFaceScope sc (g_small); return wk_tw (s, style); }
-static inline void fit (const char *s, int w, char *out, int cap, int style = 0) { wk_text_fit (s, w, out, cap, style); }
+{ UkFaceScope sc (g_small); uk_text (cv, x, y + (h - uk_fh ()) / 2, s, c, style); }
+static inline int small_w (const char *s, int style = 0) { UkFaceScope sc (g_small); return uk_tw (s, style); }
+static inline void fit (const char *s, int w, char *out, int cap, int style = 0) { uk_text_fit (s, w, out, cap, style); }
 static inline bool dbl_click (unsigned &last, int &lastRow, int row)
 {
 	unsigned now = kapi_get_ticks ();
@@ -70,12 +70,12 @@ public:
 		canvas.clear (parent ? parent->bgColor () : C_BG);
 		bool off = !app_tool_enabled (id);
 		if (!off && (hover || m_down))
-			wk_rbox (canvas, 0, 2, width, height - 4, 6, wk_tone (C_BG, m_down ? 150 : 200), wk_tone (C_BG, m_down ? 120 : 160), 200),
-			wk_rline (canvas, 0, 2, width, height - 4, 6, wk_tone (C_BG, 90), 160);
+			uk_rbox (canvas, 0, 2, width, height - 4, 6, uk_tone (C_BG, m_down ? 150 : 200), uk_tone (C_BG, m_down ? 120 : 160), 200),
+			uk_rline (canvas, 0, 2, width, height - 4, 6, uk_tone (C_BG, 90), 160);
 		tool_icon (canvas, id, (width - 32) / 2, 6, off);
-		WkFaceScope sc (g_small);
-		int tw = wk_tw (label);
-		wk_text (canvas, (width - tw) / 2, height - wk_fh () - 3, label, off ? C_DIS : C_TEXT);
+		UkFaceScope sc (g_small);
+		int tw = uk_tw (label);
+		uk_text (canvas, (width - tw) / 2, height - uk_fh () - 3, label, off ? C_DIS : C_TEXT);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -105,8 +105,8 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		for (int i = 0; i < nsep; i++) wk_etch_v (canvas, sepX[i], 10, height - 22, C_BG);
-		wk_etch_h (canvas, 0, height - 2, width, C_BG);
+		for (int i = 0; i < nsep; i++) uk_etch_v (canvas, sepX[i], 10, height - 22, C_BG);
+		uk_etch_h (canvas, 0, height - 2, width, C_BG);
 	}
 };
 
@@ -118,9 +118,9 @@ public:
 	void onDraw () override
 	{
 		Textbox::onDraw ();
-		unsigned dm = wk_mix (C_FIELD_TEXT, C_FIELD, 120);
+		unsigned dm = uk_mix (C_FIELD_TEXT, C_FIELD, 120);
 		if (!text[0] && !hasFocus) small_v (canvas, 9, 0, height, "Search in the archive", dm);
-		wk_tool_glyph (canvas, WKT_SEARCH, width - 22, (height - 14) / 2, 14, dm);
+		uk_tool_glyph (canvas, WKT_SEARCH, width - 22, (height - 14) / 2, 14, dm);
 	}
 };
 
@@ -152,14 +152,14 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (parent ? parent->bgColor () : C_BG);
-		wk_sunken (canvas, 0, 0, width, height, 6, C_FIELD);
-		unsigned ink = C_FIELD_TEXT, link = wk_mix (C_ACCENT, 0x000000, 60);
+		uk_sunken (canvas, 0, 0, width, height, 6, C_FIELD);
+		unsigned ink = C_FIELD_TEXT, link = uk_mix (C_ACCENT, 0x000000, 60);
 		for (int b = 0; b < 2; b++)
 		{
 			int bx = 4 + b * 28;
 			bool h = hot == -2 - b;
-			wk_rbox (canvas, bx, 4, 24, height - 8, 4, wk_mix (C_FIELD, C_BG, h ? 200 : 110), wk_mix (C_FIELD, C_BG, h ? 230 : 150));
-			wk_glyph (canvas, b ? WKG_CHEV_UP : WKG_CHEV_LEFT, bx + 12, height / 2, 12, ink);
+			uk_rbox (canvas, bx, 4, 24, height - 8, 4, uk_mix (C_FIELD, C_BG, h ? 200 : 110), uk_mix (C_FIELD, C_BG, h ? 230 : 150));
+			uk_glyph (canvas, b ? WKG_CHEV_UP : WKG_CHEV_LEFT, bx + 12, height / 2, 12, ink);
 		}
 		int x = 66;
 		nseg = 0;
@@ -173,10 +173,10 @@ public:
 			int k = chain[d]; bool last = d == 0;
 			if (k)
 			{
-				wk_glyph (canvas, WKG_CHEV_RIGHT, x + 5, height / 2, 9, dim_ink ()); x += 14;
+				uk_glyph (canvas, WKG_CHEV_RIGHT, x + 5, height / 2, 9, dim_ink ()); x += 14;
 			}
 			char t[96]; fit (g_model.n[k].name, right - x > 40 ? right - x : 40, t, sizeof t, last ? 2 : 0);
-			int tw = wk_tw (t, last ? 2 : 0);
+			int tw = uk_tw (t, last ? 2 : 0);
 			if (nseg < MAXSEG) { segX[nseg] = x - 2; segW[nseg] = tw + 4; segNode[nseg] = k; nseg++; }
 			text_v (canvas, x, 0, height, t, last ? ink : link, last ? 2 : 0);
 			if (last) canvas.fillRect (x, height - 7, tw, 2, C_ACCENT);
@@ -186,7 +186,7 @@ public:
 		if (badge[0])
 		{
 			int bw = small_w (badge, 2) + 16, bx = width - 228 - bw;
-			wk_rbox (canvas, bx, (height - 18) / 2, bw, 18, 9, wk_tone (C_ACCENT, 120), wk_tone (C_ACCENT, 104));
+			uk_rbox (canvas, bx, (height - 18) / 2, bw, 18, 9, uk_tone (C_ACCENT, 120), uk_tone (C_ACCENT, 104));
 			small_v (canvas, bx + 8, (height - 18) / 2, 18, badge, C_SEL_TEXT, 2);
 		}
 	}
@@ -248,18 +248,18 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (parent ? parent->bgColor () : C_BG);
-		wk_sunken (canvas, 0, 0, width, height, 5, C_FIELD);
+		uk_sunken (canvas, 0, 0, width, height, 5, C_FIELD);
 		int vis = (height - 8) / rowH;
 		for (int i = 0; i < vis && top + i < nrows; i++)
 		{
 			int k = rows[top + i], y = 4 + i * rowH, d = g_model.depth (k), x = 10 + d * 16;
 			const Node &n = g_model.n[k];
 			bool sel = k == g_folder;
-			if (sel) wk_hilite (canvas, 3, y, width - 6, rowH - 2, 4, false);
-			else if (top + i == hotRow) wk_rbox (canvas, 3, y, width - 6, rowH - 2, 4, wk_mix (C_FIELD, C_ACCENT, 30), wk_mix (C_FIELD, C_ACCENT, 30));
+			if (sel) uk_hilite (canvas, 3, y, width - 6, rowH - 2, 4, false);
+			else if (top + i == hotRow) uk_rbox (canvas, 3, y, width - 6, rowH - 2, 4, uk_mix (C_FIELD, C_ACCENT, 30), uk_mix (C_FIELD, C_ACCENT, 30));
 			if (k == dropNode) dashed (canvas, 3, y, width - 6, rowH - 2, C_ACCENT);
 			if (k == 0 || hasDirKids (k))
-				wk_glyph (canvas, n.open ? WKG_CHEV_DOWN : WKG_CHEV_RIGHT, x, y + rowH / 2 - 1, 9, dim_ink ());
+				uk_glyph (canvas, n.open ? WKG_CHEV_DOWN : WKG_CHEV_RIGHT, x, y + rowH / 2 - 1, 9, dim_ink ());
 			if (k == 0) icon_archive (canvas, x + 10, y + (rowH - 2 - 17) / 2, 17);
 			else icon_folder (canvas, x + 10, y + (rowH - 2 - 17) / 2, 17);
 			char t[80]; fit (n.name, width - x - 44, t, sizeof t, k == 0 || sel ? 2 : 0);
@@ -267,8 +267,8 @@ public:
 		}
 		if (nrows > vis)
 		{
-			WkThumb t = wk_thumb (nrows, vis, top, height - 8);
-			wk_draw_vscroll (canvas, width - 11, 4, 8, height - 8, t, C_FIELD);
+			UkThumb t = uk_thumb (nrows, vis, top, height - 8);
+			uk_draw_vscroll (canvas, width - 11, 4, 8, height - 8, t, C_FIELD);
 		}
 	}
 	int rowAt (int my) { int r = (my - 4) / rowH; return my < 4 || top + r >= nrows ? -1 : top + r; }
@@ -303,17 +303,17 @@ public:
 	{
 		canvas.clear (parent ? parent->bgColor () : C_BG);
 		if (!n) return;
-		unsigned bg = wk_mix (C_BG, C_FIELD, 120);
-		wk_rbox (canvas, 0, 0, width, height, 6, bg, bg);
-		wk_rline (canvas, 0, 0, width, height, 6, wk_tone (C_BG, 90), 160);
+		unsigned bg = uk_mix (C_BG, C_FIELD, 120);
+		uk_rbox (canvas, 0, 0, width, height, 6, bg, bg);
+		uk_rline (canvas, 0, 0, width, height, 6, uk_tone (C_BG, 90), 160);
 		small_v (canvas, 12, 6, 18, "Archive", dim_on (bg), 2);
-		WkFaceScope sc (g_small);
+		UkFaceScope sc (g_small);
 		for (int i = 0; i < n; i++)
 		{
 			int y = 28 + i * 19;
-			wk_text (canvas, 12, y, k[i], dim_on (bg));
-			char t[48]; wk_text_fit (v[i], width - 110, t, sizeof t, 2);
-			wk_text (canvas, width - 12 - wk_tw (t, 2), y, t, wk_ink_for (bg), 2);
+			uk_text (canvas, 12, y, k[i], dim_on (bg));
+			char t[48]; uk_text_fit (v[i], width - 110, t, sizeof t, 2);
+			uk_text (canvas, width - 12 - uk_tw (t, 2), y, t, uk_ink_for (bg), 2);
 		}
 	}
 };
@@ -392,11 +392,11 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (parent ? parent->bgColor () : C_BG);
-		wk_sunken (canvas, 0, 0, width, height, 5, C_FIELD, false);
+		uk_sunken (canvas, 0, 0, width, height, 5, C_FIELD, false);
 		// the header
-		unsigned hd = wk_mix (C_FIELD, C_BG, 150);
-		wk_rbox (canvas, 1, 1, width - 2, headH, 4, wk_mix (C_FIELD, C_BG, 90), hd, 255, WK_TL | WK_TR);
-		canvas.fillRect (1, headH + 1, width - 2, 1, wk_tone (C_BG, 110));
+		unsigned hd = uk_mix (C_FIELD, C_BG, 150);
+		uk_rbox (canvas, 1, 1, width - 2, headH, 4, uk_mix (C_FIELD, C_BG, 90), hd, 255, UK_TL | UK_TR);
+		canvas.fillRect (1, headH + 1, width - 2, 1, uk_tone (C_BG, 110));
 		static const char *title[NCOL] = { "Name", "Size", "Packed", "Ratio", "Modified", "Method" };
 		static const int scol[NCOL] = { SORT_NAME, SORT_SIZE, SORT_PACKED, SORT_RATIO, SORT_TIME, SORT_METHOD };
 		for (int c = 0; c < NCOL; c++)
@@ -406,29 +406,29 @@ public:
 			unsigned ink = dim_on (hd);
 			int tw = small_w (title[c], 2);
 			int tx = right ? x + w - 14 - tw : x;
-			if (c == hotHead) canvas.fillRect (x - 8, 2, w, headH - 2, wk_mix (hd, 0xFFFFFF, 70));
+			if (c == hotHead) canvas.fillRect (x - 8, 2, w, headH - 2, uk_mix (hd, 0xFFFFFF, 70));
 			small_v (canvas, tx, 1, headH, title[c], ink, 2);
 			if (g_model.sortCol == scol[c])
-				wk_glyph (canvas, g_model.sortDesc ? WKG_CHEV_UP : WKG_CHEV_DOWN, right ? tx - 9 : tx + tw + 9, headH / 2 + 1, 8, ink);
-			if (c) canvas.fillRect (x - 8, 7, 1, headH - 12, wk_tone (hd, 100));
+				uk_glyph (canvas, g_model.sortDesc ? WKG_CHEV_UP : WKG_CHEV_DOWN, right ? tx - 9 : tx + tw + 9, headH / 2 + 1, 8, ink);
+			if (c) canvas.fillRect (x - 8, 7, 1, headH - 12, uk_tone (hd, 100));
 		}
 		// the rows
 		int v = visRows (), y0 = headH + 3;
-		if (!nitems && emptyText) { WkFaceScope sc (g_small); wk_text (canvas, (width - wk_tw (emptyText)) / 2, y0 + 30, emptyText, dim_ink ()); }
+		if (!nitems && emptyText) { UkFaceScope sc (g_small); uk_text (canvas, (width - uk_tw (emptyText)) / 2, y0 + 30, emptyText, dim_ink ()); }
 		for (int i = 0; i < v && top + i < nitems; i++)
 		{
 			int r = top + i, y = y0 + i * rowH, node = items[r];
 			bool s = sel[r];
 			unsigned ink = C_FIELD_TEXT, dm = dim_ink ();
-			if (s) { wk_hilite (canvas, 3, y, width - 18, rowH - 2, 4, hasFocus); ink = wk_hilite_ink (hasFocus); dm = hasFocus ? wk_mix (ink, C_ACCENT, 60) : dm; }
-			else if (r == hotRow) wk_rbox (canvas, 3, y, width - 18, rowH - 2, 4, wk_mix (C_FIELD, C_ACCENT, 26), wk_mix (C_FIELD, C_ACCENT, 26));
-			else if (r & 1) canvas.fillRect (3, y, width - 18, rowH - 2, wk_mix (C_FIELD, 0x000000, 6));
+			if (s) { uk_hilite (canvas, 3, y, width - 18, rowH - 2, 4, hasFocus); ink = uk_hilite_ink (hasFocus); dm = hasFocus ? uk_mix (ink, C_ACCENT, 60) : dm; }
+			else if (r == hotRow) uk_rbox (canvas, 3, y, width - 18, rowH - 2, 4, uk_mix (C_FIELD, C_ACCENT, 26), uk_mix (C_FIELD, C_ACCENT, 26));
+			else if (r & 1) canvas.fillRect (3, y, width - 18, rowH - 2, uk_mix (C_FIELD, 0x000000, 6));
 			if (r == dropRow) dashed (canvas, 3, y, width - 18, rowH - 2, C_ACCENT);
-			if (r == cursor && hasFocus && !s) wk_rline (canvas, 3, y, width - 18, rowH - 2, 4, C_ACCENT, 120);
+			if (r == cursor && hasFocus && !s) uk_rline (canvas, 3, y, width - 18, rowH - 2, 4, C_ACCENT, 120);
 			int x = 10;
 			if (node < 0)
 			{
-				wk_glyph (canvas, WKG_UP, x + 9, y + rowH / 2 - 1, 12, dm);
+				uk_glyph (canvas, WKG_UP, x + 9, y + rowH / 2 - 1, 12, dm);
 				text_v (canvas, x + 26, y, rowH - 2, "..  (parent folder)", dm);
 				continue;
 			}
@@ -440,7 +440,7 @@ public:
 			if (n.dir) arc::scat (nm, "/", sizeof nm);
 			char t[160]; fit (nm, nameW () - 36, t, sizeof t, n.dir ? 2 : 0);
 			text_v (canvas, x + 26, y, rowH - 2, t, ink, n.dir ? 2 : 0);
-			if (n.entry >= 0 && g_model.a->e[n.entry].encrypted) wk_glyph (canvas, WKG_LOCK, x + 30 + wk_tw (t, n.dir ? 2 : 0) + 6, y + rowH / 2 - 1, 11, dm);
+			if (n.entry >= 0 && g_model.a->e[n.entry].encrypted) uk_glyph (canvas, WKG_LOCK, x + 30 + uk_tw (t, n.dir ? 2 : 0) + 6, y + rowH / 2 - 1, 11, dm);
 			for (int c = 1; c < NCOL; c++)
 			{
 				int cx = colX (c), w = colW[c];
@@ -449,8 +449,8 @@ public:
 					if (n.dir || !n.size) continue;
 					int ra = g_model.ratio (node);
 					int bw = 52, by = y + (rowH - 2) / 2 - 3;
-					wk_rbox (canvas, cx, by, bw, 7, 3, wk_mix (s ? C_ACCENT : C_FIELD, 0x000000, 30), wk_mix (s ? C_ACCENT : C_FIELD, 0x000000, 30));
-					if (ra > 0) wk_rbox (canvas, cx, by, 6 + (bw - 6) * ra / 1000, 7, 3, s && hasFocus ? 0xFFFFFF : 0x5AA07A, s && hasFocus ? 0xE8F0F4 : 0x4A9070);
+					uk_rbox (canvas, cx, by, bw, 7, 3, uk_mix (s ? C_ACCENT : C_FIELD, 0x000000, 30), uk_mix (s ? C_ACCENT : C_FIELD, 0x000000, 30));
+					if (ra > 0) uk_rbox (canvas, cx, by, 6 + (bw - 6) * ra / 1000, 7, 3, s && hasFocus ? 0xFFFFFF : 0x5AA07A, s && hasFocus ? 0xE8F0F4 : 0x4A9070);
 					char p[12]; arc::u64_str ((arc::u64) ((ra + 5) / 10), p, sizeof p); arc::scat (p, " %", sizeof p);
 					small_v (canvas, cx + bw + 6, y, rowH - 2, p, dm);
 					continue;
@@ -458,27 +458,27 @@ public:
 				char b[48]; cell (c, node, b, sizeof b);
 				if (!b[0]) continue;
 				char t2[48]; fit (b, w - 12, t2, sizeof t2);
-				if (c == COL_SIZE || c == COL_PACKED) text_v (canvas, cx + w - 14 - wk_tw (t2), y, rowH - 2, t2, c == COL_SIZE && !n.dir ? ink : dm);
+				if (c == COL_SIZE || c == COL_PACKED) text_v (canvas, cx + w - 14 - uk_tw (t2), y, rowH - 2, t2, c == COL_SIZE && !n.dir ? ink : dm);
 				else small_v (canvas, cx, y, rowH - 2, t2, dm);
 			}
 		}
 		if (nitems > v)
 		{
-			WkThumb t = wk_thumb (nitems, v, top, height - headH - 8);
-			wk_draw_vscroll (canvas, width - 13, headH + 4, 9, height - headH - 8, t, C_FIELD, thumb);
+			UkThumb t = uk_thumb (nitems, v, top, height - headH - 8);
+			uk_draw_vscroll (canvas, width - 13, headH + 4, 9, height - headH - 8, t, C_FIELD, thumb);
 		}
 		if (dropRow != -1 && dropText[0])
 		{	// the drop's banner
 			int bw = width - 80, bx = 40, by = height - 76;
-			unsigned bg = wk_mix (C_FIELD, C_BG, 60);
+			unsigned bg = uk_mix (C_FIELD, C_BG, 60);
 			dashed (canvas, 3, headH + 3, width - 18, height - headH - 7, C_ACCENT);
-			wk_rbox (canvas, bx, by, bw, 60, 10, bg, bg);
-			wk_rline (canvas, bx, by, bw, 60, 10, C_ACCENT, 255);
-			wk_rline (canvas, bx + 1, by + 1, bw - 2, 58, 9, C_ACCENT, 140);
+			uk_rbox (canvas, bx, by, bw, 60, 10, bg, bg);
+			uk_rline (canvas, bx, by, bw, 60, 10, C_ACCENT, 255);
+			uk_rline (canvas, bx + 1, by + 1, bw - 2, 58, 9, C_ACCENT, 140);
 			icon_archive (canvas, bx + 16, by + 13, 34);
 			small_v (canvas, bx + 64, by + 8, 20, "Drop to add to", dim_on (bg));
 			char t[160]; fit (dropText, bw - 80, t, sizeof t, 2);
-			text_v (canvas, bx + 64, by + 28, 22, t, wk_mix (C_ACCENT, 0x000000, 70), 2);
+			text_v (canvas, bx + 64, by + 28, 22, t, uk_mix (C_ACCENT, 0x000000, 70), 2);
 		}
 	}
 	void click (int r)
@@ -534,8 +534,8 @@ public:
 		{
 			if (thumb)
 			{
-				WkThumb t = wk_thumb (nitems, v, top, height - headH - 8);
-				top = (int) wk_thumb_pos (my - headH - 4, height - headH - 8, nitems, v, t.h);
+				UkThumb t = uk_thumb (nitems, v, top, height - headH - 8);
+				top = (int) uk_thumb_pos (my - headH - 4, height - headH - 8, nitems, v, t.h);
 				invalidate (true);
 			}
 			else if (pressRow >= 0 && !dragging && (mx - pressX) * (mx - pressX) + (my - pressY) * (my - pressY) > 49 && selCount ())
@@ -594,15 +594,15 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		wk_etch_h (canvas, 0, 0, width, C_BG);
+		uk_etch_h (canvas, 0, 0, width, C_BG);
 		VPath p; p.circle (V (12), V (height / 2 + 1), V (4)); p.fill (canvas, dot);
 		text_v (canvas, 22, 1, height, left, C_TEXT);
 		int x = width - 10;
-		if (right[0]) { x -= wk_tw (right); text_v (canvas, x, 1, height, right, wk_mix (C_TEXT, C_BG, 100)); x -= 14; }
+		if (right[0]) { x -= uk_tw (right); text_v (canvas, x, 1, height, right, uk_mix (C_TEXT, C_BG, 100)); x -= 14; }
 		if (busy >= 0)
 		{
 			int w = 120; x -= w;
-			wk_progress_bar (canvas, x, height / 2 - 4, w, 9, busy);
+			uk_progress_bar (canvas, x, height / 2 - 4, w, 9, busy);
 		}
 	}
 };
@@ -620,41 +620,41 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (parent ? parent->bgColor () : C_BG);
-		wk_sunken (canvas, 0, 0, width, height, 6, C_FIELD);
+		uk_sunken (canvas, 0, 0, width, height, 6, C_FIELD);
 		int mx = width / 2, zw = 520 < width - 40 ? 520 : width - 40, zx = mx - zw / 2, zy = 30, zh = 196;
-		wk_rbox (canvas, zx, zy, zw, zh, 12, wk_mix (C_FIELD, C_ACCENT, dropHot ? 60 : 22), wk_mix (C_FIELD, C_ACCENT, dropHot ? 70 : 30));
+		uk_rbox (canvas, zx, zy, zw, zh, 12, uk_mix (C_FIELD, C_ACCENT, dropHot ? 60 : 22), uk_mix (C_FIELD, C_ACCENT, dropHot ? 70 : 30));
 		dashed (canvas, zx, zy, zw, zh, C_ACCENT);
 		icon_archive (canvas, mx - 30, zy + 18, 60);
 		const char *a = dropHot ? "Drop it here" : "Drop an archive here to open it";
-		text_v (canvas, mx - wk_tw (a, 2) / 2, zy + 86, 24, a, C_FIELD_TEXT, 2);
+		text_v (canvas, mx - uk_tw (a, 2) / 2, zy + 86, 24, a, C_FIELD_TEXT, 2);
 		const char *b = "or files and folders to make a new one";
 		small_v (canvas, mx - small_w (b) / 2, zy + 110, 20, b, dim_ink ());
 		bw = 180; bh = 30; by = zy + 144; bx[0] = mx - bw - 8; bx[1] = mx + 8;
 		static const char *lab[2] = { "Open an Archive...", "New Archive..." };
 		for (int i = 0; i < 2; i++)
 		{
-			int st = (hot == 100 + i) ? (down == 100 + i ? WK_PRESSED : WK_HOT) : WK_NORMAL;
-			if (i == 0) { wk_rbox (canvas, bx[i], by, bw, bh, 6, wk_tone (C_ACCENT, st == WK_HOT ? 150 : 136), wk_tone (C_ACCENT, st == WK_PRESSED ? 100 : 112)); wk_rline (canvas, bx[i], by, bw, bh, 6, wk_tone (C_ACCENT, 70), 200); }
-			else wk_raised (canvas, bx[i], by, bw, bh, 6, C_BUTTON, st);
+			int st = (hot == 100 + i) ? (down == 100 + i ? UK_PRESSED : UK_HOT) : UK_NORMAL;
+			if (i == 0) { uk_rbox (canvas, bx[i], by, bw, bh, 6, uk_tone (C_ACCENT, st == UK_HOT ? 150 : 136), uk_tone (C_ACCENT, st == UK_PRESSED ? 100 : 112)); uk_rline (canvas, bx[i], by, bw, bh, 6, uk_tone (C_ACCENT, 70), 200); }
+			else uk_raised (canvas, bx[i], by, bw, bh, 6, C_BUTTON, st);
 			unsigned ink = i == 0 ? C_SEL_TEXT : C_BUTTON_TEXT;
-			text_v (canvas, bx[i] + (bw - wk_tw (lab[i], i == 0 ? 2 : 0)) / 2, by, bh, lab[i], ink, i == 0 ? 2 : 0);
+			text_v (canvas, bx[i] + (bw - uk_tw (lab[i], i == 0 ? 2 : 0)) / 2, by, bh, lab[i], ink, i == 0 ? 2 : 0);
 		}
 		// the formats
 		int fy = zy + zh + 28;
 		small_v (canvas, mx - small_w ("FORMATS", 2) / 2, fy, 16, "FORMATS", dim_ink (), 2);
-		static const struct { const char *n, *d; unsigned c; } F[] = {
-			{ "ZIP", "open, extract, add, delete", 0x4EA05C }, { "7z", "coming next", 0xA89C94 },
-			{ "TAR, .tar.gz", "coming next", 0xA89C94 }, { "RAR", "read only, coming next", 0xA89C94 } };
-		int cw[4], tot = 0;
-		for (int i = 0; i < 4; i++) { int w1 = wk_tw (F[i].n, 2), w2 = small_w (F[i].d); cw[i] = (w1 > w2 ? w1 : w2) + 34; tot += cw[i] + 10; }
+		// (asked from FileKit: what it reads is listed, what it also writes in green)
+		int nf = arc::formats (); if (nf > 6) nf = 6;
+		int cw[6], tot = 0;
+		for (int i = 0; i < nf; i++) { int w1 = uk_tw (arc::g_formats[i].name, 2), w2 = small_w (arc::g_formats[i].note); cw[i] = (w1 > w2 ? w1 : w2) + 34; tot += cw[i] + 10; }
 		int fx = mx - tot / 2;
-		for (int i = 0; i < 4; i++)
+		for (int i = 0; i < nf; i++)
 		{
-			wk_rbox (canvas, fx, fy + 24, cw[i], 50, 8, 0xFFFFFF, wk_mix (0xFFFFFF, C_FIELD, 128));
-			wk_rline (canvas, fx, fy + 24, cw[i], 50, 8, wk_tone (C_FIELD, 100), 200);
-			VPath p; p.circle (V (fx + 14), V (fy + 38), V (4)); p.fill (canvas, F[i].c);
-			text_v (canvas, fx + 24, fy + 28, 20, F[i].n, C_FIELD_TEXT, 2);
-			small_v (canvas, fx + 14, fy + 50, 18, F[i].d, dim_ink ());
+			const struct fk_format &f = arc::g_formats[i];
+			uk_rbox (canvas, fx, fy + 24, cw[i], 50, 8, 0xFFFFFF, uk_mix (0xFFFFFF, C_FIELD, 128));
+			uk_rline (canvas, fx, fy + 24, cw[i], 50, 8, uk_tone (C_FIELD, 100), 200);
+			VPath p; p.circle (V (fx + 14), V (fy + 38), V (4)); p.fill (canvas, f.can_write ? 0x4EA05C : 0x4E86C8);
+			text_v (canvas, fx + 24, fy + 28, 20, f.name, C_FIELD_TEXT, 2);
+			small_v (canvas, fx + 14, fy + 50, 18, f.note, dim_ink ());
 			fx += cw[i] + 10;
 		}
 		// the recent archives
@@ -666,8 +666,8 @@ public:
 			for (int i = 0; i < nrec && ry0 + 22 + i * 38 + 34 < height; i++)
 			{
 				int y = ry0 + 22 + i * 38;
-				unsigned bg = hot == i ? wk_mix (C_FIELD, C_ACCENT, 40) : wk_mix (C_FIELD, 0x000000, 8);
-				wk_rbox (canvas, lx, y, lw, 34, 6, bg, bg);
+				unsigned bg = hot == i ? uk_mix (C_FIELD, C_ACCENT, 40) : uk_mix (C_FIELD, 0x000000, 8);
+				uk_rbox (canvas, lx, y, lw, 34, 6, bg, bg);
 				icon_archive (canvas, lx + 12, y + 7, 20);
 				char t[120]; fit (arc::base_of (rec[i]), lw / 3, t, sizeof t, 2);
 				text_v (canvas, lx + 42, y, 34, t, C_FIELD_TEXT, 2);

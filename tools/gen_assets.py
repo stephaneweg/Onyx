@@ -697,6 +697,29 @@ def icon_soundconf():		# a speaker and its waves
             prect(px, x, y, x + 1, y + 1, c)
     return px
 
+def icon_preloadconf():	# a memory chip, a program coming down into it
+    px = blank()
+    dark = (52, 60, 76); teal = (73, 146, 167)
+    prect(px, 9, 20, 30, 33, dark)				# the chip
+    prect(px, 12, 23, 27, 30, (96, 110, 128))
+    for i in range(5):					# its pins
+        prect(px, 11 + i * 4, 17, 12 + i * 4, 19, dark); prect(px, 11 + i * 4, 34, 12 + i * 4, 36, dark)
+    prect(px, 18, 3, 21, 11, teal)				# the arrow
+    for k in range(5): prect(px, 15 + k, 11 + k, 24 - k, 11 + k, teal)
+    return px
+
+def icon_printconf():		# a printer: the sheet going in, the printed one coming out
+    px = blank()
+    dark = (52, 60, 76); teal = (73, 146, 167); paper = (240, 240, 236); grey = (150, 158, 170)
+    prect(px, 12, 4, 27, 14, paper); prect(px, 12, 4, 27, 4, grey); prect(px, 12, 4, 12, 14, grey); prect(px, 27, 4, 27, 14, grey)
+    prect(px, 5, 14, 34, 27, dark)				# the body
+    prect(px, 6, 15, 33, 16, (96, 110, 128))
+    prect(px, 29, 18, 31, 19, (120, 220, 130))		# its light
+    prect(px, 9, 23, 30, 24, (30, 34, 44))			# the slot
+    prect(px, 10, 24, 29, 36, paper); prect(px, 10, 36, 29, 36, grey); prect(px, 10, 24, 10, 36, grey); prect(px, 29, 24, 29, 36, grey)
+    prect(px, 13, 27, 26, 27, teal); prect(px, 13, 30, 26, 30, grey); prect(px, 13, 33, 22, 33, grey)
+    return px
+
 def icon_keyconf():		# a keyboard and a mouse
     px = blank()
     prect(px, 2, 12, 29, 28, (86, 92, 104)); pframe(px, 2, 12, 29, 28, (40, 44, 52))
@@ -707,6 +730,23 @@ def icon_keyconf():		# a keyboard and a mouse
     pdisc(px, 33, 24, 5, (236, 236, 240)); prect(px, 28, 24, 38, 31, (236, 236, 240)); pdisc(px, 33, 31, 5, (236, 236, 240))
     prect(px, 33, 19, 33, 25, (120, 124, 134)); prect(px, 28, 25, 38, 25, (120, 124, 134))
     prect(px, 33, 8, 33, 18, (120, 124, 134)); prect(px, 29, 8, 33, 8, (120, 124, 134))
+    return px
+
+def icon_langconf():		# a globe (its meridians, its parallels) and a speech bubble
+    px = blank()
+    sea, line, rim = (74, 144, 200), (196, 226, 246), (40, 84, 130)
+    pdisc(px, 17, 22, 15, rim); pdisc(px, 17, 22, 14, sea)
+    for y in range(8, 37):					# the meridians: an ellipse, the axis
+        dy = (y - 22) / 14.0
+        if abs(dy) > 1: continue
+        w = int(round(7 * (1 - dy * dy) ** 0.5))
+        pset(px, 17 - w, y, line); pset(px, 17 + w, y, line); pset(px, 17, y, line)
+    for y in (15, 22, 29):					# the parallels
+        w = int((14 * 14 - (y - 22) ** 2) ** 0.5)
+        prect(px, 17 - w, y, 17 + w, y, line)
+    prect(px, 22, 3, 38, 14, (250, 250, 252)); pframe(px, 22, 3, 38, 14, (70, 80, 96))	# the bubble
+    prect(px, 25, 15, 27, 15, (250, 250, 252)); pset(px, 24, 15, (70, 80, 96)); pset(px, 28, 15, (70, 80, 96)); pset(px, 25, 16, (70, 80, 96)); pset(px, 26, 16, (250, 250, 252)); pset(px, 27, 16, (70, 80, 96)); pset(px, 26, 17, (70, 80, 96))
+    prect(px, 25, 6, 35, 7, (196, 84, 80)); prect(px, 25, 10, 32, 11, (120, 128, 140))
     return px
 
 def icon_cardfile():		# Cardfile: an index card on a stack -- a teal band, names and their fields
@@ -817,8 +857,9 @@ ICONS = {
     "solitaire": icon_solitaire, "freecell": icon_freecell,
     "graphcalc": icon_graphcalc, "iconedit": icon_iconedit, "rtfview": icon_rtfview,
     "gbemu": icon_gbemu, "gamelib": icon_gamelib, "padconf": icon_padconf, "doom": icon_doom, "gbaemu": icon_gbaemu, "nesemu": icon_nesemu, "snesemu": icon_snesemu, "teapot": icon_teapot, "gpudemo": icon_gpudemo, "planets3d": icon_planets3d, "n64emu": icon_n64emu,
-    "control": icon_control, "dockconf": icon_dockconf, "soundconf": icon_soundconf, "keyconf": icon_keyconf,
+    "control": icon_control, "dockconf": icon_dockconf, "soundconf": icon_soundconf, "keyconf": icon_keyconf, "langconf": icon_langconf, "preloadconf": icon_preloadconf,
     "cardfile": icon_cardfile, "ledger": icon_ledger, "courier": icon_courier, "clipboard": icon_clipboard, "clipd": icon_clipboard,
+    "printconf": icon_printconf, "printd": icon_printconf,
 }
 
 

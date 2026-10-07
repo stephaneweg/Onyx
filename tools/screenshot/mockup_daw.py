@@ -6,10 +6,10 @@ melodic lines, arpeggiators, drum patterns, euclidean polyrhythms). See docs/daw
     python3 tools/screenshot/mockup_daw.py  -> docs/daw/mockups/daw-*.png
 
 The screen is the Pi's 1920 x 1080 (cmdline.txt), the global menu bar at the top, the app maximised
-in an Onyx frame (the Slate theme: a dark frame suits a dark studio). What would be wtk widgets
-(buttons, dropdowns, fields, lists, tabs, sliders) is drawn as wtk draws them, darkened; what would be
+in an Onyx frame (the Slate theme: a dark frame suits a dark studio). What would be uikit widgets
+(buttons, dropdowns, fields, lists, tabs, sliders) is drawn as uikit draws them, darkened; what would be
 a hand-drawn canvas the size of the view (the ruler, the lanes, the grids, the piano roll, the rings)
-is drawn flat. Knobs and VU meters would be new wtk widgets (vpaint.h's arcs).
+is drawn flat. Knobs and VU meters would be new uikit widgets (vpaint.h's arcs).
 Everything is drawn at K times the size, then scaled down (anti-aliasing).
 """
 import math, os, random
@@ -96,7 +96,7 @@ class Clip (Canvas):
 	def text (self, x, y, *a, **k): Canvas.text (self, x - self.ox, y - self.oy, *a, **k)
 	def done (self): self.parent.img.paste (self.img, (int (self.x * K), int (self.y * K)), self.img)
 
-# ---- the widgets (wtk's shapes, the dark studio's colours) ----------------------------------------------
+# ---- the widgets (uikit's shapes, the dark studio's colours) ----------------------------------------------
 def button (c, x, y, w, h, label = "", kind = "face", font = "ui", icon = None, pressed = False):
 	face = dict (face = FACE, accent = ACC2, flat = PANEL2, rec = (120, 44, 44)).get (kind, FACE)
 	if pressed: face = shade (face, 0.8)
@@ -129,7 +129,7 @@ def spin (c, x, y, w, h, value):
 	c.poly ([(x + w - 12, y + h / 2 + 2), (x + w - 4, y + h / 2 + 2), (x + w - 8, y + h - 4)], DIM)
 
 def seg (c, x, y, h, labels, active, font = "ui", pad = 14):
-	"""A segmented control (wtk: radio buttons drawn as a strip)."""
+	"""A segmented control (uikit: radio buttons drawn as a strip)."""
 	ws = [c.tw (l, font) + 2 * pad for l in labels]; tot = sum (ws)
 	c.rect (x, y, tot, h, FIELD, r = 5, outline = LINE)
 	xx = x
@@ -154,7 +154,7 @@ def check (c, x, y, on, label):
 	c.text_l (x + 20, y - 1, 16, label, "ui", TEXT)
 
 def knob (c, cx, cy, r, v, label = None, value = None, colour = ACC):
-	"""A knob (new wtk widget: vpaint.h's arc): a track 270 degrees wide, the value's arc, a pointer."""
+	"""A knob (new uikit widget: vpaint.h's arc): a track 270 degrees wide, the value's arc, a pointer."""
 	a0, a1 = 135, 405
 	c.ellipse (cx, cy, r - 3, fill = mix (FACE, BG, 0.2), outline = shade (FACE, 0.6), width = 1)
 	c.arc (cx, cy, r, a0, a1, FIELD, 3)
@@ -171,7 +171,7 @@ def hslider (c, x, y, w, v, colour = ACC):
 	c.rect (kx - 5, y, 10, 14, lighten (FACE, 0.3), r = 3, outline = shade (FACE, 0.5))
 
 def vu (c, x, y, w, h, lv, rv, vertical = True):
-	"""A stereo VU meter (new wtk widget): green -> amber -> red segments."""
+	"""A stereo VU meter (new uikit widget): green -> amber -> red segments."""
 	c.rect (x, y, w, h, FIELD, r = 2)
 	for i, v in enumerate ((lv, rv)):
 		if vertical:
@@ -523,7 +523,7 @@ def chord_editor (c, x, y, w, h):
 		       ["Articulation", "Melodic cell", "Voicing"], 0)
 	y += 34; h -= 34
 	c.rect (x, y, w, h, BG)
-	# left: the chord's properties (wtk dropdowns)
+	# left: the chord's properties (uikit dropdowns)
 	px = x + 14; pw = 300
 	section (c, px, y + 10, pw, "The chord")
 	rows = [("Degree", "i  (F#)"), ("Colour", "9th  (7 + 9)"), ("Suspension", "None"), ("Quality", "Auto (from the key)"),
@@ -716,7 +716,7 @@ def poly_editor (c, x, y, w, h):
 	a = -math.pi / 2 + 2 * math.pi * 0.3
 	c.line ([(cx, cy), (cx + math.cos (a) * (R + 12), cy + math.sin (a) * (R + 12))], PLAY, 2)
 	c.ellipse (cx, cy, 4, fill = PLAY)
-	# the layers' table (wtk: labels, NumericUpDown, dropdowns)
+	# the layers' table (uikit: labels, NumericUpDown, dropdowns)
 	tx = x + 400; tw_ = w - 400 - 20
 	section (c, tx, y + 10, tw_, "Layers")
 	heads = [("Layer", 0), ("Hits", 150), ("Steps", 230), ("Rotate", 310), ("Sound", 400), ("Velocity", 610), ("Pattern", 730)]
@@ -744,7 +744,7 @@ def poly_editor (c, x, y, w, h):
 		knob (c, tx + 30 + j * 90, yy + 26, 19, v, l, s)
 
 def ai_dialog (c):
-	"""A wtk Modal: the prompt goes to the `llm` helper (HTTPS, JSON) -- the reply lands on the timeline."""
+	"""A uikit Modal: the prompt goes to the `llm` helper (HTTPS, JSON) -- the reply lands on the timeline."""
 	w, h = 700, 604; x, y = (W - w) // 2, 150
 	c.rect (0, 28, W, H - 28, (0, 0, 0, 120))
 	# the dialog in its Onyx frame

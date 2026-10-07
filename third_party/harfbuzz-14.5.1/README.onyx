@@ -1,0 +1,20 @@
+HarfBuzz 14.5.1 -- the OpenType text shaping engine, a WebKit dependency ported to Onyx
+====================================================================================
+
+Source: the release tag 14.5.1 of https://github.com/harfbuzz/harfbuzz (commit
+eb033319fc2ebe723597fa497d4bb4331bab8b6b; the release tarball, harfbuzz-14.5.1.tar.xz on the GitHub
+release page, was not reachable from the build machine -- the tag's tree is the same sources). "Old
+MIT" licence (COPYING). WebKit wants HarfBuzz >= 2.7.4 with its ICU component (OptionsGTK/WPE.cmake).
+
+Kept: COPYING, README.md, NEWS, AUTHORS, THANKS, the CMake build (CMakeLists.txt,
+replace-enum-strings.cmake, meson.build -- the CMake build reads the version from it), src/ (the
+library, its .pc.in / config templates, the Ragel sources). Not kept: the tests (test/, src/test-*.cc,
+src/main.cc), the utilities (util/), docs/, perf/, subprojects/, the generator scripts (src/*.py),
+src/rust/, harfbuzz-world.cc. No change to the sources.
+
+Built by tools/ports/harfbuzz/build.sh with HarfBuzz's CMake and tools/onyx-toolchain.cmake:
+libharfbuzz.a (with the FreeType font functions, hb-ft: the POSIX ports' FreeType, tools/ports/freetype)
+and libharfbuzz-icu.a (hb-icu: ICU's Unicode functions, tools/ports/icu) + include/harfbuzz +
+harfbuzz.pc / harfbuzz-icu.pc into the POSIX sysroot. Not built: harfbuzz-subset, -raster, -vector,
+-gpu, the utilities, cairo / glib / gobject / graphite2. Smoke test: tools/ports/harfbuzz/hbtest.cpp
+(/bin/hbtest).

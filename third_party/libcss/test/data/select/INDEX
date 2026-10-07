@@ -1,7 +1,0 @@
-# Index file for automated parser tests
-#
-# Test			Description
-
-tests1.dat		Basic tests
-defaulting.dat		Explicit defaulting tests
-calc.dat		Tests involving calconyx.dat		Onyx: CSS3 properties, calc() folding, min/max/clamp, var(), shorthands

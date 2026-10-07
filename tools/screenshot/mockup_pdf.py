@@ -423,7 +423,7 @@ def shot_props ():
 # ---- 7. Writer: Export as PDF ------------------------------------------------------------------------------------
 def shot_export ():
 	c = screen ("Writer", ("File", "Edit", "View", "Insert", "Format", "Table", "Help"))
-	wr = Image.open (os.path.join (M.ROOT, "screenshots", "writer.png")).convert ("RGB")
+	wr = Image.open (os.path.join (M.ROOT, "screenshots", "letters.png")).convert ("RGB")
 	c.img.paste (wr.resize ((wr.size[0] * K, wr.size[1] * K), Image.LANCZOS), (int (8 * K), int (30 * K))); c.d = ImageDraw.Draw (c.img, "RGBA")
 	c.rect (0, 0, M.W, M.H, M.A ((0, 0, 0), 40))
 	dx, dy, dw, dh = 242, 100, 540, 556

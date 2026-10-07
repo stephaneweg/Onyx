@@ -33,12 +33,18 @@ struct TSyscallStats
 	u32	nSlot[KAPI_TABLE_SLOTS];	// per table slot (saturating at 0xFFFFFFFF)
 };
 
+extern unsigned g_nUserPages;		// (below)
+
 class CWindow;
 class CStream;
 class CMailbox;
 struct CProcess;
 class CTask;
 class CProcThreads;
+struct TVmSpace;			// (v75) kern/vm.h (WP-MEM)
+struct TProcInfo;			// (v75) kern/procx.h (WP-FILE/PROC)
+struct TImage;				// (v77) kern/image.h
+#define AS_LIB_MAX		16	// (v83) shared libraries in one process
 
 class CAddressSpace
 {
@@ -60,6 +66,10 @@ public:
 	// Map nPages consecutive 64 KB pages [ulVA..] -> [ulPhys..] (e.g. a window canvas).
 	void MapContig (u64 ulVA, u64 ulPhys, unsigned nPages, const TKPageAttr &Attr);
 
+	// (v89) nPages pages from ulVA mapped no more (frames owned elsewhere: MapContig's), the TLB
+	// flushed. What is not mapped is skipped.
+	void UnmapContig (u64 ulVA, unsigned nPages);
+
 	// Map a shell surface (its physical frames) into this space at a fresh VA in the
 	// per-process surface arena [USER_SURFACE_BASE, USER_SURFACE_END). Returns the VA
 	// (a user pointer) or 0 if the arena is exhausted. The frames are owned by the
@@ -69,8 +79,8 @@ public:
 	// Is the 64 KB page at ulVA mapped?
 	boolean IsMapped (uintptr ulVA);
 
-	// Map fresh zeroed pages (EL0 RW, owned) over [ulTop - nSize, ulTop)
-	// where nothing is mapped yet: a user stack (kern/el0.h). FALSE: out of memory.
+	// (v75) A user stack (kern/el0.h) over [ulTop - nSize, ulTop): a LAZY region (kern/vm.h) --
+	// its pages filled on first touch; nothing mapped now. FALSE: out of memory.
 	boolean MapStack (u64 ulTop, u64 nSize);
 
 	// Allocate a fresh physical frame and map it at ulVA. Returns the frame's
@@ -78,9 +88,11 @@ public:
 	void *MapNewPage (uintptr ulVA, const TKPageAttr &Attr);
 
 	// Unix-style sbrk for the per-process heap at USER_HEAP_BASE: move the break by
-	// nIncrement bytes, mapping fresh 64 KB pages (EL0 RW) as it grows. Returns the
-	// PREVIOUS break (a user VA), or (void*)-1 on failure (out of heap VA / OOM).
-	// The user allocator (user/umm.h) calls this through kapi_sbrk.
+	// nIncrement bytes. (v75) The heap is a lazy region (kern/vm.h) that grows with the break
+	// (its pages filled on first touch; at once once the app holds an app core) and shrinks with
+	// it (the pages above the new break dropped). Returns the PREVIOUS break (a user VA), or
+	// (void*)-1 on failure (out of heap VA, or a growth beyond the app pool: the overcommit
+	// check). The user allocators (user/Runtime/umm.h, newlib's malloc) call this through kapi_sbrk.
 	void *Sbrk (long nIncrement);
 
 	// Fresh zeroed pages, EL0 read/write/execute, in the code arena (a JIT) -> VA, 0 full.
@@ -102,6 +114,14 @@ public:
 	// every MapNewPage frame). For ps / the memory monitor. Excludes shared mappings
 	// like a window canvas (owned by its CWindow).
 	unsigned GetPages (void) const		{ return m_nOwnedPages; }
+
+	// (v75, kern/vm.h) The L3 descriptor of ulVA's page (a user VA), or 0 if its 512 MB slot has
+	// no table yet. The VM code reads and writes it as one 64-bit word.
+	TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *PageDesc (u64 ulVA);
+	// A frame the VM code unmapped and freed: no longer counted.
+	void PageReleased (void)		{ if (m_nOwnedPages > 0) m_nOwnedPages--; if (g_nUserPages > 0) g_nUserPages--; }
+	// Its page tables (the L2 + its private L3s), in 64 KB pages.
+	unsigned GetTablePages (void) const;
 
 	// Process id: a small monotonic number assigned at creation, for ps/kill.
 	unsigned GetPid (void) const		{ return m_nPid; }
@@ -127,7 +147,9 @@ public:
 	void SetStdout (CStream *p)		{ m_pStdout = p; }
 	CStream *GetStdout (void)		{ return m_pStdout; }
 	void SetProcess (CProcess *p)		{ m_pProcess = p; }
+	CProcess *GetProcess (void)		{ return m_pProcess; }		// (v75)
 	void SetExitStatus (int n)		{ m_nExitStatus = n; }
+	int GetExitStatus (void) const		{ return m_nExitStatus; }	// (v75)
 	void SetArgs (const char *pArgs);
 	const char *GetArgs (void)		{ return m_Args; }
 
@@ -154,6 +176,48 @@ public:
 
 	// Its system-call statistics (kern/el0.h).
 	TSyscallStats *GetSyscallStats (void)	{ return &m_Syscalls; }
+
+	// (v75) Its virtual memory (kern/vm.h: lazy regions, pins) and its POSIX side (kern/procx.h:
+	// argv and environment blocks): 0 until their work package makes them; freed by the
+	// teardown (VmTeardown, ProcInfoTeardown).
+	TVmSpace *GetVm (void)			{ return m_pVm; }
+	void SetVm (TVmSpace *p)		{ m_pVm = p; }
+	TProcInfo *GetProcInfo (void)		{ return m_pProcInfo; }
+	void SetProcInfo (TProcInfo *p)		{ m_pProcInfo = p; }
+
+	// (v77) Its program's image (kern/image.h): the frames of its read-only segments, shared with
+	// the program's other processes and mapped here NOT owned. One reference, taken by ImageMap
+	// and dropped by the destructor once no page table names those frames any more.
+	TImage *GetImage (void)			{ return m_pImage; }
+	void SetImage (TImage *p)		{ m_pImage = p; }
+
+	// (v83) The shared libraries mapped here (kern/image.h ImageMapLib): one reference each,
+	// dropped by the destructor as the program's. Ready: wholly mapped (a mapping that ran out of
+	// memory stays recorded -- its pages are there -- and is never handed out).
+	int FindLib (const TImage *p) const
+	{
+		for (unsigned i = 0; i < m_nLibs; i++) if (m_pLib[i] == p) return (int) i;
+		return -1;
+	}
+	boolean LibReady (int n) const		{ return (m_nLibReady >> n) & 1; }
+	boolean AddLib (TImage *p)
+	{
+		if (m_nLibs == AS_LIB_MAX) return FALSE;
+		m_pLib[m_nLibs++] = p;
+		return TRUE;
+	}
+	void SetLibReady (const TImage *p)
+	{
+		int n = FindLib (p);
+		if (n >= 0) m_nLibReady |= 1u << n;
+	}
+
+	// (v75) Why the process ended, as proc_wait reports it: KAPI_PROC_EXITED (the default: it
+	// exited, its status is the code), KAPI_PROC_FAULT (-11), KAPI_PROC_KILLED (-9),
+	// KAPI_PROC_OOM (-9). Set before the end (a fault, a kill, the OOM killer).
+	void SetTermReason (int nReason, int nCode) { m_nTermReason = nReason; m_nTermCode = nCode; }
+	int GetTermReason (void) const		{ return m_nTermReason; }
+	int GetTermCode (void) const		{ return m_nTermCode; }
 
 private:
 	TARMV8MMU_LEVEL3_DESCRIPTOR *GetOrCreateL3 (unsigned nL2Index);
@@ -182,6 +246,14 @@ private:
 	CProcThreads		    *m_pThreads; // threads / sync objects / posts (lazy)
 	CHandleTable		     m_Handles;	// opaque handles (closed on teardown)
 	TSyscallStats		     m_Syscalls; // system calls counted (sys/el0.cpp)
+	TVmSpace		    *m_pVm;	// (v75) virtual memory (WP-MEM; 0: none yet)
+	TProcInfo		    *m_pProcInfo; // (v75) argv / env blocks (WP-FILE/PROC; 0: none)
+	TImage			    *m_pImage;	// (v77) its program's shared image (0: none yet)
+	TImage			    *m_pLib[AS_LIB_MAX]; // (v83) the shared libraries mapped here
+	unsigned		     m_nLibs;
+	unsigned		     m_nLibReady; // bit n: m_pLib[n] is wholly mapped
+	int			     m_nTermReason; // (v75) KAPI_PROC_* (proc_wait)
+	int			     m_nTermCode;	// (v75) its code (the exit status for EXITED)
 };
 
 // Total 64 KB physical pages currently owned by all user address spaces (sum of

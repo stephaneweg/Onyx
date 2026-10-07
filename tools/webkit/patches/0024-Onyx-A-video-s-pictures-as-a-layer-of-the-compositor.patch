@@ -1,0 +1,554 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephan WEGENER <steph.wegener@gmail.com>
+Date: Sun, 4 Oct 2026 02:12:11 +0200
+Subject: [PATCH 24/25] [Onyx] A video's pictures as a layer of the compositor:
+ a texture updated for each picture, nothing painted
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../graphics/onyx/GraphicsLayerOnyx.cpp       |  50 ++++++++
+ .../graphics/onyx/GraphicsLayerOnyx.h         |  50 ++++++++
+ .../graphics/onyx/MediaPlayerPrivateOnyx.cpp  |  49 +++++++-
+ .../graphics/onyx/MediaPlayerPrivateOnyx.h    |  22 +++-
+ .../CoordinatedGraphics/LayerTreeHostOnyx.cpp | 110 +++++++++++++++++-
+ .../CoordinatedGraphics/LayerTreeHostOnyx.h   |  13 +++
+ 6 files changed, 281 insertions(+), 13 deletions(-)
+
+diff --git a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
+index de840842..dd78be2f 100644
+--- a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
++++ b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
+@@ -155,6 +155,8 @@ GraphicsLayerOnyx::GraphicsLayerOnyx(Type type, GraphicsLayerClient& client, Gra
+ 
+ GraphicsLayerOnyx::~GraphicsLayerOnyx()
+ {
++    if (m_contents)
++        m_contents->m_layer = nullptr;
+     dropTiles();
+     if (m_host)
+         m_host->layerDestroyed(*this);
+@@ -164,6 +166,10 @@ GraphicsLayerOnyx::~GraphicsLayerOnyx()
+ void GraphicsLayerOnyx::detachFromHost()
+ {
+     m_host = nullptr;
++    if (m_contents) {
++        m_contents->m_layer = nullptr;
++        m_contents = nullptr;
++    }
+     m_tiles.clear();
+     m_dirtyRects.clear();
+     m_pendingPaints.clear();
+@@ -580,6 +586,50 @@ void GraphicsLayerOnyx::setContentsRect(const FloatRect& value)
+     noteLayerPropertyChanged();
+ }
+ 
++// ---- a video's pictures
++
++GraphicsLayerOnyxContents::~GraphicsLayerOnyxContents()
++{
++    if (m_layer) {
++        m_layer->m_contents = nullptr;
++        m_layer->noteLayerPropertyChanged();
++    }
++}
++
++void GraphicsLayerOnyxContents::setPicture(const uint32_t* pixels, const IntSize& size, int stride)
++{
++    m_pixels = pixels;
++    m_size = size;
++    m_stride = stride;
++    ++m_generation;
++    if (m_layer)
++        m_layer->contentsPictureChanged();
++}
++
++void GraphicsLayerOnyx::contentsPictureChanged()
++{
++    if (m_host)
++        m_host->layerContentsChanged(*this);
++}
++
++void GraphicsLayerOnyx::setContentsToPlatformLayer(PlatformLayer* platformLayer, ContentsLayerPurpose)
++{
++    // (Without a compositor nothing draws it: its owner goes on painting its pictures.)
++    auto* contents = m_host ? GraphicsLayerOnyxContents::fromPlatformLayer(platformLayer) : nullptr;
++    if (contents == m_contents)
++        return;
++    if (m_contents)
++        m_contents->m_layer = nullptr;
++    m_contents = contents;
++    if (m_contents) {
++        // (It was another layer's: a video element whose renderer was made again.)
++        if (m_contents->m_layer && m_contents->m_layer != this)
++            m_contents->m_layer->m_contents = nullptr;
++        m_contents->m_layer = this;
++    }
++    noteLayerPropertyChanged();
++}
++
+ void GraphicsLayerOnyx::setContentsToSolidColor(const Color& color)
+ {
+     if (color == m_solidColor)
+diff --git a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h
+index 48ded268..e0687f80 100644
+--- a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h
++++ b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.h
+@@ -30,6 +30,7 @@
+ #include "Color.h"
+ #include "GraphicsLayer.h"
+ #include "IntRect.h"
++#include "PlatformLayer.h"
+ #include "TransformationMatrix.h"
+ #include <wtf/HashMap.h>
+ #include <wtf/MonotonicTime.h>
+@@ -72,6 +73,48 @@ public:
+     virtual bool acceleratesAnimations() const = 0;
+     // A layer's animations changed: a frame is due.
+     virtual void layerAnimationsChanged() = 0;
++    // A layer's contents (GraphicsLayerOnyxContents: a video) has another picture: a frame is due,
++    // without the page's own update.
++    virtual void layerContentsChanged(GraphicsLayerOnyx&) = 0;
++};
++
++// What a layer shows that WebCore does not paint: a video's pictures. Its owner (the media player)
++// gives each picture as it comes due; the layer it is the contents of (GraphicsLayer::
++// setContentsToPlatformLayer: this object is the port's PlatformLayer) has the compositor draw it
++// in its contents rectangle, from a texture of its own -- no tile is painted again for a picture.
++class GraphicsLayerOnyxContents {
++    WTF_MAKE_NONCOPYABLE(GraphicsLayerOnyxContents);
++public:
++    GraphicsLayerOnyxContents() = default;
++    WEBCORE_EXPORT ~GraphicsLayerOnyxContents();
++
++    // The picture to show: 0xFFRRGGBB words (opaque), stride in pixels. The pixels stay the caller's:
++    // valid until the next setPicture or forgetPixels (the compositor copies them at its next frame).
++    WEBCORE_EXPORT void setPicture(const uint32_t* pixels, const IntSize&, int stride);
++    // The pixels are about to go: what was last drawn stays on the screen.
++    void forgetPixels() { m_pixels = nullptr; }
++
++    // A layer shows it (false: the owner paints its pictures itself).
++    bool isAttached() const { return !!m_layer; }
++
++    const uint32_t* pixels() const { return m_pixels; }
++    const IntSize& size() const LIFETIME_BOUND { return m_size; }
++    int stride() const { return m_stride; }
++    // Changes with each picture.
++    unsigned generation() const { return m_generation; }
++
++    // (PlatformLayer is void* on this port: the object's address stands for it.)
++    PlatformLayer* platformLayer() { return reinterpret_cast<PlatformLayer*>(this); }
++    static GraphicsLayerOnyxContents* fromPlatformLayer(PlatformLayer* layer) { return reinterpret_cast<GraphicsLayerOnyxContents*>(layer); }
++
++private:
++    friend class GraphicsLayerOnyx;
++
++    GraphicsLayerOnyx* m_layer { nullptr };
++    const uint32_t* m_pixels { nullptr };
++    IntSize m_size;
++    int m_stride { 0 };
++    unsigned m_generation { 0 };
+ };
+ 
+ class GraphicsLayerOnyx final : public GraphicsLayer {
+@@ -158,6 +201,8 @@ public:
+ 
+     const HashMap<uint64_t, Tile>& tiles() const LIFETIME_BOUND { return m_tiles; }
+     const Color& solidColor() const LIFETIME_BOUND { return m_solidColor; }
++    // A video's pictures, drawn in contentsRect() (null: none).
++    GraphicsLayerOnyxContents* contents() const { return m_contents; }
+ 
+     // In the log (the standard error), each invalidation with where it came from (return addresses).
+     WEBCORE_EXPORT static void setTracesInvalidations(bool);
+@@ -195,6 +240,8 @@ public:
+     bool setBackdropFilters(const FilterOperations&) final;
+     void setContentsRect(const FloatRect&) final;
+     void setContentsToSolidColor(const Color&) final;
++    void setContentsToPlatformLayer(PlatformLayer*, ContentsLayerPurpose) final;
++    bool usesContentsLayer() const final { return !!m_contents; }
+     bool canDirectlyCompositeNativeImage() const final { return !m_host; }
+ 
+     bool addAnimation(const GraphicsLayerKeyframeValueList&, const GraphicsLayerAnimation*, const String& animationName, double timeOffset) final;
+@@ -232,6 +279,9 @@ private:
+     Vector<std::unique_ptr<PendingPaint>> m_pendingPaints;
+     IntRect m_lastVisibleRect;
+     Color m_solidColor;
++    friend class GraphicsLayerOnyxContents;
++    void contentsPictureChanged();
++    GraphicsLayerOnyxContents* m_contents { nullptr };
+     bool m_hasUncommittedChanges { false };
+ 
+     std::unique_ptr<TextureMapperAnimations> m_animations;
+diff --git a/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.cpp b/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.cpp
+index 333a4e33..574d2a9f 100644
+--- a/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.cpp
++++ b/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.cpp
+@@ -269,11 +269,33 @@ MediaPlayerPrivateOnyx::~MediaPlayerPrivateOnyx()
+         mediaSource->setPlayer(nullptr);
+ #endif
+     if (m_av) {
++        forgetPicturePixels();
+         av_player_free(m_av);
+         releaseDecoderCore();
+     }
+ }
+ 
++// The player's pixels are about to be its own again (it is freed, or flushed by a seek): what must
++// outlive them is copied first.
++void MediaPlayerPrivateOnyx::forgetPicturePixels()
++{
++    ensureImage();
++    m_picturePixels = nullptr;
++#if USE(GRAPHICS_LAYER_ONYX)
++    m_contents.forgetPixels();
++#endif
++}
++
++void MediaPlayerPrivateOnyx::ensureImage()
++{
++    if (m_imageIsCurrent || !m_picturePixels)
++        return;
++    auto info = SkImageInfo::Make(m_pictureSize.width(), m_pictureSize.height(), kBGRA_8888_SkColorType, kOpaque_SkAlphaType, SkColorSpace::MakeSRGB());
++    SkPixmap pixmap(info, m_picturePixels, m_pictureStride);
++    m_image = NativeImage::create(SkImages::RasterFromPixmapCopy(pixmap));
++    m_imageIsCurrent = true;
++}
++
+ bool MediaPlayerPrivateOnyx::ensurePlayer()
+ {
+     if (m_av)
+@@ -725,6 +747,7 @@ Ref<MediaTimePromise> MediaPlayerPrivateOnyx::seekToTarget(const SeekTarget& tar
+                 RefPtr protectedThis = weakThis.get();
+                 if (!protectedThis || !result || !protectedThis->m_av)
+                     return;
++                protectedThis->forgetPicturePixels();
+                 av_player_seek(protectedThis->m_av, toUs(seekTime));
+                 if (protectedThis->m_playing)
+                     av_player_play(protectedThis->m_av);
+@@ -736,6 +759,7 @@ Ref<MediaTimePromise> MediaPlayerPrivateOnyx::seekToTarget(const SeekTarget& tar
+     }
+ #endif
+ 
++    forgetPicturePixels();
+     av_player_seek(m_av, toUs(target.time));
+     if (m_playing)
+         av_player_play(m_av);
+@@ -790,14 +814,23 @@ void MediaPlayerPrivateOnyx::poll()
+     }
+ 
+     if (gotPicture && picture.pixels && picture.width > 0 && picture.height > 0) {
+-        // The player's pixels are its own until the next picture: copied into an image.
+-        auto info = SkImageInfo::Make(picture.width, picture.height, kBGRA_8888_SkColorType, kOpaque_SkAlphaType, SkColorSpace::MakeSRGB());
+-        SkPixmap pixmap(info, picture.pixels, picture.stride);
+-        bool first = !m_image;
+-        m_image = NativeImage::create(SkImages::RasterFromPixmapCopy(pixmap));
++        // The player's pixels are its own until the next picture. A layer of the compositor shows
++        // them (it copies them into its texture at its next frame, and nothing is painted), or
++        // the element is painted again (the software path): an image is made of them then.
++        m_picturePixels = picture.pixels;
++        m_pictureSize = { picture.width, picture.height };
++        m_pictureStride = picture.stride;
++        m_imageIsCurrent = false;
++        bool first = !std::exchange(m_hasPicture, true);
+         if (first)
+             player->firstVideoFrameAvailable();
++#if USE(GRAPHICS_LAYER_ONYX)
++        m_contents.setPicture(reinterpret_cast<const uint32_t*>(picture.pixels), m_pictureSize, picture.stride / 4);
++        if (!m_contents.isAttached())
++            player->repaint();
++#else
+         player->repaint();
++#endif
+     }
+ 
+ #if ENABLE(MEDIA_SOURCE)
+@@ -941,13 +974,17 @@ MediaPlayer::MovieLoadType MediaPlayerPrivateOnyx::movieLoadType() const
+ 
+ void MediaPlayerPrivateOnyx::paint(GraphicsContext& context, const FloatRect& rect)
+ {
+-    if (context.paintingDisabled() || !m_image)
++    if (context.paintingDisabled())
++        return;
++    ensureImage();
++    if (!m_image)
+         return;
+     context.drawNativeImage(*m_image, rect, FloatRect { { }, m_image->size() });
+ }
+ 
+ RefPtr<NativeImage> MediaPlayerPrivateOnyx::nativeImageForCurrentTime()
+ {
++    ensureImage();
+     return m_image;
+ }
+ 
+diff --git a/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.h b/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.h
+index 05459ab9..f2fca3f6 100644
+--- a/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.h
++++ b/Source/WebCore/platform/graphics/onyx/MediaPlayerPrivateOnyx.h
+@@ -27,6 +27,7 @@
+ 
+ #if ENABLE(VIDEO) && PLATFORM(ONYX)
+ 
++#include "GraphicsLayerOnyx.h"
+ #include "MediaPlayerPrivate.h"
+ #include "PlatformTimeRanges.h"
+ #include <wtf/MediaTime.h>
+@@ -127,7 +128,15 @@ private:
+     void paint(GraphicsContext&, const FloatRect&) final;
+     RefPtr<NativeImage> nativeImageForCurrentTime() final;
+     ColorSpace colorSpace() final;
+-    bool hasAvailableVideoFrame() const final { return !!m_image; }
++    bool hasAvailableVideoFrame() const final { return m_hasPicture; }
++#if USE(GRAPHICS_LAYER_ONYX)
++    // The pictures as a layer of the page's compositor (m_contents): each one is a texture update
++    // and a composited frame; nothing of the page is painted for it. On when the page asks for a
++    // video layer (the compositor's VideoTrigger), harmless otherwise (the software path paints).
++    PlatformLayer* platformLayer() const final { return const_cast<GraphicsLayerOnyxContents&>(m_contents).platformLayer(); }
++    bool supportsAcceleratedRendering() const final { return true; }
++#endif
++    void ensureImage();
+     MediaPlayer::MovieLoadType movieLoadType() const final;
+     std::optional<VideoPlaybackQualityMetrics> videoPlaybackQualityMetrics() final;
+     String engineDescription() const final { return "Onyx"_s; }
+@@ -161,7 +170,18 @@ private:
+     MediaTime m_time;
+     MediaTime m_duration;
+     IntSize m_size;
++    // The picture due now: the player's pixels (until its next one), and an image of them made
++    // when something paints it (the software path, a canvas).
++    const uint8_t* m_picturePixels { nullptr };
++    IntSize m_pictureSize;
++    int m_pictureStride { 0 };
++    bool m_hasPicture { false };
++    bool m_imageIsCurrent { false };
+     RefPtr<NativeImage> m_image;
++#if USE(GRAPHICS_LAYER_ONYX)
++    GraphicsLayerOnyxContents m_contents;
++#endif
++    void forgetPicturePixels();
+     unsigned m_decoded { 0 };
+     unsigned m_dropped { 0 };
+     MonotonicTime m_lastLog;
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
+index eaaa3f6c..32600b83 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.cpp
+@@ -348,6 +348,10 @@ void LayerTreeHost::layerCreated(GraphicsLayerOnyx& layer)
+ void LayerTreeHost::layerDestroyed(GraphicsLayerOnyx& layer)
+ {
+     m_layers.remove(&layer);
++    if (auto contents = m_contentsTextures.take(&layer); contents.texture && m_compositor) {
++        destroyContentsTexture(contents);
++        m_previousFrameLayers.clear();
++    }
+     if (auto group = m_groups.take(&layer); group.texture && m_compositor) {
+         destroyGroup(group);
+         m_previousFrameLayers.clear();
+@@ -421,6 +425,75 @@ void LayerTreeHost::layerAnimationsChanged()
+     scheduleFrame();
+ }
+ 
++void LayerTreeHost::layerContentsChanged(GraphicsLayerOnyx&)
++{
++    // (The picture is taken by the next frame's walk: prepareContents.)
++    scheduleFrame();
++}
++
++void LayerTreeHost::destroyContentsTexture(ContentsTexture& contents)
++{
++    if (!contents.texture)
++        return;
++    m_texturePixels -= std::min(m_texturePixels, static_cast<uint64_t>(contents.size.width()) * contents.size.height());
++    gpc_tex_destroy(m_compositor, contents.texture);
++    contents.texture = nullptr;
++    if (m_textureCount)
++        --m_textureCount;
++    ++m_paintGeneration;
++}
++
++// A layer with a video: its picture, when it is another one than the texture holds, is copied into
++// the texture (made again when the pictures' size changed), and the rectangle it is drawn in is
++// this frame's damage -- nothing of the page is painted for a picture.
++void LayerTreeHost::prepareContents(GraphicsLayerOnyx& layer, const WalkState& state)
++{
++    auto* source = layer.contents();
++    if (!source)
++        return;
++
++    auto& contents = m_contentsTextures.ensure(&layer, [] {
++        return ContentsTexture { };
++    }).iterator->value;
++    contents.lastFrame = m_frameNumber;
++
++    auto* pixels = source->pixels();
++    if (!pixels || source->size().isEmpty() || (contents.texture && contents.generation == source->generation()))
++        return;
++
++    auto& size = source->size();
++    if (contents.texture && contents.size != size)
++        destroyContentsTexture(contents);
++
++    auto startTime = MonotonicTime::now();
++    if (!contents.texture) {
++        if (!hasRoomForTileTexture(size))
++            return;
++        contents.texture = gpc_tex_create(m_compositor, size.width(), size.height(), pixels, source->stride());
++        if (!contents.texture)
++            return;
++        ++m_textureCount;
++        m_texturePixels += static_cast<uint64_t>(size.width()) * size.height();
++        contents.size = size;
++    } else {
++        int result = gpc_tex_update(m_compositor, contents.texture, 0, 0, size.width(), size.height(), pixels, source->stride());
++        if (result == GPC_LOST) {
++            m_texturesWereLost = true;
++            return;
++        }
++        if (result != GPC_OK)
++            return;
++    }
++    m_uploadTime += MonotonicTime::now() - startTime;
++    contents.generation = source->generation();
++    ++m_paintGeneration;
++    ++m_picturesUploaded;
++
++    auto targetRect = enclosingIntRect(state.toTarget.mapRect(layer.contentsRect()));
++    targetRect.intersect(state.clip);
++    m_frameDamage.unite(targetRect);
++}
++
+ gpc_tex* LayerTreeHost::textureForColor(uint32_t premultipliedARGB)
+ {
+     for (auto& entry : m_colorTextures) {
+@@ -738,6 +811,7 @@ void LayerTreeHost::walkLayerContents(GraphicsLayerOnyx& layer, const WalkState&
+             m_pixelsPlanned += update.pixelsPlanned;
+             if (layer.hasPendingPaints())
+                 m_preparedLayers.append({ &layer, affine, state.clip, visibleRect });
++            prepareContents(layer, state);
+         } else
+             layer.dropTiles();
+     } else if (drawsSelf) {
+@@ -750,6 +824,12 @@ void LayerTreeHost::walkLayerContents(GraphicsLayerOnyx& layer, const WalkState&
+         }
+ 
+         appendColorQuad(layer, layer.solidColor(), state.toTarget, layer.contentsRect(), state, opacity);
++
++        // A video's picture, over the layer's own content (drawn scaled to the contents rectangle).
++        if (layer.contents()) {
++            if (auto iterator = m_contentsTextures.find(&layer); iterator != m_contentsTextures.end() && iterator->value.texture)
++                appendQuad(layer, iterator->value.texture, QuadKind::Texture, state.toTarget, layer.contentsRect(), state, opacity, true);
++        }
+     }
+ 
+     // Its children's space: the children transform about the same anchor, the bounds origin (what a
+@@ -972,6 +1052,9 @@ void LayerTreeHost::texturesWereLost()
+     for (auto& group : m_groups.values())
+         destroyGroup(group);
+     m_groups.clear();
++    for (auto& contents : m_contentsTextures.values())
++        destroyContentsTexture(contents);
++    m_contentsTextures.clear();
+     m_previousFrameLayers.clear();
+     m_targetPathLogged = false;
+     m_needsFullFrame = true;
+@@ -1132,6 +1215,14 @@ void LayerTreeHost::renderFrame()
+     walkLayer(*m_rootLayer, WalkState { { }, viewRect, 1 });
+     m_walkTime += MonotonicTime::now() - walkStartTime;
+ 
++    // (A video that is no longer drawn keeps no texture.)
++    m_contentsTextures.removeIf([&](auto& entry) {
++        if (entry.value.lastFrame == m_frameNumber)
++            return false;
++        destroyContentsTexture(entry.value);
++        return true;
++    });
++
+     // (The opacity groups that were not drawn this frame keep no texture.)
+     m_groups.removeIf([&](auto& entry) {
+         if (entry.value.lastFrame == m_frameNumber)
+@@ -1192,11 +1283,11 @@ void LayerTreeHost::logStatisticsIfNeeded()
+     if (elapsed < statisticsInterval)
+         return;
+ 
+-    if (m_framesComposited || m_pixelsPainted) {
++    if (m_framesComposited || m_pixelsPainted || m_picturesUploaded) {
+         gpc_stats statistics;
+         gpc_get_stats(m_compositor, &statistics);
+-        logLine("%.1f s: %u frames (%u without a page update), %u tiles painted, %u rects repainted, %u px, paint %.0f ms, upload %.0f ms, composite %.0f ms; %u textures (%u MB), %u layers, %u groups made (last frame: %u GPU calls, %u layers by the CPU)",
+-            elapsed.seconds(), m_framesComposited, m_framesWithoutRenderingUpdate, m_tilesPainted, m_rectsPainted, static_cast<unsigned>(m_pixelsPainted), (m_paintTime + m_recordTime + m_rasterWallTime).milliseconds(), m_uploadTime.milliseconds(), m_compositeTime.milliseconds(),
++        logLine("%.1f s: %u frames (%u without a page update), %u video pictures, %u tiles painted, %u rects repainted, %u px, paint %.0f ms, upload %.0f ms, composite %.0f ms; %u textures (%u MB), %u layers, %u groups made (last frame: %u GPU calls, %u layers by the CPU)",
++            elapsed.seconds(), m_framesComposited, m_framesWithoutRenderingUpdate, m_picturesUploaded, m_tilesPainted, m_rectsPainted, static_cast<unsigned>(m_pixelsPainted), (m_paintTime + m_recordTime + m_rasterWallTime).milliseconds(), m_uploadTime.milliseconds(), m_compositeTime.milliseconds(),
+             m_textureCount + static_cast<unsigned>(m_colorTextures.size()), static_cast<unsigned>(m_texturePixels * 4 >> 20), static_cast<unsigned>(m_frameLayers.size()), m_groupsRendered, statistics.last_gpu_calls, statistics.last_cpu_layers);
+     }
+     // (SD:/etc/web-gpu-debug: where a frame's time goes -- the page's own update, the walk of the
+@@ -1226,6 +1317,7 @@ void LayerTreeHost::logStatisticsIfNeeded()
+     m_rectsPainted = 0;
+     m_pixelsPainted = 0;
+     m_groupsRendered = 0;
++    m_picturesUploaded = 0;
+     m_paintTime = { };
+     m_uploadTime = { };
+     m_compositeTime = { };
+@@ -1233,9 +1325,10 @@ void LayerTreeHost::logStatisticsIfNeeded()
+ 
+ // The conditions that give an element a layer of its own (WebChromeClient). The frames' own layers
+ // always (so that scrolling paints nothing again); an element with an animation or a transition of
+-// opacity or of a transform (then moved or faded by the compositor, not painted again). Not the
+-// elements with a 3D transform, unless SD:/etc/web-gpu-3d exists (many pages give one to many
+-// elements; a layer is drawn by its transform's 2D affine part); no canvas, no video.
++// opacity or of a transform (then moved or faded by the compositor, not painted again); a video
++// (its pictures are a texture). Not the elements with a 3D transform, unless SD:/etc/web-gpu-3d
++// exists (many pages give one to many elements; a layer is drawn by its transform's 2D affine
++// part); no canvas.
+ // SD:/etc/web-gpu-stage1: none of them (the frames' layers only).
+ unsigned onyxCompositingTriggers()
+ {
+@@ -1248,6 +1341,11 @@ unsigned onyxCompositingTriggers()
+         if (testSwitch("ONYX_WEB_GPU_STAGE1", "SD:/etc/web-gpu-stage1"))
+             return;
+         triggers |= ChromeClient::AnimationTrigger | ChromeClient::AnimatedOpacityTrigger;
++        // A video is a layer whose pictures the compositor draws from a texture (GraphicsLayerOnyx-
++        // Contents): painted into the page's tiles, a picture cost ~190 ms of the main thread on a
++        // Pi 4 and five in six were dropped. SD:/etc/web-gpu-novideo: as before.
++        if (!testSwitch("ONYX_WEB_GPU_NOVIDEO", "SD:/etc/web-gpu-novideo"))
++            triggers |= ChromeClient::VideoTrigger;
+         if (testSwitch("ONYX_WEB_GPU_3D", "SD:/etc/web-gpu-3d"))
+             triggers |= ChromeClient::ThreeDTransformTrigger;
+     });
+diff --git a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h
+index a292e61b..8fba793a 100644
+--- a/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h
++++ b/Source/WebKit/WebProcess/WebPage/CoordinatedGraphics/LayerTreeHostOnyx.h
+@@ -154,6 +154,16 @@ private:
+         unsigned paintGeneration { 0 };
+     };
+ 
++    // A layer's contents (a video's pictures): its texture, and the picture that is in it.
++    struct ContentsTexture {
++        gpc_tex* texture { nullptr };
++        WebCore::IntSize size;
++        unsigned generation { 0 };
++        unsigned lastFrame { 0 };
++    };
++    void destroyContentsTexture(ContentsTexture&);
++    void prepareContents(WebCore::GraphicsLayerOnyx&, const WalkState&);
++
+     // The tree is walked twice a frame (walkLayer).
+     enum class WalkPhase : uint8_t { Prepare, Emit };
+     // A layer with something to paint this frame, and what places its repaints in the target.
+@@ -179,6 +189,7 @@ private:
+     void destroyTileTexture(Texture) final;
+     bool acceleratesAnimations() const final { return m_acceleratesAnimations; }
+     void layerAnimationsChanged() final;
++    void layerContentsChanged(WebCore::GraphicsLayerOnyx&) final;
+ 
+     // A frame without asking the page for its own update first (scheduleRenderingUpdate asks).
+     void scheduleFrame();
+@@ -240,6 +251,8 @@ private:
+     WebCore::IntSize m_groupBufferSize;
+     bool m_groupBufferFailed { false };
+     HashMap<WebCore::GraphicsLayerOnyx*, Group> m_groups;
++    HashMap<WebCore::GraphicsLayerOnyx*, ContentsTexture> m_contentsTextures;
++    unsigned m_picturesUploaded { 0 };
+ 
+     // The tiles' raster on Onyx's app cores (OnyxCores.h): how many were taken at the start.
+     unsigned m_workerCount { 0 };

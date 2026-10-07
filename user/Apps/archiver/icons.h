@@ -1,5 +1,5 @@
 //
-// archiver/icons.h -- the Archiver's icons, drawn from shapes at any size (wtk/vpaint.h, anti-aliased):
+// archiver/icons.h -- the Archiver's icons, drawn from shapes at any size (uikit/vpaint.h, anti-aliased):
 // a folder, a file with its kind's colour band, the archive (a crate with a zipper), and the
 // toolbar's -- Open, New, Add, Extract, Extract All, Delete, Test, Properties. The mock-ups'
 // (tools/screenshot/mockup_archiver.py).
@@ -7,19 +7,19 @@
 #ifndef _archiver_icons_h
 #define _archiver_icons_h
 
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
 namespace ui {
 
-using namespace wtk;
+using namespace uikit;
 
 enum { IC_OPEN, IC_NEW, IC_ADD, IC_EXTRACT, IC_EXTRACT_ALL, IC_DELETE, IC_TEST, IC_INFO };
 
 static const unsigned FOLDER = 0xE2B45C, CRATE = 0xBA8856, ZIPPER = 0xF5ECD2;
 static const unsigned GREEN = 0x4EA05C, RED = 0xC84A40, BLUE = 0x4A80C8, AMBER = 0xE2A03A;
 
-static inline unsigned lighter (unsigned c, int k) { return wk_mix (c, 0xFFFFFF, k); }	// k / 256 toward white
-static inline unsigned darker (unsigned c, int k) { return wk_mix (c, 0x000000, k); }
+static inline unsigned lighter (unsigned c, int k) { return uk_mix (c, 0xFFFFFF, k); }	// k / 256 toward white
+static inline unsigned darker (unsigned c, int k) { return uk_mix (c, 0x000000, k); }
 
 // a rounded box in 1/16 px units made of pixel arguments
 static inline void rbox (Canvas &cv, int x, int y, int w, int h, int r, unsigned c, int alpha = 255)

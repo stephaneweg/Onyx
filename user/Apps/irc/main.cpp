@@ -1,5 +1,5 @@
 //
-// irc -- the Onyx IRC client (wtk), over the WLAN TCP sockets (kapi_tcp_*).
+// irc -- the Onyx IRC client (uikit), over the WLAN TCP sockets (kapi_tcp_*).
 //
 // The main window, a messaging app's: on top the server (a combo box of the servers used before),
 // your nickname and Connect; on the left the conversations (the server, the channels joined, the
@@ -23,12 +23,11 @@
 // else goes to the server as it is. Plain-text IRC (port 6667): no TLS here. Text is UTF-8 on the
 // wire, Latin-1 on the screen (the font's).
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
-#include "wtk/toolbar.h"
-#include "applib.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W		880
 #define H		580
@@ -152,8 +151,8 @@ static void fmt_time (int mins, char *o)			// "14:02"
 static int g_cw = 8, g_fh = 16;					// a character's width, a line's height
 #define RH	(g_fh + 3)					// a text row
 
-static unsigned ink_soft (void) { return wk_mix (C_FIELD_TEXT, C_FIELD, 140); }	// times, events
-static unsigned line_col (void) { return wk_mix (C_FIELD, C_FIELD_TEXT, 36); }	// separators
+static unsigned ink_soft (void) { return uk_mix (C_FIELD_TEXT, C_FIELD, 140); }	// times, events
+static unsigned line_col (void) { return uk_mix (C_FIELD, C_FIELD_TEXT, 36); }	// separators
 
 // A nickname's colour (the same everywhere: its avatar, its name).
 static unsigned nick_color (const char *nick)
@@ -165,7 +164,7 @@ static unsigned nick_color (const char *nick)
 	return C[h % (sizeof C / sizeof C[0])];
 }
 
-// A disc of colour c, anti-aliased (wk_rbox's corners stop at a radius of 16).
+// A disc of colour c, anti-aliased (uk_rbox's corners stop at a radius of 16).
 static int isqrt (int v) { int r = 0; while ((r + 1) * (r + 1) <= v) r++; return r; }
 static void disc (Canvas &cv, int x, int y, int s, unsigned c)
 {
@@ -177,7 +176,7 @@ static void disc (Canvas &cv, int x, int y, int s, unsigned c)
 			int d = isqrt (dx * dx + dy * dy);		// (1/16 px)
 			int a = (r16 - d) * 16 + 128;			// a pixel's width of blending at the edge
 			if (a <= 0) continue;
-			wk_blend_px (cv, x + i, y + j, c, a > 255 ? 255 : a);
+			uk_blend_px (cv, x + i, y + j, c, a > 255 ? 255 : a);
 		}
 }
 
@@ -188,20 +187,20 @@ static void avatar (Canvas &cv, int x, int y, int s, const char *nick)
 	const char *p = nick; while (*p && !is_word_char (*p)) p++;
 	char l[2] = { *p ? *p : '?', 0 };
 	if (l[0] >= 'a' && l[0] <= 'z') l[0] = (char) (l[0] - 32);
-	wk_text_c (cv, x, y, s, s, l, 0x00FFFFFF, 2);
+	uk_text_c (cv, x, y, s, s, l, 0x00FFFFFF, 2);
 }
 
 // Text cut to w px ("..." at the end when it does not fit).
 static void fit (const char *s, int w, char *out, int cap, int style = 0)
 {
 	scpy (out, cap, s);
-	if (wk_text_w (out, style) <= w) return;
+	if (uk_text_w (out, style) <= w) return;
 	int n = slen (out);
 	while (n > 0)
 	{
 		out[--n] = '\0';
 		char t[512]; scpy (t, sizeof t, out); scat (t, sizeof t, "...");
-		if (wk_text_w (t, style) <= w) { scpy (out, cap, t); return; }
+		if (uk_text_w (t, style) <= w) { scpy (out, cap, t); return; }
 	}
 }
 
@@ -230,7 +229,7 @@ static void draw_n (Canvas &cv, int x, int y, const char *s, int n, unsigned c, 
 	char t[512]; if (n > 511) n = 511;
 	for (int i = 0; i < n; i++) t[i] = s[i];
 	t[n] = '\0';
-	wk_text_l (cv, x, y, RH, t, c, style);
+	uk_text_l (cv, x, y, RH, t, c, style);
 }
 
 // A pixel-scrolled view pinned to its bottom (the newest): scroll = px up from the bottom.
@@ -240,19 +239,19 @@ struct Scroller
 	void clamp () { int m = total - view; if (m < 0) m = 0; if (scroll > m) scroll = m; if (scroll < 0) scroll = 0; }
 	void bar (Canvas &cv, int w, int h)
 	{
-		WkThumb t = wk_thumb (total, view, total - view - scroll, h - 4);
-		if (t.show) wk_draw_vscroll (cv, w - WK_SBW - 2, 2, WK_SBW, h - 4, t, C_FIELD, drag);
+		UkThumb t = uk_thumb (total, view, total - view - scroll, h - 4);
+		if (t.show) uk_draw_vscroll (cv, w - UK_SBW - 2, 2, UK_SBW, h - 4, t, C_FIELD, drag);
 	}
 	// The pointer: the wheel scrolls; the bar's thumb drags. true: handled (redraw).
 	bool mouse (Widget &wd, int mx, int my, int bl, int wheel)
 	{
 		if (wheel) { scroll += wheel * 3 * RH; clamp (); return true; }
-		WkThumb t = wk_thumb (total, view, total - view - scroll, wd.height - 4);
+		UkThumb t = uk_thumb (total, view, total - view - scroll, wd.height - 4);
 		if (drag && !bl) { drag = false; return true; }
-		if (bl && !drag && t.show && mx >= wd.width - WK_SBW - 4) drag = true;
+		if (bl && !drag && t.show && mx >= wd.width - UK_SBW - 4) drag = true;
 		if (drag)
 		{
-			long pos = wk_thumb_pos (my - 2, wd.height - 4, total, view, t.h);
+			long pos = uk_thumb_pos (my - 2, wd.height - 4, total, view, t.h);
 			scroll = (int) (total - view - pos); clamp ();
 			return true;
 		}
@@ -275,9 +274,9 @@ public:
 		canvas.clear (C_FIELD);
 		char b[400]; int tw = width - 32 - rightPad;
 		fit (title, tw, b, sizeof b, 2);
-		wk_text_l (canvas, 16, 5, RH, b, C_FIELD_TEXT, 2);
+		uk_text_l (canvas, 16, 5, RH, b, C_FIELD_TEXT, 2);
 		fit (sub, tw, b, sizeof b);
-		wk_text_l (canvas, 16, 5 + RH + 1, RH, b, ink_soft ());
+		uk_text_l (canvas, 16, 5 + RH + 1, RH, b, ink_soft ());
 		canvas.fillRect (0, height - 1, width, 1, line_col ());
 	}
 };
@@ -480,10 +479,10 @@ public:
 		if (!groups (l)) return false;
 		return !(p && groups (*p) && p->kind == l.kind && ieq (p->nick, l.nick) && l.mins - p->mins < 5 && l.mins >= p->mins);
 	}
-	int textW () const { return width - TX - WK_SBW - 14; }
+	int textW () const { return width - TX - UK_SBW - 14; }
 	int height_of (Buf *b, const Line &l, const Line *p)
 	{
-		if (b->kind == BK_SERVER) return wrap_rows (l.text, (width - PADL - 7 * g_cw - WK_SBW - 14) / g_cw) * RH;
+		if (b->kind == BK_SERVER) return wrap_rows (l.text, (width - PADL - 7 * g_cw - UK_SBW - 14) / g_cw) * RH;
 		int rows = wrap_rows (l.text, textW () / g_cw - (l.kind == LK_ACTION ? slen (l.nick) + 3 : 0));
 		int h = rows * RH;
 		if (opens (l, p)) h += RH + 12;			// the gap, the name's row
@@ -496,9 +495,9 @@ public:
 		char t[8]; fmt_time (l.mins, t);
 		if (b->kind == BK_SERVER)				// the server's: the time, the text
 		{
-			wk_text_l (canvas, PADL, y, RH, t, ink_soft ());
+			uk_text_l (canvas, PADL, y, RH, t, ink_soft ());
 			unsigned c = l.kind == LK_ERROR ? 0x00C0392B : l.kind == LK_NOTICE ? 0x009A6400 : C_FIELD_TEXT;
-			int x = PADL + 7 * g_cw, maxc = (width - x - WK_SBW - 14) / g_cw;
+			int x = PADL + 7 * g_cw, maxc = (width - x - UK_SBW - 14) / g_cw;
 			for (const char *s = l.text; *s || s == l.text; )
 			{
 				const char *nx; int n = wrap_row (s, maxc, &nx);
@@ -507,16 +506,16 @@ public:
 			}
 			return;
 		}
-		if (l.mention) wk_rbox (canvas, TX - 6, y + (opens (l, p) ? 12 : 0), width - TX - WK_SBW - 8, h - (opens (l, p) ? 12 : 0), 6,
-					  wk_mix (C_FIELD, C_ACCENT, 40), wk_mix (C_FIELD, C_ACCENT, 40));
+		if (l.mention) uk_rbox (canvas, TX - 6, y + (opens (l, p) ? 12 : 0), width - TX - UK_SBW - 8, h - (opens (l, p) ? 12 : 0), 6,
+					  uk_mix (C_FIELD, C_ACCENT, 40), uk_mix (C_FIELD, C_ACCENT, 40));
 		if (opens (l, p))
 		{
 			y += 12;
 			avatar (canvas, PADL, y + 2, AV, l.nick);
 			char nm[40]; scpy (nm, sizeof nm, l.nick);
 			if (l.kind == LK_NOTICE) scat (nm, sizeof nm, " (notice)");
-			wk_text_l (canvas, TX, y, RH, nm, nick_color (l.nick), 2);
-			wk_text_l (canvas, TX + wk_text_w (nm, 2) + 10, y, RH, t, ink_soft ());
+			uk_text_l (canvas, TX, y, RH, nm, nick_color (l.nick), 2);
+			uk_text_l (canvas, TX + uk_text_w (nm, 2) + 10, y, RH, t, ink_soft ());
 			y += RH;
 		}
 		else if (!groups (l)) y += 2;
@@ -526,7 +525,7 @@ public:
 		if (l.kind == LK_ACTION)
 		{
 			char a[40] = "* "; scat (a, sizeof a, l.nick); scat (a, sizeof a, " ");
-			wk_text_l (canvas, x, y, RH, a, c, 3);
+			uk_text_l (canvas, x, y, RH, a, c, 3);
 			x += slen (a) * g_cw; maxc -= slen (a);
 		}
 		for (const char *s = l.text; ; )
@@ -553,8 +552,8 @@ public:
 		sc.total = total; sc.scroll = b->scroll; sc.clamp (); b->scroll = sc.scroll;
 		if (n == 0)
 		{
-			wk_text_c (canvas, 0, height / 2 - RH, width, RH, b->kind == BK_SERVER ? "No server messages yet" : "No messages yet", ink_soft (), 2);
-			wk_text_c (canvas, 0, height / 2, width, RH, b->kind == BK_SERVER ? "Connect to a server to start." : "Say hello to the channel.", ink_soft ());
+			uk_text_c (canvas, 0, height / 2 - RH, width, RH, b->kind == BK_SERVER ? "No server messages yet" : "No messages yet", ink_soft (), 2);
+			uk_text_c (canvas, 0, height / 2, width, RH, b->kind == BK_SERVER ? "Connect to a server to start." : "Say hello to the channel.", ink_soft ());
 			return;
 		}
 		int y = 6 + (sc.view > total ? sc.view - total : sc.view - total + sc.scroll);
@@ -584,20 +583,20 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		wk_etch_h (canvas, 0, 0, width, C_BG);
+		uk_etch_h (canvas, 0, 0, width, C_BG);
 		unsigned dot = g_state == 2 ? 0x0027AE60 : g_state == 1 ? 0x00E0A020 : 0x009A9A9A;
-		wk_rbox (canvas, 10, (height - 8) / 2 + 1, 8, 8, 4, wk_tone (dot, 170), dot);
+		uk_rbox (canvas, 10, (height - 8) / 2 + 1, 8, 8, 4, uk_tone (dot, 170), dot);
 		char t[160] = "";
 		if (g_state == 2) { scat (t, sizeof t, "Connected as "); scat (t, sizeof t, g_nick); }
 		else if (g_state == 1) { scat (t, sizeof t, "Connecting to "); scat (t, sizeof t, g_server); scat (t, sizeof t, "..."); }
 		else if (g_state == 0) scat (t, sizeof t, "Waiting for the network...");
 		else scat (t, sizeof t, "Offline");
-		wk_text_l (canvas, 24, 1, height - 1, t, C_TEXT);
+		uk_text_l (canvas, 24, 1, height - 1, t, C_TEXT);
 		char r[160] = "";
 		int nch = 0; for (int i = 0; i < g_nbuf; i++) if (g_buf[i]->kind == BK_CHAN && g_buf[i]->joined) nch++;
 		if (g_sock >= 0) { scat (r, sizeof r, g_server); scat (r, sizeof r, ":"); scatn (r, sizeof r, (int) g_port); scat (r, sizeof r, "   "); }
 		scatn (r, sizeof r, nch); scat (r, sizeof r, nch == 1 ? " channel" : " channels");
-		wk_text_l (canvas, width - 10 - wk_text_w (r), 1, height - 1, r, wk_mix (C_TEXT, C_BG, 90));
+		uk_text_l (canvas, width - 10 - uk_text_w (r), 1, height - 1, r, uk_mix (C_TEXT, C_BG, 90));
 	}
 };
 
@@ -1233,7 +1232,7 @@ static void connect_now (void)
 	info (t, LK_EVENT);
 	g_state = 1;
 	switch_to (0);
-	if (Root::current ()) { Root::current ()->draw (); wk_present (); }	// (painted before the blocking connect)
+	if (Root::current ()) { Root::current ()->draw (); uk_present (); }	// (painted before the blocking connect)
 	g_sock = kapi_tcp_connect (g_server, g_port);
 	if (g_sock < 0) { g_state = 3; info ("The connection failed.", LK_ERROR); layout_chat (); return; }
 	char l[160];
@@ -1446,7 +1445,7 @@ public:
 
 static Label *label (int x, int y, int h, const char *s, unsigned bg, unsigned fg)
 {
-	return new Label (x, y, wk_text_w (s) + 6, h, s, fg, bg);
+	return new Label (x, y, uk_text_w (s) + 6, h, s, fg, bg);
 }
 
 static int main_window (void)
@@ -1474,8 +1473,8 @@ static int main_window (void)
 
 	IrcRoot root;
 	if (root.canvas.px == 0) return 1;
-	g_cw = wk_text_w ("M"); if (g_cw < 1) g_cw = 8;
-	g_fh = wk_fh ();
+	g_cw = uk_text_w ("M"); if (g_cw < 1) g_cw = 8;
+	g_fh = uk_fh ();
 	g_rooms = new Room[MAXROOMS]; g_view = new int[MAXROOMS];
 
 	// The toolbar: the server, the nickname, Connect; Rooms on the right.
@@ -1527,7 +1526,7 @@ static int main_window (void)
 	g_chatPane->addChild (g_leave);
 	g_chat = new ChatView (0, HEAD_H, mw - USERS_W, mh - HEAD_H - IN_H); g_chat->anchor = ANCHOR_FILL;
 	g_chatPane->addChild (g_chat);
-	g_usersLbl = new Label (mw - USERS_W + 4, HEAD_H + 6, USERS_W - 12, 20, "Users", wk_mix (C_FIELD_TEXT, C_FIELD, 120), C_FIELD);
+	g_usersLbl = new Label (mw - USERS_W + 4, HEAD_H + 6, USERS_W - 12, 20, "Users", uk_mix (C_FIELD_TEXT, C_FIELD, 120), C_FIELD);
 	g_usersLbl->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
 	g_chatPane->addChild (g_usersLbl);
 	g_users = new ListBox (mw - USERS_W + 2, HEAD_H + 28, USERS_W - 12, mh - HEAD_H - IN_H - 28 - 38, 0, on_user_pm);
@@ -1563,7 +1562,7 @@ static int main_window (void)
 	g_grid = new DataGrid (12, ry + 40, mw - 24, mh - ry - 40 - 34);
 	g_grid->anchor = ANCHOR_FILL;
 	g_grid->setColumns (3);
-	g_grid->setColumn (0, "Room", 190); g_grid->setColumn (1, "Users", 70, GRID_RIGHT); g_grid->setColumn (2, "Topic", mw - 24 - 190 - 70 - WK_SBW - 6);
+	g_grid->setColumn (0, "Room", 190); g_grid->setColumn (1, "Users", 70, GRID_RIGHT); g_grid->setColumn (2, "Topic", mw - 24 - 190 - 70 - UK_SBW - 6);
 	g_grid->cellText = room_cell; g_grid->sortable = true; g_grid->sortCol = 1; g_grid->sortDesc = true;
 	g_grid->onSort = room_sort; g_grid->onActivate = room_join;
 	g_grid->emptyText = "No room to show";
@@ -1619,15 +1618,15 @@ public:
 		canvas.clear (C_FIELD);
 		avatar (canvas, 14, (height - 32) / 2, 32, g_peer);
 		char b[64]; fit (g_peer, width - 80, b, sizeof b, 2);
-		wk_text_l (canvas, 58, height / 2 - RH, RH, b, C_FIELD_TEXT, 2);
+		uk_text_l (canvas, 58, height / 2 - RH, RH, b, C_FIELD_TEXT, 2);
 		unsigned dot = g_online ? 0x0027AE60 : 0x009A9A9A;
-		wk_rbox (canvas, 58, height / 2 + (RH - 8) / 2 + 1, 8, 8, 4, wk_tone (dot, 170), dot);
+		uk_rbox (canvas, 58, height / 2 + (RH - 8) / 2 + 1, 8, 8, 4, uk_tone (dot, 170), dot);
 		char s[140] = "";
 		if (!g_mainPid) scpy (s, sizeof s, "IRC is not running");
 		else if (g_online) { scat (s, sizeof s, "Online on "); scat (s, sizeof s, g_psrv); }
 		else scpy (s, sizeof s, "Offline");
 		fit (s, width - 90, b, sizeof b);
-		wk_text_l (canvas, 72, height / 2 + 1, RH, b, ink_soft ());
+		uk_text_l (canvas, 72, height / 2 + 1, RH, b, ink_soft ());
 		canvas.fillRect (0, height - 1, width, 1, line_col ());
 	}
 };
@@ -1646,7 +1645,7 @@ public:
 	static bool newTime (const PmLine &l, const PmLine *p)
 	{ return !p || mins (l) - mins (*p) >= 15 || mins (l) < mins (*p); }
 	static bool sameRun (const PmLine &l, const PmLine *nx) { return nx && bubble (*nx) && bubble (l) && nx->self == l.self && !newTime (*nx, &l); }
-	int maxc () const { int w = (width - 24 - WK_SBW - 40) * 74 / 100 - 24; return w / g_cw; }
+	int maxc () const { int w = (width - 24 - UK_SBW - 40) * 74 / 100 - 24; return w / g_cw; }
 	int height_of (const PmLine &l, const PmLine *p)
 	{
 		int h = 0;
@@ -1658,7 +1657,7 @@ public:
 	}
 	void draw_line (const PmLine &l, const PmLine *p, const PmLine *nx, int y)
 	{
-		if (newTime (l, p)) { wk_text_c (canvas, 0, y + 4, width - WK_SBW, RH, l.time, ink_soft ()); y += RH + 10; }
+		if (newTime (l, p)) { uk_text_c (canvas, 0, y + 4, width - UK_SBW, RH, l.time, ink_soft ()); y += RH + 10; }
 		if (!bubble (l))
 		{
 			unsigned c = ink_soft ();
@@ -1667,7 +1666,7 @@ public:
 			{
 				const char *nxs; int n = wrap_row (s, mc, &nxs);
 				char t[512]; int k = 0; for (; k < n && k < 511; k++) t[k] = s[k]; t[k] = '\0';
-				wk_text_c (canvas, 0, y + 4, width - WK_SBW, RH, t, c, l.kind == 'a' || l.kind == 'A' ? 1 : 0);
+				uk_text_c (canvas, 0, y + 4, width - UK_SBW, RH, t, c, l.kind == 'a' || l.kind == 'A' ? 1 : 0);
 				y += RH;
 				if (!*nxs) break; s = nxs;
 			}
@@ -1676,10 +1675,10 @@ public:
 		y += (p && bubble (*p) && p->self == l.self && !newTime (l, p)) ? 3 : 10;
 		int widest = 0, rows = wrap_rows (l.text, maxc (), &widest);
 		int bw = widest * g_cw + 24, bh = rows * RH + 14;
-		int x = l.self ? width - WK_SBW - 12 - bw : 14 + 28 + 8;
-		unsigned fill = l.self ? C_ACCENT : wk_mix (C_FIELD, C_FIELD_TEXT, 24);
-		unsigned ink = l.self ? wk_ink_on (C_ACCENT) : (l.kind == 'n' ? 0x009A6400 : C_FIELD_TEXT);
-		wk_rbox (canvas, x, y, bw, bh, 14, fill, fill);
+		int x = l.self ? width - UK_SBW - 12 - bw : 14 + 28 + 8;
+		unsigned fill = l.self ? C_ACCENT : uk_mix (C_FIELD, C_FIELD_TEXT, 24);
+		unsigned ink = l.self ? uk_ink_on (C_ACCENT) : (l.kind == 'n' ? 0x009A6400 : C_FIELD_TEXT);
+		uk_rbox (canvas, x, y, bw, bh, 14, fill, fill);
 		int ty = y + 7;
 		for (const char *s = l.text; ; )
 		{
@@ -1700,9 +1699,9 @@ public:
 		if (g_pcount == 0)
 		{
 			avatar (canvas, (width - 64) / 2, height / 2 - 90, 64, g_peer);
-			wk_text_c (canvas, 0, height / 2 - 14, width, RH, g_peer, C_FIELD_TEXT, 2);
+			uk_text_c (canvas, 0, height / 2 - 14, width, RH, g_peer, C_FIELD_TEXT, 2);
 			char s[80] = "Say hello to "; scat (s, sizeof s, g_peer);
-			wk_text_c (canvas, 0, height / 2 + 8, width, RH, s, ink_soft ());
+			uk_text_c (canvas, 0, height / 2 + 8, width, RH, s, ink_soft ());
 			return;
 		}
 		int y = 4 + (sc.view > total ? sc.view - total : sc.view - total + sc.scroll);
@@ -1806,8 +1805,8 @@ static int pm_window (const char *peer)
 	g_pl = new PmLine[PMAX];
 	PmRoot root;
 	if (root.canvas.px == 0) return 1;
-	g_cw = wk_text_w ("M"); if (g_cw < 1) g_cw = 8;
-	g_fh = wk_fh ();
+	g_cw = uk_text_w ("M"); if (g_cw < 1) g_cw = 8;
+	g_fh = uk_fh ();
 	root.setBg (C_FIELD);
 
 	g_phead = new PmHeader (0, 0, PW, 56); g_phead->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;

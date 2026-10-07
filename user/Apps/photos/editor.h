@@ -50,7 +50,7 @@ public:
 		if (!pic_info (path, info)) memset (&info, 0, sizeof info);
 		src.free_ ();
 		if (have && have->px) src.copy_of (*have);
-		else if (!Thumbs::load_full (path, g_lib.ph[pi].orient, src)) { wk_messagebox ("Photos", "This picture cannot be read.", MB_OK); return false; }
+		else if (!Thumbs::load_full (path, g_lib.ph[pi].orient, src)) { uk_messagebox ("Photos", "This picture cannot be read.", MB_OK); return false; }
 		fit (src, base, 1600, 1600);
 		rot = 0; straight = 0; c0x = c0y = 0; c1x = c1y = 1; ratio = 0; memset (&adj, 0, sizeof adj); enhanced = false;
 		tab = 1; before = false; geoRot = -1; viewDirty = true; fthumbDirty = true; changed = false; drag = D_NONE; slider = -1;
@@ -134,7 +134,7 @@ public:
 	// ---- drawing
 	void button (int x, int y, int w, const char *l, int kind, bool accent)
 	{
-		unsigned c = accent ? (hot == kind ? wk_mix (C_ACCENT, 0xFFFFFF, 30) : C_ACCENT) : (hot == kind || (kind == E_BEFORE && before) ? 0x565A63 : D_BTN);
+		unsigned c = accent ? (hot == kind ? uk_mix (C_ACCENT, 0xFFFFFF, 30) : C_ACCENT) : (hot == kind || (kind == E_BEFORE && before) ? 0x565A63 : D_BTN);
 		fill_round (canvas, x, y, w, 32, 6, c);
 		text_c (canvas, x, y, w, 32, l, accent ? C_SEL_TEXT : D_TEXT, F_UI, accent ? 1 : 0);
 		hits.add (x, y, w, 32, kind);
@@ -166,17 +166,17 @@ public:
 	{
 		int x0 = ix + (int) (c0x * iw), y0 = iy + (int) (c0y * ih), x1 = ix + (int) (c1x * iw), y1 = iy + (int) (c1y * ih);
 		// dimmed outside
-		wk_rbox (canvas, ix, iy, iw, y0 - iy, 0, 0, 0, 150);
-		wk_rbox (canvas, ix, y1, iw, iy + ih - y1, 0, 0, 0, 150);
-		wk_rbox (canvas, ix, y0, x0 - ix, y1 - y0, 0, 0, 0, 150);
-		wk_rbox (canvas, x1, y0, ix + iw - x1, y1 - y0, 0, 0, 0, 150);
+		uk_rbox (canvas, ix, iy, iw, y0 - iy, 0, 0, 0, 150);
+		uk_rbox (canvas, ix, y1, iw, iy + ih - y1, 0, 0, 0, 150);
+		uk_rbox (canvas, ix, y0, x0 - ix, y1 - y0, 0, 0, 0, 150);
+		uk_rbox (canvas, x1, y0, ix + iw - x1, y1 - y0, 0, 0, 0, 150);
 		// the frame, the thirds
-		wk_rline (canvas, x0, y0, x1 - x0, y1 - y0, 0, 0xFFFFFF);
-		wk_rline (canvas, x0 + 1, y0 + 1, x1 - x0 - 2, y1 - y0 - 2, 0, 0xFFFFFF, 160);
+		uk_rline (canvas, x0, y0, x1 - x0, y1 - y0, 0, 0xFFFFFF);
+		uk_rline (canvas, x0 + 1, y0 + 1, x1 - x0 - 2, y1 - y0 - 2, 0, 0xFFFFFF, 160);
 		for (int k = 1; k < 3; k++)
 		{
-			wk_rbox (canvas, x0 + (x1 - x0) * k / 3, y0, 1, y1 - y0, 0, 0xFFFFFF, 0xFFFFFF, 110);
-			wk_rbox (canvas, x0, y0 + (y1 - y0) * k / 3, x1 - x0, 1, 0, 0xFFFFFF, 0xFFFFFF, 110);
+			uk_rbox (canvas, x0 + (x1 - x0) * k / 3, y0, 1, y1 - y0, 0, 0xFFFFFF, 0xFFFFFF, 110);
+			uk_rbox (canvas, x0, y0 + (y1 - y0) * k / 3, x1 - x0, 1, 0, 0xFFFFFF, 0xFFFFFF, 110);
 		}
 		int hx[4] = { x0, x1, x0, x1 }, hy[4] = { y0, y0, y1, y1 };
 		for (int k = 0; k < 4; k++) fill_round (canvas, hx[k] - 6, hy[k] - 6, 12, 12, 3, 0xFFFFFF);
@@ -254,11 +254,11 @@ public:
 			char d[80]; snprintf (d, sizeof d, "The result: %d \xC3\x97 %d", (int) ((c1x - c0x) * ((rot & 1) ? src.h : src.w)), (int) ((c1y - c0y) * ((rot & 1) ? src.w : src.h)));
 			text (canvas, X, y, d, D_DIM, F_SMALL);
 			y += 30;
-			text (canvas, X, y, "Reset", hot == E_RESET ? 0xFFFFFF : wk_mix (C_ACCENT, 0xFFFFFF, 90), F_UI, 1); hits.add (X, y - 4, tw ("Reset", F_UI, 1), 24, E_RESET);
+			text (canvas, X, y, "Reset", hot == E_RESET ? 0xFFFFFF : uk_mix (C_ACCENT, 0xFFFFFF, 90), F_UI, 1); hits.add (X, y - 4, tw ("Reset", F_UI, 1), 24, E_RESET);
 		}
 		else if (tab == 1)
 		{
-			fill_round (canvas, X - 4, y, W + 8, 36, 6, enhanced ? wk_mix (0x3C4048, C_ACCENT, 100) : (hot == E_ENHANCE ? 0x484C55 : 0x3C4048));
+			fill_round (canvas, X - 4, y, W + 8, 36, 6, enhanced ? uk_mix (0x3C4048, C_ACCENT, 100) : (hot == E_ENHANCE ? 0x484C55 : 0x3C4048));
 			icon (canvas, I_MAGIC, X + 6, y + 8, 20, AMBER); text_v (canvas, X + 36, y, 36, "Enhance (automatic)", D_TEXT, F_UI, 1);
 			if (enhanced) icon (canvas, I_CHECK, X + W - 20, y + 9, 18, 0xFFFFFF);
 			hits.add (X - 4, y, W + 8, 36, E_ENHANCE);
@@ -270,7 +270,7 @@ public:
 				for (int a = FROM[s]; a < TO[s]; a++) { draw_slider (X, y, W, ADJ_NAME[a], adj.v[a], a == A_SHARPNESS ? 0 : -100, 100, E_SLIDER, a); y += 44; }
 				y += 4;
 			}
-			text (canvas, X, y, "Reset", hot == E_RESET ? 0xFFFFFF : wk_mix (C_ACCENT, 0xFFFFFF, 90), F_UI, 1); hits.add (X, y - 4, tw ("Reset", F_UI, 1), 24, E_RESET);
+			text (canvas, X, y, "Reset", hot == E_RESET ? 0xFFFFFF : uk_mix (C_ACCENT, 0xFFFFFF, 90), F_UI, 1); hits.add (X, y - 4, tw ("Reset", F_UI, 1), 24, E_RESET);
 		}
 		else
 		{
@@ -361,7 +361,7 @@ public:
 		if (!up || !h) return true;
 		switch (h->kind)
 		{
-		case E_CANCEL: if (!changed || wk_messagebox ("Photos", "Leave without saving the changes?", MB_YESNO) == 1) close_editor (); break;
+		case E_CANCEL: if (!changed || uk_messagebox ("Photos", "Leave without saving the changes?", MB_YESNO) == 1) close_editor (); break;
 		case E_SAVE: save (false); break;
 		case E_SAVEAS: save (true); break;
 		case E_TAB: tab = h->a; viewDirty = true; invalidate (true); break;
@@ -382,8 +382,8 @@ public:
 	}
 	bool key (long k)
 	{
-		if (k == 27) { if (!changed || wk_messagebox ("Photos", "Leave without saving the changes?", MB_YESNO) == 1) close_editor (); return true; }
-		if (k == WK_CTRL ('S')) { save (false); return true; }
+		if (k == 27) { if (!changed || uk_messagebox ("Photos", "Leave without saving the changes?", MB_YESNO) == 1) close_editor (); return true; }
+		if (k == UK_CTRL ('S')) { save (false); return true; }
 		return false;
 	}
 
@@ -403,7 +403,7 @@ public:
 		char out[400]; scpy (out, path, sizeof out);
 		if (!as && !png && !jpg)
 		{
-			wk_messagebox ("Photos", "Photos writes JPEG and PNG pictures: choose a name for the edited one.", MB_OK);
+			uk_messagebox ("Photos", "Photos writes JPEG and PNG pictures: choose a name for the edited one.", MB_OK);
 			as = true;
 		}
 		if (as)
@@ -411,18 +411,18 @@ public:
 			char dir[400], name[200]; scpy (dir, path, sizeof dir); char *s = strrchr (dir, '/'); if (s) *s = 0;
 			scpy (name, base_name (path), sizeof name); char *dot = strrchr (name, '.'); if (dot) *dot = 0;
 			char def[240]; snprintf (def, sizeof def, "%s (edited).%s", name, png ? "png" : "jpg");
-			if (!wk_file_save (out, sizeof out, dir, def)) return;
+			if (!uk_file_save (out, sizeof out, dir, def, png ? "PNG images|*.png|JPEG images|*.jpg;*.jpeg|All files|*" : "JPEG images|*.jpg;*.jpeg|PNG images|*.png|All files|*")) return;
 			if (!ends (out, ".png") && !ends (out, ".jpg") && !ends (out, ".jpeg")) { int k = (int) strlen (out); if (k < 390) strcpy (out + k, png ? ".png" : ".jpg"); }
 			png = ends (out, ".png");
 		}
 		status_note ("Saving...");
-		Pix r; if (!render (r)) { wk_messagebox ("Photos", "Not enough memory to save this picture.", MB_OK); return; }
+		Pix r; if (!render (r)) { uk_messagebox ("Photos", "Not enough memory to save this picture.", MB_OK); return; }
 		opaque (r);
 		unsigned n = 0; unsigned char *data = png ? pngsave::png_encode (r.px, r.w, r.h, false, &n) : pngsave::jpeg_encode (r.px, r.w, r.h, 92, &n);
 		if (data && !png && info.exifOff) { unsigned m = 0; unsigned char *x = jpeg_with_exif (data, n, path, info, &m); if (x) { delete[] data; data = x; n = m; } }
 		int ok = data ? kapi_save_file (out, data, n) : -1;
 		delete[] data;
-		if (ok < 0) { wk_messagebox ("Photos", "The picture could not be written.", MB_OK); return; }
+		if (ok < 0) { uk_messagebox ("Photos", "The picture could not be written.", MB_OK); return; }
 		// the library follows
 		PicInfo ni; pic_info (out, ni);
 		int k = g_lib.find (out);

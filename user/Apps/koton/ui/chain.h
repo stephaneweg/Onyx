@@ -194,7 +194,7 @@ public:
 	}
 	void addEffect ()
 	{
-		if (!g_plug || !g_plug->available () || !g_plug->countKind (KP_EFFECT)) { wk_messagebox ("Effects", "No effect plugin here (they live in SD:/koton/plugins).", MB_OK); return; }
+		if (!g_plug || !g_plug->available () || !g_plug->countKind (KP_EFFECT)) { uk_messagebox ("Effects", "No effect plugin here (they live in SD:/koton/plugins).", MB_OK); return; }
 		Track &tr = g_doc.p.tracks[track];
 		PopupMenu *m = new PopupMenu (absX (this) + 16, absY (this) + height / 2);
 		int ids[16], n = 0;

@@ -1,25 +1,40 @@
 //
-// terminal/main.cpp -- a "dumb" terminal (tty). It owns the keyboard and scrollback
-// only; the actual shell is a separate program, /bin/cmd. At startup the terminal
-// spawns cmd wired to two pipes: keystrokes go to cmd's stdin, and cmd's stdout is
-// drained into the scrollback. So all command parsing / pipelines / builtins live in
-// cmd, not here. The terminal does local line editing + echo (Backspace edits, Enter
-// sends the line, Ctrl-D sends EOF); cmd prints the prompt.
+// terminal/main.cpp -- a "dumb" terminal (tty) with TABS. It owns the keyboard and the scrollbacks
+// only; each tab's shell is a separate program, /bin/cmd, spawned wired to two pipes: keystrokes go
+// to its stdin, and its stdout is drained into the tab's scrollback. So all command parsing /
+// pipelines / builtins live in cmd, not here. The terminal does local line editing + echo
+// (lineedit.h: the cursor moves in the line with Left / Right / Home / End, Up / Down recall the lines
+// sent before, Enter sends the line, Ctrl-C stops the running command, Ctrl-D sends EOF); cmd prints
+// the prompt.
 //
-// It runs in TWO modes (same scrollback + rendering):
-//   - embedded in the activity shell as a SECONDARY app: it registers, gets a surface
-//     viewport, and is driven by the shell's forwarded input over the mailbox.
-//   - standalone fallback (no shell): its own decorated wtk window.
-// Both modes need a custom loop (not embed::run / Root::run) because the terminal must
-// also pump cmd's output pipe every frame.
+// The tabs (uikit::TabStrip): each its own cmd, screen, scrollback, history and current folder. A new
+// one with the "+", Shell > New Tab or Ctrl+Shift+T; Ctrl+Tab / Ctrl+Shift+Tab, Ctrl+PgDn / Ctrl+PgUp
+// or a click change tabs; the cross, a middle click, Ctrl+Shift+W close one -- after a question when
+// something runs in it. A tab's title is the command running in it, else its folder (the prompt's);
+// a dot marks a tab where something runs. Closing a tab terminates its cmd AND everything under it
+// (kapi_proc_tree: the pipeline's stages, a script's cmd and what it started...) at once; a shell that
+// ends by itself (exit) takes its tab away; the last tab gone, the window closes.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"		// recursive widget toolkit (TermView draws into a Canvas)
-#include "applib.h"		// should_exit, pump_events, msleep
-#include "embed.h"		// run embedded in the activity shell (surface + mailbox)
+// Its own decorated uikit window, with a loop of its own (not Root::run): the terminal must also
+// pump the shells' output pipes every frame. The window, the tabs and the menus are the theme's (uikit's
+// look); the console alone (TermView) is dark, in colours of its own, a margin of the window's face
+// around it.
+//
+// Its words in the user's language (uikit/lang.h: TR (), SD:/apps/terminal.app/lang/<code>.txt), in
+// Latin-1 as the bitmap font draws them (no text face here: the console is a grid of cells). What the
+// shells print is theirs.
+//
+// MIT licence (Onyx).
+//
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"		// recursive widget toolkit (TermView draws into a Canvas)
+#include "lineedit.h"		// the line being typed: its cursor, the history
 
 #define W		620		// standalone window size
-#define H		400
+#define H		420
+#define STRIP_H		30		// the tabs' strip
+#define PAD		4		// the window's face around the console
+#define MAXTABS		16
 #define SCROLLBACK	200		// bounded scrollback (rows)
 #define COLS		112		// stored chars per line
 #define TERM_BG		0x001A3A46	// the console's own colours (a terminal stays dark: a deep
@@ -27,121 +42,300 @@
 
 static int g_fw = 8, g_fh = 16, g_vrows = 1, g_cols = COLS;	// g_cols = columns that fit the view
 
-// Scrollback ring of finalized lines + the line currently being built (prompt + echo
-// + the program output not yet newline-terminated).
-static char g_ring[SCROLLBACK][COLS + 1];
-static int  g_rfirst = 0, g_rcount = 0;
-static char g_cur[COLS + 1];
-static int  g_curlen = 0;
-static int  g_scroll = 0;		// 0 = bottom
+// A tab: its shell, its pipes, its screen. The scrollback ring holds the finalized lines + the line
+// currently being built (the program output not yet newline-terminated: the prompt). The line being
+// typed is not in there: it is drawn after `cur` (wrapped), and enters the scrollback when it is sent.
+struct Tab
+{
+	char ring[SCROLLBACK][COLS + 1];
+	int  rfirst, rcount;
+	char cur[COLS + 1];
+	int  curlen;
+	int  scroll;			// 0 = bottom
+	void *to_cmd, *from_cmd;	// keystrokes -> cmd's stdin; cmd's stdout -> the screen
+	void *cmd;			// the shell's process handle
+	int  pid;			// its pid (0: not known yet)
+	LineEdit le;			// the line being typed (cmd takes 2047 characters) + the history
+	char last[48];			// the last line sent (the title while it runs)
+	int  sent;			// lines sent so far
+	int  busy;			// something runs (not the shell idle at its prompt)
+};
+static Tab *g_tab;			// the tab shown
+static char g_live[COLS + LE_LINE + 1];	// cur + the line being typed, as drawn
 
-// The shell process + its pipes.
-static void *g_to_cmd = 0;		// terminal writes keystrokes -> cmd stdin
-static void *g_from_cmd = 0;		// cmd stdout -> terminal reads
-static void *g_cmd = 0;
-
-static char g_input[256];		// the line being typed (for editing + sending)
-static int  g_inlen = 0;
+using namespace uikit;
+static TabStrip *g_strip;
+static Widget *g_view;
+static bool g_quit;			// the last tab is gone
 
 // ---- scrollback / output ----------------------------------------------------
 
-static void ring_push (const char *s)
+static void ring_push (Tab *t, const char *s)
 {
 	int idx;
-	if (g_rcount < SCROLLBACK) { idx = (g_rfirst + g_rcount) % SCROLLBACK; g_rcount++; }
-	else { idx = g_rfirst; g_rfirst = (g_rfirst + 1) % SCROLLBACK; }
+	if (t->rcount < SCROLLBACK) { idx = (t->rfirst + t->rcount) % SCROLLBACK; t->rcount++; }
+	else { idx = t->rfirst; t->rfirst = (t->rfirst + 1) % SCROLLBACK; }
 	int i = 0;
-	for (; s[i] && i < COLS; i++) g_ring[idx][i] = s[i];
-	g_ring[idx][i] = '\0';
+	for (; s[i] && i < COLS; i++) t->ring[idx][i] = s[i];
+	t->ring[idx][i] = '\0';
 }
-static const char *ring_line (int i) { return g_ring[(g_rfirst + i) % SCROLLBACK]; }
-static void flush_cur (void) { g_cur[g_curlen] = '\0'; ring_push (g_cur); g_curlen = 0; g_cur[0] = '\0'; }
+static const char *ring_line (const Tab *t, int i) { return t->ring[(t->rfirst + i) % SCROLLBACK]; }
+static void flush_cur (Tab *t) { t->cur[t->curlen] = '\0'; ring_push (t, t->cur); t->curlen = 0; t->cur[0] = '\0'; }
 
-// One output byte into the display. Handles \n (newline), \t (tab), \b (erase, for
+// One output byte into a tab's display. Handles \n (newline), \t (tab), \b (erase, for
 // local echo), and \f (form-feed = clear, emitted by cmd's `clear` builtin).
-static void term_putc (char c)
+static void term_putc (Tab *t, char c)
 {
 	if (c == '\r') return;
-	if (c == '\n') { flush_cur (); return; }
-	if (c == '\f') { g_rcount = g_rfirst = g_curlen = g_scroll = 0; g_cur[0] = '\0'; return; }
-	if (c == '\b') { if (g_curlen > 0) g_cur[--g_curlen] = '\0'; return; }
-	if (c == '\t') { do { if (g_curlen < g_cols) g_cur[g_curlen++] = ' '; } while ((g_curlen % 4) && g_curlen < g_cols); g_cur[g_curlen] = '\0'; return; }
-	if (g_curlen >= g_cols) flush_cur ();		// wrap at the visible width
-	g_cur[g_curlen++] = c;
-	g_cur[g_curlen] = '\0';			// keep g_cur a valid C-string: without this, a
-						// shorter new line (e.g. the reprinted prompt) leaves
-						// the previous line's tail visible past g_curlen.
+	if (c == '\n') { flush_cur (t); return; }
+	if (c == '\f') { t->rcount = t->rfirst = t->curlen = t->scroll = 0; t->cur[0] = '\0'; return; }
+	if (c == '\b') { if (t->curlen > 0) t->cur[--t->curlen] = '\0'; return; }
+	if (c == '\t') { do { if (t->curlen < g_cols) t->cur[t->curlen++] = ' '; } while ((t->curlen % 4) && t->curlen < g_cols); t->cur[t->curlen] = '\0'; return; }
+	if (t->curlen >= g_cols) flush_cur (t);		// wrap at the visible width
+	t->cur[t->curlen++] = c;
+	t->cur[t->curlen] = '\0';			// keep cur a valid C-string: without this, a
+							// shorter new line (e.g. the reprinted prompt) leaves
+							// the previous line's tail visible past curlen.
 }
-static void term_puts (const char *s) { for (int i = 0; s[i]; i++) term_putc (s[i]); }
+static void term_puts (Tab *t, const char *s) { for (int i = 0; s[i]; i++) term_putc (t, s[i]); }
 
-// ---- shell process ----------------------------------------------------------
+// ---- the shells -------------------------------------------------------------
 
-static void start_cmd (void)
+static void start_cmd (Tab *t)
 {
-	g_to_cmd   = kapi_pipe ();
-	g_from_cmd = kapi_pipe ();
-	g_cmd = kapi_spawn ("SD:/bin/cmd", "", g_to_cmd, g_from_cmd);
-	if (g_cmd == 0) term_puts ("terminal: cannot start /bin/cmd\n");
+	t->to_cmd   = kapi_pipe ();
+	t->from_cmd = kapi_pipe ();
+	t->cmd = kapi_spawn ("SD:/bin/cmd", "", t->to_cmd, t->from_cmd);
+	if (t->cmd == 0) term_puts (t, TR ("terminal: cannot start /bin/cmd\n"));
 }
 
-// Pump cmd's stdout into the scrollback. Returns the number of bytes consumed (so the
-// caller can repaint only when there was output).
-static int drain_cmd (void)
+static int shell_pid (Tab *t)
 {
-	if (g_from_cmd == 0) return 0;
-	char b[256]; int n, guard = 0, got = 0;
-	while ((n = kapi_stream_read_nb (g_from_cmd, b, sizeof b)) > 0 && guard++ < 64)
+	if (t->pid <= 0 && t->cmd)
 	{
-		for (int k = 0; k < n; k++) term_putc (b[k]);
-		g_scroll = 0;
+		struct kapi_proc_status ps;
+		if (kapi_proc_wait (t->cmd, KAPI_WAIT_NOHANG | KAPI_WAIT_KEEP, &ps) >= 0 && ps.pid > 0) t->pid = ps.pid;
+	}
+	return t->pid;
+}
+
+// Pump a tab's cmd stdout into its scrollback -> the bytes consumed (the caller repaints the shown
+// tab only when there was output).
+static int drain_cmd (Tab *t)
+{
+	if (t->from_cmd == 0) return 0;
+	char b[256]; int n, guard = 0, got = 0;
+	while ((n = kapi_stream_read_nb (t->from_cmd, b, sizeof b)) > 0 && guard++ < 64)
+	{
+		for (int k = 0; k < n; k++) term_putc (t, b[k]);
+		t->scroll = 0;
 		got += n;
 	}
 	return got;
 }
 
-// ---- input ------------------------------------------------------------------
-// Apply one key to the line editor / scrollback. Shared by the embedded loop (SH_KEY)
-// and the standalone window (TermView::onKey).
-static void term_key (int key)
+// Is the shell at its prompt ("<folder> $ ", cmd.c's prompt ()) with nothing under it?
+static bool at_prompt (const Tab *t)
 {
+	return t->curlen >= 3 && t->cur[t->curlen - 3] == ' ' && t->cur[t->curlen - 2] == '$' && t->cur[t->curlen - 1] == ' ';
+}
+static void update_busy (Tab *t)
+{
+	int pid = shell_pid (t);
+	int kids = pid > 0 ? kapi_proc_tree (pid, KAPI_TREE_LIST, 0, 0) : 0;
+	t->busy = t->cmd != 0 && !kapi_proc_done (t->cmd) && (kids > 0 || (t->sent > 0 && !at_prompt (t)));
+}
+
+// The tab's title: the command running, else its folder (the prompt's: its last name; SD:/ itself).
+static void tab_title (const Tab *t, char *out, int cap)
+{
+	int n = 0;
+	if (t->busy && t->last[0])
+		for (int i = 0; t->last[i] && n < cap - 1; i++) out[n++] = t->last[i];
+	else if (at_prompt (t))
+	{
+		int end = t->curlen - 3, from = 0;		// the folder: cur[0 .. end)
+		for (int i = 0; i < end - 1; i++) if (t->cur[i] == '/' || t->cur[i] == ':') from = i + 1;
+		if (end > 0 && t->cur[end - 1] == '/') from = 0;	// (a volume's root: "SD:/")
+		for (int i = from; i < end && n < cap - 1; i++) out[n++] = t->cur[i];
+	}
+	if (n == 0) { const char *s = TR ("Shell"); while (*s && n < cap - 1) out[n++] = *s++; }
+	out[n] = '\0';
+}
+
+static int tab_index (const Tab *t)
+{
+	for (int i = 0; i < g_strip->count (); i++) if (g_strip->data (i) == t) return i;
+	return -1;
+}
+
+static void refresh_tab (Tab *t)
+{
+	int i = tab_index (t);
+	if (i < 0) return;
+	char title[48];
+	tab_title (t, title, sizeof title);
+	g_strip->setTitle (i, title);
+	g_strip->setMark (i, t->busy != 0);
+}
+
+// The tab's shell and EVERYTHING under it terminated (its pipeline, a script's cmd, what they
+// started), its pipes closed, its record freed.
+static void tab_free (Tab *t)
+{
+	if (t->cmd && !kapi_proc_done (t->cmd))
+	{
+		int pid = shell_pid (t);
+		if (pid > 0 && kapi_proc_tree (pid, KAPI_TREE_KILL, 0, 0) < 0)
+			kapi_kill_pid (pid, 1);		// (a kernel before v91: the reaper ends its children)
+	}
+	if (t->to_cmd)   kapi_stream_close (t->to_cmd);	// (no pid yet: its stdin's end stops it)
+	if (t->from_cmd) kapi_stream_close (t->from_cmd);
+	if (t->cmd)
+	{
+		for (int k = 0; k < 100 && !kapi_proc_done (t->cmd); k++) kapi_msleep (10);
+		if (kapi_proc_done (t->cmd)) kapi_wait (t->cmd);	// (the handle freed)
+	}
+	delete t;
+}
+
+static void show_tab (int i)
+{
+	Tab *t = (Tab *) g_strip->data (i);
+	if (t == 0) return;
+	g_strip->select (i);
+	g_tab = t;
+	g_view->invalidate (true);
+}
+
+static void new_tab ()
+{
+	if (g_strip->count () >= MAXTABS) return;
+	Tab *t = new Tab ();				// (value-initialised: all zeros)
+	if (t == 0) return;
+	le_init (&t->le);
+	int i = g_strip->add (TR ("Shell"), t);
+	if (i < 0) { delete t; return; }
+	start_cmd (t);
+	show_tab (i);
+}
+
+static void remove_tab (int i)
+{
+	Tab *t = (Tab *) g_strip->data (i);
+	g_strip->remove (i);
+	if (t) tab_free (t);
+	if (g_strip->count () == 0) { g_tab = 0; g_quit = true; return; }
+	show_tab (g_strip->selected);
+}
+
+// A tab's close asked (the cross, a middle click, Ctrl+Shift+W, the menu): a question first when
+// something runs there.
+static void ask_close (int i)
+{
+	Tab *t = (Tab *) g_strip->data (i);
+	if (t == 0) return;
+	update_busy (t);
+	if (t->busy)
+	{
+		char msg[224]; int n = 0;
+		const char *f = TR ("\"%s\" is still running in this tab. Close the tab and stop it?");
+		char what[48]; tab_title (t, what, sizeof what);
+		for (int k = 0; f[k] && n < (int) sizeof msg - 1; k++)	// (%s: what runs there)
+		{
+			if (f[k] != '%' || f[k + 1] != 's') { msg[n++] = f[k]; continue; }
+			for (int j = 0; what[j] && n < (int) sizeof msg - 1; j++) msg[n++] = what[j];
+			k++;
+		}
+		msg[n] = '\0';
+		if (uk_messagebox (TR ("Close Tab"), msg, MB_OKCANCEL) != 1) return;
+		i = tab_index (t);			// (the tabs may have moved meanwhile)
+		if (i < 0) return;
+	}
+	remove_tab (i);
+}
+
+static void on_strip (Widget &) { show_tab (g_strip->selected); }
+static void on_strip_close (Widget &) { ask_close (g_strip->closing); }
+static void on_strip_new (Widget &) { new_tab (); }
+static void m_new () { new_tab (); }
+static void m_close () { if (g_strip->selected >= 0) ask_close (g_strip->selected); }
+static void m_next () { g_strip->selectNext (1); }
+static void m_prev () { g_strip->selectNext (-1); }
+
+// ---- input ------------------------------------------------------------------
+// Apply one key to the shown tab's line editor / scrollback.
+static void term_key (Tab *t, int key)
+{
+	if (t == 0) return;
+	if (key == KEY_PGUP) { t->scroll += g_vrows - 2; return; }	// the scrollback
+	if (key == KEY_PGDN) { t->scroll -= g_vrows - 2; if (t->scroll < 0) t->scroll = 0; return; }
+	t->scroll = 0;					// (typing shows the live line again)
+	LineEdit *le = &t->le;
 	switch (key)
 	{
 	case KEY_ENTER:
-		if (g_to_cmd)
+		if (t->to_cmd)
 		{
-			kapi_stream_write (g_to_cmd, g_input, (unsigned) g_inlen);
-			kapi_stream_write (g_to_cmd, "\n", 1);
+			kapi_stream_write (t->to_cmd, le->buf, (unsigned) le->len);
+			kapi_stream_write (t->to_cmd, "\n", 1);
 		}
-		term_putc ('\n');				// echo the newline locally
-		g_inlen = 0; g_input[0] = '\0';
+		if (le->len > 0)				// (the title while it runs)
+		{
+			int k = 0;
+			for (; le->buf[k] && k < (int) sizeof t->last - 1; k++) t->last[k] = le->buf[k];
+			t->last[k] = '\0';
+			t->sent++;
+		}
+		term_puts (t, le->buf); term_putc (t, '\n');	// the line enters the scrollback
+		le_commit (le, 1);
 		break;
-	case KEY_BACKSPACE:
-		if (g_inlen > 0) { g_inlen--; g_input[g_inlen] = '\0'; term_putc ('\b'); }
+	case KEY_BACKSPACE: le_backspace (le); break;
+	case KEY_DEL:	le_delete (le); break;
+	case KEY_LEFT:	le_left (le); break;
+	case KEY_RIGHT:	le_right (le); break;
+	case KEY_HOME:	case 1: /* Ctrl-A */ le_home (le); break;
+	case KEY_END:	case 5: /* Ctrl-E */ le_end (le); break;
+	case KEY_UP:	le_up (le); break;		// the history
+	case KEY_DOWN:	le_down (le); break;
+	case 11: /* Ctrl-K */ le_kill (le); break;
+	case 21: /* Ctrl-U */ le_clear (le); break;
+	case 3:	/* Ctrl-C: the line typed is dropped, the running command stopped */
+		term_puts (t, le->buf); term_puts (t, "^C\n");
+		le_commit (le, 0);
+		if (t->to_cmd) kapi_stream_write (t->to_cmd, "\x03", 1);
 		break;
-	case 3:	/* Ctrl-C */ if (g_to_cmd) kapi_stream_write (g_to_cmd, "\x03", 1); break;
-	case 4:	/* Ctrl-D */ if (g_to_cmd) kapi_stream_write (g_to_cmd, "\x04", 1); break;
-	case KEY_PGUP: g_scroll += g_vrows - 2; break;
-	case KEY_PGDN: g_scroll -= g_vrows - 2; if (g_scroll < 0) g_scroll = 0; break;
+	case 4:	/* Ctrl-D */ if (t->to_cmd) kapi_stream_write (t->to_cmd, "\x04", 1); break;
 	default:
-		if (key >= ' ' && key < 0x7f && g_inlen < (int) sizeof g_input - 1)
-		{
-			g_input[g_inlen++] = (char) key; g_input[g_inlen] = '\0';
-			term_putc ((char) key);				// local echo
-		}
+		if (key >= ' ' && key < 0x7f) le_insert (le, (char) key);
 		break;
 	}
 }
 
-// ---- view (wtk widget) -------------------------------------------------------
-// Renders the scrollback into its Canvas; works for an owned window canvas (standalone)
-// AND an adopted shell surface (embedded). Recomputes the visible rows/cols from its
-// current logical size each frame, so a viewport resize just reflows the text.
-using namespace wtk;
+// The tabs' keys, before anything else: Ctrl+Shift+T / W, Ctrl+(Shift+)Tab, Ctrl+PgUp / PgDn.
+// (Ctrl with a letter comes as its control code -- ^T = 20 -- with Shift held as a modifier.)
+static bool tab_keys (long k)
+{
+	unsigned m = kapi_get_modifiers ();
+	if (!(m & MOD_CTRL)) return false;
+	bool shift = (m & MOD_SHIFT) != 0;
+	if (k == KEY_TAB) { g_strip->selectNext (shift ? -1 : 1); return true; }
+	if (k == KEY_PGUP) { g_strip->selectNext (-1); return true; }
+	if (k == KEY_PGDN) { g_strip->selectNext (1); return true; }
+	if (!shift) return false;
+	if (k == UK_CTRL ('T') || k == 'T' || k == 't') { new_tab (); return true; }
+	if (k == UK_CTRL ('W') || k == 'W' || k == 'w') { m_close (); return true; }
+	return false;
+}
 
+// ---- view (uikit widget) -------------------------------------------------------
+// Renders the shown tab's scrollback into its Canvas. Recomputes the visible rows/cols from its
+// current logical size each frame, so a window resize just reflows the text. The one dark part of
+// the window: TERM_BG / TERM_FG, whatever the theme.
 class TermView : public Widget
 {
 public:
-	TermView (int w, int h) : Widget (0, 0, w, h) { canFocus = true; }
+	TermView (int l, int t, int w, int h) : Widget (l, t, w, h) { canFocus = true; }
 
 	void recompute ()
 	{
@@ -153,36 +347,49 @@ public:
 	{
 		recompute ();
 		canvas.clear (TERM_BG);
+		Tab *t = g_tab;
+		if (t == 0) return;
 
-		int total = g_rcount + 1;			// + the current line
+		// the live line: the unfinished output (the prompt), then the line being typed --
+		// wrapped over as many rows as it takes
+		int live = 0;
+		for (int i = 0; i < t->curlen; i++) g_live[live++] = t->cur[i];
+		for (int i = 0; i < t->le.len; i++) g_live[live++] = t->le.buf[i];
+		g_live[live] = 0;
+		int caret = t->curlen + t->le.cur;
+		int liverows = live / g_cols + 1;
+
+		int total = t->rcount + liverows;
 		int maxscroll = total - g_vrows; if (maxscroll < 0) maxscroll = 0;
-		if (g_scroll > maxscroll) g_scroll = maxscroll;
-		int first = total - g_vrows - g_scroll; if (first < 0) first = 0;
+		if (t->scroll > maxscroll) t->scroll = maxscroll;
+		int first = total - g_vrows - t->scroll; if (first < 0) first = 0;
 
 		for (int r = 0; r < g_vrows; r++)
 		{
 			int idx = first + r;
 			if (idx < 0 || idx >= total) continue;
-			const char *line = (idx < g_rcount) ? ring_line (idx) : g_cur;
-			canvas.text (4, 4 + r * g_fh, line, TERM_FG);
-			if (idx == g_rcount && g_scroll == 0)		// caret at the end of the live line
-			{
-				int cx = 4 + g_curlen * g_fw;
-				canvas.fillRect (cx, 4 + r * g_fh, 2, g_fh, wk_tone (C_ACCENT, 180));	// (the accent, lit)
-			}
+			if (idx < t->rcount) { canvas.text (4, 4 + r * g_fh, ring_line (t, idx), TERM_FG); continue; }
+			int k = idx - t->rcount;			// a row of the live line
+			char row[COLS + 1]; int n = 0;
+			for (int i = k * g_cols; i < live && n < g_cols; i++) row[n++] = g_live[i];
+			row[n] = 0;
+			canvas.text (4, 4 + r * g_fh, row, TERM_FG);
+			if (caret / g_cols == k)			// the caret, at the cursor
+				canvas.fillRect (4 + (caret % g_cols) * g_fw, 4 + r * g_fh, 2, g_fh, uk_tone (C_ACCENT, 180));	// (the accent, lit)
 		}
 	}
 
-	bool onKey (long k) override { term_key ((int) k); invalidate (true); return true; }
+	bool onKey (long k) override { term_key (g_tab, (int) k); invalidate (true); return true; }
 
-	bool onMouse (int, int, int, int, int, int wheel) override	// wheel scrolls the scrollback
+	bool onMouse (int, int, int bl, int, int, int wheel) override	// wheel scrolls the scrollback
 	{
-		if (wheel) { g_scroll += wheel * 3; if (g_scroll < 0) g_scroll = 0; invalidate (true); }
+		if (bl && !hasFocus) setFocus ();
+		if (wheel && g_tab) { g_tab->scroll += wheel * 3; if (g_tab->scroll < 0) g_tab->scroll = 0; invalidate (true); }
 		return true;
 	}
 };
 
-// ---- standalone input trampolines (mirror wtk::Root::run's routing) ----------
+// ---- standalone input trampolines (mirror uikit::Root::run's routing) ----------
 static Root *g_saroot = 0;
 
 static void sa_ptr (unsigned long, int ev, long v)
@@ -206,85 +413,88 @@ static void sa_ptr (unsigned long, int ev, long v)
 }
 
 static void sa_key (unsigned long, int ev, long v)
-{ if (g_saroot != 0 && ev == GUI_EVENT_KEY) g_saroot->handleKey (v); }
+{
+	if (g_saroot == 0 || ev != GUI_EVENT_KEY) return;
+	bool modal = false;				// (a question open: the keys are its own)
+	for (Widget *n = g_saroot->lastChild; n; n = n->prevSib) if (n->modal) modal = true;
+	if (!modal && tab_keys (v)) { g_saroot->invalidate (true); return; }
+	g_saroot->handleKey (v);
+}
 
 // ---- entry -------------------------------------------------------------------
 int main (void)
 {
+	uk_lang_init ();				// the words in the language chosen (before the window)
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
-	// --- embedded in the activity shell (secondary section) -------------
-	embed::Host host;
-	if (embed::attach (&host, ROLE_SECONDARY, "terminal"))
-	{
-		TermView view (host.w, host.h);
-		view.canvas.adopt (host.pixels, host.w, host.h, host.stride);	// draw into the surface sub-rect
-		start_cmd ();
-		view.invalidate (true); view.draw ();
-		kapi_shell_request (SH_PRESENT, &host.surface_id, sizeof (int));
-
-		bool running = true;
-		while (running && !should_exit ())
-		{
-			int from, type; unsigned char buf[128];
-			while (kapi_mailbox_recv (&from, &type, buf, sizeof buf, 0) >= 0)	// non-blocking drain
-			{
-				switch (type)
-				{
-				case SH_PTR:
-				{
-					ShPtr *p = (ShPtr *) buf;
-					view.handleMouse (p->x, p->y, p->buttons & 1,
-							  (p->buttons >> 1) & 1, (p->buttons >> 2) & 1, p->wheel);
-					break;
-				}
-				case SH_KEY:    term_key (*(int *) buf); view.invalidate (true); break;
-				case SH_RESIZE: { ShResize *r = (ShResize *) buf; view.setBounds (r->w, r->h); view.invalidate (true); break; }
-				case SH_CLOSE:  running = false; break;
-				}
-			}
-			if (drain_cmd () > 0) view.invalidate (true);		// new cmd output -> repaint
-			if (g_cmd && kapi_proc_done (g_cmd)) { kapi_wait (g_cmd); running = false; }	// shell ended
-			if (!view.valid)
-			{
-				view.draw ();
-				kapi_shell_request (SH_PRESENT, &host.surface_id, sizeof (int));
-			}
-			msleep (16);
-		}
-		if (g_to_cmd)   kapi_stream_close (g_to_cmd);
-		if (g_from_cmd) kapi_stream_close (g_from_cmd);
-		return 0;
-	}
-
-	// --- standalone fallback: our own decorated window ------------------
 	Root root (W, H, "terminal");
 	if (root.canvas.px == 0) return 1;
-	root.setBg (TERM_BG);				// (the console covers the window)
-	TermView *view = new TermView (W, H);
+	g_strip = new TabStrip (0, 0, W, STRIP_H, on_strip);
+	g_strip->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
+	g_strip->onClose = on_strip_close;
+	g_strip->onNew = on_strip_new;
+	root.addChild (g_strip);
+	TermView *view = new TermView (PAD, STRIP_H + PAD, W - 2 * PAD, H - STRIP_H - 2 * PAD);	// (the window's face around it)
 	view->anchor = ANCHOR_FILL;
 	root.addChild (view);
+	g_view = view;
 	root.setResizable (true);			// (the view reflows to any size: maximise works)
 	view->setFocus ();			// keys route to the terminal
 	g_saroot = &root;
-	start_cmd ();
+
+	static Menu menu;
+	menu.menu (TR ("Shell"));
+	menu.item (TR ("New Tab"), "Shift+^T", 0, m_new);
+	menu.item (TR ("Close Tab"), "Shift+^W", 0, m_close);
+	menu.separator ();
+	menu.item (TR ("Next Tab"), "^Tab", 0, m_next);
+	menu.item (TR ("Previous Tab"), "Shift+^Tab", 0, m_prev);
+	menu.publish ();
+
+	new_tab ();
 
 	kapi_set_pointer_handler (sa_ptr);
 	kapi_set_key_handler (sa_key);
-	while (!should_exit ())
+	unsigned frame = 0;
+	while (!should_exit () && !g_quit)
 	{
-		if (drain_cmd () > 0) view->invalidate (true);	// show cmd's output (incl. the prompt) first,
-		pump_events ();			// then echo the keys typed this frame (onKey invalidates)
-		if (g_cmd && kapi_proc_done (g_cmd))	// the shell ended (exit / killed):
+		for (int i = 0; i < g_strip->count (); i++)	// every tab's output (the shown one repainted)
 		{
-			kapi_wait (g_cmd);		// the terminal closes with it
-			break;
+			Tab *t = (Tab *) g_strip->data (i);
+			if (drain_cmd (t) > 0)
+			{
+				refresh_tab (t);		// (a new prompt: its folder in the title)
+				if (t == g_tab) view->invalidate (true);
+			}
 		}
+		pump_events ();			// then echo the keys typed this frame (onKey invalidates)
+		for (int i = 0; i < g_strip->count (); i++)	// a shell that ended (exit, killed): its tab goes
+		{
+			Tab *t = (Tab *) g_strip->data (i);
+			if (t->cmd && kapi_proc_done (t->cmd))
+			{
+				drain_cmd (t);
+				remove_tab (i);
+				i--;
+			}
+		}
+		if (g_quit) break;
+		if (frame++ % 20 == 0)			// (~3 times a second) the titles, the marks
+			for (int i = 0; i < g_strip->count (); i++)
+			{
+				Tab *t = (Tab *) g_strip->data (i);
+				update_busy (t);
+				refresh_tab (t);
+			}
 		if (!root.valid) { root.draw (); kapi_present (); }
 		msleep (16);
 	}
-	if (g_to_cmd)   kapi_stream_close (g_to_cmd);
-	if (g_from_cmd) kapi_stream_close (g_from_cmd);
+	while (g_strip->count () > 0)			// the window closed: every tab's shell and what it runs
+	{
+		Tab *t = (Tab *) g_strip->data (0);
+		g_strip->remove (0);
+		tab_free (t);
+	}
 	return 0;
 }

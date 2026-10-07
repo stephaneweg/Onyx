@@ -30,7 +30,7 @@ the drawing helpers and the look are `mockup_archiver.py`'s).
 | The screen's pixels | `kapi_screen_grab` (v38: the whole composite, as `vncd` uses it) | — |
 | A window's pixels, where the windows are | `kapi_win_list` / `kapi_win_read` (v56, `rdpd`'s), `win_geometry` (v64) | — |
 | The overlay over everything | a full-screen borderless window, `WIN_FLAG_TOPMOST` (or `fullscreen_begin`) showing the frozen grab | — |
-| Drawing (pen, marker, crop) | wtk + `wtk/vpaint.h` (anti-aliased strokes), the canvas | — |
+| Drawing (pen, marker, crop) | uikit + `uikit/vpaint.h` (anti-aliased strokes), the canvas | — |
 | Save PNG / JPEG / BMP | `img/pngsave.hpp` (`png_encode`, `jpeg_encode`, `bmp_encode`) | — |
 | The notification | `notify.h` (`notifyd`) | a thumbnail in the bubble (optional) |
 | **An image in the clipboard** | the kernel's clipboard holds one text or one path | the shared clipboard service (`docs/clipboard/README.md`): an image item |

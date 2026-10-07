@@ -1,8 +1,9 @@
 //
 // Apps/mail/read.h -- Mail's right column: a conversation. Its subject, its account and folder; its messages oldest
 // first, the earlier ones folded (who, the first words, when; a click opens one), the last one open: who, to whom,
-// when, Reply / Reply all / Forward, the text (the HTML drawn by Mail's own renderer -- mail/html.h --, else the
-// plain text with its links found and its quoted lines greyed), the remote pictures held back ("Show the pictures"),
+// when, Reply / Reply all / Forward, the text (an HTML message drawn by WebKit -- Web's web view: webview.h -- when
+// Web is on the card, else by Mail's own renderer -- mail/html.h --; a text message: the plain text with its links
+// found and its quoted lines greyed), the remote pictures held back ("Show the pictures"),
 // the attachments (opened in their app, or saved); at the bottom a quick reply. A message not on the card yet is
 // fetched (the worker) and shown when it comes.
 //
@@ -12,6 +13,7 @@
 #define _mail_read_h
 
 #include "Apps/mail/app.h"
+#include "Apps/mail/webview.h"
 
 namespace mailapp {
 
@@ -46,6 +48,7 @@ struct Shown
 	int y, h;				// its place in the pane (content coordinates)
 	int bodyY;				// where its text starts
 	unsigned *zpx; int zw, zh;		// a text wider than the pane: drawn once, scaled down to fit
+	int webRemote;				// (the web view) content from the internet in its HTML: 0 not looked, 1 no, 2 yes
 };
 static void shown_free (Shown &s)
 {
@@ -86,15 +89,21 @@ const unsigned *MsgPictures::get (const char *src, int *w, int *h)
 	*w = r->w; *h = r->h; return r->px;
 }
 
+// a message's parts (once): its attachments, HTML or not
+static void shown_parse (Shown &s)
+{
+	if (s.mime || !s.raw) return;
+	s.mime = new Mime; s.mime->parse (s.raw, s.rawLen);
+	s.natt = s.mime->attachments (s.att, 24);
+	int p = s.mime->body_part (true);
+	s.isHtml = p >= 0 && ieq (s.mime->parts[p].sub, "html");
+}
+
 // a message's text: its HTML (or its plain text as HTML), laid out at w
 static void shown_layout (Shown &s, int w)
 {
 	if (!s.raw || !s.open) return;
-	if (!s.mime)
-	{
-		s.mime = new Mime; s.mime->parse (s.raw, s.rawLen);
-		s.natt = s.mime->attachments (s.att, 24);
-	}
+	shown_parse (s);
 	if (!s.html)
 	{
 		s.html = new html::Html;
@@ -195,6 +204,7 @@ public:
 	{
 		canvas.clear (C_FIELD);
 		hits.clear ();
+		g_wv.shown = false;
 		if (!nsh)
 		{
 			int cy = height / 2 - 40;
@@ -207,13 +217,13 @@ public:
 		// the subject, the chips
 		const char *subj = last.subject && last.subject[0] ? last.subject : "(no subject)";
 		{
-			WkFaceScope sc (g_face[F_H1]);
+			UkFaceScope sc (g_face[F_H1]);
 			// (a long subject over two lines)
 			char a[400], b[400]; scpy (a, subj, sizeof a); b[0] = 0;
-			if (wk_tw (a, 2) > W - 2 * PAD)
+			if (uk_tw (a, 2) > W - 2 * PAD)
 			{
 				int cut = (int) strlen (a);
-				while (cut > 0) { while (cut > 0 && a[cut] != ' ') cut--; char t = a[cut]; a[cut] = 0; int ww = wk_tw (a, 2); a[cut] = t; if (ww <= W - 2 * PAD || cut == 0) break; cut--; }
+				while (cut > 0) { while (cut > 0 && a[cut] != ' ') cut--; char t = a[cut]; a[cut] = 0; int ww = uk_tw (a, 2); a[cut] = t; if (ww <= W - 2 * PAD || cut == 0) break; cut--; }
 				if (cut > 0) { scpy (b, a + cut + 1, sizeof b); a[cut] = 0; }
 			}
 			text (canvas, PAD, y, a, C_FIELD_TEXT, F_H1, 1, W - 2 * PAD); y += fh (F_H1) + 2;
@@ -228,12 +238,22 @@ public:
 			for (int k = 0; k < 2; k++)
 			{
 				int w = tw (chips[k], F_SMALL, 1) + 16;
-				wk_fill_round (canvas, x, y, w, 20, 10, k ? col_line () : wk_mix (C_FIELD, a.colour, 200));
+				uk_fill_round (canvas, x, y, w, 20, 10, k ? col_line () : uk_mix (C_FIELD, a.colour, 200));
 				text_c (canvas, x, y, w, 20, chips[k], k ? col_dim () : 0xFFFFFF, F_SMALL, 1);
 				x += w + 6;
 			}
 			y += 32;
 		}
+		// the HTML message the web view shows (one view: the last open HTML message; the others by Mail's renderer)
+		int webIdx = -1;
+		if (wv_usable ())
+			for (int i = nsh - 1; i >= 0 && webIdx < 0; i--)
+			{
+				Shown &s = sh[i];
+				if (!s.open || !s.raw || s.missing) continue;
+				shown_parse (s);
+				if (s.isHtml) webIdx = i;
+			}
 		// the messages
 		for (int i = 0; i < nsh; i++)
 		{
@@ -287,21 +307,31 @@ public:
 			// the text
 			if (s.missing) { text (canvas, PAD, y, "This message is not on the card any more.", col_dim ()); y += 30; }
 			else if (!s.raw) { text (canvas, PAD, y, s.loading ? "Getting the message..." : "", col_dim ()); y += 30; }
+			else if (i == webIdx)
+			{	// the web view: the remote content held back (a bar), the page in a box filling the pane
+				if (!s.webRemote) { Buf t; int p = s.mime->body_part (true); s.mime->text (s.mime->parts[p], t); s.webRemote = wv_has_remote (t.c (), t.n) ? 2 : 1; }
+				if (!s.remoteOk && s.webRemote == 2) pictures_bar (y, W, i);
+				s.bodyY = y + sy;
+				// its height: the rest of the pane when that is most of it, else nearly the pane (scrolled to)
+				int vh = viewH ();
+				int tail = s.natt ? 26 + ((s.natt + 1) / 2) * 52 : 0;
+				int fill = vh - (y + sy) - tail - 34;
+				int bh = fill >= vh * 6 / 10 ? fill : vh - 40;
+				if (bh < 160) bh = 160;
+				char key[240];
+				Store &st = *g_m.stores[s.ref.acct];
+				snprintf (key, sizeof key, "%s/%s/%ld/%d", st.acct->id, st.folders[s.ref.folder].name, (long) st.folders[s.ref.folder].msgs[s.ref.msg].uid, s.remoteOk ? 1 : 0);
+				wv_give (key, *s.mime, s.mime->body_part (true), s.remoteOk);
+				if (g_wv.state != WS_OFF) wv_draw (canvas, PAD - 8, y, textW () + 16, bh, viewH ());
+				if (g_wv.state == WS_OFF) { invalidate (true); return; }	// (it failed: Mail's renderer, next time)
+				y += (g_wv.bh > 0 ? g_wv.bh : bh) + 14;
+				attachments (s, y, W, i);
+			}
 			else
 			{
 				shown_layout (s, textW ());
 				// the remote pictures held back: a bar
-				if (!s.remoteOk && s.html->remote_pictures ())
-				{
-					int bw = W - 2 * PAD;
-					wk_fill_round (canvas, PAD, y, bw, 32, 6, wk_mix (C_FIELD, 0xF2A600, 40));
-					icon (canvas, I_PICTURE, PAD + 10, y + 7, 18, wk_mix (C_FIELD, 0x8A6000, 220));
-					text_v (canvas, PAD + 36, y, 32, "Pictures from the web are hidden.", C_FIELD_TEXT, F_SMALL, 0, bw - 190);
-					const char *lb = "Show the pictures"; int lw = tw (lb, F_SMALL, 1);
-					text_v (canvas, PAD + bw - lw - 12, y, 32, lb, C_ACCENT, F_SMALL, 1);
-					hits.add (PAD + bw - lw - 20, y, lw + 20, 32, H_PICS, i);
-					y += 42;
-				}
+				if (!s.remoteOk && s.html->remote_pictures ()) pictures_bar (y, W, i);
 				s.bodyY = y + sy;
 				int bh = s.html->height ();
 				unsigned bg = s.html->background ();
@@ -320,35 +350,7 @@ public:
 					s.html->paint (*g_host, PAD, y, 0, 0, width - 10, viewH ());
 				}
 				y += bh + 14;
-				// the attachments
-				if (s.natt)
-				{
-					long total = 0; for (int k = 0; k < s.natt; k++) total += s.mime->size_of (s.mime->parts[s.att[k]]);
-					char sz[40]; fmt_size (total, sz, sizeof sz);
-					char l[120]; snprintf (l, sizeof l, "%d attachment%s  \xC2\xB7  %s  \xC2\xB7  ", s.natt, s.natt > 1 ? "s" : "", sz);
-					text (canvas, PAD, y, l, col_dim (), F_SMALL, 1);
-					int lx = PAD + tw (l, F_SMALL, 1);
-					text (canvas, lx, y, s.natt > 1 ? "Save all" : "Save", C_ACCENT, F_SMALL, 1);
-					hits.add (lx - 4, y - 2, tw ("Save all", F_SMALL, 1) + 8, 18, H_SAVEALL, i);
-					y += 22;
-					int cw = (W - 2 * PAD - 10) / 2; if (cw > 260) cw = 260;
-					for (int k = 0; k < s.natt; k++)
-					{
-						int cx = PAD + (k % 2) * (cw + 10), cy = y + (k / 2) * 52;
-						const Part &p = s.mime->parts[s.att[k]];
-						wk_fill_round (canvas, cx, cy, cw, 44, 6, col_line ());
-						wk_fill_round (canvas, cx + 1, cy + 1, cw - 2, 42, 5, C_FIELD);
-						bool pic = ieq (p.type, "image");
-						bool pdf = ieq (p.sub, "pdf");
-						icon (canvas, pic ? I_PICTURE : I_FILE, cx + 10, cy + 10, 24, pic ? 0x3C8DA8 : pdf ? 0xC83C32 : 0x7B8794);
-						const char *nm = p.name[0] ? p.name : pic ? "picture" : "attachment";
-						text (canvas, cx + 42, cy + 6, nm, C_FIELD_TEXT, F_SMALL, 1, cw - 50);
-						char ps[40]; fmt_size (s.mime->size_of (p), ps, sizeof ps);
-						text (canvas, cx + 42, cy + 23, ps, col_dim (), F_SMALL);
-						hits.add (cx, cy, cw, 44, H_ATT_OPEN, i, k);
-					}
-					y += ((s.natt + 1) / 2) * 52 + 4;
-				}
+				attachments (s, y, W, i);
 			}
 			y += 10;
 			s.h = y + sy - s.y;
@@ -356,8 +358,8 @@ public:
 		contentH = y + sy + 20;
 		// the scroll bar
 		int vh = viewH ();
-		WkThumb t = wk_thumb (contentH, vh, sy, vh);
-		if (t.show) wk_draw_vscroll (canvas, width - WK_SBW, 0, WK_SBW, vh, t, C_FIELD, barDrag);
+		UkThumb t = uk_thumb (contentH, vh, sy, vh);
+		if (t.show) uk_draw_vscroll (canvas, width - UK_SBW, 0, UK_SBW, vh, t, C_FIELD, barDrag);
 		// the quick reply's band
 		if (nsh)
 		{
@@ -366,6 +368,48 @@ public:
 			char who2[160]; who (last.from, who2, sizeof who2);
 			if (!quick->text[0] && !quick->hasFocus) { char ph[220]; snprintf (ph, sizeof ph, "Reply to %s...", who2); quick->setHint (ph); }
 		}
+	}
+	// the remote pictures held back: a bar ("Show the pictures") at y, which it moves down
+	void pictures_bar (int &y, int W, int i)
+	{
+		int bw = W - 2 * PAD;
+		uk_fill_round (canvas, PAD, y, bw, 32, 6, uk_mix (C_FIELD, 0xF2A600, 40));
+		icon (canvas, I_PICTURE, PAD + 10, y + 7, 18, uk_mix (C_FIELD, 0x8A6000, 220));
+		text_v (canvas, PAD + 36, y, 32, "Pictures from the web are hidden.", C_FIELD_TEXT, F_SMALL, 0, bw - 190);
+		const char *lb = "Show the pictures"; int lw = tw (lb, F_SMALL, 1);
+		text_v (canvas, PAD + bw - lw - 12, y, 32, lb, C_ACCENT, F_SMALL, 1);
+		hits.add (PAD + bw - lw - 20, y, lw + 20, 32, H_PICS, i);
+		y += 42;
+	}
+	// a message's attachments at y (moved down past them)
+	void attachments (Shown &s, int &y, int W, int i)
+	{
+		if (!s.natt) return;
+		long total = 0; for (int k = 0; k < s.natt; k++) total += s.mime->size_of (s.mime->parts[s.att[k]]);
+		char sz[40]; fmt_size (total, sz, sizeof sz);
+		char l[120]; snprintf (l, sizeof l, "%d attachment%s  \xC2\xB7  %s  \xC2\xB7  ", s.natt, s.natt > 1 ? "s" : "", sz);
+		text (canvas, PAD, y, l, col_dim (), F_SMALL, 1);
+		int lx = PAD + tw (l, F_SMALL, 1);
+		text (canvas, lx, y, s.natt > 1 ? "Save all" : "Save", C_ACCENT, F_SMALL, 1);
+		hits.add (lx - 4, y - 2, tw ("Save all", F_SMALL, 1) + 8, 18, H_SAVEALL, i);
+		y += 22;
+		int cw = (W - 2 * PAD - 10) / 2; if (cw > 260) cw = 260;
+		for (int k = 0; k < s.natt; k++)
+		{
+			int cx = PAD + (k % 2) * (cw + 10), cy = y + (k / 2) * 52;
+			const Part &p = s.mime->parts[s.att[k]];
+			uk_fill_round (canvas, cx, cy, cw, 44, 6, col_line ());
+			uk_fill_round (canvas, cx + 1, cy + 1, cw - 2, 42, 5, C_FIELD);
+			bool pic = ieq (p.type, "image");
+			bool pdf = ieq (p.sub, "pdf");
+			icon (canvas, pic ? I_PICTURE : I_FILE, cx + 10, cy + 10, 24, pic ? 0x3C8DA8 : pdf ? 0xC83C32 : 0x7B8794);
+			const char *nm = p.name[0] ? p.name : pic ? "picture" : "attachment";
+			text (canvas, cx + 42, cy + 6, nm, C_FIELD_TEXT, F_SMALL, 1, cw - 50);
+			char ps[40]; fmt_size (s.mime->size_of (p), ps, sizeof ps);
+			text (canvas, cx + 42, cy + 23, ps, col_dim (), F_SMALL);
+			hits.add (cx, cy, cw, 44, H_ATT_OPEN, i, k);
+		}
+		y += ((s.natt + 1) / 2) * 52 + 4;
 	}
 	// a text drawn at its width W, then averaged down to the pane's (zw x zh)
 	void zoom (Shown &s, unsigned bg)
@@ -393,20 +437,46 @@ public:
 		}
 	}
 	void scroll_to (int v) { int mx = contentH - viewH (); if (v > mx) v = mx; if (v < 0) v = 0; if (v != sy) { sy = v; invalidate (true); } }
+	// The link of a message's text under a point of the pane, 0 when there is none.
+	const char *link_under (int mx, int my)
+	{
+		for (int i = 0; i < nsh; i++)
+		{
+			Shown &s = sh[i]; if (!s.html || !s.open) continue;
+			int dy = s.bodyY - sy;
+			int lx = mx - PAD, ly = my - dy;
+			if (s.zpx && s.zw > 0) { lx = (int) ((long long) lx * s.html->width () / s.zw); ly = (int) ((long long) ly * s.html->width () / s.zw); }
+			const char *href = s.html->link_at (lx, ly);
+			if (href) return href;
+		}
+		return 0;
+	}
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override
 	{
-		(void) br; (void) bm;
-		if (wheel) { scroll_to (sy - wheel * 48); return true; }
 		static bool was;
+		// the wheel over the web view's box while the box is not all in sight: the pane scrolls first (the
+		// box is nearly the pane's height: its page scrolls once the box is in view)
+		if (wheel && !barDrag && g_wv.shown && g_wv.state == WS_UP
+		    && ((wheel < 0 && g_wv.by + g_wv.bh > viewH () && sy < contentH - viewH ()) || (wheel > 0 && g_wv.by < 0 && sy > 0)))
+		{
+			int by = g_wv.by, to = wheel < 0 ? sy + (by + g_wv.bh - viewH ()) : sy + by;	// (the box's edge, no further)
+			int step = sy - wheel * 48;
+			scroll_to (wheel < 0 ? (step < to ? step : to) : (step > to ? step : to));
+			return true;
+		}
+		// over the web view's box: its (the keys too, once clicked there)
+		if (!barDrag && wv_mouse (mx, my, bl, br, bm, wheel)) { if (bl && !was) setFocus (); was = bl; return true; }
+		if (wheel) { scroll_to (sy - wheel * 48); return true; }
 		bool down = bl && !was; was = bl;
 		if (barDrag)
 		{
 			if (!bl) { barDrag = false; invalidate (true); return true; }
-			int vh = viewH (); WkThumb t = wk_thumb (contentH, vh, sy, vh);
-			scroll_to ((int) wk_thumb_pos (my, vh, contentH, vh, t.h)); return true;
+			int vh = viewH (); UkThumb t = uk_thumb (contentH, vh, sy, vh);
+			scroll_to ((int) uk_thumb_pos (my, vh, contentH, vh, t.h)); return true;
 		}
+		if (my < viewH () && mx < width - UK_SBW && link_under (mx, my)) uk_cursor (KAPI_CURSOR_HAND);
 		if (!down) return my < viewH ();
-		if (mx >= width - WK_SBW && my < viewH ()) { barDrag = true; int vh = viewH (); WkThumb t = wk_thumb (contentH, vh, sy, vh); scroll_to ((int) wk_thumb_pos (my, vh, contentH, vh, t.h)); return true; }
+		if (mx >= width - UK_SBW && my < viewH ()) { barDrag = true; int vh = viewH (); UkThumb t = uk_thumb (contentH, vh, sy, vh); scroll_to ((int) uk_thumb_pos (my, vh, contentH, vh, t.h)); return true; }
 		if (my >= viewH ()) return false;
 		const Hit *h = hits.at (mx, my);
 		if (h) { act (*h, mx, my); return true; }
@@ -434,9 +504,9 @@ public:
 		if (istarts (href, "http://") || istarts (href, "https://"))
 		{
 			// asked first: a link in a mail may not go where it says
-			char q[700]; snprintf (q, sizeof q, "Open this link in Jet Browser?\n\n%.600s", href);
-			if (wk_messagebox ("Mail", q, MB_YESNO) != 1) return;
-			kapi_exec ("SD:apps/jet.app/main", href);
+			char q[700]; snprintf (q, sizeof q, "Open this link in Jet?\n\n%.600s", href);
+			if (uk_messagebox ("Mail", q, MB_YESNO) != 1) return;
+			kapi_exec (WV_PROGRAM, href);
 		}
 	}
 	void act (const Hit &h, int mx, int my)
@@ -493,11 +563,11 @@ public:
 		char ol[80]; snprintf (ol, sizeof ol, can ? "Open (%s)" : "Open", app);
 		pm.add (ol, 1, can); pm.add ("Save as...", 2, true);
 		int r = pm.run ();
-		if (r == 1) { kapi_mkdir ("SD:/tmp"); kapi_mkdir ("SD:/tmp/mail"); if (write_att (s, k, tmp)) fa_open (tmp); else wk_messagebox ("Mail", "The attachment could not be written to the card.", MB_OK); }
+		if (r == 1) { kapi_mkdir ("SD:/tmp"); kapi_mkdir ("SD:/tmp/mail"); if (write_att (s, k, tmp)) fa_open (tmp); else uk_messagebox ("Mail", "The attachment could not be written to the card.", MB_OK); }
 		else if (r == 2)
 		{
 			char out[300]; kapi_mkdir ("SD:/Downloads");
-			if (wk_file_save (out, sizeof out, "SD:/Downloads", nm) && !write_att (s, k, out)) wk_messagebox ("Mail", "The attachment could not be written.", MB_OK);
+			if (uk_file_save (out, sizeof out, "SD:/Downloads", nm) && !write_att (s, k, out)) uk_messagebox ("Mail", "The attachment could not be written.", MB_OK);
 		}
 	}
 	void save_all (Shown &s)
@@ -515,11 +585,16 @@ public:
 	}
 	bool onKey (long k) override
 	{
+		if (wv_key (k)) return true;			// (the web view was clicked last: its page's)
 		if (k == KEY_PGDN || k == ' ') { scroll_to (sy + viewH () - 40); return true; }
 		if (k == KEY_PGUP) { scroll_to (sy - viewH () + 40); return true; }
 		return false;
 	}
 };
+
+// the web view's calls (webview.h)
+static void wv_repaint () { if (g_read) g_read->invalidate (true); }
+static void wv_link (const char *url) { if (g_read) g_read->open_link (url); }
 
 } // namespace mailapp
 

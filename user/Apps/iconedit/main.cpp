@@ -9,12 +9,12 @@
 // redo, G grid. Image menu: flip, rotate, shift, clear. New sizes 16 / 24 / 32 / 40 / 48 /
 // 64. Opens and saves 24-bit BMP; drop a BMP on the window to open it.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
-#include "bmp.hpp"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
+#include "uikit/bmp.h"
 #include "docguard.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	700
 #define H	520
@@ -27,6 +27,8 @@ using namespace wtk;
 enum { T_PEN, T_LINE, T_RECT, T_BOX, T_ELLIPSE, T_FILL, T_PICK, T_ERASE, NTOOL };
 static const char *const TOOL_NAME[NTOOL] = { "Pen", "Line", "Rect", "Box", "Ellipse", "Fill", "Picker", "Eraser" };
 static const char TOOL_KEY[NTOOL] = { 'p', 'l', 'r', 'b', 'o', 'f', 'k', 'e' };
+// The kind of files the Open and Save dialogs offer (uikit/dialog.h).
+static const char *const BMP_KINDS = "BMP images|*.bmp|All files|*";
 
 static unsigned g_img[MAXS * MAXS];
 static int      g_w = 40, g_h = 40;
@@ -149,7 +151,7 @@ public:
 		layoutCells ();
 		Canvas &c = canvas;
 		c.clear (bgColor ());				// a well of a shade of the face round the icon
-		wk_sunken (c, 0, 0, width, height, 6, wk_tone (C_BG, 112));
+		uk_sunken (c, 0, 0, width, height, 6, uk_tone (C_BG, 112));
 		const unsigned *src = showOver ? over : g_img;
 		for (int y = 0; y < g_h; y++) for (int x = 0; x < g_w; x++)
 		{
@@ -169,7 +171,7 @@ public:
 			for (int y = 0; y <= g_h; y++) c.fillRect (ox, oy + y * cell, g_w * cell, 1, (y % 8) ? 0x00A0A8B0 : 0x00707880);
 		}
 		if (g_hx >= 0) c.frameRect (ox + g_hx * cell - 1, oy + g_hy * cell - 1, cell + 2, cell + 2, 0x00FFE040);
-		c.frameRect (ox - 1, oy - 1, g_w * cell + 2, g_h * cell + 2, wk_tone (C_FACE, 60));
+		c.frameRect (ox - 1, oy - 1, g_w * cell + 2, g_h * cell + 2, uk_tone (C_FACE, 60));
 	}
 	bool toImg (int mx, int my, int &x, int &y)
 	{
@@ -253,7 +255,7 @@ public:
 	{
 		canvas.clear (C_BG);
 		int s2 = g_w <= 40 ? 2 : 1;
-		unsigned ol = wk_tone (C_FACE, 70);			// (each preview outlined)
+		unsigned ol = uk_tone (C_FACE, 70);			// (each preview outlined)
 		canvas.frameRect (3, 3, g_w + 2, g_h + 2, ol);
 		canvas.frameRect (3 + g_w + 8, 3, g_w + 2, g_h + 2, ol);
 		canvas.frameRect (3, 3 + g_h + 8, g_w * s2 + 2, g_h * s2 + 2, ol);
@@ -279,7 +281,7 @@ public:
 			if (i == NPAL)			// transparency
 			{ c.fillRect (x, y, SW - 2, SW - 2, 0x00E8EBEF); c.fillRect (x, y, 8, 8, 0x00C8CCD2); c.fillRect (x + 8, y + 8, SW - 10, SW - 10, 0x00C8CCD2); }
 			else c.fillRect (x, y, SW - 2, SW - 2, PALETTE[i]);
-			c.frameRect (x - 1, y - 1, SW, SW, wk_tone (C_FACE, 60));
+			c.frameRect (x - 1, y - 1, SW, SW, uk_tone (C_FACE, 60));
 		}
 		// primary over secondary
 		int by = (NPAL / COLS + 1) * SW + 8;
@@ -288,7 +290,7 @@ public:
 			int x = 8 + k * 14, y = by + k * 10;
 			if (g_col[k] == TRANSP) { c.fillRect (x, y, 24, 20, 0x00E8EBEF); c.fillRect (x, y, 12, 10, 0x00C8CCD2); c.fillRect (x + 12, y + 10, 12, 10, 0x00C8CCD2); }
 			else c.fillRect (x, y, 24, 20, g_col[k]);
-			c.frameRect (x, y, 24, 20, k ? wk_tone (C_FACE, 90) : wk_tone (C_FACE, 40));
+			c.frameRect (x, y, 24, 20, k ? uk_tone (C_FACE, 90) : uk_tone (C_FACE, 40));
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int br, int, int) override
@@ -345,7 +347,7 @@ static bool save_bmp (const char *path)
 			p[x * 3] = (unsigned char) v; p[x * 3 + 1] = (unsigned char) (v >> 8); p[x * 3 + 2] = (unsigned char) (v >> 16);
 		}
 	}
-	if (kapi_save_file (path, out, (unsigned) size) < 0) { wk_messagebox ("Save", "Cannot write the file.", MB_OK); return false; }
+	if (kapi_save_file (path, out, (unsigned) size) < 0) { uk_messagebox ("Save", "Cannot write the file.", MB_OK); return false; }
 	g_saved = hash_img ();
 	return true;
 }
@@ -353,8 +355,8 @@ static bool load_bmp (const char *path)
 {
 	int w, h;
 	unsigned *px = ui::bmp_decode (path, &w, &h);
-	if (px == 0) { wk_messagebox ("Open", "Not a 24-bit BMP file.", MB_OK); return false; }
-	if (w > MAXS || h > MAXS) { delete[] px; wk_messagebox ("Open", "Icons can be at most 64 x 64 pixels.", MB_OK); return false; }
+	if (px == 0) { uk_messagebox ("Open", "Not a 24-bit BMP file.", MB_OK); return false; }
+	if (w > MAXS || h > MAXS) { delete[] px; uk_messagebox ("Open", "Icons can be at most 64 x 64 pixels.", MB_OK); return false; }
 	g_w = w; g_h = h;
 	for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) g_img[y * MAXS + x] = px[y * w + x] & 0x00FFFFFF;
 	delete[] px;
@@ -370,7 +372,7 @@ static void on_save () { if (save_bmp (g_path)) refresh (); }
 static void on_save_as ()
 {
 	char p[128];
-	if (wk_file_save (p, sizeof p, "SD:/", g_path)) { int i = 0; for (; p[i] && i < 127; i++) g_path[i] = p[i]; g_path[i] = 0; on_save (); }
+	if (uk_file_save (p, sizeof p, "SD:/", g_path, BMP_KINDS)) { int i = 0; for (; p[i] && i < 127; i++) g_path[i] = p[i]; g_path[i] = 0; on_save (); }
 }
 static void new_icon (int s)
 {
@@ -392,7 +394,7 @@ static void on_open ()
 {
 	if (!doc_confirm (g_path, changed (), on_save)) return;
 	char p[128];
-	if (wk_file_open (p, sizeof p, "SD:/apps/")) load_bmp (p);
+	if (uk_file_open (p, sizeof p, "SD:/apps/", BMP_KINDS)) load_bmp (p);
 	refresh ();
 }
 
@@ -449,7 +451,7 @@ static void on_grid () { g_gridOn = !g_gridOn; refresh (); }
 static void on_more ()
 {
 	unsigned c = g_col[0] == TRANSP ? 0x00808080 : g_col[0];
-	if (wk_color_dialog (&c, "Primary colour")) { g_col[0] = c & 0x00FFFFFF; if (g_col[0] == TRANSP) g_col[0] = 0x00FE00FE; }
+	if (uk_color_dialog (&c, "Primary colour")) { g_col[0] = c & 0x00FFFFFF; if (g_col[0] == TRANSP) g_col[0] = 0x00FE00FE; }
 	refresh ();
 }
 static void btn_more (Widget &) { on_more (); }
@@ -463,7 +465,7 @@ public:
 	void onDraw () override				// a groove above the status line
 	{
 		Root::onDraw ();
-		wk_etch_h (canvas, 6, H - wk_fh () - 11, W - 12, bg);
+		uk_etch_h (canvas, 6, H - uk_fh () - 11, W - 12, bg);
 	}
 	bool onKey (long k) override
 	{
@@ -488,7 +490,7 @@ int main (void)
 	if (root.canvas.px == 0) return 1;
 	root.setBg (C_BG);
 	for (int i = 0; i < MAXS * MAXS; i++) g_img[i] = TRANSP;
-	int fh = wk_fh ();
+	int fh = uk_fh ();
 	for (int i = 0; i < NTOOL; i++)
 	{
 		g_toolBtn[i] = new Button (6, 8 + i * 34, TOOL_W - 12, 28, TOOL_NAME[i], btn_tool);
@@ -513,19 +515,19 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New 40 x 40 (app icon)", "^N", WK_CTRL ('N'), on_new40);
+	menu.item ("New 40 x 40 (app icon)", "^N", UK_CTRL ('N'), on_new40);
 	menu.item ("New 16 x 16", "", 0, on_new16);
 	menu.item ("New 24 x 24", "", 0, on_new24);
 	menu.item ("New 32 x 32", "", 0, on_new32);
 	menu.item ("New 48 x 48", "", 0, on_new48);
 	menu.item ("New 64 x 64", "", 0, on_new64);
 	menu.separator ();
-	menu.item ("Open...",    "^O", WK_CTRL ('O'), on_open);
-	menu.item ("Save",       "^S", WK_CTRL ('S'), on_save);
+	menu.item ("Open...",    "^O", UK_CTRL ('O'), on_open);
+	menu.item ("Save",       "^S", UK_CTRL ('S'), on_save);
 	menu.item ("Save As...", "",   0,             on_save_as);
 	menu.menu ("Edit");
-	menu.item ("Undo",       "^Z", WK_CTRL ('Z'), on_undo);
-	menu.item ("Redo",       "^Y", WK_CTRL ('Y'), on_redo);
+	menu.item ("Undo",       "^Z", UK_CTRL ('Z'), on_undo);
+	menu.item ("Redo",       "^Y", UK_CTRL ('Y'), on_redo);
 	menu.separator ();
 	menu.item ("Swap Colours", "X", 0, on_swap);
 	menu.item ("More Colours...", "", 0, on_more);

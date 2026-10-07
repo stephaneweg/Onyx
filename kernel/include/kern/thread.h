@@ -42,6 +42,8 @@ class CAddressSpace;
 class CTask;
 struct TSyncObj;
 struct kapi_posted;
+struct kapi_thread_attr;
+struct kapi_thread_info;
 
 #define THREADS_MAX		32		// threads a process may run besides its main one
 #define THREAD_RECS		(THREADS_MAX * 2)	// ... + the ended ones not joined yet
@@ -56,9 +58,13 @@ struct TThreadRec
 	unsigned nTid;				// 0: a free record
 	CTask	*pTask;				// (while it runs)
 	boolean	 bDone;				// ended: nCode is its result
+	boolean	 bDetached;			// (v75) no join: the record is freed when it ends
 	int	 nCode;
 	unsigned nSeq;				// (the oldest ended one is reused first)
+	u64	 ulStackLo, ulStackHi;		// (v75) its user stack (a lazy region, kern/vm.h)
 };
+
+#define THREAD_STACK_DEFAULT_EX	0x800000	// (v75) thread_create_ex's default: 8 MB (lazy)
 
 struct TPost
 {
@@ -121,6 +127,8 @@ int  kapi_pop_post (struct kapi_posted *pPost);		// (v73)
 int  kapi_wait_word (volatile unsigned *pWord, unsigned nExpected, unsigned nTimeoutMs);
 int  kapi_wake_word (volatile unsigned *pWord);
 int  kapi_thread_priority (int nTid, int nPrio);
+int  kapi_thread_create_ex (const struct kapi_thread_attr *pAttr);	// (v75)
+int  kapi_thread_info (int nTid, struct kapi_thread_info *pOut);	// (v75)
 }
 
 #endif

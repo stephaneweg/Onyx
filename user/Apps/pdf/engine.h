@@ -15,7 +15,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 extern "C" {
 #include "mupdf/fitz.h"
 #include "mupdf/pdf.h"

@@ -4,7 +4,7 @@
 // drawn, and every frame is shown with kapi_present_fb. Integer maths only (a sine
 // table + a colour palette). Esc, Enter, q or a click quits (the desktop comes back).
 //
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 static int  g_sin[256];			// sin table, -127..127
 static unsigned g_pal[256];

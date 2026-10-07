@@ -650,7 +650,7 @@ def m_text ():
 	c.save ("paint-text.png")
 
 def m_resize ():
-	"""the Resize dialog: Tab goes from one field to the next (wtk's fix)"""
+	"""the Resize dialog: Tab goes from one field to the next (uikit's fix)"""
 	c, _ = screen ()
 	(px, py, z), body = paint_window (c)
 	c.rect (0, 0, M.W, M.H, M.A ((0, 0, 0), 50))

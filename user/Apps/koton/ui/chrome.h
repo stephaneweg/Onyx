@@ -4,7 +4,7 @@
 // "Compose with AI", the master level), the browser on the right (what can be put in the song: the
 // harmony, the rhythm, the melody generators, the AI's actions, the plugins), the editor's host at the
 // bottom (its title strip -- the block's kind, its track, Listen -- and the editor) and the status bar.
-// All hand-drawn in the studio's colours; the few wtk controls (the snap's drop-down, Listen) are
+// All hand-drawn in the studio's colours; the few uikit controls (the snap's drop-down, Listen) are
 // children.
 //
 #ifndef _koton_chrome_h
@@ -132,7 +132,7 @@ public:
 		double beat = g_audio.isPlaying () ? g_audio.playheadBeat () : (g_arrange ? g_arrange->cursorBeat : 0);
 		char pos[32], tim[32]; positionText (beat, pos, sizeof pos, tim, sizeof tim);
 		snprintf (lastPos, sizeof lastPos, "%s", pos);
-		{ WkFaceScope sc (g_bigFace); textL (cv, lx + 14, 8, H - 16, pos, 0x5CE0F0, g_bigFace ? 0 : 2); }
+		{ UkFaceScope sc (g_bigFace); textL (cv, lx + 14, 8, H - 16, pos, ACC, g_bigFace ? 0 : 2); }
 		textR (cv, lx + LCD_W - 12, 12, 18, "BAR.BEAT.16", FAINT);
 		textR (cv, lx + LCD_W - 12, 30, 18, tim, DIM);
 		// the song's chips
@@ -251,7 +251,7 @@ public:
 	Vec<BrowserItem> items;			// action 0: a heading
 	Vec<Str> pluginNames; Vec<int> pluginKinds;
 	Browser (int l, int t, int h) : Widget (l, t, W, h), m_hot (-1), m_scroll (0) { anchor = ANCHOR_TOP | ANCHOR_BOTTOM | ANCHOR_RIGHT; build (); }
-	unsigned bgColor () override { return PANEL; }
+	unsigned bgColor () override { return SIDE; }
 	void heading (const char *s) { BrowserItem i = { 0, s, 0, 0 }; items.push (i); }
 	void add (int a, const char *s, const char *hint, unsigned c) { BrowserItem i = { a, s, hint, c }; items.push (i); }
 	void build ()
@@ -292,7 +292,7 @@ public:
 	void onDraw () override
 	{
 		Canvas &cv = canvas;
-		cv.clear (PANEL);
+		cv.clear (SIDE);
 		vline (cv, 0, 0, height, LINE);
 		textL (cv, 14, 6, 22, "GENERATORS", ACC, 2);
 		textL (cv, 14, 26, 18, "click: put it on the selected track", FAINT);
@@ -310,7 +310,7 @@ public:
 			if (y + ROW > 44 && y < height)
 			{
 				if (i == m_hot) box (cv, 8, y, width - 16, ROW + (it.hint ? 14 : 0), 4, PANEL2);
-				frame (cv, 14, y + 6, 12, 12, 3, it.colour);
+				box (cv, 14, y + 6, 12, 12, 3, it.colour);
 				textL (cv, 34, y, ROW, it.label, TEXT);
 				if (it.hint) textFit (cv, 34, y + 18, width - 44, 16, it.hint, FAINT);
 			}

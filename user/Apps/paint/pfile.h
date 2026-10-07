@@ -11,8 +11,8 @@
 #ifndef _paint_pfile_h
 #define _paint_pfile_h
 
-#include "img/imgload.hpp"
-#include "img/pngsave.hpp"
+#include "imagekit/img/imgload.hpp"
+#include "imagekit/img/pngsave.hpp"
 #include "raster.h"
 
 namespace pd {

@@ -1,6 +1,6 @@
 /*
  * onyx_muftmodule.h -- the FreeType modules of the PDF Viewer (mupdf.mk): the apps' TrueType text (truetype,
- * sfnt, smooth, autofit: user/ft/onyx_ftmodule.h) plus what PDF fonts need (Type 1, CFF, CID, their PostScript
+ * sfnt, smooth, autofit: user/Kits/fontkit/onyx_ftmodule.h) plus what PDF fonts need (Type 1, CFF, CID, their PostScript
  * helpers, the mono rasteriser): MuPDF's scripts/freetype/slimftmodules.h.
  */
 FT_USE_MODULE( FT_Module_Class, autofit_module_class )

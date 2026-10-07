@@ -45,7 +45,12 @@ static int album_cover (int a)
 class SearchBox : public HintBox
 {
 public:
-	SearchBox (int l, int t, int w, int h) : HintBox (l, t, w, h, "Search: a name, a date...") { maxLen = 190; }
+	SearchBox (int l, int t, int w, int h) : HintBox (l, t, w, h, "Search: a name, a date...") { maxLen = 190; padR = 22; }
+	void onDraw () override			// (the magnifier, inside the field's right)
+	{
+		HintBox::onDraw ();
+		icon (canvas, I_SEARCH, width - 24, (height - 16) / 2, 16, uk_mix (C_FIELD, C_FIELD_TEXT, 120));
+	}
 	bool onKey (long k) override { if (k == 27) { setText (""); return true; } return HintBox::onKey (k); }
 };
 class ToolBar : public Widget
@@ -62,17 +67,17 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG); hits.clear ();
-		canvas.fillRect (0, height - 1, width, 1, wk_mix (C_BG, C_TEXT, 40));
+		canvas.fillRect (0, height - 1, width, 1, uk_mix (C_BG, C_TEXT, 40));
 		int x = 12;
 		{	// Slideshow: the accent pill
 			const char *l = "Slideshow"; int w = tw (l, F_UI, 1) + 46;
 			bool on = g_list.n > 0 || g_src == SRC_ALBUMS;
-			fill_round (canvas, x, 8, w, 34, 6, hot == T_SHOW && on ? wk_mix (C_ACCENT, 0xFFFFFF, 30) : on ? C_ACCENT : wk_mix (C_BG, C_ACCENT, 120));
+			fill_round (canvas, x, 8, w, 34, 6, hot == T_SHOW && on ? uk_mix (C_ACCENT, 0xFFFFFF, 30) : on ? C_ACCENT : uk_mix (C_BG, C_ACCENT, 120));
 			icon (canvas, I_PLAY, x + 12, 16, 18, C_SEL_TEXT);
 			text_v (canvas, x + 36, 8, 34, l, C_SEL_TEXT, F_UI, 1);
 			hits.add (x, 8, w, 34, T_SHOW); x += w + 12;
 		}
-		canvas.fillRect (x, 12, 1, 26, wk_mix (C_BG, C_TEXT, 50)); x += 12;
+		canvas.fillRect (x, 12, 1, 26, uk_mix (C_BG, C_TEXT, 50)); x += 12;
 		if (g_selN)
 		{
 			char s[40]; snprintf (s, sizeof s, g_selN == 1 ? "1 selected" : "%d selected", g_selN);
@@ -83,7 +88,7 @@ public:
 			const B BS[] = { { T_FAV, allFav ? I_HEART : I_HEART_O, 0 }, { T_ALBUM, I_ALBUM, 0 }, { T_SHARE, I_SHARE, 0 }, { T_TRASH, I_TRASH, 0 }, { T_CLEAR, I_CLOSE, 0 } };
 			for (unsigned i = 0; i < sizeof BS / sizeof BS[0]; i++)
 			{
-				if (hot == BS[i].k) fill_round (canvas, x, 8, 34, 34, 6, wk_mix (C_BG, C_TEXT, 25));
+				if (hot == BS[i].k) fill_round (canvas, x, 8, 34, 34, 6, uk_mix (C_BG, C_TEXT, 25));
 				icon (canvas, BS[i].ic, x + 8, 16, 18, BS[i].k == T_FAV && allFav ? RED : C_TEXT);
 				hits.add (x, 8, 34, 34, BS[i].k); x += 38;
 			}
@@ -92,17 +97,16 @@ public:
 		zx = search->left - 150;
 		if (zx > x + 10 && g_src != SRC_ALBUMS)
 		{
-			unsigned dim = wk_mix (C_BG, C_TEXT, 150);
+			unsigned dim = uk_mix (C_BG, C_TEXT, 150);
 			icon (canvas, I_SMALLPIC, zx, 18, 14, dim);
 			int tx = zx + 22, tl = 90;
-			canvas.fillRect (tx, 24, tl, 3, wk_mix (C_BG, C_TEXT, 50));
+			canvas.fillRect (tx, 24, tl, 3, uk_mix (C_BG, C_TEXT, 50));
 			int k = tx + (g_tile - 72) * tl / (220 - 72);
 			canvas.fillRect (tx, 24, k - tx, 3, C_ACCENT);
-			disc (canvas, k, 25, 7, C_FIELD); ring (canvas, k, 25, 7, wk_mix (C_BG, C_TEXT, 110), 1);
+			disc (canvas, k, 25, 7, C_FIELD); ring (canvas, k, 25, 7, uk_mix (C_BG, C_TEXT, 110), 1);
 			icon (canvas, I_BIGPIC, tx + tl + 8, 14, 20, dim);
 			hits.add (tx - 8, 10, tl + 16, 30, T_SIZE);
 		}
-		icon (canvas, I_SEARCH, search->left + search->width - 26, 17, 16, wk_mix (C_FIELD, C_FIELD_TEXT, 120));
 	}
 	void size_at (int mx)
 	{
@@ -144,26 +148,26 @@ public:
 	{
 		unsigned bg = col_side ();
 		canvas.clear (bg); hits.clear ();
-		canvas.fillRect (width - 1, 0, 1, height, wk_mix (C_BG, C_TEXT, 40));
+		canvas.fillRect (width - 1, 0, 1, height, uk_mix (C_BG, C_TEXT, 40));
 		int y = 12 - sy;
-		auto head = [&] (const char *t, int kind) { text (canvas, 18, y + 6, t, wk_mix (bg, C_TEXT, 130), F_TINY, 1); if (kind) hits.add (0, y, width, 22, kind); y += 24; };
+		auto head = [&] (const char *t, int kind) { text (canvas, 18, y + 6, t, uk_mix (bg, C_TEXT, 130), F_TINY, 1); if (kind) hits.add (0, y, width, 22, kind); y += 24; };
 		auto item = [&] (const char *label, int ic, unsigned icol, int count, bool on, int kind, int arg) {
 			int idx = hits.n;
 			if (on) fill_round (canvas, 8, y, width - 16, 28, 6, C_ACCENT);
-			else if (hot == idx) fill_round (canvas, 8, y, width - 16, 28, 6, wk_mix (bg, C_TEXT, 22));
+			else if (hot == idx) fill_round (canvas, 8, y, width - 16, 28, 6, uk_mix (bg, C_TEXT, 22));
 			icon (canvas, ic, 18, y + 6, 16, on ? C_SEL_TEXT : icol);
 			char n[16] = ""; if (count >= 0) snprintf (n, sizeof n, "%d", count);
 			int nw = n[0] ? tw (n, F_SMALL) + 8 : 0;
 			text_v (canvas, 44, y, 28, label, on ? C_SEL_TEXT : C_TEXT, F_UI, on ? 1 : 0, width - 44 - 18 - nw);
-			if (n[0]) text_r (canvas, width - 18, y, 28, n, on ? C_SEL_TEXT : wk_mix (bg, C_TEXT, 140), F_SMALL);
+			if (n[0]) text_r (canvas, width - 18, y, 28, n, on ? C_SEL_TEXT : uk_mix (bg, C_TEXT, 140), F_SMALL);
 			hits.add (0, y, width, 28, kind, arg); y += 30;
 		};
 		auto link = [&] (const char *label, int kind) {
 			icon (canvas, I_PLUS, 18, y + 6, 16, C_ACCENT);
-			text_v (canvas, 44, y, 28, label, hits.n == hot ? wk_mix (C_ACCENT, C_TEXT, 90) : C_ACCENT);
+			text_v (canvas, 44, y, 28, label, hits.n == hot ? uk_mix (C_ACCENT, C_TEXT, 90) : C_ACCENT);
 			hits.add (0, y, width, 28, kind); y += 30;
 		};
-		unsigned dim = wk_mix (bg, C_TEXT, 150);
+		unsigned dim = uk_mix (bg, C_TEXT, 150);
 		head ("LIBRARY", 0);
 		item ("All photos", I_PHOTOS, dim, g_nAll, g_src == SRC_ALL, S_ALL, 0);
 		item ("Favourites", I_HEART, RED, g_nFav, g_src == SRC_FAV, S_FAV, 0);
@@ -215,7 +219,7 @@ public:
 				else if (r == 3)
 				{
 					char q[300]; snprintf (q, sizeof q, "Stop watching %s? Its photos stay on the card; they leave the library and its albums keep their place.", g_lib.roots[rr]);
-					if (wk_messagebox ("Photos", q, MB_YESNO) == 1) { char p[200]; scpy (p, g_lib.roots[rr], sizeof p); g_lib.remove_added (p); g_lib.save (); show_source (SRC_ALL); lib_changed (); }
+					if (uk_messagebox ("Photos", q, MB_YESNO) == 1) { char p[200]; scpy (p, g_lib.roots[rr], sizeof p); g_lib.remove_added (p); g_lib.save (); show_source (SRC_ALL); lib_changed (); }
 				}
 			}
 			return true;
@@ -277,14 +281,14 @@ void Sidebar::album_action (int a, int r)
 	case 5:
 	{
 		NameBox nb ("Rename the album", "Its new name:", g_lib.albums[a].name); char n[120];
-		if (nb.ask (n, sizeof n) && !g_lib.album_rename (a, n)) wk_messagebox ("Photos", "That name cannot be used (one has it already, or it has a / or a :).", MB_OK);
+		if (nb.ask (n, sizeof n) && !g_lib.album_rename (a, n)) uk_messagebox ("Photos", "That name cannot be used (one has it already, or it has a / or a :).", MB_OK);
 		if (g_src == SRC_ALBUM) { int k = g_lib.album_find (n); if (k >= 0) g_srcArg = k; }
 		lib_changed (); break;
 	}
 	case 6:
 	{
 		char q[300]; snprintf (q, sizeof q, "Delete the album \"%s\"? Its photos stay in the library.", g_lib.albums[a].name);
-		if (wk_messagebox ("Photos", q, MB_YESNO) == 1) { g_lib.album_delete (a); if (g_src == SRC_ALBUM) g_src = SRC_ALBUMS; lib_changed (); }
+		if (uk_messagebox ("Photos", q, MB_YESNO) == 1) { g_lib.album_delete (a); if (g_src == SRC_ALBUM) g_src = SRC_ALBUMS; lib_changed (); }
 		break;
 	}
 	}
@@ -389,11 +393,11 @@ public:
 				bool sel = selected (pi);
 				if (sel)
 				{	// a selected photo: smaller in an accent frame
-					fill_round (canvas, tx, ty, tile, tile, 6, wk_mix (bg, C_ACCENT, 70));
-					g_th.draw (canvas, pi, tx + 8, ty + 8, tile - 16, tile - 16, 4, wk_mix (bg, C_ACCENT, 70));
+					fill_round (canvas, tx, ty, tile, tile, 6, uk_mix (bg, C_ACCENT, 70));
+					g_th.draw (canvas, pi, tx + 8, ty + 8, tile - 16, tile - 16, 4, uk_mix (bg, C_ACCENT, 70));
 				}
 				else g_th.draw (canvas, pi, tx, ty, tile, tile, 4, bg);
-				if (pos == hoverPos && !sel) { for (int j = 0; j < 30; j++) wk_rbox (canvas, tx, ty + j, tile, 1, 0, 0x000000, 0x000000, (30 - j) * 3); }
+				if (pos == hoverPos && !sel) { for (int j = 0; j < 30; j++) uk_rbox (canvas, tx, ty + j, tile, 1, 0, 0x000000, 0x000000, (30 - j) * 3); }
 				if (sel) check_mark (canvas, tx + 4, ty + 4, true, 0xFFFFFF);
 				else if (rings || pos == hoverPos) check_mark (canvas, tx + 5, ty + 5, false, 0xFFFFFF);
 				if (g_lib.ph[pi].fav) icon (canvas, I_HEART, tx + tile - (sel ? 30 : 24), ty + tile - (sel ? 30 : 24), 17, 0xFFFFFF);
@@ -500,11 +504,11 @@ public:
 		{
 			int x = 20 + (a % n) * (cw + gx), y = 74 + (a / n) * (ch + 62) - sy;
 			if (y > vh || y + ch + 50 < 0) continue;
-			unsigned l1 = wk_mix (bg, C_FIELD_TEXT, 40), l2 = wk_mix (bg, C_FIELD_TEXT, 22);
+			unsigned l1 = uk_mix (bg, C_FIELD_TEXT, 40), l2 = uk_mix (bg, C_FIELD_TEXT, 22);
 			fill_round (canvas, x + 10, y - 9, cw - 20, ch, 8, l1); fill_round (canvas, x + 5, y - 5, cw - 10, ch, 8, l2);
 			int c = album_cover (a);
 			if (c >= 0) g_th.draw (canvas, c, x, y, cw, ch, 8, bg);
-			else { fill_round (canvas, x, y, cw, ch, 8, wk_mix (bg, C_FIELD_TEXT, 30)); icon (canvas, I_ALBUM, x + cw / 2 - 20, y + ch / 2 - 20, 40, col_faint ()); }
+			else { fill_round (canvas, x, y, cw, ch, 8, uk_mix (bg, C_FIELD_TEXT, 30)); icon (canvas, I_ALBUM, x + cw / 2 - 20, y + ch / 2 - 20, 40, col_faint ()); }
 			text (canvas, x + 2, y + ch + 8, g_lib.albums[a].name, C_FIELD_TEXT, F_UI, 1, cw - 4);
 			char s[40]; int k = a < g_nAlbum.n ? g_nAlbum[a] : 0; snprintf (s, sizeof s, k == 1 ? "1 photo" : "%d photos", k);
 			text (canvas, x + 2, y + ch + 26, s, col_dim (), F_SMALL);

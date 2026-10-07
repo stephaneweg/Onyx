@@ -1,6 +1,6 @@
 //
 // Apps/clipd/main.cpp -- clipd, the shared clipboard's service (docs/clipboard/README.md; the protocol:
-// user/clipproto.h; the apps' side: user/clipboard.h). No window: it registers the IPC service
+// user/Kits/uikit/clipproto.h; the apps' side: user/Kits/uikit/clipboard.h). No window: it registers the IPC service
 // "clipboard", keeps the last 10 copies in its memory (ring.h) and answers the apps:
 //   CLIP_PUT / CLIP_PUT_INLINE   a copy -> the ring's front, the cursor on it, a notification
 //                                ("Text copied", "Image copied", "2 files cut"...)
@@ -12,8 +12,8 @@
 // history is lost then (the user's choice).
 //
 #include <stdio.h>
-#include "kapi.h"
-#include "notify.h"
+#include "appkit/appkit.h"
+#include "systemkit/systemkit.h"
 #include "ring.h"
 
 static ClipRing g_ring;

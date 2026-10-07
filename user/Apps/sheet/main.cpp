@@ -16,12 +16,12 @@
 #define SHEET_APP 1
 #include "dialogs.h"
 #include "docguard.h"
-#include "clipboard.h"
+#include "systemkit/systemkit.h"
 
 using namespace ss;
-using namespace wtk;
+using namespace uikit;
 
-#define W 1000						// (fits a 1024 x 768 screen: as Writer)
+#define W 1000						// (fits a 1024 x 768 screen: as Letters)
 #define H 700
 
 static Book g_b;
@@ -99,7 +99,7 @@ static void cmd_save_as ()
 	char out[256], def[80];
 	scpy (def, g_path[0] ? base_name (g_path) : "Book1.xlsx", sizeof def);
 	char *dot = strrchr (def, '.'); if (dot && (ends_with (def, ".ods"))) scpy (dot, ".xlsx", (int) (sizeof def - (dot - def)));
-	if (!wk_file_save (out, sizeof out, "SD:/docs", def)) return;
+	if (!uk_file_save (out, sizeof out, "SD:/docs", def, "Excel (XLSX)|*.xlsx|CSV files|*.csv|Tab-separated (TSV)|*.tsv|All files|*")) return;
 	if (!strrchr (base_name (out), '.')) { int n = (int) strlen (out); scpy (out + n, ".xlsx", (int) sizeof out - n); }
 	if (!save_to (out)) return;
 	if (!(ends_with (out, ".csv") || ends_with (out, ".txt") || ends_with (out, ".tsv"))) { scpy (g_path, out, sizeof g_path); g_saved = g_gen; }
@@ -119,7 +119,7 @@ static void cmd_open ()
 	if (g_grid->ed.on && !g_grid->commit (0, 0)) return;
 	if (!doc_confirm (g_path[0] ? base_name (g_path) : "Untitled", changed_doc (), save_for_guard)) return;
 	char p[256];
-	if (!wk_file_open (p, sizeof p, g_path[0] ? g_path : "SD:/docs")) return;
+	if (!uk_file_open (p, sizeof p, g_path[0] ? g_path : "SD:/docs", "Spreadsheets|*.xlsx;*.ods;*.csv;*.tsv;*.txt|Excel (XLSX)|*.xlsx|OpenDocument (ODS)|*.ods|CSV and text|*.csv;*.tsv;*.txt|All files|*")) return;
 	load_path (p);
 }
 static void cmd_export_csv ()
@@ -129,14 +129,14 @@ static void cmd_export_csv ()
 	scpy (def, g_path[0] ? base_name (g_path) : "Book1", sizeof def);
 	char *dot = strrchr (def, '.'); if (dot) *dot = 0;
 	int n = (int) strlen (def); scpy (def + n, ".csv", (int) sizeof def - n);
-	if (!wk_file_save (out, sizeof out, "SD:/docs", def)) return;
+	if (!uk_file_save (out, sizeof out, "SD:/docs", def, "CSV files|*.csv|All files|*")) return;
 	int len; char *d = csv_write (g_b, S (), ',', &len);
 	if (!write_file (out, d, len)) message ("The file cannot be written.");
 	free (d);
 }
 
 // ---- File > Export as PDF: the used cells of a sheet (or all), cut into pages (pdf/pdfwrite.h) ---------------------------
-struct PdfOpts { bool all, landscape, fit, grid, jpeg, open; };
+struct PdfOpts { bool all, landscape, fit, grid, jpeg, open; float pw, ph, margin; };	// (pw, ph, margin: a printer's paper; 0: A4, 36 points)
 class PdfDialog : public Dialog
 {
 public:
@@ -165,7 +165,7 @@ public:
 	}
 	void onButton (int tag) override
 	{
-		if (tag == 9) { char p[256]; if (wk_file_save (p, sizeof p, dir, file->text)) file->setText (p); return; }
+		if (tag == 9) { char p[256]; if (uk_file_save (p, sizeof p, dir, file->text, "PDF documents|*.pdf|All files|*")) file->setText (p); return; }
 		if (tag == 1) { o.all = rAll->checked; o.landscape = rLand->checked; o.fit = cFit->checked; o.grid = cGrid->checked; o.open = cOpen->checked; }
 		close (tag);
 	}
@@ -186,6 +186,8 @@ static void pdf_sheet (pdfw::Writer &w, Sheet *s, const PdfOpts &o, int &pageNo,
 	}
 	if (maxR < 0 || maxC < 0) return;
 	float PW = o.landscape ? 841.89f : 595.28f, PH = o.landscape ? 595.28f : 841.89f, M = 36, FOOT = 18;
+	if (o.pw > 0 && o.ph > 0) { PW = o.pw; PH = o.ph; }
+	if (o.margin > 0) M = o.margin;
 	float scale = 0.75f;
 	long long usedW = col_x (s, maxC + 1);
 	if (o.fit && usedW * scale > PW - 2 * M) scale = (PW - 2 * M) / usedW;
@@ -276,6 +278,37 @@ static void cmd_export_pdf ()
 	delete[] pdf;
 	if (!ok) message ("The file cannot be written.");
 	else if (o.open) kapi_exec ("SD:apps/pdf.app/main", path);
+}
+
+// File > Print: the Print dialog (the library's: the printer, its paper, the pages...), then the sheet's
+// pages drawn into the job by the PDF export's code (printerkit/pdfprint.h).
+static void cmd_print ()
+{
+	if (g_grid->ed.on && !g_grid->commit (0, 0)) return;
+	char name[256]; snprintf (name, sizeof name, "%s", g_path[0] ? base_name (g_path) : "Book1");
+	Sheet *s0 = S (); sheet_bounds (s0);
+	long long uw = col_x (s0, s0->maxC + 1), uh = row_y (s0, s0->maxR + 1);
+	for (int i = 0; i < s0->ncharts; i++) { Chart *c = s0->charts[i]; if (c->x + c->w > uw) uw = c->x + c->w; if (c->y + c->h > uh) uh = c->y + c->h; }
+	PrintSetup ps; print_setup_default (&ps);
+	if (uw > uh && uw > 700) print_setup_paper (&ps, 0, PRINT_LANDSCAPE);	// (a wide sheet: the paper lying, first)
+	PrintDialogInfo di = { sizeof di, name, 0, 0, 0, 0, 0 };
+	if (!print_dialog (&ps, &di)) return;
+	PrintJob *j = print_begin (&ps, name);
+	if (!j) { message ("The print queue cannot be written."); return; }
+	PdfOpts o; memset (&o, 0, sizeof o);
+	o.pw = ps.paper_w; o.ph = ps.paper_h;
+	// the margin: half an inch, and clear of what the printer cannot print on (the footer is under it)
+	float m = ps.margin_l; if (ps.margin_t > m) m = ps.margin_t; if (ps.margin_r > m) m = ps.margin_r; if (ps.margin_b > m) m = ps.margin_b;
+	o.margin = m + 12 > 36 ? m + 12 : 36;
+	int pageNo = 0;
+	{
+		PrintWriter w (j); Canvas dummy;
+		g_pdf = &w;
+		pdf_sheet (w, s0, o, pageNo, dummy);
+		g_pdf = 0; g_pdfS = 0.75f; g_pdfX = g_pdfY = 0;
+	}
+	if (!pageNo) { print_abort (j); message ("There is nothing in the sheet to print."); return; }
+	if (print_end (j) < 0) message ("The sheet could not be put in the print queue.");
 }
 
 // ---- after a change ----------------------------------------------------------------------------------------
@@ -1439,9 +1472,9 @@ static void pick_font (PickBox &p)
 static void size_value (Canvas &cv, int x, int y, int w, int h, unsigned ink)
 {
 	char t[16]; snprintf (t, sizeof t, "%g", cur_style ().size / 10.0);
-	wk_text_l (cv, x, y, h, t, ink); (void) w;
+	uk_text_l (cv, x, y, h, t, ink); (void) w;
 }
-static void size_row (Canvas &cv, int i, int x, int y, int, int h, unsigned ink) { wk_text_l (cv, x, y, h, SIZE_NAMES[i], ink); }
+static void size_row (Canvas &cv, int i, int x, int y, int, int h, unsigned ink) { uk_text_l (cv, x, y, h, SIZE_NAMES[i], ink); }
 static void pick_size (PickBox &p)
 {
 	int x, y; p.below (&x, &y);
@@ -1451,8 +1484,8 @@ static void pick_size (PickBox &p)
 	if (r >= 0) apply_style (f_size, (const void *) (long) SIZE_VALS[r]);
 	g_grid->setFocus ();
 }
-static void zoom_value (Canvas &cv, int x, int y, int w, int h, unsigned ink) { char t[16]; snprintf (t, sizeof t, "%d%%", g_grid->z); wk_text_l (cv, x, y, h, t, ink); (void) w; }
-static void zoom_row (Canvas &cv, int i, int x, int y, int, int h, unsigned ink) { char t[16]; snprintf (t, sizeof t, "%d%%", ZOOMS[i]); wk_text_l (cv, x, y, h, t, ink); }
+static void zoom_value (Canvas &cv, int x, int y, int w, int h, unsigned ink) { char t[16]; snprintf (t, sizeof t, "%d%%", g_grid->z); uk_text_l (cv, x, y, h, t, ink); (void) w; }
+static void zoom_row (Canvas &cv, int i, int x, int y, int, int h, unsigned ink) { char t[16]; snprintf (t, sizeof t, "%d%%", ZOOMS[i]); uk_text_l (cv, x, y, h, t, ink); }
 static void pick_zoom (PickBox &p)
 {
 	int x, y; p.below (&x, &y);
@@ -1563,7 +1596,7 @@ int main (void)
 {
 	SheetRoot root;
 	root.attach ();				// (a question asked before run (): its clicks and keys)
-	wtk::init ();
+	uikit::init ();
 	if (!fnt::init ())
 	{
 		note ("Spreadsheet", "No TrueType fonts in SD:/res/fonts: the spreadsheet cannot draw its cells.");
@@ -1670,27 +1703,29 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New", "^N", WK_CTRL ('N'), cmd_new);
-	menu.item ("Open...", "^O", WK_CTRL ('O'), cmd_open);
-	menu.item ("Save", "^S", WK_CTRL ('S'), cmd_save);
+	menu.item ("New", "^N", UK_CTRL ('N'), cmd_new);
+	menu.item ("Open...", "^O", UK_CTRL ('O'), cmd_open);
+	menu.item ("Save", "^S", UK_CTRL ('S'), cmd_save);
 	menu.item ("Save As...", "", 0, cmd_save_as);
 	menu.item ("Export as CSV...", "", 0, cmd_export_csv);
 	menu.item ("Export as PDF...", "", 0, cmd_export_pdf);
-	menu.menu ("Edit");
-	menu.item ("Undo", "^Z", WK_CTRL ('Z'), cmd_undo);
-	menu.item ("Redo", "^Y", WK_CTRL ('Y'), cmd_redo);
 	menu.separator ();
-	menu.item ("Cut", "^X", WK_CTRL ('X'), cmd_cut);
-	menu.item ("Copy", "^C", WK_CTRL ('C'), cmd_copy);
-	menu.item ("Paste", "^V", WK_CTRL ('V'), cmd_paste);
+	menu.item ("Print...", "^P", UK_CTRL ('P'), cmd_print);
+	menu.menu ("Edit");
+	menu.item ("Undo", "^Z", UK_CTRL ('Z'), cmd_undo);
+	menu.item ("Redo", "^Y", UK_CTRL ('Y'), cmd_redo);
+	menu.separator ();
+	menu.item ("Cut", "^X", UK_CTRL ('X'), cmd_cut);
+	menu.item ("Copy", "^C", UK_CTRL ('C'), cmd_copy);
+	menu.item ("Paste", "^V", UK_CTRL ('V'), cmd_paste);
 	menu.item ("Paste Special...", "", 0, cmd_paste_special);
 	menu.item ("Delete Contents", "Del", 0, cmd_clear_contents);
 	menu.separator ();
-	menu.item ("Fill Down", "^D", WK_CTRL ('D'), cmd_fill_down);
-	menu.item ("Fill Right", "^R", WK_CTRL ('R'), cmd_fill_right);
-	menu.item ("Select All", "^A", WK_CTRL ('A'), cmd_select_all);
-	menu.item ("Find and Replace...", "^F", WK_CTRL ('F'), cmd_find);
-	menu.item ("Go To...", "^G", WK_CTRL ('G'), cmd_goto);
+	menu.item ("Fill Down", "^D", UK_CTRL ('D'), cmd_fill_down);
+	menu.item ("Fill Right", "^R", UK_CTRL ('R'), cmd_fill_right);
+	menu.item ("Select All", "^A", UK_CTRL ('A'), cmd_select_all);
+	menu.item ("Find and Replace...", "^F", UK_CTRL ('F'), cmd_find);
+	menu.item ("Go To...", "^G", UK_CTRL ('G'), cmd_goto);
 	menu.menu ("View");
 	menu.item ("Zoom In", "", 0, cmd_zoom_in);
 	menu.item ("Zoom Out", "", 0, cmd_zoom_out);
@@ -1715,9 +1750,9 @@ int main (void)
 	menu.item ("Cells...", "^1", 0, cmd_format_cells);
 	menu.item ("Conditional Formatting...", "", 0, cmd_cond_format);
 	menu.separator ();
-	menu.item ("Bold", "^B", WK_CTRL ('B'), cmd_bold);
+	menu.item ("Bold", "^B", UK_CTRL ('B'), cmd_bold);
 	menu.item ("Italic", "^I", 0, cmd_italic);
-	menu.item ("Underline", "^U", WK_CTRL ('U'), cmd_under);
+	menu.item ("Underline", "^U", UK_CTRL ('U'), cmd_under);
 	menu.item ("Merge and Centre", "", 0, cmd_merge);
 	menu.item ("Wrap Text", "", 0, cmd_wrap);
 	menu.separator ();

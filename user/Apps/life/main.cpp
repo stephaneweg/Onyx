@@ -2,8 +2,8 @@
 // life -- Conway's Game of Life. Click cells to toggle; space run/pause, s step,
 // c clear, r random. App-drawn grid via canvas-click.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
 
 #define GW	48
 #define GH	34
@@ -14,7 +14,7 @@
 #define H	(OY + GH * CELL + 8)
 
 static unsigned *fb;
-static wtk::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
+static uikit::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
 static unsigned char g_cell[GH][GW], g_next[GH][GW];
 static int g_run = 0, g_frames = 0, g_gen = 0;
 static unsigned g_rng;
@@ -75,23 +75,23 @@ static void fill_rect (int x, int y, int w, int h, unsigned c)
 			if (xx >= 0 && yy >= 0) fb[yy * W + xx] = c;
 }
 
-// The theme's look (wtk/paint.h): the face around, the grid in a sunken well (its own dark);
+// The theme's look (uikit/paint.h): the face around, the grid in a sunken well (its own dark);
 // drawn once into g_bg, copied at each frame.
 static void paint_bg (void)
 {
-	using namespace wtk;
+	using namespace uikit;
 	g_bg.alloc (W, H);
 	g_bg.clear (C_BG);
-	wk_sunken (g_bg, OX - 3, OY - 3, GW * CELL + 5, GH * CELL + 5, 5, 0x00101418);
+	uk_sunken (g_bg, OX - 3, OY - 3, GW * CELL + 5, GH * CELL + 5, 5, 0x00101418);
 }
 
 static void redraw (void)
 {
-	using namespace wtk;
+	using namespace uikit;
 	g_cv.putOther (g_bg, 0, 0, false);
 	int fw = kapi_font_width ();
-	wk_text_l (g_cv, OX, 3, 20, g_run ? "Running" : "Paused", C_TEXT, 2);
-	wk_text_l (g_cv, OX + 9 * fw, 3, 20, g_run ? "space: pause  s: step  c: clear  r: random"
+	uk_text_l (g_cv, OX, 3, 20, g_run ? "Running" : "Paused", C_TEXT, 2);
+	uk_text_l (g_cv, OX + 9 * fw, 3, 20, g_run ? "space: pause  s: step  c: clear  r: random"
 					      : "space: run  s: step  c: clear  r: random", C_DIS);
 	for (int r = 0; r < GH; r++)
 		for (int c = 0; c < GW; c++)
@@ -103,7 +103,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "life");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 	g_rng = kapi_get_ticks () | 1u;

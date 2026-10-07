@@ -1,0 +1,75 @@
+# Critters -- the UX Designer's mock French catalogue (AutoDev round 5): English<TAB>French. The app's fr.txt starts from it.
+Critters	Bestioles
+Climber	Grimpeur
+Floater	Planeur
+Blocker	Bloqueur
+Builder	Bâtisseur
+Digger	Creuseur
+Exploder	Artificier
+Basher	Perceur
+Miner	Mineur
+Walker	Marcheuse
+Falling — cannot dig now	En chute — ne peut pas creuser
+%d left	encore %d
+(%d here)	(%d ici)
+%d of %d	%d sur %d
+%s · level %d of 6	%s · niveau %d sur 6
+All explode	Tout faire sauter
+All explode?	Tout faire sauter ?
+Back to the levels	Retour aux niveaux
+Best: %d saved · %s	Record : %d sauvées · %s
+Cancel	Annuler
+Click or press a key to start	Cliquez ou appuyez sur une touche pour commencer
+Correct the file in a text editor (Tinypad): the list is read again when you come back to it.	Corrigez le fichier dans un éditeur de texte (Tinypad) : la liste est relue quand vous y revenez.
+Critters come out of the hatch and walk on. Click a role, then a critter, to give it a job. Lead enough of them to the glowing exit before the time runs out.	Les bestioles sortent de la trappe et avancent. Cliquez sur un rôle, puis sur une bestiole, pour lui donner un travail. Menez-en assez jusqu'à la sortie lumineuse avant la fin du temps.
+Enter	Entrée
+Esc	Échap
+Esc or F1: close	Échap ou F1 : fermer
+Esc: resume	Échap : reprendre
+Every critter still out bursts after a 5-second countdown, and no more come out. The level then ends.	Chaque bestiole encore dehors éclate après un compte à rebours de 5 secondes, et plus aucune ne sort. Le niveau se termine alors.
+Expedition	Expédition
+Faster release (+)	Débit plus rapide (+)
+Slower release (-)	Débit plus lent (-)
+How to play	Comment jouer
+Level complete!	Niveau réussi !
+Levels	Niveaux
+My levels	Mes niveaux
+N or Enter: all explode · Esc: cancel	N ou Entrée : tout faire sauter · Échap : annuler
+Needed	Requises
+New best!	Nouveau record !
+Next	Suivant
+Not enough critters saved	Pas assez de bestioles sauvées
+Not solved yet.	Pas encore réussi.
+Only blockers are left: N (All explode) ends the level.	Plus que des bloqueurs : N pour tout faire sauter.
+Out	Dehors
+P or Space: resume	P ou Espace : reprendre
+Paused	Pause
+Play	Jouer
+Play this level (Enter)	Jouer ce niveau (Entrée)
+RATE	DÉBIT
+Rate	Débit
+Restart Level	Recommencer le niveau
+Resume	Reprendre
+Retry	Rejouer
+Save	À sauver
+Save %d of %d	Sauvez-en %d sur %d
+Saved	Sauvées
+Solve “%s” to open this level.	Réussissez « %s » pour ouvrir ce niveau.
+This level cannot be played.	Ce niveau ne peut pas être joué.
+Time	Temps
+Training	Entraînement
+Try another role, or give it sooner.	Essayez un autre rôle, ou donnez-le plus tôt.
+bursts after 5 seconds, with the earth	éclate après 5 secondes, avec la terre
+cannot read the file	impossible de lire le fichier
+choose	choisir
+play	jouer
+quit	quitter
+climbs walls instead of turning	monte aux murs au lieu de tourner
+digs straight down through earth	creuse tout droit dans la terre
+lays a stair of 12 bricks	pose un escalier de 12 briques
+line %d: 	ligne %d : 
+new	nouveau
+saved (%d %%)	sauvées (%d %%)
+stands still: the others turn back	reste sur place : les autres font demi-tour
+survives any fall under its leaf	survit à toute chute sous sa feuille
+unknown block [%s]	bloc inconnu [%s]

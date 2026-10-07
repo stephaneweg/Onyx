@@ -1,15 +1,15 @@
 //
 // ui.h -- what Ledger's pages share: the books open (g_b, their file, the fiscal year shown), the status
 // word, the app's commands the pages call (main.cpp); and the look's pieces, drawn in the theme's colours
-// (wtk/paint.h): the pages' icons, a page's header, the flat buttons (an accent one for the page's main
+// (uikit/paint.h): the pages' icons, a page's header, the flat buttons (an accent one for the page's main
 // action), the status pills (paid, open, overdue...), the dashboard's tiles, the table's cells (amounts
 // at the right, what is negative in red), the questions asked (AskBox).
 //
 #ifndef _ledger_ui_h
 #define _ledger_ui_h
 
-#include "wtk/wtk.h"
-#include "clipboard.h"
+#include "uikit/uikit.h"
+#include "systemkit/systemkit.h"
 #include "Apps/cardfile/widgets.h"
 #include "setup.h"
 #include "fileio.h"
@@ -17,7 +17,7 @@
 
 namespace lg {
 
-using namespace wtk;
+using namespace uikit;
 
 enum { SIDE_W = 208, HEAD_H = 58, STATUS_H = 24, ROW_H = 26 };
 
@@ -60,8 +60,8 @@ static void cmd_pay ();				// the suppliers paid: a SEPA file (payui.h)
 
 // ---- colours ---------------------------------------------------------------------------------------------------------------
 static const unsigned C_GOOD = 0x00248A45, C_BAD = 0x00C8402E, C_WARN = 0x00C7801A, C_BLUE = 0x002F6FC0, C_PURPLE = 0x007A4DB0;
-static unsigned dim_ink (unsigned bg) { return wk_mix (bg, wk_ink_for (bg), 150); }
-static unsigned field_dim () { return wk_mix (C_FIELD, C_FIELD_TEXT, 140); }
+static unsigned dim_ink (unsigned bg) { return uk_mix (bg, uk_ink_for (bg), 150); }
+static unsigned field_dim () { return uk_mix (C_FIELD, C_FIELD_TEXT, 140); }
 
 // ---- the icons (20 x 20 at x, y) ----------------------------------------------------------------------------------------------
 enum { NI_OVERVIEW, NI_SALES, NI_PURCH, NI_BANK, NI_MISC, NI_CUST, NI_SUPP, NI_CHART, NI_REPORT, NI_VAT, NI_SETTINGS,
@@ -147,7 +147,7 @@ static void draw_ni (Canvas &cv, int k, int x, int y, unsigned ink, unsigned acc
 		p.fill (cv, ink);
 		p.clear (); p.line (X + V (16), Y + V (3), X + V (4), Y + V (17), 40); p.fill (cv, accent);
 		break;
-	case NI_SETTINGS: wk_glyph (cv, WKG_GEAR, x + 10, y + 10, 18, ink); break;
+	case NI_SETTINGS: uk_glyph (cv, WKG_GEAR, x + 10, y + 10, 18, ink); break;
 	case NI_PLUS: p.rect (X + V (9), Y + V (3), V (2), V (14)); p.rect (X + V (3), Y + V (9), V (14), V (2)); p.fill (cv, ink); break;
 	case NI_TRASH:
 		p.rrect (X + V (5), Y + V (6), V (10), V (13), V (2)); p.fill (cv, ink);
@@ -165,15 +165,15 @@ static void draw_ni (Canvas &cv, int k, int x, int y, unsigned ink, unsigned acc
 		p.clear (); p.line (X + V (10), Y + V (14), X + V (10), Y + V (4), 36); p.arrowHead (X + V (10), Y + V (2), 90, V (6), V (5)); p.fill (cv, accent);
 		break;
 	}
-	case NI_BACK: wk_glyph (cv, WKG_CHEV_LEFT, x + 10, y + 10, 14, ink); break;
+	case NI_BACK: uk_glyph (cv, WKG_CHEV_LEFT, x + 10, y + 10, 14, ink); break;
 	case NI_LINK:							// two links of a chain
 		p.rrect (X + V (1), Y + V (6), V (11), V (8), V (4)); p.fill (cv, ink);
 		p.clear (); p.rrect (X + V (3), Y + V (8), V (7), V (4), V (2)); p.fill (cv, 0xFFFFFF);
 		p.clear (); p.rrect (X + V (8), Y + V (6), V (11), V (8), V (4)); p.fill (cv, accent);
 		p.clear (); p.rrect (X + V (10), Y + V (8), V (7), V (4), V (2)); p.fill (cv, 0xFFFFFF);
 		break;
-	case NI_CHECK: wk_glyph (cv, WKG_CHECK, x + 10, y + 10, 14, ink); break;
-	case NI_LOCK: wk_glyph (cv, WKG_LOCK, x + 10, y + 10, 16, ink); break;
+	case NI_CHECK: uk_glyph (cv, WKG_CHECK, x + 10, y + 10, 14, ink); break;
+	case NI_LOCK: uk_glyph (cv, WKG_LOCK, x + 10, y + 10, 16, ink); break;
 	case NI_ORDERS:							// a clipboard: its clip, its ticked lines
 	{
 		int bd[8] = { X + V (4), Y + V (3), X + V (16), Y + V (3), X + V (16), Y + V (19), X + V (4), Y + V (19) };
@@ -211,19 +211,19 @@ static inline Widget *wg (Widget *w) { return w; }
 static void fit_text (const char *s, int w, char *out, int cap, int style = 0)
 {
 	scpy (out, s, cap);
-	if (wk_text_w (out, style) <= w) return;
+	if (uk_text_w (out, style) <= w) return;
 	int n = slen (out);
-	while (n > 0) { out[--n] = '\0'; if (wk_text_w (out, style) + wk_text_w ("...", style) <= w) break; }
+	while (n > 0) { out[--n] = '\0'; if (uk_text_w (out, style) + uk_text_w ("...", style) <= w) break; }
 	scat (out, "...", cap);
 }
 static void text_fit_l (Canvas &cv, int x, int y, int w, int h, const char *s, unsigned c, int style = 0)
 {
 	char t[256]; fit_text (s, w, t, sizeof t, style);
-	wk_text_l (cv, x, y, h, t, c, style);
+	uk_text_l (cv, x, y, h, t, c, style);
 }
 static void text_r (Canvas &cv, int xr, int y, int h, const char *s, unsigned c, int style = 0)
 {
-	wk_text_l (cv, xr - wk_text_w (s, style), y, h, s, c, style);
+	uk_text_l (cv, xr - uk_text_w (s, style), y, h, s, c, style);
 }
 static const char *money_s (money v, char *buf) { fmt_money (v, buf); return buf; }
 
@@ -253,11 +253,11 @@ public:
 		// (the text stops before the header's buttons)
 		int lim = width - 16;
 		for (Widget *c = firstChild; c; c = c->nextSib) if (!c->hidden && c->top < HEAD_H - 12 && c->left > 160) lim = imin (lim, c->left - 14);
-		draw_ni (canvas, PAGE_ICON[id], 18, 12, wk_ink_for (C_BG), C_ACCENT);
+		draw_ni (canvas, PAGE_ICON[id], 18, 12, uk_ink_for (C_BG), C_ACCENT);
 		text_fit_l (canvas, 48, 9, lim - 48, 24, title (), C_TEXT, 2);
 		char s[200]; subtitle (s, sizeof s);
 		if (s[0]) text_fit_l (canvas, 48, 30, lim - 48, 20, s, dim_ink (C_BG));
-		wk_etch_h (canvas, 14, HEAD_H - 2, width - 28, C_BG);
+		uk_etch_h (canvas, 14, HEAD_H - 2, width - 28, C_BG);
 	}
 	void onDraw () override { drawHead (); }
 };
@@ -276,7 +276,7 @@ public:
 	void setText (const char *s)
 	{
 		scpy (text, s, sizeof text);
-		int w = wk_text_w (text, kind == FB_PRIMARY ? 2 : 0) + 26 + (icon >= 0 ? 22 : 0);
+		int w = uk_text_w (text, kind == FB_PRIMARY ? 2 : 0) + 26 + (icon >= 0 ? 22 : 0);
 		if (!text[0]) w = 34;
 		if (w != width) resizeTo (w, height);
 		invalidate (true);
@@ -290,27 +290,27 @@ public:
 		unsigned ink;
 		if (kind == FB_PRIMARY)
 		{
-			unsigned a = disabled ? wk_mix (C_ACCENT, bg, 150) : C_ACCENT;
+			unsigned a = disabled ? uk_mix (C_ACCENT, bg, 150) : C_ACCENT;
 			int t = disabled ? 128 : dn ? 108 : m_hot ? 150 : 132;
-			wk_rbox (canvas, 0, 0, width, height, 6, wk_tone (a, t + 14), wk_tone (a, t - 12));
-			wk_rline (canvas, 0, 0, width, height, 6, wk_tone (a, 80), 170);
-			ink = wk_ink_on (a);
+			uk_rbox (canvas, 0, 0, width, height, 6, uk_tone (a, t + 14), uk_tone (a, t - 12));
+			uk_rline (canvas, 0, 0, width, height, 6, uk_tone (a, 80), 170);
+			ink = uk_ink_on (a);
 		}
 		else if (kind == FB_QUIET && !m_hot)
-			ink = disabled ? wk_mix (bg, C_TEXT, 90) : C_ACCENT;
+			ink = disabled ? uk_mix (bg, C_TEXT, 90) : C_ACCENT;
 		else
 		{
 			unsigned f = C_BUTTON;
 			int t = disabled ? 128 : dn ? 112 : m_hot ? 158 : 140;
-			wk_rbox (canvas, 0, 0, width, height, 6, wk_tone (f, t + 10), wk_tone (f, t - 8));
-			wk_rline (canvas, 0, 0, width, height, 6, wk_tone (f, 84), disabled ? 90 : 160);
-			ink = disabled ? wk_mix (f, C_BUTTON_TEXT, 100) : kind == FB_DANGER ? C_BAD : C_BUTTON_TEXT;
+			uk_rbox (canvas, 0, 0, width, height, 6, uk_tone (f, t + 10), uk_tone (f, t - 8));
+			uk_rline (canvas, 0, 0, width, height, 6, uk_tone (f, 84), disabled ? 90 : 160);
+			ink = disabled ? uk_mix (f, C_BUTTON_TEXT, 100) : kind == FB_DANGER ? C_BAD : C_BUTTON_TEXT;
 			if (kind == FB_QUIET) ink = C_ACCENT;
 		}
-		int tw = wk_text_w (text, kind == FB_PRIMARY ? 2 : 0), iw = icon >= 0 ? (text[0] ? 22 : 20) : 0;
+		int tw = uk_text_w (text, kind == FB_PRIMARY ? 2 : 0), iw = icon >= 0 ? (text[0] ? 22 : 20) : 0;
 		int x = (width - tw - iw) / 2 + (dn ? 1 : 0), y = dn ? 1 : 0;
 		if (icon >= 0) draw_ni (canvas, icon, x, (height - 20) / 2 + y, ink, kind == FB_PRIMARY ? ink : kind == FB_DANGER ? C_BAD : C_ACCENT);
-		if (text[0]) wk_text_l (canvas, x + iw, y, height, text, ink, kind == FB_PRIMARY ? 2 : 0);
+		if (text[0]) uk_text_l (canvas, x + iw, y, height, text, ink, kind == FB_PRIMARY ? 2 : 0);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
@@ -351,26 +351,26 @@ public:
 	Segmented (int l, int t, const char *const *s, int n_, void (*cb) (int)) : Widget (l, t, 10, 28), n (imin (n_, MAXS)), cur (0), onPick (cb), m_hot (-1), m_down (-1)
 	{
 		int w = 0;
-		for (int i = 0; i < n; i++) { seg[i] = s[i]; w += wk_text_w (s[i], 2) + 26; }
+		for (int i = 0; i < n; i++) { seg[i] = s[i]; w += uk_text_w (s[i], 2) + 26; }
 		resizeTo (w, 28);
 	}
-	int segX (int i) const { int x = 0; for (int k = 0; k < i; k++) x += wk_text_w (seg[k], 2) + 26; return x; }
+	int segX (int i) const { int x = 0; for (int k = 0; k < i; k++) x += uk_text_w (seg[k], 2) + 26; return x; }
 	void set (int v) { if (v != cur) { cur = v; invalidate (true); } }
 	void onDraw () override
 	{
 		unsigned bg = bgColor ();
 		canvas.clear (bg);
-		wk_rbox (canvas, 0, 0, width, height, 6, wk_tone (C_BUTTON, 160), wk_tone (C_BUTTON, 128));
+		uk_rbox (canvas, 0, 0, width, height, 6, uk_tone (C_BUTTON, 160), uk_tone (C_BUTTON, 128));
 		for (int i = 0; i < n; i++)
 		{
 			int x = segX (i), w = i == n - 1 ? width - x : segX (i + 1) - x;
-			int corners = (i == 0 ? WK_TL | WK_BL : 0) | (i == n - 1 ? WK_TR | WK_BR : 0);
-			if (i == cur) wk_rbox (canvas, x, 0, w, height, corners ? 6 : 0, wk_tone (C_ACCENT, 142), wk_tone (C_ACCENT, 114), 255, corners);
-			else if (i == m_hot) wk_rbox (canvas, x, 0, w, height, corners ? 6 : 0, wk_tone (C_BUTTON, m_down == i ? 118 : 184), wk_tone (C_BUTTON, m_down == i ? 128 : 146), 255, corners);
-			if (i > 0 && i != cur && i - 1 != cur) canvas.fillRect (x, 5, 1, height - 10, wk_tone (C_BUTTON, 100));
-			wk_text_c (canvas, x, 0, w, height, seg[i], i == cur ? C_SEL_TEXT : C_BUTTON_TEXT, i == cur ? 2 : 0);
+			int corners = (i == 0 ? UK_TL | UK_BL : 0) | (i == n - 1 ? UK_TR | UK_BR : 0);
+			if (i == cur) uk_rbox (canvas, x, 0, w, height, corners ? 6 : 0, uk_tone (C_ACCENT, 142), uk_tone (C_ACCENT, 114), 255, corners);
+			else if (i == m_hot) uk_rbox (canvas, x, 0, w, height, corners ? 6 : 0, uk_tone (C_BUTTON, m_down == i ? 118 : 184), uk_tone (C_BUTTON, m_down == i ? 128 : 146), 255, corners);
+			if (i > 0 && i != cur && i - 1 != cur) canvas.fillRect (x, 5, 1, height - 10, uk_tone (C_BUTTON, 100));
+			uk_text_c (canvas, x, 0, w, height, seg[i], i == cur ? C_SEL_TEXT : C_BUTTON_TEXT, i == cur ? 2 : 0);
 		}
-		wk_rline (canvas, 0, 0, width, height, 6, wk_tone (C_BUTTON, 80), 170);
+		uk_rline (canvas, 0, 0, width, height, 6, uk_tone (C_BUTTON, 80), 170);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
@@ -393,22 +393,22 @@ private:
 
 // ---- pills, tiles, cells ------------------------------------------------------------------------------------------------------------
 // A rounded label in a colour's tint (a status): its width.
-static int pill_w (const char *s) { return wk_text_w (s) + 16; }
+static int pill_w (const char *s) { return uk_text_w (s) + 16; }
 static int draw_pill (Canvas &cv, int x, int y, int h, const char *s, unsigned col, bool strong = false)
 {
 	int w = pill_w (s);
-	unsigned face = strong ? col : wk_mix (C_FIELD, col, 52), ink = strong ? wk_ink_on (col) : wk_mix (col, 0, 40);
-	wk_rbox (cv, x, y, w, h, h / 2, face, face);
-	wk_text_c (cv, x, y, w, h, s, ink);
+	unsigned face = strong ? col : uk_mix (C_FIELD, col, 52), ink = strong ? uk_ink_on (col) : uk_mix (col, 0, 40);
+	uk_rbox (cv, x, y, w, h, h / 2, face, face);
+	uk_text_c (cv, x, y, w, h, s, ink);
 	return w;
 }
 // A dashboard's tile: a caption, a value in bold, a line below it (in a colour: overdue...).
 static void draw_tile (Canvas &cv, int x, int y, int w, int h, const char *caption, const char *value, const char *sub, unsigned subCol, unsigned accent)
 {
-	wk_rbox (cv, x, y, w, h, 10, wk_tone (C_FIELD, 132), wk_tone (C_FIELD, 124));
-	wk_rline (cv, x, y, w, h, 10, wk_mix (C_BG, 0, 60), 110);
-	wk_rbox (cv, x + 1, y + 12, 4, h - 24, 2, accent, accent);
-	wk_text_l (cv, x + 18, y + 10, 18, caption, field_dim ());
+	uk_rbox (cv, x, y, w, h, 10, uk_tone (C_FIELD, 132), uk_tone (C_FIELD, 124));
+	uk_rline (cv, x, y, w, h, 10, uk_mix (C_BG, 0, 60), 110);
+	uk_rbox (cv, x + 1, y + 12, 4, h - 24, 2, accent, accent);
+	uk_text_l (cv, x + 18, y + 10, 18, caption, field_dim ());
 	text_fit_l (cv, x + 18, y + 32, w - 30, 22, value, C_FIELD_TEXT, 2);
 	if (sub && sub[0]) text_fit_l (cv, x + 18, y + 56, w - 30, 18, sub, subCol);
 }
@@ -416,7 +416,7 @@ static void draw_tile (Canvas &cv, int x, int y, int w, int h, const char *capti
 static void cell_text (Canvas &cv, int x, int y, int w, int h, const char *s, unsigned ink, bool right, int style = 0)
 {
 	char t[160]; fit_text (s, w - 12, t, sizeof t, style);
-	if (right) text_r (cv, x + w - 6, y, h, t, ink, style); else wk_text_l (cv, x + 6, y, h, t, ink, style);
+	if (right) text_r (cv, x + w - 6, y, h, t, ink, style); else uk_text_l (cv, x + 6, y, h, t, ink, style);
 }
 
 // ---- a table whose first column ticks its rows -----------------------------------------------------------------------------------
@@ -451,7 +451,7 @@ public:
 	enum { MAXL = 12 };
 	AskBox (const char *title, const char *text, int buttons, int icon) : Modal (460, 120), m_title (title), m_icon (icon), m_n (0), m_def (1), m_cancel (0)
 	{
-		int maxc = imin (95, (width - 70 - 22) / wk_fw ());
+		int maxc = imin (95, (width - 70 - 22) / uk_fw ());
 		const char *p = text;
 		while (*p && m_n < MAXL)
 		{
@@ -488,9 +488,9 @@ public:
 		drawBox (m_title);
 		int cx = 20, cy = titleH () + 22;
 		unsigned c = m_icon == 2 ? 0x00D8902A : C_ACCENT;
-		wk_rbox (canvas, cx, cy, 32, 32, 16, wk_tone (c, 156), wk_tone (c, 112));
-		wk_rline (canvas, cx, cy, 32, 32, 16, wk_tone (c, 80), 160);
-		wk_text_c (canvas, cx, cy, 32, 32, m_icon == 2 ? "!" : m_icon == 1 ? "?" : "i", 0x00FFFFFF, 2);
+		uk_rbox (canvas, cx, cy, 32, 32, 16, uk_tone (c, 156), uk_tone (c, 112));
+		uk_rline (canvas, cx, cy, 32, 32, 16, uk_tone (c, 80), 160);
+		uk_text_c (canvas, cx, cy, 32, 32, m_icon == 2 ? "!" : m_icon == 1 ? "?" : "i", 0x00FFFFFF, 2);
 		int y = titleH () + 22 + (m_n == 1 ? 8 : 0);
 		for (int i = 0; i < m_n; i++) canvas.text (68, y + i * 20, m_line[i], C_TEXT);
 	}
@@ -556,7 +556,7 @@ public:
 	void onDraw () override
 	{
 		drawBox (m_title);
-		for (int i = 0; i < nlab; i++) wk_text_l (canvas, lab[i].x, lab[i].y, ED_H, lab[i].s, lab[i].dim ? dim_ink (C_FACE) : C_TEXT);
+		for (int i = 0; i < nlab; i++) uk_text_l (canvas, lab[i].x, lab[i].y, ED_H, lab[i].s, lab[i].dim ? dim_ink (C_FACE) : C_TEXT);
 		drawMore ();
 	}
 };

@@ -1,5 +1,5 @@
 //
-// listview.h -- the List view: the records shown in a grid (wtk's DataGrid), a column per field, the
+// listview.h -- the List view: the records shown in a grid (uikit's DataGrid), a column per field, the
 // display names on top. A click on a name sorts by it, again the other way, a third time back to the
 // file's order; a column's edge dragged widens it. A double click (or Enter) opens the record in the
 // form; Delete deletes the selected one (after asking); a letter jumps to the next record whose sorted
@@ -51,13 +51,13 @@ public:
 	// goes to the widest text.
 	void columns ()
 	{
-		int fw = wk_fw (), total = 0, wide = -1;
+		int fw = uk_fw (), total = 0, wide = -1;
 		for (int k = 0; k < g_doc.nf; k++)
 		{
 			const Field &f = g_doc.f[k];
 			int al = f.type == FT_INT || f.type == FT_DEC ? GRID_RIGHT : f.type == FT_BOOL ? GRID_CENTRE : GRID_LEFT;
 			grid->setColumn (k, f.label, 100, al);
-			int tw = wk_text_w (f.label, 2) + 32;
+			int tw = uk_text_w (f.label, 2) + 32;
 			switch (f.type)
 			{
 			case FT_TEXT: grid->autoSize (k, 90, 240); break;
@@ -71,7 +71,7 @@ public:
 			total += grid->column (k).width;
 			if ((f.type == FT_TEXT || f.type == FT_MEMO) && (wide < 0 || grid->column (k).width > grid->column (wide).width)) wide = k;
 		}
-		int room = grid->width - 2 - WK_SBW - 2 - total;
+		int room = grid->width - 2 - UK_SBW - 2 - total;
 		if (room > 0 && g_doc.nf) grid->column (wide >= 0 ? wide : g_doc.nf - 1).width += room;
 	}
 	bool onKey (long k) override
@@ -110,17 +110,17 @@ private:
 		if (f.type == FT_BOOL)
 		{
 			int s = 14;
-			if (v[0]) wk_check_mark (cv, x + (w - s) / 2, y + (h - s) / 2, s, true, WK_NORMAL);
-			else wk_rline (cv, x + (w - s) / 2, y + (h - s) / 2, s, s, 3, selected ? ink : wk_mix (C_FIELD, C_FIELD_TEXT, 90), 140);
+			if (v[0]) uk_check_mark (cv, x + (w - s) / 2, y + (h - s) / 2, s, true, UK_NORMAL);
+			else uk_rline (cv, x + (w - s) / 2, y + (h - s) / 2, s, s, 3, selected ? ink : uk_mix (C_FIELD, C_FIELD_TEXT, 90), 140);
 			return true;
 		}
 		if (f.type == FT_COLOR)
 		{
 			unsigned c;
 			if (!v[0] || !parse_color (v, &c)) return !v[0];
-			wk_rbox (cv, x + 8, y + 5, 30, h - 10, 3, c, c);
-			wk_rline (cv, x + 8, y + 5, 30, h - 10, 3, wk_mix (c, 0, 90), 200);
-			wk_text_l (cv, x + 46, y, h, v, ink);
+			uk_rbox (cv, x + 8, y + 5, 30, h - 10, 3, c, c);
+			uk_rline (cv, x + 8, y + 5, 30, h - 10, 3, uk_mix (c, 0, 90), 200);
+			uk_text_l (cv, x + 46, y, h, v, ink);
 			return true;
 		}
 		return false;

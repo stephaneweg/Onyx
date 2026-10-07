@@ -49,8 +49,8 @@ void CrashLogStartWatchdog (unsigned nSeconds);		// (from the reaper's start; 0 
 // When the reaper has not run for 10 s, it writes the report into SD:/etc/crashdump.txt's
 // sectors (raw, through the SD device) and restarts the Pi; the next boot keeps it as
 // SD:/etc/lastcrash.txt.
-// The system is stuck although the scheduler runs (the compositor without a frame for 12 s):
-// the same report, written by core 1 while core 0 waits with its IRQs masked, then a restart.
+// The system is stuck although the scheduler runs (no caller since 2026-10-04: the compositor
+// without a frame for 12 s was one, wrongly under a full-screen app): the same report, written by core 1 while core 0 waits with its IRQs masked, then a restart.
 void CrashLogRequest (const char *pReason);
 void CrashLogDumpNow (const char *pReason);		// (the same, not logged; returns only if not armed)
 void CrashLogCoreInit (void);

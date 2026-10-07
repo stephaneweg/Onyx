@@ -1,14 +1,14 @@
 //
-// wtkdemo -- exercises the recursive widget toolkit (wtk.hpp): labels, buttons,
+// wtkdemo -- exercises the recursive widget toolkit (uikit.hpp): labels, buttons,
 // a checkbox, a slider driving a progress bar, a textbox, and a NESTED panel with
 // its own button. Proves: per-widget canvases, recursive damage (only the touched
 // subtree repaints), recursive mouse routing with coordinate conversion (the nested
 // button is hit through the panel), focus routing (the textbox edits), and free
 // clipping (text stays inside each widget).
 //
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 static Label    *g_count;
 static Progress *g_prog;
@@ -18,12 +18,12 @@ static int       g_n = 0;
 class Card : public Panel
 {
 public:
-	Card (int l, int t, int w, int h) : Panel (l, t, w, h, wk_tone (C_FACE, 150)) {}
+	Card (int l, int t, int w, int h) : Panel (l, t, w, h, uk_tone (C_FACE, 150)) {}
 	void onDraw () override
 	{
 		canvas.clear (parent ? parent->bgColor () : C_BG);
-		wk_rbox (canvas, 0, 0, width, height, 7, bg, bg);
-		wk_rline (canvas, 0, 0, width, height, 7, wk_tone (C_FACE, 76), 200);
+		uk_rbox (canvas, 0, 0, width, height, 7, bg, bg);
+		uk_rline (canvas, 0, 0, width, height, 7, uk_tone (C_FACE, 76), 200);
 	}
 };
 
@@ -43,18 +43,18 @@ static void onCheck (Widget &w) { g_count->setText (((Checkbox &) w).checked ? "
 
 // Infra demos: modal MessageBox / FileDialog, Dropdown, ColorPicker.
 static const char *const g_dropOpts[] = { "Red", "Green", "Blue", "Yellow" };
-static void onMsg  (Widget &) { int r = wk_messagebox ("Confirm", "Modal dialog from wtk.\nProceed?", MB_YESNO); g_count->setText (r ? "yes" : "no"); }
-static void onOpen (Widget &) { char path[256]; if (wk_file_open (path, sizeof path, "SD:/")) g_count->setText (path); }
+static void onMsg  (Widget &) { int r = uk_messagebox ("Confirm", "Modal dialog from uikit.\nProceed?", MB_YESNO); g_count->setText (r ? "yes" : "no"); }
+static void onOpen (Widget &) { char path[256]; if (uk_file_open (path, sizeof path, "SD:/")) g_count->setText (path); }
 static void onDrop (Widget &w) { g_count->setText (g_dropOpts[((Dropdown &) w).sel]); }
 static void onColor(Widget &) { g_count->setText ("colour picked"); }
 
 int main (void)
 {
-	Root root (460, 430, "wtk demo");
+	Root root (460, 430, "uikit demo");
 
 	root.addChild (new Label (12, 10, 436, 20, "Recursive widget toolkit -- all widgets"));
 
-	g_count = new Label (12, 36, 240, 20, "count: 0", wk_mix (C_ACCENT, C_TEXT, 140));
+	g_count = new Label (12, 36, 240, 20, "count: 0", uk_mix (C_ACCENT, C_TEXT, 140));
 	root.addChild (g_count);
 	root.addChild (new Button (260, 34, 90, 26, "Increment", onInc));
 	root.addChild (new Button (358, 34, 70, 26, "Reset", onReset));

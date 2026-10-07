@@ -1,0 +1,85 @@
+gcc-14.2.0-libstdcxx-onyx.patch -- the one GCC source change of the aarch64-onyx-elf toolchain
+(docs/POSIX-PLAN.md "WP-TC resolutions"; applied by tools/toolchain/build-onyx-toolchain.sh).
+
+libstdc++'s configure, for a newlib target (--with-newlib), cannot link test programs (newlib
+built without supplied syscalls: gcc_no_link) and so hard-codes what the target has:
+ 1. GLIBCXX_ENABLE_LIBSTDCXX_TIME: with =yes it runs link tests (fatal under gcc_no_link); with
+    =auto it knows only named OSes. Onyx (*-onyx-*) is stated like the BSDs: clock_gettime with
+    the monotonic and realtime clocks, nanosleep, sched_yield (all in libonyxposix)
+    -> _GLIBCXX_USE_CLOCK_MONOTONIC, _GLIBCXX_USE_CLOCK_REALTIME, _GLIBCXX_USE_NANOSLEEP,
+       _GLIBCXX_USE_SCHED_YIELD.
+ 2. The newlib block of configure.ac defines HAVE_TLS (and link, readlink, symlink, truncate,
+    sleep, usleep, setenv, aligned_alloc, quick_exit, strerror_l, sockatmark) for RTEMS only:
+    *-onyx-* takes the same list (newlib + libonyxposix provide every one)
+    -> _GLIBCXX_HAVE_TLS (the exception globals per thread through __thread) and std::filesystem's
+       hard links, symlinks, resize_file.
+configure.ac and acinclude.m4 are patched with configure so the sources agree; configure is not
+regenerated (no maintainer mode).
+
+Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. The patch itself: MIT licence (the
+files it changes are GCC's, GPL-3.0-or-later with the GCC Runtime Library Exception).
+
+--- a/libstdc++-v3/acinclude.m4
++++ b/libstdc++-v3/acinclude.m4
+@@ -1762,6 +1762,19 @@
+ 
+   if test x"$enable_libstdcxx_time" = x"auto"; then
+ 
++    case "${target}" in
++      *-onyx-*)
++        # Onyx (libonyxposix, docs/POSIX-PLAN.md WP-TC): clock_gettime with
++        # CLOCK_MONOTONIC and CLOCK_REALTIME, nanosleep and sched_yield.  The
++        # C library cannot be linked against at configure time (newlib
++        # without supplied syscalls: gcc_no_link), so state it as for the BSDs.
++        ac_has_clock_monotonic=yes
++        ac_has_clock_realtime=yes
++        ac_has_nanosleep=yes
++        ac_has_sched_yield=yes
++        ;;
++    esac
++
+     case "${target_os}" in
+       cygwin*)
+         ac_has_nanosleep=yes
+--- a/libstdc++-v3/configure
++++ b/libstdc++-v3/configure
+@@ -21286,6 +21286,19 @@
+ 
+   if test x"$enable_libstdcxx_time" = x"auto"; then
+ 
++    case "${target}" in
++      *-onyx-*)
++        # Onyx (libonyxposix, docs/POSIX-PLAN.md WP-TC): clock_gettime with
++        # CLOCK_MONOTONIC and CLOCK_REALTIME, nanosleep and sched_yield.  The
++        # C library cannot be linked against at configure time (newlib
++        # without supplied syscalls: gcc_no_link), so state it as for the BSDs.
++        ac_has_clock_monotonic=yes
++        ac_has_clock_realtime=yes
++        ac_has_nanosleep=yes
++        ac_has_sched_yield=yes
++        ;;
++    esac
++
+     case "${target_os}" in
+       cygwin*)
+         ac_has_nanosleep=yes
+@@ -28577,7 +28590,7 @@
+ 
+ 
+     case "${target}" in
+-      *-rtems*)
++      *-rtems* | *-onyx-*)
+         case "${target}" in
+           bfin* | lm32* | mips* | moxie* | or1k* | v850*)
+             ;;
+--- a/libstdc++-v3/configure.ac
++++ b/libstdc++-v3/configure.ac
+@@ -380,7 +380,7 @@
+     AC_DEFINE(HAVE_MEMALIGN)
+ 
+     case "${target}" in
+-      *-rtems*)
++      *-rtems* | *-onyx-*)
+         case "${target}" in
+           bfin* | lm32* | mips* | moxie* | or1k* | v850*)
+             ;;

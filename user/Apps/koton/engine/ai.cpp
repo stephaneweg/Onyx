@@ -9,7 +9,7 @@
 //
 #include "ai.h"
 #include "gen.h"
-#include "../../../json.hpp"
+#include "json.hpp"
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>

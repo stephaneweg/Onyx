@@ -1,11 +1,13 @@
 # Packages and updates — the package manager
 
 > **Status (2026-10-01)**: **done** — `pkg` (the command), the **Package Manager** `pkgman` (the Control
-> Panel's applet, docs/04 §11), the update daemon **`pkgd`**, the library `user/pkg/pkglib.h`, the PC side
+> Panel's applet, docs/04 §11), the update daemon **`pkgd`**, the library `user/Libs/pkg/pkglib.h`, the PC side
 > `tools/pkg/`, the repository **published** (https://github.com/stephaneweg/onyx-packages), the card's
 > database (`sdcard/var/pkg/db`), **`sdcard_lite`**; tested on the PC (`tools/tests/run_pkg_test.sh`,
 > the screenshots), **not yet tried on the Pi**. Still to do: the firmware's *tryboot* (a new kernel
-> that does not start: back to the old one by itself), the Game Library finding its emulators (below).
+> that does not start: back to the old one by itself). (The Game Library finding its emulators from
+> their `app.txt`: done, below.) Published since: `onyx` 2026.10.21, the EL0 kernel (kapi v74) and
+> every app rebuilt.
 > Its use: docs/04 §8 *Packages*, §11 *The Package Manager*; its code: docs/03 *The packages*.
 >
 > **Decided with the user**: the repository **`stephaneweg/onyx-packages`** (GitHub Pages); the applet
@@ -15,11 +17,11 @@
 > the wallpaper's painters voronoy and imageview), **the package manager** in its own (`pkgman`: `bin/pkg`,
 > the applet, the daemon — required, updated without the system, which needs it), **the firmware** in another (`pi-firmware`), **every
 > app its own package**, the **demos** in one (`demos`); the **samples each with their app**
-> (`basic-samples`, `writer-samples`, `sheet-samples`, `cardfile-samples`, `ledger-samples`,
+> (`basic-samples`, `letters-samples`, `sheet-samples`, `cardfile-samples`, `ledger-samples`,
 > `koton-samples`, `fmtracker-samples`, each needing its app); **each emulator its own package**,
-> found by the Game Library (below). **The needs**: every emulator needs `gamelib`; Writer, the
+> found by the Game Library (below). **The needs**: every emulator needs `gamelib`; Letters, the
 > Spreadsheet and Ledger need `cardfile` (installed first; not removable while they are there). A
-> mere link to another app ("Open in Writer", Cardfile's mail merge, the agenda reading the
+> mere link to another app ("Open in Letters", Cardfile's mail merge, the agenda reading the
 > Calendar's file) is not a need.
 >
 > **Published** (2026-10-01): https://github.com/stephaneweg/onyx-packages — 52 packages
@@ -36,7 +38,7 @@ apps' real icons).
 | ![](mockups/pkg-installed.png) | **Installed**: every package, its version, size, category, its **updates mode** — **Automatic** (updated in the background), **Manual** (you are asked), **Never** (keep this version) — and **Remove**. The system cannot be removed; a package installed by hand (not in the repository) says so. |
 | ![](mockups/pkg-available.png) | **Available** (the store): the repository's packages by category, searchable; a card each (icon, name, author, size, description): **Install**, a progress, **Installed**, or **Update**. |
 | ![](mockups/pkg-notify.png) | **The daemon's notification** (notifyd): *3 updates available* — the manual ones; the automatic ones were done (*Tetris and 2048 were updated*). **Show** opens the applet on Updates. |
-| ![](mockups/pkg-cli.png) | **`pkg`** in the terminal: `list`, `add` (already installed: says so, does nothing), `update -a`, `delete` (not installed: says so), `list -a <filter>`. |
+| ![](mockups/pkg-cli.png) | **`pkg`** in the terminal: `list`, `add` (already installed: says so, does nothing -- unless one of its programs is missing from the card: then installed again), `update -a`, `delete` (not installed: says so), `list -a <filter>`. |
 
 ## The package
 
@@ -56,7 +58,10 @@ summary  = Open, explore and make ZIP archives
 needs    = onyx >= 2026.10, kapi >= 71   ; other packages, the kernel's ABI
 restart  = 0                     ; 1: installed at the next boot (the system)
 config   = apps/archiver.app/config.ini  ; the user's files: never overwritten once changed
+replaces = zipper                ; (rare) packages it takes the place of: one renamed
 ```
+
+`kapi >= N` is added by `mkrepo.py`: the kernel the package was built for (not for the package that brings the kernel). A package may state it itself in `packages.ini` (`kapi = N`): **UIKit** does (88) — the package `onyx` brings a kernel, installed at the restart, *and* programs built against UIKit's table (the dock, the menu bar): UIKit must install before that restart, on the kernel before, or the desktop would not start after it (kapi v90, 2026-10-06). `onyx` and `[*apps]` need that UIKit (`uikit >= 1.729`).
 
 Installing = check, then extract to `SD:/` (the files listed `config`: written only if absent, or
 unchanged since the last install — else beside as `<file>.new`); the installed packages' database:
@@ -65,6 +70,13 @@ a removal removes exactly them, and a file the user changed is seen).
 
 Removing = deleting the files listed (not the changed `config` files, unless asked), then the empty
 folders. The packages `needs`-ing it: refused (said).
+
+Renaming a package (`writer` became `letters`, 2026-10-04): the new one says `replaces = writer`
+(`packages.ini`, then the index and its manifest). On a card that has `writer`, `update_for` gives
+`letters` as its update (pkg, pkgd, the applet); once it is installed (`drop_replaced`), `writer` is
+removed — without the needs' check, its files the new one took over kept — and its mode (auto, manual,
+never) passed on. A `config` file the old one wrote, unchanged, is taken over as is (not written
+`.new`).
 
 ## The repository
 
@@ -107,13 +119,20 @@ GitHub Action). `tools/pkg/keygen.py` makes the key pair once.
   package (`bin/`, the shell's apps) is staged in `SD:/var/pkg/stage/` and moved in by the same commit.
 - **An app running** when updated: the GUI asks to close it (*Close and update* / *Skip*); the daemon
   skips it until its next round.
+- **A preloaded program** (kapi v77, `preload`: docs/04 §8, docs/02 §7 *Program images*): before a
+  file is replaced, `pkglib.h`'s `move` asks the kernel whether that path has a **kept** image
+  (`kapi_image_list`); if so it unloads it (`kapi_image_unload`), replaces the file, and preloads the
+  new one (`kapi_image_preload`). The kernel would drop the old image by itself when the file goes
+  (an image's key is its path, and the file calls take its name away), but would not load the new
+  one. A program merely running (not preloaded) needs nothing: its processes keep the old image, the
+  next start reads the new file.
 
 ## The pieces to write
 
 | Piece | Where | What |
 |---|---|---|
-| The library | `user/pkg/pkglib.h` | the index (read, signature, compare), the database, the download to a file (`http.hpp` to stream the body to a file: today it keeps it whole in a buffer), SHA-256 (mbedTLS), install / remove / stage / commit with the Archiver's ZIP engine (`Apps/archiver/zip.h`) |
-| The command | `user/bin/pkg.cpp` | `pkg add / delete / update [-a] / upgrade / list [-a] [filter] / info` (newlib + mbedTLS, as `httpsget`) |
+| The library | `user/Libs/pkg/pkglib.h` | the index (read, signature, compare), the database, the download to a file (`http.hpp` to stream the body to a file: today it keeps it whole in a buffer), SHA-256 (mbedTLS), install / remove / stage / commit with the Archiver's ZIP engine (`Apps/archiver/zip.h`) |
+| The command | `user/BinUtils/pkg.cpp` | `pkg add / delete / update [-a] / upgrade / list [-a] [filter] / info` (newlib + mbedTLS, as `httpsget`) |
 | The applet | `user/Apps/software` | the Control Panel's **Software** applet (`applet_proto.h`), FreeType; the three tabs of the mock-ups; the work in a thread |
 | The daemon | `user/Apps/pkgd` | no window; started by `autostart`; once the network and the time (NTP) are there, then every day: the index, the **automatic** ones updated, a notification for the others; `pkg upgrade` and the applet's *Check Now* run one round |
 | The commit | the kernel / `init` | at boot: a staged system → moved in, `kernel8-rpi4.img.new` committed or dropped; the tryboot flag (a kapi: `reboot (flags)`) |
@@ -174,6 +193,27 @@ new emulator package shows its games at once), and `launch.h` finds the program 
 `games` / `opens` too: the emulators' lines are gone from `runners.ini` (Doom's `wad` too: its
 `opens = wad`). The pictures of the games: the cores the Game Library carries (GB, GBA, NES, SNES), the
 N64's label, the GameCube's banner; another emulator's games show its icon.
+
+## What a package opens and runs (file associations, runners) — 2026-10-05
+
+A package's metadata says which files its apps open and which programs run which files; the package
+manager keeps `SD:/etc/fileassoc.ini` and `SD:/etc/runners.ini` in step.
+
+- **Declared** in `tools/pkg/packages.ini`: `[app.<name>]` `opens = zip jar tar tgz gz` (the extensions that
+  app opens); for a package of several apps or programs, `assoc = txt md: tinypad; png jpg: imageview` and
+  `runners = bax bas: SD:/bin/basic`.
+- **Carried** by the package: `assoc = zip=archiver tar=archiver …` and `runners = bas=SD:/bin/basic …` in its
+  manifest (`PKG/manifest.ini`), in the index and in its entry of `SD:/var/pkg/db`.
+- **Applied** by `user/Libs/pkg/pkglib.h`: at an install (and at the commit of a staged package) the pairs the file
+  does not have are appended (`merge_pairs`); at a removal the lines that still say what the package had put
+  are taken away (`drop_pairs`). **A line that is there is never changed**: the user's choice wins, and
+  `ext =` with nothing after it means "opened by nothing". `pkg assoc` and the update service at its start
+  (`pkgd`) go over every installed package (`sync_meta`: from its database entry, else from the index — a
+  package installed by an older `pkg` has no such lines in its entry).
+- **One source**: `mkrepo.py` also makes `sdcard/etc/fileassoc.ini` and `runners.ini` from the packages
+  (`write_assoc`), so a fresh card and a card updated by packages say the same. They are not edited by hand.
+- An emulator's `games =` / an app's `opens =` in its **`app.txt`** stay what they were (the Game Library's
+  systems; the runner found without any file): the two mechanisms add up.
 
 ## Still open
 

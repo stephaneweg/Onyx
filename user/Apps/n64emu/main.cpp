@@ -1,32 +1,32 @@
 //
-// n64emu -- the Onyx Nintendo 64 emulator (the core: user/n64).
+// n64emu -- the Onyx Nintendo 64 emulator (the core: user/Emulators/n64).
 //
 //   n64emu <rom.z64 | rom.n64 | rom.v64> [--fullscreen]   (without a ROM: the Game Library)
-//   * The machine (the R4300 CPU, the RCP) runs on an app core (core 2 or 3, user/emucore.h)
+//   * The machine (the R4300 CPU, the RCP) runs on an app core (core 2 or 3, user/Emulators/emucore.h)
 //     when one is free. Its graphics are high-level: each frame's triangles and textures are
 //     drawn by the GPU (kapi v53 gpu_render) straight into the window, at the window's size
 //     (sharper than the console's 320 x 240). A game that draws its picture with the CPU is
 //     shown from its framebuffer.
 //   * Keys: arrows = the stick, X = A, C = B, Z = Z, Enter = Start, Q / W = L / R, I J K L =
-//     the C buttons, T F G H = the D-pad; a USB gamepad (user/gamepad.h): the left stick, A
+//     the C buttons, T F G H = the D-pad; a USB gamepad (user/Include/gamepad.h): the left stick, A
 //     (bottom) = A, X (left) = B, L2 / R2 = Z, L / R, Start, the right stick = the C buttons,
 //     the D-pad. F11: full screen (Esc back; the GPU then renders straight into the displayed
 //     framebuffer, kapi v55, at the screen's resolution), F12: the speed, P: pause.
 //   * The cartridge's save (SRAM / EEPROM) is <rom>.sav beside the ROM.
 //   * The sound: the audio tasks of Zelda Ocarina of Time / Majora's Mask (their microcode, at a
-//     high level: user/n64/n64_audio.cpp); other games run silent. With sound, the pace is the
+//     high level: user/Emulators/n64/n64_audio.cpp); other games run silent. With sound, the pace is the
 //     audio queue's (as snesemu), else the clock. Sound > Sound On / Off.
 //
-#include "kapi.h"
-#include "launch.h"
+#include "audiokit/audiokit.h"
+#include "appkit/appkit.h"
 #include "gamepad.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "n64/n64.h"
-#include "wtk/dialog.h"
+#include "uikit/dialog.h"
 #include "emucore.h"
 #include "basic/bas3d.h"
 
-using namespace wtk;
+using namespace uikit;
 
 static n64::Machine *g_m = 0;
 static unsigned char *g_rom = 0;
@@ -253,7 +253,7 @@ static void set_zoom (int z)
 {
 	g_zoom = z;
 	g_root->canvas.adopt (kapi_resize_window (320 * z, 240 * z), 320 * z, 240 * z, g_stride);
-	wtk::wk_decorate_window ();					// the frame follows
+	uikit::uk_decorate_window ();					// the frame follows
 	g_root->width = 320 * z; g_root->height = 240 * z;
 	g_root->invalidate (true);
 }
@@ -264,7 +264,7 @@ static void on_full () { full_screen (!g_fs); }
 static void on_sound ()
 {
 	g_sound = !g_sound;
-	if (!g_sound && g_audio == 1) { g_audioOn = false; kapi_sound_release (); g_audio = 0; }
+	if (!g_sound && g_audio == 1) { g_audioOn = false; ak_out_close (); g_audio = 0; }
 }
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
 static void on_gpu () { g_gpuOn = !g_gpuOn; g_root->invalidate (true); }
@@ -391,7 +391,7 @@ int main (void)
 	if (!g_m->load (g_rom, (unsigned) r))
 	{
 		g_loading = false;
-		wk_messagebox ("N64", "Not a Nintendo 64 ROM (.z64 / .n64 / .v64).", MB_OK);
+		uk_messagebox ("N64", "Not a Nintendo 64 ROM (.z64 / .n64 / .v64).", MB_OK);
 		return 1;
 	}
 	delete [] g_rom; g_rom = 0;					// (the machine keeps its own copy)
@@ -409,7 +409,7 @@ int main (void)
 	menu.item ("Pause",        "P",   0, on_pause);
 	menu.item ("Reset",        "",    0, on_reset);
 	menu.separator ();
-	menu.item ("Quit",         "^Q",  WK_CTRL ('Q'), on_quit);
+	menu.item ("Quit",         "^Q",  UK_CTRL ('Q'), on_quit);
 	menu.menu ("View");
 	menu.item ("Full Screen",  "F11", 0, on_full);
 	menu.item ("Zoom 1x",      "",    0, on_zoom1);
@@ -424,7 +424,7 @@ int main (void)
 	if (wantFull) full_screen (true);
 
 	static short pcm[4096 * 2];
-	unsigned rate = SOUND_RATE, freeFrames = 0, owner = 0, stQueued = 0;
+	unsigned freeFrames = 0, stQueued = 0;
 	g_m->setAudioRate (SOUND_RATE);
 	if (!ec_init (&g_ec, n64::FB_MAX_W, n64::FB_MAX_H, n64_frame)) return 1;
 	g_loading = false;
@@ -440,7 +440,7 @@ int main (void)
 		// (paused: drawn only once the frame being made is done -- the machine then waits and the GPU
 		// may read its frame and textures; drawn while it runs, they may change under the kernel)
 		if (g_paused) { ec_pump (&g_ec); if (ec_pending (&g_ec) == 0) show_frame (); kapi_msleep (20); t0 = kapi_get_ticks (); asked = 0; continue; }
-		if (g_sound && g_audio == 0) { g_audio = kapi_sound_acquire () == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
+		if (g_sound && g_audio == 0) { g_audio = ak_out_open (0, 0) == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
 		unsigned fps = fps100 ();
 		// with sound the game's audio paces it (kept ~60 ms ahead; a game without sound of ours
 		// leaves the queue empty: then the clock), else the clock
@@ -448,11 +448,11 @@ int main (void)
 		unsigned queued = 0;
 		if (audio)
 		{
-			kapi_sound_status (&rate, &freeFrames, &owner);
+			freeFrames = (unsigned) ak_out_free ();
 			static unsigned cap = 0; if (freeFrames > cap) cap = freeFrames;
 			queued = cap - freeFrames;
 			int k = ec_audio_pop (&g_ec, pcm, freeFrames < 4096 ? (int) freeFrames : 4096);
-			if (k > 0) { kapi_sound_write (pcm, (unsigned) k); queued += (unsigned) k; }
+			if (k > 0) { ak_out_write (pcm, k); queued += (unsigned) k; }
 			stQueued = queued;
 		}
 		if (audio && g_m->audioTasks > 0)

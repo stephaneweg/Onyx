@@ -1,6 +1,6 @@
 //
 // Apps/media/videos.h -- Media Player's videos: the films, clips and episodes of the folders it watches (and
-// SD:/Videos), WebM / Matroska and MP4 / MOV files read by Onyx's media library (user/av: docs/03 "The media
+// SD:/Videos), WebM / Matroska and MP4 / MOV files read by Onyx's media library (user/Libs/av: docs/03 "The media
 // library"). Their facts -- length, size in pixels, codecs, whether this build decodes them -- are read from
 // the containers' headers by the scan's thread (probe_video) and kept with what the user did (where they
 // stopped, when, watched to the end) in SD:/etc/media/videos.tsv.

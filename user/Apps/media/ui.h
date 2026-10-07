@@ -1,17 +1,17 @@
 //
 // Apps/media/ui.h -- Media Player's drawing helpers: the faces (sizes of DejaVu Sans), text that fits, the
-// times, the icons (drawn from their geometry: wtk/vpaint.h), small lists of ints.
+// times, the icons (drawn from their geometry: uikit/vpaint.h), small lists of ints.
 //
 #ifndef _media_ui_h
 #define _media_ui_h
 
-#include "ft/wtkface.h"
-#include "wtk/wtk.h"
+#include "fontkit/uikitface.h"
+#include "uikit/uikit.h"
 #include "covers.h"
 
 namespace media {
 
-using namespace wtk;
+using namespace uikit;
 
 // ---- the faces --------------------------------------------------------------------------------------------
 enum { F_UI, F_SMALL, F_MID, F_BIG, F_H2, F_H1, F_N };
@@ -21,14 +21,14 @@ static void faces_open ()
 	static const int SZ[F_N] = { 13, 11, 15, 16, 20, 27 };
 	for (int i = 0; i < F_N; i++) { g_face[i] = new FtTextFace; if (!g_face[i]->open ("DejaVu Sans", SZ[i])) { delete g_face[i]; g_face[i] = 0; } }
 }
-static inline int tw (const char *s, int f = F_UI, int style = 0) { WkFaceScope sc (f == F_UI ? 0 : g_face[f]); return wk_tw (s, style); }
-static inline int fh (int f = F_UI) { WkFaceScope sc (f == F_UI ? 0 : g_face[f]); return wk_fh (); }
+static inline int tw (const char *s, int f = F_UI, int style = 0) { UkFaceScope sc (f == F_UI ? 0 : g_face[f]); return uk_tw (s, style); }
+static inline int fh (int f = F_UI) { UkFaceScope sc (f == F_UI ? 0 : g_face[f]); return uk_fh (); }
 // s at x, the line's top y (a line of the face's height), cut with "..." past w (0: not cut)
 static inline void text (Canvas &cv, int x, int y, const char *s, unsigned c, int f = F_UI, int style = 0, int w = 0)
 {
-	WkFaceScope sc (f == F_UI ? 0 : g_face[f]);
-	if (w > 0 && wk_tw (s, style) > w) { char b[300]; wk_text_fit (s, w, b, sizeof b, style); wk_text (cv, x, y, b, c, style); }
-	else wk_text (cv, x, y, s, c, style);
+	UkFaceScope sc (f == F_UI ? 0 : g_face[f]);
+	if (w > 0 && uk_tw (s, style) > w) { char b[300]; uk_text_fit (s, w, b, sizeof b, style); uk_text (cv, x, y, b, c, style); }
+	else uk_text (cv, x, y, s, c, style);
 }
 // centred vertically in a box of height h
 static inline void text_v (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int f = F_UI, int style = 0, int w = 0) { text (cv, x, y + (h - fh (f)) / 2, s, c, f, style, w); }
@@ -111,7 +111,7 @@ static void icon (Canvas &cv, int id, int x, int y, int s, unsigned c)
 	case I_GRID: for (int k = 0; k < 4; k++) p.rrect (PX (3 + (k % 2) * 10), PY (3 + (k / 2) * 10), 8 * u, 8 * u, u); break;
 	case I_ROWS: for (int k = 0; k < 3; k++) p.rrect (PX (3), PY (4 + k * 7), 18 * u, 3 * u, u); break;
 	case I_STAR:
-		{ int t[20]; for (int k = 0; k < 10; k++) { int rr = k % 2 ? 4 : 10; t[2 * k] = PX (12) + rr * u * wk_cos (k * 36 - 90) / 16384; t[2 * k + 1] = PY (12) + rr * u * wk_sin (k * 36 - 90) / 16384; } p.poly (t, 10); } break;
+		{ int t[20]; for (int k = 0; k < 10; k++) { int rr = k % 2 ? 4 : 10; t[2 * k] = PX (12) + rr * u * uk_cos (k * 36 - 90) / 16384; t[2 * k + 1] = PY (12) + rr * u * uk_sin (k * 36 - 90) / 16384; } p.poly (t, 10); } break;
 	case I_FILM:
 		p.rrect (PX (2), PY (4), 20 * u, 16 * u, 2 * u);
 		for (int k = 0; k < 4; k++) { p.hole (PX (5), PY (7 + k * 3 + (k > 1 ? 1 : 0)), u); p.hole (PX (19), PY (7 + k * 3 + (k > 1 ? 1 : 0)), u); }
@@ -140,7 +140,7 @@ static void eq_bars (Canvas &cv, int x, int y, int s, unsigned c, unsigned t)
 {
 	for (int k = 0; k < 4; k++)
 	{
-		int h = s * (30 + (int) ((wk_sin ((int) (t * 37 + k * 71)) + 16384) * 70 / 32768)) / 100;
+		int h = s * (30 + (int) ((uk_sin ((int) (t * 37 + k * 71)) + 16384) * 70 / 32768)) / 100;
 		cv.fillRect (x + k * s * 26 / 100, y + s - h, s * 18 / 100 + 1, h, c);
 	}
 }

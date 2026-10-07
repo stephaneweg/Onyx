@@ -144,7 +144,10 @@ namespace OnyxBasic
 		}
 
 		// ---- modules: split / compose (the same as Onyx's qbasic) ------------------------------------------------
-		static readonly Regex Header = new Regex (@"^\s*(SUB|FUNCTION)\s+([A-Za-z][A-Za-z0-9_.]*[$%&!#]?)", RegexOptions.IgnoreCase);
+		static readonly Regex Header = new Regex (@"^\s*(?:(?:VIRTUAL|OVERRIDE)\s+)?(SUB|FUNCTION)\s+([A-Za-z][A-Za-z0-9_.]*[$%&!#]?)", RegexOptions.IgnoreCase);
+		// (INTERFACE ... END INTERFACE: its SUB / FUNCTION lines are declarations, they stay in the main module)
+		static readonly Regex IfaceOpen = new Regex (@"^\s*INTERFACE\s+[A-Za-z]", RegexOptions.IgnoreCase);
+		static readonly Regex IfaceEnd = new Regex (@"^\s*END\s+INTERFACE\b", RegexOptions.IgnoreCase);
 		static readonly Regex EndOf = new Regex (@"^\s*END\s+(SUB|FUNCTION)\b", RegexOptions.IgnoreCase);
 
 		void Split (string src)
@@ -152,10 +155,13 @@ namespace OnyxBasic
 			mods.Clear ();
 			var main = new StringBuilder ();
 			var lines = src.Replace ("\r\n", "\n").Replace ('\r', '\n').Split ('\n');
+			bool iface = false;
 			for (int i = 0; i < lines.Length; i++)
 			{
+				if (IfaceOpen.IsMatch (lines[i])) iface = true;
+				else if (IfaceEnd.IsMatch (lines[i])) iface = false;
 				var h = Header.Match (lines[i]);
-				if (h.Success)
+				if (h.Success && !iface)
 				{
 					int kind = h.Groups[1].Value.ToUpperInvariant () == "SUB" ? 1 : 2;
 					var b = new StringBuilder (lines[i]);
@@ -363,9 +369,14 @@ namespace OnyxBasic
 			return OpSave ();
 		}
 		// Run > Make .bax: the program compiled (it runs without parsing) beside the .bas.
-		bool WriteBax (string p)
+		// "Managed": the program runs on Onyx's VM; without it /bin/basic runs it in machine code (on the Pi).
+		bool AskManaged (string title)
 		{
-			int line = Native.Compile (Compose (out _), p, out string msg);
+			return MessageBox.Show (this, "Managed? (the program runs on the VM instead of machine code)", title, MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+		}
+		bool WriteBax (string p, bool managed)
+		{
+			int line = Native.Compile (Compose (out _), p, managed, out string msg);
 			if (line == 0) return true;
 			if (line > 0) { GotoProgramLine (line); MessageBox.Show (this, "Syntax error in line " + line + ": " + msg, "Onyx BASIC", MessageBoxButtons.OK, MessageBoxIcon.Error); }
 			else MessageBox.Show (this, "Cannot write " + p, "Onyx BASIC");
@@ -375,7 +386,7 @@ namespace OnyxBasic
 		{
 			if (path == null && !OpSaveAs ()) return;
 			string p = Path.ChangeExtension (path, ".bax");
-			if (WriteBax (p)) MessageBox.Show (this, "Compiled: " + p, "Onyx BASIC");
+			if (WriteBax (p, AskManaged ("Make .bax"))) MessageBox.Show (this, "Compiled: " + p, "Onyx BASIC");
 		}
 		// File > Make App...: SD:/apps/<name>.app/{main.bas or main.bax, app.txt, icon.bmp}, as on Onyx.
 		void OpMakeApp ()
@@ -392,9 +403,34 @@ namespace OnyxBasic
 				Directory.CreateDirectory (dir);
 				// compiled (main.bax) or as source (main.bas): only one of them
 				bool compiled = MessageBox.Show (this, "Compile the app? (main.bax: it starts faster; the program's source is not in the app)", "Make App", MessageBoxButtons.YesNo) == DialogResult.Yes;
+				// standalone: main = the card's runtime (bin/basic) with the compiled program after it (bas::attachBax)
+				string runtime = Path.Combine (Settings.SdFolder, "bin", "basic");
+				bool alone = compiled && File.Exists (runtime)
+					&& MessageBox.Show (this, "Standalone? (main: an executable with the runtime in it, 650 KB)", "Make App", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
 				string main = Path.Combine (dir, compiled ? "main.bax" : "main.bas"), other = Path.Combine (dir, compiled ? "main.bas" : "main.bax");
-				if (compiled ? !WriteBax (main) : !WriteTo (main)) return;
+				bool managed = AskManaged ("Make App");
+				if (compiled) { if (!WriteBax (main, managed)) return; }
+				else
+				{
+					if (!WriteTo (main)) return;
+					if (managed) File.WriteAllBytes (main, Latin1.Enc.GetBytes ("OPTION MANAGED\n").Concat (File.ReadAllBytes (main)).ToArray ());
+				}
 				if (File.Exists (other)) File.Delete (other);
+				string exe = Path.Combine (dir, "main");
+				if (alone)
+				{
+					byte[] rt = File.ReadAllBytes (runtime), bax = File.ReadAllBytes (main);
+					int rlen = rt.Length;			// (a runtime that carries a program already: without it)
+					if (rlen >= 16 && Encoding.ASCII.GetString (rt, rlen - 16, 8) == "OBAXAPP1") rlen = BitConverter.ToInt32 (rt, rlen - 8);
+					using (var o = new FileStream (exe, FileMode.Create))
+					{
+						o.Write (rt, 0, rlen); o.Write (bax, 0, bax.Length);
+						o.Write (Encoding.ASCII.GetBytes ("OBAXAPP1"), 0, 8);
+						o.Write (BitConverter.GetBytes (rlen), 0, 4); o.Write (BitConverter.GetBytes (bax.Length), 0, 4);
+					}
+					File.Delete (main);
+				}
+				else if (File.Exists (exe)) File.Delete (exe);
 				File.WriteAllBytes (Path.Combine (dir, "app.txt"), Latin1.Enc.GetBytes ("# Onyx application metadata (written by QBasic > Make App)\nname = " + title + "\ncategory = BASIC\n"));
 				string icon = Path.Combine (Settings.SdFolder, "apps", "qbasic.app", "program.bmp");
 				if (File.Exists (icon)) File.Copy (icon, Path.Combine (dir, "icon.bmp"), true);

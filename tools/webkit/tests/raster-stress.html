@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Onyx compositor test: raster on the cores</title>
+<!-- tools/webkit/test-webkit.sh: a long page that is costly to rasterise (blurred shadows, text in several
+     faces and sizes, gradients, scaled pictures, rounded and translucent boxes), scrolled quickly. With
+     the compositor its tiles are rasterised on the app cores, in parts, from pictures: the result must
+     be the software path's. -->
+<style>
+html { scrollbar-width: none; }
+body { margin: 0; background: #eef0f4; font: 16px sans-serif; }
+.card { margin: 18px 24px; padding: 14px 18px; background: white; border-radius: 14px; box-shadow: 0 6px 18px rgba(0, 0, 40, 0.35), 0 1px 3px rgba(0, 0, 0, 0.4); overflow: hidden; }
+.card:nth-child(4n) { background: linear-gradient(120deg, #ffe9c9, #c9e4ff 60%, #e2c9ff); }
+.card:nth-child(4n+1) { font-family: serif; }
+.card:nth-child(4n+2) { font-family: monospace; font-size: 14px; }
+.card h3 { margin: 0 0 6px 0; font-size: 22px; text-shadow: 1px 2px 4px rgba(0, 0, 0, 0.3); }
+.card img { float: right; width: 150px; height: 90px; margin-left: 12px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.5); }
+.pill { display: inline-block; padding: 2px 10px; margin: 6px 6px 0 0; border-radius: 12px; background: rgba(30, 90, 200, 0.18); border: 1px solid rgba(30, 90, 200, 0.5); }
+.ghost { opacity: 0.6; }
+</style></head>
+<body>
+<script>
+var img = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAACNUlEQVR42gXBoYKjMBAA0PmDG7dy41Y2rrLjkMQhiUMyDkkckjgkcUjGIYlDNq6ycZUbd/LuPQD4h/BXwa+GD8HbwMvCk+FycHo4AuwCW4Q1wZJhLjAB4F/EX4UfjW/Cl8GnxYvxdHh43ANugmvEJeGccSo4AqhfVB+l3lq9SD2Nuqw6WR1O7V5tQa2ilqjmpKasxqIGAP1B/Vb6pfWT9GX0afXBend683oNehE9Rz0lPWY9FN0D0Bvppeip6SI6DR2WdqbN0eppCTQLTZHGREOmvlAHYF5onspc2pxkDmN2azY2qzOLN3Mwk5gxmiGZPpuumBbAPtFeyp7aHmR3YzdrV7aLs7O3U7Cj2CHaPtku27bYBoAv5FPxoXkn3gyvlhfm2fHkeQw8CPeRu8Rt5qZwDeBOdIdyu3YbudW4xbqZ3eTc6N0QXC+ui65NrsmuLq4C8Af6XflN+5X8Yvxs/cR+dH7wvg++E99G3yRfZ18V/wAIO4ZNhVWHhcJswmTDyGFwofehC6GV0MRQp1Dl8CjhDiAbyqpk0TKTTEZGKwNL76Tz0gZpROooVZJHlnuRG0BcMS4qzjpOFEcTBxt7jp2LrY9NiLXEKsZHivccbyX+AKQF06zSpNNIaTCpt6nj1LrU+FSHVEl6xHRP6ZbTT0nfAHnGPKk86jxQ7k3ubG45Ny7XPlchPyTfY76l/JPzd8lfAGXCMqoy6NJT6UxpbWm41K5UvjxCuUu5xfKTyncuX6X8+Q/DpXcQ0KoKLwAAAABJRU5ErkJggg==';
+var words = 'the quick brown fox jumps over the lazy dog while été Ελληνικά Кириллица flow past 0123456789 '.split(' ');
+var s = '';
+for (var i = 0; i < 60; i++) {
+    var text = '';
+    for (var k = 0; k < 40; k++)
+        text += words[(i * 7 + k * 3) % words.length] + ' ';
+    s += '<div class="card' + (i % 5 == 3 ? ' ghost' : '') + '"><img src="' + img + '"><h3>Card number ' + i + '</h3>' + text
+        + '<br><span class="pill">one</span><span class="pill"><b>two</b></span><span class="pill"><i>three</i></span></div>';
+}
+document.write(s);
+</script>
+</body></html>

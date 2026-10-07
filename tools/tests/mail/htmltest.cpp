@@ -1,12 +1,12 @@
 //
-// htmltest.cpp -- Mail's HTML renderer (user/mail/html.h) on the PC: a few messages' HTML (a newsletter in tables, a
+// htmltest.cpp -- Mail's HTML renderer (user/Libs/mail/html.h) on the PC: a few messages' HTML (a newsletter in tables, a
 // receipt, text styles and lists, a plain text) laid out and drawn with the card's fonts into PPM files (the test
 // script turns them into PNGs to look at), with checks on the layout (the tables' columns, the centring, the lines,
 // the links, the hidden parts). Run by tools/tests/run_mail_test.sh.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
 //
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 #include "mail/html_ft.h"
 #include "mail/mime.h"
 
@@ -28,7 +28,7 @@ struct Pics : Pictures
 	}
 };
 
-static void save_ppm (const wtk::Canvas &cv, const char *path)
+static void save_ppm (const uikit::Canvas &cv, const char *path)
 {
 	FILE *f = fopen (path, "wb"); if (!f) return;
 	fprintf (f, "P6\n%d %d\n255\n", cv.w, cv.h);
@@ -42,7 +42,7 @@ static Html *render (const char *name, const char *src, int w, bool text = false
 	if (text) h->parse_text (src, (int) strlen (src)); else h->parse (src, (int) strlen (src));
 	h->layout (host, w - 32);
 	int H = h->height () + 32; if (H > 3000) H = 3000; if (H < 100) H = 100;
-	wtk::Canvas cv; cv.alloc (w, H); cv.clear (0xFFFFFFFF);
+	uikit::Canvas cv; cv.alloc (w, H); cv.clear (0xFFFFFFFF);
 	unsigned bg = h->background (); if (bg >> 24) cv.clear (bg);
 	host.cv = &cv;
 	h->paint (host, 16, 16, 0, 0, w, H);

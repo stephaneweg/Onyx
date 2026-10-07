@@ -13,8 +13,8 @@
 // No heap in userland (-nostdlib): the field + palette are static arrays; the
 // pixel buffer is the window canvas the kernel maps in.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"		// wtk window decoration
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"		// uikit window decoration
 
 #define W	320			// window client size
 #define H	240
@@ -101,12 +101,12 @@ static void render (void)
 // placed its own -- a click anywhere in the window cycles the colour.
 static void paint_strip (void)
 {
-	using namespace wtk;
+	using namespace uikit;
 	Canvas cv; cv.adopt (fb, W, H);
 	cv.fillRect (0, FIRE_PX, W, H - FIRE_PX, C_BG);
 	int bx, by, bw, bh;
-	wk_framed (cv, (W - 100) / 2, FIRE_PX + 5, 100, H - FIRE_PX - 10, C_FACE, WK_NORMAL, &bx, &by, &bw, &bh);
-	wk_text_c (cv, bx, by, bw, bh, "Colour", C_TEXT);
+	uk_framed (cv, (W - 100) / 2, FIRE_PX + 5, 100, H - FIRE_PX - 10, C_FACE, UK_NORMAL, &bx, &by, &bw, &bh);
+	uk_text_c (cv, bx, by, bw, bh, "Colour", C_TEXT);
 }
 
 int main (void)
@@ -117,7 +117,7 @@ int main (void)
 		return 1;
 	}
 
-	wtk::wk_decorate_window ();			// user-side window chrome (reads the theme)
+	uikit::uk_decorate_window ();			// user-side window chrome (reads the theme)
 	paint_strip ();
 
 	build_palette (mode);

@@ -7,7 +7,7 @@ random.seed (5)
 def when (i): return (2026, 9, 14 + i % 15, 9 + i % 9, (i * 7) % 60, 0)
 with zipfile.ZipFile (sys.argv[1], "w", zipfile.ZIP_DEFLATED) as z:
 	i = 0
-	for top, n in (("kernel/sys", 14), ("kernel/include/kern", 12), ("docs/archiver", 2), ("user/Apps/irc", 1), ("user/libc", 4), ("tools/screenshot", 5)):
+	for top, n in (("kernel/sys", 14), ("kernel/include/kern", 12), ("docs/archiver", 2), ("user/Apps/irc", 1), ("user/Runtime/libc", 4), ("tools/screenshot", 5)):
 		for f in sorted (os.listdir (os.path.join (ROOT, top)))[:n]:
 			p = os.path.join (ROOT, top, f)
 			if not os.path.isfile (p): continue

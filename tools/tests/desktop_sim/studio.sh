@@ -1,8 +1,8 @@
 #!/bin/sh
-# tools/tests/desktop_sim/studio.sh -- wtk's studio widgets (Knob, VuMeter, SegmentedControl, ToolBar
-# + ToolButton, LcdDisplay) and wtk's text through a FreeType face (ft/wtkface.h), on the PC: the
+# tools/tests/desktop_sim/studio.sh -- uikit's studio widgets (Knob, VuMeter, SegmentedControl, ToolBar
+# + ToolButton, LcdDisplay) and uikit's text through a FreeType face (fontkit/uikitface.h), on the PC: the
 # gallery gallery/studio.cpp built twice -- with the face (-DWITH_FT, DejaVu Sans 13 px: FreeType as
-# user/Makefile builds it for the Pi) and with wtk's bitmap fonts --, each run in the card's theme and
+# user/Makefile builds it for the Pi) and with uikit's bitmap fonts --, each run in the card's theme and
 # in a dark studio palette (SIM_DARK=1), its window written as a PNG:
 #
 #   sh tools/tests/desktop_sim/studio.sh [out dir]        (default /tmp/onyx_studio)
@@ -19,21 +19,21 @@ D=tools/tests/desktop_sim
 OUT=${1:-/tmp/onyx_studio}
 mkdir -p "$OUT/obj" "$OUT/ft" "$OUT/writes"
 export SIM_WRITES="$OUT/writes"
-CXX="g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
-for f in user/wtk/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
-rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/obj/*.o
+CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+for f in user/Kits/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
+rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
 FT=third_party/freetype-2.14.3
 FT_SRC="base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c truetype/truetype.c sfnt/sfnt.c smooth/smooth.c"
 for f in $FT_SRC; do gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
-	-Iuser/ft -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
+	-Iuser/Kits/fontkit -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
-$CXX -DWITH_FT -Iuser/ft -I$FT/include -o "$OUT/studio_ft" "$OUT/fakekapi.o" $D/gallery/studio.cpp "$OUT/libwtk.a" "$OUT/libft.a" &
-$CXX -o "$OUT/studio_bitmap" "$OUT/fakekapi.o" $D/gallery/studio.cpp "$OUT/libwtk.a" &
+$CXX -DWITH_FT -Iuser/Kits/fontkit -I$FT/include -o "$OUT/studio_ft" "$OUT/fakekapi.o" $D/gallery/studio.cpp "$OUT/libuikit.a" "$OUT/libft.a" &
+$CXX -o "$OUT/studio_bitmap" "$OUT/fakekapi.o" $D/gallery/studio.cpp "$OUT/libuikit.a" &
 $CXX -Dmain=app_main -c user/Apps/widgets/main.cpp -o "$OUT/widgets_app.o" &
 wait
-$CXX -Iuser/ft -I$FT/include -o "$OUT/widgets_ft" "$OUT/fakekapi.o" $D/gallery/ftwrap.cpp "$OUT/widgets_app.o" "$OUT/libwtk.a" "$OUT/libft.a"
-$CXX -Iuser/ft -I$FT/include -o "$OUT/facetest" "$OUT/fakekapi.o" $D/facetest.cpp "$OUT/libwtk.a" "$OUT/libft.a"
+$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/widgets_ft" "$OUT/fakekapi.o" $D/gallery/ftwrap.cpp "$OUT/widgets_app.o" "$OUT/libuikit.a" "$OUT/libft.a"
+$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/facetest" "$OUT/fakekapi.o" $D/facetest.cpp "$OUT/libuikit.a" "$OUT/libft.a"
 "$OUT/facetest" | tail -1			# (the measures, the carets, UTF-8 editing)
 run () {	# run APP NAME "SCRIPT" [VAR=value ...]
 	app=$1; name=$2; script=$3; shift 3

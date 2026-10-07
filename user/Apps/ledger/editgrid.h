@@ -51,7 +51,7 @@ public:
 	{
 		LineEdit::onDraw ();
 		if (sug.kind != SK_NONE)				// (the drop button's hint)
-			wk_glyph (canvas, WKG_CHEV_DOWN, width - 10, height / 2, 7, field_dim ());
+			uk_glyph (canvas, WKG_CHEV_DOWN, width - 10, height / 2, 7, field_dim ());
 	}
 };
 
@@ -87,7 +87,7 @@ public:
 	{
 		if (c != flex) return col[c].width;
 		int s = 0; for (int i = 0; i < ncol; i++) if (i != flex) s += col[i].width;
-		return imax (60, width - 2 - XW - (vbar () ? WK_SBW + 2 : 0) - s);
+		return imax (60, width - 2 - XW - (vbar () ? UK_SBW + 2 : 0) - s);
 	}
 	int colX (int c) const { int x = 1; for (int i = 0; i < c; i++) x += colW (i); return x; }
 	int rowY (int r) const { return headH + (r - first) * rowH; }
@@ -243,21 +243,21 @@ public:
 	{
 		unsigned bg = bgColor ();
 		canvas.clear (bg);
-		wk_sunken (canvas, 0, 0, width, height, 6, C_FIELD, false);
-		unsigned hf = wk_tone (C_BG, 150);
-		wk_rbox (canvas, 1, 1, width - 2, headH - 1, 5, wk_tone (C_BG, 162), wk_tone (C_BG, 140), 255, WK_TL | WK_TR);
-		canvas.fillRect (1, headH - 1, width - 2, 1, wk_tone (C_BG, 110));
-		unsigned hink = wk_ink_for (hf);
+		uk_sunken (canvas, 0, 0, width, height, 6, C_FIELD, false);
+		unsigned hf = uk_tone (C_BG, 150);
+		uk_rbox (canvas, 1, 1, width - 2, headH - 1, 5, uk_tone (C_BG, 162), uk_tone (C_BG, 140), 255, UK_TL | UK_TR);
+		canvas.fillRect (1, headH - 1, width - 2, 1, uk_tone (C_BG, 110));
+		unsigned hink = uk_ink_for (hf);
 		for (int c = 0; c < ncol; c++)
 		{
 			int x = colX (c), w = colW (c);
 			Canvas cc; cc.adopt (canvas.px + x, imax (1, w), headH, canvas.stride);
 			cell_text (cc, 0, 0, w, headH, col[c].title, hink, col[c].right, 2);
-			if (c) canvas.fillRect (x, 6, 1, headH - 12, wk_tone (C_BG, 120));
+			if (c) canvas.fillRect (x, 6, 1, headH - 12, uk_tone (C_BG, 120));
 		}
 		int n = m->rows (), s = shownRows ();
 		bool vb = vbar ();
-		int rw = width - 2 - (vb ? WK_SBW + 2 : 0);
+		int rw = width - 2 - (vb ? UK_SBW + 2 : 0);
 		Canvas body; body.adopt (canvas.px + headH * canvas.stride, width, imax (1, height - headH - 1), canvas.stride);
 		char t[256];
 		for (int i = 0; i <= s && first + i <= n; i++)
@@ -265,19 +265,19 @@ public:
 			int r = first + i, y = i * rowH;
 			if (r == n)					// "+ Add a line"
 			{
-				unsigned c = m_hotAdd ? wk_tone (C_ACCENT, 110) : C_ACCENT;
-				wk_glyph (body, WKG_PLUS, 16, y + rowH / 2, 9, c);
-				wk_text_l (body, 28, y, rowH, addText, c);
+				unsigned c = m_hotAdd ? uk_tone (C_ACCENT, 110) : C_ACCENT;
+				uk_glyph (body, WKG_PLUS, 16, y + rowH / 2, 9, c);
+				uk_text_l (body, 28, y, rowH, addText, c);
 				break;
 			}
 			bool curRow = r == cur;
-			unsigned rb = curRow ? wk_mix (C_FIELD, C_ACCENT, 26) : (r & 1) ? wk_tone (C_FIELD, 122) : C_FIELD;
+			unsigned rb = curRow ? uk_mix (C_FIELD, C_ACCENT, 26) : (r & 1) ? uk_tone (C_FIELD, 122) : C_FIELD;
 			body.fillRect (1, y, rw, rowH, rb);
-			body.fillRect (1, y + rowH - 1, rw, 1, wk_tone (C_FIELD, 112));
+			body.fillRect (1, y + rowH - 1, rw, 1, uk_tone (C_FIELD, 112));
 			for (int c = 0; c < ncol; c++)
 			{
 				int x = colX (c), w = colW (c);
-				if (c) body.fillRect (x, y, 1, rowH, wk_tone (C_FIELD, 116));
+				if (c) body.fillRect (x, y, 1, rowH, uk_tone (C_FIELD, 116));
 				if (editing () && r == cur && c == curCol) continue;
 				m->cell (r, c, false, t, sizeof t);
 				unsigned ink = m->ink (r, c);
@@ -289,8 +289,8 @@ public:
 					if (*sp && digit (t[0]))
 					{
 						char code[16]; int k = 0; for (const char *q = t; q < sp && k < 15; q++) code[k++] = *q; code[k] = '\0';
-						int cw = wk_text_w (code, 2);
-						wk_text_l (cc, 6, 0, rowH, code, ink, 2);
+						int cw = uk_text_w (code, 2);
+						uk_text_l (cc, 6, 0, rowH, code, ink, 2);
 						while (*sp == ' ') sp++;
 						cell_text (cc, cw + 4, 0, w - cw - 4, rowH, sp, field_dim (), false);
 						continue;
@@ -300,15 +300,15 @@ public:
 			}
 			if (r == m_hotRow || curRow)			// the line's cross
 			{
-				int x = width - XW - (vb ? WK_SBW + 2 : 0);
-				wk_glyph (body, WKG_CLOSE, x + XW / 2, y + rowH / 2, 8, r == m_hotRow && m_hotX ? C_BAD : field_dim ());
+				int x = width - XW - (vb ? UK_SBW + 2 : 0);
+				uk_glyph (body, WKG_CLOSE, x + XW / 2, y + rowH / 2, 8, r == m_hotRow && m_hotX ? C_BAD : field_dim ());
 			}
 		}
-		if (vb) { WkThumb th = wk_thumb (n + 1, s, first, height - headH - 4); wk_draw_vscroll (canvas, width - WK_SBW - 3, headH + 2, WK_SBW, height - headH - 4, th, C_FIELD, m_thumb); }
+		if (vb) { UkThumb th = uk_thumb (n + 1, s, first, height - headH - 4); uk_draw_vscroll (canvas, width - UK_SBW - 3, headH + 2, UK_SBW, height - headH - 4, th, C_FIELD, m_thumb); }
 		if (!editing () && cur >= 0 && cur < n && hasFocus && cur >= first && cur < first + s)
 		{
 			int x, y, w; cellBox (cur, curCol, &x, &y, &w);
-			wk_rline (canvas, x, y, w, rowH, 3, C_ACCENT, 255);
+			uk_rline (canvas, x, y, w, rowH, 3, C_ACCENT, 255);
 		}
 	}
 	// ---- the mouse ----
@@ -324,20 +324,20 @@ public:
 		int n = m->rows ();
 		bool vb = vbar ();
 		if (wheel) { first -= wheel; clampTop (); placeEditor (); invalidate (true); return true; }
-		if (m_thumb || (vb && mx >= width - WK_SBW - 4 && my > headH))
+		if (m_thumb || (vb && mx >= width - UK_SBW - 4 && my > headH))
 		{
 			if (bl)
 			{
 				m_thumb = true;
-				WkThumb th = wk_thumb (n + 1, shownRows (), first, height - headH - 4);
-				first = (int) wk_thumb_pos (my - headH - 2, height - headH - 4, n + 1, shownRows (), th.h); clampTop (); placeEditor ();
+				UkThumb th = uk_thumb (n + 1, shownRows (), first, height - headH - 4);
+				first = (int) uk_thumb_pos (my - headH - 2, height - headH - 4, n + 1, shownRows (), th.h); clampTop (); placeEditor ();
 				invalidate (true);
 			}
 			else m_thumb = false;
 			return true;
 		}
 		int r = my >= headH ? first + (my - headH) / rowH : -1;
-		bool onX = r >= 0 && r < n && mx >= width - XW - (vb ? WK_SBW + 2 : 0) - 2;
+		bool onX = r >= 0 && r < n && mx >= width - XW - (vb ? UK_SBW + 2 : 0) - 2;
 		bool onAdd = r == n;
 		int hr = r >= 0 && r < n ? r : -1;
 		if (hr != m_hotRow || onX != m_hotX || onAdd != m_hotAdd) { m_hotRow = hr; m_hotX = onX; m_hotAdd = onAdd; invalidate (true); }

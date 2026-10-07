@@ -7,11 +7,11 @@
 //   Space: pause    G: GPU / software    Up / Down: tilt    the title bar line: the renderer,
 //   the triangles, frames a second and the time of one frame.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
 #include "Apps/teapot/teapot.h"
 
-using namespace wtk;
+using namespace uikit;
 
 enum { WIN_W = 640, WIN_H = 480 };
 

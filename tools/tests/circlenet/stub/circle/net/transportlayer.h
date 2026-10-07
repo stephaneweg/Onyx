@@ -31,6 +31,7 @@ public:
 	int SetOptionAddMembership (const CIPAddress &, int) { return -1; }
 	int SetOptionDropMembership (const CIPAddress &, int) { return -1; }
 	boolean IsConnected (int) const { return m_pConnection->IsConnected (); }
+	boolean IsTerminated (int) const { return m_pConnection->IsTerminated (); }
 	const u8 *GetForeignIP (int) const { return m_pConnection->GetForeignIP (); }
 	u16 GetOwnPort (int) const { return m_pConnection->GetOwnPort (); }
 	u16 GetMSS (int) const { return m_pConnection->GetMSS (); }

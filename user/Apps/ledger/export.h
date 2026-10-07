@@ -1,20 +1,20 @@
 //
 // export.h -- a report as a document of the other programs:
-//   * a Writer document (RTF): A4 (landscape when it has many columns), the company in the page's header,
+//   * a Letters document (RTF): A4 (landscape when it has many columns), the company in the page's header,
 //     the pages numbered at the foot; the report's title and period; its rows in a table whose title row
 //     is repeated on each page -- the headings shaded across the table, the subtotals and totals in bold,
 //     the amounts at the right;
 //   * a workbook for the Spreadsheet (XLSX): the title, the period, the table -- the amounts as numbers
 //     formatted #.##0,00 (so they add up there), the headings and totals in bold, the columns' widths;
 //   * a CSV file (';' between the cells, as a Belgian spreadsheet reads it).
-// Written in SD:/docs/Reports/ (or where the user says), then shown in Writer or the Spreadsheet when
-// asked ("Open in Writer" / "Open in the Spreadsheet").
+// Written in SD:/docs/Reports/ (or where the user says), then shown in Letters or the Spreadsheet when
+// asked ("Open in Letters" / "Open in the Spreadsheet").
 //
 #ifndef _ledger_export_h
 #define _ledger_export_h
 
 #include "ui.h"
-#include "img/pngsave.hpp"
+#include "imagekit/img/pngsave.hpp"
 
 namespace lg {
 
@@ -224,6 +224,8 @@ static unsigned char *rpt_xlsx (const Book &b, const Report &p, unsigned *len)
 // ---- files ---------------------------------------------------------------------------------------------------------------------------
 enum { XF_RTF, XF_XLSX, XF_CSV };
 static const char *const XF_EXT[3] = { ".rtf", ".xlsx", ".csv" };
+// ... and the kind of files its Save dialog offers (uikit/dialog.h)
+static const char *const XF_KINDS[3] = { "Rich Text (RTF)|*.rtf|All files|*", "Excel (XLSX)|*.xlsx|All files|*", "CSV files|*.csv|All files|*" };
 // A file's name from a report's title and period: "General ledger 2026.rtf".
 static void export_name (const Report &p, int fmt, char *out, int cap)
 {
@@ -253,7 +255,7 @@ static bool write_report (const Report &p, int fmt, const char *path)
 	if (fmt == XF_RTF) rpt_rtf (g_b, p, o); else rpt_csv (p, o);
 	return kapi_save_file (path, o.b ? o.b : "", (unsigned) o.n) >= 0;
 }
-// The report written in SD:/docs/Reports and opened in Writer (RTF) or the Spreadsheet (XLSX).
+// The report written in SD:/docs/Reports and opened in Letters (RTF) or the Spreadsheet (XLSX).
 static void open_report (const Report &p, int fmt)
 {
 	kapi_mkdir ("SD:/docs"); kapi_mkdir ("SD:/docs/Reports");
@@ -261,8 +263,8 @@ static void open_report (const Report &p, int fmt)
 	export_name (p, fmt, name, sizeof name);
 	scpy (path, "SD:/docs/Reports/", sizeof path); scat (path, name, sizeof path);
 	if (!write_report (p, fmt, path)) { warn (TR ("Export"), TR ("The file could not be written.")); return; }
-	const char *app = fmt == XF_RTF ? "SD:/apps/writer.app/main" : "SD:/apps/sheet.app/main";
-	if (!kapi_exec (app, path)) { warn (TR ("Export"), fmt == XF_RTF ? TR ("Writer could not be started.") : TR ("The Spreadsheet could not be started.")); return; }
+	const char *app = fmt == XF_RTF ? "SD:/apps/letters.app/main" : "SD:/apps/sheet.app/main";
+	if (!kapi_exec (app, path)) { warn (TR ("Export"), fmt == XF_RTF ? TR ("Letters could not be started.") : TR ("The Spreadsheet could not be started.")); return; }
 	char m[240]; scpy (m, TR ("Opened: "), sizeof m); scat (m, path, sizeof m); status (m);
 }
 static void save_report (const Report &p, int fmt)
@@ -270,7 +272,7 @@ static void save_report (const Report &p, int fmt)
 	char name[120], path[220];
 	export_name (p, fmt, name, sizeof name);
 	kapi_mkdir ("SD:/docs/Reports");
-	if (!wk_file_save (path, sizeof path, "SD:/docs/Reports", name)) return;
+	if (!uk_file_save (path, sizeof path, "SD:/docs/Reports", name, XF_KINDS[fmt])) return;
 	int n = slen (path), k = slen (XF_EXT[fmt]);
 	if (n < k || !ci_eq (path + n - k, XF_EXT[fmt])) scat (path, XF_EXT[fmt], sizeof path);
 	if (!write_report (p, fmt, path)) { warn (TR ("Export"), TR ("The file could not be written.")); return; }

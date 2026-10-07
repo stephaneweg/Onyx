@@ -1,4 +1,4 @@
-// shaders_test -- the ready-made programs of user/v3d/shaders.cpp (kapi v61) on the PC: each one
+// shaders_test -- the ready-made programs of user/Libs/v3d/shaders.cpp (kapi v61) on the PC: each one
 // encodes, passes the V3D 4.2 instruction restrictions (tools/qpu/qpulib), and the fragment
 // shaders give the expected colours in the simulator (tools/qpu/qpusim).
 #include <stdio.h>

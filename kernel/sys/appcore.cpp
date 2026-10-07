@@ -16,11 +16,27 @@
 // Everything here is plain memory shared between cores (inner-shareable, cache coherent)
 // with explicit barriers; core 0 is the only writer of the ownership.
 //
+// (v75) Demand paging (kern/vm.h). No allocator runs on cores 2-3, so the memory a job touches is
+// filled beforehand: core_acquire fills the app's heap and makes it eager (filled as it grows),
+// core_run fills the top 256 KB of the job's stack. Anything else unfilled -- a vm_map'ed buffer,
+// deeper in a lazy stack -- takes the slow path: the job's translation fault posts a PAGE-IN
+// request in its TAppCore (nPageIn = 1) and waits (WFE, IRQs on: a stop still drops it); on core 0
+// the 100 Hz tick (an IoWait tick hook) wakes the PAGER task, which fills the page (and the next
+// few of the region) by a software walk of the owner's tables, answers 2 (retry) or 3 (a real
+// fault: CORE_FAULT) and SEVs. Latency: up to one tick plus a schedule.
+//
+// (v75) TLS: a job starts with its caller's TPIDR_EL0 (read at core_run: the kernel never changes
+// it), so it shares the caller's thread-local data (errno included).
+//
 #include <kern/appcore.h>
 #include <kern/addrspace.h>
 #include <kern/trapframe.h>
 #include <kern/layout.h>
 #include <kern/el0.h>			// a job at EL0: El0Enter, El0CoreReturnVA
+#include <kern/vm.h>			// (v75) demand paging: the page-ins, the eager heap
+#include <kern/iowait.h>		// (v75) the pager's tick hook
+#include <circle/sched/task.h>
+#include <circle/sched/synchronizationevent.h>
 #include <circle/multicore.h>
 #include <circle/sched/scheduler.h>
 #include <circle/timer.h>
@@ -50,9 +66,53 @@ struct TAppCore
 	volatile unsigned	nFaultEC;
 	volatile boolean	bFaultLogged;
 	u64			ulStackTop;	// the core's own kernel stack (restarts)
+	volatile u64		ulTls;		// (v75) the job's TPIDR_EL0 (its caller's)
+	volatile unsigned	nPageIn;	// (v75) 0 none, 1 asked, 2 filled (retry), 3 refused
+	volatile u64		ulPageInVA;	// (v75) the page asked for
+	volatile boolean	bPageInWrite;
+	volatile u64		ulBusyUs;	// (v80 cpu_stats) the time its jobs ran
+	volatile u64		ulJobStart;	// the running job's start (0: none)
 };
 
+#define PAGEIN_NONE	0
+#define PAGEIN_ASKED	1
+#define PAGEIN_DONE	2
+#define PAGEIN_FAILED	3
+#define PAGEIN_AHEAD	8		// pages filled from the faulting one on (one request)
+#define JOB_STACK_FILL	0x40000		// core_run fills the top 256 KB of the job's stack
+
 static TAppCore s_Core[CORES];
+
+// The clock in microseconds, 64 bits (the counter: readable on every core).
+static inline u64 ClockUs64 (void)
+{
+	u64 c, f;
+	asm volatile ("mrs %0, cntpct_el0" : "=r" (c));
+	asm volatile ("mrs %0, cntfrq_el0" : "=r" (f));
+	return f != 0 ? c / f * 1000000 + c % f * 1000000 / f : 0;
+}
+
+static void JobTimeEnd (TAppCore &C)
+{
+	u64 ulStart = C.ulJobStart;
+	if (ulStart != 0)
+	{
+		C.ulJobStart = 0;
+		C.ulBusyUs = C.ulBusyUs + (ClockUs64 () - ulStart);
+	}
+}
+
+u64 AppCoreBusyUs (unsigned nCore, unsigned *pOwnerPid)
+{
+	if (pOwnerPid != 0) *pOwnerPid = 0;
+	if (nCore < APPCORE_FIRST || nCore > APPCORE_LAST || nCore >= CORES) return 0;
+	TAppCore &C = s_Core[nCore];
+	CAddressSpace *pOwner = C.pOwner;
+	if (pOwnerPid != 0 && pOwner != 0) *pOwnerPid = pOwner->GetPid ();
+	u64 n = C.ulBusyUs, ulStart = C.ulJobStart, ulNow = ClockUs64 ();
+	if (ulStart != 0 && ulNow > ulStart) n += ulNow - ulStart;
+	return n;
+}
 
 static inline void Barrier (void)	{ asm volatile ("dsb ish" ::: "memory"); }
 static inline void LocalTLBFlush (void)	{ asm volatile ("tlbi vmalle1; dsb nsh; isb" ::: "memory"); }
@@ -76,6 +136,8 @@ static void __attribute__ ((noreturn)) AppCoreLoop (unsigned nCore)
 			Barrier ();
 			asm volatile ("msr ttbr0_el1, %0; isb" :: "r" (C.ulTTBR0) : "memory");
 			LocalTLBFlush ();			// (an ASID may have been reused)
+			asm volatile ("msr tpidr_el0, %0" :: "r" (C.ulTls) : "memory");	// (v75: its TLS)
+			C.ulJobStart = ClockUs64 ();		// (v80: the job's time, until it ends or is dropped)
 			// fn at EL0 on the app's stack, returning into the blob's El0CoreReturn, whose
 			// system call ends it (AppCoreOnEl0Sync -> AppCoreEl0Done, on a fresh kernel stack).
 			// Its IRQ (the stop IPI) and its faults come through the EL0 vectors
@@ -92,8 +154,10 @@ extern "C" void __attribute__ ((noreturn)) AppCoreRestart (unsigned nCore)
 	TAppCore &C = s_Core[nCore];
 	ActivateKernelAddressSpace ();				// out of the app's space first
 	LocalTLBFlush ();
+	JobTimeEnd (C);
 	if (C.nState == CORE_RUNNING) C.nState = CORE_IDLE;	// (CORE_FAULT stays)
 	C.bGo = FALSE;
+	C.nPageIn = PAGEIN_NONE;				// (a page-in it waited for: dropped)
 	Barrier ();
 	C.bAbort = FALSE;					// = "stopped" for core 0
 	Barrier ();
@@ -106,6 +170,7 @@ extern "C" void __attribute__ ((noreturn)) AppCoreEl0Done (unsigned nCore)
 {
 	TAppCore &C = s_Core[nCore];
 	ActivateKernelAddressSpace ();
+	JobTimeEnd (C);
 	Barrier ();
 	if (C.nState == CORE_RUNNING) C.nState = CORE_IDLE;
 	Barrier ();
@@ -165,12 +230,54 @@ static void AppCoreOnFault (TTrapFrame *pFrame)
 	Redirect (pFrame, nCore);
 }
 
+// (v75) A translation fault of the job at a user address: a page-in asked of core 0 (the pager
+// task), the core waiting meanwhile -- WFE with the IRQs on, so a stop IPI still drops the job
+// (AppCoreOnIRQExit redirects the IRQ's own frame). TRUE: the page is there, retry the access.
+static boolean PageIn (unsigned nCore)
+{
+	u64 ulESR, ulFAR;
+	asm volatile ("mrs %0, esr_el1" : "=r" (ulESR));
+	asm volatile ("mrs %0, far_el1" : "=r" (ulFAR));
+	unsigned nEC = (unsigned) (ulESR >> 26) & 0x3F;
+	if (   (nEC != 0x24 && nEC != 0x20)			// a data abort from EL0, (v78) an instruction abort
+	    || (ulESR & (1ULL << 10)) != 0			// (FnV: no address)
+	    || (ulESR & 0x3C) != 0x04			// a translation fault
+	    || !IS_USER_VA (ulFAR))
+	{
+		return FALSE;
+	}
+	// (an instruction abort: the page filled as read; where the region is not executable the
+	// retried fetch then takes a permission fault, which is the program's end)
+	TAppCore &C = s_Core[nCore];
+	C.ulPageInVA = ulFAR & ~(u64) KPAGE_MASK;
+	C.bPageInWrite = (ulESR & (1ULL << 6)) != 0;
+	Barrier ();
+	C.nPageIn = PAGEIN_ASKED;
+	Barrier ();
+	asm volatile ("sev");
+	asm volatile ("msr daifclr, #2" ::: "memory");
+	while (C.nPageIn == PAGEIN_ASKED)
+	{
+		asm volatile ("wfe" ::: "memory");
+	}
+	asm volatile ("msr daifset, #2" ::: "memory");
+	Barrier ();
+	boolean bOK = C.nPageIn == PAGEIN_DONE;
+	C.nPageIn = PAGEIN_NONE;
+	Barrier ();
+	return bOK;		// (no TLBI: an invalid entry is never cached; the eret retries)
+}
+
 void AppCoreOnEl0Sync (TTrapFrame *pFrame, boolean bDone)
 {
 	unsigned nCore = CMultiCoreSupport::ThisCore ();
 	if (nCore < APPCORE_FIRST || nCore >= CORES) return;	// (no EL0 code runs elsewhere)
 	if (!bDone)
 	{
+		if (PageIn (nCore))
+		{
+			return;				// (v75) filled: the access retried
+		}
 		AppCoreOnFault (pFrame);		// (a system call there is a fault too: EC 0x15)
 		return;
 	}
@@ -184,6 +291,86 @@ static CAddressSpace *CurrentAS (void)
 {
 	if (!CScheduler::IsActive ()) return 0;
 	return (CAddressSpace *) CScheduler::Get ()->GetCurrentTask ()->GetUserData (TASK_USER_DATA_USER);
+}
+
+// (v75) The pager: a kernel task on core 0 that serves the app cores' page-in requests.
+class CVmPagerTask : public CTask
+{
+public:
+	CVmPagerTask (void)
+	{
+		SetName ("vmpager");
+	}
+
+	void Run (void) override
+	{
+		for (;;)
+		{
+			// (woken by the tick hook; the timeout covers a hook that could not be added)
+			m_Event.WaitWithTimeout (s_bHooked ? 1000000 : 10000);
+			m_Event.Clear ();
+			Serve ();
+		}
+	}
+
+	void Wake (void)	{ m_Event.Set (); }
+
+	static volatile boolean s_bHooked;
+
+private:
+	static void Serve (void)
+	{
+		for (unsigned n = APPCORE_FIRST; n <= APPCORE_LAST && n < CORES; n++)
+		{
+			TAppCore &C = s_Core[n];
+			if (C.nPageIn != PAGEIN_ASKED) continue;
+			Barrier ();
+			CAddressSpace *pAS = C.pOwner;		// (core 0's: stable here)
+			u64 ulVA = C.ulPageInVA;
+			int r = pAS != 0 ? VmFaultIn (pAS, ulVA, C.bPageInWrite) : -1;
+			if (r > 0)				// (filled: the next pages of a lazy region too)
+			{
+				for (unsigned k = 1; k < PAGEIN_AHEAD; k++)
+				{
+					if (VmFaultIn (pAS, ulVA + (u64) k * KPAGE_SIZE, FALSE) <= 0) break;
+				}
+			}
+			Barrier ();
+			C.nPageIn = r >= 0 ? PAGEIN_DONE : PAGEIN_FAILED;
+			Barrier ();
+			asm volatile ("sev");
+		}
+	}
+
+	CSynchronizationEvent m_Event;
+};
+
+volatile boolean CVmPagerTask::s_bHooked = FALSE;
+static CVmPagerTask *s_pPager = 0;
+
+// The 100 Hz tick (IRQ, core 0): a request pending -> the pager woken.
+static void AppCorePageInTick (void)
+{
+	if (s_pPager == 0) return;
+	for (unsigned n = APPCORE_FIRST; n <= APPCORE_LAST && n < CORES; n++)
+	{
+		if (s_Core[n].nPageIn == PAGEIN_ASKED)
+		{
+			s_pPager->Wake ();
+			return;
+		}
+	}
+}
+
+// The pager made on the first core_acquire (core 0, a task).
+static void StartPager (void)
+{
+	if (s_pPager != 0) return;
+	s_pPager = new CVmPagerTask;
+	if (s_pPager != 0)
+	{
+		CVmPagerTask::s_bHooked = IoWaitAddTickHook (AppCorePageInTick);
+	}
 }
 
 static TAppCore *Owned (int nCore, CAddressSpace *pAS)
@@ -239,6 +426,10 @@ int kapi_core_acquire (void)
 			C.pOwner = pAS;
 			C.nState = CORE_IDLE;
 			Barrier ();
+			// (v75) Its jobs touch what the main thread allocated: the heap filled now and
+			// as it grows (kern/vm.h); the pager for the rest. (May yield: the core is ours.)
+			StartPager ();
+			VmEagerHeap (pAS);
 			return (int) n;
 		}
 	}
@@ -252,6 +443,12 @@ int kapi_core_run (int nCore, void (*pFunc) (void *), void *pArg, void *pStackTo
 	if (p == 0 || p->bLost || p->nState == CORE_RUNNING) return -1;
 	u64 ulStack = (u64) pStackTop & ~15ULL;
 	if (!IS_USER_VA (pFunc) || !IS_USER_VA (ulStack - 16)) return -1;
+	// (v75) The top of its stack filled now (the rest, if touched: page-ins); its TLS: ours.
+	VmPopulate (pAS, ulStack > JOB_STACK_FILL ? ulStack - JOB_STACK_FILL : 0, ulStack, FALSE);
+	u64 ulTls;
+	asm volatile ("mrs %0, tpidr_el0" : "=r" (ulTls));
+	p->ulTls = ulTls;
+	p->nPageIn = PAGEIN_NONE;
 	p->ulTTBR0 = pAS->GetTTBR0 ();
 	p->ulFunc  = (u64) pFunc;
 	p->ulArg   = (u64) pArg;

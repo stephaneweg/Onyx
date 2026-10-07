@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors
 #
-# gen_kapi_names.py -- user/kapi_names.h from kernel/include/kern/kapi_abi.h: the name of each kapi
+# gen_kapi_names.py -- user/BinUtils/kapi_names.h from kernel/include/kern/kapi_abi.h: the name of each kapi
 # table slot (the index of a TKApiTable field in 8-byte words: version = 0, create_window = 1, ...
 # -- the number an EL0 stub puts in x8, the slots proc_stats reports). Run it after adding a kapi:
 #
@@ -11,6 +11,7 @@ import os, re, sys
 ROOT = os.path.dirname (os.path.dirname (os.path.abspath (__file__)))
 src = open (os.path.join (ROOT, "kernel/include/kern/kapi_abi.h"), encoding = "utf-8").read ()
 body = re.search (r"^struct TKApiTable\s*\{(.*?)^\};", src, re.S | re.M).group (1)
+body = body.split ("#ifndef __aarch64__")[0]		# (what follows is a PC stand-in kernel's: not Onyx's table)
 body = re.sub (r"//[^\n]*", "", body)
 names = ["version"]
 for stmt in body.split (";"):
@@ -31,5 +32,5 @@ for i, n in enumerate (names):
 	out.append ("\t\"%s\",\t// %d" % (n, i))
 out += ["};", "", "static inline const char *kapi_slot_name (unsigned slot)",
         "{", "\treturn slot < KAPI_NAMES_COUNT ? kapi_slot_names[slot] : \"?\";", "}", "", "#endif", ""]
-open (os.path.join (ROOT, "user/kapi_names.h"), "w", encoding = "utf-8").write ("\n".join (out))
+open (os.path.join (ROOT, "user/BinUtils/kapi_names.h"), "w", encoding = "utf-8").write ("\n".join (out))
 print ("kapi_names.h: %d slots (v%s)" % (len (names), ver))

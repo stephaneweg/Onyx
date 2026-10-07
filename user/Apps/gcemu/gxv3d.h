@@ -5,12 +5,12 @@
 //   * on the app core, while the machine runs (no kapi call there): each draw's vertices are
 //     transformed, lit and given their texture coordinates (gxgl.cpp's vertex shader, in C++), in
 //     the clip space of the EFB's rectangle the XFB copy takes; the draw's TEV configuration gets
-//     its fragment shader (user/v3d/gxtev: generated once, cached by its key), whose varyings the
+//     its fragment shader (user/Libs/v3d/gxtev: generated once, cached by its key), whose varyings the
 //     vertices are written as; the TEV registers, konst colours, alpha references go into the
 //     frame's uniforms; the depth / blending / culling / masks / scissor into the batch. A copy of
 //     the EFB to the XFB ends the frame (the next one is built in the other buffer).
 //   * on the main thread, the machine waiting: the new programs (gpu_program: the vertex shader
-//     hands the varyings on, user/v3d/shaders.h), the textures decoded since (gpu_texture), then
+//     hands the varyings on, user/Libs/v3d/shaders.h), the textures decoded since (gpu_texture), then
 //     the frame (gpu_render2) into the window.
 //
 // Not yet: the EFB copies to textures (a texture read from one: the batch is not drawn; a copy
@@ -809,7 +809,7 @@ struct Out
 	bool init ()
 	{
 		for (int i = 0; i < gc::Machine::MAX_TEX; i++) gpuTex[i] = -1;
-		v62 = KT->version >= 62;
+		v62 = kapi_abi_version () >= 62;
 		rvCap = v62 ? 0 : MAX_FLOATS * 2; rv = v62 ? 0 : new float[rvCap];
 		ru = new unsigned[MAX_UNIS + 8]; rb = new kapi_gpu_batch2[MAX_BATCHES]; rb3 = new kapi_gpu_batch3[MAX_BATCHES];
 		qpu::passCS (cs);

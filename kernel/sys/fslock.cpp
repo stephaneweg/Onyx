@@ -18,10 +18,12 @@
 #include <circle/types.h>
 #include <fatfs/ff.h>
 
-// The SD card's partitions (FatFs volumes SD, SD1..SD3: 0..3) share ONE lock: the driver
-// yields in the middle of a command, and another task must not send the same card a
-// command meanwhile through another volume.
-static inline int LockSlot (int vol) { return vol >= 0 && vol <= 3 ? 0 : vol; }
+// One lock per PHYSICAL DRIVE (FatFs' VolToPart, diskio.cpp): the SD card's partitions (SD,
+// SD1..SD3) share one, a USB device's volumes (USBn, USBnP1..P4) another. The drivers yield in
+// the middle of an operation (the SD driver inside a command, the USB one between two transfers;
+// diskio.cpp's bounce buffer and sector cache are per drive): another task must not reach the
+// same drive meanwhile through another of its volumes. (FF_VOLUMES: FatFs' system mutex.)
+static inline int LockSlot (int vol) { return vol >= 0 && vol < FF_VOLUMES ? VolToPart[vol].pd : vol; }
 
 static CTask   *s_pOwner[FF_VOLUMES + 1];
 static unsigned          s_nDepth[FF_VOLUMES + 1];

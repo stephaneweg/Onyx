@@ -18,14 +18,13 @@
 // coming appointments, "YYYYMMDD|HH:MM title") is written for the desktop's agenda widget; the
 // old calendar's notes in it are taken over the first time. An argument "YYYYMMDD" opens that day.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
-#include "wtk/toolbar.h"
-#include "applib.h"
-#include "notify.h"
-#include "ft/wtkface.h"
+#include "appkit/appkit.h"
+#include "systemkit/systemkit.h"
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
+#include "fontkit/uikitface.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #include "model.h"
 #include "views.h"
@@ -38,6 +37,8 @@ using namespace wtk;
 #define CAL_ICS		"SD:/apps/calendar.app/calendar.ics"
 #define AGENDA_TXT	"SD:/apps/calendar.app/agenda.txt"
 #define REMIND_TXT	"SD:/apps/calendar.app/reminders.txt"
+// The kind of files the Import and Export dialogs offer (uikit/dialog.h).
+static const char *const ICS_KINDS = "iCalendar files|*.ics|All files|*";
 
 static int g_view = 1;				// 0 day, 1 week, 2 month
 static int g_anchor;				// the day the period is around
@@ -348,7 +349,7 @@ static void on_seg (Widget &) { g_view = g_seg->selected; refresh (); }
 static void on_mini (Widget &) { goto_day (days_from_civil (g_mini->year, g_mini->month, g_mini->day), -1); }
 
 static void chevron (Canvas &cv, int id, int x, int y, int s, unsigned ink, bool)
-{ wk_glyph (cv, id ? WKG_CHEV_RIGHT : WKG_CHEV_LEFT, x + s / 2, y + s / 2, s - 4, ink); }
+{ uk_glyph (cv, id ? WKG_CHEV_RIGHT : WKG_CHEV_LEFT, x + s / 2, y + s / 2, s - 4, ink); }
 
 static void m_new ()   { Widget w (0, 0, 0, 0); on_new (w); }
 static void m_task ()
@@ -360,24 +361,24 @@ static void m_task ()
 static void m_import ()
 {
 	char path[256];
-	if (!wk_file_open (path, sizeof path, "SD:/")) return;
+	if (!uk_file_open (path, sizeof path, "SD:/", ICS_KINDS)) return;
 	char *t = read_file (path, 0);
-	if (!t) { wk_messagebox ("Import", "The file could not be read.", MB_OK); return; }
+	if (!t) { uk_messagebox ("Import", "The file could not be read.", MB_OK); return; }
 	int n = ics_read (t, true);
 	delete [] t;
 	data_changed (true);
 	char m[80] = ""; scatn (m, sizeof m, n); scat (m, sizeof m, n == 1 ? " event or task imported." : " events and tasks imported.");
-	wk_messagebox ("Import", m, MB_OK);
+	uk_messagebox ("Import", m, MB_OK);
 }
 static void m_export ()
 {
 	char path[256];
-	if (!wk_file_save (path, sizeof path, "SD:/docs", "calendar.ics")) return;
+	if (!uk_file_save (path, sizeof path, "SD:/docs", "calendar.ics", ICS_KINDS)) return;
 	int len = 0;
 	char *t = ics_write (&len);
 	int ok = kapi_save_file (path, t, (unsigned) len);
 	delete [] t;
-	wk_messagebox ("Export", ok >= 0 ? "The calendar was exported." : "The file could not be written.", MB_OK);
+	uk_messagebox ("Export", ok >= 0 ? "The calendar was exported." : "The file could not be written.", MB_OK);
 }
 static void m_edit ()  { if (g_sel >= 0) open_event (g_sel, g_selStart); }
 static void m_delete ()
@@ -461,12 +462,12 @@ int main (void)
 		const char *v = app_ini_get ("calendar", "view", "week");
 		if (n < 8) g_view = ieq (v, "day") ? 0 : ieq (v, "month") ? 2 : 1;
 	}
-	g_utf8 = ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	g_utf8 = ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	load ();
 
 	CalRoot root;
 	if (root.canvas.px == 0) return 1;
-	g_fh = wk_fh ();
+	g_fh = uk_fh ();
 
 	// The toolbar: New event, Today, < >, the period; Day / Week / Month on the right.
 	ToolBar *tb = new ToolBar (0, 0, W, TB_H);
@@ -530,7 +531,7 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New Event", "^N", WK_CTRL ('N'), m_new);
+	menu.item ("New Event", "^N", UK_CTRL ('N'), m_new);
 	menu.item ("New Task...", "", 0, m_task);
 	menu.separator ();
 	menu.item ("Import iCalendar...", "", 0, m_import);
@@ -543,7 +544,7 @@ int main (void)
 	menu.item ("Week", "", 0, m_week);
 	menu.item ("Month", "", 0, m_month);
 	menu.separator ();
-	menu.item ("Today", "^T", WK_CTRL ('T'), m_today);
+	menu.item ("Today", "^T", UK_CTRL ('T'), m_today);
 	menu.item ("Previous", "", 0, m_prev);
 	menu.item ("Next", "", 0, m_next);
 	menu.publish ();

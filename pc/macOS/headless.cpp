@@ -1,7 +1,7 @@
 //
 // pc/macOS/headless.cpp -- the screen's half of the host kapi without a screen, for pc/macOS/check.sh on
 // Linux: the same hostkapi.cpp (files, the card's two folders, programs started, arguments) under Ledger
-// and Writer, driven by a script of events, their window written to a picture at the end.
+// and Letters, driven by a script of events, their window written to a picture at the end.
 //
 //   HEADLESS_SCRIPT   ';'-separated steps, one at each turn of the app's loop (pump_events):
 //                     wait | down X Y | up X Y | move X Y | key CODE | mods N | menu ID | drop PATH | quit

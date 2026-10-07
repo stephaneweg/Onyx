@@ -1,17 +1,17 @@
 //
-// widgets -- a showcase of the WPF-style wtk controls (P5): RadioButton in a GroupBox,
+// widgets -- a showcase of the WPF-style uikit controls (P5): RadioButton in a GroupBox,
 // ToggleSwitch, NumericUpDown, ListBox, TreeView, Calendar, DatePicker, ImageBox, the
 // colour dialog and tooltips (hover a control ~0.6 s); and the studio controls: a ToolBar of
 // ToolButtons (a transport), an LcdDisplay (the time), a SegmentedControl, Knobs and VuMeters
 // (a made-up signal while "playing": the gain and the pan knobs act on it). The status line
 // reports every event.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
-#include "wtk/toolbar.h"
-#include "img/imgload.hpp"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
+#include "imagekit/img/imgload.hpp"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	660
 #define H	548
@@ -26,7 +26,7 @@ class Well : public Widget
 public:
 	Well (int l, int t, int w, int h) : Widget (l, t, w, h) {}
 	unsigned bgColor () override { return C_FIELD; }
-	void onDraw () override { canvas.clear (parent ? parent->bgColor () : C_BG); wk_sunken (canvas, 0, 0, width, height, 5, C_FIELD); }
+	void onDraw () override { canvas.clear (parent ? parent->bgColor () : C_BG); uk_sunken (canvas, 0, 0, width, height, 5, C_FIELD); }
 };
 
 // A picture into the ImageBox, an icon's magenta key (0xFF00FF) made see-through (the box shows
@@ -36,7 +36,7 @@ static void show_icon (ImageBox *ib, const char *path)
 	ImgFrames im;
 	if (!img_load (path, &im)) return;
 	unsigned *p = im.px[0];
-	for (int i = 0; i < im.w * im.h; i++) if ((p[i] & 0x00FFFFFF) == WK_TRANSPARENT_KEY) p[i] = 0;
+	for (int i = 0; i < im.w * im.h; i++) if ((p[i] & 0x00FFFFFF) == UK_TRANSPARENT_KEY) p[i] = 0;
 	ib->setPixels (p, im.w, im.h, true);
 	img_free (&im);
 }
@@ -142,7 +142,7 @@ private:
 };
 static void on_color (Widget &)
 {
-	if (!wk_color_dialog (&g_color, "Pick a colour")) { say ("Colour: cancelled"); return; }
+	if (!uk_color_dialog (&g_color, "Pick a colour")) { say ("Colour: cancelled"); return; }
 	g_swatch->bg = g_color; g_swatch->invalidate (true);
 	static const char *HX = "0123456789ABCDEF";
 	char h[8] = { '#', HX[(g_color >> 20) & 15], HX[(g_color >> 16) & 15], HX[(g_color >> 12) & 15],
@@ -189,9 +189,9 @@ int main (void)
 	TreeView *tv = new TreeView (220, 8, 220, 240, on_tree, on_tree_go);
 	int sd = tv->add (-1, "SD:");
 	int apps = tv->add (sd, "apps");
-	tv->add (apps, "fileviewer.app"); tv->add (apps, "imageview.app"); tv->add (apps, "shelf.app");
+	tv->add (apps, "fileviewer.app"); tv->add (apps, "imageview.app"); tv->add (apps, "dock.app");
 	int etc = tv->add (sd, "etc");
-	tv->add (etc, "autostart"); tv->add (etc, "fileassoc.ini"); tv->add (etc, "shelf.ini");
+	tv->add (etc, "autostart"); tv->add (etc, "fileassoc.ini"); tv->add (etc, "dock.ini");
 	int bin = tv->add (sd, "bin");
 	tv->add (bin, "ls"); tv->add (bin, "cat"); tv->add (bin, "ping");
 	tv->expand (sd, true); tv->expand (etc, true);
@@ -253,7 +253,7 @@ int main (void)
 	g_vuMono = new VuMeter (618, 18, 10, 80, true, false); g_vuMono->segPx = 0;
 	gs->addChild (g_vu); gs->addChild (g_vuMono);
 
-	g_status = new Label (10, H - 32, W - 20, 22, "Hover a control for its tooltip.", wk_mix (C_ACCENT, C_TEXT, 140));
+	g_status = new Label (10, H - 32, W - 20, 22, "Hover a control for its tooltip.", uk_mix (C_ACCENT, C_TEXT, 140));
 	root.addChild (g_status);
 	root.run ();
 	return 0;

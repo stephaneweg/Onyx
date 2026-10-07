@@ -3,7 +3,7 @@
 // (img/imgload.hpp: stb_image, simplewebp, our PCX decoder).
 //
 //   * Opens the file given as argument (File Viewer double-click via fileassoc.ini, the
-//     Shelf), File > Open... (^O), or a file dropped on the window.
+//     dock), File > Open... (^O), or a file dropped on the window.
 //   * Fit to the window by default (never enlarged); 1 = actual size, + / - (or the
 //     wheel) zoom, 0 = fit again. When the image is larger than the window, drag it
 //     with the mouse to pan.
@@ -16,12 +16,13 @@
 //     the top-left corner; then it exits (the wallpaper stays). E.g. in SD:/etc/autostart:
 //     run imageview --background SD:/pictures/sky.jpg
 //
-#include "kapi.h"
-#include "fsutil.h"
-#include "img/imgload.hpp"
-#include "wtk/wtk.h"
+#include "imagekit/imagekit.h"
+#include "appkit/appkit.h"
+#include "filekit/filekit.h"
+#include "imagekit/img/imgload.hpp"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	720
 #define H	540
@@ -29,7 +30,39 @@ using namespace wtk;
 #define VIEW_H	(H - ST_H)
 #define MAXF	256			// images listed in the folder
 
-static ImgFrames g_im;
+// The picture shown: ImageKit's (SD:/lib/imagekit.so) -- its frames (an animated GIF), or one picture
+// turned the way the camera says (EXIF's orientation).
+static struct { int w, h, n; const unsigned *px[IMG_MAX_FRAMES]; int delay[IMG_MAX_FRAMES]; const char *format; } g_im;
+static ik_frames *g_ikFrames;
+static ik_image  *g_ikImage;
+static void close_image (void)
+{
+	ik_frames_free (g_ikFrames); g_ikFrames = 0;
+	ik_image_free (g_ikImage); g_ikImage = 0;
+	g_im.n = 0; g_im.w = g_im.h = 0; g_im.format = "";
+}
+static bool load_image (const char *path)
+{
+	close_image ();
+	g_ikFrames = ik_frames_load (path);
+	if (g_ikFrames == 0) return false;
+	g_im.format = ik_load_format ();
+	g_im.w = ik_frames_width (g_ikFrames); g_im.h = ik_frames_height (g_ikFrames);
+	g_im.n = ik_frames_count (g_ikFrames);
+	if (g_im.n > IMG_MAX_FRAMES) g_im.n = IMG_MAX_FRAMES;
+	for (int i = 0; i < g_im.n; i++) { g_im.px[i] = ik_frames_pixels (g_ikFrames, i); g_im.delay[i] = ik_frames_delay (g_ikFrames, i); }
+	struct ik_info inf;
+	if (g_im.n == 1 && ik_probe (path, &inf) && inf.orientation > 1)	// a photo taken with the camera turned
+	{
+		g_ikImage = ik_image_from (g_im.px[0], g_im.w, g_im.h, g_im.w);
+		if (g_ikImage != 0 && ik_orient (g_ikImage, inf.orientation) == 0)
+		{
+			ik_frames_free (g_ikFrames); g_ikFrames = 0;
+			g_im.w = ik_width (g_ikImage); g_im.h = ik_height (g_ikImage); g_im.px[0] = ik_pixels (g_ikImage);
+		}
+	}
+	return g_im.n > 0 && g_im.w > 0 && g_im.h > 0;
+}
 static int  g_frame = 0;
 static unsigned g_frameT = 0;		// ticks when the current frame started
 static char g_path[256] = "";
@@ -49,7 +82,7 @@ static void list_folder (void)
 	if (d == 0) return;
 	struct kapi_dirent e;
 	while (g_nfiles < MAXF && kapi_readdir (d, &e))
-		if (!e.is_dir && e.name[0] != '.' && img_is_image_name (e.name))
+		if (!e.is_dir && e.name[0] != '.' && ik_is_image_name (e.name))
 			fs_copy (g_files[g_nfiles++], e.name, sizeof g_files[0]);
 	kapi_closedir (d);
 	for (int i = 1; i < g_nfiles; i++)		// case-insensitive sort
@@ -64,11 +97,10 @@ static void list_folder (void)
 
 static void open_image (const char *path)
 {
-	img_free (&g_im);
 	fs_copy (g_path, path, sizeof g_path);
 	g_frame = 0; g_frameT = kapi_get_ticks ();
 	g_fit = true; g_zoom = 100; g_panX = g_panY = 0; g_err[0] = '\0';
-	if (!img_load (path, &g_im))
+	if (!load_image (path))
 	{
 		const char *a = "Cannot read this image: ";
 		int p = 0; for (int i = 0; a[i]; i++) g_err[p++] = a[i];
@@ -119,7 +151,7 @@ static void set_zoom (int z, bool keepCenter)
 }
 
 // ---- menu commands ---------------------------------------------------------------------------
-static void on_open ()     { char p[256]; if (wk_file_open (p, sizeof p, "SD:/")) open_image (p); }
+static void on_open ()     { char p[256]; if (uk_file_open (p, sizeof p, "SD:/", "Images|*.png;*.jpg;*.jpeg;*.jpe;*.gif;*.bmp;*.webp;*.pcx|All files|*")) open_image (p); }
 static void on_next ()     { step (1); }
 static void on_prev ()     { step (-1); }
 static void on_fit ()      { g_fit = true; clamp_pan (); g_root->invalidate (true); }
@@ -139,7 +171,7 @@ public:
 	{
 		int fh = kapi_font_height (); if (fh < 1) fh = 16;
 		unsigned *px = canvas.px; int stride = canvas.stride;
-		unsigned back = wk_tone (C_BG, 112);			// round the picture: a shade of the face
+		unsigned back = uk_tone (C_BG, 112);			// round the picture: a shade of the face
 		if (g_im.n == 0)
 		{
 			canvas.fillRect (0, 0, W, VIEW_H, back);
@@ -173,8 +205,8 @@ public:
 		}
 		// Status strip: name, size, format, zoom, position in the folder (the theme's face
 		// under an etched line).
-		wk_rbox (canvas, 0, VIEW_H, W, ST_H, 0, wk_tone (C_FACE, 160), wk_tone (C_FACE, 124));
-		wk_etch_h (canvas, 0, VIEW_H, W, C_FACE);
+		uk_rbox (canvas, 0, VIEW_H, W, ST_H, 0, uk_tone (C_FACE, 160), uk_tone (C_FACE, 124));
+		uk_etch_h (canvas, 0, VIEW_H, W, C_FACE);
 		char st[200]; int p = 0;
 		auto put = [&] (const char *t) { for (int i = 0; t[i] && p < (int) sizeof st - 1; i++) st[p++] = t[i]; };
 		auto num = [&] (int v) { char b[12]; int n = 0; if (v == 0) b[n++] = '0'; while (v > 0) { b[n++] = (char) ('0' + v % 10); v /= 10; } while (n) st[p++] = b[--n]; };
@@ -211,10 +243,10 @@ public:
 	{
 		switch (k)
 		{
-		case KEY_RIGHT: case KEY_PGDN: case ' ':          step (1);  return true;
-		case KEY_LEFT:  case KEY_PGUP: case KEY_BACKSPACE: step (-1); return true;
-		case KEY_HOME: if (g_nfiles) { g_cur = 0; step (0); } return true;
-		case KEY_END:  if (g_nfiles) { g_cur = g_nfiles - 1; step (0); } return true;
+		case KEY_RIGHT: case KEY_PGDN: case ' ':          ::step (1);  return true;
+		case KEY_LEFT:  case KEY_PGUP: case KEY_BACKSPACE: ::step (-1); return true;
+		case KEY_HOME: if (g_nfiles) { g_cur = 0; ::step (0); } return true;
+		case KEY_END:  if (g_nfiles) { g_cur = g_nfiles - 1; ::step (0); } return true;
 		case '+': case '=': on_zoom_in ();  return true;
 		case '-':           on_zoom_out (); return true;
 		case '0':           on_fit ();      return true;
@@ -245,53 +277,34 @@ public:
 	}
 };
 
-// --background: the image into the wallpaper buffer. 0 = done.
-static unsigned over_black (unsigned c) { unsigned a = c >> 24; if (a == 255) return c & 0xFFFFFF;
-	return ((((c >> 16) & 255) * a / 255) << 16) | ((((c >> 8) & 255) * a / 255) << 8) | ((c & 255) * a / 255); }
+// --background: the image into the wallpaper buffer (turned as the camera says, laid on black, tiled or
+// brought to the screen's size -- its middle cut to the screen's shape: ImageKit's resize). 0 = done.
 static int set_background (const char *path, bool tile)
 {
-	ImgFrames im;
-	if (!img_load (path, &im) || im.w <= 0 || im.h <= 0) return 2;
+	ik_image *im = ik_load (path, IK_ORIENT);
+	if (im == 0) return 2;
 	int sw = 0, sh = 0;
 	unsigned *bg = kapi_wallpaper_buffer (&sw, &sh);
-	if (!bg || sw <= 0 || sh <= 0) { img_free (&im); return 3; }
-	const unsigned *src = im.px[0];
+	if (!bg || sw <= 0 || sh <= 0) { ik_image_free (im); return 3; }
+	ik_flatten (im, 0x000000);
+	const unsigned *src = ik_pixels (im);
+	int iw = ik_width (im), ih = ik_height (im);
 	if (tile)
 		for (int y = 0; y < sh; y++)
 		{
-			const unsigned *s = src + (long) (y % im.h) * im.w;
-			for (int x = 0; x < sw; x++) bg[(long) y * sw + x] = over_black (s[x % im.w]);
+			const unsigned *t = src + (long) (y % ih) * iw;
+			for (int x = 0; x < sw; x++) bg[(long) y * sw + x] = t[x % iw] & 0xFFFFFF;
 		}
 	else
 	{
-		// cover: the larger of the two scales, centred; bilinear (16.16 fixed point)
-		long long kx = ((long long) im.w << 16) / sw, ky = ((long long) im.h << 16) / sh;
-		long long k = kx < ky ? kx : ky;			// source pixels per screen pixel
-		long long ox = (((long long) im.w << 16) - k * sw) / 2, oy = (((long long) im.h << 16) - k * sh) / 2;
-		for (int y = 0; y < sh; y++)
-		{
-			long long fy = oy + k * y + k / 2 - 32768; if (fy < 0) fy = 0;
-			int y0 = (int) (fy >> 16), y1 = y0 + 1 < im.h ? y0 + 1 : y0; unsigned wy = (unsigned) ((fy >> 8) & 255);
-			for (int x = 0; x < sw; x++)
-			{
-				long long fx = ox + k * x + k / 2 - 32768; if (fx < 0) fx = 0;
-				int x0 = (int) (fx >> 16), x1 = x0 + 1 < im.w ? x0 + 1 : x0; unsigned wx = (unsigned) ((fx >> 8) & 255);
-				if (x0 >= im.w) x0 = x1 = im.w - 1;
-				if (y0 >= im.h) y0 = y1 = im.h - 1;
-				unsigned a = over_black (src[(long) y0 * im.w + x0]), b = over_black (src[(long) y0 * im.w + x1]);
-				unsigned c = over_black (src[(long) y1 * im.w + x0]), d = over_black (src[(long) y1 * im.w + x1]);
-				unsigned o = 0;
-				for (int sft = 0; sft < 24; sft += 8)
-				{
-					unsigned top = (((a >> sft) & 255) * (256 - wx) + ((b >> sft) & 255) * wx) >> 8;
-					unsigned bot = (((c >> sft) & 255) * (256 - wx) + ((d >> sft) & 255) * wx) >> 8;
-					o |= ((top * (256 - wy) + bot * wy) >> 8) << sft;
-				}
-				bg[(long) y * sw + x] = o;
-			}
-		}
+		int cw = iw, ch = (int) ((long long) iw * sh / sw);
+		if (ch > ih) { ch = ih; cw = (int) ((long long) ih * sw / sh); }
+		if (cw < 1) cw = 1;
+		if (ch < 1) ch = 1;
+		ik_scale (src, iw, ih, iw, (iw - cw) / 2, (ih - ch) / 2, cw, ch, bg, sw, sw, sh);
+		for (long i = 0, n = (long) sw * sh; i < n; i++) bg[i] &= 0xFFFFFF;
 	}
-	img_free (&im);
+	ik_image_free (im);
 	kapi_wallpaper_commit ();
 	return 0;
 }
@@ -336,7 +349,7 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("Open...",        "^O", WK_CTRL ('O'), on_open);
+	menu.item ("Open...",        "^O", UK_CTRL ('O'), on_open);
 	menu.item ("Next image",     "->", 0,             on_next);
 	menu.item ("Previous image", "<-", 0,             on_prev);
 	menu.separator ();

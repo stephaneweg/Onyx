@@ -1,0 +1,4 @@
+# Onyx application metadata -- read by the category launcher (key=value, no section).
+name = Critters
+category = Games
+opens = level

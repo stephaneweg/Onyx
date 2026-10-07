@@ -1,4 +1,4 @@
-// Connection.cs -- the link to rdpd: the protocol (see user/bin/rdpd.c), a reading thread that
+// Connection.cs -- the link to rdpd: the protocol (see user/BinUtils/rdpd.c), a reading thread that
 // keeps the model of the Onyx windows (their place, frame, pixels) up to date, a sending thread
 // for the messages sent back (pointer, keys, focus, close), and the reconnection.
 //
@@ -56,6 +56,8 @@ namespace OnyxRemote
 		public List<uint> ZOrder = new List<uint> ();
 		public event Action<int> RoundDone;		// a round applied (its session's number; on the reading thread)
 		public event Action<string> Closed;		// given up: refused (on the reading thread)
+		public event Action<int> CursorChanged;		// the pointer's shape on the Pi (KAPI_CURSOR_*; on the reading thread)
+		public volatile int CursorShape;
 		public event Action<string> LinkChanged;	// lost / reconnecting ...: a status; null: connected again
 
 		// the link, for the status line
@@ -224,6 +226,11 @@ namespace OnyxRemote
 					if (type == 10)					// PING: answered at once (PONG)
 					{
 						if (Pipelined && p.Length >= 4) { Queue (new byte[] { 8, p[0], p[1], p[2], p[3] }); Pings++; }
+						continue;
+					}
+					if (type == 11)					// CURSOR: the pointer's shape on the Pi, now
+					{
+						if (p.Length >= 1 && p[0] != CursorShape) { CursorShape = p[0]; var h = CursorChanged; if (h != null) h (p[0]); }
 						continue;
 					}
 					if (type != 5) { round.Add (new KeyValuePair<int, byte[]> (type, p)); continue; }

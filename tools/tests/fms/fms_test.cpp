@@ -5,6 +5,7 @@
 //
 #include <cstdio>
 #include <cstring>
+#include "../../../user/Kits/audiokit/akmix.cpp"		// (the notes: fms.h's fms_note_mhz)
 #include "../../../user/Apps/fmtracker/fms.h"
 
 static unsigned char *slurp (const char *path, int *n)

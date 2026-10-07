@@ -1,7 +1,7 @@
 #!/bin/sh
 # el0scan.sh -- scan Onyx's user-space ELFs for instructions an app may not execute at EL0
 # (protected mode: docs/02 section 6, docs/EL0-PROTECTED-MODE.md). Every app, /bin tool, Koton
-# plugin, BASIC runtime and Jet Browser runs at EL0; one of these instructions kills the process
+# plugin and BASIC runtime runs at EL0; one of these instructions kills the process
 # when it runs ("el0: <name> (pid N) killed" in kmsg).
 #
 # What the kernel lets EL0 do (El0CoreInit, per core): the counters (CNTKCTL_EL1.EL0PCTEN /
@@ -21,8 +21,7 @@
 #          __arm_tpidr2_save...: tpidr2_el0, run only when __aarch64_have_sme, 0 on the A72)
 #
 # Use:  sh tools/el0scan.sh [-v] [file-or-dir ...]
-#   no argument: the build's outputs (user/*.elf, user/bin/*.elf, the Koton plugins,
-#   $OUT/netsurf.elf -- OUT as for netsurf-app.mk, default /tmp/nsbuild); a directory: every ELF
+#   no argument: the build's outputs (user/*.elf, user/BinUtils/*.elf, the Koton plugins); a directory: every ELF
 #   or static library (.a) under it (e.g. sdcard/apps sdcard/bin sdcard/koton: what is on the
 #   card, no extension; third_party: the prebuilt libraries).
 # Exit status: 1 if an ERROR was found, else 0.
@@ -49,11 +48,9 @@ is_ar () { [ -f "$1" ] && [ "$(head -c 7 "$1" 2>/dev/null)" = "!<arch>" ]; }
 list=$(mktemp)
 trap 'rm -f "$list"' EXIT
 if [ $# -eq 0 ]; then
-	for f in "$HERE"/user/*.elf "$HERE"/user/bin/*.elf "$HERE"/user/Apps/kp_*/kp_*.elf \
-		 "${OUT:-/tmp/nsbuild}/netsurf.elf"; do
+	for f in "$HERE"/user/*.elf "$HERE"/user/BinUtils/*.elf "$HERE"/user/Apps/kp_*/kp_*.elf; do
 		is_elf "$f" && echo "$f" >> "$list"
 	done
-	[ -f "${OUT:-/tmp/nsbuild}/netsurf.elf" ] || echo "el0scan: no ${OUT:-/tmp/nsbuild}/netsurf.elf (Jet not built: set OUT)" >&2
 else
 	for a in "$@"; do
 		if [ -d "$a" ]; then

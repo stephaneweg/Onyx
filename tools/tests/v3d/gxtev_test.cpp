@@ -1,4 +1,4 @@
-// gxtev_test -- the TEV shaders of user/v3d/gxtev.cpp on the PC: random TEV configurations (the
+// gxtev_test -- the TEV shaders of user/Libs/v3d/gxtev.cpp on the PC: random TEV configurations (the
 // stages' combiners with every bias / scale / compare mode / clamp / destination, the swap tables,
 // the konst selections, the texture lookups, the rasterized colours, the alpha test, the EFB's
 // formats, the destination alpha) are generated, checked against the V3D's instruction

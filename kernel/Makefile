@@ -21,17 +21,20 @@ OBJS = \
 	sched/task.o \
 	mm/addrspace.o \
 	gui/gimage.o \
-	gui/window.o \
+	gui/kwin.o \
 	gui/surface.o \
 	proc/elf.o \
+	proc/image.o \
 	sys/kapi.o \
 	sys/kapitable.o \
 	sys/ipc.o \
 	sys/vfs.o \
+	sys/wsrv.o \
 	sys/ramfs.o \
 	sys/net.o \
 	sys/sound.o \
 	sys/stream.o \
+	sys/volume.o \
 	sys/debugcon.o \
 	sys/fslock.o \
 	sys/appcore.o \
@@ -41,11 +44,20 @@ OBJS = \
 	sys/handle.o \
 	sys/uaccess.o \
 	sys/el0.o \
+	sys/iowait.o \
+	sys/vm.o \
+	sys/ofile.o \
+	sys/procx.o \
+	sys/bsdsock.o \
+	sys/lsock.o \
+	sys/shm.o \
+	sys/gpio.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/uaccess.o \
 	arch/aarch64/el0.o \
 	arch/aarch64/el0blob.o \
-	arch/aarch64/exception.o
+	arch/aarch64/exception.o \
+	buildstamp.o
 
 # Our include dirs must come BEFORE Circle's (Rules.mk appends -I$(CIRCLEHOME)/include),
 # so <circle/sched/scheduler.h> resolves to our shadow in compat/.
@@ -74,6 +86,11 @@ include $(CIRCLEHOME)/Rules.mk
 # reconfiguration handler wpa_supplicant registers for SIGHUP (Circle's eloop has no signals) is
 # caught here, then run from the supplicant's own eloop -- no change to hostap (upstream's).
 LDFLAGS += --wrap=eloop_register_signal_reconfig
+
+# The build's stamp (buildstamp.cpp: the date, the git revision -- kapi v79 kernel_info, uname):
+# compiled again whenever anything else of the kernel was, so it is the image's.
+buildstamp.o: $(filter-out buildstamp.o,$(OBJS)) $(LIBS)
+buildstamp.o: CPPFLAGS += -DONYX_BUILD_REV=\"$(shell git -C .. rev-parse --short HEAD 2>/dev/null)$(shell git -C .. diff --quiet HEAD -- kernel 2>/dev/null || echo +)\"
 
 # The V3D packets (kern/v3d_cl.h) use default member initialisers on bit-fields: C++20.
 sys/v3d.o: CPPFLAGS += -std=c++20
@@ -115,9 +132,9 @@ SDCARD = ../sdcard
 # apps/<name>.app/main.bax -- "name=source.bas" pairs.
 BASIC_APPS = arkanoid=$(SDCARD)/basic/examples/arkanoid.bas planets3d=$(SDCARD)/basic/examples/planets3d.bas
 BASC = ../tools/basc/basc
-BASC_SRC = ../tools/basc/basc.cpp ../user/basic/bascomp.cpp ../user/basic/basnum.cpp ../user/basic/basbax.cpp ../user/basic/basvm.cpp
-$(BASC): $(BASC_SRC) ../user/basic/bas.h ../user/basic/basint.h ../user/basic/bas3d.h ../user/basic/bas3dscene.h
-	@g++ -std=c++17 -O1 -I../user -o $@ $(BASC_SRC)
+BASC_SRC = ../tools/basc/basc.cpp ../user/Libs/basic/bascomp.cpp ../user/Libs/basic/basnum.cpp ../user/Libs/basic/basbax.cpp ../user/Libs/basic/basvm.cpp
+$(BASC): $(BASC_SRC) ../user/Libs/basic/bas.h ../user/Libs/basic/basint.h ../user/Libs/basic/bas3d.h ../user/Libs/basic/bas3dscene.h
+	@g++ -std=c++17 -O1 -I../user -I../user/Kits -I../user/Runtime -I../user/Include -I../user/Libs -I../user/Emulators -I../user/Ports -o $@ $(BASC_SRC)
 .PHONY: stage
 stage: sizecheck apps $(BASC)
 	@cp $(TARGET).img $(SDCARD)/
@@ -127,9 +144,15 @@ stage: sizecheck apps $(BASC)
 		cp $$elf $(SDCARD)/apps/$$name.app/main; \
 	done
 	@mkdir -p $(SDCARD)/bin
-	@for elf in ../user/bin/*.elf; do \
+	@for elf in ../user/BinUtils/*.elf ../user/Servers/*/*.elf; do \
 		[ -e "$$elf" ] || continue; \
 		cp $$elf $(SDCARD)/bin/$$(basename $$elf .elf); \
+	done
+	@# The shared libraries (kapi v83): ../user/lib/<name>.so -> SD:/lib/, and what BASIC reads of them (<name>.bi)
+	@mkdir -p $(SDCARD)/lib
+	@for so in ../user/lib/*.so ../user/lib/*.bi; do \
+		[ -e "$$so" ] || continue; \
+		cp $$so $(SDCARD)/lib/; \
 	done
 	@# Koton's plugins (../user/Apps/kp_<name>/kp_<name>.elf + plugin.json): SD:/koton/plugins/<name>/,
 	@# out of SD:/apps (not an app of the dock)
@@ -144,6 +167,6 @@ stage: sizecheck apps $(BASC)
 		mkdir -p $(SDCARD)/apps/$$name.app; rm -f $(SDCARD)/apps/$$name.app/main; \
 		$(BASC) $$src $(SDCARD)/apps/$$name.app/main.bax || exit 1; \
 	done
-	@echo "  STAGE $(TARGET).img + apps/*.app/main + bin/* + koton/plugins/* -> $(SDCARD)/"
+	@echo "  STAGE $(TARGET).img + apps/*.app/main + bin/* + lib/*.so + koton/plugins/* -> $(SDCARD)/"
 
 -include $(DEPS)

@@ -1,5 +1,5 @@
 //
-// kp_automaton -- a Koton generator plugin (user/kplug.h): an elementary (one-dimensional, Wolfram)
+// kp_automaton -- a Koton generator plugin (user/Apps/koton/plug/kplug.h): an elementary (one-dimensional, Wolfram)
 // cellular automaton, a port of Koton Studio's (Plugins/Generators/KotonPluginCellularAutomata): the
 // same parameters and state (flat: {id: value..., "_dur"}), the same notes -- its first row drawn
 // from .NET's seeded Random (kt::NetRandom), as Koton does. A row of `width` cells evolves by the
@@ -7,7 +7,7 @@
 // its place in the row mapped onto a pool -- the scale (Koton's fixed scales from C, or, on Onyx,
 // the song's key), or, chord-aware, the chord under it -- over a range of octaves.
 //
-#include "kplug.h"
+#include "../koton/plug/kplug.h"
 #include "Apps/koton/engine/kbase.h"		// kt::NetRandom
 
 static const char *const SCALES[] = { "Chromatic", "Major", "Minor", "Pentatonic major", "Pentatonic minor", "Key's scale", 0 };

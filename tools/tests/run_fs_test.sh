@@ -14,6 +14,8 @@ cp "$F/ff.c" "$F/ff.h" "$F/ffunicode.c" "$F/diskio.h" "$F/diskio.cpp" "$T/"
 # upstream's ff.c: the last version not committed by the fork's owner (the Onyx changes)
 UP=$(cd "$ROOT/circle" && git log --format='%H %an' -- addon/fatfs/ff.c | grep -v ' stephaneweg$' | head -1 | cut -d' ' -f1)
 ( cd "$ROOT/circle" && git show "$UP:addon/fatfs/ff.c" ) > "$T/up/ff.c"
+# (our ffconf.h has 21 volumes, past upstream's check of 10 -- which only guards its numeric "0:".."9:")
+sed -i 's/FF_VOLUMES > 10/FF_VOLUMES > 32/' "$T/up/ff.c"
 # the fork's configuration, with f_mkfs (to format the RAM disk) and without the OS locks
 sed -e 's/^#define FF_USE_MKFS[[:space:]]*0/#define FF_USE_MKFS 1/' \
     -e 's/^#define FF_FS_REENTRANT[[:space:]]*1/#define FF_FS_REENTRANT 0/' "$F/ffconf.h" > "$T/ffconf.h"
@@ -37,4 +39,14 @@ for cl in 512 1024; do
 	done
 done
 done
+# the USB volumes (kapi v93): formats, labels, a stick pulled out, an unmount while a call waits
+# for the volume lock -- with the OS locks on (FF_FS_REENTRANT 1: the fork's re-checks are there)
+mkdir -p "$T/usb"
+cp "$F/ffconf.h" "$T/usb/ffconf.h"
+cp "$F/ff.c" "$F/ff.h" "$F/ffunicode.c" "$F/diskio.h" "$F/diskio.cpp" "$T/usb/"
+gcc -O2 -c -I"$T/usb" "$T/usb/ff.c" -o "$T/usb/ff.o"
+gcc -O2 -c -I"$T/usb" "$T/usb/ffunicode.c" -o "$T/usb/ffunicode.o"
+g++ -O2 -std=c++17 -c -I"$T/usb" -I"$HERE/fs/stub" "$T/usb/diskio.cpp" -o "$T/usb/diskio.o"
+g++ -O2 -std=c++17 -I"$T/usb" -I"$HERE/fs/stub" "$HERE/fs/usbtest.cpp" "$T/usb/ff.o" "$T/usb/ffunicode.o" "$T/usb/diskio.o" -o "$T/usbtest"
+"$T/usbtest" || fail=1
 exit $fail

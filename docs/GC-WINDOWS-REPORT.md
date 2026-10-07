@@ -6,7 +6,7 @@ Waker** (PAL, GZLP01 — the user's own ISO, local only, never committed) from a
 in game, with its **sound** and its **pictures drawn by the GPU**. Everything was tested in
 NintendoEMU and in the headless runner `tools/tests/gc/gcrun.cpp` (Windows, MinGW-w64).
 
-Almost all of it is in the shared core (`user/gc/`), so the Pi's `gcemu` gets it by being
+Almost all of it is in the shared core (`user/Emulators/gc/`), so the Pi's `gcemu` gets it by being
 rebuilt; §4 lists what the Pi app itself still needs, and §5 the options for the rendering.
 
 ## 1. Where Wind Waker stands
@@ -62,7 +62,7 @@ rebuilt; §4 lists what the Pi app itself still needs, and §5 the options for t
 
 ## 3. The files
 
-Shared core (`user/gc/`, built for the Pi too):
+Shared core (`user/Emulators/gc/`, built for the Pi too):
 
 | File | Change |
 |---|---|

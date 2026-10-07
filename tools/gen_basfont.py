@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""gen_basfont.py -- build user/basic/basfont.h: the BASIC runtime's text fonts.
+"""gen_basfont.py -- build user/Libs/basic/basfont.h: the BASIC runtime's text fonts.
 
 Code page 437 (the IBM PC / QBasic character set: frames, blocks, card suits, accents)
 in the three QBasic cell heights -- 8 x 8 (SCREEN 1, 2, 7, 8, 13), 8 x 14 (SCREEN 9, 10)

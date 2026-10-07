@@ -33,7 +33,7 @@ static void fit_columns (DataGrid *g, int flex, int minW = 90, int flex2 = -1, i
 {
 	int s = 0;
 	for (int c = 0; c < g->columns (); c++) if (c != flex && c != flex2) s += g->column (c).width;
-	int rest = g->width - s - WK_SBW - 6;
+	int rest = g->width - s - UK_SBW - 6;
 	if (flex2 < 0) g->column (flex).width = imax (minW, rest);
 	else
 	{
@@ -247,9 +247,9 @@ public:
 		{
 			int cx = width / 2;
 			draw_ni (canvas, NI_REPORT, cx - 10, 120, C_ACCENT, C_ACCENT);
-			wk_text_c (canvas, 0, 150, width, 24, TR ("Your books, the Belgian way"), C_TEXT, 2);
-			wk_text_c (canvas, 0, 176, width, 20, TR ("The chart of accounts (PCMN), sales and purchases, bank statements, VAT returns for Intervat,"), dim_ink (C_BG));
-			wk_text_c (canvas, 0, 196, width, 20, TR ("the customers' and suppliers' accounts, the general ledger, the balance sheet."), dim_ink (C_BG));
+			uk_text_c (canvas, 0, 150, width, 24, TR ("Your books, the Belgian way"), C_TEXT, 2);
+			uk_text_c (canvas, 0, 176, width, 20, TR ("The chart of accounts (PCMN), sales and purchases, bank statements, VAT returns for Intervat,"), dim_ink (C_BG));
+			uk_text_c (canvas, 0, 196, width, 20, TR ("the customers' and suppliers' accounts, the general ledger, the balance sheet."), dim_ink (C_BG));
 			return;
 		}
 		int W = width, x0 = 16, gap = 12, tw = (W - 2 * x0 - 3 * gap) / 4, ty = 72, th = 84;
@@ -268,12 +268,12 @@ public:
 		draw_tile (canvas, x0 + 3 * (tw + gap), ty, tw, th, cap, money_s (result, a), s, result >= 0 ? C_GOOD : C_BAD, result >= 0 ? C_GOOD : C_BAD);
 		// the months' chart
 		int cy = ty + th + 16, ch = imax (120, height - cy - 170), cw = W - 2 * x0;
-		wk_rbox (canvas, x0, cy, cw, ch, 10, wk_tone (C_FIELD, 132), wk_tone (C_FIELD, 124));
-		wk_rline (canvas, x0, cy, cw, ch, 10, wk_mix (C_BG, 0, 60), 110);
-		wk_text_l (canvas, x0 + 16, cy + 8, 20, TR ("Sales and purchases by month (excl. VAT)"), C_FIELD_TEXT, 2);
+		uk_rbox (canvas, x0, cy, cw, ch, 10, uk_tone (C_FIELD, 132), uk_tone (C_FIELD, 124));
+		uk_rline (canvas, x0, cy, cw, ch, 10, uk_mix (C_BG, 0, 60), 110);
+		uk_text_l (canvas, x0 + 16, cy + 8, 20, TR ("Sales and purchases by month (excl. VAT)"), C_FIELD_TEXT, 2);
 		int lx = x0 + cw - 190;
-		wk_rbox (canvas, lx, cy + 13, 10, 10, 2, C_ACCENT, C_ACCENT); wk_text_l (canvas, lx + 14, cy + 8, 20, TR ("Sales"), field_dim ());
-		wk_rbox (canvas, lx + 80, cy + 13, 10, 10, 2, wk_tone (C_BG, 100), wk_tone (C_BG, 100)); wk_text_l (canvas, lx + 94, cy + 8, 20, TR ("Purchases"), field_dim ());
+		uk_rbox (canvas, lx, cy + 13, 10, 10, 2, C_ACCENT, C_ACCENT); uk_text_l (canvas, lx + 14, cy + 8, 20, TR ("Sales"), field_dim ());
+		uk_rbox (canvas, lx + 80, cy + 13, 10, 10, 2, uk_tone (C_BG, 100), uk_tone (C_BG, 100)); uk_text_l (canvas, lx + 94, cy + 8, 20, TR ("Purchases"), field_dim ());
 		money mx = 1; for (int m = 0; m < months; m++) { if (sales[m] > mx) mx = sales[m]; if (purch[m] > mx) mx = purch[m]; }
 		// a round top for the scale
 		money step = 100; while (step * 10 < mx) step *= 10;
@@ -282,7 +282,7 @@ public:
 		for (int k = 0; k <= 4; k++)
 		{
 			int y = py + ph - ph * k / 4;
-			canvas.fillRect (px, y, pw, 1, wk_tone (C_FIELD, k ? 116 : 96));
+			canvas.fillRect (px, y, pw, 1, uk_tone (C_FIELD, k ? 116 : 96));
 			money v = top * k / 4; fmt_money0 (v - v % 100, a); int n = slen (a); if (n > 3) a[n - 3] = '\0';
 			text_r (canvas, px - 8, y - 9, 18, k ? a : "0", field_dim ());
 		}
@@ -293,40 +293,40 @@ public:
 			{
 				int sx = px + m * slot + (slot - 2 * bw - 2) / 2;
 				int hs = (int) (sales[m] > 0 ? sales[m] * ph / top : 0), hp = (int) (purch[m] > 0 ? purch[m] * ph / top : 0);
-				if (hs) wk_rbox (canvas, sx, py + ph - hs, bw, hs, imin (3, bw / 2), wk_tone (C_ACCENT, 150), wk_tone (C_ACCENT, 118), 255, WK_TL | WK_TR);
-				if (hp) wk_rbox (canvas, sx + bw + 2, py + ph - hp, bw, hp, imin (3, bw / 2), wk_tone (C_BG, 118), wk_tone (C_BG, 96), 255, WK_TL | WK_TR);
+				if (hs) uk_rbox (canvas, sx, py + ph - hs, bw, hs, imin (3, bw / 2), uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 118), 255, UK_TL | UK_TR);
+				if (hp) uk_rbox (canvas, sx + bw + 2, py + ph - hp, bw, hp, imin (3, bw / 2), uk_tone (C_BG, 118), uk_tone (C_BG, 96), 255, UK_TL | UK_TR);
 				int mm = (m0m - 1 + m) % 12;
-				wk_text_c (canvas, px + m * slot, py + ph + 4, slot, 20, TR (MONTH_SHORT[mm]), field_dim ());
+				uk_text_c (canvas, px + m * slot, py + ph + 4, slot, 20, TR (MONTH_SHORT[mm]), field_dim ());
 			}
 		}
 		// the VAT return to come, the invoices most overdue
 		int by = cy + ch + 14, bh = height - by - 12, bw1 = (cw - gap) / 2;
-		wk_rbox (canvas, x0, by, bw1, bh, 10, wk_tone (C_FIELD, 132), wk_tone (C_FIELD, 124));
-		wk_rline (canvas, x0, by, bw1, bh, 10, wk_mix (C_BG, 0, 60), 110);
-		wk_text_l (canvas, x0 + 16, by + 8, 20, TR ("The next VAT return"), C_FIELD_TEXT, 2);
-		if (g_b.vatRegime != VR_NORMAL) wk_text_l (canvas, x0 + 16, by + 36, 20, g_b.vatRegime == VR_FRANCHISE ? TR ("The small business franchise: no VAT return.") : TR ("Not subject to VAT: no VAT return."), field_dim ());
-		else if (!vatName[0]) wk_text_l (canvas, x0 + 16, by + 36, 20, TR ("Every period so far is filed."), C_GOOD);
+		uk_rbox (canvas, x0, by, bw1, bh, 10, uk_tone (C_FIELD, 132), uk_tone (C_FIELD, 124));
+		uk_rline (canvas, x0, by, bw1, bh, 10, uk_mix (C_BG, 0, 60), 110);
+		uk_text_l (canvas, x0 + 16, by + 8, 20, TR ("The next VAT return"), C_FIELD_TEXT, 2);
+		if (g_b.vatRegime != VR_NORMAL) uk_text_l (canvas, x0 + 16, by + 36, 20, g_b.vatRegime == VR_FRANCHISE ? TR ("The small business franchise: no VAT return.") : TR ("Not subject to VAT: no VAT return."), field_dim ());
+		else if (!vatName[0]) uk_text_l (canvas, x0 + 16, by + 36, 20, TR ("Every period so far is filed."), C_GOOD);
 		else
 		{
-			wk_text_l (canvas, x0 + 16, by + 34, 22, vatName, C_FIELD_TEXT, 2);
+			uk_text_l (canvas, x0 + 16, by + 34, 22, vatName, C_FIELD_TEXT, 2);
 			char d[16]; date_show (vatDue, d); scpy (s, vatLate ? TR ("Late: it was due on ") : TR ("Due on "), sizeof s); scat (s, d, sizeof s);
-			wk_text_l (canvas, x0 + 16, by + 56, 20, s, vatLate ? C_BAD : field_dim ());
+			uk_text_l (canvas, x0 + 16, by + 56, 20, s, vatLate ? C_BAD : field_dim ());
 			scpy (s, vatAmount >= 0 ? TR ("To pay (so far)") : TR ("To recover (so far)"), sizeof s);
-			wk_text_l (canvas, x0 + 16, by + 80, 20, s, field_dim ());
+			uk_text_l (canvas, x0 + 16, by + 80, 20, s, field_dim ());
 			text_r (canvas, x0 + bw1 - 16, by + 76, 24, money_s (vatAmount >= 0 ? vatAmount : -vatAmount, a), vatAmount >= 0 ? C_FIELD_TEXT : C_GOOD, 2);
 		}
 		int x1 = x0 + bw1 + gap;
-		wk_rbox (canvas, x1, by, bw1, bh, 10, wk_tone (C_FIELD, 132), wk_tone (C_FIELD, 124));
-		wk_rline (canvas, x1, by, bw1, bh, 10, wk_mix (C_BG, 0, 60), 110);
-		wk_text_l (canvas, x1 + 16, by + 8, 20, TR ("Invoices overdue"), C_FIELD_TEXT, 2);
-		if (!nl) wk_text_l (canvas, x1 + 16, by + 36, 20, TR ("None: every customer pays on time."), C_GOOD);
+		uk_rbox (canvas, x1, by, bw1, bh, 10, uk_tone (C_FIELD, 132), uk_tone (C_FIELD, 124));
+		uk_rline (canvas, x1, by, bw1, bh, 10, uk_mix (C_BG, 0, 60), 110);
+		uk_text_l (canvas, x1 + 16, by + 8, 20, TR ("Invoices overdue"), C_FIELD_TEXT, 2);
+		if (!nl) uk_text_l (canvas, x1 + 16, by + 36, 20, TR ("None: every customer pays on time."), C_GOOD);
 		int rows = imin (nl, (bh - 36) / 22);
 		for (int i = 0; i < rows; i++)
 		{
 			const Entry &e = g_b.e[late[i].e];
 			int y = by + 32 + i * 22;
-			if (i == hotLate) wk_hilite (canvas, x1 + 8, y, bw1 - 16, 22, 5, false);
-			unsigned ink = i == hotLate ? wk_hilite_ink (false) : C_FIELD_TEXT;
+			if (i == hotLate) uk_hilite (canvas, x1 + 8, y, bw1 - 16, 22, 5, false);
+			unsigned ink = i == hotLate ? uk_hilite_ink (false) : C_FIELD_TEXT;
 			text_fit_l (canvas, x1 + 16, y, bw1 - 230, 22, party_name (g_b, e.party), ink);
 			char dl[24] = ""; scat_num (dl, late[i].days, sizeof dl); scat (dl, TR (" d"), sizeof dl);
 			text_r (canvas, x1 + bw1 - 120, y, 22, dl, i == hotLate ? ink : C_BAD);
@@ -580,7 +580,7 @@ public:
 		if (col == 0 && (e.flags & EF_CREDIT))			// a credit note: its number and a mark
 		{
 			char n[40]; short_number (e, p->jc.n > 1 && p->id != P_FIN, n, sizeof n);
-			wk_text_l (cv, x + 6, y, h, n, ink);
+			uk_text_l (cv, x + 6, y, h, n, ink);
 			draw_pill (cv, x + w - 30, y + (h - 16) / 2, 16, TR ("CN"), C_PURPLE, sel);
 			return true;
 		}
@@ -646,7 +646,7 @@ public:
 		else { scpy (t, TR ("Amounts "), sizeof t); scat (t, money_s (tA, a), sizeof t); }
 		text_r (canvas, width - 20, y, 28, t, dim_ink (C_BG));
 		char n[48] = ""; scat_num (n, nrows, sizeof n); scat (n, nrows == 1 ? TR (" document shown") : TR (" documents shown"), sizeof n);
-		wk_text_l (canvas, 20, y, 28, n, dim_ink (C_BG));
+		uk_text_l (canvas, 20, y, 28, n, dim_ink (C_BG));
 	}
 	static JournalPage *of (Widget &w) { return (JournalPage *) (w.parent); }
 	static void on_filter (int) { for (int i = 0; i < 4; i++) if (g_jp[i] && !g_jp[i]->hidden) g_jp[i]->refresh (); }
@@ -752,8 +752,8 @@ public:
 	}
 	void drawMore () override
 	{
-		if (vatMsg[0]) wk_text_l (canvas, fieldX + 190, vat->top, ED_H, vatMsg, vatCol);
-		if (ibanMsg[0]) wk_text_l (canvas, fieldX + 266, iban->top, ED_H, ibanMsg[0] == 'V' ? TR ("Valid") : TR ("Invalid"), ibanCol);
+		if (vatMsg[0]) uk_text_l (canvas, fieldX + 190, vat->top, ED_H, vatMsg, vatCol);
+		if (ibanMsg[0]) uk_text_l (canvas, fieldX + 266, iban->top, ED_H, ibanMsg[0] == 'V' ? TR ("Valid") : TR ("Invalid"), ibanCol);
 	}
 	bool validate () override
 	{
@@ -1083,12 +1083,12 @@ public:
 			return true;
 		}
 		const Entry &e = g_b.e[pp->lines[row].e]; const Line &l = e.l[pp->lines[row].l];
-		unsigned in = l.match && !sel ? wk_mix (C_FIELD, ink, 150) : ink;
+		unsigned in = l.match && !sel ? uk_mix (C_FIELD, ink, 150) : ink;
 		switch (col)
 		{
 		case 0:
 			if (l.match) { draw_ni (cv, NI_LINK, x + (w - 20) / 2, y + (h - 20) / 2, in, sel ? in : C_ACCENT); return true; }
-			wk_check_mark (cv, x + (w - 16) / 2, y + (h - 16) / 2, 16, pp->tick[row], WK_NORMAL);
+			uk_check_mark (cv, x + (w - 16) / 2, y + (h - 16) / 2, 16, pp->tick[row], UK_NORMAL);
 			return true;
 		case 4: { if (l.match) return true; int d = l.due ? l.due : e.date; char t[16]; date_show (d, t); cell_text (cv, x, y, w, h, t, sel ? ink : d < today_ymd () ? C_BAD : ink, false); return true; }
 		case 5: if (l.amount > 0) cell_money (cv, x, y, w, h, l.amount, in, sel); return true;
@@ -1436,12 +1436,12 @@ public:
 		const ARow &r = p->rows[row]; const Account &a = g_b.acc[r.a];
 		bool head = acc_heading (a.code);
 		int style = head && r.depth < 2 ? 2 : 0;
-		unsigned in = a.hidden && !sel ? wk_mix (C_FIELD, ink, 120) : ink;
+		unsigned in = a.hidden && !sel ? uk_mix (C_FIELD, ink, 120) : ink;
 		if (col == 0)
 		{
 			int ix = x + 4 + r.depth * 12;
-			if (r.kids) wk_glyph (cv, r.open ? WKG_CHEV_DOWN : WKG_CHEV_RIGHT, ix + 5, y + h / 2, 8, sel ? ink : field_dim ());
-			wk_text_l (cv, ix + 14, y, h, a.code, in, style);
+			if (r.kids) uk_glyph (cv, r.open ? WKG_CHEV_DOWN : WKG_CHEV_RIGHT, ix + 5, y + h / 2, 8, sel ? ink : field_dim ());
+			uk_text_l (cv, ix + 14, y, h, a.code, in, style);
 			return true;
 		}
 		if (col == 1) { cell_text (cv, x, y, w, h, a.name, in, false, style); return true; }

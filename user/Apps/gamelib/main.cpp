@@ -21,7 +21,7 @@
 //   * The folders: SD:/roms by default; Folders > Add Folder... / Remove <folder> (any volume: SD:, SD1: ..,
 //     e.g. an exFAT partition of the card), kept in config.ini, one `folder = SD1:/games` line each.
 //   * The pictures: each game is run a few seconds without being shown (the emulator core,
-//     user/gb, user/gba, user/nes, user/snes) and its screen kept -- made in the background, a little every
+//     user/Emulators/gb, user/Emulators/gba, user/Emulators/nes, user/Emulators/snes) and its screen kept -- made in the background, a little every
 //     frame, the games shown first, and cached in SD:/apps/gamelib.app/thumbs/ (Library > Refresh finds
 //     new ROMs). A Nintendo 64 game gets a label with the name from its header, a GameCube disc its banner.
 //   * The emulators are in no menu of the desktop: they are reached from here (one started
@@ -29,19 +29,17 @@
 //
 #include <stdlib.h>
 #include <string.h>
-#include "kapi.h"
-#include "applib.h"
-#include "launch.h"
+#include "appkit/appkit.h"
 #include "gamepad.h"
-#include "bmp.hpp"
-#include "wtk/wtk.h"
-#include "ft/wtkface.h"		// FreeType's text (DejaVu Sans) for every widget
+#include "uikit/bmp.h"
+#include "uikit/uikit.h"
+#include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 #include "gb/gb.h"
 #include "gba/gba.h"
 #include "nes/nes.h"
 #include "snes/snes.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define WIN_W	980			// (four columns of cards beside the sidebar)
 #define WIN_H	580
@@ -631,7 +629,7 @@ static void blit_icon (Canvas &cv, int x, int y, const unsigned *px)
 			int xx = x + i, yy = y + j;
 			if (t == 255 || xx < 0 || yy < 0 || xx >= cv.w || yy >= cv.h) continue;
 			unsigned *p = cv.px + (long) yy * cv.stride + xx;
-			*p = t == 0 ? (c & 0xFFFFFF) : wk_over (*p, c & 0xFFFFFF, 255 - (int) t);
+			*p = t == 0 ? (c & 0xFFFFFF) : uk_over (*p, c & 0xFFFFFF, 255 - (int) t);
 		}
 }
 
@@ -679,7 +677,7 @@ static void tile_menu (int v, int mx, int my)
 	g_root->invalidate (true);
 }
 
-// The theme's look (wtk/paint.h), as the File Viewer: the sidebar on the window's face (the one
+// The theme's look (uikit/paint.h), as the File Viewer: the sidebar on the window's face (the one
 // shown lit in the accent), the path bar, the cards on the field -- each a raised card of the face
 // (the one pointed at lighter, outlined in the accent; the chosen one in the accent), its picture
 // as it is.
@@ -701,14 +699,14 @@ public:
 	{
 		int gx = SIDE_W, gw = width - SIDE_W, gb = grid_bottom ();
 		canvas.fillRect (gx, BAR_H, gw, gb - BAR_H, C_FIELD);
-		unsigned ink = C_FIELD_TEXT, dim = wk_mix (C_FIELD, C_FIELD_TEXT, 130);
+		unsigned ink = C_FIELD_TEXT, dim = uk_mix (C_FIELD, C_FIELD_TEXT, 130);
 		if (g_nvis == 0)
 		{
 			int y = BAR_H + 30;
 			if (g_ng == 0)
 			{
 				canvas.text (gx + 24, y, "No game found in", ink);
-				for (int f = 0; f < g_nf; f++) wk_text (canvas, gx + 24, y + 22 + f * 20, g_folder[f], ink, 2);
+				for (int f = 0; f < g_nf; f++) uk_text (canvas, gx + 24, y + 22 + f * 20, g_folder[f], ink, 2);
 				y += 34 + g_nf * 20;
 				char h[200]; int hn = 0; lx_cat (h, sizeof h, &hn, "Put ");
 				for (int k = 0; k < NSYS && hn < 150; k++) { if (k) lx_cat (h, sizeof h, &hn, " / "); lx_cat (h, sizeof h, &hn, g_sys[k].extText); }
@@ -720,7 +718,7 @@ public:
 			{
 				int k = g_filter - F_SYS;
 				char t[64]; int n = 0; lx_cat (t, sizeof t, &n, "No "); lx_cat (t, sizeof t, &n, SYS_NAME(k)); lx_cat (t, sizeof t, &n, " game yet.");
-				wk_text (canvas, gx + 24, y, t, ink, 2);
+				uk_text (canvas, gx + 24, y, t, ink, 2);
 				char h[96]; n = 0; lx_cat (h, sizeof h, &n, "Put "); lx_cat (h, sizeof h, &n, g_sys[k].extText); lx_cat (h, sizeof h, &n, " files in a watched folder");
 				canvas.text (gx + 24, y + 26, h, dim);
 				canvas.text (gx + 24, y + 46, "(sub-folders too), then Library > Refresh.", dim);
@@ -736,10 +734,10 @@ public:
 			if (!n) continue;
 			if (yy + HEAD_H > BAR_H && yy < gb)
 			{
-				wk_text (canvas, gx + 12, yy + 6, SYS_NAME(sec), ink, 2);
+				uk_text (canvas, gx + 12, yy + 6, SYS_NAME(sec), ink, 2);
 				char num[12]; int m = ax_itoa (n, num); num[m] = 0;
-				canvas.text (gx + 12 + wk_text_w (SYS_NAME(sec), 2) + 10, yy + 6, num, dim);
-				wk_etch_h (canvas, gx + 10, yy + 26, gw - 20, C_FIELD);
+				canvas.text (gx + 12 + uk_text_w (SYS_NAME(sec), 2) + 10, yy + 6, num, dim);
+				uk_etch_h (canvas, gx + 10, yy + 26, gw - 20, C_FIELD);
 			}
 			yy += HEAD_H + ((n + c - 1) / c) * CELLH + 10;
 			k += n;
@@ -751,11 +749,11 @@ public:
 			const Game &g = g_games[g_vis[i]];
 			bool sel = i == g_sel, hot = i == g_hover && !sel;
 			int px = x + 8, py = y + 6;
-			if (sel) wk_hilite (canvas, x, y, CELLW - 8, CELLH - 8, 8, true);
+			if (sel) uk_hilite (canvas, x, y, CELLW - 8, CELLH - 8, 8, true);
 			else
 			{
-				wk_rbox (canvas, x, y, CELLW - 8, CELLH - 8, 8, wk_tone (C_FACE, hot ? 196 : 170), wk_tone (C_FACE, hot ? 152 : 134));
-				wk_rline (canvas, x, y, CELLW - 8, CELLH - 8, 8, hot ? C_ACCENT : wk_tone (C_FACE, 76), hot ? 230 : 160);
+				uk_rbox (canvas, x, y, CELLW - 8, CELLH - 8, 8, uk_tone (C_FACE, hot ? 196 : 170), uk_tone (C_FACE, hot ? 152 : 134));
+				uk_rline (canvas, x, y, CELLW - 8, CELLH - 8, 8, hot ? C_ACCENT : uk_tone (C_FACE, 76), hot ? 230 : 160);
 			}
 			if (g.thumb)
 				for (int r = 0; r < TH; r++)
@@ -767,7 +765,7 @@ public:
 				}
 			else
 			{
-				wk_sunken (canvas, px, py, TW, TH, 4, wk_tone (C_FACE, 112));
+				uk_sunken (canvas, px, py, TW, TH, 4, uk_tone (C_FACE, 112));
 				canvas.text (px + 44, py + TH / 2 - 8, g_tgame == g_vis[i] ? "(loading)" : "", C_TEXT);
 				int bw = 0, bh = 0; const unsigned *ic = g_sys[g.sys].core == CORE_NONE ? sys_big (g.sys, &bw, &bh) : 0;
 				for (int r = 0; ic && r < bh * 2; r++)		// (no picture made: its emulator's icon, twice its size)
@@ -781,8 +779,8 @@ public:
 					}
 				}
 			}
-			char nm[80]; wk_text_fit (g.name, TW, nm, sizeof nm);	// (the picture's width; cut at a character)
-			canvas.text (px, py + TH + 7, nm, sel ? wk_hilite_ink (true) : C_TEXT);
+			char nm[80]; uk_text_fit (g.name, TW, nm, sizeof nm);	// (the picture's width; cut at a character)
+			canvas.text (px, py + TH + 7, nm, sel ? uk_hilite_ink (true) : C_TEXT);
 		}
 	}
 
@@ -790,9 +788,9 @@ public:
 	{
 		int gb = grid_bottom ();
 		canvas.fillRect (0, BAR_H, SIDE_W, gb - BAR_H, C_BG);
-		wk_etch_v (canvas, SIDE_W - 2, BAR_H + 4, gb - BAR_H - 8, C_BG);
-		unsigned dim = wk_mix (C_BG, C_TEXT, 150);
-		int fh = wk_fh ();
+		uk_etch_v (canvas, SIDE_W - 2, BAR_H + 4, gb - BAR_H - 8, C_BG);
+		unsigned dim = uk_mix (C_BG, C_TEXT, 150);
+		int fh = uk_fh ();
 		for (int r = 0; r < g_nsrow; r++)
 		{
 			int y = SIDE_Y + r * SIDE_RH;
@@ -801,33 +799,33 @@ public:
 			bool hot = r == g_sideHot;
 			if (sr.kind == SR_GROUP)
 			{
-				wk_glyph (canvas, g_folded[sr.index] ? WKG_CHEV_RIGHT : WKG_CHEV_DOWN, 14, y + SIDE_RH / 2, 8, hot ? C_TEXT : dim);
-				wk_text (canvas, 24, y + (SIDE_RH - fh) / 2, GROUP_NAME[sr.index], hot ? C_TEXT : dim, 2);
+				uk_glyph (canvas, g_folded[sr.index] ? WKG_CHEV_RIGHT : WKG_CHEV_DOWN, 14, y + SIDE_RH / 2, 8, hot ? C_TEXT : dim);
+				uk_text (canvas, 24, y + (SIDE_RH - fh) / 2, GROUP_NAME[sr.index], hot ? C_TEXT : dim, 2);
 				continue;
 			}
 			int f = row_filter (sr);
 			bool on = f >= 0 && f == g_filter;
-			if (on) wk_hilite (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, true);
-			else if (hot) wk_rbox (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, wk_tone (C_BG, 160), wk_tone (C_BG, 148));
+			if (on) uk_hilite (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, true);
+			else if (hot) uk_rbox (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, uk_tone (C_BG, 160), uk_tone (C_BG, 148));
 			int n = sr.kind == SR_ALL ? g_ng : sr.kind == SR_SYS ? g_nsys[sr.index] : sr.kind == SR_FOLDER ? g_nfold[sr.index] : -1;
 			unsigned ink = on ? C_SEL_TEXT : (sr.kind == SR_SYS && n == 0) || sr.kind == SR_ADD ? dim : C_TEXT;
 			int ix = 16, iy = y + (SIDE_RH - SICON) / 2;
 			if (sr.kind == SR_SYS) blit_icon (canvas, ix, iy, sys_icon (sr.index));
 			else if (sr.kind == SR_ALL)				// four cards
 				for (int q = 0; q < 4; q++)
-					wk_rbox (canvas, ix + 2 + (q & 1) * 10, iy + 2 + (q >> 1) * 10, 8, 8, 2, wk_tone (C_ACCENT, on ? 200 : 150), wk_tone (C_ACCENT, on ? 170 : 120));
+					uk_rbox (canvas, ix + 2 + (q & 1) * 10, iy + 2 + (q >> 1) * 10, 8, 8, 2, uk_tone (C_ACCENT, on ? 200 : 150), uk_tone (C_ACCENT, on ? 170 : 120));
 			else if (sr.kind == SR_FOLDER)				// a folder
 			{
-				wk_rbox (canvas, ix + 3, iy + 5, 7, 4, 1, 0x00D8AA52, 0x00C89A48);
-				wk_rbox (canvas, ix + 3, iy + 7, 16, 11, 2, 0x00EEC46C, 0x00D8A850);
-				wk_rline (canvas, ix + 3, iy + 7, 16, 11, 2, 0x00906A28, 190);
+				uk_rbox (canvas, ix + 3, iy + 5, 7, 4, 1, 0x00D8AA52, 0x00C89A48);
+				uk_rbox (canvas, ix + 3, iy + 7, 16, 11, 2, 0x00EEC46C, 0x00D8A850);
+				uk_rline (canvas, ix + 3, iy + 7, 16, 11, 2, 0x00906A28, 190);
 			}
-			else wk_glyph (canvas, WKG_PLUS, ix + SICON / 2, y + SIDE_RH / 2, 10, ink);
+			else uk_glyph (canvas, WKG_PLUS, ix + SICON / 2, y + SIDE_RH / 2, 10, ink);
 			char lab[48];
 			scpy (lab, sr.kind == SR_ALL ? "All Games" : sr.kind == SR_SYS ? SYS_NAME(sr.index) : sr.kind == SR_FOLDER ? g_folder[sr.index] : "Add Folder...", sizeof lab);
 			char num[12] = ""; int nw = 0;
-			if (n >= 0) { int m = ax_itoa (n, num); num[m] = 0; nw = wk_text_w (num) + 8; }
-			char fit[48]; wk_text_fit (lab, SIDE_W - 20 - 44 - nw - 6, fit, sizeof fit);	// (cut at a character, "...")
+			if (n >= 0) { int m = ax_itoa (n, num); num[m] = 0; nw = uk_text_w (num) + 8; }
+			char fit[48]; uk_text_fit (lab, SIDE_W - 20 - 44 - nw - 6, fit, sizeof fit);	// (cut at a character, "...")
 			canvas.text (44, y + (SIDE_RH - fh) / 2, fit, ink);
 			if (n >= 0) canvas.text (SIDE_W - 20 - nw, y + (SIDE_RH - fh) / 2, num, on ? C_SEL_TEXT : dim);
 		}
@@ -839,37 +837,37 @@ public:
 	{
 		canvas.fillRect (0, 0, width, BAR_H, C_BG);
 		int fx = 10, fy = 7, fw = width - 20, fh = BAR_H - 14;
-		unsigned field = wk_mix (C_BG, C_FIELD, 170), ink = wk_ink_on (field), dim = wk_mix (field, ink, 120);
-		wk_rbox (canvas, fx, fy, fw, fh, 8, wk_tone (field, 136), field);
-		wk_rline (canvas, fx, fy, fw, fh, 8, wk_tone (C_BG, 88), 190);
-		int x = fx + 14, y = fy + (fh - wk_fh ()) / 2;
+		unsigned field = uk_mix (C_BG, C_FIELD, 170), ink = uk_ink_on (field), dim = uk_mix (field, ink, 120);
+		uk_rbox (canvas, fx, fy, fw, fh, 8, uk_tone (field, 136), field);
+		uk_rline (canvas, fx, fy, fw, fh, 8, uk_tone (C_BG, 88), 190);
+		int x = fx + 14, y = fy + (fh - uk_fh ()) / 2;
 		bool top = g_filter == F_ALL;
 		const char *root = "Game Library";
-		int tw = wk_text_w (root, top ? 2 : 0);
-		wk_text (canvas, x, y, root, top ? wk_tone (C_ACCENT, 84) : ink, top ? 2 : 0);
-		if (top) canvas.fillRect (x, y + wk_fh () + 1, tw, 2, C_ACCENT);
-		else if (g_crumbHot == 0) canvas.fillRect (x, y + wk_fh () + 1, tw, 1, ink);
+		int tw = uk_text_w (root, top ? 2 : 0);
+		uk_text (canvas, x, y, root, top ? uk_tone (C_ACCENT, 84) : ink, top ? 2 : 0);
+		if (top) canvas.fillRect (x, y + uk_fh () + 1, tw, 2, C_ACCENT);
+		else if (g_crumbHot == 0) canvas.fillRect (x, y + uk_fh () + 1, tw, 1, ink);
 		g_crumbX = x + tw;
 		x += tw + 10;
 		if (!top)
 		{
-			wk_glyph (canvas, WKG_CHEV_RIGHT, x + 3, fy + fh / 2, 9, dim);
+			uk_glyph (canvas, WKG_CHEV_RIGHT, x + 3, fy + fh / 2, 9, dim);
 			x += 18;
 			const char *nm = filter_name ();
-			wk_text (canvas, x, y, nm, wk_tone (C_ACCENT, 84), 2);
-			canvas.fillRect (x, y + wk_fh () + 1, wk_text_w (nm, 2), 2, C_ACCENT);
+			uk_text (canvas, x, y, nm, uk_tone (C_ACCENT, 84), 2);
+			canvas.fillRect (x, y + uk_fh () + 1, uk_text_w (nm, 2), 2, C_ACCENT);
 		}
 		char cnt[24]; int n = ax_itoa (g_nvis, cnt); cnt[n] = 0;
 		lx_cat (cnt, sizeof cnt, &n, g_nvis == 1 ? " game" : " games");
-		canvas.text (fx + fw - 14 - wk_text_w (cnt), y, cnt, dim);
+		canvas.text (fx + fw - 14 - uk_text_w (cnt), y, cnt, dim);
 	}
 
 	// The status bar: the picture being made, or the game chosen.
 	void drawStatus ()
 	{
 		int y = grid_bottom ();
-		wk_rbox (canvas, 0, y, width, ST_H, 0, wk_tone (C_FACE, 160), wk_tone (C_FACE, 124));
-		wk_etch_h (canvas, 0, y, width, C_FACE);
+		uk_rbox (canvas, 0, y, width, ST_H, 0, uk_tone (C_FACE, 160), uk_tone (C_FACE, 124));
+		uk_etch_h (canvas, 0, y, width, C_FACE);
 		char s[160]; int n = 0; s[0] = 0;
 		if (g_tgame >= 0) { lx_cat (s, sizeof s, &n, "Making the picture of "); lx_cat (s, sizeof s, &n, g_games[g_tgame].name); lx_cat (s, sizeof s, &n, "..."); }
 		else if (g_nvis > 0)
@@ -878,7 +876,7 @@ public:
 			lx_cat (s, sizeof s, &n, g.name); lx_cat (s, sizeof s, &n, "   -   "); lx_cat (s, sizeof s, &n, SYS_NAME(g.sys));
 			lx_cat (s, sizeof s, &n, g_full ? "   (Enter: play full screen)" : "   (Enter or a double-click: play)");
 		}
-		canvas.text (10, y + (ST_H - wk_fh ()) / 2 + 1, s, C_TEXT);
+		canvas.text (10, y + (ST_H - uk_fh ()) / 2 + 1, s, C_TEXT);
 	}
 
 	bool onMouse (int mx, int my, int bl, int br, int, int wheel) override
@@ -978,10 +976,10 @@ static void save_folders ()
 static void on_add ()
 {
 	char p[256];
-	if (g_nf >= MAXF) { wk_messagebox ("Game Library", "Too many folders (8 at most).", MB_OK); return; }
-	if (!wk_folder_open (p, sizeof p, g_folder[g_nf - 1 >= 0 ? g_nf - 1 : 0])) return;
+	if (g_nf >= MAXF) { uk_messagebox ("Game Library", "Too many folders (8 at most).", MB_OK); return; }
+	if (!uk_folder_open (p, sizeof p, g_folder[g_nf - 1 >= 0 ? g_nf - 1 : 0])) return;
 	int e = slen (p); if (e > 1 && p[e - 1] == '/' && p[e - 2] != ':') p[--e] = 0;	// "SD:/roms/" -> "SD:/roms"
-	if (e > 63) { wk_messagebox ("Game Library", "This folder's path is too long (63 characters at most).", MB_OK); return; }
+	if (e > 63) { uk_messagebox ("Game Library", "This folder's path is too long (63 characters at most).", MB_OK); return; }
 	for (int f = 0; f < g_nf; f++) { const char *a = g_folder[f], *b = p; while (*a && low (*a) == low (*b)) a++, b++; if (!*a && !*b) return; }
 	scpy (g_folder[g_nf++], p, sizeof g_folder[0]);
 	save_folders (); build_menu (); on_refresh ();
@@ -1017,9 +1015,9 @@ static void build_menu ()
 	g_menu = Menu ();
 	g_menu.menu ("Library");
 	g_menu.item ("Play",              "Enter", 0, on_play);
-	g_menu.item ("Refresh",           "^R", WK_CTRL ('R'), on_refresh);
+	g_menu.item ("Refresh",           "^R", UK_CTRL ('R'), on_refresh);
 	g_menu.separator ();
-	g_menu.item ("Quit",              "^Q", WK_CTRL ('Q'), on_quit);
+	g_menu.item ("Quit",              "^Q", UK_CTRL ('Q'), on_quit);
 	g_menu.menu ("Folders");
 	g_menu.item ("Add Folder...",     "",   0, on_add);
 	if (g_nf > 0) g_menu.separator ();
@@ -1038,14 +1036,14 @@ static void build_menu ()
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	if (app_ini_load_path ("SD:/apps/gamelib.app/config.ini") >= 0)
 	{
 		// one `folder = <path>` line per watched folder (an .ini value: 63 characters at most)
 		int nf = 0; bool any = false;
-		for (int i = 0; i < g_ini_n && nf < MAXF; i++)
-			if (g_ini_sec[i][0] == 0 && ax_streq (g_ini_key[i], "folder"))
-			{ any = true; if (g_ini_val[i][0]) scpy (g_folder[nf++], g_ini_val[i], sizeof g_folder[0]); }
+		for (int i = 0; i < app_ini_count () && nf < MAXF; i++)
+			if (app_ini_section (i)[0] == 0 && ax_streq (app_ini_key (i), "folder"))
+			{ any = true; if (app_ini_value (i)[0]) scpy (g_folder[nf++], app_ini_value (i), sizeof g_folder[0]); }
 		if (any) g_nf = nf;
 	}
 	LibRoot root;

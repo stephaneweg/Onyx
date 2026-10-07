@@ -4,25 +4,29 @@
 > a RAR reader: what licence constraints the whole project carries, and under which licence it can
 > be distributed. Today the repository has **no `LICENSE` file at its root** — so the Onyx code is
 > "all rights reserved", while the card (`sdcard/`) and `pc/dist/` already ship GPL binaries
-> (the kernel with Circle, Jet with NetSurf) without the GPL's text. Both need fixing.
+> (the kernel with Circle; then, Jet with NetSurf) without the GPL's text. Both need fixing.
+>
+> **2026-10-04: Jet is no longer NetSurf.** The NetSurf browser and its libraries left the repository; Jet
+> Browser is now the WebKit port (LGPL-2.1+). What this file said of NetSurf's GPL-2.0-only is history.
 
 ## 1. The verdict
 
 | Part | Must be distributed under | Why |
 |---|---|---|
 | **The kernel image** (`kernel8-rpi4.img`) | **GPL-3.0-or-later** | Circle (our fork, statically linked) is GPL-3.0-or-later. |
-| **Jet Browser** (`jet.app`, `pc/dist/Jet`) | **GPL-2.0** (only) | NetSurf is **GPL-2.0-only** ("version 2 of the License", no "or later") — incompatible with GPLv3. Its Onyx code must stay GPLv2-compatible (GPL-2.0-or-later or permissive), mbedTLS taken under its GPL-2.0-or-later option (not Apache-2.0), FreeType under its GPLv2 option. |
+| **Jet Browser** (`jet.app`) | **LGPL-2.1-or-later** | It is the WebKit port: WebCore and JavaScriptCore are LGPL-2.1+ (the rest of WebKit BSD-2-Clause); statically linked, so its complete corresponding source is published — WebKit's pinned revision, `tools/webkit/patches/`, the ports in `tools/ports/`, `user/Apps/jet/` (MIT, ours) — and it can be relinked (`build-webkit.sh`, `build-web.sh`). mbedTLS taken under Apache-2.0, FreeType under the FTL. |
 | **Doom** (`doom.app`) | GPL-2.0-or-later (→ GPLv3 fine) | doomgeneric: "version 2 … or any later version". |
 | **Media Player** (`media.app`) | **GPL-2.0-or-later** | It links **FFmpeg** built with `--enable-gpl` (GPL-2.0-or-later): H.264, H.265, AAC, AVI, MPEG-TS... Decided with the user (2026-10-02: "on passera le Media Player en GPL-2"). Its own files stay MIT; its source is the repository's. |
 | **PDF Viewer** (`pdf.app`) | **AGPL-3.0** | MuPDF (and its jbig2dec) is AGPL-3.0 (or Artifex's paid licence). AGPL-3.0 and GPL-3.0 combine (GPLv3 §13): the app is AGPL, the rest of Onyx unchanged; its source is the repository's. Decided with the user (2026-10-01). |
 | **Photos** (`photos.app`) | **MIT** (ours) | Its EXIF reader, library, editing and slideshow are ours; it links FreeType (FTL), stb_image and simplewebp (public domain, BSD-3), our PNG / JPEG / PDF writers (MIT): all permissive. |
-| **Mail** (`mail.app`) | **MIT** (ours) | Its protocols and its HTML renderer are ours (`user/mail/`, MIT); it links mbedTLS (Apache-2.0), FreeType (FTL), stb_image (public domain): all permissive. |
-| **Every other app, the tools** | Your choice | Only permissive libraries (MIT, BSD, zlib, ISC, public domain, FTL, IJG) and newlib (BSD-like). |
+| **Mail** (`mail.app`) | **MIT** (ours) | Its protocols and its HTML renderer are ours (`user/Libs/mail/`, MIT); it links mbedTLS (Apache-2.0), FreeType (FTL), stb_image (public domain): all permissive. |
+| **3DForge** (`3dforge.app`) | **MIT** (ours) | Its history, sketch, fillets, view and interface are ours; it links Manifold (Apache-2.0) and Clipper2 (BSL-1.0), FreeType (FTL): all permissive. Apache-2.0 asks that the licence and the notices go with the binary: `third_party/manifold-3.5.4/LICENSE`. |
+| **Every other app, the tools** | **MIT** (ours; the user's decision, below) | Only permissive libraries (MIT, BSD, zlib, ISC, public domain, FTL, IJG) and newlib (BSD-like). |
 | **Data** (fonts, sound font, Freedoom, CLDR) | Their own licences, unchanged | OFL / Bitstream Vera, GeneralUser GS licence, BSD-3, Unicode v3 — fine to ship beside GPL code. |
 | **Firmware blobs** | Their own licences, unchanged | Raspberry Pi boot firmware (Broadcom, binary redistribution for Raspberry Pi use), the Wi-Fi firmware (Cypress / Synaptics, binary). Not GPL, not ours: "mere aggregation". |
 
 **Recommendation:** distribute Onyx under **GPL-3.0-or-later** (forced anyway for the kernel by
-Circle), with **Jet Browser under GPL-2.0**, the **Media Player under GPL-2.0-or-later** (FFmpeg) and the **PDF Viewer under AGPL-3.0** as documented
+Circle), with **Jet Browser under LGPL-2.1-or-later** (WebKit), the **Media Player under GPL-2.0-or-later** (FFmpeg) and the **PDF Viewer under AGPL-3.0** as documented
 exceptions. A purely permissive licence (MIT) for the whole is **not possible**: the kernel is GPLv3
 because of Circle.
 
@@ -30,8 +34,8 @@ because of Circle.
 licence.** That is every app and tool that links only permissive libraries (the table's *Every other
 app*), and our own code everywhere — MIT is compatible with the GPL and the AGPL, so the kernel's,
 Jet's, Doom's and the PDF Viewer's Onyx files stay MIT as files, while the program built from them
-is distributed under its GPL / AGPL. New code is written MIT (e.g. `user/pdf/pdfwrite.h`, the PDF
-export of Writer and the Spreadsheet, carries the MIT notice); a library that would force another
+is distributed under its GPL / AGPL. New code is written MIT (e.g. `user/Libs/pdf/pdfwrite.h`, the PDF
+export of Letters and the Spreadsheet, carries the MIT notice); a library that would force another
 licence on an app is chosen only with the user (as MuPDF was).
 
 ### Distributing the whole: an aggregate, as Linux distributions do
@@ -44,65 +48,84 @@ can only cover the parts one owns. Linux distributions work that way: the kernel
 Apache, MPL… and even proprietary, the firmware has its own licences (`linux-firmware`'s `WHENCE`);
 each package lists its own (Debian's `/usr/share/doc/<package>/copyright`, Fedora's SPDX `License:`
 tag). Only what is **combined into one program** must have compatible licences — for Onyx, the
-kernel with Circle, Jet with NetSurf. So: *"Onyx is distributed under GPL-3.0-or-later; the
+kernel with Circle, Jet with WebKit. So: *"Onyx is distributed under GPL-3.0-or-later; the
 components listed in LICENSING.md keep their own licences"* is the usual, correct statement.
 
 ## 2. The grey zone: apps and the kernel
 
-GPLv3 (Circle) and GPLv2-only (NetSurf) cannot be combined into **one** work. Onyx keeps them in
-**separate programs**: the kernel, and `jet.app/main`, a separate ELF loaded into its own address
+A kernel under GPLv3 (Circle) and programs under other licences (WebKit's LGPL, FFmpeg's GPL-2.0-or-later,
+MuPDF's AGPL) are not **one** work. Onyx keeps them in
+**separate programs**: the kernel, and each app — `jet.app/main` for one —, a separate ELF loaded into its own address
 space (its own `TTBR0` / ASID), which calls the kernel only through the `kapi` table at a fixed
 address — never linked against kernel symbols. That is an operating system's call interface, the
 same seam as Linux's system calls, so the two are an aggregate, not one work.
 
 Two weaknesses, worth fixing:
 
-1. The apps run at **EL1** in the kernel's address space (identity region mapped RW) and call the
-   `kapi` as plain indirect calls, not traps. The FSF reads "function calls in a shared address
-   space" as one program. The interface is still a stable, documented ABI, but **say so
-   explicitly**: add to `LICENSE` a **kapi exception**, like Linux's syscall note — *"Programs that
-   use the Onyx kernel only through the kapi table (`user/kapi.h`) are not derived works of the
+1. **Settled by the move to EL0 (kapi v74, 2026-10-02).** The apps used to run at **EL1** in the
+   kernel's address space and call the `kapi` as plain indirect calls — what the FSF reads as
+   "function calls in a shared address space". Since v74 every app runs at **EL0**, out of the
+   kernel's memory, and each kapi entry is a **system call** (`svc`) through a stub
+   (docs/EL0-PROTECTED-MODE.md, docs/02 §6): the same seam as Linux's system calls. Still worth
+   saying explicitly in the future `LICENSE`, as Linux's syscall note does — *"Programs that use
+   the Onyx kernel only through the kapi table (`user/Kits/appkit/appkit.h`) are not derived works of the
    kernel."* You can grant it for your own kernel code; Circle's author grants nothing, but your
-   code is the only part the apps call. The move to EL0 (docs/EL0-PROTECTED-MODE.md) would make the
-   separation plain.
-2. `user/kapi.h` (included by every app, Jet too) must be under a licence GPLv2 can take: put it
-   (and `user/libc`, `crt0*.S`, `user.ld`) under **MIT** or GPL-2.0-or-later.
+   code is the only part the apps call.
+2. `user/Kits/appkit/appkit.h` (included by every app) must be under a licence every app's licence can take: put it
+   (and `user/Runtime/libc`, `crt0*.S`, `user.ld`) under **MIT** or GPL-2.0-or-later.
 
 ## 3. The inventory
 
 | Component | Where | Licence | Obligation |
 |---|---|---|---|
 | Circle (fork, branch `onyx`) | `circle/` (submodule), the kernel | GPL-3.0-or-later | The kernel's source (ours + the fork) available; the GPL's text |
-| NetSurf | `third_party/netsurf`, Jet | **GPL-2.0-only** | Jet under GPLv2, source available (also for `pc/dist/Jet/Jet.exe`) |
-| talloc (Samba) | `third_party/netsurf/utils/talloc.c`, Jet | LGPL-2.1-or-later | Fine in a GPL program; in a permissive Jet it would have to go (or be relinkable) |
-| libcss, libdom, libhubbub, libnsbmp, libnsfb, libnsgif, libnslog, libnsutils, libparserutils, libwapcaplet, nsgenbind | `third_party/` | MIT | Keep the notices |
 | doomgeneric | `third_party/doomgeneric` | GPL-2.0-or-later | Source available |
-| FFmpeg 7.1.2 (libavcodec, libavformat, libavutil, libswscale, libswresample; `--enable-gpl`, no external library) | `third_party/ffmpeg-7.1.2`, the Media Player (`user/av/av_ffmpeg.c`, `av_lavf.c`) | **GPL-2.0-or-later** | The Media Player under GPL-2.0-or-later, its source available (the repository: `onyx/build.sh` makes the libraries); keep `COPYING.GPLv2`, `LICENSE.md`. Some formats it decodes are patented in some countries (H.264, H.265, AAC...): FFmpeg's own note in `LICENSE.md` |
-| mbedTLS 3.6.3 | `third_party/mbedtls-3.6.3` | Apache-2.0 **or** GPL-2.0-or-later | Jet: take the GPL option |
+| FFmpeg 7.1.2 (libavcodec, libavformat, libavutil, libswscale, libswresample; `--enable-gpl`, no external library) | `third_party/ffmpeg-7.1.2`, the Media Player (`user/Libs/av/av_ffmpeg.c`, `av_lavf.c`) | **GPL-2.0-or-later** | The Media Player under GPL-2.0-or-later, its source available (the repository: `onyx/build.sh` makes the libraries); keep `COPYING.GPLv2`, `LICENSE.md`. Some formats it decodes are patented in some countries (H.264, H.265, AAC...): FFmpeg's own note in `LICENSE.md` |
+| mbedTLS 3.6.3 | `third_party/mbedtls-3.6.3` | Apache-2.0 **or** GPL-2.0-or-later | Taken under Apache-2.0 |
 | FreeType 2.14.3 | `third_party/freetype-2.14.3` | FTL **or** GPL-2.0-or-later | FTL: a credit in the docs ("Portions of this software are copyright © The FreeType Project") |
 | zlib, libpng | `third_party/` | zlib / libpng licence | — |
 | libjpeg 9f | `third_party/jpeg-9f` | IJG | Docs: "This software is based in part on the work of the Independent JPEG Group" |
-| libwebp, zstd, brotli | `third_party/` | BSD-3 / BSD-3 (or GPLv2) / MIT | Keep the notices |
-| nghttp2, quickjs-ng, wasm3, plutovg, plutosvg, webref-css, expat (Jet Browser's XML parser: `third_party/expat-2.7.1`, its `COPYING`) | `third_party/` | MIT | Keep the notices |
-| CLDR 48 | `third_party/cldr-48` | Unicode License v3 | Keep the notice |
-| stb_image | `user/img` | Public domain / MIT | — |
-| simplewebp | `user/img` | BSD | Keep the notice |
+| libwebp, brotli | `third_party/` | BSD-3 / MIT | Keep the notices |
+| nghttp2 (curl's HTTP/2) | `third_party/nghttp2-1.70.0` | MIT | Keep the notice |
+| ns-sans glyphs (the system's bitmap font is generated from them: `tools/fonts/gen_nssans.py`) | `third_party/fonts/ns-sans` (from NetSurf's framebuffer front end; Tim Tyler, Michael Drake) | MIT | Keep the notice |
+| stb_image | `user/Kits/imagekit/img` | Public domain / MIT | — |
+| simplewebp | `user/Kits/imagekit/img` | BSD | Keep the notice |
 | MuPDF 1.28.5 (fitz, pdf; the URW base-14 fonts) | `third_party/mupdf-1.28.5`, the PDF Viewer | **AGPL-3.0** (Artifex) | The PDF Viewer under AGPL-3.0, its source available (the repository); keep `COPYING` |
 | jbig2dec | `third_party/mupdf-1.28.5/thirdparty/jbig2dec`, the PDF Viewer | AGPL-3.0 | As MuPDF |
 | OpenJPEG | `third_party/mupdf-1.28.5/thirdparty/openjpeg`, the PDF Viewer | BSD-2 | Keep its `LICENSE` |
-| pdfwrite (Onyx) | `user/pdf/pdfwrite.h`, Writer, the Spreadsheet | **MIT** (ours) | — |
-| MeltySynth (C++ port) | `user/Apps/koton/synth` (Koton, Media Player) | MIT | Keep the notice |
-| minimp3 | `third_party/minimp3`, Media Player, Jet Browser (`user/av/av_mp3.c`) | CC0 (public domain) | — |
-| libvpx 1.15.2 (VP8 / VP9 decoders) | `third_party/libvpx-1.15.2`, Jet Browser and the Media Player's videos (`user/av/av_vpx.c`) | BSD-3-Clause + Google's VP8/VP9 patent grant (`PATENTS`) | Keep `LICENSE` and `PATENTS` |
-| dav1d 1.5.1 (AV1 decoder) | `third_party/dav1d-1.5.1`, Jet Browser and the Media Player's videos (`user/av/av_dav1d.c`) | BSD-2-Clause | Keep `COPYING` |
-| libopus 1.5.2 (Opus) | `third_party/opus-1.5.2`, Jet Browser and the Media Player's videos (`user/av/av_opus.c`) | BSD-3-Clause (royalty-free patent licences listed in `COPYING`) | Keep `COPYING` |
-| stb_vorbis | `third_party/stb_vorbis`, Media Player | Public domain / MIT | — |
-| dr_flac, dr_wav | `third_party/dr_libs`, Media Player | Public domain / MIT-0 | — |
-| ares (PI DMA, ported) | `user/n64/n64_bus.cpp` | ISC | The notice is in the file — keep it |
+| pdfwrite (Onyx) | `user/Libs/pdf/pdfwrite.h`, Letters, the Spreadsheet, Slides | **MIT** (ours) | — |
+| The print system (Onyx) | `user/Kits/printerkit/` (`SD:/lib/printerkit.so`), `user/Apps/printd`, `user/Apps/printconf`, `/bin/ipp`: the Print dialog, the jobs, the page rasteriser, PWG Raster, the IPP client | **MIT** (ours) | — |
+| python-pptx's default template | `tools/tests/slides/powerpoint.pptx` (a test deck, not on the card; made by `make_pptx.py`) | MIT (python-pptx) | — |
+| **ImageKit** (Onyx) | `user/Kits/imagekit/` (`SD:/lib/imagekit.so`): pictures read, written, transformed, adjusted — with stb_image, simplewebp and the PCX reader (as in UIKit) inside | MIT (stb_image: public domain / MIT; simplewebp: BSD-3) | Keep the notices |
+| **FileKit** (Onyx) | `user/Kits/filekit/` (`SD:/lib/filekit.so`): compression, ZIP archives, files and trees, paths — with zlib and the Archiver's ZIP engine (Onyx, MIT) inside | MIT (zlib: the zlib licence, below) | Keep the notices |
+| **AudioKit** (Onyx) | `user/Kits/audiokit/` (`SD:/lib/audiokit.so`): the files, the background player, mixing, notes, WAV — with MeltySynth and the four decoders below inside it | **MIT** (ours); what it contains: MIT, CC0, public domain — nothing that binds the programs using it. FFmpeg (GPL) is **not** in it and must never be | Keep the notices |
+| **GPIOKit** (Onyx) | `user/Kits/gpiokit/` (`SD:/lib/gpiokit.so`), GPIO Lab (`user/Apps/gpiolab`), the kernel's `sys/gpio.cpp` | **MIT** (ours; the kernel's file is MIT, the kernel as a whole GPL-3.0 with Circle) | Keep the notice |
+| MeltySynth (C++ port) | `user/Apps/koton/synth` (in AudioKit: Koton, Media Player, BASIC) | MIT | Keep the notice |
+| minimp3 | `third_party/minimp3`, AudioKit (the Media Player, `/bin/play`, BASIC), Jet Browser (`user/Libs/av/av_mp3.c`) | CC0 (public domain) | — |
+| libvpx 1.15.2 (VP8 / VP9 decoders) | `third_party/libvpx-1.15.2`, Jet Browser and the Media Player's videos (`user/Libs/av/av_vpx.c`) | BSD-3-Clause + Google's VP8/VP9 patent grant (`PATENTS`) | Keep `LICENSE` and `PATENTS` |
+| dav1d 1.5.1 (AV1 decoder) | `third_party/dav1d-1.5.1`, Jet Browser and the Media Player's videos (`user/Libs/av/av_dav1d.c`) | BSD-2-Clause | Keep `COPYING` |
+| libopus 1.5.2 (Opus) | `third_party/opus-1.5.2`, Jet Browser and the Media Player's videos (`user/Libs/av/av_opus.c`) | BSD-3-Clause (royalty-free patent licences listed in `COPYING`) | Keep `COPYING` |
+| stb_vorbis | `third_party/stb_vorbis`, AudioKit | Public domain / MIT | — |
+| dr_flac, dr_wav | `third_party/dr_libs`, AudioKit | Public domain / MIT-0 | — |
+| ares (PI DMA, ported) | `user/Emulators/n64/n64_bus.cpp` | ISC | The notice is in the file — keep it |
 | Mesa (V3D / QPU headers) | `tools/qpu/mesa` | MIT | Keep the notices |
-| React 18.3.1, React DOM (their production builds, test pages only: not on the card) | `tools/tests/netsurf/pages/react` | MIT | Keep the notice (its `LICENSE` is there) |
+| libonyxposix (the POSIX layer) and its sysroot files | `user/Runtime/libc/posix`, `tools/onyx-toolchain.cmake`, `tools/cmake`, `tools/ports`, `/bin/posixtest`, `/bin/posixtest-cxx` | **MIT** (ours) | — |
+| SQLite 3.50.4 (the amalgamation and its shell) | `third_party/sqlite-3.50.4`, `/bin/sqlite3` (the POSIX ports, not on the card yet) | Public domain | — |
+| libxml2 2.13.8 | `third_party/libxml2-2.13.8`, `/bin/xmllint` (the POSIX ports) | MIT | Keep `Copyright` |
+| curl 8.16.0 (libcurl and the tool) | `third_party/curl-8.16.0`, `/bin/curl` (the POSIX ports; with mbedTLS taken under Apache-2.0, nghttp2, zlib, brotli) | curl licence (MIT-like) | Keep `COPYING` |
+| ICU 78.3 (libicuuc, libicui18n, the filtered data) | `third_party/icu-78.3`, `/bin/icutest` (the POSIX ports for WebKit, not on the card yet) | Unicode License V3 (SPDX Unicode-3.0), with the third-party notices in its `LICENSE` | Keep `LICENSE` |
+| HarfBuzz 14.5.1 | `third_party/harfbuzz-14.5.1`, `/bin/hbtest` (the POSIX ports for WebKit) | "Old MIT" | Keep `COPYING` |
+| Manifold 3.5.4 (boolean operations on closed meshes) | `third_party/manifold-3.5.4`, `user/Libs/manifold/libmanifold.a`, linked into 3DForge | Apache-2.0 | Keep `LICENSE`; the changes are listed in `README.onyx` (none in its sources) |
+| Clipper2 (the commit Manifold pins; polygon clipping and offsetting) | `third_party/clipper2-46f6391`, in `libmanifold.a` | Boost Software License 1.0 | Keep `LICENSE` with the sources (nothing owed for a binary) |
+| Skia (milestone 154: WebKit's copy) | `third_party/skia-m154`, `/bin/skiatest`, `/bin/skiademo` (the POSIX ports for WebKit) | BSD-3-Clause | Keep `LICENSE` |
+| libjpeg-turbo 3.1.4 | `third_party/libjpeg-turbo-3.1.4` (the POSIX ports for WebKit: Skia's and WebKit's JPEG) | IJG + BSD-3-Clause + zlib (`LICENSE.md`) | Docs: "This software is based in part on the work of the Independent JPEG Group"; keep `LICENSE.md` |
+| WebKit (pinned revision `b8a7a626`, not in this repository: fetched by `tools/webkit/fetch.sh`): WTF, JavaScriptCore, bmalloc's headers | `/bin/jsc` (the shell of JavaScriptCore: step 1 of the WebKit port, with ICU linked in) | JavaScriptCore: **LGPL-2.1-or-later** (parts BSD-2-Clause); WTF, bmalloc: BSD-2-Clause | `/bin/jsc` is distributed under LGPL-2.1+: its sources are WebKit's at that revision **plus Onyx's patches, published in `tools/webkit/patches/`** (with `revision.sh` and the build script: the complete corresponding source). Statically linked: the objects to relink it are rebuilt from those sources by `tools/webkit/build-jsc.sh`. Keep WebKit's notices |
+| WebKit (the same revision): WebCore, PAL, WebKit2, with WTF, JavaScriptCore | **Jet Browser** (`apps/jet.app/main`, its package `jet`; built by `tools/webkit/build-web.sh`, not in this repository) | WebCore, WebKit2: **LGPL-2.1-or-later** and BSD-2-Clause (per file) | `apps/jet.app/main` is distributed under **LGPL-2.1+**: the complete corresponding source is WebKit's revision plus `tools/webkit/patches/`, the ports in `tools/ports/`, and `user/Apps/jet/` (MIT, ours); statically linked: rebuilt and relinked by `build-webkit.sh` then `build-web.sh`. Keep WebKit's notices |
+| Onyx's WebKit port files | the patches' new files inside WebKit's tree (`Source/cmake/OptionsOnyx.cmake`, `Platform*Onyx.cmake`, `wtf/onyx/`): BSD-2-Clause, WebKit's usual header ("Onyx contributors"); `tools/webkit/*.sh`, `smoke.js`, `bench.js` | BSD-2-Clause / **MIT** (ours) | — |
+| Onyx's Skia font manager, the WebKit ports' build files | `tools/ports/skia/SkFontMgr_onyx.*`, `tools/ports/{icu,harfbuzz,freetype,libpng,libjpeg-turbo,libwebp,skia}` | **MIT** (ours) | — |
 | newlib (libc of the C/C++ apps) | the toolchain | BSD-like (several) | Ship newlib's `COPYING.NEWLIB` notices with the binaries |
 | libgcc / libstdc++ | the toolchain | GPLv3 + **GCC Runtime Library Exception** | None for our binaries |
+| **The `aarch64-onyx-elf` toolchain** (WP-TC: GCC 14.2.0, binutils 2.43, newlib 4.4.0.20231231, GMP 6.3.0, MPFR 4.2.1, MPC 1.3.1) — its build script, patch and fetch script are ours | `tools/toolchain/` (MIT: `build-onyx-toolchain.sh`, `fetch.sh`, the patch file's own text); the binaries: the repository `stephaneweg/onyx-toolchain` (`aarch64-onyx-elf-14.2/`), not in Onyx | GCC, binutils: GPL-3.0-or-later; GMP, MPC: LGPL-3.0-or-later; MPFR: LGPL-3.0-or-later; newlib: BSD-like; libgcc / libstdc++: GPL-3.0 + **GCC Runtime Library Exception** | **The binaries must travel with the corresponding sources**: `onyx-toolchain` carries, beside the tarball, the six pinned source tarballs, `gcc-14.2.0-libstdcxx-onyx.patch` and the build script (`sources/`; GPLv3 §6(d): the binaries and their sources offered from the same place). Programs compiled with it are **not** affected: the Runtime Library Exception lets libgcc / libstdc++ / libsupc++ be linked into an Eligible Compilation (any program compiled by GCC, without a GPL-incompatible plug-in) under the program's own licence — `/bin/posixtest-cxx`, the ports, WebKit later keep theirs. The toolchain's installed `share/onyx-toolchain/` holds the patch and the script. |
 | DejaVu | `third_party/dejavu-*`, `sdcard/res/fonts` | Bitstream Vera + public domain | Keep the licence; fonts not sold alone |
 | Liberation, Gelasio, Selawik | `sdcard/res/fonts`, `third_party/fonts` | SIL OFL 1.1 | Keep the licences (they are there) |
 | GeneralUser GS 2.0.3 | `sdcard/res/soundfonts` (the package `generaluser-gs`) | Its own, free (also commercial) | Keep the licence (it is there) |
@@ -144,51 +167,31 @@ So the Archiver reads RAR through libarchive's readers (BSD): RAR 4 and RAR 5, s
 **not** encrypted RAR (libarchive does not decrypt it), never writing RAR (no free encoder, and its
 licence forbids it).
 
-## 5. Jet without NetSurf — what is still NetSurf's
+## 5. (removed)
 
-Measured 2026-10-01: each file of the NetSurf tree that Jet compiles, compared line by line with
-upstream NetSurf (`github.com/netsurf-browser/netsurf`, master).
-
-| | Files | Lines | Still identical to upstream |
-|---|---|---|---|
-| Upstream files compiled | 149 | 123 000 | **~112 000 (91 %)** |
-| Files written for Onyx in the NetSurf tree (`qjs*.c`, `onyx_*.c`, `layout_grid.c`) | 22 | 28 000 | — |
-| Onyx glue (`user/netsurf/*.c, *.cpp`) | | 7 600 | — |
-
-So Jet is not a NetSurf skeleton: the engine's skeleton *and most of its organs* are still
-NetSurf's. What Onyx changed most is in the MIT libraries (libcss, libdom, hubbub: no licence
-issue) and in Onyx's own files. What would have to be replaced, by block (identical lines):
-
-| Block | Lines (identical) | What it is | Effort |
-|---|---|---|---|
-| `desktop/` | 30 100 (97 %) | `browser_window.c`, frames, history, `textarea.c` (form fields), scrollbars, selection, search; plus parts Jet does not use (treeview, hotlist, cookie manager, global history, page info, save as PDF / text / complete, print) — dead weight to drop first | large (the used half) |
-| `content/` core | 16 100 (98 %) | `llcache` / `hlcache` (the caches), `urldb` (cookies, visited), `fetch.c`, `fs_backing_store`, `content.c`, mime sniffing | medium |
-| `content/handlers/html` | 34 000 (80 %) | the heart: `box_construct`, `layout.c` (block, inline, tables), `redraw.c`, `interaction.c`, forms, `html.c` (the document's load, the scripts), tables, imagemaps | **the largest and hardest** |
-| `utils/` | 14 000 (97 %) | `nsurl`, hashtables, options, messages, utf8, time, idna, punycode, log, talloc (LGPL) | small to medium |
-| `content/handlers/css` | 7 000 (89 %) | the libcss glue: `select.c` (the cascade's callbacks), hints | medium |
-| `content/fetchers` | 6 600 (96 %) | about:, file:, data:, resource: (http is Onyx's) | small |
-| framebuffer frontend + fbtk | 9 700 (77 %) | `gui.c`, `framebuffer.c`, `font_freetype.c`, the fbtk toolkit — replaceable by a wtk frontend | small to medium |
-| image, text handlers | 5 200 (99 %) | thin wrappers over libnsgif / libpng / libjpeg / libwebp, plain text | small |
-| `resources/` | — | `default.css`, Messages, `credits.html`, `licence.html`, icons (GPL content) | small (the UA stylesheet can come from the HTML Standard, CC-BY 4.0) |
-
-The Onyx files in the NetSurf tree carry NetSurf's GPL header but are the user's own: their
-author can relicense them (MIT) — as long as they were not translated from NetSurf code.
-
-A rewrite must be one, not a translation: written from the specifications (HTML, CSS 2.1 / 3,
-Fetch, URL), with its own structures, NetSurf's files not open beside it — otherwise the result
-stays a derived work under GPLv2. The permissive engines that could replace NetSurf whole —
-litehtml (BSD-3, no JavaScript, simpler layout), Ladybird's LibWeb (BSD-2, far too large for
-Onyx), Servo / Blitz (Rust) — would lose much of what Jet does today.
+This section measured how much of the NetSurf Jet was still NetSurf's (2026-10-01). NetSurf left
+the repository on 2026-10-04: Jet is the WebKit port.
 
 ## 6. To do (when the user decides)
 
 1. A root **`LICENSE`**: GPL-3.0-or-later's text, the kapi exception (§2), the list of the parts
-   under other licences (this file's §3), Jet's GPL-2.0.
-2. `COPYING.GPL2` beside Jet (`sdcard/apps/jet.app/`, `pc/dist/Jet/`) — NetSurf's own
-   `res/licence.html` is already shown in the browser.
+   under other licences (this file's §3), Jet's LGPL-2.1+.
+2. WebKit's LGPL-2.1 text and notices beside Jet (`sdcard/apps/jet.app/`, or `SD:/docs/licences`).
 3. A **`CREDITS`** / *About Onyx* listing every third-party component with its notice (FreeType's and
    IJG's credit lines are required).
 4. The firmware licences on the card (`LICENCE.broadcom`, the Wi-Fi's).
 5. SPDX headers in our own files (`// SPDX-License-Identifier: MIT`: the user's decision above),
-   `user/kapi.h` and the app runtime first; a `LICENSE` (MIT) beside each app built only from them.
+   `user/Kits/appkit/appkit.h` and the app runtime first; a `LICENSE` (MIT) beside each app built only from them.
+   The new files already carry the MIT notice — the EL0 work (`kernel/arch/aarch64/el0.S`,
+   `el0blob.S`, `kernel/sys/el0.cpp`, `sys/uaccess.cpp`, `kern/handle.h`, `kern/uaccess.h`,
+   `tools/el0scan.sh`, `tools/gen_kapi_names.py`, `/bin/sysstat`, `el0test`, `faulttest`), Mail
+   (`user/Libs/mail/`), Photos, `user/Libs/pdf/pdfwrite.h`…; `user/Kits/appkit/appkit.h`, `user/BinUtils/kapi_names.h` (generated)
+   and most older files do not yet.
 6. The FM Song covers out of the public distribution.
+
+## Decision (2026-10-02): the WebKit browser
+
+The browser on **WebKit** is distributed under **LGPL-2.1+** (WebCore and JavaScriptCore; the rest of
+WebKit is BSD-2), with the user's agreement; Onyx's own files in it stay under MIT; WebKit's sources
+and Onyx's patches to them are published. Since 2026-10-04 it is **Jet Browser** (the NetSurf Jet,
+GPL-2.0-only, was removed with its libraries).

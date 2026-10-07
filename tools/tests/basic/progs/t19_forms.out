@@ -1,0 +1,17 @@
+[window Forms 380 260]
+[windowflags 1]
+[control 1 10 10 80 28 "Go" 0 -> 1]
+[control 3 10 50 200 26 "" 0 -> 2]
+[menu &File / &Quit Ctrl+Q -> 3]
+[menu &File / -  -> 4]
+[settext 2 "hello"]
+text of 2
+[enable 1 0]
+enabled-1 
+[move 1 20 30 100 32]
+[show 2 0]
+[focus 1]
+size 640  400 
+click
+resized
+quit

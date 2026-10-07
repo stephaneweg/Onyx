@@ -115,13 +115,14 @@ public:
 		Canvas &cv = canvas;
 		const Project &p = g_doc.p;
 		if (m_rev != g_doc.revision) rebuildThumbs ();
-		cv.clear (BG);
+		cv.clear (ALANE_BG);
+		cv.fillRect (0, 0, HEADER_W, height, SIDE);
 		int fh = th ();
 		int bb = p.barBeats ();
 		double lastBeat = scrollBeat + laneW () / ppb;
 		double songEnd = dmax (p.totalBeats (), 16);
 		// ---- the header column's top
-		cv.fillRect (0, 0, HEADER_W, lanesTop (), PANEL);
+		cv.fillRect (0, 0, HEADER_W, lanesTop (), SIDE);
 		hline (cv, 0, HEADER_W, lanesTop () - 1, LINE);
 		textL (cv, 12, 0, RULER_H, "ARRANGEMENT", DIM, 2);
 		textL (cv, 12, RULER_H, MARK_H, "Sections", DIM);
@@ -149,7 +150,7 @@ public:
 			if (e > a) blendRect (cv, a, 0, e - a, 6, loopOn ? ACC : FAINT, loopOn ? 170 : 120);
 		}
 		// ---- the markers lane
-		cv.fillRect (lx, RULER_H, width - lx, MARK_H, LANE2);
+		cv.fillRect (lx, RULER_H, width - lx, MARK_H, ALANE2);
 		for (int i = 0; i < p.markers.size (); i++)
 		{
 			int x = xAtBeat (p.markers[i].beat);
@@ -161,7 +162,7 @@ public:
 		}
 		// ---- the tempo lane: its line, the changes
 		int ty = RULER_H + MARK_H;
-		cv.fillRect (lx, ty, width - lx, TEMPO_H, LANE);
+		cv.fillRect (lx, ty, width - lx, TEMPO_H, ALANE);
 		{
 			double lo = 1e9, hi = -1e9;
 			for (int i = 0; i < p.tempo.size (); i++) { lo = dmin (lo, p.tempo[i].bpm); hi = dmax (hi, p.tempo[i].bpm); }
@@ -194,19 +195,19 @@ public:
 		// ---- the vertical scroll bar, the horizontal one
 		{
 			int ch = contentH (), vh = chordTop () - lanesTop ();
-			WkThumb tb = wk_thumb (ch, vh, scrollY, vh);
-			if (tb.show) wk_scroll_bar (cv, width - 10, lanesTop (), 10, vh, true, tb.y, tb.h, BG, WK_NORMAL);
+			UkThumb tb = uk_thumb (ch, vh, scrollY, vh);
+			if (tb.show) uk_scroll_bar (cv, width - 10, lanesTop (), 10, vh, true, tb.y, tb.h, ALANE_BG, UK_NORMAL);
 			double total = dmax (songEnd + 16, lastBeat - scrollBeat);
-			WkThumb hb = wk_thumb ((long) (total * 16), (long) ((lastBeat - scrollBeat) * 16), (long) (scrollBeat * 16), lw);
+			UkThumb hb = uk_thumb ((long) (total * 16), (long) ((lastBeat - scrollBeat) * 16), (long) (scrollBeat * 16), lw);
 			cv.fillRect (0, height - 12, width, 12, PANEL);
-			wk_scroll_bar (cv, lx, height - 11, lw, 10, false, hb.y, hb.show ? hb.h : 0, PANEL, WK_NORMAL);
+			uk_scroll_bar (cv, lx, height - 11, lw, 10, false, hb.y, hb.show ? hb.h : 0, PANEL, UK_NORMAL);
 		}
 		// ---- the playhead and the cursor
 		double ph = g_audio.isPlaying () ? g_audio.playheadBeat () : cursorBeat;
 		int px = xAtBeat (ph);
 		if (px >= lx && px <= lx + lw)
 		{
-			vline (cv, px, 0, height - 12, g_audio.isPlaying () ? PLAY : mixc (PLAY, BG, 110));
+			vline (cv, px, 0, height - 12, g_audio.isPlaying () ? PLAY : mixc (PLAY, ALANE_BG, 110));
 			for (int i = 0; i < 6; i++) hline (cv, px - 6 + i, px + 7 - i, i, PLAY);
 		}
 		m_lastPlayX = px;
@@ -217,7 +218,7 @@ public:
 		const Track &tr = g_doc.p.tracks[t];
 		bool sel = g_doc.selTrack == t;
 		unsigned col = tr.type == TRACK_CHORD ? FUNC_T : trackColour (t);
-		cv.fillRect (0, y, HEADER_W, h, sel ? PANEL2 : PANEL);
+		cv.fillRect (0, y, HEADER_W, h, sel ? PANEL2 : SIDE);
 		hline (cv, 0, HEADER_W, y + h - 1, LINE);
 		cv.fillRect (0, y, 5, h - 1, col);
 		int fh = th ();
@@ -235,7 +236,7 @@ public:
 			}
 		if (h <= SMALL_H) return;
 		// the sound (click: choose)
-		wk_sunken (cv, 12, y + 28, HEADER_W - 70, 20, 4, FIELD);
+		uk_sunken (cv, 12, y + 28, HEADER_W - 70, 20, 4, FIELD);
 		textFit (cv, 18, y + 28, HEADER_W - 96, 20, instrumentName (tr), TEXT);
 		tri (cv, HEADER_W - 70, y + 38, 3, 1, DIM);
 		if (tr.type == TRACK_CHORD) { textL (cv, 14, y + 50, 20, "the harmony every track reads", FAINT); return; }
@@ -254,7 +255,7 @@ public:
 		int a = (int) (90 - tr.pan * 135);
 		if (tr.pan >= 0) ringArc (cv, kx, ky, r, a, 90, 3, col); else ringArc (cv, kx, ky, r, 90, a, 3, col);
 		disc (cv, kx, ky, r - 4, FACE);
-		aline (cv, kx + wk_cos (a) * (r - 11) / 16384, ky - wk_sin (a) * (r - 11) / 16384, kx + wk_cos (a) * (r - 4) / 16384, ky - wk_sin (a) * (r - 4) / 16384, 2, TEXT);
+		aline (cv, kx + uk_cos (a) * (r - 11) / 16384, ky - uk_sin (a) * (r - 11) / 16384, kx + uk_cos (a) * (r - 4) / 16384, ky - uk_sin (a) * (r - 4) / 16384, 2, TEXT);
 		textC (cv, kx - 16, ky + r + 1, 32, 12, "PAN", FAINT);
 	}
 
@@ -285,12 +286,12 @@ public:
 		Canvas sub; sub.adopt (cv.px + (long) cy0 * cv.stride, cv.w, cy1 - cy0, cv.stride);
 		int oy = y - cy0;			// the track's top in the sub canvas
 		drawHeader (sub, t, oy, h);
-		sub.fillRect (lx, oy, width - lx, h, (t & 1) ? LANE2 : LANE);
-		hline (sub, lx, width, oy + h - 1, LINE);
+		sub.fillRect (lx, oy, width - lx, h, (t & 1) ? ALANE2 : ALANE);
+		hline (sub, 0, lx, oy + h - 1, LINE); hline (sub, lx, width, oy + h - 1, ALANE_LINE);
 		for (int bar = (int) (scrollBeat / bb); bar * bb <= scrollBeat + lw / ppb + bb; bar++)
 		{
 			int x = xAtBeat (bar * bb);
-			if (x >= lx && x <= lx + lw) vline (sub, x, oy, oy + h - 1, GRID_BEAT);
+			if (x >= lx && x <= lx + lw) vline (sub, x, oy, oy + h - 1, ALANE_BAR);
 		}
 		unsigned col = trackColour (t);
 		double c = 0;
@@ -333,7 +334,7 @@ public:
 		int lx = laneX (), lw = laneW ();
 		drawHeader (cv, t, y, CHORD_H);
 		hline (cv, 0, width, y, ACC);
-		cv.fillRect (lx, y + 1, width - lx, CHORD_H - 1, 0x16191F);
+		cv.fillRect (lx, y + 1, width - lx, CHORD_H - 1, ALANE_CHORD);
 		double c = 0;
 		char name[32], roman[24];
 		for (int i = 0; i < tr.items.size (); i++)
@@ -552,7 +553,7 @@ public:
 	bool onKey (long k) override
 	{
 		if (k == KEY_DEL || k == KEY_BACKSPACE) { deleteSelected (); return true; }
-		if (k == WK_CTRL ('D')) { duplicateSelected (); return true; }
+		if (k == UK_CTRL ('D')) { duplicateSelected (); return true; }
 		if (k == KEY_LEFT || k == KEY_RIGHT)
 		{
 			if (!g_doc.sel.valid ()) return false;
@@ -598,16 +599,16 @@ public:
 	void dragScrollV (int my)
 	{
 		int ch = contentH (), vh = chordTop () - lanesTop ();
-		WkThumb tb = wk_thumb (ch, vh, scrollY, vh);
-		scrollY = (int) wk_thumb_pos (my - lanesTop (), vh, ch, vh, tb.h);
+		UkThumb tb = uk_thumb (ch, vh, scrollY, vh);
+		scrollY = (int) uk_thumb_pos (my - lanesTop (), vh, ch, vh, tb.h);
 		invalidate (true);
 	}
 	void dragScrollH (int mx)
 	{
 		double songEnd = dmax (g_doc.p.totalBeats (), 16), view = laneW () / ppb;
 		double total = dmax (songEnd + 16, view);
-		WkThumb hb = wk_thumb ((long) (total * 16), (long) (view * 16), (long) (scrollBeat * 16), laneW ());
-		scrollBeat = wk_thumb_pos (mx - laneX (), laneW (), (long) (total * 16), (long) (view * 16), hb.h) / 16.0;
+		UkThumb hb = uk_thumb ((long) (total * 16), (long) (view * 16), (long) (scrollBeat * 16), laneW ());
+		scrollBeat = uk_thumb_pos (mx - laneX (), laneW (), (long) (total * 16), (long) (view * 16), hb.h) / 16.0;
 		invalidate (true);
 	}
 

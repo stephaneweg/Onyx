@@ -1,0 +1,3380 @@
+//
+// basic/bascomp.cpp -- the Onyx BASIC compiler: source text -> bytecode (basint.h).
+//
+// One pass over a token array (the lexer runs first), after a quick pre-scan that collects
+// every SUB / FUNCTION header (so a SUB can be called before its definition, QBasic style).
+// SUB / FUNCTION bodies are emitted in place with a jump over them. Variables are typed by
+// their suffix ($ = string, else number) or by DIM ... AS STRING; module-level variables are
+// globals, a procedure's own are locals (DIM SHARED / SHARED reach the globals). Scalar
+// arguments that are plain variables are passed BY REFERENCE (QBasic's rule); anything
+// else (an expression, a parenthesised variable) by value; arrays always by reference.
+//
+#include "basic/basint.h"
+#include "basic/basnum.h"
+#define BASFONT_TABLES_ONLY
+#include "basic/basfont.h"
+
+// Text inside BASIC is code page 437 (QBasic's: CHR$(201) = a frame corner); the source is
+// Latin-1 like the rest of Onyx, so string literals and DATA are translated (\xE9 -> 130).
+static inline char to437 (char c) { return (char) basLatin1To437[(unsigned char) c]; }
+
+namespace bas {
+
+enum { T_EOF, T_NL, T_NUM, T_STR, T_ID, T_OP, T_DATA };
+enum { O_LE = 256, O_GE, O_NE };
+
+struct Tok { int t; int line; double num; char id[48]; char *s; int sl; int op; bool dbl; };
+
+// Words that cannot be variables / labels.
+static const char *const KEYWORDS[] = {
+	"AND", "AS", "CALL", "CASE", "CLOSE", "CLS", "COLOR", "CONST", "DATA", "DECLARE", "DEF", "DIM", "DO",
+	"ELSE", "ELSEIF", "END", "EQV", "ERASE", "EXIT", "FOR", "FUNCTION", "GOSUB", "GOTO", "IF", "IMP", "INPUT",
+	"IS", "LET", "LINE", "LOCATE", "LOOP", "MOD", "NEXT", "NOT", "ON", "OPEN", "OPTION", "OR", "PRINT",
+	"READ", "REDIM", "REM", "RESTORE", "RETURN", "SELECT", "SHARED", "STATIC", "STEP", "SUB", "SWAP", "THEN",
+	"TO", "UNTIL", "WEND", "WHILE", "XOR", "SCREEN", "PSET", "PRESET", "CIRCLE", "SLEEP", "RANDOMIZE", "BEEP",
+	"WINDOW", "LPRINT", "WRITE", "SYSTEM", "STOP", "KILL", "NAME", "MKDIR", "RMDIR", "APPEND", "OUTPUT",
+	"BINARY", "RANDOM", "USING", "TAB", "SPC",
+	"TYPE", "RESUME", "FIELD", "LSET", "RSET", "COMMON", "CHAIN", "RUN", "CLEAR", "TRON", "TROFF", "KEY",
+	"PAINT", "DRAW", "VIEW", "PALETTE", "PCOPY", "GET", "PUT", "RESET", "FILES", "CHDIR", "SHELL", "ENVIRON",
+	"ERROR", "ACCESS", "LOCK", "UNLOCK", "DEFSTR", "FULLSCREEN", "PROPERTY", "MOVECONTROL", "SHOWCONTROL", "ENABLECONTROL",
+	"FOCUSCONTROL",
+	"SCENE3D", "RENDER3D", "CAMERA3D", "LIGHT3D", "IDENTITY3D", "TRANSLATE3D", "ROTATE3D", "SCALE3D", "PUSH3D",
+	"POP3D", "COLOR3D", "TEXTURE3D", "BLEND3D", "DEPTH3D", "CULL3D", "VERTEX3D", "CUBE3D", "SPHERE3D",
+	"CYLINDER3D", "PLANE3D", 0 };
+
+static const char *last_dot (const char *s) { const char *d = 0; for (; *s; s++) if (*s == '.') d = s; return d; }
+struct BFn { const char *name; int id; int ret; const char *args; };
+static const BFn BFNS[] = {
+	{ "LEN", B_LEN, TY_NUM, "S" }, { "ASC", B_ASC, TY_NUM, "S" }, { "CHR$", B_CHR, TY_STR, "N" },
+	{ "LEFT$", B_LEFT, TY_STR, "SN" }, { "RIGHT$", B_RIGHT, TY_STR, "SN" }, { "MID$", B_MID, TY_STR, "SN[N" },
+	{ "INSTR", B_INSTR, TY_NUM, "*" }, { "UCASE$", B_UCASE, TY_STR, "S" }, { "LCASE$", B_LCASE, TY_STR, "S" },
+	{ "LTRIM$", B_LTRIM, TY_STR, "S" }, { "RTRIM$", B_RTRIM, TY_STR, "S" }, { "TRIM$", B_TRIM, TY_STR, "S" },
+	{ "STR$", B_STR, TY_STR, "N" }, { "VAL", B_VAL, TY_NUM, "S" }, { "SPACE$", B_SPACE, TY_STR, "N" },
+	{ "STRING$", B_STRING, TY_STR, "N?" }, { "HEX$", B_HEX, TY_STR, "N" }, { "OCT$", B_OCT, TY_STR, "N" },
+	{ "ABS", B_ABS, TY_NUM, "N" }, { "SGN", B_SGN, TY_NUM, "N" }, { "INT", B_INT, TY_NUM, "N" },
+	{ "FIX", B_FIX, TY_NUM, "N" }, { "SQR", B_SQR, TY_NUM, "N" }, { "SIN", B_SIN, TY_NUM, "N" },
+	{ "COS", B_COS, TY_NUM, "N" }, { "TAN", B_TAN, TY_NUM, "N" }, { "ATN", B_ATN, TY_NUM, "N" },
+	{ "EXP", B_EXP, TY_NUM, "N" }, { "LOG", B_LOG, TY_NUM, "N" }, { "RND", B_RND, TY_NUM, "[N" },
+	{ "CINT", B_CINT, TY_NUM, "N" }, { "CLNG", B_CLNG, TY_NUM, "N" }, { "CDBL", B_CDBL, TY_NUM, "N" },
+	{ "CSNG", B_CDBL, TY_NUM, "N" }, { "MIN", B_MIN, TY_NUM, "NN" }, { "MAX", B_MAX, TY_NUM, "NN" },
+	{ "TIMER", B_TIMER, TY_NUM, "" }, { "DATE$", B_DATE, TY_STR, "" }, { "TIME$", B_TIME, TY_STR, "" },
+	{ "INKEY$", B_INKEY, TY_STR, "" }, { "COMMAND$", B_COMMAND, TY_STR, "" }, { "POS", B_POS, TY_NUM, "[N" },
+	{ "CSRLIN", B_CSRLIN, TY_NUM, "" }, { "POINT", B_POINT, TY_NUM, "NN" }, { "RGB", B_RGB, TY_NUM, "NNN" },
+	{ "EOF", B_EOF, TY_NUM, "N" }, { "LOF", B_LOF, TY_NUM, "N" }, { "FREEFILE", B_FREEFILE, TY_NUM, "" },
+	{ "FILEEXISTS", B_FILEEXISTS, TY_NUM, "S" }, { "DIR$", B_DIR, TY_STR, "S[N" },
+	{ "BUTTON", B_BUTTON, TY_NUM, "NNNNS" }, { "LABEL", B_LABEL, TY_NUM, "NNNNS" },
+	{ "TEXTBOX", B_TEXTBOX, TY_NUM, "NNNN[S" }, { "CHECKBOX", B_CHECKBOX, TY_NUM, "NNNNS[N" },
+	{ "LISTBOX", B_LISTBOX, TY_NUM, "NNNN[S" }, { "DROPDOWN", B_DROPDOWN, TY_NUM, "NNNNS" },
+	{ "PROGRESS", B_PROGRESS, TY_NUM, "NNNN" }, { "SLIDER", B_SLIDER, TY_NUM, "NNNN[N" },
+	{ "GETTEXT$", B_GETTEXT, TY_STR, "N" }, { "VALUE", B_VALUE, TY_NUM, "N" }, { "EVENT", B_EVENT, TY_NUM, "" },
+	{ "WAITEVENT", B_WAITEVENT, TY_NUM, "" }, { "MSGBOX", B_MSGBOX, TY_NUM, "SS[N" },
+	{ "CLIPBOARD$", B_CLIPBOARD, TY_STR, "" }, { "OPENFILE$", B_OPENFILE, TY_STR, "[S" },
+	{ "SAVEFILE$", B_SAVEFILE, TY_STR, "[SS" }, { "MOUSEX", B_MOUSEX, TY_NUM, "" },
+	{ "MOUSEY", B_MOUSEY, TY_NUM, "" }, { "MOUSEB", B_MOUSEB, TY_NUM, "" }, { "TICKS", B_TICKS, TY_NUM, "" },
+	{ "ERR", B_ERR, TY_NUM, "" }, { "ERL", B_ERL, TY_NUM, "" },
+	{ "MKI$", B_MKI, TY_STR, "N" }, { "MKL$", B_MKL, TY_STR, "N" }, { "MKS$", B_MKS, TY_STR, "N" }, { "MKD$", B_MKD, TY_STR, "N" },
+	{ "CVI", B_CVI, TY_NUM, "S" }, { "CVL", B_CVL, TY_NUM, "S" }, { "CVS", B_CVS, TY_NUM, "S" }, { "CVD", B_CVD, TY_NUM, "S" },
+	{ "INPUT$", B_INPUTS, TY_STR, "N[N" }, { "SEEK", B_SEEK, TY_NUM, "N" }, { "LOC", B_LOC, TY_NUM, "N" },
+	{ "ENVIRON$", B_ENVIRON, TY_STR, "*" }, { "FRE", B_FRE, TY_NUM, "*" }, { "PMAP", B_PMAP, TY_NUM, "NN" },
+	{ "SCREEN", B_SCREEN, TY_NUM, "NN[N" }, { "KEYDOWN", B_KEYDOWN, TY_NUM, "S" },
+	{ "PLAY", B_PLAYN, TY_NUM, "N" },
+	{ "STICK", B_STICK, TY_NUM, "N" }, { "STRIG", B_STRIG, TY_NUM, "N" }, { "PAD", B_PAD, TY_NUM, "[N" },
+	{ "GRAB3D", B_GRAB3D, TY_NUM, "NNNN" }, { "GPU3D", B_GPU3D, TY_NUM, "" },
+	{ "FILEPLAYING", B_FILEPLAYING, TY_NUM, "" }, { "FILEPOS", B_FILEPOS, TY_NUM, "" }, { "FILELENGTH", B_FILELENGTH, TY_NUM, "" },
+	{ "NOTEFREQ", B_NOTEFREQ, TY_NUM, "N" }, { "NOTENUMBER", B_NOTENUMBER, TY_NUM, "S" },
+	{ "MENUITEM", B_MENUITEM, TY_NUM, "SS[S" }, { "WINDOWWIDTH", B_WINDOWWIDTH, TY_NUM, "" }, { "WINDOWHEIGHT", B_WINDOWHEIGHT, TY_NUM, "" },
+	// (GPIOKit: the 40-pin header -- docs/04 §13 "GPIO")
+	{ "PIN", B_PIN, TY_NUM, "N" }, { "PINCHANGED", B_PINCHANGED, TY_NUM, "N" },
+	{ "I2CREAD", B_I2CREAD, TY_NUM, "NN" }, { "I2CREAD$", B_I2CREADS, TY_STR, "NNN" }, { "I2CSCAN$", B_I2CSCAN, TY_STR, "" },
+	{ "SPI$", B_SPI, TY_STR, "S[N" },
+	// (kits: known once the program has an #import -- B_ALLOC .. B_ADDRESSOF)
+	{ "ALLOC", B_ALLOC, TY_NUM, "N" }, { "CSTR$", B_CSTR, TY_STR, "N[N" },
+	{ "PEEKB", B_PEEKB, TY_NUM, "N" }, { "PEEKW", B_PEEKW, TY_NUM, "N" }, { "PEEKL", B_PEEKL, TY_NUM, "N" },
+	{ "PEEKQ", B_PEEKQ, TY_NUM, "N" }, { "PEEKF", B_PEEKF, TY_NUM, "N" }, { "PEEKD", B_PEEKD, TY_NUM, "N" },
+	{ 0, 0, 0, 0 } };
+
+// Where #import reads a kit's description (setKitSource).
+static char *(*kitSource) (const char *name, int *len) = 0;
+// The host's words, aliases and REPEAT (setDialect; 0: plain BASIC).
+static const Dialect *dialect = 0;
+static const ExtWord *findExt (const char *n)
+{
+	if (!dialect || !dialect->words) return 0;
+	for (int i = 0; dialect->words[i].name; i++) if (bseq (dialect->words[i].name, n)) return &dialect->words[i];
+	return 0;
+}
+static const char *aliasOf (const char *n)
+{
+	if (!dialect) return 0;
+	for (int t = 0; t < 2; t++)
+	{
+		const char *const *al = t ? dialect->aliases2 : dialect->aliases;
+		for (int i = 0; al && al[i] && al[i + 1]; i += 2) if (bseq (al[i], n)) return al[i + 1];
+	}
+	return 0;
+}
+
+// Block terminators (what ends a statement block).
+enum
+{
+	TM_ENDIF = 1, TM_ELSE = 2, TM_ELSEIF = 4, TM_LOOP = 8, TM_WEND = 16, TM_NEXT = 32, TM_CASE = 64,
+	TM_ENDSELECT = 128, TM_ENDSUB = 256, TM_ENDFUNC = 512, TM_ENDDEF = 1024, TM_ENDREPEAT = 2048
+};
+
+enum { LOOP_FOR = 1, LOOP_DO, LOOP_WHILE, LOOP_REPEAT };
+
+class Compiler
+{
+public:
+	Program *P; Error *err; bool failed;
+	Vec<Tok> toks; int pos;
+
+	struct Sym { char key[52]; int slot; int ty; bool shared; bool global; int nt; int flen; };
+	Vec<Sym> gsyms, lsyms; int nlocals;
+	struct Const { char name[48]; int ty; double n; int sidx; bool dbl; };
+	Vec<Const> consts;
+	// cls: a method's TYPE / CLASS / INTERFACE (-1); mod: PM_*; vslot: a virtual method's place in its
+	// class's table (-1); islot: an interface method's place in its interface.
+	struct PDecl { char name[48]; bool isFunc; int retTy; int retNt; int np; char pname[16][48]; int pty[16]; int pnt[16]; bool parr[16]; bool defFn; int cls, mod, vslot, islot, tok; };
+	enum { PM_VIRTUAL = 1, PM_OVERRIDE = 2, PM_ABSTRACT = 4, PM_IFACE = 8 };
+	struct CInfo { int ifaces[8]; int nif; bool done, abstr; int tok; };	// parallel to P->types (a class: what it implements, flattened)
+	Vec<CInfo> cinfo;
+	// A type spec (AS ...): the value type, numeric sub-type, fixed string length.
+	struct TSpec { int ty; int nt; int flen; };
+	struct FName { char name[48]; int ty; int nt; int flen; };
+	Vec<FName> fnames;				// parallel to P->fields
+	TSpec deftype[26];				// DEFINT / DEFLNG / DEFSNG / DEFDBL / DEFSTR
+	bool dblSeen;					// the expression being compiled involves a DOUBLE
+	Vec<PDecl> pdecls;
+	int curProc;					// -1 = the main module
+	struct Label { char name[48]; int pc; int proc; int dataIdx; };
+	Vec<Label> labels;
+	struct Fix { int at; char name[48]; int proc; int line; bool data; };
+	Vec<Fix> fixes;
+	struct Loop { int kind; int exits[64]; int nexit; };
+	Loop loops[32]; int nloops;
+	bool base1; int tmpN; int lastLine;
+	// The imported kits' functions: "FILEKIT.COPY" (and under its C name, "FILEKIT.FK_COPY"); used: its
+	// place in P->kfns once the program calls it (-1).
+	struct KDecl { int kit, slot; char ret; char args[KIT_MAXARGS + 1]; char name[64], cname[64]; int used; };
+	Vec<KDecl> kdecls; bool kitsOn = false;
+	struct KAlias { char name[64]; int type; };	// a kit's structure under its C name ("FILEKIT.FK_ZIP_ENTRY")
+	Vec<KAlias> kalias;
+
+	Compiler () : P (0), err (0), failed (false), pos (0), nlocals (0), curProc (-1), nloops (0), base1 (false), tmpN (0), lastLine (-1)
+	{ dblSeen = false; resetDeftypes (); }
+	void resetDeftypes () { for (int i = 0; i < 26; i++) { deftype[i].ty = TY_NUM; deftype[i].nt = NT_SNG; deftype[i].flen = 0; } }
+	~Compiler () { for (int i = 0; i < toks.n; i++) delete [] toks[i].s; }
+
+	// ---- errors ---------------------------------------------------------------------------
+	void fail (const char *msg, int line = -1)
+	{
+		if (failed) return;
+		failed = true;
+		err->line = line >= 0 ? line : (pos < toks.n ? toks[pos].line : (toks.n ? toks[toks.n - 1].line : 0));
+		bscpy (err->msg, msg, sizeof err->msg);
+	}
+	void fail2 (const char *a, const char *b)
+	{
+		char m[120]; int n = 0;
+		for (int i = 0; a[i] && n < 118; i++) m[n++] = a[i];
+		for (int i = 0; b[i] && n < 118; i++) m[n++] = b[i];
+		m[n] = 0; fail (m);
+	}
+
+	// ---- lexer -----------------------------------------------------------------------------
+	void addTok (int t, int line) { Tok k; k.t = t; k.line = line; k.num = 0; k.id[0] = 0; k.s = 0; k.sl = 0; k.op = 0; k.dbl = false; toks.push (k); }
+	static bool idStart (char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_'; }
+	static bool idChar (char c) { return idStart (c) || (c >= '0' && c <= '9') || c == '.'; }
+
+	void lex (const char *s)
+	{
+		int line = 1, i = 0;
+		while (s[i] && !failed)
+		{
+			char c = s[i];
+			if (c == ' ' || c == '\t' || c == '\r') { i++; continue; }
+			if (c == '\n') { addTok (T_NL, line); line++; i++; continue; }
+			if (c == '\'') { while (s[i] && s[i] != '\n') i++; continue; }
+			if ((c >= '0' && c <= '9') || (c == '.' && s[i + 1] >= '0' && s[i + 1] <= '9') || (c == '&' && (bup (s[i + 1]) == 'H' || bup (s[i + 1]) == 'O' || bup (s[i + 1]) == 'B')))
+			{
+				int used = 0; double v = parseNum (s + i, &used);
+				if (used == 0) used = 1;
+				int sig = 0; bool lead = true;		// > 7 significant digits = a DOUBLE literal
+				for (int j = 0; j < used; j++)
+				{
+					char d = s[i + j];
+					if (d == 'E' || d == 'e' || d == 'D' || d == 'd') break;
+					if (d >= '0' && d <= '9') { if (d != '0') lead = false; if (!lead) sig++; }
+				}
+				bool dbl = sig > 7 || (c != '&' && (s[i + used - 1] == 'D' || s[i + used - 1] == 'd' || s[i + used] == '#'));
+				for (int j = 0; j < used; j++) if (s[i + j] == 'D' || s[i + j] == 'd') dbl = c != '&';
+				i += used;
+				while (s[i] == '!' || s[i] == '#' || s[i] == '%' || s[i] == '&') i++;	// type suffix
+				addTok (T_NUM, line); toks[toks.n - 1].num = v; toks[toks.n - 1].dbl = dbl;
+				continue;
+			}
+			if (c == '"')
+			{
+				int st = ++i; while (s[i] && s[i] != '"' && s[i] != '\n') i++;
+				addTok (T_STR, line);
+				Tok &k = toks[toks.n - 1];
+				k.sl = i - st; k.s = new char[k.sl + 1];
+				for (int j = 0; j < k.sl; j++) k.s[j] = to437 (s[st + j]);	// the editor writes Latin-1
+				k.s[k.sl] = 0;
+				if (s[i] == '"') i++;
+				continue;
+			}
+			if (idStart (c))
+			{
+				char id[48]; int n = 0;
+				while (idChar (s[i])) { if (n < 46) id[n++] = bup (s[i]); i++; }
+				if (s[i] == '$' || s[i] == '%' || s[i] == '&' || s[i] == '!' || s[i] == '#') { if (n < 47) id[n++] = s[i]; i++; }
+				id[n] = 0;
+				if (const char *al = aliasOf (id)) bscpy (id, al, 48);	// (a dialect's alias: the word it stands for)
+				else if (dialect && (dialect->aliases || dialect->aliases2))	// (... or the word before a dot: "CECI.n" is THIS.n)
+				{
+					int d = 0; while (id[d] && id[d] != '.') d++;
+					if (id[d] == '.' && d > 0)
+					{
+						char head[48], rest[48]; bscpy (rest, id + d, 48); bscpy (head, id, 48); head[d] = 0;
+						const char *h = aliasOf (head);
+						if (h && bslen (h) + bslen (rest) < 47) { bscpy (id, h, 48); bscpy (id + bslen (h), rest, 48 - bslen (h)); }
+					}
+				}
+				if (dialect && dialect->twoWords && toks.n > 0 && toks[toks.n - 1].t == T_ID && toks[toks.n - 1].line == line)
+				{							// "ELSE IF" -> ELSEIF, "END WHILE" -> WEND, a statement's first words
+					Tok &pv = toks[toks.n - 1];
+					bool first = toks.n < 2 || toks[toks.n - 2].t == T_NL || (toks[toks.n - 2].t == T_OP && toks[toks.n - 2].op == ':');
+					if (first && bseq (pv.id, "ELSE") && bseq (id, "IF")) { bscpy (pv.id, "ELSEIF", 48); continue; }
+					if (first && bseq (pv.id, "END") && bseq (id, "WHILE")) { bscpy (pv.id, "WEND", 48); continue; }
+				}
+				if (bseq (id, "REM")) { while (s[i] && s[i] != '\n') i++; continue; }
+				addTok (T_ID, line); bscpy (toks[toks.n - 1].id, id, 48);
+				if (bseq (id, "DATA"))				// the rest of the line, raw
+				{
+					while (s[i] == ' ' || s[i] == '\t') i++;
+					int st = i; while (s[i] && s[i] != '\n') i++;
+					int e = i; while (e > st && (s[e - 1] == ' ' || s[e - 1] == '\r' || s[e - 1] == '\t')) e--;
+					addTok (T_DATA, line);
+					Tok &k = toks[toks.n - 1];
+					k.sl = e - st; k.s = new char[k.sl + 1];
+					for (int j = 0; j < k.sl; j++) k.s[j] = to437 (s[st + j]);
+					k.s[k.sl] = 0;
+				}
+				continue;
+			}
+			int op = c;
+			if (c == '.' && idStart (s[i + 1]) && i > 0 && s[i - 1] == ')') { i++; addTok (T_OP, line); toks[toks.n - 1].op = '.'; continue; }	// a(i).field
+			if (c == '<' && s[i + 1] == '=') { op = O_LE; i++; }
+			else if (c == '<' && s[i + 1] == '>') { op = O_NE; i++; }
+			else if (c == '>' && s[i + 1] == '=') { op = O_GE; i++; }
+			else if (c == '=' && s[i + 1] == '<') { op = O_LE; i++; }
+			else if (c == '=' && s[i + 1] == '>') { op = O_GE; i++; }
+			if (!(c == '+' || c == '-' || c == '*' || c == '/' || c == '\\' || c == '^' || c == '=' || c == '<' || c == '>' ||
+			      c == '(' || c == ')' || c == ',' || c == ';' || c == ':' || c == '#' || c == '?'))
+			{
+				char m[40] = "Unexpected character: ";
+				int n = bslen (m); m[n++] = c; m[n] = 0;
+				fail (m, line); return;
+			}
+			i++;
+			addTok (T_OP, line); toks[toks.n - 1].op = op;
+		}
+		addTok (T_NL, line);
+		addTok (T_EOF, line);
+	}
+
+	// ---- token helpers ---------------------------------------------------------------------
+	Tok &cur () { return toks[pos]; }
+	Tok &peek (int k = 1) { int p = pos + k; return toks[p < toks.n ? p : toks.n - 1]; }
+	void next () { if (pos < toks.n - 1) pos++; }
+	bool isOp (int op) { return cur ().t == T_OP && cur ().op == op; }
+	bool isKw (const char *k) { return cur ().t == T_ID && bseq (cur ().id, k); }
+	bool peekKw (int k, const char *w) { return peek (k).t == T_ID && bseq (peek (k).id, w); }
+	bool acceptOp (int op) { if (isOp (op)) { next (); return true; } return false; }
+	bool acceptKw (const char *k) { if (isKw (k)) { next (); return true; } return false; }
+	void expectOp (int op)
+	{
+		if (acceptOp (op)) return;
+		char m[24] = "Expected ' '"; m[10] = (char) (op == O_LE ? '<' : op); fail (m);
+	}
+	void expectKw (const char *k) { if (!acceptKw (k)) fail2 ("Expected ", k); }
+	bool endOfStmt () { return cur ().t == T_NL || cur ().t == T_EOF || isOp (':') || isKw ("ELSE"); }
+	static bool isKeyword (const char *id)
+	{
+		for (int i = 0; KEYWORDS[i]; i++) if (bseq (KEYWORDS[i], id)) return true;
+		if (findExt (id)) return true;
+		if (dialect && dialect->repeat && bseq (id, "REPEAT")) return true;
+		return false;
+	}
+
+	// ---- emission ----------------------------------------------------------------------------
+	int pc () { return P->code.n; }
+	void emit (int a) { P->code.push (a); }
+	void emit2 (int a, int b) { emit (a); emit (b); }
+	void emit3 (int a, int b, int c) { emit (a); emit (b); emit (c); }
+	int  emitJump (int op) { emit (op); emit (0); return pc () - 1; }
+	void patch (int at, int target) { P->code[at] = target; }
+	int  numConst (double v)
+	{
+		for (int i = 0; i < P->nums.n; i++) if (P->nums[i] == v) return i;
+		P->nums.push (v); return P->nums.n - 1;
+	}
+	int  strConst (const char *s, int len)
+	{
+		char *c = new char[len + 1]; bmcpy (c, s, len); c[len] = 0;
+		P->strs.push (c); P->strl.push (len); return P->strs.n - 1;
+	}
+	void pushNum (double v) { emit2 (OP_NUM, numConst (v)); }
+	void markLine ()
+	{
+		int l = cur ().line;
+		if (l != lastLine) { LineMark m; m.pc = pc (); m.line = l; P->lines.push (m); lastLine = l; }
+	}
+
+	// ---- symbols --------------------------------------------------------------------------------
+	// The type a name gets from its suffix ($ % & ! #) or, without one, from DEFtype.
+	TSpec nameSpec (const char *name)
+	{
+		TSpec t; t.ty = TY_NUM; t.nt = NT_SNG; t.flen = 0;
+		int n = bslen (name);
+		char c = n ? name[n - 1] : 0;
+		if (c == '$') t.ty = TY_STR;
+		else if (c == '%') t.nt = NT_I64;
+		else if (c == '&') t.nt = NT_LNG;
+		else if (c == '!') t.nt = NT_R32;
+		else if (c == '#') t.nt = NT_DBL;
+		else if (name[0] >= 'A' && name[0] <= 'Z') t = deftype[name[0] - 'A'];
+		return t;
+	}
+	int suffixTy (const char *name) { return nameSpec (name).ty; }
+	static void makeKey (char *key, const char *name, bool arr)
+	{
+		bscpy (key, name, 48);
+		if (arr) { int n = bslen (key); key[n] = '('; key[n + 1] = ')'; key[n + 2] = 0; }
+	}
+	static bool keyIsArr (const char *key) { int n = bslen (key); return n >= 2 && key[n - 1] == ')' && key[n - 2] == '('; }
+	static unsigned char slotKind (const Sym &s)
+	{
+		bool arr = keyIsArr (s.key);
+		if (s.ty >= TY_REC) return (unsigned char) (arr ? K_RECARR : K_REC);
+		return (unsigned char) ((arr ? 2 : 0) + (s.ty == TY_STR ? 1 : 0));
+	}
+	static int slotExt (const Sym &s) { return s.ty >= TY_REC ? s.ty - TY_REC : s.flen; }
+	int findIn (Vec<Sym> &v, const char *key) { for (int i = 0; i < v.n; i++) if (bseq (v[i].key, key)) return i; return -1; }
+
+	// A variable: global or local slot + type. decl: its declared type (DIM AS), or 0.
+	struct Var { bool global; int slot; int ty; int nt; int flen; };
+	static Var symVar (const Sym &s, bool global) { Var r; r.global = global; r.slot = s.slot; r.ty = s.ty; r.nt = s.nt; r.flen = s.flen; return r; }
+	// Names without a suffix: a variable DIMmed AS a type keeps its bare name; the others
+	// get the suffix of their DEFtype ("i" after DEFINT I = "i%", QBasic's rule).
+	static bool hasSuffix (const char *name) { int n = bslen (name); char c = n ? name[n - 1] : 0; return c == '$' || c == '%' || c == '&' || c == '!' || c == '#'; }
+	void implicitKey (char *key, const char *name, bool arr)
+	{
+		char nm[52]; bscpy (nm, name, 48);
+		if (!hasSuffix (name) && name[0] != '~')
+		{
+			TSpec t = nameSpec (name);
+			int n = bslen (nm);
+			nm[n] = t.ty == TY_STR ? '$' : t.nt == NT_INT || t.nt == NT_I64 ? '%' : t.nt == NT_LNG ? '&' : ntWide (t.nt) ? '#' : '!';
+			nm[n + 1] = 0;
+		}
+		makeKey (key, nm, arr);
+	}
+	// A symbol of v by its exact (declared) key, else by its implicit one.
+	int findSym (Vec<Sym> &v, const char *name, bool arr)
+	{
+		char key[52]; makeKey (key, name, arr);
+		int i = findIn (v, key);
+		if (i >= 0 || hasSuffix (name)) return i;
+		implicitKey (key, name, arr);
+		return findIn (v, key);
+	}
+	Var var (const char *name, bool arr, const TSpec *decl = 0)
+	{
+		char key[52];
+		if (decl) makeKey (key, name, arr); else implicitKey (key, name, arr);
+		TSpec ts = decl ? *decl : nameSpec (name);
+		if (curProc >= 0)
+		{
+			int i = findSym (lsyms, name, arr);
+			if (i >= 0) return symVar (lsyms[i], lsyms[i].global);
+			int g = findSym (gsyms, name, arr);
+			if (g >= 0 && (gsyms[g].shared || pdecls[curProc].defFn)) return symVar (gsyms[g], true);
+			if (!pdecls[curProc].defFn)
+			{
+				Sym s; bscpy (s.key, key, 52); s.slot = nlocals++; s.ty = ts.ty; s.nt = ts.nt; s.flen = ts.flen;
+				s.shared = false; s.global = false; lsyms.push (s);
+				return symVar (s, false);
+			}
+		}
+		int g = findSym (gsyms, name, arr);
+		if (g >= 0) return symVar (gsyms[g], true);
+		Sym s; bscpy (s.key, key, 52); s.slot = P->nglobals++; s.ty = ts.ty; s.nt = ts.nt; s.flen = ts.flen;
+		s.shared = false; s.global = true; gsyms.push (s);
+		return symVar (s, true);
+	}
+	// An existing variable (no creation).
+	bool findVar (const char *name, bool arr, Var &out)
+	{
+		if (curProc >= 0)
+		{
+			int i = findSym (lsyms, name, arr);
+			if (i >= 0) { out = symVar (lsyms[i], lsyms[i].global); return true; }
+			int g = findSym (gsyms, name, arr);
+			if (g >= 0 && (gsyms[g].shared || pdecls[curProc].defFn)) { out = symVar (gsyms[g], true); return true; }
+			return false;
+		}
+		int g = findSym (gsyms, name, arr);
+		if (g >= 0) { out = symVar (gsyms[g], true); return true; }
+		return false;
+	}
+	bool varExists (const char *name, bool arr) { Var v; return findVar (name, arr, v); }
+	Var tempVar (int ty)
+	{
+		char nm[24] = "~T"; int n = 2, v = ++tmpN; char t[12]; int k = 0;
+		while (v) { t[k++] = (char) ('0' + v % 10); v /= 10; }
+		while (k) nm[n++] = t[--k];
+		if (ty == TY_STR) nm[n++] = '$';
+		nm[n] = 0;
+		TSpec ts; ts.ty = ty; ts.nt = NT_DBL; ts.flen = 0;
+		if (curProc >= 0 && pdecls[curProc].defFn)		// (a DEF FN body has no locals of its own)
+		{
+			Sym s; bscpy (s.key, nm, 52); s.slot = nlocals++; s.ty = ty; s.nt = NT_DBL; s.flen = 0; s.shared = false; s.global = false;
+			lsyms.push (s);
+			return symVar (s, false);
+		}
+		return var (nm, false, &ts);
+	}
+	void loadVar (const Var &v) { emit2 (v.global ? OP_LDG : OP_LDL, v.slot); if (v.ty == TY_NUM && ntWide (v.nt)) dblSeen = true; }
+	void storeVar (const Var &v) { emit2 (v.global ? OP_STG : OP_STL, v.slot); }
+	// Before a store: INTEGER / LONG round and check the range, fixed strings pad / cut.
+	void convFor (int ty, int nt, int flen)
+	{
+		if (ty == TY_NUM && ntWhole (nt)) emit2 (OP_CONV, nt);
+		else if (ty == TY_STR && flen > 0) emit2 (OP_FIXSTR, flen);
+	}
+
+	// ---- user TYPEs ------------------------------------------------------------------------------
+	int findType (const char *n)
+	{
+		for (int i = 0; i < P->types.n; i++) if (bseq (P->types[i].name, n)) return i;
+		for (int i = 0; i < kalias.n; i++) if (bseq (kalias[i].name, n)) return kalias[i].type;
+		return -1;
+	}
+	int findField (int type, const char *n)
+	{
+		const TypeInfo &t = P->types[type];
+		for (int i = 0; i < t.nf; i++) if (bseq (fnames[t.first + i].name, n)) return t.first + i;
+		return -1;
+	}
+	int specSize (const TSpec &t) { return t.ty >= TY_REC ? (tkind (t.ty) ? 4 : P->types[t.ty - TY_REC].size) : t.ty == TY_STR ? t.flen : ntSize (t.nt); }
+	// TK_TYPE (also for numbers and strings), TK_CLASS or TK_IFACE; isObj: a reference (an object, NOTHING).
+	int tkind (int ty) { return ty >= TY_REC ? P->types[ty - TY_REC].kind : TK_TYPE; }
+	bool isObj (int ty) { return ty == TY_NIL || tkind (ty) != TK_TYPE; }
+	// AS <type> at pos p of the token array (prescan) or the current token: fills ts.
+	bool typeName (const char *w, TSpec &ts)
+	{
+		ts.ty = TY_NUM; ts.nt = NT_SNG; ts.flen = 0;
+		if (bseq (w, "STRING")) { ts.ty = TY_STR; return true; }
+		// (two kinds of numbers: INTEGER and REAL; their sizes where the bytes count; QBasic's LONG, SINGLE, DOUBLE)
+		if (bseq (w, "INTEGER") || bseq (w, "INTEGER64") || bseq (w, "_INTEGER64")) { ts.nt = NT_I64; return true; }
+		if (bseq (w, "REAL") || bseq (w, "REAL64")) return true;
+		if (bseq (w, "BYTE")) { ts.nt = NT_BYTE; return true; }		// (0..255: a character's code, a byte of a file or of a structure)
+		if (bseq (w, "INTEGER16")) { ts.nt = NT_INT; return true; }
+		if (bseq (w, "INTEGER32") || bseq (w, "LONG")) { ts.nt = NT_LNG; return true; }
+		if (bseq (w, "REAL32") || bseq (w, "SINGLE")) { ts.nt = NT_R32; return true; }
+		if (bseq (w, "DOUBLE")) { ts.nt = NT_DBL; return true; }
+		int t = findType (w);
+		if (t >= 0) { ts.ty = TY_REC + t; return true; }
+		return false;
+	}
+	// TYPE name / field AS type ... / END TYPE -- collected before the code (prescan). And the classes:
+	// CLASS name [EXTENDS parent] [IMPLEMENTS i1, i2] / fields / END CLASS (the parent's fields first),
+	// INTERFACE name / SUB ... / FUNCTION ... / END INTERFACE (its methods: prescan).
+	bool stmtStart (int i) { return i == 0 || toks[i - 1].t == T_NL || (toks[i - 1].t == T_OP && toks[i - 1].op == ':'); }
+	// "CLASS name" / "INTERFACE name" opening a block at token i (the words are not reserved).
+	bool classHeader (int i)
+	{
+		if (i + 2 >= toks.n || toks[i].t != T_ID || toks[i + 1].t != T_ID) return false;
+		bool cls = bseq (toks[i].id, "CLASS");
+		if (!cls && !bseq (toks[i].id, "INTERFACE")) return false;
+		const Tok &a = toks[i + 2];
+		return a.t == T_NL || (a.t == T_OP && a.op == ':') || (cls && a.t == T_ID && (bseq (a.id, "EXTENDS") || bseq (a.id, "IMPLEMENTS")));
+	}
+	// The fields from token p to END <endWord> (p left after it), added to P->fields; false on an error.
+	bool scanFields (int &p, const char *endWord, int open, int first, int &nf, int &size)
+	{
+		for (;;)
+		{
+			while (toks[p].t == T_NL || (toks[p].t == T_OP && toks[p].op == ':')) p++;
+			if (toks[p].t == T_EOF) { pos = open; fail (bseq (endWord, "TYPE") ? "TYPE without END TYPE" : "CLASS without END CLASS"); return false; }
+			if (toks[p].t == T_ID && bseq (toks[p].id, "END") && toks[p + 1].t == T_ID && bseq (toks[p + 1].id, endWord)) { p += 2; return true; }
+			if (toks[p].t != T_ID || toks[p + 1].t != T_ID || !bseq (toks[p + 1].id, "AS") || toks[p + 2].t != T_ID)
+			{ pos = p; fail ("TYPE field: name AS type expected"); return false; }
+			if (bseq (toks[p + 2].id, "SUB") || bseq (toks[p + 2].id, "FUNCTION"))
+			{	// a method's declaration (optional): the SUB Class.name / FUNCTION Class.name defines it
+				if (bseq (endWord, "TYPE")) { pos = p; fail2 ("A TYPE only holds data -- methods are for a CLASS: ", toks[p].id); return false; }
+				while (toks[p].t != T_NL && toks[p].t != T_EOF && !(toks[p].t == T_OP && toks[p].op == ':')) p++;
+				continue;
+			}
+			FName fnm; bscpy (fnm.name, toks[p].id, 48);
+			if (bseq (endWord, "CLASS"))
+				for (int i = first; i < P->fields.n; i++)
+					if (bseq (fnames[i].name, fnm.name)) { pos = p; fail2 ("Duplicate definition: ", fnm.name); return false; }
+			TSpec ts;
+			if (!typeName (toks[p + 2].id, ts)) { pos = p + 2; fail2 ("Unknown type: ", toks[p + 2].id); return false; }
+			p += 3;
+			if (ts.ty == TY_STR && toks[p].t == T_OP && toks[p].op == '*' && toks[p + 1].t == T_NUM) { ts.flen = (int) toks[p + 1].num; p += 2; }
+			fnm.ty = ts.ty; fnm.nt = ts.nt; fnm.flen = ts.flen;
+			FieldInfo fi;
+			fi.kind = ts.ty >= TY_REC ? FK_REC : ts.ty == TY_STR ? (ts.flen > 0 ? FK_FSTR : FK_VSTR) : ntKind (ts.nt);
+			fi.len = ts.flen; fi.sub = ts.ty >= TY_REC ? ts.ty - TY_REC : 0;
+			size += specSize (ts);
+			P->fields.push (fi); fnames.push (fnm); nf++;
+		}
+	}
+	void prescanTypes ()
+	{
+		// the classes and interfaces first, by name: a field may be of a class defined further down
+		for (int i = 0; i < toks.n && !failed; i++)
+		{
+			if (!stmtStart (i) || !classHeader (i)) continue;
+			if (findType (toks[i + 1].id) >= 0) { pos = i + 1; fail2 ("Duplicate definition: ", toks[i + 1].id); return; }
+			TypeInfo ti; bscpy (ti.name, toks[i + 1].id, 48); ti.kind = bseq (toks[i].id, "CLASS") ? TK_CLASS : TK_IFACE;
+			P->types.push (ti);
+			CInfo ci; ci.nif = 0; ci.done = ti.kind == TK_IFACE; ci.abstr = false; ci.tok = i; cinfo.push (ci);
+		}
+		for (int i = 0; i < toks.n && !failed; i++)
+		{
+			if (!stmtStart (i) || toks[i].t != T_ID) continue;
+			if (classHeader (i))
+			{
+				int t = findType (toks[i + 1].id), p = i + 2;
+				if (P->types[t].kind == TK_IFACE)
+				{
+					while (toks[p].t != T_EOF && !(toks[p].t == T_ID && bseq (toks[p].id, "END") && toks[p + 1].t == T_ID && bseq (toks[p + 1].id, "INTERFACE"))) p++;
+					if (toks[p].t == T_EOF) { pos = i; fail ("INTERFACE without its END"); return; }
+					i = p + 1;
+					continue;
+				}
+				int parent = -1;
+				if (toks[p].t == T_ID && bseq (toks[p].id, "EXTENDS"))
+				{
+					parent = toks[p + 1].t == T_ID ? findType (toks[p + 1].id) : -1;
+					pos = p + 1;
+					if (parent < 0 || P->types[parent].kind != TK_CLASS) { fail ("EXTENDS: a class is expected"); return; }
+					if (!cinfo[parent].done) { fail2 ("The parent class must be defined before its children: ", P->types[parent].name); return; }
+					p += 2;
+				}
+				if (toks[p].t == T_ID && bseq (toks[p].id, "IMPLEMENTS"))
+				{
+					p++;
+					for (;;)
+					{
+						int it = toks[p].t == T_ID ? findType (toks[p].id) : -1;
+						pos = p;
+						if (it < 0 || P->types[it].kind != TK_IFACE) { fail ("IMPLEMENTS: an interface is expected"); return; }
+						if (cinfo[t].nif >= 8) { fail ("A class implements at most 8 interfaces"); return; }
+						cinfo[t].ifaces[cinfo[t].nif++] = it;
+						p++;
+						if (toks[p].t == T_OP && toks[p].op == ',') p++; else break;
+					}
+				}
+				if (toks[p].t != T_NL && !(toks[p].t == T_OP && toks[p].op == ':')) { pos = p; fail ("Syntax error in CLASS"); return; }
+				int first = P->fields.n, nf = 0, size = 0;
+				if (parent >= 0)				// the parent's fields come first: the same places
+				{
+					int pf = P->types[parent].first, pn = P->types[parent].nf;
+					for (int k = 0; k < pn; k++) { FieldInfo fi = P->fields[pf + k]; FName fn = fnames[pf + k]; P->fields.push (fi); fnames.push (fn); }
+					nf = pn; size = P->types[parent].size;
+				}
+				if (!scanFields (p, "CLASS", i, first, nf, size)) return;
+				P->types[t].first = first; P->types[t].nf = nf; P->types[t].size = size; P->types[t].parent = parent;
+				cinfo[t].done = true;
+				i = p - 1;
+				continue;
+			}
+			if (!bseq (toks[i].id, "TYPE") || toks[i + 1].t != T_ID) continue;
+			if (findType (toks[i + 1].id) >= 0) { pos = i + 1; fail2 ("Duplicate definition: ", toks[i + 1].id); return; }
+			TypeInfo ti; bscpy (ti.name, toks[i + 1].id, 48); ti.first = P->fields.n; ti.nf = 0; ti.size = 0;
+			int p = i + 2;
+			if (!scanFields (p, "TYPE", i, ti.first, ti.nf, ti.size)) return;
+			P->types.push (ti);
+			CInfo ci; ci.nif = 0; ci.done = true; ci.abstr = false; ci.tok = i; cinfo.push (ci);
+			i = p - 1;
+		}
+	}
+	// After prescan: every class's table of virtual methods (its parent's, the overrides in place, its own
+	// after), the tables of the interfaces it implements, its destructor.
+	static const char *afterDot (const char *n) { const char *d = last_dot (n); return d ? d + 1 : n; }
+	bool sameSig (const PDecl &a, const PDecl &b)
+	{
+		if (a.isFunc != b.isFunc || a.np != b.np || a.retTy != b.retTy || (a.retTy == TY_NUM && a.retNt != b.retNt)) return false;
+		for (int i = 1; i < a.np; i++)
+			if (a.pty[i] != b.pty[i] || a.parr[i] != b.parr[i] || (a.pty[i] == TY_NUM && a.pnt[i] != b.pnt[i])) return false;
+		return true;
+	}
+	void buildClasses ()
+	{
+		for (int t = 0; t < P->types.n && !failed; t++)
+		{
+			if (P->types[t].kind != TK_CLASS)
+			{
+				for (int pi = 0; pi < pdecls.n; pi++)
+					if (pdecls[pi].cls == t && (pdecls[pi].mod & (PM_VIRTUAL | PM_OVERRIDE | PM_ABSTRACT)))
+					{ pos = pdecls[pi].tok; fail2 ("VIRTUAL / OVERRIDE / ABSTRACT are for a CLASS's methods: ", pdecls[pi].name); return; }
+				continue;
+			}
+			int parent = P->types[t].parent, vt = P->vtab.n, nvt = 0;
+			if (parent >= 0)
+				for (int k = 0; k < P->types[parent].nvt; k++) { int v = P->vtab[P->types[parent].vt + k]; P->vtab.push (v); nvt++; }
+			for (int pi = 0; pi < pdecls.n; pi++)
+			{
+				PDecl &d = pdecls[pi];
+				if (d.cls != t) continue;
+				pos = d.tok;
+				const char *m = afterDot (d.name);
+				if (bseq (m, "NEW") || bseq (m, "DELETE"))
+				{
+					if (d.mod || d.isFunc) { fail2 ("A constructor / destructor is a plain SUB: ", d.name); return; }
+					if (bseq (m, "DELETE")) { if (d.np != 1) { fail2 ("A destructor has no parameters: ", d.name); return; } P->types[t].dtor = pi; }
+					continue;
+				}
+				int slot = -1;
+				for (int k = 0; k < nvt; k++) if (bseq (afterDot (pdecls[P->vtab[vt + k]].name), m)) slot = k;
+				if (slot >= 0)
+				{
+					if (!(d.mod & PM_OVERRIDE)) { fail2 ("OVERRIDE is needed (the parent's method is virtual): ", d.name); return; }
+					if (!sameSig (d, pdecls[P->vtab[vt + slot]])) { fail2 ("OVERRIDE: not the parameters / result of the parent's method: ", d.name); return; }
+					P->vtab[vt + slot] = pi; d.vslot = slot;
+				}
+				else if (d.mod & PM_OVERRIDE) { fail2 ("OVERRIDE: no virtual method of this name in the parents: ", d.name); return; }
+				else if (d.mod & (PM_VIRTUAL | PM_ABSTRACT)) { d.vslot = nvt++; P->vtab.push (pi); }
+			}
+			P->types[t].vt = vt; P->types[t].nvt = nvt;
+			for (int k = 0; k < nvt; k++) if (pdecls[P->vtab[vt + k]].mod & PM_ABSTRACT) cinfo[t].abstr = true;
+			// the interfaces: the parent's, then its own
+			CInfo own = cinfo[t];
+			cinfo[t].nif = 0;
+			for (int pass = 0; pass < 2; pass++)
+			{
+				if (pass == 0 && parent < 0) continue;
+				CInfo src = pass == 0 ? cinfo[parent] : own;
+				for (int k = 0; k < src.nif; k++)
+				{
+					bool have = false;
+					for (int j = 0; j < cinfo[t].nif; j++) if (cinfo[t].ifaces[j] == src.ifaces[k]) have = true;
+					if (have) continue;
+					if (cinfo[t].nif >= 8) { pos = cinfo[t].tok; fail2 ("A class implements at most 8 interfaces: ", P->types[t].name); return; }
+					cinfo[t].ifaces[cinfo[t].nif++] = src.ifaces[k];
+				}
+			}
+			P->types[t].it = P->itab.n; P->types[t].nit = cinfo[t].nif;
+			for (int k = 0; k < cinfo[t].nif; k++) { P->itab.push (cinfo[t].ifaces[k]); P->itab.push (0); }
+			for (int k = 0; k < cinfo[t].nif; k++)
+			{
+				int it = cinfo[t].ifaces[k];
+				P->itab[P->types[t].it + 2 * k + 1] = P->vtab.n;
+				for (int qi = 0; qi < pdecls.n; qi++)
+				{
+					if (pdecls[qi].cls != it) continue;
+					int pi = findMethod (TY_REC + t, afterDot (pdecls[qi].name));
+					if (pi < 0 || !sameSig (pdecls[pi], pdecls[qi]))
+					{
+						char m[120]; int n = 0;
+						for (const char *c = P->types[t].name; *c && n < 40; c++) m[n++] = *c;
+						for (const char *c = pi < 0 ? " does not implement " : " implements with other parameters: "; *c; c++) m[n++] = *c;
+						for (const char *c = pdecls[qi].name; *c && n < 118; c++) m[n++] = *c;
+						m[n] = 0; pos = cinfo[t].tok; fail (m); return;
+					}
+					if (pdecls[pi].mod & PM_ABSTRACT) cinfo[t].abstr = true;
+					P->vtab.push (pi);
+				}
+			}
+		}
+	}
+
+	// "TYPE.NAME": the TYPE of a method's name (the part before its last dot), else -1.
+	int methodType (const char *name)
+	{
+		int dot = -1; for (int i = 0; name[i]; i++) if (name[i] == '.') dot = i;
+		if (dot <= 0) return -1;
+		char t[48]; bscpy (t, name, dot + 1);
+		return findType (t);
+	}
+	// The method (a SUB / FUNCTION Type.name) m of record type ty, or -1.
+	int findMethod (int ty, const char *m)
+	{
+		if (ty < TY_REC) return -1;
+		for (int t = ty - TY_REC; t >= 0; t = P->types[t].parent)	// (a class: its own, else its parents')
+		{
+			char n[100]; int k = 0;
+			for (const char *p = P->types[t].name; *p && k < 47; p++) n[k++] = *p;
+			n[k++] = '.';
+			for (const char *p = m; *p && k < 98; p++) n[k++] = *p;
+			n[k] = 0;
+			if (k > 47) return -1;
+			int pi = findProc (n);
+			if (pi >= 0) return pi;
+		}
+		return -1;
+	}
+	int findConst (const char *n) { for (int i = 0; i < consts.n; i++) if (bseq (consts[i].name, n)) return i; return -1; }
+	int findProc (const char *n) { for (int i = 0; i < pdecls.n; i++) if (bseq (pdecls[i].name, n)) return i; return -1; }
+	const BFn *findBuiltin (const char *n)
+	{
+		for (int i = 0; BFNS[i].name; i++)
+			if (bseq (BFNS[i].name, n)) return !kitsOn && BFNS[i].id >= B_ALLOC && BFNS[i].id <= B_ADDRESSOF ? 0 : &BFNS[i];
+		return 0;
+	}
+
+	// ---- kits (#import) -----------------------------------------------------------------------------
+	// "#import filekit" (at the start of a line, any case): the kit's functions become FILEKIT.<name>.
+	void prescanImports ()
+	{
+		for (int i = 0; i + 2 < toks.n && !failed; i++)
+		{
+			if (!(i == 0 || toks[i - 1].t == T_NL) || toks[i].t != T_OP || toks[i].op != '#') continue;
+			if (toks[i + 1].t != T_ID || !bseq (toks[i + 1].id, "IMPORT")) continue;
+			pos = i + 2;
+			if (toks[i + 2].t != T_ID) { fail ("A kit's name is expected after #import"); return; }
+			importKit (toks[i + 2].id);
+		}
+	}
+	static bool kitRet (char c) { for (const char *k = "viulbchwfds"; *k; k++) if (*k == c) return true; return false; }
+	static bool kitArg (char c) { for (const char *k = "ipcsfdILFD"; *k; k++) if (*k == c) return true; return false; }
+	void importKit (const char *upper)
+	{
+		char low[32]; int n = 0;
+		for (; upper[n] && n < 31; n++) low[n] = (char) (upper[n] >= 'A' && upper[n] <= 'Z' ? upper[n] + 32 : upper[n]);
+		low[n] = 0;
+		for (int i = 0; i < P->kits.n; i++) if (bseq (P->kits[i].name, low)) return;
+		int len = 0;
+		char *txt = kitSource ? kitSource (low, &len) : 0;
+		if (!txt) { fail2 (kitSource ? "#import: no such kit (no SD:/lib/<name>.bi): " : "#import: no kits on this system: ", low); return; }
+		KitRef kr; bscpy (kr.name, low, sizeof kr.name); kr.minVer = 0;
+		int kit = P->kits.n; P->kits.push (kr);
+		kitsOn = true;
+		// a function a line: <name> <place> <result> <arguments or -> [<C name>]; '#': a comment;
+		// a structure: struct <name> <size> [<C name>], then its fields: field <name> <place> <kind> [<n> | <structure>]
+		int curT = -1;					// the structure whose fields follow
+		auto kitName = [&] (char *out, const char *w) { int k = 0; for (int i = 0; upper[i] && k < 30; i++) out[k++] = upper[i]; out[k++] = '.'; for (int i = 0; w[i] && k < 47; i++) out[k++] = bup (w[i]); out[k] = 0; };
+		auto number = [] (const char *w, int *v) { *v = 0; if (!w[0]) return false; for (int i = 0; w[i]; i++) { if (w[i] < '0' || w[i] > '9' || i > 8) return false; *v = *v * 10 + (w[i] - '0'); } return true; };
+		for (int at = 0; at < len; )
+		{
+			char w[5][64]; int nw = 0;
+			while (at < len && txt[at] != '\n')
+			{
+				while (at < len && (txt[at] == ' ' || txt[at] == '\t' || txt[at] == '\r')) at++;
+				if (at >= len || txt[at] == '\n') break;
+				int k = 0;
+				while (at < len && txt[at] != ' ' && txt[at] != '\t' && txt[at] != '\r' && txt[at] != '\n') { if (nw < 5 && k < 63) w[nw][k++] = txt[at]; at++; }
+				if (nw < 5) w[nw++][k] = 0;
+			}
+			at++;
+			if (nw < 3 || w[0][0] == '#') continue;
+			int v = 0;
+			if (bseq (w[0], "struct") && !number (w[1], &v) && number (w[2], &v))
+			{
+				TypeInfo ti; kitName (ti.name, w[1]); ti.first = P->fields.n; ti.nf = 0; ti.size = v;
+				curT = -1;
+				if (findType (ti.name) >= 0) continue;
+				curT = P->types.n; P->types.push (ti);
+				CInfo ci; ci.nif = 0; ci.done = true; ci.abstr = false; ci.tok = 0; cinfo.push (ci);
+				KitStruct ks; ks.type = curT; ks.size = v; ks.first = P->kflds.n; P->kstructs.push (ks);
+				if (nw > 3) { KAlias al; kitName (al.name, w[3]); al.type = curT; if (!bseq (al.name, ti.name)) kalias.push (al); }
+				continue;
+			}
+			if (bseq (w[0], "field") && !number (w[1], &v) && nw >= 4 && number (w[2], &v))
+			{
+				if (curT < 0) continue;
+				char k = w[3][0];
+				FieldInfo fi; fi.kind = FK_DBL; fi.len = 0; fi.sub = 0;
+				FName fn; for (int i = 0; i < 48; i++) fn.name[i] = 0;
+				for (int i = 0; w[1][i] && i < 47; i++) fn.name[i] = bup (w[1][i]);
+				fn.ty = TY_NUM; fn.nt = NT_DBL; fn.flen = 0;	// (a number as it is: no rounding at a store)
+				KitFld kf; kf.off = v; kf.kind = k; kf.n = 0;
+				bool ok = !w[3][1] && v <= P->types[curT].size;
+				if (k == 'a') { ok = ok && nw > 4 && number (w[4], &kf.n) && kf.n > 0 && v + kf.n <= P->types[curT].size; fi.kind = FK_VSTR; fn.ty = TY_STR; fn.nt = 0; }
+				else if (k == 't')
+				{
+					char sn[48]; if (nw > 4) kitName (sn, w[4]);
+					int st = nw > 4 ? findType (sn) : -1;
+					kf.n = st >= 0 ? P->kitStruct (st) : -1;
+					ok = ok && kf.n >= 0 && st != curT;
+					if (ok) { fi.kind = FK_REC; fi.sub = st; fn.ty = TY_REC + st; fn.nt = 0; }
+				}
+				else { bool known = false; for (const char *c = "bchwiulfd"; *c; c++) if (*c == k) known = true; ok = ok && known; if (k == 'f') { fi.kind = FK_SNG; fn.nt = NT_R32; } }
+				if (!ok) continue;				// (a kind of a later BASIC: no field, its bytes kept)
+				P->fields.push (fi); fnames.push (fn); P->kflds.push (kf); P->types[curT].nf++;
+				continue;
+			}
+			curT = -1;
+			if (nw < 4) continue;
+			KDecl d; d.kit = kit; d.used = -1; d.slot = 0;
+			bool ok = w[1][0] != 0;
+			for (int i = 0; w[1][i]; i++) { if (w[1][i] < '0' || w[1][i] > '9' || i > 6) { ok = false; break; } d.slot = d.slot * 10 + (w[1][i] - '0'); }
+			if (!ok || w[2][1] || !kitRet (w[2][0])) continue;
+			d.ret = w[2][0];
+			const char *a = bseq (w[3], "-") ? "" : w[3];
+			if (bslen (a) > KIT_MAXARGS) continue;
+			for (int i = 0; a[i]; i++) if (!kitArg (a[i])) ok = false;
+			if (!ok) continue;
+			bscpy (d.args, a, sizeof d.args);
+			int k = 0;
+			for (int i = 0; upper[i] && k < 30; i++) d.name[k++] = upper[i];
+			d.name[k++] = '.';
+			int k0 = k;
+			for (int i = 0; w[0][i] && k < 63; i++) d.name[k++] = bup (w[0][i]);
+			d.name[k] = 0;
+			bmcpy (d.cname, d.name, k0); k = k0;
+			const char *cn = nw > 4 ? w[4] : w[0];
+			for (int i = 0; cn[i] && k < 63; i++) d.cname[k++] = bup (cn[i]);
+			d.cname[k] = 0;
+			kdecls.push (d);
+		}
+		delete [] txt;
+	}
+	// A kit's function by its name ("FILEKIT.COPY") -> its place in kdecls; -1: not a kit's name; -2: the
+	// kit is imported but has no such function.
+	int findKitFn (const char *id)
+	{
+		if (!kitsOn) return -1;
+		int dot = 0;
+		while (id[dot] && id[dot] != '.') dot++;
+		if (!id[dot]) return -1;
+		bool kit = false;
+		for (int i = 0; i < P->kits.n && !kit; i++)
+		{
+			const char *kn = P->kits[i].name; int j = 0;
+			while (j < dot && kn[j] && bup (kn[j]) == id[j]) j++;
+			kit = j == dot && !kn[j];
+		}
+		if (!kit) return -1;
+		for (int i = 0; i < kdecls.n; i++) if (bseq (kdecls[i].name, id) || bseq (kdecls[i].cname, id)) return i;
+		return -2;
+	}
+	// After a name at the start of a statement: is "(" the call's own parenthesis -- Name (a, b) -- and
+	// not the first argument's -- Name (a + b) * 2, c?
+	bool callParens ()
+	{
+		if (!isOp ('(')) return false;
+		int depth = 0, p = pos;
+		for (; p < toks.n && toks[p].t != T_NL && toks[p].t != T_EOF; p++)
+		{
+			if (toks[p].t == T_OP && toks[p].op == '(') depth++;
+			else if (toks[p].t == T_OP && toks[p].op == ')' && --depth == 0) break;
+		}
+		Tok &a = toks[p + 1 < toks.n ? p + 1 : p];
+		return depth == 0 && (a.t == T_NL || a.t == T_EOF || (a.t == T_OP && a.op == ':') || (a.t == T_ID && bseq (a.id, "ELSE")));
+	}
+	// A call of a kit's function (after its name): the arguments by the function's types, OP_KCALL.
+	// BYREF variable, where the function fills a number (I L F D): the variable gets what it wrote.
+	int kitCall (int ki, bool asExpr, bool parens)
+	{
+		KDecl &d = kdecls[ki];
+		int want = bslen (d.args), argc = 0;
+		bool dOuter = dblSeen;
+		bool open = parens && acceptOp ('(');
+		if (asExpr && !open && want > 0) { fail2 ("Expected '(' after ", d.name); return TY_NUM; }
+		if (open ? !isOp (')') : !asExpr && !endOfStmt ())
+			for (;;)
+			{
+				char k = d.args[argc < want ? argc : want];
+				if (!k) { fail2 ("Too many arguments to ", d.name); return TY_NUM; }
+				// a variable of one of the kits' structures where the function takes a pointer: the structure
+				bool rec = false;
+				Tok &t0 = cur ();
+				if (k == 'p' && t0.t == T_ID && !findBuiltin (t0.id) && findProc (t0.id) < 0 && findConst (t0.id) < 0 && !isKeyword (t0.id)
+				    && findKitFn (t0.id) == -1 && !bseq (t0.id, "ADDRESSOF") && !isBaseCall ())
+				{
+					// ... a whole array of them (name or name ()): the C array, its elements in order
+					Var av; bool empty = peekIsOp ('(') && peek (2).t == T_OP && peek (2).op == ')';
+					Tok &after = peek (empty ? 3 : 1);
+					bool ends = after.t == T_NL || after.t == T_EOF || (after.t == T_OP && (after.op == ',' || after.op == ')' || after.op == ':'));
+					if (ends && findVar (t0.id, true, av) && av.ty >= TY_REC && P->kitStruct (av.ty - TY_REC) >= 0 && (empty || !varExists (t0.id, false)))
+					{
+						next (); if (empty) { next (); next (); }
+						loadVar (av); rec = true;
+					}
+				}
+				if (!rec && k == 'p' && t0.t == T_ID && !findBuiltin (t0.id) && findProc (t0.id) < 0 && findConst (t0.id) < 0 && !isKeyword (t0.id)
+				    && findKitFn (t0.id) == -1 && !bseq (t0.id, "ADDRESSOF") && !isBaseCall ())
+				{
+					int at = pc (), savePos = pos;
+					Ref r;
+					if (parseRef (r) && !r.fnResult && r.method < 0 && (isOp (',') || isOp (')') || endOfStmt ()) && r.ty >= TY_REC && P->kitStruct (r.ty - TY_REC) >= 0)
+					{ emitAddr (r); rec = true; }
+					else { if (failed) return TY_NUM; P->code.n = at; pos = savePos; }
+				}
+				if (rec) {}
+				else if (isKw ("BYREF") && peek ().t == T_ID)
+				{
+					next ();
+					if (!(k == 'I' || k == 'L' || k == 'F' || k == 'D')) { fail2 ("BYREF: this argument is not a number the function fills: ", d.name); return TY_NUM; }
+					Ref r;
+					if (!parseRef (r)) return TY_NUM;
+					if (r.fnResult || r.method >= 0 || r.ty != TY_NUM) { fail ("BYREF needs a numeric variable"); return TY_NUM; }
+					emitAddr (r);
+				}
+				else
+				{
+					int ty = expr ();
+					if (failed) return TY_NUM;
+					if (k == 's') { if (ty != TY_STR && ty != TY_NUM) { fail2 ("A string is expected: ", d.name); return TY_NUM; } }
+					else needNum (ty);
+				}
+				argc++;
+				if (!acceptOp (',')) break;
+			}
+		if (open) expectOp (')');
+		if (failed) return TY_NUM;
+		if (argc != want) { fail2 ("Wrong number of arguments to ", d.name); return TY_NUM; }
+		if (asExpr && d.ret == 'v') { fail2 ("This function gives no value: ", d.name); return TY_NUM; }
+		if (d.used < 0)
+		{
+			KitFn f; f.kit = d.kit; f.slot = d.slot; f.ret = d.ret;
+			bscpy (f.args, d.args, sizeof f.args); bscpy (f.name, d.name, sizeof f.name);
+			d.used = P->kfns.n; P->kfns.push (f);
+			if (P->kits[d.kit].minVer < d.slot + 1) P->kits[d.kit].minVer = d.slot + 1;
+		}
+		emit3 (OP_KCALL, d.used, argc);
+		if (!asExpr && d.ret != 'v') emit (OP_POP);
+		dblSeen = dOuter || d.ret == 'l' || d.ret == 'd';	// (a pointer: every digit of it)
+		return d.ret == 's' ? TY_STR : TY_NUM;
+	}
+
+	// ---- pre-scan: SUB / FUNCTION / DEF FN headers (+ DEFtype, which types their names) -----------
+	// DEFINT A-C, X-Z (at pos p, just after the keyword): apply to deftype.
+	int applyDeftype (int p, const TSpec &ts)
+	{
+		for (;;)
+		{
+			if (toks[p].t != T_ID) break;
+			char a = toks[p].id[0], b = a; p++;
+			if (toks[p].t == T_OP && toks[p].op == '-' && toks[p + 1].t == T_ID) { b = toks[p + 1].id[0]; p += 2; }
+			for (char c = a; c <= b; c++) if (c >= 'A' && c <= 'Z') deftype[c - 'A'] = ts;
+			if (toks[p].t == T_OP && toks[p].op == ',') p++; else break;
+		}
+		return p;
+	}
+	bool deftypeWord (const char *w, TSpec &ts)
+	{
+		ts.ty = TY_NUM; ts.nt = NT_SNG; ts.flen = 0;
+		if (bseq (w, "DEFINT")) { ts.nt = NT_I64; return true; }
+		if (bseq (w, "DEFLNG")) { ts.nt = NT_LNG; return true; }
+		if (bseq (w, "DEFSNG")) return true;
+		if (bseq (w, "DEFDBL")) { ts.nt = NT_DBL; return true; }
+		if (bseq (w, "DEFSTR")) { ts.ty = TY_STR; return true; }
+		return false;
+	}
+	// A SUB / FUNCTION / DEF FN header whose name is at token p: its PDecl. iface >= 0: a method declared
+	// in INTERFACE iface (named Interface.Name).
+	void procHeader (int p, bool isFn, bool isDef, int mod, int iface, int islot)
+	{
+		if (toks[p].t != T_ID) { pos = p; fail ("Expected a name after SUB / FUNCTION"); return; }
+		char name[48]; bscpy (name, toks[p].id, 48);
+		if (isDef && bseq (name, "FN") && toks[p + 1].t == T_ID)		// DEF FN name
+		{
+			int n = 2; for (int k = 0; toks[p + 1].id[k] && n < 46; k++) name[n++] = toks[p + 1].id[k];
+			name[n] = 0; p++;
+		}
+		if (iface >= 0)
+		{
+			char full[100]; int n = 0;
+			for (const char *c = P->types[iface].name; *c; c++) full[n++] = *c;
+			full[n++] = '.';
+			for (const char *c = name; *c; c++) full[n++] = *c;
+			full[n] = 0;
+			if (n > 47 || last_dot (name)) { pos = p; fail ("Bad method name in INTERFACE"); return; }
+			bscpy (name, full, 48);
+		}
+		if (findProc (name) >= 0) { pos = p; fail2 ("Duplicate definition: ", name); return; }
+		PDecl d; bscpy (d.name, name, 48); d.isFunc = isFn || isDef; d.defFn = isDef;
+		TSpec rs = nameSpec (d.name); d.retTy = rs.ty; d.retNt = rs.nt; d.np = 0;
+		int mt = isDef ? -1 : methodType (name);
+		d.cls = mt; d.mod = mod; d.vslot = -1; d.islot = islot; d.tok = p;
+		if (mod && mt < 0) { pos = p; fail2 ("VIRTUAL / OVERRIDE / ABSTRACT are for a CLASS's methods: ", name); return; }
+		if (mt >= 0 && iface < 0 && P->types[mt].kind == TK_IFACE) { pos = p; fail2 ("An interface's methods are declared in its INTERFACE block: ", name); return; }
+		if (mt >= 0 && P->types[mt].kind == TK_TYPE) { pos = p; fail2 ("A TYPE only holds data -- methods are for a CLASS: ", name); return; }
+		if (mt >= 0)				// SUB Class.name: a method; THIS = the object
+		{
+			bscpy (d.pname[0], "THIS", 48); d.pty[0] = TY_REC + mt; d.pnt[0] = NT_SNG; d.parr[0] = false; d.np = 1;
+		}
+		p++;
+		if (toks[p].t == T_OP && toks[p].op == '(')
+		{
+			p++;
+			while (!(toks[p].t == T_OP && toks[p].op == ')') && toks[p].t != T_NL && toks[p].t != T_EOF)
+			{
+				if (toks[p].t == T_ID && bseq (toks[p].id, "BYVAL")) p++;
+				if (toks[p].t != T_ID || d.np >= 16) { pos = p; fail ("Bad parameter list"); return; }
+				bscpy (d.pname[d.np], toks[p].id, 48);
+				TSpec ps = nameSpec (toks[p].id);
+				d.parr[d.np] = false;
+				p++;
+				if (toks[p].t == T_OP && toks[p].op == '(' && toks[p + 1].t == T_OP && toks[p + 1].op == ')') { d.parr[d.np] = true; p += 2; }
+				if (toks[p].t == T_ID && bseq (toks[p].id, "AS"))
+				{
+					p++;
+					if (toks[p].t == T_ID)
+					{
+						if (!typeName (toks[p].id, ps)) { pos = p; fail2 ("Unknown type: ", toks[p].id); return; }
+						p++;
+					}
+				}
+				d.pty[d.np] = ps.ty; d.pnt[d.np] = ps.nt;
+				d.np++;
+				if (toks[p].t == T_OP && toks[p].op == ',') p++;
+			}
+		}
+		if (toks[p].t == T_OP && toks[p].op == ')') p++;
+		if (isFn && toks[p].t == T_ID && bseq (toks[p].id, "AS") && toks[p + 1].t == T_ID)
+		{
+			TSpec ts; if (typeName (toks[p + 1].id, ts)) { d.retTy = ts.ty; d.retNt = ts.nt; }
+		}
+		pdecls.push (d);
+		ProcInfo pi; bscpy (pi.name, d.name, 48); pi.isFunc = d.isFunc; pi.retTy = d.retTy; pi.nparams = d.np; pi.entry = -1; pi.nlocals = 0; pi.kindOff = 0;
+		P->procs.push (pi);
+	}
+	// VIRTUAL / OVERRIDE / ABSTRACT before SUB / FUNCTION at token i: its PM_*, else 0.
+	int procModifier (int i)
+	{
+		if (i + 1 >= toks.n || toks[i].t != T_ID || toks[i + 1].t != T_ID || !(bseq (toks[i + 1].id, "SUB") || bseq (toks[i + 1].id, "FUNCTION"))) return 0;
+		return bseq (toks[i].id, "VIRTUAL") ? PM_VIRTUAL : bseq (toks[i].id, "OVERRIDE") ? PM_OVERRIDE : bseq (toks[i].id, "ABSTRACT") ? PM_ABSTRACT : 0;
+	}
+	void prescan ()
+	{
+		for (int i = 0; i < toks.n && !failed; i++)
+		{
+			if (!stmtStart (i) || toks[i].t != T_ID) continue;
+			TSpec dts;
+			if (deftypeWord (toks[i].id, dts)) { applyDeftype (i + 1, dts); continue; }
+			if (classHeader (i) && bseq (toks[i].id, "INTERFACE"))		// its methods: SUB Name (...) / FUNCTION Name (...) AS type
+			{
+				int it = findType (toks[i + 1].id), n = 0, p = i + 2;
+				for (; !failed; p++)
+				{
+					if (toks[p].t == T_NL || (toks[p].t == T_OP && toks[p].op == ':')) continue;
+					if (toks[p].t == T_ID && bseq (toks[p].id, "END")) break;
+					bool fn = toks[p].t == T_ID && bseq (toks[p].id, "FUNCTION");
+					if (!fn && !(toks[p].t == T_ID && bseq (toks[p].id, "SUB"))) { pos = p; fail ("INTERFACE: SUB / FUNCTION declarations are expected"); return; }
+					procHeader (p + 1, fn, false, PM_IFACE, it, n++);
+					while (toks[p + 1].t != T_NL && toks[p + 1].t != T_EOF && !(toks[p + 1].t == T_OP && toks[p + 1].op == ':')) p++;
+				}
+				i = p + 1;
+				continue;
+			}
+			int mod = procModifier (i), j = mod ? i + 1 : i;
+			bool isSub = bseq (toks[j].id, "SUB"), isFn = bseq (toks[j].id, "FUNCTION");
+			bool isDef = !mod && bseq (toks[i].id, "DEF") && toks[i + 1].t == T_ID && toks[i + 1].id[0] == 'F' && toks[i + 1].id[1] == 'N';
+			if (!isSub && !isFn && !isDef) continue;
+			procHeader (j + 1, isFn, isDef, mod, -1, -1);
+		}
+		resetDeftypes ();			// the main pass re-applies them in order
+	}
+
+	// ---- expressions ----------------------------------------------------------------------------
+	void needNum (int t) { if (t != TY_NUM) fail ("Type mismatch (a number is expected)"); }
+	void needStr (int t) { if (t != TY_STR) fail ("Type mismatch (a string is expected)"); }
+
+	int expr () { return eImp (); }
+	int eImp () { int t = eEqv (); while (!failed && isKw ("IMP")) { next (); needNum (t); needNum (eEqv ()); emit (OP_IMP); } return t; }
+	int eEqv () { int t = eXor (); while (!failed && isKw ("EQV")) { next (); needNum (t); needNum (eXor ()); emit (OP_EQV); } return t; }
+	int eXor () { int t = eOr (); while (!failed && isKw ("XOR")) { next (); needNum (t); needNum (eOr ()); emit (OP_XOR); } return t; }
+	int eOr ()  { int t = eAnd (); while (!failed && isKw ("OR")) { next (); needNum (t); needNum (eAnd ()); emit (OP_OR); } return t; }
+	int eAnd () { int t = eNot (); while (!failed && isKw ("AND")) { next (); needNum (t); needNum (eNot ()); emit (OP_AND); } return t; }
+	int eNot ()
+	{
+		if (isKw ("NOT")) { next (); needNum (eNot ()); emit (OP_NOT); return TY_NUM; }
+		return eRel ();
+	}
+	int relop ()
+	{
+		if (cur ().t != T_OP) return 0;
+		switch (cur ().op) { case '=': case '<': case '>': case O_LE: case O_GE: case O_NE: return cur ().op; }
+		return 0;
+	}
+	int eRel ()
+	{
+		int t = eAdd ();
+		if (!failed && isObj (t) && isKw ("IS"))		// x IS Class / x IS NOTHING / a IS b (the same object)
+		{
+			next ();
+			int ty = cur ().t == T_ID ? findType (cur ().id) : -1;
+			if (ty >= 0 && P->types[ty].kind != TK_TYPE && !varExists (cur ().id, false)) { next (); emit2 (OP_ISTYPE, ty); }
+			else
+			{
+				if (!isObj (eAdd ())) { fail ("IS: a class, NOTHING or an object is expected"); return TY_NUM; }
+				emit (OP_SAMEOBJ);
+			}
+			t = TY_NUM;
+		}
+		for (;;)
+		{
+			int op = relop ();
+			if (!op || failed) break;
+			next ();
+			int t2 = eAdd ();
+			if (isObj (t) || isObj (t2)) { fail ("Objects are compared with IS"); return TY_NUM; }
+			if (t != t2) { fail ("Type mismatch in comparison"); return TY_NUM; }
+			int o = 0;
+			switch (op)
+			{
+			case '=': o = t ? OP_SEQ : OP_EQ; break;
+			case O_NE: o = t ? OP_SNE : OP_NE; break;
+			case '<': o = t ? OP_SLT : OP_LT; break;
+			case '>': o = t ? OP_SGT : OP_GT; break;
+			case O_LE: o = t ? OP_SLE : OP_LE; break;
+			case O_GE: o = t ? OP_SGE : OP_GE; break;
+			}
+			emit (o);
+			t = TY_NUM;
+		}
+		return t;
+	}
+	int eAdd ()
+	{
+		int t = eMod ();
+		while (!failed && (isOp ('+') || isOp ('-')))
+		{
+			bool plus = isOp ('+'); next ();
+			int t2 = eMod ();
+			if (plus && t == TY_STR && t2 == TY_STR) emit (OP_CAT);
+			else { needNum (t); needNum (t2); emit (plus ? OP_ADD : OP_SUB); }
+		}
+		return t;
+	}
+	int eMod () { int t = eIdiv (); while (!failed && isKw ("MOD")) { next (); needNum (t); needNum (eIdiv ()); emit (OP_MOD); } return t; }
+	int eIdiv () { int t = eMul (); while (!failed && isOp ('\\')) { next (); needNum (t); needNum (eMul ()); emit (OP_IDIV); } return t; }
+	int eMul ()
+	{
+		int t = eUnary ();
+		while (!failed && (isOp ('*') || isOp ('/')))
+		{
+			bool mul = isOp ('*'); next ();
+			needNum (t); needNum (eUnary ());
+			emit (mul ? OP_MUL : OP_DIV);
+		}
+		return t;
+	}
+	int eUnary ()
+	{
+		if (isOp ('-')) { next (); needNum (eUnary ()); emit (OP_NEG); return TY_NUM; }
+		if (isOp ('+')) { next (); return eUnary (); }
+		return ePow ();
+	}
+	int ePow ()
+	{
+		int t = primary ();
+		while (!failed && isOp ('^'))
+		{
+			next (); needNum (t);
+			if (isOp ('-')) { next (); needNum (primary ()); emit (OP_NEG); }
+			else needNum (primary ());
+			emit (OP_POW);
+		}
+		return t;
+	}
+
+	int primary ()
+	{
+		if (failed) return TY_NUM;
+		Tok &k = cur ();
+		if (k.t == T_NUM) { pushNum (k.num); if (k.dbl) dblSeen = true; next (); return TY_NUM; }
+		if (k.t == T_STR) { emit2 (OP_STR, strConst (k.s, k.sl)); next (); return TY_STR; }
+		if (isOp ('(')) { next (); int t = expr (); expectOp (')'); return t; }
+		if (k.t != T_ID) { fail ("Syntax error in expression"); return TY_NUM; }
+		char name[48]; bscpy (name, k.id, 48);
+		// A builtin function.
+		if (bseq (name, "LBOUND") || bseq (name, "UBOUND"))	// (array [, dimension])
+		{
+			bool lo = bseq (name, "LBOUND"); next ();
+			expectOp ('(');
+			if (cur ().t != T_ID) { fail ("An array name is expected"); return TY_NUM; }
+			Var v = var (cur ().id, true); next ();
+			if (isOp ('(') && peekIsOp (')')) { next (); next (); }
+			loadVar (v);
+			if (acceptOp (',')) needNum (expr ()); else pushNum (1);
+			expectOp (')');
+			emit3 (OP_BI, lo ? B_LBOUND : B_UBOUND, 2);
+			return TY_NUM;
+		}
+		if (bseq (name, "LEN")) { next (); return lenOf (); }
+		if (bseq (name, "POINT") && peekIsOp ('('))		// POINT (x, y) / POINT (n)
+		{
+			next (); next ();
+			needNum (expr ());
+			if (acceptOp (',')) { needNum (expr ()); expectOp (')'); emit3 (OP_BI, B_POINT, 2); }
+			else { expectOp (')'); emit3 (OP_BI, B_POINT1, 1); }
+			return TY_NUM;
+		}
+		if (const ExtWord *xw = findExt (name))
+		{
+			if (xw->kind == 's') { fail2 ("A statement has no value: ", xw->name); return TY_NUM; }
+			next (); return extCall (xw, true);
+		}
+		const BFn *b = findBuiltin (name);
+		if (b) { next (); return callBuiltin (b); }
+		if (kitsOn)
+		{
+			int ki = findKitFn (name);
+			if (ki == -2) { fail2 ("No such function in the kit: ", name); return TY_NUM; }
+			if (ki >= 0) { next (); return kitCall (ki, true, true); }
+			// ADDRESSOF (Name): a SUB / FUNCTION as a function a kit can call
+			if (bseq (name, "ADDRESSOF") && peekIsOp ('('))
+			{
+				next (); next ();
+				int ap = cur ().t == T_ID ? findProc (cur ().id) : -1;
+				if (ap < 0 || pdecls[ap].cls >= 0 || pdecls[ap].defFn) { fail ("ADDRESSOF needs the name of a SUB or a FUNCTION (not a method)"); return TY_NUM; }
+				for (int i = 0; i < pdecls[ap].np; i++)
+					if (pdecls[ap].parr[i] || pdecls[ap].pty[i] >= TY_REC) { fail2 ("A SUB a kit calls takes numbers and strings only: ", pdecls[ap].name); return TY_NUM; }
+				next (); expectOp (')');
+				pushNum (ap); emit3 (OP_BI, B_ADDRESSOF, 1);
+				dblSeen = true;
+				return TY_NUM;
+			}
+		}
+		// A user FUNCTION (inside itself without "(": its own name is the result variable).
+		int pi = findProc (name);
+		if (pi >= 0 && pdecls[pi].isFunc)
+		{
+			if (pdecls[pi].retTy == TY_NUM && ntWide (pdecls[pi].retNt)) dblSeen = true;
+			if (curProc == pi && !peekIsOp ('('))
+			{ next (); emit2 (OP_LDL, 0); return pdecls[pi].retTy; }
+			next ();
+			return postfix (callProc (pi, true));
+		}
+		if (pi >= 0) { fail2 ("A SUB has no value: ", name); return TY_NUM; }
+		int ci = findConst (name);
+		if (ci >= 0)
+		{
+			next ();
+			if (consts[ci].ty == TY_STR) emit2 (OP_STR, consts[ci].sidx); else { pushNum (consts[ci].n); if (consts[ci].dbl) dblSeen = true; }
+			return consts[ci].ty;
+		}
+		if (bseq (name, "NEW") && peek ().t == T_ID && findType (peek ().id) >= 0) return newObject ();
+		if (bseq (name, "NOTHING") && !varExists (name, false)) { next (); emit (OP_NIL); return TY_NIL; }
+		if (isBaseCall ())					// BASE.Method (args): the parent's
+		{
+			int bm = baseMethod ();
+			if (bm < 0) return TY_NUM;
+			if (!pdecls[bm].isFunc) { fail2 ("A SUB has no value: ", pdecls[bm].name); return TY_NUM; }
+			if (pdecls[bm].retTy == TY_NUM && ntWide (pdecls[bm].retNt)) dblSeen = true;
+			return postfix (callMethod (bm, true, true));
+		}
+		if (isKeyword (name)) { fail2 ("Syntax error near ", name); return TY_NUM; }
+		Ref r;
+		if (!parseRef (r)) return TY_NUM;
+		if (r.method >= 0)					// obj.Method (args)
+		{
+			if (!pdecls[r.method].isFunc) { fail2 ("A SUB has no value: ", pdecls[r.method].name); return TY_NUM; }
+			if (pdecls[r.method].retTy == TY_NUM && ntWide (pdecls[r.method].retNt)) dblSeen = true;
+			emitThis (r);
+			return postfix (callMethod (r.method, true));
+		}
+		emitLoad (r);
+		return r.ty;
+	}
+	// After a call that left a record / an object: ".field", ".Method (args)" on it (Make ().Name$).
+	int postfix (int t)
+	{
+		while (!failed && t >= TY_REC && isOp ('.') && peek ().t == T_ID)
+		{
+			next ();
+			char id[48]; bscpy (id, cur ().id, 48); next ();
+			const char *c = id;
+			while (*c && !failed)
+			{
+				char part[48]; int n = 0;
+				while (*c && *c != '.') part[n++] = *c++;
+				part[n] = 0;
+				if (*c == '.') c++;
+				if (t < TY_REC) { fail2 ("Not a record: .", part); return TY_NUM; }
+				int f = findField (t - TY_REC, part);
+				if (f >= 0) { emit2 (OP_FLD, f - P->types[t - TY_REC].first); t = fnames[f].ty; if (t == TY_NUM && ntWide (fnames[f].nt)) dblSeen = true; continue; }
+				int m = findMethod (t, part);
+				if (m < 0) { fail2 ("No such field or method: ", part); return TY_NUM; }
+				if (*c) { fail2 ("A method call ends the name: ", part); return TY_NUM; }
+				if (!pdecls[m].isFunc) { fail2 ("A SUB has no value: ", pdecls[m].name); return TY_NUM; }
+				if (pdecls[m].retTy == TY_NUM && ntWide (pdecls[m].retNt)) dblSeen = true;
+				t = callMethod (m, true);
+			}
+		}
+		return t;
+	}
+
+	// ---- variable references: name [(indices)] [.field ...] --------------------------------------
+	struct Ref { bool global; int slot; bool arr; int nd; int nfld; int fld[8]; int ty, nt, flen; bool fnResult; int method; };	// method: r.Name is a call
+	// Follow ".a.b" (dotted in the name, from `dot`, or '.' tokens) through the record type r.ty.
+	bool fieldPath (Ref &r, const char *dot)
+	{
+		for (;;)
+		{
+			char part[48]; int n = 0;
+			if (dot && *dot == '.')
+			{
+				dot++;
+				while (*dot && *dot != '.' && n < 47) part[n++] = *dot++;
+				part[n] = 0;
+				if (!*dot) dot = 0;
+			}
+			else if (isOp ('.') && peek ().t == T_ID)
+			{
+				next ();
+				const char *id = cur ().id;
+				while (*id && *id != '.' && n < 47) part[n++] = *id++;
+				part[n] = 0;
+				static char rest[48]; bscpy (rest, id, 48);
+				next ();
+				dot = rest[0] ? rest : 0;
+			}
+			else return true;
+			if (r.ty < TY_REC) { fail2 ("Not a record: .", part); return false; }
+			int f = findField (r.ty - TY_REC, part);
+			if (f < 0)
+			{
+				int m = findMethod (r.ty, part);
+				if (m < 0) { fail2 ("No such field or method: ", part); return false; }
+				if (dot || (isOp ('.') && peek ().t == T_ID)) { fail2 ("A method call ends the name: ", part); return false; }
+				r.method = m;				// the record stays r: the object (THIS)
+				return true;
+			}
+			if (r.nfld >= 8) { fail ("Fields nested too deep"); return false; }
+			r.fld[r.nfld++] = f - P->types[r.ty - TY_REC].first;
+			r.ty = fnames[f].ty; r.nt = fnames[f].nt; r.flen = fnames[f].flen;
+		}
+	}
+	// ".a.b.m" from a record type: fields, then a method (p.inner.Move (1) -- not an array).
+	bool endsInMethod (int ty, const char *dot)
+	{
+		while (dot && *dot == '.')
+		{
+			char part[48]; int n = 0; dot++;
+			while (*dot && *dot != '.' && n < 47) part[n++] = *dot++;
+			part[n] = 0;
+			if (ty < TY_REC) return false;
+			int f = findField (ty - TY_REC, part);
+			if (f >= 0) { ty = fnames[f].ty; continue; }
+			return !*dot && findMethod (ty, part) >= 0;
+		}
+		return false;
+	}
+	// Parses a reference at the current ID; emits the array indices (if any).
+	bool parseRef (Ref &r)
+	{
+		Tok &k = cur ();
+		if (k.t != T_ID || isKeyword (k.id) || findBuiltin (k.id) || findConst (k.id) >= 0) { fail ("A variable is expected"); return false; }
+		char name[48]; bscpy (name, k.id, 48); next ();
+		r.arr = false; r.nd = 0; r.nfld = 0; r.fnResult = false; r.method = -1;
+		int pi = findProc (name);
+		if (pi >= 0)
+		{
+			if (pi != curProc || !pdecls[pi].isFunc) { fail2 ("Not a variable: ", name); return false; }
+			r.global = false; r.slot = 0; r.ty = pdecls[pi].retTy; r.nt = pdecls[pi].retNt; r.flen = 0; r.fnResult = true;
+			return true;
+		}
+		// "p.x": a record variable p and its fields (else a plain dotted name, QBasic-style)
+		const char *dot = 0; char dotted[48];
+		for (int i = 1; name[i]; i++)
+			if (name[i] == '.')
+			{
+				char base[48]; bscpy (base, name, i + 1);
+				Var bv;
+				if (findVar (base, false, bv) && bv.ty >= TY_REC && (!isOp ('(') || endsInMethod (bv.ty, name + i)))
+				{ bscpy (dotted, name + i, 48); dot = dotted; name[i] = 0; }
+				break;
+			}
+		if (isOp ('(') && !dot)
+		{
+			next ();
+			int nd = 0;
+			if (!isOp (')'))
+				for (;;) { needNum (expr ()); nd++; if (!acceptOp (',')) break; }
+			expectOp (')');
+			Var v = var (name, true);
+			r.global = v.global; r.slot = v.slot; r.ty = v.ty; r.nt = v.nt; r.flen = v.flen; r.arr = true; r.nd = nd;
+		}
+		else
+		{
+			Var v = var (name, false);
+			r.global = v.global; r.slot = v.slot; r.ty = v.ty; r.nt = v.nt; r.flen = v.flen;
+		}
+		return fieldPath (r, dot);
+	}
+	void emitLoad (const Ref &r)
+	{
+		if (r.arr) emit3 (r.global ? OP_ALDG : OP_ALDL, r.slot, r.nd);
+		else emit2 (r.global ? OP_LDG : OP_LDL, r.slot);
+		for (int i = 0; i < r.nfld; i++) emit2 (OP_FLD, r.fld[i]);
+		if (r.ty == TY_NUM && ntWide (r.nt)) dblSeen = true;
+	}
+	void emitAddr (const Ref &r)
+	{
+		if (r.arr) emit3 (r.global ? OP_AADDRG : OP_AADDRL, r.slot, r.nd);
+		else emit2 (r.global ? OP_REFG : OP_REFL, r.slot);
+		for (int i = 0; i < r.nfld; i++) emit2 (OP_FADDR, r.fld[i]);
+	}
+	// THIS for a method call on r: the object (only a CLASS or an INTERFACE has methods).
+	void emitThis (const Ref &r) { emitLoad (r); }
+	// "BASE.Name" in a class's method: the parent's method, called on THIS without looking at the object's class.
+	bool isBaseCall ()
+	{
+		if (cur ().t != T_ID || curProc < 0 || pdecls[curProc].cls < 0 || P->types[pdecls[curProc].cls].kind != TK_CLASS) return false;
+		const char *id = cur ().id;
+		return id[0] == 'B' && id[1] == 'A' && id[2] == 'S' && id[3] == 'E' && id[4] == '.' && id[5];
+	}
+	// At "BASE.Name": the method (the name consumed, THIS pushed), or -1.
+	int baseMethod ()
+	{
+		int parent = P->types[pdecls[curProc].cls].parent;
+		if (parent < 0) { fail2 ("BASE: this class has no parent: ", P->types[pdecls[curProc].cls].name); return -1; }
+		int m = findMethod (TY_REC + parent, cur ().id + 5);
+		if (m < 0) { fail2 ("No such method in the parent class: ", cur ().id + 5); return -1; }
+		if (pdecls[m].mod & PM_ABSTRACT) { fail2 ("BASE: the parent's method is abstract: ", pdecls[m].name); return -1; }
+		next ();
+		emit2 (OP_LDL, pdecls[curProc].isFunc ? 1 : 0);
+		return m;
+	}
+	// At '(' : is the whole rest of the statement in these parentheses ("Name (a, b)" = "CALL Name (a, b)")?
+	bool restInParens ()
+	{
+		if (!isOp ('(')) return false;
+		int depth = 0, p = pos;
+		for (; p < toks.n && toks[p].t != T_NL && toks[p].t != T_EOF; p++)
+		{
+			if (toks[p].t == T_OP && toks[p].op == '(') depth++;
+			else if (toks[p].t == T_OP && toks[p].op == ')' && --depth == 0) break;
+		}
+		Tok &a = toks[p + 1 < toks.n ? p + 1 : p];
+		return depth == 0 && (a.t == T_NL || a.t == T_EOF || (a.t == T_OP && a.op == ':') || (a.t == T_ID && bseq (a.id, "ELSE")));
+	}
+	// A value of type `from` for a variable / parameter / result of type `to`: the same type, or an object
+	// of a class for its parent's or its interface's type; towards a child class or from / to an interface
+	// it is checked when the program runs (OP_CAST).
+	bool conv (int from, int to, const char *what)
+	{
+		if (from == to && from != TY_NIL) return true;
+		if (from == TY_NIL && tkind (to)) return true;
+		if (tkind (from) && tkind (to))
+		{
+			int a = from - TY_REC, b = to - TY_REC;
+			if (P->isA (a, b)) return true;
+			if (P->types[a].kind == TK_IFACE || P->types[b].kind == TK_IFACE || P->isA (b, a)) { emit2 (OP_CAST, b); return true; }
+		}
+		fail (what);
+		return false;
+	}
+	// A reference (address) of an lvalue, for MID$ / LSET / RSET / GET / PUT / FIELD.
+	bool refAddr (Ref &r) { if (!parseRef (r)) return false; if (r.method >= 0) { fail ("A variable is expected"); return false; } emitAddr (r); return true; }
+
+	// LEN (x): a string's length, or the size in bytes of a numeric variable / record.
+	int lenOf ()
+	{
+		expectOp ('(');
+		int at = pc (), savePos = pos;
+		bool dSave = dblSeen;
+		if (cur ().t == T_ID && !findBuiltin (cur ().id) && findProc (cur ().id) < 0 && findConst (cur ().id) < 0 && !isKeyword (cur ().id))
+		{
+			Ref r;
+			if (parseRef (r) && r.method < 0 && isOp (')') && r.ty != TY_STR)
+			{
+				P->code.n = at;					// a sized variable: a constant
+				TSpec ts; ts.ty = r.ty; ts.nt = r.nt; ts.flen = r.flen;
+				next ();
+				pushNum (specSize (ts));
+				dblSeen = dSave;
+				return TY_NUM;
+			}
+			if (failed) return TY_NUM;
+			P->code.n = at; pos = savePos;
+		}
+		needStr (expr ());
+		expectOp (')');
+		emit3 (OP_BI, B_LEN, 1);
+		dblSeen = dSave;
+		return TY_NUM;
+	}
+	bool peekIsOp (int op) { return peek ().t == T_OP && peek ().op == op; }
+
+	// Builtin call: the arguments (with or without parentheses when there are none).
+	int callBuiltin (const BFn *b)
+	{
+		int argc = 0;
+		const char *spec = b->args;
+		int minA = 0, maxA = 0; bool opt = false;
+		for (int i = 0; spec[i]; i++) { if (spec[i] == '[') { opt = true; continue; } maxA++; if (!opt) minA++; }
+		bool any = spec[0] == '*';
+		bool dOuter = dblSeen, dArgs = false;
+		if (isOp ('('))
+		{
+			next ();
+			if (!isOp (')'))
+				for (;;)
+				{
+					acceptOp ('#');				// INPUT$ (n, #f), EOF (#1)
+					dblSeen = false;
+					int t = expr ();
+					dArgs |= dblSeen;
+					if (!any)
+					{
+						// the argc-th letter of the spec (skipping '[')
+						int idx = 0; char want = 0;
+						for (int i = 0; spec[i]; i++) { if (spec[i] == '[') continue; if (idx == argc) { want = spec[i]; break; } idx++; }
+						if (want == 'N') needNum (t); else if (want == 'S') needStr (t);
+						else if (want == 0) { fail2 ("Too many arguments to ", b->name); return b->ret; }
+					}
+					else if (t >= TY_REC) needNum (t);
+					argc++;
+					if (!acceptOp (',')) break;
+				}
+			expectOp (')');
+		}
+		if (b->id == B_INSTR)
+		{
+			if (argc < 2 || argc > 3) fail ("INSTR needs 2 or 3 arguments");
+		}
+		else if (any) { if (argc != 1) fail2 ("Wrong number of arguments to ", b->name); }
+		else if (argc < minA || argc > maxA) fail2 ("Wrong number of arguments to ", b->name);
+		int id = b->id;
+		if (id == B_STR && dArgs) id = B_STRD;
+		// the result is DOUBLE for CDBL, and for these when an argument is
+		static const int keep[] = { B_ABS, B_SGN, B_INT, B_FIX, B_SQR, B_SIN, B_COS, B_TAN, B_ATN, B_EXP, B_LOG, B_MIN, B_MAX, B_CVD, 0 };
+		bool d = (id == B_CDBL && bseq (b->name, "CDBL")) || id == B_CVD;
+		for (int i = 0; keep[i]; i++) if (keep[i] == id && dArgs) d = true;
+		if (id == B_ALLOC || id == B_PEEKQ || id == B_PEEKD) d = true;	// (a pointer: every digit of it)
+		dblSeen = dOuter || d;
+		emit3 (OP_BI, id, argc);
+		return b->ret;
+	}
+
+	// NEW Type [(args)]: a fresh record, its constructor (SUB Type.new) called on it.
+	int newObject ()
+	{
+		next ();
+		int t = findType (cur ().id); next ();
+		bool cls = P->types[t].kind != TK_TYPE;
+		if (!checkCreate (t)) return TY_NUM;
+		TSpec ts; ts.ty = TY_REC + t; ts.nt = NT_SNG; ts.flen = 0;
+		char nm[24] = "~N"; int n = 2, v = ++tmpN; char dg[12]; int k = 0;
+		while (v) { dg[k++] = (char) ('0' + v % 10); v /= 10; }
+		while (k) nm[n++] = dg[--k];
+		nm[n] = 0;
+		Var tmp = var (nm, false, &ts);
+		emit2 (OP_NEWREC, t);
+		storeVar (tmp);
+		int ci = findMethod (TY_REC + t, "NEW");
+		if (ci >= 0 && (isOp ('(') || pdecls[ci].np == 1))
+		{
+			loadVar (tmp);
+			callMethod (ci, true, true);
+		}
+		else if (cls && isOp ('(') && peekIsOp (')')) { next (); next (); }
+		else if (isOp ('(')) { fail2 ("No constructor (SUB Type.new) for ", P->types[t].name); return TY_NUM; }
+		loadVar (tmp);
+		if (cls) { emit (OP_NIL); storeVar (tmp); }		// (the temporary must not keep the object alive)
+		return TY_REC + t;
+	}
+	// NEW t / DIM v AS t (args): not an interface, not a class with an abstract method left.
+	bool checkCreate (int t)
+	{
+		if (P->types[t].kind == TK_IFACE) { fail2 ("An interface cannot be created: ", P->types[t].name); return false; }
+		if (cinfo[t].abstr) { fail2 ("A class with an ABSTRACT method cannot be created: ", P->types[t].name); return false; }
+		return true;
+	}
+	// Call a method: THIS (the object's reference) is already pushed; then the arguments.
+	// direct: the method named, whatever the object's class (BASE.Name, a constructor).
+	int callMethod (int pi, bool parens, bool direct = false)
+	{
+		const PDecl &d = pdecls[pi];
+		int argc = 1;
+		bool open = parens ? acceptOp ('(') : false;
+		bool hasArgs = open ? !isOp (')') : !parens && !endOfStmt ();
+		if (hasArgs)
+			for (;;)
+			{
+				if (argc >= d.np) { fail2 ("Too many arguments to ", d.name); return d.retTy; }
+				compileArg (d, argc);
+				argc++;
+				if (!acceptOp (',')) break;
+			}
+		if (open) expectOp (')');
+		if (argc != d.np) { fail2 ("Wrong number of arguments to ", d.name); return d.retTy; }
+		if (!direct && (d.mod & PM_IFACE)) { emit (OP_ICALL); emit3 (d.cls, d.islot, argc); }
+		else if (!direct && d.vslot >= 0) emit3 (OP_VCALL, d.vslot, argc);
+		else emit3 (OP_CALL, pi, argc);
+		return d.retTy;
+	}
+	// A method call as a statement: obj.Name args / obj.Name (args) / a(i).Name ... True if it was one.
+	bool methodStatement ()
+	{
+		if (cur ().t != T_ID) return false;
+		bool cand = false;
+		for (const char *c = cur ().id; *c; c++) if (*c == '.') cand = true;
+		if (!cand && peekIsOp ('('))				// a(i).Name
+		{
+			int depth = 0, p = pos + 1;
+			for (; p < toks.n && toks[p].t != T_NL && toks[p].t != T_EOF; p++)
+			{
+				if (toks[p].t == T_OP && toks[p].op == '(') depth++;
+				else if (toks[p].t == T_OP && toks[p].op == ')' && --depth == 0) break;
+			}
+			cand = p + 1 < toks.n && toks[p + 1].t == T_OP && toks[p + 1].op == '.';
+		}
+		if (!cand) return false;
+		int at = pc (), savePos = pos, tmp = tmpN; bool dSave = dblSeen;
+		Ref r;
+		if (parseRef (r) && r.method >= 0)
+		{
+			emitThis (r);
+			if (isOp ('='))					// "obj.Name = v": the property's setter
+			{
+				const char *dot = last_dot (pdecls[r.method].name);
+				char sn[48] = "SETPROP_"; int k = 8; for (const char *c = dot ? dot + 1 : ""; *c && k < 47; c++) sn[k++] = *c; sn[k] = 0;
+				int si = findMethod (r.ty, sn);
+				if (si < 0) { fail2 ("A property without a setter: ", dot ? dot + 1 : ""); return true; }
+				next ();
+				callMethod (si, false);
+				return true;
+			}
+			bool parens = false;
+			if (isOp ('('))					// "obj.Name (a, b)": the whole rest in parentheses
+			{
+				int depth = 0, p = pos;
+				for (; p < toks.n && toks[p].t != T_NL && toks[p].t != T_EOF; p++)
+				{
+					if (toks[p].t == T_OP && toks[p].op == '(') depth++;
+					else if (toks[p].t == T_OP && toks[p].op == ')' && --depth == 0) break;
+				}
+				Tok &a = toks[p + 1 < toks.n ? p + 1 : p];
+				parens = depth == 0 && (a.t == T_NL || a.t == T_EOF || (a.t == T_OP && a.op == ':') || (a.t == T_ID && bseq (a.id, "ELSE")));
+			}
+			callMethod (r.method, parens);
+			if (pdecls[r.method].isFunc) emit (OP_POP);
+			return true;
+		}
+		// not a method call: back to an assignment
+		failed = false; err->line = 0; err->msg[0] = 0;
+		P->code.n = at; pos = savePos; tmpN = tmp; dblSeen = dSave;
+		return false;
+	}
+
+	// Call a SUB / FUNCTION (the name was consumed). parens: arguments are in (...).
+	int callProc (int pi, bool parens)
+	{
+		const PDecl &d = pdecls[pi];
+		int argc = 0;
+		bool open = parens ? acceptOp ('(') : false;
+		bool hasArgs = open ? !isOp (')') : !parens && !endOfStmt ();	// (in an expression: no '(' = no arguments)
+		if (hasArgs)
+			for (;;)
+			{
+				if (argc >= d.np) { fail2 ("Too many arguments to ", d.name); return d.retTy; }
+				compileArg (d, argc);
+				argc++;
+				if (!acceptOp (',')) break;
+			}
+		if (open) expectOp (')');
+		if (argc != d.np) { fail2 ("Wrong number of arguments to ", d.name); return d.retTy; }
+		emit3 (OP_CALL, pi, argc);
+		return d.retTy;
+	}
+	void compileArg (const PDecl &d, int i)
+	{
+		Tok &k = cur ();
+		if (d.parr[i])					// an array: name or name()
+		{
+			if (k.t != T_ID) { fail ("An array is expected"); return; }
+			char name[48]; bscpy (name, k.id, 48); next ();
+			if (isOp ('(') && peekIsOp (')')) { next (); next (); }
+			Var v = var (name, true);
+			if (v.ty != d.pty[i]) { fail ("Type mismatch (array argument)"); return; }
+			loadVar (v);
+			return;
+		}
+		// A variable, array element or record field of the same type -> by reference
+		// (QBasic's rule; a DEF FN takes its arguments by value).
+		// (an object: its reference by value -- assigning the parameter leaves the caller's variable)
+		if (!d.defFn && !tkind (d.pty[i]) && k.t == T_ID && !findBuiltin (k.id) && findProc (k.id) < 0 && findConst (k.id) < 0 && !isKeyword (k.id)
+		    && !(bseq (k.id, "NOTHING") && !varExists (k.id, false)) && !isBaseCall ())
+		{
+			int at = pc (), savePos = pos; bool dSave = dblSeen;
+			Ref r;
+			if (parseRef (r) && !r.fnResult && r.method < 0 && (isOp (',') || isOp (')') || endOfStmt ()) && r.ty == d.pty[i] && (r.ty != TY_NUM || r.nt == d.pnt[i]))
+			{
+				emitAddr (r);
+				return;
+			}
+			if (failed) return;
+			P->code.n = at; pos = savePos; dblSeen = dSave;
+		}
+		int t = expr ();
+		if (failed || !conv (t, d.pty[i], "Type mismatch (argument)")) return;
+		convFor (d.pty[i], d.pnt[i], 0);
+	}
+
+	// ---- constant expressions (CONST) ------------------------------------------------------------
+	bool constPrimary (int *ty, double *n, const char **s, int *sl)
+	{
+		if (isOp ('-')) { next (); if (!constPrimary (ty, n, s, sl) || *ty != TY_NUM) return false; *n = -*n; return true; }
+		if (isOp ('(')) { next (); bool ok = constAdd (ty, n, s, sl); expectOp (')'); return ok; }
+		Tok &k = cur ();
+		if (k.t == T_NUM) { *ty = TY_NUM; *n = k.num; next (); return true; }
+		if (k.t == T_STR) { *ty = TY_STR; *s = k.s; *sl = k.sl; next (); return true; }
+		if (k.t == T_ID)
+		{
+			int ci = findConst (k.id);
+			if (ci < 0) return false;
+			*ty = consts[ci].ty; *n = consts[ci].n;
+			if (*ty == TY_STR) { *s = P->strs[consts[ci].sidx]; *sl = P->strl[consts[ci].sidx]; }
+			next (); return true;
+		}
+		return false;
+	}
+	bool constMul (int *ty, double *n, const char **s, int *sl)
+	{
+		if (!constPrimary (ty, n, s, sl)) return false;
+		while (isOp ('*') || isOp ('/'))
+		{
+			bool mul = isOp ('*'); next ();
+			int t2; double n2; const char *s2; int l2;
+			if (!constPrimary (&t2, &n2, &s2, &l2) || *ty != TY_NUM || t2 != TY_NUM) return false;
+			if (!mul && n2 == 0) return false;
+			*n = mul ? *n * n2 : *n / n2;
+		}
+		return true;
+	}
+	bool constAdd (int *ty, double *n, const char **s, int *sl)
+	{
+		if (!constMul (ty, n, s, sl)) return false;
+		while (isOp ('+') || isOp ('-'))
+		{
+			bool plus = isOp ('+'); next ();
+			int t2; double n2; const char *s2; int l2;
+			if (!constMul (&t2, &n2, &s2, &l2) || *ty != TY_NUM || t2 != TY_NUM) return false;
+			*n = plus ? *n + n2 : *n - n2;
+		}
+		return true;
+	}
+
+	// ---- lvalues ----------------------------------------------------------------------------------
+	// A variable / array element (its indices pushed now) / record field (its reference pushed
+	// now) / the FUNCTION's result; storeLV (after the value) stores it.
+	struct LV { bool global; int slot; int ty; bool arr; int nd; bool ref; int nt; int flen; };
+	bool lvalue (LV &lv)
+	{
+		Ref r;
+		if (!parseRef (r)) return false;
+		if (r.method >= 0) { fail2 ("Not a variable: ", pdecls[r.method].name); return false; }
+		lv.global = r.global; lv.slot = r.slot; lv.ty = r.ty; lv.arr = r.arr; lv.nd = r.nd; lv.nt = r.nt; lv.flen = r.flen;
+		lv.ref = r.nfld > 0;
+		if (lv.ref) emitAddr (r);
+		return true;
+	}
+	void storeLV (const LV &lv)
+	{
+		convFor (lv.ty, lv.nt, lv.flen);
+		if (lv.ref) emit (OP_STREF);
+		else if (lv.arr) emit3 (lv.global ? OP_ASTG : OP_ASTL, lv.slot, lv.nd);
+		else emit2 (lv.global ? OP_STG : OP_STL, lv.slot);
+	}
+	void loadLV (const LV &lv)		// (only for scalars)
+	{ emit2 (lv.global ? OP_LDG : OP_LDL, lv.slot); }
+
+	// ---- labels / jumps -----------------------------------------------------------------------------
+	void defineLabel (const char *name)
+	{
+		for (int i = 0; i < labels.n; i++)
+			if (labels[i].proc == curProc && bseq (labels[i].name, name)) { fail2 ("Duplicate label: ", name); return; }
+		Label l; bscpy (l.name, name, 48); l.pc = pc (); l.proc = curProc; l.dataIdx = P->data.n;
+		labels.push (l);
+		if (name[0] >= '0' && name[0] <= '9') { NumLabel nl; nl.pc = pc (); nl.value = (int) parseNum (name, 0); P->numLabels.push (nl); }
+	}
+	void jumpToLabel (int op) { labelRef (op, false); }
+	// Emits op + a label's pc (patched later). module: the label is in the main module
+	// (ON ERROR / ON TIMER / ON KEY / RESUME / RUN handlers).
+	void labelRef (int op, bool module, int extra = -999)
+	{
+		char name[48];
+		if (cur ().t == T_NUM) { formatNum (cur ().num, name); next (); }
+		else if (cur ().t == T_ID) { bscpy (name, cur ().id, 48); next (); }
+		else { fail ("A label is expected"); return; }
+		emit (op);
+		if (extra != -999) emit (extra);
+		emit (0);
+		Fix f; f.at = pc () - 1; bscpy (f.name, name, 48); f.proc = module ? -1 : curProc; f.line = cur ().line; f.data = false;
+		fixes.push (f);
+	}
+	void resolveLabels (int proc)
+	{
+		for (int i = 0; i < fixes.n && !failed; i++)
+		{
+			if (fixes[i].proc != proc) continue;
+			int found = -1;
+			for (int j = 0; j < labels.n; j++)
+				if (labels[j].proc == proc && bseq (labels[j].name, fixes[i].name)) { found = j; break; }
+			if (found < 0 && fixes[i].data)			// RESTORE may name a module-level label
+				for (int j = 0; j < labels.n; j++) if (bseq (labels[j].name, fixes[i].name)) { found = j; break; }
+			if (found < 0) { fail2 ("Label not defined: ", fixes[i].name); err->line = fixes[i].line; return; }
+			P->code[fixes[i].at] = fixes[i].data ? labels[found].dataIdx : labels[found].pc;
+		}
+	}
+
+	// ---- statements -----------------------------------------------------------------------------------
+	bool atTerm (int mask)
+	{
+		if (cur ().t != T_ID) return false;
+		const char *w = cur ().id;
+		if ((mask & TM_ELSE) && bseq (w, "ELSE")) return true;
+		if ((mask & TM_ELSEIF) && bseq (w, "ELSEIF")) return true;
+		if ((mask & TM_LOOP) && bseq (w, "LOOP")) return true;
+		if ((mask & TM_WEND) && bseq (w, "WEND")) return true;
+		if ((mask & TM_NEXT) && bseq (w, "NEXT")) return true;
+		if ((mask & TM_CASE) && bseq (w, "CASE")) return true;
+		if (bseq (w, "END"))
+		{
+			if ((mask & TM_ENDIF) && peekKw (1, "IF")) return true;
+			if ((mask & TM_ENDSELECT) && peekKw (1, "SELECT")) return true;
+			if ((mask & TM_ENDSUB) && peekKw (1, "SUB")) return true;
+			if ((mask & TM_ENDFUNC) && peekKw (1, "FUNCTION")) return true;
+			if ((mask & TM_ENDDEF) && peekKw (1, "DEF")) return true;
+			if ((mask & TM_ENDREPEAT) && peekKw (1, "REPEAT")) return true;
+		}
+		return false;
+	}
+
+	// "obj.Name" where obj is a record / an object variable: a method call ("obj.Draw: ..."), not a label.
+	bool recordDotted (const char *id)
+	{
+		for (int i = 1; id[i]; i++)
+			if (id[i] == '.')
+			{
+				char base[48]; bscpy (base, id, i + 1);
+				Var v;
+				return (findVar (base, false, v) && v.ty >= TY_REC) || isBaseCall ();
+			}
+		return false;
+	}
+	// Statements until a terminator in mask (left current) or EOF.
+	void block (int mask)
+	{
+		while (!failed)
+		{
+			bool lineStart = pos == 0 || toks[pos - 1].t == T_NL;
+			if (cur ().t == T_NL) { next (); continue; }
+			if (isOp (':')) { next (); continue; }
+			if (cur ().t == T_EOF) return;
+			if (lineStart)				// labels: "10 PRINT", "loop1:"
+			{
+				if (cur ().t == T_NUM) { char nm[32]; formatNum (cur ().num, nm); defineLabel (nm); next (); continue; }
+				if (cur ().t == T_ID && peekIsOp (':') && !isKeyword (cur ().id) && findProc (cur ().id) < 0 && !findBuiltin (cur ().id) && !recordDotted (cur ().id))
+				{ defineLabel (cur ().id); next (); next (); continue; }
+			}
+			if (atTerm (mask)) return;
+			if (isKw ("END") && (peekKw (1, "IF") || peekKw (1, "SELECT") || peekKw (1, "SUB") || peekKw (1, "FUNCTION") || peekKw (1, "DEF") || peekKw (1, "TYPE") || (dialect && dialect->repeat && peekKw (1, "REPEAT"))))
+			{ fail2 ("Unexpected END ", peek ().id); return; }
+			if (isKw ("ELSE") || isKw ("ELSEIF") || isKw ("LOOP") || isKw ("WEND") || isKw ("NEXT") || isKw ("CASE"))
+			{ fail2 (cur ().id, " without its block"); return; }
+			statement ();
+			if (failed) return;
+			if (atTerm (mask)) continue;			// "NEXT j, i" re-queues a NEXT
+			if (!(cur ().t == T_NL || cur ().t == T_EOF || isOp (':')))
+			{
+				if (isKw ("ELSE")) { fail ("ELSE without IF"); return; }
+				fail ("Syntax error (end of statement expected)"); return;
+			}
+		}
+	}
+
+	void statement ()
+	{
+		markLine ();
+		int start = pc ();
+		statement1 ();
+		StmtRange r; r.start = start; r.end = pc ();
+		if (r.end > r.start) P->stmts.push (r);
+	}
+	void skipStatement () { while (!endOfStmt () || isKw ("ELSE")) { if (isKw ("ELSE") && endOfStmt ()) break; next (); } }
+	void statement1 ()
+	{
+		if (isOp ('?')) { next (); stPrint (false); return; }
+		if (isOp ('#') && peekKw (1, "IMPORT")) { next (); next (); next (); return; }	// (#import kit: prescanImports)
+		Tok &k = cur ();
+		if (k.t != T_ID) { fail ("Syntax error"); return; }
+		const char *w = k.id;
+		if (const ExtWord *xw = findExt (w))			// a dialect's word (before the built-ins: a turtle's COLOR)
+		{
+			if (xw->kind != 's') { fail2 ("A function has no statement form: ", xw->name); return; }
+			next (); extCall (xw, false); return;
+		}
+		if (dialect && dialect->repeat && bseq (w, "REPEAT")) { next (); stRepeat (); return; }
+		if (bseq (w, "PRINT") || bseq (w, "LPRINT")) { next (); stPrint (false); return; }
+		if (bseq (w, "WRITE")) { next (); stPrint (true); return; }
+		if (bseq (w, "LET")) { next (); stAssign (); return; }
+		if (bseq (w, "IF")) { next (); stIf (); return; }
+		if (bseq (w, "FOR")) { next (); stFor (); return; }
+		if (bseq (w, "WHILE")) { next (); stWhile (); return; }
+		if (bseq (w, "DO")) { next (); stDo (); return; }
+		if (bseq (w, "SELECT")) { next (); stSelect (); return; }
+		if (bseq (w, "GOTO")) { next (); jumpToLabel (OP_JMP); return; }
+		if (bseq (w, "GOSUB")) { next (); jumpToLabel (OP_GOSUB); return; }
+		if (bseq (w, "RETURN")) { next (); stReturn (); return; }
+		if (bseq (w, "ON")) { next (); stOn (); return; }
+		if (bseq (w, "RESUME")) { next (); stResume (); return; }
+		if (bseq (w, "ERROR")) { next (); needNum (expr ()); emit3 (OP_ST, S_ERROR, 1); return; }
+		if (bseq (w, "DIM") || bseq (w, "REDIM")) { next (); stDim (); return; }
+		if (bseq (w, "SHARED")) { next (); stShared (); return; }
+		if (bseq (w, "STATIC")) { next (); stStatic (); return; }
+		if (bseq (w, "COMMON")) { next (); stCommon (); return; }
+		if (bseq (w, "ERASE")) { next (); stErase (); return; }
+		if (bseq (w, "CONST")) { next (); stConst (); return; }
+		if (bseq (w, "TYPE")) { stType ("TYPE"); return; }
+		if (classHeader (pos)) { stType (bseq (w, "CLASS") ? "CLASS" : "INTERFACE"); return; }
+		{
+			int mod = procModifier (pos);
+			if (mod == PM_ABSTRACT) { while (!(cur ().t == T_NL || cur ().t == T_EOF)) next (); return; }	// (no body)
+			if (mod) { next (); stProc (); return; }
+		}
+		if (bseq (w, "INPUT")) { next (); stInput (); return; }
+		if (bseq (w, "LINE") && peekKw (1, "INPUT")) { next (); next (); stLineInput (); return; }
+		if (bseq (w, "LINE")) { next (); stLine (); return; }
+		if (bseq (w, "READ")) { next (); stRead (); return; }
+		if (bseq (w, "DATA")) { next (); stData (); return; }
+		if (bseq (w, "RESTORE")) { next (); stRestore (); return; }
+		if (bseq (w, "OPEN")) { next (); stOpen (); return; }
+		if (bseq (w, "CLOSE")) { next (); stClose (); return; }
+		if (bseq (w, "GET") || bseq (w, "PUT")) { bool get = bseq (w, "GET"); next (); stGetPut (get); return; }
+		if (bseq (w, "FIELD")) { next (); stField (); return; }
+		if (bseq (w, "SEEK")) { next (); acceptOp ('#'); needNum (expr ()); expectOp (','); needNum (expr ()); emit (OP_SEEK); return; }
+		if (bseq (w, "LSET") || bseq (w, "RSET"))
+		{
+			bool l = bseq (w, "LSET"); next ();
+			Ref r; if (!refAddr (r)) return;
+			if (r.ty != TY_STR) { fail ("LSET / RSET need a string variable"); return; }
+			expectOp ('='); needStr (expr ());
+			emit (l ? OP_LSET : OP_RSET);
+			return;
+		}
+		if (bseq (w, "MID$"))
+		{
+			next (); expectOp ('(');
+			Ref r; if (!refAddr (r)) return;
+			if (r.ty != TY_STR) { fail ("MID$ needs a string variable"); return; }
+			expectOp (','); needNum (expr ());
+			if (acceptOp (',')) needNum (expr ()); else pushNum (-1);
+			expectOp (')'); expectOp ('=');
+			needStr (expr ());
+			emit (OP_MIDSET);
+			return;
+		}
+		if (bseq (w, "SWAP")) { next (); stSwap (); return; }
+		if (bseq (w, "CALL")) { next (); stCall (); return; }
+		if (bseq (w, "EXIT")) { next (); stExit (); return; }
+		if (bseq (w, "END") || bseq (w, "SYSTEM")) { next (); emit (OP_END); return; }
+		if (bseq (w, "STOP")) { next (); emit (OP_STOP); return; }
+		if (bseq (w, "CHAIN")) { next (); needStr (expr ()); emit (OP_CHAIN); return; }
+		if (bseq (w, "RUN"))
+		{
+			next ();
+			if (endOfStmt ()) { emit3 (OP_RUN, 0, 0); return; }
+			if (cur ().t == T_NUM || (cur ().t == T_ID && !findBuiltin (cur ().id) && !varExists (cur ().id, false) && !isKeyword (cur ().id)))
+			{ labelRef (OP_RUN, true, 1); return; }
+			needStr (expr ()); emit3 (OP_RUN, 2, 0);
+			return;
+		}
+		if (bseq (w, "CLEAR")) { next (); while (!endOfStmt ()) next (); emit (OP_CLEAR); return; }
+		if (bseq (w, "TRON") || bseq (w, "TROFF")) { bool on = bseq (w, "TRON"); next (); emit2 (OP_TRON, on ? 1 : 0); return; }
+		if (bseq (w, "TIMER") && (peekKw (1, "ON") || peekKw (1, "OFF") || peekKw (1, "STOP")))
+		{ next (); pushNum (0); emit3 (OP_EVSTATE, 0, evState ()); return; }
+		if (bseq (w, "KEY")) { next (); stKey (); return; }
+		if (bseq (w, "DECLARE") || bseq (w, "LOCK") || bseq (w, "UNLOCK")) { while (!(cur ().t == T_NL || cur ().t == T_EOF)) next (); return; }
+		{
+			TSpec dts;
+			if (deftypeWord (w, dts)) { next (); pos = applyDeftype (pos, dts); return; }
+		}
+		if (bseq (w, "DEF"))
+		{
+			if (peek ().t == T_ID && peek ().id[0] == 'F' && peek ().id[1] == 'N') { stDefFn (); return; }
+			while (!endOfStmt ()) next ();				// DEF SEG: nothing to do
+			return;
+		}
+		if (bseq (w, "OPTION"))
+		{
+			next ();
+			if (acceptKw ("BASE")) { base1 = cur ().t == T_NUM && cur ().num == 1; next (); }
+			else if (acceptKw ("MANAGED")) P->managed = true;		// run by the VM, not in machine code
+			else while (!endOfStmt ()) next ();
+			return;
+		}
+		if (bseq (w, "SUB") || bseq (w, "FUNCTION")) { stProc (); return; }
+		if (bseq (w, "PSET") || bseq (w, "PRESET")) { bool re = bseq (w, "PRESET"); next (); stPset (re); return; }
+		if (bseq (w, "CIRCLE")) { next (); stCircle (); return; }
+		if (bseq (w, "PAINT")) { next (); stPaint (); return; }
+		if (bseq (w, "VIEW")) { next (); stView (); return; }
+		if (bseq (w, "WINDOW") && (peekIsOp ('(') || peekKw (1, "SCREEN") || peek ().t == T_NL || peek ().t == T_EOF || (peek ().t == T_OP && peek ().op == ':')))
+		{ next (); stGWindow (); return; }
+		if (bseq (w, "PALETTE")) { next (); stPalette (); return; }
+		if (bseq (w, "FULLSCREEN"))				// FULLSCREEN [ON | OFF]
+		{
+			next ();
+			int on = 1;
+			if (acceptKw ("OFF")) on = 0; else acceptKw ("ON");
+			pushNum (on); emit3 (OP_ST, S_FULLSCREEN, 1);
+			return;
+		}
+		if (bseq (w, "NAME")) { next (); needStr (expr ()); expectKw ("AS"); needStr (expr ()); emit3 (OP_ST, S_NAME, 2); return; }
+		if (kitsOn && (bseq (w, "PEEKT") || bseq (w, "POKET")))	// PEEKT address, variable: a kit's structure read from / written at an address
+		{
+			bool peekT = bseq (w, "PEEKT"); next ();
+			needNum (expr ()); expectOp (',');
+			Ref r; if (!refAddr (r)) return;
+			if (r.ty < TY_REC || P->kitStruct (r.ty - TY_REC) < 0) { fail ("PEEKT / POKET need a variable of one of the kits' structures"); return; }
+			emit3 (OP_ST, peekT ? S_PEEKT : S_POKET, 2);
+			return;
+		}
+		if (kitsOn)						// a kit's function as a statement: its result dropped
+		{
+			int ki = findKitFn (w);
+			if (ki == -2) { fail2 ("No such function in the kit: ", w); return; }
+			if (ki >= 0) { next (); kitCall (ki, false, callParens ()); return; }
+		}
+		if (bseq (w, "PIN"))					// PIN pin = level (or PIN pin, level); PIN (pin) ON / OFF / STOP
+		{
+			next ();
+			if (isOp ('('))
+			{
+				next (); needNum (expr ()); expectOp (')');
+				if (isKw ("ON") || isKw ("OFF") || isKw ("STOP")) { emit3 (OP_EVSTATE, 2, evState ()); return; }
+			}
+			else needNum (eAdd ());				// (not a comparison: the '=' is the assignment's)
+			if (!acceptOp ('=')) expectOp (',');
+			needNum (expr ());
+			emit3 (OP_ST, S_PINWRITE, 2);
+			return;
+		}
+		if (simpleStatement (w)) return;
+		// A SUB call without CALL.
+		int pi = findProc (w);
+		if (pi >= 0 && !pdecls[pi].isFunc)
+		{
+			next ();
+			// "Name (a, b)" (without CALL) is accepted like "CALL Name (a, b)".
+			bool parens = false;
+			if (isOp ('('))
+			{
+				int depth = 0, p = pos;
+				for (; p < toks.n && toks[p].t != T_NL && toks[p].t != T_EOF; p++)
+				{
+					if (toks[p].t == T_OP && toks[p].op == '(') depth++;
+					else if (toks[p].t == T_OP && toks[p].op == ')' && --depth == 0) break;
+				}
+				Tok &a = toks[p + 1 < toks.n ? p + 1 : p];
+				parens = depth == 0 && (a.t == T_NL || a.t == T_EOF || (a.t == T_OP && a.op == ':') || (a.t == T_ID && bseq (a.id, "ELSE")));
+			}
+			callProc (pi, parens);
+			return;
+		}
+		if (pi >= 0 && pdecls[pi].isFunc && curProc != pi) { fail2 ("A FUNCTION's value must be used: ", w); return; }
+		if (isBaseCall ())					// BASE.Name args: the parent's method
+		{
+			int bm = baseMethod ();
+			if (bm < 0) return;
+			callMethod (bm, restInParens (), true);
+			if (pdecls[bm].isFunc) emit (OP_POP);
+			return;
+		}
+		if (methodStatement ()) return;
+		stAssign ();
+	}
+	int evState ()
+	{
+		int st = 1;
+		if (acceptKw ("ON")) st = 1; else if (acceptKw ("OFF")) st = 0; else if (acceptKw ("STOP")) st = 2; else fail ("ON, OFF or STOP expected");
+		return st;
+	}
+	// KEY(n) ON/OFF/STOP, KEY n, s$ (a user key: CHR$(shift) + CHR$(scan code)), KEY ON/OFF/LIST.
+	void stKey ()
+	{
+		if (isOp ('('))
+		{
+			next (); needNum (expr ()); expectOp (')');
+			emit3 (OP_EVSTATE, 1, evState ());
+			return;
+		}
+		if (isKw ("ON") || isKw ("OFF") || isKw ("LIST")) { next (); return; }	// the soft-key line: not shown
+		needNum (expr ()); expectOp (','); needStr (expr ());
+		emit3 (OP_ST, S_KEYDEF, 2);
+	}
+	// RETURN (from GOSUB), or RETURN value in a FUNCTION.
+	void stReturn ()
+	{
+		if (endOfStmt ()) { emit (OP_RETSUB); return; }
+		if (curProc < 0 || !pdecls[curProc].isFunc) { fail ("RETURN with a value outside a FUNCTION"); return; }
+		const PDecl &d = pdecls[curProc];
+		int t = expr ();
+		if (failed || !conv (t, d.retTy, "Type mismatch (RETURN)")) return;
+		convFor (d.retTy, d.retNt, 0);
+		emit2 (OP_STL, 0);
+		emit (OP_RETF);
+	}
+	void stResume ()
+	{
+		if (acceptKw ("NEXT")) { emit3 (OP_RESUME, 1, 0); return; }
+		if (endOfStmt () || (cur ().t == T_NUM && cur ().num == 0)) { if (!endOfStmt ()) next (); emit3 (OP_RESUME, 0, 0); return; }
+		labelRef (OP_RESUME, true, 2);
+	}
+	// TYPE ... END TYPE: collected by prescanTypes; skipped here.
+	void stType (const char *word)
+	{
+		while (!failed && cur ().t != T_EOF)
+		{
+			if (isKw ("END") && peekKw (1, word)) { next (); next (); return; }
+			next ();
+		}
+	}
+	// COMMON [SHARED] [/block/] var, arr(), ... -- the variables CHAIN hands on.
+	void stCommon ()
+	{
+		if (curProc >= 0) { fail ("COMMON is for the main module"); return; }
+		bool shared = acceptKw ("SHARED");
+		if (acceptOp ('/')) { while (!isOp ('/') && !endOfStmt ()) next (); expectOp ('/'); }
+		for (;;)
+		{
+			if (cur ().t != T_ID || isKeyword (cur ().id)) { fail ("A name is expected after COMMON"); return; }
+			char name[48]; bscpy (name, cur ().id, 48); next ();
+			bool arr = false;
+			if (isOp ('(') && peekIsOp (')')) { next (); next (); arr = true; }
+			TSpec ts; bool has = parseAsType (ts);
+			Var v = declVar (name, arr, has ? &ts : 0, shared);
+			bool dup = false;
+			for (int i = 0; i < P->common.n; i++) if (P->common[i] == v.slot) dup = true;
+			if (!dup) P->common.push (v.slot);
+			if (!acceptOp (',')) break;
+		}
+	}
+	// Statements "NAME arg, arg, ..." with fixed argument types; '[' = optional from here.
+	bool simpleStatement (const char *w)
+	{
+		static const struct { const char *name; int id; const char *args; } S[] = {
+			{ "CLS", S_CLS, "[N" }, { "LOCATE", S_LOCATE, "~[NNNNN" }, { "COLOR", S_COLOR, "~[NNN" }, { "SCREEN", S_SCREEN, "~N[NNN" },
+			{ "DRAW", S_DRAW, "S" }, { "PCOPY", S_PCOPY, "NN" }, { "RESET", S_RESET, "" }, { "FILES", S_FILES, "[S" },
+			{ "CHDIR", S_CHDIR, "S" }, { "ENVIRON", S_ENVIRON, "S" }, { "SHELL", S_SHELL, "[S" },
+			{ "DRAWTEXT", S_DRAWTEXT, "NNS[N" }, { "SLEEP", S_SLEEP, "[N" }, { "PAUSE", S_PAUSE, "N" },
+			{ "BEEP", S_BEEP, "" }, { "SOUND", S_SOUND, "NN" }, { "RANDOMIZE", S_RANDOMIZE, "[N" },
+			{ "WINDOW", S_WINDOW, "S[NNN" }, { "SETTEXT", S_SETTEXT, "NS" }, { "SETVALUE", S_SETVALUE, "NN" },
+			{ "NOTIFY", S_NOTIFY, "SS" }, { "SETCLIPBOARD", S_SETCLIPBOARD, "S" }, { "EXEC", S_EXEC, "S[S" },
+			{ "LAUNCH", S_LAUNCH, "S" }, { "KILL", S_KILL, "S" }, { "MKDIR", S_MKDIR, "S" }, { "RMDIR", S_RMDIR, "S" },
+			{ "WIDTH", S_WIDTH, "[NN" }, { "PLAY", S_PLAY, "S" }, { "NOTEON", S_NOTEON, "NN[NN" },
+			{ "NOTEOFF", S_NOTEOFF, "[N" },
+			{ "PLAYFILE", S_PLAYFILE, "S[N" }, { "STOPFILE", S_STOPFILE, "" }, { "PAUSEFILE", S_PAUSEFILE, "[N" },
+			{ "FILEVOLUME", S_FILEVOLUME, "N" }, { "MIDINOTE", S_MIDINOTE, "NN[N" }, { "MIDIPROGRAM", S_MIDIPROGRAM, "NN" },
+			{ "MIDICONTROL", S_MIDICONTROL, "NNN" }, { "MIDIOFF", S_MIDIOFF, "" },
+			{ "SCENE3D", S_SCENE3D, "[N" }, { "RENDER3D", S_RENDER3D, "" }, { "CAMERA3D", S_CAMERA3D, "NNNNNN[N" },
+			{ "LIGHT3D", S_LIGHT3D, "NNN[N" }, { "IDENTITY3D", S_IDENTITY3D, "" }, { "TRANSLATE3D", S_TRANSLATE3D, "NNN" },
+			{ "ROTATE3D", S_ROTATE3D, "NNN" }, { "SCALE3D", S_SCALE3D, "N[NN" }, { "PUSH3D", S_PUSH3D, "" },
+			{ "POP3D", S_POP3D, "" }, { "COLOR3D", S_COLOR3D, "N[N" }, { "TEXTURE3D", S_TEXTURE3D, "N[NN" },
+			{ "BLEND3D", S_BLEND3D, "N" }, { "DEPTH3D", S_DEPTH3D, "N[N" }, { "CULL3D", S_CULL3D, "N" },
+			{ "VERTEX3D", S_VERTEX3D, "NNN[NN" }, { "CUBE3D", S_CUBE3D, "[N" }, { "SPHERE3D", S_SPHERE3D, "[NN" },
+			{ "CYLINDER3D", S_CYLINDER3D, "[NNN" }, { "PLANE3D", S_PLANE3D, "[NN" },
+			{ "MOVECONTROL", S_MOVECONTROL, "NNNNN" }, { "SHOWCONTROL", S_SHOWCONTROL, "NN" }, { "ENABLECONTROL", S_ENABLECONTROL, "NN" },
+			{ "FOCUSCONTROL", S_FOCUSCONTROL, "N" },
+			// (GPIOKit: the 40-pin header; PIN n = v and ON PIN are parsed apart)
+			{ "PINMODE", S_PINMODE, "NS" }, { "PWM", S_PWM, "NN[N" }, { "SERVO", S_SERVO, "NN" }, { "PINFREE", S_PINFREE, "[N" },
+			{ "GPIOSIM", S_GPIOSIM, "[N" }, { "I2COPEN", S_I2COPEN, "[N" }, { "I2CWRITE", S_I2CWRITE, "NNN" },
+			{ "I2CSEND", S_I2CSEND, "NS" }, { "SPIOPEN", S_SPIOPEN, "[NN" },
+			// (kits: known once the program has an #import -- S_DEALLOC .. S_POKES)
+			{ "DEALLOC", S_DEALLOC, "N" }, { "POKEB", S_POKEB, "NN" }, { "POKEW", S_POKEW, "NN" }, { "POKEL", S_POKEL, "NN" },
+			{ "POKEQ", S_POKEQ, "NN" }, { "POKEF", S_POKEF, "NN" }, { "POKED", S_POKED, "NN" }, { "POKES", S_POKES, "NS" },
+			{ 0, 0, 0 } };
+		for (int i = 0; S[i].name; i++)
+		{
+			if (!bseq (S[i].name, w)) continue;
+			if (!kitsOn && S[i].id >= S_DEALLOC && S[i].id <= S_POKES) continue;
+			next ();
+			const char *spec = S[i].args;
+			bool blanks = spec[0] == '~';			// LOCATE , 5  (empty args = -1)
+			if (blanks) spec++;
+			int argc = 0, minA = 0, maxA = 0; bool opt = false;
+			for (int j = 0; spec[j]; j++) { if (spec[j] == '[') { opt = true; continue; } maxA++; if (!opt) minA++; }
+			if (!endOfStmt ())
+				for (;;)
+				{
+					char want = 0; int idx = 0;
+					for (int j = 0; spec[j]; j++) { if (spec[j] == '[') continue; if (idx == argc) { want = spec[j]; break; } idx++; }
+					if (!want) { fail2 ("Too many arguments to ", S[i].name); return true; }
+					if (blanks && (isOp (',') || endOfStmt ())) pushNum (-1);
+					else { int t = expr (); if (want == 'N') needNum (t); else needStr (t); }
+					argc++;
+					if (!acceptOp (',')) break;
+				}
+			if (argc < minA || argc > maxA) { fail2 ("Wrong number of arguments to ", S[i].name); return true; }
+			emit3 (OP_ST, S[i].id, argc);
+			return true;
+		}
+		return false;
+	}
+
+	void stAssign ()
+	{
+		LV lv;
+		if (!lvalue (lv)) return;
+		if (!acceptOp ('=')) { fail ("Syntax error (= expected)"); return; }
+		int t = expr ();
+		if (failed || !conv (t, lv.ty, "Type mismatch in assignment")) return;
+		storeLV (lv);
+	}
+
+	void stPrint (bool write)
+	{
+		bool chan = false;
+		if (acceptOp ('#')) { needNum (expr ()); expectOp (','); emit (OP_CHAN); chan = true; }
+		if (acceptKw ("USING"))
+		{
+			needStr (expr ());
+			if (!endOfStmt () && !acceptOp (';')) expectOp (',');
+			int n = 0; bool nl2 = true;
+			while (!endOfStmt () && !failed)
+			{
+				if (acceptOp (';') || acceptOp (',')) { nl2 = false; continue; }
+				int t = expr ();
+				if (t >= TY_REC) { fail ("Type mismatch (PRINT USING)"); return; }
+				n++; nl2 = true;
+			}
+			emit2 (OP_USING, n);
+			if (nl2) emit2 (OP_PRSEP, 2);
+			if (chan) { pushNum (0); emit (OP_CHAN); }
+			return;
+		}
+		bool nl = true;
+		while (!endOfStmt () && !failed)
+		{
+			if (acceptOp (';')) { nl = false; continue; }
+			if (acceptOp (',')) { emit2 (OP_PRSEP, write ? 3 : 1); nl = false; continue; }
+			if ((isKw ("TAB") || isKw ("SPC")) && peekIsOp ('('))
+			{
+				bool tab = isKw ("TAB"); next (); next ();
+				needNum (expr ()); expectOp (')');
+				emit (tab ? OP_PRTAB : OP_PRSPC); nl = true; continue;
+			}
+			dblSeen = false;
+			int t = expr ();
+			if (t >= TY_REC) { fail ("Type mismatch (a record cannot be printed)"); return; }
+			emit2 (OP_PRINT, (write ? 1 : 0) | (dblSeen ? 2 : 0));
+			nl = true;
+		}
+		if (nl || write) emit2 (OP_PRSEP, 2);
+		if (chan) { pushNum (0); emit (OP_CHAN); }
+	}
+
+	void stInput ()
+	{
+		bool chan = false;
+		if (acceptOp ('#')) { needNum (expr ()); expectOp (','); emit (OP_CHAN); chan = true; }
+		else
+		{
+			acceptOp (';');
+			int prompt = -1, flags = 1;		// 1 = show "? "
+			if (cur ().t == T_STR)
+			{
+				prompt = strConst (cur ().s, cur ().sl); next ();
+				if (acceptOp (',')) flags = 0; else expectOp (';');
+			}
+			emit3 (OP_INPUT, prompt, flags);
+		}
+		for (;;)
+		{
+			LV lv;
+			if (!lvalue (lv)) return;
+			emit2 (OP_INFIELD, lv.ty);
+			storeLV (lv);
+			if (!acceptOp (',')) break;
+		}
+		if (chan) { pushNum (0); emit (OP_CHAN); }
+	}
+
+	void stLineInput ()
+	{
+		bool chan = false; int prompt = -1;
+		if (acceptOp ('#')) { needNum (expr ()); expectOp (','); emit (OP_CHAN); chan = true; }
+		else
+		{
+			acceptOp (';');
+			if (cur ().t == T_STR) { prompt = strConst (cur ().s, cur ().sl); next (); if (!acceptOp (';')) expectOp (','); }
+		}
+		LV lv;
+		if (!lvalue (lv)) return;
+		if (lv.ty != TY_STR) { fail ("LINE INPUT needs a string variable"); return; }
+		emit2 (OP_LINPUT, prompt);
+		storeLV (lv);
+		if (chan) { pushNum (0); emit (OP_CHAN); }
+	}
+
+	void stIf ()
+	{
+		int l0 = toks[pos - 1].line;
+		needNum (expr ());
+		if (isKw ("GOTO")) { next (); int j = emitJump (OP_JZ); jumpToLabel (OP_JMP); patch (j, pc ()); return; }
+		expectKw ("THEN");
+		if (failed) return;
+		if (cur ().t != T_NL && cur ().t != T_EOF)		// single-line IF
+		{
+			int jf = emitJump (OP_JZ);
+			singleLine ();
+			if (isKw ("ELSE"))
+			{
+				next ();
+				int je = emitJump (OP_JMP);
+				patch (jf, pc ());
+				singleLine ();
+				patch (je, pc ());
+			}
+			else patch (jf, pc ());
+			return;
+		}
+		// Block IF.
+		int ends[64]; int ne = 0;
+		int jf = emitJump (OP_JZ);
+		block (TM_ELSE | TM_ELSEIF | TM_ENDIF);
+		while (!failed && isKw ("ELSEIF"))
+		{
+			if (ne < 64) ends[ne++] = emitJump (OP_JMP);
+			patch (jf, pc ());
+			next (); markLine ();
+			needNum (expr ()); expectKw ("THEN");
+			jf = emitJump (OP_JZ);
+			block (TM_ELSE | TM_ELSEIF | TM_ENDIF);
+		}
+		if (!failed && isKw ("ELSE"))
+		{
+			if (ne < 64) ends[ne++] = emitJump (OP_JMP);
+			patch (jf, pc ()); jf = -1;
+			next ();
+			block (TM_ENDIF);
+		}
+		if (failed) return;
+		if (!(isKw ("END") && peekKw (1, "IF"))) { fail ("IF without END IF", l0); return; }
+		next (); next ();
+		if (jf >= 0) patch (jf, pc ());
+		for (int i = 0; i < ne; i++) patch (ends[i], pc ());
+	}
+	// "THEN a: b: c" -- up to ELSE or the end of the line. A bare number = GOTO.
+	void singleLine ()
+	{
+		if (cur ().t == T_NUM) { jumpToLabel (OP_JMP); return; }
+		for (;;)
+		{
+			statement ();
+			if (failed) return;
+			if (acceptOp (':')) { if (cur ().t == T_NL || cur ().t == T_EOF || isKw ("ELSE")) return; continue; }
+			return;
+		}
+	}
+
+	Loop *pushLoop (int kind)
+	{
+		if (nloops >= 32) { fail ("Loops nested too deep"); return 0; }
+		Loop *l = &loops[nloops++]; l->kind = kind; l->nexit = 0; return l;
+	}
+	void addExit (Loop *l, int at) { if (l->nexit < 64) l->exits[l->nexit++] = at; else fail ("Too many EXITs"); }
+	void popLoop (int target) { Loop *l = &loops[--nloops]; for (int i = 0; i < l->nexit; i++) patch (l->exits[i], target); }
+
+	void stFor ()
+	{
+		int l0 = toks[pos - 1].line;
+		LV lv;
+		if (!lvalue (lv)) return;
+		if (lv.arr || lv.ref || lv.ty != TY_NUM) { fail ("FOR needs a numeric variable"); return; }
+		expectOp ('=');
+		needNum (expr ()); storeLV (lv);
+		expectKw ("TO");
+		Var lim = tempVar (TY_NUM), step = tempVar (TY_NUM);
+		needNum (expr ()); storeVar (lim);
+		if (acceptKw ("STEP")) needNum (expr ()); else pushNum (1);
+		storeVar (step);
+		int top = pc ();
+		loadVar (step); pushNum (0); emit (OP_LT);
+		int jneg = emitJump (OP_JNZ);
+		loadLV (lv); loadVar (lim); emit (OP_GT);
+		int x1 = emitJump (OP_JNZ);
+		int jbody = emitJump (OP_JMP);
+		patch (jneg, pc ());
+		loadLV (lv); loadVar (lim); emit (OP_LT);
+		int x2 = emitJump (OP_JNZ);
+		patch (jbody, pc ());
+		Loop *l = pushLoop (LOOP_FOR); if (!l) return;
+		addExit (l, x1); addExit (l, x2);
+		int depth = nloops;
+		block (TM_NEXT);
+		if (failed) return;
+		if (!isKw ("NEXT")) { fail ("FOR without NEXT", l0); return; }
+		markLine ();
+		next ();
+		// NEXT [var [, var ...]]: this loop, then maybe the enclosing ones.
+		bool more = cur ().t == T_ID;
+		if (more && cur ().t == T_ID) next ();				// (the variable name: not checked)
+		loadLV (lv); loadVar (step); emit (OP_ADD); storeLV (lv);
+		emit2 (OP_JMP, top);
+		(void) depth;
+		popLoop (pc ());
+		if (more && acceptOp (','))					// "NEXT j, i": close the outer FOR too
+		{
+			// Let the enclosing stFor handle its NEXT: put a synthetic NEXT back.
+			pos--; toks[pos].t = T_ID; bscpy (toks[pos].id, "NEXT", 48);
+		}
+	}
+
+	// A dialect's word (findExt): its id, then its arguments -- in parentheses for a function (they may be left
+	// out when it takes none: WALL, WALL ()), after the word for a statement.
+	int extCall (const ExtWord *xw, bool func)
+	{
+		const char *spec = xw->args ? xw->args : "";
+		int minA = 0, maxA = 0; bool opt = false;
+		for (int j = 0; spec[j]; j++) { if (spec[j] == '[') { opt = true; continue; } maxA++; if (!opt) minA++; }
+		int ret = xw->kind == '$' ? TY_STR : TY_NUM;
+		pushNum (xw->id);
+		int argc = 0;
+		bool paren = func ? acceptOp ('(') : false;
+		bool none = func ? (!paren || isOp (')')) : endOfStmt ();
+		if (!none)
+			for (;;)
+			{
+				char want = 0; int idx = 0;
+				for (int j = 0; spec[j]; j++) { if (spec[j] == '[') continue; if (idx == argc) { want = spec[j]; break; } idx++; }
+				if (!want) { fail2 ("Too many arguments to ", xw->name); return ret; }
+				int t = expr ();
+				if (want == 'N') needNum (t); else needStr (t);
+				argc++;
+				if (!acceptOp (',')) break;
+			}
+		if (paren) expectOp (')');
+		if (argc < minA || argc > maxA || argc > 7) { fail2 ("Wrong number of arguments to ", xw->name); return ret; }
+		emit3 (func ? OP_BI : OP_ST, func ? B_EXT : S_EXT, argc + 1);
+		return ret;
+	}
+	// REPEAT n ... END REPEAT (a dialect's): the block n times (n counted once, at the start).
+	void stRepeat ()
+	{
+		int l0 = toks[pos - 1].line;
+		Var cnt = tempVar (TY_NUM);
+		needNum (expr ()); storeVar (cnt);
+		int top = pc ();
+		loadVar (cnt); pushNum (0.5); emit (OP_LT);
+		int jx = emitJump (OP_JNZ);
+		loadVar (cnt); pushNum (1); emit (OP_SUB); storeVar (cnt);
+		Loop *l = pushLoop (LOOP_REPEAT); if (!l) return;
+		addExit (l, jx);
+		block (TM_ENDREPEAT);
+		if (failed) return;
+		if (!(isKw ("END") && peekKw (1, "REPEAT"))) { fail ("REPEAT without END REPEAT", l0); return; }
+		markLine ();
+		next (); next ();
+		emit2 (OP_JMP, top);
+		popLoop (pc ());
+	}
+
+	void stWhile ()
+	{
+		int l0 = toks[pos - 1].line;
+		int top = pc ();
+		needNum (expr ());
+		int jx = emitJump (OP_JZ);
+		Loop *l = pushLoop (LOOP_WHILE); if (!l) return;
+		addExit (l, jx);
+		block (TM_WEND);
+		if (failed) return;
+		if (!acceptKw ("WEND")) { fail ("WHILE without WEND", l0); return; }
+		emit2 (OP_JMP, top);
+		popLoop (pc ());
+	}
+
+	void stDo ()
+	{
+		int l0 = toks[pos - 1].line;
+		int top = pc ();
+		Loop *l = pushLoop (LOOP_DO); if (!l) return;
+		if (isKw ("WHILE") || isKw ("UNTIL"))
+		{
+			bool wh = isKw ("WHILE"); next ();
+			needNum (expr ());
+			addExit (l, emitJump (wh ? OP_JZ : OP_JNZ));
+		}
+		block (TM_LOOP);
+		if (failed) return;
+		if (!acceptKw ("LOOP")) { fail ("DO without LOOP", l0); return; }
+		if (isKw ("WHILE") || isKw ("UNTIL"))
+		{
+			bool wh = isKw ("WHILE"); next ();
+			needNum (expr ());
+			emit2 (wh ? OP_JNZ : OP_JZ, top);
+		}
+		else emit2 (OP_JMP, top);
+		popLoop (pc ());
+	}
+
+	void stExit ()
+	{
+		if (acceptKw ("SUB") || acceptKw ("FUNCTION") || acceptKw ("DEF"))
+		{
+			if (curProc < 0) { fail ("EXIT SUB outside a SUB"); return; }
+			emit (pdecls[curProc].isFunc ? OP_RETF : OP_RET);
+			return;
+		}
+		int kind = 0;
+		if (acceptKw ("FOR")) kind = LOOP_FOR;
+		else if (acceptKw ("DO")) kind = LOOP_DO;
+		else if (acceptKw ("WHILE")) kind = LOOP_WHILE;
+		else { fail ("EXIT what? (FOR, DO, SUB, FUNCTION)"); return; }
+		for (int i = nloops - 1; i >= 0; i--)
+			if (loops[i].kind == kind) { addExit (&loops[i], emitJump (OP_JMP)); return; }
+		fail ("EXIT outside its loop");
+	}
+
+	void stSelect ()
+	{
+		int l0 = toks[pos - 1].line;
+		expectKw ("CASE");
+		int t = expr ();
+		Var sel = tempVar (t);
+		storeVar (sel);
+		int ends[128]; int ne = 0;
+		// skip to the first CASE
+		while (cur ().t == T_NL || isOp (':')) next ();
+		while (!failed && isKw ("CASE"))
+		{
+			markLine ();
+			next ();
+			if (acceptKw ("ELSE"))
+			{
+				block (TM_CASE | TM_ENDSELECT);
+				if (ne < 128) ends[ne++] = emitJump (OP_JMP);
+				continue;
+			}
+			int toBody[32]; int nb = 0;
+			for (;;)
+			{
+				if (acceptKw ("IS") || relop ())
+				{
+					int op = relop ();
+					if (!op) { fail ("Comparison expected after IS"); return; }
+					next ();
+					loadVar (sel);
+					if (expr () != t) { fail ("Type mismatch in CASE"); return; }
+					int o = 0;
+					switch (op)
+					{
+					case '=': o = t ? OP_SEQ : OP_EQ; break;
+					case O_NE: o = t ? OP_SNE : OP_NE; break;
+					case '<': o = t ? OP_SLT : OP_LT; break;
+					case '>': o = t ? OP_SGT : OP_GT; break;
+					case O_LE: o = t ? OP_SLE : OP_LE; break;
+					case O_GE: o = t ? OP_SGE : OP_GE; break;
+					}
+					emit (o);
+				}
+				else
+				{
+					loadVar (sel);
+					if (expr () != t) { fail ("Type mismatch in CASE"); return; }
+					if (acceptKw ("TO"))		// a <= sel AND sel <= b
+					{
+						emit (t ? OP_SGE : OP_GE);
+						loadVar (sel);
+						if (expr () != t) { fail ("Type mismatch in CASE"); return; }
+						emit (t ? OP_SLE : OP_LE);
+						emit (OP_AND);
+					}
+					else emit (t ? OP_SEQ : OP_EQ);
+				}
+				if (nb < 32) toBody[nb++] = emitJump (OP_JNZ);
+				if (!acceptOp (',')) break;
+			}
+			int skip = emitJump (OP_JMP);
+			for (int i = 0; i < nb; i++) patch (toBody[i], pc ());
+			block (TM_CASE | TM_ENDSELECT);
+			if (ne < 128) ends[ne++] = emitJump (OP_JMP);
+			patch (skip, pc ());
+		}
+		if (failed) return;
+		if (!(isKw ("END") && peekKw (1, "SELECT"))) { fail ("SELECT CASE without END SELECT", l0); return; }
+		next (); next ();
+		for (int i = 0; i < ne; i++) patch (ends[i], pc ());
+	}
+
+	void stOn ()
+	{
+		if (acceptKw ("ERROR"))
+		{
+			expectKw ("GOTO");
+			if (cur ().t == T_NUM && cur ().num == 0) { next (); emit2 (OP_ONERR, -1); return; }
+			labelRef (OP_ONERR, true);
+			return;
+		}
+		if (isKw ("PIN"))					// ON PIN (pin [, edges]) GOSUB: its edges (1 rising, 2 falling, 3 both)
+		{
+			next ();
+			expectOp ('('); needNum (expr ());
+			if (acceptOp (',')) needNum (expr ()); else pushNum (3);
+			expectOp (')');
+			expectKw ("GOSUB");
+			labelRef (OP_ONEVENT, true, 2);
+			return;
+		}
+		if (isKw ("TIMER") || isKw ("KEY"))			// ON TIMER (n) GOSUB / ON KEY (n) GOSUB
+		{
+			bool timer = isKw ("TIMER"); next ();
+			expectOp ('('); needNum (expr ()); expectOp (')');
+			expectKw ("GOSUB");
+			labelRef (OP_ONEVENT, true, timer ? 0 : 1);
+			return;
+		}
+		needNum (expr ());
+		Var t = tempVar (TY_NUM); storeVar (t);
+		bool gosub = false;
+		if (acceptKw ("GOSUB")) gosub = true; else expectKw ("GOTO");
+		int n = 1;
+		int ends[64]; int ne = 0;
+		for (;;)
+		{
+			loadVar (t); pushNum (n); emit (OP_EQ);
+			if (gosub)
+			{
+				int skip = emitJump (OP_JZ);
+				jumpToLabel (OP_GOSUB);
+				if (ne < 64) ends[ne++] = emitJump (OP_JMP);
+				patch (skip, pc ());
+			}
+			else jumpToLabel (OP_JNZ);
+			n++;
+			if (!acceptOp (',')) break;
+		}
+		for (int i = 0; i < ne; i++) patch (ends[i], pc ());
+	}
+
+	// AS type -> ts (false when there is no AS).
+	bool parseAsType (TSpec &ts)
+	{
+		ts.ty = TY_NUM; ts.nt = NT_SNG; ts.flen = 0;
+		if (!acceptKw ("AS")) return false;
+		if (cur ().t != T_ID) { fail ("Type expected after AS"); return false; }
+		if (!typeName (cur ().id, ts)) { fail2 ("Unknown type: ", cur ().id); return false; }
+		next ();
+		if (ts.ty == TY_STR && acceptOp ('*'))			// STRING * n: a fixed-length string
+		{
+			if (cur ().t != T_NUM && !(cur ().t == T_ID && findConst (cur ().id) >= 0)) { fail ("A length is expected after STRING *"); return false; }
+			ts.flen = cur ().t == T_NUM ? (int) cur ().num : (int) consts[findConst (cur ().id)].n;
+			next ();
+		}
+		return true;
+	}
+
+	void stDim ()
+	{
+		bool shared = acceptKw ("SHARED");
+		for (;;)
+		{
+			if (cur ().t != T_ID || isKeyword (cur ().id)) { fail ("A name is expected after DIM"); return; }
+			char name[48]; bscpy (name, cur ().id, 48); next ();
+			if (isOp ('('))
+			{
+				next ();
+				int nd = 0;
+				for (;;)
+				{
+					needNum (expr ());
+					if (acceptKw ("TO")) needNum (expr ());
+					else { Var tmp = tempVar (TY_NUM); storeVar (tmp); pushNum (base1 ? 1 : 0); loadVar (tmp); }
+					nd++;
+					if (!acceptOp (',')) break;
+				}
+				expectOp (')');
+				TSpec ts; bool has = parseAsType (ts);
+				if (nd > 4) { fail ("Arrays have at most 4 dimensions"); return; }
+				Var v = declVar (name, true, has ? &ts : 0, shared);
+				int ek = v.ty >= TY_REC ? 2 : v.ty == TY_STR ? 1 : 0, ext = v.ty >= TY_REC ? v.ty - TY_REC : v.flen;
+				emit (v.global ? OP_DIMG : OP_DIML); emit (v.slot); emit (nd); emit (ek); emit (ext);
+			}
+			else
+			{
+				TSpec ts; bool has = parseAsType (ts);
+				Var v = declVar (name, false, has ? &ts : 0, shared);
+				if (!failed && has && ts.ty >= TY_REC && isOp ('('))	// DIM v AS Type (args): SUB Type.new
+				{
+					int ci = findMethod (ts.ty, "NEW");
+					bool cls = tkind (ts.ty) != TK_TYPE;
+					if (!checkCreate (ts.ty - TY_REC)) return;
+					if (ci < 0 && !(cls && peekIsOp (')'))) { fail2 ("No constructor (SUB Type.new) for ", P->types[ts.ty - TY_REC].name); return; }
+					emit2 (OP_NEWREC, ts.ty - TY_REC); storeVar (v);	// (a fresh object each time)
+					if (ci < 0) { next (); next (); }
+					else
+					{
+						loadVar (v);
+						callMethod (ci, true, true);
+					}
+				}
+			}
+			if (failed || !acceptOp (',')) break;
+		}
+	}
+	char skey[52];
+	Var declVar (const char *name, bool arr, const TSpec *ts, bool shared)
+	{
+		Var v = var (name, arr, ts);
+		if (ts && (v.ty != ts->ty || (v.ty == TY_NUM && v.nt != ts->nt) || v.flen != ts->flen)) { fail2 ("Duplicate definition: ", name); return v; }
+		if (shared)
+		{
+			if (curProc >= 0) { fail ("DIM SHARED is for the main module"); return v; }
+			int g = ts ? findIn (gsyms, (makeKey (skey, name, arr), skey)) : findSym (gsyms, name, arr);
+			if (g >= 0) gsyms[g].shared = true;
+		}
+		return v;
+	}
+	// STATIC x, y() -- inside a SUB: variables that keep their value between calls (a
+	// hidden global per procedure + name). Arrays still need their DIM.
+	void stStatic ()
+	{
+		if (curProc < 0) { stDim (); return; }
+		for (;;)
+		{
+			if (cur ().t != T_ID) { fail ("A name is expected after STATIC"); return; }
+			char name[48]; bscpy (name, cur ().id, 48); next ();
+			bool arr = false;
+			if (isOp ('(') && peekIsOp (')')) { next (); next (); arr = true; }
+			TSpec ts; bool has = parseAsType (ts); if (!has) ts = nameSpec (name);
+			char key[52]; if (has) makeKey (key, name, arr); else implicitKey (key, name, arr);
+			char gname[52]; int n = 0; gname[n++] = '~';
+			for (int i = 0; pdecls[curProc].name[i] && n < 22; i++) gname[n++] = pdecls[curProc].name[i];
+			gname[n++] = '.';
+			for (int i = 0; key[i] && n < 50; i++) gname[n++] = key[i];
+			gname[n] = 0;
+			Sym g; bscpy (g.key, gname, 52); g.slot = P->nglobals++; g.ty = ts.ty; g.nt = ts.nt; g.flen = ts.flen;
+			g.shared = false; g.global = true;
+			if (findIn (gsyms, gname) >= 0) { fail2 ("Duplicate STATIC: ", name); return; }
+			gsyms.push (g);
+			Sym l = g; bscpy (l.key, key, 52); l.shared = true; l.global = true;
+			lsyms.push (l);
+			if (!acceptOp (',')) break;
+		}
+	}
+
+	void stShared ()
+	{
+		if (curProc < 0) { fail ("SHARED is for SUBs and FUNCTIONs"); return; }
+		for (;;)
+		{
+			if (cur ().t != T_ID) { fail ("A name is expected after SHARED"); return; }
+			char name[48]; bscpy (name, cur ().id, 48); next ();
+			bool arr = false;
+			if (isOp ('(') && peekIsOp (')')) { next (); next (); arr = true; }
+			TSpec ts; bool has = parseAsType (ts); if (!has) ts = nameSpec (name);
+			char key[52]; if (has) makeKey (key, name, arr); else implicitKey (key, name, arr);
+			int g = has ? findIn (gsyms, key) : findSym (gsyms, name, arr);
+			Sym l;
+			if (g >= 0) l = gsyms[g];
+			else
+			{
+				Sym s; bscpy (s.key, key, 52); s.slot = P->nglobals++; s.ty = ts.ty; s.nt = ts.nt; s.flen = ts.flen;
+				s.shared = false; s.global = true; gsyms.push (s);
+				l = s;
+			}
+			l.shared = true; l.global = true;
+			lsyms.push (l);
+			if (!acceptOp (',')) break;
+		}
+	}
+	void stErase ()
+	{
+		for (;;)
+		{
+			if (cur ().t != T_ID) { fail ("An array name is expected"); return; }
+			Var v = var (cur ().id, true); next ();
+			emit2 (v.global ? OP_ERASEG : OP_ERASEL, v.slot);
+			if (!acceptOp (',')) break;
+		}
+	}
+	void stConst ()
+	{
+		for (;;)
+		{
+			if (cur ().t != T_ID) { fail ("A name is expected after CONST"); return; }
+			Const c; bscpy (c.name, cur ().id, 48); next ();
+			expectOp ('=');
+			const char *s = 0; int sl = 0;
+			if (!constAdd (&c.ty, &c.n, &s, &sl)) { fail ("CONST needs a constant value"); return; }
+			c.sidx = c.ty == TY_STR ? strConst (s, sl) : -1;
+			c.dbl = ntWide (nameSpec (c.name).nt);
+			if (findConst (c.name) >= 0) { fail2 ("Duplicate CONST: ", c.name); return; }
+			consts.push (c);
+			if (!acceptOp (',')) break;
+		}
+	}
+
+	void stRead ()
+	{
+		for (;;)
+		{
+			LV lv;
+			if (!lvalue (lv)) return;
+			emit2 (OP_READ, lv.ty);
+			storeLV (lv);
+			if (!acceptOp (',')) break;
+		}
+	}
+	void stData ()
+	{
+		if (cur ().t != T_DATA) return;
+		const char *s = cur ().s; int n = cur ().sl;
+		int i = 0;
+		while (i <= n)
+		{
+			while (i < n && (s[i] == ' ' || s[i] == '\t')) i++;
+			DataItem d; int st, e;
+			if (i < n && s[i] == '"')
+			{
+				st = ++i; while (i < n && s[i] != '"') i++;
+				e = i; if (i < n) i++;
+				d.isStr = true;
+				while (i < n && s[i] != ',') i++;
+			}
+			else
+			{
+				st = i; while (i < n && s[i] != ',') i++;
+				e = i; while (e > st && (s[e - 1] == ' ' || s[e - 1] == '\t')) e--;
+				d.isStr = false;
+			}
+			d.text = new char[e - st + 1]; bmcpy (d.text, s + st, e - st); d.text[e - st] = 0;
+			P->data.push (d);
+			i++;					// the comma
+		}
+		next ();
+	}
+	void stRestore ()
+	{
+		if (endOfStmt ()) { emit2 (OP_RESTORE, 0); return; }
+		char name[48];
+		if (cur ().t == T_NUM) formatNum (cur ().num, name); else bscpy (name, cur ().id, 48);
+		next ();
+		int at = emitJump (OP_RESTORE);
+		Fix f; f.at = at; bscpy (f.name, name, 48); f.proc = curProc; f.line = cur ().line; f.data = true;
+		fixes.push (f);
+	}
+
+	// OPEN f$ [FOR INPUT|OUTPUT|APPEND|RANDOM|BINARY] [ACCESS ...] [SHARED|LOCK ...] AS [#]n [LEN = r]
+	// or the old OPEN mode$, [#]n, f$[, r]. Stack: path n reclen (mode 9: mode$ n path reclen).
+	void stOpen ()
+	{
+		needStr (expr ());
+		if (acceptOp (','))
+		{
+			acceptOp ('#'); needNum (expr ()); expectOp (',');
+			needStr (expr ());
+			if (acceptOp (',')) needNum (expr ()); else pushNum (-1);
+			emit2 (OP_OPEN, 9);
+			return;
+		}
+		int mode = 4;					// RANDOM by default
+		if (acceptKw ("FOR"))
+		{
+			if (acceptKw ("INPUT")) mode = 1; else if (acceptKw ("OUTPUT")) mode = 2; else if (acceptKw ("APPEND")) mode = 3;
+			else if (acceptKw ("RANDOM")) mode = 4; else if (acceptKw ("BINARY")) mode = 5;
+			else { fail ("INPUT, OUTPUT, APPEND, RANDOM or BINARY expected"); return; }
+		}
+		if (acceptKw ("ACCESS")) { while (cur ().t == T_ID && (isKw ("READ") || isKw ("WRITE"))) next (); }
+		acceptKw ("SHARED");
+		if (acceptKw ("LOCK")) { while (cur ().t == T_ID && (isKw ("READ") || isKw ("WRITE"))) next (); }
+		expectKw ("AS");
+		acceptOp ('#');
+		needNum (expr ());
+		if (cur ().t == T_ID && bseq (cur ().id, "LEN")) { next (); expectOp ('='); needNum (expr ()); }
+		else pushNum (-1);
+		emit2 (OP_OPEN, mode);
+	}
+	// GET / PUT: a file record (GET #n [, [rec] [, var]]) or graphics (GET (x1,y1)-(x2,y2), a()).
+	void stGetPut (bool get)
+	{
+		if (isOp ('(') || isKw ("STEP")) { if (get) stGGet (); else stGPut (); return; }
+		acceptOp ('#');
+		needNum (expr ());
+		bool var = false;
+		if (acceptOp (','))
+		{
+			if (isOp (',') || endOfStmt ()) pushNum (-1); else needNum (expr ());
+			if (acceptOp (','))
+			{
+				Ref r; if (!refAddr (r)) return;
+				emit (get ? OP_FGET : OP_FPUT); emit (1);
+				if (tkind (r.ty)) { fail ("GET / PUT: not for an object (a CLASS)"); return; }
+				int kind = r.ty >= TY_REC ? LK_REC : r.ty == TY_STR ? (r.flen > 0 ? LK_FSTR : LK_VSTR)
+					 : ntKind (r.nt);
+				emit (kind); emit (r.ty >= TY_REC ? r.ty - TY_REC : r.flen);
+				var = true;
+			}
+		}
+		else pushNum (-1);
+		if (!var) { emit (get ? OP_FGET : OP_FPUT); emit (0); emit (0); emit (0); }
+	}
+	// FIELD #n, w AS a$, w2 AS b$ ...
+	void stField ()
+	{
+		acceptOp ('#'); needNum (expr ());
+		int n = 0;
+		while (acceptOp (','))
+		{
+			needNum (expr ()); expectKw ("AS");
+			Ref r; if (!refAddr (r)) return;
+			if (r.ty != TY_STR) { fail ("FIELD needs string variables"); return; }
+			n++;
+		}
+		emit2 (OP_FIELD, n);
+	}
+	// ---- graphics ------------------------------------------------------------------------
+	// [STEP] (x, y): pushes x, y; returns 1 if STEP.
+	int point2 ()
+	{
+		int st = acceptKw ("STEP") ? 1 : 0;
+		expectOp ('('); needNum (expr ()); expectOp (','); needNum (expr ()); expectOp (')');
+		return st;
+	}
+	void optNum (int def) { if (isOp (',') || endOfStmt ()) pushNum (def); else needNum (expr ()); }
+	// an array (for GET / PUT / PALETTE USING): pushes the array and a start index (-1 = first)
+	bool arrayArg ()
+	{
+		if (cur ().t != T_ID) { fail ("An array is expected"); return false; }
+		Var v = var (cur ().id, true); next ();
+		loadVar (v);
+		if (isOp ('(') && peekIsOp (')')) { next (); next (); pushNum (-1); }
+		else if (acceptOp ('(')) { needNum (expr ()); if (isOp (',')) { fail ("Only one subscript here"); return false; } expectOp (')'); }
+		else pushNum (-1);
+		return true;
+	}
+	void stGGet ()
+	{
+		int f = point2 ();
+		expectOp ('-');
+		f |= point2 () << 1;
+		pushNum (f);
+		expectOp (',');
+		if (!arrayArg ()) return;
+		emit3 (OP_ST, S_GGET, 7);
+	}
+	void stGPut ()
+	{
+		int f = point2 ();
+		pushNum (f);
+		expectOp (',');
+		if (!arrayArg ()) return;
+		int act = 4;					// XOR by default
+		if (acceptOp (','))
+		{
+			if (acceptKw ("PSET")) act = 0; else if (acceptKw ("PRESET")) act = 1; else if (acceptKw ("AND")) act = 2;
+			else if (acceptKw ("OR")) act = 3; else if (acceptKw ("XOR")) act = 4; else { fail ("PSET, PRESET, AND, OR or XOR expected"); return; }
+		}
+		pushNum (act);
+		emit3 (OP_ST, S_GPUT, 6);
+	}
+	// PSET [STEP] (x, y)[, c]  /  PRESET
+	void stPset (bool preset)
+	{
+		int st = point2 ();
+		if (acceptOp (',')) needNum (expr ()); else pushNum (preset ? -2 : -1);
+		pushNum (st);
+		emit3 (OP_ST, S_PSET, 4);
+	}
+	// LINE [[STEP] (x1, y1)]-[STEP] (x2, y2)[, [c][, [B | BF][, style]]]
+	void stLine ()
+	{
+		int f = 0;
+		if (isOp ('(') || isKw ("STEP")) f |= point2 ();
+		else { pushNum (0); pushNum (0); f |= 4; }
+		expectOp ('-');
+		f |= point2 () << 1;
+		int box = 0;
+		if (acceptOp (','))
+		{
+			optNum (-1);
+			if (acceptOp (','))
+			{
+				if (isKw ("B")) { box = 1; next (); } else if (isKw ("BF")) { box = 2; next (); }
+				else if (!isOp (',')) { fail ("B or BF expected"); return; }
+				if (acceptOp (',')) needNum (expr ()); else pushNum (-1);
+			}
+			else pushNum (-1);
+		}
+		else { pushNum (-1); pushNum (-1); }
+		pushNum (box); pushNum (f);
+		emit3 (OP_ST, S_LINE, 8);
+	}
+	// CIRCLE [STEP] (x, y), r[, [c][, [start][, [end][, aspect]]]] -- or [, c, F] to fill (Onyx).
+	void stCircle ()
+	{
+		int f = point2 ();
+		expectOp (','); needNum (expr ());
+		if (acceptOp (','))
+		{
+			optNum (-1);
+			static const int bits[3] = { 4, 8, 16 };
+			for (int i = 0; i < 3; i++)
+			{
+				if (!acceptOp (',')) { for (; i < 3; i++) pushNum (0); break; }
+				if (isKw ("F")) { next (); f |= 2; pushNum (0); for (i++; i < 3; i++) pushNum (0); break; }
+				if (isOp (',') || endOfStmt ()) pushNum (0);
+				else { needNum (expr ()); f |= bits[i]; }
+			}
+		}
+		else { pushNum (-1); pushNum (0); pushNum (0); pushNum (0); }
+		pushNum (f);
+		emit3 (OP_ST, S_CIRCLE, 8);
+	}
+	// PAINT [STEP] (x, y)[, [paint][, [border]]]  (a tile string paints with the default colour)
+	void stPaint ()
+	{
+		int f = point2 ();
+		if (acceptOp (','))
+		{
+			if (isOp (',') || endOfStmt ()) pushNum (-1);
+			else { int t = expr (); if (t == TY_STR) { emit (OP_POP); pushNum (-1); } else needNum (t); }
+			if (acceptOp (',')) optNum (-1); else pushNum (-1);
+			while (acceptOp (',')) { if (!endOfStmt ()) { expr (); emit (OP_POP); } }	// background tile: ignored
+		}
+		else { pushNum (-1); pushNum (-1); }
+		pushNum (f);
+		emit3 (OP_ST, S_PAINT, 5);
+	}
+	// VIEW [[SCREEN] (x1, y1)-(x2, y2)[, [fill][, border]]]  /  VIEW PRINT [top TO bottom]
+	void stView ()
+	{
+		if (acceptKw ("PRINT"))
+		{
+			if (endOfStmt ()) { emit3 (OP_ST, S_VIEWPRINT, 0); return; }
+			needNum (expr ()); expectKw ("TO"); needNum (expr ());
+			emit3 (OP_ST, S_VIEWPRINT, 2);
+			return;
+		}
+		if (endOfStmt ()) { emit3 (OP_ST, S_VIEW, 0); return; }
+		int scr = acceptKw ("SCREEN") ? 1 : 0;
+		expectOp ('('); needNum (expr ()); expectOp (','); needNum (expr ()); expectOp (')');
+		expectOp ('-');
+		expectOp ('('); needNum (expr ()); expectOp (','); needNum (expr ()); expectOp (')');
+		if (acceptOp (',')) { optNum (-1); if (acceptOp (',')) optNum (-1); else pushNum (-1); }
+		else { pushNum (-1); pushNum (-1); }
+		pushNum (scr);
+		emit3 (OP_ST, S_VIEW, 7);
+	}
+	// WINDOW [[SCREEN] (x1, y1)-(x2, y2)] -- logical coordinates.
+	void stGWindow ()
+	{
+		if (endOfStmt ()) { emit3 (OP_ST, S_GWINDOW, 0); return; }
+		int scr = acceptKw ("SCREEN") ? 1 : 0;
+		expectOp ('('); needNum (expr ()); expectOp (','); needNum (expr ()); expectOp (')');
+		expectOp ('-');
+		expectOp ('('); needNum (expr ()); expectOp (','); needNum (expr ()); expectOp (')');
+		pushNum (scr);
+		emit3 (OP_ST, S_GWINDOW, 5);
+	}
+	// PALETTE [attr, colour] / PALETTE USING array[(start)]
+	void stPalette ()
+	{
+		if (acceptKw ("USING")) { if (!arrayArg ()) return; emit3 (OP_ST, S_PALUSING, 2); return; }
+		if (endOfStmt ()) { emit3 (OP_ST, S_PALETTE, 0); return; }
+		needNum (expr ()); expectOp (','); needNum (expr ());
+		emit3 (OP_ST, S_PALETTE, 2);
+	}
+	void stClose ()
+	{
+		if (endOfStmt ()) { pushNum (0); emit (OP_CLOSE); return; }
+		for (;;)
+		{
+			acceptOp ('#');
+			needNum (expr ()); emit (OP_CLOSE);
+			if (!acceptOp (',')) break;
+		}
+	}
+
+	void stSwap ()
+	{
+		int posA = pos, at = pc ();
+		LV a; if (!lvalue (a)) return;
+		expectOp (',');
+		int posB = pos;
+		LV b; if (!lvalue (b)) return;
+		int posEnd = pos;
+		P->code.n = at;				// (the parse above only found the types)
+		if (a.ty != b.ty) { fail ("SWAP needs two variables of the same type"); return; }
+		Var t = tempVar (a.ty);
+		// t = a
+		pos = posA; expr (); storeVar (t);
+		// a = b
+		pos = posA; lvalue (a); pos = posB; expr (); storeLV (a);
+		// b = t
+		pos = posB; lvalue (b); loadVar (t); storeLV (b);
+		pos = posEnd;
+	}
+
+	void stCall ()
+	{
+		if (cur ().t != T_ID) { fail ("A SUB name is expected after CALL"); return; }
+		int pi = findProc (cur ().id);
+		if (pi < 0)
+		{
+			int at = pc (), savePos = pos;
+			Ref r;
+			if (isBaseCall ()) { int bm = baseMethod (); if (bm >= 0) { callMethod (bm, true, true); if (pdecls[bm].isFunc) emit (OP_POP); } return; }
+			if (parseRef (r) && r.method >= 0) { emitThis (r); callMethod (r.method, true); if (pdecls[r.method].isFunc) emit (OP_POP); return; }
+			failed = false; P->code.n = at; pos = savePos;
+			fail2 ("SUB not defined: ", cur ().id); return;
+		}
+		next ();
+		callProc (pi, true);
+		if (pdecls[pi].isFunc) emit (OP_POP);
+	}
+
+	// SUB / FUNCTION / DEF FN bodies: the procedure's scope.
+	int savedLoopsProc;
+	void beginProc (int pi, int &jover)
+	{
+		jover = emitJump (OP_JMP);
+		curProc = pi;
+		lsyms.n = 0; nlocals = 0;
+		PDecl &d = pdecls[pi];
+		if (d.isFunc) { Sym r; bscpy (r.key, "~RESULT", 52); r.slot = nlocals++; r.ty = d.retTy; r.nt = d.retNt; r.flen = 0; r.shared = false; r.global = false; lsyms.push (r); }
+		for (int i = 0; i < d.np; i++)
+		{
+			Sym s; makeKey (s.key, d.pname[i], d.parr[i]); s.slot = nlocals++; s.ty = d.pty[i]; s.nt = d.pnt[i]; s.flen = 0;
+			s.shared = false; s.global = false;
+			lsyms.push (s);
+		}
+		P->procs[pi].entry = pc ();
+		savedLoopsProc = nloops;
+	}
+	void endProc (int pi, int jover)
+	{
+		emit (pdecls[pi].isFunc ? OP_RETF : OP_RET);
+		nloops = savedLoopsProc;
+		resolveLabels (pi);
+		P->procs[pi].nlocals = nlocals;
+		P->procs[pi].kindOff = P->lkind.n;
+		for (int i = 0; i < nlocals; i++) { P->lkind.push (K_NUM); P->lext.push (0); }
+		for (int i = 0; i < lsyms.n; i++)
+			if (!lsyms[i].global)
+			{
+				P->lkind[P->procs[pi].kindOff + lsyms[i].slot] = slotKind (lsyms[i]);
+				P->lext[P->procs[pi].kindOff + lsyms[i].slot] = slotExt (lsyms[i]);
+			}
+		curProc = -1;
+		patch (jover, pc ());
+	}
+	// SUB Child.new without a BASE.new call: the parent's constructor is called first when it has no
+	// parameters; with parameters, BASE.new (args) must be written.
+	void baseConstructor (int pi)
+	{
+		const PDecl &d = pdecls[pi];
+		if (d.cls < 0 || P->types[d.cls].kind != TK_CLASS || P->types[d.cls].parent < 0 || !bseq (afterDot (d.name), "NEW")) return;
+		int bp = findMethod (TY_REC + P->types[d.cls].parent, "NEW");
+		if (bp < 0) return;
+		for (int p = pos; toks[p].t != T_EOF; p++)
+		{
+			if (toks[p].t != T_ID) continue;
+			if (bseq (toks[p].id, "BASE.NEW")) return;
+			if (bseq (toks[p].id, "END") && toks[p + 1].t == T_ID && bseq (toks[p + 1].id, "SUB")) break;
+		}
+		if (pdecls[bp].np != 1) { fail2 ("The constructor must call BASE.new (the parent's has parameters): ", d.name); return; }
+		emit2 (OP_LDL, 0); emit3 (OP_CALL, bp, 1);
+	}
+	// SUB / FUNCTION definition (at the module level).
+	void stProc ()
+	{
+		bool isFn = isKw ("FUNCTION");
+		int l0 = cur ().line;
+		next ();
+		if (curProc >= 0 || nloops > 0) { fail ("SUB / FUNCTION cannot be nested"); return; }
+		int pi = findProc (cur ().id);
+		if (pi < 0) { fail ("Bad SUB / FUNCTION"); return; }
+		while (!(cur ().t == T_NL || cur ().t == T_EOF)) next ();	// the header (parsed by prescan)
+		int jover;
+		beginProc (pi, jover);
+		baseConstructor (pi);
+		block (isFn ? TM_ENDFUNC : TM_ENDSUB);
+		if (failed) return;
+		if (!(isKw ("END") && (peekKw (1, "SUB") || peekKw (1, "FUNCTION")))) { fail (isFn ? "FUNCTION without END FUNCTION" : "SUB without END SUB", l0); return; }
+		markLine ();
+		next (); next ();
+		endProc (pi, jover);
+	}
+	// DEF FNname[(params)] = expr   or   DEF FNname[(params)] ... END DEF (module level).
+	void stDefFn ()
+	{
+		int l0 = cur ().line;
+		next ();
+		if (curProc >= 0 || nloops > 0) { fail ("DEF FN belongs to the main module"); return; }
+		char name[48]; bscpy (name, cur ().id, 48); next ();
+		if (bseq (name, "FN") && cur ().t == T_ID)
+		{ int n = 2; for (int k = 0; cur ().id[k] && n < 46; k++) name[n++] = cur ().id[k]; name[n] = 0; next (); }
+		int pi = findProc (name);
+		if (pi < 0) { fail ("Bad DEF FN"); return; }
+		if (isOp ('('))						// the parameters (parsed by prescan)
+		{
+			int depth = 0;
+			while (!endOfStmt ()) { if (isOp ('(')) depth++; if (isOp (')') && --depth == 0) { next (); break; } next (); }
+		}
+		int jover;
+		beginProc (pi, jover);
+		const PDecl &d = pdecls[pi];
+		if (acceptOp ('='))					// single line
+		{
+			int t = expr ();
+			if (t != d.retTy) { fail ("Type mismatch (DEF FN)"); return; }
+			convFor (d.retTy, d.retNt, 0);
+			emit2 (OP_STL, 0);
+		}
+		else
+		{
+			block (TM_ENDDEF);
+			if (failed) return;
+			if (!(isKw ("END") && peekKw (1, "DEF"))) { fail ("DEF FN without END DEF", l0); return; }
+			markLine ();
+			next (); next ();
+		}
+		endProc (pi, jover);
+	}
+
+	// ---- driver ----------------------------------------------------------------------------------
+	// PROPERTY Type.Name [()] AS type ... END PROPERTY: the getter, a FUNCTION Type.Name; PROPERTY Type.Name (v AS type)
+	// ... END PROPERTY: the setter, a SUB Type.SETPROP_Name (obj.Name = v calls it). The tokens rewritten so.
+	void rewriteProperties ()
+	{
+		int stack[32]; int sp = 0;				// what each open PROPERTY became: 1 SUB, 2 FUNCTION
+		for (int i = 0; i < toks.n; i++)
+		{
+			if (toks[i].t != T_ID) continue;
+			bool atStart = i == 0 || toks[i - 1].t == T_NL || (toks[i - 1].t == T_OP && toks[i - 1].op == ':');
+			if (bseq (toks[i].id, "PROPERTY") && i > 0 && toks[i - 1].t == T_ID && (bseq (toks[i - 1].id, "END") || bseq (toks[i - 1].id, "EXIT")))
+			{
+				int kind = sp ? stack[sp - 1] : 1;
+				bscpy (toks[i].id, kind == 2 ? "FUNCTION" : "SUB", 48);
+				if (bseq (toks[i - 1].id, "END") && sp) sp--;
+				continue;
+			}
+			if (!atStart || !bseq (toks[i].id, "PROPERTY")) continue;
+			if (i + 1 >= toks.n || toks[i + 1].t != T_ID || !last_dot (toks[i + 1].id)) { pos = i; fail ("Expected Type.Name after PROPERTY"); return; }
+			bool setter = i + 2 < toks.n && toks[i + 2].t == T_OP && toks[i + 2].op == '(' && !(toks[i + 3].t == T_OP && toks[i + 3].op == ')');
+			if (setter)
+			{
+				char n[48]; const char *dot = last_dot (toks[i + 1].id);
+				int k = 0;
+				for (const char *c = toks[i + 1].id; c <= dot; c++) n[k++] = *c;
+				for (const char *c = "SETPROP_"; *c; c++) n[k++] = *c;
+				for (const char *c = dot + 1; *c; c++) { if (k >= 47) { pos = i + 1; fail ("Property name too long"); return; } n[k++] = *c; }
+				n[k] = 0;
+				bscpy (toks[i + 1].id, n, 48);
+			}
+			bscpy (toks[i].id, setter ? "SUB" : "FUNCTION", 48);
+			if (sp < 32) stack[sp++] = setter ? 1 : 2;
+		}
+	}
+	Program *compile (const char *src, Error *e)
+	{
+		err = e; e->line = 0; e->msg[0] = 0;
+		P = new Program;
+		lex (src);
+		if (!failed) prescanImports ();
+		if (!failed) rewriteProperties ();
+		if (!failed) prescanTypes ();
+		if (!failed) prescan ();
+		if (!failed) buildClasses ();
+		pos = 0;
+		if (!failed) block (0);
+		if (!failed && cur ().t != T_EOF) fail ("Syntax error");
+		if (!failed) { emit (OP_END); resolveLabels (-1); }
+		if (!failed)
+		{
+			for (int i = 0; i < P->nglobals; i++) { P->gkind.push (K_NUM); P->gext.push (0); }
+			for (int i = 0; i < gsyms.n; i++) { P->gkind[gsyms[i].slot] = slotKind (gsyms[i]); P->gext[gsyms[i].slot] = slotExt (gsyms[i]); }
+		}
+		for (int i = 0; i < P->procs.n && !failed; i++)
+			if (P->procs[i].entry < 0 && !(pdecls[i].mod & (PM_ABSTRACT | PM_IFACE))) { fail2 ("SUB / FUNCTION without a body: ", P->procs[i].name); }
+		if (failed) { delete P; return 0; }
+		return P;
+	}
+};
+
+Program *compile (const char *src, Error *err)
+{
+	Compiler *c = new Compiler;
+	Program *p = c->compile (src, err);
+	delete c;
+	return p;
+}
+
+void destroy (Program *p) { delete p; }
+void setKitSource (char *(*source) (const char *name, int *len)) { kitSource = source; }
+void setDialect (const Dialect *d) { dialect = d; }
+
+// BASIC in French (bas.h). A word's first French name is the one shown (frenchMessage).
+const char *const FRENCH[] = {
+	"SI", "IF", "ALORS", "THEN", "SINON", "ELSE", "SINONSI", "ELSEIF", "FIN", "END",
+	"POUR", "FOR", "JUSQUE", "TO", "PAS", "STEP", "SUITE", "NEXT", "SUIVANT", "NEXT",
+	"REPETER", "REPEAT", "REPETE", "REPEAT", "TANTQUE", "WHILE", "FINTANTQUE", "WEND", "FAIRE", "DO", "BOUCLE", "LOOP", "JUSQUA", "UNTIL",
+	"FONCTION", "FUNCTION", "PROCEDURE", "SUB", "RETOUR", "RETURN", "APPELER", "CALL", "APPELLE", "CALL", "SORTIR", "EXIT",
+	"CLASSE", "CLASS", "HERITE", "EXTENDS", "IMPLEMENTE", "IMPLEMENTS", "VIRTUEL", "VIRTUAL", "REDEFINIT", "OVERRIDE", "ABSTRAIT", "ABSTRACT",
+	"NOUVEAU", "NEW", "CECI", "THIS", "RIEN", "NOTHING",
+	"COMME", "AS", "ENTIER", "INTEGER", "REEL", "REAL", "CHAINE", "STRING", "OCTET", "BYTE",
+	"ENTIER16", "INTEGER16", "ENTIER32", "INTEGER32", "ENTIER64", "INTEGER64", "REEL32", "REAL32", "REEL64", "REAL64",
+	"CONSTANTE", "CONST", "PARTAGE", "SHARED", "STATIQUE", "STATIC",
+	"SELON", "SELECT", "CAS", "CASE", "ET", "AND", "OU", "OR", "NON", "NOT", "SUR", "ON", "ARRET", "OFF",
+	"AFFICHER", "PRINT", "AFFICHE", "PRINT", "SAISIR", "INPUT", "TOUCHE$", "INKEY$",
+	// (the 40-pin header)
+	"BROCHE", "PIN", "MODEBROCHE", "PINMODE", "LIBERERBROCHE", "PINFREE", "BROCHECHANGEE", "PINCHANGED",
+	"I2COUVRIR", "I2COPEN", "I2CECRIRE", "I2CWRITE", "I2CENVOYER", "I2CSEND", "I2CLIRE", "I2CREAD", "I2CLIRE$", "I2CREAD$",
+	"SPIOUVRIR", "SPIOPEN", 0 };
+static const Dialect FRENCH_DIALECT = { 0, FRENCH, false, true, 0 };
+const Dialect *frenchDialect () { return &FRENCH_DIALECT; }
+void frenchMessage (const char *msg, char *out, int cap, const char *const *more)
+{
+	static const char *const TWO[] = { "ELSEIF", "SINON SI", "WEND", "FIN TANTQUE", 0 };	// (shown in two words)
+	static const char *const SAID[] = { "Expected ", "il manque ", " without its ", " sans son ", " without ", " sans ", 0 };
+	int o = 0;
+	const char *m = msg;
+	while (*m && o < cap - 30)
+	{
+		bool said = false;
+		for (int i = 0; SAID[i] && !said; i += 2)
+		{
+			int n = bslen (SAID[i]), k = 0;
+			while (k < n && m[k] == SAID[i][k]) k++;
+			if (k == n) { for (const char *f = SAID[i + 1]; *f; f++) out[o++] = *f; m += n; said = true; }
+		}
+		if (said) continue;
+		if (!(*m >= 'A' && *m <= 'Z') || (m > msg && ((m[-1] >= 'A' && m[-1] <= 'Z') || (m[-1] >= 'a' && m[-1] <= 'z')))) { out[o++] = *m++; continue; }
+		char w[24]; int n = 0; const char *q = m;
+		while (((*q >= 'A' && *q <= 'Z') || (*q >= 'a' && *q <= 'z') || (*q >= '0' && *q <= '9') || *q == '$') && n < 23) w[n++] = *q++;
+		w[n] = 0;
+		const char *t = w;
+		for (int i = 0; FRENCH[i]; i += 2) if (bseq (FRENCH[i + 1], w)) { t = FRENCH[i]; break; }
+		for (int i = 0; TWO[i]; i += 2) if (bseq (TWO[i], w)) t = TWO[i + 1];
+		for (int i = 0; more && more[i]; i += 2) if (bseq (more[i], w)) t = more[i + 1];
+		for (; *t && o < cap - 1; t++) out[o++] = *t;
+		m = q;
+	}
+	out[o] = 0;
+}
+
+} // namespace bas
+
+int bas::wordList (char *buf, int cap)
+{
+	int n = 0;
+	auto add = [&] (const char *w) { if (n && n < cap - 1) buf[n++] = ' '; for (; *w && n < cap - 1; w++) buf[n++] = *w; };
+	for (int i = 0; KEYWORDS[i]; i++) add (KEYWORDS[i]);
+	// (the words of the classes: not reserved, known by their place)
+	static const char *const CLASSWORDS[] = { "MANAGED", "CLASS", "INTERFACE", "EXTENDS", "IMPLEMENTS", "VIRTUAL", "OVERRIDE", "ABSTRACT", "NEW", "THIS", "BASE", "NOTHING",
+		"BYREF", "ADDRESSOF", "DEALLOC", "POKEB", "POKEW", "POKEL", "POKEQ", "POKEF", "POKED", "POKES", "PEEKT", "POKET", 0 };	// (... and of the kits)
+	for (int i = 0; CLASSWORDS[i]; i++) add (CLASSWORDS[i]);
+	for (int i = 0; BFNS[i].name; i++) add (BFNS[i].name);
+	if (dialect && dialect->words) for (int i = 0; dialect->words[i].name; i++) add (dialect->words[i].name);
+	if (dialect && dialect->aliases) for (int i = 0; dialect->aliases[i] && dialect->aliases[i + 1]; i += 2) add (dialect->aliases[i]);
+	if (dialect && dialect->aliases2) for (int i = 0; dialect->aliases2[i] && dialect->aliases2[i + 1]; i += 2) add (dialect->aliases2[i]);
+	if (dialect && dialect->repeat) add ("REPEAT");
+	if (cap > 0) buf[n] = 0;
+	return n;
+}

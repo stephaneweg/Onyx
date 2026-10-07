@@ -19,6 +19,17 @@
 // Fixed user VA where the kernel maps the table (one 64 KB page). Stable forever.
 // (Window canvas is at 12 GB, user stack at 16 GB; this sits in the gap at 14 GB.)
 #define KAPI_TABLE_VA		(14ULL * 0x40000000ULL)
+// AppKit (2026-10-05, SD:/lib/appkit.so, user/Kits/appkit): the ONE interface between the programs and the
+// kernel. The programs call its functions (kapi_*: user/kapi.h) BY NAME, through import stubs that jump
+// through AppKit's table -- which the kernel copies at APPKIT_TABLE_VA (entry n at + 8 n), in the same
+// read-only page as its own, when the first program starts; AppKit's code is mapped into every
+// program. A program does nothing to have it.
+// THE CONTRACT BELOW (this struct's layout at KAPI_TABLE_VA) THEN BINDS APPKIT AND THE KERNEL ONLY: they
+// are built and shipped together (the package onyx), so the table may be restructured -- entries moved,
+// removed, merged -- by adapting AppKit; no program is rebuilt. What is append-only from now on is
+// AppKit's own list of names (user/Kits/appkit/appkit.abi). A new AppKit is the next start's.
+#define APPKIT_TABLE_VA		(KAPI_TABLE_VA + 0x8000ULL)	// (4096 entries at most)
+#define APPKIT_TABLE_MAX	4096
 // v29: COMPAT BREAK -- the kernel-drawn widget API was removed from the table and the
 // table consolidated (no gaps), so old app binaries must be rebuilt. (Retro-compat was
 // explicitly waived; every app is rebuilt from this tree.)
@@ -46,7 +57,7 @@
 //      executes (.bas, .bax...) are chosen in user space (SD:/etc/runners.ini, launch.h).
 // v50: + pad_state -- USB gamepads (Circle's drivers: Xbox 360 / One, PS3 / PS4, Switch Pro
 //      and standard HID pads): the raw buttons / axes / hats of pad 0..3; the button
-//      mapping is done in user space (user/gamepad.h, SD:/etc/gamepad.ini).
+//      mapping is done in user space (user/Include/gamepad.h, SD:/etc/gamepad.ini).
 // v51: + core_acquire/core_run/core_state/core_release -- app cores: an app acquires core 2
 //      or 3 and runs one function of its own there (no kapi calls, no malloc on it).
 // v52: + gpu_info/gpu_draw -- the V3D GPU (VideoCore VI): depth-tested Gouraud triangles
@@ -105,7 +116,7 @@
 //      cannot move, without minimise / maximise / close buttons, kept centred when the screen's
 //      resolution changes (the first-run wizard's).
 // v70: + gpu_texture_rect -- a rectangle of a texture's pixels replaced (no whole re-upload: the
-//      GPU compositing service, user/gpucomp); KAPI_GPU_F_ALPHA -- a GPU frame's target keeps its
+//      GPU compositing service, user/Libs/gpucomp); KAPI_GPU_F_ALPHA -- a GPU frame's target keeps its
 //      alpha (premultiplied ARGB: loaded, blended, stored, cleared to clear's top byte). The
 //      texture handles are shared by the programs using the GPU at once: 1024 in all (was 256),
 //      512 at most a program; the gpu_vbuf blocks 32 in all, 8 a program (was 8 in all).
@@ -115,7 +126,7 @@
 //      opendir / readdir / closedir, mkdir / remove / rename, chdir).
 // v72: gpu_render's blending: the compositing presets KAPI_GPU_BLEND_MULCOL .. DSTOUT (5..12:
 //      multiply, screen, plus, subtract, lighten, mask, cut out -- premultiplied, the alpha
-//      apart; user/gpucomp's layer blend modes). An older kernel takes 5..15 as ALPHA.
+//      apart; user/Libs/gpucomp's layer blend modes). An older kernel takes 5..15 as ALPHA.
 // v73: + pop_event / event_mods / pop_post / pump_sleep -- the event pump's kernel half, for the
 //      user-side pump of a PROTECTED (EL0) process (kern/el0.h): its table's pump_events /
 //      wait_for_exit / pump_wait are EL0 code that pops the window's events and the posted calls
@@ -127,7 +138,104 @@
 //      MPIDR_EL1, REVIDR_EL1, ID_AA64*_EL1 at EL0) are now emulated by the kernel, sanitised,
 //      instead of killing the app. The kernel table's pump_events / wait_for_exit / pump_wait /
 //      memset / memcpy / memmove are 0: they were never system calls (user-side code).
-#define KAPI_ABI_VERSION	74
+// v75: the POSIX layer's kernel half (docs/POSIX-PLAN.md), three blocks after proc_stats:
+//      + vm_map / vm_unmap / vm_protect / vm_advise / vm_query / vm_stats / thread_create_ex /
+//      thread_info (slots 199..206: demand paging, mmap, TLS, stacks); + file_* / path_* /
+//      dir_read / stream_write_nb / spawn_ex / proc_wait / get_argv / get_env / getpid /
+//      clock_info / sleep_us (207..228: file descriptors, stat, pipes, environment, spawn/wait,
+//      clock); + sock_* / poll (229..241: BSD sockets and poll). Every v75 call returns >= 0 on
+//      success, -KAPI_Exxx (newlib's errno values) on failure. The skeleton: every entry exists
+//      and returns -KAPI_ENOSYS until its work package lands.
+// v76: IPC between processes (docs/POSIX-PLAN.md §14, WP-IPC: what WebKit2's Unix IPC needs),
+//      a block after poll: + sock_pair (local sockets: SOCK_STREAM / SOCK_SEQPACKET / SOCK_DGRAM
+//      pairs, numbered from KAPI_SOCK_LOCAL_BASE, served by every sock_* call and poll) /
+//      sock_sendmsg / sock_recvmsg (scatter-gather, up to KAPI_IPC_HANDLES_MAX handles per message
+//      moved into the receiver's table: SCM_RIGHTS) / shm_create / shm_open / shm_unlink / shm_ctl
+//      (size, seals) / shm_map (shared memory objects mapped MAP_SHARED in several spaces) /
+//      handle_close / spawn_ex2 (handles given to the child at chosen descriptors) / get_handles
+//      (slots 242..252). + KAPI_SO_RCVBUF / SNDBUF / PEERPID / DOMAIN, KAPI_VMK_SHM.
+// v77: program images (kern/image.h, docs/02 section 7): a program is loaded once -- streamed
+//      from its file -- and its read-only segments are shared by its processes; the image's key
+//      is the program's canonical path. + image_preload (a program loaded ahead and kept: a run
+//      of its path reads nothing from the card) / image_unload (its pin and its name taken away)
+//      / image_list (the live images, or the one of a path) (slots 253..255), struct
+//      kapi_image_info, KAPI_IMG_*. No existing call changes.
+// v78: executable memory for a JIT (roadmap step 3, docs/08): vm_map and vm_protect accept
+//      KAPI_PROT_EXEC for anonymous regions (lazy pages, EL0 execute; vm_protect can take it
+//      away again: W^X); shm_map still refuses it. No new call: a program asks version >= 78.
+// v79: + kernel_info (slot 256): what the running kernel is, as "key value" lines (name, abi,
+//      built, rev, machine, model, ram) -- /bin/uname.
+// v80: + cpu_stats (slot 257): each core's role (the system's, the sound's, an app core and its
+//      owner, the network's) and the microseconds it was busy; + net_stats (slot 258): the bytes a
+//      process's sockets sent and received (pid 0: all of them). The Task Manager's two tabs.
+// v81: + set_cursor (slot 259): the pointer's shape over the caller's window (KAPI_CURSOR_*: the
+//      arrow, a hand, the text bar, the arrows that move and resize, the cell's cross, a crosshair,
+//      the hourglass, "no"). The kernel shows the four arrows while a window is dragged.
+// v82: + win_resizable (slot 260): the caller's window can be resized by its frame -- the pointer on
+//      an edge or a corner shows the two arrows, a drag shows the new outline, and at the release the
+//      window gets GUI_EVENT_WINRESIZE (20) with its new place and client size, which it applies
+//      (resize_window2, move_window). uikit: Root::setResizable.
+// v83: shared libraries (docs/SHARED-LIBS-PLAN.md, docs/02 section 7): + lib_open (slot 261): a
+//      position-independent library (SD:/lib/<name>.so, user/Runtime/lib.ld's shape) loaded once for the
+//      whole system, placed by the kernel in the library arena (16 GB..32 GB), its data relocated
+//      once, mapped into the caller -> its export table (version, size, init, then its entries:
+//      append-only, as this table). + KAPI_IMG_LIB in kapi_image_info.flags. No existing call changes.
+// v84: the sound's output (sys/sound.cpp, COnyxSoundDevice): + sound_output (slot 262): which output
+//      plays -- the jack (PWM), a USB audio device, HDMI, or auto (USB if there is one, else the jack,
+//      else HDMI on a board without a jack) --, what runs and which ones are there (KAPI_SND_OUT_*).
+//      The producer, the streams and every other sound call are unchanged: the output adapts (the
+//      rate 44.1 -> 48 kHz, the sample format, the volume by the device's own control when it has one).
+// v85: the sound is a MIXER: every program that plays has a channel of its own (sound_acquire gives
+//      one, up to 8: two programs are heard together) with its volume and its mute, remembered by
+//      the program's name (SD:/etc/mixer.ini at the start). + sound_clients (slot 263): the channels
+//      (struct kapi_sound_client: pid, name, volume, mute, its level now); + sound_client_volume
+//      (slot 264). sound_status's free frames are the caller's own channel's, its owner the caller
+//      (0: no channel). The mapped ring stays one (the first program that maps it).
+// v86: AppKit (above, KAPI_TABLE_VA): the kernel loads SD:/lib/appkit.so at the first program's start,
+//      copies its table at APPKIT_TABLE_VA and maps its code into every program. No entry added: the
+//      number says "this kernel gives the programs AppKit" -- a program built for AppKit needs it (its
+//      package's "kapi >= 86": the package manager installs it once this kernel runs).
+// v87: AppKit carries its small services too (user/Kits/appkit/appkit_lib.inc: the strings, the console,
+//      the .ini reader, the keyboard layout -- they were user/applib.h, inline in every program). No
+//      entry added to this table: the number says "this system's AppKit has them" -- a program built
+//      from now on calls them in AppKit, and its package's "kapi >= 87" waits for this system.
+// v88: AppKit carries the starting of programs by their runner (lx_launch, lx_open...: it was
+//      user/launch.h). No entry added here:
+//      as v87, the number makes the packages of the programs rebuilt wait for this system's AppKit.
+// v89: + ws_ctl (slot 265) -- what the kernel gives the graphics server, Elegant, a user process
+//      (kern/wsrv.h; the windows are leaving the kernel, docs/GUI-USERSPACE-STUDY.md): the role, the
+//      display (the kernel's compositor draws nothing while the server owns it; the server sends its
+//      rectangles), the raw input (mouse, keys, modifiers, held keys -- USB and injected -- to a ring
+//      the server reads instead of the kernel's window manager), one wait. Unused unless Elegant takes
+//      the display: nothing changes for the programs.
+// v90: the windows' entries are gone from the table (36: create_window, present, set_menu, win_list,
+//      drag_begin, wallpaper_*, desk... -- the windows are Elegant's, the graphics server's, since v89
+//      and the kernel's window manager is removed) and the activity shell's 2 (register_shell,
+//      shell_request: no program used them). The entries after them moved up: A SLOT'S NUMBER CHANGED
+//      (the slot numbers quoted in the notes above are those of their time; the checks below and
+//      docs/02 have today's). AppKit is rebuilt with the kernel; no program is (they call AppKit by
+//      name). A stand-in kernel on a PC still has the windows' entries, after the table's end.
+// v91: + proc_tree (slot 228): a process's tree -- its descendants (the processes it spawned, the ones
+//      they spawned...) listed, or the whole tree (or only its descendants) terminated at once, the
+//      leaves first. Before it a dead parent's children were ended by the reaper's orphan scan, one
+//      level a pass (still there, for a child whose start was deferred). The Terminal closes a tab's
+//      shell and everything running under it with it; cmd's Ctrl-C, /bin/kill -t.
+// v92: + gpio_ctl (slot 229) -- the 40-pin header (sys/gpio.cpp, kern/gpio.h; KAPI_GPIO_*): a pin's mode
+//      (input, pulled up / down, output, an alternate function), its level, PWM on GPIO 12 / 13 / 18 / 19
+//      (a frequency and a duty), edges queued to the process that asked (with their time), the I2C bus 1
+//      (GPIO 2 / 3: transfers, a scan) and SPI 0 (GPIO 7..11). One owner a pin; the pins the system
+//      uses are refused (the serial console 14 / 15, the HAT EEPROM 0 / 1); a process's pins go back to
+//      inputs when it ends. Read by GPIOKit (SD:/lib/gpiokit.so) DIRECTLY, not through AppKit (the
+//      user's exception, docs/03 §5.10): GPIOKit, like AppKit, is shipped and rebuilt with the kernel.
+// v93: the volumes (kern/volume.h, sys/volume.cpp): + vol_list, vol_eject, vol_mount, vol_format (slots
+//      230..233). USB sticks and disks (USB1:, USB2:, USB3: -- Circle's umsd1..umsd3 -- whole, or USB1P1:..P4: a
+//      device's partitions when it has several; USB: is USB1:) are mounted when they
+//      are plugged in and unmounted when they are ejected or pulled out (their open files then fail with
+//      -EIO, the programs go on); vol_list lists every volume with its state, size, label; vol_eject
+//      syncs the volume's open files, flushes the stick's cache and unmounts it (-EBUSY while files are
+//      open, unless forced); vol_format makes a FAT / FAT32 / exFAT file system with a label -- never on
+//      SD: (the system's volume), on SD1:..SD3: only with KAPI_FMT_CARD.
+#define KAPI_ABI_VERSION	93
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -230,6 +338,54 @@ struct kapi_vol_info
 	char     type[12];		// "RAM", "FAT12", "FAT16", "FAT32", "exFAT"
 };
 
+// (v93) A volume as kapi_vol_list gives it. The FatFs volumes (SD, SD1..SD3: the card's partitions;
+// USB1, USB2, USB3: the USB mass-storage devices whole, USBnP1..P4: the partitions of one that has several;
+// a program groups them by `device`) then RAM. A USB volume stays listed once its device is
+// gone (KAPI_VST_REMOVED) until a device takes its place: a program that polls sees what happened.
+#define KAPI_VST_MOUNTED	1		// in use: its files can be read and written
+#define KAPI_VST_EJECTED	2		// ejected, the device still plugged in: it can be removed safely
+#define KAPI_VST_UNREADABLE	3		// a device without a FAT / exFAT file system (or one that could not be read): format it
+#define KAPI_VST_REMOVED	4		// the device is gone (KAPI_VF_UNSAFE: pulled out while mounted)
+#define KAPI_VF_SYSTEM		(1u << 0)	// SD:, the system's volume: never ejected, never formatted
+#define KAPI_VF_REMOVABLE	(1u << 1)	// a USB volume: can be ejected
+#define KAPI_VF_RAM		(1u << 2)	// RAM:, in memory
+#define KAPI_VF_UNSAFE		(1u << 3)	// (REMOVED) it was pulled out while mounted: what was being written may be lost
+#define KAPI_VF_FORMATTABLE	(1u << 4)	// vol_format accepts it (SD1..SD3: with KAPI_FMT_CARD)
+#define KAPI_VF_IOERR		(1u << 5)	// (UNREADABLE) the device did not answer the reads
+#define KAPI_VOLS_ROOM		1		// vol_list's flags: the free space too (may read the volume's FAT once)
+struct kapi_volume
+{
+	char     name[8];		// "SD", "SD1", "USB", "RAM" (without the ':')
+	unsigned state;			// KAPI_VST_*
+	unsigned flags;			// KAPI_VF_*
+	unsigned gen;			// changes each time the volume is mounted, ejected, removed, formatted
+	unsigned open;			// the files and folders open on it now
+	unsigned long long device_size;	// the device's bytes (the whole stick, the whole card), 0 unknown
+	unsigned long long total;	// the file system's bytes (0: not mounted)
+	unsigned long long free;	// bytes free (KAPI_VOLS_ROOM), else ~0ull
+	unsigned serial;		// the volume's serial number
+	char     type[8];		// "FAT12", "FAT16", "FAT32", "exFAT", "RAM", "" (none)
+	char     label[36];		// the volume's label ("" none), as the file names: code page 850
+	char     device[12];		// "emmc1", "umsd1"... ("" RAM)
+};
+
+#define KAPI_EJECT_FORCE	1		// vol_eject's flags: even with files open (they then fail with -EIO)
+
+// (v93) kapi_vol_format's request.
+#define KAPI_FMT_AUTO		0		// fs: FAT16 / FAT32 by the size, exFAT from 32 GB (as Windows)
+#define KAPI_FMT_FAT		1		// FAT12 / FAT16 (small volumes)
+#define KAPI_FMT_FAT32		2
+#define KAPI_FMT_EXFAT		3
+#define KAPI_FMT_FORCE		1		// flags: even with files open on it
+#define KAPI_FMT_CARD		2		// flags: a partition of the SD card (SD1..SD3) may be formatted
+struct kapi_format
+{
+	unsigned fs;			// KAPI_FMT_AUTO..EXFAT
+	unsigned flags;			// KAPI_FMT_*
+	unsigned cluster;		// bytes (a power of 2), 0: chosen by the size
+	char     label[36];		// "" none; at most 11 characters, not "*+,./:;<=>?[\]|
+};
+
 // A directory entry from kapi_readdir.
 struct kapi_dirent
 {
@@ -257,7 +413,7 @@ struct kapi_chrome
 
 // The window frame (v64): the kernel's metrics (kern/gui/window.h WIN_TITLEBAR_H, WIN_BORDER)
 // and the title buttons' places -- the kernel hit-tests them, the app draws them into its chrome
-// copies (wtk: user/wtk/skin.cpp). The window menu at the left; from the right: close, maximise,
+// copies (uikit: user/Kits/uikit/skin.cpp). The window menu at the left; from the right: close, maximise,
 // minimise -- each KAPI_FRAME_BTN_W x _H, _Y below the frame's top, the outer ones _EDGE from
 // its side, _STEP from one to the next. The corners are rounded (radius KAPI_FRAME_RADIUS): in
 // the chrome copies a pixel's top byte is its transparency (0 opaque .. 255 see-through), heeded
@@ -289,7 +445,7 @@ struct kapi_win_geom
 // Xbox 360 / One, PS3 / PS4, Switch Pro) `buttons` uses Circle's TGamePadButton bits
 // (circle/usb/usbgamepad.h) and axes 0..3 are the left / right sticks; for any other HID
 // pad they are the report's own buttons (bit 0 = button 1), axes and hats (0..7 = N, NE,
-// E ... NW, else centred). user/gamepad.h turns this into PAD_UP / PAD_A ... masks.
+// E ... NW, else centred). user/Include/gamepad.h turns this into PAD_UP / PAD_A ... masks.
 #define KAPI_CORE_IDLE		0	// core_state() values
 #define KAPI_CORE_RUNNING	1
 #define KAPI_CORE_NOTYOURS	(-1)
@@ -373,7 +529,7 @@ struct kapi_gpu_batch
 #define KAPI_GPU_BLEND_MUL	3		// src * dst
 #define KAPI_GPU_BLEND_PREMUL	4		// src + dst * (1 - a)
 // (v72) the compositing presets, premultiplied colours (s, d; sa, da their alphas) -- what blend
-// modes are made of (user/gpucomp: a layer's multiply = MULCOL then UNDER, subtract = RSUB then UNDER)
+// modes are made of (user/Libs/gpucomp: a layer's multiply = MULCOL then UNDER, subtract = RSUB then UNDER)
 #define KAPI_GPU_BLEND_MULCOL	5		// colour s d + d (1 - sa); alpha kept
 #define KAPI_GPU_BLEND_UNDER	6		// colour s (1 - da) + d; alpha sa + da (1 - sa)
 #define KAPI_GPU_BLEND_SCREEN	7		// colour s + d (1 - s); alpha over
@@ -432,7 +588,7 @@ struct kapi_gpu_frame
 						// byte. Without it: alpha not kept (0x00RRGGBB, as before)
 #define KAPI_GPU_MAX_BATCHES	4096
 
-// kapi v61 (gpu_program / gpu_render2): draws with the app's own QPU shaders (user/v3d/qpu.h
+// kapi v61 (gpu_program / gpu_render2): draws with the app's own QPU shaders (user/Libs/v3d/qpu.h
 // builds them; the GameCube's TEV is generated so). A program: the vertex shader (render), the
 // coordinate shader (binning) and the fragment shader, as V3D 4.2 instructions. A vertex is
 // `inputs` floats, read in order by the vertex shader (the coordinate shader reads the first
@@ -526,21 +682,658 @@ struct kapi_syscall_stats
 	unsigned reserved[4];		// 0
 };
 
+// ---- v75: the POSIX layer's kernel half (docs/POSIX-PLAN.md §3) ------------------------------
+// 64-bit values are `long long` / `unsigned long long`, never `long` (32 bits in the Windows
+// build of the apps). Each structure's size and its key field offsets are the ABI: checked below.
+
+#ifdef __cplusplus
+#define KAPI_STATIC_ASSERT(c, m)	static_assert (c, m)
+#else
+#define KAPI_STATIC_ASSERT(c, m)	_Static_assert (c, m)
+#endif
+
+// (v75) The error values: a v75 call returns -KAPI_Exxx on failure. KAPI_Exxx = newlib's errno
+// value (sys/errno.h), so a libc does errno = -r.
+#define KAPI_EPERM		1
+#define KAPI_ENOENT		2
+#define KAPI_ESRCH		3
+#define KAPI_EINTR		4
+#define KAPI_EIO		5
+#define KAPI_EBADF		9
+#define KAPI_ECHILD		10
+#define KAPI_EAGAIN		11
+#define KAPI_ENOMEM		12
+#define KAPI_EACCES		13
+#define KAPI_EFAULT		14
+#define KAPI_EBUSY		16
+#define KAPI_EEXIST		17
+#define KAPI_EXDEV		18
+#define KAPI_ENODEV		19
+#define KAPI_ENOTDIR		20
+#define KAPI_EISDIR		21
+#define KAPI_EINVAL		22
+#define KAPI_ENFILE		23
+#define KAPI_EMFILE		24
+#define KAPI_EFBIG		27
+#define KAPI_ENOSPC		28
+#define KAPI_ESPIPE		29
+#define KAPI_EROFS		30
+#define KAPI_EPIPE		32
+#define KAPI_ENOSYS		88
+#define KAPI_ENOTEMPTY		90
+#define KAPI_ENAMETOOLONG	91
+#define KAPI_EOPNOTSUPP		95
+#define KAPI_ECONNRESET		104
+#define KAPI_ENOBUFS		105
+#define KAPI_EAFNOSUPPORT	106
+#define KAPI_ENOTSOCK		108
+#define KAPI_ENOPROTOOPT	109
+#define KAPI_ECONNREFUSED	111
+#define KAPI_EADDRINUSE		112
+#define KAPI_ECONNABORTED	113
+#define KAPI_ENETUNREACH	114
+#define KAPI_ENETDOWN		115
+#define KAPI_ETIMEDOUT		116
+#define KAPI_EHOSTUNREACH	118
+#define KAPI_EINPROGRESS	119
+#define KAPI_EALREADY		120
+#define KAPI_EDESTADDRREQ	121
+#define KAPI_EMSGSIZE		122
+#define KAPI_EPROTONOSUPPORT	123
+#define KAPI_EADDRNOTAVAIL	125
+#define KAPI_EISCONN		127
+#define KAPI_ENOTCONN		128
+#define KAPI_ENOTSUP		134
+
+// (v75, WP-MEM) Memory: vm_* (mmap, mprotect, madvise), threads with their TLS and stack.
+#define KAPI_PROT_NONE		0
+#define KAPI_PROT_READ		1
+#define KAPI_PROT_WRITE		2
+#define KAPI_PROT_EXEC		4		// (v78) anonymous regions only; before: -KAPI_ENOTSUP
+#define KAPI_MAP_FIXED		0x10
+#define KAPI_MAP_NORESERVE	0x4000
+#define KAPI_MAP_POPULATE	0x8000
+#define KAPI_MAP_FIXED_NOREPLACE 0x100000
+#define KAPI_MADV_NORMAL	0
+#define KAPI_MADV_RANDOM	1
+#define KAPI_MADV_SEQUENTIAL	2
+#define KAPI_MADV_WILLNEED	3
+#define KAPI_MADV_DONTNEED	4
+#define KAPI_MADV_FREE		8
+#define KAPI_VMK_ANON		1		// vm_map
+#define KAPI_VMK_HEAP		2
+#define KAPI_VMK_STACK		3
+#define KAPI_VMK_IMAGE		4
+#define KAPI_VMK_FIXED		5		// canvas, surface, sound ring, GPU memory, code arena, kapi pages
+#define KAPI_VMF_LAZY		1
+#define KAPI_THREAD_DETACHED	1		// no join: the kernel frees its record when it ends
+
+struct kapi_vm_region				// 32 bytes
+{
+	unsigned long long start, end;		// 0, 8: [start, end), 64 KB-aligned
+	unsigned prot;				// 16: KAPI_PROT_*
+	unsigned kind;				// 20: KAPI_VMK_*
+	unsigned resident;			// 24: pages present
+	unsigned flags;				// 28: KAPI_VMF_*
+};
+
+struct kapi_vm_stats				// 48 bytes
+{
+	unsigned long long resident;		// 0: bytes of owned frames, page tables included
+	unsigned long long lazy;		// 8: bytes of VA in lazy regions
+	unsigned long long writable;		// 16: bytes of writable VA (all lazy regions touched)
+	unsigned long long faults;		// 24: pages filled on demand (EL0 + kernel + app cores)
+	unsigned long long pt_bytes;		// 32: page tables
+	unsigned long long limit;		// 40: per-process limit, 0 = none
+};
+
+struct kapi_thread_attr				// 64 bytes
+{
+	unsigned long long fn;			// 0: int (*) (void *)
+	unsigned long long arg;			// 8
+	unsigned long long stack_size;		// 16: 0 = 8 MB; 16 KB..16 MB (lazy)
+	unsigned long long tls;			// 24: the thread's initial TPIDR_EL0
+	const char *name;			// 32: may be 0; 31 characters kept
+	unsigned flags;				// 40: KAPI_THREAD_DETACHED
+	int prio;				// 44: 0, or 1 = "real time" (as thread_priority)
+	unsigned long long reserved[2];		// 48: 0
+};
+
+struct kapi_thread_info				// 32 bytes
+{
+	unsigned long long stack_lo;		// 0: lowest usable byte of its stack VMA
+	unsigned long long stack_hi;		// 8: its top (the initial SP)
+	int tid;				// 16
+	int state;				// 20: 0 running, 1 ended (joinable)
+	unsigned long long guard;		// 24: unmapped bytes below stack_lo
+};
+
+// (v75, WP-FILE/PROC) Files (descriptors, stat, directories), processes (spawn / wait, argv,
+// environment), the clock.
+#define KAPI_O_RDONLY		0
+#define KAPI_O_WRONLY		1
+#define KAPI_O_RDWR		2
+#define KAPI_O_ACCMODE		3
+#define KAPI_O_CREAT		0x40
+#define KAPI_O_EXCL		0x80
+#define KAPI_O_TRUNC		0x200
+#define KAPI_O_APPEND		0x400
+#define KAPI_SEEK_SET		0
+#define KAPI_SEEK_CUR		1
+#define KAPI_SEEK_END		2
+#define KAPI_S_IFMT		0170000
+#define KAPI_S_IFDIR		0040000
+#define KAPI_S_IFREG		0100000
+#define KAPI_UNLINK_DIR		1		// rmdir semantics
+#define KAPI_WAIT_NOHANG	1
+#define KAPI_WAIT_KEEP		2		// do not close the process handle
+#define KAPI_PROC_EXITED	0
+#define KAPI_PROC_FAULT		1
+#define KAPI_PROC_KILLED	2
+#define KAPI_PROC_OOM		3
+#define KAPI_CLOCK_REALTIME_VALID 1		// the date is real (NTP / RTC), not "since boot"
+
+struct kapi_stat				// 64 bytes
+{
+	unsigned long long size;		// 0
+	long long mtime;			// 8: UTC seconds since 1970
+	unsigned long long ino;			// 16: FNV-1a 64 of the upper-cased absolute path
+	unsigned mode;				// 24: KAPI_S_IF* | permission bits
+	unsigned dev;				// 28: volume number
+	unsigned blksize;			// 32: cluster size (RAM: 65536)
+	unsigned attr;				// 36: FAT attributes (1 RO, 2 HID, 4 SYS, 0x10 DIR, 0x20 ARC)
+	unsigned long long blocks;		// 40: 512-byte blocks allocated
+	long long ctime;			// 48: = mtime (FF_FS_CRTIME 0)
+	unsigned long long reserved;		// 56
+};
+
+struct kapi_dirent2				// 288 bytes
+{
+	char name[256];				// 0: up to 255 characters (kapi_dirent cut at 127)
+	unsigned long long size;		// 256
+	long long mtime;			// 264
+	unsigned mode;				// 272
+	unsigned attr;				// 276
+	unsigned long long ino;			// 280
+};
+
+struct kapi_spawn_attr				// 64 bytes
+{
+	const char *path;			// 0: the program (resolved against cwd)
+	const char *argv;			// 8: block "a\0b\0\0" (argv[0] first), <= 64 KB
+	const char *envp;			// 16: same format; 0 = the caller's initial environment
+	const char *cwd;			// 24: 0 = the caller's
+	void *in, *out;				// 32, 40: stream handles of the caller, or 0
+	unsigned long long reserved;		// 48: 0 (a future stderr)
+	unsigned flags;				// 56: 0
+	unsigned reserved2;			// 60
+};
+
+struct kapi_proc_status				// 16 bytes
+{
+	int code;				// 0: the exit status (FAULT -11, KILLED / OOM -9)
+	int reason;				// 4: KAPI_PROC_*
+	int pid;				// 8
+	int reserved;				// 12
+};
+
+struct kapi_clock_info				// 48 bytes
+{
+	unsigned long long cnt;			// 0: CNTPCT_EL0 at the sample
+	unsigned long long freq;		// 8: CNTFRQ_EL0
+	long long utc_us;			// 16: UTC microseconds since 1970 at cnt
+	int tz_minutes;				// 24: local - UTC (set_timezone)
+	unsigned flags;				// 28: KAPI_CLOCK_*
+	unsigned long long boot_cnt;		// 32: CNTPCT at boot
+	unsigned long long reserved;		// 40
+};
+
+// (v75, WP-NET) BSD sockets (IPv4: TCP, UDP) and poll.
+#define KAPI_AF_INET		2
+#define KAPI_SOCK_STREAM	1
+#define KAPI_SOCK_DGRAM		2
+#define KAPI_SOCKF_NONBLOCK	1
+#define KAPI_MSG_PEEK		0x2
+#define KAPI_MSG_DONTWAIT	0x40
+#define KAPI_MSG_WAITALL	0x100
+#define KAPI_SHUT_RD		0
+#define KAPI_SHUT_WR		1
+#define KAPI_SHUT_RDWR		2
+#define KAPI_SO_ERROR		1		// get: pending error (positive errno), cleared
+#define KAPI_SO_NONBLOCK	2		// get / set 0/1
+#define KAPI_SO_RCVTIMEO_MS	3
+#define KAPI_SO_SNDTIMEO_MS	4
+#define KAPI_SO_BROADCAST	5
+#define KAPI_SO_NREAD		6		// get: bytes in the carry buffer, 1 if more is ready
+#define KAPI_SO_TYPE		7
+#define KAPI_SO_ACCEPTCONN	8
+#define KAPI_POLLIN		0x001
+#define KAPI_POLLPRI		0x002
+#define KAPI_POLLOUT		0x004
+#define KAPI_POLLERR		0x008
+#define KAPI_POLLHUP		0x010
+#define KAPI_POLLNVAL		0x020
+#define KAPI_PK_NONE		0
+#define KAPI_PK_SOCKET		1
+#define KAPI_PK_STREAM		2
+#define KAPI_PK_FILE		3
+#define KAPI_POLL_MAX		1024
+
+struct kapi_sockaddr				// 16 bytes, IPv4 only
+{
+	unsigned short family;			// 0: KAPI_AF_INET
+	unsigned short port;			// 2: host byte order
+	unsigned char addr[4];			// 4: a.b.c.d
+	unsigned char zero[8];			// 8
+};
+
+struct kapi_pollfd				// 16 bytes
+{
+	int kind;				// 0: KAPI_PK_*
+	int h;					// 4: socket number, or a handle's value (<= 0xFFFFFF)
+	short events;				// 8
+	short revents;				// 10
+	int reserved;				// 12
+};
+
+// (v76, WP-IPC) Local sockets, handles passed between processes, shared memory (docs/POSIX-PLAN.md
+// §14). A local socket's number is a handle of the caller's table (always >= KAPI_SOCK_LOCAL_BASE;
+// IP sockets are 0..255): the sock_* calls and poll (KAPI_PK_SOCKET) take either.
+#define KAPI_AF_UNIX		1
+#define KAPI_SOCK_SEQPACKET	5
+#define KAPI_SOCK_LOCAL_BASE	0x10000		// local socket numbers are >= this
+#define KAPI_MSG_CTRUNC		0x8		// recvmsg out: handles dropped (no room in the array / table)
+#define KAPI_MSG_TRUNC		0x20		// recvmsg out: a datagram cut to the buffers
+#define KAPI_MSG_NOSIGNAL	0x4000		// accepted, ignored (no signals: EPIPE)
+#define KAPI_SO_RCVBUF		9		// local sockets: the receive queue's limit (bytes)
+#define KAPI_SO_SNDBUF		10		// local sockets: the largest datagram / packet (bytes)
+#define KAPI_SO_PEERPID		11		// get: the peer's pid (local sockets; -ENOTCONN)
+#define KAPI_SO_DOMAIN		12		// get: KAPI_AF_INET / KAPI_AF_UNIX
+#define KAPI_HK_NONE		0		// a handle's kind (struct kapi_handle_xfer)
+#define KAPI_HK_OFILE		1		// a file_open handle (the description is shared)
+#define KAPI_HK_STREAM		2		// a stream handle: a pipe (both ends), file_in / file_out
+#define KAPI_HK_SOCKET		3		// an IP socket number (0..255)
+#define KAPI_HK_LSOCK		4		// a local socket
+#define KAPI_HK_SHM		5		// a shared memory object
+#define KAPI_HXF_WRITER		1		// kapi_handle_xfer.flags: a pipe's write end (a STREAM): the
+						// pipe's end-of-file then waits for this holder too
+#define KAPI_IPC_HANDLES_MAX	256		// handles per message, per spawn_ex2
+#define KAPI_IPC_IOV_MAX	64		// iovecs per message
+#define KAPI_SHM_ALLOW_SEALING	1		// shm_create: seals may be added (else F_SEAL_SEAL is set)
+#define KAPI_SHM_GET_SIZE	1		// shm_ctl ops
+#define KAPI_SHM_SET_SIZE	2
+#define KAPI_SHM_ADD_SEALS	3
+#define KAPI_SHM_GET_SEALS	4
+#define KAPI_SHM_GET_ID		5		// a number naming the object system-wide (stat's st_ino)
+#define KAPI_SHM_GET_ACCESS	6		// KAPI_O_RDONLY / KAPI_O_RDWR of this handle
+#define KAPI_SEAL_SEAL		1		// = Linux's F_SEAL_*
+#define KAPI_SEAL_SHRINK	2
+#define KAPI_SEAL_GROW		4
+#define KAPI_SEAL_WRITE		8
+#define KAPI_SHM_NAME_MAX	63		// shm_open's name ("/x" or "x"), without the leading '/'
+#define KAPI_VMK_SHM		6		// vm_query: a shm_map region
+
+struct kapi_iovec				// 16 bytes
+{
+	unsigned long long base;		// 0
+	unsigned long long len;			// 8
+};
+
+struct kapi_handle_xfer				// 24 bytes
+{
+	long long h;				// 0: a handle's value, or an IP socket's number
+	int kind;				// 8: KAPI_HK_*
+	unsigned tag;				// 12: the sender's word, given to the receiver as it is
+	int fd;					// 16: spawn_ex2 / get_handles: the child's descriptor
+	unsigned flags;				// 20: KAPI_HXF_* (given back as sent)
+};
+
+struct kapi_msghdr				// 48 bytes
+{
+	const struct kapi_iovec *iov;		// 0: the data (sendmsg: read, recvmsg: written)
+	struct kapi_handle_xfer *handles;	// 8: sendmsg: to pass; recvmsg: received (0: none)
+	unsigned iovcnt;			// 16: <= KAPI_IPC_IOV_MAX
+	unsigned nhandles;			// 20: sendmsg: count; recvmsg: capacity in, received out
+	unsigned flags;				// 24: recvmsg out: KAPI_MSG_TRUNC / KAPI_MSG_CTRUNC
+	unsigned reserved;			// 28: 0
+	unsigned long long reserved2[2];	// 32: 0
+};
+
+// (v77) A program image (image_list): a program file held once in memory (kern/image.h).
+#define KAPI_IMG_KEPT		1		// preloaded: stays when no process runs it
+#define KAPI_IMG_LOADING	2		// being read from its file
+#define KAPI_IMG_UNNAMED	4		// unloaded, or its file changed: only its processes still use it
+#define KAPI_IMG_LIB		8		// (v83) a shared library (lib_open), not a program
+
+// (v85) A channel of the sound's mixer (sound_clients).
+#define KAPI_SOUND_NAME	24
+struct kapi_sound_client
+{
+	unsigned pid;			// the program
+	int	 volume;		// 0..100
+	int	 mute;			// 0 / 1
+	int	 peak;			// its level now, 0..32767 (a meter)
+	int	 queued;		// frames waiting in its stream
+	char	 name[KAPI_SOUND_NAME];	// the program's name ("media", "koton", "basic")
+	int	 reserved[4];
+};
+
+// (v91) proc_tree (pid, op, out, cap): a process's descendants -- by the parent pid each process
+// records at its spawn (spawn, spawn_ex, spawn_ex2; exec / launch start a process without a parent).
+#define KAPI_TREE_LIST		0	// -> how many descendants pid has; up to cap of their pids written to
+					// out (its children, then theirs...)
+#define KAPI_TREE_KILL		1	// pid and all its descendants terminated now (KILLED, -9), the leaves
+					// first -> how many processes were terminated
+#define KAPI_TREE_KILL_CHILDREN	2	// its descendants only (pid goes on) -> how many
+					// Errors: -KAPI_ESRCH no such process, -KAPI_EINVAL a bad op / pid,
+					// -KAPI_EPERM a kill that would take the caller (pid is the caller or
+					// one of its ancestors), -KAPI_EFAULT
+// (v92) The 40-pin header's GPIO (gpio_ctl (op, a0, a1, a2) -> >= 0, or -KAPI_Exxx; sys/gpio.cpp, kern/gpio.h).
+// Pins are BCM GPIO numbers 0..27 (the header's); KAPI_GPIO_INFO, _READ, _READ_ALL are anyone's, the others
+// need the pin to be free or the caller's (-KAPI_EBUSY: another process has it; -KAPI_EPERM: the system's).
+#define KAPI_GPIO_PINS		28	// GPIO 0..27: the header's
+#define KAPI_GPIO_INFO		0	// (struct kapi_gpio_pin *out, max) -> how many filled (KAPI_GPIO_PINS)
+#define KAPI_GPIO_MODE		1	// (pin, KAPI_GPIO_M_*) -> 0: the pin is the caller's in that mode
+					// (KAPI_GPIO_M_FREE gives it back: an input, no pull)
+#define KAPI_GPIO_WRITE		2	// (pin, 0 / 1) -> 0 (an output of the caller's)
+#define KAPI_GPIO_READ		3	// (pin) -> 0 / 1, its level now
+#define KAPI_GPIO_READ_ALL	4	// () -> the 28 levels, bit n = GPIO n
+#define KAPI_GPIO_PWM		5	// (pin 12 / 13 / 18 / 19, frequency in Hz (1 .. 1 000 000), duty in
+					// 1/10000 (0 .. 10000)) -> 0; the pin becomes the caller's, in PWM
+					// (12 and 18 share a channel, 13 and 19 the other: -KAPI_EBUSY if taken)
+#define KAPI_GPIO_EDGES		6	// (pin, KAPI_GPIO_RISING | KAPI_GPIO_FALLING, 0: none) -> 0: its edges are
+					// queued for the caller (an input of the caller's)
+#define KAPI_GPIO_EVENTS	7	// (struct kapi_gpio_event *out, max, wait ms <= 1000) -> how many taken
+					// (0: none came in time)
+#define KAPI_GPIO_I2C_OPEN	8	// (clock Hz: 0 = 100 kHz) -> 0: I2C bus 1 (GPIO 2 SDA, 3 SCL) is the caller's
+#define KAPI_GPIO_I2C_XFER	9	// (struct kapi_gpio_i2c *) -> bytes read (or written), -KAPI_EIO: no answer
+#define KAPI_GPIO_I2C_SCAN	10	// (unsigned char out[16]) -> how many devices: bit a of the 128 = address a
+#define KAPI_GPIO_SPI_OPEN	11	// (clock Hz: 0 = 1 MHz, mode 0..3 (CPOL << 1 | CPHA)) -> 0: SPI 0 (GPIO 7 CE1,
+					// 8 CE0, 9 MISO, 10 MOSI, 11 SCLK) is the caller's
+#define KAPI_GPIO_SPI_XFER	12	// (struct kapi_gpio_spi *) -> bytes moved
+#define KAPI_GPIO_CLOSE		13	// (KAPI_GPIO_BUS_I2C / _SPI) -> 0: the bus and its pins given back
+#define KAPI_GPIO_RELEASE	14	// () -> 0: every pin, bus and edge of the caller's given back
+#define KAPI_GPIO_NOW		15	// () -> the events' clock now (the system timer, microseconds)
+#define KAPI_GPIO_BUS_I2C	1
+#define KAPI_GPIO_BUS_SPI	2
+// A pin's modes
+#define KAPI_GPIO_M_FREE	0	// nobody's: an input, no pull
+#define KAPI_GPIO_M_IN		1
+#define KAPI_GPIO_M_IN_PULLUP	2
+#define KAPI_GPIO_M_IN_PULLDOWN	3
+#define KAPI_GPIO_M_OUT		4
+#define KAPI_GPIO_M_PWM		5	// (KAPI_GPIO_PWM)
+#define KAPI_GPIO_M_I2C		6	// (KAPI_GPIO_I2C_OPEN)
+#define KAPI_GPIO_M_SPI		7	// (KAPI_GPIO_SPI_OPEN)
+#define KAPI_GPIO_M_ALT0	8	// .. KAPI_GPIO_M_ALT0 + 5: an alternate function chosen by hand
+// Edges
+#define KAPI_GPIO_RISING	1
+#define KAPI_GPIO_FALLING	2
+// kapi_gpio_pin.flags
+#define KAPI_GPIO_F_RESERVED	1	// the system's (reason says whose): never given
+#define KAPI_GPIO_F_PWM_CAPABLE	2	// 12, 13, 18, 19
+#define KAPI_GPIO_F_EDGES	4	// its edges are queued for its owner
+struct kapi_gpio_pin
+{
+	unsigned char pin;		// GPIO number
+	unsigned char mode;		// KAPI_GPIO_M_*
+	unsigned char level;		// 0 / 1 now
+	unsigned char flags;		// KAPI_GPIO_F_*
+	unsigned      owner;		// the process that has it (0: none)
+	unsigned      pwm_freq;		// Hz (KAPI_GPIO_M_PWM)
+	unsigned      pwm_duty;		// 1/10000
+	char          reason[24];	// why it is reserved ("serial console")
+};
+struct kapi_gpio_event
+{
+	unsigned char pin;
+	unsigned char edge;		// KAPI_GPIO_RISING / _FALLING
+	unsigned char level;		// the level just after it
+	unsigned char lost;		// 1: events were dropped before this one (the queue was full)
+	unsigned      reserved;
+	unsigned long long us;		// when (the system timer, microseconds)
+};
+struct kapi_gpio_i2c			// one transfer: the bytes written (if any), then those read (if any)
+{
+	unsigned addr;			// 7-bit address
+	unsigned wlen, rlen;		// 0 .. 4096 each
+	const void *wr;
+	void *rd;
+};
+struct kapi_gpio_spi
+{
+	unsigned cs;			// 0 (CE0, GPIO 8) / 1 (CE1, GPIO 7)
+	unsigned len;			// 1 .. 4096
+	const void *tx;			// 0: zeros sent
+	void *rx;			// 0: what comes back is dropped
+};
+
+// (v89) The graphics server's operations (ws_ctl (op, a0, a1, a2) -> >= 0, or -KAPI_Exxx; kern/wsrv.h).
+// KAPI_WS_ACTIVE is anyone's; KAPI_WS_REGISTER makes the caller the server (the program "elegant",
+// when no live process is); the others are the server's own (-KAPI_EPERM).
+#define KAPI_WS_ACTIVE		0	// () -> the server's pid while it owns the display, else 0
+#define KAPI_WS_REGISTER	1	// () -> 1 the caller is the display server, 0 another one is
+#define KAPI_WS_DISPLAY		2	// (take 1 / give back 0, struct kapi_ws_display *out or 0) -> 0;
+					// -KAPI_EBUSY: a full-screen program has the display
+#define KAPI_WS_PRESENT		3	// (const struct kapi_ws_present *) -> 0: the rectangle shown
+#define KAPI_WS_INPUT		4	// (struct kapi_ws_input *out, max) -> how many events taken
+#define KAPI_WS_WAIT		5	// (timeout ms, at most 1000) -> KAPI_WS_PENDING_* bits
+#define KAPI_WS_PENDING_INPUT	1	// events to take (KAPI_WS_INPUT)
+#define KAPI_WS_PENDING_CALL	2	// a program's request to take (KAPI_WS_NEXT)
+// The programs' windows (the server's own, but KAPI_WS_CALL and KAPI_WS_KICK: a program's, through AppKit):
+#define KAPI_WS_ATTACH		6	// (pid) -> 0: the process's windows are the server's -- the kernel
+					// keeps its event queue (pop_event, should_exit, pump_wait as before)
+#define KAPI_WS_POST		7	// (pid, const struct kapi_event *) -> 1 queued for its pump, 0 full
+#define KAPI_WS_EXIT		8	// (pid) -> 0: asked to end (its kapi_should_exit answers 1)
+#define KAPI_WS_BUF_MAP		9	// (struct kapi_ws_buf *) -> 0: a buffer made, in the program and here
+#define KAPI_WS_BUF_FREE	10	// (id) -> 0: unmapped from both, freed
+#define KAPI_WS_NEXT		11	// (struct kapi_ws_req *out) -> 1 a request taken, 0 none
+#define KAPI_WS_REPLY		12	// (const struct kapi_ws_reply *) -> 0: its caller goes on
+#define KAPI_WS_CALL		13	// (struct kapi_ws_call *) -> the server's status (>= 0, or its
+					// own negative codes); -KAPI_ESRCH: no server owns the display
+#define KAPI_WS_KICK		14	// () -> the server's pid (> 0): it is told this program's pixels changed
+					// (another pid than before: the server was started again)
+#define KAPI_WS_FOCUS		15	// (pid, 0: none) -> 0: the program that has the keyboard (kapi_key_held,
+					// a pad's focus answer by it)
+#define KAPI_WS_PROC_NAME	16	// (pid, char *out, cap) -> its length: a live process's name
+#define KAPI_WS_STATE		17	// (pid, void *bytes, set 1 / get 0) -> 0: KAPI_WS_STATE_BYTES the server keeps
+					// in the kernel for an attached program (its window as the server knows
+					// it: what a server started again makes it anew from); zero until set
+#define KAPI_WS_STATE_BYTES	2304
+#define KAPI_WS_CLIENTS		18	// (unsigned *pids, max) -> how many: the attached programs
+#define KAPI_WS_DATA_MAX	4096	// a request's, an answer's bytes at most
+#define KAPI_WS_SLOT_CANVAS	0	// a buffer's place in the program: its window's client area,
+#define KAPI_WS_SLOT_FRAME	1	// its frame's active copy,
+#define KAPI_WS_SLOT_FRAME_OFF	2	// its frame's inactive copy
+#define KAPI_WS_SLOT_WALLPAPER	3	// the program's copy of the wallpaper (kapi_wallpaper_buffer)
+#define KAPI_WS_SLOT_XFER	4	// pixels the server hands the program (kapi_win_read)
+#define KAPI_WS_SLOTS		5
+// ... and where each is in the program's memory (kern/layout.h USER_WINDOW_*: where a window's canvas
+// and frame always were)
+#define KAPI_WS_VA_CANVAS	0x300000000ULL
+#define KAPI_WS_VA_FRAME		0x320000000ULL
+#define KAPI_WS_VA_FRAME_OFF	0x330000000ULL
+#define KAPI_WS_VA_WALLPAPER	0x340000000ULL
+#define KAPI_WS_VA_XFER		0x350000000ULL
+#define KAPI_WS_BUF_ADOPT	1	// the buffer the program already has in that slot, of that size, left by a
+					// server that ended: taken as it is (its pixels kept) instead of a new one
+struct kapi_ws_buf
+{
+	unsigned pid;			// in: the program
+	int	 slot;			// in: KAPI_WS_SLOT_* (a buffer already there is replaced)
+	unsigned long long bytes;	// in: its size
+	unsigned id;			// out: its number (KAPI_WS_BUF_FREE)
+	unsigned flags;			// in: KAPI_WS_BUF_ADOPT
+	unsigned long long addr;	// out: where it is in the server (64 KB aligned, zeroed)
+};
+struct kapi_ws_call			// a program's request (AppKit's window calls)
+{
+	int	 op;			// the server's own numbering
+	unsigned in_len;		// bytes sent (<= KAPI_WS_DATA_MAX)
+	const void *in;
+	void	*out;			// the answer's bytes, up to out_cap
+	unsigned out_cap;
+	unsigned out_len;		// out: the answer's whole length
+	long	 a[4];
+};
+struct kapi_ws_reply			// the server's answer
+{
+	unsigned id;			// the request's
+	unsigned len;			// the answer's bytes (<= KAPI_WS_DATA_MAX)
+	long	 status;		// what the program's call returns
+	const void *data;
+};
+struct kapi_ws_req			// ... as the server takes it
+{
+	unsigned id;			// (KAPI_WS_REPLY)
+	unsigned pid;			// who asks: stamped by the kernel
+	int	 op;
+	unsigned in_len;
+	long	 a[4];
+	unsigned char data[KAPI_WS_DATA_MAX];
+};
+struct kapi_ws_display
+{
+	int	 w, h;			// the screen
+	int	 reserved[6];
+};
+struct kapi_ws_present
+{
+	const unsigned *pixels;		// the server's screen, 0x00RRGGBB, `stride` pixels a row (>= the
+	int	 stride;		// screen's width), from its row 0
+	int	 x, y, w, h;		// the rectangle to show (w <= 0: the whole screen)
+	int	 reserved[3];
+};
+#define KAPI_WS_IN_POINTER	1	// x, y (screen), buttons (bit 0 left, 1 right, 2 middle), a = wheel notches
+#define KAPI_WS_IN_KEY		2	// keys: the keyboard's cooked string (characters, VT100 escapes)
+#define KAPI_WS_IN_MODS		3	// a = the modifiers held (1 Ctrl, 2 Shift, 4 Alt)
+#define KAPI_WS_IN_HELD_USB	4	// keys[0..5]: the USB keyboards' report (usage codes held)
+#define KAPI_WS_IN_HELD		5	// a = a logical key code, buttons = 1 down / 0 up (injected: vncd, rdpd)
+#define KAPI_WS_IN_GONE		6	// a = the pid of an attached program that ended
+#define KAPI_WS_IN_KICK		7	// a = the pid of a program whose pixels changed (KAPI_WS_KICK)
+#define KAPI_WS_IN_SCREEN	9	// x, y = the screen's new size (kapi_screen_set, done by the kernel)
+#define KAPI_WS_IN_FULLSCREEN	8	// a = the pid of a program that took (buttons 1) / gave back (0) the full screen
+struct kapi_ws_input
+{
+	unsigned type;			// KAPI_WS_IN_*
+	int	 x, y;
+	unsigned buttons;
+	int	 a;
+	char	 keys[44];
+};
+
+// (v84) The sound's outputs (sound_output; SD:/etc/sound.ini "output = auto | jack | usb | hdmi").
+#define KAPI_SND_OUT_AUTO	0		// a USB audio device if there is one, else the jack, else HDMI
+#define KAPI_SND_OUT_JACK	1		// the 3.5 mm jack (PWM)
+#define KAPI_SND_OUT_USB	2		// a USB headset / DAC
+#define KAPI_SND_OUT_HDMI	3		// the screen (HDMI 0)
+#define KAPI_SND_OUT_NOW(r)	((r) & 0xFF)		// sound_output's result: what plays now (0: nothing)
+#define KAPI_SND_OUT_ASKED(r)	(((r) >> 8) & 0xFF)	// ... what is asked for
+#define KAPI_SND_OUT_HAS(r, o)	((((r) >> 16) >> (o)) & 1)	// ... is output o there
+#define KAPI_IMG_PATH_MAX	256
+
+// (v81) set_cursor: the pointer's shapes (kernel/gui/cursors.inc, drawn by tools/gui/gen_cursors.py).
+#define KAPI_CURSOR_ARROW	0
+#define KAPI_CURSOR_HAND	1		// a link, something to click
+#define KAPI_CURSOR_TEXT	2		// text that can be selected or typed (the I bar)
+#define KAPI_CURSOR_MOVE	3		// four arrows: something moved
+#define KAPI_CURSOR_SIZE_H	4		// two arrows, left and right (a column's edge, a splitter)
+#define KAPI_CURSOR_SIZE_V	5		// up and down
+#define KAPI_CURSOR_SIZE_NWSE	6		// a corner dragged: top left / bottom right
+#define KAPI_CURSOR_SIZE_NESW	7		// top right / bottom left
+#define KAPI_CURSOR_CELL	8		// a thick cross: a spreadsheet's cells
+#define KAPI_CURSOR_CROSSHAIR	9		// a thin cross: a precise point (drawing)
+#define KAPI_CURSOR_WAIT	10		// an hourglass: the app is busy
+#define KAPI_CURSOR_NO		11		// a barred circle: not here
+#define KAPI_CURSOR_COUNT	12
+
+// (v80) cpu_stats: a core's role, the microseconds it was busy since the boot, its owner.
+#define KAPI_CORE_SYSTEM	0		// the scheduler's: the kernel and every process (core 0)
+#define KAPI_CORE_SOUND		1		// renders the sound (core 1)
+#define KAPI_CORE_APP		2		// an app core (kapi_core_acquire): pid = its owner, 0 when free
+#define KAPI_CORE_NETWORK	3		// the network stack (netcore=1: core 3)
+#define KAPI_CPU_CORES		8
+
+struct kapi_cpu_core				// 16 bytes
+{
+	unsigned long long busy_us;		// 0: system/network: its tasks ran (not the idle one); sound:
+						//    rendering; app: its jobs ran
+	unsigned role;				// 8: KAPI_CORE_*
+	unsigned pid;				// 12: an app core's owner (0: free; the other roles: 0)
+};
+
+struct kapi_cpu_stats				// 144 bytes
+{
+	unsigned long long now_us;		// 0: the clock when these were read (two reads: a load)
+	unsigned cores;				// 8: how many of core[] are filled
+	unsigned reserved;			// 12: 0
+	struct kapi_cpu_core core[KAPI_CPU_CORES];	// 16
+};
+
+// (v80) net_stats: the payload bytes through a process's sockets (TCP and UDP) since it started
+// (pid 0: through every process's since the boot), its sockets open now.
+struct kapi_net_stats				// 24 bytes
+{
+	unsigned long long rx_bytes;		// 0
+	unsigned long long tx_bytes;		// 8
+	unsigned sockets;			// 16
+	unsigned reserved;			// 20: 0
+};
+
+struct kapi_image_info				// 280 bytes
+{
+	unsigned long long size;		// 0: bytes of memory it holds (once, whatever the processes)
+	unsigned long long file_size;		// 8: its file's size when it was loaded
+	unsigned refs;				// 16: the processes mapping it (+ the tasks loading / waiting)
+	unsigned flags;				// 20: KAPI_IMG_*
+	char path[KAPI_IMG_PATH_MAX];		// 24: its key: the program's canonical path (lower case)
+};
+
+// The v75 structures' layout (the 64-bit ABI: pointers are 8 bytes).
+#define KAPI_CHECK_SIZE(type, size) \
+	KAPI_STATIC_ASSERT (sizeof (struct type) == (size), "sizeof (struct " #type ") is not " #size)
+#define KAPI_CHECK_FIELD(type, field, off) \
+	KAPI_STATIC_ASSERT (__builtin_offsetof (struct type, field) == (off), #type "." #field " is not at " #off)
+KAPI_CHECK_SIZE (kapi_vm_region, 32);
+KAPI_CHECK_FIELD (kapi_vm_region, flags, 28);
+KAPI_CHECK_SIZE (kapi_vm_stats, 48);
+KAPI_CHECK_SIZE (kapi_thread_attr, 64);
+KAPI_CHECK_FIELD (kapi_thread_attr, name, 32);
+KAPI_CHECK_FIELD (kapi_thread_attr, flags, 40);
+KAPI_CHECK_FIELD (kapi_thread_attr, reserved, 48);
+KAPI_CHECK_SIZE (kapi_thread_info, 32);
+KAPI_CHECK_FIELD (kapi_thread_info, guard, 24);
+KAPI_CHECK_SIZE (kapi_stat, 64);
+KAPI_CHECK_FIELD (kapi_stat, mode, 24);
+KAPI_CHECK_FIELD (kapi_stat, blocks, 40);
+KAPI_CHECK_SIZE (kapi_dirent2, 288);
+KAPI_CHECK_FIELD (kapi_dirent2, size, 256);
+KAPI_CHECK_FIELD (kapi_dirent2, ino, 280);
+KAPI_CHECK_SIZE (kapi_spawn_attr, 64);
+KAPI_CHECK_FIELD (kapi_spawn_attr, in, 32);
+KAPI_CHECK_FIELD (kapi_spawn_attr, flags, 56);
+KAPI_CHECK_SIZE (kapi_proc_status, 16);
+KAPI_CHECK_SIZE (kapi_clock_info, 48);
+KAPI_CHECK_FIELD (kapi_clock_info, tz_minutes, 24);
+KAPI_CHECK_FIELD (kapi_clock_info, boot_cnt, 32);
+KAPI_CHECK_SIZE (kapi_sockaddr, 16);
+KAPI_CHECK_FIELD (kapi_sockaddr, addr, 4);
+KAPI_CHECK_SIZE (kapi_pollfd, 16);
+KAPI_CHECK_FIELD (kapi_pollfd, revents, 10);
+KAPI_CHECK_SIZE (kapi_iovec, 16);
+KAPI_CHECK_SIZE (kapi_handle_xfer, 24);
+KAPI_CHECK_FIELD (kapi_handle_xfer, kind, 8);
+KAPI_CHECK_FIELD (kapi_handle_xfer, fd, 16);
+KAPI_CHECK_SIZE (kapi_msghdr, 48);
+KAPI_CHECK_FIELD (kapi_msghdr, iovcnt, 16);
+KAPI_CHECK_FIELD (kapi_msghdr, flags, 24);
+KAPI_CHECK_SIZE (kapi_image_info, 280);
+KAPI_CHECK_FIELD (kapi_image_info, path, 24);
+
 struct TKApiTable
 {
 	unsigned version;		// KAPI_ABI_VERSION the kernel filled
-
-	// --- windowing ---
-	unsigned *(*create_window) (int w, int h, const char *title);
-	unsigned *(*create_window_ex) (int x, int y, int w, int h, const char *title,
-				       unsigned flags);
-	unsigned *(*resize_window) (int w, int h);
 	int (*launch) (const char *name);
-	int (*toggle_app) (const char *name);
-	int (*raise_app) (const char *name);
-	int (*list_windows) (char *buf, unsigned size);
-	int (*wallpaper_generate) (unsigned base, int points, unsigned seed);
-	void (*present) (void);
 	unsigned (*get_ticks) (void);
 	void (*msleep) (unsigned ms);
 	void (*yield) (void);
@@ -555,12 +1348,8 @@ struct TKApiTable
 	void (*pump_events) (void);
 	void (*wait_for_exit) (void);
 	int (*should_exit) (void);
-
-	// --- app-drawn text + keyboard ---
-	void (*draw_text) (int, int, const char *, unsigned);
 	int (*font_width) (void);
 	int (*font_height) (void);
-	void (*set_key_handler) (gui_handler);
 
 	// --- enumeration + clock ---
 	int (*list_apps) (char *, unsigned);
@@ -577,11 +1366,6 @@ struct TKApiTable
 	// --- v1 additions (append below; bump KAPI_ABI_VERSION) ---
 	// The calling app's folder: "SD:apps/<name>.app/" into buf. Returns length.
 	int (*app_dir) (char *buf, unsigned size);
-
-	// --- v2 additions ---
-	// Canvas-click handler: GUI_EVENT_CANVAS_CLICK with (clientX<<16)|clientY when a
-	// press lands in the client area on no widget. For app-drawn mouse UIs.
-	void (*set_click_handler) (gui_handler);
 
 	// --- v3 additions ---
 	// Directory listing (FatFs). opendir returns a handle (0 on failure); readdir
@@ -614,7 +1398,6 @@ struct TKApiTable
 	int   (*mkdir) (const char *path);	// 0 ok / -1
 	int   (*remove) (const char *path);	// file or empty dir
 	int   (*rename) (const char *from, const char *to);
-	void  (*cursor_pos) (int *x, int *y);	// cursor, relative to this window's client
 
 	// --- v8 additions ---
 	int   (*list_tasks) (char *buf, unsigned size);	// "<state><kind> <name>" per line
@@ -630,18 +1413,6 @@ struct TKApiTable
 	int   (*exec) (const char *path, const char *args);
 	// Framebuffer dimensions (for edge-pinned/borderless windows like the panel).
 	void  (*screen_size) (int *w, int *h);
-
-	// --- v12 additions ---
-	// Move the calling app's window (outer top-left, screen coords). For borderless
-	// windows that re-position themselves, e.g. the panel keeping itself centered.
-	void  (*move_window) (int x, int y);
-
-	// --- v13 additions (app-drawn desktop wallpaper) ---
-	// Map the shared screen-sized wallpaper buffer (0x00RRGGBB) into this app and
-	// return its VA (+ dims via w/h). Draw into it, then wallpaper_commit() to make
-	// it the live background. Frames are kernel-owned -> persists after the app exits.
-	unsigned *(*wallpaper_buffer) (int *w, int *h);
-	void      (*wallpaper_commit) (void);
 
 	// --- v14 additions (ps / kill by PID) ---
 	// list_procs: one line per task "<pid> <a|k> <state> <name>" (pid 0 = kernel
@@ -698,14 +1469,6 @@ struct TKApiTable
 	int  (*tcp_recv) (int sock, void *buf, unsigned len);
 	void (*tcp_close) (int sock);
 
-	// --- v22 additions (full pointer stream for app-side widget toolkits) ---
-	// Opt-in: register a handler that receives GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE
-	// for this window's client area, with value = (changed<<40)|(buttons<<32)|
-	// (x<<16)|y (client coords; `changed` = the button 1/2/4 for DOWN/UP). Lets a
-	// user-space toolkit (uikit.h) own its widgets. The legacy set_click_handler is
-	// unchanged.
-	void (*set_pointer_handler) (gui_handler fn);
-
 	// --- v23 additions (memory info) ---
 	// System memory snapshot, all in KB: *total RAM, *free (unallocated page region +
 	// free heap), *app (owned by user processes), *page_kb (page size). Any pointer
@@ -716,7 +1479,7 @@ struct TKApiTable
 	// --- v24 additions (per-process heap) ---
 	// Unix-style sbrk: move the calling app's heap break by `increment` bytes
 	// (mapping fresh pages as it grows), return the previous break, or (void*)-1 on
-	// failure. The foundation for a user-space allocator (user/umm.h: malloc/free +
+	// failure. The foundation for a user-space allocator (user/Runtime/umm.h: malloc/free +
 	// operator new/delete). Heap pages are owned by the address space -> freed on exit.
 	void *(*sbrk) (long increment);
 
@@ -739,23 +1502,13 @@ struct TKApiTable
 	// buffer. `name` is recorded for get_keymap. Returns 1 on success, 0 otherwise.
 	// New layouts can be added as files with no kernel rebuild (see tools/keymaps).
 	int (*set_keymap_data) (const char *name, const void *data, unsigned len);
-
-	// --- v28 additions (user-side window chrome) ---
-	// get_chrome: fill *out with the calling app's window surfaces (content canvas +
-	// the active/inactive chrome copies + insets + title) so a user-side toolkit can
-	// draw the title bar / borders / close box. Returns 1, or 0 if the app has no
-	// window. draw_text_buf: render kernel-font text (transparent background) into an
-	// arbitrary app-mapped 0x00RRGGBB buffer (dstW x dstH) at (x,y) -- used to draw the
-	// title into the chrome buffer (the kernel font is the only font apps have). The
-	// kernel still owns chrome BEHAVIOUR (title-bar drag, close-box hit-test).
-	int  (*get_chrome) (struct kapi_chrome *out);
 	void (*draw_text_buf) (unsigned *dst, int dstW, int dstH, int x, int y,
 			       const char *s, unsigned color);
 
 	// --- v30 additions (hardware RNG) ---
 	// Fill buf[len] with random bytes from the Pi's hardware RNG (Circle
 	// CBcmRandomNumberGenerator). For cryptographic seeding -- e.g. the TLS entropy
-	// source in user/tls/onyx_tls.hpp. Returns the number of bytes written (== len).
+	// source in user/Libs/tls/onyx_tls.hpp. Returns the number of bytes written (== len).
 	int (*random) (void *buf, unsigned len);
 
 	// --- v33 additions (memory detail for memmon) ---
@@ -766,14 +1519,6 @@ struct TKApiTable
 	int (*ram_detail) (unsigned long *detected_kb, unsigned long *apppool_kb,
 			   unsigned long *apppool_free_kb, unsigned long *above4g_kb,
 			   unsigned *nsegments);
-
-	// --- v34 additions (scroll-wheel speed) ---
-	// Lines scrolled per wheel notch, applied system-wide: the WM multiplies the raw
-	// notch by this factor before delivering GUI_EVENT_PTR_WHEEL, so every toolkit/app
-	// feels it at once. set clamps to [1,16]; the theme editor persists it in
-	// SD:/etc/theme.txt (wheelspeed=N) and the kernel restores it at boot.
-	void (*set_wheel_speed) (int lines_per_notch);
-	int  (*get_wheel_speed) (void);
 
 	// --- v35 additions (shell surfaces -- activity-shell compositor) ---
 	// A shared pixel surface (0x00RRGGBB). The shell creates one sized to a viewport
@@ -787,16 +1532,6 @@ struct TKApiTable
 	int       (*surface_size) (int id, int *w, int *h);
 	void      (*surface_present) (int id);
 	int       (*surface_destroy) (int id);
-
-	// Activity-shell IPC (the kernel is a thin message router; see kern/ipc.h). A user
-	// compositor calls register_shell to become THE shell. Apps post to it with
-	// shell_request (the kernel stamps the caller's pid). The shell replies / pushes
-	// async events with mailbox_send(target_pid,...). Both drain with mailbox_recv,
-	// which fills *from_pid / *type and returns the payload length (or -1 if empty;
-	// blocking != 0 waits for a message). Messages are opaque {from_pid,type,bytes};
-	// `type` meaning is the user shell protocol. from_pid 0 == from the kernel.
-	int  (*register_shell) (void);
-	int  (*shell_request) (int type, const void *in, unsigned len);
 	int  (*mailbox_send) (int target_pid, int type, const void *in, unsigned len);
 	int  (*mailbox_recv) (int *from_pid, int *type, void *buf, unsigned cap, int blocking);
 
@@ -829,20 +1564,6 @@ struct TKApiTable
 	void (*inject_pointer) (int x, int y, unsigned buttons, int wheel);
 	void (*inject_key) (const char *keys);
 
-	// --- v39 additions (system menu bar) ---
-	// set_menu: declare the calling app's menus on its window + the callback that
-	// receives (sender 0, GUI_EVENT_MENU = 14, item id). Spec = '\n'-separated lines:
-	//   "M<title>"                    start a menu
-	//   "I<id>\t<label>\t<shortcut>"  an item (id >= 0; shortcut text e.g. "^O", may be empty)
-	//   "-"                           a separator
-	// get_menu: the ACTIVE app window's spec + title (the topmost window that is not
-	// the menu bar, the desktop or borderless); returns a serial that changes when the
-	// active window or its menu changes (0 = none). menu_command: send GUI_EVENT_MENU(id)
-	// to the active window (id -1 = ask it to close, like its close box); 1 if delivered.
-	int      (*set_menu) (const char *spec, gui_handler handler);
-	unsigned (*get_menu) (char *buf, unsigned cap, char *title, unsigned title_cap);
-	int      (*menu_command) (int id);
-
 	// --- v40 additions (named IPC services, clipboard, opacity, session end) ---
 	// ipc_register: become service `name` (1 ok / 0 held by another live process);
 	// ipc_lookup: pid of a service or 0. Talk with mailbox_send / mailbox_recv
@@ -855,7 +1576,6 @@ struct TKApiTable
 	int  (*ipc_lookup) (const char *name);
 	int  (*clipboard_set) (int type, const void *data, unsigned len);
 	int  (*clipboard_get) (int *type, void *buf, unsigned cap, unsigned *serial);
-	void (*set_window_alpha) (int alpha);
 	void (*shutdown) (int mode);
 
 	// --- v41 additions (full-screen apps) ---
@@ -867,20 +1587,6 @@ struct TKApiTable
 	unsigned *(*fullscreen_begin) (int *w, int *h);
 	void      (*present_fb) (void);
 	void      (*fullscreen_end) (void);
-
-	// --- v42 additions (drag & drop, keyboard modifiers) ---
-	// drag_begin: start dragging (type 1 text / 2 file paths '\n'-separated, <= 4 KB)
-	// from the caller's window while the left button is held; `label` rides on the
-	// cursor. The window under the cursor gets GUI_EVENT_DRAG_OVER (16), the one under
-	// the release GUI_EVENT_DROP (15) -- lValue = (flags << 32) | (x << 16) | y, client
-	// coords, flags DND_F_COPY (Ctrl) / DND_F_LEAVE -- and the source GUI_EVENT_DRAG_DONE
-	// (17): lValue = (flags << 32) | target pid, flags DND_F_COPY / DND_F_CANCEL (Esc) /
-	// DND_F_DESKTOP (no window, or the desktop). All go to the pointer handler.
-	// drag_data: the last payload (copies <= cap, returns the full length + type).
-	// get_modifiers: MOD_CTRL 1 / MOD_SHIFT 2 / MOD_ALT 4 (held now);
-	// inject_modifiers: set them (vncd).
-	int      (*drag_begin) (int type, const void *data, unsigned len, const char *label);
-	int      (*drag_data) (int *type, void *buf, unsigned cap);
 	unsigned (*get_modifiers) (void);
 	void     (*inject_modifiers) (unsigned mods);
 
@@ -921,6 +1627,8 @@ struct TKApiTable
 	// the ring, owner pid (0 = free). Calls from a non-owner return -1.
 	int  (*sound_acquire) (void);
 	void (*sound_release) (void);
+	// (sound_start / sound_stop / sound_instrument: RETIRED 2026-10-05 -- the synthesizer left the
+	// kernel for AudioKit, ak_fm_*; the slots stay and answer -1)
 	int  (*sound_start) (int voice, unsigned millihz, int wave, int volume);
 	int  (*sound_stop) (int voice);
 	int  (*sound_write) (const short *frames, unsigned nframes);
@@ -994,17 +1702,6 @@ struct TKApiTable
 	// pixels a row. 0 if not possible (then keep the back buffer). fullscreen_end ends it.
 	unsigned *(*fullscreen_direct) (int *w, int *h, int *stride);
 
-	// --- v56 additions (the window-level remote desktop, rdpd) ---
-	// win_list: the windows, bottom to top (at most max) -> how many. win_read: the pixels
-	// (0x00RRGGBB) of a rectangle of window id's client area (part 0) or of its frame (part
-	// 1 active, 2 inactive: ow x oh, the client area inside is not drawn there) into dst
-	// (stride in pixels), clipped to it -> 0, -1 no such window / part. win_raise: to the front (it gets the keys);
-	// win_close: asked to close (as its close box) -> 0 / -1.
-	int (*win_list) (struct kapi_win_info *out, int max);
-	int (*win_read) (unsigned id, int part, int x, int y, int w, int h, unsigned *dst, int stride);
-	int (*win_raise) (unsigned id);
-	int (*win_close) (unsigned id);
-
 	// --- v57 additions ---
 	// seek: the read position of a file opened with open() -> 0, -1 (not seekable: FTP:...).
 	// A big file's cluster map is built at its first seek (FatFs fast seek): then any position
@@ -1054,24 +1751,6 @@ struct TKApiTable
 	// where they are: their x / y framed IN PLACE (draw them again with view 0), the triangles
 	// that need clipping clipped into the buffer's end past nfloats (keep room there).
 	void *(*gpu_vbuf) (unsigned bytes);
-	// --- v64 ---
-	// win_minimise: window id (0: the caller's) minimised -- not shown, no input -- until win_raise
-	// or raise_app brings it back (KAPI_WIN_MINIMISED in win_list) -> 0, -1 no such window.
-	int (*win_minimise) (unsigned id);
-	// win_geometry: the caller's window and the work area into *out -> 0, -1 no window.
-	int (*win_geometry) (struct kapi_win_geom *out);
-	// resize_window2: as resize_window, but the canvas and the frame's copies grow past their first
-	// size when needed (new memory, at the same addresses: their pixels are lost -- redraw them; the
-	// frame: get_chrome again) -> the canvas, *stride its pixels a row; 0 (no memory: size kept).
-	unsigned *(*resize_window2) (int w, int h, int *stride);
-	// --- v65 ---
-	// desk: the workspaces (virtual desktops). set >= 0 shows desk `set`, count > 0 sets how many
-	// there are (1 .. KAPI_DESK_MAX; the windows of the desks dropped go to the last one); -1 / 0
-	// keep them -> the current desk | the count << 8 | a counter bumped at every change << 16.
-	int (*desk) (int set, int count);
-	// win_desk: window id (0: the caller's) to desk n (-1: every desk; -2: only asked) -> its desk
-	// (-1: every desk), -3 no such window. (A topmost / backmost window stays on every desk.)
-	int (*win_desk) (unsigned id, int n);
 	// --- v66 ---
 	// screen_set: the screen's resolution now (w x h: 640 x 480 .. 2560 x 1600, w even), between two
 	// frames; every window kept on the screen and sent GUI_EVENT_DISPLAY_RESIZE -> 0; -1 a size out
@@ -1174,7 +1853,439 @@ struct TKApiTable
 	// proc_stats: the system-call statistics of process `pid` (0: the caller) -> 0 (*out
 	// filled), -1 no such process (or a kernel task), -2 a bad pointer.
 	int (*proc_stats) (int pid, struct kapi_syscall_stats *out);
+
+	// --- v75 WP-MEM --- (slots 199..206; docs/POSIX-PLAN.md §3.1). Every v75 call: >= 0
+	// success, -KAPI_Exxx failure; every one -KAPI_ENOSYS until its work package lands.
+	// vm_map: a region of len bytes (rounded up to 64 KB) in the mmap arena, zero-filled, filled
+	// on first touch (KAPI_MAP_POPULATE: now); addr a hint unless KAPI_MAP_FIXED -> the address,
+	// -EINVAL (len 0, FIXED not aligned / outside the arena), -ENOMEM (no room, overcommit, > 4096
+	// regions), -ENOTSUP (EXEC), -EEXIST (FIXED_NOREPLACE overlaps).
+	long long (*vm_map) (unsigned long long addr, unsigned long long len, unsigned prot, unsigned flags);
+	// vm_unmap: inside KAPI_VMK_ANON regions (splits them) -> 0 / -EINVAL.
+	int (*vm_unmap) (unsigned long long addr, unsigned long long len);
+	// vm_protect: ANON regions; present pages re-protected -> 0 / -EINVAL / -ENOMEM (split cap) /
+	// -ENOTSUP (EXEC).
+	int (*vm_protect) (unsigned long long addr, unsigned long long len, unsigned prot);
+	// vm_advise: any lazy region: WILLNEED populates (-ENOMEM); DONTNEED / FREE drop the pages
+	// (zero on the next touch; ANON and HEAP only); the others no-op -> 0 / -EINVAL.
+	int (*vm_advise) (unsigned long long addr, unsigned long long len, int advice);
+	// vm_query -> 0 the region holding addr, 1 the next region above it, -ENOMEM none above,
+	// -EFAULT.
+	int (*vm_query) (unsigned long long addr, struct kapi_vm_region *out);
+	// vm_stats: pid 0 = self -> 0 / -ESRCH / -EFAULT.
+	int (*vm_stats) (int pid, struct kapi_vm_stats *out);
+	// thread_create_ex: a thread with its stack size, TLS (TPIDR_EL0), name, flags, priority
+	// -> tid >= 2 / -EAGAIN (32 running) / -ENOMEM / -EINVAL / -EFAULT.
+	int (*thread_create_ex) (const struct kapi_thread_attr *attr);
+	// thread_info: tid 0 = self, 1 = main -> 0 / -ESRCH / -EFAULT.
+	int (*thread_info) (int tid, struct kapi_thread_info *out);
+
+	// --- v75 WP-FILE/PROC --- (slots 207..228; docs/POSIX-PLAN.md §3.2)
+	// file_open: KAPI_O_* flags -> handle > 0 / -errno.
+	long long (*file_open) (const char *path, unsigned flags, unsigned mode);
+	// file_read / file_write: off -1 at the handle's offset (advanced; a write with APPEND: at the
+	// end), else at off (pread / pwrite) -> bytes (read: 0 = the end) / -errno.
+	long long (*file_read) (long long h, void *buf, unsigned long long len, long long off);
+	long long (*file_write) (long long h, const void *buf, unsigned long long len, long long off);
+	// file_seek: KAPI_SEEK_* -> the new offset / -EINVAL / -EBADF.
+	long long (*file_seek) (long long h, long long off, int whence);
+	// file_truncate: grows with zeros.
+	int (*file_truncate) (long long h, long long size);
+	int (*file_sync) (long long h);
+	int (*file_stat) (long long h, struct kapi_stat *out);
+	int (*file_close) (long long h);
+	int (*path_stat) (const char *path, struct kapi_stat *out);
+	// path_unlink: a file (-EISDIR on a directory); KAPI_UNLINK_DIR: a directory (-ENOTDIR /
+	// -ENOTEMPTY).
+	int (*path_unlink) (const char *path, unsigned flags);
+	// path_mkdir -> 0 / -EEXIST / -ENOENT (no parent).
+	int (*path_mkdir) (const char *path, unsigned mode);
+	// path_rename: replaces `to`; -EXDEV across volumes.
+	int (*path_rename) (const char *from, const char *to);
+	int (*path_utime) (const char *path, long long mtime);
+	// dir_read: an opendir handle -> 1 / 0 the end / -EBADF / -EFAULT.
+	int (*dir_read) (void *dir, struct kapi_dirent2 *out);
+	// stream_write_nb -> n (> 0) / -EAGAIN (full) / -EBADF.
+	int (*stream_write_nb) (void *h, const void *buf, unsigned len);
+	// spawn_ex: argv / envp blocks given -> a process handle / -errno.
+	long long (*spawn_ex) (const struct kapi_spawn_attr *a);
+	// proc_wait -> 1 ended (the handle closed unless KAPI_WAIT_KEEP) / 0 running (NOHANG) / -EBADF.
+	int (*proc_wait) (void *proc, unsigned flags, struct kapi_proc_status *out);
+	// get_argv / get_env: the block ("a\0b\0\0"), filled up to cap -> the block's size;
+	// argv[0] = the path.
+	int (*get_argv) (char *buf, unsigned cap);
+	int (*get_env) (char *buf, unsigned cap);
+	// getpid: which 0 the pid, 1 the parent's.
+	int (*getpid) (int which);
+	int (*clock_info) (struct kapi_clock_info *out);
+	int (*sleep_us) (unsigned long long us);
+
+	// --- v75 WP-NET --- (slots 229..241; docs/POSIX-PLAN.md §3.3)
+	// sock_open: KAPI_SOCK_STREAM / _DGRAM, KAPI_SOCKF_NONBLOCK -> socket >= 0 / -EPROTONOSUPPORT /
+	// -ENFILE (table full) / -ENETDOWN.
+	int (*sock_open) (int type, unsigned flags);
+	// sock_connect -> 0 / -EINPROGRESS / -EALREADY / -EISCONN / -ECONNREFUSED / -ETIMEDOUT /
+	// -ENETUNREACH / -EBADF.
+	int (*sock_connect) (int s, const struct kapi_sockaddr *to);
+	// sock_bind -> 0 / -EADDRINUSE / -EINVAL.
+	int (*sock_bind) (int s, const struct kapi_sockaddr *addr);
+	// sock_listen: backlog clamped 1..32.
+	int (*sock_listen) (int s, int backlog);
+	// sock_accept: flags KAPI_SOCKF_NONBLOCK for the new socket -> socket / -EAGAIN.
+	int (*sock_accept) (int s, struct kapi_sockaddr *peer, unsigned flags);
+	// sock_send: KAPI_MSG_* -> bytes / -EAGAIN / -EPIPE / -ENOTCONN / -EDESTADDRREQ.
+	long long (*sock_send) (int s, const void *buf, unsigned long long len, unsigned flags,
+				const struct kapi_sockaddr *to);
+	// sock_recv -> bytes, 0 = orderly end / -EAGAIN / -ECONNRESET / -ENOTCONN / -ETIMEDOUT.
+	long long (*sock_recv) (int s, void *buf, unsigned long long len, unsigned flags,
+				struct kapi_sockaddr *from);
+	int (*sock_shutdown) (int s, int how);
+	int (*sock_close) (int s);
+	// sock_getopt / sock_setopt: KAPI_SO_*.
+	int (*sock_getopt) (int s, int opt, int *value);
+	int (*sock_setopt) (int s, int opt, int value);
+	// sock_name: peer 0 the local address, 1 the remote one (-ENOTCONN).
+	int (*sock_name) (int s, int peer, struct kapi_sockaddr *out);
+	// poll: up to KAPI_POLL_MAX entries, timeout_ms -1 forever, 0 only check -> the ready count /
+	// 0 / -EINVAL / -EFAULT.
+	int (*poll) (struct kapi_pollfd *fds, unsigned n, int timeout_ms);
+
+	// --- v76 WP-IPC --- (slots 242..252; docs/POSIX-PLAN.md §14)
+	// sock_pair: KAPI_SOCK_STREAM / _SEQPACKET / _DGRAM, KAPI_SOCKF_NONBLOCK -> 0, sv[0] and sv[1]
+	// two connected local sockets / -EPROTONOSUPPORT / -EMFILE / -ENOMEM / -EFAULT.
+	int (*sock_pair) (int type, unsigned flags, int *sv);
+	// sock_sendmsg: the iovecs gathered into one message (a datagram / packet whole, or stream
+	// bytes) with m->nhandles handles (local sockets only, else -EOPNOTSUPP) -> bytes / -EAGAIN /
+	// -EPIPE / -EMSGSIZE / -ENOBUFS / -EBADF (a handle) / -EINVAL / -EFAULT.
+	long long (*sock_sendmsg) (int s, const struct kapi_msghdr *m, unsigned flags);
+	// sock_recvmsg: into the iovecs; the handles carried added to the caller's table and written
+	// to m->handles (m->nhandles, m->flags updated) -> bytes, 0 = the end / -EAGAIN / -EFAULT.
+	long long (*sock_recvmsg) (int s, struct kapi_msghdr *m, unsigned flags);
+	// shm_create: an anonymous object of size bytes (zero-filled; 0 allowed), KAPI_SHM_ALLOW_SEALING
+	// -> a handle / -ENOMEM / -EMFILE.
+	long long (*shm_create) (unsigned long long size, unsigned flags);
+	// shm_open: a named object (KAPI_O_RDONLY / RDWR | CREAT | EXCL | TRUNC) -> a handle / -ENOENT /
+	// -EEXIST / -EINVAL / -ENAMETOOLONG / -EACCES.
+	long long (*shm_open) (const char *name, unsigned oflags, unsigned mode);
+	int (*shm_unlink) (const char *name);			// -> 0 / -ENOENT
+	// shm_ctl: KAPI_SHM_* (SET_SIZE: arg the size; ADD_SEALS: arg the seals) -> the value asked / 0 /
+	// -EPERM (sealed) / -EBUSY (mapped: no shrink, no write seal) / -EINVAL / -EBADF.
+	long long (*shm_ctl) (long long h, int op, unsigned long long arg);
+	// shm_map: [off, off + len) of the object mapped MAP_SHARED (as vm_map: addr a hint unless
+	// KAPI_MAP_FIXED / _NOREPLACE, KAPI_MAP_POPULATE; vm_unmap / vm_protect / vm_advise work on it)
+	// -> the address / -EACCES (write on a read-only handle) / -EPERM (write-sealed) / -EINVAL /
+	// -ENOMEM / -EBADF.
+	long long (*shm_map) (long long h, unsigned long long addr, unsigned long long len, unsigned prot,
+			      unsigned flags, unsigned long long off);
+	// handle_close: a shm, local socket, file_open or stream handle closed -> 0 / -EBADF.
+	int (*handle_close) (long long h);
+	// spawn_ex2: spawn_ex, and n handles of the caller (KAPI_HK_*: duplicated, the caller keeps its
+	// own) given to the child, which reads them with get_handles -> a process handle / -errno.
+	long long (*spawn_ex2) (const struct kapi_spawn_attr *a, const struct kapi_handle_xfer *handles, unsigned n);
+	// get_handles: the handles the spawner gave (h: in this process's table now; fd, kind, tag as
+	// given), up to cap written -> how many there are (0: none).
+	int (*get_handles) (struct kapi_handle_xfer *out, unsigned cap);
+
+	// --- v77: program images (kern/image.h; proc/image.cpp, sys/kapi.cpp) ---
+	// A path here is a program file's (relative: to the caller's working directory); its canonical
+	// form is the image's key (lower case, the volume first: "sd:/apps/x.app/main").
+	// image_preload: the program loaded ahead and kept in memory: returns at once, a kernel task
+	// reads the file; from then on a run of that path maps the image without reading the card.
+	// Kept already (or being loaded for it): 0, nothing done -> 0 / -ENOENT (no such file) /
+	// -ENAMETOOLONG / -ENOMEM / -EFAULT. A load that fails later is in the kernel log.
+	int (*image_preload) (const char *path);
+	// image_unload: the path's image loses its pin and its name at once: no new process maps it;
+	// its memory is freed when the last process running it ends -> 0 / -ENOENT (no image) / -EFAULT.
+	int (*image_unload) (const char *path);
+	// image_list: path 0: the live images, up to cap written -> how many there are. path: the
+	// image a run of that path would map -> 1 (out[0] written if cap > 0) / 0 (none) / -EFAULT.
+	int (*image_list) (const char *path, struct kapi_image_info *out, unsigned cap);
+
+	// --- v79: what the kernel is (sys/kapi.cpp, buildstamp.cpp) ---
+	// kernel_info: "key value" lines, one a line: name (Onyx), abi (KAPI_ABI_VERSION), built
+	// (the date and time of the kernel's link), rev (the source's git revision, "+" when it had
+	// changes), machine (aarch64), model (the board's name), ram (MB). Up to cap - 1 bytes
+	// written and a NUL -> the text's whole length / -EFAULT. Keys may be added.
+	int (*kernel_info) (char *buf, unsigned cap);
+
+	// --- v80: the cores' load, the network's bytes by process (sys/kapi.cpp) ---
+	// cpu_stats: every core's role, busy time and owner -> 0 / -EFAULT. The load between two
+	// reads: (busy_us' - busy_us) / (now_us' - now_us).
+	int (*cpu_stats) (struct kapi_cpu_stats *out);
+	// net_stats: pid's bytes received and sent, its open sockets (pid 0: all) -> 0 / -EFAULT. A
+	// process that used no socket: zeros.
+	int (*net_stats) (int pid, struct kapi_net_stats *out);
+
+	// --- v83: shared libraries (kern/image.h; proc/image.cpp, kernel.cpp; docs/SHARED-LIBS-PLAN.md) ---
+	// lib_open: the shared library `name` mapped into the caller -> its export table, or 0 with
+	// *err (if not 0) = -KAPI_E*. name: a bare name ("uikit": SD:/lib/uikit.so) or a path (relative: to
+	// the working directory). The library's file is read once for the whole system (the calling
+	// task reads it, as a program's start), placed by the kernel, its data relocated once; every
+	// process maps the same code at the same address and gets its own copy of the data. Mapped in
+	// the caller already: the same table. It stays mapped until the process ends (no lib_close).
+	// The table starts with `unsigned version, size; int (*init) (const void *imports);` -- the
+	// caller calls init once (user/Runtime/lib.h's lib_bind does) -- and is append-only, as this one.
+	// min_version: the table's version must be >= it, else -ENOTSUP. Other errors: -ENOENT (no
+	// such file), -EINVAL (not a library of user/Runtime/lib.ld's shape; a relocation other than
+	// R_AARCH64_RELATIVE), -ENOMEM (memory, or no room in the arena), -EMFILE (16 libraries in the
+	// process), -EIO, -ENAMETOOLONG, -EFAULT.
+	const void *(*lib_open) (const char *name, unsigned min_version, int *err);
+
+	// --- v84: the sound's output (sys/sound.cpp) ---
+	// sound_output: out = KAPI_SND_OUT_AUTO / _JACK / _USB / _HDMI: that output from now on (the
+	// running sound switches at once; an output that is not there -- no USB device -- plays nothing
+	// until it is); out = -1: nothing changed -> what plays now (KAPI_SND_OUT_NOW, 0: nothing yet or
+	// no device), what is asked (KAPI_SND_OUT_ASKED) and the outputs present (KAPI_SND_OUT_HAS), or -1
+	// (a bad value). Not kept across a restart by the kernel: the Sound applet writes SD:/etc/sound.ini
+	// ("output = usb"), read when the sound first starts.
+	int (*sound_output) (int out);
+
+	// --- v85: the sound's mixer (sys/sound.cpp) ---
+	// sound_clients: the programs that have a channel now -> how many (out: up to max of them; 0 / 0:
+	// only the count). sound_client_volume: a channel's volume 0..100 (-1: kept) and mute 0 / 1 (-1:
+	// kept), remembered for the program's name until the restart (the Sound applet writes
+	// SD:/etc/mixer.ini: "media = 60", "media.mute = 1") -> volume | 0x100 if muted, -1: no such channel.
+	int (*sound_clients) (struct kapi_sound_client *out, int max);
+	int (*sound_client_volume) (unsigned pid, int volume, int mute);
+
+	// --- v89: the graphics server's mechanisms (sys/wsrv.cpp; KAPI_WS_*) ---
+	long (*ws_ctl) (int op, long a0, long a1, long a2);
+
+	// --- v91: a process's tree (sys/kapi.cpp; KAPI_TREE_*) ---
+	int (*proc_tree) (int pid, int op, int *out, unsigned cap);
+	// --- v92: the 40-pin header's GPIO, PWM, I2C, SPI (sys/gpio.cpp; KAPI_GPIO_*). Called by GPIOKit only ---
+	long (*gpio_ctl) (int op, long a0, long a1, long a2);
+	// --- v93: the volumes (sys/volume.cpp; struct kapi_volume, KAPI_VST_*, KAPI_VF_*) ---
+	// vol_list: every volume (out: up to max of them; flags KAPI_VOLS_ROOM: the free space too) -> how
+	// many there are. vol_eject: a USB device (any of its volumes: "USB1:", "USB1P2:") synced, its cache flushed, unmounted ->
+	// 0: it can be removed; -KAPI_EBUSY files are open on it (synced, still mounted; KAPI_EJECT_FORCE
+	// unmounts anyway), -KAPI_EINVAL not removable, -KAPI_ENOENT not mounted. vol_mount: a USB volume
+	// ejected (still plugged in) or unreadable, or SD1..SD3, mounted again -> 0 / -KAPI_E*. vol_format:
+	// the volume made empty with a new file system (struct kapi_format) -> 0 (mounted again) /
+	// -KAPI_EPERM (SD:, or SD1..SD3 without KAPI_FMT_CARD), -KAPI_EBUSY, -KAPI_ENODEV, -KAPI_EINVAL
+	// (the label, the cluster), -KAPI_ENOSPC (too small / too big for that file system), -KAPI_EIO.
+	int (*vol_list) (struct kapi_volume *out, int max, unsigned flags);
+	int (*vol_eject) (const char *vol, unsigned flags);
+	int (*vol_mount) (const char *vol);
+	int (*vol_format) (const char *vol, const struct kapi_format *fmt);
+
+#ifndef __aarch64__
+	// --- NOT ON ONYX: the windows, for a stand-in kernel that has a window manager (the PC's simulator,
+	// the hosts of the tests, Koton for Windows) -- the builds that take AppKit's calls inline against
+	// such a table (appkit_calls.inc's KAPI_HOST). On Onyx the windows are Elegant's, the graphics
+	// server (a user process: kern/wsrv.h, user/Kits/appkit/elegant.h), and the kernel's table ends
+	// above: these entries were removed from it on 2026-10-05 (kapi v90).
+
+	// --- windowing ---
+	unsigned *(*create_window) (int w, int h, const char *title);
+	unsigned *(*create_window_ex) (int x, int y, int w, int h, const char *title,
+				       unsigned flags);
+	unsigned *(*resize_window) (int w, int h);
+	int (*toggle_app) (const char *name);
+	int (*raise_app) (const char *name);
+	int (*list_windows) (char *buf, unsigned size);
+	int (*wallpaper_generate) (unsigned base, int points, unsigned seed);
+	void (*present) (void);
+
+	// --- app-drawn text + keyboard ---
+	void (*draw_text) (int, int, const char *, unsigned);
+	void (*set_key_handler) (gui_handler);
+
+	// --- v2 additions ---
+	// Canvas-click handler: GUI_EVENT_CANVAS_CLICK with (clientX<<16)|clientY when a
+	// press lands in the client area on no widget. For app-drawn mouse UIs.
+	void (*set_click_handler) (gui_handler);
+	void  (*cursor_pos) (int *x, int *y);	// cursor, relative to this window's client
+
+	// --- v12 additions ---
+	// Move the calling app's window (outer top-left, screen coords). For borderless
+	// windows that re-position themselves, e.g. the panel keeping itself centered.
+	void  (*move_window) (int x, int y);
+
+	// --- v13 additions (app-drawn desktop wallpaper) ---
+	// Map the shared screen-sized wallpaper buffer (0x00RRGGBB) into this app and
+	// return its VA (+ dims via w/h). Draw into it, then wallpaper_commit() to make
+	// it the live background. Frames are kernel-owned -> persists after the app exits.
+	unsigned *(*wallpaper_buffer) (int *w, int *h);
+	void      (*wallpaper_commit) (void);
+
+	// --- v22 additions (full pointer stream for app-side widget toolkits) ---
+	// Opt-in: register a handler that receives GUI_EVENT_PTR_MOVE/DOWN/UP/ENTER/LEAVE
+	// for this window's client area, with value = (changed<<40)|(buttons<<32)|
+	// (x<<16)|y (client coords; `changed` = the button 1/2/4 for DOWN/UP). Lets a
+	// user-space toolkit (uikit.h) own its widgets. The legacy set_click_handler is
+	// unchanged.
+	void (*set_pointer_handler) (gui_handler fn);
+
+	// --- v28 additions (user-side window chrome) ---
+	// get_chrome: fill *out with the calling app's window surfaces (content canvas +
+	// the active/inactive chrome copies + insets + title) so a user-side toolkit can
+	// draw the title bar / borders / close box. Returns 1, or 0 if the app has no
+	// window. draw_text_buf: render kernel-font text (transparent background) into an
+	// arbitrary app-mapped 0x00RRGGBB buffer (dstW x dstH) at (x,y) -- used to draw the
+	// title into the chrome buffer (the kernel font is the only font apps have). The
+	// kernel still owns chrome BEHAVIOUR (title-bar drag, close-box hit-test).
+	int  (*get_chrome) (struct kapi_chrome *out);
+
+	// --- v34 additions (scroll-wheel speed) ---
+	// Lines scrolled per wheel notch, applied system-wide: the WM multiplies the raw
+	// notch by this factor before delivering GUI_EVENT_PTR_WHEEL, so every toolkit/app
+	// feels it at once. set clamps to [1,16]; the theme editor persists it in
+	// SD:/etc/theme.txt (wheelspeed=N) and the kernel restores it at boot.
+	void (*set_wheel_speed) (int lines_per_notch);
+	int  (*get_wheel_speed) (void);
+
+	// --- v39 additions (system menu bar) ---
+	// set_menu: declare the calling app's menus on its window + the callback that
+	// receives (sender 0, GUI_EVENT_MENU = 14, item id). Spec = '\n'-separated lines:
+	//   "M<title>"                    start a menu
+	//   "I<id>\t<label>\t<shortcut>"  an item (id >= 0; shortcut text e.g. "^O", may be empty)
+	//   "-"                           a separator
+	// get_menu: the ACTIVE app window's spec + title (the topmost window that is not
+	// the menu bar, the desktop or borderless); returns a serial that changes when the
+	// active window or its menu changes (0 = none). menu_command: send GUI_EVENT_MENU(id)
+	// to the active window (id -1 = ask it to close, like its close box); 1 if delivered.
+	int      (*set_menu) (const char *spec, gui_handler handler);
+	unsigned (*get_menu) (char *buf, unsigned cap, char *title, unsigned title_cap);
+	int      (*menu_command) (int id);
+	void (*set_window_alpha) (int alpha);
+
+	// --- v42 additions (drag & drop, keyboard modifiers) ---
+	// drag_begin: start dragging (type 1 text / 2 file paths '\n'-separated, <= 4 KB)
+	// from the caller's window while the left button is held; `label` rides on the
+	// cursor. The window under the cursor gets GUI_EVENT_DRAG_OVER (16), the one under
+	// the release GUI_EVENT_DROP (15) -- lValue = (flags << 32) | (x << 16) | y, client
+	// coords, flags DND_F_COPY (Ctrl) / DND_F_LEAVE -- and the source GUI_EVENT_DRAG_DONE
+	// (17): lValue = (flags << 32) | target pid, flags DND_F_COPY / DND_F_CANCEL (Esc) /
+	// DND_F_DESKTOP (no window, or the desktop). All go to the pointer handler.
+	// drag_data: the last payload (copies <= cap, returns the full length + type).
+	// get_modifiers: MOD_CTRL 1 / MOD_SHIFT 2 / MOD_ALT 4 (held now);
+	// inject_modifiers: set them (vncd).
+	int      (*drag_begin) (int type, const void *data, unsigned len, const char *label);
+	int      (*drag_data) (int *type, void *buf, unsigned cap);
+
+	// --- v56 additions (the window-level remote desktop, rdpd) ---
+	// win_list: the windows, bottom to top (at most max) -> how many. win_read: the pixels
+	// (0x00RRGGBB) of a rectangle of window id's client area (part 0) or of its frame (part
+	// 1 active, 2 inactive: ow x oh, the client area inside is not drawn there) into dst
+	// (stride in pixels), clipped to it -> 0, -1 no such window / part. win_raise: to the front (it gets the keys);
+	// win_close: asked to close (as its close box) -> 0 / -1.
+	int (*win_list) (struct kapi_win_info *out, int max);
+	int (*win_read) (unsigned id, int part, int x, int y, int w, int h, unsigned *dst, int stride);
+	int (*win_raise) (unsigned id);
+	int (*win_close) (unsigned id);
+	// --- v64 ---
+	// win_minimise: window id (0: the caller's) minimised -- not shown, no input -- until win_raise
+	// or raise_app brings it back (KAPI_WIN_MINIMISED in win_list) -> 0, -1 no such window.
+	int (*win_minimise) (unsigned id);
+	// win_geometry: the caller's window and the work area into *out -> 0, -1 no window.
+	int (*win_geometry) (struct kapi_win_geom *out);
+	// resize_window2: as resize_window, but the canvas and the frame's copies grow past their first
+	// size when needed (new memory, at the same addresses: their pixels are lost -- redraw them; the
+	// frame: get_chrome again) -> the canvas, *stride its pixels a row; 0 (no memory: size kept).
+	unsigned *(*resize_window2) (int w, int h, int *stride);
+	// --- v65 ---
+	// desk: the workspaces (virtual desktops). set >= 0 shows desk `set`, count > 0 sets how many
+	// there are (1 .. KAPI_DESK_MAX; the windows of the desks dropped go to the last one); -1 / 0
+	// keep them -> the current desk | the count << 8 | a counter bumped at every change << 16.
+	int (*desk) (int set, int count);
+	// win_desk: window id (0: the caller's) to desk n (-1: every desk; -2: only asked) -> its desk
+	// (-1: every desk), -3 no such window. (A topmost / backmost window stays on every desk.)
+	int (*win_desk) (unsigned id, int n);
+
+	// --- v81: the pointer's shape (gui/window.cpp) ---
+	// set_cursor: the shape shown while the pointer is over the caller's window's client area (or
+	// while that window holds the pointer: a button down) -> the shape it had / -1 (no window, an
+	// unknown shape). Kept until changed; the frame, the title bar and the other windows show
+	// their own. An app sets it as the pointer moves (uikit: uk_cursor, from a widget's onMouse).
+	int (*set_cursor) (int shape);
+
+	// --- v82: a window resized by its frame (gui/window.cpp) ---
+	// win_resizable: on != 0, the caller's window's edges and corners can be dragged; its client
+	// area is never made smaller than min_w x min_h -> 0 / -1 (no window, a borderless or fixed
+	// one). The kernel only shows the outline: at the release the window's pointer handler gets
+	// GUI_EVENT_WINRESIZE, lValue = (x << 48) | (y << 32) | (client_w << 16) | client_h (x, y: the
+	// frame's top left on the screen, 16 bits signed each), and the app resizes and moves itself.
+	int (*win_resizable) (int on, int min_w, int min_h);
+#endif
 };
+
+// The v75 entries' slots (an entry's index in 8-byte words: its system-call number). The blocks
+// are append-only: a slot never moves.
+#define KAPI_CHECK_SLOT(name, n) \
+	KAPI_STATIC_ASSERT (__builtin_offsetof (struct TKApiTable, name) == (n) * 8, "kapi " #name " is not slot " #n)
+KAPI_CHECK_SLOT (proc_stats, 162);
+KAPI_CHECK_SLOT (vm_map, 163);
+KAPI_CHECK_SLOT (vm_unmap, 164);
+KAPI_CHECK_SLOT (vm_protect, 165);
+KAPI_CHECK_SLOT (vm_advise, 166);
+KAPI_CHECK_SLOT (vm_query, 167);
+KAPI_CHECK_SLOT (vm_stats, 168);
+KAPI_CHECK_SLOT (thread_create_ex, 169);
+KAPI_CHECK_SLOT (thread_info, 170);
+KAPI_CHECK_SLOT (file_open, 171);
+KAPI_CHECK_SLOT (file_read, 172);
+KAPI_CHECK_SLOT (file_write, 173);
+KAPI_CHECK_SLOT (file_seek, 174);
+KAPI_CHECK_SLOT (file_truncate, 175);
+KAPI_CHECK_SLOT (file_sync, 176);
+KAPI_CHECK_SLOT (file_stat, 177);
+KAPI_CHECK_SLOT (file_close, 178);
+KAPI_CHECK_SLOT (path_stat, 179);
+KAPI_CHECK_SLOT (path_unlink, 180);
+KAPI_CHECK_SLOT (path_mkdir, 181);
+KAPI_CHECK_SLOT (path_rename, 182);
+KAPI_CHECK_SLOT (path_utime, 183);
+KAPI_CHECK_SLOT (dir_read, 184);
+KAPI_CHECK_SLOT (stream_write_nb, 185);
+KAPI_CHECK_SLOT (spawn_ex, 186);
+KAPI_CHECK_SLOT (proc_wait, 187);
+KAPI_CHECK_SLOT (get_argv, 188);
+KAPI_CHECK_SLOT (get_env, 189);
+KAPI_CHECK_SLOT (getpid, 190);
+KAPI_CHECK_SLOT (clock_info, 191);
+KAPI_CHECK_SLOT (sleep_us, 192);
+KAPI_CHECK_SLOT (sock_open, 193);
+KAPI_CHECK_SLOT (sock_connect, 194);
+KAPI_CHECK_SLOT (sock_bind, 195);
+KAPI_CHECK_SLOT (sock_listen, 196);
+KAPI_CHECK_SLOT (sock_accept, 197);
+KAPI_CHECK_SLOT (sock_send, 198);
+KAPI_CHECK_SLOT (sock_recv, 199);
+KAPI_CHECK_SLOT (sock_shutdown, 200);
+KAPI_CHECK_SLOT (sock_close, 201);
+KAPI_CHECK_SLOT (sock_getopt, 202);
+KAPI_CHECK_SLOT (sock_setopt, 203);
+KAPI_CHECK_SLOT (sock_name, 204);
+KAPI_CHECK_SLOT (poll, 205);
+KAPI_CHECK_SLOT (sock_pair, 206);
+KAPI_CHECK_SLOT (sock_sendmsg, 207);
+KAPI_CHECK_SLOT (sock_recvmsg, 208);
+KAPI_CHECK_SLOT (shm_create, 209);
+KAPI_CHECK_SLOT (shm_open, 210);
+KAPI_CHECK_SLOT (shm_unlink, 211);
+KAPI_CHECK_SLOT (shm_ctl, 212);
+KAPI_CHECK_SLOT (shm_map, 213);
+KAPI_CHECK_SLOT (handle_close, 214);
+KAPI_CHECK_SLOT (spawn_ex2, 215);
+KAPI_CHECK_SLOT (get_handles, 216);
+KAPI_CHECK_SLOT (image_preload, 217);
+KAPI_CHECK_SLOT (image_unload, 218);
+KAPI_CHECK_SLOT (image_list, 219);
+KAPI_CHECK_SLOT (kernel_info, 220);
+KAPI_CHECK_SLOT (cpu_stats, 221);
+KAPI_CHECK_SLOT (net_stats, 222);
+KAPI_CHECK_SLOT (lib_open, 223);
+KAPI_CHECK_SLOT (sound_output, 224);
+KAPI_CHECK_SLOT (sound_clients, 225);
+KAPI_CHECK_SLOT (sound_client_volume, 226);
+KAPI_CHECK_SLOT (ws_ctl, 227);
+KAPI_CHECK_SLOT (proc_tree, 228);
+KAPI_CHECK_SLOT (gpio_ctl, 229);
+KAPI_CHECK_SLOT (vol_list, 230);
+KAPI_CHECK_SLOT (vol_eject, 231);
+KAPI_CHECK_SLOT (vol_mount, 232);
+KAPI_CHECK_SLOT (vol_format, 233);
 
 #ifdef __cplusplus
 }

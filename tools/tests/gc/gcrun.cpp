@@ -1,7 +1,7 @@
 //
 // gcrun.cpp -- a headless run of a GameCube disc image with the Onyx core (Windows, MinGW-w64): the
 // status line every [every] fields, pictures, the sound, a memory card, an input script.
-//   g++ -std=c++17 -O2 -I user -o gcrun.exe tools/tests/gc/gcrun.cpp user/gc/*.cpp
+//   g++ -std=c++17 -O2 -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -o gcrun.exe tools/tests/gc/gcrun.cpp user/Emulators/gc/*.cpp
 //       pc/NintendoEMU/core/gxgl.cpp -lopengl32 -lgdi32          (-DGC_NV: an Optimus laptop's NVIDIA GPU)
 //   gcrun <iso> <fields> [every]
 //   GC_JIT=1                  the x86-64 JIT (else the interpreter); GC_JITOFF=n: the interpreter from field n

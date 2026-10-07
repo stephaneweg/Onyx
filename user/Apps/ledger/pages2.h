@@ -3,8 +3,8 @@
 //   * ReportsPage: a report chosen (the journals, the general ledger, the trial balance, the balance sheet,
 //     the income statement, the customers' and suppliers' balances and open items by age, a party's
 //     account, the VAT detail), its period (a quarter, the year: a click) and its options; shown as a
-//     table (a double click on a line opens its document, its account, its party), exported (a Writer
-//     document, a workbook, CSV) and opened in Writer or the Spreadsheet;
+//     table (a double click on a line opens its document, its account, its party), exported (a Letters
+//     document, a workbook, CSV) and opened in Letters or the Spreadsheet;
 //   * VatPage: the VAT returns of a year, a period a tile (filed, due, late; what it comes to); the
 //     period chosen's return as the form has it (II the operations, III the purchases, IV the VAT due, V
 //     the VAT deductible, VI the balance), the checks Intervat makes; the XML file for Intervat, the
@@ -22,6 +22,9 @@
 #include "export.h"
 
 namespace lg {
+
+// The kind of files the VAT files' Save dialogs offer (uikit/dialog.h).
+static const char *const XML_KINDS = "XML files|*.xml|All files|*";
 
 // =====================================================================================================================================
 // ---- the reports -------------------------------------------------------------------------------------------------------------------
@@ -45,9 +48,9 @@ public:
 		rpt_init (p);
 		resizeTo (800, 660);
 		HeadRow h (this);
-		bExport = h.add (TR ("Save as..."), s_export, FB_SECONDARY, NI_EXPORT, TR ("The report written in a file: a Writer document, a workbook, CSV"));
+		bExport = h.add (TR ("Save as..."), s_export, FB_SECONDARY, NI_EXPORT, TR ("The report written in a file: a Letters document, a workbook, CSV"));
 		bSheet = h.add (TR ("Spreadsheet"), s_sheet, FB_SECONDARY, NI_REPORT, TR ("The report opened in the Spreadsheet (a workbook)"));
-		bWriter = h.add ("Writer", s_writer, FB_PRIMARY, NI_DOC, TR ("The report opened in Writer (a document to print)"));
+		bWriter = h.add ("Letters", s_writer, FB_PRIMARY, NI_DOC, TR ("The report opened in Letters (a document to print)"));
 		which = new ChoiceBox (16, 70, 210); { const char *rn[R_COUNT]; for (int i = 0; i < R_COUNT; i++) rn[i] = TR (R_NAME[i]); which->setOptions (rn, R_COUNT); } which->sel = kind; which->onChange = on_param; addChild (which);
 		from = new DateEdit (290, 70, 130); from->onChange = on_date; addChild (from);
 		to = new DateEdit (452, 70, 130); to->onChange = on_date; addChild (to);
@@ -142,13 +145,13 @@ public:
 		// the columns: dates and short texts their width, the other texts sharing the rest -- at least their
 		// title's, a name its first letters --, the amounts 116 pixels (fewer when that leaves the texts too little)
 		g->setColumns (p.ncol);
-		int avail = g->width - WK_SBW - 6, fixed = 0, weight = 0, nm = 0, textMin = 0;
+		int avail = g->width - UK_SBW - 6, fixed = 0, weight = 0, nm = 0, textMin = 0;
 		int minW[RMAXCOL];
 		for (int c = 0; c < p.ncol && c < RMAXCOL; c++)
 		{
-			minW[c] = imax (imax (70, wk_text_w (p.col[c].title, 2) + 22), imin (160, p.col[c].width * 5));
+			minW[c] = imax (imax (70, uk_text_w (p.col[c].title, 2) + 22), imin (160, p.col[c].width * 5));
 			if (p.col[c].money) nm++;
-			else if (p.col[c].width <= 11) fixed += p.col[c].width * wk_fw () + 16;
+			else if (p.col[c].width <= 11) fixed += p.col[c].width * uk_fw () + 16;
 			else { weight += p.col[c].width; textMin += minW[c]; }
 		}
 		int mw = nm ? iclamp ((avail - fixed - textMin) / nm, 92, 116) : 116;
@@ -162,7 +165,7 @@ public:
 			}
 		for (int c = 0; c < p.ncol && c < RMAXCOL; c++)
 		{
-			int w = p.col[c].money ? mw : p.col[c].width <= 11 ? p.col[c].width * wk_fw () + 16
+			int w = p.col[c].money ? mw : p.col[c].width <= 11 ? p.col[c].width * uk_fw () + 16
 				: atMin[c] ? minW[c] : imax (minW[c], (int) ((long long) rest * p.col[c].width / imax (1, weight)));
 			g->setColumn (c, p.col[c].title, w, p.col[c].align == 1 ? GRID_RIGHT : GRID_LEFT);
 		}
@@ -193,11 +196,11 @@ public:
 		{
 			if (col) return true;
 			// (the heading across the row: a wider canvas from this cell on)
-			int span = imin (gr.totalWidth () - gr.left, gr.width - WK_SBW - 6) - (x < 0 ? 0 : x);
+			int span = imin (gr.totalWidth () - gr.left, gr.width - UK_SBW - 6) - (x < 0 ? 0 : x);
 			Canvas wide; wide.adopt (cv.px, imax (1, span), cv.h, cv.stride);
-			if (!sel) wk_rbox (wide, 1, 2, span - 2, h - 3, 4, wk_mix (C_FIELD, C_ACCENT, 34), wk_mix (C_FIELD, C_ACCENT, 26));
+			if (!sel) uk_rbox (wide, 1, 2, span - 2, h - 3, 4, uk_mix (C_FIELD, C_ACCENT, 34), uk_mix (C_FIELD, C_ACCENT, 26));
 			char t[200]; fit_text (s, span - 16, t, sizeof t, 2);
-			wk_text_l (wide, x + 8, y, h, t, in, 2);
+			uk_text_l (wide, x + 8, y, h, t, in, 2);
 			return true;
 		}
 		}
@@ -207,12 +210,12 @@ public:
 		switch (r.style)
 		{
 		case RS_TOTAL:
-			if (!sel) cv.fillRect (0, y, cv.w, h, wk_mix (C_FIELD, C_ACCENT, 22));
-			if (!sel && c.money && s[0]) { cv.fillRect (x + 8, y + 1, w - 16, 1, wk_mix (C_FIELD, C_FIELD_TEXT, 120)); cv.fillRect (x + 8, y + 3, w - 16, 1, wk_mix (C_FIELD, C_FIELD_TEXT, 120)); }
+			if (!sel) cv.fillRect (0, y, cv.w, h, uk_mix (C_FIELD, C_ACCENT, 22));
+			if (!sel && c.money && s[0]) { cv.fillRect (x + 8, y + 1, w - 16, 1, uk_mix (C_FIELD, C_FIELD_TEXT, 120)); cv.fillRect (x + 8, y + 3, w - 16, 1, uk_mix (C_FIELD, C_FIELD_TEXT, 120)); }
 			cell_text (cv, x, y, w, h, s, red ? C_BAD : in, c.align == 1, 2);
 			return true;
 		case RS_SUB:
-			if (!sel && c.money && s[0]) cv.fillRect (x + 8, y + 1, w - 16, 1, wk_mix (C_FIELD, C_FIELD_TEXT, 90));
+			if (!sel && c.money && s[0]) cv.fillRect (x + 8, y + 1, w - 16, 1, uk_mix (C_FIELD, C_FIELD_TEXT, 90));
 			cell_text (cv, x, y, w, h, s, red ? C_BAD : in, c.align == 1, 2);
 			return true;
 		case RS_DIM:
@@ -240,12 +243,12 @@ public:
 	void onDraw () override
 	{
 		drawHead ();
-		if (usesFrom ()) { wk_text_l (canvas, 244, 70, ED_H, TR ("From"), C_TEXT); wk_text_l (canvas, 428, 70, ED_H, TR ("to"), C_TEXT); }
-		else wk_text_l (canvas, 428 - 20, 70, ED_H, TR ("At"), C_TEXT);
+		if (usesFrom ()) { uk_text_l (canvas, 244, 70, ED_H, TR ("From"), C_TEXT); uk_text_l (canvas, 428, 70, ED_H, TR ("to"), C_TEXT); }
+		else uk_text_l (canvas, 428 - 20, 70, ED_H, TR ("At"), C_TEXT);
 		int x2 = 16 + quick->width + 16;
-		if (kind == R_JOURNAL) wk_text_l (canvas, x2, 106, ED_H, TR ("Journal"), C_TEXT);
-		else if (kind == R_LEDGER) { wk_text_l (canvas, x2, 106, ED_H, TR ("Accounts"), C_TEXT); wk_text_l (canvas, x2 + 226, 106, ED_H, TR ("to"), C_TEXT); }
-		else if (kind == R_PARTY) wk_text_l (canvas, x2, 106, ED_H, TR ("Party"), C_TEXT);
+		if (kind == R_JOURNAL) uk_text_l (canvas, x2, 106, ED_H, TR ("Journal"), C_TEXT);
+		else if (kind == R_LEDGER) { uk_text_l (canvas, x2, 106, ED_H, TR ("Accounts"), C_TEXT); uk_text_l (canvas, x2 + 226, 106, ED_H, TR ("to"), C_TEXT); }
+		else if (kind == R_PARTY) uk_text_l (canvas, x2, 106, ED_H, TR ("Party"), C_TEXT);
 	}
 	static void on_param (Widget &) { if (g_rp) g_rp->build (); }
 	static void on_date (Widget &w) { if (g_rp && date_parse (((LineEdit &) w).text ())) g_rp->build (); }
@@ -258,7 +261,7 @@ public:
 		if (!g_rp || !g_rp->p.nr) return;
 		int x, y; abs_pos (g_rp->bExport, &x, &y);
 		PopupMenu m (x, y + g_rp->bExport->height + 2);
-		m.add (TR ("Writer document (.rtf)..."), 1);
+		m.add (TR ("Letters document (.rtf)..."), 1);
 		m.add (TR ("Spreadsheet workbook (.xlsx)..."), 2);
 		m.add (TR ("CSV file (;)..."), 3);
 		int r = m.run ();
@@ -378,7 +381,7 @@ public:
 	void onDraw () override
 	{
 		drawHead ();
-		if (g_b.vatRegime != VR_NORMAL) { wk_text_l (canvas, 20, 110, 24, TR ("This company files no periodic VAT return (Settings > Company: its VAT situation)."), C_TEXT); }
+		if (g_b.vatRegime != VR_NORMAL) { uk_text_l (canvas, 20, 110, 24, TR ("This company files no periodic VAT return (Settings > Company: its VAT situation)."), C_TEXT); }
 		int t = today_ymd ();
 		char a[32], s[64];
 		for (int p = 1; p <= periods (); p++)
@@ -388,12 +391,12 @@ public:
 			int fi = return_find (g_b, year, p, monthly);
 			int due = return_deadline (year, p, monthly);
 			bool on = p == sel;
-			unsigned face = on ? wk_mix (C_FIELD, C_ACCENT, 60) : wk_tone (C_FIELD, 130);
-			wk_rbox (canvas, x, y, w, h, 8, face, face);
-			wk_rline (canvas, x, y, w, h, 8, on ? C_ACCENT : wk_mix (C_BG, 0, 60), on ? 255 : 110);
+			unsigned face = on ? uk_mix (C_FIELD, C_ACCENT, 60) : uk_tone (C_FIELD, 130);
+			uk_rbox (canvas, x, y, w, h, 8, face, face);
+			uk_rline (canvas, x, y, w, h, 8, on ? C_ACCENT : uk_mix (C_BG, 0, 60), on ? 255 : 110);
 			char nm[32];
 			if (monthly) scpy (nm, TR (MONTH_SHORT[p - 1]), sizeof nm); else { scpy (nm, TR ("Q"), sizeof nm); scat_num (nm, p, sizeof nm); }
-			wk_text_l (canvas, x + 10, y + 4, 18, nm, C_FIELD_TEXT, 2);
+			uk_text_l (canvas, x + 10, y + 4, 18, nm, C_FIELD_TEXT, 2);
 			unsigned c; const char *st;
 			if (fi >= 0) { st = TR ("Filed"); c = C_GOOD; }
 			else if (f > t) { st = TR ("To come"); c = field_dim (); }
@@ -406,7 +409,7 @@ public:
 			{
 				char d[16]; date_show (fi >= 0 ? g_b.ret[fi].filed : due, d);
 				scpy (s, fi >= 0 ? TR ("on ") : TR ("due "), sizeof s); scat (s, d, sizeof s);
-				wk_text_l (canvas, x + 10, y + 30, 18, s, field_dim ());
+				uk_text_l (canvas, x + 10, y + 30, 18, s, field_dim ());
 			}
 		}
 		if (g_b.vatRegime != VR_NORMAL) return;
@@ -417,10 +420,10 @@ public:
 			int f, e; period_range (year, sel, monthly, &f, &e);
 			char d1[16], d2[16]; date_show (f, d1); date_show (e, d2);
 			scpy (s, pn, sizeof s);
-			wk_text_l (canvas, 20, y0 - 2, 22, s, C_TEXT, 2);
+			uk_text_l (canvas, 20, y0 - 2, 22, s, C_TEXT, 2);
 			char r[120]; scpy (r, d1, sizeof r); scat (r, " - ", sizeof r); scat (r, d2, sizeof r);
 			if (filed >= 0) { char fd[16]; date_show (g_b.ret[filed].filed, fd); scat (r, "  \xB7  ", sizeof r); scat (r, TR ("filed on "), sizeof r); scat (r, fd, sizeof r); scat (r, TR (" (the grids as filed)"), sizeof r); }
-			wk_text_l (canvas, 20 + wk_text_w (pn, 2) + 14, y0 - 2, 22, r, dim_ink (C_BG));
+			uk_text_l (canvas, 20 + uk_text_w (pn, 2) + 14, y0 - 2, 22, r, dim_ink (C_BG));
 		}
 		int fy = y0 + 24;
 		int colY[3] = { fy, fy, fy };
@@ -428,22 +431,22 @@ public:
 		{
 			int col = sct < 2 ? sct : 2;
 			int x = 16 + col * (cw + 12), y = colY[col];
-			wk_text_l (canvas, x + 4, y, rh, TR (VAT_FORM[sct].title), C_TEXT, 2);
+			uk_text_l (canvas, x + 4, y, rh, TR (VAT_FORM[sct].title), C_TEXT, 2);
 			y += rh + 2;
 			for (int k = 0; VAT_FORM[sct].grids[k] >= 0; k++)
 			{
 				int gnum = VAT_FORM[sct].grids[k];
 				if (gnum == 91 && !(monthly && sel == 12)) continue;
 				bool hot = gnum == hotGrid;
-				unsigned bg = hot ? wk_mix (C_FIELD, C_ACCENT, 40) : C_FIELD;
-				wk_rbox (canvas, x, y, cw, rh, 5, bg, bg);
+				unsigned bg = hot ? uk_mix (C_FIELD, C_ACCENT, 40) : C_FIELD;
+				uk_rbox (canvas, x, y, cw, rh, 5, bg, bg);
 				char gl[4]; grid_label (gnum, gl);
 				unsigned pc = gnum == 71 ? C_BAD : gnum == 72 ? C_GOOD : C_ACCENT;
 				draw_pill (canvas, x + 4, y + 3, rh - 6, gl, pc, grid[gnum] != 0);
 				// its name: what the amount leaves of the row
 				bool am = grid[gnum] || gnum == 71 || gnum == 72; int ast = gnum >= 71 && gnum <= 72 ? 2 : 0;
 				if (am) money_s (grid[gnum], a);
-				int aw = am ? wk_text_w (a, ast) + 12 : 8;
+				int aw = am ? uk_text_w (a, ast) + 12 : 8;
 				Canvas c; c.adopt (canvas.px + y * canvas.stride + x, cw, rh, canvas.stride);
 				text_fit_l (c, 38, 0, cw - 38 - aw, rh, grid_short (gnum), grid[gnum] ? C_FIELD_TEXT : field_dim ());
 				if (am) text_r (canvas, x + cw - 8, y, rh, a, grid[gnum] ? C_FIELD_TEXT : field_dim (), ast);
@@ -453,7 +456,7 @@ public:
 			if (sct == 2 || sct == 3)			// XX / YY
 			{
 				money v = sct == 2 ? grid_xx (grid) : grid_yy (grid);
-				wk_text_l (canvas, x + 40, y, rh, sct == 2 ? "Total XX" : "Total YY", C_TEXT, 2);
+				uk_text_l (canvas, x + 40, y, rh, sct == 2 ? "Total XX" : "Total YY", C_TEXT, 2);
 				text_r (canvas, x + cw - 8, y, rh, money_s (v, a), C_TEXT, 2);
 				y += rh + 8;
 			}
@@ -462,10 +465,10 @@ public:
 		}
 		// the checks
 		int wy = imax (colY[0], colY[1]) + 6, wx = 20;
-		if (!nw) { wk_glyph (canvas, WKG_CHECK, wx + 8, wy + 11, 12, C_GOOD); wk_text_l (canvas, wx + 20, wy, 22, TR ("The checks Intervat makes find nothing wrong."), C_GOOD); }
+		if (!nw) { uk_glyph (canvas, WKG_CHECK, wx + 8, wy + 11, 12, C_GOOD); uk_text_l (canvas, wx + 20, wy, 22, TR ("The checks Intervat makes find nothing wrong."), C_GOOD); }
 		for (int i = 0; i < nw && wy < height - 64; i++)
 		{
-			wk_text_c (canvas, wx, wy, 16, 22, "!", C_WARN, 2);
+			uk_text_c (canvas, wx, wy, 16, 22, "!", C_WARN, 2);
 			Canvas c; c.adopt (canvas.px + wy * canvas.stride + wx + 20, imax (1, 2 * cw), 22, canvas.stride);
 			text_fit_l (c, 0, 0, 2 * cw, 22, warns[i], C_TEXT);
 			wy += 22;
@@ -531,7 +534,7 @@ public:
 		char name[64] = "VAT return "; char ref[16]; period_ref (year, sel, monthly, ref); scat (name, ref, sizeof name); scat (name, ".xml", sizeof name);
 		kapi_mkdir ("SD:/docs"); kapi_mkdir ("SD:/docs/VAT");
 		char path[220];
-		if (!wk_file_save (path, sizeof path, "SD:/docs/VAT", name)) return;
+		if (!uk_file_save (path, sizeof path, "SD:/docs/VAT", name, XML_KINDS)) return;
 		if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn ("Intervat", TR ("The file could not be written.")); return; }
 		char m[240]; scpy (m, TR ("Written: "), sizeof m); scat (m, path, sizeof m); status (m);
 		if (filed < 0 && ask ("Intervat", TR ("The file is written: send it on Intervat (intervat.minfin.fgov.be). Mark the period as filed now (its VAT entries then locked)?"), MB_YESNO, 1) == 1) fileIt ();
@@ -579,7 +582,7 @@ public:
 			char name[64] = "Customer listing "; scat_num (name, year, sizeof name); scat (name, ".xml", sizeof name);
 			kapi_mkdir ("SD:/docs/VAT");
 			char path[220];
-			if (!wk_file_save (path, sizeof path, "SD:/docs/VAT", name)) return;
+			if (!uk_file_save (path, sizeof path, "SD:/docs/VAT", name, XML_KINDS)) return;
 			if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn (TR ("Customer listing"), TR ("The file could not be written.")); return; }
 			char m2[240]; scpy (m2, TR ("Written: "), sizeof m2); scat (m2, path, sizeof m2); scat (m2, " (", sizeof m2); scat_num (m2, n, sizeof m2); scat (m2, n == 1 ? TR (" customer)") : TR (" customers)"), sizeof m2); status (m2);
 		}
@@ -594,7 +597,7 @@ public:
 			char name[64] = "Intra-community listing "; scat (name, ref, sizeof name); scat (name, ".xml", sizeof name);
 			kapi_mkdir ("SD:/docs/VAT");
 			char path[220];
-			if (!wk_file_save (path, sizeof path, "SD:/docs/VAT", name)) return;
+			if (!uk_file_save (path, sizeof path, "SD:/docs/VAT", name, XML_KINDS)) return;
 			if (kapi_save_file (path, o.b, (unsigned) o.n) < 0) { warn (TR ("Intra-community listing"), TR ("The file could not be written.")); return; }
 			char m2[240]; scpy (m2, TR ("Written: "), sizeof m2); scat (m2, path, sizeof m2); status (m2);
 		}
@@ -807,7 +810,7 @@ public:
 		tpl->setColumn (0, TR ("Document"), 140); tpl->setColumn (1, TR ("Its template"), 290); tpl->setColumn (2, "", 110);
 		tpl->cellText = t_text; tpl->cellDraw = t_draw; tpl->onActivate = on_tplEdit; tpl->setRows (PK_KINDS); tpl->setSel (0);
 		by = 52;
-		{ FlatButton *f = new FlatButton (TR ("Edit in Writer"), s_tplEdit, FB_PRIMARY, NI_EDIT); f->left = 592; f->top = by; pp->addChild (f); by += 40; }
+		{ FlatButton *f = new FlatButton (TR ("Edit in Letters"), s_tplEdit, FB_PRIMARY, NI_EDIT); f->left = 592; f->top = by; pp->addChild (f); by += 40; }
 		{ FlatButton *f = new FlatButton (TR ("Open the folder"), s_tplFolder, FB_SECONDARY, -1); f->left = 592; f->top = by; pp->addChild (f); }
 	}
 	const char *title () override { return TR ("Settings"); }
@@ -966,17 +969,17 @@ public:
 		const char *L[6][2] = { { "Name", "Legal form" }, { "Street", "VAT number" }, { "City", "E-mail" }, { "Country", "Phone" }, { "IBAN", "BIC" },
 					{ "Register", "Web site" } };
 		// ("Register": the company register -- not an account's)
-		for (int i = 0; i < 6; i++) { wk_text_l (p.canvas, x1, y + i * 34, ED_H, i == 5 ? TRC ("company", L[i][0]) : TR (L[i][0]), C_TEXT); wk_text_l (p.canvas, x2, y + i * 34, ED_H, TR (L[i][1]), C_TEXT); }
-		if (g_sp && g_sp->vatMsg[0]) wk_text_l (p.canvas, 540 + 170, y + 34, ED_H, g_sp->vatMsg, g_sp->vatCol);
+		for (int i = 0; i < 6; i++) { uk_text_l (p.canvas, x1, y + i * 34, ED_H, i == 5 ? TRC ("company", L[i][0]) : TR (L[i][0]), C_TEXT); uk_text_l (p.canvas, x2, y + i * 34, ED_H, TR (L[i][1]), C_TEXT); }
+		if (g_sp && g_sp->vatMsg[0]) uk_text_l (p.canvas, 540 + 170, y + 34, ED_H, g_sp->vatMsg, g_sp->vatCol);
 		int yv = y + 6 * 34 + 12;
-		wk_text_l (p.canvas, x1, yv, ED_H, TR ("VAT situation"), C_TEXT); wk_text_l (p.canvas, x2, yv, ED_H, TR ("Returns"), C_TEXT);
+		uk_text_l (p.canvas, x1, yv, ED_H, TR ("VAT situation"), C_TEXT); uk_text_l (p.canvas, x2, yv, ED_H, TR ("Returns"), C_TEXT);
 	}
 	static void paint_years (Pane &p)
 	{
 		int y = 12 + 250;
-		wk_text_l (p.canvas, 20, y, 20, TR ("Closing a year carries its result forward (a profit: 693000 / 140000; a loss: 141000 / 793000)"), dim_ink (C_BG));
-		wk_text_l (p.canvas, 20, y + 20, 20, TR ("by an entry in the miscellaneous journal on its last day, and locks its entries."), dim_ink (C_BG));
-		wk_text_l (p.canvas, 20, y + 40, 20, TR ("The balance sheet's accounts go on from year to year: no opening entry is needed."), dim_ink (C_BG));
+		uk_text_l (p.canvas, 20, y, 20, TR ("Closing a year carries its result forward (a profit: 693000 / 140000; a loss: 141000 / 793000)"), dim_ink (C_BG));
+		uk_text_l (p.canvas, 20, y + 20, 20, TR ("by an entry in the miscellaneous journal on its last day, and locks its entries."), dim_ink (C_BG));
+		uk_text_l (p.canvas, 20, y + 40, 20, TR ("The balance sheet's accounts go on from year to year: no opening entry is needed."), dim_ink (C_BG));
 	}
 	static void paint_printing (Pane &p)
 	{
@@ -989,18 +992,18 @@ public:
 		scat (l3, "\xAB" "LineText\xBB, \xAB" "LineQty\xBB, \xAB" "LinePrice\xBB, \xAB" "LineTotal\xBB", sizeof l3);
 		scat (l3, TR (" is repeated for each line."), sizeof l3);
 		const char *L[] = {
-			TR ("A document is printed by Writer from its template, a Writer document (.rtf, .docx, .odt)"),
+			TR ("A document is printed by Letters from its template, a Letters document (.rtf, .docx, .odt)"),
 			l2,
 			l3,
-			TR ("In Writer, Tools > Mail Merge lists all the fields (their sample: templates/fields.card)."),
+			TR ("In Letters, Tools > Mail Merge lists all the fields (their sample: templates/fields.card)."),
 			TR ("A party's documents take its language (its card), else the company's (its chart's)."),
 			TR ("The documents made go to SD:/docs/Quotes, Orders, Delivery notes, Invoices...") };
-		for (unsigned i = 0; i < sizeof L / sizeof L[0]; i++) wk_text_l (p.canvas, 20, y + (int) i * 20, 20, L[i], dim_ink (C_BG));
+		for (unsigned i = 0; i < sizeof L / sizeof L[0]; i++) uk_text_l (p.canvas, 20, y + (int) i * 20, 20, L[i], dim_ink (C_BG));
 	}
 	static void paint_roles (Pane &p)
 	{
 		static const char *const R[7] = { "Customers", "Suppliers", "VAT due", "VAT deductible", "Profit carried forward", "Loss carried forward", "Suspense account" };
-		for (int i = 0; i < 7; i++) wk_text_l (p.canvas, 20, 12 + i * 34, ED_H, TR (R[i]), C_TEXT);
+		for (int i = 0; i < 7; i++) uk_text_l (p.canvas, 20, 12 + i * 34, ED_H, TR (R[i]), C_TEXT);
 	}
 	void show (int i) { part->set (i); for (int k = 0; k < 5; k++) pan[k]->hidden = k != i; if (i == 4) tpl->invalidate (true); invalidate (true); }
 	// ---- the templates ----
@@ -1032,7 +1035,7 @@ public:
 		if (!template_find (k, lang, p, sizeof p, true))
 		{
 			char fr[200];
-			if (!template_find (k, 0, fr, sizeof fr)) { warn (TR ("Printing"), TR ("There is no template for this document: put one (a Writer document) in SD:/apps/ledger.app/templates.")); return; }
+			if (!template_find (k, 0, fr, sizeof fr)) { warn (TR ("Printing"), TR ("There is no template for this document: put one (a Letters document) in SD:/apps/ledger.app/templates.")); return; }
 			if (lang == 0) scpy (p, fr, sizeof p);
 			else
 			{
@@ -1050,8 +1053,8 @@ public:
 				tpl->invalidate (true);
 			}
 		}
-		if (!kapi_exec ("SD:/apps/writer.app/main", p)) warn (TR ("Printing"), TR ("Writer could not be started."));
-		else { char m[240]; scpy (m, TR ("Writer opens "), sizeof m); scat (m, p, sizeof m); status (m); }
+		if (!kapi_exec ("SD:/apps/letters.app/main", p)) warn (TR ("Printing"), TR ("Letters could not be started."));
+		else { char m[240]; scpy (m, TR ("Letters opens "), sizeof m); scat (m, p, sizeof m); status (m); }
 	}
 	static void on_tplLang (int) { if (g_sp) g_sp->tpl->invalidate (true); }
 	static void on_tplEdit (Widget &) { if (g_sp) g_sp->tplEdit (); }

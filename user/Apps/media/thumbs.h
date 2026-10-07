@@ -11,7 +11,7 @@
 #define _media_thumbs_h
 
 #include "covers.h"
-#include "img/pngsave.hpp"
+#include "imagekit/img/pngsave.hpp"
 
 namespace media {
 
@@ -141,7 +141,7 @@ public:
 			}
 		else
 		{	// (loading) a dark band
-			for (int j = 0; j < h; j++) cv.fillRect (x, y + j, w, 1, wk_mix (0x2A3040, 0x141820, j * 256 / h));
+			for (int j = 0; j < h; j++) cv.fillRect (x, y + j, w, 1, uk_mix (0x2A3040, 0x141820, j * 256 / h));
 		}
 		if (radius > 0) Covers::round_corners (cv, x, y, w, h, radius, bg);
 	}
@@ -265,8 +265,8 @@ private:
 		unsigned hsh = hash_str (title);
 		const unsigned *c = PAL[hsh % 6];
 		Canvas cv; cv.adopt (px, BASE_W, BASE_H);
-		for (int y = 0; y < BASE_H; y++) cv.fillRect (0, y, BASE_W, 1, wk_mix (c[1], c[0], y * 256 / BASE_H));
-		for (int k = 0; k < 12; k++) { wk_rbox (cv, 12 + k * 32, 10, 18, 12, 3, 0x000000, 0x000000, 90); wk_rbox (cv, 12 + k * 32, BASE_H - 22, 18, 12, 3, 0x000000, 0x000000, 90); }
+		for (int y = 0; y < BASE_H; y++) cv.fillRect (0, y, BASE_W, 1, uk_mix (c[1], c[0], y * 256 / BASE_H));
+		for (int k = 0; k < 12; k++) { uk_rbox (cv, 12 + k * 32, 10, 18, 12, 3, 0x000000, 0x000000, 90); uk_rbox (cv, 12 + k * 32, BASE_H - 22, 18, 12, 3, 0x000000, 0x000000, 90); }
 		VPath o; o.circle (V (BASE_W / 2), V (BASE_H / 2), V (34)); o.fill (cv, 0xFFFFFF, 60);
 		int t[] = { V (BASE_W / 2 - 11), V (BASE_H / 2 - 18), V (BASE_W / 2 + 19), V (BASE_H / 2), V (BASE_W / 2 - 11), V (BASE_H / 2 + 18) };
 		VPath p; p.poly (t, 3); p.fill (cv, 0xFFFFFF, 200);

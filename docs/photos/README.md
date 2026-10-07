@@ -18,7 +18,7 @@ real desktop behind; the drawing helpers are `mockup_archiver.py`'s; the photos 
 
 | Need | Onyx today | To add |
 |---|---|---|
-| Decoding | `user/img/imgload.hpp` (`img_load`: JPEG, PNG, GIF, BMP, WebP, PCX) in libwtk | JPEG's **downscaled decode** for the thumbnails (a 12 MP JPEG is 48 MB as pixels): decode then shrink in strips, or the EXIF thumbnail when there is one |
+| Decoding | `user/Kits/imagekit/img/imgload.hpp` (`img_load`: JPEG, PNG, GIF, BMP, WebP, PCX) in libuikit | JPEG's **downscaled decode** for the thumbnails (a 12 MP JPEG is 48 MB as pixels): decode then shrink in strips, or the EXIF thumbnail when there is one |
 | EXIF | — | our own reader (MIT): date, camera, exposure, orientation (the photo turned the right way), the embedded thumbnail |
 | The library | the File Viewer's walking of folders | `SD:/etc/photos/library.db` (one line per photo: path, size, date, w×h, favourite, description) + `thumbs/` (320 px JPEGs), built by a **worker thread** in the background, refreshed when a folder changes |
 | Albums | — | `SD:/etc/photos/albums/<name>.txt` (the paths): an album never copies a photo |

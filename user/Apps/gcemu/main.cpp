@@ -1,8 +1,8 @@
 //
-// gcemu -- the Onyx Nintendo GameCube emulator (the core: user/gc) -- in progress.
+// gcemu -- the Onyx Nintendo GameCube emulator (the core: user/Emulators/gc) -- in progress.
 //
 //   gcemu <game.iso | game.gcm | program.dol> [--fullscreen]   (without one: the Game Library)
-//   * The machine (the Gekko CPU, Flipper) runs on an app core (core 2 or 3, user/emucore.h)
+//   * The machine (the Gekko CPU, Flipper) runs on an app core (core 2 or 3, user/Emulators/emucore.h)
 //     when one is free; with the TEV renderer, its GX (the graphics commands) on the second one
 //     when that is free too (gx_core; --gxone: on the machine's). Its graphics are high-level:
 //     each frame's triangles and textures are drawn by the GPU straight into the window; a
@@ -11,9 +11,9 @@
 //   * A disc image (1.4 GB) is not loaded: the DVD's reads are done from the file on demand
 //     (kapi v57 seek) by the main thread for the app core (a request, then the core waits).
 //   * Keys: arrows = the stick, X = A, C = B, S = X, A = Y, Z = Z, Enter = Start, Q / W = L / R,
-//     I J K L = the C stick, T F G H = the D-pad; a USB gamepad (user/gamepad.h). F11: full
+//     I J K L = the C stick, T F G H = the D-pad; a USB gamepad (user/Include/gamepad.h). F11: full
 //     screen (Esc back), F12: the speed, F10: the frames a second alone, P: pause.
-//   * The CPU: the JIT (user/gc/gc_jit.cpp: the PowerPC code translated to AArch64, in memory
+//   * The CPU: the JIT (user/Emulators/gc/gc_jit.cpp: the PowerPC code translated to AArch64, in memory
 //     from kapi v58 code_alloc); Game > Interpreter (or --interp) runs the interpreter instead.
 //   * The sound: the machine's audio (the AI's DMA, the Zelda microcode's music) resampled to
 //     SOUND_RATE, pushed by the app core into emucore's ring, written to the kapi sound queue
@@ -37,16 +37,16 @@
 //     default; the last ~200 KB kept, saved every 5 s), without --diag's frame dumps and end -- a
 //     measure of the game played (F12's lines complete, whatever the window's width).
 //
-#include "kapi.h"
-#include "launch.h"
+#include "audiokit/audiokit.h"
+#include "appkit/appkit.h"
 #include "gamepad.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "gc/gc.h"
-#include "wtk/dialog.h"
+#include "uikit/dialog.h"
 #include "emucore.h"
 #include "gxv3d.h"
 
-using namespace wtk;
+using namespace uikit;
 
 static gc::Machine *g_m = 0;
 static char g_path[256];
@@ -365,7 +365,7 @@ static void set_zoom (int z)
 	g_zoom = z;
 	int w = z == 1 ? 640 : 960, h = z == 1 ? 480 : 720;
 	g_root->canvas.adopt (kapi_resize_window (w, h), w, h, g_stride);
-	wtk::wk_decorate_window ();
+	uikit::uk_decorate_window ();
 	g_root->width = w; g_root->height = h;
 	g_root->invalidate (true);
 }
@@ -691,7 +691,7 @@ static void diag_tick (void)
 static void on_sound ()
 {
 	g_sound = !g_sound;
-	if (!g_sound && g_audio == 1) { g_audioOn = false; kapi_sound_release (); g_audio = 0; }
+	if (!g_sound && g_audio == 1) { g_audioOn = false; ak_out_close (); g_audio = 0; }
 }
 
 int main (void)
@@ -775,7 +775,7 @@ int main (void)
 	card_load ();
 	bool ok = false;
 	void *f = kapi_open (g_path);
-	if (!f) { g_loading = false; wk_messagebox ("GameCube", "Cannot open the file.", MB_OK); return 1; }
+	if (!f) { g_loading = false; uk_messagebox ("GameCube", "Cannot open the file.", MB_OK); return 1; }
 	unsigned sz = kapi_fsize (f);
 	if (ends (g_path, ".dol"))
 	{
@@ -795,7 +795,7 @@ int main (void)
 	if (!ok)
 	{
 		g_loading = false;
-		wk_messagebox ("GameCube", "Not a GameCube disc image (.iso / .gcm) or program (.dol), or its start failed.", MB_OK);
+		uk_messagebox ("GameCube", "Not a GameCube disc image (.iso / .gcm) or program (.dol), or its start failed.", MB_OK);
 		return 1;
 	}
 
@@ -806,7 +806,7 @@ int main (void)
 
 	g_gpu = kapi_gpu_info (0, 0) == 1 && kapi_gpu_texture (-2, 0, 0, 0, 0) != -1;
 	for (int k = 0; k < gc::Machine::MAX_TEX; k++) g_gpuTex[k] = -1;
-	g_tevOk = g_gpu && KT->version >= 61 && g_rec.init () && g_out.init ();
+	g_tevOk = g_gpu && kapi_abi_version () >= 61 && g_rec.init () && g_out.init ();
 	if (g_tevOk && g_wantTev) g_m->gpu = &g_rec;
 
 	static Menu menu;
@@ -814,7 +814,7 @@ int main (void)
 	menu.item ("Pause",        "P",   0, on_pause);
 	if (g_jit) menu.item ("Interpreter (no JIT)", "", 0, on_interp);
 	menu.separator ();
-	menu.item ("Quit",         "^Q",  WK_CTRL ('Q'), on_quit);
+	menu.item ("Quit",         "^Q",  UK_CTRL ('Q'), on_quit);
 	menu.menu ("Sound");
 	menu.item ("Sound On / Off", "", 0, on_sound);
 	menu.menu ("View");
@@ -841,7 +841,7 @@ int main (void)
 	g_loading = false;
 
 	unsigned t0 = kapi_get_ticks (), asked = 0, lastSave = kapi_get_ticks ();
-	unsigned freeFrames = 0, rate = SOUND_RATE, owner = 0, stQueued = 0;
+	unsigned freeFrames = 0, stQueued = 0;
 	static short pcm[4096 * 2];
 	unsigned long long stT = now_us (), drawUs = 0, stEmuUs = 0; unsigned stDone = 0, stShown = 0;
 	unsigned long long reqEnd = 0; unsigned fieldUs = 20000;	// (the fields asked for: done by then; a field's time)
@@ -853,7 +853,7 @@ int main (void)
 		// (paused: drawn only once the frame being made is done -- the machine then waits and the GPU
 		// may read its frame and textures; drawn while it runs, they may change under the kernel)
 		if (g_paused) { ec_pump (&g_ec); if (ec_pending (&g_ec) == 0) show_frame (); kapi_msleep (20); t0 = kapi_get_ticks (); asked = 0; continue; }
-		if (g_sound && g_audio == 0) { g_audio = kapi_sound_acquire () == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
+		if (g_sound && g_audio == 0) { g_audio = ak_out_open (0, 0) == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
 		// a new image, the machine between two fields: taken before the next field is asked for --
 		// else, slower than real time, the next one was always asked first and nothing was shown.
 		// The TEV's frame is prepared and drawn after the request (under gxLock -- the GX may be on
@@ -877,11 +877,11 @@ int main (void)
 		unsigned queued = 0;
 		if (audio)
 		{
-			kapi_sound_status (&rate, &freeFrames, &owner);
+			freeFrames = (unsigned) ak_out_free ();
 			static unsigned cap = 0; if (freeFrames > cap) cap = freeFrames;
 			queued = cap - freeFrames;
 			int k = ec_audio_pop (&g_ec, pcm, freeFrames < 4096 ? (int) freeFrames : 4096);
-			if (k > 0) { kapi_sound_write (pcm, (unsigned) k); queued += (unsigned) k; }
+			if (k > 0) { ak_out_write (pcm, k); queued += (unsigned) k; }
 			stQueued = queued;
 		}
 		if (audio && g_audioMade > 0)

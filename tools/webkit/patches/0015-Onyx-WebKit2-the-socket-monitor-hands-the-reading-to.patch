@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Onyx contributors <onyx@localhost>
+Date: Sat, 3 Oct 2026 04:01:17 +0200
+Subject: [PATCH 15/25] [Onyx] WebKit2: the socket monitor hands the reading to
+ the connection's queue; a log line per request
+
+ConnectionUnix: on Onyx the monitor thread only waits for data (select) and then has the connection's
+queue read it (readyReadHandler), waiting for it to be done: the read buffer, the received
+descriptors and platformInvalidate live on that queue (PlayStation's monitor reads on its own
+thread, beside them). NetworkDataTaskCurl: on Onyx, one line on the standard error (the kernel log)
+when a request starts, ends (status, time) or fails -- what the user sees of the network in kmsg.
+---
+ .../curl/NetworkDataTaskCurl.cpp              | 26 +++++++++++++++++++
+ .../Platform/IPC/unix/ConnectionUnix.cpp      | 16 +++++++++++-
+ 2 files changed, 41 insertions(+), 1 deletion(-)
+
+diff --git a/Source/WebKit/NetworkProcess/curl/NetworkDataTaskCurl.cpp b/Source/WebKit/NetworkProcess/curl/NetworkDataTaskCurl.cpp
+index 8cb1be45..7699bf28 100644
+--- a/Source/WebKit/NetworkProcess/curl/NetworkDataTaskCurl.cpp
++++ b/Source/WebKit/NetworkProcess/curl/NetworkDataTaskCurl.cpp
+@@ -49,10 +49,26 @@
+ #include <pal/text/TextEncoding.h>
+ #include <wtf/FileSystem.h>
+ 
++#if OS(ONYX)
++#include <unistd.h>
++#endif
++
+ namespace WebKit {
+ 
+ using namespace WebCore;
+ 
++#if OS(ONYX)
++// One line of the kernel log (kmsg) for each request's end: what the network did, for the user.
++static void onyxNetLog(const char* what, int code, double ms, const URL& url)
++{
++    auto u = url.string().utf8();
++    char line[400];
++    int n = snprintf(line, sizeof line, "web: net %s %d %.0f ms %.240s\n", what, code, ms, u.data());
++    if (n > 0)
++        (void)!write(2, line, std::min<size_t>(n, sizeof line - 1));
++}
++#endif
++
+ NetworkDataTaskCurl::NetworkDataTaskCurl(NetworkSession& session, NetworkDataTaskClient& client, const NetworkLoadParameters& parameters)
+     : NetworkDataTask(session, client, parameters.request, parameters.storedCredentialsPolicy, parameters.shouldClearReferrerOnHTTPSToHTTPRedirect, parameters.isMainFrameNavigation, parameters.isInitiatedByDedicatedWorker)
+     , m_frameID(parameters.webFrameID)
+@@ -98,6 +114,10 @@ void NetworkDataTaskCurl::resume()
+         return;
+ 
+     m_state = State::Running;
++#if OS(ONYX)
++    if (m_curlRequest)
++        onyxNetLog("start", 0, 0, m_curlRequest->resourceRequest().url());
++#endif
+ 
+     if (m_curlRequest)
+         m_curlRequest->resume();
+@@ -227,6 +247,9 @@ void NetworkDataTaskCurl::curlDidComplete(CurlRequest&, NetworkLoadMetrics&& net
+     }
+ 
+     updateNetworkLoadMetrics(networkLoadMetrics);
++#if OS(ONYX)
++    onyxNetLog("done", m_response.httpStatusCode(), (networkLoadMetrics.responseEnd - networkLoadMetrics.fetchStart).milliseconds(), m_response.url());
++#endif
+ 
+     m_client->didCompleteWithError({ }, WTF::move(networkLoadMetrics));
+ }
+@@ -235,6 +258,9 @@ void NetworkDataTaskCurl::curlDidFailWithError(CurlRequest& request, ResourceErr
+ {
+     if (state() == State::Canceling || state() == State::Completed || (!m_client && !isDownload()))
+         return;
++#if OS(ONYX)
++    onyxNetLog("FAILED", resourceError.errorCode(), 0, request.resourceRequest().url());
++#endif
+ 
+     if (resourceError.isCertificationVerificationError()) {
+         tryServerTrustEvaluation(AuthenticationChallenge(request.resourceRequest().url(), certificateInfo, resourceError));
+diff --git a/Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp b/Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+index 744756f5..80f1a037 100644
+--- a/Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
++++ b/Source/WebKit/Platform/IPC/unix/ConnectionUnix.cpp
+@@ -45,6 +45,7 @@
+ #include <wtf/TZoneMallocInlines.h>
+ #include <wtf/Threading.h>
+ #include <wtf/UniStdExtras.h>
++#include <wtf/threads/BinarySemaphore.h>
+ 
+ #if OS(DARWIN)
+ #define MSG_NOSIGNAL 0
+@@ -363,9 +364,22 @@ void Connection::platformOpen()
+                     // connection's, there is nothing to read and the loop ends.
+                     if (protectedThis->socketDescriptor() != fd)
+                         continue;
+-#endif
++                    // The reading itself on the connection's queue, where the rest of the connection
++                    // (platformInvalidate, the read buffer and the received descriptors) lives: this
++                    // thread only waits for data, then for the queue to have read it.
++                    if (FD_ISSET(fd, &fdSet)) {
++                        BinarySemaphore done;
++                        protectedThis->m_connectionQueue->dispatch([protectedThis, &done] {
++                            if (protectedThis->socketDescriptor() != -1)
++                                protectedThis->readyReadHandler();
++                            done.signal();
++                        });
++                        done.wait();
++                    }
++#else
+                     if (FD_ISSET(fd, &fdSet))
+                         protectedThis->readyReadHandler();
++#endif
+                 }
+             }
+ 

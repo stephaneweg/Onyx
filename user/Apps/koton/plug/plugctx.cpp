@@ -3,7 +3,7 @@
 //
 #include "plugctx.h"
 #include "../engine/theory.h"
-#include "../../../json.hpp"
+#include "json.hpp"
 
 namespace kt {
 

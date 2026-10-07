@@ -1,5 +1,5 @@
 //
-// Apps/media/watch.h -- a video playing: Onyx's media library's player (user/av: av_player_open_file -- its
+// Apps/media/watch.h -- a video playing: Onyx's media library's player (user/Libs/av: av_player_open_file -- its
 // reader, decoding and sound threads; the frame due now handed over by av_player_poll in the window's
 // layout, 0x00RRGGBB) kept for the window: the latest frame copied (the library's is valid until the
 // next poll only), the status, and the frame drawn into a rectangle (fitted, black bars) by a fast
@@ -9,7 +9,7 @@
 #define _media_watch_h
 
 #include "videos.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
 namespace media {
 

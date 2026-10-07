@@ -1,5 +1,5 @@
 //
-// hostkapi.cpp -- a stand-in kernel for the GPU compositing service (user/gpucomp) on the PC: the
+// hostkapi.cpp -- a stand-in kernel for the GPU compositing service (user/Libs/gpucomp) on the PC: the
 // kapi table at its fixed address with what gpucomp and gpcdemo call, and -- GPC_SOFTGPU=1 -- a
 // software V3D behind gpu_info / gpu_texture / gpu_texture_rect / gpu_render / gpu_vbuf, made as
 // the kernel's (sys/v3d.cpp) v53 frame is: the viewport of its binning list (x y scaled by the
@@ -296,7 +296,7 @@ extern "C" void hostkapi_hang (void) { g_hang = 1; g_frames = 0; }
 extern "C" void hostkapi_refuse (int n) { g_refuse = n; }
 extern "C" int hostkapi_textures (void) { return (int) g_tex.size (); }
 
-// NetSurf on the desktop simulator (tools/tests/netsurf/host.mk SOFTGPU=1, -DHOSTKAPI_GPU_ONLY): fakekapi.cpp
+// A program on the desktop simulator with the software V3D (-DHOSTKAPI_GPU_ONLY): fakekapi.cpp
 // makes the table, then this puts the software V3D's calls into it (GPC_SOFTGPU=1 at run time)
 extern "C" void hostkapi_install_gpu (TKApiTable *t)
 {
@@ -318,6 +318,8 @@ static struct Setup
 		void **slots = (void **) T;
 		for (size_t i = 0; i < sizeof (TKApiTable) / sizeof (void *); i++) slots[i] = (void *) unimplemented;
 		T->version = KAPI_ABI_VERSION;
+		// (v75) the POSIX entries absent here: 0, so appkit.h's wrappers return -KAPI_ENOSYS
+		for (size_t i = __builtin_offsetof (TKApiTable, vm_map) / 8; i < sizeof (TKApiTable) / 8; i++) ((void **) T)[i] = 0;
 		T->get_ticks = h_get_ticks; T->stdout_write = h_stdout_write; T->get_args = h_get_args;
 		T->memcpy = h_memcpy; T->memset = h_memset; T->memmove = h_memmove; T->sbrk = h_sbrk;
 		T->create_window = h_create_window; T->present = h_present; T->pump_events = h_pump;

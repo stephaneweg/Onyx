@@ -1,7 +1,7 @@
 //
-// Apps/media/player.h -- Media Player's playback: a thread that opens the song asked for (decode.h),
-// decodes it ahead and feeds the sound output (kapi_sound_write, s16 stereo at SOUND_RATE: ~0.1 s
-// queued, kapi_sound_config), at the volume chosen. The window's thread asks (play, pause, seek,
+// Apps/media/player.h -- Media Player's playback: a thread that opens the song asked for (AudioKit:
+// ak_open -- its decoders, its MIDI synthesizer), reads it ahead and feeds the sound output (ak_out_*,
+// s16 stereo at SOUND_RATE: ~0.1 s queued), at the volume chosen. The window's thread asks (play, pause, seek,
 // stop) and reads its state (playing, the position heard, the length, the end reached) at each tick:
 // they share a few words under a lock (kapi_lock).
 //
@@ -11,7 +11,8 @@
 #ifndef _media_player_h
 #define _media_player_h
 
-#include "decode.h"
+#include "decode.h"			// (Src, MidiSong: the tags, the piano roll -- not the playback)
+#include "audiokit/audiokit.h"
 
 namespace media {
 
@@ -50,7 +51,7 @@ private:
 	enum { CMD_NONE, CMD_OPEN, CMD_PAUSE, CMD_RESUME, CMD_STOP, CMD_SEEK, CMD_RELEASE };
 	enum { CHUNK = 1024 };
 	int m_cmd; i64 m_seekMs; char m_path[300];
-	Stream *m_stream; i64 m_written;		// frames sent since the song's (or the seek's) position 0
+	ak_stream *m_stream; i64 m_written;		// frames sent since the song's (or the seek's) position 0
 	i64 m_base;					// the position (frames) m_written counts from
 	unsigned m_cap;				// the output's queue, frames (its free frames when empty)
 	bool m_quit; int m_tid;
@@ -61,42 +62,40 @@ private:
 	unsigned queued ()
 	{
 		if (sound != 1) return 0;
-		unsigned rate_ = 0, fr = 0, own = 0; kapi_sound_status (&rate_, &fr, &own);
+		unsigned fr = (unsigned) ak_out_free ();
 		return fr < m_cap ? m_cap - fr : 0;
 	}
 	void set_error (const char *e) { kapi_lock (&lk); snprintf (err, sizeof err, "%s", e); errGen++; state = PS_STOPPED; kapi_unlock (&lk); }
 	void ensure_sound ()
 	{
 		if (sound) return;
-		int r = kapi_sound_acquire ();
+		int r = ak_out_open (CHUNK, 3);
 		if (r == 1)
 		{
 			sound = 1;
-			kapi_sound_config (CHUNK, 3);
-			unsigned rt, fr, own; kapi_sound_status (&rt, &fr, &own); m_cap = fr ? fr : 22050;
+			unsigned fr = (unsigned) ak_out_free (); m_cap = fr ? fr : 22050;
 		}
 		else if (r == 0) { sound = 0; set_error ("The sound output is used by another app: close it to hear the music."); }
 		else sound = -1;
 	}
-	void close_song () { delete m_stream; m_stream = 0; }
+	void close_song () { if (m_stream) ak_close (m_stream); m_stream = 0; }
 	void open_song (const char *path)
 	{
 		close_song ();
 		char e[160];
-		Decoder *d = decoder_open (path, e, sizeof e);
-		if (!d) { set_error (e); return; }
-		m_stream = new Stream (d);
+		m_stream = ak_open (path, e, sizeof e);
+		if (!m_stream) { set_error (e); return; }
+		struct ak_info in; ak_info_of (m_stream, &in);
 		kapi_lock (&lk);
-		snprintf (fmt, sizeof fmt, "%s", d->format); rate = d->rate; bits = d->bits; kbps = d->kbps; channels = d->channels;
-		lenMs = m_stream->lengthMs (); posMs = 0; state = PS_PLAYING;
+		snprintf (fmt, sizeof fmt, "%s", in.format); rate = in.rate; bits = in.bits; kbps = in.kbps; channels = in.channels;
+		lenMs = in.length_ms; posMs = 0; state = PS_PLAYING;
 		kapi_unlock (&lk);
 		m_base = 0; m_written = 0; m_t0 = kapi_get_ticks ();
 	}
 	void apply_volume (short *b, int n)
 	{
 		int v = volume; if (v >= 100) return;
-		int g = v * v * 65536 / 10000;			// (a square law: the ear's)
-		for (int i = 0; i < 2 * n; i++) b[i] = (short) ((b[i] * g) >> 16);
+		ak_gain_s16 (b, n, v * v * 65536 / 10000);	// (a square law: the ear's)
 	}
 	void run ()
 	{
@@ -118,11 +117,11 @@ private:
 			case CMD_STOP: close_song (); kapi_lock (&lk); state = PS_STOPPED; posMs = 0; kapi_unlock (&lk); break;
 			case CMD_RELEASE:
 				close_song (); kapi_lock (&lk); state = PS_STOPPED; posMs = 0; kapi_unlock (&lk);
-				if (sound == 1) kapi_sound_release ();
+				if (sound == 1) ak_out_close ();
 				sound = 0; released++;
 				break;
 			case CMD_SEEK:
-				if (m_stream) { m_stream->seekMs (seekMs); m_base = seekMs * SOUND_RATE / 1000; m_written = 0; m_t0 = kapi_get_ticks (); }
+				if (m_stream) { ak_seek_ms (m_stream, seekMs); m_base = seekMs * SOUND_RATE / 1000; m_written = 0; m_t0 = kapi_get_ticks (); }
 				break;
 			}
 			if (!m_stream || state != PS_PLAYING) { kapi_msleep (10); continue; }
@@ -138,7 +137,7 @@ private:
 				kapi_lock (&lk); posMs = (m_base + (m_written < due ? m_written : due)) * 1000 / SOUND_RATE; kapi_unlock (&lk);
 				if (m_written > due + CHUNK) { kapi_msleep (10); continue; }
 			}
-			int n = m_stream->read (buf, CHUNK);
+			int n = ak_read (m_stream, buf, CHUNK);
 			if (n <= 0)
 			{	// the end: let the output play out what it has
 				while (sound == 1 && queued () > 0 && !m_quit && m_cmd == CMD_NONE) { kapi_lock (&lk); posMs = (m_base + m_written - queued ()) * 1000 / SOUND_RATE; kapi_unlock (&lk); kapi_msleep (10); }
@@ -150,13 +149,7 @@ private:
 			apply_volume (buf, n);
 			if (sound == 1)
 			{
-				int off = 0;
-				while (off < n && !m_quit)
-				{
-					int w = kapi_sound_write (buf + 2 * off, (unsigned) (n - off));
-					if (w <= 0) { kapi_msleep (5); continue; }
-					off += w;
-				}
+				ak_out_write (buf, n);
 			}
 			m_written += n;
 		}

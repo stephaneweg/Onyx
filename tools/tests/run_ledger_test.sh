@@ -12,7 +12,7 @@ ROOT=$(cd "$HERE/../.." && pwd)
 OUT=${TMPDIR:-/tmp}/onyx_ledger_test
 mkdir -p "$OUT"
 g++ -std=gnu++17 -O1 -g -Wall -Wextra -Wno-unused-function -Wno-format-truncation -fsanitize=address,undefined \
-    -I"$ROOT/user" -I"$ROOT/kernel/include" "$HERE/ledger/engine_test.cpp" -o "$OUT/engine_test"
+    -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/user/Runtime" -I"$ROOT/user/Include" -I"$ROOT/user/Libs" -I"$ROOT/user/Emulators" -I"$ROOT/user/Ports" -I"$ROOT/kernel/include" "$HERE/ledger/engine_test.cpp" -o "$OUT/engine_test"
 D=$OUT/files; rm -rf "$D"; mkdir -p "$D"
 "$OUT/engine_test" "$D"
 if command -v xmllint >/dev/null 2>&1; then

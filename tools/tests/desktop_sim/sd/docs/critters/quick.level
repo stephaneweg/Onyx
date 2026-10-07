@@ -1,0 +1,26 @@
+# quick -- a level that ends in a few seconds (5 critters drop beside the exit and walk in): the simulator's tests
+# (tools/tests/run_critters_sim_test.sh, AC-27) -- with quick.sol
+[level]
+format     = 1
+name       = Quick
+name.fr    = Rapide
+hint       = They walk straight into the exit.
+hint.fr    = Elles entrent tout droit dans la sortie.
+size       = 320 100
+count      = 5
+save       = 1
+time       = 60
+rate       = 50
+background = #101830
+
+[shape]
+rect    = 0 80 320 20
+colour  = #8A5A34
+texture = speckle
+
+[hatch]
+at  = 120 50
+dir = right
+
+[exit]
+at  = 180 79

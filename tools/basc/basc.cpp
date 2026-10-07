@@ -1,6 +1,6 @@
 //
 // basc -- the Onyx BASIC compiler on the build machine: basc <program.bas> <program.bax>
-// Built from the same core as /bin/basic (user/basic); a .bax is the same on every
+// Built from the same core as /bin/basic (user/Libs/basic); a .bax is the same on every
 // machine. `make stage` uses it for the apps written in BASIC (kernel/Makefile).
 //
 #include <stdio.h>

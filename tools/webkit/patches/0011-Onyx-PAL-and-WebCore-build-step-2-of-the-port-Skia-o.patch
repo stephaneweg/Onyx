@@ -1,0 +1,1334 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Onyx contributors <onyx@localhost>
+Date: Fri, 2 Oct 2026 22:33:03 +0200
+Subject: [PATCH 11/25] Onyx: PAL and WebCore build (step 2 of the port): Skia
+ on the CPU, no GL, curl, the Adwaita theme
+
+What:
+- cmake/OptionsOnyx.cmake: ONYX_WEBCORE (off: the jsc shell alone) turns ENABLE_WEBCORE on, with
+  the sysroot's static libraries imported by hand in link order (zlib, brotli, mbedTLS, nghttp2,
+  curl, libpng, libjpeg, libwebp, FreeType, HarfBuzz, libxml2, SQLite, Skia with its include
+  layout and the definitions of its skia.pc), USE_SKIA / USE_CURL / USE_HARFBUZZ / USE_MBEDTLS /
+  USE_THEME_ADWAITA on, USE_SKIA_GPU off, no TextureMapper / Coordinated Graphics / EGL / libwpe,
+  video, Web Audio, WebGL, the GPU process, async scrolling, XSLT, WOFF2 (libwoff2) off.
+- Source/CMakeLists.txt: ThirdParty/skia is not added when the port brings a Skia::Skia target.
+  WebCore/CMakeLists.txt: no GLES / EGL link for Onyx.
+- WebCore/PlatformOnyx.cmake, PAL/pal/PlatformOnyx.cmake: Adwaita, curl, the image decoders,
+  Skia; the generic and Unix files; Onyx's own:
+  accessibility/onyx (no system accessibility yet: no-ops), platform/graphics/onyx
+  (GraphicsLayerOnyx: GraphicsLayer::create with a layer that draws nothing -- no compositor,
+  accelerated compositing stays off --, SystemFontDatabaseOnyx), platform/network/onyx
+  (CurlSSLHandleOnyx: the CA bundle SD:/res/ca-bundle; NetworkStateNotifierOnyx;
+  PublicSuffixStoreOnyx: an interim rule, no public suffix list yet), platform/onyx
+  (MIMETypeRegistryOnyx, PlatformScreenOnyx, UserAgentOnyx, PlatformKeyboardEventOnyx).
+- PLATFORM(ONYX) beside the ports it behaves like: AXCoreObject.h (the empty wrapper),
+  Pasteboard.h / PasteboardStrategy.h / StaticPasteboard.cpp and the libwpe pasteboard and editor
+  files (they call no libwpe function: shared), FontCache / FontCacheSkia /
+  SkiaSystemFallbackFontCache (Onyx's SkFontMgr_New_Onyx instead of fontconfig, the Android /
+  Windows side of the guards).
+- page/Page.cpp: Settings::hardwareAccelerationEnabled only where it is declared (GTK, WPE
+  platform).
+
+Why: WebCore for a system with no GL, no GLib, no fontconfig, no OpenSSL: pages are laid out
+and painted by Skia on the CPU into a bitmap. With this libWebCore.a builds and a test program
+links and renders a page (HTML, CSS, SVG, canvas, scripts) under qemu.
+---
+ Source/CMakeLists.txt                         |   2 +-
+ Source/WebCore/CMakeLists.txt                 |   2 +
+ Source/WebCore/PAL/pal/PlatformOnyx.cmake     |  13 ++
+ Source/WebCore/PlatformOnyx.cmake             |  52 ++++++++
+ Source/WebCore/accessibility/AXCoreObject.h   |   4 +-
+ .../accessibility/onyx/AXObjectCacheOnyx.cpp  |  70 +++++++++++
+ .../onyx/AccessibilityObjectOnyx.cpp          |  45 +++++++
+ .../WebCore/editing/libwpe/EditorLibWPE.cpp   |   6 +-
+ Source/WebCore/page/Page.cpp                  |   2 +-
+ Source/WebCore/platform/Pasteboard.h          |   2 +-
+ Source/WebCore/platform/PasteboardStrategy.h  |   2 +-
+ Source/WebCore/platform/StaticPasteboard.cpp  |   2 +-
+ Source/WebCore/platform/graphics/FontCache.h  |   4 +-
+ .../graphics/onyx/GraphicsLayerOnyx.cpp       |  62 +++++++++
+ .../graphics/onyx/SystemFontDatabaseOnyx.cpp  |  51 ++++++++
+ .../platform/graphics/skia/FontCacheSkia.cpp  |  10 +-
+ .../skia/SkiaSystemFallbackFontCache.cpp      |   4 +-
+ .../skia/SkiaSystemFallbackFontCache.h        |   4 +-
+ .../platform/libwpe/PasteboardLibWPE.cpp      |   6 +-
+ .../network/onyx/CurlSSLHandleOnyx.cpp        |  41 ++++++
+ .../network/onyx/NetworkStateNotifierOnyx.cpp |  45 +++++++
+ .../network/onyx/PublicSuffixStoreOnyx.cpp    | 119 ++++++++++++++++++
+ .../platform/onyx/MIMETypeRegistryOnyx.cpp    | 107 ++++++++++++++++
+ .../onyx/PlatformKeyboardEventOnyx.cpp        |  52 ++++++++
+ .../platform/onyx/PlatformScreenOnyx.cpp      |  80 ++++++++++++
+ .../WebCore/platform/onyx/UserAgentOnyx.cpp   |  65 ++++++++++
+ Source/cmake/OptionsOnyx.cmake                | 106 +++++++++++++++-
+ 27 files changed, 937 insertions(+), 21 deletions(-)
+ create mode 100644 Source/WebCore/PAL/pal/PlatformOnyx.cmake
+ create mode 100644 Source/WebCore/PlatformOnyx.cmake
+ create mode 100644 Source/WebCore/accessibility/onyx/AXObjectCacheOnyx.cpp
+ create mode 100644 Source/WebCore/accessibility/onyx/AccessibilityObjectOnyx.cpp
+ create mode 100644 Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
+ create mode 100644 Source/WebCore/platform/graphics/onyx/SystemFontDatabaseOnyx.cpp
+ create mode 100644 Source/WebCore/platform/network/onyx/CurlSSLHandleOnyx.cpp
+ create mode 100644 Source/WebCore/platform/network/onyx/NetworkStateNotifierOnyx.cpp
+ create mode 100644 Source/WebCore/platform/network/onyx/PublicSuffixStoreOnyx.cpp
+ create mode 100644 Source/WebCore/platform/onyx/MIMETypeRegistryOnyx.cpp
+ create mode 100644 Source/WebCore/platform/onyx/PlatformKeyboardEventOnyx.cpp
+ create mode 100644 Source/WebCore/platform/onyx/PlatformScreenOnyx.cpp
+ create mode 100644 Source/WebCore/platform/onyx/UserAgentOnyx.cpp
+
+diff --git a/Source/CMakeLists.txt b/Source/CMakeLists.txt
+index 73ed0d29..acb97733 100644
+--- a/Source/CMakeLists.txt
++++ b/Source/CMakeLists.txt
+@@ -50,7 +50,7 @@ if (USE_LIBWEBRTC)
+     include_directories(${CMAKE_CURRENT_BINARY_DIR}/ThirdParty/libwebrtc)
+ endif ()
+ 
+-if (USE_SKIA)
++if (USE_SKIA AND NOT TARGET Skia::Skia)
+     add_subdirectory(ThirdParty/skia)
+     webkit_scope_target_interface_definitions(Skia)
+ endif ()
+diff --git a/Source/WebCore/CMakeLists.txt b/Source/WebCore/CMakeLists.txt
+index a4d6ae15..c9ea2ffa 100644
+--- a/Source/WebCore/CMakeLists.txt
++++ b/Source/WebCore/CMakeLists.txt
+@@ -2289,6 +2289,8 @@ if (USE_ANGLE_EGL)
+     )
+ elseif (USE_LIBEPOXY)
+     list(APPEND WebCore_LIBRARIES Epoxy::Epoxy)
++elseif (PORT STREQUAL "Onyx")
++    # No GL: Skia on the CPU, no compositor.
+ else ()
+     list(APPEND WebCore_LIBRARIES OpenGL::GLES)
+ 
+diff --git a/Source/WebCore/PAL/pal/PlatformOnyx.cmake b/Source/WebCore/PAL/pal/PlatformOnyx.cmake
+new file mode 100644
+index 00000000..9414170f
+--- /dev/null
++++ b/Source/WebCore/PAL/pal/PlatformOnyx.cmake
+@@ -0,0 +1,13 @@
++# The Onyx port of PAL: the generic clock and sound, the SHA digests on mbedTLS (Onyx's TLS
++# library: curl is built with it, there is no OpenSSL).
++
++list(APPEND PAL_SOURCES
++    crypto/mbedtls/CryptoDigestMbedTLS.cpp
++
++    system/ClockGeneric.cpp
++    system/Sound.cpp
++
++    text/KillRing.cpp
++)
++
++list(APPEND PAL_LIBRARIES MbedTLS::mbedcrypto)
+diff --git a/Source/WebCore/PlatformOnyx.cmake b/Source/WebCore/PlatformOnyx.cmake
+new file mode 100644
+index 00000000..091c2e6d
+--- /dev/null
++++ b/Source/WebCore/PlatformOnyx.cmake
+@@ -0,0 +1,52 @@
++# The Onyx port of WebCore: curl networking (with mbedTLS), Skia on the CPU -- no GL, no
++# compositor: pages are painted into a bitmap --, WebKit's own image decoders, the generic and
++# Unix platform files, and Onyx's own (platform/onyx, platform/graphics/onyx, ...).
++
++include(platform/Adwaita.cmake)
++include(platform/Curl.cmake)
++include(platform/ImageDecoders.cmake)
++include(platform/Skia.cmake)
++
++list(APPEND WebCore_PRIVATE_INCLUDE_DIRECTORIES
++    ${WEBCORE_DIR}/platform
++    ${WEBCORE_DIR}/platform/generic
++    ${WEBCORE_DIR}/platform/mediacapabilities
++    ${WEBCORE_DIR}/platform/video-codecs
++    ${WEBCORE_DIR}/platform/network/onyx
++)
++
++list(APPEND WebCore_SOURCES
++    accessibility/onyx/AXObjectCacheOnyx.cpp
++    accessibility/onyx/AccessibilityObjectOnyx.cpp
++
++    crypto/mbedtls/CryptoAlgorithmRegistryMbedTLS.cpp
++    crypto/mbedtls/CryptoNotImplementedMbedTLS.cpp
++
++    editing/libwpe/EditorLibWPE.cpp
++
++    platform/ScrollAnimationKinetic.cpp
++    platform/ScrollAnimationSmooth.cpp
++
++    platform/generic/KeyedDecoderGeneric.cpp
++    platform/generic/KeyedEncoderGeneric.cpp
++
++    platform/graphics/onyx/GraphicsLayerOnyx.cpp
++    platform/graphics/onyx/SystemFontDatabaseOnyx.cpp
++
++    platform/network/onyx/CurlSSLHandleOnyx.cpp
++    platform/network/onyx/NetworkStateNotifierOnyx.cpp
++    platform/network/onyx/PublicSuffixStoreOnyx.cpp
++
++    platform/libwpe/PasteboardLibWPE.cpp
++
++    platform/onyx/MIMETypeRegistryOnyx.cpp
++    platform/onyx/PlatformKeyboardEventOnyx.cpp
++    platform/onyx/PlatformScreenOnyx.cpp
++    platform/onyx/UserAgentOnyx.cpp
++
++    platform/text/Hyphenation.cpp
++    platform/text/LocaleICU.cpp
++
++    platform/unix/LoggingUnix.cpp
++    platform/unix/SharedMemoryUnix.cpp
++)
+diff --git a/Source/WebCore/accessibility/AXCoreObject.h b/Source/WebCore/accessibility/AXCoreObject.h
+index 9097a57c..5ee38c6f 100644
+--- a/Source/WebCore/accessibility/AXCoreObject.h
++++ b/Source/WebCore/accessibility/AXCoreObject.h
+@@ -81,7 +81,7 @@ class AccessibilityObjectAtspi;
+ 
+ typedef WebCore::AccessibilityObjectAtspi AccessibilityObjectWrapper;
+ 
+-#elif PLATFORM(PLAYSTATION) || PLATFORM(HAIKU)
++#elif PLATFORM(PLAYSTATION) || PLATFORM(HAIKU) || PLATFORM(ONYX)
+ class AccessibilityObjectWrapper : public RefCounted<AccessibilityObjectWrapper> { };
+ #else
+ class AccessibilityObjectWrapper;
+@@ -1535,7 +1535,7 @@ private:
+     RetainPtr<WebAccessibilityObjectWrapper> m_wrapper;
+ #elif PLATFORM(WIN)
+     COMPtr<AccessibilityObjectWrapper> m_wrapper;
+-#elif PLATFORM(PLAYSTATION) || PLATFORM(HAIKU)
++#elif PLATFORM(PLAYSTATION) || PLATFORM(HAIKU) || PLATFORM(ONYX)
+     RefPtr<AccessibilityObjectWrapper> m_wrapper;
+ #elif USE(ATSPI)
+     RefPtr<AccessibilityObjectAtspi> m_wrapper;
+diff --git a/Source/WebCore/accessibility/onyx/AXObjectCacheOnyx.cpp b/Source/WebCore/accessibility/onyx/AXObjectCacheOnyx.cpp
+new file mode 100644
+index 00000000..b257bd58
+--- /dev/null
++++ b/Source/WebCore/accessibility/onyx/AXObjectCacheOnyx.cpp
+@@ -0,0 +1,70 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "AXObjectCache.h"
++
++#include "AccessibilityObject.h"
++
++// Onyx has no accessibility API yet: the accessibility tree lives inside WebCore, nothing is
++// told to the system.
++
++namespace WebCore {
++
++void AXObjectCache::attachWrapper(AccessibilityObject& object)
++{
++    auto wrapper = adoptRef(*new AccessibilityObjectWrapper());
++    object.setWrapper(wrapper.ptr());
++}
++
++void AXObjectCache::detachWrapper(AXCoreObject*, AccessibilityDetachmentType)
++{
++}
++
++void AXObjectCache::postPlatformNotification(AccessibilityObject&, AXNotification)
++{
++}
++
++void AXObjectCache::nodeTextChangePlatformNotification(AccessibilityObject*, AXTextChange, unsigned, const String&)
++{
++}
++
++void AXObjectCache::frameLoadingEventPlatformNotification(RenderView*, AXLoadingEvent)
++{
++}
++
++void AXObjectCache::handleScrolledToAnchor(const Node&)
++{
++}
++
++void AXObjectCache::platformHandleFocusedUIElementChanged(AccessibilityObject*, AccessibilityObject*)
++{
++}
++
++void AXObjectCache::platformPerformDeferredCacheUpdate()
++{
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/accessibility/onyx/AccessibilityObjectOnyx.cpp b/Source/WebCore/accessibility/onyx/AccessibilityObjectOnyx.cpp
+new file mode 100644
+index 00000000..9d62b3d9
+--- /dev/null
++++ b/Source/WebCore/accessibility/onyx/AccessibilityObjectOnyx.cpp
+@@ -0,0 +1,45 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "AccessibilityObject.h"
++
++namespace WebCore {
++
++void AccessibilityObject::detachPlatformWrapper(AccessibilityDetachmentType)
++{
++}
++
++bool AccessibilityObject::accessibilityIgnoreAttachment() const
++{
++    return false;
++}
++
++AccessibilityObjectInclusion AccessibilityObject::accessibilityPlatformIncludesObject() const
++{
++    return AccessibilityObjectInclusion::DefaultBehavior;
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/editing/libwpe/EditorLibWPE.cpp b/Source/WebCore/editing/libwpe/EditorLibWPE.cpp
+index d0a3d5c0..d1267606 100644
+--- a/Source/WebCore/editing/libwpe/EditorLibWPE.cpp
++++ b/Source/WebCore/editing/libwpe/EditorLibWPE.cpp
+@@ -26,7 +26,9 @@
+ #include "config.h"
+ #include "Editor.h"
+ 
+-#if USE(LIBWPE)
++// (Nothing here calls libwpe: the pasteboard goes through the PasteboardStrategy. The Onyx port,
++// which has no libwpe, shares this file.)
++#if USE(LIBWPE) || PLATFORM(ONYX)
+ 
+ #include "DocumentFragment.h"
+ #include "FrameDestructionObserverInlines.h"
+@@ -102,4 +104,4 @@ void Editor::platformPasteFont()
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(LIBWPE)
++#endif // USE(LIBWPE) || PLATFORM(ONYX)
+diff --git a/Source/WebCore/page/Page.cpp b/Source/WebCore/page/Page.cpp
+index e369b2e0..05f96e12 100644
+--- a/Source/WebCore/page/Page.cpp
++++ b/Source/WebCore/page/Page.cpp
+@@ -5144,7 +5144,7 @@ OptionSet<FilterRenderingMode> Page::preferredFilterRenderingModes(const Graphic
+         modes.add(FilterRenderingMode::Accelerated);
+ #endif
+ 
+-#if USE(SKIA) && !PLATFORM(WIN) && (!PLATFORM(WPE) || ENABLE(WPE_PLATFORM))
++#if USE(SKIA) && (PLATFORM(GTK) || ENABLE(WPE_PLATFORM))
+     if (settings().hardwareAccelerationEnabled())
+         modes.add(FilterRenderingMode::Accelerated);
+ #endif
+diff --git a/Source/WebCore/platform/Pasteboard.h b/Source/WebCore/platform/Pasteboard.h
+index 961f5caa..330dce0a 100644
+--- a/Source/WebCore/platform/Pasteboard.h
++++ b/Source/WebCore/platform/Pasteboard.h
+@@ -108,7 +108,7 @@ struct PasteboardWebContent {
+     bool canSmartCopyOrDelete;
+     String text;
+     String markup;
+-#elif USE(LIBWPE)
++#elif USE(LIBWPE) || PLATFORM(ONYX)
+     String text;
+     String markup;
+ #endif
+diff --git a/Source/WebCore/platform/PasteboardStrategy.h b/Source/WebCore/platform/PasteboardStrategy.h
+index 6b674e4b..2c1a41fb 100644
+--- a/Source/WebCore/platform/PasteboardStrategy.h
++++ b/Source/WebCore/platform/PasteboardStrategy.h
+@@ -96,7 +96,7 @@ public:
+     virtual RefPtr<SharedBuffer> readBufferFromClipboard(const String& pasteboardName, const String& pasteboardType) = 0;
+     virtual void writeToClipboard(const String& pasteboardName, SelectionData&&) = 0;
+     virtual void clearClipboard(const String& pasteboardName) = 0;
+-#elif USE(LIBWPE)
++#elif USE(LIBWPE) || PLATFORM(ONYX)
+     virtual void getTypes(Vector<String>& types) = 0;
+     virtual void writeToPasteboard(const PasteboardWebContent&) = 0;
+     virtual void writeToPasteboard(const String& pasteboardType, const String&) = 0;
+diff --git a/Source/WebCore/platform/StaticPasteboard.cpp b/Source/WebCore/platform/StaticPasteboard.cpp
+index ab554031..4566f282 100644
+--- a/Source/WebCore/platform/StaticPasteboard.cpp
++++ b/Source/WebCore/platform/StaticPasteboard.cpp
+@@ -148,7 +148,7 @@ void StaticPasteboard::write(const PasteboardWebContent& content)
+ #if PLATFORM(COCOA)
+     markup = content.dataInHTMLFormat;
+     text = content.dataInStringFormat;
+-#elif PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM)
++#elif PLATFORM(GTK) || USE(LIBWPE) || ENABLE(WPE_PLATFORM) || PLATFORM(ONYX)
+     markup = content.markup;
+     text = content.text;
+ #else
+diff --git a/Source/WebCore/platform/graphics/FontCache.h b/Source/WebCore/platform/graphics/FontCache.h
+index 55268404..7a698828 100644
+--- a/Source/WebCore/platform/graphics/FontCache.h
++++ b/Source/WebCore/platform/graphics/FontCache.h
+@@ -83,7 +83,7 @@ struct IDWriteFontCollection;
+ #if USE(SKIA)
+ #include "SkiaHarfBuzzFontCache.h"
+ #include <skia/core/SkFontMgr.h>
+-#if !OS(ANDROID) && !PLATFORM(WIN)
++#if !OS(ANDROID) && !PLATFORM(WIN) && !OS(ONYX)
+ #include "SkiaSystemFallbackFontCache.h"
+ #endif
+ #endif
+@@ -286,7 +286,7 @@ private:
+ #if USE(SKIA)
+     mutable sk_sp<SkFontMgr> m_fontManager;
+     SkiaHarfBuzzFontCache m_harfBuzzFontCache;
+-#if !OS(ANDROID) && !PLATFORM(WIN)
++#if !OS(ANDROID) && !PLATFORM(WIN) && !OS(ONYX)
+     SkiaSystemFallbackFontCache m_skiaSystemFallbackFontCache;
+ #endif
+ #endif
+diff --git a/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
+new file mode 100644
+index 00000000..b0235902
+--- /dev/null
++++ b/Source/WebCore/platform/graphics/onyx/GraphicsLayerOnyx.cpp
+@@ -0,0 +1,62 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "GraphicsLayer.h"
++
++#include "GraphicsLayerFactory.h"
++
++// Onyx has no compositor yet (no GL: Skia paints on the CPU): accelerated compositing stays off
++// (Settings::acceleratedCompositingEnabled), pages are painted by their frame view into one
++// bitmap. WebCore still creates a few layers of its own (the page overlays' root...): a layer
++// that keeps the tree and its properties, and draws nothing.
++
++namespace WebCore {
++
++class GraphicsLayerOnyx final : public GraphicsLayer {
++public:
++    GraphicsLayerOnyx(Type type, GraphicsLayerClient& client)
++        : GraphicsLayer(type, client)
++    {
++    }
++
++    ~GraphicsLayerOnyx() final
++    {
++        willBeDestroyed();
++    }
++
++    void setNeedsDisplay() final { }
++    void setNeedsDisplayInRect(const FloatRect&, ShouldClipToLayer) final { }
++};
++
++Ref<GraphicsLayer> GraphicsLayer::create(GraphicsLayerFactory* factory, GraphicsLayerClient& client, Type layerType)
++{
++    if (!factory)
++        return adoptRef(*new GraphicsLayerOnyx(layerType, client));
++
++    return factory->createGraphicsLayer(layerType, client);
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/platform/graphics/onyx/SystemFontDatabaseOnyx.cpp b/Source/WebCore/platform/graphics/onyx/SystemFontDatabaseOnyx.cpp
+new file mode 100644
+index 00000000..0651f3ab
+--- /dev/null
++++ b/Source/WebCore/platform/graphics/onyx/SystemFontDatabaseOnyx.cpp
+@@ -0,0 +1,51 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "SystemFontDatabase.h"
++
++#include "WebKitFontFamilyNames.h"
++#include <wtf/NeverDestroyed.h>
++
++namespace WebCore {
++
++SystemFontDatabase& SystemFontDatabase::singleton()
++{
++    static NeverDestroyed<SystemFontDatabase> database = SystemFontDatabase();
++    return database.get();
++}
++
++// The CSS system fonts (caption, menu, status-bar..., and the form controls' text): Onyx's
++// interface font is a sans-serif at 16 px.
++auto SystemFontDatabase::platformSystemFontShorthandInfo(FontShorthand) -> SystemFontShorthandInfo
++{
++    return { WebKitFontFamilyNames::sansSerifFamily, 16, normalWeightValue() };
++}
++
++void SystemFontDatabase::platformInvalidate()
++{
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/platform/graphics/skia/FontCacheSkia.cpp b/Source/WebCore/platform/graphics/skia/FontCacheSkia.cpp
+index 74cfeb60..56ab2508 100644
+--- a/Source/WebCore/platform/graphics/skia/FontCacheSkia.cpp
++++ b/Source/WebCore/platform/graphics/skia/FontCacheSkia.cpp
+@@ -47,6 +47,8 @@ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
+ #elif PLATFORM(WIN)
+ #include <dwrite.h>
+ #include <skia/ports/SkTypeface_win.h>
++#elif OS(ONYX)
++#include <skia/ports/SkFontMgr_onyx.h>
+ #else
+ #include <skia/ports/SkFontMgr_fontconfig.h>
+ #endif
+@@ -66,6 +68,10 @@ SkFontMgr& FontCache::fontManager() const
+ #elif OS(WINDOWS)
+         auto result = createDWriteFactory();
+         m_fontManager = SkFontMgr_New_DirectWrite(result.factory.get(), result.fontCollection.get());
++#elif OS(ONYX)
++        // The card's fonts (SD:/res/fonts), with the CSS generic and usual web family names mapped
++        // to them and a fallback font for a character: no fontconfig on Onyx.
++        m_fontManager = SkFontMgr_New_Onyx();
+ #else
+         m_fontManager = SkFontMgr_New_FontConfig(FcConfigReference(nullptr), SkFontScanner_Make_FreeType());
+ #endif
+@@ -134,7 +140,7 @@ RefPtr<Font> FontCache::systemFallbackForCharacterCluster(const FontDescription&
+ 
+     bool isEmoji = (codePointsIterator != codePoints.end() && *codePointsIterator == emojiVariationSelector) || preferColoredFont == PreferColoredFont::Yes;
+ 
+-#if OS(ANDROID) || PLATFORM(WIN)
++#if OS(ANDROID) || PLATFORM(WIN) || OS(ONYX)
+     // FIXME: handle locale.
+     Vector<const char*, 1> bcp47;
+     if (isEmoji)
+@@ -454,7 +460,7 @@ void FontCache::platformInvalidate()
+ void FontCache::platformPurgeInactiveFontData()
+ {
+     m_harfBuzzFontCache.clear();
+-#if !OS(ANDROID) && !PLATFORM(WIN)
++#if !OS(ANDROID) && !PLATFORM(WIN) && !OS(ONYX)
+     m_skiaSystemFallbackFontCache.clear();
+ #endif
+ }
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaSystemFallbackFontCache.cpp b/Source/WebCore/platform/graphics/skia/SkiaSystemFallbackFontCache.cpp
+index 224f9c34..590efac9 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaSystemFallbackFontCache.cpp
++++ b/Source/WebCore/platform/graphics/skia/SkiaSystemFallbackFontCache.cpp
+@@ -26,7 +26,7 @@
+ #include "config.h"
+ #include "SkiaSystemFallbackFontCache.h"
+ 
+-#if USE(SKIA) && !OS(ANDROID) && !PLATFORM(WIN)
++#if USE(SKIA) && !OS(ANDROID) && !PLATFORM(WIN) && !OS(ONYX)
+ #include "FontCache.h"
+ #include <fontconfig/fontconfig.h>
+ #include <wtf/FileSystem.h>
+@@ -222,4 +222,4 @@ void SkiaSystemFallbackFontCache::clear()
+ 
+ } // namepsace WebCore
+ 
+-#endif // USE(SKIA) && !OS(ANDROID) && !PLATFORM(WIN)
++#endif // USE(SKIA) && !OS(ANDROID) && !PLATFORM(WIN) && !OS(ONYX)
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaSystemFallbackFontCache.h b/Source/WebCore/platform/graphics/skia/SkiaSystemFallbackFontCache.h
+index 60667684..454973a7 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaSystemFallbackFontCache.h
++++ b/Source/WebCore/platform/graphics/skia/SkiaSystemFallbackFontCache.h
+@@ -25,7 +25,7 @@
+ 
+ #pragma once
+ 
+-#if USE(SKIA) && !OS(ANDROID) && !PLATFORM(WIN)
++#if USE(SKIA) && !OS(ANDROID) && !PLATFORM(WIN) && !OS(ONYX)
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
+ #include <skia/core/SkFontStyle.h>
+ #include <skia/core/SkTypeface.h>
+@@ -51,4 +51,4 @@ private:
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(SKIA) && !OS(ANDROID) && !PLATFORM(WIN)
++#endif // USE(SKIA) && !OS(ANDROID) && !PLATFORM(WIN) && !OS(ONYX)
+diff --git a/Source/WebCore/platform/libwpe/PasteboardLibWPE.cpp b/Source/WebCore/platform/libwpe/PasteboardLibWPE.cpp
+index 0d079845..cb089ac1 100644
+--- a/Source/WebCore/platform/libwpe/PasteboardLibWPE.cpp
++++ b/Source/WebCore/platform/libwpe/PasteboardLibWPE.cpp
+@@ -26,7 +26,9 @@
+ #include "config.h"
+ #include "Pasteboard.h"
+ 
+-#if USE(LIBWPE)
++// (Nothing here calls libwpe: the pasteboard goes through the PasteboardStrategy. The Onyx port,
++// which has no libwpe, shares this file.)
++#if USE(LIBWPE) || PLATFORM(ONYX)
+ 
+ #include "NotImplemented.h"
+ #include "PasteboardStrategy.h"
+@@ -162,4 +164,4 @@ void Pasteboard::write(const Color&)
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(LIBWPE)
++#endif // USE(LIBWPE) || PLATFORM(ONYX)
+diff --git a/Source/WebCore/platform/network/onyx/CurlSSLHandleOnyx.cpp b/Source/WebCore/platform/network/onyx/CurlSSLHandleOnyx.cpp
+new file mode 100644
+index 00000000..f94ce812
+--- /dev/null
++++ b/Source/WebCore/platform/network/onyx/CurlSSLHandleOnyx.cpp
+@@ -0,0 +1,41 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CurlSSLHandle.h"
++
++#include <stdlib.h>
++
++namespace WebCore {
++
++// The trusted root certificates: the card's bundle (SD:/res/ca-bundle, the one Onyx's curl
++// uses), or the file CURL_CA_BUNDLE names.
++void CurlSSLHandle::platformInitialize()
++{
++    const char* bundle = getenv("CURL_CA_BUNDLE");
++    setCACertPath(String::fromUTF8(bundle && *bundle ? bundle : "SD:/res/ca-bundle"));
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/platform/network/onyx/NetworkStateNotifierOnyx.cpp b/Source/WebCore/platform/network/onyx/NetworkStateNotifierOnyx.cpp
+new file mode 100644
+index 00000000..f3a51869
+--- /dev/null
++++ b/Source/WebCore/platform/network/onyx/NetworkStateNotifierOnyx.cpp
+@@ -0,0 +1,45 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "NetworkStateNotifier.h"
++
++#include "NotImplemented.h"
++
++namespace WebCore {
++
++// Onyx does not tell a program when the network comes or goes yet: navigator.onLine stays true.
++
++void NetworkStateNotifier::updateStateWithoutNotifying()
++{
++    notImplemented();
++}
++
++void NetworkStateNotifier::startObserving()
++{
++    notImplemented();
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/platform/network/onyx/PublicSuffixStoreOnyx.cpp b/Source/WebCore/platform/network/onyx/PublicSuffixStoreOnyx.cpp
+new file mode 100644
+index 00000000..a3131c3e
+--- /dev/null
++++ b/Source/WebCore/platform/network/onyx/PublicSuffixStoreOnyx.cpp
+@@ -0,0 +1,119 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "PublicSuffixStore.h"
++
++#include <wtf/text/StringView.h>
++
++// The public suffixes (the domains under which anyone can register: "com", "co.uk"...), which
++// decide what a site is for cookies and for process isolation. INTERIM: Onyx has no public suffix
++// list yet (libpsl and its data are to be ported): a top-level domain is a public suffix, and so
++// are the second-level registries below. A site under a suffix this misses (a rarer country
++// registry, a hosting domain such as "github.io") is seen as sharing its parent's site.
++
++namespace WebCore {
++
++static bool isSecondLevelRegistry(StringView label, StringView topLevel)
++{
++    // <label>.<cc> where the country registers under generic second-level labels
++    static constexpr ASCIILiteral genericLabels[] = { "co"_s, "com"_s, "net"_s, "org"_s, "gov"_s, "edu"_s, "ac"_s, "or"_s, "ne"_s, "go"_s, "mil"_s, "gouv"_s, "gob"_s, "nom"_s };
++    static constexpr ASCIILiteral countries[] = { "uk"_s, "jp"_s, "au"_s, "nz"_s, "br"_s, "cn"_s, "in"_s, "kr"_s, "za"_s, "mx"_s, "ar"_s, "tr"_s, "tw"_s, "hk"_s, "sg"_s, "il"_s, "id"_s, "th"_s, "my"_s, "ph"_s, "vn"_s, "ua"_s, "pl"_s, "ru"_s, "eg"_s, "sa"_s, "co"_s, "pe"_s, "ve"_s, "fr"_s, "es"_s, "pt"_s, "it"_s, "at"_s };
++
++    bool known = false;
++    for (auto country : countries) {
++        if (equalIgnoringASCIICase(topLevel, country)) {
++            known = true;
++            break;
++        }
++    }
++    if (!known)
++        return false;
++    for (auto generic : genericLabels) {
++        if (equalIgnoringASCIICase(label, generic))
++            return true;
++    }
++    return false;
++}
++
++// The number of labels of the public suffix that ends the domain: 1 ("com") or 2 ("co.uk").
++static unsigned publicSuffixLabelCount(StringView domain)
++{
++    auto lastDot = domain.reverseFind('.');
++    if (lastDot == notFound)
++        return 1;
++    auto topLevel = domain.substring(lastDot + 1);
++    auto rest = domain.left(lastDot);
++    auto previousDot = rest.reverseFind('.');
++    auto label = previousDot == notFound ? rest : rest.substring(previousDot + 1);
++    return isSecondLevelRegistry(label, topLevel) ? 2 : 1;
++}
++
++static unsigned labelCount(StringView domain)
++{
++    unsigned count = 1;
++    for (unsigned i = 0; i < domain.length(); ++i) {
++        if (domain[i] == '.')
++            count++;
++    }
++    return count;
++}
++
++bool PublicSuffixStore::platformIsPublicSuffix(StringView domain) const
++{
++    if (domain.isEmpty())
++        return false;
++    return labelCount(domain) <= publicSuffixLabelCount(domain);
++}
++
++String PublicSuffixStore::platformTopPrivatelyControlledDomain(StringView domain) const
++{
++    // This function is expected to work with the format used by cookies, so skip any leading dots.
++    unsigned position = 0;
++    while (position < domain.length() && domain[position] == '.')
++        position++;
++    domain = domain.substring(position);
++    if (domain.isEmpty() || platformIsPublicSuffix(domain))
++        return String();
++
++    // The public suffix and one label more.
++    unsigned wanted = publicSuffixLabelCount(domain) + 1;
++    unsigned start = domain.length();
++    while (wanted && start) {
++        auto dot = domain.left(start).reverseFind('.');
++        if (dot == notFound) {
++            start = 0;
++            break;
++        }
++        if (!--wanted) {
++            start = dot + 1;
++            break;
++        }
++        start = dot;
++    }
++    return domain.substring(start).convertToASCIILowercase();
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/platform/onyx/MIMETypeRegistryOnyx.cpp b/Source/WebCore/platform/onyx/MIMETypeRegistryOnyx.cpp
+new file mode 100644
+index 00000000..df53c1cd
+--- /dev/null
++++ b/Source/WebCore/platform/onyx/MIMETypeRegistryOnyx.cpp
+@@ -0,0 +1,107 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "MIMETypeRegistry.h"
++
++namespace WebCore {
++
++// Onyx has no system MIME database: the types a browser meets, each with its preferred
++// extension first.
++static const std::initializer_list<TypeExtensionPair>& platformMediaTypes()
++{
++    static std::initializer_list<TypeExtensionPair> platformMediaTypes = {
++        { "text/html"_s, "html"_s },
++        { "text/html"_s, "htm"_s },
++        { "application/xhtml+xml"_s, "xhtml"_s },
++        { "text/css"_s, "css"_s },
++        { "text/javascript"_s, "js"_s },
++        { "text/javascript"_s, "mjs"_s },
++        { "application/json"_s, "json"_s },
++        { "application/wasm"_s, "wasm"_s },
++        { "text/plain"_s, "txt"_s },
++        { "text/plain"_s, "text"_s },
++        { "text/xml"_s, "xml"_s },
++        { "text/xsl"_s, "xsl"_s },
++        { "application/rss+xml"_s, "rss"_s },
++        { "application/pdf"_s, "pdf"_s },
++        { "application/zip"_s, "zip"_s },
++        { "image/png"_s, "png"_s },
++        { "image/jpeg"_s, "jpg"_s },
++        { "image/jpeg"_s, "jpeg"_s },
++        { "image/gif"_s, "gif"_s },
++        { "image/webp"_s, "webp"_s },
++        { "image/svg+xml"_s, "svg"_s },
++        { "image/bmp"_s, "bmp"_s },
++        { "image/x-icon"_s, "ico"_s },
++        { "image/avif"_s, "avif"_s },
++        { "font/ttf"_s, "ttf"_s },
++        { "font/otf"_s, "otf"_s },
++        { "font/woff"_s, "woff"_s },
++        { "font/woff2"_s, "woff2"_s },
++        { "audio/mpeg"_s, "mp3"_s },
++        { "audio/ogg"_s, "ogg"_s },
++        { "audio/wav"_s, "wav"_s },
++        { "audio/flac"_s, "flac"_s },
++        { "video/mp4"_s, "mp4"_s },
++        { "video/webm"_s, "webm"_s },
++    };
++    return platformMediaTypes;
++}
++
++String MIMETypeRegistry::mimeTypeForExtension(StringView extension)
++{
++    for (auto& entry : platformMediaTypes()) {
++        if (equalIgnoringASCIICase(extension, entry.extension))
++            return entry.type;
++    }
++    return emptyString();
++}
++
++bool MIMETypeRegistry::isApplicationPluginMIMEType(const String&)
++{
++    return false;
++}
++
++String MIMETypeRegistry::preferredExtensionForMIMEType(const String& mimeType)
++{
++    for (auto& entry : platformMediaTypes()) {
++        if (equalIgnoringASCIICase(mimeType, entry.type))
++            return entry.extension;
++    }
++    return emptyString();
++}
++
++Vector<String> MIMETypeRegistry::extensionsForMIMEType(const String& mimeType)
++{
++    Vector<String> extensions;
++    for (auto& entry : platformMediaTypes()) {
++        if (equalIgnoringASCIICase(mimeType, entry.type))
++            extensions.append(entry.extension);
++    }
++    return extensions;
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/platform/onyx/PlatformKeyboardEventOnyx.cpp b/Source/WebCore/platform/onyx/PlatformKeyboardEventOnyx.cpp
+new file mode 100644
+index 00000000..11aec71d
+--- /dev/null
++++ b/Source/WebCore/platform/onyx/PlatformKeyboardEventOnyx.cpp
+@@ -0,0 +1,52 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "PlatformKeyboardEvent.h"
++
++namespace WebCore {
++
++// Onyx sends a key's modifiers with each key event; there is no call to ask for their state
++// between events.
++OptionSet<PlatformEvent::Modifier> PlatformKeyboardEvent::currentStateOfModifierKeys()
++{
++    return { };
++}
++
++void PlatformKeyboardEvent::disambiguateKeyDownEvent(Type type, bool backwardsCompatibility)
++{
++    ASSERT(m_type == PlatformEvent::Type::KeyDown);
++    m_type = type;
++    if (backwardsCompatibility)
++        return;
++
++    if (type == PlatformEvent::Type::RawKeyDown) {
++        m_text = String();
++        m_unmodifiedText = String();
++    } else
++        m_keyIdentifier = String();
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/platform/onyx/PlatformScreenOnyx.cpp b/Source/WebCore/platform/onyx/PlatformScreenOnyx.cpp
+new file mode 100644
+index 00000000..6303e4e7
+--- /dev/null
++++ b/Source/WebCore/platform/onyx/PlatformScreenOnyx.cpp
+@@ -0,0 +1,80 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "PlatformScreen.h"
++
++#include "ColorSpace.h"
++#include "FloatRect.h"
++#include "NotImplemented.h"
++
++namespace WebCore {
++
++// The screen as WebCore asks about it. The size is the desktop's usual mode until the view
++// tells the real one (the web process has no window of its own).
++
++int screenDepth(Widget*)
++{
++    return 24;
++}
++
++int screenDepthPerComponent(Widget*)
++{
++    return 8;
++}
++
++bool screenIsMonochrome(Widget*)
++{
++    return false;
++}
++
++bool screenHasInvertedColors()
++{
++    return false;
++}
++
++FloatRect screenRect(Widget*)
++{
++    notImplemented();
++    return { 0, 0, 1920, 1080 };
++}
++
++FloatRect screenAvailableRect(Widget*)
++{
++    notImplemented();
++    return { 0, 0, 1920, 1080 };
++}
++
++bool screenSupportsExtendedColor(Widget*)
++{
++    return false;
++}
++
++ColorSpace screenColorSpace(Widget*)
++{
++    return ColorSpace::SRGB();
++}
++
++} // namespace WebCore
+diff --git a/Source/WebCore/platform/onyx/UserAgentOnyx.cpp b/Source/WebCore/platform/onyx/UserAgentOnyx.cpp
+new file mode 100644
+index 00000000..e4b66f8e
+--- /dev/null
++++ b/Source/WebCore/platform/onyx/UserAgentOnyx.cpp
+@@ -0,0 +1,65 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "UserAgent.h"
++
++#include <wtf/NeverDestroyed.h>
++#include <wtf/text/MakeString.h>
++
++// WARNING: the user agent is fragile (see platform/glib/UserAgentGLib.cpp's history before
++// changing it). Sites look for "Safari" and "Version/" to recognise WebKit, and take a WebKit
++// that is not on a desktop system for a phone: the system token is the one WebKit's Linux
++// ports send, which sites know (Onyx is not Linux; the browser can send another per site).
++
++namespace WebCore {
++
++static constexpr ASCIILiteral versionForUAString()
++{
++    // https://bugs.webkit.org/show_bug.cgi?id=180365
++    return "605.1.15"_s;
++}
++
++static String standardUserAgentStatic()
++{
++    // Version/X is mandatory *before* Safari/X to be a valid Safari UA. See
++    // https://bugs.webkit.org/show_bug.cgi?id=133403 for details.
++    static NeverDestroyed<String> uaStatic(makeString("Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/"_s, versionForUAString(), " (KHTML, like Gecko) Version/17.0 Safari/"_s, versionForUAString()));
++    return uaStatic;
++}
++
++String standardUserAgent(const String& applicationName, const String& applicationVersion)
++{
++    if (applicationName.isEmpty())
++        return standardUserAgentStatic();
++    return makeString(standardUserAgentStatic(), ' ', applicationName, '/', applicationVersion.isEmpty() ? versionForUAString() : applicationVersion);
++}
++
++String standardUserAgentForURL(const URL&)
++{
++    return standardUserAgentStatic();
++}
++
++} // namespace WebCore
+diff --git a/Source/cmake/OptionsOnyx.cmake b/Source/cmake/OptionsOnyx.cmake
+index 8ce40684..9d407af4 100644
+--- a/Source/cmake/OptionsOnyx.cmake
++++ b/Source/cmake/OptionsOnyx.cmake
+@@ -53,6 +53,71 @@ find_package(ICU 70.1 REQUIRED COMPONENTS data i18n uc)
+ set_property(TARGET ICU::i18n APPEND PROPERTY INTERFACE_LINK_LIBRARIES ICU::uc)
+ set_property(TARGET ICU::uc APPEND PROPERTY INTERFACE_LINK_LIBRARIES ICU::data)
+ 
++# WebCore (step 2 of the port) is built with -DONYX_WEBCORE=ON; the jsc shell alone otherwise.
++# Its libraries are the static archives of Onyx's sysroot (tools/ports): imported by hand, with
++# what each needs after it on a static link line, rather than found (no shared libraries, and
++# several have no CMake package).
++option(ONYX_WEBCORE "Build WebCore (step 2 of the Onyx port)" OFF)
++if (ONYX_WEBCORE)
++    set(_onyx_lib "${ONYX_SYSROOT}/lib")
++    set(_onyx_inc "${ONYX_SYSROOT}/include")
++    function(ONYX_IMPORT_LIBRARY _target)
++        cmake_parse_arguments(opt "" "" "LIBRARIES;INCLUDES;DEPENDS;DEFINITIONS" ${ARGN})
++        add_library(${_target} INTERFACE IMPORTED GLOBAL)
++        set(_libs)
++        foreach (_lib IN LISTS opt_LIBRARIES)
++            if (NOT EXISTS "${_onyx_lib}/lib${_lib}.a")
++                message(FATAL_ERROR "No ${_onyx_lib}/lib${_lib}.a: sh tools/ports/build-all.sh")
++            endif ()
++            list(APPEND _libs "${_onyx_lib}/lib${_lib}.a")
++        endforeach ()
++        set_target_properties(${_target} PROPERTIES
++            INTERFACE_LINK_LIBRARIES "${_libs};${opt_DEPENDS}"
++            INTERFACE_INCLUDE_DIRECTORIES "${opt_INCLUDES}"
++            INTERFACE_COMPILE_DEFINITIONS "${opt_DEFINITIONS}"
++        )
++    endfunction()
++
++    ONYX_IMPORT_LIBRARY(ZLIB::ZLIB LIBRARIES z)
++    ONYX_IMPORT_LIBRARY(Brotli::dec LIBRARIES brotlidec)
++    ONYX_IMPORT_LIBRARY(MbedTLS::mbedcrypto LIBRARIES mbedcrypto)
++    ONYX_IMPORT_LIBRARY(MbedTLS::mbedx509 LIBRARIES mbedx509 DEPENDS MbedTLS::mbedcrypto)
++    ONYX_IMPORT_LIBRARY(MbedTLS::mbedtls LIBRARIES mbedtls DEPENDS MbedTLS::mbedx509)
++    ONYX_IMPORT_LIBRARY(Onyx::nghttp2 LIBRARIES nghttp2)
++    ONYX_IMPORT_LIBRARY(CURL::libcurl LIBRARIES curl DEPENDS MbedTLS::mbedtls Onyx::nghttp2 Brotli::dec ZLIB::ZLIB
++        DEFINITIONS CURL_STATICLIB)
++    ONYX_IMPORT_LIBRARY(PNG::PNG LIBRARIES png16 DEPENDS ZLIB::ZLIB)
++    ONYX_IMPORT_LIBRARY(JPEG::JPEG LIBRARIES jpeg)
++    ONYX_IMPORT_LIBRARY(WebP::libwebp LIBRARIES webp sharpyuv)
++    ONYX_IMPORT_LIBRARY(WebP::demux LIBRARIES webpdemux DEPENDS WebP::libwebp)
++    ONYX_IMPORT_LIBRARY(WebP::mux LIBRARIES webpmux DEPENDS WebP::libwebp)
++    ONYX_IMPORT_LIBRARY(Freetype::Freetype LIBRARIES freetype INCLUDES "${_onyx_inc}/freetype2"
++        DEPENDS PNG::PNG Brotli::dec ZLIB::ZLIB)
++    ONYX_IMPORT_LIBRARY(HarfBuzz::HarfBuzz LIBRARIES harfbuzz INCLUDES "${_onyx_inc}/harfbuzz" DEPENDS Freetype::Freetype)
++    ONYX_IMPORT_LIBRARY(HarfBuzz::ICU LIBRARIES harfbuzz-icu DEPENDS HarfBuzz::HarfBuzz ICU::uc)
++    ONYX_IMPORT_LIBRARY(LibXml2::LibXml2 LIBRARIES xml2 INCLUDES "${_onyx_inc}/libxml2" DEPENDS ZLIB::ZLIB
++        DEFINITIONS LIBXML_STATIC)
++    ONYX_IMPORT_LIBRARY(SQLite3::SQLite3 LIBRARIES sqlite3)
++
++    # Skia: the sysroot's libskia.a is WebKit's own copy (Source/ThirdParty/skia at the pinned
++    # revision), CPU raster only (no Ganesh), with Onyx's font manager (SkFontMgr_onyx.h). Its
++    # headers are installed as <sysroot>/include/skia/include/...; WebKit includes <skia/core/...>.
++    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/onyx-skia")
++    file(CREATE_LINK "${_onyx_inc}/skia/include" "${CMAKE_BINARY_DIR}/onyx-skia/skia" SYMBOLIC)
++    find_package(PkgConfig REQUIRED)
++    execute_process(COMMAND ${PKG_CONFIG_EXECUTABLE} --cflags-only-other skia
++        OUTPUT_VARIABLE _onyx_skia_cflags OUTPUT_STRIP_TRAILING_WHITESPACE RESULT_VARIABLE _onyx_skia_result)
++    if (_onyx_skia_result)
++        message(FATAL_ERROR "pkg-config does not know skia (the sysroot's lib/pkgconfig/skia.pc)")
++    endif ()
++    string(REGEX MATCHALL "-D[^ ]+" _onyx_skia_defs "${_onyx_skia_cflags}")
++    list(TRANSFORM _onyx_skia_defs REPLACE "^-D" "")
++    ONYX_IMPORT_LIBRARY(Skia::Skia LIBRARIES skia
++        INCLUDES "${_onyx_inc}/skia" "${CMAKE_BINARY_DIR}/onyx-skia"
++        DEPENDS HarfBuzz::HarfBuzz Freetype::Freetype PNG::PNG JPEG::JPEG WebP::mux WebP::demux WebP::libwebp ZLIB::ZLIB
++        DEFINITIONS ${_onyx_skia_defs})
++endif ()
++
+ set(CMAKE_C_VISIBILITY_PRESET hidden)
+ set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+ set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+@@ -83,10 +148,33 @@ WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_ISO_MALLOC PRIVATE OFF)
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_REMOTE_INSPECTOR PRIVATE OFF)
+ WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_RESOURCE_USAGE PRIVATE OFF)
+ WEBKIT_OPTION_DEFINE(USE_SYSTEM_UNIFDEF "Whether to use a system-provided unifdef" PRIVATE ON)
++
++# WebCore: Skia on the CPU, no GL and no compositor (accelerated compositing is compiled out: no
++# TextureMapper, no Coordinated Graphics, no EGL), no media yet (Onyx's own player comes later).
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_SKIA PRIVATE ${ONYX_WEBCORE})
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_SKIA_ENCODERS PRIVATE ${ONYX_WEBCORE})
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_SMOOTH_SCROLLING PRIVATE ON)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_ASYNC_SCROLLING PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_GPU_PROCESS PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBGL PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_VIDEO PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEB_AUDIO PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_XSLT PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_GEOLOCATION PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_NOTIFICATIONS PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_GAMEPAD PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_CONTEXT_MENUS PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_USER_MESSAGE_HANDLERS PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_IMAGE_DIFF PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBDRIVER PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_WOFF2 PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_AVIF PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_JPEGXL PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_LCMS PRIVATE OFF)
+ WEBKIT_OPTION_END()
+ 
+-# Step 1: WTF, JavaScriptCore and its shell only.
+-set(ENABLE_WEBCORE OFF)
++# Step 1: WTF, JavaScriptCore and its shell; step 2 (ONYX_WEBCORE): PAL and WebCore.
++set(ENABLE_WEBCORE ${ONYX_WEBCORE})
+ set(ENABLE_WEBKIT_LEGACY OFF)
+ set(ENABLE_WEBKIT OFF)
+ set(ENABLE_WEBINSPECTORUI OFF)
+@@ -98,6 +186,20 @@ set(ENABLE_API_TESTS OFF)
+ set(bmalloc_LIBRARY_TYPE STATIC)
+ set(WTF_LIBRARY_TYPE STATIC)
+ set(JavaScriptCore_LIBRARY_TYPE STATIC)
++set(PAL_LIBRARY_TYPE STATIC)
++set(WebCore_LIBRARY_TYPE STATIC)
++
++if (ENABLE_WEBCORE)
++    SET_AND_EXPOSE_TO_BUILD(USE_CURL ON)
++    SET_AND_EXPOSE_TO_BUILD(USE_HARFBUZZ ON)
++    # The TLS and crypto library is mbedTLS (curl's back end too): no OpenSSL.
++    SET_AND_EXPOSE_TO_BUILD(USE_MBEDTLS ON)
++    # Skia renders on the CPU: its GPU paths (Ganesh over GL / EGL) are compiled out.
++    SET_AND_EXPOSE_TO_BUILD(USE_SKIA_GPU OFF)
++    # The form controls and the scrollbars: WebKit's own drawn theme (as the WPE, GTK and Windows
++    # ports), nothing from the system.
++    SET_AND_EXPOSE_TO_BUILD(USE_THEME_ADWAITA ON)
++endif ()
+ 
+ SET_AND_EXPOSE_TO_BUILD(USE_GENERIC_EVENT_LOOP 1)
+ SET_AND_EXPOSE_TO_BUILD(WTF_DEFAULT_EVENT_LOOP 0)

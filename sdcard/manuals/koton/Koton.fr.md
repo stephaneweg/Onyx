@@ -457,7 +457,7 @@ Le kit de batterie est celui de **la piste** : choisissez-le dans son en-tête.
 
 Les rangées sont les 47 percussions General MIDI — grosse caisse, caisse claire, charleys, toms, cymbales,
 puis les percussions latines —, colorées par famille. La grille a l'apparence de Koton Studio pour
-Windows : **un carré par pas**, dans la couleur de sa rangée (sombre quand il est vide, le premier pas de
+Windows : **un carré par pas**, dans la couleur de sa rangée (pâle quand il est vide, le premier pas de
 chaque temps plus clair ; vif quand il joue). **Un clic pose un coup, un clic sur un coup l'enlève.**
 **Customise** dessine le groove sur la grille la plus grossière qui garde chaque coup à sa place — 4 pas par
 temps pour un groove en doubles croches ; **Resolution** (résolution) la change (24 / beat pour le

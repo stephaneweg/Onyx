@@ -13,11 +13,11 @@
 // NEVER committed; config.ini.example shows the format. Settings > Edit Configuration opens
 // it in tinypad.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
-#include "clipboard.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
+#include "systemkit/systemkit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W		600
 #define H		470
@@ -68,7 +68,7 @@ static void hist_add (char role, const char *s)
 }
 
 // ---- transcript -----------------------------------------------------------------------
-static int log_cols (void) { int c = (g_log->width - 8 - WK_SBW) / wk_fw (); return c < 20 ? 20 : c; }
+static int log_cols (void) { int c = (g_log->width - 8 - UK_SBW) / uk_fw (); return c < 20 ? 20 : c; }
 
 // Append text word-wrapped to the transcript width; every line after the first is
 // indented under the speaker's name.
@@ -318,7 +318,7 @@ static void on_new (void)
 static void on_save (void)
 {
 	char path[100];
-	if (wk_file_save (path, sizeof path, "SD:/", "SD:/lisa-chat.txt"))
+	if (uk_file_save (path, sizeof path, "SD:/", "SD:/lisa-chat.txt", "Text files|*.txt|All files|*"))
 		kapi_save_file (path, g_log->content (), (unsigned) g_log->len);
 	g_input->setFocus ();
 }
@@ -372,11 +372,11 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("Chat");
-	menu.item ("New Conversation",  "^N", WK_CTRL ('N'), on_new);
-	menu.item ("Save Transcript...", "^S", WK_CTRL ('S'), on_save);
+	menu.item ("New Conversation",  "^N", UK_CTRL ('N'), on_new);
+	menu.item ("Save Transcript...", "^S", UK_CTRL ('S'), on_save);
 	menu.menu ("Edit");
-	menu.item ("Copy",              "^C", WK_CTRL ('C'), on_copy);
-	menu.item ("Paste",             "^V", WK_CTRL ('V'), on_paste);
+	menu.item ("Copy",              "^C", UK_CTRL ('C'), on_copy);
+	menu.item ("Paste",             "^V", UK_CTRL ('V'), on_paste);
 	menu.item ("Copy Last Answer",  "",   0,             on_copy_answer);
 	menu.menu ("Settings");
 	menu.item ("Edit Configuration...", "", 0, on_config);

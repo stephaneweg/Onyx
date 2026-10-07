@@ -2,8 +2,8 @@
 // snake.c -- Snake. App-drawn grid + kapi_draw_text score; arrow keys steer (no
 // reversing), 'r' restarts. Eat food to grow; hitting a wall or yourself ends it.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
 
 #define GW	24
 #define GH	18
@@ -15,7 +15,7 @@
 #define NCELLS	(GW * GH)
 
 static unsigned *fb;
-static wtk::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
+static uikit::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
 
 static int g_sx[NCELLS], g_sy[NCELLS];	// body; [0] = head
 static int g_len;
@@ -101,27 +101,27 @@ static int itoa (int v, char *b)
 
 static void cell (int x, int y, unsigned c) { fill_rect (OX + x * CELL, OY + y * CELL, CELL - 1, CELL - 1, c); }
 
-// The theme's look (wtk/paint.h): the face around, the field sunken (its own dark); drawn once
+// The theme's look (uikit/paint.h): the face around, the field sunken (its own dark); drawn once
 // into g_bg, copied at each frame.
 static void paint_bg (void)
 {
-	using namespace wtk;
+	using namespace uikit;
 	g_bg.alloc (W, H);
 	g_bg.clear (C_BG);
-	wk_text_l (g_bg, OX, 4, 20, "Score:", C_TEXT);
-	wk_sunken (g_bg, OX - 3, OY - 3, GW * CELL + 5, GH * CELL + 5, 5, 0x000c0e12);
+	uk_text_l (g_bg, OX, 4, 20, "Score:", C_TEXT);
+	uk_sunken (g_bg, OX - 3, OY - 3, GW * CELL + 5, GH * CELL + 5, 5, 0x000c0e12);
 }
 
 // A message box over the field (the theme's dialog: a title strip, the face, an outline).
 static void msgbox (int cx, int cy, const char *title, const char *text)
 {
-	using namespace wtk;
-	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	using namespace uikit;
+	int th = uk_fh () + 10, w = uk_text_w (text) + 56, h = th + uk_fh () + 24;
 	int x = cx - w / 2, y = cy - h / 2;
-	wk_rbox (g_cv, x, y, w, h, 8, C_FACE, C_FACE);
-	wk_title_strip (g_cv, x + 1, y + 1, w - 2, th, title, 7);
-	wk_rline (g_cv, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
-	wk_text_c (g_cv, x, y + th, w, h - th, text, C_TEXT);
+	uk_rbox (g_cv, x, y, w, h, 8, C_FACE, C_FACE);
+	uk_title_strip (g_cv, x + 1, y + 1, w - 2, th, title, 7);
+	uk_rline (g_cv, x, y, w, h, 8, UK_OUTLINE == 2 ? 0 : uk_tone (C_FRAME_ACTIVE, 44), 255);
+	uk_text_c (g_cv, x, y + th, w, h - th, text, C_TEXT);
 }
 
 static void redraw (void)
@@ -129,7 +129,7 @@ static void redraw (void)
 	g_cv.putOther (g_bg, 0, 0, false);
 	char buf[16];
 	itoa (g_score, buf);
-	wtk::wk_text_l (g_cv, OX + 7 * kapi_font_width (), 4, 20, buf, wtk::C_TEXT, 2);
+	uikit::uk_text_l (g_cv, OX + 7 * kapi_font_width (), 4, 20, buf, uikit::C_TEXT, 2);
 
 	cell (g_fx, g_fy, 0x00ff4040);				// food
 	for (int i = 0; i < g_len; i++)
@@ -142,7 +142,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "snake");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 

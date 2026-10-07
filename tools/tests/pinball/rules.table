@@ -1,0 +1,93 @@
+# rules.table -- a table for Pinball's host test (tools/tests/pinball/pinballtest.cpp): every toy in the open, placed
+# so that a test can shoot a ball straight at it (02 §12 AC 13-19, 21).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+[table]
+format   = 1
+name     = Rules Test
+name.fr  = Table de test
+goal     = Every toy in the open.
+size     = 520 1040
+gravity  = 1400
+drain    = 1010
+ballsave = 8
+rotate   = top
+
+[wall]
+id     = outline
+closed = 1
+points = 0 0, 520 0, 520 1040, 0 1040
+[wall]
+points = 476 1040, 476 300
+[gate]
+a    = 476 300
+b    = 518 300
+pass = up
+
+[flipper]
+side   = left
+pivot  = 150 905
+length = 70
+[flipper]
+side   = right
+pivot  = 326 905
+length = 70
+[plunger]
+at = 498 980
+
+[bumper]
+id     = bump
+at     = 100 200
+radius = 25
+[sling]
+id = sling
+a  = 300 200
+b  = 400 200
+[target]
+id   = stand
+kind = standup
+a    = 300 400
+b    = 360 400
+[target]
+id   = d1
+kind = drop
+bank = pair
+a    = 60 500
+b    = 60 540
+[target]
+id   = d2
+kind = drop
+bank = pair
+a    = 60 550
+b    = 60 590
+[lane]
+id    = l1
+group = top
+rect  = 150 60 30 50
+[lane]
+id    = l2
+group = top
+rect  = 225 60 30 50
+[lane]
+id    = l3
+group = top
+rect  = 300 60 30 50
+[ramp]
+id   = ramp
+a    = 200 700
+b    = 280 700
+pass = up
+path = 240 700, 240 120, 420 120, 421 745
+time = 1
+out  = 0 320
+[saucer]
+id     = hole
+at     = 380 600
+radius = 18
+hold   = 1.5
+out    = -350 450
+[rule]
+when       = saucer hole
+count      = 2
+do         = multiball 2
+message    = MULTIBALL!
+message.fr = MULTIBALL !

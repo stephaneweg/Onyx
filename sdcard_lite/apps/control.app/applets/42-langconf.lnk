@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = Language & Region
+icon   = SD:/apps/langconf.app/icon.bmp
+target = langconf
+text   = The language of the programs; the time zone

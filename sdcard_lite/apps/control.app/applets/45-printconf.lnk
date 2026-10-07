@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = Printers
+icon   = SD:/apps/printconf.app/icon.bmp
+target = printconf
+text   = The printers (PDF, network), the default one, a test page, the print queue

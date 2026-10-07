@@ -2,7 +2,7 @@
 
 Status: **paused** (2026-09-30, the user's call: to resume later). Study done, milestone M0 built
 (2026-09-29), **M1 done: `stkpoc` PASS on the Pi** (2026-09-30; `SD:/bin/stkpoc`). Next when it
-resumes: M2 (see §5). The code of the port lives in [`user/stk/`](../user/stk/); SuperTuxKart's
+resumes: M2 (see §5). The code of the port lives in [`user/Ports/stk/`](../user/Ports/stk/); SuperTuxKart's
 own source is a shallow clone **outside** the repository (see *Building M0*).
 
 Studied: `supertuxkart/stk-code` at `7644e908` (2026-09-24, the 1.5 development line) — the code
@@ -17,7 +17,7 @@ the N64 emulator). The honest summary:
   OpenGL ES 3.0 with GLSL 1.40 / GLSL ES 3.00 shaders (deferred shading, shadows, SSAO, GPU
   skinning, instancing, UBOs, texture arrays); the newer "GE" renderer is Vulkan 1.1. Onyx has no GL
   and no GLSL compiler: its V3D kapi takes QPU code that apps generate themselves
-  (`user/v3d/qpu.h`). Writing a GLES 3 implementation (or porting Mesa's `v3d` + its GLSL/NIR
+  (`user/Libs/v3d/qpu.h`). Writing a GLES 3 implementation (or porting Mesa's `v3d` + its GLSL/NIR
   compiler) would be a project many times the size of the game port. **Not recommended.**
 - **But STK still has a fixed-function path, and it is not tied to GL.** When the driver is not
   OpenGL 3.1+ (`CentralVideoSettings::isGLSL()` false) STK draws everything through Irrlicht's
@@ -29,7 +29,7 @@ the N64 emulator). The honest summary:
 - **So the smallest credible path is a native Irrlicht video driver for the V3D** — "the DirectX 9
   driver, but on `gpu_render3`", with its fixed-function combinations turned into QPU programs by a
   small generator, exactly as gcemu turns the GameCube's TEV configurations into shaders
-  (`user/v3d/gxtev.*`). No GL API, no shader compiler, no Mesa.
+  (`user/Libs/v3d/gxtev.*`). No GL API, no shader compiler, no Mesa.
 - **Everything else is portable C/C++** and M0 already shows the toughest runtime part works at build
   time: full C++ (exceptions, RTTI, the STL, `std::thread` / `std::mutex` /
   `std::condition_variable` on the kapi v67 threads) and three of STK's libraries (Bullet,
@@ -48,14 +48,14 @@ the N64 emulator). The honest summary:
 
 | Need (STK) | Detail | Onyx today | Gap |
 |---|---|---|---|
-| Language | C++ (`-std=gnu++0x`, compiles as C++17), ~110 `throw`, ~180 `try`, ~270 `dynamic_cast`, STL everywhere | Apps: freestanding C++ without exceptions / RTTI / STL; newlib apps (Writer, Sheet) also `-fno-exceptions` | **Solved in M0**: full libstdc++ from the toolchain, `-fexceptions -frtti`, a link script keeping the unwind tables (`stk.ld`) and their registration (`onyx_eh.c`) |
+| Language | C++ (`-std=gnu++0x`, compiles as C++17), ~110 `throw`, ~180 `try`, ~270 `dynamic_cast`, STL everywhere | Apps: freestanding C++ without exceptions / RTTI / STL; newlib apps (Letters, Sheet) also `-fno-exceptions` | **Solved in M0**: full libstdc++ from the toolchain, `-fexceptions -frtti`, a link script keeping the unwind tables (`stk.ld`) and their registration (`onyx_eh.c`) |
 | Threads | ~30 `std::thread`, ~80 `std::mutex`, `std::condition_variable`, `std::atomic`; Irrlicht: `std::recursive_mutex` | kapi v67 threads (32 a process), newlib locks; the toolchain's libstdc++ is `--disable-threads` (no `std::mutex` at all) | **Solved in M0** (to be tried on the Pi): libstdc++'s gthreads on the kapi (`compat/bits/gthr-default.h`, `onyx_gthreads*.c*`) |
-| TLS | 4 `thread_local` (log prefix, profiler id, RNG, `g_process_type`) | No TLS (`TPIDR_EL0` not switched per task; `errno` shared) | Kernel K1 (save `TPIDR_EL0` per task) + a TLS block per thread — or patch the 4 uses (single process type is enough offline) |
+| TLS | 4 `thread_local` (log prefix, profiler id, RNG, `g_process_type`) | `TPIDR_EL0` is saved per task (Circle's `TaskSwitch`); since kapi v75 a thread starts with `thread_create_ex`'s `tls`; the toolchain's `thread_local` is still emutls (one copy), `errno` shared | A TLS block per thread from the C library (docs/POSIX-PLAN.md, WP-LIBC) — or patch the 4 uses (single process type is enough offline) |
 | Files | Irrlicht's file system (POSIX `opendir` / `stat` / `getcwd`), `fopen`, zip archives | newlib `fopen` (whole file slurped), kapi FatFs listing | **Partly in M0**: `compat/dirent.h`, `onyx_posix.c` (`opendir`, `stat`, `mkdir`, `chdir`, `getcwd`, `access`). Later `kapi_lseek` would avoid slurping big files |
 | Renderer | SP (GL 3.1 / GLES 3) or GE (Vulkan) or the legacy fixed pipeline (GL, GLES 2, D3D9) | V3D kapi: `gpu_program`, `gpu_render2/3`, `gpu_vbuf`, `gpu_texture` (RGBA8, ≤ 256 textures, no mipmaps), app-written QPU shaders | **The main work**: an Irrlicht `IVideoDriver` on the V3D (§4, M4) |
-| Window / input | SDL2 (`CIrrDeviceSDL`; STK's own gamepad code calls ~340 `SDL_` functions in 27 files) | wtk windows, full-screen apps, key / mouse events, `kapi_pad_state` | An SDL2 port with Onyx backends (video, events, joystick, audio, timer, threads) — M3 |
+| Window / input | SDL2 (`CIrrDeviceSDL`; STK's own gamepad code calls ~340 `SDL_` functions in 27 files) | uikit windows, full-screen apps, key / mouse events, `kapi_pad_state` | An SDL2 port with Onyx backends (video, events, joystick, audio, timer, threads) — M3 |
 | Sound | OpenAL (or MojoAL = OpenAL over SDL2 audio, bundled in `lib/mojoal`) + libogg/libvorbis; MojoAL wants libsamplerate | `sound_write`: s16 stereo 44.1 kHz PCM ring | MojoAL over the SDL2 Onyx audio backend; port libogg/libvorbis (or stb_vorbis behind the 7 `ov_*` calls); libsamplerate or a linear resampler |
-| Text | FreeType, HarfBuzz, SheenBidi (bundled), tinygettext (bundled) | FreeType 2.14.3 in `third_party` (Writer) | Port HarfBuzz (amalgamated `harfbuzz.cc`, C++ without exceptions — a known-portable build) |
+| Text | FreeType, HarfBuzz, SheenBidi (bundled), tinygettext (bundled) | FreeType 2.14.3 in `third_party` (Letters) | Port HarfBuzz (amalgamated `harfbuzz.cc`, C++ without exceptions — a known-portable build) |
 | Images | libpng, libjpeg, zlib (Irrlicht loaders) | All three in `third_party` (NetSurf) | Build them with the port's flags |
 | Scripting | AngelScript 2.35.1 (bundled) | — | **Built in M0** (`AS_MAX_PORTABILITY`, as STK does on AArch64) |
 | Physics | Bullet 2.79 (STK's fork, bundled) | — | **Built in M0** |
@@ -126,7 +126,7 @@ texture memory.
 | SDL2 | **port** with Onyx backends (video: a framebuffer window; events; joystick on `kapi_pad_state`; audio on `sound_write`; timer; threads on kapi) | alternative: a small `SDL_*` shim for STK's gamepad code + a native Irrlicht device |
 | OpenAL | **MojoAL** (bundled) over SDL2 audio | needs libsamplerate (port, ~C only) or a linear-resampler patch |
 | libogg / libvorbis | **port** (C) | or stb_vorbis behind the 7 `ov_*` calls |
-| FreeType | **reuse** `third_party/freetype-2.14.3` | STK wants the SFNT/TrueType modules, as Writer |
+| FreeType | **reuse** `third_party/freetype-2.14.3` | STK wants the SFNT/TrueType modules, as Letters |
 | HarfBuzz | **port** (amalgamated build) | could be stubbed to one-glyph-per-codepoint for Latin only |
 | SheenBidi, tinygettext, mcpp, libsquish | **port** (bundled) | libsquish only if compressed textures are kept |
 | libpng, libjpeg, zlib | **reuse** `third_party` | |
@@ -139,7 +139,7 @@ NetSurf's port.
 
 | # | Milestone | What proves it | Size |
 |---|---|---|---|
-| **M0** | **Toolchain + first libraries** — *done in this session* | `user/stk`: `libbullet.a`, `libangelscript.a`, `libirrlicht.a` (server-only) and `stkpoc.elf` link | ~700 lines, done |
+| **M0** | **Toolchain + first libraries** — *done in this session* | `user/Ports/stk`: `libbullet.a`, `libangelscript.a`, `libirrlicht.a` (server-only) and `stkpoc.elf` link | ~700 lines, done |
 | M1 | **Run `stkpoc` on the Pi**; decide TLS (K1 or patch the 4 `thread_local`) | `stkpoc` prints PASS: exceptions unwind, threads / condvars work, Bullet and a script run | **done 2026-09-30: PASS on the Pi 4** (every line ok, the ball at y = 0.500, `main () = 6765`); TLS still to decide |
 | M2 | **Headless game**: STK built `SERVER_ONLY` (no graphics, no sound), the stub sockets, curl replaced, the POSIX layer completed, the `data/` + one track + the karts on the card; `supertuxkart --no-graphics --profile-laps=1 --track=<t> --numkarts=4` | an AI race runs to the end on Onyx and prints its timings: game logic, XML, track and kart loading, Bullet, AngelScript all proven, CPU cost measured | 2–3 sessions, ~2–3 k lines (mostly stubs and build glue) |
 | M3 | **Platform layer**: SDL2 with Onyx backends (or the native device + SDL shim), MojoAL + libogg/vorbis, HarfBuzz, libpng/jpeg; the client build (not `SERVER_ONLY`) links with the **null** video driver | the menus' logic, input and sound work; music plays over a black screen | 2–3 sessions, ~3–4 k lines |
@@ -175,11 +175,14 @@ before any renderer work, and gives a benchmark of the CPU side on the Pi.
 - **Networking.** STK's code paths assume sockets exist; the stubs must fail cleanly everywhere the
   game probes the network (LAN discovery, news, add-ons).
 
-## 7. Kernel / kapi changes wished (none done)
+## 7. Kernel / kapi changes wished (K1's kernel half: in v75)
 
-- **K1 — TLS**: save / restore `TPIDR_EL0` per task (the context switch) and a TLS block per thread
-  (the loader for the main thread's `PT_TLS`, `thread_create` for the others). Also gives per-thread
-  `errno` (HANDOFF's "next" list).
+- **K1 — TLS** (corrected 2026-10-02: the kernel half was never missing): `TPIDR_EL0` is already
+  saved and restored per task (Circle's `TaskSwitch`, which an EL0 preemption goes through too), and
+  kapi v75 gives a new thread its initial value (`thread_create_ex`'s `tls`) and an app-core job its
+  caller's. What remains is user side: a TLS block per thread (the main thread's `PT_TLS` set up by
+  the C library's start-up, the others by its `pthread_create`) -- docs/POSIX-PLAN.md WP-LIBC. Also
+  gives per-thread `errno`.
 - **K2 — GPU textures**: mipmaps in `gpu_texture` (the V3D samples them; the layouts are Mesa's
   `v3d_setup_slices`), more than 256 textures a program, a larger `HEAP_LOW` budget for textures.
 - **K3 — UDP** (optional): datagram sockets for ENet (online / LAN play).
@@ -187,11 +190,11 @@ before any renderer work, and gives a benchmark of the CPU side on the Pi.
 
 ## 8. Milestone M0 — what was built
 
-Folder [`user/stk/`](../user/stk/) (new; nothing else in Onyx changed):
+Folder [`user/Ports/stk/`](../user/Ports/stk/) (new; nothing else in Onyx changed):
 
 | File | What |
 |---|---|
-| `Makefile` | builds the libraries from STK's tree (`STK=` path, default the clone next to the repository) and `stkpoc.elf`, into `user/stk/build/` (ignored by git) |
+| `Makefile` | builds the libraries from STK's tree (`STK=` path, default the clone next to the repository) and `stkpoc.elf`, into `user/Ports/stk/build/` (ignored by git) |
 | `stk.ld` | `user.ld` + `.eh_frame` / `.gcc_except_table` kept, `.eh_frame` terminated, `__onyx_eh_frame_start` |
 | `onyx_eh.c` | registers the unwind tables with libgcc (`__register_frame_info`) in a priority-101 constructor (we link `-nostartfiles`: no `crtbegin.o`) |
 | `compat/bits/gthr-default.h` | libstdc++'s gthreads on Onyx, shadowing the toolchain's `gthr-single.h`; with `-D_GLIBCXX_HAS_GTHREADS=1` libstdc++'s `<mutex>`, `<condition_variable>`, `<thread>` come alive |
@@ -219,12 +222,12 @@ Folder [`user/stk/`](../user/stk/) (new; nothing else in Onyx changed):
 
 ```sh
 git clone --depth 1 https://github.com/supertuxkart/stk-code C:/Users/troll/stk-port/stk-code
-MSYS_NO_PATHCONV=1 wsl -e sh -c 'export PATH=$HOME/tc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin:$HOME/local/usr/bin:$PATH; make -C /mnt/c/Users/troll/source/repos/Zircon/user/stk -j8'
+MSYS_NO_PATHCONV=1 wsl -e sh -c 'export PATH=$HOME/tc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin:$HOME/local/usr/bin:$PATH; make -C /mnt/c/Users/troll/source/repos/Zircon/user/Ports/stk -j8'
 ```
 
 (`make STK=<path>` for another checkout; ~3 minutes, Irrlicht being most of it.)
 
-**To try it (M1):** copy `user/stk/build/stkpoc.elf` to the card as e.g. `SD:/bin/stkpoc` (no
+**To try it (M1):** copy `user/Ports/stk/build/stkpoc.elf` to the card as e.g. `SD:/bin/stkpoc` (no
 extension) and run `stkpoc` in a terminal. Expected: every line `ok`, `the ball at y = 0.500`,
 `main () = 6765, report (88)`, then `PASS`.
 
@@ -236,4 +239,4 @@ extension) and run `stkpoc` in a terminal. Expected: every line `ok`, `the ball 
    `SERVER_ONLY` STK (Irrlicht, Bullet, AngelScript, ENet, mcpp, zlib, mbedTLS); run the headless
    AI race with the smallest track and two karts.
 3. Then M3 → M5 as above. Keep this document as the port's log (what compiled, what ran, what next),
-   the way `docs/06-JET-BROWSER.md` records NetSurf's changes.
+   the way `docs/05-CIRCLE-CHANGES.md` records Circle's changes.

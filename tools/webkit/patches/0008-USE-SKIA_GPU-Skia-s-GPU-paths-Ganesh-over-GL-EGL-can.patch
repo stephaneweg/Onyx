@@ -1,0 +1,894 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Onyx contributors <onyx@localhost>
+Date: Fri, 2 Oct 2026 22:33:00 +0200
+Subject: [PATCH 08/25] USE(SKIA_GPU): Skia's GPU paths (Ganesh over GL / EGL)
+ can be compiled out
+
+What: a flag USE(SKIA_GPU) (wtf/PlatformUse.h: 1 by default with USE(SKIA); a port sets
+USE_SKIA_GPU to 0), and under it everything of WebCore's Skia code that needs GL, EGL or Ganesh:
+the whole of PlatformDisplaySkia.cpp, ImageBufferSkiaAcceleratedBackend, SkiaGPUAtlas,
+SkiaReplayAtlas and SkiaReplayCanvas; in GraphicsContextSkia the GL context and promise-image
+branches, createAcceleratedSurface(), the texture-backed tile of drawPattern() and the
+recording entry points; the texture-backed paths of NativeImageSkia and ImageUtilitiesSkia; the
+GPU helpers of SkiaUtilities; the fence of SkiaSerializedImageBuffer and of SkiaRecordingResult;
+the GL / Ganesh includes and the accelerated case of ImageBuffer::create (a CPU-only build falls
+through to the bitmap back end); PlatformDisplay's Skia members; Pattern::createPlatformPattern
+without its GrContextThreadSafeProxy argument.
+
+Why: every Skia port composites and may raster with GL, and USE(SKIA) code assumed it. A port
+that renders on the CPU only (Onyx: no GL, a Skia library built without Ganesh) could neither
+compile these files (no GL / EGL headers) nor link them (no Ganesh symbols). The run-time paths
+were already CPU-safe (RenderingMode::Unaccelerated). With USE_SKIA_GPU at 1 nothing changes.
+Assumes WebGL, Coordinated Graphics and GBM are off when it is 0 (they use GL under their own
+flags).
+---
+ Source/WTF/wtf/PlatformUse.h                  |  5 +++
+ .../WebCore/platform/graphics/ImageBuffer.cpp |  7 ++--
+ Source/WebCore/platform/graphics/Pattern.h    |  6 +++-
+ .../platform/graphics/PlatformDisplay.cpp     |  2 +-
+ .../platform/graphics/PlatformDisplay.h       | 10 +++---
+ .../graphics/skia/GraphicsContextSkia.cpp     | 34 +++++++++++++++++--
+ .../graphics/skia/GraphicsContextSkia.h       |  6 ++++
+ .../ImageBufferSkiaAcceleratedBackend.cpp     |  4 +--
+ .../skia/ImageBufferSkiaAcceleratedBackend.h  |  4 +--
+ .../graphics/skia/ImageUtilitiesSkia.cpp      |  8 +++++
+ .../graphics/skia/NativeImageSkia.cpp         |  8 +++++
+ .../platform/graphics/skia/PatternSkia.cpp    |  6 +++-
+ .../graphics/skia/PlatformDisplaySkia.cpp     |  5 +--
+ .../platform/graphics/skia/SkiaGPUAtlas.cpp   |  4 +--
+ .../platform/graphics/skia/SkiaGPUAtlas.h     |  4 +--
+ .../graphics/skia/SkiaRecordingResult.h       |  8 +++++
+ .../graphics/skia/SkiaReplayAtlas.cpp         |  4 +--
+ .../platform/graphics/skia/SkiaReplayAtlas.h  |  4 +--
+ .../graphics/skia/SkiaReplayCanvas.cpp        |  4 +--
+ .../platform/graphics/skia/SkiaReplayCanvas.h |  4 +--
+ .../skia/SkiaSerializedImageBuffer.cpp        | 13 +++++++
+ .../graphics/skia/SkiaSerializedImageBuffer.h |  2 ++
+ .../platform/graphics/skia/SkiaUtilities.cpp  | 11 ++++--
+ .../platform/graphics/skia/SkiaUtilities.h    |  6 ++++
+ 24 files changed, 136 insertions(+), 33 deletions(-)
+
+diff --git a/Source/WTF/wtf/PlatformUse.h b/Source/WTF/wtf/PlatformUse.h
+index a49b2f86..330ae7ae 100644
+--- a/Source/WTF/wtf/PlatformUse.h
++++ b/Source/WTF/wtf/PlatformUse.h
+@@ -87,6 +87,11 @@
+ #define USE_COORDINATED_GRAPHICS_ASYNC_SCROLLBAR 1
+ #endif
+ 
++/* Skia's GPU paths (Ganesh over GL / EGL). A port that renders on the CPU only sets USE_SKIA_GPU to 0. */
++#if USE(SKIA) && !defined(USE_SKIA_GPU)
++#define USE_SKIA_GPU 1
++#endif
++
+ #if PLATFORM(COCOA)
+ #define USE_CF 1
+ #endif
+diff --git a/Source/WebCore/platform/graphics/ImageBuffer.cpp b/Source/WebCore/platform/graphics/ImageBuffer.cpp
+index 38483f23..70373c04 100644
+--- a/Source/WebCore/platform/graphics/ImageBuffer.cpp
++++ b/Source/WebCore/platform/graphics/ImageBuffer.cpp
+@@ -52,10 +52,13 @@
+ #endif
+ 
+ #if USE(SKIA)
++#include "SkiaSerializedImageBuffer.h"
++#endif
++
++#if USE(SKIA_GPU)
+ #include "GLContext.h"
+ #include "ImageBufferSkiaAcceleratedBackend.h"
+ #include "PlatformDisplay.h"
+-#include "SkiaSerializedImageBuffer.h"
+ 
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
+ #include <skia/gpu/ganesh/GrBackendSurface.h>
+@@ -98,7 +101,7 @@ RefPtr<ImageBuffer> ImageBuffer::create(const FloatSize& size, RenderingMode ren
+             if (auto imageBuffer = ImageBuffer::create<ImageBufferIOSurfaceBackend>(size, resolutionScale, colorSpace, pixelFormat, purpose, creationContext))
+                 return imageBuffer;
+         }
+-#elif USE(SKIA)
++#elif USE(SKIA_GPU)
+         if (auto imageBuffer = ImageBuffer::create<ImageBufferSkiaAcceleratedBackend>(size, resolutionScale, colorSpace, pixelFormat, purpose, { }))
+             return imageBuffer;
+ #endif
+diff --git a/Source/WebCore/platform/graphics/Pattern.h b/Source/WebCore/platform/graphics/Pattern.h
+index b885cbbe..54f34405 100644
+--- a/Source/WebCore/platform/graphics/Pattern.h
++++ b/Source/WebCore/platform/graphics/Pattern.h
+@@ -43,7 +43,9 @@ typedef cairo_pattern_t* PlatformPatternPtr;
+ #elif USE(SKIA)
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
+ #include <skia/core/SkShader.h>
++#if USE(SKIA_GPU)
+ #include <skia/gpu/ganesh/GrContextThreadSafeProxy.h>
++#endif
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_END
+ typedef sk_sp<SkShader> PlatformPatternPtr;
+ #endif
+@@ -79,8 +81,10 @@ public:
+     const Parameters& parameters() const LIFETIME_BOUND { return m_parameters; }
+ 
+     // Pattern space is an abstract space that maps to the default user space by the transformation 'userSpaceTransform'
+-#if USE(SKIA)
++#if USE(SKIA_GPU)
+     PlatformPatternPtr createPlatformPattern(const SkSamplingOptions&, const sk_sp<GrContextThreadSafeProxy>&) const;
++#elif USE(SKIA)
++    PlatformPatternPtr createPlatformPattern(const SkSamplingOptions&) const;
+ #else
+     PlatformPatternPtr createPlatformPattern(const AffineTransform& userSpaceTransform) const;
+ #endif
+diff --git a/Source/WebCore/platform/graphics/PlatformDisplay.cpp b/Source/WebCore/platform/graphics/PlatformDisplay.cpp
+index 5fdc010a..fa60714b 100644
+--- a/Source/WebCore/platform/graphics/PlatformDisplay.cpp
++++ b/Source/WebCore/platform/graphics/PlatformDisplay.cpp
+@@ -110,7 +110,7 @@ GLContext* PlatformDisplay::sharingGLContext()
+ 
+ void PlatformDisplay::clearGLContexts()
+ {
+-#if USE(SKIA)
++#if USE(SKIA_GPU)
+     clearSkiaGLContext();
+ #endif
+ #if ENABLE(VIDEO) && USE(GSTREAMER_GL)
+diff --git a/Source/WebCore/platform/graphics/PlatformDisplay.h b/Source/WebCore/platform/graphics/PlatformDisplay.h
+index e790f78f..4f0f371b 100644
+--- a/Source/WebCore/platform/graphics/PlatformDisplay.h
++++ b/Source/WebCore/platform/graphics/PlatformDisplay.h
+@@ -38,7 +38,7 @@ typedef struct _GstGLContext GstGLContext;
+ typedef struct _GstGLDisplay GstGLDisplay;
+ #endif // ENABLE(VIDEO) && USE(GSTREAMER_GL)
+ 
+-#if USE(SKIA)
++#if USE(SKIA_GPU)
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
+ #include <skia/gpu/ganesh/GrDirectContext.h>
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_END
+@@ -52,7 +52,7 @@ enum class Critical : bool;
+ namespace WebCore {
+ 
+ class GLContext;
+-#if USE(SKIA)
++#if USE(SKIA_GPU)
+ class SkiaGLContext;
+ #endif
+ 
+@@ -117,7 +117,7 @@ public:
+     void clearGStreamerGLState();
+ #endif
+ 
+-#if USE(SKIA)
++#if USE(SKIA_GPU)
+     GLContext* skiaGLContext();
+     void setSkiaGLContextForCurrentThread(std::unique_ptr<GLContext>&&);
+     GrDirectContext* skiaGrContext() const;
+@@ -138,7 +138,7 @@ protected:
+ #endif
+ 
+ private:
+-#if USE(SKIA)
++#if USE(SKIA_GPU)
+     void clearSkiaGLContext();
+ #endif
+ 
+@@ -153,7 +153,7 @@ private:
+     mutable GRefPtr<GstGLContext> m_gstGLContext;
+ #endif
+ 
+-#if USE(SKIA)
++#if USE(SKIA_GPU)
+     ThreadSafeWeakHashSet<SkiaGLContext> m_skiaGLContexts;
+ #endif
+ };
+diff --git a/Source/WebCore/platform/graphics/skia/GraphicsContextSkia.cpp b/Source/WebCore/platform/graphics/skia/GraphicsContextSkia.cpp
+index a3cb981b..5b8a9535 100644
+--- a/Source/WebCore/platform/graphics/skia/GraphicsContextSkia.cpp
++++ b/Source/WebCore/platform/graphics/skia/GraphicsContextSkia.cpp
+@@ -32,14 +32,18 @@
+ #include "FloatRect.h"
+ #include "FloatRoundedRect.h"
+ #include "FontRenderOptions.h"
++#if USE(SKIA_GPU)
+ #include "GLContext.h"
++#endif
+ #include "ImageBuffer.h"
+ #include "IntRect.h"
+ #include "NativeImage.h"
+ #include "NotImplemented.h"
+ #include "PathSegment.h"
+ #include "Pattern.h"
++#if USE(SKIA_GPU)
+ #include "PlatformDisplay.h"
++#endif
+ #include "ProcessCapabilities.h"
+ #include "SkiaImageAtlasLayoutBuilder.h"
+ #include "SkiaPaintingEngine.h"
+@@ -60,7 +64,9 @@ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
+ #include <skia/core/SkSurface.h>
+ #include <skia/core/SkTileMode.h>
+ #include <skia/effects/SkImageFilters.h>
++#if USE(SKIA_GPU)
+ #include <skia/gpu/ganesh/SkSurfaceGanesh.h>
++#endif
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_END
+ #include <wtf/MathExtras.h>
+ 
+@@ -149,6 +155,7 @@ const ColorSpace& GraphicsContextSkia::colorSpace() const
+ 
+ bool GraphicsContextSkia::makeGLContextCurrentIfNeeded() const
+ {
++#if USE(SKIA_GPU)
+     if (m_renderingMode == RenderingMode::Unaccelerated)
+         return true;
+ 
+@@ -159,6 +166,9 @@ bool GraphicsContextSkia::makeGLContextCurrentIfNeeded() const
+         return true;
+ 
+     return PlatformDisplay::sharedDisplay().skiaGLContext()->makeContextCurrent();
++#else
++    return true;
++#endif
+ }
+ 
+ void GraphicsContextSkia::pushSkiaState()
+@@ -245,6 +255,7 @@ static SkSamplingOptions toSkSamplingOptions(InterpolationQuality quality)
+ 
+ sk_sp<SkImage> GraphicsContextSkia::imageForCurrentThread(const sk_sp<SkImage>& image) const
+ {
++#if USE(SKIA_GPU)
+     if (!image->isTextureBacked())
+         return image;
+ 
+@@ -266,6 +277,9 @@ sk_sp<SkImage> GraphicsContextSkia::imageForCurrentThread(const sk_sp<SkImage>&
+ 
+     // When drawing GPU-backed image on CPU-backed canvas we need to convert image to CPU-backed one.
+     return imageInThisThread->makeRasterImage(grContext);
++#else
++    return image;
++#endif
+ }
+ 
+ void GraphicsContextSkia::drawNativeImage(const NativeImage& nativeImage, const FloatRect& destRect, const FloatRect& srcRect, ImagePaintingOptions options)
+@@ -320,7 +334,7 @@ void GraphicsContextSkia::drawNativeImage(const NativeImage& nativeImage, const
+     auto imageInThisThread = imageForCurrentThread(image);
+ #if USE(TEXTURE_MAPPER)
+     trackAcceleratedRenderingFenceIfNeeded(imageInThisThread, nativeImage.grContext());
+-#else
++#elif USE(SKIA_GPU)
+     if (m_threadSafeGrContext)
+         imageInThisThread = SkiaUtilities::createPromiseImageIfNeeded(imageInThisThread, m_threadSafeGrContext);
+ #endif
+@@ -606,7 +620,11 @@ SkPaint GraphicsContextSkia::createFillPaint() const
+ void GraphicsContextSkia::setupFillSource(SkPaint& paint)
+ {
+     if (auto fillPattern = fillBrush().pattern()) {
++#if USE(SKIA_GPU)
+         paint.setShader(fillPattern->createPlatformPattern(toSkSamplingOptions(imageInterpolationQuality()), m_threadSafeGrContext));
++#else
++        paint.setShader(fillPattern->createPlatformPattern(toSkSamplingOptions(imageInterpolationQuality())));
++#endif
+         paint.setAlphaf(alpha());
+ #if USE(TEXTURE_MAPPER)
+         trackAcceleratedRenderingFenceIfNeeded(*fillPattern);
+@@ -634,7 +652,11 @@ SkPaint GraphicsContextSkia::createStrokePaint() const
+ void GraphicsContextSkia::setupStrokeSource(SkPaint& paint)
+ {
+     if (auto strokePattern = strokeBrush().pattern()) {
++#if USE(SKIA_GPU)
+         paint.setShader(strokePattern->createPlatformPattern(toSkSamplingOptions(imageInterpolationQuality()), m_threadSafeGrContext));
++#else
++        paint.setShader(strokePattern->createPlatformPattern(toSkSamplingOptions(imageInterpolationQuality())));
++#endif
+ #if USE(TEXTURE_MAPPER)
+         trackAcceleratedRenderingFenceIfNeeded(*strokePattern);
+ #endif
+@@ -743,7 +765,7 @@ void GraphicsContextSkia::clipToImageBuffer(ImageBuffer& buffer, const FloatRect
+         auto image = nativeImage->platformImage();
+ #if USE(TEXTURE_MAPPER)
+         trackAcceleratedRenderingFenceIfNeeded(image, nativeImage->grContext());
+-#else
++#elif USE(SKIA_GPU)
+         if (m_threadSafeGrContext)
+             image = SkiaUtilities::createPromiseImageIfNeeded(image, m_threadSafeGrContext);
+ #endif
+@@ -1113,6 +1135,7 @@ void GraphicsContextSkia::fillRectWithRoundedHole(const FloatRect& outerRect, co
+     m_canvas.drawDRRect(SkRRect::MakeRect(outerRect), innerRRect, paint);
+ }
+ 
++#if USE(SKIA_GPU)
+ // FIXME: Make this a GraphicsContextSkia static function, and use it throughout WebCore.
+ static sk_sp<SkSurface> createAcceleratedSurface(const IntSize& size)
+ {
+@@ -1131,6 +1154,7 @@ static sk_sp<SkSurface> createAcceleratedSurface(const IntSize& size)
+ 
+     return surface;
+ }
++#endif
+ 
+ void GraphicsContextSkia::drawPattern(const NativeImage& nativeImage, const FloatRect& destRect, const FloatRect& tileRect, const AffineTransform& patternTransform, const FloatPoint& phase, const FloatSize& spacing, ImagePaintingOptions options)
+ {
+@@ -1174,7 +1198,7 @@ void GraphicsContextSkia::drawPattern(const NativeImage& nativeImage, const Floa
+         }
+ #if USE(TEXTURE_MAPPER)
+         trackAcceleratedRenderingFenceIfNeeded(image, nativeImage.grContext());
+-#else
++#elif USE(SKIA_GPU)
+         if (m_threadSafeGrContext)
+             image = SkiaUtilities::createPromiseImageIfNeeded(image, m_threadSafeGrContext);
+ #endif
+@@ -1182,6 +1206,7 @@ void GraphicsContextSkia::drawPattern(const NativeImage& nativeImage, const Floa
+     } else {
+         auto tileFloatRectWithSpacing = FloatRect(0, 0, tileRect.width() + spacing.width() / patternTransform.a(), tileRect.height() + spacing.height() / patternTransform.d());
+         if (image->isTextureBacked()) {
++#if USE(SKIA_GPU)
+             auto enclosingTileIntRect = enclosingIntRect(tileRect);
+             auto dstRect = SkRect::MakeWH(enclosingTileIntRect.width(), enclosingTileIntRect.height());
+             auto clipRect = enclosingIntRect(tileFloatRectWithSpacing);
+@@ -1198,6 +1223,7 @@ void GraphicsContextSkia::drawPattern(const NativeImage& nativeImage, const Floa
+ #endif
+                 paint.setShader(tileImage->makeShader(SkTileMode::kRepeat, SkTileMode::kRepeat, samplingOptions, &shaderMatrix));
+             }
++#endif
+         } else {
+             auto dstRect = SkRect::MakeWH(tileRect.width(), tileRect.height());
+             auto clipRect = SkRect::MakeWH(tileFloatRectWithSpacing.width(), tileFloatRectWithSpacing.height());
+@@ -1214,6 +1240,7 @@ void GraphicsContextSkia::drawPattern(const NativeImage& nativeImage, const Floa
+     m_canvas.drawRect(destRect, paint);
+ }
+ 
++#if USE(SKIA_GPU)
+ void GraphicsContextSkia::beginRecording(RecordingMode recordingMode, const sk_sp<GrContextThreadSafeProxy>& threadSafeGrContext)
+ {
+     ASSERT(m_contextMode == ContextMode::PaintingMode);
+@@ -1282,6 +1309,7 @@ SkiaRecordingData GraphicsContextSkia::endRecording()
+ 
+     return { };
+ }
++#endif // USE(SKIA_GPU)
+ 
+ void GraphicsContextSkia::replayStateOnCanvas(SkCanvas& canvas) const
+ {
+diff --git a/Source/WebCore/platform/graphics/skia/GraphicsContextSkia.h b/Source/WebCore/platform/graphics/skia/GraphicsContextSkia.h
+index 7d7af08f..c17a9ce2 100644
+--- a/Source/WebCore/platform/graphics/skia/GraphicsContextSkia.h
++++ b/Source/WebCore/platform/graphics/skia/GraphicsContextSkia.h
+@@ -34,7 +34,9 @@ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
+ #include <skia/core/SkImage.h>
+ #include <skia/core/SkPath.h>
+ #include <skia/effects/SkDashPathEffect.h>
++#if USE(SKIA_GPU)
+ #include <skia/gpu/ganesh/GrContextThreadSafeProxy.h>
++#endif
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_END
+ #include <wtf/CompletionHandler.h>
+ #include <wtf/HashMap.h>
+@@ -58,9 +60,11 @@ public:
+ 
+     const ColorSpace& colorSpace() const final;
+ 
++#if USE(SKIA_GPU)
+     enum class RecordingMode : uint8_t { Tile, Canvas, Scrollbar };
+     void beginRecording(RecordingMode, const sk_sp<GrContextThreadSafeProxy>& = nullptr);
+     SkiaRecordingData endRecording();
++#endif
+ 
+     void replayStateOnCanvas(SkCanvas&) const;
+ 
+@@ -201,7 +205,9 @@ private:
+     CompletionHandler<void()> m_destroyNotify;
+     SkiaState m_skiaState;
+     Vector<SkiaState, 1> m_skiaStateStack;
++#if USE(SKIA_GPU)
+     sk_sp<GrContextThreadSafeProxy> m_threadSafeGrContext;
++#endif
+ #if USE(TEXTURE_MAPPER)
+     SkiaImageToFenceMap m_imageToFenceMap;
+ #endif
+diff --git a/Source/WebCore/platform/graphics/skia/ImageBufferSkiaAcceleratedBackend.cpp b/Source/WebCore/platform/graphics/skia/ImageBufferSkiaAcceleratedBackend.cpp
+index 5dcd4c4c..58d23806 100644
+--- a/Source/WebCore/platform/graphics/skia/ImageBufferSkiaAcceleratedBackend.cpp
++++ b/Source/WebCore/platform/graphics/skia/ImageBufferSkiaAcceleratedBackend.cpp
+@@ -26,7 +26,7 @@
+ #include "config.h"
+ #include "ImageBufferSkiaAcceleratedBackend.h"
+ 
+-#if USE(SKIA)
++#if USE(SKIA) && USE(SKIA_GPU)
+ #include "FontRenderOptions.h"
+ #include "GLContext.h"
+ #include "GLFence.h"
+@@ -349,4 +349,4 @@ RefPtr<GraphicsLayerContentsDisplayDelegate> ImageBufferSkiaAcceleratedBackend::
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(SKIA)
++#endif // USE(SKIA) && USE(SKIA_GPU)
+diff --git a/Source/WebCore/platform/graphics/skia/ImageBufferSkiaAcceleratedBackend.h b/Source/WebCore/platform/graphics/skia/ImageBufferSkiaAcceleratedBackend.h
+index 7b5ab7b9..718e62af 100644
+--- a/Source/WebCore/platform/graphics/skia/ImageBufferSkiaAcceleratedBackend.h
++++ b/Source/WebCore/platform/graphics/skia/ImageBufferSkiaAcceleratedBackend.h
+@@ -25,7 +25,7 @@
+ 
+ #pragma once
+ 
+-#if USE(SKIA)
++#if USE(SKIA) && USE(SKIA_GPU)
+ #include "ImageBuffer.h"
+ #include "ImageBufferSkiaSurfaceBackend.h"
+ 
+@@ -83,4 +83,4 @@ private:
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(SKIA)
++#endif // USE(SKIA) && USE(SKIA_GPU)
+diff --git a/Source/WebCore/platform/graphics/skia/ImageUtilitiesSkia.cpp b/Source/WebCore/platform/graphics/skia/ImageUtilitiesSkia.cpp
+index d39fe093..f3b810af 100644
+--- a/Source/WebCore/platform/graphics/skia/ImageUtilitiesSkia.cpp
++++ b/Source/WebCore/platform/graphics/skia/ImageUtilitiesSkia.cpp
+@@ -27,10 +27,14 @@
+ #include "ImageUtilities.h"
+ 
+ #if USE(SKIA)
++#if USE(SKIA_GPU)
+ #include "GLContext.h"
++#endif
+ #include "MIMETypeRegistry.h"
+ #include "NativeImage.h"
++#if USE(SKIA_GPU)
+ #include "PlatformDisplay.h"
++#endif
+ 
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
+ #include <skia/core/SkData.h>
+@@ -79,6 +83,7 @@ static SkWebpEncoder::Options webpEncoderOptions(std::optional<double> quality)
+     return options;
+ }
+ 
++#if USE(SKIA_GPU)
+ static sk_sp<SkData> encodeAcceleratedImage(const NativeImage& nativeImage, const String& mimeType, std::optional<double> quality)
+ {
+     if (!PlatformDisplay::sharedDisplay().skiaGLContext()->makeContextCurrent())
+@@ -102,6 +107,7 @@ static sk_sp<SkData> encodeAcceleratedImage(const NativeImage& nativeImage, cons
+ 
+     return nullptr;
+ }
++#endif
+ 
+ static Vector<uint8_t> encodeUnacceleratedImage(const SkPixmap& pixmap, const String& mimeType, std::optional<double> quality)
+ {
+@@ -131,6 +137,7 @@ Vector<uint8_t> platformEncodeData(const NativeImage& nativeImage, const String&
+     if (!image)
+         return { };
+ 
++#if USE(SKIA_GPU)
+     if (image->isTextureBacked()) {
+         auto data = encodeAcceleratedImage(nativeImage, mimeType, quality);
+         if (!data)
+@@ -138,6 +145,7 @@ Vector<uint8_t> platformEncodeData(const NativeImage& nativeImage, const String&
+ 
+         return unsafeMakeSpan(reinterpret_cast<const uint8_t*>(data->data()), data->size());
+     }
++#endif
+ 
+     SkPixmap pixmap;
+     if (!image->peekPixels(&pixmap))
+diff --git a/Source/WebCore/platform/graphics/skia/NativeImageSkia.cpp b/Source/WebCore/platform/graphics/skia/NativeImageSkia.cpp
+index ec191342..0ddb38bf 100644
+--- a/Source/WebCore/platform/graphics/skia/NativeImageSkia.cpp
++++ b/Source/WebCore/platform/graphics/skia/NativeImageSkia.cpp
+@@ -27,10 +27,14 @@
+ #include "NativeImage.h"
+ 
+ #if USE(SKIA)
++#if USE(SKIA_GPU)
+ #include "GLContext.h"
++#endif
+ #include "GraphicsContextSkia.h"
+ #include "PixelBuffer.h"
++#if USE(SKIA_GPU)
+ #include "PlatformDisplay.h"
++#endif
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN // GLib/Win ports
+ #include <skia/core/SkColorSpace.h>
+ #include <skia/core/SkImage.h>
+@@ -175,8 +179,10 @@ NativeImage::UnpremultipliedPixels NativeImage::unpremultipliedPixels() const
+     if (!sizeInBytes || SkImageInfo::ByteSizeOverflowed(sizeInBytes))
+         return { };
+ 
++#if USE(SKIA_GPU)
+     if (platformImage->isTextureBacked() && !PlatformDisplay::sharedDisplay().skiaGLContext()->makeContextCurrent())
+         return { };
++#endif
+ 
+     Vector<uint8_t> pixels(sizeInBytes);
+     SkPixmap pixmap(imageInfo, pixels.mutableSpan().data(), imageInfo.minRowBytes());
+@@ -192,6 +198,7 @@ std::optional<Color> NativeImage::singlePixelSolidColor() const
+         return std::nullopt;
+ 
+     auto platformImage = this->platformImage();
++#if USE(SKIA_GPU)
+     if (platformImage->isTextureBacked()) {
+         if (!PlatformDisplay::sharedDisplay().skiaGLContext()->makeContextCurrent())
+             return std::nullopt;
+@@ -205,6 +212,7 @@ std::optional<Color> NativeImage::singlePixelSolidColor() const
+ 
+         return pixmap.getColor(0, 0);
+     }
++#endif
+ 
+     SkPixmap pixmap;
+     if (!platformImage->peekPixels(&pixmap))
+diff --git a/Source/WebCore/platform/graphics/skia/PatternSkia.cpp b/Source/WebCore/platform/graphics/skia/PatternSkia.cpp
+index c7b7cf0d..63d084a5 100644
+--- a/Source/WebCore/platform/graphics/skia/PatternSkia.cpp
++++ b/Source/WebCore/platform/graphics/skia/PatternSkia.cpp
+@@ -41,7 +41,11 @@ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_END
+ 
+ namespace WebCore {
+ 
++#if USE(SKIA_GPU)
+ sk_sp<SkShader> Pattern::createPlatformPattern(const SkSamplingOptions& samplingOptions, const sk_sp<GrContextThreadSafeProxy>& threadSafeGrContext) const
++#else
++sk_sp<SkShader> Pattern::createPlatformPattern(const SkSamplingOptions& samplingOptions) const
++#endif
+ {
+     auto nativeImage = tileNativeImage();
+     if (!nativeImage)
+@@ -53,7 +57,7 @@ sk_sp<SkShader> Pattern::createPlatformPattern(const SkSamplingOptions& sampling
+ 
+ #if USE(TEXTURE_MAPPER)
+     ASSERT_UNUSED(threadSafeGrContext, !threadSafeGrContext);
+-#else
++#elif USE(SKIA_GPU)
+     if (threadSafeGrContext)
+         platformImage = SkiaUtilities::createPromiseImageIfNeeded(platformImage, threadSafeGrContext);
+ #endif
+diff --git a/Source/WebCore/platform/graphics/skia/PlatformDisplaySkia.cpp b/Source/WebCore/platform/graphics/skia/PlatformDisplaySkia.cpp
+index 776466ea..fda853a6 100644
+--- a/Source/WebCore/platform/graphics/skia/PlatformDisplaySkia.cpp
++++ b/Source/WebCore/platform/graphics/skia/PlatformDisplaySkia.cpp
+@@ -24,9 +24,10 @@
+  */
+ 
+ #include "config.h"
++
++#if USE(SKIA) && USE(SKIA_GPU)
+ #include "PlatformDisplay.h"
+ 
+-#if USE(SKIA)
+ #include "FontRenderOptions.h"
+ #include "GLContext.h"
+ 
+@@ -422,4 +423,4 @@ void PlatformDisplay::clearSkiaGLContext()
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(SKIA)
++#endif // USE(SKIA) && USE(SKIA_GPU)
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaGPUAtlas.cpp b/Source/WebCore/platform/graphics/skia/SkiaGPUAtlas.cpp
+index 8909c13e..cd0d65f1 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaGPUAtlas.cpp
++++ b/Source/WebCore/platform/graphics/skia/SkiaGPUAtlas.cpp
+@@ -26,7 +26,7 @@
+ #include "config.h"
+ #include "SkiaGPUAtlas.h"
+ 
+-#if USE(SKIA)
++#if USE(SKIA) && USE(SKIA_GPU)
+ #include "BitmapTexture.h"
+ #include "GLContext.h"
+ #include "PlatformDisplay.h"
+@@ -175,4 +175,4 @@ sk_sp<SkImage> SkiaGPUAtlas::atlasImageForCurrentThread() const
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(SKIA)
++#endif // USE(SKIA) && USE(SKIA_GPU)
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaGPUAtlas.h b/Source/WebCore/platform/graphics/skia/SkiaGPUAtlas.h
+index de3aefa9..42a22677 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaGPUAtlas.h
++++ b/Source/WebCore/platform/graphics/skia/SkiaGPUAtlas.h
+@@ -25,7 +25,7 @@
+ 
+ #pragma once
+ 
+-#if USE(SKIA)
++#if USE(SKIA) && USE(SKIA_GPU)
+ #include "BitmapTexture.h"
+ #include "GLFence.h"
+ #include "IntSize.h"
+@@ -121,4 +121,4 @@ private:
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(SKIA)
++#endif // USE(SKIA) && USE(SKIA_GPU)
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaRecordingResult.h b/Source/WebCore/platform/graphics/skia/SkiaRecordingResult.h
+index b877506a..5fd6a523 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaRecordingResult.h
++++ b/Source/WebCore/platform/graphics/skia/SkiaRecordingResult.h
+@@ -26,10 +26,14 @@
+ #pragma once
+ 
+ #if USE(SKIA)
++#if USE(SKIA_GPU)
+ #include "GLFence.h"
++#endif
+ #include "IntRect.h"
+ #include "RenderingMode.h"
++#if USE(SKIA_GPU)
+ #include "SkiaGPUAtlas.h"
++#endif
+ #include "SkiaImageAtlasLayout.h"
+ 
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
+@@ -76,6 +80,7 @@ public:
+     const Vector<Ref<SkiaImageAtlasLayout>>& atlasLayouts() const LIFETIME_BOUND { return m_atlasLayouts; }
+     unsigned imageSetFingerprint() const { return m_imageSetFingerprint; }
+ 
++#if USE(SKIA_GPU)
+     // GPU atlases prepared on main thread for worker threads to rewrap.
+     void setGPUAtlases(Vector<Ref<SkiaGPUAtlas>>&& atlases) { m_gpuAtlases = WTF::move(atlases); }
+ 
+@@ -84,6 +89,7 @@ public:
+ 
+     // Get prepared GPU atlases (for worker threads to rewrap).
+     const Vector<Ref<SkiaGPUAtlas>>& gpuAtlases() const LIFETIME_BOUND { return m_gpuAtlases; }
++#endif
+ 
+ private:
+     SkiaRecordingResult(sk_sp<SkPicture>&&, SkiaRecordingData&&, const IntRect& recordRect, RenderingMode, bool contentsOpaque, float contentsScale);
+@@ -95,7 +101,9 @@ private:
+ #endif
+     Vector<Ref<SkiaImageAtlasLayout>> m_atlasLayouts;
+     unsigned m_imageSetFingerprint { 0 };
++#if USE(SKIA_GPU)
+     Vector<Ref<SkiaGPUAtlas>> m_gpuAtlases;
++#endif
+     IntRect m_recordRect;
+     RenderingMode m_renderingMode { RenderingMode::Unaccelerated };
+     bool m_contentsOpaque : 1 { true };
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaReplayAtlas.cpp b/Source/WebCore/platform/graphics/skia/SkiaReplayAtlas.cpp
+index 5d5cedfa..30be8330 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaReplayAtlas.cpp
++++ b/Source/WebCore/platform/graphics/skia/SkiaReplayAtlas.cpp
+@@ -26,7 +26,7 @@
+ #include "config.h"
+ #include "SkiaReplayAtlas.h"
+ 
+-#if USE(SKIA)
++#if USE(SKIA) && USE(SKIA_GPU)
+ 
+ #include "ColorSpaceSkia.h"
+ #include "PlatformDisplay.h"
+@@ -68,4 +68,4 @@ std::optional<SkRect> SkiaReplayAtlas::rectForImage(const SkImage& image) const
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(SKIA)
++#endif // USE(SKIA) && USE(SKIA_GPU)
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaReplayAtlas.h b/Source/WebCore/platform/graphics/skia/SkiaReplayAtlas.h
+index 2af37ab9..fedfc207 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaReplayAtlas.h
++++ b/Source/WebCore/platform/graphics/skia/SkiaReplayAtlas.h
+@@ -25,7 +25,7 @@
+ 
+ #pragma once
+ 
+-#if USE(SKIA)
++#if USE(SKIA) && USE(SKIA_GPU)
+ 
+ #include "IntSize.h"
+ #include <optional>
+@@ -67,4 +67,4 @@ private:
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(SKIA)
++#endif // USE(SKIA) && USE(SKIA_GPU)
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaReplayCanvas.cpp b/Source/WebCore/platform/graphics/skia/SkiaReplayCanvas.cpp
+index 80d02bf8..48ddd1ae 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaReplayCanvas.cpp
++++ b/Source/WebCore/platform/graphics/skia/SkiaReplayCanvas.cpp
+@@ -26,7 +26,7 @@
+ #include "config.h"
+ #include "SkiaReplayCanvas.h"
+ 
+-#if USE(SKIA)
++#if USE(SKIA) && USE(SKIA_GPU)
+ #include "GLContext.h"
+ #include "GLFence.h"
+ #include "PlatformDisplay.h"
+@@ -340,4 +340,4 @@ void SkiaReplayCanvas::onDrawVerticesObject(const SkVertices* vertices, SkBlendM
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(SKIA)
++#endif // USE(SKIA) && USE(SKIA_GPU)
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaReplayCanvas.h b/Source/WebCore/platform/graphics/skia/SkiaReplayCanvas.h
+index 95cba262..70c01cb0 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaReplayCanvas.h
++++ b/Source/WebCore/platform/graphics/skia/SkiaReplayCanvas.h
+@@ -25,7 +25,7 @@
+ 
+ #pragma once
+ 
+-#if USE(SKIA)
++#if USE(SKIA) && USE(SKIA_GPU)
+ #include "IntSize.h"
+ #include "SkiaRecordingResult.h"
+ #include "SkiaReplayAtlas.h"
+@@ -93,4 +93,4 @@ private:
+ 
+ } // namespace WebCore
+ 
+-#endif // USE(SKIA)
++#endif // USE(SKIA) && USE(SKIA_GPU)
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaSerializedImageBuffer.cpp b/Source/WebCore/platform/graphics/skia/SkiaSerializedImageBuffer.cpp
+index 53839333..1170571e 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaSerializedImageBuffer.cpp
++++ b/Source/WebCore/platform/graphics/skia/SkiaSerializedImageBuffer.cpp
+@@ -27,11 +27,15 @@
+ #include "SkiaSerializedImageBuffer.h"
+ 
+ #if USE(SKIA)
++#if USE(SKIA_GPU)
+ #include "GLContext.h"
+ #include "GLFence.h"
++#endif
+ #include "GraphicsContext.h"
+ #include "NativeImage.h"
++#if USE(SKIA_GPU)
+ #include "PlatformDisplay.h"
++#endif
+ #include <wtf/TZoneMallocInlines.h>
+ 
+ namespace WebCore {
+@@ -41,6 +45,7 @@ WTF_MAKE_TZONE_ALLOCATED_IMPL(SkiaSerializedImageBuffer);
+ SkiaSerializedImageBuffer::SkiaSerializedImageBuffer(ImageBuffer& imageBuffer)
+     : m_memoryCost(imageBuffer.memoryCost())
+ {
++#if USE(SKIA_GPU)
+     // Non accelerated ImageBuffer can be transferred to other threads.
+     if (imageBuffer.renderingMode() != RenderingMode::Accelerated) {
+         lazyInitialize(m_imageBuffer, Ref { imageBuffer });
+@@ -57,6 +62,10 @@ SkiaSerializedImageBuffer::SkiaSerializedImageBuffer(ImageBuffer& imageBuffer)
+     m_colorSpace = imageBuffer.colorSpace();
+     m_bufferFormat = { imageBuffer.pixelFormat() };
+     m_fence = GLFence::create(PlatformDisplay::sharedDisplay().glDisplay());
++#else
++    // Without a GPU every ImageBuffer is non accelerated, and can be transferred to other threads.
++    lazyInitialize(m_imageBuffer, Ref { imageBuffer });
++#endif
+ }
+ 
+ SkiaSerializedImageBuffer::~SkiaSerializedImageBuffer() = default;
+@@ -66,6 +75,7 @@ RefPtr<ImageBuffer> SkiaSerializedImageBuffer::sinkIntoImageBuffer()
+     if (m_imageBuffer)
+         return m_imageBuffer;
+ 
++#if USE(SKIA_GPU)
+     ASSERT(m_image);
+ 
+     if (!PlatformDisplay::sharedDisplay().skiaGLContext()->makeContextCurrent())
+@@ -87,6 +97,9 @@ RefPtr<ImageBuffer> SkiaSerializedImageBuffer::sinkIntoImageBuffer()
+     // Flush the context to ensure all operations are done before the source image buffer is destroyed.
+     copiedImageBuffer->flushDrawingContext();
+     return copiedImageBuffer;
++#else
++    return nullptr;
++#endif
+ }
+ 
+ size_t SkiaSerializedImageBuffer::memoryCost() const
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaSerializedImageBuffer.h b/Source/WebCore/platform/graphics/skia/SkiaSerializedImageBuffer.h
+index 44b60058..0521c068 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaSerializedImageBuffer.h
++++ b/Source/WebCore/platform/graphics/skia/SkiaSerializedImageBuffer.h
+@@ -50,7 +50,9 @@ private:
+     ColorSpace m_colorSpace { ColorSpace::SRGB() };
+     ImageBufferFormat m_bufferFormat;
+     RefPtr<NativeImage> m_image;
++#if USE(SKIA_GPU)
+     std::unique_ptr<GLFence> m_fence;
++#endif
+     size_t m_memoryCost { 0 };
+ };
+ 
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaUtilities.cpp b/Source/WebCore/platform/graphics/skia/SkiaUtilities.cpp
+index 1687fb34..502dcac7 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaUtilities.cpp
++++ b/Source/WebCore/platform/graphics/skia/SkiaUtilities.cpp
+@@ -28,12 +28,14 @@
+ 
+ #if USE(SKIA)
+ 
++#include "GraphicsTypes.h"
++#include "NotImplemented.h"
++
++#if USE(SKIA_GPU)
+ #include "BitmapTexture.h"
+ #include "ColorSpaceSkia.h"
+ #include "GLContext.h"
+ #include "GLFence.h"
+-#include "GraphicsTypes.h"
+-#include "NotImplemented.h"
+ #include "PlatformDisplay.h"
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
+ #include <skia/gpu/ganesh/SkImageGanesh.h>
+@@ -52,10 +54,12 @@ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_END
+ #include <GLES3/gl3.h>
+ #include <GLES2/gl2ext.h>
+ #endif
++#endif // USE(SKIA_GPU)
+ 
+ namespace WebCore {
+ namespace SkiaUtilities {
+ 
++#if USE(SKIA_GPU)
+ GrBackendTexture createBackendTexture(const BitmapTexture& texture)
+ {
+     RELEASE_ASSERT(texture.id());
+@@ -129,6 +133,7 @@ std::unique_ptr<GLFence> flushAndSubmitWithFence(GrDirectContext* grContext)
+     grContext->flush();
+     return createFenceAfterFlush(grContext);
+ }
++#endif // USE(SKIA_GPU)
+ 
+ SkBlendMode toSkiaBlendMode(BlendMode blendMode, std::optional<CompositeOperator> operation)
+ {
+@@ -206,6 +211,7 @@ SkBlendMode toSkiaBlendMode(BlendMode blendMode, std::optional<CompositeOperator
+     return SkBlendMode::kSrcOver;
+ }
+ 
++#if USE(SKIA_GPU)
+ class PromiseImageContext {
+     WTF_MAKE_TZONE_ALLOCATED_INLINE(PromiseImageContext);
+ public:
+@@ -286,6 +292,7 @@ sk_sp<SkImage> createPromiseImageIfNeeded(const sk_sp<SkImage>& image, const sk_
+             std::unique_ptr<PromiseImageContext> context(static_cast<PromiseImageContext*>(userData));
+         }, context.release());
+ }
++#endif // USE(SKIA_GPU)
+ 
+ } // namespace SkiaUtilities
+ } // namespace WebCore
+diff --git a/Source/WebCore/platform/graphics/skia/SkiaUtilities.h b/Source/WebCore/platform/graphics/skia/SkiaUtilities.h
+index f8c47621..6dddcc72 100644
+--- a/Source/WebCore/platform/graphics/skia/SkiaUtilities.h
++++ b/Source/WebCore/platform/graphics/skia/SkiaUtilities.h
+@@ -36,9 +36,11 @@ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_BEGIN
+ #include <skia/core/SkRect.h>
+ #include <skia/core/SkRefCnt.h>
+ #include <skia/core/SkSamplingOptions.h>
++#if USE(SKIA_GPU)
+ #include <skia/gpu/ganesh/GrBackendSurface.h>
+ #include <skia/gpu/ganesh/GrContextThreadSafeProxy.h>
+ #include <skia/gpu/ganesh/GrDirectContext.h>
++#endif
+ WTF_IGNORE_WARNINGS_IN_THIRD_PARTY_CODE_END
+ #include <wtf/MathExtras.h>
+ 
+@@ -84,6 +86,7 @@ inline SkSamplingOptions samplingOptionsForImageDraw(const SkMatrix& deviceMatri
+     return samplingOptionsForMatrix(matrix);
+ }
+ 
++#if USE(SKIA_GPU)
+ // Creates a GrBackendTexture from a BitmapTexture's GL texture.
+ GrBackendTexture createBackendTexture(const BitmapTexture&);
+ 
+@@ -113,10 +116,13 @@ std::unique_ptr<GLFence> flushAndSubmitImageWithFence(GrDirectContext*, const sk
+ // synchronization. Falls back to synchronous submit if fences are not
+ // supported or creation fails, and returns nullptr.
+ std::unique_ptr<GLFence> flushAndSubmitWithFence(GrDirectContext*);
++#endif // USE(SKIA_GPU)
+ 
+ SkBlendMode toSkiaBlendMode(BlendMode, std::optional<CompositeOperator> = std::nullopt);
+ 
++#if USE(SKIA_GPU)
+ sk_sp<SkImage> createPromiseImageIfNeeded(const sk_sp<SkImage>&, const sk_sp<GrContextThreadSafeProxy>&);
++#endif
+ 
+ } // namespace SkiaUtilities
+ } // namespace WebCore

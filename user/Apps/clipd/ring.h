@@ -8,7 +8,7 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include "clipproto.h"
+#include "systemkit/systemkit.h"
 
 struct ClipRep { char fmt[24]; unsigned char *d; unsigned n; };
 struct ClipEntry

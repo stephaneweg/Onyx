@@ -3,12 +3,11 @@
 // (-mgeneral-regs-only) and keeps ALL math in fixed-point: Q32.32 in a signed 64-bit
 // int (1.0 == 1<<32). (Hardware float is now available to apps -- the kernel saves the
 // full FP state across switches, see kern/trapframe.h -- but tinycalc stays fixed-point
-// by design.) Input is by mouse (button grid, via the wtk widget toolkit) OR keyboard
+// by design.) Input is by mouse (button grid, via the uikit widget toolkit) OR keyboard
 // (digits/operators, routed straight to the calculator through the Root's onKey).
 //
-#include "kapi.h"
-#include "wtk/wtk.h"		// recursive widget toolkit
-#include "embed.h"		// run embedded in the activity shell (surface + mailbox)
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"		// recursive widget toolkit
 
 typedef long long          i64;
 typedef unsigned long long u64;
@@ -158,7 +157,7 @@ static int   g_op = 0;
 static int   g_deg = 0;
 static int   g_fw = 8, g_fh = 16;
 
-static wtk::Widget *g_disp = 0;		// the display widget (invalidated when the entry changes)
+static uikit::Widget *g_disp = 0;		// the display widget (invalidated when the entry changes)
 
 static void set_entry (fix v) { format_fix (v, g_entry); g_entering = 0; }
 static fix apply_op (fix a, int op, fix b)
@@ -234,8 +233,8 @@ static void action (int code)
 	if (g_disp) g_disp->invalidate (true);
 }
 
-// ---- UI (wtk) ----------------------------------------------------------------
-using namespace wtk;
+// ---- UI (uikit) ----------------------------------------------------------------
+using namespace uikit;
 
 // The right-aligned numeric display (its own canvas).
 class Display : public Widget
@@ -245,7 +244,7 @@ public:
 	void onDraw () override			// an LCD: a dark slate well, light digits
 	{
 		canvas.clear (bgColor ());
-		wk_sunken (canvas, 0, 0, width, height, 6, 0x005C6478);
+		uk_sunken (canvas, 0, 0, width, height, 6, 0x005C6478);
 		const char *s = g_entry;
 		int tw = slen (s) * g_fw, tx = width - tw - 10; if (tx < 6) tx = 6;
 		canvas.text (tx, (height - g_fh) / 2, s, g_error ? 0x00FFA0A0 : 0x00F0F4F8);
@@ -282,7 +281,6 @@ static bool calc_key (int key)
 	else return false;
 	return true;
 }
-static void calc_key_v (int key) { calc_key (key); }	// embed::KeyFn adapter
 
 // A Root subclass so the keyboard drives the calculator directly (buttons never steal
 // focus, so unfocused keys fall through to the Root's onKey).
@@ -335,18 +333,6 @@ int main (void)
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
-	// Embedded in the activity shell? Register, get a surface viewport, run on it.
-	embed::Host host;
-	if (embed::attach (&host, ROLE_SECONDARY, "calc"))
-	{
-		Panel *root = new Panel (0, 0, host.w, host.h, CALC_BG);
-		root->canvas.adopt (host.pixels, host.w, host.h, host.stride);	// draw into the surface sub-rect
-		build_ui (root, host.w, host.h);
-		embed::run (&host, root, calc_key_v);
-		return 0;
-	}
-
-	// Standalone fallback: our own window.
 	Calc root (W, H, "tinycalc");
 	if (root.canvas.px == 0) return 1;
 	root.setBg (CALC_BG);

@@ -1,0 +1,11 @@
+Clipper2 (https://github.com/AngusJohnson/Clipper2) at the commit Manifold 3.5.4 pins,
+46f639177fe418f9689e8ddb74f08a870c71f5b4 (2026-03-05): the C++ library only
+(`CPP/Clipper2Lib/include`, `CPP/Clipper2Lib/src`) -- polygon clipping and offsetting, behind
+Manifold's CrossSection (third_party/manifold-3.5.4), for 3DForge's sketches.
+
+One change, Manifold's own carry-patch (its `cmake/patches/0001-clipper2-no-iostream.patch`,
+upstream pull request 1094): the `CLIPPER2_NO_IOSTREAM` guards around the stream operators.
+
+Built with Manifold into `user/Libs/manifold/libmanifold.a` (`user/Makefile`).
+
+Boost Software License 1.0: LICENSE.

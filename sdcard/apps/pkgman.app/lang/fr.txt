@@ -1,0 +1,56 @@
+# The Package Manager's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included); a key "context|English" is a TRC's.
+ (the last one read)	 (le dernier lu)
+%d installed  -  index of %s%s	%d installés  -  index du %s%s
+%llu KB	%llu Ko
+%llu.%llu MB	%llu,%llu Mo
+, signed	, signé
+Auto	Auto
+Available	Disponibles
+Cancelled.	Annulé.
+Cannot start the job (no thread).	Impossible de lancer la tâche (pas de thread).
+Check Now	Vérifier
+Done. The system update waits for the restart.	Terminé. La mise à jour du système attend le redémarrage.
+Done: the apps open with their new version next time.	Terminé : les applications s'ouvriront dans leur nouvelle version.
+Everything is up to date.	Tout est à jour.
+Failed	Échec
+Install	Installer
+Install %d Package	Installer %d paquet
+Install %d Packages	Installer %d paquets
+Install %d Update	Installer %d mise à jour
+Install %d Updates	Installer %d mises à jour
+Install Updates	Installer les mises à jour
+Installed	Installé
+Installing %s: %d %%	Installation de %s : %d %%
+Installing...	Installation...
+It did not work.	L'opération a échoué.
+It is moved in at the next boot (the previous kernel kept as .old).	Elle est mise en place au prochain démarrage (l'ancien noyau est gardé en .old).
+Manual	Manuel
+Never	Jamais
+Nothing installed matches.	Aucun paquet installé ne correspond.
+Nothing more to install.	Plus rien à installer.
+Onyx Package Manager	Gestionnaire de paquets Onyx
+part of the system	fait partie du système
+pkg|All	Tous
+pkg|None	Aucun
+Reading the repository...	Lecture du dépôt...
+Ready: at the restart	Prêt : au redémarrage
+Remove	Supprimer
+Remove %d Package	Supprimer %d paquet
+Remove %d package? (the settings you changed are kept)	Supprimer %d paquet ? (les réglages que vous avez modifiés sont conservés)
+Remove %d Packages	Supprimer %d paquets
+Remove %d packages? (the settings you changed are kept)	Supprimer %d paquets ? (les réglages que vous avez modifiés sont conservés)
+Remove %s %s? (the settings you changed are kept)	Supprimer %s %s ? (les réglages que vous avez modifiés sont conservés)
+Removing...	Suppression...
+Restart	Redémarrer
+restart	redémarrage
+Restart Onyx now to finish the system update?	Redémarrer Onyx maintenant pour terminer la mise à jour du système ?
+Restart to finish the system update	Redémarrez pour terminer la mise à jour du système
+staged	en attente
+tab|Installed	Installés
+The repository has not been read yet.	Le dépôt n'a pas encore été lu.
+The repository has not been read yet: Check Now.	Le dépôt n'a pas encore été lu : cliquez sur Vérifier.
+Tick every package shown -- or none	Cocher tous les paquets affichés -- ou aucun
+Update	Mettre à jour
+Updates	Mises à jour
+Waiting	En attente

@@ -1,5 +1,5 @@
 //
-// widgets.h -- Courier's controls, drawn with wtk's painter and the theme's colours:
+// widgets.h -- Courier's controls, drawn with uikit's painter and the theme's colours:
 //   LineEdit   a line of text of any length ({{variables}} shown as pills: known / unknown, their
 //              value in a tooltip), selection, clipboard
 //   CodeEdit   a code editor / viewer (the mono face): line numbers, JSON / XML / HTML / JavaScript
@@ -12,14 +12,14 @@
 #ifndef _courier_widgets_h
 #define _courier_widgets_h
 
-#include "wtk/wtk.h"
-#include "wtk/toolbar.h"
-#include "clipboard.h"
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
+#include "systemkit/systemkit.h"
 #include "vars.h"
 
 namespace cr {
 
-using namespace wtk;
+using namespace uikit;
 
 // ---- shared state: the faces, the variables' scope ----------------------------------------------------------------
 static TextFace *g_sans = 0;			// the UI's text (FreeType's DejaVu Sans, else the bitmap font)
@@ -27,16 +27,16 @@ static TextFace *g_mono = 0;			// the code's (DejaVu Sans Mono), 0: the UI's
 static Scope g_scope;				// the variables the open tab sees
 
 // ---- colours --------------------------------------------------------------------------------------------------------
-static inline bool dark_field () { return wk_bright (C_FIELD) < 110; }
-static inline unsigned c_dim () { return wk_mix (C_FIELD, C_FIELD_TEXT, 150); }		// secondary text on a field
-static inline unsigned c_faint () { return wk_mix (C_FIELD, C_FIELD_TEXT, 90); }	// placeholders
-static inline unsigned c_line () { return wk_mix (C_FIELD, C_FIELD_TEXT, 36); }		// rules on a field
-static inline unsigned c_bgline () { return wk_mix (C_BG, C_TEXT, 44); }		// rules on the face
-static inline unsigned c_hover () { return wk_mix (C_FIELD, C_ACCENT, 22); }		// a row pointed
-static inline unsigned c_sel () { return wk_mix (C_FIELD, C_ACCENT, 70); }		// a text selection
-static inline unsigned c_panel () { return wk_mix (C_BG, C_FIELD, 150); }		// a light panel (the sidebar)
+static inline bool dark_field () { return uk_bright (C_FIELD) < 110; }
+static inline unsigned c_dim () { return uk_mix (C_FIELD, C_FIELD_TEXT, 150); }		// secondary text on a field
+static inline unsigned c_faint () { return uk_mix (C_FIELD, C_FIELD_TEXT, 90); }	// placeholders
+static inline unsigned c_line () { return uk_mix (C_FIELD, C_FIELD_TEXT, 36); }		// rules on a field
+static inline unsigned c_bgline () { return uk_mix (C_BG, C_TEXT, 44); }		// rules on the face
+static inline unsigned c_hover () { return uk_mix (C_FIELD, C_ACCENT, 22); }		// a row pointed
+static inline unsigned c_sel () { return uk_mix (C_FIELD, C_ACCENT, 70); }		// a text selection
+static inline unsigned c_panel () { return uk_mix (C_BG, C_FIELD, 150); }		// a light panel (the sidebar)
 // a colour readable on the field (lightened when the field is dark)
-static inline unsigned on_field (unsigned c) { return dark_field () ? wk_mix (c, 0xFFFFFF, 110) : c; }
+static inline unsigned on_field (unsigned c) { return dark_field () ? uk_mix (c, 0xFFFFFF, 110) : c; }
 static inline unsigned method_color (const char *m)
 {
 	static const unsigned C[M_COUNT] = { 0x00007F31, 0x00AD7A03, 0x000053B8, 0x00623497, 0x008E1A10, 0x00007F31, 0x00A61468 };
@@ -53,15 +53,15 @@ static inline unsigned status_color (int s)
 }
 
 // ---- text ----------------------------------------------------------------------------------------------------------
-static inline int tw (const char *s, int style = 0) { return wk_tw (s, style); }
-static inline void text_at (Canvas &cv, int x, int y, const char *s, unsigned c, int style = 0) { wk_text (cv, x, y, s, c, style); }
+static inline int tw (const char *s, int style = 0) { return uk_tw (s, style); }
+static inline void text_at (Canvas &cv, int x, int y, const char *s, unsigned c, int style = 0) { uk_text (cv, x, y, s, c, style); }
 // in a box of height h, vertically centred
-static inline void text_v (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int style = 0) { wk_text (cv, x, y + (h - wk_fh ()) / 2, s, c, style); }
+static inline void text_v (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int style = 0) { uk_text (cv, x, y + (h - uk_fh ()) / 2, s, c, style); }
 // cut to w px with "..."
 static inline void text_fit (Canvas &cv, int x, int y, int h, int w, const char *s, unsigned c, int style = 0)
 {
 	if (w <= 4) return;
-	char b[512]; wk_text_fit (s, w, b, sizeof b, style);
+	char b[512]; uk_text_fit (s, w, b, sizeof b, style);
 	text_v (cv, x, y, h, b, c, style);
 }
 // n bytes of s at (x, y), {{variables}} as pills (their scope's colour); the canvas clips
@@ -80,18 +80,18 @@ static inline void draw_rich (Canvas &cv, int x, int y, const char *s, int n, un
 		if (j > i)
 		{
 			seg.set (s + i, j - i);
-			if (px < cv.w) wk_text (cv, px, y, seg.c (), ink, style);
-			px += wk_tw_n (s + i, j - i, style);
+			if (px < cv.w) uk_text (cv, px, y, seg.c (), ink, style);
+			px += uk_tw_n (s + i, j - i, style);
 		}
 		if (!found) break;
 		seg.set (s + j, end - j);
-		int w = wk_tw (seg.c (), style);
+		int w = uk_tw (seg.c (), style);
 		bool known = lookup_var (g_scope, s + ns, nl, 0) != VS_NONE;
 		unsigned vc = on_field (known ? C_VAR : C_BAD);
 		if (px < cv.w && px + w > 0)
 		{
-			wk_rbox (cv, px - 1, y, w + 2, wk_fh (), 3, wk_mix (C_FIELD, vc, 34), wk_mix (C_FIELD, vc, 34));
-			wk_text (cv, px, y, seg.c (), vc, style);
+			uk_rbox (cv, px - 1, y, w + 2, uk_fh (), 3, uk_mix (C_FIELD, vc, 34), uk_mix (C_FIELD, vc, 34));
+			uk_text (cv, px, y, seg.c (), vc, style);
 		}
 		px += w;
 		i = end;
@@ -122,27 +122,28 @@ static inline bool var_tip (Str &tip, const char *s, int n, int i)
 
 // ---- a caret / selection in a UTF-8 line ------------------------------------------------------------------------------
 static inline bool word_char (char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || (unsigned char) c >= 0x80; }
-static inline bool ctrl_held () { return (kapi_get_modifiers () & MOD_CTRL) != 0; }
+// (Ctrl alone: Ctrl + Alt is AltGr as a PC sends it -- VNC, Onyx Remote --, and types its character)
+static inline bool ctrl_held () { unsigned m = kapi_get_modifiers (); return (m & MOD_CTRL) != 0 && (m & MOD_ALT) == 0; }
 static inline bool shift_held () { return (kapi_get_modifiers () & MOD_SHIFT) != 0; }
 
 // the byte of s[0..n) whose caret is nearest x px (a binary search on the prefixes' widths)
 static inline int pos_at_x (const char *s, int n, int x, int style = 0)
 {
 	if (x <= 0 || n <= 0) return 0;
-	if (!wk_textface ()) return wk_tpos (s, n, x, style);
+	if (!uk_textface ()) return uk_tpos (s, n, x, style);
 	int lo = 0, hi = n;				// the widest prefix <= x
 	while (lo < hi)
 	{
 		int mid = (lo + hi + 1) / 2;
 		while (mid > lo && ((unsigned char) s[mid] & 0xC0) == 0x80) mid--;
-		if (mid <= lo) { mid = wk_u8_next (s, lo, n); if (mid > hi) break; }
-		if (wk_tw_n (s, mid, style) <= x) lo = mid; else hi = mid - 1;
+		if (mid <= lo) { mid = uk_u8_next (s, lo, n); if (mid > hi) break; }
+		if (uk_tw_n (s, mid, style) <= x) lo = mid; else hi = mid - 1;
 		while (hi > lo && hi < n && ((unsigned char) s[hi] & 0xC0) == 0x80) hi--;
 	}
-	int nx = wk_u8_next (s, lo, n);
+	int nx = uk_u8_next (s, lo, n);
 	if (nx > lo && nx <= n)
 	{
-		int a = wk_tw_n (s, lo, style), b = wk_tw_n (s, nx, style);
+		int a = uk_tw_n (s, lo, style), b = uk_tw_n (s, nx, style);
 		if (x - a > b - x) return nx;
 	}
 	return lo;
@@ -183,20 +184,20 @@ public:
 
 	void onDraw () override
 	{
-		WkFaceScope fs (face);
-		int fh = wk_fh ();
+		UkFaceScope fs (face);
+		int fh = uk_fh ();
 		bool focus = hasFocus && !disabled;
 		if (!framed && !focus && hover && !readonly) { canvas.clear (bgColor ()); }
 		if (focus != m_wasFocus) { if (!focus && onBlur) { m_wasFocus = focus; onBlur (*this); } m_wasFocus = focus; }
 		canvas.clear (bgColor ());
-		if (framed) wk_sunken (canvas, 0, 0, width, height, 5, disabled ? wk_tone (C_FACE, 150) : C_FIELD, focus);
-		else if (focus) { canvas.clear (C_FIELD); wk_rline (canvas, 0, 0, width, height, 3, C_ACCENT, 200); }
-		else if (hover && hoverFrame && !readonly) wk_rline (canvas, 0, 0, width, height, 3, c_line (), 255);
+		if (framed) uk_sunken (canvas, 0, 0, width, height, 5, disabled ? uk_tone (C_FACE, 150) : C_FIELD, focus);
+		else if (focus) { canvas.clear (C_FIELD); uk_rline (canvas, 0, 0, width, height, 3, C_ACCENT, 200); }
+		else if (hover && hoverFrame && !readonly) uk_rline (canvas, 0, 0, width, height, 3, c_line (), 255);
 		int ty = (height - fh) / 2;
 		int area = imax (1, width - padL - padR);
 		const char *s = text.c (); int n = text.len ();
 		Str masked;
-		if (password) { for (int i = 0; i < n; i = wk_u8_next (s, i, n)) masked.add ('*'); }
+		if (password) { for (int i = 0; i < n; i = uk_u8_next (s, i, n)) masked.add ('*'); }
 		int cx = caretX ();
 		// the scroll: the caret in view
 		if (focus)
@@ -205,18 +206,18 @@ public:
 			if (cx - m_scroll < 0) m_scroll = cx;
 		}
 		else m_scroll = 0;
-		int full = wk_tw_n (password ? masked.c () : s, password ? masked.len () : n, style);
+		int full = uk_tw_n (password ? masked.c () : s, password ? masked.len () : n, style);
 		if (m_scroll > imax (0, full - area + 2)) m_scroll = imax (0, full - area + 2);
 		Canvas clip; clip.adopt (canvas.px + padL, area, height, canvas.stride);
 		int x0 = -m_scroll;
 		unsigned tc = disabled ? C_DIS : ink ? ink : C_FIELD_TEXT;
-		if (n == 0 && placeholder && !focus) wk_text (clip, 0, ty, placeholder, c_faint (), 0);
+		if (n == 0 && placeholder && !focus) uk_text (clip, 0, ty, placeholder, c_faint (), 0);
 		if (focus && hasSel ())
 		{
 			int a = xOf (selA ()), b = xOf (selB ());
 			clip.fillRect (x0 + a, ty - 1, b - a, fh + 2, c_sel ());
 		}
-		if (password) wk_text (clip, x0, ty, masked.c (), tc, style);
+		if (password) uk_text (clip, x0, ty, masked.c (), tc, style);
 		else draw_rich (clip, x0, ty, s, n, tc, vars, style);
 		if (focus && !readonly) clip.fillRect (x0 + cx, ty - 1, 1, fh + 2, C_ACCENT);
 		else if (focus) clip.fillRect (x0 + cx, ty - 1, 1, fh + 2, c_faint ());
@@ -226,7 +227,7 @@ public:
 
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
-		WkFaceScope fs (face);
+		UkFaceScope fs (face);
 		if (mx < 0) { m_drag = false; pressed = false; if (hover) { hover = false; if (!framed) invalidate (true); } return false; }
 		if (!hover) { hover = true; if (!framed) invalidate (true); }
 		if (wheel) return false;
@@ -302,12 +303,12 @@ public:
 			if (!shift && hasSel () && (k == KEY_LEFT || k == KEY_RIGHT)) c = k == KEY_LEFT ? selA () : selB ();
 			else if (k == KEY_LEFT)
 			{
-				c = wk_u8_prev (s, c);
+				c = uk_u8_prev (s, c);
 				if (ctrl) { while (c > 0 && !word_char (s[c])) c--; while (c > 0 && word_char (s[c - 1])) c--; }
 			}
 			else if (k == KEY_RIGHT)
 			{
-				c = wk_u8_next (s, c, n);
+				c = uk_u8_next (s, c, n);
 				if (ctrl) { while (c < n && word_char (s[c])) c++; while (c < n && !word_char (s[c])) c++; }
 			}
 			else if (k == KEY_HOME) c = 0;
@@ -321,18 +322,18 @@ public:
 		if (k == KEY_BACKSPACE)
 		{
 			if (hasSel ()) delSel ();
-			else if (caret > 0) { int p = wk_u8_prev (s, caret); if (ctrl) { while (p > 0 && !word_char (s[p])) p--; while (p > 0 && word_char (s[p - 1])) p--; } text.erase (p, caret - p); caret = p; }
+			else if (caret > 0) { int p = uk_u8_prev (s, caret); if (ctrl) { while (p > 0 && !word_char (s[p])) p--; while (p > 0 && word_char (s[p - 1])) p--; } text.erase (p, caret - p); caret = p; }
 			else return true;
 			changed (); return true;
 		}
 		if (k == KEY_DEL)
 		{
 			if (hasSel ()) delSel ();
-			else if (caret < n) { int e = wk_u8_next (s, caret, n); text.erase (caret, e - caret); }
+			else if (caret < n) { int e = uk_u8_next (s, caret, n); text.erase (caret, e - caret); }
 			else return true;
 			changed (); return true;
 		}
-		char u[4]; int un = wk_textface () ? wk_u8_key (k, u) : ((k >= 32 && k <= 126) || (k >= 0xA0 && k <= 0xFF) ? (u[0] = (char) k, 1) : 0);
+		char u[4]; int un = uk_textface () ? uk_u8_key (k, u) : ((k >= 32 && k <= 126) || (k >= 0xA0 && k <= 0xFF) ? (u[0] = (char) k, 1) : 0);
 		if (un > 0 && !ctrl) { insert (u, un); return true; }
 		return false;
 	}
@@ -347,14 +348,14 @@ public:
 	int caretX () { return xOf (caret); }
 	int xOf (int i)
 	{
-		if (!password) return wk_tw_n (text.c (), i, style);
-		int n = 0; for (int k = 0; k < i && k < text.len (); k = wk_u8_next (text.c (), k, text.len ())) n++;
-		return n * wk_tw ("*", style);
+		if (!password) return uk_tw_n (text.c (), i, style);
+		int n = 0; for (int k = 0; k < i && k < text.len (); k = uk_u8_next (text.c (), k, text.len ())) n++;
+		return n * uk_tw ("*", style);
 	}
 	int posAtMx (int mx)
 	{
 		int x = mx - padL + m_scroll;
-		if (password) { int cw = imax (1, wk_tw ("*", style)), c = (x + cw / 2) / cw, k = 0; for (int i = 0; i < c && k < text.len (); i++) k = wk_u8_next (text.c (), k, text.len ()); return k; }
+		if (password) { int cw = imax (1, uk_tw ("*", style)), c = (x + cw / 2) / cw, k = 0; for (int i = 0; i < c && k < text.len (); i++) k = uk_u8_next (text.c (), k, text.len ()); return k; }
 		return pos_at_x (text.c (), text.len (), x, style);
 	}
 private:
@@ -372,7 +373,7 @@ static inline unsigned tk_color (int k)
 {
 	static const unsigned C[] = { 0, 0x00A0226E, 0x000B7A3E, 0x00B5530B, 0x006A3FB5, 0, 0x000F5FB8, 0x00B5530B, 0x00808890, 0x000F5FB8, C_VAR, C_BAD };
 	if (k == TK_TEXT) return C_FIELD_TEXT;
-	if (k == TK_PUNCT) return wk_mix (C_FIELD, C_FIELD_TEXT, 170);
+	if (k == TK_PUNCT) return uk_mix (C_FIELD, C_FIELD_TEXT, 170);
 	return on_field (C[k]);
 }
 enum { LANG_TEXT, LANG_JSON, LANG_XML, LANG_HTML, LANG_JS };
@@ -420,27 +421,27 @@ public:
 	}
 
 	// ---- geometry --------------------------------------------------------------------------------------------------
-	int cw () { WkFaceScope fs (g_mono); int w = wk_tw ("M"); return w < 1 ? 8 : w; }
-	int lh () { WkFaceScope fs (g_mono); return wk_fh () + 3; }
+	int cw () { UkFaceScope fs (g_mono); int w = uk_tw ("M"); return w < 1 ? 8 : w; }
+	int lh () { UkFaceScope fs (g_mono); return uk_fh () + 3; }
 	int gutter () { if (!lineNumbers) return 8; int d = 1, n = m_lines.size (); while (n >= 10) { n /= 10; d++; } return imax (2, d) * cw () + 20; }
-	int viewRows () { return imax (1, (height - 8 - (hbarShown () ? WK_SBW : 0)) / lh ()); }
+	int viewRows () { return imax (1, (height - 8 - (hbarShown () ? UK_SBW : 0)) / lh ()); }
 	bool vbarShown () { return m_lines.size () > (height - 8) / lh (); }
-	bool hbarShown () { return (m_maxCols + 2) * cw () > width - gutter () - (vbarShown () ? WK_SBW : 0); }
-	int textW () { return width - gutter () - (vbarShown () ? WK_SBW : 0); }
+	bool hbarShown () { return (m_maxCols + 2) * cw () > width - gutter () - (vbarShown () ? UK_SBW : 0); }
+	int textW () { return width - gutter () - (vbarShown () ? UK_SBW : 0); }
 
 	void onDraw () override
 	{
-		WkFaceScope fs (g_mono);
-		int fh = wk_fh (), LH = lh (), CW = cw (), G = gutter ();
+		UkFaceScope fs (g_mono);
+		int fh = uk_fh (), LH = lh (), CW = cw (), G = gutter ();
 		bool focus = hasFocus && !disabled;
 		canvas.clear (C_FIELD);
 		int rows = viewRows ();
 		clampScroll ();
 		int tw_ = textW ();
-		unsigned gutBg = wk_mix (C_FIELD, C_FIELD_TEXT, 10);
+		unsigned gutBg = uk_mix (C_FIELD, C_FIELD_TEXT, 10);
 		if (lineNumbers) { canvas.fillRect (0, 0, G - 8, height, gutBg); canvas.fillRect (G - 8, 0, 1, height, c_line ()); }
 		Canvas clip; clip.adopt (canvas.px + G, imax (1, tw_), height, canvas.stride);
-		if (m_text.len () == 0 && placeholder && !focus) wk_text (clip, 2, 4, placeholder, c_faint (), 1);
+		if (m_text.len () == 0 && placeholder && !focus) uk_text (clip, 2, 4, placeholder, c_faint (), 1);
 		int caretLine = lineOf (m_caret);
 		int sa = selA (), sb = selB ();
 		for (int r = 0; r < rows + 1; r++)
@@ -449,11 +450,11 @@ public:
 			if (ln >= m_lines.size ()) break;
 			int y = 4 + r * LH;
 			int ls = m_lines[ln], le = lineEnd (ln);
-			if (focus && !readonly && ln == caretLine && !hasSel ()) clip.fillRect (0, y, tw_, LH, wk_mix (C_FIELD, C_ACCENT, 12));
+			if (focus && !readonly && ln == caretLine && !hasSel ()) clip.fillRect (0, y, tw_, LH, uk_mix (C_FIELD, C_ACCENT, 12));
 			if (lineNumbers)
 			{
 				char b[16]; snprintf (b, sizeof b, "%d", ln + 1);
-				wk_text (canvas, G - 12 - wk_tw (b), y + 1, b, ln == caretLine && focus ? C_FIELD_TEXT : c_faint ());
+				uk_text (canvas, G - 12 - uk_tw (b), y + 1, b, ln == caretLine && focus ? C_FIELD_TEXT : c_faint ());
 			}
 			// the selection on this line
 			if (hasSel () && sb > ls && sa <= le)
@@ -472,17 +473,17 @@ public:
 		// the scroll bars
 		if (vbarShown ())
 		{
-			int total = m_lines.size (), trackH = height - (hbarShown () ? WK_SBW : 0);
-			WkThumb t = wk_thumb (total, rows, m_top, trackH);
-			wk_draw_vscroll (canvas, width - WK_SBW, 0, WK_SBW, trackH, t, C_FIELD, m_drag == 2);
+			int total = m_lines.size (), trackH = height - (hbarShown () ? UK_SBW : 0);
+			UkThumb t = uk_thumb (total, rows, m_top, trackH);
+			uk_draw_vscroll (canvas, width - UK_SBW, 0, UK_SBW, trackH, t, C_FIELD, m_drag == 2);
 		}
 		if (hbarShown ())
 		{
 			int total = (m_maxCols + 2) * CW, trackW = tw_;
-			WkThumb t = wk_thumb (total, tw_, m_left, trackW);
-			wk_scroll_bar (canvas, G, height - WK_SBW, trackW, WK_SBW, false, t.y, t.h < trackW ? t.h : 0, C_FIELD, m_drag == 3 ? WK_HOT : WK_NORMAL);
+			UkThumb t = uk_thumb (total, tw_, m_left, trackW);
+			uk_scroll_bar (canvas, G, height - UK_SBW, trackW, UK_SBW, false, t.y, t.h < trackW ? t.h : 0, C_FIELD, m_drag == 3 ? UK_HOT : UK_NORMAL);
 		}
-		if (framed_) wk_rline (canvas, 0, 0, width, height, 0, focus ? C_ACCENT : c_line ());
+		if (framed_) uk_rline (canvas, 0, 0, width, height, 0, focus ? C_ACCENT : c_line ());
 	}
 	bool framed_ = false;
 
@@ -502,8 +503,8 @@ public:
 		{
 			pressed = true;
 			if (!hasFocus) setFocus ();
-			if (vb && mx >= width - WK_SBW) { m_drag = 2; dragV (my); return true; }
-			if (hb && my >= height - WK_SBW && mx >= G) { m_drag = 3; dragH (mx); return true; }
+			if (vb && mx >= width - UK_SBW) { m_drag = 2; dragV (my); return true; }
+			if (hb && my >= height - UK_SBW && mx >= G) { m_drag = 3; dragH (mx); return true; }
 			int p = posAt (mx, my);
 			unsigned now = kapi_get_ticks ();
 			if (now - m_lastClick < 35 && p == m_caret)
@@ -559,8 +560,8 @@ public:
 			if (!shift && hasSel () && (k == KEY_LEFT || k == KEY_RIGHT)) c = k == KEY_LEFT ? selA () : selB ();
 			else switch (k)
 			{
-			case KEY_LEFT: c = c > 0 ? wk_u8_prev (s, c) : 0; if (ctrl) { while (c > 0 && !word_char (s[c])) c--; while (c > 0 && word_char (s[c - 1])) c--; } break;
-			case KEY_RIGHT: c = wk_u8_next (s, c, n); if (ctrl) { while (c < n && word_char (s[c])) c++; while (c < n && !word_char (s[c]) && s[c] != '\n') c++; } break;
+			case KEY_LEFT: c = c > 0 ? uk_u8_prev (s, c) : 0; if (ctrl) { while (c > 0 && !word_char (s[c])) c--; while (c > 0 && word_char (s[c - 1])) c--; } break;
+			case KEY_RIGHT: c = uk_u8_next (s, c, n); if (ctrl) { while (c < n && word_char (s[c])) c++; while (c < n && !word_char (s[c]) && s[c] != '\n') c++; } break;
 			case KEY_HOME:
 				if (ctrl) c = 0;
 				else { int f = ls; while (f < le && (s[f] == ' ' || s[f] == '\t')) f++; c = c == f ? ls : f; }
@@ -592,7 +593,7 @@ public:
 			if (hasSel ()) delSel ();
 			else if (m_caret > 0)
 			{
-				int p = wk_u8_prev (s, m_caret);
+				int p = uk_u8_prev (s, m_caret);
 				// (an indent of spaces: back to the previous stop)
 				int ls = m_lines[lineOf (m_caret)];
 				bool allSp = true; for (int i = ls; i < m_caret; i++) if (s[i] != ' ') allSp = false;
@@ -606,7 +607,7 @@ public:
 		{
 			snap (2);
 			if (hasSel ()) delSel ();
-			else if (m_caret < m_text.len ()) { int e = wk_u8_next (s, m_caret, m_text.len ()); m_text.erase (m_caret, e - m_caret); }
+			else if (m_caret < m_text.len ()) { int e = uk_u8_next (s, m_caret, m_text.len ()); m_text.erase (m_caret, e - m_caret); }
 			else return true;
 			changed (); return true;
 		}
@@ -643,7 +644,7 @@ public:
 			}
 			insert ("  ", 2); return true;
 		}
-		char u[4]; int un = wk_u8_key (k, u);
+		char u[4]; int un = uk_u8_key (k, u);
 		if (un > 0 && !ctrl)
 		{
 			snap (1);
@@ -746,8 +747,8 @@ private:
 		while (i < le)
 		{
 			int nc = s[i] == '\t' ? (c / 4 + 1) * 4 : c + 1;
-			if (nc > col) { if (col - c > nc - col) i = wk_u8_next (s, i, le); break; }
-			c = nc; i = wk_u8_next (s, i, le);
+			if (nc > col) { if (col - c > nc - col) i = uk_u8_next (s, i, le); break; }
+			c = nc; i = uk_u8_next (s, i, le);
 		}
 		return i;
 	}
@@ -776,16 +777,16 @@ private:
 	}
 	void dragV (int my)
 	{
-		int trackH = height - (hbarShown () ? WK_SBW : 0), rows = viewRows ();
-		WkThumb t = wk_thumb (m_lines.size (), rows, m_top, trackH);
-		m_top = (int) wk_thumb_pos (my, trackH, m_lines.size (), rows, t.h);
+		int trackH = height - (hbarShown () ? UK_SBW : 0), rows = viewRows ();
+		UkThumb t = uk_thumb (m_lines.size (), rows, m_top, trackH);
+		m_top = (int) uk_thumb_pos (my, trackH, m_lines.size (), rows, t.h);
 		clampScroll (); invalidate (true);
 	}
 	void dragH (int mx)
 	{
 		int G = gutter (), tw_ = textW (), total = (m_maxCols + 2) * cw ();
-		WkThumb t = wk_thumb (total, tw_, m_left, tw_);
-		m_left = (int) wk_thumb_pos (mx - G, tw_, total, tw_, t.h);
+		UkThumb t = uk_thumb (total, tw_, m_left, tw_);
+		m_left = (int) uk_thumb_pos (mx - G, tw_, total, tw_, t.h);
 		clampScroll (); invalidate (true);
 	}
 
@@ -806,24 +807,24 @@ private:
 				int skip = 0;
 				if (x < -CW) { skip = (-x) / CW - 1; }
 				int p = i, cc = 0;
-				while (p < j && cc < skip) { p = wk_u8_next (s, p, j); cc++; }
+				while (p < j && cc < skip) { p = uk_u8_next (s, p, j); cc++; }
 				int ncol = 0; for (int q = i; q < j; q++) if (((unsigned char) s[q] & 0xC0) != 0x80) ncol++;
 				int xs = (*col + cc) * CW - m_left;
 				if (xs < cv.w && p < j)
 				{
 					int e = p, shown = 0, room = (cv.w - xs) / CW + 2;
-					while (e < j && shown < room) { e = wk_u8_next (s, e, j); shown++; }
+					while (e < j && shown < room) { e = uk_u8_next (s, e, j); shown++; }
 					if (k == TK_VAR || k == TK_BADVAR)
 					{
 						int w = shown * CW;
-						wk_rbox (cv, xs - 1, y, w + 2, wk_fh (), 3, wk_mix (C_FIELD, c, 34), wk_mix (C_FIELD, c, 34));
+						uk_rbox (cv, xs - 1, y, w + 2, uk_fh (), 3, uk_mix (C_FIELD, c, 34), uk_mix (C_FIELD, c, 34));
 					}
 					// a glyph a column (the face's advance is not a whole number of pixels)
 					char g[5]; int gx = xs;
 					for (int q = p; q < e; )
 					{
-						int l = wk_u8_len (s + q, e - q);
-						if (s[q] != ' ') { for (int z = 0; z < l; z++) g[z] = s[q + z]; g[l] = 0; wk_text (cv, gx, y, g, c); }
+						int l = uk_u8_len (s + q, e - q);
+						if (s[q] != ' ') { for (int z = 0; z < l; z++) g[z] = s[q + z]; g[l] = 0; uk_text (cv, gx, y, g, c); }
 						q += l; gx += CW;
 					}
 				}
@@ -919,44 +920,44 @@ public:
 	Str text; int kind, glyph, tglyph; Action cb; bool on;
 	Btn (int l, int t, int w, int h, const char *s, int kind_ = BTN_SECONDARY, Action cb_ = 0)
 		: Widget (l, t, w, h), text (s), kind (kind_), glyph (-1), tglyph (-1), cb (cb_), on (false) {}
-	Btn *setGlyph (int g) { glyph = g; invalidate (true); return this; }	// a wk_glyph WKG_*
+	Btn *setGlyph (int g) { glyph = g; invalidate (true); return this; }	// a uk_glyph WKG_*
 	Btn *setTool (int g) { tglyph = g; invalidate (true); return this; }	// a toolbar icon WKT_*
 	void setText (const char *s) { text = s; invalidate (true); }
-	static int widthFor (const char *s, bool icon) { return wk_tw (s, 2) + 28 + (icon ? 20 : 0); }
+	static int widthFor (const char *s, bool icon) { return uk_tw (s, 2) + 28 + (icon ? 20 : 0); }
 	void onDraw () override
 	{
 		unsigned bg = bgColor ();
 		canvas.clear (bg);
-		int st = disabled ? WK_DISABLED : pressed && hover ? WK_PRESSED : hover ? WK_HOT : WK_NORMAL;
+		int st = disabled ? UK_DISABLED : pressed && hover ? UK_PRESSED : hover ? UK_HOT : UK_NORMAL;
 		unsigned ink;
 		if (kind == BTN_PRIMARY || kind == BTN_DANGER)
 		{
 			unsigned base = kind == BTN_DANGER ? C_BAD : C_ACCENT;
-			if (disabled) base = wk_mix (base, bg, 140);
-			unsigned top = st == WK_PRESSED ? wk_tone (base, 110) : st == WK_HOT ? wk_tone (base, 150) : wk_tone (base, 138);
-			unsigned bot = st == WK_PRESSED ? wk_tone (base, 100) : wk_tone (base, 118);
-			wk_rbox (canvas, 0, 0, width, height, 6, top, bot);
-			wk_rline (canvas, 0, 0, width, height, 6, wk_tone (base, 90), 120);
-			ink = wk_ink_on (base);
+			if (disabled) base = uk_mix (base, bg, 140);
+			unsigned top = st == UK_PRESSED ? uk_tone (base, 110) : st == UK_HOT ? uk_tone (base, 150) : uk_tone (base, 138);
+			unsigned bot = st == UK_PRESSED ? uk_tone (base, 100) : uk_tone (base, 118);
+			uk_rbox (canvas, 0, 0, width, height, 6, top, bot);
+			uk_rline (canvas, 0, 0, width, height, 6, uk_tone (base, 90), 120);
+			ink = uk_ink_on (base);
 		}
 		else if (kind == BTN_GHOST)
 		{
-			if (on) wk_rbox (canvas, 0, 0, width, height, 6, wk_mix (bg, C_ACCENT, 50), wk_mix (bg, C_ACCENT, 50));
-			else if (st == WK_HOT || st == WK_PRESSED) wk_rbox (canvas, 0, 0, width, height, 6, wk_mix (bg, C_TEXT, st == WK_PRESSED ? 40 : 22), wk_mix (bg, C_TEXT, st == WK_PRESSED ? 40 : 22));
-			ink = disabled ? wk_mix (bg, wk_ink_for (bg), 110) : wk_ink_for (bg);
+			if (on) uk_rbox (canvas, 0, 0, width, height, 6, uk_mix (bg, C_ACCENT, 50), uk_mix (bg, C_ACCENT, 50));
+			else if (st == UK_HOT || st == UK_PRESSED) uk_rbox (canvas, 0, 0, width, height, 6, uk_mix (bg, C_TEXT, st == UK_PRESSED ? 40 : 22), uk_mix (bg, C_TEXT, st == UK_PRESSED ? 40 : 22));
+			ink = disabled ? uk_mix (bg, uk_ink_for (bg), 110) : uk_ink_for (bg);
 		}
 		else
 		{
-			wk_raised (canvas, 0, 0, width, height, 6, C_BUTTON, st);
-			ink = disabled ? wk_mix (C_BUTTON, C_BUTTON_TEXT, 110) : C_BUTTON_TEXT;
+			uk_raised (canvas, 0, 0, width, height, 6, C_BUTTON, st);
+			ink = disabled ? uk_mix (C_BUTTON, C_BUTTON_TEXT, 110) : C_BUTTON_TEXT;
 		}
 		int iw = (glyph >= 0 || tglyph >= 0) ? 18 : 0;
-		int txw = text.len () ? wk_tw (text.c (), kind == BTN_PRIMARY ? 2 : 0) : 0;
+		int txw = text.len () ? uk_tw (text.c (), kind == BTN_PRIMARY ? 2 : 0) : 0;
 		int gap = iw && txw ? 6 : 0;
-		int x = (width - iw - gap - txw) / 2 + (st == WK_PRESSED ? 1 : 0);
-		int y = st == WK_PRESSED ? 1 : 0;
-		if (glyph >= 0) wk_glyph (canvas, glyph, x + 8, height / 2 + y, 10, ink);
-		if (tglyph >= 0) wk_tool_glyph (canvas, tglyph, x + 1, (height - 16) / 2 + y, 16, ink);
+		int x = (width - iw - gap - txw) / 2 + (st == UK_PRESSED ? 1 : 0);
+		int y = st == UK_PRESSED ? 1 : 0;
+		if (glyph >= 0) uk_glyph (canvas, glyph, x + 8, height / 2 + y, 10, ink);
+		if (tglyph >= 0) uk_tool_glyph (canvas, tglyph, x + 1, (height - 16) / 2 + y, 16, ink);
 		if (txw) text_v (canvas, x + iw + gap, y, height, text.c (), ink, kind == BTN_PRIMARY ? 2 : 0);
 	}
 	bool onMouse (int mx, int, int bl, int, int, int) override
@@ -988,8 +989,8 @@ public:
 	void select (int i, bool fire) { if (i < 0 || i >= n) return; bool ch = i != sel; sel = i; invalidate (true); if (ch && fire && onChange) onChange (*this); }
 	int tabW (int i)
 	{
-		int w = wk_tw (label[i].c (), 0) + 24;
-		if (count[i] >= 0) { char b[16]; snprintf (b, sizeof b, "%d", count[i]); w += wk_tw (b) + 10; }
+		int w = uk_tw (label[i].c (), 0) + 24;
+		if (count[i] >= 0) { char b[16]; snprintf (b, sizeof b, "%d", count[i]); w += uk_tw (b) + 10; }
 		if (dot[i]) w += 10;
 		return w;
 	}
@@ -998,24 +999,24 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (bg);
-		unsigned ink = wk_ink_for (bg);
-		if (line) canvas.fillRect (0, height - 1, width, 1, wk_mix (bg, ink, 36));
+		unsigned ink = uk_ink_for (bg);
+		if (line) canvas.fillRect (0, height - 1, width, 1, uk_mix (bg, ink, 36));
 		for (int i = 0; i < n; i++)
 		{
 			int x = tabX (i), w = tabW (i);
 			bool s = i == sel;
-			unsigned c = s ? ink : wk_mix (bg, ink, i == m_hot ? 210 : 160);
+			unsigned c = s ? ink : uk_mix (bg, ink, i == m_hot ? 210 : 160);
 			text_v (canvas, x + 12, 0, height - 2, label[i].c (), c, s ? 2 : 0);
-			int tx = x + 12 + wk_tw (label[i].c (), s ? 2 : 0) + 4;
+			int tx = x + 12 + uk_tw (label[i].c (), s ? 2 : 0) + 4;
 			if (count[i] >= 0)
 			{
 				char b[16]; snprintf (b, sizeof b, "%d", count[i]);
 				unsigned bc = badge[i] ? badge[i] : on_field (C_OK);
 				text_v (canvas, tx + 2, -4, height - 2, b, bc, 0);
-				tx += wk_tw (b) + 6;
+				tx += uk_tw (b) + 6;
 			}
-			if (dot[i]) wk_glyph (canvas, WKG_DOT, tx + 3, height / 2 - 1, 6, on_field (C_OK));
-			if (s) wk_rbox (canvas, x + 6, height - 3, w - 12, 3, 1, C_ACCENT, C_ACCENT);
+			if (dot[i]) uk_glyph (canvas, WKG_DOT, tx + 3, height / 2 - 1, 6, on_field (C_OK));
+			if (s) uk_rbox (canvas, x + 6, height - 3, w - 12, 3, 1, C_ACCENT, C_ACCENT);
 		}
 	}
 	bool onMouse (int mx, int, int bl, int, int, int) override
@@ -1042,15 +1043,15 @@ public:
 	RadioRow (int l, int t, int w, int h, const char *const *labels, int n_, unsigned bg_) : Widget (l, t, w, h), n (imin (n_, MAXR)), sel (0), onChange (0), bg (bg_), m_hot (-1)
 	{ for (int i = 0; i < n; i++) label[i] = labels[i]; }
 	unsigned bgColor () override { return bg; }
-	int itemX (int i) { int x = 0; for (int k = 0; k < i; k++) x += wk_tw (label[k]) + 44; return x; }
+	int itemX (int i) { int x = 0; for (int k = 0; k < i; k++) x += uk_tw (label[k]) + 44; return x; }
 	void onDraw () override
 	{
 		canvas.clear (bg);
-		unsigned ink = wk_ink_for (bg);
+		unsigned ink = uk_ink_for (bg);
 		for (int i = 0; i < n; i++)
 		{
 			int x = itemX (i);
-			wk_radio_mark (canvas, x, (height - 14) / 2, 14, i == sel, i == m_hot ? WK_HOT : WK_NORMAL);
+			uk_radio_mark (canvas, x, (height - 14) / 2, 14, i == sel, i == m_hot ? UK_HOT : UK_NORMAL);
 			text_v (canvas, x + 20, 0, height, label[i], ink, 0);
 		}
 	}
@@ -1058,7 +1059,7 @@ public:
 	{
 		if (mx < 0) { if (m_hot >= 0) { m_hot = -1; invalidate (true); } return false; }
 		int h = -1;
-		for (int i = 0; i < n; i++) { int x = itemX (i); if (mx >= x && mx < x + wk_tw (label[i]) + 30) h = i; }
+		for (int i = 0; i < n; i++) { int x = itemX (i); if (mx >= x && mx < x + uk_tw (label[i]) + 30) h = i; }
 		if (h != m_hot) { m_hot = h; invalidate (true); }
 		if (bl && !pressed) { pressed = true; if (h >= 0 && h != sel) { sel = h; invalidate (true); if (onChange) onChange (*this); } }
 		else if (!bl) pressed = false;
@@ -1083,15 +1084,15 @@ public:
 	{
 		unsigned bg = bgColor ();
 		canvas.clear (bg);
-		int st = pressed ? WK_PRESSED : hover ? WK_HOT : WK_NORMAL;
+		int st = pressed ? UK_PRESSED : hover ? UK_HOT : UK_NORMAL;
 		unsigned face = colorMethod ? C_FIELD : C_BUTTON;
-		if (flat) { if (st != WK_NORMAL) wk_rbox (canvas, 0, 0, width, height, 5, wk_mix (bg, C_TEXT, 22), wk_mix (bg, C_TEXT, 22)); face = bg; }
-		else if (colorMethod) wk_sunken (canvas, 0, 0, width, height, 5, C_FIELD, false);
-		else wk_raised (canvas, 0, 0, width, height, 5, face, st);
-		unsigned ink = colorMethod ? method_color (value ()) : flat ? wk_ink_for (bg) : C_BUTTON_TEXT;
+		if (flat) { if (st != UK_NORMAL) uk_rbox (canvas, 0, 0, width, height, 5, uk_mix (bg, C_TEXT, 22), uk_mix (bg, C_TEXT, 22)); face = bg; }
+		else if (colorMethod) uk_sunken (canvas, 0, 0, width, height, 5, C_FIELD, false);
+		else uk_raised (canvas, 0, 0, width, height, 5, face, st);
+		unsigned ink = colorMethod ? method_color (value ()) : flat ? uk_ink_for (bg) : C_BUTTON_TEXT;
 		Str s; if (prefix) s.add (prefix); s.add (value ());
 		text_fit (canvas, 10, 0, height, width - 34, s.c (), ink, colorMethod ? 2 : 0);
-		wk_glyph (canvas, WKG_CHEV_DOWN, width - 14, height / 2, 9, flat ? wk_mix (bg, ink, 180) : ink);
+		uk_glyph (canvas, WKG_CHEV_DOWN, width - 14, height / 2, 9, flat ? uk_mix (bg, ink, 180) : ink);
 	}
 	bool onMouse (int mx, int, int bl, int, int, int) override
 	{
@@ -1168,7 +1169,7 @@ public:
 	int delW () { return readonly ? 0 : 30; }
 	void colBox (int c, int *x, int *w)
 	{
-		int avail = width - checkW () - delW () - (vbar () ? WK_SBW : 0);
+		int avail = width - checkW () - delW () - (vbar () ? UK_SBW : 0);
 		int w0 = showDesc ? avail * 30 / 100 : avail * 38 / 100;
 		int w1 = showDesc ? avail * 42 / 100 : avail - w0;
 		int w2 = avail - w0 - w1;
@@ -1185,7 +1186,7 @@ public:
 	{
 		canvas.clear (C_FIELD);
 		if (bulkMode) return;
-		unsigned hdrBg = wk_mix (C_FIELD, C_FIELD_TEXT, 10);
+		unsigned hdrBg = uk_mix (C_FIELD, C_FIELD_TEXT, 10);
 		canvas.fillRect (0, 0, width, headH, hdrBg);
 		canvas.fillRect (0, headH - 1, width, 1, c_line ());
 		for (int c = 0; c < cols (); c++)
@@ -1206,9 +1207,9 @@ public:
 			int y = r * rowH;
 			KV &kv = (*rows)[i];
 			bool ghost = !readonly && i == nrows () - 1 && kv.blank ();
-			if (i == m_hot && !ghost) clip.fillRect (0, y, width - (vbar () ? WK_SBW : 0), rowH, c_hover ());
+			if (i == m_hot && !ghost) clip.fillRect (0, y, width - (vbar () ? UK_SBW : 0), rowH, c_hover ());
 			clip.fillRect (0, y + rowH - 1, width, 1, c_line ());
-			if (!readonly && !ghost) wk_check_mark (clip, (checkW () - 16) / 2, y + (rowH - 16) / 2, 16, kv.on, WK_NORMAL);
+			if (!readonly && !ghost) uk_check_mark (clip, (checkW () - 16) / 2, y + (rowH - 16) / 2, 16, kv.on, UK_NORMAL);
 			for (int c = 0; c < cols (); c++)
 			{
 				int x, w; colBox (c, &x, &w);
@@ -1220,9 +1221,9 @@ public:
 				{
 					// a file: its name in a chip, "Select" when none
 					const char *nm = kv.value.empty () ? "Select file..." : base_name (kv.value.c ());
-					int cw_ = imin (w - 14, wk_tw (nm) + 30);
-					wk_rbox (clip, tx - 2, y + 4, cw_, rowH - 8, 5, wk_mix (C_FIELD, C_ACCENT, 30), wk_mix (C_FIELD, C_ACCENT, 30));
-					wk_tool_glyph (clip, WKT_OPEN, tx + 2, y + (rowH - 14) / 2, 14, C_FIELD_TEXT);
+					int cw_ = imin (w - 14, uk_tw (nm) + 30);
+					uk_rbox (clip, tx - 2, y + 4, cw_, rowH - 8, 5, uk_mix (C_FIELD, C_ACCENT, 30), uk_mix (C_FIELD, C_ACCENT, 30));
+					uk_tool_glyph (clip, WKT_OPEN, tx + 2, y + (rowH - 14) / 2, 14, C_FIELD_TEXT);
 					text_fit (clip, tx + 20, y, rowH, cw_ - 24, nm, C_FIELD_TEXT, 0);
 					continue;
 				}
@@ -1238,22 +1239,22 @@ public:
 				// one line: a value with new lines shows them as spaces
 				Str one; one.set (s->c (), imin (s->len (), 2000));
 				for (int q = 0; q < one.len (); q++) if (one.c ()[q] == '\n' || one.c ()[q] == '\r') one.data ()[q] = ' ';
-				draw_rich (cc, 0, (rowH - wk_fh ()) / 2, one.c (), one.len (), ink, !readonly, readonly && c == 0 ? 2 : 0);
+				draw_rich (cc, 0, (rowH - uk_fh ()) / 2, one.c (), one.len (), ink, !readonly, readonly && c == 0 ? 2 : 0);
 			}
 			if (formMode && !ghost)
 			{
 				int x, w; colBox (0, &x, &w);
 				int bx = x + w - 50;
 				text_v (clip, bx, y, rowH, kv.file ? "File" : "Text", c_dim ());
-				wk_glyph (clip, WKG_CHEV_DOWN, bx + 38, y + rowH / 2, 8, c_dim ());
+				uk_glyph (clip, WKG_CHEV_DOWN, bx + 38, y + rowH / 2, 8, c_dim ());
 			}
 			if (!readonly && !ghost && i == m_hot)
-				wk_glyph (clip, WKG_CLOSE, width - (vbar () ? WK_SBW : 0) - delW () / 2, y + rowH / 2, 9, c_dim ());
+				uk_glyph (clip, WKG_CLOSE, width - (vbar () ? UK_SBW : 0) - delW () / 2, y + rowH / 2, 9, c_dim ());
 		}
 		if (vbar ())
 		{
-			WkThumb t = wk_thumb (nrows (), vr, m_top, height - headH);
-			wk_draw_vscroll (canvas, width - WK_SBW, headH, WK_SBW, height - headH, t, C_FIELD);
+			UkThumb t = uk_thumb (nrows (), vr, m_top, height - headH);
+			uk_draw_vscroll (canvas, width - UK_SBW, headH, UK_SBW, height - headH, t, C_FIELD);
 		}
 	}
 
@@ -1280,7 +1281,7 @@ public:
 					int p = pos_at_x (s->c (), s->len (), mx - x - 8);
 					var_tip (m_tip, s->c (), s->len (), imin (p, s->len () - 1));
 				}
-				else if (wk_tw (s->c ()) > w - 14) { m_tip.set (s->c (), imin (s->len (), 120)); if (s->len () > 120) m_tip.add ("..."); }
+				else if (uk_tw (s->c ()) > w - 14) { m_tip.set (s->c (), imin (s->len (), 120)); if (s->len () > 120) m_tip.add ("..."); }
 				if (!m_tip.empty ()) tip = m_tip.c ();
 			}
 		}
@@ -1300,7 +1301,7 @@ public:
 				return true;
 			}
 			if (mx < checkW () && !ghost) { kv.on = !kv.on; stopEdit (); changed (); return true; }
-			if (mx >= width - (vbar () ? WK_SBW : 0) - delW () && !ghost) { stopEdit (); rows->remove (r); ensureBlank (); m_hot = -1; changed (); return true; }
+			if (mx >= width - (vbar () ? UK_SBW : 0) - delW () && !ghost) { stopEdit (); rows->remove (r); ensureBlank (); m_hot = -1; changed (); return true; }
 			int c = colAt (mx);
 			if (c < 0) return true;
 			if (formMode && !ghost)
@@ -1311,7 +1312,7 @@ public:
 				{
 					stopEdit ();
 					char p[256];
-					if (wk_file_open (p, sizeof p, "SD:/")) { kv.value = p; changed (); }
+					if (uk_file_open (p, sizeof p, "SD:/")) { kv.value = p; changed (); }
 					return true;
 				}
 			}
@@ -1495,48 +1496,48 @@ public:
 			bool s = i == sel, h = i == m_hot;
 			if (s)
 			{
-				wk_rbox (canvas, x, 3, w, height - 3, 7, C_FIELD, C_FIELD, 255, WK_TL | WK_TR);
-				wk_rline (canvas, x, 3, w, height - 2, 7, c_bgline (), 255, WK_TL | WK_TR);
+				uk_rbox (canvas, x, 3, w, height - 3, 7, C_FIELD, C_FIELD, 255, UK_TL | UK_TR);
+				uk_rline (canvas, x, 3, w, height - 2, 7, c_bgline (), 255, UK_TL | UK_TR);
 				canvas.fillRect (x + 1, height - 1, w - 2, 1, C_FIELD);
-				wk_rbox (canvas, x + 1, 3, w - 2, 2, 1, C_ACCENT, C_ACCENT);
+				uk_rbox (canvas, x + 1, 3, w - 2, 2, 1, C_ACCENT, C_ACCENT);
 			}
 			else
 			{
-				if (h) wk_rbox (canvas, x + 2, 5, w - 4, height - 9, 6, wk_mix (bg, C_TEXT, 18), wk_mix (bg, C_TEXT, 18));
+				if (h) uk_rbox (canvas, x + 2, 5, w - 4, height - 9, 6, uk_mix (bg, C_TEXT, 18), uk_mix (bg, C_TEXT, 18));
 				if (i + 1 != sel && i + 1 < tabs.size ()) canvas.fillRect (x + w - 1, 11, 1, height - 22, c_bgline ());
 			}
-			unsigned ink = s ? C_FIELD_TEXT : wk_ink_for (bg);
+			unsigned ink = s ? C_FIELD_TEXT : uk_ink_for (bg);
 			unsigned face = s ? C_FIELD : bg;
 			int tx = x + 12;
 			if (t.kind == 0)
 			{
 				const char *m = t.method.c ();
 				char mb[8]; s_copy (mb, s_eq (m, "DELETE") ? "DEL" : s_eq (m, "OPTIONS") ? "OPT" : m, sizeof mb);
-				unsigned mc = s ? method_color (m) : wk_mix (face, wk_ink_on (face) == 0 ? method_color (m) : 0xFFFFFF, 200);
+				unsigned mc = s ? method_color (m) : uk_mix (face, uk_ink_on (face) == 0 ? method_color (m) : 0xFFFFFF, 200);
 				text_v (canvas, tx, 2, height, mb, mc, 2);
-				tx += wk_tw (mb, 2) + 6;
+				tx += uk_tw (mb, 2) + 6;
 			}
 			else
 			{
 				// an environment: an eye-like mark; a collection: a folder
-				unsigned mc = wk_mix (face, ink, 170);
-				if (t.kind == 1) { wk_rline (canvas, tx, height / 2 - 4, 14, 10, 5, mc); wk_glyph (canvas, WKG_DOT, tx + 7, height / 2 + 1, 5, mc); }
-				else { wk_rbox (canvas, tx, height / 2 - 4, 6, 3, 1, mc, mc); wk_rbox (canvas, tx, height / 2 - 2, 14, 9, 2, mc, mc); }
+				unsigned mc = uk_mix (face, ink, 170);
+				if (t.kind == 1) { uk_rline (canvas, tx, height / 2 - 4, 14, 10, 5, mc); uk_glyph (canvas, WKG_DOT, tx + 7, height / 2 + 1, 5, mc); }
+				else { uk_rbox (canvas, tx, height / 2 - 4, 6, 3, 1, mc, mc); uk_rbox (canvas, tx, height / 2 - 2, 14, 9, 2, mc, mc); }
 				tx += 20;
 			}
 			int room = x + w - 26 - tx;
 			text_fit (canvas, tx, 2, height, room, t.title.c (), ink, 0);
 			int cx = x + w - 15, cy = height / 2 + 1;
-			if (h && m_hotClose) wk_rbox (canvas, cx - 8, cy - 8, 16, 16, 4, wk_mix (face, ink, 40), wk_mix (face, ink, 40));
-			if (h || s) wk_glyph (canvas, WKG_CLOSE, cx, cy, 8, wk_mix (face, ink, 190));
-			else if (t.dirty) wk_glyph (canvas, WKG_DOT, cx, cy, 7, C_ACCENT);
-			if ((h || s) && t.dirty && !(h && m_hotClose)) { canvas.fillRect (cx - 8, cy - 8, 16, 16, face); wk_glyph (canvas, WKG_DOT, cx, cy, 7, on_field (C_VAR)); }
+			if (h && m_hotClose) uk_rbox (canvas, cx - 8, cy - 8, 16, 16, 4, uk_mix (face, ink, 40), uk_mix (face, ink, 40));
+			if (h || s) uk_glyph (canvas, WKG_CLOSE, cx, cy, 8, uk_mix (face, ink, 190));
+			else if (t.dirty) uk_glyph (canvas, WKG_DOT, cx, cy, 7, C_ACCENT);
+			if ((h || s) && t.dirty && !(h && m_hotClose)) { canvas.fillRect (cx - 8, cy - 8, 16, 16, face); uk_glyph (canvas, WKG_DOT, cx, cy, 7, on_field (C_VAR)); }
 			x += w;
 		}
 		// "+": a new request
 		int nx = x + 6;
-		if (m_hotNew) wk_rbox (canvas, nx, 7, 28, height - 14, 6, wk_mix (bg, C_TEXT, 24), wk_mix (bg, C_TEXT, 24));
-		wk_glyph (canvas, WKG_PLUS, nx + 14, height / 2 + 1, 11, wk_ink_for (bg));
+		if (m_hotNew) uk_rbox (canvas, nx, 7, 28, height - 14, 6, uk_mix (bg, C_TEXT, 24), uk_mix (bg, C_TEXT, 24));
+		uk_glyph (canvas, WKG_PLUS, nx + 14, height / 2 + 1, 11, uk_ink_for (bg));
 		m_newX = nx;
 	}
 	bool onMouse (int mx, int my, int bl, int br, int bm, int) override
@@ -1577,8 +1578,8 @@ static inline void draw_spinner (Canvas &cv, int cx, int cy, int r, int phase, u
 		int k = (a / 30) % 12;
 		int x = cx + S[k] * r / 1000, y = cy - S[(k + 3) % 12] * r / 1000;
 		int alpha = 40 + i * 18;
-		unsigned col = wk_mix (bg, c, alpha);
-		wk_rbox (cv, x - 2, y - 2, 5, 5, 2, col, col);
+		unsigned col = uk_mix (bg, c, alpha);
+		uk_rbox (cv, x - 2, y - 2, 5, 5, 2, col, col);
 	}
 }
 
@@ -1586,16 +1587,16 @@ static inline void draw_spinner (Canvas &cv, int cx, int cy, int r, int phase, u
 static inline void empty_state (Canvas &cv, int x, int y, int w, int h, const char *title, const char *line, unsigned bg)
 {
 	int cx = x + w / 2, cy = y + h / 2 - 20;
-	unsigned c = wk_mix (bg, wk_ink_for (bg), 70);
+	unsigned c = uk_mix (bg, uk_ink_for (bg), 70);
 	// a paper plane: a courier's
 	for (int i = 0; i < 26; i++)
 	{
 		int lx = cx - 26 + i, top = cy - 12 + i / 2, bot = cy + 14 - i / 3;
 		cv.fillRect (lx, top, 1, imax (1, bot - top), c);
 	}
-	for (int i = 0; i < 26; i++) { int lx = cx + i; cv.fillRect (lx, cy - 12 + 13 - i / 2, 1, 2 + i / 3, wk_mix (bg, c, 180)); }
-	wk_text (cv, cx - wk_tw (title, 2) / 2, cy + 30, title, wk_mix (bg, wk_ink_for (bg), 190), 2);
-	if (line) wk_text (cv, cx - wk_tw (line) / 2, cy + 30 + wk_fh () + 6, line, wk_mix (bg, wk_ink_for (bg), 140));
+	for (int i = 0; i < 26; i++) { int lx = cx + i; cv.fillRect (lx, cy - 12 + 13 - i / 2, 1, 2 + i / 3, uk_mix (bg, c, 180)); }
+	uk_text (cv, cx - uk_tw (title, 2) / 2, cy + 30, title, uk_mix (bg, uk_ink_for (bg), 190), 2);
+	if (line) uk_text (cv, cx - uk_tw (line) / 2, cy + 30 + uk_fh () + 6, line, uk_mix (bg, uk_ink_for (bg), 140));
 }
 
 } // namespace cr

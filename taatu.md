@@ -49,12 +49,16 @@ du protocole et des formats (contenu attendu : §10). Stéphane fait alors le po
   **Circle** comme couche matérielle. GUI fenêtrée (un « CDE modernisé »), Wi-Fi/Ethernet, son,
   carte SD en FAT32.
 - **Une app est un ELF** chargé à `0x200000000` (non PIE), dans son propre espace d'adressage,
-  préemptée, avec des threads disponibles.
+  **à EL0** (protégée : une faute ne tue que l'app, jamais le système), préemptée, avec des
+  threads disponibles. Elle ne doit lire aucun registre système privilégié (`mpidr_el1`…) :
+  `tools/el0scan.sh` vérifie un binaire.
 - **Pas de POSIX, pas d'appels système Linux.** L'app parle au noyau uniquement via une **table de
-  fonctions à adresse fixe** : la *kapi* (`user/kapi.h` → `kernel/include/kern/kapi_abi.h`).
+  fonctions à adresse fixe** : la *kapi* (`user/kapi.h` → `kernel/include/kern/kapi_abi.h`) ;
+  chaque entrée est un petit stub qui fait l'appel système (`svc`), chaque pointeur passé est
+  vérifié par le noyau.
 - **La kapi n'accepte que des ajouts** : on ne retire ni ne réordonne jamais un champ. Un ELF
   compilé aujourd'hui continue donc de tourner sur les noyaux futurs. La version actuelle est
-  **`KAPI_ABI_VERSION` 71**. L'app peut lire `KT->version` et refuser poliment de démarrer sur un
+  **`KAPI_ABI_VERSION` 74**. L'app peut lire `KT->version` et refuser poliment de démarrer sur un
   noyau trop ancien.
 - **newlib** (`printf`, `malloc`, `<string.h>`, `<math.h>`) est disponible pour les apps qui la
   lient (§5). Le C++ s'utilise **sans exceptions ni RTTI**.
@@ -89,7 +93,7 @@ cd Onyx
 | `docs/04-USER-GUIDE.md` | la carte SD, `system.ini`, le réseau | ce que voit l'utilisateur |
 | `user/Apps/2048/main.cpp` | 190 lignes | **squelette** d'une app GUI minimale |
 | `user/Apps/courier/` | `net.h` | **modèle** d'app réseau : HTTPS + JSON + thread réseau + newlib + FreeType |
-| `user/tls/onyx_tls.hpp`, `user/http.hpp`, `user/json.hpp`, `user/img/imgload.hpp` | les en-têtes | les briques qu'on réutilise (§4) |
+| `user/Libs/tls/onyx_tls.hpp`, `user/Include/http.hpp`, `user/Include/json.hpp`, `user/Kits/imagekit/img/imgload.hpp` | les en-têtes | les briques qu'on réutilise (§4) |
 
 ### 3.3. La toolchain
 
@@ -107,9 +111,9 @@ construire, depuis `user/` :
 
 ```sh
 cd user
-make wtk/libwtk.a ft/libft.a libc/crt0libc.o libc/onyx_syscalls.o
+make uikit/libuikit.a ft/libft.a libc/crt0libc.o libc/onyx_syscalls.o
 # mbedTLS est déjà construit dans third_party/mbedtls-3.6.3/library/libmbed{tls,x509,crypto}.a
-# (sinon : make -C user/tls)
+# (sinon : make -C user/Libs/tls)
 ```
 
 Un `make` complet depuis `kernel/` (puis `make stage`) construit tout, noyau et apps, dans
@@ -123,16 +127,16 @@ Un `make` complet depuis `kernel/` (puis `make stage`) construit tout, noyau et 
 |---|---|---|
 | Fenêtre + framebuffer 32 bits `0x00RRGGBB` | `kapi_create_window (w, h, titre)` → `unsigned *` | `user/kapi.h`, ex. `Apps/2048` |
 | Plein écran | `kapi_fullscreen_begin / kapi_present_fb / kapi_fullscreen_end` (v41), accès direct v55 | docs/03 §6, `Apps/plasma` |
-| Widgets (champs texte, boutons, listes, dialogues, menus) | **wtk** (C++) | `user/wtk/*.h`, docs/03 §6 |
+| Widgets (champs texte, boutons, listes, dialogues, menus) | **uikit** (C++) | `user/Kits/uikit/*.h`, docs/03 §6 |
 | Souris / clavier | `kapi_set_pointer_handler`, `kapi_set_key_handler`, `kapi_get_modifiers` | `user/kapi.h` |
 | Texte TrueType anti-aliasé (chat, pseudos) | FreeType « lean » + `ft/fonts.h` (`fnt::get`, `fnt::draw`) | docs/03 §6 « TrueType text » |
 | Boucle d'événements | `kapi_pump_events`, `kapi_pump_wait (ms)`, `kapi_should_exit` | docs/03 §5.2 |
 | TCP + DNS | `kapi_tcp_connect (host, port)`, `kapi_tcp_send` / `kapi_tcp_recv` (non bloquant) / `kapi_tcp_close`, `kapi_net_status` | `user/kapi.h` |
-| **TLS 1.2 / 1.3** | mbedTLS 3.6.3 + `onyx_tls.hpp` (`start`, `send`, `recv`, vérification des certificats en option) | `user/tls/` |
-| HTTPS (login, API REST, assets) | `HttpClient` (`ONYX_HTTP_TLS`) ; plus complet : `Apps/courier/net.h` (redirections, cookies, gzip) | `user/http.hpp` |
+| **TLS 1.2 / 1.3** | mbedTLS 3.6.3 + `onyx_tls.hpp` (`start`, `send`, `recv`, vérification des certificats en option) | `user/Libs/tls/` |
+| HTTPS (login, API REST, assets) | `HttpClient` (`ONYX_HTTP_TLS`) ; plus complet : `Apps/courier/net.h` (redirections, cookies, gzip) | `user/Include/http.hpp` |
 | **WebSocket** | ⚠ pas de client réutilisable seul : celui de Jet (`user/netsurf/onyx_ws.c`) est lié à NetSurf, donc **GPL**. **Ne pas le copier.** En écrire un petit (RFC 6455 client, ~300 lignes) sur `onyx_tls` : §6.2 | — |
-| JSON | `json.hpp` (arène, accès typés tolérants, writer en flux) | `user/json.hpp` |
-| PNG / JPEG / GIF animé / WebP / BMP | `img_load (fichier)`, **`img_load_mem (octets, len)`** → `0xAARRGGBB` | `user/img/imgload.hpp` |
+| JSON | `json.hpp` (arène, accès typés tolérants, writer en flux) | `user/Include/json.hpp` |
+| PNG / JPEG / GIF animé / WebP / BMP | `img_load (fichier)`, **`img_load_mem (octets, len)`** → `0xAARRGGBB` | `user/Kits/imagekit/img/imgload.hpp` |
 | Inflate (zlib / gzip / deflate brut) | `img_inflate` | idem |
 | Threads, mutex, events, futex | `kapi_thread_create`, `kapi_post` (renvoyer un résultat au thread GUI) | docs/03 §5.2 |
 | Son | PCM **s16 stéréo 44 100 Hz** : `kapi_sound_acquire` + `kapi_sound_write`, plus des voix synthé | `user/kapi.h` (l.~308) |
@@ -147,7 +151,7 @@ Un `make` complet depuis `kernel/` (puis `make stage`) construit tout, noyau et 
 ## 5. Squelette de build (app hors dépôt)
 
 L'app de Lucas peut vivre dans **son propre dossier privé**, avec un Makefile qui pointe vers un clone
-d'Onyx. Le modèle est la règle `courier.elf` de `user/Makefile` (newlib + wtk + FreeType + mbedTLS) :
+d'Onyx. Le modèle est la règle `courier.elf` de `user/Makefile` (newlib + uikit + FreeType + mbedTLS) :
 
 ```make
 # Makefile -- taatu.app pour Onyx (hors du dépôt Onyx)
@@ -168,7 +172,7 @@ SRC = $(wildcard src/*.cpp)
 
 taatu.elf: $(SRC) $(wildcard src/*.h)
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(U)/libc/crt0libc.o $(U)/libc/onyx_syscalls.o $(SRC) \
-	    $(U)/wtk/libwtk.a $(U)/ft/libft.a \
+	    $(U)/uikit/libuikit.a $(U)/ft/libft.a \
 	    -L$(MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
 stage: taatu.elf
@@ -187,12 +191,12 @@ stack    = 2M             ; la pile par défaut est 256 KB : à augmenter si dé
 
 - **Une seule app « newlib »**, c'est-à-dire `crt0libc.o` (qui appelle `exit(main())`). **Pas
   de `crt0.S`**, qui est réservé aux apps freestanding.
-- **Deux tas cohabitent.** Les objets wtk sont alloués par `operator new` sur umm
+- **Deux tas cohabitent.** Les objets uikit sont alloués par `operator new` sur umm
   (`onyxpp.hpp`), les bibliothèques C par `malloc` (newlib). C'est normal : ne pas lier umm une
   seconde fois. Voir `user/Apps/courier/main.cpp` pour l'enchaînement exact des en-têtes.
 - `json.hpp`, `tls/onyx_tls.hpp`, `http.hpp` et `ft/fonts.h` sont **header-only** : à inclure dans
   **une seule** unité de compilation quand c'est indiqué.
-- `wtk/libwtk.a` contient les codecs d'image : il suffit d'inclure `img/imgload.hpp`.
+- `uikit/libuikit.a` contient les codecs d'image : il suffit d'inclure `img/imgload.hpp`.
 
 ---
 
@@ -244,14 +248,14 @@ Pile à écrire, du bas vers le haut :
 ### 6.3. Rendu 2.5D
 
 - **Décor** : l'image de fond de la salle est décodée une fois (`img_load_mem`) dans un
-  `wtk::Canvas`, puis copiée à chaque frame. Mieux : ne recopier que les **rectangles salis**.
+  `uikit::Canvas`, puis copiée à chaque frame. Mieux : ne recopier que les **rectangles salis**.
 - **Sprites** (avatars, meubles) : décodés en `0xAARRGGBB`, puis **triés par profondeur** à
   chaque frame selon la règle du jeu (souvent `y` du pied, ou la case iso). Le dessin se fait avec
   l'alpha. Découpage des planches, directions et frames d'animation : selon le format de TAATU.
 - **Coordonnées** : conversion écran ↔ monde (iso ou non) selon la règle du client web, au pixel
   près. Le **hit-test** au clic doit être pixel-perfect sur l'alpha du sprite, comme sur le web.
 - **Texte** : pseudos et bulles de chat avec `fnt::draw` (FreeType). La saisie du chat passe par
-  un champ wtk ou une ligne maison en bas de la fenêtre.
+  un champ uikit ou une ligne maison en bas de la fenêtre.
 - **Taille de fenêtre** : le simulateur PC n'accepte pas plus de **1024 × 768**. Sur le Pi, la
   fenêtre peut être plus grande, ou passer en plein écran (`kapi_fullscreen_begin`). Si le jeu est
   conçu pour une taille fixe, créer la fenêtre **à la plus grande taille** proposée, à cause du
@@ -270,7 +274,7 @@ Pile à écrire, du bas vers le haut :
   (`{fichier: hash}`) téléchargé au lancement.
 - **Chiffrement (option)** : AES-GCM (`mbedtls_gcm_*`), clé dérivée et embarquée, un nonce par
   fichier. **Le Cortex-A72 du Pi 4 n'a pas les extensions crypto ARMv8** : mbedTLS est déjà
-  configuré en logiciel pur (`user/tls/Makefile`), donc ne pas activer AESCE.
+  configuré en logiciel pur (`user/Libs/tls/Makefile`), donc ne pas activer AESCE.
 
 ### 6.5. Compte et identifiants
 
@@ -283,12 +287,12 @@ Pile à écrire, du bas vers le haut :
 
 ## 7. Tester sur le PC (sans Pi)
 
-- **Simulateur de bureau** : `tools/tests/desktop_sim/` compile une app wtk **pour le PC** contre un
+- **Simulateur de bureau** : `tools/tests/desktop_sim/` compile une app uikit **pour le PC** contre un
   faux noyau (`fakekapi.cpp`) et la pilote par un script d'événements (clics, touches). Il produit
   une capture. Avec **`SIM_REALNET=1`**, les sockets TCP sont celles du PC : on peut donc se
   connecter au vrai serveur TAATU ou à un serveur local. `SIM_SLEEP=1` fait arriver les réponses
   en temps réel. Voir `shots.sh` et la doc docs/03 §9 « Screenshots », puis adapter le principe
-  pour une app hors dépôt (mêmes fichiers `fakekapi.cpp`, `imgstub.cpp`, `user/wtk/*.cpp`).
+  pour une app hors dépôt (mêmes fichiers `fakekapi.cpp`, `imgstub.cpp`, `user/Kits/uikit/*.cpp`).
 - **Le vrai ELF du Pi sur PC** : `sh tools/tests/desktop_sim/elfrun.sh <app>` exécute un
   `user/<app>.elf` sous `qemu-aarch64` avec la kapi simulée. Le script cherche l'ELF dans
   `user/` : y copier `taatu.elf`, ou adapter le chemin.
@@ -313,7 +317,7 @@ Pile à écrire, du bas vers le haut :
 
 | Composant | Licence | Utilisable dans un binaire fermé ? |
 |---|---|---|
-| Code Onyx (`user/*.h`, `wtk`, `json.hpp`, `http.hpp`, `onyx_tls.hpp`, `libc/`, `user.ld`, `crt0*`) | pas de fichier de licence (tous droits réservés) | **oui, avec l'accord de Stéphane** (accordé pour ce portage) |
+| Code Onyx (`user/*.h`, `uikit`, `json.hpp`, `http.hpp`, `onyx_tls.hpp`, `libc/`, `user.ld`, `crt0*`) | pas de fichier de licence (tous droits réservés) | **oui, avec l'accord de Stéphane** (accordé pour ce portage) |
 | newlib (libc/libm de la toolchain) | BSD-like | oui |
 | mbedTLS 3.6.3 | Apache-2.0 | oui (garder la mention) |
 | FreeType 2.14.3 | FTL | oui, **mention obligatoire** dans la doc ou l'écran « À propos » |

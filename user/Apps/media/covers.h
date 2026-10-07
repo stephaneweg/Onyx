@@ -10,13 +10,16 @@
 #ifndef _media_covers_h
 #define _media_covers_h
 
+#ifdef USE_IMAGEKIT
+#include "imagekit/imagekit.h"
+#endif
 #include "lib.h"
-#include "img/imgload.hpp"
-#include "wtk/wtk.h"
+#include "imagekit/img/imgload.hpp"
+#include "uikit/uikit.h"
 
 namespace media {
 
-using namespace wtk;
+using namespace uikit;
 
 static inline unsigned hash_str (const char *s, unsigned h = 2166136261u) { for (; s && *s; s++) h = (h ^ (unsigned char) (*s >= 'A' && *s <= 'Z' ? *s + 32 : *s)) * 16777619u; return h; }
 
@@ -67,7 +70,7 @@ public:
 			for (int i = 0; i <= N; i++)
 			{
 				int a = a0[k] + i * 90 / N;
-				pts[n++] = V (cx[k]) + V (r) * wk_cos (a) / 16384; pts[n++] = V (cy[k]) + V (r) * wk_sin (a) / 16384;
+				pts[n++] = V (cx[k]) + V (r) * uk_cos (a) / 16384; pts[n++] = V (cy[k]) + V (r) * uk_sin (a) / 16384;
 			}
 			VPath p; p.poly (pts, N + 2); p.fill (cv, bg);
 		}
@@ -137,6 +140,10 @@ private:
 	// src (n x n) -> dst (m x m): the area of each pixel averaged (smaller), else bilinear
 	static void resample (const unsigned *src, int n, unsigned *dst, int m)
 	{
+#ifdef USE_IMAGEKIT						// (ImageKit's resize)
+		ik_scale_rgb (src, n, n, n, 0, 0, n, n, dst, m, m, m);
+		return;
+#endif
 		if (m <= n)
 			for (int y = 0; y < m; y++)
 			{
@@ -175,7 +182,7 @@ private:
 		const unsigned *c = PAL[h % 10];
 		unsigned *px = new unsigned[BASE * BASE];
 		Canvas cv; cv.adopt (px, BASE, BASE);
-		for (int y = 0; y < BASE; y++) cv.fillRect (0, y, BASE, 1, wk_mix (c[0], wk_mix (c[0], c[1], 90), y * 256 / BASE));
+		for (int y = 0; y < BASE; y++) cv.fillRect (0, y, BASE, 1, uk_mix (c[0], uk_mix (c[0], c[1], 90), y * 256 / BASE));
 		int style = (int) (h >> 8) % 4;
 		unsigned r = h;
 		auto rnd = [&r] (int m) { r = r * 1103515245u + 12345u; return (int) ((r >> 16) % (unsigned) m); };
@@ -183,7 +190,7 @@ private:
 			for (int k = 0; k < 6; k++)
 			{
 				VPath p; int y0 = 70 + k * 30 + rnd (20), pts[2 * 17];
-				for (int i = 0; i <= 16; i++) { pts[2 * i] = V (i * BASE / 16); pts[2 * i + 1] = V (y0) + wk_sin (i * 40 + k * 50 + rnd (30)) * 20 * 16 / 16384; }
+				for (int i = 0; i <= 16; i++) { pts[2 * i] = V (i * BASE / 16); pts[2 * i + 1] = V (y0) + uk_sin (i * 40 + k * 50 + rnd (30)) * 20 * 16 / 16384; }
 				p.polyline (pts, 17, V (10)); p.fill (cv, k % 2 ? c[1] : c[2], 150);
 			}
 		else if (style == 1)
@@ -258,7 +265,7 @@ private:
 				int x0 = ox + x * sq / BASE, x1 = ox + (x + 1) * sq / BASE; if (x1 <= x0) x1 = x0 + 1;
 				unsigned rr = 0, g = 0, b = 0, c = 0;
 				for (int yy = y0; yy < y1; yy += 1 + (y1 - y0) / 4) for (int xx = x0; xx < x1; xx += 1 + (x1 - x0) / 4)
-				{ unsigned p = im.px[0][yy * im.w + xx]; unsigned a = p >> 24; if (a < 255) p = wk_mix (0xFFFFFF, p & 0xFFFFFF, (int) a); rr += p >> 16 & 255; g += p >> 8 & 255; b += p & 255; c++; }
+				{ unsigned p = im.px[0][yy * im.w + xx]; unsigned a = p >> 24; if (a < 255) p = uk_mix (0xFFFFFF, p & 0xFFFFFF, (int) a); rr += p >> 16 & 255; g += p >> 8 & 255; b += p & 255; c++; }
 				px[y * BASE + x] = (rr / c) << 16 | (g / c) << 8 | (b / c);
 			}
 		}

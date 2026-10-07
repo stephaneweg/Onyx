@@ -15,21 +15,20 @@
 // the app is started with "--now" -- a capture with the last mode and delay; Alt+Print Screen takes the
 // window that had the keyboard at once ("--window <id>").
 //
-// A newlib wtk app with FreeType's text (user/Makefile's screenshot.elf rule). Its settings: SD:/etc/
+// A newlib uikit app with FreeType's text (user/Makefile's screenshot.elf rule). Its settings: SD:/etc/
 // screenshot.ini (the mode, the delay, the pen's and the marker's colour and size, the last folder).
 //
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "kapi.h"
-#include "ft/wtkface.h"
-#include "wtk/wtk.h"
-#include "wtk/toolbar.h"
-#include "img/pngsave.hpp"
-#include "clipboard.h"
-#include "notify.h"
+#include "appkit/appkit.h"
+#include "systemkit/systemkit.h"
+#include "fontkit/uikitface.h"
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
+#include "imagekit/img/pngsave.hpp"
 
-using namespace wtk;
+using namespace uikit;
 
 #define SHOT_SERVICE	"screenshot"
 #define SHOT_MSG_NOW	1		// the kernel's: Print Screen (payload "now", or "window <id>")
@@ -266,7 +265,7 @@ static unsigned g_pendWin;
 static void refresh_ui ();
 static void set_tool (int t);
 
-// ---- the icons (drawn from their geometry at any size: wtk/vpaint.h) --------------------------------------
+// ---- the icons (drawn from their geometry at any size: uikit/vpaint.h) --------------------------------------
 enum { IC_RECT, IC_WINDOW, IC_SCREEN, IC_CLOCK, IC_CLOCK_OFF, IC_PEN, IC_MARKER, IC_ERASER, IC_CROP };
 static void draw_icon (Canvas &cv, int id, int x, int y, int s, unsigned ink, bool off)
 {
@@ -310,7 +309,7 @@ static void draw_icon (Canvas &cv, int id, int x, int y, int s, unsigned ink, bo
 			else p.poly (tip, 3);
 			p.fill (cv, col);
 			p.clear (); p.rect (X + u, Y + 16 * u + u / 2, 16 * u, 2 * u); p.fill (cv, col);	// its colour, underneath
-			if (wk_bright (col) > 200) { VPath o; o.rect (X + u, Y + 16 * u + u / 2, 16 * u, u / 2); o.fill (cv, wk_mix (C_BG, 0, 80)); }
+			if (uk_bright (col) > 200) { VPath o; o.rect (X + u, Y + 16 * u + u / 2, 16 * u, u / 2); o.fill (cv, uk_mix (C_BG, 0, 80)); }
 			return;
 		}
 	case IC_ERASER:
@@ -339,11 +338,11 @@ public:
 	const char *label[MAXI], *hint[MAXI]; int icon[MAXI]; int n, sel, hot;
 	PickMenu (int x, int y, int selected) : Modal (10, 10), n (0), sel (selected), hot (-1) { left = x; top = y; transparent = true; }
 	void add (const char *l, int ic, const char *h = 0) { if (n < MAXI) { label[n] = l; icon[n] = ic; hint[n] = h; n++; } }
-	int rowH () const { return wk_fh () + 14; }
+	int rowH () const { return uk_fh () + 14; }
 	int run ()
 	{
 		int w = 0;
-		for (int i = 0; i < n; i++) { int a = wk_tw (label[i]) + (hint[i] ? wk_tw (hint[i]) + 28 : 0); if (a > w) w = a; }
+		for (int i = 0; i < n; i++) { int a = uk_tw (label[i]) + (hint[i] ? uk_tw (hint[i]) + 28 : 0); if (a > w) w = a; }
 		w += 34 + (icon[0] >= 0 ? 28 : 0) + 16; if (w < 170) w = 170;
 		int h = n * rowH () + 10;
 		Root *r = Root::current ();
@@ -354,19 +353,19 @@ public:
 	}
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 8, C_FIELD);
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 8, C_FIELD);
 		for (int i = 0; i < n; i++)
 		{
 			int y = 5 + i * rowH ();
 			bool h = i == hot;
-			if (h) wk_hilite (canvas, 5, y, width - 10, rowH (), 5, true);
+			if (h) uk_hilite (canvas, 5, y, width - 10, rowH (), 5, true);
 			unsigned ink = h ? C_SEL_TEXT : C_FIELD_TEXT;
-			if (i == sel) wk_glyph (canvas, WKG_CHECK, 19, y + rowH () / 2, 11, ink);
+			if (i == sel) uk_glyph (canvas, WKG_CHECK, 19, y + rowH () / 2, 11, ink);
 			int x = 34;
 			if (icon[i] >= 0) { draw_icon (canvas, icon[i], x, y + (rowH () - 18) / 2, 18, ink, false); x += 28; }
-			wk_text_l (canvas, x, y, rowH (), label[i], ink);
-			if (hint[i]) wk_text_l (canvas, width - 14 - wk_tw (hint[i]), y, rowH (), hint[i], h ? C_SEL_TEXT : wk_mix (C_FIELD, C_FIELD_TEXT, 150));
+			uk_text_l (canvas, x, y, rowH (), label[i], ink);
+			if (hint[i]) uk_text_l (canvas, width - 14 - uk_tw (hint[i]), y, rowH (), hint[i], h ? C_SEL_TEXT : uk_mix (C_FIELD, C_FIELD_TEXT, 150));
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -409,26 +408,26 @@ public:
 	int sizeX (int i) const { return 16 + i * ((width - 32) / 4) + (width - 32) / 8; }
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 9, C_FIELD);
-		unsigned dim = wk_mix (C_FIELD, C_FIELD_TEXT, 150), ink = C_FIELD_TEXT;
-		{ WkFaceScope f (g_small); wk_text_l (canvas, 14, 6, 18, "COLOUR", dim, 2); wk_text_l (canvas, 14, 66, 18, "SIZE", dim, 2); }
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 9, C_FIELD);
+		unsigned dim = uk_mix (C_FIELD, C_FIELD_TEXT, 150), ink = C_FIELD_TEXT;
+		{ UkFaceScope f (g_small); uk_text_l (canvas, 14, 6, 18, "COLOUR", dim, 2); uk_text_l (canvas, 14, 66, 18, "SIZE", dim, 2); }
 		for (int i = 0; i < ncols; i++)
 		{
 			int cx = colX (i), cy = 42;
 			if (cols[i] == colour ()) { VPath r; r.arc (V (cx), V (cy), V (13), 0, 360, V (2) + 8); r.fill (canvas, C_ACCENT); }
 			else if (i == hotC) { VPath r; r.arc (V (cx), V (cy), V (13), 0, 360, V (1) + 8); r.fill (canvas, dim); }
 			VPath d; d.circle (V (cx), V (cy), V (10)); d.fill (canvas, cols[i], marker ? 200 : 255);
-			VPath o; o.arc (V (cx), V (cy), V (10), 0, 360, 12); o.fill (canvas, wk_mix (C_FIELD, ink, 90));
+			VPath o; o.arc (V (cx), V (cy), V (10), 0, 360, 12); o.fill (canvas, uk_mix (C_FIELD, ink, 90));
 		}
 		for (int i = 0; i < 4; i++)
 		{
 			int cx = sizeX (i), cy = 104, bw = (width - 32) / 4 - 6;
-			if (i == size ()) wk_rbox (canvas, cx - bw / 2, cy - 18, bw, 36, 6, wk_mix (C_FIELD, C_ACCENT, 60), wk_mix (C_FIELD, C_ACCENT, 76));
-			else if (i == hotS) wk_rline (canvas, cx - bw / 2, cy - 18, bw, 36, 6, dim, 150);
+			if (i == size ()) uk_rbox (canvas, cx - bw / 2, cy - 18, bw, 36, 6, uk_mix (C_FIELD, C_ACCENT, 60), uk_mix (C_FIELD, C_ACCENT, 76));
+			else if (i == hotS) uk_rline (canvas, cx - bw / 2, cy - 18, bw, 36, 6, dim, 150);
 			int d = marker ? 6 + i * 5 : 3 + i * 4;
 			VPath l; l.line (V (cx - bw / 2 + 12), V (cy), V (cx + bw / 2 - 12), V (cy), V (d)); l.fill (canvas, colour (), marker ? MARK_ALPHA + 60 : 255);
-			if (wk_bright (colour ()) > 225) { VPath o; o.line (V (cx - bw / 2 + 12), V (cy), V (cx + bw / 2 - 12), V (cy), V (d) + 16); o.fill (canvas, dim, 90); }
+			if (uk_bright (colour ()) > 225) { VPath o; o.line (V (cx - bw / 2 + 12), V (cy), V (cx + bw / 2 - 12), V (cy), V (d) + 16); o.fill (canvas, dim, 90); }
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -455,7 +454,7 @@ class Sep : public Widget
 public:
 	Sep (int h) : Widget (0, 0, 9, h) {}
 	unsigned bgColor () override { return parent ? parent->bgColor () : C_BG; }
-	void onDraw () override { canvas.clear (bgColor ()); wk_etch_v (canvas, 4, 4, height - 8, bgColor ()); }
+	void onDraw () override { canvas.clear (bgColor ()); uk_etch_v (canvas, 4, 4, height - 8, bgColor ()); }
 };
 
 // ---- the status bar -----------------------------------------------------------------------------------
@@ -471,16 +470,16 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		wk_etch_h (canvas, 0, 0, width, C_BG);
-		unsigned dim = wk_mix (C_BG, C_TEXT, 150);
-		int rw = right_[0] ? wk_tw (right_) : 0;
+		uk_etch_h (canvas, 0, 0, width, C_BG);
+		unsigned dim = uk_mix (C_BG, C_TEXT, 150);
+		int rw = right_[0] ? uk_tw (right_) : 0;
 		if (left_[0])
 		{
 			VPath d; d.circle (V (12), V (height / 2) + 8, V (4)); d.fill (canvas, g_savedAs[0] ? 0x4EA05C : g_dirty ? 0xE2A23A : 0x4EA05C);
-			char t[200]; wk_text_fit (left_, width - 40 - rw - 20, t, sizeof t);
-			wk_text_l (canvas, 22, 1, height, t, C_TEXT);
+			char t[200]; uk_text_fit (left_, width - 40 - rw - 20, t, sizeof t);
+			uk_text_l (canvas, 22, 1, height, t, C_TEXT);
 		}
-		if (rw) wk_text_l (canvas, width - 10 - rw, 1, height, right_, dim);
+		if (rw) uk_text_l (canvas, width - 10 - rw, 1, height, right_, dim);
 	}
 };
 
@@ -497,7 +496,7 @@ public:
 	ShotView (int l, int t, int w, int h) : Widget (l, t, w, h), scaled (0), sw (0), sh (0), scap (0), scaledGen (~0u),
 		ox (0), oy (0), live (0), liveStraight (false), dragging (false), ax (0), ay (0), bx (0), by (0), eraseHot (-1),
 		mx_ (0), my_ (0), inside_ (false) {}
-	unsigned backdrop () { return wk_mix (C_BG, wk_bright (C_BG) > 128 ? 0x000000 : 0xFFFFFF, 18); }
+	unsigned backdrop () { return uk_mix (C_BG, uk_bright (C_BG) > 128 ? 0x000000 : 0xFFFFFF, 18); }
 	unsigned bgColor () override { return backdrop (); }
 	// the doc's size in the view (never enlarged)
 	void fit (int *w, int *h)
@@ -542,31 +541,31 @@ public:
 
 	void drawWelcome ()
 	{
-		unsigned dim = wk_mix (C_BG, C_TEXT, 150);
+		unsigned dim = uk_mix (C_BG, C_TEXT, 150);
 		const char *a = "Press", *b = "to start a capture", *k = "Print Screen";
-		int kw = wk_tw (k, 2) + 20, tot = wk_tw (a) + 10 + kw + 10 + wk_tw (b);
+		int kw = uk_tw (k, 2) + 20, tot = uk_tw (a) + 10 + kw + 10 + uk_tw (b);
 		int x = (width - tot) / 2, y = height / 2 - 26;
-		wk_text_l (canvas, x, y, 26, a, C_TEXT); x += wk_tw (a) + 10;
-		wk_rbox (canvas, x, y + 2, kw, 26, 5, wk_tone (C_BG, 100), wk_tone (C_BG, 96));
-		wk_rbox (canvas, x, y, kw, 25, 5, wk_mix (C_FIELD, 0xFFFFFF, 80), C_FIELD);
-		wk_rline (canvas, x, y, kw, 25, 5, wk_tone (C_BG, 90));
-		wk_text_c (canvas, x, y, kw, 25, k, C_FIELD_TEXT, 2); x += kw + 10;
-		wk_text_l (canvas, x, y, 26, b, C_TEXT);
-		WkFaceScope f (g_small);
-		wk_text_c (canvas, 0, y + 34, width, 18, "or click New \xE2\x80\x94 the capture is copied at once, saved only with Save As", dim);
+		uk_text_l (canvas, x, y, 26, a, C_TEXT); x += uk_tw (a) + 10;
+		uk_rbox (canvas, x, y + 2, kw, 26, 5, uk_tone (C_BG, 100), uk_tone (C_BG, 96));
+		uk_rbox (canvas, x, y, kw, 25, 5, uk_mix (C_FIELD, 0xFFFFFF, 80), C_FIELD);
+		uk_rline (canvas, x, y, kw, 25, 5, uk_tone (C_BG, 90));
+		uk_text_c (canvas, x, y, kw, 25, k, C_FIELD_TEXT, 2); x += kw + 10;
+		uk_text_l (canvas, x, y, 26, b, C_TEXT);
+		UkFaceScope f (g_small);
+		uk_text_c (canvas, 0, y + 34, width, 18, "or click New \xE2\x80\x94 the capture is copied at once, saved only with Save As", dim);
 	}
 	void drawCountdown ()
 	{
 		int total = DELAYS[g_delay] * 100, el = (int) (kapi_get_ticks () - g_t0), left = (total - el + 99) / 100;
 		if (left < 1) left = 1;
 		int cx = width / 2, cy = height / 2 - 12, r = 46;
-		VPath ring; ring.arc (V (cx), V (cy), V (r), 0, 360, V (6)); ring.fill (canvas, wk_mix (C_BG, C_TEXT, 40));
+		VPath ring; ring.arc (V (cx), V (cy), V (r), 0, 360, V (6)); ring.fill (canvas, uk_mix (C_BG, C_TEXT, 40));
 		int ang = 360 - (int) ((long long) el * 360 / (total ? total : 1)); if (ang < 1) ang = 1;
 		VPath arc; arc.arc (V (cx), V (cy), V (r), 90, 90 + ang, V (6)); arc.fill (canvas, C_ACCENT);
 		char t[8]; snprintf (t, sizeof t, "%d", left);
-		{ WkFaceScope f (g_big); wk_text_c (canvas, cx - r, cy - r, 2 * r, 2 * r, t, C_TEXT, 2); }
+		{ UkFaceScope f (g_big); uk_text_c (canvas, cx - r, cy - r, 2 * r, 2 * r, t, C_TEXT, 2); }
 		char m[80]; snprintf (m, sizeof m, "%s in %d s  \xE2\x80\x94  Esc: cancel", g_mode == MODE_RECT ? "Choose a rectangle" : g_mode == MODE_WINDOW ? "Choose a window" : "The screen is taken", left);
-		wk_text_c (canvas, 0, cy + r + 14, width, 20, m, wk_mix (C_BG, C_TEXT, 170));
+		uk_text_c (canvas, 0, cy + r + 14, width, 20, m, uk_mix (C_BG, C_TEXT, 170));
 	}
 	void onDraw () override
 	{
@@ -575,10 +574,10 @@ public:
 		if (!g_base) { drawWelcome (); return; }
 		rescale ();
 		ox = (width - sw) / 2; oy = (height - sh) / 2;
-		wk_rbox (canvas, ox + 2, oy + 4, sw, sh, 2, 0, 0, 40);		// a soft shadow
+		uk_rbox (canvas, ox + 2, oy + 4, sw, sh, 2, 0, 0, 40);		// a soft shadow
 		Canvas src; src.adopt (scaled, sw, sh);
 		canvas.putOther (src, ox, oy, false);
-		wk_rline (canvas, ox - 1, oy - 1, sw + 2, sh + 2, 0, wk_mix (backdrop (), 0, 120), 160);
+		uk_rline (canvas, ox - 1, oy - 1, sw + 2, sh + 2, 0, uk_mix (backdrop (), 0, 120), 160);
 		if (live && live->n)						// the stroke being drawn, over the view
 		{
 			int s = (int) ((long long) V (live->size) * sw / g_dw); if (s < 12) s = 12;
@@ -613,17 +612,17 @@ public:
 				for (int x = ox; x < ox + sw; x++)
 					if (y < y0 || y >= y1 || x < x0 || x >= x1) { unsigned c = row[x]; row[x] = (c >> 1) & 0x7F7F7F; }
 			}
-			wk_rline (canvas, x0, y0, x1 - x0, y1 - y0, 0, 0xFFFFFF);
+			uk_rline (canvas, x0, y0, x1 - x0, y1 - y0, 0, 0xFFFFFF);
 			for (int i = 1; i < 3; i++)					// thirds, as a camera's
 			{
 				canvas.fillRect (x0 + (x1 - x0) * i / 3, y0, 1, y1 - y0, 0xC0C0C0);
 				canvas.fillRect (x0, y0 + (y1 - y0) * i / 3, x1 - x0, 1, 0xC0C0C0);
 			}
 			char t[32]; snprintf (t, sizeof t, "%d x %d", (toX (x1) - toX (x0)) / 16, (toY (y1) - toY (y0)) / 16);
-			WkFaceScope f (g_small);
-			int tw = wk_tw (t) + 14, ty = y1 + 6 + 20 <= height ? y1 + 6 : y0 - 26;
-			wk_rbox (canvas, x0, ty, tw, 20, 6, 0x202024, 0x202024, 215);
-			wk_text_c (canvas, x0, ty, tw, 20, t, 0xFFFFFF);
+			UkFaceScope f (g_small);
+			int tw = uk_tw (t) + 14, ty = y1 + 6 + 20 <= height ? y1 + 6 : y0 - 26;
+			uk_rbox (canvas, x0, ty, tw, 20, 6, 0x202024, 0x202024, 215);
+			uk_text_c (canvas, x0, ty, tw, 20, t, 0xFFFFFF);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -700,7 +699,7 @@ public:
 static void copy_doc (bool quiet)
 {
 	if (!g_doc) return;
-	if (!clip_set_image (g_doc, g_dw, g_dh)) { if (!quiet) wk_messagebox ("Screenshot", "The picture could not be copied: the clipboard service (clipd) is not there.", MB_OK); return; }
+	if (!clip_set_image (g_doc, g_dw, g_dh)) { if (!quiet) uk_messagebox ("Screenshot", "The picture could not be copied: the clipboard service (clipd) is not there.", MB_OK); return; }
 	g_copiedGen = g_docGen;
 	char t[80]; snprintf (t, sizeof t, "Copied to the clipboard (%d x %d)", g_dw, g_dh);
 	notify ("Screenshot", t);
@@ -723,7 +722,7 @@ static void save_as ()
 	kapi_mkdir ("SD:/Pictures"); kapi_mkdir (SHOTS_DIR);
 	char name[96]; stamp_name (name, sizeof name);
 	char path[300];
-	if (!wk_file_save (path, sizeof path, g_lastDir, name)) return;
+	if (!uk_file_save (path, sizeof path, g_lastDir, name, "PNG images|*.png|JPEG images|*.jpg;*.jpeg|BMP images|*.bmp|All files|*")) return;
 	if (!ends_with (path, ".png") && !ends_with (path, ".jpg") && !ends_with (path, ".jpeg") && !ends_with (path, ".bmp"))
 		strncat (path, ".png", sizeof path - strlen (path) - 1);
 	unsigned n = (unsigned) g_dw * g_dh;
@@ -736,7 +735,7 @@ static void save_as ()
 	delete[] px;
 	bool ok = b && kapi_save_file (path, b, len) == (int) len;
 	delete[] b;
-	if (!ok) { char m[360]; snprintf (m, sizeof m, "The picture could not be saved in %s.", path); wk_messagebox ("Screenshot", m, MB_OK); return; }
+	if (!ok) { char m[360]; snprintf (m, sizeof m, "The picture could not be saved in %s.", path); uk_messagebox ("Screenshot", m, MB_OK); return; }
 	snprintf (g_savedAs, sizeof g_savedAs, "%s", path);
 	g_dirty = false;
 	char *sl = strrchr (path, '/'); if (sl) { *sl = 0; snprintf (g_lastDir, sizeof g_lastDir, "%s", path); }
@@ -763,7 +762,7 @@ static void resize_root (int cw, int ch)
 	g_root->canvas.adopt (fb, cw, ch, stride);
 	g_root->width = cw; g_root->height = ch;
 	g_root->layout (); g_root->invalidate (true);
-	wk_decorate_window ();
+	uk_decorate_window ();
 	int x = g.x, y = g.y;
 	if (g.aw > 0)
 	{
@@ -842,9 +841,9 @@ static void ov_bright (Overlay &o, int x0, int y0, int w, int h)
 }
 static void ov_pill (Canvas &cv, int cx, int y, const char *s, unsigned bg, int alpha, int style = 0)
 {
-	int w = wk_tw (s, style) + 32;
-	wk_rbox (cv, cx - w / 2, y, w, 32, 16, bg, bg, alpha);
-	wk_text_c (cv, cx - w / 2, y, w, 32, s, 0xFFFFFF, style);
+	int w = uk_tw (s, style) + 32;
+	uk_rbox (cv, cx - w / 2, y, w, 32, 16, bg, bg, alpha);
+	uk_text_c (cv, cx - w / 2, y, w, 32, s, 0xFFFFFF, style);
 }
 static void ov_cursor (Canvas &cv, Overlay &o, bool arrow)
 {
@@ -877,13 +876,13 @@ static void ov_draw (Overlay &o)
 			int x0 = o.ax < o.mx ? o.ax : o.mx, y0 = o.ay < o.my ? o.ay : o.my;
 			int w = abs (o.mx - o.ax) + 1, h = abs (o.my - o.ay) + 1;
 			ov_bright (o, x0, y0, w, h);
-			wk_rline (cv, x0 - 1, y0 - 1, w + 2, h + 2, 0, 0xFFFFFF);
-			wk_rline (cv, x0 - 2, y0 - 2, w + 4, h + 4, 0, C_ACCENT, 160);
+			uk_rline (cv, x0 - 1, y0 - 1, w + 2, h + 2, 0, 0xFFFFFF);
+			uk_rline (cv, x0 - 2, y0 - 2, w + 4, h + 4, 0, C_ACCENT, 160);
 			char t[32]; snprintf (t, sizeof t, "%d x %d", w, h);
-			WkFaceScope f (g_small);
-			int tw = wk_tw (t, 2) + 16, ty = y0 + h + 8 + 22 <= o.H ? y0 + h + 8 : y0 - 30; if (ty < 0) ty = y0 + 6;
-			wk_rbox (cv, x0, ty, tw, 22, 6, 0x202024, 0x202024, 215);
-			wk_text_c (cv, x0, ty, tw, 22, t, 0xFFFFFF, 2);
+			UkFaceScope f (g_small);
+			int tw = uk_tw (t, 2) + 16, ty = y0 + h + 8 + 22 <= o.H ? y0 + h + 8 : y0 - 30; if (ty < 0) ty = y0 + 6;
+			uk_rbox (cv, x0, ty, tw, 22, 6, 0x202024, 0x202024, 215);
+			uk_text_c (cv, x0, ty, tw, 22, t, 0xFFFFFF, 2);
 		}
 		if (!overBar)							// a magnifier at the pointer
 		{
@@ -900,39 +899,39 @@ static void ov_draw (Overlay &o)
 			cv.fillRect (mx0 + (N / 2) * Z, my0, Z, M, 0); cv.fillRect (mx0, my0 + (N / 2) * Z, M, Z, 0);	// (the centre's cross, see-through)
 			for (int k = 0; k < N; k++) if (k != N / 2) { cv.fillRect (mx0 + (N / 2) * Z, my0 + k * Z, Z, Z, o.frozen[(long) (o.my - N / 2 + k < 0 ? 0 : o.my - N / 2 + k >= o.H ? o.H - 1 : o.my - N / 2 + k) * o.W + o.mx]); }
 			for (int k = 0; k < N; k++) if (k != N / 2) { cv.fillRect (mx0 + k * Z, my0 + (N / 2) * Z, Z, Z, o.frozen[(long) o.my * o.W + (o.mx - N / 2 + k < 0 ? 0 : o.mx - N / 2 + k >= o.W ? o.W - 1 : o.mx - N / 2 + k)]); }
-			wk_rline (cv, mx0 + (N / 2) * Z - 1, my0 + (N / 2) * Z - 1, Z + 2, Z + 2, 0, 0xFFFFFF);
-			wk_rline (cv, mx0 - 1, my0 - 1, M + 2, M + 2, 0, 0xFFFFFF);
+			uk_rline (cv, mx0 + (N / 2) * Z - 1, my0 + (N / 2) * Z - 1, Z + 2, Z + 2, 0, 0xFFFFFF);
+			uk_rline (cv, mx0 - 1, my0 - 1, M + 2, M + 2, 0, 0xFFFFFF);
 			char t[32]; snprintf (t, sizeof t, "%d, %d", o.mx, o.my);
-			WkFaceScope f (g_small);
-			wk_rbox (cv, mx0 - 1, my0 + M + 1, M + 2, 20, 0, 0x202024, 0x202024, 220);
-			wk_text_c (cv, mx0, my0 + M + 1, M, 20, t, 0xFFFFFF);
+			UkFaceScope f (g_small);
+			uk_rbox (cv, mx0 - 1, my0 + M + 1, M + 2, 20, 0, 0x202024, 0x202024, 220);
+			uk_text_c (cv, mx0, my0 + M + 1, M, 20, t, 0xFFFFFF);
 		}
 	}
 	else if (o.mode == MODE_WINDOW && o.hotWin >= 0)
 	{
 		kapi_win_info &w = o.wins[o.hotWin];
 		ov_bright (o, w.x, w.y, w.w, w.h);
-		for (int i = 0; i < 3; i++) wk_rline (cv, w.x - 2 - i, w.y - 2 - i, w.w + 4 + 2 * i, w.h + 4 + 2 * i, 6 + i, C_ACCENT, 255 - i * 50);
+		for (int i = 0; i < 3; i++) uk_rline (cv, w.x - 2 - i, w.y - 2 - i, w.w + 4 + 2 * i, w.h + 4 + 2 * i, 6 + i, C_ACCENT, 255 - i * 50);
 		char t[96]; snprintf (t, sizeof t, "%s  -  %d x %d", w.title[0] ? w.title : "Window", w.w, w.h);
 		int cy = w.y + w.h / 2 - 16; if (cy < 70) cy = 70;
 		ov_pill (cv, w.x + w.w / 2, cy, t, C_ACCENT, 235, 2);
 	}
 	// the bar: the mode, and close
-	wk_rbox (cv, o.barX, o.barY, o.barW, o.barH, 12, C_FIELD, C_FIELD, 245);
-	wk_rline (cv, o.barX, o.barY, o.barW, o.barH, 12, wk_mix (C_FIELD, 0, 110));
+	uk_rbox (cv, o.barX, o.barY, o.barW, o.barH, 12, C_FIELD, C_FIELD, 245);
+	uk_rline (cv, o.barX, o.barY, o.barW, o.barH, 12, uk_mix (C_FIELD, 0, 110));
 	int hot = ov_bar_item (o, o.mx, o.my);
 	static const int IC[3] = { IC_RECT, IC_WINDOW, IC_SCREEN };
 	for (int i = 0; i < 3; i++)
 	{
 		int bx = o.barX + 8 + i * 44, by = o.barY + 6;
-		if (i == o.mode) wk_rbox (cv, bx, by, 40, 36, 8, C_ACCENT, C_ACCENT);
-		else if (i == hot) wk_rbox (cv, bx, by, 40, 36, 8, wk_mix (C_FIELD, C_ACCENT, 50), wk_mix (C_FIELD, C_ACCENT, 50));
+		if (i == o.mode) uk_rbox (cv, bx, by, 40, 36, 8, C_ACCENT, C_ACCENT);
+		else if (i == hot) uk_rbox (cv, bx, by, 40, 36, 8, uk_mix (C_FIELD, C_ACCENT, 50), uk_mix (C_FIELD, C_ACCENT, 50));
 		draw_icon (cv, IC[i], bx + 11, by + 9, 18, i == o.mode ? C_SEL_TEXT : C_FIELD_TEXT, false);
 	}
 	int cx = o.barX + o.barW - 40;
-	cv.fillRect (cx - 4, o.barY + 10, 1, o.barH - 20, wk_mix (C_FIELD, 0, 60));
-	if (hot == 3) wk_rbox (cv, cx, o.barY + 6, 34, 36, 8, wk_mix (C_FIELD, 0xE04030, 70), wk_mix (C_FIELD, 0xE04030, 70));
-	wk_glyph (cv, WKG_CLOSE, cx + 17, o.barY + o.barH / 2, 12, C_FIELD_TEXT);
+	cv.fillRect (cx - 4, o.barY + 10, 1, o.barH - 20, uk_mix (C_FIELD, 0, 60));
+	if (hot == 3) uk_rbox (cv, cx, o.barY + 6, 34, 36, 8, uk_mix (C_FIELD, 0xE04030, 70), uk_mix (C_FIELD, 0xE04030, 70));
+	uk_glyph (cv, WKG_CLOSE, cx + 17, o.barY + o.barH / 2, 12, C_FIELD_TEXT);
 	// the hint
 	const char *h = o.mode == MODE_RECT ? "Drag a rectangle   -   Enter: the whole screen   -   Esc: cancel"
 		      : "Click a window   -   Tab: the next one   -   Esc: cancel";
@@ -1252,7 +1251,7 @@ static void m_clear ()
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);
+	ft_uikit_install ("DejaVu Sans", 13);
 	g_small = new FtTextFace; if (!g_small->open ("DejaVu Sans", 11)) { delete g_small; g_small = 0; }
 	g_big = new FtTextFace; if (!g_big->open ("DejaVu Sans", 40)) { delete g_big; g_big = 0; }
 	settings_load ();
@@ -1306,16 +1305,16 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New Capture", "^N", WK_CTRL ('N'), m_new);
+	menu.item ("New Capture", "^N", UK_CTRL ('N'), m_new);
 	menu.item ("New Rectangle", "", 0, m_rect);
 	menu.item ("New Window", "", 0, m_window);
 	menu.item ("New Full Screen", "", 0, m_full);
 	menu.separator ();
-	menu.item ("Save As...", "^S", WK_CTRL ('S'), m_save);
-	menu.item ("Copy", "^C", WK_CTRL ('C'), m_copy);
+	menu.item ("Save As...", "^S", UK_CTRL ('S'), m_save);
+	menu.item ("Copy", "^C", UK_CTRL ('C'), m_copy);
 	menu.menu ("Edit");
-	menu.item ("Undo", "^Z", WK_CTRL ('Z'), m_undo);
-	menu.item ("Redo", "^Y", WK_CTRL ('Y'), m_redo);
+	menu.item ("Undo", "^Z", UK_CTRL ('Z'), m_undo);
+	menu.item ("Redo", "^Y", UK_CTRL ('Y'), m_redo);
 	menu.separator ();
 	menu.item ("Clear the Drawing", "", 0, m_clear);
 	menu.menu ("Tools");

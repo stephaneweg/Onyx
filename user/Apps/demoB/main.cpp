@@ -2,8 +2,8 @@
 // demoB.c -- EL0 windowed demo: an animated colour field. Independent process from
 // demoA; both run at the same time (preemption) and the compositor shows both.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"		// wtk window decoration
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"		// uikit window decoration
 
 #define W 260
 #define H 200
@@ -17,7 +17,7 @@ int main (void)
 	{
 		return 1;
 	}
-	wtk::wk_decorate_window ();			// user-side window chrome
+	uikit::uk_decorate_window ();			// user-side window chrome
 
 	unsigned t = 0;
 	while (!should_exit ())

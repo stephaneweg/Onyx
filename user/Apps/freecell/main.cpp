@@ -8,11 +8,11 @@
 // The deals are numbered 1..32000 and are the same as Microsoft FreeCell's
 // (Game > Select Game...).
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
-#include "cards.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
+#include "../games/cards.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define GAP	10
 #define W	(GAP + 8 * (CARD_W + GAP))
@@ -25,30 +25,30 @@ using namespace wtk;
 struct Col { int n; signed char c[52]; };
 struct FState { Col col[8]; signed char cell[4]; signed char found[4]; int moves; };	// found = top rank (-1 none)
 
-// The theme's pieces (wtk/paint.h) round the table: a status bar of the face (an etched line on
+// The theme's pieces (uikit/paint.h) round the table: a status bar of the face (an etched line on
 // top), a note floating above it (a panel of the face), a message box (a title strip, the face,
 // an outline).
 static void status_bar (Canvas &c, const char *s)
 {
-	wk_rbox (c, 0, H - SBH, W, SBH, 0, wk_tone (C_FACE, 150), wk_tone (C_FACE, 120));
-	wk_etch_h (c, 0, H - SBH, W, C_FACE);
-	wk_text_l (c, GAP, H - SBH + 1, SBH - 1, s, C_TEXT);
+	uk_rbox (c, 0, H - SBH, W, SBH, 0, uk_tone (C_FACE, 150), uk_tone (C_FACE, 120));
+	uk_etch_h (c, 0, H - SBH, W, C_FACE);
+	uk_text_l (c, GAP, H - SBH + 1, SBH - 1, s, C_TEXT);
 }
 static void note (Canvas &c, int cx, int cy, const char *s)
 {
-	int w = wk_text_w (s) + 28, h = wk_fh () + 12, x = cx - w / 2, y = cy - h / 2;
-	wk_rbox (c, x, y, w, h, 7, wk_tone (C_FACE, 170), wk_tone (C_FACE, 126));
-	wk_rline (c, x, y, w, h, 7, wk_tone (C_FACE, 70), 220);
-	wk_text_c (c, x, y, w, h, s, C_TEXT);
+	int w = uk_text_w (s) + 28, h = uk_fh () + 12, x = cx - w / 2, y = cy - h / 2;
+	uk_rbox (c, x, y, w, h, 7, uk_tone (C_FACE, 170), uk_tone (C_FACE, 126));
+	uk_rline (c, x, y, w, h, 7, uk_tone (C_FACE, 70), 220);
+	uk_text_c (c, x, y, w, h, s, C_TEXT);
 }
 static void msgbox (Canvas &c, int cx, int cy, const char *title, const char *text)
 {
-	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	int th = uk_fh () + 10, w = uk_text_w (text) + 56, h = th + uk_fh () + 24;
 	int x = cx - w / 2, y = cy - h / 2;
-	wk_rbox (c, x, y, w, h, 8, C_FACE, C_FACE);
-	wk_title_strip (c, x + 1, y + 1, w - 2, th, title, 7);
-	wk_rline (c, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
-	wk_text_c (c, x, y + th, w, h - th, text, C_TEXT);
+	uk_rbox (c, x, y, w, h, 8, C_FACE, C_FACE);
+	uk_title_strip (c, x + 1, y + 1, w - 2, th, title, 7);
+	uk_rline (c, x, y, w, h, 8, UK_OUTLINE == 2 ? 0 : uk_tone (C_FRAME_ACTIVE, 44), 255);
+	uk_text_c (c, x, y + th, w, h - th, text, C_TEXT);
 }
 
 // Microsoft's deal: its C runtime rand () seeded with the game number.
@@ -271,7 +271,7 @@ public:
 	}
 	bool key (long k) override
 	{
-		if (k == WK_CTRL ('Z')) { doUndo (); return true; }
+		if (k == UK_CTRL ('Z')) { doUndo (); return true; }
 		return false;
 	}
 	void tick (unsigned) override
@@ -380,10 +380,10 @@ int main (void)
 	root.view = g_game;
 	static Menu menu;
 	menu.menu ("Game");
-	menu.item ("New Game",        "^N", WK_CTRL ('N'), on_new);
+	menu.item ("New Game",        "^N", UK_CTRL ('N'), on_new);
 	menu.item ("Select Game...",  "",   0,             on_select);
 	menu.item ("Restart Game",    "",   0,             on_restart);
-	menu.item ("Undo",            "^Z", WK_CTRL ('Z'), on_undo);
+	menu.item ("Undo",            "^Z", UK_CTRL ('Z'), on_undo);
 	menu.separator ();
 	menu.item ("Sound On / Off",  "",   0,             on_sound);
 	menu.publish ();

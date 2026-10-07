@@ -27,11 +27,16 @@
 #include <kern/kapitable.h>
 #include <kern/layout.h>
 #include <kern/elf.h>
+#include <kern/image.h>		// (v77) program images: the streaming loader, the shared image, preload
 #include <kern/gui/gimage.h>
 #include <kern/net.h>
 #include <kern/ipc.h>		// IpcNotify ("Network up")
+#include <kern/wsrv.h>		// (v89) the graphics server: the display, the input may be its own
 #include <kern/sound.h>		// SoundCoreMain (core 1)
 #include <kern/ramfs.h>		// RAM:, the RAM volume (system.ini ramfs=)
+#include <kern/procx.h>		// (v75) a process's argv / environment blocks
+#include <kern/ofile.h>		// (v75) OFileBootCleanup
+#include <kern/volume.h>		// (v93) the volumes: VolMountCard, VolPoll
 #ifdef ARM_ALLOW_MULTI_CORE
 #include <circle/multicore.h>
 #endif
@@ -150,6 +155,204 @@ static unsigned AppUserStack (const char *pPath)
 }
 
 //
+// (v77) A program's image (kern/image.h) from its file. The image's source over a FatFs file:
+// read where the loader asks (it reads forward: the headers, then each segment).
+//
+static int ProgramFileRead (void *pCtx, u64 ulOffset, void *pBuffer, unsigned nBytes)
+{
+	FIL *pFile = (FIL *) pCtx;
+	if (f_tell (pFile) != ulOffset && f_lseek (pFile, ulOffset) != FR_OK) return -1;
+	UINT nRead = 0;
+	if (f_read (pFile, pBuffer, nBytes, &nRead) != FR_OK) return -1;
+	return (int) nRead;
+}
+
+// The image of the program at pPath, a reference taken (ImageRelease). In memory already -- a
+// process of that path runs, or it is preloaded -- : nothing is read from the card, not even its
+// directory. Else the file is opened and streamed into a new image (the calling task reads,
+// yielding). nFlags: IMG_OPEN_PIN (a preload). -> 0 / -KAPI_E* (*ppWhy: for the log).
+static int ProgramImage (const char *pPath, unsigned nFlags, TImage **ppImage, unsigned *pHow,
+			 const char **ppWhy)
+{
+	int nErr = ImageOpen (pPath, 0, 0, nFlags, ppImage, pHow, ppWhy);
+	if (nErr != -KAPI_ENOENT) return nErr;		// (found, or its load by another task failed)
+
+	FIL File;
+	if (f_open (&File, pPath, FA_READ) != FR_OK)
+	{
+		*ppWhy = "cannot open the file";
+		return -KAPI_ENOENT;
+	}
+	TImgSource Src = { ProgramFileRead, &File, (u64) f_size (&File) };
+	// (the open yielded: another task may have made the image meanwhile -- then that one)
+	nErr = ImageOpen (pPath, 0, &Src, nFlags, ppImage, pHow, ppWhy);
+	f_close (&File);
+	return nErr;
+}
+
+// Is there a program at pPath: in memory (no card access), else on the card.
+static boolean SdFileExists (const char *pPath);
+static boolean ProgramExists (const char *pPath)
+{
+	return ImageList (pPath, 0, 0, 0) != 0 || SdFileExists (pPath);
+}
+
+//
+// A preload (kapi image_preload, /bin/preload): a kernel task loads the program's image and pins
+// it; the caller returned at once. A process started meanwhile waits for this load and shares it.
+//
+class CPreloadTask : public CTask
+{
+public:
+	CPreloadTask (const char *pPath)
+	:	CTask (EL0_KSTACK_SIZE)		// (the stack a process's own load runs on)
+	{
+		SetName ("preload");
+		unsigned n = 0;
+		for (; pPath[n] != '\0' && n < sizeof (m_Path) - 1; n++) m_Path[n] = pPath[n];
+		m_Path[n] = '\0';
+	}
+
+	void Run (void) override
+	{
+		unsigned nT0 = CTimer::GetClockTicks ();
+		TImage *pImage = 0;
+		unsigned nHow = 0;
+		const char *pWhy = "";
+		if (ProgramImage (m_Path, IMG_OPEN_PIN | IMG_OPEN_ANY, &pImage, &nHow, &pWhy) < 0)	// (a program or a library)
+		{
+			CLogger::Get ()->Write ("preload", LogError, "cannot load %s: %s", m_Path, pWhy);
+			return;
+		}
+		u64 nShared = 0, nPrivate = 0;
+		ImageSizes (pImage, &nShared, &nPrivate);
+		CLogger::Get ()->Write ("preload", LogNotice, "image %s: %s in %u ms, kept (%u KB shared)", m_Path,
+					nHow == IMG_HOW_LOADED ? "loaded" : "in memory already",
+					(CTimer::GetClockTicks () - nT0) / 1000, (unsigned) (nShared >> 10));
+		ImageRelease (pImage);		// (pinned: it stays)
+	}
+
+private:
+	char m_Path[IMG_PATH_MAX];
+};
+
+int ProgramPreload (const char *pCanonPath)		// (kern/applaunch.h: kapi_image_preload)
+{
+	struct kapi_image_info Info;
+	if (ImageList (pCanonPath, 0, &Info, 1) != 0 && (Info.flags & KAPI_IMG_KEPT)) return 0;	// (kept already)
+	if (!ProgramExists (pCanonPath)) return -KAPI_ENOENT;
+	return new CPreloadTask (pCanonPath) != 0 ? 0 : -KAPI_ENOMEM;
+}
+
+// (v83) A shared library for pAS (kern/applaunch.h: kapi_lib_open), on the calling task: in
+// memory already -- a process has it, or it is preloaded -- nothing is read from the card.
+int LibraryOpen (const char *pCanonPath, unsigned nMinVersion, CAddressSpace *pAS, u64 *pTable)
+{
+	unsigned nT0 = CTimer::GetClockTicks ();
+	TImage *pImage = 0;
+	unsigned nHow = 0;
+	const char *pWhy = "";
+	int nErr = ProgramImage (pCanonPath, IMG_OPEN_LIB, &pImage, &nHow, &pWhy);
+	if (nErr < 0)
+	{
+		CLogger::Get ()->Write ("lib", LogWarning, "cannot load %s: %s", pCanonPath, pWhy);
+		return nErr;
+	}
+	u64 ulBase = 0;
+	unsigned nRelocs = 0, nVersion = 0;
+	ImageLibInfo (pImage, &ulBase, &nRelocs, &nVersion);
+	if (nVersion < nMinVersion)
+	{
+		CLogger::Get ()->Write ("lib", LogWarning, "%s is version %u: version %u or later is asked for",
+					pCanonPath, nVersion, nMinVersion);
+		ImageRelease (pImage);
+		return -KAPI_ENOTSUP;
+	}
+	int nMapped = ImageMapLib (pImage, pAS, pTable);
+	if (nMapped == 1)
+	{
+		SyncDataAndInstructionCache ();		// (code written through the identity mapping)
+		u64 nShared = 0, nPrivate = 0;
+		ImageSizes (pImage, &nShared, &nPrivate);
+		CLogger::Get ()->Write ("lib", LogNotice,
+					"%s: %s in %u ms at 0x%lx, version %u, %u relocations, %u KB shared, %u KB private",
+					pCanonPath,
+					nHow == IMG_HOW_LOADED ? "loaded" : nHow == IMG_HOW_WAITED ? "shared after a wait" : "shared",
+					(CTimer::GetClockTicks () - nT0) / 1000, (unsigned long) ulBase, nVersion, nRelocs,
+					(unsigned) (nShared >> 10), (unsigned) (nPrivate >> 10));
+	}
+	else if (nMapped < 0)
+	{
+		CLogger::Get ()->Write ("lib", LogWarning, "cannot map %s (%d)", pCanonPath, nMapped);
+	}
+	ImageRelease (pImage);				// (ours: pAS holds the library from now on)
+	return nMapped < 0 ? nMapped : 0;
+}
+
+// ---- AppKit (kern/kapi_abi.h): the interface between the programs and the kernel -----------------------
+// SD:/lib/appkit.so is loaded when the first program starts, its table copied where every program's
+// stubs read it (APPKIT_TABLE_VA), and its code mapped into EVERY program from then on: no program
+// asks for it. The image is kept for good -- a newer file on the card is the next start's (the
+// table's addresses are in the page every program reads: an update of AppKit takes a restart).
+// Without it no program built for AppKit can call the kernel: its absence is said loudly in the log.
+#define APPKIT_PATH	"SD:/lib/appkit.so"
+static TImage *s_pAppKit = 0;
+static volatile int s_nAppKit = 0;			// 0 not tried, 2 being loaded, 1 in use, -1 none
+
+static boolean AppKitLoad (void)
+{
+	TImage *pImage = 0;
+	unsigned nHow = 0;
+	const char *pWhy = "";
+	if (ProgramImage (APPKIT_PATH, IMG_OPEN_LIB, &pImage, &nHow, &pWhy) < 0)
+	{
+		CLogger::Get ()->Write ("appkit", LogError, "cannot load " APPKIT_PATH " (%s): THE PROGRAMS CANNOT CALL THE KERNEL", pWhy);
+		return FALSE;
+	}
+	// its table: the libraries' header (version = the number of entries, size, init), then the entries
+	struct { u32 nVersion, nSize; u64 ulInit; } Head;
+	u64 *pEntries = 0;
+	boolean bOK = ImageLibTableRead (pImage, 0, &Head, sizeof Head) && Head.nVersion >= 1 && Head.nVersion <= APPKIT_TABLE_MAX
+		   && Head.nSize >= 16 + Head.nVersion * 8;
+	if (bOK)
+	{
+		pEntries = new u64[Head.nVersion];
+		bOK = pEntries != 0 && ImageLibTableRead (pImage, 16, pEntries, (u64) Head.nVersion * 8);
+	}
+	for (u32 i = 0; bOK && i < Head.nVersion; i++)		// (an entry: code of the libraries' arena)
+		if (pEntries[i] < USER_LIB_BASE || pEntries[i] >= USER_LIB_END) bOK = FALSE;
+	if (!bOK)
+	{
+		CLogger::Get ()->Write ("appkit", LogError, APPKIT_PATH " is not AppKit (its table): THE PROGRAMS CANNOT CALL THE KERNEL");
+		delete [] pEntries;
+		ImageRelease (pImage);
+		return FALSE;
+	}
+	El0InstallAppKit (pEntries, Head.nVersion);
+	CLogger::Get ()->Write ("appkit", LogNotice, APPKIT_PATH ": the programs' interface to the kernel (%u functions, kapi v%u)",
+				Head.nVersion, (unsigned) KAPI_ABI_VERSION);
+	delete [] pEntries;
+	s_pAppKit = pImage;					// (kept: every program maps this very image)
+	return TRUE;
+}
+// Called on a new program's task, before its image: AppKit in its address space.
+static boolean AppKitAttach (CAddressSpace *pAS)
+{
+	while (s_nAppKit == 2) CScheduler::Get ()->MsSleep (5);	// (another program's start is loading it)
+	if (s_nAppKit == 0)
+	{
+		s_nAppKit = 2;
+		s_nAppKit = AppKitLoad () ? 1 : -1;
+	}
+	if (s_nAppKit != 1) return TRUE;			// (none: said in the log; an older program still runs)
+	u64 ulTable = 0;
+	int n = ImageMapLib (s_pAppKit, pAS, &ulTable);
+	if (n < 0) return FALSE;
+	if (n == 1) SyncDataAndInstructionCache ();
+	return TRUE;
+}
+
+//
 // CUserProcessTask: one process = one task (plus its threads, kern/thread.h). The task builds the
 // process's address space, loads the ELF into it, maps the user stack, then enters the entry
 // point at EL0 (kern/el0.h) -- for good: the process calls the kernel by system calls through
@@ -169,11 +372,13 @@ public:
 	// the app's stdio + exit status work; pArgs becomes kapi_get_args.
 	CUserProcessTask (const char *pPath, const char *pName, CLogger *pLogger,
 			  CStream *pStdin = 0, CStream *pStdout = 0, CProcess *pProcess = 0,
-			  const char *pArgs = 0, const char *pCwd = 0, unsigned nParentPid = 0)
+			  const char *pArgs = 0, const char *pCwd = 0, unsigned nParentPid = 0,
+			  TProcInfo *pInfo = 0)
 	:	CTask (EL0_KSTACK_SIZE),	// the kernel stack (the user stack: Run)
 		m_pLogger (pLogger),
 		m_pStdin (pStdin), m_pStdout (pStdout), m_pProcess (pProcess),
-		m_nParentPid (nParentPid)
+		m_nParentPid (nParentPid),
+		m_pInfo (pInfo)			// (v75) its argv / environment (kern/procx.h), 0: none
 	{
 		SetName (pName);	// copies into CTask::m_Name (caller's may be transient)
 		unsigned p = 0;		// copy the path (the caller's string may be transient)
@@ -200,6 +405,7 @@ public:
 			if (m_pStdin  != 0) m_pStdin->Release ();
 			if (m_pStdout != 0) m_pStdout->Release ();
 			if (m_pProcess != 0) { m_pProcess->nStatus = -1; m_pProcess->bDone = TRUE; ProcessRelease (m_pProcess); }
+			ProcInfoFree (m_pInfo);
 			delete pAS;
 			return;
 		}
@@ -213,62 +419,69 @@ public:
 		pAS->SetArgs (m_Args);
 		if (m_Cwd[0] != '\0') pAS->SetCwd (m_Cwd);	// else keep the default root
 		pAS->SetParentPid (m_nParentPid);		// 0 = no parent (drawer launch)
+		ProcInfoInstall (pAS, m_pInfo);			// (v75: its own now; its record learns its pid)
+		m_pInfo = 0;
 
-		// Load the ELF from SD HERE -- on our own thread, deferred to our first schedule
-		// ("when we are switched to") -- so the launcher/shell wasn't blocked by the read.
-		// Read in chunks, yielding between them, so the compositor + the rest of the UI
-		// keep running while we load (the SD read is the slow part; we're single-core).
-		FIL File;
-		if (f_open (&File, m_Path, FA_READ) != FR_OK)
+		// Its program's image (v77, kern/image.h) HERE -- on our own thread, deferred to our first
+		// schedule ("when we are switched to") -- so the launcher/shell wasn't blocked by the
+		// read. In memory already (another process of the program runs, or it is preloaded): the
+		// card is not touched. Else the file is streamed into a new image, in chunks, yielding
+		// between them, so the compositor + the rest of the UI keep running while we load (the SD
+		// read is the slow part; we're single-core); a start meanwhile waits for this load.
+		if (!AppKitAttach (pAS))			// (the programs' interface to the kernel: kern/kapi_abi.h)
 		{
-			m_pLogger->Write (GetName (), LogError, "cannot open %s", m_Path);
+			m_pLogger->Write (GetName (), LogError, "out of memory mapping AppKit for %s", m_Path);
 			delete pAS;
 			return;
 		}
-		unsigned nSize = (unsigned) f_size (&File);
-		u8 *pELF = new u8[nSize];
-		if (pELF == 0)
+		unsigned nT0 = CTimer::GetClockTicks ();
+		TImage *pImage = 0;
+		unsigned nHow = 0;
+		const char *pWhy = "";
+		int nErr = ProgramImage (m_Path, 0, &pImage, &nHow, &pWhy);
+		if (nErr < 0)
 		{
-			f_close (&File);
-			m_pLogger->Write (GetName (), LogError, "out of memory loading %s", m_Path);
+			m_pLogger->Write (GetName (), LogError, "cannot load %s: %s", m_Path, pWhy);
 			delete pAS;
 			return;
 		}
-		unsigned nDone = 0; boolean bRead = TRUE;
-		while (nDone < nSize)
-		{
-			unsigned nChunk = nSize - nDone;
-			if (nChunk > 0x20000) nChunk = 0x20000;		// 128 KB, then yield
-			UINT nRead = 0;
-			if (f_read (&File, pELF + nDone, nChunk, &nRead) != FR_OK || nRead == 0)
-			{
-				bRead = FALSE; break;
-			}
-			nDone += nRead;
-			CScheduler::Get ()->Yield ();			// let the UI/compositor run
-		}
-		f_close (&File);
-		if (!bRead)
-		{
-			delete [] pELF;
-			m_pLogger->Write (GetName (), LogError, "read failed %s", m_Path);
-			delete pAS;
-			return;
-		}
+		unsigned nT1 = CTimer::GetClockTicks ();
 
+		// Mapped: the image's read-only pages (shared, not owned), our own writable ones.
 		u64 ulEntry = 0;
-		boolean bLoaded = LoadELF (pELF, nSize, pAS, &ulEntry);
-
-		// The file image is no longer needed: LoadELF copied the segments into the
-		// app's own frames. Free it now.
-		delete [] pELF;
-
+		boolean bLoaded = ImageMap (pImage, pAS, &ulEntry);
 		if (!bLoaded)
 		{
-			m_pLogger->Write (GetName (), LogError, "ELF load failed");
+			ImageRelease (pImage);			// (ours; pAS drops its own)
+			m_pLogger->Write (GetName (), LogError, "out of memory mapping %s", m_Path);
 			delete pAS;
 			return;
 		}
+		// Code was written via the identity mapping: make it executable at the user VA.
+		SyncDataAndInstructionCache ();
+		unsigned nT2 = CTimer::GetClockTicks ();
+
+		// The user stack's size: app.txt's, read once per image (a start from an image in memory
+		// reads nothing; a changed app.txt makes the image forget it: ImageFileChanged).
+		unsigned nUserStack = ImageStack (pImage);
+		if (nUserStack == 0)
+		{
+			nUserStack = AppUserStack (m_Path);
+			ImageSetStack (pImage, nUserStack);
+		}
+
+		// One line per start (the plan's "measure first"; `kmsg` shows it): where the time went.
+		{
+			u64 nShared = 0, nPrivate = 0;
+			ImageSizes (pImage, &nShared, &nPrivate);
+			m_pLogger->Write (GetName (), LogNotice,
+					  "image %s: %s in %u ms, mapped in %u ms (%u KB shared, %u KB private)",
+					  m_Path,
+					  nHow == IMG_HOW_LOADED ? "loaded" : nHow == IMG_HOW_WAITED ? "shared after a wait" : "shared",
+					  (nT1 - nT0) / 1000, (nT2 - nT1) / 1000,
+					  (unsigned) (nShared >> 10), (unsigned) (nPrivate >> 10));
+		}
+		ImageRelease (pImage);				// (ours: pAS holds the image from now on)
 
 		// Become this address space (kernel stays mapped + EL1-accessible).
 		SetUserData (pAS, TASK_USER_DATA_USER);
@@ -277,7 +490,6 @@ public:
 
 		// Its user stack in its own space, then EL0 -- for good: the process ends in the
 		// kernel (exit, a fault, a kill), on this task's stack, now only its kernel stack.
-		unsigned nUserStack = AppUserStack (m_Path);
 		if (!pAS->MapStack (USER_STACK_TOP, nUserStack))
 		{
 			m_pLogger->Write (GetName (), LogError, "out of memory for the stack");
@@ -300,6 +512,7 @@ private:
 	char	    m_Args[1024];
 	char	    m_Cwd[256];
 	unsigned    m_nParentPid;
+	TProcInfo  *m_pInfo;
 };
 
 //
@@ -328,17 +541,19 @@ class CCompositorTask : public CTask
 		// heavy GPU load (Ocarina of Time, n64emu) one got lost now and then, and the compositor
 		// waited for ever (the screen, the apps presenting, the sound feeder behind them: all stuck)
 		CrashLogCrumb (CRUMB_PRESENT, 2);
+		s_bPresenting = TRUE;				// (DisplayPresentIdle: the frame buffer's DMA is ours)
 		if (m_p2D->UpdateDisplayStart (x, y, w, h))
 		{
 			CrashLogCrumb (CRUMB_PRESENT, 3);
 			while (!m_p2D->UpdateDisplayPoll ()) CScheduler::Get ()->Yield ();
 		}
+		s_bPresenting = FALSE;
 		CrashLogCrumb (CRUMB_PRESENT, 0);
 	}
 
 public:
 	CCompositorTask (C2DGraphics *p2D, CWindowManager *pWM)
-	:	m_p2D (p2D), m_pWM (pWM), m_bFirst (TRUE)
+	:	m_p2D (p2D), m_pWM (pWM)
 	{
 		SetName ("compositor");
 	}
@@ -363,8 +578,6 @@ public:
 			g_nScreenWidth = nW; g_nScreenHeight = nH;
 			if (nResult != 0)
 				CLogger::Get ()->Write ("screen", LogWarning, "the firmware refused %dx%d: %dx%d", w, h, nW, nH);
-			m_pWM->OnScreenResized (nW, nH);
-			m_bFirst = TRUE;			// (the whole screen at the next frame)
 		}
 		s_nResizeResult = nResult;
 		DataMemBarrier ();
@@ -374,57 +587,32 @@ public:
 public:
 	static volatile int s_nResizeW, s_nResizeH, s_nResizeResult;
 	static volatile unsigned s_nResizeSeq, s_nResizeDone;
+	static volatile boolean s_bPresenting;		// a display DMA started by Present is not over
 
 	void Run (void) override
 	{
 		int nW = (int) m_p2D->GetWidth ();
 		int nH = (int) m_p2D->GetHeight ();
-		unsigned nLastGen = g_nScreenGen - 1, nLastTicks = 0;	// (first frame: always)
 		for (;;)
 		{
 			if (DebugConsoleActive ())
 			{
-				// An app exited: the debug console owns the display now. Stop
-				// presenting so we don't fight it for the framebuffer.
+				// An app exited: the debug console owns the display now.
 				CScheduler::Get ()->MsSleep (100);
 				continue;
 			}
-			if (m_pWM->FullscreenWindow () != 0)
+			// Nothing is composed here any more: the graphics server (Elegant, a user process:
+			// kern/wsrv.h) composes and sends its frames itself; a full-screen program's buffer
+			// is sent by kapi_present_fb. This task keeps what must be done from the kernel:
+			WsPoll ();				// the server ended: started again
+			m_pWM->CompositorAlive ();		// (the hang watchdog: this loop runs)
+			WsWatch ();				// the server silent too long: the display taken back
+			// a new screen size asked for (kapi_screen_set): done between two frames of the
+			// server's (its display DMA over), then the server is told
+			if (s_nResizeSeq != s_nResizeDone && !s_bPresenting && m_pWM->FullscreenWindow () == 0)
 			{
-				// A full-screen app owns the display (kapi_present_fb): pause.
-				CScheduler::Get ()->MsSleep (16);
-				continue;
-			}
-			if (s_nResizeSeq != s_nResizeDone) Resize (nW, nH);
-			// Recomposite only when something changed (g_nScreenGen), and only the damaged
-			// rectangles (ScreenDirtyRect): each is redrawn with the screen clipped to it and
-			// sent to the display alone. The whole screen when ScreenDirty said so, plus a
-			// safety refresh every 2 s (a missed damage source, the watchdog's frame count).
-			unsigned nGen = g_nScreenGen, nTicks = CTimer::Get ()->GetTicks ();
-			boolean bSafety = nTicks - nLastTicks >= 2 * HZ;
-			if (nGen != nLastGen || bSafety)
-			{
-				nLastGen = nGen;
-				TScreenDamage Damage;
-				ScreenTakeDamage (&Damage);
-				GImage Screen ((u32 *) m_p2D->GetBuffer (), nW, nH);
-				if (Damage.bFull || bSafety || m_bFirst)
-				{
-					nLastTicks = nTicks; m_bFirst = FALSE;
-					m_pWM->Composite (&Screen);
-					Present (0, 0, 0, 0);
-				}
-				else
-				{
-					for (int i = 0; i < Damage.n; i++)
-					{
-						Screen.SetClip (Damage.x0[i], Damage.y0[i], Damage.x1[i], Damage.y1[i]);
-						m_pWM->Composite (&Screen, i == 0);
-						Present ((unsigned) Damage.x0[i], (unsigned) Damage.y0[i],
-							 (unsigned) (Damage.x1[i] - Damage.x0[i]),
-							 (unsigned) (Damage.y1[i] - Damage.y0[i]));
-					}
-				}
+				Resize (nW, nH);
+				WsScreenResized (nW, nH);
 			}
 			CScheduler::Get ()->MsSleep (16);
 		}
@@ -433,12 +621,42 @@ public:
 private:
 	C2DGraphics    *m_p2D;
 	CWindowManager *m_pWM;
-	boolean		m_bFirst;
 };
 
 volatile int CCompositorTask::s_nResizeW = 0, CCompositorTask::s_nResizeH = 0, CCompositorTask::s_nResizeResult = 0;
 volatile unsigned CCompositorTask::s_nResizeSeq = 0, CCompositorTask::s_nResizeDone = 0;
+volatile boolean CCompositorTask::s_bPresenting = FALSE;
 static boolean s_bCompositor = FALSE;		// (the compositor runs: a resize can be asked for)
+
+// The compositor yields while its display DMA runs, holding the frame buffer's DMA (Circle's
+// CBcmFrameBuffer waits for it in a loop that never yields). A task that sent a frame by itself
+// meanwhile -- an app that takes the full screen while the desktop's last frame is still on its
+// way, kapi_present_fb -- waited there for ever, the compositor never run again to free it: core 0
+// stopped, the hang watchdog restarted the Pi. Such a task waits here first, yielding. Holds
+// nothing: a task killed while it waits just ends.
+void DisplayPresentIdle (void)
+{
+	while (CCompositorTask::s_bPresenting && CScheduler::IsActive ()) CScheduler::Get ()->Yield ();
+}
+
+// (kern/wsrv.h) A rectangle of the off-screen buffer sent by a task that is not the compositor: the
+// graphics server's present. As CCompositorTask::Present: the DMA started, then polled between yields.
+void DisplayPresentRect (unsigned x, unsigned y, unsigned w, unsigned h)
+{
+	DisplayPresentIdle ();
+	if (g_pGraphics == 0) return;
+	if (!g_bDisplayDma)
+	{
+		if (w == 0) g_pGraphics->UpdateDisplay (); else g_pGraphics->UpdateDisplay (x, y, w, h);
+		return;
+	}
+	CCompositorTask::s_bPresenting = TRUE;
+	if (g_pGraphics->UpdateDisplayStart (x, y, w, h))
+	{
+		while (!g_pGraphics->UpdateDisplayPoll ()) CScheduler::Get ()->Yield ();
+	}
+	CCompositorTask::s_bPresenting = FALSE;
+}
 
 int ScreenResizeRequest (int nW, int nH)
 {
@@ -503,6 +721,8 @@ static void TerminateOrphans (void)
 		if (s.pOrphan == 0) return;
 		VLOG ("proc", LogNotice, "orphan %s (parent pid %u gone) terminated",
 		      s.pOrphan->GetName (), s.nParent);
+		CAddressSpace *pAS = (CAddressSpace *) s.pOrphan->GetUserData (TASK_USER_DATA_USER);
+		if (pAS != 0) pAS->SetTermReason (KAPI_PROC_KILLED, -9);	// (v75: proc_wait)
 		CScheduler::Get ()->TerminateTask (s.pOrphan);	// (its whole process: terminated now)
 	}
 }
@@ -583,8 +803,8 @@ public:
 //     task, to see who holds the CPU or what the compositor waits on), and when an app
 //     stops pumping its window's events for 2 s while some are queued (a frozen app);
 //   * the app watchdog: that frozen app watched (where its task is, the return addresses on
-//     its stack) and a report rewritten every 2 s into SD:/etc/apphang.txt -- the compositor
-//     stalled too -- kept in SD:/etc/lastcrash.txt if the Pi restarts meanwhile (crashlog.h).
+//     its stack) and a report rewritten every 2 s into SD:/etc/apphang.txt, kept in
+//     SD:/etc/lastcrash.txt if the Pi restarts meanwhile (crashlog.h).
 // Each warning fires once per episode, with a matching "recovered" line.
 //
 struct TaskStateScan
@@ -611,6 +831,20 @@ static boolean TaskStateCollect (CTask *pTask, const char *pName, TTaskState Sta
 	return TRUE;
 }
 
+// The programs that have a queue of events (kern/gui/window.h CWindow: one a program whose windows
+// are the graphics server's), for the watchdog: found by their processes.
+#define WD_MAX	48
+struct TWdScan { CWindow *pWin[WD_MAX]; const char *pName[WD_MAX]; unsigned n; };
+static boolean WdCollect (CTask *pTask, const char *pName, TTaskState State, TTaskFlags, void *pParam)
+{
+	TWdScan *pScan = (TWdScan *) pParam;
+	if (State == TaskStateTerminated || pScan->n >= WD_MAX) return TRUE;
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	if (pAS == 0 || pAS->GetWindow () == 0 || pTask != pAS->GetMainTask ()) return TRUE;
+	pScan->pWin[pScan->n] = pAS->GetWindow (); pScan->pName[pScan->n] = pName != 0 ? pName : "?"; pScan->n++;
+	return TRUE;
+}
+
 class CGuiWatchdogTask : public CTask
 {
 public:
@@ -620,13 +854,12 @@ public:
 	{
 		static const char From[] = "gui";
 		unsigned nLastFrames = m_pWM->FrameCount (), nStallSec = 0;
-		unsigned nBeatFrames = nLastFrames, nBeatMouse = m_pWM->MouseCount ();
-		unsigned nBeatKeys = m_pWM->KeyCount (), nSec = 0;
+		unsigned nBeatFrames = nLastFrames, nSec = 0;
 		boolean bStalled = FALSE;
 		CWindow *pWatched = 0;			// (the app watchdog's: CrashLogWatchPid)
-		boolean bFrozen[WM_MAX_WINDOWS];
-		CWindow *pFrozenWin[WM_MAX_WINDOWS];
-		for (unsigned i = 0; i < WM_MAX_WINDOWS; i++) { bFrozen[i] = FALSE; pFrozenWin[i] = 0; }
+		boolean bFrozen[WD_MAX];
+		CWindow *pFrozenWin[WD_MAX];
+		for (unsigned i = 0; i < WD_MAX; i++) { bFrozen[i] = FALSE; pFrozenWin[i] = 0; }
 		static char Tasks[512];
 
 		for (;;)
@@ -649,27 +882,24 @@ public:
 				TaskStateScan s = {{0}, Tasks, sizeof Tasks, 0}; Tasks[0] = '\0';
 				CScheduler::Get ()->EnumerateTasks (TaskStateCollect, &s);
 				CLogger::Get ()->Write (From, LogWarning,
-					"compositor STALLED: no frame for %u s; tasks: %s", nStallSec, Tasks);
+					"the display task STALLED for %u s; tasks: %s", nStallSec, Tasks);
 			}
-			if (bStalled && nStallSec % 2 == 0 && nStallSec < 12 && !DebugConsoleActive ())
-			{
-				CrashLogAppHang ("the compositor produced no frame", 0, nStallSec, 0);	// (SD:/etc/apphang.txt)
-			}
-			if (nStallSec == 12 && !DebugConsoleActive ())	// (its tasks' states logged at 2 s)
-			{
-				CrashLogRequest ("the compositor produced no frame for 12 s");
-			}
-			else if (nStallSec == 0 && bStalled)
+			// (A warning only, since 2026-10-04: no report, no restart -- a slide show left on one
+			// slide was restarted as "no frame for 12 s". A frozen kernel is the hang watchdog's.)
+			if (nStallSec == 0 && bStalled)
 			{
 				bStalled = FALSE;
-				CLogger::Get ()->Write (From, LogWarning, "compositor recovered");
+				CLogger::Get ()->Write (From, LogWarning, "the display task runs again");
 				if (pWatched == 0) CrashLogAppRecovered ();
 			}
 
 			// 2. Frozen apps: events queued but not pumped for 2 s.
-			CWindow *pWins[WM_MAX_WINDOWS];
-			unsigned nWins = m_pWM->Snapshot (pWins, WM_MAX_WINDOWS);
-			for (unsigned i = 0; i < WM_MAX_WINDOWS; i++)
+			static TWdScan Scan;
+			Scan.n = 0;
+			CScheduler::Get ()->EnumerateTasks (WdCollect, &Scan);
+			CWindow **pWins = Scan.pWin;
+			unsigned nWins = Scan.n;
+			for (unsigned i = 0; i < WD_MAX; i++)
 			{
 				if (!bFrozen[i]) continue;
 				boolean bStill = FALSE;			// forget windows that went away
@@ -688,21 +918,21 @@ public:
 				unsigned nIdle = (nNow - pW->LastPumpTicks ()) / HZ;
 				boolean bNow = pW->QueuedEvents () > 0 && nIdle >= 2;
 				int k = -1;
-				for (unsigned i = 0; i < WM_MAX_WINDOWS; i++) if (bFrozen[i] && pFrozenWin[i] == pW) k = (int) i;
+				for (unsigned i = 0; i < WD_MAX; i++) if (bFrozen[i] && pFrozenWin[i] == pW) k = (int) i;
 				if (bNow && k < 0)
 				{
-					for (unsigned i = 0; i < WM_MAX_WINDOWS; i++)
+					for (unsigned i = 0; i < WD_MAX; i++)
 						if (!bFrozen[i]) { bFrozen[i] = TRUE; pFrozenWin[i] = pW; break; }
 					CLogger::Get ()->Write (From, LogWarning,
 						"app '%s' NOT PUMPING events for %u s (%u queued, %u dropped)%s",
-						pW->Title (), pW->LastPumpTicks () ? nIdle : nSec,
+						Scan.pName[j], pW->LastPumpTicks () ? nIdle : nSec,
 						pW->QueuedEvents (), pW->DroppedEvents (),
 						pWatched == 0 ? "; watched: a report in SD:/etc/apphang.txt every 2 s" : "");
 				}
 				else if (!bNow && k >= 0)
 				{
 					bFrozen[k] = FALSE; pFrozenWin[k] = 0;
-					CLogger::Get ()->Write (From, LogWarning, "app '%s' pumping again", pW->Title ());
+					CLogger::Get ()->Write (From, LogWarning, "app '%s' pumping again", Scan.pName[j]);
 					if (pW == pWatched) { pWatched = 0; CrashLogAppRecovered (); }
 				}
 				// The app watchdog: the first frozen app watched (where its task is, its
@@ -711,35 +941,33 @@ public:
 				{
 					if (pWatched == 0) { pWatched = pW; CrashLogWatchPid (pW->OwnerPid ()); }
 					if (nIdle % 2 == 0)
-						CrashLogAppHang (pW->Title (), pW->OwnerPid (),
+						CrashLogAppHang (Scan.pName[j], pW->OwnerPid (),
 								 pW->LastPumpTicks () ? nIdle : nSec, pW->QueuedEvents ());
 				}
 			}
 
 			// 3. Heartbeat.
 			if (g_nHeartbeatSec == 0 || nSec % g_nHeartbeatSec != 0) continue;
-			unsigned nMouse = m_pWM->MouseCount (), nKeys = m_pWM->KeyCount ();
 			TaskStateScan s = {{0}, 0, 0, 0};
 			CScheduler::Get ()->EnumerateTasks (TaskStateCollect, &s);
 			char Wins[256]; unsigned n = 0; Wins[0] = '\0';
 			for (unsigned j = 0; j < nWins && n + 48 < sizeof Wins; j++)
 			{
 				CString W;
-				W.Format ("%s%s[q%u d%u]", j ? " " : "", pWins[j]->Title (),
+				W.Format ("%s%s[q%u d%u]", j ? " " : "", Scan.pName[j],
 					  pWins[j]->QueuedEvents (), pWins[j]->DroppedEvents ());
 				for (const char *p = (const char *) W; *p && n + 1 < sizeof Wins; p++) Wins[n++] = *p;
 				Wins[n] = '\0';
 			}
 			CLogger::Get ()->Write (From, LogNotice,
-				"heartbeat up %us: %u fps, mouse +%u, keys +%u, tasks %u (ready %u, sleep %u, "
-				"block %u), windows %u: %s",
+				"heartbeat up %us: %u display turns/s, tasks %u (ready %u, sleep %u, "
+				"block %u), programs with windows %u: %s",
 				CTimer::Get ()->GetUptime (),
 				(nFrames - nBeatFrames) / g_nHeartbeatSec,
-				nMouse - nBeatMouse, nKeys - nBeatKeys,
 				s.nByState[0] + s.nByState[1] + s.nByState[2] + s.nByState[3] + s.nByState[4],
 				s.nByState[1], s.nByState[4], s.nByState[2] + s.nByState[3],
 				nWins, Wins);
-			nBeatFrames = nFrames; nBeatMouse = nMouse; nBeatKeys = nKeys;
+			nBeatFrames = nFrames;
 		}
 	}
 
@@ -875,9 +1103,7 @@ int KernelMidiDevices (void)
 	return n;
 }
 
-// Print Screen (USB usage 0x46): set by the input task when the key goes down (1; 2 with Alt), handled
-// by the main task's loop (PrintScreenPoll: the "screenshot" service told, else the app started).
-static volatile unsigned s_nPrintScreen;
+// (Print Screen is Elegant's, the graphics server's: it knows the window that has the keyboard.)
 
 class CInputTask : public CTask
 {
@@ -917,7 +1143,7 @@ public:
 		for (u8 nTable = 0; nTable <= K_CTRLTAB; nTable++)
 			for (u8 nPhy = 0; nPhy <= PHY_MAX_CODE; nPhy++)
 				g_KeyMap[nPhy][nTable] = pMap[nPhy * (K_CTRLTAB + 1) + nTable];
-		// Ctrl with the keys of - = + 0 (a browser's zoom: Jet Browser, docs/06 §38): Circle's
+		// Ctrl with the keys of - = + 0 (a browser's zoom: Jet Browser, docs/08): Circle's
 		// keymap uses the Ctrl column for any key but a letter, and the layouts leave it empty
 		// there -- nothing came. The empty Ctrl entry of the key whose own character (or, for
 		// '0', its Shift one: AZERTY) is one of them gets the keypad's key of that character,
@@ -969,6 +1195,8 @@ public:
 			Detect ();		// (cheap: a few name lookups; a keyboard plugged later is taken too)
 			DetectPads ();
 			DetectMidi ();
+			SoundPoll ();		// (v84: a USB audio device plugged / unplugged)
+			VolPoll ();		// (v93: a USB stick plugged in: mounted; pulled out: unmounted)
 			CScheduler::Get ()->MsSleep (100);
 		}
 	}
@@ -1096,15 +1324,11 @@ private:
 		case MouseEventMouseUp:   s_nButtons &= ~nButtons; break;
 		case MouseEventMouseMove: s_nButtons = nButtons;   break;	// full state
 		case MouseEventMouseWheel:					// scroll notch, no button change
-			if (CWindowManager::Get () != 0)
-				CWindowManager::Get ()->OnMouseWheel ((int) nPosX, (int) nPosY, nWheelMove);
+			WsInputPointer ((int) nPosX, (int) nPosY, s_nButtons, nWheelMove);
 			return;
 		default: break;
 		}
-		if (CWindowManager::Get () != 0)
-		{
-			CWindowManager::Get ()->OnMouse ((int) nPosX, (int) nPosY, s_nButtons);
-		}
+		WsInputPointer ((int) nPosX, (int) nPosY, s_nButtons, 0);	// (the graphics server's: kern/wsrv.h)
 	}
 
 	// USB HID modifier byte: bit0/4 Ctrl, bit1/5 Shift, bit2/6 Alt (left/right). Each
@@ -1133,23 +1357,22 @@ private:
 			       | ((ucMods & 0x22) ? MOD_SHIFT : 0)
 			       | ((ucMods & 0x44) ? MOD_ALT : 0);
 		CWindowManager *pWM = CWindowManager::Get ();
+		static unsigned s_nWsMods = 0;
+		if (WsDisplayOwned ())			// (the graphics server's: kern/wsrv.h)
+		{
+			if (nMods != s_nWsMods) WsInputMods (nMods);
+			s_nWsMods = nMods;
+			WsInputHeldUsb (Keys);		// (the kernel's window manager keeps them too: it
+		}					// answers kapi_key_held / kapi_get_modifiers)
 		if (pWM != 0 && pWM->Modifiers () != nMods) pWM->SetModifiers (nMods);
 		if (pWM != 0) pWM->SetUsbHeld (Keys);	// held keys (games, ABI v48)
-		static boolean s_bPrintHeld = FALSE;	// Print Screen: its press (not while it is held)
-		boolean bPrint = FALSE;
-		for (unsigned k = 0; k < 6; k++) if (Keys[k] == 0x46) bPrint = TRUE;
-		if (bPrint && !s_bPrintHeld) s_nPrintScreen = (nMods & MOD_ALT) ? 2 : 1;
-		s_bPrintHeld = bPrint;
 	}
 
 	static void KeyPressedStub (const char *pString)
 	{
 		// Route to the focused widget (a textbox); the WM edits its text + posts a
 		// TEXT_CHANGED event to the owning app.
-		if (CWindowManager::Get () != 0)
-		{
-			CWindowManager::Get ()->OnKey (pString);
-		}
+		WsInputKey (pString);			// (the graphics server's)
 	}
 
 	static void MouseRemoved (CDevice *, void *)
@@ -1255,6 +1478,7 @@ public:
 	void Run (void) override
 	{
 		g_pNet = m_pNet;		// publish (still down until associated)
+		NetTrialLoad ();		// (a one-boot trial of the driver's switches, sys/net.cpp)
 
 		m_pLogger->Write (FromKernel, LogNotice,
 				  "net: bringing up WLAN (firmware " WLAN_FIRMWARE_PATH ")");
@@ -1273,6 +1497,7 @@ public:
 
 		m_pLogger->Write (FromKernel, LogNotice,
 				  "net: associating (" WLAN_CONFIG_FILE ") ...");
+		NetWlanNames (WLAN_CONFIG_FILE);	// the driver's scan probes for the networks by name
 		if (!m_pWPA->Initialize ())
 		{
 			m_pLogger->Write (FromKernel, LogWarning,
@@ -1391,64 +1616,6 @@ static u8 *LoadFileFromSD (const char *pPath, unsigned *pSize)
 }
 
 // Scan a theme.txt buffer for a "wheelspeed=N" line; returns N, or 0 if absent/invalid.
-static int ParseWheelSpeed (const u8 *p, unsigned n)
-{
-	static const char key[] = "wheelspeed=";
-	const unsigned klen = sizeof key - 1;
-	for (unsigned i = 0; i + klen <= n; i++)
-	{
-		unsigned k = 0;
-		while (k < klen && p[i + k] == (u8) key[k]) k++;
-		if (k != klen) continue;
-		int v = 0; unsigned j = i + klen;
-		while (j < n && p[j] >= '0' && p[j] <= '9') v = v * 10 + (p[j++] - '0');
-		return v;
-	}
-	return 0;
-}
-
-// The mouse cursor, built in (it was SD:skins/mousecur.bin, SimpleOS's 12x19 arrow; the skins folder
-// is gone -- window chrome is drawn user-side): W white, B black, . transparent.
-static const char s_Cursor[19][13] = {
-	"W...........",
-	"WW..........",
-	"WBW.........",
-	"WBBW........",
-	"WBBBW.......",
-	"WBBBBW......",
-	"WBBBBBW.....",
-	"WBBBBBBW....",
-	"WBBBBBBBW...",
-	"WBBBBBBBBW..",
-	"WBBBBBBBBBW.",
-	"WBBBBBBBBBBW",
-	"WBBBBBBWWWWW",
-	"WBBBWBBW....",
-	"WBBW.WBBW...",
-	"WBW..WBBW...",
-	"WW....WBBW..",
-	"......WBBW..",
-	".......WW..."
-};
-
-static GImage *BuiltinCursor (void)
-{
-	const int nW = 12, nH = 19;
-	GImage *pImg = new GImage;
-	if (pImg == 0) return 0;
-	pImg->SetSize (nW, nH);
-	if (!pImg->IsValid ()) { delete pImg; return 0; }
-	for (int y = 0; y < nH; y++)
-	{
-		for (int x = 0; x < nW; x++)
-		{
-			char c = s_Cursor[y][x];
-			pImg->SetPixel (x, y, c == 'W' ? 0x00FFFFFF : c == 'B' ? 0x00000000 : GIMAGE_TRANSPARENT);
-		}
-	}
-	return pImg;
-}
-
 static boolean KeyEq (const char *s, const char *e, const char *pLit)
 {
 	while (s < e && *pLit != '\0' && *s == *pLit) { s++; pLit++; }
@@ -1550,6 +1717,12 @@ public:
 		else AppCoreMain (nCore);		// cores 2-3: app cores (kern/appcore.h)
 		for (;;) asm volatile ("wfe");
 	}
+	void IPIHandler (unsigned nCore, unsigned nIPI) override
+	{
+		// The network core tells core 0 that a socket's readiness changed (sys/net.cpp).
+		if (nIPI == IPI_NET_READY && nCore == 0) { NetReadyIPI (); return; }
+		CMultiCoreSupport::IPIHandler (nCore, nIPI);
+	}
 };
 static COnyxCores *s_pCores = 0;
 #endif
@@ -1561,8 +1734,9 @@ static boolean LaunchApp (const char *pName, CLogger *pLogger)
 	CString Path;
 	Path.Format ("SD:apps/%s.app/main", pName);
 
-	// Verify the file exists NOW (cheap) so a bad name fails here, not asynchronously.
-	if (!SdFileExists ((const char *) Path))
+	// Verify the program exists NOW (cheap; no card access when its image is in memory) so a bad
+	// name fails here, not asynchronously.
+	if (!ProgramExists ((const char *) Path))
 	{
 		pLogger->Write (FromKernel, LogError, "launch: not found %s", (const char *) Path);
 		return FALSE;
@@ -1570,9 +1744,13 @@ static boolean LaunchApp (const char *pName, CLogger *pLogger)
 
 	// Deferred load: hand the PATH to the task; it reads the ELF on its own thread when
 	// the scheduler first switches to it, so this caller (often the UI) returns at once.
-	CUserProcessTask *pTask = new CUserProcessTask ((const char *) Path, pName, pLogger);
+	// (v75: a desktop launch gets the system's default environment, kern/procx.h)
+	TProcInfo *pInfo = ProcInfoNew ((const char *) Path, 0, FALSE);
+	CUserProcessTask *pTask = new CUserProcessTask ((const char *) Path, pName, pLogger,
+							0, 0, 0, 0, 0, 0, pInfo);
 	if (pTask == 0)
 	{
+		ProcInfoFree (pInfo);
 		pLogger->Write (FromKernel, LogError, "launch: out of memory for %s", pName);
 		return FALSE;
 	}
@@ -1598,25 +1776,30 @@ boolean LaunchAppByName (const char *pName)
 // are set when the child exits.
 CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 			CStream *pStdin, CStream *pStdout, const char *pCwd,
-			unsigned nParentPid)
+			unsigned nParentPid, TProcInfo *pInfo)
 {
-	if (pElfPath == 0)
+	if (pElfPath == 0 || !ProgramExists (pElfPath))	// missing -> immediate failure (shell prints "not found")
 	{
+		ProcInfoFree (pInfo);
 		return 0;
 	}
-	if (!SdFileExists (pElfPath))		// missing -> immediate failure (shell prints "not found")
+	// (v75) its argv / environment (kern/procx.h): spawn_ex's, else the spawner's environment
+	if (pInfo == 0)
 	{
-		return 0;
+		pInfo = ProcInfoNew (pElfPath, pArgs, TRUE);
 	}
 
 	CProcess *pProc = new CProcess;
 	if (pProc == 0)
 	{
+		ProcInfoFree (pInfo);
 		return 0;
 	}
 	pProc->bDone = FALSE;
 	pProc->nStatus = 0;
 	pProc->nRef = 2;			// the caller's handle + the child (kern/handle.h)
+	pProc->nReason = KAPI_PROC_EXITED;	// (v75: the teardown sets both)
+	pProc->nPid = 0;
 
 	if (pStdin  != 0) pStdin->AddRef ();		// the child AS will release these
 	if (pStdout != 0) pStdout->AddRef ();
@@ -1624,11 +1807,12 @@ CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 	// Deferred load: the task reads pElfPath on its own thread. If the file is missing,
 	// it marks pProc done (status -1) so a waiter unblocks -- the failure surfaces async.
 	CUserProcessTask *pTask = new CUserProcessTask (pElfPath, pElfPath, CLogger::Get (),
-				      pStdin, pStdout, pProc, pArgs, pCwd, nParentPid);
+				      pStdin, pStdout, pProc, pArgs, pCwd, nParentPid, pInfo);
 	if (pTask == 0)
 	{
 		if (pStdin  != 0) pStdin->Release ();
 		if (pStdout != 0) pStdout->Release ();
+		ProcInfoFree (pInfo);
 		delete pProc;
 		return 0;
 	}
@@ -1682,7 +1866,7 @@ static void NameFromPath (const char *pPath, char *pOut, unsigned nCap)
 // stdio streams and no CProcess handle (nothing to wait on / free), so the task
 // just terminates and the reaper reclaims it. Returns TRUE if the ELF loaded.
 // (Only ELFs: the formats a runner executes -- .bas, .bax... -- are resolved in user space,
-// SD:/etc/runners.ini + user/launch.h, which starts the runner under the app's name.)
+// SD:/etc/runners.ini + user/Include/launch.h, which starts the runner under the app's name.)
 boolean ExecPath (const char *pElfPath, const char *pArgs, const char *pName)
 {
 	if (pElfPath == 0 || pElfPath[0] == '\0')
@@ -1692,12 +1876,19 @@ boolean ExecPath (const char *pElfPath, const char *pArgs, const char *pName)
 	char Name[40];
 	if (pName != 0) { unsigned k = 0; for (; pName[k] && k < sizeof Name - 1; k++) Name[k] = pName[k]; Name[k] = '\0'; }
 	else NameFromPath (pElfPath, Name, sizeof (Name));	// ("x.app/main" -> "x")
-	if (!SdFileExists (pElfPath))		// fail now if missing; body read is still deferred
+	if (!ProgramExists (pElfPath))		// fail now if missing; body read is still deferred
 	{
 		return FALSE;
 	}
-	// Deferred load (see CUserProcessTask): the task reads pElfPath on its own thread.
-	return new CUserProcessTask (pElfPath, Name, CLogger::Get (), 0, 0, 0, pArgs) != 0;
+	// Deferred load (see CUserProcessTask): the task reads pElfPath on its own thread. (v75: the
+	// caller's environment -- the system default when the kernel starts it, kern/procx.h.)
+	TProcInfo *pInfo = ProcInfoNew (pElfPath, pArgs, TRUE);
+	if (new CUserProcessTask (pElfPath, Name, CLogger::Get (), 0, 0, 0, pArgs, 0, 0, pInfo) == 0)
+	{
+		ProcInfoFree (pInfo);
+		return FALSE;
+	}
+	return TRUE;
 }
 
 // Log the .app subdirectories of /apps (validates FatFs directory enumeration;
@@ -1730,7 +1921,7 @@ static void EnumerateApps (CLogger *pLogger)
 
 // Boot the userland: the kernel just launches the init program (PID-1 style, no
 // arguments). init reads /etc/autostart and starts everything from there (see
-// user/bin/init.c), so all the launch policy lives in userland, not the kernel.
+// user/BinUtils/init.c), so all the launch policy lives in userland, not the kernel.
 //
 // Which ELF to run is the cmdline.txt option "init=" (e.g. init=SD:/bin/init);
 // it defaults to SD:bin/init when absent, so existing cards keep booting. This
@@ -1738,12 +1929,16 @@ static void EnumerateApps (CLogger *pLogger)
 // rebuilding the kernel.
 void CKernel::StartAutostart (void)
 {
+	ProcInfoBootInit ();			// (v75) the default environment: SD:/etc/environment
+	OFileBootCleanup ();			// (v75) files unlinked while open that a crash left
+
 	// cmdline netlog=1: the network's start written to SD:/netlog.txt (bin/netlog) -- for a Pi
 	// without a screen; started first, so that it has the kernel log from the bring-up on
 	if (m_Options.GetAppOptionDecimal ("netlog", 0) != 0 && !ExecPath ("SD:bin/netlog", ""))
 	{
 		m_Logger.Write (FromKernel, LogWarning, "netlog=1: cannot start SD:bin/netlog");
 	}
+	WsBootStart ();				// (kern/wsrv.h) a one-boot trial of the graphics server: before init
 	const char *pInit = m_Options.GetAppOptionString ("init", "SD:bin/init");
 	if (!ExecPath (pInit, ""))
 	{
@@ -1852,6 +2047,8 @@ boolean CKernel::Initialize (void)
 		// the rest of the system only uses core 0.
 		// netcore=1 (cmdline.txt): the network stack on core 3 (then not an app core)
 		g_bNetCore = m_Options.GetAppOptionDecimal ("netcore", 0) != 0;
+		// netstat=1: the net core's and the Wi-Fi driver's pace in the log, every 5 s
+		NetWlanOptions (m_Options.GetAppOptionDecimal ("netstat", 0) != 0);
 		// (diagnostics) dispdma=0: the compositor's copies to the screen synchronous (the
 		// asynchronous 2D DMA off); gpudirect=0: the GPU renders into its own buffer, copied
 		g_bDisplayDma = m_Options.GetAppOptionDecimal ("dispdma", 1) != 0;
@@ -1898,27 +2095,15 @@ boolean CKernel::Initialize (void)
 					CEMMCDevice::IsHighSpeed () ? "High Speed 50 MHz" : "25 MHz",
 					m_Options.GetAppOptionDecimal ("sdcache", 1) ? "on" : "off");
 
-			// the card's other partitions: each FAT / exFAT one mounted as SD1: .. SD3:
-			for (int i = 1; i <= 3; i++)
-			{
-				char Vol[8] = { 'S', 'D', (char) ('0' + i), ':', 0 };
-				if (f_mount (&m_FileSystemN[i - 1], Vol, 1) == FR_OK)
-				{
-					m_Logger.Write (FromKernel, LogNotice, "SD card partition %d mounted (%s)", i + 1, Vol);
-				}
-				else
-				{
-					f_mount (0, Vol, 0);	// (not FAT, or no such partition)
-				}
-			}
+			// the card's other partitions: each FAT / exFAT one mounted as SD1: .. SD3: (v93: the
+			// volumes are sys/volume.cpp's, which also mounts the USB sticks as they come)
+			VolMountCard (&m_FileSystem);
 
 			CrashLogClockRestore ();	// the last time seen (no clock on the Pi) until NTP
 			CrashLogReport ();		// the previous session, if it froze: SD:/etc/lastcrash.txt
 			ReadSystemConfig ();		// SD:system.ini -> verbose flag, timezone, etc.
 			m_Timer.SetTimeZone (g_nTimeZoneMin);	// local time for the clock/agenda
 
-			// Mouse cursor: built in (BuiltinCursor), a GImage the compositor blits.
-			m_WindowManager.SetCursor (BuiltinCursor ());
 		}
 		else
 		{
@@ -1948,37 +2133,17 @@ boolean CKernel::Initialize (void)
 	return bOK;
 }
 
-// Print Screen pressed (s_nPrintScreen): the Screenshot app captures -- the running one is told through
-// its "screenshot" service ("now", or "window <id>" with Alt: the window that has the keyboard), else
-// it is started ("--now" / "--window <id>"). docs/screenshot/README.md.
-static void PrintScreenPoll (void)
-{
-	unsigned nWhat = s_nPrintScreen;
-	if (nWhat == 0) return;
-	s_nPrintScreen = 0;
-	unsigned nId = 0;
-	CWindowManager *pWM = CWindowManager::Get ();
-	if (nWhat == 2 && pWM != 0)
-	{
-		CWindow *List[WM_MAX_WINDOWS];
-		unsigned n = pWM->Snapshot (List, WM_MAX_WINDOWS);
-		for (unsigned i = 0; i < n; i++) if (pWM->HasKeyFocus (List[i])) nId = List[i]->Id ();
-	}
-	CString Msg, Args;
-	if (nId != 0) { Msg.Format ("window %u", nId); Args.Format ("--window %u", nId); }
-	else { Msg = "now"; Args = "--now"; }
-	if (!IpcPost ("screenshot", 1, (const char *) Msg, Msg.GetLength () + 1))
-	{
-		ExecPath ("SD:apps/screenshot.app/main", (const char *) Args, "screenshot");
-	}
-}
 
 TShutdownMode CKernel::Run (void)
 {
 	m_Logger.Write (FromKernel, LogNotice, "Onyx -- a lean OS on Circle (codename Zircon)");
 	m_Logger.Write (FromKernel, LogNotice,
 			"Multi-process kernel + GUI, apps at EL0 calling the kernel by system calls");
-	m_Logger.Write (FromKernel, LogNotice, "Compiled on " __DATE__ " " __TIME__);
+	{
+		extern const char g_BuildStamp[], g_BuildRev[];		// buildstamp.cpp: this image's
+		m_Logger.Write (FromKernel, LogNotice, "Built on %s (%s), kapi v%u", g_BuildStamp, g_BuildRev,
+				(unsigned) KAPI_ABI_VERSION);
+	}
 
 	CMachineInfo *pInfo = CMachineInfo::Get ();
 	m_Logger.Write (FromKernel, LogNotice, "Running on %s, %lu MB RAM",
@@ -1998,20 +2163,6 @@ TShutdownMode CKernel::Run (void)
 		{
 			EnumerateApps (&m_Logger);
 
-			// Restore the saved scroll-wheel speed (theme editor persists it).
-			unsigned nThemeSize = 0;
-			u8 *pTheme = LoadFileFromSD ("SD:/etc/theme.txt", &nThemeSize);
-			if (pTheme != 0)
-			{
-				int nSpeed = ParseWheelSpeed (pTheme, nThemeSize);
-				if (nSpeed > 0)
-				{
-					m_WindowManager.SetWheelSpeed (nSpeed);
-					m_Logger.Write (FromKernel, LogNotice,
-							"wheel speed: %d lines/notch", nSpeed);
-				}
-				delete [] pTheme;
-			}
 		}
 
 		// Reaper: reclaims ended apps; it also blinks the ACT LED (headless sign of
@@ -2100,8 +2251,8 @@ TShutdownMode CKernel::Run (void)
 	for (unsigned nTick = 0; ; nTick++)
 	{
 		m_Scheduler.MsSleep (50);
-		PrintScreenPoll ();			// (Print Screen: the Screenshot app)
 		if (nTick % 5 == 4) NetCorePoll ();	// the network core's notices (IpcNotify), every 250 ms
+		if (nTick % 5 == 4) NetTrialPoll ();	// (a trial of the Wi-Fi driver's switches ends by a restart)
 	}
 
 	return ShutdownHalt;

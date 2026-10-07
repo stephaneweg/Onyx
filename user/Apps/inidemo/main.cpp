@@ -1,13 +1,12 @@
 //
-// inidemo.c -- demonstrates the shared .ini config reader (applib.h). It loads
+// inidemo.c -- demonstrates the shared .ini config reader (AppKit's: appkit.h). It loads
 // config.ini from its OWN app folder (SD:apps/inidemo.app/config.ini via
 // kapi_app_dir) and shows the values: strings via app_ini_get, and an int via
 // app_ini_get_int (drawn as a bar that long). Edit config.ini + reboot to see it
 // change -- no rebuild needed.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
-#include "applib.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
 
 #define W	380
 #define H	250
@@ -33,15 +32,15 @@ static void draw_kv (int x, int y, const char *label, const char *val, unsigned 
 	int p = 0;
 	ax_strcat (line, sizeof (line), &p, label);
 	ax_strcat (line, sizeof (line), &p, val);
-	wtk::draw_text (fb, W, H, x, y, line, c);
+	uikit::draw_text (fb, W, H, x, y, line, c);
 }
 
 int main (void)
 {
 	fb = kapi_create_window (W, H, "inidemo");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
-	using namespace wtk;
+	uikit::uk_decorate_window ();			// (reads the theme: the palette)
+	using namespace uikit;
 	Canvas cv; cv.adopt (fb, W, H);
 	cv.clear (C_BG);
 
@@ -51,11 +50,11 @@ int main (void)
 
 	if (n < 0)
 	{
-		wtk::draw_text (fb, W, H, x, y, "config.ini not found in app folder", wk_mix (C_TEXT, 0x00E03C3C, 150), 1, 2);
+		uikit::draw_text (fb, W, H, x, y, "config.ini not found in app folder", uk_mix (C_TEXT, 0x00E03C3C, 150), 1, 2);
 	}
 	else
 	{
-		wtk::draw_text (fb, W, H, x, y, "config.ini values:", C_TEXT, 1, 2); y += fh + 6;
+		uikit::draw_text (fb, W, H, x, y, "config.ini values:", C_TEXT, 1, 2); y += fh + 6;
 
 		draw_kv (x, y, "greeting = ", app_ini_get (0, "greeting", "(none)"), C_TEXT); y += fh + 3;
 		draw_kv (x, y, "[app] name = ", app_ini_get ("app", "name", "(none)"), C_TEXT); y += fh + 3;
@@ -65,7 +64,7 @@ int main (void)
 		int bw = app_ini_get_int ("display", "barwidth", 100);
 		char num[16]; itoa (bw, num);
 		draw_kv (x, y, "[display] barwidth (int) = ", num, C_TEXT); y += fh + 4;
-		wk_rbox (cv, x, y, bw, 18, 5, wk_tone (C_ACCENT, 168), wk_tone (C_ACCENT, 104));	// visual proof of the int parse
+		uk_rbox (cv, x, y, bw, 18, 5, uk_tone (C_ACCENT, 168), uk_tone (C_ACCENT, 104));	// visual proof of the int parse
 	}
 
 	while (!should_exit ())

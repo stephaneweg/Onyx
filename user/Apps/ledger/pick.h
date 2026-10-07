@@ -160,27 +160,27 @@ public:
 	enum { ROWS = 10 };
 	const Sug *items; int n, hot, first, rowH;			// (first: the first row shown)
 	SugOwner *owner;
-	SugList () : Widget (0, 0, 300, 100), items (0), n (0), hot (0), first (0), rowH (wk_fh () + 8), owner (0), m_down (false)
+	SugList () : Widget (0, 0, 300, 100), items (0), n (0), hot (0), first (0), rowH (uk_fh () + 8), owner (0), m_down (false)
 	{ transparent = true; hidden = true; catchOutside = true; }
 	int rows () const { return imin (n, ROWS); }
 	void ensure () { if (hot < first) first = hot; if (hot >= first + ROWS) first = hot - ROWS + 1; first = iclamp (first, 0, imax (0, n - ROWS)); }
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
-		int sbw = n > ROWS ? WK_SBW + 2 : 0;
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
+		int sbw = n > ROWS ? UK_SBW + 2 : 0;
 		int codeW = 0;
 		for (int i = 0; i < n; i++)
 		{
 			const char *tab = items[i].text; while (*tab && *tab != '\t') tab++;
-			if (*tab) { char c[64]; int k = 0; for (const char *q = items[i].text; q < tab && k < 63; q++) c[k++] = *q; c[k] = '\0'; codeW = imax (codeW, wk_text_w (c, 2)); }
+			if (*tab) { char c[64]; int k = 0; for (const char *q = items[i].text; q < tab && k < 63; q++) c[k++] = *q; c[k] = '\0'; codeW = imax (codeW, uk_text_w (c, 2)); }
 		}
 		codeW = imin (codeW, width / 2);
 		for (int r = 0; r < ROWS && first + r < n; r++)
 		{
 			int i = first + r, y = 4 + r * rowH;
 			bool h = i == hot;
-			if (h) wk_hilite (canvas, 4, y, width - 8 - sbw, rowH, 5, true);
+			if (h) uk_hilite (canvas, 4, y, width - 8 - sbw, rowH, 5, true);
 			unsigned ink = h ? C_SEL_TEXT : C_FIELD_TEXT, dim = h ? C_SEL_TEXT : field_dim ();
 			const char *s = items[i].text, *tab = s; while (*tab && *tab != '\t') tab++;
 			char a[128]; int k = 0; for (const char *q = s; q < tab && k < 127; q++) a[k++] = *q; a[k] = '\0';
@@ -192,7 +192,7 @@ public:
 			}
 			else text_fit_l (c, 0, y, c.w, rowH, a, ink, a[0] == '(' ? 1 : 0);
 		}
-		if (sbw) { WkThumb t = wk_thumb (n, ROWS, first, height - 8); wk_draw_vscroll (canvas, width - WK_SBW - 4, 4, WK_SBW, height - 8, t, C_FIELD); }
+		if (sbw) { UkThumb t = uk_thumb (n, ROWS, first, height - 8); uk_draw_vscroll (canvas, width - UK_SBW - 4, 4, UK_SBW, height - 8, t, C_FIELD); }
 	}
 	int rowAt (int mx, int my) const
 	{
@@ -204,6 +204,12 @@ public:
 	{
 		if (hidden) return false;
 		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
+		if (m_bar.held || in)					// its scroll bar: the bar's own, never the row's under it
+		{
+			long p = first;
+			if (m_bar.mouse (in ? mx : -1, my, bl, width - UK_SBW - 6, UK_SBW + 6, 4, height - 8, n, ROWS, &p))
+			{ first = (int) p; m_down = false; invalidate (true); return true; }
+		}
 		if (!in)
 		{
 			// a press elsewhere (but on the field): closed, the press going on to what is there
@@ -228,6 +234,7 @@ public:
 	void close () { if (!hidden) { hidden = true; if (parent) parent->invalidate (true); } }
 private:
 	bool m_down;
+	UkBarDrag m_bar;
 };
 
 // Where a widget is within an ancestor (its parents' scroll counted).
@@ -355,8 +362,8 @@ public:
 	void drawExtra () override
 	{
 		int bw = 18, bx = width - bw - 3, bh = height - 6;
-		wk_raised (canvas, bx, 3, bw, bh, 3, C_BUTTON, disabled ? WK_DISABLED : m_btnHot ? WK_HOT : WK_NORMAL);
-		wk_glyph (canvas, WKG_CHEV_DOWN, bx + bw / 2, height / 2, 8, C_BUTTON_TEXT);
+		uk_raised (canvas, bx, 3, bw, bh, 3, C_BUTTON, disabled ? UK_DISABLED : m_btnHot ? UK_HOT : UK_NORMAL);
+		uk_glyph (canvas, WKG_CHEV_DOWN, bx + bw / 2, height / 2, 8, C_BUTTON_TEXT);
 	}
 	void edited () override
 	{

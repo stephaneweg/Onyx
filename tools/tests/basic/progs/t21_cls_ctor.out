@@ -1,0 +1,1 @@
+COMPILE ERROR line 10: The constructor must call BASE.new (the parent's has parameters): B.NEW

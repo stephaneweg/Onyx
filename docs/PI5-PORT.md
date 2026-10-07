@@ -6,6 +6,27 @@
 > search for the symbol when a reference is off. Items marked **(verify)** could not be settled
 > without a Pi 5 on the desk.
 >
+> **Since this plan (2026-10-02): every app runs at EL0 (kapi v74).** What it changes here:
+> - **B1 (§5.1) is half done**: the user side reads the core number from **`TPIDRRO_EL0`**, which
+>   the kernel sets per core (`El0CoreInit`, `kernel/sys/el0.cpp`; `kapi__core` in `user/kapi.h`,
+>   `on_app_core` in `user/Runtime/libc/onyx_syscalls.c`), and every app was rebuilt: board-independent,
+>   no app change for the Pi 5. Left: the kernel's own `ThisCore ()`
+>   (`kernel/compat/circle/sched/scheduler.h`, `mpidr & 3`) and the `nCore` passed to
+>   `El0CoreInit` — take them from `CMultiCoreSupport::ThisCore ()` (Aff1 on the Pi 5). An app
+>   that reads `MPIDR_EL1` itself is emulated by the kernel (`EmulateMrs`, the real value).
+> - **The EL0 paths are new code to bring up on the A76**: `kernel/arch/aarch64/el0.S` (entry /
+>   exit on the task's kernel stack, `TPIDR_EL1` = its top, per core), `el0blob.S` (the user-side
+>   `memcpy` / event pump), the per-core setup `El0CoreInit` (`CNTKCTL_EL1`, `SCTLR_EL1`
+>   UCI/UCT/DZE/nTWE/nTWI, `TPIDRRO_EL0`, `PMUSERENR_EL0`), the ID register emulation (it decodes both an
+>   undefined instruction and `EC 0x18`, the trap of a core with FEAT_IDST — **(verify)** which
+>   the A76 gives). The EL0 table and code page sit at `KAPI_TABLE_VA` / `KAPI_STUBS_VA` and move
+>   with the user window under policy (B) (§5.2); the threads' user stacks at 32 GB too.
+> - **§10 (PAN / UAO)**: the kernel works in EL0 pages directly (the A72 has no PAN); with PAN on
+>   the Pi 5 the fault-safe copies (`kernel/arch/aarch64/uaccess.S`) and every place that touches
+>   an app buffer would need `LDTR`/`STTR` or PAN toggled. `SCTLR_EL1.UCT` is already set.
+> - **§13**: `hangtest` is gone (an app can no longer freeze the machine); test the crash log with
+>   a kernel fault instead; `el0test` and `faulttest` test the EL0 paths.
+>
 > **Decision already taken:** Onyx may ship **two binary distributions**, one for the Pi 4
 > (`kernel8-rpi4.img`) and one for the Pi 5 (`kernel_2712.img`), each with its own apps build if
 > needed. The kapi ABI stays append-only *within* each distribution.
@@ -60,7 +81,7 @@ almost entirely **on the Onyx side**.
 
 | # | Problem | Where | Phase |
 |---|---|---|---|
-| B1 | **Core number read from Aff0**: `mpidr & 3` is 0 on every A76 core → the four per-core schedulers collide, the app cores and the network core misbehave, user spinlocks call `yield` from an app core | `kernel/compat/circle/sched/scheduler.h:207-212`, `user/kapi.h:462-468` (`kapi__core`, used by `kapi_lock` ~`:476-484`), `user/libc/onyx_syscalls.c:107-112` (`on_app_core`) | 2 |
+| B1 | **Core number read from Aff0**: `mpidr & 3` is 0 on every A76 core → the four per-core schedulers collide, the app cores and the network core misbehave, user spinlocks call `yield` from an app core | `kernel/compat/circle/sched/scheduler.h:207-212`, `user/kapi.h:462-468` (`kapi__core`, used by `kapi_lock` ~`:476-484`), `user/Runtime/libc/onyx_syscalls.c:107-112` (`on_app_core`) | 2 |
 | B2 | **High RAM registered twice on an 8 GB Pi 5**: `SetupHighMemAbove4G`'s fallback maps [4 GB, 8 GB) again although seg0 already covers [1 GB, 8 GB) → two allocators hand out the same frames | `circle/lib/memory64.cpp:181-296` (the Onyx patch, commit `24842f27`) | 2 |
 | B3 | **16 GB Pi 5: RAM above 8 GB lands in the user VA window** [8 GB, 60 GB) (code 8 GB, heap 10 GB, canvas 12 GB, kapi table 14 GB, stack top 16 GB) | `kernel/include/kern/layout.h:40-106`, `kapi_abi.h:19` | 2 |
 | B4 | **The V3D driver pokes Pi 4 addresses** (`ARM_IO_BASE + 0xC00000` is not the V3D on the Pi 5; `PM_GRAFX`/ASB do not exist) and connects `GIC_SPI(74)` → a fault or an assert the first time an app calls a GPU kapi | `kernel/sys/v3d.cpp:43-90, 196-265, 300-307` | 2 (guard), 6 (port) |
@@ -74,16 +95,16 @@ almost entirely **on the Onyx side**.
 | Crash record not kept across a reboot: the crash area is taken only from RAM above `MEM_HIGHMEM_END` (8 GB on the Pi 5) | `circle/lib/memory64.cpp:247-253, 276-280`, `kernel/sys/crashlog.cpp:283` | 3 |
 | Wi-Fi: the Pi 5 needs **other firmware file names**, and the **device tree** (the MAC is read from `/axi/mmc@1100000/wifi@1`) | `circle/addon/wlan/ether4330.c:300-306`, `bcm4343.cpp:61-79`, `sdcard/firmware/` | 1, 5 |
 | 16-bpp screen unless `framebuffer_depth=32` + `framebuffer_ignore_alpha=1` (Onyx writes alpha 0) | `sdcard/config.txt:47-50` | 1 |
-| GPU apps: `gpu_program` / `gpu_render2/3` take **V3D 4.2 QPU binaries** from apps | `kapi_abi.h:377-398, 941-962`, `user/v3d/*`, `user/Apps/gcemu/gxv3d.h` | 6 |
+| GPU apps: `gpu_program` / `gpu_render2/3` take **V3D 4.2 QPU binaries** from apps | `kapi_abi.h:377-398, 941-962`, `user/Libs/v3d/*`, `user/Apps/gcemu/gxv3d.h` | 6 |
 
 ### Carries over unchanged (board-independent)
 
 Trap frame, vectors, FP/NEON save, the syscall path and the preemption trampoline
 (`kernel/arch/aarch64/`), the per-process address spaces (64 KB granule, L2/L3 math, 8-bit ASIDs,
 TLBI, teardown — only the VA *constants* depend on the RAM), the scheduler logic, threads, futex
-tick, IPC, VFS, streams, the ELF loader, the window manager and wtk, the kapi table mechanism, USB
+tick, IPC, VFS, streams, the ELF loader, the window manager and uikit, the kapi table mechanism, USB
 HID / gamepads / MIDI, TCP/IP, NTP, FatFs and the Onyx FatFs patches, the FTP / telnet / VNC / rdpd
-daemons, BASIC, NetSurf, Writer, Ledger, the emulators' CPU cores **and the GameCube JIT** (plain
+daemons, BASIC, NetSurf, Letters, Ledger, the emulators' CPU cores **and the GameCube JIT** (plain
 ARMv8.0 code; it flushes with `dc cvau`/`ic ivau` using `CTR_EL0` line sizes). **Every timing path
 reads `CNTFRQ_EL0`** (no 54 MHz or 1.5 GHz constant in code). **A72-tuned binaries run unchanged
 on the A76.** Onyx uses no FIQ (it only masks it). The panic screen, ACT LED, watchdog and
@@ -165,7 +186,7 @@ nMPIDR >>= 8`). Onyx has three copies of its own:
 1. **Kernel** — `kernel/compat/circle/sched/scheduler.h:207-212` (`ThisCore()`, used by `IsActive()`
    `:204`, `scheduler.cpp:113` `m_nCore`, `:1048` `Get()`, `net.cpp:678`): add the `>> 8` under
    `RASPPI >= 5`, or simply call `CMultiCoreSupport::ThisCore ()`.
-2. **User side** — `user/kapi.h:462-468` (`kapi__core`) and `user/libc/onyx_syscalls.c:107-112`
+2. **User side** — `user/kapi.h:462-468` (`kapi__core`) and `user/Runtime/libc/onyx_syscalls.c:107-112`
    (`on_app_core`, which tests `(m & 0xFF) != 0`). These are **inline in every app**, so the fix
    must work on both boards with the same binary. Two options:
    - **Board-independent decode:** `(m >> ((m >> 24) & 1 ? 8 : 0)) & 3` (MPIDR.MT, bit 24,
@@ -193,7 +214,7 @@ In the fork's `circle/lib/memory64.cpp` (Onyx commit `24842f27`, `docs/05-CIRCLE
   a guard so RAM above 8 GB is never mapped or handed out.
 - **Policy (B), 16 GB:** map [8 GB, 16 GB) for the kernel, move the user window above it
   (`layout.h:50-106`: `USER_VA_BASE`, heap, canvas, wallpaper, surfaces, `KAPI_TABLE_VA`, code
-  arena, fullscreen canvas, stack), `user/user.ld`, `user/kapi.h:16`, keep everything below the
+  arena, fullscreen canvas, stack), `user/Runtime/user.ld`, `user/kapi.h:16`, keep everything below the
   AXI I/O at 64 GB. Apps rebuilt for the Pi 5.
 - `layout.h:41-52`: `KERNEL_IDENTITY_END` (4 GB) and `USER_VA_CEILING` ("T0SZ_64GB hard limit on
   RPi 4") become per-board (`RASPPI`). On the Pi 5, Circle uses `IPS_1TB` + `T0SZ_128GB`
@@ -307,9 +328,9 @@ becomes the RP1 PWM driver on GPIO12/13 — silent on a stock board.
 | CPU triangle clipper (near plane, 4× guard band) | `kernel/include/kern/v3d_clip.h` | 148 |
 | Texture layouts LT / UBLINEAR / UIF | `kernel/include/kern/v3d_tiling.h` | 59 |
 | Kernel shaders (hand-written QPU asm: `VS_CLIP`, `CS_CLIP`, `FS_COLOR`, `FS_TEX`, `FS_COLOR_AT`, `FS_TEX_AT`) | `kernel/sys/v3d_shaders.qasm` → `.inc` | 288 → 267 |
-| Run-time QPU builder (fills Mesa `v3d_qpu_instr`, `devinfo.ver = 42`) | `user/v3d/qpu.h` / `qpu.cpp` | 99 / 109 |
-| Stock shaders (passVS / passCS / flatFS / varyFS / texFS) | `user/v3d/shaders.cpp` | 144 |
-| GameCube TEV → QPU generator | `user/v3d/gxtev.cpp` (+ `.h`, `gxtev_ref.h`) | 728 |
+| Run-time QPU builder (fills Mesa `v3d_qpu_instr`, `devinfo.ver = 42`) | `user/Libs/v3d/qpu.h` / `qpu.cpp` | 99 / 109 |
+| Stock shaders (passVS / passCS / flatFS / varyFS / texFS) | `user/Libs/v3d/shaders.cpp` | 144 |
+| GameCube TEV → QPU generator | `user/Libs/v3d/gxtev.cpp` (+ `.h`, `gxtev_ref.h`) | 728 |
 | Host assembler / CLI, QPU simulator | `tools/qpu/qpulib.c`, `qpuasm.c`, `qpusim.cpp` | 447, 69, 435 |
 | Vendored Mesa packer (MIT) | `tools/qpu/mesa/broadcom/qpu/*` | 4883 |
 | Users | `teapot` (v52), `gpudemo` (v53), BASIC 3D / `planets3d`, `n64emu` (`gpu_render`), `gcemu` (v61-v63: TEV shaders, `gpu_vbuf`, `gpu_render3`), `bin/v3dprog` | |
@@ -419,7 +440,7 @@ The 64×64 RGBA8 + 32-bit Z tile still fits the 7.1 tile buffer (16 KB colour + 
 6. **Kernel shaders:** a v71 copy `v3d_shaders71.qasm` → `.inc`: `ldunif` → rf0 (or `ldunifrf.rfN`),
    `recip` as an ALU op, `ldvary` C in rf0, W from rf3, r0-r3 → spare rf. Drop the v52 Mesa
    binaries on 7.1 (`gpu_draw` can use `VS_CLIP` / `FS_COLOR`).
-7. **Builder and stock shaders:** in `user/v3d/qpu.h`, in v71 mode map `r0..r5` onto reserved rf
+7. **Builder and stock shaders:** in `user/Libs/v3d/qpu.h`, in v71 mode map `r0..r5` onto reserved rf
    registers (e.g. rf4-rf9); `I::sfu(op, dst, src)` emits a magic write on 4.2, an ALU op on 7.1;
    `ldunif()` → rf0; `ldvary(d)` → C in rf0. `shaders.cpp` then ports with small edits.
 8. **`gxtev` (the most work):** a version-aware register budget (rf0 implicit, rf1-3 payload,
@@ -468,7 +489,7 @@ In rough order of value for effort.
 1. **CPU speed, for free** (~2-3× per core). What gains:
    - gcemu: the machine core needs ≤ 20 ms a field and takes ~21 ms on a throttled Pi 4
      (`HANDOFF.md:566-590`) → full speed with margin; fastmem and the second JIT tier become less
-     urgent. Re-measure with the PMU counters (`user/gc/gc.h:103-131`, architectural events) before
+     urgent. Re-measure with the PMU counters (`user/Emulators/gc/gc.h:103-131`, architectural events) before
      trusting the Pi 4 tuning notes.
    - n64emu (interpreter, OoT 50.9 fps / 12.3 ms a frame on the Pi 4): "recompiler?" (`IDEAS.md:45`)
      becomes optional.
@@ -477,7 +498,7 @@ In rough order of value for effort.
      software 3D fallback.
    - Cheap re-tunes: `voronoy` `div = 1` instead of 2 (`voronoy/main.cpp:41`); Koton's
      `kapi_sound_config (128, 2)` "low latency" (`PERFORMANCE.md` §3).
-2. **TLS with the crypto extensions:** `user/tls/Makefile:24-35` disables `MBEDTLS_AESCE_C` and the
+2. **TLS with the crypto extensions:** `user/Libs/tls/Makefile:24-35` disables `MBEDTLS_AESCE_C` and the
    `*_USE_A64_CRYPTO_*` paths ("CRUCIAL for the Pi 4"), and `onyx_tls.hpp:180-183` prefers
    ChaCha20-Poly1305. On the Pi 5, enable AES-CE / SHA-CE (compile-time in a Pi-5 build, or
    run-time detection) and prefer AES-GCM: much faster HTTPS in NetSurf, lisa, llm, wget.
@@ -500,14 +521,14 @@ In rough order of value for effort.
    (`IDEAS.md:48`). SDR104 is not in Circle (`SD_CLOCK_100/208` defined but unused).
 8. **ARMv8.2 in the kernel and a Pi-5-tuned userland:**
    - **LSE atomics** (`swpal`, `casal`, `ldadd`) for spinlocks, the futex, the netcore mailbox,
-     `emucore` `ec_xchg` (`user/emucore.h:59-67`), `kapi.h:455`: modest gains under contention; in
+     `emucore` `ec_xchg` (`user/Emulators/emucore.h:59-67`), `kapi.h:455`: modest gains under contention; in
      a shared binary select at run time (a CPU-feature word, §11).
    - **RCpc (`ldapr`)** for the emucore ring acquire loads.
-   - **CRC32 instructions** (ARMv8.0 already, unused): `user/img/pngsave.hpp:52-58`,
-     `user/n64/n64_bus.cpp:39`, zlib.
+   - **CRC32 instructions** (ARMv8.0 already, unused): `user/Kits/imagekit/img/pngsave.hpp:52-58`,
+     `user/Emulators/n64/n64_bus.cpp:39`, zlib.
    - **PAN / UAO** for `docs/EL0-PROTECTED-MODE.md`: with PAN, stray kernel accesses to user pages
      fault while `LDTR`/`STTR` copies still work. The A72 lacks PAN → keep it optional (feature
-     check). Also add `SCTLR_EL1.UCT` to that doc's §4.8 table: `user/gc/gc_jit.cpp:54` reads
+     check). Also add `SCTLR_EL1.UCT` to that doc's §4.8 table: `user/Emulators/gc/gc_jit.cpp:54` reads
      `CTR_EL0`, which traps at EL0 without it.
    - **The JIT flush:** skip the `dc cvau` loop when `CTR_EL0.IDC = 1` and the `ic ivau` loop when
      `DIC = 1` (`gc_jit.cpp:52-61`) — **(verify)** the BCM2712's values.
@@ -541,19 +562,19 @@ ABI table in `docs/02`, `docs/03` and the `KAPI_ABI_VERSION` history (CLAUDE.md 
 ## 12. Text, docs and tools to update
 
 - **Compiler flags** `-mcpu=cortex-a72` (fine for a shared userland; switch only for a Pi-5-tuned
-  build): `user/Makefile:5, 60, 64, 79, 176, 182`, `user/bin/Makefile:16, 20, 27`,
-  `user/doom/Makefile:13, 16`, `user/netsurf/Makefile:44`, `user/netsurf/netsurf-app.mk:47, 147,
-  183-187, 246`, `user/img/Makefile:25, 27`, `user/tls/Makefile:15, 17`, `user/stk/Makefile:29`,
+  build): `user/Makefile:5, 60, 64, 79, 176, 182`, `user/BinUtils/Makefile:16, 20, 27`,
+  `user/Ports/doom/Makefile:13, 16`, `user/netsurf/Makefile:44`, `user/netsurf/netsurf-app.mk:47, 147,
+  183-187, 246`, `user/Kits/imagekit/img/Makefile:25, 27`, `user/Libs/tls/Makefile:15, 17`, `user/Ports/stk/Makefile:29`,
   `user/nsfb/Makefile:27`, `third_party/libwebp-1.4.0/src/**/Makefile`,
   `tools/tests/koton/{synth,plug,engine,ai}_run.sh`.
 - **The QPU toolchain** pinned to 42: `tools/qpu/qpulib.c:19-21`, `tools/qpu/qpusim.cpp:17`,
-  `user/v3d/qpu.cpp:19`.
+  `user/Libs/v3d/qpu.cpp:19`.
 - **Pi-4 strings and comments:** `kernel/kernel.h:14, 65` and `kernel/kernel.cpp:1244, 1653-1654`
   ("A72", "1.5 GHz", "~1500 MHz on a Pi 4"), `kernel/sys/crashlog.cpp:283, 420`,
   `kernel/kernel.cpp:503`, `user/Apps/irc/main.cpp:908` (CTCP VERSION "Raspberry Pi 4"),
   `user/Apps/lisa/main.cpp:349`, `user/Apps/teapot/main.cpp:2`, `user/Apps/memmon/main.cpp:114`
-  ("Above 4G"), `user/Apps/soundconf/main.cpp:94`, `user/tls/onyx_tls.hpp:13, 180`,
-  `user/tls/README.md:57-58`, `kapi_abi.h:661-666, 670, 819`, `user/kapi.h:303, 563`,
+  ("Above 4G"), `user/Apps/soundconf/main.cpp:94`, `user/Libs/tls/onyx_tls.hpp:13, 180`,
+  `user/Libs/tls/README.md:57-58`, `kapi_abi.h:661-666, 670, 819`, `user/kapi.h:303, 563`,
   `tools/screenshot/render.py:361`, `tools/tests/desktop_sim/shots.sh:136`,
   `user/Apps/koton/ui/audio.h:138` and `ui/chrome.h:161, 465` ("CORE 2" hard-coded even when
   another core was acquired).
@@ -562,7 +583,7 @@ ABI table in `docs/02`, `docs/03` and the `KAPI_ABI_VERSION` history (CLAUDE.md 
   `./configure -r 5`), `docs/04-USER-GUIDE.md` (the Pi 5 card, sound outputs, Ethernet, the power
   button), `docs/05-CIRCLE-CHANGES.md` (the high-memory patch reworked, `:588`),
   `docs/02-KERNEL-INTERNALS.md` §15 (V3D 7.1), `docs/daw/PERFORMANCE.md`, the website
-  (`docs/website/index.html`, "Pi 5 not supported"), then `python docs/build_docs.py`.
+  (`docs/website/index.html`, "Pi 5 not supported" — no longer in this tree), then `python docs/build_docs.py`.
 
 ## 13. Test plan
 
@@ -570,14 +591,15 @@ ABI table in `docs/02`, `docs/03` and the `KAPI_ABI_VERSION` history (CLAUDE.md 
 |---|---|---|
 | Build | both images build from a clean tree; `sizecheck` passes; the Pi 4 image is unchanged byte-for-byte except intended changes | `make`, `make BOARD=pi5` |
 | Pi 4 regression | after every phase, the Pi 4 still boots and passes the usual tests (B1 and the memory rework touch both) | the Pi-4 workflow (telnet, FTP, vncdotool) |
-| Boot | serial log to the desktop; `ps` shows the per-core tasks; `coretest`, `threadtest`, `futextest`, `ringtest` pass (B1) | debug UART, `user/bin/*test` |
+| Boot | serial log to the desktop; `ps` shows the per-core tasks; `coretest`, `threadtest`, `futextest`, `ringtest` pass (B1) | debug UART, `user/BinUtils/*test` |
 | Memory | `meminfo` reports the RAM once; a long NetSurf + gcemu session with no corruption; `heaptest` | `memmon`, `kapi_meminfo` |
 | Display | 32 bpp colours right; compositor DMA on and `dispdma=0`; the resolution change | VNC screenshots |
 | Sound | HDMI tone; Koton at 256 × 2 and 384 × 2 without underruns; the emulators' audio | `soundconf`, Koton meter |
 | Network | Ethernet DHCP + FTP deploy speed; Wi-Fi with HDMI connected | `ftp`, `ping`, `netstat` |
 | GPU | the §9.3 ladder | `v3dprog`, `gpudemo`, gcemu |
 | Thermal | 30 min of gcemu with the Active Cooler: clock stays at 2.4 GHz, the fan switches | `CrashLogPower` log |
-| Crash log | a forced fault, watchdog reboot, `lastcrash.txt` kept | `hangtest` |
+| Crash log | a forced fault, watchdog reboot, `lastcrash.txt` kept | (`hangtest`, removed in v74: a kernel-side test is needed) |
+| EL0 | system calls, app faults killed, ID register reads, threads and app cores at EL0 | `el0test`, `faulttest` |
 
 ## 14. Open questions (verify on hardware)
 

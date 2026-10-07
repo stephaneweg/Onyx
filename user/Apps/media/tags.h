@@ -12,10 +12,13 @@
 
 #include "decode.h"
 
+#include "audiokit/audiokit.h"
+#include "Apps/fmtracker/fms.h"		// (an FM Song's title, author and length)
+
 namespace media {
 
-enum { FMT_MP3, FMT_OGG, FMT_FLAC, FMT_WAV, FMT_MIDI, FMT_N };
-static const char *const FMT_NAME[FMT_N] = { "MP3", "OGG", "FLAC", "WAV", "MIDI" };
+enum { FMT_MP3, FMT_OGG, FMT_FLAC, FMT_WAV, FMT_MIDI, FMT_FMS, FMT_N };	// (the numbers are in the library's file: append only)
+static const char *const FMT_NAME[FMT_N] = { "MP3", "OGG", "FLAC", "WAV", "MIDI", "FMS" };
 
 static inline int format_of (const char *path)
 {
@@ -25,6 +28,7 @@ static inline int format_of (const char *path)
 	if (!strcasecmp (e, "flac")) return FMT_FLAC;
 	if (!strcasecmp (e, "wav")) return FMT_WAV;
 	if (!strcasecmp (e, "mid") || !strcasecmp (e, "midi") || !strcasecmp (e, "kar") || !strcasecmp (e, "rmi")) return FMT_MIDI;
+	if (!strcasecmp (e, "fms")) return FMT_FMS;			// (an FM Song: FM Tracker's)
 	return -1;
 }
 
@@ -390,7 +394,7 @@ static void from_path (const char *path, Tags *t)
 }
 
 // Everything known of the file at path -> false: not a song of ours / unreadable.
-static bool read_tags (const char *path, Tags *t)
+static bool read_tags_impl (const char *path, Tags *t)
 {
 	t->clear ();
 	t->fmt = format_of (path);
@@ -402,6 +406,22 @@ static bool read_tags (const char *path, Tags *t)
 		scopy (t->title, m.title, sizeof t->title); tidy (t->title);
 		t->durMs = (int) (m.length * 1000 / SOUND_RATE) + 1000;
 		scopy (t->genre, "MIDI", sizeof t->genre);
+	}
+	else if (t->fmt == FMT_FMS)				// an FM Song: its title, its author, its rows' time
+	{
+		Src s; if (!s.open (path) || s.size > (4u << 20)) return false;
+		unsigned char *b = new unsigned char[(size_t) s.size];
+		static FmsSong sg; sg.npat = 0;
+		bool ok = s.read (b, (size_t) s.size) == s.size && fms_parse (b, (int) s.size, &sg);
+		delete[] b;
+		if (!ok) { fms_clear (&sg); return false; }
+		scopy (t->title, sg.title, sizeof t->title); tidy (t->title);
+		scopy (t->artist, sg.author, sizeof t->artist); tidy (t->artist);
+		long long fr = 0;
+		for (int p = 0; p < sg.npat; p++) fr += (long long) sg.pat[p].rows * sg.pat[p].speed * (SOUND_RATE / 20);
+		t->durMs = (int) (fr * 1000 / SOUND_RATE) + 1000;
+		scopy (t->genre, "FM", sizeof t->genre);
+		fms_clear (&sg);
 	}
 	else
 	{
@@ -417,6 +437,26 @@ static bool read_tags (const char *path, Tags *t)
 	from_path (path, t);
 	return true;
 }
+
+// The Media Player asks AudioKit (ak_tags_read: this very code, compiled once into SD:/lib/audiokit.so
+// -- audiokit/akcore.cpp defines MEDIA_TAGS_IMPL).
+#ifdef MEDIA_TAGS_IMPL
+static bool read_tags (const char *path, Tags *t) { return read_tags_impl (path, t); }
+#else
+static bool read_tags (const char *path, Tags *t)
+{
+	t->clear ();
+	struct ak_tags a;
+	if (!ak_tags_read (path, &a)) return false;
+	scopy (t->title, a.title, sizeof t->title); scopy (t->artist, a.artist, sizeof t->artist);
+	scopy (t->albumArtist, a.album_artist, sizeof t->albumArtist); scopy (t->album, a.album, sizeof t->album);
+	scopy (t->genre, a.genre, sizeof t->genre);
+	t->year = a.year; t->track = a.track; t->disc = a.disc; t->durMs = a.duration_ms;
+	t->coverOff = (u64) a.cover_offset; t->coverLen = a.cover_length;
+	t->fmt = format_of (path);
+	return t->fmt >= 0;
+}
+#endif
 
 } // namespace media
 

@@ -7,14 +7,13 @@
 #ifndef _mail_app_h
 #define _mail_app_h
 
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 #include "Apps/mail/ui.h"
 #include "Apps/mail/model.h"
 #include "mail/html_ft.h"
-#include "img/imgload.hpp"
-#include "notify.h"
-#include "clipboard.h"
-#include "fileassoc.h"
+#include "imagekit/img/imgload.hpp"
+#include "appkit/appkit.h"
+#include "systemkit/systemkit.h"
 
 namespace mailapp {
 
@@ -29,13 +28,13 @@ static bool g_showContacts;
 static unsigned g_tick;
 
 // the colours (from the theme: Mail follows the desktop's)
-static unsigned col_side () { return wk_mix (C_BG, C_FIELD, 80); }
+static unsigned col_side () { return uk_mix (C_BG, C_FIELD, 80); }
 static unsigned col_list () { return C_FIELD; }
-static unsigned col_dim () { return wk_mix (C_FIELD, C_FIELD_TEXT, 140); }
-static unsigned col_faint () { return wk_mix (C_FIELD, C_FIELD_TEXT, 90); }
-static unsigned col_line () { return wk_mix (C_FIELD, C_FIELD_TEXT, 30); }
-static unsigned col_sel () { return wk_mix (C_FIELD, C_ACCENT, 70); }
-static unsigned col_hover () { return wk_mix (C_FIELD, C_FIELD_TEXT, 14); }
+static unsigned col_dim () { return uk_mix (C_FIELD, C_FIELD_TEXT, 140); }
+static unsigned col_faint () { return uk_mix (C_FIELD, C_FIELD_TEXT, 90); }
+static unsigned col_line () { return uk_mix (C_FIELD, C_FIELD_TEXT, 30); }
+static unsigned col_sel () { return uk_mix (C_FIELD, C_ACCENT, 70); }
+static unsigned col_hover () { return uk_mix (C_FIELD, C_FIELD_TEXT, 14); }
 
 // main.cpp
 static void refresh_all ();

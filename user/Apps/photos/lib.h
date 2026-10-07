@@ -12,7 +12,7 @@
 #define _photos_lib_h
 
 #include "Apps/photos/exif.h"
-#include "img/imgload.hpp"
+#include "imagekit/img/imgload.hpp"
 
 namespace photos {
 
@@ -156,7 +156,8 @@ public:
 		nroots = nadded = 0;
 		add_root ("SD:/Pictures", false);
 		if (dir_exists ("SD:/Pictures/Camera")) scpy (roots[nroots++], "SD:/Pictures/Camera", sizeof roots[0]);	// (shown apart; walked with Pictures)
-		static const char *const V[] = { "SD:/DCIM", "SD1:/DCIM", "SD2:/DCIM", "SD3:/DCIM", "USB:/DCIM", "USB1:/DCIM" };
+		static const char *const V[] = { "SD:/DCIM", "SD1:/DCIM", "SD2:/DCIM", "SD3:/DCIM", "USB1:/DCIM", "USB1P1:/DCIM", "USB1P2:/DCIM",
+			"USB2:/DCIM", "USB2P1:/DCIM", "USB2P2:/DCIM", "USB3:/DCIM", "USB3P1:/DCIM", "USB3P2:/DCIM" };	// (a camera's card: P1 / P2 at most)
 		for (unsigned i = 0; i < sizeof V / sizeof V[0]; i++) if (dir_exists (V[i])) add_root (V[i], false);
 		int len; char *b = file_read (PH_FOLDERS, &len);
 		if (b)

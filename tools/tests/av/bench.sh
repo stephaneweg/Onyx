@@ -1,7 +1,7 @@
 #!/bin/sh
 # tools/tests/av/bench.sh -- the decoders' speed (avbench.c) on clips, for the PC and for
 # AArch64 (the Pi's code paths: libvpx's NEON, dav1d's assembly) under qemu-aarch64 -cpu
-# cortex-a72. qemu's time is not the Pi's: docs/06 §44 has the measures and how the Pi's
+# cortex-a72. qemu's time is not the Pi's: docs/03 "The media library"
 # figures are estimated from them. Clips: any WebM / MP4 (VP9, AV1, Opus); without arguments,
 # the test clips (tools/tests/av/clips: tiny, 96 x 64).
 #

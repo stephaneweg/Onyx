@@ -5,13 +5,79 @@
 //   basic_host prog.bas [args]
 //
 #include "basic/bas.h"
+#include "gpiokit/gpiokit.h"		// (GPIOKit compiled in: its simulator, GK_STANDALONE -- run_basic_test.sh)
 #include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <cstdlib>
+#include <cstddef>
+
+#ifdef BAS_A64_SHIM
+extern "C" void *shim_code_alloc (unsigned long size);
+extern "C" unsigned long shim_clock_us (void);
+#endif
+
+// ---- a kit for the tests (#import testkit): C functions behind a table, as a shared library's ----------
+extern "C" {
+static int tk_add (int a, int b) { return a + b; }
+static int tk_len (const char *s) { return s ? (int) strlen (s) : -1; }
+static const char *tk_name (void) { return "the test kit"; }
+static double tk_half (double x) { return x / 2; }
+static float tk_scale (float x, int by) { return x * (float) by; }
+static void tk_fill (int *i, double *d, long long *q, float *f) { *d = *i + 0.25; *i = *i * 2; *q = 0x123456789ALL; *f = 1.5f; }
+static int tk_each (int n, int (*cb) (int i, void *user), void *user) { int t = 0; for (int i = 1; i <= n; i++) t += cb (i, user); return t; }
+static char *tk_dup (const char *s) { char *d = new char[strlen (s) + 3]; sprintf (d, "<%s>", s); return d; }
+static void tk_free (void *p) { delete [] (char *) p; }
+static void tk_say (void (*cb) (const char *text, int n)) { cb ("first", 1); cb ("second", 2); }
+static double tk_mix (int a, double x, int b, float y, const char *s) { return a + x + b + y + (double) strlen (s); }
+static unsigned tk_big (void) { return 4000000000u; }
+static int tk_neg (void) { return -5; }
+static unsigned char tk_byte (void) { return 200; }
+static void *tk_null (void) { return 0; }
+// (structures: a kit's are TYPEs of the program, passed where a function takes a pointer)
+struct tk_point { int x, y; };
+struct tk_item { char name[16]; long long id; double weight; struct tk_point at; unsigned char flag; short level; float ratio; };
+static_assert (sizeof (tk_item) == 48 && offsetof (tk_item, at) == 32 && offsetof (tk_item, level) == 42 && offsetof (tk_item, ratio) == 44, "testkit's .bi");
+static int tk_item_next (struct tk_item *it)		// reads what it is given, writes every field
+{
+	int was = (int) strlen (it->name) + (int) it->id + it->at.x + it->at.y + it->flag + it->level;
+	snprintf (it->name, sizeof it->name, "item %d", ((int) it->id + 1) % 1000);
+	it->id += 0x100000000LL; it->weight += 0.5; it->at.x *= 2; it->at.y = -it->at.y; it->flag = 250; it->level = -3; it->ratio = 0.25f;
+	return was;
+}
+static struct tk_item *tk_item_kept (void) { static tk_item k = { "kept", 7, 1.5, { 3, 4 }, 1, 2, 0.5f }; return &k; }
+static int tk_point_sum (const struct tk_point *p) { return p ? p->x + p->y : -1; }
+static int tk_points (struct tk_point *out, int max) { int t = 0; for (int i = 0; i < max; i++) { t += out[i].x; out[i].x = i * 10; out[i].y = i * 10 + 1; } return t; }
+}
+static void *const TK_TABLE[] = { (void *) tk_add, (void *) tk_len, (void *) tk_name, (void *) tk_half, (void *) tk_scale, (void *) tk_fill,
+	(void *) tk_each, (void *) tk_dup, (void *) tk_free, (void *) tk_say, (void *) tk_mix, (void *) tk_big, (void *) tk_neg, (void *) tk_byte,
+	(void *) tk_null, (void *) tk_item_next, (void *) tk_item_kept, (void *) tk_point_sum, (void *) tk_points };
+static const char TK_BI[] =
+	"# testkit.bi\nkit testkit 19\n"
+	"struct point 8 tk_point\nfield x 0 i\nfield y 4 i\n"
+	"struct item 48 tk_item\nfield name 0 a 16\nfield id 16 l\nfield weight 24 d\nfield at 32 t point\nfield flag 40 b\nfield level 42 h\n"
+	"field ratio 44 f\nfield later 46 z\n"
+	"item_next 15 i p tk_item_next\nitem_kept 16 l - tk_item_kept\npoint_sum 17 i p tk_point_sum\npoints 18 i pi tk_points\n"
+	"add 0 i ii tk_add a,b\nlen 1 i s tk_len\nname 2 s - tk_name\nhalf 3 d d tk_half\nscale 4 f fi tk_scale\n"
+	"fill 5 v IDLF tk_fill\neach 6 i icp tk_each\ndup 7 l s tk_dup\nfree 8 v p tk_free\nsay 9 v c tk_say\n"
+	"mix 10 d idifs tk_mix\nbig 11 u - tk_big\nneg 12 i - tk_neg\nbyte 13 b - tk_byte\nnull 14 l - tk_null\n"
+	"broken 99 q zz\n";
+static char *tk_source (const char *name, int *len)
+{
+	if (strcmp (name, "testkit") != 0) return 0;
+	*len = (int) strlen (TK_BI);
+	char *b = new char[*len + 1]; memcpy (b, TK_BI, *len + 1);
+	return b;
+}
 
 struct ConsoleHost : bas::Host
 {
+	void *const *kitOpen (const char *name, int minVersion, char *why, int cap) override
+	{
+		if (strcmp (name, "testkit") == 0 && minVersion <= 19) return TK_TABLE;
+		snprintf (why, cap, "version %d asked", minVersion);
+		return 0;
+	}
 	int col = 1; const char *cmd = "";
 	void out (const char *s, int n) override
 	{
@@ -28,6 +94,18 @@ struct ConsoleHost : bas::Host
 		return n;
 	}
 	int column () override { return col; }
+#ifdef BAS_A64_SHIM
+	// (the AArch64 build under qemu, tools/tests/basic/a64: the machine code's memory; MANAGED=1: the VM)
+	void *codeAlloc (unsigned size) override { return shim_code_alloc (size); }
+#endif
+	// PROF=1: where the time goes (bas::Profile), on stderr at the end
+	bas::Profile profile;
+	// (0 without PROF: the machine code then polls at every tick, whatever the real time -- the same run each time)
+#ifdef BAS_A64_SHIM
+	unsigned clockUs () override { return prof ? (unsigned) shim_clock_us () : 0; }
+#else
+	unsigned clockUs () override { if (!prof) return 0; timespec ts; clock_gettime (CLOCK_MONOTONIC, &ts); return (unsigned) (ts.tv_sec * 1000000ull + ts.tv_nsec / 1000); }
+#endif
 	// a gamepad 0 whose A (16) and right (8) are held on every other read, its stick x at +500
 	int padReads = 0;
 	unsigned padButtons (int pad) override { padReads++; return (pad == 0 || pad == -1) && (padReads & 1) ? 16 + 8 : 0; }
@@ -58,11 +136,47 @@ struct ConsoleHost : bas::Host
 	int nbg = 0;
 	bool bgNote (double f, int on, int off, int w) override { printf ("[bg %.1f %d %d %d]", f, on, off, w); nbg++; return true; }
 	int bgNotes () override { return nbg; }
+	// GPIO: GPIOKit's simulator. A button on GPIO 27 is pressed and released at each look at the edges
+	// (each GP_EVENTS turns it over), so ON PIN and PINCHANGED have something to see.
+	int gpio (int op, int a, int b, int c, const char *in, int inLen, char *out, int outCap) override
+	{
+		static int btn = 1;
+		switch (op)
+		{
+		case GP_MODE: return gk_mode (a, b);
+		case GP_WRITE: return gk_write (a, b);
+		case GP_READ: return gk_read (a);
+		case GP_PWM: printf ("[pwm %d %d %d]", a, b, c); return gk_pwm (a, b, c);
+		case GP_SERVO: printf ("[servo %d %d]", a, b); return gk_servo (a, b);
+		case GP_EDGES: return gk_edges (a, b);
+		case GP_EVENTS:
+		{
+			gk_sim_input (27, btn ^= 1);
+			gk_event ev[32]; int r = gk_events (ev, outCap / 2 < 32 ? outCap / 2 : 32, 0);
+			for (int k = 0; k < r; k++) { out[2 * k] = (char) ev[k].pin; out[2 * k + 1] = (char) ev[k].edge; }
+			return r;
+		}
+		case GP_FREE: return a < 0 ? gk_release () : gk_mode (a, GK_FREE);
+		case GP_SIM: return gk_sim (a);
+		case GP_I2C_OPEN: return gk_i2c_open (a);
+		case GP_I2C_REG_READ: gk_i2c_open (0); return gk_i2c_reg_read (a, b);
+		case GP_I2C_REG_WRITE: gk_i2c_open (0); return gk_i2c_reg_write (a, b, c);
+		case GP_I2C_XFER: { gk_i2c_open (0); int r = gk_i2c_write_read (a, in, inLen, out, b); return r < 0 ? r : b > 0 ? r : 0; }
+		case GP_I2C_SCAN: gk_i2c_open (0); return gk_i2c_scan ((unsigned char *) out);
+		case GP_SPI_OPEN: return gk_spi_open (a, b);
+		case GP_SPI_XFER: gk_spi_open (0, 0); return gk_spi_transfer (a, in, out, inLen);
+		}
+		(void) c;
+		return GP_NODEV;
+	}
+	const char *gpioError (int code) override { return gk_error (code); }
 	bool keyDown (const char *k, int n) override { return n == 4 && k[0] == 'L'; }	// "LEFT" held
 	void sleepMs (int ms) override { if (!quietSleep) printf ("(%d)", ms); vms += ms; }
 	// A virtual clock (advanced by the sleeps) and scripted keys (<prog>.keys: one key per
 	// 100 ms of that clock; "\1" + letter = an extended key: \1H up, \1; F1 ...).
 	double vms = 0; bool quietSleep = false;
+	double stopAt = 0;					// PROFVMS=n: the program is stopped after n ms of that clock
+	bool poll () override { return stopAt <= 0 || vms < stopAt; }
 	char keys[256] = ""; int nkeys = 0, kpos = 0;
 	int keyAt (char *o)
 	{
@@ -77,7 +191,21 @@ struct ConsoleHost : bas::Host
 	int control (int k, int x, int y, int w, int h, const char *t, int v) override
 	{ printf ("[control %d %d %d %d %d \"%s\" %d -> %d]\n", k, x, y, w, h, t, v, nextId); return nextId++; }
 	void setText (int id, const char *s) override { printf ("[settext %d \"%s\"]\n", id, s); }
-	int  event (bool) override { static int n = 0; return ++n <= 2 ? 1 : -1; }
+	// the events: $EVENTS ("1 -2 3": then -1, the window closed; <prog>.events), else 1, 1, -1
+	int  event (bool) override
+	{
+		static int n = 0; n++;
+		const char *e = getenv ("EVENTS");
+		if (!e) return n <= 2 ? 1 : -1;
+		for (int k = 1; *e; k++) { long v = strtol (e, (char **) &e, 10); if (k == n) return (int) v; while (*e == ' ') e++; }
+		return -1;
+	}
+	void moveControl (int id, int x, int y, int w, int h) override { printf ("[move %d %d %d %d %d]\n", id, x, y, w, h); }
+	void showControl (int id, bool on) override { printf ("[show %d %d]\n", id, on); }
+	void enableControl (int id, bool on) override { printf ("[enable %d %d]\n", id, on); }
+	void focusControl (int id) override { printf ("[focus %d]\n", id); }
+	void windowFlags (int f) override { printf ("[windowflags %d]\n", f); }
+	int  menuItem (const char *t, const char *i, const char *k) override { printf ("[menu %s / %s %s -> %d]\n", t, i, k, nextId); return nextId++; }
 	void notify (const char *t, const char *m) override { printf ("[notify %s: %s]\n", t, m); }
 	double timer () override { return 3600.5 + vms / 1000.0; }
 	void date (char *o) override { strcpy (o, "01-02-2026"); }
@@ -110,16 +238,26 @@ int main (int argc, char **argv)
 	if (!src) { fprintf (stderr, "cannot read %s\n", argv[1]); return 2; }
 	src[len] = 0;
 	bas::Error e;
+	bas::setKitSource (tk_source);
 	bas::Program *p = bas::compile (src, &e);
 	if (p && getenv ("BAX"))				// through a .bax: saved, loaded back, run
 	{
 		char *bytes; int n = bas::saveBax (p, &bytes);
 		bas::destroy (p);
-		p = bas::load (bytes, n, &e);
-		delete [] bytes;
+		// ... and as a standalone app would carry it: after a runtime, found back by the trailer
+		char *all; int an = bas::attachBax ("(a runtime)", 11, bytes, n, &all);
+		unsigned off = 0, len = 0;
+		if (!bas::attachedBax (all + an - bas::BAX_TRAILER, (unsigned) an, &off, &len) || off != 11 || len != (unsigned) n)
+		{ puts ("the attached program is not found back"); return 1; }
+		p = bas::load (all + off, (int) len, &e);
+		delete [] bytes; delete [] all;
 	}
 	if (!p) { printf ("COMPILE ERROR line %d: %s\n", e.line, e.msg); delete [] src; return 1; }
+	if (getenv ("MANAGED")) h.managed = true;
+	if (getenv ("PROF")) h.prof = &h.profile;
+	if (getenv ("PROFVMS")) { h.stopAt = atof (getenv ("PROFVMS")); h.quietSleep = true; }
 	int r = bas::run (p, h, &e);
+	if (h.prof) { char t[320]; h.profile.text (t, sizeof t); fprintf (stderr, "%s\n", t); }
 	if (r) printf ("RUNTIME ERROR line %d: %s\n", e.line, e.msg);
 	bas::destroy (p);
 	delete [] src;

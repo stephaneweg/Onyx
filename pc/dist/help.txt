@@ -20,17 +20,37 @@ VALUES
   INTEGER / LONG round when stored (7 / 2 -> 4) and give "Overflow" out of range;
   DOUBLEs print 15 digits. Strings: a$, DIM s AS STRING, fixed: DIM s AS STRING * 10.
   Arrays: DIM a(10), DIM b$(1 TO 5, 3), REDIM, ERASE, LBOUND(a), UBOUND(a[, dim]).
-  OPTION BASE 1. CONST name = value. Operators: + - * / \ MOD ^, = <> < > <= >=,
+  OPTION BASE 1. OPTION MANAGED (this program runs on the VM, not in machine code).
+  CONST name = value. Operators: + - * / \ MOD ^, = <> < > <= >=,
   AND OR XOR NOT EQV IMP (true = -1). Strings join with +.
   Records: TYPE Point / x AS INTEGER / y AS INTEGER / END TYPE, then DIM p AS Point,
   p.x = 3, DIM t(10) AS Point, t(i).y, fields of another TYPE (p.pos.x), a = b copies,
   SUB s (pt AS Point). LEN (var) = its size in bytes.
-  Methods (Onyx, like FreeBASIC): in the TYPE, test AS SUB (a AS INTEGER) and
-    f AS FUNCTION (a AS INTEGER) AS INTEGER (declarations); then SUB Point.Test (a) /
-    FUNCTION Point.F (a) AS INTEGER ... END: "this" is the object (this.x = a,
-    RETURN this.x + a). Call: p.Test 3, y = p.F (2), t(i).Test 1, CALL p.Test (3).
-  Constructor: SUB Point.new (params): DIM p AS Point (1, 2) calls it; DIM p AS Point
-    (no parentheses) does not; p = NEW Point (1, 2) makes a new one.
+  A TYPE only holds data: methods are for a CLASS.
+  Classes (Onyx): a TYPE is a value (a = b copies); a CLASS is a reference (a = b: the
+    same object; NOTHING = no object).
+      CLASS Ball EXTENDS Sprite IMPLEMENTS Drawable / r AS SINGLE / END CLASS
+      INTERFACE Drawable / SUB Draw () / FUNCTION Area () AS SINGLE / END INTERFACE
+    Methods outside the block: SUB Ball.Draw () / FUNCTION Ball.F (a) AS INTEGER ... END:
+      "this" is the object (this.x = a, RETURN this.x + a). Call: p.Draw, y = p.F (2),
+      t(i).Draw, CALL p.Test (3).
+    Constructor: SUB Ball.new (params): NEW Ball (1, 2) and DIM p AS Ball (1, 2) call it;
+      DIM p AS Ball leaves NOTHING; DIM p AS Ball () makes an object.
+    Before SUB / FUNCTION:
+      VIRTUAL (a child may redefine it), OVERRIDE (redefines the parent's virtual
+      method), ABSTRACT (no body, one line: children must define it; no NEW of the class).
+    BASE.Name args: the parent's method; BASE.new args: the parent's constructor (called
+      by itself first when it has no parameters). SUB Ball.delete (): the destructor,
+      when the last reference to the object goes.
+    s = NEW Ball (1, 2, 3); DIM s AS Ball (1, 2, 3); a parent's or an interface's variable
+      holds any child: DIM s AS Sprite: s = NEW Ball (...): s.Draw calls Ball's.
+    x IS Ball, x IS Drawable, x IS NOTHING, a IS b (the same object). ball = sprite is
+      checked when it runs (Type mismatch). Using NOTHING: "Object is NOTHING" (ERR 91).
+    Objects in arrays, fields (nxt AS Node), parameters, FUNCTION results. Example:
+      SD:/basic/examples/classes.bas.
+  Properties (Onyx, of a CLASS): PROPERTY Point.Name AS STRING ... RETURN v ... END PROPERTY (the getter)
+    and PROPERTY Point.Name (v AS STRING) ... END PROPERTY (the setter): then
+    p.Name = "x" calls the setter, a$ = p.Name the getter (EXIT PROPERTY leaves one).
 
 STATEMENTS
   PRINT [#n,] a; b, c   (; = no space, , = next 14-column zone, TAB(n) SPC(n))
@@ -106,7 +126,9 @@ SOUND (the 3.5 mm jack)
     4 noise; volume 0-255): plays until NOTEOFF voice (NOTEOFF alone: all voices).
 
 WINDOW AND CONTROLS (Onyx)
-  WINDOW title$[, width, height]    (a GUI program; closing it ends the program)
+  WINDOW title$[, width, height[, flags]]  (a GUI program; closing it ends the program;
+    flags 1 = resizable: WAITEVENT then gives -2 when the user resized it)
+  WINDOWWIDTH  WINDOWHEIGHT  (the window's client size now)
   id = BUTTON(x, y, w, h, text$)    id = LABEL(x, y, w, h, text$)
   id = TEXTBOX(x, y, w, h[, text$]) id = CHECKBOX(x, y, w, h, text$[, checked])
   id = LISTBOX(x, y, w, h[, "a|b|c"])   id = DROPDOWN(x, y, w, h, "a|b|c")
@@ -115,6 +137,10 @@ WINDOW AND CONTROLS (Onyx)
   VALUE(id)  (checked -1/0, selected index, slider / progress value)
   e = WAITEVENT  (the control clicked / changed / Enter; -1 = window closed)
   e = EVENT      (the same without waiting; 0 = nothing)
+  MOVECONTROL id, x, y, w, h   SHOWCONTROL id, shown   ENABLECONTROL id, enabled
+  FOCUSCONTROL id
+  id = MENUITEM(menu$, item$[, shortcut$])  adds an item to the window's menu bar
+    ("&File", "&Quit", "Ctrl+Q"; item "-" = a separator): WAITEVENT gives id when chosen
 
 SYSTEM (Onyx)
   NOTIFY title$, text$    r = MSGBOX(title$, text$[, 0 OK | 1 OK/Cancel | 2 Yes/No])

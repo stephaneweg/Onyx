@@ -8,7 +8,7 @@
 # ICC colour management (lcms2), the Noto / CJK fonts (TOFU: the 14 standard fonts stay), the barcodes, OCR,
 # the spot / CMYK plotters. Its third-party libraries: jbig2dec, openjpeg (from MuPDF's tarball), Onyx's zlib,
 # libjpeg (jpeg-9f) and FreeType (2.14.3 -- with the CFF / Type 1 / CID drivers PDF fonts need, plus the
-# TrueType + autofit ones of the apps' text: the whole app links this FreeType instead of user/ft/libft.a).
+# TrueType + autofit ones of the apps' text: the whole app links this FreeType instead of user/Kits/fontkit/libft.a).
 
 MU_ROOT ?= ..
 MU_CC ?= aarch64-none-elf-gcc
@@ -30,7 +30,7 @@ MU_DEFS := -DFZ_ENABLE_XPS=0 -DFZ_ENABLE_SVG=0 -DFZ_ENABLE_CBZ=0 -DFZ_ENABLE_IMG
 	-DFZ_ENABLE_SPOT_RENDERING=0 -DFZ_PLOTTERS_CMYK=0 -DFZ_PLOTTERS_N=0 \
 	-DTOFU -DTOFU_CJK -DTOFU_SIL -DTOFU_EMOJI -DTOFU_HISTORIC -DTOFU_SYMBOL -DFZ_HIDE_INTERNAL_JPEG \
 	-DMEMENTO_SQUEEZEBUILD=0
-MU_INC := -I$(MU)/include -I$(MU_CONF) -I$(MU_ROOT)/user -I$(MU_ROOT)/kernel/include -I$(MU)/scripts/libjpeg -I$(MU_JPEG) -I$(MU_ZLIB) -I$(MU_FT)/include \
+MU_INC := -I$(MU)/include -I$(MU_CONF) -I$(MU_ROOT)/user -I$(MU_ROOT)/user/Kits -I$(MU_ROOT)/user/Runtime -I$(MU_ROOT)/user/Include -I$(MU_ROOT)/user/Libs -I$(MU_ROOT)/kernel/include -I$(MU)/scripts/libjpeg -I$(MU_JPEG) -I$(MU_ZLIB) -I$(MU_FT)/include \
 	-I$(MU)/thirdparty/jbig2dec -I$(MU)/thirdparty/openjpeg/src/lib/openjp2 \
 	-DOPJ_STATIC -DOPJ_HAVE_INTTYPES_H -DOPJ_HAVE_STDINT_H -DHAVE_STDINT_H
 MU_FTDEFS := -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_muftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>'
@@ -79,4 +79,4 @@ $(foreach f,$(MU_JBIG2),$(eval $(call mu_rule,jbig2,$(f),-I$$(MU)/include -DHAVE
 $(foreach f,$(MU_OPJ),$(eval $(call mu_rule,opj,$(f),-DOPJ_STATIC -DOPJ_HAVE_INTTYPES_H -DOPJ_HAVE_STDINT_H -DMUTEX_pthread=0 -I$$(MU)/thirdparty/openjpeg/src/lib/openjp2)))
 $(foreach f,$(MU_JPG),$(eval $(call mu_rule,jpeg,$(f),-DFZ_HIDE_INTERNAL_JPEG -I$$(MU)/scripts/libjpeg -I$$(MU_JPEG))))
 $(foreach f,$(MU_Z),$(eval $(call mu_rule,z,$(f),-I$$(MU_ZLIB))))
-$(foreach f,$(MU_FTSRC),$(eval $(call mu_rule,ft,$(f),$$(MU_FTDEFS) -I$$(MU_CONF) -I$$(MU_ROOT)/user/ft -I$$(MU_FT)/include)))
+$(foreach f,$(MU_FTSRC),$(eval $(call mu_rule,ft,$(f),$$(MU_FTDEFS) -I$$(MU_CONF) -I$$(MU_ROOT)/user/Kits/fontkit -I$$(MU_FT)/include)))

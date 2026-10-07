@@ -1,10 +1,10 @@
 //
-// kp_delay -- a Koton effect plugin (user/kplug.h): an echo. A delay time in milliseconds (not tied to
+// kp_delay -- a Koton effect plugin (user/Apps/koton/plug/kplug.h): an echo. A delay time in milliseconds (not tied to
 // the tempo), its feedback through a low-pass (each repeat darker), ping-pong (the repeats bounce
 // between the left and the right), the stereo width of the repeats, a dry / wet mix. A change of the
 // time glides (no zipper noise).
 //
-#include "kplug.h"
+#include "../koton/plug/kplug.h"
 
 static const char *const ONOFF[] = { "Off", "On", 0 };
 enum { P_TIME, P_FEEDBACK, P_TONE, P_PINGPONG, P_WIDTH, P_MIX, NP };

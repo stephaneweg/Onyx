@@ -5,7 +5,7 @@
 // fill's colour / gradient / pattern, the text's font...), the layers' panel (the current layer's blend
 // mode and opacity; each layer's eye, thumbnail, name, mode; New, Duplicate, Delete, Up, Down, Merge,
 // Properties) and the status bar (the pointer, the selection, the picture's size, the layer; the grid,
-// fit, the zoom's slider). Text in FreeType's DejaVu Sans (wtk's face).
+// fit, the zoom's slider). Text in FreeType's DejaVu Sans (uikit's face).
 //
 // MIT licence (Onyx).
 //
@@ -16,18 +16,18 @@
 
 namespace pd {
 
-using namespace wtk;
+using namespace uikit;
 
 // The tones of the parts (from the theme's background).
-static unsigned rib_bg () { return wk_mix (C_BG, 0xFFFFFF, 150); }
-static unsigned opt_bg () { return wk_mix (C_BG, 0xFFFFFF, 80); }
-static unsigned pan_bg () { return wk_mix (C_BG, 0xFFFFFF, 110); }
+static unsigned rib_bg () { return uk_mix (C_BG, 0xFFFFFF, 150); }
+static unsigned opt_bg () { return uk_mix (C_BG, 0xFFFFFF, 80); }
+static unsigned pan_bg () { return uk_mix (C_BG, 0xFFFFFF, 110); }
 static void hot_box (Canvas &cv, int x, int y, int w, int h, unsigned bg, bool on, bool hot, bool down = false)
 {
-	if (on) { wk_rbox (cv, x, y, w, h, 5, wk_mix (bg, C_ACCENT, 56), wk_mix (bg, C_ACCENT, 56)); wk_rline (cv, x, y, w, h, 5, wk_mix (bg, C_ACCENT, 166)); }
-	else if (hot || down) { wk_rbox (cv, x, y, w, h, 5, down ? wk_mix (bg, 0x000000, 20) : wk_mix (bg, 0xFFFFFF, 200), down ? wk_mix (bg, 0x000000, 20) : wk_mix (bg, 0xFFFFFF, 200)); wk_rline (cv, x, y, w, h, 5, wk_mix (bg, 0x000000, 50)); }
+	if (on) { uk_rbox (cv, x, y, w, h, 5, uk_mix (bg, C_ACCENT, 56), uk_mix (bg, C_ACCENT, 56)); uk_rline (cv, x, y, w, h, 5, uk_mix (bg, C_ACCENT, 166)); }
+	else if (hot || down) { uk_rbox (cv, x, y, w, h, 5, down ? uk_mix (bg, 0x000000, 20) : uk_mix (bg, 0xFFFFFF, 200), down ? uk_mix (bg, 0x000000, 20) : uk_mix (bg, 0xFFFFFF, 200)); uk_rline (cv, x, y, w, h, 5, uk_mix (bg, 0x000000, 50)); }
 }
-static void chevron (Canvas &cv, int cx, int cy, unsigned c) { wk_glyph (cv, WKG_CHEV_DOWN, cx, cy, 7, c); }
+static void chevron (Canvas &cv, int cx, int cy, unsigned c) { uk_glyph (cv, WKG_CHEV_DOWN, cx, cy, 7, c); }
 static void disc (Canvas &cv, int cx, int cy, int r, unsigned c) { VPath p; p.circle (V (cx), V (cy), V (r)); p.fill (cv, c); }
 static void ring2 (Canvas &cv, int cx, int cy, int r, unsigned c, int w = 16) { VPath p; p.circle (V (cx), V (cy), V (r)); p.hole (V (cx), V (cy), V (r) - w); p.fill (cv, c); }
 static void fmt_int (char *b, int v, const char *suffix)
@@ -41,9 +41,9 @@ static void fmt_int (char *b, int v, const char *suffix)
 static void slider_draw (Canvas &cv, int x, int y, int w, int h, int v, int lo, int hi, unsigned bg)
 {
 	int cy = y + h / 2, k = x + (int) ((long long) (v - lo) * (w - 1) / pmax (1, hi - lo));
-	wk_rbox (cv, x, cy - 2, w, 4, 2, wk_mix (bg, 0x000000, 50), wk_mix (bg, 0x000000, 50));
-	if (k > x) wk_rbox (cv, x, cy - 2, k - x + 2, 4, 2, C_ACCENT, C_ACCENT);
-	disc (cv, k, cy, 7, wk_mix (bg, 0x000000, 90)); disc (cv, k, cy, 6, 0xFFFFFF);
+	uk_rbox (cv, x, cy - 2, w, 4, 2, uk_mix (bg, 0x000000, 50), uk_mix (bg, 0x000000, 50));
+	if (k > x) uk_rbox (cv, x, cy - 2, k - x + 2, 4, 2, C_ACCENT, C_ACCENT);
+	disc (cv, k, cy, 7, uk_mix (bg, 0x000000, 90)); disc (cv, k, cy, 6, 0xFFFFFF);
 }
 static int slider_val (int mx, int x, int w, int lo, int hi) { return pclamp (lo + (int) ((long long) (mx - x) * (hi - lo) / pmax (1, w - 1)), lo, hi); }
 
@@ -73,7 +73,7 @@ static void brush_sample (Canvas &cv, int x, int y, int w, int h, int kind, unsi
 			}
 	}
 	int op = kind == BR_MARKER ? 140 : 255;
-	for (int j = 0; j < h; j++) for (int i = 0; i < w; i++) if (cov[j * w + i]) wk_blend_px (cv, x + i, y + j, col, cov[j * w + i] * op / 255);
+	for (int j = 0; j < h; j++) for (int i = 0; i < w; i++) if (cov[j * w + i]) uk_blend_px (cv, x + i, y + j, col, cov[j * w + i] * op / 255);
 	delete[] cov;
 }
 // A gradient's colours in a bar, over a checkerboard.
@@ -88,7 +88,7 @@ static void grad_draw (Canvas &cv, int x, int y, int w, int h, int gi)
 		for (int j = 0; j < h; j++)
 		{
 			unsigned ck = (((i >> 2) ^ (j >> 2)) & 1) ? 0xD6D6D6 : 0xFFFFFF;
-			cv.pixel (x + i, y + j, a == 255 ? c & 0xFFFFFF : wk_mix (ck, c & 0xFFFFFF, (int) a + 1));
+			cv.pixel (x + i, y + j, a == 255 ? c & 0xFFFFFF : uk_mix (ck, c & 0xFFFFFF, (int) a + 1));
 		}
 	}
 	cv.frameRect (x, y, w, h, 0x8C8480);
@@ -108,7 +108,7 @@ static void gshape_draw (Canvas &cv, int x, int y, int s, int kind)
 			case GS_CONICAL: t = atan2f (v - 0.5f, u - 0.5f) / 6.2832f; t -= floorf (t); break;
 			default: t = u;
 			}
-			cv.pixel (x + i, y + j, wk_mix (0x3C3860, 0xFAFAFA, (int) (fminf (1, t) * 256)));
+			cv.pixel (x + i, y + j, uk_mix (0x3C3860, 0xFAFAFA, (int) (fminf (1, t) * 256)));
 		}
 	cv.frameRect (x, y, s, s, 0x8C8480);
 }
@@ -135,15 +135,15 @@ public:
 		unsigned bg = rib_bg ();
 		layoutCells ();
 		canvas.fillRect (0, 0, width, height, bg);
-		canvas.fillRect (0, height - 1, width, 1, wk_mix (bg, 0x000000, 40));
-		unsigned ink = wk_ink_for (bg), dim = wk_mix (bg, ink, 150);
+		canvas.fillRect (0, height - 1, width, 1, uk_mix (bg, 0x000000, 40));
+		unsigned ink = uk_ink_for (bg), dim = uk_mix (bg, ink, 150);
 		for (int g = 0; g < m_ng; g++)
 		{
-			wk_text_c (canvas, m_gx[g], height - 22, m_gw[g], 18, m_gname[g], dim);
-			if (g < m_ng - 1) canvas.fillRect (m_gx[g] + m_gw[g] + 5, 10, 1, height - 22, wk_mix (bg, 0x000000, 40));
+			uk_text_c (canvas, m_gx[g], height - 22, m_gw[g], 18, m_gname[g], dim);
+			if (g < m_ng - 1) canvas.fillRect (m_gx[g] + m_gw[g] + 5, 10, 1, height - 22, uk_mix (bg, 0x000000, 40));
 		}
 		// the shapes' gallery: a white box
-		canvas.fillRect (m_shX, 7, 5 * 24 + 4, 3 * 22 + 2, 0xFFFFFF); canvas.frameRect (m_shX, 7, 5 * 24 + 4, 3 * 22 + 2, wk_mix (bg, 0x000000, 60));
+		canvas.fillRect (m_shX, 7, 5 * 24 + 4, 3 * 22 + 2, 0xFFFFFF); canvas.frameRect (m_shX, 7, 5 * 24 + 4, 3 * 22 + 2, uk_mix (bg, 0x000000, 60));
 		for (int i = 0; i < m_n; i++) drawCell (i, ink, bg);
 	}
 	bool onMouse (int mx, int my, int bl, int br, int, int) override
@@ -247,14 +247,14 @@ private:
 			bool empty = c.cmd == C_CUSTOM && !(g_custom[c.arg] >> 24);
 			unsigned col = c.cmd == C_PALETTE ? PALETTE[c.arg] : g_custom[c.arg] & 0xFFFFFF;
 			if (hot) disc (canvas, cx, cy, 10, C_ACCENT);
-			if (empty) { disc (canvas, cx, cy, 9, wk_mix (bg, 0x000000, 50)); disc (canvas, cx, cy, 8, wk_mix (bg, 0xFFFFFF, 120)); }
-			else { disc (canvas, cx, cy, 9, wk_mix (col, 0x000000, 60)); disc (canvas, cx, cy, 8, col); }
+			if (empty) { disc (canvas, cx, cy, 9, uk_mix (bg, 0x000000, 50)); disc (canvas, cx, cy, 8, uk_mix (bg, 0xFFFFFF, 120)); }
+			else { disc (canvas, cx, cy, 9, uk_mix (col, 0x000000, 60)); disc (canvas, cx, cy, 8, col); }
 			return;
 		}
 		if (c.cmd == C_SHAPE)
 		{
-			if (on) canvas.fillRect (c.x, c.y, c.w, c.h, wk_mix (0xFFFFFF, C_ACCENT, 70));
-			else if (hot) canvas.fillRect (c.x, c.y, c.w, c.h, wk_mix (0xFFFFFF, C_ACCENT, 30));
+			if (on) canvas.fillRect (c.x, c.y, c.w, c.h, uk_mix (0xFFFFFF, C_ACCENT, 70));
+			else if (hot) canvas.fillRect (c.x, c.y, c.w, c.h, uk_mix (0xFFFFFF, C_ACCENT, 30));
 			shape_icon (canvas, c.arg, c.x + 4, c.y + 3, 16, 16, 0x343030);
 			return;
 		}
@@ -263,28 +263,28 @@ private:
 		{
 			unsigned col = (c.cmd == C_COL1 ? g_col1 : g_col2) & 0xFFFFFF;
 			int cx = c.x + c.w / 2, cy = c.y + 21;
-			disc (canvas, cx, cy, 15, wk_mix (bg, ink, 70)); disc (canvas, cx, cy, 14, wk_mix (col, 0x000000, 70)); disc (canvas, cx, cy, 13, col);
-			wk_text_c (canvas, c.x, c.y + 40, c.w, 18, c.label, ink);
+			disc (canvas, cx, cy, 15, uk_mix (bg, ink, 70)); disc (canvas, cx, cy, 14, uk_mix (col, 0x000000, 70)); disc (canvas, cx, cy, 13, col);
+			uk_text_c (canvas, c.x, c.y + 40, c.w, 18, c.label, ink);
 			return;
 		}
 		if (c.cmd == C_BRUSHES)
 		{
 			brush_sample (canvas, c.x + 6, c.y + 6, c.w - 12, 30, g_brush, C_ACCENT);
-			wk_text_c (canvas, c.x, c.y + 36, c.w, 18, c.label, ink);
+			uk_text_c (canvas, c.x, c.y + 36, c.w, 18, c.label, ink);
 			chevron (canvas, c.x + c.w / 2, c.y + 57, ink);
 			return;
 		}
 		if (c.label && c.h >= 50)					// (a big button: its icon, its name below)
 		{
 			icon (canvas, c.icon, c.x + (c.w - 20) / 2, c.y + 10, ink);
-			wk_text_c (canvas, c.x, c.y + 36, c.w, 18, c.label, ink);
+			uk_text_c (canvas, c.x, c.y + 36, c.w, 18, c.label, ink);
 			if (c.cmd == C_SELECT) chevron (canvas, c.x + c.w / 2, c.y + 57, ink);
 			return;
 		}
 		if (c.label)							// (a wide small one: the icon, the name after it)
 		{
 			icon (canvas, c.icon, c.x + 3, c.y + (c.h - 20) / 2, ink);
-			wk_text_l (canvas, c.x + 27, c.y, c.h, c.label, ink);
+			uk_text_l (canvas, c.x + 27, c.y, c.h, c.label, ink);
 			if (c.cmd == C_ROTATE) chevron (canvas, c.x + c.w - 8, c.y + c.h / 2, ink);
 			return;
 		}
@@ -310,7 +310,7 @@ public:
 	{
 		unsigned bg = opt_bg ();
 		canvas.fillRect (0, 0, width, height, bg);
-		canvas.fillRect (0, height - 1, width, 1, wk_mix (bg, 0x000000, 40));
+		canvas.fillRect (0, height - 1, width, 1, uk_mix (bg, 0x000000, 40));
 		layoutItems ();
 		for (int i = 0; i < m_n; i++) drawItem (i, bg);
 	}
@@ -361,19 +361,19 @@ private:
 	void setSlider (int opt, int v) { int *p = sliderVar (opt); if (p && *p != v) { *p = v; if (g_optCmd) g_optCmd (opt, v, -1, -1); } }
 
 	It &push (int kind, int w) { It &i = m_it[m_n < MAXI - 1 ? m_n++ : m_n]; i.kind = kind; i.x = m_x; i.w = w; i.arg = -1; i.val = 0; i.on = false; i.text = 0; i.suffix = 0; i.icon = -1; m_x += w; return i; }
-	void label (const char *s) { push (K_LABEL, wk_tw (s) + 8).text = s; }
+	void label (const char *s) { push (K_LABEL, uk_tw (s) + 8).text = s; }
 	void ico (int ic) { push (K_ICON, 30).icon = ic; }
 	void sep () { m_x += 6; push (K_SEP, 1); m_x += 9; }
-	void toggle (int opt, const char *s, bool on, int val = 0) { It &i = push (K_TOGGLE, wk_tw (s) + 14); i.arg = opt; i.on = on; i.text = s; i.val = val; m_x += 4; }
+	void toggle (int opt, const char *s, bool on, int val = 0) { It &i = push (K_TOGGLE, uk_tw (s) + 14); i.arg = opt; i.on = on; i.text = s; i.val = val; m_x += 4; }
 	void glyph (int opt, const char *s, bool on, int style, int val = 0) { It &i = push (K_GLYPH, 26); i.arg = opt; i.on = on; i.text = s; i.val = val; i.sw = style; m_x += 4; }
 	void drop (int opt, const char *s, int w) { It &i = push (K_DROP, w); i.arg = opt; i.text = s; m_x += 8; }
 	void slider (int opt, const char *s, int w, int lo, int hi, const char *suffix)
 	{
 		int *p = sliderVar (opt);
 		char mx[16]; fmt_int (mx, hi, suffix);
-		It &i = push (K_SLIDER, wk_tw (s) + 10 + w + 10 + wk_tw (mx) + 4);
+		It &i = push (K_SLIDER, uk_tw (s) + 10 + w + 10 + uk_tw (mx) + 4);
 		i.arg = opt; i.text = s; i.lo = lo; i.hi = hi; i.v = p ? *p : 0; i.suffix = suffix;
-		i.sx = i.x + wk_tw (s) + 10; i.sw = w;
+		i.sx = i.x + uk_tw (s) + 10; i.sw = w;
 		m_x += 6;
 	}
 	void layoutItems ()
@@ -445,44 +445,44 @@ private:
 	void drawItem (int i, unsigned bg)
 	{
 		It &it = m_it[i];
-		unsigned ink = wk_ink_for (bg), dim = wk_mix (bg, ink, 150);
+		unsigned ink = uk_ink_for (bg), dim = uk_mix (bg, ink, 150);
 		int y = 6, h = height - 12;
 		bool hot = i == m_hot;
 		switch (it.kind)
 		{
-		case K_LABEL: wk_text_l (canvas, it.x, 0, height, it.text, dim); break;
+		case K_LABEL: uk_text_l (canvas, it.x, 0, height, it.text, dim); break;
 		case K_ICON: icon (canvas, it.icon, it.x, (height - 20) / 2, ink); break;
-		case K_SEP: canvas.fillRect (it.x, 9, 1, height - 18, wk_mix (bg, 0x000000, 40)); break;
+		case K_SEP: canvas.fillRect (it.x, 9, 1, height - 18, uk_mix (bg, 0x000000, 40)); break;
 		case K_TOGGLE: case K_GLYPH:
 		{
-			unsigned f = it.on ? wk_mix (bg, C_ACCENT, 64) : hot ? 0xFFFFFF : wk_mix (bg, 0xFFFFFF, 190);
-			wk_rbox (canvas, it.x, y, it.w, h, 4, f, f);
-			wk_rline (canvas, it.x, y, it.w, h, 4, it.on ? wk_mix (bg, C_ACCENT, 170) : wk_mix (bg, 0x000000, 50));
-			wk_text_c (canvas, it.x, y, it.w, h, it.text, ink, it.kind == K_GLYPH ? it.sw : 0);
+			unsigned f = it.on ? uk_mix (bg, C_ACCENT, 64) : hot ? 0xFFFFFF : uk_mix (bg, 0xFFFFFF, 190);
+			uk_rbox (canvas, it.x, y, it.w, h, 4, f, f);
+			uk_rline (canvas, it.x, y, it.w, h, 4, it.on ? uk_mix (bg, C_ACCENT, 170) : uk_mix (bg, 0x000000, 50));
+			uk_text_c (canvas, it.x, y, it.w, h, it.text, ink, it.kind == K_GLYPH ? it.sw : 0);
 			if (it.kind == K_GLYPH && it.arg == O_UNDER) canvas.fillRect (it.x + 9, y + h - 6, it.w - 18, 1, ink);
 			break;
 		}
 		case K_DROP: case K_GRAD:
 		{
-			wk_rbox (canvas, it.x, y, it.w, h, 4, 0xFFFFFF, 0xFFFFFF); wk_rline (canvas, it.x, y, it.w, h, 4, hot ? C_ACCENT : wk_mix (bg, 0x000000, 50));
+			uk_rbox (canvas, it.x, y, it.w, h, 4, 0xFFFFFF, 0xFFFFFF); uk_rline (canvas, it.x, y, it.w, h, 4, hot ? C_ACCENT : uk_mix (bg, 0x000000, 50));
 			if (it.kind == K_GRAD) grad_draw (canvas, it.x + 5, y + 5, it.w - 28, h - 10, g_grad);
-			else { char b[64]; wk_text_fit (it.text, it.w - 30, b, sizeof b); wk_text_l (canvas, it.x + 8, y, h, b, 0x202020); }
+			else { char b[64]; uk_text_fit (it.text, it.w - 30, b, sizeof b); uk_text_l (canvas, it.x + 8, y, h, b, 0x202020); }
 			chevron (canvas, it.x + it.w - 12, y + h / 2, 0x202020);
 			break;
 		}
 		case K_GSHAPE:
 		{
-			unsigned f = it.on ? wk_mix (bg, C_ACCENT, 64) : hot ? 0xFFFFFF : wk_mix (bg, 0xFFFFFF, 190);
-			wk_rbox (canvas, it.x, y, it.w, h, 4, f, f); wk_rline (canvas, it.x, y, it.w, h, 4, it.on ? wk_mix (bg, C_ACCENT, 170) : wk_mix (bg, 0x000000, 50));
+			unsigned f = it.on ? uk_mix (bg, C_ACCENT, 64) : hot ? 0xFFFFFF : uk_mix (bg, 0xFFFFFF, 190);
+			uk_rbox (canvas, it.x, y, it.w, h, 4, f, f); uk_rline (canvas, it.x, y, it.w, h, 4, it.on ? uk_mix (bg, C_ACCENT, 170) : uk_mix (bg, 0x000000, 50));
 			gshape_draw (canvas, it.x + 3, y + (h - 18) / 2, 18, it.val);
 			break;
 		}
 		case K_SLIDER:
 		{
 			int *p = sliderVar (it.arg); it.v = p ? *p : 0;
-			wk_text_l (canvas, it.x, 0, height, it.text, dim);
+			uk_text_l (canvas, it.x, 0, height, it.text, dim);
 			slider_draw (canvas, it.sx, 0, it.sw, height, it.v, it.lo, it.hi, bg);
-			char b[16]; fmt_int (b, it.v, it.suffix); wk_text_l (canvas, it.sx + it.sw + 12, 0, height, b, ink);
+			char b[16]; fmt_int (b, it.v, it.suffix); uk_text_l (canvas, it.sx + it.sw + 12, 0, height, b, ink);
 			break;
 		}
 		}
@@ -504,27 +504,27 @@ public:
 	void sync () { invalidate (true); }
 	void onDraw () override
 	{
-		unsigned bg = pan_bg (), ink = wk_ink_for (bg), dim = wk_mix (bg, ink, 150);
+		unsigned bg = pan_bg (), ink = uk_ink_for (bg), dim = uk_mix (bg, ink, 150);
 		canvas.fillRect (0, 0, width, height, bg);
-		canvas.fillRect (0, 0, 1, height, wk_mix (bg, 0x000000, 40));
-		wk_text_l (canvas, 14, 6, 26, "Layers", ink, 2);
+		canvas.fillRect (0, 0, 1, height, uk_mix (bg, 0x000000, 40));
+		uk_text_l (canvas, 14, 6, 26, "Layers", ink, 2);
 		const Layer &cl = D.lay[D.cur];
 		// the blend mode, the opacity
-		wk_text_l (canvas, 14, 38, 24, "Blend", dim);
-		wk_rbox (canvas, 70, 38, width - 84, 24, 4, 0xFFFFFF, 0xFFFFFF); wk_rline (canvas, 70, 38, width - 84, 24, 4, m_hotBlend ? C_ACCENT : wk_mix (bg, 0x000000, 50));
+		uk_text_l (canvas, 14, 38, 24, "Blend", dim);
+		uk_rbox (canvas, 70, 38, width - 84, 24, 4, 0xFFFFFF, 0xFFFFFF); uk_rline (canvas, 70, 38, width - 84, 24, 4, m_hotBlend ? C_ACCENT : uk_mix (bg, 0x000000, 50));
 		char bn[48]; scpy (bn, BLEND_NAMES[pclamp (cl.blend, 0, NBLENDS - 1)], sizeof bn);
 		if (cl.clip && (cl.blend == GPC_B_MASK || cl.blend == GPC_B_CUTOUT)) { int n = slen (bn); scpy (bn + n, " (layer below)", (int) sizeof bn - n); }
-		wk_text_l (canvas, 78, 38, 24, bn, 0x202020);
+		uk_text_l (canvas, 78, 38, 24, bn, 0x202020);
 		chevron (canvas, width - 26, 50, 0x202020);
-		wk_text_l (canvas, 14, 68, 24, "Opacity", dim);
+		uk_text_l (canvas, 14, 68, 24, "Opacity", dim);
 		int sw = width - 84 - 62;
 		slider_draw (canvas, 74, 68, sw, 24, (cl.opacity * 100 + 127) / 255, 0, 100, bg);
 		char op[8]; fmt_int (op, (cl.opacity * 100 + 127) / 255, " %");
-		wk_rbox (canvas, width - 62, 68, 48, 24, 4, 0xFFFFFF, 0xFFFFFF); wk_rline (canvas, width - 62, 68, 48, 24, 4, wk_mix (bg, 0x000000, 50));
-		wk_text_c (canvas, width - 62, 68, 48, 24, op, 0x202020);
+		uk_rbox (canvas, width - 62, 68, 48, 24, 4, 0xFFFFFF, 0xFFFFFF); uk_rline (canvas, width - 62, 68, 48, 24, 4, uk_mix (bg, 0x000000, 50));
+		uk_text_c (canvas, width - 62, 68, 48, 24, op, 0x202020);
 		// the list: the top layer first
 		int y0 = listTop (), lh = listH ();
-		wk_rbox (canvas, 8, y0, width - 16, lh, 6, C_FIELD, C_FIELD); wk_rline (canvas, 8, y0, width - 16, lh, 6, wk_mix (bg, 0x000000, 45));
+		uk_rbox (canvas, 8, y0, width - 16, lh, 6, C_FIELD, C_FIELD); uk_rline (canvas, 8, y0, width - 16, lh, 6, uk_mix (bg, 0x000000, 45));
 		int rows = (lh - 8) / ROW_H;
 		m_top = pclamp (m_top, 0, pmax (0, D.n - rows));
 		for (int r = 0; r < rows; r++)
@@ -534,25 +534,25 @@ public:
 			int y = y0 + 4 + r * ROW_H;
 			const Layer &l = D.lay[li];
 			bool sel = li == D.cur;
-			if (sel) wk_hilite (canvas, 11, y, width - 22, ROW_H - 2, 5, true);
-			else if (r == m_hot) wk_rbox (canvas, 11, y, width - 22, ROW_H - 2, 5, wk_mix (C_FIELD, C_ACCENT, 30), wk_mix (C_FIELD, C_ACCENT, 30));
-			else if (r & 1) wk_rbox (canvas, 11, y, width - 22, ROW_H - 2, 5, wk_mix (C_FIELD, 0x000000, 7), wk_mix (C_FIELD, 0x000000, 7));
-			unsigned tc = sel ? C_SEL_TEXT : C_FIELD_TEXT, dc = sel ? wk_mix (C_SEL_TEXT, C_ACCENT, 60) : wk_mix (C_FIELD, C_FIELD_TEXT, 150);
+			if (sel) uk_hilite (canvas, 11, y, width - 22, ROW_H - 2, 5, true);
+			else if (r == m_hot) uk_rbox (canvas, 11, y, width - 22, ROW_H - 2, 5, uk_mix (C_FIELD, C_ACCENT, 30), uk_mix (C_FIELD, C_ACCENT, 30));
+			else if (r & 1) uk_rbox (canvas, 11, y, width - 22, ROW_H - 2, 5, uk_mix (C_FIELD, 0x000000, 7), uk_mix (C_FIELD, 0x000000, 7));
+			unsigned tc = sel ? C_SEL_TEXT : C_FIELD_TEXT, dc = sel ? uk_mix (C_SEL_TEXT, C_ACCENT, 60) : uk_mix (C_FIELD, C_FIELD_TEXT, 150);
 			icon (canvas, l.visible ? I_EYE : I_EYEOFF, 16, y + (ROW_H - 2 - 20) / 2, tc);
 			if (is_clip_mask (li)) { canvas.fillRect (44, y + 2, 2, ROW_H - 6, dc); canvas.fillRect (44, y + ROW_H - 6, 8, 2, dc); }
 			thumb (li, is_clip_mask (li) ? 54 : 44, y + 8);
 			int tx = (is_clip_mask (li) ? 54 : 44) + THUMB_W + 10;
-			char nm[40]; wk_text_fit (l.name, width - tx - 40, nm, sizeof nm, sel ? 2 : 0);
-			wk_text (canvas, tx, y + 8, nm, tc, sel ? 2 : 0);
+			char nm[40]; uk_text_fit (l.name, width - tx - 40, nm, sizeof nm, sel ? 2 : 0);
+			uk_text (canvas, tx, y + 8, nm, tc, sel ? 2 : 0);
 			char md[48]; scpy (md, BLEND_NAMES[pclamp (l.blend, 0, NBLENDS - 1)], sizeof md);
 			if (l.opacity < 255 && l.blend != GPC_B_MASK) { int n = slen (md); char o2[12]; fmt_int (o2, (l.opacity * 100 + 127) / 255, " %"); scpy (md + n, " - ", (int) sizeof md - n); n = slen (md); scpy (md + n, o2, (int) sizeof md - n); }
-			wk_text (canvas, tx, y + 27, md, dc);
+			uk_text (canvas, tx, y + 27, md, dc);
 			if (l.blend == GPC_B_MASK || l.blend == GPC_B_CUTOUT) { ring2 (canvas, width - 30, y + ROW_H / 2, 7, dc, 20); disc (canvas, width - 30, y + ROW_H / 2, 3, dc); }
 		}
 		if (D.n > rows)
 		{
-			WkThumb t = wk_thumb (D.n, rows, m_top, lh - 8);
-			wk_draw_vscroll (canvas, width - WK_SBW - 10, y0 + 4, WK_SBW, lh - 8, t, C_FIELD);
+			UkThumb t = uk_thumb (D.n, rows, m_top, lh - 8);
+			uk_draw_vscroll (canvas, width - UK_SBW - 10, y0 + 4, UK_SBW, lh - 8, t, C_FIELD);
 		}
 		// the buttons
 		static const int BI[7] = { I_ADD, I_DUP, I_TRASH, I_UP, I_DOWN, I_MERGE, I_PROPS };
@@ -574,6 +574,11 @@ public:
 			if (g_layerCmd) g_layerCmd (L_OPACITY, slider_val (mx, 74, sw, 0, 100), 0, 0);
 			if (!bl) { m_drag = false; catchOutside = false; pressed = false; }
 			return true;
+		}
+		{							// the list's scroll bar: the bar's own, never the layer's under it
+			long p = m_top;
+			if (m_bar.mouse (in ? mx : -1, my, bl, width - UK_SBW - 12, UK_SBW + 4, y0 + 4, listH () - 8, D.n, rows, &p))
+			{ m_top = (int) p; invalidate (true); return true; }
 		}
 		if (wheel && in && my >= y0) { m_top = pclamp (m_top - wheel, 0, pmax (0, D.n - rows)); invalidate (true); return true; }
 		int bw = (width - 20) / 7, by = height - 38;
@@ -614,6 +619,7 @@ public:
 	}
 private:
 	int m_hot, m_hotBtn, m_top; unsigned m_last; int m_lastRow; bool m_drag, m_hotBlend;
+	UkBarDrag m_bar;
 	static const char *const BTN_TIPS[7];
 	// A layer's thumbnail: its pixels (the nearest ones) over a checkerboard, the picture's proportions.
 	void thumb (int li, int x, int y)
@@ -627,9 +633,9 @@ private:
 			{
 				unsigned c = l.px[(unsigned) (j * D.h / th) * D.w + i * D.w / tw], a = c >> 24;
 				unsigned ck = ((i >> 2) ^ (j >> 2)) & 1 ? 0xD6D6D6 : 0xFFFFFF;
-				canvas.pixel (ox2 + i, oy2 + j, a == 255 ? c & 0xFFFFFF : a ? wk_mix (ck, c & 0xFFFFFF, (int) a + 1) : ck);
+				canvas.pixel (ox2 + i, oy2 + j, a == 255 ? c & 0xFFFFFF : a ? uk_mix (ck, c & 0xFFFFFF, (int) a + 1) : ck);
 			}
-		canvas.frameRect (ox2 - 1, oy2 - 1, tw + 2, th + 2, wk_mix (C_FIELD, 0, 90));
+		canvas.frameRect (ox2 - 1, oy2 - 1, tw + 2, th + 2, uk_mix (C_FIELD, 0, 90));
 	}
 };
 const char *const LayersPanel::BTN_TIPS[7] = { "New layer (Ctrl+L)", "Duplicate the layer", "Delete the layer", "Move the layer up", "Move the layer down",
@@ -647,37 +653,37 @@ public:
 	unsigned bgColor () override { return opt_bg (); }
 	void onDraw () override
 	{
-		unsigned bg = opt_bg (), ink = wk_ink_for (bg), dim = wk_mix (bg, ink, 150);
+		unsigned bg = opt_bg (), ink = uk_ink_for (bg), dim = uk_mix (bg, ink, 150);
 		canvas.fillRect (0, 0, width, height, bg);
-		canvas.fillRect (0, 0, width, 1, wk_mix (bg, 0x000000, 40));
+		canvas.fillRect (0, 0, width, 1, uk_mix (bg, 0x000000, 40));
 		char b[64];
 		int x = 10;
 		icon (canvas, I_POINTER, x, 4, ink); x += 24;
-		if (view->ptrX >= 0) { fmt2 (b, view->ptrX, view->ptrY, ", "); wk_text_l (canvas, x, 0, height, b, ink); }
+		if (view->ptrX >= 0) { fmt2 (b, view->ptrX, view->ptrY, ", "); uk_text_l (canvas, x, 0, height, b, ink); }
 		x += 100;
 		Rect s = D.fl.px ? float_rect () : g_sel;
 		icon (canvas, I_SELSIZE, x, 4, ink); x += 24;
-		if (!s.empty ()) { fmt2 (b, s.x1 - s.x0, s.y1 - s.y0, " x "); wk_text_l (canvas, x, 0, height, b, ink); }
+		if (!s.empty ()) { fmt2 (b, s.x1 - s.x0, s.y1 - s.y0, " x "); uk_text_l (canvas, x, 0, height, b, ink); }
 		x += 116;
 		icon (canvas, I_IMGSIZE, x, 4, ink); x += 24;
-		fmt2 (b, D.w, D.h, " x "); wk_text_l (canvas, x, 0, height, b, ink);
+		fmt2 (b, D.w, D.h, " x "); uk_text_l (canvas, x, 0, height, b, ink);
 		x += 104;
 		const Layer &l = D.lay[D.cur];
 		char lt[96]; scpy (lt, "Layer: ", sizeof lt); int n = slen (lt); scpy (lt + n, l.name, (int) sizeof lt - n); n = slen (lt);
 		scpy (lt + n, " (", (int) sizeof lt - n); n = slen (lt); scpy (lt + n, BLEND_NAMES[pclamp (l.blend, 0, NBLENDS - 1)], (int) sizeof lt - n); n = slen (lt);
 		scpy (lt + n, l.visible ? ")" : ", hidden)", (int) sizeof lt - n);
-		if (x < zx () - 30) { char f[96]; wk_text_fit (lt, zx () - 16 - x, f, sizeof f); wk_text_l (canvas, x, 0, height, f, dim); }
+		if (x < zx () - 30) { char f[96]; uk_text_fit (lt, zx () - 16 - x, f, sizeof f); uk_text_l (canvas, x, 0, height, f, dim); }
 		// the right: grid, fit, - slider +, the zoom
 		int gx = zx ();
 		hot_box (canvas, gx, 3, 24, height - 6, bg, g_grid, m_hot == 4); icon (canvas, I_GRID, gx + 2, 4, ink);
 		hot_box (canvas, gx + 28, 3, 24, height - 6, bg, false, m_hot == 5); icon (canvas, I_FIT, gx + 30, 4, ink);
 		int mx = gx + 62;
-		hot_box (canvas, mx, 3, 18, height - 6, bg, false, m_hot == 1); wk_glyph (canvas, WKG_MINUS, mx + 9, height / 2, 8, ink);
+		hot_box (canvas, mx, 3, 18, height - 6, bg, false, m_hot == 1); uk_glyph (canvas, WKG_MINUS, mx + 9, height / 2, 8, ink);
 		slider_draw (canvas, mx + 26, 0, 140, height, zpos (view->zoom), 0, 1000, bg);
-		hot_box (canvas, mx + 174, 3, 18, height - 6, bg, false, m_hot == 2); wk_glyph (canvas, WKG_PLUS, mx + 183, height / 2, 8, ink);
+		hot_box (canvas, mx + 174, 3, 18, height - 6, bg, false, m_hot == 2); uk_glyph (canvas, WKG_PLUS, mx + 183, height / 2, 8, ink);
 		char z[12]; fmt_int (z, view->zoom, " %");
 		hot_box (canvas, mx + 198, 3, 64, height - 6, bg, false, m_hot == 3);
-		wk_text_c (canvas, mx + 198, 0, 64, height, z, ink);
+		uk_text_c (canvas, mx + 198, 0, 64, height, z, ink);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{

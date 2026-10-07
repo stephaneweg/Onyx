@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# rdpdtest.py -- protocol checks of rdpd (user/bin/rdpd.c) built for the PC (build_host.sh):
+# rdpdtest.py -- protocol checks of rdpd (user/BinUtils/rdpd.c) built for the PC (build_host.sh):
 # lock-step for an older client, pipelined rounds (CAPS, the credit window), no empty rounds,
 # the PINGs (probes while a round is in flight, liveness while idle), the PONG round trip, the
 # held keys released when a session ends, and an OLDER rdpd with a new client's options.

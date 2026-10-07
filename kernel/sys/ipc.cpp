@@ -3,6 +3,7 @@
 // mailbox_recv). See kern/ipc.h. The kernel just routes opaque {from_pid,type,bytes}
 // messages between per-process mailboxes; the registered shell is a single pid.
 //
+#include <kern/gpio.h>
 #include <kern/sound.h>
 #include <kern/vfs.h>
 #include <kern/ramfs.h>
@@ -12,6 +13,8 @@
 #include <circle/sched/task.h>
 #include <circle/util.h>		// memcpy
 #include <kern/uaccess.h>		// the app's pointers (the kapis below)
+#include <kern/iowait.h>		// a blocking mailbox_recv sleeps on the I/O generation
+#include <kern/kapi_abi.h>		// KAPI_WAIT_FOREVER
 
 // ---- CMailbox --------------------------------------------------------------
 CMailbox::CMailbox (void)
@@ -42,6 +45,7 @@ boolean CMailbox::Push (unsigned nFromPid, int nType, const void *pData, unsigne
 	}
 	m_nHead = nNext;
 	m_Lock.Release ();
+	IoWake ();				// (a receiver asleep in mailbox_recv: kapi_mailbox_recv)
 	return TRUE;
 }
 
@@ -60,7 +64,6 @@ boolean CMailbox::Pop (TMailMsg *pOut)
 }
 
 // ---- routing helpers -------------------------------------------------------
-static unsigned g_nShellPid = 0;		// the registered shell, or 0
 
 // Named services (ABI v40): a process registers under a short name ("notify", ...);
 // clients look the pid up and talk to it with mailbox_send / mailbox_recv.
@@ -112,16 +115,14 @@ static CAddressSpace *FindASByPid (unsigned nPid)
 }
 
 boolean IpcPidAlive (unsigned nPid) { return FindASByPid (nPid) != 0; }
+CAddressSpace *IpcFindAS (unsigned nPid) { return FindASByPid (nPid); }
 
 void IpcOnProcessGone (unsigned nPid)
 {
 	VfsOnProcessGone (nPid);		// a file-system provider that died (kern/vfs.h)
 	RamFsOnProcessGone (nPid);		// its RAM: files / folders left open (kern/ramfs.h)
 	SoundOnProcessGone (nPid);		// it owned the audio output: silence + free it
-	if (nPid != 0 && nPid == g_nShellPid)
-	{
-		g_nShellPid = 0;		// the shell died -- no router until one re-registers
-	}
+	GpioOnProcessGone (nPid);		// its header pins back to inputs, its buses closed (kern/gpio.h)
 	for (unsigned i = 0; nPid != 0 && i < IPC_MAX_SERVICES; i++)
 	{
 		if (s_Services[i].pid == nPid)
@@ -154,19 +155,6 @@ void IpcNotify (const char *pTitle, const char *pText)
 	for (unsigned k = 0; pText && pText[k] && n < MAILBOX_MSG_MAX - 1; k++) Msg[n++] = (u8) pText[k];
 	Msg[n++] = 0;
 	IpcPost ("notify", 1, Msg, n);		// NOTIFY_MSG_SHOW
-}
-
-// ---- kapis -----------------------------------------------------------------
-extern "C" int kapi_register_shell (void)
-{
-	CAddressSpace *pAS = CurAS ();
-	if (pAS == 0)
-	{
-		return 0;
-	}
-	g_nShellPid = pAS->GetPid ();
-	pAS->GetOrCreateMailbox ();		// make sure the main mailbox exists
-	return 1;
 }
 
 // Register the caller as service `pName`. 1 = registered (or already ours), 0 = the
@@ -234,34 +222,6 @@ static boolean PayloadIn (u8 *pBuf, const void *pIn, unsigned nLen)
 	return pIn == 0 || nLen == 0 || nLen > MAILBOX_MSG_MAX || UserCopyIn (pBuf, pIn, nLen);
 }
 
-extern "C" int kapi_shell_request (int nType, const void *pUserIn, unsigned nLen)
-{
-	u8 In[MAILBOX_MSG_MAX];
-	if (!PayloadIn (In, pUserIn, nLen))
-	{
-		return 0;			// (a bad pointer: as a full mailbox)
-	}
-	const void *pIn = pUserIn != 0 ? (const void *) In : 0;
-	if (g_nShellPid == 0)
-	{
-		return -1;			// no shell registered
-	}
-	CAddressSpace *pShell = FindASByPid (g_nShellPid);
-	if (pShell == 0)
-	{
-		g_nShellPid = 0;		// stale -- shell vanished
-		return -1;
-	}
-	CMailbox *pMb = pShell->GetOrCreateMailbox ();
-	if (pMb == 0)
-	{
-		return -1;
-	}
-	CAddressSpace *pMe = CurAS ();
-	unsigned nFrom = (pMe != 0) ? pMe->GetPid () : 0;
-	return pMb->Push (nFrom, nType, pIn, nLen) ? 1 : 0;	// 0 = mailbox full
-}
-
 extern "C" int kapi_mailbox_send (int nTargetPid, int nType, const void *pUserIn, unsigned nLen)
 {
 	u8 In[MAILBOX_MSG_MAX];
@@ -308,6 +268,7 @@ extern "C" int kapi_mailbox_recv (int *pFromPid, int *pType, void *pBuf, unsigne
 	TMailMsg Msg;
 	for (;;)
 	{
+		u32 nGen = IoGen ();			// (taken before the look: a Push after it changes it)
 		if (pMb->Pop (&Msg))
 		{
 			if (pFromPid != 0) UserPut (pFromPid, (int) Msg.from_pid);
@@ -321,6 +282,10 @@ extern "C" int kapi_mailbox_recv (int *pFromPid, int *pType, void *pBuf, unsigne
 		{
 			return -1;			// empty (non-blocking) / no scheduler
 		}
-		CScheduler::Get ()->Yield ();		// block: hand the CPU over until a message lands
+		// Asleep until a message lands (CMailbox::Push wakes the I/O waiters). It was a Yield:
+		// the receiver stayed ready and took a turn of the processor at every round of the
+		// scheduler -- clipd, the one service that waits this way, held most of core 0 for
+		// ever (state R, no system call: seen on the Pi, every program four times slower).
+		IoWait (nGen, KAPI_WAIT_FOREVER);
 	}
 }

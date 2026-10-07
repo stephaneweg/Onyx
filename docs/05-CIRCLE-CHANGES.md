@@ -50,6 +50,10 @@ git -C circle diff Step51..onyx
 | 21 | **TCP: RTO 1 s initial** (was 3 s; the 1 s minimum kept — 200 ms was tried and undone), Karn after a fast retransmit | `lib/net/retranstimeoutcalc.cpp`, `include/circle/net/retranstimeoutcalc.h`, `lib/net/tcpconnection.cpp` | `libnet` |
 | 22 | **`CSocket::Send`'s count**: the bytes queued when a later chunk times out | `lib/net/socket.cpp` | `libnet` |
 | 23 | **Wi-Fi: the firmware's `wsec` from the IE's ciphers** (group + pairwise: TKIP 2, AES 4, as Linux's brcmfmac) -- WPA2 was always "aes": a WPA/WPA2 mixed-mode network (pairwise CCMP, group TKIP, common on 2.4 GHz) associated but no broadcast was decoded (no DHCP offer: the link stayed down) | `addon/wlan/ether4330.c` (`iewsec`, `setauth`) | `libwlan` |
+| 25 | **TCP: a closed connection's retransmission timer** stopped, a late one ignored — it was a kernel panic (`Unexpected state 0`); a reset wakes a waiting sender | `lib/net/tcpconnection.cpp` | `libnet` |
+| 26 | **Wi-Fi: the chip polled** when the network has its own core (the SDIO card interrupt came 2.5–5 ms late), **a scan over both bands** with the configured networks probed by name, **5 GHz preferred**, **a frame in one SDIO command**, the frames' locks without a yield, **the SDIO bus at 50 MHz**, **no A-MPDU for the frames sent** (half of them were lost during a download) | `addon/wlan/ether4330.c`, `addon/wlan/emmc.c`, `addon/wlan/p9util.cpp` | `libwlan` |
+| 27 | **TCP: window scaling** (RFC 7323), **a receive window that follows the receive queue** (it was a constant), a 256 KB transmit threshold, **delayed acknowledgements** (one for eight segments) | `lib/net/tcpconnection.cpp`, `include/circle/net/tcpconnection.h`, `include/circle/net/sizes.h` | `libnet` |
+| 28 | **USB volumes**: `f_mkfs` and the labels on (`FF_USE_MKFS`, `FF_USE_LABEL`), FatFs' objects checked again once the volume lock is held, the volume mutex kept across an unmount, a yield between two USB transfers, SCSI SYNCHRONIZE CACHE for the eject | `addon/fatfs/ffconf.h`, `ff.c`, `ffsystem.cpp`, `diskio.cpp`, `lib/usb/usbmassdevice.cpp`, `include/circle/usb/usbmassdevice.h` | `libfatfs`, `libusb` + the kernel (no structure changes: no clean rebuild) |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
 ---
@@ -76,6 +80,8 @@ layout needs no kernel rebuild — and the kernel carries **no** keyboard tables
 The kernel fills the live keyboard from a `.kmap` file via `SetEntry` (`kapi_set_keymap_data`,
 ABI v27), re-applying it whenever a keyboard (re-)attaches. `MAX_TASKS` goes **20 → 40**: the
 network stack adds long-lived background tasks (net / DHCP / WPA supplicant + NTP + IRC).
+(Onyx's own scheduler has since dropped the fixed table: its tasks are a linked list with no limit,
+docs/02 §5, so `MAX_TASKS` no longer bounds Onyx; the patch stays for Circle's own code.)
 
 ```diff
 --- a/include/circle/input/keymap.h
@@ -392,7 +398,7 @@ stored in the `.kmap` layout files — keeps its number:
 The Onyx layouts (`tools/keymaps/maps/*.h` → `genkeymaps.py` → `SD:/etc/keymaps/*.kmap`)
 put them in the **Shift** column of the physical keys 0x4A–0x52. The kernel's key parser
 (`gui/window.cpp`, `NextKey`) turns any `ESC[n;mX` into the plain `KEY_*` code; apps read the
-modifier with `kapi_get_modifiers` (text selection in `wtk::Textarea` / `RichTextBox`).
+modifier with `kapi_get_modifiers` (text selection in `uikit::Textarea` / `RichTextBox`).
 
 ## 6. Partial display update
 
@@ -555,7 +561,8 @@ big files (ROMs, disc images).
 
 **What.**
 
-- `ffconf.h`: `FF_VOLUMES 9`, `FF_VOLUME_STRS "SD","SD1","SD2","SD3","USB","USB2","USB3","FD","NVME"`;
+- `ffconf.h`: `FF_VOLUMES 9`, `FF_VOLUME_STRS "SD","SD1","SD2","SD3","USB","USB2","USB3","FD","NVME"` (since
+  §28: 21 volumes, the USB devices' `USB1`..`USB3` and their partitions `USB1P1`..`USB3P4`);
   `FF_FS_EXFAT 1` (needs `FF_USE_LFN`; `FSIZE_t` becomes 64-bit → rebuild the kernel clean).
 - `ffconf.h`: `FF_MULTI_PARTITION 1`. `diskio.cpp`: the physical drives are `emmc1` (the whole
   card, as upstream), `umsd1`…`umsd3`, `ufd1`, `nvme1`; **`VolToPart`** maps `SD:` to the card's
@@ -726,6 +733,304 @@ peer's data segments and window updates are no duplicate ACKs, three real ones s
 fast retransmit and a full ACK ends the recovery, the RTO (200 ms, backed off, reset by a sample,
 1 s for a SYN, Karn after a fast retransmit, a dead peer given up after 51 s), and `Send`'s count
 after a timeout. Against the unpatched sources it fails 15 of its 25 checks.
+
+## 23. Sockets for the BSD layer: `AcceptReady`, a connection kept until its socket lets it go
+
+**Why.** The kapi v75 BSD sockets (docs/02 §8, `sys/bsdsock.cpp`) need a non-blocking accept and
+sockets that stay valid after a reset until `close`. Upstream deleted a terminated connection at
+the next `Process` even while a `CSocket` still held its handle; after a reset the handle went to
+the next connection, which the old socket then read, wrote and closed.
+
+**What** (fork commit `f1d6b200`; `tools/circle-patches/wp-net.patch`): `CSocket::AcceptReady ()`
+(a backlog connection already connected, so `Accept` will not block; it also replaces backlog
+connections that died before being accepted); `CNetConnection::SetReleased` / `IsReleased`, set by
+`CTransportLayer::Disconnect` and by a failed `Connect` — a terminated connection is deleted only
+once released; `CSocket::Accept` disconnects a failed backlog connection instead of leaking it;
+`CTransportLayer::IsTerminated (h)`.
+
+**Test**: `tools/tests/run_circlenet_test.sh` (the stub gained `IsTerminated`): 25/25.
+
+## 24. `CPageAllocator::Allocate`: a failed attempt leaves the count as it was
+
+**Why.** `Allocate` advanced its bump pointer (`m_pNext += PAGE_SIZE`) before checking it against
+`m_pLimit`, and returned 0 without stepping it back: every failed attempt left the pointer one page
+further past the limit, and `GetFreeSpace ()` (`m_pLimit - m_pNext`, a `size_t`) wrapped.
+`palloc_high` tries the high segments in order, so once segment 0 was full every page served
+elsewhere cost it one more page: `meminfo`'s free memory fell for ever (an OOM kill seemed to lose
+~1.1 GB on an 8 GB Pi) and the kernel's OOM check fired with half the memory still free. No frame
+was lost.
+
+**What.** `lib/pageallocator.cpp`: `m_pNext -= PAGE_SIZE` before that `return 0`.
+
+**Test**: `memtest oom` on the Pi (the OOM kill twice, each run ending where it started).
+
+## 25. TCP: a closed connection's retransmission timer
+
+**Why.** The Pi restarted by itself under network load (a video streamed by the WebKit browser, an
+FTP upload of 100 MB and the remote desktop at once; a telnet client gone while output flowed was
+enough): `SD:/etc/lastcrash.txt` said **`A kernel panic: tcp: Unexpected state 0 at line 1922`**.
+That line is `CTCPConnection::TimerHandler`'s retransmission case: the timer of a connection whose
+state is `Closed`. A peer's RST, the ACK of our FIN in `LAST-ACK` or a refused connect closed the
+connection with the retransmission timer still running; since §23 a terminated connection is kept
+until its socket releases it (upstream deleted it at the next `Process`), so the timer fired on
+the closed connection a second later. Upstream calls that `UNEXPECTED_STATE ()`, which in a build
+without `NDEBUG` — ours — is `LogPanic`: every core halted, for one connection, and any client
+could cause it.
+
+**What.** `lib/net/tcpconnection.cpp`:
+
+- every path of `PacketReceived` that goes to `Closed` (a RST in each state, a SYN in the window,
+  the FIN's acknowledgement in `LAST-ACK`, a refused connect) stops the retransmission timer first;
+- `TimerHandler`, `TCPTimerRetransmission`: in `Closed`, `Listen`, `FinWait2` or `TimeWait` the
+  timer is ignored before the RTO is backed off or the retry count taken (the handler runs from an
+  interrupt, with `netcore=1` on another core than the stack: it can still race those paths);
+- a reset (and the SYN case) also sets `m_TxEvent`: a sender waiting for room in the transmit
+  queue sees the reset at once instead of at its timeout.
+
+**Test**: on the Pi — YouTube playing in Web with an FTP upload of 100 MB and telnet sessions
+opened and dropped: no panic since (it came within minutes before).
+
+## 26. Wi-Fi: the chip polled, a scan over both bands, 5 GHz preferred
+
+Three changes in the BCM4343x driver (`addon/wlan/ether4330.c`), each behind a global the kernel
+sets (`kernel/sys/net.cpp`: `NetWlanOptions`, `NetWlanNames`); with the globals at their defaults
+the polling and the bias are off (the scan over both bands is not conditional). `hostap` — upstream's
+submodule, wpa_supplicant and its Circle driver glue — is **not** changed.
+
+**1. The chip polled (`onyx_wlpoll`).** The receive loop (`rproc`) read frames until the chip had
+none, then slept in `intwait` until the SDIO card interrupt. That interrupt comes late: measured
+on a Pi 4 under a steady stream, **2.5 to 5 ms a wait, 80 % of the reader's time**, with the
+frames already there — the Pi sent 1.1 MB/s and received 1 MB/s on a link good for forty times
+that. With `onyx_wlpoll` set (the kernel does, when the network has a core of its own:
+`netcore=1`), the reader asks the chip itself, in turn with the stack's other tasks — a round of
+that core's scheduler is ~13 µs: `intpoll` reads the chip's interrupt status (function 0's
+`Intpend`, then the backplane's `Intstatus`, acknowledged) and tells whether `FrameInt` is
+pending; the data function is read only then, and until it is empty (as Linux's brcmfmac: no read
+with nothing pending). On the primary core (`netcore=0`) the driver waits for the interrupt as
+before: polling would take the core from everything else.
+
+**2. A scan over both bands, the networks probed by name.** `wlscanstart` listed the fourteen
+2.4 GHz channels with the wildcard SSID alone, so a 5 GHz BSS was never a candidate: a Pi 4 beside
+a dual-band access point joined it on 2.4 GHz channel 1, shared with the neighbours. The escan now
+passes `nchans = 0` (the firmware's own list: every channel of both bands the country allows) and,
+beside the wildcard, up to four names (`onyx_scan_ssid`, `onyx_scan_nssid`): an access point that
+leaves its name out of the beacons of one band (seen on a Livebox: the 5 GHz BSS came with an
+empty SSID) answers a probe by name and is seen as that network. The kernel fills the names from
+the `ssid="…"` lines of `SD:/etc/wpa_supplicant.conf` before wpa_supplicant starts and at each
+`wlan_reconnect`. A scan takes longer (5 GHz's DFS channels are listened to, not probed):
+`wlan_scan` waits 5 s instead of 3.5.
+
+**3. 5 GHz preferred (`onyx_scan_5g_bias`).** wpa_supplicant ranks the BSSs of a network by
+level, and 2.4 GHz is usually heard a few dB louder. `wlscanresult` adds the bias (the kernel:
+25 dB) to the level of each 5 GHz BSS heard at −78 dBm or better before the result is queued
+(kept negative), so a network on both bands is joined on 5 GHz unless that band is much weaker.
+The kernel's own scan (`wlan_scan`, `wifiscan`) clears the bias for its length: its list shows
+the levels as heard. (The glue reads the level unsigned — `res->level = bss->RSSI`, a `u16`: −67
+is 65469 — an upstream bug left as it is: the order stays the same.) `WLC_SET_ASSOC_PREFER` was
+tried first and changes nothing here: the supplicant names the BSSID it joins.
+
+`addon/wlan/p9util.cpp` gains `p9usec` (the microsecond clock) and `p9yield` (a turn of the
+scheduler) for the driver's C code. With `onyx_wlstat` (the kernel: `cmdline.txt netstat=1`) the
+driver logs every 5 s under load its frames a second, a frame's read and write times, the waits,
+and every 10 s what the firmware says of the link (rate, RSSI, chanspec, power save).
+
+**4. The frames' path (`onyx_wlfast`, a bit each; the kernel sets 31).** With the chip polled and
+5 GHz joined, a frame's read still took ~270 µs — 3700 frames a second at best:
+
+- *bit 1 — one command a transfer* (`packetrw`): `sdiorwext` sent a length over a block (512) as
+  its whole blocks in one CMD53 and the rest in a second, byte-mode one: a 1500-byte frame was the
+  header (12 bytes), two blocks, then 464 bytes — three commands. A length over a block is now
+  rounded up to whole blocks (the "roundup" of Linux's brcmfmac: past a frame's end the chip pads
+  a read and ignores what is written).
+- *bit 2 — the next frame read whole* (`wlreadpkt`): a frame's header tells the next frame's
+  length (`nextlen`, 16-byte units) when the chip has one queued; that frame is then read in one
+  command instead of its header first. A hint too short is completed by a second read.
+- *bit 4 — the frames' locks without a yield* (`fqlock` / `fqunlock`, `emmcio`): `qlock` and
+  `qunlock` each call the scheduler, free or not, and `tsleep` yields before it looks at its
+  condition — a frame cost eleven turns of the scheduler (the packet lock, the SDIO lock around
+  each command, the wait for each transfer's end), each a round of all the stack's tasks. On the
+  frames' path a free lock is taken and released at once, a transfer already ended is not waited
+  for, and the reader yields once a frame. (Doing this in `p9proc.cpp` for every lock and sleep of
+  the driver cut the Wi-Fi at boot — not found why; only this path is changed.)
+- *bit 8 — the bus at 50 MHz* (`emmc.c`): the driver switches the card to High Speed (function
+  0's register 0x13) but the host stayed at 25 MHz; when the bus goes to four lines the host now
+  takes High Speed timing and 50 MHz, as Linux runs this chip on a Pi 4. (The controller's base
+  clock is 250 MHz there: the divider gives 41.7 MHz. The next step, 62.5 MHz, was tried: the
+  chip does not answer.)
+- *bit 16 — the controller's registers written without a wait* (`emmc.c`, `WR`): each write
+  waited 2 µs first — two periods of the SD clock, which is 2 µs at 1 MHz and 40 ns at 50 —, and
+  a command writes eight registers.
+
+A frame's read: **93 µs** (was 270), a frame's write 16 µs (was 36).
+
+**Receive glomming was tried and taken out.** `bus:rxglom` is accepted by the firmware, which
+then expects the glom header on what it is *sent* too (brcmfmac's `txglom`: 8 bytes between the
+length words and the software header — without it the chip stops answering commands); with both
+done the Wi-Fi works, but this firmware (the 43455's) never sent a superframe in 50 MB received,
+and the rates were a little lower.
+
+**Measured** (a Pi 4, `tcpbench` against a PC on the same access point; with the kernel's
+inter-core interrupt of docs/02 §11, which came first, and §27's TCP changes, which came last):
+
+| | echo round trip | the Pi sends | the Pi receives |
+|---|---|---|---|
+| before | 10.4 ms | 795 KB/s | 504 KB/s |
+| the IPI (kernel) | 2.8 ms | 1128 KB/s | 1008 KB/s |
+| + the chip polled | 2.8 ms | 3.3 MB/s | 1 MB/s |
+| + 5 GHz (VHT, 80 MHz, link 195–292 Mbit/s) | 2.2 ms | 4.3 MB/s | 4.4 MB/s |
+| + TCP window scaling (§27) | 2.3 ms | 6.6 MB/s | 4.6 MB/s |
+| + one command a frame, the locks | 2.3 ms | 6.4 MB/s | 5.5 MB/s |
+| + the bus at 50 MHz | 2.2 ms | 7.5–8.1 MB/s | 6–7 MB/s |
+| + the registers written without a wait | 2.1 ms | 8–9.5 MB/s | **8.7 MB/s** |
+
+From the internet (the Pi's `curl`): 30 MB from Cloudflare at 7.1–8.5 MB/s (it was 0.8, then
+2.2–2.8 with the first four rows); YouTube's 3 MB player script in 0.6 s (was 4 to 23 s). No
+error of the driver in 4 × 64 MB each way.
+
+**What limits it now** (`netstat=1`): 6000 frames a second at 93 µs each is over half the
+reader's time — 61 µs of it is the frame's data on the bus —, and the Pi acknowledges every
+segment (6000 frames sent a second while it receives). What is left: delayed acknowledgements. The bus is on four lines (`Busifc` 2) and the link is
+VHT (`vhtmode 1`, chanspec `e02a`): neither is the limit.
+
+**5. The frames sent are not aggregated (`onyx_wl_ampdu_tx = 0`: the firmware's `ampdu_tx`).**
+The symptom was the user's: *while the browser loads a page, the remote desktop freezes*. Measured:
+during a download from the internet the PC's pings of the Pi lost 20 % of their answers, and
+**50 to 75 % during a download limited to 1 MB/s** (none when idle); an echo on another TCP
+connection came back after 1, 3, 7 seconds (the Pi's retransmission timeouts: its minimum is
+1 s), a telnet session stalled for a minute. Where the packets went, step by step:
+
+- the Pi's network core is never held (its longest scheduler round in 5 s: 0.65 ms);
+- the Pi **receives every request and writes every answer to the chip** (the driver's counts of
+  ICMP frames handed up and taken down: 150 / 150), never keeping a frame more than 19 ms;
+- the PC receives a third of them (Windows' counters: no damaged packet, just fewer), and the
+  Pi's own pings to the gateway are lost alike at that time (8 answered of 25): it is **what the
+  Pi sends** that disappears, whatever its destination — its TCP acknowledgements too, which a
+  download does not notice (they are cumulative);
+- the firmware counts them as sent and acknowledged (its `counters`: `txfail` 2 in 3453 frames).
+
+So the frames are lost after the access point's block acknowledgement — in the firmware's or the
+access point's handling of the aggregates (an Orange Livebox, 5 GHz, VHT 80 MHz, −70 dBm). What
+changes it: **`ampdu_tx` 0 — none lost** (`wlinit`: the interface taken down, the setting, up
+again; it is refused while up). What does not: a 40 MHz channel (`bw_cap`), a block
+acknowledgement window of 8 (`ampdu_ba_wsize`), no RTS (`ampdu_rts`), no A-MSDU, a receive
+window of 8. The price is the Pi's own sending rate — each frame is a transmission of its own —
+and the acknowledgements of what it receives: hence §27's delayed acknowledgements.
+
+| the kernel's defaults now | the Pi receives | the Pi sends | from the internet | the PC's pings lost during a download | an echo during a download |
+|---|---|---|---|---|---|
+| A-MPDU on what is sent (the table above's last row) | 8.7 MB/s | 8–9.5 MB/s | 7–9 MB/s | 20–75 % | up to 7 s |
+| no A-MPDU on what is sent, an acknowledgement for 8 segments | 3.8–4.8 MB/s | 1.3–1.7 MB/s | 5.6–5.9 MB/s | **0 %** | **77 ms at worst** |
+| **+ frame bursting** (`onyx_wl_frameburst = 1`: the firmware's command 219, which Linux's brcmfmac sets too — several frames in one transmit opportunity) | 4 MB/s | **3.1 MB/s** | 6.5 MB/s | **0 %** | 0.3 s at worst |
+
+The settings are the driver's globals (`onyx_wl_ampdu_tx`, `_ampdu_rx`, `_ba_wsize`,
+`_ampdu_rts`, `_rx_ba_wsize`, `_bw5`, `_frameburst`; −1: the firmware's own), each a word of the
+trial file. **To do**: whether a newer firmware aggregates soundly (the sending rate would be
+6 to 9 MB/s again).
+
+**Trying such a change** on a Pi that is only reachable by its Wi-Fi: the kernel's one-boot trial
+file (docs/02 §11 *A trial*): each of the bits above was tried alone that way before it became
+the default.
+
+### The driver tells when the chip was last busy
+
+`ether4330.c` keeps two figures for the kernel's network core, which sleeps between two questions to
+the chip once the network is quiet (docs/02, *The network core sleeps when the network is quiet*):
+`onyx_wl_lastact`, the clock when the chip last said it had something, when a frame was last read
+from it or written to it; `onyx_wl_polls`, the times the polling reader asked the chip and it had
+nothing. No change of behaviour in the driver itself.
+
+`emmc.c`: **`sdiocardintrpending (arm)`** tells whether the card's interrupt is pending, from the
+controller's flag (no command) and, when it is not and `arm` is set, enables that interrupt — its
+handler then sends an event (`sev`) that ends the network core's sleep. Two things had to be put
+right for it. The flag is the line's level only while its status is enabled: written alone it
+stays set after the data lines moved during the last commands (it read "pending" for ever) —
+its status is disabled, then enabled again, and it is sampled anew, as Linux's SDHCI driver does.
+And the interrupt enable register is changed from two cores, the driver's tasks setting bits and
+the handler clearing those that came: every such change is now made under one lock (`irpenable`,
+`mmcinterrupt`). `sdiodebugreg` gives the controller's registers to the kernel's statistics line.
+
+## 27. TCP: window scaling, a receive window that follows the queue
+
+**Why.** The receive window was a constant — 64240 bytes (§19), never scaled, never smaller: (1)
+a connection carried at most 64 KB a round trip — 2.5 MB/s at 25 ms from the internet, and
+4.5 MB/s on the LAN, where the queueing makes the round trip 14 ms; the Pi's own sends were held
+to 64 KB too (the peer's window read without its scale, a 64 KB transmit threshold); (2) a reader
+that stopped reading did not stop the peer: the receive queue grew without a limit (a paused
+download, a video's loader that waits).
+
+**What.** `lib/net/tcpconnection.cpp` (the switch `onyx_tcp_ws`, set by the kernel; 0: as before):
+
+- **the option**: our SYN carries window scale 3 (after the MSS: NOP, kind 3, length 3); a
+  SYN+ACK carries it when the peer's SYN did. `ScanOptions` takes the peer's shift (in a SYN, in
+  `SYN-SENT` or `LISTEN`); with both, the peer's window field is shifted left by its shift (never
+  in a SYN), ours right by 3, and the receive limit is 180 segments (262800 bytes).
+  `TCP_MSS_HEADER_LEN` is 28 (the buffer's headroom).
+- **the window** sent is the room left in the receive queue (`ReceiveWindow`: the limit less
+  the bytes queued), in every segment; `Receive` — the reader made room — sends a window update
+  once that opens the window by a quarter of the limit over what the peer was last told.
+- the transmit threshold (when `Send` waits, when a socket is writable) is 256 KB, the initial
+  slow-start threshold 1 MB with a scaled peer (it was 65535: linear growth past 64 KB).
+- `ScanOptions` stops at an option of length under 2 (it looped for ever).
+- **delayed acknowledgements** (`onyx_tcp_ws` bit 2, `onyx_tcp_ackn`: the kernel sets 8): every
+  data segment was acknowledged by a segment of its own — 6000 frames a second sent while
+  receiving 9 MB/s, each a transmission on the radio once they are no longer aggregated (§26, 5).
+  A full segment (1000 bytes or more) in order, without PUSH or FIN, that fills no hole, is
+  counted; the acknowledgement goes with the eighth, or from `Process` 10 to 20 ms after the
+  first (`m_nAckPending`, `m_nAckPendingTicks`); a short segment (a request, a keystroke), a
+  PUSH, an out-of-order segment are acknowledged at once, as before. Any segment sent with ACK
+  clears the count.
+- (`onyx_tcp_trace`, the trial's `netstat=1`: a line at each retransmission timeout — the
+  connection, its sequence state, how long ago the peer's last segment came.)
+
+**Measured**: the table of §26 (the Pi sends 4.3 → 6.6 MB/s by this alone); the download from
+Cloudflare 2.2–2.8 → 6.0 MB/s with §26's fast path.
+
+## 28. USB volumes: format, labels, an unmount while a call waits, the eject
+
+**Why.** kapi v93 (docs/02 §18) mounts the USB mass-storage devices as `USB1:`, `USB2:`, `USB3:` (or `USB1P1:`… per partition) when they
+are plugged in and unmounts them when they are ejected or pulled out, formats a volume and shows its label.
+Upstream's FatFs configuration has neither `f_mkfs` nor the labels, and FatFs assumes a volume is not
+unmounted while a call on it waits for its lock.
+
+**What.**
+
+- `ffconf.h`: **`FF_USE_MKFS 1`**, **`FF_USE_LABEL 1`** (`f_mkfs`, `f_getlabel`, `f_setlabel`). Neither changes
+  a structure: no clean rebuild, `libwlan` / `wpa_supplicant` unaffected (unlike §13).
+- `ff.c`: an unmount while another task waits for the volume lock (a USB stick ejected or pulled out: the
+  kernel unmounts it holding the lock, the waiter goes on once it is given). **`validate`** tests the object
+  again once the lock is held (`fs_type`, `id`; before, only the drive's status): a write on a volume
+  unmounted meanwhile was carried out on the stale `FATFS` — on an ejected stick still plugged in, written to
+  it behind the user's back. **`mount_volume`** checks `FatFs[vol]` is still the object it locked: it was
+  re-mounting the unregistered object (an open after the eject found the volume back by itself). Both now
+  return `FR_INVALID_OBJECT` / `FR_NOT_ENABLED` and give the lock back.
+- `ffsystem.cpp`: with the kernel's lock hooks (§7) the `CGenericLock` is never used; `ff_mutex_delete` (at an
+  unmount) no longer deletes it and `ff_mutex_take` / `_give` call the hooks before asserting it exists: a task
+  that took the lock before the unmount gives it back after, which asserted (a kernel panic) before.
+  `ff_mutex_create` keeps the existing one (a remount). Without the hooks: upstream's behaviour.
+- **The USB devices' partitions** (the user's naming, 2026-10-06): `ffconf.h` **`FF_VOLUMES 21`**, the strings
+  `"SD","SD1","SD2","SD3", "USB1","USB1P1".."USB1P4", "USB2",.., "USB3",.."USB3P4", "FD","NVME"`; `diskio.cpp`'s
+  **`VolToPart`**: `USBn` = `{n, 0}` (the device whole: its first FAT volume, a superfloppy or its only
+  partition), `USBnPm` = `{n, m}` (MBR partition m). The kernel mounts one or the other by the device's
+  sector 0 (docs/02 §18). `ff.c`: its check **`FF_VOLUMES <= 10` lifted to 32** — it only guards the numeric
+  `0:`..`9:` form (`get_ldnumber` reads one digit), which Onyx does not use; the volumes are reached by name.
+  The structures do not change (no clean rebuild; `tools/tests/run_fs_test.sh` lifts the same check in its copy
+  of upstream's `ff.c`).
+- `diskio.cpp`: after each transfer with a drive other than the SD card (`pdrv != 0`), the weak hook
+  **`OnyxDriverPoll`** (the kernel's, §7b: it yields once the task has run 10 ms). The USB driver waits in a
+  busy loop (`NO_BUSY_WAIT` off): a format, a big folder kept core 0 for seconds. Between two transfers is a
+  safe point: the drive's lock is held (the kernel's `fslock.cpp`: one lock per physical drive, so one for all
+  the volumes of a USB device), it is called once the bounce buffer and the sector cache are done with, and a
+  device removed meanwhile only fails the next transfer (`disk_removed` cleared `s_pVolume`).
+- `usbmassdevice.{h,cpp}`: **`IOCtl (DEVICE_IOCTL_SYNC)`** — FatFs' `CTRL_SYNC` — sends **SCSI SYNCHRONIZE CACHE
+  (10)** (whole medium); a device that refuses it (no cache) is reset to a known state and the call succeeds.
+  The kernel sends it at an eject, after a format and at the session's end.
+
+**Tested** on the PC: `tools/tests/run_fs_test.sh` builds `tools/tests/fs/usbtest.cpp` with the fork's FatFs
+and `FF_FS_REENTRANT 1` (a counting lock of its own): sticks formatted as FAT32 / exFAT / FAT16 with an MBR (as
+Windows), a FAT32 superfloppy, all found by `USB1:`'s auto search; a device of two partitions (`USB1P1:` FAT32, `USB1P2:` exFAT) then made one again by a format of `USB1:`, labels set and read; a stick pulled out while
+a file is written (errors, the lock free, the old objects invalid on the next stick); an unmount while a call
+waits for the lock — which fails with upstream's `ff.c` (the write accepted, the open succeeding). Not tested
+on the Pi yet (docs/HANDOFF.md).
 
 ## Contributions to upstream Circle
 

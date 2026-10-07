@@ -1,5 +1,5 @@
 #!/bin/sh
-# run_nes_test.sh -- the NES core (user/nes) on the PC, against the classic test ROMs
+# run_nes_test.sh -- the NES core (user/Emulators/nes) on the PC, against the classic test ROMs
 # (github.com/christopherpow/nes-test-roms, cloned; not kept in the repo):
 #   NES_TEST_ROMS=/path/to/nes-test-roms tools/tests/run_nes_test.sh
 # nestest (the CPU against its reference trace), then blargg's ROMs, which report through
@@ -10,7 +10,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 T=${TMPDIR:-/tmp}
 R=${NES_TEST_ROMS:?set NES_TEST_ROMS to the nes-test-roms folder}
-g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" "$HERE/nes/nestest.cpp" "$ROOT"/user/nes/*.cpp -o "$T/onyx_nestest"
+g++ -std=c++17 -O2 -Wall -Wextra -I"$ROOT/user" -I"$ROOT/user/Kits" -I"$ROOT/user/Runtime" -I"$ROOT/user/Include" -I"$ROOT/user/Libs" -I"$ROOT/user/Emulators" -I"$ROOT/user/Ports" "$HERE/nes/nestest.cpp" "$ROOT"/user/Emulators/nes/*.cpp -o "$T/onyx_nestest"
 fail=0
 if "$T/onyx_nestest" cpu "$R/other/nestest.nes" "$R/other/nestest.log" | grep -q "all match"; then echo "ok   nestest"
 else echo "FAIL nestest"; fail=1; fi

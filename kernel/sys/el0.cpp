@@ -15,6 +15,7 @@
 #include <kern/ipc.h>			// IpcNotify (a killed process: a notice)
 #include <kern/layout.h>
 #include <kern/uaccess.h>		// UAccessCopy (the faulting instruction), UserPut
+#include <kern/vm.h>			// (v75) demand paging, the pins
 #include <circle/multicore.h>
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
@@ -33,7 +34,7 @@ extern "C" void kapi_exit (int nStatus);
 #define KAPI_SLOTS	KAPI_TABLE_SLOTS		// (kern/addrspace.h)
 
 static_assert (KAPI_STUBS_VA == KAPI_TABLE_VA + 0x10000ULL, "kern/el0.h: KAPI_STUBS_VA");
-static_assert (__builtin_offsetof (TKApiTable, create_window) == 8, "slot 0 is version (+ padding)");
+static_assert (__builtin_offsetof (TKApiTable, launch) == 8, "slot 0 is version (+ padding)");
 static_assert (sizeof (TKApiTable) % sizeof (u64) == 0, "the table is made of 8-byte slots");
 static_assert (SLOT (exit) == EL0_SYS_EXIT, "kern/el0.h: EL0_SYS_EXIT");
 static_assert (SLOT (should_exit) == EL0_SYS_SHOULD_EXIT, "kern/el0.h: EL0_SYS_SHOULD_EXIT");
@@ -74,6 +75,18 @@ u64 El0CodePhys (void)		{ return (u64) (uintptr) s_pCode; }
 static inline const u64 *KernelSlots (void)
 {
 	return (const u64 *) KApiKernelTable ();
+}
+
+// AppKit's table (kern/kapi_abi.h) where every program's stubs read it: APPKIT_TABLE_VA, in the page of
+// the kernel's own table. Before any program runs (kernel.cpp: the first program's start).
+static_assert (KAPI_SLOTS * 8 <= APPKIT_TABLE_VA - KAPI_TABLE_VA, "the kernel's table and AppKit's in one page");
+static_assert (APPKIT_TABLE_VA - KAPI_TABLE_VA + APPKIT_TABLE_MAX * 8ULL <= KPAGE_SIZE, "AppKit's table in the page");
+void El0InstallAppKit (const u64 *pEntries, unsigned nEntries)
+{
+	u64 *pDst = s_pTable + (APPKIT_TABLE_VA - KAPI_TABLE_VA) / 8;
+	for (unsigned i = 0; i < APPKIT_TABLE_MAX; i++) pDst[i] = i < nEntries ? pEntries[i] : 0;
+	CleanDataCacheRange ((u64) (uintptr) s_pTable, KPAGE_SIZE);
+	asm volatile ("dsb ish; isb" ::: "memory");
 }
 
 void El0Init (void)
@@ -158,7 +171,7 @@ void El0CoreInit (unsigned nCore)
 	v |= (1ul << 26) | (1ul << 18) | (1ul << 16) | (1ul << 15) | (1ul << 14);
 	asm volatile ("msr sctlr_el1, %0" :: "r" (v));
 
-	// PMUSERENR_EL0.EN: the performance counters at EL0 (user/gc/gc.h) -- only on request: an
+	// PMUSERENR_EL0.EN: the performance counters at EL0 (user/Emulators/gc/gc.h) -- only on request: an
 	// MDCR_EL2.TPM left set by the boot stub would trap this write to EL2.
 	if (s_bPmu)
 	{
@@ -281,6 +294,12 @@ static void Syscall (TTrapFrame *pFrame)
 	TKapiFn *pFn = (TKapiFn *) pKernel[n];
 	pFrame->x[0] = (*pFn) (pFrame->x[0], pFrame->x[1], pFrame->x[2], pFrame->x[3],
 			       pFrame->x[4], pFrame->x[5], pFrame->x[6], pFrame->x[7]);
+
+	// (v75) The ranges its probes pinned are free again; the zaps they deferred are done.
+	if (pAS != 0)
+	{
+		VmUnpinTask (pAS, CScheduler::Get ()->GetCurrentTask ());
+	}
 }
 
 // ---- the MRS emulation (kern/el0.h) ----
@@ -392,27 +411,122 @@ static boolean EmulateMrs (TTrapFrame *pFrame, unsigned nEC, u64 ulESR)
 }
 
 // A fault at EL0 (any synchronous exception but a system call or an emulated MRS): the process is
-// killed, never the machine. Its kmsg line names it; the desktop shows a notice.
+// killed, never the machine. Its kmsg line names it (v75: with why, when the regions tell -- "stack
+// overflow", "PROT_NONE access"); the desktop shows a notice.
 static void __attribute__ ((noreturn)) Fault (TTrapFrame *pFrame, unsigned nEC, u64 ulESR, u64 ulFAR)
 {
 	asm volatile ("msr daifclr, #3" ::: "memory");
 
 	CTask *pTask = CScheduler::Get ()->GetCurrentTask ();
 	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	const char *pWhy = (nEC == EC_DABORT_LOW || nEC == EC_IABORT_LOW) ? VmFaultWhy (pAS, ulFAR) : 0;
 	CLogger::Get ()->Write ("el0", LogError,
-				"%s (pid %u) killed: %s at pc %lx (address %lx, ESR %lx, sp %lx, lr %lx)",
+				"%s (pid %u) killed: %s%s%s%s at pc %lx (address %lx, ESR %lx, sp %lx, lr %lx)",
 				pTask->GetName (), pAS != 0 ? pAS->GetPid () : 0, FaultName (nEC),
+				pWhy != 0 ? " (" : "", pWhy != 0 ? pWhy : "", pWhy != 0 ? ")" : "",
 				(unsigned long) pFrame->elr_el1, (unsigned long) ulFAR,
 				(unsigned long) ulESR, (unsigned long) pFrame->sp_el0,
 				(unsigned long) pFrame->x[30]);
+
+	// The return addresses along the frame-pointer chain (x29 -> {next x29, lr}): the program's
+	// callers, to symbolise with addr2line. Read with the fault-safe copy; the chain must climb.
+	{
+		CString Trace, Item;
+		u64 ulFP = pFrame->x[29];
+		for (unsigned i = 0; i < 16; i++)
+		{
+			u64 Pair[2];
+			if (   (ulFP & 7) != 0 || !IS_USER_VA (ulFP) || !IS_USER_VA (ulFP + 15)
+			    || UAccessCopy (Pair, (const void *) (uintptr) ulFP, sizeof Pair) != 0
+			    || Pair[1] == 0)
+			{
+				break;
+			}
+			Item.Format (" %lx", (unsigned long) Pair[1]);
+			Trace.Append (Item);
+			if (Pair[0] <= ulFP) break;
+			ulFP = Pair[0];
+		}
+		if (Trace.GetLength () != 0)
+		{
+			CLogger::Get ()->Write ("el0", LogError, "%s backtrace:%s", pTask->GetName (), (const char *) Trace);
+		}
+	}
 
 	CString Text;
 	Text.Format ("%s stopped: %s at %lx", pTask->GetName (), FaultName (nEC),
 		     (unsigned long) pFrame->elr_el1);
 	IpcNotify ("Application error", Text);
 
+	if (pAS != 0) pAS->SetTermReason (KAPI_PROC_FAULT, EL0_FAULT_STATUS);	// (v75: proc_wait)
 	kapi_exit (EL0_FAULT_STATUS);		// (the whole process: its other threads too)
 	for (;;) { }
+}
+
+#define EL0_OOM_STATUS		(-9)		// (v75) the exit status of a process the OOM path kills
+
+// (v75) A page could not be filled: the app pool is under its reserve (kern/vm.h). The process is
+// killed, as for a fault -- the system and the other apps go on.
+static void __attribute__ ((noreturn)) OutOfMemory (u64 ulFAR)
+{
+	asm volatile ("msr daifclr, #3" ::: "memory");
+
+	CTask *pTask = CScheduler::Get ()->GetCurrentTask ();
+	CAddressSpace *pAS = (CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER);
+	CLogger::Get ()->Write ("vm", LogError,
+				"%s (pid %u) killed: out of memory (page fault at %lx, %u KB resident)",
+				pTask->GetName (), pAS != 0 ? pAS->GetPid () : 0, (unsigned long) ulFAR,
+				pAS != 0 ? pAS->GetPages () * (unsigned) (KPAGE_SIZE / 1024) : 0);
+
+	CString Text;
+	Text.Format ("%s ran out of memory", pTask->GetName ());
+	IpcNotify ("Application error", Text);
+
+	if (pAS != 0) pAS->SetTermReason (KAPI_PROC_OOM, EL0_OOM_STATUS);
+	kapi_exit (EL0_OOM_STATUS);
+	for (;;) { }
+}
+
+#define DFSC_KIND(esr)		((esr) & 0x3C)	// the fault status code, without its level
+#define DFSC_TRANSLATION	0x04
+#define DFSC_PERMISSION		0x0C
+#define ESR_FNV			(1ULL << 10)	// FAR not valid
+#define ESR_WNR			(1ULL << 6)	// a write
+
+// (v75) A data abort from EL0 in a lazy region (kern/vm.h): a translation fault fills the page, a
+// permission fault the region now allows (a page another thread just filled, an mprotect up) is
+// spurious -- the access is retried either way (TRUE). Out of memory kills the process. FALSE: a
+// real fault. Core 0 (an app core's job: sys/appcore.cpp).
+static boolean PageFault (unsigned nEC, u64 ulESR, u64 ulFAR)
+{
+	if (nEC == EC_IABORT_LOW)		// (v78) code not filled yet in an executable lazy region
+	{
+		if (DFSC_KIND (ulESR) != DFSC_TRANSLATION || (ulESR & ESR_FNV) != 0) return FALSE;
+		CAddressSpace *pAS = CurrentAS ();
+		if (pAS == 0 || (VmProtAt (pAS, ulFAR) & KAPI_PROT_EXEC) == 0) return FALSE;
+		asm volatile ("msr daifclr, #3" ::: "memory");
+		int r = VmFaultIn (pAS, ulFAR, FALSE);
+		if (r == -KAPI_ENOMEM) OutOfMemory (ulFAR);
+		return r >= 0;
+	}
+	if (   nEC != EC_DABORT_LOW || (ulESR & ESR_FNV) != 0
+	    || (DFSC_KIND (ulESR) != DFSC_TRANSLATION && DFSC_KIND (ulESR) != DFSC_PERMISSION))
+	{
+		return FALSE;
+	}
+	CAddressSpace *pAS = CurrentAS ();
+	if (pAS == 0) return FALSE;
+	asm volatile ("msr daifclr, #3" ::: "memory");		// (as a system call: the allocator)
+	int r = VmFaultIn (pAS, ulFAR, (ulESR & ESR_WNR) != 0);
+	if (r == 0)
+	{
+		// There and allowed: a stale TLB entry here (a protection raised) -- dropped.
+		u64 ulArg = (((ulFAR & ~(u64) KPAGE_MASK) >> 12) & 0xFFFFFFFFFFFULL)
+			  | ((u64) pAS->GetASID () << TTBR0_ASID_SHIFT);
+		asm volatile ("tlbi vae1, %0; dsb nsh; isb" :: "r" (ulArg) : "memory");
+	}
+	if (r == -KAPI_ENOMEM) OutOfMemory (ulFAR);
+	return r >= 0;
 }
 
 void El0SyncHandler (TTrapFrame *pFrame)
@@ -448,6 +562,11 @@ void El0SyncHandler (TTrapFrame *pFrame)
 	if (nEC == EC_SVC64)
 	{
 		Syscall (pFrame);
+		return;
+	}
+
+	if (PageFault (nEC, ulESR, ulFAR))	// (v75) demand paging: filled, retried
+	{
 		return;
 	}
 

@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Onyx contributors <onyx@localhost>
+Date: Fri, 2 Oct 2026 17:35:51 +0200
+Subject: [PATCH 03/25] Onyx: JavaScriptCore builds and jsc links (bytecode
+ cache version, static ICU link order)
+
+What:
+- runtime/JSCBytecodeCacheVersion.cpp: for OS(ONYX), no <link.h> and no dl_iterate_phdr: the
+  build's timestamp is the bytecode cache version (as the PlayStation and Haiku ports).
+- OptionsOnyx.cmake: ICU::i18n depends on ICU::uc, ICU::uc on ICU::data, so the static archives
+  come in that order on the link line (WTF lists them data, i18n, uc: icudt78_dat was undefined).
+
+Why: Onyx programs are static ELF images (no program headers to walk at run time, no shared
+ICU). With this, JavaScriptCore (C_LOOP) compiles and the jsc shell links and runs.
+---
+ Source/JavaScriptCore/runtime/JSCBytecodeCacheVersion.cpp | 4 +++-
+ Source/cmake/OptionsOnyx.cmake                            | 3 +++
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/Source/JavaScriptCore/runtime/JSCBytecodeCacheVersion.cpp b/Source/JavaScriptCore/runtime/JSCBytecodeCacheVersion.cpp
+index 26e825ac..e81e6eab 100644
+--- a/Source/JavaScriptCore/runtime/JSCBytecodeCacheVersion.cpp
++++ b/Source/JavaScriptCore/runtime/JSCBytecodeCacheVersion.cpp
+@@ -39,6 +39,8 @@
+ #include <wtf/spi/darwin/dyldSPI.h>
+ #elif OS(QNX)
+ #include <sys/link.h>
++#elif OS(ONYX)
++// Static programs, no <link.h>: the build's timestamp is the cache version.
+ #else
+ #include <link.h>
+ #endif
+@@ -68,7 +70,7 @@ uint32_t computeJSCBytecodeCacheVersion()
+         }
+         cacheVersion.construct(0);
+         dataLogLnIf(JSCBytecodeCacheVersionInternal::verbose, "Failed to get UUID for JavaScriptCore framework");
+-#elif OS(UNIX) && !PLATFORM(PLAYSTATION) && !OS(HAIKU) && !OS(QNX)
++#elif OS(UNIX) && !PLATFORM(PLAYSTATION) && !OS(HAIKU) && !OS(QNX) && !OS(ONYX)
+         auto result = ([&] -> std::optional<uint32_t> {
+             Dl_info info { };
+             if (!dladdr(jsFunctionAddr, &info))
+diff --git a/Source/cmake/OptionsOnyx.cmake b/Source/cmake/OptionsOnyx.cmake
+index 07f2a2d4..5ef8ce21 100644
+--- a/Source/cmake/OptionsOnyx.cmake
++++ b/Source/cmake/OptionsOnyx.cmake
+@@ -49,6 +49,9 @@ set(USE_64KB_PAGE_BLOCK ON)
+ 
+ find_package(Threads REQUIRED)
+ find_package(ICU 70.1 REQUIRED COMPONENTS data i18n uc)
++# ICU is static here: the archives must come in the order i18n, uc, data on the link line.
++set_property(TARGET ICU::i18n APPEND PROPERTY INTERFACE_LINK_LIBRARIES ICU::uc)
++set_property(TARGET ICU::uc APPEND PROPERTY INTERFACE_LINK_LIBRARIES ICU::data)
+ 
+ set(CMAKE_C_VISIBILITY_PRESET hidden)
+ set(CMAKE_CXX_VISIBILITY_PRESET hidden)

@@ -1,0 +1,46 @@
+# Pinball's words in French (the mock-ups' catalogue; the app's sdcard/apps/pinball.app/lang/fr.txt starts from it).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+digits|,	 
+Choose a table	Choisissez une table
+Your tables (SD:/docs/pinball)	Vos tables (SD:/docs/pinball)
+Best	Record
+No score yet	Pas encore de score
+Best scores	Meilleurs scores
+Play	Jouer
+Play this table (Enter)	Jouer sur cette table (Entrée)
+choose	choisir
+play	jouer
+quit	quitter
+Enter	Entrée
+Esc	Échap
+Space	Espace
+Start	Start
+This table cannot be played.	Cette table ne peut pas être jouée.
+Correct the file in a text editor (Tinypad): the list is read again when you come back to it.	Corrigez le fichier dans un éditeur de texte (Tinypad) : la liste est relue quand vous y revenez.
+unknown block [%s]	bloc inconnu [%s]
+line %d: 	ligne %d : 
+cannot read the file	impossible de lire le fichier
+BALL	BILLE
+Goal	Objectif
+Left flipper	Batteur gauche
+Right flipper	Batteur droit
+Plunger (hold)	Lanceur (maintenir)
+Nudge	Secouer
+Pause	Pause
+Bonus	Bonus
+Multiplier	Multiplicateur
+Tilt	Tilt
+Bonus x up!	Bonus x augmenté !
+SHOOT AGAIN	REJOUEZ
+Paused	Pause
+P or Start: resume	P ou Start : reprendre
+Resume	Reprendre
+Back to the tables	Retour aux tables
+Game over	Partie terminée
+New high score: %s place!	Nouveau record : %s place !
+2nd	2e
+Your name:	Votre nom :
+Enter or A: back to the tables	Entrée ou A : retour aux tables
+any key: skip	une touche : passer
+Ball lost	Bille perdue
+Ball 2: launch it!	Bille 2 : lancez-la !

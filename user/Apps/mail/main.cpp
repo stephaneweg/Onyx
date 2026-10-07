@@ -12,8 +12,9 @@
 // The tool bar: New message, Reply, Reply all, Forward, Archive, Delete, Junk, Star, the search, Check now. New
 // mail is looked for every few minutes (each account's setting) and told by a notification. The messages, the
 // folders, the accounts live on the card (store.h, accounts.h; the passwords and tokens encrypted); the servers are
-// talked to by a worker thread (sync.h) while the window stays live. HTML messages are drawn by Mail's own renderer
-// (user/mail/html.h: HTML 4, CSS 2; no scripts, the remote pictures held back until asked).
+// talked to by a worker thread (sync.h) while the window stays live. HTML messages are drawn by WebKit -- the browser
+// Web run as an applet in the reading pane (webview.h; no scripts, nothing from the internet until asked) -- when Web
+// is on the card, else by Mail's own renderer (user/Libs/mail/html.h: HTML 4, CSS 2; the remote pictures held back too).
 // "mail SD:/x.eml" shows a message file (fileassoc.ini: eml = mail).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
@@ -61,12 +62,12 @@ public:
 	{
 		canvas.clear (C_BG);
 		hits.clear ();
-		canvas.fillRect (0, height - 1, width, 1, wk_mix (C_BG, C_TEXT, 40));
+		canvas.fillRect (0, height - 1, width, 1, uk_mix (C_BG, C_TEXT, 40));
 		// New message: the accent pill
 		int x = 12;
 		{
 			const char *l = "New message"; int w = tw (l, F_UI, 1) + 50;
-			wk_fill_round (canvas, x, 8, w, 34, 6, hot == T_NEW ? wk_mix (C_ACCENT, 0xFFFFFF, 30) : C_ACCENT);
+			uk_fill_round (canvas, x, 8, w, 34, 6, hot == T_NEW ? uk_mix (C_ACCENT, 0xFFFFFF, 30) : C_ACCENT);
 			icon (canvas, I_PEN, x + 12, 15, 20, C_SEL_TEXT);
 			text_v (canvas, x + 38, 8, 34, l, C_SEL_TEXT, F_UI, 1);
 			hits.add (x, 8, w, 34, T_NEW); x += w + 14;
@@ -80,13 +81,13 @@ public:
 		for (unsigned i = 0; i < sizeof BS / sizeof BS[0]; i++)
 		{
 			const B &b = BS[i];
-			if (!b.k) { canvas.fillRect (x + 4, 12, 1, 26, wk_mix (C_BG, C_TEXT, 50)); x += 14; continue; }
+			if (!b.k) { canvas.fillRect (x + 4, 12, 1, 26, uk_mix (C_BG, C_TEXT, 50)); x += 14; continue; }
 			bool on = have && !composing;
 			bool labels = width > 860;
 			int w = 34 + (b.l && labels ? tw (b.l) + 8 : 0);
 			if (x + w > room) break;
-			if (hot == b.k && on) wk_fill_round (canvas, x, 8, w, 34, 6, wk_mix (C_BG, C_TEXT, 25));
-			unsigned c = on ? C_TEXT : wk_mix (C_BG, C_TEXT, 90);
+			if (hot == b.k && on) uk_fill_round (canvas, x, 8, w, 34, 6, uk_mix (C_BG, C_TEXT, 25));
+			unsigned c = on ? C_TEXT : uk_mix (C_BG, C_TEXT, 90);
 			int ic = b.ic;
 			if (b.k == T_STAR && have) { Ref r[60]; int n = conv_refs (r, 60); bool st = false; for (int k = 0; k < n; k++) if (g_m.msg (r[k]).flags & F_FLAGGED) st = true; if (st) { ic = I_STAR; c = 0xF2A600; } }
 			icon (canvas, ic, x + 8, 15, 20, c);
@@ -95,9 +96,9 @@ public:
 			x += w + 4;
 		}
 		// the search's lens, Check now
-		icon (canvas, I_SEARCH, search->left - 24, 16, 18, wk_mix (C_BG, C_TEXT, 150));
+		icon (canvas, I_SEARCH, search->left - 24, 16, 18, uk_mix (C_BG, C_TEXT, 150));
 		int rx = width - 44;
-		if (hot == T_CHECK) wk_fill_round (canvas, rx, 8, 34, 34, 6, wk_mix (C_BG, C_TEXT, 25));
+		if (hot == T_CHECK) uk_fill_round (canvas, rx, 8, 34, 34, 6, uk_mix (C_BG, C_TEXT, 25));
 		bool busy = g_m.worker.busy || g_m.worker.head;
 		icon (canvas, I_REFRESH, rx + 7, 15, 20, busy ? C_ACCENT : C_TEXT);
 		hits.add (rx, 8, 34, 34, T_CHECK);
@@ -143,8 +144,8 @@ public:
 	void row (int y, int kind, int a, int b, int ic, unsigned icc, const char *label, int count, bool selected, int indent = 0, bool bold = false)
 	{
 		int x = 10 + indent, w = width - 20 - indent;
-		if (selected) wk_fill_round (canvas, x - 4, y, w + 8, 30, 6, C_ACCENT);
-		else if (hot == hits.n) wk_fill_round (canvas, x - 4, y, w + 8, 30, 6, wk_mix (col_side (), C_TEXT, 20));
+		if (selected) uk_fill_round (canvas, x - 4, y, w + 8, 30, 6, C_ACCENT);
+		else if (hot == hits.n) uk_fill_round (canvas, x - 4, y, w + 8, 30, 6, uk_mix (col_side (), C_TEXT, 20));
 		unsigned tc = selected ? C_SEL_TEXT : C_TEXT;
 		if (ic >= 0) icon (canvas, ic, x + 4, y + 6, 18, selected ? C_SEL_TEXT : icc);
 		char cnt[16] = ""; if (count > 0) snprintf (cnt, sizeof cnt, "%d", count > 999 ? 999 : count);
@@ -152,7 +153,7 @@ public:
 		text_v (canvas, x + 30, y, 30, label, tc, F_UI, bold || selected ? 1 : 0, w - 34 - cw - 6);
 		if (cnt[0])
 		{
-			wk_fill_round (canvas, x + w - cw - 2, y + 7, cw, 16, 8, selected ? 0xFFFFFF : wk_mix (col_side (), C_ACCENT, 200));
+			uk_fill_round (canvas, x + w - cw - 2, y + 7, cw, 16, 8, selected ? 0xFFFFFF : uk_mix (col_side (), C_ACCENT, 200));
 			text_c (canvas, x + w - cw - 2, y + 7, cw, 16, cnt, selected ? C_ACCENT : 0xFFFFFF, F_SMALL, 1);
 		}
 		hits.add (0, y, width, 30, kind, a, b);
@@ -161,7 +162,7 @@ public:
 	{
 		canvas.clear (col_side ());
 		hits.clear ();
-		canvas.fillRect (width - 1, 0, 1, height, wk_mix (col_side (), C_TEXT, 40));
+		canvas.fillRect (width - 1, 0, 1, height, uk_mix (col_side (), C_TEXT, 40));
 		int bottomH = 108;
 		int y = 10 - sy;
 		const Selection &s = g_m.sel;
@@ -173,12 +174,12 @@ public:
 			Account &A = g_m.accts.a[a];
 			// the account: its mark, its label, its address
 			int x = 10;
-			icon (canvas, g_open[a] ? I_CHEV_D : I_CHEV_R, x - 4, y + 9, 14, wk_mix (col_side (), C_TEXT, 150));
-			wk_fill_round (canvas, x + 12, y + 7, 22, 22, 5, 0xFF000000u | A.colour);
+			icon (canvas, g_open[a] ? I_CHEV_D : I_CHEV_R, x - 4, y + 9, 14, uk_mix (col_side (), C_TEXT, 150));
+			uk_fill_round (canvas, x + 12, y + 7, 22, 22, 5, 0xFF000000u | A.colour);
 			char ini[8]; initials (A.label, ini); ini[(unsigned char) ini[0] >= 0xC0 ? 2 : 1] = 0;
 			text_c (canvas, x + 12, y + 7, 22, 22, ini, 0xFFFFFF, F_SMALL, 1);
 			text (canvas, x + 42, y + 2, A.label, C_TEXT, F_UI, 1, width - x - 52);
-			text (canvas, x + 42, y + 19, A.email, wk_mix (col_side (), C_TEXT, 150), F_SMALL, 0, width - x - 52);
+			text (canvas, x + 42, y + 19, A.email, uk_mix (col_side (), C_TEXT, 150), F_SMALL, 0, width - x - 52);
 			hits.add (0, y, width, 36, S_ACCOUNT, a);
 			y += 40;
 			if (!g_open[a]) continue;
@@ -194,7 +195,7 @@ public:
 				if (depth < 0) depth = 0; if (depth > 3) depth = 3;
 				Buf nm; mutf7_decode (nm, folder_label (F));
 				int cnt = F.special == SP_DRAFTS ? F.msgs.n : (F.special == SP_SENT || F.special == SP_TRASH || F.special == SP_ALL) ? 0 : F.unread;
-				row (y, S_FOLDER, a, f, folder_icon (F), wk_mix (col_side (), C_TEXT, 170), nm.c (), cnt, !cont && s.kind == SEL_FOLDER && s.acct == a && s.folder == f, 18 + depth * 12);
+				row (y, S_FOLDER, a, f, folder_icon (F), uk_mix (col_side (), C_TEXT, 170), nm.c (), cnt, !cont && s.kind == SEL_FOLDER && s.acct == a && s.folder == f, 18 + depth * 12);
 				y += 31;
 			}
 			y += 8;
@@ -207,15 +208,15 @@ public:
 		// the bottom: contacts, settings, what is going on
 		int by = height - bottomH;
 		canvas.fillRect (0, by, width - 1, bottomH, col_side ());
-		canvas.fillRect (10, by, width - 20, 1, wk_mix (col_side (), C_TEXT, 40));
-		row (by + 6, S_CONTACTS, 0, 0, I_PERSON, wk_mix (col_side (), C_TEXT, 170), "Contacts", 0, cont);
-		row (by + 38, S_SETTINGS, 0, 0, I_GEAR, wk_mix (col_side (), C_TEXT, 170), "Accounts and settings", 0, false);
+		canvas.fillRect (10, by, width - 20, 1, uk_mix (col_side (), C_TEXT, 40));
+		row (by + 6, S_CONTACTS, 0, 0, I_PERSON, uk_mix (col_side (), C_TEXT, 170), "Contacts", 0, cont);
+		row (by + 38, S_SETTINGS, 0, 0, I_GEAR, uk_mix (col_side (), C_TEXT, 170), "Accounts and settings", 0, false);
 		const char *st = g_m.worker.current[0] ? g_m.worker.current : (g_note[0] && kapi_get_ticks () - g_noteT < 800) ? g_note : g_m.lastError;
 		bool isErr = !g_m.worker.current[0] && !(g_note[0] && kapi_get_ticks () - g_noteT < 800) && g_m.lastError[0];
 		if (st && st[0])
 		{
 			if (isErr) icon (canvas, I_WARN, 12, by + 78, 14, 0xC5221F);
-			text (canvas, isErr ? 32 : 14, by + 77, st, wk_mix (col_side (), C_TEXT, 150), F_SMALL, 0, width - (isErr ? 40 : 24));
+			text (canvas, isErr ? 32 : 14, by + 77, st, uk_mix (col_side (), C_TEXT, 150), F_SMALL, 0, width - (isErr ? 40 : 24));
 			if (isErr) hits.add (0, by + 72, width, 26, 99);
 		}
 	}
@@ -236,7 +237,7 @@ public:
 		case S_CONTACTS: show_contacts (!g_showContacts); break;
 		case S_SETTINGS: open_settings (); break;
 		case S_ADD: open_wizard (); break;
-		case 99: wk_messagebox ("Mail", g_m.lastError, MB_OK); g_m.lastError[0] = 0; invalidate (true); break;
+		case 99: uk_messagebox ("Mail", g_m.lastError, MB_OK); g_m.lastError[0] = 0; invalidate (true); break;
 		}
 		return true;
 	}
@@ -299,17 +300,17 @@ public:
 		int segW = 120;
 		text_v (canvas, 16, 6, 44, title (), C_FIELD_TEXT, F_H2, 1, W - segW - 30);
 		int sx = W - segW - 6, syy = 16;
-		wk_fill_round (canvas, sx, syy, segW, 24, 6, C_ACCENT);
-		wk_fill_round (canvas, sx + 1, syy + 1, segW - 2, 22, 5, col_list ());
+		uk_fill_round (canvas, sx, syy, segW, 24, 6, C_ACCENT);
+		uk_fill_round (canvas, sx + 1, syy + 1, segW - 2, 22, 5, col_list ());
 		int half = segW / 2;
-		wk_fill_round (canvas, g_m.unreadOnly ? sx + half : sx, syy, half, 24, 6, C_ACCENT);
+		uk_fill_round (canvas, g_m.unreadOnly ? sx + half : sx, syy, half, 24, 6, C_ACCENT);
 		text_c (canvas, sx, syy, half, 24, "All", g_m.unreadOnly ? C_FIELD_TEXT : C_SEL_TEXT, F_SMALL, 1);
 		text_c (canvas, sx + half, syy, half, 24, "Unread", g_m.unreadOnly ? C_SEL_TEXT : C_FIELD_TEXT, F_SMALL, 1);
 		hits.add (sx, syy, half, 24, L_ALL); hits.add (sx + half, syy, half, 24, L_UNREAD);
 		// the scroll bar
 		int vh = height - HEAD;
-		WkThumb t = wk_thumb (contentH - HEAD, vh, sy, vh);
-		if (t.show) wk_draw_vscroll (canvas, width - WK_SBW - 1, HEAD, WK_SBW, vh, t, col_list (), barDrag);
+		UkThumb t = uk_thumb (contentH - HEAD, vh, sy, vh);
+		if (t.show) uk_draw_vscroll (canvas, width - UK_SBW - 1, HEAD, UK_SBW, vh, t, col_list (), barDrag);
 	}
 	void draw_row (int i, int y, int W)
 	{
@@ -318,8 +319,8 @@ public:
 		const Msg &m = g_m.msg (last);
 		bool sel = i == g_conv && !g_showContacts;
 		int x = 6;
-		if (sel) wk_fill_round (canvas, x, y, W - 6, ROW_H, 8, col_sel ());
-		else if (hot == i) wk_fill_round (canvas, x, y, W - 6, ROW_H, 8, col_hover ());
+		if (sel) uk_fill_round (canvas, x, y, W - 6, ROW_H, 8, col_sel ());
+		else if (hot == i) uk_fill_round (canvas, x, y, W - 6, ROW_H, 8, col_hover ());
 		// the account's stripe
 		unsigned ac = g_m.accts.a[last.acct].colour;
 		canvas.fillRect (W - 6, y + 10, 3, ROW_H - 20, 0xFF000000u | ac);
@@ -346,7 +347,7 @@ public:
 		if (cnt[0])
 		{
 			int nw = tw (name, F_MID, c.unread ? 1 : 0); if (nw > nameMax) nw = nameMax;
-			wk_fill_round (canvas, tx + nw + 6, y + 10, cntW, 16, 8, col_line ());
+			uk_fill_round (canvas, tx + nw + 6, y + 10, cntW, 16, 8, col_line ());
 			text_c (canvas, tx + nw + 6, y + 10, cntW, 16, cnt, col_dim (), F_SMALL, 1);
 		}
 		text (canvas, tx + tw0 - dw, y + 10, date, c.unread ? C_ACCENT : col_dim (), F_SMALL, c.unread ? 1 : 0);
@@ -375,13 +376,13 @@ public:
 		if (barDrag)
 		{
 			if (!bl) { barDrag = false; invalidate (true); return true; }
-			int vh = height - HEAD; WkThumb t = wk_thumb (contentH - HEAD, vh, sy, vh);
-			scroll_to ((int) wk_thumb_pos (my - HEAD, vh, contentH - HEAD, vh, t.h)); return true;
+			int vh = height - HEAD; UkThumb t = uk_thumb (contentH - HEAD, vh, sy, vh);
+			scroll_to ((int) uk_thumb_pos (my - HEAD, vh, contentH - HEAD, vh, t.h)); return true;
 		}
 		const Hit *h = hits.at (mx, my);
 		int nh = h && h->kind == L_ROW ? h->a : -1;
 		if (nh != hot) { hot = nh; invalidate (true); }
-		if (down && mx >= width - WK_SBW - 2 && my > HEAD) { barDrag = true; return true; }
+		if (down && mx >= width - UK_SBW - 2 && my > HEAD) { barDrag = true; return true; }
 		if (!h || (!down && !rdown)) return true;
 		switch (h->kind)
 		{
@@ -445,7 +446,7 @@ public:
 		text_c (canvas, 0, cy + 90, width, 34, "Welcome to Mail", C_FIELD_TEXT, F_H1, 1);
 		text_c (canvas, 0, cy + 130, width, 22, "Gmail, Outlook.com, iCloud, Yahoo, any IMAP or POP3 account.", col_dim (), F_MID);
 		const char *l = "Add an account"; int w = tw (l, F_MID, 1) + 48;
-		wk_fill_round (canvas, (width - w) / 2, cy + 176, w, 42, 8, C_ACCENT);
+		uk_fill_round (canvas, (width - w) / 2, cy + 176, w, 42, 8, C_ACCENT);
 		text_c (canvas, (width - w) / 2, cy + 176, w, 42, l, C_SEL_TEXT, F_MID, 1);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -663,11 +664,11 @@ static void add_signature (Buf &b, int acct)
 }
 static void compose_new (int mode, const Ref *about)
 {
-	if (g_emlMode) { wk_messagebox ("Mail", "This message is a file. To answer it, open Mail with your accounts.", MB_OK); return; }
+	if (g_emlMode) { uk_messagebox ("Mail", "This message is a file. To answer it, open Mail with your accounts.", MB_OK); return; }
 	if (!g_m.accts.n) { open_wizard (); return; }
 	if (!g_compose->hidden && !g_compose->empty ())
 	{
-		if (wk_messagebox ("Mail", "Leave the message being written?", MB_YESNO) != 1) return;
+		if (uk_messagebox ("Mail", "Leave the message being written?", MB_YESNO) != 1) return;
 	}
 	g_compose->reset ();
 	g_compose->mode = mode;
@@ -736,7 +737,7 @@ static void compose_to (const char *name, const char *email)
 static void compose_close () { g_compose->reset (); g_compose->hidden = true; layout_parts (); refresh_all (); }
 static void compose_discard ()
 {
-	if (!g_compose->empty () && wk_messagebox ("Mail", "Throw away this message?", MB_YESNO) != 1) return;
+	if (!g_compose->empty () && uk_messagebox ("Mail", "Throw away this message?", MB_YESNO) != 1) return;
 	compose_close ();
 }
 static void compose_ccbcc () { g_compose->ccOn = true; g_compose->place (); g_compose->invalidate (true); g_compose->cc->setFocus (); }
@@ -744,15 +745,15 @@ static bool compose_attach_path (const char *path);
 static void compose_attach ()
 {
 	char path[300];
-	if (!wk_file_open (path, sizeof path, "SD:/Documents")) return;
+	if (!uk_file_open (path, sizeof path, "SD:/Documents")) return;
 	compose_attach_path (path);
 }
 static bool compose_attach_path (const char *path)
 {
-	if (g_compose->natt >= 16) { wk_messagebox ("Mail", "16 attachments at most.", MB_OK); return false; }
+	if (g_compose->natt >= 16) { uk_messagebox ("Mail", "16 attachments at most.", MB_OK); return false; }
 	int len; char *b = file_read (path, &len);
-	if (!b) { wk_messagebox ("Mail", "The file could not be read.", MB_OK); return false; }
-	if (len > 20 * 1024 * 1024) { free (b); wk_messagebox ("Mail", "This file is too big to send by mail (20 MB at most).", MB_OK); return false; }
+	if (!b) { uk_messagebox ("Mail", "The file could not be read.", MB_OK); return false; }
+	if (len > 20 * 1024 * 1024) { free (b); uk_messagebox ("Mail", "This file is too big to send by mail (20 MB at most).", MB_OK); return false; }
 	Attach &A = g_compose->att[g_compose->natt++];
 	const char *nm = strrchr (path, '/'); nm = nm ? nm + 1 : path;
 	scpy (A.name, nm, sizeof A.name); scpy (A.type, mime_type_of (nm), sizeof A.type);
@@ -787,9 +788,9 @@ static bool compose_build (Buf &raw, Job *j, bool draft)
 	char em[64][160]; int n = 0;
 	const char *lists[3] = { c.to->text, c.cc->text, c.bcc->text };
 	for (int l = 0; l < 3; l++) { char t[64][160]; int k = addr_emails (lists[l], t, 64 - n); for (int i = 0; i < k; i++) if (strchr (t[i], '@')) scpy (em[n++], t[i], 160); }
-	if (!n && !draft) { wk_messagebox ("Mail", "Whom to? Type an address in To.", MB_OK); return false; }
-	for (int i = 0; i < n; i++) { const char *at = strchr (em[i], '@'); if (!draft && (!at || !strchr (at, '.') || strchr (em[i], ' '))) { char q[300]; snprintf (q, sizeof q, "\"%s\" does not look like an e-mail address.", em[i]); wk_messagebox ("Mail", q, MB_OK); return false; } }
-	if (!draft && !c.subject->text[0] && wk_messagebox ("Mail", "Send it without a subject?", MB_YESNO) != 1) return false;
+	if (!n && !draft) { uk_messagebox ("Mail", "Whom to? Type an address in To.", MB_OK); return false; }
+	for (int i = 0; i < n; i++) { const char *at = strchr (em[i], '@'); if (!draft && (!at || !strchr (at, '.') || strchr (em[i], ' '))) { char q[300]; snprintf (q, sizeof q, "\"%s\" does not look like an e-mail address.", em[i]); uk_messagebox ("Mail", q, MB_OK); return false; } }
+	if (!draft && !c.subject->text[0] && uk_messagebox ("Mail", "Send it without a subject?", MB_YESNO) != 1) return false;
 	Buf html; text_to_html (c.body->content (), html);
 	Attachment at[16];
 	for (int i = 0; i < c.natt; i++) { at[i].name = c.att[i].name; at[i].type = c.att[i].type; at[i].data = c.att[i].data; at[i].n = c.att[i].n; at[i].cid = 0; }
@@ -913,7 +914,7 @@ static void on_result (void *ctx, long)
 	if (r->kind == J_SEND)
 	{
 		if (r->ok) { status_note (r->err[0] ? r->err : "Sent."); int a = g_m.acct_index (r->acctId); if (a >= 0 && g_m.accts.a[a].kind == K_IMAP) g_m.sync (a, false, g_m.stores[a]->special (SP_SENT) ? g_m.stores[a]->index_of (g_m.stores[a]->special (SP_SENT)) : -1); }
-		else wk_messagebox ("Mail: not sent", r->err[0] ? r->err : "The message could not be sent.", MB_OK);
+		else uk_messagebox ("Mail: not sent", r->err[0] ? r->err : "The message could not be sent.", MB_OK);
 	}
 	if (r->kind == J_BODY && r->ok) g_read->body_came (r->acctId, r->folder, r->uid);
 	if (changed & 1) rebuild_keep ();
@@ -941,6 +942,7 @@ public:
 		g_m.tick ();
 		g_compose->tick ();
 		g_contacts->tick ();
+		wv_tick ();					// (the web view: its pictures, its links)
 		static char lastQ[200]; static unsigned qT;
 		if (strcmp (lastQ, g_tb->search->text)) { scpy (lastQ, g_tb->search->text, sizeof lastQ); qT = g_tick; }
 		if (qT && g_tick - qT > 30) { qT = 0; search_changed (); }
@@ -966,10 +968,10 @@ static void m_save_eml ()
 	Ref r[60]; int n = conv_refs (r, 60); if (!n) return;
 	Store &st = *g_m.stores[r[n - 1].acct]; Folder &f = st.folders[r[n - 1].folder]; const Msg &m = f.msgs[r[n - 1].msg];
 	int len; char *raw = st.body (f, m.uid, &len);
-	if (!raw) { wk_messagebox ("Mail", "Open the message first (it is fetched then).", MB_OK); return; }
+	if (!raw) { uk_messagebox ("Mail", "Open the message first (it is fetched then).", MB_OK); return; }
 	char nm[120]; ReadPane::safe_name (m.subject && m.subject[0] ? m.subject : "message", nm, 100); strcat (nm, ".eml");
 	char out[300];
-	if (wk_file_save (out, sizeof out, "SD:/Documents", nm) && kapi_save_file (out, raw, (unsigned) len) < 0) wk_messagebox ("Mail", "The file could not be written.", MB_OK);
+	if (uk_file_save (out, sizeof out, "SD:/Documents", nm, "Mail messages|*.eml|All files|*") && kapi_save_file (out, raw, (unsigned) len) < 0) uk_messagebox ("Mail", "The file could not be written.", MB_OK);
 	free (raw);
 }
 
@@ -997,7 +999,7 @@ static bool open_eml (const char *path)
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);
+	ft_uikit_install ("DejaVu Sans", 13);
 	faces_open ();
 	static html::FtHost host; g_host = &host;
 
@@ -1026,7 +1028,7 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New Message", "^N", WK_CTRL ('N'), m_new);
+	menu.item ("New Message", "^N", UK_CTRL ('N'), m_new);
 	menu.item ("Check for New Mail", "F5", KEY_F1 + 4, act_check);
 	menu.separator ();
 	menu.item ("Add an Account...", "", 0, open_wizard);
@@ -1035,22 +1037,22 @@ int main (void)
 	menu.separator ();
 	menu.item ("Save the Message as .eml...", "", 0, m_save_eml);
 	menu.menu ("Edit");
-	menu.item ("Find...", "^F", WK_CTRL ('F'), m_find);
+	menu.item ("Find...", "^F", UK_CTRL ('F'), m_find);
 	menu.menu ("View");
 	menu.item ("Conversations (grouped)", "", 0, m_conv);
 	menu.item ("Unread Only", "", 0, m_unread);
 	menu.menu ("Message");
-	menu.item ("Reply", "^R", WK_CTRL ('R'), m_reply);
+	menu.item ("Reply", "^R", UK_CTRL ('R'), m_reply);
 	menu.item ("Reply All", "", 0, m_replyall);
-	menu.item ("Forward", "^L", WK_CTRL ('L'), m_forward);
+	menu.item ("Forward", "^L", UK_CTRL ('L'), m_forward);
 	menu.item ("Send", "Ctrl+Enter", 0, m_send);
 	menu.separator ();
 	menu.item ("Archive", "", 0, act_archive);
 	menu.item ("Delete", "Del", 0, act_delete);
 	menu.item ("Junk", "", 0, act_junk);
 	menu.separator ();
-	menu.item ("Star / Unstar", "^S", WK_CTRL ('S'), act_star);
-	menu.item ("Mark as Unread", "^U", WK_CTRL ('U'), act_unread);
+	menu.item ("Star / Unstar", "^S", UK_CTRL ('S'), act_star);
+	menu.item ("Mark as Unread", "^U", UK_CTRL ('U'), act_unread);
 	menu.publish ();
 
 	g_compose->accounts_changed ();
@@ -1068,6 +1070,7 @@ int main (void)
 
 	root.run ();
 
+	wv_end ();
 	g_m.worker.stop ();
 	return 0;
 }

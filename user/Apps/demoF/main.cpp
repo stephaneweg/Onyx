@@ -2,11 +2,11 @@
 // demoF.cpp -- a borderless "panel": a frameless window pinned at the left edge with a
 // column of buttons that launch the other demos via kapi_launch. Exercises both
 // WIN_FLAG_BORDERLESS (no title bar / border / close box, explicit position) and
-// kapi_launch. Built on the wtk widget toolkit.
+// kapi_launch. Built on the uikit widget toolkit.
 //
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	52
 #define H	220
@@ -18,8 +18,8 @@ public:
 	PanelRoot () : Root (4, 80, W, H, "panel", WIN_FLAG_BORDERLESS) {}
 	void onDraw () override
 	{
-		wk_rbox (canvas, 0, 0, width, height, 0, wk_tone (bg, 150), wk_tone (bg, 118));
-		wk_rline (canvas, 0, 0, width, height, 0, wk_tone (bg, 70), 220);
+		uk_rbox (canvas, 0, 0, width, height, 0, uk_tone (bg, 150), uk_tone (bg, 118));
+		uk_rline (canvas, 0, 0, width, height, 0, uk_tone (bg, 70), 220);
 	}
 };
 

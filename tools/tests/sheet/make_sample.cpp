@@ -4,12 +4,12 @@
 // inputs, PMT, IPMT, PPMT; a colour scale; an area chart; frozen panes). Built by the spreadsheet's own
 // engine -- what the screenshots and the user guide show.
 //
-//   g++ -std=gnu++17 -I user tools/tests/sheet/make_sample.cpp -lm -o /tmp/make_sample
+//   g++ -std=gnu++17 -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports tools/tests/sheet/make_sample.cpp -lm -o /tmp/make_sample
 //   /tmp/make_sample sdcard/docs/cafe-2026.xlsx
 //
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
-#include "img/stb_image.h"
+#include "imagekit/img/stb_image.h"
 #include "Apps/sheet/ods.h"
 #include <stdio.h>
 #include <stdlib.h>

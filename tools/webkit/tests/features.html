@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<!-- features.html: what a web application expects of the engine, each probed at run time. One line a
+     feature, on the page and in the console (SD:/etc/web-console logs it). "late" marks a callback that
+     never came. -->
+<html><head><meta charset="utf-8"><title>features</title>
+<style>body{font:14px sans-serif;margin:12px} .ok{color:#080} .ko{color:#c00;font-weight:bold} #box{width:50px;height:50px;background:#48c}</style>
+</head><body>
+<div id="box"></div>
+<pre id="out"></pre>
+<script>
+var out = document.getElementById('out');
+function line(name, ok, more) {
+	var s = (ok ? 'ok   ' : 'FAIL ') + name + (more ? ' : ' + more : '');
+	console.log('feature ' + s);
+	var e = document.createElement('span'); e.className = ok ? 'ok' : 'ko'; e.textContent = s + '\n'; out.appendChild(e);
+}
+function has(name, v) { line(name, !!v, v ? '' : 'missing'); return !!v; }
+// A callback expected within 3 s
+function later(name, arm) {
+	var done = false;
+	var t0 = performance.now();
+	try { arm(function (more) { if (!done) { done = true; line(name, true, Math.round(performance.now() - t0) + ' ms' + (more ? ', ' + more : '')); } }); }
+	catch (e) { done = true; line(name, false, 'throws ' + e); }
+	setTimeout(function () { if (!done) { done = true; line(name, false, 'late (no callback in 3 s)'); } }, 3000);
+}
+window.onerror = function (m, f, l) { line('window.onerror', false, m + ' @' + l); };
+
+line('userAgent', true, navigator.userAgent);
+line('visibilityState', document.visibilityState == 'visible', document.visibilityState + ', hasFocus ' + document.hasFocus());
+line('cookieEnabled', navigator.cookieEnabled, '' + navigator.cookieEnabled);
+line('onLine', navigator.onLine, '' + navigator.onLine);
+has('customElements', window.customElements);
+has('attachShadow', Element.prototype.attachShadow);
+has('IntersectionObserver', window.IntersectionObserver);
+has('ResizeObserver', window.ResizeObserver);
+has('MutationObserver', window.MutationObserver);
+has('requestIdleCallback', window.requestIdleCallback);
+has('fetch', window.fetch);
+has('Worker', window.Worker);
+has('ServiceWorker', navigator.serviceWorker);
+has('indexedDB', window.indexedDB);
+has('crypto.subtle', window.crypto && crypto.subtle);
+has('MessageChannel', window.MessageChannel);
+has('BroadcastChannel', window.BroadcastChannel);
+has('Intl', window.Intl);
+has('WebAssembly', window.WebAssembly);
+has('matchMedia', window.matchMedia);
+has('document.fonts', document.fonts);
+has('Element.animate', Element.prototype.animate);
+has('HTMLVideoElement', window.HTMLVideoElement);
+has('MediaSource', window.MediaSource || window.ManagedMediaSource);
+has('AudioContext', window.AudioContext || window.webkitAudioContext);
+has('PerformanceObserver', window.PerformanceObserver);
+has('queueMicrotask', window.queueMicrotask);
+has('structuredClone', window.structuredClone);
+has('scheduler', window.scheduler);
+try { localStorage.setItem('onyx-probe', '1'); line('localStorage', localStorage.getItem('onyx-probe') == '1'); } catch (e) { line('localStorage', false, 'throws ' + e); }
+try { sessionStorage.setItem('onyx-probe', '1'); line('sessionStorage', sessionStorage.getItem('onyx-probe') == '1'); } catch (e) { line('sessionStorage', false, 'throws ' + e); }
+try { document.cookie = 'onyxprobe=1'; line('document.cookie', document.cookie.indexOf('onyxprobe') >= 0, document.cookie); } catch (e) { line('document.cookie', false, 'throws ' + e); }
+try { line('Intl.DateTimeFormat', true, new Intl.DateTimeFormat('en-US', {dateStyle: 'medium'}).format(new Date(0))); } catch (e) { line('Intl.DateTimeFormat', false, 'throws ' + e); }
+try { line('Intl.NumberFormat', true, new Intl.NumberFormat('en-US', {notation: 'compact'}).format(1234567)); } catch (e) { line('Intl.NumberFormat', false, 'throws ' + e); }
+try { line('Intl.PluralRules', true, new Intl.PluralRules('en-US').select(2)); } catch (e) { line('Intl.PluralRules', false, 'throws ' + e); }
+try { line('Intl.Segmenter', true, '' + Array.from(new Intl.Segmenter('en', {granularity: 'word'}).segment('a b')).length); } catch (e) { line('Intl.Segmenter', false, 'throws ' + e); }
+try { line('toLocaleString', true, (1234.5).toLocaleString() + ' / ' + new Date(0).toLocaleDateString()); } catch (e) { line('toLocaleString', false, 'throws ' + e); }
+try { line('timeZone', true, Intl.DateTimeFormat().resolvedOptions().timeZone + ' / ' + Intl.DateTimeFormat().resolvedOptions().locale); } catch (e) { line('timeZone', false, 'throws ' + e); }
+
+later('setTimeout', function (cb) { setTimeout(cb, 10); });
+later('Promise microtask', function (cb) { Promise.resolve().then(function () { cb(); }); });
+later('requestAnimationFrame', function (cb) { requestAnimationFrame(function () { cb(); }); });
+later('rAF x10', function (cb) { var n = 0; (function f() { if (++n == 10) cb(); else requestAnimationFrame(f); })(); });
+later('requestIdleCallback', function (cb) { requestIdleCallback(function () { cb(); }); });
+later('MessageChannel', function (cb) { var c = new MessageChannel(); c.port1.onmessage = function () { cb(); }; c.port2.postMessage(1); });
+later('postMessage', function (cb) { addEventListener('message', function (e) { if (e.data == 'probe') cb(); }); postMessage('probe', '*'); });
+later('IntersectionObserver', function (cb) { new IntersectionObserver(function (e) { cb('intersecting ' + e[0].isIntersecting); }).observe(document.getElementById('box')); });
+later('ResizeObserver', function (cb) { new ResizeObserver(function (e) { cb(e[0].contentRect.width + ' px'); }).observe(document.getElementById('box')); });
+later('MutationObserver', function (cb) { var b = document.getElementById('box'); new MutationObserver(function () { cb(); }).observe(b, {attributes: true}); b.setAttribute('data-x', '1'); });
+later('custom element', function (cb) {
+	class Probe extends HTMLElement { connectedCallback() { this.attachShadow({mode: 'open'}).innerHTML = '<slot></slot>'; cb(); } }
+	customElements.define('onyx-probe', Probe); document.body.appendChild(document.createElement('onyx-probe'));
+});
+later('customElements.whenDefined', function (cb) { customElements.whenDefined('onyx-probe').then(function () { cb(); }); });
+later('document.fonts.ready', function (cb) { document.fonts.ready.then(function () { cb(document.fonts.status); }); });
+later('Element.animate finished', function (cb) { document.getElementById('box').animate([{opacity: 1}, {opacity: .5}], 100).finished.then(function () { cb(); }); });
+later('transitionend', function (cb) { var b = document.getElementById('box'); b.style.transition = 'width .1s'; b.addEventListener('transitionend', function () { cb(); }); requestAnimationFrame(function () { b.style.width = '60px'; }); });
+later('fetch (same origin)', function (cb) { fetch(location.href).then(function (r) { return r.text(); }).then(function (t) { cb(t.length + ' bytes'); }, function (e) { line('fetch (same origin)', false, '' + e); }); });
+later('Worker', function (cb) { var w = new Worker(URL.createObjectURL(new Blob(['postMessage(1)'], {type: 'text/javascript'}))); w.onmessage = function () { cb(); }; w.onerror = function (e) { line('Worker error', false, e.message); }; });
+later('indexedDB open', function (cb) { var r = indexedDB.open('onyx-probe', 1); r.onsuccess = function () { cb(); }; r.onerror = function () { line('indexedDB open', false, '' + r.error); }; });
+later('crypto.subtle.digest', function (cb) { crypto.subtle.digest('SHA-256', new Uint8Array(4)).then(function () { cb(); }); });
+later('load event', function (cb) { addEventListener('load', function () { cb(); }); });
+later('visibilitychange/pageshow', function (cb) { addEventListener('pageshow', function () { cb(); }); });
+later('PerformanceObserver paint', function (cb) { new PerformanceObserver(function (l) { cb(l.getEntries().map(function (e) { return e.name; }).join(',')); }).observe({type: 'paint', buffered: true}); });
+later('BroadcastChannel', function (cb) { var a = new BroadcastChannel('p'), b = new BroadcastChannel('p'); b.onmessage = function () { cb(); }; a.postMessage(1); });
+later('dynamic import', function (cb) { import('data:text/javascript,export default 1').then(function () { cb(); }, function (e) { line('dynamic import', false, '' + e); }); });
+</script>
+</body></html>

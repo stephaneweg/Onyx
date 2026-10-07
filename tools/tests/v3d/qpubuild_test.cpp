@@ -1,4 +1,4 @@
-// qpubuild_test -- user/v3d/qpu.h (the run-time QPU builder) against tools/qpu's assembler: the
+// qpubuild_test -- user/Libs/v3d/qpu.h (the run-time QPU builder) against tools/qpu's assembler: the
 // kernel's FS_TEX shader built in C++ must give the very words of kernel/sys/v3d_shaders.inc.
 #include <stdio.h>
 #include <string.h>

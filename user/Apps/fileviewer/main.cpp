@@ -9,10 +9,11 @@
 // On the left the PLACES, in three groups a click on their title folds or unfolds (as
 // elementary OS's Files): Personal -- the folders pinned there (each under a name of its own:
 // a folder's right-click menu, Pin to Sidebar..., or Go > Pin This Folder...) and the Trash;
-// Computer -- the SD card's partitions (SD:, SD1: .. SD3:, and the VD0: .. disk images to come);
+// Computer -- the SD card's partitions (SD:, SD1: .. SD3:, and the VD0: .. disk images to come)
+// and RAM:, the volume in memory, when there is one;
 // Network -- the servers connected once (Go > Connect to Server..., under a name: a click
 // connects again, the login kept by /bin/ftpfs) and Connect to Server... A right click on a
-// place: Rename..., Unpin / Forget; files dropped on a pinned folder, the Trash or a volume go
+// place: Rename..., Unpin / Forget, Eject (a USB volume: its whole device); files dropped on a pinned folder, the Trash or a volume go
 // there. They are kept in SD:/etc/places.ini ("pin = name|path",
 // "net = name|FTP:host/folder", "folded = ..."). Above the columns the path bar: the current
 // folder's path, each folder a link (its name underlined under the pointer), the one shown in
@@ -24,27 +25,23 @@
 // Keys: Up/Down/PgUp/PgDn/Home/End move, Right enters a folder, Left/Backspace goes back,
 // Enter opens, a letter jumps to the next name starting with it, Del deletes,
 // Ctrl-C/X/V copy/cut/paste, Ctrl-N new folder, Ctrl-R rename, Ctrl-L refresh.
-// These commands are in the system menu bar (wtk::Menu): File (Open, New Folder,
+// These commands are in the system menu bar (uikit::Menu): File (Open, New Folder,
 // Rename..., Move to Trash (Del), Delete Permanently..., Refresh), Edit (Copy, Cut,
 // Paste -- the system clipboard) and Go (SD Card, Trash, Restore from Trash, Empty
 // Trash...). Del moves to SD:/.Trash (trash.h); inside the Trash it deletes for good.
 // Hidden entries (names starting with '.') are not listed. Operations act on the
 // selection of the active column; Paste and New Folder target the active column's folder.
 //
-#include "kapi.h"
-#include "bmp.hpp"
-#include "clipboard.h"
-#include "fsutil.h"
-#include "trash.h"
-#include "notify.h"
-#include "fileassoc.h"
-#include "shelfmsg.h"
-#include "ftpfs.h"			// ftpfs_login (Connect to Server)
-#include "img/imgload.hpp"		// preview: BMP GIF PNG JPEG PCX WebP (codecs in libwtk)
-#include "wtk/wtk.h"
-#include "ft/wtkface.h"
+#include "appkit/appkit.h"
+#include "systemkit/systemkit.h"
+#include "uikit/bmp.h"
+#include "filekit/filekit.h"
+#include "netkit/netkit.h"
+#include "imagekit/img/imgload.hpp"		// preview: BMP GIF PNG JPEG PCX WebP (codecs in libuikit)
+#include "uikit/uikit.h"
+#include "fontkit/uikitface.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	880
 #define H	540
@@ -65,15 +62,15 @@ using namespace wtk;
 #define NAMEL	72
 #define CLICK_DELAY 70			// double-click window, HZ ticks (~700 ms)
 
-// The theme's colours (wtk/theme.h: read when drawn). The columns are lists (the field, its
+// The theme's colours (uikit/theme.h: read when drawn). The columns are lists (the field, its
 // text; a selection in the accent -- dimmer in the columns without the keyboard), the path and
 // status bars the face; folders in the dark accent, app bundles in a dark green.
 #define C_COL		C_FIELD
-#define C_COLSEP	wk_mix (C_FIELD, C_FIELD_TEXT, 40)
-#define C_DIRTXT	wk_tone (C_ACCENT, 84)
+#define C_COLSEP	uk_mix (C_FIELD, C_FIELD_TEXT, 40)
+#define C_DIRTXT	uk_tone (C_ACCENT, 84)
 #define C_FILETXT	C_FIELD_TEXT
 #define C_APPTXT	0x002E7D32
-#define C_DIMTXT	wk_mix (C_FIELD, C_FIELD_TEXT, 130)
+#define C_DIMTXT	uk_mix (C_FIELD, C_FIELD_TEXT, 130)
 
 // name = the file name (all file operations); label = what the column shows -- the same,
 // except for an app bundle: its friendly name from app.txt ("demoB.app" -> "Colour Field").
@@ -262,8 +259,18 @@ static void preview_clear (void)
 // A path served by a file-system provider (FTP:..., FTPS:...), not the SD card: opening a
 // file there downloads it whole, so previews are limited to small files.
 // The SD card's volumes: SD: (partition 1, the boot one) and SD1: .. SD3: (partitions 2..4, FAT or exFAT).
-static int sd_volume (const char *path)			// length of the "SD:" / "SDn:" prefix, 0 = not the card
+// RAM:, the volume in memory, is local like them (its files are read in place, not downloaded); so are
+// the USB sticks (USB:, USB2:, USB3:).
+static int sd_volume (const char *path)			// length of the "SD:" / "SDn:" / "RAM:" prefix, 0 = not a local volume
 {
+	if (lower (path[0]) == 'r' && lower (path[1]) == 'a' && lower (path[2]) == 'm' && path[3] == ':') return 4;
+	if (lower (path[0]) == 'u' && lower (path[1]) == 's' && lower (path[2]) == 'b')	// (v93) USB1:..USB3:, USB1P2:.., USB: (= USB1:)
+	{
+		if (path[3] == ':') return 4;
+		if (path[3] < '1' || path[3] > '3') return 0;
+		if (path[4] == ':') return 5;
+		return lower (path[4]) == 'p' && path[5] >= '1' && path[5] <= '4' && path[6] == ':' ? 7 : 0;
+	}
 	if (lower (path[0]) != 's' || lower (path[1]) != 'd') return 0;
 	if (path[2] == ':') return 3;
 	return path[2] >= '0' && path[2] <= '3' && path[3] == ':' ? 4 : 0;
@@ -473,7 +480,7 @@ public:
 	{
 		Root *r = Root::current ();
 		left = ((r ? r->width : W) - width) / 2; top = ((r ? r->height : H) - height) / 2;
-		tb = new Textbox (12, wk_fh () + 16, width - 24, 26, init, dlg_enter);
+		tb = new Textbox (12, uk_fh () + 16, width - 24, 26, init, dlg_enter);
 		tb->caret = slen (init);
 		tb->hasFocus = true;
 		addChild (tb);
@@ -483,7 +490,7 @@ public:
 	}
 	void onButton (int tag) override { close (tag); }
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
-	void onDraw () override { drawBox (m_title); }	// (the dialogs' box: wtk/dialog.h)
+	void onDraw () override { drawBox (m_title); }	// (the dialogs' box: uikit/dialog.h)
 };
 
 static bool ask_name (const char *title, const char *init, char *out, int cap)
@@ -491,7 +498,7 @@ static bool ask_name (const char *title, const char *init, char *out, int cap)
 	InputBox box (title, init);
 	if (!box.run () || box.tb->text[0] == '\0') return false;
 	for (int i = 0; box.tb->text[i]; i++)
-		if (box.tb->text[i] == '/' || box.tb->text[i] == '\\' || box.tb->text[i] == ':') { wk_messagebox ("Invalid name", "A name cannot contain / \\ or :", MB_OK); return false; }
+		if (box.tb->text[i] == '/' || box.tb->text[i] == '\\' || box.tb->text[i] == ':') { uk_messagebox ("Invalid name", "A name cannot contain / \\ or :", MB_OK); return false; }
 	scopy (out, box.tb->text, cap);
 	return true;
 }
@@ -518,7 +525,6 @@ static void op_rename ()
 	join (s, sizeof s, g_col[g_active].path, old);
 	join (d, sizeof d, g_col[g_active].path, name);
 	if (exists (d) || kapi_rename (s, d) != 0) { status ("Could not rename to ", name); return; }
-	shelf_moved (s, d);
 	g_col[g_active].sel = -1; g_ncol = g_active + 1;
 	refresh ();
 	for (int i = 0; i < g_col[g_active].count; i++)
@@ -550,7 +556,7 @@ static void op_delete_permanently ()
 	if (e->isdir) { const char *b = "\nand everything in it?"; for (int i = 0; b[i]; i++) msg[p++] = b[i]; }
 	else msg[p++] = '?';
 	msg[p] = '\0';
-	if (!wk_messagebox ("Delete", msg, MB_YESNO)) return;
+	if (!uk_messagebox ("Delete", msg, MB_YESNO)) return;
 	char path[300]; join (path, sizeof path, g_col[g_active].path, e->name);
 	char name[NAMEL]; scopy (name, e->name, sizeof name);
 	bool ok;
@@ -579,6 +585,100 @@ static void show_volume (const char *root)
 static void op_show_sd1 ()   { show_volume ("SD1:/"); }
 static void op_show_sd2 ()   { show_volume ("SD2:/"); }
 static void op_show_sd3 ()   { show_volume ("SD3:/"); }
+// RAM:, the volume in memory (absent with "ramfs=0" in system.ini)
+static void op_show_ram ()   { if (volume_mounted ("RAM:/")) show_root ("RAM:/"); else status ("No RAM: volume", ""); }
+
+// ---- USB sticks (kapi v93: mounted when plugged in as USB:, USB2:, USB3:) -------------------------
+#define MAXVOL	16
+static struct kapi_volume g_vols[MAXVOL];
+static int g_nvols = 0;
+static unsigned g_volSig = 0;			// the volumes' generations, summed: a change -> the places again
+static void vols_read (void)
+{
+	int n = kapi_vol_list (g_vols, MAXVOL, 0);
+	g_nvols = n < 0 ? 0 : n > MAXVOL ? MAXVOL : n;
+}
+static unsigned vols_sig (void)
+{
+	unsigned s = 0;
+	for (int i = 0; i < g_nvols; i++) s = s * 31 + g_vols[i].gen + g_vols[i].state;
+	return s;
+}
+static void vol_root (const struct kapi_volume &v, char *out, int cap)	// "USB2:/"
+{
+	int n = 0;
+	for (; v.name[n] && n < cap - 3; n++) out[n] = v.name[n];
+	out[n++] = ':'; out[n++] = '/'; out[n] = 0;
+}
+static bool is_usb_path (const char *p)
+{
+	return lower (p[0]) == 'u' && lower (p[1]) == 's' && lower (p[2]) == 'b' && sd_volume (p) > 0;
+}
+static void op_show_usb ()
+{
+	vols_read ();
+	for (int i = 0; i < g_nvols; i++)
+		if ((g_vols[i].flags & KAPI_VF_REMOVABLE) && g_vols[i].state == KAPI_VST_MOUNTED)
+		{
+			char r[16]; vol_root (g_vols[i], r, sizeof r);
+			show_root (r);
+			return;
+		}
+	status ("No USB stick is plugged in (or it is not formatted: Format...)");
+}
+// The USB device of a path: 1..3 ("USB2:/x", "USB2P1:/x" -> 2; "USB:" is USB1:), 0 = not on a USB volume.
+static int usb_dev (const char *p)
+{
+	if (!is_usb_path (p)) return 0;
+	return p[3] == ':' ? 1 : p[3] - '0';
+}
+// Eject USB device dev, whole (the kernel ejects all its partitions): the view leaves it first.
+static void eject_dev (int dev)
+{
+	char vol[8] = "USB1:"; vol[3] = (char) ('0' + dev);
+	if (usb_dev (g_col[0].path) == dev) show_root ("SD:/");
+	int r = kapi_vol_eject (vol, 0);
+	if (r == -KAPI_EBUSY)
+	{
+		if (!uk_messagebox ("Eject", "Files are still open on this stick (they were saved). Eject it anyway?", MB_YESNO)) { status (vol, " is still in use"); return; }
+		r = kapi_vol_eject (vol, KAPI_EJECT_FORCE);
+	}
+	if (r == 0) status (vol, " can be removed safely");
+	else status ("Could not eject ", vol);
+}
+// Eject the USB device shown (else the one plugged in).
+static void op_eject ()
+{
+	int dev = usb_dev (g_col[g_active].path);
+	if (!dev)
+	{
+		vols_read ();
+		for (int i = 0; i < g_nvols && !dev; i++)
+			if ((g_vols[i].flags & KAPI_VF_REMOVABLE) && g_vols[i].state == KAPI_VST_MOUNTED)
+			{
+				char r[16]; vol_root (g_vols[i], r, sizeof r);
+				dev = usb_dev (r);
+			}
+	}
+	if (!dev) { status ("No USB stick to eject"); return; }
+	eject_dev (dev);
+}
+// The right-click menu's line for a path on a USB volume: "Eject USB1" (a partition's: its whole device).
+static void eject_label (const char *path, char *out)
+{
+	const char *a = "Eject USB1"; int n = 0;
+	for (; a[n]; n++) out[n] = a[n];
+	out[n - 1] = (char) ('0' + usb_dev (path));
+	if (sd_volume (path) == 7) for (const char *b = " (all its partitions)"; *b; b++) out[n++] = *b;
+	out[n] = 0;
+}
+static void op_format ()				// the Disks app: the volumes, Eject, Format
+{
+	const char *cur = g_col[g_active].path;
+	char vol[16] = "";
+	if (is_usb_path (cur)) { int n = 0; while (cur[n] && cur[n] != ':' && n < 12) { vol[n] = cur[n]; n++; } vol[n++] = ':'; vol[n] = 0; }
+	if (kapi_raise_app ("disks") == 0) lx_launch ("disks", vol[0] ? vol : 0);
+}
 
 // A path shown as columns from its volume's root: "SD1:/roms/gb" -> SD1: | roms | gb.
 static void open_path (const char *path)
@@ -699,9 +799,23 @@ static void places_build (void)
 	add_place (PL_VOL, G_COMPUTER, -1, "SD Card", "SD:/");
 	static const char *const VOLS[][2] = { { "SD1:/", "SD1: partition 2" }, { "SD2:/", "SD2: partition 3" },
 		{ "SD3:/", "SD3: partition 4" }, { "VD0:/", "VD0: disk image" }, { "VD1:/", "VD1: disk image" },
-		{ "VD2:/", "VD2: disk image" }, { "VD3:/", "VD3: disk image" } };
+		{ "VD2:/", "VD2: disk image" }, { "VD3:/", "VD3: disk image" }, { "RAM:/", "RAM: memory" } };
 	for (unsigned i = 0; i < sizeof VOLS / sizeof VOLS[0]; i++)
 		if (volume_mounted (VOLS[i][0])) add_place (PL_VOL, G_COMPUTER, -1, VOLS[i][1], VOLS[i][0]);
+	vols_read ();						// (v93) the USB sticks mounted
+	g_volSig = vols_sig ();
+	for (int i = 0; i < g_nvols; i++)
+	{
+		if (!(g_vols[i].flags & KAPI_VF_REMOVABLE) || g_vols[i].state != KAPI_VST_MOUNTED) continue;
+		char r[16], label[48]; vol_root (g_vols[i], r, sizeof r);
+		int n = 0;
+		for (const char *q = r; *q && *q != '/'; q++) label[n++] = *q;
+		label[n++] = ' ';
+		const char *t = g_vols[i].label[0] ? g_vols[i].label : "USB stick";
+		while (*t && n < (int) sizeof label - 1) label[n++] = *t++;
+		label[n] = 0;
+		add_place (PL_VOL, G_COMPUTER, -1, label, r);
+	}
 	for (int i = 0; i < g_nnet; i++) add_place (PL_NET, G_NETWORK, i, g_netName[i], g_netPath[i]);
 	add_place (PL_CONNECT, G_NETWORK, -1, "Add a Server...", "");
 }
@@ -785,7 +899,7 @@ static void net_place (const char *name, const char *addr)
 
 // Go > Connect to Server...: protocol (FTP / FTPS), server, port, user, password and
 // folder. The login goes to /bin/ftpfs over IPC ("ftpfs" service, like `ftpfs login`) --
-// never into the path, which the Shelf and the path bar may show or store -- then the
+// never into the path, which the path bar may show or store -- then the
 // folder opens as FTP[S]:host[:port]/folder (ABI v44 file-system provider), and the server
 // joins the sidebar's Network group under the name given (a click there connects again).
 static void connect_picked (Widget &w);
@@ -803,7 +917,7 @@ public:
 	{
 		Root *r = Root::current ();
 		left = ((r ? r->width : W) - width) / 2; top = ((r ? r->height : H) - height) / 2;
-		int y = wk_fh () + 18, lx = 12, fx = 100, rh = 32;
+		int y = uk_fh () + 18, lx = 12, fx = 100, rh = 32;
 		const char *labels[6] = { "Protocol", "Server", "User", "Password", "Folder", "Name" };
 		for (int i = 0; i < 6; i++) addChild (new Label (lx, y + i * rh + 4, 86, 20, labels[i], C_TEXT, C_FACE));
 		ftp  = new RadioButton (fx,      y, 80, 24, "FTP",  1, true,  0, C_FACE); addChild (ftp);
@@ -872,8 +986,8 @@ public:
 	{
 		if (tag != 2) { close (tag); return; }
 		int i = saved (host->text);
-		if (i < 0) { wk_messagebox ("Forget", "This server is not remembered.", MB_OK); return; }
-		if (!wk_messagebox ("Forget", "Forget the remembered login of this server?", MB_YESNO)) return;
+		if (i < 0) { uk_messagebox ("Forget", "This server is not remembered.", MB_OK); return; }
+		if (!uk_messagebox ("Forget", "Forget the remembered login of this server?", MB_YESNO)) return;
 		ftpfs_forget (sites[i].host);
 		sites[i] = sites[--nsites];				// (ftpfs rewrites the file: update the list here)
 		host->clearOptions ();
@@ -900,7 +1014,7 @@ public:
 	void onDraw () override
 	{
 		drawBox ("Connect to Server");
-		canvas.text (100, wk_fh () + 18 + 6 * 32 - 2, hint, C_DIS);
+		canvas.text (100, uk_fh () + 18 + 6 * 32 - 2, hint, C_DIS);
 	}
 };
 static void connect_picked (Widget &w)
@@ -1003,7 +1117,7 @@ static void op_empty_trash ()
 {
 	int n = trash_count ();
 	if (n == 0) { status ("The Trash is empty"); return; }
-	if (!wk_messagebox ("Empty Trash", "Delete everything in the Trash for good?", MB_YESNO)) return;
+	if (!uk_messagebox ("Empty Trash", "Delete everything in the Trash for good?", MB_YESNO)) return;
 	trash_empty ();
 	if (in_trash ()) { g_col[0].sel = -1; g_ncol = 1; refresh (); }
 	status ("The Trash was emptied");
@@ -1038,14 +1152,12 @@ static bool transfer (const char *src, const char *dir, bool move)
 	{
 		if (kapi_rename (src, dst) == 0)		// (kapi: 0 = ok)
 		{
-			shelf_moved (src, dst);			// the Shelf's references follow
 			return true;
 		}
 		if (same_volume (src, dir)) return false;		// same volume: a real failure
 		// Across volumes (SD <-> SD1: <-> FTP), rename cannot work: copy, then delete the source.
 		if (!(isDir ? copy_tree (src, dst, 0) : copy_file (src, dst))) return false;
 		if (isDir) remove_tree (src, 0); else kapi_remove (src);
-		shelf_moved (src, dst);
 		return true;
 	}
 	return isDir ? copy_tree (src, dst, 0) : copy_file (src, dst);
@@ -1111,14 +1223,14 @@ static bool drop_target_at (int mx, int my, char *out, int cap, int *pSlot, int 
 	return true;
 }
 
-// Each column has its own vertical scrollbar (WK_SBW px, at its right edge) when its
+// Each column has its own vertical scrollbar (UK_SBW px, at its right edge) when its
 // folder has more entries than fit: drag the thumb, or click the track to jump there.
 static bool col_overflows (int slot) { return slot >= 0 && slot < g_ncol && g_col[slot].count > g_rows; }
 static void vscroll_to (int slot, int my)
 {
 	Column &k = g_col[slot];
-	WkThumb t = wk_thumb (k.count, g_rows, k.top, COL_H);
-	k.top = (int) wk_thumb_pos (my - COL_Y, COL_H, k.count, g_rows, t.h);
+	UkThumb t = uk_thumb (k.count, g_rows, k.top, COL_H);
+	k.top = (int) uk_thumb_pos (my - COL_Y, COL_H, k.count, g_rows, t.h);
 	int maxTop = k.count - g_rows; if (maxTop < 0) maxTop = 0;
 	if (k.top > maxTop) k.top = maxTop;
 	if (k.top < 0) k.top = 0;
@@ -1158,28 +1270,28 @@ static void place_glyph (Canvas &cv, int x, int y, int kind, unsigned ink)
 	switch (kind)
 	{
 	case PL_PIN:						// a folder
-		wk_rbox (cv, x + 1, y + 3, 7, 4, 1, 0x00D8AA52, 0x00C89A48);
-		wk_rbox (cv, x + 1, y + 5, 14, 10, 2, 0x00EEC46C, 0x00D8A850);
-		wk_rline (cv, x + 1, y + 5, 14, 10, 2, 0x00906A28, 190);
+		uk_rbox (cv, x + 1, y + 3, 7, 4, 1, 0x00D8AA52, 0x00C89A48);
+		uk_rbox (cv, x + 1, y + 5, 14, 10, 2, 0x00EEC46C, 0x00D8A850);
+		uk_rline (cv, x + 1, y + 5, 14, 10, 2, 0x00906A28, 190);
 		break;
 	case PL_TRASH:						// a can
-		wk_rbox (cv, x + 2, y + 2, 12, 2, 1, ink, ink);
-		wk_rbox (cv, x + 3, y + 5, 10, 10, 2, wk_mix (ink, 0x00FFFFFF, 60), ink);
+		uk_rbox (cv, x + 2, y + 2, 12, 2, 1, ink, ink);
+		uk_rbox (cv, x + 3, y + 5, 10, 10, 2, uk_mix (ink, 0x00FFFFFF, 60), ink);
 		break;
 	case PL_VOL:						// a drive, its light
-		wk_rbox (cv, x + 1, y + 4, 14, 9, 2, wk_mix (ink, 0x00FFFFFF, 150), wk_mix (ink, 0x00FFFFFF, 90));
-		wk_rline (cv, x + 1, y + 4, 14, 9, 2, ink, 170);
+		uk_rbox (cv, x + 1, y + 4, 14, 9, 2, uk_mix (ink, 0x00FFFFFF, 150), uk_mix (ink, 0x00FFFFFF, 90));
+		uk_rline (cv, x + 1, y + 4, 14, 9, 2, ink, 170);
 		cv.fillRect (x + 11, y + 9, 2, 2, 0x0040C060);
 		break;
 	case PL_NET:						// a server: two boxes, their lights
 		for (int k = 0; k < 2; k++)
 		{
-			wk_rbox (cv, x + 2, y + 2 + k * 6, 12, 5, 1, wk_mix (ink, 0x00FFFFFF, 120), wk_mix (ink, 0x00FFFFFF, 80));
+			uk_rbox (cv, x + 2, y + 2 + k * 6, 12, 5, 1, uk_mix (ink, 0x00FFFFFF, 120), uk_mix (ink, 0x00FFFFFF, 80));
 			cv.fillRect (x + 4, y + 4 + k * 6, 2, 1, 0x0040C060);
 		}
 		cv.fillRect (x + 7, y + 13, 2, 2, ink);
 		break;
-	case PL_CONNECT: wk_glyph (cv, WKG_PLUS, x + 8, y + 8, 10, ink); break;
+	case PL_CONNECT: uk_glyph (cv, WKG_PLUS, x + 8, y + 8, 10, ink); break;
 	}
 }
 
@@ -1193,10 +1305,11 @@ public:
 	void drawPathBar ()
 	{
 		canvas.fillRect (0, 0, W, BC_H, C_BG);
+		canvas.fillRect (0, BC_H - 1, W, 1, uk_tone (C_BG, 100));	// the line under the bar (the Media Player's)
 		int fx = 10, fy = 7, fw = W - 20, fh = BC_H - 14;
-		unsigned field = wk_mix (C_BG, C_FIELD, 170), ink = wk_ink_on (field), dim = wk_mix (field, ink, 120);
-		wk_rbox (canvas, fx, fy, fw, fh, 8, wk_tone (field, 136), field);
-		wk_rline (canvas, fx, fy, fw, fh, 8, wk_tone (C_BG, 88), 190);
+		unsigned field = uk_mix (C_BG, C_FIELD, 170), ink = uk_ink_on (field), dim = uk_mix (field, ink, 120);
+		uk_rbox (canvas, fx, fy, fw, fh, 8, uk_tone (field, 136), field);
+		uk_rline (canvas, fx, fy, fw, fh, 8, uk_tone (C_BG, 88), 190);
 		int x = fx + 14, y = fy + (fh - g_fh) / 2;
 		for (int c = 0; c < g_ncol; c++)
 		{
@@ -1228,11 +1341,11 @@ public:
 				}
 			}
 			else { const Entry &e = g_col[c - 1].e[g_col[c - 1].sel]; scopy (buf, e.name, sizeof buf); seg = buf; }
-			if (c > 0) { wk_glyph (canvas, WKG_CHEV_RIGHT, x + 3, fy + fh / 2, 9, dim); x += 18; }
+			if (c > 0) { uk_glyph (canvas, WKG_CHEV_RIGHT, x + 3, fy + fh / 2, 9, dim); x += 18; }
 			bool cur = c == g_active, hot = c == g_crumbHot;
-			int tw = wk_text_w (seg, cur ? 2 : 0);
+			int tw = uk_text_w (seg, cur ? 2 : 0);
 			if (x + tw > fx + fw - 20) { for (int k = c; k < g_ncol; k++) g_crumbX[k] = fx + fw; break; }
-			wk_text (canvas, x, y, seg, cur ? wk_tone (C_ACCENT, 84) : ink, cur ? 2 : 0);
+			uk_text (canvas, x, y, seg, cur ? uk_tone (C_ACCENT, 84) : ink, cur ? 2 : 0);
 			if (cur) canvas.fillRect (x, y + g_fh + 1, tw, 2, C_ACCENT);
 			else if (hot) canvas.fillRect (x, y + g_fh + 1, tw, 1, ink);
 			x += tw + 10;
@@ -1245,9 +1358,9 @@ public:
 	void drawSidebar ()
 	{
 		canvas.fillRect (0, BC_H, SIDE_W, H - BC_H - ST_H, C_BG);
-		wk_etch_v (canvas, SIDE_W - 2, BC_H + 4, H - BC_H - ST_H - 8, C_BG);
+		uk_etch_v (canvas, SIDE_W - 2, BC_H + 4, H - BC_H - ST_H - 8, C_BG);
 		int cur = current_place ();
-		unsigned dim = wk_mix (C_BG, C_TEXT, 150);
+		unsigned dim = uk_mix (C_BG, C_TEXT, 150);
 		for (int r = 0; r < g_nsrow; r++)
 		{
 			int y = SIDE_Y + r * SIDE_RH;
@@ -1256,19 +1369,19 @@ public:
 			bool hot = r == g_sideHot;
 			if (sr.place < 0)
 			{
-				wk_glyph (canvas, g_folded[sr.group] ? WKG_CHEV_RIGHT : WKG_CHEV_DOWN, 14, y + SIDE_RH / 2, 8, hot ? C_TEXT : dim);
-				wk_text (canvas, 24, y + (SIDE_RH - g_fh) / 2, GROUP_NAME[sr.group], hot ? C_TEXT : dim, 2);
+				uk_glyph (canvas, g_folded[sr.group] ? WKG_CHEV_RIGHT : WKG_CHEV_DOWN, 14, y + SIDE_RH / 2, 8, hot ? C_TEXT : dim);
+				uk_text (canvas, 24, y + (SIDE_RH - g_fh) / 2, GROUP_NAME[sr.group], hot ? C_TEXT : dim, 2);
 				continue;
 			}
 			const Place &p = g_pl[sr.place];
 			bool on = sr.place == cur;
-			if (on) wk_hilite (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, true);
-			else if (hot) wk_rbox (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, wk_tone (C_BG, 160), wk_tone (C_BG, 148));
+			if (on) uk_hilite (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, true);
+			else if (hot) uk_rbox (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, uk_tone (C_BG, 160), uk_tone (C_BG, 148));
 			unsigned ink = on ? C_SEL_TEXT : C_TEXT;
 			place_glyph (canvas, 18, y + (SIDE_RH - 16) / 2, p.kind, ink);
-			char lab[64]; wk_text_fit (p.label, SIDE_W - 48, lab, sizeof lab);
+			char lab[64]; uk_text_fit (p.label, SIDE_W - 48, lab, sizeof lab);
 			canvas.text (40, y + (SIDE_RH - g_fh) / 2, lab, p.kind == PL_CONNECT && !on ? dim : ink);
-			if (r == g_dropSide) wk_rline (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, C_ACCENT);	// (a drop target)
+			if (r == g_dropSide) uk_rline (canvas, 8, y + 1, SIDE_W - 20, SIDE_RH - 2, 6, C_ACCENT);	// (a drop target)
 		}
 	}
 
@@ -1277,8 +1390,8 @@ public:
 		const Column &k = g_col[slot];
 		canvas.fillRect (x, COL_Y, COLW, COL_H, C_COL);
 		canvas.fillRect (x + COLW - 1, COL_Y, 1, COL_H, C_COLSEP);
-		WkThumb t = wk_thumb (k.count, g_rows, k.top, COL_H);
-		int sbw = t.show ? WK_SBW + 4 : 0;
+		UkThumb t = uk_thumb (k.count, g_rows, k.top, COL_H);
+		int sbw = t.show ? UK_SBW + 4 : 0;
 		int rw = COLW - 10 - sbw;			// a row's highlight (clear of the scroll bar)
 		int chevX = x + COLW - 16 - sbw;		// a folder's arrow: well inside, left of the bar
 		int maxW = chevX - 8 - (x + TXT_PAD);
@@ -1289,20 +1402,20 @@ public:
 			const Entry &e = k.e[idx];
 			int y = COL_Y + ROW_PAD + r * g_rowH;
 			bool sel = idx == k.sel, hot = sel && slot == g_active;
-			if (sel) wk_hilite (canvas, x + 4, y + 1, rw, g_rowH - 2, 5, hot);
-			char name[NAMEL + 8]; wk_text_fit (e.label, maxW, name, sizeof name);
+			if (sel) uk_hilite (canvas, x + 4, y + 1, rw, g_rowH - 2, 5, hot);
+			char name[NAMEL + 8]; uk_text_fit (e.label, maxW, name, sizeof name);
 			unsigned col = hot ? C_SEL_TEXT : e.isapp ? C_APPTXT : e.isdir ? C_DIRTXT : C_FILETXT;
 			canvas.text (x + TXT_PAD, y + (g_rowH - g_fh) / 2, name, col);
-			if (e.isdir && !e.isapp) wk_glyph (canvas, WKG_CHEV_RIGHT, chevX, y + g_rowH / 2, 8, hot ? C_SEL_TEXT : C_DIMTXT);
+			if (e.isdir && !e.isapp) uk_glyph (canvas, WKG_CHEV_RIGHT, chevX, y + g_rowH / 2, 8, hot ? C_SEL_TEXT : C_DIMTXT);
 		}
 		if (g_dropSlot == slot)				// drop target highlight
 		{
 			if (g_dropRow >= k.top && g_dropRow < k.top + g_rows)
-				wk_rline (canvas, x + 3, COL_Y + ROW_PAD + (g_dropRow - k.top) * g_rowH, rw + 2, g_rowH, 5, C_ACCENT);
+				uk_rline (canvas, x + 3, COL_Y + ROW_PAD + (g_dropRow - k.top) * g_rowH, rw + 2, g_rowH, 5, C_ACCENT);
 			else if (g_dropRow < 0)
-				wk_rline (canvas, x + 1, COL_Y + 1, COLW - 3, COL_H - 2, 4, C_ACCENT);
+				uk_rline (canvas, x + 1, COL_Y + 1, COLW - 3, COL_H - 2, 4, C_ACCENT);
 		}
-		if (t.show) wk_draw_vscroll (canvas, x + COLW - 3 - WK_SBW, COL_Y + 2, WK_SBW, COL_H - 4, t, C_COL, g_vdrag == slot);
+		if (t.show) uk_draw_vscroll (canvas, x + COLW - 3 - UK_SBW, COL_Y + 2, UK_SBW, COL_H - 4, t, C_COL, g_vdrag == slot);
 		if (k.count == 0) canvas.text (x + TXT_PAD, COL_Y + ROW_PAD + (g_rowH - g_fh) / 2, "(empty)", C_DIMTXT);
 	}
 
@@ -1328,7 +1441,7 @@ public:
 				for (int i = 0; i < dw; i++)
 				{
 					unsigned c = g_pvImg[(j * g_pvH / dh) * g_pvW + (i * g_pvW / dw)];
-					if (g_pvKind == PV_APP && (c & 0xFFFFFF) == WK_TRANSPARENT_KEY) continue;
+					if (g_pvKind == PV_APP && (c & 0xFFFFFF) == UK_TRANSPARENT_KEY) continue;
 					unsigned a = c >> 24;
 					if (g_pvKind == PV_IMAGE && a != 255)		// alpha over the column
 					{
@@ -1343,11 +1456,11 @@ public:
 		}
 
 		char line[160];
-		wk_text_fit (g_pvKind == PV_APP ? g_pvTitle : e->name, maxW, line, sizeof line);
+		uk_text_fit (g_pvKind == PV_APP ? g_pvTitle : e->name, maxW, line, sizeof line);
 		canvas.text (tx, y, line, C_FILETXT); y += g_fh + 6;
 		if (g_pvKind == PV_APP)					// the bundle's folder name
 		{
-			wk_text_fit (e->name, maxW, line, sizeof line);
+			uk_text_fit (e->name, maxW, line, sizeof line);
 			canvas.text (tx, y, line, C_DIMTXT); y += g_fh + 2;
 		}
 
@@ -1386,14 +1499,14 @@ public:
 		if (g_pvKind == PV_TEXT)
 		{
 			y += 6;
-			wk_sunken (canvas, x + 4, y - 2, COLW - 9, COL_Y + COL_H - y - 2, 4, C_FIELD);
+			uk_sunken (canvas, x + 4, y - 2, COLW - 9, COL_Y + COL_H - y - 2, 4, C_FIELD);
 			const char *p = g_pvText;
 			while (*p && y + g_fh < COL_Y + COL_H - 4)
 			{
 				int n = 0;
 				while (p[n] && p[n] != '\n' && n < maxChars) { line[n] = p[n] == '\t' ? ' ' : p[n]; if (line[n] == '\r') line[n] = ' '; n++; }
 				line[n] = '\0';
-				wk_text_clip (canvas, tx, y, line, C_FILETXT, 0, tx, y, maxW, g_fh);	// (proportional: clipped at the column)
+				uk_text_clip (canvas, tx, y, line, C_FILETXT, 0, tx, y, maxW, g_fh);	// (proportional: clipped at the column)
 				y += g_fh;
 				p += n;
 				while (*p && *p != '\n' && n >= maxChars) p++;	// clip long lines
@@ -1415,8 +1528,8 @@ public:
 			else if (slot == g_ncol && preview_on ()) drawPreview (x);
 			else { canvas.fillRect (x, COL_Y, COLW, COL_H, C_COL); canvas.fillRect (x + COLW - 1, COL_Y, 1, COL_H, C_COLSEP); }
 		}
-		wk_rbox (canvas, 0, H - ST_H, W, ST_H, 0, wk_tone (C_FACE, 160), wk_tone (C_FACE, 124));	// status bar
-		wk_etch_h (canvas, 0, H - ST_H, W, C_FACE);
+		uk_rbox (canvas, 0, H - ST_H, W, ST_H, 0, uk_tone (C_FACE, 160), uk_tone (C_FACE, 124));	// status bar
+		uk_etch_h (canvas, 0, H - ST_H, W, C_FACE);
 		canvas.text (10, H - ST_H + (ST_H - g_fh) / 2 + 1, g_status, C_TEXT);
 	}
 
@@ -1427,15 +1540,19 @@ public:
 		if (sr.place < 0) return;
 		int i = sr.place;
 		const Place p = g_pl[i];
-		enum { M_OPEN = 1, M_RENAME, M_REMOVE, M_EMPTY };
+		enum { M_OPEN = 1, M_RENAME, M_REMOVE, M_EMPTY, M_EJECT };
 		PopupMenu m (mx, my);
 		m.add (p.kind == PL_NET ? "Connect" : "Open", M_OPEN);
+		int dev = p.kind == PL_VOL ? usb_dev (p.path) : 0;	// a USB volume: its device ejected from here
+		char ej[40];
+		if (dev) { eject_label (p.path, ej); m.separator (); m.add (ej, M_EJECT); }
 		if (p.kind == PL_PIN || p.kind == PL_NET) { m.add ("Rename...", M_RENAME); m.add (p.kind == PL_PIN ? "Unpin" : "Forget", M_REMOVE); }
 		if (p.kind == PL_TRASH) { m.separator (); m.add ("Empty Trash...", M_EMPTY, trash_count () > 0); }
 		if (p.kind == PL_CONNECT) return (void) (op_connect ());
 		int c = m.run ();
 		if (c == M_OPEN) open_place (i);
 		else if (c == M_EMPTY) op_empty_trash ();
+		else if (c == M_EJECT) { eject_dev (dev); places_build (); side_rows (); }
 		else if (c == M_RENAME)
 		{
 			char name[40];
@@ -1460,12 +1577,24 @@ public:
 		invalidate (true);
 	}
 
+	// the path bar's first segment, a USB volume: Eject
+	void crumbMenu (int mx, int my)
+	{
+		int dev = usb_dev (g_col[0].path);
+		if (!dev) return;
+		char ej[40]; eject_label (g_col[0].path, ej);
+		PopupMenu m (mx, my);
+		m.add (ej, 1);
+		if (m.run () == 1) { eject_dev (dev); places_build (); side_rows (); }
+		invalidate (true);
+	}
+
 	void rowMenu (int slot, int row, int mx, int my)
 	{
 		if (!(g_col[slot].sel == row && slot + 1 == g_ncol - (g_col[slot].e[row].isdir && !g_col[slot].e[row].isapp ? 1 : 0)))
 			select (slot, row);
 		g_active = slot;
-		invalidate (true); draw (); wk_present ();
+		invalidate (true); draw (); uk_present ();
 		const Entry &e = g_col[slot].e[row];
 		bool folder = e.isdir && !e.isapp;
 		enum { M_OPEN = 1, M_PIN, M_RENAME, M_TRASH, M_COPY, M_CUT };
@@ -1526,6 +1655,7 @@ public:
 		{
 			rdown = true;
 			if (sh >= 0) { placeMenu (sh, mx, my); return true; }
+			if (ch == 0) { crumbMenu (mx, my); return true; }
 			if (mx >= COLX && my >= COL_Y + ROW_PAD && my < COL_Y + COL_H)
 			{
 				int slot = g_first + (mx - COLX) / COLW;
@@ -1585,7 +1715,7 @@ public:
 			return true;
 		}
 		if (slot >= g_ncol) return true;
-		if (col_overflows (slot) && (mx - COLX) % COLW >= COLW - 4 - WK_SBW)	// the column's scrollbar
+		if (col_overflows (slot) && (mx - COLX) % COLW >= COLW - 4 - UK_SBW)	// the column's scrollbar
 		{
 			g_vdrag = slot; vscroll_to (slot, my);
 			invalidate (true);
@@ -1648,6 +1778,22 @@ public:
 		invalidate (true);
 	}
 
+	// (v93) A USB stick plugged in, ejected or pulled out: the places again; a folder shown on a
+	// volume that is gone: back to the SD card.
+	void onTick () override
+	{
+		static unsigned last = 0;
+		unsigned now = kapi_get_ticks ();
+		if (now - last < 100) return;
+		last = now;
+		vols_read ();
+		if (vols_sig () == g_volSig) return;
+		places_build (); side_rows ();
+		const char *cur = g_col[g_active].path;
+		if (is_usb_path (cur) && !volume_mounted (cur)) { show_root ("SD:/"); status ("The USB stick is not there any more"); }
+		invalidate (true);
+	}
+
 	bool onKey (long key) override
 	{
 		Column &k = g_col[g_active];
@@ -1696,8 +1842,8 @@ static void op_pin ()
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);			// (FreeType's text: wk_fw / wk_fh follow it)
-	g_fw = wk_fw (); g_fh = wk_fh ();
+	ft_uikit_install ("DejaVu Sans", 13);			// (FreeType's text: uk_fw / uk_fh follow it)
+	g_fw = uk_fw (); g_fh = uk_fh ();
 	g_rowH = g_fh + 8;					// (rows with room: a padding above and below)
 	g_rows = (COL_H - 2 * ROW_PAD) / g_rowH; if (g_rows < 1) g_rows = 1;
 
@@ -1710,34 +1856,38 @@ int main (void)
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
 
-	// Commands live in the system menu bar (shortcuts handled by wtk::Menu).
+	// Commands live in the system menu bar (shortcuts handled by uikit::Menu).
 	static Menu menu;
 	menu.menu ("File");
 	menu.item ("Open",       "Enter", 0,             op_open);
-	menu.item ("New Folder", "^N",    WK_CTRL ('N'), op_new_folder);
-	menu.item ("Rename...",  "^R",    WK_CTRL ('R'), op_rename);
+	menu.item ("New Folder", "^N",    UK_CTRL ('N'), op_new_folder);
+	menu.item ("Rename...",  "^R",    UK_CTRL ('R'), op_rename);
 	menu.separator ();
 	menu.item ("Move to Trash",       "Del", KEY_DEL, op_delete);
 	menu.item ("Delete Permanently...", "",  0,       op_delete_permanently);
 	menu.separator ();
-	menu.item ("Refresh",    "^L",    WK_CTRL ('L'), op_refresh);
+	menu.item ("Refresh",    "^L",    UK_CTRL ('L'), op_refresh);
 	menu.menu ("Go");
 	menu.item ("SD Card",    "",      0,             op_show_sd);
 	// the card's other FAT / exFAT partitions, when there are some
 	if (volume_mounted ("SD1:/")) menu.item ("SD1: (partition 2)", "", 0, op_show_sd1);
 	if (volume_mounted ("SD2:/")) menu.item ("SD2: (partition 3)", "", 0, op_show_sd2);
 	if (volume_mounted ("SD3:/")) menu.item ("SD3: (partition 4)", "", 0, op_show_sd3);
+	if (volume_mounted ("RAM:/")) menu.item ("RAM: (memory)", "", 0, op_show_ram);
+	menu.item ("USB Stick",  "",      0,             op_show_usb);
+	menu.item ("Eject USB Stick", "^E", UK_CTRL ('E'), op_eject);
+	menu.item ("Disks (Format...)", "", 0,           op_format);
 	menu.item ("Trash",      "",      0,             op_open_trash);
 	menu.item ("Connect to Server...", "", 0,       op_connect);
 	menu.separator ();
-	menu.item ("Pin This Folder...", "^D", WK_CTRL ('D'), op_pin);
+	menu.item ("Pin This Folder...", "^D", UK_CTRL ('D'), op_pin);
 	menu.separator ();
 	menu.item ("Restore from Trash", "", 0,          op_restore);
 	menu.item ("Empty Trash...",     "", 0,          op_empty_trash);
 	menu.menu ("Edit");
-	menu.item ("Copy",       "^C",    WK_CTRL ('C'), op_copy);
-	menu.item ("Cut",        "^X",    WK_CTRL ('X'), op_cut);
-	menu.item ("Paste",      "^V",    WK_CTRL ('V'), op_paste);
+	menu.item ("Copy",       "^C",    UK_CTRL ('C'), op_copy);
+	menu.item ("Cut",        "^X",    UK_CTRL ('X'), op_cut);
+	menu.item ("Paste",      "^V",    UK_CTRL ('V'), op_paste);
 	menu.publish ();
 	g_hsb = new Scrollbar (COLX, COL_Y + COL_H, W - COLX, SB_H, false, 1, 0, on_hscroll);
 	root.addChild (g_hsb);

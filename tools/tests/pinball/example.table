@@ -1,0 +1,122 @@
+# My first table -- two bumpers, three drop targets, three top lanes.
+[table]
+format     = 1
+name       = My First Table
+name.fr    = Ma première table
+goal       = Knock down the three targets twice for multiball.
+goal.fr    = Abattez deux fois les trois cibles pour le multiball.
+size       = 520 1040
+gravity    = 1400
+drain      = 1010
+ballsave   = 10
+rotate     = top
+background = #10203A
+
+[wall]
+id     = outline
+closed = 1
+points = 0 0, 520 0, 520 1040, 0 1040
+
+[arc]
+centre = 260 260
+radius = 258
+from   = 180
+to     = 360
+
+# the shooter lane: its inner wall, its one-way gate at the top
+[wall]
+points = 476 1040, 476 300
+[gate]
+a    = 476 300
+b    = 518 300
+pass = up
+
+# the guides down to the flippers
+[wall]
+points = 20 760, 20 840, 150 900
+[wall]
+points = 456 760, 456 840, 326 900
+
+[flipper]
+side  = left
+pivot = 150 905
+length = 70
+[flipper]
+side  = right
+pivot = 326 905
+length = 70
+
+[plunger]
+at = 498 980
+
+[bumper]
+id = b1
+at = 190 330
+radius = 28
+colour = #E04060
+[bumper]
+id = b2
+at = 290 330
+radius = 28
+colour = #E04060
+
+[sling]
+id = sl
+a = 80 760
+b = 130 850
+[sling]
+id = sr
+a = 396 760
+b = 346 850
+
+[lane]
+id = l1
+group = top
+rect = 150 110 30 60
+[lane]
+id = l2
+group = top
+rect = 225 110 30 60
+[lane]
+id = l3
+group = top
+rect = 300 110 30 60
+
+[target]
+id = t1
+kind = drop
+bank = trio
+a = 60 520
+b = 60 556
+[target]
+id = t2
+kind = drop
+bank = trio
+a = 60 562
+b = 60 598
+[target]
+id = t3
+kind = drop
+bank = trio
+a = 60 604
+b = 60 640
+
+[rule]
+when    = lanes top
+do      = multiplier; score 1000
+message = Bonus x up!
+message.fr = Bonus x augmenté !
+
+[rule]
+when    = bank trio
+count   = 2
+do      = multiball 2
+message = MULTIBALL!
+message.fr = MULTIBALL !
+
+[label]
+at      = 240 700
+text    = MY TABLE
+text.fr = MA TABLE
+size    = 2
+colour  = #304870

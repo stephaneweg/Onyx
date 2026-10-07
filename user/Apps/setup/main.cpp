@@ -2,8 +2,9 @@
 // apps/setup -- the first-run wizard ("Onyx Setup"): started alone by SD:/etc/autostart at the first
 // boot (the wallpaper under it; the menu bar, the dock and the agenda held back: "#setup: " lines),
 // in a window that cannot be moved and stays centred (WIN_FLAG_FIXED, kapi v69). A page each:
+//   0 Welcome: the language (SystemKit's locale_*: kept in system.ini, Setup started again in it);
 //   1 Region & keyboard: the country (the Wi-Fi's country code; it proposes the layout and the time
-//     zone), the layout (taken at once), the time zone (at once: kapi_set_timezone), clock sync;
+//     zone), the layout (taken at once), the time zone (at once; kept by locale_set_zone), clock sync;
 //   2 Wi-Fi: the networks around, a password, connect (wpa_supplicant.conf, kapi_wlan_reconnect) --
 //     or skip;
 //   3 Display: the sizes, the monitor's own marked (kapi_screen_native); Try it changes it at once,
@@ -14,20 +15,21 @@
 //     services (their autostart lines);
 //   6 Ready: a summary; Start Onyx writes system.ini and the autostart (its own line removed, the
 //     held-back ones given back and started now), starts or stops the services, and ends.
-// FreeType's text (DejaVu Sans) through wtk's face; the theme's widgets. The user guide: docs/04, §4.
+// FreeType's text (DejaVu Sans) through uikit's face; the theme's widgets. The user guide: docs/04, §4.
+// The words: English here, wrapped in TR () (uikit/lang.h); the French in SD:/apps/setup.app/lang/fr.txt.
+// What is written to the card (files, keys, the services' names) is never translated.
 // "--demo <page>[b|c]" opens a page (0..6) in a given state, writing nothing (the screenshots':
 // 2b the Wi-Fi connecting, 2c connected; 3b "Keep this resolution?").
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
-#include "applib.h"
-#include "bmp.hpp"
-#include "wallpaper.h"
-#include "img/imgload.hpp"
-#include "ft/wtkface.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
+#include "uikit/bmp.h"
+#include "systemkit/systemkit.h"
+#include "imagekit/img/imgload.hpp"
+#include "fontkit/uikitface.h"
 #include "system.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	800		// the window's client area
 #define H	600
@@ -40,9 +42,11 @@ using namespace wtk;
 static const unsigned OK_C = 0x002E9660, WARN_C = 0x00CE7828, ERR_C = 0x00C0392B;
 
 static void scpy (char *d, int cap, const char *s) { int i = 0; for (; s && s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
-static unsigned dim_ink (unsigned bg) { return wk_mix (wk_ink_for (bg), bg, 100); }
-static unsigned line_c (unsigned bg) { return wk_mix (bg, C_TEXT, 36); }
+static unsigned dim_ink (unsigned bg) { return uk_mix (uk_ink_for (bg), bg, 100); }
+static unsigned line_c (unsigned bg) { return uk_mix (bg, C_TEXT, 36); }
 static bool g_demo;				// (the screenshots: nothing written)
+static int g_lang;				// the language chosen (its place in locale_language_*)
+static char g_args[32];				// (what Setup was started with: given again when it starts again)
 
 // ---- the faces --------------------------------------------------------------------------------------------
 static FtTextFace *g_h1, *g_hero, *g_lead, *g_small;
@@ -50,23 +54,23 @@ static FtTextFace *face (const char *fam, int px) { FtTextFace *f = new FtTextFa
 
 // Text in a face (0: the installed one), left-aligned in a line of h px.
 static void ftext (Canvas &cv, TextFace *f, int x, int y, int h, const char *s, unsigned c, int style = 0)
-{ WkFaceScope sc (f); wk_text_l (cv, x, y, h, s, c, style); }
-static int ftw (TextFace *f, const char *s, int style = 0) { WkFaceScope sc (f); return wk_tw (s, style); }
+{ UkFaceScope sc (f); uk_text_l (cv, x, y, h, s, c, style); }
+static int ftw (TextFace *f, const char *s, int style = 0) { UkFaceScope sc (f); return uk_tw (s, style); }
 // Word-wrapped into w px from y (lines of lh px) -> the y below it (cv 0: only measured).
 static int fwrap (Canvas *cv, TextFace *f, int x, int y, int w, int lh, const char *s, unsigned c, int style = 0)
 {
-	WkFaceScope sc (f);
+	UkFaceScope sc (f);
 	while (*s)
 	{
 		int n = 0, fit = 0;
 		while (s[n] && s[n] != '\n')
 		{
 			int e = n; while (s[e] == ' ') e++; while (s[e] && s[e] != ' ' && s[e] != '\n') e++;
-			if (fit && wk_tw_n (s, e, style) > w) break;
+			if (fit && uk_tw_n (s, e, style) > w) break;
 			fit = n = e;
 		}
 		char b[256]; int k = n < 255 ? n : 255; for (int i = 0; i < k; i++) b[i] = s[i]; b[k] = 0;
-		if (cv) wk_text_l (*cv, x, y, lh, b, c, style);
+		if (cv) uk_text_l (*cv, x, y, lh, b, c, style);
 		y += lh; s += n; while (*s == ' ' || *s == '\n') s++;
 	}
 	return y;
@@ -92,7 +96,7 @@ static void aa_poly (Canvas &cv, int ox, int oy, const float *pts, int n, unsign
 				}
 				in += o;
 			}
-			if (in) wk_blend_px (cv, ox + px, oy + py, c, in * 255 / 16);
+			if (in) uk_blend_px (cv, ox + px, oy + py, c, in * 255 / 16);
 		}
 }
 static float sinf_ (float x) { while (x > 3.14159265f) x -= 6.2831853f; while (x < -3.14159265f) x += 6.2831853f; float x2 = x * x; return x * (1 - x2 / 6 * (1 - x2 / 20 * (1 - x2 / 42 * (1 - x2 / 72)))); }
@@ -104,8 +108,8 @@ static void gem (Canvas &cv, int x, int y, int s, unsigned c, unsigned inner)
 	float i[] = { s * .5f, s * .19f, s * .8f, s * .42f, s * .5f, s * .86f, s * .2f, s * .42f };
 	aa_poly (cv, x, y, o, 5, c); aa_poly (cv, x, y, i, 4, inner);
 }
-static void disc (Canvas &cv, int x, int y, int d, unsigned c) { wk_rbox (cv, x, y, d, d, d / 2, c, c); }
-static void big_disc (Canvas &cv, int x, int y, int d, unsigned c)		// (any size: wk_rbox's corners stop at 16)
+static void disc (Canvas &cv, int x, int y, int d, unsigned c) { uk_rbox (cv, x, y, d, d, d / 2, c, c); }
+static void big_disc (Canvas &cv, int x, int y, int d, unsigned c)		// (any size: uk_rbox's corners stop at 16)
 {
 	float p[64]; float r = d / 2.0f;
 	for (int k = 0; k < 32; k++) { float a = k * 6.2831853f / 32; p[2 * k] = r + r * cosf_ (a); p[2 * k + 1] = r + r * sinf_ (a); }
@@ -114,9 +118,9 @@ static void big_disc (Canvas &cv, int x, int y, int d, unsigned c)		// (any size
 // A small rounded label (a country's code, a network's security).
 static int chip (Canvas &cv, int x, int y, const char *s, unsigned bg, unsigned fg, int h = 18)
 {
-	int w = wk_tw (s, 2) + 12;
-	wk_rbox (cv, x, y, w, h, h / 2, bg, bg);
-	wk_text_c (cv, x, y, w, h, s, fg, 2);
+	int w = uk_tw (s, 2) + 12;
+	uk_rbox (cv, x, y, w, h, h / 2, bg, bg);
+	uk_text_c (cv, x, y, w, h, s, fg, 2);
 	return w;
 }
 
@@ -139,31 +143,50 @@ static void draw_pic (Canvas &cv, const Pic &p, int x, int y, int s)
 		for (int yy = sy0; yy < sy1; yy++) for (int xx = sx0; xx < sx1; xx++)
 		{
 			unsigned c = p.px[yy * p.w + xx] & 0xFFFFFF; t++;
-			if (c == WK_TRANSPARENT_KEY) continue;
+			if (c == UK_TRANSPARENT_KEY) continue;
 			r += (c >> 16) & 255; g += (c >> 8) & 255; b += c & 255; k++;
 		}
-		if (k) wk_blend_px (cv, x + dx, y + dy, ((r / k) << 16) | ((g / k) << 8) | (b / k), k * 255 / t);
+		if (k) uk_blend_px (cv, x + dx, y + dy, ((r / k) << 16) | ((g / k) << 8) | (b / k), k * 255 / t);
 	}
 }
 
 // ---- the choices ------------------------------------------------------------------------------------------
-// A country: its ISO 3166 code (the Wi-Fi's), its keyboard (SD:/etc/keymaps), its time zones (ZONES,
-// the first proposed; -1 ends them) -- the time zone list shows the country's and UTC.
+// A country: its ISO 3166 code (the Wi-Fi's), its keyboard (SD:/etc/keymaps), its time zones (the
+// kit's: locale_zone_*, the first proposed; -1 ends them) -- the time zone list shows the country's
+// and UTC. The names: in English here (the list's order, its letters' search), TR () where drawn.
 struct Country { const char *name, *code, *keyb; int zones[5]; };
 static const Country COUNTRIES[] = {
-	{ "Austria", "AT", "DE", { 6, -1 } }, { "Belgium", "BE", "BE", { 0, -1 } }, { "Canada", "CA", "US", { 17, 18, 19, 20, -1 } },
-	{ "Denmark", "DK", "US", { 9, -1 } }, { "Finland", "FI", "US", { 14, -1 } }, { "France", "FR", "FR", { 1, -1 } },
-	{ "Germany", "DE", "DE", { 4, -1 } }, { "Greece", "GR", "US", { 15, -1 } }, { "Ireland", "IE", "UK", { 12, -1 } },
-	{ "Italy", "IT", "IT", { 7, -1 } }, { "Japan", "JP", "US", { 21, -1 } }, { "Luxembourg", "LU", "FR", { 3, -1 } },
-	{ "Netherlands", "NL", "US", { 2, -1 } }, { "Poland", "PL", "US", { 10, -1 } }, { "Portugal", "PT", "US", { 13, -1 } },
-	{ "Spain", "ES", "ES", { 8, -1 } }, { "Sweden", "SE", "US", { 9, -1 } }, { "Switzerland", "CH", "DE", { 5, -1 } },
-	{ "United Kingdom", "GB", "UK", { 11, -1 } }, { "United States", "US", "US", { 16, 18, 19, 20, -1 } } };
+	{ TRN ("Austria"), "AT", "DE", { 6, -1 } }, { TRN ("Belgium"), "BE", "BE", { 0, -1 } }, { TRN ("Canada"), "CA", "US", { 17, 18, 19, 20, -1 } },
+	{ TRN ("Denmark"), "DK", "US", { 9, -1 } }, { TRN ("Finland"), "FI", "US", { 14, -1 } }, { TRN ("France"), "FR", "FR", { 1, -1 } },
+	{ TRN ("Germany"), "DE", "DE", { 4, -1 } }, { TRN ("Greece"), "GR", "US", { 15, -1 } }, { TRN ("Ireland"), "IE", "UK", { 12, -1 } },
+	{ TRN ("Italy"), "IT", "IT", { 7, -1 } }, { TRN ("Japan"), "JP", "US", { 21, -1 } }, { TRN ("Luxembourg"), "LU", "FR", { 3, -1 } },
+	{ TRN ("Netherlands"), "NL", "US", { 2, -1 } }, { TRN ("Poland"), "PL", "US", { 10, -1 } }, { TRN ("Portugal"), "PT", "US", { 13, -1 } },
+	{ TRN ("Spain"), "ES", "ES", { 8, -1 } }, { TRN ("Sweden"), "SE", "US", { 9, -1 } }, { TRN ("Switzerland"), "CH", "DE", { 5, -1 } },
+	{ TRN ("United Kingdom"), "GB", "UK", { 11, -1 } }, { TRN ("United States"), "US", "US", { 16, 18, 19, 20, -1 } } };
 #define UTC_ZONE	22
+#define NZONES		23		// (the kit's: locale_zone_count)
 #define NCOUNTRIES	((int) (sizeof COUNTRIES / sizeof COUNTRIES[0]))
-static const char *const KEYB_NAMES[] = { "Belgian (AZERTY)", "French (AZERTY)", "German (QWERTZ)", "English, UK", "English, US", "Spanish", "Italian", "Dvorak" };
+static const char *const KEYB_NAMES[] = { TRN ("Belgian (AZERTY)"), TRN ("French (AZERTY)"), TRN ("German (QWERTZ)"), TRN ("English, UK"),
+	TRN ("English, US"), TRN ("Spanish"), TRN ("Italian"), TRN ("Dvorak") };
 static const char *const KEYB_CODES[] = { "BE", "FR", "DE", "UK", "US", "ES", "IT", "DV" };
 #define NKEYB	8
+static const char *g_keybOpts[NKEYB];		// (the layouts' names in the language: the drop-down's)
 static char g_zoneText[NZONES][48];
+// A zone's line: "Brussels  (UTC+2, summer time)" -- the kit's city and offset, in the language. The
+// cities whose name changes (the kit's own list: marked here for tools/lang/check.py):
+// TR: Brussels
+// TR: Vienna
+// TR: Warsaw
+// TR: London
+// TR: Lisbon
+// TR: Athens
+static void zone_label (int z, char *out, int cap)
+{
+	const char *city = locale_zone_city (z);
+	char off[16]; off[0] = 0; locale_zone_utc (z, off, sizeof off);
+	if (!strcmp (city, "UTC")) snprintf (out, cap, "%s", TR ("UTC  (no summer time)"));
+	else snprintf (out, cap, "%s  (%s%s)", TR (city), off, locale_zone_summer (z) ? TR (", summer time") : "");
+}
 static const char *g_zoneOpts[6]; static int g_zoneMap[6], g_nzoneOpts;	// (the country's zones in the list)
 
 struct Mode { int w, h; };
@@ -176,11 +199,11 @@ static const char *aspect (int w, int h)
 	int a = w * 100 / h;
 	return a == 133 ? "4:3" : a == 125 ? "5:4" : a == 160 ? "16:10" : (a >= 176 && a <= 178) ? "16:9" : "";
 }
-struct Scheme { const char *name; unsigned c; int style; };	// (as wk_themes, in its order)
-static const Scheme SCHEMES[] = { { "Peach", 0x00F0B07A, WK_STYLE_CDE }, { "Steel", 0x007A98C0, WK_STYLE_CDE },
-	{ "Sage", 0x0080AA76, WK_STYLE_CDE }, { "Brick", 0x00C45450, WK_STYLE_CDE }, { "Slate", 0x003A4458, WK_STYLE_CDE },
-	{ "Milk", 0x00D4D4D6, WK_STYLE_MILK } };
-#define NSCHEMES	6
+struct Scheme { const char *name; unsigned c; int style; };	// (as uk_themes, in its order)
+static const Scheme SCHEMES[] = { { TRN ("Peach"), 0x00F0B07A, UK_STYLE_CDE }, { TRN ("Steel"), 0x007A98C0, UK_STYLE_CDE },
+	{ TRN ("Sage"), 0x0080AA76, UK_STYLE_CDE }, { TRN ("Brick"), 0x00C45450, UK_STYLE_CDE }, { TRN ("Slate"), 0x003A4458, UK_STYLE_CDE },
+	{ TRN ("Milk"), 0x00D4D4D6, UK_STYLE_MILK }, { TRN ("Dark Coffee"), 0x004A3E37, UK_STYLE_MILK } };
+#define NSCHEMES	7
 static const char *const WALLS[] = { 0, "hexagons", "low-poly", "waves", "dunes", "bokeh", "silk", "contours" };
 #define NWALLS	8
 
@@ -190,9 +213,9 @@ static const unsigned TINTS[] = { 0x004878B0, 0x002F5E8C, 0x003E8EA8, 0x002E8A7E
 	0x00B04A40, 0x00A84A6E, 0x007A4E9A, 0x005A5AA8, 0x004A5668, 0x00707478, 0x00705A48, 0x00303438 };
 #define NTINTS	32		// (16 a row)
 static int g_country = 1, g_keyb = 0, g_zone = 0, g_mode = 0, g_scheme = 0, g_wall = 0, g_tint = 0;
-static unsigned tint_of (int i) { return i < 16 ? TINTS[i] : wk_tone (TINTS[i - 16], 196); }
+static unsigned tint_of (int i) { return i < 16 ? TINTS[i] : uk_tone (TINTS[i - 16], 196); }
 static unsigned tint1 () { return tint_of (g_tint); }
-static unsigned tint2 () { return wk_tone (tint1 (), g_tint < 16 ? 52 : 104); }
+static unsigned tint2 () { return uk_tone (tint1 (), g_tint < 16 ? 52 : 104); }
 static bool g_ntp = true, g_services[4] = { false, true, false, false };
 static char g_ip[32];
 
@@ -208,10 +231,10 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
-		unsigned a = disabled ? wk_mix (C_ACCENT, bgColor (), 130) : pressed ? wk_tone (C_ACCENT, 100) : hover ? wk_tone (C_ACCENT, 150) : C_ACCENT;
-		wk_rbox (canvas, 0, 0, width, height, 6, wk_tone (a, 145), a);
-		wk_rline (canvas, 0, 0, width, height, 6, wk_tone (a, 96), 150);
-		wk_text_c (canvas, 0, 0, width, height, text, wk_ink_on (C_ACCENT), 2);
+		unsigned a = disabled ? uk_mix (C_ACCENT, bgColor (), 130) : pressed ? uk_tone (C_ACCENT, 100) : hover ? uk_tone (C_ACCENT, 150) : C_ACCENT;
+		uk_rbox (canvas, 0, 0, width, height, 6, uk_tone (a, 145), a);
+		uk_rline (canvas, 0, 0, width, height, 6, uk_tone (a, 96), 150);
+		uk_text_c (canvas, 0, 0, width, height, text, uk_ink_on (C_ACCENT), 2);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -233,10 +256,10 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
-		unsigned c = pressed ? wk_tone (C_ACCENT, 90) : C_ACCENT;
-		int x = width - wk_tw (text); if (x > 0 && !(tag & 1)) x = 0;
-		wk_text_l (canvas, x, 0, height, text, c);
-		if (hover) canvas.fillRect (x, height / 2 + wk_fh () / 2, wk_tw (text), 1, c);
+		unsigned c = pressed ? uk_tone (C_ACCENT, 90) : C_ACCENT;
+		int x = width - uk_tw (text); if (x > 0 && !(tag & 1)) x = 0;
+		uk_text_l (canvas, x, 0, height, text, c);
+		if (hover) canvas.fillRect (x, height / 2 + uk_fh () / 2, uk_tw (text), 1, c);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -259,7 +282,7 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
-		unsigned ink = c ? c : dim ? dim_ink (bgColor ()) : wk_ink_for (bgColor ());
+		unsigned ink = c ? c : dim ? dim_ink (bgColor ()) : uk_ink_for (bgColor ());
 		if (lh) fwrap (&canvas, f, 0, 0, width, lh, text, ink, style);
 		else ftext (canvas, f, 0, 0, height, text, ink, style);
 	}
@@ -268,18 +291,19 @@ public:
 // A white rounded box with a thin outline: the lists' frame.
 static void card (Canvas &cv, int x, int y, int w, int h)
 {
-	wk_rbox (cv, x, y, w, h, 7, 0x00FFFFFF, 0x00FFFFFF);
-	wk_rline (cv, x, y, w, h, 7, line_c (C_FIELD));
+	uk_rbox (cv, x, y, w, h, 7, 0x00FFFFFF, 0x00FFFFFF);
+	uk_rline (cv, x, y, w, h, 7, line_c (C_FIELD));
 }
 static void sel_row (Canvas &cv, int x, int y, int w, int h)
 {
-	unsigned f = wk_mix (0x00FFFFFF, C_ACCENT, 38);
-	wk_rbox (cv, x, y, w, h, 6, f, f);
-	wk_rline (cv, x, y, w, h, 6, wk_mix (0x00FFFFFF, C_ACCENT, 130));
+	unsigned f = uk_mix (0x00FFFFFF, C_ACCENT, 38);
+	uk_rbox (cv, x, y, w, h, 6, f, f);
+	uk_rline (cv, x, y, w, h, 6, uk_mix (0x00FFFFFF, C_ACCENT, 130));
 }
 
 // ---- the steps (the rail) -----------------------------------------------------------------------------------
-static const char *const STEPS[] = { "Welcome", "Region & keyboard", "Wi-Fi", "Display", "Appearance", "Name & privacy", "Ready" };
+static const char *const STEPS[] = { TRN ("Welcome"), TRN ("Region & keyboard"), TRN ("Wi-Fi"), TRN ("Display"), TRN ("Appearance"),
+	TRN ("Name & privacy"), TRN ("Ready") };
 #define NSTEPS	7
 
 class Rail : public Widget
@@ -290,41 +314,41 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
-		unsigned ink = wk_ink_for (C_BG), dim = dim_ink (C_BG);
-		gem (canvas, 22, 24, 30, C_ACCENT, wk_tone (C_ACCENT, 200));
+		unsigned ink = uk_ink_for (C_BG), dim = dim_ink (C_BG);
+		gem (canvas, 22, 24, 30, C_ACCENT, uk_tone (C_ACCENT, 200));
 		ftext (canvas, g_h1, 62, 20, 24, "Onyx", ink, 2);
-		ftext (canvas, g_small, 63, 42, 16, "Setup", dim);
+		ftext (canvas, g_small, 63, 42, 16, TR ("Setup"), dim);
 		int y0 = 96, rh = 44;
 		for (int i = 0; i < NSTEPS; i++)
 		{
 			int y = y0 + i * rh, cx = 34, cy = y + rh / 2;
 			if (i < NSTEPS - 1)
-				canvas.fillRect (cx - 1, cy + 11, 2, rh - 22, i < cur ? wk_mix (C_BG, OK_C, 160) : line_c (C_BG));
+				canvas.fillRect (cx - 1, cy + 11, 2, rh - 22, i < cur ? uk_mix (C_BG, OK_C, 160) : line_c (C_BG));
 			char n[2] = { (char) ('1' + i), 0 };
 			if (i == cur)
 			{
-				unsigned hl = wk_tone (C_BG, 150);
-				wk_rbox (canvas, 10, y + 4, width - 20, rh - 8, 8, hl, hl);
+				unsigned hl = uk_tone (C_BG, 150);
+				uk_rbox (canvas, 10, y + 4, width - 20, rh - 8, 8, hl, hl);
 				disc (canvas, cx - 11, cy - 11, 22, C_ACCENT);
-				wk_text_c (canvas, cx - 11, cy - 11, 22, 22, n, 0x00FFFFFF, 2);
-				wk_text_l (canvas, 56, y, rh, STEPS[i], ink, 2);
+				uk_text_c (canvas, cx - 11, cy - 11, 22, 22, n, 0x00FFFFFF, 2);
+				uk_text_l (canvas, 56, y, rh, TR (STEPS[i]), ink, 2);
 			}
 			else if (i < cur)
 			{
 				disc (canvas, cx - 11, cy - 11, 22, OK_C);
-				wk_glyph (canvas, WKG_CHECK, cx, cy, 11, 0x00FFFFFF);
-				wk_text_l (canvas, 56, y, rh, STEPS[i], ink);
+				uk_glyph (canvas, WKG_CHECK, cx, cy, 11, 0x00FFFFFF);
+				uk_text_l (canvas, 56, y, rh, TR (STEPS[i]), ink);
 			}
 			else
 			{
-				unsigned in = wk_tone (C_BG, 140);
-				wk_rbox (canvas, cx - 11, cy - 11, 22, 22, 11, in, in);
-				wk_rline (canvas, cx - 11, cy - 11, 22, 22, 11, wk_mix (C_BG, C_TEXT, 90));
-				wk_text_c (canvas, cx - 11, cy - 11, 22, 22, n, dim);
-				wk_text_l (canvas, 56, y, rh, STEPS[i], dim);
+				unsigned in = uk_tone (C_BG, 140);
+				uk_rbox (canvas, cx - 11, cy - 11, 22, 22, 11, in, in);
+				uk_rline (canvas, cx - 11, cy - 11, 22, 22, 11, uk_mix (C_BG, C_TEXT, 90));
+				uk_text_c (canvas, cx - 11, cy - 11, 22, 22, n, dim);
+				uk_text_l (canvas, 56, y, rh, TR (STEPS[i]), dim);
 			}
 		}
-		canvas.fillRect (width - 1, 0, 1, height, wk_mix (C_BG, C_TEXT, 60));
+		canvas.fillRect (width - 1, 0, 1, height, uk_mix (C_BG, C_TEXT, 60));
 		ftext (canvas, g_small, 22, height - 40, 18, "Onyx 0.9  \xC2\xB7  Raspberry Pi 4", dim);
 	}
 };
@@ -351,22 +375,51 @@ public:
 };
 
 // ---- 0: welcome ------------------------------------------------------------------------------------------
+static void choose_lang (int i);
 class Welcome : public Widget
 {
 public:
-	Pic ic[4];
-	Welcome (int l, int t, int w, int h) : Widget (l, t, w, h)
+	Pic ic[4]; int hot; static const int LW = 112, LH = 36, LY = 7;
+	Welcome (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1)
 	{ ic[0] = icon ("keyconf"); ic[1] = icon ("wifimenu"); ic[2] = icon ("displayconf"); ic[3] = icon ("theme"); }
+	// The languages: a card at the top right, beside the gem; each one in its own words.
+	int langX () const { return width - 8 - locale_language_count () * LW; }
+	int langAt (int mx, int my) const
+	{
+		if (mx < langX () + 4 || my < LY + 4 || my >= LY + 4 + LH) return -1;
+		int i = (mx - langX () - 4) / LW;
+		return i < locale_language_count () ? i : -1;
+	}
 	void onDraw () override
 	{
 		canvas.clear (C_FIELD);
 		unsigned ink = C_FIELD_TEXT, dim = dim_ink (C_FIELD);
-		gem (canvas, 0, 0, 58, C_ACCENT, wk_tone (C_ACCENT, 200));
-		ftext (canvas, g_hero, 0, 72, 44, "Welcome to Onyx", ink, 2);
-		int y = fwrap (&canvas, g_lead, 0, 126, width - 30, 23, "Let's get your Raspberry Pi ready. A few choices -- your keyboard, the network, the screen and the look of the desktop -- and you are done. It takes about two minutes; everything can be changed later in the Control Panel.", dim);
+		gem (canvas, 0, 0, 58, C_ACCENT, uk_tone (C_ACCENT, 200));
+		int lx = langX (), n = locale_language_count ();
+		const char *lt = TR ("Language");
+		ftext (canvas, g_small, lx - 12 - ftw (g_small, lt), LY, LH + 8, lt, dim);
+		card (canvas, lx, LY, 8 + n * LW, LH + 8);
+		for (int i = 0; i < n; i++)
+		{
+			int x = lx + 4 + i * LW; bool s = i == g_lang;
+			if (s) sel_row (canvas, x, LY + 4, LW, LH);
+			else if (i == hot) { unsigned f = uk_mix (0x00FFFFFF, C_BG, 110); uk_rbox (canvas, x, LY + 4, LW, LH, 6, f, f); }
+			uk_radio_mark (canvas, x + 10, LY + 4 + (LH - 16) / 2, 16, s, UK_NORMAL);
+			uk_text_l (canvas, x + 34, LY + 4, LH, locale_language_name (i), ink, s ? 2 : 0);
+		}
+		ftext (canvas, g_hero, 0, 72, 44, TR ("Welcome to Onyx"), ink, 2);
+		int y = fwrap (&canvas, g_lead, 0, 126, width - 30, 23, TR ("Let's get your Raspberry Pi ready. A few choices -- your language, your keyboard, the network, the screen and the look of the desktop -- and you are done. It takes about two minutes; everything can be changed later in the Control Panel."), dim);
 		y += 22;
-		static const char *const L[] = { "Keyboard, country and time zone", "Wi-Fi network", "Screen resolution", "Colours and wallpaper" };
-		for (int i = 0; i < 4; i++, y += 38) { draw_pic (canvas, ic[i], 0, y, 28); wk_text_l (canvas, 42, y, 28, L[i], ink); }
+		static const char *const L[] = { TRN ("Keyboard, country and time zone"), TRN ("Wi-Fi network"), TRN ("Screen resolution"), TRN ("Colours and wallpaper") };
+		for (int i = 0; i < 4; i++, y += 38) { draw_pic (canvas, ic[i], 0, y, 28); uk_text_l (canvas, 42, y, 28, TR (L[i]), ink); }
+	}
+	bool onMouse (int mx, int my, int bl, int, int, int) override
+	{
+		int h = mx < 0 ? -1 : langAt (mx, my);
+		if (h != hot) { hot = h; invalidate (true); }
+		if (mx < 0) return false;
+		if (bl && !pressed && h >= 0) { choose_lang (h); invalidate (true); }
+		pressed = bl; return true;
 	}
 };
 
@@ -375,6 +428,7 @@ class CountryList : public Widget
 {
 public:
 	int sel, top; Action cb; static const int RH = 30;
+	UkBarDrag m_bar;
 	CountryList (int l, int t, int w, int h, Action cb_) : Widget (l, t, w, h), sel (g_country), top (0), cb (cb_) { canFocus = true; }
 	int rows () const { return (height - 8) / RH; }
 	void show (int i) { if (i < top) top = i; if (i >= top + rows ()) top = i - rows () + 1; }
@@ -386,16 +440,21 @@ public:
 		{
 			int i = top + r, y = 4 + r * RH; const Country &c = COUNTRIES[i]; bool s = i == sel;
 			if (s) sel_row (canvas, 4, y, width - 18, RH);
-			chip (canvas, 12, y + 6, c.code, s ? C_ACCENT : wk_mix (0x00FFFFFF, C_BG, 170), s ? 0x00FFFFFF : dim_ink (0x00FFFFFF));
-			wk_text_l (canvas, 52, y, RH, c.name, C_FIELD_TEXT, s ? 2 : 0);
-			if (s) wk_glyph (canvas, WKG_CHECK, width - 32, y + RH / 2, 11, C_ACCENT);
+			chip (canvas, 12, y + 6, c.code, s ? C_ACCENT : uk_mix (0x00FFFFFF, C_BG, 170), s ? 0x00FFFFFF : dim_ink (0x00FFFFFF));
+			uk_text_l (canvas, 52, y, RH, TR (c.name), C_FIELD_TEXT, s ? 2 : 0);
+			if (s) uk_glyph (canvas, WKG_CHECK, width - 32, y + RH / 2, 11, C_ACCENT);
 		}
 		int n = NCOUNTRIES, v = rows ();
-		if (n > v) { int th = (height - 12) * v / n, ty = (height - 12 - th) * top / (n - v); wk_scroll_bar (canvas, width - 11, 6, 6, height - 12, true, ty, th, 0x00FFFFFF); }
+		if (n > v) { int th = (height - 12) * v / n, ty = (height - 12 - th) * top / (n - v); uk_scroll_bar (canvas, width - 11, 6, 6, height - 12, true, ty, th, 0x00FFFFFF); }
 	}
 	void pick (int i) { if (i < 0 || i >= NCOUNTRIES) return; sel = i; show (i); invalidate (true); if (cb) cb (*this); }
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
+		{							// its scroll bar: the bar's own, never the row's under it
+			long p = top;
+			if (m_bar.mouse (mx, my, bl, width - 16, 16, 6, height - 12, NCOUNTRIES, rows (), &p))
+			{ top = (int) p; pressed = bl; invalidate (true); return true; }
+		}
 		if (mx < 0) return false;
 		if (wheel) { top -= wheel; int m = NCOUNTRIES - rows (); if (top > m) top = m; if (top < 0) top = 0; invalidate (true); }
 		if (bl && !pressed) { setFocus (); pick (top + (my - 4) / RH); }
@@ -441,9 +500,9 @@ public:
 			{
 				char key[5]; int n = 0; while (*s && *s != ' ' && n < 4) key[n++] = *s++; key[n] = 0; while (*s == ' ') s++;
 				int x = 10 + r * 8 + k * (kw + g), y = 9 + r * (kh + g);
-				wk_rbox (canvas, x, y, kw, kh, 4, 0x00FBFAF9, wk_mix (0x00FFFFFF, C_BG, 150));
-				wk_rline (canvas, x, y, kw, kh, 4, wk_mix (0x00FFFFFF, C_TEXT, 60));
-				WkFaceScope sc (g_small); wk_text_c (canvas, x, y, kw, kh - 1, key, C_FIELD_TEXT);
+				uk_rbox (canvas, x, y, kw, kh, 4, 0x00FBFAF9, uk_mix (0x00FFFFFF, C_BG, 150));
+				uk_rline (canvas, x, y, kw, kh, 4, uk_mix (0x00FFFFFF, C_TEXT, 60));
+				UkFaceScope sc (g_small); uk_text_c (canvas, x, y, kw, kh - 1, key, C_FIELD_TEXT);
 				k++;
 			}
 		}
@@ -475,7 +534,7 @@ static void scan_nets ()
 static int bars_of (int dbm) { return dbm > -50 ? 4 : dbm > -60 ? 3 : dbm > -70 ? 2 : 1; }
 static void bars (Canvas &cv, int x, int y, int n, unsigned on, unsigned off)
 {
-	for (int i = 0; i < 4; i++) { int bh = 4 + i * 3; unsigned c = i < n ? on : off; wk_rbox (cv, x + i * 5, y + 13 - bh, 4, bh, 1, c, c); }
+	for (int i = 0; i < 4; i++) { int bh = 4 + i * 3; unsigned c = i < n ? on : off; uk_rbox (cv, x + i * 5, y + 13 - bh, 4, bh, 1, c, c); }
 }
 
 enum { NET_LIST, NET_PASSWORD, NET_CONNECTING, NET_CONNECTED };
@@ -488,12 +547,12 @@ public:
 	{
 		err[0] = 0;
 		pass = new Textbox (54, 0, width - 250, 30, "", onConnect); pass->password = true; pass->maxLen = 63;
-		go = new AccentButton (width - 178, 0, 160, 32, "Connect", onConnect);
-		autoc = new Checkbox (54, 0, 220, 22, "Connect automatically", true, 0, sel_bg ());
+		go = new AccentButton (width - 178, 0, 160, 32, TR ("Connect"), onConnect);
+		autoc = new Checkbox (54, 0, 240, 22, TR ("Connect automatically"), true, 0, sel_bg ());
 		addChild (pass); addChild (go); addChild (autoc);
 		place ();
 	}
-	static unsigned sel_bg () { return wk_mix (0x00FFFFFF, C_ACCENT, 38); }
+	static unsigned sel_bg () { return uk_mix (0x00FFFFFF, C_ACCENT, 38); }
 	unsigned bgColor () override { return 0x00FFFFFF; }
 	bool open () const { return sel >= 0 && sel < g_nnets && state == NET_PASSWORD; }
 	bool needPass () const { return open () && g_nets[sel].sec != WLAN_SEC_OPEN; }
@@ -519,7 +578,7 @@ public:
 		card (canvas, 0, 0, width, total ());
 		if (!g_nnets)
 		{
-			wk_text_c (canvas, 0, 4, width, RH, g_scanned ? "No network found. Is the Wi-Fi router on?" : "Looking for networks...", dim_ink (0x00FFFFFF));
+			uk_text_c (canvas, 0, 4, width, RH, g_scanned ? TR ("No network found. Is the Wi-Fi router on?") : TR ("Looking for networks..."), dim_ink (0x00FFFFFF));
 			return;
 		}
 		for (int i = 0; i < g_nnets; i++)
@@ -527,25 +586,26 @@ public:
 			const Net &n = g_nets[i]; int y = rowY (i); bool s = i == sel;
 			if (s && open ()) sel_row (canvas, 4, y, width - 8, RH + openH () - 4);
 			else if (i > 0 && !(sel == i - 1 && open ())) canvas.fillRect (14, y, width - 28, 1, line_c (0x00FFFFFF));
-			bars (canvas, 18, y + 14, bars_of (n.level), C_FIELD_TEXT, wk_mix (0x00FFFFFF, C_TEXT, 60));
-			wk_text_l (canvas, 54, y, RH, n.ssid, C_FIELD_TEXT, s ? 2 : 0);
+			bars (canvas, 18, y + 14, bars_of (n.level), C_FIELD_TEXT, uk_mix (0x00FFFFFF, C_TEXT, 60));
+			uk_text_l (canvas, 54, y, RH, n.ssid, C_FIELD_TEXT, s ? 2 : 0);
 			int x = width - 18;
-			if (n.sec != WLAN_SEC_OPEN) { wk_glyph (canvas, WKG_LOCK, x - 7, y + RH / 2, 13, dim_ink (0x00FFFFFF)); x -= 22; }
-			const char *sec = n.sec == WLAN_SEC_OPEN ? "Open" : n.sec == WLAN_SEC_WEP ? "WEP" : n.sec == WLAN_SEC_WPA ? "WPA" : "WPA2";
-			x -= wk_tw (sec, 2) + 12;
-			chip (canvas, x, y + 12, sec, wk_mix (0x00FFFFFF, C_BG, 150), dim_ink (0x00FFFFFF));
-			int cx = 54 + wk_tw (n.ssid, 2) + 12;
+			if (n.sec != WLAN_SEC_OPEN) { uk_glyph (canvas, WKG_LOCK, x - 7, y + RH / 2, 13, dim_ink (0x00FFFFFF)); x -= 22; }
+			const char *sec = n.sec == WLAN_SEC_OPEN ? TRC ("net", "Open") : n.sec == WLAN_SEC_WEP ? "WEP" : n.sec == WLAN_SEC_WPA ? "WPA" : "WPA2";
+			x -= uk_tw (sec, 2) + 12;
+			chip (canvas, x, y + 12, sec, uk_mix (0x00FFFFFF, C_BG, 150), dim_ink (0x00FFFFFF));
+			int cx = 54 + uk_tw (n.ssid, 2) + 12;
 			if (n.con && (state == NET_CONNECTED || !s))
 			{
-				wk_glyph (canvas, WKG_CHECK, cx + 5, y + RH / 2, 11, OK_C);
-				wk_text_l (canvas, cx + 16, y, RH, "Connected", OK_C, 2);
+				uk_glyph (canvas, WKG_CHECK, cx + 5, y + RH / 2, 11, OK_C);
+				uk_text_l (canvas, cx + 16, y, RH, TR ("Connected"), OK_C, 2);
 			}
-			else if (n.known && !s) { WkFaceScope sc (g_small); wk_text_l (canvas, cx, y, RH, "Saved", dim_ink (0x00FFFFFF)); }
+			else if (n.known && !s) { UkFaceScope sc (g_small); uk_text_l (canvas, cx, y, RH, TR ("Saved"), dim_ink (0x00FFFFFF)); }
 			if (s && needPass ())
 			{
-				ftext (canvas, g_small, 54, y + RH - 4, 18, n.known ? "Password (leave empty: the saved one)" : "Password", dim_ink (0x00FFFFFF));
+				ftext (canvas, g_small, 54, y + RH - 4, 18, n.known ? TR ("Password (leave empty: the saved one)") : TR ("Password"), dim_ink (0x00FFFFFF));
+				const char *sh = TR ("Shared with the Wi-Fi menu");
 				if (err[0]) ftext (canvas, g_small, width - 18 - ftw (g_small, err), y + RH + 58, 22, err, ERR_C);
-				else ftext (canvas, g_small, width - 18 - ftw (g_small, "Shared with the Wi-Fi menu"), y + RH + 58, 22, "Shared with the Wi-Fi menu", dim_ink (0x00FFFFFF));
+				else ftext (canvas, g_small, width - 18 - ftw (g_small, sh), y + RH + 58, 22, sh, dim_ink (0x00FFFFFF));
 			}
 			else if (s && open () && err[0]) ftext (canvas, g_small, 54, y + RH + 8, 22, err, ERR_C);
 		}
@@ -574,7 +634,7 @@ public:
 	Connecting (int l, int t, int w, int h, Action onCancel) : Widget (l, t, w, h), phase (0)
 	{
 		what[0] = 0;
-		addChild (new Button (w / 2 - 55, 164, 110, 36, "Cancel", onCancel));
+		addChild (new Button (w / 2 - 55, 164, 110, 36, TR ("Cancel"), onCancel));
 	}
 	unsigned bgColor () override { return 0x00FFFFFF; }
 	void onDraw () override
@@ -587,11 +647,11 @@ public:
 			static const int CS[12] = { 0, 50, 87, 100, 87, 50, 0, -50, -87, -100, -87, -50 };
 			int dx = CS[(k + 3) % 12] * 18 / 100, dy = CS[k] * 18 / 100;
 			int a = 40 + 215 * ((k - phase + 24) % 12) / 11;
-			disc (canvas, cx + dx - 3, cy + dy - 3, 6, wk_mix (0x00FFFFFF, C_ACCENT, a));
+			disc (canvas, cx + dx - 3, cy + dy - 3, 6, uk_mix (0x00FFFFFF, C_ACCENT, a));
 		}
 		ftext (canvas, g_lead, (width - ftw (g_lead, what, 2)) / 2, 98, 26, what, C_FIELD_TEXT, 2);
-		const char *s = "Authenticating  \xC2\xB7  getting an address";
-		wk_text_l (canvas, (width - wk_tw (s)) / 2, 126, 22, s, dim_ink (0x00FFFFFF));
+		const char *s = TR ("Authenticating  \xC2\xB7  getting an address");
+		uk_text_l (canvas, (width - uk_tw (s)) / 2, 126, 22, s, dim_ink (0x00FFFFFF));
 	}
 };
 
@@ -602,12 +662,12 @@ public:
 	Textbox *ssid, *pass;
 	HiddenNet (int l, int t, int w, int h, Action onConnect, Action onCancel) : Widget (l, t, w, h)
 	{
-		addChild (new Text (18, 16, 200, 20, "Network name", 2));
+		addChild (new Text (18, 16, 200, 20, TR ("Network name"), 2));
 		ssid = new Textbox (18, 40, w - 36, 30, ""); ssid->maxLen = 32; addChild (ssid);
-		addChild (new Text (18, 82, 300, 20, "Password (empty: an open network)", 2));
+		addChild (new Text (18, 82, 300, 20, TR ("Password (empty: an open network)"), 2));
 		pass = new Textbox (18, 106, w - 36, 30, "", onConnect); pass->password = true; pass->maxLen = 63; addChild (pass);
-		addChild (new Button (w - 18 - 160 - 10 - 104, 150, 104, 38, "Cancel", onCancel));
-		addChild (new AccentButton (w - 18 - 160, 153, 160, 32, "Connect", onConnect));
+		addChild (new Button (w - 18 - 160 - 10 - 104, 150, 104, 38, TR ("Cancel"), onCancel));
+		addChild (new AccentButton (w - 18 - 160, 153, 160, 32, TR ("Connect"), onConnect));
 	}
 	unsigned bgColor () override { return 0x00FFFFFF; }
 	void onDraw () override { canvas.clear (C_FIELD); card (canvas, 0, 0, width, height); }
@@ -624,18 +684,18 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_FIELD);
-		unsigned bg = wk_mix (0x00FFFFFF, c, 30);
-		wk_rbox (canvas, 0, 0, width, height, 8, bg, bg);
-		wk_rline (canvas, 0, 0, width, height, 8, wk_mix (0x00FFFFFF, c, 120));
-		unsigned ink = wk_tone (c, 70);
-		if (kind == 0) { disc (canvas, 14, height / 2 - 13, 26, c); wk_glyph (canvas, WKG_CHECK, 27, height / 2, 12, 0x00FFFFFF); }
+		unsigned bg = uk_mix (0x00FFFFFF, c, 30);
+		uk_rbox (canvas, 0, 0, width, height, 8, bg, bg);
+		uk_rline (canvas, 0, 0, width, height, 8, uk_mix (0x00FFFFFF, c, 120));
+		unsigned ink = uk_tone (c, 70);
+		if (kind == 0) { disc (canvas, 14, height / 2 - 13, 26, c); uk_glyph (canvas, WKG_CHECK, 27, height / 2, 12, 0x00FFFFFF); }
 		else
 		{
 			float tri[] = { 11, 0, 22, 19, 0, 19 };
 			aa_poly (canvas, 14, height / 2 - 10, tri, 3, c);
 			canvas.fillRect (24, height / 2 - 4, 2, 7, 0x00FFFFFF); canvas.fillRect (24, height / 2 + 5, 2, 2, 0x00FFFFFF);
 		}
-		if (t2[0]) { wk_text_l (canvas, 52, 6, 22, t1, ink, 2); ftext (canvas, g_small, 52, 27, 18, t2, ink); }
+		if (t2[0]) { uk_text_l (canvas, 52, 6, 22, t1, ink, 2); ftext (canvas, g_small, 52, 27, 18, t2, ink); }
 		else ftext (canvas, g_small, 48, 0, height, t1, ink);
 	}
 };
@@ -655,12 +715,13 @@ public:
 		{
 			int y = 4 + i * RH; bool s = i == g_mode;
 			if (s) sel_row (canvas, 4, y, width - 8, RH);
-			wk_radio_mark (canvas, 14, y + (RH - 16) / 2, 16, s, WK_NORMAL);
+			uk_radio_mark (canvas, 14, y + (RH - 16) / 2, 16, s, UK_NORMAL);
 			char b[32]; mode_text (i, b, sizeof b);
-			wk_text_l (canvas, 40, y, RH, b, C_FIELD_TEXT, s ? 2 : 0);
-			if (i == g_best) chip (canvas, width - 14 - wk_tw ("Best", 2) - 12, y + 7, "Best", OK_C, 0x00FFFFFF);
-			else if (i == g_curMode) { WkFaceScope sc (g_small); wk_text_l (canvas, width - 14 - wk_tw ("now"), y, RH, "now", C_ACCENT); }
-			else { WkFaceScope sc (g_small); const char *a = aspect (g_modes[i].w, g_modes[i].h); wk_text_l (canvas, width - 14 - wk_tw (a), y, RH, a, dim_ink (0x00FFFFFF)); }
+			uk_text_l (canvas, 40, y, RH, b, C_FIELD_TEXT, s ? 2 : 0);
+			const char *best = TR ("Best"), *now = TR ("now");
+			if (i == g_best) chip (canvas, width - 14 - uk_tw (best, 2) - 12, y + 7, best, OK_C, 0x00FFFFFF);
+			else if (i == g_curMode) { UkFaceScope sc (g_small); uk_text_l (canvas, width - 14 - uk_tw (now), y, RH, now, C_ACCENT); }
+			else { UkFaceScope sc (g_small); const char *a = aspect (g_modes[i].w, g_modes[i].h); uk_text_l (canvas, width - 14 - uk_tw (a), y, RH, a, dim_ink (0x00FFFFFF)); }
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -691,7 +752,7 @@ static unsigned *wall_pic (int which, int w, int h, unsigned c1, unsigned c2)
 static void blit_round (Canvas &cv, const unsigned *p, int x, int y, int w, int h, int r)
 {
 	for (int j = 0; j < h; j++) for (int i = 0; i < w; i++) cv.pixel (x + i, y + j, p[j * w + i]);
-	wk_rline (cv, x, y, w, h, r, 0, 60);
+	uk_rline (cv, x, y, w, h, r, 0, 60);
 }
 
 // A monitor showing the desktop at the chosen size: the menu bar, a window and the dock, to scale.
@@ -706,18 +767,18 @@ public:
 		const Mode &m = g_modes[g_mode];
 		int sw = width - 16, sh = sw * m.h / m.w; if (sh > height - 60) { sh = height - 60; sw = sh * m.w / m.h; }
 		int x = (width - sw - 16) / 2, y = 0;
-		wk_rbox (canvas, x, y, sw + 16, sh + 16, 8, 0x003A3E46, 0x00202228);
+		uk_rbox (canvas, x, y, sw + 16, sh + 16, 8, 0x003A3E46, 0x00202228);
 		if (!wall || ww != sw || wh != sh) { delete [] wall; wall = wall_pic (0, sw, sh, 0x004878B0, 0x001C2C48); ww = sw; wh = sh; }
 		for (int j = 0; j < sh; j++) for (int i = 0; i < sw; i++) canvas.pixel (x + 8 + i, y + 8 + j, wall[j * sw + i]);
 		int mb = 30 * sw / m.w; if (mb < 3) mb = 3;
 		canvas.fillRect (x + 8, y + 8, sw, mb, 0x00ECE6E1);
 		int wx = x + 8 + sw * 28 / 100, wy = y + 8 + sh * 22 / 100, wwid = 620 * sw / m.w, whei = 420 * sw / m.w, th = 28 * sw / m.w;
-		wk_rbox (canvas, wx, wy, wwid, whei, 3, wk_tone (C_FRAME_ACTIVE, 160), C_FRAME_ACTIVE);
+		uk_rbox (canvas, wx, wy, wwid, whei, 3, uk_tone (C_FRAME_ACTIVE, 160), C_FRAME_ACTIVE);
 		canvas.fillRect (wx + 2, wy + th, wwid - 4, whei - th - 2, C_BG);
 		int dw = 754 * sw / m.w, dh = 80 * sw / m.w; if (dh < 4) dh = 4;
-		wk_rbox (canvas, x + 8 + (sw - dw) / 2, y + 8 + sh - dh - 3, dw, dh, 3, wk_tone (C_DOCK, 170), C_DOCK);
+		uk_rbox (canvas, x + 8 + (sw - dw) / 2, y + 8 + sh - dh - 3, dw, dh, 3, uk_tone (C_DOCK, 170), C_DOCK);
 		canvas.fillRect (x + sw / 2 - 4, y + sh + 16, 24, 22, 0x0046494F);
-		wk_rbox (canvas, x + sw / 2 - 50 + 8, y + sh + 36, 100, 9, 4, 0x0050545C, 0x0032343A);
+		uk_rbox (canvas, x + sw / 2 - 50 + 8, y + sh + 36, 100, 9, 4, 0x0050545C, 0x0032343A);
 	}
 };
 
@@ -729,19 +790,19 @@ public:
 	KeepSheet (int l, int t, int w, int h, Action onKeep, Action onRevert) : Widget (l, t, w, h), secs (15)
 	{
 		transparent = true; ic = icon ("displayconf"); msg[0] = 0;
-		keep = new AccentButton (w - 24 - 110, h - 54, 110, 34, "Keep", onKeep);
-		revert = new Button (w - 24 - 110 - 10 - 120, h - 56, 120, 38, "Revert", onRevert);
+		keep = new AccentButton (w - 24 - 110, h - 54, 110, 34, TR ("Keep"), onKeep);
+		revert = new Button (w - 24 - 110 - 10 - 120, h - 56, 120, 38, TR ("Revert"), onRevert);
 		addChild (revert); addChild (keep);
 	}
 	unsigned bgColor () override { return C_FIELD; }
 	void onDraw () override
 	{
-		canvas.clear (WK_TRANSPARENT_KEY);
-		wk_popup (canvas, 0, 0, width, height, 12, C_FIELD);
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_popup (canvas, 0, 0, width, height, 12, C_FIELD);
 		draw_pic (canvas, ic, 24, 24, 40);
-		ftext (canvas, g_lead, 80, 20, 28, "Keep this resolution?", C_FIELD_TEXT, 2);
+		ftext (canvas, g_lead, 80, 20, 28, TR ("Keep this resolution?"), C_FIELD_TEXT, 2);
 		fwrap (&canvas, 0, 80, 52, width - 104, 20, msg, dim_ink (C_FIELD));
-		wk_progress_bar (canvas, 80, 100, width - 104, 6, (width - 104) * secs / 15);
+		uk_progress_bar (canvas, 80, 100, width - 104, 6, (width - 104) * secs / 15);
 	}
 };
 
@@ -755,40 +816,40 @@ public:
 	DesktopPreview (int l, int t, int w, int h) : Widget (l, t, w, h), wall (0), shown (-1), shownTint (-1) {}
 	void win (int x, int y, int w, int h, unsigned frame, unsigned face, const char *t, bool front)
 	{
-		bool milk = SCHEMES[g_scheme].style == WK_STYLE_MILK;
+		bool milk = SCHEMES[g_scheme].style == UK_STYLE_MILK;
 		unsigned tbg = frame;
 		if (milk)					// (Milk: the title bar melts into the window)
 		{
-			unsigned top = wk_tone (frame, 230);
-			wk_rbox (canvas, x, y, w, h, 6, face, face);
-			wk_rbox (canvas, x, y, w, 20, 6, top, face, 255, WK_TL | WK_TR);
-			tbg = wk_mix (top, face, 128);
+			unsigned top = uk_bright (frame) < 110 ? frame : uk_tone (frame, 230);
+			uk_rbox (canvas, x, y, w, h, 6, face, face);
+			uk_rbox (canvas, x, y, w, 20, 6, top, face, 255, UK_TL | UK_TR);
+			tbg = uk_mix (top, face, 128);
 		}
-		else wk_rbox (canvas, x, y, w, h, 6, wk_tone (frame, 164), wk_tone (frame, 118));
-		wk_rline (canvas, x, y, w, h, 6, wk_tone (frame, 70), 170);
+		else uk_rbox (canvas, x, y, w, h, 6, uk_tone (frame, 164), uk_tone (frame, 118));
+		uk_rline (canvas, x, y, w, h, 6, uk_tone (frame, 70), 170);
 		canvas.fillRect (x + 3, y + 20, w - 6, h - 23, face);
 		static const unsigned bead[3] = { 0x00E8564E, 0x004CB653, 0x00F0B43A };	// (Milk: close, maximise, minimise)
 		for (int k = 0; k < 3; k++)
-			if (milk) wk_bead (canvas, x + w - 20 - k * 17, y + 4, 13, front ? bead[k] : 0x00C2C3C8);
-			else wk_rbox (canvas, x + w - 20 - k * 17, y + 4, 14, 12, 3, wk_tone (frame, 175), wk_tone (frame, 125));
-		WkFaceScope sc (g_small); wk_text_c (canvas, x, y, w, 20, t, wk_ink_on (tbg), 2);
-		if (front) wk_text_l (canvas, x + 12, y + 28, 18, "Hello, Onyx.", wk_ink_on (face));
+			if (milk) uk_bead (canvas, x + w - 20 - k * 17, y + 4, 13, front ? bead[k] : 0x00C2C3C8);
+			else uk_rbox (canvas, x + w - 20 - k * 17, y + 4, 14, 12, 3, uk_tone (frame, 175), uk_tone (frame, 125));
+		UkFaceScope sc (g_small); uk_text_c (canvas, x, y, w, 20, t, uk_ink_on (tbg), 2);
+		if (front) uk_text_l (canvas, x + 12, y + 28, 18, TR ("Hello, Onyx."), uk_ink_on (face));
 	}
 	void onDraw () override
 	{
 		canvas.clear (C_FIELD);
 		if (!wall || shown != g_wall || shownTint != g_tint) { delete [] wall; wall = wall_pic (g_wall, width, height, tint1 (), tint2 ()); shown = g_wall; shownTint = g_tint; }
 		blit_round (canvas, wall, 0, 0, width, height, 8);
-		for (int y = 1; y < 19; y++) canvas.fillRect (1, y, width - 2, 1, wk_mix (0x00F6F2EE, 0x00DCD4CE, y * 256 / 19));
-		{ WkFaceScope sc (g_small); wk_text_l (canvas, 10, 1, 18, "Onyx   File   Edit   View", C_TEXT); wk_text_l (canvas, width - 44, 1, 18, "12:34", C_TEXT, 2); }
+		for (int y = 1; y < 19; y++) canvas.fillRect (1, y, width - 2, 1, uk_mix (0x00F6F2EE, 0x00DCD4CE, y * 256 / 19));
+		{ UkFaceScope sc (g_small); uk_text_l (canvas, 10, 1, 18, TR ("Onyx   File   Edit   View"), C_TEXT); uk_text_l (canvas, width - 44, 1, 18, "12:34", C_TEXT, 2); }
 		// (the chosen scheme's colours at once -- apply_look comes a moment later: another style's own)
 		int st = SCHEMES[g_scheme].style;
-		const WkPalette &pal = wk_style_palette (st);
-		unsigned face = st == WK_STYLE ? C_BG : pal.face, dock = st == WK_STYLE ? C_DOCK : pal.dock;
-		win (40, 28, 200, 84, pal.inactive, face, "Calendar", false);
-		win (180, 40, 250, 86, SCHEMES[g_scheme].c, face, "Text Editor", true);
+		const UkPalette &pal = uk_theme_palette (g_scheme); (void) st;
+		unsigned face = pal.face, dock = pal.dock;
+		win (40, 28, 200, 84, pal.inactive, face, TR ("Calendar"), false);
+		win (180, 40, 250, 86, SCHEMES[g_scheme].c, face, TR ("Text Editor"), true);
 		int dw = 240, dx = (width - dw) / 2, dy = height - 30;
-		wk_rbox (canvas, dx, dy, dw, 24, 7, wk_tone (dock, 175), dock); wk_rline (canvas, dx, dy, dw, 24, 7, wk_tone (dock, 60), 140);
+		uk_rbox (canvas, dx, dy, dw, 24, 7, uk_tone (dock, 175), dock); uk_rline (canvas, dx, dy, dw, 24, 7, uk_tone (dock, 60), 140);
 		static Pic di[6]; static const char *const DI[] = { "tinypad", "jet", "paint", "tetris", "terminal", "fileviewer" };
 		for (int k = 0; k < 6; k++) { if (!di[k].px) di[k] = icon (DI[k]); draw_pic (canvas, di[k], dx + 12 + k * 38, dy + 2, 20); }
 	}
@@ -804,25 +865,26 @@ public:
 		canvas.clear (C_FIELD);
 		for (int i = 0; i < NSCHEMES; i++)
 		{
-			int x = 4 + i * 86, y = 4; bool s = i == g_scheme; unsigned c = SCHEMES[i].c;
-			bool milk = SCHEMES[i].style == WK_STYLE_MILK;
-			if (s) { wk_rline (canvas, x - 3, y - 3, 82, 42, 10, C_ACCENT); wk_rline (canvas, x - 4, y - 4, 84, 44, 11, C_ACCENT); }
-			wk_rbox (canvas, x, y, 76, 36, 8, wk_tone (c, milk ? 230 : 164),	// (Milk's: down to its windows' grey)
-				 milk ? wk_style_palette (WK_STYLE_MILK).face : wk_tone (c, 118));
-			wk_rline (canvas, x, y, 76, 36, 8, wk_tone (c, 70), 170);
+			int step = (width - 8) / NSCHEMES, bw = step - 10;
+			int x = 4 + i * step, y = 4; bool s = i == g_scheme; unsigned c = SCHEMES[i].c;
+			bool milk = SCHEMES[i].style == UK_STYLE_MILK;
+			if (s) { uk_rline (canvas, x - 3, y - 3, bw + 6, 42, 10, C_ACCENT); uk_rline (canvas, x - 4, y - 4, bw + 8, 44, 11, C_ACCENT); }
+			uk_rbox (canvas, x, y, bw, 36, 8, !milk ? uk_tone (c, 164) : uk_bright (c) < 110 ? c : uk_tone (c, 230),	// (the beads' ones: down to
+				 milk ? uk_theme_palette (i).face : uk_tone (c, 118));							//  their windows' colour)
+			uk_rline (canvas, x, y, bw, 36, 8, uk_tone (c, 70), 170);
 			if (milk)					// (its beads)
 			{
 				static const unsigned bead[3] = { 0x00F0B43A, 0x004CB653, 0x00E8564E };
-				for (int k = 0; k < 3; k++) wk_bead (canvas, x + 76 - 40 + k * 11, y + 6, 9, bead[k]);
+				for (int k = 0; k < 3; k++) uk_bead (canvas, x + bw - 40 + k * 11, y + 6, 9, bead[k]);
 			}
-			if (s) wk_glyph (canvas, WKG_CHECK, x + 38, y + (milk ? 24 : 18), 12, wk_ink_on (c));
-			wk_text_c (canvas, x, y + 42, 76, 20, SCHEMES[i].name, C_FIELD_TEXT, s ? 2 : 0);
+			if (s) uk_glyph (canvas, WKG_CHECK, x + bw / 2, y + (milk ? 24 : 18), 12, uk_ink_on (c));
+			uk_text_c (canvas, x - 4, y + 42, bw + 8, 20, TR (SCHEMES[i].name), C_FIELD_TEXT, s ? 2 : 0);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
 		if (mx < 0) return false;
-		if (bl && !pressed) { int i = (mx - 4) / 86; if (i >= 0 && i < NSCHEMES && my < 66) { g_scheme = i; invalidate (true); if (cb) cb (*this); } }
+		if (bl && !pressed) { int i = (mx - 4) / ((width - 8) / NSCHEMES); if (i >= 0 && i < NSCHEMES && my < 66) { g_scheme = i; invalidate (true); if (cb) cb (*this); } }
 		pressed = bl; return true;
 	}
 };
@@ -841,18 +903,19 @@ public:
 			int x = 4 + i * (TW + G), y = 4;
 			if (!thumb[i]) thumb[i] = wall_pic (i, TW, TH, tint1 (), tint2 ());
 			blit_round (canvas, thumb[i], x, y, TW, TH, 6);
-			if (i == g_wall) { wk_rline (canvas, x - 3, y - 3, TW + 6, TH + 6, 8, C_ACCENT); wk_rline (canvas, x - 4, y - 4, TW + 8, TH + 8, 9, C_ACCENT); }
+			if (i == g_wall) { uk_rline (canvas, x - 3, y - 3, TW + 6, TH + 6, 8, C_ACCENT); uk_rline (canvas, x - 4, y - 4, TW + 8, TH + 8, 9, C_ACCENT); }
 		}
-		static const char *const NM[] = { "Generated (Voronoi) -- a new one at every start", "Hexagons", "Low poly", "Waves", "Dunes", "Bokeh", "Silk", "Contours" };
+		static const char *const NM[] = { TRN ("Generated (Voronoi) -- a new one at every start"), TRN ("Hexagons"), TRN ("Low poly"), TRN ("Waves"),
+			TRN ("Dunes"), TRN ("Bokeh"), TRN ("Silk"), TRN ("Contours") };
 		for (int i = 0; i < NTINTS; i++)		// the tints: two rows of swatches (the gradient they give)
 		{
 			int x = 4 + (i % 16) * (SW + SG), y = SY + (i / 16) * (SW + SG); unsigned c = tint_of (i);
-			if (i == g_tint) { wk_rline (canvas, x - 3, y - 3, SW + 6, SW + 6, 9, C_ACCENT); wk_rline (canvas, x - 4, y - 4, SW + 8, SW + 8, 10, C_ACCENT); }
-			wk_rbox (canvas, x, y, SW, SW, 6, wk_tone (c, 150), wk_tone (c, 96));
-			wk_rline (canvas, x, y, SW, SW, 6, wk_tone (c, 60), 150);
-			if (i == g_tint) wk_glyph (canvas, WKG_CHECK, x + SW / 2, y + SW / 2, 10, wk_ink_on (c));
+			if (i == g_tint) { uk_rline (canvas, x - 3, y - 3, SW + 6, SW + 6, 9, C_ACCENT); uk_rline (canvas, x - 4, y - 4, SW + 8, SW + 8, 10, C_ACCENT); }
+			uk_rbox (canvas, x, y, SW, SW, 6, uk_tone (c, 150), uk_tone (c, 96));
+			uk_rline (canvas, x, y, SW, SW, 6, uk_tone (c, 60), 150);
+			if (i == g_tint) uk_glyph (canvas, WKG_CHECK, x + SW / 2, y + SW / 2, 10, uk_ink_on (c));
 		}
-		WkFaceScope sc (g_small); wk_text_l (canvas, 2, SY + 2 * SW + SG + 6, 18, NM[g_wall], dim_ink (C_FIELD));
+		UkFaceScope sc (g_small); uk_text_l (canvas, 2, SY + 2 * SW + SG + 6, 18, TR (NM[g_wall]), dim_ink (C_FIELD));
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -879,9 +942,9 @@ public:
 	{ ic[0] = icon ("terminal"); ic[1] = icon ("displayconf"); ic[2] = icon ("taskman"); ic[3] = icon ("fileviewer"); }
 	void onDraw () override
 	{
-		static const char *const T[] = { "Remote shell (telnet)", "Remote desktop (VNC)", "Remote windows (Onyx Remote)", "File sharing (FTP)" };
-		static const char *const S[] = { "A command line from another computer, port 23", "See and drive this screen from any VNC viewer, port 5900",
-						  "The Onyx windows on a Windows PC, port 3390", "The SD card from another computer, port 21 (user onyx, password onyx)" };
+		static const char *const T[] = { TRN ("Remote shell (telnet)"), TRN ("Remote desktop (VNC)"), TRN ("Remote windows (Onyx Remote)"), TRN ("File sharing (FTP)") };
+		static const char *const S[] = { TRN ("A command line from another computer, port 23"), TRN ("See and drive this screen from any VNC viewer, port 5900"),
+						  TRN ("The Onyx windows on a Windows PC, port 3390"), TRN ("The SD card from another computer, port 21 (user onyx, password onyx)") };
 		canvas.clear (C_FIELD);
 		card (canvas, 0, 0, width, height);
 		for (int i = 0; i < 4; i++)
@@ -889,9 +952,9 @@ public:
 			int y = i * RH;
 			if (i) canvas.fillRect (14, y, width - 28, 1, line_c (0x00FFFFFF));
 			draw_pic (canvas, ic[i], 14, y + 13, 30);
-			wk_text_l (canvas, 58, y + 8, 20, T[i], C_FIELD_TEXT, 2);
-			ftext (canvas, g_small, 58, y + 29, 18, S[i], dim_ink (0x00FFFFFF));
-			wk_switch_mark (canvas, width - 58, y + 17, 40, 22, g_services[i], WK_NORMAL);
+			uk_text_l (canvas, 58, y + 8, 20, TR (T[i]), C_FIELD_TEXT, 2);
+			ftext (canvas, g_small, 58, y + 29, 18, TR (S[i]), dim_ink (0x00FFFFFF));
+			uk_switch_mark (canvas, width - 58, y + 17, 40, 22, g_services[i], UK_NORMAL);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -912,7 +975,8 @@ public:
 	{ ic[0] = icon ("keyconf"); ic[1] = icon ("wifimenu"); ic[2] = icon ("displayconf"); ic[3] = icon ("theme"); ic[4] = icon ("control"); for (auto &v : val) v[0] = 0; }
 	void onDraw () override
 	{
-		static const char *const T[] = { "Region & keyboard", "Wi-Fi", "Display", "Appearance", "Name & privacy" };
+		static const char *const T[] = { TRN ("Region & keyboard"), TRN ("Wi-Fi"), TRN ("Display"), TRN ("Appearance"), TRN ("Name & privacy") };
+		const char *ch = TR ("Change");
 		canvas.clear (C_FIELD);
 		card (canvas, 0, 0, width, height);
 		for (int i = 0; i < 5; i++)
@@ -920,19 +984,19 @@ public:
 			int y = 4 + i * RH;
 			if (i) canvas.fillRect (14, y, width - 28, 1, line_c (0x00FFFFFF));
 			draw_pic (canvas, ic[i], 14, y + 11, 30);
-			wk_text_l (canvas, 58, y + 6, 20, T[i], C_FIELD_TEXT, 2);
-			char fit[120]; { WkFaceScope sc (g_small); wk_text_fit (val[i], width - 58 - 90, fit, sizeof fit); }
+			uk_text_l (canvas, 58, y + 6, 20, TR (T[i]), C_FIELD_TEXT, 2);
+			char fit[120]; { UkFaceScope sc (g_small); uk_text_fit (val[i], width - 58 - 90, fit, sizeof fit); }
 			ftext (canvas, g_small, 58, y + 27, 18, fit, dim_ink (0x00FFFFFF));
 			bool hot = hover && hotRow == i;
-			wk_text_l (canvas, width - 18 - wk_tw ("Change"), y, RH, "Change", hot ? wk_tone (C_ACCENT, 100) : C_ACCENT);
-			if (hot) canvas.fillRect (width - 18 - wk_tw ("Change"), y + RH / 2 + wk_fh () / 2, wk_tw ("Change"), 1, C_ACCENT);
+			uk_text_l (canvas, width - 18 - uk_tw (ch), y, RH, ch, hot ? uk_tone (C_ACCENT, 100) : C_ACCENT);
+			if (hot) canvas.fillRect (width - 18 - uk_tw (ch), y + RH / 2 + uk_fh () / 2, uk_tw (ch), 1, C_ACCENT);
 		}
 	}
 	int hotRow = -1;
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
 		if (mx < 0) { if (hover) { hover = false; invalidate (true); } return false; }
-		int r = (my - 4) / RH, hr = mx > width - 30 - wk_tw ("Change") && r >= 0 && r < 5 ? r : -1;
+		int r = (my - 4) / RH, hr = mx > width - 30 - uk_tw (TR ("Change")) && r >= 0 && r < 5 ? r : -1;
 		if (!hover || hr != hotRow) { hover = true; hotRow = hr; invalidate (true); }
 		if (bl && !pressed && hr >= 0) go (hr + 1);
 		pressed = bl; return true;
@@ -973,18 +1037,22 @@ static bool g_scanPending; static unsigned g_scanAt;
 static void fill_summary ()
 {
 	const Country &c = COUNTRIES[g_country];
-	snprintf (g_sum->val[0], 120, "%s  \xC2\xB7  %s  \xC2\xB7  %s", c.name, KEYB_NAMES[g_keyb], g_zoneText[g_zone]);
+	// (the language first; the zone short -- its city and offset -- for the line to fit)
+	const char *city = locale_zone_city (g_zone);
+	char off[16], zone[48]; off[0] = 0; locale_zone_utc (g_zone, off, sizeof off);
+	if (!strcmp (city, "UTC")) scpy (zone, sizeof zone, "UTC"); else snprintf (zone, sizeof zone, "%s (%s)", TR (city), off);
+	snprintf (g_sum->val[0], 120, "%s  \xC2\xB7  %s  \xC2\xB7  %s  \xC2\xB7  %s", locale_language_name (g_lang), TR (c.name), g_keybOpts[g_keyb], zone);
 	bool on = g_netlist->state == NET_CONNECTED && g_netlist->sel >= 0;
-	if (on) snprintf (g_sum->val[1], 120, "%s  \xC2\xB7  connected, %s", g_nets[g_netlist->sel].ssid, g_ip);
-	else snprintf (g_sum->val[1], 120, "Not connected  \xC2\xB7  later, from the Wi-Fi icon in the menu bar");
+	if (on) snprintf (g_sum->val[1], 120, TR ("%s  \xC2\xB7  connected, %s"), g_nets[g_netlist->sel].ssid, g_ip);
+	else snprintf (g_sum->val[1], 120, "%s", TR ("Not connected  \xC2\xB7  later, from the Wi-Fi icon in the menu bar"));
 	snprintf (g_sum->val[2], 120, "%d \xC3\x97 %d%s%s", g_scrW, g_scrH, aspect (g_scrW, g_scrH)[0] ? ", " : "", aspect (g_scrW, g_scrH));
-	snprintf (g_sum->val[3], 120, "%s  \xC2\xB7  %s", SCHEMES[g_scheme].name, g_wall ? "a pattern wallpaper" : "generated wallpaper");
+	snprintf (g_sum->val[3], 120, "%s  \xC2\xB7  %s", TR (SCHEMES[g_scheme].name), g_wall ? TR ("a pattern wallpaper") : TR ("generated wallpaper"));
 	int n = 0; for (int k = 0; k < 4; k++) n += g_services[k];
-	snprintf (g_sum->val[4], 120, "%s  \xC2\xB7  %s", g_host->text, n == 0 ? "no remote access" : n == 1 ? "1 remote service on" : "remote services on");
+	snprintf (g_sum->val[4], 120, "%s  \xC2\xB7  %s", g_host->text, n == 0 ? TR ("no remote access") : TR ("remote services on"));
 	if (n == 1) for (int k = 0; k < 4; k++) if (g_services[k])
 	{
-		static const char *const NM[] = { "remote shell (telnet) on", "remote desktop (VNC) on", "remote windows on", "file sharing (FTP) on" };
-		snprintf (g_sum->val[4], 120, "%s  \xC2\xB7  %s", g_host->text, NM[k]);
+		static const char *const NM[] = { TRN ("remote shell (telnet) on"), TRN ("remote desktop (VNC) on"), TRN ("remote windows on"), TRN ("file sharing (FTP) on") };
+		snprintf (g_sum->val[4], 120, "%s  \xC2\xB7  %s", g_host->text, TR (NM[k]));
 	}
 	g_sum->invalidate (true);
 }
@@ -994,7 +1062,7 @@ static void update_nav ()
 	int p = g_page;
 	g_back->hidden = p == 0;
 	g_skip->hidden = p != 2 || g_netlist->state == NET_CONNECTED;
-	g_next->set (p == 0 ? "Get started" : p == NSTEPS - 1 ? "Start Onyx" : "Continue");
+	g_next->set (p == 0 ? TR ("Get started") : p == NSTEPS - 1 ? TR ("Start Onyx") : TR ("Continue"));
 	g_next->disabled = (p == 2 && g_netlist->state != NET_CONNECTED) || (p == 3 && !g_keep->hidden);
 	g_back->disabled = p == 3 && !g_keep->hidden;
 	g_next->invalidate (true); g_back->invalidate (true); g_skip->invalidate (true);
@@ -1007,7 +1075,7 @@ static void go (int p)
 	g_page = p;
 	for (int i = 0; i < NSTEPS; i++) g_pages[i]->hidden = i != p;
 	g_rail->cur = p; g_rail->invalidate (true);
-	char b[24]; snprintf (b, sizeof b, "Step %d of %d", p + 1, NSTEPS); g_stepOf->set (b);
+	char b[40]; snprintf (b, sizeof b, TR ("Step %d of %d"), p + 1, NSTEPS); g_stepOf->set (b);
 	if (p == 2 && !g_scanned && !g_demo) { g_scanPending = true; g_scanAt = kapi_get_ticks (); }	// (scanned in onTick, the page drawn first)
 	if (p == 1) g_countries->setFocus ();
 	if (p == NSTEPS - 1) fill_summary ();
@@ -1020,7 +1088,7 @@ static void go (int p)
 static void apply_keyb () { if (!g_demo) ax_load_keymap (KEYB_CODES[g_keyb]); }
 static void apply_zone ()
 {
-	if (!g_demo) kapi_set_timezone (zone_offset (g_zone));
+	if (!g_demo) kapi_set_timezone (locale_zone_offset (g_zone));
 }
 // The time zone list: the country's zones, then UTC -> the item of g_zone in it.
 static int zone_opts ()
@@ -1038,7 +1106,7 @@ static void on_country (Widget &w)
 	const Country &c = COUNTRIES[g_country];
 	for (int k = 0; k < NKEYB; k++) if (!strcmp (KEYB_CODES[k], c.keyb)) { g_keyb = k; break; }
 	g_zone = c.zones[0];
-	g_keybDD->setOptions (KEYB_NAMES, NKEYB, g_keyb); g_kbv->set (g_keyb);
+	g_keybDD->setOptions (g_keybOpts, NKEYB, g_keyb); g_kbv->set (g_keyb);
 	int at = zone_opts (); g_zoneDD->setOptions (g_zoneOpts, g_nzoneOpts, at);
 	apply_keyb (); apply_zone ();
 }
@@ -1059,8 +1127,8 @@ static void show_net (int state)
 	{
 		if (g_netlist->sel >= 0) { for (int i = 0; i < g_nnets; i++) g_nets[i].con = i == g_netlist->sel; }
 		if (!kapi_net_status (g_ip, sizeof g_ip)) scpy (g_ip, sizeof g_ip, "--");
-		char b[140]; snprintf (b, sizeof b, "Address %s%s", g_ip, g_ntp ? "  \xC2\xB7  the clock is set from the Internet" : "");
-		g_online->set ("You are online", b);
+		char b[140]; snprintf (b, sizeof b, g_ntp ? TR ("Address %s  \xC2\xB7  the clock is set from the Internet") : TR ("Address %s"), g_ip);
+		g_online->set (TR ("You are online"), b);
 		g_online->top = g_netlist->top + g_netlist->total () + 14;
 	}
 	g_netlist->place ();
@@ -1070,10 +1138,10 @@ static void show_net (int state)
 static void start_join (const char *ssid, const char *psk, bool open)
 {
 	scpy (g_joinSsid, sizeof g_joinSsid, ssid);
-	snprintf (g_conn->what, sizeof g_conn->what, "Connecting to %s...", ssid);
+	snprintf (g_conn->what, sizeof g_conn->what, TR ("Connecting to %s..."), ssid);
 	if (g_demo) { show_net (NET_CONNECTING); return; }
-	if (!wpa_join (ssid, psk, open, COUNTRIES[g_country].code)) { scpy (g_netlist->err, sizeof g_netlist->err, "Cannot write SD:/etc/wpa_supplicant.conf"); g_netlist->invalidate (true); return; }
-	if (kapi_wlan_reconnect () < 0) { scpy (g_netlist->err, sizeof g_netlist->err, "Saved: it joins at the next start"); g_netlist->invalidate (true); return; }
+	if (!wpa_join (ssid, psk, open, COUNTRIES[g_country].code)) { scpy (g_netlist->err, sizeof g_netlist->err, TR ("Cannot write SD:/etc/wpa_supplicant.conf")); g_netlist->invalidate (true); return; }
+	if (kapi_wlan_reconnect () < 0) { scpy (g_netlist->err, sizeof g_netlist->err, TR ("Saved: it joins at the next start")); g_netlist->invalidate (true); return; }
 	g_joinT = kapi_get_ticks (); g_sawDown = false;
 	show_net (NET_CONNECTING);
 }
@@ -1082,10 +1150,10 @@ static void on_connect (Widget &)
 	NetList *l = g_netlist;
 	if (l->sel < 0 || l->sel >= g_nnets) return;
 	const Net &n = g_nets[l->sel];
-	if (n.sec == WLAN_SEC_WEP) { scpy (l->err, sizeof l->err, "WEP networks are not supported"); l->invalidate (true); return; }
+	if (n.sec == WLAN_SEC_WEP) { scpy (l->err, sizeof l->err, TR ("WEP networks are not supported")); l->invalidate (true); return; }
 	int pl = (int) strlen (l->pass->text);
 	bool open = n.sec == WLAN_SEC_OPEN;
-	if (!open && !(n.known && pl == 0) && (pl < 8 || pl > 63)) { scpy (l->err, sizeof l->err, "The password is 8 to 63 characters"); l->invalidate (true); return; }
+	if (!open && !(n.known && pl == 0) && (pl < 8 || pl > 63)) { scpy (l->err, sizeof l->err, TR ("The password is 8 to 63 characters")); l->invalidate (true); return; }
 	l->err[0] = 0;
 	start_join (n.ssid, l->pass->text, open);
 }
@@ -1112,16 +1180,16 @@ static void on_mode (Widget &)
 	const Mode &m = g_modes[g_mode];
 	char w[80]; const char *a = aspect (m.w, m.h);
 	snprintf (w, sizeof w, "%s%s%s", a, a[0] && (g_mode == g_best || g_mode == g_curMode) ? "  \xC2\xB7  " : "",
-		  g_mode == g_best ? "the monitor's own" : g_mode == g_curMode ? "the screen now" : "");
+		  g_mode == g_best ? TR ("the monitor's own") : g_mode == g_curMode ? TR ("the screen now") : "");
 	g_resWhat->set (w);
 	g_try->disabled = g_mode == g_curMode; g_try->invalidate (true);
 	g_pages[3]->invalidate (true);
 }
 static void keep_msg ()
 {
-	snprintf (g_keep->msg, sizeof g_keep->msg, "The screen is now %d \xC3\x97 %d. Onyx goes back to %d \xC3\x97 %d in %d second%s.",
-		  g_newW, g_newH, g_oldW, g_oldH, g_keep->secs, g_keep->secs == 1 ? "" : "s");
-	snprintf (g_keep->revert->text, sizeof g_keep->revert->text, "Revert (%d)", g_keep->secs);
+	snprintf (g_keep->msg, sizeof g_keep->msg, g_keep->secs == 1 ? TR ("The screen is now %d \xC3\x97 %d. Onyx goes back to %d \xC3\x97 %d in %d second.")
+		  : TR ("The screen is now %d \xC3\x97 %d. Onyx goes back to %d \xC3\x97 %d in %d seconds."), g_newW, g_newH, g_oldW, g_oldH, g_keep->secs);
+	snprintf (g_keep->revert->text, sizeof g_keep->revert->text, TR ("Revert (%d)"), g_keep->secs);
 	g_keep->revert->invalidate (true); g_keep->invalidate (true);
 }
 static void screen_now ()
@@ -1138,7 +1206,7 @@ static void on_try (Widget &)
 	if (r != 0)
 	{
 		g_note->c = ERR_C;
-		g_note->set (r == -2 ? "Not now: a full-screen app owns the display." : r == -3 ? "The monitor or the firmware refused this size." : "This size is not possible here.");
+		g_note->set (r == -2 ? TR ("Not now: a full-screen app owns the display.") : r == -3 ? TR ("The monitor or the firmware refused this size.") : TR ("This size is not possible here."));
 		return;
 	}
 	if (!g_demo) kapi_exec ("SD:apps/voronoy.app/main", "");	// (the wallpaper at the new size)
@@ -1157,7 +1225,7 @@ static void end_try (bool keep)
 	if (!g_demo) screen_now ();
 	else if (keep) { g_scrW = g_newW; g_scrH = g_newH; g_curMode = g_mode; }
 	g_note->c = 0;
-	g_note->set (keep ? "Kept: Onyx starts at this size from now on." : "Back to the size before.");
+	g_note->set (keep ? TR ("Kept: Onyx starts at this size from now on.") : TR ("Back to the size before."));
 	on_mode (*g_try);
 	update_nav ();
 	g_root->invalidate (true);
@@ -1169,15 +1237,14 @@ static void on_revert (Widget &) { end_try (false); }
 static void apply_look ()
 {
 	g_lookDirty = false;
-	WkTheme t; wk_theme_get (t);
-	t.theme = g_scheme; t.active = SCHEMES[g_scheme].c;
-	wk_theme_take_style (t, SCHEMES[g_scheme].style);	// (Milk: its own colours too)
-	wk_theme_set (t);					// (this window's frame in the new colour)
-	wk_decorate_window ();
+	UkTheme t; uk_theme_get (t);
+	uk_theme_take (t, g_scheme);				// (its frame; its own colours when they differ)
+	uk_theme_set (t);					// (this window's frame in the new colour)
+	uk_decorate_window ();
 	g_root->invalidate (true);
 	if (g_demo) return;
 	static char buf[1400];
-	int p = wk_theme_write (t, buf, sizeof buf - 40);
+	int p = uk_theme_write (t, buf, sizeof buf - 40);
 	p += snprintf (buf + p, sizeof buf - p, "wheelspeed=%d\n", kapi_get_wheel_speed ());
 	kapi_save_file ("SD:/etc/theme.txt", buf, (unsigned) p);
 	Wallpaper wp; wp_load (wp);
@@ -1188,6 +1255,19 @@ static void apply_look ()
 	kapi_exec ("SD:apps/voronoy.app/main", "");			// (the desktop painted again)
 }
 static void on_look (Widget &) { g_prev->invalidate (true); g_lookDirty = true; g_lookT = kapi_get_ticks (); }
+
+// ---- the language: kept in system.ini (SystemKit), Setup started again in it -- the choices made on the
+// pages after are not kept (the look, the Wi-Fi and the screen's size are written already) ----
+static void choose_lang (int i)
+{
+	if (i < 0 || i >= locale_language_count () || i == g_lang) return;
+	if (g_demo) { g_lang = i; return; }			// (the screenshots: only marked)
+	if (g_lookDirty) apply_look ();
+	if (!locale_set_language (locale_language_code (i))) return;
+	if (!kapi_exec ("SD:/apps/setup.app/main", g_args))	// (not started: this one stays, in its language)
+	{ locale_set_language (locale_language_code (g_lang)); return; }
+	kapi_exit (0);
+}
 
 // ---- name ----
 static bool host_ok (const char *s)
@@ -1203,8 +1283,7 @@ static void finish ()
 {
 	if (g_demo) { kapi_exit (0); return; }
 	if (g_lookDirty) apply_look ();
-	char zone[12]; snprintf (zone, sizeof zone, "%d", zone_offset (g_zone));
-	ini_set ("SD:/etc/system.ini", "timezone", zone);
+	locale_set_zone (g_zone);				// (system.ini's timezone= and zone=)
 	ini_set ("SD:/etc/system.ini", "ntp", g_ntp ? "pool.ntp.org" : "off");
 	ini_set ("SD:/etc/system.ini", "hostname", g_host->text);
 	if (g_netlist->state != NET_CONNECTED)			// (skipped: the Wi-Fi's country kept anyway)
@@ -1229,7 +1308,7 @@ static void on_next (Widget &)
 {
 	if (g_page == 5 && !host_ok (g_host->text))
 	{
-		g_hostErr->c = ERR_C; g_hostErr->set ("Letters, digits and '-' only (not at the ends)");
+		g_hostErr->c = ERR_C; g_hostErr->set (TR ("Letters, digits and '-' only (not at the ends)"));
 		g_host->setFocus ();
 		return;
 	}
@@ -1244,7 +1323,7 @@ static void on_skip (Widget &) { go (3); }
 class SetupRoot : public Root
 {
 public:
-	SetupRoot (int x, int y) : Root (x, y, W, H, "Onyx Setup", WIN_FLAG_FIXED) {}
+	SetupRoot (int x, int y) : Root (x, y, W, H, TR ("Onyx Setup"), WIN_FLAG_FIXED) {}
 	void onTick () override
 	{
 		unsigned now = kapi_get_ticks ();
@@ -1268,7 +1347,7 @@ public:
 				{
 					g_joinT = 0;
 					// (the network is saved already: it is joined at the next start -- say so)
-					scpy (g_netlist->err, sizeof g_netlist->err, "Not connected yet (saved: joined at the next start). Check the password");
+					scpy (g_netlist->err, sizeof g_netlist->err, TR ("Not connected yet (saved: joined at the next start). Check the password"));
 					show_net (NET_PASSWORD);
 				}
 			}
@@ -1285,14 +1364,17 @@ public:
 
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);		// (before the widgets)
+	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets)
+	uk_lang_init ();				// the words in the system's language (before the pages)
+	g_lang = locale_language_index ();
 	g_h1 = face ("DejaVu Sans", 22); g_hero = face ("DejaVu Sans", 32); g_lead = face ("DejaVu Sans", 15); g_small = face ("DejaVu Sans", 11);
-	char a[32]; int na = kapi_get_args (a, sizeof a); a[na > 0 && na < 32 ? na : 0] = 0;
+	char *a = g_args; int na = kapi_get_args (a, sizeof g_args); a[na > 0 && na < 32 ? na : 0] = 0;
 	int demo = -1; char variant = 0;
 	if (!strncmp (a, "--demo", 6)) { const char *p = a + 6; while (*p == ' ') p++; if (*p >= '0' && *p <= '6') { demo = *p - '0'; variant = p[1]; } g_demo = true; }
 
 	// what is there now: the zones' names, the screen, the monitor, the services, the Wi-Fi's country
 	for (int z = 0; z < NZONES; z++) zone_label (z, g_zoneText[z], sizeof g_zoneText[z]);
+	for (int k = 0; k < NKEYB; k++) g_keybOpts[k] = TR (KEYB_NAMES[k]);
 	g_nmodes = 0;
 	for (unsigned i = 0; i < sizeof MODES / sizeof MODES[0]; i++) g_modes[g_nmodes++] = MODES[i];
 	int nw = 0, nh = 0;
@@ -1315,7 +1397,7 @@ int main (void)
 		for (int i = 0; i < NCOUNTRIES; i++) if (!strcmp (COUNTRIES[i].code, g_wpaCountry)) g_country = i;
 		for (int k = 0; k < NKEYB; k++) if (!strcmp (KEYB_CODES[k], COUNTRIES[g_country].keyb)) g_keyb = k;
 		g_zone = COUNTRIES[g_country].zones[0];
-		WkTheme t; wk_theme_get (t); if (t.theme >= 0 && t.theme < NSCHEMES) g_scheme = t.theme;
+		UkTheme t; uk_theme_get (t); if (t.theme >= 0 && t.theme < NSCHEMES) g_scheme = t.theme;
 		Wallpaper wp; wp_load (wp);
 		for (int i = 0; i < 16; i++) if (TINTS[i] == wp.c1) g_tint = i;
 	}
@@ -1335,73 +1417,74 @@ int main (void)
 
 	// the footer
 	Panel *foot = new Panel (RAIL_W, H - FOOT_H, W - RAIL_W, FOOT_H, C_BG); root.addChild (foot);
-	foot->addChild (new Panel (0, 0, W - RAIL_W, 1, wk_mix (C_BG, C_TEXT, 60)));
-	g_stepOf = new Text (PX, 1, 140, FOOT_H - 1, "Step 1 of 7", 0, g_small, true); foot->addChild (g_stepOf);
-	g_next = new AccentButton (W - RAIL_W - PAD - 132, 14, 132, 32, "Continue", on_next); foot->addChild (g_next);
-	g_back = new Button (W - RAIL_W - PAD - 132 - 10 - 104, 11, 104, 38, "Back", on_back); foot->addChild (g_back);
-	g_skip = new Link (W - RAIL_W - PAD - 132 - 10 - 104 - 130, 14, 110, 32, "Skip for now", on_skip); g_skip->tag = 1; foot->addChild (g_skip);
+	foot->addChild (new Panel (0, 0, W - RAIL_W, 1, uk_mix (C_BG, C_TEXT, 60)));
+	g_stepOf = new Text (PX, 1, 100, FOOT_H - 1, "", 0, g_small, true); foot->addChild (g_stepOf);	// (go's "Step 1 of 7")
+	g_next = new AccentButton (W - RAIL_W - PAD - 132, 14, 132, 32, TR ("Continue"), on_next); foot->addChild (g_next);
+	g_back = new Button (W - RAIL_W - PAD - 132 - 10 - 104, 11, 104, 38, TR ("Back"), on_back); foot->addChild (g_back);
+	g_skip = new Link (W - RAIL_W - PAD - 132 - 10 - 104 - 170, 14, 150, 32, TR ("Skip for now"), on_skip); g_skip->tag = 1; foot->addChild (g_skip);
 
 	// 0: welcome
 	Page *p = g_pages[0] = new Page (0, "");
 	p->addChild (new Welcome (PX, 70, PW, H - FOOT_H - 90));
 	// 1: region & keyboard
-	p = g_pages[1] = new Page ("Region & keyboard", "Your country sets the time zone and which Wi-Fi channels the radio may use; the keyboard layout is proposed from it.");
+	p = g_pages[1] = new Page (TR ("Region & keyboard"), TR ("Your country sets the time zone and which Wi-Fi channels the radio may use; the keyboard layout is proposed from it."));
 	int y = p->bodyY, lw = 244, rx = PX + lw + 26, rw = PW - lw - 26;
-	p->addChild (new Text (PX, y, lw, 20, "Country or region", 2));
+	p->addChild (new Text (PX, y, lw, 20, TR ("Country or region"), 2));
 	g_countries = new CountryList (PX, y + 26, lw, 8 + 9 * CountryList::RH, on_country); p->addChild (g_countries);
 	g_countries->show (g_country);
-	p->addChild (new Text (rx, y, rw, 20, "Keyboard layout", 2));
-	g_keybDD = new Dropdown (rx, y + 24, rw, 30, KEYB_NAMES, NKEYB, g_keyb, on_keyb); p->addChild (g_keybDD);
-	p->addChild (new Text (rx, y + 68, rw, 20, "Time zone", 2));
+	p->addChild (new Text (rx, y, rw, 20, TR ("Keyboard layout"), 2));
+	g_keybDD = new Dropdown (rx, y + 24, rw, 30, g_keybOpts, NKEYB, g_keyb, on_keyb); p->addChild (g_keybDD);
+	p->addChild (new Text (rx, y + 68, rw, 20, TR ("Time zone"), 2));
 	int zat = zone_opts ();
 	g_zoneDD = new Dropdown (rx, y + 92, rw, 30, g_zoneOpts, g_nzoneOpts, zat, on_zone); p->addChild (g_zoneDD);
-	p->addChild (new Checkbox (rx, y + 134, rw, 22, "Set the clock from the Internet", g_ntp, on_ntp, C_FIELD));
-	p->addChild (new Text (rx, y + 172, rw, 20, "Try it", 2));
+	p->addChild (new Checkbox (rx, y + 134, rw, 22, TR ("Set the clock from the Internet"), g_ntp, on_ntp, C_FIELD));
+	p->addChild (new Text (rx, y + 172, rw, 20, TR ("Try it"), 2));
 	Textbox *tryit = new Textbox (rx, y + 196, rw, 30, g_demo ? "O\xC3\xB9 est la gare ? H\xC3\xA9l\xC3\xA8ne \xC3\xA0 9h" : ""); p->addChild (tryit);
 	g_kbv = new KeyboardView (rx, y + 238, rw, 84); p->addChild (g_kbv);
 	g_kbv->set (g_keyb);
 	// 2: Wi-Fi
-	p = g_pages[2] = new Page ("Connect to Wi-Fi", "Pick your network and type its password. You can skip this and connect later from the Wi-Fi icon in the menu bar.");
+	p = g_pages[2] = new Page (TR ("Connect to Wi-Fi"), TR ("Pick your network and type its password. You can skip this and connect later from the Wi-Fi icon in the menu bar."));
 	y = p->bodyY;
-	p->addChild (new Text (PX, y, 200, 24, "Networks nearby", 2));
-	g_rescan = new Button (PX + PW - 104, y - 6, 104, 34, "Rescan", on_rescan); p->addChild (g_rescan);
+	p->addChild (new Text (PX, y, 200, 24, TR ("Networks nearby"), 2));
+	g_rescan = new Button (PX + PW - 104, y - 6, 104, 34, TR ("Rescan"), on_rescan); p->addChild (g_rescan);
 	if (g_demo) scan_nets ();
 	g_netlist = new NetList (PX, y + 36, PW, 300, on_connect); p->addChild (g_netlist);
 	g_conn = new Connecting (PX, y + 36, PW, 216, on_cancel_join); g_conn->hidden = true; p->addChild (g_conn);
 	g_hiddenNet = new HiddenNet (PX, y + 36, PW, 206, on_other_connect, on_other_cancel); g_hiddenNet->hidden = true; p->addChild (g_hiddenNet);
-	g_online = new Banner (PX, y + 300, PW, 54, OK_C, 0, "You are online", ""); g_online->hidden = true; p->addChild (g_online);
-	g_hidden = new Link (PX, H - FOOT_H - 40, 260, 24, "Other network (hidden name)...", on_other); p->addChild (g_hidden);
+	g_online = new Banner (PX, y + 300, PW, 54, OK_C, 0, TR ("You are online"), ""); g_online->hidden = true; p->addChild (g_online);
+	g_hidden = new Link (PX, H - FOOT_H - 40, 260, 24, TR ("Other network (hidden name)..."), on_other); p->addChild (g_hidden);
 	// 3: display
 	char dsub[240];
-	if (g_best >= 0) snprintf (dsub, sizeof dsub, "Onyx found a monitor able to show %d \xC3\x97 %d. Bigger means more room for windows; smaller means bigger text.", g_modes[g_best].w, g_modes[g_best].h);
-	else snprintf (dsub, sizeof dsub, "The monitor did not tell its size: pick the one written in its manual. Bigger means more room for windows; smaller means bigger text.");
-	p = g_pages[3] = new Page ("Display", dsub);
+	if (g_best >= 0) snprintf (dsub, sizeof dsub, TR ("Onyx found a monitor able to show %d \xC3\x97 %d. Bigger means more room for windows; smaller means bigger text."), g_modes[g_best].w, g_modes[g_best].h);
+	else snprintf (dsub, sizeof dsub, "%s", TR ("The monitor did not tell its size: pick the one written in its manual. Bigger means more room for windows; smaller means bigger text."));
+	p = g_pages[3] = new Page (TR ("Display"), dsub);
 	y = p->bodyY; lw = 240; rx = PX + lw + 26; rw = PW - lw - 26;
 	p->addChild (new ModeList (PX, y, lw, 8 + g_nmodes * ModeList::RH, on_mode));
 	p->addChild (new Monitor (rx, y, rw, 196));
 	g_resText = new Text (rx, y + 200, rw, 26, "", 2, g_lead); p->addChild (g_resText);
 	g_resWhat = new Text (rx, y + 224, rw, 20, "", 0, 0, true); p->addChild (g_resWhat);
-	g_try = new Button (rx, y + 252, 110, 38, "Try it", on_try); p->addChild (g_try);
-	g_note = new Text (rx, y + 298, rw, 56, "Applied at once; if the picture does not come back, Onyx returns to the previous size by itself after 15 seconds.", 0, g_small, true);
+	g_try = new Button (rx, y + 252, 110, 38, TR ("Try it"), on_try); p->addChild (g_try);
+	g_note = new Text (rx, y + 298, rw, 64, TR ("Applied at once; if the picture does not come back, Onyx returns to the previous size by itself after 15 seconds."), 0, g_small, true);
 	g_note->lh = 16; p->addChild (g_note);
 	// 4: appearance
-	p = g_pages[4] = new Page ("Appearance", "Choose the colour of the window in front and the wallpaper. The preview shows the desktop you will get.");
+	p = g_pages[4] = new Page (TR ("Appearance"), TR ("Choose the colour of the window in front and the wallpaper. The preview shows the desktop you will get."));
 	y = p->bodyY - 8;
 	g_prev = new DesktopPreview (PX, y, PW, 132); p->addChild (g_prev);
-	p->addChild (new Text (PX, y + 142, 200, 20, "Colour", 2));
+	p->addChild (new Text (PX, y + 142, 200, 20, TR ("Colour"), 2));
 	p->addChild (new SchemePicker (PX - 4, y + 164, PW, 68, on_look));
-	p->addChild (new Text (PX, y + 234, 200, 20, "Wallpaper and its tint", 2));
+	p->addChild (new Text (PX, y + 234, 200, 20, TR ("Wallpaper and its tint"), 2));
 	p->addChild (new WallPicker (PX - 4, y + 256, PW + 8, 140, on_look));
 	// 5: name & privacy
-	p = g_pages[5] = new Page ("Name & privacy", "How this Raspberry Pi shows itself on your network, and who may reach it from there.");
+	p = g_pages[5] = new Page (TR ("Name & privacy"), TR ("How this Raspberry Pi shows itself on your network, and who may reach it from there."));
 	y = p->bodyY;
-	p->addChild (new Text (PX, y, 200, 20, "Computer name", 2));
+	p->addChild (new Text (PX, y, 200, 20, TR ("Computer name"), 2));
 	g_host = new Textbox (PX, y + 24, 260, 30, "onyx"); g_host->maxLen = 63; p->addChild (g_host);
-	g_hostErr = new Text (PX + 274, y + 24, PW - 274, 30, "Seen by that name on the network (from the next start)", 0, g_small, true); p->addChild (g_hostErr);
-	p->addChild (new Text (PX, y + 70, 200, 20, "Remote access", 2));
-	p->addChild (new Banner (PX, y + 94, PW, 40, WARN_C, 1, "Only file sharing asks for a password: turn on only what you use, on a network you trust.", ""));
+	g_hostErr = new Text (PX + 274, y + 24, PW - 274, 30, TR ("Seen by that name on the network (from the next start)"), 0, g_small, true);
+	g_hostErr->lh = 15; p->addChild (g_hostErr);			// (two lines: the French, the error)
+	p->addChild (new Text (PX, y + 70, 200, 20, TR ("Remote access"), 2));
+	p->addChild (new Banner (PX, y + 94, PW, 40, WARN_C, 1, TR ("Only file sharing asks for a password: turn on only what you use, on a network you trust."), ""));
 	p->addChild (new Services (PX, y + 144, PW, 4 * Services::RH));
-	p->addChild (new Text (PX, y + 144 + 4 * Services::RH + 12, PW, 20, "Each one can be turned on or off later: its line in SD:/etc/autostart.", 0, g_small, true));
+	p->addChild (new Text (PX, y + 144 + 4 * Services::RH + 12, PW, 20, TR ("Each one can be turned on or off later: its line in SD:/etc/autostart."), 0, g_small, true));
 	// 6: ready
 	p = g_pages[6] = new Page (0, "");
 	{
@@ -1413,15 +1496,15 @@ int main (void)
 			{
 				canvas.clear (C_FIELD);
 				big_disc (canvas, 0, 0, 52, OK_C);
-				wk_glyph (canvas, WKG_CHECK, 26, 26, 24, 0x00FFFFFF);
-				ftext (canvas, g_hero, 0, 64, 44, "You're all set", C_FIELD_TEXT, 2);
-				fwrap (&canvas, g_lead, 0, 114, width, 23, "Here is what Onyx will use. Change any of it now, or later in the Control Panel.", dim_ink (C_FIELD));
+				uk_glyph (canvas, WKG_CHECK, 26, 26, 24, 0x00FFFFFF);
+				ftext (canvas, g_hero, 0, 64, 44, TR ("You're all set"), C_FIELD_TEXT, 2);
+				fwrap (&canvas, g_lead, 0, 114, width, 23, TR ("Here is what Onyx will use. Change any of it now, or later in the Control Panel."), dim_ink (C_FIELD));
 			}
 		};
 		p->addChild (new Done (PX, 34, PW, 170));
 	}
 	g_sum = new Summary (PX, 204, PW, 8 + 5 * Summary::RH); p->addChild (g_sum);
-	p->addChild (new Text (PX, 204 + 8 + 5 * Summary::RH + 16, PW, 20, "Start Onyx: the menu bar and the dock appear; this assistant does not come back.", 0, g_small, true));
+	p->addChild (new Text (PX, 204 + 8 + 5 * Summary::RH + 16, PW, 20, TR ("Start Onyx: the menu bar and the dock appear; this assistant does not come back."), 0, g_small, true));
 
 	for (int i = 0; i < NSTEPS; i++) root.addChild (g_pages[i]);
 	g_keep = new KeepSheet ((W - 420) / 2 + RAIL_W / 2, 150, 420, 180, on_keep, on_revert); g_keep->hidden = true; root.addChild (g_keep);
@@ -1435,7 +1518,7 @@ int main (void)
 		g_countries->sel = 1;
 		go (demo);
 		if (demo == 2 && !variant) { g_netlist->sel = 0; g_netlist->state = NET_PASSWORD; g_netlist->pass->setText ("correct-horse"); g_netlist->pass->caret = 13; show_net (NET_PASSWORD); }
-		else if (demo == 2 && variant == 'b') { g_netlist->sel = 0; snprintf (g_conn->what, sizeof g_conn->what, "Connecting to %s...", g_nets[0].ssid); show_net (NET_CONNECTING); }
+		else if (demo == 2 && variant == 'b') { g_netlist->sel = 0; snprintf (g_conn->what, sizeof g_conn->what, TR ("Connecting to %s..."), g_nets[0].ssid); show_net (NET_CONNECTING); }
 		else if (demo >= 2) { g_netlist->sel = 0; show_net (NET_CONNECTED); }
 		if (demo == 1) { tryit->setFocus (); tryit->caret = (int) strlen (tryit->text); }
 		if (demo == 3 && variant == 'b') on_try (*g_try);

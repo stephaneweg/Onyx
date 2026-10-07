@@ -1,12 +1,12 @@
 //
-// kp_euclid -- a Koton generator plugin (user/kplug.h): a euclidean melody. E(hits, steps) -- the hits
+// kp_euclid -- a Koton generator plugin (user/Apps/koton/plug/kplug.h): a euclidean melody. E(hits, steps) -- the hits
 // spread as evenly as they can be over the steps (tresillo E(3,8), cinquillo E(5,8)...), rotated --
 // is looped over the block, a step a fraction of a beat; each hit plays the next tone of a pool made
 // of the chord under it (or the key's scale, or both) over a range of octaves, following a contour:
 // up, down, up-down, a random walk, or at random. At a chord change the walk goes on from the tone
 // nearest the last one (voice leading). An accent on the cycle's first hit.
 //
-#include "kplug.h"
+#include "../koton/plug/kplug.h"
 
 static const char *const CONTOURS[] = { "Up", "Down", "Up-Down", "Random walk", "Random", 0 };
 static const char *const TONES[] = { "Chord", "Scale", "Chord + scale", 0 };

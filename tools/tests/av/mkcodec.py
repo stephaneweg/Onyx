@@ -14,7 +14,7 @@ Files (96 x 64, 25 fps, 2 s, a key frame each 0.5 s; Opus 48 kHz stereo, 20 ms p
   av1-frag.mp4    AV1 + Opus, fragmented MP4 (one fragment each 0.5 s); av1-frag.json: ranges
   <clip>.txt      per frame: index, pts (us), 0, the RGB sum of the frame as decoded by the
                   reference decoders (libvpx's VP9 = FFmpeg's, libdav1d), converted as
-                  user/av/av_yuv.c does (mkmedia.rgb_sum)
+                  user/Libs/av/av_yuv.c does (mkmedia.rgb_sum)
 """
 import io, json, os, struct, sys
 import av

@@ -1,10 +1,10 @@
 //
-// demoD/main.cpp -- widget gallery (wtk port). Shows the wtk widgets: label, textbox,
+// demoD/main.cpp -- widget gallery (uikit port). Shows the uikit widgets: label, textbox,
 // checkbox, button, slider, progress. The slider drives the progress bar.
 //
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W 300
 #define H 220

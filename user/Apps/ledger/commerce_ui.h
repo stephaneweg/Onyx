@@ -3,7 +3,7 @@
 // notes and purchase orders of the year shown (a kind at a time, or all; their state: draft, sent,
 // accepted, refused, done -- a quote past its date: expired); CDocPage types one -- its party, dates,
 // reference, description, lines (a description, a quantity, a unit price, a VAT code), its totals -- prints
-// it (print.h: a Writer document from its template) and makes the next one: an order from a quote, a
+// it (print.h: a Letters document from its template) and makes the next one: an order from a quote, a
 // delivery note from an order, the invoice from any (the invoice's page, filled: Save posts it and marks
 // the document done).
 //
@@ -51,7 +51,7 @@ public:
 		bNext = new FlatButton (TR ("Next step"), s_next, FB_SECONDARY, NI_NEXT); x -= bNext->width; bNext->left = x; bNext->top = bSave->top; bNext->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
 		bNext->tip = TR ("An order from a quote, a delivery note from an order, the invoice"); addChild (bNext); x -= 8;
 		bPrint = new FlatButton (TR ("Print"), s_print, FB_SECONDARY, NI_PRINT); x -= bPrint->width; bPrint->left = x; bPrint->top = bSave->top; bPrint->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
-		bPrint->tip = TR ("The document made by Writer from its template"); addChild (bPrint);
+		bPrint->tip = TR ("The document made by Letters from its template"); addChild (bPrint);
 		int W = width, rx = W - 330;
 		party = new PickEdit (130, 72, rx - 130 - 60, SK_PARTY, PK_CUSTOMER); party->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 		party->onPick = on_party; party->onChange = mark_dirty; addChild (party);
@@ -277,19 +277,19 @@ public:
 			text_fit_l (canvas, 132, 102, rx - 150, 26, t, dim_ink (C_BG));
 		}
 		int fy = wg (g)->top + g->height + 12, fh = height - fy - 8, tx = W - 300;
-		wk_rbox (canvas, tx, fy, 284, fh, 8, wk_tone (C_FIELD, 132), wk_tone (C_FIELD, 122));
-		wk_rline (canvas, tx, fy, 284, fh, 8, wk_mix (C_BG, 0, 60), 100);
+		uk_rbox (canvas, tx, fy, 284, fh, 8, uk_tone (C_FIELD, 132), uk_tone (C_FIELD, 122));
+		uk_rline (canvas, tx, fy, 284, fh, 8, uk_mix (C_BG, 0, 60), 100);
 		char a[32];
-		wk_text_l (canvas, tx + 14, fy + 8, 20, TR ("Total excl. VAT"), field_dim ()); text_r (canvas, tx + 270, fy + 8, 20, money_s (tNet, a), C_FIELD_TEXT);
-		wk_text_l (canvas, tx + 14, fy + 30, 20, TR ("VAT"), field_dim ()); text_r (canvas, tx + 270, fy + 30, 20, money_s (tTax, a), C_FIELD_TEXT);
-		canvas.fillRect (tx + 12, fy + fh - 40, 260, 1, wk_tone (C_FIELD, 100));
-		wk_text_l (canvas, tx + 14, fy + fh - 36, 28, TR ("Total"), C_FIELD_TEXT, 2);
+		uk_text_l (canvas, tx + 14, fy + 8, 20, TR ("Total excl. VAT"), field_dim ()); text_r (canvas, tx + 270, fy + 8, 20, money_s (tNet, a), C_FIELD_TEXT);
+		uk_text_l (canvas, tx + 14, fy + 30, 20, TR ("VAT"), field_dim ()); text_r (canvas, tx + 270, fy + 30, 20, money_s (tTax, a), C_FIELD_TEXT);
+		canvas.fillRect (tx + 12, fy + fh - 40, 260, 1, uk_tone (C_FIELD, 100));
+		uk_text_l (canvas, tx + 14, fy + fh - 36, 28, TR ("Total"), C_FIELD_TEXT, 2);
 		text_r (canvas, tx + 270, fy + fh - 36, 28, money_s (tTot, a), C_FIELD_TEXT, 2);
-		wk_text_l (canvas, 20, fy, 20, TR ("Printing"), dim_ink (C_BG), 2);
+		uk_text_l (canvas, 20, fy, 20, TR ("Printing"), dim_ink (C_BG), 2);
 		int k = pk_of (d.kind);
 		char t[160]; scpy (t, TR ("Its template: "), sizeof t); scat (t, PK_FILE[k], sizeof t); scat (t, ".rtf", sizeof t); scat (t, TR (" (Settings > Printing)"), sizeof t);
 		text_fit_l (canvas, 20, fy + 22, tx - 40, 18, t, dim_ink (C_BG));
-		scpy (t, TR ("Made by Writer in "), sizeof t); scat (t, "SD:/docs/", sizeof t); scat (t, PK_FOLDER[k], sizeof t);
+		scpy (t, TR ("Made by Letters in "), sizeof t); scat (t, "SD:/docs/", sizeof t); scat (t, PK_FOLDER[k], sizeof t);
 		text_fit_l (canvas, 20, fy + 40, tx - 40, 18, t, dim_ink (C_BG));
 	}
 	static void on_party (Widget &)

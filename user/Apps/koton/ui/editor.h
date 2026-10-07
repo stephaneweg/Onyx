@@ -1,6 +1,6 @@
 //
 // ui/editor.h -- the base of the context editors (the bottom pane: the selected block's editor). An
-// Editor is a Panel that lays out wtk controls (labels, drop-downs, numeric fields, check boxes,
+// Editor is a Panel that lays out uikit controls (labels, drop-downs, numeric fields, check boxes,
 // buttons, sliders) as a form -- rows of a label and its control, in columns that wrap when the
 // pane is full -- and, on its right, the hand-drawn pieces (a NoteGrid, a keyboard, the rings). The
 // controls' callbacks all go through one trampoline to the editor's control (tag); an edit is
@@ -226,7 +226,7 @@ public:
 		for (int i = 0; i < nW; i++)
 		{
 			int midi = lowC + 12 * (i / 7) + white[i % 7];
-			box (cv, i * kw, 0, kw - 1, height, 3, on (midi) ? litColour : 0xD6DAE0);
+			box (cv, i * kw, 0, kw - 1, height, 3, on (midi) ? litColour : 0xFFFFFF);
 			if (white[i % 7] == 0) { char b[8]; snprintf (b, sizeof b, "C%d", midi / 12 - 1); textC (cv, i * kw, height - 16, kw, 14, b, 0x505A64); }
 		}
 		static const int blackAfter[5] = { 0, 1, 3, 4, 5 };
@@ -241,7 +241,7 @@ public:
 	}
 };
 
-// ---- a row of tabs drawn as one pill (until wtk's SegmentedControl is used) ------------------------------------------------
+// ---- a row of tabs drawn as one pill (until uikit's SegmentedControl is used) ------------------------------------------------
 class Tabs : public Widget
 {
 public:

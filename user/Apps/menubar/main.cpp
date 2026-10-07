@@ -2,7 +2,7 @@
 // menubar -- the system menu bar across the top of the screen (macOS-style).
 //
 // It shows the ACTIVE app's name and its menus (kapi_get_menu, declared by the app with
-// wtk::Menu / kapi_set_menu), opens a drop-down on click and sends the chosen command
+// uikit::Menu / kapi_set_menu), opens a drop-down on click and sends the chosen command
 // back to the app (kapi_menu_command). The first menu is always the "Onyx" system menu:
 // Terminal / Control Panel / File Viewer / Task Manager, then one entry per app CATEGORY (the
 // "category" of each SD:/apps/<name>.app/app.txt; the "Shell" components, the Control Panel's
@@ -16,9 +16,16 @@
 // and applied at start); a click on the Wi-Fi icon opens the Wi-Fi menu (the wifimenu app: the
 // networks around, join one).
 //
+// A USB stick plugged in (kapi v93: mounted by the kernel as USB1:, USB2:, USB3:, or USB1P1:.. per partition
+// when it has several) shows a drive icon
+// left of the speaker; a click on it opens the USB box: each stick, its label and size, an Eject
+// button (Mount when it was ejected, Format... when it cannot be read), a click on its name opens it in
+// the File Viewer; "Disks..." opens the Disks app. The bar also says what happened through notifyd:
+// a stick connected, one that can be removed safely, one pulled out without an eject.
+//
 // A click on the time opens a calendar (the month; "Open Calendar" starts the Calendar app).
 //
-// The look: the modernised CDE (wtk/paint.h) -- a light bar in the theme's menu bar colour, the open title
+// The look: the modernised CDE (uikit/paint.h) -- a light bar in the theme's menu bar colour, the open title
 // in the accent, rounded drop-downs, anti-aliased on what lies below.
 //
 // The window is TOPMOST (always above the others, never active, never gets the keys)
@@ -30,14 +37,12 @@
 // another title to switch, click an item to run it; press on a title + release on an
 // item works too.
 //
-#include "kapi.h"
-#include "ft/wtkface.h"
-#include "applib.h"
-#include "launch.h"
-#include "wtk/wtk.h"
-#include "volume.h"
+#include "appkit/appkit.h"
+#include "fontkit/uikitface.h"
+#include "uikit/uikit.h"
+#include "systemkit/systemkit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define BAR_H		30			// the bar's height (its last row: a dark line)
 #define MAXMENUS	12
@@ -45,7 +50,7 @@ using namespace wtk;
 #define CLEAR		0xFF000000u		// a see-through pixel (the top byte: its transparency)
 #define CATCH		0xFE000000u		// ... almost: it still takes the clicks (a menu is open)
 
-// The palette: the theme's (wtk/theme.h), set once the theme is read.
+// The palette: the theme's (uikit/theme.h), set once the theme is read.
 static unsigned C_BARTXT, C_DROP, C_DIM, C_OUT;
 
 struct Item { int id; char label[40]; char key[12]; bool sep; int sub; };	// sub: a sub-menu (g_subs) or -1
@@ -60,11 +65,13 @@ static int g_sw = 1024, g_sh = 768, g_fw = 8, g_fh = 16;
 static unsigned *g_fb = 0;
 static Canvas g_cv;
 static int g_open = -1, g_hover = -1;	// open menu / hovered item index
+static int g_titleHot = -1;		// the title under the pointer while no menu is open (a lighter back)
 static bool g_dirty = true, g_pressedTitle = false;
 static int g_lastMin = -1;
 static int g_wifi = -1;			// last drawn Wi-Fi state (1 connected, 0 not)
 static int g_vol = 10, g_mute = 0;	// the master volume, as last read from the kernel
 static bool g_volOpen = false, g_volDrag = false;	// the volume box (and its slider held)
+static bool g_usbOpen = false;		// the USB box
 #define VW		236		// the volume box
 #define VH		92
 
@@ -124,7 +131,7 @@ static void scan_apps (void)
 }
 static bool is_shell (const char *name)				// a desktop part (not an "open window")
 {
-	static const char *const own[] = { "menubar", "panel", "shelf", "notifyd", "desktop", "shell", "applist", 0 };
+	static const char *const own[] = { "menubar", "notifyd", "desktop", 0 };
 	for (int i = 0; own[i]; i++) if (eq (own[i], name)) return true;
 	char path[80]; ax_app_path (path, sizeof path, name, ".app/app.txt");
 	return app_ini_load_path (path) >= 0 && eq (app_ini_get (0, "category", ""), "Shell");
@@ -187,7 +194,7 @@ static void build_onyx_menu (MenuDef &m)
 	add (-2, 0, -1);
 	// the categories: the usual ones first, then any other, "Other" last
 	g_nsubs = 0;
-	static const char *const order[] = { "Productivity", "Internet", "Graphics", "Games", "BASIC", "Demos", 0 };
+	static const char *const order[] = { "Productivity", "Internet", "Graphics", "Programming", "Games", "BASIC", "Demos", "System", 0 };
 	char cats[MAXSUBS][20]; int nc = 0;
 	for (int i = 0; order[i]; i++) scopy (cats[nc++], order[i], 20);
 	for (int a = 0; a < g_napps && nc < MAXSUBS - 2; a++)
@@ -265,7 +272,7 @@ static void layout_titles (void)
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		g_menus[i].x = x;
-		g_menus[i].w = wk_tw (g_menus[i].title, title_style (i)) + 16;
+		g_menus[i].w = uk_tw (g_menus[i].title, title_style (i)) + 16;
 		x += g_menus[i].w;
 	}
 }
@@ -274,7 +281,7 @@ static int drop_w (const MenuDef &m)
 	int w = 120;
 	for (int i = 0; i < m.count; i++)
 	{
-		int ww = wk_tw (m.items[i].label) + wk_tw (m.items[i].key) + 5 * g_fw + 20 + (m.items[i].sub >= 0 ? 2 * g_fw : 0);
+		int ww = uk_tw (m.items[i].label) + uk_tw (m.items[i].key) + 5 * g_fw + 20 + (m.items[i].sub >= 0 ? 2 * g_fw : 0);
 		if (ww > w) w = ww;
 	}
 	return w;
@@ -287,8 +294,8 @@ static int item_y (const MenuDef &m, int idx) { int yy = BAR_H + 5; for (int i =
 static int sub_w (const SubDef &sd)
 {
 	int w = 140;
-	for (int i = 0; i < sd.count; i++) { int ww = wk_tw (sd.items[i].label) + 28; if (ww > w) w = ww; }
-	if (sd.count == 0) w = wk_tw ("(no open window)") + 28;
+	for (int i = 0; i < sd.count; i++) { int ww = uk_tw (sd.items[i].label) + 28; if (ww > w) w = ww; }
+	if (sd.count == 0) w = uk_tw ("(no open window)") + 28;
 	return w;
 }
 static int sub_h (const SubDef &sd) { return 10 + (sd.count ? sd.count : 1) * (g_fh + 8); }
@@ -323,13 +330,16 @@ static int title_at (int x, int y)
 	return -1;
 }
 // the status icons on the right: the clock, the Wi-Fi state left of it, the speaker left of that
-static int clk_w (void) { return wk_tw ("00:00", 2); }
+static int clk_w (void) { return uk_tw ("00:00", 2); }
 static int clk_x (void) { return g_sw - clk_w () - 14; }
 static bool on_clock (int x, int y) { return y >= 0 && y < BAR_H && x >= clk_x () - 6 && x < g_sw; }
 static int wifi_x (void) { return clk_x () - 27; }
 static int spk_x (void) { return wifi_x () - 26; }
 static bool on_wifi (int x, int y) { return y >= 0 && y < BAR_H && x >= wifi_x () - 3 && x < wifi_x () + 20; }
 static bool on_speaker (int x, int y) { return y >= 0 && y < BAR_H && x >= spk_x () - 3 && x < spk_x () + 19; }
+static int usb_x (void) { return spk_x () - 26; }
+static bool usb_shown (void);
+static bool on_usb (int x, int y) { return usb_shown () && y >= 0 && y < BAR_H && x >= usb_x () - 3 && x < usb_x () + 19; }
 static void vol_box (int *x, int *y) { *x = spk_x () + 16 - VW; if (*x < 2) *x = 2; *y = BAR_H + 4; }
 static bool in_vol_box (int x, int y) { int bx, by; vol_box (&bx, &by); return x >= bx && x < bx + VW && y >= by && y < by + VH; }
 static void vol_track (int *x0, int *x1, int *y) { int bx, by; vol_box (&bx, &by); *x0 = bx + 20; *x1 = bx + VW - 20; *y = by + 44; }
@@ -411,8 +421,8 @@ static void draw_speaker (int x, int y)
 // blended over what lies below (the canvas is see-through there).
 static void panel (int x, int y, int w, int h)
 {
-	wk_rbox (g_cv, x, y, w, h, 8, wk_tone (C_DROP, 140), C_DROP);
-	wk_rline (g_cv, x, y, w, h, 8, C_OUT, 200);
+	uk_rbox (g_cv, x, y, w, h, 8, uk_tone (C_DROP, 140), C_DROP);
+	uk_rline (g_cv, x, y, w, h, 8, C_OUT, 200);
 }
 
 // The volume box: a panel under the speaker, a slider 0..10 and Mute.
@@ -420,18 +430,18 @@ static void draw_volume_box (void)
 {
 	int bx, by; vol_box (&bx, &by);
 	panel (bx, by, VW, VH);
-	wk_text_l (g_cv, bx + 14, by + 6, 24, "Volume", C_FIELD_TEXT, 2);
+	uk_text_l (g_cv, bx + 14, by + 6, 24, "Volume", C_FIELD_TEXT, 2);
 	char v[8]; int n = 0;
 	if (g_mute) { const char *m = "Muted"; while (m[n]) { v[n] = m[n]; n++; } }
 	else { if (g_vol >= 10) { v[n++] = '1'; v[n++] = '0'; } else v[n++] = (char) ('0' + g_vol); }
 	v[n] = 0;
-	wk_text_l (g_cv, bx + VW - 14 - wk_tw (v), by + 6, 24, v, C_DIM);
+	uk_text_l (g_cv, bx + VW - 14 - uk_tw (v), by + 6, 24, v, C_DIM);
 	int x0, x1, ty; vol_track (&x0, &x1, &ty);
 	int kx = x0 + (x1 - x0) * g_vol / 10;
 	for (int i = 0; i <= 10; i++) g_cv.fillRect (x0 + (x1 - x0) * i / 10, ty + 10, 1, 3, C_DIM);
-	wk_slider_mark (g_cv, x0 - 6, ty - 8, x1 - x0 + 12, 20, kx - x0 + 6, kx - 6, 12, g_mute ? WK_DISABLED : g_volDrag ? WK_PRESSED : WK_NORMAL);
-	wk_check_mark (g_cv, bx + 18, by + 65, 15, g_mute != 0, WK_NORMAL);
-	wk_text_l (g_cv, bx + 42, by + 65, 15, "Mute", C_FIELD_TEXT);
+	uk_slider_mark (g_cv, x0 - 6, ty - 8, x1 - x0 + 12, 20, kx - x0 + 6, kx - 6, 12, g_mute ? UK_DISABLED : g_volDrag ? UK_PRESSED : UK_NORMAL);
+	uk_check_mark (g_cv, bx + 18, by + 65, 15, g_mute != 0, UK_NORMAL);
+	uk_text_l (g_cv, bx + 42, by + 65, 15, "Mute", C_FIELD_TEXT);
 }
 
 // ---- the calendar (a click on the time) ----------------------------------------------------------
@@ -461,36 +471,222 @@ static void draw_calendar_box (void)
 	g_cal->draw ();
 	g_cv.putOther (g_cal->canvas, bx + 10, by + 10, false);
 	int x, y, w, h, lx, ly, lw, lh; cal_btn (&x, &y, &w, &h);
-	wk_framed (g_cv, x, y, w, h, C_BUTTON, g_calBtnDown ? WK_PRESSED : g_calBtnHot ? WK_HOT : WK_NORMAL, &lx, &ly, &lw, &lh);
-	wk_text_c (g_cv, lx, ly, lw, lh, "Open Calendar", C_BUTTON_TEXT);
+	uk_framed (g_cv, x, y, w, h, C_BUTTON, g_calBtnDown ? UK_PRESSED : g_calBtnHot ? UK_HOT : UK_NORMAL, &lx, &ly, &lw, &lh);
+	uk_text_c (g_cv, lx, ly, lw, lh, "Open Calendar", C_BUTTON_TEXT);
+}
+
+// ---- the USB sticks (kapi v93) ---------------------------------------------------------------------
+#define MAXVOL		16
+#define UW		320
+#define UROW		46
+#define UFOOT		40
+static struct kapi_volume g_vols[MAXVOL];
+static int g_nvols = 0;
+struct UsbSeen { char name[8]; unsigned gen; };
+static UsbSeen g_seen[MAXVOL]; static int g_nseen = -1;	// (-1: not read yet: no notification at the start)
+static int g_usbHot = -1, g_usbBtnDown = -1;			// the row / button pointed at, pressed
+static int g_usbBusy = -1;					// the row whose eject found files open (next: forced)
+static bool g_usbFootHot = false;
+
+static bool usb_listed (const struct kapi_volume &v)
+{
+	return (v.flags & KAPI_VF_REMOVABLE) && (v.state == KAPI_VST_MOUNTED || v.state == KAPI_VST_EJECTED || v.state == KAPI_VST_UNREADABLE);
+}
+static int usb_count (void) { int n = 0; for (int i = 0; i < g_nvols; i++) if (usb_listed (g_vols[i])) n++; return n; }
+static bool usb_shown (void) { return usb_count () > 0; }
+static int usb_index (int row)			// the row-th listed stick -> its index in g_vols
+{
+	for (int i = 0; i < g_nvols; i++) if (usb_listed (g_vols[i]) && row-- == 0) return i;
+	return -1;
+}
+static void usb_box (int *x, int *y, int *h) { *x = usb_x () + 16 - UW; if (*x < 2) *x = 2; *y = BAR_H + 4; *h = 10 + usb_count () * UROW + UFOOT; }
+static bool in_usb_box (int x, int y) { int bx, by, bh; usb_box (&bx, &by, &bh); return x >= bx && x < bx + UW && y >= by && y < by + bh; }
+static void usb_btn (int row, int *x, int *y, int *w, int *h) { int bx, by, bh; usb_box (&bx, &by, &bh); *w = 84; *h = 26; *x = bx + UW - 12 - *w; *y = by + 5 + row * UROW + (UROW - *h) / 2; }
+static int usb_row_at (int x, int y) { int bx, by, bh; usb_box (&bx, &by, &bh); if (x < bx || x >= bx + UW || y < by + 5) return -1; int r = (y - by - 5) / UROW; return r < usb_count () ? r : -1; }
+// A device with several partitions has a row each (USB1P1:, USB1P2:) and one button, on its first row:
+// Eject / Mount act on the whole device.
+static bool usb_has_btn (int row)
+{
+	if (row <= 0) return row == 0;
+	int i = usb_index (row), p = usb_index (row - 1);
+	return i < 0 || p < 0 || !eq (g_vols[i].device, g_vols[p].device);
+}
+static bool on_usb_btn (int row, int x, int y) { if (!usb_has_btn (row)) return false; int bx, by, bw, bh; usb_btn (row, &bx, &by, &bw, &bh); return x >= bx && x < bx + bw && y >= by && y < by + bh; }
+static void usb_foot (int *x, int *y, int *w, int *h) { int bx, by, bh; usb_box (&bx, &by, &bh); *w = 120; *h = 26; *x = bx + UW - 12 - *w; *y = by + bh - UFOOT + 6; }
+static bool on_usb_foot (int x, int y) { int bx, by, bw, bh; usb_foot (&bx, &by, &bw, &bh); return x >= bx && x < bx + bw && y >= by && y < by + bh; }
+
+static void vname (const struct kapi_volume &v, char *out)	// "USB2:"
+{
+	int n = 0; while (v.name[n] && n < 7) { out[n] = v.name[n]; n++; }
+	out[n++] = ':'; out[n] = 0;
+}
+static void size_text (unsigned long long b, char *out, int cap)	// "14.9 GB"
+{
+	const char *unit = " MB"; unsigned long long d = 1ull << 20;
+	if (b >= (1ull << 40)) { unit = " TB"; d = 1ull << 40; }
+	else if (b >= (1ull << 30)) { unit = " GB"; d = 1ull << 30; }
+	unsigned long long w = b / d, t = (b % d) * 10 / d;
+	char tmp[24]; int k = 0; do { tmp[k++] = (char) ('0' + w % 10); w /= 10; } while (w);
+	int n = 0; while (k && n < cap - 1) out[n++] = tmp[--k];
+	if (d > (1ull << 20) && b / d < 100 && n < cap - 3) { out[n++] = '.'; out[n++] = (char) ('0' + t); }
+	for (const char *u = unit; *u && n < cap - 1; u++) out[n++] = *u;
+	out[n] = 0;
+}
+static void cat (char *d, int cap, const char *s) { int n = 0; while (d[n]) n++; while (*s && n < cap - 1) d[n++] = *s++; d[n] = 0; }
+
+// The volumes read again (about once a second); what changed told through notifyd.
+static void usb_poll (void)
+{
+	int n = kapi_vol_list (g_vols, MAXVOL, 0);
+	g_nvols = n < 0 ? 0 : n > MAXVOL ? MAXVOL : n;
+	bool first = g_nseen < 0;
+	if (first) g_nseen = 0;
+	for (int i = 0; i < g_nvols; i++)
+	{
+		const struct kapi_volume &v = g_vols[i];
+		if (!(v.flags & KAPI_VF_REMOVABLE)) continue;
+		int k = 0;
+		while (k < g_nseen && !eq (g_seen[k].name, v.name)) k++;
+		if (k == g_nseen) { if (g_nseen >= MAXVOL) continue; scopy (g_seen[k].name, v.name, sizeof g_seen[k].name); g_seen[k].gen = 0; g_nseen++; if (first) g_seen[k].gen = v.gen; }
+		if (g_seen[k].gen == v.gen) continue;
+		g_seen[k].gen = v.gen;
+		g_dirty = true;
+		char vn[12]; vname (v, vn);
+		char msg[160]; msg[0] = 0;
+		char act[48]; act[0] = 0;
+		switch (v.state)
+		{
+		case KAPI_VST_MOUNTED:
+		{
+			char sz[24]; size_text (v.total, sz, sizeof sz);
+			cat (msg, sizeof msg, v.label[0] ? v.label : "A USB stick"); cat (msg, sizeof msg, " is connected as ");
+			cat (msg, sizeof msg, vn); cat (msg, sizeof msg, " ("); cat (msg, sizeof msg, sz); cat (msg, sizeof msg, ", ");
+			cat (msg, sizeof msg, v.type); cat (msg, sizeof msg, "). Click to open it.");
+			cat (act, sizeof act, "fileviewer "); cat (act, sizeof act, vn); cat (act, sizeof act, "/");
+			break;
+		}
+		case KAPI_VST_EJECTED:
+			cat (msg, sizeof msg, vn); cat (msg, sizeof msg, " can be removed safely.");
+			break;
+		case KAPI_VST_UNREADABLE:
+			cat (msg, sizeof msg, vn); cat (msg, sizeof msg, (v.flags & KAPI_VF_IOERR) ? " could not be read." : " has no FAT / exFAT file system. Click to format it.");
+			if (!(v.flags & KAPI_VF_IOERR)) { cat (act, sizeof act, "disks "); cat (act, sizeof act, vn); }
+			break;
+		case KAPI_VST_REMOVED:
+			if (v.flags & KAPI_VF_UNSAFE)
+			{
+				cat (msg, sizeof msg, vn);
+				cat (msg, sizeof msg, " was removed without being ejected: what was being written to it may be lost.");
+			}
+			break;
+		}
+		if (msg[0]) notify_action ("USB", msg, act[0] ? act : 0);
+	}
+	if (g_usbOpen && !usb_shown ()) { g_usbOpen = false; g_dirty = true; }
+}
+
+// The drive icon, 16 x 12 px: a stick (its body and its plug)
+static void draw_usb (int x, int y)
+{
+	unsigned c = g_usbOpen ? C_SEL_TEXT : C_BARTXT;
+	if (g_usbOpen) uk_hilite (g_cv, x - 4, 3, 24, BAR_H - 7, 5, true);
+	g_cv.fillRect (x, y + 3, 11, 7, c);				// the body
+	g_cv.fillRect (x + 11, y + 4, 4, 5, c);				// the plug
+	g_cv.fillRect (x + 12, y + 5, 2, 1, uk_tone (C_MENUBAR, 176));
+	g_cv.fillRect (x + 12, y + 7, 2, 1, uk_tone (C_MENUBAR, 176));
+	g_cv.fillRect (x + 2, y + 5, 3, 3, uk_tone (C_MENUBAR, 176));	// a light
+}
+
+static void draw_usb_box (void)
+{
+	int bx, by, bh; usb_box (&bx, &by, &bh);
+	panel (bx, by, UW, bh);
+	for (int r = 0; r < usb_count (); r++)
+	{
+		const struct kapi_volume &v = g_vols[usb_index (r)];
+		int ry = by + 5 + r * UROW;
+		if (r == g_usbHot) uk_hilite (g_cv, bx + 4, ry + 2, UW - 8 - 96, UROW - 4, 5, true);
+		char vn[12]; vname (v, vn);
+		char line[64]; line[0] = 0;
+		cat (line, sizeof line, vn); cat (line, sizeof line, "  "); cat (line, sizeof line, v.label[0] ? v.label : "USB stick");
+		unsigned ink = r == g_usbHot ? C_SEL_TEXT : C_FIELD_TEXT, dim = r == g_usbHot ? C_SEL_TEXT : C_DIM;
+		uk_text_l (g_cv, bx + 14, ry + 4, g_fh + 2, line, ink, 2);
+		char sub[80]; sub[0] = 0;
+		if (v.state == KAPI_VST_MOUNTED)
+		{
+			char sz[24]; size_text (v.total, sz, sizeof sz);
+			cat (sub, sizeof sub, sz); cat (sub, sizeof sub, " "); cat (sub, sizeof sub, v.type);
+			if (r == g_usbBusy) cat (sub, sizeof sub, " - in use: Eject again to force");
+		}
+		else if (v.state == KAPI_VST_EJECTED) cat (sub, sizeof sub, "Ejected: it can be removed");
+		else cat (sub, sizeof sub, (v.flags & KAPI_VF_IOERR) ? "Cannot be read" : "Not formatted");
+		uk_text_l (g_cv, bx + 14, ry + 6 + g_fh, g_fh + 2, sub, dim);
+		if (!usb_has_btn (r)) continue;
+		int x, y, w, h, lx, ly, lw, lh; usb_btn (r, &x, &y, &w, &h);
+		uk_framed (g_cv, x, y, w, h, C_BUTTON, g_usbBtnDown == r ? UK_PRESSED : UK_NORMAL, &lx, &ly, &lw, &lh);
+		uk_text_c (g_cv, lx, ly, lw, lh, v.state == KAPI_VST_MOUNTED ? "Eject" : v.state == KAPI_VST_EJECTED ? "Mount" : "Format...", C_BUTTON_TEXT);
+	}
+	int x, y, w, h, lx, ly, lw, lh; usb_foot (&x, &y, &w, &h);
+	uk_framed (g_cv, x, y, w, h, C_BUTTON, g_usbFootHot ? UK_HOT : UK_NORMAL, &lx, &ly, &lw, &lh);
+	uk_text_c (g_cv, lx, ly, lw, lh, "Disks...", C_BUTTON_TEXT);
+}
+
+static void usb_action (int row)		// the row's button
+{
+	int i = usb_index (row);
+	if (i < 0) return;
+	const struct kapi_volume &v = g_vols[i];
+	char vn[12]; vname (v, vn);
+	if (v.state == KAPI_VST_MOUNTED)
+	{
+		int r = kapi_vol_eject (vn, g_usbBusy == row ? KAPI_EJECT_FORCE : 0);
+		if (r == -KAPI_EBUSY) { g_usbBusy = row; g_dirty = true; return; }
+		g_usbBusy = -1;
+		if (r != 0) notify ("USB", "The stick could not be ejected.");
+	}
+	else if (v.state == KAPI_VST_EJECTED)
+	{
+		if (kapi_vol_mount (vn) != 0) notify ("USB", "The stick could not be mounted again.");
+	}
+	else
+	{
+		g_usbOpen = false;
+		if (kapi_raise_app ("disks") == 0) lx_launch ("disks", vn);
+	}
+	usb_poll ();
+	g_dirty = true;
 }
 
 static void draw (void)
 {
-	bool full = g_open >= 0 || g_volOpen || g_calOpen;
+	bool full = g_open >= 0 || g_volOpen || g_calOpen || g_usbOpen;
 	int h = full ? g_sh : BAR_H;
 	if (full) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, CATCH);	// (catches a click elsewhere)
-	wk_paint_alpha (true);
+	uk_paint_alpha (true);
 	// the bar: a light gradient of the face, a light line on top, a darker one below
-	wk_rbox (g_cv, 0, 0, g_sw, BAR_H - 1, 0, wk_tone (C_MENUBAR, 196), wk_tone (C_MENUBAR, 150));
-	for (int x = 0; x < g_sw; x++) { wk_blend_px (g_cv, x, 0, 0x00FFFFFF, 120); g_cv.pixel (x, BAR_H - 1, C_OUT); }
+	uk_rbox (g_cv, 0, 0, g_sw, BAR_H - 1, 0, uk_tone (C_MENUBAR, 196), uk_tone (C_MENUBAR, 150));
+	for (int x = 0; x < g_sw; x++) { uk_blend_px (g_cv, x, 0, 0x00FFFFFF, 120); g_cv.pixel (x, BAR_H - 1, C_OUT); }
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		const MenuDef &m = g_menus[i];
-		if (i == g_open) wk_hilite (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, true);
-		wk_text_l (g_cv, m.x + 8, 0, BAR_H - 1, m.title, i == g_open ? C_SEL_TEXT : C_BARTXT, title_style (i));
+		if (i == g_open) uk_hilite (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, true);
+		else if (i == g_titleHot)			// under the pointer: a shade lighter than the bar
+			uk_rbox (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
+		uk_text_l (g_cv, m.x + 8, 0, BAR_H - 1, m.title, i == g_open ? C_SEL_TEXT : C_BARTXT, title_style (i));
 	}
 	int hh = 0, mm = 0;
 	kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
 	char clk[6] = { (char) ('0' + hh / 10), (char) ('0' + hh % 10), ':', (char) ('0' + mm / 10), (char) ('0' + mm % 10), 0 };
 	int clkX = clk_x ();
-	if (g_calOpen) wk_hilite (g_cv, clkX - 6, 3, clk_w () + 12, BAR_H - 7, 5, true);
-	wk_text_l (g_cv, clkX, 0, BAR_H - 1, clk, g_calOpen ? C_SEL_TEXT : C_BARTXT, 2);
+	if (g_calOpen) uk_hilite (g_cv, clkX - 6, 3, clk_w () + 12, BAR_H - 7, 5, true);
+	uk_text_l (g_cv, clkX, 0, BAR_H - 1, clk, g_calOpen ? C_SEL_TEXT : C_BARTXT, 2);
 	g_lastMin = mm;
 	if (g_wifi < 0) g_wifi = kapi_net_status (0, 0) ? 1 : 0;
 	draw_wifi (wifi_x (), (BAR_H - 1 - 12) / 2, g_wifi == 1);
 	draw_speaker (spk_x (), (BAR_H - 1 - 12) / 2);
+	if (usb_shown ()) draw_usb (usb_x (), (BAR_H - 1 - 12) / 2);
 	if (g_volOpen) draw_volume_box ();
+	if (g_usbOpen) draw_usb_box ();
 	if (g_calOpen) draw_calendar_box ();
 
 	if (g_open >= 0)
@@ -503,14 +699,14 @@ static void draw (void)
 		{
 			const Item &it = m.items[i];
 			int ih = item_h (it);
-			if (it.sep) wk_etch_h (g_cv, dx + 10, yy + ih / 2 - 1, dw - 20, C_DROP);
+			if (it.sep) uk_etch_h (g_cv, dx + 10, yy + ih / 2 - 1, dw - 20, C_DROP);
 			else
 			{
 				bool hot = i == g_hover || (g_sub >= 0 && i == g_subOwner);
-				if (hot) wk_hilite (g_cv, dx + 4, yy, dw - 8, ih, 5, true);
-				wk_text_l (g_cv, dx + 14, yy, ih, it.label, hot ? C_SEL_TEXT : C_FIELD_TEXT);
-				if (it.key[0]) wk_text_l (g_cv, dx + dw - 14 - wk_tw (it.key), yy, ih, it.key, hot ? C_SEL_TEXT : C_DIM);
-				if (it.sub >= 0) wk_glyph (g_cv, WKG_CHEV_RIGHT, dx + dw - 16, yy + ih / 2, 8, hot ? C_SEL_TEXT : C_FIELD_TEXT);
+				if (hot) uk_hilite (g_cv, dx + 4, yy, dw - 8, ih, 5, true);
+				uk_text_l (g_cv, dx + 14, yy, ih, it.label, hot ? C_SEL_TEXT : C_FIELD_TEXT);
+				if (it.key[0]) uk_text_l (g_cv, dx + dw - 14 - uk_tw (it.key), yy, ih, it.key, hot ? C_SEL_TEXT : C_DIM);
+				if (it.sub >= 0) uk_glyph (g_cv, WKG_CHEV_RIGHT, dx + dw - 16, yy + ih / 2, 8, hot ? C_SEL_TEXT : C_FIELD_TEXT);
 			}
 			yy += ih;
 		}
@@ -520,16 +716,16 @@ static void draw (void)
 			int sx, sy, sw, sh; sub_rect (&sx, &sy, &sw, &sh);
 			panel (sx, sy, sw, sh);
 			int ih = g_fh + 8;
-			if (sd.count == 0) wk_text_l (g_cv, sx + 14, sy + 5, ih, sd.windows ? "(no open window)" : "(empty)", C_DIM);
+			if (sd.count == 0) uk_text_l (g_cv, sx + 14, sy + 5, ih, sd.windows ? "(no open window)" : "(empty)", C_DIM);
 			for (int i = 0; i < sd.count; i++)
 			{
 				int iy = sy + 5 + i * ih;
-				if (i == g_subHover) wk_hilite (g_cv, sx + 4, iy, sw - 8, ih, 5, true);
-				wk_text_l (g_cv, sx + 14, iy, ih, sd.items[i].label, i == g_subHover ? C_SEL_TEXT : C_FIELD_TEXT);
+				if (i == g_subHover) uk_hilite (g_cv, sx + 4, iy, sw - 8, ih, 5, true);
+				uk_text_l (g_cv, sx + 14, iy, ih, sd.items[i].label, i == g_subHover ? C_SEL_TEXT : C_FIELD_TEXT);
 			}
 		}
 	}
-	wk_paint_alpha (false);
+	uk_paint_alpha (false);
 	kapi_resize_window (g_sw, h);
 	kapi_present ();
 	g_dirty = false;
@@ -553,7 +749,7 @@ static void run_item (const Item &it)
 
 static void open_menu (int i)
 {
-	g_volOpen = false; g_calOpen = false;
+	g_volOpen = false; g_calOpen = false; g_usbOpen = false;
 	if (i == 0) build_onyx_menu (g_menus[0]);		// the apps as they are now
 	g_open = i; g_hover = -1; g_sub = -1; g_subOwner = -1; g_subHover = -1; g_dirty = true;
 }
@@ -617,9 +813,36 @@ static void ptr (unsigned long, int ev, long v)
 			break;
 		}
 		if (g_calOpen) { g_calOpen = false; g_dirty = true; if (t < 0) break; }	// a click elsewhere
+		if (g_usbOpen && in_usb_box (x, y))			// the USB box: a button, a stick's name
+		{
+			int r = usb_row_at (x, y);
+			if (r >= 0 && on_usb_btn (r, x, y)) g_usbBtnDown = r;
+			else if (on_usb_foot (x, y)) { g_usbOpen = false; if (kapi_raise_app ("disks") == 0) lx_launch ("disks", 0); }
+			else if (r >= 0)
+			{
+				const struct kapi_volume &v = g_vols[usb_index (r)];
+				if (v.state == KAPI_VST_MOUNTED)
+				{
+					char a[16]; vname (v, a); cat (a, sizeof a, "/");
+					g_usbOpen = false;
+					lx_launch ("fileviewer", a);
+				}
+			}
+			g_dirty = true;
+			break;
+		}
+		if (on_usb (x, y))					// the USB box, open / closed
+		{
+			if (g_open >= 0) close_menu ();
+			g_volOpen = false;
+			g_usbOpen = !g_usbOpen; g_usbBusy = -1; g_dirty = true;
+			break;
+		}
+		if (g_usbOpen) { g_usbOpen = false; g_dirty = true; if (t < 0) break; }
 		if (on_speaker (x, y))					// the volume box, open / closed
 		{
 			if (g_open >= 0) close_menu ();
+			g_usbOpen = false;
 			g_volOpen = !g_volOpen; g_dirty = true;
 			break;
 		}
@@ -659,6 +882,12 @@ static void ptr (unsigned long, int ev, long v)
 			break;
 		}
 		if (g_volDrag) { g_volDrag = false; volume_save (g_vol, g_mute); break; }
+		if (g_usbBtnDown >= 0)
+		{
+			int r = g_usbBtnDown; g_usbBtnDown = -1; g_dirty = true;
+			if (on_usb_btn (r, x, y)) usb_action (r);
+			break;
+		}
 		if (g_open >= 0)
 		{
 			int si = sub_item_at (x, y);
@@ -677,6 +906,14 @@ static void ptr (unsigned long, int ev, long v)
 			break;
 		}
 		if (g_volDrag) { vol_set_at (x); break; }
+		if (g_usbOpen)
+		{
+			int r = usb_row_at (x, y);
+			if (r >= 0 && on_usb_btn (r, x, y)) r = -1;		// (the button: not the row)
+			bool f = on_usb_foot (x, y);
+			if (r != g_usbHot || f != g_usbFootHot) { g_usbHot = r; g_usbFootHot = f; g_dirty = true; }
+			break;
+		}
 		if (g_open >= 0)
 		{
 			if (t >= 0 && t != g_open) open_menu (t);		// slide across titles
@@ -691,9 +928,11 @@ static void ptr (unsigned long, int ev, long v)
 			if (i >= 0 && g_menus[g_open].items[i].sub >= 0) open_sub (i);
 			else if (i >= 0 && g_sub >= 0) { g_sub = -1; g_subOwner = -1; g_dirty = true; }
 		}
+		if (t != g_titleHot) { g_titleHot = t; g_dirty = true; }	// the title pointed at
 		break;
 	case GUI_EVENT_PTR_LEAVE:
 		if (g_hover != -1) { g_hover = -1; g_dirty = true; }
+		if (g_titleHot != -1) { g_titleHot = -1; g_dirty = true; }
 		break;
 	case GUI_EVENT_PTR_WHEEL:				// the wheel over the calendar: the months
 		if (g_calOpen && in_cal_box (x, y)) { g_cal->handleMouse (5, 40, 0, 0, 0, GUI_PTR_WHEEL (v)); g_dirty = true; }
@@ -712,12 +951,12 @@ int main (void)
 	if (g_fb == 0) return 1;
 	kapi_resize_window (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
 	g_cv.adopt (g_fb, g_sw, g_sh);
-	wtk::init ();					// the fonts, the theme: the palette
-	if (ft_wtk_install ("DejaVu Sans", 13))		// FreeType's anti-aliased text (else the bitmap font)
-		g_fh = wk_fh ();
-	C_BARTXT = wk_ink_on (wk_tone (C_MENUBAR, 176));
-	C_BARDIM = wk_mix (wk_tone (C_MENUBAR, 176), C_BARTXT, 110);
-	C_DROP = C_FIELD; C_DIM = wk_mix (C_FIELD, C_FIELD_TEXT, 130); C_OUT = wk_tone (C_MENUBAR, 70);
+	uikit::init ();					// the fonts, the theme: the palette
+	if (ft_uikit_install ("DejaVu Sans", 13))		// FreeType's anti-aliased text (else the bitmap font)
+		g_fh = uk_fh ();
+	C_BARTXT = uk_ink_on (uk_tone (C_MENUBAR, 176));
+	C_BARDIM = uk_mix (uk_tone (C_MENUBAR, 176), C_BARTXT, 110);
+	C_DROP = C_FIELD; C_DIM = uk_mix (C_FIELD, C_FIELD_TEXT, 130); C_OUT = uk_tone (C_MENUBAR, 70);
 	{ int yy = 2026, mo = 1, dd = 1; kapi_get_datetime (&yy, &mo, &dd, 0, 0, 0); g_cal = new CalCard (yy, mo, dd); }
 	kapi_set_pointer_handler (ptr);
 	volume_restore ();						// the saved volume (SD:/etc/sound.ini)
@@ -733,7 +972,7 @@ int main (void)
 		{
 			int w = g_newW, h = g_newH, stride = w;
 			g_newW = 0;
-			g_volOpen = false; g_calOpen = false; close_menu ();
+			g_volOpen = false; g_calOpen = false; g_usbOpen = false; close_menu ();
 			unsigned *fb = kapi_resize_window2 (w, h, &stride);	// (the canvas: the whole screen, for the drop-downs)
 			if (fb != 0) { g_fb = fb; g_sw = w; g_sh = h; g_cv.adopt (fb, w, h, stride); }
 			kapi_resize_window (g_sw, BAR_H);
@@ -759,11 +998,12 @@ int main (void)
 			lastNet = now;
 			int w = kapi_net_status (0, 0) ? 1 : 0;
 			if (w != g_wifi) { g_wifi = w; g_dirty = true; }
+			usb_poll ();						// (v93) the USB sticks
 			int r = kapi_sound_volume (-1, -1);			// (the volume command may change it)
 			if ((r & 0xFF) != g_vol || ((r & 0x100) ? 1 : 0) != g_mute) { g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; g_dirty = true; }
 		}
 		if (g_calOpen && !g_cal->valid) g_dirty = true;		// (the calendar changed its month)
 		if (g_dirty) draw ();
-		msleep (g_open >= 0 || g_volOpen || g_calOpen ? 16 : 50);
+		msleep (g_open >= 0 || g_volOpen || g_calOpen || g_usbOpen ? 16 : 50);
 	}
 }

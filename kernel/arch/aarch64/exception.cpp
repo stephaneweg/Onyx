@@ -12,8 +12,10 @@
 #include <kern/trapframe.h>
 #include <kern/appcore.h>
 #include <kern/uaccess.h>		// UAccessFixup
+#include <kern/vm.h>			// VmKernelFault (v75)
 #include <kern/crashlog.h>
 #include <kern/thread.h>		// WordWaitTick (v68)
+#include <kern/iowait.h>		// IoWaitTick (v75)
 #include <circle/multicore.h>
 #include <kern/gui/gimage.h>
 #include <circle/sched/scheduler.h>
@@ -182,6 +184,13 @@ void SyncHandlerEL1 (TTrapFrame *pFrame)
 		return;
 	}
 
+	// (v75) The safety net: kernel code touched an unfilled page of the current app's lazy
+	// region outside the helpers (kern/vm.h) -- filled, logged once, the access retried.
+	if (VmKernelFault (pFrame, ReadESR (), ReadFAR ()))
+	{
+		return;
+	}
+
 	// Any other synchronous exception at EL1 is a kernel bug (an app's own faults are taken at
 	// EL0: sys/el0.cpp kills the app).
 	DumpAndHalt (EXCEPTION_SYNCHRONOUS, pFrame);
@@ -228,6 +237,7 @@ void PeriodicTick (void)
 	if (CScheduler::IsActive ())
 	{
 		WordWaitTick ();			// (v68) words changed without a wake (app cores)
+		IoWaitTick ();				// (v75) the readiness wait's tick hooks
 		CScheduler::Get ()->OnTimerTick ();	// (after: a "real time" task it woke preempts)
 	}
 }

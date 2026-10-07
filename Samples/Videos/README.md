@@ -26,5 +26,5 @@ https://media.w3.org/2010/05/sintel/trailer.mp4, converted with ffmpeg.
 | `Sintel - MPEG-2 MP2 360p.mpg` | MPEG-PS | MPEG-2 / MP2 | FFmpeg (its demuxer too) |
 | `Sintel - Theora Vorbis 360p.ogv` | Ogg | Theora / Vorbis | FFmpeg (its demuxer too) |
 
-Each was checked with `user/av` on the PC (tools/tests/av/fftest.c): every frame and the 52 s of sound decoded,
+Each was checked with `user/Libs/av` on the PC (tools/tests/av/fftest.c): every frame and the 52 s of sound decoded,
 played in the file mode, a seek half way.

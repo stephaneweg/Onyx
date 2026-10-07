@@ -1,5 +1,5 @@
 //
-// nestest -- the Onyx NES core (user/nes) on the PC.
+// nestest -- the Onyx NES core (user/Emulators/nes) on the PC.
 //   nestest cpu <nestest.nes> <nestest.log>   the CPU against nestest's reference trace
 //                                             (automation mode at $C000: registers + cycles)
 //   nestest run <rom> <seconds> [out.ppm] [keys]

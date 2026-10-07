@@ -1,0 +1,20 @@
+# Sound's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the source's text, exactly (spaces included); a key "context|English" is a TRC's.
+Sound	Son
+Output	Sortie
+Play on	Lire sur
+Automatic	Automatique
+Headphone jack (3.5 mm)	Prise casque (3,5 mm)
+USB headset / DAC	Casque / DAC USB
+HDMI (the screen)	HDMI (l'écran)
+Playing on: 	Lecture sur : 
+Not playing yet (the sound starts with the first app that plays; a USB device must be plugged in).	Pas encore de son : il démarre avec la première app qui joue (appareil USB à brancher).
+Not playing yet: the sound starts with the first app that plays.	Pas encore de son : il démarre avec la première app qui joue.
+Volume	Volume
+Master	Général
+Mute	Muet
+Play a test sound	Jouer un son de test
+Programs playing	Programmes en lecture
+No program is playing.	Aucun programme ne joue de son.
+This kernel has no mixer.	Ce noyau n'a pas de mixeur.
+Kept in SD:/etc/sound.ini and mixer.ini. The menu bar's speaker changes the master too.	Conservé dans SD:/etc/sound.ini et mixer.ini. Le haut-parleur de la barre de menus agit aussi.

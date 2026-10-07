@@ -5,7 +5,7 @@
 //
 #include "model.h"
 #include "theory.h"
-#include "../../../json.hpp"
+#include "json.hpp"
 #include <stdio.h>
 #include <string.h>
 

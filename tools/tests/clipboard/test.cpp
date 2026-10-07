@@ -1,12 +1,12 @@
 //
 // tools/tests/clipboard/test.cpp -- the shared clipboard on the PC: clipd (user/Apps/clipd, its loop as
 // a thread), a stand-in notifyd (a thread: the notifications counted) and an app (this main thread)
-// using user/clipboard.h, over the desktop simulator's in-process mailboxes (SIM_IPC=1) and RAM:
+// using user/Kits/uikit/clipboard.h, over the desktop simulator's in-process mailboxes (SIM_IPC=1) and RAM:
 // (SIM_RAM). Run by tools/tests/run_clipboard_test.sh.
 //
 #define CLIPD_NO_MAIN
 #include "../../../user/Apps/clipd/main.cpp"
-#include "clipboard.h"
+#include "systemkit/systemkit.h"
 #include <pthread.h>
 #include <unistd.h>
 #include <string>

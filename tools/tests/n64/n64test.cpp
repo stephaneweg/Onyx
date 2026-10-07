@@ -1,5 +1,5 @@
 //
-// n64test -- the Onyx N64 core (user/n64) on the PC.
+// n64test -- the Onyx N64 core (user/Emulators/n64) on the PC.
 //   n64test <rom> <frames> [out.ppm]
 //       runs a ROM without a screen and saves the last picture (the VI's framebuffer).
 //   N64_TRACE=n: the last n instructions (pc) when it stops

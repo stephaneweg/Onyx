@@ -1,13 +1,14 @@
 # Protected mode for apps (EL0 + system calls) — design note
 
 > **Status (2026-10-02): done — every app runs at EL0, the EL1 ("legacy") mode is removed
-> (branch `ccr-182e4cf6-fxr778`, kapi v74).** Steps 0–5 were tried on the Pi (v73, opt-in): all
-> passed; then the legacy path was removed, the ID register reads emulated, the system calls
-> counted per process (`sysstat`), every app audited (`tools/el0scan.sh`) and rebuilt. What was
-> done: [§7](#7-implementation-2026-10-02); the reference is docs/02 §6. Below, the original study
-> (2026-09-30, kapi v68, 189 entries).
+> (kapi v74; merged into `main`, published as the package `onyx` 2026.10.21).** Steps 0–5 were
+> tried on the Pi (v73, opt-in): all passed; then the legacy path was removed, the ID register
+> reads emulated, the system calls counted per process (`sysstat`), every app audited
+> (`tools/el0scan.sh`) and rebuilt; v74 tried on the Pi: every test passes. What was done:
+> [§7](#7-implementation-2026-10-02); the reference is docs/02 §6. §1–§6 below are the original
+> study (2026-09-30, kapi v68, 189 entries): they describe the system **before** the work.
 
-## 1. Where things stand
+## 1. Where things stood (2026-09-30, before the work)
 
 - Apps run at **EL1t**, in their own `TTBR0`/ASID, and call the kernel through the `kapi` table
   mapped read-only at `KAPI_TABLE_VA` (14 GB): a plain indirect call, no trap
@@ -141,10 +142,10 @@ in the kernel → add an exception **fixup table** (faulting PC → recovery PC 
 
 | Use | Where | Fix |
 |---|---|---|
-| `mrs mpidr_el1` (current core) | `user/kapi.h:465`, `user/libc/onyx_syscalls.c:110` | read `TPIDRRO_EL0`, set per core by the kernel |
+| `mrs mpidr_el1` (current core) | `user/kapi.h:465`, `user/Runtime/libc/onyx_syscalls.c:110` | read `TPIDRRO_EL0`, set per core by the kernel |
 | `cntpct_el0`, `cntvct_el0`, `cntfrq_el0` | many apps | `CNTKCTL_EL1.EL0PCTEN/EL0VCTEN` |
-| PMU (`pmcr_el0`, `pmevcntr*`, `pmccntr_el0`) | `user/gc/gc.h` | `PMUSERENR_EL0.EN` (or drop) |
-| `msr daifset` | `user/bin/hangtest.c` | intentionally breaks (it is a hang test) |
+| PMU (`pmcr_el0`, `pmevcntr*`, `pmccntr_el0`) | `user/Emulators/gc/gc.h` | `PMUSERENR_EL0.EN` (or drop) |
+| `msr daifset` | `user/BinUtils/hangtest.c` | intentionally breaks (it is a hang test) |
 | `dmb`, `dsb`, `sev`, `wfe`, `fpcr` | various | fine at EL0 |
 
 The two `mpidr` sites are inline → those apps need a rebuild; everything else is transparent.
@@ -178,8 +179,8 @@ cores. It gives much of gain 1, none of gains 2–3.
 
 ## 7. Implementation (2026-10-02)
 
-Done in four parts (each built, reviewed, not run on hardware: there is no Pi 4 emulator here).
-The reference description is [docs/02 §6](02-KERNEL-INTERNALS.md#6-exceptions-and-vectors).
+Done in four parts (each built and reviewed here — there is no Pi 4 emulator — then tried on the
+Pi by the user: v73 opt-in, then v74). The reference description is [docs/02 §6](02-KERNEL-INTERNALS.md#6-exceptions-and-vectors).
 
 | Step | What | Where |
 |---|---|---|
@@ -208,5 +209,11 @@ dormant syscall code; added: the ID register emulation, `proc_stats` / `sysstat`
 
 **Still open:** the powerful kapis (§5) need a permission model; the GPU can reach physical memory
 through shaders; the crash record does not capture EL0 kills (kmsg only); the system-call cost is
-not measured; TPIDR_EL0 is not saved per thread (needed for TLS, the POSIX layer). **Next:** the v74 test on
-the Pi; then demand paging (`mmap`/`munmap`/`mprotect`), the first brick of a POSIX layer.
+not measured. (Corrected 2026-10-02: `TPIDR_EL0` **is** saved per task -- Circle's `TaskSwitch`
+saves and restores it, and an EL0 preemption goes through it; what was missing, an initial value for
+a new thread and for an app-core job, came with kapi v75: `thread_create_ex`'s `tls`, the caller's
+value for `core_run`. docs/POSIX-PLAN.md §0.1, docs/02 §8 "v75: memory".) The v74 test
+on the Pi passed (2026-10-02: el0test, faulttest, threads, app cores, emulators, Jet, media, office,
+network, BASIC, kills under load); the GameCube emulator, and perhaps Jet, run a little slower
+(leads in docs/HANDOFF.md: the user-side `memcpy` for small copies first). **Next:** that speed;
+then demand paging (`mmap`/`munmap`/`mprotect`), the first brick of a POSIX layer.

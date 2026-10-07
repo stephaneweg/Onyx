@@ -8,11 +8,11 @@
 // it went through at least the required number of pieces. F makes the water flow fast
 // (double points). Walls appear from round 3; the water gets faster every round.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
-#include "game.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
+#include "../games/game.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define GW	10
 #define GH	7
@@ -33,23 +33,23 @@ static int opposite (int d) { return d == N ? S : d == S ? N : d == E ? Wd : E; 
 static int dx_of (int d) { return d == E ? 1 : d == Wd ? -1 : 0; }
 static int dy_of (int d) { return d == S ? 1 : d == N ? -1 : 0; }
 
-// The theme's pieces (wtk/paint.h) over the board: a message box (a title strip, the face, an
+// The theme's pieces (uikit/paint.h) over the board: a message box (a title strip, the face, an
 // outline), a notice (a floating panel of the face).
 static void msgbox (Canvas &c, int cx, int cy, const char *title, const char *text)
 {
-	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	int th = uk_fh () + 10, w = uk_text_w (text) + 56, h = th + uk_fh () + 24;
 	int x = cx - w / 2, y = cy - h / 2;
-	wk_rbox (c, x, y, w, h, 8, C_FACE, C_FACE);
-	wk_title_strip (c, x + 1, y + 1, w - 2, th, title, 7);
-	wk_rline (c, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
-	wk_text_c (c, x, y + th, w, h - th, text, C_TEXT);
+	uk_rbox (c, x, y, w, h, 8, C_FACE, C_FACE);
+	uk_title_strip (c, x + 1, y + 1, w - 2, th, title, 7);
+	uk_rline (c, x, y, w, h, 8, UK_OUTLINE == 2 ? 0 : uk_tone (C_FRAME_ACTIVE, 44), 255);
+	uk_text_c (c, x, y + th, w, h - th, text, C_TEXT);
 }
 static void notice (Canvas &c, int cx, int cy, const char *s)
 {
-	int w = wk_text_w (s, 2) + 48, h = wk_fh () + 20, x = cx - w / 2, y = cy - h / 2;
-	wk_rbox (c, x, y, w, h, 8, wk_tone (C_FACE, 170), wk_tone (C_FACE, 126));
-	wk_rline (c, x, y, w, h, 8, wk_tone (C_FACE, 70), 220);
-	wk_text_c (c, x, y, w, h, s, C_TEXT, 2);
+	int w = uk_text_w (s, 2) + 48, h = uk_fh () + 20, x = cx - w / 2, y = cy - h / 2;
+	uk_rbox (c, x, y, w, h, 8, uk_tone (C_FACE, 170), uk_tone (C_FACE, 126));
+	uk_rline (c, x, y, w, h, 8, uk_tone (C_FACE, 70), 220);
+	uk_text_c (c, x, y, w, h, s, C_TEXT, 2);
 }
 
 struct Tile
@@ -284,9 +284,9 @@ public:
 	{
 		bg.alloc (W, H);
 		bg.clear (C_BG);
-		wk_sunken (bg, QX - 4, BY - 4, QW + 8, NQ * QW + 8, 5, 0x00181C20);
+		uk_sunken (bg, QX - 4, BY - 4, QW + 8, NQ * QW + 8, 5, 0x00181C20);
 		gtext (bg, QX + (QW - gtext_w ("next")) / 2, BY + NQ * QW + 8, "next", C_TEXT);
-		wk_sunken (bg, BX - 3, BY - 3, GW * CELL + 6, GH * CELL + 6, 5, 0x00181C20);
+		uk_sunken (bg, BX - 3, BY - 3, GW * CELL + 6, GH * CELL + 6, 5, 0x00181C20);
 		bgDone = true;
 	}
 	void paint () override
@@ -298,7 +298,7 @@ public:
 		s[0] = 0; gcat (s, "Score "); gcatn (s, score); gtext (c, 10, 6, s, C_TEXT, 1, 2);
 		s[0] = 0; gcat (s, "Round "); gcatn (s, level + 1); gtext (c, BX + 120, 6, s, C_TEXT);
 		s[0] = 0; gcat (s, "Pipes "); gcatn (s, done); gcat (s, " / "); gcatn (s, need);
-		gtext (c, BX + 240, 6, s, done >= need ? wk_mix (C_TEXT, 0x0030A050, 160) : C_TEXT);
+		gtext (c, BX + 240, 6, s, done >= need ? uk_mix (C_TEXT, 0x0030A050, 160) : C_TEXT);
 		// queue
 		for (int i = 0; i < NQ; i++)
 		{
@@ -312,8 +312,8 @@ public:
 		{
 			int total = 22000 - level * 1500; if (total < 8000) total = 8000;
 			int hbar = (int) ((long) (GH * CELL) * countdown / total);
-			wk_sunken (c, BX - 15, BY - 3, 10, GH * CELL + 6, 4, 0x00181C20);
-			if (hbar > 0) wk_rbox (c, BX - 14, BY + GH * CELL - hbar, 8, hbar, 3, 0x0060B4FF, 0x003C96F0);
+			uk_sunken (c, BX - 15, BY - 3, 10, GH * CELL + 6, 4, 0x00181C20);
+			if (hbar > 0) uk_rbox (c, BX - 14, BY + GH * CELL - hbar, 8, hbar, 3, 0x0060B4FF, 0x003C96F0);
 		}
 		// board
 		for (int y = 0; y < GH; y++) for (int x = 0; x < GW; x++)
@@ -371,7 +371,7 @@ int main (void)
 	root.view = g_game;
 	static Menu menu;
 	menu.menu ("Game");
-	menu.item ("New Game",       "^N", WK_CTRL ('N'), on_new);
+	menu.item ("New Game",       "^N", UK_CTRL ('N'), on_new);
 	menu.item ("Pause",          "P",  0,             on_pause);
 	menu.item ("Sound On / Off", "",   0,             on_sound);
 	menu.publish ();

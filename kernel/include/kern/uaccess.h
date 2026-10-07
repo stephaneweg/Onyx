@@ -12,18 +12,21 @@
 //    (no p + n).
 //
 //  - The PROBE (UserReadable / UserWritable): the range check, then every 64 KB page of the
-//    range translated by the MMU (AT S1E1R / S1E1W, PAR_EL1) -- mapped, and writable for a
-//    write. Used where the kernel works in place in the app's memory (a file read straight into
-//    its buffer, a frame rendered into its pixels). An app's user pages are never unmapped
-//    while it lives (sbrk only lowers the break, surfaces / the code arena / canvases stay
-//    mapped -- a canvas that grows is remapped, never unmapped), so a probed range stays
-//    accessible for the whole call, yields included.
+//    range translated by the MMU with the APP's permissions (AT S1E0R / S1E0W, PAR_EL1) --
+//    mapped, readable, and writable for a write. Used where the kernel works in place in the
+//    app's memory (a file read straight into its buffer, a frame rendered into its pixels).
+//    (v75, kern/vm.h) A page of a lazy region not there yet is filled first, and the range is
+//    then PINNED until the system call returns (sys/el0.cpp): another thread's vm_unmap,
+//    MADV_DONTNEED or mprotect over it is deferred, so a probed range stays accessible for the
+//    whole call, yields included. A probe never yields.
 //
 //  - The fault-safe COPIES (UserCopyIn / UserCopyOut, CUserStr, UserStrOut): the range check,
 //    then a copy by routines (arch/aarch64/uaccess.S) listed in an exception FIXUP table: a fault
 //    there (a page that is not mapped, read-only, a misaligned access to Device memory) resumes at
 //    the routine's recovery label (SyncHandlerEL1 -> UAccessFixup) and the copy returns a failure
-//    instead of halting the machine. Word-sized when both pointers are 8-aligned. Strings and
+//    instead of halting the machine -- (v75) unless it was an unfilled page of a lazy region: the
+//    page is filled in C (never in the exception: no allocation there) and the copy run again.
+//    Word-sized when both pointers are 8-aligned. Strings and
 //    small structures are copied into the kernel ONCE: what the kernel checks is what it uses,
 //    whatever another thread (or an app core) writes there meanwhile (closes the TOCTOU of a
 //    path that ResolvePath reads while the app's other threads run).

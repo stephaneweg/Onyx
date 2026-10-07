@@ -1,8 +1,8 @@
 //
-// rdpdhost.c -- rdpd (user/bin/rdpd.c) on the PC, for testing its protocol without a Pi: a
+// rdpdhost.c -- rdpd (user/BinUtils/rdpd.c) on the PC, for testing its protocol without a Pi: a
 // stand-in kernel table mapped at KAPI_TABLE_VA with real TCP sockets (tcp_listen / accept /
 // send / recv) and a few fake windows, then rdpd's own main. See build_host.sh, ../run_rdpd_pipeline_test.sh.
-//   RDPD_SRC   the rdpd source to build (default user/bin/rdpd.c; an older one to test
+//   RDPD_SRC   the rdpd source to build (default user/BinUtils/rdpd.c; an older one to test
 //              compatibility)
 //   RDPD_ANIM=1  window 2 redrawn every 40 ms (a demo running), else everything static
 // The injected input is printed on stderr ("host: ptr x y b w", "host: key ...").
@@ -20,7 +20,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 static unsigned long long t0;
 static unsigned long long now_us (void)

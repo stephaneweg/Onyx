@@ -1,12 +1,12 @@
 //
-// kp_drive -- a Koton effect plugin (user/kplug.h): saturation, overdrive, distortion, fuzz -- Koton's
+// kp_drive -- a Koton effect plugin (user/Apps/koton/plug/kplug.h): saturation, overdrive, distortion, fuzz -- Koton's
 // Drive (Plugins/Effects/KotonPluginDrive), the same parameters and states. A low cut before the gain
 // (the lows would turn to mush), the gain into a transfer curve at 4x the rate (clipping makes
 // harmonics far above the audible band: they would fold back as noise without the oversampling;
 // 4th-order Butterworth up and down), a tone low-pass after it, a level compensation (the grain is
 // heard, not the volume), the mix and the level.
 //
-#include "kplug.h"
+#include "../koton/plug/kplug.h"
 
 static const char *const TYPES[] = { "Soft", "Overdrive", "Tube", "Distortion", "Fuzz", "Wavefolder", 0 };
 enum { P_TYPE, P_DRIVE, P_BASS, P_TONE, P_BIAS, P_MIX, P_LEVEL, NP };

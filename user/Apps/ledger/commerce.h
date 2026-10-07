@@ -5,7 +5,7 @@
 // excluding VAT, a VAT code, the account the invoice will take) and its state (draft, sent, accepted,
 // refused, done). One becomes the next: a quote an order, an order a delivery note, any an invoice (its
 // lines the invoice's: the quantity times the price, the description "2,5 x ..."); the documents made
-// remember where they came from. Printed by Writer from a template (print.h).
+// remember where they came from. Printed by Letters from a template (print.h).
 //
 #ifndef _ledger_commerce_h
 #define _ledger_commerce_h

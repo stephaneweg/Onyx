@@ -7,11 +7,11 @@
 // Out, Square (same scale on both axes), Grid. The functions are kept in
 // SD:/apps/graphcalc.app/functions.txt. Double-precision FP (the BASIC core's math).
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
 #include "Apps/graphcalc/expr.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	760
 #define H	500
@@ -97,7 +97,7 @@ public:
 			c.fillRect (p, lay - 3, 1, 7, 0x00404850);
 			gc::fmt (x, dxs, t);
 			int ty = lay + 5; if (ty > height - 18) ty = lay - 20;
-			c.text (p - wk_len (t) * wk_fw () / 2, ty, t, 0x00606870);
+			c.text (p - uk_len (t) * uk_fw () / 2, ty, t, 0x00606870);
 		}
 		for (double y = bas::nfloor (g_ymin / sy) * sy; y <= g_ymax; y += sy)
 		{
@@ -105,8 +105,8 @@ public:
 			if (p < 8 || p > height - 10 || (y < sy / 2 && y > -sy / 2)) continue;
 			c.fillRect (lax - 3, p, 7, 1, 0x00404850);
 			gc::fmt (y, dys, t);
-			int tx = lax + 6; if (tx > width - wk_len (t) * wk_fw () - 2) tx = lax - 6 - wk_len (t) * wk_fw ();
-			c.text (tx, p - wk_fh () / 2, t, 0x00606870);
+			int tx = lax + 6; if (tx > width - uk_len (t) * uk_fw () - 2) tx = lax - 6 - uk_len (t) * uk_fw ();
+			c.text (tx, p - uk_fh () / 2, t, 0x00606870);
 		}
 		// curves
 		for (int f = 0; f < NF; f++)
@@ -143,17 +143,17 @@ public:
 			}
 		}
 		// the frame: a sunken field's (rounded corners, a shadow along the top, the outline)
-		const WkCorner &k = wk_corner (4);
+		const UkCorner &k = uk_corner (4);
 		unsigned bg = bgColor ();
 		for (int j = 0; j < 4; j++)				// the corners' outside: the face behind
 			for (int i = 0; i < k.off[j] + k.n[j]; i++)
 			{
 				int a = 255 - (i < k.off[j] ? 0 : k.a[j][i - k.off[j]]);
-				wk_blend_px (c, i, j, bg, a); wk_blend_px (c, width - 1 - i, j, bg, a);
-				wk_blend_px (c, i, height - 1 - j, bg, a); wk_blend_px (c, width - 1 - i, height - 1 - j, bg, a);
+				uk_blend_px (c, i, j, bg, a); uk_blend_px (c, width - 1 - i, j, bg, a);
+				uk_blend_px (c, i, height - 1 - j, bg, a); uk_blend_px (c, width - 1 - i, height - 1 - j, bg, a);
 			}
-		for (int i = 4; i < width - 4; i++) { wk_blend_px (c, i, 1, 0, 34); wk_blend_px (c, i, 2, 0, 14); }
-		wk_rline (c, 0, 0, width, height, 4, wk_tone (C_FACE, 72), 210);
+		for (int i = 4; i < width - 4; i++) { uk_blend_px (c, i, 1, 0, 34); uk_blend_px (c, i, 2, 0, 14); }
+		uk_rline (c, 0, 0, width, height, 4, uk_tone (C_FACE, 72), 210);
 	}
 	void zoom (double k, int cx, int cy)
 	{
@@ -238,9 +238,9 @@ public:
 	{
 		unsigned c = FCOL[idx];
 		canvas.clear (bgColor ());
-		wk_rbox (canvas, 2, 6, 10, 14, 3, wk_tone (c, 150), wk_tone (c, 112));
-		wk_rline (canvas, 2, 6, 10, 14, 3, wk_tone (c, 70), 200);
-		if (g_f[idx].err) wk_rline (canvas, 0, 4, 14, 18, 4, 0x00E03030, 255);
+		uk_rbox (canvas, 2, 6, 10, 14, 3, uk_tone (c, 150), uk_tone (c, 112));
+		uk_rline (canvas, 2, 6, 10, 14, 3, uk_tone (c, 70), 200);
+		if (g_f[idx].err) uk_rline (canvas, 0, 4, 14, 18, 4, 0x00E03030, 255);
 	}
 };
 static Swatch *g_sw[NF];
@@ -250,7 +250,7 @@ class Heading : public Label
 {
 public:
 	Heading (int l, int t, int w, int h, const char *s) : Label (l, t, w, h, s, C_TEXT, C_BG) {}
-	void onDraw () override { canvas.clear (bg); wk_text_l (canvas, 2, 0, height, text, fg, 2); }
+	void onDraw () override { canvas.clear (bg); uk_text_l (canvas, 2, 0, height, text, fg, 2); }
 };
 
 class GcRoot : public Root
@@ -321,7 +321,7 @@ int main (void)
 {
 	GcRoot root;					// (its background: the theme's face)
 	if (root.canvas.px == 0) return 1;
-	int fh = wk_fh ();
+	int fh = uk_fh ();
 	root.addChild (new Heading (10, 8, PANEL - 20, fh + 2, "Functions of x"));
 	for (int i = 0; i < NF; i++)
 	{
@@ -338,7 +338,7 @@ int main (void)
 	root.addChild (new Button (158, by, 68, 26, "Square", btn_sq));
 	for (int i = 0; i <= NF; i++)
 	{
-		unsigned ink = i ? wk_tone (FCOL[i - 1], wk_bright (C_BG) > 140 ? 96 : 176) : C_TEXT;	// (legible on the face)
+		unsigned ink = i ? uk_tone (FCOL[i - 1], uk_bright (C_BG) > 140 ? 96 : 176) : C_TEXT;	// (legible on the face)
 		g_readout[i] = new Label (10, by + 42 + i * (fh + 6), PANEL - 16, fh + 2, "", ink, C_BG);
 		root.addChild (g_readout[i]);
 	}

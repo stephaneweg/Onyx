@@ -23,6 +23,7 @@
 #include <circle/sched/scheduler.h>
 #include <circle/sched/task.h>
 #include <circle/logger.h>
+#include <circle/timer.h>		// (v75) the files' write time
 #include <circle/util.h>
 #include <circle/new.h>
 
@@ -59,6 +60,11 @@ static unsigned PlatPid (void)
 	CAddressSpace *pAS = (CAddressSpace *) CScheduler::Get ()->GetCurrentTask ()->GetUserData (TASK_USER_DATA_USER);
 	return pAS != 0 ? pAS->GetPid () : 0;
 }
+// (v75) UTC seconds since 1970 (a file's write time)
+static s64 PlatTime (void)
+{
+	return CTimer::Get () != 0 ? (s64) CTimer::Get ()->GetUniversalTime () : 0;
+}
 #define RamLog(...)	CLogger::Get ()->Write ("ramfs", LogNotice, __VA_ARGS__)
 #define PAGE_BYTES	KPAGE_SIZE
 #else
@@ -70,12 +76,14 @@ extern u64 RamPlatPagesFree (void);
 extern void *RamPlatTask (void);
 extern void RamPlatYield (void);
 extern unsigned RamPlatPid (void);
+extern s64 RamPlatTime (void);
 #define PlatPageAlloc	RamPlatPageAlloc
 #define PlatPageFree	RamPlatPageFree
 #define PlatPagesFree	RamPlatPagesFree
 #define PlatTask	RamPlatTask
 #define PlatYield	RamPlatYield
 #define PlatPid		RamPlatPid
+#define PlatTime	RamPlatTime
 static inline u64 PlatHeapFree (void) { return 1ull << 40; }
 static inline void PlatNoKill (boolean) {}
 #define RamLog(...)	(printf ("ramfs: " __VA_ARGS__), printf ("\n"))
@@ -87,6 +95,7 @@ static inline void PlatNoKill (boolean) {}
 #define HEAP_MARGIN	(8ull << 20)		// the heap never handed out, kept free
 #define MAX_FILES	256			// open read handles
 #define MAX_DIRS	64			// open folder listings
+#define LIST_HDR	25			// a listing's entry before its name (RamFsOpenDir)
 
 struct TSlab					// a page cut into chunks of one size
 {
@@ -114,6 +123,8 @@ struct TNode
 	unsigned nExt, nExtCap;
 	unsigned nRefs;				// open handles and streams
 	unsigned nGen;				// bumped when its extents change (a cursor walks again)
+	s64	 nMTime;			// (v75) the last write, UTC seconds
+	u64	 nIno;				// (v75) its number (stat's ino: unique, kept by a rename)
 };
 
 struct TCursor { unsigned nGen, nIdx; u64 nStart; };	// the extent of a read position
@@ -129,6 +140,7 @@ static unsigned	 s_nFiles, s_nDirs;
 static TSlab	*s_pPartial[NCLASS];
 static TRamFile	*s_pFile;			// (on the heap: not in the kernel's BSS)
 static TRamDir	*s_pDir;
+static u64	 s_nNextIno = 2;		// (v75; the root's is 1)
 
 // ---- the lock: re-entrant, its waiters yield (nothing yields while holding it) ----------------
 
@@ -294,10 +306,12 @@ static u32 NextExtent (u64 nWant, u64 nSize, boolean bExact)
 	return PAGE_BYTES;					// (a stream: whole pages, Trim at its close)
 }
 
-// (the lock held) nLen bytes at the end of the file -> how many (fewer: the volume is full)
+// (the lock held) nLen bytes at the end of the file -> how many (fewer: the volume is full).
+// pSrc 0: zeros (v75: a file grown by a write past its end, or a truncate).
 static u64 Append (TNode *n, const u8 *pSrc, u64 nLen, boolean bExact)
 {
 	u64 nDone = 0;
+	if (nLen > 0) n->nMTime = PlatTime ();
 	while (nDone < nLen && n->nSize < RAMFS_FILE_MAX)
 	{
 		TExtent *pLast = n->nExt > 0 ? &n->pExt[n->nExt - 1] : 0;
@@ -307,7 +321,8 @@ static u64 Append (TNode *n, const u8 *pSrc, u64 nLen, boolean bExact)
 			u64 k = pLast->nCap - nFill;
 			if (k > nLen - nDone) k = nLen - nDone;
 			if (k > RAMFS_FILE_MAX - n->nSize) k = RAMFS_FILE_MAX - n->nSize;
-			memcpy (pLast->p + nFill, pSrc + nDone, (size_t) k);
+			if (pSrc != 0) memcpy (pLast->p + nFill, pSrc + nDone, (size_t) k);
+			else memset (pLast->p + nFill, 0, (size_t) k);
 			nDone += k; n->nSize += k;
 			continue;
 		}
@@ -426,6 +441,8 @@ static TNode *NewNode (TNode *d, const char *pName, unsigned nLen, boolean bDir)
 	memset (n, 0, sizeof *n);
 	memcpy (n->Name, pName, nLen);
 	n->bDir = bDir;
+	n->nMTime = PlatTime ();
+	n->nIno = s_nNextIno++;
 	if (bDir) s_nDirs++; else s_nFiles++;
 	LinkChild (d, n);
 	return n;
@@ -516,6 +533,8 @@ void RamFsInit (const char *pConfig)
 	if (s_pRoot == 0 || s_pFile == 0 || s_pDir == 0) return;
 	memset (s_pRoot, 0, sizeof *s_pRoot);
 	s_pRoot->bDir = TRUE;
+	s_pRoot->nIno = 1;
+	s_pRoot->nMTime = PlatTime ();
 	memset (s_pFile, 0, sizeof (TRamFile) * MAX_FILES);
 	memset (s_pDir, 0, sizeof (TRamDir) * MAX_DIRS);
 	s_bUp = TRUE;
@@ -603,7 +622,7 @@ static TNode *CreateFile (const char *pAbs, boolean bTruncate)
 	TNode *n = FindChild (d, pLeaf, nLeaf);
 	if (n == 0) n = NewNode (d, pLeaf, nLeaf, FALSE);
 	else if (n->bDir) return 0;
-	else if (bTruncate) FreeData (n);
+	else if (bTruncate) { FreeData (n); n->nMTime = PlatTime (); }
 	if (n != 0) n->nRefs++;
 	return n;
 }
@@ -659,19 +678,21 @@ void *RamFsOpenDir (const char *pAbs)
 	unsigned nSlot = MAX_DIRS;
 	for (unsigned i = 0; i < MAX_DIRS && nSlot == MAX_DIRS; i++) if (!s_pDir[i].bUsed) nSlot = i;
 	if (nSlot == MAX_DIRS) return 0;
-	unsigned nLen = 0;					// (a copy: u32 size, u8 is_dir, name '\0')
-	for (TNode *c = d->pChild; c != 0; c = c->pNext) nLen += 5 + (unsigned) strlen (c->Name) + 1;
+	// (a copy: u64 size, s64 mtime, u64 ino, u8 is_dir, name '\0' -- LIST_HDR bytes then the name)
+	unsigned nLen = 0;
+	for (TNode *c = d->pChild; c != 0; c = c->pNext) nLen += LIST_HDR + (unsigned) strlen (c->Name) + 1;
 	if (PlatHeapFree () < HEAP_MARGIN + nLen) return 0;
 	u8 *pList = new u8[nLen > 0 ? nLen : 1];
 	if (pList == 0) return 0;
 	unsigned o = 0;
 	for (TNode *c = d->pChild; c != 0; c = c->pNext)
 	{
-		u32 nSize = c->bDir ? 0 : (c->nSize > 0xFFFFFFFFull ? 0xFFFFFFFFu : (u32) c->nSize);
-		memcpy (pList + o, &nSize, 4); pList[o + 4] = c->bDir ? 1 : 0;
+		u64 nSize = c->bDir ? 0 : c->nSize;
+		memcpy (pList + o, &nSize, 8); memcpy (pList + o + 8, &c->nMTime, 8);
+		memcpy (pList + o + 16, &c->nIno, 8); pList[o + 24] = c->bDir ? 1 : 0;
 		unsigned k = (unsigned) strlen (c->Name) + 1;
-		memcpy (pList + o + 5, c->Name, k);
-		o += 5 + k;
+		memcpy (pList + o + LIST_HDR, c->Name, k);
+		o += LIST_HDR + k;
 	}
 	TRamDir *r = &s_pDir[nSlot];
 	r->pList = pList; r->nLen = nLen; r->nPos = 0; r->nPid = PlatPid (); r->bUsed = TRUE;
@@ -687,15 +708,15 @@ int RamFsReadDir (void *pHandle, struct kapi_dirent *pEnt)
 {
 	TGuard G;
 	TRamDir *r = (TRamDir *) pHandle;
-	if (!RamFsIsDir (pHandle) || !r->bUsed || pEnt == 0 || r->nPos + 5 > r->nLen) return 0;
+	if (!RamFsIsDir (pHandle) || !r->bUsed || pEnt == 0 || r->nPos + LIST_HDR > r->nLen) return 0;
 	u8 *p = r->pList + r->nPos;
-	u32 nSize; memcpy (&nSize, p, 4);
-	const char *pName = (const char *) p + 5;
+	u64 nSize; memcpy (&nSize, p, 8);
+	const char *pName = (const char *) p + LIST_HDR;
 	unsigned k = (unsigned) strlen (pName);
 	unsigned c = k < sizeof pEnt->name - 1 ? k : sizeof pEnt->name - 1;
 	memcpy (pEnt->name, pName, c); pEnt->name[c] = '\0';
-	pEnt->size = nSize; pEnt->is_dir = p[4];
-	r->nPos += 5 + k + 1;
+	pEnt->size = nSize > 0xFFFFFFFFull ? 0xFFFFFFFFu : (unsigned) nSize; pEnt->is_dir = p[24];
+	r->nPos += LIST_HDR + k + 1;
 	return 1;
 }
 
@@ -852,4 +873,317 @@ void RamFsOnProcessGone (unsigned nPid)
 			delete [] s_pDir[i].pList;
 			s_pDir[i].pList = 0; s_pDir[i].bUsed = FALSE;
 		}
+}
+
+// ---- (v75) open files with POSIX semantics (sys/ofile.cpp, docs/POSIX-PLAN.md §3.2) -----------
+//
+// A node held by an open-file description (its nRefs): random-access reads and writes, a write
+// past the end or a truncate that grows filling the gap with zeros, stat. Removed while open
+// (path_unlink, a rename onto it): out of the tree at once, freed at its last close (Drop). The
+// errors are -KAPI_Exxx. A big read or write goes in RAMFS_SLICE pieces with a Yield between
+// them, as RamFsRead; a write is in a no-kill section (killed between two slices: once done).
+
+// (the lock held) overwrite [nPos, nPos + nLen), inside the file's bytes
+static void WriteAt (TNode *n, u64 nPos, const u8 *pSrc, u64 nLen, TCursor *c)
+{
+	if (c->nGen != n->nGen || c->nIdx >= n->nExt || nPos < c->nStart)
+	{
+		c->nGen = n->nGen; c->nIdx = 0; c->nStart = 0;
+	}
+	u64 nDone = 0;
+	while (nDone < nLen && c->nIdx < n->nExt)
+	{
+		const TExtent &e = n->pExt[c->nIdx];
+		if (nPos + nDone >= c->nStart + e.nCap) { c->nStart += e.nCap; c->nIdx++; continue; }
+		u64 nOff = nPos + nDone - c->nStart;
+		u64 k = e.nCap - nOff;
+		if (k > nLen - nDone) k = nLen - nDone;
+		memcpy (e.p + nOff, pSrc + nDone, (size_t) k);
+		nDone += k;
+	}
+}
+
+// (the lock held) the file cut to nSize (< its size): the extents after the one holding its last
+// byte given back (every extent but the last stays full)
+static void Shrink (TNode *n, u64 nSize)
+{
+	if (nSize >= n->nSize) return;
+	if (nSize == 0)
+	{
+		FreeData (n);
+	}
+	else
+	{
+		u64 nStart = 0;
+		unsigned k = 0;
+		while (k < n->nExt && nStart + n->pExt[k].nCap < nSize) nStart += n->pExt[k++].nCap;
+		for (unsigned i = k + 1; i < n->nExt; i++) { n->nCapTotal -= n->pExt[i].nCap; ChunkFree (n->pExt[i]); }
+		n->nExt = k + 1;
+		n->nSize = nSize;
+		n->nGen++;
+	}
+	n->nMTime = PlatTime ();
+}
+
+static int ErrNameOf (const char *pAbs)		// a path not found: -ENAMETOOLONG for a too long name
+{
+	const char *p = pAbs, *pLast = pAbs;
+	for (; *p != '\0'; p++) if (*p == '/') pLast = p + 1;
+	return p - pLast > RAMFS_NAME_MAX ? -KAPI_ENAMETOOLONG : -KAPI_ENOENT;
+}
+
+void *RamFsNodeOpen (const char *pAbs, unsigned nFlags, int *pErr)
+{
+	TGuard G;
+	*pErr = 0;
+	if (!s_bUp) { *pErr = -KAPI_ENODEV; return 0; }
+	TNode *n = Walk (pAbs, FALSE);
+	if (n != 0)
+	{
+		if ((nFlags & KAPI_O_CREAT) && (nFlags & KAPI_O_EXCL)) { *pErr = -KAPI_EEXIST; return 0; }
+		if (n->bDir) { *pErr = -KAPI_EISDIR; return 0; }
+		if ((nFlags & KAPI_O_TRUNC) && (nFlags & KAPI_O_ACCMODE) != KAPI_O_RDONLY && n->nSize > 0)
+		{
+			FreeData (n);
+			n->nMTime = PlatTime ();
+		}
+		n->nRefs++;
+		return n;
+	}
+	if (!(nFlags & KAPI_O_CREAT)) { *pErr = ErrNameOf (pAbs); return 0; }
+	const char *pLeaf; unsigned nLeaf;
+	TNode *d = Walk (pAbs, TRUE, &pLeaf, &nLeaf);
+	if (d == 0) { *pErr = ErrNameOf (pAbs); return 0; }
+	if (!d->bDir) { *pErr = -KAPI_ENOTDIR; return 0; }
+	n = NewNode (d, pLeaf, nLeaf, FALSE);
+	if (n == 0) { *pErr = -KAPI_ENOSPC; return 0; }
+	n->nRefs++;
+	return n;
+}
+
+void RamFsNodeClose (void *pNode)
+{
+	TGuard G;
+	TNode *n = (TNode *) pNode;
+	if (n == 0) return;
+	if (!n->bUnlinked) Trim (n);				// (its tail cut exactly)
+	Release (n);
+}
+
+s64 RamFsPRead (void *pNode, u64 nPos, void *pBuf, u64 nLen)
+{
+	TNode *n = (TNode *) pNode;
+	if (n == 0 || (pBuf == 0 && nLen > 0)) return -KAPI_EFAULT;
+	u64 nDone = 0;
+	TCursor Cur = { n->nGen - 1, 0, 0 };
+	for (;;)
+	{
+		u64 nWant = nLen - nDone > RAMFS_SLICE ? RAMFS_SLICE : nLen - nDone, k;
+		{
+			TGuard G;
+			k = ReadAt (n, nPos + nDone, (u8 *) pBuf + nDone, nWant, &Cur);
+		}
+		nDone += k;
+		if (k < nWant || nDone >= nLen) break;
+		PlatYield ();
+	}
+	return (s64) nDone;
+}
+
+s64 RamFsPWrite (void *pNode, u64 nPos, const void *pBuf, u64 nLen, boolean bAppend, u64 *pEnd)
+{
+	TNode *n = (TNode *) pNode;
+	if (n == 0 || (pBuf == 0 && nLen > 0)) return -KAPI_EFAULT;
+	PlatNoKill (TRUE);
+	TCursor Cur = { n->nGen - 1, 0, 0 };
+	u64 nDone = 0;
+	int nErr = 0;
+	boolean bFirst = TRUE;
+	while (nDone < nLen || bFirst)
+	{
+		{
+			TGuard G;
+			if (bFirst && bAppend) nPos = n->nSize;	// (O_APPEND: at the end, under the lock)
+			bFirst = FALSE;
+			if (nLen == 0) break;
+			u64 nAt = nPos + nDone;
+			if (nAt >= RAMFS_FILE_MAX) { nErr = -KAPI_EFBIG; break; }
+			if (nAt > n->nSize)				// a gap: zeros first
+			{
+				u64 nGap = nAt - n->nSize;
+				if (nGap > RAMFS_SLICE) nGap = RAMFS_SLICE;
+				if (Append (n, 0, nGap, FALSE) < nGap) { nErr = -KAPI_ENOSPC; break; }
+			}
+			else
+			{
+				u64 nWant = nLen - nDone > RAMFS_SLICE ? RAMFS_SLICE : nLen - nDone;
+				if (nWant > RAMFS_FILE_MAX - nAt) nWant = RAMFS_FILE_MAX - nAt;
+				u64 nOver = n->nSize - nAt < nWant ? n->nSize - nAt : nWant;	// inside: overwritten
+				if (nOver > 0)
+				{
+					WriteAt (n, nAt, (const u8 *) pBuf + nDone, nOver, &Cur);
+					n->nMTime = PlatTime ();
+					nDone += nOver;
+				}
+				if (nWant > nOver)					// the rest: appended
+				{
+					u64 k = Append (n, (const u8 *) pBuf + nDone, nWant - nOver, FALSE);
+					nDone += k;
+					if (k < nWant - nOver) { nErr = -KAPI_ENOSPC; break; }
+				}
+			}
+		}
+		if (nDone < nLen) PlatYield ();
+	}
+	PlatNoKill (FALSE);
+	if (pEnd != 0) *pEnd = nPos + nDone;
+	return nDone > 0 ? (s64) nDone : (s64) nErr;
+}
+
+int RamFsTruncate (void *pNode, u64 nSize)
+{
+	TNode *n = (TNode *) pNode;
+	if (n == 0) return -KAPI_EBADF;
+	if (nSize > RAMFS_FILE_MAX) return -KAPI_EFBIG;
+	PlatNoKill (TRUE);
+	int nErr = 0;
+	u64 nOld;
+	{
+		TGuard G;
+		nOld = n->nSize;
+		if (nSize <= n->nSize) { Shrink (n, nSize); n->nMTime = PlatTime (); }
+	}
+	for (;;)							// growing: zeros, in slices
+	{
+		boolean bMore;
+		{
+			TGuard G;
+			if (n->nSize >= nSize) break;
+			u64 k = nSize - n->nSize > RAMFS_SLICE ? RAMFS_SLICE : nSize - n->nSize;
+			if (Append (n, 0, k, FALSE) < k)
+			{
+				Shrink (n, nOld);			// (no half growth left)
+				nErr = -KAPI_ENOSPC;
+				break;
+			}
+			bMore = n->nSize < nSize;
+		}
+		if (bMore) PlatYield ();
+	}
+	PlatNoKill (FALSE);
+	return nErr;
+}
+
+static void FillStat (const TNode *n, struct kapi_stat *pOut)
+{
+	memset (pOut, 0, sizeof *pOut);
+	pOut->size = n->bDir ? 0 : n->nSize;
+	pOut->mtime = pOut->ctime = n->nMTime;
+	pOut->ino = n->nIno;
+	pOut->mode = n->bDir ? (KAPI_S_IFDIR | 0755) : (KAPI_S_IFREG | 0644);
+	pOut->dev = RAMFS_DEV;
+	pOut->blksize = PAGE_BYTES;
+	pOut->attr = n->bDir ? 0x10 : 0x20;
+	pOut->blocks = n->nCapTotal / 512;
+}
+
+void RamFsNodeStat (void *pNode, struct kapi_stat *pOut)
+{
+	TGuard G;
+	if (pNode != 0) FillStat ((TNode *) pNode, pOut);
+}
+
+int RamFsStat (const char *pAbs, struct kapi_stat *pOut)
+{
+	TGuard G;
+	if (!s_bUp) return -KAPI_ENODEV;
+	TNode *n = Walk (pAbs, FALSE);
+	if (n == 0) return ErrNameOf (pAbs);
+	FillStat (n, pOut);
+	return 0;
+}
+
+int RamFsUnlink (const char *pAbs, boolean bDir)
+{
+	TGuard G;
+	if (!s_bUp) return -KAPI_ENODEV;
+	TNode *n = Walk (pAbs, FALSE);
+	if (n == 0) return ErrNameOf (pAbs);
+	if (n == s_pRoot) return -KAPI_EBUSY;
+	if (bDir)
+	{
+		if (!n->bDir) return -KAPI_ENOTDIR;
+		if (n->pChild != 0) return -KAPI_ENOTEMPTY;
+	}
+	else if (n->bDir) return -KAPI_EISDIR;
+	Drop (n);						// (open: freed at its last close)
+	return 0;
+}
+
+int RamFsMkdirEx (const char *pAbs)
+{
+	TGuard G;
+	if (!s_bUp) return -KAPI_ENODEV;
+	if (Walk (pAbs, FALSE) != 0) return -KAPI_EEXIST;
+	const char *pLeaf; unsigned nLeaf;
+	TNode *d = Walk (pAbs, TRUE, &pLeaf, &nLeaf);
+	if (d == 0) return ErrNameOf (pAbs);
+	if (!d->bDir) return -KAPI_ENOTDIR;
+	return NewNode (d, pLeaf, nLeaf, TRUE) != 0 ? 0 : -KAPI_ENOSPC;
+}
+
+int RamFsRenameEx (const char *pFrom, const char *pTo)
+{
+	TGuard G;
+	if (!s_bUp) return -KAPI_ENODEV;
+	TNode *n = Walk (pFrom, FALSE);
+	if (n == 0) return ErrNameOf (pFrom);
+	if (n == s_pRoot) return -KAPI_EBUSY;
+	const char *pLeaf; unsigned nLeaf;
+	TNode *d = Walk (pTo, TRUE, &pLeaf, &nLeaf);
+	if (d == 0) return ErrNameOf (pTo);
+	if (nLeaf == 0) return -KAPI_EINVAL;
+	if (!d->bDir) return -KAPI_ENOTDIR;
+	for (TNode *a = d; a != 0; a = a->pParent) if (a == n) return -KAPI_EINVAL;	// (into itself)
+	TNode *pOld = FindChild (d, pLeaf, nLeaf);
+	if (pOld != 0 && pOld != n)				// replaced
+	{
+		if (n->bDir && !pOld->bDir) return -KAPI_ENOTDIR;
+		if (!n->bDir && pOld->bDir) return -KAPI_EISDIR;
+		if (pOld->bDir && pOld->pChild != 0) return -KAPI_ENOTEMPTY;
+		Drop (pOld);					// (open: freed at its last close)
+	}
+	if (d != n->pParent) { UnlinkChild (n); LinkChild (d, n); }
+	memset (n->Name, 0, sizeof n->Name);
+	memcpy (n->Name, pLeaf, nLeaf);
+	return 0;
+}
+
+int RamFsUtime (const char *pAbs, s64 nMTime)
+{
+	TGuard G;
+	if (!s_bUp) return -KAPI_ENODEV;
+	TNode *n = Walk (pAbs, FALSE);
+	if (n == 0) return ErrNameOf (pAbs);
+	n->nMTime = nMTime;
+	return 0;
+}
+
+int RamFsReadDir2 (void *pHandle, struct kapi_dirent2 *pEnt)
+{
+	TGuard G;
+	TRamDir *r = (TRamDir *) pHandle;
+	if (!RamFsIsDir (pHandle) || !r->bUsed || pEnt == 0) return -KAPI_EBADF;
+	if (r->nPos + LIST_HDR > r->nLen) return 0;
+	u8 *p = r->pList + r->nPos;
+	memset (pEnt, 0, sizeof *pEnt);
+	memcpy (&pEnt->size, p, 8); memcpy (&pEnt->mtime, p + 8, 8); memcpy (&pEnt->ino, p + 16, 8);
+	pEnt->mode = p[24] ? (KAPI_S_IFDIR | 0755) : (KAPI_S_IFREG | 0644);
+	pEnt->attr = p[24] ? 0x10 : 0x20;
+	const char *pName = (const char *) p + LIST_HDR;
+	unsigned k = (unsigned) strlen (pName);
+	unsigned c = k < sizeof pEnt->name - 1 ? k : sizeof pEnt->name - 1;
+	memcpy (pEnt->name, pName, c);
+	r->nPos += LIST_HDR + k + 1;
+	return 1;
 }

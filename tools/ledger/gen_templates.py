@@ -4,11 +4,11 @@
 # (sdcard/apps/ledger.app/templates/), Dutch (templates/nl/) and English (templates/en/). Each one is
 # an A4 page: the company's letterhead and the document's title, number and dates; the party's address
 # (at the right, for a window envelope); the lines' table -- its heading row, then ONE row of Line...
-# merge fields that Writer repeats for each line --; the totals; the VAT's detail (the legal mentions);
+# merge fields that Letters repeats for each line --; the totals; the VAT's detail (the legal mentions);
 # the kind's own words (a quote's validity and its "for agreement", an invoice's payment); the company's
 # legal line and bank at the foot. Their fields are Ledger's (print.h: «CompanyName», «PartyAddress»,
 # «LineText», «Total»...); templates/fields.card holds them all with a sample's values (a template's
-# merge source: Writer shows them). Open one in Writer to change it: its look, its words, a logo.
+# merge source: Letters shows them). Open one in Letters to change it: its look, its words, a logo.
 #
 #   python3 tools/ledger/gen_templates.py
 import os
@@ -156,7 +156,7 @@ def template (lang, kind):
 	R.append ("\\row\n")
 	# what it is about
 	R.append ("\\pard\\plain\\ql\\sb480\\sa160%s\\par\n" % M ("Text", "\\f0\\fs22\\b\\cf%d" % INK))
-	# the lines: a heading row, the lines' row (repeated by Writer)
+	# the lines: a heading row, the lines' row (repeated by Letters)
 	H = "\\f0\\fs17\\b\\cf%d" % WHITE
 	if kind == "delivery":
 		widths = (TW - 1800, 1800); heads = w["dcols"]; fields = ("LineText", "LineQty")
@@ -197,7 +197,7 @@ def template (lang, kind):
 	return path
 
 # The fields' sample: a Cardfile form of one record (the demo company's quote), each of Ledger's fields --
-# the lines' too, with the first line's values -- so that Writer's Tools > Mail Merge lists them and shows
+# the lines' too, with the first line's values -- so that Letters' Tools > Mail Merge lists them and shows
 # them in a template (its OnyxMergeSource).
 SAMPLE = [
 	("Kind", "Devis"), ("Number", "2026/0001"), ("Date", "28/09/2026"), ("Until", "28/10/2026"), ("DueDate", ""),
@@ -222,7 +222,7 @@ SAMPLE = [
 def fields_card ():
 	o = ["# Onyx Cardfile -- a form and its records (open it with Cardfile)\n[form]\nversion = 1\n",
 	     "title = Ledger's merge fields\n",
-	     "description = The fields a document's template can hold (print.h), with a quote's values: Writer's Tools > Mail Merge lists them.\n"]
+	     "description = The fields a document's template can hold (print.h), with a quote's values: Letters' Tools > Mail Merge lists them.\n"]
 	for k, v in SAMPLE:
 		o.append ("\n[field]\ncolumn = %s\nlabel = %s\ntype = %s\n" % (k, k, "multiline" if "\n" in v else "text"))
 	o.append ("\n[records]\n" + "\t".join (k for k, v in SAMPLE) + "\n")

@@ -1,0 +1,21 @@
+libjpeg-turbo 3.1.4 -- the JPEG codec of Skia and WebKit, ported to Onyx
+=====================================================================
+
+Source: the release tag 3.1.4 of https://github.com/libjpeg-turbo/libjpeg-turbo (commit
+e352b02f794f701407b39af08576035ba3360d60; the release tarball on the GitHub release page was not
+reachable from the build machine -- the tag's tree is the same sources). Licences (LICENSE.md): the IJG
+licence, the Modified (3-clause) BSD licence, the zlib licence -- all permissive.
+
+Why it and not the in-tree jpeg-9f (the apps' IJG libjpeg): Skia's JPEG codec and WebKit's JPEG decoder
+use libjpeg-turbo's extensions (jpeg_skip_scanlines, jpeg_crop_scanline, the JCS_EXT_* colour spaces);
+WebKit's PlayStation / Windows options ask for "JPEG 1.5.2" (a libjpeg-turbo version).
+
+Kept: the library's sources (src/), the AArch64 SIMD (simd/arm, simd/jsimd.h, simd/CMakeLists.txt,
+simd/simdcoverage.c -- its CMake names it), the CMake build (CMakeLists.txt, cmakescripts/, release/'s
+.in templates), LICENSE.md, README.ijg, README.md, ChangeLog.md. Not kept: the other SIMD back ends
+(x86, MIPS, PowerPC), Java, the fuzzers, the test images, doc/, win/, sharedlib/. No change to the
+sources.
+
+Built by tools/ports/libjpeg-turbo/build.sh with its CMake and tools/onyx-toolchain.cmake: libjpeg.a
+(the libjpeg 6b API, arithmetic coding on, the Neon intrinsics) + jpeglib.h, jconfig.h, jmorecfg.h,
+jerror.h + libjpeg.pc into the POSIX sysroot. No TurboJPEG API, no tools, no tests.

@@ -1,0 +1,32 @@
+ICU 78.3 -- International Components for Unicode (ICU4C), a WebKit dependency ported to Onyx
+==========================================================================================
+
+Source: the icu4c 78.3 source release, as Debian's orig tarball
+https://deb.debian.org/debian/pool/main/i/icu/icu_78.3.orig.tar.gz
+(sha256 3a2e7a47604ba702f345878308e6fefeca612ee895cf4a5f222e7955fabfe0c0; upstream:
+https://github.com/unicode-org/icu/releases/tag/release-78.3, the tag's commit
+21d1eb0f306e1141c10931e914dfc038c06121da). Unicode licence V3 (LICENSE; SPDX Unicode-3.0), with the
+third-party notices it carries. WebKit wants ICU >= 70.1 (Source/cmake/Options*.cmake).
+
+Kept: LICENSE, source/common and source/i18n (the libraries' sources and the public headers in their
+unicode/ folders), and source/data/in/icudt78l.dat -- NOT ICU's full data (32 MB) but Onyx's
+filtered data file (15.9 MB), made by tools/ports/icu/gen-data.sh from ICU's data sources (the release
+tag's icu4c/source/data) with the filter tools/ports/icu/data-filter.json, by a host build of ICU's own
+tools (genrb, genbrk, makeconv, gendict, icupkg...). gen-data.sh fetches the release and the data
+sources itself; the file is committed so a build needs neither. Not kept: the tools, the build system
+(autoconf, MSVC projects), the data sources, the tests, the samples, io/ (u_printf), layoutex/,
+extra/, the docs. No change to the sources.
+
+Built by tools/ports/icu/build.sh with CMake (tools/ports/icu/CMakeLists.txt: ICU's configure knows
+no Onyx host) and tools/onyx-toolchain.cmake (aarch64-onyx-elf: ICU needs a threaded libstdc++ --
+std::mutex, std::condition_variable, std::call_once): libicuuc.a, libicui18n.a, libicudata.a (the .dat
+as the symbol icudt78_dat, one .incbin -- what genccode would write) + include/unicode + icu-uc.pc /
+icu-i18n.pc into the POSIX sysroot. Static, no plug-ins (U_ENABLE_DYLOAD=0), no mmap of data files,
+newlib's _timezone / _tzname, the default code page UTF-8. Smoke test: tools/ports/icu/icutest.cpp
+(/bin/icutest).
+
+The data (gen-data.sh says what and why): 42 languages with all their regional variants; break
+iterators with the Thai, Lao, Khmer, Burmese and Chinese/Japanese dictionaries and the Japanese phrase
+model; collation (the implicit Han order, not the full Unihan tables); 50 converters (WebKit's
+TextCodecICU's legacy encodings + the CJK ones); no transliteration, spell-out rules, confusables,
+stringprep, character names or LSTM models.

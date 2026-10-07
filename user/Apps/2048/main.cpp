@@ -1,9 +1,8 @@
 //
 // 2048 -- slide tiles with the arrow keys; equal tiles merge. 'r' restarts.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
-#include "applib.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
 
 #define N	4
 #define CELL	68
@@ -16,7 +15,7 @@
 #define BW	(N * CELL + (N + 1) * GAP)	// the board
 
 static unsigned *fb;
-static wtk::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
+static uikit::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
 static int g_grid[N][N];
 static int g_score, g_over;
 static unsigned g_rng;
@@ -121,39 +120,39 @@ static unsigned tile_color (int v)
 	}
 }
 
-// The theme's look (wtk/paint.h): the face around, the score in a dark LCD well, the board
+// The theme's look (uikit/paint.h): the face around, the score in a dark LCD well, the board
 // (its own colours) rounded; drawn once into g_bg, copied at each frame under the tiles.
 static void paint_bg (void)
 {
-	using namespace wtk;
+	using namespace uikit;
 	g_bg.alloc (W, H);
 	g_bg.clear (C_BG);
-	wk_sunken (g_bg, PAD, 10, W - 2 * PAD, 32, 6, 0x005C6478);
-	wk_text_l (g_bg, PAD + 12, 10, 32, "Score", 0x00B8C0CC);
-	wk_rbox (g_bg, PAD, OY - GAP, BW, BW, 7, 0x00bbada0, 0x00bbada0);
-	wk_rline (g_bg, PAD, OY - GAP, BW, BW, 7, 0x009a8c80, 200);
+	uk_sunken (g_bg, PAD, 10, W - 2 * PAD, 32, 6, 0x005C6478);
+	uk_text_l (g_bg, PAD + 12, 10, 32, "Score", 0x00B8C0CC);
+	uk_rbox (g_bg, PAD, OY - GAP, BW, BW, 7, 0x00bbada0, 0x00bbada0);
+	uk_rline (g_bg, PAD, OY - GAP, BW, BW, 7, 0x009a8c80, 200);
 	for (int r = 0; r < N; r++)
 		for (int c = 0; c < N; c++)
-			wk_rbox (g_bg, OX + c * (CELL + GAP), OY + r * (CELL + GAP), CELL, CELL, 4, 0x00cdc1b4, 0x00cdc1b4);
+			uk_rbox (g_bg, OX + c * (CELL + GAP), OY + r * (CELL + GAP), CELL, CELL, 4, 0x00cdc1b4, 0x00cdc1b4);
 }
 
 // A message box over the board (the theme's dialog: a title strip, the face, an outline).
 static void msgbox (int cx, int cy, const char *title, const char *text)
 {
-	using namespace wtk;
-	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	using namespace uikit;
+	int th = uk_fh () + 10, w = uk_text_w (text) + 56, h = th + uk_fh () + 24;
 	int x = cx - w / 2, y = cy - h / 2;
-	wk_rbox (g_cv, x, y, w, h, 8, C_FACE, C_FACE);
-	wk_title_strip (g_cv, x + 1, y + 1, w - 2, th, title, 7);
-	wk_rline (g_cv, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
-	wk_text_c (g_cv, x, y + th, w, h - th, text, C_TEXT);
+	uk_rbox (g_cv, x, y, w, h, 8, C_FACE, C_FACE);
+	uk_title_strip (g_cv, x + 1, y + 1, w - 2, th, title, 7);
+	uk_rline (g_cv, x, y, w, h, 8, UK_OUTLINE == 2 ? 0 : uk_tone (C_FRAME_ACTIVE, 44), 255);
+	uk_text_c (g_cv, x, y + th, w, h - th, text, C_TEXT);
 }
 
 static void redraw (void)
 {
 	g_cv.putOther (g_bg, 0, 0, false);
 	char buf[16]; int sn = ax_itoa (g_score, buf);
-	wtk::draw_text (fb, W, H, W - PAD - 12 - sn * kapi_font_width (), 18, buf, 0x00F0F4F8, 1, 2);
+	uikit::draw_text (fb, W, H, W - PAD - 12 - sn * kapi_font_width (), 18, buf, 0x00F0F4F8, 1, 2);
 
 	for (int r = 0; r < N; r++)
 		for (int c = 0; c < N; c++)
@@ -163,11 +162,11 @@ static void redraw (void)
 			if (v)
 			{
 				unsigned tc = tile_color (v);
-				wtk::wk_rbox (g_cv, x, y, CELL, CELL, 4, tc, tc);
+				uikit::uk_rbox (g_cv, x, y, CELL, CELL, 4, tc, tc);
 				char t[8]; int n = ax_itoa (v, t);
 				int tx = x + (CELL - n * kapi_font_width ()) / 2;
 				int ty = y + (CELL - kapi_font_height ()) / 2;
-				wtk::draw_text (fb, W, H, tx, ty, t, v <= 4 ? 0x00776e65 : 0x00f9f6f2, 1, 2);
+				uikit::draw_text (fb, W, H, tx, ty, t, v <= 4 ? 0x00776e65 : 0x00f9f6f2, 1, 2);
 			}
 		}
 	if (g_over) msgbox (W / 2, OY + BW / 2 - GAP, "Game over", "r: new game");
@@ -177,7 +176,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "2048");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 	g_rng = kapi_get_ticks () | 1u;

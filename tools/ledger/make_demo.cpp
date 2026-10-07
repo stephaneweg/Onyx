@@ -12,7 +12,7 @@
 // invoice paid with its structured communication, others by their customers' names, a supplier's direct
 // debit found by its IBAN, the bank's charges, a transfer from an unknown party left to complete).
 //
-//   g++ -std=gnu++17 -O1 -I user -I kernel/include tools/ledger/make_demo.cpp -o /tmp/make_demo
+//   g++ -std=gnu++17 -O1 -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include tools/ledger/make_demo.cpp -o /tmp/make_demo
 //   /tmp/make_demo sdcard/docs/demo-company.ledger sdcard/docs/demo-bank-statement.cod
 //
 // (Every name, number and amount is made up; the VAT numbers and IBANs have valid check digits.)
@@ -24,9 +24,9 @@
 #include "Apps/ledger/fileio.h"
 #include "Apps/ledger/coda.h"
 
-// (Ledger's words: English here -- wtk/lang.cpp is the apps')
-const char *wk_tr (const char *s) { return s; }
-const char *wk_trc (const char *, const char *s) { return s; }
+// (Ledger's words: English here -- uikit/lang.cpp is the apps')
+const char *uk_tr (const char *s) { return s; }
+const char *uk_trc (const char *, const char *s) { return s; }
 using namespace lg;
 
 static Book b;

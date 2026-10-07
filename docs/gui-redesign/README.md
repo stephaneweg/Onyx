@@ -67,7 +67,8 @@ The user's decisions:
    rounded corners; a light gradient; **no drop shadows** (they would cost the compositor: see
    §4) — a crisp outline instead: a 1-px outline round them, the theme's choice (none, dark —
    the default — or black).
-4. **The user's framed button**, for every push button (the windows' and the apps'): the user
+4. **The user's framed button** (*replaced on 2026-10-03, at the user's request, by a plain raised
+   face — the drop-down's: `uk_framed` now draws `uk_raised`*), for every push button (the windows' and the apps'): the user
    drew it (216 × 92, three greys #E1E1E1, #B9B9B9, #7F7F7F) — a raised 2-px frame, 2 px of
    face, a sunken 2-px well, the button in it raised by 1 px (or 2, "more marked"), flush with
    the well when pressed; in the modern look, rounded (a keycap in its bezel). `framed ()` in
@@ -95,7 +96,7 @@ everything drawn by code, precomputed so that drawing is only straight lines:
   the colour's brightness. (`tone ()` and `FRAME` in `mockup_cde_modern.py`.)
 - **The frames** (the title bar, the borders, the corners, the outline) are drawn once into the
   two chrome copies the compositor blits (active, inactive — kapi v28 `get_chrome`, drawn by
-  wtk today in `user/wtk/skin.cpp`): a table of one colour per row, made once per height and
+  uikit today in `user/Kits/uikit/skin.cpp`): a table of one colour per row, made once per height and
   state; redrawn only at a resize or a theme change, never per frame.
 - **The buttons** (the windows' and the apps') compute their gradient **at each redraw, from
   their height**: the grey profile spread over the button's rows (a colour a row: a few
@@ -130,14 +131,14 @@ app cores — are not touched.)
 
 ## 5. Where the work landed
 
-1. **wtk's painter** (`user/wtk/paint.h`, `paint.cpp`): `wk_tone` (a shade of the theme's colour,
-   128 = itself), gradients computed at each size (`wk_rbox`, `wk_rline`: rows of spans, the
-   corners from a table of x offsets), the framed button (`wk_framed`), bevels, sunken fields,
+1. **uikit's painter** (`user/Kits/uikit/paint.h`, `paint.cpp`): `uk_tone` (a shade of the theme's colour,
+   128 = itself), gradients computed at each size (`uk_rbox`, `uk_rline`: rows of spans, the
+   corners from a table of x offsets), the framed button (`uk_framed`), bevels, sunken fields,
    etched lines, the check / radio / switch / slider / scroll-bar / progress marks, pop-ups,
-   selection rows, the glyphs; an alpha mode for see-through windows (`wk_paint_alpha`). The
-   theme's colours are variables read from `SD:/etc/theme.txt` (`user/wtk/theme.h`: `theme` or
-   `active`, `inactive`, `face`, `accent`, `outline`, `dock`). Every wtk widget draws with it.
-2. **The window frames**: drawn by wtk into the two chrome copies (`user/wtk/skin.cpp`
+   selection rows, the glyphs; an alpha mode for see-through windows (`uk_paint_alpha`). The
+   theme's colours are variables read from `SD:/etc/theme.txt` (`user/Kits/uikit/theme.h`: `theme` or
+   `active`, `inactive`, `face`, `accent`, `outline`, `dock`). Every uikit widget draws with it.
+2. **The window frames**: drawn by uikit into the two chrome copies (`user/Kits/uikit/skin.cpp`
    `draw_frame`), to the new metrics (title 28, border 4, corner radius 8: `KAPI_FRAME_*`,
    `kapi_abi.h`); the title buttons — the window menu (Restore / Maximise, Minimise, Close),
    minimise, maximise (greyed for a fixed-size window), close — reported to the app as
@@ -164,7 +165,7 @@ app cores — are not touched.)
    `win_desk`; the dock's pager of small squares replaces the switcher — the Shelf's tabs left
    the dock); the dock's **drawers** as Xfce's launchers (the icon starts the group's main app,
    the strip above opens the drawer; `SD:/etc/dock.ini`); the **Control Panel** (`apps/control`)
-   whose applets are drawn inside its window (`user/applet_proto.h`: Theme, Panel, Sound,
+   whose applets are drawn inside its window (`user/Include/applet_proto.h`: Theme, Panel, Sound,
    Keyboard & Mouse, Gamepad, Wi-Fi, App Settings); the **Theme** applet as Windows 98's Display
    Properties (a desktop preview, a colour per part — the buttons, the fields, the menu bar too —,
    the wallpaper's modes: Voronoi, gradient, bubbles, a colour, a picture); the **File Viewer**'s

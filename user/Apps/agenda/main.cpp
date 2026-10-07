@@ -13,12 +13,11 @@
 // wallpaper's brightness under it (kapi_wallpaper_buffer): engraved (dark, a light line below) on
 // a light wallpaper, white with a soft shadow on a dark one.
 //
-#include "kapi.h"
-#include "applib.h"
-#include "wtk/wtk.h"
-#include "notify.h"
+#include "appkit/appkit.h"
+#include "systemkit/systemkit.h"
+#include "uikit/uikit.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define AGENDA		"SD:/apps/calendar.app/agenda.txt"
 #define CONFIG		"SD:/apps/agenda.app/config.ini"
@@ -160,9 +159,9 @@ static bool read_back (int wx, int wy)
 	unsigned back = n && (r | g | b) ? ((r / n) << 16) | ((g / n) << 8) | (b / n) : 0x00304058;	// (none drawn: dark)
 	if (back == g_back) return false;
 	g_back = back;
-	g_light = wk_bright (back) > 128;
+	g_light = uk_bright (back) > 128;
 	g_ink = g_light ? 0x00182232 : 0x00FAFCFF;
-	g_dim = wk_mix (g_ink, back, 97);
+	g_dim = uk_mix (g_ink, back, 97);
 	return true;
 }
 
@@ -183,14 +182,14 @@ static void wall_text (Canvas &cv, int x, int y, const char *s, unsigned ink, in
 				{
 					if (!(gl[ry] & (0x80 >> rx))) continue;
 					int px = x + i * gw + rx, py = y + ry;
-					if (pass == 1) { wk_blend_px (cv, px, py, ink, 255); continue; }
-					if (g_light) wk_blend_px (cv, px, py + 1, wk_tone (g_back, 205), 200);	// engraved
+					if (pass == 1) { uk_blend_px (cv, px, py, ink, 255); continue; }
+					if (g_light) uk_blend_px (cv, px, py + 1, uk_tone (g_back, 205), 200);	// engraved
 					else						// a soft shadow
 					{
-						wk_blend_px (cv, px + 1, py + 1, 0, 150);
-						wk_blend_px (cv, px + 2, py + 2, 0, 60);
-						wk_blend_px (cv, px, py + 2, 0, 40);
-						wk_blend_px (cv, px + 2, py, 0, 40);
+						uk_blend_px (cv, px + 1, py + 1, 0, 150);
+						uk_blend_px (cv, px + 2, py + 2, 0, 60);
+						uk_blend_px (cv, px, py + 2, 0, 40);
+						uk_blend_px (cv, px + 2, py, 0, 40);
 					}
 				}
 		}
@@ -220,30 +219,30 @@ public:
 
 	void onDraw () override
 	{
-		int fh = wk_fh (), fw = wk_fw ();
+		int fh = uk_fh (), fw = uk_fw ();
 		canvas.clear (CATCH);
-		wk_paint_alpha (true);
-		wk_rbox (canvas, 12, 9, 16, 17, 3, 0x00FFFFFF, 0x00E8E8E8);		// a small calendar
-		wk_rbox (canvas, 12, 9, 16, 6, 3, 0x00D23A30, 0x00C0322C, 255, WK_TL | WK_TR);
-		wk_rline (canvas, 12, 9, 16, 17, 3, 0x00000000, 90);
+		uk_paint_alpha (true);
+		uk_rbox (canvas, 12, 9, 16, 17, 3, 0x00FFFFFF, 0x00E8E8E8);		// a small calendar
+		uk_rbox (canvas, 12, 9, 16, 6, 3, 0x00D23A30, 0x00C0322C, 255, UK_TL | UK_TR);
+		uk_rline (canvas, 12, 9, 16, 17, 3, 0x00000000, 90);
 		const char *a = "Next appointments";
 		wall_text (canvas, 36, 5 + (26 - fh) / 2, a, g_ink, 2);
 		if (g_nev)
 		{
 			char t[12]; int p = 0; t[p++] = '('; p += ax_itoa (g_nev, t + p); t[p++] = ')'; t[p] = '\0';
-			wall_text (canvas, 36 + wk_len (a) * fw + 6, 5 + (26 - fh) / 2, t, g_dim, 0);
+			wall_text (canvas, 36 + uk_len (a) * fw + 6, 5 + (26 - fh) / 2, t, g_dim, 0);
 		}
 		for (int i = 10; i < W - 10; i++)					// the etched line
 		{
-			wk_blend_px (canvas, i, 33, g_light ? wk_tone (g_back, 90) : 0, g_light ? 200 : 110);
-			wk_blend_px (canvas, i, 34, g_light ? wk_tone (g_back, 190) : 0x00FFFFFF, g_light ? 200 : 70);
+			uk_blend_px (canvas, i, 33, g_light ? uk_tone (g_back, 90) : 0, g_light ? 200 : 110);
+			uk_blend_px (canvas, i, 34, g_light ? uk_tone (g_back, 190) : 0x00FFFFFF, g_light ? 200 : 70);
 		}
 		int maxc = (W - 110) / fw;
 		for (int r = 0; r < NROWS && r < g_nev; r++)
 		{
 			int y = HDR + 4 + r * ROW;
 			const Ev &e = g_ev[r];
-			if (r == hot) wk_rbox (canvas, 6, y, W - 12, ROW, 6, g_light ? 0 : 0x00FFFFFF, g_light ? 0 : 0x00FFFFFF, 34);
+			if (r == hot) uk_rbox (canvas, 6, y, W - 12, ROW, 6, g_light ? 0 : 0x00FFFFFF, g_light ? 0 : 0x00FFFFFF, 34);
 			char date[24], note[128];
 			format_date (e, date);
 			int p = 0; for (; e.note[p] && p < maxc && p < 127; p++) note[p] = e.note[p];
@@ -252,8 +251,8 @@ public:
 			int ty = y + (ROW - fh) / 2;
 			if (e.key == g_today)
 			{
-				wk_rbox (canvas, 12, y + 1, 54, ROW - 3, 6, wk_tone (C_ACCENT, 150), C_ACCENT);
-				wk_text_c (canvas, 12, y + 1, 54, ROW - 3, "Today", C_SEL_TEXT);
+				uk_rbox (canvas, 12, y + 1, 54, ROW - 3, 6, uk_tone (C_ACCENT, 150), C_ACCENT);
+				uk_text_c (canvas, 12, y + 1, 54, ROW - 3, "Today", C_SEL_TEXT);
 				wall_text (canvas, 100, ty, note, g_ink, 2);
 			}
 			else
@@ -264,7 +263,7 @@ public:
 		}
 		if (g_nev == 0) wall_text (canvas, 14, HDR + 8, "No upcoming appointments.", g_dim, 0);
 		if (g_nev > NROWS) wall_text (canvas, W - 3 * fw - 8, H - fh - 2, "...", g_dim, 0);
-		wk_paint_alpha (false);
+		uk_paint_alpha (false);
 	}
 
 	bool onMouse (int mx, int my, int bl, int, int, int) override

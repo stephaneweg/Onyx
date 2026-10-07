@@ -1,5 +1,5 @@
 //
-// qbasic -- the Onyx BASIC editor (QBasic style), on wtk with the global menu bar.
+// qbasic -- the Onyx BASIC editor (QBasic style), on uikit with the global menu bar.
 //
 //   * The program is split into MODULES, edited one at a time: the main module and each
 //     SUB / FUNCTION (View > SUBs... / ^L lists them; Edit > New SUB... / New FUNCTION...
@@ -12,14 +12,14 @@
 //     app.txt (+ an icon), launched like any app (the kernel hands main.bas to /bin/basic).
 //   * Enter keeps the indentation of the line above; Page Up / Down scroll by a page.
 //
-#include "kapi.h"
-#include "applib.h"
-#include "fsutil.h"
-#include "notify.h"
-#include "wtk/wtk.h"
+#include "appkit/appkit.h"
+#include "systemkit/systemkit.h"
+#include "filekit/filekit.h"
+#include "uikit/uikit.h"
 #include "basic/bas.h"
+#include "basic/baskits.h"
 
-using namespace wtk;
+using namespace uikit;
 
 #define W	760
 #define H	540
@@ -37,11 +37,22 @@ static bool starts_kw (const char *p, const char *kw)	// "SUB" at p, then a blan
 	return p[i] == ' ' || p[i] == '\t' || p[i] == 0 || p[i] == '\n' || p[i] == '\r' || p[i] == '(';
 }
 
+// A method's VIRTUAL / OVERRIDE before SUB / FUNCTION: the place after it (else p).
+static const char *skip_modifier (const char *p)
+{
+	int n = starts_kw (p, "VIRTUAL") ? 7 : starts_kw (p, "OVERRIDE") ? 8 : 0;
+	if (!n || p[n] == '(') return p;
+	const char *q = p + n; while (*q == ' ' || *q == '\t') q++;
+	return starts_kw (q, "SUB") || starts_kw (q, "FUNCTION") ? q : p;
+}
+
 // ---- the modules ------------------------------------------------------------------------------
 struct Module { char name[48]; int kind; char *text; };		// kind 0 main, 1 SUB, 2 FUNCTION
 static Module g_mod[MAXMOD]; static int g_nmod = 0, g_cur = 0;
 static char g_path[256] = "";
 static bool g_dirty = false;
+// The kind of files the Open and Save dialogs offer (uikit/dialog.h).
+static const char *const BAS_KINDS = "BASIC programs|*.bas|All files|*";
 
 class CodeArea;
 static CodeArea *g_ed = 0;
@@ -58,12 +69,12 @@ public:
 	Strip (int l, int t, int w, int h, const char *s, int etch) : Label (l, t, w, h, s, C_TEXT, C_FACE), m_etch (etch) {}
 	void onDraw () override
 	{
-		wk_rbox (canvas, 0, 0, width, height, 0, wk_tone (C_FACE, 170), wk_tone (C_FACE, 130));
-		if (m_etch & ETCH_BOTTOM) wk_etch_h (canvas, 0, height - 2, width, C_FACE);
-		if (m_etch & ETCH_TOP) wk_etch_h (canvas, 0, 0, width, C_FACE);
-		if (m_etch & ETCH_LEFT) wk_etch_v (canvas, 0, 4, height - 6, C_FACE);
+		uk_rbox (canvas, 0, 0, width, height, 0, uk_tone (C_FACE, 170), uk_tone (C_FACE, 130));
+		if (m_etch & ETCH_BOTTOM) uk_etch_h (canvas, 0, height - 2, width, C_FACE);
+		if (m_etch & ETCH_TOP) uk_etch_h (canvas, 0, 0, width, C_FACE);
+		if (m_etch & ETCH_LEFT) uk_etch_v (canvas, 0, 4, height - 6, C_FACE);
 		int t = m_etch & ETCH_TOP ? 2 : 0, b = m_etch & ETCH_BOTTOM ? 2 : 0;
-		wk_text_l (canvas, 8, t, height - t - b, text, fg, m_etch & ETCH_BOTTOM ? 2 : 0);
+		uk_text_l (canvas, 8, t, height - t - b, text, fg, m_etch & ETCH_BOTTOM ? 2 : 0);
 	}
 };
 
@@ -94,7 +105,7 @@ public:
 			return true;
 		}
 		bool r = Textarea::onKey (k);
-		if (r && ((k >= 32 && k < 127) || k == KEY_BACKSPACE || k == KEY_DEL || k == KEY_TAB || k == WK_CTRL ('X') || k == WK_CTRL ('V'))) g_dirty = true;
+		if (r && ((k >= 32 && k < 127) || k == KEY_BACKSPACE || k == KEY_DEL || k == KEY_TAB || k == UK_CTRL ('X') || k == UK_CTRL ('V'))) g_dirty = true;
 		return r;
 	}
 };
@@ -118,12 +129,16 @@ static void split (const char *src)
 	// main module = every line not inside a SUB / FUNCTION block
 	char *main = new char[n + 1]; int mn = 0;
 	int i = 0;
+	bool iface = false;					// in INTERFACE ... END INTERFACE: its SUB lines are declarations
 	while (i < n)
 	{
 		int ls = i; while (i < n && src[i] != '\n') i++;
 		int le = i; if (i < n) i++;
 		const char *p = src + ls; while (*p == ' ' || *p == '\t') p++;
-		int kind = starts_kw (p, "SUB") ? 1 : starts_kw (p, "FUNCTION") ? 2 : 0;
+		if (starts_kw (p, "INTERFACE") && p[9] == ' ') iface = true;
+		if (iface && starts_kw (p, "END")) { const char *t = p + 3; while (*t == ' ') t++; if (starts_kw (t, "INTERFACE")) iface = false; }
+		p = skip_modifier (p);
+		int kind = iface ? 0 : starts_kw (p, "SUB") ? 1 : starts_kw (p, "FUNCTION") ? 2 : 0;
 		if (kind && g_nmod < MAXMOD - 1)
 		{
 			// name
@@ -170,6 +185,7 @@ static void sync_current ()
 	if (g_mod[g_cur].kind)
 	{
 		const char *p = g_mod[g_cur].text; while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+		p = skip_modifier (p);
 		const char *q = p; while (*q && *q != ' ') q++;
 		while (*q == ' ') q++;
 		char name[48]; int k = 0;
@@ -242,7 +258,7 @@ public:
 	InputBox (const char *title, const char *init) : Modal (360, 120), m_title (title)
 	{
 		left = (g_root->width - width) / 2; top = (g_root->height - height) / 2;
-		tb = new Textbox (12, wk_fh () + 16, width - 24, 26, init, dlg_enter);
+		tb = new Textbox (12, uk_fh () + 16, width - 24, 26, init, dlg_enter);
 		addChild (tb);
 		Button *b;
 		b = new Button (width - 180, height - 36, 82, 28, "OK", dlg_btn);     b->tag = 1; addChild (b);
@@ -261,6 +277,47 @@ static bool ask_text (const char *title, char *out, int cap)
 	return out[0] != 0;
 }
 
+// The compile dialog (Run > Make .bax, File > Make App): how the program is made. "Managed": it will run on
+// the VM (as before machine code); without it /bin/basic runs it in machine code. The choices are kept.
+static bool g_optCompiled = true, g_optManaged = false, g_optAlone = false;
+static void dlg_nop (Widget &) {}
+class CompileDialog : public Modal
+{
+	const char *m_title;
+public:
+	Checkbox *compiled, *managed, *alone;
+	CompileDialog (const char *title, bool app) : Modal (500, app ? 208 : 140), m_title (title), compiled (0), alone (0)
+	{
+		left = (g_root->width - width) / 2; top = (g_root->height - height) / 2;
+		int y = uk_fh () + 18;
+		if (app)
+		{
+			compiled = new Checkbox (14, y, width - 28, 24, "Compiled (main.bax: starts faster, the source is not in the app)", g_optCompiled, dlg_nop);
+			addChild (compiled); y += 32;
+			alone = new Checkbox (14, y, width - 28, 24, "Standalone (main: an executable with the runtime in it, 650 KB)", g_optAlone, dlg_nop);
+			addChild (alone); y += 32;
+		}
+		managed = new Checkbox (14, y, width - 28, 24, "Managed (runs on the VM instead of machine code)", g_optManaged, dlg_nop);
+		addChild (managed);
+		Button *b;
+		b = new Button (width - 180, height - 36, 82, 28, "OK", dlg_btn);     b->tag = 1; addChild (b);
+		b = new Button (width - 92,  height - 36, 82, 28, "Cancel", dlg_btn); b->tag = 0; addChild (b);
+		managed->setFocus ();
+	}
+	void onButton (int tag) override { close (tag); }
+	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
+	void onDraw () override { drawBox (m_title); }
+};
+static bool ask_compile (const char *title, bool app)
+{
+	CompileDialog d (title, app);
+	if (!d.run ()) return false;
+	if (d.compiled) g_optCompiled = d.compiled->checked;
+	if (d.alone) g_optAlone = d.alone->checked;
+	g_optManaged = d.managed->checked;
+	return true;
+}
+
 // View > SUBs...: every module; Edit / Delete.
 class SubsDialog : public Modal
 {
@@ -269,7 +326,7 @@ public:
 	SubsDialog () : Modal (380, 320)
 	{
 		left = (g_root->width - width) / 2; top = (g_root->height - height) / 2;
-		list = new ListBox (12, wk_fh () + 14, width - 24, height - wk_fh () - 64, 0, dlg_enter);
+		list = new ListBox (12, uk_fh () + 14, width - 24, height - uk_fh () - 64, 0, dlg_enter);
 		for (int i = 0; i < g_nmod; i++)
 		{
 			char s[64];
@@ -299,7 +356,7 @@ public:
 static bool confirm_discard ()
 {
 	if (!g_dirty) return true;
-	int r = wk_messagebox ("QBasic", "The program has changed. Save it first?", MB_YESNOCANCEL);
+	int r = uk_messagebox ("QBasic", "The program has changed. Save it first?", MB_YESNOCANCEL);
 	if (r == 0) return false;
 	if (r == 1)
 	{
@@ -345,7 +402,7 @@ static void op_open ()
 {
 	if (!confirm_discard ()) return;
 	char p[256];
-	if (!wk_file_open (p, sizeof p, g_path[0] ? g_path : "SD:/basic")) return;
+	if (!uk_file_open (p, sizeof p, g_path[0] ? g_path : "SD:/basic", BAS_KINDS)) return;
 	load_file (p);
 }
 
@@ -361,7 +418,7 @@ static void op_save_as ()
 {
 	char p[256];
 	const char *base = g_path[0] ? fs_basename (g_path) : "program.bas";
-	if (!wk_file_save (p, sizeof p, g_path[0] ? g_path : "SD:/basic", base)) return;
+	if (!uk_file_save (p, sizeof p, g_path[0] ? g_path : "SD:/basic", base, BAS_KINDS)) return;
 	int n = slen (p);
 	if (!(n > 4 && p[n - 4] == '.' && (p[n - 3] | 32) == 'b')) { scpy (p + n, ".bas", sizeof p - n); }
 	if (!write_to (p)) { set_status ("Cannot save ", p); return; }
@@ -417,7 +474,7 @@ static void op_subs ()
 		char q[120]; scpy (q, "Delete ", sizeof q);
 		int n = slen (q); for (int k = 0; g_mod[sel].name[k] && n < 100; k++) q[n++] = g_mod[sel].name[k];
 		scpy (q + n, "?", sizeof q - n);
-		if (!wk_messagebox ("Delete", q, MB_YESNO)) return;
+		if (!uk_messagebox ("Delete", q, MB_YESNO)) return;
 		delete [] g_mod[sel].text;
 		for (int i = sel; i + 1 < g_nmod; i++) g_mod[i] = g_mod[i + 1];
 		g_nmod--;
@@ -487,7 +544,8 @@ static void op_goto ()
 }
 
 // The program compiled (bytecode: runs without parsing) into a .bax file. true = written.
-static bool write_bax (const char *path)
+// alone: a standalone executable -- the runtime (SD:/bin/basic) with the program after it.
+static bool write_bax (const char *path, bool managed, bool alone = false)
 {
 	int starts[MAXMOD];
 	char *s = compose (starts);
@@ -495,8 +553,20 @@ static bool write_bax (const char *path)
 	bas::Program *p = bas::compile (s, &e);
 	delete [] s;
 	if (!p) { check (false); return false; }
+	if (managed) bas::setManaged (p, true);
 	char *bytes; int n = bas::saveBax (p, &bytes);
 	bas::destroy (p);
+	if (alone)
+	{
+		void *f = kapi_open ("SD:/bin/basic");
+		if (!f) { delete [] bytes; return false; }
+		unsigned sz = kapi_fsize (f); char *rt = new char[sz + 1];
+		int r = kapi_read (f, rt, sz); kapi_close (f);
+		char *all = 0; int an = r == (int) sz ? bas::attachBax (rt, r, bytes, n, &all) : 0;
+		delete [] rt; delete [] bytes;
+		if (!all) return false;
+		bytes = all; n = an;
+	}
 	bool ok = kapi_save_file (path, bytes, (unsigned) n) >= 0;
 	delete [] bytes;
 	return ok;
@@ -509,7 +579,8 @@ static void op_make_bax ()
 	int e = slen (out), d = e; while (d > 0 && out[d - 1] != '.' && out[d - 1] != '/') d--;
 	if (d > 0 && out[d - 1] == '.') e = d - 1;
 	scpy (out + e, ".bax", sizeof out - e);
-	if (write_bax (out)) set_status ("Compiled: ", out);
+	if (!ask_compile ("Make .bax", false)) return;
+	if (write_bax (out, g_optManaged)) set_status ("Compiled: ", out);
 	else if (g_status) set_status ("Cannot write ", out);
 }
 
@@ -529,12 +600,29 @@ static void op_make_app ()
 	char p[160];
 	// compiled (main.bax: starts at once, the source stays private) or as source (main.bas);
 	// only one of them, or an old one would be run instead
-	bool compiled = wk_messagebox ("Make App", "Compile the app? (main.bax: it starts faster; the program's source is not in the app)", MB_YESNO) == 1;
-	char other[160];
-	fs_join (p, sizeof p, dir, compiled ? "main.bax" : "main.bas");
+	if (!ask_compile ("Make App", true)) return;
+	bool compiled = g_optCompiled || g_optAlone;
+	char other[160], third[160];
+	// one of main (standalone), main.bax, main.bas: the others removed, or an old one would be run instead
+	fs_join (p, sizeof p, dir, g_optAlone ? "main" : compiled ? "main.bax" : "main.bas");
 	fs_join (other, sizeof other, dir, compiled ? "main.bas" : "main.bax");
-	if (compiled ? !write_bax (p) : !write_to (p)) { set_status ("Cannot write ", p); return; }
-	kapi_remove (other);
+	fs_join (third, sizeof third, dir, g_optAlone ? "main.bax" : "main");
+	bool ok;
+	if (compiled) ok = write_bax (p, g_optManaged, g_optAlone);
+	else if (!g_optManaged) ok = write_to (p);
+	else
+	{	// the source of a managed app says so itself: OPTION MANAGED, its first line
+		char *s = compose (0);
+		const char *opt = "OPTION MANAGED\n";
+		int n = slen (s), k = slen (opt);
+		char *t = new char[n + k + 1];
+		for (int i = 0; i < k; i++) t[i] = opt[i];
+		for (int i = 0; i <= n; i++) t[k + i] = s[i];
+		ok = kapi_save_file (p, t, (unsigned) (n + k)) >= 0;
+		delete [] s; delete [] t;
+	}
+	if (!ok) { set_status ("Cannot write ", p); return; }
+	kapi_remove (other); kapi_remove (third);
 	char txt[200]; int k = 0;
 	const char *a = "# Onyx application metadata (written by QBasic > Make App)\nname = ";
 	for (int i = 0; a[i]; i++) txt[k++] = a[i];
@@ -562,7 +650,7 @@ static void op_examples ()
 {
 	if (!confirm_discard ()) return;
 	char p[256];
-	if (!wk_file_open (p, sizeof p, "SD:/basic/examples")) return;
+	if (!uk_file_open (p, sizeof p, "SD:/basic/examples", BAS_KINDS)) return;
 	load_file (p);
 }
 
@@ -610,6 +698,7 @@ public:
 
 int main (void)
 {
+	bas::setKitSource (bas::onyxKitSource);		// (#import: SD:/lib/<kit>.bi)
 	IdeRoot root;					// (its background: the theme's face)
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
@@ -631,10 +720,10 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New",          "^N", WK_CTRL ('N'), op_new);
-	menu.item ("Open...",      "^O", WK_CTRL ('O'), op_open);
+	menu.item ("New",          "^N", UK_CTRL ('N'), op_new);
+	menu.item ("Open...",      "^O", UK_CTRL ('O'), op_open);
 	menu.item ("Examples...",  "",   0,             op_examples);
-	menu.item ("Save",         "^S", WK_CTRL ('S'), op_save);
+	menu.item ("Save",         "^S", UK_CTRL ('S'), op_save);
 	menu.item ("Save As...",   "",   0,             op_save_as);
 	menu.separator ();
 	menu.item ("Make App...",  "",   0,             op_make_app);
@@ -642,12 +731,12 @@ int main (void)
 	menu.item ("New SUB...",      "", 0,             op_new_sub);
 	menu.item ("New FUNCTION...", "", 0,             op_new_function);
 	menu.separator ();
-	menu.item ("Go to Line...",   "^G", WK_CTRL ('G'), op_goto);
+	menu.item ("Go to Line...",   "^G", UK_CTRL ('G'), op_goto);
 	menu.menu ("View");
-	menu.item ("SUBs... (F2)", "^L", WK_CTRL ('L'), op_subs);
+	menu.item ("SUBs... (F2)", "^L", UK_CTRL ('L'), op_subs);
 	menu.menu ("Run");
-	menu.item ("Start (F5)",   "^R", WK_CTRL ('R'), op_run);
-	menu.item ("Check Syntax", "^K", WK_CTRL ('K'), op_check);
+	menu.item ("Start (F5)",   "^R", UK_CTRL ('R'), op_run);
+	menu.item ("Check Syntax", "^K", UK_CTRL ('K'), op_check);
 	menu.item ("Make .bax",    "",   0,             op_make_bax);
 	menu.menu ("Help");
 	menu.item ("Keywords",     "",   0,             op_help);

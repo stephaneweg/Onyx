@@ -1,7 +1,7 @@
 //
-// fakekapi.cpp -- a host (PC) stand-in for the kernel, to run Onyx's wtk apps (user/Apps/<app>/
+// fakekapi.cpp -- a host (PC) stand-in for the kernel, to run Onyx's uikit apps (user/Apps/<app>/
 // main.cpp) on Linux and see what they draw: their client canvas AND their window frame (the two
-// chrome copies wtk draws, kapi v28 get_chrome), as the compositor would show them.
+// chrome copies uikit draws, kapi v28 get_chrome), as the compositor would show them.
 //
 // The apps call the kernel through the kapi table at a fixed address (kern/kapi_abi.h:
 // KAPI_TABLE_VA); here a table is mapped there and filled with host functions: files are read
@@ -15,6 +15,9 @@
 //                        press is also a canvas click, a move with a button held a drag)
 //   rdown X Y / rup X Y  the right button
 //   key CODE             a key (a KEY_* number, or a character)
+//   hold CODE            a key pressed and kept down: its key event now, and kapi_key_held true for it until
+//                        "release CODE" (folded as the kernel's KeyHeldAny: A-Z as a-z, '\n' / '\r' as KEY_ENTER)
+//   release CODE         the held key let go (no event: the kernel sends none either)
 //   mods N               the modifier keys held from now on (kapi_get_modifiers: 1 Ctrl, 2 Shift, 4 Alt)
 //   winctl N             a title button for the app (GUI_EVENT_WINCTL: 0 the window menu, 2 maximise)
 //   menu N               the app's menu item N chosen in the menu bar (GUI_EVENT_MENU)
@@ -28,7 +31,8 @@
 // SIM_SD: the SD card's directory (default sdcard), only read; SIM_WRITES: where what the apps
 // save goes (default /tmp/onyx_sim_writes); SIM_OVERLAY: directories ("a:b") whose files are read
 // instead of the card's (sample data: tools/tests/desktop_sim/sd); SIM_PIPE: what a spawned
-// program (the terminal's shell) writes, read back from its pipe; SIM_NET: what a server sends
+// program (the terminal's shell) writes, read back from its pipe (SIM_PIPE2...: the next ones'; SIM_BUSY:
+// below); SIM_NET: what a server sends
 // on a TCP connection (irc) -- "\n" a new line, "\r" a return, "\e" an escape; SIM_CURSOR="x,y":
 // the pointer for kapi_cursor_pos; SIM_SLEEP=1: msleep really sleeps (an app whose timers read
 // the clock: NetSurf); SIM_MENU, SIM_RUNNING, SIM_WALL: below.
@@ -50,6 +54,29 @@
 // Threads (kapi v67) are the PC's too (pthreads); kapi_post runs at the next pump_events; a
 // thread's msleep only sleeps (the script is stepped by the app's main thread only).
 //
+// For the tests of the apps that talk to services and write the card (Notes, Stickies -- AutoDev round 1);
+// nothing changes while their variable is unset:
+// SIM_SERVICES="notify,stickies" (or "-": none): the services that run. kapi_ipc_lookup answers ONLY those
+//   names (pid 700 + their index in the list), even with SIM_MBOX (whose "any service is pid 7" holds only
+//   without SIM_SERVICES); kapi_ipc_register gives 1 for any name; a kapi_mailbox_send to a listed pid is
+//   logged: `sim: send <name> type <t> "<payload>"` (a NUL written \0, other non-printables \xNN), and
+//   answers 0. (Not combined with SIM_IPC, which is tested first: the in-process services.)
+// SIM_ROFS="SD:/Notes[,SD:/etc]": read-only folders -- kapi_save_file, kapi_mkdir, kapi_remove, kapi_rename
+//   and kapi_file_out on a path under one of them (compared without the volume, case-insensitively) fail,
+//   logged `sim: rofs <path>` (chmod a-w is no test when the tests run as root).
+// SIM_CURSOR=follow: kapi_cursor_pos gives the script's pointer in SCREEN coordinates: the client origin
+//   the window had at the last "down" (before any: at the first pointer step) plus the scripted point -- a
+//   drag "down 50 10;move 150 10;up 150 10" moves a widget that drags itself (the agenda's way) by 100 px.
+// The script step "copy SRC DST": the host file SRC copied to the card path DST (into SIM_WRITES, its
+//   folders made) at that step, logged `sim: copy DST` -- a file changed "by another program" mid-run.
+// SIM_STAT=1: kapi_path_stat is the host's stat () of the file the app would read (writes, overlays, card):
+//   size, mtime (the host file's, UTC), mode; kapi_clock_info the fixed clock (2026-09-28 12:34:00 UTC,
+//   tz_minutes 0; the PC's with SIM_REALNET). Unset: both -KAPI_ENOSYS as before (the Preload applet's
+//   screenshot shows its programs "missing" -- unchanged).
+// Each window made is logged: `sim: window <title> flags 0x<hex>` (WIN_FLAG_*: a widget's kind checked).
+// A SIM_MBOX line "@<ticks>:type:pid:payload" is held back until <ticks> ticks after the start (a script step
+//   is 2 ticks; the lines after it wait as well): a message that comes mid-run (Stickies' STK_MSG_RELOAD after a change on the card).
+//
 #include <sys/mman.h>
 #include <pthread.h>
 #include <sys/socket.h>
@@ -60,6 +87,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+#include <time.h>
 #include <dirent.h>
 #include <ftw.h>
 #include <sys/stat.h>
@@ -70,7 +99,7 @@
 #include <set>
 #include <map>
 #include <deque>
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 // The kernel's frame metrics (kernel/include/kern/gui/window.h: WIN_TITLEBAR_H, WIN_BORDER).
 #ifndef SIM_TITLE_H
@@ -154,6 +183,25 @@ static std::string ramdir (void)
 	return g_ramdir;
 }
 
+// SIM_ROFS: is p under one of the read-only folders? (logged when it is)
+static bool rofs (const char *p)
+{
+	const char *e = getenv ("SIM_ROFS");
+	if (!e || !*e || !p || is_ram (p)) return false;
+	std::string r = relpath (p);
+	for (std::string list = e; !list.empty (); )
+	{
+		size_t comma = list.find (',');
+		std::string pre = relpath (list.substr (0, comma).c_str ());
+		while (!pre.empty () && pre[pre.size () - 1] == '/') pre.erase (pre.size () - 1);
+		bool under = pre.empty () || (r.size () >= pre.size () && (r.size () == pre.size () || r[pre.size ()] == '/'));
+		for (size_t i = 0; under && i < pre.size (); i++) if (tolower ((unsigned char) r[i]) != tolower ((unsigned char) pre[i])) under = false;
+		if (under) { fprintf (stderr, "sim: rofs %s\n", p); return true; }
+		list = comma == std::string::npos ? "" : list.substr (comma + 1);
+	}
+	return false;
+}
+
 // ---- the kernel's 8 x 16 font (circle/lib/font8x16.cpp: 16 bytes a glyph from 0x21) --------------
 static unsigned char g_font[256][16];
 static void load_font (void)
@@ -195,17 +243,24 @@ static void *f_open (const char *p) { return fopen (sdpath (p).c_str (), "rb"); 
 static int f_read (void *h, void *b, unsigned n) { return (int) fread (b, 1, n, (FILE *) h); }
 static int f_write (int fd, const void *b, unsigned n) { return (int) fwrite (b, 1, n, fd == 2 ? stderr : stdout); }
 // As the kernel's: the bytes written, or -1 (it answered 0: a caller testing "== 0" passed here, failed on the Pi).
-static int save_file (const char *p, const void *b, unsigned n) { FILE *f = fopen (wpath (p).c_str (), "wb"); if (!f) return -1; size_t w = n ? fwrite (b, 1, n, f) : 0; if (fclose (f) != 0) return -1; return (int) w; }
+static int save_file (const char *p, const void *b, unsigned n) { if (rofs (p)) return -1; FILE *f = fopen (wpath (p).c_str (), "wb"); if (!f) return -1; size_t w = n ? fwrite (b, 1, n, f) : 0; if (fclose (f) != 0) return -1; return (int) w; }
 static unsigned f_fsize (void *h) { FILE *f = (FILE *) h; long c = ftell (f); fseek (f, 0, SEEK_END); long n = ftell (f); fseek (f, c, SEEK_SET); return (unsigned) n; }
 static void f_close (void *h) { fclose ((FILE *) h); }
 struct SimDir { DIR *d; std::string path; };
 // SIM_VOLS="SD1,VD0": the other volumes there (the card's partitions 2..4, the disk images) -- none
 // by default, as on a card with one partition ("SD:" and "SD0:" are the card).
+// (v93) the simulated USB stick (vol_list below)
+static unsigned g_usbState = KAPI_VST_MOUNTED, g_usbGen = 1;
+static bool g_usbParts = getenv ("SIM_USB") && getenv ("SIM_USB")[0] == '2';	// (USB1P1: + USB1P2:, else USB1:)
+static char g_usbType[8] = "exFAT", g_usbLabel[36] = "KINGSTON";
 static bool volume_there (const char *p)
 {
 	const char *c = p ? strchr (p, ':') : 0;
 	if (!c || c - p > 4) return true;
 	std::string v (p, (size_t) (c - p));
+	if (v == "USB" || v == "USB1") return getenv ("SIM_USB") != 0 && !g_usbParts;	// (v93: a stick, SIM_USB=1;
+	if (v == "USB1P1" || v == "USB1P2") return getenv ("SIM_USB") != 0 && g_usbParts;	//  two partitions: SIM_USB=2)
+	if (v.compare (0, 3, "USB") == 0) return false;
 	if (v == "SD" || v == "SD0" || (v != "VD0" && v != "VD1" && v != "VD2" && v != "VD3" && v != "SD1" && v != "SD2" && v != "SD3")) return true;
 	std::string list = std::string (",") + (getenv ("SIM_VOLS") ? getenv ("SIM_VOLS") : "") + ",";
 	return list.find ("," + v + ",") != std::string::npos;
@@ -265,6 +320,7 @@ static unsigned *create_ex (int x, int y, int w, int h, const char *t, unsigned 
 	}
 	g_canvas = (unsigned *) calloc ((size_t) w * h, 4); g_cw = w; g_ch = h; g_stride = w; g_lw = w; g_lh = h; g_flags = f;
 	snprintf (g_title, sizeof g_title, "%s", t ? t : "");
+	fprintf (stderr, "sim: window %s flags 0x%x\n", g_title, f);
 	make_chrome ();
 	if (getenv ("SIM_POS")) place (g_ow, g_oh); else { g_x = x; g_y = y; }
 	return g_canvas;
@@ -499,6 +555,34 @@ static int h_thread_self (void)
 	return r;
 }
 static void pump (void) { if (on_main ()) run_posts (); }
+// (SIM_CURSOR=follow) the script's last pointer point, and the client origin it is relative to
+static int g_ptrX = -1, g_ptrY = -1, g_orgX, g_orgY; static bool g_orgSet;
+static void ptr_track (int x, int y, bool press)
+{
+	if (press || !g_orgSet) { g_orgX = g_x + (g_act ? SIM_BORDER : 0); g_orgY = g_y + (g_act ? SIM_TITLE_H : 0); g_orgSet = true; }
+	g_ptrX = x; g_ptrY = y;
+}
+// the script's "copy SRC DST": a host file into the writes (a file changed by another program)
+static void sim_copy (const char *src, const char *dst)
+{
+	FILE *a = fopen (src, "rb");
+	if (!a) { fprintf (stderr, "sim: copy %s: no such file\n", src); return; }
+	std::string to = wpath (dst);
+	FILE *b = fopen (to.c_str (), "wb");
+	char buf[65536]; size_t n;
+	while (b && (n = fread (buf, 1, sizeof buf, a)) > 0) fwrite (buf, 1, n, b);
+	fclose (a); if (b) fclose (b);
+	fprintf (stderr, b ? "sim: copy %s\n" : "sim: copy %s failed\n", dst);
+}
+// The keys the script holds ("hold" / "release"), as the kernel's held-key table (window.h HELD_KEYS)
+enum { SIM_HELD_KEYS = 0x110 };
+static unsigned g_held[(SIM_HELD_KEYS + 31) / 32];
+static int held_fold (int k)				// (kwin.cpp KeyHeldAny's folding)
+{
+	if (k >= 'A' && k <= 'Z') k += 'a' - 'A';
+	if (k == '\n' || k == '\r') k = KEY_ENTER;
+	return k;
+}
 static void step (void)
 {
 	if (g_step >= g_script.size ()) { fprintf (stderr, "sim: end of the script\n"); exit (0); }
@@ -508,6 +592,7 @@ static void step (void)
 	auto ptrev = [] (int ev, int x, int y, int btn, int chg, int wheel)
 	{
 		long v = ((long) (wheel & 0xFF) << 48) | ((long) chg << 40) | ((long) btn << 32) | ((long) x << 16) | (long) y;
+		ptr_track (x, y, ev == GUI_EVENT_PTR_DOWN);
 		if (g_ptr) g_ptr (0, ev, v);
 	};
 	auto click = [] (int ev, int x, int y)				// (the legacy canvas-click handler too)
@@ -530,6 +615,16 @@ static void step (void)
 	}
 	else if (!strcmp (cmd, "wheel")) { sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c); ptrev (GUI_EVENT_PTR_WHEEL, a, b, 0, 0, c); }
 	else if (!strcmp (cmd, "key")) { sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0]; if (g_key) g_key (0, GUI_EVENT_KEY, k); }
+	else if (!strcmp (cmd, "hold") || !strcmp (cmd, "release"))
+	{
+		sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0];
+		int h = held_fold ((int) k);
+		if (h > 0 && h < SIM_HELD_KEYS)
+		{
+			if (cmd[0] == 'h') g_held[h >> 5] |= 1u << (h & 31); else g_held[h >> 5] &= ~(1u << (h & 31));
+		}
+		if (cmd[0] == 'h' && g_key) g_key (0, GUI_EVENT_KEY, k);	// (the kernel sends the press too)
+	}
 	else if (!strcmp (cmd, "menu")) { sscanf (st.c_str (), "%*s %d", &a); if (g_menuFn) g_menuFn (0, GUI_EVENT_MENU, a); }
 	// drag & drop (ABI v42) from another app: "dragover X Y [FLAGS]" (FLAGS 1 = Ctrl, 4 = left),
 	// "drop X Y PATH|PATH... [FLAGS]" (the paths a DND_FILES payload, '|' for the newlines)
@@ -548,6 +643,7 @@ static void step (void)
 	else if (!strcmp (cmd, "winstate")) { sscanf (st.c_str (), "%*s %d", &a); g_winstate = (unsigned) a; }
 	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (0, GUI_EVENT_WINCTL, a); }
 	else if (!strcmp (cmd, "dump")) { sscanf (st.c_str (), "%*s %255s", arg); dump (arg); }
+	else if (!strcmp (cmd, "copy")) { char dst[256] = ""; sscanf (st.c_str (), "%*s %255s %255s", arg, dst); sim_copy (arg, dst); }
 	// "waitlog N TEXT": stay on this step (one main-loop turn each) until the app's log (SIM_LOG, the
 	// file its stdout/stderr go to) holds TEXT, or N turns passed -- a test waits for what it
 	// expects rather than a fixed count of turns (a loaded machine is slower)
@@ -681,17 +777,19 @@ static int app_dir (char *b, unsigned n)				// SD:apps/<the program's name>.app/
 	if (b && n) snprintf (b, n, "SD:apps/%s.app/", name);
 	return b ? (int) strlen (b) : 0;
 }
-static int f_mkdir (const char *p) { return mkdir (wpath (p).c_str (), 0755) == 0 ? 0 : -1; }
+static int f_mkdir (const char *p) { if (rofs (p)) return -1; return mkdir (wpath (p).c_str (), 0755) == 0 ? 0 : -1; }
 // (the card is only read: a file is removed / renamed on RAM:, or among what the apps wrote --
 //  SIM_WRITES --, never on the card)
 static bool written (const char *p) { std::string f = sdpath (p), w = writes () + "/"; return f.compare (0, w.size (), w) == 0; }
 static int f_remove (const char *p)
 {
+	if (rofs (p)) return -1;
 	if (!is_ram (p) && !written (p)) return -1;
 	std::string f = sdpath (p); return (remove (f.c_str ()) == 0 || rmdir (f.c_str ()) == 0) ? 0 : -1;
 }
 static int f_rename (const char *a, const char *b)
 {
+	if (rofs (a) || rofs (b)) return -1;
 	if (!(is_ram (a) && is_ram (b)) && !(written (a) && !is_ram (b)))
 		return -1;
 	if (!is_ram (b))						// (into the writes: its own path there)
@@ -703,6 +801,31 @@ static int f_rename (const char *a, const char *b)
 	struct stat st; std::string to = sdpath (b);
 	if (stat (to.c_str (), &st) == 0) return -1;			// (there already: as the kernel's)
 	return rename (sdpath (a).c_str (), to.c_str ()) == 0 ? 0 : -1;
+}
+// (v75) a file's facts: the host's stat () of what the app would read (the writes, an overlay, the card)
+static int path_stat (const char *p, struct kapi_stat *o)
+{
+	if (!p || !o) return -KAPI_EINVAL;
+	if (!volume_there (p)) return -KAPI_ENOENT;
+	struct stat st;
+	if (stat (sdpath (p).c_str (), &st) != 0) return -KAPI_ENOENT;
+	memset (o, 0, sizeof *o);
+	o->size = (unsigned long long) st.st_size; o->mtime = (long long) st.st_mtime; o->ctime = o->mtime;
+	o->mode = (S_ISDIR (st.st_mode) ? KAPI_S_IFDIR : KAPI_S_IFREG) | 0777;
+	o->attr = S_ISDIR (st.st_mode) ? 0x10 : 0x20; o->blksize = 4096; o->blocks = ((unsigned long long) st.st_size + 511) / 512;
+	return 0;
+}
+// (v75) the clock: the simulator's fixed date (get_datetime's: 2026-09-28 12:34:00, UTC), the PC's with SIM_REALNET
+static int clock_info (struct kapi_clock_info *o)
+{
+	if (!o) return -KAPI_EINVAL;
+	memset (o, 0, sizeof *o);
+	struct tm tm; memset (&tm, 0, sizeof tm);
+	tm.tm_year = 2026 - 1900; tm.tm_mon = 8; tm.tm_mday = 28; tm.tm_hour = 12; tm.tm_min = 34;
+	long long t = getenv ("SIM_REALNET") ? (long long) time (0) : (long long) timegm (&tm);
+	o->freq = 54000000; o->cnt = (unsigned long long) g_ticks * 540000; o->utc_us = t * 1000000;
+	o->tz_minutes = 0; o->flags = KAPI_CLOCK_REALTIME_VALID;
+	return 0;
 }
 // (v71) a volume's room: RAM: (128 MB, what its folder holds), the card (its folder's file system)
 static unsigned long long g_ramUsed;
@@ -722,6 +845,69 @@ static int vol_info (const char *p, struct kapi_vol_info *o)
 	o->total = 8ull << 30; o->free = 4ull << 30; o->used = o->total - o->free; snprintf (o->type, sizeof o->type, "FAT32");
 	return 0;
 }
+// (v93) the volumes: the card (SD:, the SIM_VOLS partitions), a USB stick when SIM_USB is set (a 14.9 GB
+// exFAT "KINGSTON"; Eject / Mount / Format change it as the kernel would), RAM:
+static int vol_list (struct kapi_volume *o, int max, unsigned flags)
+{
+	int n = 0;
+	auto add = [&] (const char *name, unsigned state, unsigned fl, unsigned long long dev, unsigned long long total, unsigned long long fr,
+			const char *type, const char *label, const char *devname, unsigned gen) {
+		if (n < max && o)
+		{
+			struct kapi_volume &e = o[n]; memset (&e, 0, sizeof e);
+			snprintf (e.name, sizeof e.name, "%s", name); e.state = state; e.flags = fl; e.gen = gen;
+			e.device_size = dev; e.total = total; e.free = (flags & KAPI_VOLS_ROOM) ? fr : ~0ull;
+			snprintf (e.type, sizeof e.type, "%s", type); snprintf (e.label, sizeof e.label, "%s", label);
+			snprintf (e.device, sizeof e.device, "%s", devname); e.serial = 0x1A2B3C4D;
+		}
+		n++;
+	};
+	add ("SD", KAPI_VST_MOUNTED, KAPI_VF_SYSTEM, 32ull << 30, 8ull << 30, 4ull << 30, "FAT32", "BOOT", "emmc1", 1);
+	static const char *const parts[] = { "SD1", "SD2", "SD3" };
+	for (int i = 0; i < 3; i++)
+	{
+		char v[8]; snprintf (v, sizeof v, "%s:", parts[i]);
+		if (volume_there (v)) add (parts[i], KAPI_VST_MOUNTED, KAPI_VF_FORMATTABLE, 32ull << 30, 23ull << 30, 17ull << 30, "exFAT", "ROMS", "emmc1", 1);
+	}
+	bool on = g_usbState == KAPI_VST_MOUNTED;
+	if (getenv ("SIM_USB") && g_usbParts)
+	{
+		add ("USB1P1", g_usbState, KAPI_VF_REMOVABLE | KAPI_VF_FORMATTABLE, 16008609792ull, on ? 7998537728ull : 0, on ? 2147483648ull : 0,
+		     on ? "FAT32" : "", on ? "PHOTOS" : "", "umsd1", g_usbGen);
+		add ("USB1P2", g_usbState, KAPI_VF_REMOVABLE | KAPI_VF_FORMATTABLE, 16008609792ull, on ? 8004829184ull : 0, on ? 6442450944ull : 0,
+		     on ? "exFAT" : "", on ? "DATA" : "", "umsd1", g_usbGen);
+	}
+	else if (getenv ("SIM_USB"))
+		add ("USB1", g_usbState, KAPI_VF_REMOVABLE | KAPI_VF_FORMATTABLE, 16008609792ull, g_usbState == KAPI_VST_MOUNTED ? 16004415488ull : 0,
+		     g_usbState == KAPI_VST_MOUNTED ? 11811160064ull : 0, g_usbState == KAPI_VST_MOUNTED ? g_usbType : "",
+		     g_usbState == KAPI_VST_MOUNTED ? g_usbLabel : "", "umsd1", g_usbGen);
+	add ("RAM", KAPI_VST_MOUNTED, KAPI_VF_RAM, 128ull << 20, 128ull << 20, 120ull << 20, "RAM", "", "", 1);
+	return n;
+}
+static bool is_usb (const char *v) { return v && (v[0] | 32) == 'u' && (v[1] | 32) == 's' && (v[2] | 32) == 'b' && (v[3] == ':' || v[3] == 0 || v[3] == '1'); }
+static int vol_eject (const char *v, unsigned)
+{
+	if (!is_usb (v) || !getenv ("SIM_USB")) return -KAPI_EINVAL;
+	if (g_usbState != KAPI_VST_MOUNTED) return -KAPI_ENOENT;
+	g_usbState = KAPI_VST_EJECTED; g_usbGen++;
+	return 0;
+}
+static int vol_mount (const char *v)
+{
+	if (!is_usb (v) || !getenv ("SIM_USB")) return -KAPI_ENODEV;
+	if (g_usbState != KAPI_VST_MOUNTED) { g_usbState = KAPI_VST_MOUNTED; g_usbGen++; }
+	return 0;
+}
+static int vol_format (const char *v, const struct kapi_format *f)
+{
+	if (!v || (v[0] | 32) == 's') return (v && (v[2] == ':' || v[2] == 0)) || !(f->flags & KAPI_FMT_CARD) ? -KAPI_EPERM : 0;
+	if (!is_usb (v) || !getenv ("SIM_USB")) return -KAPI_ENODEV;
+	snprintf (g_usbType, sizeof g_usbType, "%s", f->fs == KAPI_FMT_FAT32 ? "FAT32" : f->fs == KAPI_FMT_FAT ? "FAT16" : "exFAT");
+	snprintf (g_usbLabel, sizeof g_usbLabel, "%s", f->label);
+	if (!strchr (v, 'P') && !strchr (v, 'p')) g_usbParts = false;	// (USB1: the whole device: one partition)
+	g_usbState = KAPI_VST_MOUNTED; g_usbGen++;
+	return 0;
+}
 static int list_tasks (char *b, unsigned n)
 {
 	if (b && n) snprintf (b, n, "Rk idle\nSk compositor\nSk usb\nSk net\nSa voronoy\nRa menubar\nRa dock\nSa agenda\n"
@@ -731,7 +917,7 @@ static int list_tasks (char *b, unsigned n)
 // Sound: none, unless SIM_SOUND=1 -- then a stand-in output: the PCM stream is "played" at
 // 44100 frames a second of real time from a 0.5 s queue (sound_write takes what fits,
 // sound_status gives the free frames), with SIM_SOUNDOUT=<file> the frames played written to
-// the file (s16 L R) -- the media tests (tools/tests/netsurf/mediatest.sh) hear with it.
+// the file (s16 L R) -- the media tests hear with it.
 static pthread_mutex_t g_sndLock = PTHREAD_MUTEX_INITIALIZER;
 static bool g_sndOwned;
 static double g_sndStart;		// when the queue's frame 0 plays (s)
@@ -806,8 +992,35 @@ static int screen_native (int *w, int *h)
 	return 1;
 }
 static int set_timezone (int m) { return m >= -720 && m <= 840; }
-static int proc_done (void *p) { return p == (void *) 0x5000 ? 0 : 1; }	// (the SIM_PIPE program: running)
+// The programs spawned (the terminal's shells): handles 0x5000 + k, pid 100 + k, running until a
+// proc_tree kill; SIM_BUSY="2,3": the 2nd and the 3rd have a child (a command running).
+static bool g_spawnKilled[64];
+static int spawn_index (void *p) { unsigned long v = (unsigned long) p; return v >= 0x5000 && v < 0x5040 ? (int) (v - 0x5000) : -1; }
+static int proc_done (void *p) { int k = spawn_index (p); return k >= 0 && !g_spawnKilled[k] ? 0 : 1; }	// (a SIM_PIPE program: running)
 static int h_wait (void *) { return 0; }
+static int proc_wait (void *p, unsigned, struct kapi_proc_status *o)
+{
+	int k = spawn_index (p);
+	if (k < 0) return -KAPI_EBADF;
+	if (o) { o->code = g_spawnKilled[k] ? -9 : 0; o->reason = g_spawnKilled[k] ? KAPI_PROC_KILLED : -1; o->pid = 100 + k; o->reserved = 0; }
+	return g_spawnKilled[k] ? 1 : 0;
+}
+static bool spawn_busy (int k)
+{
+	const char *e = getenv ("SIM_BUSY");
+	for (const char *q = e; q && *q; ) { if (atoi (q) == k + 1) return true; while (*q && *q != ',') q++; if (*q) q++; }
+	return false;
+}
+static int proc_tree (int pid, int op, int *out, unsigned cap)
+{
+	int k = pid - 100;
+	if (k < 0 || k >= 64 || g_spawnKilled[k]) return -KAPI_ESRCH;
+	int kids = spawn_busy (k) ? 1 : 0;
+	if (op == KAPI_TREE_LIST) { if (kids && out && cap) out[0] = 200 + k; return kids; }
+	fprintf (stderr, "sim: proc_tree %d %s -> %d killed\n", pid, op == KAPI_TREE_KILL ? "kill" : "kill-children", kids + (op == KAPI_TREE_KILL));
+	if (op == KAPI_TREE_KILL) g_spawnKilled[k] = true;
+	return kids + (op == KAPI_TREE_KILL);
+}
 // A canned stream (SIM_PIPE, SIM_NET): its text ("\n" a new line, "\r" a return, "\e" an escape)
 // read once, then nothing more
 struct Canned { const char *env; std::string s; size_t pos; bool init; };
@@ -827,12 +1040,18 @@ static int canned_read (Canned &c, void *b, unsigned n)
 	memcpy (b, c.s.data () + c.pos, k); c.pos += k;
 	return (int) k;
 }
-// SIM_PIPE: a spawned program's output (the terminal's shell), from the pipes (handles 1, 2, ...)
-static Canned g_pipeOut = { "SIM_PIPE" };
+// SIM_PIPE: a spawned program's output (the terminal's shell), from the pipes (handles 1, 2, ...);
+// the 2nd program spawned writes SIM_PIPE2, the 3rd SIM_PIPE3... (the terminal's tabs)
+static Canned g_pipeOut[8] = { { "SIM_PIPE" }, { "SIM_PIPE2" }, { "SIM_PIPE3" }, { "SIM_PIPE4" },
+			       { "SIM_PIPE5" }, { "SIM_PIPE6" }, { "SIM_PIPE7" }, { "SIM_PIPE8" } };
+static void *g_spawnOut[64];			// each spawned program's output pipe
+static int g_nspawn;
 static int pipe_read (void *h, void *b, unsigned n)
 {
 	if (!h || (unsigned long) h > 64) return 0;
-	return canned_read (g_pipeOut, b, n);
+	for (int k = 0; k < g_nspawn && k < 8; k++)
+		if (g_spawnOut[k] == h) return g_spawnKilled[k] ? 0 : canned_read (g_pipeOut[k], b, n);
+	return g_nspawn > 0 ? 0 : canned_read (g_pipeOut[0], b, n);
 }
 // SIM_NET: what the server sends (irc) on a connection; none: no network
 static Canned g_netIn = { "SIM_NET" };
@@ -966,6 +1185,7 @@ static void *fstream_make (FILE *f)
 static void *file_in (const char *p) { return fstream_make (fopen (sdpath (p).c_str (), "rb")); }
 static void *file_out (const char *p, int append)
 {
+	if (rofs (p)) return 0;
 	std::string w = wpath (p);
 	if (append)						// (appending to a card file: from its copy)
 	{
@@ -994,7 +1214,51 @@ static int get_wheel (void) { return s_wheel; }
 static int h_kill (const char *n) { fprintf (stderr, "sim: kill %s\n", n); return 1; }
 static int set_keymap_data (const char *, const void *, unsigned) { return 1; }
 static int sipc_send (int, int, const void *, unsigned);
-static int mailbox_send (int to, int type, const void *d, unsigned n) { return getenv ("SIM_IPC") ? sipc_send (to, type, d, n) : 0; }
+// SIM_SERVICES="a,b" (or "-"): the services running, pid 700 + their index -> the pid (0: not running);
+// svc_name: the name of a pid of theirs ("" none)
+static int svc_pid (const char *n)
+{
+	const char *e = getenv ("SIM_SERVICES");
+	int k = 0;
+	for (std::string list = e ? e : ""; !list.empty (); k++)
+	{
+		size_t comma = list.find (',');
+		if (n && list.substr (0, comma) == n) return 700 + k;
+		list = comma == std::string::npos ? "" : list.substr (comma + 1);
+	}
+	return 0;
+}
+static std::string svc_name (int pid)
+{
+	const char *e = getenv ("SIM_SERVICES");
+	int k = 0;
+	for (std::string list = e ? e : ""; !list.empty (); k++)
+	{
+		size_t comma = list.find (',');
+		if (700 + k == pid) return list.substr (0, comma);
+		list = comma == std::string::npos ? "" : list.substr (comma + 1);
+	}
+	return "";
+}
+static int mailbox_send (int to, int type, const void *d, unsigned n)
+{
+	if (getenv ("SIM_IPC")) return sipc_send (to, type, d, n);
+	std::string name = getenv ("SIM_SERVICES") ? svc_name (to) : "";
+	if (!name.empty ())						// (a listed service: the message logged)
+	{
+		std::string t;
+		for (unsigned i = 0; d && i < n; i++)
+		{
+			unsigned char c = ((const unsigned char *) d)[i];
+			char x[8];
+			if (c == 0) t += "\\0";
+			else if (c < 32 || c == 127) { snprintf (x, sizeof x, "\\x%02X", c); t += x; }
+			else t += (char) c;
+		}
+		fprintf (stderr, "sim: send %s type %d \"%s\"\n", name.c_str (), type, t.c_str ());
+	}
+	return 0;
+}
 static int drag_begin (int, const void *, unsigned, const char *) { return 0; }
 static int drag_data (int *type, void *buf, unsigned cap)
 {
@@ -1003,10 +1267,12 @@ static int drag_data (int *type, void *buf, unsigned cap)
 	if (buf && cap) memcpy (buf, g_dragData.c_str (), n < cap ? n : cap);
 	return (int) n;
 }
-static void *spawn (const char *p, const char *a, void *, void *)
+static void *spawn (const char *p, const char *a, void *, void *out)
 {
 	fprintf (stderr, "sim: spawn %s %s\n", p, a ? a : "");
-	return getenv ("SIM_PIPE") ? (void *) 0x5000 : 0;
+	if (!getenv ("SIM_PIPE") || g_nspawn >= 64) return 0;
+	g_spawnOut[g_nspawn] = out;
+	return (void *) (unsigned long) (0x5000 + g_nspawn++);
 }
 static unsigned long g_pipes;
 static void *h_pipe (void) { return getenv ("SIM_PIPE") && g_pipes < 64 ? (void *) ++g_pipes : 0; }
@@ -1064,12 +1330,13 @@ static int clipboard_get (int *t, void *b, unsigned cap, unsigned *serial)
 	return (int) g_clip.size ();
 }
 static void set_click (gui_handler h) { g_click = h; }
-static int key_held (int) { return 0; }
+static int key_held (int k) { k = held_fold (k); return k > 0 && k < SIM_HELD_KEYS && ((g_held[k >> 5] >> (k & 31)) & 1); }
 // SIM_CURSOR="x,y": the pointer, relative to the client area (the eyes look at it); none: away
 static void cursor_pos (int *x, int *y)
 {
 	int cx = -1, cy = -1; const char *e = getenv ("SIM_CURSOR");
-	if (e) sscanf (e, "%d,%d", &cx, &cy);
+	if (e && !strcmp (e, "follow")) { if (g_ptrX >= 0) { cx = g_orgX + g_ptrX; cy = g_orgY + g_ptrY; } }	// (screen coordinates)
+	else if (e) sscanf (e, "%d,%d", &cx, &cy);
 	if (x) *x = cx; if (y) *y = cy;
 }
 static void set_alpha (int) {}
@@ -1122,10 +1389,11 @@ static int sipc_recv (int *from, int *type, void *buf, unsigned cap, int blockin
 	memcpy (buf, m.bytes.data (), k);
 	return (int) k;
 }
-static int ipc_register (const char *n) { if (sim_ipc ()) return sipc_register (n); return !strcmp (n, "control") || !strcmp (n, "dock"); }	// (the only ones)
+static int ipc_register (const char *n) { if (sim_ipc ()) return sipc_register (n); if (getenv ("SIM_SERVICES")) return 1; return !strcmp (n, "control") || !strcmp (n, "dock"); }	// (the only ones)
 static int ipc_lookup (const char *n)
 {
 	if (sim_ipc ()) return sipc_lookup (n);
+	if (getenv ("SIM_SERVICES")) return svc_pid (n);			// (only the services listed)
 	if (getenv ("SIM_APPLET") && !strcmp (n, "control")) return 99;	// (the applet's host: there)
 	if (getenv ("SIM_MAIL") && !strcmp (n, "control")) return 5;		// (the Control Panel: us)
 	if (getenv ("SIM_MBOX")) return 7;					// (SIM_MBOX's sender: any service)
@@ -1155,13 +1423,14 @@ static int desk (int set, int count)
 	return s_desk | (s_desks << 8);
 }
 static int win_desk (unsigned, int n) { return n < -1 ? s_desk : n; }
-static int shell_request (int, const void *, unsigned) { return -1; }	// (not in the activity shell)
 static int random_fill (void *b, unsigned n) { for (unsigned i = 0; i < n; i++) ((unsigned char *) b)[i] = (unsigned char) rand (); return (int) n; }
 
 // memmon's figures; SIM_NOTE="Title|Text": one notification in the mailbox (notifyd); SIM_PAD=1:
 // a gamepad in slot 1 (an Xbox-like pad, two buttons held: padconf)
+// (the Task Manager's system calls per second: made up from the pid)
+static int proc_stats (int pid, struct kapi_syscall_stats *o) { memset (o, 0, sizeof *o); o->rate = (unsigned) (pid * 137 % 900); return 0; }
 static int list_procs (char *b, unsigned n)
-{ if (b && n) snprintf (b, n, "0 k R 0 idle\n1 k S 2 compositor\n7 a R 38 menubar\n8 a S 52 dock\n9 a R 120 terminal\n12 a R 64 memmon\n"); return 6; }
+{ if (b && n) snprintf (b, n, "0 k R 0 idle\n1 k S 2 compositor\n2 k S 0 usb\n3 k S 0 net\n7 a R 38 menubar\n8 a S 52 dock\n9 a R 120 terminal\n10 a S 21 agenda\n11 a S 12 notifyd\n12 a R 1850 web\n13 a S 722 koton\n14 a S 608 media\n15 a S 228 mail\n16 a R 96 taskman\n"); return 14; }
 static int meminfo (unsigned long *t, unsigned long *f, unsigned long *a, unsigned *pk)
 { if (t) *t = 3145728; if (f) *f = 2097152; if (a) *a = 409600; if (pk) *pk = 64; return 1; }
 static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int blocking)
@@ -1187,7 +1456,13 @@ static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int
 		if (!mbox.init) { char c; canned_read (mbox, &c, 0); }
 		if (mbox.pos >= mbox.s.size ()) return -1;
 		size_t eol = mbox.s.find ('\n', mbox.pos); if (eol == std::string::npos) eol = mbox.s.size ();
-		std::string l = mbox.s.substr (mbox.pos, eol - mbox.pos); mbox.pos = eol + 1;
+		std::string l = mbox.s.substr (mbox.pos, eol - mbox.pos);
+		if (!l.empty () && l[0] == '@')				// "@<ticks>:...": not before that time
+		{
+			if (g_ticks - 1000 < (unsigned) strtoul (l.c_str () + 1, 0, 10)) return -1;	// (the ticks start at 1000)
+			l = l.substr (l.find (':') + 1);
+		}
+		mbox.pos = eol + 1;
 		int t = 0, pid = 0, at = 0; sscanf (l.c_str (), "%d:%d:%n", &t, &pid, &at);
 		std::string m = l.substr (at), d;
 		for (size_t i = 0; i < m.size (); i++)
@@ -1239,6 +1514,9 @@ static void setup (void)
 	void **slots = (void **) T;
 	for (size_t i = 0; i < sizeof (TKApiTable) / sizeof (void *); i++) slots[i] = (void *) unimplemented;
 	T->version = KAPI_ABI_VERSION;
+	// (v75) the POSIX entries absent here: 0, so appkit.h's wrappers return -KAPI_ENOSYS
+	for (size_t i = __builtin_offsetof (TKApiTable, vm_map) / 8; i < sizeof (TKApiTable) / 8; i++) ((void **) T)[i] = 0;
+	if (getenv ("SIM_STAT")) { T->path_stat = path_stat; T->clock_info = clock_info; }	// (... but these two, asked)
 	T->create_window = create; T->create_window_ex = create_ex; T->resize_window = resize; T->move_window = move_window;
 	T->set_pointer_handler = set_ptr; T->set_key_handler = set_key; T->screen_size = screen_size;
 	T->font_width = font_w; T->font_height = font_h; T->present = h_present; T->pump_events = pump;
@@ -1255,7 +1533,6 @@ static void setup (void)
 	T->clipboard_get = clipboard_get; T->set_click_handler = set_click; T->key_held = key_held;
 	T->cursor_pos = cursor_pos; T->set_window_alpha = set_alpha; T->random = random_fill; T->reboot = h_reboot;
 	T->ipc_register = ipc_register; T->ipc_lookup = ipc_lookup;
-	T->shell_request = shell_request;
 	T->win_minimise = win_minimise; T->win_geometry = win_geometry; T->resize_window2 = resize2;
 	T->mailbox_recv = mailbox_recv; T->mailbox_send = mailbox_send; T->drag_begin = drag_begin; T->drag_data = drag_data;
 	T->spawn = spawn; T->pipe = h_pipe; T->stream_close = stream_close;
@@ -1266,12 +1543,16 @@ static void setup (void)
 	T->app_dir = app_dir; T->mkdir = f_mkdir; T->remove = f_remove; T->rename = f_rename; T->list_tasks = list_tasks;
 	T->sound_acquire = sound_acquire; T->sound_release = sound_release; T->sound_start = sound_start;
 	T->sound_stop = sound_stop; T->sound_write = sound_write; T->sound_status = sound_status;
-	T->proc_done = proc_done; T->wait = h_wait; T->stream_read = stream_read; T->file_in = file_in; T->file_out = file_out; T->stream_read_nb = stream_read_nb;
+	T->proc_done = proc_done; T->wait = h_wait; T->proc_wait = proc_wait; T->proc_tree = proc_tree; T->stream_read = stream_read; T->file_in = file_in; T->file_out = file_out; T->stream_read_nb = stream_read_nb;
 	T->stream_write = stream_write; T->stream_eof = stream_eof; T->stdin_read = stdin_read;
 	T->vol_info = vol_info;
+	T->vol_list = vol_list;			// (v93)
+	T->vol_eject = vol_eject;
+	T->vol_mount = vol_mount;
+	T->vol_format = vol_format;
 	T->seek = f_seek; T->fsize64 = f_fsize64; T->net_info = net_info; T->exit = h_exit; T->toggle_app = toggle_app;
 	T->ram_detail = ram_detail; T->draw_text = draw_text; T->win_list = win_list;
-	T->list_procs = list_procs; T->meminfo = meminfo; T->mailbox_recv = mailbox_recv_note;
+	T->list_procs = list_procs; T->proc_stats = proc_stats; T->meminfo = meminfo; T->mailbox_recv = mailbox_recv_note;
 	T->ipc_register = ipc_register_note; T->pad_state = pad_state_sim;
 	T->tcp_connect = tcp_connect; T->tcp_send = tcp_send; T->tcp_recv = tcp_recv; T->tcp_close = tcp_close;
 	T->net_resolve = net_resolve;

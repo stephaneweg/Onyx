@@ -199,7 +199,7 @@ public:
 	bool keyHeld (int key) override { return key > 0 && key < 0x200 && held[key]; }
 
 	// Gamepads (PAD / STICK / STRIG) through winmm's joystick API: the same PAD_* bits as on
-	// Onyx (user/gamepad.h). XInput pads (Xbox) have A B X Y first; other pads the usual
+	// Onyx (user/Include/gamepad.h). XInput pads (Xbox) have A B X Y first; other pads the usual
 	// generic order (1 top, 2 right, 3 bottom, 4 left, 5 L1, 6 R1, 7 L2, 8 R2, 9 select,
 	// 10 start); the d-pad is the POV hat, else the X / Y axes (and the left stick).
 	bool padRead (int pad, unsigned *btn, int ax[4])
@@ -431,11 +431,15 @@ OBAPI int ob_words (char *buf, int cap) { return bas::wordList (buf, cap); }
 
 // Compile a source into a .bax file (UTF-16 path): 0 = written, 1 = syntax error (line +
 // message), 2 = cannot write.
-OBAPI int ob_compile (const char *src, const wchar_t *out, int *line, char *msg, int cap)
+// managed: the program will run on the VM, not in machine code (the compile dialogs' "Managed").
+OBAPI int ob_compile_ex (const char *src, const wchar_t *out, int managed, int *line, char *msg, int cap);
+OBAPI int ob_compile (const char *src, const wchar_t *out, int *line, char *msg, int cap) { return ob_compile_ex (src, out, 0, line, msg, cap); }
+OBAPI int ob_compile_ex (const char *src, const wchar_t *out, int managed, int *line, char *msg, int cap)
 {
 	bas::Error e; e.line = 0; e.msg[0] = 0;
 	bas::Program *p = bas::compile (src, &e);
 	if (!p) { setErr (e, line, msg, cap); return 1; }
+	if (managed) bas::setManaged (p, true);
 	char *bytes; int n = bas::saveBax (p, &bytes);
 	bas::destroy (p);
 	FILE *f = _wfopen (out, L"wb");

@@ -26,6 +26,8 @@ constants) come from the code; the layout constants live in
 14. [App cores (cores 2 and 3)](#14-app-cores-cores-2-and-3)
 15. [The GPU (V3D)](#15-the-gpu-v3d)
 16. [The RAM: volume](#16-the-ram-volume)
+17. [GPIO: the 40-pin header (v92)](#17-gpio-the-40-pin-header-v92)
+18. [The volumes: USB sticks, eject, format](#18-the-volumes-usb-sticks-eject-format)
 
 ---
 
@@ -38,7 +40,7 @@ constants) come from the code; the layout constants live in
 | `VBAR_EL1` vectors, trap frame (`arch/aarch64/`) | `InterruptHandler` (GIC + EOI), `FIQStub` |
 | ELF loader (`proc/elf.cpp`) | EMMC + FatFs, USB HID |
 | ABI table + kapi impl. (`sys/`) | `C2DGraphics` (framebuffer), `CTimer` |
-| GUI: rendering, compositor, widgets, dialogs (`gui/`) | `CCharGenerator` (bitmap font) |
+| GUI: rendering, compositor + window manager, shared surfaces (`gui/`) | `CCharGenerator` (bitmap font) |
 
 The kernel is linked against Circle's static libraries. **Two Circle files
 are replaced** (`lib/sched/scheduler.cpp` and `task.cpp`): because our `.o` files appear in
@@ -64,7 +66,7 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
 
 1. **Text console**: `m_Screen` (HDMI) then `m_Serial` (115200). The boot log goes
    to the HDMI screen so it is visible **without a serial cable**. A `CLogSwitch` routes the
-   logger's output (see [§11](#11-post-mortem-debug-console)).
+   logger's output (see [§13](#13-post-mortem-debug-console)).
 2. **Interrupts + timer**: `m_Interrupt.Initialize()`, `m_Timer.Initialize()`.
 3. **Exception vectors**: `install_vectors()` installs our `VBAR_EL1`
    (`KVectorTable`) over Circle's.
@@ -75,7 +77,11 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
      activates the new task's address space.
    - `RegisterTaskTerminationHandler(AddressSpaceTaskTerminate)` — frees the address
      space when a task ends.
-5. **ABI table**: `KApiTableInit()` fills the `kapi` pointer table (see [§8](#8-the-kapi-abi-table)).
+5. **ABI table**: `KApiTableInit()` fills the `kapi` pointer table (see [§8](#8-the-kapi-abi-table)),
+   then `El0Init()` builds from it the EL0 table and code page every process maps (§6,
+   *Protected mode*); core 0's EL0 controls (`El0CoreInit`).
+   Then the **cores 1–3** (`COnyxCores`): core 1 the sound (§12), cores 2–3 the app cores (§14), core 3
+   the network instead with `netcore=1` (§11); `dispdma=` / `gpudirect=` read here.
 6. **Graphics + SD**: `m_2DGraphics.Initialize()` (32 bpp framebuffer); `m_EMMC` +
    `f_mount()` (FatFs) of `SD:` (partition 1, the boot FAT32 one), then of **`SD1:` … `SD3:`**
    (partitions 2–4) when they hold a FAT or **exFAT** file system (see *Volumes* in §8). The theme from `SD:/etc/theme.txt`; the mouse cursor is built in
@@ -91,8 +97,8 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
    option **`init=`** (e.g. `init=SD:/bin/init`), defaulting to `SD:bin/init`
    when the option is absent. The kernel does not parse any launch list itself —
    init (PID-1 style) reads `SD:/etc/autostart` and starts everything from there
-   (by default `voronoy`, which paints the wallpaper then exits, and `panel`, the
-   shell). Pointing `init=` at a different ELF swaps the whole userland launcher
+   (by default `voronoy`, which paints the wallpaper then exits, `setup`, the daemons and the
+   remote access: see the file). Pointing `init=` at a different ELF swaps the whole userland launcher
    (e.g. a recovery shell) without rebuilding the kernel.
 3. Launches the **kernel service tasks**:
    - **`CCompositorTask`** — presents the screen at up to ~60 Hz, **only what changed**
@@ -130,13 +136,12 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
      `ukbd2`, was then ignored. Each keyboard's raw report is kept and the window manager gets
      them merged (modifiers ORed, held keys joined), so one keyboard's empty report does not
      release the keys held on another. The mouse is still `mouse1` only. **Print Screen** (USB usage
-     0x46) is caught there, on its press (`s_nPrintScreen`: 1, or 2 with Alt), and handled by the
-     main task's loop (it now wakes every 50 ms: `PrintScreenPoll`, the network's notices every
-     250 ms as before): the **Screenshot** app is told through its service `screenshot` (message
-     type 1, `"now"` or `"window <id>"` — with Alt, the window that has the keyboard, found with
-     `Snapshot` / `HasKeyFocus`), else started (`ExecPath ("SD:apps/screenshot.app/main",
-     "--now" | "--window <id>", "screenshot")`). No key event reaches the app in front (the
-     keymap gives Print Screen no character).
+     0x46) is no longer the kernel's (kapi v90): the held keys' report goes to **Elegant**
+     (`KAPI_WS_IN_HELD_USB`), which sees the key's press (`print_screen`, `user/Servers/elegant/server.cpp`)
+     and tells the **Screenshot** app through its service `screenshot` (message type 1, `"now"` or
+     `"window <id>"` — with Alt, the window that has the keyboard, which Elegant knows), else starts it
+     (`kapi_exec_as ("SD:/apps/screenshot.app/main", "--now" | "--window <id>", "screenshot")`). No key
+     event reaches the app in front (the keymap gives Print Screen no character).
    - **`CGuiWatchdogTask`** (skipped with `watchdog=0` in `cmdline.txt`) — once a second, checks the GUI and writes to the kernel
      log (`kmsg`): `compositor STALLED` when `CWindowManager::FrameCount()` has not moved
      for 2 s (with every task's `name:state`), `app '<title>' NOT PUMPING events` when a
@@ -164,22 +169,34 @@ VA                        Content                              Attributes
 0x1_0000_0000  ├───────────────────────────────────┤  (4 GB = KERNEL_IDENTITY_END)
    (4 GB)      │ ░░ unmapped hole (guard) ░░        │
 0x2_0000_0000  ├───────────────────────────────────┤  USER_VA_BASE (8 GB)
-   (8 GB)      │ .text / .data / .bss / heap (app)  │  EL1, ASID-tagged (nG=1)
-0x3_0000_0000  │   window canvas                    │  USER_WINDOW_CANVAS (12 GB)
+   (8 GB)      │ .text / .data / .bss (app)         │  EL0 (AP=*_ALL), ASID-tagged (nG=1)
+0x2_8000_0000  │   heap (sbrk), lazy (v75)          │  USER_HEAP_BASE (10 GB)
+0x3_0000_0000  │   window canvas (+ chrome copies)  │  USER_WINDOW_CANVAS (12 GB)
 0x3_4000_0000  │   wallpaper buffer                 │  USER_WALLPAPER_CANVAS (13 GB)
-0x3_8000_0000  │   kapi ABI table (read-only)       │  KAPI_TABLE_VA (14 GB)
-0x3_9000_0000  │   generated code (a JIT, RWX EL1)  │  USER_CODE_BASE (14.25 GB, v58)
+0x3_6000_0000  │   shared surfaces                  │  USER_SURFACE_BASE (13.5 GB)
+0x3_8000_0000  │   EL0 kapi table (read-only)       │  KAPI_TABLE_VA (14 GB)
+0x3_8001_0000  │   EL0 code page: stubs + blob (RX) │  KAPI_STUBS_VA (14 GB + 64 KB)
+0x3_9000_0000  │   generated code (a JIT, RWX EL0)  │  USER_CODE_BASE (14.25 GB, v58)
+0x3_C000_0000  │   full-screen buffer / the screen  │  USER_FULLSCREEN_CANVAS (15 GB)
 0x4_0000_0000  ├───────────────────────────────────┤  USER_STACK_TOP (16 GB)
-   (16 GB)     │ user stack (grows down)            │  1 MB initial
+   (16 GB)     │ user stack (grows down), lazy      │  8 MB (app.txt stack, ≤ 64 MB)
+0x4_0000_0000  │ shared libraries (v83), placed by  │  USER_LIB_BASE (16 GB) .. USER_LIB_END
+       ...     │   the kernel, the same everywhere  │  (32 GB): SD:/lib/<name>.so
+0x8_0000_0000  │ threads' user stacks, 32 MB slots  │  USER_THREAD_STACKS (32 GB), lazy
+0x8_8000_0000  │ mmap arena (vm_map only), lazy     │  USER_MMAP_BASE (34 GB, v75)
        ...     │                                    │
+0xF_0000_0000  ├───────────────────────────────────┤  USER_VA_END = USER_MMAP_END (60 GB)
 0x10_0000_0000 └───────────────────────────────────┘  T0SZ ceiling (64 GB) on RPi 4
 ```
 
-- **64 KB granule, EL1 stage-1 only**, `TTBR1` disabled.
+- **64 KB granule, EL1&0 stage-1 only**, `TTBR1` disabled.
 - 2 levels: one **L2 entry = 512 MB** (points to an L3 table), one **L3 page = 64 KB**.
 - **8-bit ASID** (256 contexts), taken from `TTBR0_EL1[63:48]`.
 - `USER_LOAD_BASE = USER_VA_BASE`: apps are linked at 8 GB (see
-  [user.ld](../user/user.ld)).
+  [user.ld](../user/Runtime/user.ld)).
+- **Lazy** (v75, §4 *Demand paging*): the heap, the stacks and the mmap arena are regions whose
+  pages are filled on first touch; the image, the canvases, surfaces, the kapi pages, the code
+  arena, the full-screen buffers and the sound ring are mapped at once (`FIXED` / `IMAGE`).
 
 ---
 
@@ -193,14 +210,14 @@ window pointer, the stdin/stdout streams, the process handle, the exit code, and
 the argv/cwd string.
 
 **Where the app pages come from, by board RAM.** An app's own frames (ELF segments, heap,
-stack, `code_alloc`) are taken by `MapNewPage` with `palloc_high()`: the **high zone**
+stack, `vm_map`, `code_alloc`) are taken by `MapNewPage` with `palloc_high()`: the **high zone**
 (1–3 GB, plus the RAM reclaimed above 3 GB) on a 2 / 4 / 8 GB Pi 4. A **1 GB** Pi 4 has no
 high zone: `palloc_high()` falls back to the low pager (`PAGE_RESERVE`, 256 MB), which the
 apps then share with every process's page tables. The kernel heap (window canvases, the
 wallpaper, the full-screen buffer, the GPU's memory, ~680 MB) is the same on every board. So
 Onyx runs on 1 GB — the desktop and the small apps take a few MB each — but the apps all
 together have ~250 MB instead of ~2 GB or more: the big ones (Jet Browser, the N64 / GameCube
-emulators) can run short (`sbrk` / `new` return 0). `memmon` then shows an app pool of 0
+emulators) can run short (`sbrk` / `new` return 0). the Task Manager's Memory tab then shows an app pool of 0
 (`ram_detail`: the high zone only).
 
 ### Construction
@@ -210,31 +227,36 @@ emulators) can run short (`sbrk` / `new` return 0). `memmon` then shows an app p
    the whole L2 page). The kernel entries point to the **same shared L3 tables**;
    the L2 slots covering the user area stay invalid (zero).
 3. **Allocates an ASID** (1..255; 0 is reserved for the kernel/global).
-4. **Maps the `kapi` ABI table** read-only at `KAPI_TABLE_VA` (14 GB) with
-   `KPAGE_ATTR_APP_RODATA`. The physical page is a kernel global (not "owned" by
-   this process → never freed at destruction).
+4. **Maps the EL0 `kapi` table** read-only at `KAPI_TABLE_VA` (14 GB) with
+   `KPAGE_ATTR_APP_RODATA`, and the **EL0 code page** (the system-call stubs and the
+   user-side routines, §6 *Protected mode*) at `KAPI_STUBS_VA` with `KPAGE_ATTR_APP_CODE`.
+   Both physical pages are kernel globals shared by every process (not "owned" by it →
+   never freed at destruction).
 
 ### `MapPage(VA, PA, attrs, bOwned)`
 
 Maps a 64 KB page (VA and PA aligned to 64 KB):
-- `GetOrCreateL3(L2_INDEX(VA))`: if the L2 entry is invalid, allocates a fresh L3 table and
-  writes the L2 table descriptor.
+- `GetOrCreateL3(L2_INDEX(VA))`: if the L2 entry is invalid, allocates a fresh L3 table (zeroed,
+  `DSB ISHST`) and writes the L2 table descriptor.
 - Fills the L3 page descriptor: `AttrIndx`, `AP`, `SH`, `AF=1`, `nG`, output = PA,
-  `PXN`, `UXN`. The software bit `PAGE_SW_OWNED` (the *Ignored* field) marks the frames to
-  free at destruction.
+  `PXN`, `UXN`. The software bit `PAGE_SW_OWNED` (the *Ignored* field, bit 55) marks the frames to
+  free at destruction. Since v75 both descriptors are built aside and **stored as one 64-bit
+  word**: an app core running a job of this space may walk the table at that very moment.
 
 ### Page attribute matrix (`layout.h` presets)
 
 | Use | AttrIndx | AP | nG | PXN | UXN |
 |---|---|---|---|---|---|
-| `KPAGE_ATTR_APP_CODE` (app code) | NORMAL | RO_EL1 | 1 | **0** (exec. EL1) | 1 |
-| `KPAGE_ATTR_APP_DATA` (data/stack/canvas) | NORMAL | RW_EL1 | 1 | 1 | 1 |
-| `KPAGE_ATTR_APP_RODATA` (kapi table) | NORMAL | RO_EL1 | 1 | 1 | 1 |
-| `KPAGE_ATTR_APP_RWX` (generated code, v58 `code_alloc`) | NORMAL | RW_EL1 | 1 | **0** (exec. EL1) | 1 |
+| `KPAGE_ATTR_APP_CODE` (app code, the EL0 code page) | NORMAL | RO_ALL | 1 | 1 | **0** (exec. EL0) |
+| `KPAGE_ATTR_APP_DATA` (data/heap/stacks/canvas/surfaces) | NORMAL | RW_ALL | 1 | 1 | 1 |
+| `KPAGE_ATTR_APP_RODATA` (the EL0 kapi table; v77: a program's read-only segment without `PF_X`) | NORMAL | RO_ALL | 1 | 1 | 1 |
+| `KPAGE_ATTR_APP_RWX` (generated code, v58 `code_alloc`) | NORMAL | RW_ALL | 1 | 1 | **0** (exec. EL0) |
+| `KPAGE_ATTR_APP_SCREEN` (`fullscreen_direct`, the displayed framebuffer) | COHERENT (uncached) | RW_ALL | 1 | 1 | 1 |
 
-App pages are **accessible at EL1** (`AP=*_EL1`), executable at EL1 for code
-(`PXN=0`), never executable at EL0 (`UXN=1`), and `nG=1` (ASID-tagged) → isolation
-between applications.
+App pages are **accessible at EL0** (`AP=*_ALL`; the kernel works in them in place: the A72
+has no PAN), executable **at EL0 only** for code (`UXN=0`, `PXN=1` everywhere: the kernel
+never runs app code), and `nG=1` (ASID-tagged) → isolation between applications. The
+identity region keeps Circle's `AP=RW_EL1`: out of the apps' reach (§6, *Protected mode*).
 
 ### Activation and context switch
 
@@ -248,6 +270,62 @@ No TLB flush on switch (TLB tagged by ASID). The
 `AddressSpaceTaskSwitch` hook calls `Activate()` for app tasks, or
 `ActivateKernelAddressSpace()` for kernel tasks (which have no address space).
 
+### Demand paging (v75)
+
+Source: [`kernel/sys/vm.cpp`](../kernel/sys/vm.cpp), [`kern/vm.h`](../kernel/include/kern/vm.h);
+the plan: [`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.1.
+
+- **Regions.** Each space has a `TVmSpace`: a sorted array of `TVma { start, end, prot, kind }`
+  (binary-searched, at most 4096). Lazy kinds: `ANON` (`vm_map`, only in the mmap arena
+  `[34 GB, 60 GB)`), `HEAP` (`[USER_HEAP_BASE, break rounded up)`), `STACK` (the main stack below
+  16 GB, 8 MB by default; each thread's at the top of its 32 MB slot). Eager kinds, noted for
+  `vm_query` only: `IMAGE` (the ELF loader), `FIXED` (`MapContig`: canvases, surfaces, the sound
+  ring, the kapi pages, the full-screen buffers; the code arena). Nothing is mapped for a lazy
+  region until it is touched. (v76) `SHM`: a shared memory object mapped by `shm_map` (in the arena,
+  lazy, its frames the object's and not owned by the space: §8 *v76: IPC*).
+- **The fill** (`VmFaultIn`): the region must be lazy and allow the access; a zeroed frame from
+  `palloc_high`, a `DSB ISHST`, the PTE (`AP` from the region: `RW_ALL`, `RO_ALL`, or `RO_EL1` for
+  `PROT_NONE` — the frame kept, the app shut out), `DSB`. A software walk: it never yields and works
+  for any space. **No TLBI** (an invalid entry is never cached). Who fills: an **EL0 translation
+  fault** (`sys/el0.cpp`: the access retried by the `eret`; a permission fault the region now allows
+  — a stale TLB entry — gets a local `TLBI VAE1`); a **kernel probe** (`UserReadable` /
+  `UserWritable`, §6); a **failed fault-safe copy** (retried in C after the fill, never in the
+  exception); the **app-core pager** (§14); `vm_map (POPULATE)` and `MADV_WILLNEED` (a yield every
+  64 pages).
+- **Out of memory.** A fill is refused when the app pool (the high zone + the low pager, whose free
+  lists `ram_detail` reads) is under **16 MB** (`VM_RESERVE`). At EL0 the process is killed: kmsg
+  `vm: <name> (pid N) killed: out of memory (page fault at …, … KB resident)`, the notice
+  "<name> ran out of memory", term reason `KAPI_PROC_OOM`, status −9. In a kapi the call fails with
+  its error value; on an app core the job ends `CORE_FAULT`. **Heuristic overcommit**: one `sbrk`
+  growth or one writable `vm_map` (without `NORESERVE`) larger than the free pool − 16 MB fails
+  (`sbrk` → −1, `vm_map` → −`ENOMEM`); nothing else is counted. (Pi round 1: Circle's
+  `CPageAllocator::Allocate` advanced its bump pointer before it found its region full and never
+  stepped it back, so each failed attempt — `palloc_high` tries the full segment 0 before every
+  page it takes elsewhere — made `GetFreeSpace` and `meminfo` one page short for ever: an OOM kill
+  seemed to lose ~1.1 GB and the OOM check fired with half the memory free. Fixed in the Circle
+  fork, docs/05 §24.)
+- **Frames leaving** (`vm_unmap`, `MADV_DONTNEED`/`FREE`, an `sbrk` shrink, an ended thread's
+  stack) and **protections lowered** (`vm_protect`): the PTE written, `DSB ISHST`,
+  `TLBI VAE1IS (va >> 12 | ASID << 48)` per page (`TLBI ASIDE1IS` above 64 pages), `DSB ISH`, `ISB`
+  — inner shareable, so cores 2–3 are told — and only then the frames freed (`pfree`, after waking
+  any `wait_word` sleeper on them). Protection changes need no break-before-make (the output address
+  never changes).
+- **Pins and the deferred zap.** A probe pins its range for the calling task until its system call
+  returns (`Syscall` → `VmUnpinTask`; one union per task, 40 slots). A page under **another**
+  task's pin is not dropped (nor write-protected) at once: its PTE gets a software bit (`ZAP` /
+  `SYNC`, bits 56–57), the range is queued, and the last unpin over it drops it (or gives it its
+  region's protection). The region change itself is immediate. So a kapi working in place (a file
+  read yielding between 64 KB chunks, a blocked pipe read) never sees its buffer vanish, nobody
+  waits, and the kernel never touches a freed frame. A range mapped again before that adopts the
+  pages left, zeroed.
+- **The EL1 safety net**: `SyncHandlerEL1`, after the uaccess fixup, fills a lazy page that kernel
+  code touched outside the helpers (core 0, the current app, a translation fault at a user VA),
+  logs `vm: kernel touched an unpopulated user page at pc …` once, and retries — instead of a panic.
+- **Costs.** A touched page costs 64 KB (a thread's first stack page, a lone `malloc` page); one L3
+  table (64 KB, low pager) per 512 MB slot touched; reservations cost nothing. Zeroing a page takes
+  about 10 µs. `vm_stats` reports a process's resident bytes (page tables included), its lazy and
+  writable VA, its fills and its page tables.
+
 ### Destruction (and an important pitfall)
 
 When destroying the address space:
@@ -256,8 +334,14 @@ When destroying the address space:
    `tlbi aside1is, Xt ; dsb ish ; isb`. (Reusing a page-table frame while the
    walk is still cached would break translations.)
 3. Removes and destroys the window.
-4. Walks the **user** L2/L3 slots and frees the frames marked
-   `PAGE_SW_OWNED`.
+4. (v75) `VmTeardown`: the regions and the pending zaps freed (after the app cores and the GPU let
+   go of the space).
+5. Walks the **user** L2/L3 slots and frees the frames marked
+   `PAGE_SW_OWNED` (pages whose zap was deferred included).
+6. (v77) Drops its reference on its program's image (§7): the image's shared frames are mapped
+   **not owned**, so step 5 leaves them; the last process of a program that is not preloaded frees
+   them here, after the tables that named them. (When an app core did not stop, the space is leaked
+   as before, and so is this reference.)
 
 > ⚠️ **Pitfall: never free an L3 table shared with the kernel.** Because each
 > address space **copies** the kernel L2 descriptors, some L2 entries point
@@ -359,7 +443,7 @@ so the loops crawl. Driver timeouts then expire and the Wi-Fi link drops (the `s
 app took the network down, and VNC/telnet with it). So the scheduler lowers the priority
 of the tasks the timer has to preempt:
 
-- `PreemptDoYield` calls `CScheduler::OnPreempt()`, which bumps the task's
+- The preemption (`El0IrqExit`, `sys/el0.cpp`) calls `CScheduler::OnPreempt()`, which bumps the task's
   **preemption streak** (`m_nPreemptStreak[slot]`). Any voluntary `Yield` (a kapi wait,
   `msleep`, `present`, a kernel task's loop) resets it.
 - A task with a streak ≥ `SCHED_HOG_STREAK` (2) is a **CPU hog**. An app that computes more
@@ -497,9 +581,13 @@ and preemption from the IRQ-exit path. FP/SIMD is enabled at EL0/EL1 at boot (`C
 ### Faults
 
 Every app runs at EL0 (§ *Protected mode* below): a fault in an app arrives through the EL0
-vectors and kills that process only. `SyncHandlerEL1` sees kernel faults only: **`UAccessFixup`**
-first (a fault inside a fault-safe copy routine, below: the kapi returns its error), otherwise
-it is a kernel bug → the post-mortem console (`DumpAndHalt`) and the crash record.
+vectors and kills that process only — unless it is a translation fault in a lazy region (v75, §4
+*Demand paging*): the page is filled and the access retried. The kill's kmsg says why when the
+regions tell: `(stack overflow)` within 1 MB below a stack, `(PROT_NONE access)`. `SyncHandlerEL1`
+sees kernel faults only: **`UAccessFixup`** first (a fault inside a fault-safe copy routine, below:
+the kapi returns its error, or fills the page and retries), then the v75 safety net (a lazy page
+kernel code touched: filled), otherwise it is a kernel bug → the post-mortem console
+(`DumpAndHalt`) and the crash record.
 
 ### Fault-safe access to app memory (`kern/uaccess.h`, step 2)
 
@@ -511,13 +599,17 @@ below them take kernel memory): `sys/uaccess.cpp`, `arch/aarch64/uaccess.S`.
   stop (its `CTask` stack is its kernel stack, never accepted).
 - **`UserRange` / `UserRangeAvail`**: `[p, p+n)` inside what the caller may use, computed as "bytes
   left from p", never `p+n` (no wrap). **`UserReadable` / `UserWritable`**: the range, then each
-  64 KB page translated with `AT S1E1R/W` — used where the kernel works directly in the app's
-  buffer (file reads, pipes, sockets, GPU pixels); an app's pages are never unmapped while it lives.
+  64 KB page translated with the **app's** permissions, `AT S1E0R/W` (v75; `S1E1R/W` before) —
+  used where the kernel works directly in the app's buffer (file reads, pipes, sockets, GPU
+  pixels). Since v75 a page of a lazy region not there yet is **filled** first, and the range is
+  **pinned** until the system call returns: another thread's `vm_unmap` / `DONTNEED` / `mprotect`
+  over it is deferred (§4 *Demand paging*). A probe never yields.
 - **Copies**: `UserCopyIn`, `UserCopyOut`, `UserGet`, `UserPut`, `UserStrOut` and `CUserStr` (a
   kernel copy of an app string, 256 bytes inline, the heap beyond; paths over 511 characters are
   refused): leaf assembly routines, word-sized when both pointers are 8-aligned (byte-wise
   otherwise: the display is Device memory). Plain `LDR`/`STR` after the range check (the A72
-  has neither PAN nor UAO).
+  has neither PAN nor UAO). (v75) A copy that faulted on an unfilled lazy page (the fixup records
+  `FAR` / `ESR`) has it filled in C, then runs again — one more page each time, so it ends.
 - **The fixup table**: a hand-made `.rodata` list of `{start, end, recovery}`, one per routine;
   `SyncHandlerEL1` looks the faulting ELR up first and resumes at the recovery label (the routine
   returns −1). It works for kapis reached by `svc` from EL0 too (they run at EL1t).
@@ -548,7 +640,10 @@ write to the card, is deferred to the reaper task: `HandlesRunDeferred`). Stream
 records are **reference-counted** (a pipe: the creator's handle and each child; a `CProcess`: the
 spawner's handle and the child), so either side can end first. **Sockets** are owner-checked (the
 request's pid, also on the network core); a descendant of the owner adopts one on first use
-(`ftpd` hands its sessions their socket). `vfs_req_data` / `vfs_reply` only take requests
+(`ftpd` hands its sessions their socket). (v75) `OFILE` entries (`file_open`); (v76) `LSOCK` (a
+local socket: its handle's value is its socket number) and `SHM` (a shared memory object, the kind
+is the access) — and every passable object (open file, stream, local socket, shm) can be **carried
+into another process's table** by `sock_sendmsg` or `spawn_ex2` (§8 *v76: IPC*). `vfs_req_data` / `vfs_reply` only take requests
 addressed to the calling provider.
 
 ### Protected mode: apps at EL0 (steps 3–5)
@@ -563,7 +658,8 @@ and are not preempted. (`cmdline.txt` `appmode=` / `protected=` / `appfault=` / 
 `app.txt` `mode =` of v73 are gone; old cards that still set them get no effect.)
 
 - **Mappings** (the `KPAGE_ATTR_APP_*` presets of `layout.h`): data `RW_ALL`, read-only data
-  `RO_ALL`, code (and `code_alloc`) `UXN = 0, PXN = 1`, everything else `PXN = UXN = 1`; the screen
+  `RO_ALL`, code (and `code_alloc`, and v78 `PROT_EXEC` regions) `UXN = 0, PXN = 1`, everything
+  else `PXN = UXN = 1`; the screen
   (`fullscreen_direct`) is Device memory: the user-side `memcpy`/`memset` align their stores.
   The identity region 0–4 GB keeps Circle's `AP = RW_EL1, UXN = 1`: EL0 can neither read, write
   nor execute it. There is no PAN on the A72: the kernel reads and writes EL0 pages directly.
@@ -587,8 +683,11 @@ and are not preempted. (`cmdline.txt` `appmode=` / `protected=` / `appfault=` / 
   right there — **the only preemption point**: an IRQ taken at EL1 (kernel code) never switches
   tasks; on cores 2–3 `AppCoreOnIRQExit`.
 - **A fault from EL0** (any synchronous exception but `svc`) kills the process: a kmsg line
-  `el0: <name> (pid N) killed: …`, a desktop notice (`IpcNotify`), `kapi_exit(-11)`. SError still
-  goes to `BadModeEntry`.
+  `el0: <name> (pid N) killed: …`, then (2026-10-03) `el0: <name> backtrace: <lr> <lr> …` — up to 16
+  return addresses read along the frame-pointer chain (x29 → {next x29, lr}, `UAccessCopy`, the chain
+  must climb), the callers to give to `addr2line` (a program built with frame pointers: the POSIX
+  ports and WebKit are) —, a desktop notice (`IpcNotify`), `kapi_exit(-11)`. SError still goes to
+  `BadModeEntry`.
 - **The per-process kapi table**: at boot `El0Init` fills two pages shared by every protected
   process: the **EL0 table**, mapped read-only at `KAPI_TABLE_VA` (14 GB), and the **EL0 code
   page** at `KAPI_STUBS_VA` (14 GB + 64 KB). Slot *n* points at the stub `movz x8,#n; svc #0;
@@ -600,9 +699,12 @@ and are not preempted. (`cmdline.txt` `appmode=` / `protected=` / `appfault=` / 
   binaries run unmodified.
 - **Per core** (`El0CoreInit`): `CNTKCTL_EL1.EL0PCTEN/EL0VCTEN` (the counters at EL0); `SCTLR_EL1`
   UCI (`dc cvau`/`ic ivau` for the JITs), nTWE/nTWI (`wfe`/`wfi`), UCT (`ctr_el0`), DZE (`dc zva`);
-  **`TPIDRRO_EL0` = the core number** (`kapi__core` in `user/kapi.h` reads it from v73 — apps built
+  **`TPIDRRO_EL0` = the core number** (`kapi__core` in `user/Kits/appkit/appkit.h` reads it from v73 — apps built
   earlier read `mpidr_el1` and are killed at EL0: rebuild them); `PMUSERENR_EL0.EN` only with
-  `cmdline.txt` `el0pmu=1`.
+  `cmdline.txt` `el0pmu=1`. **`TPIDR_EL0`** (the thread pointer, writable at EL0) is the app's:
+  the kernel never writes it but for a thread's start (v75: `thread_create_ex`'s `tls`, 0 before)
+  and an app-core job's (its caller's value), and Circle's `TaskSwitch` saves and restores it per
+  task — an EL0 preemption goes through it too.
 - **Threads**: `thread_create` in a protected process `eret`s to `fn` on its user stack, returning
   through `El0ThreadReturn`. **App cores**: `core_run` for a protected owner enters `fn` at EL0 on
   the app's stack; the job's end is an `svc` from `El0CoreReturn` (→ `AppCoreEl0Done`); any other
@@ -634,33 +736,220 @@ Not closed yet: the powerful kapis (`reboot`, `kill_pid`, `inject_*`, `screen_gr
 
 Source: [`kernel/proc/elf.cpp`](../kernel/proc/elf.cpp),
 [`kernel/include/kern/elf.h`](../kernel/include/kern/elf.h),
+[`kernel/proc/image.cpp`](../kernel/proc/image.cpp),
+[`kernel/include/kern/image.h`](../kernel/include/kern/image.h),
 task model in `kernel.cpp`.
+
+### Program images (v77): loaded once, shared, kept
+
+*The study and the stages: [`docs/ELF-LOADER-PLAN.md`](ELF-LOADER-PLAN.md). Until v77 a start read
+the whole file into the kernel heap, then copied its segments into frames of the process: each
+byte moved twice, an 80 MB program (the WebKit port's) took 80 MB of kernel heap for a moment and
+80 MB of frames **per process**, and every start read the card again.*
+
+**The headers first (`ElfReadPlan`).** The ELF header and the program headers are read on their own
+and checked: the ELF64 magic, `ELFCLASS64`, `EM_AARCH64 = 183`, type `ET_EXEC` / `ET_DYN`; the
+program headers inside the file; for each **`PT_LOAD`** segment with memory, its bytes inside the
+file and its addresses inside the user area (no wrap); at most 16 such segments; **no two segments
+in one 64 KB page** (before v77 the second one silently replaced the first one's page — our
+programs are linked with 64 KB pages, so none did). A file size above the memory size is cut to it,
+as before. A refusal comes with a reason, which the start's error line shows (`cannot load
+SD:/bin/x: segment past end of image`).
+
+**The image object (`TImage`).** One per program in memory:
+
+- for each **read-only** segment (no `PF_W`: `R+X` code, `R` data — 99.8 % of a large program): its
+  64 KB frames, allocated from the app pool, zeroed, and filled **straight from the file** — no
+  whole-file buffer, no second copy, and the file's other sections (symbols, debug information) are
+  never read. Reads are gathered up to 128 KB where the frames follow each other in memory (a read
+  per page where they do not), with a yield every 128 KB, as the old loop did;
+- for each **writable** segment: a copy of its file bytes in the kernel heap (156 KB at most in
+  today's programs), from which every process gets its own pages. A process therefore never needs
+  the file again, which is what lets `pkg` replace a program's file while it runs.
+
+**A process's mapping (`ImageMap`).** The read-only segments' frames are mapped **not owned**
+(`MapPage (..., bOwned = FALSE)`) with `KPAGE_ATTR_APP_CODE` (`PF_X`) or `KPAGE_ATTR_APP_RODATA`;
+the writable ones get fresh owned pages (`MapNewPage`, `APP_DATA`, or `APP_CODE` if `PF_X`, as
+before), the copy's bytes, and a zero bss. The regions are noted as before (`KAPI_VMK_IMAGE`). The
+address space holds one reference on the image (`CAddressSpace::SetImage`), dropped at the very
+end of its destructor. The caller then runs `SyncDataAndInstructionCache()` once, as `LoadELF`
+always did.
+
+**Nothing writes a shared frame after the load.** The loader writes it through the kernel's
+identity mapping before any page table names it; in every process its pages are `AP = RO_ALL` —
+read-only for EL0 **and** for EL1 — so a kapi's copy-out into a program's code or constants
+fails as it always did (`UserWritable` uses `AT S1E0W`), no vm call can change them (`vm_protect`,
+`vm_unmap` and `vm_advise` only work in the mmap arena and the lazy regions), the kernel has no
+debugger stub that patches code, and the teardown frees only the frames flagged `PAGE_SW_OWNED`.
+One difference from before: a read-only segment **without** `PF_X` was mapped read-write; it is
+now really read-only (none of today's programs has one: their constants are in the `R+X` segment).
+
+**The key is the program's full path**, in its canonical form — `ImageCanonPath`, the one function
+that the run, the preload, the unload, the query and the file layer's hook all use:
+
+| Rule | Example |
+|---|---|
+| lower case, the volume included — ASCII letters only | `SD:/Apps/MonApp.App/main` → `sd:/apps/monapp.app/main` |
+| the volume always first: the path's own, else the caller's (`/x`: the root of the working directory's volume; anything else: under the working directory, as `ResolvePath`); no working directory (the kernel's own launches): `SD:/`, which is what FatFs makes of a path without a volume | `ls` in `SD:/bin` → `sd:/bin/ls`; `SD:apps/x.app/main` → `sd:/apps/x.app/main` |
+| the spellings of **one** volume collapse: its name in any case, FatFs's numeric form (`0:` is the first name of `FF_VOLUME_STRS`, `1:` the second…) and the kernel's `SD0:` | `0:/bin/ls`, `SD0:/bin/ls`, `sd:/bin/ls` → `sd:/bin/ls` |
+| two volumes stay two keys: `SD:` (the card's first partition) and `SD1:` … `SD3:` (its others), `USB1:`, `USB1P2:`… (`USB:` is `usb1:`, as `SD0:` is `sd:`) | `SD1:/apps/x.app/main` → `sd1:/apps/x.app/main` |
+| `/` between the names (`\` too, as FatFs takes it), none doubled, none at the end, no `.` / `..`, a name's trailing dots and spaces dropped (FatFs drops them) | `SD:\apps//x.app/./main.` → `sd:/apps/x.app/main` |
+| at most 255 characters, 64 names deep; beyond: no key (the program is loaded, never shared) | |
+
+Bytes that are not ASCII letters are kept as they are. FAT also folds accented letters, so two
+spellings of one accented name (`É…` / `é…`) are two keys: the file may be in memory twice, and a
+change made through the other spelling is not seen by the hook below — the wrong *file* is never
+run for a path, but an old *version* could be, until `unload`. The same holds for a file reached by
+its 8.3 short name. Onyx's programs have plain ASCII names.
+
+**A start (`CUserProcessTask::Run`, `ProgramImage`).** `ImageOpen (path)`: an image with that key →
+a reference, **the card is not touched** — no open, no directory lookup (the launchers' existence
+check asks the image list first; the user stack's size, `app.txt`'s `stack =`, is kept in the image
+after the first start). None → the file is opened and streamed into a new image. An image **being
+loaded** by another task → the start waits for it (it looks again every 5 ms; the loader yields),
+then shares it; if that load fails, the waiters get its error and nothing is left. A task that is
+loading cannot be killed (it has no address space yet, so no pid).
+
+**Lifetime.** An image lives while a process maps it or while it is **pinned** (a preload).
+Dropping the last reference of an image that is not pinned frees its frames (their `wait_word`
+waiters woken first). `image_unload` — and the file layer's hook — take the **name** and the pin
+away at once: no new process maps it, the processes running it keep it, and its frames go with the
+last of them. Images do not survive a restart.
+
+**Where the file changes, the image loses its name (`ImageFileChanged`).** Since a run of a path
+that has an image never looks at the file, the file kapis tell the image code:
+
+| Operation | Hook |
+|---|---|
+| `remove`, `path_unlink` | the path (a folder: every program under it) |
+| `rename`, `path_rename` | both names; a renamed folder: every program under either name |
+| `file_open` for writing, with `KAPI_O_CREAT` or `KAPI_O_TRUNC`; `file_out` (truncate or append); `save_file` | the path, at the open **and** at the close of the written file (an image made from the half-written file in between is dropped too) |
+| a write to `<folder>/app.txt` | the image of `<folder>/main` stays; it forgets its stack size (read again at its next start) |
+
+Not covered: the accented and short-name spellings above; a card changed on a PC (images do not
+survive a restart, so there is nothing to cover); the kernel's own writes (`lastcrash.txt`, the
+clock file: never programs); `RAM:` and the providers' volumes (`FTP:`): programs are only run from
+FatFs volumes. The hook costs one comparison when no image exists, a path canonicalisation and a
+walk of the image list otherwise; it does no I/O.
+
+**Preload (`image_preload`, `/bin/preload`).** A kernel task (`CPreloadTask`) loads the program's
+image and pins it; the call returns at once. A start during that load waits for it. A preload is
+refused when the image would take the app pool's 16 MB reserve (`VmCommitOK`); a process's own
+start takes what there is, as before. `pkg` asks `image_list (path)` before it replaces a file: a
+kept program is unloaded, replaced, and preloaded again (`user/Libs/pkg/pkglib.h` `move`).
+
+**Accounting.** A process's owned pages (`ps`' `PAGES`, `vm_stats.resident`, the crash record) no
+longer include its program's read-only segments: they are counted once, in `meminfo`'s app figure
+(`g_nUserPages + ImagePagesTotal ()`), and listed by `preload`.
+
+**The log.** One line per start, in the kernel log (`kmsg`, docs/04 §8):
+`image SD:/bin/wctest: loaded in 5123 ms, mapped in 3 ms (81856 KB shared, 192 KB private)` —
+`loaded` (read from the card now), `shared` (in memory: no read) or `shared after a wait`; a
+preload logs `image sd:/bin/wctest: loaded in 5123 ms, kept (81856 KB shared)`.
+
+### Shared libraries (v83): one copy of the code, placed by the kernel
+
+*(The design and its reasons: [`docs/SHARED-LIBS-PLAN.md`](SHARED-LIBS-PLAN.md). Writing and using a
+library: docs/03 *Shared libraries*.)*
+
+A shared library is **an image** — the same object as a program's (`TImage`, `proc/image.cpp`): read
+once, its read-only frames mapped *not owned* into every process that uses it, its writable bytes
+kept in the object and copied into private pages per process, reference counted, preloadable,
+unnamed when its file changes. What is different:
+
+- **The file.** `SD:/lib/<name>.so`: an `ET_DYN` linked **at 0** by `user/Runtime/lib.ld` — position-independent
+  code (`-fPIC`), **two `PT_LOAD`** (read + execute: the headers, `.rela.dyn`, the code, the read-only
+  data; read + write: `.data.rel.ro`, `.init_array`, `.dynamic`, `.got`, `.data`, `.bss`) on separate
+  64 KB pages, one `PT_DYNAMIC` inside the writable one. **The ELF entry is the library's export
+  table** (`ld -e onyx_lib_table`): the kernel needs no symbol table. `ElfReadPlan (..., ELF_KIND_LIB)`
+  checks that shape and nothing else is accepted; a program is refused as a library, and a library
+  as a program (`ELF_KIND_ANY`, a preload's: whichever the file is).
+- **Its place.** The kernel places a library **once for the whole system**, when it loads its file
+  (`LibPlace`): the lowest free range of the **library arena**, `USER_LIB_BASE` (16 GB) ..
+  `USER_LIB_END` (32 GB) of every user space, a page left between two libraries. The live images are
+  the allocator's state: the range is taken before the load's first yield and comes back when the
+  image is freed. So a library has the same address in every process — but **not a link-time
+  address**: another build, another boot, another order of loading gives another place. A process
+  still running an old build of a library whose file was replaced keeps that build's range; the new
+  build is placed elsewhere.
+- **Its relocations, once.** After the segments are read (`LibRelocate`): the dynamic section's
+  `DT_RELA` / `DT_RELASZ` / `DT_RELAENT` are walked, and for each entry `base + addend` is written
+  into the image's **copy of the writable segment** (`TImgSeg::pInit`). Only
+  `R_AARCH64_RELATIVE` (1027) is applied (`R_AARCH64_NONE` is skipped); any other type fails the
+  load with its number in the log, as do `DT_TEXTREL` / `DF_TEXTREL`, `DT_REL`, `DT_JMPREL`, and an
+  offset outside the writable segment's file bytes. The code frames are never patched: they are
+  shared as they are in the file. Every process then copies **already relocated** data (the vtables,
+  the export table, the pointer tables): no relocation work per process.
+- **Several per address space.** `CAddressSpace` keeps its program's image and up to 16 libraries
+  (`m_pLib[AS_LIB_MAX]`, a reference each, dropped by the destructor as the program's — after the TLB
+  invalidation). `ImageMapLib` maps the segments at `base + p_vaddr` (`MapSegs`, shared with
+  `ImageMap`), notes the regions (`KAPI_VMK_IMAGE`), and returns `base + e_entry`. A mapping that ran
+  out of memory stays recorded (its pages are there) and is never handed out.
+- **`lib_open`** (`kapi_lib_open` → `LibraryOpen`, `kernel.cpp`): the name made a canonical path, the
+  image found in memory (no card access) or streamed by the calling task as a program's start does,
+  the version checked against `min_version` (the table's first `u32`, read in the relocated copy),
+  the library mapped, the caches synchronised. One line in the kernel log per mapping:
+  `lib: sd:/lib/uikit.so: loaded in 41 ms at 0x400000000, version 3, 5120 relocations, 640 KB shared,
+  128 KB private` (`loaded` / `shared` / `shared after a wait`).
+
+**The export table.** A struct of function pointers in the library's data, relocated with it. Its
+first fields are every library's (`user/Runtime/lib.h` `TLibHeader`): `unsigned version, size; int (*init)
+(const TLibImports *)`. `init` is called once by each process (the data is per process) with what the
+library takes from its importer — the allocator, so that the process has one heap; it runs the
+library's static constructors (`.init_array`, between `__lib_init_array_start` / `_end`: `user/Runtime/librt.cpp`).
+The table is **append-only and versioned as the kapi table is**: an entry is never moved, removed or
+changed; a new one goes to the end and the version goes up. The kernel knows nothing of what follows
+the header.
+
+**What is shared, what is not.** The read + execute segment is one set of frames for the whole
+system (`image_list`: the library once, `refs` = the processes mapping it, `size` = its frames + its
+data's copy). The read + write segment is private pages in every process: a library's globals are
+per process.
+
+**Preload, unload, the file hook.** As a program's: `preload SD:/lib/uikit.so` (or the line in
+`SD:/etc/preload.ini`) keeps a library in memory with no process; `unload` and a write, rename or
+removal of the file take its name away — processes that map it keep it, new ones load the file again.
+
+Tests: `sh tools/tests/run_image_test.sh` builds the test library (`user/Libs/demo`) with the cross
+toolchain and runs the real loader on it (placement, the relocated table, two address spaces on the
+same code frames with their own data, a second library placed after the first, the file replaced
+while mapped, the range coming back, out of memory while mapping, 16 libraries, a relocation that is
+not `RELATIVE` / outside the data / text relocations refused); `sh tools/tests/shlib/check_pic.sh
+[file.so...]` checks a library's format. On the Pi: **`/bin/libtest`** (docs/04) — 17 checks against
+`SD:/lib/demo.so`, passed on the Pi 4 on 2026-10-04.
+
+Tests: on the PC `sh tools/tests/run_image_test.sh` (the real `image.cpp` and `elf.cpp`, the
+kernel around them stubbed, ASan: the canonical path, the header checks against crafted files, the
+load, two processes on the same frames, a start waiting for another task's load, a failed load,
+the references and the pin, unload while in use, the hook).
 
 ### `LoadELF(image, size, AS, &entry)`
 
-- Validates the ELF64 header (magic, `ELFCLASS64`, `EM_AARCH64=183`, type `ET_EXEC`/`ET_DYN`).
-- For each **`PT_LOAD`** segment: validates the bounds (file + VA within the user
-  area), chooses the attributes according to `PF_X` (code = `APP_CODE` RO+X, data =
-  `APP_DATA` RW), then `LoadSegment`:
-  - maps all the 64 KB pages covering `[vaddr, vaddr+memsz)` (via `MapNewPage`),
-  - copies `filesz` bytes from the file (the BSS beyond stays zero).
-- `SyncDataAndInstructionCache()` after writing the code, then returns `e_entry`.
+The old entry point, over a whole file in memory. Nothing in the kernel calls it any more; it goes
+through the same code (an image of its own, without a path: never shared), then
+`SyncDataAndInstructionCache()`, and returns `e_entry`.
 
 ### `CUserProcessTask` — one application = one task
 
-`CUserProcessTask` (subclass of `CTask`, **256 KB** stack — or what the app's folder's
-`app.txt` asks for, `stack = 8M`: `AppStackSize` reads it in the launcher's context before
-the task exists, since `CTask` allocates its stack in its constructor; rounded up to 64 KB,
-at most 64 MB; Jet Browser asks for 8 MB):
+`CUserProcessTask` (subclass of `CTask`; its `CTask` stack is the process's 256 KB kernel
+stack; the app's **user** stack is 8 MB (v75: lazy, so it costs only what is touched), or more if
+the app's folder's `app.txt` asks for it, `stack = 16M` — `AppUserStack`, rounded up to 64 KB,
+8–64 MB):
 1. Creates a fresh `CAddressSpace`.
 2. Installs stdin/stdout, the process handle, argv, cwd.
-3. `LoadELF` into the address space.
+3. Its program's image (v77, *Program images* above): found in memory by its path, else streamed
+   from the file; mapped into the address space (`ImageMap`).
 4. `SetUserData(AS, TASK_USER_DATA_USER)` + `AS->AddTask(this)` (its main task) +
    `Activate()` (switches `TTBR0`/ASID).
-5. **Calls the entry point directly**: `((void(*)())entry)()` — in EL1, in the
-   app's page table + stack. No trap.
-6. On return, `ThreadsEndProcess()` (its other threads end with it) and `Terminate()`; the
-   reaper reaps the tasks and frees the address space with the last one.
+5. Makes the **user stack** below `USER_STACK_TOP` a lazy `STACK` region (8 MB, or `app.txt`'s
+   `stack`; nothing below it: an overflow is a "stack overflow" kill) and
+   **enters the app at EL0**: `El0Enter (entry, USER_STACK_TOP, 0, El0MainReturnVA ())` — no
+   return; the task's own stack (`EL0_KSTACK_SIZE`, 256 KB) is from then on only the process's
+   **kernel** stack (its traps, the kapis it calls).
+6. `main`'s return goes through the blob's `El0MainReturn` (→ `exit (0)`); `kapi_exit`, a
+   fault or a kill end the process in the kernel: `ThreadsEndProcess()` (its other threads end
+   with it) and `Terminate()`; the reaper reaps the tasks and frees the address space with the
+   last one.
 
 ### Threads (v67)
 
@@ -670,16 +959,21 @@ Source: [`kernel/sys/thread.cpp`](../kernel/sys/thread.cpp),
 A thread is a `CUserThreadTask`: one more `CTask` whose `TASK_USER_DATA_USER` is the app's
 `CAddressSpace` (set in its constructor, before it is first scheduled: no `Yield` in between), so
 the task switch activates the app's page table and every kapi sees the same process — window,
-heap, files, sockets, cwd. It calls `fn (arg)` at EL1 on its own stack (kernel heap: the identity
-region, mapped in every space — like the main task's; 256 KB by default, 16 KB .. 16 MB), and
-the timer preempts it in its own code like any app (§5). `fn`'s return, or `kapi_thread_exit`,
+heap, files, sockets, cwd. It enters `fn (arg)` at **EL0** (`El0Enter`) on its own user stack, a
+lazy `STACK` region (v75) at the top of its record's slot, `USER_THREAD_STACKS` (32 GB) +
+(index + 1) × 32 MB, the rest of the slot unmapped (the guard); 256 KB by default for
+`thread_create` (16 KB .. 16 MB), 8 MB for `thread_create_ex`. A slot reused at the same size keeps
+its region; an ended thread's stack pages are dropped (`thread_exit`). Its `TPIDR_EL0` starts at 0,
+or at `thread_create_ex`'s `tls` (set before `El0Enter`; Circle's `TaskSwitch` saves and restores
+it per task from then on); its `CTask` stack is its kernel stack. The timer preempts it in its own code
+like any app (§5). `fn`'s return, or `kapi_thread_exit`,
 records its exit code and ends the task; the reaper frees it while the process goes on. A process
 runs at most `THREADS_MAX` (32) threads besides its main one.
 
 - **The process ends with its main task** (return from `main`, `kapi_exit`), or when any thread
   calls `kapi_exit`: `ThreadsEndProcess` → `TerminateGroup` (all but the caller). A kill (task
-  manager, `kill_pid`, an orphan) ends the group the same way (§5). A fault anywhere still halts
-  the machine (the post-mortem console, §13), as before.
+  manager, `kill_pid`, `proc_tree`, an orphan) ends the group the same way (§5). A fault in any of its threads
+  kills the whole process (§6, *Protected mode*), never the machine.
 - **The per-process state** — `CProcThreads`, made on first use, freed by `~CAddressSpace`
   (`ThreadsFree`, first): the thread records (tid → task, done, exit code; 64: the ended ones are
   kept until joined, the oldest reused first), the synchronisation objects (256 handles), the
@@ -700,8 +994,9 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
   pulse it) at `WakeEv`, sleeps if nothing is pending, then pumps; `wait_for_exit` sleeps on it
   too (16 ms at most, as before).
 - **Word waits (v68, a futex)** — `wait_word (addr, expected, ms)` / `wake_word (addr)`. The
-  word's **physical** address is the key (`WordPhys`: `AT S1E1R` on the caller's `TTBR0`, then
-  `PAR_EL1`; below 4 GB, the kernel's identity map): the same word of a shared surface, mapped at
+  word's **physical** address is the key (`WordPhys`: since v75 `UserReadable` — a lazy page filled,
+  pinned for the call, so its frame stays while the caller sleeps — then `AT S1E0R` on the caller's
+  `TTBR0` and `PAR_EL1`; below 4 GB, the kernel's identity map): the same word of a shared surface, mapped at
   another address in each process, wakes across processes. A waiter (`TWordWaiter`: the address,
   the value, its process, a `CSynchronizationEvent`) lives on its task's stack, linked in one
   kernel list under an IRQ spin lock; it is linked, then the word read again, then it waits —
@@ -712,7 +1007,8 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
   sleeping word through the identity map and wakes those whose value moved (nothing to do, and
   nothing read, while nobody sleeps). Spurious wakes are allowed (callers loop). A dying process
   unlinks its waiters first (`ThreadsFree` → `WordWaitsFree`: a killed task's record is on its
-  stack, freed after the batch's handlers). Test: `/bin/futextest`.
+  stack, freed after the batch's handlers). A frame leaving its space (v75: an unmap, `DONTNEED`)
+  wakes its waiters first (`WordWaitsZap`). Test: `/bin/futextest`, `/bin/memtest`.
 - **Priority (v68)**: `thread_priority (tid, 1)` makes a thread "real time" (§5): picked first
   whenever it is ready, as long as it sleeps before its slice ends — for an audio pump.
 - **The lists show a process once**: `list_windows`, `list_tasks` and `list_procs` skip the tasks
@@ -720,7 +1016,7 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
   crash reports' task lists show. `kill` / `kill_pid` refuse the caller's own process.
 - **User side**: `umm_malloc` / `umm_free` take a lock (`kapi_lock`: an exclusive swap, a
   `yield` while it is held — a spin on an app core, which makes no kapi call), and
-  `user/libc/onyx_syscalls.c` defines newlib's retargetable locks (the 8 static ones and the 10
+  `user/Runtime/libc/onyx_syscalls.c` defines newlib's retargetable locks (the 8 static ones and the 10
   `__retarget_lock_*` functions, which keeps newlib's `lock.o` out); a recursive lock's owner is
   the tid on core 0, the core on an app core. `errno` stays shared.
 
@@ -736,7 +1032,7 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
   open a document in an app, or launch a program).
 - **Only ELF programs**: the kernel no longer knows BASIC (the former `BasicRedirect`). The
   formats a program runs (`.bas` / `.bax` → `SD:/bin/basic`) are chosen in user space:
-  `SD:/etc/runners.ini` + `user/launch.h`, which starts the runner with
+  `SD:/etc/runners.ini` + AppKit's `lx_*` functions (they were `user/launch.h`), which start the runner with
   **`kapi_exec_as (path, args, name)`** (v49, `ExecPath` with a name), so the process keeps
   the app's name (windows, `raise_app`, `list_windows`).
 
@@ -744,10 +1040,40 @@ runs at most `THREADS_MAX` (32) threads besides its main one.
 
 ## 8. The kapi ABI table
 
+> **AppKit (2026-10-05): the table below is no longer what the programs are built against.** The
+> programs reach the kernel through **AppKit** (`SD:/lib/appkit.so`, `user/Kits/appkit/appkit.c`: the `kapi_*`
+> functions that `user/Kits/appkit/appkit.h` declares — the header the programs include —, exported **by name**;
+> their bodies: `user/Kits/appkit/appkit_calls.inc`), and only AppKit reads this table. The kernel and
+> AppKit are built and shipped together (the package `onyx`), so **the table may be restructured** —
+> entries moved, removed, merged — by adapting AppKit; no program is rebuilt. What is append-only from
+> now on is AppKit's list of names (`user/Kits/appkit/appkit.abi`), kept by the generator.
+>
+> **How the kernel gives it to the programs** (no call of theirs):
+> - `kernel.cpp`, `AppKitAttach`: at the first program's start `SD:/lib/appkit.so` is loaded like any
+>   library (§7 *Shared libraries*), its export table read (`ImageLibTableRead`) and **copied at
+>   `APPKIT_TABLE_VA`** (`KAPI_TABLE_VA + 0x8000`: the same read-only page as the kernel's own table,
+>   `El0InstallAppKit` — entry *n* at `+ 8 n`, 4096 at most); the image is kept for good.
+> - Every new address space then gets AppKit's code mapped (`ImageMapLib` of that very image) before
+>   its program's own image.
+> - A program's import stubs (`lib/appkit_stubs.o`, linked into every program and library) are five
+>   instructions each: the entry read at the fixed address, a jump. No variable, no constructor,
+>   nothing to open: valid from the program's first instruction.
+> - **An update of AppKit takes a restart**: the page every program reads holds the addresses of the
+>   image loaded at this start; a newer file on the card is the next start's.
+> - Without `appkit.so` the log says so loudly and no program built for AppKit can call the kernel
+>   (a program built before AppKit, reading the table itself, still runs while the layout is the one
+>   it knew).
+>
+> **What still reads the table itself** (`-DKAPI_INLINE`, or a PC build): the two tests of the table
+> (`el0test`, `faulttest`) and the simulator's stand-in kernel. Jet (the hosted WebKit build) goes
+> through AppKit like the others since its rebuild of 2026-10-05: its sysroot's `libonyxposix` carries
+> the stubs. A standalone BASIC app carries a copy of the runtime: `basic -u` gives the card's ones the
+> current runtime (docs/04).
+
 Source: [`kernel/include/kern/kapi_abi.h`](../kernel/include/kern/kapi_abi.h),
 [`kernel/sys/kapitable.cpp`](../kernel/sys/kapitable.cpp),
 [`kernel/sys/kapi.cpp`](../kernel/sys/kapi.cpp).
-App side: [`user/kapi.h`](../user/kapi.h).
+App side: [`user/Kits/appkit/appkit.h`](../user/Kits/appkit/appkit.h).
 
 ### The mechanism
 
@@ -757,14 +1083,20 @@ TKApiTable`) at a **fixed virtual address**:
 
 - `KAPI_TABLE_VA = 14 GB` — stable "forever" (between the canvas at 12 GB and the stack at
   16 GB).
-- The table is a static variable aligned to 64 KB (`s_Table` in `kapitable.cpp`),
-  hence in the identity region (PA == kernel VA). `KApiTableInit()` fills all the
-  pointers + the `version` field.
-- Each `CAddressSpace` maps this page **read-only** at `KAPI_TABLE_VA` (cf.
-  [§4](#4-memory-management-caddressspace)).
-- App side, `kapi.h` defines `#define KT ((const struct TKApiTable *) KAPI_TABLE_VA)` and
+- The kernel's table is a static variable aligned to 64 KB (`s_Table` in `kapitable.cpp`).
+  `KApiTableInit()` fills all the pointers + the `version` field. It is the **system-call
+  dispatch table** only: it is never mapped into an app.
+- What an app sees at `KAPI_TABLE_VA` is the **EL0 table** (`El0Init`, `sys/el0.cpp`), one page
+  shared by every process and mapped **read-only** in each `CAddressSpace` (cf.
+  [§4](#4-memory-management-caddressspace)): the same layout and `version`, but slot *n* points
+  at a stub `mov x8, #n; svc #0; ret` in the EL0 code page (`KAPI_STUBS_VA`), and the user-side
+  slots (`memcpy`, `memset`, `memmove`, `pump_events`, `wait_for_exit`, `pump_wait`) at routines
+  that run in the app itself (`arch/aarch64/el0blob.S`; §6, *Protected mode*).
+- AppKit's side (`user/Kits/appkit/appkit_calls.inc`, the only place) defines `#define KT ((const struct TKApiTable *) KAPI_TABLE_VA)` and
   one inline function per entry (`kapi_create_window`, `kapi_open`, …) that does nothing but
-  dereference the table.
+  call through the table — a plain indirect call into the stub, which makes the system call.
+  `user/BinUtils/kapi_names.h` (generated by `tools/gen_kapi_names.py` from `kapi_abi.h`) names the slots
+  for `/bin/sysstat`.
 
 **Consequence:** an application binary **embeds no kernel address** and
 keeps working against any kernel that exposes the same ABI → no rebuild
@@ -772,7 +1104,7 @@ of the apps when the kernel changes.
 
 ### The *append-only* contract
 
-`KAPI_ABI_VERSION = 71`. The `TKApiTable` struct is **strictly append-only**: you
+`KAPI_ABI_VERSION = 77`. The `TKApiTable` struct is **strictly append-only**: you
 never remove or reorder a field; you add new ones **at the end** and you
 increment the version. An old app only touches the prefix it knows → it
 stays compatible. The history of additions is annotated in the file (v1 = `app_dir`,
@@ -799,19 +1131,186 @@ while running, and the window flag `WIN_FLAG_FIXED` (§10.2) — for Setup, the 
 v70 = `gpu_texture_rect` — a rectangle of a GPU texture replaced (no whole re-upload), the frame
 flag `KAPI_GPU_F_ALPHA` (a target that keeps its alpha), the GPU's handles shared fairly by the
 programs using it at once (`KAPI_GPU_MAX_TEXTURES` 1024 in all, `KAPI_GPU_MAX_TEXTURES_AS` 512 a
-program; `gpu_vbuf` 32 in all, 8 a program) — for the GPU compositing service (`user/gpucomp`, §15),
+program; `gpu_vbuf` 32 in all, 8 a program) — for the GPU compositing service (`user/Libs/gpucomp`, §15),
 v71 = `vol_info` — a volume's size, used and free bytes, type (`struct kapi_vol_info`, `KAPI_VOL_RAM`);
 and the **RAM: volume** (§16): the file calls (`open` … `rename`, `save_file`, `file_in` / `file_out`,
 `chdir`, `seek`, `fsize64`) reach a file system in memory on `RAM:` paths — no new call for that,
 v72 = `gpu_render`'s **compositing blend presets** `KAPI_GPU_BLEND_MULCOL` … `DSTOUT` (5–12, §15: the
-layer blend modes of `user/gpucomp` — multiply, screen, plus, subtract, lighten, mask, cut out); an older
+layer blend modes of `user/Libs/gpucomp` — multiply, screen, plus, subtract, lighten, mask, cut out); an older
 kernel draws 5–15 as `ALPHA` (the service checks the version) — no new call,
 v73 = **protected mode** (§6): `pop_event`, `event_mods`, `pop_post`, `pump_sleep` — the pieces of the
-event pump an EL0 app runs on its own side (an EL1 app never needs them); the core number in
+event pump an EL0 app runs on its own side (an EL1 app, as apps were then by default, never needed them); the core number in
 `TPIDRRO_EL0` (`kapi__core`); the file / stream / process handles per process and every pointer
 checked (no change for a well-behaved app),
 v74 = **every process at EL0** (the EL1 mode removed), `proc_stats` (a process's system calls:
-`struct kapi_syscall_stats`), the ID register reads emulated; the kernel table's six user-side slots 0.
+`struct kapi_syscall_stats`), the ID register reads emulated; the kernel table's six user-side slots 0,
+v75 = **the POSIX layer's kernel half** ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md)), 43 entries in three
+blocks after `proc_stats`: memory (slots 199–206), files and processes (207–228), sockets and poll
+(229–241), with their structures and the `KAPI_E*` error values (newlib's errno numbers: a v75 call
+returns ≥ 0, or −`KAPI_Exxx`). **The skeleton:** the entries exist (the slot numbers are
+`static_assert`ed in `kapi_abi.h`) and return `-KAPI_ENOSYS` until their work package lands; the
+subsections below say what is implemented. `user/Kits/appkit/appkit.h`'s wrappers also return `-KAPI_ENOSYS` on an
+older kernel or where a host table (the PC simulator, the Windows / macOS builds) leaves the slot 0,
+v76 = **IPC between processes** ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §14, WP-IPC: what WebKit2
+needs), 11 entries after `poll` (slots 242–252): `sock_pair` (local sockets, STREAM / SEQPACKET /
+DGRAM), `sock_sendmsg` / `sock_recvmsg` (handles carried between processes), `shm_create` /
+`shm_open` / `shm_unlink` / `shm_ctl` / `shm_map` (shared memory), `handle_close`, `spawn_ex2` /
+`get_handles` (handles given to a child); `KAPI_SO_RCVBUF` / `SNDBUF` / `PEERPID` / `DOMAIN`,
+`KAPI_VMK_SHM` (*v76: IPC* below),
+v77 = **program images** (§7 *Program images*): a program is streamed from its file once and its
+read-only segments are shared by its processes — no call changes for that —, 3 entries after
+`get_handles` (slots 253–255): `image_preload`, `image_unload`, `image_list`; `struct
+kapi_image_info`, `KAPI_IMG_*` (*v77: program images* below),
+v78 = **executable memory for a JIT** (WebKit roadmap step 3, docs/08): `vm_map` and `vm_protect`
+accept `KAPI_PROT_EXEC` for anonymous regions; no new entry (*v78: PROT_EXEC* below),
+v79 = **what the kernel is**: `kernel_info` (slot 256), for `/bin/uname` (*v79: kernel_info* below),
+v80 = **the cores' load and the network's bytes by process**: `cpu_stats`, `net_stats` (slots 257,
+258), for the Task Manager's Processor and Network tabs (*v80: cpu_stats, net_stats* below),
+v81 = **the pointer's shape**: `set_cursor` (slot 259) (*v81: set_cursor* below),
+v82 = **a window resized by its frame**: `win_resizable` (slot 260), `GUI_EVENT_WINRESIZE`
+(*v82: win_resizable* below),
+v83 = **shared libraries** (§7 *Shared libraries*; [`docs/SHARED-LIBS-PLAN.md`](SHARED-LIBS-PLAN.md)):
+`lib_open` (slot 261), `KAPI_IMG_LIB` in `kapi_image_info.flags` (*v83: lib_open* below),
+v84 = **the sound's output**: `sound_output` (slot 262), `KAPI_SND_OUT_*` — the jack, a USB audio
+device or HDMI behind the same producer (*v84: sound_output* below).
+v85 = **the sound's mixer**: every program that plays has a channel of its own (`sound_acquire`: up to 8
+at once), with its volume and its mute; `sound_clients` (slot 263), `sound_client_volume` (slot 264),
+`struct kapi_sound_client` (*v85: the mixer* below).
+v86 = **AppKit**: no entry added — the kernel loads `SD:/lib/appkit.so`, copies its table at `APPKIT_TABLE_VA` and maps
+it into every program (the note at the top of this section). A program built for AppKit needs this kernel: its
+package says `kapi >= 86`, so the package manager installs it only once the new kernel runs.
+v87 = **AppKit's small services**: no entry added either — AppKit (shipped with the kernel) now carries the strings,
+the console, the `.ini` reader and the keyboard layout loader that were `user/applib.h` (docs/03 §8); a program built
+from now on calls them in AppKit, so its package says `kapi >= 87`.
+v88 = **AppKit: program starting**: no entry added — the `lx_*` functions (an app or a file started by its
+runner) are AppKit's (they were `user/launch.h`). The same day **SystemKit** and **NetKit** appear (docs/03 §5.9.0).
+
+v93 = **the volumes** (2026-10-06; `kernel/sys/volume.cpp`, `kern/volume.h`, §18): `vol_list` 230, `vol_eject` 231,
+`vol_mount` 232, `vol_format` 233 (`struct kapi_volume`, `struct kapi_format`, `KAPI_VST_*`, `KAPI_VF_*`,
+`KAPI_FMT_*`). The USB mass-storage volumes `USB1:`, `USB2:`, `USB3:` (or `USB1P1:`… per partition; `USB:` = `USB1:`) are mounted when a stick is plugged in
+and unmounted when it is ejected or pulled out; `SD:` is never formatted (refused by the kernel). AppKit:
+`kapi_vol_list`, `kapi_vol_eject`, `kapi_vol_mount`, `kapi_vol_format`.
+
+v92 = **the 40-pin header** (2026-10-06): `gpio_ctl` (slot **229**; `kernel/sys/gpio.cpp`, `kern/gpio.h`,
+`KAPI_GPIO_*`): GPIO 0..27 given one process at a time (input, pulled up / down, output, an alternate
+function), PWM on GPIO 12 / 13 / 18 / 19, edges queued with their time, the I2C bus 1 and SPI 0 — §17
+*GPIO*. **Read by GPIOKit directly** (`SD:/lib/gpiokit.so`, not through AppKit: the user's exception,
+docs/03 §5.10), which ships with the kernel in the package `onyx`; AppKit has no `kapi_gpio_ctl`.
+
+v91 = **a process's tree** (2026-10-06): + `proc_tree` (slot **228**, the table's 229th entry). Each process records
+its spawner's pid (`CAddressSpace::GetParentPid`: `spawn`, `spawn_ex`, `spawn_ex2`; `exec` / `launch` /
+`exec_as` — the drawer, `run`, the file manager — start a process **without** a parent). Before v91 the only
+use of it was the reaper's orphan scan (`TerminateOrphans`, `kernel.cpp`): every 50 ms, a live process whose
+parent is gone is terminated — a whole subtree ends a level a pass, after its root. `proc_tree (pid, op, out,
+cap)` (`sys/kapi.cpp`) makes the tree **now**: the root, then every live process whose parent is in the set,
+pass after pass (256 processes at most); a kapi runs on core 0 without preemption, so nothing spawns or
+ends meanwhile. `KAPI_TREE_LIST` → how many descendants (up to `cap` pids written, children first);
+`KAPI_TREE_KILL` → the root and all its descendants terminated at once, **the leaves first** (each:
+`KAPI_PROC_KILLED` / −9 for `proc_wait`, `TerminateTask` → its whole thread group), the count returned and
+logged (`proc: proc_tree: …`); `KAPI_TREE_KILL_CHILDREN`: the descendants only. Errors: `ESRCH` (no such
+process, or a kernel task), `EINVAL`, `EPERM` (a kill whose tree holds the caller), `EFAULT`. A child whose
+start is still deferred (`SpawnProcess`: not a task yet) is not in the tree: it starts with a dead parent and
+the orphan scan ends it — which stays for that. Users: the **Terminal** (closing a tab ends its `cmd` and
+everything under it: a pipeline's stages, a script's `cmd` and its programs), **`cmd`** (Ctrl-C ends each
+stage with what it started), **`/bin/kill -t`**. AppKit: `kapi_proc_tree` (`-KAPI_ENOSYS` before v91).
+
+v90 = **the table without the windows** (2026-10-05): the 36 entries of the windows (`create_window`,
+`present`, `set_menu`, `win_list`, `drag_begin`, `wallpaper_*`, `desk`, `set_wheel_speed`...) and the 2 of
+the activity shell (`register_shell`, `shell_request`: no program used them) are **removed** from
+`TKApiTable`, and the entries after them moved up: 266 → **228 entries**, `launch` is slot 1, `exit` 5,
+`pop_event` 158, `ws_ctl` 227 (the `KAPI_CHECK_SLOT`s of `kapi_abi.h`, the table below and
+`kern/el0.h`'s `EL0_SYS_*` have today's numbers; a slot quoted in an older note is of its time).
+**AppKit is rebuilt with the kernel and installed with it; no program is** — they call AppKit by name,
+and AppKit's window functions speak to Elegant (v89). What reads the kernel's table itself must be
+rebuilt: `el0test`, `faulttest` (on purpose: `KAPI_INLINE`), `sysstat` for its names
+(`BinUtils/kapi_names.h`, `tools/gen_kapi_names.py`) — and a program linked before AppKit (kapi v86)
+would call a wrong system call: scan the card first (`orr xN, xzr, #0x380000000` followed by a load
+from `[xN, #off]`; a `movk xN, #0x8000` after it is AppKit's own table, which is fine). On 2026-10-05
+nothing on the card does but those tests. A stand-in kernel on a PC (the simulator, Koton for Windows,
+macOS) still has a window manager: for those builds the 36 entries are declared **after the table's
+end** (`#ifndef __aarch64__`), and AppKit's inline calls use them (`appkit_calls.inc`'s `KAPI_HOST`).
+With it: **Print Screen** and **the wheel's speed** (`wheelspeed=` of `SD:/etc/theme.txt`, read when
+Elegant starts) are Elegant's.
+
+v89 = **the graphics server's mechanisms** (`kernel/sys/wsrv.cpp`, `kern/wsrv.h`): `ws_ctl` (slot 265 then; 227 since v90). The
+windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant`, `user/Servers/elegant`;
+`docs/GUI-USERSPACE-STUDY.md`, the stages in `docs/HANDOFF.md`). The kernel gives it mechanisms only:
+
+- **the role** — one process at a time is the display server (`KAPI_WS_REGISTER`: the program named
+  `elegant`, when no live process has the role); the other operations are its own (`-KAPI_EPERM`);
+- **the display** — while the server owns it (`KAPI_WS_DISPLAY`), the kernel's compositor draws nothing; the
+  server sends the rectangles it composed (`KAPI_WS_PRESENT`: copied from its memory into the off-screen
+  buffer, sent by the frame buffer's DMA — `DisplayPresentRect`, `kernel.cpp`). A full screen
+  (`fullscreen_begin`) and a resolution change (`screen_set`) are refused meanwhile; `screen_grab` gives
+  the off-screen buffer (what the server shows: `vncd` keeps working);
+- **the raw input** — while the server owns the display, the mouse, the cooked keys, the modifiers and the
+  held keys, from the USB callbacks and from `inject_*` (`vncd`, `rdpd`), go to a ring of 256 events the
+  server reads (`KAPI_WS_INPUT`) instead of `CWindowManager::OnMouse` / `OnKey` (a pointer move replaces an
+  unread one; a full ring drops, counted);
+- **one wait** (`KAPI_WS_WAIT`, on the I/O generation: an input event wakes it at once);
+- **the way back** — the server's process ends (`WsOnProcessGone`, the teardown), or calls nothing for 5 s
+  (`WsWatch`, the compositor's loop): the display and the input are the kernel's again and the whole
+  screen is drawn.
+
+- **the programs' windows** (stage 2b) —
+  - *attached programs* (`KAPI_WS_ATTACH`): a program whose windows are the server's keeps, in the kernel,
+    what its pump reads: an event queue, the exit request, the wake of `pump_wait`. They are a window's
+    (`CWindow`), so an attached program has a kernel window that is only that — never given to the
+    kernel's window manager, one page of pixels. `pop_event`, `should_exit`, `event_mods`, `pump_sleep`
+    and `kill`'s clean close work on it unchanged; the server queues events into it (`KAPI_WS_POST`) and
+    asks the program to end (`KAPI_WS_EXIT`);
+  - *shared buffers* (`KAPI_WS_BUF_MAP` / `_FREE`): physically contiguous (the GPU may render into a
+    canvas), mapped in the program at the addresses its canvas and frame always had
+    (`USER_WINDOW_CANVAS`, `_CHROME`, `_CHROME_INACTIVE` = `KAPI_WS_VA_*`) and in the server at
+    `USER_WS_BASE` + number × 64 MB (128 slots at the top of the mmap arena, `kern/layout.h`). A buffer
+    lives until the server frees it **and** its program no longer has it (ended, or the slot given
+    another buffer); a server that dies leaves the programs their buffers. `CAddressSpace::UnmapContig`
+    is new;
+  - *requests* (`KAPI_WS_CALL`, a program's; `KAPI_WS_NEXT` / `_REPLY`, the server's): the caller sleeps
+    until the server answers (the user-space file systems' pattern, `sys/vfs.cpp`): an operation, four
+    numbers, up to 4 096 bytes each way; the kernel stamps the caller's pid. 16 in flight; 10 s, or the
+    server gone: `-KAPI_ESRCH`;
+  - *the ring's other events*: `KAPI_WS_IN_KICK` (a program's `KAPI_WS_KICK`: its pixels changed) and
+    `KAPI_WS_IN_GONE` (an attached program ended);
+  - `kernel/gui/window.cpp` takes its windows' pixels from two functions (`WinPixelsAlloc` / `_Free`:
+    the heap's in the kernel; Elegant, built with `WIN_PIXELS_HOOK`, gives the shared buffers).
+
+  - two more slots for a program's shared memory: its copy of the wallpaper (`KAPI_WS_SLOT_WALLPAPER`, at
+    `USER_WALLPAPER_CANVAS`) and a transfer buffer (`KAPI_WS_SLOT_XFER`, 13 GB + 256 MB: the pixels of
+    `kapi_win_read`);
+  - **the window as last presented** (2026-10-06, no kernel change): a program paints in its canvas, the
+    memory Elegant reads, so a reader that came between a repaint's first stroke and its present got a
+    picture half made -- Onyx Remote flickered when the pointer moved over a window (`rdpd` reads a
+    window for about 100 ms a round; measured with `tools/tests/rdpd/flicker_bench.py`: 56 of 450
+    pictures of the Control Panel half painted in 25 s, 0 since). The canvas' shared buffer is now
+    *canvas, one 64 KB page of control, a second copy of the pixels* (`WinPixelsAlloc`, `core.cpp`; a
+    canvas that would not fit twice in a slot's 64 MB has none). AppKit asks where they are after the
+    window is made or grown (`EL_OP_SHOT`, `appkit/elegant.h`); while Elegant wants it (`el_shot.want`: a
+    `win_read` of that window in the last 5 s), AppKit's `kapi_present` copies the rows shown into the
+    second copy before its `KAPI_WS_KICK`, raising `el_shot.seq` before and after (odd: being made).
+    `win_read` (part 0) gives that copy once a present has filled it since it was asked, and reads it
+    again if a present came meanwhile; before that, the canvas itself as it always did;
+  - *who has the keyboard* (`KAPI_WS_FOCUS`: the server says; `key_held` and a pad's `focus` answer by it --
+    the kernel's window manager keeps the keys' state and the modifiers, fed as before) and *a process's
+    name* (`KAPI_WS_PROC_NAME`: the lists of the open programs);
+- **the start** (`WsBootStart`, before init) — the kernel starts `SD:bin/elegant --serve` at every boot and
+  waits (5 s at most) until it has the display; init then starts the desktop, whose programs have their
+  windows in Elegant. There is no other window manager (§10): without a server, the kernel's console.
+
+**AppKit's window calls speak to Elegant** (`appkit_calls.inc`'s `KAPI_WS`, `appkit_ws.inc`): the protocol
+is `user/Kits/appkit/elegant.h` (private to AppKit and Elegant: 31 operations, each doing what the kernel's
+call of the same name did). A call that finds no server (it is being started, or started again) waits for
+it, 5 s at most. No program is rebuilt. (The builds that take the calls inline against a stand-in kernel
+with a window manager -- the PC's simulator -- still call that table.) The kernel still serves: the pump (`pop_event`, `should_exit`,
+`pump_sleep`, `post`), `screen_size`, `screen_grab` (the off-screen buffer), `inject_*` (to the server's
+ring), `get_modifiers`, `key_held`, `draw_text_buf` (AppKit's `kapi_draw_text` draws into the canvas with
+it), the surfaces, the clipboard — and **the full screen**: `fullscreen_begin` / `present_fb` /
+`fullscreen_direct` / `fullscreen_end` are the kernel's as before (its buffer, the direct mode: no round
+trip a frame), on the program's kernel-side window (AppKit makes the program a window in Elegant first);
+the kernel tells Elegant (`KAPI_WS_IN_FULLSCREEN`), which sends that program all the input and shows
+nothing meanwhile (`KAPI_WS_PRESENT` answers `-KAPI_EBUSY`), then draws the whole screen again.
+`screen_set` is the kernel's too: its compositor does the resize between two of the server's presents and
+tells the server (`KAPI_WS_IN_SCREEN`).
 
 The callbacks' value (`gui_handler`: sender, event, value) is the type `gui_value`: `long` on Onyx
 (64 bits: a pointer event packs its wheel, buttons and position there), `long long` where `long` has 32
@@ -822,23 +1321,23 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 
 | Category | Examples |
 |---|---|
-| Windowing | `create_window(_ex)` (the canvas; **0** when the client area is bigger than the screen — `g_nScreenWidth/Height`; before v66, 1024 × 768 — or memory is short — an app must check it: at EL1, a null canvas drawn into is the kernel's memory at address 0), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `wk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
-| Menu bar (v39) | `set_menu(spec, handler)` stores the app's menu spec (≤ 2 KB; lines `M<title>`, `I<id>\t<label>\t<shortcut>`, `-`) + a `GUI_EVENT_MENU` (14) handler on its `CWindow`; `get_menu(buf, cap, title, tcap)` returns the **active app**'s spec + title and a serial that changes with the active window or its menu (0 = none); `menu_command(id)` queues `GUI_EVENT_MENU(id)` to the active window (`MENU_QUIT` = -1 → `RequestExit`, like the close box). Used by `menubar` + `wtk::Menu`. |
-| Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid` |
+| Windowing | `create_window(_ex)` (the canvas; **0** when the client area is bigger than the screen — `g_nScreenWidth/Height`; before v66, 1024 × 768 — or memory is short — an app must check it: drawing into a null canvas faults, and the app is killed), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `uk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
+| Menu bar (v39) | `set_menu(spec, handler)` stores the app's menu spec (≤ 2 KB; lines `M<title>`, `I<id>\t<label>\t<shortcut>`, `-`) + a `GUI_EVENT_MENU` (14) handler on its `CWindow`; `get_menu(buf, cap, title, tcap)` returns the **active app**'s spec + title and a serial that changes with the active window or its menu (0 = none); `menu_command(id)` queues `GUI_EVENT_MENU(id)` to the active window (`MENU_QUIT` = -1 → `RequestExit`, like the close box). Used by `menubar` + `uikit::Menu`. |
+| Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid`, `proc_tree` (v91) |
 | Threads (v67) | `thread_create(fn, arg, stack_size, name)` → tid ≥ 2 (main: 1), −1 no memory, −2 too many (32); `thread_exit(code)` (the main thread: the process); `thread_join(tid, timeout_ms, &code)` → 0, −1 timeout, −2 none / joined already, −3 itself; `thread_self`. `mutex_create`/`mutex_lock(h, timeout)`/`mutex_unlock` (recursive), `event_create(manual, initial)`/`event_set`/`event_reset`/`event_wait(h, timeout)`, `barrier_create(count)`/`barrier_wait` (1 for the last one in), `sync_close` — handles, 256 per process; timeouts in ms, 0 = only try, `KAPI_WAIT_FOREVER`. `post(fn, ctx, value)` → queued for the pump (−1 full: 256); `pump_wait(timeout)` sleeps until an event / a post / the close box, pumps → what was pending. See §7. |
 | Word waits, priority (v68) | `wait_word(addr, expected, timeout_ms)` sleeps while the 4-byte word `*addr == expected` → 0 (woken, or the value differs), 1 timeout (0 ms: only check), −1 bad address (unaligned, unmapped); `wake_word(addr)` → the sleepers woken. Keyed by the **physical** address (a word of a shared surface wakes across processes); the 100 Hz tick also reads every sleeping word and wakes those that changed — an app core's write needs no `wake_word` (≤ 10 ms). `thread_priority(tid 0 self / 1 main / ≥ 2, prio 0 / 1 / −1 ask)` → the previous one, −1 bad prio, −2 no such thread: a "real time" task is picked first when ready and a tick preempts an app for it, while it yields by itself (§5). See §7. |
 | Enumeration | `list_apps`, `list_windows`, `list_tasks`, `list_procs`, `get_datetime` |
-| Widgets | `add_button/label/checkbox/textbox/progress/slider/textarea/scrollbar/icon`, `widget_get/set_*` |
+| Widgets | none since v29 (the kernel-drawn `add_button`… removed: §10.3; apps use uikit) |
 | Events | `pump_events`, `wait_for_exit`, `should_exit`, `set_key_handler`, `set_click_handler`, `set_pointer_handler` (full pointer stream, v22 — incl. `GUI_EVENT_PTR_WHEEL`, a signed scroll-notch delta in the `lValue` wheel field via `GUI_PTR_WHEEL`) |
 | App-drawn text | `draw_text`, `font_width`, `font_height` |
-| System-call statistics (v74) | `proc_stats(pid, out)` (pid 0: the caller) → 0 and `struct kapi_syscall_stats { syscalls, emulated; rate, slots; top_slot[8], top_count[8]; reserved[4] }` (104 bytes): the `svc`s since the process started, the ID register reads emulated, the calls per second (the last full window ≥ 1 s), the table's slot count, the 8 slots most called (a slot = the field's index in `TKApiTable` in 8-byte words, `version` = 0; `user/kapi_names.h`, generated by `tools/gen_kapi_names.py`, names them) → −1 no such process / a kernel task, −2 a bad pointer. |
-| Protected mode (v73) | `pop_event(struct kapi_event *ev)` → 1 and the next window event `{ handler, sender, value, event, mods }` (the handler **not** called), 0 none / no window; `event_mods(mods)` sets what `get_modifiers` reports while a key handler runs → the previous value (`0xFFFFFFFF` = live); `pop_post(struct kapi_posted *p)` → 1 and the next posted call `{ fn, ctx, value }` (not run), 0 none; `pump_sleep(timeout_ms)` = `pump_wait` without the pump → what is pending, −1 not a process. The user-side `pump_events` / `wait_for_exit` / `pump_wait` of a protected app (§6) are built on them. `user/kapi.h`: the wrappers (version ≥ 73) and `kapi_is_protected()`. |
-| Files | `open/read/fsize/close`, `save_file`, `opendir/readdir/closedir`, `mkdir/remove/rename`, `chdir/getcwd` (current working directory, inherited by children). `fsize` (and `readdir`'s size) is clamped to 4 GB − 1; **`fsize64(h)` (v59)** gives an exFAT file's real 64-bit size. `rename` across two volumes fails (−1): the caller copies then deletes (FatFs' `f_rename` would otherwise rename inside the source volume). All of these (and the streams, `seek`, `fsize64`, `chdir`) work on **`RAM:`** paths too (v71, §16): the path is resolved first (`ResolvePath`: relative to a current folder on `RAM:` as well), then a `RAM:` path goes to `sys/ramfs.cpp`, a provider's (`FTP:`) to `sys/vfs.cpp`, the rest to FatFs; since v73 a handle is a per-process handle (§6, *Per-process handles*) whose entry records the kind (FatFs, RAM, provider). |
-| Volumes (v59) | FatFs volume strings (`FF_STR_VOLUME_ID`, docs/05 §13): **`SD:`** = the SD card's first FAT volume (partition 1, the boot FAT32 one, found as before; **`SD0:`** is an alias), **`SD1:` `SD2:` `SD3:`** = MBR partitions 2–4 (`FF_MULTI_PARTITION`) (FAT12/16/32 or **exFAT**, mounted at boot when present), `USB:`…, `FD:`, `NVME:` (declared, not mounted yet). `ResolvePath`: a volume prefix is upper-cased (`sd1:` → `SD1:`, `SD0:` → `SD:`), a path starting with `/` is relative to the **current directory's volume** root, anything else to the current directory. **`RAM:`** (v71) is the RAM volume (§16), not a FatFs one. The four SD volumes share one FatFs lock slot (`LockSlot`, `sys/fslock.cpp`): they are one card, one command at a time. |
+| System-call statistics (v74) | `proc_stats(pid, out)` (pid 0: the caller) → 0 and `struct kapi_syscall_stats { syscalls, emulated; rate, slots; top_slot[8], top_count[8]; reserved[4] }` (104 bytes): the `svc`s since the process started, the ID register reads emulated, the calls per second (the last full window ≥ 1 s), the table's slot count, the 8 slots most called (a slot = the field's index in `TKApiTable` in 8-byte words, `version` = 0; `user/BinUtils/kapi_names.h`, generated by `tools/gen_kapi_names.py`, names them) → −1 no such process / a kernel task, −2 a bad pointer. |
+| Protected mode (v73) | `pop_event(struct kapi_event *ev)` → 1 and the next window event `{ handler, sender, value, event, mods }` (the handler **not** called), 0 none / no window; `event_mods(mods)` sets what `get_modifiers` reports while a key handler runs → the previous value (`0xFFFFFFFF` = live); `pop_post(struct kapi_posted *p)` → 1 and the next posted call `{ fn, ctx, value }` (not run), 0 none; `pump_sleep(timeout_ms)` = `pump_wait` without the pump → what is pending, −1 not a process. The user-side `pump_events` / `wait_for_exit` / `pump_wait` of a protected app (§6) are built on them. `user/Kits/appkit/appkit.h`: the wrappers (version ≥ 73) and `kapi_is_protected()`. |
+| Files | `open/read/fsize/close`, `save_file`, `opendir/readdir/closedir`, `mkdir/remove/rename`, `chdir/getcwd` (current working directory, inherited by children). `fsize` (and `readdir`'s size) is clamped to 4 GB − 1; **`fsize64(h)` (v59)** gives an exFAT file's real 64-bit size. `rename` across two volumes fails (−1): the caller copies then deletes (FatFs' `f_rename` would otherwise rename inside the source volume). All of these (and the streams, `seek`, `fsize64`, `chdir`) work on **`RAM:`** paths too (v71, §16): the path is resolved first (`ResolvePath`: relative to a current folder on `RAM:` as well), then a `RAM:` path goes to `sys/ramfs.cpp`, a provider's (`FTP:`) to `sys/vfs.cpp`, the rest to FatFs; since v73 a handle is a per-process handle (§6, *Per-process handles*) whose entry records the kind (FatFs, RAM, provider). **v75:** POSIX open files beside them: `file_open/read/write/seek/truncate/sync/stat/close` (64-bit offsets, pread / pwrite, `O_CREAT/EXCL/TRUNC/APPEND`), `path_stat/unlink/mkdir/rename/utime`, `dir_read` (255-character names), unlink / rename of open files, `-KAPI_Exxx` errors (*v75: files and processes* below). |
+| Volumes (v59) | FatFs volume strings (`FF_STR_VOLUME_ID`, docs/05 §13): **`SD:`** = the SD card's first FAT volume (partition 1, the boot FAT32 one, found as before; **`SD0:`** is an alias), **`SD1:` `SD2:` `SD3:`** = MBR partitions 2–4 (`FF_MULTI_PARTITION`) (FAT12/16/32 or **exFAT**, mounted at boot when present), **`USB1:` `USB2:` `USB3:`** (v93, §18: the USB devices whole, mounted when plugged in; **`USB:`** is an alias of `USB1:`) or **`USB1P1:`**…`USB3P4:` (the partitions of a device that has several), `FD:`, `NVME:` (declared, not mounted). `ResolvePath`: a volume prefix is upper-cased (`sd1:` → `SD1:`, `SD0:` → `SD:`), a path starting with `/` is relative to the **current directory's volume** root, anything else to the current directory. **`RAM:`** (v71) is the RAM volume (§16), not a FatFs one. The four SD volumes share one FatFs lock slot (`LockSlot`, `sys/fslock.cpp`): they are one card, one command at a time. |
 | Streams/processes | `pipe`, `file_in/out`, `stream_read(_nb)/write/close/eof`, `stdin_read`, `stdout_write`, `spawn`, `wait`, `proc_done`, `get_args` |
-| Modal dialogs | `message_box`, `file_open`, `file_save` |
-| Desktop | `screen_size`, `set_wallpaper`, `wallpaper_generate`, `wallpaper_buffer`, `wallpaper_commit`, `cursor_pos` |
-| Appearance/keyboard | `set_window_theme`, `set_keymap` (load a country map *by name* — deprecated: the kernel compiles in **no** maps, so it always returns 0; use `set_keymap_data`), `get_keymap`, `kbd_ready` (USB keyboard attached? v26 — informational; `keyb` no longer needs to poll it), `set_keymap_data` (load a layout from a `.kmap` blob, v27 — records it in a persistent snapshot and installs it on the keyboard whenever it attaches, so it needs no keyboard to be present; returns 1 once the blob is accepted, 0 only on a malformed blob. This removed the old boot race where `keyb` could time out waiting for USB enumeration and leave the keyboard map-less. **Ctrl with `-`, `=` / `+`, `0`** (2026-10-01, `CInputTask::SetKeyMapData`): Circle looks a key held with Ctrl up in the layout's Ctrl column unless it is a letter, and the `.kmap` files leave that column empty there -- nothing came; the snapshot's empty Ctrl entry of the key whose own character is `-`, `=` or `+`, or `0` (its own, or its Shift one on AZERTY) now gets the keypad's key of that character (`KeyKP_Subtract` / `KeyKP_Add` / `KeyKP_0`), whose string Circle sends with or without Ctrl: the app receives `-`, `+`, `0` and `get_modifiers()` says `MOD_CTRL` (Jet Browser's zoom keys; letters and the keypad untouched; Ctrl+Shift+= still nothing -- Shift's column wins)), `app_dir` |
+| Modal dialogs | none (v9/v10 `message_box`, `file_open`, `file_save` removed: §10.5) |
+| Desktop | `screen_size`, `wallpaper_generate`, `wallpaper_buffer`, `wallpaper_commit`, `cursor_pos` |
+| Appearance/keyboard | (`set_window_theme`, v16: removed — the chrome is drawn user-side), `set_keymap` (load a country map *by name* — deprecated: the kernel compiles in **no** maps, so it always returns 0; use `set_keymap_data`), `get_keymap`, `kbd_ready` (USB keyboard attached? v26 — informational; `keyb` no longer needs to poll it), `set_keymap_data` (load a layout from a `.kmap` blob, v27 — records it in a persistent snapshot and installs it on the keyboard whenever it attaches, so it needs no keyboard to be present; returns 1 once the blob is accepted, 0 only on a malformed blob. This removed the old boot race where `keyb` could time out waiting for USB enumeration and leave the keyboard map-less. **Ctrl with `-`, `=` / `+`, `0`** (2026-10-01, `CInputTask::SetKeyMapData`): Circle looks a key held with Ctrl up in the layout's Ctrl column unless it is a letter, and the `.kmap` files leave that column empty there -- nothing came; the snapshot's empty Ctrl entry of the key whose own character is `-`, `=` or `+`, or `0` (its own, or its Shift one on AZERTY) now gets the keypad's key of that character (`KeyKP_Subtract` / `KeyKP_Add` / `KeyKP_0`), whose string Circle sends with or without Ctrl: the app receives `-`, `+`, `0` and `get_modifiers()` says `MOD_CTRL` (Jet Browser's zoom keys; letters and the keypad untouched; Ctrl+Shift+= still nothing -- Shift's column wins)), `app_dir` |
 | Logging / memory | `klog_read`, `set_verbose`, `get_verbose`, `meminfo` (total/free/app KB + page size, v23), `sbrk` (per-process heap, v24) |
 | Networking (v21, v37) | `net_status` (live: 0 as soon as the Wi-Fi association drops — `CWPASupplicant::IsConnected ()` — not only before the first DHCP bind), `tcp_connect`, `tcp_send`, `tcp_recv`, `tcp_close`; server side (v37): `tcp_listen(port)` → listening handle (Circle `CSocket::Bind`+`Listen`; `-6` = port in use), `tcp_accept(h, ip, cap)` → **blocks** until a peer connects, returns a connected handle + the peer IP (Circle `Accept`). All handles share the 16-slot table in `sys/net.cpp` and are reclaimed when the owner dies. Used by `/bin/telnetd`. |
 | Power (v25) | `reboot` (restart the machine — applies settings read only at boot, e.g. the WLAN config rewritten by *wpaconf*) |
@@ -846,44 +1345,493 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 | Windows as objects (v56) | For the window-level remote desktop (`/bin/rdpd`): `win_list(out, max)` fills `struct kapi_win_info` bottom to top (`CWindowManager::Snapshot`): `id` (`CWindow::Id`, a serial never reused), owner pid, the client area on the screen (x y w h; the full-screen window: the whole screen, `KAPI_WIN_FULLSCREEN`), `WIN_FLAG_*`, alpha, `gen` (`CWindow::Gen`, bumped by every `Damage` — drawn, moved, resized, raised — and by `present_fb`), `KAPI_WIN_KEYS` (the key target), the title, the frame (`ow oh` = `OuterW/H`, `il it` = the insets, 0 without a frame) and `chromeGen` (bumped by `get_chrome`, i.e. when the app redraws its frame, by a resize, and once more by the first present after that: the frame read again whole). The state also says `KAPI_WIN_MINIMISED` / `KAPI_WIN_OFFDESK` (not shown: rdpd sends a hidden window's pixels only when it is shown again) and the window's desk (v65). `win_read(id, part, x, y, w, h, dst, stride)`: a rectangle of the canvas (part 0; the full-screen window: its back buffer, or the screen itself when direct) or of a chrome copy (1 active, 2 inactive), clipped. `win_raise(id)` = `Raise`, `win_close(id)` = `RequestExit` (as the close box). The **desktop** is listed first as a pseudo-window, `KAPI_WIN_DESKTOP` (0xFFFFFFFF, backmost, screen-sized, `gen` = the wallpaper's counter + the backmost windows'): `win_read` of it (whole only) runs `CWindowManager::CompositeDesktop` (the wallpaper + the backmost windows) straight into the caller's buffer. A `CWindow` is never freed (see `Composite`), so an id found in the snapshot is safe to read. |
 | Generated code (v58) | `code_alloc(size)` — zeroed memory the app may **write and execute** (a JIT's code: `gcemu`'s PowerPC → AArch64 translation), rounded up to 64 KB pages: `CAddressSpace::CodeAlloc` maps fresh owned frames (`MapNewPage`, freed at teardown) with `KPAGE_ATTR_APP_RWX` (EL1 RW, PXN = 0) in a per-process bump arena `USER_CODE_BASE` (14.25 GB) … `USER_CODE_END` (15 GB, 768 MB); 0 when full. Circle clears `SCTLR_EL1.WXN`, so a writable page may be executable. After writing code the app cleans the D-cache and invalidates the I-cache over it (`DC CVAU`, `DSB ISH`, `IC IVAU`, `DSB ISH`, `ISB`). |
 | File seek (v57) | `seek(h, pos)` — the read position of a file opened with `open` (`f_lseek`); 0, or −1 (a VFS provider's file: not seekable). A file bigger than 4 MB gets its **cluster map** at its first seek (FatFs fast seek, `CREATE_LINKMAP`, docs/05 §11), freed by `close`: any position without walking the FAT. For `gcemu`'s disc images (1.4 GB, read on demand). |
-| Shared surfaces (v35) | `surface_create(w, h)` → an id > 0: a page-aligned, physically contiguous 0x00RRGGBB buffer (`CSurface`, `kern/gui/surface.h`) owned by the caller; `surface_map(id)` maps the **same frames** into the caller (the id travels to another process over IPC) → their address; `surface_size`, `surface_present` (yields toward the process composing it), `surface_destroy`. A process mapping a surface it does not own becomes one of its **users** (v65, ≤ 4): the frames are freed once the owner let it go (`surface_destroy`, or its end: `DestroyByOwner`) **and** every user has ended too — no process keeps a mapping of freed frames, whichever ends first. The Control Panel's applets draw into their host's surface this way (`user/applet_proto.h`, the developer guide). |
-| IPC services (v40) | `ipc_register(name)` makes the caller the service `name` (≤ 16 services; a name held by a live process is refused; freed when the owner dies — `IpcOnProcessGone`); `ipc_lookup(name)` → pid or 0. Messages use the per-process mailboxes (`mailbox_send`/`mailbox_recv`), now up to **512 bytes** (`MAILBOX_MSG_MAX`). The kernel itself can post: `IpcPost(service, type, data, len)` (from pid 0, to a running service: FALSE when it is not registered) and over it `IpcNotify(title, text)` → the `notify` service (e.g. "Network … connected"); Print Screen → the `screenshot` service (§2, *CInputTask*). |
-| Clipboard (v40) | `clipboard_set(type, data, len)` / `clipboard_get(&type, buf, cap, &serial)`: one typed blob (≤ 64 KB) held by the kernel so it outlives the app that copied (`CLIP_TEXT` 1, `CLIP_FILES` 2, `CLIP_FILES_CUT` 3 — paths `\n`-separated); the serial bumps on every set. Since the shared clipboard (2026-10-01: the service `clipd`, `user/clipboard.h`, `docs/clipboard/README.md`) it is only a **fallback**: `clipboard.h` writes the kernel's copy too, and reads it when clipd cannot be reached; the history (10 items, any format) is clipd's, in its own memory. |
+| Shared surfaces (v35) | `surface_create(w, h)` → an id > 0: a page-aligned, physically contiguous 0x00RRGGBB buffer (`CSurface`, `kern/gui/surface.h`) owned by the caller; `surface_map(id)` maps the **same frames** into the caller (the id travels to another process over IPC) → their address; `surface_size`, `surface_present` (yields toward the process composing it), `surface_destroy`. A process mapping a surface it does not own becomes one of its **users** (v65, ≤ 4): the frames are freed once the owner let it go (`surface_destroy`, or its end: `DestroyByOwner`) **and** every user has ended too — no process keeps a mapping of freed frames, whichever ends first. The Control Panel's applets draw into their host's surface this way (`user/Include/applet_proto.h`, the developer guide). |
+| IPC services (v40) | `ipc_register(name)` makes the caller the service `name` (≤ 16 services; a name held by a live process is refused; freed when the owner dies — `IpcOnProcessGone`); `ipc_lookup(name)` → pid or 0. Messages use the per-process mailboxes (`mailbox_send`/`mailbox_recv`), now up to **512 bytes** (`MAILBOX_MSG_MAX`). The kernel itself can post: `IpcPost(service, type, data, len)` (from pid 0, to a running service: FALSE when it is not registered) and over it `IpcNotify(title, text)` → the `notify` service (e.g. "Network … connected"); Print Screen → the `screenshot` service (§2, *CInputTask*). A **blocking** `mailbox_recv` sleeps until a message lands (`IoWait` on the I/O generation; `CMailbox::Push` calls `IoWake`) — until 2026-10-03 it was a loop of `Yield`, the receiver ready for ever: `clipd`, the one service that waits this way, took most of core 0 (`ps`: state `R`, no system call). |
+| Clipboard (v40) | `clipboard_set(type, data, len)` / `clipboard_get(&type, buf, cap, &serial)`: one typed blob (≤ 64 KB) held by the kernel so it outlives the app that copied (`CLIP_TEXT` 1, `CLIP_FILES` 2, `CLIP_FILES_CUT` 3 — paths `\n`-separated); the serial bumps on every set. Since the shared clipboard (2026-10-01: the service `clipd`, `user/Kits/uikit/clipboard.h`, `docs/clipboard/README.md`) it is only a **fallback**: `clipboard.h` writes the kernel's copy too, and reads it when clipd cannot be reached; the history (10 items, any format) is clipd's, in its own memory. |
 | Window opacity / session (v40) | `set_window_alpha(0..255)` on the caller's window: `CWindow::DrawTo` blends chrome + client over what is below (`BlendRect`, magenta-keyed if `TRANSPARENT`; 0 = not drawn) — used for fades. `shutdown(mode)`: `f_mount(0)` unmounts/flushes the SD card, then `reboot()` (mode 1) or ACT LED off + `halt()` (mode 0). |
-| Full-screen apps (v41) | `fullscreen_begin(&w, &h)` maps a kernel-owned, screen-sized back buffer (`CWindowManager::EnsureFullscreenBuffer`, 64 KB-aligned) at `USER_FULLSCREEN_CANVAS` (15 GB) and makes the caller's window (created if missing, moved to 0,0) the **full-screen window**: the compositor task skips its frames, `OnMouse`/`OnMouseWheel` send the whole pointer stream to it in screen coordinates and it is the key target. `present_fb()` copies the buffer into the displayed `C2DGraphics` buffer + `UpdateDisplay()`, then yields. `fullscreen_end()` — or the window's removal when the app exits — gives the desktop back. The buffer is made at the first `fullscreen_begin` and made again, bigger, when the screen has grown since (`screen_set`, v66; the old one is left allocated, as the wallpaper's: it may still be mapped) — before, it kept its first size and a full-screen app after a change to a larger resolution wrote past its end, over the kernel heap. `screen_grab` (VNC) returns the full-screen buffer meanwhile. **v55** `fullscreen_direct(&w, &h, &stride)` (after `fullscreen_begin`): maps the framebuffer the display scans out (`CBcmFrameBuffer`, the `C2DGraphics` display, 32 bpp) at `USER_FULLSCREEN_SCREEN` (15.5 GB), normal **uncached** (`KPAGE_ATTR_APP_SCREEN`); `present_fb` then copies nothing (it only yields); `screen_grab` (VNC) reads the screen through the same uncached mapping in the grabber's address space (the kernel's own map of the framebuffer is Device memory, slow to read). What is drawn there shows at once (no double buffering: tearing is possible); the GPU renders there directly (below 1 GB, contiguous), so a full-screen GPU frame costs no copy at all. Returns 0 when not possible (keep the back buffer). |
+| Full-screen apps (v41) | `fullscreen_begin(&w, &h)` maps a kernel-owned, screen-sized back buffer (`CWindowManager::EnsureFullscreenBuffer`, 64 KB-aligned) at `USER_FULLSCREEN_CANVAS` (15 GB) and makes the caller's window (created if missing, moved to 0,0) the **full-screen window**: the compositor task skips its frames, `OnMouse`/`OnMouseWheel` send the whole pointer stream to it in screen coordinates and it is the key target. `present_fb()` copies the buffer into the displayed `C2DGraphics` buffer + `UpdateDisplay()`, then yields. It first waits, yielding, for the compositor's own display DMA to end (`DisplayPresentIdle`, kernel.cpp): the compositor yields while the desktop's last frame is on its way and holds the frame buffer's DMA meanwhile, and Circle's `CBcmFrameBuffer::SetArea` waits for that DMA in a loop that never yields — an app that took the full screen and sent its first frame in those few milliseconds stopped core 0 for good (the compositor never ran again to end its DMA) and the hang watchdog restarted the Pi (`lastcrash.txt`: *display: waiting for the display DMA*, core 0 in `SetArea` under the app's task; fixed 2026-10-05; the test: `tools/tests/fsrace/`). Any other task that calls `C2DGraphics::UpdateDisplay` itself must call `DisplayPresentIdle` first. `fullscreen_end()` — or the window's removal when the app exits — gives the desktop back. The buffer is made at the first `fullscreen_begin` and made again, bigger, when the screen has grown since (`screen_set`, v66; the old one is left allocated, as the wallpaper's: it may still be mapped) — before, it kept its first size and a full-screen app after a change to a larger resolution wrote past its end, over the kernel heap. `screen_grab` (VNC) returns the full-screen buffer meanwhile. **v55** `fullscreen_direct(&w, &h, &stride)` (after `fullscreen_begin`): maps the framebuffer the display scans out (`CBcmFrameBuffer`, the `C2DGraphics` display, 32 bpp) at `USER_FULLSCREEN_SCREEN` (15.5 GB), normal **uncached** (`KPAGE_ATTR_APP_SCREEN`); `present_fb` then copies nothing (it only yields); `screen_grab` (VNC) reads the screen through the same uncached mapping in the grabber's address space (the kernel's own map of the framebuffer is Device memory, slow to read). What is drawn there shows at once (no double buffering: tearing is possible); the GPU renders there directly (below 1 GB, contiguous), so a full-screen GPU frame costs no copy at all. Returns 0 when not possible (keep the back buffer). |
 | Drag & drop (v42) | `drag_begin(type, data, len, label)` — only while the left button is held — copies the payload (≤ 4 KB: 1 text, 2 `\n`-separated paths) into a kapi-side buffer and calls `CWindowManager::DragBegin(src, label)`. While the session lasts, `OnMouse` sends `GUI_EVENT_DRAG_OVER` (16) to the window under the cursor (`DND_F_LEAVE` when it leaves), and `Composite` draws a label badge next to the cursor (a **+** when Ctrl is held). At the left-button release, `DndFinishLocked` sends `GUI_EVENT_DROP` (15) to the window under the cursor — `(flags << 32) \| (x << 16) \| y`, client coords, `DND_F_COPY` if Ctrl — and `GUI_EVENT_DRAG_DONE` (17) to the source: `(flags << 32) \| target pid` (`CWindow::OwnerPid`, set by `CreateWindow`), flags `DND_F_COPY` / `DND_F_CANCEL` (Esc, via `OnKey`) / `DND_F_DESKTOP` (no window or a backmost one). All three go to the pointer handler; the normal pointer stream still reaches the source (its capture), so its widgets see the button go up. The target reads the payload with `drag_data(&type, buf, cap)`. A window removed mid-drag ends it. **Modifiers**: `get_modifiers()` = `MOD_CTRL` 1 / `MOD_SHIFT` 2 / `MOD_ALT` 4 — from the USB keyboard's raw report (`RegisterKeyStatusHandlerRaw` in **mixed mode**, so the cooked key path is unchanged) or `inject_modifiers()` (vncd, from the RFB Control/Shift/Alt keysyms). **Per key event**: `OnKey` stores the modifiers in each `GUIEvent` (`nMods` = the global state OR the xterm parameter of `ESC[1;<m>X` / `ESC[n;<m>~`, m − 1 = Shift 1 + Alt 2 + Ctrl 4, which Circle's keymap and vncd send for navigation keys); `kapi_pump_events` sets `CWindow::m_nKeyEventMods` around the app's key handler, and `get_modifiers()` returns it while the handler runs — so Shift+arrow selects even when the live state is late or clobbered (VNC, a second keyboard). |
-| Network tools (v43) | `net_ping(host, seq, timeout_ms, ip, cap)` resolves the host (`CDNSClient` unless a dotted quad), builds an ICMP echo request (id `0x4F4E`, 32 data bytes, `CChecksumCalculator`) and sends it with `CNetworkLayer::Send(…, IPPROTO_ICMP)`; the reply is read from Circle's **secondary ICMP queue** (`EnableReceiveICMP`, enabled only while a ping is in flight, `ReceiveICMP`), matching type 0 + id + seq + sender, yielding while it waits → RTT in µs or `-1` down / `-3` unresolved / `-4` timeout / `-5` send failed. `net_resolve` = DNS only. `net_info` = a text dump for `netstat`: `up`, `hostname`, `ip`, `mask`, `gateway`, `dns`, `dhcp` lines (`CNetConfig`), then one `tcp <handle> listen\|conn <local port> <remote ip> <pid>` per socket slot (`TSocketSlot.bListen`). Tools: `/bin/ping`, `nslookup`, `netstat`, `whois` (the latter is plain TCP port 43). |
+| Network tools (v43) | `net_ping(host, seq, timeout_ms, ip, cap)` resolves the host (`CDNSClient` unless a dotted quad), builds an ICMP echo request (id `0x4F4E`, 32 data bytes, `CChecksumCalculator`) and sends it with `CNetworkLayer::Send(…, IPPROTO_ICMP)`; the reply is read from Circle's **secondary ICMP queue** (`EnableReceiveICMP`, enabled only while a ping is in flight, `ReceiveICMP`), matching type 0 + id + seq + sender, yielding while it waits → RTT in µs or `-1` down / `-3` unresolved / `-4` timeout / `-5` send failed. `net_resolve` = DNS only. `net_info` = a text dump for `netstat`: `up`, `hostname`, `ip`, `mask`, `gateway`, `dns`, `dhcp` lines (`CNetConfig`), then one `tcp <handle> listen\|conn <local port> <remote ip> <pid>` per socket slot (`TSocketSlot.bListen`); since v75 also `udp <handle> bound <local port> <default peer|-> <pid>` (§11). Tools: `/bin/ping`, `nslookup`, `netstat`, `whois` (the latter is plain TCP port 43). |
 | User-space file systems (v44) | `sys/vfs.cpp`, `kern/vfs.h` — FUSE-like. A **provider** app calls `vfs_register(prefix)` (`/bin/ftpfs`: `FTP:`, `FTPS:`). `kapi_open`/`read`/`fsize`/`close`, `save_file`, `opendir`/`readdir`/`closedir`, `mkdir`/`remove`/`rename` on a path with a registered prefix (`VfsHandles`) become **requests** (`VfsCall`): the calling task fills a slot (op, path, path2, a0–a2, a **kernel copy** of the payload), sets the provider's `CSynchronizationEvent` and waits on the slot's own event (200 ms re-checks: provider alive via `IpcPidAlive`, 120 s timeout). The provider takes it with `vfs_next` (blocking = up to 0.5 s, so it can also poll its mailbox), reads the payload with `vfs_req_data`, answers with `vfs_reply(id, status, data, len)` (copied into a kernel buffer, then into the caller's). Ops: `OPEN` (→ fid + size), `READ` (fid, offset, ≤ 64 KB), `CLOSE`, `LIST` (packed `u32 size, u8 is_dir, name\0` entries), `SAVE`, `MKDIR`, `REMOVE`, `RENAME`. Provider-backed handles live in static tables (`s_File`, `s_Dir`), so the file kapis tell them from FatFs `FIL`/`DIR` by address. `FTP:`/`FTPS:` are **auto-started**: the first use execs `SD:/bin/ftpfs` and waits up to 5 s for it to register. A dying provider is dropped and its pending requests fail (`VfsOnProcessGone`, from `IpcOnProcessGone`). Streams (`kapi_file_in`: `cat`, redirections) go to FatFs (and to the RAM volume on `RAM:`, §16), not to a provider. |
 | Volumes' room, RAM: (v71) | `vol_info(path, out)` → 0 and `struct kapi_vol_info { total, free, used; files, dirs; flags; type[12] }` for the volume of `path` (`"SD:"`, `"SD1:/roms"`, `"RAM:"`, a relative path: the current folder's), −1 no such volume. A FatFs volume: `f_getfree` (its free clusters — FSINFO on FAT32, else counted once by FatFs: the first call on a big card can take a moment), `type` `FAT12`/`FAT16`/`FAT32`/`exFAT`. **`RAM:`** (§16): its size, the pages its files take, what can still be written (also bounded by the free page memory less the reserve), its files and folders, `flags` `KAPI_VOL_RAM` (lost at a restart), `type` `RAM`. `/bin/df` prints it; `/bin/ramtest` uses it to check that the memory comes back. |
 | Wi-Fi scan (v45) | `wlan_scan(out, max)` → `struct kapi_wlan_ap` (ssid, bssid, security `WLAN_SEC_OPEN`/`WEP`/`WPA`/`WPA2`, channel, freq, level dBm, connected), strongest first, one per BSSID. `NetWlanScan` in `sys/net.cpp` — **no Circle patch**: it drives the BCM4343 firmware's *escan* through `CBcm4343Device::Control ("escan 5")`, collects `ReceiveScanResult` messages for ~3.5 s (the firmware's `brcmf_escan_result_le` layout, as in hostap's `driver_circle.cpp`), then `escan 0`. Security from the capability privacy bit + the RSN (48) / WPA vendor (221) IEs; `connected` = the BSSID `GetBSSID()` reports while `CWPASupplicant::IsConnected()`. wpa_supplicant reads the same result queue for its own scans: while it is still looking for its network, a scan here may take its results (it scans again). Used by `/bin/wifiscan` and `wpaconf`. |
-| Master volume (v60) | `sound_volume(volume 0..10, mute 0/1)` (−1 keeps a value) → the volume `| 0x100` if muted. Applied in `COnyxSoundDevice::GetChunk` to everything played (voices + stream), on a squared curve (`s_Gain`, the ear hears the steps evenly). Not kept by the kernel: the menu bar applies `SD:/etc/sound.ini` at start (`user/volume.h`). |
+| Master volume (v60) | `sound_volume(volume 0..10, mute 0/1)` (−1 keeps a value) → the volume `| 0x100` if muted. Applied in `COnyxSoundDevice::GetChunk` to everything played (voices + stream), on a squared curve (`s_Gain`, the ear hears the steps evenly). Not kept by the kernel: the menu bar applies `SD:/etc/sound.ini` at start (`user/Include/volume.h`). |
 | Wi-Fi join (v60) | `wlan_reconnect()` — `NetWlanReconnect` (a core-3 request with `netcore=1`): wpa_supplicant's SIGHUP handler, caught at link time (`--wrap=eloop_register_signal_reconfig`, `kernel/Makefile`; docs/05 §14) and run from its own event loop (a 0 s eloop timeout) — deauthenticate, read `SD:/etc/wpa_supplicant.conf` again, rescan, join the highest priority network in range — then `CDHCPClient::Restart ()` (a new lease: another network). 0 asked, −1 no Wi-Fi running. Used by the Wi-Fi menu (`wifimenu`). |
 | Low-latency sound (v68) | For the sound owner: `sound_config(chunk_frames 64..1024 (0: 1024), ahead 1..4 (0: 4))` → the latency now in frames, (ahead + 1) × chunk (−1 not the owner); `sound_map()` → the **mapped PCM ring** (`struct kapi_sound_ring`: one 64 KB page, 8192 frames, `wr` moved by the app after its frames, `rd` by the kernel, `dry` underruns, the chunk / ahead now), mixed with the voices and the stream until the owner releases the output — plain memory, so an **app core** fills it (`kapi_sound_ring_write`). Both are back to the defaults / off at `sound_release` or the owner's death. See §12. Test: `/bin/ringtest`. |
-| Sound (v46) | `sound_acquire` (1 ok / 0 busy / −1 no audio: the caller becomes the owner; the output starts on first use), `sound_release`, `sound_start(voice 0..15, milliHz, wave SOUND_SQUARE/SINE/TRIANGLE/SAW/NOISE, volume 0..255)` (plays until stopped), `sound_stop(voice or -1)`, `sound_write(s16 stereo frames, n)` → frames taken (PCM ring, non-blocking), `sound_status(&rate, &free, &owner)`. Non-owners get −1; the owner's exit silences it. See §12. |
+| Sound (v46) | `sound_acquire` (1 ok / 0 busy / −1 no audio: the caller becomes the owner; the output starts on first use), `sound_release`, `sound_start` / `sound_stop` — the voices, **retired on 2026-10-05** (the synthesizer left the kernel: AudioKit's `ak_fm_*`, docs/03 §5.7; the slot stays and answers −1), `sound_write(s16 stereo frames, n)` → frames taken (PCM ring, non-blocking), `sound_status(&rate, &free, &owner)`. Non-owners get −1; the owner's exit silences it. See §12. |
 | Run as (v49) | `exec_as(path, args, name)` → `ExecPath` with the process named `name` instead of after the path (1 = started). User space runs a format's program this way (`launch.h`: `SD:/bin/basic` for an app's `main.bax` is named after the app). |
 | Monitor, time zone (v69) | `screen_native(&w, &h)` → 1 and the monitor's own resolution, 0 unknown: the EDID's first block (the firmware's `PROPTAG_GET_EDID_BLOCK`, Circle's `CBcmPropertyTags`), its header checked, the **first detailed timing descriptor** (bytes 54..71, the preferred timing) read — the active pixels, 8 low bits and 4 high ones of a shared byte, horizontally (bytes 2, 4) then vertically (5, 7); 0 when it is a display descriptor or too small (no monitor, an analog adapter). `set_timezone(minutes)` → 1: the local time's offset from UTC now (−720 .. 840, `CTimer::SetTimeZone`: `get_datetime`, the menu bar's clock), 0 out of range — `system.ini`'s `timezone=` sets it at boot. Setup (the first-run wizard) marks the monitor's size "Best" and changes the zone as it is picked. |
 | USB MIDI (v68) | `midi_read(ev, max)` → up to `max` `struct kapi_midi_event` (`time_us` — the kernel's µs clock, `CTimer::GetClockTicks`, which `kapi_clock_us` reads user side, on an app core too —, `cable`, `status`, `data1`, `data2`, `device` (its `umidiN`), `length` 1..3), oldest first, never waits; −1 bad arguments. One queue for the system (256 events, the newest dropped when full). `midi_devices()` → attached. Circle's USB device factory makes a `CUSBMIDIHostDevice` for every class-compliant MIDI interface (`int1-3-0`) and its `CUSBMIDIDevice` names itself `umidiN`; the input task finds `umidi1..4` every 100 ms (a hot plug too), registers its packet handler (`MidiPacket`: at USB-completion time, stamps the packet and queues it under an IRQ spin lock) and a removed handler that frees the slot. No Circle change. Test: `/bin/miditest`. |
-| Gamepads (v50) | `pad_state(index, out)` → 1 and `struct kapi_pad` filled for USB gamepad 0..3 (`KAPI_PAD_MAX`), else 0: `vid`/`pid`, `props` (Circle's `TGamePadProperty`, bit 0 = a known mapping), `focus` (the caller's window has the keyboard), `seq` (reports received), `nbuttons`/`buttons`, `naxes`/`axes[16]` (value, min, max), `nhats`/`hats[6]` (0..7 = N..NW). Raw state: for pads Circle knows (Xbox 360 / One, PS3 / PS4, Switch Pro) `buttons` are its `TGamePadButton` bits, for other HID pads the report's own. The input task finds `upad1..4` (Circle's names) every 100 ms, registers a status handler that copies each report into a slot under a sequence count (odd while writing: the handler runs at USB-completion time), and a removed handler that frees the slot. The mapping to one button set is user space (`user/gamepad.h`, `SD:/etc/gamepad.ini`). |
+| Gamepads (v50) | `pad_state(index, out)` → 1 and `struct kapi_pad` filled for USB gamepad 0..3 (`KAPI_PAD_MAX`), else 0: `vid`/`pid`, `props` (Circle's `TGamePadProperty`, bit 0 = a known mapping), `focus` (the caller's window has the keyboard), `seq` (reports received), `nbuttons`/`buttons`, `naxes`/`axes[16]` (value, min, max), `nhats`/`hats[6]` (0..7 = N..NW). Raw state: for pads Circle knows (Xbox 360 / One, PS3 / PS4, Switch Pro) `buttons` are its `TGamePadButton` bits, for other HID pads the report's own. The input task finds `upad1..4` (Circle's names) every 100 ms, registers a status handler that copies each report into a slot under a sequence count (odd while writing: the handler runs at USB-completion time), and a removed handler that frees the slot. The mapping to one button set is user space (`user/Include/gamepad.h`, `SD:/etc/gamepad.ini`). |
 | App cores (v51) | `core_acquire()` → 2 or 3 (a free app core, now the caller's) or −1; `core_run(core, fn, arg, stack_top)` → 0, or −1 (not yours / still running / `fn` or the stack not a user address): the core calls `fn (arg)` in the caller's address space on the given stack (16-byte aligned, the caller's memory); `core_state(core)` → `KAPI_CORE_IDLE` (0: `fn` returned), `KAPI_CORE_RUNNING` (1), `KAPI_CORE_FAULT` (−2: `fn` faulted and was stopped, logged to kmsg) or `KAPI_CORE_NOTYOURS` (−1); `core_release(core)` stops `fn` if it runs and frees the core (done at the app's exit anyway). `fn` makes **no kapi call and no allocation**. See §14. |
 | GPU (v52) | `gpu_info(buf, cap)` → 1 (the V3D is up; `buf` = "V3D 4.2 (1 core)") or 0 (`buf` says why); the first call brings the GPU up. `gpu_draw(v, n, clear, pixels, w, h, stride)`: `n` vertices `struct kapi_gpu_vertex { float x, y, z; u8 r, g, b, a; }` (a triangle list; normalized device coordinates, y up, z −1 near … 1 far; depth test *less*, both faces; colours interpolated) rendered by the GPU into `pixels` (0x00RRGGBB, `w` × `h` ≤ 2048, `stride` pixels a row) after clearing it to `clear` (0xRRGGBB) → 0, −1 no GPU, −2 bad arguments / too many vertices (`KAPI_GPU_MAX_VERTS` = 196608), −3 the GPU did not finish (it is then left off). See §15. |
 | GPU (v53) | `gpu_texture(handle, pixels, w, h, stride)`: a texture of `w` × `h` (≤ 2048) pixels 0xAARRGGBB; `handle` < 0 makes one (≤ 256 in all; v70: ≤ 1024 in all, ≤ 512 a program), ≥ 0 replaces its pixels, `pixels` = 0 frees it → the handle, −1 no GPU, −2 bad arguments, −4 no memory / no free handle; a program's textures are freed when it ends. `gpu_render(f, v, nv, b, nb)`: one frame into `struct kapi_gpu_frame { pixels, w, h, stride, clear, flags }` (`KAPI_GPU_F_KEEP`: drawn over the pixels instead of clearing them) of `nv` vertices `struct kapi_gpu_vertex3 { float x, y, z, w, s, t; u8 r, g, b, a; u8 r2, g2, b2, a2; }` (v54: the second colour is added after the texel × colour product and clamped to 1 — 0 for the v53 behaviour) in `nb` (≤ 4096) batches `struct kapi_gpu_batch { first, count, texture, flags, float matrix[16]; }`: each batch draws its triangles with its own matrix (row by row, clip = M·(x y z w), transformed by the GPU, which divides by w and clips; `KAPI_GPU_B_NOMATRIX` = identity), texture (−1: colour only, else texel × colour; `B_LINEAR`, `B_WRAP_S/T(REPEAT, CLAMP, MIRROR)`), depth test (`B_ZFUNC`: less by default, … always) and writes (`B_NOZWRITE`), culling (`B_CULL_BACK/FRONT`, front = counter-clockwise, y up), alpha test (v54: `B_ALPHATEST(t)`, fragments whose alpha < t / 255 are discarded) and blending (`B_BLEND(ALPHA, ADD, MUL, PREMUL)`; v72: also the premultiplied compositing presets `MULCOL` (colour s·d + d(1 − sa), alpha kept), `UNDER` (s(1 − da) + d, alpha over), `SCREEN` (s + d(1 − s)), `PLUS` (s + d), `RSUB` (d − s, alpha kept), `LIGHTEN` (max), `DSTIN` (d·sa, colour and alpha: a mask), `DSTOUT` (d(1 − sa): cut out) — each a pair of V3D blend equations, colour and alpha apart) → 0, −1, −2, −3 as `gpu_draw`. The kernel gives the V3D only well-formed triangles: each one is transformed by its batch's matrix on the CPU and clipped against the near plane (z ≥ −w, w > 0) and a guard band 4 × the screen (`kern/v3d_clip.h`, the batches then NOMATRIX; test `tools/tests/run_v3d_clip_test.sh`) — Ocarina of Time's triangles crossing the eye plane, projected ~50 000 screens away, wedged the GPU and froze the whole Pi. See §15. |
-| GPU (v61) | `gpu_program(handle, p)`: the app's own shaders — `struct kapi_gpu_program { vs, cs, fs; nvs, ncs, nfs; inputs, csInputs, csOutputs, varyings, flags }`, three V3D 4.2 QPU programs (≤ 4096 instructions each; built at run time by `user/v3d/qpu.h`) copied into GPU memory; a vertex is `inputs` floats (4..64, the clip-space x y z w first; the coordinate shader reads the first `csInputs`, writes `csOutputs` ≥ 6: Xc Yc Zc Wc Xs Ys), the vertex shader writes Xs Ys Zs 1/Wc then `varyings` (≤ 64); flags `KAPI_GPU_P_FS_4WAY` (4 threads, else 2), `P_FS_FINAL` (no thread switch — unreliable on wide targets, see §15), `P_FS_ZWRITE`; `handle` < 0 makes one (≤ 256), ≥ 0 replaces it, `p` = 0 frees it → the handle, −1, −2, −4 as `gpu_texture`; freed when the program ends. `gpu_render2(f, v, nv, stride, b, nb, uni, nuni)`: one frame (as `gpu_render`) of `nv` vertices of `stride` floats in `nb` batches `struct kapi_gpu_batch2 { first, count, program, flags, blend, wmask, scissor[4], vsUni, vsNUni, csUni, csNUni, fsUni, fsNUni, tex[8], texFlags[8], texUni[8] }`: each with its program, its uniforms (three ranges of `uni[nuni]`, ≤ 2^20 words), up to 8 textures — the kernel writes each one's TMU words p0 (texture state, 16-bit float RG / BA) and p1 (a sampler from `texFlags`: `B_LINEAR`, `B_WRAP_S/T`) at `fsUni + texUni[i]` —, depth / cull flags (`B_ZFUNC`, `B_NOZWRITE`, `B_CULL_*`), blending `KAPI_GPU_BLEND2(cSrc, cDst, aSrc, aDst, cEq, aEq)` (the V3D factors and equations), a colour write mask (`wmask`: the channels not written) and a scissor (x y w h in the target, top-left origin; w ≤ 0: none) → 0, −1, −2, −3. The triangles are clipped on the CPU as for `gpu_render` (`V3DClipTriangleN`: every float of the vertex interpolated). See §15. |
+| GPU (v61) | `gpu_program(handle, p)`: the app's own shaders — `struct kapi_gpu_program { vs, cs, fs; nvs, ncs, nfs; inputs, csInputs, csOutputs, varyings, flags }`, three V3D 4.2 QPU programs (≤ 4096 instructions each; built at run time by `user/Libs/v3d/qpu.h`) copied into GPU memory; a vertex is `inputs` floats (4..64, the clip-space x y z w first; the coordinate shader reads the first `csInputs`, writes `csOutputs` ≥ 6: Xc Yc Zc Wc Xs Ys), the vertex shader writes Xs Ys Zs 1/Wc then `varyings` (≤ 64); flags `KAPI_GPU_P_FS_4WAY` (4 threads, else 2), `P_FS_FINAL` (no thread switch — unreliable on wide targets, see §15), `P_FS_ZWRITE`; `handle` < 0 makes one (≤ 256), ≥ 0 replaces it, `p` = 0 frees it → the handle, −1, −2, −4 as `gpu_texture`; freed when the program ends. `gpu_render2(f, v, nv, stride, b, nb, uni, nuni)`: one frame (as `gpu_render`) of `nv` vertices of `stride` floats in `nb` batches `struct kapi_gpu_batch2 { first, count, program, flags, blend, wmask, scissor[4], vsUni, vsNUni, csUni, csNUni, fsUni, fsNUni, tex[8], texFlags[8], texUni[8] }`: each with its program, its uniforms (three ranges of `uni[nuni]`, ≤ 2^20 words), up to 8 textures — the kernel writes each one's TMU words p0 (texture state, 16-bit float RG / BA) and p1 (a sampler from `texFlags`: `B_LINEAR`, `B_WRAP_S/T`) at `fsUni + texUni[i]` —, depth / cull flags (`B_ZFUNC`, `B_NOZWRITE`, `B_CULL_*`), blending `KAPI_GPU_BLEND2(cSrc, cDst, aSrc, aDst, cEq, aEq)` (the V3D factors and equations), a colour write mask (`wmask`: the channels not written) and a scissor (x y w h in the target, top-left origin; w ≤ 0: none) → 0, −1, −2, −3. The triangles are clipped on the CPU as for `gpu_render` (`V3DClipTriangleN`: every float of the vertex interpolated). See §15. |
 | GPU (v62) | `gpu_render3(f, v, nfloats, b, nb, uni, nuni, view)`: `gpu_render2` with each batch's vertices where the app keeps them — `struct kapi_gpu_batch3 { struct kapi_gpu_batch2 b; unsigned off, stride; }`: `b.count` vertices of `stride` floats (≥ the program's inputs, ≤ 64) from float `off` of `v[nfloats]` (`b.first` unused) — and their x / y framed by the kernel on the way, `x' = view[0] x + view[1] w`, `y' = view[2] y + view[3] w` (`view` 0: as they are): no common array for the app to make first → as `gpu_render2`. gcemu's TEV renderer gives it its recorder's frame as it is. See §15. |
 | GPU (v63) | `gpu_vbuf(bytes)`: memory the GPU reads too — low, physically contiguous, mapped into the program (the surface arena); up to 8 a program (v70: 32 in all; 8 in all before), 64 MB each, freed when it ends → its address, 0 none. `gpu_render3` with `v[nfloats]` inside one draws the vertices **where they are**: their x / y framed **in place** (the program draws the same vertices again with `view` 0), the triangles inside every plane drawn as runs of them, the others clipped into the buffer's end past `nfloats` (keep room there) — nothing copied. |
 | GPU (v70) | `gpu_texture_rect(handle, x, y, w, h, pixels, stride)`: the rectangle `x, y, w × h` of texture `handle` (the caller's) replaced by `pixels` (0xAARRGGBB, `stride` pixels a row), the rest kept → 0, −1 no GPU, −2 bad arguments (not the caller's handle, the rectangle not inside the texture). The texels are stored where the texture unit reads them for the texture's size (`StoreRect`, `kern/v3d_tiling.h`: a utile row — 4 texels, 16 contiguous bytes in every layout — per offset computed) and only the span of bytes written is cleaned from the CPU caches; it waits for a frame in flight, as `gpu_texture`. `KAPI_GPU_F_ALPHA` (a frame's flag, `gpu_render` / `2` / `3`): the target is 0xAARRGGBB premultiplied — its alpha loaded with `KAPI_GPU_F_KEEP` (not forced to 1), blended, written (the colour write mask no longer spares it in the direct mode), stored, and cleared to `clear`'s top byte; without it nothing changes (0x00RRGGBB: the direct mode leaves the top byte, the copy mode writes 0). Handles: `gpu_texture` gives 1024 in all (256 before), 512 at most a program (−4 past that), so an emulator's texture cache and the browser's layers fit side by side; `gpu_vbuf` 32 blocks in all, 8 a program (8 in all before). See §15 *Sharing the GPU* and *The compositing service*. |
 | Windows (v64) | The modernised CDE desktop's windows. `win_minimise(id)`: window `id` (0: the caller's) minimised — not drawn, not hit, never active nor the keys' target — until `win_raise` / `raise_app` brings it back (`KAPI_WIN_MINIMISED` in `win_list`'s state) → 0 / −1. `win_geometry(out)`: `struct kapi_win_geom { x, y, w, h; cw, ch; ax, ay, aw, ah; state }` — the caller's whole window (frame included), its client size, the **work area** (the screen less the menu bar at the top and the topmost windows standing on the bottom edge: the dock) → 0 / −1. `resize_window2(w, h, &stride)`: as `resize_window`, but the canvas and the frame's copies **grow** past their first size when needed (new memory at the same addresses; their pixels are lost: redraw, `get_chrome` again) → the canvas and its stride, 0 (no memory: the size kept). With it: the frame's metrics `KAPI_FRAME_TITLE_H` 28, `KAPI_FRAME_BORDER` 4, `KAPI_FRAME_RADIUS` 8 (the chrome copies' top byte: a transparency, heeded in the corner squares), the title buttons' places `KAPI_FRAME_BTN_W/H/Y/EDGE/STEP` (the window menu at the left; close, maximise, minimise from the right: `KAPI_FRAME_MENU/CLOSE/MAXIMISE/MINIMISE`); `GUI_EVENT_WINCTL` (18: the window menu, maximise — for the app); `WIN_FLAG_ALPHA` (32: a borderless window's pixels carry their transparency). See §10.2. |
 | Screen size (v66) | `screen_set(w, h)`: the screen's resolution **now** (640 × 480 .. 2560 × 1600, `w` even; `ScreenResizeRequest`, kernel.cpp). The compositor does it between two frames (the display DMA is idle — each present waits for its end): `C2DGraphics::Resize` (Circle's: the frame buffer asked of the firmware again at that size, the drawing buffer made again), the old size back if the firmware refuses; then `CWindowManager::OnScreenResized`: the cursor and every window kept on the screen (moved in when past the right / bottom edge; a window parked at a negative place is left there), the app-written wallpaper dropped (the next `wallpaper_buffer` is a new buffer of the new size — the old one is left allocated: an app may still have it mapped), and **`GUI_EVENT_DISPLAY_RESIZE`** (19, `lValue = w << 16 \| h`, `GUI_DISPLAY_W/H`) to every window's pointer handler. The caller waits for it → 0; −1 out of bounds; −2 not now (a full-screen app owns the display — its mapping of the frame buffer would be stale —, the debug console, another change under way); −3 the firmware refused it (the old size kept). `screen_grab` refuses the old size (vncd / rdpd see it and take the new one). Not kept across a reboot: `cmdline.txt`'s `width=` / `height=` are (the Display applet writes both). See §10.2. |
-| Workspaces (v65) | The virtual desktops. `desk(set, count)`: `set` ≥ 0 shows desk `set`, `count` > 0 sets how many there are (1 .. `KAPI_DESK_MAX` = 8; the dock keeps 1–6; the windows of the desks dropped go onto the last one); −1 / 0 keep them → the current desk `| count << 8 | gen << 16` (`gen`: bumped at every change — a window moved, a desk shown; `KAPI_DESK_CUR/COUNT/GEN` in `user/kapi.h`, where an older kernel answers `1 << 8`: one desk). `win_desk(id, n)`: window `id` (0: the caller's) to desk `n` (−1: every desk; −2: only asked) → its desk (−1: every desk), −3 no such window; a topmost or backmost window stays on every desk. A window opens on the current desk (the topmost, backmost and system ones on all: desk −1); the others are hidden (`OffDesk`: not drawn, not hit, never active nor the keys' target, as minimised) and flagged `KAPI_WIN_OFFDESK` in `win_list`'s state, with the desk + 1 in its bits 8–15 (`KAPI_WIN_DESK(state)`: −1 all). `list_windows` and `raise_app` see the current desk's windows only (an app on another desk: `raise_app` fails, its launcher starts a new one here); `win_raise` of a window on another desk shows that desk. **Ctrl+Alt+Left / Right** show the previous / next desk (with **Shift** the active window goes along); not while an app has the full screen. See §10.2. |
+| Workspaces (v65) | The virtual desktops. `desk(set, count)`: `set` ≥ 0 shows desk `set`, `count` > 0 sets how many there are (1 .. `KAPI_DESK_MAX` = 8; the dock keeps 1–6; the windows of the desks dropped go onto the last one); −1 / 0 keep them → the current desk `| count << 8 | gen << 16` (`gen`: bumped at every change — a window moved, a desk shown; `KAPI_DESK_CUR/COUNT/GEN` in `user/Kits/appkit/appkit.h`, where an older kernel answers `1 << 8`: one desk). `win_desk(id, n)`: window `id` (0: the caller's) to desk `n` (−1: every desk; −2: only asked) → its desk (−1: every desk), −3 no such window; a topmost or backmost window stays on every desk. A window opens on the current desk (the topmost, backmost and system ones on all: desk −1); the others are hidden (`OffDesk`: not drawn, not hit, never active nor the keys' target, as minimised) and flagged `KAPI_WIN_OFFDESK` in `win_list`'s state, with the desk + 1 in its bits 8–15 (`KAPI_WIN_DESK(state)`: −1 all). `list_windows` and `raise_app` see the current desk's windows only (an app on another desk: `raise_app` fails, its launcher starts a new one here); `win_raise` of a window on another desk shows that desk. **Ctrl+Alt+Left / Right** show the previous / next desk (with **Shift** the active window goes along); not while an app has the full screen. See §10.2. |
 | Held keys (v48) | `key_held(key)` → 1 while the key is held **and** the caller's window has the keyboard (`KeyTargetLocked`), else 0 — for games, since key events only report presses. Keys: `KEY_UP/DOWN/LEFT/RIGHT`, `KEY_ENTER`, 27, `' '`, `'a'..'z'` (the **US position** of the key), `'0'..'9'`. The WM keeps two bitsets over the logical codes: the USB one, rebuilt from every raw report (`KeyRawStub` → `SetUsbHeld`, HID usage → key), and the injected one (`inject_key_held(key, down)`, from vncd's RFB key down / up); `KeyHeld` ORs them. |
-| FM (v47) | `sound_instrument(voice, const struct kapi_fm_instrument *)` — a 2-operator FM instrument (OPL2 style, `struct kapi_fm_op op[2]` = modulator / carrier: `mult`, `level`, `ksl`, `attack`, `decay`, `sustain`, `release`, `wave`, `flags` FM_SUSTAINED / FM_TREMOLO / FM_VIBRATO / FM_KSR; `feedback`, `connection`) for that voice; then `sound_start(voice, milliHz, SOUND_FM, volume)`. Owner only. See §12. |
-| Memory primitives (v36) | `memset`, `memcpy`, `memmove` — Circle's kernel implementations (general registers only, so callable from any app). `user/kapi.h` wraps them as weak **`kapi_memset`/`kapi_memcpy`/`kapi_memmove`** symbols, and the freestanding app Makefiles alias the C names onto them (`-Wl,--defsym,memset=kapi_memset`, …): GCC may emit these calls on its own (array/struct initialization, copies) even with `-ffreestanding`, and freestanding apps have no libc. Newlib programs keep newlib's own. |
-| Crypto (v30) | `random` (fill a buffer from the Pi's **hardware RNG**, Circle `CBcmRandomNumberGenerator`; for cryptographic seeding — the TLS entropy source in `user/tls/onyx_tls.hpp` feeds mbedTLS's CTR_DRBG from it) |
+| FM (v47) | `sound_instrument` — **retired on 2026-10-05** (the synthesizer left the kernel: AudioKit's `ak_fm_*`, docs/03 §5.7; the slot stays and answers −1). `struct kapi_fm_instrument` (2 operators, OPL2 style: `struct kapi_fm_op op[2]` = modulator / carrier, `feedback`, `connection`) and `SOUND_SQUARE` … `SOUND_FM` stay in `kern/kapi_abi.h`: they are the names AudioKit's FM synthesizer takes. |
+| Memory primitives (v36) | `memset`, `memcpy`, `memmove` — since v74 **user-side** routines of the EL0 code page (`el0blob.S`, no system call; general registers only; they align the destination for the Device-memory framebuffer), the kernel table's slots 0 (before: Circle's kernel implementations). `user/Kits/appkit/appkit.h` wraps them as weak **`kapi_memset`/`kapi_memcpy`/`kapi_memmove`** symbols, and the freestanding app Makefiles alias the C names onto them (`-Wl,--defsym,memset=kapi_memset`, …): GCC may emit these calls on its own (array/struct initialization, copies) even with `-ffreestanding`, and freestanding apps have no libc. Newlib programs keep newlib's own. |
+| Crypto (v30) | `random` (fill a buffer with random bytes — a **software PRNG** (splitmix64) seeded from the high-resolution timer: the BCM2711's hardware RNG stalls the bus in this setup, `sys/kapi.cpp`; not cryptographically strong; for seeding — the TLS entropy source in `user/Libs/tls/onyx_tls.hpp` feeds mbedTLS's CTR_DRBG from it) |
 
-All the functions **run in the context of the calling app** (its page
-table + its stack are active; the arguments are plain pointers in the current
-space — no `copy_from_user`). Some are **modal and synchronous**:
-`message_box`, `file_open`, `file_save` **block (yield in a loop)** the calling
-app until the response, while the compositor and the other apps keep running.
+All the functions run **in the kernel (EL1), on the calling process's task**: the app's
+`svc` enters on that task's own kernel stack with the app's page table still active, so the
+kernel reads and writes the app's memory in place — **after checking every pointer**
+(`kern/uaccess.h`, §6). A call that waits (a file read in pieces, a socket, `wait`) yields
+there, on that kernel stack, while the compositor and the other apps keep running.
+
+### v75: memory
+
+Work package WP-MEM ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.1; `kernel/sys/vm.cpp`,
+`kern/vm.h`; the threads' two in `sys/thread.cpp`). The mechanism — lazy regions, pins, the
+deferred zap, the TLB rules, the OOM policy — is §4 *Demand paging*. Every entry returns ≥ 0 or
+−`KAPI_Exxx`. Sizes: 64 KB pages; addresses and lengths are rounded to them where noted.
+
+| Slot | Entry | Does → returns |
+|---|---|---|
+| 163 | `vm_map (addr, len, prot, flags)` | A zero-filled `ANON` region of `len` (rounded up) in the mmap arena `[34 GB, 60 GB)`, filled on first touch (`KAPI_MAP_POPULATE`: now, a yield every 64 pages, a failure not reported). `addr` is a hint (taken if free, else the lowest gap) unless `KAPI_MAP_FIXED` (aligned, inside the arena; replaces what is there) or `KAPI_MAP_FIXED_NOREPLACE` (`-EEXIST` if anything is there). `prot` = `KAPI_PROT_NONE/READ/WRITE`, v78 `EXEC` (executable at EL0: a JIT; before v78: `-ENOTSUP`). → the address / `-EINVAL` (len 0, a bad `FIXED`), `-ENOMEM` (no room, 4096 regions, or a writable map larger than the free app pool − 16 MB without `KAPI_MAP_NORESERVE`) |
+| 164 | `vm_unmap (addr, len)` | Inside the arena (holes allowed; regions split): the pages dropped (a pinned one when its kapi ends) → 0 / `-EINVAL` (unaligned, outside the arena) / `-ENOMEM` (a split at 4096 regions) |
+| 165 | `vm_protect (addr, len, prot)` | `ANON` regions covering the range without a hole: their protection (split / merged), the present pages re-protected + TLBI (a write taken from a page under another thread's kapi: when it ends) → 0 / `-EINVAL` / `-ENOMEM` (split cap) / `-ENOTSUP` (`EXEC` over an SHM region; before v78: any `EXEC`) |
+| 166 | `vm_advise (addr, len, advice)` | Lazy regions (`ANON`, `HEAP`, `STACK`) covering the range: `KAPI_MADV_WILLNEED` fills (`-ENOMEM`); `DONTNEED` / `FREE` drop the pages — zeros on the next touch (`ANON` and `HEAP` only); `NORMAL` / `RANDOM` / `SEQUENTIAL` nothing → 0 / `-EINVAL` |
+| 167 | `vm_query (addr, out)` | `struct kapi_vm_region { start, end, prot, kind (KAPI_VMK_ANON/HEAP/STACK/IMAGE/FIXED), resident (pages present), flags (KAPI_VMF_LAZY) }` of the region holding `addr` → 0, or of the next one above → 1; `-ENOMEM` none above, `-EFAULT` |
+| 168 | `vm_stats (pid, out)` | `struct kapi_vm_stats { resident (bytes of owned frames, page tables included), lazy (VA of lazy regions), writable (VA of writable regions), faults (pages filled), pt_bytes, limit (0) }`, `pid` 0 = self → 0 / `-ESRCH` / `-EFAULT` |
+| 169 | `thread_create_ex (attr)` | `struct kapi_thread_attr { fn, arg, stack_size (0 = 8 MB; 16 KB .. 16 MB, lazy), tls (its initial TPIDR_EL0), name, flags (KAPI_THREAD_DETACHED: no join, its record freed when it ends), prio (0, 1 = "real time"), reserved[2] = 0 }` → tid ≥ 2 / `-EAGAIN` (32 running) / `-ENOMEM` / `-EINVAL` / `-EFAULT` |
+| 170 | `thread_info (tid, out)` | `struct kapi_thread_info { stack_lo, stack_hi (its top: the initial SP), tid, state (0 running, 1 ended, joinable), guard (unmapped bytes below stack_lo) }`, `tid` 0 = self, 1 = main → 0 / `-ESRCH` / `-EFAULT` |
+
+What changed for every app, with no call: the main stack (8 MB by default), the threads' stacks and
+the heap are **lazy** (a process's resident memory drops by its untouched stack — 1 MB to 8 MB
+before — and heap); `sbrk` shrinking returns pages; an overflow of a stack is a clean kill with
+"stack overflow" in kmsg; a page fault the app pool cannot serve kills the app (`KAPI_PROC_OOM`,
+−9), not the system. The kernel's probes see the app's permissions (`AT S1E0*`). Test:
+`/bin/memtest` (docs/04).
+
+### v75: files and processes
+
+Work package WP-FILE/PROC ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.2): `kernel/sys/ofile.cpp` +
+`kern/ofile.h` (slots 207–221), `kernel/sys/procx.cpp` + `kern/procx.h` (222–228), the `RAM:` node
+calls in `sys/ramfs.cpp`, the pipes in `sys/stream.cpp`. Every call returns ≥ 0 or −`KAPI_Exxx`.
+Host test `sh tools/tests/run_ofile_test.sh` (the real `ofile.cpp` over the fork's FatFs on a RAM
+disk — `SD:` FAT32, `SD1:` exFAT — and the real `RAM:`; it ends by checking that every cluster came
+back); `run_ramfs_test.sh` covers the `RAM:` node calls too. Pi tests `/bin/filetest`,
+`/bin/proctest` (docs/04).
+
+**Open files** (`HANDLE_OFILE`). `file_open (path, KAPI_O_*, mode)` → a handle (> 0). A FatFs file has
+**one node** (`TFNode`) whatever the number of its openers: one `FIL`, opened `FA_READ`, re-opened
+`FA_READ | FA_WRITE` when its first writer comes (FatFs keeps no share locks, `FF_FS_LOCK 0`: two
+`FIL`s writing one file would corrupt it). Its key is the absolute path (`ResolvePath`), compared
+case-insensitively. A handle is an **open-file description** (`TOFile`): the node, its own 64-bit
+offset, its access mode, `O_APPEND` (`dup` is the libc's: it counts its references). Each call holds
+the node's lock across its `f_lseek` + `f_read` / `f_write` (FatFs yields while the card works); the
+node table has a lock of its own (open, close, unlink, rename; the order is table → node). Both are
+sleeping locks, and each call is a **no-kill** section from its start to its end.
+
+| Call | Semantics |
+|---|---|
+| `file_open` | `O_RDONLY / WRONLY / RDWR` (3: `EINVAL`), `O_CREAT`, `O_EXCL` (`EEXIST`), `O_TRUNC` (writable only), `O_APPEND`; a folder or a volume root → `EISDIR`; `mode` ignored (FAT has a read-only bit only); a provider's path (`FTP:`) → `ENOTSUP`; a bad path pointer `EFAULT`, over 511 characters `ENAMETOOLONG` |
+| `file_read (h, buf, len, off)` | `off = -1`: at the handle's offset (advanced), else a pread; ≤ 1 GB a call; 0 at the end; `EBADF` on a write-only handle. The buffer is checked for what will be filled (the rest of the file) |
+| `file_write` | `off = -1`: at the offset, or at the end with `O_APPEND` (under the node's lock: two appenders never overlap); a write past the end fills the gap with **zeros** (FatFs leaves it undefined); `ENOSPC` when nothing fits, `EFBIG` past 4 GB − 1 on FAT32 |
+| `file_seek` | `SEEK_SET / CUR / END` → the new offset (no size change); < 0 → `EINVAL` |
+| `file_truncate` | shrink (`f_truncate`), or grow with zeros (64 KB pieces); `EINVAL` on a read-only handle |
+| `file_sync` | `f_sync` (the entry gets the size and the time) |
+| `file_stat` / `path_stat` | `struct kapi_stat`: `size` (an open file's from its `FIL`), `mtime` (FAT's local time → UTC with `set_timezone`'s zone; an open file written since its last sync: the time of its last write), `ino` = FNV-1a 64 of the upper-cased absolute path (`RAM:`: the node's own number, kept by a rename), `mode` `S_IFREG 0644` / `S_IFDIR 0755` (`0444` / `0555` with the read-only bit), `dev` (1 `SD:`, 2–4 `SD1:`–`SD3:`, 5 `USB1:`, 6–9 `USB1P1:`–`USB1P4:`, 10 `USB2:`…, 15 `USB3:`…, 64 `RAM:`), `blksize` (the cluster; `RAM:` 64 KB), `blocks`, `attr` (FAT's), `ctime` = `mtime`; a volume root is a folder |
+| `file_close` | the description freed; the node's last close flushes (`f_close`) |
+| `path_unlink (p, flags)` | a file (`EISDIR` on a folder); `KAPI_UNLINK_DIR`: a folder (`ENOTDIR`, `ENOTEMPTY`); a root → `EBUSY`; a read-only file → `EACCES` |
+| `path_mkdir` | `EEXIST`, `ENOENT` (no parent) |
+| `path_rename` | replaces the target (a file by a file; an empty folder by a folder; `EISDIR` / `ENOTDIR` / `ENOTEMPTY`), `EXDEV` across volumes, a folder into itself `EINVAL`, a case change allowed |
+| `path_utime (p, mtime)` | the entry's time (UTC → local); an open written file is synced first, so its close does not stamp it again |
+| `dir_read (dir, out)` | the next entry of an `opendir` handle as `struct kapi_dirent2`: a 255-character name, 64-bit size, mtime, mode, attr, ino (= `path_stat`'s; `kapi_opendir` records each FatFs `DIR`'s path for it: `OFileNoteDir`) → 1, 0 at the end; the `.~onyx-deleted` folder is not listed |
+| `stream_write_nb (h, buf, len)` | a pipe: what fits now, `EAGAIN` when full; a file stream: a plain write |
+
+**Unlink and rename of open files.** An open file that is unlinked (or that a rename replaces) is
+moved to `<volume>:/.~onyx-deleted/<n>` (a hidden folder) and deleted at its node's last close (the
+folder too once empty): it stays readable and writable through its handles, and its name is free at
+once. A file renamed (or hidden) while open has its `FIL` closed, the entry moved, then re-opened at
+the new path — FatFs keeps the location of the file's directory entry in its `FIL` (`dir_sect`,
+exFAT's `c_scl` / `c_ofs`) and would write the size and the time into the old one. A folder renamed
+while files in it are open: their paths follow (their entries do not move). Leftovers of a crash are
+removed at boot (`OFileBootCleanup`, from `StartAutostart`: `SD:`–`SD3:`), on a volume mounted later
+the first time a file there is hidden. `RAM:` does the same with its own nodes (`RamFsNodeOpen`,
+`RamFsPRead` / `PWrite` / `Truncate`, `RamFsUnlink`, `RamFsRenameEx`…, §16). A teardown (the interrupts
+masked) only queues its open descriptions; the reaper closes them (`OFileRunDeferred`, from
+`HandlesRunDeferred`).
+
+**The old file calls** (`open`, `read`, `save_file`, `file_in` / `file_out`…) keep their own `FIL`s:
+mixing them with `file_*` on one file at the same time is not coherent (a `save_file` while a
+`file_*` handle writes the same file: whichever flushes last wins). FatFs' fast seek
+(`CREATE_LINKMAP`, the old `seek`'s) is never used on a node: FatFs cannot grow a file in that mode.
+
+**Pipes.** `CPipeStream::PollMask`: `POLLIN` when not empty, `POLLIN | POLLHUP` once the write end is
+closed, `POLLOUT` when there is room. A blocking `Read` / `Write` sleeps in `IoWait` (≤ 50 ms per
+turn) instead of yield-spinning, and every change — written, drained, `CloseWrite` — calls `IoWake`.
+`PIPE_CAP` stays 8 KB. A write to a pipe nobody reads still waits (no `EPIPE`). `IoWait` sleeps in
+no-kill slices of ≤ 100 ms: a task killed while it waits leaves the event's list before it ends (the
+reaper would otherwise free it while still listed).
+
+**Processes.** Each process has a `TProcInfo` (`CAddressSpace::m_pProcInfo`): an **argv block** and an
+**environment block** (`"a\0b\0\0"`, ≤ 64 KB each, kernel heap), made in the spawner's context
+(`LaunchApp`, `ExecPath`, `SpawnProcess`) and installed by `CUserProcessTask::Run` once the space
+exists (the spawn record then learns the pid). The environment: `spawn_ex`'s, else the spawner's
+initial one (`spawn`, `exec`, `exec_as`); a desktop launch or a process the kernel starts (init) gets
+the **system default**, read at boot from **`SD:/etc/environment`** (`KEY=VALUE` lines, `#` comments;
+without it `HOME=SD:/home`, `PATH=SD:/bin`, `TMPDIR=RAM:/tmp`, `LANG=C.UTF-8`). argv[0] is the
+program's resolved path, then `get_args`' string split as a shell does (blanks, `"quotes"`). (An
+empty argument cannot be passed: it would end the block.)
+
+| Call | Semantics |
+|---|---|
+| `spawn_ex (attr)` | `struct kapi_spawn_attr`: `path` (resolved against the cwd), `argv` and `envp` blocks (0: the path alone / the caller's initial environment), `cwd` (0: the caller's), `in` / `out` stream handles → a process handle; `ENOENT` (no program), `EACCES` (a folder), `EBADF` (a stream), `EINVAL` (a block over 64 KB), `EMFILE`. Returns once the child has its pid (its first time slice, ≤ 1 s). The child's `get_args` string is argv[1..] joined with blanks (an argument with a blank in quotes) |
+| `proc_wait (h, flags, out)` | sleeps (`IoWait`; the child's end wakes it) → 1 and `struct kapi_proc_status {code, reason, pid}`, the handle closed unless `KAPI_WAIT_KEEP`; `KAPI_WAIT_NOHANG` on a running child → 0 with `pid` set and `reason` −1; `EBADF` |
+| `get_argv` / `get_env (buf, cap)` | the block, filled up to `cap` → its whole size (call with 0 to size it) |
+| `getpid (which)` | 0 the pid, 1 the parent's (0: none); else `EINVAL` |
+| `clock_info (out)` | `struct kapi_clock_info`: `cnt` (CNTPCT) and `utc_us` sampled together (the tick's time: ± 10 ms), `freq`, `tz_minutes`, `flags` `KAPI_CLOCK_REALTIME_VALID` (a real date: NTP / RTC), `boot_cnt` (CNTPCT at boot): a libc reads CNTPCT at EL0 and needs no system call per `clock_gettime` |
+| `sleep_us (us)` | under 1 ms: a `Yield` loop on the µs clock; else `usSleep` (the scheduler's 10 ms tick when idle) |
+
+**How a process ended** (`proc_wait`'s `reason`; `kapi_wait`'s status is the code): `KAPI_PROC_EXITED`
+(its `exit` code), `KAPI_PROC_FAULT` (−11: `Fault`, `sys/el0.cpp`), `KAPI_PROC_KILLED` (−9: `kill`,
+`kill_pid` with force or on a windowless app, a dead parent's cascade — before v75 a killed process
+reported 0), `KAPI_PROC_OOM` (WP-MEM). `ProcInfoTeardown` copies the reason and the pid into the
+spawn record (`CProcess::nReason`, `nPid`) before it is marked done, and wakes the waiters.
+
+### v75: sockets and poll
+
+Work package WP-NET ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §3.3; `kernel/sys/bsdsock.cpp`: the
+kapis and `poll`; `kernel/sys/net.cpp`: the socket table and its "slot layer"; `kern/net.h`).
+Slots 229–241 (`struct kapi_sockaddr`: IPv4, the port in host order; `struct kapi_pollfd`). Every
+call returns ≥ 0 or −`KAPI_Exxx`.
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 193 | `sock_open (type, flags)` | `KAPI_SOCK_STREAM` (TCP) / `KAPI_SOCK_DGRAM` (UDP), `KAPI_SOCKF_NONBLOCK` → the socket number; `EPROTONOSUPPORT`, `EINVAL` (flags), `ENETDOWN` (no network yet), `ENFILE` (table full) |
+| 194 | `sock_connect (s, to)` | TCP: blocking → 0 or the error (`ECONNREFUSED`, `ETIMEDOUT` after Circle's retries, about a minute, `EHOSTUNREACH`, `ENETUNREACH`); non-blocking → `EINPROGRESS`, then `poll (POLLOUT)` and `SO_ERROR`; `EALREADY`, `EISCONN`. UDP: sets the default peer (only its datagrams are received) |
+| 195 | `sock_bind (s, addr)` | the address 0.0.0.0 or the Pi's own (`EADDRNOTAVAIL`); port 0: an ephemeral port (TCP 61000–61999, UDP Circle's 60000–60999); `EADDRINUSE` (a bound / listening socket of the same protocol has it), `EINVAL` (bound already) |
+| 196 | `sock_listen (s, backlog)` | backlog clamped 1..32; an unbound socket gets an ephemeral port |
+| 197 | `sock_accept (s, peer, flags)` | a connection waiting → a new socket (`KAPI_SOCKF_NONBLOCK`: non-blocking); none → `EAGAIN` (a non-blocking listener) or a wait (`SO_RCVTIMEO`); `ECONNABORTED` (the peer left before it was accepted), `ENFILE` |
+| 198 | `sock_send (s, buf, len, flags, to)` | → the bytes queued. TCP: all of them when blocking (a wait while Circle's queue holds 64 KB, `SO_SNDTIMEO` → a short count / `EAGAIN`), what fits when non-blocking (`MSG_DONTWAIT`); `EPIPE` (reset, `SHUT_WR`), `ENOTCONN`. UDP: one datagram to `to` or the default peer (`EDESTADDRREQ`), at most 1472 bytes (`EMSGSIZE`); `to` is ignored on TCP |
+| 199 | `sock_recv (s, buf, len, flags, from)` | → the bytes, 0 = the peer's orderly end (or `SHUT_RD`); `EAGAIN` (non-blocking, `MSG_DONTWAIT`, `SO_RCVTIMEO`), `ECONNRESET`, `ETIMEDOUT`, `ENOTCONN`. `MSG_PEEK` (leaves the bytes), `MSG_WAITALL` (TCP: until `len`, the end or an error). UDP: one datagram, cut to `len` (the rest dropped); `from` = its sender (TCP: the peer) |
+| 200 | `sock_shutdown (s, how)` | `SHUT_RD`: `recv` answers 0, `poll` says `POLLIN`; `SHUT_WR`: `send` answers `EPIPE` — **no FIN is sent** (Circle's TCP cannot receive after its own FIN; the connection ends at `close`); `ENOTCONN` |
+| 201 | `sock_close (s)` | 0 / `EBADF`. A socket still connecting or inside a send is closed by its last user |
+| 202 | `sock_getopt (s, opt, &v)` | `SO_ERROR` (the pending error, a positive errno, cleared), `SO_NONBLOCK`, `SO_RCVTIMEO_MS`, `SO_SNDTIMEO_MS`, `SO_BROADCAST`, `SO_NREAD` (bytes in the carry buffer, 1 if more is ready), `SO_TYPE`, `SO_ACCEPTCONN`; else `ENOPROTOOPT` |
+| 203 | `sock_setopt (s, opt, v)` | `SO_NONBLOCK`, `SO_RCVTIMEO_MS` / `SO_SNDTIMEO_MS` (0: none), `SO_BROADCAST` (UDP); else `ENOPROTOOPT` (libc accepts and ignores `TCP_NODELAY`, `SO_KEEPALIVE`, `SO_REUSEADDR`, the buffer sizes) |
+| 204 | `sock_name (s, peer, out)` | `peer` 0: the local address (the Pi's IP once connected, else 0.0.0.0) and port; 1: the peer (`ENOTCONN`) |
+| 205 | `poll (fds, n, timeout_ms)` | `n` ≤ 1024 (`EINVAL`), `timeout_ms` −1 forever, 0 only a look → the number of entries with `revents` ≠ 0. Kinds: `KAPI_PK_SOCKET` (a socket number), `KAPI_PK_STREAM` (a stream handle: `CStream::PollMask`), `KAPI_PK_FILE` (a file / directory / open-file handle: always IN \| OUT); a bad one `POLLNVAL`; kind 0 or `h < 0` ignored. `POLLERR`, `POLLHUP`, `POLLNVAL` are reported whatever `events` asks |
+
+**One table.** The BSD sockets live in the same table as the `tcp_*` handles (`sys/net.cpp`,
+`MAX_SOCKETS` **256** since v75, shared by every process; owner pid, adoption by a descendant,
+`NetCloseByPid`, as in §11). A slot has a type (TCP / UDP), a state (NEW, BOUND, LISTEN,
+CONNECTING, CONNECTED, FAILED), the pending error, the options, the local port and the peer, a
+**carry buffer** (a frame, allocated at the first receive that needs it: a segment bigger than
+the caller's buffer leaves its rest there — so nothing is lost, and `MSG_PEEK` works; `tcp_recv`
+goes through it too, which fixes its data loss with small buffers when `netcore=0`) and a
+readiness snapshot. The `tcp_*` handles are sockets of that table: `poll`, `sock_name`,
+`sock_recv` work on them; a socket number is not a handle (`HANDLE_*`), and it is the same
+number space for every process (another process's socket: `EBADF`, `POLLNVAL`).
+
+**The slot layer never waits.** `net.cpp`'s `Slot*` functions run where the stack runs (core 0,
+or a worker of core 3 with `netcore=1`, through the request slots of §11: a send or receive moves
+at most 32 KB per round trip) and answer `EAGAIN` instead of blocking. Every wait is
+`bsdsock.cpp`'s: a few yields, then `IoWait` on the I/O generation (`kern/iowait.h`), then the
+call again. TCP data goes into Circle with `MSG_DONTWAIT` only while Circle's send queue is under
+its 64 KB threshold (`GetStatus ().bTxReady`). Receiving: `CSocket::Receive (MSG_DONTWAIT)`
+straight into the buffer while a whole frame fits, else through the carry buffer; an empty
+receive with the connection still up (CLOSE-WAIT: the peer's FIN) is the orderly end (0), else
+the connection's error.
+
+**Connect.** A TCP connect is run by a task of its own, so that a blocking connect too only waits
+on `IoWait` (an app killed meanwhile leaves no task inside Circle): with `netcore=0` a one-shot
+kernel task (`CNetConnectTask`, `netconn`) on core 0; with `netcore=1` a **detached** request
+(nobody waits on it; the worker frees it; `NetCloseByPid` leaves it alone). It ends with the slot
+CONNECTED, or FAILED with its error (`SO_ERROR`); a close meanwhile only marks the slot
+(`bCancel`) and the connector frees it. The same marking protects a send in progress (Circle's
+`Send` yields between segments) and a `tcp_accept` waiting in Circle's `Accept`.
+
+**Readiness.** `POLLIN`: data or carry, the peer's end, an error, `SHUT_RD`, a connection to
+accept (`CSocket::AcceptReady`, Circle patch); `POLLOUT`: connected and under the send threshold,
+always for UDP; `POLLERR`: a connect that failed (with `POLLOUT | POLLHUP`, as Linux); `POLLHUP`:
+was connected and no longer is (reset, timeout), or a TCP socket never connected. With
+**`netcore=1`** the net core's main loop recomputes every open slot's snapshot at each turn (and a
+worker after each call on a slot) and bumps a generation word when one changed, then sends core 0
+an **inter-core interrupt** (`IPI_NET_READY`, one at a time: a flag core 0 clears before it reads
+the generation); core 0's handler (`NetReadyIPI` → `NetPollTick`) turns that into `IoWake` at once.
+The 100 Hz tick hook (`IoWaitAddTickHook`) remains as the fallback; a waiter's sleep is capped at
+100 ms anyway. (Before the IPI the tick alone did it: every blocking `recv` / `send` / `poll` waited
+up to 10 ms a turn — an echo's round trip was 10 ms on the LAN.) With **`netcore=0`** the readiness is evaluated
+on the spot and nothing announces a change (a connect's end and a close do call `IoWake`), so a
+wait over sockets looks again at every tick (10 ms). A wait over streams and files only sleeps
+until `IoWake` (a pipe's `PollMask` and its wakes are WP-FILE/PROC's).
+
+**Circle patch** (`tools/circle-patches/wp-net.patch`, docs/05): a connection's handle stays its
+socket's until the socket lets it go (`CNetConnection::SetReleased`: before, a reset connection
+was deleted at the next `Process` and its handle reused by the next connection — which the old
+socket then read, wrote and closed); `CSocket::AcceptReady ()` (a backlog connection is connected:
+`Accept` will not block; it also replaces backlog connections that died before being accepted, a
+SYN without its ACK); `CSocket::Accept` lets a failed connection go instead of leaving it
+listening on its own; `CTransportLayer::IsTerminated (h)`.
+
+Test: `/bin/nettest` (`user/BinUtils/nettest.c`; the PC side `tools/tests/nettest_peer.py`): run it with
+`netcore=0` and with `netcore=1`.
+
+### v76: IPC
+
+Work package WP-IPC ([`docs/POSIX-PLAN.md`](POSIX-PLAN.md) §14: what WebKit2's Unix IPC uses, the
+spec): what a browser's UI, web and network processes need to talk. `kernel/sys/lsock.cpp` (local
+sockets, the handles they carry; `kern/lsock.h`), `kernel/sys/shm.cpp` (shared memory objects),
+`kernel/sys/vm.cpp` (`shm_map`, SHM regions), `kernel/sys/procx.cpp` (`spawn_ex2`, `get_handles`),
+`bsdsock.cpp`'s dispatch. Slots 242–252 (`struct kapi_iovec`, `struct kapi_handle_xfer` 24 bytes,
+`struct kapi_msghdr` 48 bytes). Every call returns ≥ 0 or −`KAPI_Exxx`.
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 206 | `sock_pair (type, flags, sv)` | two connected local sockets: `KAPI_SOCK_STREAM`, `KAPI_SOCK_SEQPACKET` (5), `KAPI_SOCK_DGRAM`; `KAPI_SOCKF_NONBLOCK` → `sv[0]`, `sv[1]` (numbers ≥ `KAPI_SOCK_LOCAL_BASE`); `EPROTONOSUPPORT`, `EMFILE`, `EFAULT` |
+| 207 | `sock_sendmsg (s, m, flags)` | the `m->iovcnt` (≤ 64) iovecs gathered into one message with `m->nhandles` (≤ 256) handles → the bytes; `EAGAIN`, `EPIPE`, `EMSGSIZE`, `ENOBUFS`, `EBADF` (a handle: nothing sent), `EINVAL`; an IP socket: `EOPNOTSUPP` |
+| 208 | `sock_recvmsg (s, m, flags)` | into the iovecs; the handles carried added to the caller's table and written to `m->handles` (`m->nhandles` in: room, out: count; `m->flags`: `KAPI_MSG_TRUNC`, `KAPI_MSG_CTRUNC`) → the bytes, 0 the end |
+| 209 | `shm_create (size, flags)` | an anonymous object (`KAPI_SHM_ALLOW_SEALING`, else `KAPI_SEAL_SEAL` set) → a read-write handle |
+| 210 | `shm_open (name, oflags, mode)` | a named object (`/x`, ≤ 63 characters, a kernel-wide table): `KAPI_O_RDONLY` / `RDWR`, `CREAT`, `EXCL`, `TRUNC` → a handle; `ENOENT`, `EEXIST`, `EINVAL`, `ENAMETOOLONG` |
+| 211 | `shm_unlink (name)` | the name dropped (the object lives while referenced); `ENOENT` |
+| 212 | `shm_ctl (h, op, arg)` | `KAPI_SHM_GET_SIZE`, `SET_SIZE` (ftruncate: `EPERM` sealed, `EBUSY` a shrink while mapped, `ENOMEM`), `ADD_SEALS` / `GET_SEALS` (as memfd's `F_SEAL_*`), `GET_ID`, `GET_ACCESS` |
+| 213 | `shm_map (h, addr, len, prot, flags, off)` | the object mapped `MAP_SHARED` (an SHM region in the mmap arena, placed as `vm_map`) → the address; `EACCES` (write, read-only handle), `EPERM` (`SEAL_WRITE`), `EBUSY` (a fixed place under another task's kapi) |
+| 214 | `handle_close (h)` | a shm, local socket, open-file or stream handle closed |
+| 215 | `spawn_ex2 (attr, handles, n)` | `spawn_ex` plus `n` (≤ 256) handles referenced for the child at the descriptors `fd` given |
+| 216 | `get_handles (out, cap)` | the child's side: those handles, put in its table at the first call → how many |
+
+**Local sockets.** An end (`TLsEnd`) is a core-0 object: its type, a receive queue of messages
+(`TLsMsg`: the data and the handles carried, one allocation), its peer, the shutdown bits,
+`bNonBlock`, the timeouts, `SO_RCVBUF` (the queue's limit, 256 KB by default) and `SO_SNDBUF` (the
+largest packet, 256 KB), both 4 KB–16 MB. **A local socket's number is a handle** (`HANDLE_LSOCK`)
+of the caller's table — so it is per process, reference-counted and closed by the teardown, and its
+value (always ≥ 0x10001) tells it from an IP socket (0..255, the global table of §11). `bsdsock.cpp`
+sends every call on such a number here first (`IpcLocal*`): `sock_send` / `recv` / `shutdown` /
+`close` / `getopt` / `setopt` / `name` and `poll` (`connect` / `bind` / `listen` / `accept`:
+`EOPNOTSUPP`: no named local sockets — WebKit only uses `socketpair`). A send copies into a new
+message on the **peer's** queue: STREAM takes what fits (a blocking send waits for the rest), a
+packet (SEQPACKET, DGRAM) is whole or refused (`EMSGSIZE` above `SO_SNDBUF`; an empty queue always
+takes one); a receive copies out of its own queue — STREAM across messages but never past one that
+carried handles (they come with its first byte, as Linux), a packet whole (cut: `MSG_TRUNC`).
+Every change calls `IoWake`, so a wait (`IoWait`) or a `poll` over local sockets sleeps until it (no
+10 ms polling as for IP sockets). The end: a closed peer (its last handle and every message holding
+it gone) or its `SHUT_WR` → 0 once the queue is empty; a send to it → `EPIPE`. Readiness: `POLLIN`
+data or the end, `POLLOUT` room in the peer's queue or a send that would fail at once, `POLLHUP` the
+peer gone. All the queues together hold at most 64 MB (`ENOBUFS`). A call pins its handle (another
+thread's close waits for the call to end, as for files).
+
+**Carried handles** (`TIpcXfer`). `sendmsg` turns each `{h, kind, tag, flags}` into a reference at
+once (`IpcXferTake`): an open-file description (`HANDLE_OFILE`: ofile.cpp's `nHolders`, so the
+offset is shared as by a `dup`), a stream (`CStream::AddRef`), a local socket end, a shm object; an
+**IP socket** keeps its number and the sender's pid and is **adopted** by the receiver at
+`recvmsg` (`NetSocketAdopt`: it becomes the receiver's — an IP socket has one owner; one the sender
+closed meanwhile arrives as `KAPI_HK_NONE`, −1). `recvmsg` adds each to the caller's table
+(`IpcXferGive`); no room in the array or the table: closed, `MSG_CTRUNC`. A message discarded (its
+end closed, its process gone) closes what it carried (the teardown's way: deferred where a close
+may wait). Sending the receiving end over its own connection is refused (`EINVAL`: no close could
+ever free it); longer reference cycles are not collected. The `tag` is the sender's word, given back
+as it is: libonyxposix puts its descriptor type and `O_*` flags there. `KAPI_HXF_WRITER` on a stream
+(a pipe's write end): the pipe counts one more writer (`CPipeStream::AddWriter`), and its
+end-of-file comes when every writer has called `stream_eof` or closed (the receiver's entry is
+`HKIND_STREAM_WRITER`: its close or its process's end counts as its `stream_eof`, §9).
+
+**Shared memory.** A `TShm` is a size and an array of 64 KB frames, each taken from the app pool
+(`palloc_high`, refused under `VM_RESERVE`) and zeroed at its first use, all freed — their word
+waiters woken first — when the last reference goes: the handles (`HANDLE_SHM`, the entry's kind =
+the access), the messages and spawn records carrying it, the name table, and **each address space
+mapping it** (one reference per space, `TVmSpace::pShm`). `shm_map` makes a lazy **SHM region**
+(`KAPI_VMK_SHM`, `TVma::pObj` + `ulObjOff`; a split keeps each piece's offset; neighbours merge only
+over contiguous offsets of the same object). A fault there (EL0, a kapi's probe, the safety net, an
+app core's pager) maps the object's frame with the region's protection **not owned**
+(`VM_PTE_SW_OWNED` clear): `Release` (unmap, `DONTNEED`), the deferred zap and the teardown never free
+it. A page beyond the object's size faults (the process is killed: "beyond the shared object", as
+Linux's `SIGBUS`). The space keeps its reference until no region names the object **and** no deferred
+zap is pending (a PTE marked ZAP may still point at a frame), checked after each unmap / fixed map /
+settled zap (`VmShmGc`), dropped by `VmTeardown`. A shrink while any space maps the object is refused
+(`EBUSY`), so a mapped frame never goes. `vm_protect` / `vm_advise` / `vm_query` work on SHM regions
+(`DONTNEED` drops the mapping, the data stays). The futex (`wait_word` / `wake_word`) keys on the
+physical word: two processes meet on a shm word (WebKit's `IPC::Semaphore`).
+
+**Spawning with handles.** `spawn_ex2` references the handles (as `sendmsg`, but an IP socket is not
+adopted: the child, a descendant, adopts it at its first use as before) in the child's `TProcInfo`;
+the child's `get_handles` puts them in its table at the first call (the same list at every call);
+those never asked for are closed with the process. CLOEXEC is user space: libonyxposix's
+`posix_spawn` gives every descriptor without `FD_CLOEXEC` (docs/03 §5.4).
+
+Tests: `/bin/ipctest` (`user/BinUtils/ipctest.c`, kapi level), `posixtest ipc` (the POSIX calls); on the PC
+`tools/tests/run_ipc_test.sh` (the real `lsock.cpp`, `shm.cpp`, `handle.cpp` with two handle tables,
+ASan) and the posixsim bench (its fake table implements v76 over Linux socketpairs, `SCM_RIGHTS` and
+memfd).
+
+### v77: program images
+
+The loader's image objects (§7 *Program images*: what they are, their key, their lifetime, the
+hook). `kernel/proc/image.cpp`, the three entries in `kernel/sys/kapi.cpp`, the preload task in
+`kernel.cpp`. Slots 253–255; `struct kapi_image_info` (280 bytes: `size` — the bytes of memory
+the image holds, once whatever the processes —, `file_size`, `refs`, `flags`, `path[256]` — its
+key). A path is a program file's, relative to the caller's working directory; every call returns
+≥ 0 or −`KAPI_Exxx`.
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 217 | `image_preload (path)` | the program loaded ahead and **kept**: a kernel task reads the file, the call returns at once; from then on a run of that path maps the image without reading the card, and the image stays when no process runs it. Kept already: 0, nothing done → 0; `ENOENT` (no such file), `ENAMETOOLONG`, `ENOMEM`, `EFAULT`. A load that fails later is in the kernel log |
+| 218 | `image_unload (path)` | the path's image loses its pin and its name at once: no new process maps it; its memory is freed when the last process running it ends → 0; `ENOENT` (no image), `EFAULT` |
+| 219 | `image_list (path, out, cap)` | `path` 0: the live images, up to `cap` written → how many there are. `path`: the image a run of that path would map → 1 (`out[0]` written if `cap` > 0) / 0. Flags: `KAPI_IMG_KEPT` (preloaded), `KAPI_IMG_LOADING`, `KAPI_IMG_UNNAMED` (unloaded, or its file changed: only its processes still use it) |
+
+Users: `/bin/preload` (`preload /boot`, the last line of `/etc/autostart`: the list of
+`SD:/etc/preload.ini`, `user/Include/preloadini.h`, edited by the Control Panel's Preload applet,
+`user/Apps/preloadconf`), `/bin/unload` (docs/04 §8), `pkg` (`pkglib.h` `move`: a kept program
+unloaded before its file is replaced, preloaded again after). `user/Kits/appkit/appkit.h`'s wrappers return
+`-KAPI_ENOSYS` on an older kernel. Tests: `sh tools/tests/run_image_test.sh` (§7).
+
+### v78: PROT_EXEC
+
+A JIT's memory, as on Unix: `vm_map (addr, len, READ | WRITE | EXEC, flags)` gives a **lazy**
+anonymous region whose pages are mapped `UXN = 0` (executable at EL0; `PXN` stays 1: the kernel
+never runs an app's code), and `vm_protect` sets or takes away `EXEC` on anonymous regions — so a
+JIT may keep its code `RWX` (JavaScriptCore's default on Linux) or switch `RW` / `RX` (W^X). A
+shared object's pages never run: `shm_map` with `EXEC`, or `vm_protect` adding it over an SHM
+region → `-KAPI_ENOTSUP`. `kernel/sys/vm.cpp`: a region's protection becomes its PTE's AP **and**
+UXN bits (`PteProt`) wherever pages are filled, adopted, settled or reprotected. An instruction
+abort in a region not filled yet is paged in where the region is executable (`el0.cpp`
+`PageFault`, `VmProtAt`; an app core asks core 0 as for a data abort, the retried fetch then faults
+if the region does not allow it). The program writes its code, then makes the caches coherent over
+it from EL0 (`DC CVAU`, `DSB ISH`, `IC IVAU`, `DSB ISH`, `ISB`: SCTLR_EL1.UCI / UCT, `el0.cpp`;
+libgcc's `__builtin___clear_cache` does it). `code_alloc` (v58: an eager region in the code arena)
+stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywhere; libonyxposix's
+`mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
+rewritten), `posixtest` (`mmap PROT_EXEC`).
+
+### v93: the volumes
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 230 | `vol_list (out, max, flags)` | Every volume → how many there are; `out`: up to `max` `struct kapi_volume` (`name` without the `:`, `state` `KAPI_VST_MOUNTED` / `EJECTED` / `UNREADABLE` / `REMOVED`, `flags` `KAPI_VF_SYSTEM` / `REMOVABLE` / `RAM` / `UNSAFE` / `FORMATTABLE` / `IOERR`, `gen` — changes at each event of that volume —, `open` — the files and folders open on it —, `device_size`, `total`, `free` — only with `KAPI_VOLS_ROOM`, else `~0` —, `serial`, `type`, `label`, `device`). The FatFs volumes first (`SD`, `SD1`..`SD3`, `USB`..`USB3` — a USB volume whose device left stays listed as `REMOVED` until another takes its place), then `RAM`. Without `KAPI_VOLS_ROOM` it never reads a disk (polled every second by the menu bar). |
+| 231 | `vol_eject (vol, flags)` | A USB device, named by any of its volumes (`"USB1:"`, `"usb2"`, `"USB1P2:/x"`, `"USB:"`): its volumes' open-file layer's written files synced, the device's cache flushed (SCSI SYNCHRONIZE CACHE), unmounted → 0 (it can be removed: `EJECTED`); `-EBUSY` files or folders are open on it (the written ones synced, still mounted; `KAPI_EJECT_FORCE`: ejected anyway — their later calls fail); `-EINVAL` not removable (the card's volumes); `-ENOENT` not mounted (0 when already ejected); `-EIO` pulled out meanwhile, or a file could not be written (ejected all the same). |
+| 232 | `vol_mount (vol)` | A USB device ejected but still plugged in, or one `UNREADABLE` (scanned again: all its volumes), or `SD1:`..`SD3:` → 0 (mounted), `-EINVAL` no FAT / exFAT file system, `-ENODEV` no device there, `-EIO`. |
+| 233 | `vol_format (vol, fmt)` | `struct kapi_format { fs, flags, cluster, label }`: a new file system (`USBn:` the whole device, one partition; `USBnPm:` that partition) (`KAPI_FMT_AUTO` — FatFs' choice: FAT16 / FAT32 by the size, exFAT from 32 GB —, `FAT`, `FAT32`, `EXFAT`; `cluster` bytes, 0 auto; a label of 11 characters at most) made and mounted → 0. **`SD:` → `-EPERM` always**; `SD1:`..`SD3:` → `-EPERM` unless `KAPI_FMT_CARD` (the caller asked the user twice); `-EBUSY` files open (`KAPI_FMT_FORCE`), `-ENODEV`, `-EINVAL` (label, cluster), `-ENOSPC` (too small / too big for that file system), `-EROFS`, `-EIO`. The caller waits (seconds on a big stick: the driver yields every 10 ms). |
+
+### v92: gpio_ctl
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 229 | `gpio_ctl (op, a0, a1, a2)` | The 40-pin header (§17; `KAPI_GPIO_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. Anyone's: `KAPI_GPIO_INFO (struct kapi_gpio_pin *out, max)` → how many (28: GPIO 0..27, their mode, level, owner, PWM, the reserved ones' reason); `KAPI_GPIO_READ (pin)` → 0 / 1; `KAPI_GPIO_READ_ALL` → bit n = GPIO n; `KAPI_GPIO_NOW` → the edges' clock (µs). The pin's owner's (the first call that needs it takes it: `EBUSY` another process has it, `EPERM` the system's): `KAPI_GPIO_MODE (pin, KAPI_GPIO_M_*)` (`M_FREE` gives it back); `KAPI_GPIO_WRITE (pin, level)` (`EINVAL` not an output); `KAPI_GPIO_PWM (pin, Hz 1..1 000 000, duty 0..10000)`; `KAPI_GPIO_EDGES (pin, KAPI_GPIO_RISING \| _FALLING)`; `KAPI_GPIO_EVENTS (struct kapi_gpio_event *out, max, wait ms ≤ 1000)` → how many; `KAPI_GPIO_I2C_OPEN (Hz)`, `_I2C_XFER (struct kapi_gpio_i2c *)` → bytes (`EIO`: no answer), `_I2C_SCAN (u8 map[16])` → how many answered; `KAPI_GPIO_SPI_OPEN (Hz, mode 0..3)`, `_SPI_XFER (struct kapi_gpio_spi *)`; `KAPI_GPIO_CLOSE (KAPI_GPIO_BUS_I2C / _SPI)`; `KAPI_GPIO_RELEASE` (everything of the caller's). No AppKit wrapper: GPIOKit calls it. |
+
+### v85: the mixer
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 225 | `sound_clients (out, max)` | The programs that have a channel now → how many; `out`: up to `max` `struct kapi_sound_client` (`pid`, `name` — the program's, 24 bytes —, `volume` 0..100, `mute`, `peak` — its level now, 0..32767 —, `queued` frames). `0, 0`: only the count. |
+| 227 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program `elegant`. The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT` \| `_CALL`; `KAPI_WS_ATTACH (pid)`, `KAPI_WS_POST (pid, struct kapi_event *)` → 1 queued / 0 full, `KAPI_WS_EXIT (pid)`, `KAPI_WS_BUF_MAP (struct kapi_ws_buf *)`, `KAPI_WS_BUF_FREE (id)`, `KAPI_WS_NEXT (struct kapi_ws_req *)` → 1 / 0, `KAPI_WS_REPLY (struct kapi_ws_reply *)`. A program's (through AppKit): `KAPI_WS_CALL (struct kapi_ws_call *)` → the server's status, `ESRCH` no server; `KAPI_WS_KICK`. AppKit: `kapi_ws_ctl`. |
+| 228 | `proc_tree (pid, op, out, cap)` | (v91) A process's tree, by the parent pids recorded at the spawns (above). `KAPI_TREE_LIST` → how many descendants `pid` has, up to `cap` of their pids into `out` (its children, then theirs…); `KAPI_TREE_KILL` → `pid` and all its descendants terminated now, the leaves first → how many; `KAPI_TREE_KILL_CHILDREN` → its descendants only. `ESRCH` no such process, `EPERM` a kill whose tree holds the caller, `EINVAL`, `EFAULT`. AppKit: `kapi_proc_tree`. |
+| 226 | `sound_client_volume (pid, volume, mute)` | That channel's volume 0..100 (−1: kept) and mute 0 / 1 (−1: kept), applied at once and remembered for the program's **name** until the restart → `volume \| 0x100` if muted, −1: no such channel. Any program may call it (the mixer's panel). |
+
+No existing call changes its shape; what they mean: `sound_acquire` gives **a channel** (1; 0 only when the 8
+are taken) instead of the whole output, `sound_write` / `sound_status` / `sound_config` are the caller's own
+channel's (`sound_status`'s owner: the caller's pid when it has one, else 0), and the latency in force is the
+shortest any channel asked for. The mapped ring (v68) stays single: the first program that maps it has it
+until it releases its channel (another gets 0 and plays through `sound_write`). The kernel does not keep the
+volumes across a restart: the Sound applet and `/bin/volume` write `SD:/etc/mixer.ini` (`media = 60`,
+`media.mute = 1`: `user/Include/volume.h`, `mixer_set`), read when the sound first starts.
+
+### v84: sound_output
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 224 | `sound_output (out)` | `out` = `KAPI_SND_OUT_AUTO` (0) / `_JACK` (1) / `_USB` (2) / `_HDMI` (3): that output from now on — the running sound switches at once; an output that is not there plays nothing until it is. `out` = −1: nothing changed. → what plays now (`KAPI_SND_OUT_NOW`: 0 nothing yet, or no device), what is asked (`KAPI_SND_OUT_ASKED`) and the outputs present (`KAPI_SND_OUT_HAS (r, o)`: the jack unless the board has none, USB when a device is plugged, HDMI), or −1 (a bad value). |
+
+The kernel does not keep the choice across a restart: the Sound applet and `/bin/volume` write
+`SD:/etc/sound.ini` (`output = usb`, beside `volume` and `mute`: `user/Include/volume.h`), which the kernel
+reads when the sound first starts. No other sound call changes: see §13 *The output:
+`COnyxSoundDevice`*. Tests: `sh tools/tests/run_sound_resample_test.sh` (the rate converter, on
+the PC); on the Pi `volume output [auto|jack|usb|hdmi]` then `tone`, and the kernel log's `sound:
+output: …` lines.
+
+### v83: lib_open
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 223 | `lib_open (name, min_version, err)` | the shared library `name` mapped into the caller → its export table, or 0 with `*err` (if not 0) = −`KAPI_E*`. `name`: a bare name (`"uikit"` is `SD:/lib/uikit.so`) or a path (anything with a `/`, a `\` or a `:`; relative: to the working directory). Mapped in the caller already: the same table. The table's first `unsigned` (its version) must be ≥ `min_version`, else `-ENOTSUP`. Other errors: `-ENOENT` (no such file), `-EINVAL` (not a library of `user/Runtime/lib.ld`'s shape, a program, a relocation other than `R_AARCH64_RELATIVE`), `-ENOMEM` (memory, or no room in the arena), `-EMFILE` (16 libraries in the process), `-EIO`, `-ENAMETOOLONG`, `-EFAULT`. No `lib_close`: a library stays mapped until the process ends. |
+
+What a library is, how the kernel places and relocates it, and its lifetime: §7 *Shared libraries
+(v83)*. `user/Kits/appkit/appkit.h`'s wrapper returns 0 with `-KAPI_ENOSYS` on an older kernel; a program does not
+call it by hand — the library's bind object does, before `main` (`user/Runtime/lib.h`, docs/03 *Shared
+libraries*). `image_list` reports a library with `KAPI_IMG_LIB` (8); `image_preload` and
+`image_unload` take a library's path as they take a program's.
+
+### v82: win_resizable
+
+| Slot | Entry | What it does |
+|---|---|---|
+
+The kernel does not resize the window: it shows where its frame would be, and the app applies it.
+An edge is the 6 pixels inside the frame's outer edge (`WIN_EDGE_BAND`), a corner reaches 18 along
+it (`WIN_EDGE_CORNER`); a title button under the pointer wins (`CWindow::HitResizeEdge`). On an
+edge the pointer shows the two arrows (v81's shapes: `_SIZE_H`, `_SIZE_V`, `_SIZE_NWSE`,
+`_SIZE_NESW`). A press there starts a resize (`m_pSizeWindow`): the window gets no pointer event
+meanwhile, and each move draws the **outline** of the frame to be — three lines, black, white,
+black, drawn by `Composite` over the windows, only its four sides made dirty
+(`SizeOutlineDirty`) — kept above the menu bar and never smaller than the smallest client area
+plus the frame (`SizeDragLocked`). At the release (`SizeEndLocked`) the window's pointer handler
+gets **`GUI_EVENT_WINRESIZE`** (20): `lValue = (x << 48) | (y << 32) | (client_w << 16) |
+client_h`, x and y the frame's new top left on the screen (16 bits signed). The app then calls
+`resize_window2` and `move_window` — what `Root::frameResize` does (docs/03). An outline rather
+than a live resize: the window's canvas is made again once, not at every move (a page of Jet
+would be laid out again each time).
+
+### v81: set_cursor
+
+| Slot | Entry | What it does |
+|---|---|---|
+
+The shape is the window's (`CWindow::CursorShape`), kept until changed. The window manager picks
+what it shows after each pointer event and each `set_cursor` (`CWindowManager::PickShapeLocked`):
+the four arrows while a window is dragged by its title; else the shape of the window that holds
+the pointer, or of the one whose client area it is over; the arrow on a frame, a title bar, the
+desktop, a window that never asked, and during a drag & drop. The shapes are images built at boot
+(`kernel.cpp`, `BuiltinCursorShapes`) from `kernel/gui/cursors.inc`, which
+`tools/gui/gen_cursors.py` writes: each shape is drawn there as a set of black pixels, its white
+edge added around, its hot spot given (`--show` prints them). Black with a white edge, as the
+arrow, which stays `kernel.cpp`'s own. A shape is at most 24 x 24 with its hot spot within 12 of
+its top left (`WM_CURSOR_BOX`, `WM_CURSOR_REACH`): the screen's part made dirty when the pointer
+moves or changes is that box around it. Apps do not call this themselves: uikit does (docs/03,
+`uk_cursor`).
+
+### v80: cpu_stats, net_stats
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 221 | `cpu_stats (out)` | `struct kapi_cpu_stats` (144 bytes): `now_us` (the clock of the read), `cores`, then a `kapi_cpu_core` a core — `busy_us` (the microseconds it was busy since the boot), `role` (`KAPI_CORE_SYSTEM` 0, `KAPI_CORE_SOUND` 1, `KAPI_CORE_APP` 2, `KAPI_CORE_NETWORK` 3), `pid` (an app core's owner, 0 when free) → 0 / `-EFAULT`. Two reads make a load: `(busy_us' - busy_us) / (now_us' - now_us)`. |
+| 222 | `net_stats (pid, out)` | `struct kapi_net_stats` (24 bytes): the payload bytes `pid`'s sockets received and sent (`rx_bytes`, `tx_bytes`: TCP and UDP, the old `tcp_*` calls and the BSD sockets) since it started, its `sockets` open now; `pid` 0: every process's since the boot → 0 / `-EFAULT`. A process that used no socket: zeros. |
+
+What "busy" is, core by core. A core with a **scheduler** — core 0, and core 3 with `netcore=1` —
+counts the time its tasks ran, the idle task apart: `CScheduler::Yield` adds what the leaving task
+ran (`m_nBusyUs`; `GetBusyUs` adds the running task's time so far, so a read from another core is
+live). Core 0's idle task sleeps in `wfi`, so its figure is the machine's real load; the interrupt
+handlers that wake it are counted as idle. The **network core**'s tasks all wait by yielding (it
+polls the Wi-Fi chip), so while the network works it reads 100 %; once the network has been quiet
+for 50 ms it sleeps between two questions to the chip (*The network core sleeps*, below) and that
+sleep is taken off its busy time (`CScheduler::NoteSleptUs`): a few per cent.
+**Core 1** counts the time it renders sound (`sys/sound.cpp`, around `Render`); an **app core** the
+time its jobs ran, from the entry at EL0 to the job's end or drop (`sys/appcore.cpp`; a job that
+waits in `wfe` still counts).
+
+The network's bytes are counted where the calls return, on core 0 (`NetTcpSend` / `NetTcpRecv`,
+`NetSockSend` / `NetSockRecv` in `sys/net.cpp`: a process's tasks all run there, so the table needs
+no lock): one line a process (64 at most; beyond, the totals only), freed when the process ends
+(`NetCloseByPid`). A byte read with `MSG_PEEK` is counted when it is really read. They are the
+sockets' payload, not the frames on the air: no header, no retransmission, nothing of the kernel's
+own traffic (DHCP, DNS, NTP).
+
+### v79: kernel_info
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 220 | `kernel_info (buf, cap)` | what the running kernel is, as `key value` lines: `name` (Onyx), `abi` (`KAPI_ABI_VERSION`), `built` (the date and time of the image's link), `rev` (the source's git revision; `+`: built from changed sources), `machine` (aarch64), `model` (the board's name), `ram` (MB). Up to `cap` − 1 bytes and a NUL → the text's whole length; `EFAULT`. Keys may be added: a reader looks its keys up. |
+
+The date and the revision are `kernel/buildstamp.cpp`'s, an object that depends on every other
+object and library of the kernel (`kernel/Makefile`): it is compiled again at each link, so the
+stamp is the image's — `__DATE__` in a file says when that file was last compiled. The boot log's
+`Built on …` line prints the same. User: `/bin/uname` (docs/04 §8) — a kernel copied to the card
+by hand is told from the package's (`uname -v` against `uname -p`). `user/Kits/appkit/appkit.h`'s wrapper
+returns `-KAPI_ENOSYS` and an empty text on an older kernel.
 
 > **Historical note.** `ARCHITECTURE.md` §11 describes an earlier approach where the build
 > emitted a `user/kernel_syms.ld` (`kapi_x = 0xADDR;`) and the apps were linked against
@@ -912,10 +1860,15 @@ destroyed when the last reference drops). Three implementations:
 
 Virtual methods: `Read` (cooperative blocking: yields until ≥1 byte or EOF;
 0 = EOF), `ReadNonBlocking` (`>0` / `0`=EOF / `-1`=would block), `Write` (may block if
-full), `CloseWrite` (signals "no more writing" → readers see EOF).
+full), `CloseWrite` (signals "no more writing" → readers see EOF). (v76) `AddWriter`: a pipe's
+write end carried to another process (`KAPI_HXF_WRITER`) is one more writer — `CloseWrite` ends the
+data only when every writer has called it (a received write end's close, or its process's end,
+counts as its call: `HKIND_STREAM_WRITER`).
 
-- **`CPipeStream`**: ring buffer `head`/`tail`. `Read` yields while empty and
-  the write end is not closed; `Write` yields while full. Cooperative → no lock.
+- **`CPipeStream`**: ring buffer `head`/`tail`. `Read` waits while empty and
+  the write end is not closed; `Write` waits while full. Cooperative → no lock. (v75: the waits
+  sleep in `IoWait` and every change calls `IoWake`; `WriteNonBlocking` / `stream_write_nb`,
+  `PollMask`: §8 *v75: files and processes*.)
 - **`CFileStream`**: wraps a FatFs `FIL`; modes 0=read, 1=write+truncate,
   2=append.
 
@@ -926,7 +1879,8 @@ full), `CloseWrite` (signals "no more writing" → readers see EOF).
   absent).
 - `kapi_spawn(path, args, in, out)` → `SpawnProcess`: the child task takes a
   reference on `in`/`out`. `kapi_wait` blocks (cooperatively) on `CProcess::bDone` then
-  returns the exit code. When the child's address space is destroyed, stdout gets
+  returns the exit code (v75: −9 for a killed child, −11 for a crash; `spawn_ex` / `proc_wait` add
+  argv / environment blocks and the reason: §8). When the child's address space is destroyed, stdout gets
   `CloseWrite` → the reader (the terminal) sees EOF.
 
 The terminal thus chains the `stdout` of one stage to the `stdin` of the next via
@@ -937,8 +1891,35 @@ The terminal thus chains the `stdout` of one stage to the `stdin` of the next vi
 
 ## 10. Graphics subsystem (GUI)
 
-Source: `kernel/gui/{gimage,window,skin,dialog}.cpp` + headers. Rendering core ported from
-the author's FreeBASIC `SimpleOS`.
+> **Since 2026-10-05 the window manager, the compositor and the routing of the input are no longer in
+> the kernel.** They are **Elegant**'s, the graphics server, a user process (`SD:/bin/elegant`,
+> `user/Servers/elegant`; §8, v89: what the kernel gives it; `docs/GUI-USERSPACE-STUDY.md`). The window
+> manager described in §10.2 and §10.3 below is the same code, moved: `user/Servers/elegant/wm/window.cpp`
+> and `wm/kern/gui/window.h` (with `wm/cursors.inc`), built for a user process with stand-ins for the few
+> Circle headers it includes (`user/Servers/elegant/port`) — read "the kernel" there as "Elegant".
+>
+> **What the kernel keeps** (`kernel/gui/kwin.cpp`, `kern/gui/window.h`, 150 lines):
+> - `CWindow` — only a program's **queue of events** (with the request to end and the wake of
+>   `kapi_pump_wait`): one a program whose windows are Elegant's; Elegant pushes into it. No pixels.
+> - `CWindowManager` — the **keys' state** (the modifiers, the held keys: `get_modifiers`, `key_held`) and
+>   **the full screen** (the program that has it and its buffer; `present_fb` still sends that buffer to
+>   the display itself).
+> - `GImage` (§10.1; Elegant compiles the same file) for `draw_text_buf`'s bitmap font; the surfaces
+>   (`surface.cpp`); the frame buffer, its DMA, the change of resolution; the USB input drivers, whose
+>   events go to Elegant's ring.
+> - **The display task** (`CCompositorTask`, `kernel.cpp`: it composes nothing any more): it starts
+>   Elegant again when it ends (`WsPoll`), takes the display from a silent one (`WsWatch`), does a
+>   resolution change. **No server** (it cannot be started, does not take the display, or ended 5 times):
+>   the kernel's **console** takes the screen (`DebugConsoleTakeover`: its log); the Pi is reached by telnet.
+> - **The kernel's table** has no entry for the windows (kapi v90, §8): the 36 of the windows
+>   (`create_window`, `present`, `set_menu`, `win_list`, `drag_begin`, `wallpaper_*`, `desk`...) and the
+>   2 of the activity shell (`register_shell`, `shell_request`) are removed, the table is compacted
+>   (228 entries), their functions are gone from `sys/kapi.cpp` (740 lines). AppKit's functions of those
+>   names speak to Elegant (`appkit_ws.inc`); no program is rebuilt. The kernel image lost 43 KB.
+> - **Print Screen** and **the wheel's speed** are Elegant's too (§2's input task; `server.cpp`).
+
+Source: `kernel/gui/{gimage,kwin,surface}.cpp` + headers (`kern/gui/`); the window manager:
+`user/Servers/elegant/wm`. Rendering core ported from the author's FreeBASIC `SimpleOS`.
 
 ### 10.1 `GImage` — software rendering engine
 
@@ -959,12 +1940,12 @@ the author's FreeBASIC `SimpleOS`.
   desktop's band; `TOPMOST`: the menu bar, the dock — above every window, never active, never the
   keys; `TRANSPARENT`: the magenta key; `SYSTEM`: not listed as an open app; `ALPHA` (v64): the
   canvas's top byte is a transparency; `FIXED` (v69): the user cannot move it — no drag, no
-  double-click maximise, `HitTitleButton` finds no button (wtk draws none: `WK_WIN_FIXED`) — and
+  double-click maximise, `HitTitleButton` finds no button (uikit draws none: `UK_WIN_FIXED`) — and
   `OnScreenResized` centres it again at a new resolution instead of only moving it in: Setup's), a `GImage` **canvas allocated 64 KB-aligned and
   physically contiguous** (mapped into the app at `USER_WINDOW_CANVAS` = 12 GB — the app draws
   directly, with no per-pixel call), the frame's two copies (active, inactive: mapped at
-  `USER_WINDOW_CHROME` / `_INACTIVE`, drawn by the app — kapi v28 `get_chrome`; wtk:
-  `wk_decorate_window`), an event queue (spinlock-protected ring), the app's handlers, its menu.
+  `USER_WINDOW_CHROME` / `_INACTIVE`, drawn by the app — kapi v28 `get_chrome`; uikit:
+  `uk_decorate_window`), an event queue (spinlock-protected ring), the app's handlers, its menu.
 - **The frame** (v64, the modernised CDE): a 28 px title bar and 4 px borders (`WIN_TITLEBAR_H` /
   `WIN_BORDER` = `KAPI_FRAME_TITLE_H` / `KAPI_FRAME_BORDER`, shared with the apps in `kapi_abi.h`),
   rounded corners (radius `KAPI_FRAME_RADIUS` = 8): in the frame's copies a pixel's top byte is
@@ -988,7 +1969,7 @@ the author's FreeBASIC `SimpleOS`.
   `HitTitleButton`). Close and minimise act at their release over them (`RequestExit`,
   `Minimise`); the window menu (at the press) and maximise (also a double click on the title
   bar) go to the app as `GUI_EVENT_WINCTL` (18; value `KAPI_FRAME_MENU` / `KAPI_FRAME_MAXIMISE`):
-  wtk's `Root` shows its window menu, maximises and restores (the developer guide).
+  uikit's `Root` shows its window menu, maximises and restores (the developer guide).
 - **Minimised windows** (v64, `SetMinimised`): not drawn, not hit, never the active window nor the
   keys' target (`ActiveLocked`, `KeyTargetLocked`), their area damaged as they go and come back;
   `Raise` (`win_raise`, `raise_app`: the dock, the menu bar's Open Windows) brings one back.
@@ -1022,7 +2003,7 @@ the author's FreeBASIC `SimpleOS`.
   `OnScreenResized` keeps the windows on the screen and sends them `GUI_EVENT_DISPLAY_RESIZE`. The
   apps placed by the screen's size place themselves again on it: the menu bar (its canvas grown to
   the screen: `resize_window2`), the dock (`onDisplayResize`: laid out for the new width, along the
-  bottom), the notifications (the top right corner); wtk re-maximises a maximised window and
+  bottom), the notifications (the top right corner); uikit re-maximises a maximised window and
   shrinks / moves one past the work area ~0.3 s later (`Root::displayTick`: the dock has moved,
   the work area is the new one). vncd sends the VNC `DesktopSize` pseudo-rectangle (−223) to a
   client that takes it (else it closes the session: the client connects again at the new size);
@@ -1043,53 +2024,49 @@ the author's FreeBASIC `SimpleOS`.
   `wmtest.cpp` — the corners, `CoversOpaque`, the present's damage, the title buttons, minimise,
   the see-through windows' clicks, the work area, a canvas growing, the workspaces).
 
-### 10.3 Widgets (kernel side)
+### 10.3 Events and input (kernel side)
 
-Types: button, label, checkbox, text box (1 line), progress bar,
-slider, multi-line text area, V/H scrollbar, icon (image +
-label, with an open-app "badge"). Each widget stores the app's **callback
-address**. The window manager does the hit-test, the rendering and **pushes the event**;
-the app's `pump_events` dispatches it **in the app's context**. Events:
+The kernel draws **no widget** any more: the kernel-drawn widget API (buttons, labels, check
+boxes, text boxes, sliders, scroll bars, icons) was removed from the table by the v29 compat
+break; every app draws its own controls with **uikit** (`user/Kits/uikit`, docs/03 §6). The window
+manager keeps the window-level work: the hit-test of the frame (title bar, its buttons, the
+borders), raising and moving windows, focus, and **pushing events** into the window's queue;
+the app's `pump_events` (user-side since v74: `pop_event` / `pop_post` in a loop, §6) calls its
+handlers **in the app, at EL0**. Events (`kern/gui/window.h`, mirrored in `user/Kits/appkit/appkit.h`):
 
 | Constant | Meaning |
 |---|---|
-| `GUI_EVENT_CLICK` | button/icon released over it |
-| `GUI_EVENT_CHECK_CHANGED` | checkbox toggled |
-| `GUI_EVENT_TEXT_CHANGED` | textbox/textarea modified |
-| `GUI_EVENT_VALUE_CHANGED` | slider/scrollbar moved (0..100) |
-| `GUI_EVENT_KEY` | key pressed (`value` = char or `KEY_*`) |
-| `GUI_EVENT_CANVAS_CLICK` | client click with no widget: `value=(buttons<<32)|(x<<16)|y` |
-| `GUI_EVENT_CANVAS_MOTION` | drag with button held (same coords) |
+| `GUI_EVENT_KEY` (5) | key pressed (`value` = char or `KEY_*`; the modifiers through `get_modifiers`) |
+| `GUI_EVENT_CANVAS_CLICK` / `_MOTION` (6, 7) | client press / drag: `value=(buttons<<32)\|(x<<16)\|y` |
+| `GUI_EVENT_PTR_MOVE` … `_WHEEL` (8–13) | the pointer stream for app-side toolkits (`set_pointer_handler`, v22) |
+| `GUI_EVENT_MENU` (14) | a menu-bar command (`set_menu`, v39) |
+| `GUI_EVENT_DROP`, `_DRAG_OVER`, `_DRAG_DONE` (15–17) | drag & drop (v42) |
+| `GUI_EVENT_WINCTL` (18) | a title button handed to the app (v64) |
+| `GUI_EVENT_DISPLAY_RESIZE` (19) | the screen's size changed (v66) |
 
-Mouse handling: hover tracking, press edge (raises the window, hit-test of the close
-box / title bar / widget / canvas), drag (window move or continuous
-slider/scrollbar), release edge (click/toggle). Focus follows the click
-(textbox/textarea). The keyboard (Circle's "cooked" VT100 strings) is translated into logical
-keys (`KEY_UP`, `KEY_ENTER`, …) and delivered to the modal dialog, otherwise to the focused
-widget, otherwise to the app's keyboard handler.
+Mouse handling: hover tracking, press edge (raises the window, hit-test of the frame /
+canvas), drag (window move / resize), release edge. The keyboard (Circle's "cooked" VT100
+strings) is translated into logical keys (`KEY_UP`, `KEY_ENTER`, …) and delivered to the modal
+dialog, otherwise to the app's keyboard handler.
 
 ### 10.4 Theme, wallpaper
 
 - **The theme** is the apps' business: the windows' frames, like every control, are drawn by the
-  apps (wtk: `user/wtk/skin.cpp`, `paint.cpp` — by code, no bitmap) from `SD:/etc/theme.txt`
+  apps (uikit: `user/Kits/uikit/skin.cpp`, `paint.cpp` — by code, no bitmap) from `SD:/etc/theme.txt`
   (`theme` = Peach / Steel / Sage / Brick / Slate, or `active`; `inactive`, `face`, `accent`,
-  `outline`, `dock`: read by `wtk/theme.cpp`); the kernel only blits the frames. Of that file the
-  kernel reads only `wheelspeed=N` at boot. (The old 9-slice window skin — `wings.bmp` tinted by
+  `outline`, `dock`: read by `uikit/theme.cpp`); the kernel only blits the frames. Of that file
+  Elegant reads `wheelspeed=N` when it starts (the kernel reads nothing of it). (The old 9-slice window skin — `wings.bmp` tinted by
   `CSkin` — and `kapi_set_window_theme` are no longer used by the desktop.)
-- **Wallpaper**: `set_wallpaper` (BMP), `wallpaper_generate` (toroidal Voronoi generated
-  at runtime), or **an app-drawn background**: `wallpaper_buffer` maps the screen-sized
+- **Wallpaper**: `wallpaper_generate` (toroidal Voronoi generated at runtime), or **an
+  app-drawn background** (what the desktop uses: `voronoy` paints the patterns and pictures): `wallpaper_buffer` maps the screen-sized
   shared buffer at `USER_WALLPAPER_CANVAS` (13 GB), the app draws, `wallpaper_commit` makes it
   live. The frames are **owned by the kernel** → the background persists after the app exits
   (the `voronoy` case). The agenda widget reads it to choose its ink.
 
 ### 10.5 Modal dialogs
 
-`CDialog` (types: `DLG_MSGBOX`, `DLG_FOPEN`, `DLG_FSAVE`). The call runs in the kernel
-(not preempted), so the calling app **yields in a loop** in the kernel as long as the dialog is not
-resolved; meanwhile **the compositor runs** and draws the dialog **on top of** the
-owner window (blocked), and the other apps stay usable. The file dialog lists a
-FatFs directory (folders first, `..` to go up), with keyboard selection and, for `FSAVE`,
-an editable name field.
+None in the kernel any more: `message_box`, `file_open`, `file_save` (v9/v10, `CDialog`) were
+removed; the dialogs are user-side (uikit's `MessageBox`, `FileDialog`…), modal within their app.
 
 ---
 
@@ -1125,6 +2102,52 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
     *done*; a `recv` gathers several segments (up to 8 KB) in one round trip. When every
     worker waits (accepts, connects), the core adds one (up to 24). `net_status` reads the
     state directly.
+  - **BSD sockets (v75).** Their calls are requests too (`NR_S*`), except a connect: a
+    **detached** request (the caller does not wait; the worker frees it; `NetCloseByPid` leaves
+    it alone). The main loop recomputes every open socket's readiness snapshot at each turn and
+    bumps a generation word when one changed, then interrupts core 0 (`IPI_NET_READY`,
+    `COnyxCores::IPIHandler` → `NetReadyIPI`; the 100 Hz tick hook `NetPollTick` as the fallback):
+    `IoWake`, which wakes `poll` and the blocking BSD calls (§8 "v75: sockets and poll").
+  - **The Wi-Fi driver** is polled on this core instead of waiting for its SDIO interrupt, its
+    scans cover both bands and probe for the networks of `wpa_supplicant.conf` by name, 5 GHz
+    is preferred, a frame is one SDIO command on a 50 MHz bus (`onyx_wlfast = 31`), the frames
+    sent are not aggregated (`onyx_wl_ampdu_tx = 0`: aggregated, half of what the Pi sent during a
+    download was lost — the remote desktop froze) but sent in bursts (`onyx_wl_frameburst = 1`), and TCP scales its window and delays its
+    acknowledgements (`onyx_tcp_ws = 3`, `onyx_tcp_ackn = 8`) (`NetWlanOptions`, `NetWlanNames`;
+    our Circle fork, docs/05 §26 and §27).
+  - **A trial.** A Pi is often reachable by its Wi-Fi only: a driver change that keeps the Wi-Fi
+    from coming up cannot be taken back from the PC. `SD:/etc/net-trial.txt` holds `name=value`
+    words — `wlfast=` (the driver's fast path bits), `tcpws=`, `tcpwin=`, `ackn=`, `ampdutx=`,
+    `ampdurx=`, `bawsize=`, `rxbawsize=`, `ampdurts=`, `bw5=`, `frameburst=`, `netsleep=`, `netsleepus=`, `netirq=`, `netstat=1` (the statistics, the
+    firmware's counters, TCP's timeouts in the log), `secs=` (default 180) —; the bring-up reads it, **deletes it**, applies it for this boot (`NetTrialLoad`), and
+    core 0's main task restarts the Pi after `secs` (`NetTrialPoll`) unless
+    `SD:/etc/net-trial.keep` exists by then: the next boot is without the trial. Before the
+    restart the kernel log's tail (24 KB) is written to `SD:/etc/net-trial.log`: what the driver
+    said during a trial that cut the network is read after it. A new switch is
+    added there, tried, and only then made the default.
+  - **The network core sleeps when the network is quiet** (2026-10-04). Its tasks wait by
+    yielding, so the core used to turn all the time: 130 000 rounds of its scheduler a second, each
+    asking the chip whether it has a frame. Now `NetCoreMain`, after each round, sleeps (`wfe`)
+    when all of this holds: no frame read from the chip or written to it for 50 ms
+    (`onyx_wl_lastact`, the driver's), no request posted by core 0 for 50 ms, none waiting, and the
+    driver has asked the chip once, whole, since the last sleep and it had nothing
+    (`onyx_wl_polls`: a question is several SDIO commands and each waits a round — sleeping
+    between the rounds made a ping take six sleeps). The sleep ends after 10 ms, or at once when
+    core 0 posts a request (its `sev`) or when **the card's interrupt** comes: before it sleeps
+    the core asks the controller whether the card's interrupt is pending (`sdiocardintrpending`,
+    `emmc.c`: a register read, no SDIO command) — pending: no sleep; else that interrupt is
+    enabled, and its handler, on core 0, sends the event. A `wfe` also ends every 1.2 ms (the
+    timer's event stream, `CNTKCTL_EL1`, set on that core) and at every spin lock released on any
+    core (Circle's unlock sends the event): the conditions are looked at again each time. The
+    first frame or request brings the full pace back. Measured (Pi 4, a quiet Pi pinged 150
+    times): 4.1 ms on average without any sleep; 4.4 ms with a sleep of 1 ms and no interrupt (the
+    core asleep 93 % of the time); 4.0 ms with the interrupt and a sleep of 10 ms (asleep
+    98–99 %); 500 pings during a download limited to 1 MB/s: none lost. Trial words:
+    `netsleep=<ms>` (0: never sleep), `netsleepus=<us>` (the sleep's length), `netirq=0` (the
+    time alone ends the sleep).
+  - **`netstat=1`** (`cmdline.txt`): every 5 s the log says the net core's pace (`net: core 3: N
+    rounds/s, … us a round` — the stack's tasks all wait by yielding, so a round is the unit of
+    every wait: ~13 µs) and the driver's (frames a second, a frame's read time, the link's rate).
   - **A process that dies** (in a request, or with sockets open): `NetCloseByPid` (its
     teardown, IRQs masked: nothing waits) drops its posted requests, orphans the running
     ones (the worker then closes what they opened), and queues its pid in a ring that the
@@ -1152,7 +2175,7 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
   fit in its 32 KB request buffer, `NET_REQBUF`); `tcp_close` drops it. A connect **takes its
   slot before it blocks** (`SLOT_CONNECTING`, invisible to the other calls): the net core's
   workers run other connects during a DNS lookup or a handshake, and two of them once got the
-  same slot (both fetches then read one connection: NetSurf's style sheets failed). **DNS
+  same slot (both fetches then read one connection: a browser's style sheets failed). **DNS
   cache**: 32 names kept 5 minutes (`ResolveName`, used by `tcp_connect`, `net_resolve`,
   `net_ping`) in front of Circle's `CDNSClient` -- which answers in milliseconds now (it slept
   1 s per query: docs/05 §18). Each socket records its **owner pid**; `kapi_exit` calls
@@ -1160,7 +2183,12 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
   the janitor's reaping, `AddressSpaceTaskTerminate`, which calls it again and finds none
   left), so a process that exits or dies without closing does not hold its connections or
   table slots -- a browser relaunched at once found them still held and its pages waited
-  (10 s). The table has **64 slots** (`MAX_SOCKETS`; 16 before: a browser keeps a dozen open).
+  (10 s). The table has **256 slots** since v75 (`MAX_SOCKETS`; 64 before, 16 before that: a
+  browser keeps a dozen open), and it also holds the **BSD sockets** of v75 (TCP and UDP,
+  non-blocking calls, `poll`: §8 "v75: sockets and poll"); `tcp_recv` reads through a slot's carry
+  buffer (a buffer smaller than a segment lost the rest of it with `netcore=0`). `net_info` lists
+  every socket that has a Circle socket: `tcp <n> listen|conn …` and, since v75, `udp <n> bound
+  <port> <default peer|-> <pid>`.
 - **TCP fixes in our Circle fork** (2026-10-01, `docs/05` §20–22; host test
   `tools/tests/run_circlenet_test.sh`): only a **real duplicate ACK** (no data, no SYN / FIN,
   the window unchanged, data in flight, ACK = SND.UNA: RFC 5681 §2) counts towards a fast
@@ -1182,12 +2210,15 @@ into the kernel (see [`kernel/Makefile`](../kernel/Makefile) `LIBS`).
 - **Host name.** `system.ini hostname=` (letters, digits, `-`) is handed to `CNetSubSystem` before
   the bring-up task starts (`SetHostname`, an Onyx addition to Circle: docs/05) — the name DHCP
   announces; default Circle's `raspberrypi`. Setup writes it; it takes effect at the next start.
-- **Caveats.** Plain-text only (no TLS); `MAX_TASKS` was raised to 40 to fit the net
-  workers; the firmware load uses FatFs and is not locked against concurrent app
+- **Caveats.** The kernel's sockets are plain TCP and UDP (TLS is done in user space: `user/Libs/tls`, used
+  by Jet, Mail, `httpsget`, `wget`, the package manager…); the scheduler's task list has no
+  limit any more (§5: the old `MAX_TASKS` of 40, raised for the net workers, is gone); the firmware load uses FatFs and is not locked against concurrent app
   file I/O (low risk, one-shot at boot) — with `netcore=1` it is (the atomic volume lock).
 
-The apps that use it: the **irc** client (`user/irc.c`) and the **`net`** `/bin`
-tool (link status / IP).
+The apps that use it: Jet Browser, Mail, the IRC client, Lisa (an LLM), the package manager
+(`pkgman`, `pkgd`, `/bin/pkg`), and the `/bin` network tools (`net`, `ping`, `nslookup`,
+`netstat`, `wget`/`httpget`/`httpsget`, `ftp`, `whois`) and servers (`ftpd`, `telnetd`, `vncd`,
+`rdpd`) — docs/04 §12 and the `/bin` table.
 
 ---
 
@@ -1198,36 +2229,62 @@ Source: [`kernel/sys/sound.cpp`](../kernel/sys/sound.cpp), [`kern/sound.h`](../k
 - **Multi-core.** Circle is built with `ARM_ALLOW_MULTI_CORE` (fork patch #4,
   [Circle Changes](05-CIRCLE-CHANGES.md)). `CKernel::Initialize` starts cores 1–3 through a
   `CMultiCoreSupport` subclass (`COnyxCores`, kernel.cpp) right after the kapi table is
-  published. **Everything else stays on core 0**: the scheduler, every process, the
-  interrupts (the GIC routes peripherals to core 0; core 1 runs Circle's own `VectorTable`,
+  published. **Everything else stays on core 0** (but the network with `netcore=1`, on core 3:
+  §11): the scheduler, every process, the interrupts (the GIC routes peripherals to core 0; core 1 runs Circle's own `VectorTable`,
   not our `KVectorTable`). Core 1 runs `SoundCoreMain`; cores 2 and 3 are **app cores**
   (§14). A failed start is only a warning (no sound producer, no app cores).
-- **The device.** `COnyxSoundDevice` derives from Circle's `CPWMSoundBaseDevice` (PWM + DMA,
-  the 3.5 mm jack; 44.1 kHz, 1024-frame chunks) and overrides `GetChunk` — the "producer" —
-  which is called from the DMA completion interrupt. It is created and started on the first
-  `sound_acquire` (not at boot).
+- **The mixer (v85).** `sys/sound.cpp` keeps `SND_CLIENTS` (8) channels, one per program that plays
+  (`TClient`: the pid, the program's name, a PCM ring of 0.5 s made once and kept, the volume 0..100 and
+  the mute turned into a 16.16 gain on a squared curve, the latency asked, a peak meter). `Render` adds
+  every channel's frames at its gain into a 32-bit buffer, then the mapped ring at its program's gain,
+  and clips once; the master volume comes after, as before. A channel is freed by `sound_release` or
+  the process's end. The volumes are remembered by name (`TRemember`, 24 names; `SD:/etc/mixer.ini`
+  read at the first start) so a program finds its own again each time it plays. Before v85 one
+  process owned the output and a second one was refused.
+- **The output: `COnyxSoundDevice` (v84).** One producer, several outputs, one running at a time
+  (`sys/sound.cpp`): the **jack** (`COutJack`, Circle's `CPWMSoundBaseDevice`: PWM + DMA, 44.1 kHz,
+  the producer's chunks as they are), a **USB audio device** (`COutUSB`, `CUSBSoundBaseDevice`: a
+  headset, a DAC; 48 kHz, 16-bit samples or 24-bit ones packed in three bytes) and **HDMI**
+  (`COutHDMI`, `CHDMISoundBaseDevice`: the screen; 48 kHz, each sample framed for IEC958,
+  576-frame chunks). Each class overrides Circle's `GetChunk` — called from the output's
+  completion interrupt — and takes the producer's frames (`SourceTake` / `SourceDone`). **The
+  output adapts, the producer and the apps do not change**: the 48 kHz outputs pull through a
+  rate converter (`sys/sound_resample.h`: linear interpolation, integer, a fraction `nFrac /
+  48000` that never drifts), in the device's sample format. Which output: `SD:/etc/sound.ini`'s
+  `output = auto | jack | usb | hdmi` (read when the sound first starts, or when an app first
+  asks), changed at once by `sound_output` (`OutputUpdate`: the running device cancelled, waited
+  for, deleted, the new one made). `auto`: a USB audio device if there is one (Circle's
+  `uaudio1-1`), else the jack, else HDMI on a board without a jack (the Pi 400). The sound is
+  started on the first `sound_acquire` (not at boot), and runs whether or not an output could be
+  started.
+- **No output: the drain.** A USB device unplugged — or an output asked for that is not there,
+  or that could not start — plays nothing, and **no other output takes over**: a kernel timer
+  (every tick, `DrainTimer`) drops the producer's chunks at the rate they would have played, so
+  the apps' streams go on as if they were heard. `SoundPoll` (every 100 ms, from the kernel's
+  input task, beside the USB plug-and-play) makes the USB output again when a device is back —
+  the same one or another —, without a restart. In `auto`, once a USB device was chosen it stays
+  the output (unplugged: silence), until another output is asked for.
+- **The volume.** The master volume (0..10, mute: v60) is one interface for the whole system;
+  the output applies it — through the device's own control when it has one (`CSoundController`:
+  `ControlVolume` in dB below the control's maximum, the level's squared curve: a USB headset),
+  else by the software gain (`s_Gain`, in `GetChunk`); the mute is always the software's. It is
+  applied again at each change of output and when a USB device comes back.
 - **Core 1 = the producer.** It sleeps in `WFE` until the device starts, then keeps
   `SND_AHEAD` (4) chunks rendered ahead in a ring; `GetChunk` only copies the next chunk
   (zeros if core 1 fell behind) and `SEV`s core 1. Without `ARM_ALLOW_MULTI_CORE` the same
   code renders in `GetChunk` itself (interrupt, core 0).
-- **Rendering** (integer only, no FP in the kernel): 16 voices, each a 32-bit phase
-  accumulator (`inc = milliHz · 2³² / (1000 · 44100)`), waveforms square / sine (256-entry
-  table, linear interpolation) / triangle / saw / noise (LFSR per period), a linear
-  ~5 ms attack/release envelope (no clicks), mixed ÷4 and clipped; plus the **PCM ring**
-  (0.5 s of s16 stereo frames, `sound_write`). Converted to the PWM range per sample.
-- **FM voices (v47).** `sound_instrument (voice, struct kapi_fm_instrument)` gives a voice a
-  2-operator FM instrument in the style of the AdLib's OPL2 (op 0 = modulator, op 1 =
-  carrier): multiplier, output level (0.75 dB steps), attack / decay / sustain level /
-  release rates (OPL2 timings: attack 2.8 s at rate 1, decay / release 39 s over 96 dB at rate
-  1, halving per step), sustained (EG type), tremolo (1 dB, 3.7 Hz) / vibrato (7 cents,
-  6.1 Hz), waves sine / half / absolute / quarter pulses, feedback 0–7 and connection
-  (FM or additive). Then `sound_start (voice, f, SOUND_FM, volume)` keys it on (both envelopes
-  restart) and `sound_stop` keys it off (the release rate fades it). The envelopes run on an
-  attenuation in 1/256 octave units (4096 = 96 dB), turned into amplitude by a 256-entry
-  2^(−x/256) table; the modulator bends the carrier's phase by up to ±4 periods (as OPL2).
-  Tables: `sys/sound_tables.h` (generated). The same file builds on a PC with
-  `SOUND_HOST_TEST` (the Circle parts left out): `tools/tests/run_fms_test.sh` renders
-  instruments with it, and the Windows FM Song player (`tools/fmsplayer`) plays with it.
+- **Rendering** (integer only, no FP in the kernel): the **PCM ring** (0.5 s of s16 stereo frames,
+  `sound_write`) and the owner's **mapped ring** (v68), added and clipped. Nothing else: **the kernel
+  only puts sound out**.
+- **No synthesizer in the kernel (since 2026-10-05).** The 16 voices and the two-operator FM
+  instruments (v46 / v47: `sound_start`, `sound_stop`, `sound_instrument`) were rendered here until
+  then. They are AudioKit's now, in user space — `user/Kits/audiokit/fmsynth.h` (the same code, the same
+  sound; its tables: `fm_tables.h`), exported as `ak_fm_*` by `SD:/lib/audiokit.so` (docs/03 §5.7) and
+  played by the library's thread through `sound_write`. BASIC's `SOUND` / `PLAY`, the games' effects
+  (`user/Apps/games/game.h`), `tone`, FM Tracker, Doom's music and the Sound applet's test all go through it.
+  The three kapi slots stay in the table (it is append-only) and answer −1. The PC tools compile the
+  same header: `tools/tests/run_fms_test.sh` renders instruments with it, and the Windows FM Song
+  player (`tools/fmsplayer`) plays with it.
 - **Low latency (v68, `sound_config`).** `CPWMSoundBaseDevice`'s chunk size is fixed when it is
   made — but it is only the size of its two DMA buffers: Circle's `CDMASoundBuffers` programs each
   transfer with the length `GetChunk` **returns**. So the device is made once, with the biggest
@@ -1254,15 +2311,15 @@ Source: [`kernel/sys/sound.cpp`](../kernel/sys/sound.cpp), [`kern/sound.h`](../k
   so nothing an app writes there can make it read elsewhere. Since it is plain memory, **an app
   core fills it** (`kapi_sound_ring_write`), and a core-0 thread can sleep on `rd` with
   `wait_word` (the tick sees core 1 move it) — the DAW's engine writes straight into the kernel's
-  ring, no pump thread in the audio path. Apps run at EL1 without isolation from the kernel, so a
-  former owner that kept its mapping could still write into the page; the kernel stops mixing it
-  at the release. `ringtest` plays a tone from an app core this way.
+  ring, no pump thread in the audio path. A former owner keeps the page mapped in its space (the
+  mapping is dropped only with the process), so it could still write into it; the kernel stops
+  mixing it at the release. `ringtest` plays a tone from an app core this way.
 - **Ownership.** One pid owns the output (`sound_acquire`); every other call from another
   pid returns −1. `sound_release`, or the owner's exit (`SoundOnProcessGone`, called from
   `IpcOnProcessGone`), silences the voices, empties the ring and frees the output. The
   state is shared between core 0 (kapi calls) and core 1 (rendering) under a `CSpinLock`.
-- **kapi v46**: `sound_acquire`, `sound_release`, `sound_start (voice, milliHz, wave,
-  volume)`, `sound_stop (voice | -1)`, `sound_write (frames, n)`, `sound_status`.
+- **kapi v46**: `sound_acquire`, `sound_release`, `sound_write (frames, n)`, `sound_status`
+  (`sound_start` / `sound_stop`, and v47's `sound_instrument`: retired on 2026-10-05, see above).
   Users: `/bin/tone`, BASIC `PLAY` / `SOUND` / `BEEP` / `NOTEON` / `NOTEOFF`.
 - **kapi v68**: `sound_config (chunk_frames, ahead)`, `sound_map ()` (above).
 
@@ -1341,9 +2398,12 @@ locks; core 1 takes the sound lock only with `TryAcquire`, so a core 0 frozen wh
 does not stop the watch. Its progress is kept in the RAM record (`nDumpStep`: started, text
 ready, written, the write failed): when the SD write cannot finish (a wedged bus), the hardware
 watchdog restarts the Pi and the RAM report (the record of an 8 GB Pi sits at the top of the RAM
-above 4 GB) says how far core 1 got. **A stuck GUI with the scheduler alive** (the compositor
-without a frame for 12 s, the GUI watchdog task) asks for the same report
-(`CrashLogRequest`: core 0 masks its IRQs and waits, core 1 writes it, then the restart).
+above 4 GB) says how far core 1 got. `CrashLogRequest` asks for the same report from a task (core 0
+masks its IRQs and waits, core 1 writes it, then the restart); the GUI watchdog task used it for a
+compositor without a frame for 12 s and no longer does (2026-10-04): the compositor is paused under
+a full-screen app, so a slide show left on one slide, or a full-screen game, restarted the Pi. It
+now only warns in the log (`compositor STALLED`), and the paused compositor counts as alive
+(`CWindowManager::CompositorAlive`).
 **A Circle panic** (an assertion, the kernel heap's "Out of memory", ...) used to leave nothing:
 Circle's logger halts **every** core after the panic line (`CMultiCoreSupport::HaltAll`), core 1
 too, so the Pi stayed frozen ~15 s and the hardware watchdog restarted it without a report. The
@@ -1357,8 +2417,7 @@ window's events (2 s, some queued), it watches that app (`CrashLogWatchPid`: cor
 where its task is and, every 8th time, scan its stack) and, every 2 s while it lasts, has the
 `apphang` task (its own: never the GUI watchdog stuck on the card) rewrite `SD:/etc/apphang.txt`:
 the app, its tasks' states (running / ready / blocked / sleeping) and pages, then the whole record
-(the free memory, core 0's samples, the app's samples and stack) and the log's last 12 KB. The
-compositor without a frame does the same (every 2 s, before the 12 s report). Recovered (the app
+(the free memory, core 0's samples, the app's samples and stack) and the log's last 12 KB. Recovered (the app
 takes its events again, or is closed / killed): renamed `SD:/etc/lasthang.txt`; a clean shutdown /
 reboot renames it too. Still there at the next boot (the session never ended cleanly — the
 freeze grew into a restart): appended to `SD:/etc/lastcrash.txt` (`MergeAppHang`), or written as
@@ -1392,7 +2451,7 @@ screen and its SOS).
 
 Source: [`kernel/sys/appcore.cpp`](../kernel/sys/appcore.cpp),
 [`kern/appcore.h`](../kernel/include/kern/appcore.h); user side
-[`user/emucore.h`](../user/emucore.h), test [`user/bin/coretest.c`](../user/bin/coretest.c).
+[`user/Emulators/emucore.h`](../user/Emulators/emucore.h), test [`user/BinUtils/coretest.c`](../user/BinUtils/coretest.c).
 
 Cores 2 and 3 (core 2 only with `netcore=1`: core 3 then runs the network, §11) are a
 **resource an app acquires**, like the sound output: it gets a whole
@@ -1414,17 +2473,33 @@ the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
   the cores is plain cacheable memory (inner-shareable, coherent) with `DSB ISH` barriers;
   only core 0 writes the ownership.
 - **Stopping a job** (`core_release`, the app's exit or kill): core 0 raises `bAbort` and
-  sends the core an IPI (`SendIPI`, `IPI_USER`). The IRQ enters our `IrqEntry` on that core;
-  `KernelIRQExit` sees it is not core 0 (no scheduling there) and calls `AppCoreOnIRQExit`,
-  which **rewrites the trap frame** to return into `AppCoreRestart` on the core's own kernel
+  sends the core an IPI (`SendIPI`, `IPI_USER`). The IRQ interrupts the job at EL0 and enters
+  `El0IrqEntry` on that core (`IrqEntry` if the core was in its own kernel code); the exit path
+  (`El0IrqExit` / `KernelIRQExit`) sees it is not core 0 (no scheduling there) and calls
+  `AppCoreOnIRQExit`, which **rewrites the trap frame** to return into `AppCoreRestart` on the core's own kernel
   stack (EL1t, IRQs masked): the job is simply dropped. `AppCoreRestart` goes back to the
   kernel address space and clears `bAbort` — core 0's signal that the core is out of the
   app's memory. Core 0 waits for it at most 200 ms.
-- **Faults.** A synchronous exception on core 2–3 (a bad access in the job) reaches
-  `SyncHandlerEL1`, which hands it to `AppCoreOnFault` instead of the kernel panic: the ESR
+- **Faults.** A synchronous exception from the job at EL0 (a bad access, an undefined
+  instruction, any `svc` but the job's end) reaches `El0SyncHandler`, which hands it to
+  `AppCoreOnEl0Sync` → `AppCoreOnFault` (instead of killing a process): the ESR
   class, PC and fault address are kept, the state becomes `FAULT` and the frame is rewritten
   to `AppCoreRestart` as above. Core 0 logs it once (`appcore: core N: fault EC=... at pc
   ... (address ...)`) when the owner asks the state or releases the core.
+- **Memory (v75, §4 *Demand paging*).** No allocator runs on cores 2–3, so what a job touches is
+  filled beforehand: `core_acquire` fills the owner's heap and makes it **eager** (filled as `sbrk`
+  grows it — the emulators `malloc` on the main thread and touch on the core), `core_run` fills
+  the top 256 KB of the job's stack. Anything else still unfilled (a `vm_map`'ed buffer, deeper in a
+  lazy stack) takes the slow path: the job's translation fault becomes a **page-in request** in its
+  `TAppCore` (`nPageIn = 1`, the address, write or not; `DSB`, `SEV`) and the core waits in `WFE`
+  with its IRQs on (a stop still drops the job). On core 0 an `IoWait` tick hook wakes the
+  **`vmpager`** task (made at the first `core_acquire`), which fills that page and up to 7 more of
+  the region by a software walk of the owner's tables, answers 2 (retry: the `eret` repeats the
+  access, no TLBI needed) or 3 (no region, or out of memory: `FAULT`) and `SEV`s — up to one 10 ms
+  tick per request. Frames leaving or protections lowered on core 0 reach the job's TLB by the
+  inner-shareable `TLBI`.
+- **TLS (v75).** `core_run` reads the caller's `TPIDR_EL0` (the kernel never changes it) and the
+  core writes it before `El0Enter`: a job shares its caller's thread-local data (errno included).
 - **Teardown.** `~CAddressSpace` calls `AppCoreReleaseAS (this)` **before** freeing the
   window and the frames: a job still running uses them. A core that does not answer the
   stop (its code masked the interrupts — never do that) is **retired** (`bLost`, never used
@@ -1434,7 +2509,7 @@ the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
   interrupts. It computes, reads the clock directly (`cntpct_el0`) and exchanges data with
   the app's main thread through memory, with barriers. It may use `WFE`, woken by the main
   thread's `SEV`.
-- **`user/emucore.h`** packages that for the emulators: the machine runs on the app core
+- **`user/Emulators/emucore.h`** packages that for the emulators: the machine runs on the app core
   (`ec_thread`), the main thread asks for frames (`ec_request`), gets the pictures from a
   **triple buffer** (`ec_publish` / `ec_take`: the machine never waits for the display and
   the display always gets the latest complete picture) and the sound from a single-producer
@@ -1444,10 +2519,11 @@ the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
 - **Test**: `/bin/coretest` (the same computation on an app core and on core 0, a job
   stopped by its flag, an endless job stopped by `core_release`, a faulting job, both app
   cores at once); `coretest exit` leaves a job spinning and exits (the teardown must stop it).
+  `/bin/memtest` (v75): a job writing 4 MB of unfilled memory (the pager, timed), its TLS.
 - **Bigger programs on an app core**: newlib's syscalls can run on the main thread when
   called from an app core (`libc/onyx_syscalls.c`, `onyx_rpc_*`: the caller posts the call and
   waits in `WFE`, the main thread runs it in `onyx_rpc_serve` and `SEV`s). Doom's engine runs
-  that way (`user/doom`), with its malloc, files and saves.
+  that way (`user/Ports/doom`), with its malloc, files and saves.
 
 ## 15. The GPU (V3D)
 
@@ -1522,7 +2598,7 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
   `setmsf.ifa -, 0`) when alpha is below it. The fragment
   shaders end with the TLB writes (`vfpack tlb`) after the last-segment thread switch.
 - **App shaders** (kapi v61, `gpu_program` / `gpu_render2`): the app brings its QPU code
-  (built at run time with the C++ builder `user/v3d/qpu.h` over Mesa's instruction packer,
+  (built at run time with the C++ builder `user/Libs/v3d/qpu.h` over Mesa's instruction packer,
   `tools/qpu/mesa`; tested on the PC by the simulator `tools/qpu/qpusim` — `tools/tests/run_qpu_test.sh`).
   A program (`TProgram`, ≤ 256, owned by its process) holds the three shaders in low GPU
   memory, each at a 256-byte boundary and followed by NOPs (the QPU fetches ahead). Each
@@ -1540,7 +2616,7 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
   a fragment shader started in its final thread section (no last-segment pair) that reads
   uniforms stopped the GPU now and then on targets 512 pixels wide or more (5 runs out of 7,
   mostly the first frame after boot; 64 × 64 frames always passed; `v3dprog ww`, docs/03). Mesa
-  never uses it for fragment shaders; neither do `user/v3d/gxtev` nor gcemu since: they end
+  never uses it for fragment shaders; neither do `user/Libs/v3d/gxtev` nor gcemu since: they end
   with the last-segment pair (two `thrsw` in a row, the live values in registers of the register
   file — the accumulators do not survive a thread switch) before the TLB writes.
 - **`gpu_vbuf` / `gpu_render3` in place** (v63, `ClipInPlace`): a vbuf is a `HEAP_LOW` block
@@ -1620,7 +2696,7 @@ the control-list recipe) and macoy's `rpi-system` notes (cache cleaning, the bin
   its state — a frame that hangs turns the GPU off for everybody until a reboot (`s_nState = −1`;
   the compositing service then goes on with the CPU, `GPC_LOST`). The GPU's low memory (below 1 GB,
   `HEAP_LOW`) is shared with the kernel's other users.
-- **The compositing service** (`user/gpucomp/gpucomp.{h,c}`, a user library over v53 + v70; docs/03
+- **The compositing service** (`user/Libs/gpucomp/gpucomp.{h,c}`, a user library over v53 + v70; docs/03
   *GPU compositing*): an app's layers — ARGB premultiplied textures of any size (past 2048 a side
   kept as tiles of 2048 with a one-texel border of their neighbours, so that bilinear filtering is
   seamless) — composited into a target (the window's canvas: the direct mode, no copy) with, per
@@ -1655,23 +2731,23 @@ Source: [`kernel/sys/ramfs.cpp`](../kernel/sys/ramfs.cpp),
 [`kern/ramfs.h`](../kernel/include/kern/ramfs.h); the stream: `CRamStream`
 ([`sys/stream.cpp`](../kernel/sys/stream.cpp)); the kapi side: [`sys/kapi.cpp`](../kernel/sys/kapi.cpp);
 host test [`tools/tests/run_ramfs_test.sh`](../tools/tests/run_ramfs_test.sh); Pi test
-[`user/bin/ramtest.c`](../user/bin/ramtest.c).
+[`user/BinUtils/ramtest.c`](../user/BinUtils/ramtest.c).
 
 **`RAM:`** is a volume in memory, reached by the **same file calls** as the card: `open` / `read` /
 `fsize` / `fsize64` / `seek` / `close`, `save_file`, `file_in` / `file_out` (streams, appending
 too: `cp`, `cat`, the shell's redirections), `opendir` / `readdir` / `closedir`, `mkdir`, `remove`,
 `rename` (within `RAM:`; across volumes −1, the caller copies then removes, as between `SD:` and
 `SD1:`), `chdir` (`cd RAM:/x`, relative paths there), and `vol_info` (v71). newlib's `fopen` /
-`fread` / `fwrite` / `remove` and NetSurf's `opendir` sit on these, so a program needs nothing new
+`fread` / `fwrite` / `remove` and newlib's `opendir` sit on these, so a program needs nothing new
 to use it. Its files live **until the Pi restarts**: never written anywhere, not tied to any app (an
 app that ends leaves its files; its open handles are closed, `RamFsOnProcessGone` from
-`IpcOnProcessGone`). Programs cannot be started from it (`exec`, `spawn`: the card only). Jet
+`IpcOnProcessGone`). Programs cannot be started from it (`exec`, `spawn`: the card only).
 Browser keeps its disk cache and its JS code cache there (`RAM:/jet/cache`, `RAM:/jet/jscache`,
-docs/06 §33): no browsing data on the card, and no SD write freezing core 0.
+docs/08): no browsing data on the card, and no SD write freezing core 0.
 
 **The tree.** Folders and files are `TNode` records on the kernel heap — one size, so a freed one is
 reused as is (Circle's heap keeps freed blocks by size, it never merges them): a name of up to
-127 characters (**case-insensitive, case kept**, as on the card's FAT), the parent, the children (a
+255 characters (**case-insensitive, case kept**, as on the card's FAT), the parent, the children (a
 list in creation order: `readdir`'s order), the open count (`nRefs`). A file removed while open
 leaves its folder at once and is freed at its last close (it can still be read to its end); a
 folder must be empty to be removed; a folder cannot be moved into itself; `rename` onto an existing
@@ -1714,6 +2790,15 @@ does not hold the other tasks (the kernel is not preempted, §5). A `save_file` 
 complete or removed. The file calls run on core 0's tasks (and core 3's with `netcore=1`); an app
 core never calls the kernel (§14). Opening a file / listing a folder walks the tree under the lock.
 
+**v75 (POSIX open files, §8 *v75: files and processes*).** `file_open` on a `RAM:` path holds the
+file's node (`RamFsNodeOpen`, its `nRefs`): `RamFsPRead` / `RamFsPWrite` anywhere (overwriting in
+place, a gap past the end filled with zeros, `O_APPEND` at the end under the lock),
+`RamFsTruncate` (shrinking gives the extents back, growing writes zeros), `RamFsNodeStat` /
+`RamFsStat`, `RamFsUnlink` / `RamFsRenameEx` (replaces the target; an open one is unlinked and freed
+at its last close), `RamFsMkdirEx`, `RamFsUtime`, `RamFsReadDir2` (`dir_read`). Every node keeps a
+write time (UTC) and a number (stat's `ino`, unique, kept by a rename); `dev` 64, `blksize` 64 KB.
+A node's last close cuts its tail exactly (`Trim`), as a stream's.
+
 **Speed** (no card): a `save_file` or a `read` is a `memcpy` into / from the pages (GBs a second),
 plus the yields between the slices; `ramtest` prints the time of a 16 MB file on the Pi.
 
@@ -1730,6 +2815,150 @@ full` also fills the volume).
 
 ---
 
+## 17. GPIO: the 40-pin header (v92)
+
+`kernel/sys/gpio.cpp` (`kern/gpio.h`) gives the programs the Raspberry Pi's header through one table
+entry, `gpio_ctl` (§8 *v92*), over Circle's `CGPIOPin`, `CGPIOManager`, `CI2CMaster` and `CSPIMaster`.
+The programs use it through **GPIOKit** (`SD:/lib/gpiokit.so`, docs/06 *GPIOKit*, docs/19), the only
+code that calls it.
+
+- **Pins** are BCM GPIO numbers 0..27 (the header's). Each has **one owner** (a pid): the first call that
+  needs the pin takes it (a mode, PWM, a bus); `KAPI_GPIO_M_FREE`, `KAPI_GPIO_RELEASE` or the process's
+  end give it back — `GpioOnProcessGone`, called by `IpcOnProcessGone` when the process is reaped, after
+  a crash too: its pins become **inputs with no pull** again (nothing left driving a wire), its PWM
+  channels stop, its buses close, its edge queue goes. Reading a level is anyone's.
+- **Reserved, never given** (`EPERM`, `KAPI_GPIO_F_RESERVED` with the reason in `kapi_gpio_pin.reason`):
+  GPIO 0 / 1 (the HAT's ID EEPROM) and 14 / 15 (the kernel's serial console, `CSerialDevice`). The other
+  pins the system uses are off the header and out of `gpio_ctl`'s reach: 30..33 (the Bluetooth UART,
+  docs/BLUETOOTH-AUDIO-STUDY.md), 34..39 / 48..53 (the SD card, the Wi-Fi's SDIO), 40 / 41 (the jack's PWM
+  audio), 42 (the activity LED).
+- **PWM** — the header's PWM pins are PWM0's (12 and 18 its channel 1, 13 and 19 its channel 2: one pin
+  of each pair at a time, `EBUSY`); the jack's sound is PWM1's (`sys/sound.cpp`, GPIO 40 / 41). The two
+  blocks share **one clock**, which the sound sets to 125 MHz and **stops** when the jack's output stops.
+  So the header's PWM never changes the clock's rate: it uses the sound's 125 MHz (mark-space mode,
+  range = 125 MHz / frequency, data = range × duty / 10000), starts the clock at that rate when it is
+  not running, and `OutputStop` (`sound.cpp`) calls `GpioPwmClockKeep` after it stopped the jack.
+  When the jack starts while a header PWM runs, the clock restarts at the same rate: a glitch of a few
+  microseconds on the header's wave.
+- **Edges** — an input of the caller's: `KAPI_GPIO_EDGES` makes the GPIO interrupt's manager
+  (`CGPIOManager`, created at the first need) call `EdgeIRQ` on both edges of the pin; the level just
+  after says which edge it was, and only the asked ones are queued, with `CTimer::GetClockTicks64 ()`
+  (µs), for the pin's owner: up to 8 processes, 256 events each (full: the newest are dropped and the
+  next event has `lost` = 1). `KAPI_GPIO_EVENTS` takes them, waiting up to 1 s (2 ms naps). No
+  debouncing: a button gives a few edges a press.
+- **I2C bus 1** (GPIO 2 SDA / 3 SCL; the board's 1.8 kΩ pull-ups) and **SPI 0** (GPIO 7 CE1, 8 CE0, 9 MISO,
+  10 MOSI, 11 SCLK) — one process at a time, their pins taken with them (`KAPI_GPIO_M_I2C` / `_SPI`).
+  A transfer is copied through a kernel buffer (4096 bytes at most each way); an I2C write then read of
+  at most 16 written bytes is one transaction with a repeated start
+  (`CI2CMaster::WriteReadRepeatedStart`). The scan reads one byte from each address 0x08..0x77.
+
+Not done: the alternate functions of pins beyond what `KAPI_GPIO_M_ALT0 + n` sets by hand, I2C bus 0,
+SPI 1 (the AUX SPI), the UARTs 2..5, a debounce, a pin's drive strength, the Pi 5's RP1 (Circle's
+`*-rp1.h`). **Tested on the PC only** (GPIOKit's simulator; docs/HANDOFF.md lists what the Pi must check).
+
+---
+
+## 18. The volumes: USB sticks, eject, format
+
+Source: [`kernel/sys/volume.cpp`](../kernel/sys/volume.cpp), [`kern/volume.h`](../kernel/include/kern/volume.h);
+the hooks in `sys/ofile.cpp` (`OFileVolume`), `sys/kapi.cpp`, `sys/handle.cpp`, `sys/stream.cpp`, `kernel.cpp`;
+the Circle fork's side: docs/05 §28. Host test: `tools/tests/run_fs_test.sh` (`fs/usbtest.cpp`). kapi v93 (§8).
+
+**Who mounts what.** `SD:` is mounted by `CKernel::Initialize` as before; `VolMountCard` then mounts the card's
+partitions 2–4 as `SD1:`..`SD3:` (they were mounted in `kernel.cpp` until v93). The USB mass-storage devices are
+Circle's `umsd1`..`umsd3` (numbered in the order they come: a number freed by an unplug is given to the next
+device), physical drives 1–3. **The names (the user's choice, 2026-10-06)**:
+
+- **`USB1:`** (`USB2:`, `USB3:`) — device n **whole**, when it has **one partition or none**: `VolToPart` `{n, 0}`,
+  FatFs' auto search (a "superfloppy" — a file system from sector 0 — or its only MBR partition);
+- **`USB1P1:`, `USB1P2:`** … `USB1P4:` — its MBR partitions when it has **several** (`{n, m}`): each FAT / exFAT
+  one mounted, the others listed `UNREADABLE` (each can be formatted alone);
+- **`USB:`** is an alias of `USB1:` (as `SD0:` is of `SD:`): `ResolvePath` writes it `USB1:`, the program images'
+  keys too (`ImageCanonPath`), `vol_*` accept it.
+
+`UsbLayout` reads the device's sector 0 (under its lock): a FAT / exFAT boot sector (a jump, `FAT` / `FAT32` /
+`EXFAT` at their places, `55 AA`) → one volume; else an MBR (`55 AA`) with two or more entries used (a type and a
+start) → the partitions; else one volume (an empty device: `UNREADABLE`, to format). FatFs' volumes:
+`FF_VOLUMES 21` — `SD`, `SD1`..`SD3` (0–3), `USB1`, `USB1P1`..`P4` (4–8), `USB2`.. (9–13), `USB3`.. (14–18),
+`FD`, `NVME` (docs/05 §28; `kapi_stat`'s `dev` is the volume's number + 1). **One FatFs lock a physical drive**
+(`fslock.cpp`'s `LockSlot` = `VolToPart[vol].pd`): the card's volumes share one, a USB device's another — its
+driver yields between transfers, and `diskio.cpp`'s bounce buffer and sector cache are per drive. No logical
+partitions (FatFs reads the four primary ones), no GPT (`FF_LBA64` is off: it would change `LBA_t` and every
+`FATFS`; Circle's driver stops at 2 TB anyway).
+
+**Hot plug.** `VolPoll` runs every 100 ms in the kernel's input task, right after Circle's
+`UpdatePlugAndPlay` (beside `SoundPoll`, which follows a USB audio device the same way). A device found under
+`umsdN` gets a removed handler of ours (it only sets a flag: Circle calls it from the device's destructor,
+inside `UpdatePlugAndPlay`), then scanned and its volumes mounted (`f_mount (.., 1)`; tried 3 times a second
+apart when it does not answer at once). No FAT / exFAT: `UNREADABLE` (it can be formatted); no answer: `UNREADABLE` + `KAPI_VF_IOERR`.
+Each change bumps the volume's `gen`; the kernel logs it (`volume: USB1: mounted (exFAT, 15264 MB, KINGSTON)`; `USB1: several partitions: USB1P1..P4`).
+
+**A stick pulled out without an eject.** Nothing in the kernel waits for it:
+
+- the kernel is not preempted and Circle's USB driver waits for a transfer in a busy loop (`NO_BUSY_WAIT` is
+  off), so the device is deleted (in the input task) only **between** two transfers. `diskio.cpp`'s own removed
+  handler clears its device: every later transfer fails (`RES_NOTRDY`), and the FatFs call in flight ends with an
+  error (a transfer that was running when the stick left times out, ≤ 3 s, in Circle's xHCI driver);
+- since v93 the FatFs disk layer yields between two transfers of a USB drive once the task has run 10 ms
+  (`OnyxDriverPoll`, docs/05 §28) — a long operation (a format, a folder of thousands of files) no longer holds
+  core 0 — which is safe for the same reason: the volume lock is held, a stick gone only fails the next transfer;
+- `VolPoll` sees the flag and, for each volume of the device: `OFileVolume (vol, OFV_DROP)` closes the open-file layer's files of that volume (their
+  node is **lost**: every later call on it is `-EIO`, the program keeps its descriptor until it closes it; the node's
+  path is cleared so that a new open — of the next stick — never shares it), `ImageFileChanged ("USB1:/")` forgets
+  the programs' images read from it, then — **holding the volume lock**, so after the FatFs call in flight — the
+  volume is unregistered (`f_mount (0, ..)`). The other FatFs objects of the volume (a read handle of
+  `kapi_open`, a folder, a stream) are invalid from then on: FatFs' `validate` sees `fs_type` 0, or another
+  mount's `id` once a stick is mounted again in the same `FATFS`. Our fork tests that **again once the volume lock
+  is held** (a task that waited for the lock while another unmounted the volume) and keeps the lock usable across
+  an unmount (docs/05 §28). The state becomes `REMOVED` with `KAPI_VF_UNSAFE`;
+- the volume lock is never left held: its holder is in a no-kill section (§5, `fslock.cpp`) and only waits for
+  transfers that fail. The processes go on.
+
+**Eject** (`vol_eject`) acts on the **device** — any of its volumes names it (`USB1P2:` ejects `USB1P1:` too): the open-file layer's written files synced (`OFV_SYNC`: `f_sync` writes the data, the
+FAT, the entry, FSINFO), then, if nothing is open (the open-file nodes + the other FatFs objects, which
+`VolTrack` / `VolUntrack` count: `kapi_open`'s read handles, `kapi_opendir`'s folders, `CFileStream`s,
+`kapi_save` while it writes — on any of its volumes), its volumes are unmounted as above and the device's cache flushed (`CTRL_SYNC` → the
+fork's `CUSBBulkOnlyMassStorageDevice::IOCtl`: SCSI SYNCHRONIZE CACHE (10); a stick without a cache may refuse it,
+ignored). `EJECTED` until it is pulled out (then `REMOVED`, without `UNSAFE`) or mounted again (`vol_mount`).
+With files open: `-EBUSY` (they were synced: pulling it out then loses nothing written so far), or
+`KAPI_EJECT_FORCE`. The sector cache is write-through (docs/05 §8): nothing else is held in memory. A program's
+current folder on the stick does not make it busy (its next calls fail).
+
+**Format** (`vol_format`): `SD:` is refused here whatever the caller says (the system's volume); `SD1:`..`SD3:`
+need `KAPI_FMT_CARD` (the UI asks twice); a USB volume needs its device. **`USB1:`** formats the **whole device**
+whatever it had (its partitions' volumes unmounted and forgotten: it becomes one volume, `USB1:`); **`USB1P2:`**
+only that partition (one the device has now). The volume's files are dropped and it is unmounted, then **under
+the drive's lock** (the whole card, or the whole device, waits meanwhile) `f_mkfs` (`FF_USE_MKFS`, the fork): on
+`USBn:` the whole device — an MBR with one partition from sector 63, as Windows does it (`FatFs` aligns the data to 1 MB: `align` 2048 sectors on a device
+of 256 MB or more), two FATs on FAT / FAT32 —, on `USBnPm:` and `SD1:`..`SD3:` **inside their MBR partition** (FatFs sets the
+partition's type). A 128 KB work buffer; the label by `f_setlabel` once mounted (`FF_USE_LABEL`, checked first:
+11 characters, none of `"*+,./:;<=>?[\]|`). The labels are read at each mount (`f_getlabel`) and kept.
+
+**What runs where.** `kapi_shutdown` calls `VolSyncAll` first (every written file of every volume synced, the USB
+caches flushed). `kapi_vol_info` (v71) and `ResolvePath` know `USB1:`, `USB1P2:` like any volume; `ResolvePath`
+turns `USB:` into `USB1:`. Everything that takes a path works on a stick: the `/bin` tools (`cp SD:/x USB1:/`,
+`cd USB:`), the File Viewer, the file dialogs (they list `USB1:`..`USB3P4:`, shown when mounted), Photos
+(`USBn:/DCIM`, `USBnP1:/DCIM`, `USBnP2:/DCIM`).
+
+**The user's side.** The menu bar shows a drive icon while a stick is there; its box lists each volume (a device of several
+partitions: a row each, one Eject button for the device) and
+opens Disks; it polls `vol_list` every second and tells notifyd what changed (connected — a click opens it in
+the File Viewer —, can be removed safely, not formatted — a click opens Disks —, removed without an eject).
+Disks (`user/Apps/disks`): the volumes, Open / Eject / Mount, Format (file system, label; on a partition,
+"Whole device" formats `USBn:` instead). The File Viewer: the
+sticks in its sidebar (followed every second), Go > USB Stick / Eject USB Stick (Ctrl+E) / Disks. `/bin/mount`,
+`/bin/eject`, `/bin/mkfs`, `/bin/df` (docs/04).
+
+### Several partitions on one USB disk: built (2026-10-06)
+
+Built as above (the names `USBn` / `USBnPm`: the user's choice). The proposal's other points, kept for later:
+**GPT** (a Mac's disks, disks over 2 TB) needs `FF_LBA64` (a full rebuild: `LBA_t` 64-bit, `FIL` / `FATFS`
+grow — wlan and wpa_supplicant too, docs/05 §13); **logical partitions** (an MBR's extended one) are not read by
+FatFs; a device with several partitions **and** a FAT superfloppy is not possible. `vol_list` gives each volume
+its `device` (`umsd1`): what a program groups by.
+
+---
+
 ## Annex — useful constants
 
 | Constant | Value | File |
@@ -1739,14 +2968,17 @@ full` also fills the volume).
 | `USER_VA_BASE` | 8 GB | layout.h |
 | `USER_WINDOW_CANVAS` | 12 GB | layout.h |
 | `USER_WALLPAPER_CANVAS` | 13 GB | layout.h |
-| `KAPI_TABLE_VA` | 14 GB | kapi_abi.h |
+| `KAPI_TABLE_VA` | 14 GB (the EL0 table) | kapi_abi.h |
+| `KAPI_STUBS_VA` | 14 GB + 64 KB (the EL0 code page: stubs, then the blob at +8 KB) | el0.h |
 | `USER_STACK_TOP` | 16 GB | layout.h |
-| `USER_STACK_SIZE` | 1 MB | layout.h |
-| `KAPI_ABI_VERSION` | 71 | kapi_abi.h |
+| `EL0_USTACK_MIN` | 8 MB (an app's user stack, lazy since v75; `app.txt` `stack`, 8–64 MB) | el0.h |
+| `USER_MMAP_BASE` .. `USER_MMAP_END` | 34 GB .. 60 GB (the mmap arena, v75) | layout.h |
+| `USER_THREAD_STACKS` | 32 GB (+ 32 MB a thread) | el0.h |
+| `KAPI_ABI_VERSION` | 91 | kapi_abi.h |
 | `RAM:` volume | 128 MB by default (≤ ¼ of the free page memory; `system.ini` `ramfs=`), 32 MB reserve, 16384 files + folders, 128 MB a file | ramfs.h |
 | `USER_HEAP_BASE` | 10 GB | layout.h |
-| `MAX_TASKS` | 40 | sysconfig.h |
+| Tasks | no limit (a linked list, §5; Circle's `MAX_TASKS` is not used) | scheduler.h |
 | `ASID` | 8 bits (1..255; 0 = kernel) | layout.h |
-| Kernel stack of an app task | 256 KB | kernel.cpp |
+| Kernel stack of an app task (`EL0_KSTACK_SIZE`) | 256 KB | el0.h |
 | Screen resolution | 1024×768 by default (`cmdline.txt` `width=` / `height=`; changed while running: `screen_set`, v66) | window.h / cmdline.txt |
 | `GIMAGE_TRANSPARENT` | `0xFF00FF` | gimage.h |

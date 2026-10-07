@@ -1,0 +1,32 @@
+# Wi-Fi Settings's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included); a key "context|English" is a TRC's.
+ (WEP is not supported)	 (WEP non pris en charge)
+ -- type the password	 -- tapez le mot de passe
+ network found: click the SSID arrow	 réseau trouvé : ouvrez la liste du SSID
+ networks found: click the SSID arrow	 réseaux trouvés : ouvrez la liste du SSID
+(its icon, near the clock) lists	de l'horloge, dans la barre de
+Country	Pays
+Key mgmt	Gestion clé
+Loaded /etc/wpa_supplicant.conf	/etc/wpa_supplicant.conf chargé
+No config yet -- fill in and Save	Pas de configuration : remplissez et enregistrez
+No network found	Aucun réseau trouvé
+one in a click.	et en rejoint un d'un clic.
+open	ouvert
+Password	Mot de passe
+Proto	Protocole
+PSK must be 8..63 chars	Le mot de passe doit avoir de 8 à 63 caractères
+Reboot	Redémarrer
+Reload	Recharger
+Save & Reboot	Enreg. et redémarrer
+Save FAILED (write error)	ÉCHEC de l'enregistrement (erreur d'écriture)
+Saved. Reboot later to apply.	Enregistré. Redémarrez plus tard pour l'appliquer.
+Saved. Reboot to apply.	Enregistré. Redémarrez pour l'appliquer.
+Saved: joining it now (no reboot)	Enregistré : connexion en cours (sans redémarrage)
+Scan	Scanner
+Scanning (3 s)...	Recherche des réseaux (3 s)...
+Settings saved. Reboot now to apply them?	Paramètres enregistrés. Redémarrer maintenant pour les appliquer ?
+Show password	Afficher le mot de passe
+SSID must be 1..32 chars	Le SSID doit avoir de 1 à 32 caractères
+the networks around and joins	menus) liste les réseaux proches
+The Wi-Fi menu of the menu bar	Le menu Wi-Fi (son icône, près
+Wi-Fi Settings	Paramètres Wi-Fi

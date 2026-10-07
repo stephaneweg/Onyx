@@ -7,7 +7,7 @@
 #ifndef _archiver_model_h
 #define _archiver_model_h
 
-#include "arc.h"
+#include "arcfk.h"
 
 namespace ui {
 

@@ -14,9 +14,9 @@ ffmpeg -loglevel error -f lavfi -i "sine=frequency=330:duration=3" -ar 22050 -ac
 python3 tools/tests/media/make_midi.py "$S/t.mid"
 SD="$PWD/sdcard"
 K=user/Apps/koton/synth
-CXX="g++ -std=gnu++17 -O2 -w -I user -I kernel/include -I third_party -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
-gcc -O2 -w -I user -I third_party -c user/Apps/media/codecs.c -o "$OUT/codecs.o"
-gcc -O2 -w -I user -I third_party -c user/Apps/media/vorbis.c -o "$OUT/vorbis.o"
+CXX="g++ -std=gnu++17 -O2 -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include -I third_party -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+gcc -O2 -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I third_party -c user/Apps/media/codecs.c -o "$OUT/codecs.o"
+gcc -O2 -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I third_party -c user/Apps/media/vorbis.c -o "$OUT/vorbis.o"
 $CXX -c tools/tests/desktop_sim/fakekapi.cpp -o "$OUT/fakekapi.o"
 $CXX -o "$OUT/dectest" tools/tests/media/dectest.cpp $K/*.cpp "$OUT/codecs.o" "$OUT/vorbis.o" "$OUT/fakekapi.o" -lpthread -lm
 cd "$OUT"

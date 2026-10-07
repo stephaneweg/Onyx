@@ -19,7 +19,7 @@
 #ifndef _cardfile_model_h
 #define _cardfile_model_h
 
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 namespace cf {
 
@@ -509,7 +509,7 @@ static void make_column (const char *label, char *out, int cap)
 struct Doc
 {
 	char title[TITLE_MAX], info[INFO_MAX];	// the form's title, its description
-	char merge[160];			// its mail merge's letter (Writer's document), "" none
+	char merge[160];			// its mail merge's letter (Letters' document), "" none
 	Field f[MAXF]; int nf;
 	char ***r; int nr, rcap;		// the records: r[i][k] = field k's value (never 0)
 	int  sort; bool sortDesc;		// the views' order: by a field (-1: the file's), descending

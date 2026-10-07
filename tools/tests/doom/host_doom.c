@@ -1,5 +1,5 @@
 //
-// host_doom -- Doom (doomgeneric + user/doom/doom_sound.c) on the PC, headless, on a
+// host_doom -- Doom (doomgeneric + user/Ports/doom/doom_sound.c) on the PC, headless, on a
 // virtual clock: the picture to PPM files, the sound effects to a raw PCM file, the music's
 // FM notes counted -- to check the Onyx port without the Pi.
 //   host_doom <iwad> <seconds> [keys "t:key,t:key,..." (Doom key codes, held 0.2 s)]
@@ -23,20 +23,22 @@ static int s_frames = 0; static double s_end; static const char *s_keys = "";
 static FILE *s_pcm; static long s_pcmFrames = 0; static long s_notes = 0, s_instr = 0; static int s_maxVoice = -1;
 static unsigned s_queued = 0; static unsigned long long s_audioT = 0;
 
-int kapi_sound_acquire (void) { return 1; }
-int kapi_sound_status (unsigned *rate, unsigned *freeFrames, unsigned *owner)
+int ak_out_open (int c, int a) { (void) c; (void) a; return 1; }
+int ak_out_free (void)
 {
 	// the output drains 44100 frames a second of virtual time
 	unsigned long long drained = (s_us - s_audioT) * 44100 / 1000000;
 	s_audioT = s_us;
 	s_queued = drained >= s_queued ? 0 : s_queued - (unsigned) drained;
-	*rate = 44100; *freeFrames = 22049 - s_queued; *owner = 1;
-	return 1;
+	return (int) (22049 - s_queued);
 }
-int kapi_sound_write (const short *f, unsigned n) { fwrite (f, 4, n, s_pcm); s_pcmFrames += n; s_queued += n; return (int) n; }
-int kapi_sound_instrument (int v, const struct kapi_fm_instrument *i) { (void) v; (void) i; s_instr++; return 0; }
-int kapi_sound_start (int v, unsigned mhz, int wave, int vol) { (void) mhz; (void) wave; (void) vol; s_notes++; if (v > s_maxVoice) s_maxVoice = v; return 0; }
-int kapi_sound_stop (int v) { (void) v; return 0; }
+int ak_out_write (const short *f, int n) { fwrite (f, 4, (size_t) n, s_pcm); s_pcmFrames += n; s_queued += (unsigned) n; return n; }
+int ak_fm_instrument (int v, const struct kapi_fm_instrument *i) { (void) v; (void) i; s_instr++; return 0; }
+int ak_fm_start (int v, unsigned mhz, int wave, int vol) { (void) mhz; (void) wave; (void) vol; s_notes++; if (v > s_maxVoice) s_maxVoice = v; return 0; }
+void ak_fm_stop (int v) { (void) v; }
+void ak_fm_live (int on) { (void) on; }
+void ak_fm_render (short *out, int n) { memset (out, 0, (size_t) n * 4); }	/* (AudioKit's voices: silent here) */
+void ak_mix_s16 (short *d, const short *s, int n, int g) { (void) g; for (int i = 0; i < 2 * n; i++) d[i] = (short) (d[i] + s[i]); }
 
 void DG_DrawFrame (void)
 {

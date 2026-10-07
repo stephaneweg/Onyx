@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tools/tests/pkg/test.py -- `pkg` (user/bin/pkg.cpp, user/pkg/pkglib.h) on the PC, over the desktop
+"""tools/tests/pkg/test.py -- `pkg` (user/BinUtils/pkg.cpp, user/Libs/pkg/pkglib.h) on the PC, over the desktop
 simulator's kapi: a small card made into a repository by tools/pkg/mkrepo.py (a key made for the
 test), then installs, updates, removals, the settings kept, the needs, the system staged and committed,
 a bad signature and a bad archive refused.
@@ -138,6 +138,28 @@ check (rc == 0 and os.path.exists (card ("var/pkg/db/mover.ini")) and "staged" i
 rc, o = pkg ("commit"); print (o)
 check (os.path.exists (card ("bin/hello")), "commit: the file onyx dropped is kept, mover has it")
 rc, o = pkg ("delete", "mover"); check (rc == 2, "mover cannot be removed")
+
+print ("a package renamed (replaces =: writer became letters)")
+put (SRC + "/apps/olda.app/main", b"olda 1"); put (SRC + "/apps/olda.app/app.txt", "name = Old\ncategory = Productivity\n")
+put (SRC + "/docs/tour.txt", "a sample\n")
+with open (OUT + "/packages.ini", "a") as f: f.write ("[olda-samples]\ntitle = Old samples\nfiles = docs/*.txt\nconfig = docs/*.txt\nneeds = olda\n")
+check (mkrepo ("--bump") == 0, "mkrepo: olda and its samples")
+rc, o = pkg ("add", "olda-samples"); check (rc == 0 and os.path.exists (card ("docs/tour.txt")), "add olda-samples (and olda)")
+rc, o = pkg ("mode", "olda", "auto"); check (rc == 0, "mode olda auto")
+shutil.rmtree (SRC + "/apps/olda.app")
+put (SRC + "/apps/newa.app/main", b"newa 1"); put (SRC + "/apps/newa.app/app.txt", "name = New\ncategory = Productivity\n")
+ini = open (OUT + "/packages.ini").read ().replace ("[olda-samples]\ntitle = Old samples", "[newa-samples]\nreplaces = olda-samples\ntitle = New samples").replace ("needs = olda\n", "needs = newa\n")
+open (OUT + "/packages.ini", "w").write (ini + "[app.newa]\nreplaces = olda\n")
+check (mkrepo ("--bump") == 0, "mkrepo: newa replaces olda, newa-samples olda-samples")
+idx = open (CARD + "/repo/index.txt").read ()
+check ("replaces = olda\n" in idx and "[olda]" not in idx, "the index: olda gone, newa replaces it")
+rc, o = pkg ("check"); check (rc == 0 and "olda" in o and "newa" not in o.split ("olda")[0], "check: olda's update is newa")
+rc, o = pkg ("update", "olda", "olda-samples"); print (o)
+check (rc == 0 and os.path.exists (card ("apps/newa.app/main")) and not os.path.exists (card ("apps/olda.app")), "update olda: newa in, olda's files gone")
+check (not os.path.exists (card ("var/pkg/db/olda.ini")) and not os.path.exists (card ("var/pkg/db/olda-samples.ini")), "olda, olda-samples: out of the database")
+check (os.path.exists (card ("docs/tour.txt")) and not os.path.exists (card ("docs/tour.txt.new")), "the sample taken over: kept, no .new")
+rc, o = pkg ("info", "newa"); check ("auto" in o, "newa: olda's mode (auto)")
+rc, o = pkg ("check"); check ("olda" not in o and "newa" not in o, "nothing more for them")
 
 print ("trust")
 idx = open (CARD + "/repo/index.txt").read ()

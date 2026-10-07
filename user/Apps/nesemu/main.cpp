@@ -1,11 +1,11 @@
 //
-// nesemu -- the Onyx NES / Famicom emulator (the core: user/nes).
+// nesemu -- the Onyx NES / Famicom emulator (the core: user/Emulators/nes).
 //
 //   nesemu <rom.nes> [--fullscreen]   (without a ROM: opens the Game Library)
 //                               (its app.txt "games": opening a .nes file starts it; the Game Library
 //                               app lists the ROMs of a folder)
 //   * Keys: arrows = the D-pad, X = A, Z = B, Enter = Start, Backspace = Select (held keys,
-//     kapi_key_held); a USB gamepad too (user/gamepad.h: right / top button = A, bottom /
+//     kapi_key_held); a USB gamepad too (user/Include/gamepad.h: right / top button = A, bottom /
 //     left = B, Start, Select); F11 or View > Full Screen: the whole display, stretched with the
 //     proportions kept and centred (Esc / F11 back).
 //   * View > Zoom 1x / 2x / 3x, Region: NTSC (60 Hz) / PAL (50 Hz) -- guessed from the ROM's
@@ -14,19 +14,19 @@
 //     every few seconds after a change and when the emulator closes.
 //   * The pace: the sound output (the frames are made as the audio queue drains), or the
 //     clock when there is no sound; 60.10 (NTSC) or 50.01 (PAL) frames a second.
-//   * The machine runs on an app core (core 2 or 3, user/emucore.h) when one is free: the
+//   * The machine runs on an app core (core 2 or 3, user/Emulators/emucore.h) when one is free: the
 //     window, the input and the sound stay on this thread. Without a free core it runs here.
 //   * Mappers: 0 (NROM), 1 (MMC1), 2 (UxROM), 3 (CNROM), 4 (MMC3), 7 (AxROM), 66 (GxROM).
 //
-#include "kapi.h"
-#include "launch.h"
+#include "audiokit/audiokit.h"
+#include "appkit/appkit.h"
 #include "gamepad.h"
-#include "wtk/wtk.h"
+#include "uikit/uikit.h"
 #include "nes/nes.h"
-#include "wtk/dialog.h"
+#include "uikit/dialog.h"
 #include "emucore.h"
 
-using namespace wtk;
+using namespace uikit;
 
 static nes::Machine *g_m = 0;
 static unsigned char *g_rom = 0;
@@ -190,7 +190,7 @@ static void set_zoom (int z)
 	g_zoom = z;
 	// (the window's buffer keeps the pitch it was made with: 3x -- draw with that one)
 	g_root->canvas.adopt (kapi_resize_window (nes::W * z, nes::H * z), nes::W * z, nes::H * z, g_stride);
-	wtk::wk_decorate_window ();					// the frame follows
+	uikit::uk_decorate_window ();					// the frame follows
 	g_root->width = nes::W * z; g_root->height = nes::H * z;
 	g_root->invalidate (true);
 }
@@ -204,7 +204,7 @@ static void on_pal () { region (true); }
 static void on_sound ()
 {
 	g_sound = !g_sound;
-	if (!g_sound && g_audio == 1) { g_audioOn = false; kapi_sound_release (); g_audio = 0; }
+	if (!g_sound && g_audio == 1) { g_audioOn = false; ak_out_close (); g_audio = 0; }
 }
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
 static void on_stats () { g_stats = !g_stats; g_root->invalidate (true); }
@@ -232,7 +232,7 @@ static int buttons (void)
 	if (kapi_key_held ('z')) b |= nes::BTN_B;
 	if (kapi_key_held (KEY_ENTER)) b |= nes::BTN_START;
 	if (kapi_key_held (KEY_BACKSPACE)) b |= nes::BTN_SELECT;
-	// USB gamepads (user/gamepad.h): by place, as on Nintendo's pads -- the right face
+	// USB gamepads (user/Include/gamepad.h): by place, as on Nintendo's pads -- the right face
 	// button is A, the bottom one B (and the top / left ones the same)
 	unsigned p = pad_buttons (-1);
 	if (p & PAD_RIGHT) b |= nes::BTN_RIGHT;
@@ -332,7 +332,7 @@ int main (void)
 		}
 		else cat (msg, &n, "Not a NES ROM (iNES / NES 2.0).");
 		g_loading = false;
-		wk_messagebox ("NES", msg, MB_OK);
+		uk_messagebox ("NES", msg, MB_OK);
 		return 1;
 	}
 	if (!g_m->pal && name_says_pal (g_loadName)) g_m->setPal (true);
@@ -348,7 +348,7 @@ int main (void)
 	menu.item ("Pause",        "P",   0, on_pause);
 	menu.item ("Reset",        "",    0, on_reset);
 	menu.separator ();
-	menu.item ("Quit",         "^Q",  WK_CTRL ('Q'), on_quit);
+	menu.item ("Quit",         "^Q",  UK_CTRL ('Q'), on_quit);
 	menu.menu ("View");
 	menu.item ("Full Screen",  "F11", 0, on_full);
 	menu.item ("Zoom 1x",      "",    0, on_zoom1);
@@ -365,7 +365,7 @@ int main (void)
 	if (wantFull) full_screen (true);
 
 	static short pcm[4096 * 2];
-	unsigned rate = SOUND_RATE, freeFrames = 0, owner = 0;
+	unsigned freeFrames = 0;
 	g_m->setAudioRate (SOUND_RATE);
 	if (!ec_init (&g_ec, nes::W, nes::H, nes_frame)) return 1;
 	g_loading = false;
@@ -380,7 +380,7 @@ int main (void)
 		pump_events ();
 		g_ec.btn = buttons ();
 		if (g_paused) { root.invalidate (true); show_frame (); kapi_msleep (20); continue; }	// (no frame asked: it waits)
-		if (g_sound && g_audio == 0) { g_audio = kapi_sound_acquire () == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
+		if (g_sound && g_audio == 0) { g_audio = ak_out_open (0, 0) == 1 ? 1 : -1; g_audioOn = g_audio == 1; }
 		bool audio = g_sound && g_audio == 1;
 		unsigned fps = fps100 ();
 		if (fps != lastFps) { lastFps = fps; t0 = kapi_get_ticks (); asked = 0; }	// (the region changed)
@@ -388,11 +388,11 @@ int main (void)
 		if (audio)
 		{
 			// keep ~3 frames of sound queued: the audio clock paces the game
-			kapi_sound_status (&rate, &freeFrames, &owner);
+			freeFrames = (unsigned) ak_out_free ();
 			static unsigned cap = 0; if (freeFrames > cap) cap = freeFrames;
 			unsigned queued = cap - freeFrames;
 			int k = ec_audio_pop (&g_ec, pcm, freeFrames < 4096 ? (int) freeFrames : 4096);
-			if (k > 0) { kapi_sound_write (pcm, (unsigned) k); queued += (unsigned) k; }
+			if (k > 0) { ak_out_write (pcm, k); queued += (unsigned) k; }
 			unsigned have = queued + ec_audio_count (&g_ec) + ec_pending (&g_ec) * perFrame;
 			while (have < 2400 && ec_pending (&g_ec) < 3) { ec_request (&g_ec, 1); have += perFrame; }
 			stQueued = queued;

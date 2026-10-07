@@ -1,5 +1,5 @@
 //
-// snestest -- the Onyx SNES core (user/snes) on the PC.
+// snestest -- the Onyx SNES core (user/Emulators/snes) on the PC.
 //   snestest <rom> <seconds> [out.ppm] [keys]
 //       runs a ROM (a test ROM, a game) without a screen and saves the last frame;
 //       keys: "t:mask,..." -- at t seconds, press the buttons of mask (snes.h BTN_*, hex) 0.2 s

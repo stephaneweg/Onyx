@@ -23,8 +23,8 @@ onyx/ (Onyx's, written by hand in place of meson's configure):
   onyx_sysconf.c  the Pi's processor count for dav1d (1)
 
 No change to the sources. The source list and the flags are in user/av/codecs.mk: built by
-user/netsurf/Makefile into libdav1d.a (the assembly with GCC 13.3's assembler), compiled by
-tools/tests/netsurf/host.mk, pc/Jet/jet.mk and tools/tests/av/bench.mk. The AArch64 build's
+user/av/Makefile into libdav1d.a (the assembly with GCC 13.3's assembler), compiled by
+tools/tests/av/bench.mk. The AArch64 build's
 frames are bit-exact with the C build's (tools/tests/av/bench.sh prints a checksum of them).
 
 Used by user/av/av_dav1d.c (AV_WITH_DAV1D): AV1 Main profile, 8 bits.

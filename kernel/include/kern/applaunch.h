@@ -18,13 +18,28 @@ boolean LaunchAppByName (const char *pName);
 // Returns a CProcess* handle, or 0 on failure. Defined in kernel.cpp.
 class CStream;
 struct CProcess;
+struct TProcInfo;
+// pInfo (v75, kern/procx.h: spawn_ex's argv / environment) is the child's from the call on, also
+// on a failure (freed); 0: made from pElfPath + pArgs and the caller's environment.
 CProcess *SpawnProcess (const char *pElfPath, const char *pArgs,
 			CStream *pStdin, CStream *pStdout, const char *pCwd = 0,
-			unsigned nParentPid = 0);
+			unsigned nParentPid = 0, TProcInfo *pInfo = 0);
 
 // Run an ELF by absolute path with an argv string, fire-and-forget (no stdio, no
 // wait handle). Task name is derived from the path. Defined in kernel.cpp.
 boolean ExecPath (const char *pElfPath, const char *pArgs, const char *pName = 0);	// pName: the process' name (0: from the path)
+
+// (v77) Preload the program at pCanonPath (its canonical path, kern/image.h): a kernel task loads
+// its image and pins it; returns at once. Kept already: 0, nothing done. -> 0 / -KAPI_ENOENT (no
+// such file) / -KAPI_ENOMEM. Defined in kernel.cpp (kapi_image_preload).
+int ProgramPreload (const char *pCanonPath);
+
+// (v83) The shared library at pCanonPath (its canonical path) mapped in pAS -- loaded now by the
+// calling task if no process has it and it is not preloaded -> 0 and *pTable (its export table in
+// pAS), or -KAPI_E* (-KAPI_ENOTSUP: its table's version is below nMinVersion). Defined in
+// kernel.cpp (kapi_lib_open).
+class CAddressSpace;
+int LibraryOpen (const char *pCanonPath, unsigned nMinVersion, CAddressSpace *pAS, u64 *pTable);
 
 // Keyboard layout control (defined in kernel.cpp): switch the live keyboard to a
 // compiled-in country map and read the current layout name. Declared here (a plain

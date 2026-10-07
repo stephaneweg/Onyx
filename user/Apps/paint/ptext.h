@@ -1,6 +1,6 @@
 //
 // ptext.h -- Paint's Text tool: the text typed on the canvas, in one of the card's TrueType families
-// (ft/fonts.h: FreeType), its size, bold / italic / underline, aligned left / centred / right, its
+// (fontkit/fonts.h: FreeType), its size, bold / italic / underline, aligned left / centred / right, its
 // edges smooth (anti-aliased) or sharp, on colour 2 or on nothing. It is drawn into the overlay of
 // the current layer while it is typed (moved by its box), and put down on the layer when it is done.
 //
@@ -9,7 +9,7 @@
 #ifndef _paint_ptext_h
 #define _paint_ptext_h
 
-#include "ft/fonts.h"
+#include "fontkit/fonts.h"
 #include "pdoc.h"
 
 namespace pd {
@@ -47,7 +47,7 @@ static long text_line_w (fnt::Font *f, const char *s, int a, int b)
 	long x = 0; unsigned prev = 0;
 	for (int i = a; i < b; )
 	{
-		int k; unsigned cp = wtk::wk_u8_get (s + i, b - i, &k); i += k;
+		int k; unsigned cp = uikit::uk_u8_get (s + i, b - i, &k); i += k;
 		if (prev) x += fnt::kern (f, prev, cp);
 		x += fnt::advance (f, cp);
 		prev = cp;
@@ -87,7 +87,7 @@ static void text_layout (unsigned *buf, Rect *drawn, unsigned c, unsigned back, 
 		{
 			if (caret && i == t.caret) { caret[0] = (int) (x64 >> 6); caret[1] = t.y + l * lh; caret[2] = t.y + (l + 1) * lh; }
 			if (i >= ends[l]) break;
-			int k; unsigned cp = wtk::wk_u8_get (t.s + i, ends[l] - i, &k); i += k;
+			int k; unsigned cp = uikit::uk_u8_get (t.s + i, ends[l] - i, &k); i += k;
 			if (prev) x64 += fnt::kern (f, prev, cp);
 			prev = cp;
 			if (buf && cp > 32)
@@ -140,7 +140,7 @@ static void text_back ()
 {
 	TextBox &t = g_text;
 	if (t.caret <= 0) return;
-	int p = wtk::wk_u8_prev (t.s, t.caret), d = t.caret - p;
+	int p = uikit::uk_u8_prev (t.s, t.caret), d = t.caret - p;
 	for (int i = p; i + d <= t.n; i++) t.s[i] = t.s[i + d];
 	t.n -= d; t.caret = p;
 }
@@ -148,7 +148,7 @@ static void text_del ()
 {
 	TextBox &t = g_text;
 	if (t.caret >= t.n) return;
-	int d = wtk::wk_u8_next (t.s, t.caret, t.n) - t.caret;
+	int d = uikit::uk_u8_next (t.s, t.caret, t.n) - t.caret;
 	for (int i = t.caret; i + d <= t.n; i++) t.s[i] = t.s[i + d];
 	t.n -= d;
 }

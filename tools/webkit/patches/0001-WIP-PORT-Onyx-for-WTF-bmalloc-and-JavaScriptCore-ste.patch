@@ -1,0 +1,411 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Onyx contributors <onyx@localhost>
+Date: Fri, 2 Oct 2026 15:11:00 +0000
+Subject: [PATCH 01/25] WIP: PORT=Onyx for WTF, bmalloc and JavaScriptCore
+ (step 1 of the Onyx port)
+
+What: a new port, Onyx (a small OS for the Raspberry Pi 4, AArch64; static programs, 64 KB pages,
+newlib + libonyxposix, no GLib, no executable memory): Source/cmake/OptionsOnyx.cmake (static
+libraries, no JIT, C_LOOP by default, no WebAssembly / sampling profiler / remote inspector,
+system malloc, 64 KB page block), Onyx in WebKitCommon.cmake's ports and OS detection (WTF_OS_ONYX),
+OS(ONYX) in PlatformOS.h (a Unix), CeilingOnPageSize 64 KB, WTF/wtf/PlatformOnyx.cmake (POSIX and
+Unix sources, the generic run loop / work queue / main thread), wtf/onyx/ memory status over
+getrusage, bmalloc/PlatformOnyx.cmake (no libpas with the system malloc),
+JavaScriptCore/PlatformOnyx.cmake.
+Why: build the jsc shell for Onyx; the port model is PlayStation / JSCOnly / Haiku.
+Status: configures; bmalloc builds; WTF stops at wtf/PlatformRegisters.h (sys/ucontext.h).
+---
+ Source/JavaScriptCore/PlatformOnyx.cmake      |  7 ++
+ Source/WTF/wtf/PageBlock.h                    |  2 +-
+ Source/WTF/wtf/PlatformOS.h                   |  6 ++
+ Source/WTF/wtf/PlatformOnyx.cmake             | 35 +++++++
+ .../WTF/wtf/onyx/CurrentProcessMemoryStatus.h | 36 +++++++
+ .../onyx/CurrentProcessMemoryStatusOnyx.cpp   | 49 ++++++++++
+ Source/WTF/wtf/onyx/MemoryFootprintOnyx.cpp   | 42 ++++++++
+ Source/bmalloc/PlatformOnyx.cmake             |  7 ++
+ Source/cmake/OptionsOnyx.cmake                | 98 +++++++++++++++++++
+ Source/cmake/WebKitCommon.cmake               |  4 +
+ 10 files changed, 285 insertions(+), 1 deletion(-)
+ create mode 100644 Source/JavaScriptCore/PlatformOnyx.cmake
+ create mode 100644 Source/WTF/wtf/PlatformOnyx.cmake
+ create mode 100644 Source/WTF/wtf/onyx/CurrentProcessMemoryStatus.h
+ create mode 100644 Source/WTF/wtf/onyx/CurrentProcessMemoryStatusOnyx.cpp
+ create mode 100644 Source/WTF/wtf/onyx/MemoryFootprintOnyx.cpp
+ create mode 100644 Source/bmalloc/PlatformOnyx.cmake
+ create mode 100644 Source/cmake/OptionsOnyx.cmake
+
+diff --git a/Source/JavaScriptCore/PlatformOnyx.cmake b/Source/JavaScriptCore/PlatformOnyx.cmake
+new file mode 100644
+index 00000000..55b920bc
+--- /dev/null
++++ b/Source/JavaScriptCore/PlatformOnyx.cmake
+@@ -0,0 +1,7 @@
++# The Onyx port of JavaScriptCore: static, no JIT, no WebAssembly, no remote inspector (step 1 of
++# the Onyx port: the jsc shell). Nothing platform-specific is compiled yet.
++
++# The JIT's executable memory pool: not used (ENABLE_JIT is off), kept small should it be enabled.
++list(APPEND JavaScriptCore_PRIVATE_DEFINITIONS
++    FIXED_EXECUTABLE_MEMORY_POOL_SIZE_IN_MB=16
++)
+diff --git a/Source/WTF/wtf/PageBlock.h b/Source/WTF/wtf/PageBlock.h
+index c4f9a8b1..f33f7bf6 100644
+--- a/Source/WTF/wtf/PageBlock.h
++++ b/Source/WTF/wtf/PageBlock.h
+@@ -53,7 +53,7 @@ namespace WTF {
+ // Use 64 KiB for any unknown CPUs to be conservative.
+ #if OS(DARWIN) || PLATFORM(PLAYSTATION) || CPU(MIPS) || CPU(MIPS64) || CPU(LOONGARCH64) || (OS(LINUX) && CPU(ARM64) && !USE(64KB_PAGE_BLOCK))
+ constexpr size_t CeilingOnPageSize = 16 * KB;
+-#elif USE(64KB_PAGE_BLOCK) || CPU(PPC) || CPU(PPC64) || CPU(PPC64LE) || CPU(UNKNOWN)
++#elif USE(64KB_PAGE_BLOCK) || OS(ONYX) || CPU(PPC) || CPU(PPC64) || CPU(PPC64LE) || CPU(UNKNOWN)
+ constexpr size_t CeilingOnPageSize = 64 * KB;
+ #elif OS(WINDOWS) || CPU(X86) || CPU(X86_64) || CPU(ARM) || CPU(ARM64) || CPU(RISCV64)
+ constexpr size_t CeilingOnPageSize = 4 * KB;
+diff --git a/Source/WTF/wtf/PlatformOS.h b/Source/WTF/wtf/PlatformOS.h
+index e3184e90..987a4c37 100644
+--- a/Source/WTF/wtf/PlatformOS.h
++++ b/Source/WTF/wtf/PlatformOS.h
+@@ -117,6 +117,11 @@
+ #define WTF_OS_NETBSD 1
+ #endif
+ 
++/* OS(ONYX) - Onyx (Raspberry Pi 4, AArch64): newlib + libonyxposix, static programs, 64 KB pages */
++#if defined(__onyx__)
++#define WTF_OS_ONYX 1
++#endif
++
+ /* OS(OPENBSD) - OpenBSD */
+ #if defined(__OpenBSD__)
+ #define WTF_OS_OPENBSD 1
+@@ -141,6 +146,7 @@
+     || OS(HURD)             \
+     || OS(LINUX)            \
+     || OS(NETBSD)           \
++    || OS(ONYX)             \
+     || OS(OPENBSD)          \
+     || defined(unix)        \
+     || defined(__unix)      \
+diff --git a/Source/WTF/wtf/PlatformOnyx.cmake b/Source/WTF/wtf/PlatformOnyx.cmake
+new file mode 100644
+index 00000000..3c125bc9
+--- /dev/null
++++ b/Source/WTF/wtf/PlatformOnyx.cmake
+@@ -0,0 +1,35 @@
++# The Onyx port of WTF: the POSIX and Unix code paths, the generic run loop, work queue and main
++# thread (no GLib), and a few Onyx files (memory status from libonyxposix's getrusage).
++
++list(APPEND WTF_SOURCES
++    generic/MainThreadGeneric.cpp
++    generic/RunLoopGeneric.cpp
++    generic/WorkQueueGeneric.cpp
++
++    onyx/CurrentProcessMemoryStatusOnyx.cpp
++    onyx/MemoryFootprintOnyx.cpp
++
++    posix/CPUTimePOSIX.cpp
++    posix/FileHandlePOSIX.cpp
++    posix/FileSystemPOSIX.cpp
++    posix/MappedFileDataPOSIX.cpp
++    posix/OSAllocatorPOSIX.cpp
++    posix/ThreadingPOSIX.cpp
++
++    text/unix/TextBreakIteratorInternalICUUnix.cpp
++
++    unix/LanguageUnix.cpp
++    unix/LoggingUnix.cpp
++    unix/MemoryPressureHandlerUnix.cpp
++    unix/UniStdExtrasUnix.cpp
++)
++
++list(APPEND WTF_PUBLIC_HEADERS
++    onyx/CurrentProcessMemoryStatus.h
++
++    unix/UnixFileDescriptor.h
++)
++
++list(APPEND WTF_LIBRARIES
++    Threads::Threads
++)
+diff --git a/Source/WTF/wtf/onyx/CurrentProcessMemoryStatus.h b/Source/WTF/wtf/onyx/CurrentProcessMemoryStatus.h
+new file mode 100644
+index 00000000..8a164b68
+--- /dev/null
++++ b/Source/WTF/wtf/onyx/CurrentProcessMemoryStatus.h
+@@ -0,0 +1,36 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#pragma once
++
++#include <wtf/ProcessMemoryStatus.h>
++
++namespace WTF {
++
++void currentProcessMemoryStatus(ProcessMemoryStatus&);
++
++} // namespace WTF
++
++using WTF::currentProcessMemoryStatus;
+diff --git a/Source/WTF/wtf/onyx/CurrentProcessMemoryStatusOnyx.cpp b/Source/WTF/wtf/onyx/CurrentProcessMemoryStatusOnyx.cpp
+new file mode 100644
+index 00000000..86f98c87
+--- /dev/null
++++ b/Source/WTF/wtf/onyx/CurrentProcessMemoryStatusOnyx.cpp
+@@ -0,0 +1,49 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include "CurrentProcessMemoryStatus.h"
++
++#include <sys/resource.h>
++
++namespace WTF {
++
++// Onyx has no /proc. libonyxposix's getrusage() reports in ru_maxrss the process's CURRENT
++// resident size (the kernel's vm_stats: owned frames and page tables, in KB). Onyx shares no
++// pages between processes but shared memory objects, and the program image is a private copy:
++// everything resident is counted as data.
++void currentProcessMemoryStatus(ProcessMemoryStatus& memoryStatus)
++{
++    memoryStatus = { };
++    struct rusage usage { };
++    if (getrusage(RUSAGE_SELF, &usage))
++        return;
++    size_t resident = static_cast<size_t>(usage.ru_maxrss) * 1024;
++    memoryStatus.size = resident;
++    memoryStatus.resident = resident;
++    memoryStatus.data = resident;
++}
++
++} // namespace WTF
+diff --git a/Source/WTF/wtf/onyx/MemoryFootprintOnyx.cpp b/Source/WTF/wtf/onyx/MemoryFootprintOnyx.cpp
+new file mode 100644
+index 00000000..24e263c4
+--- /dev/null
++++ b/Source/WTF/wtf/onyx/MemoryFootprintOnyx.cpp
+@@ -0,0 +1,42 @@
++/*
++ * Copyright (C) 2026 Onyx contributors. All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++ * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++ * THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#include "config.h"
++#include <wtf/MemoryFootprint.h>
++
++#include <wtf/onyx/CurrentProcessMemoryStatus.h>
++
++namespace WTF {
++
++// The kernel's per-process count (kapi vm_stats, through getrusage): the frames the process
++// owns, page tables included -- what it costs the system.
++size_t memoryFootprint()
++{
++    ProcessMemoryStatus memoryStatus;
++    currentProcessMemoryStatus(memoryStatus);
++    return memoryStatus.resident;
++}
++
++} // namespace WTF
+diff --git a/Source/bmalloc/PlatformOnyx.cmake b/Source/bmalloc/PlatformOnyx.cmake
+new file mode 100644
+index 00000000..5ba4408d
+--- /dev/null
++++ b/Source/bmalloc/PlatformOnyx.cmake
+@@ -0,0 +1,7 @@
++# The Onyx port uses the system allocator (USE_SYSTEM_MALLOC): libpas is never used, and its lock
++# has no Onyx implementation (pas_lock.h: Darwin, Linux / Windows / FreeBSD futexes). Only
++# bmalloc's thin system-malloc layer is built.
++if (USE_SYSTEM_MALLOC)
++    list(FILTER bmalloc_SOURCES EXCLUDE REGEX "^libpas/")
++    list(FILTER bmalloc_C_SOURCES EXCLUDE REGEX "^libpas/")
++endif ()
+diff --git a/Source/cmake/OptionsOnyx.cmake b/Source/cmake/OptionsOnyx.cmake
+new file mode 100644
+index 00000000..b826bdca
+--- /dev/null
++++ b/Source/cmake/OptionsOnyx.cmake
+@@ -0,0 +1,98 @@
++# Copyright (C) 2026 Onyx contributors. All rights reserved.
++#
++# Redistribution and use in source and binary forms, with or without
++# modification, are permitted provided that the following conditions
++# are met:
++# 1. Redistributions of source code must retain the above copyright
++#    notice, this list of conditions and the following disclaimer.
++# 2. Redistributions in binary form must reproduce the above copyright
++#    notice, this list of conditions and the following disclaimer in the
++#    documentation and/or other materials provided with the distribution.
++#
++# THIS SOFTWARE IS PROVIDED BY APPLE INC. AND ITS CONTRIBUTORS ``AS IS''
++# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
++# THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL APPLE INC. OR ITS CONTRIBUTORS
++# BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
++# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
++# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
++# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
++# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
++# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
++# THE POSSIBILITY OF SUCH DAMAGE.
++
++# The Onyx port: Onyx is a small operating system for the Raspberry Pi 4 (AArch64), cross-built
++# with the aarch64-onyx-elf toolchain (GCC, newlib, Onyx's POSIX layer libonyxposix) and Onyx's
++# CMake toolchain file (CMAKE_SYSTEM_NAME Onyx). Everything is static (no shared libraries, no
++# dlopen), the page size is 64 KB, there is no executable memory for a JIT yet, no GLib: the
++# generic event loop, like the PlayStation and JSCOnly ports. Step 1 builds WTF and
++# JavaScriptCore (C_LOOP, or LLInt without JIT) and the jsc shell; WebCore and WebKit come next.
++
++set(PORT Onyx)
++
++add_definitions(-DBUILDING_ONYX__=1)
++add_definitions(-DWTF_PLATFORM_ONYX=1)
++
++set(PROJECT_VERSION_MAJOR 1)
++set(PROJECT_VERSION_MINOR 0)
++set(PROJECT_VERSION_MICRO 0)
++set(PROJECT_VERSION ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_MICRO})
++
++# The kernel's pages are 64 KB (the 64 KB granule): WTF's CeilingOnPageSize, and the defaults
++# of the 64 KB page block (no JIT; LLInt rather than C_LOOP on ARM64) as the Linux distributions
++# with 64 KB pages build it.
++set(USE_64KB_PAGE_BLOCK ON)
++
++find_package(Threads REQUIRED)
++find_package(ICU 70.1 REQUIRED COMPONENTS data i18n uc)
++
++set(CMAKE_C_VISIBILITY_PRESET hidden)
++set(CMAKE_CXX_VISIBILITY_PRESET hidden)
++set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
++
++WEBKIT_OPTION_BEGIN()
++WEBKIT_OPTION_DEFINE(ENABLE_STATIC_JSC "Whether to build JavaScriptCore as a static library." PUBLIC ON)
++
++# No executable memory (the kernel refuses PROT_EXEC outside its own code arena): no JIT tier.
++# The interpreter: C_LOOP (portable C++) by default; ENABLE_C_LOOP=OFF builds the LLInt from
++# offlineasm's ARM64 back end (still no JIT, no runtime code generation).
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_JIT PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_DFG_JIT PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_FTL_JIT PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_C_LOOP PRIVATE ON)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_WEBASSEMBLY PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_SAMPLING_PROFILER PRIVATE OFF)
++
++# The system allocator (newlib's malloc over libonyxposix); no bmalloc / libpas / mimalloc, no
++# Gigacage (its multi-GB reservations), no IsoMalloc.
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_SYSTEM_MALLOC PRIVATE ON)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_MIMALLOC PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(USE_ISO_MALLOC PRIVATE OFF)
++
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_REMOTE_INSPECTOR PRIVATE OFF)
++WEBKIT_OPTION_DEFAULT_PORT_VALUE(ENABLE_RESOURCE_USAGE PRIVATE OFF)
++WEBKIT_OPTION_DEFINE(USE_SYSTEM_UNIFDEF "Whether to use a system-provided unifdef" PRIVATE ON)
++WEBKIT_OPTION_END()
++
++# Step 1: WTF, JavaScriptCore and its shell only.
++set(ENABLE_WEBCORE OFF)
++set(ENABLE_WEBKIT_LEGACY OFF)
++set(ENABLE_WEBKIT OFF)
++set(ENABLE_WEBINSPECTORUI OFF)
++set(ENABLE_WEBGL OFF)
++set(ENABLE_WEBGPU OFF)
++set(ENABLE_API_TESTS OFF)
++
++# Static libraries all through: the programs are static ELF images.
++set(bmalloc_LIBRARY_TYPE STATIC)
++set(WTF_LIBRARY_TYPE STATIC)
++set(JavaScriptCore_LIBRARY_TYPE STATIC)
++
++SET_AND_EXPOSE_TO_BUILD(USE_GENERIC_EVENT_LOOP 1)
++SET_AND_EXPOSE_TO_BUILD(WTF_DEFAULT_EVENT_LOOP 0)
++set(EVENT_LOOP_TYPE "Generic")
++set(LOWERCASE_EVENT_LOOP_TYPE "generic")
++
++SET_AND_EXPOSE_TO_BUILD(HAVE_PTHREAD_SETNAME_NP ON)
++SET_AND_EXPOSE_TO_BUILD(HAVE_MAP_ALIGNED OFF)
++SET_AND_EXPOSE_TO_BUILD(USE_UNIX_DOMAIN_SOCKETS ON)
+diff --git a/Source/cmake/WebKitCommon.cmake b/Source/cmake/WebKitCommon.cmake
+index d0385b2c..dda8bcfc 100644
+--- a/Source/cmake/WebKitCommon.cmake
++++ b/Source/cmake/WebKitCommon.cmake
+@@ -78,6 +78,7 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
+         IOS
+         JSCOnly
+         Mac
++        Onyx
+         PlayStation
+         WPE
+         Win
+@@ -221,6 +222,9 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
+             set(WTF_OS_MACOS 1)
+         elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
+             set(WTF_OS_LINUX 1)
++        elseif (CMAKE_SYSTEM_NAME STREQUAL "Onyx")
++            set(WTF_OS_ONYX 1)
++            set(WTF_OS_UNIX 1)
+         else ()
+             set(WTF_OS_UNIX 1)
+         endif ()

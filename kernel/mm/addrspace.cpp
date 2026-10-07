@@ -5,6 +5,7 @@
 #include <kern/appcore.h>
 #include <kern/gui/window.h>		// CWindow + CWindowManager (process window)
 #include <kern/gui/surface.h>		// CSurfaceManager (free a dead owner's surfaces)
+#include <kern/wsrv.h>
 #include <kern/ipc.h>			// CMailbox + IpcOnProcessGone (activity-shell IPC)
 #include <kern/stream.h>		// CStream + CProcess (stdio teardown)
 #include <kern/kapi_abi.h>		// KAPI_TABLE_VA (fixed VA of the app's kapi table)
@@ -13,6 +14,9 @@
 #include <kern/v3d.h>			// V3DReleaseAS (free a dead process's GPU textures)
 #include <kern/thread.h>		// ThreadsFree (its threads' objects)
 #include <kern/el0.h>			// the EL0 table + code pages, KAPI_STUBS_VA
+#include <kern/vm.h>			// VmTeardown (v75)
+#include <kern/procx.h>		// ProcInfoTeardown (v75)
+#include <kern/image.h>		// ImageRelease (v77)
 #include <circle/logger.h>		// CLogger (verbose exit log)
 #include <circle/sched/task.h>		// CTask, TASK_USER_DATA_USER, GetUserData
 #include <circle/alloc.h>		// palloc / pfree (64 KB pages)
@@ -24,8 +28,10 @@
 static u64 s_ulKernelTTBR0 = 0;
 
 // Software bit (in an L3 page descriptor's Ignored field) flagging a frame that
-// this address space palloc'd and must pfree on teardown.
+// this address space palloc'd and must pfree on teardown (= VM_PTE_SW_OWNED, bit 55: the VM
+// code uses bits 56-57 too, kern/vm.h).
 #define PAGE_SW_OWNED		1
+static_assert (VM_PTE_SW_OWNED == (u64) PAGE_SW_OWNED << 55, "kern/vm.h: VM_PTE_SW_OWNED");
 
 // ---- ASID allocation (8-bit; ASID 0 reserved for the kernel/global pages) ----
 
@@ -79,7 +85,14 @@ CAddressSpace::CAddressSpace (void)
 	m_ulCodeNext (USER_CODE_BASE),
 	m_pMainTask (0),
 	m_nTasks (0),
-	m_pThreads (0)
+	m_pThreads (0),
+	m_pVm (0),
+	m_pProcInfo (0),
+	m_pImage (0),
+	m_nLibs (0),
+	m_nLibReady (0),
+	m_nTermReason (KAPI_PROC_EXITED),
+	m_nTermCode (0)
 {
 	m_Args[0] = '\0';
 	memset (&m_Syscalls, 0, sizeof m_Syscalls);
@@ -166,6 +179,8 @@ CAddressSpace::~CAddressSpace (void)
 		HandlesDeferRelease (m_pStdin);
 		m_pStdin = 0;
 	}
+	// (v75) Its POSIX side (kern/procx.h): before the spawn record is marked done.
+	ProcInfoTeardown (this);
 	if (m_pProcess != 0)
 	{
 		m_pProcess->nStatus = m_nExitStatus;
@@ -194,6 +209,7 @@ CAddressSpace::~CAddressSpace (void)
 	}
 
 	V3DReleaseAS (this);			// its GPU textures (no frame of it is in flight now)
+	VmTeardown (this);			// (v75) its regions (kern/vm.h), before the frames go
 
 	// This runs in the janitor/reaper context (ReapTerminatedTasks), not inside the
 	// scheduler core: IRQs are enabled and the task is already quiescent, so it is
@@ -214,6 +230,9 @@ CAddressSpace::~CAddressSpace (void)
 
 	if (m_pL2 == 0)
 	{
+		ImageRelease (m_pImage);	// (v77; nothing was mapped: no table)
+		m_pImage = 0;
+		while (m_nLibs != 0) ImageRelease (m_pLib[--m_nLibs]);
 		return;
 	}
 
@@ -233,7 +252,7 @@ CAddressSpace::~CAddressSpace (void)
 
 	// Now free every frame we own (palloc'd via MapNewPage), then each L3 table,
 	// then the L2. Frames not flagged PAGE_SW_OWNED are owned elsewhere (the window
-	// canvas) and must NOT be freed here.
+	// canvas; v77: the program image's shared frames, kern/image.h) and must NOT be freed here.
 	unsigned nFirst = L2_INDEX (USER_VA_BASE);
 	unsigned nLast  = L2_INDEX (USER_VA_END - 1);
 	for (unsigned i = nFirst; i <= nLast; i++)
@@ -286,6 +305,14 @@ CAddressSpace::~CAddressSpace (void)
 	if (g_nUserPages >= m_nOwnedPages) g_nUserPages -= m_nOwnedPages;
 	m_nOwnedPages = 0;
 
+	// (v77) Its program's image let go, now that no page table of this space names its frames
+	// (the TLB was invalidated above): the last process of a program that is not preloaded frees
+	// them here. (Not on the "app core did not stop" path above: its reference is leaked with the
+	// rest, so frames a core may still execute are never freed.)
+	ImageRelease (m_pImage);
+	m_pImage = 0;
+	while (m_nLibs != 0) ImageRelease (m_pLib[--m_nLibs]);	// (v83: its shared libraries, the same way)
+
 	FreeASID (m_nASID);
 }
 
@@ -307,19 +334,49 @@ TARMV8MMU_LEVEL3_DESCRIPTOR *CAddressSpace::GetOrCreateL3 (unsigned nL2Index)
 	m_nOwnedPages++; g_nUserPages++;	// an L3 table
 	memset (pL3, 0, KPAGE_SIZE);
 
-	pDesc->Value11	    = 3;
-	pDesc->Ignored1	    = 0;
-	pDesc->TableAddress = ARMV8MMUL2TABLEADDR ((u64) pL3);
-	pDesc->Reserved0    = 0;
-	pDesc->Ignored2	    = 0;
-	pDesc->PXNTable	    = 0;
-	pDesc->UXNTable	    = 0;
-	pDesc->APTable	    = AP_TABLE_ALL_ACCESS;
-	pDesc->NSTable	    = 0;
+	// Built aside, then stored as ONE 64-bit word (v75): an app core may walk this table at any
+	// moment (its job runs in this space), and must never see a half-written descriptor. The
+	// zeroed table is visible before the descriptor that points at it (DSB ISHST).
+	TARMV8MMU_LEVEL2_DESCRIPTOR Desc;
+	memset (&Desc, 0, sizeof Desc);
+	Desc.Table.Value11	= 3;
+	Desc.Table.TableAddress	= ARMV8MMUL2TABLEADDR ((u64) pL3);
+	Desc.Table.APTable	= AP_TABLE_ALL_ACCESS;
+	u64 ulDesc;
+	memcpy (&ulDesc, &Desc, sizeof ulDesc);
+	asm volatile ("dsb ishst" ::: "memory");
+	*(volatile u64 *) pDesc = ulDesc;
 
 	DataSyncBarrier ();
 
 	return pL3;
+}
+
+TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *CAddressSpace::PageDesc (u64 ulVA)
+{
+	if (!IS_USER_VA (ulVA) || m_pL2 == 0) return 0;
+	const TARMV8MMU_LEVEL2_TABLE_DESCRIPTOR *pDesc = &m_pL2[L2_INDEX (ulVA)].Table;
+	if (pDesc->Value11 != 3) return 0;
+	TARMV8MMU_LEVEL3_DESCRIPTOR *pL3 = (TARMV8MMU_LEVEL3_DESCRIPTOR *)
+		ARMV8MMUL2TABLEPTR ((u64) pDesc->TableAddress);
+	return &pL3[L3_INDEX (ulVA)].Page;
+}
+
+unsigned CAddressSpace::GetTablePages (void) const
+{
+	if (m_pL2 == 0) return 0;
+	const TARMV8MMU_LEVEL2_DESCRIPTOR *pKernelL2 = (const TARMV8MMU_LEVEL2_DESCRIPTOR *) s_ulKernelTTBR0;
+	unsigned n = 1;					// the L2
+	for (unsigned i = L2_INDEX (USER_VA_BASE); i <= L2_INDEX (USER_VA_END - 1); i++)
+	{
+		if (   m_pL2[i].Table.Value11 == 3
+		    && !(   pKernelL2[i].Table.Value11 == 3
+			 && pKernelL2[i].Table.TableAddress == m_pL2[i].Table.TableAddress))
+		{
+			n++;
+		}
+	}
+	return n;
 }
 
 boolean CAddressSpace::MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &Attr,
@@ -335,22 +392,23 @@ boolean CAddressSpace::MapPage (uintptr ulVA, uintptr ulPA, const TKPageAttr &At
 		return FALSE;
 	}
 
-	TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *pPage = &pL3[L3_INDEX (ulVA)].Page;
-
+	// Built aside, then stored as one 64-bit word (an app core may walk it meanwhile: kern/vm.h).
+	TARMV8MMU_LEVEL3_DESCRIPTOR Desc;
+	memset (&Desc, 0, sizeof Desc);
+	TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *pPage = &Desc.Page;
 	pPage->Value11	     = 3;
 	pPage->AttrIndx	     = Attr.AttrIndx;
-	pPage->NS	     = 0;
 	pPage->AP	     = Attr.AP;
 	pPage->SH	     = Attr.SH;
 	pPage->AF	     = 1;
 	pPage->nG	     = Attr.nG;
-	pPage->Reserved0_1   = 0;
 	pPage->OutputAddress = ARMV8MMUL3PAGEADDR (ulPA);
-	pPage->Reserved0_2   = 0;
-	pPage->Continous     = 0;
 	pPage->PXN	     = Attr.PXN;
 	pPage->UXN	     = Attr.UXN;
 	pPage->Ignored	     = bOwned ? PAGE_SW_OWNED : 0;
+	u64 ulDesc;
+	memcpy (&ulDesc, &Desc, sizeof ulDesc);
+	*(volatile u64 *) &pL3[L3_INDEX (ulVA)] = ulDesc;
 
 	DataSyncBarrier ();
 
@@ -363,12 +421,34 @@ void CAddressSpace::FlushTLB (void)
 	asm volatile ("dsb ishst; tlbi aside1is, %0; dsb ish; isb" :: "r" (ulArg) : "memory");
 }
 
+// The protection a mapping's attributes give EL0 (for vm_query: kern/vm.h).
+static unsigned ProtOf (const TKPageAttr &Attr)
+{
+	unsigned nProt = 0;
+	if (Attr.AP == ATTRIB_AP_RW_ALL) nProt = KAPI_PROT_READ | KAPI_PROT_WRITE;
+	else if (Attr.AP == ATTRIB_AP_RO_ALL) nProt = KAPI_PROT_READ;
+	if (Attr.UXN == 0) nProt |= KAPI_PROT_EXEC;
+	return nProt;
+}
+
 void CAddressSpace::MapContig (u64 ulVA, u64 ulPhys, unsigned nPages, const TKPageAttr &Attr)
 {
 	for (unsigned i = 0; i < nPages; i++)
 	{
 		MapPage (ulVA + (u64) i * KPAGE_SIZE, ulPhys + (u64) i * KPAGE_SIZE, Attr);
 	}
+	VmNoteRegion (this, ulVA, ulVA + (u64) nPages * KPAGE_SIZE, ProtOf (Attr), KAPI_VMK_FIXED);
+}
+
+void CAddressSpace::UnmapContig (u64 ulVA, unsigned nPages)
+{
+	for (unsigned i = 0; i < nPages; i++)
+	{
+		TARMV8MMU_LEVEL3_PAGE_DESCRIPTOR *pDesc = PageDesc (ulVA + (u64) i * KPAGE_SIZE);
+		if (pDesc != 0) *(volatile u64 *) pDesc = 0;		// (one 64-bit word: kern/vm.h)
+	}
+	DataSyncBarrier ();
+	FlushTLB ();
 }
 
 void *CAddressSpace::MapSurface (u64 ulPhys, unsigned nPages)
@@ -411,15 +491,7 @@ boolean CAddressSpace::IsMapped (uintptr ulVA)
 
 boolean CAddressSpace::MapStack (u64 ulTop, u64 nSize)
 {
-	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;
-	for (u64 va = KPAGE_ALIGN_DOWN (ulTop - nSize); va < ulTop; va += KPAGE_SIZE)
-	{
-		if (!IsMapped (va) && MapNewPage (va, Attr) == 0)
-		{
-			return FALSE;			// (what is mapped stays: freed at teardown)
-		}
-	}
-	return TRUE;
+	return VmMapStack (this, ulTop, nSize, nSize) == 0;	// (lazy: nothing mapped now)
 }
 
 void *CAddressSpace::MapNewPage (uintptr ulVA, const TKPageAttr &Attr)
@@ -435,6 +507,7 @@ void *CAddressSpace::MapNewPage (uintptr ulVA, const TKPageAttr &Attr)
 		return 0;
 	}
 	memset (pFrame, 0, KPAGE_SIZE);
+	asm volatile ("dsb ishst" ::: "memory");	// the zeros before the PTE (another core may walk)
 
 	if (!MapPage (ulVA, (uintptr) pFrame, Attr, TRUE))	// TRUE: we own this frame
 	{
@@ -451,21 +524,27 @@ void *CAddressSpace::Sbrk (long nIncrement)
 	u64 ulOld = m_ulHeapBrk;
 	if (nIncrement == 0) return (void *) ulOld;
 
-	if (nIncrement < 0)			// shrink: lower the break, keep pages mapped
-	{					// (reclaimed wholesale at teardown anyway)
+	if (nIncrement < 0)			// shrink: lower the break; the pages above it dropped
+	{
 		u64 ulDec = (u64) (-nIncrement);
-		m_ulHeapBrk = (ulDec >= ulOld - USER_HEAP_BASE) ? USER_HEAP_BASE : ulOld - ulDec;
+		u64 ulBrk = (ulDec >= ulOld - USER_HEAP_BASE) ? USER_HEAP_BASE : ulOld - ulDec;
+		u64 ulEnd = KPAGE_ALIGN_UP (ulBrk);
+		if (ulEnd < m_ulHeapEnd)
+		{
+			VmHeapResize (this, m_ulHeapEnd, ulEnd);
+			m_ulHeapEnd = ulEnd;
+		}
+		m_ulHeapBrk = ulBrk;
 		return (void *) ulOld;
 	}
 
+	if ((u64) nIncrement > USER_HEAP_MAX - ulOld) return (void *) -1;	// out of heap VA
 	u64 ulWant = ulOld + (u64) nIncrement;
-	if (ulWant > USER_HEAP_MAX) return (void *) -1;		// out of heap VA
-
-	TKPageAttr Attr = KPAGE_ATTR_APP_DATA;			// EL0 RW
-	while (m_ulHeapEnd < ulWant)				// map fresh pages to cover [old,want)
+	u64 ulEnd = KPAGE_ALIGN_UP (ulWant);
+	if (ulEnd > m_ulHeapEnd)		// the lazy region grown (kern/vm.h)
 	{
-		if (MapNewPage (m_ulHeapEnd, Attr) == 0) return (void *) -1;	// OOM
-		m_ulHeapEnd += KPAGE_SIZE;
+		if (VmHeapResize (this, m_ulHeapEnd, ulEnd) != 0) return (void *) -1;	// OOM
+		m_ulHeapEnd = ulEnd;
 	}
 	m_ulHeapBrk = ulWant;
 	return (void *) ulOld;
@@ -487,6 +566,8 @@ void *CAddressSpace::CodeAlloc (u64 ulSize)
 	}
 	m_ulCodeNext = ulVA + ulPages * KPAGE_SIZE;
 	DataSyncBarrier ();
+	VmNoteRegion (this, USER_CODE_BASE, m_ulCodeNext, KAPI_PROT_READ | KAPI_PROT_WRITE | KAPI_PROT_EXEC,
+		      KAPI_VMK_FIXED);
 	return (void *) ulVA;
 }
 
@@ -541,6 +622,7 @@ void AddressSpaceTaskTerminate (CTask *pTask)
 						pTask->GetName (), pAS->GetPid ());
 		NetCloseByPid (pAS->GetPid ());		// close any TCP sockets it leaked
 		IpcOnProcessGone (pAS->GetPid ());	// forget it in the IPC router (clears shell)
+		WsOnProcessGone (pAS->GetPid ());	// the graphics server gone: the display is the kernel's again
 		if (CSurfaceManager::Get () != 0)
 			CSurfaceManager::Get ()->DestroyByOwner (pAS->GetPid ());	// free its surfaces
 		pTask->SetUserData (0, TASK_USER_DATA_USER);

@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Stephan WEGENER <steph.wegener@gmail.com>
+Date: Sat, 3 Oct 2026 22:31:41 +0200
+Subject: [PATCH 23/25] [Onyx] The collector neither concurrent nor parallel by
+ default: a program has one core
+
+---
+ Source/JavaScriptCore/runtime/Options.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/Source/JavaScriptCore/runtime/Options.cpp b/Source/JavaScriptCore/runtime/Options.cpp
+index c4388682..b7cf630a 100644
+--- a/Source/JavaScriptCore/runtime/Options.cpp
++++ b/Source/JavaScriptCore/runtime/Options.cpp
+@@ -593,6 +593,16 @@ static void overrideDefaults()
+             Options::gcIncrementScale() = 0;
+     }
+ 
++#if OS(ONYX)
++    // A program's threads all run on one core on Onyx. The concurrent collector marks beside the
++    // mutator and, to keep up, takes the processor from it: measured on the Pi (jsc, 400 000 short
++    // strings kept), 3.9 s against 0.2 s with the collection done at once, the world stopped --
++    // twenty times; 200 000 objects kept, 758 ms against 20. One marker, no concurrency (a
++    // command line may still ask for them).
++    Options::useConcurrentGC() = false;
++    Options::numberOfGCMarkers() = 1;
++#endif
++
+ #if OS(DARWIN) && CPU(ARM64)
+     {
+         // Example topologies.

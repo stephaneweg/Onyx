@@ -1,12 +1,12 @@
 //
 // pc/Koton/winkapi.cpp -- the Onyx kernel's ABI table (kern/kapi_abi.h) on Windows, so that Koton (user/Apps/
-// koton), wtk, FreeType, Koton's plugins (user/Apps/kp_*) and its AI helper (user/bin/llm.cpp) build for
+// koton), uikit, FreeType, Koton's plugins (user/Apps/kp_*) and its AI helper (user/BinUtils/llm.cpp) build for
 // Windows from the Onyx sources, unchanged: the table is put where the apps look for it (KAPI_TABLE_VA)
 // before any constructor runs, and filled with Win32 equivalents of what those programs call.
 //
 //   the window     a Windows window; its client area is the app's canvas (the Onyx frame is not drawn:
 //                  get_chrome says "borderless"), the app's menu bar a Windows menu. The window's size is
-//                  the "work area": wtk's maximised Root follows it (GUI_EVENT_DISPLAY_RESIZE).
+//                  the "work area": uikit's maximised Root follows it (GUI_EVENT_DISPLAY_RESIZE).
 //   files          "SD:/..." is the folder of Koton.exe (ONYX_SD, inherited by the programs it starts);
 //                  "C:/..." a Windows path. A program ".../main" or "SD:/bin/llm" is main.exe, llm.exe.
 //   sound          the mapped PCM ring (kapi_sound_map) played through WASAPI (shared mode, event driven).
@@ -43,7 +43,7 @@
 #undef SHUTDOWN_RESTART
 #undef MOD_SHIFT
 #undef MOD_CONTROL
-#include "kapi.h"
+#include "appkit/appkit.h"
 
 static TKApiTable *T;
 
@@ -957,8 +957,6 @@ static int mailbox_recv (int *from, int *type, void *buf, unsigned cap, int bloc
 		WaitForSingleObject (r->ev, 50);
 	}
 }
-static int register_shell (void) { return 0; }
-static int shell_request (int, const void *, unsigned) { return -1; }
 // surfaces: named mappings, "<id>", 64 bytes of header (w, h) then the pixels
 struct Surf { int id; char *base; HANDLE h; };
 static std::vector<Surf> g_surfs;
@@ -1281,6 +1279,8 @@ static void setup (void)
 	void **slots = (void **) T;
 	for (size_t i = 0; i < sizeof (TKApiTable) / sizeof (void *); i++) slots[i] = (void *) unimplemented;
 	T->version = KAPI_ABI_VERSION;
+	// (v75) the POSIX entries absent here: 0, so appkit.h's wrappers return -KAPI_ENOSYS
+	for (size_t i = __builtin_offsetof (TKApiTable, vm_map) / 8; i < sizeof (TKApiTable) / 8; i++) ((void **) T)[i] = 0;
 	InitializeCriticalSection (&g_thLock); InitializeCriticalSection (&g_procLock); InitializeCriticalSection (&g_mbLock);
 	InitializeCriticalSection (&g_sfLock); InitializeCriticalSection (&g_midiLock); InitializeCriticalSection (&g_postLock);
 	DuplicateHandle (GetCurrentProcess (), GetCurrentThread (), GetCurrentProcess (), &g_mainThread, 0, FALSE, DUPLICATE_SAME_ACCESS);
@@ -1306,7 +1306,6 @@ static void setup (void)
 	T->thread_priority = thread_priority; T->core_acquire = core_acquire; T->core_run = core_run; T->core_state = core_state; T->core_release = core_release;
 	T->wait_word = wait_word; T->wake_word = wake_word;
 	T->ipc_register = ipc_register; T->ipc_lookup = ipc_lookup; T->mailbox_send = mailbox_send; T->mailbox_recv = mailbox_recv;
-	T->register_shell = register_shell; T->shell_request = shell_request;
 	T->surface_create = surface_create; T->surface_map = surface_map; T->surface_size = surface_size;
 	T->surface_present = surface_present; T->surface_destroy = surface_destroy;
 	T->sound_acquire = sound_acquire; T->sound_release = sound_release; T->sound_write = sound_write; T->sound_status = sound_status;

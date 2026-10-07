@@ -40,13 +40,13 @@
 #define EL0_BLOB_OFFSET		(EL0_STUB_SLOTS * EL0_STUB_SIZE)	// the routines from 8 KB
 
 // The table's slots the user-side code calls (static_assert'ed against TKApiTable in sys/el0.cpp).
-#define EL0_SYS_EXIT		13
-#define EL0_SYS_SHOULD_EXIT	16
-#define EL0_SYS_THREAD_EXIT	168
-#define EL0_SYS_POP_EVENT	194		// (v73)
-#define EL0_SYS_EVENT_MODS	195		// (v73)
-#define EL0_SYS_POP_POST	196		// (v73)
-#define EL0_SYS_PUMP_SLEEP	197		// (v73)
+#define EL0_SYS_EXIT		5
+#define EL0_SYS_SHOULD_EXIT	8
+#define EL0_SYS_THREAD_EXIT	132
+#define EL0_SYS_POP_EVENT	158		// (v73)
+#define EL0_SYS_EVENT_MODS	159		// (v73)
+#define EL0_SYS_POP_POST	160		// (v73)
+#define EL0_SYS_PUMP_SLEEP	161		// (v73)
 // Not a table slot: an app core's job returned (its return address is the blob's El0CoreReturn).
 #define EL0_SYS_CORE_DONE	0xFFFF
 
@@ -57,8 +57,10 @@
 // A task's kernel stack (its CTask stack: the trap frames, the kapis it calls) -- every app task,
 // main or thread.
 #define EL0_KSTACK_SIZE		0x40000				// 256 KB
-// The main task's user stack: below USER_STACK_TOP (kern/layout.h), app.txt's "stack" or 1 MB.
-#define EL0_USTACK_MIN		0x100000			// 1 MB
+// The main task's user stack: below USER_STACK_TOP (kern/layout.h), app.txt's "stack" or 8 MB.
+// (v75) A lazy region (kern/vm.h): its pages are filled as the stack grows, so the default costs
+// nothing until used; below it nothing is mapped (a guard: an overflow is a "stack overflow" kill).
+#define EL0_USTACK_MIN		0x800000			// 8 MB (the default and the minimum)
 #define EL0_USTACK_MAX		0x4000000			// 64 MB
 // Threads' user stacks: one 32 MB slot per thread record (kern/thread.h THREAD_RECS), the stack
 // at the top of its slot, the rest unmapped (a guard below every stack).
@@ -73,6 +75,8 @@ struct TTrapFrame;
 
 // Boot: build the EL0 table page and the EL0 code page (after KApiTableInit, before any process).
 void El0Init (void);
+// (AppKit, kern/kapi_abi.h) its table copied at APPKIT_TABLE_VA for every program
+void El0InstallAppKit (const u64 *pEntries, unsigned nEntries);
 
 // Every core, early: let EL0 read the counters (CNTKCTL_EL1), the cache type and do the JIT's cache
 // maintenance (SCTLR_EL1.UCI / UCT / DZE), WFE / WFI without a trap (nTWE / nTWI), the PMU

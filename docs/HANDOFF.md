@@ -4,6 +4,784 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Critters, lead the little creatures to the exit (AutoDev round 5, 2026-10-07): built, tested on the PC, branch `AutoDev` only
+
+Made by the AutoDev pipeline (`autodev/rounds/05-critters/`: 02 the analysis and its 37 acceptance criteria, 03 the
+plan and the GUI plan, 04 the design and its mock-ups, 05 the validation, 06 what was built and tested). **Not in
+`main`, not published**: the user validates first. **Read docs/04 §12 *Critters*** (the `.level` and `.sol` formats).
+
+- **Done**: `user/Apps/critters` -- the core (`terrain`, `level`, `world`, `solution`, `progress`: no UI, no I/O,
+  integers only, deterministic to the bit) and the window (`main.cpp`, `draw.h`, `bar.h`, `picker.h`): the picker (the
+  chain of the 12 shipped levels, the player's `SD:/docs/critters/*.level`, a refused level with its line and reason),
+  the start card, the play area (the terrain x2, scrolled), the status line, the skill bar (8 role slots, the rate, P /
+  F / N, the minimap), the Paused / All explode / end / How to play cards, the Game and Help menus, `progress.ini`,
+  `--replay <sol> --until <step|end>`; the 12 levels (`tools/critters/mklevels.py`) and their solutions
+  (`tools/tests/critters/solutions/`, the headless runner `tools/critters/crsim`); `lang/fr.txt`; `app.txt`,
+  `icon.bmp` (`tools/icons/critters_icon.py`); `.level` in `sdcard/etc/fileassoc.ini`; `[app.critters]` declared in
+  `tools/pkg/packages.ini`. No kapi, kit, kernel or simulator change.
+- **Tested on the PC**: `sh tools/tests/run_critters_test.sh` (930 checks, the determinism fingerprint equal at -O1 +
+  sanitizers and -O2), `sh tools/tests/run_critters_sim_test.sh` (the window, 25 checks), `python3 tools/lang/check.py
+  critters`, `shots.sh critters` (`critters.png`, `-play`, `-build`, `-end`, `-help`, `-fr`, `-play-fr`); `shots.sh
+  pinball invaders` unchanged.
+- **Not done here (no aarch64 compiler in the container)**: `make` / `make stage` (the user/Makefile lines are
+  written: `FT_APPS`, `FT_EXTRA_critters`); then on the Pi: the frame rate (a 400-column x2 blit and up to 80 blended
+  frames a tick), the held arrows through the real kernel, the sounds.
+- **Follow-ups**: the SHOULD items -- the basher and the miner (slots 7 and 8 are there, greyed), `critters --check`
+  and a sample `SD:/docs/critters/my-first-level.level`, the gamepad (a crosshair cursor, 04 §7), the best run's
+  replay in `progress.ini` and *Watch the best* (`Recorder` exists in the core); `progress.h` into FileKit when a
+  fourth game wants the same.
+
+## Turtle Quest, *Gems, portals and fractals* (AutoDev round 3, 2026-10-06): built, tested on the PC, branch `AutoDev` only
+
+Made by the AutoDev pipeline (`autodev/rounds/03-turtle-missions/`: 02 the analysis and its 18 acceptance criteria,
+03 the plan and the GUI plan, 04 the design and its mock-ups, 05 the validation, 06 what was built and tested). **Not
+in `main`, not published**: the user validates first. **Read docs/04 §13 *Turtle Quest*** and docs/03 *Turtle Quest*.
+
+- **Done**: in `user/Apps/turtle/world.h` -- **gems** `1`…`9` picked in order (`GEM ()` / `GEMME ()`, `PICK` out of
+  order an error, the not-won message), **portals** `T` / `U` (a pair each; `EV_TELEPORT`, the steps left go on from
+  the twin, no line across; `FRONT ()` = 5), **colour drawings** (`draw = color`: the shape then the colours,
+  `same_colours`), the friendly recursion message, six lesson cards (EN/FR), `check_level` (one verdict for the pack
+  reader and the editor), `edit_gem` / `edit_pad`, `new_best`; two packs, **48 levels** in all:
+  `4-gems-and-portals.turtle` (10) and `5-spirals-and-fractals.turtle` (11: polygons with parameters, a rainbow
+  snail, `FUNCTION`, a tree, Koch, the snowflake, Sierpinski). In `main.cpp`: the gems, the portals and their jump's
+  animation, the HUD *Gems n / N*, the tinted colour target, the 6-line card, the lesson box centred on the column
+  (small faces in a narrow window), the editor's 12 tools, the *No / Shape / Colours* chooser and the red check, the
+  window's minimum **920 × 600**; the SHOULD items done: **your best** (`<id>.best`, *Best: 6* / *Record : 6* by the
+  count), **the pack's stars** at the list's foot, a **FUNCTION / FONCTION** chip in the function and recursion levels.
+- **Tested on the PC**: `run_turtle_test.sh` (48 levels solved with three stars, written back the same, the lint,
+  gems / portals / colours / recursion / editor / best cases), `run_basic_test.sh`, `shots.sh turtle` (8 shots, EN;
+  the French ones looked at). `tools/pkg/packages.ini` unchanged (the `[*apps]` rule ships `levels/`); nothing
+  published.
+- **Not done here (no aarch64 compiler in the container)**: `make` from `kernel/` (the `turtle` target) and `make
+  stage`; then on the Pi: the jump's animation and the gems' ring at the real pace, the 920 × 600 minimum, the
+  editor's Gem / Portal tools by mouse, the French lesson cards in a small window.
+- **Follow-ups**: the progress on FileKit's `fk_kv` (not done: needs the card link of `filekit.imp.a` built and a
+  byte-identical proof -- `kv_save` writes a section again when it comes back, `fk_kv_set` appends to its first
+  block); a free-drawing **sandbox** (not done: a goal-free, target-free level needs a `run_program` rule and breaks
+  the test's "48 levels, three stars each"); several turtles, a daily challenge, GPIO bonus levels, coloured keys /
+  doors, switches, the UI words onto `TR ()` + `lang/fr.txt`; the selected row's bold title can touch its stars in
+  French (the cut is measured in the regular face -- older than this round).
+
+## Pinball, a pinball table with real physics (AutoDev round 4, 2026-10-07): built, tested on the PC, branch `AutoDev` only
+
+Made by the AutoDev pipeline (`autodev/rounds/04-pinball/`: 02 the analysis and its 37 acceptance criteria, 03 the
+plan and the GUI plan, 04 the design and its mock-ups, 05 the validation, 06 what was built and tested). **Not in
+`main`, not published**: the user validates first. **Read docs/04 §12 *Pinball*** (the `.table` format too).
+
+- **Done**: `user/Apps/pinball` -- the core (`table`, `physics`, `rules`, `scores`: no UI, no I/O, deterministic to
+  the bit) and the window (`main.cpp`, `draw.h`, `panel.h`, `picker.h`): the picker (shipped tables, the player's
+  `SD:/docs/pinball/*.table`, a refused table with its line and reason), the playfield letterboxed in a resizable
+  window, the panel (score and ball LCD, the message line, bonus, multiplier, best, tilt dots, the rules as goals,
+  the keys or the pad's buttons), pause / bonus / game over / name / top-5 cards, Game menu (New Game, Pause,
+  Choose a Table, Open a Table File, Sound, Quit), keyboard + gamepad, game.h's sounds; the three tables
+  (`sdcard/apps/pinball.app/tables/`, generated by `tools/pinball/mktables.py`); `lang/fr.txt`; `app.txt`,
+  `icon.bmp` (`tools/icons/pinball_icon.py`); `.table` in `sdcard/etc/fileassoc.ini`; `[app.pinball]` declared in
+  `tools/pkg/packages.ini`. The simulator gained `hold` / `release` (`kapi_key_held`). No kapi, kit or kernel change.
+- **Tested on the PC**: `sh tools/tests/run_pinball_test.sh` (AC 1-27, 516 checks, 2100 launches, the determinism
+  fingerprint equal at -O1 + sanitizers and -O2), `sh tools/tests/run_pinball_sim_test.sh` (the window, 19 checks),
+  `python3 tools/lang/check.py pinball`, `shots.sh pinball` (`pinball.png`, `pinball-play.png`,
+  `pinball-multiball.png`, `pinball-broken.png`, `pinball-fr.png`); `shots.sh invaders pipes` unchanged.
+- **Not done here (no aarch64 compiler in the container)**: `make` / `make stage` (the user/Makefile lines are
+  written: `FT_APPS`, `FT_EXTRA_pinball`, `-ffp-contract=off`); then on the Pi: the frame rate (one blit of the
+  static layer + the dynamic parts a frame), the held keys through the real kernel, a USB pad, the sounds.
+- **Follow-ups**: the SHOULD items -- a **table checker** (`pinball --check`: every error, the elements' ids drawn)
+  and a sample `SD:/docs/pinball/my-first-table.table`, an attract mode on the picker, the skill shot; the
+  high-score helper (`scores.h`) into a kit when a second game wants it; Shift as flipper keys needs the kernel's
+  held-key table to know the modifiers.
+
+## Circuits, a logic-gate puzzle game (AutoDev round 2, 2026-10-06): built, tested on the PC, branch `AutoDev` only
+
+Made by the AutoDev pipeline (`autodev/rounds/02-circuits/`: 02 the analysis and its 26 acceptance criteria, 03 the
+plan and the GUI plan, 04 the design and its mock-ups, 05 the validation, 06 what was built and tested). **Not in
+`main`, not published**: the user validates first. **Read docs/04 §12 *Circuits***.
+
+- **Done**: `user/Apps/circuits` -- the engine `circuit.h` / `circuit.cpp` (parts, wires on a 40 × 30 grid, live and
+  step-by-step evaluation, Check, stars by gate count, circuit text, a 64-step undo, the packs, the progress, the
+  unlocking; no UI, no I/O), `lessons.h` (18 lesson cards EN + FR), the window `main.cpp` + `gates.h`, `board.h`,
+  `views.h`; the 20 levels in `sdcard/apps/circuits.app/levels/{1-gates,2-combining,3-arithmetic}.circuits`;
+  `lang/fr.txt` (108 words); `app.txt`, `icon.bmp` (`tools/icons/circuits_icon.py`); `.circuits` in
+  `sdcard/etc/fileassoc.ini`; `[app.circuits]` declared in `tools/pkg/packages.ini` (`needs = ..., filekit >= 1.96`,
+  to confirm at publish). **FileKit** gained a subject: `filekit/kvtext.h` (`fk_kv_*`: a sectioned key/value text
+  document read, changed and written back, with repeated sections, `|` continuation lines and their line numbers,
+  `\n` escapes, unknown keys kept), `filekit.abi` slots 78-95 appended by hand (`libgen --nm nm` on host objects);
+  docs/14 regenerated, docs/06 §7 / §14, docs/03 §5.8. No kapi change, `appkit.abi` untouched.
+- **Tested on the PC**: `sh tools/tests/run_kvtext_test.sh`, `run_circuits_test.sh` (the engine and the 20 levels
+  solved with three stars), `run_circuits_sim_test.sh` (the window in the simulator, 61 checks),
+  `python3 tools/lang/check.py circuits`, `shots.sh circuits` (`circuits.png`, `circuits-step.png`,
+  `circuits-check.png`, `circuits-fr.png`); Turtle Quest's test unchanged.
+- **Not done here (no aarch64 compiler in the container)**: `make` / `make stage` -- libgen must accept the
+  hand-appended `filekit.abi` lines 78-95 (then `filekit >= 1.96` holds); then on the Pi: the window, the mouse
+  (drag from the palette, wiring), the 1 s autosave on the card, a `.circuits` opened from the File Viewer.
+- **Known limit**: the board holds **35 gates** (5 × 7 places between the columns), not the 48 of the analysis; the
+  engine's `E_FULL` (49th gate) is unreachable by placing. The largest reference solution has 7 gates.
+- **Follow-ups**: move Turtle Quest's private `kv_*` store and `parse_pack`, and Notes' `notes.ini` reader, onto
+  FileKit's `fk_kv` (the reason it was made a kit); **sequential logic** (latches, flip-flops, a clock: a world 4,
+  which needs the evaluator to keep state between steps); the SHOULD items left: **chips** (a solved level --
+  half / full adder -- as a part, 02 §4.1), *Paste Circuit*, a **sandbox** with `.circuit` files, several players;
+  a **level editor** (as Turtle Quest's, Ctrl+E); a shared star glyph in UIKit for both games.
+
+## Notes and Stickies, quick notes and the pinned ones on the desktop (AutoDev round 1, 2026-10-06): built, tested on the PC, branch `AutoDev` only
+
+Made by the AutoDev pipeline (`autodev/PIPELINE.md`; the round's documents: `autodev/rounds/01-notes/`, 02 the
+analysis and its 33 acceptance criteria, 03 the plan, 04 the design and its mock-ups, 06 what was built and tested).
+**Not in `main`, not published**: the user validates first. **Read docs/04 §12 *Notes* and §5 *Stickies***.
+
+- **Done**: `user/Apps/notes` (`main.cpp` the window, `notelist.h` the list, `notesmodel.*` the files -- one `.txt` a
+  note in `SD:/Notes`, `notes.ini`, the names, the dates, `config.ini` --, `stickies_proto.h` the two services) and
+  `user/Apps/stickies` (the cards on the desktop, the agenda's kind of window); UIKit `uk_text_wrap`,
+  `uk_text_over`, `WKT_TRASH`, `WKT_PIN` (`uikit.abi` 779-780); SystemKit `systemkit/autostart.h`
+  (`autostart_has`, `autostart_ensure`: `systemkit.abi` 59-60); `sdcard/etc/autostart` ships `#setup: run stickies`;
+  the package `[notes]` declared in `tools/pkg/packages.ini` (before `[onyx]`; needs `uikit >= 1.781, systemkit
+  >= 1.61` -- to confirm at publish time); the simulator's tooling (`fakekapi.cpp`: `SIM_SERVICES`, `SIM_ROFS`,
+  `SIM_CURSOR=follow`, the `copy` step, `SIM_STAT`, `SIM_MBOX` `@<ticks>:` lines, the windows' flags logged).
+- **Tested on the PC**: `sh tools/tests/run_notes_test.sh` (the model, the wrap, autostart, the simulator's
+  additions), `run_notes_sim_test.sh` (Notes, 67 checks), `run_stickies_sim_test.sh` (Stickies, 29 checks),
+  `shots.sh notes notes-empty stickies stickies-empty notes-desktop agenda desktop`.
+- **Not done here (no aarch64 compiler in the container)**: `make` / `make stage` -- libgen must accept the
+  hand-appended `.abi` lines; then on the Pi: a note pinned shows on the desktop within ~3 s, a reboot keeps the
+  pins and the Show / Hide setting, the drag of Stickies' header, Notes' 1 s autosave on the card.
+- **Ideas left for later**: IDEAS.md's *Notes rapides* row (the search, the checklist ticks, Sort by, the drag out,
+  Export, menu check marks, keyconf / Setup on `autostart.h`). `sdcard_lite/etc/autostart` gets the line at the next
+  publish (`mkrepo.py --lite`).
+
+## Turtle Quest, the game that teaches programming with a turtle (2026-10-06): built, tested on the PC, published
+
+Asked as a task (IDEAS.md P9's "outil didactique ... tortue"): a game where the player types BASIC to move a turtle
+to its goal, through levels. **Read docs/04 §13 *Turtle Quest*** (the game) and docs/03 *Onyx BASIC* (*A host's own
+words: dialects*, *The statement hook*, *Turtle Quest*: the code's pieces).
+
+- **Done**: `user/Apps/turtle` (`main.cpp` the window, `world.h` the engine: levels, packs, the turtle's world, the
+  run recorded), 27 levels in three packs `sdcard/apps/turtle.app/levels/*.turtle` (moves, turns, coins, keys and
+  doors; REPEAT, FOR, IF, the sensors, WHILE, mazes; variables, SUB, the pen, Logo's figures), English and French
+  (the words -- AVANCE, REPETE, SI... -- the texts, the lessons), step by step with the line lit, the speed, lessons
+  per new idea, hints, 1-3 stars by the instruction count, friendly errors at their line, a level editor (saved to
+  `SD:/docs/turtle/my-levels.turtle`), several players (`SD:/apps/turtle.app/progress.ini`), `.turtle` opened by the
+  game (the package's `opens`).
+- **In Onyx BASIC** (`user/Libs/basic`): **dialects** (`bas::setDialect`: a host's statements and functions ->
+  `Host::ext`, word aliases, `REPEAT n ... END REPEAT`; `S_EXT` / `B_EXT`, no new opcode) and the **statement hook**
+  (`Host::lineHook`, `Host::onStatement`: VM only) -- the hook is meant to become QBasic's / QBStudio's debugger
+  (breakpoints, stepping: QBStudio's help says "Not yet: the debugger").
+- **In UIKit**: QBStudio's code editor moved into the kit as **`uikit::CodeEdit`** (`uikit/codeedit.h`, 35 entries
+  appended to `uikit.abi`, the layout lock regenerated: uikit 1.779), now UTF-8 aware (a comment's accents); QBStudio
+  uses it (`Apps/qbstudio/codeedit.h` is its set-up) -- its screenshots came out identical.
+- **Tested**: `sh tools/tests/run_turtle_test.sh` (every level solved by its own solution with three stars, the
+  packs written back and read again, the errors), `sh tools/tests/run_basic_test.sh` (+ the dialect test),
+  `run_qbstudio_test.sh`, the app driven in the desktop simulator (`shots.sh turtle`: three screenshots). **Not yet
+  run on the Pi**: check the playback's pace (`kapi_clock_us`), the fonts, a pack opened from the File Viewer.
+- **Ideas**: more packs (the user's levels shared as `.turtle` files; packs 4 and 5 came with AutoDev round 3, see
+  above), a "free drawing" sandbox with no goal, the turtle's speech (`SAY`), sounds; QBasic's debugger on the hook.
+
+## USB sticks: hot mount, eject, format (2026-10-06, kapi v93): built, tested on the PC, NOT yet on the Pi
+
+**The names (the user's choice, 2026-10-06, after the first version)**: `USB1:` (`USB2:`, `USB3:`) = a USB device
+whole when it has one partition or none; `USB1P1:`, `USB1P2:`... its partitions when it has several (each FAT /
+exFAT one mounted); `USB:` is an alias of `USB1:` (as `SD0:` of `SD:`). Built: `FF_VOLUMES 21`, `VolToPart`, ff.c's
+limit of 10 lifted (docs/05 §28), one FatFs lock a physical drive (`fslock.cpp`), the device's sector 0 read by
+`UsbLayout`; eject acts on the whole device; a format of `USB1:` makes the device one partition again, of
+`USB1P2:` only that partition (Disks: "Whole device"). Tested on the PC (`usbtest`: two partitions, then the whole
+device again). **On the Pi, also test**: a stick of two partitions (made on a PC: FAT32 + exFAT) -> `USB1P1:` and
+`USB1P2:`, their eject together, a format of one, then "Whole device".
+
+Asked by the user: USB mass-storage volumes so the system is not limited to the SD card. **Read docs/02 §18**
+(the design, the surprise removal, the eject, the format, the multi-partition proposal) and docs/05 §28 (the
+Circle fork's patches).
+
+- **Done**: `kernel/sys/volume.cpp` (+ `kern/volume.h`): `USB1:` / `USB2:` / `USB3:` (Circle's `umsd1..3`; or `USBnP1:`.. per partition) mounted
+  when plugged in (`VolPoll`, the input task, beside `SoundPoll`), unmounted at an eject or when pulled out (its
+  open files lost -> `-EIO`, the programs go on); kapi v93 `vol_list` 230, `vol_eject` 231, `vol_mount` 232,
+  `vol_format` 233 (SD: always refused; SD1..SD3 with `KAPI_FMT_CARD`); the FatFs objects outside the open-file
+  layer tracked (`VolTrack`); `kapi_shutdown` syncs everything first (`VolSyncAll`); `USB:` = `USB1:`.
+  The fork (circle `onyx`): `FF_USE_MKFS`, `FF_USE_LABEL`, `ff.c` re-checks after the volume lock, `ffsystem.cpp`'s
+  mutex kept across an unmount, a yield between USB transfers (`diskio.cpp`), SCSI SYNCHRONIZE CACHE.
+  User side: the menu bar's USB icon and box (Eject / Mount / Format..., notifications), the File Viewer (sidebar,
+  Go > USB Stick / Eject USB Stick (Ctrl+E) / Disks), **Disks** (`user/Apps/disks`, in the `onyx` package),
+  `/bin/mount`, `/bin/eject`, `/bin/mkfs`, `df` lists every volume; Photos looks in each USB volume's `DCIM`.
+- **Tested on the PC**: `sh tools/tests/run_fs_test.sh` (new `fs/usbtest.cpp`: formats, labels, MBR /
+  superfloppy, a stick pulled out while writing, an unmount while a call waits for the lock — that one fails
+  with upstream's `ff.c`), `run_ofile_test.sh`, `run_ipc_test.sh`; Disks and the USB box in the simulator
+  (`SIM_USB=1`, `shots.sh disks usbmenu`). Kernel and apps built.
+- **To test on the Pi with a real stick** (nothing ran there yet): a FAT32 stick and an exFAT one plugged in
+  after boot and at boot (the notification, the icon, `mount`, `ls USB1:`, `ls USB:`); copy SD <-> USB both ways with `cp`
+  and the File Viewer (a big file: the desktop must stay responsive); `eject` then pull out (no warning); pull
+  out **while copying** a big file (the copy fails, no hang, no crash; `kmsg`: `volume: USB1: removed without
+  an eject`; another stick then mounts and the old copy does not write to it); eject with a file open (Tinypad on
+  `USB1:/x.txt`: -EBUSY, then forced); `mkfs -t exfat -L TEST USB1:` and FAT32 on a 32 GB+ stick (the time it
+  takes; the stick then readable on a PC); `mkfs SD:` refused; two sticks at once (`USB2:`); a USB hard disk
+  (its spin-up: the mount is tried 3 times); a stick behind a hub; the SYNCHRONIZE CACHE on sticks that refuse it
+  (`kmsg`: no error loop). Worth timing: how long a transfer that was running when a stick is pulled takes to
+  fail (Circle's xHCI 3 s timeout, its retries).
+- **Open / for later**: GPT (`FF_LBA64`: a full rebuild), hidden `.~onyx-deleted` files left on a stick by a
+  crash are not cleaned at its mount (only the card's at boot).
+
+## The dock: a drawer for every category; the Programming category (2026-10-06; tested in the simulator, not yet on the Pi)
+
+Asked by the user: a **Programming** category (QBasic, QBStudio, Turtle Quest, GPIO Lab: their `app.txt`; the Onyx
+menu's order), then "toutes les catégories détectées" in the dock, the Panel applet choosing only their order, their
+main app and the hidden ones (no maximum: 32, `DOCK_MAXCATS`). SystemKit 59: `DockLayout`, `dock_layout_load` (dock.ini's
+`drawer =` lines as the order and main apps, new `hidden =` lines, the card's categories not named appended by name;
+not Shell / Settings / Emulators: `dock_category_docked`), `dock_layout_save`; `DockConf` / `dockconf_load` / `_save`
+kept for programs built before. The dock and the applet use it (they need systemkit >= 1.59: `[onyx]`'s needs).
+Too wide for the screen, the dock scales its launchers' width, its icons (averaged down) and its height together
+(`layout`: 60 / 40 / 80 px down to 34 / 22 / 60; tried at 800 and 640 px wide in the simulator).
+
+## The GPIO workshop: GPIOKit, GPIO Lab, BASIC's GPIO (2026-10-06; built and tested on the PC, NOT yet on the Pi)
+
+Asked by the user: the Raspberry Pi 4's 40-pin header for the programs — kernel support, a kit, a graphical
+app, BASIC. **The user authorised GPIOKit to call the kernel's table directly** (not through AppKit): an
+explicit exception, written in docs/03 §5.9.0 / §5.10 and docs/06 §1 / §12.
+
+- **Kernel** (kapi **v92**, one entry `gpio_ctl` slot 229 — v91 / 228 went to `proc_tree`, merged the same day — one slot on purpose, other sessions add calls in
+  parallel): `kernel/sys/gpio.cpp`, `kern/gpio.h`, `KAPI_GPIO_*` in `kapi_abi.h`; docs/02 §8 *v92* and **§17**.
+  Pins 0..27, one owner each, given back (inputs, no pull) when the process ends (`GpioOnProcessGone` from
+  `IpcOnProcessGone`); reserved: 0 / 1 (HAT EEPROM), 14 / 15 (serial console); the rest of the system's pins
+  are off the header (30..33 Bluetooth, 40 / 41 the jack's PWM, 42 the LED). PWM on PWM0 at the jack's own
+  125 MHz clock (shared with PWM1, the jack's: never re-rated; `GpioPwmClockKeep` restarts it after the jack
+  stops it — `sound.cpp OutputStop`). Edges by the GPIO interrupt (`CGPIOManager`, made at the first need),
+  queued per process with the system timer's µs. I2C bus 1 (`CI2CMaster (1)`), SPI 0 (`CSPIMaster`).
+- **GPIOKit** (`user/Kits/gpiokit/`, `SD:/lib/gpiokit.so`, 34 entries, `gk_*` + `namespace gpiokit` classes,
+  `--bind-c`): in the package **onyx** (it ships with the kernel: `lib/` is onyx's). Its **simulator** (a board
+  in memory, an SSD1306 at 0x3C, a BME280 at 0x76 with the datasheet's calibration, SPI looped back) runs on a
+  PC, on a kernel < 91, or on request (`gk_sim (1)`). Reference: docs/19 (generated); guide: docs/06 §12.
+- **GPIO Lab** (`user/Apps/gpiolab`, `gpiolab.elf`, package `gpiolab`, category System): the header drawn,
+  modes, outputs / blink, PWM (frequency, duty in 0.1 %), timing chart, I2C scan (+ BME280 readings, an
+  SSD1306 test picture), edges log, the simulator (Board menu), the 3.3 V band. docs/04 *GPIO Lab*;
+  screenshots `gpiolab*.png` (`shots.sh gpiolab`; that script builds every app first — I ran its gpiolab
+  lines by hand). Its window is 1120 x 640, smaller on a smaller screen (not tried below 1280 wide).
+- **GPIO Lab's Code view** (asked the same day: "un mini IDE pour écrire du code, avec un affichage du GPIO"):
+  `CodeEdit` + a console; Onyx BASIC's compiler and VM built into `gpiolab.elf` (as Turtle Quest), the program run
+  from the main loop (`run_program`, never from a callback), the window pumped by `LabHost::poll` / `sleepMs`, the
+  line lit by the statement hook (`setManaged`: the VM), Speed / Step / Stop, the edges taken by the program's
+  `ON PIN` while it runs (`log_events` keeps the Edges tab). Same process: its pins are GPIO Lab's, so the header
+  shows them. On the simulator a click on an input's dot toggles it. Screenshot `gpiolab-code.png`.
+- **BASIC** (docs/04 §13 *GPIO*): `PINMODE`, `PIN n = v` / `PIN(n)`, `PWM`, `SERVO`, `ON PIN (n [, edges])
+  GOSUB` + `PIN (n) ON/OFF/STOP` (events 32 + pin of the VM), `PINCHANGED`, `PINFREE`, `GPIOSIM`, `I2COPEN`,
+  `I2CREAD`, `I2CREAD$`, `I2CWRITE`, `I2CSEND`, `I2CSCAN$`, `SPIOPEN`, `SPI$`. The runtime opens gpiokit.so at
+  the first GPIO statement and calls it by its `.abi` places (`GKF_*` in `runtime.cpp`). New enum values at
+  the ends of `S_*` / `B_*` (before `S_LAST` / `B_LAST`): merge carefully with the turtle-game session.
+  Samples: `SD:/basic/examples/gpio_{blink,button,servo,bme280,oled}.bas`.
+- **Tests (PC)**: `sh tools/tests/run_gpiokit_test.sh` (the simulator under ASan, the header in C, the BASIC
+  runtime's places), `sh tools/tests/run_basic_test.sh` (`t30_gpio`: all 62 pass), the samples run on the
+  test host (the BME280 sample prints the datasheet's 25.08 °C / 1006.53 hPa). Not run: the native BASIC
+  test (no qemu-aarch64 here).
+- **To test on the Pi, with hardware** (nothing of the kernel side ran anywhere): (1) the kernel boots and
+  `sysstat` lists `gpio_ctl`; GPIO Lab says RASPBERRY PI HEADER; (2) an LED on GPIO 17 (330 Ω): Output, Set
+  High / Low, Blink; `gpio_blink.bas`; (3) a button GPIO 27 → GND: Pull-up reads 1 / 0, **edges logged with
+  times** (the GPIO interrupt on the Pi 4's GIC: `CGPIOManager` was never used in Onyx before), `ON PIN` in
+  `gpio_button.bas`; (4) **PWM while the jack plays** (`tone` or the Media Player): the servo / an LED on 18
+  with sound at the same time, then the jack stopped (Sound applet → HDMI): the PWM must go on (the shared
+  clock: `GpioPwmClockKeep`), and no click in the jack's sound when a PWM starts; a scope or an LED's
+  brightness for 1 kHz / 25 %; (5) a servo on 18: `gpio_servo.bas`; (6) I2C: a BME280 (`gpio_bme280.bas`,
+  GPIO Lab's readings) and an SSD1306 (`gpio_oled.bas`, Test Display) — the scan's speed (112 addresses,
+  Circle's timeouts); (7) SPI: MOSI wired to MISO, `PRINT SPI$("hello")`; (8) the reserved pins refused
+  (14 / 15: the serial console must keep working), a pin taken by two programs (`EBUSY`), a program killed
+  while driving an output: the pin back to an input; (9) `kill` a program waiting in `gk_events (…, 1000)`.
+
+## Terminal tabs and the process tree (2026-10-06): built, tested in the simulator, published
+
+Asked by the user: tabs in the Terminal, each its own `cmd`; closing a tab must end the shell **and everything running
+under it**. **Done**: kapi **v91 `proc_tree`** (slot 228, `sys/kapi.cpp`: list / kill a process's descendants at once,
+the leaves first, from the parent pids recorded at the spawns — before it only the reaper's orphan scan, a level every
+50 ms; docs/02 *v91*); **UIKit `TabStrip`** (`uikit/tabstrip.h`: titles, close crosses, a mark, "+"; uikit 1.744); the
+**Terminal** rewritten around a `Tab` record (its cmd, pipes, scrollback, line history), Ctrl+Shift+T / W, Ctrl+Tab,
+Ctrl+PgUp / PgDn, the Shell menu, a question before closing a busy tab, the title = the command running or the folder;
+`cmd`'s Ctrl-C and `/bin/kill -t` use the tree too. **Not yet run on the Pi**: check there that closing a tab running
+`cat x | grep y | sort` or a script leaves nothing in `ps`, and `kmsg`'s `proc: proc_tree: ...` line.
+
+## 3DForge, a small parametric CAD (2026-10-05): built, on the Pi (the GPU draws it), published
+
+Asked by the user: an easy parametric CAD (sketch + extrude, union / subtract / intersect, bodies only, fillets and
+chamfers as far as they go, STL / OBJ). **Read `docs/3dforge/README.md`** (the mock-ups the user approved, the
+choices, what changed while building) and docs/03 *3DForge* (the code's pieces). The kernel is **Manifold**
+(meshes: no STEP), the sketch has **no constraint solver**, the view is drawn by **the GPU**.
+
+- **Done**: `user/Apps/3dforge` (the app; `3dforge.elf`, about 730 KB of code), `user/Libs/manifold` +
+  `third_party/manifold-3.5.4`, `third_party/clipper2-46f6391`; the shapes (box, cylinder, sphere, torus, pyramid,
+  prism, taper) by the user's gestures or from their fields; sketch (line, rectangle, circle, arc, close) and
+  extrude; fillet / chamfer on straight edges and circles; move (which also turns and scales a body about its
+  centre, or a clone of it), combine; the history as a timeline (values
+  edited, roll back, delete), undo / redo; `.3df`; exports: STL / OBJ, and a flat drawing seen from a side as DXF /
+  SVG / PDF (1:1, hidden edges optional) or a PNG picture (`fdraw.h`); a sketch on a face, or on XY / XZ / YZ with
+  an offset; the sample `SD:/docs/3d/bracket.3df`.
+- **The user's changes to the mock-ups, while I built** (2026-10-05): no left panel — the bodies in a panel
+  floating over the view, the history a **timeline of pictures** under it (arrows / wheel / drag); all the shapes in
+  **one fold-out** (the Shapes button); the four extra shapes and the sphere, with the gestures he described; a
+  shape's values can be typed at once in the right panel (a ghost, OK).
+- **On the Pi** (the user, 2026-10-05, a screenshot): the app runs, the status bar says `GPU`, the picture is right.
+- **Tested**: `sh tools/tests/run_3dforge_test.sh` (the document: every volume exact), `run_manifold_test.sh`
+  (qemu-aarch64), and the app driven by scripts in the desktop simulator (`shots.sh 3dforge`) — **the processor's
+  renderer only**. **`kapi_gpu_render` has not run anywhere**: the Pi was on another session's Elegant trial
+  kernel that day, so I did not start the app there. First thing to do on the Pi: open the sample, check the
+  status bar says `GPU` and the picture is the simulator's (View > Draw with the Processor compares); the frame is
+  drawn at twice the view's size (at most 2048: the kernel's limit, checked in `scene_show`).
+- **Manufacture, built (2026-10-06)** — the user approved the mock-ups; `fcam.h` (the computation, tested by
+  `tools/tests/3dforge/camtest.cpp`) and its screen (the Design / Manufacture switch, Setup, Tool, Clearing, Contour
+  with tabs, an operation on the body or on one face, Simulate, the G-code dialog with its checks; the setup kept
+  in the `.3df`, the tool and the machine in `cam.ini`). **Not yet run on his machine**: I assumed a "Two Trees TTC
+  450" (460 x 460 x 80 mm, 24 000 rpm) — ask him his model and its values; he must run a programme in the air
+  first. Ideas kept for later: the **4th axis** (he has the rotary option; indexed 3 + 1 first — ask which firmware
+  drives it), a true constant-engagement adaptive clearing (FreeCAD's could be ported: check its licence and ask
+  him first), ramps that go back and forth less on a face's clearing (it is long: about 150 min on the sample).
+- **Print, for his resin printer (asked and built 2026-10-06)**: `fprint.h` writes the Anycubic Photon Mono 2's
+  `.pm3n` (his own file comes back the same to the byte: `FORGE_PM_REF=<his file> sh tools/tests/run_3dforge_test.sh`),
+  places the body, makes supports (our own, MIT — not PrusaSlicer's AGPL code: his choice was "PrusaSlicer if it
+  performs, else ours"; porting libslic3r is out of proportion), cuts the layers and checks them; the screen is built
+  from the mock-ups he approved (the **Process** in the setup: Milling / Resin printing — his idea of plug-ins:
+  `PrintFormat`, `printers.ini`). **Nothing printed yet**: whether the printer wants the picture mirrored is unknown
+  (his sample is symmetric) — ask him to print something with a letter. Kept for later: a filament printer's
+  generator (large), supports that branch or stand on the body, hollowing.
+- **Filament printing (2026-10-06)**: `ffdm.h` (walls, solid layers, infill as lines / grid / honeycomb, skirt; a
+  plain Marlin G-code), and — he asked for it "without a writer at first: enter the values, see the path, see it
+  played, the bead being laid" — the third Process in the app: Setup, Filament, Layers (Play). **No file is
+  written**: he has an Anycubic **Kobra X**; ask him for a `.gcode` that printed well on it (its start and end
+  blocks) to make its writer. Not there: supports, bridges, speeds, several filaments.
+- **Canvases** (2026-10-06): a picture on a plane to draw over (File > Import Canvas, or dropped), moved and sized
+  with the mouse or by its values, seen through in the 3D view and in a sketch. Ideas: turned with the mouse, set to
+  scale by two points and a known distance, kept inside the `.3df` (today: its path).
+- **Milling computes on Validate** (his wish): values changed are pending (`camDirty`), Validate / Cancel beside
+  G-code; the resin's and the filament's pages still compute by themselves a moment after a change.
+- **The simulations play** (his wish): the router's cut (`cam_sim_advance`, a bar and Play), the layers (Play, and
+  the body shown printed up to a layer).
+- **Computations on another core** (his question, 2026-10-06): threads all run on core 0; an app core (2, 3) may
+  run a function but **without any kapi call or malloc** — Manifold allocates all the time. To study before
+  promising: growing the heap beforehand so that malloc never needs `kapi_sbrk` there (the allocator's lock already
+  spins on an app core), or a kernel change. The slicing is cut into steps in the loop meanwhile; `cam_compute`
+  still blocks the window while it runs.
+- **The same day, asked while I built**: the sketch's arc by centre, start, end (its angle + clockwise), a 3-point
+  arc, splines, a rectangle from its centre, construction points; a shape's Z / distance off its face and its turn
+  about its axis (the pointer gives it while the radius is set); no ghost before the first click.
+- **Known limits / ideas**: an edge or a face chosen is kept by its place (a fixed point / plane): a change up the
+  history can lose a later fillet's edge (the step then fails with a message; the fix is a reference that follows —
+  the feature that made the edge + which one). No shadow on the ground (in the mock-up). The sketch has no
+  dimensions from the body's edges, no trim, no construction lines (points only); a spline that closes on itself
+  has a corner at its start. A corner's rounds are mitred, and turned around
+  the corner by its third edge (a sphere's / a torus' piece: `corner_blend`), only for faces square to one another
+  and a third radius not smaller than the two others'.
+
+## Elegant, the graphics server in a user process (2026-10-05, branch `UserSpaceElegant`) -- DONE: the windows are Elegant's, the kernel's window manager is removed (on the branch, on the Pi; not merged, not published)
+
+**The server is named Elegant** (`SD:/bin/elegant`, sources `user/Servers/elegant/`). Work on the branch
+`UserSpaceElegant` only: commit and push there, merge `origin/main` into it, merge it into `main` only when
+the user says so -- and **do not publish packages from it** until then (the Pi is fed for the tests through
+`ftpd`: `run SD:/bin/ftpd SD:/` over telnet, then an FTP upload to `bin/elegant`).
+
+**Decided by the user (2026-10-05):**
+
+- **Fallback**: the kernel keeps a minimal console (boot, panic, debug); if Elegant dies it takes the
+  display back and starts Elegant again. The whole window manager leaves the kernel.
+- **Migration**: behind a **one-boot trial file** (as the network trials): one start on Elegant, the next
+  one back on the kernel's window manager; the default once the test pass is done; then the kernel's
+  window manager is removed.
+- **Events**: the **per-process event queue stays in the kernel**, as a mechanism; Elegant pushes into
+  it. The pump (`el0blob.S`), `kapi_post` and `kapi_pump_wait` do not change.
+- **The protocol is AppKit's** (private to it, shared with Elegant; no program includes it): its `kapi_*`
+  window names cannot move, UIKit depends on AppKit, `vncd` / `rdpd` / `plasma` / `gpcdemo` have no UIKit.
+  What Elegant brings that is new (several windows a process, damage rectangles, a frame-done pace) is
+  shown to the programs by UIKit.
+- **`rdpd` stays a process of its own** (and `vncd`), with an access to what it needs: a capture channel
+  of Elegant (the windows' content -- their buffers mapped read-only, the damage as it happens) and the
+  injection of the network client's clicks and keys. A network parser's fault must not take the display
+  down.
+
+**The design** (the study `docs/GUI-USERSPACE-STUDY.md` §2, revised with the kits): the kernel keeps
+mechanisms, Elegant has all the policy (the window list, z-order, focus, desks, input routing, drag and
+drop, menus' specs, composition, cursor, wallpaper). The client side is the bodies of AppKit's window
+calls (`appkit_calls.inc`): no program is rebuilt. Three paths: the rare requests (create, move, resize,
+menu) by a local socket; `kapi_present` writes its damage into a shared block and wakes Elegant (no
+message); what is read often (pointer, modifiers, held keys, screen size, desk) from a state page Elegant
+publishes (no call). Full screen: the kernel keeps its buffer and the direct mode (no round trip a
+frame), Elegant only says who owns the display. The clipboard stays where it is.
+
+**What the kernel lacks** (inventory of 2026-10-05; stage 2, kapi v89):
+
+1. window buffers that are physically contiguous (V3D's direct path), mapped by Elegant too, and
+   unmappable (surfaces: no unmap, 64 at most, 4 users; shm: not contiguous);
+2. a raw input ring for Elegant (Circle's callbacks call the kernel's `CWindowManager` today), with a
+   wake at once; `kapi_inject_*` then become requests to Elegant;
+3. a display device for Elegant: the back buffer mapped, rectangles sent by the 2D DMA, the wait for its
+   end, the resolution change;
+4. named local sockets (`bind` / `listen` / `connect` answer `EOPNOTSUPP`; mailboxes are 31 messages of
+   512 bytes, dropped when full);
+5. a "display server" role (nothing is privileged today: any process injects, grabs, closes);
+6. a way for Elegant to push into another process's event queue.
+
+**The stages** (each keeps the Pi bootable):
+
+1. **Done**: the kernel's window manager built for a user process. `user/Servers/elegant/`: `port/`
+   (stand-ins for the few Circle headers `kernel/gui/window.cpp` and `gimage.cpp` include -- the sources
+   themselves are the kernel's, compiled from `kernel/gui`, one code until the kernel's copy goes),
+   `core.h` / `core.cpp` (the window manager behind plain functions; the only file that includes
+   `kern/gui/window.h`), `main.cpp`. **`elegant --demo`** takes the full screen as any program may and
+   shows three windows of its own, composed by its window manager from the pointer the kernel sends it.
+   **Tried on the Pi (onyx 2026.10.87, over VNC): composed, a window dragged by its title, another
+   raised and closed, Esc back to the desktop.** 38 KB. Built by `make servers` in `user/` (in `all`),
+   staged to `SD:/bin` by `make stage`. Not on the card yet (no package from this branch).
+   The PC test of the window manager (`sh tools/tests/desktop_sim/run.sh`) was broken since kapi v67 (a
+   stand-in missing: `kstub/circle/sched/synchronizationevent.h`): repaired, it passes.
+2. The kernel's mechanisms above (kapi v89), unused by default, with a test tool on the Pi.
+   **2a done, tried on the Pi** (kapi v89: `kernel/sys/wsrv.cpp`, `kern/wsrv.h`, one table entry
+   `ws_ctl`, AppKit's `kapi_ws_ctl`; docs/02 §8, v89): the role, the display (the kernel's compositor
+   pauses; the server's rectangles copied and sent), the raw input ring (USB and injected), one wait,
+   the way back (the server gone, or silent 5 s). The test: **`elegant --display`** -- the three
+   windows of the demonstration on the real display, from the raw input; Esc, the last window closed
+   or 60 s give the display back. **On the Pi (2026-10-05, over telnet and VNC)**: the pointer exact, a
+   window dragged, windows closed, the desktop back after Esc, after the 60 s, after `kill`; idle,
+   Elegant makes 27 calls a second. Two faults found there and fixed: the wait returned at every I/O
+   wake of the system (1 300 calls a second: it now sleeps through what is not for the server), and a
+   press was merged into the pointer move that followed it (a fast drag started from the wrong
+   place: only moves are merged now). **Not tried: a USB mouse and keyboard** (the tests went through
+   `inject_*`); and with a client connected to `rdpd`, its pointer is injected too and disturbs a
+   scripted click (seen: the pointer somewhere else, a press released early) -- not a fault.
+   A test build goes to the Pi with `python tools/tests/elegant/pi_deploy.py` (the kernel from
+   `~/src/Onyx-elegant/kernel` in WSL -- `rsync` this tree's `kernel/` there, `make kernel8-rpi4.img
+   sizecheck`, copy the image to `kernel/` here --, `user/lib/appkit.so`, `elegant.elf`; it saves the
+   Pi's own kernel and AppKit first, `--restore` puts them back). **The Pi runs this test kernel (v89)
+   now, with the packages' programs: `pkg update` of `onyx` would put the published v88 back.**
+   **2b done, tried on the Pi** (docs/02 §8, v89, *the programs' windows*): attached programs (the
+   kernel keeps their event queue as a kernel window that is only that: `pop_event`, `should_exit`,
+   `pump_wait`, `kill` unchanged), shared buffers (contiguous; in the program at the addresses its
+   canvas and frame always had, in Elegant at 52 GB + number x 64 MB), requests (the caller sleeps
+   until Elegant answers: `sys/vfs.cpp`'s pattern, the pid stamped by the kernel -- no named sockets),
+   the ring's `KICK` (a program's pixels changed) and `GONE` (it ended). `kernel/gui/window.cpp` takes
+   its pixels from `WinPixelsAlloc` / `_Free` (Elegant: the shared buffers). The protocol:
+   `user/Kits/appkit/elegant.h` (private; CREATE, FRAME, HANDLER, MOVE so far). Elegant:
+   `server.cpp` (the loop: input, requests, events forwarded, composition), `kws.h` (its kernel
+   calls), `elegant --serve` (no demonstration, no end); it writes one line every 5 s to the kernel's
+   log while it works (`elegant 5s: input.., requests.., events sent.., frames..`).
+   **The test: `python tools/tests/elegant/pi_wstest.py`** (`user/BinUtils/wstest.c` talks the
+   protocol by hand): its window shown, two clicks counted by its handler, the window dragged, its
+   close button ending the program -- **all passed on the Pi (2026-10-05)**.
+   Learnt while testing: a VNC capture waits for the screen to CHANGE and hangs on a still one (the
+   test only sends through VNC and reads the Pi's own log); a telnet session left in `kmsg` stays
+   for ever (kill it), a few of them and telnetd answers no more; each `vncdotool` command starts
+   with its pointer at 0, 0.
+   Not done in 2b: the role given by the kernel to the process it starts (stage 3, with the trial);
+   a restarted Elegant taking the orphan buffers again.
+3. **Elegant serving the programs' windows + AppKit's client side: done but the full screen; tried on
+   the Pi (2026-10-05).**
+   - **AppKit**: `appkit_ws.inc` + `KAPI_WS` in `appkit_calls.inc` -- each window call's second body
+     (docs/02 §8, v89). The way is settled at a program's first window call, for its life.
+   - **The protocol**: `user/Kits/appkit/elegant.h`, 30 operations (append-only numbers).
+   - **Elegant**: `ops.cpp` (each request = the kernel's call of the same name, on Elegant's window
+     manager), `server.cpp` (the loop), `core.cpp` (the window manager behind plain functions; the
+     pointer's shapes from `kernel/gui/cursors.inc`), `corepriv.h`.
+   - **The trial**: `python tools/tests/elegant/pi_deploy.py --trial` (it puts `etc/elegant.trial`;
+     the kernel removes it at the start, starts `elegant --serve` before init). The next restart is
+     the kernel's window manager's again.
+   - **Seen on the Pi**: 2048 and eyes started by hand under `elegant --serve`
+     (`tools/tests/elegant/first-apps-2026-10-05.png`); then a whole start on Elegant: the wallpaper
+     (voronoy through its copy of the buffer), the menu bar, the dock, the agenda, Terminal and
+     Tinypad opened from the dock, Tinypad's menus in the menu bar, the dock's running marks --
+     every program as it is on the card.
+   - **The full screen** (docs/02 §8 v89's end): the kernel's calls as before, on the program's
+     kernel-side window; Elegant told by the ring (`KAPI_WS_IN_FULLSCREEN`), all the input to that
+     program, nothing shown meanwhile. Tried: `plasma` started on the Elegant desktop, Esc, the
+     desktop back. Typing (Tinypad), a window dragged, the menu bar's drop-down: tried too.
+   - **Onyx Remote works on Elegant** (the user, connected by RDP during the trial of 2026-10-05:
+     "en rdp ça marche bien"): `rdpd` as it is on the card -- its `win_list` / `win_read` are
+     requests to Elegant (about 130 a second; 110 ms of read + compare a round: each read is a round
+     trip and a copy through the transfer buffer -- what the capture channel is for), its clicks
+     and keys go through `inject_*`.
+   - **Onyx Remote flickered when the pointer moved** (the user, 2026-10-06): `win_read` gave the
+     program's canvas while it was being repainted. Since then a program keeps a copy of its window as
+     last presented, in the canvas' shared memory, made by AppKit's `kapi_present` while a reader is
+     there, and `win_read` gives that one (docs/02 §8, *the window as last presented*; AppKit and
+     Elegant only). `python tools/tests/rdpd/flicker_bench.py <pi-ip> --title <a window's title>`
+     counts the pictures half painted (Onyx Remote closed: `rdpd` has one client) -- 56 of 450 before,
+     0 after, on the Pi. A capture channel must read that copy, not the canvas.
+   - **The pointer's shape in Onyx Remote** (asked by the user, 2026-10-05): `kapi_cursor_shown` (a new
+     AppKit call: Elegant's `EL_OP_CURSOR_SHOWN`; -1 under the kernel's window manager), `rdpd` looks
+     20 times a second and sends message 11 when it changed (an older client skips it), Onyx Remote
+     shows the matching Windows pointer (`MainForm.ShowCursor`). The Pi's side tried with a test client
+     (arrow, then the size arrows over a frame's edge); `pc/dist/OnyxRemote.exe` rebuilt -- **the user saw the pointer change in Onyx Remote** (the
+     exe of THIS tree: the main checkout's `pc/dist` has the old one until the branch is merged).
+   - **Elegant's arrow** is its own (white, black edge; `core.cpp`).
+   - **VNC felt jerky under Elegant** when a window was dragged (the user, twice). Done since: one
+     frame every 16 ms at most (the programs' presents composed together); Elegant's thread at the
+     high priority (`kapi_thread_priority`); the kernel yields to it right after an injected pointer
+     event (`kapi_inject_pointer`: the server moves and shows before the remote desktop grabs again);
+     rectangles that nearly make one sent as one. **Measured** with
+     `python tools/tests/elegant/vnc_drag_bench.py X Y` (an RFB client that drags a window by its title
+     and counts vncd's updates; zlib rectangles as a viewer -- raw ones measure the Wi-Fi): Terminal's
+     window dragged, three runs of 8 s each, same Pi, same evening -- **the kernel's window manager
+     14.0 / 12.6 / 6.7 updates a second (longest gap 0.6 / 1.2 / 2.2 s); Elegant with those changes
+     14.9 / 10.5 / 11.3 (0.3 / 2.3 / 2.4 s)**: the same within the noise; the gaps of seconds are
+     there under both (vncd or the Wi-Fi: not looked into). No valid measure of Elegant BEFORE the
+     changes; the user has not yet said how it feels now.
+   - **`screen_set` under Elegant: written and built, NOT tried** (the user was on the Pi by RDP: no
+     restart then). The kernel's compositor does the resize as always (between two of Elegant's
+     presents), then tells Elegant (`KAPI_WS_IN_SCREEN`): a new screen buffer, `OnScreenResized`.
+   - **A USB mouse and keyboard work on Elegant** (the user, 2026-10-05).
+   - **Every app of the card started on Elegant**: `python tools/tests/shlib/pi_apps.py 192.168.0.7`
+     during a trial -- **86 apps started, 0 failed** (the emulators without a ROM, `voronoy`,
+     `basicdemo` end by themselves, as under the kernel).
+   - **Elegant ends -> the kernel starts it again and the windows are back** (the user's choice,
+     2026-10-05; tried: `kill 1 --force` during a trial -- seven windows back at their places with
+     their pixels, the keys typed after it arrive: `tools/tests/elegant/after-restart-2026-10-05.png`).
+     How: `WsPoll` (the compositor's loop) starts `elegant --serve --restart`, 5 times at most; Elegant
+     saves each window as it knows it in the kernel (`KAPI_WS_STATE`, 2 304 bytes a program: place,
+     size, flags, title, handlers, menu, opacity, desk...; `ops.cpp` `Save` / `Restore`); the new one
+     lists the attached programs (`KAPI_WS_CLIENTS`) and makes each window anew, on the SAME pixels
+     (`KAPI_WS_BUF_ADOPT`: the buffers a server that ended left -- `window.cpp` no longer clears what
+     `WinPixelsAlloc` gives), then has the wallpaper painted again (`voronoy`). AppKit also keeps
+     what a program asked and asks it again when a call finds another server (a safety net). Lost at
+     a restart: the windows' order (front to back), a drag in progress, the drag-and-drop payload.
+   - **Stage 5a (the user: "tu peux continuer", 2026-10-05): Elegant is started at EVERY boot** by the
+     kernel, before init (`WsBootStart`; no trial file any more -- `pi_deploy.py --trial` is not needed).
+     The kernel's window manager is still in the kernel, used only if Elegant does not take the display;
+     `SD:/etc/elegant.off` (made by hand) keeps Elegant from starting: the way back until 5b removes the
+     kernel's window manager. On the Pi since 22:28.
+   - **Left**: the role given to the process the kernel started (today: the program named
+     `elegant`); `screen_set` under Elegant to try; the capture channel for `rdpd` (the windows'
+     buffers mapped read-only instead of `win_read`'s copies); Elegant's memory after many windows
+     (38 MB after the 86 apps, 17 MB at its start: a leak or the heap not given back -- not looked
+     into); a PC test (not written, the Pi was used).
+   - **Stage 5b DONE (2026-10-05, on the Pi since 22:35): the kernel's window manager is removed.**
+     `kernel/gui/window.cpp`, `kern/gui/window.h`, `cursors.inc` are now `user/Servers/elegant/wm/`
+     (Elegant builds them; `tools/tests/desktop_sim/run.sh` and `tools/gui/gen_cursors.py` follow); the
+     kernel keeps `kernel/gui/kwin.cpp` + a 150-line `kern/gui/window.h` (a program's queue of events,
+     the keys' state, the full screen: docs/02 §10's box). `sys/kapi.cpp` lost its 40 window functions
+     (740 lines), `kernel.cpp` its composition, its pointer's art, its `OnMouse` / `OnKey` calls (the
+     watchdog finds the programs' queues by their processes); the table's 36 window entries and the
+     activity shell's 2 were 0 (removed since: stage 5c). AppKit's window calls speak to Elegant only; a call
+     without a server waits 5 s. No server -> the kernel's console (`DebugConsoleTakeover`). The image:
+     1 195 832 bytes (1 239 096 before). **Tried on the Pi**: the desktop, Terminal and Tinypad, a
+     full-screen program (8 s) ended by kill, Elegant killed -> started again with its 7 windows.
+   - **Stage 5c DONE (2026-10-05, on the Pi since 23:10): the table is compacted, kapi v90.** The 36
+     entries of the windows and the activity shell's 2 are removed from `TKApiTable` (266 -> 228
+     entries; `launch` = 1, `exit` = 5, `pop_event` = 158, `ws_ctl` = 227; `kern/el0.h` follows), as
+     the user asked ("refaire le .so de AppKit, pas de rebuild du reste"). Rebuilt with the kernel:
+     `appkit.so`, and what reads the table itself -- `el0test`, `faulttest`, `sysstat` (its names:
+     `python tools/gen_kapi_names.py`). The PC stand-in kernels keep the 36 entries after the table's
+     end (`#ifndef __aarch64__`; `appkit_calls.inc`'s `KAPI_HOST`). **Before shipping, the card was
+     scanned** for programs reading the kernel's table (docs/02 §8, v90): none but the tests -- but a
+     `jet.app/main` linked before AppKit (the one of 04:54 that day) does, 253 reads: **the package
+     `jet` must be the one built since 13:54** (`build-web.sh` with today's sysroot), check before
+     publishing. **Print Screen** (Alt: the window that has the keyboard) and **the wheel's speed**
+     (`wheelspeed=` of `SD:/etc/theme.txt`) are Elegant's now (`server.cpp`: `print_screen`,
+     `wheel_speed`); the kernel's `PrintScreenPoll` is gone. **Tried on the Pi**: `uname` says kapi
+     90, the desktop, `el0test` and `faulttest kapi` pass; **every app started: 86, 0 failed**
+     (`pi_apps.py`, Jet among them; Elegant at 17 MB after it). Print Screen and the wheel: not tried
+     (a real USB keyboard is needed). That evening the Pi's Wi-Fi lost 10 to 50 % of the pings, with
+     the kernel of before Elegant too (kapi 88, put back to compare): telnet sessions dropped.
+   - **MERGED INTO `main` AND PUBLISHED (2026-10-06)**: onyx 2026.10.94 (the kernel kapi v90, `appkit.so`,
+     `bin/elegant`, `rdpd`), uikit 1.729.0, and every app rebuilt (the file dialogs' filters). **The order
+     on a card**: `pkg check`, `pkg update -a` (UIKit installs at once -- `kapi = 88` in `packages.ini`,
+     docs/pkg/README.md --, `onyx` is staged), restart, `pkg update -a` again (the apps and the other kits
+     wait for kapi 90). Jet's package is unchanged (2.0.13: its program reads no kernel table, checked).
+   - **Still to do**: the branch `kapi-compact` of another session (v87's compaction) touches the same
+     table: it is superseded by v90 -- do not merge it; Print Screen / Alt + Print Screen and the wheel's
+     speed to try with a real keyboard and mouse; the role given to the process the kernel started; the
+     capture channel for `rdpd`; `screen_set` under Elegant to try.
+   - **Known differences**: a program's wallpaper buffer is its own copy (what is shown when it asks),
+     not the live one; a drag's payload is 4 044 bytes at most (4 096 before); a program started
+     while the kernel's window manager has the display stays there (and the reverse).
+4. The whole test pass on the Pi (every app, full screen, GPU apps, VNC / RDP, dock, menus, drag and
+   drop, desks, a resolution change); Elegant the default.
+5. The kernel's window manager removed (`kernel/gui/window.cpp`, the compositor task); the sources move
+   to `user/Servers/elegant`; docs/02, 03, 04.
+
+Notes for the next stages: the text of `kapi_draw_text*` needs the kernel's bitmap font (Elegant's
+stand-in has no glyphs: it draws no text); `window.cpp` is called from ONE thread in Elegant (its spin
+lock stand-in does nothing); a VNC capture of a full-screen program waits until something changes (move
+the pointer first).
+
+What there was to build on (written before the work started):
+
+- **The study**: `docs/GUI-USERSPACE-STUDY.md` (2026: where things stand in the kernel, §2 *The GUI in
+  user space* — the target, what the kernel must add, the protocol, compatibility, cost and risks; §4
+  the recommended path; the questions left to the user at its end). Written BEFORE the kits: read it
+  with what follows in mind.
+- **AppKit changes the compatibility question** (docs/03 §5.10, docs/02 §8): every program reaches
+  the windows through AppKit's functions by name (`kapi_create_window`, `kapi_present`, the event
+  calls...). Their bodies are in `user/Kits/appkit/appkit_calls.inc`, the only code that reads the
+  kernel's table: **AppKit can send those calls to a server process instead of the kernel, and no
+  program is rebuilt.** Checked on 2026-10-05 by disassembly: of the 215 programs and libraries of
+  the card, only `appkit.so` reads the kernel's table (and `el0test` / `faulttest`, the two tests of
+  the table itself).
+- **What the server can use**: shared surfaces (kapi v35), mailboxes and IPC services
+  (`kapi_ipc_register` / `kapi_mailbox_*`), shared memory, threads, the V3D compositing library
+  (`user/Libs/gpucomp`, already used in user space by Jet and Paint), UIKit's own drawing of the
+  frames (`user/Kits/uikit/skin.cpp`: the window chrome is already user-side).
+- **The kits-first rule** (CLAUDE.md): what is reusable goes into a kit. A window server's client side
+  belongs in AppKit / UIKit, not in a new loose header.
+- **Process**: the user decides the design questions (ask, with a recommendation); a change of the
+  kernel's table is fine now (adapt AppKit); a Wi-Fi / SDIO / TCP change goes through the one-boot
+  trial file; test on the Pi (192.168.0.7) through packages; `sdcard/config.txt` is the user's.
+
+## The kits and the layout of user/ (2026-10-05) -- done, in main, on the Pi
+
+One day's work, all published (onyx 2026.10.87, kapi v88):
+
+- **AppKit** is the one interface between the programs and the kernel, called by name (v86); it also
+  carries strings, console, `.ini`, keymap (v87, `applib.h` gone) and program starting `lx_*` (v88).
+  `user/kapi.h` no longer exists: programs include `appkit/appkit.h`.
+- **New kits**: SystemKit (notifications, clipboard, trash, volume, wallpaper, dock settings, file
+  associations, preload list, applets' protocol), NetKit (httpc, ftpfs; `http.hpp` filed there),
+  FontKit (was `ft.so`). FileKit got `fsutil.h`; UIKit loads icons through ImageKit
+  (`ui::icon_load`); ImageKit's folder holds the codecs' sources.
+- **One header a kit** (`<kit>/<kit>.h`); a C program links `lib/<kit>.imp_c.a` (libgen `--bind-c`).
+- **Layout**: `user/Apps`, `BinUtils`, `Kits`, `Runtime`, `Libs`, `Emulators`, `Ports`, `Include`
+  (only `docguard.h`, `gamepad.h`, `json.hpp`, `lineedit.h` left there). All on every include path.
+- **Removed**: the Shelf, `ask`, the panel, the app list, the activity shell (`embed.h`,
+  `shell_proto.h`), `quicklaunch.txt`, `imgtest`, `stkpoc` (binary). `jsc` is an optional package off
+  the card (`tools/pkg/extra/jsc`, mkrepo `root =`).
+- **Docs**: `docs/06-KITS-GUIDE.md` (the kits, an example each) and `docs/10..18` (one reference per
+  kit, GENERATED from the headers: `python tools/docgen/kitdocs.py`, then `python docs/build_docs.py`).
+- **Left open**: a kapi rise makes the desktop incomplete between the install of `onyx` and that of
+  the kits (they are separate packages: ship the kits with `onyx`, or install them with it);
+  17 apps still include ImageKit's codec headers directly; `docguard.h` waits for DocumentKit;
+  `http.hpp` and FontKit's `fonts.h` / `uikitface.h` are still headers with their code; PC tests
+  broken before this work and still so: `ftpd`, `ftpfs`, `rdpd`, `rdpd_pipeline`, `games`,
+  `cardfile`, the Letters screenshot; a WebKit tree patched before 2026-10-05 must have its two CMake
+  paths follow (`user/Libs/gpucomp`, `user/Libs/av`: docs/08's note); symbolic links on FAT are a
+  design only (docs/POSIX-PLAN.md §11).
+
+## Onyx BASIC: the kits by `#import` (2026-10-05; tested on the PC, under qemu and on the Pi)
+
+- **Structures done too (step 2, the same day)**: the `.bi` lists the structures the functions name
+  (`struct` / `field` lines: sizes and offsets worked out by `kitbi.py` and **checked by the compiler** --
+  `lib/<kit>.bi.check.cpp`, 56 structures today, 38 of them AppKit's); `#import` makes each a TYPE
+  (`DIM e AS FileKit.zip_entry`); a variable, an element or a whole array goes where a function takes a
+  pointer (packed before, unpacked after); `PEEKT` / `POKET` at an address. Not done: a structure with a
+  union (`kapi_pad`), an array field that is not a text (no name in BASIC; its bytes go as zeros **and
+  what the function wrote there is lost** when a variable is passed -- pass an `ALLOC`ed address and
+  `PEEK` it if such a field matters).
+
+- **Done**: a BASIC program says `#import filekit` and calls the kit's functions by their name
+  (`FileKit.copy (a$, b$, 0, 0)`), **with no kit named in BASIC**: each kit has a description,
+  `SD:/lib/<kit>.bi` (name, place in the table, types), made by `tools/kitbi/kitbi.py` from its `.abi` and
+  its headers at every build of the kits; the VM calls through one generic instruction (`OP_KCALL`).
+  A new kit with C functions is importable as soon as it is built and staged. Also: `BYREF variable`
+  (numbers a function fills), `ADDRESSOF (Sub)` (callbacks: 48 relays, the SUB run on the VM),
+  `ALLOC` / `DEALLOC` / `CSTR$` / `PEEKx` / `POKEx` (memory shared with a kit). The user's choices:
+  the kits' C functions and a **flat C exposure for the C++ kits** (handles, not objects); nothing checked
+  at run time (as FreeBASIC); **what a kit returns allocated is the program's to free**. Read: docs/03
+  (*BASIC and the kits*), docs/04 §13 (*The system's kits*), `SD:/basic/examples/kits.bas`.
+- **UIKit from BASIC, and QBStudio on it (step 4, the same day; asked by the user: "que ça utilise uikit
+  pour création et utilisation de fenêtre et widgets")**: `user/Kits/uikit/flat.h` / `flat.cpp`, C functions
+  on handles (window, label, button, textbox, checkbox, listbox, dropdown, slider, progress, menus,
+  dialogs; UIKit's table 722, `Root::step ()` new); QBStudio's controls' library and generated code call
+  them (`#import UIKit`, `ADDRESSOF` of the user's SUBs, the loop in BASIC over `UIKit.window_wait`).
+  A program has one window: the runtime's screen is not opened once a UIKit window exists. **Tested on
+  the Pi through a private copy of the new `uikit.so`** (`SD:/tmp/uikitf.so`, a test runtime bound to it:
+  `BAS_KIT_TEST_NAME` / `_PATH` in `baskits.cpp`) -- the generated converter converts, lays out, closes --
+  **but not seen**: that day the Pi's screen was another session's (`SD:/bin/elegant`), and the system's
+  `uikit.so` was not replaced nor the Pi restarted. **To do first when the Pi is free**: update it by
+  packages, restart, run `SD:/basic/examples/uikit.bas` and a QBStudio project, and look (clicks, typing,
+  the menus, a resize). Not in the flat layer yet: the other widgets (tabs, grids, trees, pictures, a
+  drawing surface), the keyboard and the pointer as events, several windows.
+- **User controls, Hosts, alignments (the same day; the user: a main window and user controls loaded by code
+  into its content, in place of what was there, or side by side -- "un peu à la xaml / wpf"; then halign /
+  valign and columns' widths, `*` as in WPF; and no `#include`: a project's `.bas` are all in, implicitly)**:
+  `UserControl` forms, the `Host` element, `host.Content = Name`, `halign=` / `valign=`, a Grid's
+  `widths=200,*` / `heights=`; UIKit's flat layer has panels (table 726). docs/04 §13 (*User controls*,
+  *Alignments and sizes*), docs/03 (*User controls and Hosts in QBStudio*), `sdcard/projects/pages`.
+  Then (asked the same evening): a Row's `widths=` and a Column's `heights=` (`along ()`; width / height / fill /
+  grow offered on containers in the properties), a bar to drag between the designer and the form's text
+  (`SplitBar`, `settings.ini`: `split`), and the window sized by any of its eight handles in the designer (the
+  user could not size it: only the bottom right corner's zone did, the other handles deselected).
+  Tested: `qbstudio_test` (40 checks), the designer in the PC simulator (`qbstudio-hosts.png`), and the
+  generated program on the Pi through the private copy of `uikit.so` (the Hosts' sizes, a page replaced
+  and shown again with its values, the resize chain, a user control moved to another Host). Not seen on
+  the Pi's screen, not clicked. Not done: several instances of one user control (each is one object), a
+  user control's preview inside the window's Host in the designer (a dashed frame with its name), a
+  choice list for `content=` / `halign=` in the properties (typed), `Add Window` (one window a program).
+- **The designer's cost, measured (the user asked whether GPU composition, or drawing the widgets instead of
+  making them, would speed it up)**: `qbstudio -bench [project]` sizes the drawn window 40 times and prints, a
+  step: on the Pi 4, the converter -- making every widget again **0.07 ms** (it was my guess for the cost:
+  wrong), drawing the QBStudio window **11 to 15 ms**, showing it (`uk_present`) **0.5 to 0.8 ms**. So GPU
+  composition would gain nothing here, and neither would painting without widgets; the time is the CPU
+  drawing of the whole window at each step. The designer now keeps its widgets while the tree and their
+  looks are the same (`Designer::sync`, `sig_of`): about 20 % less drawing (10 to 11 ms a step, under a 16 ms
+  frame). If it must go faster: draw only what changed (the designer invalidates itself whole, its overlay
+  is the size of the designer) -- not started, nobody found it slow.
+- **Next**: what the list above lacks, as programs ask for it. Also possible: `OP_KCALL` in machine code (today the machine code hands it to the VM: one call),
+  FreeType's functions in `fontkit.bi` (their prototypes are in FreeType's headers, not in the kit's
+  folder: `kitbi.py` reads `user/Kits/<kit>/*.h` only).
+
+## Onyx BASIC: classes (2026-10-05; tested on the PC, not yet on the Pi) -- then a native back end
+
+- **Done (phase A)**: objects in BASIC, on the VM. The user's choices: `TYPE` stays a value; a new
+  **`CLASS`** is a reference (C#'s struct / class); methods are written outside the block
+  (`VIRTUAL` / `OVERRIDE` / `ABSTRACT SUB Class.Name`); `ABSTRACT` and a destructor
+  (`SUB Class.delete`) are in, `PRIVATE` is not; **a TYPE no longer has methods** (asked the same
+  day: a `SUB Type.Name` is a compile error; QBStudio's `Control` / `Window` became classes). `CLASS B EXTENDS A IMPLEMENTS I, J`,
+  `INTERFACE ... END INTERFACE`, `BASE.Name`, `NEW`, `NOTHING`, `x IS Class`. The language: docs/04
+  §13 (*Classes*); the internals: docs/03 (*Onyx BASIC*, *Classes*). New opcodes at the end of
+  `enum Op` (`OP_NIL` ... `OP_CAST`, then `OP_COUNT_`), `.bax` format 2 (format 1 still loads).
+  The class words are not reserved. Tests: `tools/tests/basic/progs/t20_classes`, `t21_cls_*`,
+  `t22_classwords`; the example `sdcard/basic/examples/classes.bas`. `qbasic`, `qbstudio`,
+  `pc/OnyxBasic` know the modifiers and leave an INTERFACE block in the main module.
+- **Not done**: `PRIVATE`, interfaces extending interfaces, a cycle collector, `obj.Method` on an
+  expression other than a call's result.
+- **Measured (2026-10-05)**, before phase B: `basic -p` (in the sources: `Host::prof`, `bas::Profile`;
+  the card's `/bin/basic` does not have it yet -- it goes out with the next build of BASIC) splits
+  the time into the VM's instructions, the runtime's primitives and the waits, written to
+  `SD:/basprof.txt` every 5 s and printed at the end; `tools/tests/basic/pi_prof.py <ip> calc`
+  uploads a runtime as `SD:/bin/basicp` and runs the benchmark `tools/tests/basic/bench/calc.bas`.
+  On the Pi 4: pure computing = 98 % in the VM, **35 ns per instruction** (40.8 M instructions in
+  1.44 s); Arkanoid runs about **50 000 instructions per second of play** (counted on the PC host,
+  `PROF=1 PROFVMS=<ms>`), i.e. 2 ms of VM per second: native code will not show there.
+  Careful on the Pi: another session uses it too, and `pkg` may be updating it (a staged system
+  update restarts it); `pi_apps.py` runs at import (do not import it).
+- **Phase B, step (a) done (2026-10-05)**: machine code at load, on by default (`basjit.h`; docs/03
+  *Machine code*, docs/04 §13 *Machine code or managed*). The user's decisions: form (a) then (c);
+  native by default with the VM as the fallback; `-m` and a "Managed" box in the compile dialogs
+  (the user wrote the label in French, "Managé": the dialogs being in English it reads "Managed").
+  Pi 4: the benchmark 1.48 s -> 0.11 s. `sh tools/tests/run_basic_native_test.sh` (qemu-aarch64 +
+  the bare-metal toolchain) and its fuzzer must stay green after any change to the VM's
+  instructions or to `opLen ()`.
+- **Calls and numeric functions in machine code (asked by the user, done 2026-10-05)**: frames made
+  and given back in line, by-reference arguments, ABS ... LOG. Pi 4, one telnet session, nothing
+  else running: `calc.bas` 1.47 s -> 0.07 s, `calls_t.bas` 1.69 s -> 0.19 s (Fib&(27) 0.40 -> 0.05).
+  Measure with nothing else running (`ps`): shells left by dropped telnet sessions made the timings
+  vary threefold that day (fixed since: a dropped session ends its shell, see *Testing on the Pi*).
+- **Next**: (1) strings, GOSUB, virtual calls in machine code; faster SIN / COS; (2) done the same day: **form (c)**, the standalone app --
+  "Make App" > Standalone writes `apps/<name>.app/main` = the card's `/bin/basic` with the `.bax`
+  attached (`bas::attachBax`; tried on the Pi with Planets 3D's program: it starts and runs); (3) Arkanoid and a demo timed on the Pi in both modes (only the benchmark was).
+  **The Pi restarting around a `kill` of a graphical BASIC program: found and fixed (2026-10-05).** Not
+  the kill (`kill <pid>` only asks the window to close) and not BASIC: the *start* of a full-screen
+  program. The compositor yields while its display DMA runs and holds the frame buffer's DMA; an app
+  that takes the full screen and sends its first frame meanwhile (`kapi_present_fb` ->
+  `CBcmFrameBuffer::SetArea`) waited for that DMA without yielding: core 0 stopped, the hang watchdog
+  restarted the Pi 15 s later. Seen in `SD:/etc/lastcrash.txt` (core 0 in `SetArea` under `basicp`,
+  "display: waiting for the display DMA"), reproduced with `tools/tests/fsrace/` (the old kernel
+  froze before 40 rounds; with the fix 600 rounds pass). The fix: `DisplayPresentIdle` (kernel.cpp),
+  called by `kapi_present_fb` -- docs/02, *Full-screen apps*. Read `SD:/etc/lastcrash.txt` first after
+  any unexplained restart; a restart that leaves it unchanged was a clean one (`reboot`, a system
+  update, another session putting its kernel on the Pi).
+  Another session was adding AudioKit statements to BASIC at the same time (the end of
+  `enum Builtin`): merge `origin/main` before touching `basint.h`.
+
+## Printing (2026-10-05)
+
+A generic print system, done and tested on the Pi with the user's HP DeskJet 2700 (192.168.0.14, IPP
+Everywhere: no PDF, PWG Raster at 300 dpi) and the PDF printer. Read `docs/03` §5.7 (the design, the API,
+an example) and `docs/04` §11 *Printing*.
+
+- **`SD:/lib/printerkit.so`** (`user/Kits/printerkit/`: `print.h` the API, `print.cpp`, `dialog.cpp`; table `printerkit/printerkit.abi`,
+  33 entries): the Print dialog and the jobs. The first library that uses others (`fontkit.so`, `uikit.so`: their
+  stubs linked in, opened on demand; uikit's variables through `--data onyx_uikit_data`).
+- **`printd`** (`user/Apps/printd`): the queue (`SD:/var/spool/print`), the printers (`SD:/etc/printers.ini`),
+  a job replayed as a PDF (`printerkit/pdfsink.h`) or rendered (`printerkit/raster.h`, our own MIT rasteriser — the
+  user's choice, no MuPDF in the chain) and streamed as PWG Raster over IPP (`printerkit/ipp.h`).
+- **Printers** applet (`user/Apps/printconf`), `/bin/ipp`; the Control Panel's list scrolls now. **Find**
+  (the user's request): a one-shot mDNS query from printd (`scan ()`); from the PC the HP answers it; on the
+  Pi the user ran it: the HP is found, quickly (2026-10-05). A first version tried every address of the /24 with 12 non-blocking connects at a time: **it
+  restarted the Pi** (the network stack; not investigated) — removed. The Pi also restarted once earlier in
+  the session, right after `ipp ... validate` and stopping `ftpd` with Ctrl-C: cause unknown, to watch.
+- **File ▸ Print… (Ctrl+P)** in Letters, Sheet, Slides (through `printerkit/pdfprint.h`: their PDF export code),
+  Paint, Photos, the PDF Viewer (`print_image`).
+- Tests: `sh tools/tests/run_print_test.sh` (`IPP_PRINTER=192.168.0.14` asks the real printer).
+- **Next / not done**: the screenshots (`printconf`, the Print dialog, `control` with its 11 applets:
+  `shots.sh` has no scenario for them — the library is not built for the simulator yet); the Word / PDF
+  exports (`docs/build_docs.py`: no pandoc on this PC); IPPS (TLS), a password; Apple Raster / PCLm printers that take neither PWG Raster nor PDF; two-sided
+  printing; a job kept and retried when the printer is off (it fails with a notification today); print from
+  Mail, Cardfile, Jet; a command-line `lp`. On the Pi, only Letters' print (dialog, PDF) and the applet were
+  driven by me; the user printed Letters' current page on the HP, in colour ("instant, clean"); the user also printed
+  from the Spreadsheet: as on the screen, the same colours and gradients. Slides, Paint, Photos and the PDF
+  Viewer were deployed but their Print not exercised.
+
 ## Working conventions (keep them)
 
 - **Git (the user's rule, 2026-10-01)**: before each new development and each commit, fetch and
@@ -25,10 +803,10 @@ answer in French. The docs stay in English.
   `sdcard/etc/clock`. Check before each commit:
   `git diff --cached --name-only | grep -i -E "\.sfc$|\.smc$|\.nes$|\.gb|\.sav$|\.z64$|\.n64$|\.v64$|\.wav$|\.iso$|\.gcm$|wpa_supplicant|ftpfs.ini|shelf.ini|lisa.app/config"`
   must print nothing. Do not download commercial ROMs; the user's own ISO/ROMs stay local.
-- NetSurf is ours to change (the user lifted the old "do not modify NetSurf" rule): mark each
-  patch `Onyx:` in the source and list it in `docs/06-JET-BROWSER.md`; check a change on the
-  PC bench (`tools/tests/netsurf/shot.sh` / `chrome.sh`) against Chromium before staging it. No
-  model identifiers in code or commits. Commits end with a `Co-Authored-By:` line.
+- The browser is **Jet, on WebKit** (`docs/08-WEBKIT-PORT.md`; `user/Apps/jet`, `tools/webkit/`):
+  NetSurf, its libraries, its PC bench and Jet for Windows left the tree on 2026-10-04 (the commit
+  before: `3e2eb270`). WebKit's own tree is not in this repository: its changes are the patch series
+  `tools/webkit/patches/` (export them after each WebKit commit: `sh tools/webkit/export-patches.sh`).
 - Docs rule (CLAUDE.md): kapi / app changes → docs 02 / 03 / 04 (+ 05 for Circle patches),
   screenshots via `sh tools/tests/desktop_sim/shots.sh [name ...]` (the real apps on the PC);
   the user runs `python docs/build_docs.py`.
@@ -48,22 +826,119 @@ answer in French. The docs stay in English.
   Windows: MSYS2 (or WSL) with MinGW-w64 + the .NET SDK. The script rebuilds every exe; restore
   the unchanged ones (`git checkout pc/dist/<file>`) before committing.
 - **Host tests:** `tools/tests/run_*.sh` (fs, v3d clip, gamepad, gc, nemu...). N64 headless:
-  `g++ -std=c++17 -O2 [-DN64_TRACE] -I user -I user/basic tools/tests/n64/n64test.cpp user/n64/*.cpp`
+  `g++ -std=c++17 -O2 [-DN64_TRACE] -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I user/Libs/basic tools/tests/n64/n64test.cpp user/Emulators/n64/*.cpp`
   then `n64test <rom> <frames>` with `N64_SAV`, `N64_INPUT="f0-f1:hex;..."`, `N64_SNAP=1`,
   `N64_GFX=prefix N64_GFXEVERY=n`, `N64_FRAMELOG=f`, `N64_CIMG=f` (see the file's header). With
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
 
-## Every app at EL0, the legacy mode removed (2026-10-02, kapi v74; branch `ccr-182e4cf6-fxr778`, tried on the Pi: all tests pass)
+## Several users: studied, then set aside by the user (2026-10-05) — `docs/MULTI-USER-PLAN.md`
+
+**The user's decision: Onyx stays a simple, single-user system — no multi-user.** The study is kept
+as an idea (`IDEAS.md`); do not start it nor bring it up again unasked. What the paragraph below
+describes is the study, not a task.
+
+The user asked to "see how" Onyx becomes multi-user (accounts and a login screen, the desktop started
+by the session, `/home/<user>`, rights on FAT through an index in `/etc` enforced by the kernel, remote
+access per user). The study, the proposed design and seven steps are in `docs/MULTI-USER-PLAN.md`.
+**Nothing is built, and no decision is taken**: its section 2 lists fourteen (D1–D14), each with a
+recommendation — get the user's answers before writing any code, then record them in that section.
+Step 0 (a real random generator behind `kapi_random`, PBKDF2 in the kernel) changes nothing visible and
+can go first. The printing work (`printd`, another session) is taken into account in its section 9.
+
+## Shared libraries: built (2026-10-05) — `SD:/lib/uikit.so`, `SD:/lib/fontkit.so`, every app on them
+
+**Where to read**: `docs/SHARED-LIBS-PLAN.md` section 0 (what was built, where it departs from the
+plan, the results), docs/02 §7 *Shared libraries* (the kernel: kapi v83 `lib_open`), docs/03 §5.6 (the
+generator, writing and using a library), **`user/Kits/uikit/abi.h` (the rules — read it before changing uikit)**.
+
+- **Changing uikit now**: a fix in a `.cpp` → rebuild `lib/uikit.so` only (`make -C user libs`), stage
+  `sdcard/lib/uikit.so`, publish the `uikit` package: every app gets it, none is rebuilt. A new function:
+  the same (the build appends it to `user/Kits/uikit/uikit.abi`: commit that file). **Never** add a field or a
+  virtual to a class of the headers: use the reserve (`Widget::reserved_` / `ext`, `uk_reserved0..7`,
+  `Root`'s) — `uikit/layout_lock.cpp` fails the library's build otherwise. A change in a header's
+  **inline** code reaches only the apps rebuilt after it. When the apps are rebuilt against a table
+  that grew: raise `uikit >= 1.<entries>` in `tools/pkg/packages.ini` (`[onyx]` and `[*apps]`) and the
+  `uikit` version in `versions.ini`.
+- **A new app**: link `lib/uikit.imp.a` (and `lib/fontkit.imp.a`) — the generic rules of `user/Makefile` do.
+  A static constructor of an app may use uikit: the bind constructors run first (priority 101; `user.ld`
+  now orders the priorities across files — it did not before).
+- **Jet** links `uikit.so` too since 2026-10-05 (`tools/webkit/build-web.sh` compiles the import side for
+  the POSIX toolchain; `make -C user lib/uikit.imp.a` first). **Still static**: the PC builds (the simulator,
+  Koton for Windows, macOS) — they compile `user/Kits/uikit/*.cpp` as before.
+- **Tests**: `sh tools/tests/run_image_test.sh` (PC), on the Pi `libtest`, then from the PC
+  `python tools/tests/shlib/pi_apps.py <pi-ip>` (every app started) and `sh tools/tests/shlib/compat.sh`
+  + `python tools/tests/shlib/compat_pi.py <pi-ip> out/shlib-compat` (uikit N's program on uikit N+1).
+- **Next on this mechanism** (not started): other libraries as wanted — the user asked for an
+  **`audiokit.so`** (the study's result is in `IDEAS.md`: MeltySynth, the music decoders, a resampler, a
+  MIDI file reader, a sound output helper; MIT; to expose to BASIC too) —, then `libgui` and the
+  user-space window server `wsd` (`docs/GUI-USERSPACE-STUDY.md`), mbedTLS, newlib.
+- **Open**: the inline code with logic of uikit's headers was not moved into the library; `kmsg` is not
+  stopped by Ctrl+C over telnet since the shell's rework (the tests keep a second session in it).
+
+## The sound's output: the jack, USB or HDMI (2026-10-05, kapi v84; published: onyx 2026.10.51)
+
+`COnyxSoundDevice` (`kernel/sys/sound.cpp`; docs/02 §13 and *v84: sound_output*): one producer, three
+outputs over Circle's devices, `SD:/etc/sound.ini` `output = auto | jack | usb | hdmi`, the Sound
+applet's **Play on**, `volume output`. **Checked on the Pi 4**: the outputs switched while tones
+played (jack → HDMI → USB with no device → jack), the log's `sound: output: …` lines, the applet.
+**To do with the user's ears and hardware — nothing of it was heard**: HDMI on the screen; a real USB
+headset (48 kHz, 16 or 24 bits; its volume through its own control: `ApplyVolume`'s dB mapping;
+unplugged = silence, plugged again = back by itself); the Pi 400 (no jack: `auto` gives HDMI). Left
+from the idea (IDEAS.md): VCHIQ, I2S, the Pi 5. The rate converter is a linear interpolation
+(44.1 → 48 kHz): good enough to start, a better filter if it is heard.
+
+## The network made fast, then reliable; Web's video (2026-10-04; on the Pi, in `main`, published: onyx 2026.10.39, web 1.0.8)
+
+**Where to read**: `docs/05-CIRCLE-CHANGES.md` §25–§27 (every change, its measure), `docs/02` §11
+(the net core's IPI, the trial file), `docs/08` *Media* (the video layer, the user agent).
+
+- **Speed** (a Pi 4 on the user's Livebox, 5 GHz): 0.5–0.8 MB/s at the start of the day; now the
+  Pi receives 4–6.5 MB/s and sends 3–4. What did it: the net core's inter-core interrupt, the
+  Wi-Fi chip polled, both bands scanned and 5 GHz preferred, one SDIO command a frame, the bus at
+  50 MHz, the controller's registers without a wait, TCP window scaling.
+- **Reliability — the finding to keep**: with A-MPDU aggregation of the frames *sent*, half of
+  what the Pi sent during a download was lost (the remote desktop froze for seconds). The kernel
+  sets `ampdu_tx` 0, frame bursting, and TCP acknowledges one segment in eight. With aggregation
+  the raw rates were 8–9 MB/s each way: **do not turn it back on without the test** — the PC pings
+  the Pi (`ping -i 0.2`) while the Pi's `curl --limit-rate 1M` downloads; 0 % lost is the pass mark.
+- **Trying a driver / TCP change on the Pi**: never as a test kernel's default (one cut the Pi off
+  the network: a card had to be copied by hand). `SD:/etc/net-trial.txt` — `name=value` words,
+  read and deleted at boot, a restart at the end (`secs=`), the kernel log's tail kept in
+  `SD:/etc/net-trial.log`: docs/02 §11 *A trial*. `tcpbench` + `tools/tests/net/tcpbench.py`
+  measure; `uname -v` says which kernel runs.
+- **Open**: the Pi's sending rate without aggregation (3–4 MB/s); a rare 1 s pause left (TCP's
+  minimum retransmission timeout is 1 s); whether a newer Wi-Fi firmware aggregates soundly;
+  receive glomming does nothing with this firmware (tried, removed).
+- **Web**: video and Media Source on `user/Libs/av`, the pictures as a compositor layer (YouTube 480p
+  at its frame rate), the JavaScript console (F12), YouTube and Google asked for as a phone.
+  **Not verified on the Pi by hand yet**: the Console window, AltGr characters (`@`), closing the
+  Downloads window after a cancelled download. **Still to do, in the user's order**: full screen
+  video, Web Audio, H.264 / AAC (needs an LGPL FFmpeg build: ask the user); then — once the user
+  says the video work is done — nothing: **done 2026-10-04**, Jet / NetSurf and what only they
+  used are deleted and the WebKit browser is Jet (WebKit's user agent kept).
+- **Dock**: its window no longer moves when a launcher's name is shown (a pointer on a drawer's
+  strip was taken to be on the launcher under it).
+
+## Every app at EL0, the legacy mode removed (2026-10-02, kapi v74; tried on the Pi: all tests pass; in `main`, published)
 
 - **What**: apps, /bin tools, Koton plugins, Jet run at **EL0** and call the kernel by `svc` through the
   same kapi table (per-process handles, every pointer checked, user-side `memcpy` and event pump); a
   fault kills the app only; the EL1 "legacy" mode and its options are gone; ID register reads emulated;
   `proc_stats` (v74) → `ps` SYSC/s, the Task Manager, `/bin/sysstat`; `tools/el0scan.sh` checks binaries.
+  `cpu_stats` / `net_stats` (v80) → the Task Manager's Processor and Network tabs.
+  `win_resizable` (v82) → a window's edges and corners drag (an outline, then `GUI_EVENT_WINRESIZE`:
+  `Root::frameResize`); every `setResizable (true)` window has it. Not done: a live resize, a size kept
+  from one run to the next.
+  `set_cursor` (v81) → the pointer's shapes (a hand on links, the I bar on text, arrows on what drags, Sheet's
+  cross): `uk_cursor` in a widget's `onMouse`; drawn by `tools/gui/gen_cursors.py`. Not done yet: Mail's HTML
+  view (its page is drawn by another process: the shape has to come back through `webview_proto.h`), Slides
+  and Studio (another session's), the terminal, a busy app's hourglass.
   The story and the design: `docs/EL0-PROTECTED-MODE.md` §7; the reference: docs/02 §5–§6.
 - **On the Pi (the user, 2026-10-02)**: every test of the plan passes (el0test, faulttest, threads,
-  app cores, emulators, Jet, media, office, network, BASIC, kills under load). **Not yet in `main`,
-  packages not published** (the branch was kept apart on purpose: merge it, then `publish.sh`).
+  app cores, emulators, Jet, media, office, network, BASIC, kills under load). Merged into `main`
+  (from `ccr-182e4cf6-fxr778`) and the packages published (`onyx` 2026.10.21, every app rebuilt).
+  The docs (01–04, the READMEs, `ARCHITECTURE.md`'s banner, LICENSING) describe the EL0 system.
 - **Open: the GameCube emulator is slower than before** (the user: "later"). Leads, to measure first
   (`sysstat gcemu`, the GX/machine frame times): (1) the user-side `memcpy`/`memset` (el0blob.S) copy
   < 16 bytes byte by byte and align the destination first -- slower than Circle's for many small
@@ -73,20 +948,129 @@ answer in French. The docs stay in English.
   800-byte frame (the stop IPI only: should be rare); (4) `tlbi`/ASID on each `core_run`.
   **Jet (NetSurf) may be a little slower too** (the user: not important, a WebKit port is planned);
   lead (1) and the newlib/umm locks (`sysstat jet`) apply there as well.
+- **Performance after EL0, to analyse later (the user, 2026-10-02)**: the GameCube emulator and maybe Jet
+  slower (above); **Arkanoid in full screen slow** (a BASIC `.bax` app; only ~4 300 system calls/s, so
+  not the calls: look at the user-side `memcpy`/`memset` -- byte loops under 16 bytes and the
+  destination aligned first, for the Device framebuffer -- and `present_fb`/`fullscreen_direct`);
+  **Doom slower, ~588 000 system calls/s** (`ps` SYSC/s): a kapi in a tight loop (a clock read --
+  `get_ticks`/`clock_us`, readable at EL0 through `cntvct` instead --, newlib's locks, the app-core
+  RPC of `user/Ports/doom`): `sysstat doom` names the top slots; fix it app-side.
+  **Measured (`sysstat doom`, the user):** `key_held` 77 % (184 169), `pad_state` 7 %, then thread_self,
+  sound_status, msleep, should_exit, get_modifiers, pop_event (~4 300/s each). Cause: `poll_input`
+  (`user/Ports/doom/doom_onyx.c`) asks `kapi_key_held` 43 times (7 specials + a-z + 0-9) per call, and is
+  called ~4 300 times a second (not once a frame). The same per-key polling is in **every emulator**
+  (gb, gba, nes, snes, n64, **gc**), invaders, `user/Apps/games/game.h` and the BASIC runtime (**Arkanoid**) --
+  likely a big part of their slowdown at EL0. **The fix (the user's design, 2026-10-02):** `key_held` must not be
+  a system call. The kernel keeps **one input-state page** (a 256-bit held-key map, the modifiers,
+  the pads' state -- removing `pad_state`'s 7 % too), mapped **read-only at a fixed VA** next to the
+  kapi table; the EL0 table's `key_held` (and `get_modifiers`, `pad_state`) slots point at
+  user-side functions reading it (like memcpy): **existing binaries get it without a rebuild**.
+  **Anti-keylogger**: only the process with the keyboard focus maps the real page; every other
+  process maps a shared zero page at the same VA (no key held); on a focus change the kernel swaps
+  the two PTEs (TLBI by VA + ASID) and clears the state. Key events for typing still go through
+  the pump. Then Doom polling once per frame, and the small-`memcpy` fast path.
+- **Later: memory balance on 1 GB Pis (the user, 2026-10-02)**: a 1 GB Pi 4 has no high zone, so all
+  the apps share Circle's low pager (`PAGE_RESERVE`, 256 MB) while the kernel heap keeps ~680 MB it
+  does not need; a colleague's 1 GB Pi runs out of memory on Wikipedia in Jet (~3 000 pages of
+  64 KB = ~190 MB for one page; the footprint grows page after page -- maybe a NetSurf leak, maybe
+  newlib's sbrk-only malloc that never returns memory: WebKit2 with process swap on navigation and
+  a vm_map-based malloc (dlmalloc/mimalloc) will help). To do: a bigger app pool on 1 GB boards
+  (the reserve chosen at boot from the board's RAM, in the Circle fork + kernel), a small-memory
+  profile (smaller `RAM:` -- `ramfs=` --, Jet's caches on the card / capped), and a `vmmap <app>`
+  tool (the regions, resident pages, kinds: heap, stacks, image, canvases) on vm_query/vm_stats.
+- **To do: the PDF Viewer flickers when scrolling fast from page to page (the user, 2026-10-02).**
+  Check first where it comes from (the view cleared / a blank placeholder painted before the
+  worker thread's bitmap arrives; drawing straight into the visible canvas without a back buffer;
+  pages rendered again on every scroll). The fix the user suggests: render into memory buffers
+  once and scroll what is already generated -- keep the rendered pages (at the current zoom) of
+  the visible ones and their neighbours in a cache, render ahead above and below, compose the view
+  from that cache into a back buffer and present it whole (never clear first); while a page is not
+  rendered yet, show its thumbnail or the previous zoom's bitmap scaled, not a blank.
 - **Next**: the GameCube speed; then demand paging (`mmap`/`munmap`/`mprotect`, faults filled on
   first touch, the stacks and the heap lazy) -- the first brick of a POSIX layer (the plan discussed:
-  files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (TPIDR_EL0 saved per thread), mmap,
+  files in stream, stat, env/posix_spawn/waitpid, pthreads + TLS (`TPIDR_EL0` is already saved per
+  task by Circle's `TaskSwitch`; v75 gives a new thread and an app-core job their initial value), mmap,
   clock_gettime; then BSD sockets + poll, signals, termios) -- and, much later, a WebKit port
   (WebKitLegacy, single process, on the PlayStation/WinCairo model; LGPL: the user's decision).
 
+## Program images: loaded once, shared, preloaded (2026-10-03, kapi v77; validated on the Pi, in `main`, published)
+
+- **What**: stages (a), (c), (e) of `docs/ELF-LOADER-PLAN.md` -- the loader streams a program from
+  its file once into an image object (`kernel/proc/image.cpp`, `kern/image.h`); its read-only
+  segments are shared by its processes (mapped not owned), the writable ones copied per process.
+  **The key is the program's canonical path** (`ImageCanonPath`: lower case, `sd:/apps/x.app/main`):
+  a run of a path that has an image does not touch the card. The file kapis drop an image where its
+  file changes (`ImageFileChanged`). kapi v77: `image_preload` / `image_unload` / `image_list`
+  (slots 253..255); `/bin/preload`, `/bin/unload`; `pkg` re-preloads a kept program it replaces; a
+  commented `preload jsc` example in `sdcard/etc/autostart`. docs/02 §7 *Program images* and §8
+  *v77*, docs/03 (the kapi chapter), docs/04 §8.
+- **Tested**: `sh tools/tests/run_image_test.sh` (465 checks: the canonical path, the ELF header
+  checks, load / share / wait / fail / pin / unload / the hook); `run_ipc_test.sh`,
+  `run_ofile_test.sh` (`CIRCLE=<circle tree>`), `run_pkg_test.sh` still pass; the changed kernel
+  files pass `g++ -fsyntax-only` against Circle's headers on the PC.
+- **On the Pi (the user, 2026-10-03)**: built with Arm's `aarch64-none-elf` 14.2 (first compile
+  clean, the kernel 313 KB below its size limit); the system and the apps run as before; `wctest`
+  (80 MB) preloaded starts and runs its test at least 4 times faster. Not reported one by one:
+  `unload`, a `pkg` update of a preloaded program, the file hook, a preload from `/etc/autostart`.
+- **The checks to run when something looks wrong** (`kmsg` shows one `image <path>: loaded|shared in N ms, mapped in N ms`
+  line per start): boot (every program now goes through the new loader); start a program twice
+  (`shared` the second time; `ps`' `PAGES` no longer counts a program's code); `preload jsc`, `preload` (the list),
+  `jsc` (shared: no card read), `unload jsc`; replace a preloaded tool with `pkg` or over FTP and
+  check the next start says `loaded`; `filetest`, `proctest`, `ipctest`, `memtest` as before.
+- **Next**: stage (d) (keep images after exit, evict under memory pressure) and (b) (lazy fill) of
+  the plan, if the measurements ask for them.
+
+## POSIX layer, IPC, toolchain, WebKit port -- where it stands (2026-10-02)
+
+- **Done, on `main`, validated on the Pi**: kapi **v76** -- demand paging and `vm_*` (v75), real files /
+  processes / BSD sockets + `poll` (v75), IPC for WebKit2 (v76: AF_UNIX socketpair, SCM_RIGHTS-like
+  handle passing, memfd/shm shared memory, spawn with handles); **libonyxposix** (`user/Runtime/libc/posix/`);
+  the **`aarch64-onyx-elf`** toolchain (GCC 14.2, posix threads, native TLS; prebuilt + sources in the
+  repo `stephaneweg/onyx-toolchain`; install: `sh tools/toolchain/fetch.sh`, rebuild:
+  `tools/toolchain/build-onyx-toolchain.sh`); ports: SQLite, libxml2, curl+mbedTLS, ICU 78.3, HarfBuzz,
+  Skia m154 (WebKit's copy), libjpeg-turbo (`tools/ports/`, `make -C user/BinUtils ports`). Tests on the Pi:
+  memtest, filetest, proctest, nettest, ipctest, posixtest (all groups), posixtest-cxx, malloctest,
+  icutest, hbtest, skiatest, skiademo -- all pass. The plan and every decision: **`docs/POSIX-PLAN.md`**.
+- **Decisions (the user)**: WebKit2 replaces Jet (§8–§9), on the PlayStation port's model (no GLib,
+  curl, Skia CPU, our compositor on the V3D later); static binaries (§13); the WebKit browser under
+  **LGPL-2.1+** (§15); fork/vfork, symlinks on FAT, self-hosting, Mesa (GPU), 1 GB memory balance,
+  the input-state page for key_held/pad_state, the PDF Viewer's flicker: later (notes above / plan).
+- **WebKit port step 1** (WTF + JavaScriptCore up to a `jsc` shell; `PLATFORM(ONYX)`): **done,
+  validated on the Pi (2026-10-02), in `main`** (built on the user's PC, WSL): WTF and JavaScriptCore build, `jsc`
+  runs with the LLInt (no JIT; WebAssembly in its interpreter) and passes WebKit's es6, default
+  stress and WebAssembly tests under qemu
+  (`sh tools/webkit/test-jsc.sh`); `/bin/jsc` is on the card (its own package, `jsc`). **Step 2 (WebCore) renders a
+  page on the bench and on the Pi** (2026-10-02: `tools/webkit/build-webcore.sh`, `wctest`,
+  `test-webcore.sh`; Skia on the CPU, no GL; the network path still to do), in `main`. WebCrypto
+  on mbedTLS is done on the branch `webkit-port` (`test-webcrypto.sh`: 299 checks on the bench).
+  **Step 3 (WebKit2) and Web, the browser, run on the Pi (2026-10-03, in `main`, package `web`)**:
+  kotonstudio.com over HTTPS in about 3.2 s, GitHub's pages, new windows for `target=_blank`; what
+  was fixed (a heap corruption in Skia's glyph painting, curl's wake-up, the IPC monitor thread,
+  WTF's RedBlackTree) and what is open (the Circle TCP panic a telnet client can trigger) are in
+  docs/08 "Step 3". **The heap corruption's cause is still open**: newlib's `malloc_usable_size` was
+  checked and is right (`/bin/malloctest`, bench and Pi), so Skia's workaround (`skmallocsize.c`)
+  hides something else; resume with `HEAPCHECK=2 sh tools/webkit/build-web.sh` (docs/08 "Step 3"). Then (patch `0016`, Web 1.0.2): `<select>` lists, the system clipboard, find
+  in the page, the right button's menu (Save Link / Image / Page As), downloads into `SD:/Downloads`
+  with the Downloads window (its own process: progress, Cancel) and the status bar; Mail draws its
+  HTML messages with Web as an applet (`web --applet`); kapi **v78**: `PROT_EXEC` for a JIT (memtest,
+  posixtest pass on the Pi) — **next: the JavaScriptCore JIT** (roadmap step 3), then the V3D
+  compositor. The roadmap and the user's decisions (one
+  executable for the three roles, no tabs, the order of the steps) are in docs/08; the program
+  images and `preload` / `unload` (kapi v77, `docs/ELF-LOADER-PLAN.md`) are in `main`. To resume: `docs/08-WEBKIT-PORT.md` ("status / how
+  to resume") and `docs/LOCAL-AGENT-WEBKIT.md` (the PC's setup): the toolchain
+  (`sh tools/toolchain/fetch.sh`), WebKit with `tools/webkit/fetch.sh` (pinned revision, sparse
+  checkout, Onyx's patch series in `tools/webkit/patches/` -- WebKit is not vendored), the build
+  with `tools/webkit/build-jsc.sh` (or `make -C user/BinUtils jsc`). Next steps: WebCore → WebKit2 → the
+  Onyx view / compositor / media player → the browser → parity with Jet.
+
 ## Mail, the mail client (2026-10-02; tried on the Pi with Gmail: works well)
 
-- **What**: `user/Apps/mail` + `user/mail` (docs/03 *Mail*; docs/04 §12; the mock-ups, the plan and the user's
+- **What**: `user/Apps/mail` + `user/Libs/mail` (docs/03 *Mail*; docs/04 §12; the mock-ups, the plan and the user's
   decisions: `docs/mail/README.md`), **MIT**. Gmail (an **app password**), Outlook.com / Hotmail (**Microsoft's
   device code**: the "Onyx Mail" application registered by the user at Microsoft Entra, its id
-  `85ccaf6e-81ff-4a62-9194-930fc36429ad` built in -- `oauth_defaults`, user/mail/oauth.h; `SD:/etc/mail/oauth.ini` overrides it), any IMAP, POP3 + SMTP. Three columns as the mock-ups: all the inboxes,
+  `85ccaf6e-81ff-4a62-9194-930fc36429ad` built in -- `oauth_defaults`, user/Libs/mail/oauth.h; `SD:/etc/mail/oauth.ini` overrides it), any IMAP, POP3 + SMTP. Three columns as the mock-ups: all the inboxes,
   starred, each account's folders; conversations (Gmail's thread id, else References; one's replies from Sent
-  joined); the reading pane with **our own HTML 4 + CSS 2 renderer** (`user/mail/html*.h`: the user, "simple,
+  joined); the reading pane with **our own HTML 4 + CSS 2 renderer** (`user/Libs/mail/html*.h`: the user, "simple,
   not Jet"), remote pictures held back, attachments opened / saved; writing with completion (contacts + the
   addresses written to), drafts, attachments; the wizard and the settings; **Contacts = a Cardfile form**,
   `SD:/Documents/Contacts.card`. `eml = mail` in `fileassoc.ini`. A worker thread does all the network; the
@@ -95,10 +1079,16 @@ answer in French. The docs stay in English.
   model); the screenshots: `shots.sh mail` (two made-up mailboxes: `fakemail.py --demo`).
 - **On the Pi** (2026-10-02, the user): **works well with Gmail** (an app password). Yahoo: its app passwords are
   currently unavailable at Yahoo (the option greyed: Yahoo's own doing, no date given). Outlook: the user registered
-  "Onyx Mail" at Microsoft Entra (2026-10-02): its id built in, to try on the Pi. Watch: big mailboxes (the first
+  "Onyx Mail" at Microsoft Entra (2026-10-02): its id built in. **Outlook works on the Pi** (2026-10-07, the user)
+  once the SMTP / POP3 commands took Microsoft's 2-3 KB tokens (they were cut at 1 KB: "500 5.3.3 Unrecognized
+  command"); the Outlook page opens Microsoft's page in Jet and copies the code; an unknown domain can be said
+  to be Microsoft 365 (the device code) or Google Workspace (an app password). The same day, on an HDMI screen:
+  the GUI (Elegant, in user space) is responsive, Jet (WebKit) responsive enough to be usable, the HDMI sound
+  works (the output follows what is connected: USB, HDMI or the jack). Watch: big mailboxes (the first
   look takes a folder's newest 100), the TLS handshakes' time, the memory of large HTML mails (a newsletter
   wider than the pane is drawn once at its width and averaged down).
-- **Next**: try Outlook on the Pi (the id is in), IDLE for the Inbox (the code is in `imap.h`, the
+- **Next**: Gmail by OAuth (Google refuses the device code for the mail scope: the authorization code with PKCE
+  and a loopback redirect, a "Desktop app" client registered by the user, published unverified), IDLE for the Inbox (the code is in `imap.h`, the
   worker polls today), older messages on demand, rich text when writing (bold, lists, links: the HTML part is
   generated from the text today), "always show pictures from this sender", search on the server, printing / PDF.
 
@@ -130,22 +1120,22 @@ answer in French. The docs stay in English.
   (the web: Jet), passwords, Properties (facts, fonts, security), the home's recent documents (reopened at
   their page: `SD:/etc/pdf/recent.tsv`), `pdf = pdf` in `fileassoc.ini`. A worker thread draws the display
   lists and searches; the files go through the kapi (`KStream`).
-- **The export**: `user/pdf/pdfwrite.h` (**MIT**, ours): PDF 1.7, TrueType fonts embedded as subsets (Identity-H,
-  ToUnicode), images, links, bookmarks. Writer's *File ▸ Export as PDF* (its pages drawn again into it:
+- **The export**: `user/Libs/pdf/pdfwrite.h` (**MIT**, ours): PDF 1.7, TrueType fonts embedded as subsets (Identity-H,
+  ToUnicode), images, links, bookmarks. Letters' *File ▸ Export as PDF* (its pages drawn again into it:
   `PageView::paintPage`, `g_pdf`; the headings as bookmarks) and the Spreadsheet's (the used cells cut into
   A4 pages, fitted to the width, the charts as images).
 - **Tests**: `sh tools/tests/run_pdf_test.sh`; the screenshots: `shots.sh pdf writer sheet`.
 - **Licences**: the user, 2026-10-01: **all our own software under MIT** wherever possible (CLAUDE.md,
   docs/LICENSING.md).
 - **On the Pi** (2026-10-02, the user): the viewer works well. Still to watch: very large PDFs (the bitmaps:
-  18 M pixels at most; MuPDF's store: 96 MB); the export from Writer / the Spreadsheet on the Pi.
-- **Next**: annotations and forms (MuPDF has them), colour management (lcms2), the CJK fonts; Writer's
+  18 M pixels at most; MuPDF's store: 96 MB); the export from Letters / the Spreadsheet on the Pi.
+- **Next**: annotations and forms (MuPDF has them), colour management (lcms2), the CJK fonts; Letters'
   hyperlinks (the export would make them links).
 
 ## Paint made "pro" (2026-10-02, kernel v72, not yet tried on the Pi)
 
 - **Asked by the user**: Paint more professional, FreeType, blend modes per layer composited by the GPU (a
-  hidden layer as if absent), Tab between a dialog's fields (wtk), Ctrl+wheel zoom, pattern brushes, the
+  hidden layer as if absent), Tab between a dialog's fields (uikit), Ctrl+wheel zoom, pattern brushes, the
   colour selection and the free-form one, the fill's gradient along a line (GIMP-like gradients), Open as
   Layer / Paste as New Layer, a fade between two pictures, a Colours menu (desaturate, colorize, the
   channels remapped... on the selection, the layer or everything). The mock-ups the user approved and
@@ -153,8 +1143,8 @@ answer in French. The docs stay in English.
 - **Kernel v72**: `gpu_render`'s blend presets 5..12 (`KAPI_GPU_BLEND_MULCOL` ... `DSTOUT`, kern/kapi_abi.h,
   sys/v3d.cpp's table: colour and alpha factors apart). **gpucomp**: `gpc_layer.blend` (`GPC_B_*`),
   `gpc_blend_pixel`; tests `sh tools/tests/run_gpucomp_test.sh` (the software V3D has the presets).
-- **wtk**: `Widget::tabFocus` / `isField` / `onTabFocus`, `Textbox::changed`, `Button::onKey`; a `Textbox`
-  without `cb` and a `Checkbox` / `RadioButton` leave Enter to the dialog. Every wtk app was rebuilt for it.
+- **uikit**: `Widget::tabFocus` / `isField` / `onTabFocus`, `Textbox::changed`, `Button::onKey`; a `Textbox`
+  without `cb` and a `Checkbox` / `RadioButton` leave Enter to the dialog. Every uikit app was rebuilt for it.
 - **Paint** is a newlib app now (`paint.elf` rule in user/Makefile; its window sized from the screen).
   Simulator: `sh tools/tests/desktop_sim/shots.sh paint` (`paint_scene.py`). Samples: `SD:/docs/pictures/`
   (`tools/gen_paint_samples.py`, package `paint-samples`).
@@ -171,15 +1161,15 @@ answer in French. The docs stay in English.
   pages, search, a songs' table with its menu, now playing (a MIDI file: its notes as coloured lines),
   the mini player (the window reduced at the screen's bottom right). Tags read only; covers from the
   files and folders; closing stops the music.
-- **The videos (2026-10-02)**: on Jet's media library `user/av` (VP9, VP8, AV1 + Opus...; `av_player_open_file`,
+- **The videos (2026-10-02)**: on Jet's media library `user/Libs/av` (VP9, VP8, AV1 + Opus...; `av_player_open_file`,
   its reader now through the kapi): `videos.h` (the facts, `videos.tsv`, the kinds: Films / Clips and series,
   episodes), `thumbs.h` (a frame a tenth in, `SD:/etc/media/thumbs/*.jpg`), `watch.h` + `WatchView` (the
   whole window, controls over the picture, full screen, resumed where left, *Next* episode); the sound
   handed between the music's thread and the video's (`Player::release`). `media.elf` links `libvpx.a`,
   `libdav1d.a`, `libopus.a` and **FFmpeg 7.1.2** (the user, 2026-10-02: "FFmpeg complet", the Media Player
-  GPL-2.0): every decoder (H.264, H.265, AAC...) and container (AVI, TS, WMV, FLV, OGV...) through `user/av`'s
+  GPL-2.0): every decoder (H.264, H.265, AAC...) and container (AVI, TS, WMV, FLV, OGV...) through `user/Libs/av`'s
   `av_ffmpeg.c` / `av_lavf.c` (`third_party/ffmpeg-7.1.2/onyx/build.sh`; test videos: `Samples/Videos`). PC: `shots.sh media` (the sample library's `Videos/`: `make_library.py`; the
-  simulator's build of `user/av`: `tools/tests/desktop_sim/av_host.mk`); `tools/tests/av/run.sh` checks the
+  simulator's build of `user/Libs/av`: `tools/tests/desktop_sim/av_host.mk`); `tools/tests/av/run.sh` checks the
   file mode now.
 - **To try on the Pi**: the sound (`kapi_sound_write` from the player's thread: a song heard whole,
   pause / seek at once), the scan of a big `SD:/Music` (its time; the next start from `library.tsv`), a
@@ -190,99 +1180,6 @@ answer in French. The docs stay in English.
   each the first time).
 - **Next**: media keys; ReplayGain; gapless; the covers cached on the card; a playlist reordered by
   dragging; the videos' next steps in `docs/media/README.md` (subtitles, AAC, H.264, a video's mini player).
-## Jet Browser: video and audio -- `<video>`, `<audio>`, MSE, the media library (2026-10-01, PC bench only)
-
-- docs/06 §44. **The media library `user/av`** (docs/03 "The media library": also for the Media Player's
-  videos): WebM / MP4 / fMP4 / WAV / FLAC / MP3 containers, FLAC / MP3 / PCM decoders, NEON YUV, the MSE
-  store, the player (threads, the kapi's sound as the clock, A/V sync ~3-5 ms). **In Jet**: `media.js` +
-  `qjs_media.c` (HTMLMediaElement, MSE, MediaCapabilities, Fullscreen, native controls), replaced boxes
-  (`box_special.c`, `hints.c`, `redraw.c`, `default.css`). YouTube's pages and player run (`html.c`'s
-  paused-parser fix, `window.Window`, `ProcessingInstruction`).
-- **The codecs (2026-10-02)**: libvpx 1.15.2 (VP9 / VP8), dav1d 1.5.1 (AV1), libopus 1.5.2 vendored
-  (`third_party/`, `README.onyx` each), one source list `user/av/codecs.mk` for the Pi
-  (`make -C user/netsurf codecs`: `libvpx.a`, `libdav1d.a`, `libopus.a` -- NEON, dav1d's AArch64 assembly),
-  the PC bench and Windows. VP9 / AV1 + Opus play bit-exact in mediatest (`tools/tests/av/clips`, made by
-  `mkcodec.py` with PyAV); `sh tools/tests/av/bench.sh <clips>` times them (PC; AArch64 under qemu, its
-  frames checksummed against C's). Smooth (advertised): VP9 <= 854x480, AV1 <= 640x360 -- **measure on a
-  Pi** (`__onyxMediaStats(video).decodeUs`) and raise AV1 if it allows.
-- **YouTube's video stream does not come** (§44 *YouTube with the real codecs*): the player picks its
-  formats, SABR's first POST is answered, the second gets its head and no bytes; the same request replayed
-  with curl is answered at once. Next: a run from another network (the Pi), a desktop Chrome's SABR exchange
-  for the same video compared field by field (PO token, headers, TLS); then the decoder on an app core.
-- Tests: `sh tools/tests/av/run.sh` (79 checks, PC + qemu-aarch64), `sh tools/tests/netsurf/mediatest.sh`
-  (all pass); the bench's stand-in sound `SIM_SOUND=1` (`SIM_SOUNDOUT=<file>`), `NS_MEDIADEBUG=1`,
-  `NS_MEDIASTUB=1` (grey frames / silence for the codecs not built in: YouTube's path on its real streams).
-- The bench's network got Google's "unusual traffic" page for YouTube's watch pages (the embed pages
-  answered): try `https://www.youtube.com/embed/<id>` in an iframe (`yt-embed.html` pattern in §44).
-- Fixed on the way (every site): a script request's **binary body** (ArrayBuffer / typed array) was sent as
-  text cut at its first NUL (dom.js `encodeBody` + `onyx_fetch.c` `onyx_body_decode`) -- YouTube's player
-  API answered 400. With the stand-in decoders the embed player then picks its formats, adds its
-  SourceBuffers and starts **SABR** (UMP over POST to googlevideo): the redirected request gets its head
-  and no bytes on the bench -- the next thing to look at (`NS_NETBODY=videoplayback`), with a real decoder.
-- Windows: `winkapi.cpp` has the sound now (waveOut: `sound_acquire / write / status / config`).
-
-## Jet Browser: Netflix's sign-in code (2026-10-01, PC bench only)
-
-- The user: on netflix.com, the code sent by e-mail could not be typed into the boxes. docs/06
-  §45 (the audit). Netflix's code step (Hawkins' `<InputPinCodeV2>`, React) is ONE transparent
-  field over its "chrome" (`position: absolute; z-index: -1` behind it) drawing the six boxes.
-  **Cause**: Jet painted and hit a negative z-index in place (the tree's order) -- the chrome
-  took the click, the field never had the focus. Now a stacking context paints its negative
-  z-index boxes under its in-flow content, and the hit test the same (`redraw.c`
-  `onyx_negz_*`, `interaction.c` `onyx_hit_negz`).
-- Also: the caret kept while React re-renders (a `value` attribute change updates the control,
-  no rebox; the caret placed again after a reformat); the key's events in browser order
-  (keydown, keypress, `paste` with `clipboardData`, `beforeinput`, the edit with `maxlength`
-  kept, `input` with `inputType` / `data` at once, keyup); `select()` / `setSelectionRange()` /
-  `selectionStart` real in the focused field; `focus()` at once when the box exists; keys to
-  `document.activeElement`; `ClipboardEvent`, `DataTransfer`; no `navigator.serviceWorker` key.
-- NetSurf only (no libcss / libdom header or struct change; `js_event_init` and
-  `html_content` grew): rebuild Jet (`sdcard/apps/jet.app/main`); Windows `sh pc/Jet/build.sh`.
-- Test: **`tools/tests/netsurf/otptest.sh`** (new; React 18 in `pages/react/`, MIT).
-  **To try on the Pi**: the code step with an account. Not done: `text-align` / `text-indent` /
-  `letter-spacing` in a text field (Netflix's caret at the field's left; digits not centred in
-  six-box widgets), `contenteditable`.
-
-## Jet Browser: Wikipedia's search box (2026-10-01, PC bench only)
-
-- The user's two bugs on fr.wikipedia.org (Mobile and Desktop: Codex's TypeaheadSearch, Vue 3),
-  docs/06 §42: **the suggestions list transparent** = the stacking order -- a positioned box with
-  z-index auto is no stacking context now (its z-index > 0 boxes sorted with its context's:
-  redraw.c `onyx_layer_paint_in` + the hit test); **Enter doing nothing** = a form made by script
-  had no `struct form` (libdom's form owner falls back to the nearest ancestor form; forms.c makes
-  the struct when a control needs it; Enter clicks the default button, else submits).
-- Also: `Symbol.toStringTag` on every DOM interface (Vue's reactive() proxied elements: "not a
-  node"); **`pointer-events`** in libcss (MediaWiki's full-page overlay took every click on Desktop);
-  an absolute box no longer clipped / made scrollable by a static scroller between it and its
-  containing block (the menu's footer; `HAS_ABS_OUT`).
-- **libcss and libdom changed**: libcss' public headers (`CSS_PROP_POINTER_EVENTS` = 0x0ba,
-  `enum css_pointer_events_e`, `css_computed_pointer_events`), the computed style's layout
-  (autogenerated headers made again); libdom's sources only (no header / struct change); NetSurf's
-  `struct form` (+`node_ref`), box.h's `HAS_ABS_OUT`.
-- Test: **`tools/tests/netsurf/typeaheadtest.sh`** (new, local pages). **Needs a rebuild for the
-  Pi**: `libcss.a`, `libdom.a` and Jet (`sdcard/apps/jet.app/main`); Windows `sh pc/Jet/build.sh`.
-
-## Jet Browser: facebook.com's frozen login screen, fixed dialogs, the network (2026-10-01, PC bench only)
-
-- **The lag, the late Accept, the wheel doing nothing** on www.facebook.com (Desktop): `offsetParent`
-  was always the body (the body's own too) -- Facebook's visual-completion timer climbed the chain
-  for ever, 60 s until the script limit, the window's events held meanwhile. Now CSSOM View's
-  (`N.offset`, docs/06 §41). The login page's longest timer: 60 s -> 87 ms (PC).
-- **Fixed dialogs over a scrolled page**: hit test, drags, caret, redraws, wheel into frames and
-  `getBoundingClientRect` now use where fixed boxes are painted (`html_box_fixed_shift`).
-- **The network** (the user's "Jet eats the Pi's network" once logged in -- not reproducible here,
-  no account): `ONYX-PERF net:minute` (the perf file -> kmsg: requests, KB/s, sockets per host,
-  WebSockets), WebSocket / EventSource reconnections and failing hosts held back, a hidden
-  window's script requests one a second, idle kept-alive sockets closed after 10 s.
-  **To try on the Pi**: the cookie dialog (scroll, Accept at once), the login screen smooth; then
-  logged in, `SD:/apps/jet.app/perf` created, read the `net:minute` lines in `kmsg` to see what
-  loads the network (likely the feed's images: Jet Browser has no lazy image loading yet).
-- Tests: jstest (`js-fixed-scrolled`, `js-modal-doc`), nettest (`net-retry`, `net-hidden`). Only
-  Jet changes (no libcss / libdom header change): rebuild `sdcard/apps/jet.app/main`.
-- Pre-existing, not fixed: gputest 3a (gpu-scroll at 150 %: the fixed bar 1 px off composited,
-  same without these changes -- since fixed: docs/06 §38, *The page's origin at a zoom*); layouttest's `dialogs` page (layoutdiff.sh gives Chromium a 790 px
-  viewport, NetSurf's is 770 since the status bar).
-
 ## Screenshot, the screen capture tool (2026-10-01, not yet tried on the Pi)
 
 - **What**: `user/Apps/screenshot` (docs/03 *Screenshot, the capture tool*; docs/04 §12; the study and the
@@ -303,134 +1200,6 @@ answer in French. The docs stay in English.
   (started / told), Alt+Print Screen, a capture pasted in Paint.
 - **Next ideas**: handles to adjust a rectangle before taking it, text / arrows / shapes / a blur, a
   free-form selection, the capture of a menu (the delay works today).
-
-## Jet Browser: find in page, copy and paste, the context menu (2026-10-01, PC bench only)
-
-- **Find** (docs/06 §40): Ctrl+F / Edit ▸ Find in Page... -- a find bar above the status bar ("3 of 17",
-  ^ v, Match case, x); typed words searched as they come (after a 300 ms pause once a search took
-  over 30 ms), every match yellow, the current orange, scrolled into the middle when out of view;
-  Enter / Shift+Enter, F3 / Shift+F3, Ctrl+G; Esc clears. content/textsearch.c rewritten: an array
-  of matches, a binary search a painted text (was O(boxes x matches) a search and a paint), literal,
-  case and accents folded, wraps, found again after a layout (`layout_gen`).
-- **Clipboard**: frontends/framebuffer/clipboard.c on the kernel's clipboard (UTF-8, 64 KB) both ways:
-  Ctrl+C of a selection, Ctrl+V / X / A in fields; Edit ▸ Cut / Copy / Paste / Select All.
-- **Context menu** (right click; frontends/framebuffer/onyx_edit.c + wtk's PopupMenu): link (Open,
-  Save As, Copy Address), image (Open, Save As, **Copy Image** -> `RAM:/jet/clip/image-1|2.png` +
-  CLIP_FILES: Paint's Ctrl+V pastes it; Windows: CF_DIB), field (Cut, Copy, Paste, Select All),
-  selection (Copy), Back / Forward / Reload, Select All, Find.
-- Fixed: the horizontal scroll bar's arrows left unpainted when the page got shorter (status bar /
-  find bar shown: the compositor's stale hole). Menus: Edit inserted after File (View's items moved:
-  `menu 12` is Hide Status Bar now).
-- Tests: **`tools/tests/netsurf/findtest.sh`** (new; Paint pasting in the simulator), fakekapi's clipboard
-  is real (`SIM_CLIP`, `SIM_CLIPFILE`). Screenshots: `shots.sh jet` (jet-find.png, jet-context.png).
-- **Needs a rebuild for the Pi** (Jet, `sdcard/apps/jet.app/main`) and Windows (`sh pc/Jet/build.sh`).
-  **To try on the Pi**: Ctrl+F on bbc.co.uk (typing speed, the count), a copied image pasted into
-  Paint, text copied into the Text Editor and back into a page's field.
-
-## Jet Browser: XML documents, XPath, XSLT -- Acid3 100 / 100 (2026-10-01, PC bench only)
-
-- docs/06 §43. A frame on a type Jet does not show gets an empty document and its `load`
-  (Acid3's own time 5.56 -> 0.52 s); **expat 2.7.1** vendored (`third_party/expat-2.7.1`, MIT)
-  parses XML into libdom (`html/onyx_xml.c`): XHTML as XML, XML + CSS, the tree view, Chrome's
-  error box, SVG documents at the top and in frames, `<object>`'s SVG document; DOMParser /
-  XMLSerializer / createDocument as XML; a basic SVG DOM; **xslt.js** (XPath 1.0:
-  `document.evaluate`; XSLT 1.0: `<?xml-stylesheet type="text/xsl"?>`, `XSLTProcessor`), loaded
-  on demand. **Acid3 94 -> 100 / 100** (`ACID3_MIN`=100). Test: `sh tools/tests/netsurf/xmltest.sh`.
-- **The Pi (not built here)**: new `libexpat.a` (`make -C user/netsurf`: the new
-  `third_party/expat-2.7.1/libexpat.a` target), **`libdom.a` rebuilt clean** (`struct
-  dom_html_document` got a field, `include/dom/html/html_document.h` new functions, `element.c`),
-  `libplutosvg.a` rebuilt (a PlutoSVG fix), then Jet linked again (`netsurf-app.mk link stage`:
-  `-lexpat`, `qjs_xml.c`, `xslt.js` as `qjsgen/qjs_xslt_js.h`). Windows: `pc/Jet/jet.mk` compiles
-  expat itself.
-- Left: `xsl:include` / `xsl:import`, `document()` of other URIs, SVG fonts / SMIL, the SVG DOM's
-  geometry from the drawing, an SVG document without a size at the window's size.
-
-## Jet Browser: Acid2 and Acid3 (2026-10-01, PC bench only)
-
-- **Acid2 identical** to its reference (the face pixel by pixel, composited, CPU-painted and after
-  a scroll); **Acid3 51 -> 94 / 100** (docs/06 §37: what was fixed -- `position: fixed`, the
-  Appendix E paint order, `<object>` fallback, selectors, media query lists, DOM Range /
-  NodeIterator, `document.open`, the table API, sheets and `data:` images in the script's turn).
-- Bench: `OUT=/tmp/nsbench PORT=8160 sh tools/tests/netsurf/acidtest.sh [acid2|acid3]` (Acid3 over
-  `acidsrv.py`, fails below `ACID3_MIN`=94). Left: tests 69, 74, 75, 77, 79, 80 = XML / SVG
-  documents in frames and the SVG DOM (docs/07 §3). **The Pi's `libcss.a`, `libdom.a`,
-  `libhubbub.a`, libnsfb and the Jet app need a rebuild** (not done here).
-
-## Jet Browser: the page zoom, the status bar, downloads (2026-10-01, PC bench only)
-
-- **The zoom** (docs/06 §38): the toolbar's **"-  100%  +"** (right of the pill), **Ctrl+- / Ctrl++
-  (Ctrl+=, keypad +) / Ctrl+0**, Ctrl+wheel, View ▸ Zoom In / Out / Actual Size -- Chrome's steps
-  (25..500 %), `browser_window_set_scale`; kept per host in **`SD:/apps/jet.app/view`** (`zoom <site>
-  <pct>`), applied before a new page's first layout (core hook `onyx_zoom_hook`,
-  `netsurf/onyx_jet.h`); the scripts see CSS px (`devicePixelRatio`, `innerWidth`, `clientX`...).
-  **Kernel change** (kernel.cpp `SetKeyMapData`): Ctrl + the `-` / `=` `+` / `0` keys now reach the
-  apps (the empty Ctrl column filled with the keypad's keys) -- docs/02.
-- **The status bar** (bottom, 22 px; View ▸ Hide / Show Status Bar, kept in `view`): Loading... (n of
-  m fetches), Ready, "404 Not Found" / "500 ..." / "Error: Connection failed" in red, the link under
-  the pointer; a download's progress on the right.
-- **Downloads**: unknown types, `Content-Disposition: attachment` (any type), `<a download[="name"]>`
-  (also `blob:` / `data:`, a script's `a.click()`): the Save dialog in **`SD:/Downloads`** (made if
-  missing), the name pre-filled (filename*, filename, the link's, the URL's; ASCII-safe for FAT),
-  written by a writer thread as it arrives (`frontends/framebuffer/onyx_download.c`), the toolbar's
-  downloads button + menu (progress, cancel, clear), File ▸ Downloads..., a notification at the end.
-  Windows: `SD:/Downloads` = `%USERPROFILE%\Downloads`.
-- Tests: **`tools/tests/netsurf/dltest.sh`** (new), jstest / uatest / httptest / gputest adjusted
-  (the page 22 px shorter; the pill moved left) and green. Screenshots: `shots.sh jet` (jet.png,
-  jet-menu.png, new jet-save.png, jet-downloads.png).
-- **Needs a rebuild for the Pi**: the kernel (the Ctrl keys), wtk (FileDialog's Enter / Esc) and Jet
-  (`sdcard/apps/jet.app/main`); Windows: `sh pc/Jet/build.sh` (built and checked here, `pc/dist` not
-  committed). **To try on the Pi**: Ctrl+- / Ctrl+= / Ctrl+0 on a US and a French keyboard, the
-  zoom on bbc.co.uk (text sharp, clicks where expected, scrolling), a download of a big file (a
-  Linux ISO's checksum file, a ZIP) -- the desktop must stay smooth while it writes --, cancel one,
-  the status bar's 404 on a missing page.
-
-## Jet Browser: the quadratic audit (2026-10-01, PC bench only)
-
-- What grew faster than a page (docs/06 §36, its table): child lists / `getElementsByTagName` /
-  `select.options` / `form.elements` read in loops, `getElementById` (libdom walked the tree: now an
-  index), `compareDocumentPosition`, listeners, mutation observers, `document.styleSheets`, NetSurf's
-  scheduler (a heap now; **timers due together ran newest first** — fixed), the inline-sheet fetcher
-  (**one `<style>` converted per 10 ms** — fixed), libcss's selector hash (fixed 64 slots, chain
-  walks), the sheet-list comparisons, llcache's cached-object search. libdom has change counters
-  (`dom_onyx_tree_generation` / `dom_onyx_attr_generation`, `N.treeGen` / `N.attrGen` in dom.js).
-- Bench: `sh tools/tests/netsurf/quadtest.sh [cases]` (`pages/perf-quadratic.html`), behaviour:
-  `pages/js-quadratic.html` in `jstest.sh`. **The Pi's `libdom.a`, `libcss.a` and the Jet app need a
-  rebuild** (not done here). Left: §36's "Not fixed" list (a per-turn inline-style write-back,
-  llcache's catch-up walk, QuickJS's `shift`).
-
-## Jet Browser: the padlock and the site's version in the toolbar (2026-10-01, not yet tried on the Pi)
-
-- **The padlock** (left of the address field, a half pill joined to it): green for a verified https
-  page, red past a certificate warning ("Proceed": NetSurf's `PAGE_STATE_SECURE_OVERRIDE`), grey and
-  struck for http, none for `file:` / `about:`; a click opens the certificate viewer with the page's
-  host's chain -- the fetcher now keeps every checked connection's chain (`onyx_chain_keep`,
-  `onyx_fetch_cert_url`; `onyx_nstls_connect` fills `*chain` on success too: callers free it).
-- **The site's version** (right of the field, a blue half pill): Standard / Mobile / Desktop per
-  site (registrable domain), its menu on a press (Navigate > Site Version...), the page reloaded; kept
-  in `SD:/apps/jet.app/site-modes` ("site mode" lines; the old `desktop-sites` read until the first
-  change); jet.ini's `[sites]` wins ("Custom"), jet.ini has a new `[user_agent] mobile`. The disk
-  cache keys `D|` / `M|` / `C|` and stores an object under the version it was fetched as
-  (`onyx_cache_fetched_as`). Tab / Shift+Tab from the field reach the pill / the padlock.
-- docs/06 §35, docs/04 (Jet), `screenshots/jet.png`, `jet-menu.png` (`shots.sh jet`: a local https
-  page). Tests: `tools/tests/netsurf/uatest.sh` (new: the User-Agent per version, the cache keys,
-  `desktop-sites`, jet.ini Custom), `tlstest.sh` (the padlock's colours and its viewer).
-- **To try on the Pi**: the pill on bbc.co.uk / google.com (Mobile vs Standard pages), the padlock
-  on a site past "Proceed" (self-signed.badssl.com), the viewer from a resumed TLS session (the
-  server's certificate only).
-
-## Jet Browser for Windows (2026-10-01, tried under Wine only)
-
-- **`pc/dist/Jet/Jet.exe`** (+ `pc/dist/Jet.zip`): the browser's Onyx sources built with MinGW-w64
-  (`sh pc/Jet/build.sh`, `pc/Jet/jet.mk`, also run by `pc/build.sh`) over `pc/Jet/winkapi.cpp` (the
-  kapi on Win32, grown from Koton's). The same engine, network code, TLS (mbedTLS + `res\ca-bundle`)
-  and caches as the Pi; no JIT, no GPU. Data in `data\` beside the exe (`RAM:` = `data\ram`), the log
-  in `data\jet.log` (`--console`: a console), `--perf` / `--jsdebug` / `--netdebug` (or empty files
-  beside the exe). docs/06 §34, docs/03, `pc/Jet/README.txt`.
-- **Tested under Wine** (Xvfb + xdotool): pages, a local file, HTTPS (h2, TLS 1.3, brotli), css3test.com
-  83 % and responsive after its run, resize, typing, Alt+Left, Alt+F4. **To try on a real Windows 10 /
-  11**: the same, plus a scaled display (`--sharp`), the menus, drag and drop of an .html file.
-- **Next ideas**: the css3test.com hang on the Pi compared with this build's `--perf` log; Windows'
-  certificate store as an option; a proxy setting.
 
 ## RAM:, a volume in memory; Jet Browser's caches there (2026-10-01, kernel v71, not yet tried on the Pi)
 
@@ -457,7 +1226,7 @@ answer in French. The docs stay in English.
   `cp`, `rm`, `cd RAM:`; Jet Browser: a site, Jet closed and opened, the site again (from `RAM:`:
   `ls RAM:/jet/cache`), no `stall: jet:cache` in `kmsg`; after a restart `RAM:` empty; the boot log's
   `ramfs: RAM: volume, up to ... MB`. A 1 GB Pi: the size (~60 MB) and the apps still fine.
-- **Next ideas**: `RAM:` in the File Viewer's Computer places and wtk's file dialog volume list;
+- **Next ideas**: `RAM:` in the File Viewer's Computer places and uikit's file dialog volume list;
   `mv` across volumes (copy + remove); a `ramfs` line in the Control Panel.
 
 ## TCP, SD and save fixes (2026-10-01, not yet tried on the Pi)
@@ -490,7 +1259,7 @@ answer in French. The docs stay in English.
   window **`GUI_EVENT_DISPLAY_RESIZE`** (19). Refused while a full-screen app owns the display.
   The wallpaper buffer is made again at the new size (the old one leaked on purpose: it may still
   be mapped). A window may be as big as the screen (was 1024 x 768).
-- **wtk**: `Root::onDisplayResize (w, h)`; ~0.3 s later a maximised window fills the new work
+- **uikit**: `Root::onDisplayResize (w, h)`; ~0.3 s later a maximised window fills the new work
   area, another is moved / shrunk into it (`displayTick`, `fitWorkArea`); borderless ones place
   themselves. The menu bar, the dock and notifyd do; vncd (VNC DesktopSize, else the session
   closed), rdpd (`SCREEN` message) and Onyx Remote (its view of the Pi's screen resized) follow.
@@ -511,8 +1280,10 @@ answer in French. The docs stay in English.
   (`TerminateGroup`), and the reaper frees a killed task only with its whole group (it may be on
   a wait list of the process). 32 threads per process. docs/02 §7, docs/03 §5.2.
 - **User side**: `umm` and newlib (its retargetable locks, in `libc/onyx_syscalls.c`) are
-  thread-safe; `kapi_lock` / `kapi_unlock`. `errno` is still shared (per-thread would need TLS:
-  `TPIDR_EL0` saved at each switch).
+  thread-safe; `kapi_lock` / `kapi_unlock`. `errno` is still shared (per-thread needs TLS: the
+  kernel side is there -- `TPIDR_EL0` is saved and restored per task by Circle's `TaskSwitch`, and
+  since v75 a thread starts with `thread_create_ex`'s `tls` and an app-core job with its caller's
+  value; the C library's TLS block is WP-LIBC's, docs/POSIX-PLAN.md).
 - **To try on the Pi**: `threadtest` in a terminal (PASS; the prompt comes back although a thread
   still runs), then kill it from the task manager in the middle; the usual apps (nothing should
   change for them: one task each). Watch `stall:` lines in `kmsg`.
@@ -521,17 +1292,17 @@ answer in French. The docs stay in English.
 - **Users**: NetSurf's downloads (a thread each: `user/netsurf/onyx_fetch.c`, docs/06 §1 --
   the connects one at a time: several at once all failed, a page's style sheet among them);
   `telnetd` (a session per thread, 8 at once); SuperTuxKart's `stkpoc` (`std::thread` on them:
-  `user/stk`, docs/SUPERTUXKART-PORT.md -- PASS on the Pi).
+  `user/Ports/stk`, docs/SUPERTUXKART-PORT.md -- PASS on the Pi).
 - **Next**: asynchronous kapi calls (a file read, a connect) with a completion posted
   to the pump; `errno` per thread; threads in the BASIC VM (an idea, written down in
   `docs/BASIC-VM-THREADS.md`).
 
 ## The shared clipboard (2026-10-01, not yet tried on the Pi)
 
-- **`user/Apps/clipd`** (the service, IPC "clipboard": a ring of 10 typed copies, a cursor), **`user/clipboard.h`**
-  (the apps' side, its old functions kept + images and formats), **`user/clipproto.h`** (messages by mailbox,
+- **`user/Apps/clipd`** (the service, IPC "clipboard": a ring of 10 typed copies, a cursor), **`user/Kits/uikit/clipboard.h`**
+  (the apps' side, its old functions kept + images and formats), **`user/Kits/uikit/clipproto.h`** (messages by mailbox,
   bytes by `RAM:/clip` files), **`user/Apps/clipboard`** (the widget, the dock's new button; the dock's small
-  buttons now: lock / gear at the left, power / clipboard at the right). Every wtk app gets it through
+  buttons now: lock / gear at the left, power / clipboard at the right). Every uikit app gets it through
   `textbox.cpp` / `textarea.cpp`: all the apps were rebuilt and staged. `autostart` runs clipd.
 - **Tested on the PC**: `sh tools/tests/run_clipboard_test.sh` (21 checks); the simulator has in-process
   mailboxes (`SIM_IPC=1`) and the magenta key of `WIN_FLAG_TRANSPARENT` windows in its dumps.
@@ -547,7 +1318,7 @@ answer in French. The docs stay in English.
   new copy swapped in (add, delete, rename, new folder). Files **dropped** from the File Viewer go
   straight into the folder under the pointer; rows dragged out are extracted to `RAM:` and handed
   over; a file opened (extracted to `RAM:`) and saved is put back. Jobs on a **thread**. A newlib
-  app (FreeType) with zlib (`user/zlib/libz.a`). Built here with the Arm GNU toolchain 13.3.
+  app (FreeType) with zlib (`user/Libs/zlib/libz.a`). Built here with the Arm GNU toolchain 13.3.
 - **Tested on the PC**: `sh tools/tests/run_archiver_test.sh` (the engine, 51 checks against
   `zipfile` and `unzip -t`) and the app in the desktop simulator (which now has `kapi_file_in /
   file_out` streams, remove / rename of the files an app wrote, and the script's `dragover` / `drop`).
@@ -575,13 +1346,13 @@ answer in French. The docs stay in English.
 ## Setup, the first-run wizard; the settings in FreeType (2026-09-30, kernel v69, not yet tried on the Pi)
 
 - **The rule now**: every new or redesigned app draws its text with **FreeType** (DejaVu Sans
-  through wtk's face) unless the user says otherwise — `FT_APPS` in `user/Makefile` (and the same
-  list in `shots.sh`'s `build`); docs/03 after `ft_wtk_install`. Moved to it: the Control Panel,
+  through uikit's face) unless the user says otherwise — `FT_APPS` in `user/Makefile` (and the same
+  list in `shots.sh`'s `build`); docs/03 after `ft_uikit_install`. Moved to it: the Control Panel,
   its 8 applets, the Game Library, (2026-10-01) the menu bar (text measured in pixels, `drawFont` gone), (2026-10-02)
-  Paint and the File Viewer (names cut to the column's width: `wk_text_fit`; the text preview clipped).
+  Paint and the File Viewer (names cut to the column's width: `uk_text_fit`; the text preview clipped).
   **The windows' titles** too, in every app (FreeType or not): `SD:/res/fonts/title.aaf` (DejaVu Sans Bold
-  13 px pre-rendered by the apps' FreeType: `sh tools/title_font/build.sh`), read by wtk's frame (`skin.cpp`).
-- **`user/Apps/setup`** (docs/04 §4 *Setup*): 7 pages in wtk's theme (the user's validated mock-up:
+  13 px pre-rendered by the apps' FreeType: `sh tools/title_font/build.sh`), read by uikit's frame (`skin.cpp`).
+- **`user/Apps/setup`** (docs/04 §4 *Setup*): 7 pages in uikit's theme (the user's validated mock-up:
   `screenshots/setup-*.png`, `shots.sh setup`) — country / keyboard / time zone, Wi-Fi, resolution
   with "Keep this resolution?", colour + wallpaper + 32 tints, host name + remote services, a
   summary. `system.h`: what it writes (system.ini, wpa_supplicant.conf, cmdline.txt, theme.txt,
@@ -597,7 +1368,7 @@ answer in French. The docs stay in English.
 
 ## GPU compositing, stage 1 -- the service (2026-09-30, kernel v70, not yet tried on the Pi)
 
-- `user/gpucomp/gpucomp.{h,c}` (+ `libgpucomp.a`): layers (premultiplied ARGB textures, tiled past
+- `user/Libs/gpucomp/gpucomp.{h,c}` (+ `libgpucomp.a`): layers (premultiplied ARGB textures, tiled past
   2048) composited by the V3D into a canvas -- affine matrix, clip, opacity, source-over, bilinear,
   scrolling by the source rectangle -- or by the CPU (NEON loops) with the same API and pixels.
   Kernel v70: `gpu_texture_rect` (damaged rectangles only), `KAPI_GPU_F_ALPHA` (ARGB targets), fair
@@ -626,8 +1397,8 @@ answer in French. The docs stay in English.
   breadcrumbs (GPU, display), power/temperature, panic line, in 64 KB of RAM kept out of the heap
   (top of the RAM above 4 GB on the user's 8 GB Pi — it survives the watchdog reset); the hardware
   watchdog (`hangreboot=`, 15 s); core 1 writes a report into `SD:/etc/crashdump.txt` sectors when
-  core 0 stops (LED signs); next boot → `SD:/etc/lastcrash.txt`. `hangtest` freezes core 0 on
-  purpose. `SD:/etc/clock` keeps the time across boots (files written before NTP get a date).
+  core 0 stops (LED signs); next boot → `SD:/etc/lastcrash.txt`. `hangtest` froze core 0 on
+  purpose (removed with v74: an app at EL0 can no longer freeze the machine). `SD:/etc/clock` keeps the time across boots (files written before NTP get a date).
 - **Crash record, round 2 (2026-09-29, for the Spreadsheet's freeze: a long hang, then a restart,
   nothing on the card):** a Circle panic (assertion, kernel heap "Out of memory") halted every
   core, core 1 too — no report; now the logger's panic handler has core 1 write it first. The
@@ -658,18 +1429,30 @@ answer in French. The docs stay in English.
   `docs/gui-redesign/README.md` has the decisions, the mock-ups and §5 *where the work landed*;
   the user guide (`docs/04` §4-§6, §11) describes the result; `screenshots/` are the real apps
   (`sh tools/tests/desktop_sim/shots.sh`).
-  In short: wtk's procedural painter (`user/wtk/paint.h`) and the theme's colours as variables
+  In short: uikit's procedural painter (`user/Kits/uikit/paint.h`) and the theme's colours as variables
   (`theme.txt`: theme Peach / Steel / Sage / Brick / Slate or a colour, inactive, face, accent,
-  outline, dock), every wtk widget restyled (the user's framed button), the window frames drawn
-  by wtk (title 28, border 4, rounded corners r 8, the window menu / minimise / maximise / close
+  outline, dock), every uikit widget restyled (the user's framed button; since 2026-10-03 the push button is a plain
+  raised face, as the drop-down's: `uk_framed` draws `uk_raised`, no frame nor well), the window frames drawn
+  by uikit (title 28, border 4, rounded corners r 8, the window menu / minimise / maximise / close
   buttons), kapi **v64** (`win_minimise`, `win_geometry`, `resize_window2`), the **dock**
   (`user/Apps/dock`: categories + drawers, the Shelf's tabs as its switcher, lock / gear / power,
   Terminal, File Viewer, Trash) instead of the Shelf and the panel, the see-through agenda, the
   menu bar restyled (its time opens a calendar), the **lock** screen, the **Theme** app
   rewritten, every app's hard-coded dark colours converted. Then (2026-10-01) a sixth theme,
   **Milk** (Xfce's Milk / Mac OS X: soft greys, the title buttons as coloured beads, the frame
-  melting into the window with no line between them, `WK_STYLE`, `wk_bead`), chosen in the
-  Theme app (and in Setup) like the others.
+  melting into the window with no line between them, `UK_STYLE`, `uk_bead`), chosen in the
+  Theme app (and in Setup) like the others. Then (2026-10-03) the Theme applet's **Theme: Classic /
+  Modern** over its schemes (Classic: Peach … Slate; Modern: Milk and the new **Dark Coffee**, a named
+  theme with a palette of its own: `UkNamedTheme::pal`, `uk_theme_take`), Koton in the desktop's theme
+  (its arrangement's lanes alone dark), **FM Tracker** made again (FreeType; a transport bar, the
+  patterns' list, M / S / meters, blocks, undo, a piano, an instrument dialog with the waves, the
+  envelopes and the sound's wave drawn), Ledger in FreeType, the Package Manager's tabs a
+  `SegmentedControl`, a **System** category. Then the **Task Manager in tabs** (Processes: a sortable grid with the
+  memory and the calls per second; Memory: what `memmon` showed, drawn — `memmon` is gone); its Processor and
+  Network tabs came on 2026-10-04 with **kapi v80** (`cpu_stats`: per-core time in `CScheduler::Yield`, the
+  sound and app cores' busy time; `net_stats`: bytes per process in `NetTcpSend/Recv`, `NetSockSend/Recv` —
+  docs/02 *v80*). Not there yet: a process's own processor time (a CPU column in Processes), the bytes on the
+  air (the driver's counters) next to the sockets' payload.
 - The emulators' fast path is intact: an app's present damages only its client area unless its
   frame changed, `CoversOpaque` less the corners' see-through pixels only
   (`tools/tests/desktop_sim/wmtest.cpp` checks it); the V3D, `gpudirect`, `dispdma`,
@@ -695,16 +1478,18 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
 - **The dock** rewritten (`user/Apps/dock`): drawers = a group + its main app (the icon starts
   the app, the strip above opens the drawer, as Xfce), launchers, the pager, lock / gear
   (Control Panel) / power, the Trash (a click opens it in the File Viewer: `fileviewer trash`;
-  a drop trashes). The Shelf's switcher is gone. `SD:/etc/dock.ini` (`user/dockconf.h`).
+  a drop trashes). The Shelf's switcher is gone. `SD:/etc/dock.ini` (`user/Include/dockconf.h`).
 - **The Control Panel** (`user/Apps/control`): applets drawn inside its window through a shared
-  surface (`user/applet_proto.h`; wtk's `Root` has an applet mode: `wk_applet ()`, `wk_pump`,
-  `wk_present`, `wk_quit`), listed by link files (`sdcard/apps/control.app/applets/*.lnk`).
+  surface (`user/Include/applet_proto.h`; uikit's `Root` has an applet mode: `uk_applet ()`, `uk_pump`,
+  `uk_present`, `uk_quit`), listed by link files (`sdcard/apps/control.app/applets/*.lnk`).
   Applets: Theme (rewritten: a Windows-98-like desktop preview, a colour per part — frames,
-  content, buttons, fields, selection, menu bar, dock — the wallpaper's modes, `user/wallpaper.h`
+  content, buttons, fields, selection, menu bar, dock — the wallpaper's modes, `user/Include/wallpaper.h`
   painted by `voronoy`), Panel (`dockconf`), Sound (`soundconf`), Keyboard & Mouse (`keyconf`),
   Gamepad, Wi-Fi, App Settings (`config`). Kernel surfaces are now counted per user (an applet's
   surface outlives its host or itself safely).
-- **The categories**: the System group gone (its apps in Productivity / Graphics / Settings),
+- **The categories**: the System group gone (its apps in Productivity / Graphics / Settings) --
+  back on 2026-10-03 for the File Viewer, the Memory Monitor, the Task Manager and the Terminal
+  (the Onyx menu's last category; no drawer of the dock by default) --,
   `Settings` and `Emulators` left out of the menus (the emulators through the Game Library).
 - **The File Viewer**: a sidebar (Personal: pinned folders under a name, the Trash; Computer:
   the partitions; Network: the FTP servers connected once, under a name — a click reconnects),
@@ -720,7 +1505,7 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
 - **Wallpaper patterns**: eight abstract grey pictures (`sdcard/wallpapers/*.png`, 1024 x 768,
   made by `tools/gen_wallpapers.py`) that the Theme applet colours (`mode = pattern`: the grey
   multiplies the gradient of the two colours; `wallpaper.h` `wp_grey_cover` / `wp_multiply`,
-  painted by `voronoy`). wtk's `Dropdown` opens upward when it must.
+  painted by `voronoy`). uikit's `Dropdown` opens upward when it must.
 - **Open question for the user**: *Gamelib without its title buttons* — not reproduced (its
   frame is drawn like every Root app's, in the simulator too); the ChromeGen fix above covers
   the Onyx Remote case (a frame read while being drawn). Ask where it showed (the Pi's screen
@@ -728,31 +1513,96 @@ the staged `sdcard/` and `pc/dist/OnyxRemote.exe` first).
 - **Next ideas**: drag an app onto a drawer to add it; the applets' own help; a wallpaper
   slideshow; the workspaces' windows moved by drag & drop onto the pager.
 
-## Writer, a word processor (2026-09-29, same branch, pushed to `main`)
+## Writer renamed Letters; Slides, the presentation program (2026-10-04)
 
-Asked by the user: Writer "toward AbiWord", no printing, FreeType from the NetSurf work, drawn by
-Writer itself (no RichTextBox). Done:
+- **Writer is now called Letters** (the user: a name for the document, as Sheet and Slides, not for the trade),
+  everywhere: `app.txt`, the window, the messages of Letters, Cardfile, Ledger (and its French strings), the RTF
+  viewer; the folder `SD:/apps/letters.app`, the package **`letters`** (and `letters-samples`), the sources
+  `user/Apps/letters/`, `letters.elf`, `fileassoc.ini`, the samples (`tools/gen_letters_sample.py`,
+  `SD:/docs/letters-tour.rtf`), the tests (`tools/tests/run_letters_test.sh`), the screenshots `letters*.png`,
+  the docs, the Ledger manuals; on the Mac, Ledger.app's helper `Letters.app`. The packages `writer` and
+  `writer-samples` left the repository: **`pkg` learnt `replaces =`** (`packages.ini`, the index, `pkglib.h`'s
+  `update_for` / `drop_replaced`): a card that has `writer` sees `letters` as its update, installs it, then
+  `writer` is removed (its mode kept; a file the new one took over, a sample, is not removed nor written `.new`).
+- **Slides** (the presentation program, in the way of PowerPoint): the study and seven mock-ups,
+  `docs/slides/README.md` (`tools/screenshot/mockup_slides.py`), then **built** (`user/Apps/slides/`, the package
+  `slides` and `slides-samples`): themes, layouts, text boxes with lists and autofit, 28 shapes, pictures, tables,
+  charts, sections, notes, the sorter, transitions and effects, the full-screen show and the presenter view; every
+  object a layer, **composited by the GPU** (`gpucomp`: the editor's view and the show; the CPU path for the
+  thumbnails and the exports); `.odp` read and written (LibreOffice opens ours, its own are read; `onyx:` attributes
+  and `onyx.xml` for an exact round trip); PDF and PNG export. Test: `sh tools/tests/run_slides_test.sh`; sample
+  `SD:/docs/cafe-2026.odp`; screenshots `slides*.png`.
+- **PowerPoint's `.pptx`** (asked by the user, same day): `user/Apps/slides/pptx.h`, read and written. Written the
+  way PowerPoint writes it, each Slides feature in its native form (the theme, a master, a layout per Slides layout,
+  placeholders by type/idx, tables in PowerPoint's default style, real charts with cached data, footers as slide
+  placeholders, `p14:dur` transitions, `p:timing` effects through a preset table both ways, `p14` sections): our
+  files round-trip exactly (a stress deck in the test: every shape, effect, transition, chart kind) and pass the
+  `pptx` skill's OOXML schema validator; LibreOffice renders them faithfully. Read generically: PowerPoint's
+  placeholders inherit position and text formats from layout and master, theme colour modifiers (tint/shade in
+  linear light), style references, groups flattened, `mc:AlternateContent`, every master's layouts (LibreOffice
+  writes one master per layout). Known: LibreOffice swaps the direction of push / cover transitions when it resaves
+  (ours follow PowerPoint: `dir` is the motion), and drops sections; percentage spacing (`spcPct` before/after)
+  is not read. `SD:/docs/cafe-2026.pptx` ships in `slides-samples`; `tools/tests/slides/powerpoint.pptx`
+  (python-pptx, PowerPoint's template) feeds the reader test and `screenshots/slides-pptx.png`. Also fixed: an
+  uninitialised point count in `render.h`'s `PolyB` (an ellipse's outline could hang the renderer). The host
+  harness note: the simulator's heap sits at a fixed address, so a one-off test binary may need `setarch -R`.
+  **Packages**: `slides` / `slides-samples` 1.0.1 (the `.pptx` sample); the same publish made **`jet` 2.0.4 without
+  its program** (this checkout had no `sdcard/apps/jet.app/main`, not in git) -- republished at once as 2.0.5 with
+  it (taken from 2.0.3's package); `tools/pkg/publish.sh` now takes Jet's program back from the last package
+  itself, or stops.
+- **The master view** (`master.h`, View ▸ Master and Layouts): the master and the 8 layouts as slides, edited with
+  the normal tools; the samples' formats become the text styles; layouts' placeholders; the slides follow the
+  layouts' new places (unless moved by hand); one undo step. Test in `slides_test.cpp`; `screenshots/slides-master.png`.
+- **Find and Replace** (`find.h`, Edit menu, Ctrl+F), **effects by paragraph** in the show (`show.h`: the sample's
+  slide 5 list), **notes pages and handouts** (2, 3 with lines, 6) in Export as PDF. All tested
+  (`slides_test.cpp`: 41 checks).
+  **Next**: groups (a model change: render, ODP, PPTX, the editor), a vector PDF (the text as text).
 
-- **The apps' FreeType** (`user/ft/`): TrueType only, auto-hinted, anti-aliased, kerned; built by
-  `user/Makefile` into `ft/libft.a` (NetSurf keeps its own). `ft/fonts.h`: the card's families
+## QBStudio, the IDE for desktop apps in BASIC: mock-ups (2026-10-04)
+
+- Asked by the user: an IDE for Onyx BASIC aimed at desktop apps, without touching `qbasic`; a GUI designer in the
+  way of Visual Studio's WPF one, a light layout format (a control a line, the indentation for the parent), the
+  window's code generated. **Study and five mock-ups**: `docs/qbstudio/README.md` (`tools/screenshot/mockup_qbstudio.py`):
+  the designer (layout containers, the `.form` text kept in step), the code (event SUBs, controls as objects,
+  completion), debugging, a new project, the generated `Main.form.bas`. The BASIC additions it needs are listed
+  there (objects and properties, `Move`, menus, resize, `$INCLUDE`, a debug channel). **Approved by the user**, who
+  named it **QBStudio** (`qbstudio`).
+- **Built (2026-10-04)**, the first version: the BASIC additions (`PROPERTY`, `MOVECONTROL` / `SHOWCONTROL` /
+  `ENABLECONTROL` / `FOCUSCONTROL`, a resizable `WINDOW` and its -2 event, `WINDOWWIDTH` / `WINDOWHEIGHT`,
+  `MENUITEM`; `/bin/basic -s <service>`), the core (`form.h`, `gen.h`; `run_qbstudio_test.sh`: 17 checks; BASIC's
+  `t19_forms`), the app (`user/Apps/qbstudio/`: the designer with the toolbox's drag and drop, the properties and
+  events, the form's text kept in step, the code editor with colours, completion and problems as you type, the
+  object / event lists, Run, Check, Make App, New Project's three templates), the example `SD:/projects/converter`.
+  Screenshots `qbstudio.png`, `qbstudio-code.png`; docs 04 §13 *QBStudio*, 03 (*Onyx BASIC*).
+  **Next**: the debugger (the mock-up: breakpoints, stepping, variables -- a debug channel in `/bin/basic`), several
+  windows in a project, a Timer and a ToolBar's icons, `'$INCLUDE`, the PC runtime (`pc/`: rebuild `obcore.dll`
+  for the new statements -- their `Host` virtuals default to nothing).
+
+## Letters, a word processor (2026-09-29, same branch, pushed to `main`)
+
+Asked by the user: Letters "toward AbiWord", no printing, FreeType from the NetSurf work, drawn by
+Letters itself (no RichTextBox). Done:
+
+- **The apps' FreeType** (`user/Kits/fontkit/`): TrueType only, auto-hinted, anti-aliased, kerned; built by
+  `user/Makefile` into `ft/libft.a` (NetSurf keeps its own). `fontkit/fonts.h`: the card's families
   (`SD:/res/fonts`, `SD:/fonts`), sized fonts, a glyph cache at quarter pixels, the drawing.
-- **Writer** (`user/Apps/writer/`, a newlib app now: `writer.elf` rule): pages (A4, margins,
+- **Letters** (`user/Apps/letters/`, a newlib app now: `letters.elf` rule): pages (A4, margins,
   page numbers), styles, fonts, sizes, B/I/U/S, super/subscript, colours, highlights,
   alignments, indents (the ruler's markers dragged), spacing, lists, page breaks, images (PNG /
   JPEG / BMP / GIF / WebP, resized with a handle), undo / redo, rich copy / paste, Find and
   Replace, Special Character, Date and Time, Word Count, Page Setup, zoom, formatting marks;
   RTF read / written with all of it, text, HTML export; a recovered document after a close with
-  unsaved changes. `.rtf` files now open in Writer (`sdcard/etc/fileassoc.ini`). The docs:
-  `docs/04` *Writer, the word processor*, `docs/03` (TrueType text, `VPath`, Writer's pieces).
-- **wtk**: `wtk/vpaint.h` (`VPath`: anti-aliased vector shapes, integer); `img_load_mem`.
-- **Sample**: `sdcard/docs/writer-tour.rtf` (`tools/gen_writer_sample.py`); the screenshot
-  `screenshots/writer.png`. The desktop simulator's script has `mods N` (modifier keys).
+  unsaved changes. `.rtf` files now open in Letters (`sdcard/etc/fileassoc.ini`). The docs:
+  `docs/04` *Letters, the word processor*, `docs/03` (TrueType text, `VPath`, Letters' pieces).
+- **uikit**: `uikit/vpaint.h` (`VPath`: anti-aliased vector shapes, integer); `img_load_mem`.
+- **Sample**: `sdcard/docs/letters-tour.rtf` (`tools/gen_letters_sample.py`); the screenshot
+  `screenshots/letters.png`. The desktop simulator's script has `mods N` (modifier keys).
 - **Next ideas**: done since — tables, headers / footers, fields, tab stops, a table of contents,
-  `.docx` / `.odt`, the mail merge: see *Writer as Word* below.
+  `.docx` / `.odt`, the mail merge: see *Letters as Word* below.
 
 ## Paint, as Windows 11's, with layers (2026-09-29, same branch, pushed to `main`)
 
-Asked by the user right after Writer. `user/Apps/paint/` rewritten (still a freestanding integer
+Asked by the user right after Letters. `user/Apps/paint/` rewritten (still a freestanding integer
 app): the ribbon (Edit, Image — select, crop, resize / canvas size, rotate / flip —, Tools — pencil,
 fill, eraser, colour picker, magnifier, brush —, fifteen Shapes inscribed in their box's ellipse
 with outline / fill, Size, Colours — 1 and 2, twenty, ten custom, Edit —, View — the pixel **Grid**
@@ -760,9 +1610,9 @@ toggle, Fit), transparent **layers** (eye, opacity, add, duplicate, delete, move
 a floating selection (moved, nudged, turned, flipped; a click outside puts it down), zoom 12 % –
 3200 %, undo by tiles. **Save** = OpenRaster (`.ora`, the layers; GIMP / Krita read it); **Open**:
 `.ora`, PNG, JPEG, BMP, GIF (WebP, PCX); **Export**: PNG, JPEG, BMP, GIF (flattened) — the writers
-in `user/img/pngsave.hpp` (deflate, PNG, JPEG, GIF, BMP, ZIP), `img_inflate` in imgload.hpp. A
+in `user/Kits/imagekit/img/pngsave.hpp` (deflate, PNG, JPEG, GIF, BMP, ZIP), `img_inflate` in imgload.hpp. A
 closed-unsaved picture is recovered. Screenshots `paint.png`, `paint-grid.png`; docs 04 *Paint*,
-03. **Next ideas**: a text tool (it would make Paint a newlib app: `ft/fonts.h`), free-form
+03. **Next ideas**: a text tool (it would make Paint a newlib app: `fontkit/fonts.h`), free-form
 selection, a selection resized by handles, brushes with soft edges, a gradient fill.
 
 ## Cardfile, a small database (2026-09-29, same branch, pushed to `main`)
@@ -780,7 +1630,7 @@ small database*; the pieces: docs/03):
   typed; a new type converts the values, asked first when some would be emptied). Search (every
   word, any field), Undo / Redo (the whole document kept before each change), CSV export and import
   (the types guessed), a document kept at a close with unsaved changes (`recovered.card`).
-- **wtk**: `wtk/datagrid.h` — `DataGrid`, a virtual table (docs/03).
+- **uikit**: `uikit/datagrid.h` — `DataGrid`, a virtual table (docs/03).
 - Samples `SD:/docs/books.card` (every type) and `contacts.card`; `card = cardfile` in
   `fileassoc.ini`; the icon by `tools/gen_assets.py cardfile`; screenshots `cardfile.png`,
   `cardfile-list.png`, `cardfile-design.png`; host test `sh tools/tests/run_cardfile_test.sh`.
@@ -793,7 +1643,7 @@ small database*; the pieces: docs/03):
 Asked by the user ("un peu plus poussé comme gcalc": read as LibreOffice Calc / Gnumeric). The old
 `sheet` rewritten from scratch (the user guide: docs/04 *The Spreadsheet*; the pieces: docs/03):
 
-- **`user/Apps/sheet/`**, a **newlib** wtk app (`sheet.elf` rule, FreeType), `stack = 4M` in its
+- **`user/Apps/sheet/`**, a **newlib** uikit app (`sheet.elf` rule, FreeType), `stack = 4M` in its
   `app.txt`. The engine (plain C++, the same on the PC): workbooks of sheets of 1 048 576 × 16 384
   cells in a hash of the used ones; Excel's formula syntax (references relative / absolute, to other
   sheets, whole rows / columns, arrays, names), **237 functions**, full recalculation at each
@@ -814,22 +1664,22 @@ Asked by the user ("un peu plus poussé comme gcalc": read as LibreOffice Calc /
   `sheet.png`, `sheet-filter.png`, `sheet-loan.png` (the `sheet` scenario of `shots.sh`); host
   tests `sh tools/tests/run_sheet_test.sh` (328 engine checks, 122 file checks; LibreOffice round
   trips when `soffice` is installed).
-- **The euro sign**: wtk's font has it in slot 0x80 (Windows-1252's; `gen_nssans.py` `EXTRA`);
+- **The euro sign**: uikit's font has it in slot 0x80 (Windows-1252's; `gen_nssans.py` `EXTRA`);
   **AltGr+E** now types it on the FR, BE, DE, ES keymaps (AltGr+4 on UK; IT and US had it) —
-  `tools/keymaps/maps/*.h` → `genkeymaps.py`. The Spreadsheet takes it; wtk's `Textbox` /
+  `tools/keymaps/maps/*.h` → `genkeymaps.py`. The Spreadsheet takes it; uikit's `Textbox` /
   `Textarea` still ignore 0x80 (they accept 0x20–0x7E, 0xA0–0xFF).
 - **Next ideas**: spilled dynamic arrays (and with them SORT, UNIQUE, FILTER, SEQUENCE); copy /
   paste does not carry conditional formats, and a cut / paste moves the cells' formulas but not the
   names' nor the rules' (rows / columns inserted or deleted move all of them); comments; data
-  validation (drop-down lists); pivot tables; `.ods` writing; printing / PDF; the € in wtk's
+  validation (drop-down lists); pivot tables; `.ods` writing; printing / PDF; the € in uikit's
   text boxes.
 - **The freeze at its first start on the Pi (fixed, `73a1eb05`).** Its window was 1060 pixels
   wide; the kernel then made none over 1024 × 768 (`CreateWindow`, `sys/kapi.cpp`; since v66, none
   bigger than the screen) and returns a
-  null canvas, which wtk drew into: an app runs at EL1 with the kernel's identity mapping, so the
-  first frame overwrote the kernel at address 0 — the Pi froze, nothing in `kmsg`, no
+  null canvas, which uikit drew into: an app then ran at EL1 with the kernel's identity mapping, so the
+  first frame overwrote the kernel at address 0 (at EL0 since v74, that is a fault: the app killed) — the Pi froze, nothing in `kmsg`, no
   `lastcrash.txt` (a Pi without RAM above 3 GB keeps no record, and a panic halts core 1 too), the
-  watchdog restarted it. Now 1000 pixels; wtk's `Root` stops an app the kernel gives no window;
+  watchdog restarted it. Now 1000 pixels; uikit's `Root` stops an app the kernel gives no window;
   the desktop simulator refuses windows over 1024 × 768 (its screen) as the kernel does. How it was found, and
   worth reusing: the Pi binary itself run under **qemu-aarch64** with the simulator's kapi (a
   loader mapping the ELF's segments, the kapi table at `KAPI_TABLE_VA`, a 4 MB stack with a guard
@@ -839,11 +1689,11 @@ Asked by the user ("un peu plus poussé comme gcalc": read as LibreOffice Calc /
   writing over the kernel), and stop a faulting app instead of the kernel panic (any app fault
   takes the whole Pi down today).
 
-## Writer as Word: tables, pages, fields, .docx / .odt; Cardfile's mail merge (2026-09-29, `claude/happy-wright-wg38ez`, pushed to `main`)
+## Letters as Word: tables, pages, fields, .docx / .odt; Cardfile's mail merge (2026-09-29, `claude/happy-wright-wg38ez`, pushed to `main`)
 
-Asked by the user: Writer pushed further (".odt, .docx, tables, a table of contents, headers and
-footers, pagination") and, in Cardfile, a mail merge with a Writer letter (one record → one
-document; all the records → a series of documents). Done (the user guide: docs/04 *Writer* —
+Asked by the user: Letters pushed further (".odt, .docx, tables, a table of contents, headers and
+footers, pagination") and, in Cardfile, a mail merge with a Letters letter (one record → one
+document; all the records → a series of documents). Done (the user guide: docs/04 *Letters* —
 *Tables*, *Pages*, *The mail merge* — and *Cardfile*; the pieces: docs/03):
 
 - **The model** (`doc.h`): stories (the body, the header, the footer, the first page's own; one
@@ -860,23 +1710,23 @@ document; all the records → a series of documents). Done (the user guide: docs
   Update Table of Contents, Format ▸ Tabs.
 - **Files**: RTF extended (tables, headers, fields, tabs, the TOC's field); **`docx.h`**
   (WordprocessingML) and **`odt.h`** (ODF) read and written, over `xml.h` (a pull reader on a zip
-  entry; the zip written with `pngsave.hpp`'s deflate). **Tested** by `sh tools/tests/run_writer_test.sh`
+  entry; the zip written with `pngsave.hpp`'s deflate). **Tested** by `sh tools/tests/run_letters_test.sh`
   (14936 checks: a document with all of it through RTF, .docx and .odt, and LibreOffice's
   conversions of ours when `soffice` is installed — `apt install libreoffice-writer` in the cloud
-  container; valgrind clean with `VG=1`). `tools/tests/writer/conv.cpp` converts a file.
-- **The mail merge**: Writer's `merge.h` (the data read with Cardfile's own `model.h`; Tools ▸ Mail
+  container; valgrind clean with `VG=1`). `tools/tests/letters/conv.cpp` converts a file.
+- **The mail merge**: Letters' `merge.h` (the data read with Cardfile's own `model.h`; Tools ▸ Mail
   Merge: fields inserted, values previewed, merged to a new document or to files named after a
   field) and `writer --merge JOB` for Cardfile's **Record ▸ Mail Merge** (`MergeBox`: this record or
   all those shown; one document or files; the form's `merge` key remembers the letter).
-- **Fixed on the way**: a question asked at an app's start (the recovered document of Writer,
+- **Fixed on the way**: a question asked at an app's start (the recovered document of Letters,
   Cardfile, Paint, the Spreadsheet; a merge's end) got no click nor key — `Root::run` hooked the
   pointer and the keys; they are hooked (`root.attach ()`) right after the `Root` now. **Keep it
   so in a new app that asks something before `run ()`**: the kernel drops a window's events while
   it has no handler. `xml.h`: `XBuf::str ()` of an empty value was not ended (valgrind).
-- **Samples**: `SD:/docs/writer-tour.rtf` (two pages: a TOC, a header / footer — the title page's
+- **Samples**: `SD:/docs/letters-tour.rtf` (two pages: a TOC, a header / footer — the title page's
   own —, a table) and `SD:/docs/new-year-letter.rtf` (the Contacts form's letter; `contacts.card`
-  names it), both by `tools/gen_writer_sample.py`; `.docx` / `.odt` open in Writer
-  (`fileassoc.ini`). Screenshots `writer.png`, `writer-table.png`, `writer-merge.png`,
+  names it), both by `tools/gen_letters_sample.py`; `.docx` / `.odt` open in Letters
+  (`fileassoc.ini`). Screenshots `letters.png`, `letters-table.png`, `letters-merge.png`,
   `cardfile-merge.png`.
 - **Next ideas**: a table's rows split across pages (a row taller than a page runs over its foot
   today); text boxes and shapes (dropped when read); comments, tracked changes (read accepted);
@@ -889,7 +1739,7 @@ Asked by the user: "un logiciel de comptabilité soigné, professionnel et utili
 un indépendant, avec le PCMN belge et la déclaration TVA XML (Intervat)" — customers / suppliers,
 purchases / sales, misc. operations, general ledger and journal; GnuCash as the reference for the
 look, BOB 50 for the features; then documents from templates (quotes, orders, delivery notes) and the
-general ledger, income statement and balance sheet in Writer or the Spreadsheet. Done (the user
+general ledger, income statement and balance sheet in Letters or the Spreadsheet. Done (the user
 guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
 
 - **`user/Apps/ledger/`** (integer only; the engine plain C++, tested on the PC): the PCMN (French /
@@ -900,14 +1750,14 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   (closed: the result appropriated), the VAT grids and Intervat's checks, the return's XML, the
   settlement (451200 / 411200), the customer and intra-Community listings, reports (journals, general
   ledger, trial balance, balance sheet, income statement, balances, ages, a party's account, VAT
-  detail) to Writer (RTF), the Spreadsheet (.xlsx) or CSV.
+  detail) to Letters (RTF), the Spreadsheet (.xlsx) or CSV.
 - **Quotes, orders, delivery notes, purchase orders** (`commerce.h`, `commerce_ui.h`): numbered by
   kind and year, each becomes the next, then the invoice (posted, the document marked invoiced).
 - **Printing from templates** (`print.h`): the data written as Cardfile forms (the document's, its
-  lines'), then `writer --merge`: Writer's merge job has a new key, **`lines`** — the template's table
+  lines'), then `writer --merge`: Letters' merge job has a new key, **`lines`** — the template's table
   row holding `Line...` fields repeated per line (`merge.h`, `merge_lines`). The templates (French,
   `nl/`, `en/`, and `fields.card`) by `tools/ledger/gen_templates.py`; Settings ▸ Printing edits them.
-  Writer's RTF reader now tells a table's lines apart (rows only → `TB_ROWS`; test added).
+  Letters' RTF reader now tells a table's lines apart (rows only → `TB_ROWS`; test added).
 - **CODA import** (`coda.h`): the bank's statements, their parties and invoices found; the statements
   shown one after the other to complete (`main.cpp`'s queue, `StatementPage::loadImport`).
 - **SEPA payments** (`sepa.h`, `payui.h`): pain.001.001.09 (hybrid addresses, as Febelfin asks from
@@ -915,7 +1765,7 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
 - **Demo** `SD:/docs/demo-company.ledger` + `SD:/docs/demo-bank-statement.cod` (made by
   `tools/ledger/make_demo.cpp` through the engine: 2025 closed, 2026 to September, quotes and orders);
   `ledger = ledger` in `fileassoc.ini`; the icon (`tools/gen_assets.py ledger`); screenshots
-  `ledger*.png` (the `ledger` scenario of `shots.sh`, `ledger-print` through Writer); host test
+  `ledger*.png` (the `ledger` scenario of `shots.sh`, `ledger-print` through Letters); host test
   `sh tools/tests/run_ledger_test.sh` (200 checks; the XML validated when `xmllint` is installed).
 - **The manual** (asked: "un manuel pour le logiciel de comptabilité, avec captures, en .md et en pdf;
   tout gros logiciel fera l'objet d'un manuel"): `sdcard/manuals/ledger/Ledger.md` + `Ledger.pdf` (55
@@ -925,7 +1775,7 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   statement's movements show what they paid, a new statement proposes the bank's next number, the
   reports' and VAT page's columns fit, the demo's "Flémalle" in Latin-1. Then (asked) the manual in
   French and Dutch too: `Ledger.fr.md` / `.pdf` (59 pages), `Ledger.nl.md` / `.pdf` (60). **Next**: a manual reader app
-  on Onyx (the same Markdown subset), then a manual for each big app (Writer, the Spreadsheet...).
+  on Onyx (the same Markdown subset), then a manual for each big app (Letters, the Spreadsheet...).
 - **Next ideas**: **e-invoicing** — Belgium requires structured B2B invoices through **Peppol** from
   2026: a sales invoice as UBL (Peppol BIS Billing 3.0) and a purchase UBL read would be the most
   useful next step; CAMT.053 statements (the XML successor of CODA); payment reminders from the
@@ -940,11 +1790,11 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   - **Kernel ABI v61** `gpu_program` / `gpu_render2` (`kernel/sys/v3d.cpp`): the app's own
     vertex / coordinate / fragment shaders, batches with uniform ranges, up to 8 textures, blend
     factors, write mask, scissor; generic CPU clipping (`V3DClipTriangleN`).
-  - **QPU toolchain**: `user/v3d/qpu.h` (C++ instruction builder over Mesa's packer),
-    `user/v3d/shaders.h` (pass-through VS / CS, simple FS), `tools/qpu/qpulib` (instruction
+  - **QPU toolchain**: `user/Libs/v3d/qpu.h` (C++ instruction builder over Mesa's packer),
+    `user/Libs/v3d/shaders.h` (pass-through VS / CS, simple FS), `tools/qpu/qpulib` (instruction
     restrictions checker), `tools/qpu/qpusim` (fragment-shader simulator).
-  - **TEV generator** `user/v3d/gxtev.{h,cpp}`: a TEV configuration -> fragment shader in
-    integers as the hardware; `user/v3d/gxtev_ref.h` = gxgl.cpp's GLSL TEV in C++. Checked:
+  - **TEV generator** `user/Libs/v3d/gxtev.{h,cpp}`: a TEV configuration -> fragment shader in
+    integers as the hardware; `user/Libs/v3d/gxtev_ref.h` = gxgl.cpp's GLSL TEV in C++. Checked:
     `tools/tests/run_qpu_test.sh` (thousands of random configs in the simulator, exact) and on
     the Pi: `/bin/v3dprog` -> **ALL PASS 24/24** (incl. 11 TEV configs, Wind Waker's first two).
   - **gcemu backend** `user/Apps/gcemu/gxv3d.h` (`Rec`: gc::GxGpu on the app core -- vertices
@@ -1101,7 +1951,7 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   |---|---|---|---|
   | 1 | A fan / heatsink on the Pi (kmsg `power: SoC 80-83 C ... soft temp limit NOW`: the cores ~1.3-1.4 GHz instead of 1.5) | +7-15 % on every core | none (hardware) |
   | 2 | Then an overclock (`arm_freq` 1750-2000 + `over_voltage` in config.txt, with the cooling) | +15-30 % more | the user's call (boot config) |
-  | 3 | The display's last traffic: the XFB framing in the vertex / coordinate shaders (`user/v3d/shaders.cpp`: 4 more uniforms, 2 fmul + fadd a coordinate) so the kernel only reads the positions -- or the recorder flagging the batches wholly inside (it has the positions; a conservative guard band) so the kernel skips them. The display still costs the machine ~9 % (`--nodraw`: 26.8 against 29.3 M cycles) | -3-5 % (the kernel's pass 3.5 -> < 1 ms a frame) | medium (QPU code, v3dprog) |
+  | 3 | The display's last traffic: the XFB framing in the vertex / coordinate shaders (`user/Libs/v3d/shaders.cpp`: 4 more uniforms, 2 fmul + fadd a coordinate) so the kernel only reads the positions -- or the recorder flagging the batches wholly inside (it has the positions; a conservative guard band) so the kernel skips them. The display still costs the machine ~9 % (`--nodraw`: 26.8 against 29.3 M cycles) | -3-5 % (the kernel's pass 3.5 -> < 1 ms a frame) | medium (QPU code, v3dprog) |
   | 4 | JIT, small: the call landing's cycle check (its return checked them: -2 instructions a call), `and` / `orr` immediates on blr / bctrl (-1 each), the CR field from an NZCV table (`mrs nzcv` + `ldrb`: 7 -> 5 instructions a materialized compare, the same results), fcmpo / fcmpu fused with their branch like the integer compares (14.4 host instructions each, ~4 % of the hot code) | -2-4 % | small, fuzz + calltest under qemu |
   | 5 | JIT: mtmsr / mfmsr native (OSDisable / RestoreInterrupts: ~550 of the ~2000 exits to C a field; each one also empties the call / return pairs): exit only when EE comes on with an interrupt pending, or IR / DR change | -1-2 % | small-medium |
   | 6 | Fewer run ends: a VI line (~310 a field) only when a VI interrupt can fire on it; the audio DMA's ~80 | -0.5-1 % | small |
@@ -1124,384 +1974,33 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   - run: `run gcemu SD1:/roms/ZeldaWIndWaker/ZeldaWIndWaker.iso --diag=...` (the second
     partition); `v3dprog` must pass after any GPU change; a GPU hang leaves the GPU off until a
     reboot (`v3dprog` then says `no GPU: V3D: stopped`).
-  - pitfalls: `grep` / `wc` read stdin only (`wc < file`; with a file argument they wait, and
-    once the telnet session is gone they spin on stdin's end -- an open bug, cmd too sometimes);
+  - pitfalls: `grep` / `wc` read stdin only (`wc < file`; with a file argument they wait).
+    **A telnet session that drops ends its shell and what it runs** (telnetd, 2026-10-05,
+    `user/BinUtils/shellend.h`, `tools/tests/run_telnetd_test.sh`; before, a program still running kept
+    its `cmd`, then both waited for ever on a pipe nobody read -- state R, no system call -- and
+    the leftovers slowed everything): a daemon to leave on the Pi is started with
+    `run SD:/bin/ftpd SD:/`, not in a session's foreground. **Still open, in the kernel's
+    network**: (1) now and then a connection a server accepts is deaf and mute (3 times in a dozen
+    connects to a telnetd started on port 2323 a few seconds before -- its first or second
+    client --, once the first telnet after a boot; not reproduced at will): the
+    PC's connect succeeds, no greeting comes, what it sends is never received -- its close
+    neither --, the next connect is reset, the ones after work; on the Pi it stays ESTAB for ever
+    (`netstat`), and nothing sent on it makes the TCP give up. telnetd ends such a session after
+    5 min (not one byte ever received); the others (vncd, rdpd, ftpd) were not looked at. (2)
+    Circle's retransmission timer starts again at every segment sent (`SendNewSegment` ->
+    `StartTimer`), so a peer sent to more often than the backed-off timeout never times out
+    (a keepalive every 30 s kept a dead connection alive: telnetd's is every 5 min).
     `kmsg` streams until Ctrl+C and consumes the log (each line is read once).
   - the picture: `OnyxRemote.exe` (`pc/dist/`, rdpd port 3390); or VNC (vncd, no password):
     `python -m vncdotool.command -s <pi-ip> capture x.png`, `... key p` (a key).
-
-## NetSurf -- "as in Chrome" (kotonviolins.com, kotonstudio.com)
-
-The goal, in the user's words: the two sites (theirs) drawn "comme sur Chrome" -- Chrome on
-Windows, which they compare with on the Pi (portrait and landscape screens) -- and JavaScript
-for the forms *and* the DOM. Every NetSurf patch is marked `Onyx:` in the source and listed in
-`docs/06-JET-BROWSER.md` (read it first: it is the map of what changed and why).
-
-**Done (2026-10-01): the browser is renamed "Jet Browser"** (decided by the user on
-2026-09-30; docs/06 §31). The app is `sdcard/apps/jet.app` (`name = Jet Browser`), launched as
-`jet` -- no `netsurf` alias, `run netsurf` no longer exists; the window is titled "Jet";
-Help > About Jet Browser... reads "Jet Browser -- the Onyx web browser, based on NetSurf" and
-credits NetSurf (GPL v2, its copyright) and the libraries' licences. The dock's default
-Internet button launches `jet` (`user/dockconf.h`, `user/Apps/setup/main.cpp`,
-`sdcard/etc/dock.ini`, `sdcard/etc/quicklaunch.txt`; dock / dockconf / theme / setup
-restaged). The user's files are under `SD:/apps/jet.app/` (`ONYX_NS_DATAPATH`); at start,
-`Cookies`, `History` and `desktop-sites` missing there are copied once from
-`SD:/apps/netsurf.app/` (`gui.c`, `onyx_carry_old_data`). docs/06 is now
-`docs/06-JET-BROWSER.md`. The source paths (`third_party/netsurf/`, `user/netsurf/`), the
-binary's build name (`netsurf.elf`), the PC bench (`tools/tests/netsurf/`, `build/netsurf`)
-and the kernel log's `netsurf:` lines keep NetSurf's name. On the Pi: copy
-`apps/jet.app/` to the card (main, app.txt, icon.bmp) and `apps/dock.app/main`; the old
-`SD:/apps/netsurf.app/` can be deleted after a first start of `jet`. In the history below,
-`netsurf.app` and `run netsurf` are the names of the time.
-
-**Done (2026-10-01): an idle Jet Browser no longer slows the Pi (docs/06 §32).** The user's
-"when Jet is running, the whole system gets slow": (1) kotonstudio.com's pulsing dot (a
-`box-shadow` animation: paint, never composite-only) ran ~60 frames a second, each walking the
-box tree twice and compositing the whole view -- now ~30 Hz (15 for a change of a few px, half
-unfocused), none while the window is hidden (minimised / other workspace / covered, from
-`kapi_win_geometry` + `kapi_win_list`: `visibilitychange`, timers >= 1 s, GIFs stopped, nothing
-painted), the restyle walks only the animated subtrees, only the changed rectangle is
-composited; idle 6.5 / 13.7 % -> ~1.8 % of a PC core (floor 0.8 %), `tools/tests/netsurf/
-idlecpu.py`. (2) the SD write stalls: the disk cache and the code cache store on second sight,
-no body over 512 KB, 16 KB pieces with a sleep (`user/netsurf/onyx_io.h`), waiting while the user
-acts / a page loads; the disk cache was **write-only on the Pi** (`kapi_save_file` answers the
-bytes written, it checked `== 0`) -- fixed. google.com: 10.4 MB written at the first visit ->
-5 KB. Kernel side left for another session: the EMMC driver's busy wait (`TimeoutWait`) should
-yield; `kapi_present` has no rectangle. Pi app staged.
-
-**Feature tests on the Pi (2026-09-30 late, docs/06 §23):** the Pi's css3test.com "100 %" /
-browserscore.dev "0 %" were the script time limit (10 s) cutting both test runs off on the
-slower CPU (css3test's 100 % is its CSS 2.2 / 2007 / 2010 filter, kept in localStorage) -- now
-60 s (`script_timeout`) and the runs 2x faster; the detection is honest (`js-cssdetect.html`
-against Chromium). PC bench: css3test 83 %, browserscore 86 % (Chromium 71 %, 75 %). Also the
-Popover API (`:popover-open` / `:modal` in libcss), matchMedia by libcss (aspect-ratio,
-orientation, hover...), `NS_JSPROF` + `jsprof.py` (a sampling profiler of the scripts). The
-Pi's `libcss.a` rebuilt; the NetSurf binary for the card NOT restaged by this work.
-**Then (2026-10-01, docs/06 §28)**: browserscore.dev still "0 of 0" on the Pi -- Vue's first
-render job hit the 60 s limit with the `jsdebug` log on. The console's formatting bounded hard,
-Map / WeakMap object keys hashed properly in QuickJS (Pi `libquickjs.a` rebuilt), `new URL`'s
-cache, no rebox for `getComputedStyle('--x')`, a native `getElementsByClassName`: the job 8.5 ->
-6.4 s (log on), 7.0 -> 6.5 s (off) on the PC; the rest is the interpreter. And the time limit now
-spares a script still changing the page (up to 4x the limit). To try on the Pi: browserscore.dev
-with `jsdebug` on (kmsg: `JS: a script past 60 s still changing the page` if it runs that long).
-Not restaged either.
-
-**START HERE -- 2026-09-30 evening, branch `claude/busy-ramanujan-5enakb` ("improve NetSurf as
-far as conceivable, keeping the speed": css3test >= 50 %, google and facebook usable, no more
-out of memory on bbc.co.uk, HTML5).** Built and tried on the PC bench only; the Pi binaries
-staged at the end of the session (`sdcard/apps/netsurf.app/main`, NOT yet tried on the Pi).
-docs/06 §12-§19 describe each piece; read them first. Where it stands:
-- **css3test.com 23 % -> 81 %** (Chromium 71 % on the same copy): libcss parses by the specs'
-  grammars, a real CSSOM, SVG's properties (§14). **html5test 252 -> 369 / 588**. The HTML
-  parser passes html5lib's tree construction 100 %, its tokenizer 99.9 % (§16); the HTML5 DOM
-  (§17), Intl on ECMA-402 (§15, 92.6 % of test262's intl402 subset), SVG images and inline SVG
-  and canvas 2D on PlutoSVG / PlutoVG (§12, §13), a real shadow DOM with style scoping,
-  WebSocket, EventSource, streamed fetch / XHR, Workers (§19).
-- **bbc.co.uk's out of memory**: fixed (§18: its root cause and the JS heap limit); bbc.com
-  ~170 MB steady on the PC. **google.com**: the logo, the footer (early layout, script-blocking
-  sheets) -- the results page is untested (Google answers a captcha to this container's IP: try
-  it on the Pi). **m.facebook.com**: the login form as in Chrome (Fetch Metadata headers, late
-  style sheets restyle, mask-image icons, aspect-ratio); typing kept; not logged in yet.
-- **Speed**: the JS preludes compiled once per process (a page's context 37 -> 5 ms), the box
-  tree built in 15 ms slices, the fetch workers sleep instead of spinning (60 % of the CPU on
-  bbc.com), job slicing of the microtasks. React hydration is still the big cost (bbc.com: a
-  1.4 s script on the PC -- on the Pi several seconds).
-- **The bench** (`tools/tests/netsurf/`): `jstest.sh` (all the JS / DOM / CSS regression
-  pages), `nettest.sh` (WebSocket / SSE / workers), `sitesweep.sh` (15 live sites: crashes and
-  script errors -- run it after any core change), `site.sh <url> <name>` (NetSurf and Chromium
-  side by side), `layoutdiff.sh` (box by box against Chromium), `prof.sh` (a sampling profiler:
-  `NS_PROF=<file>`), `NS_BOXDUMP=<file>` / `NS_INJECT=<file.js>` then F5 (`key 276`),
-  `html5lib.sh`, `css3test.sh`, `html5test.sh`, `urltest.sh`, `wpt.sh`, `iframetest.sh` (iframes,
-  postMessage, MessagePort across frames, a local reCAPTCHA v2 mimic on two origins: docs/06 §26). The container reaches the
-  web through a proxy (`fakekapi.cpp` tunnels with CONNECT); OpenSSL gives the bench https.
-- **To try on the Pi first**: kotonviolins.com / kotonstudio.com (regressions), bbc.co.uk (the
-  memory), google.com (search, results), m.facebook.com (log in), en.wikipedia.org, a
-  WebSocket echo. Watch `kmsg` for `app:` lines and `SD:/etc/apphang.txt`.
-- **Layout / rebox performance (docs/06 §26)**: the flex layout memo (m.facebook.com's
-  layout pass 170 ms -> under 1 ms on the PC; its cookie dialog took 3.5 s a pass on the Pi),
-  the style selections kept between box trees (github.com's rebox 150 ms -> 6-20 ms),
-  attribute-only changes restyled in the boxes, reboxes coalesced / throttled.
-  `NS_RESTYLE_CHECK=1` / `NS_NORESTYLE=1` / `NS_NOINPLACE=1` on the bench to check them.
-- **Iframes as windows (docs/06 §29)**: postMessage, MessagePort across frames: Google's captcha
-  page (www.google.com/sorry/, reCAPTCHA's "I'm not a robot") -- the bench's mimic of its frames
-  passes; the real one is to be tried on the Pi by the user, not by the tests.
-- **Next**: an incremental layout and box construction (06 §26 "Left"), a worker thread for
-  Workers, Google's results on the user's network.
-
-**Done, in `main`, staged on the card:** CSS3 (calc / var / grid / flex / gradients /
-shadows / radii / background-clip: text / vendor prefixes), Chrome's Windows fonts
-(metric-compatible stand-ins, web fonts with WOFF2 and variable fonts, baseline alignment),
-**JavaScript on QuickJS** (ES2023; the DOM in JavaScript; the page laid out again after a
-script's changes; clicks / keys / typing / submit / scroll / load to the scripts), the
-**painting order of positioned boxes** (z-index layers) and a hit test in that order. The
-hamburger menus of both sites open and their links work; kotonstudio's scroll reveals run
-(IntersectionObserver).
-
-**Done 2026-09-30 (tried on the Pi, kotonviolins.com drawn as before, no failed fetch):** each
-download in a **thread** of its own (kernel v67; the connects one at a time -- several at once
-all failed and the page was laid out without its style sheet); **`fetch`** (`Response`,
-`Headers`, `Request`, `AbortSignal`) and **`XMLHttpRequest`** on a native `request()` over the
-low-level cache (which now takes a request's own headers and keeps the HTTP status and the
-headers); POST / any method and the request's headers in the Onyx fetcher; **`localStorage`
-kept** (a file per origin); the **hover events** (`mouseover` / `mouseenter`... from
-`onyx:hover`), **CSS `:hover`** (the styles made again when the node under the pointer changes,
-if the page has `:hover` rules; tried on the Pi: kotonviolins' buttons), and a **back buffer**
-(`user/nsfb/onyx_surface.c`: NetSurf draws off screen, `update` copies the rectangle redrawn into
-the window's canvas -- the compositor showed half-drawn redraws: the page flickered at each
-restyle; deployed on the Pi, the flicker not yet confirmed gone by the user). The PC bench builds
-in WSL again (`build-essential`, `libpng-dev`, `zlib1g-dev`); `jstest.sh` covers them all
-(js-fetch, js-hover, js-hovercss, js-storage).
-
-**The state before that session (2026-09-30; all in `main`, pushed; the Pi binaries
-staged: `sdcard/kernel8-rpi4.img`, `sdcard/apps/netsurf.app/main`).** Tried by the user on the
-Pi: much faster (kotonstudio with all its images almost at once), hovers fine. Since then (the
-last build, NOT yet tried on the Pi): the Android Chrome User-Agent by default, the yahoo.com
-freeze fixed, ES modules, honest `CSS.supports` / `element.style`, a CSSOM. The docs: docs/06
-§9-§11 (performance, the big sites' scripts, modules / CSS detection), docs/05 §18-19 (DNS,
-TCP window), docs/02 (the kernel's sockets).
-
-The next session's goals, in the user's words and order:
-1. **DOM levels**: check which DOM Level (1/2/3, and the WHATWG DOM) features NetSurf supports
-   -- `dom.js` + `qjs.c` natives over libdom -- write the table down (docs/06 §7), and fill
-   the gaps (Range / Selection, TreeWalker / NodeIterator, `DOMParser`, `XMLSerializer`,
-   Shadow DOM, `customElements` upgrades, `MutationObserver` details, events' fine points...).
-   A regression page per area in `tools/tests/netsurf/pages/` (see `jstest.sh`).
-2. **An HTML5-compliant parser**: hubbub (`third_party/libhubbub`) is an old HTML5 tokenizer /
-   tree builder: check it against the html5lib-tests (tree construction, tokenizer), fix what
-   fails (`<template>`, foster parenting, the adoption agency, `<svg>` / `<math>` foreign
-   content, the insertion modes of tables and `<select>`, entity names), and innerHTML's
-   fragment parsing (qjs.c saves/restores the quirks mode around it).
-3. **css3test.com: aim at 50%** (23% now, 1154 of 6419 tests; the page copy: `wget -p -k -E -H
-   -D css3test.com https://css3test.com/`, its 156 test modules fetched by following the
-   imports, `bliss.js` from cdnjs put beside it -- run it with `NS_JSDEBUG=1 NS_PERF=1`). The
-   score is what libcss parses (docs/06 §11): each new property / value / selector / at-rule
-   parsed by libcss counts -- the cheap wins are the properties NetSurf already draws or can
-   ignore (`opacity`, `transform` functions, `filter`, `mask-*`, `inset`, `aspect-ratio`
-   variants, logical properties `margin-inline` ..., `place-*`, `gap` forms, `color-mix()`,
-   `oklch()` / `lab()` / `lch()` / `hwb()`, `@layer`, `@container`, `@property`, `:is()` /
-   `:where()` / `:has()` / `:not(list)`, `::marker`...). A property parsed but not drawn is
-   still a win for pages (their other declarations are kept). browserscore.dev (the site's new
-   version) is the same idea and worth running too.
-4. **bbc.co.uk: "out of memory"** (the user, on the Pi): find why -- `SD:/apps/netsurf.app/perf`
-   and `.../jsdebug` on, `kmsg` (the `app:` lines), `SD:/etc/apphang.txt` / `lastcrash.txt`;
-   suspects: a huge image decoded whole (a `srcset` / `<picture>` choosing the largest), the
-   whole-response buffers (a big JSON / script), QuickJS's heap (no GC threshold set: qjs.c
-   `js_newheap`), the hover's kept style results (`HV_KEEP_MAX`), a loop allocating. The app's
-   memory limit: the kernel's app pages (`ps` shows PAGES / MEM).
-5. Then Facebook (m.facebook.com with the mobile UA: the consent loop is gone; it showed "Sorry,
-   something went wrong" with the desktop UA -- look at `jsdebug`), SVG (logos and icons:
-   libsvgtiny is not vendored), `opacity`, `position: fixed` on the viewport, the rest of the
-   "Facebook" list below.
-
-Checking on the Pi from the PC (the user's rule: ask before scanning the network -- never scan
-it; they give the address): telnet (`kmsg`, `ps`, `cat SD:/etc/apphang.txt`), VNC captures
-(`python -m vncdotool.command -s <ip> capture x.png`). The PC bench: `tools/tests/netsurf/`
-(`jstest.sh`, `httptest.sh`, `shot.sh`; `SITES=$HOME/nssites`, `OUT=$HOME/nsbench` on this PC).
-**Build traps met** (see the memory): after `make kernel8-rpi4.img` run `make sizecheck` (a
-kernel past 2 MB does not boot); before `make -C user/netsurf`, delete the objects of a library
-you changed (`find third_party/libcss -name '*.o' -delete`: old objects were mixed in and the Pi
-build crashed); the NetSurf app build does not track headers (`rm -rf $HOME/nsbuild` after a
-header change).
-
-**Performance and the network (2026-09-30, tried on the Pi since: faster; at the time the Pi did
-not answer; deploy `sdcard/kernel8-rpi4.img` (kernel + Circle changed) and
-`sdcard/apps/netsurf.app/main`, update the card's `SD:/res/Choices` to `max_fetchers:8` /
-`max_fetchers_per_host:6` -- staging keeps the card's own file):** measured first (docs/06 §9:
-`onyx_perf.h`, the file `SD:/apps/netsurf.app/perf` logs the timings) -- the painting was the
-wall (a full redraw 12.6 ms on the PC), now 4.9 ms (`onyx_paint.c`: spans, tables, the same
-pixels); **CSS `:hover` restyles only what changed** and repaints only those boxes
-(`onyx_hover.c`; on both sites every hover is a restyle, pixel-identical to a rebox); one
-present per main-loop iteration; the loop waits on `kapi_pump_wait`. **The fetcher** rewritten:
-HTTP/1.1 keep-alive pool, chunked, streaming, **cookies sent and stored** (the old one sent none
-and dropped every Set-Cookie: the user's m.facebook.com consent page came back for ever),
-Referer / Origin, a Chrome User-Agent (Choices `user_agent`), no path limit
-(`tools/tests/netsurf/httptest.sh` checks it on the PC). **Kernel / Circle**: the socket slot
-race of concurrent connects (the "several connects fail" bug) fixed, a DNS cache, 32 KB recv
-gather; Circle's DNS polled (it slept 1 s per lookup), TCP window 64 KB (docs/05 §18-19). To try
-on the Pi: page load times (kotonviolins, kotonstudio), hovers, scrolling, m.facebook.com's
-cookie consent. Found on the PC and not fixed: a full rebox lays kotonstudio's hero button out
-3 px lower than the first layout (a jump when a script changes the DOM); a scroll can leave a
-100 px band blank now and then (a race, seen once in a capture before these changes).
-
-**Facebook, the user's next goal ("afficher facebook et que ça soit confortable")** -- the gaps
-(audit 2026-09-30), in order: (1) done: cookies, UA, Referer, long URLs; (2) certificate checks
-(`MBEDTLS_SSL_VERIFY_NONE` in `onyx_tls.hpp`: `SD:/res/ca-bundle` is on the card, needs a clock
-for expiry) -- before typing a password; (3) `history.pushState` / `replaceState` changing the
-URL + `popstate` (dom.js only stores the state); (4) an `Intl` subset (QuickJS-ng is built
-without it); (5) inline SVG and `.svg` images (libsvgtiny is not vendored: Facebook's icons);
-(6) incremental relayout for script DOM changes (today a full rebox 10 ms after each script
-turn: React updates constantly) -- the hover restyle's machinery (`onyx_hover.c`) is the start:
-restyle the changed subtree, relayout only when a layout property changed; (7) `position: fixed`
-pinned to the viewport, `opacity`, `mask-image`; (8) WebSocket (chat) and brotli (cheap: the
-decoder is linked). `CSS.supports` answers true for everything: make it honest.
-
-**Open bug (2026-09-30, start here):** on the Pi, kotonviolins' header line turned **opaque
-brown** (90, 62, 43) where it was light grey (225, 219, 211) -- seen after the back-buffer build
-was deployed (the capture just before it, CSS `:hover` build, was right). The rule:
-`.site-header { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(12px);
-background: rgba(247, 244, 238, 0.82); border-bottom: 1px solid var(--line) }` with
-`--line: rgba(90, 62, 43, 0.14)` -- a translucent colour drawn again and again over itself
-(no background repainted under it) tends to the opaque colour: suspect a redraw of the sticky
-header's layer (`html_redraw_layer_z` / the sticky code in `redraw.c`) painting over pixels
-already there, which the back buffer now keeps (the canvas was maybe cleared before). Not
-reproduced on the PC bench (`pages/alpha-hover.html`: a sticky translucent header, repeated
-hovers -- stays right). To do: the Pi's `SD:/apps/netsurf.app/main.old` is the build before
-threads (compare); make the bench page closer (backdrop-filter, scrolled, a web font arriving
-late); log the redraw rectangles; check `onyx_paint.c`'s effects (they read the buffer:
-`nsfb_get_buffer`). This is NOT `opacity` (unsupported, a separate item).
-
-### Where the code is
-- CSS: `third_party/libcss`. A new property touches `src/parse/propstrings.*`,
-  `src/parse/properties/properties.gen` (+ its parser), `src/bytecode/opcodes.h`,
-  `include/libcss/properties.h`, `src/select/select_config.py` + `select_generator.py` (the
-  computed style's layout), `src/select/dispatch.c`, `src/select/properties/<name>.c` (its
-  cascade) and `src/select/computed.c` -- the ones Onyx added are parsed in
-  `src/parse/properties/onyx_*.c` and cascaded in `src/select/properties/onyx_css3.c`;
-  `make -f tools/tests/netsurf/host.mk libcss-test` must still pass.
-- Layout `content/handlers/html/layout*.c` (`layout_grid.c`); painting `redraw.c` (+ the
-  framebuffer's `frontends/framebuffer/onyx_paint.c`; the layers: `onyx_layer_*`,
-  `html_redraw_layer_z`); fonts `frontends/framebuffer/font_freetype.c`, web fonts
-  `html/onyx_webfont.c`.
-- JavaScript: `content/handlers/javascript/quickjs/qjs.c` -- a native is an `n_*` function
-  plus a line in the `qjs_natives` table, called from dom.js as `N.name(...)`;
-  `quickjs/dom.js` -- events, collections, Node, the selector engine, Element / HTMLElement,
-  the element classes (`TAGS`), Document, the window's objects, `browserDispatch` (the
-  browser's events). Re-layout: `html.c` (`html_script_dom_changed`, `html_rebox`,
-  `html_script_layout_now`); events: `html_script_event` (html.c), called from
-  `interaction.c` (mouse, keys), `box_textarea.c` (typing, Enter), `form.c` (a select's menu).
-
-### The PC bench (`tools/tests/netsurf/`, no Pi needed)
-- `sh tools/tests/netsurf/getsites.sh` -- copies of the two sites in `/tmp/nssites` (the
-  bench's NetSurf has no https): `kotonviolins.com/index.html`, `kotonstudio.com/fr/index.html`.
-- `sh tools/tests/netsurf/shot.sh <file|url> <png> [WxH] [waits]` builds (host.mk, OUT
-  `/tmp/nsbench`) and screenshots a page: portrait `700x1200` (a 618 px page), landscape
-  `1600x1000` (1262 px). `chrome.sh <file> <png> <w> <h>` draws it in Chromium. For Windows'
-  look, give it `FONTCONFIG_FILE=` a fonts.conf whose `<dir>` holds Georgia and Segoe UI
-  (Microsoft's fonts: never in the repo); without them Chromium uses the same stand-ins as
-  NetSurf (Liberation, Selawik, Gelasio).
-- `sh tools/tests/netsurf/jstest.sh` -- the JavaScript regression test (26 DOM checks, 12
-  event checks through simulated clicks and keys, a runaway recursion, 19 fetch / XHR checks,
-  the hover events, CSS `:hover`, `localStorage` kept over two runs): run it after any change
-  to the JS, the events, the layout or the painting order.
-- **On this PC (WSL)**: WSL's `/tmp` is wiped when the distribution stops (the bench was built
-  again from nothing each time): `export OUT=$HOME/nsbench` first. WSL's python has no numpy /
-  PIL: convert a dump with Windows' python (`python tools/tests/desktop_sim/shot.py f.elsm f.png`,
-  the `.elsm` copied to a Windows folder). Run NetSurf itself for a custom script:
-  `SIM_SCREEN=800x600 SIM_SLEEP=1 SIM_POS=0,0 SIM_ARGS=file://... SIM="wait;...;dump f.elsm;exit"
-  $HOME/nsbench/build/netsurf`.
-- The simulator's script (`SIM=` in run.sh / jstest.sh): `wait`, `move x y`, `down x y`,
-  `up x y` (a `move` first), `wheel x y d` (negative: down), `key k` (a character or a code:
-  13 Enter, 27 Esc, 276 F5), `dump f.elsm` (`python3 tools/tests/desktop_sim/shot.py f.elsm
-  f.png`), `exit`. Coordinates are the window's client area: the page's y + 40 (the toolbar).
-  kotonviolins' hamburger at 700x1200: `(578, 82)`.
-- `NS_JSDEBUG=1`: the scripts' errors and `console.log` on stderr. `NS_BOXDUMP=<file>` then
-  F5 (`key 276`): the box tree (positions, sizes, styles) written to the file.
-
-### Building for the Pi
-- **On this PC (2026-09-30)**: the Arm GNU toolchain 14.2 in WSL builds it all (see the memory /
-  docs/03; GCC 14's new errors are kept warnings in `netsurf-app.mk`). From the repo, in WSL, with
-  the toolchain on the PATH: `make -C user/nsfb NSFB=$PWD/third_party/libnsfb` (only after
-  `onyx_surface.c` changes: the default NSFB path is wrong), then
-  `make -f user/netsurf/netsurf-app.mk OUT=$HOME/nsbuild -j8 link` and `... OUT=$HOME/nsbuild
-  stage` (OUT outside `/tmp`, as above). The rules do not track headers, but `qjs_dom_js.h` is
-  made again from `dom.js` (check with `grep -c <a new name> $HOME/nsbuild/qjsgen/qjs_dom_js.h`).
-- NetSurf and its libraries (the cloud container): GCC 10.3 (`gcc-arm-10.3-2021.07`, aarch64-none-elf; the cloud
-  container had it in `/home/user/toolchain`). `make -C user/netsurf` (the `.a` are
-  committed; after a libcss / libdom header change delete their `.o`), then
-  `rm -rf /tmp/nsbuild && make -f user/netsurf/netsurf-app.mk -j$(nproc) link` and
-  `make -f user/netsurf/netsurf-app.mk stage` (the ELF, its app.txt, `SD:/res`).
-- The kernel (only when `kernel/` changes): the Arm GNU toolchain 13.3.rel1
-  (`https://developer.arm.com/-/media/Files/downloads/gnu/13.3.rel1/binrel/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-elf.tar.xz`;
-  GCC 10 cannot build `sys/v3d.cpp`), `git submodule update --init circle` then
-  `git -C circle submodule update --init addon/wlan/hostap`, Circle built as docs/03 §2 says,
-  `make -C kernel kernel8-rpi4.img`, copied to `sdcard/`. NetSurf's `app.txt` (`stack = 8M`)
-  needs this kernel (the default stack is 256 KB; QuickJS may use 4 MB).
-
-### Trying it on the Pi (from this PC)
-- The Pi answers at 192.168.0.10 (telnet 23, VNC 5900; telnetd serves several sessions now).
-  Deploy: an FTP server on the PC (`pyftpdlib`, port 2121, the repo's `sdcard/` as its root,
-  allowing only the Pi), then in a telnet session `cat FTP:192.168.0.9:2121/apps/jet.app/main
-  > SD:/apps/jet.app/main.new` (7 MB: wait ~45 s before the next command, or the transfer is
-  cut), `wc -c < SD:/apps/jet.app/main.new` (the size), `cp` it over `main`. No reboot
-  needed for an app.
-- **Its messages**: an app's stdout without a terminal goes to the kernel log as `app:` lines --
-  NetSurf's `ONYX-FETCH FAIL <url> err=...`, `ONYX-CSS-ERR ...`, `ONYX-HLC type=... url=...`.
-  One telnet session runs `kmsg` (it streams for ever: stop it with Ctrl-C, `\x03`; never pipe
-  it into `grep`: that never ends and freezes the session), a second one runs
-  `run jet https://kotonviolins.com` (`run` passes the URL; a Jet Browser already open is kept:
-  close it first for a new build). Screenshots: `python -m vncdotool.command -s 192.168.0.10
-  capture x.png`; at 1024 x 768 (the user's setting now) `move x y` lands where asked (hover
-  tests: compare pixels before / after).
-
-### Next, with where to start
-0. **The open bug above** (the opaque header line), then commit nothing more on top of it until
-   it is understood.
-1. **Hover without the whole page** -- CSS `:hover` makes the document's boxes again
-   (`html_script_dom_changed` -> a full rebox + layout + redraw) at each change of the node
-   under the pointer. As the big engines do: (a) restyle only the nodes whose hover state
-   changed (the old and new hover chains: their subtrees) -- `box_get_style` again for their
-   boxes, the text / anonymous boxes that point at the old style updated too; (b) compare the old
-   and new computed styles (libcss interns them: the same pointer = no change) and if only paint
-   properties differ (colours, backgrounds, border colours, outline, shadows, visibility)
-   swap the styles and redraw the boxes' rectangles only (`html__redraw_a_box`), no layout;
-   else the rebox as now. Same for `:active` / `:focus` (`node_is_active` / `node_is_focus`
-   in `css/select.c` answer no).
-2. **`opacity`** -- kotonstudio's scroll reveal (`.feature-card { opacity: 0 }` until the
-   IntersectionObserver adds `.is-visible`: the JS part works) and the hamburger's middle bar.
-   `redraw.c`: paint the box's subtree into an off-screen bitmap and blend it with its alpha
-   (a new plotter operation, framebuffer side in `onyx_paint.c`); a cheaper first step for a
-   subtree with no overlap: multiply its colours' and images' alpha.
-3. **Cookies in `user/netsurf/onyx_fetch.c`** (logins): send `urldb_get_cookie`, give each
-   `Set-Cookie` to NetSurf's cookie handling (the fetcher leaves `Set-Cookie` out of the
-   headers it hands the core today). Mind the worker threads: urldb is not thread-safe -- read
-   the cookie on the UI thread (at `fetch_onyx_setup` / job start) and hand the `Set-Cookie`
-   lines back with the response.
-4. **The fetch / XHR gaps** (docs/06 §7): streams (`Response.body`), synchronous XHR (runs
-   async), multipart bodies (FormData with files), `responseXML`, CORS checks (none: every
-   origin answers), cookies on script requests (with 3).
-5. **The UI thread's wait**: `onyx_input` (`user/nsfb/onyx_surface.c`) still sleeps
-   `kapi_msleep(<=20)`; `kapi_pump_wait` would wake it at once on an event (and on a post, if
-   the fetch workers `kapi_post` their completion instead of the 10 ms poll).
-6. **Media queries on a resize** (responsive): a new window size -> `html_rebox` (the boxes'
-   styles are selected again) -- check which width the selection's media sees.
-7. **CSS transitions / animations, SVG (libsvgtiny, not vendored), `canvas`** -- the larger
-   gaps to Ladybird / Chrome.
-8. Form controls outside any form are made again at each rebox (the old one leaks):
-   `html_forms_get_control_for_node` only searches the forms -- keep them in a list per
-   document. NetSurf's `default.css` gives inputs and buttons `margin: 1px` (Chrome: 0):
-   compare before changing.
-
-### Pitfalls met (keep them in mind)
-- An app's stack must stay in kernel memory: `Yield` activates the next task's address space
-  before it leaves the old stack. A bigger stack only through `app.txt` (`stack =`).
-- libdom caches an element's classes: now updated by `setAttribute` (element.c); a path that
-  changes an `Attr` directly would still miss it.
-- hubbub's fragment parser (innerHTML) sets its document's quirks mode: qjs.c saves and
-  restores it.
-- `textarea_set_text` reports `TEXTAREA_MSG_TEXT_MODIFIED`: the control's `syncing` flag keeps
-  a script's value from becoming an `input` event (a loop otherwise).
-- Events are dispatched with the boxes held (`script_hold`): their callers keep box pointers
-  (`mouse_action_state`). A changed DOM is laid out 10 ms later, or at once when a script asks
-  for a rectangle outside an event.
-- A rebox takes the old boxes' objects over by URL (`html_fetch_object`); objects that arrive
-  after the page is done cause a reformat (object.c).
-- **The connects one at a time** (`onyx_connect` in `onyx_fetch.c`): several threads connecting
-  at once (DNS + TCP on the network core) all failed ("Connection failed"), and a page was laid
-  out without its style sheet -- a failed style sheet does not hold the layout back.
-- The fetch threads touch plain copies only (the URL as a string, the response bytes); every
-  NetSurf call (nsurl, llcache, `fetch_send_callback`) stays on the UI thread.
-- Script requests go through `llcache_handle_retrieve_ex` with `LLCACHE_RETRIEVE_FORCE_FETCH`
-  (a cached object would not be fetched again with the request's headers); the Onyx fetcher
-  leaves the cache-control response headers out (the cache behaves as when only Content-Type
-  came) and drops `If-None-Match` / `If-Modified-Since` (a 304 would need FETCH_NOTMODIFIED).
 
 ## Koton, the studio -- a DAW (2026-09-29: implemented, not yet run on the Pi)
 
 Koton Studio (the user's C# DAW, `github.com/stephaneweg/MusicTracker`) made again for Onyx, no
 score view: **`docs/daw/README.md`** (the study, the plan, the user's decisions in §8, **where it
 stands and what to test on the Pi in §9**). Code: `user/Apps/koton` (engine/, synth/, plug/, ui/,
-main.cpp), `user/kplug*.h` + `user/Apps/kp_*` (the plugins), `user/bin/llm.cpp` (the AI's HTTPS
-helper), wtk's text face (`user/ft/wtkface.h`) and studio widgets. Docs: docs/04 *Koton, the
+main.cpp), `user/kplug*.h` + `user/Apps/kp_*` (the plugins), `user/BinUtils/llm.cpp` (the AI's HTTPS
+helper), uikit's text face (`user/Kits/fontkit/uikitface.h`) and studio widgets. Docs: docs/04 *Koton, the
 studio*, docs/03 *A large app: Koton*, *Koton's plugins*, the `/bin/llm` section. Tests:
 `sh tools/tests/koton/{synth,engine,ai,plug,plug_host}_run.sh`; the app on the PC:
 `sh tools/tests/desktop_sim/shots.sh koton`. The card carries the GeneralUser GS SoundFont
@@ -1512,7 +2011,7 @@ sources unchanged over `pc/Koton/winkapi.cpp`, the kernel's table on Win32 -- do
 Windows*. Checked under Wine (no sound card there: the silent drain); to try on a real Windows: the
 sound (WASAPI), a USB MIDI keyboard, the window's resize by hand.
 
-**Ledger for macOS (2026-10-01):** `pc/macOS` -- Ledger (and Writer, its printing) for Apple silicon,
+**Ledger for macOS (2026-10-01):** `pc/macOS` -- Ledger (and Letters, its printing) for Apple silicon,
 the Onyx sources unchanged over `pc/macOS/hostkapi.cpp` (POSIX) + `cocoa.mm` (the window, menus, keys,
 clipboard): docs/03 *Ledger for macOS*. Built **on a Mac** by `sh pc/macOS/build.sh` -> `pc/dist/macOS/
 Ledger.app` + zip (not built here: no macOS SDK on Linux; nothing committed in pc/dist/macOS). Checked on
@@ -1520,12 +2019,12 @@ Linux by `sh pc/macOS/check.sh` (the POSIX half under a screen-less window: open
 folders). To try on a real Mac: the first build (Apple clang's warnings), the window, Retina drawing, the
 keys (Cmd, dead keys), resizing / full screen, the trackpad's scrolling, drop / Finder open, printing.
 
-**Ledger in French (2026-10-01):** every word of Ledger wrapped `TR ()` (wtk's new `lang.h`, docs/03 *An app
-in another language*), the catalogue `sdcard/apps/ledger.app/lang/fr.txt` (~930 words) + wtk's own
+**Ledger in French (2026-10-01):** every word of Ledger wrapped `TR ()` (uikit's new `lang.h`, docs/03 *An app
+in another language*), the catalogue `sdcard/apps/ledger.app/lang/fr.txt` (~930 words) + uikit's own
 `sdcard/res/lang/fr.txt` (in the `onyx` package); EN | FR at the side bar's foot and in the File menu (Ledger restarts by itself).
 Pi binary rebuilt (`sdcard/apps/ledger.app/main`, Arm GNU 13.3); the other apps not restaged (their old
-wtk has no `TR`, fine). Checked: `sh pc/macOS/check.sh` (the switch, French pictures), the engine test.
-To do: Dutch (`nl.txt`: the same keys), the manual's pictures in French, Writer's own words.
+uikit has no `TR`, fine). Checked: `sh pc/macOS/check.sh` (the switch, French pictures), the engine test.
+To do: Dutch (`nl.txt`: the same keys), the manual's pictures in French, Letters' own words.
 
 **User manual (2026-09-30):** `sdcard/manuals/koton/Koton.md` + `Koton.fr.md` and their PDFs
 (`python tools/manuals/build_manuals.py <the .md>`), 25 pictures in `images/` by
@@ -1538,13 +2037,13 @@ over a cached canvas instead of the whole view redrawn at each tick while playin
 when the playhead moved a pixel, a *Low latency* setting (128 × 2 in the kernel, a 512-frame ring
 ≈ 20 ms) for live MIDI.
 
-## End-user apps roadmap (decided with the user, 2026-09-30; none started)
+## End-user apps roadmap (decided with the user, 2026-09-30; Priority 1 done)
 
 **How (the user, 2026-10-01)**: Screenshot first (laid out as Windows' Snipping Tool:
 docs/screenshot/README.md), then the **Priority 1** apps **in their order**; for each, **mock-ups first**
 for the user to validate, then the app -- polished, **worthy of a commercial product**.
 
-Every new app: FreeType text through wtk's face, polished, its catalog entry in docs/04 and a
+Every new app: FreeType text through uikit's face, polished, its catalog entry in docs/04 and a
 `shots.sh` scenario. In the user's priority order:
 
 **Priority 1**
@@ -1556,7 +2055,7 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
   (well-known providers pre-filled), threads, attachments, drafts. **Contacts** = a Cardfile
   form: the mail client creates the `.card` structure, reads / writes it (address completion,
   "add sender"), and the file opens in Cardfile too.
-- **PDF viewer** + **PDF export** in Writer and the Spreadsheet -- **done** (2026-10-01: *PDF Viewer*, its section above; MuPDF, the app AGPL; the export ours, MIT).
+- **PDF viewer** + **PDF export** in Letters and the Spreadsheet -- **done** (2026-10-01: *PDF Viewer*, its section above; MuPDF, the app AGPL; the export ours, MIT).
 - **Screenshot** tool (screen / window / area; Print Screen key). **Done** (2026-10-01: its section above).
 - **Photos** (the user's pick among the ideas of 2026-10-02: weather, EPUB reader, RSS, SSH, a KeePass-compatible
   vault, GPIO lab, home automation, backup, WebDAV, CalDAV / CardDAV, internet radio and podcasts, a code editor,
@@ -1567,8 +2066,9 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
   time zone next to the layout (the time itself stays set by NTP automatically).
 - **About / System**: a fuller successor to memmon (version, kernel, CPU, temperature, RAM,
   uptime, network, processes).
-- **Presentations** (as Impress), to complete Writer / Sheet / Cardfile.
-- **Quick notes** with a desktop widget that can be shown or hidden.
+- **Presentations** (as Impress), to complete Letters / Sheet / Cardfile.
+- **Quick notes** with a desktop widget that can be shown or hidden -- **built** (AutoDev round 1, 2026-10-06, branch
+  `AutoDev`, waiting for the user's validation: *Notes* and *Stickies*, the section at the top).
 - (Storage applet: not for now. Updates: part of the future package manager / app store.)
 
 **Priority 3–4**: **Clock** (moved here by the user, 2026-10-02): alarms, timer, stopwatch, world clocks (notifications through notifyd; a small service for the alarms when the app is closed). **Video player** -- **done** (2026-10-02: the Media Player's videos); the **app store / package manager** (see IDEAS.md below; `docs/pkg/README.md`: `pkg`, the Package Manager `pkgman`, the daemon `pkgd` done and tested on the PC, the repository `onyx-packages` published (signed with the user's key, kept off the repositories), `sdcard_lite`; the Game Library finds its emulators from their app.txt; next: try it on the Pi; tryboot: not for now).
@@ -1576,7 +2076,92 @@ Every new app: FreeType text through wtk's face, polished, its catalog entry in 
 **Priority 5**: a global **key vault** (encrypted secrets store) with seamless integration in
 the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ftpfs...).
 
+## The shell made useful: text tools, scripts, the line editor (2026-10-04, branch `term_updates`; its second commit, the script language, is not merged; nothing staged, nothing published)
+
+- **The script language** (`user/BinUtils/cmdscript.h`, at least a DOS `.bat`'s level; docs/04 §7 *Scripts*):
+  variables (`name=value`, `$name`; handed to the children as their environment, read back by a
+  child `cmd`), `$(command)`, `$((arithmetic))`, file patterns (`*.txt`: `cmd_glob_hook` in
+  `cmdparse.h`), `if` / `elif` / `else` / `fi`, `while` / `until` / `for … in` / `done`, `break`,
+  `continue`, `! command`; builtins `test` / `[ ]`, `echo`, `read`, `set`, `unset`, `shift`, `true`,
+  `false`. A block typed at the prompt is read up to its end (`> `). Ctrl-C stops a loop of builtins
+  too (the keyboard is polled between two commands; what was typed ahead is kept for the next
+  reader). `ls` (files, several paths, `-l`) and `cat` (`-n`) rewritten on `tool.h` for the patterns.
+  Tested: `cmdscript_test.c` (116 checks) and on the Pi as `cmd2` (a script with every construct, a
+  child script reading a parent's variable, a block at the prompt, `read`, Ctrl-C in an endless loop).
+  Not there: functions, `case`, here-documents, a block piped or redirected as a whole, background
+  jobs; `rm` / `cp` / `mv` / `mkdir` / `touch` still read the old argument line (a name with a blank
+  from a pattern breaks them).
+
+- **Tools** (`user/BinUtils`, on `tool.h`; docs/04 §8): new `head tail sed ed sort uniq cut tr tee nl find
+  date sleep hexdump diff`; `grep` (regular expressions, `-i -v -n -c -q -F`, files), `wc` (`-l -w -c`,
+  files) and `echo` (the argv, `-n`) rewritten. `regex.h`: basic expressions, no alternation.
+- **`cmd`**: `;` `&&` `||`, `#` comments, exit codes (`$?`), scripts (`cmd file [args]`, `cmd -c`,
+  `source`, a command word ending with `.sh`: the current folder then `SD:/bin`), `$1`…`$9 $# $* $0`.
+  Ctrl-C stops the stages (the programs after 40 ms, a child `cmd` after 2 s: it stops its own first)
+  and the rest of the script; a stage that cannot start no longer leaves the others waiting; the end
+  of cmd's own stdin is handed to the first stage. `cmd` exits through `kapi_exit` (main's return
+  value is not the exit code).
+- **Line editor** (`user/Include/lineedit.h`): the cursor in the line, the history (Up / Down), in the
+  terminal (the typed line is drawn after the prompt, wrapped; it enters the scrollback when sent) and
+  in `telnetd` (ANSI escape sequences read; `tools/onyx-telnet.py` sends them on Windows).
+- **Tested**: `run_cmd_test.sh`, `run_tools_test.sh`, `run_telnetd_test.sh` (PC); on the Pi through telnet, the binaries
+  under other names (`cmd2`, `telnetd2` on another port…): the tools, scripts, exit codes, Ctrl-C,
+  Ctrl-D, the arrows. The terminal: in the desktop simulator only. **Not tried**: a `.sh` command
+  word and Ctrl-C on a nested script with the real `cmd` in place (they need `SD:/bin/cmd` replaced).
+- **To do after the merge**: `make` + `make stage`, then publish (`onyx`: `bin/`, the terminal);
+  `python docs/build_docs.py` (no pandoc on this PC). Ideas: a pager (`more`), alternation in `regex.h`, a history kept across sessions, the redraw of a
+  line longer than the telnet client's window (needs its width: NAWS).
+
 ## Other open items
+
+### To do -- left open by the session of 2026-10-04 (Jet on WebKit, the network, the desktop)
+
+Nothing below is started unless it says so. The user's order for the browser is in the first group.
+
+**Jet (the WebKit port, docs/08)** -- in the user's order:
+- [ ] The **host + web view** as a reusable component (a small host window, the web view attached),
+      then the **web-view daemon** started at boot and the **lazy loading** of the program.
+- [ ] **Web Audio**.
+- [ ] **H.264 / AAC**: needs FFmpeg under the LGPL in Jet -- a licence decision that is the user's
+      (CLAUDE.md, the licences rule): ask before pulling it.
+- [ ] **Full-screen video**: put off by the user (2026-10-04), lower priority -- not to be started unasked.
+- [ ] **WebGL**: later (our own ANGLE back end, Mesa's compiler only).
+- [ ] **Mail's HTML view** (Jet's program run inside Mail's window): not tried on the Pi since Web
+      became Jet; it has no pointer shapes yet (the page is drawn by another process: the shape has to
+      come back through `webview_proto.h`).
+- [ ] The user to check by hand: Jet's **Console** (F12).
+
+**Network (docs/02 *The network*, docs/05 §26-27)**:
+- [ ] The Pi **sends** at 3-4 MB/s without aggregation (A-MPDU TX lost frames during downloads: it stays
+      off -- the test to pass before turning it on again: PC pings at 5 a second during a download
+      limited to 1 MB/s, none lost).
+- [ ] A rare **pause of one second** in a transfer: TCP's smallest retransmission timeout.
+- [ ] A **newer Wi-Fi firmware**: does it aggregate soundly?
+- [ ] One trial with **55 % of the pings lost** ("destination unreachable"), the network core's sleep
+      off, on 2026-10-04: seen once, not reproduced, not explained. The signal was weak that afternoon
+      (-74 dBm, 97-130 Mbit/s instead of 195-292).
+- [ ] rdpd / OnyxRemote over **UDP**: asked once by the user; probably no longer needed (no more
+      freezes during a page load or a video, the user's check of 2026-10-04) -- ask before doing it.
+
+**Desktop**:
+- [ ] Task Manager: a **CPU column** by process; the network's bytes are the sockets' payload, not what
+      goes on the air (the driver's counters).
+- [ ] Pointer shapes (kapi v81): the **terminal**, **Slides** and **QBStudio** (another session's apps),
+      an **hourglass** while an app is busy.
+- [ ] Windows resized by their frame (kapi v82): no **live resize** (an outline only), the size is **not
+      kept** from one run to the next; a window can be dragged under the dock. The user to try by hand:
+      every edge and corner, the smallest size, the stop under the menu bar, other apps than the Task
+      Manager (Jet, Letters, the terminal); and the pointer shapes not checked on screen (the four
+      arrows while a window moves, the hand on a link of Mail, the I bar in Letters, the cross in Paint,
+      splitters, a list's column edges).
+- [ ] The shell's `rm` cannot name a file with **spaces** (quotes are not understood: `rm "SD:/Downloads/a (1).dat"`
+      fails), and `rm SD:/cookie.jar.db` failed without a word -- both had to be deleted through ftpd.
+- [ ] The in-OS strings that still say **"Zircon"**: to rename to Onyx (CLAUDE.md's note).
+
+**Publishing**: Jet's program (`sdcard/apps/jet.app/main`, 105 MB) is ignored by git and exists only
+in the clone where Jet is built: `tools/pkg/publish.sh` run from another clone publishes a `jet` package
+without its program (it happened: jet 2.0.2 was 2.6 KB). After a publish, look at
+`pkgs/jet-*.opk`'s size (~43 MB).
 
 - **gcemu, The Wind Waker: Link's eyes are missing** (the user, on the TV, 2026-09-28; to look at
   after the GUI work). Leads: the game draws the eyes and eyebrows after the hair with their own

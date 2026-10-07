@@ -44,6 +44,7 @@
 //                  EL1-only, global, shared into every process table.
 // [4 GB, 8 GB)     unmapped guard hole.
 // [8 GB, 64 GB)    user space (per process, ASID-tagged, EL0-accessible).
+//                  [16 GB, 32 GB): the shared libraries (v83, USER_LIB_BASE).
 //
 #define KERNEL_IDENTITY_END	(4ULL * GIGABYTE)	// top of Circle's identity map
 
@@ -62,7 +63,7 @@
 // Per-process heap: grows UP from here (kapi_sbrk maps 64 KB pages on demand). Sits
 // in the gap above the app's .text/.data/.bss (which start at 8 GB and are small)
 // and below the window canvas (12 GB). Pages are owned by the address space ->
-// freed on teardown. The user-space allocator (user/umm.h) manages this region.
+// freed on teardown. The user-space allocator (user/Runtime/umm.h) manages this region.
 #define USER_HEAP_BASE		(10ULL * GIGABYTE)	// 0x2_8000_0000
 #define USER_HEAP_MAX		USER_WINDOW_CANVAS	// ceiling (12 GB): 2 GB of heap VA
 
@@ -104,6 +105,25 @@
 // 64 KB pages owned by the address space (freed on teardown).
 #define USER_CODE_BASE		(0x390000000ULL)	// 14.25 GB
 #define USER_CODE_END		(15ULL * GIGABYTE)	// 15 GB: 768 MB
+
+// (v83) The shared libraries' arena (kern/image.h, docs/SHARED-LIBS-PLAN.md): the kernel places
+// each library here once, when it loads its file -- the same address in every process that maps
+// it (not a link-time address: another build or another boot may give another place).
+#define USER_LIB_BASE		(16ULL * GIGABYTE)	// 0x4_0000_0000
+#define USER_LIB_END		(32ULL * GIGABYTE)	// 0x8_0000_0000
+
+// (v75) The mmap arena: only vm_map places mappings here (kern/vm.h), lazy, 26 GB. The threads'
+// stack slots (kern/el0.h USER_THREAD_STACKS: 64 x 32 MB from 32 GB) end exactly at its base;
+// [16 GB, 32 GB) is the libraries' arena.
+// (v89) The graphics server's view of the windows' buffers (kern/wsrv.h): USER_WS_SLOTS slots of
+// USER_WS_SLOT bytes at the top of the mmap arena, in the server's address space only (it maps
+// nothing with vm_map). A buffer's slot is its number.
+#define USER_WS_SLOT		0x4000000ULL		// 64 MB: a buffer's largest size
+#define USER_WS_SLOTS		128
+#define USER_WS_BASE		(USER_VA_END - USER_WS_SLOTS * USER_WS_SLOT)	// 52 GB
+
+#define USER_MMAP_BASE		(34ULL * GIGABYTE)	// 0x8_8000_0000
+#define USER_MMAP_END		USER_VA_END		// 60 GB
 
 #define IS_USER_VA(va) \
 	((u64)(va) >= USER_VA_BASE && (u64)(va) < USER_VA_END)

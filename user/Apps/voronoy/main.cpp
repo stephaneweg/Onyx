@@ -11,11 +11,10 @@
 // run it from the terminal to reshuffle the cells. Without wallpaper.ini: its own config.ini's
 // base colour and points (as before the Theme applet had them).
 //
-#include "kapi.h"
-#include "applib.h"
+#include "appkit/appkit.h"
 #include "onyxpp.hpp"			// operator new / delete (the picture's decoder)
-#include "wallpaper.h"
-#include "img/imgload.hpp"
+#include "systemkit/systemkit.h"
+#include "imagekit/img/imgload.hpp"
 
 static void yield (void) { kapi_yield (); }
 

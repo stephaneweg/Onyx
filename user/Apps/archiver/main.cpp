@@ -8,22 +8,22 @@
 // RAM: and handed over as files. The work is done in a thread (the window stays alive), its progress
 // in a box (Background / Cancel).
 //
-// A newlib wtk app with FreeType's text (user/Makefile's archiver.elf rule), zlib for Deflate. One
+// A newlib uikit app with FreeType's text (user/Makefile's archiver.elf rule); the archives are FileKit's (arcfk.h). One
 // translation unit: the engine (arc.h, zip.h, ops.h), the model (model.h), the widgets (widgets.h,
 // icons.h), the dialogs (dialogs.h).
 //
 #include <strings.h>
-#include "kapi.h"
-#include "ft/wtkface.h"
-#include "wtk/wtk.h"
-#include "fileassoc.h"
-#include "ops.h"
+#include "appkit/appkit.h"
+#include "fontkit/uikitface.h"
+#include "uikit/uikit.h"
+#include "systemkit/systemkit.h"
+#include "arcfk.h"		// the archives: FileKit (SD:/lib/filekit.so)
 #include "model.h"
 #include "icons.h"
 #include "widgets.h"
 #include "dialogs.h"
 
-using namespace wtk;
+using namespace uikit;
 using namespace ui;
 using arc::u64;
 
@@ -227,7 +227,7 @@ static void reload (const char *keepPath)
 	char why[200], p[300];
 	arc::scopy (p, g_arc->path, sizeof p);
 	arc::Archive *a = arc::archive_open (p, why, sizeof why);
-	if (!a) { wk_messagebox ("Archiver", why, MB_OK); return; }
+	if (!a) { uk_messagebox ("Archiver", why, MB_OK); return; }
 	// the folders open in the tree, open again after
 	char *openP[256]; int nopen = 0;
 	for (int i = 1; i < g_model.count && nopen < 256; i++)
@@ -260,7 +260,7 @@ static bool open_archive (const char *path)
 	if (!a)
 	{
 		char msg[400]; arc::scopy (msg, arc::base_of (path), sizeof msg); arc::scat (msg, "\n", sizeof msg); arc::scat (msg, why, sizeof msg);
-		wk_messagebox ("Cannot open the archive", msg, MB_OK);
+		uk_messagebox ("Cannot open the archive", msg, MB_OK);
 		return false;
 	}
 	delete g_arc; g_arc = a; g_password[0] = 0;
@@ -374,8 +374,7 @@ static int job_thread (void *arg)
 		{
 			if (a->e[i].dir) continue;
 			j->file_ (a->e[i].name);
-			arc::NullSink ns;
-			if (!a->extract (i, ns, j)) { j->ok = false; arc::scopy (j->error, a->error, sizeof j->error); }
+			if (!a->test (i, j)) { j->ok = false; arc::scopy (j->error, a->error, sizeof j->error); }
 			else j->files++;
 		}
 		break;
@@ -398,12 +397,20 @@ struct Watch { char ram[300], entry[600], archive[300]; u64 size; unsigned crc; 
 static Watch g_watch[16]; static int g_nwatch;
 static bool file_sum (const char *p, u64 *size, unsigned *crc)
 {
-	arc::Reader r;
-	if (!r.open (p)) return false;
-	*size = r.size; *crc = 0;
-	if (r.size > 64u * 1024 * 1024) return true;		// (too big to read each time: the size alone)
-	unsigned char *b = (unsigned char *) malloc (65536); unsigned c = (unsigned) crc32 (0, 0, 0);
-	for (u64 left = r.size; b && left;) { unsigned k = left > 65536 ? 65536 : (unsigned) left; if (!r.read (b, k)) break; c = (unsigned) crc32 (c, b, k); left -= k; }
+	long long n = fk_file_size (p);
+	if (n < 0) return false;
+	*size = (u64) n; *crc = 0;
+	if (n > 64ll * 1024 * 1024) return true;		// (too big to read each time: the size alone)
+	void *f = kapi_open (p);
+	unsigned char *b = (unsigned char *) malloc (65536); unsigned c = 0;
+	for (u64 left = (u64) n; f && b && left;)
+	{
+		unsigned k = left > 65536 ? 65536 : (unsigned) left;
+		int r = kapi_read (f, b, k);
+		if (r <= 0) break;
+		c = fk_crc32 (c, b, (unsigned) r); left -= (unsigned) r;
+	}
+	if (f) kapi_close (f);
 	free (b); *crc = c;
 	return true;
 }
@@ -419,12 +426,12 @@ static void job_done (void *ctx, long again)
 	char msg[400];
 	if (j->kind == JOB_EXTRACT || j->kind == JOB_OPEN || j->kind == JOB_TEST)
 	{
-		if (!j->ok) { arc::scopy (msg, j->error, sizeof msg); wk_messagebox (j->kind == JOB_TEST ? "Test" : "Extract", msg, MB_OK); }
+		if (!j->ok) { arc::scopy (msg, j->error, sizeof msg); uk_messagebox (j->kind == JOB_TEST ? "Test" : "Extract", msg, MB_OK); }
 		else if (j->kind == JOB_TEST)
 		{
 			char n[24]; arc::u64_str ((u64) j->files, n, sizeof n);
 			arc::scopy (msg, "No errors: ", sizeof msg); arc::scat (msg, n, sizeof msg); arc::scat (msg, " files checked.", sizeof msg);
-			wk_messagebox ("Test", msg, MB_OK);
+			uk_messagebox ("Test", msg, MB_OK);
 		}
 		else if (j->kind == JOB_OPEN)
 		{
@@ -449,7 +456,7 @@ static void job_done (void *ctx, long again)
 		return;
 	}
 	// a change: the archive again from the disk
-	if (!j->ok) { wk_messagebox ("Archiver", j->error, MB_OK); }
+	if (!j->ok) { uk_messagebox ("Archiver", j->error, MB_OK); }
 	if (j->kind == JOB_CREATE) { if (j->ok) open_archive (j->a->path); }
 	else if (g_arc) reload (j->keepPath);
 	if (j->ok && (j->kind == JOB_ADD || j->kind == JOB_CREATE))
@@ -462,10 +469,10 @@ static void job_done (void *ctx, long again)
 }
 static void start_job (Job *j, const char *title)
 {
-	if (g_job) { wk_messagebox ("Archiver", "Another job is running: wait for it, or cancel it.", MB_OK); delete j; return; }
+	if (g_job) { uk_messagebox ("Archiver", "Another job is running: wait for it, or cancel it.", MB_OK); delete j; return; }
 	g_job = j;
 	j->tid = kapi_thread_create (job_thread, j, 0, "job");
-	if (j->tid < 0) { g_job = 0; wk_messagebox ("Archiver", "Cannot start the job (no thread).", MB_OK); delete j; return; }
+	if (j->tid < 0) { g_job = 0; uk_messagebox ("Archiver", "Cannot start the job (no thread).", MB_OK); delete j; return; }
 	ProgressBox box (title);
 	g_pbox = &box;
 	job_show (j);
@@ -478,7 +485,7 @@ static arc::Archive *job_archive ()
 {
 	char why[200];
 	arc::Archive *a = arc::archive_open (g_arc->path, why, sizeof why);
-	if (!a) { wk_messagebox ("Archiver", why, MB_OK); return 0; }
+	if (!a) { uk_messagebox ("Archiver", why, MB_OK); return 0; }
 	if (!strcmp (a->format (), "ZIP")) arc::scopy (((arc::ZipArchive *) a)->password, g_password, 128);
 	return a;
 }
@@ -562,7 +569,7 @@ static void extract_here ()
 }
 static void add_paths (char **paths, int np, const char *into, bool keepFolders, int level, bool replace, bool askConflicts)
 {
-	if (!writable ()) { wk_messagebox ("Archiver", "This archive is read only.", MB_OK); return; }
+	if (!writable ()) { uk_messagebox ("Archiver", "This archive is read only.", MB_OK); return; }
 	if (askConflicts)
 	{
 		int c = arc::add_conflicts (*g_arc, (const char *const *) paths, np, into, keepFolders);
@@ -570,7 +577,7 @@ static void add_paths (char **paths, int np, const char *into, bool keepFolders,
 		{
 			char msg[200], n[16]; arc::u64_str ((u64) c, n, sizeof n);
 			arc::scopy (msg, n, sizeof msg); arc::scat (msg, c == 1 ? " file is in the archive already.\nReplace it?" : " files are in the archive already.\nReplace them?", sizeof msg);
-			int r = wk_messagebox ("Add", msg, MB_YESNOCANCEL);
+			int r = uk_messagebox ("Add", msg, MB_YESNOCANCEL);
 			if (!r) return;
 			replace = r == 1;
 		}
@@ -580,15 +587,13 @@ static void add_paths (char **paths, int np, const char *into, bool keepFolders,
 	j->paths = (char **) malloc (sizeof (char *) * (np ? np : 1)); j->npaths = np;
 	for (int i = 0; i < np; i++) j->paths[i] = arc::sdup (paths[i]);
 	arc::scopy (j->add.into, into, sizeof j->add.into); j->add.keepFolders = keepFolders; j->add.level = level; j->add.replace = replace;
-	arc::AddSet s; arc::plan_add (*g_arc, s, (const char *const *) paths, np, into, keepFolders, replace);
-	for (int k = 0; k < s.plan.nkeep; k++) j->total += g_arc->e[s.plan.keep[k]].packed;
-	j->total += s.bytes;
+	j->total += arc::add_bytes (*g_arc, (const char *const *) paths, np, into, keepFolders, replace);
 	keep_here (j);
 	start_job (j, "Adding");
 }
 static void do_add ()
 {
-	if (!writable ()) { wk_messagebox ("Archiver", "This archive is read only.", MB_OK); return; }
+	if (!writable ()) { uk_messagebox ("Archiver", "This archive is read only.", MB_OK); return; }
 	char cur[300]; g_model.pathOf (g_folder, cur, sizeof cur);
 	AddBox box (arc::base_of (g_arc->path), cur, g_lastDir);
 	if (!box.run () || !box.nitem) return;
@@ -604,7 +609,7 @@ static void do_delete ()
 	char msg[300];
 	if (n == 1) { arc::scopy (msg, "Delete ", sizeof msg); arc::scat (msg, arc::base_of (names[0]), sizeof msg); arc::scat (msg, " from the archive?", sizeof msg); }
 	else { char c[16]; arc::u64_str ((u64) n, c, sizeof c); arc::scopy (msg, "Delete these ", sizeof msg); arc::scat (msg, c, sizeof msg); arc::scat (msg, " items from the archive?", sizeof msg); }
-	if (wk_messagebox ("Delete", msg, MB_YESNO) != 1) { free_names (names, n); return; }
+	if (uk_messagebox ("Delete", msg, MB_YESNO) != 1) { free_names (names, n); return; }
 	Job *j = new Job; j->kind = JOB_DELETE;
 	j->a = job_archive (); if (!j->a) { delete j; free_names (names, n); return; }
 	j->sel = arc::select_names (*g_arc, names, n);
@@ -616,11 +621,11 @@ static void do_delete ()
 static void do_rename ()
 {
 	if (!writable ()) return;
-	int nodes[2]; if (sel_nodes (nodes, 2) != 1) { wk_messagebox ("Rename", "Select one file or folder to rename.", MB_OK); return; }
+	int nodes[2]; if (sel_nodes (nodes, 2) != 1) { uk_messagebox ("Rename", "Select one file or folder to rename.", MB_OK); return; }
 	char old[600]; g_model.pathOf (nodes[0], old, sizeof old);
 	char name[256];
 	if (!ask_text ("Rename", "The new name:", g_model.n[nodes[0]].name, name, sizeof name)) return;
-	if (strchr (name, '/') || strchr (name, '\\')) { wk_messagebox ("Rename", "A name cannot hold / or \\.", MB_OK); return; }
+	if (strchr (name, '/') || strchr (name, '\\')) { uk_messagebox ("Rename", "A name cannot hold / or \\.", MB_OK); return; }
 	if (!strcmp (name, g_model.n[nodes[0]].name)) return;
 	Job *j = new Job; j->kind = JOB_RENAME;
 	j->a = job_archive (); if (!j->a) { delete j; return; }
@@ -628,7 +633,7 @@ static void do_rename ()
 	g_model.pathOf (g_model.n[nodes[0]].parent, j->to, sizeof j->to);
 	if (j->to[0]) arc::scat (j->to, "/", sizeof j->to);
 	arc::scat (j->to, name, sizeof j->to);
-	if (g_model.find (j->to) >= 0) { wk_messagebox ("Rename", "That name is taken in this folder.", MB_OK); delete j; return; }
+	if (g_model.find (j->to) >= 0) { uk_messagebox ("Rename", "That name is taken in this folder.", MB_OK); delete j; return; }
 	j->total = g_arc->totalPacked ();
 	keep_here (j);
 	start_job (j, "Renaming");
@@ -638,13 +643,13 @@ static void do_new_folder ()
 	if (!writable ()) return;
 	char name[256];
 	if (!ask_text ("New Folder", "The folder's name:", "New Folder", name, sizeof name)) return;
-	if (strchr (name, '/') || strchr (name, '\\')) { wk_messagebox ("New Folder", "A name cannot hold / or \\.", MB_OK); return; }
+	if (strchr (name, '/') || strchr (name, '\\')) { uk_messagebox ("New Folder", "A name cannot hold / or \\.", MB_OK); return; }
 	Job *j = new Job; j->kind = JOB_MKDIR;
 	j->a = job_archive (); if (!j->a) { delete j; return; }
 	g_model.pathOf (g_folder, j->to, sizeof j->to);
 	if (j->to[0]) arc::scat (j->to, "/", sizeof j->to);
 	arc::scat (j->to, name, sizeof j->to);
-	if (g_model.find (j->to) >= 0) { wk_messagebox ("New Folder", "That name is taken in this folder.", MB_OK); delete j; return; }
+	if (g_model.find (j->to) >= 0) { uk_messagebox ("New Folder", "That name is taken in this folder.", MB_OK); delete j; return; }
 	j->total = g_arc->totalPacked ();
 	keep_here (j);
 	start_job (j, "New folder");
@@ -665,7 +670,7 @@ static void do_properties ()
 	b.row ("Archive", arc::base_of (g_arc->path));
 	dirname_of (g_arc->path, t, sizeof t); b.row ("Folder", t);
 	arc::scopy (t, g_arc->format (), sizeof t); if (!g_arc->writable ()) arc::scat (t, " (read only)", sizeof t); b.row ("Format", t);
-	{ arc::Reader r; r.open (g_arc->path); arc::human_size (r.size, t, sizeof t); b.row ("File size", t); }
+	{ long long fs = fk_file_size (g_arc->path); arc::human_size (fs > 0 ? (u64) fs : 0, t, sizeof t); b.row ("File size", t); }
 	arc::u64_str ((u64) g_model.n[0].files, t, sizeof t); b.row ("Files", t);
 	arc::human_size (g_model.n[0].size, t, sizeof t); b.row ("Original size", t);
 	arc::human_size (g_arc->totalPacked (), t, sizeof t);
@@ -680,24 +685,26 @@ static void do_properties ()
 static void do_open_dialog ()
 {
 	char p[300];
-	if (wk_file_open (p, sizeof p, g_lastDir)) open_archive (p);
+	if (uk_file_open (p, sizeof p, g_lastDir, arc::format_kinds (false))) open_archive (p);
 }
 static void do_new (char **paths = 0, int np = 0)
 {
 	char p[300];
-	char def[128] = "New archive.zip";
-	if (np) { arc::scopy (def, arc::base_of (paths[0]), sizeof def); char *d = strrchr (def, '.'); if (d && d != def && !arc::path_is_dir (paths[0])) *d = 0; arc::scat (def, ".zip", sizeof def); }
+	char wext[12]; arc::format_ext (arc::format_written (), wext, sizeof wext);	// (the format FileKit writes: "zip")
+	char def[128] = "New archive."; arc::scat (def, wext, sizeof def);
+	if (np) { arc::scopy (def, arc::base_of (paths[0]), sizeof def); char *d = strrchr (def, '.'); if (d && d != def && !arc::path_is_dir (paths[0])) *d = 0; arc::scat (def, ".", sizeof def); arc::scat (def, wext, sizeof def); }
 	char dir[300]; if (np) dirname_of (paths[0], dir, sizeof dir); else arc::scopy (dir, g_lastDir, sizeof dir);
-	if (!wk_file_save (p, sizeof p, dir, def)) return;
-	char x[12]; arc::ext_of (p, x, sizeof x);
-	if (strcmp (x, "zip")) arc::scat (p, ".zip", sizeof p);
-	if (arc::path_exists (p) && wk_messagebox ("New Archive", "That file exists. Replace it?", MB_YESNO) != 1) return;
+	if (!uk_file_save (p, sizeof p, dir, def, arc::format_kinds (true))) return;
+	char x[12], wx[12]; arc::ext_of (p, x, sizeof x);
+	arc::format_ext (arc::format_written (), wx, sizeof wx);
+	if (!wx[0]) { uk_messagebox ("New Archive", "No archive format can be written.", MB_OK); return; }
+	if (strcmp (x, wx)) { arc::scat (p, ".", sizeof p); arc::scat (p, wx, sizeof p); }
+	if (arc::path_exists (p) && uk_messagebox ("New Archive", "That file exists. Replace it?", MB_YESNO) != 1) return;
 	if (arc::path_exists (p)) kapi_remove (p);
 	arc::Archive *a = arc::archive_new (p);
 	if (!np)
 	{
-		arc::Plan plan;
-		if (!a->rewrite (plan, p, 0)) { wk_messagebox ("New Archive", a->error, MB_OK); delete a; return; }
+		if (!a->writeEmpty ()) { uk_messagebox ("New Archive", a->error, MB_OK); delete a; return; }
 		delete a;
 		open_archive (p);
 		return;
@@ -706,8 +713,7 @@ static void do_new (char **paths = 0, int np = 0)
 	j->paths = (char **) malloc (sizeof (char *) * np); j->npaths = np;
 	for (int i = 0; i < np; i++) j->paths[i] = arc::sdup (paths[i]);
 	j->add.into[0] = 0; j->add.keepFolders = true; j->add.level = 6; j->add.replace = true;
-	arc::AddSet s; arc::plan_add (*a, s, (const char *const *) paths, np, "", true, true);
-	j->total = s.bytes;
+	j->total = arc::add_bytes (*a, (const char *const *) paths, np, "", true, true);
 	start_job (j, "Making the archive");
 }
 
@@ -722,8 +728,7 @@ void ui::app_activate (int item)
 	char name[600]; g_model.pathOf (node, name, sizeof name);
 	int e = g_model.n[node].entry;
 	if (e < 0) return;
-	char x[12]; arc::ext_of (name, x, sizeof x);
-	if (!strcmp (x, "zip"))
+	if (fk_arc_is_name (name))
 	{	// an archive in the archive: opened in its turn (from RAM:)
 	}
 	if (g_arc->e[e].encrypted && !g_password[0])
@@ -761,7 +766,7 @@ static void watch_tick ()
 		w.size = sz; w.crc = crc;
 		if (!g_arc || arc::ci_cmp (g_arc->path, w.archive) || !writable ()) continue;
 		char msg[400]; arc::scopy (msg, arc::base_of (w.entry), sizeof msg); arc::scat (msg, " was changed.\nPut it back in the archive?", sizeof msg);
-		if (wk_messagebox ("Archiver", msg, MB_YESNO) != 1) continue;
+		if (uk_messagebox ("Archiver", msg, MB_YESNO) != 1) continue;
 		char into[600]; arc::scopy (into, w.entry, sizeof into);
 		char *s = strrchr (into, '/'); if (s) *s = 0; else into[0] = 0;
 		char *p[1] = { w.ram };
@@ -833,8 +838,9 @@ static void drop_clear ()
 
 static bool looks_like_archive (const char *p)
 {
+	if (fk_arc_is_name (p)) return true;			// (a format FileKit reads)
 	char x[12]; arc::ext_of (p, x, sizeof x);
-	static const char *e[] = { "zip", "jar", "7z", "rar", "tar", "tgz", "gz", "xz", "bz2", "zst", 0 };
+	static const char *e[] = { "7z", "rar", "xz", "bz2", "zst", 0 };	// (archives it does not read yet: it says so)
 	for (int i = 0; e[i]; i++) if (!strcmp (x, e[i])) return true;
 	return false;
 }
@@ -888,7 +894,7 @@ public:
 		}
 		int row; int k = drop_target (x, y, &row);
 		if (k < 0) return;
-		if (!writable ()) { wk_messagebox ("Archiver", "This archive is read only: nothing can be added to it.", MB_OK); return; }
+		if (!writable ()) { uk_messagebox ("Archiver", "This archive is read only: nothing can be added to it.", MB_OK); return; }
 		char into[300]; g_model.pathOf (k, into, sizeof into);
 		add_paths (paths, np, into, true, 6, true, true);
 	}
@@ -1008,7 +1014,7 @@ static void m_sort_time () { sort_by (SORT_TIME); }
 // ---- the window ----------------------------------------------------------------------------------------------
 int main (void)
 {
-	ft_wtk_install ("DejaVu Sans", 13);			// (before the widgets)
+	ft_uikit_install ("DejaVu Sans", 13);			// (before the widgets)
 	FtTextFace *sm = new FtTextFace;
 	if (sm->open ("DejaVu Sans", 11)) g_small = sm;
 	kapi_mkdir ("RAM:/archiver"); kapi_mkdir ("RAM:/archiver/open"); kapi_mkdir ("RAM:/archiver/drag");
@@ -1055,27 +1061,27 @@ int main (void)
 
 	static Menu menu;
 	menu.menu ("File");
-	menu.item ("New Archive...", "^N", WK_CTRL ('N'), m_new);
-	menu.item ("Open...", "^O", WK_CTRL ('O'), m_open);
-	menu.item ("Close", "^W", WK_CTRL ('W'), m_close);
+	menu.item ("New Archive...", "^N", UK_CTRL ('N'), m_new);
+	menu.item ("Open...", "^O", UK_CTRL ('O'), m_open);
+	menu.item ("Close", "^W", UK_CTRL ('W'), m_close);
 	menu.separator ();
-	menu.item ("Add Files...", "^D", WK_CTRL ('D'), m_add);
+	menu.item ("Add Files...", "^D", UK_CTRL ('D'), m_add);
 	menu.separator ();
-	menu.item ("Extract...", "^E", WK_CTRL ('E'), m_extract);
+	menu.item ("Extract...", "^E", UK_CTRL ('E'), m_extract);
 	menu.item ("Extract All...", "", 0, m_extract_all);
 	menu.item ("Extract Here", "", 0, m_extract_here);
 	menu.separator ();
-	menu.item ("Test", "^T", WK_CTRL ('T'), m_test);
-	menu.item ("Properties", "^P", WK_CTRL ('P'), m_props);
+	menu.item ("Test", "^T", UK_CTRL ('T'), m_test);
+	menu.item ("Properties", "^P", UK_CTRL ('P'), m_props);
 	menu.menu ("Edit");
-	menu.item ("Select All", "^A", WK_CTRL ('A'), m_select_all);
+	menu.item ("Select All", "^A", UK_CTRL ('A'), m_select_all);
 	menu.item ("Invert Selection", "", 0, m_invert);
 	menu.separator ();
 	menu.item ("Rename...", "F2", 0, m_rename);
 	menu.item ("Delete from Archive", "Del", 0, m_delete);
-	menu.item ("New Folder...", "^K", WK_CTRL ('K'), m_new_folder);
+	menu.item ("New Folder...", "^K", UK_CTRL ('K'), m_new_folder);
 	menu.separator ();
-	menu.item ("Find", "^F", WK_CTRL ('F'), m_find);
+	menu.item ("Find", "^F", UK_CTRL ('F'), m_find);
 	menu.menu ("View");
 	menu.item ("Up", "Backspace", 0, m_up);
 	menu.item ("Back", "", 0, m_back);

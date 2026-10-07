@@ -4,9 +4,8 @@
 // Tricorn. Click to zoom in (recenters on the click), 'o' zooms out, 'r' resets.
 // Iteration count maps to colour. Renders progressively (yields between row bands).
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
-#include "applib.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
 
 #define W	340
 #define RH	240			// render height (rows); status below
@@ -40,7 +39,37 @@ static int g_dirty = 1;
 #define JCR	(-(FONE * 4 / 5))
 #define JCI	(FONE * 156 / 1000)
 
-// Fractal-type dropdown (top-left, drawn over the canvas by dd_draw; its clicks: applib.h).
+// Fractal-type dropdown (top-left, drawn over the canvas by dd_draw). The picture is this program's own
+// canvas, not a uikit window of widgets: the drop-down is drawn and hit-tested here (uikit's Dropdown is
+// the widget for everything else).
+typedef struct {
+	int x, y, w, h;			// closed box rect (canvas coords)
+	const char *const *opts;	// option labels
+	int nopts;
+	int sel;			// selected index
+	int open;			// list expanded?
+} ax_dropdown;
+// A click on the canvas -> 1 if the drop-down took it (opened, closed, or an option chosen: sel).
+static int ax_dropdown_click (ax_dropdown *d, int cx, int cy)
+{
+	if (d->open)
+	{
+		if (cx >= d->x && cx < d->x + d->w && cy >= d->y + d->h
+		    && cy < d->y + d->h * (1 + d->nopts))
+		{
+			d->sel = (cy - (d->y + d->h)) / d->h;
+			d->open = 0;
+			return 1;
+		}
+		d->open = 0;		// click elsewhere: close
+	}
+	if (cx >= d->x && cx < d->x + d->w && cy >= d->y && cy < d->y + d->h)
+	{
+		d->open = !d->open;
+		return 1;
+	}
+	return 0;
+}
 static const char *const FRACTALS[] = { "Mandelbrot", "Julia", "Burning Ship", "Tricorn" };
 static ax_dropdown g_dd = { 6, 6, 132, 24, FRACTALS, 4, FR_MANDEL, 0 };
 
@@ -107,16 +136,16 @@ static void render (void)
 		if ((py & 15) == 0) kapi_yield ();		// progressive display
 	}
 	// status bar (the theme's face): controls + zoom depth + iteration budget
-	using namespace wtk;
+	using namespace uikit;
 	Canvas cv; cv.adopt (fb, W, H);
-	wk_rbox (cv, 0, RH, W, SBH, 0, wk_tone (C_FACE, 150), wk_tone (C_FACE, 120));
-	wk_etch_h (cv, 0, RH, W, C_FACE);
+	uk_rbox (cv, 0, RH, W, SBH, 0, uk_tone (C_FACE, 150), uk_tone (C_FACE, 120));
+	uk_etch_h (cv, 0, RH, W, C_FACE);
 	char s[64]; int p = 0;
 	const char *t = "click:in  o:out  r:reset   z="; for (int i = 0; t[i]; i++) s[p++] = t[i];
 	p += ax_itoa (g_zoom, s + p);
 	s[p++] = ' '; s[p++] = 'i'; s[p++] = 't'; s[p++] = '=';
 	p += ax_itoa (g_maxit, s + p); s[p] = '\0';
-	wk_text_l (cv, 8, RH + 2, SBH - 2, s, C_TEXT);
+	uk_text_l (cv, 8, RH + 2, SBH - 2, s, C_TEXT);
 	g_dirty = 0;
 }
 
@@ -125,21 +154,21 @@ static void render (void)
 // ax_dropdown_click finds them (d->h px each, under the box), the chosen one in the accent.
 static void dd_draw (const ax_dropdown *d)
 {
-	using namespace wtk;
+	using namespace uikit;
 	Canvas cv; cv.adopt (fb, W, H);
-	int fh = wk_fh (), k = d->open ? 1 : 0;
-	wk_raised (cv, d->x, d->y, d->w, d->h, 5, C_FACE, d->open ? WK_PRESSED : WK_NORMAL);
+	int fh = uk_fh (), k = d->open ? 1 : 0;
+	uk_raised (cv, d->x, d->y, d->w, d->h, 5, C_FACE, d->open ? UK_PRESSED : UK_NORMAL);
 	if (d->sel >= 0 && d->sel < d->nopts) cv.text (d->x + 9 + k, d->y + (d->h - fh) / 2 + k, d->opts[d->sel], C_TEXT);
-	wk_glyph (cv, d->open ? WKG_CHEV_UP : WKG_CHEV_DOWN, d->x + d->w - 13 + k, d->y + d->h / 2 + k, 9, C_TEXT);
+	uk_glyph (cv, d->open ? WKG_CHEV_UP : WKG_CHEV_DOWN, d->x + d->w - 13 + k, d->y + d->h / 2 + k, 9, C_TEXT);
 	if (!d->open) return;
 	int ly = d->y + d->h, lh = d->nopts * d->h;
-	wk_rbox (cv, d->x, ly, d->w, lh, 6, wk_tone (C_FIELD, 140), C_FIELD);
-	wk_rline (cv, d->x, ly, d->w, lh, 6, wk_tone (C_FACE, 70), 230);
+	uk_rbox (cv, d->x, ly, d->w, lh, 6, uk_tone (C_FIELD, 140), C_FIELD);
+	uk_rline (cv, d->x, ly, d->w, lh, 6, uk_tone (C_FACE, 70), 230);
 	for (int i = 0; i < d->nopts; i++)
 	{
 		int ry = ly + i * d->h;
-		if (i == d->sel) wk_hilite (cv, d->x + 3, ry + 2, d->w - 6, d->h - 4, 4, true);
-		cv.text (d->x + 10, ry + (d->h - fh) / 2, d->opts[i], i == d->sel ? wk_hilite_ink (true) : C_FIELD_TEXT);
+		if (i == d->sel) uk_hilite (cv, d->x + 3, ry + 2, d->w - 6, d->h - 4, 4, true);
+		cv.text (d->x + 10, ry + (d->h - fh) / 2, d->opts[i], i == d->sel ? uk_hilite_ink (true) : C_FIELD_TEXT);
 	}
 }
 
@@ -187,7 +216,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "fractal");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();
+	uikit::uk_decorate_window ();
 	reset_view ();
 	kapi_set_click_handler (on_click);
 	kapi_set_key_handler (on_key);

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Onyx compositor test: scrolling under fixed and sticky elements</title>
+<!-- tools/webkit/test-webkit.sh: a tall page with a fixed header, a sticky side bar and a small fixed
+     button, scrolled by the wheel. With the compositor each of the three is a layer that is moved:
+     a scroll paints the tiles that come into view, and nothing again in the tiles already painted. -->
+<style>
+/* (No scroll bar: its layer is painted again as its thumb moves, which is not what is measured.) */
+html { scrollbar-width: none; }
+body { margin: 0; font: 18px sans-serif; background: #f4f4f0; }
+#header { position: fixed; top: 0; left: 0; right: 0; height: 50px; background: #203060; color: white; padding: 12px; box-sizing: border-box; }
+#side { position: sticky; top: 60px; float: left; width: 160px; height: 300px; margin: 70px 10px 0 10px; background: #d0e0ff; padding: 8px; box-sizing: border-box; }
+#button { position: fixed; right: 30px; bottom: 30px; width: 48px; height: 48px; border-radius: 24px; background: #c03020; }
+#main { margin-left: 190px; padding-top: 60px; }
+.band { height: 170px; border-bottom: 4px solid #333; padding: 10px; box-sizing: border-box; }
+.band:nth-child(3n) { background: #cfe8ff; }
+.band:nth-child(3n+1) { background: #ffe2c4; }
+.band:nth-child(3n+2) { background: #d9f5d0; }
+</style></head>
+<body>
+<div id="header">A fixed header</div>
+<div id="side">A sticky side bar: it stays under the header while the page scrolls.</div>
+<div id="main">
+<script>
+for (var i = 0; i < 40; i++)
+    document.write('<div class="band">Band number ' + i + ' &mdash; the quick brown fox jumps over the lazy dog</div>');
+</script>
+</div>
+<div id="button"></div>
+</body></html>

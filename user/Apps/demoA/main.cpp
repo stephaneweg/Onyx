@@ -2,8 +2,8 @@
 // demoA.c -- EL0 windowed demo: a bouncing box. Draws directly into the window
 // canvas the kernel mapped in (shared-buffer model), then present()s each frame.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"		// wtk window decoration
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"		// uikit window decoration
 
 #define W 240
 #define H 180
@@ -55,8 +55,8 @@ int main (void)
 	{
 		return 1;
 	}
-	wtk::wk_decorate_window ();			// user-side window chrome (reads the theme)
-	unsigned bg = wtk::C_BG;			// (the theme's face)
+	uikit::uk_decorate_window ();			// user-side window chrome (reads the theme)
+	unsigned bg = uikit::C_BG;			// (the theme's face)
 
 	int x = 10, y = 10, dx = 3, dy = 2, s = 36;
 	while (!should_exit ())

@@ -1,0 +1,51 @@
+# imagekit.abi -- the export table of SD:/lib/imagekit.so: "<slot> <symbol>", in the table's order.
+# APPEND-ONLY (tools/libgen/libgen.py adds the new functions at the end): never move or remove a
+# line -- programs built against an older table call the entries by their slot. The one edit allowed:
+# a function RENAMED keeps its line, with its new symbol (a reserved virtual given a meaning).
+# The table's version is its number of entries.
+0 ik_adjust_apply
+1 ik_adjust_auto
+2 ik_cover
+3 ik_crop
+4 ik_encode
+5 ik_fill
+6 ik_filter_name
+7 ik_fit
+8 ik_flatten
+9 ik_flip
+10 ik_format
+11 ik_frames_count
+12 ik_frames_delay
+13 ik_frames_free
+14 ik_frames_height
+15 ik_frames_load
+16 ik_frames_load_mem
+17 ik_frames_pixels
+18 ik_frames_width
+19 ik_free
+20 ik_has_alpha
+21 ik_height
+22 ik_image_copy
+23 ik_image_free
+24 ik_image_from
+25 ik_image_new
+26 ik_is_image_name
+27 ik_load
+28 ik_load_format
+29 ik_load_mem
+30 ik_load_preview
+31 ik_opaque
+32 ik_orient
+33 ik_pixels
+34 ik_probe
+35 ik_resize
+36 ik_rotate
+37 ik_save
+38 ik_scale
+39 ik_straighten
+40 ik_width
+41 ik_formats
+42 ik_frames_take
+43 ik_inflate
+44 ik_encode_pixels
+45 ik_scale_rgb

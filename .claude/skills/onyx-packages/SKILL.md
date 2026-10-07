@@ -38,14 +38,20 @@ automatically). Then decide, and write in `tools/pkg/packages.ini`:
 - **Files outside its bundle** (`res/…`, `koton/…`, `manuals/<app>/…`): `[app.<name>]` `files = …`
   — a file belongs to the first section that names it; mkrepo prints the files left in no package:
   **there must be none**.
-- **Needs**: an app it cannot work without (an emulator → `gamelib`; Writer / Sheet / Ledger →
-  `cardfile`): `[app.<name>]` `needs = gamelib`. A mere link ("Open in Writer") is not a need.
+- **Needs**: an app it cannot work without (an emulator → `gamelib`; Letters / Sheet / Ledger →
+  `cardfile`): `[app.<name>]` `needs = gamelib`. A mere link ("Open in Letters") is not a need.
   Something the system itself needs (the wallpaper's painter, the text editor other apps open) goes
   into `[onyx]`'s `files` instead.
 - **The user's files** (a `config.ini` shipped with defaults, documents): `config = <paths>` — never
   overwritten once the user changed them (the new one written beside as `.new`).
+- **What the app opens** (file associations): `[app.<name>]` `opens = <ext> <ext>` -- the package then carries
+  `ext = <name>` lines for `SD:/etc/fileassoc.ini`. A package of several apps or programs (the base system):
+  `assoc = <exts>: <app>; <exts>: <app>` and `runners = <exts>: <program>` (`SD:/etc/runners.ini`). **Never edit
+  `sdcard/etc/fileassoc.ini` or `runners.ini` by hand: `mkrepo.py` makes them from `packages.ini`** (one source), and
+  on a card `pkg` adds a package's lines at its install, removes them with it, and never changes a line that is
+  there (the user's wins; `pkg assoc` syncs).
 - **Samples** (documents to try the app with): a section `[<app>-samples]` (`files`, the same paths
-  as `config`, `needs = <app>`), as `writer-samples`, `basic-samples`.
+  as `config`, `needs = <app>`), as `letters-samples`, `basic-samples`.
 - **An emulator**: its `app.txt` says what it plays — `category = Emulators`,
   `games = <System>: <ext> <ext>; <System>: <ext>`, `order = <n>` (and `opens = <ext>` for files that
   are not games) — and `needs = gamelib`. The Game Library and `launch.h` find it from there; never
@@ -77,6 +83,13 @@ automatically). Then decide, and write in `tools/pkg/packages.ini`:
 5. Tell the user the packages published and their versions (mkrepo's "bumped: …" line). GitHub
    Pages serves the new index a minute or two later:
    `curl -s https://stephaneweg.github.io/onyx-packages/index.txt | grep -A2 '^\[<name>\]'`.
+
+- **Jet's program** (`sdcard/apps/jet.app/main`, 100 MB) is not in git: a fresh checkout lacks it.
+   `publish.sh` takes it back from the last `jet-*.opk` of the repository before packaging (else it stops),
+   so `jet` is never published without its program again (2.0.2 and 2.0.4 were). It notes the package it took
+   it from in `.jet-from-package` (not in git) and takes it again when a newer `jet-*.opk` came since -- unless
+   the program was built here after (2.0.7 was published with 2.0.5's program, left on the disk by an earlier
+   publish; 2.0.8 put 2.0.6's back).
 
 ## Never
 

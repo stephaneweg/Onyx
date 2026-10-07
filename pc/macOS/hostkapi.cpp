@@ -1,6 +1,6 @@
 //
 // pc/macOS/hostkapi.cpp -- the Onyx kernel's ABI table (kern/kapi_abi.h) on a POSIX host, so that Ledger
-// (user/Apps/ledger), Writer (user/Apps/writer, which prints Ledger's documents), wtk and FreeType build
+// (user/Apps/ledger), Letters (user/Apps/letters, which prints Ledger's documents), uikit and FreeType build
 // for macOS from the Onyx sources, unchanged: the table is put where the apps look for it (KAPI_TABLE_VA)
 // before any constructor of theirs runs, and filled with host equivalents of what they call. This file is
 // the POSIX half (it also builds on Linux: pc/macOS/check.sh); the window's half is cocoa.mm.
@@ -13,12 +13,12 @@
 //               changed). A file is read from the user's folder, else the bundle's, and written in the
 //               user's; a folder lists both. "HOME:/..." is the user's home folder, "MAC:/..." the whole
 //               Mac ("MAC:/Volumes/USB/...").
-//   programs    "SD:/apps/writer.app/main" is Ledger.app/Contents/Helpers/Writer.app; its arguments go
+//   programs    "SD:/apps/letters.app/main" is Ledger.app/Contents/Helpers/Letters.app; its arguments go
 //               in ONYX_ARGS (a path with spaces stays whole). A program the bundle does not have (the
 //               Spreadsheet, the File Viewer) -> the file or folder named is shown by macOS instead
 //               (Numbers / Excel, the Finder).
 //   threads     pthreads; wait_word: a condition variable, re-checked every millisecond.
-//   the rest    no sound, MIDI, network or other processes' services (Ledger and Writer use none).
+//   the rest    no sound, MIDI, network or other processes' services (Ledger and Letters use none).
 //
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -118,7 +118,7 @@ static void init_paths ()
 	const char *h = getenv ("HOME");
 	g_home = h && h[0] ? h : "/tmp";
 	std::string exe = exe_path ();
-	// the app's name: ".../Ledger.app/Contents/MacOS/Ledger" -> "ledger"; the bundle: Ledger.app (Writer.app
+	// the app's name: ".../Ledger.app/Contents/MacOS/Ledger" -> "ledger"; the bundle: Ledger.app (Letters.app
 	// is in its Contents/Helpers)
 	size_t a = exe.rfind (".app/Contents/MacOS/"), hp = exe.find ("/Contents/Helpers/");
 	if (a != std::string::npos) { size_t s = exe.rfind ('/', a); g_app = exe.substr (s + 1, a - s - 1); }
@@ -468,8 +468,8 @@ static bool reap (Proc *p)			// (its end noted) -> true: it ended
 	return p->done;
 }
 static bool executable (const std::string &p) { struct stat s; return !p.empty () && stat (p.c_str (), &s) == 0 && S_ISREG (s.st_mode) && (s.st_mode & 0111); }
-// an Onyx program -> its executable ("" when the Mac has none): "SD:/apps/writer.app/main" is the helper
-// Ledger.app/Contents/Helpers/Writer.app (its Contents/MacOS/Writer)
+// an Onyx program -> its executable ("" when the Mac has none): "SD:/apps/letters.app/main" is the helper
+// Ledger.app/Contents/Helpers/Letters.app (its Contents/MacOS/Letters)
 static std::string program (const char *path)
 {
 	std::string h = host_path (path);
@@ -512,7 +512,7 @@ static Proc *start (const char *path, const char *args, const char *name, int in
 	else
 	{
 		std::string s = path ? path : "";
-		size_t k = s.rfind (".app/"); if (k != std::string::npos) s.erase (k);	// ("SD:/apps/writer.app/main" -> "writer")
+		size_t k = s.rfind (".app/"); if (k != std::string::npos) s.erase (k);	// ("SD:/apps/letters.app/main" -> "letters")
 		k = s.find_last_of ("/:"); p->name = k == std::string::npos ? s : s.substr (k + 1);
 	}
 	pthread_mutex_lock (&g_procLock); g_procs.push_back (p); pthread_mutex_unlock (&g_procLock);
@@ -722,8 +722,6 @@ static int ipc_register (const char *name) { g_services.push_back (name ? name :
 static int ipc_lookup (const char *) { return 0; }
 static int mailbox_send (int, int, const void *, unsigned) { return 0; }
 static int mailbox_recv (int *, int *, void *, unsigned, int blocking) { if (blocking) usleep (50000); return -1; }
-static int register_shell (void) { return 0; }
-static int shell_request (int, const void *, unsigned) { return -1; }
 static int surface_create (int, int) { return -1; }
 static unsigned *surface_map (int) { return 0; }
 static int surface_size (int, int *, int *) { return 0; }
@@ -774,7 +772,7 @@ static void unimplemented (void)
 	gui_fatal (b);
 }
 
-// the table at KAPI_TABLE_VA (where the apps' kapi.h reads it): taken only if that place is free
+// the table at KAPI_TABLE_VA (where the apps' appkit.h reads it): taken only if that place is free
 static void *place_table ()
 {
 	const size_t size = 65536;
@@ -796,6 +794,8 @@ static void setup (void)
 	void **slots = (void **) T;
 	for (size_t i = 0; i < sizeof (TKApiTable) / sizeof (void *); i++) slots[i] = (void *) unimplemented;
 	T->version = KAPI_ABI_VERSION;
+	// (v75) the POSIX entries absent here: 0, so appkit.h's wrappers return -KAPI_ENOSYS
+	for (size_t i = __builtin_offsetof (TKApiTable, vm_map) / 8; i < sizeof (TKApiTable) / 8; i++) ((void **) T)[i] = 0;
 	g_mainThread = pthread_self ();
 	signal (SIGPIPE, SIG_IGN);
 	init_paths ();
@@ -812,7 +812,6 @@ static void setup (void)
 	T->thread_priority = thread_priority; T->core_acquire = core_acquire; T->core_run = core_run; T->core_state = core_state; T->core_release = core_release;
 	T->wait_word = wait_word; T->wake_word = wake_word;
 	T->ipc_register = ipc_register; T->ipc_lookup = ipc_lookup; T->mailbox_send = mailbox_send; T->mailbox_recv = mailbox_recv;
-	T->register_shell = register_shell; T->shell_request = shell_request;
 	T->surface_create = surface_create; T->surface_map = surface_map; T->surface_size = surface_size;
 	T->surface_present = surface_present; T->surface_destroy = surface_destroy;
 	T->sound_acquire = sound_acquire; T->sound_release = sound_release; T->sound_write = sound_write; T->sound_status = sound_status;

@@ -1,8 +1,8 @@
 #!/bin/sh
 # tools/tests/desktop_sim/shots.sh -- the documentation's screenshots (screenshots/*.png), taken
 # from the REAL apps run on the PC: each app built for the host against the stand-in kernel
-# (fakekapi.cpp; wtk with its real image codecs), driven by a script of events, its window dumped
-# (the frame wtk drew + the client area), then made a PNG of its own (shot.py: the rounded corners
+# (fakekapi.cpp; uikit with its real image codecs), driven by a script of events, its window dumped
+# (the frame uikit drew + the client area), then made a PNG of its own (shot.py: the rounded corners
 # see-through) or laid over the wallpaper with others (compose.py: the desktop, the menu bar, the
 # dock...). Sample files (a note, appointments) come from sd/ (SIM_OVERLAY), not from the card.
 # A Control Panel applet is run as one (SIM_APPLET: its surface dumped), then shown in the Control
@@ -10,58 +10,79 @@
 #
 #   sh tools/tests/desktop_sim/shots.sh [name ...]	(default: all of them)
 #
+# SHOTS_LANG=fr: the apps in that language (the system's: etc/system.ini's "language=", written in the
+# writes' folder) -- with SHOTS_PNG=<folder> to look at them without touching screenshots/.
+#
 # Needs g++, python3 with Pillow + numpy. Not made here: nintendoemu.png (an emulator's) and
 # arkanoid.png (a BASIC program's): tools/screenshot/render.py's.
 set -e
 cd "$(dirname "$0")/../../.."
 D=tools/tests/desktop_sim
 OUT=${SHOTS_TMP:-/tmp/onyx_shots}
-PNG=screenshots
+PNG=${SHOTS_PNG:-screenshots}
 WANT=" $* "
 rm -rf "$OUT/writes"; mkdir -p "$OUT/obj" "$OUT/writes"
 : > "$OUT/log.txt"
 export SIM_WRITES="$OUT/writes"			# (what the apps save: there, never on the card)
-CXX="g++ -std=gnu++17 -O1 -w -I user -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
+# the system's language for the apps run next ("": the card's -- English)
+lang () { mkdir -p "$OUT/writes/etc"; if [ -n "$1" ]; then { grep -v '^language' sdcard/etc/system.ini; echo "language=$1"; } > "$OUT/writes/etc/system.ini"; else rm -f "$OUT/writes/etc/system.ini"; fi; }
+lang "$SHOTS_LANG"; mkdir -p "$PNG"
+CXX="g++ -std=gnu++17 -O1 -w -I user -I user/Kits -I user/Runtime -I user/Include -I user/Libs -I user/Emulators -I user/Ports -I kernel/include -fno-exceptions -fno-rtti -DIMG_HOST_TEST"
 
 want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # ---- the building ------------------------------------------------------------------------------
-# wtk (with the image codecs, on the host's libc) and the stand-in kernel, once; then the apps
-for f in user/wtk/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
-rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/obj/*.o
+# uikit (with the image codecs, on the host's libc) and the stand-in kernel, once; then the apps
+for f in user/Kits/uikit/*.cpp; do $CXX -c "$f" -o "$OUT/obj/$(basename "$f" .cpp).o" & done; wait
+rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/obj/*.o
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
-# the apps' TrueType-only FreeType (user/ft/, as user/Makefile builds it for the Pi): Writer's
+# the apps' TrueType-only FreeType (user/Kits/fontkit/, as user/Makefile builds it for the Pi): Letters'
 FT=third_party/freetype-2.14.3
 FT_SRC="base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c truetype/truetype.c sfnt/sfnt.c smooth/smooth.c"
 mkdir -p "$OUT/ft"
 for f in $FT_SRC; do gcc -O2 -w -c -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
-	-Iuser/ft -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
+	-Iuser/Kits/fontkit -I$FT/include $FT/src/$f -o "$OUT/ft/$(basename $f .c).o" & done; wait
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
+# AudioKit for the PC (on Onyx: SD:/lib/audiokit.so): its own sources, the decoders, MeltySynth -- made
+# (the Media Player, FM Tracker, BASIC, and every program that plays a note: the voices are its FM synthesizer)
+audiokit () {
+	[ -f "$OUT/libaudiokit.a" ] && return 0
+	mkdir -p "$OUT/ak"
+	gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ithird_party -c user/Apps/media/codecs.c -o "$OUT/ak/codecs.o" || return 1
+	gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ithird_party -c user/Apps/media/vorbis.c -o "$OUT/ak/vorbis.o" || return 1
+	for f in user/Apps/koton/synth/*.cpp user/Kits/audiokit/*.cpp; do
+		$CXX -Iuser/Apps/koton -Iuser/Apps/media -Ithird_party -c "$f" -o "$OUT/ak/$(basename "$f" .cpp).o" || return 1
+	done
+	ar rcs "$OUT/libaudiokit.a" "$OUT"/ak/*.o
+}
+audiokit || exit 1
+AK="$OUT/libaudiokit.a -lpthread -lm"
 build () {
-	extra=""; [ "$1" = graphcalc ] && extra=user/basic/basnum.cpp
-	[ "$1" = gamelib ] && extra="user/gb/gb.cpp $(ls user/gba/*.cpp user/nes/*.cpp user/snes/*.cpp)"
+	extra=""; [ "$1" = graphcalc ] && extra=user/Libs/basic/basnum.cpp
+	case "$1" in notes|stickies) extra=user/Apps/notes/notesmodel.cpp ;; esac	# (their model: SD:/Notes, notes.ini)
+	[ "$1" = circuits ] && extra=user/Apps/circuits/circuit.cpp		# (its engine: the board, the packs, the progress)
+	[ "$1" = pinball ] && extra="user/Apps/pinball/table.cpp user/Apps/pinball/physics.cpp user/Apps/pinball/rules.cpp user/Apps/pinball/scores.cpp"	# (its core)
+	[ "$1" = critters ] && extra="user/Apps/critters/terrain.cpp user/Apps/critters/level.cpp user/Apps/critters/world.cpp user/Apps/critters/solution.cpp user/Apps/critters/progress.cpp"	# (its core)
+	[ "$1" = gamelib ] && extra="user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
 		for f in $K/engine/*.cpp $K/synth/*.cpp $K/plug/*.cpp; do $CXX -I$K -c "$f" -o "$OUT/koton/$(basename "$f" .cpp).o" || return 1; done
-		$CXX -I$K -Iuser/ft -I$FT/include -o "$OUT/koton/koton" "$OUT/fakekapi.o" $K/main.cpp "$OUT"/koton/*.o "$OUT/libwtk.a" "$OUT/libft.a"
+		$CXX -I$K -Iuser/Kits/fontkit -I$FT/include -o "$OUT/koton/koton" "$OUT/fakekapi.o" $K/main.cpp "$OUT"/koton/*.o "$OUT/libuikit.a" "$OUT/libft.a"
 		cp "$OUT/koton/koton" "$OUT/koton.bin"; return
 	fi
-	if [ "$1" = archiver ]; then			# (newlib-like: FreeType, zlib)
+	if [ "$1" = archiver ]; then			# (newlib-like: FreeType; FileKit -- its engine and zlib -- compiled in)
 		mkdir -p "$OUT/zlib"
 		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/zlib/$f.o" || return 1; done
-		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -o "$OUT/archiver" "$OUT/fakekapi.o" user/Apps/archiver/main.cpp \
-			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/zlib/*.o -lpthread; return
+		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -Iuser/Kits/filekit -o "$OUT/archiver" "$OUT/fakekapi.o" user/Apps/archiver/main.cpp user/Kits/filekit/fkcore.cpp \
+			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT"/zlib/*.o -lpthread; return
 	fi
-	if [ "$1" = media ]; then			# (newlib-like: FreeType, the decoders, Koton's MeltySynth)
-		mkdir -p "$OUT/media"
-		gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/codecs.c -o "$OUT/media/codecs.o" || return 1
-		gcc -O2 -w -Iuser -Ithird_party -c user/Apps/media/vorbis.c -o "$OUT/media/vorbis.o" || return 1
-		for f in user/Apps/koton/synth/*.cpp; do $CXX -c "$f" -o "$OUT/media/$(basename "$f" .cpp).o" || return 1; done
-		FFH=${FFMPEG_HOST:-/tmp/onyx_ffmpeg_host}			# (the videos: user/av, its codecs, FFmpeg for the PC)
+	if [ "$1" = media ]; then			# (newlib-like: FreeType; AudioKit: the decoders, MeltySynth)
+		audiokit || return 1
+		FFH=${FFMPEG_HOST:-/tmp/onyx_ffmpeg_host}			# (the videos: user/Libs/av, its codecs, FFmpeg for the PC)
 		sh third_party/ffmpeg-7.1.2/onyx/build.sh host "$FFH" || return 1
 		make -s -f $D/av_host.mk OUT="$OUT/av" -j"$(nproc)" || return 1
-		$CXX -Iuser/ft -I$FT/include -Ithird_party -o "$OUT/media.bin" "$OUT/fakekapi.o" user/Apps/media/main.cpp "$OUT"/media/*.o \
-			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT/av/libavhost.a" -L"$FFH" -lavformat -lavcodec -lswscale -lswresample -lavutil -lpthread -lm; return
+		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party -o "$OUT/media.bin" "$OUT/fakekapi.o" user/Apps/media/main.cpp "$OUT/libaudiokit.a" \
+			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT/av/libavhost.a" -L"$FFH" -lavformat -lavcodec -lswscale -lswresample -lavutil -lpthread -lm; return
 	fi
 	if [ "$1" = pkgman ]; then			# (the Package Manager: pkg/pkglib.h -- zlib, mbedTLS built for the PC)
 		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb" "$OUT/pkzlib"
@@ -70,8 +91,8 @@ build () {
 			ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o
 		fi
 		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/pkzlib/$f.o" || return 1; done
-		$CXX -Iuser/ft -I$FT/include -Ithird_party/zlib-1.3.1 -I$M/include -o "$OUT/pkgman" "$OUT/fakekapi.o" user/Apps/pkgman/main.cpp \
-			"$OUT/libwtk.a" "$OUT/libft.a" "$OUT"/pkzlib/*.o "$OUT/libmb.a" -lpthread; return
+		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party/zlib-1.3.1 -I$M/include -o "$OUT/pkgman" "$OUT/fakekapi.o" user/Apps/pkgman/main.cpp \
+			"$OUT/libuikit.a" "$OUT/libft.a" "$OUT"/pkzlib/*.o "$OUT/libmb.a" -lpthread; return
 	fi
 	if [ "$1" = mail ]; then			# (Mail: mbedTLS built for the PC, as the Package Manager's; its demo accounts' maker)
 		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb"
@@ -79,38 +100,69 @@ build () {
 			for f in $M/library/*.c; do gcc -O1 -w -I$M/include -I$M/library -c $f -o "$OUT/mb/$(basename $f .c).o" || return 1; done
 			ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o
 		fi
-		$CXX -Iuser/ft -I$FT/include -I$M/include -o "$OUT/mail" "$OUT/fakekapi.o" user/Apps/mail/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" "$OUT/libmb.a" -lpthread || return 1
+		$CXX -Iuser/Kits/fontkit -I$FT/include -I$M/include -o "$OUT/mail" "$OUT/fakekapi.o" user/Apps/mail/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmb.a" -lpthread || return 1
 		$CXX -I$M/include -o "$OUT/mkaccounts" "$OUT/fakekapi.o" tools/tests/mail/mkaccounts.cpp "$OUT/libmb.a" -lpthread; return
 	fi
 	if [ "$1" = pdf ]; then				# (the PDF Viewer: MuPDF for the PC -- user/Apps/pdf/mupdf.mk with gcc; its FreeType)
 		make -s -j8 -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_AR=ar MU_OUT="$OUT/mupdf" MU_CFLAGS=-O2 || return 1
-		$CXX -Iuser/ft -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pdf.bin" "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
-			"$OUT/libwtk.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm; return
+		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pdf.bin" "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
+			"$OUT/libuikit.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm; return
 	fi
 	if [ "$1" = paint ]; then			# (newlib-like: FreeType; the canvas through gpucomp -- the CPU's path here)
-		gcc -O2 -w -Iuser -Ikernel/include -c user/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libwtk.a" "$OUT/libft.a"; return
+		gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
+	fi
+	if [ "$1" = 3dforge ]; then			# (newlib-like: FreeType; Manifold and Clipper2 compiled for the PC; the view by the CPU here)
+		MF=third_party/manifold-3.5.4; CL=third_party/clipper2-46f6391/CPP/Clipper2Lib
+		MFD="-DMANIFOLD_PAR=-1 -DMANIFOLD_CROSS_SECTION -DMANIFOLD_NO_IOSTREAM -DMANIFOLD_NO_FILESYSTEM -DCLIPPER2_NO_IOSTREAM -I$MF/include -I$CL/include"
+		if [ ! -f "$OUT/libmanifold.a" ]; then
+			mkdir -p "$OUT/mf"
+			for f in $MF/src/*.cpp $MF/src/cross_section/*.cpp $CL/src/*.cpp; do g++ -std=c++17 -O2 -w $MFD -c "$f" -o "$OUT/mf/$(basename "$f" .cpp).o" & done; wait
+			ar rcs "$OUT/libmanifold.a" "$OUT"/mf/*.o
+		fi
+		$CXX $MFD -Iuser/Kits/fontkit -I$FT/include -Iuser/Apps/3dforge -o "$OUT/3dforge" "$OUT/fakekapi.o" user/Apps/3dforge/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmanifold.a"; return
+	fi
+	if [ "$1" = slides ]; then			# (newlib-like: FreeType; the slides' layers through gpucomp -- the CPU's path here)
+		gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
+	fi
+	if [ "$1" = qbstudio ]; then			# (newlib-like: FreeType; Onyx BASIC's compiler built in)
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/qbstudio" "$OUT/fakekapi.o" user/Apps/qbstudio/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
+			user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp user/Libs/basic/baskits.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
+	fi
+	if [ "$1" = turtle ]; then			# (newlib-like: FreeType; Onyx BASIC's compiler and VM built in, the turtle's words)
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/turtle" "$OUT/fakekapi.o" user/Apps/turtle/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
+			user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp "$OUT/libuikit.a" "$OUT/libft.a"; return
+	fi
+	if [ "$1" = gpiolab ]; then			# (newlib-like: FreeType; GPIOKit compiled in -- on a PC its simulator only; its Code
+						#  view: Onyx BASIC's compiler and VM, FileKit and zlib)
+		mkdir -p "$OUT/glz"
+		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/glz/$f.o" || return 1; done
+		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party/zlib-1.3.1 -o "$OUT/gpiolab" "$OUT/fakekapi.o" user/Apps/gpiolab/main.cpp user/Kits/gpiokit/gkcore.cpp \
+			user/Kits/filekit/fkcore.cpp "$OUT"/glz/*.o user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp \
+			"$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
 	if [ "$1" = clipboard ]; then			# (the widget, clipd as a thread: clipboard_demo.cpp)
-		$CXX -Iuser/ft -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
-			"$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
+		$CXX -Iuser/Kits/fontkit -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
+			"$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
-		$CXX -Iuser/ft -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libwtk.a" "$OUT/libft.a" -lpthread; return
+		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " writer sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf gamelib setup menubar screenshot fileviewer photos " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits pinball critters " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
-		$CXX -Iuser/ft -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a" "$OUT/libft.a"; return ;;
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
-	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libwtk.a"
+	$CXX -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" $AK
 }
-APPS="2048 agenda applist calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
-      invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
-      tinycalc tinypad widgets wifimenu writer sheet ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman
-      config wpaconf padconf soundconf displayconf keyconf"
+APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
+      fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
+      tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
+      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies circuits pinball critters"
 for a in $APPS; do build $a & done
-# the BASIC runtime (SD:/bin/basic: a BASIC program's window)
-$CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/basic/runtime.cpp user/basic/bascomp.cpp user/basic/basvm.cpp user/basic/basnum.cpp user/basic/basbax.cpp "$OUT/libwtk.a" &
+# the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
+audiokit
+$CXX -o "$OUT/basic" "$OUT/fakekapi.o" user/Libs/basic/runtime.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp user/Libs/basic/baskits.cpp "$OUT/libuikit.a" "$OUT/libaudiokit.a" -lpthread -lm &
 wait
 
 # ---- the running -------------------------------------------------------------------------------
@@ -158,10 +210,15 @@ applet () {
 # ---- the apps, a window each -------------------------------------------------------------------
 if want tinycalc; then sim tinycalc tinycalc "wait;$(typ '12*3.5=');$W" $P; png tinycalc; fi
 if want terminal; then
-	sim terminal terminal "$W" $P SIM_PIPE='/ $ ls /bin | grep e\necho\nsleep\nyes\n/ $ ps\n  1 k R  idle\n  2 k S  compositor\n 14 a R  menubar\n 15 a R  dock\n 16 a S  agenda\n 21 a R  terminal\n/ $ echo onyx | wc -c\n5\n/ $ '
+	# three tabs: the "+" twice, `ping` typed in the third (SIM_BUSY: it runs), back to the first
+	sim terminal terminal "$W;down 219 17;up 219 17;$W;down 419 17;up 419 17;$W;$(typ 'ping 192.168.1.1');key 13;$W;$W;$W;$W;$W;$W;$W;down 60 17;up 60 17;$W" $P \
+		SIM_PIPE='SD:/ $ ls /bin | grep e\necho\nsleep\nyes\nSD:/ $ ps\n  1 k R  idle\n  2 k S  usb\n 14 a R  elegant\n 15 a R  dock\n 21 a R  terminal\n 22 a S  cmd\n 23 a S  cmd\n 24 a S  cmd\n 25 a R  ping\n 26 a R  ps\nSD:/ $ echo onyx | wc -c\n5\nSD:/ $ ' \
+		SIM_PIPE2='SD:/docs $ ' SIM_PIPE3='SD:/ $ ' SIM_BUSY=3
 	png terminal
 fi
-if want tinypad; then sim tinypad tinypad "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x104;$W" $P SIM_ARGS=SD:/notes.txt; png tinypad; fi
+if want tinypad; then sim tinypad tinypad "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x104;$W" $P SIM_ARGS=SD:/notes.txt; png tinypad
+	# (the file dialog, uikit/dialog.cpp: Tinypad's File > Open..., a file selected, the pointer on a row)
+	sim tinypad filedialog "$W;menu 1;$W;down 250 205;up 250 205;move 250 255;$W" $P SIM_ARGS=SD:/notes.txt; png filedialog; fi
 if want paint; then			# (the Paint mock-ups made real: docs/paint; tools/tests/desktop_sim/paint_scene.py)
 	PP=SIM_POS=4,30
 	sim paint paint "$(python3 $D/paint_scene.py landscape);$W" $PP; png paint
@@ -180,7 +237,22 @@ if want calendar; then			# (the sample calendar.ics of sd/: the week of Monday 2
 fi
 if want mandelbrot; then sim mandelbrot mandelbrot "$W" $P; png mandelbrot; fi
 if want eyes; then sim eyes eyes "$W" $P SIM_CURSOR=260,-40; png eyes; fi
-if want taskman; then sim taskman taskman "$W;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;$W" $P; png taskman; fi
+if want taskman; then			# (its two tabs: the processes -- a row chosen --, the memory after a few samples)
+	sim taskman taskman "$W;key 0x101;key 0x101;key 0x101;$W" $P; png taskman
+	sim taskman taskman-memory "$W;down 180 24;up 180 24;$W;$W;$W;$W;$W;$W;$W;$W" $P; png taskman-memory
+fi
+if want gpiolab; then			# (GPIO Lab on GPIOKit's simulator, its demonstration: an LED blinking on GPIO 17, a servo
+					#  on GPIO 18, a button on GPIO 27 pressed now and then; the timing chart after 5 s, the I2C
+					#  bus scanned -- the simulated BME280's readings, the SSD1306's test picture --, the edges
+					#  of GPIO 27 chosen on the header)
+	GL=$(printf 'wait;%.0s' $(seq 1 300))
+	sim gpiolab gpiolab "${GL}wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--demo --tab chart"; png gpiolab
+	sim gpiolab gpiolab-i2c "${GL}wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--demo --tab i2c"; png gpiolab-i2c
+	sim gpiolab gpiolab-edges "${GL}down 202 243;up 202 243;wait;wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--demo --tab edges"; png gpiolab-edges
+	# the Code view: the first sketch run, the button on GPIO 27 pressed twice by clicks on its dot (the simulator)
+	G1=$(printf 'wait;%.0s' $(seq 1 60)); G2=$(printf 'wait;%.0s' $(seq 1 30)); C="down 202 248;up 202 248;$G2"
+	sim gpiolab gpiolab-code "${G1}${C}${C}${C}${C}wait" SIM_SCREEN=1280x800 SIM_POS=60,60 "SIM_ARGS=--code --run"; png gpiolab-code
+fi
 if want 2048; then
 	m=""; for k in 0x102 0x100 0x103 0x101 0x102 0x100 0x102 0x100 0x103 0x100 0x102 0x100 0x103 0x101 0x102 0x100 0x102 0x100 0x103 0x100 0x102 0x100 0x102 0x100 0x103 0x100; do m="$m;key $k;wait"; done
 	sim 2048 2048 "wait$m;$W" $P; png 2048
@@ -199,6 +271,10 @@ if want irc; then			# (a session canned (SIM_NET): #onyx and its users, #raspber
 	png irc-pm
 fi
 if want fileviewer; then sim fileviewer fileviewer "wait;down 300 205;up 300 205;wait;down 480 109;up 480 109;$W" $P; png fileviewer; fi
+if want fmtracker; then			# (a song of SD:/music/fms; a block chosen; the instrument dialog: a click on a channel's name)
+	sim fmtracker fmtracker "wait;wait;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;down 600 250;move 700 300;up 700 300;$W" $P SIM_ARGS=SD:/music/fms/AIRWOLF.FMS; png fmtracker
+	sim fmtracker fmtracker-instrument "wait;wait;down 330 64;up 330 64;$W" $P SIM_ARGS=SD:/music/fms/AIRWOLF.FMS; png fmtracker-instrument
+fi
 if want solitaire; then sim solitaire solitaire "$W" $P; png solitaire; fi
 if want freecell; then sim freecell freecell "$W" $P; png freecell; fi
 if want pipes; then sim pipes pipes "$W" $P; png pipes; fi
@@ -206,16 +282,16 @@ if want invaders; then sim invaders invaders "$W;$W;$W;key 32;$W;$W;$W;$W" $P; p
 if want graphcalc; then sim graphcalc graphcalc "$W" $P; png graphcalc; fi
 if want iconedit; then sim iconedit iconedit "$W" $P SIM_ARGS=SD:/apps/invaders.app/icon.bmp; png iconedit; fi
 if want rtfview; then sim rtfview rtfview "$W" $P SIM_ARGS=SD:/docs/onyx-rtf-sample.rtf; png rtfview; fi
-if want writer; then			# (the sample document, a word of its contents chosen: the toolbar follows it; its second
+if want letters; then			# (the sample document, a word of its contents chosen: the toolbar follows it; its second
 					#  page: the header, the table, the caret in a cell; the mail merge: the letter's fields shown
 					#  with a record of the Contacts)
-	sim writer writer "wait;down 232 550;up 232 550;down 232 550;up 232 550;$W" $P SIM_ARGS=SD:/docs/writer-tour.rtf
-	png writer
-	sim writer writer-table "wait;wheel 500 400 -10;wait;wheel 500 400 -10;wait;wheel 500 400 -9;wait;down 479 481;up 479 481;$W" $P \
-		SIM_ARGS=SD:/docs/writer-tour.rtf
-	png writer-table
-	sim writer writer-merge "wait;menu 60;wait;down 520 261;up 520 261;$W" $P SIM_ARGS=SD:/docs/new-year-letter.rtf; png writer-merge
-	sim writer writer-pdf "wait;menu 6;$W" $P SIM_ARGS=SD:/docs/writer-tour.rtf; png writer-pdf	# (File > Export as PDF)
+	sim letters letters "wait;down 232 550;up 232 550;down 232 550;up 232 550;$W" $P SIM_ARGS=SD:/docs/letters-tour.rtf
+	png letters
+	sim letters letters-table "wait;wheel 500 400 -10;wait;wheel 500 400 -10;wait;wheel 500 400 -9;wait;down 479 481;up 479 481;$W" $P \
+		SIM_ARGS=SD:/docs/letters-tour.rtf
+	png letters-table
+	sim letters letters-merge "wait;menu 60;wait;down 520 261;up 520 261;$W" $P SIM_ARGS=SD:/docs/new-year-letter.rtf; png letters-merge
+	sim letters letters-pdf "wait;menu 6;$W" $P SIM_ARGS=SD:/docs/letters-tour.rtf; png letters-pdf	# (File > Export as PDF)
 fi
 if want sheet; then			# (the sample workbook: the Total column chosen -- its sum below --; a filter's drop-down; the loan's names)
 	sim sheet sheet "wait;down 450 405;move 450 300;move 450 218;up 450 218;$W" $P SIM_ARGS=SD:/docs/cafe-2026.xlsx; png sheet
@@ -250,6 +326,130 @@ if want archiver; then			# (a sample archive of Onyx's sources in RAM:, arc_samp
 	sim archiver archiver-welcome "$W" $P SIM_RAM="$OUT/arc"; png archiver-welcome
 	rm -rf "$OUT/arc" "$OUT/writes/apps/archiver.app"
 fi
+if want 3dforge; then			# (the sample bracket; the shapes unfolded; a box, a cut, a sketch, a fillet being made; the export)
+	FG=SIM_ARGS=SD:/docs/3d/bracket.3df
+	sim 3dforge 3dforge "$(python3 $D/forge_scene.py main)" $P $FG; png 3dforge
+	for s in shapes box cut sketch fillet export canvas cam cam-ops cam-sim cam-gcode print print-supports print-layers fdm fdm-layers; do
+		sim 3dforge 3dforge-$s "$(python3 $D/forge_scene.py $s)" $P $FG; png 3dforge-$s
+	done
+fi
+if want qbstudio; then			# (the example project: the designer, Convert chosen; the code and its completion)
+	sim qbstudio qbstudio "wait;wait;down 618 347;up 618 347;wait;wait" $P; png qbstudio
+	sim qbstudio qbstudio-code "wait;wait;down 391 51;up 391 51;wait;down 600 300;up 600 300;key 0x105;key 13;key 115;key 116;key 97;key 116;key 117;key 115;key 46;wait;wait" $P
+	png qbstudio-code
+	# ... and a kit's functions after its name and a dot (the project's #import, UIKit always: SD:/lib/<kit>.bi)
+	sim qbstudio qbstudio-kits "wait;wait;down 391 51;up 391 51;wait;down 600 300;up 600 300;key 0x105;key 13;key 85;key 73;key 75;key 105;key 116;key 46;wait;wait" $P
+	png qbstudio-kits
+	# ... a project with user controls (pages): the window's two Hosts, then the user control Settings in the designer
+	sim qbstudio qbstudio-hosts "wait;wait;wait" $P SIM_ARGS=SD:/projects/pages
+	png qbstudio-hosts
+fi
+if want turtle; then			# (Turtle Quest: the players' progress from desktop_sim/turtle/*.ini, in the writes' folder)
+	TQ="$OUT/writes/apps/turtle.app"
+	# the maze, step by step (F8 fourteen times): the line lit, the turtle on its way
+	mkdir -p "$TQ"; cp $D/turtle/maze.ini "$TQ/progress.ini"
+	ST=""; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do ST="$ST;key 0x117;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait"; done
+	sim turtle turtle "wait;wait$ST" $P; png turtle
+	# in French: the star drawn (two stars: one instruction too many)
+	cp $D/turtle/star-fr.ini "$TQ/progress.ini"; lang fr
+	sim turtle turtle-fr "wait;wait;key 0x114;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-fr
+	lang "$SHOTS_LANG"
+	# the level editor (Ctrl+E) on "Paint the frame", a coin added, the solution tested (Test: the panel's last row)
+	cp $D/turtle/star-fr.ini "$TQ/progress.ini"; sed -i 's/^level = 8/level = 3/' "$TQ/progress.ini"
+	sim turtle turtle-editor "wait;wait;key 0x05;$W;down 123 431;up 123 431;wait;down 820 230;up 820 230;wait;down 45 539;up 45 539;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-editor
+	# gems and portals: the grand finale step by step (F8 thirteen times) until just after the first jump -- gems 1
+	# and 2 picked, the ring on gem 3, the turtle out of the twin pad, no line across
+	cp $D/turtle/portals.ini "$TQ/progress.ini"
+	ST=""; for i in $(seq 1 13); do ST="$ST;key 0x117;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait"; done
+	sim turtle turtle-portals "wait;wait$ST" $P; png turtle-portals
+	# the editor on it: the Gem tool, gem 5 clicked (it becomes 6), Save refused -- gem 5 missing, gem 6 ringed red
+	cp $D/turtle/portals.ini "$TQ/progress.ini"
+	sim turtle turtle-editor-gems "wait;wait;key 0x05;$W;down 45 499;up 45 499;wait;down 870 402;up 870 402;wait;down 114 539;up 114 539;$W;$W" $P; png turtle-editor-gems
+	# a fractal: the snowflake run (F5) and won with three stars; a colour drawing in the wrong colours (its target
+	# tinted, the two-line message)
+	cp $D/turtle/fractals.ini "$TQ/progress.ini"
+	sim turtle turtle-fractal "wait;wait;key 0x114;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-fractal
+	cp $D/turtle/fractals.ini "$TQ/progress.ini"; sed -i 's/^level = 9/level = 2/' "$TQ/progress.ini"
+	sim turtle turtle-rainbow "wait;wait;key 0x114;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P; png turtle-rainbow
+	# in French: the gems to count, GEMME (), step by step (F8 thirty-three times): gems 1 and 2 picked, the ring on gem 3
+	cp $D/turtle/gems-fr.ini "$TQ/progress.ini"; lang fr
+	ST=""; for i in $(seq 1 33); do ST="$ST;key 0x117;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait"; done
+	sim turtle turtle-fr-gems "wait;wait$ST" $P; png turtle-fr-gems
+	lang "$SHOTS_LANG"
+	rm -rf "$TQ"
+fi
+if want circuits; then			# (Circuits, AutoDev round 2: the progress from desktop_sim/circuits/*.ini in the writes' folder;
+					#  the window at 1000 x 620, the board's cell (gx, gy) at (248 + 12 gx, 168 + 12 gy) for a
+					#  2-line card -- 06-development.md, Developer B's notes)
+	CQ="$OUT/writes/apps/circuits.app"; CP=SIM_POS=8,34
+	# 3.3 Full adder solved: A = 1, B = 0, Cin = 1 (A and Cin clicked), the AND g4 selected
+	CS="wait;wait;down 290 228;up 290 228;wait;down 290 468;up 290 468;wait;down 470 324;up 470 324;$W"
+	mkdir -p "$CQ"; cp $D/circuits/solving.ini "$CQ/progress.ini"
+	sim circuits circuits "$CS" $CP; png circuits
+	# the same, step by step: F8 three times (step 2: the depth-3 OR not computed yet)
+	cp $D/circuits/solving.ini "$CQ/progress.ini"
+	sim circuits circuits-step "$CS;key 0x117;wait;key 0x117;wait;key 0x117;$W" $CP; png circuits-step
+	# 2.2 The hallway light with an OR: Check (F5) -> 1 row is wrong, the row marked, the switches set on it
+	cp $D/circuits/check.ini "$CQ/progress.ini"
+	sim circuits circuits-check "wait;wait;key 0x114;$W" $CP; png circuits-check
+	# in French: the first scene, the pointer resting on the palette's last gate, NOR (its tooltip)
+	cp $D/circuits/solving.ini "$CQ/progress.ini"; lang fr
+	TT=""; for i in 1 2 3 4 5 6 7 8 9 10; do TT="$TT;$W"; done
+	sim circuits circuits-fr "$CS;move 517 115;move 518 115$TT" $CP; png circuits-fr
+	lang "$SHOTS_LANG"
+	rm -rf "$CQ"
+fi
+if want pinball; then			# (Pinball, AutoDev round 4: the top 5s of desktop_sim/pinball/scores.ini and two player's tables
+					#  -- sd/docs/pinball -- in the writes' folder; one script step = 20 ms of the game, 50 waits = 1 s;
+					#  "hold 32" ... "release 32" pulls the plunger, "hold 0x102" raises the left flipper; a taller
+					#  screen so that the window keeps its 600 x 680)
+	PQ="$OUT/writes/apps/pinball.app"; PD="$OUT/writes/docs/pinball"; T=SD:/apps/pinball.app/tables
+	PB="SIM_POS=60,30 SIM_SCREEN=1280x900"
+	pw () { printf 'wait;%.0s' $(seq 1 $1); }
+	pfix () { rm -rf "$PQ" "$PD"; mkdir -p "$PQ" "$PD"; cp $D/pinball/scores.ini "$PQ/scores.ini"; cp $D/sd/docs/pinball/my-first-table.table $D/sd/docs/pinball/broken.table "$PD/"; }
+	pfix; sim pinball pinball "wait;wait;$W" $PB; png pinball				# the picker: Space Station, its top 5
+	pfix; sim pinball pinball-play "wait;hold 32;$(pw 35)release 32;$(pw 110)hold 0x102;$W" $PB "SIM_ARGS=--seed 7 $T/3-volcano.table"; png pinball-play
+	pfix; sim pinball pinball-multiball "wait;hold 32;$(pw 35)release 32;$(pw 40)" $PB "SIM_ARGS=--seed 7 --start multiball $T/1-space-station.table"; png pinball-multiball
+	pfix; sim pinball pinball-broken "wait;wait;$W" $PB SIM_ARGS=SD:/docs/pinball/broken.table; png pinball-broken	# (the error state)
+	pfix; lang fr; sim pinball pinball-fr "wait;wait;key 0x101;$W" $PB; png pinball-fr; lang "$SHOTS_LANG"	# (Manoir hanté)
+	rm -rf "$PQ" "$PD"
+fi
+if want critters; then			# (Critters, AutoDev round 5: desktop_sim/critters/progress.ini and two player's levels -- sd/docs/critters --
+					#  in the writes' folder; one script step = 20 ms, a world step = 2.5 steps: the states mid-level come from
+					#  "--replay <sol> --until <step>", which stops paused -- "key p" resumes it; the solutions are copied into the
+					#  writes' folder, as SD:/tmp/critters/<base>.sol)
+	CQ="$OUT/writes/apps/critters.app"; CD="$OUT/writes/docs/critters"; CT="$OUT/writes/tmp/critters"; L=SD:/apps/critters.app/levels; S=SD:/tmp/critters
+	CB="SIM_POS=60,30"
+	cw () { printf 'wait;%.0s' $(seq 1 $1); }
+	cfix () { rm -rf "$CQ" "$CD" "$CT"; mkdir -p "$CQ" "$CD" "$CT"; cp $D/critters/progress.ini "$CQ/progress.ini"
+		  cp $D/sd/docs/critters/my-first-level.level $D/sd/docs/critters/broken.level "$CD/"
+		  cp tools/tests/critters/solutions/*.sol $D/critters/steel-floor-show.sol "$CT/"; }
+	cfix; sim critters critters "wait;wait;$W" $CB; png critters						# the picker: Up the Wall, new
+	# Two Ways at step 500: Digger chosen, the pointer on critter 10 (crsim --where 502: x 223, y 77 -> 449, 146)
+	cfix; sim critters critters-play "wait;wait;move 449 146;key p;key 5;$(cw 5)" $CB "SIM_ARGS=$L/expedition-01-two-ways.level --replay $S/expedition-01-two-ways.sol --until 500"; png critters-play
+	# Steel Floor at step 650: a shaft stopped on the steel, a builder's stair, an exploder counting; the view moved by the
+	# minimap; Builder chosen, the keyboard's highlight (Tab)
+	cfix; sim critters critters-build "wait;wait;key p;down 714 396;up 714 396;$(cw 10)key 4;key 0x09;wait;wait" $CB "SIM_ARGS=$L/expedition-02-steel-floor.level --replay $S/steel-floor-show.sol --until 650"; png critters-build
+	cfix; sim critters critters-end "$(cw 5)" $CB "SIM_ARGS=$L/training-02-mind-the-gap.level --replay $S/training-02-mind-the-gap.sol --until end"; png critters-end	# (a new best)
+	cfix; sim critters critters-help "wait;wait;key p;wait;key 0x110;wait;wait" $CB "SIM_ARGS=$L/expedition-01-two-ways.level --replay $S/expedition-01-two-ways.sol --until 500"; png critters-help
+	cfix; lang fr; sim critters critters-fr "wait;wait;key 0x100;$W" $CB; png critters-fr				# (Tenir la ligne, its best)
+	cfix; sim critters critters-play-fr "$(cw 5)" $CB "SIM_ARGS=$L/training-01-straight-down.level"; png critters-play-fr	# (the start card)
+	lang "$SHOTS_LANG"; rm -rf "$CQ" "$CD" "$CT"
+fi
+if want slides; then			# (the sample deck: slide 3, its callout chosen; the sorter; the effects; the show, mid-transition)
+	SL=SIM_ARGS=SD:/docs/cafe-2026.odp
+	sim slides slides "wait;wait;key 0x101;key 0x101;wait;down 636 352;up 636 352;wait;down 853 90;up 853 90;$W" $P $SL; png slides
+	sim slides slides-sorter "wait;wait;down 871 687;up 871 687;$W" $P $SL; png slides-sorter
+	sim slides slides-animate "wait;wait;key 0x101;key 0x101;wait;down 636 352;up 636 352;wait;down 964 90;up 964 90;$W" $P $SL; png slides-animate
+	sim slides slides-text "wait;wait;key 0x101;wait;down 300 262;up 300 262;down 300 262;up 300 262;wait;down 300 262;up 300 262;down 300 262;up 300 262;wait;down 908 90;up 908 90;$W" $P $SL; png slides-text
+	# the master view (the sidebar's "Edit the master and layouts...")
+	sim slides slides-master "wait;wait;down 881 217;up 881 217;wait;wait;$W" $P $SL; png slides-master
+	# a PowerPoint deck (tools/tests/slides/powerpoint.pptx): its chart's slide
+	mkdir -p "$OUT/pp"; cp tools/tests/slides/powerpoint.pptx "$OUT/pp/"
+	sim slides slides-pptx "wait;wait;key 0x101;key 0x101;wait;$W" $P SIM_RAM="$OUT/pp" SIM_ARGS=RAM:/powerpoint.pptx; png slides-pptx
+	rm -rf "$OUT/pp"
+	sim slides slides-show "wait;wait;key 0x101;key 0x101;wait;key 0x114;wait;wait;wait;wait;key 32;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait;wait" $P $SL; png slides-show
+fi
 if want cardfile; then			# (the sample: a record; the list sorted by title, a row chosen; the design of the genre's choices)
 	sim cardfile cardfile "$W" $P SIM_ARGS=SD:/docs/books.card; png cardfile
 	sim cardfile cardfile-list "wait;key 0x115;wait;down 60 62;up 60 62;wait;down 300 161;up 300 161;$W" $P SIM_ARGS=SD:/docs/books.card
@@ -259,7 +459,7 @@ if want cardfile; then			# (the sample: a record; the list sorted by title, a ro
 fi
 if want ledger; then			# (the demo company: its overview, its sales, an invoice, the quotes and orders, a quote, the bank's
 					#  CODA statement imported, the general ledger, the VAT; a quote printed: Ledger writes the merge's data
-					#  and request, Writer makes the document from its template)
+					#  and request, Letters makes the document from its template)
 	L=SIM_ARGS=SD:/docs/demo-company.ledger
 	sim ledger ledger "$W" $P $L; png ledger
 	sim ledger ledger-sales "wait;down 60 172;up 60 172;$W" $P $L; png ledger-sales
@@ -271,11 +471,45 @@ if want ledger; then			# (the demo company: its overview, its sales, an invoice,
 	sim ledger ledger-reports "wait;down 60 485;up 60 485;$W" $P $L; png ledger-reports
 	sim ledger ledger-vat "wait;down 60 515;up 60 515;$W" $P $L; png ledger-vat
 	sim ledger ledger-print0 "wait;down 60 316;up 60 316;wait;down 400 218;up 400 218;wait;key 13;wait;down 592 28;up 592 28;$W" $P $L
-	sim writer ledger-print "wait;wait;wait;wait;winctl 2;wait;wait;wheel 500 400 -3;$W" $P SIM_ARGS="--merge SD:/apps/ledger.app/merge.job" SIM_OVERLAY="$OUT/writes"
+	sim letters ledger-print "wait;wait;wait;wait;winctl 2;wait;wait;wheel 500 400 -3;$W" $P SIM_ARGS="--merge SD:/apps/ledger.app/merge.job" SIM_OVERLAY="$OUT/writes"
 	png ledger-print
 fi
+# (Notes' and Stickies' writes folder of their own: the system's language, SHOTS_LANG's, copied into it)
+nlang () { if [ -f "$OUT/writes/etc/system.ini" ]; then mkdir -p "$1/etc"; cp "$OUT/writes/etc/system.ini" "$1/etc/"; fi; }
+if want notes; then			# (Notes, AutoDev round 1: the six sample notes of sd/Notes -- copied into a writes folder of
+					#  their own: an overlay folder cannot be listed --, Shopping selected (config.ini's last), the
+					#  list focused; then the first start: no SD:/Notes, one empty new note, the caret in it)
+	NW="$OUT/notes_w"; rm -rf "$NW"; mkdir -p "$NW/apps/notes.app"; cp -r $D/sd/Notes "$NW/Notes"; nlang "$NW"
+	printf 'last = note-20260928-091500.txt\n' > "$NW/apps/notes.app/config.ini"
+	sim notes notes "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes
+	rm -rf "$NW"; mkdir -p "$NW"; nlang "$NW"
+	sim notes notes-empty "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes-empty
+	rm -rf "$NW"
+fi
+if want stickies || want stickies-empty || want notes-desktop; then	# (Stickies, AutoDev round 1: the pinned notes on the
+					#  desktop, top right -- the sample notes, three of them pinned --; then none pinned: the
+					#  hint; then the whole desktop: the agenda, Stickies, the Notes window in front, the dock)
+	NW="$OUT/notes_w"; rm -rf "$NW"; mkdir -p "$NW"; cp -r $D/sd/Notes "$NW/Notes"; nlang "$NW"
+	NMENU='Notes|MFile/I0~New Note~^N/-/I1~Open in Text Editor~^E/-/I2~Delete Note~^D/MEdit/I3~Cut~^X/I4~Copy~^C/I5~Paste~^V/-/I6~Select All~^A/I7~Copy Note~/MNote/I8~Unpin from Desktop~^P/-/I9~Yellow~/I10~Green~/I11~Blue~/I12~Pink~/I13~Purple~/I14~Grey~/MView/I15~Hide Stickies from the Desktop~'
+	sim menubar s_bar "$W" SIM_MENU="$NMENU"
+	sim stickies s_cards "$W" SIM_WRITES="$NW" SIM_SERVICES=-
+	if want stickies; then scene stickies "$OUT/s_cards.elsm" "$OUT/s_bar.elsm" --crop=704,0,1024,620; fi
+	if want notes-desktop; then
+		mkdir -p "$NW/apps/notes.app"; printf 'last = note-20260928-091500.txt
+' > "$NW/apps/notes.app/config.ini"
+		sim agenda s_agenda "$W"
+		sim notes s_notes "$W" SIM_POS=60,166 SIM_WRITES="$NW" SIM_SERVICES=notify
+		sim dock s_dock "wait;wait;$W" SIM_RUNNING=notes SIM_WINS="60,166,760,508,0,1"
+		scene notes-desktop "$OUT/s_agenda.elsm" "$OUT/s_cards.elsm" "$OUT/s_notes.elsm" "$OUT/s_dock.elsm" "$OUT/s_bar.elsm"
+	fi
+	if want stickies-empty; then
+		sed -i 's/^pinned = 1/pinned = 0/' "$NW/Notes/notes.ini"
+		sim stickies s_none "$W" SIM_WRITES="$NW" SIM_SERVICES=-
+		scene stickies-empty "$OUT/s_none.elsm" "$OUT/s_bar.elsm" --crop=704,0,1024,200
+	fi
+	rm -rf "$NW"
+fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
-if want applist; then sim applist applist "$W" $P; png applist; fi
 if want control; then sim control control "wait;move 200 130;$W" $P; png control; fi
 if want basicdemo; then sim basic basicdemo "$W;$W;$W" $P SIM_APP=basic SIM_ARGS=SD:/apps/basicdemo.app/main.bas; png basicdemo; fi
 if want gamelib; then
@@ -291,7 +525,7 @@ if want theme; then			# (the wallpaper a pattern: SD:/wallpapers' hexagons, colo
 fi
 if want dockconf; then applet dockconf dockconf "$W"; png dockconf; fi
 # (the other Control Panel applets, each in the Control Panel's window)
-for a in displayconf soundconf keyconf wpaconf config; do
+for a in displayconf soundconf keyconf langconf preloadconf wpaconf config; do
 	if want $a; then applet $a $a "$W"; png $a; fi
 done
 if want padconf; then			# (an Xbox 360 pad plugged in, SIM_PAD: two buttons held, the stick pushed)
@@ -318,6 +552,13 @@ if want volume; then
 	sim menubar volume "wait;wait;down 925 15;up 925 15;$W" SIM_MENU="$MENU_TINYPAD"
 	scene volume "$OUT/volume.elsm" --crop=0,0,1024,150
 fi
+if want disks; then			# (v93: a USB stick plugged in -- SIM_USB --, SD1: there; the stick chosen)
+	sim disks disks "$W;down 140 110;up 140 110;$W" $P SIM_USB=2 SIM_VOLS=SD1; png disks	# (a stick of two partitions: USB1P1:, USB1P2:)
+fi
+if want usbmenu; then			# (the menu bar's USB box: a stick plugged in)
+	sim menubar usbmenu "wait;wait;down 899 15;up 899 15;$W" SIM_MENU="$MENU_TINYPAD" SIM_USB=2
+	scene usbmenu "$OUT/usbmenu.elsm" --crop=524,0,1024,180
+fi
 if want clock; then
 	sim menubar clock "wait;wait;down 990 15;up 990 15;$W" SIM_MENU="$MENU_TINYPAD"
 	scene clock "$OUT/clock.elsm" --crop=624,0,1024,330
@@ -328,8 +569,8 @@ if want wifimenu; then
 	scene wifimenu "$OUT/bar.elsm" "$OUT/wifimenu.elsm" --crop=0,0,1024,300
 fi
 if want dock; then			# (the pointer on the Games launcher's strip: its name grows the dock up)
-	sim dock dock "wait;wait;move 222 8;wait;down 222 38;up 222 38;$W" SIM_RUNNING=terminal,tetris,tinycalc SIM_WINS="$WINS"
-	scene dock "$OUT/dock.elsm" --crop=60,176,964,768
+	sim dock dock "wait;wait;move 282 8;wait;down 282 38;up 282 38;$W" SIM_RUNNING=terminal,tetris,tinycalc SIM_WINS="$WINS"
+	scene dock "$OUT/dock.elsm" --crop=0,176,1024,768	# (a drawer a category of the card's apps, 2026-10-06: the dock is wider)
 fi
 if want agenda; then
 	sim agenda agenda "$W"
@@ -376,17 +617,17 @@ if want media; then			# (Media Player over a sample library made by tools/tests/
 		n=$1; shift; s=$1; shift
 		env SIM_OVERLAY=$D/sd SIM_SLEEP=1 SIM_POS=12,30 "$@" SIM="$s;dump $OUT/$n.elsm;exit" "$OUT/media.bin" >>"$OUT/log.txt" 2>&1 || { echo "shots: media failed"; exit 1; }; }
 	W10="$W;$W;$W;$W"; S0="$W10;$W10;$W10;$W10;$W10"	# (the scan, the covers)
-	ALB="down 100 112;up 100 112;$W10;$W10"				# (Albums)
+	ALB="down 100 164;up 100 164;$W10;$W10"				# (Albums)
 	PLAY="move 520 230;$W;down 470 300;up 470 300;$W10;$W10"	# (the 1st album's page; its Play)
 	mm media-home "$S0;move 900 120;$W10" ; png media-home
 	mm media-albums "$S0;$ALB;move 540 230;$W10;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;$ALB;move 760 420;$W10"; png media-albums
 	mm media-album "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;$W10;move 400 360;$W"; png media-album
-	mm media-songs "$S0;down 100 142;up 100 142;$W10;down 300 333;up 300 333;mods 2;down 300 397;up 300 397;mods 0;$W;rdown 300 365;rup 300 365;$W;move 380 400;$W;$W"; png media-songs
+	mm media-songs "$S0;down 100 194;up 100 194;$W10;down 300 333;up 300 333;mods 2;down 300 397;up 300 397;mods 0;$W;rdown 300 365;rup 300 365;$W;move 380 400;$W;$W"; png media-songs
 	mm media-nowplaying "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;down 40 585;up 40 585;$W10;$W10"; png media-nowplaying
-	mm media-midi "$S0;down 100 142;up 100 142;$W10;move 300 397;down 300 397;up 300 397;wait;down 300 397;up 300 397;$W10;down 40 585;up 40 585;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10"; png media-midi
+	mm media-midi "$S0;down 100 194;up 100 194;$W10;move 300 397;down 300 397;up 300 397;wait;down 300 397;up 300 397;$W10;down 40 585;up 40 585;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10"; png media-midi
 	mm media-welcome "$S0;menu 1;$W10"; png media-welcome
 	mm media-mini "$S0;$ALB;down 300 220;up 300 220;$W10;move 490 231;down 490 231;up 490 231;$W10;down 841 581;up 841 581;$W10;$W10"; png media-mini
-	VID="down 100 290;up 100 290;$W10;$W10;$W10"				# (Clips and series: their frames decoded)
+	VID="down 100 342;up 100 342;$W10;$W10;$W10"				# (Clips and series: their frames decoded)
 	mm media-videos "$S0;$VID;move 600 210;$W10"; png media-videos
 	mm media-watch "$S0;down 414 183;up 414 183;$W10;$W10;$W10;$W10;move 500 300;$W"; png media-watch
 	mm media-episode "$S0;$VID;down 366 185;up 366 185;$W10;key 9;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10;$W10"; png media-episode
@@ -451,6 +692,8 @@ if want mail; then			# (Mail against two made-up mailboxes: tools/tests/mail/fak
 	WZ="down 606 414;up 606 414;$W40;$(typ 'Stephane');down 500 260;up 500 260"
 	ms mail-wizard new "$WZ;$(typ 'steph.demo@gmail.com');$W40;down 714 514;up 714 514;$W40"
 	ms mail-outlook new "$WZ;$(typ 'steph.demo@outlook.com');$W40;down 714 514;up 714 514;$W40;down 330 291;up 330 291;wait;wait;wait;wait;wait"
+	ms mail-hosted new "$WZ;$(typ 'steph@acme-demo.be');$W40;down 714 514;up 714 514;$W40"
+	ms mail-m365 new "$WZ;$(typ 'steph@acme-demo.be');$W40;down 714 514;up 714 514;$W40;down 360 368;up 360 368;$W40;down 330 291;up 330 291;wait;wait;wait;wait;wait"
 	kill $MS1 $MS2
 fi
 if want photos; then			# (Photos over a made-up library -- tools/tests/photos/make_samples.py: drawn photos as JPEGs with
@@ -490,46 +733,5 @@ if want setup; then			# (Setup, the first-run wizard: its pages over the wallpap
 		sim setup fb_$d "$W" SIM_ARGS="--demo $d"
 		scene setup-$d "$OUT/fb_$d.elsm"
 	done
-fi
-if want jet; then			# (Jet Browser: the bench's build, tools/tests/netsurf/host.mk -- a local https page,
-					#  sd/jet/index.html over h2srv.py with a certificate made here and trusted:
-					#  the green padlock, the Standard pill, the zoom control, the status bar; then
-					#  the pill's menu open. Then the downloads (docs/06 §38): a link of
-					#  pages/jet-dl.html over httpsrv.py -- the Save dialog, the downloads' menu.
-					#  JETPORT: the servers' ports, JETPORT and JETPORT + 1)
-	NS=${NSBENCH:-/tmp/nsbench}
-	make -f tools/tests/netsurf/host.mk OUT="$NS/build" -j"$(nproc)" >"$OUT/jet-build.log" 2>&1 ||
-		{ echo "shots: jet's build failed ($OUT/jet-build.log)"; exit 1; }
-	mkdir -p "$OUT/jet"
-	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 30 \
-		-subj /CN=localhost -addext subjectAltName=DNS:localhost,IP:127.0.0.1 \
-		-keyout "$OUT/jet/key.pem" -out "$OUT/jet/cert.pem" >/dev/null 2>&1
-	cat "$NS/build/res/ca-bundle" "$OUT/jet/cert.pem" > "$OUT/jet/ca.pem"
-	sed -i '/^ca_bundle:/d' "$NS/build/res/Choices"; echo "ca_bundle:$OUT/jet/ca.pem" >> "$NS/build/res/Choices"
-	rm -f "$NS/build/data/site-modes" "$NS/build/data/desktop-sites" "$NS/build/data/jet.ini" "$NS/build/data/view"
-	JP=${JETPORT:-8447}
-	python3 tools/tests/netsurf/h2srv.py $D/sd/jet $JP "$OUT/jet/cert.pem" "$OUT/jet/key.pem" >"$OUT/jet/srv.log" 2>&1 &
-	JSRV=$!; sleep 1
-	JW=$(i=0; while [ $i -lt 120 ]; do printf 'wait;'; i=$((i + 1)); done)
-	# (docs/06 §40: Ctrl+F, "page" typed, Enter: 2 of n -- jet-find; Esc; a right click on the card's
-	# image -- jet-context)
-	JFIND="up 835 19;wait;wait;mods 1;key 0x06;mods 0;wait;wait;key p;key a;key g;key e;wait;wait;wait;key 13;${JW}dump $OUT/jet-find.elsm;key 27;${JW}move ${JIMG:-530 400};wait;rdown ${JIMG:-530 400};wait;rup ${JIMG:-530 400};wait;wait;wait;key 0x101;key 0x101;key 0x101;wait;wait;dump $OUT/jet-context.elsm;key 27;wait;"
-	# (the pill: its right end at 852, left of the zoom control)
-	env SIM_REALNET=1 SIM_SCREEN=1024x600 SIM_SLEEP=1 SIM_POS=0,0 SIM_RAM="$OUT/jet/ram" SIM_ARGS=https://localhost:$JP/index.html \
-		SIM="${JW}move 300 200;wait;dump $OUT/jet.elsm;move 835 19;wait;down 835 19;wait;wait;wait;move 760 114;wait;wait;dump $OUT/jet-menu.elsm;key 27;wait;${JFIND}exit" \
-		"$NS/build/netsurf" >>"$OUT/log.txt" 2>&1 || true
-	kill $JSRV 2>/dev/null
-	sed -i '/^ca_bundle:/d' "$NS/build/res/Choices"
-	python3 tools/tests/netsurf/httpsrv.py tools/tests/netsurf/pages $((JP + 1)) >"$OUT/jet/srv2.log" 2>&1 &
-	JSRV=$!; sleep 1
-	rm -rf "$OUT/jet/writes"
-	# (the link "report 2026.pdf": the dialog; Enter: saved; the 3 MB one: saved; the downloads' menu)
-	env SIM_WRITES="$OUT/jet/writes" SIM_REALNET=1 SIM_SCREEN=1024x600 SIM_SLEEP=1 SIM_POS=0,0 SIM_RAM="$OUT/jet/ram" \
-		SIM_ARGS=http://127.0.0.1:$((JP + 1))/jet-dl.html \
-		SIM="${JW}move 60 60;wait;down 60 60;up 60 60;${JW}dump $OUT/jet-save.elsm;key 13;${JW}move 60 140;wait;down 60 140;up 60 140;${JW}key 13;${JW}move 937 19;wait;down 937 19;up 937 19;wait;wait;wait;move 760 64;wait;wait;dump $OUT/jet-downloads.elsm;key 27;wait;exit" \
-		"$NS/build/netsurf" >>"$OUT/log.txt" 2>&1 || true
-	kill $JSRV 2>/dev/null
-	rm -f "$NS/build/data/view"
-	png jet; png jet-menu; png jet-find; png jet-context; png jet-save; png jet-downloads
 fi
 echo "shots: done"

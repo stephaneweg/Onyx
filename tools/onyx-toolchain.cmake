@@ -1,0 +1,110 @@
+# onyx-toolchain.cmake -- CMake toolchain file: build third-party code for Onyx, against the POSIX
+# sysroot (libonyxposix: docs/03 §5.4 and "Building a third-party library for Onyx").
+#
+#   make -C user/Runtime/libc/posix install PREFIX=aarch64-onyx-elf-   # the sysroot (out/sysroot-onyx)
+#   cmake -S <src> -B <build> -DCMAKE_TOOLCHAIN_FILE=<onyx>/tools/onyx-toolchain.cmake \
+#         -DBUILD_SHARED_LIBS=OFF [-DONYX_SYSROOT=<dir>] [-DONYX_TOOLCHAIN_PREFIX=aarch64-none-elf-]
+#
+# What it sets: the system "Onyx" (tools/cmake/Platform/Onyx.cmake: UNIX, static only), the
+# aarch64 compilers (ONYX_TOOLCHAIN_PREFIX; default WP-TC's aarch64-onyx-elf- when installed,
+# else the interim aarch64-none-elf-; the sysroot follows: out/sysroot-onyx / out/sysroot), the flags (Cortex-A72, sections for --gc-sections, the sysroot's headers
+# first: -isystem), the link (onyx.specs: crt0posix, onyx-posix.ld, libonyxposix + newlib), and
+# the search paths: libraries, headers and CMake packages from the sysroot only, programs from
+# the host. Executables link and are Onyx ELFs (try_run cannot run them: answer its questions
+# with cache variables).
+#
+# Note: CMAKE_SYSROOT is NOT set. The interim toolchain (aarch64-none-elf) keeps newlib in its own
+# tree; a --sysroot would hide it. The sysroot here is an overlay (-isystem, -L, the specs).
+#
+# Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. MIT licence: Permission is
+# hereby granted, free of charge, to any person obtaining a copy of this software and associated
+# documentation files (the "Software"), to deal in the Software without restriction, including
+# without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the Software is furnished to
+# do so, subject to the following conditions: The above copyright notice and this permission
+# notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE
+# IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+set(CMAKE_SYSTEM_NAME Onyx)
+set(CMAKE_SYSTEM_PROCESSOR aarch64)
+set(CMAKE_SYSTEM_VERSION 75)		# the kapi ABI version the sysroot targets
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
+
+# The compilers: -DONYX_TOOLCHAIN_PREFIX, else $ONYX_TOOLCHAIN_PREFIX, else WP-TC's
+# aarch64-onyx-elf- when it is installed (on the PATH or in /opt/toolchains/aarch64-onyx-elf-14.2:
+# native TLS, real C++ threads), else the interim aarch64-none-elf- (docs/03 §1).
+set(ONYX_TOOLCHAIN_DIRS /opt/toolchains/aarch64-onyx-elf-14.2/bin
+	/opt/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin)
+if(NOT ONYX_TOOLCHAIN_PREFIX)
+	if(DEFINED ENV{ONYX_TOOLCHAIN_PREFIX} AND NOT "$ENV{ONYX_TOOLCHAIN_PREFIX}" STREQUAL "")
+		set(ONYX_TOOLCHAIN_PREFIX "$ENV{ONYX_TOOLCHAIN_PREFIX}")
+	else()
+		find_program(ONYX_TC_PROBE aarch64-onyx-elf-gcc PATHS ${ONYX_TOOLCHAIN_DIRS} NO_CMAKE_FIND_ROOT_PATH)
+		if(ONYX_TC_PROBE)
+			set(ONYX_TOOLCHAIN_PREFIX "aarch64-onyx-elf-")
+		else()
+			set(ONYX_TOOLCHAIN_PREFIX "aarch64-none-elf-")
+		endif()
+		unset(ONYX_TC_PROBE CACHE)
+	endif()
+endif()
+set(ONYX_TOOLCHAIN_PREFIX "${ONYX_TOOLCHAIN_PREFIX}" CACHE STRING "The Onyx toolchain's prefix (aarch64-onyx-elf- or aarch64-none-elf-)")
+find_program(ONYX_CC "${ONYX_TOOLCHAIN_PREFIX}gcc" PATHS ${ONYX_TOOLCHAIN_DIRS} NO_CMAKE_FIND_ROOT_PATH)
+if(NOT ONYX_CC)
+	message(FATAL_ERROR "${ONYX_TOOLCHAIN_PREFIX}gcc not found: put the toolchain's bin on the PATH")
+endif()
+
+# The sysroot: -DONYX_SYSROOT, else $ONYX_SYSROOT, else <onyx>/out/sysroot-onyx (aarch64-onyx-elf)
+# or <onyx>/out/sysroot (aarch64-none-elf): the two toolchains' objects are not interchangeable.
+if(NOT ONYX_SYSROOT)
+	if(DEFINED ENV{ONYX_SYSROOT} AND NOT "$ENV{ONYX_SYSROOT}" STREQUAL "")
+		set(ONYX_SYSROOT "$ENV{ONYX_SYSROOT}")
+	elseif(ONYX_TOOLCHAIN_PREFIX STREQUAL "aarch64-onyx-elf-")
+		get_filename_component(ONYX_SYSROOT "${CMAKE_CURRENT_LIST_DIR}/../out/sysroot-onyx" ABSOLUTE)
+	else()
+		get_filename_component(ONYX_SYSROOT "${CMAKE_CURRENT_LIST_DIR}/../out/sysroot" ABSOLUTE)
+	endif()
+endif()
+set(ONYX_SYSROOT "${ONYX_SYSROOT}" CACHE PATH "The Onyx POSIX sysroot (make -C user/Runtime/libc/posix install)")
+if(NOT EXISTS "${ONYX_SYSROOT}/lib/onyx.specs")
+	message(FATAL_ERROR "No Onyx sysroot at ${ONYX_SYSROOT}: run  make -C user/Runtime/libc/posix install PREFIX=${ONYX_TOOLCHAIN_PREFIX} SYSROOT=${ONYX_SYSROOT}")
+endif()
+# (try_compile projects get these too)
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES ONYX_SYSROOT ONYX_TOOLCHAIN_PREFIX)
+get_filename_component(ONYX_TOOLCHAIN_BIN "${ONYX_CC}" DIRECTORY)
+set(CMAKE_C_COMPILER "${ONYX_TOOLCHAIN_BIN}/${ONYX_TOOLCHAIN_PREFIX}gcc")
+set(CMAKE_CXX_COMPILER "${ONYX_TOOLCHAIN_BIN}/${ONYX_TOOLCHAIN_PREFIX}g++")
+set(CMAKE_ASM_COMPILER "${ONYX_TOOLCHAIN_BIN}/${ONYX_TOOLCHAIN_PREFIX}gcc")
+set(CMAKE_AR "${ONYX_TOOLCHAIN_BIN}/${ONYX_TOOLCHAIN_PREFIX}ar" CACHE FILEPATH "")
+set(CMAKE_RANLIB "${ONYX_TOOLCHAIN_BIN}/${ONYX_TOOLCHAIN_PREFIX}ranlib" CACHE FILEPATH "")
+set(CMAKE_STRIP "${ONYX_TOOLCHAIN_BIN}/${ONYX_TOOLCHAIN_PREFIX}strip" CACHE FILEPATH "")
+set(CMAKE_OBJCOPY "${ONYX_TOOLCHAIN_BIN}/${ONYX_TOOLCHAIN_PREFIX}objcopy" CACHE FILEPATH "")
+
+# The flags (the _INIT values: a project's own flags are added to them)
+# onyx-cc.specs (libonyxposix's sysroot): __unix__ / __unix defined and -pthread accepted (a
+# no-op): the toolchain seen as a Unix one by portable code. Older sysroots lack it.
+set(ONYX_CC_SPECS "")
+if(EXISTS "${ONYX_SYSROOT}/lib/onyx-cc.specs")
+	set(ONYX_CC_SPECS "-specs=${ONYX_SYSROOT}/lib/onyx-cc.specs")
+endif()
+set(ONYX_COMMON_FLAGS "-mcpu=cortex-a72 ${ONYX_CC_SPECS} -fno-pic -fno-pie -ffunction-sections -fdata-sections -isystem ${ONYX_SYSROOT}/include -DFD_SETSIZE=1024")
+set(CMAKE_C_FLAGS_INIT "${ONYX_COMMON_FLAGS}")
+set(CMAKE_CXX_FLAGS_INIT "${ONYX_COMMON_FLAGS}")
+set(CMAKE_ASM_FLAGS_INIT "-mcpu=cortex-a72 ${ONYX_CC_SPECS}")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-specs=${ONYX_SYSROOT}/lib/onyx.specs -L${ONYX_SYSROOT}/lib")
+
+# Search: the sysroot for libraries, headers, packages; the host for programs
+set(CMAKE_FIND_ROOT_PATH "${ONYX_SYSROOT}")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+set(CMAKE_PREFIX_PATH "${ONYX_SYSROOT}")
+set(CMAKE_INSTALL_PREFIX "${ONYX_SYSROOT}" CACHE PATH "Install into the Onyx sysroot")
+
+# pkg-config: the sysroot's .pc files only
+set(ENV{PKG_CONFIG_LIBDIR} "${ONYX_SYSROOT}/lib/pkgconfig")
+set(ENV{PKG_CONFIG_PATH} "")
+set(ENV{PKG_CONFIG_SYSROOT_DIR} "")
+
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Onyx programs are static")

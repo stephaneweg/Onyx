@@ -211,6 +211,10 @@ static bool soundfont_find (char *out, int cap)
 	}
 	return found;
 }
+#ifdef MEDIA_SOUNDFONT_AUDIOKIT					// (in AudioKit: its own, one for the process -- aksf.cpp)
+extern "C" void *ak_soundfont_default (char *err, int cap);
+static ms::SoundFont *soundfont (char *err, int cap)		{ return (ms::SoundFont *) ak_soundfont_default (err, cap); }
+#else
 static ms::SoundFont *soundfont (char *err, int cap)
 {
 	if (g_sf || g_sfTried) { if (!g_sf) snprintf (err, cap, "No SoundFont to play MIDI files (SD:/res/soundfonts: the package GeneralUser GS)."); return g_sf; }
@@ -230,6 +234,7 @@ static ms::SoundFont *soundfont (char *err, int cap)
 	snprintf (g_sfName, sizeof g_sfName, "%s", nm && nm[0] ? nm : base ? base + 1 : path);
 	return g_sf;
 }
+#endif
 
 // ---- the player: a Decoder over the song and a synthesizer -------------------------------------------------
 class MidiDecoder : public Decoder

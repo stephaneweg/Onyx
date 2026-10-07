@@ -1,4 +1,4 @@
-// tools/tests/json/test_json.cpp -- user/json.hpp on the PC, under AddressSanitizer / LeakSanitizer:
+// tools/tests/json/test_json.cpp -- user/Include/json.hpp on the PC, under AddressSanitizer / LeakSanitizer:
 // unit cases, then every file given on the command line parsed, written back (pretty and
 // minified), parsed again and compared node by node.
 //   sh tools/tests/json/run.sh [files...]

@@ -1,8 +1,8 @@
 #!/bin/sh
 # pc/macOS/build.sh -- Ledger for macOS (Apple silicon), built ON A MAC from the Onyx sources, unchanged:
-# user/Apps/ledger (the accounting), user/Apps/writer (it prints Ledger's quotes, orders and invoices from
-# their templates), user/wtk and FreeType, over pc/macOS/hostkapi.cpp + cocoa.mm (the Onyx kernel's table
-# on macOS). Result: pc/dist/macOS/Ledger.app (Writer.app in its Contents/Helpers, the card's files it
+# user/Apps/ledger (the accounting), user/Apps/letters (it prints Ledger's quotes, orders and invoices from
+# their templates), user/Kits/uikit and FreeType, over pc/macOS/hostkapi.cpp + cocoa.mm (the Onyx kernel's table
+# on macOS). Result: pc/dist/macOS/Ledger.app (Letters.app in its Contents/Helpers, the card's files it
 # reads in its Contents/Resources/sd) and pc/dist/macOS/Ledger-macOS-arm64.zip.
 #   sh pc/macOS/build.sh
 # Needs the Xcode command-line tools (xcode-select --install): clang, codesign, ditto. Nothing else.
@@ -32,43 +32,43 @@ AF=""; for a in $ARCHS; do AF="$AF -arch $a"; done
 U="$ROOT/user"
 FT="$ROOT/third_party/freetype-2.14.3"
 FLAGS="-O2 -w $AF -mmacosx-version-min=$MINOS"
-CXXF="-std=gnu++17 $FLAGS -I$U -I$ROOT/kernel/include -fno-exceptions -fno-rtti -include $HERE/onyxmac.h -DIMG_HOST_TEST"
-mkdir -p "$OUT/wtk" "$OUT/ft" "$OUT/kapi"
-bg () { ( "$@" || touch "$OUT/FAILED" ) & }		# a compile in the background (wtk's ~50 files at once)
+CXXF="-std=gnu++17 $FLAGS -I$U -I$U/Kits -I$U/Runtime -I$U/Include -I$U/Libs -I$U/Emulators -I$U/Ports -I$ROOT/kernel/include -fno-exceptions -fno-rtti -include $HERE/onyxmac.h -DIMG_HOST_TEST"
+mkdir -p "$OUT/uikit" "$OUT/ft" "$OUT/kapi"
+bg () { ( "$@" || touch "$OUT/FAILED" ) & }		# a compile in the background (uikit's ~50 files at once)
 done_bg () { wait; if [ -e "$OUT/FAILED" ]; then echo "pc/macOS/build.sh: a compile failed (above)"; exit 1; fi; }
 rm -f "$OUT/FAILED"
 
 # ---- the Onyx kernel's table on macOS ------------------------------------------------------------------------
 $CXX $CXXF -c "$HERE/hostkapi.cpp" -o "$OUT/kapi/hostkapi.o"
 $CXX $CXXF -x objective-c++ -fobjc-arc -c "$HERE/cocoa.mm" -o "$OUT/kapi/cocoa.o"
-# ---- wtk ---------------------------------------------------------------------------------------------------
-for f in "$U"/wtk/*.cpp; do bg $CXX $CXXF -c "$f" -o "$OUT/wtk/$(basename "$f" .cpp).o"; done; done_bg
-rm -f "$OUT/libwtk.a"; ar rcs "$OUT/libwtk.a" "$OUT"/wtk/*.o
-# ---- FreeType (Onyx's configuration: Writer's fonts) ----------------------------------------------------------
+# ---- uikit ---------------------------------------------------------------------------------------------------
+for f in "$U"/Kits/uikit/*.cpp; do bg $CXX $CXXF -c "$f" -o "$OUT/uikit/$(basename "$f" .cpp).o"; done; done_bg
+rm -f "$OUT/libuikit.a"; ar rcs "$OUT/libuikit.a" "$OUT"/uikit/*.o
+# ---- FreeType (Onyx's configuration: Letters' fonts) ----------------------------------------------------------
 for f in base/ftsystem.c base/ftinit.c base/ftdebug.c base/ftbase.c base/ftbitmap.c base/ftsynth.c autofit/autofit.c \
 	 truetype/truetype.c sfnt/sfnt.c smooth/smooth.c; do
 	bg $CC $FLAGS -DFT2_BUILD_LIBRARY '-DFT_CONFIG_MODULES_H=<onyx_ftmodule.h>' '-DFT_CONFIG_OPTIONS_H=<onyx_ftoption.h>' \
-		-I"$U/ft" -I"$FT/include" -c "$FT/src/$f" -o "$OUT/ft/$(basename "$f" .c).o"
+		-I"$U/Kits/fontkit" -I"$FT/include" -c "$FT/src/$f" -o "$OUT/ft/$(basename "$f" .c).o"
 done; done_bg
 rm -f "$OUT/libft.a"; ar rcs "$OUT/libft.a" "$OUT"/ft/*.o
 # ---- the programs (hostkapi.o first: the table placed before the apps' constructors run) ------------------------
-bg $CXX $CXXF -o "$OUT/Ledger" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/ledger/main.cpp" "$OUT/libwtk.a" -framework Cocoa
-bg $CXX $CXXF -I"$U/ft" -I"$FT/include" -o "$OUT/Writer" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/writer/main.cpp" \
-	"$OUT/libwtk.a" "$OUT/libft.a" -framework Cocoa
+bg $CXX $CXXF -o "$OUT/Ledger" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/ledger/main.cpp" "$OUT/libuikit.a" -framework Cocoa
+bg $CXX $CXXF -I"$U/Kits/fontkit" -I"$FT/include" -o "$OUT/Letters" "$OUT/kapi/hostkapi.o" "$OUT/kapi/cocoa.o" "$U/Apps/letters/main.cpp" \
+	"$OUT/libuikit.a" "$OUT/libft.a" -framework Cocoa
 done_bg
 
 # ---- Ledger.app ------------------------------------------------------------------------------------------------------
 plist () { sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$BUILD/" -e "s/@MINOS@/$MINOS/" "$1" > "$2"; }
 rm -rf "$APP"
-W="$APP/Contents/Helpers/Writer.app"
+W="$APP/Contents/Helpers/Letters.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$W/Contents/MacOS" "$W/Contents/Resources"
 cp "$OUT/Ledger" "$APP/Contents/MacOS/Ledger"
-cp "$OUT/Writer" "$W/Contents/MacOS/Writer"
+cp "$OUT/Letters" "$W/Contents/MacOS/Letters"
 plist "$HERE/res/Ledger.plist" "$APP/Contents/Info.plist"
-plist "$HERE/res/Writer.plist" "$W/Contents/Info.plist"
+plist "$HERE/res/Letters.plist" "$W/Contents/Info.plist"
 cp "$HERE/res/PkgInfo" "$APP/Contents/PkgInfo"; cp "$HERE/res/PkgInfo" "$W/Contents/PkgInfo"
 cp "$HERE/res/Ledger.icns" "$APP/Contents/Resources/"
-cp "$HERE/res/Writer.icns" "$W/Contents/Resources/"
+cp "$HERE/res/Letters.icns" "$W/Contents/Resources/"
 sh "$HERE/card.sh" "$APP/Contents/Resources/sd"
 cp "$HERE/README.txt" "$DIST/README.txt"
 xattr -cr "$APP" 2>/dev/null || true				# (Finder's details, quarantine: codesign refuses them)

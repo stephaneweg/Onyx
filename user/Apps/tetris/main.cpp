@@ -4,8 +4,8 @@
 // dependency). Keys: left/right move, up rotate, down soft-drop, space hard-drop,
 // 'r' restart.
 //
-#include "kapi.h"
-#include "wtk/wtk.h"
+#include "appkit/appkit.h"
+#include "uikit/uikit.h"
 
 #define COLS	10
 #define ROWS	20
@@ -18,7 +18,7 @@
 #define SW	(W - SX - 12)
 
 static unsigned *fb;
-static wtk::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
+static uikit::Canvas g_cv, g_bg;		// the window's canvas; its static background, drawn once
 
 // 7 tetrominoes x 4 rotations, as 4x4 bitmasks (bit (15-(y*4+x)) = cell x,y filled).
 static const unsigned short PIECES[7][4] = {
@@ -158,32 +158,32 @@ static int itoa (int v, char *b)
 	return p;
 }
 
-// The theme's look (wtk/paint.h): the face around, the well sunken (its own dark), the score
+// The theme's look (uikit/paint.h): the face around, the well sunken (its own dark), the score
 // and the lines in dark LCD wells, the keys dimmed; drawn once into g_bg, copied at each frame.
 static void paint_bg (void)
 {
-	using namespace wtk;
+	using namespace uikit;
 	g_bg.alloc (W, H);
 	g_bg.clear (C_BG);
-	wk_sunken (g_bg, FX - 3, FY - 3, COLS * CELL + 5, ROWS * CELL + 5, 5, 0x00101014);
-	wk_text_l (g_bg, SX, FY, 16, "Score", C_TEXT, 2);
-	wk_sunken (g_bg, SX, FY + 20, SW, 26, 5, 0x005C6478);
-	wk_text_l (g_bg, SX, FY + 56, 16, "Lines", C_TEXT, 2);
-	wk_sunken (g_bg, SX, FY + 76, SW, 26, 5, 0x005C6478);
+	uk_sunken (g_bg, FX - 3, FY - 3, COLS * CELL + 5, ROWS * CELL + 5, 5, 0x00101014);
+	uk_text_l (g_bg, SX, FY, 16, "Score", C_TEXT, 2);
+	uk_sunken (g_bg, SX, FY + 20, SW, 26, 5, 0x005C6478);
+	uk_text_l (g_bg, SX, FY + 56, 16, "Lines", C_TEXT, 2);
+	uk_sunken (g_bg, SX, FY + 76, SW, 26, 5, 0x005C6478);
 	static const char *const keys[5] = { "left/right", "up: rotate", "dn: soft", "spc: drop", "r: restart" };
-	for (int i = 0; i < 5; i++) wk_text_l (g_bg, SX, FY + 124 + i * 18, 16, keys[i], C_DIS);
+	for (int i = 0; i < 5; i++) uk_text_l (g_bg, SX, FY + 124 + i * 18, 16, keys[i], C_DIS);
 }
 
 // A message box over the well (the theme's dialog: a title strip, the face, an outline).
 static void msgbox (int cx, int cy, const char *title, const char *text)
 {
-	using namespace wtk;
-	int th = wk_fh () + 10, w = wk_text_w (text) + 56, h = th + wk_fh () + 24;
+	using namespace uikit;
+	int th = uk_fh () + 10, w = uk_text_w (text) + 56, h = th + uk_fh () + 24;
 	int x = cx - w / 2, y = cy - h / 2;
-	wk_rbox (g_cv, x, y, w, h, 8, C_FACE, C_FACE);
-	wk_title_strip (g_cv, x + 1, y + 1, w - 2, th, title, 7);
-	wk_rline (g_cv, x, y, w, h, 8, WK_OUTLINE == 2 ? 0 : wk_tone (C_FRAME_ACTIVE, 44), 255);
-	wk_text_c (g_cv, x, y + th, w, h - th, text, C_TEXT);
+	uk_rbox (g_cv, x, y, w, h, 8, C_FACE, C_FACE);
+	uk_title_strip (g_cv, x + 1, y + 1, w - 2, th, title, 7);
+	uk_rline (g_cv, x, y, w, h, 8, UK_OUTLINE == 2 ? 0 : uk_tone (C_FRAME_ACTIVE, 44), 255);
+	uk_text_c (g_cv, x, y + th, w, h - th, text, C_TEXT);
 }
 
 static void redraw (void)
@@ -201,8 +201,8 @@ static void redraw (void)
 					draw_cell (g_px + x, g_py + y, COLORS[g_type + 1]);
 
 	char buf[16]; int n;
-	n = itoa (g_score, buf); wtk::draw_text (fb, W, H, SX + SW - 10 - n * kapi_font_width (), FY + 25, buf, 0x00F0F4F8, 1, 2);
-	n = itoa (g_lines, buf); wtk::draw_text (fb, W, H, SX + SW - 10 - n * kapi_font_width (), FY + 81, buf, 0x00F0F4F8, 1, 2);
+	n = itoa (g_score, buf); uikit::draw_text (fb, W, H, SX + SW - 10 - n * kapi_font_width (), FY + 25, buf, 0x00F0F4F8, 1, 2);
+	n = itoa (g_lines, buf); uikit::draw_text (fb, W, H, SX + SW - 10 - n * kapi_font_width (), FY + 81, buf, 0x00F0F4F8, 1, 2);
 	if (g_over) msgbox (FX + COLS * CELL / 2, FY + ROWS * CELL / 2, "Game over", "r: retry");
 }
 
@@ -210,7 +210,7 @@ int main (void)
 {
 	fb = kapi_create_window (W, H, "tetris");
 	if (fb == 0) return 1;
-	wtk::wk_decorate_window ();			// (reads the theme: the palette)
+	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 

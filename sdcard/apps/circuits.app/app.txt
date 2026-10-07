@@ -1,0 +1,5 @@
+# Onyx application metadata -- read by the category launcher (key=value, no section).
+name = Circuits
+category = Programming
+opens = circuits
+stack = 4M

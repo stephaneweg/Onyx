@@ -11,8 +11,9 @@
 #define _photos_share_h
 
 #include "Apps/photos/editor.h"
-#include "wallpaper.h"
+#include "systemkit/systemkit.h"
 #include "pdf/pdfwrite.h"
+#include "printerkit/printerkit.h"
 
 namespace photos {
 
@@ -34,7 +35,7 @@ static void act_new_album ()
 {
 	NameBox nb ("A new album", "Its name:", ""); char n[120];
 	if (!nb.ask (n, sizeof n)) return;
-	if (strchr (n, '/') || strchr (n, ':')) { wk_messagebox ("Photos", "An album's name cannot have a / or a :.", MB_OK); return; }
+	if (strchr (n, '/') || strchr (n, ':')) { uk_messagebox ("Photos", "An album's name cannot have a / or a :.", MB_OK); return; }
 	int a = g_lib.album_new (n);
 	// the photos chosen go in
 	Vec<int> c; chosen (c);
@@ -80,7 +81,7 @@ static void act_delete (int one)
 	char q[300];
 	if (c.n == 1) snprintf (q, sizeof q, "Move %s to the trash? (The File Viewer can bring it back.)", base_name (g_lib.ph[c[0]].path));
 	else snprintf (q, sizeof q, "Move these %d photos to the trash? (The File Viewer can bring them back.)", c.n);
-	if (wk_messagebox ("Photos", q, MB_YESNO) != 1) { free (c.a); return; }
+	if (uk_messagebox ("Photos", q, MB_YESNO) != 1) { free (c.a); return; }
 	int failed = 0;
 	for (int i = 0; i < c.n; i++)
 	{
@@ -96,7 +97,7 @@ static void act_delete (int one)
 	sel_clear ();
 	g_lib.compact (); g_lib.save ();
 	lib_changed ();
-	if (failed) wk_messagebox ("Photos", "Some photos could not be moved to the trash.", MB_OK);
+	if (failed) uk_messagebox ("Photos", "Some photos could not be moved to the trash.", MB_OK);
 	if (vpos >= 0) { if (!g_list.n) close_viewer (); else open_viewer (vpos < g_list.n ? vpos : g_list.n - 1); }
 }
 
@@ -138,7 +139,7 @@ static void act_rotate (int one)
 		rotate90 (full, 3); opaque (full);
 		bool png = Editor::ends (p.path, ".png");
 		unsigned n = 0; unsigned char *d = png ? pngsave::png_encode (full.px, full.w, full.h, false, &n) : (Editor::ends (p.path, ".jpg") || Editor::ends (p.path, ".jpeg")) ? pngsave::jpeg_encode (full.px, full.w, full.h, 94, &n) : 0;
-		if (!d) { wk_messagebox ("Photos", "This kind of picture cannot be turned here (open it in Paint).", MB_OK); continue; }
+		if (!d) { uk_messagebox ("Photos", "This kind of picture cannot be turned here (open it in Paint).", MB_OK); continue; }
 		PicInfo pi; pic_info (p.path, pi);
 		if (!png && pi.exifOff) { unsigned m; unsigned char *x = jpeg_with_exif (d, n, p.path, pi, &m); if (x) { delete[] d; d = x; n = m; } }
 		g_th.forget (p.key ());
@@ -155,7 +156,7 @@ static void act_rotate (int one)
 static void act_mail (int one)
 {
 	Vec<int> c; if (!chosen (c, one)) { free (c.a); return; }
-	if (c.n > 16) { wk_messagebox ("Photos", "Mail takes 16 attachments at most: choose fewer photos.", MB_OK); free (c.a); return; }
+	if (c.n > 16) { uk_messagebox ("Photos", "Mail takes 16 attachments at most: choose fewer photos.", MB_OK); free (c.a); return; }
 	const char *dir = "RAM:/photos-mail";
 	mkdirs (dir);
 	if (!dir_exists (dir)) { dir = PH_DIR "/outbox"; mkdirs (dir); }
@@ -177,7 +178,7 @@ static void act_mail (int one)
 	char lp[200]; snprintf (lp, sizeof lp, "%s/attach.txt", dir);
 	kapi_save_file (lp, list, (unsigned) k);
 	char args[260]; snprintf (args, sizeof args, "--attach %s", lp);
-	if (kapi_exec ("SD:apps/mail.app/main", args) < 0) wk_messagebox ("Photos", "Mail could not be started.", MB_OK);
+	if (kapi_exec ("SD:apps/mail.app/main", args) < 0) uk_messagebox ("Photos", "Mail could not be started.", MB_OK);
 	else status_note ("Opened in Mail.");
 }
 
@@ -210,7 +211,7 @@ static void act_wallpaper (int pi)
 			snprintf (img, sizeof img, "SD:/res/wallpaper.%s", ext);
 			if (b) { ok = kapi_save_file (img, b, (unsigned) len) >= 0; free (b); }
 		}
-		if (!ok) { wk_messagebox ("Photos", "The picture could not be copied to SD:/res for the wallpaper.", MB_OK); return; }
+		if (!ok) { uk_messagebox ("Photos", "The picture could not be copied to SD:/res for the wallpaper.", MB_OK); return; }
 	}
 	Wallpaper w; wp_load (w);
 	w.mode = WP_IMAGE; scpy (w.image, img, sizeof w.image); w.tile = 0; w.tint = 0;
@@ -304,10 +305,10 @@ static void act_pdf (int album)
 		for (int i = 0; i < c.n / 2; i++) { int t = c[i]; c[i] = c[c.n - 1 - i]; c[c.n - 1 - i] = t; }
 		scpy (title, src_title (), sizeof title);
 	}
-	if (!c.n) { free (c.a); wk_messagebox ("Photos", "There is no photo to put in a PDF.", MB_OK); return; }
+	if (!c.n) { free (c.a); uk_messagebox ("Photos", "There is no photo to put in a PDF.", MB_OK); return; }
 	char out[400], def[200]; snprintf (def, sizeof def, "%s.pdf", title);
 	for (char *s = def; *s; s++) if (*s == '/' || *s == ':') *s = '-';
-	if (!wk_file_save (out, sizeof out, "SD:/Documents", def)) { free (c.a); return; }
+	if (!uk_file_save (out, sizeof out, "SD:/Documents", def, "PDF documents|*.pdf|All files|*")) { free (c.a); return; }
 	if (!Editor::ends (out, ".pdf")) { int k = (int) strlen (out); if (k < 390) strcpy (out + k, ".pdf"); }
 	status_note ("Making the PDF...");
 	const int PW = 1240, PH = 1754, M = 90, COLS = 3, ROWS = 4;		// A4 at 150 dpi
@@ -348,8 +349,45 @@ static void act_pdf (int album)
 	unsigned n = 0; unsigned char *pdf = w.finish (&n);
 	int ok = pdf ? kapi_save_file (out, pdf, n) : -1;
 	delete[] pdf;
-	if (ok < 0) wk_messagebox ("Photos", "The PDF could not be written.", MB_OK);
+	if (ok < 0) uk_messagebox ("Photos", "The PDF could not be written.", MB_OK);
 	else { char s[300]; snprintf (s, sizeof s, "Saved: %s", base_name (out)); status_note (s); }
+}
+
+// ---- printing: each photo a page, as large as what the printer prints of the paper takes it, centred ----------------------------------
+// (one: the photo shown in the viewer; else the photos selected). The Print dialog is the library's (printerkit/printerkit.h).
+static void act_print (int one = -1)
+{
+	Vec<int> c;
+	if (one >= 0) c.push (one); else chosen (c);
+	if (!c.n) { free (c.a); uk_messagebox ("Photos", "Select the photos to print first.", MB_OK); return; }
+	char title[160];
+	if (c.n == 1) scpy (title, base_name (g_lib.ph[c[0]].path), sizeof title); else snprintf (title, sizeof title, "%d photos", c.n);
+	PrintSetup ps; print_setup_default (&ps);
+	{ const Photo &p = g_lib.ph[c[0]]; bool turn = p.orient >= 5; if ((turn ? p.h : p.w) > (turn ? p.w : p.h)) print_setup_paper (&ps, 0, PRINT_LANDSCAPE); }
+	PrintDialogInfo di = { sizeof di, title, c.n, 0, 0, 0, 0 };
+	if (!print_dialog (&ps, &di)) { free (c.a); return; }
+	PrintJob *j = print_begin (&ps, title);
+	if (j)
+	{
+		status_note ("Preparing the pages...");
+		float l = ps.margin_l > 18 ? ps.margin_l : 18, t = ps.margin_t > 18 ? ps.margin_t : 18;
+		float r = ps.margin_r > 18 ? ps.margin_r : 18, b = ps.margin_b > 18 ? ps.margin_b : 18;
+		float aw = ps.paper_w - l - r, ah = ps.paper_h - t - b;
+		for (int i = 0; i < c.n; i++)
+		{
+			if (!print_page (j, 0, 0)) continue;			// (not one of the pages to print: not even read)
+			const Photo &p = g_lib.ph[c[i]];
+			Pix full; if (!Thumbs::load_full (p.path, p.orient, full)) continue;
+			opaque (full);
+			float k = aw / full.w < ah / full.h ? aw / full.w : ah / full.h;
+			float w = full.w * k, h = full.h * k;
+			print_image (j, full.px, full.w, full.h, l + (aw - w) / 2, t + (ah - h) / 2, w, h, PRINT_IMG_ALPHA | PRINT_IMG_PHOTO);
+			full.free_ ();
+		}
+	}
+	free (c.a);
+	if (!j || print_end (j) < 0) uk_messagebox ("Photos", "The photos could not be put in the print queue.", MB_OK);
+	else status_note ("In the print queue.");
 }
 
 // ---- the slideshow ---------------------------------------------------------------------------------------------------------------------------
@@ -402,7 +440,7 @@ static void act_slideshow (int from)
 	for (;;)
 	{
 		kapi_pump_wait (10);
-		if (wk_quit ()) break;
+		if (uk_quit ()) break;
 		unsigned now = kapi_get_ticks ();
 		long k = g_fsKey; g_fsKey = 0;
 		if (k == 27 || g_fsClick) break;
@@ -431,7 +469,7 @@ static void act_slideshow (int from)
 		{
 			unsigned t = now - fadeT;
 			if (fading && t >= FADE) fading = false;
-			if (fading) { int a = (int) (t * 256 / FADE); for (int i = 0; i < W * H; i++) fb[i] = wk_mix (prevF.px[i], curF.px[i], a); }
+			if (fading) { int a = (int) (t * 256 / FADE); for (int i = 0; i < W * H; i++) fb[i] = uk_mix (prevF.px[i], curF.px[i], a); }
 			else memcpy (fb, curF.px, (size_t) W * H * 4);
 			if (hudOn) hud (fb);
 			kapi_present_fb ();

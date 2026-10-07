@@ -1,0 +1,378 @@
+# Volcano -- a Pinball table (SD:/apps/pinball.app/tables). DRAFT by the UX Designer (AutoDev round 4,
+# autodev/rounds/04-pinball/mockups/mktables.py): the layout of the mock-ups, to be tuned by the host test.
+# MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors.
+
+[table]
+format     = 1
+name       = Volcano
+name.fr    = Volcan
+goal       = Hit the lava ramp 5 times: eruption multiball!
+goal.fr    = Touchez 5 fois la rampe de lave : multiball éruption !
+size       = 520 1040
+gravity    = 1700
+ball       = 13
+balls      = 3
+ballsave   = 6
+drain      = 1010
+rotate     = top
+background = #1F120E
+
+[shape]
+points     = 0 0, 0 262, 2 260, 4.2 226.3, 10.8 193.2, 21.6 161.3, 36.6 131, 55.3 102.9, 77.6 77.6, 102.9 55.3, 131 36.6, 161.3 21.6, 193.2 10.8, 226.3 4.2, 260 2, 260 0
+colour     = #2A1A14
+
+[shape]
+points     = 260 0, 260 2, 293.7 4.2, 326.8 10.8, 358.7 21.6, 389 36.6, 417.1 55.3, 442.4 77.6, 464.7 102.9, 483.4 131, 498.4 161.3, 509.2 193.2, 515.8 226.3, 518 260, 520 262, 520 0
+colour     = #2A1A14
+
+[shape]
+points     = 478 300, 520 300, 520 1040, 478 1040
+colour     = #140A06
+
+[shape]
+points     = 0 1000, 476 1000, 476 1040, 0 1040
+colour     = #2A1A14
+
+[shape]
+points     = 0 880, 38 880, 38 1000, 0 1000
+colour     = #140A06
+
+[shape]
+points     = 438 880, 476 880, 476 1000, 438 1000
+colour     = #140A06
+
+[shape]
+points     = 60 720, 190 430, 230 400, 270 400, 310 430, 440 720
+colour     = #3A1C12
+
+[shape]
+points     = 200 440, 230 405, 270 405, 300 440, 270 470, 250 450, 230 475
+colour     = #C83A10
+
+[shape]
+points     = 120 640, 180 600, 200 620, 150 660
+colour     = #5A2410
+
+[shape]
+points     = 330 600, 390 640, 370 660, 320 620
+colour     = #5A2410
+
+[label]
+at         = 250 690
+text       = VOLCANO
+text.fr    = VOLCAN
+size       = 3
+colour     = #4A2414
+
+[label]
+at         = 238 1020
+text       = VOLCANO
+text.fr    = VOLCAN
+size       = 2
+colour     = #D09070
+
+[wall]
+id         = outline
+closed     = 1
+points     = 0 0, 520 0, 520 1040, 0 1040
+colour     = #B09A88
+
+[arc]
+centre     = 260 260
+radius     = 258
+from       = 180
+to         = 360
+colour     = #B09A88
+width      = 5
+
+# the shooter lane: its inner wall, its one-way gate at the top
+[wall]
+points     = 476 1040, 476 300
+colour     = #B09A88
+
+[gate]
+a          = 476 300
+b          = 518 300
+pass      = up
+
+# the outlanes' dividers, a rubber post on each
+[wall]
+points     = 38 700, 38 880
+colour     = #B09A88
+
+[wall]
+points     = 438 700, 438 880
+colour     = #B09A88
+
+[post]
+at         = 38 700
+radius     = 6
+colour     = #F4E8DC
+
+[post]
+at         = 438 700
+radius     = 6
+colour     = #F4E8DC
+
+# the inlanes' guides down to the flippers
+[wall]
+points     = 72 740, 72 850, 140 896
+colour     = #B09A88
+
+[wall]
+points     = 404 740, 404 850, 336 896
+colour     = #B09A88
+
+# the slingshots: a closed body, its face the hypotenuse
+[wall]
+closed     = 1
+points     = 92 760, 92 846, 130 850
+colour     = #FF7A2A
+bounce     = 0.3
+
+[wall]
+closed     = 1
+points     = 384 760, 384 846, 346 850
+colour     = #FF7A2A
+bounce     = 0.3
+
+[sling]
+id         = sl
+a          = 92 760
+b          = 130 850
+colour     = #FF7A2A
+
+[sling]
+id         = sr
+a          = 384 760
+b          = 346 850
+colour     = #FF7A2A
+
+[flipper]
+side       = left
+pivot      = 150 905
+length     = 70
+colour     = #F6F0EA
+
+[flipper]
+side       = right
+pivot      = 326 905
+length     = 70
+colour     = #F6F0EA
+
+[plunger]
+at         = 498 980
+
+# inlanes and outlanes
+[lane]
+id         = out-l
+group      = out
+rect       = 8 770 24 40
+colour     = #FFB070
+
+[lane]
+id         = in-l
+group      = in
+rect       = 43 770 24 40
+colour     = #FFB070
+
+[lane]
+id         = in-r
+group      = in
+rect       = 409 770 24 40
+colour     = #FFB070
+
+[lane]
+id         = out-r
+group      = out
+rect       = 444 770 24 40
+colour     = #FFB070
+
+[flipper]
+side       = right
+pivot      = 432 470
+length     = 55
+rest       = 20
+up         = -30
+colour     = #F6F0EA
+
+[wall]
+points     = 452 400, 452 480, 440 492
+colour     = #B09A88
+
+[wall]
+points     = 200 560, 200 520
+colour     = #B09A88
+
+[wall]
+points     = 300 560, 300 520
+colour     = #B09A88
+
+[ramp]
+id         = lava
+a          = 204 540
+b          = 296 540
+pass      = up
+path       = 250 520, 250 420, 250 200, 200 120, 120 150, 70 300, 50 690, 55 745
+time       = 1.0
+out        = 0 340
+score      = 1500
+colour     = #FF4020
+width      = 26
+
+[label]
+at         = 250 590
+text       = LAVA
+text.fr    = LAVE
+size       = 2
+colour     = #FF6A1A
+
+# the top lanes (rotate group), their separators
+[lane]
+id         = l1
+group      = top
+rect       = 145 108 30 50
+colour     = #FFD040
+
+[lane]
+id         = l2
+group      = top
+rect       = 205 108 30 50
+colour     = #FFD040
+
+[lane]
+id         = l3
+group      = top
+rect       = 265 108 30 50
+colour     = #FFD040
+
+[lane]
+id         = l4
+group      = top
+rect       = 325 108 30 50
+colour     = #FFD040
+
+[wall]
+points     = 125 92, 125 160
+colour     = #B09A88
+width      = 6
+
+[wall]
+points     = 190 92, 190 160
+colour     = #B09A88
+width      = 6
+
+[wall]
+points     = 250 92, 250 160
+colour     = #B09A88
+width      = 6
+
+[wall]
+points     = 310 92, 310 160
+colour     = #B09A88
+width      = 6
+
+[wall]
+points     = 375 92, 375 160
+colour     = #B09A88
+width      = 6
+
+[bumper]
+id         = b1
+at         = 160 250
+radius     = 26
+kick       = 1000
+score      = 100
+colour     = #FF6A1A
+
+[bumper]
+id         = b2
+at         = 250 225
+radius     = 26
+kick       = 1000
+score      = 100
+colour     = #FF6A1A
+
+[bumper]
+id         = b3
+at         = 340 250
+radius     = 26
+kick       = 1000
+score      = 100
+colour     = #FF6A1A
+
+[bumper]
+id         = b4
+at         = 250 315
+radius     = 26
+kick       = 1000
+score      = 100
+colour     = #FF6A1A
+
+[saucer]
+id         = crater
+at         = 400 330
+radius     = 18
+hold       = 1.2
+out        = -380 420
+score      = 750
+colour     = #FFD040
+
+[label]
+at         = 400 366
+text       = CRATER
+text.fr    = CRATÈRE
+size       = 1
+colour     = #FFD040
+
+[target]
+id         = t1
+kind       = drop
+bank       = magma
+a          = 66 480
+b          = 66 514
+colour     = #FFB070
+
+[target]
+id         = t2
+kind       = drop
+bank       = magma
+a          = 66 520
+b          = 66 554
+colour     = #FFB070
+
+[target]
+id         = t3
+kind       = drop
+bank       = magma
+a          = 66 560
+b          = 66 594
+colour     = #FFB070
+
+[rule]
+when       = ramp lava
+count      = 5
+do         = multiball 2
+message    = ERUPTION! MULTIBALL!
+message.fr = ÉRUPTION ! MULTIBALL !
+
+[rule]
+when       = lanes top
+do         = multiplier
+message    = Bonus x up!
+message.fr = Bonus x augmenté !
+
+[rule]
+when       = ramp lava
+count      = 10
+once       = 1
+do         = extraball
+message    = Extra ball!
+message.fr = Bille supplémentaire !
+
+[rule]
+when       = bank magma
+do         = ballsave 10
+message    = Ball save 10 s
+message.fr = Bille sauvée 10 s
+
