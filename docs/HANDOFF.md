@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## PocketUI phase P7, begun: the Media Player and Photos migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, not published (no signing key on this PC)
+## PocketUI phase P7, begun: the Media Player, Photos and the Game Library migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, not published (no signing key on this PC)
 
 P7 is the apps' migration to P6's adaptive widgets (`docs/POCKETUI-TECH-STUDY.md` §6.15, §9: about 32 session-days, one
 app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10.6):
@@ -40,6 +40,18 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   trailing values; **All albums** is now an item (it was a click on the *ALBUMS* heading -- a heading is not
   clickable); *New album...* and *Add a folder...* items with a +; the albums' and folders' right-click menus through
   `onItemMenu`. Translated: 185 words (the days and months too). `shots.sh`'s `photos-albums` clicks the new item.
+- **Game Library** (`user/Apps/gamelib/main.cpp`, a Root that draws itself, as the File Viewer): the pilot's way --
+  **in pocket and console its sidebar is a SidePanel** (`g_sp`, made when `uk_size_class () != UK_SC_REGULAR`: the
+  groups as foldable headings, the systems with their emulators' icons and counts, one without a game disabled, the
+  folders, *Add Folder...*; a folder's right-click menu), **the desktop keeps its own sidebar, pixel for pixel**
+  (`shots.sh gamelib`: the picture unchanged). `SIDE_W` is now what the panel takes (`g_sideW`: `SIDE0` 220, the
+  rail's width, 0 for a drawer). Translated: 33 words -- its messages built by `lx_cat` are `snprintf` formats now.
+  `adaptive.sh <out> gamelib`: 8 checks pass (the sample ROMs of `gamelib_samples.py`).
+- **Ledger was looked at and NOT migrated**: its side bar has a head above the items (the company, its VAT number, the
+  fiscal year's `ChoiceBox`) and a foot (the file; the Mac's language switch), and SidePanel has no slot above its
+  items -- a rail or a drawer would lose the year chooser. It needs `SidePanel::setHeader (Widget *, int h)` (an
+  append to `uikit.abi`, both UIKits, the layout lock untouched: the state is behind `ext`) or the year chooser moved
+  to the pages' head: the user's call. Ledger is also built for macOS (`pc/macOS`): UIKit's sources there take the change too.
 - **Tests (PC)**: `sh tools/tests/server_sim/adaptive.sh <out> media` and `... photos` -- each app under PocketUI at
   800 x 480 (the rail; the rail expanded under the pointer), 1280 x 720 (whole; in French), 480 x 800 (the drawer's tab;
   the drawer opened), console 640 x 480 (the column): 8 checks each, all pass; the pictures looked at. The Media
@@ -49,8 +61,9 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
 - **NOT done here**: `screenshots/media-*.png` were NOT regenerated -- `tools/tests/media/make_library.py` needs the
   `ffmpeg` program (with libvorbis, libvpx, libaom, x264, lame) and this PC's WSL has none (`sudo apt install ffmpeg`,
   the user's to run); they also predate the bar-across-the-window layout. `docs/build_docs.py` not run (no pandoc
-  here). Nothing published: no `ONYX_PKG_KEY` on this PC -- `sdcard/apps/media.app/main` and `photos.app/main` are
-  staged and committed, **`sh tools/pkg/publish.sh` is owed** (media, photos: their `lang/` folders are new).
+  here). Nothing published: no `ONYX_PKG_KEY` on this PC -- `sdcard/apps/media.app/main`, `photos.app/main` and
+  `gamelib.app/main` are staged and committed, **`sh tools/pkg/publish.sh` is owed** (media, photos, gamelib: their
+  `lang/` folders are new; `packages.ini`: `uikit >= 1.949`).
 - **Pi checklist** (not done): stage `SD:/apps/media.app` and `SD:/apps/photos.app` (`main`, `lang/fr.txt`).
   1. Desktop: both as before but the sidebars' labels; Photos' *All albums*, a right click on an album and a folder;
      a playlist made in Media shows in its sidebar at once; `language=fr`: both in French.
@@ -62,7 +75,7 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   `DataGrid` with roles (in portrait its columns are cut, not cards), their custom dialogs on `FormDialog`
   (`InputBox`, `PropsBox`, `VPropsBox`, `NameBox`: the scrolling sheet meanwhile), `uk_set_input_type` on the
   search fields. Media's pages (the album's band, the videos' grid) were looked at in landscape only.
-- **Next apps, in the study's order**: Game Library, Mail, Courier, Ledger, PDF, Slides, Paint, QBStudio, 3DForge,
+- **Next apps, in the study's order**: Mail, Courier, Ledger (above), PDF, Slides, Paint, QBStudio, 3DForge,
   Calendar, IRC, Archiver, Icon Editor, fmtracker, Telegram's pane; then the toolbars, tabs, dialog bases, tables;
   the Control Panel's applets laid out in their pane (Theme first).
 

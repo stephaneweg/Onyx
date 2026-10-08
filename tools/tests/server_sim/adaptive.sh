@@ -11,7 +11,7 @@
 #   - the pilots: the Task Manager (the grid's roles: cards in portrait), the Terminal (its tabs, no source change);
 #   - the viewport: Setup (800 x 600, fixed) at 800 x 480 scrolled by the wheel over its indicator;
 #   - the File Viewer: resizable, its places a SidePanel in pocket (landscape, portrait's drawer) and console.
-# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos]
+# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib]
 # SHOTS_PNG=<folder>: the pictures copied there too (docs/compact-shell/real/).
 set -e
 cd "$(dirname "$0")/../../.."
@@ -183,6 +183,24 @@ if want photos; then
 	WR=$(plib fr)
 	run pocket_photos photos-720-fr "$PW;dump $OUT/photos-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=photos SIM_APP=photos SIM_WRITES=$WR SIM_SLEEP=1
 	out photos-720-fr
+fi
+
+# ---- P7: the Game Library (its sidebar a SidePanel in pocket and console; the desktop keeps its own) ---------------------
+if want gamelib; then
+	echo "adaptive: the Game Library"
+	ftapp pocket gamelib uikit_pocket user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)
+	for t in 800x480:800 1280x720:720 480x800:portrait 640x480:console; do
+		sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
+		WR=$(langdir ""); python3 $D/gamelib_samples.py "$WR"
+		run pocket_gamelib gamelib-$tg "$WWW;$WWW;expect kind fill;expect frame 0;$W;dump $OUT/gamelib-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=gamelib SIM_APP=gamelib SIM_WRITES=$WR
+		out gamelib-$tg
+	done
+	WR=$(langdir ""); python3 $D/gamelib_samples.py "$WR"
+	run pocket_gamelib gamelib-portrait-drawer "$WWW;$WWW;down 6 400;up 6 400;$W;dump $OUT/gamelib-portrait-drawer.elsm" SIM_SCREEN=480x800 SIM_APPNAME=gamelib SIM_APP=gamelib SIM_WRITES=$WR
+	out gamelib-portrait-drawer
+	WR=$(langdir fr); python3 $D/gamelib_samples.py "$WR"
+	run pocket_gamelib gamelib-720-fr "$WWW;$WWW;dump $OUT/gamelib-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=gamelib SIM_APP=gamelib SIM_WRITES=$WR
+	out gamelib-720-fr
 fi
 
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1
