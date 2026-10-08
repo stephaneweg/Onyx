@@ -411,13 +411,13 @@ static void act_slideshow (int from)
 	if (!show.n) { free (show.a); return; }
 	if (from < 0 || from >= show.n) from = 0;
 	int W, H;
-	unsigned *fb = kapi_fullscreen_begin (&W, &H);
+	unsigned *fb = uk_win_fullscreen_begin (&W, &H);
 	if (!fb) { free (show.a); return; }
-	kapi_set_key_handler (fs_key); kapi_set_pointer_handler (fs_ptr);
+	uk_win_on_key (fs_key); uk_win_on_pointer (fs_ptr);
 	g_fsKey = 0; g_fsClick = 0; g_fsMoved = 0;
 	g_ssPrevOnFull = g_th.onFull; g_th.onFull = ss_full; g_ssCame = 0;
 	Pix cur, curF, prevF; curF.alloc (W, H); prevF.alloc (W, H);
-	if (!curF.px || !prevF.px) { kapi_fullscreen_end (); g_th.onFull = g_ssPrevOnFull; free (show.a); g_root->attach (); return; }
+	if (!curF.px || !prevF.px) { uk_win_fullscreen_end (); g_th.onFull = g_ssPrevOnFull; free (show.a); g_root->attach (); return; }
 	for (int i = 0; i < W * H; i++) fb[i] = curF.px[i] = prevF.px[i] = 0;
 	kapi_present_fb ();
 	int at = from; bool paused = false, want = true, fading = false, hudShown = false;
@@ -475,7 +475,7 @@ static void act_slideshow (int from)
 			kapi_present_fb ();
 		}
 	}
-	kapi_fullscreen_end ();
+	uk_win_fullscreen_end ();
 	g_th.onFull = g_ssPrevOnFull;
 	if (g_ssCame) { g_ssCame->pix.free_ (); delete g_ssCame; g_ssCame = 0; }
 	free (show.a);

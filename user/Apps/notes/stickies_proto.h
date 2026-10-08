@@ -3,7 +3,7 @@
 // kapi_ipc_lookup, kapi_mailbox_send / kapi_mailbox_recv, 512 bytes a message at most).
 //
 //   Notes registers "notes"; a second Notes started sends it NOTES_MSG_OPEN with its argument, raises it
-//   (kapi_raise_app ("notes")) and quits -- one Notes at a time. Stickies does the same on a card's click.
+//   (uk_win_app_raise ("notes")) and quits -- one Notes at a time. Stickies does the same on a card's click.
 //   Stickies registers "stickies"; Notes sends it STK_MSG_RELOAD after a note is saved, pinned, coloured or
 //   deleted (Stickies also polls every ~3 s), and STK_MSG_QUIT on View > Hide Stickies from the Desktop.
 //

@@ -1060,7 +1060,7 @@ int main (void)
 		pump_events ();
 		thumb_work ();
 		pad_poll ();
-		if (!root.valid) { root.draw (); kapi_present (); }
+		if (!root.valid) { root.draw (); uk_win_present (); }
 		kapi_msleep (g_tgame >= 0 ? 1 : 16);
 	}
 	return 0;

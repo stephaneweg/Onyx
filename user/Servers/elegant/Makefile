@@ -16,7 +16,7 @@ LDFLAGS  = -Wl,-T,../../Runtime/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build
 	   -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy -Wl,--defsym,memmove=kapi_memmove
 
 OBJS = obj/main.o obj/server.o obj/core.o obj/ops.o obj/window.o obj/gimage.o
-HDRS = core.h corepriv.h kws.h ../../Kits/appkit/elegant.h $(wildcard port/*.h port/circle/*.h port/circle/sched/*.h port/kern/*.h) \
+HDRS = core.h corepriv.h kws.h ../../Kits/uikit/port/elegant.h $(wildcard port/*.h port/circle/*.h port/circle/sched/*.h port/kern/*.h) \
        $(wildcard ../../../kernel/include/kern/gui/*.h wm/kern/gui/*.h wm/*.inc) ../../../kernel/include/kern/kapi_abi.h \
        ../../Kits/appkit/appkit.h ../../Runtime/onyxpp.hpp ../../Runtime/umm.h
 

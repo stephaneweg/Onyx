@@ -24,7 +24,7 @@
 //   dump FILE            the window: "ELSM" w h x y (int32), then w * h pixels 0xTTRRGGBB
 //                        (TT = transparency: 0 opaque) -- its frame (the active copy, or the
 //                        inactive one with SIM_INACTIVE=1) around its client canvas
-//   win N                the program's window N (kapi v94 kapi_win_new: 0 its first) gets the events and
+//   win N                the program's window N (kapi v94 uk_win_new: 0 its first) gets the events and
 //                        the dumps from now on (its handlers called with sender N)
 //   winclose             the close box of that window (N > 0: GUI_EVENT_WINCTL KAPI_FRAME_CLOSE)
 //   quit                 the window closed (kapi_should_exit () from now on: the app's loop ends
@@ -37,7 +37,7 @@
 // program (the terminal's shell) writes, read back from its pipe (SIM_PIPE2...: the next ones'; SIM_BUSY:
 // below); SIM_NET: what a server sends
 // on a TCP connection (irc) -- "\n" a new line, "\r" a return, "\e" an escape; SIM_CURSOR="x,y":
-// the pointer for kapi_cursor_pos; SIM_SLEEP=1: msleep really sleeps (an app whose timers read
+// the pointer for uk_win_cursor_pos; SIM_SLEEP=1: msleep really sleeps (an app whose timers read
 // the clock: NetSurf); SIM_MENU, SIM_RUNNING, SIM_WALL: below.
 // SIM_APPLET=1: the app runs as a Control Panel applet (its arguments "--applet 1 99", the host
 // pid 99 alive, a 700 x 470 surface -- dumped instead of a window); SIM_SURFACE=FILE.elsm: the
@@ -47,8 +47,8 @@
 // service looked up is pid 7; SIM_DESKS="cur,count": the workspaces (kapi v65); SIM_VOLS: the volumes besides the card (below);
 // SIM_WALLDUMP=FILE.elsm: the wallpaper an app makes live (voronoy) written there.
 // SIM_GRAB=FILE.elsm: what kapi_screen_grab gives (the screen, e.g. screenshots/desktop.png made an .elsm:
-// Screenshot's captures); a full-screen app (kapi_fullscreen_begin) is dumped as its whole buffer. SIM_WINS'
-// windows may end with ",title" (kapi_win_list's).
+// Screenshot's captures); a full-screen app (uk_win_fullscreen_begin) is dumped as its whole buffer. SIM_WINS'
+// windows may end with ",title" (uk_win_list's).
 // SIM_RAM: the folder that stands for the RAM: volume (the kernel's RAM file system: until the Pi
 // restarts) -- the same folder for several runs is several launches within one boot; unset, each
 // run has its own (a fresh temporary folder, deleted at its end: a boot of its own).
@@ -67,7 +67,7 @@
 // SIM_ROFS="SD:/Notes[,SD:/etc]": read-only folders -- kapi_save_file, kapi_mkdir, kapi_remove, kapi_rename
 //   and kapi_file_out on a path under one of them (compared without the volume, case-insensitively) fail,
 //   logged `sim: rofs <path>` (chmod a-w is no test when the tests run as root).
-// SIM_CURSOR=follow: kapi_cursor_pos gives the script's pointer in SCREEN coordinates: the client origin
+// SIM_CURSOR=follow: uk_win_cursor_pos gives the script's pointer in SCREEN coordinates: the client origin
 //   the window had at the last "down" (before any: at the first pointer step) plus the scripted point -- a
 //   drag "down 50 10;move 150 10;up 150 10" moves a widget that drags itself (the agenda's way) by 100 px.
 // The script step "copy SRC DST": the host file SRC copied to the card path DST (into SIM_WRITES, its
@@ -403,7 +403,7 @@ static int get_chrome (struct kapi_chrome *out)
 	return 1;
 }
 
-// ---- a program's other windows (kapi v94: kapi_win_new / kapi_win_select / kapi_win_destroy) -----------
+// ---- a program's other windows (kapi v94: uk_win_new / uk_win_select / uk_win_destroy) -----------
 // The window the calls act on is the one in the globals above; the others wait in g_wins.
 struct SimWin { bool used; unsigned *canvas; int cw, ch, stride, x, y, lw, lh; unsigned flags; unsigned *act, *ina; int ow, oh; char title[48]; gui_handler ptr, key; };
 enum { SIM_WINS = KAPI_WS_WINDOWS_MORE + 1 };

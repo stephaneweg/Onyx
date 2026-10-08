@@ -135,7 +135,7 @@ static unsigned g_back = 0x00304058, g_ink = 0x00FAFCFF, g_dim = 0x00B8C4D0;
 static bool read_back (int wx, int wy)
 {
 	int ww = 0, wh = 0;
-	unsigned *wall = kapi_wallpaper_buffer (&ww, &wh);
+	unsigned *wall = uk_win_wallpaper_buffer (&ww, &wh);
 	unsigned r = 0, g = 0, b = 0, n = 0;
 	for (int y = wy; wall && y < wy + HDR && y < wh; y += 4)
 		for (int x = wx; x < wx + W && x < ww; x += 4)
@@ -164,7 +164,7 @@ static void open_notes (const char *file)
 	if (pid > 0)
 	{
 		kapi_mailbox_send (pid, NOTES_MSG_OPEN, p, (unsigned) strlen (p) + 1);
-		kapi_raise_app (NOTES_SERVICE);
+		uk_win_app_raise (NOTES_SERVICE);
 	}
 	else lx_launch (NOTES_SERVICE, p[0] ? p : 0);
 }
@@ -299,7 +299,7 @@ public:
 	{
 		if (mx < 0) { if (hot >= 0) { hot = -1; invalidate (true); } return false; }
 		int sx = 0, sy = 0;
-		kapi_cursor_pos (&sx, &sy);				// screen coordinates (the window moves)
+		uk_win_cursor_pos (&sx, &sy);				// screen coordinates (the window moves)
 		if (moving)
 		{
 			uk_cursor (KAPI_CURSOR_MOVE);
@@ -314,7 +314,7 @@ public:
 			else if (sx != grabX || sy != grabY)
 			{
 				winX += sx - grabX; winY += sy - grabY; grabX = sx; grabY = sy;
-				kapi_move_window (winX, winY);
+				uk_win_move (winX, winY);
 			}
 			return true;
 		}

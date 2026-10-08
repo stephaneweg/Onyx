@@ -447,7 +447,7 @@ public:
 // ---- the menu --------------------------------------------------------------------------------------
 static Menu g_menu;
 static void on_home () { if (g_root) g_root->home (); }
-static void on_quit () { kapi_menu_command (MENU_QUIT); }
+static void on_quit () { uk_win_menu_command (MENU_QUIT); }
 static void on_l0 () { if (g_root) g_root->show (0); }  static void on_l1 () { if (g_root) g_root->show (1); }
 static void on_l2 () { if (g_root) g_root->show (2); }  static void on_l3 () { if (g_root) g_root->show (3); }
 static void on_l4 () { if (g_root) g_root->show (4); }  static void on_l5 () { if (g_root) g_root->show (5); }
@@ -461,11 +461,11 @@ static const MenuAction ON_L[16] = { on_l0, on_l1, on_l2, on_l3, on_l4, on_l5, o
 // Another Control Panel runs (perhaps on another workspace): bring it to the front.
 static void raise_other (void)
 {
-	if (kapi_raise_app ("control")) return;
+	if (uk_win_app_raise ("control")) return;
 	struct kapi_win_info L[40];
-	int n = kapi_win_list (L, 40);
+	int n = uk_win_list (L, 40);
 	for (int i = 0; i < n; i++)
-		if (fs_ci_cmp (L[i].title, TR ("Control Panel")) == 0) { kapi_win_raise (L[i].id); return; }
+		if (fs_ci_cmp (L[i].title, TR ("Control Panel")) == 0) { uk_win_raise (L[i].id); return; }
 }
 
 int main (void)

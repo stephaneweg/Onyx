@@ -1204,7 +1204,8 @@ alone**.
   bodies in `appkit/appkit_calls.inc` so that each `kapi_*` name still does what the programs
   expect; rebuild the kernel and AppKit, ship them together (the package `onyx`), restart. No program is
   rebuilt. A name of `appkit.abi` is never removed nor renamed: a call that is gone keeps a body that
-  answers `-KAPI_ENOSYS` (or does it another way).
+  answers `-KAPI_ENOSYS` (or does it another way). (The window calls, moved to UIKit on 2026-10-08: their
+  names left `appkit.h`, their slots stay as retired placeholders — below.)
 - **Its small services** (§8): the strings, the console, the `.ini` reader, the keyboard layout
   loader, the **notifications** (`notify`, `notify_action`) and the **starting of programs** by their
   runner (`lx_launch`, `lx_open`, `lx_runner`…) — `appkit_lib.inc`, exported by name like the calls.
@@ -1212,14 +1213,17 @@ alone**.
   and has no constructor (its only data: the `.ini` reader's store, private to each program); it is built with the FPU on, its calls passing floats through.
 - **Cost**: one more indirect jump a call (the stub), then AppKit's function — nothing beside a system
   call.
-- **The window calls speak to Elegant** (kapi v89, `appkit_ws.inc`; docs/02 §8 v89, §10): the windows left
-  the kernel for **Elegant**, the graphics server, a user process (`user/Servers/elegant`,
-  `SD:/bin/elegant`). A program's `kapi_create_window`, `kapi_present`,
-  `kapi_set_menu`... speak to it (`appkit/elegant.h`: private, never included by a program) instead of
-  the kernel's window manager; the pixels are memory shared with Elegant at the same addresses, the events
-  come through the same pump. A program sees no difference and is not rebuilt. Adding a window call:
-  its `KAPI_CALL` gets a `KAPI_WS (...)` (a value) or `KAPI_WSV (...)` (a statement) first, the operation
-  goes into `elegant.h` (a new number) and into Elegant's `ops.cpp`.
+- **The window calls are UIKit's** (2026-10-08, docs/POCKETUI-TECH-STUDY.md phase P2): the windows left the
+  kernel for **Elegant**, the graphics server, a user process (`user/Servers/elegant`, `SD:/bin/elegant`,
+  kapi v89), and since 2026-10-08 the code that speaks to it is **UIKit's port**, no longer AppKit's: the 46
+  window functions (`kapi_create_window`, `kapi_present`, `kapi_set_menu`, `kapi_win_list`, `kapi_tray_set`...)
+  were **removed from AppKit** — from `appkit.h` and `appkit_calls.inc`; in `appkit.abi` their slots stay under
+  the names `kapi_retired_<slot>` (placeholders answering 0 or the call's old error value: nothing renumbered, a
+  program built before keeps working but for its direct window calls, which fail) — and
+  `appkit_ws.inc` with them. A program calls **`uk_win_*`** (§5.10.1). AppKit keeps the kernel's side:
+  `kapi_ws_ctl` (the transport), the pump, `kapi_screen_size`, and the full screen's kernel primitives
+  (`kapi_fullscreen_begin` / `_end`, which no longer tell the server: `uk_win_fullscreen_begin` does,
+  `kapi_present_fb`, `kapi_fullscreen_direct`).
 - **The graphics server's calls** (kapi v89, v97): `kapi_ws_ctl (KAPI_WS_*, ...)` is the transport Elegant
   uses (the role, the display, the raw input, the programs' requests). Since v97 the server is the one
   `SD:/etc/system.ini` `shell =` names (desktop: Elegant; pocket / console: PocketUI, `--mode <m>` on its
@@ -1227,6 +1231,61 @@ alone**.
   `SD:/lib/uikit.so` (§5.6), and anyone may call `kapi_ws_ctl (KAPI_WS_SWITCH, 0, 0, 0)` to end the server and
   start the one `shell =` names now (→ 0, or 1 when Elegant had to be started instead; the caller waits). A
   server ends on the input event `KAPI_WS_IN_QUIT`. docs/02 §8 *v97*, §10.
+
+### 5.10.1. The window API: UIKit's `uk_win_*` (`uikit/win.h`)
+
+*(`user/Kits/uikit/win.h` the declarations and the reference; `win.cpp` the entries; `port/` the port — the
+window driver of `SD:/lib/uikit.so`; docs/POCKETUI-TECH-STUDY.md §4–5.)*
+
+```c
+#include "uikit/win.h"          // C or C++; a C++ app has it through "uikit/uikit.h"
+```
+
+A program's windows and what it asks of the graphics server are **UIKit's**, as plain C functions —
+`extern "C"`, entries of `SD:/lib/uikit.so` like the rest of UIKit (`uikit.abi`). Every graphics server has
+its own UIKit loaded under the name `SD:/lib/uikit.so` (Elegant's, the desktop's; PocketUI's for the pocket
+and console modes, to come: `kapi_lib_open_as`, §5.6), and **each UIKit's port is the only code that speaks
+its server's protocol** — so one binary runs on every server. They were AppKit's `kapi_*` window calls until
+2026-10-08; the renaming: `kapi_create_window` → `uk_win_create`, every other `kapi_<name>` →
+`uk_win_<name>` without a doubled `win_`, and:
+
+| AppKit's (gone) | UIKit's |
+|---|---|
+| `kapi_create_window`, `_ex`, `kapi_win_new`, `kapi_win_select`, `kapi_win_destroy` | `uk_win_create`, `uk_win_create_ex`, `uk_win_new`, `uk_win_select`, `uk_win_destroy` |
+| `kapi_move_window`, `kapi_resize_window`, `kapi_resize_window2`, `kapi_win_resizable`, `kapi_set_window_alpha`, `kapi_win_geometry`, `kapi_get_chrome` | `uk_win_move`, `uk_win_resize`, `uk_win_resize2`, `uk_win_resizable`, `uk_win_alpha`, `uk_win_geometry`, `uk_win_chrome` |
+| `kapi_present`, `kapi_draw_text`, `kapi_set_key_handler`, `_click_`, `_pointer_handler`, `kapi_set_cursor`, `kapi_cursor_pos`, `kapi_cursor_shown` | `uk_win_present`, `uk_win_draw_text`, `uk_win_on_key`, `uk_win_on_click`, `uk_win_on_pointer`, `uk_win_cursor`, `uk_win_cursor_pos`, `uk_win_cursor_shown` |
+| `kapi_set_menu`, `kapi_get_menu`, `kapi_menu_command` | `uk_win_menu_set`, `uk_win_menu_get`, `uk_win_menu_command` |
+| `kapi_win_list`, `kapi_win_raise`, `kapi_win_close`, `kapi_win_minimise`, `kapi_win_move`, `kapi_win_desk`, `kapi_desk`, `kapi_win_read`, `kapi_list_windows`, `kapi_raise_app`, `kapi_toggle_app` | `uk_win_list`, `uk_win_raise`, `uk_win_close`, `uk_win_minimise`, `uk_win_place`, `uk_win_to_desk`, `uk_win_desk`, `uk_win_read`, `uk_win_apps`, `uk_win_app_raise`, `uk_win_app_toggle` |
+| `kapi_wallpaper_buffer`, `_commit`, `_generate`; `kapi_drag_begin`, `_data`; `kapi_tray_set`, `_clear`, `_list`, `_icon`, `_activate`; `kapi_get_wheel_speed`, `kapi_set_wheel_speed` | `uk_win_wallpaper_buffer`, `_commit`, `_generate`; `uk_win_drag_begin`, `_data`; `uk_win_tray_set`, `_clear`, `_list`, `_icon`, `_activate`; `uk_win_wheel_get`, `uk_win_wheel_set` |
+| `kapi_fullscreen_begin` / `_end` (the server told, then the kernel's call) | `uk_win_fullscreen_begin` / `_end` (AppKit's `kapi_fullscreen_*` are now the kernel's primitives alone; `kapi_present_fb`, `kapi_fullscreen_direct` stay AppKit's) |
+| — | `uk_win_server` (the server's name, mode, screen, work area, scale, size class: `struct uk_win_server_info`), `uk_shell_*` (PocketUI's shell calls; the desktop's UIKit answers `-KAPI_ENOSYS`) |
+
+The flags (`WIN_FLAG_*`), the events (`GUI_EVENT_*`, `GUI_PTR_*`, `KEY_*`, `MENU_QUIT`) and the structures
+(`struct kapi_chrome`, `kapi_win_geom`, `kapi_win_info`, `kapi_tray_info`) keep their names and their place
+(`appkit/appkit.h`, `kern/kapi_abi.h`): the events still come through the kernel's pump (`kapi_pump_events`,
+`kapi_pump_wait`, `kapi_should_exit`: AppKit's). The demos' aliases `create_window` / `present` are in
+`uikit/win.h` now.
+
+- **Linking**: a C++ program links `lib/uikit.imp.a` (every app of `user/Makefile` does), with `onyxpp.hpp`
+  in one of its files (the bind hands the library its `operator new`); a **C program** links
+  **`lib/uikit.imp_c.a`** (UIKit's stubs and the C bind, `libgen --bind-c`; `BinUtils/Makefile`'s `KITLIBS`:
+  `el0test`, `gpcdemo`); a newlib C program compiles `lib/uikit_bind_c.c` with `-DONYX_BIND_LIBC` (its
+  `malloc`) beside `lib/uikit_stubs.o` (`rdpd`). A program that never had UIKit maps one more library (its
+  code shared; about 64 KB of private data a process).
+- **The structure of UIKit**: the common sources (every widget, the canvas, the window API's entries
+  `win.cpp`) and **the port** (`user/Kits/uikit/port/`, internal: `namespace uikit::port`, not in the table —
+  libgen's `--exclude '^_ZN5uikit4port'`): `port/port.h` the interface (one function per `uk_win_*`),
+  `port/port_desktop.cpp` the desktop's — the window driver for Elegant (the requests through
+  `kapi_ws_ctl (KAPI_WS_CALL, ...)`, `KAPI_WS_KICK` at a present, the per-program window state and **the replay**
+  when Elegant is started again: it was `appkit_ws.inc`), with **`port/elegant.h`, the protocol** (private to
+  the desktop port and Elegant; `wstest` its test). `user/Kits/uikit/port.cpp` compiles the port chosen
+  (`UK_PORT_POCKET`: PocketUI's, phase P3; else the desktop's), so every build that compiles
+  `user/Kits/uikit/*.cpp` (the PC's simulators, the tests' hosts, Koton for Windows) has it. **On a PC** the
+  desktop port relays each call to the stand-in kernel's window manager (`kern/kapi_abi.h`'s *NOT ON ONYX*
+  entries, `tools/tests/desktop_sim/fakekapi.cpp`) — what AppKit's `KAPI_HOST` bodies did.
+- **Adding a window call**: its declaration in `uikit/win.h`, its entry in `win.cpp`, its port function in
+  `port/port.h` and `port/port_desktop.cpp` (the operation in `port/elegant.h`, a new number, and in Elegant's
+  `ops.cpp`); the build appends it to `uikit.abi`. Then `python tools/docgen/kitdocs.py`.
 
 ## 6. Writing a graphical application
 
@@ -1245,10 +1304,10 @@ alone**.
 > its own mailbox); the kernel's v40 clipboard is kept as the fallback. Test: `sh
 > tools/tests/run_clipboard_test.sh` (clipd and an app as threads over the simulator's in-process
 > mailboxes, `SIM_IPC=1`).
-> **Full-screen apps (ABI v41)**: `unsigned *fb = kapi_fullscreen_begin (&w, &h);` gives a
+> **Full-screen apps (ABI v41)**: `unsigned *fb = uk_win_fullscreen_begin (&w, &h);` gives a
 > screen-sized buffer; draw into it and call `kapi_present_fb ()` once per frame (it also
 > yields). The desktop is not drawn meanwhile and all input comes to your key/pointer
-> handlers in screen coordinates. `kapi_fullscreen_end ()` (or exiting) restores the
+> handlers in screen coordinates. `uk_win_fullscreen_end ()` (or exiting) restores the
 > desktop. See `user/Apps/plasma`. **v55**: `unsigned *scr = kapi_fullscreen_direct (&w, &h, &stride);`
 > (after `fullscreen_begin`) gives the **displayed framebuffer itself** (uncached; `stride` in
 > pixels): draw there — or render there with `kapi_gpu_render` — and nothing is copied any
@@ -1262,7 +1321,7 @@ alone**.
 > `kapi_mailbox_send (pid, type, data, len)` (≤ 512 bytes); the service drains with
 > `kapi_mailbox_recv`.
 
-> **Drag & drop (ABI v42).** A **source** calls `kapi_drag_begin (DND_FILES, paths, len,
+> **Drag & drop (ABI v42).** A **source** calls `uk_win_drag_begin (DND_FILES, paths, len,
 > label)` while the left button is held (from `onMouse`, once the cursor moved a few pixels
 > from the press); `paths` is `\n`-separated. A **target** overrides the `uikit::Root`
 > virtuals: `onDrop (x, y, type, data, len, flags)` (data NUL-terminated; `flags &
@@ -1280,11 +1339,11 @@ alone**.
 > `Root`, which becomes `Root::current ()` — the dialogs open in it), their `onTick`, their drawing
 > (`Root::paintAll`). Its **close box** calls the virtual `onClose ()` — by default `closeWindow ()`, the
 > window gone (the object stays: delete it later, not from inside its own handler); closing the **first**
-> window still ends the program. The menu bar shows the first window's menu for all of them. AppKit's
-> calls (`kapi_present`, `kapi_resize_window2`, `kapi_get_chrome`, `kapi_set_cursor`...) act on the window
-> `kapi_win_select (n)` chose: a `Root` selects itself (`winSelect ()`) before it acts; an app that calls
-> AppKit directly selects the window it means. Without UIKit: `kapi_win_new (x, y, w, h, title, flags,
-> &canvas)` → the number, `kapi_win_destroy (n)`; its close box sends `GUI_EVENT_WINCTL` with
+> window still ends the program. The menu bar shows the first window's menu for all of them. The window
+> calls (`uk_win_present`, `uk_win_resize2`, `uk_win_chrome`, `uk_win_cursor`...) act on the window
+> `uk_win_select (n)` chose: a `Root` selects itself (`winSelect ()`) before it acts; an app that calls
+> them directly selects the window it means. Without UIKit: `uk_win_new (x, y, w, h, title, flags,
+> &canvas)` → the number, `uk_win_destroy (n)`; its close box sends `GUI_EVENT_WINCTL` with
 > `KAPI_FRAME_CLOSE` to its pointer handler. **The simulator** (`fakekapi.cpp`) has the windows too: the
 > script's `win N` sends the next events (and the dumps) to window N, `winclose` is its close box. The
 > first app with several: Telegram (one window a conversation). The design: `docs/MULTI-WINDOW-STUDY.md`.
@@ -1297,8 +1356,8 @@ alone**.
 > minimised, its workspace shown) and calls the first `Root`'s virtual `onTray (KAPI_TRAY_OPEN)`; a right
 > click `onTray (KAPI_TRAY_MENU)` (a menu of its own: a `PopupMenu` in the window). The icons are
 > Elegant's (`EL_OP_TRAY_*`), kept for an Elegant started again by AppKit; the menu bar reads them
-> (`kapi_tray_list`, `kapi_tray_icon`) and reports the clicks (`kapi_tray_activate`). Without UIKit:
-> `kapi_tray_set (pixels 0xTTRRGGBB, tip, handler)` — the handler gets `GUI_EVENT_TRAY`. On the PC's
+> (`uk_win_tray_list`, `uk_win_tray_icon`) and reports the clicks (`uk_win_tray_activate`). Without UIKit:
+> `uk_win_tray_set (pixels 0xTTRRGGBB, tip, handler)` — the handler gets `GUI_EVENT_TRAY`. On the PC's
 > simulator: `SIM_TRAY="tip"` gives the menu bar an icon, `SIM_TRAYDUMP=file.elsm` writes the program's.
 >
 > **File associations**: `#include "fileassoc.h"` — `fa_open (path)` opens a path like a
@@ -2374,7 +2433,7 @@ alone**.
 >   `tools/tests/desktop_sim/gallery/main.cpp` shows every control in every state;
 >   `gallery/studio.cpp` (`studio.sh`) the studio controls, with a FreeType face and without.
 > - **The frame**: `uk_decorate_window ()` (the `Root` calls it; an app drawing its own window
->   calls it after `kapi_resize_window`) draws the title bar, the borders, the rounded corners
+>   calls it after `uk_win_resize`) draws the title bar, the borders, the rounded corners
 >   (their outside see-through in the chrome's top byte), the title buttons — the window menu,
 >   minimise, maximise, close, at the kernel's `KAPI_FRAME_*` places — and the title in bold, in
 >   the active and the inactive frames' colours. Close and minimise are the kernel's; the window
@@ -2387,7 +2446,7 @@ alone**.
 > - **Resizable windows**: an app whose layout follows its window's size (anchored widgets,
 >   layout containers, or its own `layout ()`) calls **`root.setResizable (true)`**: its maximise
 >   button (and a double click on the title) fills the work area — between the menu bar and the
->   dock — and restores it (`Root::maximise`: `kapi_resize_window2`, the canvas re-adopted, the
+>   dock — and restores it (`Root::maximise`: `uk_win_resize2`, the canvas re-adopted, the
 >   frame redrawn), then **`virtual void onResized ()`**. Otherwise the button is greyed.
 >   The same call lets the user **drag the frame's edges and corners** (kapi v82: the kernel shows
 >   the outline, then `GUI_EVENT_WINRESIZE` → `Root::frameResize`: the canvas at the new size,
@@ -2406,7 +2465,7 @@ alone**.
 >   area again (its restore size kept inside it); else moved into the work area, shrunk if it is
 >   resizable and too big. A borderless window is left to `onDisplayResize`. Outside uikit: handle
 >   `GUI_EVENT_DISPLAY_RESIZE` (`GUI_DISPLAY_W/H (value)`) in the pointer handler — the menu bar
->   grows its canvas (`kapi_resize_window2`), the notifications move to the new top right.
+>   grows its canvas (`uk_win_resize2`), the notifications move to the new top right.
 > - **`PopupMenu (x, y)`** (`uikit/dialog.h`): a pop-up menu — `add (label, id, enabled, hint)`,
 >   `separator ()`, `run ()` → the id picked, −1 (a click elsewhere, Esc). A context menu.
 > - **See-through windows** (`WIN_FLAG_ALPHA`, borderless): the canvas's top byte is each pixel's
@@ -2421,14 +2480,14 @@ alone**.
 >   Setup's (`user/Apps/setup`: its pages in `main.cpp`, what it writes in `system.h`); with
 >   `kapi_screen_native` (the monitor's EDID size) and `kapi_set_timezone` (v69 too).
 > - **Present what you draw**: the compositor and the remote desktop (`rdpd`: a window is sent
->   again when its counter changes) see a canvas change at `kapi_present ()` — an app drawing
+>   again when its counter changes) see a canvas change at `uk_win_present ()` — an app drawing
 >   in its own loop presents after drawing, and only when something changed (`eyes`: when a
 >   pupil moves).
-> - **Workspaces** (kapi v65): a window opens on the current desk; `kapi_desk (set, count)` shows
+> - **Workspaces** (kapi v65): a window opens on the current desk; `uk_win_desk (set, count)` shows
 >   desk `set` and/or sets how many there are (−1 / 0 keep them) → `KAPI_DESK_CUR (r)`,
 >   `KAPI_DESK_COUNT (r)`, `KAPI_DESK_GEN (r)` (bumped at every change: poll it to redraw a
->   pager); `kapi_win_desk (id, n)` moves window `id` (0: yours) to desk `n` (−1: all; −2: ask).
->   `kapi_list_windows` and `kapi_raise_app` see the current desk only; `kapi_win_list` sees all,
+>   pager); `uk_win_to_desk (id, n)` moves window `id` (0: yours) to desk `n` (−1: all; −2: ask).
+>   `uk_win_apps` and `uk_win_app_raise` see the current desk only; `uk_win_list` sees all,
 >   `KAPI_WIN_OFFDESK` and `KAPI_WIN_DESK (state)` in their state. The dock is the pager
 >   (`dockconf.h`: the desks' number and names).
 > - **Control Panel applets** (`user/Include/applet_proto.h`): any uikit app can be shown **inside** the
@@ -2438,9 +2497,9 @@ alone**.
 >   on `root.width`); the host copies it into its window at each present and sends the pointer
 >   and the keys over the mailboxes. `Root::run ()` does it all; an app with its own loop calls
 >   **`uk_pump ()`**, **`uk_present ()`** and **`uk_quit ()`** instead of `pump_events` /
->   `kapi_present` / `should_exit` (they fall back to those alone). `uk_applet_send (AP_THEME)`:
+>   `uk_win_present` / `should_exit` (they fall back to those alone). `uk_applet_send (AP_THEME)`:
 >   the host restarts the applet (a new theme applied). An applet needs no menu (the host has
->   one) and never calls `kapi_create_window`. To list it, add a link file to
+>   one) and never calls `uk_win_create`. To list it, add a link file to
 >   `SD:/apps/control.app/applets/` (`name`, `icon`, `target`, `text`: the user guide §11) and
 >   give its `app.txt` `category = Settings` (the menu bar leaves those out). Examples: `theme`,
 >   `dockconf`, `soundconf`, `keyconf`, `config`, `padconf`, `wpaconf`.
@@ -2497,7 +2556,7 @@ alone**.
 > menu.item ("Open...", "^O", UK_CTRL ('O'), onOpen);   // label, shortcut text, key, void() callback
 > menu.separator ();
 > menu.item ("Save",    "^S", UK_CTRL ('S'), onSave);
-> menu.publish ();                                       // kapi_set_menu (ABI v39)
+> menu.publish ();                                       // uk_win_menu_set (ABI v39)
 > ```
 >
 > The `menubar` app shows the menus while your window is the active app and sends the
@@ -2509,11 +2568,13 @@ alone**.
 > text box (still, prefer other letters).
 
 
-Minimal skeleton with the raw kapi (a real app uses uikit, above: `uikit::Root`, its widgets and
-its `run ()` loop; the kernel draws no widget since v29):
+Minimal skeleton with the raw window API (a real app uses uikit, above: `uikit::Root`, its widgets and
+its `run ()` loop; the kernel draws no widget since v29). The window calls are UIKit's `uk_win_*`
+(`uikit/win.h`, C functions: §5.10.1); a C program links `lib/uikit.imp_c.a`, a C++ one `lib/uikit.imp.a`:
 
 ```c
 #include "appkit/appkit.h"
+#include "uikit/win.h"
 
 static void on_key (unsigned long sender, int ev, gui_value value)
 {
@@ -2524,12 +2585,12 @@ static void on_key (unsigned long sender, int ev, gui_value value)
 int main (void)
 {
     /* The canvas is mapped at 12 GB; fb[y*w + x] = 0x00RRGGBB. */
-    unsigned *fb = kapi_create_window (300, 200, "example");
+    unsigned *fb = uk_win_create (300, 200, "example");
     if (fb == 0) return 1;                            /* too big, or no memory */
     for (int i = 0; i < 300 * 200; i++) fb[i] = 0x00E0E0E0;
-    kapi_draw_text (10, 10, "Hello, Onyx", 0x00000000);
-    kapi_set_key_handler (on_key);
-    kapi_present ();
+    uk_win_draw_text (10, 10, "Hello, Onyx", 0x00000000);
+    uk_win_on_key (on_key);
+    uk_win_present ();
     kapi_wait_for_exit ();   /* pumps the events until the window is closed */
     return 0;
 }
@@ -2537,9 +2598,9 @@ int main (void)
 
 Key points:
 
-- **`kapi_create_window(w, h, title)`** returns a pointer to the **canvas** (pixel buffer of
+- **`uk_win_create(w, h, title)`** returns a pointer to the **canvas** (pixel buffer of
   `0x00RRGGBB`, width `w`). The app draws directly into it (no per-pixel
-  call). The variant `kapi_create_window_ex(x, y, w, h, title, flags)` is for explicit
+  call). The variant `uk_win_create_ex(x, y, w, h, title, flags)` is for explicit
   placement and `WIN_FLAG_BORDERLESS`. The client area is **at most the screen's size** (frame
   not counted; 1024 × 768 by default, `width=` / `height=` in `cmdline.txt`; before kernel v66,
   1024 × 768 whatever the screen) — keep a window within 1000 × 700 or so (or size it from `kapi_screen_size`, as Paint), as Letters,
@@ -2551,14 +2612,14 @@ Key points:
 - **Widgets** are user-side (uikit); the kernel-drawn ones (`kapi_add_button`…) were removed
   by the v29 compat break.
 - **Event loop**: either `kapi_wait_for_exit()` (blocking, simple), or your
-  own loop `while (!kapi_should_exit()) { ...; kapi_pump_events(); kapi_present();
+  own loop `while (!kapi_should_exit()) { ...; kapi_pump_events(); uk_win_present();
   kapi_msleep(16); }` when you animate the canvas yourself.
 - **App-drawn UI**: to draw text over your canvas, use
-  `kapi_draw_text(x, y, s, color)` + `kapi_font_width/height()`. Capture the keyboard with
-  `kapi_set_key_handler(fn)` (`GUI_EVENT_KEY` events, `KEY_*`/ASCII values) and the
-  "outside-widget" clicks with `kapi_set_click_handler(fn)` (`GUI_EVENT_CANVAS_CLICK` /
+  `uk_win_draw_text(x, y, s, color)` + `kapi_font_width/height()`. Capture the keyboard with
+  `uk_win_on_key(fn)` (`GUI_EVENT_KEY` events, `KEY_*`/ASCII values) and the
+  "outside-widget" clicks with `uk_win_on_click(fn)` (`GUI_EVENT_CANVAS_CLICK` /
   `..._MOTION`, coordinates encoded in `value`). Cursor position relative to the
-  window: `kapi_cursor_pos(&x, &y)`.
+  window: `uk_win_cursor_pos(&x, &y)`.
 - **Yield anyway**: the scheduler preempts a busy app, so a loop that never yields no
   longer freezes the system, but it is treated as a CPU hog (short slices, served after
   the others) and its own window stops being redrawn and answering. Keep calling
@@ -2659,14 +2720,14 @@ its use: docs/04 §12) is a **newlib** uikit app with FreeType text (`screenshot
 one file, `main.cpp`:
 
 - **The capture.** New (or Print Screen) → after the delay (counted in the window's view), the window
-  is minimised (`kapi_win_minimise (0)`), ~0.35 s later the screen is grabbed (`kapi_screen_grab`,
+  is minimised (`uk_win_minimise (0)`), ~0.35 s later the screen is grabbed (`kapi_screen_grab`,
   what the display shows); a rectangle or a window is chosen on the frozen screen shown **full screen**
-  (`kapi_fullscreen_begin`: every pointer and key event goes to the app, in screen coordinates; the
-  app's own `kapi_set_pointer_handler` / `kapi_set_key_handler`, `Root::attach ()` after
-  `kapi_fullscreen_end` gives the window its streams back; no cursor is drawn by the kernel in full
-  screen: the app draws a crosshair, an arrow). The windows: `kapi_win_list` (their frames:
+  (`uk_win_fullscreen_begin`: every pointer and key event goes to the app, in screen coordinates; the
+  app's own `uk_win_on_pointer` / `uk_win_on_key`, `Root::attach ()` after
+  `uk_win_fullscreen_end` gives the window its streams back; no cursor is drawn by the kernel in full
+  screen: the app draws a crosshair, an arrow). The windows: `uk_win_list` (their frames:
   `ow` / `oh`, `il` / `it`), the backmost, system, minimised and other desks' left out. Then
-  `kapi_raise_app ("screenshot")`.
+  `uk_win_app_raise ("screenshot")`.
 - **The picture** (`g_base`), the **crop** (a rectangle of it), the **strokes** (in the base's 1/16 px:
   `uikit/vpaint.h`'s units; a pen's opaque, a marker's at opacity 118 — the stroke filled once, so it
   does not darken where it crosses itself —; smoothed 1-2-1 twice when drawn), the **operations**
@@ -2712,7 +2773,7 @@ with `av/codecs.mk`'s `AV_CODECS_CF` **and `-DAV_WITH_FFMPEG`**, and linked with
 | `thumbs.h` | `Thumbs`: a thread makes each video's frame — `video_frame_at` (`av_demux_seek` to a tenth of the video, at most a minute in, when the container has an index; else decoded on from the start, 4 s at most; `av_decoder_*`, `av_yuv_to_rgb`), cropped to 16:9 at 384 × 216, kept as `SD:/etc/media/thumbs/<key>.jpg` (`pngsave::jpeg_encode`; the key: the path and the size hashed) —; sizes cached as the covers'; it waits while a video plays (`busy`); a video not decoded here gets a frame drawn from its name. |
 | `watch.h` | `VideoPlay`: a video playing — `av_player_new (AV_PIX_BGRA, 0)` (the kapi's sound) + `av_player_open_file` —, `poll ()` on the window's tick (the frame due copied: the library's is valid until the next poll; `statusGen` when what is shown changes), `draw` (fitted, black bars, a nearest-neighbour scaler: a frame each 33 ms on the Pi). |
 | `ui.h` | The faces (DejaVu Sans 11 … 27), text cut to fit, the times, the icons (`uikit/vpaint.h`). |
-| `main.cpp` | The settings, the playlists (`.m3u`), the queue (its order, shuffled or not; ids < 0: a file opened that is not in the library), the pages (`Page`, back / forward; `P_VIDEOS` a kind, `P_WATCH` a video: `page_changed` closes a video left — its position saved — and opens one come back to), the widgets — `Sidebar`, `TopBar` (`SearchBox`), `Content` (every page drawn in view coordinates, its hits listed for the clicks; the songs' table, its selection, its menu; the videos' tiles, the home's cards), `NowBar`, `MiniView`, `WatchView` (the video in the whole window: `draw_watch` — the frame, the controls while the pointer moves, loading, the end, an error — shared with **full screen**: `video_full_screen`, `kapi_fullscreen_begin` + `kapi_present_fb`, its own event loop as the PDF Viewer's) —, the sound shared (`video_start`: the music's thread releases the output — `Player::release` — before the video's takes it; a song started closes the video), the positions (`video_save_pos`: every 15 s, at a pause, on leaving; near the end: watched, from the start next time), the mini player (`kapi_resize_window2` + `kapi_move_window` to the work area's bottom right), the scan's end (`scan_done`: the new library swapped in, the queue and the pages mapped by path / name; the videos' positions kept). |
+| `main.cpp` | The settings, the playlists (`.m3u`), the queue (its order, shuffled or not; ids < 0: a file opened that is not in the library), the pages (`Page`, back / forward; `P_VIDEOS` a kind, `P_WATCH` a video: `page_changed` closes a video left — its position saved — and opens one come back to), the widgets — `Sidebar`, `TopBar` (`SearchBox`), `Content` (every page drawn in view coordinates, its hits listed for the clicks; the songs' table, its selection, its menu; the videos' tiles, the home's cards), `NowBar`, `MiniView`, `WatchView` (the video in the whole window: `draw_watch` — the frame, the controls while the pointer moves, loading, the end, an error — shared with **full screen**: `video_full_screen`, `uk_win_fullscreen_begin` + `kapi_present_fb`, its own event loop as the PDF Viewer's) —, the sound shared (`video_start`: the music's thread releases the output — `Player::release` — before the video's takes it; a song started closes the video), the positions (`video_save_pos`: every 15 s, at a pause, on leaving; near the end: watched, from the start next time), the mini player (`uk_win_resize2` + `uk_win_move` to the work area's bottom right), the scan's end (`scan_done`: the new library swapped in, the queue and the pages mapped by path / name; the videos' positions kept). |
 
 **Tests on the PC**: `sh tools/tests/run_media_test.sh` — sample files made by ffmpeg (MP3, Ogg, FLAC, WAV at
 48 kHz, a 22 kHz mono WAV) and `tools/tests/media/make_midi.py`, decoded by `tools/tests/media/dectest.cpp`
@@ -2807,7 +2868,7 @@ CJK fonts left out). **The app is AGPL-3.0**, MuPDF's licence (docs/LICENSING.md
 | `mupdf.mk` | MuPDF as one static library, `libmupdf.a`, for the Pi (`user/Makefile`: `MU_ONYX=1`, newlib's gaps in `mu/onyx_mucompat.{h,c}` — `quad`, `timegm`, `stat`, `ftruncate`, `getentropy`, no folder "archives") or the PC (`make -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_OUT=...`). The `FZ_ENABLE_*` switches turn the other formats off; `TOFU` drops the Noto fonts. It holds **its own FreeType** (Onyx's 2.14.3 with the Type 1 / CFF / CID drivers PDF needs, `mu/onyx_muftmodule.h`, plus the apps' TrueType + autofit): the app links it instead of `ft/libft.a`. Onyx's zlib and libjpeg (jpeg-9f, its names hidden: `FZ_HIDE_INTERNAL_JPEG`). |
 | `engine.h` | MuPDF's side: the contexts (one a thread, `fz_clone_context`; MuPDF's locks on `kapi_lock`), the files through the kapi (`KStream`: an `fz_stream` on `kapi_open` / `kapi_read` / `kapi_seek` — any volume, and the simulator), `Doc` (a document, its lock: a page becomes a **display list** under it, the slow drawing happens outside), the pages' sizes, the outline flattened, the links (read with the lists), `render_page` (a part of a page at a scale, turned, into 0x00RRGGBB), `page_text` (the structured text: the selection, the search), the facts and the fonts (Properties), and the **`Worker`**: a thread that draws what the window wants now (`set_wants`: the view's pages first, then the neighbours, the thumbnails, the recent documents' first pages) and searches page after page (`fz_match_stext_page`, a regular expression for *Whole words*), each result handed over with `kapi_post`. |
 | `ui.h` | The faces, text cut to fit, the hit lists, the icons (`uikit/vpaint.h`). |
-| `main.cpp` | The tabs (`Tab`: a document and how it is shown — layout, zoom, rotation, scroll, the selection, the search's hits), the bitmaps kept (`Bmp`: a page or, past 2600 × 2600 px, the part seen on a 256-px grid; another scale's shown, scaled, until the right one comes; 18 M pixels at most, the least used dropped), the layout (`lay_out`: continuous, one page, two pages with the first alone), the widgets — `TabBar`, `ToolBar` (`SearchBox`, the page's field), `SidePanel` (Pages, Contents, Find), `View` (the pages, the hits and the selection over them, the links, the scroll bars), `Home` (the recent documents, the folders) —, the dialogs (the password, `PropsBox`), full screen (`kapi_fullscreen_begin`: the next page drawn ahead), the settings and `recent.tsv`. |
+| `main.cpp` | The tabs (`Tab`: a document and how it is shown — layout, zoom, rotation, scroll, the selection, the search's hits), the bitmaps kept (`Bmp`: a page or, past 2600 × 2600 px, the part seen on a 256-px grid; another scale's shown, scaled, until the right one comes; 18 M pixels at most, the least used dropped), the layout (`lay_out`: continuous, one page, two pages with the first alone), the widgets — `TabBar`, `ToolBar` (`SearchBox`, the page's field), `SidePanel` (Pages, Contents, Find), `View` (the pages, the hits and the selection over them, the links, the scroll bars), `Home` (the recent documents, the folders) —, the dialogs (the password, `PropsBox`), full screen (`uk_win_fullscreen_begin`: the next page drawn ahead), the settings and `recent.tsv`. |
 
 **The PDF writer** — `user/Libs/pdf/pdfwrite.h`, header-only, **MIT** (Onyx's own code: docs/LICENSING.md), used by
 Letters' and the Spreadsheet's *File ▸ Export as PDF*: `pdfw::Writer` writes PDF 1.7 — pages of rectangles, text
@@ -2907,7 +2968,7 @@ is a **newlib** uikit app (`photos.elf`: FreeType's text, uikit's image codecs, 
 | `imgops.h` | `Pix`; orientation, quarter turns, straighten (bilinear, enlarged), crop, scaling (area average down, bilinear up), the adjustments as one tone curve (`ToneMap`: exposure, contrast, highlights, shadows) + saturation, warmth, an unsharp mask, the filters, `auto_enhance` (from the histogram). |
 | `thumbs.h` | `Thumbs`: a thread making the thumbnails (320 px, turned the right way, kept as `thumbs/<key>.jpg`; the key = path, size, orientation) and decoding the photo shown big first (`want_full` → `onFull`); when idle, the **backlog** (`set_backlog`, at start and after each scan): every thumbnail missing on the card made, `blDone` / `blTotal` drawn as the status line's bar; a cache of the sizes drawn. |
 | `ui.h`, `app.h` | Faces, icons (vpaint), hit lists, the colours (the library follows the theme; viewer and editor dark); what is shown (`g_src`, the search), the list by day, the selection. |
-| `grid.h`, `viewer.h`, `editor.h`, `share.h`, `main.cpp` | The toolbar, the left column, the days' grid (only what shows is drawn; the years' strip), the albums' page; the viewer; the editor (works on a 1600 px copy, the whole photo rendered when saved); favourites, albums, trash, the lossless rotation (the EXIF orientation rewritten), Send by Mail (`mail --attach <list>`), the wallpaper (`wallpaper.h`; a photo not on `SD:` or stored turned copied upright to `SD:/res/wallpaper.<ext>`), the Clipboard, the PDF, the slideshow (`kapi_fullscreen_begin`, a cross-fade). |
+| `grid.h`, `viewer.h`, `editor.h`, `share.h`, `main.cpp` | The toolbar, the left column, the days' grid (only what shows is drawn; the years' strip), the albums' page; the viewer; the editor (works on a 1600 px copy, the whole photo rendered when saved); favourites, albums, trash, the lossless rotation (the EXIF orientation rewritten), Send by Mail (`mail --attach <list>`), the wallpaper (`wallpaper.h`; a photo not on `SD:` or stored turned copied upright to `SD:/res/wallpaper.<ext>`), the Clipboard, the PDF, the slideshow (`uk_win_fullscreen_begin`, a cross-fade). |
 
 **On the PC**: `python3 tools/tests/photos/make_samples.py <dir>` makes a library (drawn photos as JPEGs with their EXIF —
 some standing, orientation 6 —, a screenshot dated by its name, a `library.db` with favourites, albums); `sh
@@ -3478,8 +3539,8 @@ The menu bar's **Onyx** menu and the dock's drawers group the apps by `category`
 their `name`. Three categories are **not listed** there: `Shell` (the desktop's own parts:
 `menubar`, `dock`, `notifyd`, `agenda`, `stickies`, `lock`, the services without a window -- `clipd`, `clockd`…), `Settings` (the Control Panel's applets: reached through it) and
 `Emulators` (reached through the Game Library, which starts the right one for a game). A shell
-component also creates its window with **`WIN_FLAG_SYSTEM`** (`kapi_create_window_ex` / the
-positioned `uikit::Root` constructor), so it is left out of `kapi_list_windows` (the menu bar's
+component also creates its window with **`WIN_FLAG_SYSTEM`** (`uk_win_create_ex` / the
+positioned `uikit::Root` constructor), so it is left out of `uk_win_apps` (the menu bar's
 Open Windows, the dock's running dots) and shown on every workspace.
 
 **Icons** — [`tools/gen_assets.py`](../tools/gen_assets.py) procedurally generates the
@@ -3521,13 +3582,13 @@ barwidth = 40
   `main` runs — `exit` stops the process on the spot), and drag & drop from another app:
   `dragover X Y [FLAGS]` (`GUI_EVENT_DRAG_OVER`; FLAGS 1 Ctrl, 4 the drag left) and
   `drop X Y PATH|PATH... [FLAGS]` (`GUI_EVENT_DROP`, the paths a `DND_FILES` payload that
-  `kapi_drag_data` returns), and `waitlog N TEXT` (the script stays on this step, one main-loop
+  `uk_win_drag_data` returns), and `waitlog N TEXT` (the script stays on this step, one main-loop
   turn at a time, until the file `SIM_LOG` -- where the app's output is redirected -- holds TEXT, or
   N turns: a test waits for what it expects, `console: done` in mediatest.sh, rather than a fixed
   count of `wait`s a loaded machine may not be enough for). Files: what an app writes goes to `SIM_WRITES` (never the card) —
   `kapi_save_file`, `kapi_mkdir`, the streams `kapi_file_out` / `kapi_file_in` (a `FILE *` behind
   the handle) —, and `kapi_remove` / `kapi_rename` work on `RAM:` and on those written files. Like the kernel, the simulator makes no
-  window over 1024 × 768 (`kapi_create_window` returns 0).
+  window over 1024 × 768 (`uk_win_create` returns 0).
   **Threads and the network**: the simulator runs an app's threads (kapi v67) as pthreads —
   `kapi_post`'s calls run at the main thread's next `pump_events`, a thread's `msleep` only
   sleeps (the script is the main thread's) — and with **`SIM_REALNET=1`** its TCP sockets are the
@@ -3539,7 +3600,7 @@ barwidth = 40
   `kapi_ipc_register` succeeds, and each `kapi_mailbox_send` to one is logged `sim: send <name> type <t>
   "<payload>"` (and `notify ()` does not wait for a notifyd); a `SIM_MBOX` line `@<ticks>:type:pid:payload`
   comes only that many ticks after the start (2 a script step); `SIM_ROFS="SD:/Notes"` makes a folder
-  read-only (a full card: root ignores `chmod`); `SIM_CURSOR=follow` gives `kapi_cursor_pos` in screen
+  read-only (a full card: root ignores `chmod`); `SIM_CURSOR=follow` gives `uk_win_cursor_pos` in screen
   coordinates, so a widget that drags itself moves; the step `copy SRC DST` puts a host file on the card
   mid-run (a file changed by another program); `SIM_STAT=1` answers `kapi_path_stat` / `kapi_clock_info`;
   **`SIM_CLOCK=YYYYMMDDHHMMSS`** (AutoDev round 6, the Clock) makes the date a real one that **advances with the
@@ -3781,7 +3842,7 @@ barwidth = 40
   colours, display scale), up to 8 page buffers (draw `apage`, show `vpage`), a 256-entry
   palette (the VGA default; `PALETTE` recolours the pixels already drawn), a text-cell
   buffer (`SCREEN ()`), `VIEW PRINT` rows, a clip rectangle (`VIEW`), scanline `PAINT`,
-  `readRect` / `writeRect` for `GET` / `PUT`; `FULLSCREEN` uses `kapi_fullscreen_begin` and
+  `readRect` / `writeRect` for `GET` / `PUT`; `FULLSCREEN` uses `uk_win_fullscreen_begin` and
   scales the visible page (aspect kept; whole-number zoom when it covers >= 85 %).
   `PLAY "MB"` notes go to a 32-note queue that `bgTick ()` plays from `pump ()`;
   `KEYDOWN` maps its key to a `KEY_*` code for `kapi_key_held`. `PAD` / `STICK` / `STRIG` call
@@ -3977,7 +4038,7 @@ barwidth = 40
   `Apps/wifimenu` (a borderless window: it takes the keyboard for the password, unlike the
   TOPMOST menu bar): `kapi_wlan_scan`, the known networks parsed from / written back to
   `SD:/etc/wpa_supplicant.conf` (several `network={}` blocks, `priority`), then
-  `kapi_wlan_reconnect`; it closes when another window has the keys (`kapi_win_list`,
+  `kapi_wlan_reconnect`; it closes when another window has the keys (`uk_win_list`,
   `KAPI_WIN_KEYS`).
 - **NintendoEMU** (`pc/NintendoEMU`): `nemucore.dll` (`core/nemucore.cpp`, mingw-w64) builds the
   emulator cores **unchanged** (`user/Emulators/gb`, `gba`, `nes`, `snes`, `n64`, `gc`) behind a C API —
@@ -4337,7 +4398,7 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   in a colour-keyed layer over the children), each Onyx window a child window (native frame or
   the Onyx one), the desktop + bubbles as the MDI area's background -- composited by the PC:
   nothing is composited for it on the Pi. `rdpd` lists the windows (ABI v56
-  `kapi_win_list`), reads only those whose `gen` changed (`kapi_win_read`), compares their
+  `uk_win_list`), reads only those whose `gen` changed (`uk_win_read`), compares their
   64 × 64 tiles with what the client has and sends the changed runs, LZ4-compressed (its own
   compressor, the standard block format), 32 or 16 bits a pixel; a frame when `chromeGen`
   changes; the desktop (`KAPI_WIN_DESKTOP`, the wallpaper + the backmost windows) only when
@@ -4348,7 +4409,7 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   The protocol is described at the top of `user/BinUtils/rdpd.c`. **Loss tolerance** (Wi-Fi): a
   round is sent only when something changed, and only while the server has **credit** (each
   READY gives one); a client setting hello option bit 2 gets `CAPS` (9: protocol 2 since kapi v96 -- the client may
-  send `MOVE` (client 9: u32 id, s16 x y), a window dragged on the PC put at the same place on the Pi, `kapi_win_move`)
+  send `MOVE` (client 9: u32 id, s16 x y), a window dragged on the PC put at the same place on the Pi, `uk_win_place`)
   and 3 rounds in flight
   (an older client: lock-step, its READYs alone); a round unanswered for 250 ms makes rdpd send
   small `PING`s (10) -- the PC's dup ACKs make Circle resend its lost tail segment at once
@@ -4372,10 +4433,10 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 
 ## 13. Known pitfalls
 
-- **`kapi_resize_window` keeps the buffer's size and row pitch.** The window buffer is made
-  once, at the size given to `kapi_create_window`; resizing changes the size shown (clamped
+- **`uk_win_resize` keeps the buffer's size and row pitch.** The window buffer is made
+  once, at the size given to `uk_win_create`; resizing changes the size shown (clamped
   to that buffer), not the buffer, and the compositor reads its rows with the **creation
-  width** as pitch. Draw with that pitch: `canvas.adopt (kapi_resize_window (w, h), w, h,
+  width** as pitch. Draw with that pitch: `canvas.adopt (uk_win_resize (w, h), w, h,
   creationWidth)`. To offer several sizes, create the window at the largest one (the
   emulators: their 4x zoom). Adopting with pitch = the new width gave a doubled, interlaced
   picture in `gbemu` at zoom 2x. The window's **frame follows the new size**: call

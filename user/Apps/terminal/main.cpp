@@ -454,8 +454,8 @@ int main (void)
 
 	new_tab ();
 
-	kapi_set_pointer_handler (sa_ptr);
-	kapi_set_key_handler (sa_key);
+	uk_win_on_pointer (sa_ptr);
+	uk_win_on_key (sa_key);
 	unsigned frame = 0;
 	while (!should_exit () && !g_quit)
 	{
@@ -487,7 +487,7 @@ int main (void)
 				update_busy (t);
 				refresh_tab (t);
 			}
-		if (!root.valid) { root.draw (); kapi_present (); }
+		if (!root.valid) { root.draw (); uk_win_present (); }
 		msleep (16);
 	}
 	while (g_strip->count () > 0)			// the window closed: every tab's shell and what it runs

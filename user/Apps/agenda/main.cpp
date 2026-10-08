@@ -10,7 +10,7 @@
 // it is the "agenda" IPC service, so the calendar knows it need not send them itself.
 // It is part of the wallpaper (the modernised CDE): no card, no shadow -- its text and an etched
 // line straight on the desktop (a see-through window, WIN_FLAG_ALPHA), the ink chosen from the
-// wallpaper's brightness under it (kapi_wallpaper_buffer): engraved (dark, a light line below) on
+// wallpaper's brightness under it (uk_win_wallpaper_buffer): engraved (dark, a light line below) on
 // a light wallpaper, white with a soft shadow on a dark one.
 //
 #include "appkit/appkit.h"
@@ -147,7 +147,7 @@ static void reminders (void)
 static bool read_back (int wx, int wy)
 {
 	int ww = 0, wh = 0;
-	unsigned *wall = kapi_wallpaper_buffer (&ww, &wh);
+	unsigned *wall = uk_win_wallpaper_buffer (&ww, &wh);
 	unsigned r = 0, g = 0, b = 0, n = 0;
 	for (int y = wy; wall && y < wy + H && y < wh; y += 4)
 		for (int x = wx; x < wx + W && x < ww; x += 4)
@@ -270,7 +270,7 @@ public:
 	{
 		if (mx < 0) { if (hot >= 0) { hot = -1; invalidate (true); } return false; }
 		int sx = 0, sy = 0;
-		kapi_cursor_pos (&sx, &sy);			// screen coords (the window moves)
+		uk_win_cursor_pos (&sx, &sy);			// screen coords (the window moves)
 		if (moving)
 		{
 			if (!bl)
@@ -287,7 +287,7 @@ public:
 			else
 			{
 				winX += sx - grabX; winY += sy - grabY; grabX = sx; grabY = sy;
-				kapi_move_window (winX, winY);
+				uk_win_move (winX, winY);
 			}
 			return true;
 		}

@@ -24,8 +24,8 @@ AppKit is what makes a program run: its one link to the system. Every call a pro
 
 ## Using it
 
-AppKit is the program's link to the system: files, processes, time, windows, sockets… (the `kapi_*`
-calls, listed in the Developer Guide), plus the small services every program needs: strings without a
+AppKit is the program's link to the system: files, processes, time, sockets, the events' pump… (the `kapi_*`
+calls, listed in the Developer Guide; the windows are UIKit's since 2026-10-08: `uk_win_*`, §4), plus the small services every program needs: strings without a
 C library, the console, a reader of `.ini` files, the starting of other programs.
 
 **A console tool**: read a file, print to the console.
@@ -102,14 +102,7 @@ Everything the headers declare, in their order — the details are in each heade
 |---|---|---|
 | `kapi_abi_version` | The kernel's kapi version (KAPI_ABI_VERSION as the running kernel says it) | `appkit.h` |
 | `kapi_table_slot` | The address of a slot of the kernel's table (its index in 8-byte words) | `appkit.h` |
-| `kapi_create_window` | This process's window (one a process), a client area of w x h pixels titled t, placed by the system -> its canvas (0x00RRGGBB pixels), 0 on failure (bigger than | `appkit.h` |
-| `kapi_create_window_ex` | This process's window at x, y (the frame's top left, negative = placed by the system) with the flags f (WIN_FLAG_*) -> its canvas, 0 on failure. | `appkit.h` |
-| `kapi_resize_window` | This window's size set to w x h, within the canvas it was created with (which stays) -> the canvas, 0 no window. | `appkit.h` |
-| `kapi_move_window` | this window's frame moved to x, y (screen coordinates) | `appkit.h` |
 | `kapi_launch` | start the app n (SD:apps/<n>.app/main) as a new process -> 1, 0 failure | `appkit.h` |
-| `kapi_toggle_app` | Toggle the app n -> 0 it was running and is asked to close (its window's exit flag), 1 it was started, -1 on error. | `appkit.h` |
-| `kapi_raise_app` | The running app n's window (one on the current workspace) to the front -> 1, 0 not running / no window. | `appkit.h` |
-| `kapi_list_windows` | The names of the open apps (a window on the current workspace, not a WIN_FLAG_SYSTEM one), one a line, into b (s bytes) -> how many. | `appkit.h` |
 | `kapi_list_tasks` | Every task, one line each "<state><kind> <name>" (state R / S / B / N, kind a = an app or k = a kernel task), into b (s bytes) -> how many. | `appkit.h` |
 | `kapi_kill` | kill the app of that name -> 1, 0 (not running, a kernel task, the caller) | `appkit.h` |
 | `kapi_list_procs` | ps / kill by PID. | `appkit.h` |
@@ -119,29 +112,18 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_get_keymap` | Keyboard layout | `appkit.h` |
 | `kapi_exec` | Run an ELF at an absolute path with an argv string (fire-and-forget). | `appkit.h` |
 | `kapi_screen_size` | Framebuffer size in pixels (for edge-pinned borderless windows). | `appkit.h` |
-| `kapi_wallpaper_generate` | Framebuffer size in pixels (for edge-pinned borderless windows). | `appkit.h` |
-| `kapi_wallpaper_buffer` | App-drawn wallpaper | `appkit.h` |
-| `kapi_wallpaper_commit` | App-drawn wallpaper | `appkit.h` |
-| `kapi_present` | App-drawn wallpaper | `appkit.h` |
-| `kapi_get_ticks` | App-drawn wallpaper | `appkit.h` |
-| `kapi_msleep` | App-drawn wallpaper | `appkit.h` |
-| `kapi_yield` | App-drawn wallpaper | `appkit.h` |
-| `kapi_exit` | App-drawn wallpaper | `appkit.h` |
-| `kapi_pump_events` | Run what is pending -- the kapi_post calls, then this window's events through their handlers -- and return (no wait). | `appkit.h` |
+| `kapi_get_ticks` | Framebuffer size in pixels (for edge-pinned borderless windows). | `appkit.h` |
+| `kapi_msleep` | Framebuffer size in pixels (for edge-pinned borderless windows). | `appkit.h` |
+| `kapi_yield` | Framebuffer size in pixels (for edge-pinned borderless windows). | `appkit.h` |
+| `kapi_exit` | Framebuffer size in pixels (for edge-pinned borderless windows). | `appkit.h` |
+| `kapi_pump_events` | Run what is pending -- the kapi_post calls, then this program's events through their handlers -- and return (no wait). | `appkit.h` |
 | `kapi_wait_for_exit` | pump the events (sleeping between them) until this window is asked to close | `appkit.h` |
-| `kapi_should_exit` | 1 once this window was asked to close (its close box, kapi_toggle_app), else 0 | `appkit.h` |
-| `kapi_draw_text` | One line of text s in the kernel's font at x, y of this window's canvas, colour c (0x00RRGGBB), the background kept. | `appkit.h` |
+| `kapi_should_exit` | 1 once this window was asked to close (its close box, uk_win_app_toggle), else 0 | `appkit.h` |
 | `kapi_draw_text_buf` | Draw kernel-font text into an arbitrary app-mapped 0x00RRGGBB buffer (e.g. | `appkit.h` |
-| `kapi_get_chrome` | Window surfaces for a user-side chrome drawer (ABI v28). | `appkit.h` |
-| `kapi_font_width` | Window surfaces for a user-side chrome drawer (ABI v28). | `appkit.h` |
-| `kapi_font_height` | Window surfaces for a user-side chrome drawer (ABI v28). | `appkit.h` |
-| `kapi_set_key_handler` | Window surfaces for a user-side chrome drawer (ABI v28). | `appkit.h` |
-| `kapi_set_click_handler` | Window surfaces for a user-side chrome drawer (ABI v28). | `appkit.h` |
-| `kapi_set_pointer_handler` | Window surfaces for a user-side chrome drawer (ABI v28). | `appkit.h` |
+| `kapi_font_width` | Draw kernel-font text into an arbitrary app-mapped 0x00RRGGBB buffer (e.g. | `appkit.h` |
+| `kapi_font_height` | Draw kernel-font text into an arbitrary app-mapped 0x00RRGGBB buffer (e.g. | `appkit.h` |
 | `kapi_meminfo` | Memory snapshot (KB) | `appkit.h` |
 | `kapi_ram_detail` | ABI v33 | `appkit.h` |
-| `kapi_set_wheel_speed` | ABI v34 | `appkit.h` |
-| `kapi_get_wheel_speed` | ABI v34 | `appkit.h` |
 | `kapi_sbrk` | Per-process heap | `appkit.h` |
 | `kapi_list_apps` | The names of the installed apps (the folders SD:apps/<name>.app), one a line, into b (s bytes) -> how many. | `appkit.h` |
 | `kapi_get_datetime` | The local date and time (any pointer may be 0) -> 1 a real date, 0 the clock is not set yet (the time since the boot). | `appkit.h` |
@@ -160,7 +142,6 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_mkdir` | mkdir / remove / rename | `appkit.h` |
 | `kapi_remove` | mkdir / remove / rename | `appkit.h` |
 | `kapi_rename` | mkdir / remove / rename | `appkit.h` |
-| `kapi_cursor_pos` | mkdir / remove / rename | `appkit.h` |
 | `kapi_pipe` | a new pipe (a FIFO in memory) -> its stream handle, 0 failure | `appkit.h` |
 | `kapi_file_in` | a file as a stream to read -> its stream handle, 0 failure | `appkit.h` |
 | `kapi_file_out` | A file as a stream to write, created / emptied or (append != 0) written at its end -> its stream handle, 0 failure. | `appkit.h` |
@@ -190,22 +171,16 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_screen_grab` | Remote screen (ABI v38). | `appkit.h` |
 | `kapi_inject_pointer` | Remote screen (ABI v38). | `appkit.h` |
 | `kapi_inject_key` | Remote screen (ABI v38). | `appkit.h` |
-| `kapi_set_menu` | System menu bar (ABI v39). | `appkit.h` |
-| `kapi_get_menu` | System menu bar (ABI v39). | `appkit.h` |
-| `kapi_menu_command` | System menu bar (ABI v39). | `appkit.h` |
 | `kapi_ipc_register` | Named IPC services (ABI v40) | `appkit.h` |
 | `kapi_ipc_lookup` | Named IPC services (ABI v40) | `appkit.h` |
 | `kapi_clipboard_set` | The clipboard replaced by the n bytes of d (64 KB at most, n 0 empties it) of the type CLIP_* -> the bytes kept (0 too for a bad pointer, the clipboard then as  | `appkit.h` |
 | `kapi_clipboard_get` | Up to cap bytes of the clipboard into b, its type and its serial (which changes at every set) -> the content's whole length, 0 empty. | `appkit.h` |
-| `kapi_set_window_alpha` | Window opacity 0..255 (ABI v40 | `appkit.h` |
 | `kapi_shutdown` | end the session: the card unmounted, then halt (SHUTDOWN_HALT) or restart; does not return | `appkit.h` |
 | `kapi_fullscreen_begin` | Full-screen apps (ABI v41) | `appkit.h` |
 | `kapi_present_fb` | Full-screen apps (ABI v41) | `appkit.h` |
 | `kapi_fullscreen_end` | Full-screen apps (ABI v41) | `appkit.h` |
-| `kapi_drag_begin` | Drag & drop (ABI v42). | `appkit.h` |
-| `kapi_drag_data` | Drag & drop (ABI v42). | `appkit.h` |
-| `kapi_get_modifiers` | Drag & drop (ABI v42). | `appkit.h` |
-| `kapi_inject_modifiers` | Drag & drop (ABI v42). | `appkit.h` |
+| `kapi_get_modifiers` | The keyboard's modifiers (ABI v42 | `appkit.h` |
+| `kapi_inject_modifiers` | The keyboard's modifiers (ABI v42 | `appkit.h` |
 | `kapi_net_ping` | Network tools (ABI v43). | `appkit.h` |
 | `kapi_net_resolve` | Network tools (ABI v43). | `appkit.h` |
 | `kapi_net_info` | Network tools (ABI v43). | `appkit.h` |
@@ -234,10 +209,6 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_gpu_texture` | The GPU's full pipeline (v53) | `appkit.h` |
 | `kapi_gpu_render` | The GPU's full pipeline (v53) | `appkit.h` |
 | `kapi_fullscreen_direct` | Full screen straight into the displayed framebuffer (v55 | `appkit.h` |
-| `kapi_win_list` | The windows as objects (v56, the remote desktop rdpd) | `appkit.h` |
-| `kapi_win_read` | The windows as objects (v56, the remote desktop rdpd) | `appkit.h` |
-| `kapi_win_raise` | The windows as objects (v56, the remote desktop rdpd) | `appkit.h` |
-| `kapi_win_close` | The windows as objects (v56, the remote desktop rdpd) | `appkit.h` |
 | `kapi_seek` | The read position of an opened file (v57) | `appkit.h` |
 | `kapi_code_alloc` | Writable + executable memory for generated code, a JIT (v58) | `appkit.h` |
 | `kapi_fsize64` | A file's whole size (v59 | `appkit.h` |
@@ -246,15 +217,6 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_vol_eject` | vol_eject | `appkit.h` |
 | `kapi_vol_mount` | vol_mount | `appkit.h` |
 | `kapi_vol_format` | vol_format | `appkit.h` |
-| `kapi_win_new` | (v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md). | `appkit.h` |
-| `kapi_win_select` | (v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md). | `appkit.h` |
-| `kapi_win_destroy` | (v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md). | `appkit.h` |
-| `kapi_tray_set` | (v95) The status area of the menu bar | `appkit.h` |
-| `kapi_tray_clear` | (v95) The status area of the menu bar | `appkit.h` |
-| `kapi_tray_list` | (v95) The status area of the menu bar | `appkit.h` |
-| `kapi_tray_icon` | (v95) The status area of the menu bar | `appkit.h` |
-| `kapi_tray_activate` | (v95) The status area of the menu bar | `appkit.h` |
-| `kapi_win_move` | (v96) A window moved | `appkit.h` |
 | `kapi_pop_event` | (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, ker | `appkit.h` |
 | `kapi_event_mods` | (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, ker | `appkit.h` |
 | `kapi_pop_post` | (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, ker | `appkit.h` |
@@ -320,8 +282,6 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_kernel_info` | (v79) What the running kernel is | `appkit.h` |
 | `kapi_cpu_stats` | (v80) The cores | `appkit.h` |
 | `kapi_net_stats` | (v80) The bytes pid's sockets received and sent, its open sockets (pid 0 | `appkit.h` |
-| `kapi_set_cursor` | (v81) The pointer's shape over this window (KAPI_CURSOR_*) -> the shape it had | `appkit.h` |
-| `kapi_win_resizable` | this window resizable by its frame (on 0: no longer), min_w x min_h its smallest client area -> 0, -1 | `appkit.h` |
 | `kapi_lib_open` | (v83) A shared library (docs/SHARED-LIBS-PLAN.md) | `appkit.h` |
 | `kapi_lib_open_as` | (v97) The graphics server's own library under another name (docs/POCKETUI-TECH-STUDY.md section 3) | `appkit.h` |
 | `kapi_sound_output` | (v84) The sound's output | `appkit.h` |
@@ -335,11 +295,6 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_gpu_render3` | (v62) gpu_render3 | `appkit.h` |
 | `kapi_gpu_vbuf` | (v63) gpu_vbuf | `appkit.h` |
 | `kapi_gpu_texture_rect` | (v70) gpu_texture_rect | `appkit.h` |
-| `kapi_win_minimise` | (v64) the windows of the modernised CDE desktop | `appkit.h` |
-| `kapi_win_geometry` | (v64) the windows of the modernised CDE desktop | `appkit.h` |
-| `kapi_resize_window2` | (v64) the windows of the modernised CDE desktop | `appkit.h` |
-| `kapi_desk` | show the desk `set` (-1: keep) and set their number (0: keep) -> KAPI_DESK_CUR / _COUNT / _GEN of the result | `appkit.h` |
-| `kapi_win_desk` | the window id (0: mine) moved to the desk n (-1: every desk; -2: only ask) -> its desk, -3 no such window | `appkit.h` |
 | `kapi_screen_set` | (v66) screen_set | `appkit.h` |
 | `kapi_thread_create` | (v67) Threads | `appkit.h` |
 | `kapi_thread_exit` | (v67) Threads | `appkit.h` |
@@ -384,17 +339,14 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_shell_request` | Activity-shell IPC (ABI v35) | `appkit.h` |
 | `kapi_mailbox_send` | Activity-shell IPC (ABI v35) | `appkit.h` |
 | `kapi_mailbox_recv` | Activity-shell IPC (ABI v35) | `appkit.h` |
-| `kapi_cursor_shown` | (v89) The pointer's shape shown now, whatever window it is over (KAPI_CURSOR_* | `appkit.h` |
 | `kapi_ws_ctl` | (v89) The graphics server's own door to the kernel (Elegant, SD:/bin/elegant) | `appkit.h` |
 | `kapi_memset` | Memory primitives (ABI v36) | `appkit.h` |
 | `kapi_memcpy` | Memory primitives (ABI v36) | `appkit.h` |
 | `kapi_memmove` | Memory primitives (ABI v36) | `appkit.h` |
-| `create_window` | Friendly aliases used by the demos. | `appkit.h` |
-| `present` | Friendly aliases used by the demos. | `appkit.h` |
-| `get_ticks` | Friendly aliases used by the demos. | `appkit.h` |
-| `msleep` | Friendly aliases used by the demos. | `appkit.h` |
-| `pump_events` | Friendly aliases used by the demos. | `appkit.h` |
-| `should_exit` | Friendly aliases used by the demos. | `appkit.h` |
+| `get_ticks` | Friendly aliases used by the demos (create_window, present | `appkit.h` |
+| `msleep` | Friendly aliases used by the demos (create_window, present | `appkit.h` |
+| `pump_events` | Friendly aliases used by the demos (create_window, present | `appkit.h` |
+| `should_exit` | Friendly aliases used by the demos (create_window, present | `appkit.h` |
 | `ax_strcat` | Strings. | `appkit.h` |
 | `ax_app_path` | Strings. | `appkit.h` |
 | `ax_streq` | Strings. | `appkit.h` |
@@ -492,7 +444,7 @@ Event kinds (must match kern/gui/window.h).
 #define GUI_EVENT_CANVAS_MOTION	7	// drag (button held) over the client area; same value
 ```
 
-buttons: bit0 left, bit1 right Full pointer stream (ABI v22, opt-in via kapi_set_pointer_handler) for app-side widget toolkits (uikit.h). value packs (wheel<<48)|(changed<<40)|(buttons<<32)|(x<<16)|y, all client-relative; decode with the GUI_PTR_* macros below.
+buttons: bit0 left, bit1 right Full pointer stream (ABI v22, opt-in via uk_win_on_pointer) for app-side widget toolkits (uikit.h). value packs (wheel<<48)|(changed<<40)|(buttons<<32)|(x<<16)|y, all client-relative; decode with the GUI_PTR_* macros below.
 
 ```cpp
 #define GUI_EVENT_PTR_MOVE	8	// cursor moved
@@ -502,13 +454,13 @@ buttons: bit0 left, bit1 right Full pointer stream (ABI v22, opt-in via kapi_set
 #define GUI_EVENT_PTR_LEAVE	12	// cursor left the client area
 #define GUI_EVENT_PTR_WHEEL	13	// scroll wheel turned (GUI_PTR_WHEEL = signed notch delta)
 #define GUI_EVENT_MENU		14	// menu-bar command chosen (value = item id, ABI v39)
-#define MENU_QUIT		(-1)	// kapi_menu_command id: close the active app
+#define MENU_QUIT		(-1)	// uk_win_menu_command id: close the active app
 ```
 
-Drag & drop (ABI v42) -- to the pointer handler (see kapi_drag_begin):
+Drag & drop (ABI v42) -- to the pointer handler (see uk_win_drag_begin):
 
 ```cpp
-#define GUI_EVENT_DROP		15	// dropped on us: GUI_PTR_X/Y + GUI_DND_FLAGS; kapi_drag_data
+#define GUI_EVENT_DROP		15	// dropped on us: GUI_PTR_X/Y + GUI_DND_FLAGS; uk_win_drag_data
 #define GUI_EVENT_DRAG_OVER	16	// a drag hovers us (GUI_DND_FLAGS & DND_F_LEAVE: it left)
 #define GUI_EVENT_DRAG_DONE	17	// to the source: GUI_DND_PID (0 = none) + GUI_DND_FLAGS
 #define GUI_EVENT_DISPLAY_RESIZE 19	// (v66) the screen's size changed: GUI_DISPLAY_W / _H (value)
@@ -560,42 +512,10 @@ Logical key codes (GUI_EVENT_KEY value). Printable keys are their ASCII value.
 
 ### windowing
 
-This process's window (one a process), a client area of w x h pixels titled t, placed by the system -> its canvas (0x00RRGGBB pixels), 0 on failure (bigger than the screen, no memory).
+The windows are UIKit's (2026-10-08): uk_win_create, uk_win_present, uk_win_menu_set, uk_win_list... in uikit/win.h -- the graphics server (Elegant; PocketUI to come) is spoken to by each server's UIKit, its port. The flags, the events and the keys above and the structures of kern/kapi_abi.h keep their place here: the events come through the kernel's pump (kapi_pump_events, kapi_pump_wait, kapi_should_exit).
 
 ```cpp
-unsigned * kapi_create_window (int w, int h, const char *t);
-```
-
-This process's window at x, y (the frame's top left, negative = placed by the system) with the flags f (WIN_FLAG_*) -> its canvas, 0 on failure.
-
-```cpp
-unsigned * kapi_create_window_ex (int x, int y, int w, int h, const char *t, unsigned f);
-```
-
-This window's size set to w x h, within the canvas it was created with (which stays) -> the canvas, 0 no window.
-
-```cpp
-unsigned * kapi_resize_window (int w, int h);
-void kapi_move_window (int x, int y);	// this window's frame moved to x, y (screen coordinates)
 int kapi_launch (const char *n);	// start the app n (SD:apps/<n>.app/main) as a new process -> 1, 0 failure
-```
-
-Toggle the app n -> 0 it was running and is asked to close (its window's exit flag), 1 it was started, -1 on error.
-
-```cpp
-int kapi_toggle_app (const char *n);
-```
-
-The running app n's window (one on the current workspace) to the front -> 1, 0 not running / no window.
-
-```cpp
-int kapi_raise_app (const char *n);
-```
-
-The names of the open apps (a window on the current workspace, not a WIN_FLAG_SYSTEM one), one a line, into b (s bytes) -> how many.
-
-```cpp
-int kapi_list_windows (char *b, unsigned s);
 ```
 
 Every task, one line each "<state><kind> <name>" (state R / S / B / N, kind a = an app or k = a kernel task), into b (s bytes) -> how many.
@@ -644,15 +564,6 @@ Framebuffer size in pixels (for edge-pinned borderless windows).
 
 ```cpp
 void kapi_screen_size (int *w, int *h);
-int kapi_wallpaper_generate (unsigned base, int pts, unsigned seed);
-```
-
-App-drawn wallpaper: get the shared screen-sized buffer, draw into it, then commit.
-
-```cpp
-unsigned * kapi_wallpaper_buffer (int *w, int *h);
-void kapi_wallpaper_commit (void);
-void kapi_present (void);
 unsigned kapi_get_ticks (void);
 void kapi_msleep (unsigned ms);
 void kapi_yield (void);
@@ -663,37 +574,22 @@ void kapi_exit (int s);
 
 ### events
 
-Run what is pending -- the kapi_post calls, then this window's events through their handlers -- and return (no wait).
+Run what is pending -- the kapi_post calls, then this program's events through their handlers -- and return (no wait).
 
 ```cpp
 void kapi_pump_events (void);
 void kapi_wait_for_exit (void);	// pump the events (sleeping between them) until this window is asked to close
-int kapi_should_exit (void);	// 1 once this window was asked to close (its close box, kapi_toggle_app), else 0
+int kapi_should_exit (void);	// 1 once this window was asked to close (its close box, uk_win_app_toggle), else 0
 ```
 
-### app-drawn text + keyboard
+### kernel-font text
 
-One line of text s in the kernel's font at x, y of this window's canvas, colour c (0x00RRGGBB), the background kept.
-
-```cpp
-void kapi_draw_text (int x, int y, const char *s, unsigned c);
-```
-
-Draw kernel-font text into an arbitrary app-mapped 0x00RRGGBB buffer (e.g. a window- chrome copy from kapi_get_chrome). Transparent background; dst must be a user VA.
+Draw kernel-font text into an arbitrary app-mapped 0x00RRGGBB buffer (e.g. a window- chrome copy from uk_win_chrome). Transparent background; dst must be a user VA.
 
 ```cpp
 void kapi_draw_text_buf (unsigned *dst, int dw, int dh, int x, int y, const char *s, unsigned c);
-```
-
-Window surfaces for a user-side chrome drawer (ABI v28). Returns 1 + fills *out (content canvas + active/inactive chrome copies + insets + title), or 0 if no window.
-
-```cpp
-int kapi_get_chrome (struct kapi_chrome *out);
 int kapi_font_width (void);
 int kapi_font_height (void);
-void kapi_set_key_handler (gui_handler fn);
-void kapi_set_click_handler (gui_handler fn);
-void kapi_set_pointer_handler (gui_handler fn);
 ```
 
 Memory snapshot (KB): total RAM, free, app-owned, page size. Any pointer may be 0.
@@ -706,13 +602,6 @@ ABI v33: firmware-detected board RAM + app page-pool (HIGH zone) total/free, the
 
 ```cpp
 int kapi_ram_detail (unsigned long *detected_kb, unsigned long *apppool_kb, unsigned long *apppool_free_kb, unsigned long *above4g_kb, unsigned *nsegments);
-```
-
-ABI v34: scroll-wheel speed = lines scrolled per notch, applied system-wide (clamped 1..16). The theme editor sets + persists it (SD:/etc/theme.txt wheelspeed=N).
-
-```cpp
-void kapi_set_wheel_speed (int lines_per_notch);
-int kapi_get_wheel_speed (void);
 ```
 
 Per-process heap: move the break by `inc` bytes (Unix sbrk); returns the previous break or (void*)-1. The user allocator (umm.h) is built on this; apps rarely call it.
@@ -780,7 +669,6 @@ mkdir / remove / rename: 0 = success, -1 = failure (FatFs result).
 int kapi_mkdir (const char *p);
 int kapi_remove (const char *p);
 int kapi_rename (const char *from, const char *to);
-void kapi_cursor_pos (int *x, int *y);
 ```
 
 ### stdio / streams / processes
@@ -882,14 +770,6 @@ void kapi_inject_pointer (int x, int y, unsigned buttons, int wheel);
 void kapi_inject_key (const char *keys);
 ```
 
-System menu bar (ABI v39). set_menu: declare this app's menus (spec lines "M<title>", "I<id>\t<label>\t<shortcut>", "-") + the GUI_EVENT_MENU handler -- apps normally use uikit::Menu. get_menu / menu_command: for the menu-bar app (active window's spec+title -> change serial, 0 = none; send item id, MENU_QUIT closes the active app).
-
-```cpp
-int kapi_set_menu (const char *spec, gui_handler h);
-unsigned kapi_get_menu (char *buf, unsigned cap, char *title, unsigned tcap);
-int kapi_menu_command (int id);
-```
-
 Named IPC services (ABI v40): ipc_register -> become service `name` (1 / 0 taken); ipc_lookup -> its pid or 0. Messages go through kapi_mailbox_send / _recv (<= 512 B).
 
 ```cpp
@@ -917,16 +797,15 @@ Up to cap bytes of the clipboard into b, its type and its serial (which changes 
 int kapi_clipboard_get (int *type, void *b, unsigned cap, unsigned *serial);
 ```
 
-Window opacity 0..255 (ABI v40; fades) and end of session (0 = halt, 1 = restart).
+End of session (0 = halt, 1 = restart).
 
 ```cpp
-void kapi_set_window_alpha (int a);
 #define SHUTDOWN_HALT		0
 #define SHUTDOWN_RESTART	1
 void kapi_shutdown (int mode);	// end the session: the card unmounted, then halt (SHUTDOWN_HALT) or restart; does not return
 ```
 
-Full-screen apps (ABI v41): fullscreen_begin -> a screen-sized 0x00RRGGBB back buffer (w/h filled); the desktop stops drawing and all input (screen coords) comes to you. Draw, present_fb to show it; fullscreen_end (or exiting) gives the desktop back.
+Full-screen apps (ABI v41): fullscreen_begin -> a screen-sized 0x00RRGGBB back buffer (w/h filled); the desktop stops drawing and all input (screen coords) comes to you. Draw, present_fb to show it; fullscreen_end (or exiting) gives the desktop back. (2026-10-08) The kernel's primitives: a program calls UIKit's uk_win_fullscreen_begin / _end (uikit/win.h), which tells its graphics server first, then calls these. kapi_fullscreen_begin no longer tells the server.
 
 ```cpp
 unsigned * kapi_fullscreen_begin (int *w, int *h);
@@ -934,11 +813,9 @@ void kapi_present_fb (void);
 void kapi_fullscreen_end (void);
 ```
 
-Drag & drop (ABI v42). drag_begin: while the left button is held (from a pointer-move handler, after a few pixels of motion), drag (type, data <= 4 KB) with `label` on the cursor -> 1 / 0. The target gets GUI_EVENT_DROP and reads the payload with drag_data (copies <= cap, returns the full length); the source gets GUI_EVENT_DRAG_DONE. get_modifiers: MOD_* held now; inject_modifiers: set them (vncd).
+The keyboard's modifiers (ABI v42; drag and drop is UIKit's: uk_win_drag_begin / _data). get_modifiers: MOD_* held now; inject_modifiers: set them (vncd).
 
 ```cpp
-int kapi_drag_begin (int type, const void *data, unsigned len, const char *label);
-int kapi_drag_data (int *type, void *buf, unsigned cap);
 unsigned kapi_get_modifiers (void);
 void kapi_inject_modifiers (unsigned mods);
 ```
@@ -1068,15 +945,6 @@ Full screen straight into the displayed framebuffer (v55; after kapi_fullscreen_
 unsigned * kapi_fullscreen_direct (int *w, int *h, int *stride);
 ```
 
-The windows as objects (v56, the remote desktop rdpd): list (bottom to top), a client rectangle's pixels, to the front, close.
-
-```cpp
-int kapi_win_list (struct kapi_win_info *out, int max);
-int kapi_win_read (unsigned id, int part, int x, int y, int w, int h, unsigned *dst, int stride);
-int kapi_win_raise (unsigned id);
-int kapi_win_close (unsigned id);
-```
-
 The read position of an opened file (v57): 0, or -1 (an older kernel, a file not seekable).
 
 ```cpp
@@ -1123,30 +991,6 @@ vol_format: the volume emptied, a new file system made (struct kapi_format: KAPI
 
 ```cpp
 int kapi_vol_format (const char *vol, const struct kapi_format *fmt);
-```
-
-(v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md). Beside its first window (the one kapi_create_window made: number 0), a program may have up to KAPI_WS_WINDOWS_MORE others. win_new: one more window (as kapi_create_window_ex: x, y negative = placed by the system, the flags WIN_FLAG_*) -> its number (1..), *canvas its pixels; -1 (none left, no memory, no graphics server). The window calls (present, resize, move, the handlers, the chrome, the cursor, the menu, the geometry...) act on the window win_select chose: win_select (n) -> the number it had (-1: no such window; n < 0: only asked). An event of a window comes with sender = its number (0: the first one). The close box of a window other than the first does not end the program: its pointer handler gets GUI_EVENT_WINCTL with value KAPI_FRAME_CLOSE -- win_destroy (n) closes it.
-
-```cpp
-int kapi_win_new (int x, int y, int w, int h, const char *t, unsigned f, unsigned **canvas);
-int kapi_win_select (int win);
-void kapi_win_destroy (int win);
-```
-
-(v95) The status area of the menu bar: the program's icon there (KAPI_TRAY_PX x KAPI_TRAY_PX pixels 0xTTRRGGBB, TT the transparency), its tip, the handler told of a click on it (GUI_EVENT_TRAY: value KAPI_TRAY_OPEN -- a double click, the program's first window already shown again --, KAPI_TRAY_MENU a right click) -> 1, 0 (no graphics server, no room); tray_clear: the icon taken away (also when the program ends). For the menu bar: tray_list -> how many icons (up to max into out, struct kapi_tray_info), tray_icon: an icon's pixels (pid's) -> 1 / 0; tray_activate: a click on pid's icon (KAPI_TRAY_*) -> 1 / 0.
-
-```cpp
-int kapi_tray_set (const unsigned *px, const char *tip, gui_handler h);
-void kapi_tray_clear (void);
-int kapi_tray_list (struct kapi_tray_info *out, int max);
-int kapi_tray_icon (unsigned pid, unsigned *px);
-int kapi_tray_activate (unsigned pid, int kind);
-```
-
-(v96) A window moved: id (kapi_win_list's; 0 the caller's), its client area's top left to x, y on the screen -> 0, -1 (no such window, a topmost or backmost one). The remote desktop's (rdpd: a window dragged on the PC).
-
-```cpp
-int kapi_win_move (unsigned id, int x, int y);
 ```
 
 (v73) The event pump's kernel half -- what kapi_pump_events does, step by step, for a pump of the app's own (a protected app's table runs its pump that way, kern/el0.h). pop_event: the window's next event -> 1 (*ev; its handler NOT called), 0 none; event_mods: what kapi_get_modifiers says while a key handler runs (ev->mods), returns the previous value to put back; pop_post: the next kapi_post call -> 1 (*p, not run), 0 none; pump_sleep: kapi_pump_wait without the pump (-> how many are pending). An older kernel: 0 / 0xFFFFFFFF / 0 / 0 (no sleep).
@@ -1265,13 +1109,7 @@ int kapi_cpu_stats (struct kapi_cpu_stats *out);
 int kapi_net_stats (int pid, struct kapi_net_stats *out);
 ```
 
-(v81) The pointer's shape over this window (KAPI_CURSOR_*) -> the shape it had; -1 on an older kernel (the arrow stays). uikit: uk_cursor, from a widget's onMouse.
-
-```cpp
-int kapi_set_cursor (int shape);
-```
-
-(v82) This window can be resized by its frame (min_w x min_h: its smallest client area) -> 0; -1 on an older kernel, or for a borderless / fixed window. At the release of a drag the pointer handler gets GUI_EVENT_WINRESIZE: GUI_WINRESIZE_X / _Y (the frame's new top left), _W / _H (the client area's new size) of its value; the app applies them. uikit: Root::setResizable.
+(v82) A window resized by its frame (uk_win_resizable): at the release of a drag the pointer handler gets GUI_EVENT_WINRESIZE: GUI_WINRESIZE_X / _Y (the frame's new top left), _W / _H (the client area's new size) of its value; the app applies them. uikit: Root::setResizable.
 
 ```cpp
 #define GUI_EVENT_WINRESIZE	20
@@ -1280,7 +1118,6 @@ int kapi_set_cursor (int shape);
 #define GUI_WINRESIZE_Y(v)	((int) (short) ((unsigned long long) (v) >> 32))
 #define GUI_WINRESIZE_W(v)	((int) (((unsigned long long) (v) >> 16) & 0xFFFF))
 #define GUI_WINRESIZE_H(v)	((int) ((unsigned long long) (v) & 0xFFFF))
-int kapi_win_resizable (int on, int min_w, int min_h);	// this window resizable by its frame (on 0: no longer), min_w x min_h its smallest client area -> 0, -1
 ```
 
 (v83) A shared library (docs/SHARED-LIBS-PLAN.md): "uikit" is SD:/lib/uikit.so, anything with a '/' or a ':' a path -> its export table (unsigned version, size; int (*init) (const TLibImports *); then its entries), mapped in this process until it ends; 0 with *err = -KAPI_E* (-KAPI_ENOTSUP: the library is older than min_version; -KAPI_ENOSYS on an older kernel). Apps do not call this: the library's bind object does, before main (user/Runtime/lib.h).
@@ -1353,22 +1190,12 @@ void * kapi_gpu_vbuf (unsigned bytes);
 int kapi_gpu_texture_rect (int handle, int x, int y, int w, int h, const unsigned *pixels, int stride);
 ```
 
-(v64) the windows of the modernised CDE desktop: minimise one (0: mine; back with win_raise / raise_app), my window's place and size and the work area (the screen less the menu bar and the dock), resize my window letting its canvas grow (*stride: its pixels a row; redraw everything, the frame too) -> 0 on an older kernel / no memory.
-
-```cpp
-int kapi_win_minimise (unsigned id);
-int kapi_win_geometry (struct kapi_win_geom *out);
-unsigned * kapi_resize_window2 (int w, int h, int *stride);
-```
-
-(v65) the workspaces (virtual desktops): kapi_desk (set, count) shows desk `set` (-1 keeps it) and sets how many there are (0 keeps it) -> the current desk | the count << 8 | a change counter << 16 (KAPI_DESK_CUR / _COUNT / _GEN); an older kernel: one desk. kapi_win_desk: window id (0: mine) to desk n (-1: every desk; -2: only asked) -> its desk, -3 none.
+(v65) the workspaces (virtual desktops): UIKit's uk_win_desk (set, count) -> the current desk | the count << 8 | a change counter << 16, read with these:
 
 ```cpp
 #define KAPI_DESK_CUR(i)	((i) & 0xFF)
 #define KAPI_DESK_COUNT(i)	(((i) >> 8) & 0xFF)
 #define KAPI_DESK_GEN(i)	(((unsigned) (i) >> 16) & 0x7FFF)
-int kapi_desk (int set, int count);	// show the desk `set` (-1: keep) and set their number (0: keep) -> KAPI_DESK_CUR / _COUNT / _GEN of the result
-int kapi_win_desk (unsigned id, int n);	// the window id (0: mine) moved to the desk n (-1: every desk; -2: only ask) -> its desk, -3 no such window
 ```
 
 (v66) screen_set: the screen's resolution now (640 x 480 .. 2560 x 1600, w even); every window kept on the screen and sent GUI_EVENT_DISPLAY_RESIZE -> 0; -1 out of bounds; -2 not now (a full-screen app...); -3 the firmware refused it (old size kept); -4 an older kernel. Not kept across a reboot (SD:/cmdline.txt width= / height= are).
@@ -1504,13 +1331,7 @@ int kapi_mailbox_send (int target_pid, int type, const void *in, unsigned len);
 int kapi_mailbox_recv (int *from_pid, int *type, void *buf, unsigned cap, int blocking);
 ```
 
-(v89) The pointer's shape shown now, whatever window it is over (KAPI_CURSOR_*: the arrow, the hand over a link, the I bar over text, the arrows of a frame's edge...) -- for a remote desktop, which shows it on the other machine (rdpd -> Onyx Remote). -1: not known (the kernel's own window manager does not say; Elegant, the graphics server, does).
-
-```cpp
-int kapi_cursor_shown (void);
-```
-
-(v89) The graphics server's own door to the kernel (Elegant, SD:/bin/elegant): the display, the raw input, its wait -- KAPI_WS_* (kern/kapi_abi.h). Not for programs: a program's windows are the calls above, whoever serves them. -> >= 0, or -KAPI_Exxx (-KAPI_ENOSYS: a kernel before v89).
+(v89) The graphics server's own door to the kernel (Elegant, SD:/bin/elegant): the display, the raw input, its wait -- KAPI_WS_* (kern/kapi_abi.h) -- and the transport of UIKit's window calls (its port: KAPI_WS_CALL a request, KAPI_WS_KICK "my pixels changed", KAPI_WS_ACTIVE "is there a server"). Not for programs: a program's windows are UIKit's uk_win_* (uikit/win.h), whoever serves them. -> >= 0, or -KAPI_Exxx (-KAPI_ENOSYS: a kernel before v89).
 
 ```cpp
 long kapi_ws_ctl (int op, long a0, long a1, long a2);
@@ -1527,11 +1348,9 @@ void *kapi_memmove (void *dst, const void *src, unsigned long n);
 #endif
 ```
 
-Friendly aliases used by the demos.
+Friendly aliases used by the demos (create_window, present: UIKit's, uikit/win.h).
 
 ```cpp
-unsigned *create_window (int w, int h, const char *t);
-void      present (void);
 unsigned  get_ticks (void);
 void      msleep (unsigned ms);
 void      pump_events (void);

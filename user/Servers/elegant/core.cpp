@@ -14,7 +14,7 @@
 #include <kern/layout.h>
 #include <circle/util.h>
 #include "core.h"
-#include "appkit/elegant.h"
+#include "uikit/port/elegant.h"
 
 CWindowManager *g_pElWM = 0;
 CWindow *g_pElWin[EL_WINDOWS_MAX];
@@ -29,7 +29,7 @@ static int s_nWin[EL_WINDOWS_MAX];		// each window's number in its program (0: i
 // window asks for a spare page to align its start; shared memory is aligned already.
 //
 // A program's canvas is followed, in the same shared memory, by a page of control and a second copy
-// of its pixels: the window as last presented, for who reads it from outside (appkit/elegant.h,
+// of its pixels: the window as last presented, for who reads it from outside (uikit/port/elegant.h,
 // EL_OP_SHOT). s_Shot: the canvases that have one (the retired ones too, until freed).
 #define SHOTS_MAX	(EL_WINDOWS_MAX * 2)
 #define SHOT_ALLOC_MAX	0x4000000ULL		// (a shared buffer's largest size: the kernel's USER_WS_SLOT)
@@ -143,7 +143,7 @@ static CWindow *Win (int id)
 	return id >= 0 && id < EL_WINDOWS_MAX ? g_pElWin[id] : 0;
 }
 
-// The pointer's shapes (kapi_set_cursor): the art of wm/cursors.inc (tools/gui/gen_cursors.py), built as
+// The pointer's shapes (uk_win_cursor): the art of wm/cursors.inc (tools/gui/gen_cursors.py), built as
 // kernel.cpp does; the arrow is the window manager's own drawn one.
 #include "wm/cursors.inc"
 
@@ -251,7 +251,7 @@ unsigned *el_core_window_frame (int id, int active, int *w, int *h)
 	if (pWin == 0 || !pWin->HasChrome ()) return 0;
 	if (w != 0) *w = pWin->OuterW ();
 	if (h != 0) *h = pWin->OuterH ();
-	pWin->Damage (); pWin->ChromeTouch ();			// (the caller is about to draw it: kapi_get_chrome)
+	pWin->Damage (); pWin->ChromeTouch ();			// (the caller is about to draw it: uk_win_chrome)
 	return (unsigned *) pWin->ChromePhys (active ? 0 : 1);	// (a user process: the address is its own)
 }
 
@@ -320,7 +320,7 @@ int el_core_window_frame_info (int id, struct el_core_frame *out)
 	CWindow *pWin = Win (id);
 	if (pWin == 0 || out == 0) return 0;
 	memset (out, 0, sizeof *out);
-	pWin->Damage (); pWin->ChromeTouch ();			// (kapi_get_chrome: the frame is about to be drawn)
+	pWin->Damage (); pWin->ChromeTouch ();			// (uk_win_chrome: the frame is about to be drawn)
 	out->content_w = pWin->ClientWidth (); out->content_h = pWin->ClientHeight ();
 	if (pWin->HasChrome ())
 	{

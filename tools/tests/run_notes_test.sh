@@ -26,7 +26,7 @@ fail () { echo "notes: FAIL $*"; exit 1; }
 $CXX -c $D/fakekapi.cpp -o "$OUT/fakekapi.o"
 
 # ---- the stand-in kernel's additions (step 0) ------------------------------------------------------------
-$CXX $SAN -o "$OUT/sim_probe" $T/sim_probe.cpp "$OUT/fakekapi.o" -lpthread
+$CXX $SAN -o "$OUT/sim_probe" $T/sim_probe.cpp user/Kits/uikit/win.cpp user/Kits/uikit/port.cpp "$OUT/fakekapi.o" -lpthread	# (the window calls: UIKit's uk_win_*)
 probe () {	# probe CASE [VAR=value ...] -- the log in $OUT/probe_CASE.log
 	c=$1; shift
 	W="$OUT/w_$c"; rm -rf "$W"; mkdir -p "$W"

@@ -214,12 +214,12 @@ static void on_key (unsigned long s, int ev, long key)
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "fractal");
+	fb = uk_win_create (W, H, "fractal");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();
 	reset_view ();
-	kapi_set_click_handler (on_click);
-	kapi_set_key_handler (on_key);
+	uk_win_on_click (on_click);
+	uk_win_on_key (on_key);
 	while (!should_exit ())
 	{
 		pump_events ();

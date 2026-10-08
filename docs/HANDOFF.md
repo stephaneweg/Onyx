@@ -4,10 +4,88 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## PocketUI phase P2: the window API in UIKit (`uk_win_*`), AppKit's window functions removed (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
+
+The decided design is `docs/POCKETUI-TECH-STUDY.md` §2.2, §4, §5, §9 (P2). **The decision of 2026-10-05 "the protocol
+is AppKit's" (below, in the Elegant section) is reversed**: the window API is UIKit's, and each graphics server's
+UIKit is the only code that speaks its server's protocol.
+
+- **UIKit**: `user/Kits/uikit/win.h` (new; C linkage, C-compatible, in `uikit/uikit.h`): `uk_win_*` -- 48 window
+  calls per the study's table (`kapi_create_window` -> `uk_win_create`, `kapi_win_move` -> `uk_win_place`,
+  `kapi_list_windows` -> `uk_win_apps`, `kapi_set_*_handler` -> `uk_win_on_*`, `kapi_get/set_wheel_speed` ->
+  `uk_win_wheel_get/_set`, `kapi_fullscreen_begin/_end` -> `uk_win_fullscreen_begin/_end`...), plus
+  `uk_win_server` (`struct uk_win_server_info`: name, mode, screen, work area, scale, size class; `UK_MODE_*`,
+  `UK_SC_*`) and seven `uk_shell_*` (register, events, keys, thumb, front, split, dim: the desktop answers
+  `-KAPI_ENOSYS`; their meaning is PocketUI's, to be written at P5). `win.cpp`: the entries (thin). **The port**:
+  `user/Kits/uikit/port/` -- `port.h` (namespace `uikit::port`, one function per `uk_win_*`; libgen
+  `--exclude '^_ZN5uikit4port'`), `port_desktop.cpp` (= `appkit_ws.inc` + the `KAPI_WS` bodies, moved verbatim:
+  the requests through AppKit's `kapi_ws_ctl`, the window state, the replay; on a PC the relay to the stand-in
+  kernel's entries, = the old `KAPI_HOST` bodies), `elegant.h` (moved from `user/Kits/appkit/`; Elegant and
+  `wstest` include `uikit/port/elegant.h`). `user/Kits/uikit/port.cpp` compiles the desktop port (`UK_PORT_POCKET`
+  is P3's) -- so every script that compiles `user/Kits/uikit/*.cpp` (shots.sh, the tests, Koton for Windows)
+  got it with no change. `uikit.abi`: + 55 entries (793 -> 848), slot 781 `_ZN5uikit13uk_win_selectEi` renamed
+  `uk_win_select` (the rename the rule allows; the old C++ wrapper is gone). **`lib/uikit.imp_c.a`** (new: the
+  stubs + `libgen --bind-c`; libgen now accepts `--bind-c` with `--data` -- a C program hands no variables, the
+  library keeps its own copy of UIKit's globals). Not built yet: `lib/pocket/uikit.so` (`--frozen`) and
+  `abi_same.py` (P3, with the pocket port).
+- **AppKit**: the 46 window functions removed from `appkit.h` and `appkit_calls.inc`; in **`appkit.abi`** their
+  lines stay in place as **retired placeholders** `kapi_retired_<slot>` (the coordinator's decision, option b:
+  bodies in `appkit_calls.inc` under `KAPI_IMPL`, not declared, returning 0 -- a null canvas, nothing listed,
+  false -- or the call's old error value: -1, `-3` for `win_desk`, `1 << 8` for `desk`); **every slot number is
+  the same as in `main`** (checked against `git show HEAD:user/Kits/appkit/appkit.abi`), no `kapi_win_*` name
+  is left. `appkit_ws.inc` deleted, the `KAPI_WS`/`KAPI_HOST` macros gone. Kept: `kapi_ws_ctl` (the
+  transport), `kapi_fullscreen_begin` / `_end` (the kernel's primitives: **begin no longer tells the server** --
+  `uk_win_fullscreen_begin` does, then calls it), `kapi_present_fb`, `kapi_fullscreen_direct`, the pump, the
+  constants and structures (`WIN_FLAG_*`, `GUI_EVENT_*`, `KEY_*`, `struct kapi_chrome`... stay in
+  `appkit.h` / `kapi_abi.h`: Elegant and the pump share them). The demos' aliases `create_window` / `present`
+  moved to `uikit/win.h`. Still only AppKit reads the kernel's table (the port reads it on a PC only, the
+  stand-in's window entries).
+- **Migrated** (≈ 75 files, renames + includes): UIKit's `root.cpp`, `menu.cpp`, `skin.cpp`, `dialog.cpp`
+  (+ comments in `root.h`, `skin.h`, `canvas.h`); A: 2048, cppdemo, demoA-C, eyes, inidemo, life, mandelbrot,
+  minesweeper, pong, same, snake, sokoban, tetris, spin, gpudemo, teapot, `BinUtils/gpcdemo.c`; B: the six
+  emulators, gamelib, Doom (`Ports/doom/doom_onyx.c`), `Libs/basic/runtime.cpp`, plasma, lock, Slides' show,
+  PDF, Photos' share, Media, Screenshot, Mail's webview; C: menubar, dock, agenda, stickies, wifimenu, voronoy;
+  D: notifyd, the Clock (`main.cpp`, `clock_proto.h`, `ring.h`, `timerview.h`), Notes; E: Telegram, Control
+  Panel, Jet (`console.cpp`, `downloads.cpp`, `main.cpp`), File Viewer, Archiver, imageview, taskman,
+  clipboard, keyconf, setup, shutdown, terminal, theme; F: `BinUtils/rdpd.c`, `el0test.c` (wstest speaks the
+  protocol by hand: only its include moved); Elegant's demo mode (`Servers/elegant/main.cpp`: its own
+  `KAPI_WS_CALL`s -- Elegant links no UIKit); the hosts: `tools/tests/rdpd/` (`mock_rdpd.h`, `build_host.sh`,
+  `run_rdpd_test.sh`), `tools/tests/notes/sim_probe.cpp` + `run_notes_test.sh`, `tools/ports/skia/skiademo.cpp`
+  + `build.sh` (UIKit's C import side; untested here: no POSIX toolchain). Links: `BinUtils/Makefile`
+  (`el0test` KITLIBS, `gpcdemo`, `rdpd` with `-DONYX_BIND_LIBC lib/uikit_bind_c.c lib/uikit_stubs.o`), plasma
+  includes `onyxpp.hpp` (UIKit's C++ bind needs its `operator new`). **Jet** (built apart,
+  `tools/webkit/build-web.sh`) needs a rebuild to get its window features back (its direct window calls -- the
+  frame's chrome, the console's and downloads' windows -- hit retired slots until then): its sources are
+  migrated. `fsrace` (a kernel test) keeps the kernel's `kapi_fullscreen_*`.
+- **Tests (PC)**: `shots.sh` before / after into scratch folders: **173 pictures, 0 pixels different** (letters,
+  paint, sheet, slides, pdf do not build on the PC at HEAD already -- PrinterKit's symbols; unchanged).
+  `desktop_sim/run.sh` (wmtest + gallery): identical. The tests' scripts: as before (archiver, circuits_sim,
+  clipboard, clock, critters(_sim), gamepad, image, kvtext, letters, notes(_sim), pinball_sim, qbstudio,
+  slides, stickies_sim, trash, gui, doom, gpiokit, Koton's plugin host: pass; clock_sim 2/220, games (AudioKit
+  link), rdpd_pipeline (its old rev's `kapi.h`): failing before too). **`run_rdpd_test.sh` passes now** (it
+  failed at HEAD: its mock lacked calls). The whole build (`kernel/ make -j8`): no error, no new warning. Re-checked after the retired slots: build clean, the 173 pictures still identical, notes / rdpd / image / clipboard / gui pass.
+- **Compatibility** (no renumbering): an old program runs on the new AppKit except its direct window calls
+  (they return 0 / their error); the new UIKit and the rebuilt programs run on the old AppKit too (UIKit needs
+  only `kapi_ws_ctl`, kapi 89: `tools/pkg/packages.ini` `[uikit] kapi = 89`). So the packages may arrive in any
+  order; publish them together anyway (UIKit before the apps that call `uk_win_*`: their `needs` on the new
+  `uikit` version). Jet: rebuild and republish.
+- **Pi checklist** (not done):
+  1. Build and stage everything (kernel, AppKit, UIKit, every app and `/bin` tool, Elegant, Doom); boot: the
+     desktop as before (wallpaper, menu bar with its tray, dock, agenda, stickies, notifyd's bubbles).
+  2. `tools/tests/shlib/pi_apps.py`: every app starts on Elegant; `pi_wstest.py`; `el0test` all PASS (its
+     win_list check now through UIKit).
+  3. Elegant killed (`kill elegant` over telnet): every window comes back (the replay is UIKit's now), the menus,
+     the tray icons, a second window of Telegram.
+  4. `rdpd` with Onyx Remote (list, pixels, raise, move, close, the pointer's shape); `vncd`.
+  5. Full screen: an emulator (gbemu), Doom, plasma, `gpcdemo`; Esc gives the desktop back.
+  6. Drag and drop (File Viewer -> Archiver), the wallpaper (voronoy, theme), workspaces (dock), Screenshot.
+- **Next**: P3 (PocketUI's skeleton, `user/Servers/common/`, the pocket port `port/port_pocket.cpp` speaking
+  `pocket.h`, `lib/pocket/uikit.so` built `--frozen`, `tools/libgen/abi_same.py`).
+
 ## PocketUI phase P1: the kernel's side -- the alias, the server per mode, the switch (2026-10-08, kapi v97): built, tested on the PC, NOT yet on the Pi, not committed
 
-The decided design is `docs/POCKETUI-TECH-STUDY.md`; P1 is its §3.8 K1-K3 (§9's table). Nothing of P2+ (the window
-API still AppKit's, no PocketUI, no `/bin/session`, no Mode applet).
+The decided design is `docs/POCKETUI-TECH-STUDY.md`; P1 is its §3.8 K1-K3 (§9's table). (P2 -- the window API in
+UIKit -- is done since: the section above. No PocketUI yet, no `/bin/session`, no Mode applet.)
 
 - **K1 `kapi_lib_open_as (path, alias, min_version, err)`** -- slot 234, AppKit's `kapi_lib_open_as` (`appkit.abi`
   line 314). The cache (`kernel/proc/image.cpp`): `TImage::Alias` / `nAliasOwner` / `bAliasOrphan`; `FindNamed`
@@ -462,6 +540,9 @@ the user says so -- and **do not publish packages from it** until then (the Pi i
   it. The pump (`el0blob.S`), `kapi_post` and `kapi_pump_wait` do not change.
 - **The protocol is AppKit's** (private to it, shared with Elegant; no program includes it): its `kapi_*`
   window names cannot move, UIKit depends on AppKit, `vncd` / `rdpd` / `plasma` / `gpcdemo` have no UIKit.
+  **(REVERSED by the user on 2026-10-08 -- `docs/POCKETUI-TECH-STUDY.md` §2.2, done in PocketUI's phase P2: the
+  window API is UIKit's, `uk_win_*`, the protocol `user/Kits/uikit/port/elegant.h`, AppKit's window functions
+  removed, every program migrated -- `rdpd`, `plasma`, `gpcdemo` included. See this file's top.)**
   What Elegant brings that is new (several windows a process, damage rectangles, a frame-done pace) is
   shown to the programs by UIKit.
 - **`rdpd` stays a process of its own** (and `vncd`), with an access to what it needs: a capture channel

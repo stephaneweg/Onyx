@@ -256,6 +256,9 @@
 //      KAPI_WS_REGISTER gives the role to the program the kernel started (its name), not only "elegant".
 //      + KAPI_WS_SWITCH (a ws_ctl operation): the server ended, "shell =" read again, the matching one
 //      started; + KAPI_WS_IN_QUIT (the server asked to end).
+//      (Later the same day, no version change: the window API moved from AppKit -- its kapi_* window
+//      functions removed -- to UIKit, uk_win_* (user/Kits/uikit/win.h; docs/POCKETUI-TECH-STUDY.md phase
+//      P2). The table's entries and the KAPI_WS_* operations are unchanged.)
 #define KAPI_ABI_VERSION	97
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
@@ -416,7 +419,7 @@ struct kapi_dirent
 };
 
 // The calling app's window surfaces, for a user-side chrome (decoration) drawer
-// (ABI v28, kapi_get_chrome). `content` is the client canvas; `active`/`inactive` are
+// (ABI v28; uk_win_chrome). `content` is the client canvas; `active`/`inactive` are
 // the two pre-composited chrome copies the app draws its title bar / borders / close
 // box into (the compositor blits the one matching focus, magenta = transparent). Both
 // chrome pointers are 0 for a borderless window. Insets give the client offset inside
@@ -1158,7 +1161,8 @@ struct kapi_gpio_spi
 #define KAPI_WS_WAIT		5	// (timeout ms, at most 1000) -> KAPI_WS_PENDING_* bits
 #define KAPI_WS_PENDING_INPUT	1	// events to take (KAPI_WS_INPUT)
 #define KAPI_WS_PENDING_CALL	2	// a program's request to take (KAPI_WS_NEXT)
-// The programs' windows (the server's own, but KAPI_WS_CALL and KAPI_WS_KICK: a program's, through AppKit):
+// The programs' windows (the server's own, but KAPI_WS_CALL and KAPI_WS_KICK: a program's, through UIKit's port
+// and AppKit's kapi_ws_ctl):
 #define KAPI_WS_ATTACH		6	// (pid) -> 0: the process's windows are the server's -- the kernel
 					// keeps its event queue (pop_event, should_exit, pump_wait as before)
 #define KAPI_WS_POST		7	// (pid, const struct kapi_event *) -> 1 queued for its pump, 0 full
@@ -1190,8 +1194,8 @@ struct kapi_gpio_spi
 #define KAPI_WS_SLOT_CANVAS	0	// a buffer's place in the program: its window's client area,
 #define KAPI_WS_SLOT_FRAME	1	// its frame's active copy,
 #define KAPI_WS_SLOT_FRAME_OFF	2	// its frame's inactive copy
-#define KAPI_WS_SLOT_WALLPAPER	3	// the program's copy of the wallpaper (kapi_wallpaper_buffer)
-#define KAPI_WS_SLOT_XFER	4	// pixels the server hands the program (kapi_win_read)
+#define KAPI_WS_SLOT_WALLPAPER	3	// the program's copy of the wallpaper (uk_win_wallpaper_buffer)
+#define KAPI_WS_SLOT_XFER	4	// pixels the server hands the program (uk_win_read)
 #define KAPI_WS_SLOT_MORE	5	// (v94) a program's other windows: window w (1 .. KAPI_WS_WINDOWS_MORE),
 					// part p (0 canvas, 1 / 2 its frame's copies) -> KAPI_WS_SLOT_WIN (w, p)
 #define KAPI_WS_WINDOWS_MORE	16
@@ -2139,10 +2143,11 @@ struct TKApiTable
 
 #ifndef __aarch64__
 	// --- NOT ON ONYX: the windows, for a stand-in kernel that has a window manager (the PC's simulator,
-	// the hosts of the tests, Koton for Windows) -- the builds that take AppKit's calls inline against
-	// such a table (appkit_calls.inc's KAPI_HOST). On Onyx the windows are Elegant's, the graphics
-	// server (a user process: kern/wsrv.h, user/Kits/appkit/elegant.h), and the kernel's table ends
-	// above: these entries were removed from it on 2026-10-05 (kapi v90).
+	// the hosts of the tests, Koton for Windows) -- UIKit's window API (uk_win_*) relays to them there
+	// (user/Kits/uikit/port/port_desktop.cpp; AppKit's KAPI_HOST bodies until 2026-10-08). On Onyx the
+	// windows are Elegant's, the graphics server (a user process: kern/wsrv.h; its protocol
+	// user/Kits/uikit/port/elegant.h), and the kernel's table ends above: these entries were removed
+	// from it on 2026-10-05 (kapi v90).
 
 	// --- windowing ---
 	unsigned *(*create_window) (int w, int h, const char *title);
@@ -2276,12 +2281,12 @@ struct TKApiTable
 	// frame's top left on the screen, 16 bits signed each), and the app resizes and moves itself.
 	int (*win_resizable) (int on, int min_w, int min_h);
 
-	// --- v94: a program's other windows (appkit.h kapi_win_new / _select / _destroy) ---
+	// --- v94: a program's other windows (uikit/win.h uk_win_new / _select / _destroy) ---
 	int (*win_new) (int x, int y, int w, int h, const char *title, unsigned flags, unsigned **canvas);
 	int (*win_select) (int win);
 	void (*win_destroy) (int win);
 
-	// --- v95: the status area's icons (appkit.h kapi_tray_*) ---
+	// --- v95: the status area's icons (uikit/win.h uk_win_tray_*) ---
 	int (*tray_set) (const unsigned *px, const char *tip, gui_handler h);
 	void (*tray_clear) (void);
 	int (*tray_list) (struct kapi_tray_info *out, int max);

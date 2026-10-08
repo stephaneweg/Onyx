@@ -10,7 +10,8 @@
 #include "uikit/button.h"
 #include "uikit/slider.h"
 #include "uikit/lang.h"
-#include "appkit/appkit.h"		// MB_*, KEY_*, kapi_present, kapi_opendir/readdir
+#include "appkit/appkit.h"		// MB_*, KEY_*, kapi_opendir/readdir
+#include "uikit/win.h"		// uk_win_present
 // operator new[]/delete[] resolve at link from the app's onyxpp.hpp (see canvas.cpp).
 
 namespace uikit {

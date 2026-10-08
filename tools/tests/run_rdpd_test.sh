@@ -7,6 +7,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 b=$(mktemp -d)
 cp "$here/mock_kapi.h" "$here/mock_net_kapi.h" "$here/rdpd/mock_rdpd.h" "$here/../../user/BinUtils/remotekeys.h" "$b/"
 { cat "$here/mock_net_kapi.h"; echo '#include "mock_rdpd.h"'; } > "$b/kapi.h" && mkdir -p "$b/appkit" && echo '#include "../kapi.h"' > "$b/appkit/appkit.h"
+mkdir -p "$b/uikit" && echo '/* (the window API, uk_win_*: mock_rdpd.h) */' > "$b/uikit/win.h"
 sed -e 's|^int main (void)|static int rdpd_main (void)|' "$here/../../user/BinUtils/rdpd.c" > "$b/rdpd.c"
 cat > "$b/main.c" <<'X'
 #include "rdpd.c"

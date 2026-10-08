@@ -3,7 +3,7 @@
 // kapi_ipc_lookup, kapi_mailbox_send / kapi_mailbox_recv, 512 bytes a message at most).
 //
 //   The Clock registers "clock"; a second Clock started sends it CLOCK_MSG_OPEN with its arguments, raises it
-//   (kapi_raise_app ("clock")) and quits -- one Clock at a time. clockd, ringing an alarm, sends the running Clock
+//   (uk_win_app_raise ("clock")) and quits -- one Clock at a time. clockd, ringing an alarm, sends the running Clock
 //   CLOCK_MSG_OPEN "--ring <id>" (or "--ring timer"), else starts "clock --ring <id>"; at its start, the once alarms
 //   missed while the Pi was off: "--missed <id> <YYYYMMDDHHMM> [...]" the same way (the Clock notifies them, no window).
 //   clockd registers "clockd" (a second one quits); the Clock sends it CLOCKD_MSG_RELOAD after it has written

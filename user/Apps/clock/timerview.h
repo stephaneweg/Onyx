@@ -267,7 +267,7 @@ static void times_up (long set_s, long end_tick)
 	sound_play ("chimes", true);
 	timer_ui ();
 	g_tu->show (g_root, g_tu->stop);
-	kapi_raise_app (CLOCK_SERVICE);
+	uk_win_app_raise (CLOCK_SERVICE);
 }
 static void tu_end ()
 {

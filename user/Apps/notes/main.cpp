@@ -627,7 +627,7 @@ int main (void)
 		char a[160] = "";
 		kapi_get_args (a, sizeof a);
 		kapi_mailbox_send (other, NOTES_MSG_OPEN, a, (unsigned) strlen (a) + 1);
-		kapi_raise_app (NOTES_SERVICE);
+		uk_win_app_raise (NOTES_SERVICE);
 		return 0;
 	}
 	kapi_ipc_register (NOTES_SERVICE);			// (failed: Notes runs alone, nothing forwarded to it)

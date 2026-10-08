@@ -806,7 +806,7 @@ void ui::app_drag_out ()
 	if (n == 1) arc::scopy (label, arc::base_of (names[0]), sizeof label);
 	else { arc::u64_str ((u64) n, label, sizeof label); arc::scat (label, " items", sizeof label); }
 	free_names (names, n);
-	kapi_drag_begin (DND_FILES, buf, (unsigned) strlen (buf) + 1, label);
+	uk_win_drag_begin (DND_FILES, buf, (unsigned) strlen (buf) + 1, label);
 }
 
 // The folder a drop at (x, y) goes into (-1: not on the archive)

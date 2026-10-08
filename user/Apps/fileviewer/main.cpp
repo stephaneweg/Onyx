@@ -677,7 +677,7 @@ static void op_format ()				// the Disks app: the volumes, Eject, Format
 	const char *cur = g_col[g_active].path;
 	char vol[16] = "";
 	if (is_usb_path (cur)) { int n = 0; while (cur[n] && cur[n] != ':' && n < 12) { vol[n] = cur[n]; n++; } vol[n++] = ':'; vol[n] = 0; }
-	if (kapi_raise_app ("disks") == 0) lx_launch ("disks", vol[0] ? vol : 0);
+	if (uk_win_app_raise ("disks") == 0) lx_launch ("disks", vol[0] ? vol : 0);
 }
 
 // A path shown as columns from its volume's root: "SD1:/roms/gb" -> SD1: | roms | gb.
@@ -1062,7 +1062,7 @@ static void op_connect ()
 	for (int i = 0; lastFolder[i] && n < 198; i++) addr[n++] = lastFolder[i];
 	addr[n] = '\0';
 	status ("Connecting to ", addr);
-	if (g_root) { g_root->draw (); kapi_present (); }
+	if (g_root) { g_root->draw (); uk_win_present (); }
 	void *d = kapi_opendir (addr);
 	if (d == 0) { status ("Cannot connect to ", addr); notify ("File Viewer", "Connection failed (address, login or network?)."); return; }
 	kapi_closedir (d);
@@ -1090,7 +1090,7 @@ static void connect_place (const char *addr)
 	if (found >= 0) ftpfs_login_site (&sites[found], 0);
 	else ftpfs__pid ();					// (anonymous: ftpfs running is enough)
 	status ("Connecting to ", addr);
-	if (g_root) { g_root->draw (); kapi_present (); }
+	if (g_root) { g_root->draw (); uk_win_present (); }
 	void *d = kapi_opendir (addr);
 	if (d != 0) { kapi_closedir (d); show_root (addr); status ("Connected: ", addr); return; }
 	status ("Cannot connect to ", addr);
@@ -1192,7 +1192,7 @@ static void on_hscroll (Widget &w)
 static int g_crumbX[MAXCOL + 1];		// path-bar segment right edges (hit-test)
 static int g_vdrag = -1;			// column whose scrollbar is being dragged
 
-// Drag & drop (ABI v42). Source: press on a row, move > DRAG_START px -> kapi_drag_begin
+// Drag & drop (ABI v42). Source: press on a row, move > DRAG_START px -> uk_win_drag_begin
 // with its path. Target: the folder under the cursor -- a plain-folder row, else the
 // column's own folder -- gets the dropped paths (move; Ctrl = copy; in the Trash view:
 // move to the Trash). g_dropSlot / g_dropRow = the highlighted target (-1 = none).
@@ -1678,7 +1678,7 @@ public:
 			{
 				const Entry &e = g_col[g_armSlot].e[g_armRow];
 				char path[300]; join (path, sizeof path, g_col[g_armSlot].path, e.name);
-				if (kapi_drag_begin (DND_FILES, path, (unsigned) slen (path) + 1, e.label))
+				if (uk_win_drag_begin (DND_FILES, path, (unsigned) slen (path) + 1, e.label))
 					g_dragging = true;
 				g_armSlot = -1;
 			}

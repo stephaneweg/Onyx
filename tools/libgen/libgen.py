@@ -298,6 +298,7 @@ __attribute__ ((constructor (101))) static void %(name)s_bind (void)
 	if (%(var)s == 0) %(var)s = lib_bind ("%(name)s", %(version)d, &imp);
 }
 """ % { "name": a.name, "gen": GEN, "version": version, "var": var }
+# (A library that shares variables with its C++ programs (--data: UIKit's globals) hands none to a C program:
+# it keeps its own copies -- onyx_lib_data answers 0, user/Kits/uikit/globals.cpp. UIKit's window API for C.)
 if a.bind_c:
-	if a.data is not None: sys.exit ("libgen: --bind-c with --data: a library that shares variables with the program is for C++ programs")
 	write (a.bind_c, bc)

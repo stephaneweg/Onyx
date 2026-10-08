@@ -153,10 +153,10 @@ static void full_screen (bool on)
 {
 	if (on && !g_fs)
 	{
-		g_fs = kapi_fullscreen_begin (&g_fsw, &g_fsh);
+		g_fs = uk_win_fullscreen_begin (&g_fsw, &g_fsh);
 		if (g_fs) for (long i = 0; i < (long) g_fsw * g_fsh; i++) g_fs[i] = 0;
 	}
-	else if (!on && g_fs) { kapi_fullscreen_end (); g_fs = 0; g_root->invalidate (true); }
+	else if (!on && g_fs) { uk_win_fullscreen_end (); g_fs = 0; g_root->invalidate (true); }
 }
 static void blit_full (void)				// stretched to the display, proportions kept, centred
 {
@@ -189,7 +189,7 @@ static void set_zoom (int z)
 {
 	g_zoom = z;
 	// (the window's buffer keeps the pitch it was made with: 3x -- draw with that one)
-	g_root->canvas.adopt (kapi_resize_window (nes::W * z, nes::H * z), nes::W * z, nes::H * z, g_stride);
+	g_root->canvas.adopt (uk_win_resize (nes::W * z, nes::H * z), nes::W * z, nes::H * z, g_stride);
 	uikit::uk_decorate_window ();					// the frame follows
 	g_root->width = nes::W * z; g_root->height = nes::H * z;
 	g_root->invalidate (true);
@@ -265,7 +265,7 @@ static void nes_frame (EmuCore *ec)
 static void show_frame (void)
 {
 	if (g_fs) { blit_full (); kapi_present_fb (); }
-	else { g_root->invalidate (true); g_root->draw (); kapi_present (); }
+	else { g_root->invalidate (true); g_root->draw (); uk_win_present (); }
 }
 
 int main (void)
@@ -308,7 +308,7 @@ int main (void)
 	set_zoom (g_zoom);
 	root.attach ();
 	g_loadSize = sz ? sz : 1; g_loadDone = (unsigned) r;
-	root.invalidate (true); root.draw (); kapi_present ();
+	root.invalidate (true); root.draw (); uk_win_present ();
 	while ((unsigned) r < sz)
 	{
 		unsigned k = sz - (unsigned) r > 0x40000 ? 0x40000 : sz - (unsigned) r;
@@ -317,7 +317,7 @@ int main (void)
 		r += got; g_loadDone = (unsigned) r;
 		pump_events ();
 		if (should_exit ()) { kapi_close (f); return 0; }
-		root.invalidate (true); root.draw (); kapi_present ();
+		root.invalidate (true); root.draw (); uk_win_present ();
 	}
 	kapi_close (f);
 	g_m = new nes::Machine;
@@ -427,6 +427,6 @@ int main (void)
 	}
 	ec_shutdown (&g_ec);
 	save_ram ();
-	if (g_fs) kapi_fullscreen_end ();
+	if (g_fs) uk_win_fullscreen_end ();
 	return 0;
 }

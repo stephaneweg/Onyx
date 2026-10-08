@@ -222,7 +222,7 @@ static void full_screen (bool on)
 {
 	if (on && !g_fs)
 	{
-		g_fs = kapi_fullscreen_begin (&g_fsw, &g_fsh);
+		g_fs = uk_win_fullscreen_begin (&g_fsw, &g_fsh);
 		g_fsStride = g_fsw;
 		if (g_fs)
 		{
@@ -233,7 +233,7 @@ static void full_screen (bool on)
 			for (int y = 0; y < g_fsh; y++) for (int x = 0; x < g_fsw; x++) g_fs[(long) y * g_fsStride + x] = 0;
 		}
 	}
-	else if (!on && g_fs) { kapi_fullscreen_end (); g_fs = 0; g_root->invalidate (true); }
+	else if (!on && g_fs) { uk_win_fullscreen_end (); g_fs = 0; g_root->invalidate (true); }
 }
 static void show_frame (void)
 {
@@ -246,13 +246,13 @@ static void show_frame (void)
 		if (g_stats) { Canvas c; c.adopt (g_fs, g_fsw, g_fsh, g_fsStride); c.fillRect (0, g_fsh - 20, g_fsw, 20, 0); c.text (4, g_fsh - 18, g_statText, 0x00FFFF60); }
 		kapi_present_fb ();
 	}
-	else { g_root->invalidate (true); g_root->draw (); kapi_present (); }
+	else { g_root->invalidate (true); g_root->draw (); uk_win_present (); }
 }
 
 static void set_zoom (int z)
 {
 	g_zoom = z;
-	g_root->canvas.adopt (kapi_resize_window (320 * z, 240 * z), 320 * z, 240 * z, g_stride);
+	g_root->canvas.adopt (uk_win_resize (320 * z, 240 * z), 320 * z, 240 * z, g_stride);
 	uikit::uk_decorate_window ();					// the frame follows
 	g_root->width = 320 * z; g_root->height = 240 * z;
 	g_root->invalidate (true);
@@ -375,7 +375,7 @@ int main (void)
 	set_zoom (g_zoom);
 	root.attach ();
 	g_loadSize = sz ? sz : 1; g_loadDone = (unsigned) r;
-	root.invalidate (true); root.draw (); kapi_present ();
+	root.invalidate (true); root.draw (); uk_win_present ();
 	while ((unsigned) r < sz)
 	{
 		unsigned k = sz - (unsigned) r > 0x100000 ? 0x100000 : sz - (unsigned) r;
@@ -384,7 +384,7 @@ int main (void)
 		r += got; g_loadDone = (unsigned) r;
 		pump_events ();
 		if (should_exit ()) { kapi_close (f); return 0; }
-		root.invalidate (true); root.draw (); kapi_present ();
+		root.invalidate (true); root.draw (); uk_win_present ();
 	}
 	kapi_close (f);
 	g_m = new n64::Machine;
@@ -495,6 +495,6 @@ int main (void)
 	}
 	ec_shutdown (&g_ec);
 	save_ram ();
-	if (g_fs) kapi_fullscreen_end ();
+	if (g_fs) uk_win_fullscreen_end ();
 	return 0;
 }

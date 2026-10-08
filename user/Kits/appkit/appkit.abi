@@ -3,6 +3,10 @@
 # line -- programs built against an older table call the entries by their slot. The one edit allowed:
 # a function RENAMED keeps its line, with its new symbol (a reserved virtual given a meaning).
 # The table's version is its number of entries.
+# (2026-10-08, docs/POCKETUI-TECH-STUDY.md phase P2: the 46 window functions (kapi_create_window, kapi_present,
+#  kapi_set_menu, kapi_win_list...) moved to UIKit (uk_win_*, uikit/win.h). Their slots are kept, under the names
+#  kapi_retired_<slot>: placeholders not declared in appkit.h, answering 0 or the call's old error value, so a
+#  program built before keeps working but for its direct window calls, which fail. Nothing was renumbered.)
 0 kapi_abi_version
 1 kapi_app_dir
 2 kapi_barrier_create
@@ -19,14 +23,14 @@
 13 kapi_core_run
 14 kapi_core_state
 15 kapi_cpu_stats
-16 kapi_create_window
-17 kapi_create_window_ex
-18 kapi_cursor_pos
-19 kapi_desk
+16 kapi_retired_16
+17 kapi_retired_17
+18 kapi_retired_18
+19 kapi_retired_19
 20 kapi_dir_read
-21 kapi_drag_begin
-22 kapi_drag_data
-23 kapi_draw_text
+21 kapi_retired_21
+22 kapi_retired_22
+23 kapi_retired_23
 24 kapi_draw_text_buf
 25 kapi_event_create
 26 kapi_event_mods
@@ -55,16 +59,16 @@
 49 kapi_fullscreen_end
 50 kapi_get_args
 51 kapi_get_argv
-52 kapi_get_chrome
+52 kapi_retired_52
 53 kapi_get_datetime
 54 kapi_get_env
 55 kapi_get_handles
 56 kapi_get_keymap
-57 kapi_get_menu
+57 kapi_retired_57
 58 kapi_get_modifiers
 59 kapi_get_ticks
 60 kapi_get_verbose
-61 kapi_get_wheel_speed
+61 kapi_retired_61
 62 kapi_getcwd
 63 kapi_getpid
 64 kapi_gpu_draw
@@ -98,7 +102,7 @@
 92 kapi_list_apps
 93 kapi_list_procs
 94 kapi_list_tasks
-95 kapi_list_windows
+95 kapi_retired_95
 96 kapi_lock
 97 kapi_mailbox_recv
 98 kapi_mailbox_send
@@ -106,11 +110,11 @@
 100 kapi_meminfo
 101 kapi_memmove
 102 kapi_memset
-103 kapi_menu_command
+103 kapi_retired_103
 104 kapi_midi_devices
 105 kapi_midi_read
 106 kapi_mkdir
-107 kapi_move_window
+107 kapi_retired_107
 108 kapi_msleep
 109 kapi_mutex_create
 110 kapi_mutex_lock
@@ -133,7 +137,7 @@
 127 kapi_pop_event
 128 kapi_pop_post
 129 kapi_post
-130 kapi_present
+130 kapi_retired_130
 131 kapi_present_fb
 132 kapi_proc_done
 133 kapi_proc_stats
@@ -141,7 +145,7 @@
 135 kapi_pump_events
 136 kapi_pump_sleep
 137 kapi_pump_wait
-138 kapi_raise_app
+138 kapi_retired_138
 139 kapi_ram_detail
 140 kapi_random
 141 kapi_read
@@ -150,8 +154,8 @@
 144 kapi_register_shell
 145 kapi_remove
 146 kapi_rename
-147 kapi_resize_window
-148 kapi_resize_window2
+147 kapi_retired_147
+148 kapi_retired_148
 149 kapi_save_file
 150 kapi_sbrk
 151 kapi_screen_grab
@@ -159,17 +163,17 @@
 153 kapi_screen_set
 154 kapi_screen_size
 155 kapi_seek
-156 kapi_set_click_handler
-157 kapi_set_cursor
-158 kapi_set_key_handler
+156 kapi_retired_156
+157 kapi_retired_157
+158 kapi_retired_158
 159 kapi_set_keymap
 160 kapi_set_keymap_data
-161 kapi_set_menu
-162 kapi_set_pointer_handler
+161 kapi_retired_161
+162 kapi_retired_162
 163 kapi_set_timezone
 164 kapi_set_verbose
-165 kapi_set_wheel_speed
-166 kapi_set_window_alpha
+165 kapi_retired_165
+166 kapi_retired_166
 167 kapi_shell_request
 168 kapi_shm_create
 169 kapi_shm_ctl
@@ -240,7 +244,7 @@
 234 kapi_thread_join
 235 kapi_thread_priority
 236 kapi_thread_self
-237 kapi_toggle_app
+237 kapi_retired_237
 238 kapi_vfs_next
 239 kapi_vfs_register
 240 kapi_vfs_reply
@@ -256,17 +260,17 @@
 250 kapi_wait_for_exit
 251 kapi_wait_word
 252 kapi_wake_word
-253 kapi_wallpaper_buffer
-254 kapi_wallpaper_commit
-255 kapi_wallpaper_generate
-256 kapi_win_close
-257 kapi_win_desk
-258 kapi_win_geometry
-259 kapi_win_list
-260 kapi_win_minimise
-261 kapi_win_raise
-262 kapi_win_read
-263 kapi_win_resizable
+253 kapi_retired_253
+254 kapi_retired_254
+255 kapi_retired_255
+256 kapi_retired_256
+257 kapi_retired_257
+258 kapi_retired_258
+259 kapi_retired_259
+260 kapi_retired_260
+261 kapi_retired_261
+262 kapi_retired_262
+263 kapi_retired_263
 264 kapi_wlan_reconnect
 265 kapi_wlan_scan
 266 kapi_write
@@ -302,19 +306,19 @@
 296 lx_open_as
 297 lx_runner
 298 kapi_ws_ctl
-299 kapi_cursor_shown
+299 kapi_retired_299
 300 kapi_proc_tree
 301 kapi_vol_list
 302 kapi_vol_eject
 303 kapi_vol_mount
 304 kapi_vol_format
-305 kapi_win_destroy
-306 kapi_win_new
-307 kapi_win_select
-308 kapi_tray_activate
-309 kapi_tray_clear
-310 kapi_tray_icon
-311 kapi_tray_list
-312 kapi_tray_set
-313 kapi_win_move
+305 kapi_retired_305
+306 kapi_retired_306
+307 kapi_retired_307
+308 kapi_retired_308
+309 kapi_retired_309
+310 kapi_retired_310
+311 kapi_retired_311
+312 kapi_retired_312
+313 kapi_retired_313
 314 kapi_lib_open_as

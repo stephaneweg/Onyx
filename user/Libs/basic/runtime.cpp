@@ -146,7 +146,7 @@ public:
 		// its row pitch: draw with that pitch, whatever the new size.
 		if (w > winW) w = winW;
 		if (h > winH) h = winH;
-		root->canvas.adopt (kapi_resize_window (w, h), w, h, winW);
+		root->canvas.adopt (uk_win_resize (w, h), w, h, winW);
 		uikit::uk_decorate_window ();					// the frame follows
 		root->width = w; root->height = h;
 	}
@@ -159,7 +159,7 @@ public:
 		if (!force && now - lastPresent < 2) return;	// ~50 Hz at most
 		lastPresent = now;
 		if (fsBuf) { blitFull (); kapi_present_fb (); return; }
-		if (!root->valid) { root->draw (); kapi_present (); }
+		if (!root->valid) { root->draw (); uk_win_present (); }
 	}
 	void pumpEvents () override { pump_events (); if (root && !fsBuf) root->tooltipTick (); }
 	// 3D on the GPU (kapi v53): the textures, the frame drawn right into the active page
@@ -236,7 +236,7 @@ public:
 		if (!ensureWindow ()) return;
 		if (on && !fsBuf)
 		{
-			fsBuf = kapi_fullscreen_begin (&fsW, &fsH);
+			fsBuf = uk_win_fullscreen_begin (&fsW, &fsH);
 			if (!fsBuf) return;
 			for (long i = 0; i < (long) fsW * fsH; i++) fsBuf[i] = 0;
 			root->fs = true;
@@ -244,7 +244,7 @@ public:
 		}
 		else if (!on && fsBuf)
 		{
-			kapi_fullscreen_end (); fsBuf = 0; root->fs = false;
+			uk_win_fullscreen_end (); fsBuf = 0; root->fs = false;
 			root->invalidate (true); present (true);
 		}
 	}

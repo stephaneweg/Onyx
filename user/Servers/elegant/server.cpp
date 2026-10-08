@@ -1,6 +1,6 @@
 //
 // server.cpp -- Elegant as the graphics server: the display and the raw input taken from the
-// kernel (kapi v89, kws.h), the programs' windows served (the protocol: appkit/elegant.h).
+// kernel (kapi v89, kws.h), the programs' windows served (the protocol: uikit/port/elegant.h).
 //
 // One loop, one thread: the raw input to the window manager; the programs' requests answered; the
 // events the window manager queued for a program's window put in that program's queue (the
@@ -16,7 +16,7 @@
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
 #include "kws.h"
-#include "appkit/elegant.h"
+#include "uikit/port/elegant.h"
 #include "core.h"
 
 int el_demo_scene (int w, int h);		// (main.cpp) the demonstration's windows -> how many

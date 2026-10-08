@@ -12,7 +12,7 @@
 //                       the kernel's compositor and reads the RAW INPUT; the desktop is back when
 //                       it ends (Esc, its last window closed, 60 s) -- or dies.
 //
-// While it serves, the programs that ask have their windows there (appkit/elegant.h; the plan: docs/HANDOFF.md).
+// While it serves, the programs that ask have their windows there (uikit/port/elegant.h; the plan: docs/HANDOFF.md).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -26,6 +26,7 @@
 #include "appkit/appkit.h"
 #include "onyxpp.hpp"
 #include "core.h"
+#include "uikit/port/elegant.h"
 
 extern "C" int memcmp (const void *a, const void *b, __SIZE_TYPE__ n)
 {
@@ -120,16 +121,45 @@ static int demo_closed (void)			// the windows closed since the last call, remov
 	return n;
 }
 
+// The demonstration is a program of the graphics server that serves (another Elegant): it asks it as UIKit's
+// desktop port does (uikit/port/port_desktop.cpp -- Elegant links no UIKit): a request, the server waited for
+// 5 s at most when there is none.
+static long demo_ask (int op, long a0, long a1, long a2, long a3, const void *in, unsigned in_len)
+{
+	static int s_bLost;
+	struct kapi_ws_call c;
+	__builtin_memset (&c, 0, sizeof c);
+	c.op = op; c.in = in; c.in_len = in_len;
+	c.a[0] = a0; c.a[1] = a1; c.a[2] = a2; c.a[3] = a3;
+	long r = kapi_ws_ctl (KAPI_WS_CALL, (long) &c, 0, 0);
+	if (r != -KAPI_ESRCH || s_bLost) return r;
+	int t = 0;
+	for (; t < 100 && kapi_ws_ctl (KAPI_WS_ACTIVE, 0, 0, 0) <= 0; t++) kapi_msleep (50);
+	if (t == 100) { s_bLost = 1; return r; }
+	return kapi_ws_ctl (KAPI_WS_CALL, (long) &c, 0, 0);
+}
+
+static unsigned *demo_fullscreen (int *pW, int *pH)	// (uk_win_fullscreen_begin: the server told, then the kernel's)
+{
+	struct el_create c;
+	__builtin_memset (&c, 0, sizeof c);
+	c.flags = WIN_FLAG_BORDERLESS;
+	const char *t = "fullscreen";
+	for (unsigned i = 0; t[i] != 0; i++) c.title[i] = t[i];
+	demo_ask (EL_OP_CREATE, 0, 0, 64, 64, &c, sizeof c);
+	return kapi_fullscreen_begin (pW, pH);
+}
+
 static int demo (void)
 {
 	int w = 0, h = 0;
-	unsigned *fb = kapi_fullscreen_begin (&w, &h);
+	unsigned *fb = demo_fullscreen (&w, &h);
 	if (fb == 0 || w <= 0 || h <= 0) { say ("elegant: no full screen\n"); return 1; }
 	int nOpen = demo_scene (w, h);
 	if (nOpen == 0) { kapi_fullscreen_end (); say ("elegant: no memory\n"); return 1; }
 
-	kapi_set_pointer_handler (demo_pointer);
-	kapi_set_key_handler (demo_key);
+	demo_ask (EL_OP_HANDLER, EL_HANDLER_POINTER, (long) demo_pointer, 0, 0, 0, 0);	// (uk_win_on_pointer)
+	demo_ask (EL_OP_HANDLER, EL_HANDLER_KEY, (long) demo_key, 0, 0, 0, 0);		// (uk_win_on_key)
 	while (!s_bQuit && !kapi_should_exit () && nOpen > 0)
 	{
 		kapi_pump_wait (16);

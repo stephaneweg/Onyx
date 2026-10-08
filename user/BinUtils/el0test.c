@@ -20,6 +20,7 @@
 //
 #define KAPI_INLINE			// (a test of the kernel's table itself: read here, not through AppKit)
 #include "appkit/appkit.h"
+#include "uikit/win.h"		// the window API (UIKit's: uk_win_*)
 
 static int s_fail;
 
@@ -212,7 +213,7 @@ int main (void)
 	int n = kapi_getcwd (cwd, sizeof cwd);
 	check ("getcwd into a stack buffer", n > 0 && cwd[0] != '\0', n);
 	struct kapi_win_info wins[4];
-	int nw = kapi_win_list (wins, 4);
+	int nw = uk_win_list (wins, 4);
 	check ("win_list into a stack array (the desktop first)", nw >= 1 && wins[0].id == KAPI_WIN_DESKTOP, nw);
 
 	// 3. threads (their user stacks, thread_exit by return), a mutex, a post and the user-side pump

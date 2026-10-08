@@ -162,13 +162,21 @@ ftp.elf wget.elf: KITLIBS = ../lib/netkit.imp_c.a
 ftp.elf wget.elf: ../lib/netkit.imp_c.a
 ftpfs.elf: KITLIBS = ../lib/netkit.imp.a
 ftpfs.elf: ../lib/netkit.imp.a
+# The window API is UIKit's (uikit/win.h, uk_win_*; docs/POCKETUI-TECH-STUDY.md P2): the C tools with a window
+# link UIKit's C side (the library opened before main). rdpd (newlib) and gpcdemo: their rules below.
+el0test.elf: KITLIBS = ../lib/uikit.imp_c.a
+el0test.elf: ../lib/uikit.imp_c.a ../Kits/uikit/win.h
 %.elf: %.c ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Runtime/umm.h
 	$(CC) $(CFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< $(KITLIBS) -o $@
 
 # newlib apps: crt0libc + the kapi syscall layer + the app, linked with -lm (libc is
 # pulled automatically since this is not -nostdlib).
 $(LIBC_PROGS): %.elf: %.c $(LIBC_DEP)
-	$(CC) $(CFLAGS_LIBC) $(LDFLAGS) $(LIBC_SRC) $< -lm -o $@
+	$(CC) $(CFLAGS_LIBC) $(LDFLAGS) $(LIBC_SRC) $< $(LIBC_KITS) -lm -o $@
+# rdpd: UIKit's window API (the windows listed, read, raised, moved, closed); its C bind compiled for newlib
+# (the library's allocations by malloc: -DONYX_BIND_LIBC) with UIKit's stubs.
+rdpd.elf: LIBC_KITS = -DONYX_BIND_LIBC ../lib/uikit_bind_c.c ../lib/uikit_stubs.o
+rdpd.elf: ../lib/uikit_bind_c.c ../lib/uikit_stubs.o ../Kits/uikit/win.h
 
 # libonyxposix programs: the library is built (or brought up to date) first.
 .PHONY: posixlib
@@ -241,7 +249,8 @@ $(V3D_PROGS): %.elf: %.cpp ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/a
 	$(CXX) $(CXXFLAGS_FP) -I../../tools/qpu/mesa $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../Libs/v3d/libv3d.a -o $@
 
 $(GPC_PROGS): %.elf: %.c ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Runtime/umm.h ../Libs/gpucomp/libgpucomp.a ../Libs/gpucomp/gpucomp.h
-	$(CC) $(CFLAGS_FP) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../Libs/gpucomp/libgpucomp.a -o $@
+	$(CC) $(CFLAGS_FP) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../Libs/gpucomp/libgpucomp.a ../lib/uikit.imp_c.a -o $@
+$(GPC_PROGS): ../lib/uikit.imp_c.a ../Kits/uikit/win.h
 
 # HTTPS apps (newlib C++ + mbedTLS). Built only when MBEDTLS_DIR is set. The C startup
 # + syscalls are compiled as C objects (gcc), then linked with g++ alongside the libs.

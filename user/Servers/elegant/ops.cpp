@@ -1,5 +1,5 @@
 //
-// ops.cpp -- the programs' requests answered (the protocol: appkit/elegant.h): each one does what
+// ops.cpp -- the programs' requests answered (the protocol: uikit/port/elegant.h): each one does what
 // the kernel's window call of the same name did (kernel/sys/kapi.cpp), on Elegant's window manager.
 //
 // With core.cpp, the only code that sees the window manager's classes (kern/gui/window.h); what
@@ -18,7 +18,7 @@
 #include <circle/util.h>
 
 extern "C" int memcmp (const void *a, const void *b, size_t n);
-#include "appkit/elegant.h"
+#include "uikit/port/elegant.h"
 #include "core.h"
 
 static unsigned StrLen (const char *s)			{ unsigned n = 0; while (s[n] != '\0') n++; return n; }
@@ -34,7 +34,7 @@ static const char *ProcName (unsigned nPid)
 	return pBase;
 }
 
-// A program's window: its first (0), or another one (1 .. EL_WINDOWS_MORE; appkit/elegant.h).
+// A program's window: its first (0), or another one (1 .. EL_WINDOWS_MORE; uikit/port/elegant.h).
 static CWindow *WinOf (unsigned nPid, int nWin = 0)
 {
 	int id = el_core_window_of_win (nPid, nWin);
@@ -203,7 +203,7 @@ static long OpCreate (unsigned nPid, int nWin, const long *a, const u8 *pIn, uns
 }
 
 // A program's shared memory that is not a window's: its copy of the wallpaper, its transfer buffer
-// (the pixels of kapi_win_read). One of each a program; freed when the program ends.
+// (the pixels of uk_win_read). One of each a program; freed when the program ends.
 #define PROGS_MAX	32
 static struct TProg { unsigned nPid; u32 *pWall; u32 *pXfer; unsigned nXferBytes; } s_Prog[PROGS_MAX];
 
@@ -221,7 +221,7 @@ static TProg *ProgOf (unsigned nPid, boolean bMake)
 	return pFree;
 }
 
-// The status area's icons (v95, appkit/elegant.h EL_OP_TRAY_*): one a program, shown by the menu bar.
+// The status area's icons (v95, uikit/port/elegant.h EL_OP_TRAY_*): one a program, shown by the menu bar.
 static struct TTray { unsigned nPid, nGen; u64 ulHandler; struct el_tray T; } s_Tray[KAPI_TRAY_MAX];
 static unsigned s_nTrayGen = 1;
 
@@ -286,7 +286,7 @@ static u32 *XferOf (unsigned nPid, unsigned nBytes)
 	return pNew;
 }
 
-// (kapi_win_read) -> 0: *pR says what is at the caller's transfer buffer; -1.
+// (uk_win_read) -> 0: *pR says what is at the caller's transfer buffer; -1.
 static long OpWinRead (unsigned nPid, const long *a, struct el_read *pR)
 {
 	CWindowManager *pWM = g_pElWM;
@@ -350,7 +350,7 @@ static long OpWinRead (unsigned nPid, const long *a, struct el_read *pR)
 	return 0;
 }
 
-// The drag and drop's payload (kapi_drag_begin / kapi_drag_data), kept here.
+// The drag and drop's payload (uk_win_drag_begin / uk_win_drag_data), kept here.
 #define DND_MAX		(KAPI_WS_DATA_MAX - (unsigned) sizeof (struct el_drag))
 static u8 s_Dnd[KAPI_WS_DATA_MAX];
 static unsigned s_nDndLen = 0;
@@ -472,7 +472,7 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 		if ((int) a[0] >= 0) pWM->SetWheelSpeed ((int) a[0]);
 		return pWM->GetWheelSpeed ();
 
-	case EL_OP_APP_LIST:			// the open programs' names, one a line (kapi_list_windows)
+	case EL_OP_APP_LIST:			// the open programs' names, one a line (uk_win_apps)
 		{
 			unsigned nPos = 0; int nCount = 0;
 			unsigned Seen[EL_WINDOWS_MAX]; int nSeen = 0;
@@ -656,7 +656,7 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 	case EL_OP_RESIZE:
 		pWin->SetLogicalSize ((int) a[0], (int) a[1]);
 		return 1;
-	case EL_OP_GROW:			// (kapi_resize_window2)
+	case EL_OP_GROW:			// (uk_win_resize2)
 		{
 			int w = (int) a[0], h = (int) a[1];
 			if (w <= 0 || h <= 0) return 0;

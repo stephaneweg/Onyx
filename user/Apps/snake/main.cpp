@@ -1,5 +1,5 @@
 //
-// snake.c -- Snake. App-drawn grid + kapi_draw_text score; arrow keys steer (no
+// snake.c -- Snake. App-drawn grid + uk_win_draw_text score; arrow keys steer (no
 // reversing), 'r' restarts. Eat food to grow; hitting a wall or yourself ends it.
 //
 #include "appkit/appkit.h"
@@ -140,14 +140,14 @@ static void redraw (void)
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "snake");
+	fb = uk_win_create (W, H, "snake");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 
 	g_rng = kapi_get_ticks () | 1u;
-	kapi_set_key_handler (on_key);
+	uk_win_on_key (on_key);
 	restart ();
 
 	while (!should_exit ())

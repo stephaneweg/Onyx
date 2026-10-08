@@ -14,6 +14,7 @@
 
 #include "onyxpp.hpp"		// operator new/delete (umm) -- ensure it's emitted in the app TU
 
+#include "uikit/win.h"		// the window API (uk_win_*: C functions; a C program includes it alone)
 #include "uikit/canvas.h"
 #include "uikit/font.h"
 #include "uikit/text.h"		// the text face an app installs (FreeType's: fontkit/uikitface.h)

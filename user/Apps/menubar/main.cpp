@@ -1,9 +1,9 @@
 //
 // menubar -- the system menu bar across the top of the screen (macOS-style).
 //
-// It shows the ACTIVE app's name and its menus (kapi_get_menu, declared by the app with
-// uikit::Menu / kapi_set_menu), opens a drop-down on click and sends the chosen command
-// back to the app (kapi_menu_command). The first menu is always the "Onyx" system menu:
+// It shows the ACTIVE app's name and its menus (uk_win_menu_get, declared by the app with
+// uikit::Menu / uk_win_menu_set), opens a drop-down on click and sends the chosen command
+// back to the app (uk_win_menu_command). The first menu is always the "Onyx" system menu:
 // Terminal / Control Panel / File Viewer / Task Manager, then one entry per app CATEGORY (the
 // "category" of each SD:/apps/<name>.app/app.txt; the "Shell" components, the Control Panel's
 // "Settings" applets and the "Emulators" -- reached from the Game Library -- are left out) opening a sub-menu
@@ -162,7 +162,7 @@ static void sub_add (SubDef &sd, const char *label, const char *app)	// sorted b
 static void fill_windows (SubDef &sd)
 {
 	static char buf[1024];
-	kapi_list_windows (buf, sizeof buf);
+	uk_win_apps (buf, sizeof buf);
 	sd.count = 0;
 	for (int i = 0; buf[i]; )
 	{
@@ -677,7 +677,7 @@ static int tray_at (int x, int y)
 static bool tray_poll (void)
 {
 	struct kapi_tray_info L[KAPI_TRAY_MAX];
-	int n = kapi_tray_list (L, KAPI_TRAY_MAX);
+	int n = uk_win_tray_list (L, KAPI_TRAY_MAX);
 	if (n < 0) n = 0;
 	bool changed = n != g_ntray;
 	for (int i = 0; i < n; i++)
@@ -687,7 +687,7 @@ static bool tray_poll (void)
 		changed = true;
 		t.pid = L[i].pid; t.gen = L[i].gen;
 		scopy (t.tip, L[i].tip, sizeof t.tip);
-		if (!kapi_tray_icon (t.pid, t.px)) for (int k = 0; k < KAPI_TRAY_PX * KAPI_TRAY_PX; k++) t.px[k] = CLEAR;
+		if (!uk_win_tray_icon (t.pid, t.px)) for (int k = 0; k < KAPI_TRAY_PX * KAPI_TRAY_PX; k++) t.px[k] = CLEAR;
 	}
 	g_ntray = n;
 	if (changed) { g_trayHot = -1; g_trayClick = -1; }
@@ -765,7 +765,7 @@ static void usb_action (int row)		// the row's button
 	else
 	{
 		g_usbOpen = false;
-		if (kapi_raise_app ("disks") == 0) lx_launch ("disks", vn);
+		if (uk_win_app_raise ("disks") == 0) lx_launch ("disks", vn);
 	}
 	usb_poll ();
 	g_dirty = true;
@@ -853,8 +853,8 @@ static void draw (void)
 		}
 	}
 	uk_paint_alpha (false);
-	kapi_resize_window (g_sw, h);
-	kapi_present ();
+	uk_win_resize (g_sw, h);
+	uk_win_present ();
 	g_dirty = false;
 }
 
@@ -865,13 +865,13 @@ static void run_item (const Item &it)
 	switch (it.id)
 	{
 	case ONYX_TERMINAL: kapi_launch ("terminal"); return;
-	case ONYX_CONTROL:  if (!kapi_raise_app ("control")) kapi_launch ("control"); return;
+	case ONYX_CONTROL:  if (!uk_win_app_raise ("control")) kapi_launch ("control"); return;
 	case ONYX_FILES:    kapi_launch ("fileviewer"); return;
 	case ONYX_TASKS:    kapi_launch ("taskman"); return;
 	case ONYX_SHUTDOWN: kapi_launch ("shutdown"); return;
 	case ONYX_SUB:      return;			// (it opens its sub-menu)
 	}
-	kapi_menu_command (it.id);		// the active app's own item (or MENU_QUIT)
+	uk_win_menu_command (it.id);		// the active app's own item (or MENU_QUIT)
 }
 
 static void open_menu (int i)
@@ -894,8 +894,8 @@ static void run_sub_item (int i)
 	SubItem it = g_subs[g_sub].items[i];
 	bool windows = g_subs[g_sub].windows;
 	close_menu (); draw ();
-	if (windows) kapi_raise_app (it.app);
-	else if (kapi_raise_app (it.app) == 0) lx_launch (it.app, 0);	// running: to the front
+	if (windows) uk_win_app_raise (it.app);
+	else if (uk_win_app_raise (it.app) == 0) lx_launch (it.app, 0);	// running: to the front
 }
 
 // the slider at x -> the volume (moving it unmutes, as on Windows)
@@ -920,7 +920,7 @@ static void ptr (unsigned long, int ev, long v)
 	case GUI_EVENT_PTR_DOWN:
 		if ((c & 2) && tray_at (x, y) >= 0)			// a right click on an icon: its program told
 		{
-			kapi_tray_activate (g_tray[tray_at (x, y)].pid, KAPI_TRAY_MENU);
+			uk_win_tray_activate (g_tray[tray_at (x, y)].pid, KAPI_TRAY_MENU);
 			break;
 		}
 		if (!(c & 1)) break;
@@ -930,7 +930,7 @@ static void ptr (unsigned long, int ev, long v)
 			if (g_open >= 0) close_menu ();
 			g_volOpen = false; g_calOpen = false; g_usbOpen = false;
 			unsigned now = kapi_get_ticks ();
-			if (ti == g_trayClick && now - g_trayClickT < 40) { kapi_tray_activate (g_tray[ti].pid, KAPI_TRAY_OPEN); g_trayClick = -1; }
+			if (ti == g_trayClick && now - g_trayClickT < 40) { uk_win_tray_activate (g_tray[ti].pid, KAPI_TRAY_OPEN); g_trayClick = -1; }
 			else { g_trayClick = ti; g_trayClickT = now; }
 			g_trayHot = -1; g_dirty = true;
 			break;
@@ -970,7 +970,7 @@ static void ptr (unsigned long, int ev, long v)
 		{
 			int r = usb_row_at (x, y);
 			if (r >= 0 && on_usb_btn (r, x, y)) g_usbBtnDown = r;
-			else if (on_usb_foot (x, y)) { g_usbOpen = false; if (kapi_raise_app ("disks") == 0) lx_launch ("disks", 0); }
+			else if (on_usb_foot (x, y)) { g_usbOpen = false; if (uk_win_app_raise ("disks") == 0) lx_launch ("disks", 0); }
 			else if (r >= 0)
 			{
 				const struct kapi_volume &v = g_vols[usb_index (r)];
@@ -1003,7 +1003,7 @@ static void ptr (unsigned long, int ev, long v)
 		{
 			if (g_open >= 0) close_menu ();
 			g_volOpen = false; g_dirty = true;
-			if (kapi_raise_app ("wifimenu") == 0) lx_launch ("wifimenu", 0);
+			if (uk_win_app_raise ("wifimenu") == 0) lx_launch ("wifimenu", 0);
 			break;
 		}
 		if (g_volOpen)
@@ -1033,7 +1033,7 @@ static void ptr (unsigned long, int ev, long v)
 				{
 					g_calOpen = false;
 					if (b == 2) open_clock_alarms ();
-					else if (kapi_raise_app ("calendar") == 0) lx_launch ("calendar", 0);
+					else if (uk_win_app_raise ("calendar") == 0) lx_launch ("calendar", 0);
 				}
 			}
 			else if (in_cal_box (x, y)) g_cal->handleMouse (x - bx - 10, y - by - 10, 0, 0, 0, 0);
@@ -1110,10 +1110,10 @@ int main (void)
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
-	g_fb = kapi_create_window_ex (0, 0, g_sw, g_sh, "menubar",
+	g_fb = uk_win_create_ex (0, 0, g_sw, g_sh, "menubar",
 				      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_ALPHA | WIN_FLAG_SYSTEM);
 	if (g_fb == 0) return 1;
-	kapi_resize_window (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
+	uk_win_resize (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
 	g_cv.adopt (g_fb, g_sw, g_sh);
 	uikit::init ();					// the fonts, the theme: the palette
 	if (ft_uikit_install ("DejaVu Sans", 13))		// FreeType's anti-aliased text (else the bitmap font)
@@ -1123,7 +1123,7 @@ int main (void)
 	C_BARDIM = uk_mix (uk_tone (C_MENUBAR, 176), C_BARTXT, 110);
 	C_DROP = C_FIELD; C_DIM = uk_mix (C_FIELD, C_FIELD_TEXT, 130); C_OUT = uk_tone (C_MENUBAR, 70);
 	{ int yy = 2026, mo = 1, dd = 1; kapi_get_datetime (&yy, &mo, &dd, 0, 0, 0); g_cal = new CalCard (yy, mo, dd); }
-	kapi_set_pointer_handler (ptr);
+	uk_win_on_pointer (ptr);
 	alarms_init (g_alarms);
 	bell_poll ();							// (the Clock's alarms: the bell)
 	volume_restore ();						// the saved volume (SD:/etc/sound.ini)
@@ -1140,13 +1140,13 @@ int main (void)
 			int w = g_newW, h = g_newH, stride = w;
 			g_newW = 0;
 			g_volOpen = false; g_calOpen = false; g_usbOpen = false; close_menu ();
-			unsigned *fb = kapi_resize_window2 (w, h, &stride);	// (the canvas: the whole screen, for the drop-downs)
+			unsigned *fb = uk_win_resize2 (w, h, &stride);	// (the canvas: the whole screen, for the drop-downs)
 			if (fb != 0) { g_fb = fb; g_sw = w; g_sh = h; g_cv.adopt (fb, w, h, stride); }
-			kapi_resize_window (g_sw, BAR_H);
+			uk_win_resize (g_sw, BAR_H);
 			layout_titles ();
 			g_dirty = true;
 		}
-		unsigned s = kapi_get_menu (spec, sizeof spec, title, sizeof title);
+		unsigned s = uk_win_menu_get (spec, sizeof spec, title, sizeof title);
 		if (s != serial)
 		{
 			serial = s;

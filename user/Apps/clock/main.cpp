@@ -328,7 +328,7 @@ public:
 			}
 			for (int t = 0; t < TABS; t++) if (!strcmp (w, TABKEY[t])) { tab_show (t); if (!atStart) g_ringOnly = false; }
 		}
-		if (!atStart && !ring) { g_ringOnly = false; kapi_raise_app (CLOCK_SERVICE); }
+		if (!atStart && !ring) { g_ringOnly = false; uk_win_app_raise (CLOCK_SERVICE); }
 	}
 };
 
@@ -343,7 +343,7 @@ int main (void)
 	if (other > 0)
 	{
 		kapi_mailbox_send (other, CLOCK_MSG_OPEN, args, (unsigned) strlen (args) + 1);
-		if (!missedOnly) kapi_raise_app (CLOCK_SERVICE);
+		if (!missedOnly) uk_win_app_raise (CLOCK_SERVICE);
 		return 0;
 	}
 	kapi_ipc_register (CLOCK_SERVICE);			// (failed: the Clock runs alone, nothing forwarded to it)

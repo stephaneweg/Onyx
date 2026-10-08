@@ -1,6 +1,6 @@
 //
 // eyes -- a desktop gadget: two googly eyes whose pupils follow the mouse pointer
-// (kapi_cursor_pos gives the cursor relative to this window). Drag the title bar to
+// (uk_win_cursor_pos gives the cursor relative to this window). Drag the title bar to
 // move it like any window. Drawn (and presented) when a pupil moves: the screen, and the
 // remote desktop (rdpd sends a window again when it presents), follow.
 //
@@ -56,7 +56,7 @@ static void draw_eye (int ex, int ey, int R, int pr, int px, int py)
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "eyes");
+	fb = uk_win_create (W, H, "eyes");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 
@@ -65,7 +65,7 @@ int main (void)
 	{
 		pump_events ();
 		int mx, my, p[4];
-		kapi_cursor_pos (&mx, &my);
+		uk_win_cursor_pos (&mx, &my);
 		pupil (50, 55, 34, 12, mx, my, &p[0], &p[1]);
 		pupil (130, 55, 34, 12, mx, my, &p[2], &p[3]);
 		if (p[0] != last[0] || p[1] != last[1] || p[2] != last[2] || p[3] != last[3])
@@ -75,7 +75,7 @@ int main (void)
 			draw_eye (50, 55, 34, 12, p[0], p[1]);
 			draw_eye (130, 55, 34, 12, p[2], p[3]);
 			for (int i = 0; i < 4; i++) last[i] = p[i];
-			kapi_present ();
+			uk_win_present ();
 		}
 		msleep (16);
 	}

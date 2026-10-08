@@ -148,7 +148,7 @@ static void redraw (void)
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "sokoban");
+	fb = uk_win_create (W, H, "sokoban");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
@@ -170,7 +170,7 @@ int main (void)
 	find_levels ();
 	load_level (0);
 
-	kapi_set_key_handler (on_key);
+	uk_win_on_key (on_key);
 	while (!should_exit ()) { pump_events (); redraw (); present (); msleep (16); }
 	return 0;
 }

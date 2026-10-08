@@ -2146,9 +2146,9 @@ static void video_full_screen ()
 {
 	if (!g_vp.active ()) return;
 	int W, H;
-	unsigned *fb = kapi_fullscreen_begin (&W, &H);
+	unsigned *fb = uk_win_fullscreen_begin (&W, &H);
 	if (!fb) return;
-	kapi_set_key_handler (fs_key); kapi_set_pointer_handler (fs_ptr);
+	uk_win_on_key (fs_key); uk_win_on_pointer (fs_ptr);
 	g_fsKey = 0; g_fsDown = g_fsUp = g_fsWheel = g_fsMoved = 0;
 	Canvas cv; cv.adopt (fb, W, H, W);
 	static WatchUi u; u.hits.clear (); u.hot = -1; u.drag = 0; u.full = true;
@@ -2194,7 +2194,7 @@ static void video_full_screen ()
 		g_thumbs.busy = !g_vp.st.paused;
 		if (dirty) { draw_watch (cv, W, H, u); kapi_present_fb (); dirty = false; }
 	}
-	kapi_fullscreen_end ();
+	uk_win_fullscreen_end ();
 	g_root->attach ();
 	g_vpMoveT = kapi_get_ticks ();
 	refresh_all ();
@@ -2292,12 +2292,12 @@ static void refresh_all ()
 static void resize_to (int cw, int ch, int x, int y)
 {
 	int stride = cw;
-	unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+	unsigned *fb = uk_win_resize2 (cw, ch, &stride);
 	if (!fb) return;
 	g_root->canvas.adopt (fb, cw, ch, stride);
 	g_root->width = cw; g_root->height = ch;
 	uk_decorate_window ();
-	kapi_move_window (x, y);
+	uk_win_move (x, y);
 	refresh_all ();
 }
 static void enter_mini (bool on)
@@ -2305,10 +2305,10 @@ static void enter_mini (bool on)
 	if (on == g_miniMode) return;
 	if (on && page ().kind == P_WATCH) go_back_page ();		// (the mini player is the music's)
 	struct kapi_win_geom g;
-	if (kapi_win_geometry (&g) != 0) return;
+	if (uk_win_geometry (&g) != 0) return;
 	if (on)
 	{
-		if (g_root->maximised ()) g_root->maximise (false), kapi_win_geometry (&g);
+		if (g_root->maximised ()) g_root->maximise (false), uk_win_geometry (&g);
 		g_restore[0] = g.x; g_restore[1] = g.y; g_restore[2] = g.cw; g_restore[3] = g.ch;
 		int fw = g.w - g.cw, fh_ = g.h - g.ch, cw = 330, ch = 92;
 		g_miniMode = true;

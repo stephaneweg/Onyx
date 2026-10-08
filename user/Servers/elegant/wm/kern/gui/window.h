@@ -100,7 +100,7 @@ extern u32 g_WinTitleTextColor;
 						// menu bar's drop-down floats over the desktop)
 #define WIN_FLAG_SYSTEM		(1u << 4)	// a system component (menu bar, notifications,
 						// panel, app list, shelf): left out of the open-app
-						// list (kapi_list_windows -> the panel's taskbar)
+						// list (uk_win_apps -> the panel's taskbar)
 #define WIN_FLAG_ALPHA		(1u << 5)	// (v64; borderless windows) the canvas's top byte is a
 						// transparency (0 = opaque, 255 = see-through): each
 						// pixel blended over what lies below; a click on a
@@ -110,7 +110,7 @@ extern u32 g_WinTitleTextColor;
 						// maximise / close / menu buttons, centred again when
 						// the screen's resolution changes (the first-run wizard)
 
-#define WIN_MENU_MAX		2048	// max menu spec length (kapi_set_menu)
+#define WIN_MENU_MAX		2048	// max menu spec length (uk_win_menu_set)
 
 // Event kinds delivered to an app's pump. Kept numerically identical to the
 // values in user/kapi.h so the app and the kernel agree. (The kernel-drawn widget
@@ -131,7 +131,7 @@ extern u32 g_WinTitleTextColor;
 #define GUI_EVENT_MENU		14	// menu command chosen in the menu bar (lValue = item id)
 // Drag & drop (ABI v42), delivered to the pointer handler:
 #define GUI_EVENT_DROP		15	// dropped on us: lValue = (flags << 32) | (x << 16) | y,
-					// client coords; payload via kapi_drag_data
+					// client coords; payload via uk_win_drag_data
 #define GUI_EVENT_DRAG_OVER	16	// a drag hovers us: same layout (flags DND_F_LEAVE = gone)
 #define GUI_EVENT_DRAG_DONE	17	// to the source: lValue = (flags << 32) | target pid
 #define GUI_EVENT_WINCTL	18	// (v64) a title button for the app: lValue = KAPI_FRAME_MENU
@@ -374,7 +374,7 @@ public:
 	u64  PointerHandler (void) const	{ return m_ulPointerHandler; }
 
 	// --- menu (system menu bar) ------------------------------------------
-	// The app's menu spec (see kapi_set_menu) + the callback that receives
+	// The app's menu spec (see uk_win_menu_set) + the callback that receives
 	// GUI_EVENT_MENU. MenuGen() changes whenever the menu is replaced.
 	void SetMenu (const char *pSpec, u64 ulHandler);
 	const char *Menu (void) const		{ return m_Menu; }
@@ -522,7 +522,7 @@ public:
 	void CommitWallpaper (void)	{ m_bLiveWall = TRUE; m_nWallGen++; ScreenDirty (); }
 
 	// The desktop alone (the wallpaper + the backmost windows, no other window, no cursor),
-	// for the remote desktop (rdpd: kapi_win_read of KAPI_WIN_DESKTOP); its change counter.
+	// for the remote desktop (rdpd: uk_win_read of KAPI_WIN_DESKTOP); its change counter.
 	void CompositeDesktop (GImage *pScreen);
 	unsigned DesktopGen (void);
 
@@ -546,7 +546,7 @@ public:
 	void OnMouseWheel (int x, int y, int nWheel);
 
 	// System-wide wheel speed = lines scrolled per notch (clamped to [1,16]). Set by
-	// the theme editor (kapi_set_wheel_speed) and restored from theme.txt at boot.
+	// the theme editor (uk_win_wheel_set) and restored from theme.txt at boot.
 	void SetWheelSpeed (int nLinesPerNotch);
 	int  GetWheelSpeed (void) const { return m_nWheelSpeed; }
 
@@ -558,7 +558,7 @@ public:
 	// be held); a badge with pLabel follows the cursor. While it lasts, the window under
 	// the cursor gets GUI_EVENT_DRAG_OVER; at the left-button release it gets
 	// GUI_EVENT_DROP and the source GUI_EVENT_DRAG_DONE (target pid + DND_F_* flags).
-	// Esc cancels. The payload itself is kept by the kapi layer (kapi_drag_data).
+	// Esc cancels. The payload itself is kept by the kapi layer (uk_win_drag_data).
 	boolean DragBegin (CWindow *pSrc, const char *pLabel);
 	boolean DragActive (void) const		{ return m_bDnd; }
 

@@ -34,7 +34,7 @@ all: ../../doom.elf
 
 $(OUT)/%.o: $(DG)/%.c | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
-$(OUT)/doom_onyx.o: doom_onyx.c ../../Kits/appkit/appkit.h ../../Include/gamepad.h | $(OUT)
+$(OUT)/doom_onyx.o: doom_onyx.c ../../Kits/appkit/appkit.h ../../Kits/uikit/win.h ../../Include/gamepad.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 $(OUT)/doom_sound.o: doom_sound.c ../../Kits/appkit/appkit.h ../../Kits/audiokit/audiokit.h | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@

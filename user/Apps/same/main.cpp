@@ -2,7 +2,7 @@
 // same.c -- SameGame. A grid of coloured blocks; click a block and its connected
 // same-colour group (>= 2) vanishes, the column blocks fall, and empty columns
 // collapse left. Score grows with bigger groups. Mouse-driven via the canvas-click
-// event (kapi_set_click_handler); 'r' starts a new board.
+// event (uk_win_on_click); 'r' starts a new board.
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
@@ -188,15 +188,15 @@ static void redraw (void)
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "same");
+	fb = uk_win_create (W, H, "same");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 
 	g_rng = kapi_get_ticks () | 1u;
-	kapi_set_click_handler (on_click);
-	kapi_set_key_handler (on_key);
+	uk_win_on_click (on_click);
+	uk_win_on_key (on_key);
 	restart ();
 
 	while (!should_exit ())

@@ -146,14 +146,14 @@ static void redraw (void)
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "minesweeper");
+	fb = uk_win_create (W, H, "minesweeper");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 	g_rng = kapi_get_ticks () | 1u;
-	kapi_set_click_handler (on_click);
-	kapi_set_key_handler (on_key);
+	uk_win_on_click (on_click);
+	uk_win_on_key (on_key);
 	restart ();
 	while (!should_exit ()) { pump_events (); redraw (); present (); msleep (16); }
 	return 0;

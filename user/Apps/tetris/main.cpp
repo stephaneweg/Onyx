@@ -1,5 +1,5 @@
 //
-// tetris.c -- Tetris. App-drawn playfield (raw pixels) + kapi_draw_text for the
+// tetris.c -- Tetris. App-drawn playfield (raw pixels) + uk_win_draw_text for the
 // score; keyboard via the window key handler. Gravity is frame-counted (no timer
 // dependency). Keys: left/right move, up rotate, down soft-drop, space hard-drop,
 // 'r' restart.
@@ -208,14 +208,14 @@ static void redraw (void)
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "tetris");
+	fb = uk_win_create (W, H, "tetris");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 
 	g_rng = kapi_get_ticks () | 1u;
-	kapi_set_key_handler (on_key);
+	uk_win_on_key (on_key);
 	restart ();
 
 	while (!should_exit ())

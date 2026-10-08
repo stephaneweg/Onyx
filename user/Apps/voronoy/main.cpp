@@ -1,6 +1,6 @@
 //
 // voronoy -- the desktop's wallpaper painter, a userland app. It asks the kernel for the shared
-// wallpaper buffer (kapi_wallpaper_buffer), paints the wallpaper SD:/etc/wallpaper.ini asks for
+// wallpaper buffer (uk_win_wallpaper_buffer), paints the wallpaper SD:/etc/wallpaper.ini asks for
 // (wallpaper.h: a toroidal Voronoi field -- ported from the old kernel GenerateWallpaper --, a
 // gradient, bubbles over a gradient, a plain colour, a grey pattern -- SD:/wallpapers -- coloured
 // by the gradient (multiplied); a picture file: apps/imageview --background paints it), commits
@@ -12,6 +12,7 @@
 // base colour and points (as before the Theme applet had them).
 //
 #include "appkit/appkit.h"
+#include "uikit/win.h"		// the window API (UIKit's: uk_win_*)
 #include "onyxpp.hpp"			// operator new / delete (the picture's decoder)
 #include "systemkit/systemkit.h"
 #include "imagekit/img/imgload.hpp"
@@ -35,7 +36,7 @@ int main (void)
 		wp.mode = WP_SOLID;					// (no viewer: its colour)
 	}
 	int w = 0, h = 0;
-	unsigned *bg = kapi_wallpaper_buffer (&w, &h);
+	unsigned *bg = uk_win_wallpaper_buffer (&w, &h);
 	if (bg == 0 || w <= 0 || h <= 0) return 1;
 	wp_paint (bg, w, h, w, wp, kapi_get_ticks () | 1u, 2, yield);
 	// a pattern: its grey multiplies the gradient; a tinted picture: its grey multiplies the colour
@@ -56,6 +57,6 @@ int main (void)
 			img_free (&im);
 		}
 	}
-	kapi_wallpaper_commit ();		// make it the live desktop background
+	uk_win_wallpaper_commit ();		// make it the live desktop background
 	return 0;				// exit; the wallpaper persists
 }

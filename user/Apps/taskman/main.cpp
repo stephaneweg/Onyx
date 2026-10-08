@@ -504,7 +504,7 @@ static void refresh (bool sample)
 	else snprintf (t, sizeof t, "Detected %lu MB  -  the apps' pool %lu MB, %lu free  -  pages of %u KB", g_detected / 1024, g_pool / 1024, g_poolFree / 1024, g_pageKb);
 	if (strcmp (t, g_lbInfo->text)) g_lbInfo->setText (t);
 }
-static void do_raise (void) { const Proc *p = row_proc (g_grid->sel); if (p && p->kind == 'a') kapi_raise_app (p->name); }
+static void do_raise (void) { const Proc *p = row_proc (g_grid->sel); if (p && p->kind == 'a') uk_win_app_raise (p->name); }
 static void do_kill (void) { const Proc *p = row_proc (g_grid->sel); if (p && p->kind == 'a') { kapi_kill (p->name); refresh (false); } }
 static void on_raise (Widget &) { do_raise (); g_grid->setFocus (); }
 static void on_kill (Widget &) { do_kill (); g_grid->setFocus (); }

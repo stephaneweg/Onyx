@@ -20,7 +20,7 @@ static Root  *g_root;
 static void finish (int mode, const char *text)
 {
 	g_msg->setText (text);
-	g_root->draw (); kapi_present ();
+	g_root->draw (); uk_win_present ();
 	kapi_msleep (400);				// let the compositor show it
 	kapi_shutdown (mode);				// does not return
 }

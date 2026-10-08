@@ -37,7 +37,7 @@ static void draw_kv (int x, int y, const char *label, const char *val, unsigned 
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "inidemo");
+	fb = uk_win_create (W, H, "inidemo");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	using namespace uikit;

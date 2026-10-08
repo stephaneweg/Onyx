@@ -10,65 +10,66 @@
 4. [`uikit/uikit.h`](#uikituikith)
 5. [`uikit/widget.h`](#uikitwidgeth)
 6. [`uikit/root.h`](#uikitrooth)
-7. [`uikit/canvas.h`](#uikitcanvash)
-8. [`uikit/theme.h`](#uikitthemeh)
-9. [`uikit/text.h`](#uikittexth)
-10. [`uikit/label.h`](#uikitlabelh)
-11. [`uikit/button.h`](#uikitbuttonh)
-12. [`uikit/dialog.h`](#uikitdialogh)
-13. [`uikit/bmp.h`](#uikitbmph)
-14. [`uikit/calendar.h`](#uikitcalendarh)
-15. [`uikit/checkbox.h`](#uikitcheckboxh)
-16. [`uikit/codeedit.h`](#uikitcodeedith)
-17. [`uikit/colorpick.h`](#uikitcolorpickh)
-18. [`uikit/combobox.h`](#uikitcomboboxh)
-19. [`uikit/datagrid.h`](#uikitdatagridh)
-20. [`uikit/dropdown.h`](#uikitdropdownh)
-21. [`uikit/flat.h`](#uikitflath)
-22. [`uikit/font.h`](#uikitfonth)
-23. [`uikit/global.h`](#uikitglobalh)
-24. [`uikit/groupbox.h`](#uikitgroupboxh)
-25. [`uikit/icon.h`](#uikiticonh)
-26. [`uikit/imagebox.h`](#uikitimageboxh)
-27. [`uikit/knob.h`](#uikitknobh)
-28. [`uikit/lang.h`](#uikitlangh)
-29. [`uikit/layout.h`](#uikitlayouth)
-30. [`uikit/lcd.h`](#uikitlcdh)
-31. [`uikit/listbox.h`](#uikitlistboxh)
-32. [`uikit/menu.h`](#uikitmenuh)
-33. [`uikit/numeric.h`](#uikitnumerich)
-34. [`uikit/paint.h`](#uikitpainth)
-35. [`uikit/panel.h`](#uikitpanelh)
-36. [`uikit/progress.h`](#uikitprogressh)
-37. [`uikit/radio.h`](#uikitradioh)
-38. [`uikit/richtextbox.h`](#uikitrichtextboxh)
-39. [`uikit/scrollbar.h`](#uikitscrollbarh)
-40. [`uikit/segmented.h`](#uikitsegmentedh)
-41. [`uikit/skin.h`](#uikitskinh)
-42. [`uikit/slider.h`](#uikitsliderh)
-43. [`uikit/splitter.h`](#uikitsplitterh)
-44. [`uikit/sysclip.h`](#uikitsyscliph)
-45. [`uikit/tabhost.h`](#uikittabhosth)
-46. [`uikit/tabstrip.h`](#uikittabstriph)
-47. [`uikit/textarea.h`](#uikittextareah)
-48. [`uikit/textbox.h`](#uikittextboxh)
-49. [`uikit/toggle.h`](#uikittoggleh)
-50. [`uikit/toolbar.h`](#uikittoolbarh)
-51. [`uikit/treeview.h`](#uikittreeviewh)
-52. [`uikit/vpaint.h`](#uikitvpainth)
-53. [`uikit/vumeter.h`](#uikitvumeterh)
+7. [`uikit/win.h`](#uikitwinh)
+8. [`uikit/canvas.h`](#uikitcanvash)
+9. [`uikit/theme.h`](#uikitthemeh)
+10. [`uikit/text.h`](#uikittexth)
+11. [`uikit/label.h`](#uikitlabelh)
+12. [`uikit/button.h`](#uikitbuttonh)
+13. [`uikit/dialog.h`](#uikitdialogh)
+14. [`uikit/bmp.h`](#uikitbmph)
+15. [`uikit/calendar.h`](#uikitcalendarh)
+16. [`uikit/checkbox.h`](#uikitcheckboxh)
+17. [`uikit/codeedit.h`](#uikitcodeedith)
+18. [`uikit/colorpick.h`](#uikitcolorpickh)
+19. [`uikit/combobox.h`](#uikitcomboboxh)
+20. [`uikit/datagrid.h`](#uikitdatagridh)
+21. [`uikit/dropdown.h`](#uikitdropdownh)
+22. [`uikit/flat.h`](#uikitflath)
+23. [`uikit/font.h`](#uikitfonth)
+24. [`uikit/global.h`](#uikitglobalh)
+25. [`uikit/groupbox.h`](#uikitgroupboxh)
+26. [`uikit/icon.h`](#uikiticonh)
+27. [`uikit/imagebox.h`](#uikitimageboxh)
+28. [`uikit/knob.h`](#uikitknobh)
+29. [`uikit/lang.h`](#uikitlangh)
+30. [`uikit/layout.h`](#uikitlayouth)
+31. [`uikit/lcd.h`](#uikitlcdh)
+32. [`uikit/listbox.h`](#uikitlistboxh)
+33. [`uikit/menu.h`](#uikitmenuh)
+34. [`uikit/numeric.h`](#uikitnumerich)
+35. [`uikit/paint.h`](#uikitpainth)
+36. [`uikit/panel.h`](#uikitpanelh)
+37. [`uikit/progress.h`](#uikitprogressh)
+38. [`uikit/radio.h`](#uikitradioh)
+39. [`uikit/richtextbox.h`](#uikitrichtextboxh)
+40. [`uikit/scrollbar.h`](#uikitscrollbarh)
+41. [`uikit/segmented.h`](#uikitsegmentedh)
+42. [`uikit/skin.h`](#uikitskinh)
+43. [`uikit/slider.h`](#uikitsliderh)
+44. [`uikit/splitter.h`](#uikitsplitterh)
+45. [`uikit/sysclip.h`](#uikitsyscliph)
+46. [`uikit/tabhost.h`](#uikittabhosth)
+47. [`uikit/tabstrip.h`](#uikittabstriph)
+48. [`uikit/textarea.h`](#uikittextareah)
+49. [`uikit/textbox.h`](#uikittextboxh)
+50. [`uikit/toggle.h`](#uikittoggleh)
+51. [`uikit/toolbar.h`](#uikittoolbarh)
+52. [`uikit/treeview.h`](#uikittreeviewh)
+53. [`uikit/vpaint.h`](#uikitvpainth)
+54. [`uikit/vumeter.h`](#uikitvumeterh)
 
 ---
 
 ## What it is
 
-UIKit is the interface: the windows and their frames, the widgets, the dialogs, the theme, the icons. Everything is in the namespace `uikit`. A window is a `Root`; widgets are added to it; `run ()` is the event loop.
+UIKit is the interface: the windows and their frames, the widgets, the dialogs, the theme, the icons — and the window API itself, `uk_win_*` (`uikit/win.h`, plain C functions: what speaks to the graphics server; a C program links `lib/uikit.imp_c.a`). The rest is in the namespace `uikit`. A window is a `Root`; widgets are added to it; `run ()` is the event loop.
 
 | | |
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 793 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 848 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -235,6 +236,35 @@ if (!w->winOpened ()) { delete w; /* one window only: show it beside */ }
 click on it shows the program's first window again (even minimised) and calls the first `Root`'s `onTray (KAPI_TRAY_OPEN)`,
 a right click `onTray (KAPI_TRAY_MENU)`; `uk_tray_clear ()` takes it away.
 
+**The window API** (`uikit/win.h`, 2026-10-08; in `uikit/uikit.h`, or included alone by a C program, which links
+`lib/uikit.imp_c.a`): the program's windows and what it asks of the graphics server, as plain C functions —
+`uk_win_create`, `uk_win_present`, `uk_win_on_key`, `uk_win_menu_set`, `uk_win_list`, `uk_win_tray_set`,
+`uk_win_fullscreen_begin`… (they were AppKit's `kapi_create_window`, `kapi_present`…: docs/03 §5.10.1 has the
+table). A `Root` calls them for you; a game that draws its own canvas, a full-screen program or a shell
+program (the dock, the menu bar) calls them itself. Each graphics server has its own UIKit (the desktop's
+speaks to Elegant), so the same binary runs on every one; `uk_win_server` says which.
+
+```c
+#include "appkit/appkit.h"
+#include "uikit/win.h"
+
+static void on_key (unsigned long sender, int ev, gui_value v) { (void) sender; if (ev == GUI_EVENT_KEY && v == 27) kapi_exit (0); }
+
+int main (void)
+{
+    unsigned *fb = uk_win_create (320, 200, "Plasma");     /* the canvas: 0x00RRGGBB, 320 a row */
+    if (fb == 0) return 1;
+    uk_win_on_key (on_key);
+    for (int t = 0; !kapi_should_exit (); t++)
+    {
+        for (int i = 0; i < 320 * 200; i++) fb[i] = (unsigned) (i + t) * 2654435761u >> 8;
+        uk_win_present ();                                 /* the server shows it */
+        kapi_pump_wait (16);                               /* the events (AppKit's pump) */
+    }
+    return 0;
+}
+```
+
 ## Index
 
 Everything the headers declare, in their order — the details are in each header's part below.
@@ -253,13 +283,72 @@ Everything the headers declare, in their order — the details are in each heade
 | `Widget` | (a type) | `widget.h` |
 | `uk_applet` | running as an applet? (its arguments said so) | `root.h` |
 | `uk_pump` | the events: the window's (pump_events), an applet's host's | `root.h` |
-| `uk_present` | what was drawn shown: kapi_present, or told to the host | `root.h` |
+| `uk_present` | what was drawn shown: uk_win_present, or told to the host | `root.h` |
 | `uk_quit` | time to end: the close box, or the host's AP_CLOSE / its end | `root.h` |
 | `uk_applet_send` | a message to the host | `root.h` |
 | `uk_applet_on_message` | The host's messages other than AP_PTR / AP_KEY / AP_CLOSE (an applet's own protocol | `root.h` |
 | `uk_tray` | (v95) The program's icon in the menu bar's status area | `root.h` |
 | `uk_tray_clear` | (v95) The program's icon in the menu bar's status area | `root.h` |
 | `Root` | (a type) | `root.h` |
+| `uk_win_create` | The program's first window, a client area of w x h pixels titled title, placed by the server -> its canvas (0x00RRGGBB pixels, w a row), 0 on failure (no server | `win.h` |
+| `uk_win_create_ex` | The program's first window at x, y (its frame's top left | `win.h` |
+| `uk_win_new` | Another window of the program (after its first | `win.h` |
+| `uk_win_select` | The window the calls act on (0 | `win.h` |
+| `uk_win_destroy` | window win (> 0) closed and forgotten (the first: the program's end) | `win.h` |
+| `uk_win_move` | its frame moved to x, y (screen coordinates) | `win.h` |
+| `uk_win_resize` | Its client area set to w x h, within the canvas it was created with (which stays) -> the canvas, 0 no window. | `win.h` |
+| `uk_win_resize2` | As uk_win_resize, but the canvas and the frame's copies grow past their first size when needed (new memory at the same addresses | `win.h` |
+| `uk_win_resizable` | on != 0 | `win.h` |
+| `uk_win_alpha` | its opacity, 0 .. 255 (fades) | `win.h` |
+| `uk_win_geometry` | Its frame's place and size, its client area's size, the work area (the screen less the menu bar and the dock) and its KAPI_WIN_* state into *out -> 0, -1 no win | `win.h` |
+| `uk_win_chrome` | Its surfaces for the frame UIKit draws (uikit/skin.cpp) | `win.h` |
+| `uk_win_present` | its pixels changed: the server shows them | `win.h` |
+| `uk_win_draw_text` | One line of text in the kernel's bitmap font at x, y of its canvas, colour c (0x00RRGGBB), the background kept. | `win.h` |
+| `uk_win_on_key` | GUI_EVENT_KEY to fn (value: the character or KEY_*) | `win.h` |
+| `uk_win_on_click` | GUI_EVENT_CANVAS_CLICK / _MOTION to fn (the old click handler) | `win.h` |
+| `uk_win_on_pointer` | the whole pointer stream to fn (GUI_EVENT_PTR_*, drops, WINCTL, WINRESIZE) | `win.h` |
+| `uk_win_cursor` | The pointer's shape over its client area (KAPI_CURSOR_*), kept until changed -> the shape it had, -1. | `win.h` |
+| `uk_win_cursor_pos` | the pointer, relative to its client area | `win.h` |
+| `uk_win_cursor_shown` | 1 the pointer is drawn, 0 hidden (keyboard only), -1 not known | `win.h` |
+| `uk_win_menu_set` | This program's menus (the first window's) and the handler that gets GUI_EVENT_MENU (value | `win.h` |
+| `uk_win_menu_get` | For the menu bar | `win.h` |
+| `uk_win_menu_command` | item id sent to the active window (MENU_QUIT: asked to close) -> 1 delivered | `win.h` |
+| `uk_win_list` | the windows, bottom to top (at most max) -> how many | `win.h` |
+| `uk_win_raise` | window id to the front (it gets the keys) -> 0, -1 | `win.h` |
+| `uk_win_close` | window id asked to close (as its close box) -> 0, -1 | `win.h` |
+| `uk_win_minimise` | window id (0: the caller's) minimised until raised -> 0, -1 | `win.h` |
+| `uk_win_place` | window id's frame moved to x, y -> 0, -1 | `win.h` |
+| `uk_win_to_desk` | Window id (0 | `win.h` |
+| `uk_win_desk` | The workspaces | `win.h` |
+| `uk_win_read` | The pixels of a rectangle of window id's client area (part 0) or of its frame (1 active, 2 inactive) into dst (stride pixels a row), clipped to it -> 0, -1. | `win.h` |
+| `uk_win_apps` | The names of the open apps (a window on the current workspace, not a WIN_FLAG_SYSTEM one), one a line -> how many. | `win.h` |
+| `uk_win_app_raise` | app name's window to the front -> 1, 0 not running / no window | `win.h` |
+| `uk_win_app_toggle` | App name toggled -> 0 it was running and is asked to close, 1 it was started, -1 on error. | `win.h` |
+| `uk_win_wallpaper_buffer` | the screen-sized wallpaper to draw into -> its pixels, 0 | `win.h` |
+| `uk_win_wallpaper_commit` | ... drawn: shown | `win.h` |
+| `uk_win_wallpaper_generate` | the server's own Voronoi wallpaper | `win.h` |
+| `uk_win_drag_begin` | A drag from this window while the left button is held | `win.h` |
+| `uk_win_drag_data` | the last drop's payload (cap bytes) -> its length | `win.h` |
+| `uk_win_tray_set` | This program's icon (KAPI_TRAY_PX square, 0xTTRRGGBB) and tip | `win.h` |
+| `uk_win_tray_clear` | This program's icon (KAPI_TRAY_PX square, 0xTTRRGGBB) and tip | `win.h` |
+| `uk_win_tray_list` | for the menu bar: the icons -> how many | `win.h` |
+| `uk_win_tray_icon` | ... one's pixels -> 1, 0 | `win.h` |
+| `uk_win_tray_activate` | ... clicked (KAPI_TRAY_OPEN, _MENU) -> 1, 0 | `win.h` |
+| `uk_win_wheel_get` | lines scrolled a notch, system-wide | `win.h` |
+| `uk_win_wheel_set` | ... set (1 .. 16; the theme editor keeps it in theme.txt) | `win.h` |
+| `uk_win_fullscreen_begin` | The display for this program alone (the server told, then the kernel's kapi_fullscreen_begin) -> the screen's pixels (*w x *h | `win.h` |
+| `uk_win_fullscreen_end` | The display for this program alone (the server told, then the kernel's kapi_fullscreen_begin) -> the screen's pixels (*w x *h | `win.h` |
+| `uk_win_server_info` | (a type) | `win.h` |
+| `uk_win_server` | The server this program's UIKit speaks to (each server has its UIKit) -> 1, 0 none runs (*out then says what the desktop would be). | `win.h` |
+| `uk_shell_register` | "I am the shell" (the program the server started) | `win.h` |
+| `uk_shell_events` | window opened, closed, retitled, brought to the front -> fn | `win.h` |
+| `uk_shell_keys` | the system keys delivered to the shell first | `win.h` |
+| `uk_shell_thumb` | window id's picture scaled to w x h into dst | `win.h` |
+| `uk_shell_front` | window id to the front (1) / the back (0) | `win.h` |
+| `uk_shell_split` | two windows side by side (0 0: none) | `win.h` |
+| `uk_shell_dim` | the dim behind an overlay (0: none) | `win.h` |
+| `create_window` | Friendly aliases used by the demos (they were appkit.h's). | `win.h` |
+| `present` | Friendly aliases used by the demos (they were appkit.h's). | `win.h` |
 | `Canvas` | (a type) | `canvas.h` |
 | `UIKIT_VAR` | an app's background (its face) | `theme.h` |
 | `uk_style_palette` | UK_STYLE_MILK: Milk's; any other value: CDE's | `theme.h` |
@@ -667,14 +756,14 @@ public:
 
 ## `uikit/root.h`
 
-uikit/root.h -- the top widget, bound to the kapi WINDOW canvas. Runs the event loop: feeds the kapi pointer/key streams into handleMouse/handleKey, and recomposes + kapi_present()s only when the tree is dirty (valid==false).
+uikit/root.h -- the top widget, bound to the kapi WINDOW canvas. Runs the event loop: feeds the kapi pointer/key streams into handleMouse/handleKey, and recomposes + uk_win_present()s only when the tree is dirty (valid==false).
 
 The loop's three steps, the same for a window and for an applet (a Control Panel applet: applet_proto.h -- the app started with "--applet <surface> <host>" draws into the host's pane instead of a window of its own; a Root made then adopts that surface). Root::run and the modal dialogs go through them; an app with its own loop should too.
 
 ```cpp
 bool uk_applet ();				// running as an applet? (its arguments said so)
 void uk_pump ();				// the events: the window's (pump_events), an applet's host's
-void uk_present ();			// what was drawn shown: kapi_present, or told to the host
+void uk_present ();			// what was drawn shown: uk_win_present, or told to the host
 bool uk_quit ();				// time to end: the close box, or the host's AP_CLOSE / its end
 bool uk_applet_send (int type, const void *data = 0, unsigned len = 0);	// a message to the host
 ```
@@ -685,7 +774,7 @@ The host's messages other than AP_PTR / AP_KEY / AP_CLOSE (an applet's own proto
 void uk_applet_on_message (void (*fn) (int type, const void *data, int len));
 ```
 
-(v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md): a Root made with NewWindow is one more window of the program (AppKit's kapi_win_new), beside the first Root (its main window). The first Root's run () / step () serves every one: their events (routed by the window they are for), their onTick, their drawing. Its close box asks onClose () (the default: closeWindow ()); the program's end is still the first window's close.
+(v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md): a Root made with NewWindow is one more window of the program (uk_win_new, uikit/win.h), beside the first Root (its main window). The first Root's run () / step () serves every one: their events (routed by the window they are for), their onTick, their drawing. Its close box asks onClose () (the default: closeWindow ()); the program's end is still the first window's close.
 
 ```cpp
 struct NewWindow {};
@@ -709,7 +798,7 @@ public:
 	int winNumber () const { return (int) m_reserved[0]; }	// its number in the program (0: the first)
 	bool winOpened () const { return m_reserved[1] == 0; }	// (false: not made, or closed)
 	void closeWindow ();			// this window closed (not the first: the program ends then)
-	void winSelect ();				// AppKit's window calls act on this window (kapi_win_select)
+	void winSelect ();				// the window calls (uk_win_*) act on this window (uk_win_select)
 	static Root *winFirst ();			// the program's first window
 	static int winCount ();			// how many windows are open
 	static void paintAll ();		// every window that changed drawn and shown
@@ -725,7 +814,7 @@ public:
 	// Drag & drop (ABI v42). onDrop: something was dropped at (x,y) (client coords) --
 	// type DND_TEXT / DND_FILES ('\n'-separated paths), data NUL-terminated, flags
 	// DND_F_COPY (Ctrl held). onDragOver: a drag hovers (x,y); leave = it went away
-	// (highlight a drop target). onDragDone: our own drag (kapi_drag_begin) ended --
+	// (highlight a drop target). onDragDone: our own drag (uk_win_drag_begin) ended --
 	// targetPid (0 = none), flags DND_F_COPY / DND_F_CANCEL / DND_F_DESKTOP.
 	virtual void onDrop (int x, int y, int type, const char *data, int len, unsigned flags)
 	{ (void) x; (void) y; (void) type; (void) data; (void) len; (void) flags; }
@@ -801,9 +890,259 @@ public:
 };
 ```
 
+## `uikit/win.h`
+
+uikit/win.h -- UIKit's window API: a program's windows and what it asks of the graphics server, as plain C functions (uk_win_*, C linkage: entries of SD:/lib/uikit.so; a C program includes this header alone and links lib/uikit.imp_c.a, a C++ one has it through uikit/uikit.h and links lib/uikit.imp.a).
+
+Until 2026-10-08 these were AppKit's kapi_* window calls (kapi_create_window, kapi_present, kapi_set_menu, kapi_win_list...). The graphics server is a program of its own (Elegant on the desktop; PocketUI, the pocket and console modes' server, to come -- docs/POCKETUI-TECH-STUDY.md), and each server has its UIKit, loaded under the name SD:/lib/uikit.so: UIKit's port (uikit/port/) is the only code that speaks its server's protocol (Elegant's: uikit/port/elegant.h). So the window API is UIKit's, and a program's binary runs on every server. AppKit keeps the kernel's side: the transport (kapi_ws_ctl), the event pump (kapi_pump_*, kapi_should_exit), the screen (kapi_screen_size), the full screen's kernel primitives (kapi_present_fb, kapi_fullscreen_direct).
+
+The renaming, for a program written with the old names: kapi_create_window -> uk_win_create, and every other window call kapi_<name> -> uk_win_<name> without a doubled "win_" (kapi_win_list -> uk_win_list), with these: kapi_move_window -> uk_win_move, kapi_resize_window(2) -> uk_win_resize(2), kapi_set_window_alpha -> uk_win_alpha, kapi_get_chrome -> uk_win_chrome, kapi_set_key / click / pointer_handler -> uk_win_on_key / _on_click / _on_pointer, kapi_set_cursor -> uk_win_cursor, kapi_set_menu / get_menu -> uk_win_menu_set / _menu_get, kapi_win_move -> uk_win_place, kapi_win_desk -> uk_win_to_desk, kapi_list_windows -> uk_win_apps, kapi_raise_app / toggle_app -> uk_win_app_raise / _app_toggle, kapi_get / set_wheel_speed -> uk_win_wheel_get / _wheel_set, kapi_fullscreen_begin / _end -> uk_win_fullscreen_begin / _end.
+
+The window flags (WIN_FLAG_*), the events (GUI_EVENT_*, GUI_PTR_*, KEY_*) and the structures (struct kapi_chrome, kapi_win_geom, kapi_win_info, kapi_tray_info) keep their names and their definitions (appkit/appkit.h, kern/kapi_abi.h): the events still come through the kernel's pump.
+
+A program's windows: its first (0, made by uk_win_create / _ex) and others (uk_win_new); the calls below that act on "this window" act on the one uk_win_select chose (0 until then). What each window was asked is kept by UIKit and asked again of a graphics server started again (a crash, a restart): the program does nothing.
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+### the program's windows
+
+The program's first window, a client area of w x h pixels titled title, placed by the server -> its canvas (0x00RRGGBB pixels, w a row), 0 on failure (no server, bigger than the screen, no memory).
+
+```cpp
+unsigned *uk_win_create (int w, int h, const char *title);
+```
+
+The program's first window at x, y (its frame's top left; negative: placed by the server) with the flags (WIN_FLAG_*) -> its canvas, 0 on failure.
+
+```cpp
+unsigned *uk_win_create_ex (int x, int y, int w, int h, const char *title, unsigned flags);
+```
+
+Another window of the program (after its first: 1 .. KAPI_WS_WINDOWS_MORE of them), as uk_win_create_ex -> its number (> 0) and its canvas in *canvas, -1 (no room, no server). The calls act on it once uk_win_select chose it.
+
+```cpp
+int uk_win_new (int x, int y, int w, int h, const char *title, unsigned flags, unsigned **canvas);
+```
+
+The window the calls act on (0: the first; -1: only asked) -> the one they acted on until now, -1 no such window.
+
+```cpp
+int uk_win_select (int win);
+void uk_win_destroy (int win);		// window win (> 0) closed and forgotten (the first: the program's end)
+```
+
+### this window
+
+```cpp
+void uk_win_move (int x, int y);	// its frame moved to x, y (screen coordinates)
+```
+
+Its client area set to w x h, within the canvas it was created with (which stays) -> the canvas, 0 no window.
+
+```cpp
+unsigned *uk_win_resize (int w, int h);
+```
+
+As uk_win_resize, but the canvas and the frame's copies grow past their first size when needed (new memory at the same addresses: their pixels are lost -- redraw them; the frame: uk_win_chrome again) -> the canvas, *stride its pixels a row; 0 (no memory: the size kept).
+
+```cpp
+unsigned *uk_win_resize2 (int w, int h, int *stride);
+```
+
+on != 0: its edges and corners can be dragged, its client area never under min_w x min_h -> 0, -1 (no window, a borderless or fixed one). At the release its pointer handler gets GUI_EVENT_WINRESIZE: the program resizes itself.
+
+```cpp
+int uk_win_resizable (int on, int min_w, int min_h);
+void uk_win_alpha (int alpha);		// its opacity, 0 .. 255 (fades)
+```
+
+Its frame's place and size, its client area's size, the work area (the screen less the menu bar and the dock) and its KAPI_WIN_* state into *out -> 0, -1 no window.
+
+```cpp
+int uk_win_geometry (struct kapi_win_geom *out);
+```
+
+Its surfaces for the frame UIKit draws (uikit/skin.cpp): the client canvas, the frame's active and inactive copies (0: borderless), their size, the insets, the title -> 1, 0 no window.
+
+```cpp
+int uk_win_chrome (struct kapi_chrome *out);
+void uk_win_present (void);		// its pixels changed: the server shows them
+```
+
+One line of text in the kernel's bitmap font at x, y of its canvas, colour c (0x00RRGGBB), the background kept.
+
+```cpp
+void uk_win_draw_text (int x, int y, const char *s, unsigned c);
+void uk_win_on_key (gui_handler fn);		// GUI_EVENT_KEY to fn (value: the character or KEY_*)
+void uk_win_on_click (gui_handler fn);		// GUI_EVENT_CANVAS_CLICK / _MOTION to fn (the old click handler)
+void uk_win_on_pointer (gui_handler fn);	// the whole pointer stream to fn (GUI_EVENT_PTR_*, drops, WINCTL, WINRESIZE)
+```
+
+The pointer's shape over its client area (KAPI_CURSOR_*), kept until changed -> the shape it had, -1.
+
+```cpp
+int uk_win_cursor (int shape);
+void uk_win_cursor_pos (int *x, int *y);	// the pointer, relative to its client area
+int uk_win_cursor_shown (void);		// 1 the pointer is drawn, 0 hidden (keyboard only), -1 not known
+```
+
+### the menu bar
+
+This program's menus (the first window's) and the handler that gets GUI_EVENT_MENU (value: the item's id). The spec, '\n'-separated: "M<title>" a menu, "I<id>\t<label>\t<shortcut>" an item, "-" a separator (programs normally use uikit::Menu) -> 1, 0.
+
+```cpp
+int uk_win_menu_set (const char *spec, gui_handler h);
+```
+
+For the menu bar: the active window's spec and title -> a serial that changes with them (0: none).
+
+```cpp
+unsigned uk_win_menu_get (char *buf, unsigned cap, char *title, unsigned tcap);
+int uk_win_menu_command (int id);	// item id sent to the active window (MENU_QUIT: asked to close) -> 1 delivered
+```
+
+### every window: the shell's, the remote desktop's
+
+```cpp
+int uk_win_list (struct kapi_win_info *out, int max);	// the windows, bottom to top (at most max) -> how many
+int uk_win_raise (unsigned id);		// window id to the front (it gets the keys) -> 0, -1
+int uk_win_close (unsigned id);		// window id asked to close (as its close box) -> 0, -1
+int uk_win_minimise (unsigned id);	// window id (0: the caller's) minimised until raised -> 0, -1
+int uk_win_place (unsigned id, int x, int y);	// window id's frame moved to x, y -> 0, -1
+```
+
+Window id (0: the caller's) to workspace n (-1: every one; -2: only asked) -> its workspace (-1: all), -3 no window.
+
+```cpp
+int uk_win_to_desk (unsigned id, int n);
+```
+
+The workspaces: set >= 0 shows that one, count > 0 sets how many (1 .. KAPI_DESK_MAX); -1 / 0 keep them -> the current one | the count << 8 | a counter bumped at every change << 16.
+
+```cpp
+int uk_win_desk (int set, int count);
+```
+
+The pixels of a rectangle of window id's client area (part 0) or of its frame (1 active, 2 inactive) into dst (stride pixels a row), clipped to it -> 0, -1. KAPI_WIN_DESKTOP: the desktop, read whole.
+
+```cpp
+int uk_win_read (unsigned id, int part, int x, int y, int w, int h, unsigned *dst, int stride);
+```
+
+The names of the open apps (a window on the current workspace, not a WIN_FLAG_SYSTEM one), one a line -> how many.
+
+```cpp
+int uk_win_apps (char *b, unsigned s);
+int uk_win_app_raise (const char *name);	// app name's window to the front -> 1, 0 not running / no window
+```
+
+App name toggled -> 0 it was running and is asked to close, 1 it was started, -1 on error.
+
+```cpp
+int uk_win_app_toggle (const char *name);
+```
+
+### the wallpaper
+
+```cpp
+unsigned *uk_win_wallpaper_buffer (int *w, int *h);	// the screen-sized wallpaper to draw into -> its pixels, 0
+void uk_win_wallpaper_commit (void);			// ... drawn: shown
+int uk_win_wallpaper_generate (unsigned base, int pts, unsigned seed);	// the server's own Voronoi wallpaper
+```
+
+### drag and drop
+
+A drag from this window while the left button is held: type DND_TEXT / DND_FILES ('\n'-separated paths), len bytes (4 KB at most), a label on the pointer -> 1 started. The targets get GUI_EVENT_DRAG_OVER / _DROP, the source GUI_EVENT_DRAG_DONE (to the pointer handler).
+
+```cpp
+int uk_win_drag_begin (int type, const void *data, unsigned len, const char *label);
+int uk_win_drag_data (int *type, void *buf, unsigned cap);	// the last drop's payload (cap bytes) -> its length
+```
+
+### the status area (the menu bar's tray)
+
+This program's icon (KAPI_TRAY_PX square, 0xTTRRGGBB) and tip; h gets GUI_EVENT_TRAY (KAPI_TRAY_OPEN, _MENU) -> 1, 0. (uikit::uk_tray does it from a picture.)
+
+```cpp
+int uk_win_tray_set (const unsigned *px, const char *tip, gui_handler h);
+void uk_win_tray_clear (void);
+int uk_win_tray_list (struct kapi_tray_info *out, int max);	// for the menu bar: the icons -> how many
+int uk_win_tray_icon (unsigned pid, unsigned *px);		// ... one's pixels -> 1, 0
+int uk_win_tray_activate (unsigned pid, int kind);		// ... clicked (KAPI_TRAY_OPEN, _MENU) -> 1, 0
+```
+
+### the wheel
+
+```cpp
+int uk_win_wheel_get (void);		// lines scrolled a notch, system-wide
+void uk_win_wheel_set (int lines);	// ... set (1 .. 16; the theme editor keeps it in theme.txt)
+```
+
+### the full screen
+
+The display for this program alone (the server told, then the kernel's kapi_fullscreen_begin) -> the screen's pixels (*w x *h; kapi_present_fb shows them), 0 refused. uk_win_fullscreen_end gives it back.
+
+```cpp
+unsigned *uk_win_fullscreen_begin (int *w, int *h);
+void uk_win_fullscreen_end (void);
+```
+
+### the graphics server
+
+```cpp
+#define UK_MODE_DESKTOP		0	// uk_win_server's mode: Elegant's desktop
+#define UK_MODE_POCKET		1	// PocketUI's pocket mode
+#define UK_MODE_CONSOLE		2	// PocketUI's console mode
+#define UK_SC_REGULAR		0	// size classes: the desktop
+#define UK_SC_COMPACT		1	// a small landscape screen
+#define UK_SC_NARROW		2	// a portrait screen
+#define UK_SC_CONSOLE		3	// a television, a pad
+struct uk_win_server_info
+{
+	unsigned size;			// set by the caller: sizeof (struct uk_win_server_info) (it may grow at its end)
+	char	 name[16];		// the server's name ("elegant")
+	int	 mode;			// UK_MODE_*
+	int	 screen_w, screen_h;	// the screen, in the windows' pixels
+	int	 work_x, work_y, work_w, work_h;	// the work area: where a filled window goes
+	int	 scale;			// the composition's scale, in percent (100: none)
+	int	 size_class;		// UK_SC_*
+	int	 reserved[8];
+};
+```
+
+The server this program's UIKit speaks to (each server has its UIKit) -> 1, 0 none runs (*out then says what the desktop would be).
+
+```cpp
+int uk_win_server (struct uk_win_server_info *out);
+```
+
+### the shell's calls (PocketUI's: the pocket and console shells)
+
+The desktop's UIKit answers -KAPI_ENOSYS to each: Elegant's shell programs (menubar, dock) use the calls above. (Their meaning is PocketUI's, docs/POCKETUI-TECH-STUDY.md section 4.3: written with it, at its phase P5.)
+
+```cpp
+int uk_shell_register (void);				// "I am the shell" (the program the server started)
+int uk_shell_events (gui_handler fn);			// window opened, closed, retitled, brought to the front -> fn
+int uk_shell_keys (const int *keys, int count);		// the system keys delivered to the shell first
+int uk_shell_thumb (unsigned id, unsigned *dst, int w, int h);	// window id's picture scaled to w x h into dst
+int uk_shell_front (unsigned id, int front);		// window id to the front (1) / the back (0)
+int uk_shell_split (unsigned left, unsigned right);	// two windows side by side (0 0: none)
+int uk_shell_dim (int alpha);				// the dim behind an overlay (0: none)
+
+}
+#endif
+```
+
+Friendly aliases used by the demos (they were appkit.h's).
+
+```cpp
+unsigned *create_window (int w, int h, const char *t);
+void      present (void);
+```
+
 ## `uikit/canvas.h`
 
-uikit/canvas.h -- Canvas: a 0x00RRGGBB pixel buffer with blit/fill/text (port of VMKernel's GIMAGE). Each Widget owns one. It either OWNS its pixels (alloc) or borrows them (adopt, e.g. the window canvas from kapi_create_window).
+uikit/canvas.h -- Canvas: a 0x00RRGGBB pixel buffer with blit/fill/text (port of VMKernel's GIMAGE). Each Widget owns one. It either OWNS its pixels (alloc) or borrows them (adopt, e.g. the window canvas from uk_win_create).
 
 `stride` is the buffer's real row width in pixels; `w` is the LOGICAL (visible) width. They differ when a Canvas shows a sub-rect of an over-allocated buffer -- e.g. a shell surface allocated at screen width but displayed at the (smaller, resizable) viewport size. All blits step rows by `stride` and clamp to `w`.
 
@@ -2472,7 +2811,7 @@ private:
 
 ## `uikit/skin.h`
 
-uikit/skin.h -- 9-slice bitmap skin (port of uikit's Skin / the kernel CSkin) plus user-side window decoration (drawn by code: uikit/paint.h). A skin BMP holds `count` states stacked vertically (button.bmp: normal/hover/pressed); margins mark the fixed corners/edges, the middle tiles. Magenta (UK_TRANSPARENT_KEY) is the transparency key. Skins draw into RAW 0x00RRGGBB buffers -- a Canvas's `px`, or a window-chrome buffer from kapi_get_chrome.
+uikit/skin.h -- 9-slice bitmap skin (port of uikit's Skin / the kernel CSkin) plus user-side window decoration (drawn by code: uikit/paint.h). A skin BMP holds `count` states stacked vertically (button.bmp: normal/hover/pressed); margins mark the fixed corners/edges, the middle tiles. Magenta (UK_TRANSPARENT_KEY) is the transparency key. Skins draw into RAW 0x00RRGGBB buffers -- a Canvas's `px`, or a window-chrome buffer from uk_win_chrome.
 
 Multiply a 0x00RRGGBB pixel by a 0x00RRGGBB tint (per channel /255). 0xFFFFFF = no-op.
 
@@ -2496,7 +2835,7 @@ public:
 };
 ```
 
-Draw the window's frame (the modernised CDE: kapi v64 -- a gradient from the theme's frame colour, rounded corners, the theme's outline, the title buttons: the window menu, minimise, maximise, close; the title in bold) into both chrome copies of this window. No-op for a borderless window / no window. Drawn once per size, title, theme and state (guarded); Root calls it after creating its window; call it again after kapi_resize_window (the frame then follows the new size).
+Draw the window's frame (the modernised CDE: kapi v64 -- a gradient from the theme's frame colour, rounded corners, the theme's outline, the title buttons: the window menu, minimise, maximise, close; the title in bold) into both chrome copies of this window. No-op for a borderless window / no window. Drawn once per size, title, theme and state (guarded); Root calls it after creating its window; call it again after uk_win_resize (the frame then follows the new size).
 
 ```cpp
 void uk_decorate_window ();

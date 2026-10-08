@@ -44,7 +44,7 @@
 //               skips an unknown type, so an older one ignores it)
 //    11 CURSOR  u8 the pointer's shape now (KAPI_CURSOR_*: 0 arrow, 1 hand, 2 text, 3 move, 4 .. 7
 //               the size arrows, 8 cell, 9 cross, 10 wait, 11 no), sent when it changes, between
-//               rounds -- the client shows its own pointer of that shape (kapi_cursor_shown: known
+//               rounds -- the client shows its own pointer of that shape (uk_win_cursor_shown: known
 //               only when Elegant, the graphics server, has the display)
 //   client -> server: u8 type, payload
 //     1 READY   (send the next round)
@@ -87,6 +87,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include "appkit/appkit.h"
+#include "uikit/win.h"		// the window API (UIKit's: uk_win_*)
 #include "remotekeys.h"
 
 // ---- diagnostics (kmsg, "app: rdpd ..." lines) ----------------------------------------------
@@ -146,7 +147,7 @@ static void stats_tick (int force)
 }
 
 #define TILE		64
-#define MAXWIN		40		// (kapi_win_list gives 37 at most: the desktop + 36 windows; Elegant has 64 since v94)
+#define MAXWIN		40		// (uk_win_list gives 37 at most: the desktop + 36 windows; Elegant has 64 since v94)
 #define MIN_ROUND_TICKS	2		// >= 20 ms between rounds (<= 50 a second)
 #define BUSY_FACTOR	2		// ... and twice the last round's time (core 0 kept for the apps)
 
@@ -337,7 +338,7 @@ static void send_content (struct Win *w, int full)
 		if (!w->prev || !w->cur) { free (w->prev); free (w->cur); w->prev = w->cur = 0; return; }
 	}
 	unsigned tr = kapi_clock_us ();
-	if (kapi_win_read (w->id, 0, 0, 0, W, H, w->cur, W) != 0) return;
+	if (uk_win_read (w->id, 0, 0, 0, W, H, w->cur, W) != 0) return;
 	g_st.read_us += kapi_clock_us () - tr;
 	for (int ty = 0; ty < H; ty += TILE)
 	{
@@ -372,7 +373,7 @@ static void send_chrome (struct Win *w)
 	unsigned *b = (unsigned *) malloc ((size_t) W * H * 4);
 	if (!b) return;
 	for (int part = 1; part <= 2; part++)
-		if (kapi_win_read (w->id, part, 0, 0, W, H, b, W) == 0)
+		if (uk_win_read (w->id, part, 0, 0, W, H, b, W) == 0)
 			for (int y = 0; y < H; y += TILE) send_rect (w->id, part, b, W, 0, y, W, H - y < TILE ? H - y : TILE, 1);
 	free (b);
 }
@@ -388,7 +389,7 @@ static int round_send (void)
 		if (w != g_W || h != g_H) { g_W = w; g_H = h; msg (8, 4); put16 ((unsigned) w); put16 ((unsigned) h); }
 	}
 	struct kapi_win_info L[MAXWIN];
-	int n = kapi_win_list (L, MAXWIN);
+	int n = uk_win_list (L, MAXWIN);
 	if (!g_desktop)							// (only when asked for)
 	{
 		int k = 0;
@@ -458,7 +459,7 @@ static void cursor_poll (unsigned now)
 {
 	if (now - g_cursorAt < CURSOR_POLL) return;
 	g_cursorAt = now;
-	int shape = kapi_cursor_shown ();
+	int shape = uk_win_cursor_shown ();
 	if (shape < 0 || shape == g_cursor) return;
 	g_cursor = shape;
 	msg (11, 1); put8 ((unsigned) shape); flush_out ();
@@ -489,7 +490,7 @@ static void pointer (unsigned id, int x, int y, unsigned buttons, int wheel)
 	if (!w && id != KAPI_WIN_DESKTOP) return;		// (the desktop: the screen, sent or not)
 	if (w && id != KAPI_WIN_DESKTOP && buttons && !g_btn && !(w->info.state & KAPI_WIN_KEYS)
 	    && !(w->info.flags & WIN_FLAG_TOPMOST))		// (not the menu bar, the dock)
-		kapi_win_raise (id);				// clicked: on top on the Pi too
+		uk_win_raise (id);				// clicked: on top on the Pi too
 	kapi_inject_pointer (w ? w->info.x + x : x, w ? w->info.y + y : y, buttons, wheel);
 	g_btn = buttons;
 }
@@ -579,12 +580,12 @@ static void session (void)
 				key_event (m[0] & 1, get32 (m + 1));
 			}
 			else if (t == 6) { unsigned c = get32 (m); char one[2] = { (char) c, 0 }; if (c > 0 && c < 256) kapi_inject_key (one); }
-			else if (t == 4) { struct Win *w = find (get32 (m)); if (w && !(w->info.flags & 6)) kapi_win_raise (get32 (m)); }
-			else if (t == 5) kapi_win_close (get32 (m));
+			else if (t == 4) { struct Win *w = find (get32 (m)); if (w && !(w->info.flags & 6)) uk_win_raise (get32 (m)); }
+			else if (t == 5) uk_win_close (get32 (m));
 			else if (t == 9)				// MOVE: dragged on the PC, put there on the Pi too
 			{
 				struct Win *w = find (get32 (m));
-				if (w && !(w->info.flags & 6)) kapi_win_move (get32 (m), (short) get16 (m + 4), (short) get16 (m + 6));
+				if (w && !(w->info.flags & 6)) uk_win_place (get32 (m), (short) get16 (m + 4), (short) get16 (m + 6));
 			}
 			else if (t == 7) g_desktop = m[0] != 0;
 			consume (len);
@@ -646,7 +647,7 @@ int main (void)
 	if (args[0] == 'l')					// rdpd list
 	{
 		struct kapi_win_info L[MAXWIN];
-		int n = kapi_win_list (L, MAXWIN);
+		int n = uk_win_list (L, MAXWIN);
 		printf ("kapi v%u, screen %d x %d, %d windows listed:\n", kapi_abi_version (), g_W, g_H, n);
 		for (int i = 0; i < n; i++)
 			printf ("  %08X pid %u  %d,%d %dx%d  frame %dx%d  flags %X alpha %d gen %u state %u  %s\n", L[i].id, L[i].pid,
@@ -654,7 +655,7 @@ int main (void)
 		if (n > 0)
 		{
 			unsigned px[16];
-			int r = kapi_win_read (L[n - 1].id, 0, 0, 0, 4, 4, px, 4);
+			int r = uk_win_read (L[n - 1].id, 0, 0, 0, 4, 4, px, 4);
 			printf ("read of the top one: %d, first pixel %06X\n", r, r == 0 ? px[0] : 0);
 		}
 		return 0;

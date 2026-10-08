@@ -3,7 +3,7 @@
 //
 // Apps call notify (title, text); the message lands in our mailbox and is shown as a
 // bubble in the top-right corner, just below the menu bar: it fades in, stays ~4 s and
-// fades out (whole-window opacity, kapi_set_window_alpha). Several notifications queue
+// fades out (whole-window opacity, uk_win_alpha). Several notifications queue
 // and are shown one after the other; a click dismisses the current one -- or, for a notification
 // with an action (notify_action: "app args"), runs it (and it stays longer). The kernel can
 // post too (from pid 0), e.g. "Network up".
@@ -69,7 +69,7 @@ static void draw (const Note &n)
 		p += len;
 		while (*p == ' ' || *p == '\n') p++;
 	}
-	kapi_present ();
+	uk_win_present ();
 }
 
 static void show_next (void)
@@ -77,13 +77,13 @@ static void show_next (void)
 	if (g_count == 0)
 	{
 		g_state = IDLE;
-		kapi_set_window_alpha (0);
-		kapi_move_window (-NW - 50, TOP);		// parked: never catches a click
+		uk_win_alpha (0);
+		uk_win_move (-NW - 50, TOP);		// parked: never catches a click
 		return;
 	}
 	draw (g_q[g_head]);
-	kapi_move_window (g_sw - NW - MARGIN, TOP);
-	kapi_set_window_alpha (0);
+	uk_win_move (g_sw - NW - MARGIN, TOP);
+	uk_win_alpha (0);
 	g_state = FADE_IN; g_t0 = now_ms ();
 }
 
@@ -109,7 +109,7 @@ static void ptr (unsigned long, int ev, long v)
 	if (ev == GUI_EVENT_DISPLAY_RESIZE)			// the screen's new size: its top right corner
 	{
 		g_sw = GUI_DISPLAY_W (v);
-		if (g_state != IDLE) kapi_move_window (g_sw - NW - MARGIN, TOP);
+		if (g_state != IDLE) uk_win_move (g_sw - NW - MARGIN, TOP);
 	}
 }
 
@@ -121,13 +121,13 @@ int main (void)
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
-	unsigned *fb = kapi_create_window_ex (-NW - 50, TOP, NW, NH, "notifyd",
+	unsigned *fb = uk_win_create_ex (-NW - 50, TOP, NW, NH, "notifyd",
 					      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_SYSTEM | WIN_FLAG_ALPHA);
 	if (fb == 0) return 1;
 	g_cv.adopt (fb, NW, NH);
 	uikit::init ();					// the theme (the palette) and the font
-	kapi_set_window_alpha (0);
-	kapi_set_pointer_handler (ptr);
+	uk_win_alpha (0);
+	uk_win_on_pointer (ptr);
 
 	static char buf[520];
 	for (;;)
@@ -161,7 +161,7 @@ int main (void)
 		{
 		case IDLE: break;
 		case FADE_IN:
-			kapi_set_window_alpha (t >= FADE_IN_MS ? MAX_ALPHA : (int) (t * MAX_ALPHA / FADE_IN_MS));
+			uk_win_alpha (t >= FADE_IN_MS ? MAX_ALPHA : (int) (t * MAX_ALPHA / FADE_IN_MS));
 			if (t >= FADE_IN_MS) { g_state = HOLD; g_t0 = now_ms (); }
 			break;
 		case HOLD:
@@ -169,7 +169,7 @@ int main (void)
 			if (t >= (g_q[g_head].action[0] ? 2 * HOLD_MS : HOLD_MS) || g_click) { g_state = FADE_OUT; g_t0 = now_ms (); }
 			break;
 		case FADE_OUT:
-			kapi_set_window_alpha (t >= FADE_OUT_MS ? 0 : MAX_ALPHA - (int) (t * MAX_ALPHA / FADE_OUT_MS));
+			uk_win_alpha (t >= FADE_OUT_MS ? 0 : MAX_ALPHA - (int) (t * MAX_ALPHA / FADE_OUT_MS));
 			if (t >= FADE_OUT_MS)
 			{
 				g_head = (g_head + 1) % QMAX; g_count--;

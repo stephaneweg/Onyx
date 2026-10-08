@@ -116,15 +116,16 @@ functions.
 ### On a PC
 
 The same sources build on a PC for the tests and the screenshots. There is no shared library there:
-the kits' headers bring their code inline, and UIKit's sources are compiled with the program. Nothing
-changes in the program's code.
+the kits' headers bring their code inline, and UIKit's sources are compiled with the program (its window
+API relayed to the stand-in kernel's window manager: `user/Kits/uikit/port.cpp`). Nothing changes in the
+program's code.
 
 ## 3. AppKit — what makes a program run
 
 `#include "appkit/appkit.h"` — nothing to link.
 
-AppKit is the program's link to the system: files, processes, time, windows, sockets… (the `kapi_*`
-calls, listed in the Developer Guide), plus the small services every program needs: strings without a
+AppKit is the program's link to the system: files, processes, time, sockets, the events' pump… (the `kapi_*`
+calls, listed in the Developer Guide; the windows are UIKit's since 2026-10-08: `uk_win_*`, §4), plus the small services every program needs: strings without a
 C library, the console, a reader of `.ini` files, the starting of other programs.
 
 **A console tool**: read a file, print to the console.
@@ -358,6 +359,35 @@ if (!w->winOpened ()) { delete w; /* one window only: show it beside */ }
 **An icon in the menu bar's status area** (kapi v95): `uk_tray ("SD:/apps/myapp.app/icon.bmp", "My App - 3 new")`; a double
 click on it shows the program's first window again (even minimised) and calls the first `Root`'s `onTray (KAPI_TRAY_OPEN)`,
 a right click `onTray (KAPI_TRAY_MENU)`; `uk_tray_clear ()` takes it away.
+
+**The window API** (`uikit/win.h`, 2026-10-08; in `uikit/uikit.h`, or included alone by a C program, which links
+`lib/uikit.imp_c.a`): the program's windows and what it asks of the graphics server, as plain C functions —
+`uk_win_create`, `uk_win_present`, `uk_win_on_key`, `uk_win_menu_set`, `uk_win_list`, `uk_win_tray_set`,
+`uk_win_fullscreen_begin`… (they were AppKit's `kapi_create_window`, `kapi_present`…: docs/03 §5.10.1 has the
+table). A `Root` calls them for you; a game that draws its own canvas, a full-screen program or a shell
+program (the dock, the menu bar) calls them itself. Each graphics server has its own UIKit (the desktop's
+speaks to Elegant), so the same binary runs on every one; `uk_win_server` says which.
+
+```c
+#include "appkit/appkit.h"
+#include "uikit/win.h"
+
+static void on_key (unsigned long sender, int ev, gui_value v) { (void) sender; if (ev == GUI_EVENT_KEY && v == 27) kapi_exit (0); }
+
+int main (void)
+{
+    unsigned *fb = uk_win_create (320, 200, "Plasma");     /* the canvas: 0x00RRGGBB, 320 a row */
+    if (fb == 0) return 1;
+    uk_win_on_key (on_key);
+    for (int t = 0; !kapi_should_exit (); t++)
+    {
+        for (int i = 0; i < 320 * 200; i++) fb[i] = (unsigned) (i + t) * 2654435761u >> 8;
+        uk_win_present ();                                 /* the server shows it */
+        kapi_pump_wait (16);                               /* the events (AppKit's pump) */
+    }
+    return 0;
+}
+```
 
 ## 5. SystemKit — talking to the system and the other programs
 
@@ -887,6 +917,9 @@ The header of a kit a C program may use is written in C.
 | read an `.ini` file | AppKit | `app_ini_load`, `app_ini_get` |
 | start another program | AppKit | `lx_launch`, `lx_open` |
 | open a window with widgets | UIKit | `Root`, `Label`, `Button`… |
+| open a bare window, draw its pixels | UIKit | `uk_win_create`, `uk_win_present`, `uk_win_on_key` |
+| take the whole screen (a game, an emulator) | UIKit (then AppKit's `kapi_present_fb`) | `uk_win_fullscreen_begin`, `uk_win_fullscreen_end` |
+| list, raise, move the windows (a shell) | UIKit | `uk_win_list`, `uk_win_raise`, `uk_win_place` |
 | ask the user (message, file, colour) | UIKit | `uk_messagebox`, `uk_file_open`, `uk_color_dialog` |
 | load an icon | UIKit | `ui::icon_load` |
 | show a notification | SystemKit | `notify`, `notify_action` |

@@ -139,6 +139,9 @@ lib/uikit/%.o: Kits/uikit/%.cpp $(UIKIT_HDR) Kits/uikit/globals.inc $(LIB_DEP)
 lib/uikit/canvas.o: Kits/uikit/canvas.cpp $(UIKIT_HDR) $(LIB_DEP)
 	@mkdir -p lib/uikit
 	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -c $< -o $@
+# The port (Kits/uikit/port/: what differs between the graphics servers -- the window driver, the server's
+# protocol; docs/POCKETUI-TECH-STUDY.md section 5): Kits/uikit/port.cpp compiles the desktop's (Elegant's).
+lib/uikit/port.o: $(wildcard Kits/uikit/port/*.h Kits/uikit/port/*.cpp)
 lib/uikit/imgload.o: Kits/uikit/imgload.cpp Kits/imagekit/img/imgload.hpp Kits/imagekit/imagekit.h $(LIB_DEP)
 	@mkdir -p lib/uikit
 	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -Wno-unused-parameter -Wno-sign-compare -c $< -o $@
@@ -151,11 +154,12 @@ Kits/uikit/layout_lock.cpp:
 uikit-layout-update:
 	$(UIKIT_LAYOUT) --update
 lib/uikit_table.S: $(UIKIT_SO_OBJ) Kits/uikit/uikit.abi ../tools/libgen/libgen.py
-	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data \
-		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$|onyx_systemkit_table$$)' --table lib/uikit_table.S --stubs lib/uikit_stubs.S --bind lib/uikit_bind.cpp $(UIKIT_SO_OBJ)
+	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data --exclude '^_ZN5uikit4port' \
+		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$|onyx_systemkit_table$$)' --table lib/uikit_table.S --stubs lib/uikit_stubs.S --bind lib/uikit_bind.cpp \
+		--bind-c lib/uikit_bind_c.c $(UIKIT_SO_OBJ)
 Kits/uikit/uikit.abi:
 	@touch $@
-lib/uikit_stubs.S lib/uikit_bind.cpp: lib/uikit_table.S ;
+lib/uikit_stubs.S lib/uikit_bind.cpp lib/uikit_bind_c.c: lib/uikit_table.S ;
 # (its img_load... are relays to ImageKit: that library's import stubs linked in, opened at the first picture)
 lib/uikit.so: $(UIKIT_SO_OBJ) lib/imagekit_stubs.o lib/systemkit_stubs.o lib/uikit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
@@ -164,6 +168,12 @@ lib/uikit_globals.o: Kits/uikit/globals.cpp Kits/uikit/globals.inc $(UIKIT_HDR)
 	@mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -c $< -o $@
 lib/uikit.imp.a: lib/uikit_stubs.o lib/uikit_bind.o lib/uikit_globals.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+# A C program's side (the window API, uikit/win.h: rdpd, gpcdemo, el0test, wstest): the stubs and the C bind
+# (no C++ runtime, no variables handed over: the library keeps its own copy of UIKit's globals). A newlib
+# program compiles lib/uikit_bind_c.c itself with -DONYX_BIND_LIBC (its malloc) instead of this archive's bind.
+lib/uikit.imp_c.a: lib/uikit_stubs.o lib/uikit_bind_c.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
@@ -300,7 +310,7 @@ lib/imagekit.imp.a: lib/imagekit_stubs.o lib/imagekit_bind.o
 # table where the kernel copies it for every program (APPKIT_TABLE_VA, kern/kapi_abi.h): --fixed-table. No
 # state, no library runtime (so no strlen / memset of GCC's own making in it: -fno-tree-loop-distribute-patterns); built with the FPU on (some calls take floats: they pass through).
 APPKIT_TABLE_VA = 0x380008000
-lib/appkit/appkit.o: Kits/appkit/appkit.c Kits/appkit/appkit_calls.inc Kits/appkit/appkit_lib.inc Kits/appkit/appkit_ws.inc Kits/appkit/elegant.h Kits/appkit/appkit.h Runtime/lib.h ../kernel/include/kern/kapi_abi.h
+lib/appkit/appkit.o: Kits/appkit/appkit.c Kits/appkit/appkit_calls.inc Kits/appkit/appkit_lib.inc Kits/appkit/appkit.h Runtime/lib.h ../kernel/include/kern/kapi_abi.h
 	@mkdir -p lib/appkit
 	$(CC) $(AK_FLAGS) -Wall -Wno-unused-function -fno-tree-loop-distribute-patterns -fno-builtin -c $< -o $@
 Kits/appkit/appkit.abi:
@@ -378,7 +388,7 @@ lib/gpiokit.imp_c.a: lib/gpiokit_stubs.o lib/gpiokit_bind_c.o
 
 SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/fontkit.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so lib/systemkit.so lib/netkit.so lib/gpiokit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a lib/gpiokit.imp.a lib/gpiokit.imp_c.a
+libs: $(SHLIBS) lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a lib/gpiokit.imp.a lib/gpiokit.imp_c.a lib/uikit.imp_c.a
 
 # The kits' descriptions for Onyx BASIC (lib/<kit>.bi -> SD:/lib/<kit>.bi; `#import filekit`): each kit's functions,
 # their places (its .abi) and their types (its headers' prototypes), by tools/kitbi/kitbi.py -- every kit of Kits/,

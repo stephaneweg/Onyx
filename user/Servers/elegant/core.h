@@ -41,7 +41,7 @@ void el_core_window_remove (int id);
 
 // The pixels of the windows made or grown from now on are `pid`'s: shared with that program (0:
 // Elegant's own memory -- its demonstration's windows).
-// win: which of the program's windows (0: its first; 1 .. EL_WINDOWS_MORE its others, appkit/elegant.h).
+// win: which of the program's windows (0: its first; 1 .. EL_WINDOWS_MORE its others, uikit/port/elegant.h).
 void el_core_owner (unsigned pid, int win = 0);
 // Shared memory for a window's pixels, given by the server's kernel side (server.cpp): `bytes` for
 // `pid`'s window, part 0 its canvas / 1, 2 its frame's active and inactive copies -> its address
@@ -50,7 +50,7 @@ void *el_shared_alloc (unsigned pid, int part, unsigned long bytes);
 void el_shared_free (void *p);
 int el_shared_is (const void *p);
 
-// A canvas' copy as last presented (appkit/elegant.h, EL_OP_SHOT; core.cpp): where it is from the
+// A canvas' copy as last presented (uikit/port/elegant.h, EL_OP_SHOT; core.cpp): where it is from the
 // canvas -> 1, 0 it has none; a reader's access to it; the tick that stops the copies nobody reads.
 int el_core_shot_info (const void *pCanvas, unsigned *pnCtlOff, unsigned *pnCopyOff, unsigned *pnCap);
 const void *el_core_shot_read (const void *pCanvas, unsigned nBytes, unsigned *pnSeq);
@@ -63,7 +63,7 @@ int el_core_window_win (int id);		// ... a window's number in its program (0: it
 void el_core_window_closing_clear (int id);	// its close was told to its program (a window that is not its first)
 unsigned long long el_core_window_pointer_handler (int id);
 unsigned el_core_window_pid (int id);		// a window's program (0: no such window)
-struct el_core_frame				// (the protocol's struct el_frame, appkit/elegant.h)
+struct el_core_frame				// (the protocol's struct el_frame, uikit/port/elegant.h)
 {
 	int	 content_w, content_h;
 	int	 frame_w, frame_h;
@@ -83,13 +83,13 @@ struct el_core_event				// an event for the window's program (the kernel's struc
 int el_core_window_event_peek (int id, struct el_core_event *out);	// the next one, left queued -> 1, 0 none
 void el_core_window_event_drop (int id);				// ... taken
 
-// A program's request (appkit/elegant.h) -> its status; *out_len bytes of out (KAPI_WS_DATA_MAX of
+// A program's request (uikit/port/elegant.h) -> its status; *out_len bytes of out (KAPI_WS_DATA_MAX of
 // room) go with it. (ops.cpp)
 long el_op (unsigned pid, int op, const long *a, const unsigned char *in, unsigned in_len,
 	    unsigned char *out, unsigned *out_len);
 void el_core_program_gone (unsigned pid);	// a program ended: what it had beside its windows freed
 unsigned el_core_focus_pid (void);
-unsigned el_core_active_id (void);		// the window that has the keyboard: its id (kapi_win_list's), 0: none
+unsigned el_core_active_id (void);		// the window that has the keyboard: its id (uk_win_list's), 0: none
 void el_core_wheel (int lines);			// the wheel's lines a notch (1 .. 16)		// the program that has the keyboard, 0: none
 
 // What the requests need from the kernel (server.cpp): pid's windows become the server's -> 1;

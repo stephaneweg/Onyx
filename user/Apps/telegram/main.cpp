@@ -140,7 +140,7 @@ static void main_size (int cw, int ch)
 	if (cw == r.width && ch == r.height) return;
 	r.winSelect ();
 	int stride = cw;
-	unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+	unsigned *fb = uk_win_resize2 (cw, ch, &stride);
 	if (!fb) return;
 	r.canvas.adopt (fb, cw, ch, stride);
 	r.width = cw; r.height = ch;
@@ -623,10 +623,10 @@ static bool open_window (long long peer)
 	{
 		ConvWindow *w = g_wins[i];
 		if (!w || w->gone || w->pane.open != peer) continue;
-		int was = kapi_win_select (-1);
+		int was = uk_win_select (-1);
 		w->winSelect ();
-		kapi_win_raise (0);
-		kapi_win_select (was);
+		uk_win_raise (0);
+		uk_win_select (was);
 		return true;
 	}
 	int slot = -1;
@@ -831,7 +831,7 @@ int main ()
 	// One Telegram at a time (a notification's click starts "telegram"): the one running comes forward.
 	if (!g_demo)
 	{
-		if (kapi_ipc_lookup ("telegram") > 0) { kapi_raise_app ("telegram"); return 0; }
+		if (kapi_ipc_lookup ("telegram") > 0) { uk_win_app_raise ("telegram"); return 0; }
 		kapi_ipc_register ("telegram");
 	}
 	ft_uikit_install ("DejaVu Sans", 13);

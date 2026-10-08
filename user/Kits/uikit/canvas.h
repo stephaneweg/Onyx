@@ -1,7 +1,7 @@
 //
 // uikit/canvas.h -- Canvas: a 0x00RRGGBB pixel buffer with blit/fill/text (port of
 // VMKernel's GIMAGE). Each Widget owns one. It either OWNS its pixels (alloc) or
-// borrows them (adopt, e.g. the window canvas from kapi_create_window).
+// borrows them (adopt, e.g. the window canvas from uk_win_create).
 //
 // `stride` is the buffer's real row width in pixels; `w` is the LOGICAL (visible) width.
 // They differ when a Canvas shows a sub-rect of an over-allocated buffer -- e.g. a shell

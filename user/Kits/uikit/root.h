@@ -1,7 +1,7 @@
 //
 // uikit/root.h -- the top widget, bound to the kapi WINDOW canvas. Runs the event loop:
 // feeds the kapi pointer/key streams into handleMouse/handleKey, and recomposes +
-// kapi_present()s only when the tree is dirty (valid==false).
+// uk_win_present()s only when the tree is dirty (valid==false).
 //
 #ifndef _uikit_root_h
 #define _uikit_root_h
@@ -16,7 +16,7 @@ namespace uikit {
 // modal dialogs go through them; an app with its own loop should too.
 bool uk_applet ();				// running as an applet? (its arguments said so)
 void uk_pump ();				// the events: the window's (pump_events), an applet's host's
-void uk_present ();			// what was drawn shown: kapi_present, or told to the host
+void uk_present ();			// what was drawn shown: uk_win_present, or told to the host
 bool uk_quit ();				// time to end: the close box, or the host's AP_CLOSE / its end
 bool uk_applet_send (int type, const void *data = 0, unsigned len = 0);	// a message to the host
 // The host's messages other than AP_PTR / AP_KEY / AP_CLOSE (an applet's own protocol: Jet's web view,
@@ -26,7 +26,7 @@ bool uk_applet_send (int type, const void *data = 0, unsigned len = 0);	// a mes
 void uk_applet_on_message (void (*fn) (int type, const void *data, int len));
 
 // (v94) A program's other windows (docs/MULTI-WINDOW-STUDY.md): a Root made with NewWindow is one
-// more window of the program (AppKit's kapi_win_new), beside the first Root (its main window). The
+// more window of the program (uk_win_new, uikit/win.h), beside the first Root (its main window). The
 // first Root's run () / step () serves every one: their events (routed by the window they are for),
 // their onTick, their drawing. Its close box asks onClose () (the default: closeWindow ()); the
 // program's end is still the first window's close.
@@ -52,7 +52,7 @@ public:
 	int winNumber () const { return (int) m_reserved[0]; }	// its number in the program (0: the first)
 	bool winOpened () const { return m_reserved[1] == 0; }	// (false: not made, or closed)
 	void closeWindow ();			// this window closed (not the first: the program ends then)
-	void winSelect ();				// AppKit's window calls act on this window (kapi_win_select)
+	void winSelect ();				// the window calls (uk_win_*) act on this window (uk_win_select)
 	static Root *winFirst ();			// the program's first window
 	static int winCount ();			// how many windows are open
 	static void paintAll ();		// every window that changed drawn and shown
@@ -68,7 +68,7 @@ public:
 	// Drag & drop (ABI v42). onDrop: something was dropped at (x,y) (client coords) --
 	// type DND_TEXT / DND_FILES ('\n'-separated paths), data NUL-terminated, flags
 	// DND_F_COPY (Ctrl held). onDragOver: a drag hovers (x,y); leave = it went away
-	// (highlight a drop target). onDragDone: our own drag (kapi_drag_begin) ended --
+	// (highlight a drop target). onDragDone: our own drag (uk_win_drag_begin) ended --
 	// targetPid (0 = none), flags DND_F_COPY / DND_F_CANCEL / DND_F_DESKTOP.
 	virtual void onDrop (int x, int y, int type, const char *data, int len, unsigned flags)
 	{ (void) x; (void) y; (void) type; (void) data; (void) len; (void) flags; }

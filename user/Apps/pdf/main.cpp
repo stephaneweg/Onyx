@@ -1700,9 +1700,9 @@ static void full_screen ()
 {
 	Tab &t = tab (); if (!t.doc) return;
 	int W, H;
-	unsigned *fb = kapi_fullscreen_begin (&W, &H);
+	unsigned *fb = uk_win_fullscreen_begin (&W, &H);
 	if (!fb) return;
-	kapi_set_key_handler (pres_key); kapi_set_pointer_handler (pres_ptr);
+	uk_win_on_key (pres_key); uk_win_on_pointer (pres_ptr);
 	int pg = t.cur, shown = -1;
 	unsigned *next = 0; int nextPg = -1, nw = 0, nh = 0;
 	for (;;)
@@ -1735,7 +1735,7 @@ static void full_screen ()
 		if (uk_quit ()) break;
 	}
 	free (next);
-	kapi_fullscreen_end ();
+	uk_win_fullscreen_end ();
 	g_root->attach ();
 	show_page (t, pg);
 	g_root->invalidate (true);

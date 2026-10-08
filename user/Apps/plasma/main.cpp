@@ -1,10 +1,12 @@
 //
 // plasma -- full-screen plasma effect: the demo of the full-screen app API (ABI v41).
-// kapi_fullscreen_begin hands us a screen-sized back buffer, the desktop stops being
+// uk_win_fullscreen_begin hands us a screen-sized back buffer, the desktop stops being
 // drawn, and every frame is shown with kapi_present_fb. Integer maths only (a sine
 // table + a colour palette). Esc, Enter, q or a click quits (the desktop comes back).
 //
 #include "appkit/appkit.h"
+#include "uikit/win.h"		// the window API (UIKit's: uk_win_*)
+#include "onyxpp.hpp"		// (operator new / delete: UIKit's bind hands the library this program's allocator)
 
 static int  g_sin[256];			// sin table, -127..127
 static unsigned g_pal[256];
@@ -38,10 +40,10 @@ int main (void)
 	}
 
 	int W = 0, H = 0;
-	unsigned *fb = kapi_fullscreen_begin (&W, &H);
+	unsigned *fb = uk_win_fullscreen_begin (&W, &H);
 	if (fb == 0) return 1;
-	kapi_set_key_handler (keys);
-	kapi_set_pointer_handler (ptr);
+	uk_win_on_key (keys);
+	uk_win_on_pointer (ptr);
 
 	for (unsigned t = 0; !g_quit && !kapi_should_exit (); t += 2)
 	{
@@ -63,6 +65,6 @@ int main (void)
 		kapi_present_fb ();
 		kapi_pump_events ();
 	}
-	kapi_fullscreen_end ();
+	uk_win_fullscreen_end ();
 	return 0;
 }

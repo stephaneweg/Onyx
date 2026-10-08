@@ -16,6 +16,7 @@
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
 #include "appkit/appkit.h"
+#include "uikit/win.h"		// the window API (UIKit's: uk_win_*)
 #include "systemkit/systemkit.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -83,16 +84,16 @@ int main (int argc, char **argv)
 	}
 	else if (!strcmp (c, "follow"))			// SIM_CURSOR=follow, SIM="down 50 10;move 150 12;up 150 12;exit"
 	{
-		CHECK (kapi_create_window_ex (300, 40, 240, 200, "probe", WIN_FLAG_BORDERLESS | WIN_FLAG_BACKMOST | WIN_FLAG_SYSTEM | WIN_FLAG_ALPHA) != 0);
+		CHECK (uk_win_create_ex (300, 40, 240, 200, "probe", WIN_FLAG_BORDERLESS | WIN_FLAG_BACKMOST | WIN_FLAG_SYSTEM | WIN_FLAG_ALPHA) != 0);
 		int x = 0, y = 0;
-		kapi_cursor_pos (&x, &y);
+		uk_win_cursor_pos (&x, &y);
 		CHECK (x == -1 && y == -1);				// (no pointer step yet)
 		kapi_msleep (10);					// down 50 10
-		kapi_cursor_pos (&x, &y);
+		uk_win_cursor_pos (&x, &y);
 		CHECK (x == 350 && y == 50);
-		kapi_move_window (400, 42);				// (the widget follows the drag)
+		uk_win_move (400, 42);				// (the widget follows the drag)
 		kapi_msleep (10);					// move 150 12: from the origin at the press
-		kapi_cursor_pos (&x, &y);
+		uk_win_cursor_pos (&x, &y);
 		CHECK (x == 450 && y == 52);
 	}
 	else if (!strcmp (c, "stat"))			// SIM_STAT=1; argv[2] a card path whose host file is dated 2026-09-20 08:00 UTC

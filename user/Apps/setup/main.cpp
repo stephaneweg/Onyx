@@ -1245,7 +1245,7 @@ static void apply_look ()
 	if (g_demo) return;
 	static char buf[1400];
 	int p = uk_theme_write (t, buf, sizeof buf - 40);
-	p += snprintf (buf + p, sizeof buf - p, "wheelspeed=%d\n", kapi_get_wheel_speed ());
+	p += snprintf (buf + p, sizeof buf - p, "wheelspeed=%d\n", uk_win_wheel_get ());
 	kapi_save_file ("SD:/etc/theme.txt", buf, (unsigned) p);
 	Wallpaper wp; wp_load (wp);
 	wp.c1 = tint1 (); wp.c2 = tint2 ();
@@ -1409,7 +1409,7 @@ int main (void)
 	g_root = &root;
 	{
 		struct kapi_win_geom g;
-		if (kapi_win_geometry (&g) == 0) kapi_move_window ((sw - g.w) / 2, (sh - g.h) / 2);
+		if (uk_win_geometry (&g) == 0) uk_win_move ((sw - g.w) / 2, (sh - g.h) / 2);
 	}
 	root.setBg (C_FIELD);
 

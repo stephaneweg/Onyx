@@ -24,7 +24,6 @@
 //
 #define KAPI_IMPL
 #include "appkit.h"
-#include "appkit_ws.inc"		// (the window calls when Elegant owns the display)
 #include "appkit_calls.inc"
 #include "appkit_lib.inc"
 #include "lib.h"

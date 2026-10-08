@@ -406,18 +406,18 @@ struct Show
 	{
 		if (!g_deck.slides.n) return;
 		presenter = presenterView;
-		fb = kapi_fullscreen_begin (&W, &H);
+		fb = uk_win_fullscreen_begin (&W, &H);
 		if (!fb) return;
-		kapi_set_key_handler (sh_key); kapi_set_pointer_handler (sh_ptr);
+		uk_win_on_key (sh_key); uk_win_on_pointer (sh_ptr);
 		g_shKn = 0; g_shClick = g_shRClick = g_shMoved = 0;
 		C.init ();
 		if (!tgt || tgtW != W || tgtH != H) { if (tgt) gpc_target_free (C.g, tgt); tgt = gpc_target_alloc (C.g, W, H, &tstride); tgtW = W; tgtH = H; }
-		if (!tgt) { kapi_fullscreen_end (); return; }
+		if (!tgt) { uk_win_fullscreen_end (); return; }
 		place (W, H);
 		startT = kapi_get_ticks ();
 		int slide = from; if (g_deck.slides[slide]->hidden) slide = next_shown (slide, 1);
 		if (slide < 0 || slide >= g_deck.slides.n) slide = next_shown (-1, 1);
-		if (slide < 0 || slide >= g_deck.slides.n) { kapi_fullscreen_end (); return; }
+		if (slide < 0 || slide >= g_deck.slides.n) { uk_win_fullscreen_end (); return; }
 		FxTime ft[128]; int steps = fx_plan (*g_deck.slides[slide], ft);
 		bool firstAuto = g_deck.slides[slide]->anim.n && g_deck.slides[slide]->anim[0].start != ST_CLICK;
 		int step = firstAuto ? 0 : -1;			// -1: the slide shown, its first click's effects not begun
@@ -503,7 +503,7 @@ struct Show
 			}
 		}
 		C.drop_all ();
-		kapi_fullscreen_end ();
+		uk_win_fullscreen_end ();
 	}
 	static int first_of (const Slide &s, const FxTime *ft, int step) { for (int i = 0; i < s.anim.n; i++) { for (int k = 1; k < ft[i].np; k++) if (ft[i].pstep[k] == step) return i; if (ft[i].step == step) return i; } return 0; }
 	// From one slide (as it ends) to the next (as it begins): its transition played.

@@ -113,7 +113,7 @@ static void ring_alarm (int id)
 	g_alSel = id;
 	alarms_changed ();
 	g_ring->show (g_root, g_ring->snooze);
-	kapi_raise_app (CLOCK_SERVICE);
+	uk_win_app_raise (CLOCK_SERVICE);
 }
 // the ring answered (or not): the card gone, the sound stopped, the file written, the Clock closed if it came only for it
 static void ring_end ()
