@@ -659,8 +659,11 @@ run on the PC: `tools/tests/server_sim/run.sh`).*
 
 **`shell=console`** is the same for now without the band (the whole screen is the app's): the console mode's
 home and its pad-driven menus come later. What is not there yet: the launcher (start the apps from the
-Terminal: `run tinycalc`, or over telnet), the task switcher, the quick settings, the Mode applet; the desktop's
-menu bar and dock are not shown (PocketUI refuses them), the notifications' bubbles still appear. Back to the
+Terminal: `run tinycalc`, or over telnet), the task switcher, the quick settings, the Mode applet. The desktop's
+**menu bar** stays in pocket (it takes the place of the status band, the front app's menus and the clock); the
+dock, the agenda and the stickies are not shown (PocketUI refuses them; console refuses the menu bar too); the
+notifications' bubbles still appear. The app started last (or raised: `run` of an app already running, Alt+Tab)
+is the one in front, the others set aside; a card does not move (its title bar does not drag it). Back to the
 desktop: `shell=desktop` (or remove the line) and restart. PocketUI gives the apps their pocket UIKit
 (`SD:/lib/pocket/uikit.so`, under the name `SD:/lib/uikit.so`): the same apps, the same binaries.
 

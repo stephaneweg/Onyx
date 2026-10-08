@@ -1335,14 +1335,15 @@ and structures (`port/elegant.h` included) with PocketUI's meanings, and its own
 
 | Policy | What it does |
 |---|---|
-| The work area | the screen less the **status band** (pocket: 24 px, PocketUI's own topmost system window — the Onyx gem, the app in front, the time; the kernel's bitmap font) — the whole screen in console |
+| The work area | the screen less the top band: the desktop's **global menu bar** when it runs (pocket), else PocketUI's own **status band** (24 px, a topmost system window — the Onyx gem, the app in front, the time; the kernel's bitmap font) — the whole screen in console |
+| The global menu bar (pocket) | a topmost window across the screen's top edge (`user/Apps/menubar`) is accepted as the top band (`PK_KIND_BAR`): PocketUI's status band is taken away while it is there, made again when it goes; `EL_OP_MENU_GET` / `EL_OP_MENU_COMMAND` answer with the **front app's** topmost window (a filled window is borderless, which Elegant's "active window" skips: `CWindowManager::GetActiveMenu`'s `pFor`). Console: refused (P9 shows the menus on demand) |
 | A program's window | **card** (framed, centred in the work area) when it fits with its frame; else **filled** (`WIN_FLAG_BORDERLESS` forced, at the work area's top left) |
 | `EL_OP_RESIZABLE` on | the window is **filled**: its frame dropped (`CWindow::DropChrome`), `GUI_EVENT_WINRESIZE` to the work area's size (UIKit's `Root::frameResize`); a program that ignores it (its own pointer handler: the Terminal, Media, PDF, Screenshot) gets `GUI_EVENT_WINCTL` maximise once 0.25 s later |
 | Popups | a borderless or topmost window stays where it asked (placed by PocketUI when it asked none), on the screen |
-| Refused | a backmost window, a topmost one on the top or bottom edge (the desktop's menu bar, dock: the autostart still runs them until the session files, P4) |
-| Moves | `EL_OP_MOVE`, `EL_OP_WIN_MOVE` ignored for a filled window |
+| Refused | a backmost window (the agenda, the stickies), a topmost one on the bottom edge whatever its width (the dock — narrower than half a 1920 px screen), a second menu bar (pocket) or any on the top edge (console): the autostart still runs them until the session files, P4 |
+| Moves | `EL_OP_MOVE`, `EL_OP_WIN_MOVE` ignored for a filled window, a card and the menu bar; cards and filled windows are **pinned** (`CWindow::SetPinned`): their title bar neither drags nor maximises them, no edge resizes them |
 | Workspaces | one (`EL_OP_DESK`: count 1; `EL_OP_WIN_DESK`: 0) |
-| One app in front | the program of the topmost window; the others' windows **set aside** (`CWindow::SetAside`: hidden as off-desk), so a card stands on the wallpaper |
+| One app in front | kept by the policy, not read back from the z-order: a program that **opens a window** or is **raised** (`EL_OP_WIN_RAISE`, `EL_OP_APP_RAISE` — `run` of a running app —, its status icon opened, Alt+Tab) is fronted (its windows raised, first of the recent ones); the others' windows **set aside** (`CWindow::SetAside`: hidden as off-desk) and kept under its own, so a card stands on the wallpaper; the front program gone or minimised: the one fronted before it |
 | Keys | **Alt+Tab**: the program at the back to the front; **Alt+Shift+Tab**: the one just behind the front one |
 | Not yet | the shell programs (`pocketshell`, `consolehome`: P5, P9 — `PK_OP_SHELL`.. answer `-KAPI_ENOSYS`), the viewport and the scale (P6, P10), the dim behind a card, the session files (P4) |
 
@@ -1350,9 +1351,12 @@ and structures (`port/elegant.h` included) with PocketUI's meanings, and its own
 as their client in one process (`server_sim.cpp` stands for the kernel's side: `kapi_ws_ctl`'s operations, the
 shared buffers mapped twice, the events) — the app built against the **wire** port (`-DUK_PORT_WIRE`, with
 `-DUK_PORT_POCKET` for PocketUI's: the port of `SD:/lib/pocket/uikit.so`, not the PC relay), its script's
-pointer and keys in screen coordinates, `dump` the composed screen, `expect` the policy's checks (`kind`,
-`frame`, `area`, `client`, `pos`, `front`, `aside`), `other` another program's window. It runs the Terminal and
-the Calculator under PocketUI at 800 × 480 (and 640 × 480, console), then **Elegant before and after** the
+pointer and keys in screen coordinates, `dump` the composed screen, `screen` the screen as the turns composed it (only the damage,
+as on the Pi), `expect` the policy's checks (`kind`, `frame`, `area`, `client`, `pos`, `front`, `aside`, `made`,
+`menu`, `bar`, `band`, `opos`), `other` another program's window (its flags and place: the desktop's bands),
+`raise` / `place` that program's own requests. It runs the Terminal, the Calculator and
+TinyPad under PocketUI at 800 × 480 (and 640 × 480, 1920 × 1080, console: a program started over another comes in
+front, a card does not move, the menu bar, the dock refused), then **Elegant before and after** the
 extraction of `user/Servers/common/` on the same scripts — the same pixels required. Its pictures of PocketUI
 are in `docs/compact-shell/real/` (copied from its output folder by hand when they change).
 

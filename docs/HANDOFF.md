@@ -63,14 +63,37 @@ common code*, docs/03 §5.10.1–5.10.3, docs/04 §5 *The pocket and console mod
   identical. `shots.sh`: 173 pictures, 171 identical to P2's; `archiver.png` (an archive's size, 29.8 / 29.7 KB)
   and `courier-tests.png` (the tab shown) differ the same way at HEAD's sources in a worktree -- the data and the
   timing, not this work. Build (`kernel/ make -j8`): no error, no warning in the new or changed files.
+- **Fixes after the first Pi run (2026-10-08, the user's reports with `shell=pocket`)**, `wm.cpp` + `common/wm/`:
+  (1) **a program started over another stayed hidden behind it** -- the front program was read back each turn
+  from the z-order (the topmost app window), so whatever put the old app's window back on top re-elected it; the
+  PC sim did not reproduce it (tinypad + a card at 800 x 480 and 1920 x 1080, the screen composed by damage as on
+  the Pi): the Pi's exact trigger is not identified -- to watch in step 3 below; the policy no longer depends on it.
+  Now the front program is **kept by the policy**: a program that opens a window or is raised (`EL_OP_WIN_RAISE`,
+  `EL_OP_APP_RAISE` = `run` of a running app, its tray icon opened, Alt+Tab) is fronted (an MRU list), its windows
+  raised and kept above every other program's each turn; the front one gone or minimised: the previous one; the
+  policy's per-window state keyed by pointer AND id. (2) **the dock was shown**: the bottom-band test asked for at
+  least half the screen's width -- the dock is 839 px, less than half of 1920: refused now whatever its width; the
+  agenda and the stickies are backmost (refused already). (3) **the menu bar stays in pocket** (study §6.4): a
+  topmost window across the top edge is the top band (`PK_KIND_BAR`), PocketUI's status band removed while it
+  runs, made again when it goes, the work area under it, the cards centred again; `EL_OP_MENU_GET` / `_COMMAND`
+  answer the **front app's** window (Elegant's active window skips borderless ones, so a filled app had no menus;
+  `GetActiveMenu` / `SendMenuCommand` gained an optional window, Elegant passes none); console refuses it.
+  (4) **cards do not move**: `CWindow::SetPinned` (cards and filled windows; Elegant never sets it) -- the title
+  bar neither drags nor maximises, no resize edge; `EL_OP_MOVE` / `EL_OP_WIN_MOVE` ignored for cards too. Also
+  `EL_OP_DESK`'s count test read the generation bits. server_sim: + 6 runs (tinypad then a card, at 800 x 480 and
+  1920 x 1080; a card's title dragged and a move asked; the menu bar + the dock + a backmost window; the dock at
+  1080p; console's menu bar), `screen` (the damage-composed screen, as on the Pi), 53 checks PASS; Elegant built
+  from HEAD's `common/` and from these: the same pixels and checks (tinycalc, terminal, tinypad, with drags and a
+  second program); `desktop_sim` wmtest passes.
 - **Pi checklist** (not done):
   1. Build, stage (`SD:/bin/pocketui`, `SD:/lib/pocket/uikit.so` new), boot with no `shell=` line: the desktop exactly as
      before (Elegant is rebuilt from `common/`): `pi_wstest.py`, `el0test`, `pi_apps.py`; `kill elegant` -> every window
      back, the wallpaper repainted (voronoy).
   2. `shell=pocket`, restart: the band at the top (the time), `kmsg` shows `pocketui: SD:/lib/pocket/uikit.so is
-     SD:/lib/uikit.so for this session` and `pocketui: a desktop's band refused` for the menu bar and the dock;
+     SD:/lib/uikit.so for this session` and `pocketui: the global menu bar: the top band` (the menu bar replaces the status band: the front app's menus, the
+     clock) and `pocketui: a desktop's band refused (the screen's bottom edge: the dock)`;
      `preload` lists `sd:/lib/uikit.so -> sd:/lib/pocket/uikit.so`.
-  3. From telnet: `run terminal` -> filled under the band, no frame, its tabs at the top; `run tinycalc` -> a card in the
+  3. From telnet (`kmsg`: `pocketui: in front: <app>` at each change): `run terminal` -> filled under the band, no frame, its tabs at the top; `run tinycalc` -> a card in the
      middle with the Milk title, the Terminal hidden; Alt+Tab -> the Terminal back; close the Calculator's bead -> the
      Terminal. `run fileviewer`, `run tinypad`, a game (`run tetris`: a card), an emulator full screen (F11), Setup (a
      fixed 800 x 600: filled frameless at 800 x 480, cut).

@@ -16,12 +16,18 @@
 //   key C           a key (a character, or a KEY_* number: arrows, Home, End, PgUp/PgDn, Del, F1-F12, Enter 13)
 //   mods N          the modifiers held from now on (1 Ctrl, 2 Shift, 4 Alt): "mods 4;key 0x09;mods 0" is Alt+Tab
 //   dump FILE       the composed SCREEN: "ELSM" w h 0 0, then w x h pixels (tools/tests/desktop_sim/shot.py makes it a PNG)
-//   other W H T [F] another program's window (pid 101 + n, a plain coloured canvas titled T, flags F): the
-//                   policy with two programs
+//   screen FILE     the screen as the turns composed it (only what was damaged, as on the Pi), the same format
+//   other W H T [F [X Y]] another program's window (pid 101 + n, a plain coloured canvas titled T, flags F, at
+//                   X, Y -- else placed by the server): the policy with two programs, the desktop's bands
+//   raise           the latest "other" program raised by its own request (EL_OP_WIN_RAISE)
+//   place X Y       the latest "other" window moved by its own request (EL_OP_MOVE)
 //   expect K V      a check, printed PASS / FAIL (the run's exit status counts the FAILs): K one of
 //                   front (the program in front: app, other, none), kind (the app's first window: card, fill, popup),
 //                   frame (1 the app's window has a frame, 0 none), area (the work area "x,y,w,h"),
-//                   client (the app's client size "w,h"), pos (its window's top left "x,y"), aside (1 / 0: the app set aside)
+//                   client (the app's client size "w,h"), pos (its window's top left "x,y"), aside (1 / 0: the app set aside),
+//                   made (1 / 0: the latest "other" window was made, or refused), menu (the title of the menus the
+//                   menu bar gets: EL_OP_MENU_GET, "-" none), bar (1 / 0: PocketUI has the global menu bar),
+//                   band (1 / 0: PocketUI's own status band is there), opos (the latest "other" window's top left "x,y")
 // Everything else is fakekapi.cpp's (wait, quit, exit...).
 //
 // Environment: SIM_SCREEN=WxH (the screen; fakekapi's), SIM_MODE=console (PocketUI's console mode), SIM_APPNAME
@@ -78,6 +84,7 @@ static int s_nW, s_nH;
 static unsigned *s_pScreen;
 static unsigned s_nButtons, s_nMods;
 static int s_nOthers;
+static bool s_bOtherMade;
 
 // ---- the shared buffers: one memory, mapped twice ---------------------------------------------------------
 #define WS_BASE		0xB00000000ULL		// (user/Servers/common/serve.cpp: a buffer's address in the server says its number)
@@ -295,9 +302,9 @@ extern "C" void sim_server_turn (void)
 }
 
 // ---- the script's steps -------------------------------------------------------------------------------------
-static void Dump (const char *file)
+static void Dump (const char *file, bool bWhole = true)
 {
-	el_core_redraw ();
+	if (bWhole) el_core_redraw ();
 	el_core_compose (s_pScreen, s_nW, s_nH, 0);
 	FILE *f = fopen (file, "wb");
 	if (f == 0) { perror (file); return; }
@@ -337,6 +344,27 @@ static void Expect (const char *key, const char *want)
 	memset (&F, 0, sizeof F);
 	if (id >= 0) el_core_window_frame_info (id, &F);
 	if (!strcmp (key, "frame")) snprintf (got, sizeof got, "%d", F.frame_w > 0 ? 1 : 0);
+	else if (!strcmp (key, "made")) snprintf (got, sizeof got, "%d", s_bOtherMade ? 1 : 0);
+	else if (!strcmp (key, "opos"))
+	{
+		struct kapi_win_geom G;
+		memset (&G, 0, sizeof G);
+		unsigned len = 0;
+		long r[4] = { 0, 0, 0, 0 };
+		el_op (OTHER_PID + (unsigned) s_nOthers - 1, EL_OP_GEOMETRY, r, 0, 0, s_Out, &len);
+		memcpy (&G, s_Out, sizeof G);
+		snprintf (got, sizeof got, "%d,%d", G.x, G.y);
+	}
+	else if (!strcmp (key, "menu"))
+	{
+		struct el_menu M;
+		memset (&M, 0, sizeof M);
+		unsigned len = 0;
+		long a[4] = { 0, 0, 0, 0 };
+		long serial = el_op (OTHER_PID + 50, EL_OP_MENU_GET, a, 0, 0, s_Out, &len);	// (as the menu bar asks it)
+		memcpy (&M, s_Out, len < sizeof M ? len : sizeof M);
+		snprintf (got, sizeof got, "%s", serial > 0 && M.title[0] ? M.title : "-");
+	}
 	else if (!strcmp (key, "client")) snprintf (got, sizeof got, "%d,%d", F.content_w, F.content_h);
 #ifdef SIM_POCKET
 	else if (!strcmp (key, "front"))
@@ -346,10 +374,12 @@ static void Expect (const char *key, const char *want)
 	}
 	else if (!strcmp (key, "kind"))
 	{
-		static const char *K[] = { "none", "own", "popup", "card", "fill" };
+		static const char *K[] = { "none", "own", "popup", "card", "fill", "bar" };
 		int k = pk_kind (id);
-		snprintf (got, sizeof got, "%s", k >= 0 && k <= 4 ? K[k] : "?");
+		snprintf (got, sizeof got, "%s", k >= 0 && k <= 5 ? K[k] : "?");
 	}
+	else if (!strcmp (key, "bar")) snprintf (got, sizeof got, "%d", pk_bar_id () >= 0 ? 1 : 0);
+	else if (!strcmp (key, "band")) snprintf (got, sizeof got, "%d", pk_band_id () >= 0 ? 1 : 0);
 #endif
 	else
 	{
@@ -368,7 +398,7 @@ static void Expect (const char *key, const char *want)
 	Check (what.c_str (), !strcmp (got, want), got);
 }
 
-static void Other (int w, int h, const char *title, unsigned flags)	// another program's window, painted
+static void Other (int w, int h, const char *title, unsigned flags, int x, int y)	// another program's window, painted
 {
 	unsigned pid = OTHER_PID + (unsigned) s_nOthers++;
 	struct el_create C;
@@ -377,7 +407,9 @@ static void Other (int w, int h, const char *title, unsigned flags)	// another p
 	snprintf (C.title, sizeof C.title, "%s", title);
 	long a[4] = { -1, -1, w, h };
 	unsigned len = 0;
-	if (el_op (pid, EL_OP_CREATE, a, (const unsigned char *) &C, sizeof C, s_Out, &len) != 1) { fprintf (stderr, "server_sim: other: refused\n"); return; }
+	if (x >= 0 && y >= 0) { a[0] = x; a[1] = y; }
+	s_bOtherMade = el_op (pid, EL_OP_CREATE, a, (const unsigned char *) &C, sizeof C, s_Out, &len) == 1;
+	if (!s_bOtherMade) { fprintf (stderr, "server_sim: other: refused\n"); return; }
 	int id = el_core_window_of_win (pid, 0), cw = 0, ch = 0;
 	unsigned *p = el_core_window_canvas (id, &cw, &ch);
 	for (int y = 0; p != 0 && y < ch; y++)
@@ -419,11 +451,28 @@ extern "C" int sim_server_step (const char *st)
 	}
 	if (!strcmp (cmd, "mods")) { sscanf (st, "%*s %d", &a); s_nMods = (unsigned) a; el_core_modifiers (s_nMods); return 1; }
 	if (!strcmp (cmd, "dump")) { sscanf (st, "%*s %255s", arg); Dump (arg); return 1; }
+	if (!strcmp (cmd, "screen")) { sscanf (st, "%*s %255s", arg); Dump (arg, false); return 1; }
 	if (!strcmp (cmd, "other"))
 	{
 		unsigned f = 0;
-		sscanf (st, "%*s %d %d %255s %u", &a, &b, arg, &f);
-		Other (a, b, arg, f);
+		int x = -1, y = -1;
+		sscanf (st, "%*s %d %d %255s %i %d %d", &a, &b, arg, (int *) &f, &x, &y);
+		Other (a, b, arg, f, x, y);
+		return 1;
+	}
+	if (!strcmp (cmd, "place"))
+	{
+		sscanf (st, "%*s %d %d", &a, &b);
+		long r[4] = { a, b, 0, 0 };
+		unsigned len = 0;
+		el_op (OTHER_PID + (unsigned) s_nOthers - 1, EL_OP_MOVE, r, 0, 0, s_Out, &len);
+		return 1;
+	}
+	if (!strcmp (cmd, "raise"))
+	{
+		long r[4] = { 0, 0, 0, 0 };
+		unsigned len = 0;
+		el_op (OTHER_PID + (unsigned) s_nOthers - 1, EL_OP_WIN_RAISE, r, 0, 0, s_Out, &len);
 		return 1;
 	}
 	if (!strcmp (cmd, "expect")) { sscanf (st, "%*s %255s %63s", arg, arg2); Expect (arg, arg2); return 1; }

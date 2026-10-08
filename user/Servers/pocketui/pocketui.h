@@ -31,7 +31,9 @@ int pk_band_id (void);
 #define PK_KIND_POPUP	2		// a borderless or topmost window of a program: where it asked
 #define PK_KIND_CARD	3		// a framed window that fits the work area: centred
 #define PK_KIND_FILL	4		// frameless, at the work area's top left (its size: the work area's when resizable)
+#define PK_KIND_BAR	5		// the desktop's global menu bar (pocket): the top band, PocketUI's own band then hidden
 int pk_kind (int id);
 unsigned pk_front_pid (void);
+int pk_bar_id (void);			// the global menu bar's window, -1: none
 
 #endif

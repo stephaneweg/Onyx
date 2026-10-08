@@ -26,7 +26,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_ulKeyHandler (0), m_ulClickHandler (0), m_ulPointerHandler (0),
 	m_nMinLogicalH (nClientH), m_nAlpha (255), m_ulMenuHandler (0), m_nMenuGen (0),
 	m_nEvHead (0), m_nEvTail (0), m_nEvDropped (0), m_pWake (0), m_nLastPump (0),
-	m_bExitRequested (FALSE), m_bMinimised (FALSE), m_nDesk (0), m_bOffDesk (FALSE), m_bAside (FALSE),
+	m_bExitRequested (FALSE), m_bMinimised (FALSE), m_nDesk (0), m_bOffDesk (FALSE), m_bAside (FALSE), m_bPinned (FALSE),
 	m_nChromeGenShown (0), m_nRetireFrame (0)
 {
 	m_nCursorShape = 0;				// (the arrow)
@@ -982,10 +982,10 @@ int CWindowManager::MoveToDesk (CWindow *pWindow, int n)
 	return nDesk;
 }
 
-unsigned CWindowManager::GetActiveMenu (char *pBuf, unsigned nCap, char *pTitle, unsigned nTitleCap)
+unsigned CWindowManager::GetActiveMenu (char *pBuf, unsigned nCap, char *pTitle, unsigned nTitleCap, CWindow *pFor)
 {
 	m_SpinLock.Acquire ();
-	CWindow *p = ActiveLocked ();
+	CWindow *p = pFor != 0 ? pFor : ActiveLocked ();
 	unsigned nSerial = 0;
 	if (p != 0)
 	{
@@ -1019,11 +1019,11 @@ unsigned CWindowManager::GetActiveMenu (char *pBuf, unsigned nCap, char *pTitle,
 	return nSerial;
 }
 
-boolean CWindowManager::SendMenuCommand (int nID)
+boolean CWindowManager::SendMenuCommand (int nID, CWindow *pFor)
 {
 	boolean bOK = FALSE;
 	m_SpinLock.Acquire ();
-	CWindow *p = ActiveLocked ();
+	CWindow *p = pFor != 0 ? pFor : ActiveLocked ();
 	if (p != 0)
 	{
 		if (nID == -1)
@@ -1736,6 +1736,10 @@ void CWindowManager::OnMouse (int x, int y, unsigned nButtons)
 				m_pBtnDown = pWin;			// acted on at the release, over it
 				m_nBtnDown = nBtn;
 			}
+			else if (bOnTitle && pWin->Pinned ())
+			{
+				// (PocketUI's card: its title bar neither drags it nor maximises it)
+			}
 			else if (bOnTitle && !pWin->Fixed ())		// (a fixed window stays put)
 			{
 				unsigned nNow = CTimer::Get ()->GetTicks ();
@@ -1906,7 +1910,7 @@ void CWindowManager::ShowShapeLocked (unsigned nShape)
 // corner, the two edges. 0: the window is not resizable, or the point is elsewhere.
 unsigned CWindow::HitResizeEdge (int sx, int sy) const
 {
-	if (!m_bResizable || Borderless () || Fixed ()) return 0;
+	if (!m_bResizable || Borderless () || Fixed () || m_bPinned) return 0;
 	int rx = sx - m_nX, ry = sy - m_nY, W = OuterWidth (), H = OuterHeight ();
 	if (rx < 0 || ry < 0 || rx >= W || ry >= H) return 0;
 	unsigned e = 0;

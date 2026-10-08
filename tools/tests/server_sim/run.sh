@@ -4,8 +4,9 @@
 #   1. PocketUI (user/Servers/common/ + user/Servers/pocketui/wm.cpp, band.cpp) with apps built against the pocket
 #      UIKit's wire port (UK_PORT_POCKET + UK_PORT_WIRE: the port of SD:/lib/pocket/uikit.so): the Terminal (resizable:
 #      filled, frameless, under the status band) and the Calculator (fixed: a card) at 800 x 480, the console mode,
-#      the policy's checks (expect ...: the kinds, the frames, the work area, one app in front, Alt+Tab) -- and the
-#      screenshots, into the output folder;
+#      the policy's checks (expect ...: the kinds, the frames, the work area, one app in front, Alt+Tab, a program
+#      started or raised comes in front, cards do not move, the global menu bar takes the top band and shows the front
+#      app's menus, the dock and the desktop's backmost windows refused) -- and the screenshots, into the output folder;
 #   2. Elegant after the extraction of user/Servers/common/ against Elegant BEFORE it (the sources of git's HEAD~,
 #      or of the revision in ELEGANT_BEFORE): the same app, the same script, the composed screens compared pixel
 #      for pixel (its behaviour unchanged) -- skipped when that revision has no user/Servers/elegant/wm.
@@ -53,6 +54,7 @@ app () {
 }
 app pocket terminal uikit_pocket
 app pocket tinycalc uikit_pocket
+app pocket tinypad uikit_pocket
 app elegant tinycalc uikit_wire
 app elegant terminal uikit_wire
 
@@ -81,7 +83,27 @@ run pocket_terminal console-terminal "$WW;expect area 0,0,800,480;expect client 
 	SIM_SCREEN=800x480 SIM_MODE=console SIM_APPNAME=terminal SIM_PIPE="$PIPE"
 # 640 x 480: the Terminal filled again
 run pocket_terminal pocket-terminal-640 "$WW;expect client 640,456;dump $OUT/pocket-terminal-640.elsm" SIM_SCREEN=640x480 SIM_APPNAME=terminal SIM_PIPE="$PIPE"
-for p in pocket-terminal pocket-card-over pocket-calculator console-terminal pocket-terminal-640; do png $p; done
+# a program started over another one comes in front (tinypad filled, then a card): the first set aside -- also once the
+# filled one was told its size again; raised by its own request (EL_OP_WIN_RAISE), the first comes back
+SC="$WW;expect kind fill;expect front app;other 280 296 Calc;$W;expect front other;expect aside 1;$WW;$WW;expect front other;expect aside 1"
+SC="$SC;screen $OUT/pocket-front.elsm;mods 4;key 0x09;mods 0;$W;expect front app;expect aside 0;raise;$W;expect front other;expect aside 1"
+run pocket_tinypad pocket-front "$SC" SIM_SCREEN=800x480 SIM_APPNAME=tinypad
+run pocket_tinypad pocket-front-1080 "$WW;other 280 296 Calc;$WW;expect front other;expect aside 1" SIM_SCREEN=1920x1080 SIM_APPNAME=tinypad
+# a card does not move: its title bar dragged, a move asked by its program -- it stays centred
+run pocket_tinycalc pocket-card-fixed "$W;expect pos 256,88;down 400 96;move 450 150;move 500 200;up 500 200;$W;expect pos 256,88;other 300 200 Calc;$W;expect opos 246,136;place 10 300;$W;expect opos 246,136" \
+	SIM_SCREEN=800x480 SIM_APPNAME=tinycalc
+# the desktop's global menu bar (a topmost window across the top edge: flags 0x35) is the top band: PocketUI's band
+# away, the work area under it, its menus the front app's (a filled window's too); the dock (on the bottom edge,
+# narrower than half the screen at 1920 x 1080) and a backmost window (the agenda, the stickies: 0x33) refused
+SC="$WW;other 800 30 menubar 0x35 0 0;expect made 1;expect bar 1;$W;expect band 0;expect area 0,30,800,450;expect menu tinypad;$WW"
+SC="$SC;expect client 800,450;expect pos 0,30;other 784 89 dock 0x35 8 391;expect made 0;other 300 300 agenda 0x33 10 10;expect made 0"
+SC="$SC;other 280 296 Calc;$W;expect menu Calc;expect front other;screen $OUT/pocket-menubar.elsm"
+run pocket_tinypad pocket-menubar "$SC" SIM_SCREEN=800x480 SIM_APPNAME=tinypad
+run pocket_tinypad pocket-dock-1080 "$WW;other 839 92 dock 0x35 540 988;expect made 0;expect band 1" SIM_SCREEN=1920x1080 SIM_APPNAME=tinypad
+# console: no menu bar
+run pocket_tinypad console-menubar "$WW;other 800 30 menubar 0x35 0 0;expect made 0;expect bar 0;expect area 0,0,800,480" \
+	SIM_SCREEN=800x480 SIM_MODE=console SIM_APPNAME=tinypad
+for p in pocket-terminal pocket-card-over pocket-calculator console-terminal pocket-terminal-640 pocket-front pocket-menubar; do png $p; done
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1
 echo "  checks: $(grep -c 'server_sim: PASS' "$OUT/log.txt") passed, $(grep -c 'server_sim: FAIL' "$OUT/log.txt") failed"
 

@@ -247,6 +247,10 @@ public:
 		else { m_bAside = FALSE; Damage (); }
 	}
 	boolean Hidden (void) const	{ return m_bMinimised || m_bOffDesk || m_bAside; }	// (minimised, off-desk or aside)
+	// Pinned (PocketUI's cards and filled windows): its title bar does not drag it, its frame does not resize it.
+	// Elegant never sets it.
+	boolean Pinned (void) const	{ return m_bPinned; }
+	void SetPinned (boolean bOn)	{ m_bPinned = bOn; }
 
 	// The pid of the process owning this window (0 = kernel), for drag & drop results.
 	void SetOwnerPid (unsigned nPid)	{ m_nOwnerPid = nPid; }
@@ -473,6 +477,7 @@ private:
 	int		m_nDesk;		// (v65) its workspace, -1 = every one (SetDesk)
 	volatile boolean m_bOffDesk;		// on another workspace than the current one (SetOffDesk)
 	volatile boolean m_bAside;		// (SetAside: PocketUI's)
+	boolean		m_bPinned;		// (SetPinned: PocketUI's)
 	unsigned	m_nChromeGenShown;	// m_nChromeGen at the last whole-window present
 	void	       *m_pRetired[3];		// memory Grow replaced (canvas, chrome x 2), freed later
 	unsigned	m_nRetireFrame;		// the compositor's frame count when it was retired
@@ -607,8 +612,9 @@ public:
 	// GetActiveMenu copies its menu spec + title; returns a serial that changes when
 	// the active window or its menu changes (0 = no active window).
 	// SendMenuCommand queues GUI_EVENT_MENU(id) to it (id -1 = ask it to close).
-	unsigned GetActiveMenu (char *pBuf, unsigned nCap, char *pTitle, unsigned nTitleCap);
-	boolean SendMenuCommand (int nID);
+	// pFor: that window instead of the active one (PocketUI: the front app's, which may be borderless).
+	unsigned GetActiveMenu (char *pBuf, unsigned nCap, char *pTitle, unsigned nTitleCap, CWindow *pFor = 0);
+	boolean SendMenuCommand (int nID, CWindow *pFor = 0);
 
 	// Height reserved at the top of the screen by a topmost window at y=0 (the menu
 	// bar); window auto-placement and title-bar drags keep clear of it.
