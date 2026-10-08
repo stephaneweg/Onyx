@@ -26,7 +26,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_ulKeyHandler (0), m_ulClickHandler (0), m_ulPointerHandler (0),
 	m_nMinLogicalH (nClientH), m_nAlpha (255), m_ulMenuHandler (0), m_nMenuGen (0),
 	m_nEvHead (0), m_nEvTail (0), m_nEvDropped (0), m_pWake (0), m_nLastPump (0),
-	m_bExitRequested (FALSE), m_bMinimised (FALSE), m_nDesk (0), m_bOffDesk (FALSE), m_bAside (FALSE), m_bPinned (FALSE),
+	m_bExitRequested (FALSE), m_bMinimised (FALSE), m_nDesk (0), m_bOffDesk (FALSE), m_bAside (FALSE), m_bPinned (FALSE), m_bNoInset (FALSE),
 	m_nChromeGenShown (0), m_nRetireFrame (0)
 {
 	m_nCursorShape = 0;				// (the arrow)
@@ -823,7 +823,7 @@ int CWindowManager::TopInsetLocked (void)
 	for (unsigned i = 0; i < m_nWindows; i++)
 	{
 		CWindow *p = m_pWindows[i];
-		if (p != 0 && p->Topmost () && p->Y () == 0 && p->MinLogicalHeight () > nInset)
+		if (p != 0 && p->Topmost () && !p->NoInset () && p->Y () == 0 && p->MinLogicalHeight () > nInset)
 		{
 			nInset = p->MinLogicalHeight ();
 		}
@@ -847,7 +847,7 @@ int CWindowManager::BottomInsetLocked (void)
 	for (unsigned i = 0; i < m_nWindows; i++)
 	{
 		CWindow *p = m_pWindows[i];
-		if (p != 0 && p->Topmost () && p->Y () > 0 && !p->Hidden ()
+		if (p != 0 && p->Topmost () && !p->NoInset () && p->Y () > 0 && !p->Hidden ()
 		    && p->Y () + p->OuterHeight () >= g_nScreenHeight && p->MinLogicalHeight () > nInset)
 		{
 			nInset = p->MinLogicalHeight ();
@@ -1642,6 +1642,12 @@ static int NextKey (const char **pp, unsigned *pMods = 0)
 	if (ch == '\n' || ch == '\r') return KEY_ENTER;
 	if (ch == 0x7F)               return KEY_BACKSPACE;
 	return ch;
+}
+
+// (2026-10-08) The same parsing for a server's policy (core.h el_core_next_key: PocketUI's shell keys).
+int WmNextKey (const char **pp, unsigned *pMods)
+{
+	return NextKey (pp, pMods);
 }
 
 void CWindowManager::OnMouse (int x, int y, unsigned nButtons)

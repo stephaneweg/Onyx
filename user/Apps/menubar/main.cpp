@@ -23,6 +23,10 @@
 // the File Viewer; "Disks..." opens the Disks app. The bar also says what happened through notifyd:
 // a stick connected, one that can be removed safely, one pulled out without an eject.
 //
+// In the pocket mode (PocketUI; the bar is its top band) the Onyx menu starts with the pocket shell's screens -- Home,
+// Open Apps, Quick Settings (pocketshell, asked through SystemKit's shell.h) -- and a click on the time opens quick
+// settings and the notifications instead of the calendar.
+//
 // A click on the time opens a calendar (the month; "Open Calendar" starts the Calendar app; "Alarms and timers..."
 // opens the Clock on its Alarms tab -- when the Clock is on the card). A small bell left of the time says an alarm of
 // the Clock rings within 24 hours (SD:/apps/clock.app/alarms.txt read once a minute, through the Clock's own model,
@@ -176,7 +180,9 @@ static void fill_windows (SubDef &sd)
 
 // ---- menus ------------------------------------------------------------------------------
 // Onyx system-menu item ids (>= 1000: handled here, never sent to the app).
-enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_TASKS, ONYX_SHUTDOWN, ONYX_SUB, ONYX_CONTROL };
+enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_TASKS, ONYX_SHUTDOWN, ONYX_SUB, ONYX_CONTROL,
+       ONYX_HOME, ONYX_SWITCHER, ONYX_QUICK };		// (the pocket shell's: SystemKit's shell.h)
+static bool g_pocket;			// PocketUI's pocket mode: the bar is its top band, the pocket shell beside it
 
 static void add_quit_menu (const char *app)
 {
@@ -198,6 +204,13 @@ static void build_onyx_menu (MenuDef &m)
 		x.id = id; x.sep = id == -2; x.key[0] = '\0'; x.sub = sub;
 		scopy (x.label, l ? l : "", sizeof x.label);
 	};
+	if (g_pocket && shell_running ())		// the pocket shell's screens first (pocketshell: the launcher...)
+	{
+		add (ONYX_HOME, TR ("Home"), -1); add (ONYX_SWITCHER, TR ("Open Apps"), -1); add (ONYX_QUICK, TR ("Quick Settings"), -1);
+		scopy (m.items[0].key, "Super", sizeof m.items[0].key); scopy (m.items[1].key, "Alt+Tab", sizeof m.items[1].key);
+		scopy (m.items[2].key, "Super+N", sizeof m.items[2].key);
+		add (-2, 0, -1);
+	}
 	add (ONYX_TERMINAL, TR ("Terminal"), -1); add (ONYX_CONTROL, TR ("Control Panel"), -1);
 	add (ONYX_FILES, TR ("File Viewer"), -1); add (ONYX_TASKS, TR ("Task Manager"), -1);
 	add (-2, 0, -1);
@@ -869,6 +882,9 @@ static void run_item (const Item &it)
 	case ONYX_FILES:    kapi_launch ("fileviewer"); return;
 	case ONYX_TASKS:    kapi_launch ("taskman"); return;
 	case ONYX_SHUTDOWN: kapi_launch ("shutdown"); return;
+	case ONYX_HOME:     shell_ask (SHELL_MSG_HOME); return;
+	case ONYX_SWITCHER: shell_ask (SHELL_MSG_SWITCHER); return;
+	case ONYX_QUICK:    shell_ask (SHELL_MSG_QUICK); return;
 	case ONYX_SUB:      return;			// (it opens its sub-menu)
 	}
 	uk_win_menu_command (it.id);		// the active app's own item (or MENU_QUIT)
@@ -941,6 +957,13 @@ static void ptr (unsigned long, int ev, long v)
 			if (on_cal_btn (x, y)) g_calBtnDown = on_cal_btn (x, y);
 			else g_cal->handleMouse (x - bx - 10, y - by - 10, 1, 0, 0, 0);
 			g_dirty = true;
+			break;
+		}
+		if (on_clock (x, y) && g_pocket && shell_running ())	// (pocket: the time opens quick settings, the notifications)
+		{
+			if (g_open >= 0) close_menu ();
+			g_volOpen = false; g_calOpen = false; g_usbOpen = false; g_dirty = true;
+			shell_ask (SHELL_MSG_QUICK);
 			break;
 		}
 		if (on_clock (x, y))					// the calendar, open / closed
@@ -1124,6 +1147,7 @@ int main (void)
 	C_DROP = C_FIELD; C_DIM = uk_mix (C_FIELD, C_FIELD_TEXT, 130); C_OUT = uk_tone (C_MENUBAR, 70);
 	{ int yy = 2026, mo = 1, dd = 1; kapi_get_datetime (&yy, &mo, &dd, 0, 0, 0); g_cal = new CalCard (yy, mo, dd); }
 	uk_win_on_pointer (ptr);
+	{ struct uk_win_server_info si; memset (&si, 0, sizeof si); si.size = sizeof si; uk_win_server (&si); g_pocket = si.mode == UK_MODE_POCKET; }
 	alarms_init (g_alarms);
 	bell_poll ();							// (the Clock's alarms: the bell)
 	volume_restore ();						// the saved volume (SD:/etc/sound.ini)

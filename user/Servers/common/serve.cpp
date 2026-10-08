@@ -80,6 +80,11 @@ int el_sys_name (unsigned pid, char *buf, unsigned cap)
 	return n > 0 ? (int) n : 0;
 }
 
+int el_sys_screen_grab (unsigned *dst, int w, int h)		// (a full-screen program's frames: rdpd reads its window)
+{
+	return kapi_screen_grab (dst, w, h);
+}
+
 static int s_bLostDisplay = 0;
 
 // Print Screen (the USB keyboards' report: usage 0x46), at its press: the Screenshot app captures the
@@ -239,9 +244,10 @@ int el_serve (int demo, int restart)
 					if (demo && in[i].keys[0] == 27 && in[i].keys[1] == 0) quit = 1;
 					else ws_route_key (in[i].keys, mods);
 					break;
-				case KAPI_WS_IN_MODS:
+				case KAPI_WS_IN_MODS:			// (the window manager: Ctrl, Shift, Alt -- the policy: Super too)
 					mods = (unsigned) in[i].a;
-					el_core_modifiers (mods);
+					el_core_modifiers (mods & ~(unsigned) KAPI_WS_MOD_SUPER);
+					if (g_pWsPolicy != 0 && g_pWsPolicy->mods != 0) g_pWsPolicy->mods (mods);
 					break;
 				case KAPI_WS_IN_HELD_USB:
 					print_screen (in[i].keys, mods);

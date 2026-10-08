@@ -32,8 +32,19 @@ int pk_band_id (void);
 #define PK_KIND_CARD	3		// a framed window that fits the work area: centred
 #define PK_KIND_FILL	4		// frameless, at the work area's top left (its size: the work area's when resizable)
 #define PK_KIND_BAR	5		// the desktop's global menu bar (pocket): the top band, PocketUI's own band then hidden
+#define PK_KIND_HOME	6		// the shell's backmost window: its home (the launcher), at the work area
+#define PK_KIND_SHELL	7		// the shell's topmost or borderless windows: its overlays, its toasts (where asked)
+#define PK_KIND_CENTRE	8		// a program's main window of a fixed size (not resizable, smaller than the work area):
+					// frameless, centred in the work area over a matte of its own background colour
+// The apps shown as cards rather than full screen: SD:/etc/pocketui.ini's [cards] (one app's name a line), or their
+// app.txt's "pocket = card" -> 1 (wm.cpp; read again at each program's first window).
+#define PK_INI		"SD:/etc/pocketui.ini"
+int pk_card_app (const char *name);
+int pk_matte (void);			// 1: the matte is shown (behind a centred main window)
 int pk_kind (int id);
 unsigned pk_front_pid (void);
 int pk_bar_id (void);			// the global menu bar's window, -1: none
+unsigned pk_shell_pid (void);		// the shell (uk_shell_register), 0: none
+int pk_home (void);			// 1: home -- no app in front, the shell's home shown
 
 #endif

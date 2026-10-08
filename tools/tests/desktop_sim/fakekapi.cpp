@@ -43,7 +43,7 @@
 // pid 99 alive, a 700 x 470 surface -- dumped instead of a window); SIM_SURFACE=FILE.elsm: the
 // pixels a surface is filled with when an applet says hello (SIM_MAIL); SIM_MAIL="type:pid": one
 // message of that type from that pid in the mailbox (a Control Panel applet's AP_HELLO: 40:7);
-// SIM_MBOX="type:pid:payload\n...": canned mailbox messages (irc's conversation windows), any
+// SIM_MBOX="type:pid:payload\n...": canned mailbox messages (irc's conversation windows; "\t" a tab, "\0" a NUL), any
 // service looked up is pid 7; SIM_DESKS="cur,count": the workspaces (kapi v65); SIM_VOLS: the volumes besides the card (below);
 // SIM_WALLDUMP=FILE.elsm: the wallpaper an app makes live (voronoy) written there.
 // SIM_GRAB=FILE.elsm: what kapi_screen_grab gives (the screen, e.g. screenshots/desktop.png made an .elsm:
@@ -1634,7 +1634,9 @@ static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int
 		int t = 0, pid = 0, at = 0; sscanf (l.c_str (), "%d:%d:%n", &t, &pid, &at);
 		std::string m = l.substr (at), d;
 		for (size_t i = 0; i < m.size (); i++)
-			if (m[i] == '\\' && i + 1 < m.size () && m[i + 1] == 't') { d += '\t'; i++; } else d += m[i];
+			if (m[i] == '\\' && i + 1 < m.size () && m[i + 1] == 't') { d += '\t'; i++; }
+			else if (m[i] == '\\' && i + 1 < m.size () && m[i + 1] == '0') { d += '\0'; i++; }	// (a NUL: a notification's parts)
+			else d += m[i];
 		unsigned n = (unsigned) d.size () < cap ? (unsigned) d.size () : cap;
 		memcpy (buf, d.data (), n);
 		if (from) *from = pid; if (type) *type = t;

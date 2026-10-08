@@ -78,11 +78,19 @@ int uk_shell_keys (const int *keys, int count)
 }
 int uk_shell_thumb (unsigned id, unsigned *dst, int w, int h)
 {
-	if (dst == 0 || w <= 0 || h <= 0) return -1;
+	if (dst == 0 || w <= 0 || h <= 0 || w > 512 || h > 512) return -1;
 	return (int) port::shell (port::SHELL_THUMB, (long) id, w, h, 0, 0, 0, dst, (unsigned) w * (unsigned) h * 4u);
 }
 int uk_shell_front (unsigned id, int front) { return (int) port::shell (port::SHELL_FRONT, (long) id, front, 0, 0, 0, 0, 0, 0); }
 int uk_shell_split (unsigned left, unsigned right) { return (int) port::shell (port::SHELL_SPLIT, (long) left, (long) right, 0, 0, 0, 0, 0, 0); }
 int uk_shell_dim (int alpha) { return (int) port::shell (port::SHELL_DIM, alpha, 0, 0, 0, 0, 0, 0, 0); }
+int uk_shell_grab (int on) { return (int) port::shell (port::SHELL_GRAB, on ? 1 : 0, 0, 0, 0, 0, 0, 0, 0); }
+int uk_shell_tasks (struct uk_shell_task *out, int max)
+{
+	if (out == 0 || max <= 0) return 0;
+	if (max > UK_TASKS_MAX) max = UK_TASKS_MAX;
+	long n = port::shell (port::SHELL_TASKS, max, 0, 0, 0, 0, 0, out, (unsigned) max * (unsigned) sizeof *out);
+	return n > 0 ? (int) n : 0;
+}
 
 } // extern "C"

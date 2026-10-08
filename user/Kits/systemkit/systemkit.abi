@@ -92,3 +92,5 @@
 86 session_switch
 87 session_switch_start
 88 session_waiting
+89 shell_ask
+90 shell_running

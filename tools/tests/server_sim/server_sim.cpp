@@ -19,6 +19,10 @@
 //   screen FILE     the screen as the turns composed it (only what was damaged, as on the Pi), the same format
 //   other W H T [F [X Y]] another program's window (pid 101 + n, a plain coloured canvas titled T, flags F, at
 //                   X, Y -- else placed by the server): the policy with two programs, the desktop's bands
+//   otherpic W H T FILE SX SY [F [X Y]]   the same, its canvas painted from a dump (FILE.elsm, from SX, SY): a real app's look
+//   othermenu SPEC  the latest "other" program's menus ('|' between the lines, '~' a tab): what the menu bar shows
+//   owin W H T      a second window of the latest "other" program (a dialog)
+//   oclose          the latest "other" program ended (its windows removed)
 //   raise           the latest "other" program raised by its own request (EL_OP_WIN_RAISE)
 //   place X Y       the latest "other" window moved by its own request (EL_OP_MOVE)
 //   expect K V      a check, printed PASS / FAIL (the run's exit status counts the FAILs): K one of
@@ -27,7 +31,14 @@
 //                   client (the app's client size "w,h"), pos (its window's top left "x,y"), aside (1 / 0: the app set aside),
 //                   made (1 / 0: the latest "other" window was made, or refused), menu (the title of the menus the
 //                   menu bar gets: EL_OP_MENU_GET, "-" none), bar (1 / 0: PocketUI has the global menu bar),
-//                   band (1 / 0: PocketUI's own status band is there), opos (the latest "other" window's top left "x,y")
+//                   band (1 / 0: PocketUI's own status band is there), opos (the latest "other" window's top left "x,y");
+//                   (P5) home (1 / 0), shell (app, other, none), tasks (how many), kindN (the app's window N's kind),
+//                   okind[N] (the latest "other" program's window N's), shownN (1 / 0: the app's window N on the
+//                   screen), focus (who has the keys: app, other, none), keys (the GUI_EVENT_KEY the app received),
+//                   matte (1 / 0: PocketUI's matte shown), full (1 / 0: the app has the full screen, as the list says),
+//                   hidden (1 / 0: the app's window not shown as the list says -- set aside: KAPI_WIN_OFFDESK, rdpd's view)
+//   (mods 8 is the Super key: the policy's mods hook gets it, the window manager not -- as serve.cpp does; the app's
+//   uk_win_fullscreen_begin / _end tell the server as the kernel does, KAPI_WS_IN_FULLSCREEN)
 // Everything else is fakekapi.cpp's (wait, quit, exit...).
 //
 // Environment: SIM_SCREEN=WxH (the screen; fakekapi's), SIM_MODE=console (PocketUI's console mode), SIM_APPNAME
@@ -48,6 +59,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <map>
 #include <string>
 #include <vector>
@@ -73,7 +85,7 @@ unsigned g_nStubTicks = 1000;			// (tools/tests/desktop_sim/kstub/circle/timer.h
 
 #ifndef SIM_POCKET
 #ifndef SIM_OLD
-static const struct ws_policy s_Elegant = { "elegant", 0, 0, 0, 0, 0, 0, 0, 0, 0 };	// (Elegant's: the common behaviour)
+static const struct ws_policy s_Elegant = { "elegant" };	// (the rest 0: the common behaviour)	// (Elegant's: the common behaviour)
 const struct ws_policy *g_pWsPolicy = &s_Elegant;
 #endif
 #endif
@@ -85,6 +97,8 @@ static unsigned *s_pScreen;
 static unsigned s_nButtons, s_nMods;
 static int s_nOthers;
 static bool s_bOtherMade;
+static std::map<unsigned, std::string> s_Names;	// the "other" programs' names (their title in lower case)
+static int s_nKeys;				// the keys delivered to the app (GUI_EVENT_KEY events)
 
 // ---- the shared buffers: one memory, mapped twice ---------------------------------------------------------
 #define WS_BASE		0xB00000000ULL		// (user/Servers/common/serve.cpp: a buffer's address in the server says its number)
@@ -170,7 +184,11 @@ extern "C" long sim_ws_ctl (int op, long a0, long a1, long a2)
 		return SELF;
 	case KAPI_WS_ATTACH:	s_bAttached = true; return 0;
 	case KAPI_WS_POST:
-		if ((unsigned) a0 == APP_PID) s_Ev.push_back (*(const struct kapi_event *) a1);
+		if ((unsigned) a0 == APP_PID)
+		{
+			s_Ev.push_back (*(const struct kapi_event *) a1);
+			if (((const struct kapi_event *) a1)->event == GUI_EVENT_KEY) s_nKeys++;
+		}
 		return 1;
 	case KAPI_WS_EXIT:	if ((unsigned) a0 == APP_PID) s_bExit = true; return 0;
 	case KAPI_WS_BUF_MAP:	return BufMap ((struct kapi_ws_buf *) a0);
@@ -178,7 +196,8 @@ extern "C" long sim_ws_ctl (int op, long a0, long a1, long a2)
 	case KAPI_WS_FOCUS:	return 0;
 	case KAPI_WS_PROC_NAME:
 		{
-			const char *n = (unsigned) a0 == APP_PID ? (getenv ("SIM_APPNAME") ? getenv ("SIM_APPNAME") : "app") : "other";
+			const char *n = (unsigned) a0 == APP_PID ? (getenv ("SIM_APPNAME") ? getenv ("SIM_APPNAME") : "app")
+				      : s_Names.count ((unsigned) a0) ? s_Names[(unsigned) a0].c_str () : "other";
 			snprintf ((char *) a1, (size_t) a2, "%s", n);
 			return (long) strlen ((char *) a1);
 		}
@@ -219,6 +238,7 @@ int el_sys_attach (unsigned pid)				{ return sim_ws_ctl (KAPI_WS_ATTACH, pid, 0,
 int el_sys_state (unsigned pid, void *bytes, int set)		{ return sim_ws_ctl (KAPI_WS_STATE, pid, (long) bytes, set) == 0; }
 int el_sys_clients (unsigned *pids, int max)			{ long n = sim_ws_ctl (KAPI_WS_CLIENTS, (long) pids, max, 0); return n > 0 ? (int) n : 0; }
 int el_sys_name (unsigned pid, char *buf, unsigned cap)	{ long n = sim_ws_ctl (KAPI_WS_PROC_NAME, pid, (long) buf, cap); return n > 0 ? (int) n : 0; }
+int el_sys_screen_grab (unsigned *dst, int w, int h)		{ return kapi_screen_grab (dst, w, h); }
 #ifdef SIM_POCKET
 void pk_main_registered (int)					{}	// (PocketUI's main.cpp: its UIKit's alias -- none on the PC)
 #endif
@@ -227,6 +247,21 @@ void pk_main_registered (int)					{}	// (PocketUI's main.cpp: its UIKit's alias 
 static int (*s_pShouldExit) (void);
 static int SimShouldExit (void)			{ return s_bExit || (s_pShouldExit != 0 && s_pShouldExit ()); }
 static int SimGetpid (int)			{ return SELF; }
+// The full screen: the kernel tells the server (KAPI_WS_IN_FULLSCREEN), as kernel/sys/kapi.cpp does
+static unsigned *(*s_pFsBegin) (int *, int *);
+static void (*s_pFsEnd) (void);
+static bool s_bFull;
+static unsigned *SimFsBegin (int *w, int *h)
+{
+	unsigned *p = s_pFsBegin != 0 ? s_pFsBegin (w, h) : 0;
+	if (p != 0) { el_core_fullscreen (APP_PID, 1); s_bFull = true; }
+	return p;
+}
+static void SimFsEnd (void)
+{
+	if (s_pFsEnd != 0) s_pFsEnd ();
+	el_core_fullscreen (APP_PID, 0); s_bFull = false;
+}
 
 static void Init (void)
 {
@@ -235,6 +270,8 @@ static void Init (void)
 	TKApiTable *T = (TKApiTable *) KAPI_TABLE_VA;
 	s_pShouldExit = T->should_exit; T->should_exit = SimShouldExit;
 	T->getpid = SimGetpid;
+	s_pFsBegin = T->fullscreen_begin; T->fullscreen_begin = SimFsBegin;
+	s_pFsEnd = T->fullscreen_end; T->fullscreen_end = SimFsEnd;
 	kapi_screen_size (&s_nW, &s_nH);
 	s_pScreen = new unsigned[(size_t) s_nW * s_nH];
 #ifdef SIM_POCKET
@@ -366,6 +403,39 @@ static void Expect (const char *key, const char *want)
 		snprintf (got, sizeof got, "%s", serial > 0 && M.title[0] ? M.title : "-");
 	}
 	else if (!strcmp (key, "client")) snprintf (got, sizeof got, "%d,%d", F.content_w, F.content_h);
+	else if (!strcmp (key, "keys")) snprintf (got, sizeof got, "%d", s_nKeys);
+	else if (!strcmp (key, "full"))					// the app has the full screen (the server's state, the list's)
+	{
+		struct kapi_win_info L[64];
+		long a[4] = { 64, 0, 0, 0 };
+		unsigned len = 0;
+		long n = el_op (APP_PID, EL_OP_WIN_LIST, a, 0, 0, s_Out, &len);
+		memcpy (L, s_Out, len < sizeof L ? len : sizeof L);
+		int on = 0;
+		for (long i = 0; i < n && i < 64; i++)
+			if (L[i].pid == APP_PID && (L[i].state & KAPI_WIN_FULLSCREEN)) on = L[i].ow == 0 && L[i].x == 0 && L[i].w == s_nW ? 1 : 9;	// (9: framed or not the screen)
+		snprintf (got, sizeof got, "%d%s", on, on == (s_bFull ? 1 : 0) ? "" : " (the kernel's: not the same)");
+	}
+	else if (!strcmp (key, "focus"))
+	{
+		unsigned p = el_core_focus_pid ();
+		snprintf (got, sizeof got, "%s", p == APP_PID ? "app" : p > APP_PID ? "other" : "none");
+	}
+	else if (!strncmp (key, "shown", 5))					// shownN: the app's window N on the screen (1 / 0)
+	{
+		struct kapi_win_info L[64];
+		long a[4] = { 64, 0, 0, 0 };
+		unsigned len = 0;
+		long n = el_op (APP_PID, EL_OP_WIN_LIST, a, 0, 0, s_Out, &len);
+		memcpy (L, s_Out, len < sizeof L ? len : sizeof L);
+		int id = el_core_window_of_win (APP_PID, key[5] ? key[5] - '0' : 0), on = 0;
+		struct el_core_frame F2;
+		memset (&F2, 0, sizeof F2);
+		if (id >= 0) el_core_window_frame_info (id, &F2);
+		for (long i = 0; i < n && i < 64; i++)
+			if (L[i].pid == APP_PID && !strcmp (L[i].title, F2.title)) on = L[i].x >= 0 && L[i].x < s_nW && !(L[i].state & KAPI_WIN_MINIMISED) ? 1 : 0;
+		snprintf (got, sizeof got, "%d", on);
+	}
 #ifdef SIM_POCKET
 	else if (!strcmp (key, "front"))
 	{
@@ -374,11 +444,32 @@ static void Expect (const char *key, const char *want)
 	}
 	else if (!strcmp (key, "kind"))
 	{
-		static const char *K[] = { "none", "own", "popup", "card", "fill", "bar" };
+		static const char *K[] = { "none", "own", "popup", "card", "fill", "bar", "home", "shell", "centre" };
 		int k = pk_kind (id);
-		snprintf (got, sizeof got, "%s", k >= 0 && k <= 5 ? K[k] : "?");
+		snprintf (got, sizeof got, "%s", k >= 0 && k <= 8 ? K[k] : "?");
 	}
 	else if (!strcmp (key, "bar")) snprintf (got, sizeof got, "%d", pk_bar_id () >= 0 ? 1 : 0);
+	else if (!strcmp (key, "home")) snprintf (got, sizeof got, "%d", pk_home ());
+	else if (!strcmp (key, "matte")) snprintf (got, sizeof got, "%d", pk_matte ());
+	else if (!strcmp (key, "shell")) snprintf (got, sizeof got, "%s", pk_shell_pid () == APP_PID ? "app" : pk_shell_pid () ? "other" : "none");
+	else if (!strcmp (key, "tasks"))
+	{
+		long a[4] = { 32, 0, 0, 0 };
+		unsigned len = 0;
+		snprintf (got, sizeof got, "%ld", el_op (APP_PID, PK_OP_TASKS, a, 0, 0, s_Out, &len));
+	}
+	else if (!strncmp (key, "kind", 4) && key[4] >= '0' && key[4] <= '9')	// kindN: the app's window N
+	{
+		static const char *K[] = { "none", "own", "popup", "card", "fill", "bar", "home", "shell", "centre" };
+		int k = pk_kind (el_core_window_of_win (APP_PID, key[4] - '0'));
+		snprintf (got, sizeof got, "%s", k >= 0 && k <= 8 ? K[k] : "?");
+	}
+	else if (!strncmp (key, "okind", 5))				// okind[N]: the latest "other" program's window N's kind
+	{
+		static const char *K[] = { "none", "own", "popup", "card", "fill", "bar", "home", "shell", "centre" };
+		int k = pk_kind (el_core_window_of_win (OTHER_PID + (unsigned) s_nOthers - 1, key[5] ? key[5] - '0' : 0));
+		snprintf (got, sizeof got, "%s", k >= 0 && k <= 8 ? K[k] : "?");
+	}
 	else if (!strcmp (key, "band")) snprintf (got, sizeof got, "%d", pk_band_id () >= 0 ? 1 : 0);
 #endif
 	else
@@ -392,15 +483,19 @@ static void Expect (const char *key, const char *want)
 		if (!strcmp (key, "area")) snprintf (got, sizeof got, "%d,%d,%d,%d", G.ax, G.ay, G.aw, G.ah);
 		else if (!strcmp (key, "pos")) snprintf (got, sizeof got, "%d,%d", G.x, G.y);
 		else if (!strcmp (key, "aside")) snprintf (got, sizeof got, "%d", (G.state & KAPI_WIN_KEYS) ? 0 : 1);
+		else if (!strcmp (key, "hidden")) snprintf (got, sizeof got, "%d", (G.state & (KAPI_WIN_OFFDESK | KAPI_WIN_MINIMISED)) ? 1 : 0);
 		else snprintf (got, sizeof got, "(unknown check %s)", key);
 	}
 	std::string what = std::string (key) + " = " + want;
 	Check (what.c_str (), !strcmp (got, want), got);
 }
 
+static std::string s_Pic; static int s_nPicX, s_nPicY;	// (otherpic: the canvas from that dump, from that point)
+
 static void Other (int w, int h, const char *title, unsigned flags, int x, int y)	// another program's window, painted
 {
 	unsigned pid = OTHER_PID + (unsigned) s_nOthers++;
+	{ std::string n (title); for (auto &c : n) c = (char) tolower (c); s_Names[pid] = n; }
 	struct el_create C;
 	memset (&C, 0, sizeof C);
 	C.flags = flags;
@@ -414,6 +509,20 @@ static void Other (int w, int h, const char *title, unsigned flags, int x, int y
 	unsigned *p = el_core_window_canvas (id, &cw, &ch);
 	for (int y = 0; p != 0 && y < ch; y++)
 		for (int x = 0; x < cw; x++) p[(size_t) y * cw + x] = ((x / 24 + y / 24) & 1) ? 0x00C8D4E4 : 0x00B8C6DA;
+	if (!s_Pic.empty () && p != 0)				// a picture: a part of a screen dumped before (an app's look)
+	{
+		FILE *f = fopen (s_Pic.c_str (), "rb");
+		int hdr[5] = { 0, 0, 0, 0, 0 };
+		if (f != 0 && fread (hdr, 4, 5, f) == 5 && hdr[0] == 0x4D534C45)
+		{
+			std::vector<unsigned> px ((size_t) hdr[1] * hdr[2]);
+			if (fread (px.data (), 4, px.size (), f) == px.size ())
+				for (int y = 0; y < ch && s_nPicY + y < hdr[2]; y++)
+					for (int x = 0; x < cw && s_nPicX + x < hdr[1]; x++) p[(size_t) y * cw + x] = px[(size_t) (s_nPicY + y) * hdr[1] + s_nPicX + x];
+		}
+		if (f != 0) fclose (f);
+		s_Pic.clear ();
+	}
 	for (int k = 0; k < 2; k++)				// (its frame: a plain title band, as a program's UIKit would draw one)
 	{
 		int fw = 0, fh = 0;
@@ -449,9 +558,58 @@ extern "C" int sim_server_step (const char *st)
 		ws_route_key (keys, s_nMods);
 		return 1;
 	}
-	if (!strcmp (cmd, "mods")) { sscanf (st, "%*s %d", &a); s_nMods = (unsigned) a; el_core_modifiers (s_nMods); return 1; }
+	if (!strcmp (cmd, "mods"))				// (8: Super -- the policy's only, as serve.cpp does)
+	{
+		sscanf (st, "%*s %d", &a); s_nMods = (unsigned) a; el_core_modifiers (s_nMods & 7);
+#ifdef WS_POLICY_HAS_MODS
+		if (g_pWsPolicy != 0 && g_pWsPolicy->mods != 0) g_pWsPolicy->mods (s_nMods);
+#endif
+		return 1;
+	}
 	if (!strcmp (cmd, "dump")) { sscanf (st, "%*s %255s", arg); Dump (arg); return 1; }
 	if (!strcmp (cmd, "screen")) { sscanf (st, "%*s %255s", arg); Dump (arg, false); return 1; }
+	if (!strcmp (cmd, "otherpic"))				// otherpic W H T FILE SX SY [F [X Y]]: its canvas from a dump
+	{
+		unsigned f = 0;
+		int x = -1, y = -1;
+		char file[256] = "";
+		sscanf (st, "%*s %d %d %255s %255s %d %d %i %d %d", &a, &b, arg, file, &s_nPicX, &s_nPicY, (int *) &f, &x, &y);
+		s_Pic = file;
+		Other (a, b, arg, f, x, y);
+		return 1;
+	}
+	if (!strcmp (cmd, "othermenu"))				// othermenu SPEC ('|' between the lines): the latest other's menus
+	{
+		std::string m (st + 10);
+		for (auto &c : m) if (c == '|') c = '\n'; else if (c == '~') c = '\t';
+		long r[4] = { 0, 0, 0, 0 };
+		unsigned len = 0;
+		el_op (OTHER_PID + (unsigned) s_nOthers - 1, EL_OP_MENU_SET, r, (const unsigned char *) m.c_str (), (unsigned) m.size () + 1, s_Out, &len);
+		return 1;
+	}
+	if (!strcmp (cmd, "owin"))				// owin W H T: a second window of the latest "other" program (a dialog)
+	{
+		unsigned pid = OTHER_PID + (unsigned) s_nOthers - 1;
+		sscanf (st, "%*s %d %d %255s", &a, &b, arg);
+		struct el_create C;
+		memset (&C, 0, sizeof C);
+		snprintf (C.title, sizeof C.title, "%s", arg);
+		long r[4] = { -1, -1, a, b };
+		unsigned len = 0;
+		s_bOtherMade = el_op (pid, EL_OP_CREATE | (1 << EL_OP_WINDOW_SHIFT), r, (const unsigned char *) &C, sizeof C, s_Out, &len) == 1;
+		int id = el_core_window_of_win (pid, 1);
+		if (id >= 0) el_core_window_present (id);
+		return 1;
+	}
+	if (!strcmp (cmd, "oclose"))				// the latest "other" program ended (its windows gone)
+	{
+		unsigned pid = OTHER_PID + (unsigned) s_nOthers - 1;
+		int id;
+		while ((id = el_core_window_of (pid)) >= 0) el_core_window_remove (id);
+		el_core_program_gone (pid);
+		s_Names[pid] = "";
+		return 1;
+	}
 	if (!strcmp (cmd, "other"))
 	{
 		unsigned f = 0;

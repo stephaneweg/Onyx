@@ -251,6 +251,9 @@ public:
 	// Elegant never sets it.
 	boolean Pinned (void) const	{ return m_bPinned; }
 	void SetPinned (boolean bOn)	{ m_bPinned = bOn; }
+	// (2026-10-08) Not a band (PocketUI's shell's windows: its overlays, its home): the work area ignores it.
+	boolean NoInset (void) const	{ return m_bNoInset; }
+	void SetNoInset (boolean bOn)	{ m_bNoInset = bOn; }
 
 	// The pid of the process owning this window (0 = kernel), for drag & drop results.
 	void SetOwnerPid (unsigned nPid)	{ m_nOwnerPid = nPid; }
@@ -478,6 +481,7 @@ private:
 	volatile boolean m_bOffDesk;		// on another workspace than the current one (SetOffDesk)
 	volatile boolean m_bAside;		// (SetAside: PocketUI's)
 	boolean		m_bPinned;		// (SetPinned: PocketUI's)
+	boolean		m_bNoInset;		// (SetNoInset: PocketUI's)
 	unsigned	m_nChromeGenShown;	// m_nChromeGen at the last whole-window present
 	void	       *m_pRetired[3];		// memory Grow replaced (canvas, chrome x 2), freed later
 	unsigned	m_nRetireFrame;		// the compositor's frame count when it was retired

@@ -1261,7 +1261,8 @@ struct kapi_ws_present
 };
 #define KAPI_WS_IN_POINTER	1	// x, y (screen), buttons (bit 0 left, 1 right, 2 middle), a = wheel notches
 #define KAPI_WS_IN_KEY		2	// keys: the keyboard's cooked string (characters, VT100 escapes)
-#define KAPI_WS_IN_MODS		3	// a = the modifiers held (1 Ctrl, 2 Shift, 4 Alt)
+#define KAPI_WS_IN_MODS		3	// a = the modifiers held (1 Ctrl, 2 Shift, 4 Alt, KAPI_WS_MOD_SUPER)
+#define KAPI_WS_MOD_SUPER	8	// (2026-10-08, no version change) a Super key (the Windows key) held: PocketUI's Home
 #define KAPI_WS_IN_HELD_USB	4	// keys[0..5]: the USB keyboards' report (usage codes held)
 #define KAPI_WS_IN_HELD		5	// a = a logical key code, buttons = 1 down / 0 up (injected: vncd, rdpd)
 #define KAPI_WS_IN_GONE		6	// a = the pid of an attached program that ended

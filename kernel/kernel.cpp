@@ -1405,8 +1405,11 @@ private:
 		static unsigned s_nWsMods = 0;
 		if (WsDisplayOwned ())			// (the graphics server's: kern/wsrv.h)
 		{
-			if (nMods != s_nWsMods) WsInputMods (nMods);
-			s_nWsMods = nMods;
+			// (the server also gets the Super keys -- bit 3/7, the Windows key: PocketUI's Home -- the
+			// kernel's own modifiers do not: kapi_get_modifiers answers Ctrl, Shift, Alt as before)
+			unsigned nWsMods = nMods | ((ucMods & 0x88) ? KAPI_WS_MOD_SUPER : 0);
+			if (nWsMods != s_nWsMods) WsInputMods (nWsMods);
+			s_nWsMods = nWsMods;
 			WsInputHeldUsb (Keys);		// (the kernel's window manager keeps them too: it
 		}					// answers kapi_key_held / kapi_get_modifiers)
 		if (pWM != 0 && pWM->Modifiers () != nMods) pWM->SetModifiers (nMods);

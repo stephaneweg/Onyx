@@ -90,7 +90,7 @@ void fullscreen_end ();
 
 int server (struct uk_win_server_info *out);
 // The shell's calls (uk_shell_*): op one of SHELL_* -> the server's answer, -KAPI_ENOSYS where it has none.
-enum { SHELL_REGISTER, SHELL_EVENTS, SHELL_KEYS, SHELL_THUMB, SHELL_FRONT, SHELL_SPLIT, SHELL_DIM };
+enum { SHELL_REGISTER, SHELL_EVENTS, SHELL_KEYS, SHELL_THUMB, SHELL_FRONT, SHELL_SPLIT, SHELL_DIM, SHELL_TASKS, SHELL_GRAB };
 long shell (int op, long a0, long a1, long a2, long a3, const void *in, unsigned in_len, void *out, unsigned cap);
 
 } // namespace port

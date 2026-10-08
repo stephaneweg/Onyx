@@ -100,6 +100,7 @@ Card contents:
 | `bin/<tool>` | the terminal **command-line tools** (§8), `init` included |
 | `etc/autostart` | commands run automatically at boot (read by `init`): the system's part — the services — and the line `session` |
 | `etc/session/desktop`, `pocket`, `console` | the **session** of each mode: the interface's programs (the menu bar, the dock...), run by `/bin/session` (§5 *Sessions*) |
+| `etc/pocketui.ini`, `etc/pocket/recent` | the pocket mode: the apps shown as cards rather than full screen; the launcher's recent apps (§5 *The pocket mode*) |
 | `etc/system.ini` | general settings (§3) |
 | `etc/theme.txt`, `etc/wallpaper.ini`, `etc/dock.ini` | the desktop's colours and style, the wallpaper, the dock (the Control Panel writes them) |
 | `etc/keymaps/*.kmap` | the keyboard layouts (§10) |
@@ -634,44 +635,98 @@ follow the packages installed at once (the update service also does it when it s
 - **Close**: the **×** button of the title bar, **Ctrl-Q**, the window menu's **Close**, or
   the task manager (`taskman`) / `kill`.
 
-### The pocket and console modes (PocketUI) — a first version
+### The pocket mode (PocketUI and the pocket shell)
 
-With **`shell=pocket`** in `SD:/etc/system.ini` (§3) and a restart, the kernel starts **PocketUI**
-(`SD:/bin/pocketui`) instead of Elegant: the interface of small screens (an 800 × 480 display, a handheld).
-**One app at a time**, as on a phone:
+With **`shell=pocket`** in `SD:/etc/system.ini` (§3; the Control Panel's **Mode** applet writes it, §11) the kernel
+starts **PocketUI** (`SD:/bin/pocketui`) instead of Elegant: the interface of small screens (an 800 × 480 display, a
+handheld, a 7-inch panel), **one app at a time**, as on a phone. Its parts:
 
-- a **status band** at the top of the screen (24 pixels, the menu bar's light look): the Onyx gem, the name
-  of the app in front, the time — a placeholder until the pocket shell's status bar (with the app's menus,
-  the tray, the launcher) comes;
-- an app whose window can be resized (the Terminal, the File Viewer...) **fills the screen** under the band,
-  **without a frame**;
-- a small window of a fixed size (the Calculator, the games, a dialog) is a **card** in the middle of the
-  screen, with its usual title bar and its close bead, over the wallpaper; a window too big for the screen
-  starts at the top left, without a frame (what does not fit is cut, until a later version scrolls it);
-- **Alt+Tab** brings the app at the back to the front (Alt+Shift+Tab: the one just behind) — the others are
-  hidden meanwhile; closing the app in front shows the next one;
-- no workspaces; Print Screen and the wheel's speed as on the desktop; full-screen games and emulators as
-  on the desktop.
+- **the menu bar** at the top, as on the desktop: the Onyx menu, the front app's name and menus, the status icons,
+  the time. In pocket its **Onyx** menu starts with **Home**, **Open Apps** and **Quick Settings**, and a click on
+  the **time** opens quick settings (on the desktop: the calendar);
+- **the apps full screen**: every app's window fills the screen under the menu bar, without a frame, whatever its
+  size; an app whose window cannot be resized (a game, a demo, the File Viewer on a large screen) is shown in the
+  middle of the screen on its own background colour, until it is adapted; a window too big for the screen starts
+  at the top left (what does not fit is cut, until a later version scrolls it). **Cards** — a framed window in the
+  middle, the rest of the screen behind it — are an app's other windows (a dialog, an about box, a second window)
+  and the apps listed in **`SD:/etc/pocketui.ini`** (below; the Calculator by default);
+- **the launcher (Home)**, behind every app: what you see when no app is in front;
+- **the task switcher** and **quick settings**, over the app.
 
-![](compact-shell/real/pocket-terminal.png)
+**The launcher.** A search field at the top (with its key hints on a wide screen); the **category tabs** — *Recent*
+(the apps opened last, kept in `SD:/etc/pocket/recent`), the categories of the apps in the dock's order (`SD:/etc/dock.ini`:
+the Control Panel's Panel applet sets it) and *Settings* (the Control Panel's applets, each one run alone); the
+**apps** of the tab, a dot under a running one; on a landscape screen tall enough, the **Running** strip — the open
+apps, a click brings one to the front, its × closes it. **Typing searches** the apps, the settings (their names
+and lines of help), the files of `SD:/docs`, `SD:/Notes` and `SD:/home`, and offers the text as a command to run
+in a Terminal; Up / Down choose, Enter opens, Esc clears. Opening a running app brings it to the front.
 
-*The Terminal under PocketUI at 800 × 480: filled under the status band, no frame (the real app and server,
-run on the PC: `tools/tests/server_sim/run.sh`).*
+![](compact-shell/real/pocketshell-home-800.png)
 
-![](compact-shell/real/pocket-calculator.png)
+*The launcher at 800 × 480 (the real pocketshell, the real menu bar and PocketUI, run on the PC:
+`tools/tests/server_sim/run.sh`).*
 
-*The Calculator, a window of a fixed size: a card in the middle, its title bar and beads kept.*
+![](compact-shell/real/pocketshell-search-800.png)
 
-**`shell=console`** is the same for now without the band (the whole screen is the app's): the console mode's
-home and its pad-driven menus come later. What is not there yet: the launcher (start the apps from the
-Terminal: `run tinycalc`, or over telnet), the task switcher, the quick settings. The pocket session starts the
-desktop's **menu bar** (it takes the place of the status band: the front app's menus, the clock, the status icons)
-and the Terminal; the dock, the agenda and Stickies are the desktop's only (PocketUI refuses them; console refuses
-the menu bar too); the notifications' bubbles still appear. The app started last (or raised: `run` of an app
-already running, Alt+Tab) is the one in front, the others set aside; a card does not move (its title bar does
-not drag it). Back to the desktop: the Control Panel's **Mode** applet, or `session switch desktop` in the
-Terminal (below). PocketUI gives the apps their pocket UIKit
-(`SD:/lib/pocket/uikit.so`, under the name `SD:/lib/uikit.so`): the same apps, the same binaries.
+*Typing on the launcher: the apps, the settings, the files and the text as a command.*
+
+**The task switcher** (Alt+Tab, Onyx > Open Apps): the open apps as cards with their pictures, the most recent first
+(the one in front, "now", on the left), the next one chosen. Alt+Tab again (or →, Tab) chooses the next one, Shift+Tab
+(or ←) the one before; **releasing Alt switches** — opened from the menu: Enter or a click; **Del** (or the chosen
+card's ×) closes the app; Esc (or a click beside the cards) stays.
+
+![](compact-shell/real/pocketshell-switcher-800.png)
+
+*Alt+Tab: the open apps, their pictures from PocketUI (no app redraws for the switcher).*
+
+**Quick settings** (Super+N, a click on the time, Onyx > Quick Settings): the date and the time; Wi-Fi (its state;
+a click: the Wi-Fi menu), Do not disturb (no notification's bubble while it is on), Sound (mute), Mode (the Mode
+applet); the volume; **the notifications** — in pocket the pocket shell receives them (no `notifyd`): each one shows
+for a few seconds as a bubble under the menu bar, then waits here, the newest first (a click runs its action and
+removes it; Clear all); the Control Panel, Lock and Power. Esc or a click beside the panel closes it.
+
+![](compact-shell/real/pocketshell-quick-800.png)
+
+*Quick settings and the notifications.*
+
+**The keys** (PocketUI gives them to the pocket shell before the app in front; a program in full screen keeps all
+its keys):
+
+| Keys | What |
+|---|---|
+| **Super** (the Windows key, alone), **Alt+F1**, **Ctrl+Esc** | Home; again: back to the app |
+| **Alt+Tab** / **Alt+Shift+Tab** | the switcher (release Alt to switch; Del closes the chosen app; Esc stays) |
+| **Super+N** | quick settings and the notifications |
+| **Super+Space** | the launcher, the search emptied |
+| on the launcher: typing, Up / Down, Enter, Esc | search, choose, open, clear (Esc on an empty search: back to the app) |
+| on the launcher: Tab / Shift+Tab, arrows, PgUp / PgDn, Home / End | the tabs, the apps |
+
+**The size of things.** The launcher, the switcher and quick settings are drawn at a **scale**: `scale = 1`, `1.5`
+or `2` in `SD:/etc/theme.txt`, else from the screen (1.5 from a 1080-line screen, 2 from 1800 lines). Their layout
+follows the screen: the number of columns of apps, the hints beside the search field (a wide screen), the Running
+strip (landscape and tall enough), the switcher as a row of cards (landscape) or a column (portrait), the quick
+settings panel's width — 800 × 480, 1280 × 720, 1920 × 1080 and portrait 480 × 800 alike. (The apps themselves
+and the menu bar are not scaled yet.)
+
+![](compact-shell/real/pocketshell-home-1080.png)
+
+*The launcher at 1920 × 1080 (scale 1.5).*
+
+![](compact-shell/real/pocketshell-switcher-portrait.png)
+
+*The switcher on a portrait screen, 480 × 800: a column.*
+
+**`SD:/etc/pocketui.ini`**: its section `[cards]` names the apps not shown full screen (one app's folder name a line,
+`#` comments) — they keep their window's size as a card in the middle. An app may ask for it itself with
+`pocket = card` in its `app.txt`. The file is read again whenever a program opens its first window. It is a
+configuration file: a package update never overwrites it once you changed it.
+
+**`shell=console`** is the same server without the band nor the menu bar (the whole screen is the app's): the
+console mode's home and its pad-driven menus come later (phase P9), it starts the Terminal and the Game Library.
+No workspaces in pocket; Print Screen, the wheel's speed, full-screen games and emulators as on the desktop. Back to
+the desktop: the Control Panel's **Mode** applet, or `session switch desktop` in a Terminal (below). PocketUI gives
+the apps their pocket UIKit (`SD:/lib/pocket/uikit.so`, under the name `SD:/lib/uikit.so`): the same apps, the same
+binaries.
 
 ### Sessions: the mode's programs, the switch
 
@@ -684,7 +739,7 @@ autostart):
 | Mode | Its session file starts |
 |---|---|
 | **desktop** (`shell=desktop`, or no line) | the wallpaper (`voronoy`), Setup on a new card, the menu bar, the notifications (`notifyd`), the dock, the agenda, Stickies |
-| **pocket** (`shell=pocket`) | the menu bar (PocketUI's top band) and, until the pocket shell's launcher comes, the Terminal |
+| **pocket** (`shell=pocket`) | the menu bar (PocketUI's top band) and the pocket shell (`pocketshell`: the launcher, the switcher, quick settings, the notifications) |
 | **console** (`shell=console`) | until the console's home comes: the Terminal and the Game Library in front (no menu bar, no dock) |
 
 The mode is the running graphics server's: when the server of `shell=` does not start and the kernel starts
@@ -774,6 +829,10 @@ take the theme's colours; only the **console** itself stays dark (light text on 
 the theme. The Terminal's own words (its menu, the tabs' default title, its questions) are in the
 system's language (English or French: the Control Panel's Language & Region); what the shell and the
 commands print is not translated.
+
+Started with arguments — `terminal ls /bin` (from another program: `lx_launch ("terminal", "ls /bin")`) — the
+Terminal types them into its first tab as a command once the shell's prompt appeared: the pocket launcher's search
+runs a `/bin` command so.
 
 | Action | How |
 |---|---|

@@ -6,10 +6,7 @@
 # The menu bar is always there: the front app's menus, the clock, the status icons (PocketUI takes it as its
 # top band). No dock, no agenda, no Stickies in pocket.
 run menubar
-# The rest of the pocket shell -- the launcher, the switcher -- comes with PocketUI's phase P5
-# (docs/POCKETUI-TECH-STUDY.md); it will be this file's line:
-#   run pocketshell
-# Until then the Terminal stands in for the launcher (`run <app>`, `session switch desktop`); Alt+Tab goes from
-# one app to the next. The notifications: notifyd starts with the first one (SystemKit's notify) until
-# pocketshell serves them (P5).
-run terminal
+# The pocket shell (docs/POCKETUI-TECH-STUDY.md phase P5): the launcher behind the apps, the task switcher
+# (Alt+Tab), quick settings and the notifications (Super+N, a click on the time) -- it serves "notify" here,
+# no notifyd.
+run pocketshell

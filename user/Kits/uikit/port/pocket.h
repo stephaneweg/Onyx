@@ -18,11 +18,13 @@
 // port's client (uikit/port/client.inc: the window state, the replay after a server's restart). What PocketUI
 // gives them is its POLICY (one app in front, no workspaces):
 //
-//   EL_OP_CREATE      a normal window: a CARD (framed, centred in the work area) when it is fixed (WIN_FLAG_FIXED)
-//                     or fits the work area with its frame; else FILLED: frameless, at the work area's top left.
-//                     A borderless or topmost window (a popup, a toast) where asked, kept on the screen. A
-//                     backmost window, or a topmost one standing on the screen's top or bottom edge (the
-//                     desktop's menu bar, dock), refused: the shell's (phase P5).
+//   EL_OP_CREATE      a program's MAIN window (its first): FILLED -- frameless, at the work area's top left -- or, of a
+//                     fixed size smaller than the work area, CENTRED (frameless) over a matte of its colour; a CARD
+//                     (framed, centred) for its other windows (dialogs) and the apps of SD:/etc/pocketui.ini [cards]
+//                     (or app.txt "pocket = card"). A borderless or topmost window (a popup, a toast) where asked, kept
+//                     on the screen. The shell's (PK_OP_SHELL) backmost window: its home, at the work area; its topmost
+//                     ones: where asked. Another backmost window, or a topmost one standing on the screen's top or
+//                     bottom edge (the desktop's dock; a second menu bar), refused.
 //   EL_OP_RESIZABLE   on: the window FILLS the work area -- its frame dropped (a card), GUI_EVENT_WINRESIZE
 //                     to the work area's size (UIKit's Root applies it as a frame dragged).
 //   EL_OP_FRAME       insets 0 0 for a filled window.
@@ -49,9 +51,10 @@
 #define _uikit_port_pocket_h
 
 #include "uikit/port/elegant.h"		// the operations PocketUI shares with Elegant (their numbers, their structures)
+#include "uikit/win.h"			// (struct uk_shell_task, UK_SHELL_*: the shell's operations below)
 
 #define PK_PROTO_NAME		"pocketui"	// struct pk_hello's name
-#define PK_PROTO_VERSION	1		// PK_OP_HELLO's answer (this protocol's revision)
+#define PK_PROTO_VERSION	2		// PK_OP_HELLO's answer (this protocol's revision; 2: the shell's operations, P5)
 
 #define PK_MODE_POCKET		1		// (= uikit/win.h UK_MODE_POCKET)
 #define PK_MODE_CONSOLE		2		// (= UK_MODE_CONSOLE)
@@ -80,14 +83,22 @@ struct pk_server
 	int	 band_h;			// the status band's height (0: none -- console)
 };
 
-// The shell's operations (uikit/win.h uk_shell_*; the study's PK_OP_SHELL, EVENTS, KEYS, THUMB, FRONT, SPLIT,
-// DIM): their numbers are set; PocketUI answers -KAPI_ENOSYS to each until the shell programs come (phase P5).
-#define PK_OP_SHELL		0x110		// "I am the shell"
-#define PK_OP_EVENTS		0x111		// a[0] = the handler of the windows' events
-#define PK_OP_KEYS		0x112		// in: int keys[a[0]]: the system keys delivered to the shell first
-#define PK_OP_THUMB		0x113		// a = id, w, h: a window's picture scaled, into the caller's transfer area
-#define PK_OP_FRONT		0x114		// a = id, front (1) / back (0)
-#define PK_OP_SPLIT		0x115		// a = left id, right id (0 0: none)
-#define PK_OP_DIM		0x116		// a[0] = the dim's alpha behind an overlay (0: none)
+// THE SHELL'S OPERATIONS (uikit/win.h uk_shell_*, phase P5; docs/POCKETUI-TECH-STUDY.md section 4.3). The shell is ONE
+// program (pocketshell in pocket, consolehome in console): the first to ask PK_OP_SHELL, or any once that one has
+// ended. Its windows: BACKMOST = its home (placed at the work area's top left, borderless, never above an app; the
+// keys' when no app is in front: HOME), TOPMOST or borderless = its overlays and toasts (where it asks, even across
+// the screen's top edge or off the screen); they are never "apps" (not fronted, not set aside, not listed).
+#define PK_OP_SHELL		0x110		// "I am the shell" -> 1; -KAPI_EBUSY: another running program is
+#define PK_OP_EVENTS		0x111		// a[0] = its handler: UK_SHELL_EVENT / UK_SHELL_KEYEV pushed to it -> 1
+#define PK_OP_KEYS		0x112		// a[0] = n, in: int keys[n] (UK_SHELL_KEY): taken before the front app -> n
+#define PK_OP_THUMB		0x113		// a = id, w, h (<= 512): its client area scaled into the caller's transfer
+						// buffer (KAPI_WS_VA_XFER, w a row) -> 1, 0 no such window, -1 no memory
+#define PK_OP_FRONT		0x114		// a = id, front: 1 its program in front; 0 with id 0: home; 0: behind -> 1, 0
+#define PK_OP_SPLIT		0x115		// a = left id, right id -- (not yet: -KAPI_ENOSYS; split view, P8)
+#define PK_OP_DIM		0x116		// a[0] = alpha -- (not yet: -KAPI_ENOSYS; the overlays draw their own dim)
+#define PK_OP_TASKS		0x117		// a[0] = max: out: struct uk_shell_task each, the most recent first -> how many
+#define PK_OP_GRAB		0x118		// a[0] = on: every key and the modifiers' changes to the shell -> 1
+// The shell's operations from another program than the shell: -KAPI_EPERM (PK_OP_TASKS and PK_OP_THUMB: anyone --
+// a task manager, a remote desktop may show them).
 
 #endif

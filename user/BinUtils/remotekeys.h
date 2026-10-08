@@ -2,12 +2,16 @@
 // remotekeys.h -- the keyboard of a remote client (vncd, rdpd): X11 keysyms (what VNC
 // viewers send; rdpd's client sends the same) turned into Onyx input -- the cooked key
 // strings apps receive (kapi_inject_key), the held keys (kapi_inject_key_held: games) and
-// the modifiers (kapi_inject_modifiers). One client at a time (static state).
+// the modifiers (kapi_inject_modifiers; the Super keys too, KAPI_WS_MOD_SUPER: the graphics server's only -- PocketUI's
+// Home). One client at a time (static state).
 //
 #ifndef REMOTEKEYS_H
 #define REMOTEKEYS_H
 
 #include "appkit/appkit.h"
+#ifndef KAPI_WS_MOD_SUPER
+#define KAPI_WS_MOD_SUPER	8	// (kern/kapi_abi.h: a Super key, for the graphics server)
+#endif
 
 static int g_ctrl;
 
@@ -63,6 +67,7 @@ static void key_event (int down, unsigned sym)
 	if (sym == 0xFFE3 || sym == 0xFFE4) m = MOD_CTRL;			// Control L/R
 	else if (sym == 0xFFE1 || sym == 0xFFE2) m = MOD_SHIFT;			// Shift L/R
 	else if (sym == 0xFFE9 || sym == 0xFFEA || sym == 0xFFE7 || sym == 0xFFE8) m = MOD_ALT; // Alt/Meta
+	else if (sym == 0xFFEB || sym == 0xFFEC) m = KAPI_WS_MOD_SUPER;	// Super L/R (the Windows key: PocketUI's Home)
 	if (m)
 	{
 		g_mods = down ? (g_mods | m) : (g_mods & ~m);

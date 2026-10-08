@@ -51,7 +51,13 @@ struct ws_policy
 	// Elegant's demonstration (--display): its windows made -> how many; those closed since, removed.
 	int  (*demo_scene) (int w, int h);
 	int  (*demo_closed) (unsigned self);
+
+	// (2026-10-08, PocketUI's P5) The modifiers held changed: 1 Ctrl, 2 Shift, 4 Alt, KAPI_WS_MOD_SUPER (8: the
+	// window manager never sees that one) -- the shell's keys: a Super pressed and released alone, Alt let go
+	// over the switcher. (The key hook gets them too, with each key.)
+	void (*mods) (unsigned mods);
 };
+#define WS_POLICY_HAS_MODS	1		// (the hook above: a test built against both revisions knows it)
 
 extern const struct ws_policy *g_pWsPolicy;	// (the server's: its main.cpp or its policy's file)
 

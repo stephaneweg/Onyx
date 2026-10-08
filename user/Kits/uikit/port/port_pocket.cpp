@@ -11,7 +11,8 @@
 //   - the hello: the first request is PK_OP_HELLO; a server that does not answer it (Elegant: a program of the
 //     other session that kept this UIKit) is not spoken to -- the window calls fail, the reason logged once;
 //   - uk_win_server: PocketUI's answer (its mode, the work area under the status band, the size class);
-//   - uk_shell_*: PocketUI's operations (PK_OP_SHELL...; it answers -KAPI_ENOSYS until phase P5).
+//   - uk_shell_*: PocketUI's operations (PK_OP_SHELL...: the shell's, phase P5) -- the registration, the events'
+//     handler and the keys kept and asked again of a PocketUI started again; a thumbnail read from the transfer buffer.
 // The frames: PocketUI says which windows have one (a card: UIKit's skin draws its Milk title as on the
 // desktop; a filled window: none, EL_OP_FRAME's insets 0) -- nothing here draws differently.
 //
@@ -86,9 +87,24 @@ static int pk_hello (void)
 	return pk__hello;
 }
 
+// The shell's registration, kept: asked again of a PocketUI started again (the replay: before its windows, so that
+// its home and its overlays are taken as the shell's).
+static int pk__shell;					// uk_shell_register was answered 1
+static long pk__events;					// uk_shell_events' handler (0: none)
+static int pk__keys[32], pk__nkeys = -1;		// uk_shell_keys' list (-1: never set)
+static void pk_shell_again (void);
+
 #define WS_HELLO()		pk_hello ()
-#define WS_HELLO_AGAIN()	(pk__hello = -1)
+#define WS_HELLO_AGAIN()	(pk__hello = -1, pk_shell_again ())
 #include "uikit/port/client.inc"
+
+static void pk_shell_again (void)
+{
+	if (!pk__shell || !pk_hello ()) return;
+	ws_raw (PK_OP_SHELL, 0, 0, 0, 0, 0, 0, 0, 0);
+	if (pk__events != 0) ws_raw (PK_OP_EVENTS, pk__events, 0, 0, 0, 0, 0, 0, 0);
+	if (pk__nkeys >= 0) ws_raw (PK_OP_KEYS, pk__nkeys, 0, 0, 0, pk__keys, (unsigned) pk__nkeys * sizeof (int), 0, 0);
+}
 
 // ---- the server -----------------------------------------------------------------------------------
 
@@ -108,11 +124,28 @@ int server (struct uk_win_server_info *out)
 
 long shell (int op, long a0, long a1, long a2, long a3, const void *in, unsigned in_len, void *out, unsigned cap)
 {
-	static const int s_Op[] = { PK_OP_SHELL, PK_OP_EVENTS, PK_OP_KEYS, PK_OP_THUMB, PK_OP_FRONT, PK_OP_SPLIT, PK_OP_DIM };
+	static const int s_Op[] = { PK_OP_SHELL, PK_OP_EVENTS, PK_OP_KEYS, PK_OP_THUMB, PK_OP_FRONT, PK_OP_SPLIT, PK_OP_DIM,
+				    PK_OP_TASKS, PK_OP_GRAB };
 	if (op < 0 || op >= (int) (sizeof s_Op / sizeof s_Op[0])) return -KAPI_EINVAL;
 	if (!pk_hello ()) return -KAPI_ENOSYS;
+	if (op == SHELL_THUMB)					// (the picture: in the transfer buffer, as uk_win_read's)
+	{
+		long r = ws_raw (PK_OP_THUMB, a0, a1, a2, 0, 0, 0, 0, 0);
+		if (r != 1) return r == EL_E_BADOP ? -KAPI_ENOSYS : r;
+		const unsigned *src = (const unsigned *) EL_VA_XFER;
+		ws_copy (out, src, (unsigned long) a1 * (unsigned long) a2 * 4);
+		return 1;
+	}
 	long r = ws_raw (s_Op[op], a0, a1, a2, a3, in, in_len, out, cap);
-	return r == EL_E_BADOP ? -KAPI_ENOSYS : r;
+	if (r == EL_E_BADOP) return -KAPI_ENOSYS;
+	if (op == SHELL_REGISTER) pk__shell = r == 1;		// (kept: asked again after a restart)
+	if (op == SHELL_EVENTS && r == 1) pk__events = a0;
+	if (op == SHELL_KEYS && r >= 0)
+	{
+		pk__nkeys = a0 < 32 ? (int) a0 : 32;
+		for (int i = 0; i < pk__nkeys; i++) pk__keys[i] = ((const int *) in)[i];
+	}
+	return r;
 }
 
 #else

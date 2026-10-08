@@ -1337,15 +1337,18 @@ and structures (`port/elegant.h` included) with PocketUI's meanings, and its own
 |---|---|
 | The work area | the screen less the top band: the desktop's **global menu bar** when it runs (pocket), else PocketUI's own **status band** (24 px, a topmost system window — the Onyx gem, the app in front, the time; the kernel's bitmap font) — the whole screen in console |
 | The global menu bar (pocket) | a topmost window across the screen's top edge (`user/Apps/menubar`) is accepted as the top band (`PK_KIND_BAR`): PocketUI's status band is taken away while it is there, made again when it goes; `EL_OP_MENU_GET` / `EL_OP_MENU_COMMAND` answer with the **front app's** topmost window (a filled window is borderless, which Elegant's "active window" skips: `CWindowManager::GetActiveMenu`'s `pFor`). Console: refused (P9 shows the menus on demand) |
-| A program's window | **card** (framed, centred in the work area) when it fits with its frame; else **filled** (`WIN_FLAG_BORDERLESS` forced, at the work area's top left) |
+| A program's window | (the user's rule, 2026-10-08) its **main window** (its first) is **full screen**: **filled** (`WIN_FLAG_BORDERLESS` forced, at the work area's top left; bigger than the work area: cut) — or, of a fixed size smaller than the work area, **centred** (`PK_KIND_CENTRE`: frameless, in the middle, over PocketUI's **matte** — a window of its own just under it, the work area in the app's background colour: its client area's top left pixel); it fills once it says it is resizable. **Cards** (framed, centred) are a program's other windows (a dialog, a second window) when they fit, and the main windows of the apps listed in **`SD:/etc/pocketui.ini`** `[cards]` (one app's name a line, `#` comments; read again at each program's first window — shipped: `tinycalc`) or whose `app.txt` says **`pocket = card`** |
 | `EL_OP_RESIZABLE` on | the window is **filled**: its frame dropped (`CWindow::DropChrome`), `GUI_EVENT_WINRESIZE` to the work area's size (UIKit's `Root::frameResize`); a program that ignores it (its own pointer handler: the Terminal, Media, PDF, Screenshot) gets `GUI_EVENT_WINCTL` maximise once 0.25 s later |
 | Popups | a borderless or topmost window stays where it asked (placed by PocketUI when it asked none), on the screen |
-| Refused | a backmost window (the agenda, the stickies), a topmost one on the bottom edge whatever its width (the dock — narrower than half a 1920 px screen), a second menu bar (pocket) or any on the top edge (console): the autostart still runs them until the session files, P4 |
+| The shell's windows | (P5) the program registered by `PK_OP_SHELL` (`pocketshell`): its **backmost** window is its **home** (`PK_KIND_HOME`: at the work area, frameless, moved with it), its topmost or borderless ones its overlays and toasts (`PK_KIND_SHELL`: where asked, even off the screen or across its top edge); none of them is an app (not fronted, not set aside, not a task); they never count as a band of the work area (`CWindow::SetNoInset`) |
+| Refused | a backmost window of another program than the shell (the agenda, the stickies), a topmost one on the bottom edge whatever its width (the dock — narrower than half a 1920 px screen), a second menu bar (pocket) or any on the top edge (console) |
 | Moves | `EL_OP_MOVE`, `EL_OP_WIN_MOVE` ignored for a filled window, a card and the menu bar; cards and filled windows are **pinned** (`CWindow::SetPinned`): their title bar neither drags nor maximises them, no edge resizes them |
 | Workspaces | one (`EL_OP_DESK`: count 1; `EL_OP_WIN_DESK`: 0) |
-| One app in front | kept by the policy, not read back from the z-order: a program that **opens a window** or is **raised** (`EL_OP_WIN_RAISE`, `EL_OP_APP_RAISE` — `run` of a running app —, its status icon opened, Alt+Tab) is fronted (its windows raised, first of the recent ones); the others' windows **set aside** (`CWindow::SetAside`: hidden as off-desk) and kept under its own, so a card stands on the wallpaper; the front program gone or minimised: the one fronted before it |
-| Keys | **Alt+Tab**: the program at the back to the front; **Alt+Shift+Tab**: the one just behind the front one |
-| Not yet | the shell programs (`pocketshell`, `consolehome`: P5, P9 — `PK_OP_SHELL`.. answer `-KAPI_ENOSYS`), the viewport and the scale (P6, P10), the dim behind a card, the session files (P4) |
+| One app in front | kept by the policy, not read back from the z-order: a program that **opens a window** or is **raised** (`EL_OP_WIN_RAISE`, `EL_OP_APP_RAISE` — `run` of a running app —, its status icon opened, the switcher's `PK_OP_FRONT`) is fronted (its windows raised, first of the recent ones); the others' windows **set aside** (`CWindow::SetAside`: hidden as off-desk) and kept under its own; the front program gone or minimised: the one fronted before it. **Home** (P5, with a shell): no app in front, every app set aside, the shell's home shown with the keys — asked by `PK_OP_FRONT (0, 0)`, or when no app shows a window; any program fronted leaves it. `EL_OP_MENU_GET` at home: no menus (the menu bar's Onyx menu) |
+| Keys | with a shell: the keys it registered (`PK_OP_KEYS`: Alt+Tab, Super alone, Super+N...) go to it as `UK_SHELL_KEYEV` events, every key and the modifiers' changes while it grabs them (`PK_OP_GRAB`: an overlay up); a lone **Super** is seen through the policy's `mods` hook (the kernel gives the server the Super bit, `KAPI_WS_MOD_SUPER`, which `serve.cpp` keeps from the window manager). Without a shell: Alt+Tab / Alt+Shift+Tab cycle the programs. **The keys follow the front program**: typed keys go to its topmost window (home: the shell's home) even when the window manager would give them to another window standing above it — logged once `pocketui: the keys to <app> ...` — and its window is raised when another one has the window manager's keys (`KAPI_WS_FOCUS`: `kapi_key_held`, the pads). A program in full screen keeps every key |
+| Full screen | as Elegant (`KAPI_WS_IN_FULLSCREEN`: `el_core_fullscreen`): the window at 0,0, `KAPI_WIN_FULLSCREEN` in the list; the policy moves, fills, sets aside nothing meanwhile; logged `pocketui: full screen: <app>` / `the full screen given back`. (Both servers, common `ops.cpp`, 2026-10-08: the list gives the full-screen window no frame and a gen moving every 50 ms, `EL_OP_WIN_READ` of it what the screen shows — `el_sys_screen_grab` — so rdpd shows the game, not its stale canvas) |
+| The remote desktop | a window set aside is listed with `KAPI_WIN_OFFDESK` (rdpd hides it on the PC: only the app in front shows); the Super key comes from vncd / rdpd too (`remotekeys.h`, `kapi_inject_modifiers`) |
+| Not yet | `consolehome` (P9), split view (P8: `PK_OP_SPLIT`), the viewport for windows bigger than the work area and the scale (P6, P10), a dim behind a card (`PK_OP_DIM`) |
 
 **On the PC** (`tools/tests/server_sim/run.sh [out]`): the servers' code built for the host with a real app
 as their client in one process (`server_sim.cpp` stands for the kernel's side: `kapi_ws_ctl`'s operations, the
@@ -1353,12 +1356,22 @@ shared buffers mapped twice, the events) — the app built against the **wire** 
 `-DUK_PORT_POCKET` for PocketUI's: the port of `SD:/lib/pocket/uikit.so`, not the PC relay), its script's
 pointer and keys in screen coordinates, `dump` the composed screen, `screen` the screen as the turns composed it (only the damage,
 as on the Pi), `expect` the policy's checks (`kind`, `frame`, `area`, `client`, `pos`, `front`, `aside`, `made`,
-`menu`, `bar`, `band`, `opos`), `other` another program's window (its flags and place: the desktop's bands),
-`raise` / `place` that program's own requests. It runs the Terminal, the Calculator and
+`menu`, `bar`, `band`, `opos`; P5: `home`, `shell`, `tasks`, `kindN` / `okind[N]` a window's kind, `shownN` an app's
+window N on the screen, `focus` who has the keys, `keys` the keys the app received, `matte`, `full` the full screen),
+`other` another program's window (its flags and place: the desktop's bands), `otherpic` the same painted from a dump
+(a real app's picture), `othermenu` its menus, `owin` its second window, `oclose` its end, `raise` / `place` that
+program's own requests, `mods 8` the Super key. It runs the Terminal, the Calculator and
 TinyPad under PocketUI at 800 × 480 (and 640 × 480, 1920 × 1080, console: a program started over another comes in
 front, a card does not move, the menu bar, the dock refused), then **Elegant before and after** the
-extraction of `user/Servers/common/` on the same scripts — the same pixels required. Its pictures of PocketUI
-are in `docs/compact-shell/real/` (copied from its output folder by hand when they change).
+extraction of `user/Servers/common/` on the same scripts — the same pixels required. Since P5 also: the full-screen
+rule at 800 × 480 and 1920 × 1080 (Letters, the File Viewer, the Terminal, TinyPad filled and typed into — also under
+a window of no app; the Calculator a card, centred over its matte without the list; a dialog a card), a program in
+full screen (`tools/tests/server_sim/fsapp.cpp`, a BASIC program's way), **the pocket shell** (the real `pocketshell`
+with the real menu bar's band and the real apps' pictures: the launcher, the search, the switcher, quick settings
+with notifications, at 800 × 480, 1280 × 720, 640 × 480, 1920 × 1080, portrait 480 × 800, and in French — the pictures
+`pocketshell-<shot>-<size>[-fr].png`; `SHELL_PNG=docs/compact-shell/real` copies them), and **Elegant built from the
+previous revision's `user/Servers/common/`** (HEAD, or `COMMON_BEFORE`) against the working tree: the same pixels.
+Its pictures of PocketUI are in `docs/compact-shell/real/` (copied from its output folder when they change).
 
 ### 5.10.4. The sessions: the mode's programs, the switch (`systemkit/session.h`, `/bin/session`)
 
@@ -1368,7 +1381,7 @@ are split in two: **`SD:/etc/autostart`**, the **system's part** (`wait pkg comm
 **session files** **`SD:/etc/session/desktop`**, **`pocket`**, **`console`** — the interface's programs of each mode,
 in the autostart's syntax (`run <app>`, a `/bin` tool, `sleep`, `wait`, Setup's `#setup: ` lines). Shipped:
 desktop = `voronoy`, `setup` (a new card), `menubar`, `notifyd`, `dock`, `agenda`, `stickies`; pocket = `menubar`
-(PocketUI's top band) and, until `pocketshell` (P5), `terminal`; console = `terminal`, `gamelib` until
+(PocketUI's top band) and `pocketshell` (P5: it serves the notifications, no `notifyd`); console = `terminal`, `gamelib` until
 `consolehome` (P9) — no menu bar, no dock. A program of one mode only goes into that mode's file; a service of
 every mode into the autostart.
 
@@ -1433,6 +1446,55 @@ windows and `KAPI_WS_SWITCH`: the boot, the commands, the parsing's errors, a pr
 `--keep`, a parent kept, the fallback, `EBUSY`, an old kernel, `migrate`); `tools/tests/pkg/test.py` (the commit
 splits the card's autostart, once); `run_notes_test.sh`, `run_notes_sim_test.sh` (Stickies' line in
 `session/desktop`).
+
+### 5.10.5. The pocket shell (`pocketshell`) and the shell protocol (`uk_shell_*`, `PK_OP_*`)
+
+*(docs/POCKETUI-TECH-STUDY.md §4.3, §7.2, phase P5; the look and rules: docs/COMPACT-SHELL-STUDY.md §6; the user's
+side: docs/04 §5 *The pocket mode*.)* **`user/Apps/pocketshell/`** (`main.cpp`: the windows, the launcher, the
+switcher, quick settings, the toasts, the keys; `catalog.h`: the apps, the applets, the categories, the recent apps,
+the search — one unit; FT_APPS; `sdcard/apps/pocketshell.app/`, category `Shell`: the `onyx` package) is the pocket
+mode's shell, started by `SD:/etc/session/pocket` after the menu bar. One program, three windows (v94): its **home**
+(window 0, `WIN_FLAG_BACKMOST`: the launcher, its canvas the screen's size, resized to the work area), the
+**overlay** (window 1, topmost, `WIN_FLAG_ALPHA`, the work area: the switcher or quick settings; parked off the
+screen and see-through when hidden — made on the screen first: a place off it would be "placed by the server") and
+the **toast** (window 2). It serves the IPC services **`shell`** (SystemKit's `systemkit/shell.h`: `shell_ask
+(SHELL_MSG_HOME | _SWITCHER | _QUICK | _SEARCH)`, `shell_running ()` — the menu bar's Onyx menu and its time ask it)
+and **`notify`** (SystemKit's `notify.h`: in pocket no `notifyd` runs — a notification is a toast, then a line of
+quick settings; the message types are apart: `NOTIFY_MSG_SHOW` 1, `SHELL_MSG_*` from 101). Everything is drawn by
+hand (the menu bar's way: `uikit/paint.h`, FreeType faces at 13, 16 and 11 px times the scale) and laid out from the
+logical size (the study's §6.1 rules: tiles 94 × 84 / 80 × 76, the columns, the hints from 700 lp, the Running strip
+in landscape from 440 lp, the switcher's row — as many cards as fit: 5 at 800, 4 at 640 — or column in portrait, the
+panel 340 lp or the width under 420 lp). The scale: `SD:/etc/theme.txt` `scale =`, else 1.5 from a 1000-line screen,
+2 from 1800 (the apps are not scaled yet: P6/P10). Its words: `TR` and `sdcard/apps/pocketshell.app/lang/fr.txt` (the
+categories and the applets' names by `// TR:` lines). The recent apps: `SD:/etc/pocket/recent` (the app fronted,
+whoever started it).
+
+**The shell's calls** (UIKit, `uikit/win.h`; the desktop's UIKit answers `-KAPI_ENOSYS` to each — Elegant has no
+shell — and the pocket port speaks them as `PK_OP_*`, `uikit/port/pocket.h`, protocol revision 2):
+
+| Call | `PK_OP_*` | What |
+|---|---|---|
+| `uk_shell_register ()` | `SHELL` 0x110 | "I am the shell" → 1; `-KAPI_EBUSY` another running program is. First, before its windows; the pocket port asks it again (with the handler and the keys) of a PocketUI started again, before its windows' replay |
+| `uk_shell_events (fn)` | `EVENTS` 0x111 | `fn` gets **`UK_SHELL_EVENT`** (value `UK_SHELL_EV_TASKS`: a window opened, closed, retitled, minimised, the front program changed, home — a signature compared each turn; `UK_SHELL_EV_AREA`: the work area changed) and **`UK_SHELL_KEYEV`** (value `UK_SHELL_KEY (mods, code)`: 8 = Super; `UK_SHELL_KEY_SUPER` a lone Super, `UK_SHELL_KEY_HELD` the modifiers changed while grabbed) |
+| `uk_shell_keys (keys, n)` | `KEYS` 0x112 | the system keys taken before the front app (pocketshell: Alt+Tab, Alt+Shift+Tab, Super, Alt+F1, Ctrl+Esc, Super+N, Super+Space) |
+| `uk_shell_grab (on)` | `GRAB` 0x118 | every key and every change of the modifiers to the shell (an overlay is up: Alt released → switch) |
+| `uk_shell_tasks (out, max)` | `TASKS` 0x117 | the running programs, the most recently in front first: `struct uk_shell_task` (its topmost window's id, pid, `UK_TASK_FRONT` / `_CARD` / `_MINIMISED`, its client size, title, the program's name) — none in front: home |
+| `uk_shell_thumb (id, dst, w, h)` | `THUMB` 0x113 | a window's client area scaled (a box filter, ≤ 512 × 512) by the server into the caller's transfer buffer (`KAPI_WS_VA_XFER`: `el_core_xfer`), copied to `dst` by the port: the switcher's pictures, no app redraws |
+| `uk_shell_front (id, f)` | `FRONT` 0x114 | `f` 1: the window's program to the front (from minimised too); 0 and id 0: **home**; 0 and an id: that program behind the others |
+| `uk_shell_split`, `uk_shell_dim` | `SPLIT`, `DIM` | not yet (`-KAPI_ENOSYS`: split view P8; the overlays draw their own dim) |
+
+`EVENTS`, `KEYS`, `FRONT`, `GRAB` from another program than the shell: `-KAPI_EPERM`; `TASKS` and `THUMB`: anyone (a
+task manager, a remote desktop). `uk_shell_tasks` and `uk_shell_grab` were appended to `uikit.abi` (848, 849: 850
+entries, `uikit >= 1.850`); `shell_ask`, `shell_running` to `systemkit.abi` (89, 90: `systemkit >= 1.91`).
+
+**The kernel**: `PublishKeys` (`kernel/kernel.cpp`) gives the graphics server the Super keys (the USB modifiers' bits 3
+and 7) as `KAPI_WS_MOD_SUPER` (8) in `KAPI_WS_IN_MODS` (no kapi version change); `kapi_get_modifiers` and the kernel's
+own state stay Ctrl, Shift, Alt. **The common code** (`user/Servers/common/`, Elegant unchanged — `server_sim`
+compares the pixels): `serve.cpp` keeps the Super bit from the window manager and calls the policy's new **`mods`**
+hook (`policy.h`, `WS_POLICY_HAS_MODS`); `core.h` gains `el_core_xfer` (a program's transfer buffer) and
+`el_core_next_key` (the window manager's reading of a cooked key string, for a policy); `CWindow::SetNoInset` (a
+topmost window that is not a band: the work area ignores it). **The Terminal** takes a command as its arguments
+(typed into its first tab once the prompt came): the search's "run" line.
 
 ## 6. Writing a graphical application
 

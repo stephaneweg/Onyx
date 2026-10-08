@@ -66,7 +66,7 @@ card boot; tool boot ""
 rc boot 0; has boot "sim: exec SD:bin/run voronoy"; has boot "sim: exec SD:bin/run setup"; has boot "sim: exec SD:bin/run notifyd"
 hasnt boot "run menubar"; hasnt boot "run dock"; hasnt boot "run terminal"
 # a mode's file asked; the desktop's file missing: its own programs; a pocket file missing: nothing
-card start; tool start "start pocket"; rc start 0; has start "sim: exec SD:bin/run menubar"; has start "sim: exec SD:bin/run terminal"; hasnt start "voronoy"
+card start; tool start "start pocket"; rc start 0; has start "sim: exec SD:bin/run menubar"; has start "sim: exec SD:bin/run pocketshell"; hasnt start "voronoy"
 card nodesk; rm "$OUT/t_nodesk/etc/session/desktop"; tool nodesk "start"; rc nodesk 0; has nodesk "the desktop's own programs"; has nodesk "sim: exec SD:bin/run dock"
 card nopocket; rm "$OUT/t_nopocket/etc/session/pocket"; tool nopocket "start pocket"; rc nopocket 5; hasnt nopocket "sim: exec"
 # `sleep`, `wait`, a `session` line inside a session file (skipped), arguments
@@ -95,7 +95,7 @@ grep -qx "ledger	Ledger - doc" "$OUT/t_wait/tmp/session.wait" || fail "wait: ses
 card force; tool force "switch pocket --no-ask --force --wait 1" HPROCS="$P"
 rc force 0; hasnt force "h: close"; has force "h: kill 30 1"; has force "h: kill 7 0"; has force "h: kill 8 0"; has force "h: kill 10 0"; has force "h: kill 11 0"
 has force "h: kill 21 0"; hasnt force "h: kill 9"; has force "h: switch"; [ "$(shell force)" = "pocket" ] || fail "force: shell=$(shell force)"; ok
-order force "h: kill 7 0" "h: switch"; order force "h: switch" "sim: exec SD:bin/run menubar"; has force "sim: exec SD:bin/run terminal"
+order force "h: kill 7 0" "h: switch"; order force "h: switch" "sim: exec SD:bin/run menubar"; has force "sim: exec SD:bin/run pocketshell"
 has force "sim: exec SD:bin/run printd"; hasnt force "run voronoy"
 # every program closes at once: no wait; the console's file; the parent (the terminal that typed it) kept, ended last
 card cons; tool cons "switch console" HPROCS="7:menubar:s,31:tinypad:w,12:terminal:wp"
@@ -105,7 +105,7 @@ card keep; tool keep "switch pocket --keep 40,41" HPROCS="40:control:w,31:tinypa
 rc keep 0; hasnt keep "h: close 40"; has keep "h: close 31"; order keep "h: switch" "h: kill 40 0"
 # its server failed: the desktop, shell=desktop, the desktop's file, a notification
 card fell; tool fell "switch pocket" HPROCS="7:menubar:s" HSWITCH=1 SIM_SERVICES=notify
-rc fell 1; [ "$(shell fell)" = "desktop" ] || fail "fell: shell=$(shell fell)"; ok; has fell "sim: exec SD:bin/run voronoy"; hasnt fell "run terminal"
+rc fell 1; [ "$(shell fell)" = "desktop" ] || fail "fell: shell=$(shell fell)"; ok; has fell "sim: exec SD:bin/run voronoy"; hasnt fell "run pocketshell"
 has fell "could not start: the desktop instead"
 # refused (a full-screen program): shell= back as it was, the old session started again
 card busy; printf 'shell=desktop\n' >> "$OUT/t_busy/etc/system.ini"; tool busy "switch console" HPROCS="7:menubar:s,21:printd" HSWITCH=-16

@@ -514,6 +514,13 @@ char names[512]; session_programs (m, names, sizeof names); // "menubar\ntermina
 `autostart_has` / `autostart_ensure` look in the autostart and in the session files: a line added after an anchor
 goes into the file that has it.
 
+**The pocket shell** (`shell.h`, 2026-10-08): in the pocket mode a program may open one of the pocket shell's screens
+(`pocketshell` serves the IPC service `shell`); on the desktop nothing serves it and the call answers 0:
+
+```c
+if (shell_running ()) shell_ask (SHELL_MSG_QUICK);          // quick settings and the notifications (else: our own)
+```
+
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
 | `notify.h` | Notifications |
@@ -528,6 +535,7 @@ goes into the file that has it.
 | `applet_proto.h` | A settings applet shown inside the Control Panel |
 | `locale.h` | The system's language and time zone (`SD:/etc/system.ini`) |
 | `session.h` | The interface's mode (desktop, pocket, console) and its session: `SD:/etc/session/<mode>`, the switch |
+| `shell.h` | The pocket shell's screens asked (`shell_ask (SHELL_MSG_HOME / _SWITCHER / _QUICK / _SEARCH)`, `shell_running ()`): the menu bar's way in pocket |
 
 ## 6. NetKit — the network
 

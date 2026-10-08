@@ -60,7 +60,9 @@ static CWindow *WinById (unsigned nId)
 static unsigned StateOf (CWindow *pW)
 {
 	return (g_pElWM->HasKeyFocus (pW) ? KAPI_WIN_KEYS : 0) | (pW->Minimised () ? KAPI_WIN_MINIMISED : 0)
-	     | (pW->OffDesk () ? KAPI_WIN_OFFDESK : 0) | (unsigned) ((pW->Desk () + 1) & 0xFF) << 8;
+	     | (pW->OffDesk () || pW->Aside () ? KAPI_WIN_OFFDESK : 0) | (unsigned) ((pW->Desk () + 1) & 0xFF) << 8;
+	// (a window set aside -- PocketUI's: an app behind the one in front; Elegant never sets it -- is not shown: the
+	// remote desktop (rdpd) and the task lists see it as off the desk)
 }
 
 // What is kept in the kernel for a program's window (KAPI_WS_STATE): the window as Elegant knows it
@@ -292,6 +294,8 @@ static u32 *XferOf (unsigned nPid, unsigned nBytes)
 	return pNew;
 }
 
+unsigned *el_core_xfer (unsigned nPid, unsigned nBytes)		{ return (unsigned *) XferOf (nPid, nBytes); }
+
 // (uk_win_read) -> 0: *pR says what is at the caller's transfer buffer; -1.
 static long OpWinRead (unsigned nPid, const long *a, struct el_read *pR)
 {
@@ -315,6 +319,30 @@ static long OpWinRead (unsigned nPid, const long *a, struct el_read *pR)
 		if (g_pElWin[i] != 0 && g_pElWin[i]->Id () == nId) pW = g_pElWin[i];
 	if (pW == 0) return -1;
 	const u8 *pSrc; unsigned nPitch; int W, H;
+	if (nPart == 0 && pW == pWM->FullscreenWindow ())	// (2026-10-08) a full-screen program: what the screen shows
+	{							// (its frames are the kernel's, not its window's canvas: rdpd)
+		static u32 *s_pGrab; static int s_nGrabW, s_nGrabH;
+		W = g_nScreenWidth; H = g_nScreenHeight;
+		if (s_pGrab == 0 || s_nGrabW != W || s_nGrabH != H)
+		{
+			delete [] s_pGrab;
+			s_pGrab = new u32[(unsigned long) W * H];
+			s_nGrabW = W; s_nGrabH = H;
+			if (s_pGrab == 0) return -1;
+			memset (s_pGrab, 0, (size_t) W * H * 4);
+		}
+		if (el_sys_screen_grab ((unsigned *) s_pGrab, W, H) == 0) return -1;	// (2: unchanged since this buffer's last grab)
+		if (x < 0) { w += x; x = 0; }
+		if (y < 0) { h += y; y = 0; }
+		if (x + w > W) w = W - x;
+		if (y + h > H) h = H - y;
+		if (w <= 0 || h <= 0) return 0;
+		u32 *pDst = XferOf (nPid, (unsigned) w * h * 4);
+		if (pDst == 0) return -1;
+		pR->w = w; pR->h = h;
+		for (int r = 0; r < h; r++) memcpy (pDst + (size_t) r * w, s_pGrab + (size_t) (y + r) * W + x, (size_t) w * 4);
+		return 0;
+	}
 	if (nPart == 1 || nPart == 2)
 	{
 		if (!pW->HasChrome ()) return -1;
@@ -428,9 +456,14 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 				I.w = pW->ClientWidth (); I.h = pW->ClientHeight ();
 				I.flags = pW->Flags (); I.alpha = pW->Alpha (); I.gen = pW->Gen ();
 				I.state = StateOf (pW);
-				if (pW == pWM->FullscreenWindow ()) { I.x = I.y = 0; I.w = g_nScreenWidth; I.h = g_nScreenHeight; I.state |= KAPI_WIN_FULLSCREEN; }
 				I.chromeGen = pW->ChromeGen ();
 				if (pW->HasChrome ()) { I.ow = pW->OuterW (); I.oh = pW->OuterH (); I.il = pW->ChromeL (); I.it = pW->ChromeT (); }
+				if (pW == pWM->FullscreenWindow ())	// (the whole screen, no frame; its frames change without a present
+				{					// to the server: the gen moves every 50 ms -- rdpd reads it again)
+					I.x = I.y = 0; I.w = g_nScreenWidth; I.h = g_nScreenHeight; I.state |= KAPI_WIN_FULLSCREEN;
+					I.ow = I.oh = I.il = I.it = 0;
+					I.gen = pW->Gen () + el_port_ticks () / 5;
+				}
 				const char *t = pW->Title ();
 				unsigned j = 0;
 				for (; j + 1 < sizeof I.title && t[j]; j++) I.title[j] = t[j];

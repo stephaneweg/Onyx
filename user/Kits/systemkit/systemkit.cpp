@@ -25,6 +25,7 @@
 #include "dockconf.h"
 #include "locale.h"
 #include "session.h"
+#include "shell.h"
 #include "wallpaper.inc"
 #include "volume.inc"
 #include "trash.inc"
@@ -36,6 +37,7 @@
 #include "dockconf.inc"
 #include "locale.inc"
 #include "session.inc"
+#include "shell.inc"
 
 // (the library's table: its init -- the library runtime's, Runtime/librt.cpp)
 extern "C" int onyx_lib_init (const TLibImports *imp);

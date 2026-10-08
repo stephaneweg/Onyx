@@ -2254,7 +2254,8 @@ unsigned kapi_get_modifiers (void)
 void kapi_inject_modifiers (unsigned nMods)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
-	WsInputMods (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT));	// (and kept here: kapi_get_modifiers)
+	WsInputMods (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT | KAPI_WS_MOD_SUPER));	// (the server: Super too -- PocketUI's
+										// Home from vncd / rdpd; kept here: kapi_get_modifiers, not Super)
 	if (pWM != 0) pWM->SetModifiers (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT));
 }
 

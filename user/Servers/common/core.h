@@ -89,6 +89,9 @@ void el_core_window_event_drop (int id);				// ... taken
 long el_op (unsigned pid, int op, const long *a, const unsigned char *in, unsigned in_len,
 	    unsigned char *out, unsigned *out_len);
 void el_core_program_gone (unsigned pid);	// a program ended: what it had beside its windows freed
+// A program's transfer buffer (the pixels uk_win_read gives, at KAPI_WS_VA_XFER in the program): at least `bytes`
+// -> its address here, 0: none (PocketUI's PK_OP_THUMB writes a window's picture there).
+unsigned *el_core_xfer (unsigned pid, unsigned bytes);
 unsigned el_core_focus_pid (void);
 unsigned el_core_active_id (void);		// the window that has the keyboard: its id (uk_win_list's), 0: none
 void el_core_wheel (int lines);			// the wheel's lines a notch (1 .. 16)		// the program that has the keyboard, 0: none
@@ -97,6 +100,8 @@ void el_core_wheel (int lines);			// the wheel's lines a notch (1 .. 16)		// the
 // a live process's name -> its length (0: none).
 int el_sys_attach (unsigned pid);
 int el_sys_name (unsigned pid, char *buf, unsigned cap);
+// (2026-10-08) what the screen shows (kapi_screen_grab: a full-screen program's frames) into w x h pixels -> 0 none, 1, 2 unchanged.
+int el_sys_screen_grab (unsigned *dst, int w, int h);
 // ... KAPI_WS_STATE_BYTES the kernel keeps for an attached program: written (set) / read -> 1;
 // the attached programs' pids -> how many.
 int el_sys_clients (unsigned *pids, int max);
@@ -113,6 +118,9 @@ void el_core_fullscreen (unsigned pid, int on);	// a program took / gave back th
 // The keyboard's cooked string (characters, VT100 escapes), to the window that has the keys.
 void el_core_key (const char *keys);
 void el_core_modifiers (unsigned mods);
+// The next key of a cooked string (the window manager's reading: KEY_* for the escapes, KEY_ENTER, KEY_BACKSPACE),
+// *keys advanced, the modifiers an escape carries ORed into *mods -> its code, 0: the end.
+int el_core_next_key (const char **keys, unsigned *mods);
 
 // The pointer, in screen coordinates: buttons bit 0 left, 1 right, 2 middle; wheel in notches.
 void el_core_pointer (int x, int y, unsigned buttons, int wheel);

@@ -851,3 +851,5 @@
 845 uk_win_wallpaper_generate
 846 uk_win_wheel_get
 847 uk_win_wheel_set
+848 uk_shell_grab
+849 uk_shell_tasks

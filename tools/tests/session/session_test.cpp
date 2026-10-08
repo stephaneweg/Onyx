@@ -142,7 +142,7 @@ int main ()
 	CHECK (session_programs (SESSION_DESKTOP, b, sizeof b) == 7);
 	CHECK_EQ (b, "voronoy\nsetup\nmenubar\nnotifyd\ndock\nagenda\nstickies\n");
 	CHECK (session_programs (SESSION_POCKET, b, sizeof b) == 2);
-	CHECK_EQ (b, "menubar\nterminal\n");
+	CHECK_EQ (b, "menubar\npocketshell\n");
 	CHECK (session_programs (SESSION_CONSOLE, b, sizeof b) == 2);
 	CHECK_EQ (b, "terminal\ngamelib\n");
 	CHECK (session_programs (7, b, sizeof b) == 0 && b[0] == 0);

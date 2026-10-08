@@ -200,6 +200,7 @@ static const struct ws_policy s_Elegant =
 	0,					// registered: nothing before the display
 	start,
 	demo_scene, demo_closed,
+	0,					// mods: the window manager's own (Ctrl, Shift, Alt)
 };
 const struct ws_policy *g_pWsPolicy = &s_Elegant;
 

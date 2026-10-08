@@ -415,6 +415,12 @@ void el_core_key (const char *keys)
 	if (g_pElWM != 0 && keys != 0) g_pElWM->OnKey (keys);
 }
 
+int WmNextKey (const char **pp, unsigned *pMods);		// (wm/window.cpp)
+int el_core_next_key (const char **keys, unsigned *mods)
+{
+	return WmNextKey (keys, mods);
+}
+
 void el_core_modifiers (unsigned mods)
 {
 	if (g_pElWM != 0) g_pElWM->SetModifiers (mods);

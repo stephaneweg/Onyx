@@ -69,7 +69,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 848 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 850 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -340,13 +340,16 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_win_fullscreen_end` | The display for this program alone (the server told, then the kernel's kapi_fullscreen_begin) -> the screen's pixels (*w x *h | `win.h` |
 | `uk_win_server_info` | (a type) | `win.h` |
 | `uk_win_server` | The server this program's UIKit speaks to (each server has its UIKit) -> 1, 0 none runs (*out then says what the desktop would be). | `win.h` |
-| `uk_shell_register` | "I am the shell" (the program the server started) | `win.h` |
-| `uk_shell_events` | window opened, closed, retitled, brought to the front -> fn | `win.h` |
-| `uk_shell_keys` | the system keys delivered to the shell first | `win.h` |
-| `uk_shell_thumb` | window id's picture scaled to w x h into dst | `win.h` |
-| `uk_shell_front` | window id to the front (1) / the back (0) | `win.h` |
-| `uk_shell_split` | two windows side by side (0 0: none) | `win.h` |
-| `uk_shell_dim` | the dim behind an overlay (0: none) | `win.h` |
+| `uk_shell_register` | The desktop's UIKit answers -KAPI_ENOSYS to each | `win.h` |
+| `uk_shell_events` | The windows' news to fn, as events UK_SHELL_EVENT (value | `win.h` |
+| `uk_shell_keys` | The system keys the shell takes before the front app (UK_SHELL_KEY each | `win.h` |
+| `uk_shell_grab` | While on | `win.h` |
+| `uk_shell_thumb` | Window id's client area as last presented, scaled to w x h (at most 512 x 512) into dst (w a row) -> 1, 0 no such window, -1 refused. | `win.h` |
+| `uk_shell_front` | front 1 | `win.h` |
+| `uk_shell_split` | two windows side by side (0 0: none) -- (not yet: -KAPI_ENOSYS) | `win.h` |
+| `uk_shell_dim` | a dim behind an overlay -- (not yet: the overlays draw theirs) | `win.h` |
+| `uk_shell_task` | The running programs, the most recently in front first | `win.h` |
+| `uk_shell_tasks` |  | `win.h` |
 | `create_window` | Friendly aliases used by the demos (they were appkit.h's). | `win.h` |
 | `present` | Friendly aliases used by the demos (they were appkit.h's). | `win.h` |
 | `Canvas` | (a type) | `canvas.h` |
@@ -1118,16 +1121,78 @@ int uk_win_server (struct uk_win_server_info *out);
 
 ### the shell's calls (PocketUI's: the pocket and console shells)
 
-The desktop's UIKit answers -KAPI_ENOSYS to each: Elegant's shell programs (menubar, dock) use the calls above. (Their meaning is PocketUI's, docs/POCKETUI-TECH-STUDY.md section 4.3: written with it, at its phase P5.)
+The desktop's UIKit answers -KAPI_ENOSYS to each: Elegant's shell programs (menubar, dock) use the calls above. Their meaning is PocketUI's (docs/POCKETUI-TECH-STUDY.md section 4.3; phase P5, docs/03 "The pocket shell"): the shell (pocketshell; consolehome later) is the program whose windows are the home behind the apps (its BACKMOST window: placed at the work area, the keys' when no app is in front), its overlays (its TOPMOST windows: where it asks, even across the screen's top edge) and its toasts.
+
+"I am the shell" -> 1; -KAPI_EBUSY another running program is; -KAPI_ENOSYS not PocketUI. Asked first, before its windows; UIKit asks it again of a PocketUI started again (with the events' handler and the keys).
 
 ```cpp
-int uk_shell_register (void);				// "I am the shell" (the program the server started)
-int uk_shell_events (gui_handler fn);			// window opened, closed, retitled, brought to the front -> fn
-int uk_shell_keys (const int *keys, int count);		// the system keys delivered to the shell first
-int uk_shell_thumb (unsigned id, unsigned *dst, int w, int h);	// window id's picture scaled to w x h into dst
-int uk_shell_front (unsigned id, int front);		// window id to the front (1) / the back (0)
-int uk_shell_split (unsigned left, unsigned right);	// two windows side by side (0 0: none)
-int uk_shell_dim (int alpha);				// the dim behind an overlay (0: none)
+int uk_shell_register (void);
+```
+
+The windows' news to fn, as events UK_SHELL_EVENT (value: UK_SHELL_EV_*) and UK_SHELL_KEYEV (value: a key, UK_SHELL_KEY) -> 1. No polling: the switcher, the launcher's running apps read uk_shell_tasks when told.
+
+```cpp
+int uk_shell_events (gui_handler fn);
+#define UK_SHELL_EVENT		64	// the event: value UK_SHELL_EV_*
+#define UK_SHELL_EV_TASKS	1	// a program's window opened, closed, retitled, minimised; the front one changed; home
+#define UK_SHELL_EV_AREA	2	// the work area changed (the menu bar came or went, the screen's size): uk_win_server
+#define UK_SHELL_KEYEV		65	// the event: value UK_SHELL_KEY (mods, code) -- a system key, or every key while grabbed
+```
+
+A key as the shell names it: the modifiers (1 Ctrl, 2 Shift, 4 Alt, 8 Super) and the code (a character, KEY_*, KEY_ENTER, KEY_BACKSPACE, 0x1b Esc, 9 Tab; or one of the two below).
+
+```cpp
+#define UK_SHELL_KEY(mods, code)	((int) (((unsigned) (mods) << 16) | (unsigned) (code)))
+#define UK_SHELL_KEY_MODS(k)		((unsigned) (k) >> 16)
+#define UK_SHELL_KEY_CODE(k)		((int) ((unsigned) (k) & 0xFFFF))
+#define UK_SHELL_MOD_SUPER	8	// a Super key (the Windows key)
+#define UK_SHELL_KEY_SUPER	0x1000	// a Super pressed and released with no key between (Home)
+#define UK_SHELL_KEY_HELD	0x1001	// (grabbed) the modifiers held changed: UK_SHELL_KEY_MODS says which now
+```
+
+The system keys the shell takes before the front app (UK_SHELL_KEY each; count 0: none) -> how many. A program in full screen keeps every key.
+
+```cpp
+int uk_shell_keys (const int *keys, int count);
+```
+
+While on: every key and every change of the modifiers to the shell (an overlay is up: the switcher, quick settings) -> 1.
+
+```cpp
+int uk_shell_grab (int on);
+```
+
+Window id's client area as last presented, scaled to w x h (at most 512 x 512) into dst (w a row) -> 1, 0 no such window, -1 refused.
+
+```cpp
+int uk_shell_thumb (unsigned id, unsigned *dst, int w, int h);
+```
+
+front 1: window id's program to the front (home left); front 0 and id 0: HOME -- every app set aside, the shell's home has the keys; front 0 and an id: its program behind the others -> 1, 0 no such window.
+
+```cpp
+int uk_shell_front (unsigned id, int front);
+int uk_shell_split (unsigned left, unsigned right);	// two windows side by side (0 0: none) -- (not yet: -KAPI_ENOSYS)
+int uk_shell_dim (int alpha);				// a dim behind an overlay -- (not yet: the overlays draw theirs)
+```
+
+The running programs, the most recently in front first: each its topmost window -> how many (none in front of them: home).
+
+```cpp
+struct uk_shell_task
+{
+	unsigned id;			// its topmost window (uk_win_list's id: uk_shell_thumb, uk_win_close, uk_shell_front)
+	unsigned pid;
+	unsigned flags;			// UK_TASK_*
+	int	 w, h;			// that window's client area
+	char	 title[48];		// its title
+	char	 name[24];		// the program's name (its app: SD:/apps/<name>.app)
+};
+#define UK_TASK_FRONT		1	// the program in front
+#define UK_TASK_CARD		2	// its window is a card (a small fixed window, framed)
+#define UK_TASK_MINIMISED	4	// every window of it minimised
+#define UK_TASKS_MAX		32
+int uk_shell_tasks (struct uk_shell_task *out, int max);
 
 }
 #endif

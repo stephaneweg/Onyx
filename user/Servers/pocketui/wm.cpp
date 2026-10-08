@@ -5,13 +5,21 @@
 // (../common/); this file decides:
 //
 //   - the work area: the screen less the status band at the top (pocket: band.cpp; console: the whole screen);
-//   - a program's normal window is a CARD -- framed (UIKit's skin draws its Milk title), centred in the work area --
-//     when it fits there with its frame; else it is FILLED: frameless, at the work area's top left. A window that
-//     says it is resizable (EL_OP_RESIZABLE) is filled: its frame dropped, GUI_EVENT_WINRESIZE to the work area's
-//     size (UIKit's Root applies it as a frame dragged to that size);
+//   - a program's MAIN window (its first) is full screen (the user's rule, 2026-10-08): FILLED -- frameless, at the work
+//     area's top left (bigger than the work area: cut) --, or, of a fixed size smaller than the work area, CENTRED over
+//     a matte of its background colour (PK_KIND_CENTRE); a window that says it is resizable (EL_OP_RESIZABLE) is
+//     filled: its frame dropped, GUI_EVENT_WINRESIZE to the work area's size (UIKit's Root applies it as a frame
+//     dragged to that size). A CARD -- framed (UIKit's skin draws its Milk title), centred -- is a program's other
+//     window (a dialog, a second window) when it fits, and the main window of an app listed in SD:/etc/pocketui.ini
+//     [cards] or whose app.txt says "pocket = card";
 //   - a borderless or topmost window (a popup, a toast) stays where it asked, kept on the screen; the desktop's
 //     backmost windows (the agenda, the stickies) and a topmost window on the screen's bottom edge (the dock, of
-//     any width) are refused -- the pocket shell's are its own programs (phase P5);
+//     any width) are refused;
+//   - THE SHELL (phase P5: pocketshell, uk_shell_register): its backmost window is its HOME (the launcher, at the work
+//     area), its topmost / borderless ones its overlays and toasts (where asked); it gets the system keys it named
+//     (PK_OP_KEYS; every key while it grabs them), the windows' news (PK_OP_EVENTS), the tasks and their pictures
+//     (PK_OP_TASKS, PK_OP_THUMB), and sends a program to the front or goes HOME (PK_OP_FRONT: no app in front);
+//   - the keys follow the front program (its topmost window; home: the shell's), whatever stands above it;
 //   - THE GLOBAL MENU BAR (pocket; docs/COMPACT-SHELL-STUDY.md section 6.4): a topmost window across the screen's
 //     top edge (the desktop's menubar) is the top band -- PocketUI's own band (band.cpp) is taken away while it is
 //     there and made again when it goes; the work area starts under it; its menus (EL_OP_MENU_GET / _COMMAND) are
@@ -23,7 +31,7 @@
 //     Alt+Tab) becomes the front one, its windows raised; every other program's windows are set aside (hidden
 //     until brought to the front), and kept under the front one's whatever raised them. The front program gone
 //     (or minimised): the one fronted before it. Alt+Tab brings the program at the back to the front (Alt+Shift+
-//     Tab: the one just behind the front one) -- a minimal cycling until the shell's switcher (phase P5).
+//     Tab: the one just behind the front one) when no shell runs -- with one, the shell's switcher.
 //
 // Console (--mode console) is the same policy for now, without the band nor the menu bar (docs/POCKETUI-TECH-STUDY.md
 // section 7.5).
@@ -60,6 +68,16 @@ static unsigned s_nPromote;					// a program raised by a request: fronted at the
 static boolean s_bReady;					// (the first tick done: the windows a restart gave back are known)
 static int s_nAreaX = -1, s_nAreaY, s_nAreaW, s_nAreaH;		// the work area at the last tick
 
+// The shell (phase P5: pocketshell; uikit/port/pocket.h PK_OP_SHELL..): its pid, its events' handler, the system keys it
+// takes, the grab (an overlay is up: every key its), home (no app in front: its home shown).
+static unsigned s_nShell;
+static u64 s_ulShellEv;
+static int s_ShellKeys[32], s_nShellKeys = -1;			// (-1: it never said: the minimal Alt+Tab stays)
+static boolean s_bGrab, s_bHome;
+static unsigned s_nTaskSig;					// what the shell was last told of the tasks
+static unsigned s_nMods;					// the modifiers held (Super too)
+static boolean s_bSuperAlone;					// a Super pressed, no key since
+
 static void Say (const char *s1, const char *s2 = "", const char *s3 = "")
 {
 	char line[160];
@@ -91,6 +109,7 @@ static boolean AppWindow (CWindow *p);
 static void Promote (unsigned nPid);
 static CWindow *pk_front_window (void);
 static void Recentre (void);
+static void Matte (CWindow *pFront, int ax, int ay, int aw, int ah);
 
 // A window's state, up to date: one the policy had not seen (made since the last turn, given back to a server
 // started again) is classified now.
@@ -103,7 +122,8 @@ static int KindOf (int id)
 		s_St[id].pWin = p; s_St[id].nWinId = p != 0 ? p->Id () : 0;
 		s_St[id].nSentW = s_St[id].nSentH = -1; s_St[id].bMaxSent = FALSE;
 		s_St[id].nKind = p != 0 ? Classify (id, p) : PK_KIND_NONE;
-		if (p != 0) p->SetPinned (s_St[id].nKind == PK_KIND_CARD || s_St[id].nKind == PK_KIND_FILL);
+		if (p != 0) p->SetPinned (s_St[id].nKind == PK_KIND_CARD || s_St[id].nKind == PK_KIND_FILL || s_St[id].nKind == PK_KIND_CENTRE);
+		if (p != 0) p->SetNoInset (s_St[id].nKind == PK_KIND_SHELL || s_St[id].nKind == PK_KIND_HOME);	// (not a band)
 		if (s_St[id].nKind == PK_KIND_FILL && p->Resizable ()) Fill (id);
 		if (p != 0 && s_bReady && AppWindow (p)) Promote (p->OwnerPid ());	// (a program that opens a window: in front)
 	}
@@ -112,11 +132,34 @@ static int KindOf (int id)
 
 int pk_kind (int id)		{ return KindOf (id); }
 unsigned pk_front_pid (void)	{ return s_nFront; }
+unsigned pk_shell_pid (void)	{ return s_nShell; }
+int pk_home (void)		{ return s_bHome ? 1 : 0; }
+
+// The shell still runs (its pid has a process).
+static boolean ShellAlive (void)
+{
+	char n[24];
+	return s_nShell != 0 && el_sys_name (s_nShell, n, sizeof n) > 0;
+}
+
+// An event to the shell's handler, through one of its windows (its first if it has it) -> sent.
+static boolean ShellPush (int nEvent, long lValue)
+{
+	if (s_nShell == 0 || s_ulShellEv == 0) return FALSE;
+	int id = el_core_window_of_win (s_nShell, 0);
+	if (id < 0) id = el_core_window_of (s_nShell);
+	if (id < 0 || g_pElWin[id] == 0) return FALSE;
+	GUIEvent Ev;
+	Ev.ulHandler = s_ulShellEv; Ev.ulSender = 0; Ev.nEvent = nEvent; Ev.lValue = lValue; Ev.nMods = s_nMods & 7;
+	g_pElWin[id]->PushEvent (Ev);
+	return TRUE;
+}
 
 // A program's window, normal (not the band, not a toast, not the desktop's): what "one app in front" counts.
 static boolean AppWindow (CWindow *p)
 {
-	return p != 0 && p->OwnerPid () != 0 && p->OwnerPid () != g_nPkSelf && !p->System () && !p->Topmost () && !p->Backmost ();
+	return p != 0 && p->OwnerPid () != 0 && p->OwnerPid () != g_nPkSelf && !p->System () && !p->Topmost () && !p->Backmost ()
+	    && !(p->OwnerPid () == s_nShell && s_nShell != 0 && p->Borderless ());	// (the shell's home, overlays, toasts)
 }
 
 // The global menu bar's window (its number), -1: none.
@@ -129,6 +172,83 @@ int pk_bar_id (void)
 	return -1;
 }
 
+// ---- the apps shown as cards (SD:/etc/pocketui.ini [cards], app.txt "pocket = card") ------------------------
+// A small file read with the kernel's calls (PocketUI has no C library): -> its bytes in b (cap - 1 at most), -1.
+static int ReadFile (const char *path, char *b, int cap)
+{
+	void *h = kapi_open (path);
+	if (h == 0) return -1;
+	int n = kapi_read (h, b, (unsigned) (cap - 1));
+	kapi_close (h);
+	if (n < 0) return -1;
+	b[n] = 0;
+	return n;
+}
+
+static char Low (char c)	{ return c >= 'A' && c <= 'Z' ? (char) (c + 32) : c; }
+
+// Does the text's [section] (0: anywhere) hold a line "name" (sec "cards"), or "key = value" (key given)?
+static boolean IniHas (const char *t, const char *sec, const char *key, const char *val)
+{
+	boolean bIn = sec == 0;
+	for (const char *p = t; *p; )
+	{
+		const char *e = p; while (*e && *e != '\n') e++;
+		const char *a = p, *z = e;
+		while (a < z && (*a == ' ' || *a == '\t')) a++;
+		while (z > a && (z[-1] == ' ' || z[-1] == '\t' || z[-1] == '\r')) z--;
+		const char *c = a; while (c < z && *c != '#' && *c != ';') c++;	// (a comment)
+		while (c > a && (c[-1] == ' ' || c[-1] == '\t')) c--;
+		z = c;
+		if (a < z && *a == '[')
+		{
+			const char *q = a + 1; int i = 0;
+			while (q < z && *q != ']' && sec != 0 && sec[i] && Low (*q) == Low (sec[i])) { q++; i++; }
+			bIn = sec != 0 && sec[i] == 0 && q < z && *q == ']';
+		}
+		else if (bIn && a < z)
+		{
+			const char *w = key != 0 ? key : val;		// (the line's first word: the key, or the name)
+			int i = 0; const char *q = a;
+			while (q < z && w[i] && Low (*q) == Low (w[i])) { q++; i++; }
+			if (w[i] == 0 && (q == z || *q == ' ' || *q == '\t' || *q == '='))
+			{
+				if (key == 0) { if (q == z) return TRUE; }
+				else
+				{
+					while (q < z && (*q == ' ' || *q == '\t' || *q == '=')) q++;
+					int j = 0;
+					while (q < z && val[j] && Low (*q) == Low (val[j])) { q++; j++; }
+					if (val[j] == 0 && q == z) return TRUE;
+				}
+			}
+		}
+		p = *e ? e + 1 : e;
+	}
+	return FALSE;
+}
+
+int pk_card_app (const char *name)
+{
+	static char b[2048];
+	if (name == 0 || name[0] == 0) return 0;
+	if (ReadFile (PK_INI, b, sizeof b) > 0 && IniHas (b, "cards", 0, name)) return 1;
+	char path[96]; int n = 0;
+	const char *pre = "SD:/apps/", *post = ".app/app.txt";
+	for (int i = 0; pre[i] && n < 90; i++) path[n++] = pre[i];
+	for (int i = 0; name[i] && n < 70; i++) path[n++] = name[i];
+	for (int i = 0; post[i] && n < 95; i++) path[n++] = post[i];
+	path[n] = 0;
+	return ReadFile (path, b, sizeof b) > 0 && IniHas (b, 0, "pocket", "card") ? 1 : 0;
+}
+
+static boolean HasAppWindow (unsigned nPid)			// the program has a window already (its main one)
+{
+	for (int id = 0; id < EL_WINDOWS_MAX; id++)
+		if (g_pElWin[id] != 0 && g_pElWin[id]->OwnerPid () == nPid && AppWindow (g_pElWin[id])) return TRUE;
+	return FALSE;
+}
+
 // ---- a window made ------------------------------------------------------------------------------------
 
 static int Create (unsigned nPid, int nWin, int *px, int *py, int *pw, int *ph, unsigned *pnFlags)
@@ -136,6 +256,20 @@ static int Create (unsigned nPid, int nWin, int *px, int *py, int *pw, int *ph, 
 	unsigned f = *pnFlags;
 	int nKind;
 	for (int id = 0; id < EL_WINDOWS_MAX; id++) KindOf (id);	// (a window made earlier in this turn: its kind taken now)
+	if (nPid == s_nShell && s_nShell != 0 && (f & (WIN_FLAG_BACKMOST | WIN_FLAG_TOPMOST | WIN_FLAG_BORDERLESS)))
+	{
+		if (f & WIN_FLAG_BACKMOST)				// the shell's home: at the work area, frameless
+		{
+			int ax, ay, aw, ah;
+			Area (&ax, &ay, &aw, &ah);
+			*px = ax; *py = ay;
+			*pnFlags = f | WIN_FLAG_BORDERLESS;
+			nKind = PK_KIND_HOME;
+		}
+		else nKind = PK_KIND_SHELL;				// its overlays, its toasts: where it asks
+		s_Pending.nPid = nPid; s_Pending.nWin = nWin; s_Pending.nKind = nKind;
+		return 2;
+	}
 	if (f & WIN_FLAG_BACKMOST)
 	{
 		Say ("a desktop's backmost window refused (the pocket shell's are its own)");
@@ -169,13 +303,25 @@ static int Create (unsigned nPid, int nWin, int *px, int *py, int *pw, int *ph, 
 	}
 	else
 	{
+		// A program's MAIN window (its first) is full screen -- filled, frameless; of a fixed size smaller than the work
+		// area: centred over a matte --, but for the apps listed as cards (SD:/etc/pocketui.ini, app.txt "pocket =
+		// card"); its other windows (a dialog, an about box, a second window) are cards when they fit.
 		int ow = *pw + 2 * WIN_BORDER, oh = *ph + WIN_TITLEBAR_H + WIN_BORDER;
-		if (ow <= aw && oh <= ah)				// a card: framed, centred
+		boolean bMain = nWin == 0 && !HasAppWindow (nPid);
+		char Name[32];
+		if (bMain && el_sys_name (nPid, Name, sizeof Name) > 0 && pk_card_app (Name)) bMain = FALSE;
+		if (!bMain && ow <= aw && oh <= ah)			// a card: framed, centred
 		{
 			*px = ax + (aw - ow) / 2; *py = ay + (ah - oh) / 2;
 			nKind = PK_KIND_CARD;
 		}
-		else							// too big for a card: filled, frameless
+		else if (bMain && *pw < aw && *ph < ah && !(f & WIN_FLAG_ALPHA))	// fixed (or not yet resizable): centred
+		{
+			*pnFlags = f | WIN_FLAG_BORDERLESS;
+			*px = ax + (aw - *pw) / 2; *py = ay + (ah - *ph) / 2;
+			nKind = PK_KIND_CENTRE;
+		}
+		else							// filled, frameless (cut when bigger)
 		{
 			*pnFlags = f | WIN_FLAG_BORDERLESS;
 			*px = ax; *py = ay;
@@ -193,6 +339,8 @@ static int Classify (int id, CWindow *p)
 {
 	unsigned nPid = p->OwnerPid ();
 	if (nPid == g_nPkSelf || nPid == 0) return PK_KIND_OWN;
+	if (nPid == s_nShell && s_nShell != 0 && (p->Backmost () || p->Topmost () || p->Borderless ()) && s_Pending.nPid != nPid)
+		return p->Backmost () ? PK_KIND_HOME : PK_KIND_SHELL;	// (given back to a server started again)
 	if (s_Pending.nPid == nPid && s_Pending.nWin == el_core_window_win (id) && s_Pending.nKind != PK_KIND_NONE)
 	{
 		int k = s_Pending.nKind;
@@ -204,6 +352,8 @@ static int Classify (int id, CWindow *p)
 	if (p->Topmost () && p->X () == 0 && p->Y () == 0 && p->ClientWidth () >= g_nScreenWidth && g_nPkMode == PK_MODE_POCKET)
 		return PK_KIND_BAR;					// (the menu bar, given back to a server started again)
 	if (p->Topmost () || p->Backmost ()) return PK_KIND_POPUP;
+	if (p->Borderless () && !p->Resizable () && !p->AlphaCanvas () && p->X () == ax + (aw - p->OuterWidth ()) / 2
+	    && p->Y () == ay + (ah - p->OuterHeight ()) / 2 && (p->X () != ax || p->Y () != ay)) return PK_KIND_CENTRE;
 	if (p->Borderless ()) return p->Resizable () || (p->X () == ax && p->Y () == ay && !p->AlphaCanvas ()) ? PK_KIND_FILL : PK_KIND_POPUP;
 	return p->Resizable () && !p->Fixed () ? PK_KIND_FILL : PK_KIND_CARD;
 }
@@ -247,6 +397,143 @@ static int IdOfWinId (unsigned nId)			// (a window's id, as uk_win_list gives it
 	return -1;
 }
 
+static int Programs (unsigned *pPids, int nMax, boolean bMinimised);
+static void Front (unsigned nPid);
+
+// ---- the shell's operations (uikit/port/pocket.h) -----------------------------------------------------------
+
+// Window id's client area scaled to w x h (a box filter) into the caller's transfer buffer -> 1, 0 no such window, -1.
+static long Thumb (unsigned nPid, unsigned nId, int w, int h)
+{
+	int id = IdOfWinId (nId);
+	if (w <= 0 || h <= 0 || w > 512 || h > 512) return -1;
+	if (id < 0) return 0;
+	CWindow *p = g_pElWin[id];
+	const u32 *pSrc = p->CanvasBuffer ();
+	int W = p->ClientWidth (), H = p->ClientHeight (), nPitch = (int) p->Canvas ()->Width ();
+	if (pSrc == 0 || W <= 0 || H <= 0) return 0;
+	unsigned *pDst = el_core_xfer (nPid, (unsigned) (w * h * 4));
+	if (pDst == 0) return -1;
+	for (int y = 0; y < h; y++)
+	{
+		int y0 = y * H / h, y1 = (y + 1) * H / h;
+		if (y1 <= y0) y1 = y0 + 1;
+		for (int x = 0; x < w; x++)
+		{
+			int x0 = x * W / w, x1 = (x + 1) * W / w;
+			if (x1 <= x0) x1 = x0 + 1;
+			int sx = (x1 - x0 + 3) / 4, sy = (y1 - y0 + 3) / 4;	// (at most 4 x 4 samples a pixel)
+			unsigned r = 0, g = 0, b = 0, n = 0;
+			for (int yy = y0; yy < y1; yy += sy)
+				for (int xx = x0; xx < x1; xx += sx)
+				{
+					u32 c = pSrc[yy * nPitch + xx];
+					r += (c >> 16) & 255; g += (c >> 8) & 255; b += c & 255; n++;
+				}
+			pDst[y * w + x] = ((r / n) << 16) | ((g / n) << 8) | (b / n);
+		}
+	}
+	return 1;
+}
+
+// The running programs, the most recently fronted first (each its topmost window) -> how many.
+static int Tasks (struct uk_shell_task *pOut, int nMax)
+{
+	unsigned Pids[EL_WINDOWS_MAX];
+	int n = 0;
+	for (int i = 0; i < s_nMru && n < EL_WINDOWS_MAX; i++) Pids[n++] = s_Mru[i];
+	unsigned More[EL_WINDOWS_MAX];
+	int m = Programs (More, EL_WINDOWS_MAX, TRUE);
+	for (int j = 0; j < m; j++)
+	{
+		boolean bSeen = FALSE;
+		for (int i = 0; i < n; i++) if (Pids[i] == More[j]) bSeen = TRUE;
+		if (!bSeen && n < EL_WINDOWS_MAX) Pids[n++] = More[j];
+	}
+	CWindow *List[WM_MAX_WINDOWS];
+	unsigned nw = g_pElWM->Snapshot (List, WM_MAX_WINDOWS);
+	int k = 0;
+	for (int i = 0; i < n && k < nMax; i++)
+	{
+		CWindow *pTop = 0, *pAny = 0;
+		for (unsigned j = nw; j-- > 0; )
+		{
+			if (!AppWindow (List[j]) || List[j]->OwnerPid () != Pids[i]) continue;
+			if (pAny == 0) pAny = List[j];
+			if (pTop == 0 && !List[j]->Minimised ()) pTop = List[j];
+		}
+		if (pTop == 0) pTop = pAny;
+		if (pTop == 0) continue;
+		struct uk_shell_task *t = &pOut[k++];
+		memset (t, 0, sizeof *t);
+		t->id = pTop->Id (); t->pid = Pids[i];
+		t->w = pTop->ClientWidth (); t->h = pTop->ClientHeight ();
+		const char *ti = pTop->Title ();
+		for (unsigned c = 0; ti != 0 && ti[c] != 0 && c + 1 < sizeof t->title; c++) t->title[c] = ti[c];
+		el_sys_name (Pids[i], t->name, sizeof t->name);
+		t->name[sizeof t->name - 1] = 0;
+		int idw = IdOfWinId (pTop->Id ());
+		if (Pids[i] == s_nFront && !s_bHome) t->flags |= UK_TASK_FRONT;
+		if (idw >= 0 && s_St[idw].nKind == PK_KIND_CARD) t->flags |= UK_TASK_CARD;
+		if (pTop->Minimised ()) t->flags |= UK_TASK_MINIMISED;
+	}
+	return k;
+}
+
+// Home: no app in front, every one set aside -- the shell's home shown, with the keys.
+static void GoHome (void)
+{
+	if (!s_bHome) Say ("home");
+	s_bHome = TRUE;
+	s_nFront = 0;
+	ScreenDirty ();
+}
+
+static long ShellOp (int nOp, const long *a, const unsigned char *pIn, unsigned nInLen)
+{
+	switch (nOp)
+	{
+	case PK_OP_EVENTS:
+		s_ulShellEv = (u64) a[0];
+		s_nTaskSig = 0;					// (told at the next tick)
+		return 1;
+	case PK_OP_KEYS:
+		{
+			int n = (int) a[0];
+			if (n < 0) n = 0;
+			if (n > 32) n = 32;
+			if ((unsigned) n * sizeof (int) > nInLen) n = (int) (nInLen / sizeof (int));
+			memcpy (s_ShellKeys, pIn, (unsigned) n * sizeof (int));
+			s_nShellKeys = n;
+			return n;
+		}
+	case PK_OP_GRAB:
+		s_bGrab = a[0] != 0;
+		return 1;
+	case PK_OP_FRONT:
+		{
+			if (a[0] == 0) { if (a[1] == 0) GoHome (); return 1; }
+			int id = IdOfWinId ((unsigned) a[0]);
+			if (id < 0 || !AppWindow (g_pElWin[id])) return 0;
+			unsigned nPid = g_pElWin[id]->OwnerPid ();
+			if (a[1] != 0)
+			{
+				if (g_pElWin[id]->Minimised ()) g_pElWM->Raise (g_pElWin[id]);	// (back from minimised)
+				s_nPromote = nPid;
+				return 1;
+			}
+			int i = 0;					// behind the others: last of the recent ones
+			while (i < s_nMru && s_Mru[i] != nPid) i++;
+			if (i == s_nMru) return 1;
+			for (; i + 1 < s_nMru; i++) s_Mru[i] = s_Mru[i + 1];
+			s_Mru[s_nMru - 1] = nPid;
+			if (nPid == s_nFront) s_nFront = 0;
+			return 1;
+		}
+	}
+	return -KAPI_EINVAL;
+}
+
 static int Op (unsigned nPid, int nOp, int nWin, const long *a, const unsigned char *pIn, unsigned nInLen,
 	       unsigned char *pOut, unsigned *pnOutLen, long *pnStatus)
 {
@@ -278,9 +565,39 @@ static int Op (unsigned nPid, int nOp, int nWin, const long *a, const unsigned c
 			*pnStatus = 1;
 			return 1;
 		}
-	case PK_OP_SHELL: case PK_OP_EVENTS: case PK_OP_KEYS: case PK_OP_THUMB:
-	case PK_OP_FRONT: case PK_OP_SPLIT: case PK_OP_DIM:
-		*pnStatus = -KAPI_ENOSYS;			// (the shell's: phase P5)
+	case PK_OP_SHELL:					// "I am the shell": the first, or any once that one ended
+		if (s_nShell != 0 && s_nShell != nPid && ShellAlive ()) { *pnStatus = -KAPI_EBUSY; return 1; }
+		if (s_nShell != nPid)
+		{
+			char Name[32];
+			if (el_sys_name (nPid, Name, sizeof Name) <= 0) { Name[0] = '?'; Name[1] = 0; }
+			Say ("the shell: ", Name);
+			s_ulShellEv = 0; s_nShellKeys = -1; s_bGrab = FALSE; s_nTaskSig = 0;
+		}
+		s_nShell = nPid;
+		for (int id = 0; id < EL_WINDOWS_MAX; id++)	// (its windows given back before it said so: taken again)
+			if (g_pElWin[id] != 0 && g_pElWin[id]->OwnerPid () == nPid) s_St[id].pWin = 0;
+		*pnStatus = 1;
+		return 1;
+	case PK_OP_EVENTS: case PK_OP_KEYS: case PK_OP_FRONT: case PK_OP_GRAB:
+		if (nPid != s_nShell || s_nShell == 0) { *pnStatus = -KAPI_EPERM; return 1; }
+		*pnStatus = ShellOp (nOp, a, pIn, nInLen);
+		return 1;
+	case PK_OP_THUMB:
+		*pnStatus = Thumb (nPid, (unsigned) a[0], (int) a[1], (int) a[2]);
+		return 1;
+	case PK_OP_TASKS:
+		{
+			int nMax = (int) a[0];
+			if (nMax > UK_TASKS_MAX) nMax = UK_TASKS_MAX;
+			if (nMax * (int) sizeof (struct uk_shell_task) > KAPI_WS_DATA_MAX) nMax = KAPI_WS_DATA_MAX / (int) sizeof (struct uk_shell_task);
+			int n = Tasks ((struct uk_shell_task *) pOut, nMax);
+			*pnOutLen = (unsigned) n * sizeof (struct uk_shell_task);
+			*pnStatus = n;
+			return 1;
+		}
+	case PK_OP_SPLIT: case PK_OP_DIM:
+		*pnStatus = -KAPI_ENOSYS;			// (split view: P8; the overlays draw their own dim)
 		return 1;
 
 	case EL_OP_DESK:					// one workspace
@@ -294,14 +611,14 @@ static int Op (unsigned nPid, int nOp, int nWin, const long *a, const unsigned c
 	case EL_OP_MOVE:					// a filled window stays at the work area's top left, a card centred
 		{
 			int k = pk_kind (IdOfWin (nPid, nWin));
-			if (k != PK_KIND_FILL && k != PK_KIND_CARD && k != PK_KIND_BAR) return 0;
+			if (k != PK_KIND_FILL && k != PK_KIND_CARD && k != PK_KIND_BAR && k != PK_KIND_CENTRE) return 0;
 			*pnStatus = 1;
 			return 1;
 		}
 	case EL_OP_WIN_MOVE:
 		{
 			int k = pk_kind (a[0] == 0 ? IdOfWin (nPid, nWin) : IdOfWinId ((unsigned) a[0]));
-			if (k != PK_KIND_FILL && k != PK_KIND_CARD && k != PK_KIND_BAR) return 0;
+			if (k != PK_KIND_FILL && k != PK_KIND_CARD && k != PK_KIND_BAR && k != PK_KIND_CENTRE) return 0;
 			*pnStatus = 0;
 			return 1;
 		}
@@ -336,6 +653,7 @@ static int Op (unsigned nPid, int nOp, int nWin, const long *a, const unsigned c
 	// Elegant's active window skips).
 	case EL_OP_MENU_GET:
 		{
+			if (s_bHome) { *pnOutLen = 0; *pnStatus = 0; return 1; }	// (home: no app's menus -- the Onyx menu)
 			CWindow *pF = pk_front_window ();
 			if (pF == 0) return 0;
 			struct el_menu *pM = (struct el_menu *) pOut;
@@ -359,7 +677,7 @@ static int Op (unsigned nPid, int nOp, int nWin, const long *a, const unsigned c
 		{
 			int id = IdOfWin (nPid, nWin);
 			int k = pk_kind (id);
-			if (a[0] == 0 || id < 0 || (k != PK_KIND_CARD && k != PK_KIND_FILL)) return 0;
+			if (a[0] == 0 || id < 0 || (k != PK_KIND_CARD && k != PK_KIND_FILL && k != PK_KIND_CENTRE)) return 0;
 			CWindow *p = g_pElWin[id];
 			if (p->Fixed ()) return 0;
 			p->SetResizable (TRUE, (int) a[1], (int) a[2]);
@@ -420,6 +738,7 @@ static void Promote (unsigned nPid)
 	if (i == EL_WINDOWS_MAX) i = EL_WINDOWS_MAX - 1;
 	for (; i > 0; i--) s_Mru[i] = s_Mru[i - 1];
 	s_Mru[0] = nPid;
+	s_bHome = FALSE;
 	if (nPid != s_nFront)						// (the log says who is in front: the Pi's kmsg)
 	{
 		char Name[32];
@@ -454,6 +773,7 @@ static void FrontNow (void)
 		if (bAny) s_Mru[k++] = s_Mru[i];
 	}
 	s_nMru = k;
+	if (s_bHome) { s_nFront = 0; return; }			// (home: no app in front until one is raised)
 	for (int i = 0; i < s_nMru; i++)
 		if (Shown (s_Mru[i]))
 		{
@@ -462,14 +782,99 @@ static void FrontNow (void)
 		}
 	unsigned Pids[1];
 	if (Programs (Pids, 1, FALSE) > 0) Promote (Pids[0]);
-	else s_nFront = 0;
+	else { s_nFront = 0; if (s_nShell != 0 && !s_bHome) GoHome (); }	// (no app shown: the shell's home)
 }
 
 // ---- the keys ------------------------------------------------------------------------------------------
 
+// The shell's keys (PK_OP_KEYS): each key of the string -> 1 when the shell took the string (grabbed: every key).
+static int ShellKey (const char *keys, unsigned mods)
+{
+	if (s_nShell == 0 || s_ulShellEv == 0 || !ShellAlive ()) return -1;	// (no shell: the minimal Alt+Tab)
+	if (g_pElWM->FullscreenWindow () != 0) return 0;	// (a full-screen program's keys are its own)
+	if (mods & KAPI_WS_MOD_SUPER) s_bSuperAlone = FALSE;	// (Super+key: not Super alone)
+	const char *p = keys;
+	unsigned m = 0;
+	int code = el_core_next_key (&p, &m);
+	if (code == 0) return 0;
+	if (s_bGrab)						// an overlay is up: every key the shell's
+	{
+		for (p = keys; m = 0, (code = el_core_next_key (&p, &m)) != 0; )
+			ShellPush (UK_SHELL_KEYEV, UK_SHELL_KEY ((mods | m) & 15, code));
+		return 1;
+	}
+	if (*p != 0) return 0;					// (a string of several keys: typed, the app's)
+	unsigned k = (unsigned) UK_SHELL_KEY ((mods | m) & 15, code);
+	if (code >= 'A' && code <= 'Z' && ((mods | m) & (MOD_ALT | MOD_CTRL | KAPI_WS_MOD_SUPER)))	// (Super+N as Super+n)
+		k = (unsigned) UK_SHELL_KEY (((mods | m) & 15) & ~MOD_SHIFT, code + 32);
+	for (int i = 0; i < s_nShellKeys; i++)
+		if ((unsigned) s_ShellKeys[i] == k) { ShellPush (UK_SHELL_KEYEV, (long) k); return 1; }
+	return s_nShellKeys < 0 ? -1 : 0;
+}
+
+static void Mods (unsigned mods)
+{
+	unsigned nOld = s_nMods;
+	s_nMods = mods;
+	if (s_nShell == 0 || s_ulShellEv == 0) return;
+	if ((mods & KAPI_WS_MOD_SUPER) && !(nOld & KAPI_WS_MOD_SUPER)) s_bSuperAlone = (mods & 7) == 0;
+	else if (mods & 7) s_bSuperAlone = FALSE;
+	if (!(mods & KAPI_WS_MOD_SUPER) && (nOld & KAPI_WS_MOD_SUPER) && s_bSuperAlone)
+	{
+		s_bSuperAlone = FALSE;
+		boolean bWanted = s_bGrab;
+		for (int i = 0; i < s_nShellKeys && !bWanted; i++) bWanted = s_ShellKeys[i] == UK_SHELL_KEY (0, UK_SHELL_KEY_SUPER);
+		if (bWanted && g_pElWM->FullscreenWindow () == 0) ShellPush (UK_SHELL_KEYEV, UK_SHELL_KEY (0, UK_SHELL_KEY_SUPER));
+	}
+	if (s_bGrab && mods != nOld) ShellPush (UK_SHELL_KEYEV, UK_SHELL_KEY (mods & 15, UK_SHELL_KEY_HELD));
+}
+
+// The window the keys go to: home, the shell's home; else the front program's topmost window -- whatever the window
+// manager's own choice (the topmost non-topmost window shown) would be: a window of no app standing above it, a
+// borderless one... -> 0: the window manager's choice (a full-screen program, no front program).
+static CWindow *KeyWindow (void)
+{
+	if (g_pElWM->FullscreenWindow () != 0) return 0;
+	if (s_bHome && s_nShell != 0)
+	{
+		for (int id = 0; id < EL_WINDOWS_MAX; id++)
+			if (g_pElWin[id] != 0 && g_pElWin[id]->OwnerPid () == s_nShell && pk_kind (id) == PK_KIND_HOME) return g_pElWin[id];
+		return 0;
+	}
+	return pk_front_window ();
+}
+
+// The keys typed: to the key window when the window manager would give them to another one (logged once).
+static int KeysToFront (const char *keys, unsigned mods)
+{
+	CWindow *pW = KeyWindow ();
+	if (pW == 0 || pW->KeyHandler () == 0 || g_pElWM->KeyTarget () == pW) return 0;
+	static unsigned s_nSaid;
+	if (s_nSaid != pW->Id ())
+	{
+		s_nSaid = pW->Id ();
+		char Name[32];
+		if (el_sys_name (pW->OwnerPid (), Name, sizeof Name) <= 0) { Name[0] = '?'; Name[1] = 0; }
+		Say ("the keys to ", Name, g_pElWM->KeyTarget () != 0 ? " (the window manager had another window above it)" : " (the window manager had none)");
+	}
+	const char *p = keys;
+	unsigned m;
+	int code;
+	while (m = 0, (code = el_core_next_key (&p, &m)) != 0)
+	{
+		GUIEvent Ev;
+		Ev.nMods = (mods & 7) | m; Ev.ulHandler = pW->KeyHandler (); Ev.ulSender = 0;
+		Ev.nEvent = GUI_EVENT_KEY; Ev.lValue = code;
+		pW->PushEvent (Ev);
+	}
+	return 1;
+}
+
 static int Key (const char *keys, unsigned mods)
 {
-	if (keys[0] != '\t' || keys[1] != '\0' || (mods & MOD_ALT) == 0 || (mods & MOD_CTRL) != 0) return 0;
+	int r = ShellKey (keys, mods);
+	if (r >= 0) return r ? r : KeysToFront (keys, mods);
+	if (keys[0] != '\t' || keys[1] != '\0' || (mods & MOD_ALT) == 0 || (mods & MOD_CTRL) != 0) return KeysToFront (keys, mods);
 	if (g_pElWM->FullscreenWindow () != 0) return 0;	// (a full-screen program's keys are its own)
 	unsigned Pids[EL_WINDOWS_MAX];
 	int n = Programs (Pids, EL_WINDOWS_MAX, TRUE);
@@ -485,6 +890,14 @@ static void Tick (unsigned self)
 	g_nPkSelf = self;
 	if (g_pElWM == 0) return;
 	boolean bFull = g_pElWM->FullscreenWindow () != 0;
+	static boolean s_bWasFull;
+	if (bFull != s_bWasFull)					// (the Pi's kmsg: a full-screen program, its end)
+	{
+		s_bWasFull = bFull;
+		char Name[32];
+		if (!bFull || el_sys_name (g_pElWM->FullscreenWindow ()->OwnerPid (), Name, sizeof Name) <= 0) { Name[0] = '?'; Name[1] = 0; }
+		Say (bFull ? "full screen: " : "the full screen given back", bFull ? Name : "");
+	}
 	for (int id = 0; id < EL_WINDOWS_MAX; id++) KindOf (id);	// (the windows made since: classified, a new app's fronted)
 
 	// The global menu bar there: PocketUI's own band away; gone: the band again. The work area changed: the cards
@@ -502,12 +915,26 @@ static void Tick (unsigned self)
 		boolean bFirst = s_nAreaX < 0;
 		s_nAreaX = ax; s_nAreaY = ay; s_nAreaW = aw; s_nAreaH = ah;
 		if (!bFirst) Recentre ();
+		ShellPush (UK_SHELL_EVENT, UK_SHELL_EV_AREA);		// (the shell's home: the work area's size)
 	}
 
+	if (s_nShell != 0 && !ShellAlive ())			// (the shell ended: nobody's home)
+	{
+		Say ("the shell ended");
+		s_nShell = 0; s_ulShellEv = 0; s_nShellKeys = -1; s_bGrab = FALSE; s_bHome = FALSE;
+	}
 	for (int id = 0; id < EL_WINDOWS_MAX; id++)
 	{
 		CWindow *p = g_pElWin[id];
 		int k = KindOf (id);
+		if (p != 0 && k == PK_KIND_HOME && (p->X () != ax || p->Y () != ay)) { p->Move (ax, ay); ScreenDirty (); }
+		if (p != 0 && k == PK_KIND_CENTRE && !bFull)		// (centred in the work area: a smaller one cut at its top left)
+		{
+			int cx = ax + (aw - p->OuterWidth ()) / 2, cy = ay + (ah - p->OuterHeight ()) / 2;
+			if (cx < ax) cx = ax;
+			if (cy < ay) cy = ay;
+			if (p->X () != cx || p->Y () != cy) { p->Move (cx, cy); ScreenDirty (); }
+		}
 		if (p == 0 || bFull || k != PK_KIND_FILL) continue;
 		if (p->X () != ax || p->Y () != ay) { p->Move (ax, ay); ScreenDirty (); }
 		// A resizable filled window: the work area's size, told once for each size of the work area (UIKit's Root
@@ -556,11 +983,82 @@ static void Tick (unsigned self)
 	{
 		CWindow *p = List[j];
 		if (!AppWindow (p)) continue;
-		boolean bAside = s_nFront != 0 && p->OwnerPid () != s_nFront && !bFull;
+		boolean bAside = (s_bHome || (s_nFront != 0 && p->OwnerPid () != s_nFront)) && !bFull;
 		if (p->Aside () != bAside) g_pElWM->SetAside (p, bAside);
 	}
 	CWindow *pF = pk_front_window ();
+	// The keyboard follows the front program: its topmost window raised when another (not set aside: no app's) has the
+	// window manager's keys -- kapi_key_held and the pads ask who has them (KAPI_WS_FOCUS: route.cpp).
+	if (pF != 0 && !bFull && !s_bHome)
+	{
+		CWindow *pT = g_pElWM->KeyTarget ();
+		if (pT != 0 && pT != pF && pT->OwnerPid () != s_nFront) { g_pElWM->Raise (pF); ScreenDirty (); }
+	}
 	pk_band_update (pF != 0 ? pF->Title () : "");		// (the front program's topmost window: the band's title)
+	Matte (pF != 0 && !bFull && !s_bHome ? pF : 0, ax, ay, aw, ah);
+
+	// The shell told when the tasks changed: a window opened, closed, retitled, minimised, the front one, home.
+	if (s_nShell != 0 && s_ulShellEv != 0)
+	{
+		unsigned nSig = 2166136261u ^ s_nFront ^ (s_bHome ? 0x80000000u : 0);
+		for (unsigned j = 0; j < n; j++)
+		{
+			CWindow *p = List[j];
+			if (!AppWindow (p)) continue;
+			nSig = (nSig ^ p->Id ()) * 16777619u;
+			nSig = (nSig ^ (p->Minimised () ? 1u : 0u)) * 16777619u;
+			for (const char *t = p->Title (); t != 0 && *t; t++) nSig = (nSig ^ (unsigned char) *t) * 16777619u;
+		}
+		if (nSig == 0) nSig = 1;
+		if (nSig != s_nTaskSig && ShellPush (UK_SHELL_EVENT, UK_SHELL_EV_TASKS)) s_nTaskSig = nSig;
+	}
+}
+
+// ---- the matte: behind a fixed-size main window, the work area in that window's background colour ----------------
+static int s_nMatte = -1;					// its window (PocketUI's own), -1: none
+static unsigned s_nMatteFor, s_nMatteColour;
+int pk_matte (void)	{ return s_nMatte >= 0 && g_pElWin[s_nMatte] != 0 && !g_pElWin[s_nMatte]->Aside () ? 1 : 0; }
+
+static void Matte (CWindow *pFront, int ax, int ay, int aw, int ah)
+{
+	int idF = pFront != 0 ? IdOfWinId (pFront->Id ()) : -1;
+	boolean bWant = idF >= 0 && s_St[idF].nKind == PK_KIND_CENTRE;
+	CWindow *pM = s_nMatte >= 0 ? g_pElWin[s_nMatte] : 0;
+	if (!bWant)
+	{
+		if (pM != 0 && !pM->Aside ()) g_pElWM->SetAside (pM, TRUE);
+		s_nMatteFor = 0;
+		return;
+	}
+	int w = 0, h = 0;
+	if (pM != 0) el_core_window_canvas (s_nMatte, &w, &h);
+	if (pM == 0 || w != aw || h != ah)			// (made, or made again for another work area)
+	{
+		if (s_nMatte >= 0) el_core_window_remove (s_nMatte);
+		el_core_owner (0);
+		s_nMatte = el_core_window_add (ax, ay, aw, ah, "matte", WIN_FLAG_BORDERLESS | WIN_FLAG_SYSTEM, g_nPkSelf);
+		if (s_nMatte < 0) return;
+		pM = g_pElWin[s_nMatte];
+		s_nMatteFor = 0; s_nMatteColour = 0xFFFFFFFFu;
+	}
+	if (pM->X () != ax || pM->Y () != ay) pM->Move (ax, ay);
+	// its colour: the window's own background (its client area's top left pixel), else Milk's face
+	const u32 *pC = pFront->CanvasBuffer ();
+	unsigned c = pC != 0 ? pC[0] & 0x00FFFFFF : 0x00E4E4E4;
+	if (c != s_nMatteColour)
+	{
+		s_nMatteColour = c;
+		unsigned *pPx = el_core_window_canvas (s_nMatte, &w, &h);
+		for (int i = 0; pPx != 0 && i < w * h; i++) pPx[i] = c;
+		el_core_window_present (s_nMatte);
+	}
+	if (s_nMatteFor != pFront->Id () || pM->Aside ())		// (just under the front program's windows)
+	{
+		s_nMatteFor = pFront->Id ();
+		if (pM->Aside ()) g_pElWM->SetAside (pM, FALSE);
+		g_pElWM->Raise (pM);
+		Front (pFront->OwnerPid ());
+	}
 }
 
 // ---- the screen, the start ----------------------------------------------------------------------------------
@@ -606,5 +1104,6 @@ static const struct ws_policy s_Pocket =
 	pk_main_registered,
 	Start,
 	0, 0,							// (no demonstration)
+	Mods,
 };
 const struct ws_policy *g_pWsPolicy = &s_Pocket;

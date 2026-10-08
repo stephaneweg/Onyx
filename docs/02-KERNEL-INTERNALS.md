@@ -1329,7 +1329,10 @@ windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant
 - **the raw input** — while the server owns the display, the mouse, the cooked keys, the modifiers and the
   held keys, from the USB callbacks and from `inject_*` (`vncd`, `rdpd`), go to a ring of 256 events the
   server reads (`KAPI_WS_INPUT`) instead of `CWindowManager::OnMouse` / `OnKey` (a pointer move replaces an
-  unread one; a full ring drops, counted);
+  unread one; a full ring drops, counted). (2026-10-08, no version change) The modifiers' event
+  (`KAPI_WS_IN_MODS`) also carries **`KAPI_WS_MOD_SUPER`** (8: a Super key, the USB modifiers' bits 3 / 7) —
+  PocketUI's Home; the common `serve.cpp` keeps it from the window manager (Elegant sees Ctrl, Shift, Alt as
+  before) and gives it to the policy's `mods` hook; `kapi_get_modifiers` is unchanged;
 - **one wait** (`KAPI_WS_WAIT`, on the I/O generation: an input event wakes it at once);
 - **the way back** — the server's process ends (`WsOnProcessGone`, the teardown), or calls nothing for 5 s
   (`WsWatch`, the compositor's loop): the display and the input are the kernel's again and the whole
@@ -2073,7 +2076,10 @@ The terminal thus chains the `stdout` of one stage to the `stdin` of the next vi
 > set aside: `CWindow::SetAside`, hidden as an off-desk window — a flag Elegant never sets), Alt+Tab. Its
 > protocol is `user/Kits/uikit/port/pocket.h`: Elegant's operations and numbers (`elegant.h`, included) with
 > PocketUI's meanings, plus its own from 0x100 (`PK_OP_HELLO`, `PK_OP_SERVER`; the shell's `PK_OP_SHELL`..
-> `PK_OP_DIM` answered `-KAPI_ENOSYS` until phase P5).
+> `PK_OP_GRAB` since phase P5 — the pocket shell `pocketshell`: its home, the tasks, the thumbnails, the system
+> keys, docs/03 §5.10.5). Since 2026-10-08 (the user's rule) **every app's main window is full screen** (filled; a
+> fixed one smaller than the work area centred over a matte of its colour), cards being a program's other windows
+> and the apps of `SD:/etc/pocketui.ini` `[cards]`; the keys follow the front program.
 
 Source: `kernel/gui/{gimage,kwin,surface}.cpp` + headers (`kern/gui/`); the window manager:
 `user/Servers/common/wm`. Rendering core ported from the author's FreeBASIC `SimpleOS`.

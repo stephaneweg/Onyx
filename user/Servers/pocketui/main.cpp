@@ -13,8 +13,8 @@
 // asks for uikit.so) -- and kept: PocketUI holds its reference while it lives; the kernel keeps the alias for a
 // PocketUI started again (--restart), drops it when another server is started.
 //
-// No shell programs yet (the status bar, the launcher, the switcher: pocketshell, phase P5); no session file (the
-// desktop's SD:/etc/autostart still runs: its menu bar and dock are refused, wm.cpp).
+// The shell is a client program (pocketshell, phase P5: the launcher behind the apps, the switcher, quick settings;
+// SD:/etc/session/pocket starts it after the menu bar), served by the policy's PK_OP_SHELL.. operations (wm.cpp).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated

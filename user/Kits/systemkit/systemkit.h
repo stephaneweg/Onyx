@@ -29,6 +29,7 @@
 #include "applet_proto.h"
 #include "locale.h"
 #include "session.h"
+#include "shell.h"
 #ifdef __cplusplus
 #include "clipboard.h"
 #include "trash.h"

@@ -4,6 +4,120 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## PocketUI phase P5: the pocket shell `pocketshell`; the full-screen rule, the keys, the full screen (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
+
+The decided design is `docs/POCKETUI-TECH-STUDY.md` §4.3, §7.2, §9 (P5) and `docs/COMPACT-SHELL-STUDY.md` §6 (the
+mock-ups `docs/compact-shell/mockups/pocket-*.png`); docs/03 §5.10.3 (the policy) and **§5.10.5** (the shell and its
+protocol), docs/04 §5 *The pocket mode*, docs/02 §8 (the Super bit), §10.
+
+- **`user/Apps/pocketshell/`** (`main.cpp`, `catalog.h`; FT_APPS; `sdcard/apps/pocketshell.app/`: `app.txt` category
+  `Shell` -- the `onyx` package's `apps = Shell` --, `icon.bmp`, `lang/fr.txt`, `check.py pocketshell`: 91 words, 0
+  missing) -- started by `SD:/etc/session/pocket` instead of the Terminal: its **home** (backmost window: the launcher
+  -- search, the category tabs Recent / the dock's categories / Settings = the Control Panel's applets, the grid, the
+  Running strip; the search: apps, settings, files of `SD:/docs` `SD:/Notes` `SD:/home`, the text as a Terminal command),
+  the **switcher** (Alt+Tab held, release to switch; Del closes; thumbnails by `uk_shell_thumb`), **quick settings**
+  (Wi-Fi, Do not disturb, Sound, Mode, the volume, the notifications -- it registers `notify`: toasts then the list --,
+  Control Panel / Lock / Power), the keys (Super alone / Alt+F1 / Ctrl+Esc Home, Alt+Tab, Super+N, Super+Space).
+  Reflow by the logical size (study §6.1) and a scale (`theme.txt scale=`, else 1.5 from 1000 lines, 2 from 1800).
+  Recent apps: `SD:/etc/pocket/recent`.
+- **The menu bar stays the top band** (the user's decision): in pocket (`uk_win_server` mode) its **Onyx menu** starts
+  with Home / Open Apps / Quick Settings and **a click on the time** opens quick settings -- through SystemKit's new
+  **`systemkit/shell.h`** (`shell_ask`, `shell_running`; `systemkit.abi` 89-90 -> `systemkit >= 1.91`). Its fr.txt + 3.
+- **The protocol** (`uikit/port/pocket.h`, revision 2; `uikit/win.h`): `PK_OP_SHELL`, `EVENTS`, `KEYS`, `THUMB`,
+  `FRONT`, `TASKS` (new, 0x117), `GRAB` (new, 0x118) given their meaning in PocketUI's `wm.cpp` (`SPLIT`, `DIM`: still
+  ENOSYS); `uk_shell_tasks`, `uk_shell_grab` appended to `uikit.abi` (850 entries -> `uikit >= 1.850`; abi_same: the
+  same table both UIKits); the pocket port keeps the registration / handler / keys and asks them again of a PocketUI
+  started again; thumbnails through the transfer buffer (`el_core_xfer`). Home: no app in front (`PK_OP_FRONT (0,0)`,
+  or no app showing), `EL_OP_MENU_GET` then answers no menus. The shell's windows: `PK_KIND_HOME` / `PK_KIND_SHELL`,
+  never apps, never a band of the work area (`CWindow::SetNoInset` -- the overlay at y = 0 in console made the work
+  area empty).
+- **The kernel**: `PublishKeys` gives the server the Super bit (`KAPI_WS_MOD_SUPER` 8 in `KAPI_WS_IN_MODS`, no version
+  change); **common**: `serve.cpp` keeps it from the window manager and calls the policy's new `mods` hook;
+  `el_core_next_key`, `el_core_xfer`, `SetNoInset`. Elegant unchanged (server_sim: Elegant from HEAD's `common/` and
+  from these, the same pixels; Elegant's policy gives `mods` 0).
+- **The Terminal**: `terminal <command>` types it into its first tab once the prompt came (the search's "run" line).
+- **The Pi's reports on 2026.10.124, fixed after P5's scope** (the coordinator's messages):
+  1. *Apps not full screen* -> **the user's rule**: every app's MAIN window is full screen -- filled (frameless, the work
+     area; bigger: cut until P6's viewport), or of a fixed size smaller than the work area **centred** over a **matte**
+     (`PK_KIND_CENTRE`: PocketUI's own window just under it, in the app's background colour -- its client's top left
+     pixel); it fills once it says it is resizable. **Cards**: a program's other windows (dialogs, a second window) and
+     the apps of **`SD:/etc/pocketui.ini`** `[cards]` (new, a config file of `onyx`: kept once edited; read again at each
+     program's first window; shipped: `tinycalc` -- the study's §6.8 mock-up shows the Calculator as a card) or with
+     **`pocket = card`** in their `app.txt` (honoured). Under the rule FMTracker, Disks, the demos, the games, GPIO Lab,
+     the Graphing Calculator, the File Viewer (880 x 540, not resizable) are filled or centred on their colour -- no more
+     framed cards; tinycalc stays a card (listed; without the list: centred over its matte, tested).
+  2. *No keyboard* -> not reproduced on the PC (Letters, TinyPad, the Terminal typed into under PocketUI at 800 x 480 and
+     1920 x 1080: the keys arrive). Made robust: **the keys follow the front program** -- typed keys go to its topmost
+     window (home: the shell's) whatever stands above it in the window manager's order (a window of no app, a
+     borderless one), logged once `pocketui: the keys to <app> (...)`, and its window is raised when another one holds
+     the window manager's keys (`KAPI_WS_FOCUS`: `kapi_key_held`, the pads). Tested with a borderless system window
+     put above TinyPad. **If it persists on the Pi, the kmsg line says who held the keys** (step 4 below).
+  3. *Arkanoid black, framed in Onyx Remote* -> the full screen under PocketUI tested on the PC (`server_sim/fsapp.cpp`:
+     a window, then `uk_win_fullscreen_begin`, as the BASIC runtime): the server's state set (`KAPI_WIN_FULLSCREEN` in the
+     list), the window at 0,0 left there, the keys its own (Alt+Tab too), nothing set aside, given back: centred again.
+     Not reproduced: PocketUI now logs `pocketui: full screen: <app>` / `the full screen given back` -- step 6 below.
+- **Through Onyx Remote and VNC** (the user tests without a screen: rdpd, each Onyx window a Windows window; vncd):
+  (a) **the windows PocketUI sets aside were listed as shown** (`EL_OP_WIN_LIST`'s state knew only minimised /
+  off-desk): rdpd showed every app's window on the PC, the user typed into one that was behind on the Pi -- the keys
+  went to the app in front. Fixed in the common `ops.cpp`: a window set aside reports `KAPI_WIN_OFFDESK` (rdpd hides it;
+  Elegant never sets aside -- unchanged). (b) **a full-screen program**: rdpd read its window's canvas (its frames are
+  the kernel's, not the canvas: black or stale -- on Elegant too) and kept its frame. Now `EL_OP_WIN_READ` of the
+  full-screen window gives what the screen shows (`kapi_screen_grab` through the new `el_sys_screen_grab`), its list
+  entry has no frame (`ow`/`oh` 0) and a gen that moves every 50 ms (rdpd reads it again) -- for both servers. (c) the
+  **Super key** from a remote client: `remotekeys.h` (vncd, rdpd) sends Super L/R as `KAPI_WS_MOD_SUPER` and the kernel's
+  `kapi_inject_modifiers` passes it to the server (not to `kapi_get_modifiers`); Windows usually keeps its Windows key for
+  itself in an RDP client: Alt+F1 is Home there. The injected keys take the USB keys' path (`kapi_inject_key` ->
+  `KAPI_WS_IN_KEY`): what the keys-follow-the-front fix covers. `run_rdpd_test.sh`: 0 failed; `run_rdpd_pipeline_test.sh`
+  does not build (it includes the old `kapi.h`: at HEAD too).
+- **Tests (PC)**: `tools/tests/server_sim/run.sh`: **315 checks pass** (+ `hidden`: an app set aside is off the list's desk) (P3/P4's, the full-screen rule at 800 x 480 and
+  1920 x 1080 -- Letters, File Viewer, Terminal, TinyPad, the Calculator card / centred, a dialog card --, the keys, the
+  full screen, the pocket shell at 800 x 480, 1280 x 720, 640 x 480, 1920 x 1080, 480 x 800 and in French) + Elegant
+  from HEAD's `common/` against these: the same pixels (Calculator, Terminal, TinyPad with keys, Alt+Tab, Super held).
+  New test steps: `otherpic`, `othermenu`, `owin`, `oclose`, `mods 8`; checks `home`, `shell`, `tasks`, `kindN`,
+  `okind[N]`, `shownN`, `focus`, `keys`, `matte`, `full`; fakekapi's `SIM_MBOX` takes `\0`. `sh tools/tests/session/run.sh`:
+  all pass (the pocket file's `pocketshell`). `check_stubs.py`: 215 programs, 0 wrong. `abi_same_test.sh`: pass. Build
+  (`kernel/ make -j8`): no new warning. `shots.sh` (the names that build here -- paint, letters, ledger, pdf, photos,
+  sheet, slides, printconf fail to link on this PC: PrinterKit is not linked by shots.sh, before this work too; media
+  needs `mutagen`): 131 pictures identical; `fileviewer.png` new (`SD:/etc` has `pocketui.ini`); dock, desktop,
+  dockconf (Critters, Pinball on the card since), archiver*, filedialog, qbstudio*, screenshot-*, widgets differ the
+  same way without this work (stale or timing). Pictures: `docs/compact-shell/real/pocketshell-*.png` (launcher, search,
+  switcher, quick at the sizes above; `-fr`), `pocket-centre-800x480.png`.
+- **Pi checklist** (not done): stage everything (kernel: the Super bit; `SD:/bin/pocketui`, `SD:/lib/uikit.so`,
+  `SD:/lib/pocket/uikit.so`, `SD:/lib/systemkit.so`, `SD:/apps/pocketshell.app`, the menu bar, the Terminal,
+  `SD:/etc/session/pocket`, `SD:/etc/pocketui.ini`), `shell=pocket`:
+  1. Boot: the menu bar at the top, the launcher under it (Recent, the tabs, the grid); kmsg `pocketui: the shell:
+     pocketshell`, `pocketui: home`. `ps`: no `notifyd`, no Terminal.
+  2. Type on the launcher (`tin`): the results; Enter opens the Text Editor full screen; Super (the Windows key) -> the
+     launcher, Super again -> back; Alt+F1, Ctrl+Esc the same; the Running strip shows it, its x closes it.
+  3. Open three apps; **Alt+Tab** held: the cards with their pictures, Tab moves, releasing Alt switches; Del closes the
+     chosen one; Esc stays. Onyx > Open Apps: the same, Enter switches.
+  4. **Typing reaches the app** (Letters, the Terminal, TinyPad) after starting it, after Alt+Tab, after a click on the
+     menu bar; if not, `kmsg` for `pocketui: the keys to ...` and say which window held them.
+  5. **Super+N** / a click on the time: quick settings; `notifytest -t Test hello` (telnet): a toast under the bar, then
+     the line in quick settings; Clear all; the volume slider; Wi-Fi opens the Wi-Fi menu; Mode opens the Mode applet;
+     Power the shutdown dialog.
+  6. **Full screen**: Arkanoid (from the launcher's Games), an emulator (F11), Doom -- the game shows, its keys and the
+     pad work, Onyx Remote shows it full screen; `kmsg`: `pocketui: full screen: <app>` then `the full screen given
+     back` at its end, the launcher / the app back. In console too (`shell=console`).
+  7. FMTracker, Disks, GPIO Lab, the Graphing Calculator, a demo, a game: full screen (or centred on their colour);
+     the Calculator a card; its About box (or any dialog) a card. Edit `SD:/etc/pocketui.ini` (add `tetris`): the next
+     Tetris is a card.
+  8. At 1920 x 1080 the launcher at scale 1.5; `scale = 1` in `SD:/etc/theme.txt` -> smaller, more columns.
+  9. `kill pocketui` (telnet): the kernel starts it again, the shell's home comes back behind the apps (the port asks
+     `PK_OP_SHELL` again), the keys still work.
+  10. The desktop unchanged: `shell=desktop` (or the Mode applet): the desktop's menu bar without the pocket items, the
+      calendar on the time; `pi_wstest.py`, `pi_apps.py`.
+  11. **Through Onyx Remote** (rdpd, port 3390), no screen on the Pi: only the app in front (with the menu bar and the
+      launcher behind) shows on the PC -- the apps behind are hidden, a switch (Alt+Tab, the launcher) shows the other
+      one; typing in the front app's window reaches it; Alt+F1 = Home; Arkanoid (the launcher's Games) shows full screen
+      in one PC window without a frame and its picture moves; its end gives the window back.
+  12. **Through VNC** (vncd): the same screen as the Pi's; typing reaches the front app; the Super key (if the viewer
+      sends it) = Home; Arkanoid shows.
+- **Next**: P6 (the adaptive widgets, the viewport for windows bigger than the work area -- the File Viewer at 800 x
+  480 --, the Mode applet's density / scale; the apps scaled with the shell), P8 (Setup's mode page, split view:
+  `PK_OP_SPLIT`, the switcher's S), P9 (`consolehome`). Publishing: raise `versions.ini` to uikit 1.850.x and systemkit
+  1.91.x (the `onyx` package's `needs` say so).
+
 ## PocketUI phase P4: the sessions, `/bin/session`, the Mode applet (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
 
 The decided design is `docs/POCKETUI-TECH-STUDY.md` §8 and §9 (P4); docs/03 §5.10.4, docs/04 §5 *Sessions*, §8

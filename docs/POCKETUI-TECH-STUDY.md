@@ -5,8 +5,15 @@
 > beside `elegant.h` rather than in the server's folder —, the pocket UIKit `lib/pocket/uikit.so`,
 > `tools/libgen/abi_same.py`, the PC test `tools/tests/server_sim`) and **P4** (the sessions: `SD:/etc/session/*`, `/bin/session`,
 > SystemKit's `session.h`, the autostart's split by `pkg commit`, the Mode applet `modeconf`; the pocket session starts the
-> menu bar — the user's decision —, the console's none; Setup's mode page stays P8's) are built; not yet tried on the Pi. `docs/HANDOFF.md`
-> says what was done and the Pi's checklists; the text below is the study as it was written.
+> menu bar — the user's decision —, the console's none; Setup's mode page stays P8's) and **P5** (the pocket shell
+> `user/Apps/pocketshell`: the launcher behind the apps, the task switcher with PocketUI's thumbnails, quick settings
+> with the notifications — it serves `notify` —, the system keys; the shell's operations `PK_OP_SHELL`..`PK_OP_GRAB`
+> and UIKit's `uk_shell_*`, `uk_shell_tasks` / `uk_shell_grab` added; the menu bar kept as the top band, its Onyx menu
+> and its time opening the shell's screens through SystemKit's `shell.h`; quick settings came at P5 rather than P8; the
+> status bar of §7.2 is the menu bar, not pocketshell's) are built; P1–P4 first tried on the Pi (the user's reports), P5 not yet. With P5, the
+> user's rule after the Pi's first run: every app's main window full screen (cards: an app's other windows and the
+> apps of `SD:/etc/pocketui.ini`), the keys following the front app. `docs/HANDOFF.md` says what was done and the Pi's
+> checklists; the text below is the study as it was written.
 
 *Status (2026-10-08): **a technical analysis only, nothing built.** No code changed. It works out the
 user's decisions of 2026-10-08 on the design study `docs/COMPACT-SHELL-STUDY.md` (whose §11.1–11.2, "one
