@@ -213,7 +213,7 @@ def esc(s): return s.replace("|", "\\|").replace("\n", " ")
 
 def uikit_headers():
     d = os.path.join(K, "uikit")
-    hs = sorted(f for f in os.listdir(d) if f.endswith(".h") and f not in ("abi.h",))
+    hs = sorted(f for f in os.listdir(d) if f.endswith(".h") and f not in ("abi.h", "lift.h"))
     first = ["uikit.h", "widget.h", "root.h", "canvas.h", "theme.h", "text.h", "label.h", "button.h", "dialog.h"]
     return ["uikit/" + f for f in first if f in hs] + ["uikit/" + f for f in hs if f not in first]
 

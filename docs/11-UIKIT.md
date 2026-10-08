@@ -1531,7 +1531,7 @@ private:
 
 ## `uikit/dropdown.h`
 
-uikit/dropdown.h -- a non-editable drop-down list (the sibling of Combobox, same look): a closed box showing the selected option + a drop button; clicking expands a list below it (the widget grows downward + comes to front while open, and grabs outside clicks to close) -- above it when it does not fit below (every parent clips its children: a list near a window's bottom, in a group box) and fits better there. Keyboard (when focused): Up / Down pick the previous / next option, Enter or Space opens / closes the list, Esc closes it. cb fires when the selection changes. The option strings are NOT copied: they must outlive the widget.
+uikit/dropdown.h -- a non-editable drop-down list (the sibling of Combobox, same look): a closed box showing the selected option + a drop button; clicking expands a list below it (the widget grows downward while open and grabs outside clicks to close) -- above it when it does not fit below in the window and fits better there. Open, the list is over everything in the window (the widget is the window's child meanwhile -- the dialog's when it is in one --: uikit/lift.h): no parent clips it, nothing is drawn over it, wherever the box stands. Keyboard (when focused): Up / Down pick the previous / next option, Enter or Space opens / closes the list, Esc closes it. cb fires when the selection changes. The option strings are NOT copied: they must outlive the widget.
 
 ```cpp
 class Dropdown : public Widget

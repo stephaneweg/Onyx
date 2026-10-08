@@ -1,4 +1,5 @@
 #include "uikit/dropdown.h"
+#include "uikit/lift.h"		// the open list over everything
 
 namespace uikit {
 
@@ -33,6 +34,7 @@ void Dropdown::setOpen (bool o)
 	int list = DD_GAP + 2 * DD_PAD + nopts * rowH;
 	if (o)
 	{
+		uk_lift (this);						// out of its parents: only the window clips it now
 		// the room below the box and above it, within every parent (each clips its children)
 		int below = 1 << 30, above = 1 << 30, y = top;
 		for (const Widget *p = parent; p; p = p->parent)
@@ -49,6 +51,7 @@ void Dropdown::setOpen (bool o)
 	else if (m_up) { top = m_top0; m_up = false; }
 	resizeTo (width, o ? rowH + list : rowH);		// grow / shrink back
 	if (o) bringToFront ();					// draw the list over later siblings
+	else uk_unlift (this);					// back where it was
 	invalidate (true);
 	if (parent) parent->invalidate (true);			// repaint behind a closing popup
 }

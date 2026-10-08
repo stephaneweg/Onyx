@@ -1,5 +1,6 @@
 #include "uikit/combobox.h"
 #include "uikit/dropdown.h"		// uk_draw_option_list
+#include "uikit/lift.h"		// the open list over everything
 
 namespace uikit {
 
@@ -41,8 +42,10 @@ void Combobox::setOpen (bool o)
 	m_hot = -1;
 	catchOutside = o;					// while open, grab clicks anywhere (to close)
 	transparent = o;					// (the list's rounded corners: see-through)
+	if (o) uk_lift (this);					// out of its parents: only the window clips it now
 	resizeTo (width, o ? rowH + CB_GAP + 2 * CB_PAD + nopts * rowH : rowH);	// grow downward / shrink back
 	if (o) bringToFront ();
+	else uk_unlift (this);					// back where it was
 	invalidate (true);
 	if (parent) parent->invalidate (true);			// repaint behind a closing list
 }
