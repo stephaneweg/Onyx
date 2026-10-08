@@ -47,7 +47,7 @@ Edit task	Modifier la tâche
 (No title)	(Sans titre)
  (tomorrow)	 (demain)
  (today)	 (aujourd'hui)
- at 	 à
+ at 	 à 
 Change a repeating event	Modifier un événement répété
 Change only this occurrence, or all of them?	Modifier seulement cette occurrence, ou toutes ?
 Only this one	Celle-ci seulement

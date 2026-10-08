@@ -146,8 +146,8 @@ Getting the message...	Récupération du message...
 Reply to %s...	Répondre à %s...
 Pictures from the web are hidden.	Les images du web sont masquées.
 Show the pictures	Afficher les images
-%d attachments  ·  %s  ·  	%d pièces jointes  ·  %s  ·
-%d attachment  ·  %s  ·  	%d pièce jointe  ·  %s  ·
+%d attachments  ·  %s  ·  	%d pièces jointes  ·  %s  ·  
+%d attachment  ·  %s  ·  	%d pièce jointe  ·  %s  ·  
 Save all	Tout enregistrer
 Save	Enregistrer
 Open this link in Jet?\n\n%.600s	Ouvrir ce lien dans Jet ?\n\n%.600s

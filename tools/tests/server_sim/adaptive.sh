@@ -11,7 +11,7 @@
 #   - the pilots: the Task Manager (the grid's roles: cards in portrait), the Terminal (its tabs, no source change);
 #   - the viewport: Setup (800 x 600, fixed) at 800 x 480 scrolled by the wheel over its indicator;
 #   - the File Viewer: resizable, its places a SidePanel in pocket (landscape, portrait's drawer) and console.
-# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar]
+# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar irc]
 # SHOTS_PNG=<folder>: the pictures copied there too (docs/compact-shell/real/).
 set -e
 cd "$(dirname "$0")/../../.."
@@ -252,6 +252,26 @@ if want calendar; then
 	WR=$(langdir fr)
 	run pocket_calendar calendar-720-fr "$WWW;dump $OUT/calendar-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=calendar SIM_APP=calendar SIM_WRITES=$WR SIM_DATE=20260930 SIM_TIME=1042
 	out calendar-720-fr
+fi
+
+# ---- P7: IRC (its conversations a SidePanel in pocket and console; the desktop keeps its tree and splitter) -----------------
+# The canned session is shots.sh's (its A= and N= lines, taken from there: one source).
+if want irc; then
+	echo "adaptive: IRC"
+	app pocket irc uikit_pocket
+	eval "$(sed -n '/^if want irc; then/,/^fi/p' $D/shots.sh | grep -E '^[[:space:]]*(A|N)=')"
+	for t in 800x480:800 1280x720:720 480x800:portrait 640x480:console; do
+		sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
+		WR=$(langdir "")
+		run pocket_irc irc-$tg "$WWW;expect kind fill;expect frame 0;$W;dump $OUT/irc-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=irc SIM_APP=irc SIM_WRITES=$WR SIM_NET="$N"
+		out irc-$tg
+	done
+	WR=$(langdir "")
+	run pocket_irc irc-rail-open "$WWW;move 24 150;$W;$W;dump $OUT/irc-rail-open.elsm" SIM_SCREEN=800x480 SIM_APPNAME=irc SIM_APP=irc SIM_WRITES=$WR SIM_NET="$N"
+	out irc-rail-open
+	WR=$(langdir fr)
+	run pocket_irc irc-720-fr "$WWW;dump $OUT/irc-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=irc SIM_APP=irc SIM_WRITES=$WR SIM_NET="$N"
+	out irc-720-fr
 fi
 
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1

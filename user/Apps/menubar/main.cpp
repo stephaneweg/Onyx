@@ -23,7 +23,7 @@
 // the File Viewer; "Disks..." opens the Disks app. The bar also says what happened through notifyd:
 // a stick connected, one that can be removed safely, one pulled out without an eject.
 //
-// In the pocket mode (PocketUI; the bar is its top band) "Onyx" is the HOME button (a gem and its name, lit while the
+// In the pocket mode (PocketUI; the bar is its top band) "Onyx" is the HOME button (the blue gem and its name, lit while the
 // pocket shell's home shows): a click shows the home -- the front app goes behind, as Super does -- and a second
 // click brings the app back (pocketshell, asked through SystemKit's shell.h: SHELL_MSG_HOME); there is no Onyx menu
 // there (the launcher has the apps, quick settings Power). A click on the time opens quick settings and the
@@ -782,16 +782,18 @@ static void usb_action (int row)		// the row's button
 	g_dirty = true;
 }
 
-// Onyx's gem, 14 x 13 px at (x, y): a cut stone -- its crown (a trapezoid) over its pavilion (a triangle).
-static void draw_gem (int x, int y, unsigned c)
+// Onyx's gem, 13 x 13 px at (x, y): the light blue lozenge of PocketUI's own band (Servers/pocketui/band.cpp) -- lighter
+// at its top, a darker rim (white on the lit Home button, to stand out of the accent).
+static void draw_gem (int x, int y, bool lit)
 {
-	for (int j = 0; j < 13; j++)
-	{
-		int l, r;					// (twice the half width, to keep the edges even)
-		if (j < 4) { l = 3 - j; r = 10 + j; }		// the crown widens
-		else { int k = j - 4; l = k * 7 / 9; r = 13 - k * 7 / 9; }	// the pavilion narrows to its point
-		for (int i = l; i <= r; i++) g_cv.pixel (x + i, y + j, j == 4 ? uk_mix (c, C_MENUBAR, 110) : c);	// (the girdle a line lighter)
-	}
+	for (int j = -6; j <= 6; j++)
+		for (int i = -6; i <= 6; i++)
+		{
+			int d = (i < 0 ? -i : i) + (j < 0 ? -j : j);
+			if (d > 6) continue;
+			unsigned c = d == 6 ? (lit ? 0x00FFFFFFu : 0x002A64B0u) : j < 0 ? uk_mix (0x0078B4F0, 0x003D86DA, (j + 6) * 255 / 6) : 0x003D86DAu;
+			g_cv.pixel (x + 6 + i, y + 6 + j, c);
+		}
 }
 
 static void draw (void)
@@ -813,7 +815,7 @@ static void draw (void)
 			bool lit = g_onyx;
 			if (lit) uk_rbox (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 116));
 			else if (i == g_titleHot) uk_rbox (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
-			draw_gem (m.x + 8, (BAR_H - 1 - 13) / 2, lit ? 0xFFFFFF : C_BARTXT);
+			draw_gem (m.x + 8, (BAR_H - 1 - 13) / 2, lit);
 			uk_text_l (g_cv, m.x + 8 + GEM_W, 0, BAR_H - 1, m.title, lit ? 0xFFFFFF : C_BARTXT, 2);
 			continue;
 		}

@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail and the Calendar migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, published
+## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail, the Calendar and IRC migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, published
 
 P7 is the apps' migration to P6's adaptive widgets (`docs/POCKETUI-TECH-STUDY.md` §6.15, §9: about 32 session-days, one
 app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10.6):
@@ -71,6 +71,20 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   the days' first letters, a date day first in French (`day_first ()`); the categories made at first (*Work*...) are
   the user's data: not translated. A task's due date measured bold when it is drawn bold (it was cut). The desktop:
   unchanged but the bar's two buttons in French. `adaptive.sh <out> calendar`: 8 checks pass.
+- **IRC** (`user/Apps/irc/main.cpp`, a plain app: UIKit's bitmap font): the pilot's way again -- in pocket and console
+  the conversations are a SidePanel (`g_sp`: the server, the channels indented, *Private messages* a heading, the
+  unread as badges, a mention " @" in the label) and the conversation's panel is a child of the Root placed by
+  `sp_lay_out ()`; **the desktop keeps its `HSplitter` and `TreeView`** (SidePanel's `setWidths` only stores the range:
+  no divider to drag yet -- replacing the splitter would have lost it). Translated: 75 words, most of them the pieces
+  of lines put together (`scat`): their spaces matter. `adaptive.sh <out> irc` (shots.sh's canned session): 8 checks.
+- **A catalogue's trailing spaces**: the tool that wrote `lang/fr.txt` took the spaces off the lines' ends -- *" at "*
+  became *" à"* (the Calendar's reminders, Mail's attachments line, IRC's pieces). Fixed in the three catalogues
+  (`check.py` does not see it: it compares the keys). After writing a catalogue, give each translation its English's
+  trailing spaces back (a five-line script did it here) and look for ` $` in the file.
+- **The menu bar's gem** (the user, 2026-10-09: "a black diamond on the Pi; I prefer the simulator's light blue
+  lozenge"): `menubar`'s `draw_gem` now draws PocketUI's band's lozenge (`Servers/pocketui/band.cpp`: light blue,
+  lighter at its top, a darker rim -- white on the lit Home button) instead of a one-colour cut stone in the bar's ink.
+  Pocket only (the desktop's bar: the same pixels, `run.sh`'s check). `run.sh`: all passed.
 - **Ledger was looked at and NOT migrated**: its side bar has a head above the items (the company, its VAT number, the
   fiscal year's `ChoiceBox`) and a foot (the file; the Mac's language switch), and SidePanel has no slot above its
   items -- a rail or a drawer would lose the year chooser. It needs `SidePanel::setHeader (Widget *, int h)` (an
@@ -90,7 +104,7 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   looked at, pushed from Windows): calendar 1.0.26, gamelib 1.0.25, mail 1.0.28, media 1.0.38, photos 1.0.31 -- and
   **jet 2.0.14**: `sdcard/apps/jet.app/main` in this checkout (built 2026-10-08 23:59 by the Jet session, not in git)
   differs from 2.0.13's by a kilobyte, so `mkrepo` bumped it.
-- **Pi checklist** (not done): `pkg update -a` (media, photos, gamelib, mail, calendar), then:
+- **Pi checklist** (not done): `pkg update -a` (media, photos, gamelib, mail, calendar, irc, onyx), then:
   1. Desktop: both as before but the sidebars' labels; Photos' *All albums*, a right click on an album and a folder;
      a playlist made in Media shows in its sidebar at once; `language=fr`: both in French.
   2. Pocket 800 x 480: the rails, the names under the pointer; Media's bar (the 300 px line). Pocket at
@@ -102,7 +116,7 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   (`InputBox`, `PropsBox`, `VPropsBox`, `NameBox`: the scrolling sheet meanwhile), `uk_set_input_type` on the
   search fields. Media's pages (the album's band, the videos' grid) were looked at in landscape only.
 - **Next apps, in the study's order**: Courier, Ledger (above), PDF, Slides, Paint, QBStudio, 3DForge,
-  IRC, Archiver, Icon Editor, fmtracker, Telegram's pane; then the toolbars, tabs, dialog bases, tables;
+  Archiver, Icon Editor, fmtracker, Telegram's pane; then the toolbars, tabs, dialog bases, tables;
   the Control Panel's applets laid out in their pane (Theme first).
 
 ## The pocket launcher v2; Onyx is Home in pocket; the shell's scale after a switch; full screen in Onyx Remote (2026-10-08): built, tested on the PC, NOT yet on the Pi, committed (not pushed), not published

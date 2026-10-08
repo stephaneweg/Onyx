@@ -508,7 +508,7 @@ int main (void)
 	tb->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	root.addChild (tb);
 	tb->space (12);
-	int nbw = uk_tw (TR ("New event"), 2) + 58; if (nbw < 132) nbw = 132;		// (as wide as its words: the system's language)
+	int nbw = uk_tw (TR ("New event"), 2) + 50; if (nbw < 132) nbw = 132;		// (as wide as its words: the system's language)
 	AccentButton *nb = new AccentButton (0, 0, nbw, 32, TR ("New event"), on_new, true);
 	nb->tip = TR ("A new event (Ctrl+N) -- or double-click a free slot");
 	tb->add (nb, 0);

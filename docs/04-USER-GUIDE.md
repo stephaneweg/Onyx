@@ -642,7 +642,7 @@ starts **PocketUI** (`SD:/bin/pocketui`) instead of Elegant: the interface of sm
 handheld, a 7-inch panel), **one app at a time**, as on a phone. Its parts:
 
 - **the menu bar** at the top, as on the desktop: the front app's name and menus, the status icons, the time. In
-  pocket **Onyx** is the **Home button** (its gem and its name, lit blue while the launcher shows): a click shows the
+  pocket **Onyx** is the **Home button** (its gem -- a light blue lozenge -- and its name, lit blue while the launcher shows): a click shows the
   launcher, the app in front going behind (as Super does); a second click brings the app back. There is no Onyx menu
   in pocket (the launcher has the apps, quick settings Lock and Power); a click on the **time** opens quick settings
   (on the desktop: the calendar; the desktop's Onyx menu is unchanged);
@@ -3880,6 +3880,14 @@ closes the conversation windows too.
 Plain-text IRC only (port 6667: there is no TLS in IRC yet). The text is UTF-8 on the network and
 Latin-1 on the screen (the font's: a character beyond it shows as `?`); colours and bold of
 mIRC are removed.
+
+IRC speaks the **system's language** (English or French: Control Panel ▸ Language & Region) — its own
+words; what the server and the people say stays as sent. **In the pocket and console modes** (the same
+program) the conversations at the left are a **rail** in landscape on a narrow screen (a conversation's
+first letter, a dot when it has something unread; the names under the pointer or the focus), a **drawer**
+in portrait (the tab at the left edge) and the **column** in console (L1 / R1: the next conversation);
+the unread lines are counted in a badge. The desktop keeps its tree and its divider.
+
 
 ### Telegram, the instant messenger (`telegram`)
 
