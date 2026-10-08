@@ -4726,7 +4726,9 @@ GPIO 27 and a switch on GPIO 22 in the timing chart.*
 
 GPIO Lab shows the Raspberry Pi's **40-pin header** and lets you drive it: a quick way to try a wire, an
 LED, a button, a servo or an I2C sensor before writing a program (in BASIC: §13 *GPIO*; in C or C++:
-GPIOKit, docs/06). Start it from the dock or the app list (*Programming*).
+GPIOKit, docs/06). Start it from the dock or the app list (*Programming*). The window is **resizable** (at least
+940 × 600; filled to the screen in the pocket mode): the header keeps its column, the pin's panel, the timing chart
+and the other tabs — or the Code view's editor and console — take the rest.
 
 **Before wiring: 3.3 V only.** The band at the top says it: a GPIO pin never takes 5 V (the header's
 pins 2 and 4 are 5 V — power, not a signal), and gives at most about 16 mA — an LED goes through a
