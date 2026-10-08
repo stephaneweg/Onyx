@@ -4,6 +4,51 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## The Pi's reports on 2026.10.126 (pocket, 1920 x 1080): Onyx Remote's typing, the launcher's keys, GPIO Lab (2026-10-08): fixed / checked on the PC, NOT yet on the Pi, committed, not pushed, not published
+
+1. **Typing from Onyx Remote did nothing under PocketUI** (the mouse worked, the USB and Pi 400 keyboards too). Root
+   cause: the PC client sends keys only from a child window of its own (`RemoteWindow`), which it makes only of a
+   FRAMED window -- a borderless one becomes an overlay (or a picture on the desktop), a backmost one is skipped. Under
+   PocketUI every app's main window is frameless and the shell's home is backmost, so no PC window could ever take the
+   keyboard. The injection itself (`remotekeys.h` -> `kapi_inject_key` -> `KAPI_WS_IN_KEY`) was fine. **Fix in rdpd
+   only** (`user/BinUtils/rdpd.c` `pocket_flags`; the client unchanged, no rebuild of `OnyxRemote.exe`): under PocketUI
+   (`uk_win_server` mode, asked every 2 s) a program's MAIN window (its lowest borderless, non-topmost, non-ALPHA,
+   non-SYSTEM one) is told as a plain window; the shell's home too while no app shows; the popups, the menu bar, the
+   shell's overlays and the home behind an app as they were; PocketUI's matte a picture on the desktop (Desktop
+   checked) or hidden (an overlay would cover the app); a SYSTEM window is never raised from the PC (the matte would
+   cover the app on the Pi: PocketUI keeps only the apps' windows in order). Elegant unchanged. (The uncommitted
+   draft found in the clone told EVERY frameless window plain: the popups would have taken the PC's focus, the matte
+   become a child window over the app -- replaced.) **VNC**: vncd sends the screen and injects the keys the same way
+   (the USB keys' path, the keys following the front app / the home): it needed nothing.
+2. **"The launcher does not react to the keyboard (even with USB)"**: through Onyx Remote, the cause above (the home
+   was backmost: never a PC window -- only in the desktop's picture, off by default, where a click is not sent).
+   From the Pi's own keyboards: not reproduced -- server_sim's keys take the same path (policy `Key` -> `ShellKey` ->
+   `KeysToFront` / the window manager's key target -> the home's handler): new `shell-keys-1080` from the boot's home
+   (no Super first): typing reaches the search, Down / Up, Enter opens the result, Esc clears, the arrows move in the
+   grid, Enter opens the app (the launches checked). pocketshell now logs **`pocketshell: the launcher gets the keys`**
+   at its first key.
+3. **GPIO Lab "a bit too wide and too tall" in pocket**: not reproduced -- under PocketUI its window is exactly the work
+   area and `LabRoot::onResized` lays everything inside it (1920 x 1080, 1280 x 720, Pins and Code, English and French,
+   with PocketUI's band or the menu bar's). Neither GPIO Lab nor PocketUI has scroll bars: the ones seen were most
+   likely Onyx Remote's (its view is the Pi's screen at 1:1 -- a 1920 x 1080 Pi does not fit a PC's window; F11 =
+   full screen), where the old rdpd also drew the frameless window as an overlay. New server_sim runs
+   `gpiolab-<size>` / `gpiolab-code-<size>` (kind fill, the client = the work area; pictures `pocket-gpiolab-*.png`).
+   GPIO Lab's code unchanged.
+- **Tests**: `run_rdpd_test.sh` (+ `rdpd/rdpd_pocket_test.py` on a mock PocketUI, `MOCK_POCKET=1|2` in `mock_rdpd.h`:
+  the flags told, the matte never raised, the keys injected; it fails on the previous rdpd); server_sim 326 checks, all
+  pass (Elegant: the same pixels); `check_stubs.py`: 215 programs, 0 wrong; `kernel/ make -j8`: no new warning.
+- **Pi checklist** (stage `SD:/bin/rdpd`, `SD:/apps/pocketshell.app/main`; `shell=pocket`):
+  1. Onyx Remote (Desktop unchecked, then checked): at home the launcher is a window on the PC -- type `tin`: the results;
+     Enter opens the Text Editor; type in it: the text arrives; Alt+Tab / Super from the Pi, then type again from the PC.
+     kmsg: `rdpd: the graphics server is PocketUI's...`. A popup (a menu, a dropdown) stays over the app on the PC and the
+     typing goes on in the app after it closes. A centred app (Calculator listed as card: no; a fixed demo): the matte
+     never comes over it after a click beside it.
+  2. The launcher by the Pi's own keyboard at boot (no Super first): type, Up / Down, Esc, the arrows, Enter.
+     kmsg: `pocketshell: the launcher gets the keys` at the first key; if it never comes, the `pocketui: the keys to ...`
+     lines say who had them.
+  3. GPIO Lab in pocket on the Pi's own screen (not through Onyx Remote): the right column and the status line inside
+     the screen; if it still overflows, a photo of the screen (which edge, how much).
+
 ## PocketUI phase P5: the pocket shell `pocketshell`; the full-screen rule, the keys, the full screen (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
 
 The decided design is `docs/POCKETUI-TECH-STUDY.md` §4.3, §7.2, §9 (P5) and `docs/COMPACT-SHELL-STUDY.md` §6 (the
