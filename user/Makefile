@@ -49,7 +49,10 @@ APP_ELFS = $(APPS:=.elf)
 
 all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom
 # (AppKit's stubs are linked into every program: made first)
-$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf BinUtils/basic.elf: | lib/appkit_stubs.o
+# (a real prerequisite, not an order-only one: every program relinks when AppKit's stubs change -- libgen
+# rewrites them only when a slot moved. On 2026-10-08 an order-only one let the programs keep stale stubs:
+# none could start. The link lines use $< and LDFLAGS, never $^: it is not linked twice)
+$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf BinUtils/basic.elf $(KPLUG_ELFS): lib/appkit_stubs.o
 
 # ---- Shared libraries (docs/SHARED-LIBS-PLAN.md; kapi v83): position-independent code linked with
 # Runtime/lib.ld at 0 -- the kernel places it --, ONE exported symbol (Runtime/lib.vers), the export table, which is
