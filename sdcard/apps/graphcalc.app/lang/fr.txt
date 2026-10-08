@@ -1,0 +1,17 @@
+# The Graphing Calculator's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+: syntax error	 : erreur de syntaxe
+Clear Functions	Effacer les fonctions
+Drag: move   Wheel: zoom	Glisser, molette : vue
+Edit	Édition
+Functions of x	Fonctions de x
+Graphing Calculator	Calculatrice graphique
+Grid On / Off	Grille oui / non
+Point at the graph	Pointez sur le graphe
+Square	Carré
+Standard	Standard
+Trig	Trigo
+View	Affichage
+Zoom In	Zoom avant
+Zoom Out	Zoom arrière
+e.g. sin(x)  x^2-2  2x+1	ex. sin(x)  x^2-2  2x+1

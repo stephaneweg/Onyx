@@ -330,9 +330,9 @@ class SelectDialog : public Modal
 {
 public:
 	Textbox *tb;
-	SelectDialog (unsigned cur) : Modal (300, 130)
+	SelectDialog (unsigned cur, int ww, int wh) : Modal (300, 130)	// (ww x wh: the window's, the game scaled in it)
 	{
-		left = (W - width) / 2; top = (H - height) / 2;
+		left = (ww - width) / 2; top = (wh - height) / 2;
 		char n[16]; gitoa (cur, n);
 		tb = new Textbox (150, 40, 120, 26, n); addChild (tb);
 		Button *b;
@@ -360,7 +360,7 @@ static void on_restart (void) { g_game->newGame (g_game->game); }
 static void on_undo (void) { g_game->doUndo (); }
 static void on_select (void)
 {
-	SelectDialog d (g_game->game);
+	SelectDialog d (g_game->game, g_game->width, g_game->height);
 	if (d.run ())
 	{
 		long n = 0;
@@ -378,6 +378,7 @@ int main (void)
 	g_game = new FreeCell (0, 0, W, H);
 	root.addChild (g_game);
 	root.view = g_game;
+	root.scaleToFit ();				// (resizable: the game scaled to the window -- PocketUI fills it)
 	static Menu menu;
 	menu.menu ("Game");
 	menu.item ("New Game",        "^N", UK_CTRL ('N'), on_new);

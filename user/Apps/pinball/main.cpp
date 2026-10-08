@@ -657,12 +657,14 @@ static void relayout ()
 	g_hdChoose->left = 16; g_hdChoose->top = 12; g_hdChoose->resizeTo (L - 16, 30);
 	g_list->left = 12; g_list->top = 46; g_list->resizeTo (L - 12, H - 108); g_list->clampScroll ();
 	bool ok = g_sel >= 0 && g_sel < g_nent && g_ent[g_sel]->t;
-	g_thumb->left = L + 14; g_thumb->top = 12; g_thumb->resizeTo (W - L - 26, ok ? 330 : H - 104);
+	// (taller than the default 680: the preview taller -- it grows with the window --; the details at most 600 wide)
+	int thH = 330 + (H > 680 ? H - 680 : 0), dw = W - L - 30 < 600 ? W - L - 30 : 600;
+	g_thumb->left = L + 14; g_thumb->top = 12; g_thumb->resizeTo (W - L - 26, ok ? thH : H - 104);
 	const char *tg = ok ? g_ent[g_sel]->t->goal.get (g_lang) : "";
-	int glH = 15 + 10 + wrapped (tg, W - L - 32) * uk_fh () + 4;
-	g_hdTable->left = L + 16; g_hdTable->top = 350; g_hdTable->resizeTo (W - L - 30, glH);
-	g_scoreList->left = L + 16; g_scoreList->top = 350 + glH + 6; g_scoreList->resizeTo (W - L - 30, 136);
-	((Widget *) g_play)->left = L + 16; ((Widget *) g_play)->top = H - 80; g_play->resizeTo (W - L - 30, 36);
+	int glH = 15 + 10 + wrapped (tg, dw - 2) * uk_fh () + 4;
+	g_hdTable->left = L + 16; g_hdTable->top = thH + 20; g_hdTable->resizeTo (dw, glH);
+	g_scoreList->left = L + 16; g_scoreList->top = thH + 20 + glH + 6; g_scoreList->resizeTo (dw, 136);
+	((Widget *) g_play)->left = L + 16; ((Widget *) g_play)->top = H - 80; g_play->resizeTo (dw, 36);
 	g_legendRow->left = 14; g_legendRow->top = H - 32; g_legendRow->resizeTo (W - 28, 22);
 	Widget *pick[] = { g_hdChoose, g_list, g_thumb, g_hdTable, g_scoreList, g_play, g_legendRow };
 	for (Widget *w : pick) show (w, !play);
@@ -832,7 +834,7 @@ int main (void)
 	for (Widget *w : ov) w->hidden = true;
 
 	root.setResizable (true);
-	root.setMinSize (600, 680);
+	root.setMinSize (600, 440);			// (a pocket's 800 x 480: the play screen without its legend)
 	build_menu ();
 	load_entries (0);
 	bool shipped = false;

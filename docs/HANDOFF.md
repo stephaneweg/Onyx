@@ -118,6 +118,41 @@ protocol), docs/04 §5 *The pocket mode*, docs/02 §8 (the Super bit), §10.
   `PK_OP_SPLIT`, the switcher's S), P9 (`consolehome`). Publishing: raise `versions.ini` to uikit 1.850.x and systemkit
   1.91.x (the `onyx` package's `needs` say so).
 
+## The apps follow their window: PocketUI's fill (2026-10-08): built, tested on the PC, NOT yet on the Pi, committed, not pushed, not published
+
+The user's Pi test in pocket mode (1920 x 1080, every app's main window filled): the apps drew their fixed layout in
+the bigger canvas. Done (one commit per app or group):
+- **The bug behind Circuits and Turtle Quest**: `void onResized () override { layout (); }` inside a `Root`
+  subclass calls `Root::layout` (the member hides the app's static `layout ()`), so a resize, a maximise or
+  PocketUI's WINRESIZE never re-laid the app out. Now `::layout ()`. (`grep -rn "onResized.*{ *layout *()" user/Apps`
+  found only these two.)
+- **Circuits**: three columns -- the levels and the bench fixed, the middle (card, palette, board, message) fills;
+  the board's cell follows the room and its strokes and texts scale with it (the faces opened at the cell's sizes;
+  at the default 12 px cell everything as before: desktop screenshots pixel-identical); compact below 920 x 600
+  (Hint / Lesson on the bench, Step / Reset / Check on one row, Undo / Redo hidden when the palette needs the room,
+  the truth table's rows down to 15 px); minimum 800 x 440. `run_circuits_sim_test.sh` + the 800 x 440 check.
+- **Turtle Quest**: the program's column (the 2nd) takes the rest, the board's column about as wide as the window
+  is high; narrow below 920 (minimum 800 x 440).
+- **GPIO Lab** (`LabRoot::onResized`, minimum 940 x 600), **Graphing Calculator** (the plot fills; translated to
+  French on the way: `sdcard/apps/graphcalc.app/lang/fr.txt`), **FM Tracker** (`g_W` / `g_H` behind `W` / `H`),
+  **Disks**, **Critters** (the field as wide as the window, the bar centred; the picker grows; minimum its
+  800 x 448), **Pinball** (the picker's preview grows; minimum 600 x 440).
+- **The fixed-size games scaled to their window** -- `user/Apps/games/game.h`: `gscale_fit` / `gscale_blit` /
+  `gscale_bands` (aspect kept, centred; a whole factor from 2x, sharp; bilinear below -- a pocket's 800 x 480
+  included; the bands in the colour of the game's edge); `GameRoot::scaleToFit ()` for the GameView games
+  (Solitaire, FreeCell, Invaders, Pipes: the view covers the window, paint / handlers / tick see the game's size,
+  the pointer mapped back); `gwin_create` / `gwin_on_click` / `gwin_present` for the games drawing into a plain
+  window (tetris, snake, pong, life, minesweeper, same, sokoban, 2048).
+- Tested with `tools/tests/server_sim` objects: each app linked against the pocket UIKit's wire port, run under
+  PocketUI at 1920 x 1080, 1280 x 720, 800 x 480 (dumps looked at; a click mapped in scaled Solitaire and
+  minesweeper). The desktop screenshots: identical, or only the frame's new maximise button (regenerated).
+- **Left**: the demos stay fixed (centred by the server, as asked); `arkanoid` is a BASIC program (`main.bax`);
+  `gamelib` was already resizable. Not translated yet although worked on (CLAUDE.md's rule): FM Tracker, Disks
+  and the twelve scaled games (their words are still English literals). `run_games_test.sh` fails at the link
+  (AudioKit's `ak_fm_start` missing in its host build) -- already so before these changes.
+- On the Pi: each of these apps in pocket mode at 1920 x 1080 and 800 x 480 (filled, laid out / scaled, clicks
+  where they look), and on the desktop: a frame dragged, maximise / restore.
+
 ## PocketUI phase P4: the sessions, `/bin/session`, the Mode applet (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
 
 The decided design is `docs/POCKETUI-TECH-STUDY.md` §8 and §9 (P4); docs/03 §5.10.4, docs/04 §5 *Sessions*, §8

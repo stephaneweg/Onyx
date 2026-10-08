@@ -279,7 +279,10 @@ check "G4   Ctrl+N on a level not won: stays (the next one locked); Ctrl+P: the 
 seed fr solving; french fr; run fr "$W3;dump $OUT/fr.elsm;exit" && png fr
 check "FR   the French catalogue loaded (the window in French: looked at in $OUT/fr.png)" test -s "$OUT/fr.elsm"
 seed min solving; run min "$W3;dump $OUT/min.elsm;exit" SIM_SCREEN=928x746 SIM_POS=0,30 && png min
-check "MIN  at 920 x 600 (SIM_SCREEN): the window shrunk to its minimum" test "$(od -An -t d4 -j 4 -N 8 "$OUT/min.elsm" | tr -s ' ')" = " 928 632"
+check "MIN  at 920 x 600 (SIM_SCREEN): the window shrunk to the screen" test "$(od -An -t d4 -j 4 -N 8 "$OUT/min.elsm" | tr -s ' ')" = " 928 632"
+# a pocket's 800 x 480 (the compact layout: Hint and Lesson on the bench, Step, Reset and Check on one row)
+seed min8 solving; run min8 "$W3;dump $OUT/min8.elsm;exit" SIM_SCREEN=808x586 SIM_POS=0,30 && png min8
+check "MIN  at 800 x 440 (SIM_SCREEN): the compact layout (looked at in $OUT/min8.png)" test "$(od -An -t d4 -j 4 -N 8 "$OUT/min8.elsm" | tr -s ' ')" = " 808 472"
 seed minfr check; french minfr; run minfr "$W3;key 0x114;$W3;dump $OUT/minfr.elsm;exit" SIM_SCREEN=928x746 SIM_POS=0,30 && png minfr
 
 echo

@@ -112,8 +112,9 @@ public:
 class Card : public Widget
 {
 public:
-	Card (int l, int t, int w, int h) : Widget (l, t, w, h) {}
-	int textW () { return width - 28 - 180; }
+	int btnRoom;					// the room Hint and Lesson take at its right (0: they are on the bench)
+	Card (int l, int t, int w, int h) : Widget (l, t, w, h), btnRoom (180) {}
+	int textW () { return width - 28 - btnRoom; }
 	void hint_text (char *h, int cap) { snprintf (h, cap, "%s %s", TR ("Hint:"), g_L->hintOf (g_lang)); }
 	int need ()
 	{
@@ -164,10 +165,10 @@ public:
 class TruthTable : public Widget
 {
 public:
-	int hot;
+	int hot, rh;					// the row under the pointer; the rows' height (RH; less on a low screen)
 	enum { RH = 21, Y0 = 46, MARK = 26 };
-	TruthTable (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1) {}
-	int need () { return g_L ? Y0 + g_L->rows () * RH + 8 : 60; }
+	TruthTable (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1), rh (RH) {}
+	int need () { return g_L ? Y0 + g_L->rows () * rh + 8 : 60; }
 	int cols () { return g_L->ninputs + g_L->noutputs * (g_checked ? 2 : 1); }
 	int colW () { int cw = (width - 16 - MARK) / cols (); return cw > 44 ? 44 : cw; }
 	int x0 () { return (width - (cols () * colW () + MARK)) / 2 + 4; }
@@ -192,36 +193,36 @@ public:
 		canvas.fillRect (X0 - 4, Y0 - 2, tw + 2, 1, uk_mix (C_FIELD, C_FIELD_TEXT, 70));
 		for (int r = 0; r < rows; r++)
 		{
-			int y = Y0 + r * RH;
+			int y = Y0 + r * rh;
 			bool wrong = g_checked && ((g_res.wrong >> r) & 1);
-			if (wrong) uk_rbox (canvas, X0 - 4, y + 1, tw + 2, RH - 2, 4, 0x00FBE0DC, 0x00FBE0DC);
-			else if (r == hot) canvas.fillRect (X0 - 4, y + 1, tw + 2, RH - 2, uk_mix (C_FIELD, C_ACCENT, 26));
-			else if (r & 1) canvas.fillRect (X0 - 4, y + 1, tw + 2, RH - 2, uk_mix (C_FIELD, C_FIELD_TEXT, 8));
-			if (r == (int) g_row) uk_rline (canvas, X0 - 4, y + 1, tw + 2, RH - 2, 4, wrong ? ERR_RED : C_ACCENT, 255);
+			if (wrong) uk_rbox (canvas, X0 - 4, y + 1, tw + 2, rh - 2, 4, 0x00FBE0DC, 0x00FBE0DC);
+			else if (r == hot) canvas.fillRect (X0 - 4, y + 1, tw + 2, rh - 2, uk_mix (C_FIELD, C_ACCENT, 26));
+			else if (r & 1) canvas.fillRect (X0 - 4, y + 1, tw + 2, rh - 2, uk_mix (C_FIELD, C_FIELD_TEXT, 8));
+			if (r == (int) g_row) uk_rline (canvas, X0 - 4, y + 1, tw + 2, rh - 2, 4, wrong ? ERR_RED : C_ACCENT, 255);
 			for (int k = 0; k < L.ninputs; k++)
-			{ int b = (r >> (L.ninputs - 1 - k)) & 1; uk_text_c (canvas, X0 + k * cw, y, cw, RH, b ? "1" : "0", b ? C_FIELD_TEXT : dim); }
+			{ int b = (r >> (L.ninputs - 1 - k)) & 1; uk_text_c (canvas, X0 + k * cw, y, cw, rh, b ? "1" : "0", b ? C_FIELD_TEXT : dim); }
 			for (int k = 0; k < L.noutputs; k++)
-			{ int b = (L.want[k] >> r) & 1; uk_text_c (canvas, xo + k * cw, y, cw, RH, b ? "1" : "0", b ? C_FIELD_TEXT : dim, 2); }
-			int mx = X0 + nc * cw + MARK / 2 - 2, my = y + RH / 2;
+			{ int b = (L.want[k] >> r) & 1; uk_text_c (canvas, xo + k * cw, y, cw, rh, b ? "1" : "0", b ? C_FIELD_TEXT : dim, 2); }
+			int mx = X0 + nc * cw + MARK / 2 - 2, my = y + rh / 2;
 			if (g_checked)
 			{
 				for (int k = 0; k < L.noutputs; k++)
 				{
 					int b = (g_res.got[k] >> r) & 1, wb = (L.want[k] >> r) & 1;
-					uk_text_c (canvas, xg + k * cw, y, cw, RH, b ? "1" : "0", b != wb ? ERR_RED : b ? C_FIELD_TEXT : dim, 2);
+					uk_text_c (canvas, xg + k * cw, y, cw, rh, b ? "1" : "0", b != wb ? ERR_RED : b ? C_FIELD_TEXT : dim, 2);
 				}
 				if (wrong) { VPath d; d.circle (V (mx), V (my), V (7)); d.fill (canvas, ERR_RED); uk_glyph (canvas, WKG_CLOSE, mx, my, 8, 0x00FFFFFF); }
 				else uk_glyph (canvas, WKG_CHECK, mx, my, 11, OK_GREEN);
 			}
 			else if (r == (int) g_row) uk_glyph (canvas, WKG_LEFT, mx, my, 9, C_ACCENT);
 		}
-		canvas.fillRect (xo - 2, 22, 1, rows * RH + 24, grid);
-		if (g_checked) canvas.fillRect (xg, 22, 1, rows * RH + 24, grid);
+		canvas.fillRect (xo - 2, 22, 1, rows * rh + 24, grid);
+		if (g_checked) canvas.fillRect (xg, 22, 1, rows * rh + 24, grid);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
 		if (mx < 0 || !g_L) { if (hot >= 0) { hot = -1; invalidate (true); } return false; }
-		int r = my >= Y0 ? (my - Y0) / RH : -1;
+		int r = my >= Y0 ? (my - Y0) / rh : -1;
 		if (r >= g_L->rows ()) r = -1;
 		if (r != hot) { hot = r; invalidate (true); }
 		if (bl && !pressed) { pressed = true; if (r >= 0) set_row ((unsigned) r); }

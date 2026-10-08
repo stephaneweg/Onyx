@@ -229,6 +229,7 @@ static bool g_stepping = false;
 static unsigned g_lastUs = 0;
 
 static void layout ();
+static bool g_cardBelow = false;			// a narrow window: the card's Hint and Lesson under its text
 static void show_level (int pack, int lv, bool keepCode);
 static void refresh_count ();
 static void set_message (int kind, const char *text, int stars = 0);
@@ -757,7 +758,7 @@ public:
 		else snprintf (t, sizeof t, "%d. %s", g_level + 1, g_L->titleOf (g_lang));
 		{
 			// (a title too wide beside Hint and Lesson: the UI face, bold; then cut, ending with ".")
-			int room = width - 28 - (g_editing ? 0 : 170), bw; { UkFaceScope fs (g_big); bw = uk_tw (t, 2); }
+			int room = width - 28 - (g_editing || g_cardBelow ? 0 : 170), bw; { UkFaceScope fs (g_big); bw = uk_tw (t, 2); }
 			if (bw <= room) { UkFaceScope fs (g_big); uk_text (canvas, 14, 8, t, 0x3A2E10, 2); }
 			else
 			{
@@ -767,7 +768,7 @@ public:
 		}
 		int y = 8 + (g_big ? g_big->height () : 20) + 4;
 		char lines[8][200]; int n;
-		wrap_lines (cardText (), width - 28 - (g_editing ? 0 : 170), lines, CARD_LINES, &n);
+		wrap_lines (cardText (), width - 28 - (g_editing || g_cardBelow ? 0 : 170), lines, CARD_LINES, &n);
 		for (int i = 0; i < n; i++) { uk_text (canvas, 14, y, lines[i], 0x3A3A3A); y += uk_fh () + 2; }
 		if (g_showHint && !g_editing)
 		{
@@ -781,9 +782,10 @@ public:
 	{
 		if (!g_L) return 80;
 		char lines[8][200]; int n;
-		wrap_lines (cardText (), width - 28 - (g_editing ? 0 : 170), lines, CARD_LINES, &n);
+		wrap_lines (cardText (), width - 28 - (g_editing || g_cardBelow ? 0 : 170), lines, CARD_LINES, &n);
 		int h = 8 + (g_big ? g_big->height () : 20) + 4 + n * (uk_fh () + 2) + 10;
 		if (g_showHint && !g_editing) { char hl[4][200]; int hn; char hh[500]; snprintf (hh, sizeof hh, "%s %s", L2 ("Hint:", "Indice :"), g_L->hintOf (g_lang)); wrap_lines (hh, width - 28, hl, 4, &hn); h += 2 + hn * (uk_fh () + 2); }
+		if (g_cardBelow && !g_editing) h += 34;		// (Hint and Lesson under the text)
 		return h < 76 ? 76 : h;
 	}
 };
@@ -1530,16 +1532,30 @@ static void layout ()
 	Root &R = *g_root;
 	int W = R.width, H = R.height;
 	int mid = PAD + LISTW + PAD;
-	int edw = W > 1000 ? EDW + (W - 1000) / 3 : EDW;
+	// wider than the default 1000: the board's column about as wide as the window is high (the board grows with the
+	// height, its cells square), the program's column (the second) takes all the rest
+	// narrower than 920 (a pocket's 800 x 480): the levels and the program narrower, Hint and Lesson under the card's text
+	bool narrow = W < 920;
+	int listW = narrow ? 170 : LISTW;
+	if (narrow) mid = PAD + listW + PAD;
+	int edw = narrow ? 270 : EDW;
+	if (W > 1000)
+	{
+		int bw = H - 120, most = W - mid - EDW - 2 * PAD;
+		if (bw < 400) bw = 400;
+		if (bw > most) bw = most;
+		edw = W - mid - PAD - bw - PAD;
+	}
 	int right = mid + edw + PAD, rw = W - right - PAD;
 	// left: the pack and its levels, or the level editor
-	g_packBox->left = PAD; g_packBox->top = PAD; g_packBox->resizeTo (LISTW, 28);
-	g_list->left = PAD; g_list->top = PAD + 36; g_list->resizeTo (LISTW, H - PAD - 36 - PAD);
-	g_editPanel->left = PAD; g_editPanel->top = PAD; g_editPanel->resizeTo (LISTW, H - 2 * PAD);
+	g_packBox->left = PAD; g_packBox->top = PAD; g_packBox->resizeTo (listW, 28);
+	g_list->left = PAD; g_list->top = PAD + 36; g_list->resizeTo (listW, H - PAD - 36 - PAD);
+	g_editPanel->left = PAD; g_editPanel->top = PAD; g_editPanel->resizeTo (listW, H - 2 * PAD);
 	// the middle: the buttons, the speed, the program, its words, its count
 	int x = mid;
 	Widget *bts[4] = { g_btRun, g_btStep, g_btStop, g_btReset };
 	int bw[4] = { 84, 70, 70, 0 };
+	if (narrow) { bw[0] = 66; bw[1] = bw[2] = 62; }
 	bw[3] = edw - (bw[0] + bw[1] + bw[2]) - 3 * 6;
 	for (int i = 0; i < 4; i++) { bts[i]->left = x; bts[i]->top = PAD; bts[i]->resizeTo (bw[i], TOOLH); x += bw[i] + 6; }
 	g_lbSpeed->left = mid; g_lbSpeed->top = PAD + TOOLH + 6; g_lbSpeed->resizeTo (70, 22);
@@ -1553,10 +1569,12 @@ static void layout ()
 	g_words->left = mid; g_words->top = g_ed->top + g_ed->height + 8;
 	g_lbCount->left = mid; g_lbCount->top = H - PAD - countH; g_lbCount->resizeTo (edw, countH);
 	// the right: the card, the board, the message
+	g_cardBelow = rw < 380;
 	g_card->left = right; g_card->top = PAD; g_card->resizeTo (rw, 100);
 	int ch = g_card->need (); g_card->resizeTo (rw, ch);
-	g_btLesson->left = right + rw - 90; g_btLesson->top = PAD + 10; g_btLesson->resizeTo (80, 28);
-	g_btHint->left = right + rw - 176; g_btHint->top = PAD + 10; g_btHint->resizeTo (80, 28);
+	int bty = g_cardBelow ? PAD + ch - 38 : PAD + 10;
+	g_btLesson->left = right + rw - 90; g_btLesson->top = bty; g_btLesson->resizeTo (80, 28);
+	g_btHint->left = right + rw - 176; g_btHint->top = bty; g_btHint->resizeTo (80, 28);
 	((Widget *) g_btHint)->hidden = ((Widget *) g_btLesson)->hidden = g_editing;
 	int msgH = 62;
 	int by = PAD + ch + PAD;
@@ -1578,7 +1596,7 @@ class TurtleRoot : public Root
 public:
 	TurtleRoot () : Root (1000, 640, "Turtle Quest") {}
 	void onTick () override { playback_tick (); }
-	void onResized () override { layout (); }
+	void onResized () override { ::layout (); }	// (:: -- Root has a layout () of its own)
 	bool onKey (long k) override
 	{
 		switch (k)
@@ -1708,7 +1726,7 @@ int main (void)
 		root.addChild (p);
 	}
 	root.setResizable (true);
-	root.setMinSize (920, 600);
+	root.setMinSize (800, 440);			// (a pocket's 800 x 480: the narrow layout)
 	retitle ();
 	build_menu ();
 	layout ();

@@ -6,9 +6,12 @@
 // panel shows x and each y). View menu: Standard (-10..10), Trig (-2 pi..2 pi), Zoom In /
 // Out, Square (same scale on both axes), Grid. The functions are kept in
 // SD:/apps/graphcalc.app/functions.txt. Double-precision FP (the BASIC core's math).
+// The window is resizable (PocketUI fills it): the panel keeps its width, the plot takes the rest, the view's
+// ranges kept. The words are in the system's language (uikit/lang.h, SD:/apps/graphcalc.app/lang/fr.txt).
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
+#include "uikit/lang.h"
 #include "Apps/graphcalc/expr.h"
 
 using namespace uikit;
@@ -24,6 +27,7 @@ static const unsigned FCOL[NF] = { 0x00E03030, 0x002070E0, 0x0020A040, 0x00C060D
 struct Func { Checkbox *on; Textbox *tb; char src[64]; gc::Program prog; bool err; };
 static Func g_f[NF];
 static Label *g_readout[NF + 1];
+static Label *g_tips[3];			// the panel's foot: how to move, examples, the functions
 static double g_xmin = -10, g_xmax = 10, g_ymin = -7, g_ymax = 7;
 static bool   g_grid = true;
 static int    g_mx = -1, g_my = -1;	// pointer in the plot (-1 = away)
@@ -212,7 +216,7 @@ static void compile (int i)
 static void update_readout ()
 {
 	char t[96], v[32];
-	if (g_mx < 0) { g_readout[0]->setText ("Move the pointer over the graph"); for (int i = 0; i < NF; i++) g_readout[i + 1]->setText (""); return; }
+	if (g_mx < 0) { g_readout[0]->setText (TR ("Point at the graph")); for (int i = 0; i < NF; i++) g_readout[i + 1]->setText (""); return; }
 	double x = g_plot->wx (g_mx);
 	t[0] = 0; int n = 0;
 	auto cat = [&] (const char *s) { while (*s && n < 94) t[n++] = *s++; t[n] = 0; };
@@ -223,7 +227,7 @@ static void update_readout ()
 		Func &f = g_f[i];
 		n = 0; t[0] = 0;
 		if (f.prog.ok && f.on->checked) { cat ("y"); char d[2] = { (char) ('1' + i), 0 }; cat (d); cat (" = "); gc::fmt (f.prog.eval (x), -1, v); cat (v); }
-		else if (f.err) { cat ("y"); char d[2] = { (char) ('1' + i), 0 }; cat (d); cat (": syntax error"); }
+		else if (f.err) { cat ("y"); char d[2] = { (char) ('1' + i), 0 }; cat (d); cat (TR (": syntax error")); }
 		g_readout[i + 1]->setText (t);
 	}
 }
@@ -256,7 +260,8 @@ public:
 class GcRoot : public Root
 {
 public:
-	GcRoot () : Root (W, H, "Graphing Calculator") {}
+	GcRoot () : Root (W, H, TR ("Graphing Calculator")) {}
+	void onResized () override;
 	void onTick () override
 	{
 		bool changed = false;
@@ -271,6 +276,16 @@ public:
 		if (changed) g_plot->invalidate (true);
 	}
 };
+
+// The window resized: the plot takes what the panel leaves, the panel's tips stay at its foot
+void GcRoot::onResized ()
+{
+	int fh = uk_fh ();
+	for (int i = 0; i < 3; i++) ((Widget *) g_tips[i])->top = height - (3 - i) * (fh + 4) - 6;
+	g_plot->resizeTo (width - PANEL - 4, height - 8);
+	update_readout ();
+	invalidate (true);
+}
 
 static void on_toggle (Widget &) { g_plot->invalidate (true); update_readout (); }
 static void view_standard () { set_view (-10, 10, -7, 7); g_plot->invalidate (true); }
@@ -319,10 +334,11 @@ static void save_funcs ()
 
 int main (void)
 {
+	uk_lang_init ();				// the words in the system's language (before the window: its title)
 	GcRoot root;					// (its background: the theme's face)
 	if (root.canvas.px == 0) return 1;
 	int fh = uk_fh ();
-	root.addChild (new Heading (10, 8, PANEL - 20, fh + 2, "Functions of x"));
+	root.addChild (new Heading (10, 8, PANEL - 20, fh + 2, TR ("Functions of x")));
 	for (int i = 0; i < NF; i++)
 	{
 		int y = 34 + i * 36;
@@ -333,37 +349,39 @@ int main (void)
 		g_f[i].src[0] = 1;			// force the first compile
 	}
 	int by = 34 + NF * 36 + 6;
-	root.addChild (new Button (8, by, 84, 26, "Standard", btn_std));	// (the labels fit the framed buttons)
-	root.addChild (new Button (96, by, 58, 26, "Trig", btn_trig));
-	root.addChild (new Button (158, by, 68, 26, "Square", btn_sq));
+	root.addChild (new Button (8, by, 84, 26, TR ("Standard"), btn_std));	// (the labels fit the framed buttons)
+	root.addChild (new Button (96, by, 58, 26, TR ("Trig"), btn_trig));
+	root.addChild (new Button (158, by, 68, 26, TR ("Square"), btn_sq));
 	for (int i = 0; i <= NF; i++)
 	{
 		unsigned ink = i ? uk_tone (FCOL[i - 1], uk_bright (C_BG) > 140 ? 96 : 176) : C_TEXT;	// (legible on the face)
 		g_readout[i] = new Label (10, by + 42 + i * (fh + 6), PANEL - 16, fh + 2, "", ink, C_BG);
 		root.addChild (g_readout[i]);
 	}
-	root.addChild (new Label (10, H - 3 * (fh + 4) - 6, PANEL - 16, fh + 2, "Drag: move   Wheel: zoom", C_DIS, C_BG));
-	root.addChild (new Label (10, H - 2 * (fh + 4) - 6, PANEL - 16, fh + 2, "e.g. sin(x)  x^2-2  2x+1", C_DIS, C_BG));
-	root.addChild (new Label (10, H - (fh + 4) - 6, PANEL - 16, fh + 2, "sqrt ln log exp abs pi e", C_DIS, C_BG));
+	root.addChild (g_tips[0] = new Label (10, H - 3 * (fh + 4) - 6, PANEL - 16, fh + 2, TR ("Drag: move   Wheel: zoom"), C_DIS, C_BG));
+	root.addChild (g_tips[1] = new Label (10, H - 2 * (fh + 4) - 6, PANEL - 16, fh + 2, TR ("e.g. sin(x)  x^2-2  2x+1"), C_DIS, C_BG));
+	root.addChild (g_tips[2] = new Label (10, H - (fh + 4) - 6, PANEL - 16, fh + 2, "sqrt ln log exp abs pi e", C_DIS, C_BG));
 	g_plot = new Plot (PANEL, 4, W - PANEL - 4, H - 8);
 	root.addChild (g_plot);
 
 	static const char *def[NF] = { "sin(x)", "x^2/4-3", "", "" };
 	load_funcs (def);
 	static Menu menu;
-	menu.menu ("Edit");
-	menu.item ("Clear Functions", "", 0, on_clear);
-	menu.menu ("View");
-	menu.item ("Standard",  "", 0, view_standard);
-	menu.item ("Trig",      "", 0, view_trig);
-	menu.item ("Zoom In",   "+", 0, view_in);
-	menu.item ("Zoom Out",  "-", 0, view_out);
-	menu.item ("Square",    "", 0, view_square);
+	menu.menu (TR ("Edit"));
+	menu.item (TR ("Clear Functions"), "", 0, on_clear);
+	menu.menu (TR ("View"));
+	menu.item (TR ("Standard"),  "", 0, view_standard);
+	menu.item (TR ("Trig"),      "", 0, view_trig);
+	menu.item (TR ("Zoom In"),   "+", 0, view_in);
+	menu.item (TR ("Zoom Out"),  "-", 0, view_out);
+	menu.item (TR ("Square"),    "", 0, view_square);
 	menu.separator ();
-	menu.item ("Grid On / Off", "", 0, view_grid);
+	menu.item (TR ("Grid On / Off"), "", 0, view_grid);
 	menu.publish ();
 	g_f[0].tb->setFocus ();
 	update_readout ();
+	root.setResizable (true);
+	root.setMinSize (560, 420);
 	root.run ();
 	save_funcs ();
 	return 0;
