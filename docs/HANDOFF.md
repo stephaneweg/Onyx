@@ -85,6 +85,18 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   lozenge"): `menubar`'s `draw_gem` now draws PocketUI's band's lozenge (`Servers/pocketui/band.cpp`: light blue,
   lighter at its top, a darker rim -- white on the lit Home button) instead of a one-colour cut stone in the bar's ink.
   Pocket only (the desktop's bar: the same pixels, `run.sh`'s check). `run.sh`: all passed.
+- **OPEN -- "the keyboard does not work again from RDP in pocket mode"** (the user, 2026-10-09, the Pi on onyx
+  2026.10.129): not reproduced on the PC (`run_rdpd_test.sh`: 0 failed) and not explained by reading -- when looked at
+  over telnet the Pi was back on the desktop (Elegant), so PocketUI's real window list was not seen. `rdpd` now **logs
+  what it tells the client under PocketUI** each time the windows or their flags change (`told_log`: kmsg lines
+  `rdpd: told N windows` then one a window -- id, pid, title, place, the server's flags -> the flags told, the state,
+  and *(plain: takes the keys)* on the ones Onyx Remote makes a child window of). Published in onyx 2026.10.131. **Next
+  step: the Pi in pocket with Onyx Remote connected, `kmsg` read over telnet (192.168.0.10 that day), a key typed** --
+  the window that should be plain and is not (or the two that are) is the answer; `pocket_flags` (rdpd.c) is the rule.
+  Seen on the Pi the same day, after a switch pocket -> desktop from the Mode applet: **the old session's `pocketshell`
+  and `menubar` still ran** beside the desktop's (session.c keeps the switcher's ancestors -- `is_parent` -- and the
+  applet was opened from pocketshell): a leftover shell under the other server; after a switch back there would be two.
+  To look at with the keyboard report (a stale shell holds the keys' registration).
 - **Ledger was looked at and NOT migrated**: its side bar has a head above the items (the company, its VAT number, the
   fiscal year's `ChoiceBox`) and a foot (the file; the Mac's language switch), and SidePanel has no slot above its
   items -- a rail or a drawer would lose the year chooser. It needs `SidePanel::setHeader (Widget *, int h)` (an

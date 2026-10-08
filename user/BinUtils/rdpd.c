@@ -382,6 +382,27 @@ static void pocket_flags (const struct kapi_win_info *L, int n, unsigned *F)
 	}
 }
 
+// Under PocketUI, what the client is told is logged each time the windows or their flags change (kmsg): which window
+// is a plain one -- the one the PC's keys come from -- is what a report "the keyboard does nothing in Onyx Remote"
+// needs (2026-10-09). One line a window: its id, its program, the server's flags -> the flags told, its state.
+static void told_log (const struct kapi_win_info *L, int n, const unsigned *F)
+{
+	static unsigned last;
+	if (!g_pocket) { last = 0; return; }
+	unsigned sig = 2166136261u;
+	for (int i = 0; i < n; i++)
+	{
+		unsigned v[4] = { L[i].id, L[i].flags, F[i], L[i].state & (KAPI_WIN_MINIMISED | KAPI_WIN_OFFDESK | KAPI_WIN_FULLSCREEN | KAPI_WIN_KEYS) };
+		for (int k = 0; k < 4; k++) sig = (sig ^ v[k]) * 16777619u;
+	}
+	if (sig == last) return;
+	last = sig;
+	rdlog ("rdpd: told %d window%s (bottom to top)", n, n == 1 ? "" : "s");
+	for (int i = 0; i < n && i < 16; i++)
+		rdlog ("rdpd:   %u pid %u \"%.24s\" %d,%d %dx%d flags %x -> %x state %x%s", L[i].id, L[i].pid, L[i].title, L[i].x, L[i].y, L[i].w, L[i].h,
+		       L[i].flags, F[i], L[i].state, !(F[i] & WIN_FLAG_BORDERLESS) && L[i].id != KAPI_WIN_DESKTOP ? "  (plain: takes the keys)" : "");
+}
+
 // A program with the full screen (the servers list its window at 0, 0, the screen's size, no frame, state
 // KAPI_WIN_FULLSCREEN -- an emulator, a BASIC game): the Pi shows it alone, so it is told alone, as a plain window
 // without a frame that takes the keys -- the client made a window in the FULLSCREEN state a native framed one, a PC
@@ -495,6 +516,7 @@ static int round_send (void)
 	n = full_only (L, n);
 	unsigned F[MAXWIN];
 	pocket_flags (L, n, F);
+	told_log (L, n, F);
 	for (int i = 0; i < MAXWIN; i++) g_win[i].alive = 0;
 	for (int i = 0; i < n; i++)
 	{
