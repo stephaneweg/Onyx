@@ -5293,6 +5293,13 @@ always give the same run, on the PC as on the Pi.
 
 ### Games
 
+**Any window size.** tetris, snake, pong, life, minesweeper, same, sokoban, 2048, Solitaire, FreeCell, Pipes and
+Invaders are drawn at their own size and **scaled to their window**: drag its frame or maximise it (in the pocket
+mode it fills the screen) and the game grows with it, its aspect kept, centred — by a whole factor when it is twice
+its size or more (sharp pixels), smoothly otherwise (a little bigger, or smaller on an 800 × 480 screen); the space
+around takes the colour of the game's edge. The mouse works on the scaled game as on the original. Circuits, Turtle
+Quest, Pinball and Critters lay themselves out again instead (their board grows, the side panels keep their width).
+
 | Game | Goal and controls |
 |---|---|
 | **tetris** | Stack the pieces. Arrows: left/right/rotate/drop; **Space**: instant drop; `r`: restart. |

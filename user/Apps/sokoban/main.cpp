@@ -6,6 +6,7 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
+#include "../games/game.h"		// (gwin_*: the window resizable, the game scaled to it -- PocketUI fills it)
 
 #define GW	24
 #define GH	18
@@ -148,7 +149,7 @@ static void redraw (void)
 
 int main (void)
 {
-	fb = uk_win_create (W, H, "sokoban");
+	fb = gwin_create (W, H, "sokoban");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
@@ -171,6 +172,6 @@ int main (void)
 	load_level (0);
 
 	uk_win_on_key (on_key);
-	while (!should_exit ()) { pump_events (); redraw (); present (); msleep (16); }
+	while (!should_exit ()) { pump_events (); redraw (); gwin_present (); msleep (16); }
 	return 0;
 }

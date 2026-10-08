@@ -4,6 +4,7 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
+#include "../games/game.h"		// (gwin_*: the window resizable, the game scaled to it -- PocketUI fills it)
 
 #define GW	24
 #define GH	18
@@ -140,7 +141,7 @@ static void redraw (void)
 
 int main (void)
 {
-	fb = uk_win_create (W, H, "snake");
+	fb = gwin_create (W, H, "snake");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
@@ -161,7 +162,7 @@ int main (void)
 			if (g_frames - g_lastmove >= speed) { step (); g_lastmove = g_frames; }
 		}
 		redraw ();
-		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
+		gwin_present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (16);
 	}
 	return 0;

@@ -128,16 +128,94 @@ static inline int gitoa (long v, char *b)
 static inline void gcat (char *d, const char *s) { int n = uikit::uk_len (d); while (*s) d[n++] = *s++; d[n] = '\0'; }
 static inline void gcatn (char *d, long v) { char t[24]; gitoa (v, t); gcat (d, t); }
 
+// ---- scaling a game's picture to its window --------------------------------------------------------------
+// A game drawn at its own size (lw x lh) shown in a window of another size -- a desktop window resized, PocketUI's
+// filled window (docs/POCKETUI-TECH-STUDY.md section 6): scaled to fit, its aspect kept, centred. Twice its size or
+// more: by a whole factor, each pixel a square (crisp); otherwise (a little bigger, or smaller -- a pocket's
+// 800 x 480): filtered (bilinear). gscale_fit chooses the place, gscale_blit copies (src: lw x lh, srcStride a row).
+struct GScale { int x, y, w, h; };		// the picture's place in the window
+static inline GScale gscale_fit (int lw, int lh, int ww, int wh)
+{
+	GScale g;
+	long sx = (long) ww * 65536 / lw, sy = (long) wh * 65536 / lh, s = sx < sy ? sx : sy;
+	if (s >= 2 * 65536) s &= ~65535L;			// (a whole factor)
+	g.w = (int) (lw * s >> 16); g.h = (int) (lh * s >> 16);
+	if (g.w < 1) g.w = 1;
+	if (g.h < 1) g.h = 1;
+	g.x = (ww - g.w) / 2; g.y = (wh - g.h) / 2;
+	return g;
+}
+static inline void gscale_blit (const unsigned *src, int lw, int lh, int srcStride, unsigned *dst, int dstStride, GScale g)
+{
+	if (g.w % lw == 0 && g.h % lh == 0 && g.w / lw == g.h / lh)	// a whole factor: nearest
+	{
+		int k = g.w / lw;
+		for (int y = 0; y < g.h; y++)
+		{
+			const unsigned *s = src + (y / k) * srcStride; unsigned *d = dst + (g.y + y) * dstStride + g.x;
+			for (int x = 0; x < lw; x++) { unsigned c = s[x]; for (int i = 0; i < k; i++) *d++ = c; }
+		}
+		return;
+	}
+	static int *xs; static unsigned char *xa; static int xcap;	// (the columns' sources and weights)
+	if (xcap < g.w) { delete[] xs; delete[] xa; xs = new int[g.w]; xa = new unsigned char[g.w]; xcap = g.w; }
+	for (int x = 0; x < g.w; x++)
+	{
+		long f = ((long) (2 * x + 1) * lw << 15) / g.w - 32768; if (f < 0) f = 0;
+		xs[x] = (int) (f >> 16); xa[x] = (unsigned char) (f >> 8 & 255);
+		if (xs[x] >= lw - 1) { xs[x] = lw - 1; xa[x] = 0; }
+	}
+	for (int y = 0; y < g.h; y++)
+	{
+		long f = ((long) (2 * y + 1) * lh << 15) / g.h - 32768; if (f < 0) f = 0;
+		int y0 = (int) (f >> 16); unsigned ay = (unsigned) (f >> 8 & 255);
+		if (y0 >= lh - 1) { y0 = lh - 1; ay = 0; }
+		const unsigned *r0 = src + y0 * srcStride, *r1 = y0 + 1 < lh ? r0 + srcStride : r0;
+		unsigned *d = dst + (g.y + y) * dstStride + g.x;
+		for (int x = 0; x < g.w; x++)
+		{
+			int x0 = xs[x], x1 = x0 + 1 < lw ? x0 + 1 : x0; unsigned ax = xa[x];
+			unsigned a = r0[x0], b = r0[x1], c = r1[x0], e = r1[x1], out = 0;
+			for (int sh = 0; sh < 24; sh += 8)
+			{
+				unsigned t = ((a >> sh & 255) * (256 - ax) + (b >> sh & 255) * ax) >> 8;
+				unsigned u = ((c >> sh & 255) * (256 - ax) + (e >> sh & 255) * ax) >> 8;
+				out |= ((t * (256 - ay) + u * ay) >> 8) << sh;
+			}
+			d[x] = out;
+		}
+	}
+}
+
+// The window around the picture: each band in the colour of the picture's edge beside it (a card table's green,
+// the night of a shooter), so the game seems to fill the window
+static inline void gscale_bands (uikit::Canvas &cv, const unsigned *src, int lw, int lh, int srcStride, GScale g)
+{
+	if (g.x > 0)
+	{
+		cv.fillRect (0, 0, g.x, cv.h, src[(lh / 2) * srcStride]);
+		cv.fillRect (g.x + g.w, 0, cv.w - g.x - g.w, cv.h, src[(lh / 2) * srcStride + lw - 1]);
+	}
+	if (g.y > 0)
+	{
+		cv.fillRect (0, 0, cv.w, g.y, src[lw / 2]);
+		cv.fillRect (0, g.y + g.h, cv.w, cv.h - g.y - g.h, src[(lh - 1) * srcStride + lw / 2]);
+	}
+}
+
 // ---- the view ----------------------------------------------------------------------------
 // Subclass and override paint (the whole view, into `canvas`), the mouse edges, key and
 // tick (dt in ms, ~60 Hz). Call redraw () when something changed (tick-driven games can
 // just redraw every tick).
+// Scaled (GameRoot::scaleToFit, the window not at the game's size): the view covers the window, but paint (), the
+// handlers and tick () see the game's own size (width x height, canvas) and its coordinates, as always.
 class GameView : public uikit::Widget
 {
 public:
 	int  mx, my;					// last pointer position (view coords)
 	bool lb, rb;					// buttons held
-	GameView (int l, int t, int w, int h) : uikit::Widget (l, t, w, h), mx (0), my (0), lb (false), rb (false), m_last (0)
+	GameView (int l, int t, int w, int h) : uikit::Widget (l, t, w, h), mx (0), my (0), lb (false), rb (false), m_last (0),
+		m_lw (0), m_lh (0)
 	{ canFocus = true; }
 	virtual void paint () = 0;
 	virtual void press (int, int, bool) {}		// (x, y, right button?)
@@ -147,9 +225,41 @@ public:
 	virtual void tick (unsigned) {}
 	void redraw () { invalidate (true); }
 
-	void onDraw () override { paint (); }
+	// Shown in ww x wh: at the game's own size (lw x lh, its first) it is drawn as always; otherwise scaled.
+	void fitTo (int ww, int wh)
+	{
+		if (!m_lw) { m_lw = width; m_lh = height; }
+		left = top = 0;
+		if (ww == m_lw && wh == m_lh) { m_off.release (); resizeTo (ww, wh); return; }
+		if (!m_off.px) m_off.alloc (m_lw, m_lh);
+		m_g = gscale_fit (m_lw, m_lh, ww, wh);
+		resizeTo (ww, wh);
+		invalidate (true);
+	}
+	bool scaled () const { return m_off.px != 0; }
+
+	void onDraw () override
+	{
+		if (!scaled ()) { paint (); return; }
+		Logical l (this);
+		swap (canvas, m_off);				// (paint () draws into the game's own canvas)
+		paint ();
+		swap (canvas, m_off);
+		l.end ();
+		gscale_bands (canvas, m_off.px, m_lw, m_lh, m_off.stride, m_g);
+		gscale_blit (m_off.px, m_lw, m_lh, m_off.stride, canvas.px, canvas.stride, m_g);
+	}
 	bool onMouse (int x, int y, int bl, int br, int, int) override
 	{
+		if (scaled () && x >= 0)
+		{
+			x = (x - m_g.x) * m_lw / m_g.w; y = (y - m_g.y) * m_lh / m_g.h;
+			if (x < 0) x = 0;
+			if (y < 0) y = 0;
+			if (x >= m_lw) x = m_lw - 1;
+			if (y >= m_lh) y = m_lh - 1;
+		}
+		Logical l (this);
 		if (x < 0) { if (lb) release (mx, my, false); if (rb) release (mx, my, true); lb = rb = false; return false; }
 		bool moved = x != mx || y != my;
 		mx = x; my = y;
@@ -160,7 +270,7 @@ public:
 		if (moved) move (x, y);
 		return true;
 	}
-	bool onKey (long k) override { return key (k); }
+	bool onKey (long k) override { Logical l (this); return key (k); }
 	void step ()
 	{
 		unsigned now = gms ();
@@ -168,20 +278,122 @@ public:
 		if (dt > 100) dt = 100;
 		m_last = now;
 		sfx_tick ();
+		Logical l (this);
 		tick (dt);
 	}
 private:
 	unsigned m_last;
+	int m_lw, m_lh;					// the game's own size (0: never fitted)
+	uikit::Canvas m_off;				// scaled: the game's picture at its own size
+	GScale m_g;					// ... and its place in the view
+	static void swap (uikit::Canvas &a, uikit::Canvas &b)	// (a Canvas is not copied: it may own its pixels)
+	{
+		unsigned *p = a.px; a.px = b.px; b.px = p;
+		int t = a.w; a.w = b.w; b.w = t; t = a.h; a.h = b.h; b.h = t;
+		t = a.stride; a.stride = b.stride; b.stride = t; t = a.capH; a.capH = b.capH; b.capH = t;
+		bool o = a.owns; a.owns = b.owns; b.owns = o; void *e = a.ext; a.ext = b.ext; b.ext = e;
+	}
+	// While the game's code runs, the view's size is the game's own (scaled: it covers the window)
+	struct Logical
+	{
+		GameView *v; int w, h; bool on;
+		Logical (GameView *g) : v (g), w (g->width), h (g->height), on (g->scaled ()) { if (on) { v->width = v->m_lw; v->height = v->m_lh; } }
+		void end () { if (on) { v->width = w; v->height = h; on = false; } }
+		~Logical () { end (); }
+	};
 };
 
-// A Root that ticks its GameView and routes every key to it.
+// A Root that ticks its GameView and routes every key to it. scaleToFit (): the window resizable (PocketUI fills
+// it), the view scaled to it -- for a game drawn at a fixed size.
 class GameRoot : public uikit::Root
 {
 public:
 	GameView *view;
-	GameRoot (int w, int h, const char *title) : uikit::Root (w, h, title), view (0) {}
+	GameRoot (int w, int h, const char *title) : uikit::Root (w, h, title), view (0), m_scale (false) {}
 	void onTick () override { if (view) view->step (); }
 	bool onKey (long k) override { return view && !view->hasFocus ? view->key (k) : false; }
+	void scaleToFit () { m_scale = true; setResizable (true); setMinSize (width / 2, height / 2); }
+	void onResized () override { if (m_scale && view) view->fitTo (width, height); }
+private:
+	bool m_scale;
 };
+
+// ---- a game in a plain window (no Root): its own pixels, scaled to the window --------------------------------
+// For the games that draw straight into their window's canvas: gwin_create (w, h, title) makes the window (resizable:
+// a frame dragged, maximised, PocketUI's fill) and gives the game ITS pixels (w x h, w a row) to draw into as before;
+// gwin_present () shows them -- copied when the window is at the game's size, scaled to it otherwise (gscale_*); a
+// click handler given to gwin_on_click (in the place of uk_win_on_click) gets GUI_EVENT_CANVAS_CLICK / _MOTION in
+// the game's coordinates.
+static int g_gw_lw, g_gw_lh, g_gw_ww, g_gw_wh, g_gw_stride, g_gw_btn;
+static unsigned *g_gw_px, *g_gw_win;
+static GScale g_gw_g;
+static gui_handler g_gw_click;
+static bool g_gw_max;
+static int g_gw_rx, g_gw_ry, g_gw_rw, g_gw_rh;		// (maximised: the place and size to go back to)
+static inline void gwin_size (int x, int y, int w, int h)	// the window made w x h at x, y
+{
+	if (w < 1 || h < 1) return;
+	if (w != g_gw_ww || h != g_gw_wh)
+	{
+		int stride = w;
+		unsigned *p = uk_win_resize2 (w, h, &stride);
+		if (p == 0) return;
+		g_gw_win = p; g_gw_ww = w; g_gw_wh = h; g_gw_stride = stride;
+	}
+	uk_win_move (x, y);
+	uikit::uk_decorate_window ();
+	g_gw_g = gscale_fit (g_gw_lw, g_gw_lh, g_gw_ww, g_gw_wh);
+}
+static inline void gwin_pointer (unsigned long, int ev, long v)
+{
+	if (ev == GUI_EVENT_WINRESIZE) { g_gw_max = false; gwin_size (GUI_WINRESIZE_X (v), GUI_WINRESIZE_Y (v), GUI_WINRESIZE_W (v), GUI_WINRESIZE_H (v)); return; }
+	if (ev == GUI_EVENT_WINCTL)
+	{
+		if (v != KAPI_FRAME_MAXIMISE) return;
+		struct kapi_win_geom g;
+		if (uk_win_geometry (&g) != 0) return;
+		if (!g_gw_max) { g_gw_rx = g.x; g_gw_ry = g.y; g_gw_rw = g_gw_ww; g_gw_rh = g_gw_wh; gwin_size (g.ax, g.ay, g.aw - (g.w - g.cw), g.ah - (g.h - g.ch)); }
+		else gwin_size (g_gw_rx, g_gw_ry, g_gw_rw, g_gw_rh);
+		g_gw_max = !g_gw_max;
+		return;
+	}
+	if (ev != GUI_EVENT_PTR_DOWN && ev != GUI_EVENT_PTR_MOVE && ev != GUI_EVENT_PTR_UP) return;
+	int x = (GUI_PTR_X (v) - g_gw_g.x) * g_gw_lw / g_gw_g.w, y = (GUI_PTR_Y (v) - g_gw_g.y) * g_gw_lh / g_gw_g.h;
+	if (x < 0) x = 0;
+	if (y < 0) y = 0;
+	if (x >= g_gw_lw) x = g_gw_lw - 1;
+	if (y >= g_gw_lh) y = g_gw_lh - 1;
+	int held = GUI_PTR_BUTTONS (v) & 3, was = g_gw_btn;
+	g_gw_btn = held;
+	if (!g_gw_click) return;
+	long pos = ((long) x << 16) | (y & 0xFFFF);
+	if (ev == GUI_EVENT_PTR_DOWN && (held & ~was)) g_gw_click (0, GUI_EVENT_CANVAS_CLICK, ((long) (held & ~was & 1 ? 1 : 2) << 32) | pos);
+	else if (ev == GUI_EVENT_PTR_MOVE && held) g_gw_click (0, GUI_EVENT_CANVAS_MOTION, ((long) held << 32) | pos);
+}
+static inline unsigned *gwin_create (int w, int h, const char *title)
+{
+	g_gw_win = uk_win_create (w, h, title);
+	if (g_gw_win == 0) return 0;
+	g_gw_lw = g_gw_ww = g_gw_stride = w; g_gw_lh = g_gw_wh = h;
+	g_gw_px = new unsigned[w * h];
+	for (int i = 0; i < w * h; i++) g_gw_px[i] = 0;
+	g_gw_g = gscale_fit (w, h, w, h);
+	uk_win_resizable (1, w / 2, h / 2);
+	uk_win_on_pointer (gwin_pointer);
+	return g_gw_px;
+}
+static inline void gwin_on_click (gui_handler fn) { g_gw_click = fn; }
+static inline void gwin_present (void)
+{
+	if (g_gw_ww == g_gw_lw && g_gw_wh == g_gw_lh)
+		for (int y = 0; y < g_gw_lh; y++) for (int x = 0; x < g_gw_lw; x++) g_gw_win[y * g_gw_stride + x] = g_gw_px[y * g_gw_lw + x];
+	else
+	{
+		uikit::Canvas cv; cv.adopt (g_gw_win, g_gw_ww, g_gw_wh, g_gw_stride);
+		gscale_bands (cv, g_gw_px, g_gw_lw, g_gw_lh, g_gw_lw, g_gw_g);
+		gscale_blit (g_gw_px, g_gw_lw, g_gw_lh, g_gw_lw, g_gw_win, g_gw_stride, g_gw_g);
+	}
+	uk_win_present ();
+}
 
 #endif
