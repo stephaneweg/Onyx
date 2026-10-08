@@ -6049,6 +6049,10 @@ the fewest instructions of your won runs (*Best: 6*, in French *Record : 6*; kep
 — F1 — the card of the level's idea, shown by itself the first time a new idea comes), the board, and the
 message bar. Above the board, the **HUD** counts what is left to do: *Coins 2 / 5*, *Gems 2 / 5* (with the colour of
 the next gem to pick, a ✓ once all are picked), *Keys 1*. The window is at least **920 × 600**.
+The window is **resizable** (filled to the screen in the pocket mode): wider than its default, the board's column
+grows with the window's height (the board's cells bigger) and the program's column takes all the rest; narrower than
+920 pixels (a pocket's 800 × 480, the smallest size), the levels and the program get narrower and the card's Hint
+and Lesson go under its text.
 
 **The turtle's words** (the French names in brackets). A program may be written **in English or in French
 whatever the system's language** (even mixed): the language — the Control Panel's **Language & Region**, §11 —
