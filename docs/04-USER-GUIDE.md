@@ -1608,7 +1608,8 @@ folder per column, and the preview of the selected `autostart` file.*
 **Disks** (the Onyx menu ▸ System, the menu bar's USB box ▸ **Disks…**, the File Viewer's **Go ▸ Disks**)
 lists every volume: the SD card (`SD:`, *the system's volume*), its other partitions (`SD1:` …), the USB
 sticks (`USB1:` …, or a stick's partitions `USB1P1:` …) and `RAM:`, each with its label, size and file system; the one chosen shows its free
-space (a bar), the files open on it and its device. It follows the sticks as they come and go.
+space (a bar), the files open on it and its device. It follows the sticks as they come and go. The window is
+**resizable** (filled in the pocket mode): the boxes get as wide as the window, the list of volumes taller.
 
 - **Open**: the volume in the File Viewer (a double click on it too).
 - **Eject**: a USB stick made safe to remove (it asks when files are open on it); a partition's Eject ejects its whole stick.

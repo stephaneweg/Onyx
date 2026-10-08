@@ -264,6 +264,7 @@ class DisksRoot : public Root
 {
 public:
 	DisksRoot () : Root (W, H, "Disks") {}
+	void onResized () override;
 	void onTick () override
 	{
 		static unsigned last = 0;
@@ -274,6 +275,25 @@ public:
 	}
 };
 
+// The window resized (a frame dragged, PocketUI's fill): the two boxes as wide as the window, the volumes' list
+// taller (the room the height gives), the buttons, the Format box and the status line under it
+static GroupBox *g_gv, *g_gf;
+void DisksRoot::onResized ()
+{
+	int cw = width - 20, ex = height - H;			// (lower than 470, down to 440: the list shorter)
+	g_gv->left = 10; g_gv->resizeTo (cw, 270 + ex);
+	int ct = g_gv->contentTop () + 4, y = ct + 128 + ex;
+	g_list->resizeTo (cw - 24, 120 + ex);
+	Widget *ls[4] = { g_l1, g_l2, g_l3, g_bar };
+	for (int i = 0; i < 4; i++) { ls[i]->top = y + (i == 3 ? 68 : i * 22); ls[i]->resizeTo (cw - 24, ls[i]->height); }
+	Widget *bt[3] = { g_open, g_eject, g_mount };
+	for (int i = 0; i < 3; i++) { bt[i]->left = 10 + i * 130; bt[i]->top = 286 + ex; }
+	g_gf->left = 10; g_gf->top = 324 + ex; g_gf->resizeTo (cw, 104);
+	((Widget *) g_format)->left = cw - 12 - 130;
+	((Widget *) g_status)->left = 12; ((Widget *) g_status)->top = height - 34; g_status->resizeTo (width - 24, 22);
+	invalidate (true);
+}
+
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);
@@ -282,7 +302,7 @@ int main (void)
 	g_root = &root;
 	int X = root.width > W ? (root.width - W) / 2 : 0;
 
-	GroupBox *gv = new GroupBox (X + 10, 8, W - 20, 270, "Volumes");
+	GroupBox *gv = g_gv = new GroupBox (X + 10, 8, W - 20, 270, "Volumes");
 	root.addChild (gv);
 	int ct = gv->contentTop () + 4;
 	g_list = new ListBox (12, ct, W - 44, 120, on_select, on_open);
@@ -298,7 +318,7 @@ int main (void)
 	g_eject = new Button (X + 140, by, 120, 30, "Eject", on_eject); root.addChild (g_eject);
 	g_mount = new Button (X + 270, by, 120, 30, "Mount", on_mount); root.addChild (g_mount);
 
-	GroupBox *gf = new GroupBox (X + 10, 324, W - 20, 104, "Format");
+	GroupBox *gf = g_gf = new GroupBox (X + 10, 324, W - 20, 104, "Format");
 	root.addChild (gf);
 	int ft = gf->contentTop () + 4;
 	gf->addChild (new Label (12, ft + 4, 110, 20, "File system", C_TEXT, gf->bg));
@@ -317,6 +337,8 @@ int main (void)
 	g_status = new Label (X + 12, H - 34, W - 24, 22, "", C_TEXT, root.bg);
 	root.addChild (g_status);
 
+	root.setResizable (true);
+	root.setMinSize (W, 440);
 	refresh (true);
 	char args[64];
 	if (kapi_get_args (args, sizeof args) > 0 && args[0])	// `disks USB:`: that volume
