@@ -4847,6 +4847,11 @@ column on the left, the lamps in the *Outputs* column on the right, the gates be
 On the right, the **truth table** (the goal: the inputs, then the outputs; after a Check, *Yours* — the outputs
 the circuit gave — with a mark on each row), the **gate count** with what three and two stars ask, the circuit's
 depth, then **Step**, **Reset** and **Check**.
+The window is **resizable** (and filled to the screen in the pocket mode): the levels and the bench keep their width,
+the middle column takes the rest and the board grows with it, its gates, wires and names drawn bigger (at 1920 × 1080
+about twice the desktop's size). Narrower than 920 or lower than 600 pixels (a pocket's 800 × 480, the smallest
+size), the layout is compact: **Hint** and **Lesson** move to the top of the bench, Step, Reset and Check share one
+row, Undo and Redo leave the palette when it has no room (Ctrl+Z, Ctrl+Y) and the truth table's rows get shorter.
 
 **Building.** *Placing a gate*: click its button in the palette (or press **1**–**6**), then click a free place on
 the board — or drag the button onto the board. The tool goes back to *Select* after each gate. Gates stand
