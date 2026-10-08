@@ -38,7 +38,7 @@ static void search_changed ();
 class SearchBox : public HintBox
 {
 public:
-	SearchBox (int l, int t, int w, int h) : HintBox (l, t, w, h, "Search the mail") { maxLen = 190; }
+	SearchBox (int l, int t, int w, int h) : HintBox (l, t, w, h, TR ("Search the mail")) { maxLen = 190; }
 	bool onKey (long k) override
 	{
 		if (k == 27) { setText (""); search_changed (); return true; }
@@ -57,7 +57,7 @@ public:
 	{
 		search = new SearchBox (w - 300, 10, 240, 30); addChild (search);
 	}
-	void place () { int sw = width > 900 ? 260 : 180; search->left = width - sw - 54; search->resizeTo (sw, 30); }
+	void place () { int sw = width > 900 ? 260 : width < 600 ? 110 : 180; search->left = width - sw - 54; search->resizeTo (sw, 30); }
 	void onDraw () override
 	{
 		canvas.clear (C_BG);
@@ -65,17 +65,24 @@ public:
 		canvas.fillRect (0, height - 1, width, 1, uk_mix (C_BG, C_TEXT, 40));
 		// New message: the accent pill
 		int x = 12;
+		bool small = width < 600;				// (pocket's portrait: the pill without its words)
+		if (g_onePane && g_conv >= 0 && !(g_compose && !g_compose->hidden))	// one pane, a conversation: back to the list
 		{
-			const char *l = "New message"; int w = tw (l, F_UI, 1) + 50;
+			if (hot == T_BACK) uk_fill_round (canvas, x, 8, 34, 34, 6, uk_mix (C_BG, C_TEXT, 25));
+			icon (canvas, I_BACK, x + 7, 15, 20, C_TEXT);
+			hits.add (x, 8, 34, 34, T_BACK); x += 38;
+		}
+		{
+			const char *l = TR ("New message"); int w = small ? 44 : tw (l, F_UI, 1) + 50;
 			uk_fill_round (canvas, x, 8, w, 34, 6, hot == T_NEW ? uk_mix (C_ACCENT, 0xFFFFFF, 30) : C_ACCENT);
 			icon (canvas, I_PEN, x + 12, 15, 20, C_SEL_TEXT);
-			text_v (canvas, x + 38, 8, 34, l, C_SEL_TEXT, F_UI, 1);
-			hits.add (x, 8, w, 34, T_NEW); x += w + 14;
+			if (!small) text_v (canvas, x + 38, 8, 34, l, C_SEL_TEXT, F_UI, 1);
+			hits.add (x, 8, w, 34, T_NEW); x += w + (small ? 6 : 14);
 		}
 		bool have = g_conv >= 0 && !g_showContacts;
 		bool composing = g_compose && !g_compose->hidden;
 		struct B { int k, ic; const char *l; };
-		static const B BS[] = { { T_REPLY, I_REPLY, "Reply" }, { T_REPLYALL, I_REPLYALL, "Reply all" }, { T_FORWARD, I_FORWARD, "Forward" },
+		static const B BS[] = { { T_REPLY, I_REPLY, TR ("Reply") }, { T_REPLYALL, I_REPLYALL, TR ("Reply all") }, { T_FORWARD, I_FORWARD, TR ("Forward") },
 			{ 0, 0, 0 }, { T_ARCHIVE, I_ARCHIVE, 0 }, { T_DELETE, I_TRASH, 0 }, { T_JUNK, I_JUNK, 0 }, { T_STAR, I_STAR_O, 0 } };
 		int room = search->left - 20;
 		for (unsigned i = 0; i < sizeof BS / sizeof BS[0]; i++)
@@ -115,6 +122,7 @@ public:
 		{
 		case T_NEW: compose_new (0); break;
 		case T_CHECK: act_check (); break;
+		case T_BACK: g_conv = -1; g_read->clear (); refresh_all (); break;
 		default:
 			if (composing || g_conv < 0) break;
 			{
@@ -132,116 +140,137 @@ public:
 	}
 };
 
-// ---- the left column ---------------------------------------------------------------------------------------------------------------
+// ---- the left column: a navigation SidePanel (uikit/sidepanel.h) -- the desktop's sidebar, a rail of icons in pocket's
+// landscape, a drawer in portrait, the column in console: the inboxes, each account (a click folds its folders) and its
+// folders with their counts; under them a foot: the contacts, the settings, what is going on --------------------------
 static bool g_open[12] = { true, true, true, true, true, true, true, true, true, true, true, true };	// an account's folders shown
-class Sidebar : public Widget
+enum { S_UNIFIED = 1, S_STARRED, S_ADD, S_CONTACTS, S_SETTINGS, S_ERROR, S_ACCOUNT = 100, S_FOLDER = 1000, S_PER_ACCT = 400, SI_ACCOUNT = 2000 };
+static inline int folder_id (int a, int f) { return S_FOLDER + a * S_PER_ACCT + f; }
+static unsigned g_sideSig = ~0u;			// (what the items were made for)
+static void side_icon (Canvas &cv, int id, int x, int y, int size, unsigned ink, bool selected)
+{
+	if (id >= SI_ACCOUNT)				// an account: its mark, its initial
+	{
+		int a = id - SI_ACCOUNT; if (a >= g_m.accts.n) return;
+		Account &A = g_m.accts.a[a];
+		int cx = x + (size - 22) / 2, cy = y + (size - 22) / 2;
+		uk_fill_round (cv, cx, cy, 22, 22, 5, 0xFF000000u | A.colour);
+		char ini[8]; initials (A.label, ini); ini[(unsigned char) ini[0] >= 0xC0 ? 2 : 1] = 0;
+		text_c (cv, cx, cy, 22, 22, ini, 0xFFFFFF, F_SMALL, 1);
+		return;
+	}
+	unsigned c = selected ? ink : id == I_UNIFIED ? 0x3C8DA8 : id == I_STAR ? 0xF2A600 : id == I_PLUS ? C_ACCENT : uk_mix (ink, col_side (), 85);
+	icon (cv, id, x + (size - 18) / 2, y + (size - 18) / 2, 18, c);
+}
+static int folder_count (const Folder &F) { return F.special == SP_DRAFTS ? F.msgs.n : (F.special == SP_SENT || F.special == SP_TRASH || F.special == SP_ALL) ? 0 : F.unread; }
+static void side_select ()
+{
+	const Selection &s = g_m.sel;
+	int id = g_showContacts ? -1 : s.kind == SEL_UNIFIED ? S_UNIFIED : s.kind == SEL_STARRED ? S_STARRED : s.kind == SEL_FOLDER ? folder_id (s.acct, s.folder) : -1;
+	if (g_side->selected () != id) g_side->select (id);
+}
+static void side_build ()			// the items: made again when the accounts, the folders or a count change
+{
+	unsigned sig = 2166136261u;
+	auto mix = [&] (unsigned v) { sig = (sig ^ v) * 16777619u; };
+	auto mixs = [&] (const char *c) { for (; *c; c++) mix ((unsigned char) *c); mix (0); };
+	mix ((unsigned) g_m.unread_inboxes ());
+	for (int a = 0; a < g_m.accts.n; a++)
+	{
+		mixs (g_m.accts.a[a].label); mix (g_open[a] ? 1 : 0); mix (g_m.accts.a[a].colour);
+		Store &st = *g_m.stores[a];
+		for (int f = 0; f < st.folders.n; f++) { Folder &F = st.folders[f]; mixs (F.name); mix (F.noselect ? 1 : 0); mix ((unsigned) folder_count (F)); }
+	}
+	if (sig == g_sideSig) { side_select (); return; }
+	g_sideSig = sig;
+	g_side->clear ();
+	g_side->addItem (S_UNIFIED, TR ("All inboxes"), I_UNIFIED); g_side->setBadge (S_UNIFIED, g_m.unread_inboxes ());
+	g_side->addItem (S_STARRED, TR ("Starred"), I_STAR);
+	for (int a = 0; a < g_m.accts.n && a < 12; a++)
+	{
+		Account &A = g_m.accts.a[a];
+		g_side->addSeparator ();
+		g_side->addItem (S_ACCOUNT + a, A.label, SI_ACCOUNT + a);
+		g_side->setTrailing (S_ACCOUNT + a, g_open[a] ? "\xE2\x96\xBE" : "\xE2\x96\xB8");
+		if (!g_open[a]) continue;
+		Store &st = *g_m.stores[a];
+		for (int f = 0; f < st.folders.n && f < S_PER_ACCT; f++)
+		{
+			Folder &F = st.folders[f];
+			if (F.noselect) continue;
+			int depth = 0; if (F.delim) for (const char *p = F.name; *p; p++) if (*p == F.delim) depth++;
+			// ([Gmail]/x: the [Gmail] level not counted)
+			if (A.provider == PV_GMAIL && !strncmp (F.name, "[Gmail]", 7)) depth--;
+			if (depth < 0) depth = 0; if (depth > 3) depth = 3;
+			Buf nm; mutf7_decode (nm, folder_label (F));
+			g_side->addItem (folder_id (a, f), nm.c (), folder_icon (F), 1 + depth);
+			g_side->setBadge (folder_id (a, f), folder_count (F) > 999 ? 999 : folder_count (F));
+		}
+	}
+	if (!g_m.accts.n) g_side->addItem (S_ADD, TR ("Add an account..."), I_PLUS);
+	side_select ();
+}
+static void side_chosen (SidePanel &, int id)
+{
+	if (id >= S_FOLDER) { show_contacts (false); select_view (SEL_FOLDER, (id - S_FOLDER) / S_PER_ACCT, (id - S_FOLDER) % S_PER_ACCT); }
+	else if (id >= S_ACCOUNT) { int a = id - S_ACCOUNT; g_open[a] = !g_open[a]; side_build (); g_side->invalidate (true); }	// (its folders folded, shown)
+	else if (id == S_UNIFIED) { show_contacts (false); select_view (SEL_UNIFIED); }
+	else if (id == S_STARRED) { show_contacts (false); select_view (SEL_STARRED); }
+	else if (id == S_ADD) { side_select (); open_wizard (); }
+}
+class SideFoot : public Widget
 {
 public:
-	HitList hits; int sy, contentH, hot;
-	enum { S_UNIFIED = 1, S_STARRED, S_ACCOUNT, S_FOLDER, S_CONTACTS, S_SETTINGS, S_ADD };
-	Sidebar (int l, int t, int w, int h) : Widget (l, t, w, h), sy (0), contentH (0), hot (-1) {}
-	unsigned bgColor () override { return col_side (); }
-	void row (int y, int kind, int a, int b, int ic, unsigned icc, const char *label, int count, bool selected, int indent = 0, bool bold = false)
+	HitList hits; int hot;
+	SideFoot () : Widget (0, 0, 10, 108), hot (-1) {}
+	bool con () { return uk_size_class () == UK_SC_CONSOLE; }		// (console: the column's dark blue)
+	unsigned face () { return con () ? 0x00142038 : col_side (); }
+	unsigned ink () { return con () ? 0x00E4ECF8 : C_TEXT; }
+	unsigned bgColor () override { return face (); }
+	void row (int y, int kind, int ic, const char *label, bool selected)
 	{
-		int x = 10 + indent, w = width - 20 - indent;
+		int x = 10, w = width - 20;
 		if (selected) uk_fill_round (canvas, x - 4, y, w + 8, 30, 6, C_ACCENT);
-		else if (hot == hits.n) uk_fill_round (canvas, x - 4, y, w + 8, 30, 6, uk_mix (col_side (), C_TEXT, 20));
-		unsigned tc = selected ? C_SEL_TEXT : C_TEXT;
-		if (ic >= 0) icon (canvas, ic, x + 4, y + 6, 18, selected ? C_SEL_TEXT : icc);
-		char cnt[16] = ""; if (count > 0) snprintf (cnt, sizeof cnt, "%d", count > 999 ? 999 : count);
-		int cw = cnt[0] ? tw (cnt, F_SMALL, 1) + 14 : 0;
-		text_v (canvas, x + 30, y, 30, label, tc, F_UI, bold || selected ? 1 : 0, w - 34 - cw - 6);
-		if (cnt[0])
-		{
-			uk_fill_round (canvas, x + w - cw - 2, y + 7, cw, 16, 8, selected ? 0xFFFFFF : uk_mix (col_side (), C_ACCENT, 200));
-			text_c (canvas, x + w - cw - 2, y + 7, cw, 16, cnt, selected ? C_ACCENT : 0xFFFFFF, F_SMALL, 1);
-		}
-		hits.add (0, y, width, 30, kind, a, b);
+		else if (hot == hits.n) uk_fill_round (canvas, x - 4, y, w + 8, 30, 6, uk_mix (face (), ink (), 20));
+		icon (canvas, ic, x + 4, y + 6, 18, selected ? C_SEL_TEXT : uk_mix (face (), ink (), 170));
+		text_v (canvas, x + 30, y, 30, label, selected ? C_SEL_TEXT : ink (), F_UI, selected ? 1 : 0, w - 40);
+		hits.add (0, y, width, 30, kind);
 	}
 	void onDraw () override
 	{
-		canvas.clear (col_side ());
+		canvas.clear (face ());
 		hits.clear ();
-		canvas.fillRect (width - 1, 0, 1, height, uk_mix (col_side (), C_TEXT, 40));
-		int bottomH = 108;
-		int y = 10 - sy;
-		const Selection &s = g_m.sel;
-		bool cont = g_showContacts;
-		row (y, S_UNIFIED, 0, 0, I_UNIFIED, 0x3C8DA8, "All inboxes", g_m.unread_inboxes (), !cont && s.kind == SEL_UNIFIED, 0, true); y += 32;
-		row (y, S_STARRED, 0, 0, I_STAR, 0xF2A600, "Starred", 0, !cont && s.kind == SEL_STARRED); y += 40;
-		for (int a = 0; a < g_m.accts.n; a++)
-		{
-			Account &A = g_m.accts.a[a];
-			// the account: its mark, its label, its address
-			int x = 10;
-			icon (canvas, g_open[a] ? I_CHEV_D : I_CHEV_R, x - 4, y + 9, 14, uk_mix (col_side (), C_TEXT, 150));
-			uk_fill_round (canvas, x + 12, y + 7, 22, 22, 5, 0xFF000000u | A.colour);
-			char ini[8]; initials (A.label, ini); ini[(unsigned char) ini[0] >= 0xC0 ? 2 : 1] = 0;
-			text_c (canvas, x + 12, y + 7, 22, 22, ini, 0xFFFFFF, F_SMALL, 1);
-			text (canvas, x + 42, y + 2, A.label, C_TEXT, F_UI, 1, width - x - 52);
-			text (canvas, x + 42, y + 19, A.email, uk_mix (col_side (), C_TEXT, 150), F_SMALL, 0, width - x - 52);
-			hits.add (0, y, width, 36, S_ACCOUNT, a);
-			y += 40;
-			if (!g_open[a]) continue;
-			Store &st = *g_m.stores[a];
-			for (int f = 0; f < st.folders.n; f++)
-			{
-				Folder &F = st.folders[f];
-				if (F.noselect) continue;
-				if (F.special == SP_ALL && A.provider == PV_GMAIL) {}
-				int depth = 0; if (F.delim) for (const char *p = F.name; *p; p++) if (*p == F.delim) depth++;
-				// ([Gmail]/x: the [Gmail] level not counted)
-				if (A.provider == PV_GMAIL && !strncmp (F.name, "[Gmail]", 7)) depth--;
-				if (depth < 0) depth = 0; if (depth > 3) depth = 3;
-				Buf nm; mutf7_decode (nm, folder_label (F));
-				int cnt = F.special == SP_DRAFTS ? F.msgs.n : (F.special == SP_SENT || F.special == SP_TRASH || F.special == SP_ALL) ? 0 : F.unread;
-				row (y, S_FOLDER, a, f, folder_icon (F), uk_mix (col_side (), C_TEXT, 170), nm.c (), cnt, !cont && s.kind == SEL_FOLDER && s.acct == a && s.folder == f, 18 + depth * 12);
-				y += 31;
-			}
-			y += 8;
-		}
-		if (!g_m.accts.n)
-		{
-			row (y, S_ADD, 0, 0, I_PLUS, C_ACCENT, "Add an account...", 0, false); y += 32;
-		}
-		contentH = y + sy + bottomH;
-		// the bottom: contacts, settings, what is going on
-		int by = height - bottomH;
-		canvas.fillRect (0, by, width - 1, bottomH, col_side ());
-		canvas.fillRect (10, by, width - 20, 1, uk_mix (col_side (), C_TEXT, 40));
-		row (by + 6, S_CONTACTS, 0, 0, I_PERSON, uk_mix (col_side (), C_TEXT, 170), "Contacts", 0, cont);
-		row (by + 38, S_SETTINGS, 0, 0, I_GEAR, uk_mix (col_side (), C_TEXT, 170), "Accounts and settings", 0, false);
+		canvas.fillRect (width - 1, 0, 1, height, con () ? 0x00304870 : uk_mix (col_side (), C_TEXT, 40));
+		canvas.fillRect (10, 0, width - 20, 1, uk_mix (face (), ink (), 40));
+		row (6, S_CONTACTS, I_PERSON, TR ("Contacts"), g_showContacts);
+		row (38, S_SETTINGS, I_GEAR, TR ("Accounts and settings"), false);
 		const char *st = g_m.worker.current[0] ? g_m.worker.current : (g_note[0] && kapi_get_ticks () - g_noteT < 800) ? g_note : g_m.lastError;
 		bool isErr = !g_m.worker.current[0] && !(g_note[0] && kapi_get_ticks () - g_noteT < 800) && g_m.lastError[0];
 		if (st && st[0])
 		{
-			if (isErr) icon (canvas, I_WARN, 12, by + 78, 14, 0xC5221F);
-			text (canvas, isErr ? 32 : 14, by + 77, st, uk_mix (col_side (), C_TEXT, 150), F_SMALL, 0, width - (isErr ? 40 : 24));
-			if (isErr) hits.add (0, by + 72, width, 26, 99);
+			if (isErr) icon (canvas, I_WARN, 12, 78, 14, 0xC5221F);
+			text (canvas, isErr ? 32 : 14, 77, st, uk_mix (face (), ink (), 150), F_SMALL, 0, width - (isErr ? 40 : 24));
+			if (isErr) hits.add (0, 72, width, 26, S_ERROR);
 		}
 	}
-	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
+	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
-		if (wheel) { int mxs = contentH - height; sy -= wheel * 40; if (sy > mxs) sy = mxs; if (sy < 0) sy = 0; invalidate (true); return true; }
-		int nh = -1; for (int i = hits.n - 1; i >= 0; i--) { const Hit &h = hits.h[i]; if (mx >= h.x && my >= h.y && mx < h.x + h.w && my < h.y + h.h) { nh = i; break; } }
+		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
+		int nh = -1; for (int i = hits.n - 1; i >= 0 && in; i--) { const Hit &h = hits.h[i]; if (mx >= h.x && my >= h.y && mx < h.x + h.w && my < h.y + h.h) { nh = i; break; } }
 		if (nh != hot) { hot = nh; invalidate (true); }
 		static bool was; bool down = bl && !was; was = bl;
-		if (!down) return true;
+		if (!down || !in) return in;
 		const Hit *h = hits.at (mx, my); if (!h) return true;
 		switch (h->kind)
 		{
-		case S_UNIFIED: show_contacts (false); select_view (SEL_UNIFIED); break;
-		case S_STARRED: show_contacts (false); select_view (SEL_STARRED); break;
-		case S_ACCOUNT: g_open[h->a] = !g_open[h->a]; invalidate (true); break;
-		case S_FOLDER: show_contacts (false); select_view (SEL_FOLDER, h->a, h->b); break;
 		case S_CONTACTS: show_contacts (!g_showContacts); break;
 		case S_SETTINGS: open_settings (); break;
-		case S_ADD: open_wizard (); break;
-		case 99: uk_messagebox ("Mail", g_m.lastError, MB_OK); g_m.lastError[0] = 0; invalidate (true); break;
+		case S_ERROR: uk_messagebox (TR ("Mail"), g_m.lastError, MB_OK); g_m.lastError[0] = 0; invalidate (true); break;
 		}
 		return true;
 	}
 };
+static SideFoot *g_foot;
 
 // ---- the middle column ------------------------------------------------------------------------------------------------------
 class ListPane : public Widget
@@ -257,8 +286,8 @@ public:
 		static char t[160];
 		switch (g_m.sel.kind)
 		{
-		case SEL_UNIFIED: return "All inboxes";
-		case SEL_STARRED: return "Starred";
+		case SEL_UNIFIED: return TR ("All inboxes");
+		case SEL_STARRED: return TR ("Starred");
 		case SEL_SEARCH: snprintf (t, sizeof t, "\xE2\x80\x9C%s\xE2\x80\x9D", g_m.search); return t;
 		default:
 		{
@@ -278,7 +307,7 @@ public:
 		canvas.fillRect (width - 1, 0, 1, height, col_line ());
 		View &v = g_m.view;
 		// the rows
-		static const char *const GROUPS[5] = { "TODAY", "YESTERDAY", "THIS WEEK", "THIS MONTH", "OLDER" };
+		static const char *const GROUPS[5] = { TR ("TODAY"), TR ("YESTERDAY"), TR ("THIS WEEK"), TR ("THIS MONTH"), TR ("OLDER") };
 		int y = HEAD - sy, lastG = -1;
 		for (int i = 0; i < v.convs.n; i++)
 		{
@@ -292,7 +321,7 @@ public:
 		contentH = y + sy + 10;
 		if (!v.convs.n)
 		{
-			const char *t = g_m.accts.n == 0 ? "No account yet." : g_m.search[0] ? "Nothing found." : g_m.unreadOnly ? "Nothing unread." : (g_m.worker.busy ? "Getting the mail..." : "No messages.");
+			const char *t = g_m.accts.n == 0 ? TR ("No account yet.") : g_m.search[0] ? TR ("Nothing found.") : g_m.unreadOnly ? TR ("Nothing unread.") : (g_m.worker.busy ? TR ("Getting the mail...") : TR ("No messages."));
 			text_c (canvas, 0, HEAD + 60, W, 24, t, col_dim (), F_MID);
 		}
 		// the head: the title, All / Unread
@@ -304,8 +333,8 @@ public:
 		uk_fill_round (canvas, sx + 1, syy + 1, segW - 2, 22, 5, col_list ());
 		int half = segW / 2;
 		uk_fill_round (canvas, g_m.unreadOnly ? sx + half : sx, syy, half, 24, 6, C_ACCENT);
-		text_c (canvas, sx, syy, half, 24, "All", g_m.unreadOnly ? C_FIELD_TEXT : C_SEL_TEXT, F_SMALL, 1);
-		text_c (canvas, sx + half, syy, half, 24, "Unread", g_m.unreadOnly ? C_SEL_TEXT : C_FIELD_TEXT, F_SMALL, 1);
+		text_c (canvas, sx, syy, half, 24, TR ("All"), g_m.unreadOnly ? C_FIELD_TEXT : C_SEL_TEXT, F_SMALL, 1);
+		text_c (canvas, sx + half, syy, half, 24, TR ("Unread"), g_m.unreadOnly ? C_SEL_TEXT : C_FIELD_TEXT, F_SMALL, 1);
 		hits.add (sx, syy, half, 24, L_ALL); hits.add (sx + half, syy, half, 24, L_UNREAD);
 		// the scroll bar
 		int vh = height - HEAD;
@@ -333,7 +362,7 @@ public:
 		// a conversation: its people ("Anna, me, Björn")
 		const Msg &first = g_m.msg (g_m.view.refs[c.first]);
 		who (sent ? m.to : first.from, name, sizeof name);
-		if (sent) { char t[220]; snprintf (t, sizeof t, "To: %s", name[0] ? name : "(nobody)"); scpy (name, t, sizeof name); }
+		if (sent) { char t[220]; snprintf (t, sizeof t, TR ("To: %s"), name[0] ? name : TR ("(nobody)")); scpy (name, t, sizeof name); }
 		char em[160]; first_email (sent ? m.to : first.from, em, sizeof em);
 		avatar (canvas, x + 30, y + 30, 19, name[0] ? (sent ? name + 4 : name) : "?", em);
 		int tx = x + 58, tw0 = W - tx - 14;
@@ -353,7 +382,7 @@ public:
 		text (canvas, tx + tw0 - dw, y + 10, date, c.unread ? C_ACCENT : col_dim (), F_SMALL, c.unread ? 1 : 0);
 		// the subject, the paper clip, the star
 		int iconsW = (c.attach ? 18 : 0) + (c.flagged ? 18 : 0);
-		text (canvas, tx, y + 30, m.subject && m.subject[0] ? m.subject : "(no subject)", C_FIELD_TEXT, F_UI, c.unread ? 1 : 0, tw0 - iconsW - 4);
+		text (canvas, tx, y + 30, m.subject && m.subject[0] ? m.subject : TR ("(no subject)"), C_FIELD_TEXT, F_UI, c.unread ? 1 : 0, tw0 - iconsW - 4);
 		int ix = tx + tw0 - iconsW;
 		if (c.attach) { icon (canvas, I_CLIP, ix, y + 30, 16, col_dim ()); ix += 18; }
 		if (c.flagged) icon (canvas, I_STAR, ix, y + 29, 16, 0xF2A600);
@@ -397,9 +426,9 @@ public:
 		Ref r[60]; int n = conv_refs (r, 60); if (!n) return;
 		bool unread = false, starred = false; for (int i = 0; i < n; i++) { if (!(g_m.msg (r[i]).flags & F_SEEN)) unread = true; if (g_m.msg (r[i]).flags & F_FLAGGED) starred = true; }
 		PopupMenu pm (left + mx, top + my);
-		pm.add ("Reply", 1); pm.add ("Forward", 2); pm.separator ();
-		pm.add (unread ? "Mark as read" : "Mark as unread", 3); pm.add (starred ? "Remove the star" : "Star", 4); pm.separator ();
-		pm.add ("Archive", 5); pm.add ("Junk", 6); pm.add ("Delete", 7, true, "Del"); pm.separator (); pm.add ("Move to...", 8);
+		pm.add (TR ("Reply"), 1); pm.add (TR ("Forward"), 2); pm.separator ();
+		pm.add (unread ? TR ("Mark as read") : TR ("Mark as unread"), 3); pm.add (starred ? TR ("Remove the star") : TR ("Star"), 4); pm.separator ();
+		pm.add (TR ("Archive"), 5); pm.add (TR ("Junk"), 6); pm.add (TR ("Delete"), 7, true, "Del"); pm.separator (); pm.add (TR ("Move to..."), 8);
 		switch (pm.run ())
 		{
 		case 1: compose_new (1, &r[n - 1]); break;
@@ -443,16 +472,16 @@ public:
 		canvas.clear (C_FIELD);
 		int cy = height / 2 - 120;
 		icon (canvas, I_SEND, width / 2 - 36, cy, 72, C_ACCENT);
-		text_c (canvas, 0, cy + 90, width, 34, "Welcome to Mail", C_FIELD_TEXT, F_H1, 1);
-		text_c (canvas, 0, cy + 130, width, 22, "Gmail, Outlook.com, iCloud, Yahoo, any IMAP or POP3 account.", col_dim (), F_MID);
-		const char *l = "Add an account"; int w = tw (l, F_MID, 1) + 48;
+		text_c (canvas, 0, cy + 90, width, 34, TR ("Welcome to Mail"), C_FIELD_TEXT, F_H1, 1);
+		text_c (canvas, 0, cy + 130, width, 22, TR ("Gmail, Outlook.com, iCloud, Yahoo, any IMAP or POP3 account."), col_dim (), F_MID);
+		const char *l = TR ("Add an account"); int w = tw (l, F_MID, 1) + 48;
 		uk_fill_round (canvas, (width - w) / 2, cy + 176, w, 42, 8, C_ACCENT);
 		text_c (canvas, (width - w) / 2, cy + 176, w, 42, l, C_SEL_TEXT, F_MID, 1);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
 		static bool was; bool down = bl && !was; was = bl;
-		int cy = height / 2 - 120; int w = tw ("Add an account", F_MID, 1) + 48;
+		int cy = height / 2 - 120; int w = tw (TR ("Add an account"), F_MID, 1) + 48;
 		if (down && my >= cy + 176 && my < cy + 218 && mx >= (width - w) / 2 && mx < (width + w) / 2) open_wizard ();
 		return true;
 	}
@@ -464,10 +493,15 @@ static void layout_parts ()
 	if (!g_root) return;
 	int W = g_root->width, H = g_root->height;
 	int side = W < 860 ? 180 : SIDE_W, list = W < 860 ? 260 : (W > 1300 ? 380 : LIST_W);
+	side_build ();
+	g_side->place (0, TB_H, side, H - TB_H);				// (whole, a rail, a drawer: what it takes at its side)
+	side = g_side->reservedWidth ();
+	// A narrow window (pocket's portrait): ONE pane -- the list, or the conversation opened (the bar's back button, Esc)
+	g_onePane = W - side < 560; g_oneConv = g_conv >= 0;
+	if (g_onePane) list = g_oneConv ? 0 : W - side;
 	g_tb->resizeTo (W, TB_H); g_tb->place ();
-	g_side->top = TB_H; g_side->resizeTo (side, H - TB_H);
-	g_list->left = side; g_list->top = TB_H; g_list->resizeTo (list, H - TB_H);
-	g_read->left = side + list; g_read->top = TB_H; g_read->resizeTo (W - side - list, H - TB_H); g_read->place ();
+	g_list->left = side; g_list->top = TB_H; g_list->resizeTo (list > 0 ? list : 1, H - TB_H);
+	g_read->left = side + list; g_read->top = TB_H; g_read->resizeTo (W - side - list > 0 ? W - side - list : 1, H - TB_H); g_read->place ();
 	g_compose->left = side; g_compose->top = TB_H; g_compose->resizeTo (W - side, H - TB_H); g_compose->place ();
 	g_contacts->left = side; g_contacts->top = TB_H; g_contacts->resizeTo (W - side, H - TB_H);
 	g_welcome->left = side; g_welcome->top = TB_H; g_welcome->resizeTo (W - side, H - TB_H);
@@ -475,11 +509,15 @@ static void layout_parts ()
 	g_welcome->hidden = g_m.accts.n > 0 || composing || g_showContacts;
 	g_list->hidden = g_read->hidden = composing || g_showContacts || !g_welcome->hidden;
 	g_contacts->hidden = !g_showContacts || composing;
+	if (g_onePane && !g_list->hidden) { if (g_oneConv) g_list->hidden = true; else g_read->hidden = true; }
 	g_read->relayout ();
 }
 static void refresh_all ()
 {
 	if (!g_root) return;
+	if (g_onePane && g_oneConv != (g_conv >= 0) && g_compose->hidden) layout_parts ();	// (the list <-> the conversation)
+	side_build ();
+	g_foot->invalidate (true);
 	g_tb->invalidate (true); g_side->invalidate (true); g_list->invalidate (true); g_read->invalidate (true);
 	if (!g_contacts->hidden) g_contacts->invalidate (true);
 }
@@ -553,8 +591,8 @@ static void act_archive ()
 {
 	Ref r[60]; int n = action_refs (r, 60); if (!n) return;
 	int keep = g_conv;
-	if (!g_m.move (r, n, SP_ARCHIVE)) { status_note ("This account has no Archive folder."); return; }
-	after_change (); status_note ("Archived.");
+	if (!g_m.move (r, n, SP_ARCHIVE)) { status_note (TR ("This account has no Archive folder.")); return; }
+	after_change (); status_note (TR ("Archived."));
 	if (keep < g_m.view.convs.n) open_conv (keep);
 }
 static void act_delete ()
@@ -562,15 +600,15 @@ static void act_delete ()
 	Ref r[60]; int n = action_refs (r, 60); if (!n) return;
 	int keep = g_conv;
 	g_m.remove (r, n);
-	after_change (); status_note ("Deleted.");
+	after_change (); status_note (TR ("Deleted."));
 	if (keep < g_m.view.convs.n) open_conv (keep);
 }
 static void act_junk ()
 {
 	Ref r[60]; int n = action_refs (r, 60); if (!n) return;
 	int keep = g_conv;
-	if (!g_m.move (r, n, SP_JUNK)) { status_note ("This account has no Junk folder."); return; }
-	after_change (); status_note ("Moved to Junk.");
+	if (!g_m.move (r, n, SP_JUNK)) { status_note (TR ("This account has no Junk folder.")); return; }
+	after_change (); status_note (TR ("Moved to Junk."));
 	if (keep < g_m.view.convs.n) open_conv (keep);
 }
 static void act_star ()
@@ -644,12 +682,12 @@ static void quoted_text (const Ref &r, Buf &out, bool forward)
 	char from[300]; who (m.from, from, sizeof from);
 	if (forward)
 	{
-		out.add ("\n\n---------- Forwarded message ----------\n");
+		out.add (TR ("\n\n---------- Forwarded message ----------\n"));
 		out.addf ("From: %s\nDate: %s\nSubject: %s\nTo: %s\n\n", m.from ? m.from : "", date, m.subject ? m.subject : "", m.to ? m.to : "");
 		out.add (t.c ());
 		return;
 	}
-	out.addf ("\n\nOn %s, %s wrote:\n", date, from);
+	out.addf (TR ("\n\nOn %s, %s wrote:\n"), date, from);
 	const char *p = t.c ();
 	while (*p)
 	{
@@ -664,18 +702,18 @@ static void add_signature (Buf &b, int acct)
 }
 static void compose_new (int mode, const Ref *about)
 {
-	if (g_emlMode) { uk_messagebox ("Mail", "This message is a file. To answer it, open Mail with your accounts.", MB_OK); return; }
+	if (g_emlMode) { uk_messagebox (TR ("Mail"), TR ("This message is a file. To answer it, open Mail with your accounts."), MB_OK); return; }
 	if (!g_m.accts.n) { open_wizard (); return; }
 	if (!g_compose->hidden && !g_compose->empty ())
 	{
-		if (uk_messagebox ("Mail", "Leave the message being written?", MB_YESNO) != 1) return;
+		if (uk_messagebox (TR ("Mail"), TR ("Leave the message being written?"), MB_YESNO) != 1) return;
 	}
 	g_compose->reset ();
 	g_compose->mode = mode;
 	int acct = about ? about->acct : default_account ();
 	g_compose->accounts_changed (); g_compose->from->sel = acct; g_compose->from->invalidate (true);
 	Buf body;
-	if (mode == 0 || !about) { add_signature (body, acct); g_compose->body->setContent (body.c ()); g_compose->body->caret = 0; compose_open ("New message"); g_compose->to->setFocus (); return; }
+	if (mode == 0 || !about) { add_signature (body, acct); g_compose->body->setContent (body.c ()); g_compose->body->caret = 0; compose_open (TR ("New message")); g_compose->to->setFocus (); return; }
 	g_compose->about = *about; g_compose->haveAbout = true;
 	const Msg &m = g_m.msg (*about);
 	const char *subj = m.subject ? m.subject : "";
@@ -723,7 +761,7 @@ static void compose_new (int mode, const Ref *about)
 	}
 	g_compose->body->setContent (body.c ());
 	g_compose->body->caret = 0;
-	compose_open (mode == 3 ? "Forward" : mode == 2 ? "Reply all" : "Reply");
+	compose_open (mode == 3 ? TR ("Forward") : mode == 2 ? TR ("Reply all") : TR ("Reply"));
 	if (mode == 3) g_compose->to->setFocus (); else g_compose->body->setFocus ();
 }
 static void compose_to (const char *name, const char *email)
@@ -737,7 +775,7 @@ static void compose_to (const char *name, const char *email)
 static void compose_close () { g_compose->reset (); g_compose->hidden = true; layout_parts (); refresh_all (); }
 static void compose_discard ()
 {
-	if (!g_compose->empty () && uk_messagebox ("Mail", "Throw away this message?", MB_YESNO) != 1) return;
+	if (!g_compose->empty () && uk_messagebox (TR ("Mail"), TR ("Throw away this message?"), MB_YESNO) != 1) return;
 	compose_close ();
 }
 static void compose_ccbcc () { g_compose->ccOn = true; g_compose->place (); g_compose->invalidate (true); g_compose->cc->setFocus (); }
@@ -750,10 +788,10 @@ static void compose_attach ()
 }
 static bool compose_attach_path (const char *path)
 {
-	if (g_compose->natt >= 16) { uk_messagebox ("Mail", "16 attachments at most.", MB_OK); return false; }
+	if (g_compose->natt >= 16) { uk_messagebox (TR ("Mail"), TR ("16 attachments at most."), MB_OK); return false; }
 	int len; char *b = file_read (path, &len);
-	if (!b) { uk_messagebox ("Mail", "The file could not be read.", MB_OK); return false; }
-	if (len > 20 * 1024 * 1024) { free (b); uk_messagebox ("Mail", "This file is too big to send by mail (20 MB at most).", MB_OK); return false; }
+	if (!b) { uk_messagebox (TR ("Mail"), TR ("The file could not be read."), MB_OK); return false; }
+	if (len > 20 * 1024 * 1024) { free (b); uk_messagebox (TR ("Mail"), TR ("This file is too big to send by mail (20 MB at most)."), MB_OK); return false; }
 	Attach &A = g_compose->att[g_compose->natt++];
 	const char *nm = strrchr (path, '/'); nm = nm ? nm + 1 : path;
 	scpy (A.name, nm, sizeof A.name); scpy (A.type, mime_type_of (nm), sizeof A.type);
@@ -788,9 +826,9 @@ static bool compose_build (Buf &raw, Job *j, bool draft)
 	char em[64][160]; int n = 0;
 	const char *lists[3] = { c.to->text, c.cc->text, c.bcc->text };
 	for (int l = 0; l < 3; l++) { char t[64][160]; int k = addr_emails (lists[l], t, 64 - n); for (int i = 0; i < k; i++) if (strchr (t[i], '@')) scpy (em[n++], t[i], 160); }
-	if (!n && !draft) { uk_messagebox ("Mail", "Whom to? Type an address in To.", MB_OK); return false; }
-	for (int i = 0; i < n; i++) { const char *at = strchr (em[i], '@'); if (!draft && (!at || !strchr (at, '.') || strchr (em[i], ' '))) { char q[300]; snprintf (q, sizeof q, "\"%s\" does not look like an e-mail address.", em[i]); uk_messagebox ("Mail", q, MB_OK); return false; } }
-	if (!draft && !c.subject->text[0] && uk_messagebox ("Mail", "Send it without a subject?", MB_YESNO) != 1) return false;
+	if (!n && !draft) { uk_messagebox (TR ("Mail"), TR ("Whom to? Type an address in To."), MB_OK); return false; }
+	for (int i = 0; i < n; i++) { const char *at = strchr (em[i], '@'); if (!draft && (!at || !strchr (at, '.') || strchr (em[i], ' '))) { char q[300]; snprintf (q, sizeof q, TR ("\"%s\" does not look like an e-mail address."), em[i]); uk_messagebox (TR ("Mail"), q, MB_OK); return false; } }
+	if (!draft && !c.subject->text[0] && uk_messagebox (TR ("Mail"), TR ("Send it without a subject?"), MB_YESNO) != 1) return false;
 	Buf html; text_to_html (c.body->content (), html);
 	Attachment at[16];
 	for (int i = 0; i < c.natt; i++) { at[i].name = c.att[i].name; at[i].type = c.att[i].type; at[i].data = c.att[i].data; at[i].n = c.att[i].n; at[i].cid = 0; }
@@ -841,7 +879,7 @@ static void compose_send ()
 	if (g_m.accts.a[a].kind == K_POP3) keep_local (a, SP_SENT, raw);
 	g_m.worker.push (j);
 	compose_close ();
-	status_note ("Sending...");
+	status_note (TR ("Sending..."));
 }
 static void compose_draft ()
 {
@@ -851,7 +889,7 @@ static void compose_draft ()
 	int a = g_compose->from->sel; if (a < 0 || a >= g_m.accts.n) a = 0;
 	if (g_m.accts.a[a].kind == K_POP3) { keep_local (a, SP_DRAFTS, raw); job_free (j); }
 	else g_m.worker.push (j);
-	status_note ("The draft is kept in Drafts.");
+	status_note (TR ("The draft is kept in Drafts."));
 }
 static void quick_send ()
 {
@@ -913,8 +951,8 @@ static void on_result (void *ctx, long)
 	int changed = g_m.apply (r);
 	if (r->kind == J_SEND)
 	{
-		if (r->ok) { status_note (r->err[0] ? r->err : "Sent."); int a = g_m.acct_index (r->acctId); if (a >= 0 && g_m.accts.a[a].kind == K_IMAP) g_m.sync (a, false, g_m.stores[a]->special (SP_SENT) ? g_m.stores[a]->index_of (g_m.stores[a]->special (SP_SENT)) : -1); }
-		else uk_messagebox ("Mail: not sent", r->err[0] ? r->err : "The message could not be sent.", MB_OK);
+		if (r->ok) { status_note (r->err[0] ? r->err : TR ("Sent.")); int a = g_m.acct_index (r->acctId); if (a >= 0 && g_m.accts.a[a].kind == K_IMAP) g_m.sync (a, false, g_m.stores[a]->special (SP_SENT) ? g_m.stores[a]->index_of (g_m.stores[a]->special (SP_SENT)) : -1); }
+		else uk_messagebox (TR ("Mail: not sent"), r->err[0] ? r->err : TR ("The message could not be sent."), MB_OK);
 	}
 	if (r->kind == J_BODY && r->ok) g_read->body_came (r->acctId, r->folder, r->uid);
 	if (changed & 1) rebuild_keep ();
@@ -922,8 +960,8 @@ static void on_result (void *ctx, long)
 	// new mail: told
 	if (g_m.newMail > 0)
 	{
-		char t[200]; snprintf (t, sizeof t, g_m.newMail == 1 ? "A new message" : "%d new messages", g_m.newMail);
-		notify_action ("Mail", t, "mail");
+		char t[200]; snprintf (t, sizeof t, g_m.newMail == 1 ? TR ("A new message") : TR ("%d new messages"), g_m.newMail);
+		notify_action (TR ("Mail"), t, "mail");
 		g_m.newMail = 0;
 	}
 	refresh_all ();
@@ -934,8 +972,14 @@ static void on_result (void *ctx, long)
 class MailRoot : public Root
 {
 public:
-	MailRoot (int w, int h) : Root (w, h, "Mail") {}
+	MailRoot (int w, int h) : Root (w, h, TR ("Mail")) {}
 	void onResized () override { layout_parts (); refresh_all (); }
+	void onSizeClass (int) override { layout_parts (); refresh_all (); }
+	bool onKey (long k) override
+	{
+		if (k == 27 && g_onePane && g_conv >= 0 && g_compose->hidden) { g_conv = -1; g_read->clear (); refresh_all (); return true; }	// (back to the list)
+		return false;
+	}
 	void onTick () override
 	{
 		g_tick = kapi_get_ticks ();
@@ -949,8 +993,8 @@ public:
 		// the worker's line, the spinner
 		static int lastBusy; static char lastCur[120];
 		int b = g_m.worker.busy ? 1 : 0;
-		if (b != lastBusy || strcmp (lastCur, g_m.worker.current)) { lastBusy = b; scpy (lastCur, g_m.worker.current, sizeof lastCur); g_side->invalidate (true); g_tb->invalidate (true); if (!g_m.view.convs.n) g_list->invalidate (true); }
-		static unsigned noteT; if (g_note[0] && g_tick - g_noteT > 800 && noteT != g_noteT) { noteT = g_noteT; g_side->invalidate (true); }
+		if (b != lastBusy || strcmp (lastCur, g_m.worker.current)) { lastBusy = b; scpy (lastCur, g_m.worker.current, sizeof lastCur); g_foot->invalidate (true); g_tb->invalidate (true); if (!g_m.view.convs.n) g_list->invalidate (true); }
+		static unsigned noteT; if (g_note[0] && g_tick - g_noteT > 800 && noteT != g_noteT) { noteT = g_noteT; g_foot->invalidate (true); }
 	}
 };
 
@@ -968,10 +1012,10 @@ static void m_save_eml ()
 	Ref r[60]; int n = conv_refs (r, 60); if (!n) return;
 	Store &st = *g_m.stores[r[n - 1].acct]; Folder &f = st.folders[r[n - 1].folder]; const Msg &m = f.msgs[r[n - 1].msg];
 	int len; char *raw = st.body (f, m.uid, &len);
-	if (!raw) { uk_messagebox ("Mail", "Open the message first (it is fetched then).", MB_OK); return; }
+	if (!raw) { uk_messagebox (TR ("Mail"), TR ("Open the message first (it is fetched then)."), MB_OK); return; }
 	char nm[120]; ReadPane::safe_name (m.subject && m.subject[0] ? m.subject : "message", nm, 100); strcat (nm, ".eml");
 	char out[300];
-	if (uk_file_save (out, sizeof out, "SD:/Documents", nm, "Mail messages|*.eml|All files|*") && kapi_save_file (out, raw, (unsigned) len) < 0) uk_messagebox ("Mail", "The file could not be written.", MB_OK);
+	if (uk_file_save (out, sizeof out, "SD:/Documents", nm, "Mail messages|*.eml|All files|*") && kapi_save_file (out, raw, (unsigned) len) < 0) uk_messagebox (TR ("Mail"), TR ("The file could not be written."), MB_OK);
 	free (raw);
 }
 
@@ -984,7 +1028,7 @@ static bool open_eml (const char *path)
 	if (!raw) return false;
 	// a store of its own, in RAM (nothing written: an account "eml" not saved)
 	Account &a = g_m.accts.a[0]; account_defaults (a);
-	scpy (a.id, "eml", sizeof a.id); scpy (a.label, "File", sizeof a.label); a.kind = K_POP3; a.checkMinutes = 0;
+	scpy (a.id, "eml", sizeof a.id); scpy (a.label, TR ("File"), sizeof a.label); a.kind = K_POP3; a.checkMinutes = 0;
 	g_m.accts.n = 1;
 	Store *s = new Store; s->acct = &a; scpy (s->root, "RAM:/mail-eml", sizeof s->root);
 	g_m.stores[0] = s;
@@ -1001,6 +1045,7 @@ int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);
 	faces_open ();
+	uk_lang_init ();
 	static html::FtHost host; g_host = &host;
 
 	char args[400]; int na = kapi_get_args (args, sizeof args); args[na > 0 && na < 400 ? na : 0] = 0;
@@ -1018,41 +1063,46 @@ int main (void)
 	root.setResizable (true);
 	root.setBg (C_BG);
 	g_tb = new ToolBar (0, 0, 1000, TB_H); root.addChild (g_tb);
-	g_side = new Sidebar (0, TB_H, SIDE_W, 640 - TB_H); root.addChild (g_side);
+	g_side = new SidePanel (0, TB_H, SIDE_W, 640 - TB_H, UK_SP_LEFT, UK_SP_NAVIGATION);
+	g_side->setIconFn (side_icon); g_side->setColors (col_side (), UK_AUTO);
+	g_side->setFooter (g_foot = new SideFoot, 108);
+	g_side->onSelect = side_chosen;
+	g_side->onPresentation = [] (SidePanel &, int) { layout_parts (); refresh_all (); };
 	g_list = new ListPane (SIDE_W, TB_H, LIST_W, 640 - TB_H); root.addChild (g_list);
 	g_read = new ReadPane (SIDE_W + LIST_W, TB_H, 1000 - SIDE_W - LIST_W, 640 - TB_H); root.addChild (g_read);
 	g_compose = new ComposePane (SIDE_W, TB_H, 1000 - SIDE_W, 640 - TB_H); root.addChild (g_compose);
 	g_contacts = new ContactsPane (SIDE_W, TB_H, 1000 - SIDE_W, 640 - TB_H); root.addChild (g_contacts);
 	g_welcome = new Welcome (SIDE_W, TB_H, 1000 - SIDE_W, 640 - TB_H); root.addChild (g_welcome);
+	root.addChild (g_side);					// (over the panes: a rail's labels, a drawer and its tab)
 	g_m.worker.start (on_result);
 
 	static Menu menu;
-	menu.menu ("File");
-	menu.item ("New Message", "^N", UK_CTRL ('N'), m_new);
-	menu.item ("Check for New Mail", "F5", KEY_F1 + 4, act_check);
+	menu.menu (TR ("File"));
+	menu.item (TR ("New Message"), "^N", UK_CTRL ('N'), m_new);
+	menu.item (TR ("Check for New Mail"), "F5", KEY_F1 + 4, act_check);
 	menu.separator ();
-	menu.item ("Add an Account...", "", 0, open_wizard);
-	menu.item ("Accounts and Settings...", "", 0, open_settings);
-	menu.item ("Contacts", "", 0, m_contacts);
+	menu.item (TR ("Add an Account..."), "", 0, open_wizard);
+	menu.item (TR ("Accounts and Settings..."), "", 0, open_settings);
+	menu.item (TR ("Contacts"), "", 0, m_contacts);
 	menu.separator ();
-	menu.item ("Save the Message as .eml...", "", 0, m_save_eml);
-	menu.menu ("Edit");
-	menu.item ("Find...", "^F", UK_CTRL ('F'), m_find);
-	menu.menu ("View");
-	menu.item ("Conversations (grouped)", "", 0, m_conv);
-	menu.item ("Unread Only", "", 0, m_unread);
-	menu.menu ("Message");
-	menu.item ("Reply", "^R", UK_CTRL ('R'), m_reply);
-	menu.item ("Reply All", "", 0, m_replyall);
-	menu.item ("Forward", "^L", UK_CTRL ('L'), m_forward);
-	menu.item ("Send", "Ctrl+Enter", 0, m_send);
+	menu.item (TR ("Save the Message as .eml..."), "", 0, m_save_eml);
+	menu.menu (TR ("Edit"));
+	menu.item (TR ("Find..."), "^F", UK_CTRL ('F'), m_find);
+	menu.menu (TR ("View"));
+	menu.item (TR ("Conversations (grouped)"), "", 0, m_conv);
+	menu.item (TR ("Unread Only"), "", 0, m_unread);
+	menu.menu (TR ("Message"));
+	menu.item (TR ("Reply"), "^R", UK_CTRL ('R'), m_reply);
+	menu.item (TR ("Reply All"), "", 0, m_replyall);
+	menu.item (TR ("Forward"), "^L", UK_CTRL ('L'), m_forward);
+	menu.item (TR ("Send"), "Ctrl+Enter", 0, m_send);
 	menu.separator ();
-	menu.item ("Archive", "", 0, act_archive);
-	menu.item ("Delete", "Del", 0, act_delete);
-	menu.item ("Junk", "", 0, act_junk);
+	menu.item (TR ("Archive"), "", 0, act_archive);
+	menu.item (TR ("Delete"), "Del", 0, act_delete);
+	menu.item (TR ("Junk"), "", 0, act_junk);
 	menu.separator ();
-	menu.item ("Star / Unstar", "^S", UK_CTRL ('S'), act_star);
-	menu.item ("Mark as Unread", "^U", UK_CTRL ('U'), act_unread);
+	menu.item (TR ("Star / Unstar"), "^S", UK_CTRL ('S'), act_star);
+	menu.item (TR ("Mark as Unread"), "^U", UK_CTRL ('U'), act_unread);
 	menu.publish ();
 
 	g_compose->accounts_changed ();

@@ -64,22 +64,22 @@ public:
 			break;
 		case P_APPPW: case P_PASSWORD:
 			tPw = field (PAD + 150, page == P_APPPW ? y0 + 190 : y0 + 90, W - 2 * PAD - 150, a.inSecret, true); tPw->setFocus ();
-			if (page == P_APPPW) bExtra = button (PAD, y0 + 140, 250, "Open the page in Jet", 10);
+			if (page == P_APPPW) bExtra = button (PAD, y0 + 140, 250, TR ("Open the page in Jet"), 10);
 			else
 			{
-				bExtra = button (PAD, y0 + 150, 200, "Settings by hand...", 11);
+				bExtra = button (PAD, y0 + 150, 200, TR ("Settings by hand..."), 11);
 				// (a work or school address whose mail Microsoft 365 or Google Workspace hosts)
-				button (PAD, y0 + 228, 260, "Microsoft 365 (Outlook)", 15); button (PAD + 272, y0 + 228, 260, "Google Workspace (Gmail)", 16);
+				button (PAD, y0 + 228, 260, TR ("Microsoft 365 (Outlook)"), 15); button (PAD + 272, y0 + 228, 260, TR ("Google Workspace (Gmail)"), 16);
 			}
 			break;
 		case P_OUTLOOK:
-			if (!haveCode) bExtra = button (PAD, y0 + 150, 200, "Get a code", 12);
-			else { bExtra = button (PAD, y0 + 310, 250, "Open the page in Jet", 13); button (PAD + 262, y0 + 310, 180, "Copy the code", 14); }
+			if (!haveCode) bExtra = button (PAD, y0 + 150, 200, TR ("Get a code"), 12);
+			else { bExtra = button (PAD, y0 + 310, 250, TR ("Open the page in Jet"), 13); button (PAD + 262, y0 + 310, 180, TR ("Copy the code"), 14); }
 			break;
 		case P_MANUAL:
 		{
 			static const char *const KIND[2] = { "IMAP", "POP3" };
-			static const char *const SEC[3] = { "SSL/TLS", "STARTTLS", "None" };
+			static const char *const SEC[3] = { "SSL/TLS", "STARTTLS", TR ("None") };
 			int x = PAD + 110, w2 = 140;
 			dKind = new Dropdown (x, y0 + 4, 120, 30, KIND, 2, a.kind, wiz_btn); dKind->tag = 20; addChild (dKind);
 			char port[12];
@@ -91,16 +91,16 @@ public:
 			dOutSec = new Dropdown (x + 310, y0 + 160, w2, 30, SEC, 3, a.outSec, wiz_btn); dOutSec->tag = 22; addChild (dOutSec);
 			tOutUser = field (x, y0 + 200, 230, a.outUser);
 			tOutPw = field (x + 240, y0 + 200, W - PAD - x - 240, a.outSecret, true);
-			cKeep = new Checkbox (x, y0 + 244, 330, 26, "Leave the messages on the server (POP3)", a.popKeep, 0, bgColor ()); addChild (cKeep);
+			cKeep = new Checkbox (x, y0 + 244, 330, 26, TR ("Leave the messages on the server (POP3)"), a.popKeep, 0, bgColor ()); addChild (cKeep);
 			cKeep->hidden = a.kind != K_POP3;
 			break;
 		}
 		default: break;
 		}
 		int by = H - 50;
-		bCancel = button (PAD, by, 100, "Cancel", 1);
-		if (page != P_START && page != P_CHECKING && page != P_DONE) bBack = button (W - PAD - 230, by, 100, "Back", 2); else bBack = 0;
-		const char *nl = page == P_DONE ? "Finish" : page == P_APPPW || page == P_PASSWORD || page == P_MANUAL ? "Sign in" : "Next";
+		bCancel = button (PAD, by, 100, TR ("Cancel"), 1);
+		if (page != P_START && page != P_CHECKING && page != P_DONE) bBack = button (W - PAD - 230, by, 100, TR ("Back"), 2); else bBack = 0;
+		const char *nl = page == P_DONE ? TR ("Finish") : page == P_APPPW || page == P_PASSWORD || page == P_MANUAL ? TR ("Sign in") : TR ("Next");
 		bNext = page == P_CHECKING || (page == P_OUTLOOK) ? 0 : button (W - PAD - 120, by, 120, nl, 3);
 		if (page == P_DONE) { bCancel->hidden = true; }
 		invalidate (true);
@@ -146,7 +146,7 @@ public:
 		{
 		case P_START:
 		{
-			if (!strchr (a.email, '@') || strchr (a.email, ' ')) { scpy (err, "Type your whole e-mail address (name@example.com).", sizeof err); invalidate (true); return; }
+			if (!strchr (a.email, '@') || strchr (a.email, ' ')) { scpy (err, TR ("Type your whole e-mail address (name@example.com)."), sizeof err); invalidate (true); return; }
 			char nm[120]; scpy (nm, a.name, sizeof nm); char em[160]; scpy (em, a.email, sizeof em);
 			int keepKind = a.kind;
 			account_defaults (a); scpy (a.name, nm, sizeof a.name); a.kind = keepKind; account_guess (a, em);
@@ -157,7 +157,7 @@ public:
 			return;
 		}
 		case P_APPPW: case P_PASSWORD: case P_MANUAL:
-			if (!a.inSecret[0]) { scpy (err, "Type the password.", sizeof err); invalidate (true); return; }
+			if (!a.inSecret[0]) { scpy (err, TR ("Type the password."), sizeof err); invalidate (true); return; }
 			// (Gmail's app password is shown in groups: the spaces off)
 			if (page == P_APPPW) { char t[200]; int k = 0; for (const char *p = a.inSecret; *p; p++) if (*p != ' ') t[k++] = *p; t[k] = 0; scpy (a.inSecret, t, sizeof a.inSecret); }
 			check (); return;
@@ -177,7 +177,7 @@ public:
 		}
 		if (r->kind == J_OAUTH_POLL)
 		{
-			if (!r->ok || r->oauthState != 1) { haveCode = false; scpy (err, r->err[0] ? r->err : "The sign-in did not finish.", sizeof err); build (); return; }
+			if (!r->ok || r->oauthState != 1) { haveCode = false; scpy (err, r->err[0] ? r->err : TR ("The sign-in did not finish."), sizeof err); build (); return; }
 			scpy (a.access, r->access, sizeof a.access); scpy (a.refresh, r->refresh, sizeof a.refresh); a.expires = r->expires;
 			check ();
 			return;
@@ -197,7 +197,7 @@ public:
 	{
 		if (g_m.accts.n >= 12) return;
 		g_m.accts.new_id (a.id, sizeof a.id);
-		if (!a.label[0]) scpy (a.label, "Mail", sizeof a.label);
+		if (!a.label[0]) scpy (a.label, TR ("Mail"), sizeof a.label);
 		a.colour = ACCOUNT_COLOURS[g_m.accts.n % 8];
 		if (a.provider == PV_GMAIL) a.colour = 0xD93025; else if (a.provider == PV_OUTLOOK) a.colour = 0x0F6CBD;
 		g_m.accts.a[g_m.accts.n++] = a;
@@ -225,77 +225,77 @@ public:
 	}
 	void onDraw () override
 	{
-		drawBox ("Add a mail account");
+		drawBox (TR ("Add a mail account"));
 		int y0 = titleH () + 20; int w = W - 2 * PAD;
 		unsigned dim = uk_mix (C_BG, C_TEXT, 150);
 		switch (page)
 		{
 		case P_START:
-			text (canvas, PAD, y0, "Your mail account", C_TEXT, F_H2, 1);
-			para (PAD, y0 + 30, w, "Gmail, Outlook.com, iCloud, Yahoo and others are recognised by their address: their servers are filled in for you.", dim, F_SMALL);
-			text_v (canvas, PAD, y0 + 70, 30, "Your name", C_TEXT);
-			text_v (canvas, PAD, y0 + 112, 30, "E-mail address", C_TEXT);
-			para (PAD + 150, y0 + 148, w - 150, "Your name is what the people you write to see.", dim, F_SMALL);
+			text (canvas, PAD, y0, TR ("Your mail account"), C_TEXT, F_H2, 1);
+			para (PAD, y0 + 30, w, TR ("Gmail, Outlook.com, iCloud, Yahoo and others are recognised by their address: their servers are filled in for you."), dim, F_SMALL);
+			text_v (canvas, PAD, y0 + 70, 30, TR ("Your name"), C_TEXT);
+			text_v (canvas, PAD, y0 + 112, 30, TR ("E-mail address"), C_TEXT);
+			para (PAD + 150, y0 + 148, w - 150, TR ("Your name is what the people you write to see."), dim, F_SMALL);
 			break;
 		case P_APPPW:
 		{
 			const Provider &v = PROVIDERS[provider];
-			char t[120]; snprintf (t, sizeof t, "%s: an app password", v.label);
+			char t[120]; snprintf (t, sizeof t, TR ("%s: an app password"), v.label);
 			text (canvas, PAD, y0, t, C_TEXT, F_H2, 1);
-			para (PAD, y0 + 32, w, v.note, C_TEXT);
-			para (PAD, y0 + 84, w, "Make one on the page below (in Jet), then type its letters here. Mail keeps it encrypted on this card.", dim, F_SMALL);
-			text_v (canvas, PAD, y0 + 190, 30, "App password", C_TEXT);
+			para (PAD, y0 + 32, w, TR (v.note), C_TEXT);
+			para (PAD, y0 + 84, w, TR ("Make one on the page below (in Jet), then type its letters here. Mail keeps it encrypted on this card."), dim, F_SMALL);
+			text_v (canvas, PAD, y0 + 190, 30, TR ("App password"), C_TEXT);
 			break;
 		}
 		case P_PASSWORD:
 		{
 			text (canvas, PAD, y0, a.email, C_TEXT, F_H2, 1, w);
-			char t[300]; snprintf (t, sizeof t, "Mail will try %s (IMAP) and %s (SMTP).", a.inHost, a.outHost);
+			char t[300]; snprintf (t, sizeof t, TR ("Mail will try %s (IMAP) and %s (SMTP)."), a.inHost, a.outHost);
 			para (PAD, y0 + 32, w, t, dim, F_SMALL);
-			text_v (canvas, PAD, y0 + 90, 30, "Password", C_TEXT);
-			para (PAD, y0 + 200, w, "A work or school address whose mail Microsoft 365 or Google Workspace keeps? Choose it:", dim, F_SMALL);
+			text_v (canvas, PAD, y0 + 90, 30, TR ("Password"), C_TEXT);
+			para (PAD, y0 + 200, w, TR ("A work or school address whose mail Microsoft 365 or Google Workspace keeps? Choose it:"), dim, F_SMALL);
 			break;
 		}
 		case P_OUTLOOK:
-			text (canvas, PAD, y0, provider < 0 ? "Microsoft 365: sign in at Microsoft" : "Outlook.com: sign in at Microsoft", C_TEXT, F_H2, 1);
-			para (PAD, y0 + 32, w, "Microsoft does not take passwords from mail apps: you sign in on its own page, on a phone or a PC, with a code Mail gets for you.", C_TEXT);
-			if (waiting) text (canvas, PAD, y0 + 160, "Asking Microsoft for a code...", dim);
+			text (canvas, PAD, y0, provider < 0 ? TR ("Microsoft 365: sign in at Microsoft") : TR ("Outlook.com: sign in at Microsoft"), C_TEXT, F_H2, 1);
+			para (PAD, y0 + 32, w, TR ("Microsoft does not take passwords from mail apps: you sign in on its own page, on a phone or a PC, with a code Mail gets for you."), C_TEXT);
+			if (waiting) text (canvas, PAD, y0 + 160, TR ("Asking Microsoft for a code..."), dim);
 			if (haveCode)
 			{
-				char t[300]; snprintf (t, sizeof t, "1. On a phone or a PC, open  %s", dc.verifyUri);
+				char t[300]; snprintf (t, sizeof t, TR ("1. On a phone or a PC, open  %s"), dc.verifyUri);
 				text (canvas, PAD, y0 + 100, t, C_TEXT, F_UI, 1, w);
-				text (canvas, PAD, y0 + 126, "2. Type this code:", C_TEXT, F_UI, 1);
+				text (canvas, PAD, y0 + 126, TR ("2. Type this code:"), C_TEXT, F_UI, 1);
 				uk_fill_round (canvas, PAD, y0 + 154, w, 64, 8, C_FIELD);
 				text_c (canvas, PAD, y0 + 154, w, 64, dc.userCode, C_ACCENT, F_H1, 1);
-				text (canvas, PAD, y0 + 230, "3. Sign in with your Microsoft account and allow \"Onyx Mail\".", C_TEXT, F_UI, 1, w);
-				para (PAD, y0 + 258, w, copied ? "The code is in the clipboard: paste it in Microsoft's page. Mail goes on by itself as soon as it is done." : "Mail goes on by itself as soon as it is done.", dim, F_SMALL);
+				text (canvas, PAD, y0 + 230, TR ("3. Sign in with your Microsoft account and allow \"Onyx Mail\"."), C_TEXT, F_UI, 1, w);
+				para (PAD, y0 + 258, w, copied ? TR ("The code is in the clipboard: paste it in Microsoft's page. Mail goes on by itself as soon as it is done.") : TR ("Mail goes on by itself as soon as it is done."), dim, F_SMALL);
 			}
 			break;
 		case P_MANUAL:
 		{
 			int x = PAD + 110;
-			text_v (canvas, PAD, y0 + 4, 30, "Incoming", C_TEXT, F_UI, 1);
-			text_v (canvas, PAD, y0 + 44, 30, "Server, port", C_TEXT);
-			text_v (canvas, PAD, y0 + 84, 30, "User, password", C_TEXT);
-			text_v (canvas, PAD, y0 + 126, 30, "Outgoing (SMTP)", C_TEXT, F_UI, 1);
-			text_v (canvas, PAD, y0 + 160, 30, "Server, port", C_TEXT);
-			text_v (canvas, PAD, y0 + 200, 30, "User, password", C_TEXT);
-			text (canvas, x, y0 + 232, "(empty: the same as for the incoming mail)", dim, F_TINY);
+			text_v (canvas, PAD, y0 + 4, 30, TR ("Incoming"), C_TEXT, F_UI, 1);
+			text_v (canvas, PAD, y0 + 44, 30, TR ("Server, port"), C_TEXT);
+			text_v (canvas, PAD, y0 + 84, 30, TR ("User, password"), C_TEXT);
+			text_v (canvas, PAD, y0 + 126, 30, TR ("Outgoing (SMTP)"), C_TEXT, F_UI, 1);
+			text_v (canvas, PAD, y0 + 160, 30, TR ("Server, port"), C_TEXT);
+			text_v (canvas, PAD, y0 + 200, 30, TR ("User, password"), C_TEXT);
+			text (canvas, x, y0 + 232, TR ("(empty: the same as for the incoming mail)"), dim, F_TINY);
 			(void) x;
 			break;
 		}
 		case P_CHECKING:
 		{
-			text (canvas, PAD, y0, "Checking the settings...", C_TEXT, F_H2, 1);
-			char t[200]; snprintf (t, sizeof t, "%s", g_m.worker.current[0] ? g_m.worker.current : "Connecting...");
+			text (canvas, PAD, y0, TR ("Checking the settings..."), C_TEXT, F_H2, 1);
+			char t[200]; snprintf (t, sizeof t, "%s", g_m.worker.current[0] ? g_m.worker.current : TR ("Connecting..."));
 			text (canvas, PAD, y0 + 40, t, dim);
 			break;
 		}
 		case P_DONE:
 			icon (canvas, I_CHECK, PAD, y0, 40, 0x188038);
-			text (canvas, PAD + 54, y0 + 6, "Your account is ready", C_TEXT, F_H2, 1);
+			text (canvas, PAD + 54, y0 + 6, TR ("Your account is ready"), C_TEXT, F_H2, 1);
 			{ char t[300]; snprintf (t, sizeof t, "%s  (%s)", a.email, a.kind == K_POP3 ? "POP3" : "IMAP"); text (canvas, PAD + 54, y0 + 36, t, dim); }
-			para (PAD, y0 + 80, w, "Mail now fetches your messages. New mail is looked for every 5 minutes (Accounts and settings).", C_TEXT);
+			para (PAD, y0 + 80, w, TR ("Mail now fetches your messages. New mail is looked for every 5 minutes (Accounts and settings)."), C_TEXT);
 			break;
 		}
 		if (err[0])
@@ -331,19 +331,19 @@ public:
 		while (firstChild) { Widget *c = firstChild; removeChild (c); if (ndead < 48) dead[ndead++] = c; else delete c; }
 		int x = LW + PAD, y = titleH () + 16, w = W - x - PAD;
 		Button *b;
-		b = new Button (PAD, H - 48, LW - PAD, 32, "Add an account...", set_btn); b->tag = 1; addChild (b);
-		b = new Button (W - PAD - 100, H - 48, 100, 32, "Close", set_btn); b->tag = 2; addChild (b);
+		b = new Button (PAD, H - 48, LW - PAD, 32, TR ("Add an account..."), set_btn); b->tag = 1; addChild (b);
+		b = new Button (W - PAD - 100, H - 48, 100, 32, TR ("Close"), set_btn); b->tag = 2; addChild (b);
 		if (cur >= g_m.accts.n) { tName = tLabel = tPw = 0; tSig = 0; dEvery = 0; invalidate (true); return; }
 		Account &a = g_m.accts.a[cur];
 		tName = new Textbox (x + 130, y + 40, w - 130, 30, a.name); addChild (tName);
 		tLabel = new Textbox (x + 130, y + 78, w - 130, 30, a.label); addChild (tLabel);
-		static const char *const EV[6] = { "By hand only", "Every minute", "Every 5 minutes", "Every 15 minutes", "Every 30 minutes", "Every hour" };
+		static const char *const EV[6] = { TR ("By hand only"), TR ("Every minute"), TR ("Every 5 minutes"), TR ("Every 15 minutes"), TR ("Every 30 minutes"), TR ("Every hour") };
 		static const int EVM[6] = { 0, 1, 5, 15, 30, 60 };
 		int sel = 2; for (int i = 0; i < 6; i++) if (EVM[i] == a.checkMinutes) sel = i;
 		dEvery = new Dropdown (x + 130, y + 116, 200, 30, EV, 6, sel, 0); addChild (dEvery);
 		tSig = new Textarea (x, y + 182, w, 90, 600); tSig->setContent (a.signature); addChild (tSig);
 		if (a.auth == AU_PASSWORD) { tPw = new Textbox (x + 130, y + 290, w - 130, 30, ""); tPw->password = true; addChild (tPw); } else tPw = 0;
-		b = new Button (W - PAD - 220, H - 48, 110, 32, "Remove...", set_btn); b->tag = 3; addChild (b);
+		b = new Button (W - PAD - 220, H - 48, 110, 32, TR ("Remove..."), set_btn); b->tag = 3; addChild (b);
 		invalidate (true);
 	}
 	void save_cur ()
@@ -364,8 +364,8 @@ public:
 		if (tag == 1) { save_cur (); close (2); return; }
 		if (tag == 3 && cur < g_m.accts.n)
 		{
-			char q[300]; snprintf (q, sizeof q, "Remove %s from Mail? Its messages stay on the server; Mail's copy on this card goes.", g_m.accts.a[cur].email);
-			if (uk_messagebox ("Mail", q, MB_YESNO) != 1) return;
+			char q[300]; snprintf (q, sizeof q, TR ("Remove %s from Mail? Its messages stay on the server; Mail's copy on this card goes."), g_m.accts.a[cur].email);
+			if (uk_messagebox (TR ("Mail"), q, MB_YESNO) != 1) return;
 			delete g_m.stores[cur];
 			for (int i = cur; i < g_m.accts.n - 1; i++) { g_m.accts.a[i] = g_m.accts.a[i + 1]; g_m.stores[i] = g_m.stores[i + 1]; g_m.stores[i]->acct = &g_m.accts.a[i]; }
 			g_m.accts.n--; g_m.stores[g_m.accts.n] = 0;
@@ -382,7 +382,7 @@ public:
 	}
 	void onDraw () override
 	{
-		drawBox ("Accounts and settings");
+		drawBox (TR ("Accounts and settings"));
 		hits.clear ();
 		int y = titleH () + 16;
 		uk_fill_round (canvas, PAD, y, LW - PAD, H - y - 64, 6, C_FIELD);
@@ -395,18 +395,18 @@ public:
 			text (canvas, PAD + 36, ry + 22, g_m.accts.a[i].email, col_dim (), F_SMALL, 0, LW - PAD - 46);
 			hits.add (PAD, ry, LW - PAD, 42, 1, i);
 		}
-		if (!g_m.accts.n) { text (canvas, LW + PAD, y + 10, "No account yet.", C_TEXT); return; }
+		if (!g_m.accts.n) { text (canvas, LW + PAD, y + 10, TR ("No account yet."), C_TEXT); return; }
 		Account &a = g_m.accts.a[cur];
 		int x = LW + PAD; unsigned dim = uk_mix (C_BG, C_TEXT, 150);
 		text (canvas, x, y, a.email, C_TEXT, F_H2, 1, W - x - PAD);
-		text_v (canvas, x, y + 40, 30, "Your name", C_TEXT);
-		text_v (canvas, x, y + 78, 30, "Shown as", C_TEXT);
-		text_v (canvas, x, y + 116, 30, "New mail", C_TEXT);
-		text (canvas, x, y + 160, "Signature (added to what you write)", C_TEXT);
-		if (a.auth == AU_PASSWORD) text_v (canvas, x, y + 290, 30, "New password", C_TEXT);
+		text_v (canvas, x, y + 40, 30, TR ("Your name"), C_TEXT);
+		text_v (canvas, x, y + 78, 30, TR ("Shown as"), C_TEXT);
+		text_v (canvas, x, y + 116, 30, TR ("New mail"), C_TEXT);
+		text (canvas, x, y + 160, TR ("Signature (added to what you write)"), C_TEXT);
+		if (a.auth == AU_PASSWORD) text_v (canvas, x, y + 290, 30, TR ("New password"), C_TEXT);
 		char srv[400];
-		snprintf (srv, sizeof srv, "%s %s:%d (%s)  \xC2\xB7  SMTP %s:%d (%s)%s", a.kind == K_POP3 ? "POP3" : "IMAP", a.inHost, a.inPort, a.inSec == SEC_TLS ? "SSL/TLS" : a.inSec == SEC_STARTTLS ? "STARTTLS" : "plain",
-			a.outHost, a.outPort, a.outSec == SEC_TLS ? "SSL/TLS" : a.outSec == SEC_STARTTLS ? "STARTTLS" : "plain", a.auth == AU_OAUTH ? "  \xC2\xB7  Microsoft sign-in" : "");
+		snprintf (srv, sizeof srv, TR ("%s %s:%d (%s)  \xC2\xB7  SMTP %s:%d (%s)%s"), a.kind == K_POP3 ? "POP3" : "IMAP", a.inHost, a.inPort, a.inSec == SEC_TLS ? "SSL/TLS" : a.inSec == SEC_STARTTLS ? "STARTTLS" : TR ("plain"),
+			a.outHost, a.outPort, a.outSec == SEC_TLS ? "SSL/TLS" : a.outSec == SEC_STARTTLS ? "STARTTLS" : TR ("plain"), a.auth == AU_OAUTH ? TR ("  \xC2\xB7  Microsoft sign-in") : "");
 		text (canvas, x, y + 334, srv, dim, F_SMALL, 0, W - x - PAD);
 	}
 };

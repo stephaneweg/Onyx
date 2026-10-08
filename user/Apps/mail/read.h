@@ -141,9 +141,9 @@ public:
 	ReadPane (int l, int t, int w, int h) : Widget (l, t, w, h), nsh (0), sy (0), contentH (0), barDrag (false), hint (0)
 	{
 		hintText[0] = 0;
-		quick = new HintBox (PAD, h - QR_H + 12, w - 2 * PAD - 78, 34, "Reply...");
+		quick = new HintBox (PAD, h - QR_H + 12, w - 2 * PAD - 78, 34, TR ("Reply..."));
 		addChild (quick);
-		qsend = new Button (w - PAD - 70, h - QR_H + 12, 70, 34, "Send", [] (Widget &) { quick_send (); });
+		qsend = new Button (w - PAD - 70, h - QR_H + 12, 70, 34, TR ("Send"), [] (Widget &) { quick_send (); });
 		addChild (qsend);
 	}
 	unsigned bgColor () override { return C_FIELD; }
@@ -209,13 +209,13 @@ public:
 		{
 			int cy = height / 2 - 40;
 			icon (canvas, I_INBOX, width / 2 - 24, cy - 30, 48, col_faint ());
-			text_c (canvas, 0, cy + 30, width, 24, g_m.view.convs.n ? "Choose a conversation to read it." : "Nothing here.", col_dim (), F_MID);
+			text_c (canvas, 0, cy + 30, width, 24, g_m.view.convs.n ? TR ("Choose a conversation to read it.") : TR ("Nothing here."), col_dim (), F_MID);
 			return;
 		}
 		int W = width - 10, y = PAD - sy;
 		const Msg &last = g_m.msg (sh[nsh - 1].ref);
 		// the subject, the chips
-		const char *subj = last.subject && last.subject[0] ? last.subject : "(no subject)";
+		const char *subj = last.subject && last.subject[0] ? last.subject : TR ("(no subject)");
 		{
 			UkFaceScope sc (g_face[F_H1]);
 			// (a long subject over two lines)
@@ -260,7 +260,7 @@ public:
 			Shown &s = sh[i];
 			const Msg &m = g_m.msg (s.ref);
 			s.y = y + sy;
-			char name[160], date[60]; who (m.from, name, sizeof name); if (!name[0]) scpy (name, "(unknown)", sizeof name);
+			char name[160], date[60]; who (m.from, name, sizeof name); if (!name[0]) scpy (name, TR ("(unknown)"), sizeof name);
 			char em[160]; first_email (m.from, em, sizeof em);
 			if (i) { canvas.fillRect (PAD, y, W - 2 * PAD, 1, col_line ()); y += 1; }
 			if (!s.open)
@@ -290,7 +290,7 @@ public:
 			char toLine[300]; char tos[240]; who (m.to, tos, sizeof tos, true);
 			char myEmail[160]; scpy (myEmail, g_m.accts.a[s.ref.acct].email, sizeof myEmail);
 			bool toMe = m.to && ifind (m.to, myEmail) && !strchr (m.to, ',');
-			snprintf (toLine, sizeof toLine, "%s  \xC2\xB7  to %s", em, toMe ? "me" : tos[0] ? tos : "(nobody)");
+			snprintf (toLine, sizeof toLine, TR ("%s  \xC2\xB7  to %s"), em, toMe ? TR ("me") : tos[0] ? tos : TR ("(nobody)"));
 			text (canvas, nx, hy + 22, toLine, col_dim (), F_SMALL, 0, W - nx - PAD - 100);
 			text (canvas, W - PAD - dw, hy + 2, date, col_dim (), F_SMALL);
 			// reply, reply all, forward, star
@@ -305,8 +305,8 @@ public:
 			}
 			y = hy + 52;
 			// the text
-			if (s.missing) { text (canvas, PAD, y, "This message is not on the card any more.", col_dim ()); y += 30; }
-			else if (!s.raw) { text (canvas, PAD, y, s.loading ? "Getting the message..." : "", col_dim ()); y += 30; }
+			if (s.missing) { text (canvas, PAD, y, TR ("This message is not on the card any more."), col_dim ()); y += 30; }
+			else if (!s.raw) { text (canvas, PAD, y, s.loading ? TR ("Getting the message...") : "", col_dim ()); y += 30; }
 			else if (i == webIdx)
 			{	// the web view: the remote content held back (a bar), the page in a box filling the pane
 				if (!s.webRemote) { Buf t; int p = s.mime->body_part (true); s.mime->text (s.mime->parts[p], t); s.webRemote = wv_has_remote (t.c (), t.n) ? 2 : 1; }
@@ -366,7 +366,7 @@ public:
 			canvas.fillRect (0, height - QR_H, width, QR_H, C_FIELD);
 			canvas.fillRect (0, height - QR_H, width, 1, col_line ());
 			char who2[160]; who (last.from, who2, sizeof who2);
-			if (!quick->text[0] && !quick->hasFocus) { char ph[220]; snprintf (ph, sizeof ph, "Reply to %s...", who2); quick->setHint (ph); }
+			if (!quick->text[0] && !quick->hasFocus) { char ph[220]; snprintf (ph, sizeof ph, TR ("Reply to %s..."), who2); quick->setHint (ph); }
 		}
 	}
 	// the remote pictures held back: a bar ("Show the pictures") at y, which it moves down
@@ -375,8 +375,8 @@ public:
 		int bw = W - 2 * PAD;
 		uk_fill_round (canvas, PAD, y, bw, 32, 6, uk_mix (C_FIELD, 0xF2A600, 40));
 		icon (canvas, I_PICTURE, PAD + 10, y + 7, 18, uk_mix (C_FIELD, 0x8A6000, 220));
-		text_v (canvas, PAD + 36, y, 32, "Pictures from the web are hidden.", C_FIELD_TEXT, F_SMALL, 0, bw - 190);
-		const char *lb = "Show the pictures"; int lw = tw (lb, F_SMALL, 1);
+		text_v (canvas, PAD + 36, y, 32, TR ("Pictures from the web are hidden."), C_FIELD_TEXT, F_SMALL, 0, bw - 190);
+		const char *lb = TR ("Show the pictures"); int lw = tw (lb, F_SMALL, 1);
 		text_v (canvas, PAD + bw - lw - 12, y, 32, lb, C_ACCENT, F_SMALL, 1);
 		hits.add (PAD + bw - lw - 20, y, lw + 20, 32, H_PICS, i);
 		y += 42;
@@ -387,11 +387,11 @@ public:
 		if (!s.natt) return;
 		long total = 0; for (int k = 0; k < s.natt; k++) total += s.mime->size_of (s.mime->parts[s.att[k]]);
 		char sz[40]; fmt_size (total, sz, sizeof sz);
-		char l[120]; snprintf (l, sizeof l, "%d attachment%s  \xC2\xB7  %s  \xC2\xB7  ", s.natt, s.natt > 1 ? "s" : "", sz);
+		char l[120]; snprintf (l, sizeof l, s.natt > 1 ? TR ("%d attachments  \xC2\xB7  %s  \xC2\xB7  ") : TR ("%d attachment  \xC2\xB7  %s  \xC2\xB7  "), s.natt, sz);
 		text (canvas, PAD, y, l, col_dim (), F_SMALL, 1);
 		int lx = PAD + tw (l, F_SMALL, 1);
-		text (canvas, lx, y, s.natt > 1 ? "Save all" : "Save", C_ACCENT, F_SMALL, 1);
-		hits.add (lx - 4, y - 2, tw ("Save all", F_SMALL, 1) + 8, 18, H_SAVEALL, i);
+		text (canvas, lx, y, s.natt > 1 ? TR ("Save all") : TR ("Save"), C_ACCENT, F_SMALL, 1);
+		hits.add (lx - 4, y - 2, tw (TR ("Save all"), F_SMALL, 1) + 8, 18, H_SAVEALL, i);
 		y += 22;
 		int cw = (W - 2 * PAD - 10) / 2; if (cw > 260) cw = 260;
 		for (int k = 0; k < s.natt; k++)
@@ -504,8 +504,8 @@ public:
 		if (istarts (href, "http://") || istarts (href, "https://"))
 		{
 			// asked first: a link in a mail may not go where it says
-			char q[700]; snprintf (q, sizeof q, "Open this link in Jet?\n\n%.600s", href);
-			if (uk_messagebox ("Mail", q, MB_YESNO) != 1) return;
+			char q[700]; snprintf (q, sizeof q, TR ("Open this link in Jet?\n\n%.600s"), href);
+			if (uk_messagebox (TR ("Mail"), q, MB_YESNO) != 1) return;
 			kapi_exec (WV_PROGRAM, href);
 		}
 	}
@@ -532,12 +532,12 @@ public:
 		Addr a[2]; int n = parse_addrs (m.from ? m.from : "", a, 2); if (!n) return;
 		bool known = g_m.contacts.find (a[0].email) >= 0;
 		PopupMenu pm (x, y);
-		pm.add ("Write to them", 1, true); pm.add (known ? "Show in the contacts" : "Add to the contacts", 2, true); pm.add ("Copy the address", 3, true);
+		pm.add (TR ("Write to them"), 1, true); pm.add (known ? TR ("Show in the contacts") : TR ("Add to the contacts"), 2, true); pm.add (TR ("Copy the address"), 3, true);
 		int r = pm.run ();
 		if (r == 1) compose_to (a[0].name, a[0].email);
 		else if (r == 2)
 		{
-			if (!known) { Contact c; memset (&c, 0, sizeof c); scpy (c.name, a[0].name[0] ? a[0].name : a[0].email, sizeof c.name); scpy (c.email, a[0].email, sizeof c.email); g_m.contacts.add (c); g_m.contacts.save (); status_note ("Added to the contacts."); }
+			if (!known) { Contact c; memset (&c, 0, sizeof c); scpy (c.name, a[0].name[0] ? a[0].name : a[0].email, sizeof c.name); scpy (c.email, a[0].email, sizeof c.email); g_m.contacts.add (c); g_m.contacts.save (); status_note (TR ("Added to the contacts.")); }
 			show_contacts (true);
 		}
 		else if (r == 3) ::clip_set_text (a[0].email);
@@ -560,14 +560,14 @@ public:
 		char app[40]; char tmp[300]; snprintf (tmp, sizeof tmp, "SD:/tmp/mail/%s", nm);
 		bool can = fa_app_for (tmp, app, sizeof app);
 		PopupMenu pm (x, y);
-		char ol[80]; snprintf (ol, sizeof ol, can ? "Open (%s)" : "Open", app);
-		pm.add (ol, 1, can); pm.add ("Save as...", 2, true);
+		char ol[80]; snprintf (ol, sizeof ol, can ? TR ("Open (%s)") : TR ("Open"), app);
+		pm.add (ol, 1, can); pm.add (TR ("Save as..."), 2, true);
 		int r = pm.run ();
-		if (r == 1) { kapi_mkdir ("SD:/tmp"); kapi_mkdir ("SD:/tmp/mail"); if (write_att (s, k, tmp)) fa_open (tmp); else uk_messagebox ("Mail", "The attachment could not be written to the card.", MB_OK); }
+		if (r == 1) { kapi_mkdir ("SD:/tmp"); kapi_mkdir ("SD:/tmp/mail"); if (write_att (s, k, tmp)) fa_open (tmp); else uk_messagebox (TR ("Mail"), TR ("The attachment could not be written to the card."), MB_OK); }
 		else if (r == 2)
 		{
 			char out[300]; kapi_mkdir ("SD:/Downloads");
-			if (uk_file_save (out, sizeof out, "SD:/Downloads", nm) && !write_att (s, k, out)) uk_messagebox ("Mail", "The attachment could not be written.", MB_OK);
+			if (uk_file_save (out, sizeof out, "SD:/Downloads", nm) && !write_att (s, k, out)) uk_messagebox (TR ("Mail"), TR ("The attachment could not be written."), MB_OK);
 		}
 	}
 	void save_all (Shown &s)
@@ -580,7 +580,7 @@ public:
 			char path[300]; snprintf (path, sizeof path, "SD:/Downloads/%s", nm);
 			if (write_att (s, k, path)) ok++;
 		}
-		char m[120]; snprintf (m, sizeof m, "%d of %d saved in SD:/Downloads.", ok, s.natt);
+		char m[120]; snprintf (m, sizeof m, TR ("%d of %d saved in SD:/Downloads."), ok, s.natt);
 		status_note (m);
 	}
 	bool onKey (long k) override

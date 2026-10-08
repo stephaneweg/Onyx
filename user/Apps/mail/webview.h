@@ -214,7 +214,7 @@ static void wv_draw (Canvas &cv, int x, int y, int w, int h, int clipH)
 	if (!pixels)
 	{
 		cv.fillRect (x, y0, w, y1 - y0, 0xFFFFFF);
-		if (y + 40 >= y0 && y + 40 < y1) text_c (cv, x, y + 20, w, 40, g_wv.state == WS_STARTING ? "Opening the message..." : "", col_dim ());
+		if (y + 40 >= y0 && y + 40 < y1) text_c (cv, x, y + 20, w, 40, g_wv.state == WS_STARTING ? TR ("Opening the message...") : "", col_dim ());
 		return;
 	}
 	for (int yy = y0; yy < y1; yy++)

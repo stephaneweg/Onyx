@@ -131,10 +131,10 @@ public:
 		bcc = new AddrBox (PAD + LBL, 0, 300, 30, sug); addChild (bcc);
 		subject = new Textbox (PAD + LBL, 0, 300, 30, ""); subject->maxLen = 300; addChild (subject);
 		body = new BodyArea (PAD, 0, 300, 200, 256 * 1024); addChild (body);
-		send = new Button (0, 0, 100, 34, "Send", [] (Widget &) { compose_send (); }); addChild (send);
-		attach = new Button (0, 0, 110, 34, "Attach...", [] (Widget &) { compose_attach (); }); addChild (attach);
-		draft = new Button (0, 0, 120, 34, "Save draft", [] (Widget &) { compose_draft (); }); addChild (draft);
-		discard = new Button (0, 0, 100, 34, "Discard", [] (Widget &) { compose_discard (); }); addChild (discard);
+		send = new Button (0, 0, 100, 34, TR ("Send"), [] (Widget &) { compose_send (); }); addChild (send);
+		attach = new Button (0, 0, 110, 34, TR ("Attach..."), [] (Widget &) { compose_attach (); }); addChild (attach);
+		draft = new Button (0, 0, 120, 34, TR ("Save draft"), [] (Widget &) { compose_draft (); }); addChild (draft);
+		discard = new Button (0, 0, 100, 34, TR ("Discard"), [] (Widget &) { compose_discard (); }); addChild (discard);
 		addChild (sug);
 	}
 	unsigned bgColor () override { return C_FIELD; }
@@ -166,13 +166,13 @@ public:
 		hits.clear ();
 		text (canvas, PAD, 16, title, C_FIELD_TEXT, F_H2, 1);
 		int y = 56;
-		const char *lab[5] = { "From", "To", "Cc", "Bcc", "Subject" };
+		const char *lab[5] = { TR ("From"), TR ("To"), TR ("Cc"), TR ("Bcc"), TR ("Subject") };
 		int rows[5] = { y, y + ROW, ccOn ? y + 2 * ROW : -1, ccOn ? y + 3 * ROW : -1, y + (ccOn ? 4 : 2) * ROW };
 		for (int i = 0; i < 5; i++) if (rows[i] >= 0) { text_v (canvas, PAD, rows[i], 30, lab[i], col_dim ()); canvas.fillRect (PAD, rows[i] + 34, width - 2 * PAD, 1, col_line ()); }
 		if (!ccOn)
 		{
 			int x = width - PAD - 60;
-			text_v (canvas, x, y + ROW, 30, "Cc Bcc", C_ACCENT, F_SMALL, 1);
+			text_v (canvas, x, y + ROW, 30, TR ("Cc Bcc"), C_ACCENT, F_SMALL, 1);
 			hits.add (x - 4, y + ROW, 68, 30, H_CCBCC);
 		}
 		// the attachments

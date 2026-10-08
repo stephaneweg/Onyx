@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## PocketUI phase P7, begun: the Media Player, Photos and the Game Library migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, not published (no signing key on this PC)
+## PocketUI phase P7, begun: the Media Player, Photos, the Game Library and Mail migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, not published (no signing key on this PC)
 
 P7 is the apps' migration to P6's adaptive widgets (`docs/POCKETUI-TECH-STUDY.md` §6.15, §9: about 32 session-days, one
 app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10.6):
@@ -47,6 +47,20 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   (`shots.sh gamelib`: the picture unchanged). `SIDE_W` is now what the panel takes (`g_sideW`: `SIDE0` 220, the
   rail's width, 0 for a drawer). Translated: 33 words -- its messages built by `lx_cat` are `snprintf` formats now.
   `adaptive.sh <out> gamelib`: 8 checks pass (the sample ROMs of `gamelib_samples.py`).
+- **Mail** (`user/Apps/mail/main.cpp`, `app.h`; `TR` in the UI headers, `sync.h`, `accounts.h`, `webview.h`): the left
+  column a SidePanel -- *All inboxes* (a badge), *Starred*, then **each account an item** (its coloured mark drawn by
+  the icon function, `SI_ACCOUNT + a`; ▾ / ▸ as its trailing value; choosing it folds its folders: `g_open`, the items
+  made again) and its folders (indented by their depth, the unread as badges); a `SideFoot` (Contacts, Accounts and
+  settings, the worker's line / the last error). On the desktop an account's row no longer shows its address under
+  its name. **One pane in a narrow window** (`g_onePane`: the panes' room under 560 px): the list, or the conversation
+  opened across the window; back by the toolbar's ‹ (`T_BACK`, it was declared and unused) or Esc
+  (`MailRoot::onKey`); `refresh_all` lays out again when a conversation opens or closes. The toolbar under 600 px:
+  the pill without its words, a 110 px search. Translated: 239 words -- **not** *Re:* / *Fwd:* (compared), the default
+  file names, the protocol's words; the quoted reply's line and the forwarded header ARE translated (they are what the
+  user writes). `sync.h` and `accounts.h` define `TR` / `TRN` as the word itself when UIKit is not included
+  (`tools/tests/mail/modeltest.cpp`). `adaptive.sh <out> mail` (it starts `fakemail.py`'s two servers; needs
+  `MEDIA_SHOTS`'s `libmb.a` and `mkaccounts`): 800 x 480 (a conversation opened), 1280 x 720 in French, portrait (the
+  list; a conversation; the drawer), console.
 - **Ledger was looked at and NOT migrated**: its side bar has a head above the items (the company, its VAT number, the
   fiscal year's `ChoiceBox`) and a foot (the file; the Mac's language switch), and SidePanel has no slot above its
   items -- a rail or a drawer would lose the year chooser. It needs `SidePanel::setHeader (Widget *, int h)` (an
@@ -75,7 +89,7 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   `DataGrid` with roles (in portrait its columns are cut, not cards), their custom dialogs on `FormDialog`
   (`InputBox`, `PropsBox`, `VPropsBox`, `NameBox`: the scrolling sheet meanwhile), `uk_set_input_type` on the
   search fields. Media's pages (the album's band, the videos' grid) were looked at in landscape only.
-- **Next apps, in the study's order**: Mail, Courier, Ledger (above), PDF, Slides, Paint, QBStudio, 3DForge,
+- **Next apps, in the study's order**: Courier, Ledger (above), PDF, Slides, Paint, QBStudio, 3DForge,
   Calendar, IRC, Archiver, Icon Editor, fmtracker, Telegram's pane; then the toolbars, tabs, dialog bases, tables;
   the Control Panel's applets laid out in their pane (Theme first).
 

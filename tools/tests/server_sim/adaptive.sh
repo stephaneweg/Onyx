@@ -11,7 +11,7 @@
 #   - the pilots: the Task Manager (the grid's roles: cards in portrait), the Terminal (its tabs, no source change);
 #   - the viewport: Setup (800 x 600, fixed) at 800 x 480 scrolled by the wheel over its indicator;
 #   - the File Viewer: resizable, its places a SidePanel in pocket (landscape, portrait's drawer) and console.
-# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib]
+# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail]
 # SHOTS_PNG=<folder>: the pictures copied there too (docs/compact-shell/real/).
 set -e
 cd "$(dirname "$0")/../../.."
@@ -201,6 +201,39 @@ if want gamelib; then
 	WR=$(langdir fr); python3 $D/gamelib_samples.py "$WR"
 	run pocket_gamelib gamelib-720-fr "$WWW;$WWW;dump $OUT/gamelib-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=gamelib SIM_APP=gamelib SIM_WRITES=$WR
 	out gamelib-720-fr
+fi
+
+# ---- P7: Mail (its sidebar a SidePanel; one pane at a time in a narrow window) against shots.sh's made-up mailboxes -------
+# Needs what shots.sh builds for it (mbedTLS for the PC, mkaccounts): MEDIA_SHOTS = its folder; skipped when they are not there.
+if want mail; then
+	MS=${MEDIA_SHOTS:-/tmp/onyx_shots}; M=third_party/mbedtls-3.6.3
+	if [ -f "$MS/libmb.a" ] && [ -x "$MS/mkaccounts" ]; then
+		echo "adaptive: Mail"
+		ftapp pocket mail uikit_pocket -I$M/include "$MS/libmb.a"
+		MB=$(( 34000 + $$ % 500 * 4 ))
+		python3 tools/tests/mail/fakemail.py --imap $MB --pop $((MB+1)) --smtp $((MB+2)) --http $((MB+3)) --demo personal --user me@example.com >"$OUT/mail-srv1.log" 2>&1 &
+		MS1=$!
+		python3 tools/tests/mail/fakemail.py --imap $((MB+100)) --pop $((MB+101)) --smtp $((MB+102)) --http $((MB+103)) --demo work --user steph@atelier-lumen.example >"$OUT/mail-srv2.log" 2>&1 &
+		MS2=$!
+		sleep 2
+		ML="$OUT/mailw0"; rm -rf "$ML"; mkdir -p "$ML"
+		SIM_WRITES="$ML" SIM=exit "$MS/mkaccounts" "Personal|me@example.com|Stéphane|imap|127.0.0.1|$MB|$((MB+2))|secret|#D93025|gmail" \
+			"Atelier|steph@atelier-lumen.example|Stéphane|pop3|127.0.0.1|$((MB+101))|$((MB+102))|secret|#1A73E8" >>"$OUT/log.txt" 2>&1
+		W40="$(printf 'wait;%.0s' $(seq 40))"
+		# mrun <name> <screen> <mode> <lang> <script>: Mail over a fresh copy of the accounts
+		mrun () { mn=$1; msz=$2; mmd=$3; mlg=$4; msc=$5
+			rm -rf "$OUT/mailw"; cp -r "$ML" "$OUT/mailw"
+			if [ -n "$mlg" ]; then { grep -v '^language' sdcard/etc/system.ini; echo "language=$mlg"; } > "$OUT/mailw/etc/system.ini"; fi
+			run pocket_mail $mn "$W40;$W40;$W40;$msc;dump $OUT/$mn.elsm" SIM_SCREEN=$msz SIM_MODE=$mmd SIM_APPNAME=mail SIM_APP=mail SIM_WRITES="$OUT/mailw" SIM_SLEEP=1 SIM_REALNET=1 SIM_REALCLOCK=1
+			out $mn; }
+		mrun mail-800 800x480 pocket "" "expect kind fill;expect frame 0;down 200 250;up 200 250;$W40"
+		mrun mail-720-fr 1280x720 pocket fr "down 380 270;up 380 270;$W40"
+		mrun mail-portrait 480x800 pocket "" "$W"
+		mrun mail-portrait-read 480x800 pocket "" "down 240 280;up 240 280;$W40"
+		mrun mail-portrait-drawer 480x800 pocket "" "down 6 420;up 6 420;$W"
+		mrun mail-console 640x480 console "" "$W"
+		kill $MS1 $MS2 2>/dev/null
+	else echo "adaptive: Mail skipped (no $MS/libmb.a, $MS/mkaccounts: sh tools/tests/desktop_sim/shots.sh mail)"; fi
 fi
 
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1

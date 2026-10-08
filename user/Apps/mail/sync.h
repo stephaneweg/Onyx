@@ -15,6 +15,13 @@
 #include "mail/pop3.h"
 #include "mail/smtp.h"
 #include "mail/oauth.h"
+// The words shown are in the system's language (uikit/lang.h); a test that includes this header without UIKit keeps them
+#ifndef TR
+#define TR(s)	(s)
+#endif
+#ifndef TRN
+#define TRN(s)	(s)
+#endif
 
 namespace mailapp {
 
@@ -152,7 +159,7 @@ struct Worker
 			OAuth o; oauth_load (o.cfg); o.cancel = &cancel;
 			Tokens t; memset (&t, 0, sizeof t); scpy (t.refresh, s.refresh, sizeof t.refresh);
 			bool signedOut;
-			if (!o.refresh (t, now, &signedOut)) { snprintf (r.err, sizeof r.err, "%s", signedOut ? "Microsoft asks you to sign in again (Accounts and settings)." : o.err); return false; }
+			if (!o.refresh (t, now, &signedOut)) { snprintf (r.err, sizeof r.err, "%s", signedOut ? TR ("Microsoft asks you to sign in again (Accounts and settings).") : o.err); return false; }
 			scpy (s.access, t.access, sizeof s.access); scpy (s.refresh, t.refresh, sizeof s.refresh); s.expires = t.expires;
 			r.tokens = true; scpy (r.access, t.access, sizeof r.access); scpy (r.refresh, t.refresh, sizeof r.refresh); r.expires = t.expires;
 		}
@@ -167,7 +174,7 @@ struct Worker
 		const char *sec; if (!secret (j, r, false, &sec)) return 0;
 		Imap *im = new Imap;
 		im->c.cancel = &cancel; im->c.verify = j.acct.verify;
-		snprintf (current, sizeof current, "Connecting to %s...", j.acct.label);
+		snprintf (current, sizeof current, TR ("Connecting to %s..."), j.acct.label);
 		if (!im->connect (j.acct.inHost, j.acct.inPort, j.acct.inSec, j.acct.inUser, sec, j.acct.auth == AU_OAUTH)) { scpy (r.err, im->err, sizeof r.err); delete im; return 0; }
 		s.imap = im;
 		return im;
@@ -217,7 +224,7 @@ struct Worker
 		Session &s = session (j.acct.id);
 		if (j.listFolders)
 		{
-			snprintf (current, sizeof current, "Checking %s...", j.acct.label);
+			snprintf (current, sizeof current, TR ("Checking %s..."), j.acct.label);
 			if (!im->list (&r.folders, &r.nfolders)) { scpy (r.err, im->err, sizeof r.err); if (!im->c.open_) drop (s); return; }
 			r.folderList = true;
 			// the first look: no folder known yet -- the Inbox at least
@@ -259,7 +266,7 @@ struct Worker
 						if (!there) fr.gone.push (sn.uids[k]);
 					}
 			}
-			if (fr.added.n) { snprintf (current, sizeof current, "%s: %d new...", j.acct.label, fr.added.n); previews (*im, fr.added); }
+			if (fr.added.n) { snprintf (current, sizeof current, TR ("%s: %d new..."), j.acct.label, fr.added.n); previews (*im, fr.added); }
 			fr.ok = true;
 		}
 		r.ok = !r.err[0];
@@ -268,7 +275,7 @@ struct Worker
 	{
 		const char *sec; if (!secret (j, r, false, &sec)) return;
 		Pop3 p; p.c.cancel = &cancel; p.c.verify = j.acct.verify;
-		snprintf (current, sizeof current, "Checking %s...", j.acct.label);
+		snprintf (current, sizeof current, TR ("Checking %s..."), j.acct.label);
 		if (!p.connect (j.acct.inHost, j.acct.inPort, j.acct.inSec, j.acct.inUser, sec, j.acct.auth == AU_OAUTH)) { scpy (r.err, p.err, sizeof r.err); return; }
 		PopMsg *m; int n;
 		if (!p.list (&m, &n)) { scpy (r.err, p.err, sizeof r.err); p.quit (); return; }
@@ -287,7 +294,7 @@ struct Worker
 			long long seen = hit ? atoll (strchr (hit + 1, '\t') + 1) : now;
 			if (!hit)
 			{
-				snprintf (current, sizeof current, "%s: message %d of %d...", j.acct.label, i + 1, n);
+				snprintf (current, sizeof current, TR ("%s: message %d of %d..."), j.acct.label, i + 1, n);
 				Buf raw; if (!p.retr (m[i].num, raw)) { scpy (r.err, p.err, sizeof r.err); break; }
 				Envelope e; envelope_of (raw.c (), raw.n, e); e.uid = next++;
 				Msg &mm = fr.added.push (); msg_from_env (mm, e);
@@ -312,7 +319,7 @@ struct Worker
 		Imap *im = imap (j, r); if (!im) return;
 		Session &s = session (j.acct.id);
 		if (!ensure (s, j.folder, r)) return;
-		snprintf (current, sizeof current, "Opening the message...");
+		snprintf (current, sizeof current, TR ("Opening the message..."));
 		Buf b;
 		if (!im->fetch_body (j.uid, "", 0, b)) { scpy (r.err, im->err, sizeof r.err); if (!im->c.open_) drop (s); return; }
 		char dir[96]; snprintf (dir, sizeof dir, "%s/%s", j.root, j.dir); mkdirs (dir);
@@ -338,7 +345,7 @@ struct Worker
 	{
 		const char *sec; if (!secret (j, r, true, &sec)) return;
 		Smtp sm; sm.c.cancel = &cancel; sm.c.verify = j.acct.verify;
-		snprintf (current, sizeof current, "Sending...");
+		snprintf (current, sizeof current, TR ("Sending..."));
 		const char *user = j.acct.outUser[0] ? j.acct.outUser : j.acct.inUser;
 		if (!sm.connect (j.acct.outHost, j.acct.outPort, j.acct.outSec, user, sec, j.acct.auth == AU_OAUTH)) { scpy (r.err, sm.err, sizeof r.err); return; }
 		const char *rc[64]; for (int i = 0; i < j.nrcpt; i++) rc[i] = j.rcpt[i];
@@ -372,24 +379,24 @@ struct Worker
 	void check (Job &j, Result &r)
 	{
 		const char *sec; if (!secret (j, r, false, &sec)) return;
-		snprintf (current, sizeof current, "Trying %s...", j.acct.inHost);
+		snprintf (current, sizeof current, TR ("Trying %s..."), j.acct.inHost);
 		if (j.acct.kind == K_POP3)
 		{
 			Pop3 p; p.c.cancel = &cancel; p.c.verify = j.acct.verify;
-			if (!p.connect (j.acct.inHost, j.acct.inPort, j.acct.inSec, j.acct.inUser, sec, j.acct.auth == AU_OAUTH)) { snprintf (r.err, sizeof r.err, "Incoming (POP3): %s", p.err); return; }
+			if (!p.connect (j.acct.inHost, j.acct.inPort, j.acct.inSec, j.acct.inUser, sec, j.acct.auth == AU_OAUTH)) { snprintf (r.err, sizeof r.err, TR ("Incoming (POP3): %s"), p.err); return; }
 			p.quit ();
 		}
 		else
 		{
 			Imap im; im.c.cancel = &cancel; im.c.verify = j.acct.verify;
-			if (!im.connect (j.acct.inHost, j.acct.inPort, j.acct.inSec, j.acct.inUser, sec, j.acct.auth == AU_OAUTH)) { snprintf (r.err, sizeof r.err, "Incoming (IMAP): %s", im.err); return; }
+			if (!im.connect (j.acct.inHost, j.acct.inPort, j.acct.inSec, j.acct.inUser, sec, j.acct.auth == AU_OAUTH)) { snprintf (r.err, sizeof r.err, TR ("Incoming (IMAP): %s"), im.err); return; }
 			im.logout ();
 		}
 		if (!secret (j, r, true, &sec)) return;
-		snprintf (current, sizeof current, "Trying %s...", j.acct.outHost);
+		snprintf (current, sizeof current, TR ("Trying %s..."), j.acct.outHost);
 		Smtp sm; sm.c.cancel = &cancel; sm.c.verify = j.acct.verify;
 		const char *user = j.acct.outUser[0] ? j.acct.outUser : j.acct.inUser;
-		if (!sm.connect (j.acct.outHost, j.acct.outPort, j.acct.outSec, user, sec, j.acct.auth == AU_OAUTH)) { snprintf (r.err, sizeof r.err, "Outgoing (SMTP): %s", sm.err); return; }
+		if (!sm.connect (j.acct.outHost, j.acct.outPort, j.acct.outSec, user, sec, j.acct.auth == AU_OAUTH)) { snprintf (r.err, sizeof r.err, TR ("Outgoing (SMTP): %s"), sm.err); return; }
 		sm.quit ();
 		r.ok = true;
 	}
@@ -398,7 +405,7 @@ struct Worker
 		OAuth o; oauth_load (o.cfg); o.cancel = &cancel;
 		if (j.kind == J_OAUTH_START)
 		{
-			snprintf (current, sizeof current, "Asking Microsoft for a code...");
+			snprintf (current, sizeof current, TR ("Asking Microsoft for a code..."));
 			if (!o.start (r.dc)) { scpy (r.err, o.err, sizeof r.err); return; }
 			r.ok = true; return;
 		}
@@ -406,15 +413,15 @@ struct Worker
 		Tokens t; memset (&t, 0, sizeof t);
 		// asked every interval seconds until the user has signed in, refused, the code expired or the wizard closed
 		unsigned t0 = kapi_get_ticks ();
-		snprintf (current, sizeof current, "Waiting for Microsoft...");
+		snprintf (current, sizeof current, TR ("Waiting for Microsoft..."));
 		for (;;)
 		{
 			r.oauthState = o.poll (r.dc, t, now_utc ());
 			if (r.oauthState != 0 || cancel || quit) break;
-			if ((kapi_get_ticks () - t0) / 100 > (unsigned) r.dc.expiresIn) { r.oauthState = -1; scpy (r.err, "The code has expired: try again.", sizeof r.err); return; }
+			if ((kapi_get_ticks () - t0) / 100 > (unsigned) r.dc.expiresIn) { r.oauthState = -1; scpy (r.err, TR ("The code has expired: try again."), sizeof r.err); return; }
 			for (int k = 0; k < r.dc.interval * 10 && !cancel && !quit; k++) kapi_msleep (100);
 		}
-		if (cancel || quit) { scpy (r.err, "Cancelled.", sizeof r.err); r.oauthState = -1; return; }
+		if (cancel || quit) { scpy (r.err, TR ("Cancelled."), sizeof r.err); r.oauthState = -1; return; }
 		if (r.oauthState < 0) { scpy (r.err, o.err, sizeof r.err); return; }
 		if (r.oauthState == 1) { r.tokens = true; scpy (r.access, t.access, sizeof r.access); scpy (r.refresh, t.refresh, sizeof r.refresh); r.expires = t.expires; }
 		r.ok = true;
@@ -422,9 +429,9 @@ struct Worker
 	// a remote picture (the message's sender's server: asked only once the user allowed it)
 	void picture (Job &j, Result &r)
 	{
-		snprintf (current, sizeof current, "Fetching the pictures...");
+		snprintf (current, sizeof current, TR ("Fetching the pictures..."));
 		Buf b; int st = http_get (j.uids, b, 6 << 20, r.err, sizeof r.err, &cancel);
-		if (st != 200) { if (st > 0) snprintf (r.err, sizeof r.err, "The picture's server said %d.", st); return; }
+		if (st != 200) { if (st > 0) snprintf (r.err, sizeof r.err, TR ("The picture's server said %d."), st); return; }
 		r.data = b.take (); r.dataLen = b.n; r.ok = true;
 	}
 	void run (Job *j)

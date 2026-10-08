@@ -3753,6 +3753,15 @@ Mail is doing. In the middle the **conversations** by day (Today, Yesterday, thi
 messages, the subject, the first words, when, a paper clip, a star, the account's stripe; *All* /
 *Unread*. At the right the conversation. The **toolbar**: *New message*, Reply, Reply all, Forward,
 Archive, Delete, Junk, Star, the **search** (who, subject, text, in every account), *Check now*.
+Mail speaks the **system's language** (English or French: Control Panel ▸ Language & Region) — its
+wizard, its messages and the line a reply quotes (*On …, … wrote:*) too.
+
+**In the pocket and console modes** (the same program) the left column is a **rail of icons** in
+landscape when the screen is narrow (the accounts' coloured marks among them; the names under the
+pointer or the focus), a **drawer** in portrait (the tab at the left edge) and the **column** in console
+(L1 / R1: the next place). In a **narrow window** (portrait) Mail shows **one pane at a time**: the
+conversations, then the one opened across the window — the toolbar's **‹** or **Esc** comes back to the
+list; *New message* is a pen alone and the search shorter.
 
 | | |
 |:---:|:---:|
