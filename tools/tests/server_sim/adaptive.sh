@@ -11,7 +11,7 @@
 #   - the pilots: the Task Manager (the grid's roles: cards in portrait), the Terminal (its tabs, no source change);
 #   - the viewport: Setup (800 x 600, fixed) at 800 x 480 scrolled by the wheel over its indicator;
 #   - the File Viewer: resizable, its places a SidePanel in pocket (landscape, portrait's drawer) and console.
-# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer]
+# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos]
 # SHOTS_PNG=<folder>: the pictures copied there too (docs/compact-shell/real/).
 set -e
 cd "$(dirname "$0")/../../.."
@@ -126,6 +126,63 @@ if want fileviewer; then
 	# portrait: the places' drawer opened by its tab at the left edge
 	run pocket_fileviewer fileviewer-portrait-drawer "$WWW;down 6 400;up 6 400;$W;dump $OUT/fileviewer-portrait-drawer.elsm" SIM_SCREEN=480x800 SIM_APPNAME=fileviewer SIM_APP=fileviewer
 	out fileviewer-portrait-drawer
+fi
+
+# ---- P7, the apps migrated: the Media Player (its sidebar a navigation SidePanel) ---------------------------------------
+# Needs what shots.sh builds for it (AudioKit, user/Libs/av and FFmpeg for the PC): `sh tools/tests/desktop_sim/shots.sh media`
+# first; MEDIA_SHOTS = its folder (SHOTS_TMP, /tmp/onyx_shots), FFMPEG_HOST as there. Skipped when they are not there.
+if want media; then
+	MS=${MEDIA_SHOTS:-/tmp/onyx_shots}; FFH=${FFMPEG_HOST:-/tmp/onyx_ffmpeg_host}
+	if [ -f "$MS/libaudiokit.a" ] && [ -f "$MS/av/libavhost.a" ] && [ -f "$FFH/libavcodec/libavcodec.a" ]; then
+		echo "adaptive: the Media Player"
+		ftapp pocket media uikit_pocket -Ithird_party "$MS/libaudiokit.a" "$MS/av/libavhost.a" -L"$FFH/libavformat" -L"$FFH/libavcodec" -L"$FFH/libswscale" -L"$FFH/libswresample" -L"$FFH/libavutil" \
+			-lavformat -lavcodec -lswscale -lswresample -lavutil -lm
+		for t in 800x480:800 1280x720:720 480x800:portrait 640x480:console; do
+			sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
+			WR=$(langdir "")
+			run pocket_media media-$tg "$WWW;$WWW;$WWW;$WWW;expect kind fill;expect frame 0;$W;dump $OUT/media-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=media SIM_APP=media SIM_WRITES=$WR SIM_SLEEP=1
+			out media-$tg
+		done
+		# the songs' table (the rail's fourth icon), a song started: the bar below
+		WR=$(langdir "")
+		run pocket_media media-songs-800 "$WWW;$WWW;$WWW;$WWW;down 24 268;up 24 268;$WWW;move 300 230;down 300 230;up 300 230;wait;down 300 230;up 300 230;$WWW;dump $OUT/media-songs-800.elsm" SIM_SCREEN=800x480 SIM_APPNAME=media SIM_APP=media SIM_WRITES=$WR SIM_SLEEP=1
+		out media-songs-800
+		# landscape: the rail under the pointer shows its labels; portrait: the drawer opened by its tab; French
+		WR=$(langdir "")
+		run pocket_media media-rail-open "$WWW;$WWW;move 24 200;$W;$W;dump $OUT/media-rail-open.elsm" SIM_SCREEN=800x480 SIM_APPNAME=media SIM_APP=media SIM_WRITES=$WR SIM_SLEEP=1
+		out media-rail-open
+		WR=$(langdir "")
+		run pocket_media media-portrait-drawer "$WWW;$WWW;$WWW;$WWW;down 6 400;up 6 400;$W;dump $OUT/media-portrait-drawer.elsm" SIM_SCREEN=480x800 SIM_APPNAME=media SIM_APP=media SIM_WRITES=$WR SIM_SLEEP=1
+		out media-portrait-drawer
+		WR=$(langdir fr)
+		run pocket_media media-720-fr "$WWW;$WWW;dump $OUT/media-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=media SIM_APP=media SIM_WRITES=$WR SIM_SLEEP=1
+		out media-720-fr
+	else echo "adaptive: the Media Player skipped (no $MS/libaudiokit.a: sh tools/tests/desktop_sim/shots.sh media)"; fi
+fi
+
+# ---- P7: Photos (its sidebar a navigation SidePanel) over the made-up library of tools/tests/photos/make_samples.py -------
+if want photos; then
+	echo "adaptive: Photos"
+	gcc -O2 -w -ffp-contract=off -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp_photos.o"
+	ftapp pocket photos uikit_pocket "$OUT/gpucomp_photos.o" -Wl,--unresolved-symbols=ignore-all
+	[ -d "$OUT/plib/Pictures" ] || python3 tools/tests/photos/make_samples.py "$OUT/plib" >/dev/null
+	plib () { d=$(langdir "$1"); cp -r "$OUT/plib/Pictures" "$d/"; cp -r "$OUT/plib/etc/photos" "$d/etc/"; echo "$d"; }
+	PW="$WWW;$WWW;$WWW;$WWW;$WWW;$WWW"		# (the scan, the thumbnails)
+	for t in 800x480:800 1280x720:720 480x800:portrait 640x480:console; do
+		sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
+		WR=$(plib "")
+		run pocket_photos photos-$tg "$PW;expect kind fill;expect frame 0;$W;dump $OUT/photos-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=photos SIM_APP=photos SIM_WRITES=$WR SIM_SLEEP=1
+		out photos-$tg
+	done
+	WR=$(plib "")
+	run pocket_photos photos-rail-open "$PW;move 24 200;$W;$W;dump $OUT/photos-rail-open.elsm" SIM_SCREEN=800x480 SIM_APPNAME=photos SIM_APP=photos SIM_WRITES=$WR SIM_SLEEP=1
+	out photos-rail-open
+	WR=$(plib "")
+	run pocket_photos photos-portrait-drawer "$PW;down 6 420;up 6 420;$W;dump $OUT/photos-portrait-drawer.elsm" SIM_SCREEN=480x800 SIM_APPNAME=photos SIM_APP=photos SIM_WRITES=$WR SIM_SLEEP=1
+	out photos-portrait-drawer
+	WR=$(plib fr)
+	run pocket_photos photos-720-fr "$PW;dump $OUT/photos-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=photos SIM_APP=photos SIM_WRITES=$WR SIM_SLEEP=1
+	out photos-720-fr
 fi
 
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1

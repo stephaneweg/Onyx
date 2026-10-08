@@ -321,8 +321,8 @@ static bool scan_video (const VideoLib *old, VideoLib *fresh, const char *path, 
 // "Film", "Clip", "Series  ·  S1 E3"
 static void video_kind_line (const Video &x, char *b, int cap)
 {
-	if (x.episode) snprintf (b, cap, "Series  \xC2\xB7  S%d E%d", x.season, x.episode);
-	else snprintf (b, cap, "%s", x.kind == VK_FILM ? "Film" : x.kind == VK_SERIES ? "Series" : "Clip");
+	if (x.episode) snprintf (b, cap, TR ("Series  \xC2\xB7  S%d E%d"), x.season, x.episode);
+	else snprintf (b, cap, "%s", x.kind == VK_FILM ? TR ("Film") : x.kind == VK_SERIES ? TR ("Series") : TR ("Clip"));
 }
 
 } // namespace media

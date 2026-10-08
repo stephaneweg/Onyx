@@ -155,25 +155,25 @@ static void check_mark (Canvas &cv, int x, int y, bool on, unsigned ringCol)
 }
 
 // ---- dates ------------------------------------------------------------------------------------------------------------------------
-static const char *const MONTHS[12] = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" };
-static const char *const WDAYS[7] = { "Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday" };
+static const char *const MONTHS[12] = { TRN ("January"), TRN ("February"), TRN ("March"), TRN ("April"), TRN ("May"), TRN ("June"), TRN ("July"), TRN ("August"), TRN ("September"), TRN ("October"), TRN ("November"), TRN ("December") };
+static const char *const WDAYS[7] = { TRN ("Thursday"), TRN ("Friday"), TRN ("Saturday"), TRN ("Sunday"), TRN ("Monday"), TRN ("Tuesday"), TRN ("Wednesday") };
 static long long day_of (long long t) { return t >= 0 ? t / 86400 : (t - 86399) / 86400; }
 // "Saturday 27 September 2026"
 static void fmt_day (long long t, char *b, int cap)
 {
 	long long d = day_of (t); int y, m, dd; civil (d, &y, &m, &dd);
 	long long today = day_of (now_local ());
-	if (today && d == today) snprintf (b, cap, "Today");
-	else if (today && d == today - 1) snprintf (b, cap, "Yesterday");
-	else snprintf (b, cap, "%s %d %s %d", WDAYS[((d % 7) + 7) % 7], dd, MONTHS[m - 1], y);
+	if (today && d == today) snprintf (b, cap, "%s", TR ("Today"));
+	else if (today && d == today - 1) snprintf (b, cap, "%s", TR ("Yesterday"));
+	else snprintf (b, cap, "%s %d %s %d", TR (WDAYS[((d % 7) + 7) % 7]), dd, TR (MONTHS[m - 1]), y);
 }
 static void fmt_time (long long t, char *b, int cap) { long long s = t - day_of (t) * 86400; snprintf (b, cap, "%02d:%02d", (int) (s / 3600), (int) (s / 60 % 60)); }
 static int year_of (long long t) { int y, m, d; civil (day_of (t), &y, &m, &d); return y; }
 static void fmt_size (unsigned long long n, char *b, int cap)
 {
-	if (n < 1024) snprintf (b, cap, "%llu bytes", n);
-	else if (n < 1024 * 1024) snprintf (b, cap, "%llu KB", (n + 512) / 1024);
-	else snprintf (b, cap, "%llu.%llu MB", n / 1048576, n % 1048576 * 10 / 1048576);
+	if (n < 1024) snprintf (b, cap, TR ("%llu bytes"), n);
+	else if (n < 1024 * 1024) snprintf (b, cap, TR ("%llu KB"), (n + 512) / 1024);
+	else snprintf (b, cap, TR ("%llu.%llu MB"), n / 1048576, n % 1048576 * 10 / 1048576);
 }
 
 } // namespace photos

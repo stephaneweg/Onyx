@@ -4,6 +4,68 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## PocketUI phase P7, begun: the Media Player and Photos migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, not published (no signing key on this PC)
+
+P7 is the apps' migration to P6's adaptive widgets (`docs/POCKETUI-TECH-STUDY.md` §6.15, §9: about 32 session-days, one
+app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10.6):
+
+1. Its sidebar class becomes a `SidePanel` (`UK_SP_LEFT`, `UK_SP_NAVIGATION`): `side_build ()` makes the items (made
+   again only when a signature of what they show changes -- a hash of the names and counts --, so the scroll and the
+   hover survive a refresh), `side_select ()` the item of the page shown, `onSelect` navigates, `onItemMenu` the right
+   click's menus, `setIconFn` the app's own icons (centred in the box given: `x + (size - 16) / 2`), `setFaces (0,
+   <the app's small face>)` the headings' face. What was under the items (Media's *+ New playlist* and the songs'
+   count) is a small widget given to `setFooter` -- in console it takes the column's dark blue itself
+   (`uk_size_class () == UK_SC_CONSOLE`). A link among the items (Photos' *New album...*) is an item whose `onSelect`
+   selects the shown page back, then acts.
+2. The layout code calls `side->place (x, y, w, h)` (never `left` / `top` / `resizeTo`) and gives the content
+   `side->reservedWidth ()`; `onPresentation`, `Root::onResized` and **`Root::onSizeClass`** all lay out again.
+3. **The panel is added to the Root AFTER the content and the bars** (the last child is on top): a drawer's tab and an
+   open drawer or an expanded rail must cover them -- added first, the tab was hidden under the content.
+4. `uk_scroll_gutter ()` where the app subtracted `UK_SBW` for its content's width.
+5. The app is **translated** (CLAUDE.md: an app worked on): `TR ()` around its words, `uk_lang_init ()` after the faces,
+   `sdcard/apps/<app>.app/lang/fr.txt`. A table of words at namespace scope takes `TRN ("...")` and `TR (T[i])` where
+   it is drawn (a `TR ()` there would run before `uk_lang_init`). **A header a kit includes too** (Photos'
+   `imgops.h`, included by ImageKit) defines `TRN` itself when UIKit's is not there. Never wrap what is stored or
+   compared (Media's *Unknown artist*, the file kinds' filters, paths).
+6. Its fixed layouts that break in a narrow window are given a width rule (below); the desktop's geometry is kept
+   exactly where the window is as wide as before.
+
+- **Media Player** (`user/Apps/media/main.cpp`, `videos.h`): the sidebar a SidePanel + `SideFoot`; the bar of what
+  plays in three layouts by its width (`NowBar::narrow ()`, `seekW ()`, `seekX ()`: >= 1000 the desktop's, a 300 px
+  line under it, under 760 the line across the bar, the cover alone, the queue and the speaker); the welcome page's
+  lines wrapped (`Content::text_cw`), its buttons as wide as their words; a page title's sub line cut where the page
+  ends (`section_head`). Translated: 180 words. Desktop: the sidebar's labels are 6 px further right and its icons
+  3 px (the shared SidePanel's look, the study's decision 9); nothing else moves.
+- **Photos** (`grid.h`, `app.h`, `main.cpp` and the others for `TR`): the left column a SidePanel with the counts as
+  trailing values; **All albums** is now an item (it was a click on the *ALBUMS* heading -- a heading is not
+  clickable); *New album...* and *Add a folder...* items with a +; the albums' and folders' right-click menus through
+  `onItemMenu`. Translated: 185 words (the days and months too). `shots.sh`'s `photos-albums` clicks the new item.
+- **Tests (PC)**: `sh tools/tests/server_sim/adaptive.sh <out> media` and `... photos` -- each app under PocketUI at
+  800 x 480 (the rail; the rail expanded under the pointer), 1280 x 720 (whole; in French), 480 x 800 (the drawer's tab;
+  the drawer opened), console 640 x 480 (the column): 8 checks each, all pass; the pictures looked at. The Media
+  Player's part needs what `shots.sh media` builds (AudioKit, `user/Libs/av`, FFmpeg for the PC): `MEDIA_SHOTS=<its
+  SHOTS_TMP> FFMPEG_HOST=<its folder>`; skipped with a line when they are not there. `check.py media photos`: 0
+  missing. Both run on the desktop simulator (Elegant's stand-in) in English and French.
+- **NOT done here**: `screenshots/media-*.png` were NOT regenerated -- `tools/tests/media/make_library.py` needs the
+  `ffmpeg` program (with libvorbis, libvpx, libaom, x264, lame) and this PC's WSL has none (`sudo apt install ffmpeg`,
+  the user's to run); they also predate the bar-across-the-window layout. `docs/build_docs.py` not run (no pandoc
+  here). Nothing published: no `ONYX_PKG_KEY` on this PC -- `sdcard/apps/media.app/main` and `photos.app/main` are
+  staged and committed, **`sh tools/pkg/publish.sh` is owed** (media, photos: their `lang/` folders are new).
+- **Pi checklist** (not done): stage `SD:/apps/media.app` and `SD:/apps/photos.app` (`main`, `lang/fr.txt`).
+  1. Desktop: both as before but the sidebars' labels; Photos' *All albums*, a right click on an album and a folder;
+     a playlist made in Media shows in its sidebar at once; `language=fr`: both in French.
+  2. Pocket 800 x 480: the rails, the names under the pointer; Media's bar (the 300 px line). Pocket at
+     1920 x 1080: the sidebars whole.
+  3. Console: the columns, Ctrl+Page Up / Down (L1 / R1) from place to place.
+- **Left in these two apps** (the study's table): Media's and Photos' own top bars on `uikit::ToolBar` with
+  priorities (they hold in 480 px as they are: Media's path bar shrinks, Photos' slider stays), Media's song table on
+  `DataGrid` with roles (in portrait its columns are cut, not cards), their custom dialogs on `FormDialog`
+  (`InputBox`, `PropsBox`, `VPropsBox`, `NameBox`: the scrolling sheet meanwhile), `uk_set_input_type` on the
+  search fields. Media's pages (the album's band, the videos' grid) were looked at in landscape only.
+- **Next apps, in the study's order**: Game Library, Mail, Courier, Ledger, PDF, Slides, Paint, QBStudio, 3DForge,
+  Calendar, IRC, Archiver, Icon Editor, fmtracker, Telegram's pane; then the toolbars, tabs, dialog bases, tables;
+  the Control Panel's applets laid out in their pane (Theme first).
+
 ## The pocket launcher v2; Onyx is Home in pocket; the shell's scale after a switch; full screen in Onyx Remote (2026-10-08): built, tested on the PC, NOT yet on the Pi, committed (not pushed), not published
 
 - **pocketshell's launcher v2** (`user/Apps/pocketshell/home.h` new -- the launcher, out of `main.cpp`; `look.h` new --

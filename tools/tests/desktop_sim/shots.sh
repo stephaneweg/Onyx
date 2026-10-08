@@ -800,7 +800,7 @@ if want photos; then			# (Photos over a made-up library -- tools/tests/photos/ma
 	pp photos-edit "$S0;$EDIT;down 857 151;up 857 151;$W10;$W10"
 	pp photos-crop "$S0;$EDIT;down 767 83;up 767 83;$W;down 749 324;up 749 324;$W10;$W10"
 	pp photos-filters "$S0;$EDIT;down 950 110;up 950 110;$W10;$W10;down 800 300;up 800 300;$W10;$W10"
-	pp photos-albums "$S0;down 60 196;up 60 196;$W10;$W10"
+	pp photos-albums "$S0;down 60 222;up 60 222;$W10;$W10"
 	pp photos-menu "$S0;rdown 300 360;rup 300 360;$W;$W"
 fi
 if want milk; then			# (the Milk scheme: the overlay milk/, its theme.txt)

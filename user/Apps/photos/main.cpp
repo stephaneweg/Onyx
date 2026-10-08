@@ -26,8 +26,10 @@ static void layout_parts ()
 {
 	int W = g_root->width, H = g_root->height;
 	g_tb->resizeTo (W, TB_H); g_tb->place ();
-	g_side->top = TB_H; g_side->resizeTo (SIDE_W, H - TB_H);
-	g_grid->left = SIDE_W; g_grid->top = TB_H; g_grid->resizeTo (W - SIDE_W, H - TB_H);
+	side_build ();
+	g_side->place (0, TB_H, SIDE_W, H - TB_H);				// (whole, a rail, a drawer: what it takes at its side)
+	int sw = g_side->reservedWidth ();
+	g_grid->left = sw; g_grid->top = TB_H; g_grid->resizeTo (W - sw, H - TB_H);
 	g_view->resizeTo (W, H); g_edit->resizeTo (W, H);
 	g_view->disp.free_ (); g_edit->viewDirty = true;
 	g_grid->relayout ();
@@ -35,6 +37,7 @@ static void layout_parts ()
 static void refresh_all ()
 {
 	g_grid->relayout ();
+	side_build ();
 	g_tb->invalidate (true); g_side->invalidate (true); g_grid->invalidate (true);
 	if (!g_view->hidden) g_view->invalidate (true);
 	if (!g_edit->hidden) g_edit->invalidate (true);
@@ -96,8 +99,8 @@ static void act_add_folder ()
 	int k = (int) strlen (p); while (k > 1 && p[k - 1] == '/' && p[k - 2] != ':') p[--k] = 0;
 	for (int i = 0; i < g_lib.nroots; i++)
 		if (ipfx (p, g_lib.roots[i]) && (p[strlen (g_lib.roots[i])] == 0 || p[strlen (g_lib.roots[i])] == '/'))
-		{ char q[400]; snprintf (q, sizeof q, "%s is watched already (in %s).", p, g_lib.roots[i]); uk_messagebox ("Photos", q, MB_OK); return; }
-	if (g_lib.nroots >= 16) { uk_messagebox ("Photos", "Photos watches 16 folders at most.", MB_OK); return; }
+		{ char q[400]; snprintf (q, sizeof q, TR ("%s is watched already (in %s)."), p, g_lib.roots[i]); uk_messagebox (TR ("Photos"), q, MB_OK); return; }
+	if (g_lib.nroots >= 16) { uk_messagebox (TR ("Photos"), TR ("Photos watches 16 folders at most."), MB_OK); return; }
 	scpy (g_lib.added[g_lib.nadded++], p, sizeof g_lib.added[0]);
 	g_lib.save_added (); g_lib.load_roots ();
 	g_lib.start_scan ();
@@ -113,8 +116,9 @@ static void on_full (FullDone *d) { g_view->full_came (d); }
 class PhotosRoot : public Root
 {
 public:
-	PhotosRoot (int w, int h) : Root (w, h, "Photos") {}
+	PhotosRoot (int w, int h) : Root (w, h, TR ("Photos")) {}
 	void onResized () override { layout_parts (); refresh_all (); }
+	void onSizeClass (int) override { layout_parts (); refresh_all (); }
 	void onTick () override
 	{
 		static char lastQ[200]; static unsigned qT;
@@ -154,7 +158,7 @@ void PhotosRoot::open_path (const char *p)
 	if (k < 0)
 	{
 		PicInfo pi; void *f = kapi_open (p); unsigned sz = 0; if (f) { sz = kapi_fsize (f); kapi_close (f); }
-		if (!f || !pic_info (p, pi)) { uk_messagebox ("Photos", "This picture cannot be read.", MB_OK); return; }
+		if (!f || !pic_info (p, pi)) { uk_messagebox (TR ("Photos"), TR ("This picture cannot be read."), MB_OK); return; }
 		Photo ph; photo_from (ph, p, sz, pi, now_local ()); ph.alive = true;
 		g_lib.ph.push (ph); g_lib.reindex (); k = g_lib.ph.n - 1;	// (not saved unless its folder is watched)
 	}
@@ -188,6 +192,7 @@ int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);
 	faces_open ();
+	uk_lang_init ();
 
 	char args[400]; int na = kapi_get_args (args, sizeof args); args[na > 0 && na < 400 ? na : 0] = 0;
 	char *a = args; while (*a == ' ') a++;
@@ -204,41 +209,45 @@ int main (void)
 	root.setResizable (true);
 	root.setBg (C_BG);
 	g_tb = new ToolBar (0, 0, 1000, TB_H); root.addChild (g_tb);
-	g_side = new Sidebar (0, TB_H, SIDE_W, 640 - TB_H); root.addChild (g_side);
+	g_side = new SidePanel (0, TB_H, SIDE_W, 640 - TB_H, UK_SP_LEFT, UK_SP_NAVIGATION);
+	g_side->setIconFn (side_icon); g_side->setFaces (0, g_face[F_TINY]); g_side->setColors (col_side (), UK_AUTO);
+	g_side->onSelect = side_chosen; g_side->onItemMenu = side_menu;
+	g_side->onPresentation = [] (SidePanel &, int) { layout_parts (); refresh_all (); };
 	g_grid = new Grid (SIDE_W, TB_H, 1000 - SIDE_W, 640 - TB_H); root.addChild (g_grid);
+	root.addChild (g_side);					// (over the grid: a rail's labels, a drawer and its tab)
 	g_view = new Viewer (0, 0, 1000, 640); root.addChild (g_view);
 	g_edit = new Editor (0, 0, 1000, 640); root.addChild (g_edit);
 
 	static Menu menu;
-	menu.menu ("File");
-	menu.item ("Slideshow", "F5", KEY_F1 + 4, m_slideshow);
+	menu.menu (TR ("File"));
+	menu.item (TR ("Slideshow"), "F5", KEY_F1 + 4, m_slideshow);
 	menu.separator ();
-	menu.item ("Add a Folder...", "", 0, act_add_folder);
-	menu.item ("Look for New Photos", "", 0, m_rescan);
+	menu.item (TR ("Add a Folder..."), "", 0, act_add_folder);
+	menu.item (TR ("Look for New Photos"), "", 0, m_rescan);
 	menu.separator ();
-	menu.item ("Send by Mail...", "", 0, m_mail);
-	menu.item ("Export as a PDF...", "", 0, m_pdf);
-	menu.item ("Print...", "^P", UK_CTRL ('P'), m_print);
-	menu.menu ("Edit");
-	menu.item ("Find...", "^F", UK_CTRL ('F'), m_find);
-	menu.item ("Select All", "^A", UK_CTRL ('A'), m_selall);
-	menu.item ("Select None", "Esc", 0, m_selnone);
-	menu.menu ("View");
-	menu.item ("All Photos", "", 0, m_all);
-	menu.item ("Favourites", "", 0, m_favs);
-	menu.item ("Recently Added", "", 0, m_recent);
-	menu.item ("Albums", "", 0, m_albums);
+	menu.item (TR ("Send by Mail..."), "", 0, m_mail);
+	menu.item (TR ("Export as a PDF..."), "", 0, m_pdf);
+	menu.item (TR ("Print..."), "^P", UK_CTRL ('P'), m_print);
+	menu.menu (TR ("Edit"));
+	menu.item (TR ("Find..."), "^F", UK_CTRL ('F'), m_find);
+	menu.item (TR ("Select All"), "^A", UK_CTRL ('A'), m_selall);
+	menu.item (TR ("Select None"), "Esc", 0, m_selnone);
+	menu.menu (TR ("View"));
+	menu.item (TR ("All Photos"), "", 0, m_all);
+	menu.item (TR ("Favourites"), "", 0, m_favs);
+	menu.item (TR ("Recently Added"), "", 0, m_recent);
+	menu.item (TR ("Albums"), "", 0, m_albums);
 	menu.separator ();
-	menu.item ("Bigger Thumbnails", "^+", UK_CTRL ('='), m_bigger);
-	menu.item ("Smaller Thumbnails", "^-", UK_CTRL ('-'), m_smaller);
-	menu.menu ("Photo");
-	menu.item ("Edit...", "E", 0, m_edit);
-	menu.item ("Rotate to the Left", "R", 0, m_rotate);
-	menu.item ("Favourite", "F", 0, m_fav);
-	menu.item ("Add to an Album...", "", 0, m_album);
-	menu.item ("New Album...", "", 0, act_new_album);
+	menu.item (TR ("Bigger Thumbnails"), "^+", UK_CTRL ('='), m_bigger);
+	menu.item (TR ("Smaller Thumbnails"), "^-", UK_CTRL ('-'), m_smaller);
+	menu.menu (TR ("Photo"));
+	menu.item (TR ("Edit..."), "E", 0, m_edit);
+	menu.item (TR ("Rotate to the Left"), "R", 0, m_rotate);
+	menu.item (TR ("Favourite"), "F", 0, m_fav);
+	menu.item (TR ("Add to an Album..."), "", 0, m_album);
+	menu.item (TR ("New Album..."), "", 0, act_new_album);
 	menu.separator ();
-	menu.item ("Move to the Trash", "Del", 0, m_delete);
+	menu.item (TR ("Move to the Trash"), "Del", 0, m_delete);
 	menu.publish ();
 
 	counts ();

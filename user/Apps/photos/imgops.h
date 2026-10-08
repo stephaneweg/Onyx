@@ -197,8 +197,11 @@ static void crop (Pix &p, int x, int y, int w, int h)
 // ---- the adjustments ------------------------------------------------------------------------------------------------------------
 enum { A_EXPOSURE, A_CONTRAST, A_HIGHLIGHTS, A_SHADOWS, A_SATURATION, A_WARMTH, A_SHARPNESS, A_N };
 enum { FL_NONE, FL_BW, FL_WARM, FL_COOL, FL_VINTAGE, FL_VIVID, FL_N };
-static const char *const ADJ_NAME[A_N] = { "Exposure", "Contrast", "Highlights", "Shadows", "Saturation", "Warmth", "Sharpness" };
-static const char *const FILTER_NAME[FL_N] = { "Original", "Black and white", "Warm", "Cool", "Vintage", "Vivid" };
+#ifndef TRN
+#define TRN(s)	(s)		// (uikit/lang.h's mark for tools/lang/check.py; ImageKit includes this header without UIKit)
+#endif
+static const char *const ADJ_NAME[A_N] = { TRN ("Exposure"), TRN ("Contrast"), TRN ("Highlights"), TRN ("Shadows"), TRN ("Saturation"), TRN ("Warmth"), TRN ("Sharpness") };
+static const char *const FILTER_NAME[FL_N] = { TRN ("Original"), TRN ("Black and white"), TRN ("Warm"), TRN ("Cool"), TRN ("Vintage"), TRN ("Vivid") };
 
 struct Adjust
 {

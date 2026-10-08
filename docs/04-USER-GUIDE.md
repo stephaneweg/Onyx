@@ -3179,7 +3179,16 @@ click shows the folders watched) and the page,
 and at the bottom, always, **the bar of what plays**: the cover (a click: *Now playing*), the song and
 its ♥ (a favourite), **shuffle**, **previous**, **play / pause**, **next**, **repeat** (all, one, off),
 the position (drag it), the queue, the **mini player**, the volume (drag it, or the wheel; a click on
-the speaker mutes).
+the speaker mutes). Media Player speaks the **system's language** (English or French: Control Panel ▸
+Language & Region).
+
+**In the pocket and console modes** (the same program): the sidebar is a **rail of icons** in landscape
+(the pointer or the focus over it shows the names; a screen at least four times its width keeps it
+whole), a **drawer** in portrait (the tab at the left edge opens it, a place chosen closes it) and the
+**column** of big rows in console (L1 / R1: the next place). The bar of what plays follows the window's
+width: a shorter position line under 1000 pixels; under 760 (portrait) the line across the bar, the
+cover alone at the left (a click: *Now playing*), the queue and the speaker at the right — no mini
+player, no volume line (the wheel still changes it).
 
 | | |
 |:---:|:---:|
@@ -3536,9 +3545,17 @@ far it is (*Thumbnails 120 / 2814*); the window stays usable meanwhile.
 the picture (its EXIF), else a date in the file's name (`IMG_20260927_164200.jpg`,
 `Screenshot 2026-09-27 at 16.42.00.png`). A photo taken standing is shown standing. At the right the
 **years**: click or drag there to jump through thousands of photos. The slider in the toolbar makes the
-thumbnails bigger or smaller (Ctrl + / Ctrl −). At the left: **All photos**, **Favourites**, **Recently
-added** (the last 30 days), the **albums** (*Albums* shows them all, with their covers), the **folders**.
-The **search** finds a name, a date (`september`, `2025`, `saturday`), a camera, an album, a description.
+thumbnails bigger or smaller (Ctrl + / Ctrl −). At the left, each with its count: **All photos**,
+**Favourites**, **Recently added** (the last 30 days), the **albums** (*All albums* shows them all, with
+their covers; *New album...*), the **folders** (*Add a folder...*); a right click on an album or a folder:
+its menu. The **search** finds a name, a date (`september`, `2025`, `saturday`), a camera, an album, a
+description. Photos speaks the **system's language** (English or French: Control Panel ▸ Language &
+Region) — the days and months too, and the search takes them in that language.
+
+**In the pocket and console modes** (the same program) the left column is a **rail of icons** in
+landscape (the pointer or the focus over it shows the names and the counts; a wide screen keeps it
+whole), a **drawer** in portrait (the tab at the left edge) and the **column** of big rows in console
+(L1 / R1: the next place).
 
 | | |
 |:---:|:---:|

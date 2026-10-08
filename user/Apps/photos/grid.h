@@ -45,7 +45,7 @@ static int album_cover (int a)
 class SearchBox : public HintBox
 {
 public:
-	SearchBox (int l, int t, int w, int h) : HintBox (l, t, w, h, "Search: a name, a date...") { maxLen = 190; padR = 22; }
+	SearchBox (int l, int t, int w, int h) : HintBox (l, t, w, h, TR ("Search: a name, a date...")) { maxLen = 190; padR = 22; }
 	void onDraw () override			// (the magnifier, inside the field's right)
 	{
 		HintBox::onDraw ();
@@ -70,7 +70,7 @@ public:
 		canvas.fillRect (0, height - 1, width, 1, uk_mix (C_BG, C_TEXT, 40));
 		int x = 12;
 		{	// Slideshow: the accent pill
-			const char *l = "Slideshow"; int w = tw (l, F_UI, 1) + 46;
+			const char *l = TR ("Slideshow"); int w = tw (l, F_UI, 1) + 46;
 			bool on = g_list.n > 0 || g_src == SRC_ALBUMS;
 			fill_round (canvas, x, 8, w, 34, 6, hot == T_SHOW && on ? uk_mix (C_ACCENT, 0xFFFFFF, 30) : on ? C_ACCENT : uk_mix (C_BG, C_ACCENT, 120));
 			icon (canvas, I_PLAY, x + 12, 16, 18, C_SEL_TEXT);
@@ -80,7 +80,7 @@ public:
 		canvas.fillRect (x, 12, 1, 26, uk_mix (C_BG, C_TEXT, 50)); x += 12;
 		if (g_selN)
 		{
-			char s[40]; snprintf (s, sizeof s, g_selN == 1 ? "1 selected" : "%d selected", g_selN);
+			char s[40]; snprintf (s, sizeof s, g_selN == 1 ? TR ("1 selected") : TR ("%d selected"), g_selN);
 			text_v (canvas, x, 8, 34, s, C_ACCENT, F_UI, 1); x += tw (s, F_UI, 1) + 10;
 			// all favourites already? the full heart
 			bool allFav = true; for (int i = 0; i < g_list.n; i++) if (selected (g_list[i]) && !g_lib.ph[g_list[i]].fav) { allFav = false; break; }
@@ -137,72 +137,78 @@ public:
 	}
 };
 
-// ---- the left column ---------------------------------------------------------------------------------------------------------------
-class Sidebar : public Widget
+// ---- the left column: a navigation SidePanel (uikit/sidepanel.h) -- the desktop's sidebar, a rail of icons in pocket's
+// landscape, a drawer in portrait, the column in console: the library, the albums, the folders watched, their counts ----
+enum { S_ALL = 1, S_FAV, S_RECENT, S_ALBUMS, S_NEWALBUM, S_ADDFOLDER, S_ALBUM = 1000, S_FOLDER = 2000 };	// (the items' ids: S_ALBUM + the album...)
+static void album_action (int a, int r);
+static unsigned g_sideSig = ~0u;			// (what the items were made for)
+static void side_icon (Canvas &cv, int id, int x, int y, int size, unsigned ink, bool selected)
 {
-public:
-	HitList hits; int sy, hot, contentH;
-	enum { S_ALL = 1, S_FAV, S_RECENT, S_ALBUMS, S_ALBUM, S_NEWALBUM, S_FOLDER, S_ADDFOLDER };
-	Sidebar (int l, int t, int w, int h) : Widget (l, t, w, h), sy (0), hot (-1), contentH (0) {}
-	void onDraw () override
+	unsigned c = selected ? ink : id == I_HEART ? RED : id == I_FOLDER ? 0xD2A550 : id == I_PLUS ? C_ACCENT : uk_mix (ink, col_side (), 105);
+	icon (cv, id, x + (size - 16) / 2, y + (size - 16) / 2, 16, c);
+}
+static void side_select ()
+{
+	int id = g_src == SRC_ALL ? S_ALL : g_src == SRC_FAV ? S_FAV : g_src == SRC_RECENT ? S_RECENT : g_src == SRC_ALBUMS ? S_ALBUMS
+		: g_src == SRC_ALBUM ? S_ALBUM + g_srcArg : g_src == SRC_FOLDER ? S_FOLDER + g_srcArg : -1;
+	if (g_side->selected () != id) g_side->select (id);
+}
+static void side_build ()			// the items: made again when the albums, the folders or a count change
+{
+	unsigned sig = 2166136261u;
+	auto mix = [&] (unsigned v) { sig = (sig ^ v) * 16777619u; };
+	auto mixs = [&] (const char *c) { for (; *c; c++) mix ((unsigned char) *c); mix (0); };
+	mix ((unsigned) g_nAll); mix ((unsigned) g_nFav); mix ((unsigned) g_nRecent);
+	for (int a = 0; a < g_lib.albums.n; a++) { mixs (g_lib.albums[a].name); mix (a < g_nAlbum.n ? (unsigned) g_nAlbum[a] : 0); }
+	mix (0xFFFF);
+	for (int r = 0; r < g_lib.nroots; r++) { mixs (g_lib.roots[r]); mix ((unsigned) g_nRoot[r]); }
+	if (sig == g_sideSig) { side_select (); return; }
+	g_sideSig = sig;
+	auto count = [] (int id, int n) { char t[16]; snprintf (t, sizeof t, "%d", n); g_side->setTrailing (id, t); };
+	g_side->clear ();
+	g_side->addHeading (TR ("LIBRARY"));
+	g_side->addItem (S_ALL, TR ("All photos"), I_PHOTOS); count (S_ALL, g_nAll);
+	g_side->addItem (S_FAV, TR ("Favourites"), I_HEART); count (S_FAV, g_nFav);
+	g_side->addItem (S_RECENT, TR ("Recently added"), I_CLOCK); count (S_RECENT, g_nRecent);
+	g_side->addHeading (TR ("ALBUMS"));
+	g_side->addItem (S_ALBUMS, TR ("All albums"), I_ALBUM); count (S_ALBUMS, g_lib.albums.n);
+	for (int a = 0; a < g_lib.albums.n; a++) { g_side->addItem (S_ALBUM + a, g_lib.albums[a].name, I_ALBUM); count (S_ALBUM + a, a < g_nAlbum.n ? g_nAlbum[a] : 0); }
+	g_side->addItem (S_NEWALBUM, TR ("New album..."), I_PLUS);
+	g_side->addHeading (TR ("FOLDERS"));
+	for (int r = 0; r < g_lib.nroots; r++)
 	{
-		unsigned bg = col_side ();
-		canvas.clear (bg); hits.clear ();
-		canvas.fillRect (width - 1, 0, 1, height, uk_mix (C_BG, C_TEXT, 40));
-		int y = 12 - sy;
-		auto head = [&] (const char *t, int kind) { text (canvas, 18, y + 6, t, uk_mix (bg, C_TEXT, 130), F_TINY, 1); if (kind) hits.add (0, y, width, 22, kind); y += 24; };
-		auto item = [&] (const char *label, int ic, unsigned icol, int count, bool on, int kind, int arg) {
-			int idx = hits.n;
-			if (on) fill_round (canvas, 8, y, width - 16, 28, 6, C_ACCENT);
-			else if (hot == idx) fill_round (canvas, 8, y, width - 16, 28, 6, uk_mix (bg, C_TEXT, 22));
-			icon (canvas, ic, 18, y + 6, 16, on ? C_SEL_TEXT : icol);
-			char n[16] = ""; if (count >= 0) snprintf (n, sizeof n, "%d", count);
-			int nw = n[0] ? tw (n, F_SMALL) + 8 : 0;
-			text_v (canvas, 44, y, 28, label, on ? C_SEL_TEXT : C_TEXT, F_UI, on ? 1 : 0, width - 44 - 18 - nw);
-			if (n[0]) text_r (canvas, width - 18, y, 28, n, on ? C_SEL_TEXT : uk_mix (bg, C_TEXT, 140), F_SMALL);
-			hits.add (0, y, width, 28, kind, arg); y += 30;
-		};
-		auto link = [&] (const char *label, int kind) {
-			icon (canvas, I_PLUS, 18, y + 6, 16, C_ACCENT);
-			text_v (canvas, 44, y, 28, label, hits.n == hot ? uk_mix (C_ACCENT, C_TEXT, 90) : C_ACCENT);
-			hits.add (0, y, width, 28, kind); y += 30;
-		};
-		unsigned dim = uk_mix (bg, C_TEXT, 150);
-		head ("LIBRARY", 0);
-		item ("All photos", I_PHOTOS, dim, g_nAll, g_src == SRC_ALL, S_ALL, 0);
-		item ("Favourites", I_HEART, RED, g_nFav, g_src == SRC_FAV, S_FAV, 0);
-		item ("Recently added", I_CLOCK, dim, g_nRecent, g_src == SRC_RECENT, S_RECENT, 0);
-		y += 8; head ("ALBUMS", S_ALBUMS);
-		for (int a = 0; a < g_lib.albums.n; a++) item (g_lib.albums[a].name, I_ALBUM, dim, a < g_nAlbum.n ? g_nAlbum[a] : 0, g_src == SRC_ALBUM && g_srcArg == a, S_ALBUM, a);
-		link ("New album...", S_NEWALBUM);
-		y += 8; head ("FOLDERS", 0);
-		for (int r = 0; r < g_lib.nroots; r++)
-		{
-			char l[200]; root_label (g_lib.roots[r], l, sizeof l);
-			item (l, I_FOLDER, 0xD2A550, g_nRoot[r], g_src == SRC_FOLDER && g_srcArg == r, S_FOLDER, r);
-		}
-		link ("Add a folder...", S_ADDFOLDER);
-		contentH = y + sy + 12;
+		char l[200]; root_label (g_lib.roots[r], l, sizeof l);
+		g_side->addItem (S_FOLDER + r, l, I_FOLDER); count (S_FOLDER + r, g_nRoot[r]);
 	}
-	bool onMouse (int mx, int my, int bl, int br, int, int wheel) override
+	g_side->addItem (S_ADDFOLDER, TR ("Add a folder..."), I_PLUS);
+	side_select ();
+}
+static void side_chosen (SidePanel &, int id)
+{
+	if (id >= S_FOLDER) show_source (SRC_FOLDER, id - S_FOLDER);
+	else if (id >= S_ALBUM) show_source (SRC_ALBUM, id - S_ALBUM);
+	else switch (id)
 	{
-		if (mx < 0) { if (hot >= 0) { hot = -1; invalidate (true); } return false; }
-		if (wheel) { sy -= wheel * 40; int mxs = contentH - height; if (sy > mxs) sy = mxs; if (sy < 0) sy = 0; invalidate (true); return true; }
-		const Hit *h = hits.at (mx, my);
-		int nh = h ? (int) (h - hits.h) : -1;
-		if (nh != hot) { hot = nh; invalidate (true); }
-		static bool wasL, wasR; bool down = bl && !wasL, rdown = br && !wasR; wasL = bl; wasR = br;
-		if (!h || (!down && !rdown)) return h != 0;
-		if (rdown)
+	case S_ALL: show_source (SRC_ALL); break;
+	case S_FAV: show_source (SRC_FAV); break;
+	case S_RECENT: show_source (SRC_RECENT); break;
+	case S_ALBUMS: show_source (SRC_ALBUMS); break;
+	case S_NEWALBUM: side_select (); act_new_album (); break;		// (a link, not a place: the place shown stays chosen)
+	case S_ADDFOLDER: side_select (); act_add_folder (); break;
+	}
+}
+static void side_menu (SidePanel &, int id, int gx, int gy)
+{
+	struct { int kind, a; } hit = { id >= S_FOLDER ? S_FOLDER : id >= S_ALBUM ? S_ALBUM : 0, id >= S_FOLDER ? id - S_FOLDER : id - S_ALBUM }, *h = &hit;
+	{
 		{
-			int gx = left + mx, gy = top + my;
 			if (h->kind == S_ALBUM)
 			{
 				int a = h->a;
 				PopupMenu m (gx, gy);
-				m.add ("Open", 1); m.add ("Slideshow", 2); m.separator ();
-				m.add ("Send by Mail...", 3); m.add ("Export as a PDF...", 4); m.separator ();
-				m.add ("Rename...", 5); m.add ("Delete the album...", 6);
+				m.add (TR ("Open"), 1); m.add (TR ("Slideshow"), 2); m.separator ();
+				m.add (TR ("Send by Mail..."), 3); m.add (TR ("Export as a PDF..."), 4); m.separator ();
+				m.add (TR ("Rename..."), 5); m.add (TR ("Delete the album..."), 6);
 				int r = m.run ();
 				album_action (a, r);
 			}
@@ -211,34 +217,20 @@ public:
 				int rr = h->a; bool byHand = false;
 				for (int i = 0; i < g_lib.nadded; i++) if (ieq (g_lib.added[i], g_lib.roots[rr])) byHand = true;
 				PopupMenu m (gx, gy);
-				m.add ("Open", 1); m.add ("Show in the File Viewer", 2);
-				m.separator (); m.add ("Remove from Photos", 3, byHand, byHand ? 0 : "(watched always)");
+				m.add (TR ("Open"), 1); m.add (TR ("Show in the File Viewer"), 2);
+				m.separator (); m.add (TR ("Remove from Photos"), 3, byHand, byHand ? 0 : TR ("(watched always)"));
 				int r = m.run ();
 				if (r == 1) show_source (SRC_FOLDER, rr);
 				else if (r == 2) kapi_exec ("SD:apps/fileviewer.app/main", g_lib.roots[rr]);
 				else if (r == 3)
 				{
-					char q[300]; snprintf (q, sizeof q, "Stop watching %s? Its photos stay on the card; they leave the library and its albums keep their place.", g_lib.roots[rr]);
-					if (uk_messagebox ("Photos", q, MB_YESNO) == 1) { char p[200]; scpy (p, g_lib.roots[rr], sizeof p); g_lib.remove_added (p); g_lib.save (); show_source (SRC_ALL); lib_changed (); }
+					char q[300]; snprintf (q, sizeof q, TR ("Stop watching %s? Its photos stay on the card; they leave the library and its albums keep their place."), g_lib.roots[rr]);
+					if (uk_messagebox (TR ("Photos"), q, MB_YESNO) == 1) { char p[200]; scpy (p, g_lib.roots[rr], sizeof p); g_lib.remove_added (p); g_lib.save (); show_source (SRC_ALL); lib_changed (); }
 				}
 			}
-			return true;
 		}
-		switch (h->kind)
-		{
-		case S_ALL: show_source (SRC_ALL); break;
-		case S_FAV: show_source (SRC_FAV); break;
-		case S_RECENT: show_source (SRC_RECENT); break;
-		case S_ALBUMS: show_source (SRC_ALBUMS); break;
-		case S_ALBUM: show_source (SRC_ALBUM, h->a); break;
-		case S_NEWALBUM: act_new_album (); break;
-		case S_FOLDER: show_source (SRC_FOLDER, h->a); break;
-		case S_ADDFOLDER: act_add_folder (); break;
-		}
-		return true;
 	}
-	static void album_action (int a, int r);
-};
+}
 
 // ---- a name asked for (a new album, a new name) --------------------------------------------------------------------------------------
 class NameBox : public Modal
@@ -249,8 +241,8 @@ public:
 	NameBox (const char *title, const char *label, const char *init) : Modal (W, H), m_title (title), m_label (label)
 	{
 		t = new Textbox (20, titleH () + 40, W - 40, 30, init); t->maxLen = 100; addChild (t);
-		Button *b = new Button (W - 240, H - 48, 100, 32, "Cancel", [] (Widget &w) { ((Modal *) w.parent)->close (0); }); addChild (b);
-		b = new Button (W - 130, H - 48, 110, 32, "OK", [] (Widget &w) { ((Modal *) w.parent)->close (1); }); addChild (b);
+		Button *b = new Button (W - 240, H - 48, 100, 32, TR ("Cancel"), [] (Widget &w) { ((Modal *) w.parent)->close (0); }); addChild (b);
+		b = new Button (W - 130, H - 48, 110, 32, TR ("OK"), [] (Widget &w) { ((Modal *) w.parent)->close (1); }); addChild (b);
 		t->setFocus ();
 	}
 	void onDraw () override { drawBox (m_title); text (canvas, 20, titleH () + 14, m_label, C_TEXT); }
@@ -264,7 +256,7 @@ public:
 	}
 };
 
-void Sidebar::album_action (int a, int r)
+static void album_action (int a, int r)
 {
 	if (a < 0 || a >= g_lib.albums.n) return;
 	switch (r)
@@ -280,15 +272,15 @@ void Sidebar::album_action (int a, int r)
 	case 4: act_pdf (a); break;
 	case 5:
 	{
-		NameBox nb ("Rename the album", "Its new name:", g_lib.albums[a].name); char n[120];
-		if (nb.ask (n, sizeof n) && !g_lib.album_rename (a, n)) uk_messagebox ("Photos", "That name cannot be used (one has it already, or it has a / or a :).", MB_OK);
+		NameBox nb (TR ("Rename the album"), TR ("Its new name:"), g_lib.albums[a].name); char n[120];
+		if (nb.ask (n, sizeof n) && !g_lib.album_rename (a, n)) uk_messagebox (TR ("Photos"), TR ("That name cannot be used (one has it already, or it has a / or a :)."), MB_OK);
 		if (g_src == SRC_ALBUM) { int k = g_lib.album_find (n); if (k >= 0) g_srcArg = k; }
 		lib_changed (); break;
 	}
 	case 6:
 	{
-		char q[300]; snprintf (q, sizeof q, "Delete the album \"%s\"? Its photos stay in the library.", g_lib.albums[a].name);
-		if (uk_messagebox ("Photos", q, MB_YESNO) == 1) { g_lib.album_delete (a); if (g_src == SRC_ALBUM) g_src = SRC_ALBUMS; lib_changed (); }
+		char q[300]; snprintf (q, sizeof q, TR ("Delete the album \"%s\"? Its photos stay in the library."), g_lib.albums[a].name);
+		if (uk_messagebox (TR ("Photos"), q, MB_YESNO) == 1) { g_lib.album_delete (a); if (g_src == SRC_ALBUM) g_src = SRC_ALBUMS; lib_changed (); }
 		break;
 	}
 	}
@@ -375,9 +367,9 @@ public:
 			if (y > vh) break;
 			// the day: its name, its count, its ring
 			char t[80];
-			if (g_days[d].day == -999999) scpy (t, "No date", sizeof t); else fmt_day (g_days[d].day * 86400, t, sizeof t);
+			if (g_days[d].day == -999999) scpy (t, TR ("No date"), sizeof t); else fmt_day (g_days[d].day * 86400, t, sizeof t);
 			text (canvas, x0, y + 6, t, C_FIELD_TEXT, F_H2, 1);
-			char n[40]; snprintf (n, sizeof n, g_days[d].n == 1 ? "1 photo" : "%d photos", g_days[d].n);
+			char n[40]; snprintf (n, sizeof n, g_days[d].n == 1 ? TR ("1 photo") : TR ("%d photos"), g_days[d].n);
 			text (canvas, x0 + tw (t, F_H2, 1) + 12, y + 10, n, col_dim (), F_UI);
 			int all = 0; for (int k = 0; k < g_days[d].n; k++) if (selected (g_list[g_days[d].first + k])) all++;
 			int rx = x0 + cols * (tile + gap) - gap - 24;
@@ -438,18 +430,18 @@ public:
 		canvas.fillRect (0, y, width, ST_H, col_side ());
 		canvas.fillRect (0, y, width, 1, col_line ());
 		char s[200]; int k = 0;
-		if (g_src == SRC_ALBUMS) k = snprintf (s, sizeof s, g_lib.albums.n == 1 ? "1 album" : "%d albums", g_lib.albums.n);
+		if (g_src == SRC_ALBUMS) k = snprintf (s, sizeof s, g_lib.albums.n == 1 ? TR ("1 album") : TR ("%d albums"), g_lib.albums.n);
 		else
 		{
-			k = snprintf (s, sizeof s, g_list.n == 1 ? "1 photo" : "%d photos", g_list.n);
+			k = snprintf (s, sizeof s, g_list.n == 1 ? TR ("1 photo") : TR ("%d photos"), g_list.n);
 			if (g_selN)
 			{
 				unsigned long long b = 0; for (int i = 0; i < g_list.n; i++) if (selected (g_list[i])) b += g_lib.ph[g_list[i]].size;
 				char sz[40]; fmt_size (b, sz, sizeof sz);
-				k += snprintf (s + k, sizeof s - k, " \xC2\xB7 %d selected (%s)", g_selN, sz);
+				k += snprintf (s + k, sizeof s - k, TR (" \xC2\xB7 %d selected (%s)"), g_selN, sz);
 			}
 		}
-		if (g_lib.scanning) k += snprintf (s + k, sizeof s - k, g_lib.scanCount ? "   \xC2\xB7   Looking for photos... %d new" : "   \xC2\xB7   Looking for photos...", g_lib.scanCount);
+		if (g_lib.scanning) k += snprintf (s + k, sizeof s - k, g_lib.scanCount ? TR ("   \xC2\xB7   Looking for photos... %d new") : TR ("   \xC2\xB7   Looking for photos..."), g_lib.scanCount);
 		text_v (canvas, 14, y, ST_H, s, col_dim (), F_SMALL);
 		int rx = width - 14;
 		if (g_th.blTotal > 0 && g_th.blDone < g_th.blTotal)
@@ -457,7 +449,7 @@ public:
 			int bw = 120, bx = rx - bw, by = y + ST_H / 2 - 3, done = g_th.blDone, total = g_th.blTotal;
 			fill_round (canvas, bx, by, bw, 6, 3, col_line ());
 			int k = (int) ((long long) bw * done / total); if (k > 0) fill_round (canvas, bx, by, k < 6 ? 6 : k, 6, 3, C_ACCENT);
-			char t[80]; snprintf (t, sizeof t, "Thumbnails %d / %d", done, total);
+			char t[80]; snprintf (t, sizeof t, TR ("Thumbnails %d / %d"), done, total);
 			text_r (canvas, bx - 10, y, ST_H, t, col_dim (), F_SMALL);
 			rx = bx - 20 - tw (t, F_SMALL);
 		}
@@ -467,18 +459,18 @@ public:
 	{
 		int vh = viewH (), cx = width / 2;
 		icon (canvas, I_PHOTOS, cx - 32, vh / 2 - 110, 64, col_faint ());
-		const char *t = "No photos here yet", *s = 0;
-		if (g_query[0]) { t = "Nothing found"; s = "No photo has that name, date, camera, album or description."; }
-		else if (g_lib.scanning) { t = "Looking for photos..."; s = "Pictures, the cameras' DCIM folders, the folders you add."; }
-		else if (g_src == SRC_FAV) s = "A photo's heart puts it here.";
-		else if (g_src == SRC_ALBUM) s = "Select photos in All photos, then the album button adds them here.";
-		else if (g_src == SRC_RECENT) s = "The photos put on the card lately show here.";
-		else s = "Photos shows the pictures of SD:/Pictures, of each volume's DCIM folder and of the folders you add.";
+		const char *t = TR ("No photos here yet"), *s = 0;
+		if (g_query[0]) { t = TR ("Nothing found"); s = TR ("No photo has that name, date, camera, album or description."); }
+		else if (g_lib.scanning) { t = TR ("Looking for photos..."); s = TR ("Pictures, the cameras' DCIM folders, the folders you add."); }
+		else if (g_src == SRC_FAV) s = TR ("A photo's heart puts it here.");
+		else if (g_src == SRC_ALBUM) s = TR ("Select photos in All photos, then the album button adds them here.");
+		else if (g_src == SRC_RECENT) s = TR ("The photos put on the card lately show here.");
+		else s = TR ("Photos shows the pictures of SD:/Pictures, of each volume's DCIM folder and of the folders you add.");
 		text_c (canvas, 0, vh / 2 - 30, width, 30, t, C_FIELD_TEXT, F_H2, 1);
 		if (s) text_c (canvas, 0, vh / 2 + 4, width, 24, s, col_dim ());
 		if (!g_query[0] && (g_src == SRC_ALL || g_src == SRC_FOLDER) && !g_lib.scanning)
 		{
-			const char *l = "Add a folder..."; int w = tw (l, F_UI, 1) + 36;
+			const char *l = TR ("Add a folder..."); int w = tw (l, F_UI, 1) + 36;
 			fill_round (canvas, cx - w / 2, vh / 2 + 44, w, 34, 6, C_ACCENT);
 			text_c (canvas, cx - w / 2, vh / 2 + 44, w, 34, l, C_SEL_TEXT, F_UI, 1);
 			hits.add (cx - w / 2, vh / 2 + 44, w, 34, G_ADDFOLDER);
@@ -487,8 +479,8 @@ public:
 	void draw_albums ()
 	{
 		unsigned bg = C_FIELD;
-		text (canvas, 20, 14 - sy, "Albums", C_FIELD_TEXT, F_H1, 1);
-		const char *nl = "+  New album"; int nw = tw (nl, F_UI, 1) + 30;
+		text (canvas, 20, 14 - sy, TR ("Albums"), C_FIELD_TEXT, F_H1, 1);
+		const char *nl = TR ("+  New album"); int nw = tw (nl, F_UI, 1) + 30;
 		fill_round (canvas, width - nw - 24, 16 - sy, nw, 32, 6, C_ACCENT);
 		text_c (canvas, width - nw - 24, 16 - sy, nw, 32, nl, C_SEL_TEXT, F_UI, 1);
 		hits.add (width - nw - 24, 16 - sy, nw, 32, G_NEWALBUM);
@@ -497,8 +489,8 @@ public:
 		int vh = viewH ();
 		if (!g_lib.albums.n)
 		{
-			text_c (canvas, 0, vh / 2 - 20, width, 30, "No albums yet", C_FIELD_TEXT, F_H2, 1);
-			text_c (canvas, 0, vh / 2 + 12, width, 24, "Select photos, then the album button: a new album, or one made before.", col_dim ());
+			text_c (canvas, 0, vh / 2 - 20, width, 30, TR ("No albums yet"), C_FIELD_TEXT, F_H2, 1);
+			text_c (canvas, 0, vh / 2 + 12, width, 24, TR ("Select photos, then the album button: a new album, or one made before."), col_dim ());
 		}
 		for (int a = 0; a < g_lib.albums.n; a++)
 		{
@@ -510,7 +502,7 @@ public:
 			if (c >= 0) g_th.draw (canvas, c, x, y, cw, ch, 8, bg);
 			else { fill_round (canvas, x, y, cw, ch, 8, uk_mix (bg, C_FIELD_TEXT, 30)); icon (canvas, I_ALBUM, x + cw / 2 - 20, y + ch / 2 - 20, 40, col_faint ()); }
 			text (canvas, x + 2, y + ch + 8, g_lib.albums[a].name, C_FIELD_TEXT, F_UI, 1, cw - 4);
-			char s[40]; int k = a < g_nAlbum.n ? g_nAlbum[a] : 0; snprintf (s, sizeof s, k == 1 ? "1 photo" : "%d photos", k);
+			char s[40]; int k = a < g_nAlbum.n ? g_nAlbum[a] : 0; snprintf (s, sizeof s, k == 1 ? TR ("1 photo") : TR ("%d photos"), k);
 			text (canvas, x + 2, y + ch + 26, s, col_dim (), F_SMALL);
 			hits.add (x, y, cw, ch + 44, G_ALBUM, a);
 		}
@@ -535,10 +527,10 @@ public:
 			if (h && h->kind == G_ALBUM)
 			{
 				PopupMenu m (left + mx, top + my);
-				m.add ("Open", 1); m.add ("Slideshow", 2); m.separator ();
-				m.add ("Send by Mail...", 3); m.add ("Export as a PDF...", 4); m.separator ();
-				m.add ("Rename...", 5); m.add ("Delete the album...", 6);
-				Sidebar::album_action (h->a, m.run ());
+				m.add (TR ("Open"), 1); m.add (TR ("Slideshow"), 2); m.separator ();
+				m.add (TR ("Send by Mail..."), 3); m.add (TR ("Export as a PDF..."), 4); m.separator ();
+				m.add (TR ("Rename..."), 5); m.add (TR ("Delete the album..."), 6);
+				album_action (h->a, m.run ());
 			}
 			else if (pos >= 0)
 			{

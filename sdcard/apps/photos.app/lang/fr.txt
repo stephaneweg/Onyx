@@ -1,0 +1,185 @@
+# Photos' words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included; the formats' % kept in the same order).
+Photos	Photos
+Favourites	Favoris
+Recently added	Ajouts récents
+Album	Album
+Folder	Dossier
+Albums	Albums
+All photos	Toutes les photos
+Free	Libre
+Original	Original
+This picture cannot be read.	Cette image ne peut pas être lue.
+Save	Enregistrer
+Save as...	Enregistrer sous...
+Before / after	Avant / après
+Crop	Recadrer
+Adjust	Ajuster
+Filters	Filtres
+ROTATE	ROTATION
+Right	Droite
+Left	Gauche
+Straighten	Redresser
+SHAPE	FORMAT
+The result: %d × %d	Résultat : %d × %d
+Reset	Réinitialiser
+Enhance (automatic)	Améliorer (automatique)
+LIGHT	LUMIÈRE
+COLOUR	COULEUR
+DETAIL	DÉTAIL
+Leave without saving the changes?	Quitter sans enregistrer les modifications ?
+Photos writes JPEG and PNG pictures: choose a name for the edited one.	Photos écrit des images JPEG et PNG : choisissez un nom pour l'image modifiée.
+Saving...	Enregistrement...
+Not enough memory to save this picture.	Pas assez de mémoire pour enregistrer cette image.
+The picture could not be written.	L'image n'a pas pu être écrite.
+Saved: %s	Enregistré : %s
+Search: a name, a date...	Chercher : un nom, une date...
+Slideshow	Diaporama
+1 selected	1 sélectionnée
+%d selected	%d sélectionnées
+LIBRARY	BIBLIOTHÈQUE
+ALBUMS	ALBUMS
+All albums	Tous les albums
+New album...	Nouvel album...
+FOLDERS	DOSSIERS
+Add a folder...	Ajouter un dossier...
+Open	Ouvrir
+Send by Mail...	Envoyer par Mail...
+Export as a PDF...	Exporter en PDF...
+Rename...	Renommer...
+Delete the album...	Supprimer l'album...
+Show in the File Viewer	Montrer dans l'Explorateur de fichiers
+Remove from Photos	Retirer de Photos
+(watched always)	(toujours surveillé)
+Stop watching %s? Its photos stay on the card; they leave the library and its albums keep their place.	Ne plus surveiller %s ? Ses photos restent sur la carte ; elles quittent la bibliothèque et ses albums gardent leur place.
+Rename the album	Renommer l'album
+Its new name:	Son nouveau nom :
+That name cannot be used (one has it already, or it has a / or a :).	Ce nom ne peut pas être utilisé (un album le porte déjà, ou il contient un / ou un :).
+Delete the album "%s"? Its photos stay in the library.	Supprimer l'album « %s » ? Ses photos restent dans la bibliothèque.
+No date	Sans date
+1 photo	1 photo
+%d photos	%d photos
+1 album	1 album
+%d albums	%d albums
+ · %d selected (%s)	 · %d sélectionnées (%s)
+   ·   Looking for photos... %d new	   ·   Recherche des photos... %d nouvelles
+   ·   Looking for photos...	   ·   Recherche des photos...
+Thumbnails %d / %d	Vignettes %d / %d
+No photos here yet	Pas encore de photo ici
+Nothing found	Rien trouvé
+No photo has that name, date, camera, album or description.	Aucune photo n'a ce nom, cette date, cet appareil, cet album ou cette description.
+Looking for photos...	Recherche des photos...
+Pictures, the cameras' DCIM folders, the folders you add.	Pictures, les dossiers DCIM des appareils, les dossiers que vous ajoutez.
+A photo's heart puts it here.	Le cœur d'une photo la place ici.
+Select photos in All photos, then the album button adds them here.	Sélectionnez des photos dans Toutes les photos, puis le bouton album les ajoute ici.
+The photos put on the card lately show here.	Les photos mises récemment sur la carte apparaissent ici.
+Photos shows the pictures of SD:/Pictures, of each volume's DCIM folder and of the folders you add.	Photos montre les images de SD:/Pictures, du dossier DCIM de chaque volume et des dossiers que vous ajoutez.
++  New album	+  Nouvel album
+No albums yet	Pas encore d'album
+Select photos, then the album button: a new album, or one made before.	Sélectionnez des photos, puis le bouton album : un nouvel album, ou un album existant.
+Exposure	Exposition
+Contrast	Contraste
+Highlights	Hautes lumières
+Shadows	Ombres
+Saturation	Saturation
+Warmth	Chaleur
+Sharpness	Netteté
+Black and white	Noir et blanc
+Warm	Chaud
+Cool	Froid
+Vintage	Vintage
+Vivid	Vif
+%s is watched already (in %s).	%s est déjà surveillé (dans %s).
+Photos watches 16 folders at most.	Photos surveille 16 dossiers au plus.
+File	Fichier
+Add a Folder...	Ajouter un dossier...
+Look for New Photos	Chercher les nouvelles photos
+Print...	Imprimer...
+Edit	Édition
+Find...	Rechercher...
+Select All	Tout sélectionner
+Select None	Ne rien sélectionner
+View	Affichage
+All Photos	Toutes les photos
+Recently Added	Ajouts récents
+Bigger Thumbnails	Vignettes plus grandes
+Smaller Thumbnails	Vignettes plus petites
+Photo	Photo
+Edit...	Modifier...
+Rotate to the Left	Pivoter à gauche
+Favourite	Favori
+Add to an Album...	Ajouter à un album...
+New Album...	Nouvel album...
+Move to the Trash	Mettre à la corbeille
+A new album	Un nouvel album
+Its name:	Son nom :
+An album's name cannot have a / or a :.	Le nom d'un album ne peut pas contenir de / ni de :.
+%d added to %s	%d ajoutées à %s
+Taken out of %s	Retirée de %s
+Added to %s	Ajoutée à %s
+Move %s to the trash? (The File Viewer can bring it back.)	Mettre %s à la corbeille ? (L'Explorateur de fichiers peut la restaurer.)
+Move these %d photos to the trash? (The File Viewer can bring them back.)	Mettre ces %d photos à la corbeille ? (L'Explorateur de fichiers peut les restaurer.)
+Some photos could not be moved to the trash.	Certaines photos n'ont pas pu être mises à la corbeille.
+This kind of picture cannot be turned here (open it in Paint).	Ce type d'image ne peut pas être pivoté ici (ouvrez-la dans Paint).
+Mail takes 16 attachments at most: choose fewer photos.	Mail accepte 16 pièces jointes au plus : choisissez moins de photos.
+Making the copies for Mail...	Préparation des copies pour Mail...
+Mail could not be started.	Mail n'a pas pu être lancé.
+Opened in Mail.	Ouvert dans Mail.
+The picture could not be copied to SD:/res for the wallpaper.	L'image n'a pas pu être copiée dans SD:/res pour le fond d'écran.
+The desktop's wallpaper is set.	Le fond d'écran du bureau est changé.
+Copied: the picture is on the Clipboard.	Copié : l'image est dans le presse-papiers.
+Copy	Copier
+Set as the wallpaper	Définir comme fond d'écran
+Open in Paint	Ouvrir dans Paint
+Slideshow from here	Diaporama à partir d'ici
+Remove from the favourites	Retirer des favoris
+Add to the favourites	Ajouter aux favoris
+Add to an album...	Ajouter à un album...
+Rotate to the left	Pivoter à gauche
+Move to the trash	Mettre à la corbeille
+There is no photo to put in a PDF.	Il n'y a aucune photo à mettre dans un PDF.
+Making the PDF...	Création du PDF...
+  ·  page %d of %d	  ·  page %d sur %d
+The PDF could not be written.	Le PDF n'a pas pu être écrit.
+Select the photos to print first.	Sélectionnez d'abord les photos à imprimer.
+Preparing the pages...	Préparation des pages...
+The photos could not be put in the print queue.	Les photos n'ont pas pu être mises dans la file d'impression.
+In the print queue.	Dans la file d'impression.
+%d / %d%s   ·   Esc: back   ·   ← →   ·   Space: %s	%d / %d%s   ·   Échap : retour   ·   ← →   ·   Espace : %s
+  (paused)	  (en pause)
+go on	reprendre
+pause	pause
+January	janvier
+February	février
+March	mars
+April	avril
+May	mai
+June	juin
+July	juillet
+August	août
+September	septembre
+October	octobre
+November	novembre
+December	décembre
+Thursday	Jeudi
+Friday	Vendredi
+Saturday	Samedi
+Sunday	Dimanche
+Monday	Lundi
+Tuesday	Mardi
+Wednesday	Mercredi
+Today	Aujourd'hui
+Yesterday	Hier
+%llu bytes	%llu octets
+%llu KB	%llu Ko
+%llu.%llu MB	%llu,%llu Mo
+Keep	Garder
+Description	Description
+Fit	Ajuster
+%s, %s   ·   %d of %d	%s, %s   ·   %d sur %d
+%s   ·   %d of %d	%s   ·   %d sur %d
+Details	Détails
+(the camera did not write one)	(l'appareil n'en a pas écrit)
++ Add	+ Ajouter
+DESCRIPTION	DESCRIPTION
+Add a description...	Ajouter une description...

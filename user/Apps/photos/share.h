@@ -33,15 +33,15 @@ static void act_favourite (int one)
 // ---- albums -------------------------------------------------------------------------------------------------------------------------
 static void act_new_album ()
 {
-	NameBox nb ("A new album", "Its name:", ""); char n[120];
+	NameBox nb (TR ("A new album"), TR ("Its name:"), ""); char n[120];
 	if (!nb.ask (n, sizeof n)) return;
-	if (strchr (n, '/') || strchr (n, ':')) { uk_messagebox ("Photos", "An album's name cannot have a / or a :.", MB_OK); return; }
+	if (strchr (n, '/') || strchr (n, ':')) { uk_messagebox (TR ("Photos"), TR ("An album's name cannot have a / or a :."), MB_OK); return; }
 	int a = g_lib.album_new (n);
 	// the photos chosen go in
 	Vec<int> c; chosen (c);
 	for (int i = 0; i < c.n; i++) g_lib.album_add (a, g_lib.ph[c[i]].path);
 	free (c.a);
-	if (c.n) { char s[200]; snprintf (s, sizeof s, "%d added to %s", c.n, n); status_note (s); sel_clear (); }
+	if (c.n) { char s[200]; snprintf (s, sizeof s, TR ("%d added to %s"), c.n, n); status_note (s); sel_clear (); }
 	lib_changed ();
 	if (!c.n) show_source (SRC_ALBUM, g_lib.album_find (n));
 }
@@ -59,7 +59,7 @@ static void act_add_to_album (int one, int x, int y)
 		m.add (keep[a], 10 + a);
 	}
 	if (n) m.separator ();
-	m.add ("New album...", 1);
+	m.add (TR ("New album..."), 1);
 	int r = m.run ();
 	if (r == 1) { if (one >= 0 && !g_selN) { sel_set (one, true); act_new_album (); sel_clear (); } else act_new_album (); free (c.a); refresh_all (); return; }
 	if (r >= 10)
@@ -67,7 +67,7 @@ static void act_add_to_album (int one, int x, int y)
 		int a = r - 10;
 		bool all = true; for (int i = 0; i < c.n; i++) if (!g_lib.album_has (a, g_lib.ph[c[i]].path)) all = false;
 		for (int i = 0; i < c.n; i++) { if (all) g_lib.album_remove (a, g_lib.ph[c[i]].path); else g_lib.album_add (a, g_lib.ph[c[i]].path); }
-		char s[200]; snprintf (s, sizeof s, all ? "Taken out of %s" : "Added to %s", g_lib.albums[a].name); status_note (s);
+		char s[200]; snprintf (s, sizeof s, all ? TR ("Taken out of %s") : TR ("Added to %s"), g_lib.albums[a].name); status_note (s);
 		if (!all && g_selN) sel_clear ();
 		lib_changed ();
 	}
@@ -79,9 +79,9 @@ static void act_delete (int one)
 {
 	Vec<int> c; if (!chosen (c, one)) { free (c.a); return; }
 	char q[300];
-	if (c.n == 1) snprintf (q, sizeof q, "Move %s to the trash? (The File Viewer can bring it back.)", base_name (g_lib.ph[c[0]].path));
-	else snprintf (q, sizeof q, "Move these %d photos to the trash? (The File Viewer can bring them back.)", c.n);
-	if (uk_messagebox ("Photos", q, MB_YESNO) != 1) { free (c.a); return; }
+	if (c.n == 1) snprintf (q, sizeof q, TR ("Move %s to the trash? (The File Viewer can bring it back.)"), base_name (g_lib.ph[c[0]].path));
+	else snprintf (q, sizeof q, TR ("Move these %d photos to the trash? (The File Viewer can bring them back.)"), c.n);
+	if (uk_messagebox (TR ("Photos"), q, MB_YESNO) != 1) { free (c.a); return; }
 	int failed = 0;
 	for (int i = 0; i < c.n; i++)
 	{
@@ -97,7 +97,7 @@ static void act_delete (int one)
 	sel_clear ();
 	g_lib.compact (); g_lib.save ();
 	lib_changed ();
-	if (failed) uk_messagebox ("Photos", "Some photos could not be moved to the trash.", MB_OK);
+	if (failed) uk_messagebox (TR ("Photos"), TR ("Some photos could not be moved to the trash."), MB_OK);
 	if (vpos >= 0) { if (!g_list.n) close_viewer (); else open_viewer (vpos < g_list.n ? vpos : g_list.n - 1); }
 }
 
@@ -139,7 +139,7 @@ static void act_rotate (int one)
 		rotate90 (full, 3); opaque (full);
 		bool png = Editor::ends (p.path, ".png");
 		unsigned n = 0; unsigned char *d = png ? pngsave::png_encode (full.px, full.w, full.h, false, &n) : (Editor::ends (p.path, ".jpg") || Editor::ends (p.path, ".jpeg")) ? pngsave::jpeg_encode (full.px, full.w, full.h, 94, &n) : 0;
-		if (!d) { uk_messagebox ("Photos", "This kind of picture cannot be turned here (open it in Paint).", MB_OK); continue; }
+		if (!d) { uk_messagebox (TR ("Photos"), TR ("This kind of picture cannot be turned here (open it in Paint)."), MB_OK); continue; }
 		PicInfo pi; pic_info (p.path, pi);
 		if (!png && pi.exifOff) { unsigned m; unsigned char *x = jpeg_with_exif (d, n, p.path, pi, &m); if (x) { delete[] d; d = x; n = m; } }
 		g_th.forget (p.key ());
@@ -156,12 +156,12 @@ static void act_rotate (int one)
 static void act_mail (int one)
 {
 	Vec<int> c; if (!chosen (c, one)) { free (c.a); return; }
-	if (c.n > 16) { uk_messagebox ("Photos", "Mail takes 16 attachments at most: choose fewer photos.", MB_OK); free (c.a); return; }
+	if (c.n > 16) { uk_messagebox (TR ("Photos"), TR ("Mail takes 16 attachments at most: choose fewer photos."), MB_OK); free (c.a); return; }
 	const char *dir = "RAM:/photos-mail";
 	mkdirs (dir);
 	if (!dir_exists (dir)) { dir = PH_DIR "/outbox"; mkdirs (dir); }
 	char list[20000]; int k = 0;
-	status_note ("Making the copies for Mail...");
+	status_note (TR ("Making the copies for Mail..."));
 	for (int i = 0; i < c.n; i++)
 	{
 		const Photo &p = g_lib.ph[c[i]];
@@ -178,8 +178,8 @@ static void act_mail (int one)
 	char lp[200]; snprintf (lp, sizeof lp, "%s/attach.txt", dir);
 	kapi_save_file (lp, list, (unsigned) k);
 	char args[260]; snprintf (args, sizeof args, "--attach %s", lp);
-	if (kapi_exec ("SD:apps/mail.app/main", args) < 0) uk_messagebox ("Photos", "Mail could not be started.", MB_OK);
-	else status_note ("Opened in Mail.");
+	if (kapi_exec ("SD:apps/mail.app/main", args) < 0) uk_messagebox (TR ("Photos"), TR ("Mail could not be started."), MB_OK);
+	else status_note (TR ("Opened in Mail."));
 }
 
 // ---- the wallpaper, the Clipboard, Paint --------------------------------------------------------------------------------------------
@@ -211,13 +211,13 @@ static void act_wallpaper (int pi)
 			snprintf (img, sizeof img, "SD:/res/wallpaper.%s", ext);
 			if (b) { ok = kapi_save_file (img, b, (unsigned) len) >= 0; free (b); }
 		}
-		if (!ok) { uk_messagebox ("Photos", "The picture could not be copied to SD:/res for the wallpaper.", MB_OK); return; }
+		if (!ok) { uk_messagebox (TR ("Photos"), TR ("The picture could not be copied to SD:/res for the wallpaper."), MB_OK); return; }
 	}
 	Wallpaper w; wp_load (w);
 	w.mode = WP_IMAGE; scpy (w.image, img, sizeof w.image); w.tile = 0; w.tint = 0;
 	wp_save (w);
 	kapi_exec ("SD:apps/voronoy.app/main", "");
-	status_note ("The desktop's wallpaper is set.");
+	status_note (TR ("The desktop's wallpaper is set."));
 }
 static void act_copy (int pi)
 {
@@ -226,7 +226,7 @@ static void act_copy (int pi)
 	if (full.w > 4096 || full.h > 4096) { fit (full, s, 4096, 4096); p = &s; }
 	opaque (*(Pix *) p);
 	clip_set_image (p->px, p->w, p->h);
-	status_note ("Copied: the picture is on the Clipboard.");
+	status_note (TR ("Copied: the picture is on the Clipboard."));
 }
 
 static void act_share_menu (int one, int x, int y)
@@ -234,11 +234,11 @@ static void act_share_menu (int one, int x, int y)
 	Vec<int> c; int n = chosen (c, one); int first = n ? c[0] : -1; free (c.a);
 	if (!n) return;
 	PopupMenu m (x, y);
-	m.add ("Send by Mail...", 1);
-	m.add ("Copy", 2, n == 1);
-	m.add ("Set as the wallpaper", 3, n == 1);
-	m.add ("Open in Paint", 4, n == 1);
-	m.add ("Export as a PDF...", 5);
+	m.add (TR ("Send by Mail..."), 1);
+	m.add (TR ("Copy"), 2, n == 1);
+	m.add (TR ("Set as the wallpaper"), 3, n == 1);
+	m.add (TR ("Open in Paint"), 4, n == 1);
+	m.add (TR ("Export as a PDF..."), 5);
 	switch (m.run ())
 	{
 	case 1: act_mail (one); break;
@@ -255,18 +255,18 @@ static void photo_menu (int pi, int x, int y)
 	bool many = g_selN > 1;
 	const Photo &p = g_lib.ph[pi];
 	PopupMenu m (x, y);
-	if (!many) m.add ("Open", 1);
-	m.add ("Slideshow from here", 2);
+	if (!many) m.add (TR ("Open"), 1);
+	m.add (TR ("Slideshow from here"), 2);
 	m.separator ();
-	m.add (p.fav && !many ? "Remove from the favourites" : "Add to the favourites", 3);
-	m.add ("Add to an album...", 4);
-	m.add ("Rotate to the left", 5, true, "R");
-	if (!many) m.add ("Edit...", 6, true, "E");
+	m.add (p.fav && !many ? TR ("Remove from the favourites") : TR ("Add to the favourites"), 3);
+	m.add (TR ("Add to an album..."), 4);
+	m.add (TR ("Rotate to the left"), 5, true, "R");
+	if (!many) m.add (TR ("Edit..."), 6, true, "E");
 	m.separator ();
-	m.add ("Send by Mail...", 7);
-	if (!many) { m.add ("Copy", 8); m.add ("Set as the wallpaper", 9); m.add ("Open in Paint", 10); m.add ("Show in the File Viewer", 11); }
+	m.add (TR ("Send by Mail..."), 7);
+	if (!many) { m.add (TR ("Copy"), 8); m.add (TR ("Set as the wallpaper"), 9); m.add (TR ("Open in Paint"), 10); m.add (TR ("Show in the File Viewer"), 11); }
 	m.separator ();
-	m.add ("Move to the trash", 12, true, "Del");
+	m.add (TR ("Move to the trash"), 12, true, "Del");
 	int one = g_selN ? -1 : pi;
 	switch (m.run ())
 	{
@@ -305,12 +305,12 @@ static void act_pdf (int album)
 		for (int i = 0; i < c.n / 2; i++) { int t = c[i]; c[i] = c[c.n - 1 - i]; c[c.n - 1 - i] = t; }
 		scpy (title, src_title (), sizeof title);
 	}
-	if (!c.n) { free (c.a); uk_messagebox ("Photos", "There is no photo to put in a PDF.", MB_OK); return; }
+	if (!c.n) { free (c.a); uk_messagebox (TR ("Photos"), TR ("There is no photo to put in a PDF."), MB_OK); return; }
 	char out[400], def[200]; snprintf (def, sizeof def, "%s.pdf", title);
 	for (char *s = def; *s; s++) if (*s == '/' || *s == ':') *s = '-';
 	if (!uk_file_save (out, sizeof out, "SD:/Documents", def, "PDF documents|*.pdf|All files|*")) { free (c.a); return; }
 	if (!Editor::ends (out, ".pdf")) { int k = (int) strlen (out); if (k < 390) strcpy (out + k, ".pdf"); }
-	status_note ("Making the PDF...");
+	status_note (TR ("Making the PDF..."));
 	const int PW = 1240, PH = 1754, M = 90, COLS = 3, ROWS = 4;		// A4 at 150 dpi
 	const float PTW = 595.3f, PTH = 841.9f;
 	pdfw::Writer w;
@@ -325,8 +325,8 @@ static void act_pdf (int album)
 		cv.clear (0xFFFFFF);
 		// the title (larger letters: drawn twice the size by the H1 face, on the page's own scale)
 		text (cv, M, M - 10, title, 0x202428, F_H1, 1);
-		char sub[80]; snprintf (sub, sizeof sub, c.n == 1 ? "1 photo" : "%d photos", c.n);
-		if (pages > 1) snprintf (sub + strlen (sub), sizeof sub - strlen (sub), "  \xC2\xB7  page %d of %d", pg + 1, pages);
+		char sub[80]; snprintf (sub, sizeof sub, c.n == 1 ? TR ("1 photo") : TR ("%d photos"), c.n);
+		if (pages > 1) snprintf (sub + strlen (sub), sizeof sub - strlen (sub), TR ("  \xC2\xB7  page %d of %d"), pg + 1, pages);
 		text (cv, M, M + 26, sub, 0x70757C, F_MID);
 		cv.fillRect (M, M + 56, PW - 2 * M, 2, 0xD0D4D8);
 		for (int k = 0; k < per; k++)
@@ -349,8 +349,8 @@ static void act_pdf (int album)
 	unsigned n = 0; unsigned char *pdf = w.finish (&n);
 	int ok = pdf ? kapi_save_file (out, pdf, n) : -1;
 	delete[] pdf;
-	if (ok < 0) uk_messagebox ("Photos", "The PDF could not be written.", MB_OK);
-	else { char s[300]; snprintf (s, sizeof s, "Saved: %s", base_name (out)); status_note (s); }
+	if (ok < 0) uk_messagebox (TR ("Photos"), TR ("The PDF could not be written."), MB_OK);
+	else { char s[300]; snprintf (s, sizeof s, TR ("Saved: %s"), base_name (out)); status_note (s); }
 }
 
 // ---- printing: each photo a page, as large as what the printer prints of the paper takes it, centred ----------------------------------
@@ -359,9 +359,9 @@ static void act_print (int one = -1)
 {
 	Vec<int> c;
 	if (one >= 0) c.push (one); else chosen (c);
-	if (!c.n) { free (c.a); uk_messagebox ("Photos", "Select the photos to print first.", MB_OK); return; }
+	if (!c.n) { free (c.a); uk_messagebox (TR ("Photos"), TR ("Select the photos to print first."), MB_OK); return; }
 	char title[160];
-	if (c.n == 1) scpy (title, base_name (g_lib.ph[c[0]].path), sizeof title); else snprintf (title, sizeof title, "%d photos", c.n);
+	if (c.n == 1) scpy (title, base_name (g_lib.ph[c[0]].path), sizeof title); else snprintf (title, sizeof title, TR ("%d photos"), c.n);
 	PrintSetup ps; print_setup_default (&ps);
 	{ const Photo &p = g_lib.ph[c[0]]; bool turn = p.orient >= 5; if ((turn ? p.h : p.w) > (turn ? p.w : p.h)) print_setup_paper (&ps, 0, PRINT_LANDSCAPE); }
 	PrintDialogInfo di = { sizeof di, title, c.n, 0, 0, 0, 0 };
@@ -369,7 +369,7 @@ static void act_print (int one = -1)
 	PrintJob *j = print_begin (&ps, title);
 	if (j)
 	{
-		status_note ("Preparing the pages...");
+		status_note (TR ("Preparing the pages..."));
 		float l = ps.margin_l > 18 ? ps.margin_l : 18, t = ps.margin_t > 18 ? ps.margin_t : 18;
 		float r = ps.margin_r > 18 ? ps.margin_r : 18, b = ps.margin_b > 18 ? ps.margin_b : 18;
 		float aw = ps.paper_w - l - r, ah = ps.paper_h - t - b;
@@ -386,8 +386,8 @@ static void act_print (int one = -1)
 		}
 	}
 	free (c.a);
-	if (!j || print_end (j) < 0) uk_messagebox ("Photos", "The photos could not be put in the print queue.", MB_OK);
-	else status_note ("In the print queue.");
+	if (!j || print_end (j) < 0) uk_messagebox (TR ("Photos"), TR ("The photos could not be put in the print queue."), MB_OK);
+	else status_note (TR ("In the print queue."));
 }
 
 // ---- the slideshow ---------------------------------------------------------------------------------------------------------------------------
@@ -432,7 +432,7 @@ static void act_slideshow (int from)
 	};
 	auto hud = [&] (unsigned *dst) {
 		Canvas cv; cv.adopt (dst, W, H);
-		char s[160]; snprintf (s, sizeof s, "%d / %d%s   \xC2\xB7   Esc: back   \xC2\xB7   \xE2\x86\x90 \xE2\x86\x92   \xC2\xB7   Space: %s", at + 1, show.n, paused ? "  (paused)" : "", paused ? "go on" : "pause");
+		char s[160]; snprintf (s, sizeof s, TR ("%d / %d%s   \xC2\xB7   Esc: back   \xC2\xB7   \xE2\x86\x90 \xE2\x86\x92   \xC2\xB7   Space: %s"), at + 1, show.n, paused ? TR ("  (paused)") : "", paused ? TR ("go on") : TR ("pause"));
 		int w = tw (s) + 40;
 		fill_round (cv, (W - w) / 2, H - 70, w, 36, 16, 0x000000, 170);
 		text_c (cv, (W - w) / 2, H - 70, w, 36, s, 0xFFFFFF);

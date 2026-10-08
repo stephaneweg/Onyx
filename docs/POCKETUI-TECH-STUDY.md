@@ -850,6 +850,9 @@ from the source instead of `apps.ini`.
 
 ### 6.15 The apps to migrate, and the others
 
+*(P7's progress — `docs/HANDOFF.md` has the details and the pattern: the side panels of **Media** and **Photos** done
+on 2026-10-09, both translated; the File Viewer's in pocket and console at P6.)*
+
 Side panels found by `grep -E "SIDE_W|PANEL_W|DP_W|class \w*(Sidebar|SideBar|SidePanel|Rail)"` over
 `user/Apps`, then read; the user's list (Media, File Viewer, Game Library, Photos, Mail, Courier, Ledger,
 PDF, Slides, Paint) is confirmed and completed:

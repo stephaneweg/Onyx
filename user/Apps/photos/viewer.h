@@ -22,11 +22,11 @@ public:
 	DescBox (const char *init) : Modal (W, H)
 	{
 		t = new Textarea (20, titleH () + 16, W - 40, H - titleH () - 80, 1000); t->setContent (init); addChild (t);
-		Button *b = new Button (W - 240, H - 48, 100, 32, "Cancel", [] (Widget &w) { ((Modal *) w.parent)->close (0); }); addChild (b);
-		b = new Button (W - 130, H - 48, 110, 32, "Keep", [] (Widget &w) { ((Modal *) w.parent)->close (1); }); addChild (b);
+		Button *b = new Button (W - 240, H - 48, 100, 32, TR ("Cancel"), [] (Widget &w) { ((Modal *) w.parent)->close (0); }); addChild (b);
+		b = new Button (W - 130, H - 48, 110, 32, TR ("Keep"), [] (Widget &w) { ((Modal *) w.parent)->close (1); }); addChild (b);
 		t->setFocus ();
 	}
-	void onDraw () override { drawBox ("Description"); }
+	void onDraw () override { drawBox (TR ("Description")); }
 	bool ask (char *out, int cap) { if (run () != 1) return false; scpy (out, t->content (), cap); return true; }
 };
 
@@ -105,7 +105,7 @@ public:
 		if (pos < g_list.n - 1) { disc (canvas, aw - 30, cy, 20, 0x000000, hot == V_NEXT ? 170 : 110); icon (canvas, I_NEXT, aw - 42, cy - 12, 24, 0xFFFFFF); hits.add (aw - 54, cy - 24, 46, 48, V_NEXT); }
 		// the zoom
 		{
-			char z[16]; if (fit) scpy (z, "Fit", sizeof z); else snprintf (z, sizeof z, "%d%%", (int) (zoom * 100 + 0.5f));
+			char z[16]; if (fit) scpy (z, TR ("Fit"), sizeof z); else snprintf (z, sizeof z, "%d%%", (int) (zoom * 100 + 0.5f));
 			int zw = 150, zx = aw / 2 - zw / 2, zy = BAR_H + ah - 40;
 			fill_round (canvas, zx, zy, zw, 30, 15, 0x000000, 160);
 			icon (canvas, I_MINUS, zx + 14, zy + 7, 16, hot == V_ZOOMOUT ? 0xFFFFFF : D_DIM);
@@ -136,8 +136,8 @@ public:
 			icon (canvas, I_BACK, 16, 13, 20, D_TEXT); text_v (canvas, 40, 6, 34, l, D_TEXT, F_UI, 0, 160);
 			hits.add (8, 6, w, 34, V_BACK);
 			char t[160], d[80], tm[16];
-			if (p.when ()) { fmt_day (p.when (), d, sizeof d); fmt_time (p.when (), tm, sizeof tm); snprintf (t, sizeof t, "%s, %s   \xC2\xB7   %d of %d", d, tm, pos + 1, g_list.n); }
-			else snprintf (t, sizeof t, "%s   \xC2\xB7   %d of %d", base_name (p.path), pos + 1, g_list.n);
+			if (p.when ()) { fmt_day (p.when (), d, sizeof d); fmt_time (p.when (), tm, sizeof tm); snprintf (t, sizeof t, TR ("%s, %s   \xC2\xB7   %d of %d"), d, tm, pos + 1, g_list.n); }
+			else snprintf (t, sizeof t, TR ("%s   \xC2\xB7   %d of %d"), base_name (p.path), pos + 1, g_list.n);
 			int rx = width - 8 - 7 * 40;
 			int cx = w + 20, cw = rx - cx - 10;
 			if (tw (t) < cw) text_c (canvas, cx, 0, cw, BAR_H, t, 0xC8CACE);
@@ -158,7 +158,7 @@ public:
 		if (failed)
 		{
 			icon (cv, I_PHOTOS, ax + aw / 2 - 30, ay + ah / 2 - 60, 60, D_FAINT);
-			text_c (cv, ax, ay + ah / 2 + 6, aw, 24, "This picture cannot be read.", D_DIM);
+			text_c (cv, ax, ay + ah / 2 + 6, aw, 24, TR ("This picture cannot be read."), D_DIM);
 			return;
 		}
 		if (!full.px)
@@ -218,7 +218,7 @@ public:
 		canvas.fillRect (x, BAR_H, PANEL_W, height - BAR_H, D_PANEL);
 		canvas.fillRect (x, BAR_H, 1, height - BAR_H, D_LINE);
 		int y = BAR_H + 16, X = x + 18, W = PANEL_W - 36;
-		text (canvas, X, y, "Details", D_TEXT, F_H2, 1); y += 36;
+		text (canvas, X, y, TR ("Details"), D_TEXT, F_H2, 1); y += 36;
 		auto row = [&] (int ic, const char *a, const char *b) {
 			icon (canvas, ic, X, y + 2, 18, 0xAAAEB4);
 			text (canvas, X + 30, y, a, D_TEXT, F_UI, 1, W - 30);
@@ -230,7 +230,7 @@ public:
 		if (p.w > 0) snprintf (b, sizeof b, "%d \xC3\x97 %d  \xC2\xB7  %s", p.w, p.h, sz); else scpy (b, sz, sizeof b);
 		row (I_PHOTOS, base_name (p.path), b);
 		if (p.taken) { fmt_day (p.taken, a, sizeof a); fmt_time (p.taken, b, sizeof b); row (I_CLOCK, a, b); }
-		else row (I_CLOCK, "No date", "(the camera did not write one)");
+		else row (I_CLOCK, TR ("No date"), TR ("(the camera did not write one)"));
 		if (p.camera && p.camera[0]) row (I_INFO, p.camera, p.expo);
 		{
 			char dir[300]; scpy (dir, p.path, sizeof dir); char *s = strrchr (dir, '/'); if (s) *s = 0;
@@ -239,7 +239,7 @@ public:
 			row (I_FOLDER, nice, dir);
 		}
 		// the albums
-		y += 4; text (canvas, X, y, "ALBUMS", 0x969AA0, F_TINY, 1); y += 18;
+		y += 4; text (canvas, X, y, TR ("ALBUMS"), 0x969AA0, F_TINY, 1); y += 18;
 		int cx = X;
 		for (int al = 0; al < g_lib.albums.n; al++)
 		{
@@ -250,19 +250,19 @@ public:
 			hits.add (cx, y, w, 22, V_CHIP, al); cx += w + 6;
 		}
 		{
-			const char *l = "+ Add"; int w = tw (l, F_SMALL) + 22;
+			const char *l = TR ("+ Add"); int w = tw (l, F_SMALL) + 22;
 			if (cx + w > X + W) { cx = X; y += 28; }
 			fill_round (canvas, cx, y, w, 22, 11, hot == V_ADDALBUM ? 0x50555E : 0x3A3E45); text_c (canvas, cx, y, w, 22, l, 0xC8CCD2, F_SMALL);
 			hits.add (cx, y, w, 22, V_ADDALBUM);
 		}
 		y += 38;
 		// the description
-		text (canvas, X, y, "DESCRIPTION", 0x969AA0, F_TINY, 1); y += 18;
+		text (canvas, X, y, TR ("DESCRIPTION"), 0x969AA0, F_TINY, 1); y += 18;
 		int bh = 86;
 		fill_round (canvas, X, y, W, bh, 6, hot == V_DESC ? 0x3A3F47 : 0x34383F); uk_rline (canvas, X, y, W, bh, 6, 0x50545C);
 		hits.add (X, y, W, bh, V_DESC);
 		const char *d = p.desc && p.desc[0] ? p.desc : 0;
-		if (!d) text (canvas, X + 10, y + 9, "Add a description...", D_FAINT, F_SMALL);
+		if (!d) text (canvas, X + 10, y + 9, TR ("Add a description..."), D_FAINT, F_SMALL);
 		else
 		{	// word-wrapped
 			char line[300]; int ly = y + 9; const char *s = d;
