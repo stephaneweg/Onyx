@@ -430,6 +430,13 @@ the categories, the right panel shows what the chosen one holds. The composition
 
 ### 7.5 The File Viewer in console mode
 
+> **Decided by the user (2026-10-08): console mode gets its own file browser, in `consolehome`** -- the home's
+> **Files** entry opens it (phase P9), written for the console (the pad first, FileKit for the files, the actions
+> below: open with the associated app, copy, move, rename, trash). The pictures below are its reference. The File
+> Viewer stays one app: migrated to the adaptive widgets (P7) for pocket; started by hand in console mode it works
+> with the generic console rendering, but it is not console's way to the files. ("One binary per app" holds: the
+> console browser is another program, not a console build of the File Viewer.)
+
 The File Viewer (`user/Apps/fileviewer`: on the desktop a NeXTSTEP column browser, its places at the left, a
 path bar, a preview column, its menus File / Go / Edit and a right-click menu) shows how a UIKit app with a
 navigation panel becomes a console app, through the adaptive widgets of `docs/POCKETUI-TECH-STUDY.md` §6 — no
