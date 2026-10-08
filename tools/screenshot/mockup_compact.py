@@ -57,7 +57,7 @@ P = dict (
 	bar = (248, 248, 248), bar2 = (226, 226, 228), ink = (24, 24, 26), ink2 = (102, 102, 108),
 	field = (255, 255, 255), paper = (252, 252, 252),
 	desk = (34, 58, 85), desk2 = (22, 38, 60),				# the wallpaper (screenshots/milk.png)
-	term = (30, 32, 36), term_fg = (224, 226, 230), cursor = (110, 170, 240),
+	term = (26, 58, 70), term_fg = (212, 234, 240), cursor = (120, 214, 236),	# (the Terminal's own: TERM_BG)
 	red = (232, 86, 78), amber = (240, 180, 58), green = (76, 182, 83),
 	silver = ((250, 250, 251), (226, 228, 232)))
 # One colour per category: a dot on its tab (Milk keeps the tabs silver; the colour says the category).
@@ -578,21 +578,22 @@ def search_results (img, w, h, y, q):
 	return img
 
 # ---- the apps' screens (drawn the way the real ones look) -------------------------------------------------
-TERM_LINES = [("$ ", "ls /bin | grep e"), ("", "echo"), ("", "sleep"), ("", "yes"), ("$ ", "ps"),
+TERM_LINES = [("SD:/ $ ", "ls /bin | grep e"), ("", "echo"), ("", "sleep"), ("", "yes"), ("SD:/ $ ", "ps"),
 	("", "  1 k R  idle"), ("", "  2 a S  elegant"), ("", " 14 a S  pocket"), ("", " 15 a S  launcher"),
-	("", " 16 a S  notifyd"), ("", " 21 a R  terminal"), ("", " 22 a S  ledger"), ("$ ", "cat /etc/system.ini | grep shell"),
-	("", "shell=pocket"), ("$ ", "")]
+	("", " 16 a S  notifyd"), ("", " 21 a R  terminal"), ("", " 22 a S  ledger"), ("SD:/ $ ", "cat /etc/system.ini | grep shell"),
+	("", "shell=pocket"), ("SD:/ $ ", "")]
 
-def terminal_screen (img, x, y, w, h, k = 1, lines = TERM_LINES, tabs = ("~", "logs"), fs = 13):
+def terminal_screen (img, x, y, w, h, k = 1, lines = TERM_LINES, tabs = ("SD:/", "docs", "ping 192.168.1.1"), fs = 13):
 	box (img, x, y, w, h, P["term"])
 	th = 28 * k
 	box (img, x, y, w, th, shade (P["term"], 0.8))
 	tx = x + 6 * k
 	for i, t in enumerate (tabs):
-		tw0 = 120 * k
+		tw0 = min (150 * k, (w - 40 * k) / len (tabs) - 4 * k)
 		if i == 0: rrect (img, tx, y + 4 * k, tw0, th - 4 * k, 6 * k, P["term"], corners = (True, True, False, False))
-		text_l (img, tx + 10 * k, y + 4 * k, th - 4 * k, t, font (12 * k), P["term_fg"] if i == 0 else (150, 180, 190))
-		glyph (img, tx + tw0 - 18 * k, y + 13 * k, 10 * k, 10 * k, lambda d, s: g_close (d, s, k), (150, 180, 190))
+		if t.startswith ("ping"): rrect (img, tx + 8 * k, y + 13 * k, 6 * k, 6 * k, 3 * k, (90, 170, 240))		# (busy)
+		text_l (img, tx + (18 if t.startswith ("ping") else 10) * k, y + 4 * k, th - 4 * k, ellipsize (t, font (12 * k), tw0 - (32 if (i == 0 or tw0 > 110 * k) else 22) * k), font (12 * k), P["term_fg"] if i == 0 else (150, 180, 190))
+		if i == 0 or tw0 > 110 * k: glyph (img, tx + tw0 - 18 * k, y + 13 * k, 10 * k, 10 * k, lambda d, s: g_close (d, s, k), (150, 180, 190))
 		tx += tw0 + 4 * k
 	text_l (img, tx + 6 * k, y + 4 * k, th - 4 * k, "+", font (14 * k), (150, 180, 190))
 	fm = font (fs * k, mono = True); lh = int (fs * 1.45) * k
@@ -605,7 +606,7 @@ def terminal_screen (img, x, y, w, h, k = 1, lines = TERM_LINES, tabs = ("~", "l
 
 def pocket_terminal ():
 	img = Image.new ("RGB", (PW, PH), P["face"])
-	statusbar (img, PW, title = "Terminal", menus = ("File", "Edit", "View", "Tabs"))
+	statusbar (img, PW, title = "Terminal", menus = ("Shell",))			# (its one menu: user/Apps/terminal)
 	terminal_screen (img, 0, BAR, PW, PH - BAR)
 	return img
 
@@ -735,7 +736,7 @@ def quick_panel (img, x, y, w, k = 1):
 def pocket_quick ():
 	img = pocket_terminal ()
 	img = dim_below (img, BAR, 120)
-	statusbar (img, PW, title = "Terminal", menus = ("File", "Edit", "View", "Tabs"), hot = "clock")
+	statusbar (img, PW, title = "Terminal", menus = ("Shell",), hot = "clock")
 	quick_panel (img, PW - 346, BAR + 4, 340)
 	y = PH - 40; x = 20
 	x = hint (img, x, y, ["Super", "N"], "or a click on the clock")
@@ -1355,20 +1356,22 @@ def pad_btn (img, x, y, kind, d = 20):
 		if kind == "s": dd.rectangle ([6 * u * s, 6 * u * s, 14 * u * s, 14 * u * s], outline = 255, width = int (2 * u * s))
 	glyph (img, x, y, d, d, fn, col)
 
+def shoulder_w (lab): return max (30, tw (lab, font (10, True)) + 12)
 def shoulder (img, x, y, lab):
-	rrect (img, x, y, 30, 18, 5, ((60, 66, 80), (26, 28, 36))); ring (img, x, y, 30, 18, 5, (150, 160, 180), alpha = 160)
-	text_c (img, x, y - 1, 30, 18, lab, font (10, True), (220, 228, 240))
-	return 34
+	w = shoulder_w (lab)
+	rrect (img, x, y, w, 18, 5, ((60, 66, 80), (26, 28, 36))); ring (img, x, y, w, 18, 5, (150, 160, 180), alpha = 160)
+	text_c (img, x, y - 1, w, 18, lab, font (10, True), (220, 228, 240))
+	return w + 4
 
 def console_hints (img, items, y = None):
 	"""The bottom line: the buttons and what they do, centred."""
 	y = y or CH - 34
 	f = cfont (15, "regular")
 	widths = []
-	for kind, word in items: widths.append ((26 if kind in "xots" else 34 * len (kind.split ("/"))) + tw (word, f) + 22)
+	for kind, word in items: widths.append ((26 if kind in ("x", "o", "t", "s") else sum (shoulder_w (l) + 4 for l in kind.split ("/"))) + tw (word, f) + 22)
 	x = (CW - sum (widths)) // 2
 	for (kind, word), wd in zip (items, widths):
-		if kind in "xots": pad_btn (img, x, y, kind); x2 = x + 26
+		if kind in ("x", "o", "t", "s"): pad_btn (img, x, y, kind); x2 = x + 26
 		else:
 			x2 = x
 			for lab in kind.split ("/"): x2 += shoulder (img, x2, y + 1, lab)
@@ -1561,6 +1564,573 @@ def console_switcher ():
 	for i in range (4): rrect (img, CW // 2 - 34 + i * 18, 392, 8, 8, 4, (200, 225, 255), alpha = 240 if i == 1 else 80)
 	console_hints (img, [("x", "Switch"), ("s", "Close"), ("o", "Back"), ("L1/R1", "Choose")])
 	return img
+
+# ===========================================================================================================
+# Three real apps in every mode: the Terminal, the Media Player, Letters (docs section "Three apps in every
+# mode"). Their real layouts: user/Apps/terminal (a TabStrip + its own TermView, one menu "Shell"),
+# user/Apps/media (its own Sidebar 208 / TopBar 52 / Content / NowBar 80, menus File Play View),
+# user/Apps/letters (its own ToolBar of two rows, a Ruler, the PageView, a StatusBar; 7 menus).
+# ===========================================================================================================
+def ffont (name, size):
+	p = os.path.join (SD, "res", "fonts", name)
+	return ImageFont.truetype (p, int (round (size))) if os.path.exists (p) else font (size)
+
+def milkify_keep_teal (im):
+	"""milkify, but the terminal's own teal kept (a terminal stays dark)."""
+	a = np.asarray (im.convert ("RGB")).astype (float); out = np.asarray (milkify (im)).astype (float)
+	r, g, b = a[..., 0], a[..., 1], a[..., 2]
+	dark_teal = (b > r + 20) & (g > r + 10) & (0.3 * r + 0.59 * g + 0.11 * b < 90)
+	for i in range (3): out[..., i] = np.where (dark_teal, a[..., i], out[..., i])
+	return Image.fromarray (out.astype ("uint8"), "RGB")
+
+def real (name):
+	"""A real screenshot, its CDE frame cut off, in Milk's colours."""
+	im = Image.open (os.path.join (SHOTS, name + ".png")).convert ("RGBA")
+	bg = Image.new ("RGBA", im.size, (208, 194, 186, 255)); bg.alpha_composite (im)
+	im = bg.convert ("RGB").crop ((4, 28, im.width - 4, im.height - 4))
+	return milkify_keep_teal (im) if name == "terminal" else milkify (im)
+
+def milk_frame (img, x, y, cw, ch, title):
+	"""A window in Milk (uikit/skin.cpp): the title a gradient down to the window's colour, the frame melting
+	into it, OS X's beads (the window menu at the left; minimise, maximise, close at the right)."""
+	w, h = cw + 8, ch + 32
+	rrect (img, x, y, w, h, 8, P["face"])
+	rrect (img, x, y, w, 28, 8, ((250, 250, 250), P["face"]), corners = (True, True, False, False))
+	ring (img, x, y, w, h, 8, (40, 40, 46), alpha = 150)
+	hline (img, x + 8, y + 1, w - 16, (255, 255, 255), alpha = 120)
+	bead (img, x + 9, y + 7, 14, (154, 168, 186))
+	for i, c in enumerate ((P["red"], P["green"], P["amber"])): bead (img, x + w - 23 - i * 20, y + 7, 14, c)
+	text_c (img, x, y, w, 28, title, font (13, True), P["ink"])
+	return x + 4, y + 28
+
+def desktop_scene (title, menus, content, sw = 1280, sh = 800, dock_icons = ("tinypad", "jet", "paint", "media", "gamelib", "terminal", "fileviewer", "letters")):
+	"""Today's desktop in Milk: the menu bar, the app's window, the silver dock over it (topmost)."""
+	img = wallpaper (sw, sh, seed = 7)
+	statusbar (img, sw, title = title, menus = menus)
+	cw, ch = content.size
+	x = (sw - cw - 8) // 2; y = BAR + max (8, (sh - BAR - 70 - ch - 32) // 2)
+	cx, cy = milk_frame (img, x, y, cw, ch, title); img.paste (content, (cx, cy))
+	n = len (dock_icons); dw = n * 62 + 24; dx = (sw - dw) // 2; dy = sh - 66
+	rrect (img, dx, dy, dw, 60, 12, ((244, 246, 249), P["dock"]), alpha = 245); ring (img, dx, dy, dw, 60, 12, (60, 64, 72), alpha = 130)
+	for i, a in enumerate (dock_icons):
+		draw_icon (img, a, dx + 16 + i * 62, dy + 9, 40)
+		if a in (title.lower (), "terminal"): rrect (img, dx + 33 + i * 62, dy + 52, 6, 4, 2, P["accent"])
+	return img
+
+def pad_glass_note (img, x, y, w, title, body, icon = None):
+	"""Console mode's honest note: a glass panel with a line or two."""
+	h = 64 if body else 40
+	glass (img, x, y, w, h, 12, alpha = 120, edge = 170)
+	tx = x + 16
+	if icon: glyph (img, x + 16, y + 14, 34, 34, icon, (190, 214, 250)); tx = x + 62
+	glow_text (img, tx, y + 9, title, cfont (19, "semi"), (255, 255, 255), radius = 4, strength = 1)
+	if body: text (img, tx, y + 36, body, cfont (14, "regular"), (176, 200, 236))
+
+# ---- the Terminal ------------------------------------------------------------------------------------------
+TERM_SHORT = [("SD:/ $ ", "ls /bin | grep e"), ("", "echo"), ("", "sleep"), ("", "yes"), ("SD:/ $ ", "ps"),
+	      ("", "  1 k R  idle"), ("", " 14 a S  elegant"), ("", " 21 a R  terminal"), ("", " 25 a R  ping"),
+	      ("SD:/ $ ", "echo onyx | wc -c"), ("", "5"), ("SD:/ $ ", "")]
+
+def term_keys_row (img, x, y, w, k):
+	"""The input method's terminal row (the text-input hint says "terminal"): Esc, Tab, Ctrl, Alt, the arrows."""
+	keys = ["Esc", "Tab", "Ctrl", "Alt", "<", "^", "v", ">", "|", "~", "/"]
+	h = int (26 * k); box (img, x, y, w, h, (176, 178, 184))
+	kw = (w - (len (keys) + 1) * 2 * k) / len (keys)
+	for i, lab in enumerate (keys):
+		kx = int (x + 2 * k + i * (kw + 2 * k))
+		rrect (img, kx, y + 3 * k, int (kw), h - 6 * k, 4 * k, ((236, 236, 238), (212, 212, 216)))
+		text_c (img, kx, y + 3 * k, int (kw), h - 6 * k, lab, font (9 * k, True), P["ink"])
+	return h
+
+def app_terminal_portrait (W = 480, H = 800, k = 1.5, keyboard = True):
+	img = Image.new ("RGB", (W, H), P["face"])
+	statusbar (img, W, title = "Terminal", menus = ("Shell",), k = k, compact = True, lite = True)
+	soft = int (26 * k); bottom = soft
+	if keyboard:
+		oh = int ((4 * 24 + 5 * 2 + 4) * k); ky = H - soft - oh
+		osk (img, 0, ky, W, k = k)
+		kr = int (26 * k); term_keys_row (img, 0, ky - kr, W, k); bottom = soft + oh + kr
+	terminal_screen (img, 0, int (BAR * k), W, H - int (BAR * k) - bottom, k = k, fs = 9 if W / k < 300 else 11, lines = TERM_SHORT,
+			 tabs = ("SD:/", "docs", "ping"))
+	slate_softkeys (img, W, H, [(g_grid, "Home"), (g_tasks, "Tasks"), (g_menu, "Menu"), (g_kbd, "Hide" if keyboard else "Keys")], k = k)
+	return img
+
+def menu_hint (img, y = 14, words = "menu"):
+	"""The transient hint at an app's start in console mode (about 3 s): Home (or Alt / F10) shows the menus."""
+	f = cfont (15, "regular")
+	parts = [("HOME", ""), ("", "or"), ("Alt", ""), ("", words)]
+	w = 0
+	for key, word in parts: w += (tw (key, font (10, True)) + 14 + 6) if key else (tw (word, f) + 8)
+	x = (CW - w - 28) // 2
+	rrect (img, x, y, w + 28, 30, 15, (10, 16, 34), alpha = 215); ring (img, x, y, w + 28, 30, 15, (140, 180, 250), alpha = 170)
+	x += 14
+	for key, word in parts:
+		if key:
+			kw = tw (key, font (10, True)) + 14
+			rrect (img, x, y + 6, kw, 18, 5, ((70, 80, 100), (34, 38, 50))); ring (img, x, y + 6, kw, 18, 5, (170, 190, 220), alpha = 160)
+			text_c (img, x, y + 5, kw, 18, key, font (10, True), (230, 236, 246)); x += kw + 6
+		else: text (img, x, y + 5, word, f, (214, 226, 246)); x += tw (word, f) + 8
+
+def console_menubar (img, menus, open_menu, items, sel, system = ("Home", "Switch app", "Quit")):
+	"""The app's own menus, revealed on demand in console style: big items, a glowing focus, the pad's
+	directions; the system's items in a slim row below them."""
+	h = 46
+	img.paste (Image.blend (img.crop ((0, 0, CW, h + 30)), Image.new ("RGB", (CW, h + 30), (6, 10, 26)), 0.86), (0, 0))
+	hline (img, 0, h, CW, (110, 150, 220), alpha = 160); hline (img, 0, h + 30, CW, (110, 150, 220), alpha = 90)
+	f = cfont (20, "light"); fs = cfont (20, "semi")
+	x = 16; pos = {}
+	for m_ in menus:
+		ww = tw (m_, fs) + 20; pos[m_] = x
+		if m_ == open_menu:
+			img2 = glow_box (img, x, 7, ww, 32, 8); img.paste (img2)
+			text (img, x + 10, 10, m_, fs, (255, 255, 255))
+		else: text (img, x + 10, 10, m_, f, (196, 212, 236))
+		x += ww + 2
+	sx = 16
+	for it in system:
+		text (img, sx, h + 6, it, cfont (14, "regular"), (150, 176, 214)); sx += tw (it, cfont (14, "regular")) + 26
+	text_r (img, CW - 16, h + 4, 20, "the system", cfont (12, "regular"), (110, 134, 176))
+	# the drop-down, in glass
+	dx = pos[open_menu]; rh = 30; dh = sum (10 if it == "-" else rh for it in items) + 14; dw = 250
+	glass (img, dx, h + 36, dw, dh, 10, alpha = 150, edge = 170)
+	y = h + 43
+	for i, it in enumerate (items):
+		if it == "-": hline (img, dx + 12, y + 4, dw - 24, (110, 140, 200), alpha = 120); y += 10; continue
+		if i == sel:
+			img2 = glow_box (img, dx + 6, y, dw - 12, rh - 2, 7); img.paste (img2)
+		text (img, dx + 18, y + 4, it[0], cfont (17, "semi" if i == sel else "light"), (255, 255, 255) if i == sel else (206, 220, 242))
+		if it[1]: text_r (img, dx + dw - 16, y + 2, 24, it[1], cfont (13, "regular"), (150, 176, 214))
+		y += rh
+	return img
+
+def app_terminal_console ():
+	"""Console mode: the app full screen, no chrome; a keyboard expected (no keyboard on screen)."""
+	img = Image.new ("RGB", (CW, CH), P["term"])
+	terminal_screen (img, 0, 0, CW, CH, fs = 13, lines = TERM_SHORT)
+	menu_hint (img, y = CH - 136)
+	# a keyboard is needed: said once, at the start, if none is plugged in
+	pad_glass_note (img, 40, CH - 92, CW - 80, "A keyboard is needed to type", "Plug in a USB or Bluetooth keyboard; the pad only scrolls and switches tabs.",
+			icon = lambda d, s: g_kbd (d, s, 2.1))
+	return img
+
+# ---- the Media Player ------------------------------------------------------------------------------------
+_media_src = {}
+def media_src (name):
+	if name not in _media_src:
+		im = Image.open (os.path.join (SHOTS, name + ".png")).convert ("RGBA")
+		bg = Image.new ("RGBA", im.size, (208, 194, 186, 255)); bg.alpha_composite (im); _media_src[name] = bg.convert ("RGB")
+	return _media_src[name]
+def cover (n, size):
+	"""An album's real cover (screenshots/media-albums.png), n = 0..7."""
+	src = media_src ("media-albums"); x = [290, 452, 614, 776][n % 4]; y = [156, 360][n // 4]
+	return src.crop ((x, y, x + 140, y + 140)).resize ((size, size), Image.LANCZOS)
+def big_cover (size):
+	return media_src ("media-nowplaying").crop ((252, 158, 482, 388)).resize ((size, size), Image.LANCZOS)
+MEDIA_ICONS = {"Home": 52, "Artists": 110, "Albums": 140, "Songs": 170, "Genres": 200, "Folders": 230, "Films": 288,
+	       "Clips and series": 318, "Favourites": 376, "Recently added": 406, "Sunday morning": 436, "Workout": 466}
+def media_icon (name, size = 20):
+	"""The sidebar's real icon, its background made see-through (RGBA)."""
+	y = MEDIA_ICONS[name]; im = media_src ("media-nowplaying").crop ((20, y - 10, 40, y + 10))
+	a = np.asarray (im).astype (int); bgc = a[0, 0]
+	alpha = np.clip ((np.abs (a - bgc).sum (-1) - 12) * 4, 0, 255).astype ("uint8")
+	rgba = Image.fromarray (np.dstack ([a.astype ("uint8"), alpha]), "RGBA")
+	return rgba if size == 20 else rgba.resize ((size, size), Image.LANCZOS)
+SONGS = [("Title Screen", "8-Bit Parade", "Midnight Arcade", "0:41", "MIDI"), ("Level 1", "8-Bit Parade", "Midnight Arcade", "0:41", "MIDI"),
+	 ("Concrete", "Atlas Grey", "Grey Atlas", "2:53", "MP3"), ("Grey Atlas", "Atlas Grey", "Grey Atlas", "4:51", "MP3"),
+	 ("Engines", "Atlas Grey", "Grey Atlas", "4:18", "MP3"), ("Aria", "J. S. Bach", "Goldberg Variations", "0:42", "MIDI"),
+	 ("Variatio 1", "J. S. Bach", "Goldberg Variations", "0:43", "MIDI"), ("Blue Hour", "Koji Arai Trio", "Blue Hour Sessions", "4:54", "FLAC"),
+	 ("Kissa", "Koji Arai Trio", "Blue Hour Sessions", "3:01", "FLAC"), ("Glass Gardens", "Lumen Drift", "Glass Gardens", "3:26", "WAV"),
+	 ("Greenhouse", "Lumen Drift", "Glass Gardens", "2:41", "WAV")]
+BADGE = {"MIDI": (130, 90, 200), "MP3": (150, 150, 156), "FLAC": (150, 150, 156), "WAV": (150, 150, 156)}
+
+def media_nowbar (img, x, y, w, h, k = 1, compact = False):
+	u = lambda v: int (v * k)
+	box (img, x, y, w, h, (238, 238, 240)); hline (img, x, y, w, (200, 200, 204))
+	cs = h - u (16); img.paste (big_cover (cs), (x + u (8), y + u (8)))
+	text (img, x + cs + u (16), y + u (10), "Glass Gardens", font (u (12), True), P["ink"])
+	text (img, x + cs + u (16), y + u (28), "Lumen Drift", font (u (11)), P["ink2"])
+	cx = x + w // 2 + (u (30) if compact else 0)
+	if compact: cx = x + w - u (70)
+	for dx, g in [(-u (44), "prev"), (0, "play"), (u (44), "next")]:
+		if g == "play":
+			rrect (img, cx + dx - u (16), y + h // 2 - u (16) - (0 if compact else u (6)), u (32), u (32), u (16), P["accent"])
+			glyph (img, cx + dx - u (5), y + h // 2 - u (6) - (0 if compact else u (6)), u (12), u (12), lambda d, s: [d.rectangle ([1 * s * k, 0, 4 * s * k, 12 * s * k], fill = 255), d.rectangle ([7 * s * k, 0, 10 * s * k, 12 * s * k], fill = 255)], (255, 255, 255))
+		else:
+			glyph (img, cx + dx - u (7), y + h // 2 - u (7) - (0 if compact else u (6)), u (14), u (14), lambda d, s, g = g: d.polygon (
+				[(12 * s * k, 1 * s * k), (12 * s * k, 13 * s * k), (3 * s * k, 7 * s * k)] if g == "prev" else [(2 * s * k, 1 * s * k), (2 * s * k, 13 * s * k), (11 * s * k, 7 * s * k)], fill = 255), P["ink"])
+	if not compact:
+		px = x + w // 2 - u (180); pw = u (360); py = y + h - u (16)
+		rrect (img, px, py, pw, u (4), u (2), (206, 206, 210)); rrect (img, px, py, pw // 3, u (4), u (2), P["accent"])
+		text_r (img, px - u (6), py - u (7), u (16), "1:08", font (u (10)), P["ink2"]); text (img, px + pw + u (6), py - u (6), "3:26", font (u (10)), P["ink2"])
+		glyph (img, x + w - u (130), y + h // 2 - u (7), u (16), u (14), lambda d, s: g_speaker (d, s * k), P["ink"])
+		rrect (img, x + w - u (104), y + h // 2 - u (2), u (88), u (4), u (2), (206, 206, 210)); rrect (img, x + w - u (104), y + h // 2 - u (2), u (60), u (4), u (2), P["accent"])
+
+def app_media_pocket ():
+	"""800 x 480: the sidebar folds into a rail; the top bar keeps back / forward, the crumbs, the search; the
+	table loses nothing (740 px is enough); the now bar is 64 px."""
+	img = Image.new ("RGB", (PW, PH), P["face"])
+	statusbar (img, PW, title = "Media Player", menus = ("File", "Play", "View"))
+	rw = 52; top = BAR; nh = 64
+	box (img, 0, top, rw, PH - top - nh, (226, 226, 228)); vline (img, rw, top, PH - top - nh, (200, 200, 204))
+	y = top + 8
+	for n in ["Home", "Artists", "Albums", "Songs", "Genres", "Folders", "-", "Films", "Clips and series", "-", "Favourites", "Recently added"]:
+		if n == "-": hline (img, 12, y + 2, 28, (200, 200, 204)); y += 8; continue
+		if n == "Songs":
+			rrect (img, 6, y - 3, 40, 28, 7, P["accent"])
+			img.paste ((255, 255, 255), (16, y + 1), media_icon (n).getchannel ("A"))
+		else: ic_ = media_icon (n); img.paste (ic_, (16, y + 1), ic_)
+		y += 31
+	# the top bar
+	x0 = rw + 1; ty = top
+	box (img, x0, ty, PW - x0, 44, (232, 232, 234)); hline (img, x0, ty + 43, PW - x0, (204, 204, 208))
+	for i in range (2):
+		rrect (img, x0 + 10 + i * 34, ty + 8, 28, 28, 14, ((250, 250, 250), (226, 226, 230))); ring (img, x0 + 10 + i * 34, ty + 8, 28, 28, 14, (0, 0, 0), alpha = 70)
+		glyph (img, x0 + 19 + i * 34, ty + 17, 10, 10, lambda d, s, i = i: g_chev (d, s, 1, "left" if i == 0 else "right"), P["ink"] if i == 0 else (170, 170, 176))
+	text_l (img, x0 + 86, ty, 44, "Music", font (12), P["ink"]); glyph (img, x0 + 130, ty + 18, 8, 8, lambda d, s: g_chev (d, s, 0.8, "right"), P["ink2"])
+	text_l (img, x0 + 144, ty, 44, "Songs", font (12, True), P["ink"])
+	rrect (img, PW - 210, ty + 9, 198, 26, 6, P["field"]); ring (img, PW - 210, ty + 9, 198, 26, 6, (0, 0, 0), alpha = 70)
+	text_l (img, PW - 200, ty + 9, 26, "Search the library", font (12), (150, 150, 156))
+	# the table
+	cy = ty + 52; cx = x0 + 14; cw = PW - cx - 14
+	text (img, cx, cy - 2, "Songs", font (22, True), P["ink"]); text (img, cx + 84, cy + 7, "45 songs", font (12), P["ink2"])
+	cy += 34
+	cols = [(cx + 10, "Title"), (cx + 230, "Artist"), (cx + 390, "Album"), (cx + 600, "Time")]
+	rrect (img, cx, cy, cw, 24, 5, (226, 226, 230))
+	for xx, lab in cols: text_l (img, xx, cy, 24, lab, font (11, True), P["accent"] if lab == "Artist" else P["ink2"])
+	cy += 26
+	for i, (t, a, al, tm, b) in enumerate (SONGS):
+		if cy + 26 > PH - nh - 2: break
+		if i == 4: rrect (img, cx, cy, cw, 25, 5, (lighten (P["accent"], 0.72), lighten (P["accent"], 0.66)))
+		elif i % 2: rrect (img, cx, cy, cw, 25, 5, (238, 238, 240))
+		text_l (img, cols[0][0], cy, 25, t, font (12), P["ink"]); text_l (img, cols[1][0], cy, 25, a, font (12), P["ink2"])
+		text_l (img, cols[2][0], cy, 25, ellipsize (al, font (12), 200), font (12), P["ink2"]); text_l (img, cols[3][0], cy, 25, tm, font (11), P["ink2"])
+		bw = tw (b, font (9, True)) + 12; rrect (img, cx + cw - bw - 10, cy + 5, bw, 15, 7, BADGE[b]); text_c (img, cx + cw - bw - 10, cy + 4, bw, 15, b, font (9, True), (255, 255, 255))
+		cy += 26
+	media_nowbar (img, 0, PH - nh, PW, nh)
+	return img
+
+def app_media_portrait (W = 480, H = 800, k = 1.5):
+	"""Portrait: Now Playing takes the screen -- the cover, the title, the controls, Up next below."""
+	u = lambda v: int (v * k)
+	img = Image.new ("RGB", (W, H), (24, 28, 40))
+	statusbar (img, W, title = "Media Player", menus = ("File", "Play", "View"), k = k, compact = True, lite = True)
+	img.paste (grad (W, H - u (BAR) - u (26), (40, 46, 66), (14, 16, 26)), (0, u (BAR)))
+	y = u (BAR + 8)
+	rrect (img, u (10), y, u (30), u (30), u (15), (255, 255, 255), alpha = 40)
+	glyph (img, u (18), y + u (8), u (14), u (14), lambda d, s: g_menu (d, s, 0.85 * k), (236, 240, 248))	# the drawer
+	text_l (img, u (48), y, u (30), "Now playing", font (u (13), True), (236, 240, 248))
+	cs = W - u (150); y += u (36)
+	img.paste (big_cover (cs), ((W - cs) // 2, y)); y += cs + u (12)
+	text (img, u (32), y, "Glass Gardens", font (u (20), True), (255, 255, 255)); y += u (28)
+	text (img, u (32), y, "Lumen Drift  -  Glass Gardens", font (u (12)), (190, 200, 220)); y += u (26)
+	rrect (img, u (32), y, W - u (64), u (4), u (2), (80, 88, 110)); rrect (img, u (32), y, (W - u (64)) // 3, u (4), u (2), (120, 180, 250))
+	rrect (img, u (32) + (W - u (64)) // 3 - u (6), y - u (4), u (12), u (12), u (6), (255, 255, 255))
+	text (img, u (32), y + u (8), "1:08", font (u (10)), (170, 180, 200)); text_r (img, W - u (32), y + u (6), u (14), "3:26", font (u (10)), (170, 180, 200))
+	y += u (30); cx = W // 2
+	rrect (img, cx - u (24), y, u (48), u (48), u (24), (120, 180, 250))
+	glyph (img, cx - u (8), y + u (16), u (16), u (16), lambda d, s: [d.rectangle ([2 * s * k, 0, 6 * s * k, 16 * s * k], fill = 255), d.rectangle ([10 * s * k, 0, 14 * s * k, 16 * s * k], fill = 255)], (20, 24, 36))
+	for dx, g in [(-u (80), "prev"), (u (80), "next")]:
+		glyph (img, cx + dx - u (9), y + u (15), u (18), u (18), lambda d, s, g = g: d.polygon (
+			[(16 * s * k, 1 * s * k), (16 * s * k, 17 * s * k), (3 * s * k, 9 * s * k)] if g == "prev" else [(2 * s * k, 1 * s * k), (2 * s * k, 17 * s * k), (15 * s * k, 9 * s * k)], fill = 255), (236, 240, 248))
+	y += u (62)
+	text (img, u (20), y, "Up next", font (u (12), True), (236, 240, 248)); y += u (22)
+	for i, (t, a, n) in enumerate ([("Greenhouse", "Lumen Drift", 1), ("Concrete", "Atlas Grey", 3)]):
+		if y + u (40) > H - u (30): break
+		img.paste (cover (n, u (34)), (u (20), y)); text (img, u (62), y + u (2), t, font (u (12), True), (236, 240, 248))
+		text (img, u (62), y + u (19), a, font (u (10)), (170, 180, 200)); y += u (42)
+	slate_softkeys (img, W, H, [(g_grid, "Home"), (g_tasks, "Tasks"), (g_menu, "Menu"), (g_kbd, "Keys")], k = k)
+	return img
+
+def app_media_drawer (W = 480, H = 800, k = 1.5):
+	"""Portrait: the songs as one column (title, then artist and album), the sidebar a drawer over it."""
+	u = lambda v: int (v * k)
+	img = Image.new ("RGB", (W, H), P["paper"])
+	statusbar (img, W, title = "Media Player", menus = ("File", "Play", "View"), k = k, compact = True, lite = True)
+	y = u (BAR)
+	box (img, 0, y, W, u (40), (232, 232, 234)); text_l (img, u (48), y, u (40), "Songs", font (u (14), True), P["ink"])
+	y += u (44)
+	for i, (t, a, al, tm, b) in enumerate (SONGS):
+		if y + u (40) > H - u (26) - u (56): break
+		text (img, u (14), y + u (3), t, font (u (12), True), P["ink"]); text (img, u (14), y + u (20), a + "  -  " + al, font (u (10)), P["ink2"])
+		text_r (img, W - u (14), y + u (4), u (16), tm, font (u (10)), P["ink2"]); hline (img, u (14), y + u (38), W - u (28), (224, 224, 228)); y += u (40)
+	media_nowbar (img, 0, H - u (26) - u (56), W, u (56), k = k, compact = True)
+	img = dim_below (img, u (BAR), 110)
+	dw = u (220); box (img, 0, u (BAR), dw, H - u (BAR) - u (26), (240, 240, 242)); vline (img, dw, u (BAR), H - u (BAR) - u (26), (150, 150, 156))
+	y = u (BAR + 10)
+	for n in ["Home", "LIBRARY", "Artists", "Albums", "Songs", "Genres", "Folders", "VIDEOS", "Films", "Clips and series", "PLAYLISTS", "Favourites", "Recently added", "Sunday morning"]:
+		if n.isupper(): text (img, u (16), y + u (4), n, font (u (9), True), (130, 130, 136)); y += u (22); continue
+		if n == "Songs": rrect (img, u (8), y, dw - u (16), u (28), u (6), P["accent"])
+		ic_ = media_icon (n, u (16))
+		if n == "Songs": img.paste ((255, 255, 255), (u (18), y + u (6)), ic_.getchannel ("A"))
+		else: img.paste (ic_, (u (18), y + u (6)), ic_)
+		text_l (img, u (44), y, u (28), n, font (u (12)), (255, 255, 255) if n == "Songs" else P["ink"]); y += u (30)
+	slate_softkeys (img, W, H, [(g_grid, "Home"), (g_tasks, "Tasks"), (g_menu, "Menu"), (g_kbd, "Keys")], k = k)
+	return img
+
+def app_media_console ():
+	"""Console mode: the Media Player full screen, its own Now playing view at the console's size; Home shows
+	its menus (File, Play, View) over it."""
+	img = Image.new ("RGB", (CW, CH), (24, 28, 40))
+	img.paste (grad (CW, CH, (40, 46, 66), (12, 14, 22)), (0, 0))
+	cs = 250; x0, y0 = 36, 70
+	img.paste (big_cover (cs), (x0, y0))
+	tx = x0 + cs + 30
+	text (img, tx, y0 + 4, "Now playing", font (13, True), (170, 186, 214))
+	text (img, tx, y0 + 30, "Glass Gardens", font (26, True), (255, 255, 255))
+	text (img, tx, y0 + 66, "Lumen Drift  -  Glass Gardens", font (14), (190, 200, 220))
+	text (img, tx, y0 + 88, "WAV  -  8.0 kHz  -  8 bit", font (11), (140, 150, 172))
+	rrect (img, tx, y0 + 124, 290, 5, 2, (80, 88, 110)); rrect (img, tx, y0 + 124, 96, 5, 2, (120, 180, 250))
+	rrect (img, tx + 90, y0 + 119, 14, 14, 7, (255, 255, 255))
+	text (img, tx, y0 + 136, "1:08", font (11), (170, 180, 200)); text_r (img, tx + 290, y0 + 134, 16, "3:26", font (11), (170, 180, 200))
+	cx = tx + 145; cy = y0 + 180
+	m = Image.new ("L", img.size, 0); ImageDraw.Draw (m).ellipse ([cx - 30, cy - 30, cx + 30, cy + 30], outline = 255, width = 3)
+	img = add_glow (img, Image.new ("RGB", img.size, GLOW), m, 6)						# (the pad's focus)
+	rrect (img, cx - 26, cy - 26, 52, 52, 26, (120, 180, 250))
+	glyph (img, cx - 9, cy - 9, 18, 18, lambda d, s: [d.rectangle ([2 * s, 0, 7 * s, 18 * s], fill = 255), d.rectangle ([11 * s, 0, 16 * s, 18 * s], fill = 255)], (20, 24, 36))
+	for dx, g in [(-86, "prev"), (86, "next")]:
+		glyph (img, cx + dx - 10, cy - 10, 20, 20, lambda d, s, g = g: d.polygon (
+			[(18 * s, 1 * s), (18 * s, 19 * s), (3 * s, 10 * s)] if g == "prev" else [(2 * s, 1 * s), (2 * s, 19 * s), (17 * s, 10 * s)], fill = 255), (236, 240, 248))
+	y = y0 + cs + 26
+	text (img, x0, y, "Up next", font (14, True), (236, 240, 248))
+	for i, (t, a, n) in enumerate ([("Greenhouse", "Lumen Drift", 1), ("Concrete", "Atlas Grey", 3), ("Aria", "J. S. Bach", 2)]):
+		xx = x0 + i * 190; yy = y + 26
+		img.paste (cover (n, 48), (xx, yy)); text (img, xx + 58, yy + 6, t, font (13, True), (236, 240, 248)); text (img, xx + 58, yy + 26, a, font (11), (170, 180, 200))
+	menu_hint (img, y = 14)
+	return img
+
+# ---- Letters -------------------------------------------------------------------------------------------------
+_lsrc = None
+def letters_src ():
+	global _lsrc
+	if _lsrc is None:
+		im = Image.open (os.path.join (SHOTS, "letters.png")).convert ("RGBA")
+		bg = Image.new ("RGBA", im.size, (208, 194, 186, 255)); bg.alpha_composite (im); _lsrc = milkify (bg.convert ("RGB"))
+	return _lsrc
+# the real toolbar's buttons (letters.png: centre x, row y)
+LT1 = {"new": 25, "open": 54, "save": 83, "undo": 122, "redo": 152, "cut": 191, "copy": 220, "paste": 249, "find": 290, "marks": 319,
+       "break": 359, "table": 388, "symbol": 430, "image": 459, "zoomout": 499, "zoomin": 615}
+LT2 = {"bold": 418, "italic": 447, "under": 476, "strike": 505, "sup": 536, "sub": 566, "colour": 610, "high": 652,
+       "left": 702, "centre": 731, "right": 760, "justify": 789, "bullets": 829, "numbers": 858, "outdent": 889, "indent": 918}
+def ltool (name, size = 24):
+	src = letters_src ()
+	if name in LT1: cx, cy = LT1[name], 45
+	else: cx, cy = LT2[name], 78
+	im = src.crop ((cx - 12, cy - 12, cx + 12, cy + 12))
+	return im if size == 24 else im.resize ((size, size), Image.LANCZOS)
+def lcombo (which, w = None):
+	src = letters_src (); x0, x1 = {"style": (11, 146), "font": (153, 328), "size": (335, 391), "zoom": (515, 598)}[which]
+	y0, y1 = (66, 91) if which != "zoom" else (33, 58)
+	im = src.crop ((x0, y0, x1, y1))
+	if w and w < im.width: im = Image.fromarray (np.hstack ([np.asarray (im)[:, :w - 24], np.asarray (im)[:, im.width - 24:]]))
+	return im
+
+def letters_toolbar (img, x, y, w, items, k = 1, h = 34, lit = None):
+	"""One row of Letters' tools: names (a button), ("combo", which, width), "|" (a separator), ">>" (the overflow)."""
+	box (img, x, y, w, h, (232, 232, 234)); hline (img, x, y + h - 1, w, (204, 204, 208))
+	cx = x + 6
+	for it in items:
+		if it == "|": vline (img, cx + 3, y + 7, h - 14, (196, 196, 200)); cx += 8; continue
+		if it == ">>":
+			bx = x + w - int (34 * k)
+			if lit == ">>": rrect (img, bx, y + 4, int (28 * k), h - 8, 5, P["accent"])
+			text_c (img, bx, y + 1, int (28 * k), h - 6, "»", font (int (16 * k), True), (255, 255, 255) if lit == ">>" else P["ink"]); continue
+		if isinstance (it, tuple):
+			c = lcombo (it[1], it[2]); c = c.resize ((int (c.width * k), int (c.height * k)), Image.LANCZOS) if k != 1 else c
+			img.paste (c, (cx, y + (h - c.height) // 2)); cx += c.width + 6; continue
+		s_ = int (24 * k); t = ltool (it, s_)
+		if it == "left": rrect (img, cx - 2, y + (h - s_) // 2 - 2, s_ + 4, s_ + 4, 4, lighten (P["accent"], 0.6))
+		img.paste (t, (cx, y + (h - s_) // 2)) if it != "left" else img.paste (t.convert ("RGB"), (cx, y + (h - s_) // 2), t.convert ("L").point (lambda v: 255 if v < 200 else 0))
+		cx += s_ + int (5 * k)
+	return cx
+
+def letters_doc (img, x, y, w, h, scale = 1.0, page = True, caret = True):
+	"""The document of screenshots/letters.png, typeset at `scale` (its banner the real picture)."""
+	if page:
+		box (img, x, y, w, h, (150, 150, 154))
+		pw = int (min (w - 40 * scale, 794 * scale)); px = x + (w - pw) // 2; py = y + int (16 * scale)
+		box (img, px, py, pw, h, (255, 255, 255)); m = int (76 * scale)
+	else:
+		box (img, x, y, w, h, (255, 255, 255)); px, py, pw = x, y, w; m = int (14 * scale)
+	cl, cw = px + m, pw - 2 * m
+	yy = py + int ((70 if page else 10) * scale)
+	sansb, sans, serif, serifb = (lambda sz: ffont ("LiberationSans-Bold.ttf", sz * scale)), (lambda sz: ffont ("LiberationSans-Regular.ttf", sz * scale)), \
+		(lambda sz: ffont ("LiberationSerif-Regular.ttf", sz * scale)), (lambda sz: ffont ("LiberationSans-Bold.ttf", sz * scale))
+	def centre (s_, f, col):
+		nonlocal yy
+		lines = [s_] if tw (s_, f) <= cw else wrap (s_, f, cw)
+		for l in lines: text (img, cl + (cw - tw (l, f)) // 2, yy, l, f, col); yy += int (f.size * 1.3)
+	centre ("Onyx Letters", sansb (34), (0, 0, 0)); yy += int (6 * scale)
+	centre ("A word processor for Onyx, in the way of AbiWord", sans (21), (80, 80, 86)); yy += int (10 * scale)
+	ban = Image.open (os.path.join (SHOTS, "letters.png")).convert ("RGB").crop ((197, 319, 797, 469)); bw = min (cw, int (600 * scale)); bh = int (bw * 150 / 600)
+	img.paste (ban.resize ((bw, bh), Image.LANCZOS), (cl + (cw - bw) // 2, yy)); yy += bh + int (40 * scale)
+	text (img, cl, yy, "Contents", serifb (21), (0, 0, 0)); yy += int (40 * scale)
+	f = serif (15.5)
+	for i, (t, n) in enumerate ([("What Letters does", "1"), ("A few keys", "1"), ("Tables, pages and fields", "2"), ("   A mail merge", "2")]):
+		if yy > y + h - 10: break
+		text (img, cl, yy, t, f, (0, 0, 0)); nx = cl + cw - tw (n, f); text (img, nx, yy, n, f, (0, 0, 0))
+		dx = cl + tw (t, f) + 4
+		while dx < nx - 8: text (img, dx, yy, ".", f, (0, 0, 0)); dx += max (3, int (4 * scale))
+		if i == 0 and caret:
+			lx = cl + tw ("What ", f); rrect (img, lx - 1, yy, tw ("Letters", f) + 2, int (f.size * 1.2), 0, lighten (P["accent"], 0.6))
+			text (img, lx, yy, "Letters", f, (0, 0, 0))
+		yy += int (30 * scale)
+	yy += int (14 * scale)
+	if yy < y + h - 20:
+		text (img, cl, yy, "What Letters does", serifb (21), (0, 0, 0)); yy += int (36 * scale)
+	for l in wrap ("Letters writes letters, reports and documents with pages: styles, fonts, tables, pictures, headers and footers, fields and a table of contents. It reads and writes .rtf, .odt and .docx, and exports to PDF and HTML.", serif (15.5), cw):
+		if yy > y + h - 10: break
+		text (img, cl, yy, l, serif (15.5), (0, 0, 0)); yy += int (22 * scale)
+
+def wrap (s_, f, w):
+	out, cur = [], ""
+	for word in s_.split ():
+		t = (cur + " " + word).strip ()
+		if tw (t, f) <= w: cur = t
+		else: out.append (cur); cur = word
+	if cur: out.append (cur)
+	return out
+
+def letters_status (img, x, y, w, h = 22):
+	box (img, x, y, w, h, (228, 228, 230)); hline (img, x, y, w, (204, 204, 208))
+	f = font (11); text_l (img, x + 10, y, h, "letters-tour.rtf", f, P["ink"])
+	text_l (img, x + w // 2 - 70, y, h, "Page 1 of 2    Words: 393", f, P["ink"]); text_r (img, x + w - 10, y, h, "-  100%  +", f, P["ink"])
+
+LETTERS_MENUS = ("File", "Edit", "View", "Insert", "Format", "Table", "Tools")
+def app_letters_pocket (overflow = True, menu = None):
+	img = Image.new ("RGB", (PW, PH), P["face"])
+	pos = statusbar (img, PW, title = "Letters", menus = LETTERS_MENUS, open_menu = menu)
+	ty = BAR
+	letters_toolbar (img, 0, ty, PW, ["new", "open", "save", "|", "undo", "redo", "|", ("combo", "style", 118), "|", "bold", "italic", "under", "|",
+					  "left", "centre", "right", "justify", "|", "bullets", "numbers", ">>"], lit = ">>" if overflow else None)
+	dy = ty + 34
+	letters_doc (img, 0, dy, PW, PH - dy - 22, scale = 0.86)
+	letters_status (img, 0, PH - 22, PW)
+	if overflow:
+		# the overflow: the tools that did not fit, as a grid (the second row and the rest of the first)
+		ox, oy, ow = PW - 296, dy + 2, 288
+		items = ["cut", "copy", "paste", "find", "marks", "break", "table", "symbol", "image", "zoomout", "zoomin",
+			 "strike", "sup", "sub", "colour", "high", "outdent", "indent"]
+		oh = 40 + 2 * 36 + ((len (items) + 7) // 8) * 34 + 8
+		rrect (img, ox, oy, ow, oh, 8, (252, 252, 252)); ring (img, ox, oy, ow, oh, 8, (40, 40, 46), alpha = 140)
+		img.paste (lcombo ("font", 168), (ox + 10, oy + 10)); img.paste (lcombo ("size"), (ox + 186, oy + 10))
+		img.paste (lcombo ("zoom"), (ox + 10, oy + 44)); text_l (img, ox + 100, oy + 44, 25, "zoom", font (11), P["ink2"])
+		for i, it in enumerate (items):
+			r, c = divmod (i, 8); img.paste (ltool (it), (ox + 12 + c * 34, oy + 84 + r * 34))
+		text_l (img, ox + 10, oy + oh - 26, 20, "Tools that do not fit: UIKit's Toolbar overflow", font (10), P["ink2"])
+	if menu:
+		img = dim_below (img, BAR, 30)
+		dropdown (img, pos[menu], BAR + 2, [("Font...", "Ctrl+D"), ("Paragraph...", ""), ("Tabs...", ""), "-", ("Bold", "Ctrl+B"), ("Italic", "Ctrl+I"),
+			  ("Underline", "Ctrl+U"), ("Strikethrough", ""), ("Clear Formatting", ""), "-", ("Align Left", "Ctrl+L"), ("Centre", "Ctrl+E"),
+			  ("Align Right", "Ctrl+R"), ("Justify", "Ctrl+J"), "-", ("Bullets", ""), ("Numbering", "")], sel = 4, w = 220)
+	return img
+
+def app_letters_portrait (W = 480, H = 800, k = 1.5, sheet = False):
+	"""Portrait: one row of tools (the rest in the overflow), the text reflowed to the width (a draft view: no
+	pages -- they come back in landscape), the keyboard on screen; or the menus as a bottom sheet."""
+	u = lambda v: int (v * k)
+	img = Image.new ("RGB", (W, H), P["face"])
+	statusbar (img, W, title = "Letters", menus = LETTERS_MENUS, k = k, compact = True, lite = True, open_menu = "x" if sheet else None)
+	ty = u (BAR)
+	letters_toolbar (img, 0, ty, W, ["undo", "|", "bold", "italic", "under", "|", "left", "bullets", ">>"], k = k, h = u (34))
+	dy = ty + u (34)
+	soft = u (26); oh = 0 if sheet else int ((4 * 24 + 5 * 2 + 4) * k)
+	letters_doc (img, 0, dy, W, H - dy - soft - oh, scale = 0.84 * k, page = False)
+	if not sheet: osk (img, 0, H - soft - oh, W, k = k)
+	if sheet:
+		img = dim_below (img, u (BAR), 120)
+		sh = u (300); sy = H - soft - sh
+		rrect (img, 0, sy, W, sh + u (10), u (12), ((252, 252, 252), (238, 238, 240)), corners = (True, True, False, False))
+		rrect (img, W // 2 - u (16), sy + u (5), u (32), u (4), u (2), (190, 190, 194))
+		mx = u (8); my = sy + u (14)
+		for m_ in LETTERS_MENUS:
+			mw = tw (m_, font (u (10), True)) + u (14)
+			if mx + mw > W: break
+			if m_ == "Format": rrect (img, mx, my, mw, u (20), u (10), P["accent"])
+			text_c (img, mx, my, mw, u (20), m_, font (u (10), True), (255, 255, 255) if m_ == "Format" else P["ink"]); mx += mw + u (2)
+		glyph (img, W - u (16), my + u (5), u (10), u (10), lambda d, s: g_chev (d, s, k, "right"), P["ink2"])
+		iy = my + u (28)
+		for i, (lab, sc) in enumerate ([("Font...", "^D"), ("Paragraph...", ""), ("Bold", "^B"), ("Italic", "^I"), ("Underline", "^U"),
+						("Align Left", "^L"), ("Centre", "^E"), ("Bullets", ""), ("Numbering", "")]):
+			if iy + u (26) > H - soft - u (4): break
+			if i == 2: rrect (img, u (6), iy, W - u (12), u (26), u (6), (lighten (P["accent"], 0.75), lighten (P["accent"], 0.65)))
+			text_l (img, u (16), iy, u (26), lab, font (u (12)), P["ink"]); text_r (img, W - u (16), iy, u (26), sc, font (u (10)), P["ink2"])
+			iy += u (28)
+	slate_softkeys (img, W, H, [(g_grid, "Home"), (g_tasks, "Tasks"), (g_menu, "Close" if sheet else "Menu"), (g_kbd, "Keys" if sheet else "Hide")], k = k)
+	return img
+
+def app_letters_console (menu = False):
+	"""Console mode: Letters full screen, no chrome (its toolbars hidden: everything is in its menus); Home,
+	Alt or F10, or the pointer pushed against the top edge, reveals its menus in console style."""
+	img = Image.new ("RGB", (CW, CH), (150, 150, 154))
+	letters_doc (img, 0, 0, CW, CH, scale = 0.74, caret = True)
+	if not menu:
+		menu_hint (img, y = 14)
+		rrect (img, CW - 160, CH - 34, 148, 24, 12, (10, 16, 34), alpha = 190)
+		text_c (img, CW - 160, CH - 35, 148, 24, "Keyboard: connected", cfont (13, "regular"), (200, 220, 248))
+		return img
+	img = dim (img, 170, (4, 8, 24))
+	box (img, 0, CH - 46, CW, 46, (6, 10, 26), alpha = 200)
+	console_menubar (img, LETTERS_MENUS, "Format", [("Font...", "Ctrl+D"), ("Paragraph...", ""), "-", ("Bold", "Ctrl+B"), ("Italic", "Ctrl+I"),
+			 ("Underline", "Ctrl+U"), "-", ("Align Left", "Ctrl+L"), ("Centre", "Ctrl+E"), ("Bullets", "")], sel = 3)
+	console_hints (img, [("L1/R1", "Menus"), ("x", "Choose"), ("o", "Close"), ("HOME", "Close")])
+	return img
+
+# ---- the sheets ----------------------------------------------------------------------------------------------
+def app_sheet (title, items, cols = 3, cell_w = 520):
+	"""Per-app comparison: each variant scaled to one width (or its height kept for portrait), with captions."""
+	pad, gap, cap = 24, 24, 44
+	cells = []
+	for im, lab, sub in items:
+		if im.height > im.width:	pic = im.resize ((int (im.width * 470 / im.height), 470), Image.LANCZOS)	# portrait: by height
+		else: pic = im.resize ((cell_w, int (im.height * cell_w / im.width)), Image.LANCZOS)
+		cells.append ((pic, lab, sub))
+	rows = [cells[i:i + cols] for i in range (0, len (cells), cols)]
+	W = pad * 2 + cols * cell_w + (cols - 1) * gap
+	H = pad + 44 + sum (max (c[0].height for c in r) + cap + gap for r in rows)
+	out = Image.new ("RGB", (W, H), (236, 236, 238))
+	text (out, pad, pad - 4, title, font (20, True), P["ink"])
+	y = pad + 44
+	for r in rows:
+		x = pad
+		for pic, lab, sub in r:
+			text (out, x, y, lab, font (13, True), P["ink"]); text (out, x, y + 18, sub, font (11), P["ink2"])
+			out.paste (pic, (x + (cell_w - pic.width) // 2, y + cap)); ring (out, x + (cell_w - pic.width) // 2 - 1, y + cap - 1, pic.width + 2, pic.height + 2, 3, (60, 60, 66), alpha = 150)
+			x += cell_w + gap
+		y += max (c[0].height for c in r) + cap + gap
+	return out
+
+def apps_main ():
+	# the Terminal
+	td = desktop_scene ("Terminal", ("Shell",), real ("terminal"), 1024, 768); save (td, "app-terminal-desktop.png")
+	tp = pocket_terminal (); save (tp, "app-terminal-pocket.png")
+	tpp = app_terminal_portrait (); save (tpp, "app-terminal-portrait.png")
+	t24 = app_terminal_portrait (480, 640, 2, keyboard = False); save (t24, "app-terminal-240.png")
+	tc = app_terminal_console (); save (tc, "app-terminal-console.png")
+	save (app_sheet ("The Terminal in every mode", [(td, "Desktop (today)", "620 x 420 window, its tabs, the Shell menu"),
+		(tp, "Pocket, 800 x 480", "full screen: the view reflows by itself (more columns)"), (tc, "Console, 640 x 480", "full screen, no chrome; a real keyboard expected"),
+		(tpp, "Pocket, 480 x 800 portrait", "keyboard on screen + the terminal row (Esc Tab Ctrl...)"), (t24, "Pocket, 240 x 320 (2x)", "a slate with its own keys: 44 columns")]), "apps-terminal.png")
+	# the Media Player
+	md = desktop_scene ("Media Player", ("File", "Play", "View"), real ("media-albums")); save (md, "app-media-desktop.png")
+	mp = app_media_pocket (); save (mp, "app-media-pocket.png")
+	mpp = app_media_portrait (); save (mpp, "app-media-portrait.png")
+	mdr = app_media_drawer (); save (mdr, "app-media-drawer.png")
+	mc = app_media_console (); save (mc, "app-media-console.png")
+	save (app_sheet ("The Media Player in every mode", [(md, "Desktop (today)", "sidebar 208, top bar, content, now bar 80"),
+		(mp, "Pocket, 800 x 480", "the sidebar a rail of icons, the table whole, now bar 64"), (mc, "Console, 640 x 480", "full screen, its Now playing; Home shows its menus"),
+		(mpp, "Pocket, 480 x 800: Now playing", "the cover, the controls, Up next"), (mdr, "Pocket, 480 x 800: the drawer", "the sidebar slides over a one-column list")]), "apps-media.png")
+	# Letters
+	lr = real ("letters"); lr.paste (Image.open (os.path.join (SHOTS, "letters.png")).convert ("RGB").crop ((197, 319, 797, 469)), (193, 291))	# (the document's picture: its own colours)
+	ld = desktop_scene ("Letters", LETTERS_MENUS, lr); save (ld, "app-letters-desktop.png")
+	lp = app_letters_pocket (); save (lp, "app-letters-pocket.png")
+	lm = app_letters_pocket (overflow = False, menu = "Format"); save (lm, "app-letters-menu.png")
+	lpp = app_letters_portrait (); save (lpp, "app-letters-portrait.png")
+	lps = app_letters_portrait (sheet = True); save (lps, "app-letters-sheet.png")
+	lc = app_letters_console (); save (lc, "app-letters-console.png")
+	lcm = app_letters_console (menu = True); save (lcm, "app-letters-console-menu.png")
+	save (app_sheet ("Letters in every mode", [(ld, "Desktop (today)", "two rows of tools, the ruler, the page"),
+		(lp, "Pocket, 800 x 480", "one row of tools, the rest behind »; no ruler"), (lm, "Pocket, 800 x 480: the menus", "the status bar's Format menu (the app's own)"),
+		(lpp, "Pocket, 480 x 800", "a draft view (no pages), keyboard on screen"), (lps, "Pocket, 480 x 800: the menus", "a bottom sheet, the menus as tabs"),
+		(lc, "Console, 640 x 480", "full screen, no chrome; a keyboard to write"), (lcm, "Console: Home pressed", "its own menus revealed, console-styled")], cols = 3), "apps-letters.png")
 
 # ===========================================================================================================
 # The compact metrics: the same widgets at the three densities
@@ -1760,6 +2330,7 @@ def main ():
 		     (fit (bezel (b, 20), 560), "Later: B -- Netbook", "UNR: a sidebar, windows as tabs (1280 x 720)")], 2,
 		    "Onyx's modes: desktop, pocket, console -- and the concepts studied")
 	save (ov, "overview.png")
+	apps_main ()						# three real apps in every mode
 
 if __name__ == "__main__":
 	main ()

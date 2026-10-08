@@ -343,20 +343,44 @@ the apps and the kits are the same.
 ### 7.2 How it works
 
 - **The pad only**: d-pad to move, **✕ confirm, ○ back**, △ options, □ a second action (save states,
-  close), **L1 / R1 the sections**, Start = the app's menus (the Pocket sheet, at console size), Select or
-  the Home button = Home and the in-game overlay. On a pad without these symbols: A = ✕, B = ○, Y = △,
+  close), **L1 / R1 the sections**, Select or the Home button = the menu (an app's menus, a game's quick
+  menu: one gesture to learn, §7.3). On a pad without these symbols: A = ✕, B = ○, Y = △,
   X = □ (the Gamepad applet maps them, `SD:/etc/gamepad.ini`). The bottom line always shows the buttons
   that work on the screen.
 - **What it reuses**: the Game Library's index of the ROMs and its covers (`apps/gamelib`), the emulators'
   save states, the Media Player's library (Media), the File Viewer's volumes (Files), the Control Panel's
   applets (Settings), Pocket's switcher and overlays drawn in the console style.
-- **Apps** opens any desktop app full screen in Pocket's layout (the console status bar on top): console
-  mode is Pocket with another home and another style, not a separate world.
+- **Apps** opens any desktop app **full screen, with no chrome**; its menus appear on demand (§7.3):
+  console mode is Pocket with another home and another style, not a separate world.
+- **No on-screen keyboard**: console mode assumes a gamepad and, when text is needed, a **physical
+  keyboard** (USB or Bluetooth); an app that needs one says so once, at its start, if none is plugged in.
 - **Its cost**: the towers, the motes and the glows are **drawn once** into the background (the wallpaper
   buffer, `wallpaper_buffer`), not animated every frame — or animated slowly at a few frames a second when
   nothing else runs (an option); a game always runs on the emulators' fast path, untouched.
 - **Words**: big and thin (Selawik Light, on the card), 28–34 lp for the choices, 14–16 lp for the details:
   readable on a TV at three metres and on a 3.5" handheld.
+
+### 7.3 Apps in console mode: full screen, the menus on demand
+
+An app runs **full screen with no visible chrome** — no status bar, no frame. Its menu bar (the app's own
+UIKit menus, published as on the desktop) appears at the top **on demand**:
+
+- **the pad's Select / Home button** — the same button that opens a game's quick menu: one gesture to learn;
+- **the keyboard's Alt or F10**;
+- **the mouse at the very top edge**, after a short dwell (about 300 ms) or a push against the edge, so that
+  it is not revealed by accident.
+
+The revealed bar is **console-styled**: big items, a glowing focus, the d-pad to move, ✕ to choose, ○ to
+close; it hides again after a command. For an ordinary app it merges **the app's menus (top)** with **the
+system's items below** (Home, Switch app, Quit). For **games and emulators**, Home opens the game's quick
+menu instead (§7.1) and the top-edge reveal is off. At an app's start a small hint, **"Home or Alt: menu"**,
+shows for about 3 s.
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/app-letters-console.png) | **Letters, full screen**: the page only (its toolbars hidden: everything they do is also in its menus); the start hint at the top; a keyboard is connected. |
+| ![](compact-shell/mockups/app-letters-console-menu.png) | **Letters, Home pressed**: its own seven menus in console style, Format open (the real items), Bold focused; the system's row below (Home, Switch app, Quit); the pad's hints. |
+| ![](compact-shell/mockups/app-media-console.png) | **The Media Player, full screen**: its own Now playing view at 640 × 480, the pad's focus on Play / Pause; Home shows its File / Play / View menus. |
 
 ## 8. The concepts studied
 
@@ -441,6 +465,70 @@ scroll bar, a menu. Touch targets are about 7 mm — 36 px at the 7" display's 1
 Proposed values (to be tried on the real displays): regular — text 13, row 24, menu 24, scroll bar 14;
 compact — text 12, row 22, menu 22, overlay scroll bar 8; touch — text 14, row 36, menu 36, buttons 38,
 overlay scroll bar 4 that widens when dragged.
+
+### 9.4 Three apps in every mode
+
+Three real apps, read from their sources and screenshots, mocked in each mode: what their **existing
+layout** already gives, what **UIKit** would do by itself (U1–U11; since the user's decision of §11, the
+UIKit that PocketUI ships), and what the app itself would have to add. Each variant also exists alone in
+`docs/compact-shell/mockups/` (`app-terminal-*.png`, `app-media-*.png`, `app-letters-*.png`).
+
+**The Terminal** (`user/Apps/terminal`: a UIKit `TabStrip`, its own `TermView`, one menu, *Shell*).
+
+![](compact-shell/mockups/apps-terminal.png)
+
+*Desktop (a 620 × 420 window); Pocket at 800 × 480; console; Pocket portrait 480 × 800 with the keyboard on
+screen; Pocket on a 240 × 320 slate (2×).*
+
+- **Its layout gives it all**: the view already reflows to any size (`setResizable`, more columns and rows
+  at full screen); the tabs are UIKit's `TabStrip`, which narrows its tabs by itself (the close button on
+  the current one only when narrow).
+- **UIKit / the shell**: the *Shell* menu goes to the status bar (pocket) or the revealed bar (console); in
+  pocket portrait the input method adds **a terminal row** (Esc, Tab, Ctrl, Alt, the arrows, `|`, `~`,
+  `/`) when the text-input hint (U10) says "terminal".
+- **The app adds**: nothing but that hint. At 240 × 320 (9 lp mono) it gives 44 columns: usable with a
+  slate's own keys.
+- **Console**: full screen; **a keyboard is needed** to type, which it says once (no keyboard on screen in
+  console mode); the pad switches tabs and scrolls. A fair fit with a keyboard, a poor one without.
+
+**The Media Player** (`user/Apps/media`: its own `Sidebar` 208 px, `TopBar` 52, `Content`, `NowBar` 80;
+menus *File, Play, View*).
+
+![](compact-shell/mockups/apps-media.png)
+
+*Desktop; Pocket 800 × 480 (Songs); console (Now playing, full screen); Pocket portrait: Now playing, and the
+sidebar as a drawer over a one-column list.*
+
+- **Its layout gives**: the parts are placed by its own resize code (`main.cpp` ~2279), so they already
+  follow the window; at 800 × 480 the table keeps all its columns.
+- **The app adds** (its widgets are its own, not UIKit's, so UIKit cannot fold them): the sidebar as **a
+  rail of icons** when the width is compact, as **a drawer** (☰ in its top bar) when narrow; the now bar at
+  64 px; in portrait, Now playing as the main screen and the songs as one column (title, then artist and
+  album). A few dozen lines in its resize code, driven by UIKit's size class (U5).
+- **UIKit / the shell**: the menus, the density (rows, scroll bar), the focus ring for the pad.
+- **Console**: a good fit — its Now playing view full screen, the pad on its controls (✕ play / pause,
+  L1 / R1 previous / next), Home for its menus.
+
+**Letters** (`user/Apps/letters`: its own `ToolBar` of two rows, a `Ruler`, the `PageView`, a `StatusBar`;
+seven menus — File, Edit, View, Insert, Format, Table, Tools).
+
+![](compact-shell/mockups/apps-letters.png)
+
+*Desktop; Pocket 800 × 480 with the tools' overflow open; Pocket 800 × 480 with the Format menu; Pocket
+portrait 480 × 800 (a draft view, the keyboard on screen); the menus as a bottom sheet; console full screen;
+console with its menus revealed.*
+
+- **Its layout gives**: the page view zooms to the width (View ▸ Page Width already exists); every tool is
+  also in its menus, so hiding tools loses nothing.
+- **UIKit would do** (if Letters' tool rows were UIKit's `Toolbar`): **one row and an overflow** (»)
+  holding what does not fit, in order — today they are Letters' own `ToolBar`, so either it moves to UIKit's
+  or it learns the overflow; the menus in the status bar (landscape), as a bottom sheet (portrait), in the
+  revealed bar (console).
+- **The app adds**: the ruler hidden when compact (View has it); in portrait **a draft view** — the text
+  reflowed to the width with no pages (its layout engine already wraps; the pages come back in landscape
+  and for printing).
+- **Console**: a poor fit for writing, a fair one for reading: full screen, the pad pages and zooms,
+  **a keyboard to write** (no keyboard on screen); its menus revealed by Home.
 
 ## 10. Keyboard shortcuts
 
@@ -625,7 +713,13 @@ reprend l'ambiance du **navigateur système de la PlayStation 2** : espace bleu 
 translucides lumineuses, grands mots fins, surbrillance lumineuse, tuiles façon carte mémoire pour les jeux
 et les six émulateurs, états de sauvegarde, menu en jeu, navigation à la manette seule (✕ valider,
 ○ retour, L1/R1 les sections). Le tout dans le thème **Milk** (gris clairs, bleu Aqua, perles d'OS X),
-choisi par l'utilisateur ; le bleu Aqua sert de lueur au mode console. Le gros du travail n'est pas le
+choisi par l'utilisateur ; le bleu Aqua sert de lueur au mode console. En mode console, une app s'ouvre en
+plein écran sans aucun habillage ; sa barre de menus apparaît à la demande (bouton Home/Select de la
+manette, Alt ou F10 au clavier, souris poussée contre le bord haut), en style console ; pas de clavier à
+l'écran : une manette, et un vrai clavier quand il faut écrire. Trois vraies apps — le Terminal, le Lecteur
+multimédia et Letters — sont montrées dans chaque mode (§9.4) : ce que leur mise en page donne déjà, ce que
+UIKit ferait seul (barre d'outils repliée dans un menu de débordement, barre latérale en rail ou en tiroir), et ce que
+l'app devrait ajouter. Le gros du travail n'est pas le
 shell mais **l'adaptation des apps** (la plupart sont conçues pour 1000 × 700) : UIKit devrait offrir un
 profil de densité (normal, compact, tactile), un facteur d'échelle, des fenêtres sans cadre, des classes de
 taille (une barre latérale repliée en rail, comme pour Ledger), une racine défilante en secours, le focus
