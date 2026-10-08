@@ -31,7 +31,8 @@ def main ():
 				path = os.path.join (dp, f)
 				try:
 					with open (path, 'rb') as fh:
-						if fh.read (4) != b'\x7fELF': continue
+						head = fh.read (18)
+					if head[:4] != b'\x7fELF' or head[16] != 2: continue	# (programs only: ET_EXEC)
 				except OSError: continue
 				syms = subprocess.run ([NM, path], capture_output=True, text=True).stdout
 				stubs = {int (m.group (1), 16): m.group (2) for m in re.finditer (r'^([0-9a-f]+) [WT] (\w+)$', syms, re.M)
