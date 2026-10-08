@@ -642,10 +642,10 @@ starts **PocketUI** (`SD:/bin/pocketui`) instead of Elegant: the interface of sm
 handheld, a 7-inch panel), **one app at a time**, as on a phone. Its parts:
 
 - **the menu bar** at the top, as on the desktop: the front app's name and menus, the status icons, the time. In
-  pocket **Onyx** is the **Home button** (its gem -- a light blue lozenge -- and its name, lit blue while the launcher shows): a click shows the
-  launcher, the app in front going behind (as Super does); a second click brings the app back. There is no Onyx menu
-  in pocket (the launcher has the apps, quick settings Lock and Power); a click on the **time** opens quick settings
-  (on the desktop: the calendar; the desktop's Onyx menu is unchanged);
+  pocket the **gem** before *Onyx* (a light blue lozenge) is the **Home button**, lit while the launcher shows: a
+  click shows the launcher, the app in front going behind (as Super does); a second click brings the app back. The
+  name **Onyx** beside it opens the **Onyx menu**, as on the desktop (the Terminal, the Control Panel, the apps by
+  category, the open windows, Shut Down); a click on the **time** opens quick settings (on the desktop: the calendar);
 - **the apps full screen**: every app's window fills the screen under the menu bar, without a frame, whatever its
   size; an app whose window cannot be resized (a game, a demo) is shown in the middle of the screen on its own
   background colour, until it is adapted; a window too big for the screen that cannot shrink (Setup's 800 × 600 on
@@ -717,7 +717,7 @@ its keys):
 
 | Keys | What |
 |---|---|
-| **Super** (the Windows key, alone), **Alt+F1**, **Ctrl+Esc**, a click on **Onyx** | Home; again: back to the app |
+| **Super** (the Windows key, alone), **Alt+F1**, **Ctrl+Esc**, a click on the gem before **Onyx** | Home; again: back to the app |
 | **Alt+Tab** / **Alt+Shift+Tab** | the switcher (release Alt to switch; Del closes the chosen app; Esc stays) |
 | **Super+N** | quick settings and the notifications |
 | **Super+Space** | the launcher, the search emptied |
@@ -4068,6 +4068,11 @@ line (`ledger SD:/docs/x.ledger`); started alone, Ledger opens the books it had 
 (`SD:/apps/ledger.app/last.txt`), else it welcomes you — **New company**, **Open**, or the **demo
 company** (`SD:/docs/demo-company.ledger`: *Atelier Lumen SRL*, a Brussels design studio, from January
 2025 to September 2026, 2025 closed). **File ▸ Save a Copy As...** writes a copy elsewhere.
+
+**In the pocket and console modes** (the same program) the side bar is a **rail of the pages' icons** in
+landscape on a narrow screen (the pointer or the focus over it shows the whole bar: the company, the fiscal
+year's chooser, the names), a **drawer** in portrait (the tab at the left edge) and the **column** in console
+(L1 / R1: the next page). The late documents' counts are badges in the accent colour.
 
 **The window.** At the left, the side bar: the company, the **fiscal year shown** (the lists, reports
 and the VAT follow it), the pages — **Overview**; the journals **Sales**, **Purchases**, **Bank and

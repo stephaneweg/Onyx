@@ -853,7 +853,8 @@ from the source instead of `apps.ini`.
 *(P7's progress — `docs/HANDOFF.md` has the details and the pattern: the side panels of **Media**, **Photos**, **Mail** (and
 its one-pane layout for a narrow window) and the **Game Library** (pocket and console; the desktop keeps its own), the
 **Calendar**'s (its content: a drawer) done on 2026-10-09, all five translated; the File
-Viewer's in pocket and console at P6; Ledger waits for a header slot in `SidePanel`.)*
+Viewer's in pocket and console at P6; **IRC** (pocket and console) and **Ledger** (with `SidePanel::setHeader`, uikit
+1.950) the same day.)*
 
 Side panels found by `grep -E "SIDE_W|PANEL_W|DP_W|class \w*(Sidebar|SideBar|SidePanel|Rail)"` over
 `user/Apps`, then read; the user's list (Media, File Viewer, Game Library, Photos, Mail, Courier, Ledger,

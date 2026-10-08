@@ -78,8 +78,24 @@ static void test_sidepanel ()
 		p.nav->select (2);
 		check (p.nav->selected () == 2, "sidepanel: select", p.nav->selected ());
 		check (p.nav->itemAt (50, 46) == 1, "sidepanel: itemAt a row", p.nav->itemAt (50, 46));
+		// a header (uikit 1.950): 60 px over the items -- placed at the top, the rows and their hits 60 px lower
+		Widget *hd = new Widget (0, 0, 10, 10);
+		p.nav->setHeader (hd, 60);
+		check (!hd->hidden && hd->top == 0 && hd->height == 60 && hd->width == 240, "sidepanel header: at the top, the panel's width", hd->height);
+		check (p.nav->itemAt (50, 46) == -1 && p.nav->itemAt (50, 46 + 60) == 1, "sidepanel header: the rows under it", p.nav->itemAt (50, 46 + 60));
+		check (p.nav->reservedWidth () == 240, "sidepanel header: the width unchanged", p.nav->reservedWidth ());
 	}
 	force (UK_SC_COMPACT);
+	{
+		Panels q (640, 456);				// a header in a rail: hidden; shown when the rail expands
+		Widget *hd = new Widget (0, 0, 10, 10);
+		q.nav->setHeader (hd, 60);
+		check (q.nav->presentation () == UK_SP_RAIL && hd->hidden, "sidepanel header: hidden in a rail", hd->hidden);
+		q.nav->open (true);
+		check (!hd->hidden && hd->height == 60, "sidepanel header: shown when the rail expands", hd->hidden);
+		q.nav->open (false);
+		check (hd->hidden, "sidepanel header: hidden again", hd->hidden);
+	}
 	{
 		Panels p (640, 456);				// (under four times the panel's width: a rail; 800 and more keep it whole)
 		check (p.nav->presentation () == UK_SP_RAIL, "sidepanel pocket landscape, small: a rail", p.nav->presentation ());

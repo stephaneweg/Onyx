@@ -131,7 +131,7 @@ public:
 		tl::Buf b;
 		if (!tl::encode (b, query)) return 0;
 		Req &r = m_req[slot];
-		r.used = true; r.sent = false; r.id = m_nextReq++; r.msgId = 0; r.fn = query.c;
+		r.used = true; r.sent = false; r.id = m_nextReq++; r.msgId = 0; r.fn = query.c; r.wrapped = false; r.reinit = 0;
 		free (r.body);
 		r.n = b.n; r.body = b.take ();
 		if (m_state == S_READY) sendReq (r);
@@ -144,7 +144,7 @@ public:
 		for (int i = 0; i < MAXREQ; i++) if (!m_req[i].used) { slot = i; break; }
 		if (slot < 0 || n <= 0) return 0;
 		Req &r = m_req[slot];
-		r.used = true; r.sent = false; r.id = m_nextReq++; r.msgId = 0; r.fn = fn;
+		r.used = true; r.sent = false; r.id = m_nextReq++; r.msgId = 0; r.fn = fn; r.wrapped = false; r.reinit = 0;
 		free (r.body);
 		r.body = (unsigned char *) malloc ((size_t) n);
 		if (!r.body) { r.used = false; return 0; }
@@ -199,7 +199,7 @@ public:
 
 private:
 	enum State { S_IDLE, S_PQ, S_DH, S_DHGEN, S_READY, S_BROKEN };
-	struct Req { bool used, sent; int id; long long msgId; const tl::Ctor *fn; unsigned char *body; int n; };
+	struct Req { bool used, sent; int id; long long msgId; const tl::Ctor *fn; unsigned char *body; int n; bool wrapped; int reinit; };
 
 	Transport *m_t;
 	State m_state;
@@ -503,7 +503,13 @@ private:
 		const unsigned char *body = r.body;
 		int n = r.n;
 		tl::Buf wrapped;
-		if (!m_inited)				// invokeWithLayer (initConnection (query))
+		// invokeWithLayer (initConnection (query)) -- EVERY request until the server has answered a wrapped one: the
+		// first message of a connection is often refused before it is read (bad_server_salt: the salt is not known
+		// yet; bad_msg_notification 16 / 17: the Pi's clock) and sent again -- sent bare then, as "the connection is
+		// initialised" was noted at the first send, it got CONNECTION_NOT_INITED (the user's report, 2026-10-09: no
+		// sign-in). m_inited is now set by an answer (gotMessage, rpc_result).
+		r.wrapped = !m_inited;
+		if (!m_inited)
 		{
 			tl::Arena a;
 			tl::Val *ic = tl::make (a, "initConnection");
@@ -520,7 +526,6 @@ private:
 			wl->set ("query", *ic);
 			tl::encode (wrapped, *wl);
 			body = wrapped.d; n = wrapped.n;
-			m_inited = true;
 		}
 		r.msgId = sendEncrypted (body, n, true);
 		r.sent = r.msgId != 0;
@@ -632,12 +637,22 @@ private:
 				int code = (int) e["error_code"].i ();
 				const char *msg = e["error_message"].str ();
 				if (!r) return;
+				if (msg && !strcmp (msg, "CONNECTION_NOT_INITED") && r->reinit < 3)	// (sent bare too early: wrapped again)
+				{
+					tg_log ("mtproto: dc%d CONNECTION_NOT_INITED: %s sent again with initConnection", dc, r->fn ? r->fn->name : "?");
+					r->reinit++;
+					m_inited = false;
+					sendReq (*r);
+					return;
+				}
+				if (r->wrapped) m_inited = true;		// (an error of the query itself: the connection is initialised)
 				int rid = r->id;
 				drop (*r);
 				if (L) L->onError (rid, code, msg);
 				return;
 			}
 			if (!r) { tl::Val dv; tl::decode (scratch, b + 12, n - 12, dv); tg_log ("mtproto: dc%d an answer to no request (%llx, %s %s)", dc, req, dv.name (), dv["phone_code_hash"].str ()); return; }
+			if (r->wrapped) m_inited = true;			// (the server read initConnection: the next requests go bare)
 			tl::Val v;
 			tl::Reader rd (res, rn);
 			bool ok = tl::decode_result (scratch, rd, v, r->fn);

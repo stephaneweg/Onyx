@@ -23,11 +23,11 @@
 // the File Viewer; "Disks..." opens the Disks app. The bar also says what happened through notifyd:
 // a stick connected, one that can be removed safely, one pulled out without an eject.
 //
-// In the pocket mode (PocketUI; the bar is its top band) "Onyx" is the HOME button (the blue gem and its name, lit while the
+// In the pocket mode (PocketUI; the bar is its top band) the blue GEM before "Onyx" is the HOME button (lit while the
 // pocket shell's home shows): a click shows the home -- the front app goes behind, as Super does -- and a second
-// click brings the app back (pocketshell, asked through SystemKit's shell.h: SHELL_MSG_HOME); there is no Onyx menu
-// there (the launcher has the apps, quick settings Power). A click on the time opens quick settings and the
-// notifications instead of the calendar. The desktop: the Onyx menu as ever.
+// click brings the app back (pocketshell, asked through SystemKit's shell.h: SHELL_MSG_HOME); the name beside it
+// opens the Onyx menu, as on the desktop (the user, 2026-10-09: "the Onyx menu in pocket too, the icon beside it the
+// shortcut to Home"). A click on the time opens quick settings and the notifications instead of the calendar.
 //
 // A click on the time opens a calendar (the month; "Open Calendar" starts the Calendar app; "Alarms and timers..."
 // opens the Clock on its Alarms tab -- when the Clock is on the card). A small bell left of the time says an alarm of
@@ -184,10 +184,13 @@ static void fill_windows (SubDef &sd)
 // Onyx system-menu item ids (>= 1000: handled here, never sent to the app).
 enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_TASKS, ONYX_SHUTDOWN, ONYX_SUB, ONYX_CONTROL };
 static bool g_pocket;			// PocketUI's pocket mode: the bar is its top band, the pocket shell beside it
-// Pocket, the pocket shell running: "Onyx" is the Home button (lit while the shell's home shows: no app's menus) --
-// a click shows the home, the front app going behind (as Super does); again: the app back. No Onyx menu there.
+// Pocket, the pocket shell running: the gem before "Onyx" is the Home button (lit while the shell's home shows: no
+// app's menus) -- a click shows the home, the front app going behind (as Super does); again: the app back. The name
+// beside it: the Onyx menu.
 static bool onyx_is_home (void) { return g_pocket && shell_running (); }
 #define GEM_W	18			// (the Home button's gem and its gap)
+static int g_menu0x (void);		// (the first title's left)
+static bool on_gem (int x) { return x >= g_menu0x () && x < g_menu0x () + 8 + GEM_W - 2; }
 
 static void add_quit_menu (const char *app)
 {
@@ -287,6 +290,7 @@ static void parse (const char *spec, const char *title)
 }
 
 // ---- geometry ------------------------------------------------------------------------------
+static int g_menu0x (void) { return g_nmenus > 0 ? g_menus[0].x : 10; }
 static int title_style (int i) { return i == (g_onyx ? 0 : 1) ? 2 : 0; }	// the app's name: bold
 static void layout_titles (void)
 {
@@ -810,13 +814,15 @@ static void draw (void)
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		const MenuDef &m = g_menus[i];
-		if (i == 0 && g_pocket)				// pocket: the Home button -- the gem and "Onyx", lit on the home
+		if (i == 0 && g_pocket)				// pocket: the gem (Home, lit on the home), then "Onyx" (its menu)
 		{
-			bool lit = g_onyx;
-			if (lit) uk_rbox (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 116));
-			else if (i == g_titleHot) uk_rbox (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
+			bool lit = g_onyx && onyx_is_home ();
+			int tx = m.x + 8 + GEM_W - 4;			// (the name's box: the title's, after the gem)
+			if (lit) uk_rbox (g_cv, m.x + 2, 3, GEM_W + 4, BAR_H - 7, 5, uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 116));
+			if (i == g_open) uk_hilite (g_cv, tx, 3, m.x + m.w - 2 - tx, BAR_H - 7, 5, true);
+			else if (i == g_titleHot) uk_rbox (g_cv, tx, 3, m.x + m.w - 2 - tx, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
 			draw_gem (m.x + 8, (BAR_H - 1 - 13) / 2, lit);
-			uk_text_l (g_cv, m.x + 8 + GEM_W, 0, BAR_H - 1, m.title, lit ? 0xFFFFFF : C_BARTXT, 2);
+			uk_text_l (g_cv, m.x + 8 + GEM_W, 0, BAR_H - 1, m.title, i == g_open ? C_SEL_TEXT : C_BARTXT, title_style (i));
 			continue;
 		}
 		if (i == g_open) uk_hilite (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, true);
@@ -1058,7 +1064,7 @@ static void ptr (unsigned long, int ev, long v)
 			g_volOpen = false; g_dirty = true;			// a click outside closes it
 			if (t < 0) break;
 		}
-		if (t == 0 && onyx_is_home ())			// pocket: Onyx is Home (again: back to the app)
+		if (t == 0 && onyx_is_home () && on_gem (x))	// pocket: the gem is Home (again: back to the app); the name: the menu
 		{
 			if (g_open >= 0) close_menu ();
 			shell_ask (SHELL_MSG_HOME);

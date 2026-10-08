@@ -11,7 +11,7 @@
 #   - the pilots: the Task Manager (the grid's roles: cards in portrait), the Terminal (its tabs, no source change);
 #   - the viewport: Setup (800 x 600, fixed) at 800 x 480 scrolled by the wheel over its indicator;
 #   - the File Viewer: resizable, its places a SidePanel in pocket (landscape, portrait's drawer) and console.
-# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar irc]
+# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar irc ledger]
 # SHOTS_PNG=<folder>: the pictures copied there too (docs/compact-shell/real/).
 set -e
 cd "$(dirname "$0")/../../.."
@@ -272,6 +272,28 @@ if want irc; then
 	WR=$(langdir fr)
 	run pocket_irc irc-720-fr "$WWW;dump $OUT/irc-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=irc SIM_APP=irc SIM_WRITES=$WR SIM_NET="$N"
 	out irc-720-fr
+fi
+
+# ---- P7: Ledger (its side bar a SidePanel with a header -- the company, the fiscal year -- and a footer) over the demo company
+if want ledger; then
+	echo "adaptive: Ledger"
+	ftapp pocket ledger uikit_pocket
+	L=SIM_ARGS=SD:/docs/demo-company.ledger
+	for t in 800x480:800 1280x720:720 480x800:portrait 640x480:console; do
+		sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
+		WR=$(langdir "")
+		run pocket_ledger ledger-$tg "$WWW;expect kind fill;expect frame 0;$W;dump $OUT/ledger-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=ledger SIM_APP=ledger SIM_WRITES=$WR $L
+		out ledger-$tg
+	done
+	WR=$(langdir "")
+	run pocket_ledger ledger-rail-open "$WWW;move 24 200;$W;$W;dump $OUT/ledger-rail-open.elsm" SIM_SCREEN=800x480 SIM_APPNAME=ledger SIM_APP=ledger SIM_WRITES=$WR $L
+	out ledger-rail-open
+	WR=$(langdir "")
+	run pocket_ledger ledger-portrait-drawer "$WWW;down 6 400;up 6 400;$W;dump $OUT/ledger-portrait-drawer.elsm" SIM_SCREEN=480x800 SIM_APPNAME=ledger SIM_APP=ledger SIM_WRITES=$WR $L
+	out ledger-portrait-drawer
+	WR=$(langdir fr)
+	run pocket_ledger ledger-720-fr "$WWW;dump $OUT/ledger-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=ledger SIM_APP=ledger SIM_WRITES=$WR $L
+	out ledger-720-fr
 fi
 
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1

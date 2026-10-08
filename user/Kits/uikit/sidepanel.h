@@ -96,6 +96,9 @@ public:
 	int  page ();
 	void setContent (Widget *w);			// a navigation panel's content under its items (a tree, a month)
 	void setFooter (Widget *w, int h);		// under the rest: h px (the chosen item's controls, a button)
+	// Over the rest: h px at the panel's top (whose library this is, a period's chooser) -- shown with the panel's box
+	// (whole, a drawer, a column, a rail expanded), hidden in a rail of icons. (uikit 1.950.)
+	void setHeader (Widget *w, int h);
 
 	// ---- the look, the geometry, the state ------------------------------------------------------------------------
 	void setIconFn (SpIconFn fn);

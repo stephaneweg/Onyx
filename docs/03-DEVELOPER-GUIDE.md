@@ -1572,7 +1572,8 @@ void relayout () {                         // the window's resize, onSizeClass, 
 ```
 
 Items carry a small fixed set of accessories (icon, indent, badge — a count or a dot —, a trailing value, a picture,
-a toggle such as a layer's eye); anything richer goes in a **footer** (`setFooter`), **pages** (`addPage`: an
+a toggle such as a layer's eye); anything richer goes in a **header** (`setHeader`, uikit 1.950: over the items --
+whose books these are, a period's chooser; hidden in a rail of icons, shown when it expands), a **footer** (`setFooter`), **pages** (`addPage`: an
 inspector's tabs) or a **content** under the items (`setContent`: a tree, a month — such a panel becomes a drawer,
 never a rail). `place ()` is the API for the app's own geometry: writes to `left` / `top` / `resizeTo` are taken as
 what the parent's anchors did to the panel shown. Pilots: the **Control Panel** (its applets as links, on the desktop
@@ -1624,7 +1625,7 @@ layout in pocket, P10; console never raises one).
 kept in an extension (`uikit/internal/adapt_int.h`, `namespace uikit::internal`, left out of the table) freed with the
 widget. `ToolBar` gained a `layout ()` override: a program built before P6 keeps its bar as built until rebuilt.
 `Root::onSizeClass` is the former reserved slot `uk_rootReserved2` (the name kept as a plain entry of the table).
-P6 appended 99 entries to `uikit.abi` (850–948: `uikit >= 1.949`), the same both UIKits; the layout lock gained
+P6 appended 99 entries to `uikit.abi` (850–948: `uikit >= 1.949`), the same both UIKits (P7: 949, `SidePanel::setHeader` -- `uikit >= 1.950`); the layout lock gained
 `SidePanel`, `FormDialog`, `UkMetrics`.
 
 **On the PC**: `sh tools/tests/server_sim/adaptive.sh [out] [control gallery pilots viewport fileviewer]` — the

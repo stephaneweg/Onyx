@@ -42,6 +42,7 @@ struct SpExt : internal::ExtHead
 	int	 top = 0;			// the items scrolled by (px)
 	SpPage	 pages[SP_MAXPAGES]; int npages = 0, page = 0;
 	Widget	*content = 0, *footer = 0; int footerH = 0;
+	Widget	*header = 0; int headerH = 0;		// (setHeader: over the items and the pages)
 	SpIconFn iconFn = 0; TextFace *fItem = 0, *fHead = 0;
 	unsigned bg = UK_AUTO, edge = UK_AUTO;
 	int	 minW = 0, prefW = 0, maxW = 0;
@@ -288,6 +289,7 @@ int SidePanel::addPage (const char *label, int icon, Widget *content)
 void SidePanel::setPage (int pgn) { SpExt *e = sp (this); if (pgn >= 0 && pgn < e->npages && pgn != e->page) { e->page = pgn; layout (); invalidate (true); } }
 int SidePanel::page () { return sp (this)->page; }
 void SidePanel::setContent (Widget *w) { SpExt *e = sp (this); if (e->content) removeChild (e->content); e->content = w; if (w) addChild (w); layout (); }
+void SidePanel::setHeader (Widget *w, int h) { SpExt *e = sp (this); if (e->header) removeChild (e->header); e->header = w; e->headerH = w ? h : 0; if (w) addChild (w); layout (); }
 void SidePanel::setFooter (Widget *w, int h) { SpExt *e = sp (this); if (e->footer) removeChild (e->footer); e->footer = w; e->footerH = w ? h : 0; if (w) addChild (w); layout (); }
 
 void SidePanel::setIconFn (SpIconFn fn) { sp (this)->iconFn = fn; invalidate (true); }
@@ -383,6 +385,14 @@ static void sp_box (SidePanel *p, SpExt *e, int pres, int side, int *x, int *y, 
 	if (pw > p->width - 40) pw = p->width - 40;
 	if (pw < 160) pw = p->width < 160 ? p->width : 160;
 	*w = pw; *x = side == UK_SP_RIGHT ? p->width - pw : 0;
+}
+
+// The header's height in the box now: 0 without one, and while the panel shows no box (a rail not expanded, an overlay
+// closed) -- it is hidden then.
+static int sp_head (SpExt *e, int pres)
+{
+	if (!e->header || (pres == UK_SP_RAIL && !e->open) || (overlay (pres) && !e->open)) return 0;
+	return e->headerH;
 }
 
 static void sp_apply (SidePanel *p, SpExt *e, int pres, int side)
@@ -511,7 +521,7 @@ static void sp_subs (SidePanel *p, SpExt *e, int pres, int side)
 	if (bw < 240) return;
 	e->subOn = true;
 	int ry[512], rh[512];
-	if (sp_rows (e, pres, 0, ry, rh) + 8 > bh - e->footerH) e->subOn = false;
+	if (sp_rows (e, pres, 0, ry, rh) + 8 > bh - e->footerH - sp_head (e, pres)) e->subOn = false;
 }
 
 static void sp_icon (SpExt *e, Canvas &cv, int icon, int x, int y, int s, unsigned ink, bool selected)
@@ -643,6 +653,13 @@ void SidePanel::layout ()
 	bool shown = !((pres == UK_SP_RAIL && !e->open) || (overlay (pres) && !e->open));
 	int hdr = e->npages >= 2 ? HDR_H : 0;
 	if (pres == UK_SP_SHEET) { by += 18; bh -= 18; }		// (the grabber)
+	if (e->header)							// the header: at the box's top, the rest under it
+	{
+		Widget *w = e->header;
+		int hh = sp_head (e, pres);
+		w->hidden = hh == 0;
+		if (hh) { w->left = bx; w->top = by; if (bw != w->width || hh != w->height) w->resizeTo (bw > 1 ? bw : 1, hh); by += hh; bh -= hh; }
+	}
 	int foot = e->footerH, rowsEnd = 0;
 	if (e->content && e->npages == 0)
 	{
@@ -758,6 +775,7 @@ void SidePanel::onDraw ()
 		if (pres == UK_SP_RAIL && e->open)			// (the rail expanded over the content: its shadow)
 			for (int k = 1; k <= 4; k++) canvas.fillRect (m_side == UK_SP_LEFT ? width - 1 - k : k, 0, 1, height, uk_mix (bg, 0, 40 - k * 8));
 	}
+	{ int hh = sp_head (e, pres); by += hh; bh -= hh; }		// (the header: a child, drawn by itself)
 	if (e->npages >= 2)						// the pages' tabs
 	{
 		int n = e->npages, tw = (bw - 16) / n;
@@ -791,6 +809,7 @@ static int sp_item_at (SidePanel *p, SpExt *e, int pres, int side, int mx, int m
 	int bx, by, bw, bh;
 	sp_box (p, e, pres, side, &bx, &by, &bw, &bh);
 	if (pres == UK_SP_SHEET && e->open) { by += 18; bh -= 18; }
+	{ int hh = sp_head (e, pres); by += hh; bh -= hh; }
 	if (e->npages > 0 || mx < bx || mx >= bx + bw || my < by || my >= by + bh - e->footerH) return -1;
 	int ry[512], rh[512];
 	int n = e->n < 512 ? e->n : 512;
@@ -859,6 +878,7 @@ bool SidePanel::onMouse (int mx, int my, int bl, int br, int, int wheel)
 		if (pres == UK_SP_SHEET && inBox && my < by + 18 && release) { e->sheetFull = !e->sheetFull; layout (); invalidate (true); return true; }
 		if (!inBox) { if (release && in) open (false); return in; }	// (the dimmed content: closed)
 	}
+	{ int hh = sp_head (e, pres); by += hh; bh -= hh; }
 	if (e->npages >= 2 && my >= by && my < by + HDR_H && mx >= bx && mx < bx + bw)	// the pages' tabs
 	{
 		if (release) { int k = (mx - bx - 10) * e->npages / (bw - 16 > 1 ? bw - 16 : 1); if (k >= 0 && k < e->npages) setPage (k); }

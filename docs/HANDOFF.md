@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail, the Calendar and IRC migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, published
+## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail, the Calendar, IRC and Ledger migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, published
 
 P7 is the apps' migration to P6's adaptive widgets (`docs/POCKETUI-TECH-STUDY.md` §6.15, §9: about 32 session-days, one
 app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10.6):
@@ -85,23 +85,34 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   lozenge"): `menubar`'s `draw_gem` now draws PocketUI's band's lozenge (`Servers/pocketui/band.cpp`: light blue,
   lighter at its top, a darker rim -- white on the lit Home button) instead of a one-colour cut stone in the bar's ink.
   Pocket only (the desktop's bar: the same pixels, `run.sh`'s check). `run.sh`: all passed.
-- **OPEN -- "the keyboard does not work again from RDP in pocket mode"** (the user, 2026-10-09, the Pi on onyx
-  2026.10.129): not reproduced on the PC (`run_rdpd_test.sh`: 0 failed) and not explained by reading -- when looked at
-  over telnet the Pi was back on the desktop (Elegant), so PocketUI's real window list was not seen. `rdpd` now **logs
-  what it tells the client under PocketUI** each time the windows or their flags change (`told_log`: kmsg lines
-  `rdpd: told N windows` then one a window -- id, pid, title, place, the server's flags -> the flags told, the state,
-  and *(plain: takes the keys)* on the ones Onyx Remote makes a child window of). Published in onyx 2026.10.131. **Next
-  step: the Pi in pocket with Onyx Remote connected, `kmsg` read over telnet (192.168.0.10 that day), a key typed** --
-  the window that should be plain and is not (or the two that are) is the answer; `pocket_flags` (rdpd.c) is the rule.
-  Seen on the Pi the same day, after a switch pocket -> desktop from the Mode applet: **the old session's `pocketshell`
-  and `menubar` still ran** beside the desktop's (session.c keeps the switcher's ancestors -- `is_parent` -- and the
-  applet was opened from pocketshell): a leftover shell under the other server; after a switch back there would be two.
-  To look at with the keyboard report (a stale shell holds the keys' registration).
-- **Ledger was looked at and NOT migrated**: its side bar has a head above the items (the company, its VAT number, the
-  fiscal year's `ChoiceBox`) and a foot (the file; the Mac's language switch), and SidePanel has no slot above its
-  items -- a rail or a drawer would lose the year chooser. It needs `SidePanel::setHeader (Widget *, int h)` (an
-  append to `uikit.abi`, both UIKits, the layout lock untouched: the state is behind `ext`) or the year chooser moved
-  to the pages' head: the user's call. Ledger is also built for macOS (`pc/macOS`): UIKit's sources there take the change too.
+- **"The keyboard does not work from RDP in pocket mode"** (the user, 2026-10-09): **a false alarm** (the user, the
+  same day: it works). What stays of it: `rdpd` logs what it tells the client under PocketUI each time the windows or
+  their flags change (`told_log`: kmsg `rdpd: told N windows`, a line a window, *(plain: takes the keys)* on those
+  Onyx Remote makes a child window of) -- the first thing to read at the next report. And an observation NOT looked
+  into: after a switch pocket -> desktop from the Mode applet, the old session's `pocketshell` and `menubar` still ran
+  beside the desktop's (session.c keeps the switcher's ancestors, `is_parent`: the applet was opened from pocketshell).
+- **Ledger** (the user: "a SidePanel"): **`SidePanel::setHeader (Widget *, int h)`** added to UIKit (`uikit.abi` entry
+  949, **uikit 1.950**, both UIKits -- `abi_same`: the same 950 entries; the layout lock untouched: the state is behind
+  `ext`): h px over the items and the pages, a child placed by `layout ()`, hidden while the panel shows no box (a rail
+  not expanded, an overlay closed) -- `sp_head ()` is its height now, taken off the box wherever the items are drawn,
+  hit and scrolled. Ledger's `SideBar` is no longer a widget but what the pages call (`set`, `refresh`, `invalidate`)
+  over a SidePanel: its **header** `SideHead` (the company, its VAT number, the years' `ChoiceBox` a child), its
+  **footer** `SideFoot` (the books' file; the Mac's language switch), the pages its items (ids = the pages, made once;
+  `build ()` sets their disabled state -- no books open -- and badges). The pages are placed by `side_lay_out ()` at
+  `g_sideW` (`reservedWidth ()`); the panel is brought to the front after each page is made (`make_page`). The late
+  documents' badges are the accent's pills now (they were red / amber: the shared look). `adaptive.sh <out> ledger`
+  (the demo company): 8 checks. Ledger's Mac build (`pc/macOS`) takes UIKit's sources: NOT rebuilt here.
+- **The menu bar in pocket, again** (the user, 2026-10-09: "the Onyx menu in pocket too, the icon beside it the shortcut
+  to Home"): the **gem** is Home (`on_gem (x)`, lit while the home shows), the **name** opens the Onyx menu as on the
+  desktop (highlighted while open). `run.sh`'s `bar-onyx`: two clicks on the gem ask the shell twice and open nothing,
+  a click on the name changes the bar and asks nothing; all passed.
+- **Telegram "CONNECTION_NOT_INITED" at sign-in** (the user, 2026-10-09): `mtproto.h` noted the connection initialised
+  as soon as the first request was SENT in `invokeWithLayer (initConnection (...))`; the server often refuses that
+  first message before reading it (`bad_server_salt`: the salt is not known yet; `bad_msg_notification` 16 / 17: the
+  Pi's clock) and it was sent again BARE. Now every request is wrapped until the server has answered a wrapped one
+  (`Req::wrapped`, `m_inited` set in `rpc_result`), and an `rpc_error` CONNECTION_NOT_INITED sends the request again
+  wrapped (3 times at most) instead of failing. The offline tests pass (56 checks); **the sign-in itself was NOT tried
+  here** (no `TG_API_ID` / `TG_API_HASH` on this PC): the user's to confirm.
 - **Tests (PC)**: `sh tools/tests/server_sim/adaptive.sh <out> media` and `... photos` -- each app under PocketUI at
   800 x 480 (the rail; the rail expanded under the pointer), 1280 x 720 (whole; in French), 480 x 800 (the drawer's tab;
   the drawer opened), console 640 x 480 (the column): 8 checks each, all pass; the pictures looked at. The Media
@@ -128,7 +139,7 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   `DataGrid` with roles (in portrait its columns are cut, not cards), their custom dialogs on `FormDialog`
   (`InputBox`, `PropsBox`, `VPropsBox`, `NameBox`: the scrolling sheet meanwhile), `uk_set_input_type` on the
   search fields. Media's pages (the album's band, the videos' grid) were looked at in landscape only.
-- **Next apps, in the study's order**: Courier, Ledger (above), PDF, Slides, Paint, QBStudio, 3DForge,
+- **Next apps, in the study's order**: Courier, PDF, Slides, Paint, QBStudio, 3DForge,
   Archiver, Icon Editor, fmtracker, Telegram's pane; then the toolbars, tabs, dialog bases, tables;
   the Control Panel's applets laid out in their pane (Theme first).
 

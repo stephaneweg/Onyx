@@ -72,7 +72,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 949 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 950 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -266,6 +266,31 @@ int main (void)
     }
     return 0;
 }
+```
+
+**The adaptive widgets** (`uikit/adapt.h`, `sidepanel.h`, `form.h`, PocketUI's phase P6; docs/03 §5.10.6): the
+same binary runs on the desktop, in pocket and in console; the app says **what** its parts are and each UIKit shows
+them for its mode — on the desktop exactly as before. A navigation **SidePanel** (a rail, a drawer, a console column
+away from the desktop), tools with **priorities** (pocket: one row and **»**), **column roles** (portrait: cards), a
+**FormDialog** (portrait: a sheet), a field's **type**, the **size class**:
+
+```cpp
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
+
+SidePanel *nav = new SidePanel (0, 40, 200, 560, UK_SP_LEFT, UK_SP_NAVIGATION);
+nav->addHeading ("LIBRARY");  nav->addItem (1, "Songs", WKG_HOME);  nav->setBadge (1, 12);
+nav->onSelect = [] (SidePanel &, int id) { show (id); };
+bar->setPriority (cut, UK_TB_IF_ROOM, 2);  bar->setPriority (settings, UK_TB_OVERFLOW);
+grid->setColumnRole (0, UK_COL_PRIMARY);  grid->setColumnRole (1, UK_COL_SECONDARY);  grid->setColumnRole (3, UK_COL_DETAIL, 1);
+uk_set_input_type (urlBox, UK_IN_URL);
+void relayout () {                                     // the window's resize, Root::onSizeClass, nav->onPresentation
+    nav->place (0, 40, 200, height - 40);
+    content->left = nav->reservedWidth ();             // 200 whole, 48 a rail, 0 a drawer
+    if (uk_size_class () == UK_SC_NARROW) { /* portrait: the app's own choices */ }
+}
+FormDialog f ("New Playlist");  f.addRow ("Name:", new Textbox (0, 0, 240, 26, ""));
+f.addButton ("Create", UK_FB_DEFAULT, 1);  f.addButton ("Cancel", UK_FB_CANCEL, 0);  int r = f.run ();
 ```
 
 ## Index
@@ -3131,6 +3156,9 @@ public:
 	int  page ();
 	void setContent (Widget *w);			// a navigation panel's content under its items (a tree, a month)
 	void setFooter (Widget *w, int h);		// under the rest: h px (the chosen item's controls, a button)
+	// Over the rest: h px at the panel's top (whose library this is, a period's chooser) -- shown with the panel's box
+	// (whole, a drawer, a column, a rail expanded), hidden in a rail of icons. (uikit 1.950.)
+	void setHeader (Widget *w, int h);
 
 	// ---- the look, the geometry, the state ------------------------------------------------------------------------
 	void setIconFn (SpIconFn fn);

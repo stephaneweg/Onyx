@@ -952,3 +952,4 @@
 946 _ZNK5uikit7ToolBar4rowsEv
 947 _ZN5uikit9SidePanel11setSubtitleEiPKc
 948 _ZN5uikit9SidePanel5placeEiiii
+949 _ZN5uikit9SidePanel9setHeaderEPNS_6WidgetEi

@@ -193,13 +193,16 @@ run pocket_pocketshell shell-late-1080 "otherpic 1920 30 menubar $OUT/bar-home-1
 	SIM_SCREEN=1920x1080 SIM_SCREEN_STALE=800x480 SIM_SERVER_LATE=3 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$WR
 if grep -q "pocketshell: the screen 1920 x 1080, the work area 1920 x 1050, the scale 150%" "$OUT/log.txt"; then echo "  shell-late-1080: the scale followed the server (150%)"
 else echo "  shell-late-1080: FAILED (the scale not followed)"; FAIL=1; fi
-# the menu bar (pocket, the shell running): a click on "Onyx" asks the shell for its home (SHELL_MSG_HOME) and opens no
-# menu -- twice: twice asked; the bar the same before and after (no drop-down)
+# the menu bar (pocket, the shell running): a click on the GEM before "Onyx" asks the shell for its home
+# (SHELL_MSG_HOME) and opens no menu -- twice: twice asked; the bar the same before and after (no drop-down); a click
+# on the NAME opens the Onyx menu (the bar changes) and asks the shell nothing
 n0=$(grep -c 'sim: send shell type 101' "$OUT/log.txt" || true)
-run pocket_menubar bar-onyx "$W;move 30 14;$W;dump $OUT/bar-onyx-0.elsm;down 30 14;up 30 14;$W;dump $OUT/bar-onyx-1.elsm;down 30 14;up 30 14;$W" SIM_SCREEN=800x480 SIM_APPNAME=menubar SIM_APP=menubar SIM_SERVICES=shell
+run pocket_menubar bar-onyx "$W;move 22 14;$W;dump $OUT/bar-onyx-0.elsm;down 22 14;up 22 14;$W;dump $OUT/bar-onyx-1.elsm;down 22 14;up 22 14;$W;down 56 14;up 56 14;$W;dump $OUT/bar-onyx-2.elsm" \
+	SIM_SCREEN=800x480 SIM_APPNAME=menubar SIM_APP=menubar SIM_SERVICES=shell
 n1=$(grep -c 'sim: send shell type 101' "$OUT/log.txt" || true)
-if [ $((n1 - n0)) = 2 ] && cmp -s "$OUT/bar-onyx-0.elsm" "$OUT/bar-onyx-1.elsm"; then echo "  bar-onyx: Onyx is Home (asked twice, no menu)"
-else echo "  bar-onyx: FAILED ($((n1 - n0)) asked; the bar changed: a menu?)"; FAIL=1; fi
+if [ $((n1 - n0)) = 2 ] && cmp -s "$OUT/bar-onyx-0.elsm" "$OUT/bar-onyx-1.elsm" && ! cmp -s "$OUT/bar-onyx-0.elsm" "$OUT/bar-onyx-2.elsm"; then echo "  bar-onyx: the gem is Home (asked twice, no menu), the name opens the Onyx menu"
+else echo "  bar-onyx: FAILED ($((n1 - n0)) asked; the gem opened a menu, or the name none)"; FAIL=1; fi
+png bar-onyx-2
 png bar-onyx-0
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1
 echo "  checks: $(grep -c 'server_sim: PASS' "$OUT/log.txt") passed, $(grep -c 'server_sim: FAIL' "$OUT/log.txt") failed"
