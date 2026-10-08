@@ -316,7 +316,7 @@ quick settings (Super+N), its menus (F10), split view (Super+← / →).*
 ## 7. Console mode
 
 The third mode, for a Pi handheld with a gamepad or a Pi under the TV: the games, the emulators and the
-media first, **the pad alone**, and the mood of the **PlayStation 2's system browser** — the user's wish: a
+media first, **made for the pad** (the mouse and the keyboard work as well, §7.2), and the mood of the **PlayStation 2's system browser** — the user's wish: a
 deep blue-black space with soft floating motes, glowing translucent towers of cubes receding into the
 dark, big thin words ("Browser", "System Configuration" in the PS2), a glowing highlight on the chosen
 item, memory-card-like tiles. It stays Onyx: Milk's Aqua blue is the glow, the Onyx gem is in the corner,
@@ -342,11 +342,17 @@ the apps and the kits are the same.
 
 ### 7.2 How it works
 
-- **The pad only**: d-pad to move, **✕ confirm, ○ back**, △ options, □ a second action (save states,
+- **The pad first**: d-pad to move, **✕ confirm, ○ back**, △ options, □ a second action (save states,
   close), **L1 / R1 the sections**, Select or the Home button = the menu (an app's menus, a game's quick
   menu: one gesture to learn, §7.3). On a pad without these symbols: A = ✕, B = ○, Y = △,
   X = □ (the Gamepad applet maps them, `SD:/etc/gamepad.ini`). The bottom line always shows the buttons
   that work on the screen.
+- **Mouse and keyboard, full alternatives to the pad** (the user, 2026-10-08): nothing in console mode needs
+  the pad. **Mouse**: hovering moves the focus glow, **left click = ✕** (open, enter), **right click = △**
+  (actions), the wheel scrolls the lists (and the home's category column). **Keyboard**: the arrows = the
+  d-pad (left / right between the columns, up / down in a list), **Enter = ✕**, **Esc or Backspace = ○**,
+  **Page Up / Page Down = L1 / R1**, **Alt, F10 or the Menu key = Home** (the menus). The hints at the bottom
+  keep the pad's symbols; a keyboard-only user reads them through this mapping.
 - **What it reuses**: the Game Library's index of the ROMs and its covers (`apps/gamelib`), the emulators'
   save states, the Media Player's library (Media), the File Viewer's volumes (Files), the Control Panel's
   applets (Settings), Pocket's switcher and overlays drawn in the console style.
@@ -406,6 +412,8 @@ the categories, the right panel shows what the chosen one holds. The composition
   the bottom left describes it — its name, its category and kind, a line about it, **"keyboard recommended"**
   for an app made for typing (from its `app.txt`, a key to add), **running**. ✕ opens the app full screen
   (§7.3), **△** opens its options, **○** returns to the categories, L1 / R1 move a page.
+- **Mouse and keyboard** (§7.2): hover moves the glow, the wheel scrolls the category column and the panel, a
+  left click enters or opens, a right click shows the options; the arrows move between the column and the panel.
 - **The options (△)**: a small glass menu beside the tile, the rest dimmed — **Open**, **Pin to Recent** (it
   stays at the head of Recent), **Close app** (only when it runs), **Info** (its package, version, files).
 
@@ -419,6 +427,45 @@ the categories, the right panel shows what the chosen one holds. The composition
 ![](compact-shell/mockups/console-home-sheet.png)
 
 *The console home's four states on one page.*
+
+### 7.5 The File Viewer in console mode
+
+The File Viewer (`user/Apps/fileviewer`: on the desktop a NeXTSTEP column browser, its places at the left, a
+path bar, a preview column, its menus File / Go / Edit and a right-click menu) shows how a UIKit app with a
+navigation panel becomes a console app, through the adaptive widgets of `docs/POCKETUI-TECH-STUDY.md` §6 — no
+special code in the app beyond those widgets:
+
+- **The places** (`SD:/etc/places.ini`: Personal — the pinned folders and the Trash; Computer — SD Card, the
+  USB stick; Network — the servers and Connect to Server...) are the **SidePanel's console column**: big rows,
+  the place shown marked, **L1 / R1** step through them from anywhere; left from the list enters the column.
+  When a preview needs the width, the column **folds to a rail of icons** (still L1 / R1).
+- **The columns become one big list** — one folder at a time, the folders first, rows of 34 px, the focused
+  one glowing; **right or ✕** enters a folder, **○ goes up**; the path bar is a **breadcrumb** of chips at the
+  top (the current folder lit). A file's icon is **the icon of the app that opens it** (`SD:/etc/fileassoc.ini`,
+  as the desktop reads it): Letters for `.rtf`, Slides for `.odp` / `.pptx`, the Spreadsheet for `.xlsx`,
+  Cardfile for `.card`, Ledger for `.ledger`; a plain page when nothing opens it.
+- **The preview column becomes a panel** at the right: the picture (with the console's glow and a faint
+  reflection), its type, size and dimensions, the app that opens it.
+- **△ (or a right click) = the row's menu**, the desktop's own items in console style: Open (with the app's
+  name), **Open with...**, Copy, **Move...** (Cut then Paste become one step: choose the destination folder),
+  **Rename...** (marked with a keyboard: there is no keyboard on screen in console), Move to Trash, Info.
+- **Home** reveals the app's real menus at the top (§7.3): File, **Go** (SD Card, USB Stick, Eject USB Stick,
+  Disks, Trash, Connect to Server..., Pin This Folder..., Restore from Trash, Empty Trash...), Edit; the system's
+  row below (Home, Switch app, Quit); the shortcuts hidden.
+- **Mouse and keyboard** work as everywhere in console (§7.2): hover moves the glow, a left click opens, a
+  right click shows the actions (the pointer in the third picture), the wheel scrolls; the arrows, Enter,
+  Backspace (up), Page Up / Down (the places) and Alt / F10 (the menus) do the pad's work.
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-files.png) | **SD:/docs** (its real content): the places at the left (Documents marked), the folder as big rows with the opening apps' icons, `letters-tour.rtf` focused; ✕ Open, ○ Up, △ Actions, L1 / R1 Places, Home Menu. |
+| ![](compact-shell/mockups/console-files-preview.png) | **A picture focused** (`SD:/docs/pictures/sunset-sea.jpg`): the places folded to a rail, the preview panel — the picture, JPEG, 88 KB, 1280 × 800, opens with the Image Viewer. |
+| ![](compact-shell/mockups/console-files-actions.png) | **△ or a right click on a file**: Open (Letters), Open with..., Copy, Move..., Rename... (keyboard), Move to Trash, Info; the mouse's pointer on the row. |
+| ![](compact-shell/mockups/console-files-menu.png) | **Home**: the File Viewer's menus File / Go / Edit, Go open with its real items, the system's row below. |
+
+![](compact-shell/mockups/console-files-sheet.png)
+
+*The File Viewer in console mode, four states.*
 
 ## 8. The concepts studied
 

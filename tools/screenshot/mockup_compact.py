@@ -2461,6 +2461,243 @@ def console_home_main ():
 			     "Console mode's home: the categories and their apps (640 x 480)"), "console-home-sheet.png")
 
 # ===========================================================================================================
+# The File Viewer in console mode (user/Apps/fileviewer): its places (Personal / Computer / Network, SD:/etc/
+# places.ini) as the SidePanel's console column (a d-pad column, L1 / R1 the sections), its column browser as one
+# big focusable list (right enters a folder, circle goes up), its path bar as the breadcrumb, its preview column
+# as a panel, its right-click menu on triangle, its menus (File, Go, Edit) revealed by Home. A file's icon = the
+# icon of the app that opens it (SD:/etc/fileassoc.ini, as the File Viewer and the dock read it).
+# ===========================================================================================================
+def _assoc ():
+	m = {}
+	try:
+		for line in open (os.path.join (SD, "etc", "fileassoc.ini")):
+			line = line.split ("#")[0]
+			if "=" in line:
+				k, v = [s.strip () for s in line.split ("=", 1)]
+				if v: m[k.lower ()] = v
+	except OSError: pass
+	return m
+FASSOC = _assoc ()
+FKIND = {"card": "Cardfile cards", "odp": "presentation", "pptx": "presentation", "xlsx": "spreadsheet", "cod": "statement",
+	 "ledger": "accounts", "rtf": "RTF document", "png": "PNG picture", "jpg": "JPEG picture", "txt": "text", "ini": "settings"}
+def fsize (n):
+	return "%d B" % n if n < 1024 else ("%.1f KB" % (n / 1024) if n < 10240 else ("%d KB" % round (n / 1024) if n < 1048576 else "%.1f MB" % (n / 1048576)))
+def folder_list (rel):
+	"""A real folder of the card: (name, is_dir, line, size, opener app) -- folders first, as the File Viewer."""
+	p = os.path.join (SD, rel); out = []
+	for n in sorted (os.listdir (p), key = lambda s: (not os.path.isdir (os.path.join (p, s)), s.lower ())):
+		if n.startswith ("."): continue
+		q = os.path.join (p, n)
+		if os.path.isdir (q):
+			k = len ([x for x in os.listdir (q) if not x.startswith (".")]); out.append ((n, True, "%d item%s" % (k, "" if k == 1 else "s"), "", None))
+		else:
+			ext = n.rsplit (".", 1)[-1].lower (); out.append ((n, False, FKIND.get (ext, ext.upper () + " file"), fsize (os.path.getsize (q)), FASSOC.get (ext)))
+	return out
+
+def g_folder (d, s, k = 1):
+	u = s * k
+	d.rounded_rectangle ([1 * u, 2 * u, 8 * u, 6 * u], 1.2 * u, fill = 160)
+	d.rounded_rectangle ([1 * u, 4 * u, 19 * u, 16 * u], 2 * u, fill = 255)
+def g_page (d, s, k = 1):
+	u = s * k
+	d.polygon ([(3 * u, 1 * u), (12 * u, 1 * u), (17 * u, 6 * u), (17 * u, 19 * u), (3 * u, 19 * u)], fill = 255)
+	d.polygon ([(12 * u, 1 * u), (12 * u, 6 * u), (17 * u, 6 * u)], fill = 140)
+def g_drive (d, s, k = 1):
+	u = s * k
+	d.rounded_rectangle ([1 * u, 5 * u, 19 * u, 15 * u], 2.5 * u, fill = 255); d.ellipse ([14 * u, 9 * u, 16 * u, 11 * u], fill = 0)
+def g_usb (d, s, k = 1):
+	u = s * k
+	d.rounded_rectangle ([6 * u, 1 * u, 14 * u, 7 * u], 1 * u, outline = 255, width = int (1.6 * u)); d.rounded_rectangle ([4 * u, 7 * u, 16 * u, 19 * u], 2.5 * u, fill = 255)
+def g_trash (d, s, k = 1):
+	u = s * k
+	d.rectangle ([3 * u, 4 * u, 17 * u, 5.6 * u], fill = 255); d.rectangle ([8 * u, 2 * u, 12 * u, 4 * u], fill = 255)
+	d.polygon ([(4.5 * u, 7 * u), (15.5 * u, 7 * u), (14.5 * u, 19 * u), (5.5 * u, 19 * u)], fill = 255)
+def g_globe (d, s, k = 1):
+	u = s * k
+	d.ellipse ([2 * u, 2 * u, 18 * u, 18 * u], outline = 255, width = int (1.6 * u)); d.ellipse ([6.5 * u, 2 * u, 13.5 * u, 18 * u], outline = 255, width = int (1.4 * u))
+	d.line ([2 * u, 10 * u, 18 * u, 10 * u], fill = 255, width = int (1.4 * u))
+def g_note (d, s, k = 1):
+	u = s * k
+	d.line ([8 * u, 4 * u, 8 * u, 15 * u], fill = 255, width = int (1.8 * u)); d.line ([8 * u, 4 * u, 16 * u, 2 * u, 16 * u, 13 * u], fill = 255, width = int (1.8 * u))
+	d.ellipse ([3.5 * u, 12.5 * u, 8.5 * u, 17 * u], fill = 255); d.ellipse ([11.5 * u, 10.5 * u, 16.5 * u, 15 * u], fill = 255)
+def g_photo (d, s, k = 1):
+	u = s * k
+	d.rounded_rectangle ([1 * u, 3 * u, 19 * u, 17 * u], 2 * u, outline = 255, width = int (1.6 * u))
+	d.polygon ([(3 * u, 15 * u), (8 * u, 9 * u), (11 * u, 12 * u), (13 * u, 10 * u), (17 * u, 15 * u)], fill = 255); d.ellipse ([12.5 * u, 5 * u, 15.5 * u, 8 * u], fill = 255)
+def g_pad (d, s, k = 1):
+	u = s * k
+	d.rounded_rectangle ([1 * u, 6 * u, 19 * u, 15 * u], 4.5 * u, fill = 255)
+	d.rectangle ([4.5 * u, 9.8 * u, 8.5 * u, 11.2 * u], fill = 0); d.rectangle ([5.8 * u, 8.5 * u, 7.2 * u, 12.5 * u], fill = 0)
+	d.ellipse ([12.5 * u, 8.3 * u, 14.5 * u, 10.3 * u], fill = 0); d.ellipse ([14.5 * u, 10.5 * u, 16.5 * u, 12.5 * u], fill = 0)
+
+def mouse_pointer (img, x, y):
+	"""The mouse's arrow (console keeps the mouse: hover = focus, right click = triangle)."""
+	pts = [(0, 0), (0, 17), (4.5, 13), (7.5, 20), (10, 19), (7, 12.5), (12.5, 12.5)]
+	glyph (img, x - 1, y - 1, 16, 24, lambda d, s: d.polygon ([((a + 1.5) * s, (b + 1.5) * s) for a, b in pts], fill = 255), (0, 0, 0), alpha = 230)
+	glyph (img, x, y, 14, 22, lambda d, s: d.polygon ([((a + 0.5) * s, (b + 0.5) * s) for a, b in pts], fill = 255), (255, 255, 255))
+
+# the places, as places.ini would hold them: pinned folders, the Trash; the volumes; the network
+FV_PLACES = [("Personal", [("Documents", g_folder), ("Music", g_note), ("Pictures", g_photo), ("ROMs", g_pad), ("Trash", g_trash)]),
+	     ("Computer", [("SD Card", g_drive), ("USB Stick", g_usb)]),
+	     ("Network", [("Connect to Server...", g_globe)])]
+FX, FY, FWD = 202, 60, 424				# the list
+def fv_base (crumbs, count):
+	img = space (CW, CH, seed = 31, towers = False); img = dim (img, 70, (2, 4, 14)); img = vignette (img, 0.45)
+	draw_icon (img, "fileviewer", 16, 13, 26)
+	x = 52; f = cfont (17, "regular"); fs = cfont (17, "semi")
+	for i, c in enumerate (crumbs):
+		last = i == len (crumbs) - 1; ww = tw (c, fs if last else f) + 22
+		if last:
+			rrect (img, x, 12, ww, 28, 14, ((80, 140, 240), (30, 70, 170)), alpha = 190); ring (img, x, 12, ww, 28, 14, (190, 220, 255), alpha = 200)
+			text_c (img, x, 12 - 1, ww, 28, c, fs, (255, 255, 255))
+		else:
+			rrect (img, x, 12, ww, 28, 14, (20, 34, 70), alpha = 150); ring (img, x, 12, ww, 28, 14, (110, 140, 200), alpha = 110)
+			text_c (img, x, 12 - 1, ww, 28, c, f, (190, 208, 236))
+			glyph (img, x + ww + 7, 21, 10, 10, lambda d, s: g_chev (d, s, 1, "right"), (130, 160, 210))
+		x += ww + (24 if not last else 0)
+	text_r (img, CW - 18, 14, 24, count, cfont (14, "regular"), (140, 166, 210))
+	hint_strip (img)
+	return img
+
+def fv_places (img, current, focus = False):
+	glass (img, 14, FY, 176, 372, 12, alpha = 40, edge = 90)
+	y = FY + 10
+	for gi, (grp, rows) in enumerate (FV_PLACES):
+		text (img, 28, y, grp.upper (), font (9, True), (110, 136, 180)); y += 18
+		for name, gl in rows:
+			if name == current:
+				if focus: img = glow_box (img, 20, y - 1, 164, 30, 8)
+				else: rrect (img, 20, y - 1, 164, 30, 8, ((50, 90, 170), (24, 46, 100)), alpha = 150); ring (img, 20, y - 1, 164, 30, 8, (150, 190, 250), alpha = 110)
+			on = name == current
+			put (img, 30, y + 6, mask (18, 18, lambda d, s, g = gl: g (d, s, 0.9)), (230, 240, 255) if on else (130, 160, 210))
+			ff = cfont (16, "semi" if on else "light")
+			text (img, 56, y + 3, ellipsize (name, ff, 124), ff, (255, 255, 255) if on else (186, 202, 230))
+			y += 32
+		y += 8
+	# the L1 / R1 marks: the sections, from anywhere
+	shoulder (img, 24, FY + 372 - 26, "L1"); shoulder (img, 150, FY + 372 - 26, "R1")
+	text_c (img, 58, FY + 372 - 27, 88, 18, "places", cfont (12, "regular"), (110, 136, 180))
+	return img
+
+def fv_icon (img, x, y, isdir, opener, sz = 26, lit = False):
+	if isdir:
+		put (img, x, y + 1, mask (sz, sz, lambda d, s: g_folder (d, s, sz / 20)), ((150, 200, 255), (60, 120, 220)) and grad (sz, sz, (170, 214, 255), (60, 120, 230)))
+	elif opener: draw_icon (img, opener, x, y, sz)
+	else: put (img, x + 1, y, mask (sz, sz, lambda d, s: g_page (d, s, sz / 20)), (200, 212, 232))
+
+def fv_list (img, entries, focus, x = FX, w = FWD, rows = 10, rh = 34):
+	glass (img, x, FY, w, 372, 12, alpha = 30, edge = 70)
+	y = FY + 8; fr = None
+	for i, (n, isdir, line, size, opener) in enumerate (entries[:rows]):
+		if i == focus: fr = y; img = glow_box (img, x + 6, y, w - 12, rh - 2, 8)
+		else:
+			if i % 2: rrect (img, x + 6, y, w - 12, rh - 2, 8, (120, 160, 230), alpha = 10)
+		fv_icon (img, x + 14, y + 3, isdir, opener)
+		lit = i == focus
+		fn = cfont (18 if lit else 17, "semi" if lit else "light")
+		right = x + w - 18
+		if isdir: glyph (img, right - 8, y + 11, 10, 10, lambda d, s: g_chev (d, s, 1, "right"), (220, 236, 255) if lit else (120, 150, 200)); right -= 18
+		fz = cfont (13, "regular")
+		if size and w > 300: text_r (img, right, y + 4, 24, size, fz, (220, 234, 255) if lit else (130, 156, 200)); right -= 62
+		if w > 300: text_r (img, right, y + 4, 24, line, fz, (200, 220, 250) if lit else (110, 136, 182)); right -= tw (line, fz) + 12
+		elif isdir: text_r (img, right, y + 4, 24, line, fz, (200, 220, 250) if lit else (110, 136, 182)); right -= tw (line, fz) + 12
+		text (img, x + 50, y + 5, ellipsize (n, fn, right - x - 56), fn, (255, 255, 255) if lit else (210, 222, 244))
+		y += rh
+	if len (entries) > rows:
+		f = cfont (13, "regular"); more = "%d more" % (len (entries) - rows); w_ = tw (more, f) + 16; mx = x + (w - w_) // 2
+		glyph (img, mx, FY + 372 - 18, 10, 10, lambda d, s: g_chev (d, s, 1, "down"), (140, 170, 220)); text (img, mx + 16, FY + 372 - 22, more, f, (140, 166, 210))
+	return img, fr
+
+FV_HINTS = [("x", "Open"), ("o", "Up"), ("t", "Actions"), ("L1/R1", "Places"), ("HOME", "Menu")]
+def console_files (actions = False, menu = False):
+	ents = folder_list ("docs")
+	img = fv_base (["SD Card", "docs"], "%d items" % len (ents))
+	img = fv_places (img, "Documents")
+	foc = [e[0] for e in ents].index ("letters-tour.rtf")
+	img, fr = fv_list (img, ents, foc)
+	if not actions and not menu:
+		console_hints (img, FV_HINTS); return img
+	if menu:
+		img = dim (img, 150, (4, 8, 24)); box (img, 0, CH - 46, CW, 46, (6, 10, 26), alpha = 200)
+		console_menubar (img, ("File", "Go", "Edit"), "Go", [("SD Card", ""), ("USB Stick", ""), ("Eject USB Stick", ""), ("Disks (Format...)", ""), ("Trash", ""),
+				 ("Connect to Server...", ""), "-", ("Pin This Folder...", ""), "-", ("Restore from Trash", ""), ("Empty Trash...", "")], sel = 1)
+		console_hints (img, [("L1/R1", "Menus"), ("x", "Choose"), ("o", "Close"), ("HOME", "Close")])
+		return img
+	# triangle (or a right click: the pointer) on a file -- the File Viewer's own row menu, console-styled
+	keep = img.copy (); km = Image.new ("L", img.size, 0)
+	ImageDraw.Draw (km).rounded_rectangle ([FX + 4, fr - 2, FX + FWD - 4, fr + 34], 9, fill = 255)
+	img = dim (img, 120, (2, 6, 20)); img.paste (keep, (0, 0), km.filter (ImageFilter.GaussianBlur (2)))
+	items = [("Open", "Letters"), ("Open with...", ""), ("Copy", ""), ("Move...", ""), ("Rename...", "kbd"), ("Move to Trash", ""), ("Info", "")]
+	mw, rh = 236, 34; mh = 50 + rh * len (items); mx = FX + 170; my = max (FY - 6, fr - mh - 6)
+	rrect (img, mx, my, mw, mh, 12, (6, 12, 32), alpha = 180); glass (img, mx, my, mw, mh, 12, alpha = 120, edge = 170)
+	draw_icon (img, "letters", mx + 12, my + 11, 24)
+	text (img, mx + 44, my + 12, "letters-tour.rtf", cfont (16, "semi"), (236, 244, 255))
+	hline (img, mx + 12, my + 44, mw - 24, (150, 190, 250), alpha = 70)
+	for i, (it, extra) in enumerate (items):
+		iy = my + 50 + i * rh
+		if i == 1:
+			img = glow_box (img, mx + 8, iy, mw - 16, rh - 3, 8); text (img, mx + 22, iy + 4, it, cfont (18, "semi"), (255, 255, 255))
+		else: text (img, mx + 22, iy + 4, it, cfont (18, "light"), (255, 170, 160) if it == "Move to Trash" else (206, 220, 244))
+		if extra == "kbd": put (img, mx + mw - 34, iy + 9, mask (16, 16, lambda d, s: g_kbd (d, s)), (240, 200, 120))
+		elif extra: text_r (img, mx + mw - 16, iy + 4, 24, extra, cfont (13, "regular"), (140, 166, 210))
+	mouse_pointer (img, FX + 128, fr + 18)
+	console_hints (img, [("x", "Choose"), ("o", "Close")])
+	return img
+
+def fv_rail (img, current):
+	"""The places folded to a rail of icons (the list and a preview need the width); L1 / R1 still step through them."""
+	glass (img, 14, FY, 44, 372, 12, alpha = 40, edge = 90)
+	y = FY + 12
+	for grp, rows in FV_PLACES:
+		for name, gl in rows:
+			on = name == current
+			if on: rrect (img, 18, y - 4, 36, 30, 8, ((50, 90, 170), (24, 46, 100)), alpha = 170); ring (img, 18, y - 4, 36, 30, 8, (150, 190, 250), alpha = 130)
+			put (img, 27, y + 2, mask (18, 18, lambda d, s, g = gl: g (d, s, 0.9)), (235, 244, 255) if on else (120, 150, 200))
+			y += 34
+		hline (img, 24, y - 4, 24, (120, 150, 210), alpha = 60); y += 6
+	return img
+
+def console_files_preview (pick = "sunset-sea.jpg"):
+	ents = folder_list ("docs/pictures")
+	img = fv_base (["SD Card", "docs", "pictures"], "%d items" % len (ents))
+	img = fv_rail (img, "Pictures")
+	foc = [e[0] for e in ents].index (pick)
+	img, fr = fv_list (img, ents, foc, x = 66, w = 250)
+	# the preview: the File Viewer's preview column (name, type, size, the picture) as a glass panel
+	px, pw = 324, 302
+	glass (img, px, FY, pw, 372, 12, alpha = 46, edge = 110)
+	pic = Image.open (os.path.join (SD, "docs", "pictures", pick)).convert ("RGB")
+	tw_ = pw - 28; th_ = int (tw_ * pic.height / pic.width); thumb = pic.resize ((tw_, th_), Image.LANCZOS)
+	m = Image.new ("L", img.size, 0); ImageDraw.Draw (m).rectangle ([px + 14, FY + 14, px + 14 + tw_, FY + 14 + th_], fill = 200)
+	img = add_glow (img, Image.new ("RGB", img.size, (60, 120, 220)), m, 8)
+	img.paste (thumb, (px + 14, FY + 14)); ring (img, px + 14, FY + 14, tw_, th_, 2, (220, 236, 255), alpha = 200)
+	ref = thumb.transpose (Image.FLIP_TOP_BOTTOM).crop ((0, 0, tw_, th_ // 4))
+	rm = Image.fromarray ((np.linspace (60, 0, th_ // 4)[:, None].repeat (tw_, 1)).astype ("uint8"), "L"); img.paste (ref, (px + 14, FY + 16 + th_), rm)
+	y = FY + 24 + th_ + th_ // 4
+	glow_text (img, px + 16, y, pick, cfont (21, "semi"), (255, 255, 255), radius = 4, strength = 1)
+	n, isdir, kind, size, opener = ents[foc]
+	f = cfont (14, "regular")
+	for i, (k_, v) in enumerate ([("Type", kind), ("Size", size), ("Picture", "%d x %d" % pic.size)]):
+		text (img, px + 16, y + 34 + i * 21, k_, f, (120, 146, 190)); text (img, px + 86, y + 34 + i * 21, v, f, (210, 224, 246))
+	yy = y + 34 + 3 * 21 + 6
+	hline (img, px + 16, yy, pw - 32, (140, 180, 240), alpha = 50)
+	text (img, px + 16, yy + 8, "Opens with", f, (120, 146, 190))
+	draw_icon (img, opener, px + 100, yy + 6, 22); text (img, px + 128, yy + 7, app_name (opener), cfont (15, "regular"), (226, 236, 252))
+	console_hints (img, FV_HINTS)
+	return img
+
+def console_files_main ():
+	f1 = console_files (); save (f1, "console-files.png")
+	f2 = console_files (actions = True); save (f2, "console-files-actions.png")
+	f3 = console_files (menu = True); save (f3, "console-files-menu.png")
+	f4 = console_files_preview (); save (f4, "console-files-preview.png")
+	save (console_sheet ([(f1, "1. SD:/docs: the places at the left, the folder as big rows"),
+			      (f4, "2. A picture focused: the places fold to a rail, the preview panel"),
+			      (f2, "3. Triangle or a right click on a file: its actions"),
+			      (f3, "4. Home: the File Viewer's own menus, Go open")],
+			     "The File Viewer in console mode (640 x 480)"), "console-files-sheet.png")
+
+# ===========================================================================================================
 def save (img, name):
 	p = os.path.join (OUT, name); img.save (p, optimize = True); print ("  ", os.path.relpath (p, ROOT), img.size)
 
@@ -2542,6 +2779,7 @@ def main ():
 	cw_ = console_switcher (); save (cw_, "console-switcher.png")
 	save (frame_handheld (ch_, "Console mode on a Pi handheld, 640 x 480"), "console-handheld.png")
 	console_home_main ()					# the home as the browser: categories and their apps
+	console_files_main ()					# the File Viewer in console mode
 	save (console_sheet ([(ch_, "Home"), (cl, "Games: the library"), (cs, "Settings"), (co, "In a game: Home pressed"), (cw_, "Running: switch")]), "console-overview.png")
 	# the alternatives studied
 	a = concept_a (); save (frame_clamshell (a, "640 x 480 -- a Zaurus SL-C-like clamshell"), "concept-a-tabs.png")
@@ -2566,4 +2804,5 @@ def main ():
 if __name__ == "__main__":
 	import sys
 	if sys.argv[1:] == ["console-home"]: os.makedirs (OUT, exist_ok = True); console_home_main ()	# (only the console home's)
+	elif sys.argv[1:] == ["console-files"]: os.makedirs (OUT, exist_ok = True); console_files_main ()	# (only the File Viewer's)
 	else: main ()
