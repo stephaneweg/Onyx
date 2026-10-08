@@ -104,6 +104,7 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   looked at, pushed from Windows): calendar 1.0.26, gamelib 1.0.25, mail 1.0.28, media 1.0.38, photos 1.0.31 -- and
   **jet 2.0.14**: `sdcard/apps/jet.app/main` in this checkout (built 2026-10-08 23:59 by the Jet session, not in git)
   differs from 2.0.13's by a kilobyte, so `mkrepo` bumped it.
+  A second publish the same day: **onyx 2026.10.130** (the menu bar's gem), calendar 1.0.27, irc 1.0.31, mail 1.0.29.
 - **Pi checklist** (not done): `pkg update -a` (media, photos, gamelib, mail, calendar, irc, onyx), then:
   1. Desktop: both as before but the sidebars' labels; Photos' *All albums*, a right click on an album and a folder;
      a playlist made in Media shows in its sidebar at once; `language=fr`: both in French.
