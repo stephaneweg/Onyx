@@ -8,7 +8,11 @@ the server's UIKit loaded under the **alias `SD:/lib/uikit.so`** through a new k
 `kapi_lib_open_as`; **switching mode = closing the graphical session and starting it again**, from the
 Control Panel and from Setup; **one binary per app, all modes** — an app's sources may (and should)
 adopt the new adaptive widgets, never a mode-specific build (§1). Every statement about today's code was checked in the tree (files and
-lines cited); the rest is a proposal. Netbook and pad are later modes: the architecture keeps them open,
+lines cited); the rest is a proposal. **Revised the same day after the user's answers (§13)**: the
+kernel changes K1–K3 accepted; **the window API moves out of AppKit into UIKit** (`uk_win_*`, every
+program migrated, AppKit's window calls removed — a deliberate ABI break); Elegant may be reorganised
+with its behaviour unchanged; the sessions, the Mode applet and Setup's choice accepted; the other
+recommendations taken by default. Netbook and pad are later modes: the architecture keeps them open,
 they are not detailed.*
 
 ## 0. In short
@@ -18,14 +22,18 @@ they are not detailed.*
   key on the same `TImage`, looked up first, set only by the process that holds the graphics server's
   role, never for `appkit.so`. Libraries are placed once in the arena (`LibPlace`, line 356): the
   server and the apps map the aliased UIKit **at the same address**, one copy of its code.
-- **The finding that shapes everything (§2.2): today the server's protocol is AppKit's, not UIKit's.**
-  A program's window calls are AppKit's `kapi_*` functions, whose bodies speak `elegant.h` to Elegant
-  (`user/Kits/appkit/appkit_ws.inc`); UIKit's `Root` only calls them. Twelve games, Doom, the menu bar,
-  the dock, `notifyd`, `rdpd`, `vncd`, the emulators' full screen... talk to the server through AppKit
-  without UIKit's windows. So **PocketUI must serve the whole of `elegant.h`** (its 39 operations, with pocket
-  meanings: §4.3) — that is what lets every unmigrated binary run in every mode — and "UIKit is to the server what AppKit is
-  to the kernel" applies to **what is new**: each server's UIKit speaks that server's *private*
-  operations through one new generic AppKit call, `kapi_ws_ext` (§4.4).
+- **The window API moves into UIKit (the user's decision, §2.2, §4).** Today a program's window calls
+  are AppKit's `kapi_*` functions speaking `elegant.h` (`user/Kits/appkit/appkit_ws.inc`), and twelve
+  games, Doom, the shell programs, `rdpd`... use them without UIKit's `Root`. The user chose to reverse
+  the HANDOFF's decision of 2026-10-05 ("the protocol is AppKit's"): the window API becomes **UIKit's,
+  `uk_win_*`** (C linkage, `uikit/win.h`); **every program is migrated** to it (≈ 55 source files, §4.2);
+  **AppKit's ≈ 48 window functions are removed** (`appkit.h`, `appkit_calls.inc`, `appkit_ws.inc`,
+  `appkit.abi` — the append-only rule waived for this change: every program rebuilt and republished
+  together). AppKit keeps only the kernel's transport (`kapi_ws_ctl`: `KAPI_WS_CALL`, `KICK`, `ACTIVE`)
+  and the kernel's full-screen primitives, which only UIKit calls. **Each server's UIKit is then the only
+  code that speaks its server's protocol**: the desktop UIKit's port holds `elegant.h` and today's
+  client code (with the restart replay); the pocket UIKit's port speaks PocketUI's own protocol, free to
+  differ (it starts from Elegant's numbering where meanings match, to reuse Elegant's sources, §4.3).
 - **The adaptive widgets** (§6.5–6.15): the app declares *what* — the menu bar's data (unchanged), a
   navigation or inspector `SidePanel`, tools with priorities, tabs, dialogs (`Form`), input types, column
   roles — and each UIKit renders it per mode (desktop as today; pocket landscape / portrait; console).
@@ -36,24 +44,26 @@ they are not detailed.*
 - **Two UIKits from one source** (§5): the same headers (they *are* the ABI: `uikit/abi.h`), the same
   objects compiled once, one *port* object per server; the pocket table generated against the same
   `uikit.abi` with `libgen --frozen`; an automatic test that the two tables are identical slot by slot.
-- **PocketUI** (§7) starts as Elegant's own server sources compiled again with a pocket policy (as
-  Elegant compiles `kernel/gui/gimage.cpp`), Elegant's files untouched; the shell — status bar,
+- **PocketUI** (§7): Elegant's server-neutral sources (the kernel plumbing, shared buffers, shots,
+  restart) extracted into `user/Servers/common/` — allowed, Elegant's behaviour unchanged — and compiled
+  into both servers; PocketUI adds its policy and its protocol; the shell — status bar,
   launcher, switcher, quick settings, the console home — are **client programs**, not the server.
   **Console is the same server** in another mode, with its own home program.
-- **Three small kernel changes, not one** (§3.8): `lib_open_as` (accepted), the graphics server chosen
+- **Three small kernel changes, all accepted** (§3.8): `lib_open_as`, the graphics server chosen
   from `system.ini` `shell=` with a fallback to Elegant (today `SD:bin/elegant` is hard-coded,
   `kernel/sys/wsrv.cpp` lines 105 and 742), and a "switch the server" operation of `ws_ctl` (no table
   entry). All three in kapi v97.
-- **The plan** (§9): phases P0–P10 (P11 later), about **85–92 session-days**, 32 of them the apps'
-  migration (spreadable); the first visible milestone (every card app running full-screen under a bare
-  PocketUI, the switch from the Control Panel) at the end of P3, about 12 days in.
+- **The plan** (§9): phases P0–P10 (P11 later), about **97–104 session-days**, 10 of them moving the
+  window API into UIKit and migrating every program (P2), 32 the adaptive widgets' migration (P7,
+  spreadable); the first visible milestone (every card app full screen under a bare PocketUI, the switch
+  from the Control Panel) at the end of P4, about 24 days in.
 
 ## 1. The frame
 
 | # | Decided by the user (2026-10-08) | What this study adds |
 |---|---|---|
-| 1 | PocketUI, a graphics server of its own beside Elegant (`user/Servers/pocketui/`); Elegant unchanged; **one binary per app for all modes** (clarified: the apps' *sources* may adopt the new system; a migrated app still runs on the desktop's UIKit — the same `.abi`) | console = the same server, `--mode console` (§7.5); Elegant's sources reused *without editing them* (§7.1); unmigrated apps covered by fallbacks (§6.3) |
-| 2 | One UIKit per server, same exports / same `.abi`; UIKit is to its server what AppKit is to the kernel | the base protocol stays AppKit's and common to both servers (it has to: §2.2, §4); the per-server part is a private protocol reached by `kapi_ws_ext` (§4.4); UIKit and AppKit extended accordingly |
+| 1 | PocketUI, a graphics server of its own beside Elegant (`user/Servers/pocketui/`); Elegant unchanged; **one binary per app for all modes** (clarified: the apps' *sources* may adopt the new system; a migrated app still runs on the desktop's UIKit — the same `.abi`) | console = the same server, `--mode console` (§7.5); Elegant's behaviour unchanged, its sources reorganised into `user/Servers/common/` (§7.1, answer 3); unmigrated apps covered by fallbacks (§6.3) |
+| 2 | One UIKit per server, same exports / same `.abi`; UIKit is to its server what AppKit is to the kernel — and (answer, 2026-10-08) **the window protocol moves to UIKit**: `UIKit_Win_*`, every app migrated, no `kapi_win*` left, ABI compatibility not required for this change | spelt `uk_win_*` (§4.2); each UIKit's port is the only code speaking its server's protocol; AppKit keeps the kernel's transport only (§2.2, §4, §5) |
 | 3 | The server loads `SD:/lib/pocket/uikit.so` with `kapi_lib_open_as (path, alias, min_version, err)`, keyed under `SD:/lib/uikit.so`; a new call, `appkit.abi` append-only, no app rebuilt | the kernel's side in detail (§3); slot 234, kapi v97 |
 | 4 | The server keeps its own reference; no persistent flag; `preload.ini` for persistence | the alias is *anchored* on the server: kept across a crash-and-relaunch of the same server, dropped when another server is started (§3.4: a windowless daemon such as `printd` would otherwise keep the pocket UIKit as `uikit.so` after a switch back to the desktop) |
 | 5 | Switching = close the graphical session and start it again | a `session` tool and per-mode session files (§8.2–8.3); the kernel restarts the right server (§3.8, K3) |
@@ -91,25 +101,29 @@ AppKit also keeps what each program asked (windows, handlers, menu, tray) and as
 that does not know the program (`ws_replay`, `appkit_ws.inc` lines 86–128): this is how the programs
 survive an Elegant restart — and it works for **any** server that answers the same operations.
 
-### 2.2 The protocol is AppKit's — the consequence for "one UIKit per server"
+### 2.2 The protocol is AppKit's today — the user moves it to UIKit
 
-The HANDOFF records it as a decision of 2026-10-05 ("**The protocol is AppKit's** (private to it,
-shared with Elegant; no program includes it): its `kapi_*` window names cannot move, UIKit depends on
-AppKit, `vncd` / `rdpd` / `plasma` / `gpcdemo` have no UIKit"). The code agrees: 35 AppKit calls have
-a `KAPI_WS` body (`appkit_calls.inc`), and the programs listed in §4.2 call them directly.
+The HANDOFF records as a decision of 2026-10-05: "**The protocol is AppKit's** (private to it, shared
+with Elegant; no program includes it): its `kapi_*` window names cannot move, UIKit depends on AppKit,
+`vncd` / `rdpd` / `plasma` / `gpcdemo` have no UIKit". The code agrees: about 48 AppKit functions speak
+to the server (`appkit_calls.inc`'s `KAPI_WS` bodies and `appkit_ws.inc`), and the programs of §4.2
+call them directly.
 
-So a UIKit per server **cannot be the only code that speaks the server's protocol**: a PocketUI that
-answered only its own UIKit would leave every game, the emulators, Doom, the remote desktop and the
-shell programs without windows. The decision keeps its full value at the level above:
+**That decision is reversed (the user, 2026-10-08)**: "for windows we'll have UIKit_Win_*; the
+applications will be migrated, and no `kapi_win_` left in the kapi at all". So:
 
-- **the base protocol** (`elegant.h`, append-only numbers, `EL_E_BADOP` for an unknown one) is *the
-  Onyx window protocol*: AppKit speaks it, **both servers serve it**;
-- **each server's UIKit** decides the presentation (frames, metrics, dialogs as sheets, focus, touch...)
-  and speaks its server's **private operations** (the shell role, size classes, text-input hints...)
-  through `kapi_ws_ext` — an AppKit call that carries an operation AppKit does not interpret (§4.4).
-  UIKit is then to its server what AppKit is to the kernel *for everything the base protocol does not
-  say*.
-
+- the window API is **UIKit's** (`uk_win_*`, §4.2), and **each server's UIKit is the only code that
+  speaks its server's protocol** — the desktop UIKit speaks `elegant.h`, the pocket UIKit speaks
+  PocketUI's; nothing else in the system knows either protocol;
+- **AppKit loses its window functions** and keeps what reaches the kernel (§4.4): the transport
+  `kapi_ws_ctl` (already an AppKit call, used by Elegant), the full-screen primitives, the event pump,
+  the screen's size, the injection — still the only code that reads the kernel's table (the kits rule);
+- **every program that has a window maps `uikit.so`** — most already do (every app of `user/Makefile`
+  links `uikit.imp.a`); the few that did not (the C programs `rdpd`, `gpcdemo`, Doom's layer, `el0test`,
+  `wstest`, and the C++ ones that never used a UIKit symbol) gain one library (§4.5);
+- this is a **deliberate ABI break**: `appkit.abi` loses lines (the rule "append-only by name" waived by
+  the user for this change), every windowed program is rebuilt and published with the new AppKit and
+  UIKit at once (packages needing `kapi >= 97`).
 ### 2.3 What lives where today
 
 | Feature | Where | Notes |
@@ -221,8 +235,12 @@ kept, anchored on the server:
 Why not "while referenced" alone: after a switch from pocket to desktop, a windowless daemon of the
 system part of the autostart that maps UIKit (`printd`, through PrinterKit) would keep the pocket image
 referenced, and every desktop app started afterwards would get the pocket UIKit. With the rule above it
-cannot happen; and if a daemon of the old session opens a window later, it still works, only with the
-other look — **both UIKits speak the same base protocol** (§2.2).
+cannot happen. A daemon of the old session that opens a window later would hold the other server's
+UIKit — and, since each UIKit speaks only its own server's protocol (§2.2), it would not be understood:
+the port's first request is a *hello* carrying its protocol's name (Elegant's `EL_OP_CREATE` already
+fails cleanly on an unknown operation, `EL_E_BADOP`; PocketUI answers the same), and on a mismatch the
+port logs "this program's UIKit is the other server's: restart it" and its window calls fail. `session`
+therefore also restarts the windowless services that map UIKit (`printd`) at a switch (§8.3).
 
 ### 3.5 Files, versions, preload, the lists
 
@@ -267,12 +285,14 @@ process (an app maps one image under `sd:/lib/uikit.so`; `FindLib` is by image).
 All three in **kapi v97** (`KAPI_ABI_VERSION` 96 → 97, its history line in `kapi_abi.h`). AppKit:
 `appkit.h` declares `kapi_lib_open_as`; `appkit_calls.inc` gets
 `KAPI_CALL (const void *, kapi_lib_open_as, (...), { if (KT->version >= 97 && KT->lib_open_as) return ...; *err = -KAPI_ENOSYS; return 0; })`;
-`appkit.abi` gains `314 kapi_lib_open_as` (and §4.4's two calls after it). `docs/02`: §7 *Shared
+`appkit.abi` gains `kapi_lib_open_as` — and **loses the ≈ 48 window functions** that move to UIKit
+(§4.2; the user waived the append-only rule for this change: every program rebuilt; the version 97 is
+also what makes every package of the rebuilt programs wait for the new AppKit). `docs/02`: §7 *Shared
 libraries* (the alias paragraph), §8's table (a `### v97: lib_open_as, the graphics server per mode`
 block: slot 234's row, `ws_ctl`'s row amended for `KAPI_WS_SWITCH` and `REGISTER`'s new rule), §10 (the
 server per mode). `docs/03` §5.6 and §5.10. `docs/10-APPKIT.md` regenerated (`tools/docgen/kitdocs.py`).
-K2 and K3 go beyond "this small kernel change" the user accepted: they are listed as **open question 1**
-(§13). Without K3, a switch is a restart of the Pi (P3 does that first).
+K2 and K3 were **accepted by the user on 2026-10-08** with K1 (§13). Until K3 is written, a switch is a
+restart of the Pi.
 
 ### 3.9 Tests of the kernel's side
 
@@ -283,90 +303,127 @@ the orphan kept, taken over, replaced; dropped by `ImageUnalias`; `Describe`'s f
 on the real table. On the Pi: P1's `aliastest` (BinUtils) run as the server under a `--serve`-less test
 mode of PocketUI, and the log lines.
 
-## 4. Who talks to the server — the inventory and the strategy
+## 4. The window API in UIKit — the inventory and the migration
 
 ### 4.1 The kits
 
-| Kit | Talks to the server? | Under PocketUI |
+| Kit | Talks to the server? | After the change |
 |---|---|---|
-| AppKit | **yes — the base protocol** | unchanged, plus `kapi_ws_ext` / `kapi_ws_server` (§4.4) |
-| UIKit | through AppKit | one per server (§5) |
+| AppKit | **yes today** (the window calls) | **no**: keeps the kernel's transport only (§4.4) |
+| UIKit | through AppKit today | **the only one**, through its port (§5.2): `uk_win_*` |
 | SystemKit | no (notify: IPC `notify`; clipboard: kernel + `clipd`; applets: surfaces + mailboxes; wallpaper: files + `kapi_launch`; autostart, locale, dock layout: files) | unchanged; gains `session.h` (§8.2) and generalised `autostart_*` (§8.2); the launcher's catalogue comes from its `dockconf.h` |
 | PrinterKit | opens `uikit` by name | follows the alias |
 | FontKit, ImageKit, FileKit, NetKit, AudioKit, GPIOKit | no | unchanged |
 
-### 4.2 The programs that use window calls beyond UIKit's `Root`
+### 4.2 `uk_win_*`, and every program migrated
 
-Found by `grep -E "kapi_(create_window|win_|menu_|fullscreen|wallpaper_|tray_|desk|drag_|inject_|raise_app|list_windows)"`
-over `user/` (outside AppKit):
+**The naming**: the user writes `UIKit_Win_*`; UIKit's C-level functions are spelt `uk_*` (`uk_messagebox`,
+`uk_lang_init`, and `uk_win_select` already exists in `root.cpp` line 158), so the API is **`uk_win_*`**,
+`extern "C"`, declared in **`uikit/win.h`** (C-compatible, included by `uikit/uikit.h`; a C program
+includes it alone). The rule: `kapi_create_window` → `uk_win_create`, every other window call
+`kapi_<name>` → `uk_win_<name>` without a doubled `win_`:
 
-| Group | Programs | Calls | Under PocketUI, unmodified |
+| Today (AppKit) | Becomes (UIKit) |
+|---|---|
+| `kapi_create_window`, `_ex`, `kapi_win_new`, `kapi_win_select`, `kapi_win_destroy` | `uk_win_create`, `uk_win_create_ex`, `uk_win_new`, `uk_win_select`, `uk_win_destroy` |
+| `kapi_move_window`, `kapi_resize_window`, `kapi_resize_window2`, `kapi_win_resizable`, `kapi_set_window_alpha`, `kapi_win_geometry`, `kapi_get_chrome` | `uk_win_move`, `uk_win_resize`, `uk_win_resize2`, `uk_win_resizable`, `uk_win_alpha`, `uk_win_geometry`, `uk_win_chrome` |
+| `kapi_present`, `kapi_draw_text`, `kapi_set_key_handler`, `_click_`, `_pointer_handler`, `kapi_set_cursor`, `kapi_cursor_pos`, `kapi_cursor_shown` | `uk_win_present`, `uk_win_draw_text`, `uk_win_on_key`, `uk_win_on_click`, `uk_win_on_pointer`, `uk_win_cursor`, `uk_win_cursor_pos`, `uk_win_cursor_shown` |
+| `kapi_set_menu`, `kapi_get_menu`, `kapi_menu_command` | `uk_win_menu_set`, `uk_win_menu_get`, `uk_win_menu_command` |
+| `kapi_win_list`, `kapi_win_raise`, `kapi_win_close`, `kapi_win_minimise`, `kapi_win_move`, `kapi_win_desk`, `kapi_desk`, `kapi_win_read`, `kapi_list_windows`, `kapi_raise_app`, `kapi_toggle_app` | `uk_win_list`, `uk_win_raise`, `uk_win_close`, `uk_win_minimise`, `uk_win_place`, `uk_win_to_desk`, `uk_win_desk`, `uk_win_read`, `uk_win_apps`, `uk_win_app_raise`, `uk_win_app_toggle` |
+| `kapi_wallpaper_buffer`, `_commit`, `_generate`; `kapi_drag_begin`, `kapi_drag_data`; `kapi_tray_set`, `_clear`, `_list`, `_icon`, `_activate`; `kapi_get_wheel_speed`, `kapi_set_wheel_speed` | `uk_win_wallpaper_buffer`, ...; `uk_win_drag_begin`, `uk_win_drag_data`; `uk_win_tray_set`, ...; `uk_win_wheel_get`, `uk_win_wheel_set` |
+| `kapi_fullscreen_begin` / `_end` (the server told, then the kernel's call) | `uk_win_fullscreen_begin` / `_end` (the port tells its server, then calls AppKit's kernel primitive); `kapi_present_fb`, `kapi_fullscreen_direct`, `kapi_gpu_frame` stay AppKit's (kernel) |
+| — (new) | `uk_win_server` (the server's name, mode, logical screen, work area, scale, size class), the shell's calls `uk_shell_*` (§4.3) |
+
+The structures (`kapi_win_info`, `kapi_win_geom`, `kapi_chrome`, `kapi_tray_info`) and the `WIN_FLAG_*`,
+`GUI_EVENT_*`, `KAPI_CURSOR_*` constants keep their definitions (the events still arrive through the
+kernel's pump); they move to `uikit/win.h` where they are only the server's business.
+
+**The programs to migrate** (found by grep over `user/`; most of the work is mechanical renaming):
+
+| Group | Programs | Calls today | Under PocketUI |
 |---|---|---|---|
-| **A. Own window, no `Root`** | 2048, cppdemo, eyes, inidemo, life, mandelbrot, minesweeper, pong, same, snake, sokoban, tetris, `gpcdemo` | `kapi_create_window` (fixed size), `kapi_present`, `kapi_cursor_pos` | a fixed window: a centred card over a dim (§7.3); pointer translated |
-| **B. Full screen** | the six emulators, Doom (`doom_onyx.c`), BASIC's runtime, plasma, lock, slides (show), pdf, photos (share), media, screenshot | `kapi_fullscreen_begin/_direct/_end`, `kapi_present_fb`, `kapi_gpu_frame` | the kernel's path, unchanged (PocketUI handles `KAPI_WS_IN_FULLSCREEN` as Elegant does); console's in-game overlay cannot draw over it (§7.5, K4 later) |
-| **C. The desktop's shell** | menubar, dock, agenda, stickies, wifimenu, voronoy | `create_window_ex` (topmost / backmost bands), `get_menu`, `menu_command`, `list_windows`, `win_list`, `desk`, `tray_*`, `wallpaper_*`, `move_window` | **not started** in pocket / console (the desktop's session file, §8.2); started by hand they work (base protocol) but make no sense: PocketUI keeps topmost/backmost bands only for the shell it knows (§7.3) |
-| **D. System services with windows** | notifyd (toasts), the Clock's ring, Notes/stickies' raise | `create_window_ex` topmost borderless, `move_window`, `screen_size`, `set_window_alpha`, `raise_app` | `notifyd` moves to the desktop's session; in pocket, **`pocketshell` registers the IPC service `notify`** itself (SystemKit's `notify.h` looks the name up: the apps' notifications land in quick settings, no app changed). Small topmost borderless windows of other programs keep their place, clamped to the screen |
-| **E. UIKit apps managing their windows** | Telegram (`win_select`, `win_raise`, v94 windows), Control Panel (`win_list`, `win_raise`, surfaces), Jet (`get_chrome` for its title, `win_list/raise` for its console and downloads), File Viewer and Archiver (`drag_begin`), Media (`move_window`, `resize_window2`, `win_geometry`), Notes, Clock, taskman (`raise_app`), imageview (`wallpaper_*`) | base operations | each answered with pocket meanings (§4.3): a program's other windows are cards of the switcher; `win_geometry` gives the work area; `get_chrome` reports no frame, Jet's `draw_title` returns at once (`main.cpp` line 197: `!c.active`) |
-| **F. Remote and tests** | `rdpd` (`win_list`, `win_read`, `win_move`, `win_close`, `cursor_shown`, `inject_*`), `vncd` (`screen_grab`, `inject_*`, `screen_set`), `el0test` | | `inject_*`, `screen_grab`, `screen_set` are the kernel's: unchanged; `rdpd`'s list and reads are base operations; `win_move` refused (-1) for a filled window — Onyx Remote shows each app at the work area's size |
+| **UIKit itself** | `root.cpp`, `menu.cpp`, `skin.cpp`, `canvas.h` (a comment) | windows, menus, chrome, tray, drag, desks | the port (§5.2) |
+| **A. Own window, no `Root`** | 2048, cppdemo, eyes, inidemo, life, mandelbrot, minesweeper, pong, same, snake, sokoban, tetris (C++), `gpcdemo` (C) | `create_window`, `present`, `cursor_pos` | a fixed window: a centred card over a dim (§7.3) |
+| **B. Full screen** | the six emulators, Doom (`doom_onyx.c`, C), BASIC's runtime (`Libs/basic/runtime.cpp`), plasma, lock, Slides' show, PDF, Photos' share, Media, Screenshot | `fullscreen_begin/_end`, `resize_window` (+ `present_fb`, `gpu_frame`, kernel) | the kernel's path; the server told by the port; console's overlay limit (§7.5) |
+| **C. The desktop's shell** | menubar, dock, agenda, stickies, wifimenu, voronoy | `create_window_ex` (bands), `menu_get`, `menu_command`, `apps`, `win_list`, `desk`, `tray_*`, `wallpaper_*`, `move` | desktop session only (§8.2) |
+| **D. Services with windows** | notifyd, the Clock (`raise_app` in 4 files), Notes / stickies | `create_window_ex` topmost, `move`, `alpha`, `app_raise` | `notifyd` desktop only; `pocketshell` serves `notify` (§7.2) |
+| **E. UIKit apps managing windows** | Telegram, Control Panel, Jet (`console.cpp`, `downloads.cpp`, `main.cpp`'s `kapi_get_chrome`), File Viewer, Archiver, Media, imageview, taskman | `win_select`, `win_list`, `win_raise`, `drag_begin`, `geometry`, `wallpaper_*`, `chrome` | the pocket port's meanings (§4.3) |
+| **F. Remote, tests** | `rdpd` (C: `win_list`, `win_read`, `win_move`, `win_close`, `cursor_shown`), `el0test` (C), `wstest` (C, the protocol by hand: moves into a UIKit test), the PC simulators (`tools/tests/desktop_sim/fakekapi.cpp`) | | `vncd` uses only kernel calls (`screen_grab`, `inject_*`, `screen_set`): **unchanged** |
 
-### 4.3 The strategy: PocketUI serves the whole base protocol
+C programs link UIKit's C binding (`lib/uikit.imp_c.a`, `libgen --bind-c`, new for UIKit: the C entry
+points only, with the program's allocator).
+
+### 4.3 PocketUI's protocol, designed freely
+
+Since only the pocket UIKit speaks it, PocketUI's protocol owes nothing to `elegant.h`. Recommended
+nevertheless: **start from Elegant's operation numbers and structures wherever the meaning is the
+same** (create, frame, handlers, resize, menus, lists, tray, wallpaper, drag, shots...) — then
+PocketUI reuses Elegant's request decoding and window store from `user/Servers/common/` (§7.1), and the
+pocket port reuses the desktop port's client code (the replay included) — and **add its own operations
+in a range of their own** (`user/Servers/pocketui/pocket.h`, private to the pocket UIKit and PocketUI).
+What it then leaves out or changes is free: no desks, no window moves, no minimise (the switcher), a
+work area and size classes instead of free geometry. The meanings PocketUI gives (they were the
+"compatibility layer" of the first draft; they are now simply its policy, the pocket port asking
+accordingly):
 
 | Operation(s) | Elegant | PocketUI (pocket, console) |
 |---|---|---|
-| `CREATE` | placed at x, y or by Elegant; frame by flags | **normal** window: the work area (under the status bar; a split half), **frameless**; **`WIN_FLAG_FIXED`** or smaller than the work area and not resizable: a centred card, framed (the Milk title and close bead drawn by UIKit's `skin.cpp` in the frame PocketUI gives); **topmost borderless** (toasts, popups): kept where asked, clamped; **backmost**: refused for anyone but the shell (→ shown as a normal window) |
-| `FRAME` | the insets | 0 0 for a filled window (borderless: UIKit draws nothing) |
-| `MOVE`, `WIN_MOVE` | moves | ignored for a filled window (answers 1 / -1), honoured for a card (kept centred) and a topmost popup |
-| `RESIZE`, `GROW`, `RESIZABLE`, `GEOMETRY` | as asked | a resizable app is given the work area (GUI resize event); its min size larger than the work area → the **viewport** (§6.3); `GEOMETRY` reports the work area as the available area (UIKit's maximise fits it) |
-| `MENU_SET/GET/COMMAND` | stored; the menu bar reads | the same; the status bar (`pocketshell`) reads the front app's |
-| `WIN_LIST`, `APP_LIST`, `WIN_RAISE`, `APP_RAISE`, `WIN_CLOSE`, `APP_CLOSE`, `DESTROY` | | the same (raise = bring to front; a program's other windows are switcher cards) |
-| `WIN_MINIMISE` | minimises | sends the app behind (the launcher shows) |
-| `WIN_DESK`, `DESK` | desks | one desk (count 1; moving refused) |
-| `ALPHA`, `CURSOR`, `CURSOR_SHOWN`, `POINTER`, `WHEEL` | | the same (pointer in the window's logical coordinates, §6.3) |
-| `DRAG_BEGIN/DATA` | | the same (useful in split view; elsewhere a drag ends on the switcher) |
-| `WALLPAPER_GEN/BUF/COMMIT` | | the same: the wallpaper behind the launcher |
-| `WIN_READ`, `SHOT` | | the same (Elegant's code, §7.1) |
-| `TRAY_*` | the menu bar reads | the same; the status bar reads |
-| unknown | `EL_E_BADOP` | `EL_E_BADOP` |
+| create | placed at x, y or by Elegant; frame by flags | **normal**: the work area, **frameless**; **fixed** or small and not resizable: a centred card, framed by UIKit's `skin.cpp`; **topmost borderless** popups: kept where asked, clamped; **backmost**: the shell's only |
+| frame | the insets | 0 0 for a filled window |
+| move, place | moves | ignored for a filled window; honoured for a card and a popup |
+| resize, grow, resizable, geometry | as asked | a resizable app given the work area; too large → the **viewport** (§6.3); geometry = the work area |
+| menus | stored; `menubar` reads | the same; the status bar / console overlay reads (§6.6) |
+| lists, raise, close, destroy | | the same (other windows are switcher cards) |
+| minimise | minimises | sends the app behind (the launcher shows) |
+| desks | desks | none |
+| alpha, cursor, pointer, wheel, drag, wallpaper, read, shot, tray | | the same |
 
-This table is the compatibility layer; it is cheap because PocketUI starts from Elegant's own
-`ops.cpp` (§7.1): most rows are Elegant's code, the pocket rules a filter before it.
-
-### 4.4 The private protocol: what makes "one UIKit per server" real
-
-Two AppKit additions (AppKit functions, **not** kernel calls — the kernel's `KAPI_WS_CALL` already
-carries any operation):
-
-- **`long kapi_ws_ext (int op, long a0, long a1, long a2, long a3, const void *in, unsigned in_len, void *out, unsigned cap)`** —
-  sends `op | EL_OP_EXT` (bit 15 of the operation: `0x8000`; the window number stays in the high bits,
-  as for every call) on the window `kapi_win_select` chose. AppKit does not look inside. Elegant answers
-  `EL_E_BADOP` (it never sees such numbers today). PocketUI's private operations live there
-  (`user/Servers/pocketui/pocket.h`, beside the server, **private to the pocket UIKit, the shell programs
-  and PocketUI** — as `elegant.h` is to AppKit and Elegant).
-- **`int kapi_ws_server (struct kapi_ws_server_info *out)`** — a new base operation `EL_OP_SERVER` (40,
-  appended to `elegant.h`): `name[16]` ("pocketui"), `version`, `mode` (desktop / pocket / console),
-  the logical screen and work area, `scale`, the size class. With Elegant (`EL_E_BADOP`) AppKit answers
-  `{"elegant", mode desktop, scale 1, the screen}` itself. Lets a program (or SystemKit, or a UIKit that
-  finds itself on the wrong server, §3.4) know where it is without a kernel call.
-
-The first private operations PocketUI needs (design study E1–E10):
+Its private operations (the shell's and the pocket UIKit's; the shell calls them through UIKit's
+**`uk_shell_*`** functions — entries of both UIKits, the desktop one answering "not supported" where
+Elegant has no equivalent):
 
 | `PK_OP_*` | From | What |
 |---|---|---|
 | `SHELL` | pocketshell / consolehome | "I am the shell" (accepted from the program PocketUI started); its windows become the status bar band, the launcher (backmost), the overlays |
 | `EVENTS` | shell | window opened / closed / title or menu changed / front changed, pushed as `GUI_EVENT_*` to its handler (no polling, E1) |
-| `KEYS` | shell | the system keys registered (Super, Alt+Tab, Super+arrows, F10 when no app takes it, the pad's Home) delivered to the shell first (E2) |
-| `THUMB` | shell | a window's picture scaled to w × h into the caller's transfer area (`EL_VA_XFER`, as `WIN_READ` does) — the switcher's cards |
+| `KEYS` | shell | the system keys registered (Super, Alt+Tab, Super+arrows, F10 when no app takes it, a lone Alt, the pad's Home / Select) delivered to the shell first (E2) |
+| `THUMB` | shell | a window's picture scaled to w × h into the caller's transfer area — the switcher's cards |
 | `SPLIT`, `FRONT` | shell | split view, a window to the front / the back |
 | `CLASS` | UIKit | the window's size class and metrics profile; pushed again on rotation (E4, U5) |
-| `TEXT_HINT` | UIKit | a text field took / lost the focus, its kind (E5/U10: the on-screen keyboard) |
-| `SHEET` | UIKit | this window is a dialog to show as a sheet (U9) |
-| `DIM`, `OVERLAY` | shell | the dim behind an overlay, the in-game overlay (console) |
-| `PANEL` | UIKit | the window has a navigation drawer / an inspector: the status bar shows ☰ or its button; open / close (§6.8) |
-| `TOOLS` | UIKit | the toolbar's actions with their labels, for console's **Tools** section of the revealed menu (§6.9) |
-| `FOCUS_RECT` | UIKit | the focused widget's rectangle: the viewport and the on-screen keyboard keep it visible (§6.3, §6.11) |
+| `TEXT_HINT` | UIKit | a text field took / lost the focus, its input type (E5/U10: the on-screen keyboard, pocket only) |
+| `SHEET` | UIKit | this window is a dialog shown as a sheet (U9) |
+| `DIM`, `OVERLAY` | shell | the dim behind an overlay, the console's quick menu |
+| `PANEL` | UIKit | the window has a navigation drawer / an inspector: the status bar shows ☰ or its button (§6.8) |
+| `TOOLS` | UIKit | the toolbar's actions with their labels, for console's **Tools** section (§6.9) |
+| `FOCUS_RECT` | UIKit | the focused widget's rectangle: the viewport and the on-screen keyboard keep it visible |
 
-The base protocol stays append-only and common; the private one is versioned by PocketUI alone (the
-shell and the pocket UIKit ship in its package with it).
+### 4.4 What AppKit keeps
+
+| AppKit call | Used by | Why it stays |
+|---|---|---|
+| `kapi_ws_ctl (KAPI_WS_CALL, ...)` | the UIKit port | a request to the server (the kernel stamps the pid, the caller waits) |
+| `kapi_ws_ctl (KAPI_WS_KICK, win)` | the port's `uk_win_present` | "my pixels changed" |
+| `kapi_ws_ctl (KAPI_WS_ACTIVE)` | the port | is there a server (the 5 s wait at a restart) |
+| `kapi_ws_ctl (...)` server operations | Elegant, PocketUI | unchanged |
+| `kapi_fullscreen_begin/_end/_direct`, `kapi_present_fb`, `kapi_gpu_frame` | the port (begin / end), the programs (the rest) | kernel primitives; `kapi_fullscreen_begin` no longer tells the server itself (the port does first) |
+| `kapi_pump_*`, `kapi_should_exit`, `kapi_post`, `kapi_screen_size`, `kapi_screen_set`, `kapi_screen_grab`, `kapi_inject_*`, `kapi_key_held`, `kapi_pad_state`, `kapi_font_width/height`, `kapi_draw_text_buf` | everyone | kernel calls, not the server's |
+| `kapi_lib_open_as` (new, K1) | the servers | §3 |
+
+No new transport call is needed: `kapi_ws_ctl` is already an AppKit function (Elegant uses it). A
+program could still call it directly — it is not a secret, merely not an API: `appkit.h` marks it as
+the servers' and UIKit's.
+
+### 4.5 The cost of mapping UIKit
+
+| Item | Figure | Note |
+|---|---|---|
+| UIKit's code | 300 682 bytes (`sdcard/lib/uikit.so`, its R+X segment) | **shared**, in memory once whatever the number of programs |
+| UIKit's private data | 16 KB of file data, 60 KB with its bss (the RW segment) → **one 64 KB page** a process | the only per-process cost; the window state of `appkit_ws.inc` moves with it (a few KB) |
+| Libraries a process | + 1 for the programs that had no UIKit (`AS_LIB_MAX` = 16) | the C programs and a few C++ ones; every app already maps it |
+| Static constructors | `uikit_lib_init` runs UIKit's (`onyx_lib_init`) once a process | ImageKit and SystemKit are opened lazily by UIKit (`imgload.cpp` line 32, `sysclip.cpp` line 20), FontKit not at all: no chain of libraries |
+| The programs' own size | AppKit's stubs for the window calls go, UIKit's (one per used entry) come | a wash |
+
+About 64 KB a windowed program that did not map UIKit before — a handful of programs.
 
 ## 5. Two UIKits from one source
 
@@ -389,10 +446,12 @@ included by programs) — takes what differs between the servers; everything els
 
 | Common (unchanged sources) | Port (`port_desktop.cpp` / `port_pocket.cpp`) |
 |---|---|
-| every widget's logic, the canvas, text, layout panels, lists, grids, text editing, the applets' protocol, `lang`, icons, the theme's palette | `window_open` (flags, placement wishes), `frame` (decorate or not: the skin's call), `present`, `menu_publish` (today `kapi_set_menu`; pocket: the same + the ☰/sheet hint), `dialog_kind` (window, in-window modal, **sheet**), `metrics ()` (the profile: row, menu row, button heights, paddings, scroll-bar style, hit slop), `focus_policy` (ring always shown, arrows move the focus), `input_filter` (touch: long press → right click, drag → scroll), `text_hint`, `size_class ()`, `context_menu_style`, `server_ext` (wraps `kapi_ws_ext`) |
+| every widget's logic, the canvas, text, layout panels, lists, grids, text editing, the applets' protocol, `lang`, icons, the theme's palette; the `uk_win_*` and `uk_shell_*` entry points (thin: they call the port) | **the window driver**: the server's protocol (`elegant.h` moved here from `user/Kits/appkit/`, private to the desktop port; `pocket.h` for the pocket port), the transport through `kapi_ws_ctl`, the per-program window state and the **replay** after a server's restart (today `appkit_ws.inc` lines 26–128); `window_open` (flags, placement wishes), `frame` (decorate or not: the skin's call), `present`, `menu_publish`, `dialog_kind` (window, in-window modal, **sheet**), `metrics ()` (the profile: row, menu row, button heights, paddings, scroll-bar style, hit slop), `focus_policy` (ring always shown, arrows move the focus), `input_filter` (touch: long press → right click, drag → scroll), `text_hint`, `size_class ()`, `context_menu_style`, the adaptive widgets' renderings (§6.5) |
 
-The desktop port is today's code moved verbatim (behaviour-neutral: the desktop's screenshots must come
-out identical). The pocket port is new. Widgets ask `port::metrics ()` where they use constants today
+The desktop port is today's code moved verbatim — `appkit_ws.inc` and the `KAPI_WS` bodies of
+`appkit_calls.inc` become its window driver, UIKit's current drawing paths its renderings —
+behaviour-neutral: the desktop's screenshots must come out identical, Elegant's restart must still bring
+every window back (`kill` of Elegant during `pi_apps.py`). The pocket port is new. Widgets ask `port::metrics ()` where they use constants today
 — in the `.cpp` only (an inline constant of a header cannot change: `UK_SBW` keeps its 10 px of layout,
 the pocket port draws an overlay bar inside it).
 
@@ -400,12 +459,13 @@ the pocket port draws an overlay bar inside it).
 
 ```
 lib/uikit/*.o                 the common objects, compiled ONCE (UIKIT_SO_OBJ, user/Makefile line 134)
-lib/uikit/port_desktop.o      → lib/uikit.so          (+ uikit_table.S, stubs, bind, uikit.imp.a: as today)
+lib/uikit/port_desktop.o      → lib/uikit.so          (+ uikit_table.S, stubs, bind, uikit.imp.a, uikit.imp_c.a)
 lib/uikit/port_pocket.o       → lib/pocket/uikit.so   (+ lib/pocket/uikit_table.S only)
 ```
 
 - `libgen --name uikit --abi Kits/uikit/uikit.abi --vtables --data onyx_uikit_data --exclude '^_ZN5uikit4port'`
-  for **both**; the pocket one with **`--frozen`** (a new function is an error: it must enter the
+  for **both**, plus **`--bind-c lib/uikit.imp_c.a`** for the C programs (the `uk_win_*` entries); the
+  pocket one with **`--frozen`** (a new function is an error: it must enter the
   common `.abi` through the desktop build first) and without `--stubs/--bind` (the programs link the
   desktop's `uikit.imp.a`: the stubs are by slot, the same for both). `libgen` already fails when an
   entry of the `.abi` is not defined (`libgen.py` line 166–169), so a function missing from the
@@ -536,9 +596,11 @@ component, one per mode**, and nothing changes in the apps or in UIKit's `Menu`:
 | pocket | the **status bar**: the front app's menus as drop-downs (landscape), ☰ and a bottom sheet (portrait); shortcuts shown in landscape, hidden in portrait | `pocketshell` (a client, §7.2) |
 | console | the **top overlay** revealed on demand (Select / Home, Alt or F10, the pointer held at the top edge ~300 ms), console-styled, the app's menus above the system's row (Home, Switch app, Quit), submenus as a horizontal step, shortcuts hidden; for games and emulators Home opens the quick menu instead and the edge is off | `consolehome` (a client) |
 
-**PocketUI's UIKit does not reproduce the `MENU_*` protocol**: it is base protocol, carried by AppKit
-(`kapi_set_menu`, `kapi_get_menu`, `kapi_menu_command`), and PocketUI serves it with Elegant's own code
-(§4.3, §7.1) — the shell programs read it exactly as `menubar` does. The one addition: PocketUI tells the
+**The menus' data model does not change**: an app publishes its spec (`uk_win_menu_set`, called by
+UIKit's `Menu`), the shell reads the front app's (`uk_win_menu_get`) and sends the command back
+(`uk_win_menu_command`) — exactly what `menubar` does today, renamed. Each UIKit carries these three
+calls in its own server's protocol: the desktop port as Elegant's `MENU_SET/GET/COMMAND`, the pocket port
+as PocketUI's operations of the same numbers (§4.3), served from the shared request code (§7.1). The one addition: PocketUI tells the
 shell when the front app's menu changes (`PK_OP_EVENTS`, instead of polling the serial). **Context menus
 and combos** stay UIKit's in-window popups (`PopupMenu`, `dialog.h` line 101; `Dropdown`, `ComboBox`),
 rendered by the pocket port: touch-size rows at the touch point, a bottom action sheet in portrait, a
@@ -819,16 +881,18 @@ desktop-first), Jet (760 wide: fill), Tinypad, Notes, the Clock, the Control Pan
 | b. **Compile Elegant's sources from `../elegant`**, as Elegant compiles `kernel/gui/gimage.cpp` | one code; Elegant's files untouched | Elegant's internal seams are not made for it (`ops.cpp` reaches `CWindowManager` 30 times through `corepriv.h`) |
 | c. Extract the server-neutral part into `user/Servers/common/` (compiled into both) | the clean end state | edits Elegant's files (behaviour-neutral) |
 
-**Recommended: b, then c.** PocketUI's `Makefile` builds `../elegant/server.cpp`, `ops.cpp`,
-`core.cpp`, `wm/window.cpp`, `gimage.cpp` with its own `main.cpp`, its policy (`policy.cpp`: the §4.3
-filter in front of `el_op`, by the linker's `--defsym`/`--wrap el_op` or `-Del_op=el_base_op` for
-`ops.cpp`, the technique the Makefile already uses for `memset`), its key filter before `el_core_key`,
-its shell bands. That gives a working PocketUI in days, with Elegant byte-identical. When the pocket
-compositor needs what `window.cpp` cannot do (the viewport, the per-window scale, the overlays' dim:
-P6), extract into `user/Servers/common/` the kernel plumbing of `server.cpp`, the shots and shared
-buffers of `core.cpp`, and the protocol decoding of `ops.cpp` over an abstract window store — Elegant
-relinked, its behaviour unchanged, checked by `pi_wstest.py`, `desktop_sim` and `pi_apps.py`. Whether
-"Elegant unchanged" allows such a behaviour-neutral refactoring is **open question 2**.
+**Decided: c** (the user, 2026-10-08: Elegant's *behaviour* unchanged, its sources may be reorganised).
+At P3, extract into **`user/Servers/common/`** what is not policy: the kernel plumbing of `server.cpp`
+(the display, the raw input, the request loop, the 16 ms pace), the shared buffers and the shots of
+`core.cpp`, the restart state (`KAPI_WS_STATE`, `KAPI_WS_CLIENTS`, `KAPI_WS_BUF_ADOPT`), and the request
+decoding of `ops.cpp` over an abstract **window store** interface (create, frame, move, resize, menus,
+lists, tray, wallpaper, drag, read, shot) — the operations whose numbers PocketUI shares with Elegant
+(§4.3). Elegant keeps `wm/window.cpp` (its overlapping-window policy and compositor) behind that
+interface; PocketUI has its own store (`user/Servers/pocketui/wm.cpp`: one front window or two, cards,
+the viewport, the per-window scale, the overlays' dim, the bands of the shell) and its own operations.
+Elegant relinked is checked unchanged by `pi_wstest.py` (rewritten against the desktop UIKit),
+`desktop_sim` and `pi_apps.py`. Options a (a copy) and b (compiling Elegant's files from `../elegant`
+untouched) are no longer needed.
 
 ### 7.2 What runs where
 
@@ -944,14 +1008,16 @@ and in the session files, and insert after the anchor in the file that holds it 
    document shows its question (UIKit's dialogs, `Include/docguard.h`); after 5 s the ones still running
    are listed: "Ledger is waiting for an answer" — Wait / Force / Cancel the switch. Cancel = nothing
    changed.
-2. **End the session's programs** (the pids `session` started: menubar, dock... or pocketshell).
+2. **End the session's programs** (the pids `session` started: menubar, dock... or pocketshell). The windowless
+   services that map UIKit (`printd`, through PrinterKit) are restarted after the switch, so that they
+   hold the new server's UIKit (§3.4).
 3. **Write `shell=`** (`session_set_mode`).
 4. **`ws_ctl (KAPI_WS_SWITCH)`** (K3): the old server ends, its aliases dropped, the new one started; its
    arrival waited for (`KAPI_WS_ACTIVE`).
 5. **Run the new session file.** If the new server failed, K2's fallback gave Elegant: `session` puts
    `shell=desktop` back and runs the desktop's file, with a notification.
 
-Before K3 exists (P3), steps 4–5 are a restart of the Pi (`kapi_reboot`-like path of `/bin/shutdown`).
+Before K3 exists, steps 4–5 are a restart of the Pi (`kapi_reboot`-like path of `/bin/shutdown`).
 The services (telnet, vncd, rdpd, clipd, printd) are not touched by a switch.
 
 ### 8.4 The Control Panel: a new applet, "Mode"
@@ -990,10 +1056,10 @@ The texts: TR + `setup.app/lang/fr.txt`.
 | Phase | Deliverable | Files | Test on the PC | Test on the Pi | Est. (session-days) |
 |---|---|---|---|---|---|
 | **P0** | the decisions (§13); the apps' pictures at 800 × 480 and 640 × 480 under Elegant | `tools/tests/desktop_sim/shots.sh` (a size option) | the pictures, the list of apps that do not fit | — | 0.5 |
-| **P1** | K1 + K2 + K3, kapi v97; AppKit `kapi_lib_open_as`, `kapi_ws_ext`, `kapi_ws_server`; `EL_OP_SERVER` constant | `kern/image.h`, `proc/image.cpp`, `kernel.cpp`, `sys/kapi.cpp`, `sys/kapitable.cpp`, `kern/kapi_abi.h`, `sys/wsrv.cpp`, `kern/wsrv.h`, `appkit.h`, `appkit_calls.inc`, `appkit_ws.inc`, `appkit.abi`, `elegant.h`; docs/02, 03, 10 | `imagetest` (§3.9), the kernel's host stand-ins build | the desktop as before (Elegant, `shell=` absent), `pi_wstest.py`, `el0test`; `shell=pocket` with no PocketUI → Elegant (the fallback) | 3 |
-| **P2** | **PocketUI skeleton**: Elegant's sources compiled again (§7.1 b), the §4.3 filter (fill, frameless, cards, one desk), Alt+Tab cycling, the alias of a pocket UIKit that is still a byte copy of the desktop's | `user/Servers/pocketui/` (`Makefile`, `main.cpp`, `policy.cpp`, `pocket.h`), `user/Makefile` (`servers`, `lib/pocket/uikit.so`) | a host build of the policy over `wmtest`-like checks | `pi_apps.py` under PocketUI: **every app starts**; full screen (an emulator), `rdpd`, `vncd`, a restart by `kill` (alias orphaned and taken over) | 4 |
-| **P3** | **sessions**: `/bin/session`, `SD:/etc/session/*`, the autostart's migration, SystemKit `session.h` and `autostart_*`; `modeconf` (switch = restart of the Pi first, then K3) | `user/BinUtils/session.c`, `sdcard/etc/session/`, `user/Kits/systemkit/`, `user/Apps/modeconf/`, `sdcard/apps/modeconf.app`, `.lnk`, `tools/pkg/packages.ini` | `tools/tests/` for the migration (an old autostart → the new files), `check.py modeconf` | desktop → pocket → console → desktop from the Control Panel, an unsaved Tinypad document asked, Cancel | 4 |
-| **P4** | the UIKit **port** split, behaviour-neutral; `lib/pocket/uikit.so` built with `--frozen`; `abi_same.py`; the compat test | `user/Kits/uikit/port/`, the widgets' `.cpp` that read metrics, `tools/libgen/abi_same.py`, `user/Makefile`, `tools/tests/shlib/` | `desktop_sim` pictures **identical** before / after; `abi_same.py`; compat on the host | the desktop unchanged (`pi_apps.py`); pocket with the pocket port = desktop look | 4 |
+| **P1** | K1 + K2 + K3, kapi v97; AppKit `kapi_lib_open_as` | `kern/image.h`, `proc/image.cpp`, `kernel.cpp`, `sys/kapi.cpp`, `sys/kapitable.cpp`, `kern/kapi_abi.h`, `sys/wsrv.cpp`, `kern/wsrv.h`, `appkit.h`, `appkit_calls.inc`, `appkit_ws.inc`, `appkit.abi`, `elegant.h`; docs/02, 03, 10 | `imagetest` (§3.9), the kernel's host stand-ins build | the desktop as before (Elegant, `shell=` absent), `pi_wstest.py`, `el0test`; `shell=pocket` with no PocketUI → Elegant (the fallback) | 3 |
+| **P2** | **the window API into UIKit**: `uikit/win.h` (`uk_win_*`, `uk_shell_*`), the **port** split with the desktop port = `appkit_ws.inc` + the `KAPI_WS` bodies moved (and `elegant.h`, the replay), UIKit's C binding (`--bind-c`); **every program migrated** (§4.2: ≈ 55 files — UIKit, groups A–F, Doom, BASIC's runtime, `rdpd`, `el0test`, `wstest`, the PC simulators' stand-ins); **the ≈ 48 window functions removed from AppKit** and `appkit.abi` (the deliberate break); `lib/pocket/uikit.so` built `--frozen` (still the desktop port); `abi_same.py`; every package republished (`kapi >= 97`) | `user/Kits/uikit/` (`win.h`, `port/`), `user/Kits/appkit/` (`appkit.h`, `appkit_calls.inc`, `appkit_ws.inc` gone, `appkit.abi`, `elegant.h` moved), the programs, `user/Makefile`, `user/BinUtils/Makefile`, `Ports/doom`, `tools/libgen/abi_same.py`, `tools/tests/desktop_sim/`, `tools/tests/elegant/`, `tools/pkg/packages.ini`; docs/02, 03, 10, 11 | `desktop_sim` pictures **identical**; `abi_same.py`; the host builds of every app | **`pi_apps.py`: every app starts on Elegant**; `rdpd` with Onyx Remote, `vncd`; Elegant killed → every window back (the replay, now UIKit's); an emulator, Doom full screen | 10 |
+| **P3** | **PocketUI skeleton**: `user/Servers/common/` extracted from Elegant (behaviour unchanged, §7.1); PocketUI's store and policy (fill, frameless, cards, no desks), Alt+Tab cycling; its protocol (`pocket.h`: Elegant's numbers where meanings match, §4.3); the pocket port speaking it; the alias | `user/Servers/common/`, `user/Servers/elegant/`, `user/Servers/pocketui/` (`Makefile`, `main.cpp`, `wm.cpp`, `pocket.h`), `user/Kits/uikit/port/port_pocket.cpp`, `user/Makefile` | a host build of both stores over `wmtest`-like checks | Elegant unchanged (`pi_apps.py`, `pi_wstest.py`); under PocketUI **every app starts**; full screen, `rdpd`, `vncd`; PocketUI killed (alias orphaned, taken over, windows back) | 6 |
+| **P4** | **sessions**: `/bin/session`, `SD:/etc/session/*`, the autostart's migration, SystemKit `session.h` and `autostart_*`; `modeconf` (switch = restart of the Pi first, then K3) | `user/BinUtils/session.c`, `sdcard/etc/session/`, `user/Kits/systemkit/`, `user/Apps/modeconf/`, `sdcard/apps/modeconf.app`, `.lnk`, `tools/pkg/packages.ini` | `tools/tests/` for the migration (an old autostart → the new files), `check.py modeconf` | desktop → pocket → console → desktop from the Control Panel, an unsaved Tinypad document asked, Cancel | 4 |
 | **P5** | **pocketshell** v1: status bar with the front app's menus and the tray, launcher (tabs, grid, search of apps), switcher (`PK_OP_THUMB`), the shell role, system keys, events; serves `notify` | `user/Apps/pocketshell/` (+ `lang/fr.txt`), PocketUI's private operations | `desktop_sim` scenarios (`UK_PORT=pocket`) for the docs' pictures | the navigation map of the design study §6.10 with a keyboard | 7 |
 | **P6** | **the adaptive widgets in UIKit** (§6.5–6.14): the pocket and console renderings of what exists (context menus, combos, dialogs and `Modal`'s scrolling sheet, inputs, lists, scroll bars, `TabStrip`), metrics, the focus ring and arrows; the new API, appended to `uikit.abi` once and frozen: `SidePanel`, `ToolBar`'s priorities and overflow, `Form`, `TabStrip`'s additions, `uk_set_input_type`, `DataGrid`'s column roles, drill-down, `uk_size_class` / `Root::onSizeClass`, `uk_scroll_gutter`, `uk_logical_units`; PocketUI's **resize-to-fit** and **viewport** (start of the `Servers/common/` extraction if agreed) | `user/Kits/uikit/` (`sidepanel.h/.cpp`, `form.h/.cpp`, `port/port_pocket.cpp`, the widgets' `.cpp`), `uikit.abi`, `layout_lock.cpp`, PocketUI; `docs/11-UIKIT.md` regenerated | `desktop_sim` pictures of the `widgets` gallery in the three modes (`UK_PORT`); `abi_same.py`; the desktop's pictures unchanged | the desktop unchanged; the gallery on the 7" display, a pad | 14 |
 | **P7** | **the apps migrated** (§6.15): side panels (Media, File Viewer, Game Library, Photos, Mail, Courier, Ledger, PDF, Slides, Paint, QBStudio, 3DForge, Calendar, IRC, Archiver, Icon Editor, fmtracker, Telegram's pane), toolbars (Letters, Mail, Photos, PDF, Paint, Media), tabs (Courier, PDF, QBStudio, the Spreadsheet), the dialog bases of Letters and the Spreadsheet, the tables (Media, File Viewer, Mail, Ledger, Cardfile), input types, `uk_scroll_gutter`; each app's docs/04 entry and screenshots; packages | those apps' sources and `lang/fr.txt` | each app's pictures in the three modes (`shots.sh`), `check.py <app>` | each app on the 7" display and with a pad; **the same binary on the desktop** | 32 (+ ≈ 15 for the other custom dialogs, as apps are worked on) |
@@ -1002,11 +1068,11 @@ The texts: TR + `setup.app/lang/fr.txt`.
 | **P10** | **scale and orientation, touch**: per-window 2 × composition, native scale opt-in, `icon@2x`; kernel: portrait sizes, rotation, touch input (E6–E8); the on-screen keyboard (pocket only) | PocketUI, ImageKit/UIKit icons, kernel (`window.h` limits, a touch driver hook, `KAPI_WS_IN_TOUCH`) | the compositor's checks at 2× | the official 7" display (touch), a portrait panel | 8–15 |
 | **P11** | (later) **K4** overlay over full screen; netbook / pad modes | | | | — |
 
-Total: about **85–92 session-days** without P11 (the touch and portrait part depends on the hardware the
+Total: about **97–104 session-days** without P11 (the touch and portrait part depends on the hardware the
 user picks), of which 32 are the apps' migration (P7) — which can be spread, app by app, and run beside
-P8–P10; plus about 15 days for the remaining custom dialogs as their apps are worked on. The first useful milestone is **P3** (every app under PocketUI, the switch from the
-Control Panel): about 12 days. Each phase keeps the desktop exactly as it is (`shell=` absent or
-`desktop`), so the Pi stays usable throughout; P1, P4 and P6 are the ones that touch what every program uses
+P8–P10; plus about 15 days for the remaining custom dialogs as their apps are worked on. The first useful milestone is **P4** (every app under PocketUI, the switch from the
+Control Panel): about 24 days. Each phase keeps the desktop exactly as it is (`shell=` absent or
+`desktop`), so the Pi stays usable throughout; P1, P2 and P6 are the ones that touch what every program uses
 (the kernel, UIKit) and are tested hardest. Every migrated app is checked on the desktop's UIKit too
 (one binary, all modes).
 
@@ -1025,7 +1091,8 @@ the two servers' line (Elegant is not listed there today).
 | Document | What |
 |---|---|
 | `docs/02-KERNEL-INTERNALS.md` | §7 the alias; §8 the v97 block and rows (slot 234, `ws_ctl` `KAPI_WS_SWITCH`, `REGISTER`'s rule); §10 the server chosen per mode, the fallback; the version history |
-| `docs/03-DEVELOPER-GUIDE.md` | §5.6 aliases (who may, lifetime); §5.10 `kapi_lib_open_as`, `kapi_ws_ext`, `kapi_ws_server`; a UIKit section "one source, two ports" (what may differ, the frozen pocket table, `abi_same.py`); "your app on a small screen" (resizable layouts, size classes, `apps.ini`); the build of `lib/pocket/uikit.so` |
+| `docs/03-DEVELOPER-GUIDE.md` | §5.6 aliases (who may, lifetime); §5.10 `kapi_lib_open_as` and the window functions gone from AppKit; the window API `uk_win_*` (a
+section replacing every `kapi_create_window` example, which are many in docs/03); a UIKit section "one source, two ports" (what may differ, the frozen pocket table, `abi_same.py`); "your app on a small screen" (resizable layouts, size classes, `apps.ini`); the build of `lib/pocket/uikit.so` |
 | `docs/04-USER-GUIDE.md` | each migrated app's entry (its panels, toolbar, keys per mode); the three modes, the Mode applet, Setup's choice, pocket's and console's keys and pad buttons, the catalogue entries for `pocketshell`, `consolehome`, `modeconf`, `/bin/session` |
 | `docs/06-KITS-GUIDE.md`, `docs/10-APPKIT.md`, `docs/11-UIKIT.md`, `docs/12-SYSTEMKIT.md` | the new calls; in 06 a subject "the adaptive widgets" with an example each (`SidePanel`, `ToolBar` priorities, `Form`, column roles, input types); the reference pages regenerated by `python tools/docgen/kitdocs.py` |
 | `docs/HANDOFF.md` | a section: where PocketUI stands, how to test, what is next |
@@ -1039,10 +1106,12 @@ the two servers' line (Elegant is not listed there today).
 |---|---|---|
 | The two UIKits drift (a function added to one only, an inline changed) | high | one source, objects compiled once, `--frozen`, `abi_same.py` in `make libs`, one package |
 | The port split changes the desktop's look or behaviour | high | the desktop port is today's code moved; `desktop_sim` pictures compared pixel for pixel; `pi_apps.py` |
-| The apps at 800 × 480 (most designed for ~1000 × 700) | high | fill / card / viewport from P2 on (every app usable, if not pretty); then size classes for the composites |
-| `ops.cpp`'s coupling with `CWindowManager` makes option b awkward for the viewport and the scale | medium | extract `Servers/common/` at P6 (open question 2), or let PocketUI own its `window.cpp` copy from then on |
+| The apps at 800 × 480 (most designed for ~1000 × 700) | high | fill / card / viewport from P3 on (every app usable, if not pretty); then size classes for the composites |
+| `ops.cpp`'s coupling with `CWindowManager` makes the extraction of `Servers/common/` delicate | medium | an abstract window store; Elegant's tests (`pi_wstest.py`, `desktop_sim`, `pi_apps.py`, the restart) before and after |
+| The window API's move breaks every windowed program at once (≈ 55 files, the AppKit ABI break) | high | one phase (P2), mechanical renames reviewed, the host builds and `pi_apps.py` before publishing; all packages published together with `kapi >= 97`; the replay tested by killing Elegant |
+| A program of the old session keeps the other server's UIKit after a switch | low | the port's hello refuses a mismatch with a clear log line; `session` restarts the services that map UIKit (§3.4, §8.3) |
 | A switch leaves a program of the old session behind (a daemon, a hung app) | medium | the alias rule of §3.4; `session` lists, waits, forces; the services are untouched by design |
-| The kernel changes beyond the one call (K2, K3) | medium | small, in `wsrv.cpp`; K2's fallback makes a bad setting harmless; P3 can ship with a restart instead of K3 |
+| The kernel changes K2, K3 | low | small, in `wsrv.cpp`; K2's fallback makes a bad setting harmless; P4 can ship with a restart if K3 is late |
 | The console overlay cannot cover a full-screen game | medium | v1 limited (§7.5); K4 later |
 | Touch and portrait need kernel and Circle work on hardware not yet chosen | medium | P10 last; try the device early (design study §15 step 2) |
 | Updates of `lib/pocket/uikit.so` while a pocket session runs | low | the alias keeps the old image (§3.5); `pkg` says when the session must restart |
@@ -1052,35 +1121,35 @@ the two servers' line (Elegant is not listed there today).
 | `UK_SBW` compiled into 22 apps (a fixed gutter) | low | an empty 10-px gutter under overlay bars until each app uses `uk_scroll_gutter ()` |
 | Console's L1 / R1 wanted by several owners (tabs, sections, the switcher) | low | one rule (§7.5): the app's tabs, else its sections; the switcher on Home + shoulders |
 
-## 13. Open questions for the user
+## 13. The user's answers, and what is taken by default
 
-1. **Kernel**: beyond `lib_open_as`, may the kernel also choose the server from `shell=` with a fallback
-   to Elegant (K2), and gain `KAPI_WS_SWITCH` (K3)? (Recommended: yes, both in v97. Without K2 the
-   kernel can only start Elegant; without K3 a switch restarts the Pi.)
-2. **"Elegant unchanged"**: byte-identical sources, or unchanged behaviour? (Recommended: identical
-   until P6, then a behaviour-neutral extraction of the plumbing into `user/Servers/common/`.)
-3. **The base protocol stays AppKit's** and both servers serve it; each UIKit adds its server's private
-   operations through `kapi_ws_ext` — agreed as the reading of "UIKit is to the server what AppKit is to
-   the kernel"?
-4. **The alias's lifetime** as refined in §3.4 (anchored on the server; dropped when another server
-   starts), instead of "while anyone references it"?
-5. **The shell as client programs** (`pocketshell`, `consolehome`), the server text-free — or the
-   status bar inside the server?
-6. **Sessions**: the autostart split into a system part and `SD:/etc/session/<mode>` files, migrated
-   once by `pkg commit`?
-7. **The applet**: a new "Mode" applet (recommended) or a section of Display?
-8. **Setup**: preselect the mode from the screen (pocket below 1024 × 600; console with a pad and no
-   keyboard), or always propose desktop?
-9. **Scale**: integer composition for every app and native scale only on `apps.ini`'s list — acceptable
-   for 1.5× devices (the uConsole) to look soft or small until apps are marked?
-10. **The adaptive widgets' API** (§6.8–6.14): `SidePanel` with a side and a role (navigation /
-    inspector), structured items with a fixed set of accessories (picture, toggle, badge, trailing text)
-    plus a footer and pages for free content; `ToolBar` priorities (*always / if room / overflow*);
-    `Form` for dialogs; column roles and priorities; input types — as proposed? And the console's
-    shoulders: the app's tabs, else its sections; the switcher on Home + L1 / R1?
-11. **Migrated apps on the desktop**: one shared look for every side panel, toolbar and dialog (the
-    desktop UIKit's), even where an app's own looked a little different today?
-12. **Which device first** (design study question 1, still open): it orders P6–P7 / P9 / P10.
+**Answered by the user on 2026-10-08:**
+
+1. **Kernel**: K1 (`lib_open_as`), K2 (the server chosen from `shell=`, with the fallback to Elegant) and
+   K3 (`KAPI_WS_SWITCH`) — **accepted** (§3.8).
+2. **Protocol**: "for windows we'll have UIKit_Win_*; the applications will be migrated, and no
+   `kapi_win_` left in the kapi at all; no relay; ABI compatibility not a concern for now" — **the window
+   API moves to UIKit** (`uk_win_*`), every program migrated, AppKit's window functions removed, each
+   UIKit the only code speaking its server's protocol (§2.2, §4, §5.2; P2). The HANDOFF's decision of
+   2026-10-05 ("the protocol is AppKit's") is reversed.
+3. **Elegant**: "behaviour unchanged" — its sources may be reorganised; `user/Servers/common/` is
+   extracted at P3 (§7.1).
+4. **Sessions**: **yes** — the autostart split into a system part and `SD:/etc/session/<mode>` files
+   (migrated once by `pkg commit`), a new **Mode** applet, Setup's welcome page preselecting the mode from
+   the screen and the inputs (§8).
+
+**Taken by default — the recommendation stands unless the user objects** (the user asked to proceed to
+development after this analysis):
+
+5. The alias's lifetime anchored on the server (§3.4).
+6. The shell as client programs (`pocketshell`, `consolehome`), the server text-free (§7.2).
+7. Scaling: integer composition for every app; native scale for the apps that declare it
+   (`uk_logical_units`) or are listed in `apps.ini` (§6.3).
+8. The adaptive widgets' API as proposed (§6.5–6.14), and the console's shoulders: the app's tabs, else
+   its navigation sections; the switcher on Home + L1 / R1 (§7.5).
+9. One shared desktop look for the migrated apps' side panels, toolbars and dialogs (the desktop UIKit's).
+10. The first device: none chosen yet — P0's pictures at 800 × 480 and 640 × 480 and the official 7"
+    display as the default target of P6–P10 until the user names another.
 
 ## Résumé (FR)
 
@@ -1101,14 +1170,24 @@ serveur redémarre après un plantage, abandonné dès qu'un autre serveur déma
 fenêtre comme `printd` garderait l'UIKit pocket pour les applis du bureau). Les vérifications de version
 et de « fichier modifié » portent sur le vrai chemin ; `image_list` signale l'alias par un drapeau.
 
-**Constat central** : aujourd'hui le protocole du serveur appartient à **AppKit**, pas à UIKit
-(`appkit_ws.inc`, `elegant.h`) ; une douzaine de jeux, Doom, la barre de menus, le dock, `notifyd`,
-`rdpd`, `vncd`, le plein écran des émulateurs passent par AppKit sans les fenêtres d'UIKit. PocketUI doit
-donc **servir tout le protocole de base** (ses 39 opérations, avec un sens « pocket » : fenêtre normale
-plein écran sans cadre, fenêtre fixe en carte centrée, un seul bureau…) — c'est ce qui fait tourner
-tout binaire non migré dans chaque mode — et chaque UIKit parle les **opérations privées** de son serveur via un
-nouvel appel générique d'AppKit, `kapi_ws_ext` (rôle de shell, raccourcis système, vignettes, classes de
-taille, clavier à l'écran). **Deux UIKit d'une même source** : mêmes en-têtes (ils sont l'ABI), objets
+**Le protocole des fenêtres passe dans UIKit (décision de l'utilisateur, 2026-10-08).** Aujourd'hui les
+appels de fenêtre sont les fonctions `kapi_*` d'AppKit qui parlent `elegant.h` (`appkit_ws.inc`), et une
+douzaine de jeux, Doom, la barre de menus, le dock, `rdpd`… s'en servent sans UIKit. La décision du
+2026-10-05 (« le protocole est celui d'AppKit ») est donc renversée : l'API des fenêtres devient celle
+d'UIKit, **`uk_win_*`** (le `UIKit_Win_*` de l'utilisateur, écrit selon les conventions d'UIKit ;
+liaison C, `uikit/win.h`) ; **tous les programmes sont migrés** (≈ 55 fichiers : jeux, plein écran,
+shell du bureau, services, applis, `rdpd`, `el0test`, `wstest` ; `vncd` n'est pas touché) ; les **≈ 48
+fonctions de fenêtre sont retirées d'AppKit** et d'`appkit.abi` — rupture d'ABI voulue, tout est
+recompilé et republié ensemble (`kapi >= 97`). AppKit ne garde que le transport du noyau
+(`kapi_ws_ctl` : `KAPI_WS_CALL`, `KICK`, `ACTIVE`) et les primitives de plein écran. **Chaque UIKit est
+alors le seul code qui parle le protocole de son serveur** : le *port* bureau contient `elegant.h`, le
+code client d'aujourd'hui et le rejeu après redémarrage d'Elegant ; le port pocket parle le protocole
+propre de PocketUI, libre (recommandé : reprendre la numérotation d'Elegant là où le sens est le même,
+pour réutiliser le code commun, plus ses opérations à lui — rôle de shell, raccourcis système,
+vignettes, classes de taille, clavier à l'écran). Coût : tout programme fenêtré mappe `uikit.so` — code
+partagé (300 Ko, une fois), une page privée de 64 Ko par processus, une bibliothèque de plus sur 16 pour
+les quelques programmes qui ne l'avaient pas ; les programmes C passent par la liaison C (`--bind-c`).
+**Deux UIKit d'une même source** : mêmes en-têtes (ils sont l'ABI), objets
 communs compilés une fois, un objet *port* par serveur, table pocket générée avec `libgen --frozen` sur
 le même `uikit.abi`, test automatique d'identité des tables, un seul paquet. **Indépendance de la
 résolution** : remplir l'écran pour les applis redimensionnables, carte centrée pour les fixes,
@@ -1128,12 +1207,14 @@ colonnes : cartes à deux lignes en portrait), barres de défilement superposée
 compilé dans 22 applis). Migration de 19 applis à panneau latéral (Media, File Viewer, Game Library,
 Photos, Mail, Courier, Ledger, PDF, Slides, Paint, QBStudio, 3DForge…), des barres d'outils (Letters…),
 des onglets, des bases de dialogues de Letters et du Tableur, des tableaux : environ 32 jours. **Le
-serveur** réutilise d'abord les sources
-d'Elegant compilées à nouveau (Elegant inchangé), puis une extraction commune ; le shell (barre d'état,
+serveur** : le code d'Elegant qui n'est pas de la politique est extrait dans `user/Servers/common/`
+(comportement d'Elegant inchangé, accepté) et compilé dans les deux serveurs ; le shell (barre d'état,
 lanceur, sélecteur, réglages rapides, accueil console) est fait de **programmes clients**. **Console** =
-le même serveur dans un autre mode. Il faut **trois petits changements noyau** et non un : l'alias, le
-choix du serveur selon `shell=` avec repli sur Elegant, et une opération « changer de serveur ». Les
-sessions : l'autostart scindé en partie système et fichiers `SD:/etc/session/<mode>`, un outil
+le même serveur dans un autre mode. **Trois petits changements noyau, acceptés** : l'alias, le choix du serveur
+selon `shell=` avec repli sur Elegant, et une opération « changer de serveur ». Les
+sessions (acceptées) : l'autostart scindé en partie système et fichiers `SD:/etc/session/<mode>`, un outil
 `session`, une nouvelle applet « Mode » et un choix sur la page d'accueil de Setup (traduits). Plan en
-phases P0 à P10, environ 85 à 92 jours de sessions (dont 32 de migration des applis, étalables), premier jalon utile (toutes les applis sous PocketUI,
-changement depuis le Panneau) vers 12 jours. Les questions ouvertes sont au §13.
+phases P0 à P10, environ 97 à 104 jours de sessions (dont 10 pour passer l'API des fenêtres dans UIKit
+et migrer tous les programmes, et 32 de migration vers les widgets adaptatifs, étalables), premier jalon
+utile (toutes les applis sous PocketUI, changement depuis le Panneau) vers 24 jours. Le §13 consigne les
+réponses de l'utilisateur ; les autres recommandations sont retenues par défaut.
