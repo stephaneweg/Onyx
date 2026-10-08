@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onyx — Un ordinateur complet sur un Raspberry Pi 4</title>
+<meta name="description" content="Onyx est un système d’exploitation fait maison pour le Raspberry Pi 4 : un bureau soigné, une suite bureautique, un navigateur web et plus de 50 applications.">
+<link rel="alternate" hreflang="fr" href="../fr/">
+<link rel="alternate" hreflang="en" href="../en/">
+<link rel="alternate" hreflang="x-default" href="../en/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Onyx">
+<meta property="og:title" content="Onyx — Un ordinateur complet sur un Raspberry Pi 4">
+<meta property="og:description" content="Onyx est un système d’exploitation fait maison pour le Raspberry Pi 4 : un bureau soigné, une suite bureautique, un navigateur web et plus de 50 applications.">
+<meta property="og:locale" content="fr_FR">
+<meta name="theme-color" content="#0B0B0B">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="stylesheet" href="../assets/css/tokens.css">
+<link rel="stylesheet" href="../assets/css/site.css">
+<script>
+/* Before the first paint: dark unless the visitor chose light (no flash). ?theme=light forces it (a link, a test). */
+(function (d) {
+  d.classList.add('js');
+  /* If site.js never runs to its end (not loaded, an error), nothing may stay hidden: back to the page without script. */
+  window.addEventListener('load', function () { if (!window.onyxReady) d.classList.remove('js'); });
+  try { if (/[?&]theme=light/.test(location.search) || localStorage.getItem('onyx-theme') === 'light') d.setAttribute('data-theme', 'light'); } catch (e) {}
+})(document.documentElement);
+</script>
+</head>
+<body class="page-home">
+<a class="skip" href="#main">Aller au contenu</a>
+<header class="site-header">
+  <div class="container container--wide bar">
+    <a class="brand" href="../fr/" aria-label="Onyx, accueil"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 13 28.5 9v5.5L16 19Z" style="fill:var(--accent)"/><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/><path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/></g></svg> Onyx</a>
+    <nav class="nav" id="nav" aria-label="Navigation principale">
+      <a href="../fr/applications/">Applications</a>
+      <a href="../fr/bureau/">Le bureau</a>
+      <a class="nav-cta" href="../fr/obtenir/">Obtenir Onyx</a>
+    </nav>
+    <div class="header-end">
+      <div class="lang" role="group" aria-label="Langue"><a href="../fr/" lang="fr" hreflang="fr" aria-current="true">FR</a><a href="../en/" lang="en" hreflang="en">EN</a></div>
+      <button class="theme-btn" type="button" aria-label="Mode clair" aria-pressed="false">
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M5.3 18.7l1.5-1.5M17.2 6.8l1.5-1.5"/></svg>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.2A8 8 0 0 1 9.8 4a8 8 0 1 0 10.2 10.2Z"/></svg>
+      </button>
+      <a class="btn btn--ghost btn--small header-cta" href="../fr/obtenir/">Obtenir Onyx</a>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav"><span></span></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+<section class="hero">
+  <div class="container center">
+    <h1 class="reveal">Un ordinateur complet.<br>Sur un Raspberry Pi 4.</h1>
+    <p class="t-lead reveal" data-delay="1">Onyx est un système d’exploitation fait maison, avec son propre bureau, sa suite bureautique, son navigateur web et plus de 50 applications.</p>
+    <div class="actions reveal" data-delay="2">
+      <a class="btn btn--primary" href="../fr/obtenir/">Obtenir Onyx</a>
+      <a class="more" href="../fr/applications/">Voir les applications</a>
+    </div>
+  </div>
+  <div class="container container--wide">
+    <div class="hero-comp reveal" data-delay="2">
+      <img class="shot-window" src="../assets/img/media-home.webp" srcset="../assets/img/media-home-half.webp 504w, ../assets/img/media-home.webp 1008w" sizes="(max-width: 600px) 165vw, (max-width: 1336px) 71vw, 1008px" width="1008" height="654" style="--native:1008" decoding="async" alt="L’accueil du lecteur multimédia d’Onyx : un film à reprendre, les albums écoutés récemment et les vidéos.">
+      <img class="shot-window" src="../assets/img/mail.webp" srcset="../assets/img/mail-half.webp 504w, ../assets/img/mail.webp 1008w" sizes="(max-width: 600px) 165vw, (max-width: 1336px) 71vw, 1008px" width="1008" height="654" style="--native:1008" decoding="async" alt="Mail, le courrier d’Onyx : les comptes à gauche, la liste des conversations et un message ouvert avec deux pièces jointes.">
+    </div>
+  </div>
+</section>
+
+<section class="section showcase">
+  <div class="container center">
+    <p class="eyebrow reveal">Le bureau</p>
+    <h2 class="reveal">Tout est à sa place.</h2>
+    <p class="t-lead reveal" data-delay="1">Une barre de menus en haut, un dock en bas. Vos applications sont rangées par tiroirs, vos fenêtres réparties sur plusieurs espaces de travail. On s’y retrouve dès la première minute.</p>
+    <p class="reveal" data-delay="1"><a class="more" href="../fr/bureau/">Découvrir le bureau</a></p>
+  </div>
+  <div class="container container--wide">
+    <figure class="showcase-media reveal" data-delay="1">
+      <div class="shot-screen" style="--native:1024;--fx:0;--fy:0"><img src="../assets/img/notes-desktop.webp" srcset="../assets/img/notes-desktop-half.webp 512w, ../assets/img/notes-desktop.webp 1024w" sizes="(max-width: 1100px) 92vw, 1024px" width="1024" height="768" style="--native:1024" loading="lazy" decoding="async" alt="Le bureau d’Onyx avec Notes ouvert, les prochains rendez-vous à gauche et trois notes épinglées à droite du fond d’écran."></div>
+    </figure>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container container--wide feature">
+    <div class="feature-text reveal">
+    <p class="eyebrow">Travailler</p>
+    <h2>Écrivez, calculez, présentez.</h2>
+    <p class="t-lead">Letters pour vos textes, un tableur pour vos chiffres, Slides pour vos présentations. Ils ouvrent et enregistrent les fichiers Word, Excel et PowerPoint, exportent en PDF et impriment sur votre imprimante réseau.</p>
+    <ul class="points"><li>Fichiers .docx, .xlsx, .pptx</li><li>Export PDF</li><li>Impression sans pilote à installer</li></ul>
+    <a class="more" href="../fr/applications/#work">Toutes les applications de bureau</a>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="blueberry" data-delay="1"><img class="shot-window" src="../assets/img/letters.webp" srcset="../assets/img/letters-half.webp 504w, ../assets/img/letters.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1008px" width="1008" height="732" style="--native:1008" loading="lazy" decoding="async" alt="Letters, le traitement de texte d’Onyx, affichant un document avec un titre, une image et une table des matières."></figure>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container container--wide feature feature--flip">
+    <div class="feature-text reveal">
+    <p class="eyebrow">Le web et vos proches</p>
+    <h2>Le web d’aujourd’hui. Vos messages aussi.</h2>
+    <p class="t-lead">Jet Browser affiche les sites modernes, vidéo et son compris. Mail réunit vos comptes Gmail, Outlook, iCloud ou tout autre dans une seule boîte de réception. Et vos conversations Telegram vous suivent.</p>
+    <a class="more" href="../fr/applications/#web">Internet sur Onyx</a>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="lagoon" data-delay="1"><img class="shot-window" src="../assets/img/jet.webp" srcset="../assets/img/jet-half.webp 510w, ../assets/img/jet.webp 1020w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1020px" width="1020" height="742" style="--native:1020" loading="lazy" decoding="async" alt="Jet Browser, le navigateur d’Onyx, affichant un site web moderne au fond sombre avec son menu, un grand titre et une capture d’application."></figure>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container container--wide feature">
+    <div class="feature-text reveal">
+    <p class="eyebrow">Créer</p>
+    <h2>Dessinez. Composez. Façonnez.</h2>
+    <p class="t-lead">Peignez sur des calques dans Paint, retouchez vos photos, écrivez un morceau dans Koton, le studio de musique, ou dessinez une pièce à imprimer en 3D avec 3DForge.</p>
+    <a class="more" href="../fr/applications/#create">Les applications de création</a>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="mint" data-delay="1"><img class="shot-window" src="../assets/img/paint.webp" srcset="../assets/img/paint-half.webp 508w, ../assets/img/paint.webp 1016w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1016px" width="1016" height="736" style="--native:1016" loading="lazy" decoding="async" alt="Paint, l’application de dessin d’Onyx : un paysage au coucher du soleil et le panneau des calques."></figure>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container container--wide feature feature--flip">
+    <div class="feature-text reveal">
+    <p class="eyebrow">Vos photos, votre musique, vos films</p>
+    <h2>Votre bibliothèque, bien rangée.</h2>
+    <p class="t-lead">Photos classe vos images par jour et par album. Le lecteur multimédia retrouve votre musique et vos vidéos tout seul, et reprend le film là où vous l’aviez laissé.</p>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="grape" data-delay="1"><img class="shot-window" src="../assets/img/photos.webp" srcset="../assets/img/photos-half.webp 504w, ../assets/img/photos.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1008px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="La photothèque d’Onyx : les images rangées par jour, les albums dans la colonne de gauche."></figure>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container container--wide feature">
+    <div class="feature-text reveal">
+    <p class="eyebrow">Jouer</p>
+    <h2>Seize jeux pour commencer.</h2>
+    <p class="t-lead">Des cartes, des briques, un flipper, des énigmes : les jeux sont déjà là. Et si vous avez gardé les jeux de vos anciennes consoles, la Ludothèque les range et les lance.</p>
+    <p class="t-small feature-note">Aucun jeu de console n’est fourni avec Onyx.</p>
+    <a class="more" href="../fr/applications/#play">Tous les jeux</a>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="blueberry" data-delay="1"><img class="shot-window" src="../assets/img/pinball-play.webp" width="608" height="712" style="--native:608" loading="lazy" decoding="async" alt="Le flipper d’Onyx, table Volcan : la bille près des bumpers, le score et les touches à droite."></figure>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container container--wide feature feature--flip">
+    <div class="feature-text reveal">
+    <h2>À vos couleurs.</h2>
+    <p class="t-lead">Sept ambiances, du pêche au café noir, des fonds d’écran qui prennent vos couleurs. Deux clics, et le bureau vous ressemble.</p>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="lagoon" data-delay="1"><img class="shot-window" src="../assets/img/theme.webp" width="708" height="548" style="--native:708" loading="lazy" decoding="async" alt="Le réglage du thème d’Onyx : un aperçu des fenêtres, les ambiances Pêche, Acier, Sauge, Brique et Ardoise, et le choix du fond d’écran."></figure>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container container--wide feature">
+    <div class="feature-text reveal">
+    <h2>Toujours à jour.</h2>
+    <p class="t-lead">Onyx vérifie les mises à jour chaque jour et vous prévient. Le Gestionnaire de paquets installe le système et les applications en un clic, et en propose de nouvelles.</p>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="mint" data-delay="1"><img class="shot-window" src="../assets/img/pkgman-installed.webp" width="708" height="548" style="--native:708" loading="lazy" decoding="async" alt="Le Gestionnaire de paquets d’Onyx : les applications installées, chacune avec son choix de mise à jour — manuelle, automatique ou jamais."></figure>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container container--wide feature feature--flip">
+    <div class="feature-text reveal">
+    <h2>Et si vous êtes curieux.</h2>
+    <p class="t-lead">Apprenez à programmer en guidant une tortue, assemblez des circuits logiques, écrivez vos propres applications en BASIC ou pilotez les broches du Raspberry Pi depuis l’écran.</p>
+    <a class="more" href="../fr/applications/#learn">Apprendre et bricoler</a>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="grape" data-delay="1"><img class="shot-window" src="../assets/img/turtle-fr.webp" srcset="../assets/img/turtle-fr-half.webp 504w, ../assets/img/turtle-fr.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1008px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="Turtle Quest en français : un programme REPETER / AVANCER et la tortue qui vient de tracer une étoile rouge à cinq branches."></figure>
+  </div>
+</section>
+
+<section class="section section--lift apps-band">
+  <div class="container center">
+    <h2 class="reveal">Plus de 50 applications, prêtes à l’emploi.</h2>
+  </div>
+  <div class="apps-row reveal" role="tablist" aria-label="Applications">
+    <button type="button" role="tab" id="tab-letters" aria-controls="panel-letters" aria-selected="true"><img class="app-icon app-icon--2x" src="../assets/icons/letters.png" width="80" height="80" alt="" loading="lazy">Letters</button>
+    <button type="button" role="tab" id="tab-sheet" aria-controls="panel-sheet" aria-selected="false" tabindex="-1"><img class="app-icon app-icon--2x" src="../assets/icons/sheet.png" width="80" height="80" alt="" loading="lazy">Tableur</button>
+    <button type="button" role="tab" id="tab-slides" aria-controls="panel-slides" aria-selected="false" tabindex="-1"><img class="app-icon app-icon--2x" src="../assets/icons/slides.png" width="80" height="80" alt="" loading="lazy">Slides</button>
+    <button type="button" role="tab" id="tab-jet" aria-controls="panel-jet" aria-selected="false" tabindex="-1"><img class="app-icon app-icon--2x" src="../assets/icons/jet.png" width="80" height="80" alt="" loading="lazy">Jet Browser</button>
+    <button type="button" role="tab" id="tab-mail" aria-controls="panel-mail" aria-selected="false" tabindex="-1"><img class="app-icon app-icon--2x" src="../assets/icons/mail.png" width="80" height="80" alt="" loading="lazy">Mail</button>
+    <button type="button" role="tab" id="tab-telegram" aria-controls="panel-telegram" aria-selected="false" tabindex="-1"><img class="app-icon app-icon--2x" src="../assets/icons/telegram.png" width="80" height="80" alt="" loading="lazy">Telegram</button>
+    <button type="button" role="tab" id="tab-paint" aria-controls="panel-paint" aria-selected="false" tabindex="-1"><img class="app-icon app-icon--2x" src="../assets/icons/paint.png" width="80" height="80" alt="" loading="lazy">Paint</button>
+    <button type="button" role="tab" id="tab-photos" aria-controls="panel-photos" aria-selected="false" tabindex="-1"><img class="app-icon app-icon--2x" src="../assets/icons/photos.png" width="80" height="80" alt="" loading="lazy">Photos</button>
+    <button type="button" role="tab" id="tab-media" aria-controls="panel-media" aria-selected="false" tabindex="-1"><img class="app-icon app-icon--2x" src="../assets/icons/media.png" width="80" height="80" alt="" loading="lazy">Lecteur multimédia</button>
+    <button type="button" role="tab" id="tab-koton" aria-controls="panel-koton" aria-selected="false" tabindex="-1"><img class="app-icon app-icon--2x" src="../assets/icons/koton.png" width="80" height="80" alt="" loading="lazy">Koton</button>
+    <button type="button" role="tab" id="tab-3dforge" aria-controls="panel-3dforge" aria-selected="false" tabindex="-1"><img class="app-icon app-icon--2x" src="../assets/icons/3dforge.png" width="80" height="80" alt="" loading="lazy">3DForge</button>
+    <button type="button" role="tab" id="tab-calendar" aria-controls="panel-calendar" aria-selected="false" tabindex="-1"><img class="app-icon app-icon--2x" src="../assets/icons/calendar.png" width="80" height="80" alt="" loading="lazy">Calendrier</button>
+  </div>
+  <div class="container container--wide apps-panels reveal">
+    <div class="apps-panel center" role="tabpanel" id="panel-letters" aria-labelledby="tab-letters" tabindex="0">
+      <img class="shot-window" src="../assets/img/letters-table.webp" srcset="../assets/img/letters-table-half.webp 504w, ../assets/img/letters-table.webp 1008w" sizes="(max-width: 600px) 165vw, (max-width: 1100px) 92vw, 1008px" width="1008" height="732" style="--native:1008" loading="lazy" decoding="async" alt="Letters affichant une page de texte avec un tableau des formats de fichier pris en charge.">
+      <p class="t-lead"><b>Letters.</b> Le traitement de texte. Des lettres, des rapports, de vrais documents mis en page.</p>
+    </div>
+    <div class="apps-panel center" role="tabpanel" id="panel-sheet" aria-labelledby="tab-sheet" tabindex="0">
+      <img class="shot-window" src="../assets/img/sheet.webp" srcset="../assets/img/sheet-half.webp 504w, ../assets/img/sheet.webp 1008w" sizes="(max-width: 600px) 165vw, (max-width: 1100px) 92vw, 1008px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="Le tableur d’Onyx : un tableau de ventes mensuelles avec des barres de données et un graphique en colonnes.">
+      <p class="t-lead"><b>Tableur.</b> Le tableur. Vos comptes, vos listes, vos graphiques.</p>
+    </div>
+    <div class="apps-panel center" role="tabpanel" id="panel-slides" aria-labelledby="tab-slides" tabindex="0">
+      <img class="shot-window" src="../assets/img/slides.webp" srcset="../assets/img/slides-half.webp 504w, ../assets/img/slides.webp 1008w" sizes="(max-width: 600px) 165vw, (max-width: 1100px) 92vw, 1008px" width="1008" height="732" style="--native:1008" loading="lazy" decoding="async" alt="Slides, l’application de présentations d’Onyx : la liste des diapositives, une diapositive avec un graphique et le panneau de mise en forme.">
+      <p class="t-lead"><b>Slides.</b> Les présentations. Des diapositives soignées, projetées en plein écran.</p>
+    </div>
+    <div class="apps-panel center" role="tabpanel" id="panel-jet" aria-labelledby="tab-jet" tabindex="0">
+      <img class="shot-window" src="../assets/img/jet.webp" srcset="../assets/img/jet-half.webp 510w, ../assets/img/jet.webp 1020w" sizes="(max-width: 600px) 165vw, (max-width: 1100px) 92vw, 1020px" width="1020" height="742" style="--native:1020" loading="lazy" decoding="async" alt="Jet Browser, le navigateur d’Onyx, affichant un site web moderne au fond sombre avec son menu, un grand titre et une capture d’application.">
+      <p class="t-lead"><b>Jet Browser.</b> Le navigateur web d’Onyx, bâti sur WebKit, le moteur de Safari.</p>
+    </div>
+    <div class="apps-panel center" role="tabpanel" id="panel-mail" aria-labelledby="tab-mail" tabindex="0">
+      <img class="shot-window" src="../assets/img/mail.webp" srcset="../assets/img/mail-half.webp 504w, ../assets/img/mail.webp 1008w" sizes="(max-width: 600px) 165vw, (max-width: 1100px) 92vw, 1008px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="Mail, le courrier d’Onyx : les comptes à gauche, la liste des conversations et un message ouvert avec deux pièces jointes.">
+      <p class="t-lead"><b>Mail.</b> Tous vos comptes de courrier dans une seule boîte de réception.</p>
+    </div>
+    <div class="apps-panel center" role="tabpanel" id="panel-telegram" aria-labelledby="tab-telegram" tabindex="0">
+      <img class="shot-window" src="../assets/img/telegram.webp" srcset="../assets/img/telegram-half.webp 474w, ../assets/img/telegram.webp 948w" sizes="(max-width: 600px) 165vw, (max-width: 1100px) 92vw, 948px" width="948" height="654" style="--native:948" loading="lazy" decoding="async" alt="Telegram sur Onyx : la liste des conversations et une discussion avec une photo de montagne et des émoticônes.">
+      <p class="t-lead"><b>Telegram.</b> Votre compte Telegram, dans une messagerie au charme des années 2000.</p>
+    </div>
+    <div class="apps-panel center" role="tabpanel" id="panel-paint" aria-labelledby="tab-paint" tabindex="0">
+      <img class="shot-window" src="../assets/img/paint.webp" srcset="../assets/img/paint-half.webp 508w, ../assets/img/paint.webp 1016w" sizes="(max-width: 600px) 165vw, (max-width: 1100px) 92vw, 1016px" width="1016" height="736" style="--native:1016" loading="lazy" decoding="async" alt="Paint, l’application de dessin d’Onyx : un paysage au coucher du soleil et le panneau des calques.">
+      <p class="t-lead"><b>Paint.</b> Dessin et peinture sur calques.</p>
+    </div>
+    <div class="apps-panel center" role="tabpanel" id="panel-photos" aria-labelledby="tab-photos" tabindex="0">
+      <img class="shot-window" src="../assets/img/photos.webp" srcset="../assets/img/photos-half.webp 504w, ../assets/img/photos.webp 1008w" sizes="(max-width: 600px) 165vw, (max-width: 1100px) 92vw, 1008px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="La photothèque d’Onyx : les images rangées par jour, les albums dans la colonne de gauche.">
+      <p class="t-lead"><b>Photos.</b> Toutes vos photos au même endroit, rangées par jour.</p>
+    </div>
+    <div class="apps-panel center" role="tabpanel" id="panel-media" aria-labelledby="tab-media" tabindex="0">
+      <img class="shot-window" src="../assets/img/media-albums.webp" srcset="../assets/img/media-albums-half.webp 504w, ../assets/img/media-albums.webp 1008w" sizes="(max-width: 600px) 165vw, (max-width: 1100px) 92vw, 1008px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="Les albums dans le lecteur multimédia d’Onyx : une grille de pochettes colorées et la barre de lecture.">
+      <p class="t-lead"><b>Lecteur multimédia.</b> Votre musique et vos vidéos, dans une seule bibliothèque.</p>
+    </div>
+    <div class="apps-panel center" role="tabpanel" id="panel-koton" aria-labelledby="tab-koton" tabindex="0">
+      <img class="shot-window" src="../assets/img/koton-crop.webp" srcset="../assets/img/koton-crop-half.webp 960w, ../assets/img/koton-crop.webp 1920w" sizes="(max-width: 600px) 165vw, (max-width: 1100px) 92vw, 960px" width="1920" height="936" style="--native:960" loading="lazy" decoding="async" alt="Koton, le studio de musique d’Onyx : cinq pistes colorées, la piste d’accords et l’éditeur d’accord avec son clavier.">
+      <p class="t-lead"><b>Koton.</b> Le studio de musique. Composez un morceau en partant des accords.</p>
+    </div>
+    <div class="apps-panel center" role="tabpanel" id="panel-3dforge" aria-labelledby="tab-3dforge" tabindex="0">
+      <img class="shot-window" src="../assets/img/3dforge.webp" srcset="../assets/img/3dforge-half.webp 507w, ../assets/img/3dforge.webp 1014w" sizes="(max-width: 600px) 165vw, (max-width: 1100px) 92vw, 1014px" width="1014" height="654" style="--native:1014" loading="lazy" decoding="async" alt="3DForge sur Onyx : une équerre percée en 3D sur une grille, avec ses mesures et l’historique des étapes.">
+      <p class="t-lead"><b>3DForge.</b> Concevez des pièces à imprimer en 3D, étape par étape.</p>
+    </div>
+    <div class="apps-panel center" role="tabpanel" id="panel-calendar" aria-labelledby="tab-calendar" tabindex="0">
+      <img class="shot-window" src="../assets/img/calendar.webp" srcset="../assets/img/calendar-half.webp 504w, ../assets/img/calendar.webp 1008w" sizes="(max-width: 600px) 165vw, (max-width: 1100px) 92vw, 1008px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="Le calendrier d’Onyx en vue semaine : les rendez-vous colorés, les calendriers et la liste des tâches à gauche.">
+      <p class="t-lead"><b>Calendrier.</b> L’agenda. Vos rendez-vous par jour, par semaine ou par mois.</p>
+    </div>
+  </div>
+  <p class="center apps-all"><a class="more" href="../fr/applications/">Voir toutes les applications</a></p>
+</section>
+
+<p class="t-small shots-note container">Captures d’écran en anglais.</p>
+
+<section class="section section--band cta">
+  <div class="container center">
+    <h2 class="reveal">Une carte microSD suffit.</h2>
+    <p class="t-lead reveal" data-delay="1">Préparez la carte, branchez votre Raspberry Pi 4, et Onyx vous accueille.</p>
+    <div class="actions reveal" data-delay="2"><a class="btn btn--primary" href="../fr/obtenir/">Obtenir Onyx</a></div>
+  </div>
+</section>
+</main>
+<footer class="site-footer">
+  <div class="container container--wide">
+    <div class="footer-top">
+      <a class="brand" href="../fr/" aria-label="Onyx, accueil"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 13 28.5 9v5.5L16 19Z" style="fill:var(--accent)"/><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/><path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/></g></svg> Onyx</a>
+      <nav class="footer-col" aria-label="Onyx">
+        <p class="footer-h">Onyx</p>
+        <ul class="footer-links"><li><a href="../fr/">Accueil</a></li><li><a href="../fr/applications/">Applications</a></li><li><a href="../fr/bureau/">Le bureau</a></li><li><a href="../fr/obtenir/">Obtenir Onyx</a></li></ul>
+      </nav>
+      <div class="footer-col">
+        <p class="footer-h">Langue</p>
+        <ul class="footer-links"><li><a href="../en/" lang="en" hreflang="en">English</a></li></ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <p>Onyx est conçu par Stephan Wegener, avec Claude, l’IA d’Anthropic.</p>
+      <p>Raspberry Pi est une marque de Raspberry Pi Ltd. Les autres marques citées appartiennent à leurs propriétaires respectifs. Onyx est un projet indépendant.</p>
+      <p>© 2026 Stephan Wegener</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../assets/js/site.js" onerror="document.documentElement.classList.remove('js')"></script>
+</body>
+</html>

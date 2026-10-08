@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Le bureau — Onyx</title>
+<meta name="description" content="Barre de menus, dock, espaces de travail, thèmes, fichiers et mises à jour : le tour du bureau d’Onyx.">
+<link rel="alternate" hreflang="fr" href="../../fr/bureau/">
+<link rel="alternate" hreflang="en" href="../../en/desktop/">
+<link rel="alternate" hreflang="x-default" href="../../en/desktop/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Onyx">
+<meta property="og:title" content="Le bureau — Onyx">
+<meta property="og:description" content="Barre de menus, dock, espaces de travail, thèmes, fichiers et mises à jour : le tour du bureau d’Onyx.">
+<meta property="og:locale" content="fr_FR">
+<meta name="theme-color" content="#0B0B0B">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/tokens.css">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<script>
+/* Before the first paint: dark unless the visitor chose light (no flash). ?theme=light forces it (a link, a test). */
+(function (d) {
+  d.classList.add('js');
+  /* If site.js never runs to its end (not loaded, an error), nothing may stay hidden: back to the page without script. */
+  window.addEventListener('load', function () { if (!window.onyxReady) d.classList.remove('js'); });
+  try { if (/[?&]theme=light/.test(location.search) || localStorage.getItem('onyx-theme') === 'light') d.setAttribute('data-theme', 'light'); } catch (e) {}
+})(document.documentElement);
+</script>
+</head>
+<body class="page-desktop">
+<a class="skip" href="#main">Aller au contenu</a>
+<header class="site-header">
+  <div class="container container--wide bar">
+    <a class="brand" href="../../fr/" aria-label="Onyx, accueil"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 13 28.5 9v5.5L16 19Z" style="fill:var(--accent)"/><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/><path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/></g></svg> Onyx</a>
+    <nav class="nav" id="nav" aria-label="Navigation principale">
+      <a href="../../fr/applications/">Applications</a>
+      <a href="../../fr/bureau/" aria-current="page">Le bureau</a>
+      <a class="nav-cta" href="../../fr/obtenir/">Obtenir Onyx</a>
+    </nav>
+    <div class="header-end">
+      <div class="lang" role="group" aria-label="Langue"><a href="../../fr/bureau/" lang="fr" hreflang="fr" aria-current="true">FR</a><a href="../../en/desktop/" lang="en" hreflang="en">EN</a></div>
+      <button class="theme-btn" type="button" aria-label="Mode clair" aria-pressed="false">
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M5.3 18.7l1.5-1.5M17.2 6.8l1.5-1.5"/></svg>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.2A8 8 0 0 1 9.8 4a8 8 0 1 0 10.2 10.2Z"/></svg>
+      </button>
+      <a class="btn btn--ghost btn--small header-cta" href="../../fr/obtenir/">Obtenir Onyx</a>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav"><span></span></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+<section class="hero hero--sub hero--media">
+  <div class="container center">
+    <h1 class="reveal">Un bureau qui se fait oublier.</h1>
+    <p class="t-lead reveal" data-delay="1">Classique dans l’esprit, soigné dans le détail : Onyx reprend ce qui marche depuis toujours et l’adoucit.</p>
+  </div>
+  <div class="container container--wide">
+    <figure class="showcase-media reveal" data-delay="2">
+      <div class="shot-screen" style="--native:1024;--fx:0;--fy:0"><img src="../../assets/img/notes-desktop.webp" srcset="../../assets/img/notes-desktop-half.webp 512w, ../../assets/img/notes-desktop.webp 1024w" sizes="(max-width: 1100px) 92vw, 1024px" width="1024" height="768" style="--native:1024" decoding="async" alt="Le bureau d’Onyx avec Notes ouvert, les prochains rendez-vous à gauche et trois notes épinglées à droite du fond d’écran."></div>
+    </figure>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container container--wide feature">
+    <div class="feature-text reveal">
+    <h2>En haut, l’essentiel.</h2>
+    <p class="t-lead">Les menus de l’application en cours, l’heure, le son, le Wi-Fi. Un clic sur l’heure ouvre le calendrier du mois, un clic sur le Wi-Fi vous connecte à un réseau, sans redémarrer.</p>
+    </div>
+    <figure class="feature-media reveal" data-delay="1"><div class="shot-crop shot-crop--zoom" style="--native:1024;--zoom:2.2"><img src="../../assets/img/menubar.webp" srcset="../../assets/img/menubar-half.webp 512w, ../../assets/img/menubar.webp 1024w" sizes="(max-width: 600px) 220vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1024px" width="1024" height="200" style="--native:1024" loading="lazy" decoding="async" alt="La barre de menus d’Onyx, le menu Fichier d’une application ouvert, avec le son, le Wi-Fi et l’heure à droite."></div></figure>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container container--wide feature feature--flip">
+    <div class="feature-text reveal">
+    <h2>En bas, vos applications.</h2>
+    <p class="t-lead">Un tiroir par famille : bureautique, Internet, graphisme, jeux. Un clic lance l’application ou la ramène devant vous. Déposez un fichier sur une icône pour l’ouvrir, sur la corbeille pour le jeter.</p>
+    </div>
+    <figure class="feature-media reveal" data-delay="1"><div class="shot-crop shot-crop--zoom" style="--native:1024;--zoom:1.7"><img src="../../assets/img/dock.webp" srcset="../../assets/img/dock-half.webp 512w, ../../assets/img/dock.webp 1024w" sizes="(max-width: 600px) 220vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1024px" width="1024" height="592" style="--native:1024" loading="lazy" decoding="async" alt="Le dock d’Onyx avec le tiroir Jeux ouvert, listant quinze jeux, de 2048 à Tetris."></div></figure>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container container--wide feature">
+    <div class="feature-text reveal">
+    <h2>Vos rendez‑vous et vos pense‑bêtes, sous les yeux.</h2>
+    <p class="t-lead">Les prochains rendez-vous du calendrier s’affichent sur le fond d’écran. Épinglez une note, elle apparaît à côté. Un clic ouvre le jour ou la note.</p>
+    </div>
+    <div class="crop-pair reveal" data-delay="1"><figure class="shot-crop" style="--native:400"><img src="../../assets/img/agenda.webp" width="400" height="180" style="--native:400" loading="lazy" decoding="async" alt="Les prochains rendez-vous affichés sur le fond d’écran d’Onyx : dentiste, loyer, fête d’anniversaire."></figure><figure class="shot-crop" style="--native:320"><img src="../../assets/img/stickies.webp" width="320" height="620" style="--native:320" loading="lazy" decoding="async" alt="Trois notes épinglées sur le fond d’écran d’Onyx : une liste de tâches, une liste de courses et un pense-bête."></figure></div>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container container--wide feature feature--flip">
+    <div class="feature-text reveal">
+    <h2>Vos fichiers, colonne après colonne.</h2>
+    <p class="t-lead">Chaque dossier s’ouvre dans la colonne suivante : vous voyez toujours d’où vous venez. Un aperçu des images et des textes, une corbeille qui ne perd rien, le glisser-déposer partout. Branchez une clé USB, elle apparaît toute seule.</p>
+    </div>
+    <figure class="stage stage--bleed stage--cut-r reveal" data-wash="blueberry" data-delay="1"><img class="shot-window" src="../../assets/img/fileviewer-crop.webp" width="650" height="572" style="--native:650" loading="lazy" decoding="async" alt="Le gestionnaire de fichiers d’Onyx : la barre latérale et les dossiers en colonnes."></figure>
+  </div>
+</section>
+
+<section class="section section--lift showcase looks">
+  <div class="container center">
+    <h2 class="reveal">Pêche, acier, sauge ou café noir.</h2>
+    <p class="t-lead reveal" data-delay="1">Sept ambiances prêtes à l’emploi, classiques ou modernes, ou vos propres couleurs. Huit motifs de fond d’écran qui se teintent à votre goût, ou l’une de vos photos.</p>
+    <div class="swatches reveal" data-delay="1" role="group" aria-label="Ambiances">
+      <button type="button" class="swatch" style="--swatch:#F2B27E" data-look="desktop" aria-pressed="true"><span class="swatch-dot" aria-hidden="true"></span>Peach</button>
+      <button type="button" class="swatch" style="--swatch:#ECEAE4" data-look="milk" aria-pressed="false"><span class="swatch-dot" aria-hidden="true"></span>Milk</button>
+    </div>
+  </div>
+  <div class="container container--wide reveal" data-delay="1">
+    <figure class="showcase-media look" data-look="desktop"><div class="shot-screen" style="--native:1024;--fx:0;--fy:0"><img src="../../assets/img/desktop.webp" srcset="../../assets/img/desktop-half.webp 512w, ../../assets/img/desktop.webp 1024w" sizes="(max-width: 1100px) 92vw, 1024px" width="1024" height="768" style="--native:1024" loading="lazy" decoding="async" alt="Le bureau d’Onyx : la barre de menus, les prochains rendez-vous sur le fond d’écran, une calculatrice, un terminal et le dock."></div><figcaption class="t-small">Peach</figcaption></figure>
+    <figure class="showcase-media look" data-look="milk"><div class="shot-screen" style="--native:1024;--fx:0;--fy:0"><img src="../../assets/img/milk.webp" srcset="../../assets/img/milk-half.webp 512w, ../../assets/img/milk.webp 1024w" sizes="(max-width: 1100px) 92vw, 1024px" width="1024" height="768" style="--native:1024" loading="lazy" decoding="async" alt="Le thème clair Milk d’Onyx : le calendrier en vue semaine et une fenêtre présentant boutons, listes, curseurs et calendriers."></div><figcaption class="t-small">Milk</figcaption></figure>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container container--wide feature">
+    <div class="feature-text reveal">
+    <h2>Tous les réglages au même endroit.</h2>
+    <p class="t-lead">Écran, son, clavier, Wi-Fi, imprimantes, manettes : le Panneau de configuration réunit tout. Onyx parle anglais et français, et connaît huit dispositions de clavier.</p>
+    <p class="t-small feature-note">La traduction française avance application par application ; certaines sont encore en anglais.</p>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="lagoon" data-delay="1"><img class="shot-window" src="../../assets/img/control.webp" width="708" height="548" style="--native:708" loading="lazy" decoding="async" alt="Le Panneau de configuration d’Onyx : douze réglages, du thème aux imprimantes, chacun avec son icône."></figure>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container container--wide feature feature--flip">
+    <div class="feature-text reveal">
+    <h2>Les mises à jour viennent à vous.</h2>
+    <p class="t-lead">Chaque jour, Onyx regarde s’il y a du nouveau et vous le signale. Choisissez pour chaque application : mise à jour automatique, sur demande, ou jamais. Le système, lui, se met à jour au redémarrage suivant.</p>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="mint" data-delay="1"><img class="shot-window" src="../../assets/img/pkgman-installed.webp" width="708" height="548" style="--native:708" loading="lazy" decoding="async" alt="Le Gestionnaire de paquets d’Onyx : les applications installées, chacune avec son choix de mise à jour — manuelle, automatique ou jamais."></figure>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container container--wide also-grid also-grid--2">
+    <article class="also-card reveal"><svg class="line-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg><h2>Plusieurs bureaux en un.</h2><p>Quatre espaces de travail par défaut, jusqu’à six. Le courrier ici, un document là : chaque chose a sa place, et un raccourci clavier vous fait passer de l’un à l’autre.</p></article>
+    <article class="also-card reveal" data-delay="1"><svg class="line-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 8V3.5h10V8"/><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 14h10v6.5H7zM17.5 11.5h.01"/></svg><h2>Imprimez, tout simplement.</h2><p>Onyx trouve les imprimantes de votre réseau compatibles AirPrint, sans pilote à installer. Sinon, tout s’imprime en PDF.</p></article>
+  </div>
+</section>
+
+<p class="t-small shots-note container">Captures d’écran en anglais.</p>
+
+<section class="section section--band cta">
+  <div class="container center">
+    <h2 class="reveal">Prêt à l’essayer ?</h2>
+    <div class="actions reveal" data-delay="2"><a class="btn btn--primary" href="../../fr/obtenir/">Obtenir Onyx</a></div>
+  </div>
+</section>
+</main>
+<footer class="site-footer">
+  <div class="container container--wide">
+    <div class="footer-top">
+      <a class="brand" href="../../fr/" aria-label="Onyx, accueil"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 13 28.5 9v5.5L16 19Z" style="fill:var(--accent)"/><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/><path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/></g></svg> Onyx</a>
+      <nav class="footer-col" aria-label="Onyx">
+        <p class="footer-h">Onyx</p>
+        <ul class="footer-links"><li><a href="../../fr/">Accueil</a></li><li><a href="../../fr/applications/">Applications</a></li><li><a href="../../fr/bureau/">Le bureau</a></li><li><a href="../../fr/obtenir/">Obtenir Onyx</a></li></ul>
+      </nav>
+      <div class="footer-col">
+        <p class="footer-h">Langue</p>
+        <ul class="footer-links"><li><a href="../../en/desktop/" lang="en" hreflang="en">English</a></li></ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <p>Onyx est conçu par Stephan Wegener, avec Claude, l’IA d’Anthropic.</p>
+      <p>Raspberry Pi est une marque de Raspberry Pi Ltd. Les autres marques citées appartiennent à leurs propriétaires respectifs. Onyx est un projet indépendant.</p>
+      <p>© 2026 Stephan Wegener</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../../assets/js/site.js" onerror="document.documentElement.classList.remove('js')"></script>
+</body>
+</html>

@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apps — Onyx</title>
+<meta name="description" content="Word processor, spreadsheet, slides, browser, mail, photos, music, games: meet the apps of Onyx.">
+<link rel="alternate" hreflang="fr" href="../../fr/applications/">
+<link rel="alternate" hreflang="en" href="../../en/apps/">
+<link rel="alternate" hreflang="x-default" href="../../en/apps/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Onyx">
+<meta property="og:title" content="Apps — Onyx">
+<meta property="og:description" content="Word processor, spreadsheet, slides, browser, mail, photos, music, games: meet the apps of Onyx.">
+<meta property="og:locale" content="en_GB">
+<meta name="theme-color" content="#0B0B0B">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/tokens.css">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<script>
+/* Before the first paint: dark unless the visitor chose light (no flash). ?theme=light forces it (a link, a test). */
+(function (d) {
+  d.classList.add('js');
+  /* If site.js never runs to its end (not loaded, an error), nothing may stay hidden: back to the page without script. */
+  window.addEventListener('load', function () { if (!window.onyxReady) d.classList.remove('js'); });
+  try { if (/[?&]theme=light/.test(location.search) || localStorage.getItem('onyx-theme') === 'light') d.setAttribute('data-theme', 'light'); } catch (e) {}
+})(document.documentElement);
+</script>
+</head>
+<body class="page-apps">
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="container container--wide bar">
+    <a class="brand" href="../../en/" aria-label="Onyx, home"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 13 28.5 9v5.5L16 19Z" style="fill:var(--accent)"/><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/><path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/></g></svg> Onyx</a>
+    <nav class="nav" id="nav" aria-label="Main">
+      <a href="../../en/apps/" aria-current="page">Apps</a>
+      <a href="../../en/desktop/">Desktop</a>
+      <a class="nav-cta" href="../../en/get/">Get Onyx</a>
+    </nav>
+    <div class="header-end">
+      <div class="lang" role="group" aria-label="Language"><a href="../../fr/applications/" lang="fr" hreflang="fr">FR</a><a href="../../en/apps/" lang="en" hreflang="en" aria-current="true">EN</a></div>
+      <button class="theme-btn" type="button" aria-label="Light mode" aria-pressed="false">
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M5.3 18.7l1.5-1.5M17.2 6.8l1.5-1.5"/></svg>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.2A8 8 0 0 1 9.8 4a8 8 0 1 0 10.2 10.2Z"/></svg>
+      </button>
+      <a class="btn btn--ghost btn--small header-cta" href="../../en/get/">Get Onyx</a>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav"><span></span></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+<section class="hero hero--sub">
+  <div class="container center">
+    <h1 class="reveal">Apps for everything you do.</h1>
+    <p class="t-lead reveal" data-delay="1">They’re made for Onyx, look alike and work together. Most are already on the card; the rest install in one click.</p>
+  </div>
+</section>
+
+<nav class="filters" aria-label="Filter the apps">
+  <div class="container container--wide filters-row">
+    <a class="chip" href="#catalogue" data-filter="all">All</a>
+    <a class="chip" href="#work" data-filter="work">Work</a>
+    <a class="chip" href="#web" data-filter="web">The web and your people</a>
+    <a class="chip" href="#create" data-filter="create">Create</a>
+    <a class="chip" href="#media" data-filter="media">Watch and listen</a>
+    <a class="chip" href="#play" data-filter="play">Play</a>
+    <a class="chip" href="#learn" data-filter="learn">Learn and tinker</a>
+    <a class="chip" href="#system" data-filter="system">The system</a>
+  </div>
+</nav>
+
+<div id="catalogue">
+
+<section class="section group" id="work" data-group="work" aria-labelledby="h-work">
+  <div class="container container--wide">
+    <div class="group-head reveal">
+      <h2 id="h-work">Work</h2>
+      <p class="t-lead">A full office suite that reads the files people send you.</p>
+    </div>
+    <div class="featured-grid">
+      <article class="app-feature reveal" id="app-letters">
+      <a class="stage stage--bleed app-stage" data-wash="blueberry" href="../../assets/img/letters.webp" data-shot data-w="1008" data-h="732" data-alt="Letters, the Onyx word processor, showing a document with a title, a picture and a table of contents." data-caption="Screenshot: Letters"><img class="shot-window" src="../../assets/img/letters.webp" srcset="../../assets/img/letters-half.webp 504w, ../../assets/img/letters.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1008" height="732" style="--native:1008" loading="lazy" decoding="async" alt="Letters, the Onyx word processor, showing a document with a title, a picture and a table of contents."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/letters.png" width="40" height="40" alt="" loading="lazy"><h3>Letters</h3></div>
+      <p>The word processor. Letters, reports, properly laid‑out documents.</p>
+      <ul class="points"><li>Opens and saves Word (.docx), OpenDocument (.odt) and RTF files</li><li>Tables, headers and footers, a table of contents, pictures</li><li>Mail merge and PDF export</li></ul>
+      </div>
+      </article>
+      <article class="app-feature reveal" id="app-sheet">
+      <a class="stage stage--bleed app-stage" data-wash="lagoon" href="../../assets/img/sheet.webp" data-shot data-w="1008" data-h="654" data-alt="The Onyx spreadsheet: a monthly sales table with data bars and a column chart." data-caption="Screenshot: Spreadsheet"><img class="shot-window" src="../../assets/img/sheet.webp" srcset="../../assets/img/sheet-half.webp 504w, ../../assets/img/sheet.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="The Onyx spreadsheet: a monthly sales table with data bars and a column chart."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/sheet.png" width="40" height="40" alt="" loading="lazy"><h3>Spreadsheet</h3></div>
+      <p>The spreadsheet. Your budgets, your lists, your charts.</p>
+      <ul class="points"><li>237 functions, written the way Excel writes them</li><li>Charts, conditional formatting, filters</li><li>Opens and saves Excel (.xlsx) and CSV files</li></ul>
+      </div>
+      </article>
+      <article class="app-feature reveal" id="app-slides">
+      <a class="stage stage--bleed app-stage" data-wash="mint" href="../../assets/img/slides.webp" data-shot data-w="1008" data-h="732" data-alt="Slides, the Onyx presentation app: the slide list, a slide with a chart and the formatting panel." data-caption="Screenshot: Slides"><img class="shot-window" src="../../assets/img/slides.webp" srcset="../../assets/img/slides-half.webp 504w, ../../assets/img/slides.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1008" height="732" style="--native:1008" loading="lazy" decoding="async" alt="Slides, the Onyx presentation app: the slide list, a slide with a chart and the formatting panel."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/slides.png" width="40" height="40" alt="" loading="lazy"><h3>Slides</h3></div>
+      <p>Presentations. Polished slides, shown full screen.</p>
+      <ul class="points"><li>Six themes, shapes, tables, charts</li><li>Transitions, animations and a presenter view</li><li>Opens and saves PowerPoint (.pptx) files; PDF export</li></ul>
+      </div>
+      </article>
+      <article class="app-feature reveal" id="app-calendar">
+      <a class="stage stage--bleed app-stage" data-wash="grape" href="../../assets/img/calendar.webp" data-shot data-w="1008" data-h="654" data-alt="The Onyx calendar in week view: colour-coded appointments, with the calendars and the task list on the left." data-caption="Screenshot: Calendar"><img class="shot-window" src="../../assets/img/calendar.webp" srcset="../../assets/img/calendar-half.webp 504w, ../../assets/img/calendar.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="The Onyx calendar in week view: colour-coded appointments, with the calendars and the task list on the left."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/calendar.png" width="40" height="40" alt="" loading="lazy"><h3>Calendar</h3></div>
+      <p>The planner. Your appointments by day, week or month.</p>
+      <ul class="points"><li>Repeats, reminders and task lists</li><li>Several calendars, each in its colour</li><li>Imports and exports Google and Outlook calendars (.ics)</li></ul>
+      </div>
+      </article>
+      <article class="app-feature reveal" id="app-ledger">
+      <a class="stage stage--bleed app-stage" data-wash="blueberry" href="../../assets/img/ledger.webp" data-shot data-w="1008" data-h="732" data-alt="The Ledger dashboard on Onyx: amounts to receive and to pay, a chart of sales and purchases, the next VAT return." data-caption="Screenshot: Ledger"><img class="shot-window" src="../../assets/img/ledger.webp" srcset="../../assets/img/ledger-half.webp 504w, ../../assets/img/ledger.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1008" height="732" style="--native:1008" loading="lazy" decoding="async" alt="The Ledger dashboard on Onyx: amounts to receive and to pay, a chart of sales and purchases, the next VAT return."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/ledger.png" width="40" height="40" alt="" loading="lazy"><h3>Ledger</h3></div>
+      <p>Accounting for Belgian businesses and the self-employed.</p>
+      <ul class="points"><li>Quotes, orders, invoices and credit notes, printed through Letters</li><li>Bank statements imported, supplier payments prepared for your bank</li><li>VAT returns, balance sheet and income statement</li></ul>
+      </div>
+      </article>
+      <article class="app-feature reveal" id="app-cardfile">
+      <a class="stage stage--bleed app-stage" data-wash="lagoon" href="../../assets/img/cardfile.webp" data-shot data-w="908" data-h="632" data-alt="Cardfile on Onyx in form view: a book’s card with its title, author, genre and notes." data-caption="Screenshot: Cardfile"><img class="shot-window" src="../../assets/img/cardfile.webp" srcset="../../assets/img/cardfile-half.webp 454w, ../../assets/img/cardfile.webp 908w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="908" height="632" style="--native:908" loading="lazy" decoding="async" alt="Cardfile on Onyx in form view: a book’s card with its title, author, genre and notes."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/cardfile.png" width="40" height="40" alt="" loading="lazy"><h3>Cardfile</h3></div>
+      <p>A small database, no jargon. Your contacts, collections, inventories.</p>
+      <ul class="points"><li>Design your card, then fill it in</li><li>Card view or list view, sorting and search</li><li>CSV import and export; feeds the mail merge in Letters</li></ul>
+      </div>
+      </article>
+      <article class="app-feature app-feature--wide reveal" id="app-pdf">
+      <a class="stage stage--bleed app-stage" data-wash="mint" href="../../assets/img/pdf.webp" data-shot data-w="1008" data-h="654" data-alt="The Onyx PDF Viewer: page thumbnails on the left and a page of the Ledger manual in the centre." data-caption="Screenshot: PDF Viewer"><img class="shot-window" src="../../assets/img/pdf.webp" srcset="../../assets/img/pdf-half.webp 504w, ../../assets/img/pdf.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1008px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="The Onyx PDF Viewer: page thumbnails on the left and a page of the Ledger manual in the centre."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/pdf.png" width="40" height="40" alt="" loading="lazy"><h3>PDF Viewer</h3></div>
+      <p>The PDF reader. One tab per document, and it remembers your page.</p>
+      <ul class="points"><li>Thumbnails, contents and text search</li><li>One page, continuous or two pages side by side; full screen</li><li>Copy the text, follow the links</li></ul>
+      </div>
+      </article>
+    </div>
+    <div class="card-grid">
+      <article class="app-card reveal" id="app-clock">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/clock.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/clock-world.webp" data-shot data-w="568" data-h="472" data-alt="The Onyx Clock: the local time in large figures and the time in Tokyo, New York and London." data-caption="Screenshot: Clock">Clock</a></h3>
+        <p>The time here and around the world, alarms, a timer and a stopwatch.</p>
+      </article>
+      <article class="app-card reveal" id="app-notes">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/notes.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/notes.webp" data-shot data-w="768" data-h="512" data-alt="Notes on Onyx: the list of notes on the left and a shopping list on a yellow page, pinned to the desktop." data-caption="Screenshot: Notes">Notes</a></h3>
+        <p>Quick notes that save themselves. Pin the ones that matter to the desktop.</p>
+      </article>
+      <article class="app-card reveal" id="app-tinypad">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/tinypad.png" width="80" height="80" alt="" loading="lazy">
+        <h3>Text Editor</h3>
+        <p>For plain text, simply.</p>
+      </article>
+      <article class="app-card reveal" id="app-tinycalc">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/tinycalc.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/tinycalc.webp" data-shot data-w="288" data-h="328" data-alt="The Onyx scientific calculator: the display and the sin, cos, tan, square-root and power keys." data-caption="Screenshot: Calculator">Calculator</a></h3>
+        <p>A scientific calculator, by keyboard or mouse.</p>
+      </article>
+      <article class="app-card reveal" id="app-graphcalc">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/graphcalc.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/graphcalc.webp" data-shot data-w="768" data-h="532" data-alt="The Onyx Graphing Calculator: a red sine wave and a blue parabola plotted on a grid." data-caption="Screenshot: Graphing Calculator">Graphing Calculator</a></h3>
+        <p>Plot up to four functions, live as you type them.</p>
+      </article>
+      <article class="app-card reveal" id="app-archiver">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/archiver.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/archiver.webp" data-shot data-w="968" data-h="632" data-alt="The Onyx Archiver: a ZIP file’s folder tree, its files with their compression ratios and the archive’s details." data-caption="Screenshot: Archiver">Archiver</a></h3>
+        <p>Open, create and change ZIP archives by dragging files in and out.</p>
+      </article>
+      <article class="app-card reveal" id="app-rtfview">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/rtfview.png" width="80" height="80" alt="" loading="lazy">
+        <h3>RTF Reader</h3>
+        <p>A quick look at an RTF document.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section--lift" data-group="work" data-band>
+  <div class="container container--wide feature feature--flip">
+    <div class="feature-text reveal">
+      <h2>They work together.</h2>
+      <p class="t-lead">Send a photo by mail straight from Photos. Merge a Cardfile address list into a letter. A link in a PDF opens in Jet. What you copy here pastes there, and the clipboard keeps your last ten copies.</p>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="grape" data-delay="1"><img class="shot-window" src="../../assets/img/photos-menu.webp" srcset="../../assets/img/photos-menu-half.webp 504w, ../../assets/img/photos-menu.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1008px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="A photo’s menu in Photos: add it to the favourites, send it by Mail, set it as the wallpaper or open it in Paint."></figure>
+  </div>
+</section>
+
+<section class="section section--alt group" id="web" data-group="web" aria-labelledby="h-web">
+  <div class="container container--wide">
+    <div class="group-head reveal">
+      <h2 id="h-web">The web and your people</h2>
+      <p class="t-lead">Browse, write, chat.</p>
+    </div>
+    <div class="featured-grid">
+      <article class="app-feature reveal" id="app-jet">
+      <a class="stage stage--bleed app-stage" data-wash="blueberry" href="../../assets/img/jet.webp" data-shot data-w="1020" data-h="742" data-alt="Jet Browser, the Onyx web browser, showing a modern dark-themed website with its menu, a large headline and an app screenshot." data-caption="Screenshot: Jet Browser"><img class="shot-window" src="../../assets/img/jet.webp" srcset="../../assets/img/jet-half.webp 510w, ../../assets/img/jet.webp 1020w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1020" height="742" style="--native:1020" loading="lazy" decoding="async" alt="Jet Browser, the Onyx web browser, showing a modern dark-themed website with its menu, a large headline and an app screenshot."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/jet.png" width="40" height="40" alt="" loading="lazy"><h3>Jet Browser</h3></div>
+      <p>The Onyx web browser, built on WebKit, the engine behind Safari.</p>
+      <ul class="points"><li>Shows today’s websites, video and sound included</li><li>One page per window, to keep your focus</li><li>Find in page, zoom, downloads</li></ul>
+      </div>
+      </article>
+      <article class="app-feature reveal" id="app-mail">
+      <a class="stage stage--bleed app-stage" data-wash="lagoon" href="../../assets/img/mail.webp" data-shot data-w="1008" data-h="654" data-alt="Mail on Onyx: the accounts on the left, the conversation list and an open message with two attachments." data-caption="Screenshot: Mail"><img class="shot-window" src="../../assets/img/mail.webp" srcset="../../assets/img/mail-half.webp 504w, ../../assets/img/mail.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="Mail on Onyx: the accounts on the left, the conversation list and an open message with two attachments."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/mail.png" width="40" height="40" alt="" loading="lazy"><h3>Mail</h3></div>
+      <p>All your mail accounts in one inbox.</p>
+      <ul class="points"><li>Gmail, Outlook, iCloud, Yahoo, or the mail account you already have</li><li>Messages grouped into conversations; search across every account</li><li>Contacts, attachments, a notification when mail arrives</li></ul>
+      </div>
+      </article>
+      <article class="app-feature app-feature--wide reveal" id="app-telegram">
+      <a class="stage stage--bleed app-stage" data-wash="mint" href="../../assets/img/telegram.webp" data-shot data-w="948" data-h="654" data-alt="Telegram on Onyx: the conversation list and a chat with a mountain photo and emoticons." data-caption="Screenshot: Telegram"><img class="shot-window" src="../../assets/img/telegram.webp" srcset="../../assets/img/telegram-half.webp 474w, ../../assets/img/telegram.webp 948w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 948px" width="948" height="654" style="--native:948" loading="lazy" decoding="async" alt="Telegram on Onyx: the conversation list and a chat with a mountain photo and emoticons."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/telegram.png" width="40" height="40" alt="" loading="lazy"><h3>Telegram</h3></div>
+      <p>Your Telegram account, in a messenger with early-2000s charm.</p>
+      <ul class="points"><li>One window per conversation</li><li>Hand-drawn emoticons, photos sent and received</li><li>Notifications and online status</li></ul>
+      <p class="t-small">Unofficial client; Telegram is a trademark of its owner.</p>
+      </div>
+      </article>
+    </div>
+    <div class="card-grid">
+      <article class="app-card reveal" id="app-irc">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/irc.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/irc-pm.webp" data-shot data-w="408" data-h="592" data-alt="A private conversation in IRC on Onyx, shown in bubbles like a modern messenger." data-caption="Screenshot: IRC">IRC</a></h3>
+        <p>IRC chat rooms, presented like a modern messenger.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section group" id="create" data-group="create" aria-labelledby="h-create">
+  <div class="container container--wide">
+    <div class="group-head reveal">
+      <h2 id="h-create">Create</h2>
+      <p class="t-lead">Pictures, music, objects.</p>
+    </div>
+    <div class="featured-grid">
+      <article class="app-feature reveal" id="app-paint">
+      <a class="stage stage--bleed app-stage" data-wash="grape" href="../../assets/img/paint.webp" data-shot data-w="1016" data-h="736" data-alt="Paint, the Onyx drawing app: a sunset landscape on the canvas and the layers panel." data-caption="Screenshot: Paint"><img class="shot-window" src="../../assets/img/paint.webp" srcset="../../assets/img/paint-half.webp 508w, ../../assets/img/paint.webp 1016w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1016" height="736" style="--native:1016" loading="lazy" decoding="async" alt="Paint, the Onyx drawing app: a sunset landscape on the canvas and the layers panel."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/paint.png" width="40" height="40" alt="" loading="lazy"><h3>Paint</h3></div>
+      <p>Drawing and painting on layers.</p>
+      <ul class="points"><li>Brushes, airbrush, crayon, marker, calligraphy</li><li>Layers and blend modes, gradients, text, selections</li><li>Opens PNG, JPEG, GIF and BMP; colour adjustments and filters</li></ul>
+      </div>
+      </article>
+      <article class="app-feature reveal" id="app-koton">
+      <a class="stage stage--bleed app-stage" data-wash="blueberry" href="../../assets/img/koton-crop.webp" data-shot data-w="1920" data-h="936" data-alt="Koton, the Onyx music studio: five coloured tracks, the chord track and the chord editor with its keyboard." data-caption="Screenshot: Koton"><img class="shot-window" src="../../assets/img/koton-crop.webp" srcset="../../assets/img/koton-crop-half.webp 960w, ../../assets/img/koton-crop.webp 1920w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1920" height="936" style="--native:960" loading="lazy" decoding="async" alt="Koton, the Onyx music studio: five coloured tracks, the chord track and the chord editor with its keyboard."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/koton.png" width="40" height="40" alt="" loading="lazy"><h3>Koton</h3></div>
+      <p>The music studio. Write a song starting from its chords.</p>
+      <ul class="points"><li>A chord track that drives the accompaniment, the melody and the drums</li><li>Instruments and effects as plugins; a USB MIDI keyboard just works</li><li>WAV export; a full manual in English and French</li></ul>
+      </div>
+      </article>
+      <article class="app-feature app-feature--wide reveal" id="app-3dforge">
+      <a class="stage stage--bleed app-stage" data-wash="lagoon" href="../../assets/img/3dforge.webp" data-shot data-w="1014" data-h="654" data-alt="3DForge on Onyx: a 3D bracket with holes on a grid, with its measurements and the history of steps." data-caption="Screenshot: 3DForge"><img class="shot-window" src="../../assets/img/3dforge.webp" srcset="../../assets/img/3dforge-half.webp 507w, ../../assets/img/3dforge.webp 1014w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1014px" width="1014" height="654" style="--native:1014" loading="lazy" decoding="async" alt="3DForge on Onyx: a 3D bracket with holes on a grid, with its measurements and the history of steps."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/3dforge.png" width="40" height="40" alt="" loading="lazy"><h3>3DForge</h3></div>
+      <p>Design parts for 3D printing, step by step.</p>
+      <ul class="points"><li>Sketch a shape, give it depth, join, cut, round the edges</li><li>Every step stays editable: change a measure and the part rebuilds</li><li>Preparation for 3D printing and for machining</li></ul>
+      </div>
+      </article>
+    </div>
+    <div class="card-grid">
+      <article class="app-card reveal" id="app-screenshot">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/screenshot.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/screenshot-edit.webp" data-shot data-w="828" data-h="587" data-alt="The Onyx Screenshot tool: a captured window, marked up with a highlighter and a red pen." data-caption="Screenshot: Screenshot">Screenshot</a></h3>
+        <p>Capture an area, a window or the whole screen, then mark it up.</p>
+      </article>
+      <article class="app-card reveal" id="app-iconedit">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/iconedit.png" width="80" height="80" alt="" loading="lazy">
+        <h3>Icon Editor</h3>
+        <p>Draw icons, pixel by pixel.</p>
+      </article>
+      <article class="app-card reveal" id="app-fmtracker">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/fmtracker.png" width="80" height="80" alt="" loading="lazy">
+        <h3>FM Tracker</h3>
+        <p>Music with the sound of vintage computers, on eight voices.</p>
+      </article>
+      <article class="app-card reveal" id="app-mandelbrot">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/mandelbrot.png" width="80" height="80" alt="" loading="lazy">
+        <h3>Mandelbrot</h3>
+        <p>Dive into fractals, one click at a time.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section--alt group" id="media" data-group="media" aria-labelledby="h-media">
+  <div class="container container--wide">
+    <div class="group-head reveal">
+      <h2 id="h-media">Watch and listen</h2>
+      <p class="t-lead">Your photos, your music, your films.</p>
+    </div>
+    <div class="featured-grid">
+      <article class="app-feature reveal" id="app-photos">
+      <a class="stage stage--bleed app-stage" data-wash="mint" href="../../assets/img/photos.webp" data-shot data-w="1008" data-h="654" data-alt="The Onyx photo library: pictures grouped by day, with the albums in the left column." data-caption="Screenshot: Photos"><img class="shot-window" src="../../assets/img/photos.webp" srcset="../../assets/img/photos-half.webp 504w, ../../assets/img/photos.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="The Onyx photo library: pictures grouped by day, with the albums in the left column."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/photos.png" width="40" height="40" alt="" loading="lazy"><h3>Photos</h3></div>
+      <p>All your photos in one place, sorted by day.</p>
+      <ul class="points"><li>Albums, favourites and search by date or camera</li><li>Crop, straighten, adjust the light, apply a filter</li><li>Slideshow, send by mail, set as wallpaper in one click</li></ul>
+      </div>
+      </article>
+      <article class="app-feature reveal" id="app-media">
+      <a class="stage stage--bleed app-stage" data-wash="grape" href="../../assets/img/media-home.webp" data-shot data-w="1008" data-h="654" data-alt="The Onyx Media Player’s home page: a film to resume, recently played albums and videos." data-caption="Screenshot: Media Player"><img class="shot-window" src="../../assets/img/media-home.webp" srcset="../../assets/img/media-home-half.webp 504w, ../../assets/img/media-home.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="The Onyx Media Player’s home page: a film to resume, recently played albums and videos."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/media.png" width="40" height="40" alt="" loading="lazy"><h3>Media Player</h3></div>
+      <p>Your music and your videos, in one library.</p>
+      <ul class="points"><li>Music by artist, album or genre; your own playlists</li><li>Films and series, resumed where you stopped</li><li>Plays MP3, FLAC, OGG, MP4, MKV, WebM and more</li></ul>
+      </div>
+      </article>
+    </div>
+    <div class="card-grid">
+      <article class="app-card reveal" id="app-imageview">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/imageview.png" width="80" height="80" alt="" loading="lazy">
+        <h3>Image Viewer</h3>
+        <p>Open a picture with a double click, zoom, move on to the next.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section group" id="play" data-group="play" aria-labelledby="h-play">
+  <div class="container container--wide">
+    <div class="group-head reveal">
+      <h2 id="h-play">Play</h2>
+      <p class="t-lead">Sixteen games, and a library for the consoles you grew up with.</p>
+    </div>
+    <div class="featured-grid">
+      <article class="app-feature reveal" id="app-pinball">
+      <a class="stage stage--bleed app-stage" data-wash="blueberry" href="../../assets/img/pinball-play.webp" data-shot data-w="608" data-h="712" data-alt="Onyx Pinball on the Volcano table: the ball near the bumpers, with the score and the keys on the right." data-caption="Screenshot: Pinball"><img class="shot-window" src="../../assets/img/pinball-play.webp" width="608" height="712" style="--native:608" loading="lazy" decoding="async" alt="Onyx Pinball on the Volcano table: the ball near the bumpers, with the score and the keys on the right."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/pinball.png" width="40" height="40" alt="" loading="lazy"><h3>Pinball</h3></div>
+      <p>A pinball table with real physics.</p>
+      <ul class="points"><li>Three tables: a space station, a haunted manor, a volcano</li><li>Keyboard or gamepad; a top five for each table</li><li>In English and French</li></ul>
+      </div>
+      </article>
+      <article class="app-feature reveal" id="app-critters">
+      <a class="stage stage--bleed app-stage" data-wash="lagoon" href="../../assets/img/critters-play.webp" data-shot data-w="808" data-h="480" data-alt="Critters on Onyx: little orange creatures cross sandy ground towards the exit, above the row of jobs." data-caption="Screenshot: Critters"><img class="shot-window" src="../../assets/img/critters-play.webp" width="808" height="480" style="--native:808" loading="lazy" decoding="async" alt="Critters on Onyx: little orange creatures cross sandy ground towards the exit, above the row of jobs."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/critters.png" width="40" height="40" alt="" loading="lazy"><h3>Critters</h3></div>
+      <p>Lead little creatures to the exit by giving some of them a job.</p>
+      <ul class="points"><li>Climber, builder, digger and more</li><li>Twelve levels, from training to expedition</li><li>In English and French</li></ul>
+      </div>
+      </article>
+    </div>
+    <div class="card-grid card-grid--mini">
+      <article class="app-card app-card--mini reveal" id="app-solitaire">
+        <img class="app-icon" src="../../assets/icons/solitaire.png" width="40" height="40" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/solitaire.webp" data-shot data-w="552" data-h="572" data-alt="Onyx Solitaire: seven columns of cards on green felt at the start of a game." data-caption="Screenshot: Solitaire">Solitaire</a></h3>
+        <p>Classic patience, with cards you drag.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-freecell">
+        <img class="app-icon" src="../../assets/icons/freecell.png" width="40" height="40" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/freecell.webp" data-shot data-w="610" data-h="592" data-alt="FreeCell on Onyx: eight columns of face-up cards on green felt, game number 507." data-caption="Screenshot: FreeCell">FreeCell</a></h3>
+        <p>Every card face up, 32,000 numbered deals.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-doom">
+        <img class="app-icon" src="../../assets/icons/doom.png" width="40" height="40" alt="" loading="lazy">
+        <h3>Doom</h3>
+        <p>The classic shooter, shipped with the free Freedoom levels.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-arkanoid">
+        <img class="app-icon" src="../../assets/icons/arkanoid.png" width="40" height="40" alt="" loading="lazy">
+        <h3>Arkanoid</h3>
+        <p>A brick breaker with power-ups, written in BASIC on Onyx.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-invaders">
+        <img class="app-icon" src="../../assets/icons/invaders.png" width="40" height="40" alt="" loading="lazy">
+        <h3>Invaders</h3>
+        <p>Hold off the fleet before it reaches the ground.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-pipes">
+        <img class="app-icon" src="../../assets/icons/pipes.png" width="40" height="40" alt="" loading="lazy">
+        <h3>Pipes</h3>
+        <p>Lay the pipes before the water comes.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-tetris">
+        <img class="app-icon" src="../../assets/icons/tetris.png" width="40" height="40" alt="" loading="lazy">
+        <h3>Tetris</h3>
+        <p>Stack the pieces, clear the lines.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-2048">
+        <img class="app-icon" src="../../assets/icons/2048.png" width="40" height="40" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/2048.webp" data-shot data-w="330" data-h="392" data-alt="2048 on Onyx: a four-by-four board with 2, 4 and 16 tiles." data-caption="Screenshot: 2048">2048</a></h3>
+        <p>Merge the tiles up to 2048.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-minesweeper">
+        <img class="app-icon" src="../../assets/icons/minesweeper.png" width="40" height="40" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/minesweeper.webp" data-shot data-w="408" data-h="356" data-alt="Onyx Minesweeper mid-game: opened cells with their numbers and one flag." data-caption="Screenshot: Minesweeper">Minesweeper</a></h3>
+        <p>Clear the field without touching a mine.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-sokoban">
+        <img class="app-icon" src="../../assets/icons/sokoban.png" width="40" height="40" alt="" loading="lazy">
+        <h3>Sokoban</h3>
+        <p>Push every crate onto its spot.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-snake">
+        <img class="app-icon" src="../../assets/icons/snake.png" width="40" height="40" alt="" loading="lazy">
+        <h3>Snake</h3>
+        <p>Eat, grow, don’t bite yourself.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-same">
+        <img class="app-icon" src="../../assets/icons/same.png" width="40" height="40" alt="" loading="lazy">
+        <h3>SameGame</h3>
+        <p>Clear groups of the same colour.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-pong">
+        <img class="app-icon" src="../../assets/icons/pong.png" width="40" height="40" alt="" loading="lazy">
+        <h3>Pong</h3>
+        <p>Two players on one keyboard, first to nine.</p>
+      </article>
+      <article class="app-card app-card--mini reveal" id="app-life">
+        <img class="app-icon" src="../../assets/icons/life.png" width="40" height="40" alt="" loading="lazy">
+        <h3>Game of Life</h3>
+        <p>Draw some cells and watch them evolve.</p>
+      </article>
+    </div>
+    <div class="featured-grid consoles">
+      <article class="app-feature reveal" id="app-gamelib">
+      <a class="stage stage--bleed app-stage stage--cut-tl" data-wash="mint" href="../../assets/img/gamelib-crop.webp" data-shot data-w="763" data-h="297" data-alt="The Onyx Game Library: one tile per game, sorted by console." data-caption="Screenshot: Game Library"><img class="shot-window" src="../../assets/img/gamelib-crop.webp" width="763" height="297" style="--native:763" loading="lazy" decoding="async" alt="The Onyx Game Library: one tile per game, sorted by console."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/gamelib.png" width="40" height="40" alt="" loading="lazy"><h3>Game Library</h3></div>
+      <p>All your console games on one shelf.</p>
+      <ul class="points"><li>A tile per game, sorted by console</li><li>Starts the right emulator; works from a gamepad</li><li>Watches the folders you choose</li></ul>
+      </div>
+      </article>
+      <article class="emulators reveal" data-delay="1" id="app-emulators">
+        <h3>Emulators</h3>
+        <ul class="points"><li>Game Boy / Game Boy Color</li><li>Game Boy Advance</li><li>NES</li><li>Super Nintendo</li></ul>
+        <p>The Game Library sorts the games you own and starts the right emulator: Game Boy and Game Boy Color, Game Boy Advance, NES and Super Nintendo. Saves are kept beside each game, and a USB gamepad is all you need. No game ships with Onyx.</p>
+        <p class="t-small">Console names are trademarks of their respective owners; Onyx is not affiliated with any manufacturer.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section--alt group" id="learn" data-group="learn" aria-labelledby="h-learn">
+  <div class="container container--wide">
+    <div class="group-head reveal">
+      <h2 id="h-learn">Learn and tinker</h2>
+      <p class="t-lead">To see how things work, or to make your own.</p>
+    </div>
+    <div class="featured-grid">
+      <article class="app-feature reveal" id="app-turtle">
+      <a class="stage stage--bleed app-stage" data-wash="grape" href="../../assets/img/turtle.webp" data-shot data-w="1008" data-h="654" data-alt="Turtle Quest on Onyx: the level list, a short program and a turtle finding its way through a maze." data-caption="Screenshot: Turtle Quest"><img class="shot-window" src="../../assets/img/turtle.webp" srcset="../../assets/img/turtle-half.webp 504w, ../../assets/img/turtle.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1008" height="654" style="--native:1008" loading="lazy" decoding="async" alt="Turtle Quest on Onyx: the level list, a short program and a turtle finding its way through a maze."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/turtle.png" width="40" height="40" alt="" loading="lazy"><h3>Turtle Quest</h3></div>
+      <p>Learn to program by guiding a turtle.</p>
+      <ul class="points"><li>48 levels, from first steps to fractals</li><li>Step by step, with a hint and a lesson along the way</li><li>In English or French</li></ul>
+      </div>
+      </article>
+      <article class="app-feature reveal" id="app-circuits">
+      <a class="stage stage--bleed app-stage" data-wash="blueberry" href="../../assets/img/circuits.webp" data-shot data-w="1008" data-h="652" data-alt="Circuits on Onyx: a full adder built from logic gates, live wires lit in green, and the truth table." data-caption="Screenshot: Circuits"><img class="shot-window" src="../../assets/img/circuits.webp" srcset="../../assets/img/circuits-half.webp 504w, ../../assets/img/circuits.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1400px) 40vw, 560px" width="1008" height="652" style="--native:1008" loading="lazy" decoding="async" alt="Circuits on Onyx: a full adder built from logic gates, live wires lit in green, and the truth table."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/circuits.png" width="40" height="40" alt="" loading="lazy"><h3>Circuits</h3></div>
+      <p>A puzzle game about how a computer computes.</p>
+      <ul class="points"><li>20 levels, from a single wire to an adder</li><li>The circuit comes alive as you build</li><li>In English and French</li></ul>
+      </div>
+      </article>
+      <article class="app-feature app-feature--wide reveal" id="app-qbstudio">
+      <a class="stage stage--bleed app-stage" data-wash="lagoon" href="../../assets/img/qbstudio.webp" data-shot data-w="1008" data-h="732" data-alt="QBStudio on Onyx: a &quot;Temperature converter&quot; window being designed, with the toolbox, the code and the button’s properties." data-caption="Screenshot: QBStudio"><img class="shot-window" src="../../assets/img/qbstudio.webp" srcset="../../assets/img/qbstudio-half.webp 504w, ../../assets/img/qbstudio.webp 1008w" sizes="(max-width: 600px) 150vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1008px" width="1008" height="732" style="--native:1008" loading="lazy" decoding="async" alt="QBStudio on Onyx: a &quot;Temperature converter&quot; window being designed, with the toolbox, the code and the button’s properties."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/qbstudio.png" width="40" height="40" alt="" loading="lazy"><h3>QBStudio</h3></div>
+      <p>Make your own windowed apps, in BASIC.</p>
+      <ul class="points"><li>Draw the window with the mouse</li><li>Write only what each button does</li><li>One click and it joins your apps</li></ul>
+      </div>
+      </article>
+    </div>
+    <div class="card-grid">
+      <article class="app-card reveal" id="app-qbasic">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/qbasic.png" width="80" height="80" alt="" loading="lazy">
+        <h3>QBasic</h3>
+        <p>Old-school BASIC, with its blue editor and examples to run.</p>
+      </article>
+      <article class="app-card reveal" id="app-gpiolab">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/gpiolab.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/gpiolab.webp" data-shot data-w="1128" data-h="672" data-alt="GPIO Lab on Onyx: the Raspberry Pi’s 40 pins, one pin’s settings and a timing chart of four signals." data-caption="Screenshot: GPIO Lab">GPIO Lab</a></h3>
+        <p>The Raspberry Pi’s 40 pins on screen: try an LED or a button, even with nothing plugged in.</p>
+      </article>
+      <article class="app-card reveal" id="app-courier">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/courier.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/courier.webp" data-shot data-w="972" data-h="654" data-alt="Courier on Onyx: a POST request with its JSON body and the pretty-printed &quot;201 Created&quot; response." data-caption="Screenshot: Courier">Courier</a></h3>
+        <p>For web developers: send requests and inspect the answers.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section group" id="system" data-group="system" aria-labelledby="h-system">
+  <div class="container container--wide">
+    <div class="group-head reveal">
+      <h2 id="h-system">The system</h2>
+      <p class="t-lead">The tools that keep the house in order.</p>
+    </div>
+    <div class="featured-grid">
+      <article class="app-feature app-feature--wide reveal" id="app-fileviewer">
+      <a class="stage stage--bleed app-stage stage--cut-r" data-wash="mint" href="../../assets/img/fileviewer-crop.webp" data-shot data-w="650" data-h="572" data-alt="The Onyx File Viewer: the sidebar and the folders in columns." data-caption="Screenshot: File Viewer"><img class="shot-window" src="../../assets/img/fileviewer-crop.webp" width="650" height="572" style="--native:650" loading="lazy" decoding="async" alt="The Onyx File Viewer: the sidebar and the folders in columns."></a>
+      <div class="app-feature-body">
+      <div class="app-head"><img class="app-icon" src="../../assets/icons/fileviewer.png" width="40" height="40" alt="" loading="lazy"><h3>File Viewer</h3></div>
+      <p>Your folders in columns, with a preview.</p>
+      <ul class="points"><li>Drag and drop, copy, cut, paste</li><li>A Trash you can restore from</li><li>USB sticks and favourite folders in the sidebar</li></ul>
+      </div>
+      </article>
+    </div>
+    <div class="card-grid">
+      <article class="app-card reveal" id="app-control">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/control.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/control.webp" data-shot data-w="708" data-h="548" data-alt="The Onyx Control Panel: twelve settings, from the theme to the printers, each with its icon." data-caption="Screenshot: Control Panel">Control Panel</a></h3>
+        <p>Theme, display, sound, keyboard, Wi-Fi, printers: every setting.</p>
+      </article>
+      <article class="app-card reveal" id="app-pkgman">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/pkgman.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/pkgman-installed.webp" data-shot data-w="708" data-h="548" data-alt="The Onyx Package Manager: the installed apps, each with its update choice — manual, automatic or never." data-caption="Screenshot: Package Manager">Package Manager</a></h3>
+        <p>Install, update and remove apps in one click.</p>
+      </article>
+      <article class="app-card reveal" id="app-disks">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/disks.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/disks.webp" data-shot data-w="648" data-h="502" data-alt="Disks on Onyx: the volumes of the card and the USB stick, the free space, and the Eject and Format buttons." data-caption="Screenshot: Disks">Disks</a></h3>
+        <p>Your cards and USB sticks: free space, eject, format.</p>
+      </article>
+      <article class="app-card reveal" id="app-taskman">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/taskman.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/taskman.webp" data-shot data-w="568" data-h="492" data-alt="The Onyx Task Manager: the list of what is running, the memory each one uses and a button to end a task." data-caption="Screenshot: Task Manager">Task Manager</a></h3>
+        <p>What’s running, the memory in use, and a way to stop an app that’s stuck.</p>
+      </article>
+      <article class="app-card reveal" id="app-terminal">
+        <img class="app-icon app-icon--2x" src="../../assets/icons/terminal.png" width="80" height="80" alt="" loading="lazy">
+        <h3><a class="card-link" href="../../assets/img/terminal.webp" data-shot data-w="628" data-h="452" data-alt="The Onyx Terminal: three tabs and a few typed commands, white on dark teal." data-caption="Screenshot: Terminal">Terminal</a></h3>
+        <p>The command line, for those who like it.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<section class="section section--band cta">
+  <div class="container center">
+    <h2 class="reveal">And more keep coming.</h2>
+    <p class="t-lead reveal" data-delay="1">The Package Manager offers new apps as soon as they are published.</p>
+    <div class="actions reveal" data-delay="2"><a class="btn btn--primary" href="../../en/get/">Get Onyx</a></div>
+  </div>
+</section>
+</main>
+<footer class="site-footer">
+  <div class="container container--wide">
+    <div class="footer-top">
+      <a class="brand" href="../../en/" aria-label="Onyx, home"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 13 28.5 9v5.5L16 19Z" style="fill:var(--accent)"/><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/><path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/></g></svg> Onyx</a>
+      <nav class="footer-col" aria-label="Onyx">
+        <p class="footer-h">Onyx</p>
+        <ul class="footer-links"><li><a href="../../en/">Home</a></li><li><a href="../../en/apps/">Apps</a></li><li><a href="../../en/desktop/">Desktop</a></li><li><a href="../../en/get/">Get Onyx</a></li></ul>
+      </nav>
+      <div class="footer-col">
+        <p class="footer-h">Language</p>
+        <ul class="footer-links"><li><a href="../../fr/applications/" lang="fr" hreflang="fr">Français</a></li></ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <p>Onyx is designed by Stephan Wegener, working with Claude, Anthropic’s AI.</p>
+      <p>Raspberry Pi is a trademark of Raspberry Pi Ltd. Other names mentioned belong to their respective owners. Onyx is an independent project.</p>
+      <p>© 2026 Stephan Wegener</p>
+    </div>
+  </div>
+</footer>
+<dialog class="shot-dialog" aria-labelledby="shot-caption">
+  <form method="dialog"><button class="dialog-close" type="submit" aria-label="Close"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></form>
+  <figure><img class="shot-window" alt="" width="1008" height="654"><figcaption class="t-small" id="shot-caption"></figcaption></figure>
+</dialog>
+<script src="../../assets/js/site.js" onerror="document.documentElement.classList.remove('js')"></script>
+</body>
+</html>

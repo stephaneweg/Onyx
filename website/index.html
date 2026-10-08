@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onyx</title>
+<meta name="description" content="Onyx is a homemade operating system for the Raspberry Pi 4: a polished desktop, an office suite, a web browser and more than 50 apps.">
+<link rel="alternate" hreflang="fr" href="fr/">
+<link rel="alternate" hreflang="en" href="en/">
+<link rel="alternate" hreflang="x-default" href="en/">
+<meta name="theme-color" content="#0B0B0B">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/site.css">
+<script>
+/* To the visitor's language: French if the browser says so, English otherwise. Without script, the two links below. */
+(function () {
+  var l = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+  location.replace((/^fr/i.test(l) ? 'fr/' : 'en/'));
+})();
+</script>
+</head>
+<body class="page-root">
+<main class="root-main">
+  <h1 class="brand root-brand"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 13 28.5 9v5.5L16 19Z" style="fill:var(--accent)"/><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/><path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/></g></svg> Onyx</h1>
+  <p class="t-lead" lang="fr">Un ordinateur complet. Sur un Raspberry Pi 4.</p>
+  <p class="t-lead">A complete computer. On a Raspberry Pi 4.</p>
+  <p class="actions">
+    <a class="btn btn--ghost" href="fr/" lang="fr" hreflang="fr">Français</a>
+    <a class="btn btn--ghost" href="en/" hreflang="en">English</a>
+  </p>
+</main>
+</body>
+</html>

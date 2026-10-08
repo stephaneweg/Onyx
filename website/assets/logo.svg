@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none" role="img" aria-label="Onyx">
+  <!-- The Onyx gem: the geometry of hardware/case/make_case.py (GEM_HEX, GEM_EDGES, GEM_ACCENT).
+       For a dark ground: light lines, the green facet. Inlined in a page, the lines use currentColor. -->
+  <path d="M16 13 28.5 9v5.5L16 19Z" fill="#3EDB8F"/>
+  <g stroke="#F4F4F2" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/>
+    <path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/>
+  </g>
+</svg>

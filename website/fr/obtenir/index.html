@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Obtenir Onyx</title>
+<meta name="description" content="Un Raspberry Pi 4, une carte microSD, quatre étapes : installez Onyx chez vous.">
+<link rel="alternate" hreflang="fr" href="../../fr/obtenir/">
+<link rel="alternate" hreflang="en" href="../../en/get/">
+<link rel="alternate" hreflang="x-default" href="../../en/get/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Onyx">
+<meta property="og:title" content="Obtenir Onyx">
+<meta property="og:description" content="Un Raspberry Pi 4, une carte microSD, quatre étapes : installez Onyx chez vous.">
+<meta property="og:locale" content="fr_FR">
+<meta name="theme-color" content="#0B0B0B">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/tokens.css">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<script>
+/* Before the first paint: dark unless the visitor chose light (no flash). ?theme=light forces it (a link, a test). */
+(function (d) {
+  d.classList.add('js');
+  /* If site.js never runs to its end (not loaded, an error), nothing may stay hidden: back to the page without script. */
+  window.addEventListener('load', function () { if (!window.onyxReady) d.classList.remove('js'); });
+  try { if (/[?&]theme=light/.test(location.search) || localStorage.getItem('onyx-theme') === 'light') d.setAttribute('data-theme', 'light'); } catch (e) {}
+})(document.documentElement);
+</script>
+</head>
+<body class="page-get">
+<a class="skip" href="#main">Aller au contenu</a>
+<header class="site-header">
+  <div class="container container--wide bar">
+    <a class="brand" href="../../fr/" aria-label="Onyx, accueil"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 13 28.5 9v5.5L16 19Z" style="fill:var(--accent)"/><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/><path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/></g></svg> Onyx</a>
+    <nav class="nav" id="nav" aria-label="Navigation principale">
+      <a href="../../fr/applications/">Applications</a>
+      <a href="../../fr/bureau/">Le bureau</a>
+      <a class="nav-cta" href="../../fr/obtenir/" aria-current="page">Obtenir Onyx</a>
+    </nav>
+    <div class="header-end">
+      <div class="lang" role="group" aria-label="Langue"><a href="../../fr/obtenir/" lang="fr" hreflang="fr" aria-current="true">FR</a><a href="../../en/get/" lang="en" hreflang="en">EN</a></div>
+      <button class="theme-btn" type="button" aria-label="Mode clair" aria-pressed="false">
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M5.3 18.7l1.5-1.5M17.2 6.8l1.5-1.5"/></svg>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.2A8 8 0 0 1 9.8 4a8 8 0 1 0 10.2 10.2Z"/></svg>
+      </button>
+      <a class="btn btn--ghost btn--small header-cta" href="../../fr/obtenir/" aria-current="page">Obtenir Onyx</a>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav"><span></span></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+<section class="hero hero--sub">
+  <div class="container center">
+    <h1 class="reveal">Onyx chez vous, en quatre étapes.</h1>
+    <p class="t-lead reveal" data-delay="1">Il vous faut un Raspberry Pi 4 et une carte microSD. Le reste, Onyx s’en occupe.</p>
+    <div class="actions reveal" data-delay="2"><button class="btn btn--soon" type="button" disabled>Télécharger Onyx</button></div>
+    <p class="t-small soon-note reveal" data-delay="2">Bientôt disponible</p>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="h-need">
+  <div class="container">
+    <h2 class="reveal" id="h-need">Ce qu’il vous faut</h2>
+    <ul class="need-grid">
+      <li class="need-card reveal"><svg class="line-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="7.5" y="9" width="5" height="5" rx=".8"/><path d="M16 9h2M16 12h2M16 15h2M6 5V3M10 5V3M14 5V3M18 5V3"/></svg><span>Un Raspberry Pi 4</span></li>
+      <li class="need-card reveal"><svg class="line-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M9.5 6.5v3M12 6.5v3M14.5 8v1.5"/></svg><span>Une carte mémoire microSD</span></li>
+      <li class="need-card reveal"><svg class="line-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M9 20h6M12 16v4"/></svg><span>Un écran HDMI et son câble micro‑HDMI</span></li>
+      <li class="need-card reveal"><svg class="line-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="7" width="19" height="10" rx="2"/><path d="M6 10.5h.01M9 10.5h.01M12 10.5h.01M15 10.5h.01M18 10.5h.01M7.5 13.8h9"/></svg><span>Un clavier et une souris USB</span></li>
+      <li class="need-card reveal"><svg class="line-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.8 9.2a13.5 13.5 0 0 1 18.4 0M5.9 12.6a9 9 0 0 1 12.2 0M9 16a4.5 4.5 0 0 1 6 0"/><path d="M12 19.2h.01"/></svg><span>Une connexion Wi-Fi, pour le web et les mises à jour</span></li>
+    </ul>
+    <p class="need-note reveal">En option : une manette USB pour les jeux, un casque USB, une imprimante réseau.</p>
+    <p class="t-small reveal">La carte doit être au format FAT32. Le Raspberry Pi 5 n’est pas encore pris en charge.</p>
+  </div>
+</section>
+
+<section class="section section--alt" aria-labelledby="h-steps">
+  <div class="container container--wide">
+    <h2 class="visually-hidden" id="h-steps">Les quatre étapes</h2>
+    <ol class="steps">
+      <li class="step reveal"><span class="step-n" aria-hidden="true">1</span><h3>Préparez la carte</h3><p>Téléchargez Onyx et copiez tout son contenu sur la carte microSD. Aucun logiciel d’installation n’est nécessaire : c’est une simple copie de fichiers.</p></li>
+      <li class="step reveal"><span class="step-n" aria-hidden="true">2</span><h3>Branchez et allumez</h3><p>Glissez la carte dans le Raspberry Pi, branchez l’écran, le clavier et la souris, puis l’alimentation. Onyx démarre.</p></li>
+      <li class="step reveal"><span class="step-n" aria-hidden="true">3</span><h3>Laissez-vous guider</h3><p>Au premier démarrage, l’assistant vous demande votre langue, votre clavier, votre réseau Wi-Fi, la taille de l’écran et vos couleurs. Tout se change plus tard dans le Panneau de configuration.</p></li>
+      <li class="step reveal"><span class="step-n" aria-hidden="true">4</span><h3>Complétez et restez à jour</h3><p>Ouvrez le Gestionnaire de paquets pour installer Jet Browser et les autres applications proposées. Ensuite, Onyx vérifie les mises à jour chaque jour et vous prévient.</p></li>
+    </ol>
+    <figure class="showcase-media reveal">
+      <div class="shot-screen" style="--native:1024;--fx:0.5;--fy:0.4"><img src="../../assets/img/setup-0.webp" srcset="../../assets/img/setup-0-half.webp 512w, ../../assets/img/setup-0.webp 1024w" sizes="(max-width: 1100px) 92vw, 1024px" width="1024" height="768" style="--native:1024" loading="lazy" decoding="async" alt="L’écran d’accueil de l’assistant d’Onyx : le choix de la langue et les quatre réglages à venir."></div>
+    </figure>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="h-faq">
+  <div class="container faq">
+    <h2 class="reveal" id="h-faq">Bon à savoir</h2>
+    <div class="faq-list reveal">
+      <details><summary>Faut-il effacer ma carte ?</summary><p>Utilisez une carte dédiée à Onyx : c’est elle qui fait démarrer le Raspberry Pi. Vos fichiers personnels peuvent aussi vivre sur une clé USB.</p></details>
+      <details><summary>Puis-je revenir en arrière ?</summary><p>Oui. Onyx vit entièrement sur sa carte : remettez votre carte habituelle dans le Raspberry Pi et rien n’a changé.</p></details>
+      <details><summary>Mes fichiers sont-ils lisibles ailleurs ?</summary><p>Oui. La carte et les clés USB utilisent les formats courants de Windows et des appareils photo, et vos documents sont enregistrés en .docx, .xlsx, .pptx, PDF, PNG ou JPEG.</p></details>
+    </div>
+  </div>
+</section>
+
+<p class="t-small shots-note container">Captures d’écran en anglais.</p>
+</main>
+<footer class="site-footer">
+  <div class="container container--wide">
+    <div class="footer-top">
+      <a class="brand" href="../../fr/" aria-label="Onyx, accueil"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 13 28.5 9v5.5L16 19Z" style="fill:var(--accent)"/><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/><path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/></g></svg> Onyx</a>
+      <nav class="footer-col" aria-label="Onyx">
+        <p class="footer-h">Onyx</p>
+        <ul class="footer-links"><li><a href="../../fr/">Accueil</a></li><li><a href="../../fr/applications/">Applications</a></li><li><a href="../../fr/bureau/">Le bureau</a></li><li><a href="../../fr/obtenir/">Obtenir Onyx</a></li></ul>
+      </nav>
+      <div class="footer-col">
+        <p class="footer-h">Langue</p>
+        <ul class="footer-links"><li><a href="../../en/get/" lang="en" hreflang="en">English</a></li></ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <p>Onyx est conçu par Stephan Wegener, avec Claude, l’IA d’Anthropic.</p>
+      <p>Raspberry Pi est une marque de Raspberry Pi Ltd. Les autres marques citées appartiennent à leurs propriétaires respectifs. Onyx est un projet indépendant.</p>
+      <p>© 2026 Stephan Wegener</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../../assets/js/site.js" onerror="document.documentElement.classList.remove('js')"></script>
+</body>
+</html>

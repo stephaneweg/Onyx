@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Favicon: the gem on a black tile, heavier lines so it holds at 16 px. -->
+  <rect width="32" height="32" rx="7" fill="#0A0A0A"/>
+  <g transform="translate(3.2 3.2) scale(.8)">
+    <path d="M16 13 28.5 9v5.5L16 19Z" fill="#3EDB8F"/>
+    <g fill="none" stroke="#F4F4F2" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/>
+      <path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/>
+    </g>
+  </g>
+</svg>
