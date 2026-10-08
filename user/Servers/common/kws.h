@@ -1,6 +1,6 @@
 //
-// kws.h -- Elegant's door to the kernel: the graphics server's mechanisms (kapi v89, kern/wsrv.h),
-// each one a kapi_ws_ctl operation (kern/kapi_abi.h KAPI_WS_*).
+// kws.h -- a graphics server's door to the kernel (Elegant's, PocketUI's): the graphics server's mechanisms
+// (kapi v89, kern/wsrv.h), each one a kapi_ws_ctl operation (kern/kapi_abi.h KAPI_WS_*).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated

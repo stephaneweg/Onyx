@@ -849,9 +849,9 @@ the static archives; the package declares `needs = uikit` (and `ft`). Jet's host
 compile uikit statically (`user/Kits/uikit/*.cpp`: the same sources — `uikit/globals.cpp` then simply defines
 the variables).
 
-**A library under another name: the alias (kapi v97).** Each graphics server will have its own UIKit with
+**A library under another name: the alias (kapi v97).** Each graphics server has its own UIKit with
 the same exports (Elegant `SD:/lib/uikit.so`; PocketUI, the server of the pocket and console modes,
-`SD:/lib/pocket/uikit.so`: [`POCKETUI-TECH-STUDY.md`](POCKETUI-TECH-STUDY.md)); a program never chooses — its
+`SD:/lib/pocket/uikit.so`: §5.10.2, [`POCKETUI-TECH-STUDY.md`](POCKETUI-TECH-STUDY.md)); a program never chooses — its
 bind opens `"uikit"`. The server, and only it, calls `kapi_lib_open_as ("SD:/lib/pocket/uikit.so",
 "SD:/lib/uikit.so", version, &err)` after `KAPI_WS_REGISTER` and before `KAPI_WS_DISPLAY`: from then on every
 `kapi_lib_open ("uikit")` of any process gets the pocket library (the same image, the same address in every
@@ -1244,7 +1244,7 @@ window driver of `SD:/lib/uikit.so`; docs/POCKETUI-TECH-STUDY.md §4–5.)*
 A program's windows and what it asks of the graphics server are **UIKit's**, as plain C functions —
 `extern "C"`, entries of `SD:/lib/uikit.so` like the rest of UIKit (`uikit.abi`). Every graphics server has
 its own UIKit loaded under the name `SD:/lib/uikit.so` (Elegant's, the desktop's; PocketUI's for the pocket
-and console modes, to come: `kapi_lib_open_as`, §5.6), and **each UIKit's port is the only code that speaks
+and console modes, `SD:/lib/pocket/uikit.so`: `kapi_lib_open_as`, §5.6, §5.10.2), and **each UIKit's port is the only code that speaks
 its server's protocol** — so one binary runs on every server. They were AppKit's `kapi_*` window calls until
 2026-10-08; the renaming: `kapi_create_window` → `uk_win_create`, every other `kapi_<name>` →
 `uk_win_<name>` without a doubled `win_`, and:
@@ -1275,17 +1275,86 @@ The flags (`WIN_FLAG_*`), the events (`GUI_EVENT_*`, `GUI_PTR_*`, `KEY_*`, `MENU
 - **The structure of UIKit**: the common sources (every widget, the canvas, the window API's entries
   `win.cpp`) and **the port** (`user/Kits/uikit/port/`, internal: `namespace uikit::port`, not in the table —
   libgen's `--exclude '^_ZN5uikit4port'`): `port/port.h` the interface (one function per `uk_win_*`),
-  `port/port_desktop.cpp` the desktop's — the window driver for Elegant (the requests through
-  `kapi_ws_ctl (KAPI_WS_CALL, ...)`, `KAPI_WS_KICK` at a present, the per-program window state and **the replay**
-  when Elegant is started again: it was `appkit_ws.inc`), with **`port/elegant.h`, the protocol** (private to
-  the desktop port and Elegant; `wstest` its test). `user/Kits/uikit/port.cpp` compiles the port chosen
-  (`UK_PORT_POCKET`: PocketUI's, phase P3; else the desktop's), so every build that compiles
-  `user/Kits/uikit/*.cpp` (the PC's simulators, the tests' hosts, Koton for Windows) has it. **On a PC** the
-  desktop port relays each call to the stand-in kernel's window manager (`kern/kapi_abi.h`'s *NOT ON ONYX*
-  entries, `tools/tests/desktop_sim/fakekapi.cpp`) — what AppKit's `KAPI_HOST` bodies did.
+  `port/port_desktop.cpp` the desktop's — the window driver for Elegant, with **`port/elegant.h`, the
+  protocol** (private to the desktop port and Elegant; `wstest` its test) — and `port/port_pocket.cpp`
+  PocketUI's (`port/pocket.h`, §5.10.2). Both include **`port/client.inc`**, the client of a server that
+  speaks Elegant's operations (the requests through `kapi_ws_ctl (KAPI_WS_CALL, ...)`, `KAPI_WS_KICK` at a
+  present, the per-program window state and **the replay** when the server is started again: it was
+  `appkit_ws.inc`), and on a PC **`port/host.inc`**. `user/Kits/uikit/port.cpp` compiles the port chosen
+  (`UK_PORT_POCKET`: PocketUI's; else the desktop's), so every build that compiles `user/Kits/uikit/*.cpp`
+  (the PC's simulators, the tests' hosts, Koton for Windows) has it. **On a PC** the port relays each call to
+  the stand-in kernel's window manager (`kern/kapi_abi.h`'s *NOT ON ONYX* entries,
+  `tools/tests/desktop_sim/fakekapi.cpp`) — what AppKit's `KAPI_HOST` bodies did; with **`UK_PORT_WIRE`** it
+  speaks to a graphics server built for the PC instead (`tools/tests/server_sim`, §5.10.3).
 - **Adding a window call**: its declaration in `uikit/win.h`, its entry in `win.cpp`, its port function in
-  `port/port.h` and `port/port_desktop.cpp` (the operation in `port/elegant.h`, a new number, and in Elegant's
-  `ops.cpp`); the build appends it to `uikit.abi`. Then `python tools/docgen/kitdocs.py`.
+  `port/port.h` and in **both** ports (`port/client.inc` when it is an operation both servers share: its number
+  in `port/elegant.h`, its decoding in `user/Servers/common/ops.cpp`; PocketUI's meaning, if another, in its
+  policy `user/Servers/pocketui/wm.cpp`); the desktop's build appends it to `uikit.abi`, the pocket one is
+  `--frozen` (§5.10.2). Then `python tools/docgen/kitdocs.py`.
+
+### 5.10.2. One UIKit per server: the pocket UIKit, `abi_same.py`
+
+*(docs/POCKETUI-TECH-STUDY.md §5; phase P3, 2026-10-08.)* Each graphics server has its UIKit with **the same
+export table**: a program is built once (against the desktop's `lib/uikit.imp.a`, whose stubs call the entries
+**by slot**) and runs on both.
+
+- **The build** (`user/Makefile`): the common objects `lib/uikit/*.o` are compiled once; `lib/uikit.so` links
+  them with `lib/uikit/port.o` (the desktop port), **`lib/pocket/uikit.so`** with `lib/pocket/port.o`
+  (`Kits/uikit/port.cpp` compiled with `-DUK_PORT_POCKET`). The pocket table (`lib/pocket/uikit_table.S`) is
+  generated by libgen against the **same `Kits/uikit/uikit.abi`** with **`--frozen`** (a function new to one
+  library is an error: an entry enters the `.abi` through the desktop's build first) and no stubs nor bind of
+  its own. `make stage` copies it to `SD:/lib/pocket/uikit.so`; the package **`uikit`** carries both
+  (`tools/pkg/packages.ini`): they cannot drift apart on a card.
+- **What may differ**: only the port's `.cpp` (`namespace uikit::port`, excluded from the table). The headers
+  are the ABI (`uikit/abi.h`: the table, the classes' layout, the virtual slots, the inlines, the program's
+  globals): one set for both, byte for byte. The pocket port today = the desktop's client (`port/client.inc`)
+  + PocketUI's hello (`PK_OP_HELLO`, its first request: a server that does not answer it — Elegant, for a
+  daemon of the other session that kept this UIKit — gets no window, the reason logged once) +
+  `uk_win_server`'s answer (`PK_OP_SERVER`: mode, work area under the status band, size class) + the shell's
+  calls (`uk_shell_*` → `PK_OP_SHELL`..`PK_OP_DIM`). The frames need nothing: PocketUI says which windows have
+  one (insets 0 for a filled window; a card keeps UIKit's Milk title).
+- **The identity test**: **`tools/libgen/abi_same.py lib/uikit.so lib/pocket/uikit.so --tables
+  lib/uikit_table.S lib/pocket/uikit_table.S`** reads both export tables from the ELF files (`onyx_lib_table`:
+  version, size, then each slot's pointer through the dynamic relocations, named by the symbol table) and
+  requires the same version and the same symbol at every slot, and the two generated tables line for line.
+  `make libs` runs it (`lib/pocket/abi_same.stamp`: the build fails on a difference);
+  `sh tools/tests/shlib/abi_same_test.sh` runs it and checks that it tells two different tables apart.
+
+### 5.10.3. PocketUI, the pocket and console modes' server (`SD:/bin/pocketui`)
+
+*(`user/Servers/pocketui/`; docs/02 §10 "Two servers, one common code"; docs/POCKETUI-TECH-STUDY.md §7.)*
+The kernel starts it for `shell = pocket` / `console` (`SD:/etc/system.ini`):
+`pocketui --serve [--restart] --mode pocket|console`. It is built from **`user/Servers/common/`** — the code
+it shares with Elegant (`serve.cpp` the loop, `route.cpp` the routing, `core.cpp` + `wm/` the window store and
+compositor, `ops.cpp` the requests; `common.mk`) — and its own part: **`main.cpp`** (the arguments; in the
+policy's `registered` hook, between `KAPI_WS_REGISTER` and `KAPI_WS_DISPLAY`,
+`kapi_lib_open_as ("SD:/lib/pocket/uikit.so", "SD:/lib/uikit.so", 1, &err)`, the table kept while it lives),
+**`wm.cpp`** (the policy, `common/policy.h`), **`band.cpp`** (the status band). Its protocol:
+**`user/Kits/uikit/port/pocket.h`** (private to it and the pocket port) — Elegant's operations by their numbers
+and structures (`port/elegant.h` included) with PocketUI's meanings, and its own from `0x100`.
+
+| Policy | What it does |
+|---|---|
+| The work area | the screen less the **status band** (pocket: 24 px, PocketUI's own topmost system window — the Onyx gem, the app in front, the time; the kernel's bitmap font) — the whole screen in console |
+| A program's window | **card** (framed, centred in the work area) when it fits with its frame; else **filled** (`WIN_FLAG_BORDERLESS` forced, at the work area's top left) |
+| `EL_OP_RESIZABLE` on | the window is **filled**: its frame dropped (`CWindow::DropChrome`), `GUI_EVENT_WINRESIZE` to the work area's size (UIKit's `Root::frameResize`); a program that ignores it (its own pointer handler: the Terminal, Media, PDF, Screenshot) gets `GUI_EVENT_WINCTL` maximise once 0.25 s later |
+| Popups | a borderless or topmost window stays where it asked (placed by PocketUI when it asked none), on the screen |
+| Refused | a backmost window, a topmost one on the top or bottom edge (the desktop's menu bar, dock: the autostart still runs them until the session files, P4) |
+| Moves | `EL_OP_MOVE`, `EL_OP_WIN_MOVE` ignored for a filled window |
+| Workspaces | one (`EL_OP_DESK`: count 1; `EL_OP_WIN_DESK`: 0) |
+| One app in front | the program of the topmost window; the others' windows **set aside** (`CWindow::SetAside`: hidden as off-desk), so a card stands on the wallpaper |
+| Keys | **Alt+Tab**: the program at the back to the front; **Alt+Shift+Tab**: the one just behind the front one |
+| Not yet | the shell programs (`pocketshell`, `consolehome`: P5, P9 — `PK_OP_SHELL`.. answer `-KAPI_ENOSYS`), the viewport and the scale (P6, P10), the dim behind a card, the session files (P4) |
+
+**On the PC** (`tools/tests/server_sim/run.sh [out]`): the servers' code built for the host with a real app
+as their client in one process (`server_sim.cpp` stands for the kernel's side: `kapi_ws_ctl`'s operations, the
+shared buffers mapped twice, the events) — the app built against the **wire** port (`-DUK_PORT_WIRE`, with
+`-DUK_PORT_POCKET` for PocketUI's: the port of `SD:/lib/pocket/uikit.so`, not the PC relay), its script's
+pointer and keys in screen coordinates, `dump` the composed screen, `expect` the policy's checks (`kind`,
+`frame`, `area`, `client`, `pos`, `front`, `aside`), `other` another program's window. It runs the Terminal and
+the Calculator under PocketUI at 800 × 480 (and 640 × 480, console), then **Elegant before and after** the
+extraction of `user/Servers/common/` on the same scripts — the same pixels required. Its pictures of PocketUI
+are in `docs/compact-shell/real/` (copied from its output folder by hand when they change).
 
 ## 6. Writing a graphical application
 
@@ -4343,7 +4412,7 @@ log lines.
 > `((const struct TKApiTable *)KAPI_TABLE_VA)->version` to find out what is available.
 
 If you add a new **GUI event** or a **window flag**, keep the values
-synchronized between `user/Servers/elegant/wm/kern/gui/window.h` (Elegant's window manager) and the `#define`s in `user/Kits/appkit/appkit.h` (commented
+synchronized between `user/Servers/common/wm/kern/gui/window.h` (the graphics servers' window manager) and the `#define`s in `user/Kits/appkit/appkit.h` (commented
 "must match").
 
 ## 11. Coding conventions

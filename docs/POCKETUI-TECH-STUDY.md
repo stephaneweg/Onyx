@@ -1,5 +1,11 @@
 # PocketUI: the desktop, pocket and console modes — a technical study
 
+> **Where it stands (2026-10-08):** phases **P1** (the kernel: kapi v97), **P2** (the window API in UIKit) and **P3**
+> (`user/Servers/common/`, PocketUI's skeleton `user/Servers/pocketui/`, its protocol `user/Kits/uikit/port/pocket.h` —
+> beside `elegant.h` rather than in the server's folder —, the pocket UIKit `lib/pocket/uikit.so`,
+> `tools/libgen/abi_same.py`, the PC test `tools/tests/server_sim`) are built; not yet tried on the Pi. `docs/HANDOFF.md`
+> says what was done and the Pi's checklists; the text below is the study as it was written.
+
 *Status (2026-10-08): **a technical analysis only, nothing built.** No code changed. It works out the
 user's decisions of 2026-10-08 on the design study `docs/COMPACT-SHELL-STUDY.md` (whose §11.1–11.2, "one
 Elegant with a policy per mode", they supersede): **PocketUI**, a graphics server of its own beside

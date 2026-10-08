@@ -8,8 +8,10 @@
 // window API's entries (uikit/win.h, uk_win_*: win.cpp) are common and thin: each one calls the function of the
 // same name here. The ports:
 //   port/port_desktop.cpp  Elegant, the desktop (its protocol: port/elegant.h) -- lib/uikit.so
-//   (port/port_pocket.cpp  PocketUI, pocket and console: phase P3)
-// uikit/port.cpp compiles the one chosen (UK_PORT_POCKET: the pocket port; else the desktop's).
+//   port/port_pocket.cpp   PocketUI, pocket and console (its protocol: port/pocket.h) -- lib/pocket/uikit.so
+// Both share the client of a server that speaks Elegant's operations (port/client.inc) and, on a PC, the relay to
+// the stand-in kernel (port/host.inc). uikit/port.cpp compiles the one chosen (UK_PORT_POCKET: the pocket port;
+// else the desktop's).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated

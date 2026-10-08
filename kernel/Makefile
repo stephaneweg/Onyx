@@ -154,6 +154,13 @@ stage: sizecheck apps $(BASC)
 		[ -e "$$so" ] || continue; \
 		cp $$so $(SDCARD)/lib/; \
 	done
+	@# PocketUI's UIKit (../user/lib/pocket/uikit.so -> SD:/lib/pocket/: the pocket and console modes' server loads it
+	@# under the name SD:/lib/uikit.so)
+	@mkdir -p $(SDCARD)/lib/pocket
+	@for so in ../user/lib/pocket/*.so; do \
+		[ -e "$$so" ] || continue; \
+		cp $$so $(SDCARD)/lib/pocket/; \
+	done
 	@# Koton's plugins (../user/Apps/kp_<name>/kp_<name>.elf + plugin.json): SD:/koton/plugins/<name>/,
 	@# out of SD:/apps (not an app of the dock)
 	@for d in ../user/Apps/kp_*; do \
@@ -167,6 +174,6 @@ stage: sizecheck apps $(BASC)
 		mkdir -p $(SDCARD)/apps/$$name.app; rm -f $(SDCARD)/apps/$$name.app/main; \
 		$(BASC) $$src $(SDCARD)/apps/$$name.app/main.bax || exit 1; \
 	done
-	@echo "  STAGE $(TARGET).img + apps/*.app/main + bin/* + lib/*.so + koton/plugins/* -> $(SDCARD)/"
+	@echo "  STAGE $(TARGET).img + apps/*.app/main + bin/* + lib/*.so + lib/pocket/*.so + koton/plugins/* -> $(SDCARD)/"
 
 -include $(DEPS)

@@ -121,6 +121,13 @@
 #define SIM_BORDER	4
 #endif
 
+// A graphics server built for the PC, when linked in (tools/tests/server_sim: Elegant's or PocketUI's code with
+// UIKit's wire port, UK_PORT_WIRE): the kernel's kapi_ws_ctl is its (the programs' requests, the server's
+// mechanisms), it runs a turn at each step of the script, and it takes the steps it knows (the pointer and the
+// keys in SCREEN coordinates, "dump" of the composed screen) -- unset, nothing changes.
+extern "C" long sim_ws_ctl (int op, long a0, long a1, long a2) __attribute__ ((weak));
+extern "C" void sim_server_turn (void) __attribute__ ((weak));
+extern "C" int sim_server_step (const char *step) __attribute__ ((weak));
 /* the host program's last words before a SIM exit (the NetSurf bench: NS_PROF's samples) */
 extern "C" void onyx_host_exit_hook (void) __attribute__ ((weak));
 
@@ -702,6 +709,7 @@ static void step (void)
 {
 	if (g_step >= g_script.size ()) { fprintf (stderr, "sim: end of the script\n"); exit (0); }
 	std::string st = g_script[g_step++];
+	if (sim_server_step && sim_server_step (st.c_str ())) return;	// (the server's: tools/tests/server_sim)
 	char cmd[32] = "", arg[256] = ""; int a = 0, b = 0, c = 0;
 	sscanf (st.c_str (), "%31s", cmd);
 	int sel = g_curWin;					// (v94) the script's window: its events, then the app's selection back
@@ -793,6 +801,7 @@ static void h_msleep (unsigned ms)
 	if (!on_main ()) { usleep (ms * 1000); return; }	// (a thread's: the script is the main thread's)
 	g_ticks += ms / 10 + 1;
 	if (getenv ("SIM_SLEEP")) usleep (ms * 1000);	// real time (NetSurf's scheduler reads the clock)
+	if (sim_server_turn) sim_server_turn ();	// (a graphics server for the PC: its turn)
 	step ();
 }
 // SIM_REALCLOCK: the ticks are the PC's monotonic clock (a test whose threads wait on the network)
@@ -1736,6 +1745,7 @@ static void setup (void)
 	while (i <= s.size ()) { size_t j = s.find (';', i); if (j == std::string::npos) j = s.size (); if (j > i) g_script.push_back (s.substr (i, j - i)); i = j + 1; }
 	// GPC_SOFTGPU=1: the GPU compositing service's GPU path on the software V3D (when linked in)
 	if (hostkapi_install_gpu && getenv ("GPC_SOFTGPU")) hostkapi_install_gpu (T);
+	if (sim_ws_ctl) T->ws_ctl = sim_ws_ctl;			// (a graphics server for the PC: tools/tests/server_sim)
 }
 
 // (a static object's constructor, after the globals above: a constructor-attribute function would

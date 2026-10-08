@@ -1,5 +1,5 @@
 //
-// corepriv.h -- Elegant's window manager, for the two files that see its classes (core.cpp, ops.cpp).
+// corepriv.h -- the window manager, for the files that see its classes (core.cpp, ops.cpp, a server's policy).
 //
 #ifndef ELEGANT_COREPRIV_H
 #define ELEGANT_COREPRIV_H

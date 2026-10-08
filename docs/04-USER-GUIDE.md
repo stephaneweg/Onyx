@@ -239,9 +239,9 @@ shell=desktop      # the interface: desktop (Elegant; no line: desktop), pocket 
 
 `shell=` (kernel kapi v97) chooses the graphics server the kernel starts: `desktop` — or no line, or a word it
 does not know — is the desktop as always (Elegant); `pocket` and `console` start PocketUI (`SD:/bin/pocketui`,
-the compact modes: [`POCKETUI-TECH-STUDY.md`](POCKETUI-TECH-STUDY.md) — **not built yet**). A server that is
-missing or does not start is replaced by Elegant, so the screen never stays dark. It is read at boot (and at a
-switch of mode); the Control Panel's Mode applet will write it.
+the compact modes, §5 *The pocket and console modes*; [`POCKETUI-TECH-STUDY.md`](POCKETUI-TECH-STUDY.md)). A
+server that is missing or does not start is replaced by Elegant, so the screen never stays dark. It is read at
+boot (and at a switch of mode): until the Control Panel's Mode applet (to come), edit the line and restart.
 
 `ramfs=` is read at boot (restart to apply it). The memory is taken only as files are written to
 `RAM:`, and given back when they are removed; some memory is always left to the applications (a
@@ -628,6 +628,41 @@ follow the packages installed at once (the update service also does it when it s
   menu bar's **Onyx ▸ Open Windows**; another workspace: the dock's squares, Ctrl+Alt+←/→.
 - **Close**: the **×** button of the title bar, **Ctrl-Q**, the window menu's **Close**, or
   the task manager (`taskman`) / `kill`.
+
+### The pocket and console modes (PocketUI) — a first version
+
+With **`shell=pocket`** in `SD:/etc/system.ini` (§3) and a restart, the kernel starts **PocketUI**
+(`SD:/bin/pocketui`) instead of Elegant: the interface of small screens (an 800 × 480 display, a handheld).
+**One app at a time**, as on a phone:
+
+- a **status band** at the top of the screen (24 pixels, the menu bar's light look): the Onyx gem, the name
+  of the app in front, the time — a placeholder until the pocket shell's status bar (with the app's menus,
+  the tray, the launcher) comes;
+- an app whose window can be resized (the Terminal, the File Viewer...) **fills the screen** under the band,
+  **without a frame**;
+- a small window of a fixed size (the Calculator, the games, a dialog) is a **card** in the middle of the
+  screen, with its usual title bar and its close bead, over the wallpaper; a window too big for the screen
+  starts at the top left, without a frame (what does not fit is cut, until a later version scrolls it);
+- **Alt+Tab** brings the app at the back to the front (Alt+Shift+Tab: the one just behind) — the others are
+  hidden meanwhile; closing the app in front shows the next one;
+- no workspaces; Print Screen and the wheel's speed as on the desktop; full-screen games and emulators as
+  on the desktop.
+
+![](compact-shell/real/pocket-terminal.png)
+
+*The Terminal under PocketUI at 800 × 480: filled under the status band, no frame (the real app and server,
+run on the PC: `tools/tests/server_sim/run.sh`).*
+
+![](compact-shell/real/pocket-calculator.png)
+
+*The Calculator, a window of a fixed size: a card in the middle, its title bar and beads kept.*
+
+**`shell=console`** is the same for now without the band (the whole screen is the app's): the console mode's
+home and its pad-driven menus come later. What is not there yet: the launcher (start the apps from the
+Terminal: `run tinycalc`, or over telnet), the task switcher, the quick settings, the Mode applet; the desktop's
+menu bar and dock are not shown (PocketUI refuses them), the notifications' bubbles still appear. Back to the
+desktop: `shell=desktop` (or remove the line) and restart. PocketUI gives the apps their pocket UIKit
+(`SD:/lib/pocket/uikit.so`, under the name `SD:/lib/uikit.so`): the same apps, the same binaries.
 
 ### The pointer's shapes
 
@@ -1175,6 +1210,7 @@ it: `ed notes.txt < edits.txt`.
 | `el0test` | `el0test`, `el0test fault\|exec\|sysreg\|corefault` | Self-test of **the apps at EL0**: that it runs at EL0, the user-side `memcpy`/`memmove`/`memset`, the counters at EL0, the core number, `getcwd` and `win_list` into stack buffers, three threads with a mutex, a post run by `pump_wait`, a job on an app core at EL0 → `ok` lines then PASS. `fault` (a write into the kernel's memory), `exec` (a jump into it), `sysreg` (a privileged register read) must get it killed (a notice, an `el0:` line in `kmsg`, the prompt back); `corefault`: a job that faults on an app core, the app goes on (PASS). |
 | `libtest` | `libtest [starts]` | Self-test of **the shared libraries** (kernel kapi v83; docs/02 §7 *Shared libraries*) against the test library `SD:/lib/demo.so` and its second build `SD:/lib/demo2.so`: one process's use of a library (its table, `init` twice, its static constructors, the pointers relocated in its data, a class with virtuals called both ways, `new` on one side and `delete` on the other, its own data), a bare name, the errors (a library too old, missing, a program given as a library, a library run as a program), two processes sharing one image, a fault inside the library (only that process dies), the file replaced while a process runs it (that one keeps the old build, a new process gets the new one), preload / unload, `starts` (default 200) starts in a loop without a leak → a `PASS` / `FAIL` line each, `libtest: all passed`, exit status 0. Writes and removes `SD:/lib/libtest-scratch.so`. |
 | `aliastest` | `aliastest [--expect 1\|2]`, `aliastest --switch`, `aliastest --serve …` | Test of **the graphics server per mode** (kernel kapi v97; docs/02 §7 *Aliases*, §10): with no option, as an ordinary program — `kapi_lib_open_as` refused to it, whether `SD:/lib/demo.so` is aliased now (to `demo2.so`), `unload` of the alias refused, and which build a program opening `demo.so` gets (`libtest`'s child: 1 or 2; `--expect` says which is expected) → `PASS` / `FAIL` lines, exit status 0 if all passed. **`--switch`**: switches the graphics server — the one running ends, `SD:/etc/system.ini` `shell =` (`desktop`, `pocket`, `console`; no line: desktop) is read again and its server started (Elegant if it fails) — and says what came of it. **`--serve`**: a stand-in graphics server for the tests, copied by hand to `SD:/bin/pocketui` (the kernel starts it for `shell = pocket` / `console`): it registers, aliases `demo2.so` as `demo.so` (its checks in `SD:/tmp/aliastest.txt`) and, for `pocket`, shows a band at the top of the screen (green: passed, red: failed, blue: started again after a crash) and answers the programs' window requests with an error (they get no window); the key `x` ends it as a crash would; for `console` it never takes the display (the kernel then starts Elegant: the fallback). Remove `SD:/bin/pocketui` after the tests. |
+| `pocketui` | `pocketui --serve [--restart] --mode pocket\|console` (started by the kernel) | **PocketUI**, the graphics server of the **pocket and console modes** (§5 *The pocket and console modes*): the kernel starts it instead of Elegant when `SD:/etc/system.ini` says `shell=pocket` or `shell=console` (`--restart` when it starts it again after a crash: the apps' windows come back). It loads `SD:/lib/pocket/uikit.so` under the name `SD:/lib/uikit.so`, shows the status band (pocket), fills the screen with the app in front or shows it as a card; Alt+Tab switches. Without `--serve` it prints its usage. Not to be run by hand while another server has the display. Its log lines in `kmsg` start with `pocketui:`. |
 | `sysstat` | `sysstat`, `sysstat <pid\|name>` | The **system calls** of the apps (every call to the kernel costs a little at EL0): each app's calls per second, its calls in all, the CPU-identity reads the kernel emulated; with an app, also its 8 most called kernel functions by name with their share. An app making tens of thousands a second is worth a look. |
 | `threadtest` | `threadtest` | Self-test of the **threads** (kernel v67): threads created and joined with their exit codes, a counter shared under a mutex, the allocator used by four threads at once, a manual- and an auto-reset event, a barrier, timeouts, the limit of 32 threads per process, and a worker whose results are posted to the main thread while it waits for events. One line per check, then PASS/FAIL. It quits with a thread still running: the prompt must come back anyway (the threads end with the process). Takes a few seconds. |
 | `memtest` | `memtest [oom\|net]` | Self-test of the **demand paging** and the memory calls (kernel v75: `vm_map` / `vm_unmap` / `vm_protect` / `vm_advise` / `vm_query` / `vm_stats`, `thread_create_ex` / `thread_info`): memory filled on first touch (zero-filled), a 1 GB reservation committed 64 KB at a time, a region split by an unmap, `MADV_DONTNEED`, fixed addresses and the error values, frames returned by an unmap and by `sbrk`, kernel reads and copies into untouched memory, threads faulting the same pages, a futex on a lazy page, an unmap while another thread is blocked reading into that memory, per-thread TLS (`TPIDR_EL0`), stack bounds, an app-core job touching unfilled memory (timed), the overcommit refusal; and children it starts that must be killed — a write to read-only memory, a `PROT_NONE` read, an unmapped page, a thread's and the main thread's stack overflow (kmsg: `(stack overflow)`). A child that touches 256 MB (a quarter of the free memory at most) and exits normally must give it all back (`meminfo`'s free memory within 8 MB). One line per check, then `memtest: PASS` / `FAIL (n)`; a few seconds. `oom`: also a child that touches memory until the kernel kills it (`vm: … killed: out of memory`), twice — each time the free memory must come back to where it was (and the normal-exit child touches 512 MB) — it takes the whole app pool for a moment, so run it alone. `net`: also a socket read into untouched memory (the network up). Writes and deletes `RAM:/memtest.bin` (or `SD:/memtest.bin`). |
@@ -1218,6 +1254,9 @@ at once, without the apps being updated.
 - After a library's file is replaced, the apps already running keep the old one until they are
   closed; the ones started after use the new one. A restart renews the desktop itself.
 - `SD:/lib/demo.so` and `demo2.so` are the test libraries of `libtest` (§8).
+- **`SD:/lib/pocket/uikit.so`** (package **uikit** too) is the pocket and console modes' UIKit: PocketUI loads
+  it under the name `SD:/lib/uikit.so` for the session (`preload` shows `sd:/lib/uikit.so ->
+  sd:/lib/pocket/uikit.so`); the same functions at the same places, only its talk with the server differs.
 
 ### Remote shell (`telnetd`)
 

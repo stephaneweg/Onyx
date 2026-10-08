@@ -4,6 +4,88 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## PocketUI phase P3: PocketUI's skeleton, `user/Servers/common/`, the pocket UIKit (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
+
+The decided design is `docs/POCKETUI-TECH-STUDY.md` §4.3, §5, §7, §9 (P3); the look and behaviour `docs/COMPACT-SHELL-STUDY.md`
+§6 (one app at a time, frameless, fixed windows as centred cards, the status bar's band). docs/02 §10 *Two servers, one
+common code*, docs/03 §5.10.1–5.10.3, docs/04 §5 *The pocket and console modes* and `/bin/pocketui`.
+
+- **`user/Servers/common/`** (extracted from Elegant, `git mv` + edits; its behaviour unchanged): `serve.cpp` (was
+  `server.cpp`: the loop, the display, the raw input, the requests, the pace, `el_shared_*`, `el_sys_*`, Print Screen,
+  the wheel, the statistics -- the log lines now `<server>: ...`, Elegant's word for word the same), **`route.cpp`**
+  (new: `ws_route_key`, `ws_route_turn` -- the events forwarded, the places saved, the focus), `core.cpp`/`core.h`/
+  `corepriv.h`/`kws.h`/`ops.cpp`, `wm/` (`window.cpp`, `window.h`, `cursors.inc`), `port/` (the Circle stand-ins),
+  **`policy.h`** (new: `struct ws_policy` -- `create`, `op`, `key`, `tick`, `screen`, `registered`, `start`, the demo's
+  two; every hook may be 0) and **`common.mk`** (the servers' Makefile body). `ops.cpp` calls `create` in `OpCreate`
+  (after the size check) and `op` first in `el_op`; `window.cpp` gained `CWindow::Aside/SetAside` (in `Hidden ()`),
+  `CWindow::DropChrome`, `CWindowManager::SetAside` -- Elegant never calls them. **Elegant** = `elegant/main.cpp`
+  (its policy: `start` launches voronoy after a restart, as `server.cpp` did; the demo) + `elegant/Makefile` (3 lines +
+  `common.mk`). Paths updated: `tools/tests/desktop_sim/run.sh`, `tools/gui/gen_cursors.py` (its output),
+  the comments of `kernel/gui/kwin.cpp` and `kernel/include/kern/gui/window.h` (comments only: the image is the
+  same), docs/02, docs/03.
+- **PocketUI** (`user/Servers/pocketui/`: `main.cpp`, `wm.cpp` the policy, `band.cpp` the status band, `pocketui.h`,
+  `Makefile`) -> `SD:/bin/pocketui` (`make stage` copies `Servers/*/*.elf`). `--serve [--restart] --mode pocket|console`.
+  In its `registered` hook (after `KAPI_WS_REGISTER`, before `KAPI_WS_DISPLAY`): `kapi_lib_open_as
+  ("SD:/lib/pocket/uikit.so", "SD:/lib/uikit.so", 1, &err)`, the table kept (logged; a failure logged and the
+  programs get the desktop's UIKit -- they still run: the same operations). The policy (docs/03 §5.10.3's table):
+  status band 24 px (pocket; a topmost system window of its own, the kernel's font: gem, front app's title in
+  bold, HH:MM); a window that fits with its frame -> **card** (centred); else **filled** (borderless forced, work
+  area's top left); `EL_OP_RESIZABLE` on -> filled (`DropChrome`) and `GUI_EVENT_WINRESIZE` to the work area, then
+  once `GUI_EVENT_WINCTL` maximise if the client did not apply it (**finding**: the Terminal, Media, PDF and
+  Screenshot install their own pointer handler that drops `GUI_EVENT_WINRESIZE` -- their frames do not resize by
+  a drag on the desktop either; a one-line fix each, left for when they are worked on); popups where asked
+  (clamped); backmost windows and topmost ones on the top / bottom edge refused (the desktop's menubar and dock,
+  which the autostart still runs until P4); moves of filled windows ignored; one desk; **one app in front** (the
+  others set aside, recomputed each turn); Alt+Tab / Alt+Shift+Tab. Console: the same, no band.
+- **The protocol** `user/Kits/uikit/port/pocket.h` (beside `elegant.h`, private to the pocket port and PocketUI --
+  the study said `user/Servers/pocketui/pocket.h`; it follows P2's `elegant.h` instead): Elegant's operations and
+  structures by their numbers (it includes `elegant.h`), PocketUI's meanings written in its head; its own ops
+  `PK_OP_HELLO` (0x100, the port's first request -> `PK_PROTO_VERSION` + `struct pk_server`), `PK_OP_SERVER`,
+  `PK_OP_SHELL`..`PK_OP_DIM` (0x110..0x116: `-KAPI_ENOSYS` until P5).
+- **The pocket UIKit**: `port/port_pocket.cpp` (hello, `uk_win_server` from `PK_OP_SERVER`, `uk_shell_*` -> PK ops);
+  the client shared with the desktop port moved to **`port/client.inc`** (port_desktop's Onyx part verbatim + the
+  `WS_HELLO` hook; the desktop's `lib/uikit/port.o` disassembles byte for byte as before) and the PC relay to
+  **`port/host.inc`**; `port.cpp` picks `UK_PORT_POCKET`. `user/Makefile`: `lib/pocket/port.o`,
+  `lib/pocket/uikit_table.S` (libgen `--frozen` on the same `uikit.abi`, order-only after the desktop's table),
+  `lib/pocket/uikit.so`, `lib/pocket/abi_same.stamp` (in `libs`); `servers` builds PocketUI too, `clean` cleans it.
+  `kernel/Makefile` `stage`: `lib/pocket/*.so` -> `SD:/lib/pocket/`. **`tools/libgen/abi_same.py`** (the two tables
+  from the ELF files, slot by slot by symbol name, + the generated `.S`): "the same 848 entries".
+  `tools/tests/shlib/abi_same_test.sh` (it, then two negative cases): PASS.
+- **Packages** (`tools/pkg/packages.ini`): `[uikit] files` += `lib/pocket/uikit.so`; `bin/pocketui` is onyx's (`bin/`).
+  `mkrepo.plan` on a copy of the card with both files: no orphan, uikit / onyx. Not published (the session's rule).
+- **Tests (PC)**: **`tools/tests/server_sim/run.sh`** (new: `server_sim.cpp`, `sim_mem.cpp`; fakekapi.cpp gained
+  three weak hooks, nothing changes without them): the servers' code built for the host, a real app as client
+  through UIKit's **wire** port (`-DUK_PORT_WIRE`: the Onyx client code on the PC) -- PocketUI: the Terminal filled
+  at 800 x 480 (and 640 x 480, console: 800 x 480 whole), the Calculator a card, Alt+Tab with a second program, 17
+  checks PASS, pictures `pocket-terminal.png`, `pocket-calculator.png`, `pocket-card-over.png`,
+  `console-terminal.png`, `pocket-terminal-640.png` in its output folder; **Elegant before (HEAD's sources) and
+  after the extraction: the same pixels** (Calculator, Terminal). `desktop_sim/run.sh`: wmtest passes, gallery
+  identical. `shots.sh`: 173 pictures, 171 identical to P2's; `archiver.png` (an archive's size, 29.8 / 29.7 KB)
+  and `courier-tests.png` (the tab shown) differ the same way at HEAD's sources in a worktree -- the data and the
+  timing, not this work. Build (`kernel/ make -j8`): no error, no warning in the new or changed files.
+- **Pi checklist** (not done):
+  1. Build, stage (`SD:/bin/pocketui`, `SD:/lib/pocket/uikit.so` new), boot with no `shell=` line: the desktop exactly as
+     before (Elegant is rebuilt from `common/`): `pi_wstest.py`, `el0test`, `pi_apps.py`; `kill elegant` -> every window
+     back, the wallpaper repainted (voronoy).
+  2. `shell=pocket`, restart: the band at the top (the time), `kmsg` shows `pocketui: SD:/lib/pocket/uikit.so is
+     SD:/lib/uikit.so for this session` and `pocketui: a desktop's band refused` for the menu bar and the dock;
+     `preload` lists `sd:/lib/uikit.so -> sd:/lib/pocket/uikit.so`.
+  3. From telnet: `run terminal` -> filled under the band, no frame, its tabs at the top; `run tinycalc` -> a card in the
+     middle with the Milk title, the Terminal hidden; Alt+Tab -> the Terminal back; close the Calculator's bead -> the
+     Terminal. `run fileviewer`, `run tinypad`, a game (`run tetris`: a card), an emulator full screen (F11), Setup (a
+     fixed 800 x 600: filled frameless at 800 x 480, cut).
+  4. `pi_apps.py` under PocketUI: every app starts (its window opens; note the ones that look wrong for P6).
+  5. `kill pocketui` (telnet): the kernel starts it again (`--restart`): the band back, every window back (UIKit's
+     replay: the hello asked again), `preload` still shows the alias (orphaned, taken over).
+  6. `rdpd` + Onyx Remote and `vncd` under PocketUI: the windows listed, the screen seen.
+  7. `shell=console`, restart: no band, the Terminal fills 800 x 480 (or the screen).
+  8. Back: remove the `shell=` line (or `shell=desktop`), restart: the desktop. A desktop app started by hand during a
+     pocket session after `cp` of an old UIKit is out of scope.
+- **Next**: P4 (sessions: `/bin/session`, `SD:/etc/session/*`, the autostart split -- then the desktop's menu bar and dock
+  are not started under PocketUI at all; the Mode applet; K3's switch from the Control Panel), P5 (`pocketshell`: the
+  status bar with the app's menus, the launcher, the switcher -- `PK_OP_SHELL`... given their meaning in `wm.cpp`),
+  P6 (the adaptive widgets, the viewport for windows bigger than the work area, the dim behind cards).
+
 ## PocketUI phase P2: the window API in UIKit (`uk_win_*`), AppKit's window functions removed (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
 
 The decided design is `docs/POCKETUI-TECH-STUDY.md` §2.2, §4, §5, §9 (P2). **The decision of 2026-10-05 "the protocol
@@ -79,8 +161,7 @@ UIKit is the only code that speaks its server's protocol.
   4. `rdpd` with Onyx Remote (list, pixels, raise, move, close, the pointer's shape); `vncd`.
   5. Full screen: an emulator (gbemu), Doom, plasma, `gpcdemo`; Esc gives the desktop back.
   6. Drag and drop (File Viewer -> Archiver), the wallpaper (voronoy, theme), workspaces (dock), Screenshot.
-- **Next**: P3 (PocketUI's skeleton, `user/Servers/common/`, the pocket port `port/port_pocket.cpp` speaking
-  `pocket.h`, `lib/pocket/uikit.so` built `--frozen`, `tools/libgen/abi_same.py`).
+- **Next**: P3 -- done since (the section above).
 
 ## PocketUI phase P1: the kernel's side -- the alias, the server per mode, the switch (2026-10-08, kapi v97): built, tested on the PC, NOT yet on the Pi, not committed
 

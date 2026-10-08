@@ -1,5 +1,6 @@
 //
-// core.h -- Elegant's window manager, as the rest of the server sees it.
+// core.h -- the graphics servers' window manager (user/Servers/common/: Elegant's and PocketUI's), as the rest
+// of a server sees it.
 //
 // The window manager and the compositor themselves are the kernel's sources (kernel/gui/window.cpp,
 // gimage.cpp), built for a user process with the stand-ins of port/ -- one code until the kernel's
@@ -43,7 +44,7 @@ void el_core_window_remove (int id);
 // Elegant's own memory -- its demonstration's windows).
 // win: which of the program's windows (0: its first; 1 .. EL_WINDOWS_MORE its others, uikit/port/elegant.h).
 void el_core_owner (unsigned pid, int win = 0);
-// Shared memory for a window's pixels, given by the server's kernel side (server.cpp): `bytes` for
+// Shared memory for a window's pixels, given by the server's kernel side (serve.cpp): `bytes` for
 // `pid`'s window, part 0 its canvas / 1, 2 its frame's active and inactive copies -> its address
 // here (64 KB aligned, zeroed), 0: none; freed by that address. el_shared_is: is p such memory?
 void *el_shared_alloc (unsigned pid, int part, unsigned long bytes);
@@ -92,7 +93,7 @@ unsigned el_core_focus_pid (void);
 unsigned el_core_active_id (void);		// the window that has the keyboard: its id (uk_win_list's), 0: none
 void el_core_wheel (int lines);			// the wheel's lines a notch (1 .. 16)		// the program that has the keyboard, 0: none
 
-// What the requests need from the kernel (server.cpp): pid's windows become the server's -> 1;
+// What the requests need from the kernel (serve.cpp): pid's windows become the server's -> 1;
 // a live process's name -> its length (0: none).
 int el_sys_attach (unsigned pid);
 int el_sys_name (unsigned pid, char *buf, unsigned cap);

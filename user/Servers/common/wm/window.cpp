@@ -26,7 +26,7 @@ CWindow::CWindow (int x, int y, int nClientW, int nClientH, const char *pTitle,
 	m_ulKeyHandler (0), m_ulClickHandler (0), m_ulPointerHandler (0),
 	m_nMinLogicalH (nClientH), m_nAlpha (255), m_ulMenuHandler (0), m_nMenuGen (0),
 	m_nEvHead (0), m_nEvTail (0), m_nEvDropped (0), m_pWake (0), m_nLastPump (0),
-	m_bExitRequested (FALSE), m_bMinimised (FALSE), m_nDesk (0), m_bOffDesk (FALSE),
+	m_bExitRequested (FALSE), m_bMinimised (FALSE), m_nDesk (0), m_bOffDesk (FALSE), m_bAside (FALSE),
 	m_nChromeGenShown (0), m_nRetireFrame (0)
 {
 	m_nCursorShape = 0;				// (the arrow)
@@ -479,6 +479,24 @@ boolean CWindow::Grow (int w, int h)
 	return TRUE;
 }
 
+void CWindow::DropChrome (void)
+{
+	if (Borderless ())
+	{
+		return;
+	}
+	Damage ();
+	m_nFlags |= WIN_FLAG_BORDERLESS;
+	for (int i = 0; i < 2; i++)
+	{
+		if (m_pChromeRaw[i] != 0) WinPixelsFree (m_pChromeRaw[i]);	// (one thread composes: none reads it now)
+		m_pChromeRaw[i] = 0; m_ulChromePhys[i] = 0; m_nChromePages[i] = 0;
+	}
+	m_nOuterW = m_nLogicalW; m_nOuterH = m_nLogicalH;
+	m_nChromeGen++;
+	Damage ();
+}
+
 void CWindow::FreeRetired (void)
 {
 	if (m_pRetired[0] == 0 && m_pRetired[1] == 0 && m_pRetired[2] == 0)
@@ -864,6 +882,15 @@ void CWindowManager::MinimiseLocked (CWindow *pWindow)
 	if (m_pSizeWindow == pWindow)		{ m_pSizeWindow = 0; ScreenDirty (); }
 	if (m_pFullscreen == pWindow)		{ return; }
 	pWindow->SetMinimised (TRUE);
+}
+
+void CWindowManager::SetAside (CWindow *pWindow, boolean bOn)
+{
+	if (pWindow == 0) return;
+	m_SpinLock.Acquire ();
+	pWindow->SetAside (bOn);
+	if (bOn) ForgetHiddenLocked ();
+	m_SpinLock.Release ();
 }
 
 void CWindowManager::Minimise (CWindow *pWindow)

@@ -1,5 +1,6 @@
 //
-// core.cpp -- Elegant's window manager: the kernel's CWindowManager, in a user process (core.h).
+// core.cpp -- the graphics servers' window manager: the kernel's CWindowManager, in a user process (core.h;
+// user/Servers/common/, Elegant's and PocketUI's).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated

@@ -1,9 +1,11 @@
 //
-// ops.cpp -- the programs' requests answered (the protocol: uikit/port/elegant.h): each one does what
-// the kernel's window call of the same name did (kernel/sys/kapi.cpp), on Elegant's window manager.
+// ops.cpp -- the programs' requests answered (the protocol: uikit/port/elegant.h, whose numbers PocketUI's
+// uikit/port/pocket.h shares): each one does what the kernel's window call of the same name did
+// (kernel/sys/kapi.cpp), on the window manager. Common to Elegant and PocketUI (user/Servers/common/): the
+// server's policy (policy.h) may place a window it makes, or answer a request itself, first.
 //
-// With core.cpp, the only code that sees the window manager's classes (kern/gui/window.h); what
-// needs the kernel goes through core.h's el_sys_* (server.cpp).
+// With core.cpp (and a server's policy), the only code that sees the window manager's classes
+// (kern/gui/window.h); what needs the kernel goes through core.h's el_sys_* (serve.cpp).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -20,6 +22,7 @@
 extern "C" int memcmp (const void *a, const void *b, size_t n);
 #include "uikit/port/elegant.h"
 #include "core.h"
+#include "policy.h"
 
 static unsigned StrLen (const char *s)			{ unsigned n = 0; while (s[n] != '\0') n++; return n; }
 static boolean StrEq (const char *a, const char *b)	{ while (*a != '\0' && *a == *b) { a++; b++; } return *a == *b; }
@@ -173,7 +176,10 @@ static long OpCreate (unsigned nPid, int nWin, const long *a, const u8 *pIn, uns
 	memcpy (&C, pIn, sizeof C);
 	C.title[sizeof C.title - 1] = '\0';
 	int x = (int) a[0], y = (int) a[1], w = (int) a[2], h = (int) a[3];
-	if (w <= 0 || h <= 0 || w > g_nScreenWidth || h > g_nScreenHeight) return 0;
+	int nMake = 1;						// (the policy's answer: 2, made even if bigger than the screen)
+	if (w > 0 && h > 0 && g_pWsPolicy != 0 && g_pWsPolicy->create != 0
+	    && (nMake = g_pWsPolicy->create (nPid, nWin, &x, &y, &w, &h, &C.flags)) == 0) return 0;
+	if (w <= 0 || h <= 0 || (nMake != 2 && (w > g_nScreenWidth || h > g_nScreenHeight))) return 0;
 	boolean bBorderless = (C.flags & WIN_FLAG_BORDERLESS) != 0;
 	int nOuterW = w + (bBorderless ? 0 : 2 * WIN_BORDER);
 	int nOuterH = h + (bBorderless ? 0 : WIN_TITLEBAR_H + WIN_BORDER);
@@ -364,6 +370,9 @@ long el_op (unsigned nPid, int nOp, const long *a, const unsigned char *pIn, uns
 	if (pWM == 0) return EL_E_BADOP;
 	int nWin = (int) ((unsigned) nOp >> EL_OP_WINDOW_SHIFT) & 0xFF;	// (v94) which of the caller's windows
 	nOp &= EL_OP_MASK;
+	long nStatus = 0;
+	if (g_pWsPolicy != 0 && g_pWsPolicy->op != 0 && g_pWsPolicy->op (nPid, nOp, nWin, a, pIn, nInLen, pOut, pnOutLen, &nStatus))
+		return nStatus;
 	CWindow *pWin = WinOf (nPid, nWin);
 
 	switch (nOp)

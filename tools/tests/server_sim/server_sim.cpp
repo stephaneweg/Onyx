@@ -1,0 +1,437 @@
+//
+// server_sim.cpp -- a graphics server of Onyx run on the PC, with a real app as its client, in one process:
+// the code the servers share (user/Servers/common/: the window manager and compositor, the routing, the requests'
+// decoding) and a server's policy (PocketUI's user/Servers/pocketui/wm.cpp + band.cpp, or Elegant's -- none),
+// built for the host; the app built against UIKit's WIRE port (UK_PORT_WIRE: the port's real client, the one
+// SD:/lib/uikit.so or SD:/lib/pocket/uikit.so has on Onyx, -DUK_PORT_POCKET for PocketUI's) and the desktop
+// simulator's stand-in kernel (tools/tests/desktop_sim/fakekapi.cpp, its server hooks). This file stands for the
+// kernel's side of the graphics server (kernel/sys/wsrv.cpp): kapi_ws_ctl's operations -- the app's requests
+// (KAPI_WS_CALL straight to the server's el_op, KAPI_WS_KICK), the shared buffers (two mappings of one memory: the
+// server's at its own address, the app's at KAPI_WS_VA_*), the events queued for the app and run at its next
+// turn, the windows' kept state --, and the input: the script's pointer and keys in SCREEN coordinates go to the
+// server (which routes them as on the Pi). docs/03-DEVELOPER-GUIDE.md "PocketUI on the PC".
+//
+// The script (SIM, fakekapi.cpp's) gains, or takes over:
+//   down X Y / up X Y / move X Y / rdown X Y / rup X Y / wheel X Y N   the pointer, SCREEN coordinates
+//   key C           a key (a character, or a KEY_* number: arrows, Home, End, PgUp/PgDn, Del, F1-F12, Enter 13)
+//   mods N          the modifiers held from now on (1 Ctrl, 2 Shift, 4 Alt): "mods 4;key 0x09;mods 0" is Alt+Tab
+//   dump FILE       the composed SCREEN: "ELSM" w h 0 0, then w x h pixels (tools/tests/desktop_sim/shot.py makes it a PNG)
+//   other W H T [F] another program's window (pid 101 + n, a plain coloured canvas titled T, flags F): the
+//                   policy with two programs
+//   expect K V      a check, printed PASS / FAIL (the run's exit status counts the FAILs): K one of
+//                   front (the program in front: app, other, none), kind (the app's first window: card, fill, popup),
+//                   frame (1 the app's window has a frame, 0 none), area (the work area "x,y,w,h"),
+//                   client (the app's client size "w,h"), pos (its window's top left "x,y"), aside (1 / 0: the app set aside)
+// Everything else is fakekapi.cpp's (wait, quit, exit...).
+//
+// Environment: SIM_SCREEN=WxH (the screen; fakekapi's), SIM_MODE=console (PocketUI's console mode), SIM_APPNAME
+// (the app's name, for the lists).
+//
+// MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
+// granted, free of charge, to any person obtaining a copy of this software and associated
+// documentation files (the "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+// sell copies of the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions: The above copyright notice and this permission notice shall
+// be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS
+// IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+//
+#define _GNU_SOURCE 1
+#include <sys/mman.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <map>
+#include <string>
+#include <vector>
+#include "appkit/appkit.h"
+#include "uikit/port/elegant.h"
+#include "core.h"
+#ifndef SIM_OLD
+#include "policy.h"
+#endif
+#ifdef SIM_POCKET
+#include "pocketui.h"
+#include "uikit/port/pocket.h"
+#endif
+
+#define SELF		1			// the server's pid (kapi_getpid answers it: both are this process)
+#define APP_PID		100			// the app's
+#define OTHER_PID	101			// the script's "other" programs: 101, 102...
+
+// ---- what the stand-in kernel lacks for a server ---------------------------------------------------------
+// (kapi_memset, kapi_memcpy, kapi_memmove: the C library's -- sim_mem.cpp, strong over appkit.h's weak ones)
+extern "C" unsigned el_port_ticks (void)					{ return kapi_get_ticks (); }
+unsigned g_nStubTicks = 1000;			// (tools/tests/desktop_sim/kstub/circle/timer.h: the window manager's clock)
+
+#ifndef SIM_POCKET
+#ifndef SIM_OLD
+static const struct ws_policy s_Elegant = { "elegant", 0, 0, 0, 0, 0, 0, 0, 0, 0 };	// (Elegant's: the common behaviour)
+const struct ws_policy *g_pWsPolicy = &s_Elegant;
+#endif
+#endif
+
+static int s_nFail, s_nPass;
+static bool s_bInit, s_bExit;
+static int s_nW, s_nH;
+static unsigned *s_pScreen;
+static unsigned s_nButtons, s_nMods;
+static int s_nOthers;
+
+// ---- the shared buffers: one memory, mapped twice ---------------------------------------------------------
+#define WS_BASE		0xB00000000ULL		// (user/Servers/common/serve.cpp: a buffer's address in the server says its number)
+#define WS_SLOT		0x4000000ULL
+struct TBuf { bool used; unsigned pid; int slot; unsigned long bytes; int fd; void *srv, *app; };
+static TBuf s_Buf[256];
+
+static unsigned long long SlotVa (int slot)
+{
+	switch (slot)
+	{
+	case KAPI_WS_SLOT_CANVAS:	return KAPI_WS_VA_CANVAS;
+	case KAPI_WS_SLOT_FRAME:	return KAPI_WS_VA_FRAME;
+	case KAPI_WS_SLOT_FRAME_OFF:	return KAPI_WS_VA_FRAME_OFF;
+	case KAPI_WS_SLOT_WALLPAPER:	return KAPI_WS_VA_WALLPAPER;
+	case KAPI_WS_SLOT_XFER:		return KAPI_WS_VA_XFER;
+	}
+	int w = (slot - KAPI_WS_SLOT_MORE) / 3 + 1, p = (slot - KAPI_WS_SLOT_MORE) % 3;
+	return KAPI_WS_VA_WIN (w, p);
+}
+
+static long BufMap (struct kapi_ws_buf *b)
+{
+	int i = 1;
+	while (i < 256 && s_Buf[i].used) i++;
+	if (i == 256 || b->bytes == 0 || b->bytes > WS_SLOT) return -KAPI_ENOMEM;
+	unsigned long n = (b->bytes + 0xFFFF) & ~0xFFFFUL;
+	int fd = memfd_create ("ws", 0);
+	if (fd < 0 || ftruncate (fd, (off_t) n) != 0) return -KAPI_ENOMEM;
+	void *srv = mmap ((void *) (WS_BASE + i * WS_SLOT), n, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, 0);
+	if (srv == MAP_FAILED) { close (fd); return -KAPI_ENOMEM; }
+	void *app = 0;
+	if (b->pid == APP_PID)				// (the app's view at its slot's place: what was there replaced)
+	{
+		for (int k = 1; k < 256; k++)
+			if (s_Buf[k].used && s_Buf[k].pid == APP_PID && s_Buf[k].slot == b->slot && s_Buf[k].app != 0) s_Buf[k].app = 0;
+		app = mmap ((void *) SlotVa (b->slot), n, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, 0);
+		if (app == MAP_FAILED) app = 0;
+	}
+	s_Buf[i] = { true, b->pid, b->slot, n, fd, srv, app };
+	b->id = (unsigned) i;
+	b->addr = (unsigned long long) srv;
+	return 0;
+}
+
+static long BufFree (unsigned id)
+{
+	if (id == 0 || id >= 256 || !s_Buf[id].used) return -KAPI_EINVAL;
+	TBuf &B = s_Buf[id];
+	munmap (B.srv, B.bytes);
+	if (B.app != 0) mmap (B.app, B.bytes, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+	close (B.fd);
+	B = TBuf ();
+	return 0;
+}
+
+// ---- the kernel's kapi_ws_ctl, for the server and for the app ----------------------------------------------
+static std::vector<struct kapi_event> s_Ev;		// queued for the app (run at its next turn)
+static std::map<unsigned, std::vector<unsigned char> > s_State;
+static bool s_bAttached;
+static unsigned char s_Out[KAPI_WS_DATA_MAX];
+
+static void Init (void);
+
+extern "C" long sim_ws_ctl (int op, long a0, long a1, long a2)
+{
+	Init ();
+	switch (op)
+	{
+	case KAPI_WS_ACTIVE:	return SELF;
+	case KAPI_WS_CALL:
+		{
+			struct kapi_ws_call *c = (struct kapi_ws_call *) a0;
+			unsigned len = 0;
+			long st = el_op (APP_PID, c->op, c->a, (const unsigned char *) c->in, c->in_len, s_Out, &len);
+			if (getenv ("SIM_TRACE")) fprintf (stderr, "server_sim: request %d (window %d) %ld %ld %ld %ld -> %ld\n", c->op & 0xFFFF, c->op >> 16, c->a[0], c->a[1], c->a[2], c->a[3], st);
+			if (c->out != 0) memcpy (c->out, s_Out, len < c->out_cap ? len : c->out_cap);
+			c->out_len = len;
+			return st;
+		}
+	case KAPI_WS_KICK:
+		el_core_window_present (el_core_window_of_win (APP_PID, (int) a0));
+		return SELF;
+	case KAPI_WS_ATTACH:	s_bAttached = true; return 0;
+	case KAPI_WS_POST:
+		if ((unsigned) a0 == APP_PID) s_Ev.push_back (*(const struct kapi_event *) a1);
+		return 1;
+	case KAPI_WS_EXIT:	if ((unsigned) a0 == APP_PID) s_bExit = true; return 0;
+	case KAPI_WS_BUF_MAP:	return BufMap ((struct kapi_ws_buf *) a0);
+	case KAPI_WS_BUF_FREE:	return BufFree ((unsigned) a0);
+	case KAPI_WS_FOCUS:	return 0;
+	case KAPI_WS_PROC_NAME:
+		{
+			const char *n = (unsigned) a0 == APP_PID ? (getenv ("SIM_APPNAME") ? getenv ("SIM_APPNAME") : "app") : "other";
+			snprintf ((char *) a1, (size_t) a2, "%s", n);
+			return (long) strlen ((char *) a1);
+		}
+	case KAPI_WS_STATE:
+		{
+			std::vector<unsigned char> &S = s_State[(unsigned) a0];
+			if (a2) { S.assign ((const unsigned char *) a1, (const unsigned char *) a1 + KAPI_WS_STATE_BYTES); return 0; }
+			if (S.empty ()) return -KAPI_ENOENT;
+			memcpy ((void *) a1, S.data (), KAPI_WS_STATE_BYTES);
+			return 0;
+		}
+	case KAPI_WS_CLIENTS:
+		if (!s_bAttached || a1 < 1) return 0;
+		((unsigned *) a0)[0] = APP_PID;
+		return 1;
+	}
+	return -KAPI_ENOSYS;
+}
+
+// ---- the server's door to the kernel (core.h: user/Servers/common/serve.cpp's, which is not linked here) --------
+void *el_shared_alloc (unsigned pid, int part, unsigned long bytes)
+{
+	struct kapi_ws_buf b;
+	memset (&b, 0, sizeof b);
+	b.pid = pid; b.slot = part; b.bytes = bytes;
+	return sim_ws_ctl (KAPI_WS_BUF_MAP, (long) &b, 0, 0) == 0 ? (void *) b.addr : 0;
+}
+int el_shared_is (const void *p)
+{
+	unsigned long long a = (unsigned long long) p;
+	return a >= WS_BASE && a < WS_BASE + 256 * WS_SLOT;
+}
+void el_shared_free (void *p)
+{
+	if (el_shared_is (p)) sim_ws_ctl (KAPI_WS_BUF_FREE, (long) (((unsigned long long) p - WS_BASE) / WS_SLOT), 0, 0);
+}
+int el_sys_attach (unsigned pid)				{ return sim_ws_ctl (KAPI_WS_ATTACH, pid, 0, 0) == 0; }
+int el_sys_state (unsigned pid, void *bytes, int set)		{ return sim_ws_ctl (KAPI_WS_STATE, pid, (long) bytes, set) == 0; }
+int el_sys_clients (unsigned *pids, int max)			{ long n = sim_ws_ctl (KAPI_WS_CLIENTS, (long) pids, max, 0); return n > 0 ? (int) n : 0; }
+int el_sys_name (unsigned pid, char *buf, unsigned cap)	{ long n = sim_ws_ctl (KAPI_WS_PROC_NAME, pid, (long) buf, cap); return n > 0 ? (int) n : 0; }
+#ifdef SIM_POCKET
+void pk_main_registered (int)					{}	// (PocketUI's main.cpp: its UIKit's alias -- none on the PC)
+#endif
+
+// ---- the kernel's table, patched where a server needs more than the desktop simulator gives -------------------
+static int (*s_pShouldExit) (void);
+static int SimShouldExit (void)			{ return s_bExit || (s_pShouldExit != 0 && s_pShouldExit ()); }
+static int SimGetpid (int)			{ return SELF; }
+
+static void Init (void)
+{
+	if (s_bInit) return;
+	s_bInit = true;
+	TKApiTable *T = (TKApiTable *) KAPI_TABLE_VA;
+	s_pShouldExit = T->should_exit; T->should_exit = SimShouldExit;
+	T->getpid = SimGetpid;
+	kapi_screen_size (&s_nW, &s_nH);
+	s_pScreen = new unsigned[(size_t) s_nW * s_nH];
+#ifdef SIM_POCKET
+	const char *m = getenv ("SIM_MODE");
+	g_nPkMode = m != 0 && strcmp (m, "console") == 0 ? PK_MODE_CONSOLE : PK_MODE_POCKET;
+#endif
+	el_core_start (s_nW, s_nH);
+#ifndef SIM_OLD
+	if (g_pWsPolicy != 0 && g_pWsPolicy->start != 0) g_pWsPolicy->start (s_nW, s_nH, 0);
+#endif
+	fprintf (stderr, "server_sim: %s on a %d x %d screen\n",
+#ifdef SIM_POCKET
+		 g_nPkMode == PK_MODE_CONSOLE ? "PocketUI (console)" : "PocketUI (pocket)",
+#elif defined (SIM_OLD)
+		 "Elegant (as it was before the extraction)",
+#else
+		 "Elegant",
+#endif
+		 s_nW, s_nH);
+}
+
+// ---- a turn ---------------------------------------------------------------------------------------------
+#ifdef SIM_OLD
+// (the routing as Elegant's server.cpp had it before user/Servers/common/route.cpp: the events forwarded, the
+// windows' places saved)
+static unsigned s_nExitAsked[EL_WINDOWS_MAX];
+static void ws_route_turn (unsigned self)
+{
+	for (int id = 0; id < EL_WINDOWS_MAX; id++)
+	{
+		unsigned pid = el_core_window_pid (id);
+		if (pid == 0 || pid == self) continue;
+		struct el_core_event e;
+		while (el_core_window_event_peek (id, &e))
+		{
+			struct kapi_event k;
+			memset (&k, 0, sizeof k);
+			k.handler = e.handler; k.value = e.value; k.event = e.event; k.mods = e.mods;
+			k.sender = (unsigned long long) el_core_window_win (id);
+			long r = sim_ws_ctl (KAPI_WS_POST, pid, (long) &k, 0);
+			if (r == 0) break;
+			el_core_window_event_drop (id);
+		}
+		if (el_core_window_closing (id) && s_nExitAsked[id] != pid) { sim_ws_ctl (KAPI_WS_EXIT, pid, 0, 0); s_nExitAsked[id] = pid; }
+	}
+	el_core_save_states (self);
+}
+static void ws_route_key (const char *keys, unsigned) { el_core_key (keys); }
+#endif
+
+extern "C" void sim_server_turn (void)
+{
+	Init ();
+	g_nStubTicks = kapi_get_ticks ();
+	ws_route_turn (SELF);
+	std::vector<struct kapi_event> q;
+	q.swap (s_Ev);
+	static const bool bTrace = getenv ("SIM_TRACE") != 0;
+	for (auto &e : q)
+	{
+		if (bTrace) fprintf (stderr, "server_sim: event %d value 0x%llx to window %llu\n", e.event, (unsigned long long) e.value, (unsigned long long) e.sender);
+		if (e.handler != 0) ((gui_handler) e.handler) ((unsigned long) e.sender, e.event, (gui_value) e.value);
+	}
+	el_core_compose (s_pScreen, s_nW, s_nH, 0);
+}
+
+// ---- the script's steps -------------------------------------------------------------------------------------
+static void Dump (const char *file)
+{
+	el_core_redraw ();
+	el_core_compose (s_pScreen, s_nW, s_nH, 0);
+	FILE *f = fopen (file, "wb");
+	if (f == 0) { perror (file); return; }
+	int hdr[5] = { 0x4D534C45, s_nW, s_nH, 0, 0 };
+	fwrite (hdr, 4, 5, f);
+	std::vector<unsigned> px ((size_t) s_nW * s_nH);
+	for (size_t i = 0; i < px.size (); i++) px[i] = s_pScreen[i] & 0x00FFFFFFu;
+	fwrite (px.data (), 4, px.size (), f);
+	fclose (f);
+	fprintf (stderr, "server_sim: dumped the screen %dx%d -> %s\n", s_nW, s_nH, file);
+}
+
+static void KeyString (long k, char *out)
+{
+	static const struct { long code; const char *seq; } Map[] = {
+		{ KEY_UP, "\x1b[A" }, { KEY_DOWN, "\x1b[B" }, { KEY_RIGHT, "\x1b[C" }, { KEY_LEFT, "\x1b[D" },
+		{ KEY_HOME, "\x1b[H" }, { KEY_END, "\x1b[F" }, { KEY_PGUP, "\x1b[5~" }, { KEY_PGDN, "\x1b[6~" }, { KEY_DEL, "\x1b[3~" },
+		{ KEY_ENTER, "\n" }, { KEY_BACKSPACE, "\x7f" } };
+	for (auto &m : Map) if (m.code == k) { strcpy (out, m.seq); return; }
+	if (k >= KEY_F1 && k <= KEY_F12) { static const int n[] = { 11, 12, 13, 14, 15, 17, 18, 19, 20, 21, 23, 24 }; sprintf (out, "\x1b[%d~", n[k - KEY_F1]); return; }
+	out[0] = (char) k; out[1] = 0;
+}
+
+static int AppId (void)				{ return el_core_window_of_win (APP_PID, 0); }
+
+static void Check (const char *what, bool ok, const std::string &got)
+{
+	(ok ? s_nPass : s_nFail)++;
+	fprintf (stderr, "server_sim: %s %s%s%s\n", ok ? "PASS" : "FAIL", what, ok ? "" : " -- got ", ok ? "" : got.c_str ());
+}
+
+static void Expect (const char *key, const char *want)
+{
+	int id = AppId ();
+	char got[64] = "";
+	struct el_core_frame F;
+	memset (&F, 0, sizeof F);
+	if (id >= 0) el_core_window_frame_info (id, &F);
+	if (!strcmp (key, "frame")) snprintf (got, sizeof got, "%d", F.frame_w > 0 ? 1 : 0);
+	else if (!strcmp (key, "client")) snprintf (got, sizeof got, "%d,%d", F.content_w, F.content_h);
+#ifdef SIM_POCKET
+	else if (!strcmp (key, "front"))
+	{
+		unsigned p = pk_front_pid ();
+		snprintf (got, sizeof got, "%s", p == APP_PID ? "app" : p > APP_PID ? "other" : "none");
+	}
+	else if (!strcmp (key, "kind"))
+	{
+		static const char *K[] = { "none", "own", "popup", "card", "fill" };
+		int k = pk_kind (id);
+		snprintf (got, sizeof got, "%s", k >= 0 && k <= 4 ? K[k] : "?");
+	}
+#endif
+	else
+	{
+		struct kapi_win_geom G;				// (as the app asks it: EL_OP_GEOMETRY)
+		memset (&G, 0, sizeof G);
+		unsigned len = 0;
+		long a[4] = { 0, 0, 0, 0 };
+		el_op (APP_PID, EL_OP_GEOMETRY, a, 0, 0, s_Out, &len);
+		memcpy (&G, s_Out, sizeof G);
+		if (!strcmp (key, "area")) snprintf (got, sizeof got, "%d,%d,%d,%d", G.ax, G.ay, G.aw, G.ah);
+		else if (!strcmp (key, "pos")) snprintf (got, sizeof got, "%d,%d", G.x, G.y);
+		else if (!strcmp (key, "aside")) snprintf (got, sizeof got, "%d", (G.state & KAPI_WIN_KEYS) ? 0 : 1);
+		else snprintf (got, sizeof got, "(unknown check %s)", key);
+	}
+	std::string what = std::string (key) + " = " + want;
+	Check (what.c_str (), !strcmp (got, want), got);
+}
+
+static void Other (int w, int h, const char *title, unsigned flags)	// another program's window, painted
+{
+	unsigned pid = OTHER_PID + (unsigned) s_nOthers++;
+	struct el_create C;
+	memset (&C, 0, sizeof C);
+	C.flags = flags;
+	snprintf (C.title, sizeof C.title, "%s", title);
+	long a[4] = { -1, -1, w, h };
+	unsigned len = 0;
+	if (el_op (pid, EL_OP_CREATE, a, (const unsigned char *) &C, sizeof C, s_Out, &len) != 1) { fprintf (stderr, "server_sim: other: refused\n"); return; }
+	int id = el_core_window_of_win (pid, 0), cw = 0, ch = 0;
+	unsigned *p = el_core_window_canvas (id, &cw, &ch);
+	for (int y = 0; p != 0 && y < ch; y++)
+		for (int x = 0; x < cw; x++) p[(size_t) y * cw + x] = ((x / 24 + y / 24) & 1) ? 0x00C8D4E4 : 0x00B8C6DA;
+	for (int k = 0; k < 2; k++)				// (its frame: a plain title band, as a program's UIKit would draw one)
+	{
+		int fw = 0, fh = 0;
+		unsigned *f = el_core_window_frame (id, k, &fw, &fh);
+		for (int y = 0; f != 0 && y < fh; y++)
+			for (int x = 0; x < fw; x++) f[(size_t) y * fw + x] = y < KAPI_FRAME_TITLE_H ? (k == 0 ? 0x00E8E8EC : 0x00D0D0D4) : 0x00E2E2E4;
+	}
+	el_core_window_present (id);
+}
+
+extern "C" int sim_server_step (const char *st)
+{
+	Init ();
+	char cmd[32] = "", arg[256] = "", arg2[64] = "";
+	int a = 0, b = 0, c = 0;
+	sscanf (st, "%31s", cmd);
+	if (!strcmp (cmd, "down") || !strcmp (cmd, "rdown") || !strcmp (cmd, "up") || !strcmp (cmd, "rup") || !strcmp (cmd, "move"))
+	{
+		sscanf (st, "%*s %d %d", &a, &b);
+		unsigned bit = cmd[0] == 'r' ? 2 : 1;
+		if (!strcmp (cmd, "down") || !strcmp (cmd, "rdown")) s_nButtons |= bit;
+		else if (strcmp (cmd, "move")) s_nButtons &= ~bit;
+		el_core_pointer (a, b, s_nButtons, 0);
+		return 1;
+	}
+	if (!strcmp (cmd, "wheel")) { sscanf (st, "%*s %d %d %d", &a, &b, &c); el_core_pointer (a, b, s_nButtons, c); return 1; }
+	if (!strcmp (cmd, "key"))
+	{
+		sscanf (st, "%*s %255s", arg);
+		long k = arg[1] ? strtol (arg, 0, 0) : arg[0];
+		char keys[16];
+		KeyString (k, keys);
+		ws_route_key (keys, s_nMods);
+		return 1;
+	}
+	if (!strcmp (cmd, "mods")) { sscanf (st, "%*s %d", &a); s_nMods = (unsigned) a; el_core_modifiers (s_nMods); return 1; }
+	if (!strcmp (cmd, "dump")) { sscanf (st, "%*s %255s", arg); Dump (arg); return 1; }
+	if (!strcmp (cmd, "other"))
+	{
+		unsigned f = 0;
+		sscanf (st, "%*s %d %d %255s %u", &a, &b, arg, &f);
+		Other (a, b, arg, f);
+		return 1;
+	}
+	if (!strcmp (cmd, "expect")) { sscanf (st, "%*s %255s %63s", arg, arg2); Expect (arg, arg2); return 1; }
+	if (!strcmp (cmd, "exit") || !strcmp (cmd, "quit"))
+	{
+		if (s_nPass + s_nFail > 0) fprintf (stderr, "server_sim: %d passed, %d failed\n", s_nPass, s_nFail);
+		if (s_nFail > 0) exit (1);
+		return 0;					// (fakekapi's: the end)
+	}
+	return 0;
+}

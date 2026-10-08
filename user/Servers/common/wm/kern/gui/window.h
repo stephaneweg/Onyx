@@ -237,7 +237,16 @@ public:
 		if (bOn) { Damage (); m_bOffDesk = TRUE; }
 		else { m_bOffDesk = FALSE; Damage (); }
 	}
-	boolean Hidden (void) const	{ return m_bMinimised || m_bOffDesk; }	// (minimised or off-desk)
+	// Set aside (PocketUI, user/Servers/common/: an app that is not the one in front): hidden as an off-desk
+	// window until brought back. Elegant never sets it.
+	boolean Aside (void) const	{ return m_bAside; }
+	void SetAside (boolean bOn)
+	{
+		if (bOn == m_bAside) return;
+		if (bOn) { Damage (); m_bAside = TRUE; }
+		else { m_bAside = FALSE; Damage (); }
+	}
+	boolean Hidden (void) const	{ return m_bMinimised || m_bOffDesk || m_bAside; }	// (minimised, off-desk or aside)
 
 	// The pid of the process owning this window (0 = kernel), for drag & drop results.
 	void SetOwnerPid (unsigned nPid)	{ m_nOwnerPid = nPid; }
@@ -407,6 +416,9 @@ public:
 	// (the old freed a few frames later: the compositor may be reading it), the process's
 	// mappings moved to it by the caller. FALSE: no memory (nothing changed).
 	boolean Grow (int w, int h);
+	// (PocketUI: a card that becomes a filled window) its frame dropped: borderless from now on, the frame's
+	// copies freed (its program sees insets 0 at its next uk_win_chrome). Elegant never calls it.
+	void DropChrome (void);
 	void FreeRetired (void);		// (the compositor) free what Grow retired, once safe
 
 private:
@@ -460,6 +472,7 @@ private:
 	volatile boolean m_bMinimised;		// (SetMinimised)
 	int		m_nDesk;		// (v65) its workspace, -1 = every one (SetDesk)
 	volatile boolean m_bOffDesk;		// on another workspace than the current one (SetOffDesk)
+	volatile boolean m_bAside;		// (SetAside: PocketUI's)
 	unsigned	m_nChromeGenShown;	// m_nChromeGen at the last whole-window present
 	void	       *m_pRetired[3];		// memory Grow replaced (canvas, chrome x 2), freed later
 	unsigned	m_nRetireFrame;		// the compositor's frame count when it was retired
@@ -606,6 +619,8 @@ public:
 
 	// Minimise a window (v64): hidden until raised; the keys go to the next one.
 	void Minimise (CWindow *pWindow);
+	// (PocketUI) A window set aside or brought back (CWindow::SetAside): the pointer's references to it dropped.
+	void SetAside (CWindow *pWindow, boolean bOn);
 
 	// ---- workspaces (v65: virtual desktops) -------------------------------------------------
 	// nCount desks (1 .. KAPI_DESK_MAX), one shown at a time: a new window opens on the current

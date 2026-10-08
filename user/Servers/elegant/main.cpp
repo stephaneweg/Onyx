@@ -13,6 +13,8 @@
 //                       it ends (Esc, its last window closed, 60 s) -- or dies.
 //
 // While it serves, the programs that ask have their windows there (uikit/port/elegant.h; the plan: docs/HANDOFF.md).
+// Since 2026-10-08 (PocketUI's phase P3) the server's code is shared with PocketUI (user/Servers/common/):
+// this file is Elegant's own part -- its policy (below) and its demonstration.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -26,6 +28,7 @@
 #include "appkit/appkit.h"
 #include "onyxpp.hpp"
 #include "core.h"
+#include "policy.h"
 #include "uikit/port/elegant.h"
 
 extern "C" int memcmp (const void *a, const void *b, __SIZE_TYPE__ n)
@@ -170,19 +173,35 @@ static int demo (void)
 	return 0;
 }
 
-// (server.cpp) The graphics server: the display and the raw input taken from the kernel, the
-// programs' windows served. demo: with the demonstration's three windows, and ended by Esc, by
-// its last window closed, or after 60 s.
-int el_serve (int demo, int restart);		// restart: started again by the kernel after a server that ended
+// ---- Elegant's policy (../common/policy.h) -------------------------------------------------------
+// The graphics server's loop, the routing, the window manager and the requests' decoding are common to
+// Elegant and PocketUI (user/Servers/common/, el_serve: the display and the raw input taken from the
+// kernel, the programs' windows served). Elegant's policy is the common behaviour -- overlapping windows,
+// placed and moved freely, workspaces --: it only adds the wallpaper painted again when it is started
+// again, and its demonstration (--display: its three windows; ended by Esc, its last window closed, 60 s).
 
-int el_demo_scene (int w, int h)		{ return demo_scene (w, h); }
-int el_demo_closed (unsigned self)
+static int demo_closed (unsigned self)
 {
 	int n = 0;
 	for (int id = 0; id < EL_WINDOWS_MAX; id++)
 		if (el_core_window_pid (id) == self && el_core_window_closing (id)) { el_core_window_remove (id); n++; }
 	return n;
 }
+
+static void start (int, int, int restart)
+{
+	if (restart) kapi_launch ("voronoy");	// (the wallpaper went with the server before: painted again)
+}
+
+static const struct ws_policy s_Elegant =
+{
+	"elegant",
+	0, 0, 0, 0, 0,				// create, op, key, tick, screen: the common behaviour
+	0,					// registered: nothing before the display
+	start,
+	demo_scene, demo_closed,
+};
+const struct ws_policy *g_pWsPolicy = &s_Elegant;
 
 static int arg_is (const char *a, const char *d)
 {

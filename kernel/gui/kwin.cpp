@@ -1,6 +1,6 @@
 //
 // kwin.cpp -- what the kernel keeps of the windows (kern/gui/window.h): a program's queue of events,
-// the keys' state, the full screen. The window manager itself is Elegant's (user/Servers/elegant/wm).
+// the keys' state, the full screen. The window manager itself is the graphics server's (user/Servers/common/wm).
 //
 #include <kern/gui/window.h>
 #include <kern/layout.h>		// KPAGE_SIZE / KPAGE_MASK

@@ -3,7 +3,7 @@
 //
 // The windows are no longer the kernel's: the window manager, the compositor and the routing of
 // the input are Elegant's, the graphics server, a user process (user/Servers/elegant; its window
-// manager is the one that was here: user/Servers/elegant/wm). The kernel gives it mechanisms
+// manager is the one that was here: user/Servers/common/wm). The kernel gives it mechanisms
 // (kern/wsrv.h) and keeps, here:
 //
 //  - CWindow: what a program's pump reads -- its queue of events, the request to end, the wake of

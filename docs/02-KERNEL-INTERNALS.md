@@ -137,7 +137,7 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
      them merged (modifiers ORed, held keys joined), so one keyboard's empty report does not
      release the keys held on another. The mouse is still `mouse1` only. **Print Screen** (USB usage
      0x46) is no longer the kernel's (kapi v90): the held keys' report goes to **Elegant**
-     (`KAPI_WS_IN_HELD_USB`), which sees the key's press (`print_screen`, `user/Servers/elegant/server.cpp`)
+     (`KAPI_WS_IN_HELD_USB`), which sees the key's press (`print_screen`, `user/Servers/common/serve.cpp`)
      and tells the **Screenshot** app through its service `screenshot` (message type 1, `"now"` or
      `"window <id>"` — with Alt, the window that has the keyboard, which Elegant knows), else starts it
      (`kapi_exec_as ("SD:/apps/screenshot.app/main", "--now" | "--window <id>", "screenshot")`). No key
@@ -2005,10 +2005,11 @@ The terminal thus chains the `stdout` of one stage to the `stdin` of the next vi
 
 > **Since 2026-10-05 the window manager, the compositor and the routing of the input are no longer in
 > the kernel.** They are **Elegant**'s, the graphics server, a user process (`SD:/bin/elegant`,
-> `user/Servers/elegant`; §8, v89: what the kernel gives it; `docs/GUI-USERSPACE-STUDY.md`). The window
-> manager described in §10.2 and §10.3 below is the same code, moved: `user/Servers/elegant/wm/window.cpp`
-> and `wm/kern/gui/window.h` (with `wm/cursors.inc`), built for a user process with stand-ins for the few
-> Circle headers it includes (`user/Servers/elegant/port`) — read "the kernel" there as "Elegant".
+> `user/Servers/elegant`; §8, v89: what the kernel gives it; `docs/GUI-USERSPACE-STUDY.md`) — and, since
+> 2026-10-08, **PocketUI**'s in the pocket and console modes (below). The window manager described in §10.2
+> and §10.3 below is the same code, moved: `user/Servers/common/wm/window.cpp` and `wm/kern/gui/window.h`
+> (with `wm/cursors.inc`), built for a user process with stand-ins for the few Circle headers it includes
+> (`user/Servers/common/port`) — read "the kernel" there as "the graphics server".
 >
 > **What the kernel keeps** (`kernel/gui/kwin.cpp`, `kern/gui/window.h`, 150 lines):
 > - `CWindow` — only a program's **queue of events** (with the request to end and the wake of
@@ -2030,12 +2031,13 @@ The terminal thus chains the `stdout` of one stage to the `stdin` of the next vi
 >   names spoke to Elegant (`appkit_ws.inc`); no program was rebuilt. The kernel image lost 43 KB. Since
 >   2026-10-08 the window calls are **UIKit's** (`uk_win_*`, `uikit/win.h`; the protocol
 >   `user/Kits/uikit/port/elegant.h`), AppKit's removed (§8 *The window API moves to UIKit*).
-> - **Print Screen** and **the wheel's speed** are Elegant's too (§2's input task; `server.cpp`).
+> - **Print Screen** and **the wheel's speed** are the graphics server's too (§2's input task;
+>   `user/Servers/common/serve.cpp`).
 >
 > **The server per mode (v97, 2026-10-08; `docs/POCKETUI-TECH-STUDY.md` §3.8, §8):** the kernel reads
 > `SD:/etc/system.ini` **`shell =`** (`sys/wsrv.cpp` `ShellRead`, at the boot and at each switch):
 > `desktop`, no line, or a word it does not know (logged) → **Elegant**, `SD:bin/elegant --serve` — exactly as
-> before; `pocket` / `console` → **PocketUI**, `SD:bin/pocketui --serve --mode <m>` (not built yet). The role
+> before; `pocket` / `console` → **PocketUI**, `SD:bin/pocketui --serve --mode <m>` (phase P3, below). The role
 > (`KAPI_WS_REGISTER`) is for the program started (its task's name). The server asked for that is missing,
 > ends before it has the display, or does not take it in 5 s (then it is killed) → **Elegant instead**, its
 > aliases dropped (`KAPI_WS_SWITCH` answers 1) — a bad setting never leaves the screen dark; Elegant failing
@@ -2046,8 +2048,35 @@ The terminal thus chains the `stdout` of one stage to the `stdin` of the next vi
 > the same fallback. The graphics session's programs are `/bin/session`'s (phase P4: it closes them, writes
 > `shell =`, switches, runs the new mode's session file); until then a switch by hand: `aliastest --switch`.
 
+> **Two servers, one common code (PocketUI's phase P3, 2026-10-08; `docs/POCKETUI-TECH-STUDY.md` §7):**
+> `user/Servers/common/` holds what is not a policy, compiled into both servers (`common/common.mk`):
+> `serve.cpp` (the loop: `KAPI_WS_REGISTER`, the display, the raw input, the requests, the 16 ms pace, the
+> present, the shared buffers `el_shared_*`, the kernel's `el_sys_*`, Print Screen, the wheel's speed, the 5 s
+> statistics), `route.cpp` (the keys to the policy then to the window that has them; the programs' events
+> forwarded; the windows' places kept in the kernel — `KAPI_WS_STATE` — for a server started again; the focus
+> told), `core.cpp` / `core.h` (the window store behind plain functions, the shots), `ops.cpp` (the requests'
+> decoding: Elegant's operations, `uikit/port/elegant.h`) and `wm/` (`CWindowManager`, the compositor).
+> A server's **policy** (`common/policy.h`, `struct ws_policy`: `create` — a window's place, size and flags, or
+> refused —, `op` — a request answered first —, `key`, `tick` — once a turn —, `screen`, `registered` — the role
+> taken, the display not yet —, `start`) is all that differs; every hook may be 0. **Elegant**
+> (`user/Servers/elegant/main.cpp`) has none but `start` (voronoy run again after a restart) and its
+> demonstration: its behaviour is unchanged (checked on the PC: `tools/tests/server_sim/run.sh` composes the
+> same app under Elegant before and after the extraction — the same pixels). **PocketUI** (`SD:/bin/pocketui`,
+> `user/Servers/pocketui/`: `main.cpp`, `wm.cpp` the policy, `band.cpp` the status band) is described in docs/03
+> §5.10.3 and docs/04 §5 "The pocket and console modes": its UIKit under the name `SD:/lib/uikit.so`
+> (`kapi_lib_open_as` in its `registered` hook, after the role and before the display — §7 *Aliases*), a 24 px
+> status band of its own (a topmost system window at y = 0: the work area below it; none in console), a
+> program's window **filled** (frameless, at the work area's top left; a resizable one sent
+> `GUI_EVENT_WINRESIZE` to the work area's size, then `GUI_EVENT_WINCTL` maximise if it did not apply it) or a
+> **card** (framed, centred, when it fits), its popups where asked, the desktop's bands (a backmost window, a
+> topmost one on the top or bottom edge) refused, one workspace, **one app in front** (the others' windows
+> set aside: `CWindow::SetAside`, hidden as an off-desk window — a flag Elegant never sets), Alt+Tab. Its
+> protocol is `user/Kits/uikit/port/pocket.h`: Elegant's operations and numbers (`elegant.h`, included) with
+> PocketUI's meanings, plus its own from 0x100 (`PK_OP_HELLO`, `PK_OP_SERVER`; the shell's `PK_OP_SHELL`..
+> `PK_OP_DIM` answered `-KAPI_ENOSYS` until phase P5).
+
 Source: `kernel/gui/{gimage,kwin,surface}.cpp` + headers (`kern/gui/`); the window manager:
-`user/Servers/elegant/wm`. Rendering core ported from the author's FreeBASIC `SimpleOS`.
+`user/Servers/common/wm`. Rendering core ported from the author's FreeBASIC `SimpleOS`.
 
 ### 10.1 `GImage` — software rendering engine
 

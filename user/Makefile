@@ -141,7 +141,7 @@ lib/uikit/canvas.o: Kits/uikit/canvas.cpp $(UIKIT_HDR) $(LIB_DEP)
 	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -c $< -o $@
 # The port (Kits/uikit/port/: what differs between the graphics servers -- the window driver, the server's
 # protocol; docs/POCKETUI-TECH-STUDY.md section 5): Kits/uikit/port.cpp compiles the desktop's (Elegant's).
-lib/uikit/port.o: $(wildcard Kits/uikit/port/*.h Kits/uikit/port/*.cpp)
+lib/uikit/port.o: $(wildcard Kits/uikit/port/*.h Kits/uikit/port/*.cpp Kits/uikit/port/*.inc)
 lib/uikit/imgload.o: Kits/uikit/imgload.cpp Kits/imagekit/img/imgload.hpp Kits/imagekit/imagekit.h $(LIB_DEP)
 	@mkdir -p lib/uikit
 	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -Wno-unused-parameter -Wno-sign-compare -c $< -o $@
@@ -163,6 +163,25 @@ lib/uikit_stubs.S lib/uikit_bind.cpp lib/uikit_bind_c.c: lib/uikit_table.S ;
 # (its img_load... are relays to ImageKit: that library's import stubs linked in, opened at the first picture)
 lib/uikit.so: $(UIKIT_SO_OBJ) lib/imagekit_stubs.o lib/systemkit_stubs.o lib/uikit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
+# ---- lib/pocket/uikit.so: PocketUI's UIKit (the pocket and console modes' server loads it under the name
+# SD:/lib/uikit.so: kapi_lib_open_as). The SAME objects as lib/uikit.so but the port, compiled with UK_PORT_POCKET
+# (Kits/uikit/port/port_pocket.cpp: PocketUI's protocol); its table generated against the same Kits/uikit/uikit.abi
+# with --frozen (a function new to one library only is an error: entries come through the desktop's build first),
+# no stubs nor bind of its own (the programs link the desktop's lib/uikit.imp.a: the stubs are by slot, the same for
+# both). tools/libgen/abi_same.py then checks the two tables identical slot by slot (docs/03 "One UIKit per server").
+UIKIT_POCKET_OBJ = $(patsubst lib/uikit/port.o,lib/pocket/port.o,$(UIKIT_SO_OBJ))
+lib/pocket/port.o: Kits/uikit/port.cpp $(wildcard Kits/uikit/port/*.h Kits/uikit/port/*.cpp Kits/uikit/port/*.inc) $(UIKIT_HDR) $(LIB_DEP)
+	@mkdir -p lib/pocket
+	$(CXX) $(LIB_CXXFLAGS) -DONYX_LIB_BUILD -DUK_PORT_POCKET -c $< -o $@
+lib/pocket/uikit_table.S: $(UIKIT_POCKET_OBJ) Kits/uikit/uikit.abi ../tools/libgen/libgen.py | lib/uikit_table.S
+	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data --exclude '^_ZN5uikit4port' \
+		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$|onyx_systemkit_table$$)' --frozen --table lib/pocket/uikit_table.S $(UIKIT_POCKET_OBJ)
+lib/pocket/uikit.so: $(UIKIT_POCKET_OBJ) lib/imagekit_stubs.o lib/systemkit_stubs.o lib/pocket/uikit_table.o lib/librt.o $(LIB_KAPI)
+	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
+lib/pocket/abi_same.stamp: lib/uikit.so lib/pocket/uikit.so lib/uikit_table.S lib/pocket/uikit_table.S ../tools/libgen/abi_same.py
+	python3 ../tools/libgen/abi_same.py --nm $(PREFIX)nm lib/uikit.so lib/pocket/uikit.so --tables lib/uikit_table.S lib/pocket/uikit_table.S
+	@touch $@
+
 # The program side: the stubs, the bind constructor, and the variables (Kits/uikit/globals.cpp).
 lib/uikit_globals.o: Kits/uikit/globals.cpp Kits/uikit/globals.inc $(UIKIT_HDR)
 	@mkdir -p lib
@@ -388,7 +407,7 @@ lib/gpiokit.imp_c.a: lib/gpiokit_stubs.o lib/gpiokit_bind_c.o
 
 SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/fontkit.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so lib/systemkit.so lib/netkit.so lib/gpiokit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a lib/gpiokit.imp.a lib/gpiokit.imp_c.a lib/uikit.imp_c.a
+libs: $(SHLIBS) lib/pocket/uikit.so lib/pocket/abi_same.stamp lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a lib/gpiokit.imp.a lib/gpiokit.imp_c.a lib/uikit.imp_c.a
 
 # The kits' descriptions for Onyx BASIC (lib/<kit>.bi -> SD:/lib/<kit>.bi; `#import filekit`): each kit's functions,
 # their places (its .abi) and their types (its headers' prototypes), by tools/kitbi/kitbi.py -- every kit of Kits/,
@@ -415,10 +434,12 @@ bin: Libs/v3d/libv3d.a Libs/gpucomp/libgpucomp.a libs
 	@$(MAKE) --no-print-directory -C BinUtils
 
 # The system's servers live in Servers/<name>/ (their own Makefile), staged to SD:/bin/<name>:
-# Elegant, the graphics server.
+# Elegant, the desktop's graphics server; PocketUI, the pocket and console modes' (both built with what they
+# share: Servers/common/, Servers/common/common.mk).
 .PHONY: servers
 servers: lib/appkit_stubs.o
 	@$(MAKE) --no-print-directory -C Servers/elegant
+	@$(MAKE) --no-print-directory -C Servers/pocketui
 
 # Apps/<name>/main.cpp -> <name>.elf. -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts so a nested source finds the user-side headers.
 # uikit toolkit: compiled once into a static library, linked into every app.
@@ -853,4 +874,5 @@ clean:
 	rm -rf Apps/pdf/obj Apps/koton/obj Apps/media/obj
 	@$(MAKE) --no-print-directory -C BinUtils clean
 	@$(MAKE) --no-print-directory -C Servers/elegant clean
+	@$(MAKE) --no-print-directory -C Servers/pocketui clean
 	@$(MAKE) --no-print-directory -C Ports/doom clean

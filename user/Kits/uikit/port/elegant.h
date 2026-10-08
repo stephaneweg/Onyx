@@ -2,8 +2,10 @@
 // uikit/port/elegant.h -- the protocol between UIKit's desktop port and Elegant, the graphics server
 // (SD:/bin/elegant).
 //
-// PRIVATE to the desktop UIKit's port (uikit/port/port_desktop.cpp) and Elegant (user/Servers/elegant): no
-// program includes it (wstest, the protocol's test, apart). A program's window calls are UIKit's uk_win_*
+// PRIVATE to the desktop UIKit's port (uikit/port/port_desktop.cpp, its client uikit/port/client.inc) and Elegant
+// (user/Servers/elegant, the requests decoded by user/Servers/common/ops.cpp): no program includes it (wstest, the
+// protocol's test, apart). PocketUI's protocol (uikit/port/pocket.h) starts from these operations: it includes
+// this file, its numbers and structures shared, PocketUI giving them its meanings. A program's window calls are UIKit's uk_win_*
 // functions (uikit/win.h); the desktop port sends the requests below. Until 2026-10-08 this file was AppKit's
 // (user/Kits/appkit/elegant.h) and the window calls AppKit's kapi_* ones (docs/POCKETUI-TECH-STUDY.md phase
 // P2: each graphics server's UIKit is the only code that speaks its server's protocol).

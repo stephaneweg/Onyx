@@ -1,10 +1,12 @@
 //
-// server.cpp -- Elegant as the graphics server: the display and the raw input taken from the
-// kernel (kapi v89, kws.h), the programs' windows served (the protocol: uikit/port/elegant.h).
+// serve.cpp -- a graphics server's loop, common to Elegant and PocketUI (policy.h): the display and the raw
+// input taken from the kernel (kapi v89, kws.h), the programs' windows served (the requests: ops.cpp; the
+// protocols: uikit/port/elegant.h, uikit/port/pocket.h). It was Elegant's server.cpp until 2026-10-08
+// (PocketUI's phase P3), the behaviour unchanged: what differs between the servers is their policy's.
 //
 // One loop, one thread: the raw input to the window manager; the programs' requests answered; the
 // events the window manager queued for a program's window put in that program's queue (the
-// kernel's); what changed composed and sent to the display; then the wait.
+// kernel's: route.cpp); what changed composed and sent to the display; then the wait.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -16,11 +18,10 @@
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
 #include "kws.h"
-#include "uikit/port/elegant.h"
 #include "core.h"
+#include "policy.h"
 
-int el_demo_scene (int w, int h);		// (main.cpp) the demonstration's windows -> how many
-int el_demo_closed (unsigned self);		// ... those closed since the last call, removed
+static const char *Name (void)			{ return g_pWsPolicy != 0 && g_pWsPolicy->name != 0 ? g_pWsPolicy->name : "server"; }
 
 // ---- the windows' shared pixels (core.h) --------------------------------------------------------
 // A buffer's address here says its number (kern/layout.h: USER_WS_BASE + number * USER_WS_SLOT).
@@ -54,10 +55,8 @@ void el_shared_free (void *p)
 
 static struct kapi_ws_req s_Req;		// (4 KB: not on the stack)
 static unsigned char s_Out[KAPI_WS_DATA_MAX];
-static unsigned s_nExitAsked[EL_WINDOWS_MAX];	// the program (its pid) a closed window's exit was asked of
 
-static unsigned s_nFocus = 0xFFFFFFFFu;
-static unsigned s_nIn, s_nReq, s_nPosted, s_nFrames, s_nStatAt;	// (stats)
+static unsigned s_nIn, s_nReq, s_nFrames, s_nStatAt;	// (stats; the events sent: route.cpp's g_nWsPosted)
 
 int el_sys_attach (unsigned pid)
 {
@@ -79,44 +78,6 @@ int el_sys_name (unsigned pid, char *buf, unsigned cap)
 {
 	long n = kapi_ws_ctl (KAPI_WS_PROC_NAME, (long) pid, (long) buf, (long) cap);
 	return n > 0 ? (int) n : 0;
-}
-
-// The events the window manager queued for the programs' windows -> the programs' queues; a
-// program whose window was closed is told to end (once).
-static void forward_events (unsigned self)
-{
-	for (int id = 0; id < EL_WINDOWS_MAX; id++)
-	{
-		unsigned pid = el_core_window_pid (id);
-		if (pid == 0 || pid == self) continue;
-		struct el_core_event e;
-		while (el_core_window_event_peek (id, &e))
-		{
-			struct kapi_event k;
-			kapi_memset (&k, 0, sizeof k);
-			k.handler = e.handler; k.value = e.value; k.event = e.event; k.mods = e.mods;
-			k.sender = (unsigned long long) el_core_window_win (id);	// (v94) which of its windows (0: its first)
-			long r = kws_post (pid, &k);
-			if (r == 0) break;				// (its queue is full: later)
-			if (r == 1) s_nPosted++;
-			el_core_window_event_drop (id);			// (queued, or the program is gone)
-		}
-		int win = el_core_window_win (id);
-		if (win > 0 && el_core_window_closing (id))	// (v94) a program's other window: told, it closes it
-		{
-			struct kapi_event k;
-			kapi_memset (&k, 0, sizeof k);
-			k.handler = el_core_window_pointer_handler (id); k.sender = (unsigned long long) win;
-			k.event = GUI_EVENT_WINCTL; k.value = KAPI_FRAME_CLOSE;
-			if (k.handler == 0 || kws_post (pid, &k) != 0) el_core_window_closing_clear (id);	// (full: at the next turn)
-			continue;
-		}
-		if (el_core_window_closing (id) && s_nExitAsked[id] != pid)
-		{
-			kws_exit (pid);
-			s_nExitAsked[id] = pid;
-		}
-	}
 }
 
 static int s_bLostDisplay = 0;
@@ -189,6 +150,15 @@ static long present (unsigned *screen, int stride, int x, int y, int w, int h)
 }
 
 static void say (const char *s) { ax_puts (s); }
+static void say2 (const char *s)			// "<server>: ..."
+{
+	char line[128];
+	int n = 0;
+	for (const char *p = Name (); *p && n < 32; p++) line[n++] = *p;
+	for (; *s && n < (int) sizeof line - 1; s++) line[n++] = *s;
+	line[n] = 0;
+	ax_puts (line);
+}
 
 // What the server did, one line every 5 s while something happens (the kernel's log: kmsg).
 
@@ -206,13 +176,14 @@ static void stats (void)
 	if (now - s_nStatAt < 500) return;
 	s_nStatAt = now;
 	el_core_shot_tick ();
-	if (s_nIn + s_nReq + s_nPosted + s_nFrames == 0) return;
-	char line[96], *p = line;
-	put_num (p, "elegant 5s: input ", s_nIn); put_num (p, ", requests ", s_nReq);
-	put_num (p, ", events sent ", s_nPosted); put_num (p, ", frames ", s_nFrames);
+	if (s_nIn + s_nReq + g_nWsPosted + s_nFrames == 0) return;
+	char line[112], *p = line;
+	for (const char *n = Name (); *n && p < line + 16; n++) *p++ = *n;
+	put_num (p, " 5s: input ", s_nIn); put_num (p, ", requests ", s_nReq);
+	put_num (p, ", events sent ", g_nWsPosted); put_num (p, ", frames ", s_nFrames);
 	*p++ = '\n'; *p = 0;
 	say (line);
-	s_nIn = s_nReq = s_nPosted = s_nFrames = 0;
+	s_nIn = s_nReq = g_nWsPosted = s_nFrames = 0;
 }
 
 int el_serve (int demo, int restart)
@@ -220,9 +191,10 @@ int el_serve (int demo, int restart)
 	long r = kws_register ();
 	if (r != 1)
 	{
-		say (r == 0 ? "elegant: another graphics server runs\n" : "elegant: this kernel has no graphics server role (kapi v89)\n");
+		say2 (r == 0 ? ": another graphics server runs\n" : ": this kernel has no graphics server role (kapi v89)\n");
 		return 1;
 	}
+	if (g_pWsPolicy != 0 && g_pWsPolicy->registered != 0) g_pWsPolicy->registered (restart);	// (before the display: init's programs come after it)
 	kapi_thread_priority (0, 1);		// what the pointer does is shown at once: before the programs' turns
 	struct kapi_ws_display D;
 	long taken = kws_display (1, &D);
@@ -231,20 +203,17 @@ int el_serve (int demo, int restart)
 		kapi_msleep (500);
 		taken = kws_display (1, &D);
 	}
-	if (taken != 0) { say ("elegant: the display is busy (a full-screen program)\n"); return 1; }
+	if (taken != 0) { say2 (": the display is busy (a full-screen program)\n"); return 1; }
 	int w = D.w, h = D.h;
 	unsigned self = (unsigned) kapi_getpid (0);
 	unsigned *screen = new unsigned[(unsigned long) w * h];
 	int nDemo = 0, ok = screen != 0;
-	if (ok && demo) { nDemo = el_demo_scene (w, h); ok = nDemo > 0; }
+	if (ok && demo) { nDemo = g_pWsPolicy != 0 && g_pWsPolicy->demo_scene != 0 ? g_pWsPolicy->demo_scene (w, h) : 0; ok = nDemo > 0; }
 	else if (ok) ok = el_core_start (w, h);
-	if (!ok) { kws_display (0, 0); say ("elegant: no memory\n"); return 1; }
+	if (!ok) { kws_display (0, 0); say2 (": no memory\n"); return 1; }
 
-	if (restart)
-	{
-		el_core_restore_all ();				// the programs' windows, as the server before had them
-		kapi_launch ("voronoy");				// (the wallpaper went with it: painted again)
-	}
+	if (restart) el_core_restore_all ();			// the programs' windows, as the server before had them
+	if (g_pWsPolicy != 0 && g_pWsPolicy->start != 0) g_pWsPolicy->start (w, h, restart);	// (Elegant: the wallpaper painted again)
 	wheel_speed ();
 	unsigned mods = 0;
 	unsigned nStart = kapi_get_ticks ();
@@ -268,7 +237,7 @@ int el_serve (int demo, int restart)
 					break;
 				case KAPI_WS_IN_KEY:
 					if (demo && in[i].keys[0] == 27 && in[i].keys[1] == 0) quit = 1;
-					else el_core_key (in[i].keys);
+					else ws_route_key (in[i].keys, mods);
 					break;
 				case KAPI_WS_IN_MODS:
 					mods = (unsigned) in[i].a;
@@ -287,6 +256,7 @@ int el_serve (int demo, int restart)
 						delete [] screen;
 						screen = bigger; w = in[i].x; h = in[i].y;
 						el_core_screen (w, h);
+						if (g_pWsPolicy != 0 && g_pWsPolicy->screen != 0) g_pWsPolicy->screen (w, h);
 					}
 					break;
 				case KAPI_WS_IN_FULLSCREEN:
@@ -314,11 +284,8 @@ int el_serve (int demo, int restart)
 			kws_reply (s_Req.id, st, s_Out, len);
 		}
 
-		if (demo) nDemo -= el_demo_closed (self);
-		forward_events (self);
-		el_core_save_states (self);				// (the windows' places, for a server started again)
-		unsigned focus = el_core_focus_pid ();			// (kapi_key_held, the pads: who has the keys)
-		if (focus != s_nFocus) { s_nFocus = focus; kapi_ws_ctl (KAPI_WS_FOCUS, (long) focus, 0, 0); }
+		if (demo && g_pWsPolicy != 0 && g_pWsPolicy->demo_closed != 0) nDemo -= g_pWsPolicy->demo_closed (self);
+		ws_route_turn (self);					// (the events to the programs: route.cpp)
 
 		// One frame every 16 ms at most: what the programs changed meanwhile (each of them presents
 		// by itself, often 60 times a second) is composed and sent together, not one by one.
