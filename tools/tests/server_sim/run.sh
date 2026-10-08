@@ -94,6 +94,19 @@ for sz in 800x480 1920x1080; do
 	run pocket_fsapp fullscreen-$sz "$SC" SIM_SCREEN=$sz SIM_APPNAME=fsapp
 done
 for p in pocket-terminal pocket-card-over pocket-calculator console-terminal pocket-terminal-640 pocket-front pocket-menubar; do png $p; done
+# GPIO Lab filled (the Pi's report on 2026.10.126: "a bit too wide and too tall"): its window exactly the work area, its
+# layout (LabRoot::onResized) inside it -- the pictures pocket-gpiolab-<size>.png (its Code view: -code)
+mkdir -p "$OUT/glz"
+for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/glz/$f.o"; done
+ftapp pocket gpiolab uikit_pocket -Ithird_party/zlib-1.3.1 user/Kits/gpiokit/gkcore.cpp user/Kits/filekit/fkcore.cpp "$OUT"/glz/*.o \
+	user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp
+GW=$(printf 'wait;%.0s' $(seq 1 30))
+for sz in 1920x1080 1280x720; do
+	w=${sz%x*}; h=${sz#*x}
+	run pocket_gpiolab gpiolab-$sz "${GW}expect kind fill;expect pos 0,24;expect client $w,$((h - 24));dump $OUT/pocket-gpiolab-$sz.elsm" SIM_SCREEN=$sz SIM_APPNAME=gpiolab "SIM_ARGS=--demo --tab chart"
+	run pocket_gpiolab gpiolab-code-$sz "${GW}expect client $w,$((h - 24));dump $OUT/pocket-gpiolab-code-$sz.elsm" SIM_SCREEN=$sz SIM_APPNAME=gpiolab "SIM_ARGS=--demo --code"
+	png pocket-gpiolab-$sz; png pocket-gpiolab-code-$sz
+done
 
 # ---- the pocket shell (pocketshell, phase P5): the launcher, the search, the switcher, quick settings ----------
 # The real pocketshell as the client; the other programs are canvases painted from the real apps' pictures (the
@@ -141,6 +154,18 @@ shellshots 480x800 portrait "home search switcher quick"
 shellshots 800x480 800 "home search switcher quick" fr
 # console: the shell's home is the whole screen (no band)
 run pocket_pocketshell shell-console "$W;$W;expect shell app;expect kind home;expect area 0,0,800,480;expect pos 0,0" SIM_SCREEN=800x480 SIM_MODE=console SIM_APPNAME=pocketshell
+# the launcher's keys from the start (the Pi's report on 2026.10.126: "the shell does not react to the keyboard"):
+# typing goes to the search (calc), Down / Up choose, Enter opens the result (the Calculator); "qqq" (no app: its only
+# result is to run it) then Esc clears the search, the arrows move in the grid (Right x3, Left: its 3rd app), Enter
+# opens it (not "qqq" run)
+n0=$(grep -c "^sim: launch" "$OUT/log.txt" || true)
+SK="otherpic 1920 30 menubar $OUT/bar-home-1080.elsm 0 0 0x35 0 0;$W;$W;expect home 1;key c;key a;key l;key c;$W;key 0x101;key 0x100;$W;key 13;$W"
+SK="$SK;key q;key q;key q;$W;key 0x1b;$W;key 0x103;key 0x103;key 0x103;key 0x102;$W;key 13;$W;$W;expect keys 16;expect home 1"
+run pocket_pocketshell shell-keys-1080 "$SK" SIM_SCREEN=1920x1080 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$(langdir "")
+L=$(grep "^sim: launch" "$OUT/log.txt" | tail -n +$((n0 + 1)) | tr '\n' ' ')
+case "$L" in "sim: launch tinycalc sim: launch terminal ") ;; "sim: launch tinycalc sim: launch "?*" ") L=ok ;; esac	# (terminal: "qqq" not cleared, run)
+if [ "$L" = ok ]; then echo "  shell-keys-1080: the search's result and the grid's app opened"
+else echo "  shell-keys-1080: FAILED (opened: $L)"; FAIL=1; fi
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1
 echo "  checks: $(grep -c 'server_sim: PASS' "$OUT/log.txt") passed, $(grep -c 'server_sim: FAIL' "$OUT/log.txt") failed"
 

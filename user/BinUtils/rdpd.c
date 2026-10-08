@@ -275,6 +275,7 @@ struct Win
 	struct kapi_win_info info;
 	unsigned *prev, *cur; int bw, bh;	// the content the client has / as read now
 	int sent;				// its WIN message went out
+	unsigned flags;				// the flags it told (pocket_flags)
 	int stale;				// its pixels not sent yet (new, or hidden until now)
 	int alive;
 };
@@ -314,14 +315,88 @@ static void send_rect (unsigned id, int part, const unsigned *src, int stride, i
 	put (useLz ? g_lz : g_pack, useLz ? z : n);
 }
 
-static void send_win (const struct kapi_win_info *I)
+// ---- PocketUI (the pocket and console modes): the flags told to the client ------------------
+// Onyx Remote sends the PC's keys only from a child window of its own (RemoteWindow), and makes one only of a
+// framed window: a borderless one becomes a see-through overlay or a picture on the desktop (a popup, the dock:
+// never the keyboard's) and a backmost one is skipped (it is in the desktop's picture). Under PocketUI every app's
+// main window is frameless (filled, or centred over a matte) and the shell's home is backmost -- so no window of
+// the PC could take the keyboard and nothing typed was sent (the Pi's report on 2026.10.126: typing from Onyx
+// Remote did nothing, in the apps and in the launcher; the mouse worked, the Pi's own keyboards too). There, rdpd
+// tells the client:
+//   - a program's MAIN window (its lowest borderless one, not topmost, not see-through, not a system one) as a
+//     plain window without a frame: a child window that takes the focus and sends the keys -- its popups (above
+//     it, borderless) stay overlays, the see-through ones (the menu bar, the shell's overlays, toasts) too;
+//   - the shell's HOME (its backmost window) the same way while no app shows (the keys are the home's then);
+//     behind an app it stays backmost (not shown by the client: the app covers it on the Pi);
+//   - PocketUI's matte (its own borderless window under a centred app) a picture on the desktop (as it was) when
+//     the client asked for the desktop, else not shown (an overlay would cover the app's window).
+// Elegant's windows are told as they are. (The server asked every 2 s: the mode switched.)
+static int g_pocket;			// the graphics server is PocketUI's (uk_win_server's mode)
+static unsigned g_pocketAt;
+
+static void pocket_poll (void)
+{
+	unsigned now = kapi_get_ticks ();
+	if (g_pocketAt != 0 && now - g_pocketAt < 200) return;
+	g_pocketAt = now | 1;
+	struct uk_win_server_info si;
+	memset (&si, 0, sizeof si);
+	si.size = sizeof si;
+	int was = g_pocket;
+	g_pocket = uk_win_server (&si) > 0 && si.mode != UK_MODE_DESKTOP;
+	if (g_pocket != was) rdlog ("rdpd: the graphics server is %s", g_pocket ? "PocketUI's: its frameless main windows and its home sent as plain ones (the keys)" : "the desktop's");
+}
+
+#define POCKET_SHOWN(I)	(!((I)->state & (KAPI_WIN_MINIMISED | KAPI_WIN_OFFDESK)))
+
+// The flags told for each of the n windows L (bottom to top) -> F.
+static void pocket_flags (const struct kapi_win_info *L, int n, unsigned *F)
+{
+	const unsigned B = WIN_FLAG_BORDERLESS, K = WIN_FLAG_BACKMOST;
+	int app = 0;					// an app's window shows (not the home's, the matte, a band)
+	for (int i = 0; i < n; i++)
+	{
+		F[i] = L[i].flags;
+		if (L[i].id != KAPI_WIN_DESKTOP && POCKET_SHOWN (&L[i]) && !(L[i].flags & (WIN_FLAG_TOPMOST | WIN_FLAG_SYSTEM | K))) app = 1;
+	}
+	if (!g_pocket) return;
+	for (int i = 0; i < n; i++)
+	{
+		unsigned f = L[i].flags;
+		if (L[i].id == KAPI_WIN_DESKTOP || !(f & B) || (f & (WIN_FLAG_TOPMOST | WIN_FLAG_ALPHA))) continue;
+		if (f & K)					// the shell's home
+		{
+			if (!app) F[i] = f & ~(B | K);
+			continue;
+		}
+		if (f & WIN_FLAG_SYSTEM)			// PocketUI's matte
+		{
+			if (!g_desktop) F[i] = f | K;
+			continue;
+		}
+		int lowest = 1;					// its program's main window: none of its own below it
+		for (int j = 0; j < i && lowest; j++)
+			if (L[j].pid == L[i].pid && L[j].id != KAPI_WIN_DESKTOP && POCKET_SHOWN (&L[j]) && (L[j].flags & B)
+			    && !(L[j].flags & (WIN_FLAG_TOPMOST | WIN_FLAG_ALPHA | WIN_FLAG_SYSTEM | K))) lowest = 0;
+		if (lowest) F[i] = f & ~B;
+	}
+}
+
+// Under PocketUI a system window (the matte, the shell's home) is never raised from the PC: the matte would cover
+// the app (PocketUI keeps only the apps' windows in order).
+static int raisable (const struct Win *w)
+{
+	return w != 0 && !(w->info.flags & (WIN_FLAG_BACKMOST | WIN_FLAG_TOPMOST)) && !(g_pocket && (w->info.flags & WIN_FLAG_SYSTEM));
+}
+
+static void send_win (const struct kapi_win_info *I, unsigned flags)
 {
 	int tn = (int) strlen (I->title);
 	msg (1, 4 + 4 + 4 + 8 + 4 + 3 + (unsigned) tn);
 	put32 (I->id); put16 ((unsigned) (short) I->x); put16 ((unsigned) (short) I->y);
 	put16 ((unsigned) I->w); put16 ((unsigned) I->h);
 	put16 ((unsigned) I->ow); put16 ((unsigned) I->oh); put16 ((unsigned) I->il); put16 ((unsigned) I->it);
-	put32 (I->flags); put8 ((unsigned) I->alpha); put8 (I->state); put8 ((unsigned) tn); put (I->title, tn);
+	put32 (flags); put8 ((unsigned) I->alpha); put8 (I->state); put8 ((unsigned) tn); put (I->title, tn);
 }
 
 // The content: the tiles that changed since the client's copy, a row of tiles at a time
@@ -388,6 +463,7 @@ static int round_send (void)
 		kapi_screen_size (&w, &h);
 		if (w != g_W || h != g_H) { g_W = w; g_H = h; msg (8, 4); put16 ((unsigned) w); put16 ((unsigned) h); }
 	}
+	pocket_poll ();
 	struct kapi_win_info L[MAXWIN];
 	int n = uk_win_list (L, MAXWIN);
 	if (!g_desktop)							// (only when asked for)
@@ -396,6 +472,8 @@ static int round_send (void)
 		for (int i = 0; i < n; i++) if (L[i].id != KAPI_WIN_DESKTOP) L[k++] = L[i];
 		n = k;
 	}
+	unsigned F[MAXWIN];
+	pocket_flags (L, n, F);
 	for (int i = 0; i < MAXWIN; i++) g_win[i].alive = 0;
 	for (int i = 0; i < n; i++)
 	{
@@ -406,9 +484,9 @@ static int round_send (void)
 		w->info = L[i];
 		int moved = !w->sent || old.x != L[i].x || old.y != L[i].y || old.w != L[i].w || old.h != L[i].h
 			  || old.ow != L[i].ow || old.oh != L[i].oh || old.flags != L[i].flags || old.alpha != L[i].alpha
-			  || old.state != L[i].state || strcmp (old.title, L[i].title) != 0;
-		if (moved) send_win (&L[i]);
-		w->sent = 1;
+			  || old.state != L[i].state || strcmp (old.title, L[i].title) != 0 || w->flags != F[i];
+		if (moved) send_win (&L[i], F[i]);
+		w->sent = 1; w->flags = F[i];
 		if (L[i].state & (KAPI_WIN_MINIMISED | KAPI_WIN_OFFDESK)) { w->stale = 1; continue; }	// (not shown)
 		int newChrome = w->stale || w->chromeGen != L[i].chromeGen || old.ow != L[i].ow || old.oh != L[i].oh;
 		if (newChrome && !g_noFrames) send_chrome (w);
@@ -489,7 +567,7 @@ static void pointer (unsigned id, int x, int y, unsigned buttons, int wheel)
 	struct Win *w = find (id);
 	if (!w && id != KAPI_WIN_DESKTOP) return;		// (the desktop: the screen, sent or not)
 	if (w && id != KAPI_WIN_DESKTOP && buttons && !g_btn && !(w->info.state & KAPI_WIN_KEYS)
-	    && !(w->info.flags & WIN_FLAG_TOPMOST))		// (not the menu bar, the dock)
+	    && !(w->info.flags & WIN_FLAG_TOPMOST) && raisable (w))	// (not the menu bar, the dock; PocketUI's matte)
 		uk_win_raise (id);				// clicked: on top on the Pi too
 	kapi_inject_pointer (w ? w->info.x + x : x, w ? w->info.y + y : y, buttons, wheel);
 	g_btn = buttons;
@@ -521,7 +599,7 @@ static int acceptor (void *arg)
 
 static void session (void)
 {
-	g_inlen = g_outlen = 0; g_dead = 0; g_desktop = 0; g_ctrl = 0; g_mods = 0; g_btn = 0; g_norder = -1;
+	g_inlen = g_outlen = 0; g_dead = 0; g_desktop = 0; g_ctrl = 0; g_mods = 0; g_btn = 0; g_norder = -1; g_pocketAt = 0;
 	memset (g_held, 0, sizeof g_held);
 	for (int i = 0; i < MAXWIN; i++) drop (&g_win[i]);
 	put ("ONYXRDP1", 8); put16 ((unsigned) g_W); put16 ((unsigned) g_H); put16 (kapi_abi_version ()); flush_out ();
@@ -580,7 +658,7 @@ static void session (void)
 				key_event (m[0] & 1, get32 (m + 1));
 			}
 			else if (t == 6) { unsigned c = get32 (m); char one[2] = { (char) c, 0 }; if (c > 0 && c < 256) kapi_inject_key (one); }
-			else if (t == 4) { struct Win *w = find (get32 (m)); if (w && !(w->info.flags & 6)) uk_win_raise (get32 (m)); }
+			else if (t == 4) { struct Win *w = find (get32 (m)); if (raisable (w)) uk_win_raise (get32 (m)); }
 			else if (t == 5) uk_win_close (get32 (m));
 			else if (t == 9)				// MOVE: dragged on the PC, put there on the Pi too
 			{

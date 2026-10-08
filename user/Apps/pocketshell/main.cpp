@@ -446,6 +446,8 @@ static void set_tab (int t)
 static void home_key (unsigned long, int ev, long v)
 {
 	if (ev != GUI_EVENT_KEY) return;
+	static bool said;					// (the Pi's kmsg: the keys reach the launcher)
+	if (!said) { said = true; ax_puts ("pocketshell: the launcher gets the keys\n"); }
 	int k = (int) v;
 	unsigned mods = (unsigned) kapi_get_modifiers ();
 	Grid g = grid ();
