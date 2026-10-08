@@ -306,7 +306,7 @@ static int g_btn;				// the buttons held (1 left, 2 right, 4 middle)
 static bool g_tracking;
 static HMENU g_menu;
 static std::string g_menuSpec;
-static std::string g_drop;			// the files dropped last (kapi_drag_data)
+static std::string g_drop;			// the files dropped last (uk_win_drag_data)
 struct Ev { int to; int ev; long long v; };	// to: 0 pointer, 1 key, 2 menu
 static std::vector<Ev> g_evq;
 static int g_clientW, g_clientH;		// the window's client area now
