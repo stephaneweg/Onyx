@@ -2231,6 +2231,236 @@ def nav_map (thumbs):
 	return img
 
 # ===========================================================================================================
+# Console mode's home as the browser (the user, 2026-10-08): the left column = the categories of the apps
+# (their app.txt's `category`), the focused one glowing; the right panel = the apps of that category as
+# glossy tiles. D-pad up / down: the categories; right or cross: into the right list (a tile glows, its
+# description at the left); circle: back to the categories; triangle: a tile's options.
+# ===========================================================================================================
+CATC.setdefault ("Files", (120, 150, 190))
+# The left column: "Recent" first (the home opens on what was used last: one press resumes it), then the
+# categories of app.txt (Games takes the Emulators' ROMs too; Demos and Shell are not shown), then Files and
+# Settings (the File Viewer's volumes, the Control Panel's applets).
+HOME_CATS = ["Recent", "Games", "Productivity", "Internet", "Graphics", "Multimedia", "Programming", "System", "Files", "Settings"]
+HOME_SUB = {"Recent": "what you used last", "Games": "%d games  -  ROMs of 6 consoles", "Productivity": "%d apps  -  documents, accounts",
+	    "Internet": "%d apps  -  the web, mail, messages", "Graphics": "%d apps  -  painting, photos, 3D",
+	    "Multimedia": "%d apps  -  music, films, a studio", "Programming": "%d apps  -  BASIC, logic, the GPIO",
+	    "System": "%d apps  -  terminal, disks", "Files": "the SD card, USB, the network", "Settings": "screen, sound, pad, Wi-Fi"}
+# what each app is: the line under its tile (the docs/04 catalog's words, short)
+KIND = {"archiver": "archives", "tinycalc": "sums", "calendar": "planner", "cardfile": "card database", "clock": "alarms, timer",
+	"graphcalc": "plots", "ledger": "accounts", "letters": "word processor", "notes": "quick notes", "pdf": "PDF reader",
+	"rtfview": "RTF reader", "slides": "presentations", "sheet": "spreadsheet", "tinypad": "plain text",
+	"courier": "HTTP client", "irc": "chat", "jet": "web browser", "lisa": "AI assistant", "mail": "mail client", "telegram": "messenger"}
+DESC = {"letters": ("The word processor: styled RTF documents, tables of contents, printing.", True),
+	"jet": ("Onyx's web browser, on WebKit: tabs, bookmarks, downloads.", True),
+	"telegram": ("The messenger: your chats, one window a conversation.", True)}
+RUNNING = {"letters", "media", "telegram"}
+# the right panel's tiles: (icon's app, name, line, badge)
+RECENT = [("letters", "Letters", "running", None), ("gbaemu", "Star Courier", "paused", "GBA"), ("media", "Media Player", "playing", None),
+	  ("telegram", "Telegram", "2 unread", None), ("jet", "Jet", "today", None), ("terminal", "Terminal", "today", None),
+	  ("ledger", "Ledger", "yesterday", None), ("doom", "Doom", "yesterday", None), ("fileviewer", "File Viewer", "Monday", None)]
+GAMES = [("doom", "Doom", "yesterday", "Onyx"), ("gbaemu", "Star Courier", "Monday", "GBA"), ("snesemu", "Moon Garden", "1 Oct", "SNES"),
+	 ("tetris", "Tetris", "30 Sep", "Onyx"), ("n64emu", "Turbo Kart 64", "28 Sep", "N64"), ("pinball", "Pinball", "27 Sep", "Onyx"),
+	 ("critters", "Critters", "25 Sep", "Onyx"), ("gbemu", "Pixel Knight", "20 Sep", "GB"), ("solitaire", "Solitaire", "18 Sep", "Onyx")]
+def home_tiles (cat):
+	if cat == "Recent": return RECENT, len (RECENT) + 4
+	if cat == "Games": return GAMES, len (apps_in ("Games")) + 8
+	lst = [(a, app_name (a), KIND.get (a, ""), None) for a in apps_in (cat)]
+	return lst, len (lst)
+def home_count (cat):
+	if cat == "Games": return len (apps_in ("Games"))
+	return len (apps_in (cat))
+
+def vignette (img, k = 0.55):
+	w, h = img.size
+	yy, xx = np.mgrid[0:h, 0:w]; r = np.sqrt (((xx - w / 2) / (w * 0.62)) ** 2 + ((yy - h * 0.45) / (h * 0.62)) ** 2)
+	m = np.clip (1 - k * np.clip (r - 0.55, 0, 1) ** 1.5, 0, 1)
+	return Image.fromarray ((np.asarray (img).astype (float) * m[..., None]).astype ("uint8"), "RGB")
+
+def home_top (img):
+	"""The gem and Onyx at the left, faint; Wi-Fi, the battery and the time at the right."""
+	put (img, 22, 19, mask (16, 16, lambda d, s: g_gem (d, s, 1)), (170, 205, 245))
+	text (img, 44, 15, "Onyx", cfont (17, "light"), (150, 176, 214))
+	text_r (img, CW - 22, 13, 24, "12:34", cfont (19, "regular"), (220, 230, 246))
+	text_r (img, CW - 82, 15, 22, "Thu 8 Oct", cfont (14, "regular"), (140, 164, 204))
+	battery (img, CW - 186, 20, 78, (180, 196, 220))
+	put (img, CW - 210, 17, mask (16, 14, lambda d, s: g_wifi (d, s)), (180, 196, 220))
+
+def hint_strip (img):
+	"""The bottom band under the buttons: a darker glass strip with a hairline."""
+	y = CH - 46
+	rrect (img, 0, y, CW, 46, 0, ((4, 8, 22), (2, 4, 12)), alpha = 150)
+	hline (img, 0, y, CW, (120, 160, 230), alpha = 60)
+
+def home_tile (img, x, y, s, app, badge = None, focus = False, running = False):
+	"""tile3d with a running dot (Aqua, glowing) in its corner."""
+	tile3d (img, x, y, s, app, badge, focus = focus)
+	if running:
+		cx, cy = x + s - 3, y + 3
+		m = Image.new ("L", img.size, 0); ImageDraw.Draw (m).ellipse ([cx - 5, cy - 5, cx + 5, cy + 5], fill = 255)
+		img.paste (add_glow (img, Image.new ("RGB", img.size, (90, 170, 255)), m, 4))
+		rrect (img, cx - 4, cy - 4, 8, 8, 4, ((200, 235, 255), (80, 160, 255))); ring (img, cx - 4, cy - 4, 8, 8, 4, (10, 20, 50), alpha = 200)
+
+PX, PY, PWD, PHT = 316, 62, 304, 370			# the right panel
+def home_panel (img, cat, focus = None, lit = True):
+	"""The right panel: the category's apps as tiles, three a row; `focus` = the index of the glowing tile."""
+	glass (img, PX, PY, PWD, PHT, 14, alpha = 46 if lit else 30, edge = 110 if lit else 70)
+	tiles, total = home_tiles (cat)
+	glow_text (img, PX + 16, PY + 10, "Last used" if cat == "Recent" else ("Last played" if cat == "Games" else cat), cfont (17, "regular"), (206, 224, 248), radius = 3, strength = 1)
+	cnt = str (total); text_r (img, PX + PWD - 16, PY + 10, 22, cnt, cfont (15, "regular"), (130, 156, 200))
+	hline (img, PX + 16, PY + 38, PWD - 32, (140, 180, 240), alpha = 50)
+	s = 54; fl = None
+	for i, (a, name, line, badge) in enumerate (tiles[:9]):
+		r, c = divmod (i, 3); cx = PX + 14 + c * 92; ty = PY + 48 + r * 100; tx = cx + (92 - s) // 2
+		run = a in RUNNING and cat != "Games"
+		if i == focus: fl = (tx, ty, cx, a, name, line, badge, run); continue
+		home_tile (img, tx, ty, s, a, badge, running = run)
+		f1 = cfont (14, "regular"); text_c (img, cx, ty + s + 5, 92, 16, ellipsize (name, f1, 88), f1, (214, 228, 248) if lit else (170, 190, 222))
+		f2 = cfont (12, "regular"); text_c (img, cx, ty + s + 22, 92, 14, ellipsize (line, f2, 88), f2, (126, 152, 196))
+	if total > 9:
+		f = cfont (13, "regular"); more = "%d more" % (total - 9)
+		w_ = tw (more, f) + 16; mx = PX + (PWD - w_) // 2
+		glyph (img, mx, PY + PHT - 18, 10, 10, lambda d, s_: g_chev (d, s_, 1, "down"), (140, 170, 220))
+		text (img, mx + 16, PY + PHT - 22, more, f, (140, 166, 210))
+	if fl:							# the chosen tile: lifted, larger, glowing
+		tx, ty, cx, a, name, line, badge, run = fl
+		S2 = 64; x2 = tx - (S2 - s) // 2; y2 = ty - (S2 - s) // 2 - 2
+		m = Image.new ("L", img.size, 0); ImageDraw.Draw (m).rounded_rectangle ([x2 - 6, y2 - 6, x2 + S2 + 6, y2 + S2 + 6], 16, fill = 190)
+		img.paste (add_glow (img, Image.new ("RGB", img.size, GLOW), m, 11))
+		home_tile (img, x2, y2, S2, a, badge, focus = True, running = run)
+		f1 = cfont (14, "semi"); text_c (img, cx - 4, ty + s + 5, 100, 16, ellipsize (name, f1, 98), f1, (255, 255, 255))
+		f2 = cfont (12, "regular"); text_c (img, cx, ty + s + 22, 92, 14, line, f2, (180, 206, 245))
+		return (x2, y2, S2)
+
+def home_left (img, sel):
+	"""The categories, a column; the chosen one glowing with its line; the list scrolls, faded at its ends."""
+	col = img.copy()
+	y = 80 - max (0, sel - 1) * 40
+	for i, cat in enumerate (HOME_CATS):
+		cc = CATC.get (cat, (140, 150, 170))
+		if i == sel:
+			col = glow_box (col, 34, y - 6, 264, 64, 12)
+			sub = HOME_SUB[cat]; sub = sub % home_count (cat) if "%d" in sub else sub
+			rrect (col, 46, y + 12, 8, 8, 4, (lighten (cc, 0.4), cc))
+			glow_text (col, 62, y - 3, cat, cfont (32, "semi"), (255, 255, 255), radius = 8, strength = 2)
+			text (col, 64, y + 35, sub, cfont (14, "regular"), (190, 214, 245))
+			# a thin light from the chosen word to its panel
+			m = Image.new ("L", col.size, 0); ImageDraw.Draw (m).line ([298, y + 26, PX, y + 26], fill = 255, width = 2)
+			col = add_glow (col, Image.new ("RGB", col.size, GLOW), m, 3); hline (col, 298, y + 25, PX - 298, (190, 220, 255), alpha = 200)
+			y += 72
+		else:
+			rrect (col, 47, y + 13, 6, 6, 3, cc, alpha = 170)
+			glow_text (col, 62, y + 2, cat, cfont (25, "light"), (172, 192, 224), radius = 5, strength = 1, glow = (30, 60, 120))
+			y += 40
+	fm = np.zeros ((CH, CW), float); ys = np.arange (CH)
+	a = np.clip ((ys - 48) / 26, 0, 1) * np.clip ((434 - ys) / 40, 0, 1)
+	fm[:, :PX - 2] = a[:, None]; fm[:, PX - 2:] = 1
+	img.paste (col, (0, 0), Image.fromarray ((fm * 255).astype ("uint8"), "L"))
+	return img
+
+def home_left_compact (img, sel):
+	"""In the right list: the categories small and dim, the chosen one marked (no glow: the focus is at the right)."""
+	y = 64
+	for i, cat in enumerate (HOME_CATS):
+		cc = CATC.get (cat, (140, 150, 170))
+		if i == sel:
+			rrect (img, 34, y - 3, 264, 26, 8, ((50, 90, 170), (24, 46, 100)), alpha = 150); ring (img, 34, y - 3, 264, 26, 8, (150, 190, 250), alpha = 120)
+			rrect (img, 46, y + 7, 7, 7, 3.5, (lighten (cc, 0.4), cc))
+			text (img, 62, y - 1, cat, cfont (17, "semi"), (240, 246, 255))
+			glyph (img, 282, y + 5, 10, 10, lambda d, s: g_chev (d, s, 1, "right"), (200, 224, 255))
+		else:
+			rrect (img, 47, y + 8, 5, 5, 2.5, cc, alpha = 120)
+			text (img, 62, y, cat, cfont (16, "light"), (130, 150, 186))
+		y += 25
+	return img
+
+def wrap2 (s_, f, w):
+	out, cur = [], ""
+	for wd in s_.split ():
+		t = (cur + " " + wd).strip ()
+		if tw (t, f) <= w: cur = t
+		else: out.append (cur); cur = wd
+	return out + [cur] if cur else out
+
+def home_desc (img, a, name, cat):
+	"""The chosen app's card, low at the left: its name, what it is, a line about it, the keyboard, running."""
+	x, y, w, h = 24, 318, 280, 114
+	glass (img, x, y, w, h, 12, alpha = 70, edge = 130)
+	draw_icon (img, a, x + 14, y + 12, 32)
+	glow_text (img, x + 56, y + 8, name, cfont (22, "semi"), (255, 255, 255), radius = 4, strength = 1)
+	cc = CATC.get (cat, (140, 150, 170)); rrect (img, x + 58, y + 40, 6, 6, 3, cc)
+	text (img, x + 70, y + 34, cat + "  -  " + KIND.get (a, ""), cfont (13, "regular"), (150, 178, 220))
+	d, kb = DESC.get (a, ("", False))
+	f = cfont (14, "regular")
+	for i, ln in enumerate (wrap2 (d, f, w - 28)[:2]): text (img, x + 14, y + 54 + i * 18, ln, f, (204, 220, 244))
+	bx = x + 14; by = y + h - 22
+	if kb:
+		put (img, bx, by + 1, mask (16, 16, lambda d_, s: g_kbd (d_, s)), (240, 200, 120))
+		text (img, bx + 22, by, "keyboard recommended", cfont (13, "regular"), (240, 214, 160)); bx += 22 + tw ("keyboard recommended", cfont (13, "regular")) + 16
+	if a in RUNNING:
+		m = Image.new ("L", img.size, 0); ImageDraw.Draw (m).ellipse ([bx, by + 5, bx + 8, by + 13], fill = 255)
+		img.paste (add_glow (img, Image.new ("RGB", img.size, (90, 170, 255)), m, 3))
+		rrect (img, bx, by + 5, 8, 8, 4, ((200, 235, 255), (80, 160, 255)))
+		text (img, bx + 14, by, "running", cfont (13, "regular"), (170, 210, 255))
+
+def home_base (seed = 4):
+	img = space (CW, CH, seed = seed)
+	img = vignette (img)
+	home_top (img); hint_strip (img)
+	return img
+
+def console_home2 (sel = 1):
+	img = home_base ()
+	img = home_left (img, sel)
+	home_panel (img, HOME_CATS[sel])
+	console_hints (img, [("x", "Enter"), ("o", "Back"), ("t", "Options"), ("L1/R1", "Page")])
+	return img
+
+def console_home_inlist (sel = 2, focus = 7, options = False):
+	img = home_base ()
+	img = home_left_compact (img, sel)
+	cat = HOME_CATS[sel]
+	geo = home_panel (img, cat, focus = focus)
+	a, name, line, badge = home_tiles (cat)[0][focus]
+	if not options:
+		home_desc (img, a, name, cat)
+		console_hints (img, [("x", "Open"), ("t", "Options"), ("o", "Categories"), ("L1/R1", "Page")])
+		return img
+	# triangle: a small glass menu beside the tile, the rest dimmed
+	x2, y2, S2 = geo
+	keep = img.copy (); km = Image.new ("L", img.size, 0)
+	ImageDraw.Draw (km).rounded_rectangle ([x2 - 5, y2 - 5, x2 + S2 + 5, y2 + S2 + 5], 14, fill = 255)
+	img = dim (img, 120, (2, 6, 20)); img.paste (keep, (0, 0), km.filter (ImageFilter.GaussianBlur (2)))
+	items = ["Open", "Pin to Recent", "Close app", "Info"] if a in RUNNING else ["Open", "Pin to Recent", "Info"]
+	mw, mh = 190, 46 + 36 * len (items); mx = x2 - mw - 16; my = min (y2 - 30, CH - 56 - mh)
+	rrect (img, mx, my, mw, mh, 12, (6, 12, 32), alpha = 170)
+	glass (img, mx, my, mw, mh, 12, alpha = 120, edge = 170)
+	draw_icon (img, a, mx + 12, my + 10, 24)
+	text (img, mx + 44, my + 11, name, cfont (17, "semi"), (236, 244, 255))
+	hline (img, mx + 12, my + 42, mw - 24, (150, 190, 250), alpha = 70)
+	for i, it in enumerate (items):
+		iy = my + 48 + i * 36
+		if i == 1:
+			img = glow_box (img, mx + 8, iy, mw - 16, 32, 8)
+			text (img, mx + 22, iy + 4, it, cfont (18, "semi"), (255, 255, 255))
+		else:
+			text (img, mx + 22, iy + 4, it, cfont (18, "light"), (255, 170, 160) if it == "Close app" else (206, 220, 244))
+	# a small pointer from the menu to its tile
+	glyph (img, mx + mw - 1, y2 + S2 // 2 - 6, 8, 12, lambda d, s: d.polygon ([(0, 0), (8 * s, 6 * s), (0, 12 * s)], fill = 255), (150, 190, 250), alpha = 170)
+	console_hints (img, [("x", "Choose"), ("o", "Close")])
+	return img
+
+def console_home_main ():
+	h1 = console_home2 (1); save (h1, "console-home-v2.png")
+	h2 = console_home2 (2); save (h2, "console-home-productivity.png")
+	h3 = console_home_inlist (); save (h3, "console-home-inlist.png")
+	h4 = console_home_inlist (options = True); save (h4, "console-home-options.png")
+	save (console_sheet ([(h1, "1. Home: the categories at the left, Games focused, its games at the right"),
+			      (h2, "2. Down: Productivity focused, its apps at the right"),
+			      (h3, "3. Right or X: into the list, Letters glowing, its card at the left"),
+			      (h4, "4. Triangle on a tile: its options")],
+			     "Console mode's home: the categories and their apps (640 x 480)"), "console-home-sheet.png")
+
+# ===========================================================================================================
 def save (img, name):
 	p = os.path.join (OUT, name); img.save (p, optimize = True); print ("  ", os.path.relpath (p, ROOT), img.size)
 
@@ -2255,11 +2485,11 @@ def sheet (items, cols, title, pad = 24, gap = 24):
 def fit (img, w):
 	return img.resize ((w, int (img.height * w / img.width)), Image.LANCZOS)
 
-def console_sheet (pics):
-	"""Console mode's five screens on one page, at their real size."""
-	gap, pad = 20, 24
-	out = Image.new ("RGB", (pad * 2 + 2 * CW + gap, pad + 40 + 3 * (CH + gap + 24)), (16, 18, 24))
-	text (out, pad, pad - 4, "Console mode: the PS2's mood, a gamepad first (640 x 480)", font (20, True), (230, 236, 246))
+def console_sheet (pics, title = "Console mode: the PS2's mood, a gamepad first (640 x 480)"):
+	"""Console mode's screens on one page, two a row, at their real size."""
+	gap, pad = 20, 24; rows = (len (pics) + 1) // 2
+	out = Image.new ("RGB", (pad * 2 + 2 * CW + gap, pad + 40 + rows * (CH + gap + 24)), (16, 18, 24))
+	text (out, pad, pad - 4, title, font (20, True), (230, 236, 246))
 	for i, (pic, lab) in enumerate (pics):
 		r, c = divmod (i, 2); x = pad + c * (CW + gap); y = pad + 40 + r * (CH + gap + 24)
 		text (out, x, y, lab, font (13, True), (170, 186, 210)); out.paste (pic, (x, y + 22))
@@ -2311,6 +2541,7 @@ def main ():
 	co = console_overlay (); save (co, "console-overlay.png")
 	cw_ = console_switcher (); save (cw_, "console-switcher.png")
 	save (frame_handheld (ch_, "Console mode on a Pi handheld, 640 x 480"), "console-handheld.png")
+	console_home_main ()					# the home as the browser: categories and their apps
 	save (console_sheet ([(ch_, "Home"), (cl, "Games: the library"), (cs, "Settings"), (co, "In a game: Home pressed"), (cw_, "Running: switch")]), "console-overview.png")
 	# the alternatives studied
 	a = concept_a (); save (frame_clamshell (a, "640 x 480 -- a Zaurus SL-C-like clamshell"), "concept-a-tabs.png")
@@ -2333,4 +2564,6 @@ def main ():
 	apps_main ()						# three real apps in every mode
 
 if __name__ == "__main__":
-	main ()
+	import sys
+	if sys.argv[1:] == ["console-home"]: os.makedirs (OUT, exist_ok = True); console_home_main ()	# (only the console home's)
+	else: main ()

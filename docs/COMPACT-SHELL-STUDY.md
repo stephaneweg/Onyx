@@ -330,7 +330,7 @@ the apps and the kits are the same.
 
 | | |
 |---|---|
-| ![](compact-shell/mockups/console-home.png) | **Home**: five big choices — **Games, Media, Apps, Files, Settings** — the chosen one glowing, with a line about it; at the right, what it holds (the last played games, as memory-card tiles). The towers and the motes are the background. |
+| ![](compact-shell/mockups/console-home-v2.png) | **Home**: the browser itself — at the left the **categories** of the apps (Recent, Games, Productivity, Internet, Graphics, Multimedia, Programming, System, then Files and Settings), the chosen one glowing with a line about it; at the right, **the apps of that category** as memory-card tiles (for Games: the games and ROMs last played). The towers and the motes are the background. §7.4 has the details. |
 | ![](compact-shell/mockups/console-library.png) | **Games**: the library — Onyx's own games (Doom, Tetris, Pinball, Critters; SuperTuxKart when its port lands) and the ROMs of the six emulators (Game Boy / Color, GBA, NES, SNES, N64, GameCube: `games =` in their `app.txt`, `SD:/roms`), as glossy tiles with depth and the system's badge; L1 / R1 change the section (All, Onyx, Game Boy...); the chosen game's panel: its system and file, the time played, its **save states as memory-card slots**. |
 | ![](compact-shell/mockups/console-settings.png) | **Settings** ("System Configuration"): clock, screen, language, sound, gamepad, Wi-Fi, packages, the **mode** (console, pocket, desktop), about; each row opens a pad-friendly page; △ opens the desktop's Control Panel applet itself. |
 | ![](compact-shell/mockups/console-overlay.png) | **In a game, Home pressed**: the game pauses under a dim; a glass column — Resume, **Save state** (three slots with their pictures), Load state, Screenshot, Controls, Speed, Back to Games. |
@@ -381,6 +381,44 @@ shows for about 3 s.
 | ![](compact-shell/mockups/app-letters-console.png) | **Letters, full screen**: the page only (its toolbars hidden: everything they do is also in its menus); the start hint at the top; a keyboard is connected. |
 | ![](compact-shell/mockups/app-letters-console-menu.png) | **Letters, Home pressed**: its own seven menus in console style, Format open (the real items), Bold focused; the system's row below (Home, Switch app, Quit); the pad's hints. |
 | ![](compact-shell/mockups/app-media-console.png) | **The Media Player, full screen**: its own Now playing view at 640 × 480, the pad's focus on Play / Pause; Home shows its File / Play / View menus. |
+
+### 7.4 The home: the categories and their apps
+
+The home is the browser (the user's choice, 2026-10-08): **no separate Apps screen** — the left column lists
+the categories, the right panel shows what the chosen one holds. The composition stays the first mock-up's
+(the big thin words at the left, a glass panel at the right, the towers and the motes behind).
+
+- **The left column** comes from the apps' own `app.txt` (`category =`): **Recent** first, then **Games**
+  (Onyx's games and, merged in, the Emulators' ROMs from their `games =`), **Productivity, Internet, Graphics,
+  Multimedia, Programming, System**, and last **Files** (the File Viewer's volumes) and **Settings** (the
+  Control Panel's applets, `category = Settings`). *Demos* and *Shell* (the desktop's own parts) are not shown.
+  A category's colour (Milk's, §12) is its dot. Ten entries do not fit at the big size: the list scrolls, the
+  chosen entry stays near the top, the ends fade.
+- **Why Recent first**: the console wakes on what was used last — the game paused, the document open — so one
+  press of ✕ resumes it, and a running app is never more than one step away. It also replaces a separate
+  "Running" list for everyday use (the switcher, §7.1, stays for closing things).
+- **The right panel**: the category's apps as glossy tiles with their real icons, three a row, the name and a
+  line under each — for Games the date last played and the system's badge, for Recent when it was used, for
+  the others what the app is. A glowing Aqua dot in a tile's corner = the app is running. The panel says how
+  many there are and scrolls ("5 more").
+- **The pad**: up / down choose the category (the panel follows at once); **right or ✕** enters the panel: the
+  column shrinks to small words with the category marked, the chosen tile lifts and glows, and a **card** at
+  the bottom left describes it — its name, its category and kind, a line about it, **"keyboard recommended"**
+  for an app made for typing (from its `app.txt`, a key to add), **running**. ✕ opens the app full screen
+  (§7.3), **△** opens its options, **○** returns to the categories, L1 / R1 move a page.
+- **The options (△)**: a small glass menu beside the tile, the rest dimmed — **Open**, **Pin to Recent** (it
+  stays at the head of Recent), **Close app** (only when it runs), **Info** (its package, version, files).
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-home-v2.png) | **Games focused**: the last played, the systems' badges, 16 more below. |
+| ![](compact-shell/mockups/console-home-productivity.png) | **Down: Productivity**: its 14 apps (Archiver to Text Editor), Letters running (its dot). |
+| ![](compact-shell/mockups/console-home-inlist.png) | **Right or ✕: in the list**: Letters glowing, the categories small at the left, its card below them: word processor, keyboard recommended, running. |
+| ![](compact-shell/mockups/console-home-options.png) | **△ on Letters**: Open, Pin to Recent, Close app, Info. |
+
+![](compact-shell/mockups/console-home-sheet.png)
+
+*The console home's four states on one page.*
 
 ## 8. The concepts studied
 
