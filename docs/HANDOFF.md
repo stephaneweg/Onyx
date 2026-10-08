@@ -4,6 +4,56 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## PocketUI phase P1: the kernel's side -- the alias, the server per mode, the switch (2026-10-08, kapi v97): built, tested on the PC, NOT yet on the Pi, not committed
+
+The decided design is `docs/POCKETUI-TECH-STUDY.md`; P1 is its §3.8 K1-K3 (§9's table). Nothing of P2+ (the window
+API still AppKit's, no PocketUI, no `/bin/session`, no Mode applet).
+
+- **K1 `kapi_lib_open_as (path, alias, min_version, err)`** -- slot 234, AppKit's `kapi_lib_open_as` (`appkit.abi`
+  line 314). The cache (`kernel/proc/image.cpp`): `TImage::Alias` / `nAliasOwner` / `bAliasOrphan`; `FindNamed`
+  looks at the aliases first; `ImageAliasAllowed` (both under `sd:/lib/`, never `appkit.so`, path != alias),
+  `ImageSetAlias (img, alias, owner, bCommit)` (checked before the mapping, set after it, no yield between),
+  `ImageAliasHeld` (the server asking again / taking its orphan over gets that very image, even if its file
+  changed), `ImageUnalias (owner, bOrphan)`. `kernel.cpp` `LibraryOpenImpl` (LibraryOpen and LibraryOpenAs; the
+  log says `(as sd:/lib/uikit.so)`), `sys/kapi.cpp` `kapi_lib_open_as` (only `WsIsServer ()`). Lifetime: with the
+  image; the server ended -> orphaned (`WsOnProcessGone`); another server started -> dropped. `image_list`:
+  `KAPI_IMG_ALIAS` (16), the alias after the path's NUL (`/bin/preload` prints `alias -> real`); `image_unload`
+  of an alias key -> `-EBUSY` (`/bin/unload` says so).
+- **K2** (`kernel/sys/wsrv.cpp`): `ShellRead` reads `SD:/etc/system.ini` `shell =` (the kernel's own reader in
+  wsrv, at the boot and at each switch -- not `kernel.cpp`'s `ReadSystemConfig`, which runs once); desktop /
+  none / unknown -> `SD:bin/elegant --serve` (unchanged), pocket / console -> `SD:bin/pocketui --serve --mode <m>`
+  (relaunch: `--serve --restart --mode <m>`). `ServerStart`: the chosen server tried (5 s; it ended -> at once; a
+  hung non-Elegant one is killed), else Elegant (aliases dropped), else the console. `WsPoll` relaunches the
+  started server; PocketUI ending 5 times -> Elegant. `Register` accepts the started server's task name.
+- **K3** `KAPI_WS_SWITCH` (19): anyone's but the server's; the server gets `KAPI_WS_IN_QUIT` (10) -- Elegant now ends
+  on it (`server.cpp`, two lines: the only Elegant change) --, killed after 3 s, aliases dropped, `shell =` read
+  again, `ServerStart` -> 0 / 1 (Elegant instead) / `-EBUSY` (full screen, or a start under way) / `-EINVAL` (the
+  server itself) / `-EIO` (the console). The new server gets plain `--serve` (a switch is a new session: no
+  `--restart`, so Elegant does not run voronoy -- the P4 session file will).
+- **Tests**: `sh tools/tests/run_image_test.sh` -> 617 checks, 0 failed (its *aliases* part; the script now links
+  `user/lib/appkit_stubs.o` into the demo library -- it had stopped building since the libraries call AppKit).
+  On the Pi: **`/bin/aliastest`** (new, `user/BinUtils/aliastest.cpp`; docs/04), also a stand-in server.
+- **Pi checklist** (not done yet):
+  1. Stage, boot with no `shell=` line: the desktop exactly as before (`pi_wstest.py`, `el0test`, `pi_apps.py`);
+     `kmsg` shows `wsrv: the graphics server (elegant) has the display`. `aliastest` -> PASS (EPERM, not aliased,
+     build 1). `libtest` all passed.
+  2. `shell=pocket` with no `SD:/bin/pocketui`: reboot -> the desktop (the log: `cannot start SD:bin/pocketui`,
+     `Elegant instead`).
+  3. `cp SD:/bin/aliastest SD:/bin/pocketui`, `shell=pocket`, reboot: a green band at the top;
+     `SD:/tmp/aliastest.txt` all PASS; over telnet `aliastest --expect 2`, `preload` shows
+     `sd:/lib/demo.so -> sd:/lib/demo2.so`, `unload demo.so` refused.
+  4. Crash and relaunch: `preload SD:/lib/demo.so` (pins the aliased image), press `x` on the Pi's keyboard -> the
+     band comes back blue (`--restart`), `aliastest --expect 2` still passes (the orphan taken over).
+  5. Switch: edit `shell=desktop`, `aliastest --switch` -> "the server asked for has the display" (Elegant;
+     programs' windows come back by AppKit's replay, no wallpaper until voronoy runs); `aliastest --expect 1`
+     (alias dropped). Then `shell=console` + `aliastest --switch`: the stand-in never takes the display -> after
+     5 s killed, Elegant, the answer "its server failed: Elegant" (1). With a full-screen program running:
+     `-EBUSY`.
+  6. Remove `SD:/bin/pocketui` and the `shell=` line.
+- **Next**: P2 (the window API into UIKit, `uk_win_*`; AppKit's window functions removed), then P3 (PocketUI's
+  skeleton, which calls `KAPI_WS_REGISTER` -> `kapi_lib_open_as` -> `KAPI_WS_DISPLAY` and handles
+  `KAPI_WS_IN_QUIT`).
+
 ## Telegram for Onyx, an instant messenger in the way of Windows Live Messenger (2026-10-07): built, tested on the PC, in `main`, published
 
 Asked by the user ("une app de messagerie pour Telegram, avec un look soigné comme Live ou Yahoo Messenger"), after

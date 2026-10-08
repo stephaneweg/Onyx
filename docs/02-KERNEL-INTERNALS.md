@@ -918,6 +918,48 @@ not `RELATIVE` / outside the data / text relocations refused); `sh tools/tests/s
 [file.so...]` checks a library's format. On the Pi: **`/bin/libtest`** (docs/04) — 17 checks against
 `SD:/lib/demo.so`, passed on the Pi 4 on 2026-10-04.
 
+### Aliases (v97): the graphics server's library under the common name
+
+*(The design: [`docs/POCKETUI-TECH-STUDY.md`](POCKETUI-TECH-STUDY.md) §3; the call: §8 *v97*.)* Each
+graphics server has its own UIKit with the same exports (Elegant `SD:/lib/uikit.so`, PocketUI
+`SD:/lib/pocket/uikit.so`); a program always opens `"uikit"`. **`lib_open_as (path, alias, min_version,
+err)`** opens and maps `path` exactly as `lib_open` does (the version checked on the real library), then
+gives its image **a second key, its alias** (`TImage::Alias`, `nAliasOwner`, `bAliasOrphan`,
+`proc/image.cpp`):
+
+- **Looked up first.** `FindNamed (key)` looks at the aliases before the named images' paths: while
+  `sd:/lib/uikit.so` is an alias, a named image whose real path is `sd:/lib/uikit.so` (the desktop's
+  UIKit, preloaded or still mapped) is not returned for that key. Nothing else changes: the aliased image
+  keeps its real `Path`, its place in the arena (so the server and every program map it **at the same
+  address**, one copy), its references. `LibraryOpen`'s log names the real path and the alias:
+  `lib: sd:/lib/pocket/uikit.so (as sd:/lib/uikit.so): shared in 0 ms at 0x400000000, ...`.
+- **Who, what.** Only the process holding the graphics server's role (`WsIsServer`, `sys/wsrv.cpp`);
+  both names under `sd:/lib/`, never `sd:/lib/appkit.so` (`ImageAliasAllowed`: an alias there would
+  hijack every program); `path` ≠ `alias`. One image a key, one key an image (`-EBUSY` otherwise). The
+  alias is checked before the mapping and set after it (`ImageSetAlias (…, bCommit)`), with no yield
+  between. The order in a server's start: `KAPI_WS_REGISTER`, `lib_open_as`, `KAPI_WS_DISPLAY` —
+  `WsBootStart` returns when the display is taken, so every program init starts finds the alias.
+- **Lifetime, anchored on the server.** The alias goes with its image (its last reference, or the end of
+  its pin). Its owner ends (`WsOnProcessGone` → `ImageUnalias (pid, TRUE)`): **orphaned**, kept —
+  programs started meanwhile still get it; the same server started again (`WsPoll`) asking the same real
+  path takes it over (`ImageAliasHeld`: the very image the alias names, even if its file changed since),
+  a different path replaces it. **Another server started** (the fallback to Elegant, `KAPI_WS_SWITCH`):
+  every alias dropped at once (`ImageUnalias (0, FALSE)`) — the images keep their real names and their
+  processes. (Without the anchor a windowless daemon mapping UIKit — `printd`, through PrinterKit —
+  would keep the pocket UIKit as everyone's `uikit.so` after a switch back to the desktop.)
+- **Files, preload, lists.** `ImageFileChanged` compares the **real** path only: an update of the desktop's
+  `uikit.so` does not touch the alias; an update of `pocket/uikit.so` unnames the real path but keeps the
+  alias on the old image (the session stays on one UIKit; the new file is the next session's). A preload
+  of the alias key pins the aliased image (dropped with the alias if its path was unnamed meanwhile);
+  `image_unload` of an alias key → `-EBUSY` (it ends with its server). `image_list` flags it
+  `KAPI_IMG_ALIAS` (16): `path` is the real key and the alias follows its NUL in the same field —
+  `/bin/preload` prints `sd:/lib/uikit.so -> sd:/lib/pocket/uikit.so`.
+
+Tests: `sh tools/tests/run_image_test.sh`'s *aliases* (the names allowed, looked up first, the check
+without the commit, idempotent, `-EBUSY` for a second owner / image / key, unload refused, the two file
+changes, orphaned / taken over / replaced, dropped, a pin through the alias, gone with the last
+reference, the list's flag and second path); on the Pi `/bin/aliastest` (docs/04), also a stand-in server.
+
 Tests: on the PC `sh tools/tests/run_image_test.sh` (the real `image.cpp` and `elf.cpp`, the
 kernel around them stubbed, ASan: the canonical path, the header checks against crafted files, the
 load, two processes on the same frames, a start waiting for another task's load, a failed load,
@@ -1185,6 +1227,14 @@ from now on calls them in AppKit, so its package says `kapi >= 87`.
 v88 = **AppKit: program starting**: no entry added — the `lx_*` functions (an app or a file started by its
 runner) are AppKit's (they were `user/launch.h`). The same day **SystemKit** and **NetKit** appear (docs/03 §5.9.0).
 
+v97 = **the graphics server per mode** (2026-10-08; `docs/POCKETUI-TECH-STUDY.md` §3, phase P1): + `lib_open_as`
+(slot **234**: a library mapped and found under an alias too — the graphics server's own UIKit under
+`SD:/lib/uikit.so`; §7 *Aliases*), `KAPI_IMG_ALIAS` (16) in `kapi_image_info.flags`; the server chosen from
+`SD:/etc/system.ini` **`shell =`** (desktop: Elegant as before; pocket / console: `SD:/bin/pocketui --serve
+--mode <m>`; Elegant if it fails), `KAPI_WS_REGISTER` for the started program's name, + `KAPI_WS_SWITCH` (19, a
+`ws_ctl` operation: the server ended, its successor started) and `KAPI_WS_IN_QUIT` (10) (*v97* below, §10).
+AppKit: `kapi_lib_open_as` (`-KAPI_ENOSYS` before v97).
+
 v96 = **a window moved by another program** (2026-10-08): no table entry changes — AppKit's `kapi_win_move (id, x, y)`
 (Elegant's `EL_OP_WIN_MOVE`: a window of `kapi_win_list`, 0 the caller's, its client area put at x, y; not the
 desktop's, a topmost or a full-screen one). rdpd uses it: a window dragged in Onyx Remote is put at the same place
@@ -1315,6 +1365,8 @@ windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant
 - **the start** (`WsBootStart`, before init) — the kernel starts `SD:bin/elegant --serve` at every boot and
   waits (5 s at most) until it has the display; init then starts the desktop, whose programs have their
   windows in Elegant. There is no other window manager (§10): without a server, the kernel's console.
+  (v97) The server is the one `SD:/etc/system.ini` `shell =` names — PocketUI for pocket / console —, Elegant
+  if that one fails (§10 *The server per mode*).
 
 **AppKit's window calls speak to Elegant** (`appkit_calls.inc`'s `KAPI_WS`, `appkit_ws.inc`): the protocol
 is `user/Kits/appkit/elegant.h` (private to AppKit and Elegant: 31 operations, each doing what the kernel's
@@ -1691,8 +1743,8 @@ key). A path is a program file's, relative to the caller's working directory; ev
 | Slot | Entry | What it does |
 |---|---|---|
 | 217 | `image_preload (path)` | the program loaded ahead and **kept**: a kernel task reads the file, the call returns at once; from then on a run of that path maps the image without reading the card, and the image stays when no process runs it. Kept already: 0, nothing done → 0; `ENOENT` (no such file), `ENAMETOOLONG`, `ENOMEM`, `EFAULT`. A load that fails later is in the kernel log |
-| 218 | `image_unload (path)` | the path's image loses its pin and its name at once: no new process maps it; its memory is freed when the last process running it ends → 0; `ENOENT` (no image), `EFAULT` |
-| 219 | `image_list (path, out, cap)` | `path` 0: the live images, up to `cap` written → how many there are. `path`: the image a run of that path would map → 1 (`out[0]` written if `cap` > 0) / 0. Flags: `KAPI_IMG_KEPT` (preloaded), `KAPI_IMG_LOADING`, `KAPI_IMG_UNNAMED` (unloaded, or its file changed: only its processes still use it) |
+| 218 | `image_unload (path)` | the path's image loses its pin and its name at once: no new process maps it; its memory is freed when the last process running it ends → 0; `ENOENT` (no image), `EBUSY` (v97: the path is the graphics server's alias), `EFAULT` |
+| 219 | `image_list (path, out, cap)` | `path` 0: the live images, up to `cap` written → how many there are. `path`: the image a run of that path would map → 1 (`out[0]` written if `cap` > 0) / 0. Flags: `KAPI_IMG_KEPT` (preloaded), `KAPI_IMG_LOADING`, `KAPI_IMG_UNNAMED` (unloaded, or its file changed: only its processes still use it), `KAPI_IMG_LIB` (v83), `KAPI_IMG_ALIAS` (v97: also found under an alias, which follows `path`'s NUL) |
 
 Users: `/bin/preload` (`preload /boot`, the last line of `/etc/autostart`: the list of
 `SD:/etc/preload.ini`, `user/Include/preloadini.h`, edited by the Control Panel's Preload applet,
@@ -1718,6 +1770,26 @@ stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywher
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
 
+### v97: lib_open_as, the graphics server per mode
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 234 | `lib_open_as (path, alias, min_version, err)` | `path` (`lib_open`'s forms: a bare name or a path) opened and mapped into the caller as `lib_open` does — the version checked on it, the real library —, then found under `alias` too: every `lib_open` of `alias` gets this image, before a library whose real path is `alias` → its export table, or 0 with `*err` = `-EPERM` (the caller does not hold the graphics server's role; `alias` or `path` not under `SD:/lib/`; either is `SD:/lib/appkit.so`), `-EBUSY` (`alias` held by another live process, or by the caller on another library; this library has another alias), `-EINVAL` (`path` = `alias`; not a library), `lib_open`'s errors. Asked again by its owner: the same table (the same image, even if its file changed). Lifetime: §7 *Aliases*. |
+
+`ws_ctl` (slot 227) gains: **`KAPI_WS_REGISTER`** gives the role to the program the kernel started for the mode
+(by its task's name: `elegant` or `pocketui`), when no live process holds it — `EPERM` for any other;
+**`KAPI_WS_SWITCH` (19)**, anyone's but the server's: the server is sent **`KAPI_WS_IN_QUIT` (10)** (Elegant gives
+the display back and ends; a server that does not is killed after 3 s), every alias dropped, `shell =` read again,
+its server started and waited for (5 s), Elegant if it fails → 0 (the one asked for has the display), 1 (Elegant
+instead: the desktop), `-EBUSY` (a full-screen program has the display, or a start / switch is under way),
+`-EINVAL` (called by the server), `-EIO` (no server took the display: the console). The caller sleeps meanwhile
+(up to about 10 s). The programs keep running; their windows come back as after a restart of Elegant (AppKit
+asks the new server). Which server, the fallback: §10.
+
+AppKit: `kapi_lib_open_as` (`-KAPI_ENOSYS` before v97); `kapi_ws_ctl (KAPI_WS_SWITCH, 0, 0, 0)`. `image_list`'s
+`KAPI_IMG_ALIAS`, `image_unload`'s `-EBUSY` for an alias key. Tests: `sh tools/tests/run_image_test.sh`
+(*aliases*); on the Pi `/bin/aliastest` (docs/04).
+
 ### v93: the volumes
 
 | Slot | Entry | What it does |
@@ -1738,7 +1810,7 @@ rewritten), `posixtest` (`mmap PROT_EXEC`).
 | Slot | Entry | What it does |
 |---|---|---|
 | 225 | `sound_clients (out, max)` | The programs that have a channel now → how many; `out`: up to `max` `struct kapi_sound_client` (`pid`, `name` — the program's, 24 bytes —, `volume` 0..100, `mute`, `peak` — its level now, 0..32767 —, `queued` frames). `0, 0`: only the count. |
-| 227 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program `elegant`. The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT` \| `_CALL`; `KAPI_WS_ATTACH (pid)`, `KAPI_WS_POST (pid, struct kapi_event *)` → 1 queued / 0 full, `KAPI_WS_EXIT (pid)`, `KAPI_WS_BUF_MAP (struct kapi_ws_buf *)`, `KAPI_WS_BUF_FREE (id)`, `KAPI_WS_NEXT (struct kapi_ws_req *)` → 1 / 0, `KAPI_WS_REPLY (struct kapi_ws_reply *)`. A program's (through AppKit): `KAPI_WS_CALL (struct kapi_ws_call *)` → the server's status, `ESRCH` no server; `KAPI_WS_KICK`. AppKit: `kapi_ws_ctl`. |
+| 227 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program the kernel started (v97: `elegant`, or `pocketui` for `shell = pocket / console`). `KAPI_WS_SWITCH` (v97, anyone's): the server switched (*v97* above). The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT` \| `_CALL`; `KAPI_WS_ATTACH (pid)`, `KAPI_WS_POST (pid, struct kapi_event *)` → 1 queued / 0 full, `KAPI_WS_EXIT (pid)`, `KAPI_WS_BUF_MAP (struct kapi_ws_buf *)`, `KAPI_WS_BUF_FREE (id)`, `KAPI_WS_NEXT (struct kapi_ws_req *)` → 1 / 0, `KAPI_WS_REPLY (struct kapi_ws_reply *)`. A program's (through AppKit): `KAPI_WS_CALL (struct kapi_ws_call *)` → the server's status, `ESRCH` no server; `KAPI_WS_KICK`. AppKit: `kapi_ws_ctl`. |
 | 228 | `proc_tree (pid, op, out, cap)` | (v91) A process's tree, by the parent pids recorded at the spawns (above). `KAPI_TREE_LIST` → how many descendants `pid` has, up to `cap` of their pids into `out` (its children, then theirs…); `KAPI_TREE_KILL` → `pid` and all its descendants terminated now, the leaves first → how many; `KAPI_TREE_KILL_CHILDREN` → its descendants only. `ESRCH` no such process, `EPERM` a kill whose tree holds the caller, `EINVAL`, `EFAULT`. AppKit: `kapi_proc_tree`. |
 | 226 | `sound_client_volume (pid, volume, mute)` | That channel's volume 0..100 (−1: kept) and mute 0 / 1 (−1: kept), applied at once and remembered for the program's **name** until the restart → `volume \| 0x100` if muted, −1: no such channel. Any program may call it (the mixer's panel). |
 
@@ -1936,6 +2008,20 @@ The terminal thus chains the `stdout` of one stage to the `stdin` of the next vi
 >   (228 entries), their functions are gone from `sys/kapi.cpp` (740 lines). AppKit's functions of those
 >   names speak to Elegant (`appkit_ws.inc`); no program is rebuilt. The kernel image lost 43 KB.
 > - **Print Screen** and **the wheel's speed** are Elegant's too (§2's input task; `server.cpp`).
+>
+> **The server per mode (v97, 2026-10-08; `docs/POCKETUI-TECH-STUDY.md` §3.8, §8):** the kernel reads
+> `SD:/etc/system.ini` **`shell =`** (`sys/wsrv.cpp` `ShellRead`, at the boot and at each switch):
+> `desktop`, no line, or a word it does not know (logged) → **Elegant**, `SD:bin/elegant --serve` — exactly as
+> before; `pocket` / `console` → **PocketUI**, `SD:bin/pocketui --serve --mode <m>` (not built yet). The role
+> (`KAPI_WS_REGISTER`) is for the program started (its task's name). The server asked for that is missing,
+> ends before it has the display, or does not take it in 5 s (then it is killed) → **Elegant instead**, its
+> aliases dropped (`KAPI_WS_SWITCH` answers 1) — a bad setting never leaves the screen dark; Elegant failing
+> too → the console. `WsPoll` starts **the server that was started** again (`--serve --restart`, plus its
+> `--mode`), 5 times at most; PocketUI that cannot stay up → Elegant, then the console. A start (the boot's,
+> a switch) holds `WsPoll` off. **`KAPI_WS_SWITCH`** (§8 *v97*): the server ended (`KAPI_WS_IN_QUIT`, killed
+> after 3 s), every alias dropped, the relaunch counter reset, `shell =` read again, its server started with
+> the same fallback. The graphics session's programs are `/bin/session`'s (phase P4: it closes them, writes
+> `shell =`, switches, runs the new mode's session file); until then a switch by hand: `aliastest --switch`.
 
 Source: `kernel/gui/{gimage,kwin,surface}.cpp` + headers (`kern/gui/`); the window manager:
 `user/Servers/elegant/wm`. Rendering core ported from the author's FreeBASIC `SimpleOS`.

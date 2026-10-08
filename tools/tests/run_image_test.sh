@@ -18,12 +18,15 @@ done
 g++ $FLAGS $INC "$HERE/image/imagetest.cpp" "$T/image.o" "$T/elf.o" -o "$T/imagetest" -lpthread
 # (v83) the shared libraries: against the real test library (user/Libs/demo), when the cross toolchain is there
 P=${PREFIX:-aarch64-none-elf-}
-if command -v ${P}g++ >/dev/null 2>&1; then
+# (a library calls the kernel through AppKit's stubs, as user/Makefile's LIB_KAPI: user/lib/appkit_stubs.o, made by
+# the user build -- `make` in kernel/ or user/ -- skipped without it)
+STUBS="$ROOT/user/lib/appkit_stubs.o"
+if command -v ${P}g++ >/dev/null 2>&1 && [ -f "$STUBS" ]; then
 	CF="-O2 -fPIC -fvisibility=hidden -ffreestanding -nostdlib -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -mgeneral-regs-only -I$ROOT/user -I$ROOT/user/Kits -I$ROOT/user/Runtime -I$ROOT/user/Include -I$ROOT/user/Libs -I$ROOT/user/Emulators -I$ROOT/user/Ports -I$ROOT/kernel/include -w"
 	${P}g++ $CF -c "$ROOT/user/Libs/demo/demolib.cpp" -o "$T/demolib.o"
 	${P}g++ $CF -c "$ROOT/user/Runtime/librt.cpp" -o "$T/librt.o"
 	${P}ld -shared -Bsymbolic -z text -z max-page-size=0x10000 --no-undefined --hash-style=sysv --build-id=none \
-		-T "$ROOT/user/Runtime/lib.ld" --version-script "$ROOT/user/Runtime/lib.vers" -e onyx_lib_table -o "$T/demo.so" "$T/demolib.o" "$T/librt.o"
+		-T "$ROOT/user/Runtime/lib.ld" --version-script "$ROOT/user/Runtime/lib.vers" -e onyx_lib_table -o "$T/demo.so" "$T/demolib.o" "$T/librt.o" "$STUBS"
 	export ONYX_DEMO_SO="$T/demo.so"
 fi
 "$T/imagetest"

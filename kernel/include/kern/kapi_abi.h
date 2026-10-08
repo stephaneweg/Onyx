@@ -244,7 +244,19 @@
 //      GUI_EVENT_TRAY) -- Elegant's, reached by AppKit; no table entry changes.
 // v96: kapi_win_move (AppKit, Elegant's EL_OP_WIN_MOVE): any window (by its id, kapi_win_list's) moved -- the
 //      remote desktop puts a Pi window where the PC's copy of it was dragged.
-#define KAPI_ABI_VERSION	96
+// v97: the graphics server per mode (docs/POCKETUI-TECH-STUDY.md section 3, phase P1): + lib_open_as (slot
+//      234): a library mapped into the caller AND found from now on under a second name, its ALIAS (the
+//      graphics server's own UIKit, SD:/lib/pocket/uikit.so, under SD:/lib/uikit.so: every program then
+//      maps it by that name) -- only the process holding the graphics server's role, only under SD:/lib/,
+//      never SD:/lib/appkit.so; kept while the server or a program holds it, orphaned when the server
+//      ends (taken over by the same server started again), dropped when another server is started.
+//      + KAPI_IMG_ALIAS in kapi_image_info.flags (the alias after the path's NUL). The server is chosen
+//      from SD:/etc/system.ini "shell =" (desktop: SD:/bin/elegant --serve, as before; pocket / console:
+//      SD:/bin/pocketui --serve --mode <m>), Elegant if it is missing or does not take the display;
+//      KAPI_WS_REGISTER gives the role to the program the kernel started (its name), not only "elegant".
+//      + KAPI_WS_SWITCH (a ws_ctl operation): the server ended, "shell =" read again, the matching one
+//      started; + KAPI_WS_IN_QUIT (the server asked to end).
+#define KAPI_ABI_VERSION	97
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -1027,6 +1039,8 @@ struct kapi_msghdr				// 48 bytes
 #define KAPI_IMG_LOADING	2		// being read from its file
 #define KAPI_IMG_UNNAMED	4		// unloaded, or its file changed: only its processes still use it
 #define KAPI_IMG_LIB		8		// (v83) a shared library (lib_open), not a program
+#define KAPI_IMG_ALIAS		16		// (v97) also found under an alias (lib_open_as): path is the real
+						// key, the alias follows the path's NUL in the same field
 
 // (v85) A channel of the sound's mixer (sound_clients).
 #define KAPI_SOUND_NAME	24
@@ -1132,8 +1146,9 @@ struct kapi_gpio_spi
 };
 
 // (v89) The graphics server's operations (ws_ctl (op, a0, a1, a2) -> >= 0, or -KAPI_Exxx; kern/wsrv.h).
-// KAPI_WS_ACTIVE is anyone's; KAPI_WS_REGISTER makes the caller the server (the program "elegant",
-// when no live process is); the others are the server's own (-KAPI_EPERM).
+// KAPI_WS_ACTIVE, KAPI_WS_SWITCH are anyone's; KAPI_WS_REGISTER makes the caller the server (v97: the
+// program the kernel started for the mode -- "elegant" or "pocketui", by its name --, when no live
+// process is); the others are the server's own (-KAPI_EPERM).
 #define KAPI_WS_ACTIVE		0	// () -> the server's pid while it owns the display, else 0
 #define KAPI_WS_REGISTER	1	// () -> 1 the caller is the display server, 0 another one is
 #define KAPI_WS_DISPLAY		2	// (take 1 / give back 0, struct kapi_ws_display *out or 0) -> 0;
@@ -1165,6 +1180,12 @@ struct kapi_gpio_spi
 					// it: what a server started again makes it anew from); zero until set
 #define KAPI_WS_STATE_BYTES	2304
 #define KAPI_WS_CLIENTS		18	// (unsigned *pids, max) -> how many: the attached programs
+#define KAPI_WS_SWITCH		19	// (v97) () -> 0: the graphics server ended (KAPI_WS_IN_QUIT, killed after
+					// 3 s), every alias dropped, SD:/etc/system.ini "shell =" read again and
+					// its server started and waited for (5 s); 1: it failed, Elegant was
+					// started instead (the desktop); -KAPI_EBUSY: a full-screen program has
+					// the display, or a start / switch is under way; -KAPI_EINVAL: called by
+					// the server itself; -KAPI_EIO: no server took the display (the console)
 #define KAPI_WS_DATA_MAX	4096	// a request's, an answer's bytes at most
 #define KAPI_WS_SLOT_CANVAS	0	// a buffer's place in the program: its window's client area,
 #define KAPI_WS_SLOT_FRAME	1	// its frame's active copy,
@@ -1243,6 +1264,8 @@ struct kapi_ws_present
 #define KAPI_WS_IN_KICK		7	// a = the pid of a program whose pixels changed (KAPI_WS_KICK)
 #define KAPI_WS_IN_SCREEN	9	// x, y = the screen's new size (kapi_screen_set, done by the kernel)
 #define KAPI_WS_IN_FULLSCREEN	8	// a = the pid of a program that took (buttons 1) / gave back (0) the full screen
+#define KAPI_WS_IN_QUIT		10	// (v97) the kernel asks the server to end (KAPI_WS_SWITCH): it gives the
+					// display back and exits; else it is killed after 3 s
 struct kapi_ws_input
 {
 	unsigned type;			// KAPI_WS_IN_*
@@ -2099,6 +2122,21 @@ struct TKApiTable
 	int (*vol_mount) (const char *vol);
 	int (*vol_format) (const char *vol, const struct kapi_format *fmt);
 
+	// --- v97: a library under a second name (kern/image.h; kernel.cpp, sys/kapi.cpp; docs/POCKETUI-TECH-STUDY.md) ---
+	// lib_open_as: the library `path` opened and mapped into the caller exactly as lib_open (same forms:
+	// a bare name or a path; the version checked on it, the real library), then found under `alias` too
+	// -- every lib_open of alias (a program's bind of "uikit") gets this image, before any library whose
+	// real path is alias -> its export table, or 0 with *err = -KAPI_EPERM (the caller is not the
+	// graphics server -- KAPI_WS_REGISTER --; or alias or path not under SD:/lib/, or either is
+	// SD:/lib/appkit.so), -KAPI_EBUSY (alias held by another live process, or by the caller on another
+	// library; this library has another alias), -KAPI_EINVAL (path = alias; not a library), or
+	// lib_open's errors. Asked again by its owner: the same table (the same image, even if its file
+	// changed). The alias lives with the image while the server or a program holds it; the server
+	// ended: orphaned (programs started meanwhile still get it), taken over by the same server started
+	// again (same path), replaced by another path; another server started: dropped. image_unload of the
+	// alias: -KAPI_EBUSY. The order in a server's start: KAPI_WS_REGISTER, lib_open_as, KAPI_WS_DISPLAY.
+	const void *(*lib_open_as) (const char *path, const char *alias, unsigned min_version, int *err);
+
 #ifndef __aarch64__
 	// --- NOT ON ONYX: the windows, for a stand-in kernel that has a window manager (the PC's simulator,
 	// the hosts of the tests, Koton for Windows) -- the builds that take AppKit's calls inline against
@@ -2331,6 +2369,7 @@ KAPI_CHECK_SLOT (vol_list, 230);
 KAPI_CHECK_SLOT (vol_eject, 231);
 KAPI_CHECK_SLOT (vol_mount, 232);
 KAPI_CHECK_SLOT (vol_format, 233);
+KAPI_CHECK_SLOT (lib_open_as, 234);
 
 #ifdef __cplusplus
 }

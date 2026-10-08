@@ -21,6 +21,7 @@
 #include <kern/el0.h>			// USER_THREAD_STACKS (the other windows end below them)
 #include <kern/applaunch.h>		// ExecPath (the server's start)
 #include <kern/debugcon.h>		// the console, when no server can be had
+#include <kern/image.h>			// (v97) ImageUnalias: the aliases of a server that ended
 #include <fatfs/ff.h>
 #include <circle/2dgraphics.h>
 #include <circle/new.h>
@@ -65,6 +66,109 @@ static boolean IsServer (void)
 	return nPid != 0 && nPid == s_nServerPid;
 }
 
+boolean WsIsServer (void)
+{
+	return IsServer ();
+}
+
+// ---- (v97) which server: SD:/etc/system.ini "shell =" (docs/POCKETUI-TECH-STUDY.md section 3.8) ----
+// desktop (no line, or a word the kernel does not know): Elegant, its arguments as before; pocket and
+// console: PocketUI, the mode on its command line. The server the kernel started is the one WsPoll
+// starts again and the one whose name gets the role (Register).
+#define WS_ELEGANT_PATH		"SD:bin/elegant"
+#define WS_POCKETUI_PATH	"SD:bin/pocketui"
+#define WS_SHELL_MAX		16
+#define WS_TRIAL_MS		5000		// a server started has so long to take the display
+#define WS_QUIT_MS		3000		// a server asked to end (KAPI_WS_SWITCH) has so long to do it
+#define WS_GONE_MS		2000		// a server killed: its teardown waited for so long at most
+
+static char s_Shell[WS_SHELL_MAX] = "desktop";	// what "shell =" asked when it was last read
+static const char *s_pServerPath = WS_ELEGANT_PATH;	// the server started
+static const char *s_pServerName = "elegant";	// its task's name: the role is for that program
+static char s_ServerMode[WS_SHELL_MAX] = "";	// its "--mode" ("": Elegant)
+static volatile boolean s_bStarting = FALSE;	// a start (the boot's, a switch) under way: WsPoll waits
+
+static boolean ServerIsElegant (void)
+{
+	return strcmp (s_pServerPath, WS_ELEGANT_PATH) == 0;
+}
+
+// "shell =" of SD:/etc/system.ini into s_Shell (the kernel's other keys: kernel.cpp ReadSystemConfig).
+static void ShellRead (void)
+{
+	strcpy (s_Shell, "desktop");
+	FIL File;
+	if (f_open (&File, "SD:/etc/system.ini", FA_READ) != FR_OK) return;
+	UINT nSize = (UINT) f_size (&File);
+	if (nSize > 0x10000) nSize = 0x10000;		// (a settings file: far less)
+	char *pBuf = new char[nSize + 1];
+	UINT nRead = 0;
+	boolean bOK = pBuf != 0 && f_read (&File, pBuf, nSize, &nRead) == FR_OK;
+	f_close (&File);
+	if (!bOK) { delete [] pBuf; return; }
+	pBuf[nRead] = '\0';
+	char Value[WS_SHELL_MAX];
+	Value[0] = '\0';
+	for (const char *p = pBuf; *p != '\0'; )
+	{
+		const char *pLine = p;
+		while (*p != '\0' && *p != '\n') p++;
+		const char *pEnd = p;
+		if (*p == '\n') p++;
+		while (pLine < pEnd && (*pLine == ' ' || *pLine == '\t')) pLine++;
+		static const char Key[] = "shell";
+		unsigned k = 0;
+		while (k < sizeof Key - 1 && pLine + k < pEnd && (pLine[k] | 0x20) == Key[k]) k++;
+		if (k != sizeof Key - 1) continue;
+		const char *q = pLine + k;
+		while (q < pEnd && (*q == ' ' || *q == '\t')) q++;
+		if (q >= pEnd || *q != '=') continue;
+		q++;
+		while (q < pEnd && (*q == ' ' || *q == '\t')) q++;
+		unsigned n = 0;
+		while (q < pEnd && n < sizeof Value - 1 && *q != ' ' && *q != '\t' && *q != '\r' && *q != '#' && *q != ';')
+		{
+			char c = *q++;
+			Value[n++] = c >= 'A' && c <= 'Z' ? (char) (c + 32) : c;
+		}
+		Value[n] = '\0';			// (the last "shell =" line wins)
+	}
+	delete [] pBuf;
+	if (strcmp (Value, "pocket") == 0 || strcmp (Value, "console") == 0) strcpy (s_Shell, Value);
+	else if (Value[0] != '\0' && strcmp (Value, "desktop") != 0)
+		CLogger::Get ()->Write ("wsrv", LogWarning, "system.ini: shell = %s is not a mode (desktop, pocket, console): the desktop", Value);
+}
+
+// The server of s_Shell (bElegant: Elegant whatever it says) made the one started.
+static void ServerChoose (boolean bElegant)
+{
+	if (bElegant || strcmp (s_Shell, "desktop") == 0)
+	{
+		s_pServerPath = WS_ELEGANT_PATH;
+		s_pServerName = "elegant";
+		s_ServerMode[0] = '\0';
+	}
+	else
+	{
+		s_pServerPath = WS_POCKETUI_PATH;
+		s_pServerName = "pocketui";
+		strcpy (s_ServerMode, s_Shell);
+	}
+}
+
+// The chosen server started (bRestart: after it ended -- its programs ask their windows again).
+static boolean ServerExec (boolean bRestart)
+{
+	char Args[64];
+	strcpy (Args, bRestart ? "--serve --restart" : "--serve");	// (Elegant's, as before v97)
+	if (s_ServerMode[0] != '\0')
+	{
+		strcat (Args, " --mode ");
+		strcat (Args, s_ServerMode);
+	}
+	return ExecPath (s_pServerPath, Args, s_pServerName);
+}
+
 boolean WsDisplayOwned (void)
 {
 	return s_bOwned;
@@ -92,8 +196,16 @@ static unsigned s_nRelaunches = 0;
 
 void WsPoll (void)
 {
-	if (!s_bRelaunch) return;
+	if (!s_bRelaunch || s_bStarting) return;	// (v97: a start or a switch deals with it)
 	s_bRelaunch = FALSE;
+	if (s_nRelaunches >= WS_RELAUNCH_MAX && !ServerIsElegant ())
+	{
+		// (v97) PocketUI cannot stay up: Elegant instead -- the screen is never left dark
+		CLogger::Get ()->Write ("wsrv", LogError, "%s ended %u times: Elegant instead", s_pServerName, s_nRelaunches);
+		ImageUnalias (0, FALSE);		// (its UIKit is no longer every program's)
+		ServerChoose (TRUE);
+		s_nRelaunches = 0;
+	}
 	if (s_nRelaunches >= WS_RELAUNCH_MAX)
 	{
 		CLogger::Get ()->Write ("wsrv", LogError, "the graphics server ended %u times: not started again, the console", s_nRelaunches);
@@ -101,8 +213,8 @@ void WsPoll (void)
 		return;
 	}
 	s_nRelaunches++;
-	CLogger::Get ()->Write ("wsrv", LogWarning, "the graphics server ended: started again (%u)", s_nRelaunches);
-	if (!ExecPath ("SD:bin/elegant", "--serve --restart"))
+	CLogger::Get ()->Write ("wsrv", LogWarning, "the graphics server (%s) ended: started again (%u)", s_pServerName, s_nRelaunches);
+	if (!ServerExec (TRUE))
 		CLogger::Get ()->Write ("wsrv", LogError, "cannot start the graphics server again");
 }
 
@@ -222,9 +334,8 @@ void WsFullscreen (unsigned nPid, boolean bOn)
 
 // ---- the server's operations --------------------------------------------------------------------
 
-// The role is for the program named "elegant" (its task's name, with or without its path), when no
-// live process has it. (Stage 3: the kernel starts the server itself and gives the role to that
-// process alone.)
+// The role is for the program the kernel started as the server -- (v97) "elegant" or "pocketui", by
+// its task's name, with or without its path --, when no live process has it.
 static long Register (void)
 {
 	unsigned nPid = MyPid ();
@@ -234,7 +345,7 @@ static long Register (void)
 	const char *pName = CScheduler::Get ()->GetCurrentTask ()->GetName ();
 	const char *pBase = pName;
 	for (const char *p = pName; *p != '\0'; p++) if (*p == '/' || *p == ':') pBase = p + 1;
-	if (strcmp (pBase, "elegant") != 0) return -KAPI_EPERM;
+	if (strcmp (pBase, s_pServerName) != 0) return -KAPI_EPERM;
 	Release (0);
 	s_nServerPid = nPid;
 	return 1;
@@ -698,6 +809,7 @@ void WsOnProcessGone (unsigned nPid)
 	if (nPid == s_nServerPid)
 	{
 		s_nServerPid = 0;
+		ImageUnalias (nPid, TRUE);		// (v97) its aliases orphaned: kept for it started again
 		if (s_bBootMode) s_bRelaunch = TRUE;	// (WsPoll, the compositor's loop)
 		if (s_bOwned)				// (no log here)
 		{
@@ -736,24 +848,132 @@ void WsOnProcessGone (unsigned nPid)
 
 // ---- the start ------------------------------------------------------------------------------------
 // The graphics server is started before init, at every start, and waited for: the programs init
-// starts have their windows there. There is no other window manager: a server that cannot be
-// started, or that does not take the display, leaves the kernel's console on the screen (its log:
-// kern/debugcon.h) -- the Pi is still reached by telnet.
-#define WS_SERVER_PATH	"SD:bin/elegant"
+// starts have their windows there. There is no other window manager: (v97) the server "shell =" names
+// that cannot be started, or that does not take the display, is replaced by Elegant; Elegant failing
+// too leaves the kernel's console on the screen (its log: kern/debugcon.h) -- the Pi is still reached
+// by telnet.
+
+extern "C" int kapi_kill_pid (int nPid, int nForce);	// (sys/kapi.cpp)
+
+static CTask *ServerTask (void)			// the started server's task (any of its process's), 0: none
+{
+	CTask *pTask = CScheduler::Get ()->GetRunningTask (s_pServerName);
+	return pTask != 0 && pTask->GetUserData (TASK_USER_DATA_USER) != 0 ? pTask : 0;
+}
+
+// The started server's process (registered or not) ended now, and its teardown waited for (WS_GONE_MS).
+static void ServerKill (void)
+{
+	unsigned nPid = s_nServerPid;
+	CTask *pTask = ServerTask ();
+	if (nPid == 0 && pTask != 0) nPid = ((CAddressSpace *) pTask->GetUserData (TASK_USER_DATA_USER))->GetPid ();
+	if (nPid == 0) return;
+	CLogger::Get ()->Write ("wsrv", LogWarning, "%s (pid %u) killed", s_pServerName, nPid);
+	kapi_kill_pid ((int) nPid, 1);
+	for (unsigned t = 0; t < WS_GONE_MS / 20 && (s_nServerPid == nPid || IpcPidAlive (nPid)); t++)
+		CScheduler::Get ()->MsSleep (20);
+}
+
+// The chosen server started and waited for: TRUE when it has the display. It ends meanwhile: FALSE at
+// once (Elegant: started again up to twice within the trial, as WsPoll would have).
+static boolean ServerTry (void)
+{
+	if (!ServerExec (FALSE))
+	{
+		CLogger::Get ()->Write ("wsrv", LogError, "cannot start %s", s_pServerPath);
+		return FALSE;
+	}
+	unsigned nAgain = 0;
+	for (unsigned t = 0; t < WS_TRIAL_MS / 20 && !s_bOwned; t++)
+	{
+		CScheduler::Get ()->MsSleep (20);
+		if (s_bOwned || ServerTask () != 0) continue;
+		s_bRelaunch = FALSE;			// (gone: WsPoll is held off meanwhile)
+		if (!ServerIsElegant () || nAgain == 2 || !ServerExec (TRUE))
+		{
+			CLogger::Get ()->Write ("wsrv", LogError, "%s ended before it took the display", s_pServerName);
+			return FALSE;
+		}
+		nAgain++;
+	}
+	if (s_bOwned) return TRUE;
+	CLogger::Get ()->Write ("wsrv", LogError, "%s did not take the display", s_pServerName);
+	if (!ServerIsElegant ()) ServerKill ();		// (a hung one would keep the role from Elegant; Elegant
+	return FALSE;					// itself is left as before v97, under the console)
+}
+
+// "shell ="'s server started, Elegant if it fails -> 0 the one asked for has the display, 1 Elegant
+// instead, -1 none (the console). s_bStarting is held meanwhile.
+static int ServerStart (void)
+{
+	s_bStarting = TRUE;
+	s_nRelaunches = 0;
+	ServerChoose (FALSE);
+	int nResult = -1;
+	if (ServerTry ()) nResult = 0;
+	else if (!ServerIsElegant ())
+	{
+		CLogger::Get ()->Write ("wsrv", LogWarning, "shell = %s: its server failed, Elegant instead (the desktop)", s_Shell);
+		ImageUnalias (0, FALSE);		// (whatever it aliased before it failed)
+		ServerChoose (TRUE);
+		if (ServerTry ()) nResult = 1;
+	}
+	s_bRelaunch = FALSE;
+	s_bStarting = FALSE;
+	if (nResult >= 0)
+		CLogger::Get ()->Write ("wsrv", LogNotice, "the graphics server (%s%s%s) has the display", s_pServerName,
+					s_ServerMode[0] != '\0' ? ", " : "", s_ServerMode);
+	return nResult;
+}
 
 void WsBootStart (void)
 {
 	s_bBootMode = TRUE;
-	if (!ExecPath (WS_SERVER_PATH, "--serve"))
-	{
-		CLogger::Get ()->Write ("wsrv", LogError, "cannot start " WS_SERVER_PATH ": no graphics server, the console");
-		DebugConsoleTakeover ();
-		return;
-	}
-	for (unsigned t = 0; t < 250 && !s_bOwned; t++) CScheduler::Get ()->MsSleep (20);	// 5 s
-	if (s_bOwned) { CLogger::Get ()->Write ("wsrv", LogNotice, "the graphics server has the display"); return; }
-	CLogger::Get ()->Write ("wsrv", LogError, "the graphics server did not take the display: the console");
+	ShellRead ();
+	if (ServerStart () >= 0) return;
+	CLogger::Get ()->Write ("wsrv", LogError, "no graphics server took the display: the console");
 	DebugConsoleTakeover ();
+}
+
+// (v97) KAPI_WS_SWITCH: the running server asked to end (killed after WS_QUIT_MS), every alias dropped,
+// "shell =" read again, its server started (Elegant if it fails). On the caller's task: it sleeps.
+static long Switch (void)
+{
+	if (IsServer ()) return -KAPI_EINVAL;		// (it would wait for its own end)
+	if (s_bStarting) return -KAPI_EBUSY;
+	CWindowManager *pWM = CWindowManager::Get ();
+	if (pWM != 0 && pWM->FullscreenWindow () != 0) return -KAPI_EBUSY;
+	if (DebugConsoleActive ()) return -KAPI_EIO;	// (the console keeps the screen for good)
+	s_bStarting = TRUE;
+	unsigned nOld = s_nServerPid;
+	CLogger::Get ()->Write ("wsrv", LogNotice, "switch: %s (pid %u) asked to end", s_pServerName, nOld);
+	if (nOld != 0 && s_bOwned)
+	{
+		struct kapi_ws_input Ev;
+		memset (&Ev, 0, sizeof Ev);
+		Ev.type = KAPI_WS_IN_QUIT;
+		Push (Ev);
+	}
+	for (unsigned t = 0; t < WS_QUIT_MS / 20 && nOld != 0 && s_nServerPid == nOld; t++)
+		CScheduler::Get ()->MsSleep (20);
+	ServerKill ();					// (still there, or a server that never registered)
+	if (s_nServerPid != 0 && s_nServerPid == nOld)
+	{
+		CLogger::Get ()->Write ("wsrv", LogError, "switch: %s (pid %u) does not end", s_pServerName, nOld);
+		s_bStarting = FALSE;
+		return -KAPI_EBUSY;
+	}
+	Release (0);
+	ImageUnalias (0, FALSE);			// (another server: its UIKit is no longer every program's)
+	ShellRead ();
+	int nResult = ServerStart ();
+	if (nResult < 0)
+	{
+		CLogger::Get ()->Write ("wsrv", LogError, "switch: no graphics server took the display: the console");
+		DebugConsoleTakeover ();
+		return -KAPI_EIO;
+	}
+	return nResult;
 }
 
 extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)
@@ -762,6 +982,7 @@ extern "C" long kapi_ws_ctl (int nOp, long a0, long a1, long a2)
 	if (nOp == KAPI_WS_REGISTER) return Register ();
 	if (nOp == KAPI_WS_CALL) return Call ((struct kapi_ws_call *) a0);
 	if (nOp == KAPI_WS_KICK) return Kick (a0);
+	if (nOp == KAPI_WS_SWITCH) return Switch ();	// (v97)
 	if (!IsServer ()) return -KAPI_EPERM;
 	s_nLastCall = CTimer::Get ()->GetTicks ();
 	switch (nOp)

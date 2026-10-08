@@ -35,6 +35,7 @@ int main (void)
 		ax_puts (path);
 		ax_putln (r == -KAPI_ENOENT ? ": not in memory"
 			: r == -KAPI_ENOSYS ? ": this kernel has no program images (kapi v77)"
+			: r == -KAPI_EBUSY ? ": the graphics server's alias -- it ends with its server (kapi v97)"
 			: ": cannot unload it");
 	}
 	if (!any)

@@ -48,6 +48,11 @@ static int list (void)
 		put_num (p->refs, 6);
 		ax_puts ((p->flags & KAPI_IMG_LOADING) ? "  loading  " : "  ready    ");
 		ax_puts ((p->flags & KAPI_IMG_KEPT) ? "yes   " : (p->flags & KAPI_IMG_UNNAMED) ? "gone  " : "no    ");
+		if (p->flags & KAPI_IMG_ALIAS)		// (v97) "alias -> real path": the graphics server's library
+		{
+			const char *alias = p->path + ax_strlen (p->path) + 1;
+			if ((unsigned long) (alias - p->path) < sizeof p->path && *alias != '\0') { ax_puts (alias); ax_puts (" -> "); }
+		}
 		ax_puts (p->path[0] != '\0' ? p->path : "(no path)");
 		ax_putln ((p->flags & KAPI_IMG_LIB) ? "  (library)" : "");
 		total += p->size;

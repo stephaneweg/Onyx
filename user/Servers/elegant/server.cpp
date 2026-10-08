@@ -292,6 +292,9 @@ int el_serve (int demo, int restart)
 				case KAPI_WS_IN_FULLSCREEN:
 					el_core_fullscreen ((unsigned) in[i].a, (int) in[i].buttons);
 					break;
+				case KAPI_WS_IN_QUIT:			// (v97) the kernel switches the server: end
+					quit = 1;
+					break;
 				case KAPI_WS_IN_GONE:
 					{
 						int id;

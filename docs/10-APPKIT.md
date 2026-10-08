@@ -19,7 +19,7 @@ AppKit is what makes a program run: its one link to the system. Every call a pro
 |---|---|
 | Include | `#include "appkit/appkit.h"` |
 | Link | nothing to link: the kernel binds AppKit to every program |
-| Library | `SD:/lib/appkit.so` — 314 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
+| Library | `SD:/lib/appkit.so` — 315 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
 | Sources | `user/Kits/appkit/` |
 
 ## Using it
@@ -323,6 +323,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_set_cursor` | (v81) The pointer's shape over this window (KAPI_CURSOR_*) -> the shape it had | `appkit.h` |
 | `kapi_win_resizable` | this window resizable by its frame (on 0: no longer), min_w x min_h its smallest client area -> 0, -1 | `appkit.h` |
 | `kapi_lib_open` | (v83) A shared library (docs/SHARED-LIBS-PLAN.md) | `appkit.h` |
+| `kapi_lib_open_as` | (v97) The graphics server's own library under another name (docs/POCKETUI-TECH-STUDY.md section 3) | `appkit.h` |
 | `kapi_sound_output` | (v84) The sound's output | `appkit.h` |
 | `kapi_sound_clients` | (v85) the sound's mixer | `appkit.h` |
 | `kapi_sound_client_volume` | (v85) the sound's mixer | `appkit.h` |
@@ -1286,6 +1287,12 @@ int kapi_win_resizable (int on, int min_w, int min_h);	// this window resizable 
 
 ```cpp
 const void * kapi_lib_open (const char *name, unsigned min_version, int *err);
+```
+
+(v97) The graphics server's own library under another name (docs/POCKETUI-TECH-STUDY.md section 3): `path` opened and mapped as kapi_lib_open does (its version checked against min_version), and from now on every kapi_lib_open of `alias` -- any process's, a program's bind of "uikit" -- gets it, before a library whose real path is alias (PocketUI: kapi_lib_open_as ("SD:/lib/pocket/uikit.so", "SD:/lib/uikit.so", n, &err)). Only the process holding the graphics server's role (call it after KAPI_WS_REGISTER, before KAPI_WS_DISPLAY: every program of the session then finds the alias); both names under SD:/lib/, never SD:/lib/appkit.so. -> its export table; 0 with *err = -KAPI_EPERM (not the server, or a name refused), -KAPI_EBUSY (alias another live process's, or the caller's on another library), -KAPI_EINVAL (path = alias), kapi_lib_open's errors, -KAPI_ENOSYS on a kernel before v97. Asked again: the same table. The alias lives while the server or a program holds the library: the server ended, it is kept for the same server started again; another server started, it is dropped.
+
+```cpp
+const void * kapi_lib_open_as (const char *path, const char *alias, unsigned min_version, int *err);
 ```
 
 (v84) The sound's output: KAPI_SND_OUT_AUTO / _JACK / _USB / _HDMI (-1: only ask) -> what plays now, what is asked and which outputs are there (KAPI_SND_OUT_NOW / _ASKED / _HAS of the result); -KAPI_ENOSYS on an older kernel (the jack only). The Sound applet; kept in SD:/etc/sound.ini.

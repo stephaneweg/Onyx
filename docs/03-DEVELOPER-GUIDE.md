@@ -849,8 +849,20 @@ the static archives; the package declares `needs = uikit` (and `ft`). Jet's host
 compile uikit statically (`user/Kits/uikit/*.cpp`: the same sources — `uikit/globals.cpp` then simply defines
 the variables).
 
-**Tests.** `sh tools/tests/run_image_test.sh` (the loader, on the PC), `/bin/libtest` (the loader,
-on the Pi), `python tools/tests/shlib/pi_apps.py <pi-ip>` (every app of the card started on the
+**A library under another name: the alias (kapi v97).** Each graphics server will have its own UIKit with
+the same exports (Elegant `SD:/lib/uikit.so`; PocketUI, the server of the pocket and console modes,
+`SD:/lib/pocket/uikit.so`: [`POCKETUI-TECH-STUDY.md`](POCKETUI-TECH-STUDY.md)); a program never chooses — its
+bind opens `"uikit"`. The server, and only it, calls `kapi_lib_open_as ("SD:/lib/pocket/uikit.so",
+"SD:/lib/uikit.so", version, &err)` after `KAPI_WS_REGISTER` and before `KAPI_WS_DISPLAY`: from then on every
+`kapi_lib_open ("uikit")` of any process gets the pocket library (the same image, the same address in every
+process). Both names under `SD:/lib/`, never `appkit.so`; one image a name. The alias lives while the server or
+a program holds the library; the server crashed and started again: kept (it takes it over); another server
+started (a switch of mode, the fallback to Elegant): dropped. An update of the aliased file applies at the
+next session. `preload` lists it as `sd:/lib/uikit.so -> sd:/lib/pocket/uikit.so`; `unload` of the alias is
+refused. The kernel's side: docs/02 §7 *Aliases*.
+
+**Tests.** `sh tools/tests/run_image_test.sh` (the loader and the aliases, on the PC), `/bin/libtest` (the loader,
+on the Pi), `/bin/aliastest` (the alias, the server per mode, its switch: on the Pi), `python tools/tests/shlib/pi_apps.py <pi-ip>` (every app of the card started on the
 libraries, over telnet), `sh tools/tests/shlib/compat.sh` (an app built against version N on the
 library N+1: a fix reaches it, an added function and a used reserve keep it running; an app built
 against N+1 is refused by the library N).
@@ -1208,6 +1220,13 @@ alone**.
   come through the same pump. A program sees no difference and is not rebuilt. Adding a window call:
   its `KAPI_CALL` gets a `KAPI_WS (...)` (a value) or `KAPI_WSV (...)` (a statement) first, the operation
   goes into `elegant.h` (a new number) and into Elegant's `ops.cpp`.
+- **The graphics server's calls** (kapi v89, v97): `kapi_ws_ctl (KAPI_WS_*, ...)` is the transport Elegant
+  uses (the role, the display, the raw input, the programs' requests). Since v97 the server is the one
+  `SD:/etc/system.ini` `shell =` names (desktop: Elegant; pocket / console: PocketUI, `--mode <m>` on its
+  command line; Elegant if it fails), `kapi_lib_open_as` lets that server publish its own UIKit under
+  `SD:/lib/uikit.so` (§5.6), and anyone may call `kapi_ws_ctl (KAPI_WS_SWITCH, 0, 0, 0)` to end the server and
+  start the one `shell =` names now (→ 0, or 1 when Elegant had to be started instead; the caller waits). A
+  server ends on the input event `KAPI_WS_IN_QUIT`. docs/02 §8 *v97*, §10.
 
 ## 6. Writing a graphical application
 

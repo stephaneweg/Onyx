@@ -104,6 +104,10 @@ CXX_PROGS = httpget.elf
 # kapi v83 shared libraries (docs/SHARED-LIBS-PLAN.md): the loader's tests, against ../lib/demo.so
 CXX_PROGS += libtest.elf
 libtest.elf: ../Runtime/lib.h ../Libs/demo/demo.h ../Runtime/onyxpp.hpp ../Runtime/umm.h
+# kapi v97 a library under a second name (lib_open_as), the server per mode, its switch: the Pi's test
+# (docs/POCKETUI-TECH-STUDY.md section 3.9) -- also a stand-in graphics server (copied to SD:/bin/pocketui)
+CXX_PROGS += aliastest.elf
+aliastest.elf: ../Runtime/lib.h ../Libs/demo/demo.h ../Runtime/onyxpp.hpp ../Runtime/umm.h
 
 # play: a sound file from the command line, through AudioKit (../lib/audiokit.so). Built with the FPU
 # off (it only uses the library's integer entries); links the library's import archive.

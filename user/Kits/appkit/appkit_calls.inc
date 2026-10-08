@@ -336,6 +336,12 @@ KAPI_CALL (const void *, kapi_lib_open, (const char *name, unsigned min_version,
 	if (err) *err = -KAPI_ENOSYS;
 	return 0;
 })
+KAPI_CALL (const void *, kapi_lib_open_as, (const char *path, const char *alias, unsigned min_version, int *err),
+	{
+	if (KT->version >= 97 && KT->lib_open_as) return KT->lib_open_as (path, alias, min_version, err);
+	if (err) *err = -KAPI_ENOSYS;
+	return 0;
+})
 KAPI_CALL (int, kapi_sound_output, (int out),
 	{ return KT->version >= 84 && KT->sound_output ? KT->sound_output (out) : -KAPI_ENOSYS; })
 KAPI_CALL (int, kapi_sound_clients, (struct kapi_sound_client *out, int max),
