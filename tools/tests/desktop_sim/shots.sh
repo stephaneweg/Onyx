@@ -123,14 +123,11 @@ build () {
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/gpucomp_$1.o" $AK \
 			-Wl,--unresolved-symbols=ignore-all; return ;;
 	esac
-	if [ "$1" = pdf ]; then				# (the PDF Viewer: MuPDF for the PC -- user/Apps/pdf/mupdf.mk with gcc; its FreeType)
+	if [ "$1" = pdf ]; then				# (the PDF Viewer: MuPDF for the PC -- user/Apps/pdf/mupdf.mk with gcc; its FreeType;
+							#  its printing is PrinterKit's, not linked here: never called by a shot)
 		make -s -j8 -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_AR=ar MU_OUT="$OUT/mupdf" MU_CFLAGS=-O2 || return 1
 		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pdf.bin" "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
-			"$OUT/libuikit.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm; return
-	fi
-	if [ "$1" = paint ]; then			# (newlib-like: FreeType; the canvas through gpucomp -- the CPU's path here)
-		gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
-		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
+			"$OUT/libuikit.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm -Wl,--unresolved-symbols=ignore-all; return
 	fi
 	if [ "$1" = 3dforge ]; then			# (newlib-like: FreeType; Manifold and Clipper2 compiled for the PC; the view by the CPU here)
 		MF=third_party/manifold-3.5.4; CL=third_party/clipper2-46f6391/CPP/Clipper2Lib
@@ -141,10 +138,6 @@ build () {
 			ar rcs "$OUT/libmanifold.a" "$OUT"/mf/*.o
 		fi
 		$CXX $MFD -Iuser/Kits/fontkit -I$FT/include -Iuser/Apps/3dforge -o "$OUT/3dforge" "$OUT/fakekapi.o" user/Apps/3dforge/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmanifold.a"; return
-	fi
-	if [ "$1" = slides ]; then			# (newlib-like: FreeType; the slides' layers through gpucomp -- the CPU's path here)
-		gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
-		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = qbstudio ]; then			# (newlib-like: FreeType; Onyx BASIC's compiler built in)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/qbstudio" "$OUT/fakekapi.o" user/Apps/qbstudio/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
