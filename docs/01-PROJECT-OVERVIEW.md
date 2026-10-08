@@ -7,8 +7,9 @@ Onyx is a **small multi-process operating system** for the **Raspberry Pi 4**
 which serves as its HAL and driver stack. It loads **ELF programs from the SD
 card** and runs them as **applications isolated from one another**, each in
 its own page table. The whole thing is driven by the **Onyx desktop** — a
-compositor, a menu bar, a dock, a terminal, a file manager — and some ninety applications
-and services (`sdcard/apps`), from an office suite and a web browser to emulators.
+compositor, a menu bar, a dock, a terminal, a file manager — and over a hundred applications
+and services (`sdcard/apps`), from an office suite and a web browser to emulators. The same
+programs also run in a **pocket** and a **console** interface (§3).
 Our own code is under the MIT licence ([LICENSING.md](LICENSING.md)).
 
 It **runs on real Raspberry Pi 4 hardware** (not just in emulation).
@@ -49,7 +50,23 @@ sources.
   pointers** at a fixed virtual address (14 GB), mapped read-only; each entry is a small
   stub that makes the system call. Applications call the kernel through this table →
   **an application binary keeps working without recompilation** when the kernel changes
-  (*append-only* contract, current ABI version: **74**).
+  (current ABI version: **97**). Since AppKit (below) a program no longer reads that table
+  itself: it calls `SD:/lib/appkit.so` by name, and only AppKit follows the kernel.
+- **Demand paging** (v75). The heap, the stacks and the mapped regions are given a page only
+  when it is touched; a process that runs out of memory is ended with a notice, the system goes
+  on. There is no swap (the disk is an SD card).
+- **Shared images, shared libraries, preloading.** A program's file is read **once**: its code
+  and read-only data are mapped into every process that runs it, only its writable part (`.data`,
+  `.bss`) is copied per process. A **shared library** (`SD:/lib/<name>.so`, v83) is the same object.
+  An image may be **preloaded** — loaded ahead and kept as a template with no process
+  (`SD:/etc/preload.ini`, the Control Panel's Preload applet): starting a large program such as
+  the browser's WebKit is then a mapping and a copy of its writable pages, not a read of the card.
+  ([Kernel internals](02-KERNEL-INTERNALS.md), *Demand paging* and *Shared libraries*.)
+- **The kits.** The shared libraries are one **kit per domain**: **AppKit** (the kernel's calls,
+  what makes a program run), **UIKit** (the widgets), **SystemKit** (the system and the other
+  programs), **NetKit**, **FileKit**, **ImageKit**, **AudioKit**, **FontKit**, **PrinterKit**,
+  **GPIOKit**. A program draws on the kits and never reaches the kernel itself; a kit that changes
+  is replaced on the card, the programs are not rebuilt. ([The kits](06-KITS-GUIDE.md).)
 - **Threads, app cores, RAM volume.** An app may run threads (mutexes, events, a futex,
   "real time" priority), take a whole CPU core for its own code (the emulators, Doom), and
   keep files in memory on `RAM:`.
@@ -60,17 +77,27 @@ sources.
   manager, the compositor and the routing of the input; the kernel gives it the display, the raw input
   and shared buffers, starts it at boot and again if it ends (the windows come back with their pixels).
   The programs reach it through AppKit, unchanged.
-- **Full graphical desktop.** 32-bit software compositor, window manager,
-  toolkit of kernel-drawn widgets (buttons, checkboxes, sliders,
-  text fields, scroll bars, icons…), windows with themeable decoration,
-  wallpaper, mouse cursor.
+- **Full graphical desktop.** 32-bit compositor, window manager, windows with themeable
+  decoration, wallpaper, mouse cursor; the widgets are **UIKit**'s, a shared library (buttons,
+  lists, grids, forms, tabs, toolbars, menus, dialogs…), with themes.
+- **Three interfaces, one binary per app.** `shell=` in `SD:/etc/system.ini` (the Control Panel's
+  **Mode** applet; a switch needs no restart) chooses the graphics server: **desktop** (Elegant:
+  windows, the menu bar, the dock), **pocket** (PocketUI: every app full screen, a launcher, a
+  switcher, larger controls, landscape or portrait) or **console** (PocketUI without its bands,
+  the whole screen the app's; its home screen is still to come). Each server loads its own UIKit
+  under the same name, and UIKit's adaptive widgets lay themselves out for the mode: **an app is
+  not rebuilt, and has no code per mode**. ([User guide](04-USER-GUIDE.md) §5,
+  [the study](POCKETUI-TECH-STUDY.md).)
+- **English and French.** The language is the system's (Language & Region); the apps follow it.
 - **Onyx shell.** A menu bar (the active app's menus, the clock, the Wi-Fi and volume
   menus), a dock (drawers of apps, workspaces), notifications, a shared clipboard with a
   history, an interactive terminal with **pipes and redirection** (`|`, `>`, `>>`, `<`), a
-  column file browser, a Control Panel, a first-run wizard (Setup), and some sixty
+  column file browser, a Control Panel, a first-run wizard (Setup), and about a hundred
   command-line tools in `/bin`.
 - **Application catalog** ([User guide §12](04-USER-GUIDE.md#12-application-catalog)). Office:
-  Letters (word processor, PDF export), Spreadsheet, Slides (presentations), Cardfile (a small database), Ledger
+  Letters (word processor: `.docx`, `.odt`, `.rtf`, PDF export), Spreadsheet (`.xlsx`, `.ods`, CSV),
+  Slides (presentations: `.pptx`, `.odp`) — our own programs, written for this system, reading and
+  writing the formats of Word, Excel, PowerPoint and LibreOffice —, Cardfile (a small database), Ledger
   (accounting), Calendar, PDF Viewer (MuPDF), RTF reader, Archiver. Internet: Jet Browser,
   Mail, IRC, Courier (HTTP client), Lisa (an AI chat). Media: Paint, Photos, the Media
   Player (music and video), Screenshot, Koton (a music studio with plugins), FM Tracker.
@@ -202,6 +229,7 @@ circle/           Circle, as a git submodule (the fork stephaneweg/circle, branc
 | **[02 — Kernel Internals](02-KERNEL-INTERNALS.md)** | anyone who wants to understand the kernel | boot, memory/MMU, scheduling, exceptions, ABI, GUI, streams |
 | **[03 — Developer Guide](03-DEVELOPER-GUIDE.md)** | anyone who wants to build/compile/extend | toolchain, build, app model, extending the ABI, conventions, debugging |
 | **[04 — User Guide](04-USER-GUIDE.md)** | anyone who wants to use it | SD card, desktop, terminal, files, applications, customization |
+| **[06 — The kits](06-KITS-GUIDE.md)** | anyone writing a program | one kit per domain, how a program uses them (their references: 10 to 19) |
 | [05 — Circle Changes](05-CIRCLE-CHANGES.md) | anyone touching `circle/` | the patches of our Circle fork vs upstream `Step51` |
 | [08 — Jet Browser, the WebKit port](08-WEBKIT-PORT.md) | the browser | the port of WebKit to Onyx: its status, the patch series, how to build |
 | [EL0 protected mode](EL0-PROTECTED-MODE.md) | the execution model | how apps moved to EL0, the design |
@@ -231,3 +259,65 @@ circle/           Circle, as a git submodule (the fork stephaneweg/circle, branc
     the network on core 3; the `RAM:` volume (v71); the packages.
 13. **Every app at EL0** (v73–v74, 2026-10): system calls through the same table, per-process
     handles, every kapi pointer checked; a fault kills the app, not the machine.
+14. **Demand paging** (v75), shared images and **shared libraries** (v83), the **kits** — AppKit
+    between the programs and the kernel —, **Elegant**, the graphics server as a user process,
+    several windows per program (v94), English and French.
+15. **PocketUI** (v97, 2026-10): the pocket and console interfaces beside the desktop, the same
+    apps in all three.
+
+## 11. Onyx beside the other Raspberry Pi systems
+
+*Written on 2026-10-09. A comparison of designs and of what each system offers — nothing here was
+measured, and the other systems move: check their own sites.*
+
+**What Onyx is for.** A personal computer's system, simple and whole: what an ordinary user does —
+the web, mail, letters, spreadsheets and slides in the usual formats, pictures, music and video,
+PDF, printing, games — is covered by programs written for it, light enough for a Pi 4. It is not
+meant to run the software of another system, and that sets the comparison.
+
+| System | What it is | Beside it, Onyx… |
+|---|---|---|
+| **Raspberry Pi OS**, Ubuntu… (Linux) | a complete general-purpose system, every Pi, tens of thousands of packages | is small enough to be read whole, comes with its apps, shares and preloads their images, changes of interface without changing of apps; it has far fewer programs, one board, no symmetric multiprocessing |
+| **LibreELEC**, **RetroPie**, Recalbox… | Linux reduced to one use (a media centre, emulation) | has the media player and the emulators **and** the desktop, the office programs, the browser in one system; theirs emulate more machines and are more tuned |
+| **Android** / LineageOS | a touch system with its own vast catalogue of apps | has a windowed desktop as well as the pocket mode; no Android app runs on it |
+| **RISC OS** | Acorn's system: 32-bit, cooperative multitasking, a long-lived catalogue | is 64-bit, preemptive, with every app isolated at EL0 (a faulty app is ended, not the machine); RISC OS has decades of software and of users |
+| **Haiku**, **Plan 9 / 9front**, the BSDs | other independent systems, whose support of the Pi varies | was written for the Pi 4, with its GPU, its Wi-Fi and a WebKit browser with the JIT and video; they are self-hosted, the BSDs and Plan 9 multi-user, and all far more tested |
+| **Circle**, Ultibo | bare-metal frameworks: the application *is* the system | is an operating system on top of one (Circle): processes, protection, a desktop, packages |
+
+**What Onyx has that is its own.**
+
+- **One binary, three interfaces** (desktop, pocket, console), switched without a restart: the
+  toolkit adapts, not the app. On Linux the desktop and the mobile shells are separate projects, and
+  an app follows only when it was written to.
+- **Images as templates.** Programs and libraries are read once, shared, and may be preloaded, so
+  that a large program starts by a mapping (the idea of Android's *zygote*, done by the kernel's
+  loader).
+- **Whole cores for a program.** An emulator or the sound has a core of its own, with no scheduler
+  in the way; the network has another.
+- **A graphics server that can end.** Elegant is a process: the kernel starts it again and the
+  windows come back with their pixels.
+- **One hand.** One toolkit, one kit per domain, the same conventions in every app, a system-wide
+  language, signed packages for everything.
+
+**What it does not have — by choice.**
+
+- **One user.** No accounts, no rights on files (FAT): the simplicity of a personal machine.
+- **Cross-developed.** No compiler on the machine; programs are built on a PC.
+- **Not binary compatible with anything.** Software is ported or written for Onyx, not installed
+  from another system ([the POSIX layer](POSIX-PLAN.md) is there for the ports).
+- **Asymmetric cores.** Every process runs on core 0; cores 2 and 3 are lent whole (§7). The kernel
+  and the drivers need not be multi-core safe; the price is that several busy processes share one
+  core.
+
+**What it does not have — yet, or simply not.**
+
+- **Hardware**: the Raspberry Pi 4 and 400 only — the Pi 5 is a plan ([PI5-PORT.md](PI5-PORT.md));
+  no Bluetooth ([a study](BLUETOOTH-AUDIO-STUDY.md)).
+- **Security**: apps are isolated from one another and from the kernel, but there is no sandbox per
+  app (an app reads any file), and the remote accesses (telnet, VNC, FTP) are for a trusted
+  network. The code has not been audited.
+- **Beyond the ordinary user**: programming tools on the machine (there is a BASIC), containers,
+  professional software.
+- **Maturity**: one developer, few machines tested; the office programs read the usual documents,
+  not every feature of every file.
+- **Languages**: English and French; no screen reader.
