@@ -1,0 +1,635 @@
+# Onyx on small screens: a compact shell — a design study
+
+*Status (2026-10-08): **a design analysis only, nothing built.** No change to Elegant, to the kernel, to
+UIKit or to any app. The user asked whether the windowed desktop (the modernised CDE,
+`docs/gui-redesign/README.md`), now that Elegant is a user process, could be swapped for an interface
+made for **netbooks** and **handhelds in the manner of the Sharp Zaurus**. This page is that design: the
+devices, the people, the input, the concepts compared, and the result — **three selectable modes**:
+**desktop** (today's), **pocket** (one resolution- and orientation-independent layout for small screens,
+landscape or portrait) and **console** (a gamepad-first mode in the mood of the PlayStation 2's system
+browser); a **netbook** mode and a **pad** (touch tablet) mode are left for later. Then what UIKit and
+Elegant would have to offer (as requirements), the risks and the open questions. It stops before
+implementation. At the user's request the mock-ups use the **Milk** theme (light greys, Aqua's blue, OS X's
+beads), the default look of the new modes.*
+
+The mock-ups are made by **`python3 tools/screenshot/mockup_compact.py`** (PIL + numpy; it draws with the
+helpers of `mockup_cde_modern.py`, the card's DejaVu and Selawik fonts, the apps' real icons and
+categories, and real screenshots recoloured to Milk for the thumbnails). They land in
+`docs/compact-shell/mockups/`.
+
+![](compact-shell/mockups/overview.png)
+
+*The three modes — desktop (today), pocket (landscape and portrait: one layout), console — and the two
+concepts studied: A "Tabs" (folded into pocket) and B "Netbook" (a mode for later).*
+
+## 1. Why now, and what "swapping the shell" means
+
+Until 2026-10-05 the window manager was in the kernel. It is now **Elegant** (`user/Servers/elegant/`,
+docs/02 §10, docs/HANDOFF.md): a user process holding all the policy — the window list, z-order, focus,
+desks, input routing, drag and drop, the menus' specifications, composition, cursor, wallpaper. The visible
+desktop is Elegant **plus a few ordinary programs** started by `SD:/etc/autostart`: the menu bar
+(`apps/menubar`), the dock (`apps/dock`), the agenda widget, `notifyd`, the Wi-Fi menu. So "another kind
+of GUI" is two things:
+
+1. **another policy in Elegant** — how windows are placed, framed, raised and switched; which keys are the
+   system's; and
+2. **other shell programs** in place of the menu bar and the dock — a launcher, a status bar, a switcher.
+
+The apps do not change for that. What does change is that they are given a smaller screen than they were
+designed for: §9 is about that, and it is the larger part of the work.
+
+**The result: modes, chosen by the user** (`shell=` in `SD:/etc/system.ini`, §11.1), all on the same
+Elegant and the same apps:
+
+| Mode | For | What it is |
+|---|---|---|
+| **desktop** | a big screen, a mouse | today's windowed desktop (the dock, the menu bar, overlapping windows) |
+| **pocket** | any small screen, landscape or portrait: netbook-like kits, the 7" display, a uConsole, a slate | one app at a time, Onyx's menu bar kept as the status bar, a tabbed launcher, a switcher, split view when wide — **one layout that reflows** (§6) |
+| **console** | a handheld with a gamepad, a TV | the games, the emulators and the media first, the PlayStation 2's mood, the pad alone (§7) |
+| *netbook* (later) | 1024 × 600 – 1280 × 720 with a keyboard | concept B (§8.2): a sidebar, the windows as tabs |
+| *pad* (later) | a touch tablet, no keyboard | pocket's layout with touch-first sizes and gestures |
+
+## 2. The target devices
+
+Pi-4-based devices that exist today, sorted by what they mean for the layout. The study takes **three
+targets** and leaves the tiny screens as a degraded case.
+
+| Target | Real devices | Physical | Scale | Logical size | Input |
+|---|---|---|---|---|---|
+| **T1 — compact landscape** (primary) | the official 7" DSI Touch Display (800 × 480); Pi netbook / "cyberdeck" kits; Pi handhelds with a 640 × 480 panel; a Zaurus SL-C-like clamshell | 640 × 480 – 1024 × 600 | 1× | 640–1024 × 480–600 | keyboard, touchpad or trackball, often touch |
+| **T2 — dense landscape** | the ClockworkPi uConsole (5", 1280 × 720, keyboard + trackball); 7" 1024 × 600 HDMI panels | 1280 × 720 | 1.5× | 853 × 480 | keyboard + trackball / trackpad |
+| **T3 — portrait** (Pocket in portrait) | Touch Display 2 (720 × 1280, portrait native); HyperPixel 4 rotated (480 × 800); a 480 × 640 VGA panel — the SL-5500 idea at 2× | 480 × 640 – 720 × 1280 | 2× | 240 × 320 – 360 × 640 | touch or stylus, a d-pad, a few keys, an on-screen keyboard |
+| *out of scope* | 3.5" SPI screens (320 × 240, 480 × 320) | — | 1× | 320 × 240 | d-pad |
+
+The point of the logical sizes: Pocket is designed **once, in logical units**, and drawn at the device's
+scale (1×, 1.5×, 2×); its rules reflow by the logical width, height and aspect (§6.1). T1 and T2 give the
+same picture (about 800 × 480 logical); T3 is the same Pocket in portrait — not another interface.
+
+Notes:
+
+- `kapi_screen_set` accepts 640 × 480 to 2560 × 1600 today: portrait modes and anything under 640 × 480 are
+  outside it (a requirement, §11).
+- The DevTerm's 1280 × 480 strip would be T1 with a wide work area: split view (§6.7) fits it naturally.
+- The 320 × 240 SPI screens are monitors for a project (GPIO Lab, a status panel), not a general desktop:
+  the launcher and the switcher would work there in the portrait layout's density, the apps mostly would not.
+
+## 3. Who, and where
+
+| Persona | Device | Uses | What matters |
+|---|---|---|---|
+| **The hacker on the go** (the user himself) | uConsole, a Pi netbook | Terminal, QBasic / QBStudio, the File Viewer, Ledger, Jet, Mail, Telegram | keyboard for everything; two apps side by side; the terminal one key away |
+| **The retro player** (console mode) | a Pi handheld (d-pad, face buttons, L1/R1, Start/Select), or a Pi under the TV | the emulators (GB, GBA, NES, SNES, N64, GameCube), Doom, SuperTuxKart, the Media Player | the gamepad alone; big words; full screen at once; save states; back home with one button |
+| **The learner** | a 7" touchscreen on a desk or a kiosk | Turtle Quest, Circuits, Paint, the Media Player | touch; big targets; nothing to lose (no hidden window) |
+| **The pocket organiser** | a portrait slate in the hand | Notes, the Calendar, the Clock, Telegram, the Image Viewer | one hand; the on-screen keyboard; quick glances (the time, a notification) |
+
+Contexts: on a train with a trackball and no mouse; on a sofa with one hand; standing, with a stylus;
+plugged into a big screen at home (where the classic desktop is still the right one — §11.1).
+
+## 4. The input model
+
+Every action must be reachable in **four ways**, none of which is the only one:
+
+| | Keyboard | D-pad / gamepad | Touch / stylus | Trackpad / trackball |
+|---|---|---|---|---|
+| Point | — | focus moves (arrows) | tap | pointer |
+| Activate | Enter | A / OK | tap | click |
+| Back / cancel | Esc | B / Back | the status bar's back, a tap outside | — |
+| Secondary (context menu) | Menu key, Shift+F10 | Y / Options | long press (500 ms) | right click |
+| Home | Super | Home key / Select | the Onyx button | the Onyx button |
+| Switch apps | Alt+Tab | Tasks key / L-R shoulders | the status bar's title, the Running strip | idem |
+| App menus | F10, Alt+letter | Menu key / Start | tap a menu title (portrait: ☰) | click |
+| Scroll | PgUp/PgDn, arrows | the d-pad on a list | drag (with inertia) | wheel, two-finger drag |
+
+Principles that follow:
+
+- **Keyboard first, then the d-pad, then touch.** Onyx is a keyboard-rich system (the terminal, QBasic, the
+  shortcuts of every app's menus); a d-pad is a keyboard of six keys; touch is a pointer without hover and
+  with a fat tip. Design for the keyboard and the other two come almost free — the reverse is not true.
+- **A visible focus, always.** In the compact profile the focus ring is drawn on every focusable widget,
+  not only after Tab — a d-pad user has no pointer to find where he is.
+- **No hover-only information.** Tooltips also show on keyboard focus; a rail's labels (Ledger, §9) show on
+  focus or long press.
+- **No gesture is the only way.** Swipes are shortcuts (from the top edge: quick settings; from the left:
+  back) never the sole path.
+
+## 5. Design principles
+
+0. **Resolution- and orientation-independent.** Every size in logical units, times the device's scale;
+   layout rules that reflow by the logical size and the aspect (§6.1) — not a layout per device.
+1. **One app, the whole screen.** On 800 × 480 an overlapping window is a hidden window. Apps fill the work
+   area, without a frame; the app's name is in the status bar.
+2. **Keep Onyx's global menu bar.** The top bar of today's desktop — the Onyx button, the app's name, its
+   menus, the tray, the time — is already the right status bar for a small screen: every app's commands
+   stay where Onyx users know them, and no app needs a toolbar of its own. It is also what makes it
+   recognisably Onyx.
+3. **The categories are the launcher.** The apps' `category` in `app.txt` (Productivity, Internet,
+   Graphics, Multimedia, Games, Programming, System, Settings) already drives the dock's drawers: they
+   become the launcher's tabs, as Qtopia's were on the Zaurus.
+4. **Type to find.** On the launcher, typing searches apps, files, settings and `/bin` commands at once;
+   Enter opens the first.
+5. **Two apps when there is room.** At 800 px and wider, two apps side by side is the one tiling worth
+   having (a file and its editor, a terminal and a manual).
+6. **Cheap effects only.** As in the desktop redesign (§4 there): no blur, no drop shadows; a flat dim
+   behind an overlay, drawn once.
+7. **The same apps, the same kits.** No "mobile edition" of an app: UIKit adapts the density (§9); an app
+   may give a compact layout of its own where it matters.
+8. **Milk, at the compact size.** The look is the Milk theme's (§12).
+
+## 6. Pocket, the compact mode (recommended)
+
+Pocket takes the **launcher of concept A** (Qtopia's tabs), keeps **Onyx's menu bar** as the one status
+bar, borrows **split view from concept B** and **the d-pad rules of the carousel** that became console
+mode (§8 compares them). It is **one layout for every small screen**, landscape or portrait.
+
+### 6.1 One layout for every screen: the adaptive rules
+
+Everything is specified in **logical pixels** (lp); the device's **scale** (1, 1.5, 2: `theme.txt`
+`scale=`, §11.1) turns them into pixels, and UIKit draws the text and the shapes at that scale (U2, §9.2).
+The rules below read only the **logical width (lw)**, **height (lh)** and the **aspect** — so a 1280 × 720
+uConsole at 1.5× and an 800 × 480 display at 1× give the same picture, and a slate in portrait is the same
+Pocket reflowed.
+
+| Rule | Condition | Effect |
+|---|---|---|
+| Orientation | lh > 1.05 × lw | *portrait*; else *landscape* |
+| Menus in the bar | lw ≥ 560 | the app's menus inline (File Edit View...), drop-downs |
+| | lw < 560 | one ☰ button; in portrait the menus open as a **bottom sheet** (the top-level menus as tabs, big rows) |
+| Status bar contents | lw ≥ 420 | the tray, the bell, Wi-Fi, volume, battery and %, the time |
+| | lw < 420 | Wi-Fi, battery, time (the rest in quick settings); lw < 300: battery and time |
+| Search hints | lw ≥ 700 | the key hints beside the search field; else the field takes the width |
+| Launcher tiles | lw ≥ 600 | 94 × 84 lp, 48 lp icons; columns = ⌊(lw − 24) / 94⌋ (8 at 800, 6 at 640) |
+| | lw < 600 | 80 × 76 lp, 40 lp icons; columns = max (3, ⌊(lw − 24) / 80⌋) (3 at 240–320) |
+| Category tabs | always | one strip under the search field, scrolling (the chevron); 32 lp high, 28 if lh < 420 |
+| Running strip | landscape and lh ≥ 440 | the open apps as chips under the launcher (Qtopia's taskbar) |
+| | otherwise | none: the switcher only |
+| Soft keys | portrait (on a device without Home / Tasks / Menu keys: `compact.ini`) | a 26 lp bar at the bottom: Home, Tasks, Menu, Keyboard |
+| Switcher | landscape | a row of cards, the chosen one bigger; as many as fit (5 at 800, 4 at 640) |
+| | portrait | a column of rows: a thumbnail, the name, a line about it |
+| Split view | lw ≥ 640 (two halves ≥ 320 lp) | Super+← / → allowed; the divider at 40/50/60 % |
+| Fixed windows | the window larger than the work area | a scrolling root (U6); smaller: a centred card over a dim |
+| Dialogs | lw < 560 or the touch profile | full-screen sheets; else centred cards |
+| Density | `theme.txt metrics=` | compact or touch sizes (§9.3), whatever the size |
+
+![](compact-shell/mockups/pocket-adaptive.png)
+
+*One Pocket, four screens: the launcher at 800 × 480 and 640 × 480 (1×), 480 × 800 (1.5×: 320 × 533 lp)
+and 480 × 640 (2×: 240 × 320 lp). The columns, the hints, the Running strip, the soft keys follow the rules
+above; nothing else changes.*
+
+![](compact-shell/mockups/pocket-adaptive-landscape.png)
+
+*Landscape: the launcher, an app (the Text Editor) and the switcher at 800 × 480 and at 640 × 480 — the
+same screens; at 640 the grid has 6 columns and the switcher shows 4 cards.*
+
+![](compact-shell/mockups/pocket-adaptive-portrait.png)
+
+*Portrait: the same three screens at 480 × 800 (1.5×) and at 480 × 640 (2×): the status bar keeps the
+essentials and ☰, the grid has 3 columns, the soft keys appear, the switcher becomes a column.*
+
+### 6.2 The launcher (Home)
+
+![](compact-shell/mockups/pocket-home.png)
+
+*The launcher at 800 × 480: the status bar (the Onyx button lit: Home), the search field and its key hints,
+the category tabs (silver, a dot of the category's colour), the apps of the chosen tab (Ledger has the
+focus ring; a dot under a running app), and the **Running** strip — Qtopia's taskbar, shown on the launcher
+only.*
+
+- **Tabs**: Recent first (the last opened apps and the pinned ones), then the categories of `app.txt` in
+  the dock's order (`SD:/etc/dock.ini`), then Settings — the Control Panel's applets as apps (the same
+  `.lnk` files: `apps/control.app/applets/`). Tab / Shift+Tab or the shoulders change tab; more tabs than
+  fit scroll (the chevron).
+- **Grid**: 94 × 84 px tiles (48 px icons) in the compact profile, 7 × 3 on 800 × 480; arrows move the
+  focus, Enter opens. A dot marks a running app (as the dock does today); opening a running app raises it.
+- **Running strip**: the open apps, the most recent first, each with a close button; the same list as the
+  switcher.
+- The launcher is **the desktop**: it is what is behind every app (Elegant's backmost band); the wallpaper
+  and the agenda widget's information move here (an "Agenda" line could join the Recent tab — open question).
+
+![](compact-shell/mockups/pocket-search.png)
+
+*Typing on the launcher: the tabs give way to grouped results — apps, files (the File Viewer's index),
+settings (the applets' descriptions), and the text as a `/bin` command to run in a Terminal.*
+
+### 6.3 An app in use
+
+![](compact-shell/mockups/pocket-terminal.png)
+
+*The Terminal, full screen, no frame. The status bar is today's menu bar: the Onyx button, the app's name
+in bold, its menus (File, Edit, View, Tabs — published by the app through `set_menu`, unchanged).*
+
+![](compact-shell/mockups/pocket-ledger.png)
+
+*Ledger (designed for 1000 × 700) in compact mode: its sidebar folds into an **icon rail** (the labels on
+focus or long press; the badge stays), the four cards narrow, the chart shortens, the bottom panels go into
+a scroll. The icons, cards and buttons are the real app's, recoloured to Milk.*
+
+Ledger is the case to design for: most productivity apps are built for about 1000 × 700 (§9.1). The rail is
+UIKit's job (a `Sidebar` that folds below a width), not Ledger's alone.
+
+### 6.4 The app's menus
+
+![](compact-shell/mockups/pocket-menu.png)
+
+*The menus stay in the status bar. F10 (or the Menu key, Start on a gamepad) opens the first; ← → go from
+menu to menu, Alt+letter opens one at once, Esc closes. Rows are 26 px in the compact profile; a submenu
+cascades (Insert ›).*
+
+In portrait (§6.9) the menus fold into one ☰ button and open as a **sheet** from the bottom. When the app's
+menus do not fit the bar in landscape (a long app name, many menus), the last ones fold into "»".
+
+### 6.5 The task switcher
+
+![](compact-shell/mockups/pocket-switcher.png)
+
+*Alt+Tab: the open apps, the most recent first, the next one chosen (the current one, "now", on the left).
+Thumbnails come from Elegant's copies of the windows (`EL_OP_SHOT`): no app redraws for the switcher.
+Del closes the chosen app; S puts it beside the current one (split view).*
+
+Release Alt (or Enter, A, a tap) to switch; Esc stays. The Tasks key of a d-pad device opens it held open:
+arrows choose, OK switches.
+
+### 6.6 Status, notifications and quick settings
+
+![](compact-shell/mockups/pocket-quick.png)
+
+*Super+N, or a click on the clock: the quick settings — Wi-Fi, the on-screen keyboard, rotation, do not
+disturb; brightness and volume; the notifications (`notifyd`, SystemKit's `notify.h`); the Control Panel,
+Lock and Power.*
+
+- The **status bar** keeps today's right side: the tray icons (`EL_OP_TRAY_*`), the notifications bell (a
+  dot when unread), Wi-Fi, the volume, **the battery** (new: a handheld runs on one), the time. One click
+  on any of them opens this panel scrolled to that part.
+- A notification arriving shows as today's toast under the status bar for a few seconds, then waits in
+  the panel. A full-screen game keeps them silent (do not disturb is automatic while an app holds the
+  full screen).
+- The Wi-Fi menu (`wifimenu`) and the Sound applet become tiles here; long press on a tile opens its
+  applet.
+
+### 6.7 Two apps side by side
+
+![](compact-shell/mockups/pocket-split.png)
+
+*Super+← / → puts the current app on that half; the other half takes the previous app (or the switcher's
+choice). Super+[ / ] moves the divider (40/60, 50/50, 60/40), Super+Tab moves the focus across; the
+focused side has the accent line, and the menu bar shows its menus.*
+
+The File Viewer, at 318 px, folds its sidebar (a chevron on its path bar opens it) and keeps one column.
+Split view needs 2 × 320 logical px at least: on in landscape, off in portrait.
+
+### 6.8 Fixed-size windows and dialogs
+
+![](compact-shell/mockups/pocket-fixed.png)
+
+*A window of a fixed size (the Calculator, `UK_WIN_FIXED`) keeps its size: a card in the middle with a Milk
+title and its close bead, the rest dimmed. Esc or a tap outside goes back.*
+
+The same rule serves the apps that are smaller than the screen and do not want to grow (the Calculator,
+the Clock's mini mode, the demos) and the dialogs (a message box, a file dialog): those would rather become
+**full-screen sheets** in the touch profile — a UIKit choice (§9).
+
+### 6.9 Pocket in portrait, in detail
+
+![](compact-shell/mockups/pocket-portrait.png)
+
+*Pocket in portrait at 240 × 320 lp, drawn at 2× in an SL-5500-like slate — the same Pocket as §6.1, its
+portrait details: the launcher (the tabs scroll, 3 columns), Notes with the on-screen keyboard, and the
+menus as a bottom sheet. Four soft keys at the
+bottom — Home, Tasks, Menu, Keyboard — mirror the device's keys.*
+
+![](compact-shell/mockups/pocket-portrait-1x.png)
+
+*The same screens at their real size (1×): the text is still readable — at a true 1× panel the fonts would
+be FreeType's, hinted at 10–11 px.*
+
+The portrait status bar keeps the Onyx button, the app's name, ☰ and the essentials (Wi-Fi, battery,
+time); the tray and the bell move into the quick settings. The soft-key bar only appears on devices
+without those keys (`compact.ini`, §11).
+
+### 6.10 The navigation map
+
+![](compact-shell/mockups/navigation.png)
+
+*Every screen and the keys between them. Home ↔ an app (Enter / Super); an app → the switcher (Alt+Tab),
+quick settings (Super+N), its menus (F10), split view (Super+← / →).*
+
+## 7. Console mode
+
+The third mode, for a Pi handheld with a gamepad or a Pi under the TV: the games, the emulators and the
+media first, **the pad alone**, and the mood of the **PlayStation 2's system browser** — the user's wish: a
+deep blue-black space with soft floating motes, glowing translucent towers of cubes receding into the
+dark, big thin words ("Browser", "System Configuration" in the PS2), a glowing highlight on the chosen
+item, memory-card-like tiles. It stays Onyx: Milk's Aqua blue is the glow, the Onyx gem is in the corner,
+the apps and the kits are the same.
+
+![](compact-shell/mockups/console-handheld.png)
+
+*Console mode on a Pi handheld (640 × 480).*
+
+### 7.1 The screens
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-home.png) | **Home**: five big choices — **Games, Media, Apps, Files, Settings** — the chosen one glowing, with a line about it; at the right, what it holds (the last played games, as memory-card tiles). The towers and the motes are the background. |
+| ![](compact-shell/mockups/console-library.png) | **Games**: the library — Onyx's own games (Doom, Tetris, Pinball, Critters; SuperTuxKart when its port lands) and the ROMs of the six emulators (Game Boy / Color, GBA, NES, SNES, N64, GameCube: `games =` in their `app.txt`, `SD:/roms`), as glossy tiles with depth and the system's badge; L1 / R1 change the section (All, Onyx, Game Boy...); the chosen game's panel: its system and file, the time played, its **save states as memory-card slots**. |
+| ![](compact-shell/mockups/console-settings.png) | **Settings** ("System Configuration"): clock, screen, language, sound, gamepad, Wi-Fi, packages, the **mode** (console, pocket, desktop), about; each row opens a pad-friendly page; △ opens the desktop's Control Panel applet itself. |
+| ![](compact-shell/mockups/console-overlay.png) | **In a game, Home pressed**: the game pauses under a dim; a glass column — Resume, **Save state** (three slots with their pictures), Load state, Screenshot, Controls, Speed, Back to Games. |
+| ![](compact-shell/mockups/console-switcher.png) | **Running**: the open games and apps as cards in depth, the chosen one in front with its glow and a reflection; ✕ switches, □ closes. Thumbnails from `EL_OP_SHOT`. |
+
+![](compact-shell/mockups/console-overview.png)
+
+*The five console screens on one page.*
+
+### 7.2 How it works
+
+- **The pad only**: d-pad to move, **✕ confirm, ○ back**, △ options, □ a second action (save states,
+  close), **L1 / R1 the sections**, Start = the app's menus (the Pocket sheet, at console size), Select or
+  the Home button = Home and the in-game overlay. On a pad without these symbols: A = ✕, B = ○, Y = △,
+  X = □ (the Gamepad applet maps them, `SD:/etc/gamepad.ini`). The bottom line always shows the buttons
+  that work on the screen.
+- **What it reuses**: the Game Library's index of the ROMs and its covers (`apps/gamelib`), the emulators'
+  save states, the Media Player's library (Media), the File Viewer's volumes (Files), the Control Panel's
+  applets (Settings), Pocket's switcher and overlays drawn in the console style.
+- **Apps** opens any desktop app full screen in Pocket's layout (the console status bar on top): console
+  mode is Pocket with another home and another style, not a separate world.
+- **Its cost**: the towers, the motes and the glows are **drawn once** into the background (the wallpaper
+  buffer, `wallpaper_buffer`), not animated every frame — or animated slowly at a few frames a second when
+  nothing else runs (an option); a game always runs on the emulators' fast path, untouched.
+- **Words**: big and thin (Selawik Light, on the card), 28–34 lp for the choices, 14–16 lp for the details:
+  readable on a TV at three metres and on a 3.5" handheld.
+
+## 8. The concepts studied
+
+### 8.1 A — "Tabs" (Qtopia on the Zaurus)
+
+![](compact-shell/mockups/concept-a-tabs.png)
+
+*640 × 480 in a Zaurus SL-C-like clamshell: the launcher's tabs at the top, a taskbar at the bottom (the
+Onyx "Go" button, the running apps, the input method, the time); each app full screen with its own menu
+inside its window.*
+
+### 8.2 B — "Netbook" (Ubuntu Netbook Remix / Moblin)
+
+![](compact-shell/mockups/concept-b-netbook.png)
+
+*1280 × 720 (uConsole): a top panel where the open windows are tabs (UNR's "Maximus": no title bars), a
+sidebar of categories, a big grid of favourites, recent documents on the right.*
+
+### 8.3 C — "Carousel" (the PSP's XMB) — became console mode
+
+A first handheld concept, categories across and apps down in the manner of the PSP's XMB, was replaced
+at the user's request by **console mode** (§7): the PlayStation 2's mood, the same gamepad-first rules.
+
+### 8.4 The comparison
+
+| | A — Tabs | B — Netbook | Console | **Pocket** |
+|---|---|---|---|---|
+| Fits what Onyx is (menus, terminal, productivity) | good, but the menus move into each app | good | games and media only | **best: the menu bar kept** |
+| Keyboard | good | good | fair (built for a pad) | **good, every screen** |
+| D-pad / gamepad | good (a grid) | fair (sidebar + grid + tabs) | **best** | good (the same rules) |
+| Touch | good | fair (small window tabs) | fair | good (touch profile) |
+| Multitasking | taskbar | **tabs + split** | the Running screen | switcher + split |
+| Portrait / 640 × 480 | good | poor (needs width) | landscape | **good: one layout reflows** |
+| Work in the apps | **every app** puts its menus in a toolbar | little | little | little (the menus are already published) |
+| Recognisably Onyx | fair | fair | the PS2's mood, Onyx's blue | **good** |
+
+**A** is the closest to the Zaurus the user cited, but Qtopia's apps carried their menus in their own
+toolbar: on Onyx that means changing every app and losing the global menu bar — its tabbed launcher goes
+into Pocket instead. **B** is the most capable on a 1280 × 720 netbook, but its window tabs and three
+columns need width: it does not go down to 640 × 480 or portrait — a **netbook mode for later**. The
+gamepad case is **console mode**.
+
+**Recommendation: three modes — desktop, pocket, console.** Pocket for every small screen with a keyboard
+or touch, landscape or portrait (A's tabbed launcher, Onyx's menu bar as the status bar, B's split view
+where wide enough, the d-pad rules everywhere); console for the gamepad; desktop as today. Netbook and pad
+later.
+
+## 9. How the apps adapt: what UIKit would need
+
+### 9.1 Where the apps stand
+
+The default window sizes in the code (a quick survey of `user/Apps`): Ledger, Letters, the Spreadsheet,
+Slides 1000 × 700; Archiver 960 wide; Cardfile 900 × 600; the File Viewer about 880 × 540; Telegram,
+Mail, the Media Player about 950–1000 × 650; Jet 760 wide; the games and the demos 240–640 wide; the
+Calculator fixed (288 × 300). **On the 800 × 454 work area of T1, nearly every productivity app is too
+big** — they are resizable (`setResizable`, the anchors `ANCHOR_FILL`, the layout panels of
+`uikit/layout.h`), but their sidebars, toolbars and minimum sizes were never designed for it.
+
+### 9.2 The requirements (stated as needs, not code)
+
+| # | Requirement | Why |
+|---|---|---|
+| U1 | **A metrics profile** — *regular* (today), *compact*, *touch* — chosen by the system (`theme.txt`, §11): text size, row and button heights, paddings, scroll-bar width (overlay in compact/touch), menu rows, tile sizes; every widget reads the profile instead of constants. | one app, three densities |
+| U2 | **A scale factor** (1, 1.5, 2) applied by UIKit's painter and the text face (FreeType sizes, `uk_*` paint helpers, the frame metrics), not by Elegant stretching a canvas. | T2 and T3; sharp text |
+| U3 | **Icons at 2×**: `icon.bmp` is 40 × 40; a 80 × 80 (or 64 × 64) `icon@2x.bmp` per app, ImageKit choosing the best. | the launcher at 2×, B's 64 px grid |
+| U4 | **Frameless windows**: when the shell says so, `Root` draws no title bar; the window menu's actions (close, split) go to the status bar's Onyx menu. | full-screen apps |
+| U5 | **Size classes**: an app is told its class — *regular*, *compact*, *narrow* (< 360 px, portrait or a split half) — and may give a layout for it; UIKit's own composite widgets do it themselves: a `Sidebar` that folds into a rail, a `TabHost` that becomes a drop-down, a `Toolbar` that overflows into "»". | Ledger, the File Viewer, Mail, Telegram |
+| U6 | **A scrolling root** as the fallback: an app whose minimum size is larger than the work area is shown in a scroll view (not cut, not shrunk). | every app usable from day one |
+| U7 | **Focus everywhere**: every interactive widget focusable, Tab / arrows traversal in a sane order, the focus ring always visible in compact/touch, Enter/Space/Esc/Menu handled; a d-pad is arrows + Enter + Esc + Menu. | the d-pad, the keyboard |
+| U8 | **Touch**: tap = click, long press = right click, drag = scroll in lists, text areas and grids (with inertia), a larger hit slop in the touch profile; text selection by long press. | T1 touch, T3 |
+| U9 | **Dialogs as sheets** in compact/touch (message boxes, file dialogs, the colour picker), sized to the screen. | no dialog larger than the screen |
+| U10 | **The text-input hint**: a text field that takes the focus says so to the shell (to show the on-screen keyboard), with its kind (text, number, URL). | T3 |
+| U11 | **Nothing new in the menus**: the menus stay published through `set_menu` (`EL_OP_MENU_SET`); the shell draws them. Context menus are UIKit's, at the profile's density. | the menu bar kept |
+
+### 9.3 The compact metrics
+
+![](compact-shell/mockups/metrics.png)
+
+*The same widgets in the three profiles: buttons, a check box, a field, a list with the focus row and its
+scroll bar, a menu. Touch targets are about 7 mm — 36 px at the 7" display's 133 dpi.*
+
+Proposed values (to be tried on the real displays): regular — text 13, row 24, menu 24, scroll bar 14;
+compact — text 12, row 22, menu 22, overlay scroll bar 8; touch — text 14, row 36, menu 36, buttons 38,
+overlay scroll bar 4 that widens when dragged.
+
+## 10. Keyboard shortcuts
+
+| Keys | Action |
+|---|---|
+| **Super** (alone), Home key | the launcher; again: back to the app |
+| **Alt+Tab** / Alt+Shift+Tab | the switcher, next / previous; Del closes, S splits |
+| **Super+← / →** | the current app to the left / right half (split view) |
+| Super+↑ | leave split view (the current app full screen) |
+| Super+[ / ] | the divider narrower / wider |
+| Super+Tab | the focus to the other half |
+| **F10**, Menu key | the app's menus; ← → between menus; Alt+letter opens one |
+| **Super+N** | quick settings and notifications |
+| Super+Space | the launcher with the search field focused |
+| Super+K | show / hide the on-screen keyboard |
+| Super+L | lock (`apps/lock`) |
+| Ctrl+Q | close the app (the menus' Quit) |
+| Print Screen | a screenshot (Elegant's, unchanged) |
+| Ctrl+Alt+← / → | (the workspaces of the desktop: not in Pocket — the switcher replaces them) |
+
+A gamepad (`SD:/etc/gamepad.ini`, the padconf applet) maps in Pocket: d-pad = arrows, A (✕) = Enter,
+B (○) = Esc, Y (△) = Menu (context), X (□) = search, Start = F10, Select = Home, L1/R1 = Alt+Shift+Tab /
+Alt+Tab. Console mode uses the same buttons with its own meanings (§7.2: L1/R1 the sections).
+
+## 11. What swapping the shell implies (requirements and open questions)
+
+> **Superseded by the user's decisions (2026-10-08), after this study:** pocket and console are **a
+> graphics server of their own (PocketUI)** beside Elegant, not a policy inside Elegant; **each server
+> ships its own UIKit** with the same exports (UIKit is to its server what AppKit is to the kernel), which
+> the server loads under the **alias `SD:/lib/uikit.so`** (a new kernel call, `kapi_lib_open_as`) and keeps
+> referenced while it runs, so the apps get it without knowing; **switching mode closes the graphical
+> session and starts it again**. Elegant, the apps and (beyond that one call) the kernel stay unchanged.
+> The technical analysis, `docs/POCKETUI-TECH-STUDY.md`, works this out; §11.1–11.2 below are the
+> design's first proposal, kept for the record.
+
+### 11.1 Choosing the shell
+
+- **`SD:/etc/system.ini` `shell=desktop|pocket|console`** (no line: `desktop`; `netbook` and `pad`
+  later), written by Setup (a new question when the screen is small or a gamepad is the only input) and by
+  the Control Panel (a "Mode" applet, or Display's) — console mode's Settings has it too. Today's
+  `autostart` starts the menu bar and the dock (`#setup: run menubar`, `run dock`); those two lines would
+  become one, `run shell`, a small program that reads the setting and starts the right programs.
+- **Elegant reads the same key** at its start and takes the matching policy. Since the programs survive an
+  Elegant restart (they come back after it, `docs/MULTI-WINDOW-STUDY.md` §1.1), switching the shell while
+  running could be "restart Elegant with the other policy": the apps keep their state.
+- The density and scale: **`SD:/etc/theme.txt` `metrics = regular|compact|touch`, `scale = 1|1.5|2`**,
+  read by every app at start (`uikit/theme.h`) — the theme's file, since they are about the look; Setup
+  proposes them from the screen's size. A per-device file `SD:/etc/compact.ini` would say which keys the
+  device has (soft keys or not), the rotation, the battery's source.
+
+### 11.2 One server, a policy per mode (recommended) — or several servers
+
+**Recommended: the same Elegant, with a policy module** — the compositor, the input, the protocol, the
+damage, the full-screen path, `rdpd`'s capture are shared; the policy decides placement (fill the work
+area, centre a fixed window), decoration (frames or none), z-order rules (one app in front, the launcher
+behind), the system keys (Alt+Tab, Super...), the work area (under the status bar). Pocket and console
+share one policy (one app at a time, the overlays); they differ by their shell programs (the launcher and
+status bar, or the console home) and their style. The alternative, a second server binary ("Elegant
+Pocket"), would duplicate the compositor and the protocol for little gain.
+
+### 11.3 What Elegant's protocol must offer (`user/Kits/appkit/elegant.h`)
+
+Already there, and used by Pocket as they are: the menus (`MENU_SET/GET/COMMAND` — the status bar draws the
+app in front's menus as the menu bar does today), the window and app lists (`WIN_LIST`, `APP_LIST`,
+`APP_RAISE`, `APP_CLOSE`), the thumbnails (`SHOT`), the tray (`TRAY_*`), the wallpaper, the minimise and
+geometry operations, several windows per program (v94).
+
+Needed (requirements, to be specified):
+
+| # | Need | Notes |
+|---|---|---|
+| E1 | **A shell role**: one client (the launcher / status bar) is *the shell*; it receives events when windows open, close, change title or menus, instead of polling. | today the dock polls |
+| E2 | **System keys**: the shell registers global shortcuts (Super, Alt+Tab, Super+arrows, F10 when no app takes it), delivered to it before the apps. | the desktop's Ctrl+Alt+arrows are hard-wired in `OnKey` |
+| E3 | **Placement policy**: every normal window fills the work area, framed or not by the policy; a fixed one is centred over a dim; two windows can share the work area (split). | the policy module |
+| E4 | **The frame decision told to the app** (no frame: `KAPI_FRAME_*` insets 0) and its **size class / scale** (an event like `GUI_EVENT_DISPLAY_RESIZE`). | U4, U5 |
+| E5 | **An input method window**: a topmost window that is never the keys' target (the menu bar's and the dock's flag today) and injects keys into the focused app; the text-input hint (U10) forwarded to it. | the on-screen keyboard |
+| E6 | **Touch input**: absolute pointer with a "touch" flag (no hover, no cursor drawn), long press, two-finger scroll; from Circle's touch-screen driver for the official display (to be checked in our fork), or USB HID touch screens. | kernel's raw input ring |
+| E7 | **Rotation** (0/90/180/270), the touch coordinates rotated with it. | T3; `screen_set` today refuses portrait sizes |
+| E8 | **Smaller and portrait resolutions** in `kapi_screen_set` (480 × 640, 480 × 800, 720 × 1280, maybe 320 × 240). | T3 |
+| E10 | **The pad as a system input**: the shell receives the Home / Select button before the game (to open the overlay) and pauses the app (a "pause" event, or the emulators' own pause through their menus). | console mode |
+| E9 | **Power and backlight**: the battery level (a fuel gauge or a UPS HAT over I²C: a small daemon publishing it), the display's backlight (the official display through the firmware). | the status bar, quick settings |
+
+### 11.4 What does not change
+
+The kernel's mechanisms (event queues, the full screen, the shared buffers), AppKit's names, the apps'
+binaries (they get the new behaviour through UIKit, rebuilt with the kits), `rdpd` / `vncd`, the
+clipboard, drag and drop (split view makes it useful again: a file from the File Viewer into the editor).
+
+## 12. The visual identity: Milk at the compact size, the PS2's mood for console
+
+Pocket is drawn with the **Milk** theme (`user/Kits/uikit/theme.cpp`: window `0xE4E4E4`, accent Aqua's blue
+`0x3D86DA`, frames `0xE2E2E4`, silver dock `0xD9DDE3`; `skin.cpp`: the title gradient that ends on the
+window's colour, OS X's beads), the user's preferred look. What carries over and what adapts:
+
+- **The status bar is the menu bar**: the same light gradient, the Onyx gem, the app's name in bold, the
+  menus in the regular weight, the tray and the time on the right. The Onyx button turns Aqua when it is
+  Home.
+- **Silver surfaces** for the launcher's panel, the tabs and the Running chips — the dock's silver; the
+  chosen tab is white and joins the panel (no line between them, Milk's "melting" frame).
+- **The category colours survive as dots** on the tabs (Productivity amber, Internet blue, Graphics green,
+  Multimedia violet, Games red, Programming teal...): the identity of the dock's drawers without painting
+  whole tabs.
+- **Aqua's blue for focus and selection** — the focus ring of a tile, the chosen card of the switcher, the
+  menus' selection, the toggles that are on.
+- **The beads** stay on what still has a frame (a fixed window's card, §6.8): red to close. Full-screen apps
+  have none.
+- **The navy wallpaper** of today's desktop behind the launcher, so a glance says "Onyx".
+- **No new effects**: rounded corners, light gradients and the 1-px outline as in the desktop; a flat dim
+  behind overlays.
+- The other themes of `theme.txt` (Peach, Steel, Sage, Brick, Slate, Dark Coffee) would apply the same way:
+  the shell reads the palette like any UIKit program.
+- **Console mode** has its own style over the same palette's accent: the PS2 browser's deep space (blue to
+  black), the translucent glowing towers and motes, thin big words (Selawik Light), glass panels with a
+  bright edge, Aqua's blue as the glow, memory-card tiles — drawn once into the background, never a
+  per-frame cost.
+
+## 13. Risks
+
+| Risk | Weight | Mitigation |
+|---|---|---|
+| **The apps at 800 × 480**: most are designed for 1000 × 700; a shell without U5/U6 shows cut apps. | high | U6 (scrolling root) first, then U5 for the UIKit composites, then the most used apps one by one |
+| The scale factor touches every drawing path of UIKit (and the apps' own canvases: Paint, the games). | high | 1.5× limited to UIKit's widgets and text at first; app canvases keep 1× pixels scaled by the app |
+| Touch on Circle: the official display's driver, its accuracy, USB touch screens. | medium | try it early on the Pi (E6) before designing more for touch |
+| Three modes to maintain (desktop, pocket, console). | medium | one Elegant, one policy for pocket and console; the shell programs small; UIKit's profile shared |
+| Console mode's glows and towers too slow if animated on the CPU. | low | drawn once into the wallpaper buffer; animation optional, slow, only on the home |
+| The on-screen keyboard and text input across the apps (the terminal, QBasic's editor, Jet). | medium | key injection (E5) works for every app; the hint (U10) only improves when it appears |
+| Performance at 1280 × 720 × 1.5 on the Pi 4's CPU compositor. | low | the same damage model; no blur, no shadows |
+| Scope creep (gestures, animations, a phone UI — what was dropped on 2026-09-28). | medium | this study's limits: one app, the menu bar, the switcher, split |
+
+## 14. Open questions for the user
+
+1. **Which device first?** The 7" official display (800 × 480, touch), a uConsole-like 1280 × 720, a
+   portrait slate, or a gamepad handheld (console mode)? It decides whether touch, the scale or the pad
+   comes first.
+2. **The three modes** — desktop, pocket, console — as proposed, with netbook and pad later? *(Yes, the
+   user, 2026-10-08: switched from the Control Panel and Setup's welcome; netbook and pad later.)*
+3. **Keep the global menu bar** in Pocket (the recommendation), or menus inside each app as on the Zaurus?
+4. **Where the settings live**: `shell=` in `system.ini` and `metrics=` / `scale=` in `theme.txt`, as
+   proposed?
+5. **Switching while running** (restart Elegant with the other policy, the apps kept), or only at boot?
+   *(The user, 2026-10-08: switching closes the graphical session and starts it again.)*
+6. **Split view** in Pocket: wanted, or one app at a time strictly?
+7. **Console mode's scope**: games, media, apps, files, settings as proposed; its towers still or slowly
+   animated; SuperTuxKart's port in its library?
+8. **The agenda widget** in Pocket: a line in the launcher's Recent tab, or a tile of its own?
+9. **Workspaces** in Pocket: dropped (the switcher replaces them), as proposed?
+10. **The 320 × 240 SPI screens**: out of scope, as proposed?
+
+## 15. Next steps (stopping before implementation)
+
+1. **Decisions** — the user answers §14; this study is revised.
+2. **Try the hardware** — the target device on the Pi with today's desktop at its resolution: what touch
+   gives (E6), how the apps look at 800 × 480 (screenshots of each app at that size with
+   `tools/tests/desktop_sim/shots.sh`), the list of the apps that do not fit.
+3. **Specify** — the policy module's interface in Elegant (E1–E4), the input method (E5), the protocol
+   additions (append-only numbers in `elegant.h`), the UIKit profile (U1–U3) and size classes (U5): a
+   design page each, reviewed with the user.
+4. **A clickable prototype on the PC** — the launcher, the status bar and the switcher as ordinary UIKit
+   programs on today's Elegant (maximised windows), in the desktop simulator, to try the navigation map
+   before any change to Elegant.
+5. Only then the implementation phases: UIKit's profile, scale and scrolling root → Elegant's policy and
+   the shell role → Pocket's shell programs (landscape and portrait from the start: the rules of §6.1) →
+   console mode's home on top of them → split view → touch and the on-screen keyboard → rotation.
+
+## Résumé (FR)
+
+L'utilisateur demandait si, maintenant qu'Elegant est en espace utilisateur, on pouvait remplacer le bureau
+fenêtré par une interface pour **netbooks** et **portables façon Sharp Zaurus**. Cette étude (analyse de
+design uniquement, rien n'est construit) aboutit à **trois modes au choix** (`shell=` dans
+`SD:/etc/system.ini`) : **desktop** (le bureau d'aujourd'hui), **pocket** et **console** ; un mode
+**netbook** (le concept B, Ubuntu Netbook Remix) et un mode **pad** (tablette tactile) viendront plus tard.
+**Pocket** est une **seule mise en page indépendante de la résolution et de l'orientation** : tout en
+unités logiques multipliées par l'échelle de l'appareil (1×, 1,5×, 2×), avec des règles qui se
+réorganisent selon la largeur, la hauteur et le rapport d'aspect logiques (§6.1) — le nombre de colonnes
+du lanceur, le contenu de la barre d'état, les menus en listes déroulantes en paysage ou en feuille du bas
+en portrait, les touches logicielles, le sélecteur en rangée ou en colonne. Les mêmes écrans sont montrés à
+800 × 480, 640 × 480, 480 × 800 et 240 × 320. Pocket reprend le lanceur à onglets de Qtopia (les catégories
+d'`app.txt`), **garde la barre de menus globale d'Onyx** comme barre d'état, une app à la fois en plein
+écran, un sélecteur Alt+Tab à vignettes (`EL_OP_SHOT`), les réglages rapides et les notifications, et deux
+apps côte à côte quand l'écran est assez large. Le **mode console**, pour une console portable ou une TV,
+reprend l'ambiance du **navigateur système de la PlayStation 2** : espace bleu nuit, particules et tours
+translucides lumineuses, grands mots fins, surbrillance lumineuse, tuiles façon carte mémoire pour les jeux
+et les six émulateurs, états de sauvegarde, menu en jeu, navigation à la manette seule (✕ valider,
+○ retour, L1/R1 les sections). Le tout dans le thème **Milk** (gris clairs, bleu Aqua, perles d'OS X),
+choisi par l'utilisateur ; le bleu Aqua sert de lueur au mode console. Le gros du travail n'est pas le
+shell mais **l'adaptation des apps** (la plupart sont conçues pour 1000 × 700) : UIKit devrait offrir un
+profil de densité (normal, compact, tactile), un facteur d'échelle, des fenêtres sans cadre, des classes de
+taille (une barre latérale repliée en rail, comme pour Ledger), une racine défilante en secours, le focus
+visible partout et le tactile. Côté Elegant : un même serveur avec une politique par mode, un rôle de
+shell, des raccourcis système, un clavier à l'écran, le tactile, la rotation, la manette comme entrée
+système et la batterie. Les questions ouvertes sont au §14 ; les étapes suivantes (§15) s'arrêtent avant
+toute implémentation.
