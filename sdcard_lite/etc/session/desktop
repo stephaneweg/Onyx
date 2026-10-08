@@ -1,0 +1,23 @@
+# SD:/etc/session/desktop -- the desktop session's programs: run by /bin/session (the autostart's line
+# `session`) when the mode is the desktop (SD:/etc/system.ini "shell =" desktop, or no line), ended when it
+# is switched to another (the Control Panel's Mode, `session switch`). The same syntax as SD:/etc/autostart.
+#
+# voronoy draws the generated wallpaper then exits -- optional (drop it for the plain
+# blue desktop).
+run voronoy
+#setup# FIRST BOOT: Setup, the first-run wizard (apps/setup), runs alone over the wallpaper. The
+#setup# lines it holds back meanwhile are written "#setup: <line>"; when it ends ("Start Onyx") it
+#setup# gives them back (and starts them), removes its own "run setup" line and these "#setup#"
+#setup# lines, sets SD:/etc/autostart's keyb line and turns its remote services on or off ("#telnetd": off).
+run setup
+# System menu bar across the top of the screen: the active app's menus + the clock.
+#setup: run menubar
+# Notification bubbles (the "notify" IPC service; apps call notify() from notify.h).
+run notifyd
+# The dock along the bottom (the drawers of apps, the workspaces, the Terminal, the File Viewer,
+# the Trash, lock / Control Panel / power: SD:/etc/dock.ini). It replaced the Shelf (removed on 2026-10-05)
+# and the panel.
+#setup: run dock
+#setup: run agenda
+# Stickies: the pinned notes on the desktop (Notes, View menu)
+#setup: run stickies

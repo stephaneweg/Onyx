@@ -1,0 +1,29 @@
+# The Mode applet's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+Mode	Mode
+Desktop	Bureau
+Pocket	Poche
+Console	Console
+Windows side by side, the menu bar and the dock: for a monitor, a keyboard and a mouse.	Des fenêtres côte à côte, la barre de menus et le dock : pour un écran, un clavier et une souris.
+One app at a time, full screen, on a small screen: for a handheld or a 7-inch display.	Une app à la fois, en plein écran, sur un petit écran : pour une console portable ou un écran 7 pouces.
+The games first, on a television, with a gamepad; every app full screen.	Les jeux d'abord, sur un téléviseur, avec une manette, chaque app en plein écran.
+in use	utilisé
+Wait	Attendre
+Force	Forcer
+Cancel	Annuler
+The session's tool (SD:/bin/session) could not be started.	L'outil de session (SD:/bin/session) n'a pas pu être lancé.
+Closing the open programs...	Fermeture des programmes ouverts...
+This interface is the one in use.	Cette interface est déjà celle utilisée.
+The interface	L'interface
+The open programs will be closed, then the interface starts again.	Les programmes ouverts vont être fermés, puis l'interface redémarre.
+is waiting for an answer	attend une réponse
+Answer its question, or force it to end (its unsaved work is lost).	Répondez à sa question, ou forcez sa fin (son travail non enregistré est perdu).
+A program	Un programme
+Nothing changed: the interface stays as it is.	Rien n'a changé : l'interface reste telle quelle.
+The interface was switched.	L'interface a été changée.
+That interface could not start: the desktop instead.	Cette interface n'a pas pu démarrer : le bureau à la place.
+Not now: a full-screen program has the display.	Pas maintenant : un programme en plein écran occupe l'affichage.
+The interface could not be switched.	L'interface n'a pas pu être changée.
+Apply	Appliquer
+Switching closes the open programs:	Changer ferme les programmes ouverts :
+each one asks about its unsaved work.	chacun propose d'enregistrer son travail.
+Kept in SD:/etc/system.ini (shell=); the programs of each mode: SD:/etc/session.	Gardé dans SD:/etc/system.ini (shell=) ; les programmes de chaque mode : SD:/etc/session.
