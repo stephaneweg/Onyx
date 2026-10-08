@@ -36,8 +36,9 @@
 
 using namespace uikit;
 
-#define W	980
-#define H	660
+static int g_W = 980, g_H = 660;	// the window's size (resizable: PocketUI fills it; the grid and the piano follow it)
+#define W	g_W
+#define H	g_H
 #define TOOL_H	50
 #define SIDE_W	156
 #define ST_H	22
@@ -78,6 +79,7 @@ static unsigned f_mix (int t) { return uk_mix (C_FIELD, C_FIELD_TEXT, t); }	// a
 
 class Grid; class ChanHeader; class PatList; class Piano;
 static Grid *g_grid = 0;
+static Widget *g_side = 0;			// the side panel
 static ChanHeader *g_head[FMS_CH];
 static PatList *g_plist = 0;
 static Piano *g_piano = 0;
@@ -1324,6 +1326,7 @@ public:
 		canvas.fillRect (GRID_X, HEAD_Y, NUM_W, HEAD_H, bg);
 	}
 	void onTick () override { tick (); }
+	void onResized () override;
 	bool onKey (long k) override
 	{
 		if (k == 27) { if (g_sel && !g_playing) { g_sel = false; redraw (); } else op_stop (); return true; }
@@ -1338,6 +1341,21 @@ public:
 		load_song (p);
 	}
 };
+
+// The window resized: the side panel taller, the channels wider (COL_W), the grid taller, the piano wider
+void TrackerRoot::onResized ()
+{
+	g_W = width; g_H = height;
+	((Widget *) g_btFollow)->left = W - 96;
+	g_side->resizeTo (SIDE_W - 1, H - TOOL_H - ST_H);
+	for (int c = 0; c < FMS_CH; c++) { g_head[c]->left = GRID_X + NUM_W + c * COL_W; g_head[c]->resizeTo (COL_W, HEAD_H); }
+	((Widget *) g_grid)->resizeTo (GRID_W, GRID_H);
+	((Widget *) g_sb)->left = GRID_X + GRID_W; ((Widget *) g_sb)->resizeTo (SB_W, GRID_H);
+	((Widget *) g_piano)->top = H - ST_H - PIANO_H; ((Widget *) g_piano)->resizeTo (W - SIDE_W, PIANO_H);
+	((Widget *) g_status)->top = H - ST_H; ((Widget *) g_status)->resizeTo (W, ST_H);
+	ensure_visible (g_row, false);
+	invalidate (true);
+}
 
 static ToolButton *tool (Widget &to, int x, int y, int w, int h, const char *tip, Action cb, int glyph)
 {
@@ -1381,7 +1399,7 @@ int main (void)
 	// the side panel: the patterns, this pattern, the typing
 	unsigned sbg = col_side ();
 	Panel *side = new Panel (0, TOOL_H, SIDE_W - 1, H - TOOL_H - ST_H, sbg);
-	root.addChild (side);
+	root.addChild (side); g_side = side;
 	side->addChild (new Heading (10, 8, 130, 18, "PATTERNS", sbg));
 	g_plist = new PatList (4, 30, SIDE_W - 9, 9 * PatList::ROW); side->addChild (g_plist);
 	int by = 30 + 9 * PatList::ROW + 8, bx = 6;
@@ -1475,6 +1493,8 @@ int main (void)
 		set_status ("C D E F G A B: a note (Shift = #), 0-7: octave, Space: silence, Del: ---, Shift+arrows: a block, ^P: play");
 	}
 	focus_grid ();
+	root.setResizable (true);
+	root.setMinSize (760, 440);
 	root.run ();
 	return 0;
 }
