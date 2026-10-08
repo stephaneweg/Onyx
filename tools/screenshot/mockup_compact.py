@@ -6,6 +6,8 @@ place of today's windowed one (Elegant's policy + the menu bar + the dock). A de
 nothing here is built.
 
     python3 tools/screenshot/mockup_compact.py      -> docs/compact-shell/mockups/*.png
+    python3 tools/screenshot/mockup_compact.py console-home | console-files | pocket-control |
+                                               console-control | pocket-home-v2   -> only those pictures
 
 Self-contained (PIL + numpy): the drawing helpers are those of mockup_cde_modern.py (anti-aliased masks,
 the grey profile `tone`, rounded boxes, gradients), copied so that the script does not need the Circle
@@ -2698,6 +2700,798 @@ def console_files_main ():
 			     "The File Viewer in console mode (640 x 480)"), "console-files-sheet.png")
 
 # ===========================================================================================================
+# The Control Panel in pocket mode (user/Apps/control; PocketUI P6): a full-screen app opened from the shell's
+# Settings. Landscape: the applets (SD:/apps/control.app/applets/*.lnk, in their order) as links in a left
+# SidePanel, the chosen applet filling the rest -- its layout using the room; portrait: the list as on the
+# desktop, one column, and once an applet is open a bar at the top of the host (< and the applet's title).
+# The applet shown: Theme (user/Apps/theme: its real controls, the Milk scheme chosen).
+# ===========================================================================================================
+def cp_links ():
+	d = os.path.join (SD, "apps", "control.app", "applets"); out = []
+	for n in sorted (os.listdir (d)):
+		if not n.endswith (".lnk"): continue
+		m = {}
+		for line in open (os.path.join (d, n)):
+			if "=" in line and not line.startswith (";"):
+				k_, v = [s.strip () for s in line.split ("=", 1)]; m[k_] = v
+		out.append ((m.get ("target", ""), m.get ("name", ""), m.get ("text", "")))
+	return out
+CP = cp_links ()
+
+def m_btn (img, x, y, w, h, label, k = 1, default = False):
+	if default:
+		rrect (img, x, y, w, h, 6 * k, (lighten (P["accent"], 0.2), shade (P["accent"], 0.9))); text_c (img, x, y, w, h, label, font (12 * k, True), (255, 255, 255))
+	else:
+		rrect (img, x, y, w, h, 6 * k, ((255, 255, 255), (234, 234, 236))); ring (img, x, y, w, h, 6 * k, (0, 0, 0), alpha = 55)
+		text_c (img, x, y, w, h, label, font (12 * k), P["ink"])
+def m_combo (img, x, y, w, h, label, k = 1):
+	rrect (img, x, y, w, h, 6 * k, ((255, 255, 255), (244, 244, 246))); ring (img, x, y, w, h, 6 * k, (0, 0, 0), alpha = 55)
+	text_l (img, x + 10 * k, y, h, ellipsize (label, font (12 * k), w - 34 * k), font (12 * k), P["ink"])
+	rrect (img, x + w - 24 * k, y + 3 * k, 20 * k, h - 6 * k, 5 * k, (lighten (P["accent"], 0.2), shade (P["accent"], 0.9)))
+	glyph (img, x + w - 19 * k, y + (h - 10 * k) / 2 + 1 * k, 10 * k, 10 * k, lambda d, s: g_chev (d, s, k, "down"), (255, 255, 255))
+def m_seg (img, x, y, w, h, items, sel, k = 1):
+	rrect (img, x, y, w, h, 6 * k, ((255, 255, 255), (234, 234, 236))); ring (img, x, y, w, h, 6 * k, (0, 0, 0), alpha = 55)
+	cw = w / len (items)
+	for i, it in enumerate (items):
+		if i == sel: rrect (img, x + i * cw, y, cw, h, 6 * k, (lighten (P["accent"], 0.2), shade (P["accent"], 0.9)))
+		elif i: vline (img, x + i * cw, y + 4 * k, h - 8 * k, (0, 0, 0), alpha = 40)
+		text_c (img, x + i * cw, y, cw, h, it, font (12 * k, i == sel), (255, 255, 255) if i == sel else P["ink"])
+def m_group (img, x, y, w, h, title, k = 1):
+	rrect (img, x, y, w, h, 8 * k, (247, 247, 248)); ring (img, x, y, w, h, 8 * k, (0, 0, 0), alpha = 40)
+	text (img, x + 12 * k, y + 8 * k, title, font (12 * k, True), P["ink"])
+def m_swatch (img, x, y, w, h, col, k = 1, sel = False):
+	if sel: ring (img, x - 3 * k, y - 3 * k, w + 6 * k, h + 6 * k, 6 * k, P["accent"], t = 2 * k)
+	rrect (img, x, y, w, h, 4 * k, (lighten (col, 0.12), shade (col, 0.92))); ring (img, x, y, w, h, 4 * k, (0, 0, 0), alpha = 60)
+
+PALETTE = [(80, 140, 170), (130, 160, 200), (130, 170, 130), (200, 90, 90), (60, 70, 90), (170, 170, 176), (210, 200, 196), (238, 232, 222),
+	   (255, 255, 255), (200, 200, 204), (140, 140, 144), (40, 40, 44), (70, 140, 170), (160, 180, 210), (70, 120, 190), (30, 40, 70),
+	   (226, 160, 50), (210, 110, 50), (150, 170, 60), (60, 150, 100), (130, 100, 180), (200, 100, 140), (110, 80, 70), (0, 0, 0)]
+
+def milk_preview (img, x, y, w, h, k = 1):
+	"""The Theme applet's preview: a small desktop in the scheme chosen (Milk): the menu bar, two windows, the dock."""
+	img.paste (wallpaper (int (w), int (h), seed = 3), (int (x), int (y)))
+	u = w / 320
+	bh = int (16 * u); img.paste (grad (int (w), bh, P["bar"], P["bar2"]), (int (x), int (y)))
+	f = font (9 * u, True); text_l (img, x + 6 * u, y, bh, "Onyx", f, P["ink"]); text_l (img, x + 36 * u, y, bh, "File  Edit  View", font (9 * u), P["ink"])
+	text_r (img, x + w - 6 * u, y, bh, "12:34", f, P["ink"])
+	def win (wx, wy, ww, wh, title, front):
+		rrect (img, wx + 2 * u, wy + 3 * u, ww, wh, 6 * u, (0, 0, 0), alpha = 50)
+		rrect (img, wx, wy, ww, wh, 6 * u, P["face"]); th = int (18 * u)
+		rrect (img, wx, wy, ww, th + 4 * u, 6 * u, ((250, 250, 250), P["face"]) if front else ((236, 236, 238), P["face"]), corners = (True, True, False, False))
+		ring (img, wx, wy, ww, wh, 6 * u, (0, 0, 0), alpha = 70)
+		for i, c in enumerate ((P["red"], P["amber"], P["green"]) if front else ((196, 196, 200),) * 3): bead (img, wx + (6 + i * 13) * u, wy + 4 * u, 10 * u, c)
+		text_c (img, wx, wy, ww, th, title, font (9 * u, True), P["ink"] if front else P["ink2"])
+		return wy + th
+	cy = win (x + 18 * u, y + 30 * u, 150 * u, 100 * u, "Behind", False)
+	text (img, x + 30 * u, cy + 8 * u, "Some text", font (9 * u), P["ink"]); text (img, x + 30 * u, cy + 22 * u, "Dimmed", font (9 * u), (160, 160, 166))
+	cy = win (x + 112 * u, y + 76 * u, 180 * u, 108 * u, "In front", True)
+	m_btn (img, x + 124 * u, cy + 10 * u, 50 * u, 20 * u, "OK", u, default = True)
+	rrect (img, x + 184 * u, cy + 10 * u, 96 * u, 20 * u, 4 * u, (255, 255, 255)); ring (img, x + 184 * u, cy + 10 * u, 96 * u, 20 * u, 4 * u, P["accent"], t = 1.5 * u)
+	box (img, x + 189 * u, cy + 14 * u, 24 * u, 12 * u, lighten (P["accent"], 0.5)); text_l (img, x + 190 * u, cy + 10 * u, 20 * u, "Text  field", font (9 * u), P["ink"])
+	rrect (img, x + 124 * u, cy + 44 * u, 12 * u, 12 * u, 3 * u, P["accent"]); text (img, x + 142 * u, cy + 43 * u, "Check", font (9 * u), P["ink"])
+	rrect (img, x + 200 * u, cy + 44 * u, 12 * u, 12 * u, 6 * u, (255, 255, 255)); ring (img, x + 200 * u, cy + 44 * u, 12 * u, 12 * u, 6 * u, P["accent"], t = 1.2 * u)
+	rrect (img, x + 203.5 * u, cy + 47.5 * u, 5 * u, 5 * u, 2.5 * u, P["accent"]); text (img, x + 218 * u, cy + 43 * u, "Radio", font (9 * u), P["ink"])
+	dw = 150 * u; dx = x + (w - dw) / 2; dy = y + h - 26 * u
+	rrect (img, dx, dy, dw, 20 * u, 6 * u, P["silver"]); ring (img, dx, dy, dw, 20 * u, 6 * u, (0, 0, 0), alpha = 60)
+	for i, a in enumerate (("fileviewer", "jet", "letters", "media", "terminal", "paint")): draw_icon (img, a, dx + 8 * u + i * 23 * u, dy + 2 * u, 16 * u)
+	ring (img, x, y, w, h, 3, (0, 0, 0), alpha = 80)
+
+def theme_rows (img, x, y, w, k, gap):
+	"""Theme's controls, a label column then the control; returns the y after them."""
+	lw = 64 * k; cx = x + lw; cw = w - lw; rh = 26 * k; f = font (12 * k)
+	def lab (s, yy, h = rh): text_l (img, x, yy, h, s, f, P["ink"])
+	lab ("Theme", y); m_seg (img, cx, y, min (cw, 220 * k), rh, ["Classic", "Modern"], 1, k); y += rh + gap
+	lab ("Scheme", y + 4 * k)
+	for i, (n, c) in enumerate ([("Milk", (228, 228, 228)), ("Dark Coffee", (80, 62, 52))]):
+		sx = cx + i * 92 * k; m_swatch (img, sx + 10 * k, y + 2 * k, 46 * k, 26 * k, c, k, sel = i == 0)
+		text_c (img, sx - 10 * k, y + 32 * k, 86 * k, 14 * k, n, font (11 * k, i == 0), P["ink"])
+	y += 48 * k + gap
+	lab ("Item", y); m_combo (img, cx, y, min (cw, 260 * k), rh, "Window in front: frame", k); y += rh + gap
+	lab ("Colour", y); m_swatch (img, cx, y, 54 * k, rh, (238, 238, 240), k); m_btn (img, cx + 66 * k, y, 92 * k, rh, "Custom...", k); y += rh + gap
+	ss = 17 * k; per = 12
+	for i, c in enumerate (PALETTE):
+		r_, c_ = divmod (i, per); m_swatch (img, cx + c_ * (ss + 5 * k), y + r_ * (ss + 5 * k), ss, ss, c, k, sel = i == 8)
+	y += 2 * (ss + 5 * k) + gap
+	lab ("Outline", y); m_combo (img, cx, y, min (cw, 140 * k), rh, "None", k); y += rh
+	return y
+
+def desktop_group (img, x, y, w, h, k, wide = False):
+	m_group (img, x, y, w, h, "Desktop", k)
+	f = font (12 * k); rh = 26 * k; yy = y + 32 * k
+	text_l (img, x + 12 * k, yy, rh, "Wallpaper", f, P["ink"]); m_combo (img, x + 86 * k, yy, 150 * k, rh, "Voronoi cells", k)
+	if wide:
+		text_l (img, x + 256 * k, yy, rh, "Colour", f, P["ink"]); m_swatch (img, x + 306 * k, yy, 54 * k, rh, P["desk"], k)
+		text_l (img, x + 380 * k, yy, rh, "Cells", f, P["ink"]); m_combo (img, x + 420 * k, yy, 70 * k, rh, "24", k)
+		pw_ = int (min (w * 0.28, (h - 20 * k) * 4 / 3)); ph_ = int (pw_ * 0.75)
+		if x + 500 * k + pw_ < x + w:
+			img.paste (wallpaper (pw_, ph_, seed = 7), (int (x + w - pw_ - 14 * k), int (y + (h - ph_) / 2))); ring (img, x + w - pw_ - 14 * k, y + (h - ph_) / 2, pw_, ph_, 3, (0, 0, 0), alpha = 70)
+	else:
+		yy += rh + 10 * k
+		text_l (img, x + 12 * k, yy, rh, "Colour", f, P["ink"]); m_swatch (img, x + 86 * k, yy, 54 * k, rh, P["desk"], k)
+		text_l (img, x + 156 * k, yy, rh, "Cells", f, P["ink"]); m_combo (img, x + 196 * k, yy, 64 * k, rh, "24", k)
+
+def theme_applet (img, x, y, w, h, k = 1, header = True):
+	"""The Theme applet laid out in the pane it is given: two columns when wide, stacked when narrow."""
+	box (img, x, y, w, h, P["face"])
+	pad = 16 * k; yy = y + 12 * k
+	if header:
+		text (img, x + pad, yy, "Theme", font (17 * k, True), P["ink"])
+		text (img, x + pad, yy + 24 * k, CP[0][2], font (11 * k), P["ink2"]); yy += 50 * k
+		hline (img, x + pad, yy - 6 * k, w - 2 * pad, (0, 0, 0), alpha = 30)
+	if w / k >= 520:					# wide: the preview at the left, the controls at its right
+		bot = 44 * k; dg = (110 if w / k > 800 else 84) * k
+		avail = y + h - yy - bot - dg - 14 * k
+		pw = min ((w - 2 * pad) * 0.46, avail * 4 / 3); ph = pw * 0.75
+		milk_preview (img, x + pad, yy, pw, ph, k)
+		gap = max (8 * k, (ph - 246 * k + 6 * k) / 5)
+		theme_rows (img, x + pad + pw + 22 * k, yy, w - 2 * pad - pw - 22 * k, k, gap)
+		desktop_group (img, x + pad, y + h - bot - dg - 6 * k, w - 2 * pad, dg, k, wide = True)
+		m_btn (img, x + w - pad - 196 * k, y + h - 38 * k, 90 * k, 28 * k, "Apply", k, default = True); m_btn (img, x + w - pad - 98 * k, y + h - 38 * k, 90 * k, 28 * k, "Discard", k)
+	else:						# narrow: the preview on top, the controls under it; the pane scrolls
+		pw = min (w - 2 * pad, 250 * k); ph = pw * 0.75
+		milk_preview (img, x + (w - pw) / 2, yy, pw, ph, k); yy += ph + 14 * k
+		yy = theme_rows (img, x + pad, yy, w - 2 * pad, k, 9 * k) + 12 * k
+		desktop_group (img, x + pad, yy, w - 2 * pad, 112 * k, k)
+		# Apply / Discard pinned at the bottom of the pane, over the scrolling content
+		by = y + h - 44 * k
+		img.paste (grad (int (w), int (44 * k), (236, 236, 238), (226, 226, 228)), (int (x), int (by))); hline (img, x, by, w, (0, 0, 0), alpha = 40)
+		m_btn (img, x + w - pad - 196 * k, by + 8 * k, 90 * k, 28 * k, "Apply", k, default = True); m_btn (img, x + w - pad - 98 * k, by + 8 * k, 90 * k, 28 * k, "Discard", k)
+		rrect (img, x + w - 6 * k, y + 8 * k, 3 * k, h * 0.45, 1.5 * k, (0, 0, 0), alpha = 70)	# the scroll bar: there is more
+
+def cp_side (img, x, y, w, h, sel, k = 1, help_ = False):
+	"""The applets as links, one under the other (a tab control's strips stacked): icon, name (and its help line)."""
+	img.paste (grad (int (w), int (h), (242, 242, 244), (228, 229, 233)), (int (x), int (y))); vline (img, x + w - 1, y, h, (0, 0, 0), alpha = 50)
+	rh = (44 if help_ else 32) * k; yy = y + 8 * k; isz = int ((28 if help_ else 22) * k)
+	for i, (t, n, tx) in enumerate (CP):
+		on = i == sel
+		if on: rrect (img, x + 6 * k, yy, w - 12 * k, rh - 2 * k, 7 * k, (lighten (P["accent"], 0.15), shade (P["accent"], 0.92)))
+		draw_icon (img, t, x + 14 * k, yy + (rh - 2 * k - isz) / 2, isz)
+		fg = (255, 255, 255) if on else P["ink"]
+		if help_:
+			text (img, x + 14 * k + isz + 10 * k, yy + 5 * k, n, font (12 * k, True), fg)
+			text (img, x + 14 * k + isz + 10 * k, yy + 22 * k, ellipsize (tx, font (10 * k), w - isz - 46 * k), font (10 * k), (226, 236, 250) if on else P["ink2"])
+		else: text_l (img, x + 14 * k + isz + 10 * k, yy, rh - 2 * k, n, font (12 * k, on), fg)
+		yy += rh
+
+def pocket_control_landscape (W = 800, H = 480, side = 196, help_ = False):
+	img = Image.new ("RGB", (W, H), P["face"])
+	statusbar (img, W, title = "Control Panel", menus = ("Settings",))
+	cp_side (img, 0, BAR, side, H - BAR, 0, help_ = help_)
+	theme_applet (img, side, BAR, W - side, H - BAR)
+	return img
+
+def cp_portrait_list (W = 480, H = 800, k = 1.5):
+	u = lambda v: v * k
+	img = Image.new ("RGB", (W, H), P["face"])
+	statusbar (img, W, title = "Control Panel", menus = ("Settings",), k = k, compact = True, lite = True)
+	y = u (BAR); rh = u (54); isz = int (u (32))
+	for i, (t, n, tx) in enumerate (CP):
+		if y + rh > H - u (26): break
+		rrect (img, u (8), y + u (4), W - u (16), rh - u (4), u (8), (247, 247, 248)); ring (img, u (8), y + u (4), W - u (16), rh - u (4), u (8), (0, 0, 0), alpha = 30)
+		draw_icon (img, t, u (16), y + u (4) + (rh - u (4) - isz) / 2, isz)
+		text (img, u (58), y + u (10), n, font (u (12), True), P["ink"])
+		lines = wrap2 (tx, font (u (10)), W - u (100))
+		for j, ln in enumerate (lines[:2]): text (img, u (58), y + u (25) + j * u (12), ln, font (u (10)), P["ink2"])
+		glyph (img, W - u (26), y + u (4) + (rh - u (4)) / 2 - u (5), u (10), u (10), lambda d, s: g_chev (d, s, k, "right"), P["ink2"])
+		y += rh
+	slate_softkeys (img, W, H, [(g_grid, "Home"), (g_tasks, "Tasks"), (g_menu, "Menu"), (g_kbd, "Keys")], k = k)
+	return img
+
+def cp_portrait_applet (W = 480, H = 800, k = 1.5):
+	u = lambda v: v * k
+	img = Image.new ("RGB", (W, H), P["face"])
+	statusbar (img, W, title = "Control Panel", menus = ("Settings",), k = k, compact = True, lite = True)
+	# the host's navigation bar: < back to the list, the applet's title
+	y = u (BAR); nh = u (34)
+	img.paste (grad (W, int (nh), (250, 250, 251), (236, 236, 238)), (0, int (y))); hline (img, 0, y + nh - 1, W, (0, 0, 0), alpha = 50)
+	glyph (img, u (12), y + (nh - u (12)) / 2, u (12), u (12), lambda d, s: g_chev (d, s, 1.2 * k, "left"), P["accent"])
+	text_l (img, u (28), y, nh, "Control Panel", font (u (12)), P["accent"])
+	text_c (img, 0, y, W, nh, "Theme", font (u (13), True), P["ink"])
+	theme_applet (img, 0, y + nh, W, H - y - nh - u (26), k, header = False)
+	slate_softkeys (img, W, H, [(g_grid, "Home"), (g_tasks, "Tasks"), (g_menu, "Menu"), (g_kbd, "Keys")], k = k)
+	return img
+
+def pocket_control_main ():
+	l1 = pocket_control_landscape (); save (l1, "pocket-control-landscape.png")
+	l2 = pocket_control_landscape (1280, 720, side = 300, help_ = True); save (l2, "pocket-control-landscape-1080.png")
+	p1 = cp_portrait_list (); save (p1, "pocket-control-portrait-list.png")
+	p2 = cp_portrait_applet (); save (p2, "pocket-control-portrait-applet.png")
+	# the sheet: the two landscapes above, the two portraits beside each other below (shown at the same height)
+	pad, gap = 24, 24
+	top = [fit (l1, 620), fit (l2, 620)]
+	pp = [p.resize ((int (p.width * 560 / p.height), 560), Image.LANCZOS) for p in (p1, p2)]
+	cells = [caption_sheet (top[0], "Landscape, 800 x 480", "the applets as links at the left, Theme filling the rest"),
+		 caption_sheet (top[1], "Landscape, 1280 x 720 (shown smaller)", "the same: the links with their help line, Theme spread out"),
+		 caption_sheet (pp[0], "Portrait, 480 x 800: the list", "as on the desktop, one column"),
+		 caption_sheet (pp[1], "Portrait: an applet open", "the host's bar: < Control Panel, the title")]
+	Wd = pad * 2 + cells[0].width + gap + cells[1].width
+	Hd = pad + 44 + max (cells[0].height, cells[1].height) + gap + max (cells[2].height, cells[3].height) + pad
+	out = Image.new ("RGB", (Wd, Hd), (233, 233, 235))
+	text (out, pad, pad, "The Control Panel in pocket mode: a full-screen app", font (20, True), P["ink"])
+	y = pad + 44; out.paste (cells[0], (pad, y)); out.paste (cells[1], (pad + cells[0].width + gap, y))
+	y += max (cells[0].height, cells[1].height) + gap
+	x = (Wd - cells[2].width - gap - cells[3].width) // 2; out.paste (cells[2], (x, y)); out.paste (cells[3], (x + cells[2].width + gap, y))
+	save (out, "pocket-control-sheet.png")
+
+# ===========================================================================================================
+# The Control Panel in console mode: the home's "Settings" opened full screen (consolehome, P9). At the left
+# the applets that make sense under a TV or in a handheld (the .lnk files of SD:/apps/control.app/applets, in
+# their order; Theme, Panel, Preload, Printers and App Settings stay on the desktop and in pocket -- the doc
+# says why), the chosen one glowing; at the right its settings as big rows -- the value at the right, left /
+# right to change it, cross to open a sub-page. When the focus is in the rows, the column shrinks (as the
+# home's) and a card at the bottom left explains the focused row.
+# ===========================================================================================================
+CC_KEEP = ["modeconf", "displayconf", "soundconf", "keyconf", "langconf", "padconf", "wpaconf", "pkgman"]
+CCA = [(t, n, tx) for (t, n, tx) in CP if t in CC_KEEP] + [("about", "About", "Onyx's version, the kernel, the card, the memory")]
+CLX, CLW = 18, 196					# the applets' column
+CRX, CRY, CRW, CRH = 226, 60, 396, 372			# the applet's panel
+CCARD = (CLX, 298, CLW, 134)				# the focused row's card (bottom left)
+
+def cc_icon (img, t, x, y, s):
+	if t == "about":
+		put (img, x + s * 0.1, y + s * 0.1, mask (s * 0.8, s * 0.8, lambda d, sc: g_gem (d, sc, s * 0.8 / 16)), (170, 205, 245))
+	else: draw_icon (img, t, x, y, s)
+
+def cc_top (img, crumbs):
+	"""The gem, then where we are (Settings > Gamepad > ...), the last one bright; Wi-Fi, battery, time at the right."""
+	put (img, 22, 19, mask (16, 16, lambda d, s: g_gem (d, s, 1)), (170, 205, 245))
+	x = 46
+	for i, c in enumerate (crumbs):
+		last = i == len (crumbs) - 1
+		f = cfont (20, "light") if i == 0 else cfont (18, "regular")
+		if last: glow_text (img, x, 14 if i == 0 else 16, c, f, (236, 244, 255), radius = 4, strength = 1)
+		else: text (img, x, 14 if i == 0 else 16, c, f, (130, 156, 200))
+		x += tw (c, f)
+		if not last:
+			glyph (img, x + 9, 22, 10, 10, lambda d, s: g_chev (d, s, 1, "right"), (110, 140, 190)); x += 28
+	text_r (img, CW - 22, 13, 24, "12:34", cfont (19, "regular"), (220, 230, 246))
+	battery (img, CW - 102, 20, 78, (180, 196, 220))
+	put (img, CW - 126, 17, mask (16, 14, lambda d, s: g_wifi (d, s)), (180, 196, 220))
+
+def cc_base (crumbs, seed = 12):
+	img = space (CW, CH, seed = seed); img = dim (img, 40, (2, 4, 14)); img = vignette (img)
+	cc_top (img, crumbs); hint_strip (img)
+	return img
+
+def cc_left (img, sel):
+	"""The focus in the column: the applets as big words with their icons, the chosen one glowing, a thin light to its panel."""
+	y = 68
+	for i, (t, n, tx) in enumerate (CCA):
+		if i == sel:
+			img = glow_box (img, CLX, y - 3, CLW, 34, 10)
+			m = Image.new ("L", img.size, 0); ImageDraw.Draw (m).line ([CLX + CLW, y + 14, CRX, y + 14], fill = 255, width = 2)
+			img = add_glow (img, Image.new ("RGB", img.size, GLOW), m, 3); hline (img, CLX + CLW, y + 13, CRX - CLX - CLW, (190, 220, 255), alpha = 200)
+			cc_icon (img, t, CLX + 9, y + 2, 24)
+			glow_text (img, CLX + 42, y + 3, ellipsize (n, cfont (18, "semi"), CLW - 48), cfont (18, "semi"), (255, 255, 255), radius = 5, strength = 1)
+		else:
+			cc_icon (img, t, CLX + 11, y + 4, 20)
+			glow_text (img, CLX + 42, y + 4, n, cfont (17, "light"), (176, 196, 226), radius = 4, strength = 1, glow = (30, 60, 120))
+		y += 38
+	return img
+
+def cc_left_small (img, sel):
+	"""The focus in the panel: the applets small and dim, the chosen one marked (as the home's column)."""
+	y = 66
+	for i, (t, n, tx) in enumerate (CCA):
+		if i == sel:
+			rrect (img, CLX, y - 3, CLW, 25, 8, ((50, 90, 170), (24, 46, 100)), alpha = 150); ring (img, CLX, y - 3, CLW, 25, 8, (150, 190, 250), alpha = 120)
+			cc_icon (img, t, CLX + 8, y, 18); text (img, CLX + 34, y - 1, n, cfont (15, "semi"), (240, 246, 255))
+			glyph (img, CLX + CLW - 16, y + 5, 10, 10, lambda d, s: g_chev (d, s, 1, "right"), (200, 224, 255))
+		else:
+			cc_icon (img, t, CLX + 9, y + 1, 16); text (img, CLX + 34, y, n, cfont (14, "light"), (130, 150, 186))
+		y += 25
+	return img
+
+def cc_card (img, title, body, icon = None, warn = None):
+	"""The focused row's card: what it does, where it is kept; `warn` a line in amber (a keyboard needed)."""
+	x, y, w, h = CCARD
+	glass (img, x, y, w, h, 12, alpha = 70, edge = 130)
+	tx = x + 12
+	if icon: icon (img, x + 12, y + 11); tx = x + 38
+	text (img, tx, y + 9, title, cfont (16, "semi"), (236, 244, 255))
+	f = cfont (13, "regular"); yy = y + 33
+	for ln in wrap2 (body, f, w - 24)[:4]: text (img, x + 12, yy, ln, f, (196, 214, 242)); yy += 17
+	if warn:
+		put (img, x + 12, y + h - 23, mask (16, 16, lambda d, s: g_kbd (d, s)), (240, 200, 120))
+		text (img, x + 34, y + h - 24, warn, cfont (13, "regular"), (240, 214, 160))
+
+def cc_chevs (img, x_right, y, w_val, lit):
+	"""< value > : the arrows round a value that left / right change."""
+	c = (220, 236, 255) if lit else (90, 120, 170)
+	glyph (img, x_right - w_val - 22, y + 14, 10, 10, lambda d, s: g_chev (d, s, 1, "left"), c)
+	glyph (img, x_right - 8, y + 14, 10, 10, lambda d, s: g_chev (d, s, 1, "right"), c)
+
+def sig_bars (img, x, y, n, lit = False):
+	for i in range (4):
+		bh = 4 + i * 3.4
+		on = i < n
+		rrect (img, x + i * 5, y + 15 - bh, 3.4, bh, 1, ((230, 242, 255) if lit else (180, 210, 250)) if on else (60, 80, 120), alpha = 255 if on else 200)
+
+def cc_switch (img, x, y, on):
+	if on: rrect (img, x, y, 44, 22, 11, ((120, 180, 255), (40, 100, 210))); rrect (img, x + 24, y + 2, 18, 18, 9, ((255, 255, 255), (210, 226, 246)))
+	else: rrect (img, x, y, 44, 22, 11, ((24, 34, 64), (14, 20, 40))); ring (img, x, y, 44, 22, 11, (110, 140, 200), alpha = 140); rrect (img, x + 2, y + 2, 18, 18, 9, ((170, 184, 210), (110, 124, 150)))
+
+def cc_panel (img, t, rows, focus = None, lit = True, footer = None):
+	"""The applet's page: its icon, name and help line (the .lnk's), then its rows; `focus` the glowing row."""
+	glass (img, CRX, CRY, CRW, CRH, 14, alpha = 46 if lit else 32, edge = 110 if lit else 80)
+	n, tx = [(n, tx) for (t_, n, tx) in CCA if t_ == t][0]
+	cc_icon (img, t, CRX + 16, CRY + 13, 30)
+	glow_text (img, CRX + 56, CRY + 8, n, cfont (22, "semi"), (255, 255, 255), radius = 4, strength = 1)
+	text (img, CRX + 57, CRY + 38, ellipsize (tx, cfont (13, "regular"), CRW - 72), cfont (13, "regular"), (136, 162, 206))
+	hline (img, CRX + 16, CRY + 62, CRW - 32, (140, 180, 240), alpha = 50)
+	y = CRY + 70; R = CRX + CRW - 24
+	for i, row in enumerate (rows):
+		kind, lab = row[0], row[1]; on = i == focus
+		if on: img = glow_box (img, CRX + 8, y, CRW - 16, 38, 9)
+		elif kind != "note" and i % 2: rrect (img, CRX + 8, y, CRW - 16, 38, 9, (120, 160, 230), alpha = 9)
+		lx = CRX + 22
+		if kind == "net":
+			sig_bars (img, lx, y + 11, row[2], on); lx += 30
+		if kind == "note":
+			f = cfont (13, "regular")
+			for j, ln in enumerate (wrap2 (lab, f, CRW - 44)): text (img, CRX + 22, y + 4 + j * 17, ln, f, (126, 152, 196))
+			y += 42; continue
+		fl = cfont (18, "semi" if on else "light")
+		text (img, lx, y + 7, lab, fl, (255, 255, 255) if on else (204, 218, 240))
+		fv = cfont (16, "semi" if on else "regular"); vc = (255, 255, 255) if on else (150, 178, 218)
+		if kind == "value":
+			v = row[2]; text_r (img, R - 14, y + 7, 24, v, fv, vc); cc_chevs (img, R, y, tw (v, fv) + 14, on)
+		elif kind == "bar":
+			v = row[2]; s_ = "%d / 10" % v; text_r (img, R - 14, y + 7, 24, s_, fv, vc); bx = R - 14 - tw (s_, fv) - 14 - 10 * 12
+			for j in range (10):
+				rrect (img, bx + j * 12, y + 13, 9, 13, 3, ((190, 225, 255), (70, 140, 240)) if j < v else (30, 44, 80), alpha = 255 if j < v else 220)
+			cc_chevs (img, R, y, R - bx + 2, on)
+		elif kind == "toggle":
+			cc_switch (img, R - 44, y + 8, row[2]); text_r (img, R - 54, y + 7, 24, "On" if row[2] else "Off", fv, vc)
+		elif kind == "action":
+			v = row[2]; text_r (img, R, y + 7, 24, v, fv, vc); pad_btn (img, R - tw (v, fv) - 26, y + 9, "x", 20)
+		elif kind == "sub":
+			v = row[2]; text_r (img, R - 16, y + 7, 24, v, fv, vc)
+			glyph (img, R - 8, y + 14, 10, 10, lambda d, s: g_chev (d, s, 1, "right"), (220, 236, 255) if on else (120, 150, 200))
+		elif kind == "net":
+			lock, state = row[3], row[4]; xr = R
+			if state: text_r (img, xr, y + 7, 24, state, cfont (15, "semi"), (140, 210, 255) if not on else (255, 255, 255)); xr -= tw (state, cfont (15, "semi")) + 10
+			if lock: put (img, xr - 14, y + 11, mask (14, 16, lambda d, s: g_lock (d, s, 0.85)), (220, 236, 255) if on else (130, 160, 210))
+		y += 42
+	if footer: text (img, CRX + 22, CRY + CRH - 24, footer, cfont (12, "regular"), (104, 130, 176))
+	return img
+
+CC_HINTS = [("<|>", "Value"), ("x", "Change"), ("o", "Back"), ("t", "Reset"), ("L1/R1", "Page")]
+def cc_hints (img, items):
+	"""console_hints, with the d-pad's left / right drawn as two small keys."""
+	console_hints (img, [(k_.replace ("<|>", "◀/▶"), w_) for k_, w_ in items])
+
+SOUND_ROWS = [("value", "Play on", "Headphone jack"), ("bar", "Volume", 7), ("toggle", "Mute", False),
+	      ("action", "Test sound", "Play"), ("sub", "Programs playing", "Media Player")]
+DISPLAY_ROWS = [("value", "Resolution", "1280 x 720  HD"), ("value", "Scale", "1.5x"), ("value", "Background", "Still"),
+		("note", "The screen now: 1280 x 720. A new size is tried at once and asks \"Keep it?\" -- after 15 s without an answer, the old one comes back.")]
+
+def console_control_sound ():
+	img = cc_base (["Settings", "Sound"])
+	img = cc_left_small (img, [t for t, n, tx in CCA].index ("soundconf"))
+	img = cc_panel (img, "soundconf", SOUND_ROWS, focus = 1, footer = "Kept in SD:/etc/sound.ini and mixer.ini")
+	cc_card (img, "Volume", "The master volume, 0 to 10: what every program plays at. The menu bar's speaker on the desktop is the same.")
+	cc_hints (img, CC_HINTS)
+	return img
+
+def console_control_display ():
+	img = cc_base (["Settings"])
+	img = cc_left (img, [t for t, n, tx in CCA].index ("displayconf"))
+	img = cc_panel (img, "displayconf", DISPLAY_ROWS, footer = "Kept in SD:/cmdline.txt and theme.txt (scale=)")
+	cc_hints (img, [("x", "Open"), ("o", "Home"), ("L1/R1", "Page")])
+	return img
+
+def cc_rail (img, sel):
+	"""The column folded to a rail of icons (the mapping page needs the width); L1 / R1 still go from applet to applet."""
+	glass (img, 14, CRY, 42, CRH, 12, alpha = 40, edge = 90)
+	y = CRY + 10
+	for i, (t, n, tx) in enumerate (CCA):
+		if i == sel: rrect (img, 17, y - 4, 36, 32, 8, ((50, 90, 170), (24, 46, 100)), alpha = 170); ring (img, 17, y - 4, 36, 32, 8, (150, 190, 250), alpha = 130)
+		cc_icon (img, t, 24, y + 1, 22)
+		y += 40
+	return img
+
+PAD_FUNCS = [("Up", "d-pad"), ("Down", "d-pad"), ("Left", "d-pad"), ("Right", "d-pad"), ("A", "bottom"), ("B", "right"), ("X", "left"), ("Y", "top"),
+	     ("L", "L1 / LB"), ("R", "R1 / RB"), ("L2", "trigger"), ("R2", "trigger"), ("Select", ""), ("Start", ""), ("L3", "stick"), ("R3", "stick"), ("Home", "")]
+PAD_GOT = ["hat", "hat", "hat", "hat", "button 3"]		# what the first five steps took (gamepad.ini's numbers)
+
+def pad_drawing (img, x, y, w, h, step):
+	"""A pad seen from the front, the buttons by PLACE (what the apps see, gamepad.ini): those learnt filled, the
+	one asked glowing, the others outlined."""
+	u = w / 300
+	m = Image.new ("L", img.size, 0); d = ImageDraw.Draw (m)
+	d.rounded_rectangle ([x + 20 * u, y + 30 * u, x + 280 * u, y + 150 * u], 58 * u, fill = 255)
+	d.ellipse ([x + 6 * u, y + 90 * u, x + 112 * u, y + 196 * u], fill = 255); d.ellipse ([x + 188 * u, y + 90 * u, x + 294 * u, y + 196 * u], fill = 255)
+	body = Image.new ("RGB", img.size, (0, 0, 0)); body.paste (grad (img.width, img.height, (40, 70, 140), (10, 20, 50)), (0, 0))
+	img.paste (body, (0, 0), m.point (lambda v: v * 0.55))
+	edge = m.filter (ImageFilter.FIND_EDGES); img.paste ((150, 190, 250), (0, 0), edge.point (lambda v: min (255, v) * 0.7))
+	idx = {f: i for i, (f, _) in enumerate (PAD_FUNCS)}
+	def btn (f, bx, by, bw, bh, r, lab = None):
+		i = idx[f]; bx, by, bw, bh = x + bx * u, y + by * u, bw * u, bh * u
+		nonlocal img
+		if i == step:
+			mm = Image.new ("L", img.size, 0); ImageDraw.Draw (mm).rounded_rectangle ([bx - 4, by - 4, bx + bw + 4, by + bh + 4], r * u + 4, fill = 255)
+			img = add_glow (img, Image.new ("RGB", img.size, (90, 170, 255)), mm, 9)
+			rrect (img, bx, by, bw, bh, r * u, ((210, 236, 255), (90, 160, 255))); ring (img, bx - 3, by - 3, bw + 6, bh + 6, r * u + 3, (220, 240, 255), t = 1.5, alpha = 220)
+			fg = (10, 30, 70)
+		elif i < step:
+			rrect (img, bx, by, bw, bh, r * u, ((90, 140, 220), (40, 80, 170))); ring (img, bx, by, bw, bh, r * u, (190, 220, 255), alpha = 170); fg = (235, 244, 255)
+		else:
+			rrect (img, bx, by, bw, bh, r * u, (14, 24, 50), alpha = 200); ring (img, bx, by, bw, bh, r * u, (110, 140, 200), alpha = 150); fg = (130, 156, 200)
+		if lab: text_c (img, bx, by - 1, bw, bh, lab, cfont (int (12 * u), "semi"), fg)
+	btn ("L2", 52, 2, 46, 16, 6, "L2"); btn ("L", 40, 20, 62, 14, 6, "L"); btn ("R2", 202, 2, 46, 16, 6, "R2"); btn ("R", 198, 20, 62, 14, 6, "R")
+	btn ("Up", 64, 54, 20, 22, 4); btn ("Down", 64, 98, 20, 22, 4); btn ("Left", 41, 76, 23, 22, 4); btn ("Right", 84, 76, 23, 22, 4)
+	box (img, x + 64 * u, y + 76 * u, 20 * u, 22 * u, (40, 70, 130), alpha = 200)
+	btn ("Y", 213, 50, 26, 26, 13, "Y"); btn ("A", 213, 102, 26, 26, 13, "A"); btn ("X", 187, 76, 26, 26, 13, "X"); btn ("B", 239, 76, 26, 26, 13, "B")
+	btn ("Select", 116, 70, 30, 12, 6); btn ("Start", 154, 70, 30, 12, 6); btn ("Home", 138, 44, 24, 18, 9, "H")
+	btn ("L3", 94, 116, 36, 36, 18, "L3"); btn ("R3", 170, 116, 36, 36, 18, "R3")
+	text_c (img, x + 112 * u, y + 84 * u, 38 * u, 12, "SEL", cfont (10, "regular"), (130, 156, 200)); text_c (img, x + 150 * u, y + 84 * u, 38 * u, 12, "START", cfont (10, "regular"), (130, 156, 200))
+	return img
+
+def console_control_gamepad (step = 5):
+	img = cc_base (["Settings", "Gamepad", "Map buttons"], seed = 14)
+	img = cc_rail (img, [t for t, n, tx in CCA].index ("padconf"))
+	gx, gw = 66, 556
+	glass (img, gx, CRY, gw, CRH, 14, alpha = 46, edge = 110)
+	draw_icon (img, "padconf", gx + 16, CRY + 13, 30)
+	glow_text (img, gx + 56, CRY + 8, "Map buttons", cfont (22, "semi"), (255, 255, 255), radius = 4, strength = 1)
+	text (img, gx + 57, CRY + 38, "Pad 1  -  045e:028e  -  known to Circle", cfont (13, "regular"), (136, 162, 206))
+	s_ = "%d / %d" % (step + 1, len (PAD_FUNCS)); text_r (img, gx + gw - 18, CRY + 14, 24, s_, cfont (18, "regular"), (170, 196, 236))
+	bx, bw = gx + gw - 18 - 120, 120
+	rrect (img, bx, CRY + 44, bw, 6, 3, (30, 46, 86)); ring (img, bx, CRY + 44, bw, 6, 3, (120, 150, 210), alpha = 90); rrect (img, bx, CRY + 44, bw * (step + 0.5) / len (PAD_FUNCS), 6, 3, ((170, 220, 255), (70, 140, 240)))
+	hline (img, gx + 16, CRY + 62, gw - 32, (140, 180, 240), alpha = 50)
+	# the request, big: the pad app's own words (padconf's STEP_TEXT)
+	text (img, gx + 22, CRY + 72, "Press", cfont (16, "regular"), (150, 178, 218))
+	glow_text (img, gx + 22, CRY + 90, "the RIGHT face button", cfont (26, "semi"), (255, 255, 255), radius = 7, strength = 2)
+	text (img, gx + 22, CRY + 126, "Xbox B  -  PlayStation Circle  -  Nintendo A", cfont (14, "regular"), (170, 196, 236))
+	img = pad_drawing (img, gx + 30, CRY + 150, 256, 0, step)
+	# the functions and what they took, a column at the right
+	lx, lw = gx + 336, gw - 352; y = CRY + 72
+	glass (img, lx, y - 4, lw, 246, 10, alpha = 26, edge = 60)
+	for i, (f, where) in enumerate (PAD_FUNCS[:9]):
+		ry = y + 2 + i * 24
+		if i == step:
+			img = glow_box (img, lx + 4, ry - 1, lw - 8, 23, 7)
+			text (img, lx + 14, ry + 1, f, cfont (15, "semi"), (255, 255, 255)); text (img, lx + 64, ry + 2, where, cfont (13, "regular"), (200, 224, 255))
+			text_r (img, lx + lw - 12, ry - 1, 24, "press...", cfont (14, "semi"), (255, 255, 255))
+		else:
+			done = i < step
+			text (img, lx + 14, ry + 1, f, cfont (15, "regular" if done else "light"), (210, 224, 246) if done else (120, 144, 186))
+			text (img, lx + 64, ry + 2, where, cfont (13, "regular"), (120, 146, 190) if done else (90, 112, 156))
+			if done:
+				v = PAD_GOT[i]; text_r (img, lx + lw - 30, ry - 1, 24, v, cfont (14, "regular"), (150, 200, 255))
+				glyph (img, lx + lw - 24, ry + 5, 12, 12, lambda d, s: d.line ([2 * s, 6 * s, 5 * s, 9.5 * s, 10.5 * s, 2.5 * s], fill = 255, width = int (2 * s), joint = "curve"), (120, 220, 170))
+	f = cfont (13, "regular"); more = "%d more" % (len (PAD_FUNCS) - 9)
+	glyph (img, lx + lw // 2 - 30, y + 242 - 18, 10, 10, lambda d, s: g_chev (d, s, 1, "down"), (130, 160, 210)); text (img, lx + lw // 2 - 14, y + 242 - 22, more, f, (130, 156, 200))
+	text (img, gx + 22, CRY + CRH - 44, "No such button on this pad? Wait: after 8 s the step is skipped.", f, (150, 176, 216))
+	text (img, gx + 22, CRY + CRH - 25, "Written to SD:/etc/gamepad.ini, section [045e:028e], at the last step.", cfont (12, "regular"), (104, 130, 176))
+	console_hints (img, [("Esc", "Skip"), ("Backspace", "Cancel"), ("HOME", "Hold: cancel")])
+	return img
+
+WIFI_NETS = [("net", "Maison", 4, True, "Connected"), ("net", "Voisin-5G", 3, True, None), ("net", "FreeWifi", 3, False, None),
+	     ("net", "Livebox-1280", 2, True, None), ("value", "Country", "BE  Belgium"), ("action", "Scan again", "Scan")]
+
+def console_control_wifi ():
+	img = cc_base (["Settings", "Wi-Fi"], seed = 16)
+	img = cc_left_small (img, [t for t, n, tx in CCA].index ("wpaconf"))
+	img = cc_panel (img, "wpaconf", WIFI_NETS, focus = 1, footer = "Kept in SD:/etc/wpa_supplicant.conf")
+	cc_card (img, "Voisin-5G", "Protected (WPA2): its password is typed on a USB or Bluetooth keyboard -- none on screen in console.",
+		 icon = lambda im, x, y: put (im, x, y + 1, mask (14, 16, lambda d, s: g_lock (d, s, 0.85)), (170, 205, 245)), warn = "plug in a keyboard")
+	cc_hints (img, [("x", "Connect"), ("t", "Forget"), ("o", "Back"), ("L1/R1", "Page")])
+	return img
+
+def console_control_main ():
+	c1 = console_control_sound (); save (c1, "console-control.png")
+	c2 = console_control_display (); save (c2, "console-control-display.png")
+	c3 = console_control_gamepad (); save (c3, "console-control-gamepad.png")
+	c4 = console_control_wifi (); save (c4, "console-control-wifi.png")
+	save (console_sheet ([(c2, "1. Settings: the applets at the left, Display focused, its page at the right"),
+			      (c1, "2. Right or X: in Sound's rows, Volume glowing, its card at the left"),
+			      (c3, "3. Gamepad > Map buttons: the pad drawn, the button asked glowing"),
+			      (c4, "4. Wi-Fi: the networks, a protected one needs a keyboard")],
+			     "The Control Panel in console mode (640 x 480)"), "console-control-sheet.png")
+
+# ===========================================================================================================
+# Pocket's launcher, v2: a more finished Home (Milk; the desktop's menu bar kept as the top band -- the user's
+# decision). What changes from pocket-home.png and the real pocketshell: a real search field (with the
+# "Today" line beside it), the categories as chips on the wallpaper instead of folder tabs, ONE raised card for
+# the apps with a header (the category, its count), larger icons on plates (one shape for icons of every shape),
+# a clear focus (an Aqua ring and glow, the label in a pill), the running apps as thumbnails (Elegant's copies,
+# EL_OP_SHOT), the key hints gathered on the bottom line, soft shadows for depth. Everything in logical units x k
+# (k = the scale: 1 at 800 x 480, 1.5 at 1920 x 1080 = 1280 x 720 lp); at lw >= 1100 the "Today" line grows
+# into a column (the agenda and the notifications: what the desktop's Agenda widget and the bell show).
+# ===========================================================================================================
+def shadow (img, x, y, w, h, r, blur = 8, alpha = 70, dy = 3, colour = (6, 14, 28)):
+	"""A soft shadow (or, with Aqua, a glow) under a rounded box."""
+	x, y, w, h = int (x), int (y), int (w), int (h); pad = int (blur * 3) + 1
+	m = Image.new ("L", (w + 2 * pad, h + 2 * pad), 0); ImageDraw.Draw (m).rounded_rectangle ([pad, pad, pad + w, pad + h], r, fill = int (alpha))
+	m = m.filter (ImageFilter.GaussianBlur (blur))
+	img.paste (Image.new ("RGB", m.size, colour[:3]), (x - pad, y - pad + int (dy)), m)
+
+def text_hl (img, x, y, s, q, f, colour, hl = None):
+	"""Text with the part matching the query in Aqua (the search results)."""
+	hl = hl or P["accent"]
+	i = s.lower ().find (q.lower ()) if q else -1
+	if i < 0: text (img, x, y, s, f, colour); return
+	a, b, c = s[:i], s[i:i + len (q)], s[i + len (q):]
+	text (img, x, y, a, f, colour); x += f.getlength (a)
+	text (img, x, y, b, f, hl); x += f.getlength (b)
+	text (img, x, y, c, f, colour)
+
+def excerpt (s_, q, f, w):
+	"""A line cut to the width, keeping the match in view: "... its password, the country"."""
+	if tw (s_, f) <= w: return s_
+	i = s_.lower ().find (q.lower ())
+	if i < 0 or tw (s_[:i + len (q)], f) < w - tw ("...", f): return ellipsize (s_, f, w)
+	words = s_[:i].split (" "); tail = s_[i:]
+	while words and tw ("... " + " ".join (words) + tail, f) > w: words = words[1:]
+	return ellipsize ("... " + " ".join (words).lstrip () + ("" if not words else "") + tail if words else "... " + tail, f, w)
+
+def v2_search (img, x, y, w, h, k, q = None):
+	shadow (img, x, y, w, h, h / 2, blur = 6 * k, alpha = 90, dy = 2 * k)
+	rrect (img, x, y, w, h, h / 2, ((255, 255, 255), (247, 247, 249)))
+	if q: ring (img, x - 2 * k, y - 2 * k, w + 4 * k, h + 4 * k, h / 2 + 2 * k, lighten (P["accent"], 0.25), t = 2.5 * k)
+	else: ring (img, x, y, w, h, h / 2, (0, 0, 0), alpha = 30)
+	glyph (img, x + 14 * k, y + (h - 15 * k) / 2, 15 * k, 15 * k, lambda d, s: g_search (d, s, k), P["accent"] if q else (120, 124, 132))
+	f = font (13 * k)
+	if q:
+		text_l (img, x + 38 * k, y, h, q, f, P["ink"]); vline (img, x + 38 * k + tw (q, f) + 2 * k, y + 9 * k, h - 18 * k, P["accent"]); vline (img, x + 39 * k + tw (q, f) + 2 * k, y + 9 * k, h - 18 * k, P["accent"])
+		cx = x + w - 30 * k; rrect (img, cx, y + (h - 18 * k) / 2, 18 * k, 18 * k, 9 * k, (196, 198, 204))
+		glyph (img, cx + 4 * k, y + (h - 18 * k) / 2 + 4 * k, 10 * k, 10 * k, lambda d, s: g_close (d, s, k), (255, 255, 255))
+	else: text_l (img, x + 38 * k, y, h, "Search apps, files and settings", f, (146, 148, 156))
+
+def v2_today_chip (img, x, y, w, h, k):
+	"""The agenda's next event, one line on the wallpaper (opens the Calendar): the desktop's Agenda widget, folded."""
+	rrect (img, x, y, w, h, h / 2, (255, 255, 255), alpha = 26); ring (img, x, y, w, h, h / 2, (255, 255, 255), alpha = 60)
+	draw_icon (img, "calendar", x + 9 * k, y + (h - 22 * k) / 2, 22 * k)
+	fb, f = font (12 * k, True), font (12 * k)
+	tx = x + 40 * k; text_l (img, tx, y, h, "Thu 8 Oct", fb, (255, 255, 255)); tx += tw ("Thu 8 Oct", fb) + 12 * k
+	vline (img, tx - 6 * k, y + 9 * k, h - 18 * k, (255, 255, 255), alpha = 80)
+	s_ = "14:00  Team call"; text_l (img, tx, y, h, s_, f, (220, 230, 244))
+	r = "in 1 h 26"; text_r (img, x + w - 14 * k, y, h, r, font (11 * k), (170, 190, 216))
+
+def v2_chips (img, x, y, w, items, active, k, h = 30, counts = None):
+	"""The categories (or, while searching, the kinds of results) as chips on the wallpaper; the chosen one white."""
+	cx = x; over = False
+	for name, col in items:
+		on = name == active
+		f = font (12 * k, on); lab = name + ("  %d" % counts[name] if counts and name in counts else "")
+		cw = tw (lab, f) + (34 if col else 24) * k
+		if cx + cw > x + w - 40 * k: over = True; break
+		if on:
+			shadow (img, cx, y, cw, h * k, h * k / 2, blur = 4 * k, alpha = 80, dy = 1.5 * k)
+			rrect (img, cx, y, cw, h * k, h * k / 2, ((255, 255, 255), (238, 240, 244)))
+		else:
+			rrect (img, cx, y, cw, h * k, h * k / 2, (255, 255, 255), alpha = 22); ring (img, cx, y, cw, h * k, h * k / 2, (255, 255, 255), alpha = 46)
+		tx = cx + 12 * k
+		if col: rrect (img, cx + 12 * k, y + (h * k - 8 * k) / 2, 8 * k, 8 * k, 4 * k, col if on else lighten (col, 0.15)); tx = cx + 26 * k
+		if counts and name in counts:
+			text_l (img, tx, y, h * k, name, f, P["ink"] if on else (236, 242, 250))
+			text_l (img, tx + tw (name + "  ", f), y, h * k, str (counts[name]), font (12 * k), P["ink2"] if on else (170, 190, 216))
+		else: text_l (img, tx, y, h * k, name, f, P["ink"] if on else (236, 242, 250))
+		cx += cw + 6 * k
+	if over:
+		bx = x + w - 30 * k
+		rrect (img, bx, y, 30 * k, h * k, h * k / 2, (255, 255, 255), alpha = 30); ring (img, bx, y, 30 * k, h * k, h * k / 2, (255, 255, 255), alpha = 50)
+		glyph (img, bx + 10 * k, y + (h * k - 10 * k) / 2, 10 * k, 10 * k, lambda d, s: g_chev (d, s, k, "right"), (236, 242, 250))
+
+def v2_tile (img, x, y, cw, a, label, k, focus = False, running = False):
+	"""An app: its icon on a plate (one shape for every icon), the label under it; focus = an Aqua ring, a glow, the label in a pill."""
+	ps = 60 * k; px = x + (cw - ps) / 2; py = y
+	if focus:
+		shadow (img, px - 4 * k, py - 4 * k, ps + 8 * k, ps + 8 * k, 19 * k, blur = 7 * k, alpha = 150, dy = 0, colour = lighten (P["accent"], 0.1))
+	shadow (img, px, py, ps, ps, 15 * k, blur = 2.5 * k, alpha = 55, dy = 1.5 * k)
+	rrect (img, px, py, ps, ps, 15 * k, ((255, 255, 255), (234, 236, 241)))
+	ring (img, px, py, ps, ps, 15 * k, (0, 0, 0), alpha = 26)
+	if focus: ring (img, px - 4 * k, py - 4 * k, ps + 8 * k, ps + 8 * k, 19 * k, P["accent"], t = 2.5 * k)
+	isz = int (44 * k); draw_icon (img, a, px + (ps - isz) / 2, py + (ps - isz) / 2, isz)
+	if running: rrect (img, x + cw / 2 - 2.5 * k, py + ps + 5 * k, 5 * k, 5 * k, 2.5 * k, P["accent"])
+	f = font (11 * k, focus); lab = ellipsize (label, f, cw - (18 if focus else 8) * k); ly = py + ps + 12 * k
+	if focus:
+		lw = tw (lab, f); rrect (img, x + (cw - lw) / 2 - 8 * k, ly, lw + 16 * k, 18 * k, 9 * k, (lighten (P["accent"], 0.15), shade (P["accent"], 0.92)))
+		text_c (img, x, ly, cw, 18 * k, lab, f, (255, 255, 255))
+	else: text_c (img, x, ly, cw, 18 * k, lab, f, P["ink"])
+
+V2_RUN = ["tinypad", "ledger", "terminal", "fileviewer", "telegram"]	# the open apps, the most recent first
+def v2_running (img, x, y, w, k, apps = V2_RUN, hints = True):
+	"""The open apps as small pictures (Elegant's copies of their windows), the name and icon on a dark foot."""
+	text_l (img, x + 2 * k, y, 18 * k, "Running", font (12 * k, True), (240, 244, 250))
+	nx = x + tw ("Running", font (12 * k, True)) + 10 * k
+	rrect (img, nx, y + 2 * k, 20 * k, 14 * k, 7 * k, (255, 255, 255), alpha = 40); text_c (img, nx, y + 2 * k - 1, 20 * k, 14 * k, str (len (apps)), font (10 * k, True), (240, 244, 250))
+	if hints:							# the key hints, gathered on this line, at its right
+		items = [(["Tab"], "category"), (["←", "↑", "↓", "→"], "choose"), (["Enter"], "open"), (["Alt", "Tab"], "switch")]
+		f = font (11 * k); ww = 0
+		for keys, word in items: ww += sum (max (tw (kk, font (10 * k, True)) + 10 * k, 18 * k) + 3 * k for kk in keys) + 2 * k + tw (word, f) + 14 * k
+		hx = x + w - ww + 14 * k
+		for keys, word in items: hx = hint (img, hx, y, keys, word, colour = (210, 222, 238), k = k)
+	cy = y + 24 * k; ch = 62 * k; cw = 134 * k; cx = x
+	for a in apps:
+		if cx + cw > x + w: break
+		shadow (img, cx, cy, cw, ch, 9 * k, blur = 4 * k, alpha = 110, dy = 2 * k)
+		th = _thumb (a, int (cw), int (ch)); m = mask (cw, ch, lambda d, s: d.rounded_rectangle ([0, 0, int (cw) * s - 1, int (ch) * s - 1], 9 * k * s, fill = 255))
+		img.paste (th, (int (cx), int (cy)), m)
+		fh = 24 * k
+		fm = mask (cw, fh, lambda d, s: d.rounded_rectangle ([0, -20 * s, int (cw) * s - 1, int (fh) * s - 1], 9 * k * s, fill = 255))
+		put (img, cx, cy + ch - fh, fm, (16, 24, 40), alpha = 200)
+		draw_icon (img, a, cx + 6 * k, cy + ch - fh + 3 * k, 18 * k)
+		text_l (img, cx + 28 * k, cy + ch - fh, fh, ellipsize (app_name (a), font (11 * k, True), cw - 34 * k), font (11 * k, True), (255, 255, 255))
+		ring (img, cx, cy, cw, ch, 9 * k, (255, 255, 255), alpha = 110)
+		cx += cw + 10 * k
+
+def v2_panel (img, x, y, w, h, k):
+	shadow (img, x, y, w, h, 16 * k, blur = 10 * k, alpha = 100, dy = 4 * k)
+	rrect (img, x, y, w, h, 16 * k, ((251, 251, 252), (238, 239, 243))); ring (img, x, y, w, h, 16 * k, (0, 0, 0), alpha = 34)
+
+def v2_header (img, x, y, k, title, sub, col = None):
+	tx = x
+	if col: rrect (img, x, y + 5 * k, 9 * k, 9 * k, 4.5 * k, col); tx = x + 16 * k
+	text (img, tx, y, title, font (14 * k, True), P["ink"])
+	text (img, tx + tw (title, font (14 * k, True)) + 10 * k, y + 2 * k, sub, font (12 * k), P["ink2"])
+
+V2_CATS = [c for c in CATS if c[0] != "Settings"] + [("Settings", CATC["Settings"])]
+RECENT_APPS = ["letters", "media", "telegram", "jet", "terminal", "ledger", "fileviewer", "tinypad", "paint"]
+RECENT_DOCS = [("letters-tour.rtf", "SD:/docs", "today, 11:20"), ("cafe-2026.xlsx", "SD:/docs", "today, 09:05"), ("demo-company.ledger", "SD:/docs", "yesterday"),
+	       ("sunset-sea.jpg", "SD:/docs/pictures", "yesterday"), ("cafe-2026.odp", "SD:/docs", "Monday"), ("contacts.card", "SD:/docs", "Monday"),
+	       ("new-year-letter.rtf", "SD:/docs", "Sunday"), ("bracket.3df", "SD:/docs/3d", "2 Oct"), ("books.card", "SD:/docs", "1 Oct")]
+
+def v2_today_column (img, x, y, w, h, k):
+	"""lw >= 1100: the Today column -- the agenda (Calendar's events, as the Agenda widget) and the notifications (notifyd)."""
+	v2_panel (img, x, y, w, h, k)
+	px = x + 18 * k; yy = y + 16 * k
+	text (img, px, yy, "Thursday", font (13 * k), P["ink2"]); text (img, px, yy + 18 * k, "8 October", font (22 * k, True), P["ink"])
+	draw_icon (img, "calendar", x + w - 18 * k - 32 * k, yy + 4 * k, 32 * k)
+	yy += 58 * k; hline (img, px, yy, w - 36 * k, (0, 0, 0), alpha = 22); yy += 12 * k
+	text (img, px, yy, "AGENDA", font (10 * k, True), (130, 134, 142)); yy += 20 * k
+	for t, what, where, past, now in [("09:30", "Stand-up", "", True, False), ("14:00", "Team call", "in 1 h 26", False, True), ("18:30", "Swimming", "Pool", False, False)]:
+		bar = P["accent"] if now else ((190, 192, 198) if past else CATC["Productivity"])
+		rrect (img, px, yy + 2 * k, 4 * k, 32 * k, 2 * k, bar)
+		c1 = (150, 152, 158) if past else P["ink"]
+		text (img, px + 14 * k, yy, t, font (12 * k, True), c1); text (img, px + 62 * k, yy, what, font (12 * k, now), c1)
+		if where: text (img, px + 62 * k, yy + 17 * k, where, font (11 * k), P["accent"] if now else P["ink2"])
+		yy += 44 * k
+	hline (img, px, yy, w - 36 * k, (0, 0, 0), alpha = 22); yy += 12 * k
+	text (img, px, yy, "NOTIFICATIONS", font (10 * k, True), (130, 134, 142)); yy += 20 * k
+	for a, who, what, when in [("telegram", "Marc", "Still on for 2 o'clock?", "12:21"), ("mail", "Mail", "Invoice 2026-118 from Cafe Lumen", "11:02"),
+				   ("pkgman", "Packages", "3 updates are ready", "09:40")]:
+		rrect (img, px, yy, w - 36 * k, 50 * k, 10 * k, (255, 255, 255)); ring (img, px, yy, w - 36 * k, 50 * k, 10 * k, (0, 0, 0), alpha = 24)
+		draw_icon (img, a, px + 8 * k, yy + 9 * k, 32 * k)
+		text (img, px + 48 * k, yy + 8 * k, who, font (12 * k, True), P["ink"]); text_r (img, x + w - 28 * k, yy + 6 * k, 18 * k, when, font (10 * k), P["ink2"])
+		text (img, px + 48 * k, yy + 26 * k, ellipsize (what, font (11 * k), w - 36 * k - 58 * k), font (11 * k), P["ink2"])
+		yy += 58 * k
+		if yy + 58 * k > y + h: break
+
+def pocket_home_v2 (W = 800, H = 480, k = 1, cat = "Productivity", focus = 6):
+	u = lambda v: v * k
+	lw = W / k
+	img = wallpaper (W, H)
+	statusbar (img, W, home = True, k = k)
+	side = lw >= 1100					# the Today column
+	sy = u (BAR) + u (12); sh = u (34)
+	sw = u (380) if not side else u (480)
+	v2_search (img, u (16), sy, sw, sh, k)
+	if not side: v2_today_chip (img, u (16) + sw + u (12), sy, W - u (32) - sw - u (12), sh, k)
+	cy = sy + sh + u (12)
+	colw = u (300) if side else 0
+	v2_chips (img, u (16), cy, W - u (32) - (colw + u (16) if side else 0), V2_CATS, cat, k)
+	py = cy + u (30) + u (12); run_h = u (104)
+	px, pw = u (16), W - u (32) - (colw + u (16) if side else 0); ph = H - py - run_h
+	v2_panel (img, px, py, pw, ph, k)
+	if side: v2_today_column (img, W - u (16) - colw, py, colw, ph, k)
+	running = set (V2_RUN)
+	if cat == "Recent":
+		v2_header (img, px + u (18), py + u (14), k, "Recent", "opened last", CATC["Recent"])
+		cw = u (96); cols = int ((pw - u (24)) // cw); gx = px + (pw - cols * cw) / 2
+		for i, a in enumerate (RECENT_APPS[:cols]):
+			v2_tile (img, gx + i * cw, py + u (46), cw, a, app_name (a), k, focus = i == focus, running = a in running)
+		dy = py + u (46) + u (100)
+		hline (img, px + u (18), dy, pw - u (36), (0, 0, 0), alpha = 20)
+		v2_header (img, px + u (18), dy + u (14), k, "Documents", "the files opened last, with the app that opens them")
+		dcols = 3; gap = u (12); dw = (pw - u (36) - gap * (dcols - 1)) / dcols; dh = u (56)
+		for i, (n, where, when) in enumerate (RECENT_DOCS):
+			r_, c_ = divmod (i, dcols); dx = px + u (18) + c_ * (dw + gap); ddy = dy + u (44) + r_ * (dh + gap)
+			if ddy + dh > py + ph - u (10): break
+			rrect (img, dx, ddy, dw, dh, u (12), (255, 255, 255)); ring (img, dx, ddy, dw, dh, u (12), (0, 0, 0), alpha = 26)
+			op = FASSOC.get (n.rsplit (".", 1)[-1].lower (), "tinypad")
+			draw_icon (img, op, dx + u (10), ddy + (dh - u (36)) / 2, u (36))
+			text (img, dx + u (56), ddy + u (10), ellipsize (n, font (u (12), True), dw - u (64)), font (u (12), True), P["ink"])
+			text (img, dx + u (56), ddy + u (29), ellipsize ("%s  -  %s  -  %s" % (app_name (op), where, when), font (u (11)), dw - u (64)), font (u (11)), P["ink2"])
+	else:
+		apps = apps_in (cat)
+		v2_header (img, px + u (18), py + u (14), k, cat, "%d apps" % len (apps), CATC.get (cat))
+		cw = u (94); cols = int ((pw - u (16)) // cw); gx = px + (pw - cols * cw) / 2; rh = u (100)
+		for i, a in enumerate (apps):
+			r_, c_ = divmod (i, cols)
+			if py + u (46) + (r_ + 1) * rh > py + ph + u (6): break
+			v2_tile (img, gx + c_ * cw, py + u (46) + r_ * rh, cw, a, app_name (a), k, focus = i == focus, running = a in running)
+	v2_running (img, u (16), H - run_h + u (10), W - u (32), k)
+	return img
+
+def pocket_home_v2_search (W = 800, H = 480, k = 1, q = "co"):
+	"""Typing on the launcher: the field takes the width, the chips become the kinds of results (with their counts),
+	the card shows the best match at the left (Enter opens it) and the rest grouped -- apps, settings (the applets'
+	help lines, SD:/apps/control.app/applets/*.lnk), files (the File Viewer's index) -- the match in Aqua."""
+	u = lambda v: v * k
+	img = wallpaper (W, H)
+	statusbar (img, W, home = True, k = k)
+	sy = u (BAR) + u (12); sh = u (34)
+	v2_search (img, u (16), sy, W - u (32), sh, k, q = q)
+	cy = sy + sh + u (12)
+	apps = ["control", "courier", "iconedit"]
+	sets = [(t, n, tx) for (t, n, tx) in CP if q in (n + " " + tx).lower ()][:3]
+	files = [e for e in folder_list ("docs") if not e[1] and q in e[0].lower ()][:3]
+	counts = {"All": len (apps) + len (sets) + len (files), "Apps": len (apps), "Settings": len (sets), "Files": len (files)}
+	v2_chips (img, u (16), cy, W - u (32), [("All", None), ("Apps", None), ("Settings", None), ("Files", None)], "All", k, counts = counts)
+	py = cy + u (30) + u (12); ph = H - py - u (12); px, pw = u (16), W - u (32)
+	v2_panel (img, px, py, pw, ph, k)
+	# the best match: a card at the left, the focus on it
+	hx, hy, hw, hh = px + u (14), py + u (14), u (216), ph - u (28) - u (34)
+	text (img, hx + u (4), hy, "BEST MATCH", font (u (10), True), (130, 134, 142))
+	cy2 = hy + u (20); ch2 = hh - u (20)
+	shadow (img, hx, cy2, hw, ch2, u (14), blur = u (6), alpha = 120, dy = 0, colour = lighten (P["accent"], 0.1))
+	rrect (img, hx, cy2, hw, ch2, u (14), ((255, 255, 255), (246, 248, 252))); ring (img, hx, cy2, hw, ch2, u (14), P["accent"], t = u (2.5))
+	ps = u (72); bx = hx + (hw - ps) / 2; by = cy2 + u (18)
+	shadow (img, bx, by, ps, ps, u (18), blur = u (3), alpha = 60, dy = u (2))
+	rrect (img, bx, by, ps, ps, u (18), ((255, 255, 255), (234, 236, 241))); ring (img, bx, by, ps, ps, u (18), (0, 0, 0), alpha = 26)
+	draw_icon (img, "control", bx + (ps - u (54)) / 2, by + (ps - u (54)) / 2, u (54))
+	fb = font (u (16), True); nm = "Control Panel"; nx = hx + (hw - tw (nm, fb)) / 2
+	text_hl (img, nx, by + ps + u (12), nm, q, fb, P["ink"])
+	text_c (img, hx, by + ps + u (34), hw, u (16), "Settings  -  13 applets", font (u (11)), P["ink2"])
+	f = font (u (11)); yy = by + ps + u (58)
+	for ln in wrap2 ("Theme, mode, display, sound, the keyboard, the language, printers, the gamepad, Wi-Fi, packages.", f, hw - u (32)):
+		text_c (img, hx, yy, hw, u (14), ln, f, (90, 92, 100)); yy += u (16)
+	bw_, bh_ = hw - u (32), u (30); bx2 = hx + u (16); by2 = cy2 + ch2 - bh_ - u (14)
+	rrect (img, bx2, by2, bw_, bh_, u (15), (lighten (P["accent"], 0.18), shade (P["accent"], 0.92)))
+	text_c (img, bx2 - u (14), by2, bw_, bh_, "Open", font (u (12), True), (255, 255, 255))
+	keycap (img, bx2 + bw_ / 2 + u (24), by2 + (bh_ - u (18)) / 2, "Enter", k, colour = (250, 250, 252))
+	# the other results, grouped
+	rx = hx + hw + u (18); rw = px + pw - u (14) - rx
+	text (img, rx + u (4), hy, "APPS", font (u (10), True), (130, 134, 142))
+	ay = hy + u (20); aw = (rw - u (16)) / 3
+	for i, a in enumerate (apps):
+		ax = rx + i * (aw + u (8))
+		rrect (img, ax, ay, aw, u (46), u (12), (255, 255, 255)); ring (img, ax, ay, aw, u (46), u (12), (0, 0, 0), alpha = 24)
+		draw_icon (img, a, ax + u (8), ay + u (7), u (32))
+		text_hl (img, ax + u (48), ay + u (6), ellipsize (app_name (a), font (u (12), True), aw - u (54)), q, font (u (12), True), P["ink"])
+		text (img, ax + u (48), ay + u (24), APPS[a][1], font (u (10)), P["ink2"])
+	gy = ay + u (46) + u (16); colw = (rw - u (16)) / 2
+	for gi, (title, rows) in enumerate ([("SETTINGS", [(t, n, tx) for t, n, tx in sets]), ("FILES", [(e[4] or "tinypad", e[0], "%s  -  SD:/docs  -  %s" % (e[2], e[3])) for e in files])]):
+		gx = rx + gi * (colw + u (16)); yy = gy
+		text (img, gx + u (4), yy, title, font (u (10), True), (130, 134, 142)); yy += u (20)
+		for icon, name, sub in rows:
+			rrect (img, gx, yy, colw, u (44), u (10), (255, 255, 255)); ring (img, gx, yy, colw, u (44), u (10), (0, 0, 0), alpha = 22)
+			draw_icon (img, icon, gx + u (8), yy + u (8), u (28))
+			text_hl (img, gx + u (44), yy + u (5), ellipsize (name, font (u (12), True), colw - u (52)), q, font (u (12), True), P["ink"])
+			sub_ = excerpt (sub, q, font (u (10)), colw - u (52))
+			text_hl (img, gx + u (44), yy + u (24), sub_, q, font (u (10)), P["ink2"])
+			yy += u (50)
+	# the bottom line of the card: run it as a command, and the keys
+	fy = py + ph - u (34)
+	hline (img, px + u (14), fy, pw - u (28), (0, 0, 0), alpha = 20)
+	glyph (img, px + u (20), fy + u (10), u (14), u (14), lambda d, s: d.rounded_rectangle ([0, 0, 14 * k * s - 1, 14 * k * s - 1], 3 * k * s, fill = 255), P["term"])
+	text_l (img, px + u (24), fy + u (8), u (18), ">", font (u (10), True, mono = True), (140, 230, 200))
+	text_l (img, px + u (42), fy + u (8), u (18), "Run \"co\" in a Terminal", font (u (11)), P["ink2"])
+	hx2 = px + pw - u (14) - u (350)
+	for keys, word in [(["↑", "↓"], "choose"), (["Tab"], "next group"), (["Enter"], "open"), (["Esc"], "clear")]:
+		hx2 = hint (img, hx2, fy + u (8), keys, word, colour = P["ink2"], k = k)
+	return img
+
+def pocket_home_v2_main ():
+	h1 = pocket_home_v2 (); save (h1, "pocket-home-v2.png")
+	h2 = pocket_home_v2 (1920, 1080, 1.5, cat = "Recent", focus = 0); save (h2, "pocket-home-v2-1080.png")
+	h3 = pocket_home_v2_search (); save (h3, "pocket-home-v2-search.png")
+	r1 = Image.open (os.path.join (ROOT, "docs", "compact-shell", "real", "pocketshell-home-800.png")).convert ("RGB")
+	r2 = Image.open (os.path.join (ROOT, "docs", "compact-shell", "real", "pocketshell-search-800.png")).convert ("RGB")
+	sheet_ = sheet ([(r1, "Today: the real pocketshell (800 x 480)", "folder tabs, small icons, the hints at the top, chips of names for the open apps"),
+			 (h1, "v2: the launcher", "a real search field and Today, chips, one raised card, icons on plates, a clear focus, thumbnails"),
+			 (r2, "Today: searching", "one list, apps only"),
+			 (h3, "v2: searching", "the best match and Enter, apps / settings / files grouped, the match in Aqua, run as a command"),
+			 (fit (Image.open (os.path.join (ROOT, "docs", "compact-shell", "real", "pocketshell-home-1080.png")).convert ("RGB"), 800),
+			  "Today at 1920 x 1080 (shown smaller)", "the same layout stretched: an empty panel"),
+			 (fit (h2, 800), "v2 at 1920 x 1080, scale 1.5 (shown smaller)", "Recent: the apps and the documents; the Today column (agenda, notifications)")], 2,
+			"Pocket's launcher: the real pocketshell today, and v2")
+	save (sheet_, "pocket-home-v2-sheet.png")
+
+# ===========================================================================================================
 def save (img, name):
 	p = os.path.join (OUT, name); img.save (p, optimize = True); print ("  ", os.path.relpath (p, ROOT), img.size)
 
@@ -2780,6 +3574,9 @@ def main ():
 	save (frame_handheld (ch_, "Console mode on a Pi handheld, 640 x 480"), "console-handheld.png")
 	console_home_main ()					# the home as the browser: categories and their apps
 	console_files_main ()					# the File Viewer in console mode
+	pocket_control_main ()					# the Control Panel in pocket mode
+	console_control_main ()					# the Control Panel in console mode
+	pocket_home_v2_main ()					# Pocket's launcher, v2
 	save (console_sheet ([(ch_, "Home"), (cl, "Games: the library"), (cs, "Settings"), (co, "In a game: Home pressed"), (cw_, "Running: switch")]), "console-overview.png")
 	# the alternatives studied
 	a = concept_a (); save (frame_clamshell (a, "640 x 480 -- a Zaurus SL-C-like clamshell"), "concept-a-tabs.png")
@@ -2804,5 +3601,8 @@ def main ():
 if __name__ == "__main__":
 	import sys
 	if sys.argv[1:] == ["console-home"]: os.makedirs (OUT, exist_ok = True); console_home_main ()	# (only the console home's)
+	elif sys.argv[1:] == ["pocket-control"]: os.makedirs (OUT, exist_ok = True); pocket_control_main ()	# (only the Control Panel's)
+	elif sys.argv[1:] == ["console-control"]: os.makedirs (OUT, exist_ok = True); console_control_main ()	# (only the console Control Panel's)
+	elif sys.argv[1:] == ["pocket-home-v2"]: os.makedirs (OUT, exist_ok = True); pocket_home_v2_main ()	# (only the launcher v2's)
 	elif sys.argv[1:] == ["console-files"]: os.makedirs (OUT, exist_ok = True); console_files_main ()	# (only the File Viewer's)
 	else: main ()

@@ -211,6 +211,60 @@ only.*
 *Typing on the launcher: the tabs give way to grouped results — apps, files (the File Viewer's index),
 settings (the applets' descriptions), and the text as a `/bin` command to run in a Terminal.*
 
+**v2: a more finished launcher (a design proposal, 2026-10-08).** The picture above and the real
+`pocketshell` (`docs/compact-shell/real/pocketshell-*.png`) work but look rough: folder tabs, 40 px icons
+floating on a flat panel, the key hints competing with the search field, the open apps as chips of names,
+and at 1920 × 1080 a mostly empty panel. v2 keeps everything the user decided — Milk, **the desktop's menu
+bar as the top band** (the Onyx button lit on Home), the categories of `app.txt`, the Running strip — and
+gives it a hierarchy:
+
+- **A real search field** (34 lp, round, a soft shadow; Aqua ring and a clear button while typing) and,
+  beside it, **Today**: the agenda's next event on one line ("Thu 8 Oct | 14:00 Team call — in 1 h 26",
+  from the Calendar, as the desktop's Agenda widget; a click opens the Calendar). It earns its place because
+  it is the one thing a glance at Home should tell besides the apps. At **lw ≥ 1100** it grows into a
+  **Today column** at the right — the agenda and the notifications (`notifyd`): what the desktop's Agenda
+  widget and the bell show — instead of leaving the panel empty.
+- **Category chips** on the wallpaper instead of folder tabs: pills with the category's dot, the chosen one
+  white with a shadow; more than fit scroll (the chevron). Tab / Shift+Tab still go from one to the next.
+- **One raised card** for the apps (a 16 lp radius, a soft shadow) with a **header**: the category's dot,
+  its name, how many apps ("Productivity 14 apps").
+- **Larger icons on plates**: a 60 lp rounded plate (white to light grey, a hairline, a small shadow) holds
+  every icon at 44 lp — one shape for icons of every shape; cells of 94 × 100 lp, 8 columns at 800, two rows
+  hold Productivity's 14 apps. A running app has an Aqua dot under its plate.
+- **A clear focus for the keyboard**: an Aqua ring 4 lp outside the plate with a soft Aqua glow, and the
+  label in an Aqua pill — visible at three metres, unambiguous with a dot or a hover.
+- **Running as thumbnails**: the open apps as small pictures of their windows (Elegant's copies,
+  `EL_OP_SHOT`, as the switcher), the icon and the name on a dark foot; close with Del or the switcher.
+  The **key hints** move to this line's right end (Tab, the arrows, Enter, Alt+Tab), out of the way of the
+  search.
+- **Recent** (shown at 1920 × 1080) holds two sections: the apps opened last, and **Documents** — the files
+  opened last as cards with the icon of the app that opens them (`SD:/etc/fileassoc.ini`), the folder and when
+  (a recent-documents list SystemKit would keep: a key to add).
+- **Search** takes the width; the chips become the kinds of results with their counts (All 9, Apps 3,
+  Settings 3, Files 3); the **best match** is a card at the left with an Open button (Enter); the others are
+  grouped — apps as a row, settings (the applets' help lines, `control.app/applets/*.lnk`) and files side by
+  side — the matched letters in Aqua, a long line cut to keep the match in view; the bottom line offers to
+  run the text as a `/bin` command and shows the keys (↑ ↓, Tab next group, Enter, Esc).
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/pocket-home-v2.png) | **v2 at 800 × 480**: the search field and Today, the chips (Productivity chosen), the card with its header, Ledger focused (ring, glow, pill), the running apps as thumbnails, the hints on their line. |
+| ![](compact-shell/mockups/pocket-home-v2-search.png) | **v2, typing "co"**: the field across the width, All / Apps / Settings / Files with their counts, Control Panel as the best match, Courier and Icon Editor, the applets Theme, Mode and Wi-Fi by their help lines, three files of `SD:/docs`; run "co" in a Terminal. |
+
+![](compact-shell/mockups/pocket-home-v2-1080.png)
+
+*v2 at 1920 × 1080 — the user's screen — drawn at its real size with the scale 1.5 (1280 × 720 lp): the same
+layout; Recent with the apps opened last and the Documents; the Today column at the right (Thursday 8
+October, the agenda, the notifications of Telegram, Mail and Packages).*
+
+![](compact-shell/mockups/pocket-home-v2-sheet.png)
+
+*The real pocketshell today beside v2: the launcher, the search, and 1920 × 1080.*
+
+What v2 asks of the code is small: the shell's drawing (plates, chips, shadows: UIKit's existing rounded
+boxes and gradients, a blurred shadow drawn once per layout), `EL_OP_SHOT` thumbnails (already used by the
+switcher), the Agenda's next event and the notifications (SystemKit), and a recent-documents list.
+
 ### 6.3 An app in use
 
 ![](compact-shell/mockups/pocket-terminal.png)
@@ -313,6 +367,37 @@ without those keys (`compact.ini`, §11).
 *Every screen and the keys between them. Home ↔ an app (Enter / Super); an app → the switcher (Alt+Tab),
 quick settings (Super+N), its menus (F10), split view (Super+← / →).*
 
+### 6.11 The Control Panel in pocket mode
+
+The Control Panel (`user/Apps/control`, PocketUI's phase P6) opens full screen from Home's **Settings** tab or
+quick settings. Its applets are the same programs and the same `.lnk` files
+(`SD:/apps/control.app/applets/*.lnk`, in their order: Theme, Mode, Display, Panel, Sound, Preload, Keyboard &
+Mouse, Language & Region, Printers, Gamepad, Wi-Fi, Packages, App Settings); only the host's layout changes:
+
+- **Landscape**: the applets as **links in a left column** (a SidePanel: the icon and the name; at
+  1280 × 720 and wider, the `.lnk`'s help line under the name), the chosen one in Aqua; **the applet fills
+  the rest** and lays itself out in the room it is given — Theme puts its preview at the left and its controls
+  at the right, the Desktop group across the bottom, Apply / Discard at the bottom right. ↑ ↓ choose an
+  applet, → or Tab enters it.
+- **Portrait**: the **list** as on the desktop, one column of big rows (the icon, the name, the help line,
+  a chevron); an applet opened takes the screen under a **back bar** (‹ Control Panel and the applet's
+  title); the applet stacks its controls (Theme: the preview on top, the rows under it, Apply / Discard pinned
+  at the bottom over the scrolling content).
+- **Decided by the user (2026-10-08): the landscape layout also replaces the desktop's dashboard** — the
+  Control Panel on the desktop becomes the same links-and-applet window (no grid of icons to go back to); the
+  portrait list stays for narrow windows and pocket in portrait.
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/pocket-control-landscape.png) | **Landscape, 800 × 480**: the thirteen applets as links, Theme open and filling the rest. |
+| ![](compact-shell/mockups/pocket-control-landscape-1080.png) | **Landscape, 1280 × 720**: the links with their help lines, Theme spread out (the wallpaper's preview in the Desktop group). |
+| ![](compact-shell/mockups/pocket-control-portrait-list.png) | **Portrait, 480 × 800 (1.5×)**: the list, one column. |
+| ![](compact-shell/mockups/pocket-control-portrait-applet.png) | **Portrait, an applet open**: the back bar, Theme stacked, Apply / Discard pinned. |
+
+![](compact-shell/mockups/pocket-control-sheet.png)
+
+*The Control Panel in pocket mode, landscape and portrait.*
+
 ## 7. Console mode
 
 The third mode, for a Pi handheld with a gamepad or a Pi under the TV: the games, the emulators and the
@@ -332,7 +417,7 @@ the apps and the kits are the same.
 |---|---|
 | ![](compact-shell/mockups/console-home-v2.png) | **Home**: the browser itself — at the left the **categories** of the apps (Recent, Games, Productivity, Internet, Graphics, Multimedia, Programming, System, then Files and Settings), the chosen one glowing with a line about it; at the right, **the apps of that category** as memory-card tiles (for Games: the games and ROMs last played). The towers and the motes are the background. §7.4 has the details. |
 | ![](compact-shell/mockups/console-library.png) | **Games**: the library — Onyx's own games (Doom, Tetris, Pinball, Critters; SuperTuxKart when its port lands) and the ROMs of the six emulators (Game Boy / Color, GBA, NES, SNES, N64, GameCube: `games =` in their `app.txt`, `SD:/roms`), as glossy tiles with depth and the system's badge; L1 / R1 change the section (All, Onyx, Game Boy...); the chosen game's panel: its system and file, the time played, its **save states as memory-card slots**. |
-| ![](compact-shell/mockups/console-settings.png) | **Settings** ("System Configuration"): clock, screen, language, sound, gamepad, Wi-Fi, packages, the **mode** (console, pocket, desktop), about; each row opens a pad-friendly page; △ opens the desktop's Control Panel applet itself. |
+| ![](compact-shell/mockups/console-settings.png) | **Settings** ("System Configuration"): clock, screen, language, sound, gamepad, Wi-Fi, packages, the **mode** (console, pocket, desktop), about; each row opens a pad-friendly page; △ opens the desktop's Control Panel applet itself. *Grown into §7.6: the applets at the left, their pages at the right.* |
 | ![](compact-shell/mockups/console-overlay.png) | **In a game, Home pressed**: the game pauses under a dim; a glass column — Resume, **Save state** (three slots with their pictures), Load state, Screenshot, Controls, Speed, Back to Games. |
 | ![](compact-shell/mockups/console-switcher.png) | **Running**: the open games and apps as cards in depth, the chosen one in front with its glow and a reflection; ✕ switches, □ closes. Thumbnails from `EL_OP_SHOT`. |
 
@@ -473,6 +558,82 @@ special code in the app beyond those widgets:
 ![](compact-shell/mockups/console-files-sheet.png)
 
 *The File Viewer in console mode, four states.*
+
+### 7.6 The Control Panel in console mode
+
+The home's **Settings** entry opens the Control Panel **full screen, in the console's own style** (in
+`consolehome`, like the file browser, phase P9) — the first mock-up's "System Configuration" list
+(`console-settings.png`, §7.1) grown into the same two-part composition as the home: **the applets in a
+column at the left, the chosen applet's page in a glass panel at the right**. The applets are the Control
+Panel's `.lnk` files (`SD:/apps/control.app/applets/`), in their order, with their real icons, names and help
+lines; each page is drawn by the console host from what the applet declares (its settings as rows), not by
+the desktop applet's window.
+
+**Which applets, and why.** Console mode keeps what a person under a TV or with a handheld needs, and leaves
+the rest to the desktop and pocket (a `.lnk` key, `modes = desktop pocket console`, would say where an applet
+shows; the default is every mode):
+
+| Applet | In console | Why |
+|---|---|---|
+| Mode | **yes** | the way back to pocket or the desktop must be reachable with the pad alone |
+| Display | **yes** | the TV's resolution and the scale; plus the console's own **Background** (still, or slowly animated: §7.2) |
+| Sound | **yes** | volume, mute, the output (HDMI, the jack, USB) — the first thing changed on a TV |
+| Keyboard & Mouse | **yes** | the physical keyboard's layout matters as soon as one is plugged in (console has no on-screen keyboard) |
+| Language & Region | **yes** | the language and the time zone: two lists, pad-friendly |
+| Gamepad | **yes** | the mode is made for the pad: see what it sends, map its buttons |
+| Wi-Fi | **yes** | join a network; the password needs a keyboard (below) |
+| Packages | **yes** | updates and new games / apps, as a list with Install / Update |
+| About | **yes (new)** | the console host's own page: Onyx's version, the kernel, the card, the memory |
+| Theme | no | console has its own look (the PS2's mood, Milk's Aqua as the glow); the windows' colours and the wallpaper do not show there |
+| Panel | no | the dock and the workspaces do not exist in console |
+| Preload | no | a technical list of programs, rarely changed: the desktop's job |
+| Printers | no | adding a network printer means typing an address; printing from the TV is rare |
+| App Settings | no | an app's `config.ini` key by key needs a keyboard and the desktop's care |
+
+△ on a hidden applet's place is not offered; the desktop's Control Panel stays one mode switch away.
+
+**The screen.**
+
+- **The column** (focus at the left): the applets as big thin words with their icons, the chosen one glowing,
+  a thin light from it to its panel; the panel already shows the applet's page (dimmer) so up / down is a
+  preview. **Right or ✕** enters the page: the column shrinks to small words with the applet marked (as the
+  home's), and a **card at the bottom left** explains the focused row — what it does, where it is kept, and,
+  in amber, when a keyboard is needed.
+- **The page**: the applet's icon, name and help line (the `.lnk`'s), then **big rows (38 px)** — the label
+  at the left, **the value at the right**: a value between ‹ › that **← / →** change (Play on: Headphone
+  jack; Resolution: 1280 × 720 HD), a **bar** of ten segments (Volume 7 / 10), a **switch** (Mute), an
+  **action** with its ✕ (Test sound: Play; Scan again), a **sub-page** with its chevron (Programs playing ›,
+  Map buttons ›). The focused row glows. The file it is kept in is written small at the bottom.
+- **The keys**: **◀ ▶ Value, ✕ Change** (or open the sub-page), **○ Back** (to the column, then Home),
+  **△ Reset** (the row's default), **L1 / R1 Page** — the previous / next applet from anywhere. The mouse and
+  the keyboard as everywhere in console (§7.2): hover moves the glow, a click changes or opens, the wheel
+  scrolls; the arrows, Enter, Esc / Backspace, Page Up / Down.
+- **Changes apply at once** and are kept in the applet's own file (`sound.ini`, `cmdline.txt`,
+  `gamepad.ini`, `wpa_supplicant.conf`...); a change that could leave the screen black (a resolution) is
+  tried and asks **"Keep it?"** — with no answer in 15 s the old one comes back.
+- **Gamepad > Map buttons** needs the width: the column **folds to a rail of icons** (L1 / R1 still work).
+  The page asks for one button at a time in padconf's own words ("Press the RIGHT face button — Xbox B,
+  PlayStation Circle, Nintendo A"), with **a pad drawn by place** (what the apps see, `gamepad.ini`): the
+  buttons learnt filled, the one asked glowing, the rest outlined; at the right the 17 functions and what each
+  took (hat, button 3...), a progress (6 / 17). While a pad is being learnt its buttons cannot steer: **Esc**
+  skips and **Backspace** cancels on a keyboard, **holding Home** cancels on the pad, and a step with no answer
+  for 8 s is skipped (the pad has no such button). The section `[vvvv:pppp]` is written at the last step.
+- **Wi-Fi**: the networks around (`wifiscan`, as the menu bar's Wi-Fi menu) with their **signal bars**, a
+  lock when protected, **Connected** on the current one; then Country (‹ BE Belgium ›) and Scan again.
+  **✕ connects** an open network at once; a **protected network needs its password typed on a physical
+  keyboard** (USB or Bluetooth) — console mode has no keyboard on screen (§7.2): the card says so, and the
+  password field opens only when a keyboard is connected. △ forgets a known network.
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-control-display.png) | **Settings, the column focused**: Display glowing, its page at the right — Resolution, Scale, Background, the "Keep it?" note. |
+| ![](compact-shell/mockups/console-control.png) | **In Sound's page**: Play on, **Volume** (glowing, 7 / 10), Mute, Test sound, Programs playing ›; the column small, Volume's card at the bottom left. |
+| ![](compact-shell/mockups/console-control-gamepad.png) | **Gamepad > Map buttons**: the rail, the request, the pad drawn by place (B glowing), the functions learnt; Esc Skip, Backspace Cancel, hold Home to cancel. |
+| ![](compact-shell/mockups/console-control-wifi.png) | **Wi-Fi**: Maison connected, Voisin-5G focused (protected: "plug in a keyboard"), FreeWifi open, Livebox-1280; Country, Scan again. |
+
+![](compact-shell/mockups/console-control-sheet.png)
+
+*The Control Panel in console mode, four states.*
 
 ## 8. The concepts studied
 
@@ -821,4 +982,4 @@ taille (une barre latérale repliée en rail, comme pour Ledger), une racine dé
 visible partout et le tactile. Côté Elegant : un même serveur avec une politique par mode, un rôle de
 shell, des raccourcis système, un clavier à l'écran, le tactile, la rotation, la manette comme entrée
 système et la batterie. Les questions ouvertes sont au §14 ; les étapes suivantes (§15) s'arrêtent avant
-toute implémentation.
+toute implémentation. Ajouts du 2026-10-08 : le Panneau de configuration en mode pocket (§6.11 : en paysage, les applets en liens à gauche et l'applet qui remplit le reste — cette mise en page remplace aussi le tableau de bord du bureau ; en portrait, la liste puis une barre de retour) et en mode console (§7.6 : les applets utiles à la manette à gauche, leur page en grandes lignes à droite, ←/→ pour changer une valeur ; le mot de passe Wi-Fi demande un vrai clavier), et une proposition de lanceur pocket plus abouti, la v2 (§6.2 : vrai champ de recherche, « Aujourd'hui », puces de catégories, icônes sur plaques, focus net, vignettes des apps ouvertes ; une colonne Aujourd'hui à 1920 × 1080).
