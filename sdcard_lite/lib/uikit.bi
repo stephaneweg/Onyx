@@ -1,7 +1,7 @@
 # uikit.bi -- uikit for Onyx BASIC (#import uikit): made by tools/kitbi/kitbi.py from uikit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit uikit 949
+kit uikit 950
 struct win_server_info 88 uk_win_server_info
 field size 0 u
 field name 4 a 16
