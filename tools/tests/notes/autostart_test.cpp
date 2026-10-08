@@ -130,26 +130,39 @@ int main ()
 	seed (0);
 	CHECK (autostart_has ("run agenda") == 0);
 
-	// the card's own file, as shipped (Setup pending): the line goes after "#setup: run agenda", held back,
-	// preload /boot still the last line
-	std::string card = slurp ("sdcard/etc/autostart");
-	CHECK (card != "<none>");
-	seed (card.c_str ());
-	if (autostart_has (CMD))					// (the card already ships it: unchanged)
+	// the card's own files, as shipped (Setup pending): since the sessions (2026-10-08) the agenda's and Stickies' lines
+	// are in SD:/etc/session/desktop -- there: nothing written; without Stickies' line: it goes after "#setup: run
+	// agenda" in that file, held back, the autostart untouched
+	std::string card = slurp ("sdcard/etc/autostart"), desk = slurp ("sdcard/etc/session/desktop");
+	CHECK (card != "<none>" && desk != "<none>");
+	auto seed_desk = [] (const std::string &t) {
+		if (system (("mkdir -p '" + W + "/etc/session'").c_str ()) != 0) exit (2);
+		FILE *f = fopen ((W + "/etc/session/desktop").c_str (), "wb"); fwrite (t.data (), 1, t.size (), f); fclose (f);
+	};
+	seed (card.c_str ()); seed_desk (desk);
+	CHECK (autostart_has (CMD) == 1);
+	CHECK (autostart_ensure (CMD, AFTER, COMMENT) == 1);
+	CHECK_EQ (file (), card);
+	CHECK_EQ (slurp (W + "/etc/session/desktop"), desk);
+	std::string noSt;
 	{
-		CHECK (autostart_ensure (CMD, AFTER, COMMENT) == 1);
-		CHECK_EQ (file (), card);
+		size_t i = 0;
+		while (i < desk.size ())
+		{
+			size_t e = desk.find ('\n', i); if (e == std::string::npos) e = desk.size ();
+			std::string l = desk.substr (i, e - i);
+			if (l != "#setup: run stickies" && l.compare (0, 10, "# Stickies") != 0) noSt += l + "\n";
+			i = e + 1;
+		}
 	}
-	else
-	{
-		CHECK (autostart_ensure (CMD, AFTER, COMMENT) == 2);
-		std::string f = file ();
-		size_t a = f.find ("#setup: run agenda\n");
-		CHECK (a != std::string::npos && f.compare (a + 19, C.size () + 21, C + "#setup: run stickies\n") == 0);
-		CHECK (f.size () == card.size () + C.size () + 21);
-		CHECK (f.size () >= 14 && f.compare (f.size () - 14, 14, "preload /boot\n") == 0);
-		CHECK (autostart_ensure (CMD, AFTER, COMMENT) == 1);
-	}
+	seed (card.c_str ()); seed_desk (noSt);
+	CHECK (autostart_ensure (CMD, AFTER, COMMENT) == 2);
+	CHECK_EQ (file (), card);
+	std::string f = slurp (W + "/etc/session/desktop");
+	size_t a = f.find ("#setup: run agenda\n");
+	CHECK (a != std::string::npos && f.compare (a + 19, C.size () + 21, C + "#setup: run stickies\n") == 0);
+	CHECK (f.size () == noSt.size () + C.size () + 21);
+	CHECK (autostart_ensure (CMD, AFTER, COMMENT) == 1);
 
 	if (g_fail) { fprintf (stderr, "autostart: %d of %d checks FAILED\n", g_fail, g_checks); return 1; }
 	fprintf (stderr, "autostart: %d checks passed\n", g_checks);

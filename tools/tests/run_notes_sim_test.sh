@@ -178,27 +178,32 @@ VIEW="menu 15"
 AS=SD:/etc/autostart; OLDAS="$OUT/w/autostart.old"	# (the card's autostart as it was before this round)
 grep -v 'run stickies\|^# Stickies: ' sdcard/etc/autostart > "$OLDAS"
 asfile () { echo "$OUT/w/$1/etc/autostart"; }
+# (since the sessions, 2026-10-08: the agenda's and Stickies' lines are in SD:/etc/session/desktop -- the card's, as it
+# was before this round, without Stickies' line)
+OLDDK="$OUT/w/desktop.old"; grep -v 'run stickies\|^# Stickies: ' sdcard/etc/session/desktop > "$OLDDK"
+dkfile () { echo "$OUT/w/$1/etc/session/desktop"; }
 # AC 11 Hide: stickies = 0 written, the quit message to the running Stickies, autostart left alone
 seed ac11h notes; mains stickies; run ac11h "$W3;$VIEW;$W3;dump $OUT/ac11h.elsm;$QUIT" SIM_SERVICES=notify,stickies && png ac11h
 check "AC11 Hide: stickies = 0 in config.ini" grep -q '^stickies = 0$' "$OUT/w/ac11h/apps/notes.app/config.ini"
 check "AC11 ... the quit message sent to Stickies (STK_MSG_QUIT)" grep -q 'sim: send stickies type 3' "$OUT/log/ac11h.log"
 check "AC11 ... autostart not written" test ! -e "$(asfile ac11h)"
 # AC 11 Show (Stickies not running), on the card of before this round (no stickies line): stickies = 1,
-# Stickies started, the line inserted after the agenda's (held back as it is), preload /boot still last
+# Stickies started, the line inserted after the agenda's in the desktop's session file (held back as it is), the
+# autostart untouched
 seed ac11s notes; mains stickies; ncfg 'stickies = 0\n'
-mkdir -p "$W/etc"; cp "$OLDAS" "$W/etc/autostart"
+mkdir -p "$W/etc/session"; cp "$OLDDK" "$W/etc/session/desktop"
 run ac11s "$W3;$VIEW;$W3;dump $OUT/ac11s.elsm;$QUIT" SIM_SERVICES=notify && png ac11s
 check "AC11 Show: stickies = 1 in config.ini" grep -q '^stickies = 1$' "$OUT/w/ac11s/apps/notes.app/config.ini"
 check "AC11 ... Stickies started" grep -q 'sim: launch stickies' "$OUT/log/ac11s.log"
-check "G7   Show: '#setup: run stickies' right after '#setup: run agenda'" sh -c "grep -A2 '^#setup: run agenda\$' '$(asfile ac11s)' | tail -1 | grep -qx '#setup: run stickies'"
-check "G7   ... exactly one stickies line" test "$(grep -c 'run stickies' "$(asfile ac11s)")" = 1
-check "G7   ... preload /boot still the last line" test "$(tail -1 "$(asfile ac11s)")" = "preload /boot"
-check "G7   ... nothing else changed" sh -c "grep -v 'run stickies\|^# Stickies: ' '$(asfile ac11s)' | cmp -s - '$OLDAS'"
+check "G7   Show: '#setup: run stickies' right after '#setup: run agenda'" sh -c "grep -A2 '^#setup: run agenda\$' '$(dkfile ac11s)' | tail -1 | grep -qx '#setup: run stickies'"
+check "G7   ... exactly one stickies line" test "$(grep -c 'run stickies' "$(dkfile ac11s)")" = 1
+check "G7   ... the autostart untouched" test ! -e "$(asfile ac11s)"
+check "G7   ... nothing else changed" sh -c "grep -v 'run stickies\|^# Stickies: ' '$(dkfile ac11s)' | cmp -s - '$OLDDK'"
 # Show, Hide, Show again: one line still
 seed g7twice notes; mains stickies; ncfg 'stickies = 0\n'
-mkdir -p "$W/etc"; cp "$OLDAS" "$W/etc/autostart"
+mkdir -p "$W/etc/session"; cp "$OLDDK" "$W/etc/session/desktop"
 run g7twice "$W3;$VIEW;$W3;$VIEW;$W3;$VIEW;$W3;$QUIT" SIM_SERVICES=notify
-check "G7   Show / Hide / Show: exactly one stickies line" test "$(grep -c 'run stickies' "$(asfile g7twice)")" = 1
+check "G7   Show / Hide / Show: exactly one stickies line" test "$(grep -c 'run stickies' "$(dkfile g7twice)")" = 1
 # the card as shipped now (#setup: run stickies already there), and a hand-made 'run stickies': unchanged
 seed g7card notes; mains stickies; ncfg 'stickies = 0\n'
 run g7card "$W3;$VIEW;$W3;dump $OUT/g7card.elsm;$QUIT" SIM_SERVICES=notify && png g7card

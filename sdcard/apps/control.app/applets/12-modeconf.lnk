@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = Mode
+icon   = SD:/apps/modeconf.app/icon.bmp
+target = modeconf
+text   = The interface: desktop, pocket or console

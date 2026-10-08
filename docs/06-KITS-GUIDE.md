@@ -495,6 +495,25 @@ Language & Region or Setup (`zone=` only — a card with a `timezone=` and no `z
 time begins or ends: called once a minute (clockd, the Clock's service, does), on 25 October 2026 at 03:00 CEST the
 clock becomes 02:00 CET, `timezone=` rewritten (1 changed, 0 not).
 
+**The interface's mode and its session** (`session.h`, 2026-10-08): the mode — `SESSION_DESKTOP`, `SESSION_POCKET`,
+`SESSION_CONSOLE` — is `system.ini`'s `shell=`; each mode's programs are its session file `SD:/etc/session/<mode>`.
+A settings page switches the mode as the Control Panel's Mode applet does: `/bin/session` is started, closes the
+open programs (each one asks about its unsaved work), and the caller polls it:
+
+```c
+void *h = session_switch_start (SESSION_POCKET, 0, 0);     // the caller and its parents are kept open, then ended
+/* ... each turn: */ if (h && kapi_proc_done (h)) {
+    int r = kapi_wait (h); h = 0;
+    if (r == SESSION_WAITING_APPS) { char who[512]; session_waiting (who, sizeof who);   // "name\ttitle" lines
+        /* ask: Wait -> session_switch_start (m, SESSION_NO_ASK, 0); Force -> ... SESSION_NO_ASK | SESSION_FORCE */ }
+}
+int m = session_mode ();                                   // the mode chosen (no line: the desktop)
+char names[512]; session_programs (m, names, sizeof names); // "menubar\nterminal\n": what its session starts
+```
+
+`autostart_has` / `autostart_ensure` look in the autostart and in the session files: a line added after an anchor
+goes into the file that has it.
+
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
 | `notify.h` | Notifications |
@@ -505,9 +524,10 @@ clock becomes 02:00 CET, `timezone=` rewritten (1 changed, 0 not).
 | `wallpaper.h` | The wallpaper's settings and its painter |
 | `dockconf.h` | The dock's settings |
 | `preloadini.h` | The programs loaded ahead at boot |
-| `autostart.h` | The programs started at boot (`SD:/etc/autostart`) |
+| `autostart.h` | The programs started at boot (`SD:/etc/autostart` and the session files) |
 | `applet_proto.h` | A settings applet shown inside the Control Panel |
 | `locale.h` | The system's language and time zone (`SD:/etc/system.ini`) |
+| `session.h` | The interface's mode (desktop, pocket, console) and its session: `SD:/etc/session/<mode>`, the switch |
 
 ## 6. NetKit — the network
 

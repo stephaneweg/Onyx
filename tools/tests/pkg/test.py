@@ -123,6 +123,11 @@ rc, o = pkg ("list"); check ("staged: restart to finish" in o, "list: staged")
 rc, o = pkg ("commit"); print (o)
 check ("[sim: reboot]" in o and os.path.exists (card ("kernel8-rpi4.img")) and os.path.exists (card ("bin/hello")), "commit: moved in, then a reboot")
 check (os.path.exists (card ("var/pkg/db/onyx.ini")) and not os.path.exists (card ("var/pkg/stage")), "commit: the database, the stage gone")
+# the sessions (2026-10-08): the card's autostart from before them split once by the commit (SystemKit's session_migrate)
+asf = open (card ("etc/autostart")).read () if os.path.exists (card ("etc/autostart")) else ""
+dkf = open (card ("etc/session/desktop")).read () if os.path.exists (card ("etc/session/desktop")) else ""
+check ("\nsession\n" in asf and "run menubar" not in asf and "run menubar\n" in dkf and "SD:/etc/autostart split" in o, "commit: the autostart split into the desktop's session")
+rc, o = pkg ("commit"); check ("split" not in o and open (card ("etc/autostart")).read () == asf, "commit again: not split twice")
 rc, o = pkg ("delete", "onyx"); check (rc == 2 and "part of the system" in o, "the system cannot be removed")
 
 print ("a file moved into a package of its own (pkgman's own package)")

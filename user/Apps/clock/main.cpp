@@ -360,8 +360,9 @@ int main (void)
 		return 0;
 	}
 	// clockd rings the alarms with the Clock closed: started when it does not run, its boot line made sure of (a card
-	// updated by the package manager keeps its own SD:/etc/autostart)
-	autostart_ensure ("run clockd", "run notifyd", "# The Clock's alarms (rung with the app closed): clockd, the alarm service.");
+	// updated by the package manager keeps its own SD:/etc/autostart) -- after the line `session`: in the autostart, the
+	// system's part (a service of every mode; the line `run notifyd` it followed is the desktop session's now)
+	autostart_ensure ("run clockd", "session", "# The Clock's alarms (rung with the app closed): clockd, the alarm service.");
 	if (kapi_ipc_lookup (CLOCKD_SERVICE) <= 0 && lx_launch ("clockd", 0) > 0) say ("clockd started");
 
 	int w = g_cfg.width < MIN_W ? MIN_W : g_cfg.width > 2000 ? 2000 : g_cfg.width;

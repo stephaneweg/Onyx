@@ -4,6 +4,92 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## PocketUI phase P4: the sessions, `/bin/session`, the Mode applet (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
+
+The decided design is `docs/POCKETUI-TECH-STUDY.md` §8 and §9 (P4); docs/03 §5.10.4, docs/04 §5 *Sessions*, §8
+`session`, §11 *Mode*. Setup's mode page is P8's (the study's plan): only what P4 needs was done in Setup.
+
+- **The files** (`sdcard/etc/`): **`autostart`** = the system's part (`wait pkg commit`, the line **`session`**, `run
+  clockd`, `run pkgd`, `run clipd`, `run printd`, `keyb FR`, `telnetd`, `vncd`, `rdpd`, `preload /boot`);
+  **`session/desktop`** = `run voronoy`, Setup (`#setup#` comments, `run setup`), `#setup: run menubar`, `run notifyd`,
+  `#setup: run dock`, `#setup: run agenda`, `#setup: run stickies`; **`session/pocket`** = `run menubar` (**the user's
+  decision, 2026-10-08: the menu bar always there in pocket**, PocketUI accepting it as its top band -- that fix is
+  PocketUI's, made in another clone: nothing of `user/Servers/` was touched here) and `run terminal` (the launcher's
+  stand-in until `pocketshell`, P5); **`session/console`** = `run terminal`, `run gamelib` (no menu bar, no dock;
+  `consolehome` is P9). notifyd: the desktop's file only (the study: pocketshell serves the notifications at P5; meanwhile
+  SystemKit's `notify` starts notifyd on demand). `system.ini`: `shell=`'s comment.
+- **SystemKit** `user/Kits/systemkit/session.h` + `session.inc` (C and C++), `systemkit.abi` 78-88 (89 entries:
+  `systemkit >= 1.89`): `session_modes`, `session_mode_name`, `session_mode_find`, `session_mode`, `session_set_mode`,
+  `session_file`, `session_programs`, `session_switch_start (m, flags, keep_pid)`, `session_switch`, `session_waiting`,
+  `session_migrate`; `SESSION_*` answers and flags. **`autostart.h`** generalised: `autostart_has` / `autostart_ensure`
+  look in the autostart and `SD:/etc/session/{desktop,pocket,console}`, a line goes into the file of its anchor
+  (Notes unchanged: Stickies after the agenda -> `session/desktop`). **The Clock**'s `autostart_ensure ("run clockd",
+  ...)` now anchors on `session` (it anchored on `run notifyd`, which is the desktop session's now: clockd would have
+  gone there).
+- **`/bin/session`** (`user/BinUtils/session.c`, C, SystemKit's and UIKit's C imports): alone = the running server's
+  mode's file (uk_win_server: a failed PocketUI at boot gives the desktop's), `start`, `mode`, `list`, `migrate`,
+  **`switch MODE [--force] [--no-ask] [--wait S] [--keep PIDs]`** (docs/03 §5.10.4 says each step: the open programs
+  asked to close by their first window's close box, the stragglers in `SD:/tmp/session.wait` + exit 2; the tool's
+  parents -- the applet, the Control Panel, the Terminal -- and `--keep` left open, ended last; the session files'
+  programs + notifyd ended, printd restarted; `shell=`; `KAPI_WS_SWITCH`: 1 -> `shell=desktop` + the desktop's file +
+  a notification, `EBUSY` -> the old session back, a kernel before v97 -> `kapi_reboot`). Who starts the session at
+  boot: `init`, through the autostart's `session` line (the study's §8.2); the server starts nothing.
+- **The migration**: `pkg commit` (every boot) calls `session_migrate ()` (compiled into `pkg` with `SK_INLINE`, no
+  library needed at boot): an autostart without a `session` line (`#session`, `#setup: session` count as one) has
+  its desktop lines (+ the comments just above them, Setup's `#setup#` lines) moved into `session/desktop` -- made
+  anew, so a package's fresh `session/desktop` (with `run setup`) never runs on a card that finished Setup --, the
+  `session` line where the first one was, `autostart.old` kept; the user's own lines stay in the autostart. The
+  commit that brings it runs the old `pkg`: the split happens at the next boot's commit (init still runs the old
+  lines from its buffer that time), the boot after is in the new layout. The package's `etc/session/*` are config
+  files (`etc/*`): kept once changed. A card whose autostart was never changed (Setup pending) gets the new
+  autostart itself (no split needed).
+- **Setup** (`user/Apps/setup/system.h`): `autostart_finish` gives back the `#setup:` lines of every session file
+  (those of the mode in `system.ini` run now), removes `run setup` and its comments there; the keyboard's and the
+  services' lines stay in the autostart (`setup_line`, `session_finish`). No visible change.
+- **The Mode applet** `user/Apps/modeconf/main.cpp` (FT_APPS), `sdcard/apps/modeconf.app/` (`app.txt` Settings,
+  `icon.bmp`, `res/desktop.bmp`, `pocket.bmp`, `console.bmp` 160 x 100 -- `tools/screenshot/modeconf_previews.py`
+  makes them from `docs/compact-shell/mockups`), `lang/fr.txt` (`check.py modeconf`: 0 missing),
+  `control.app/applets/12-modeconf.lnk` (+ its two words in the Control Panel's `TR:` list and `fr.txt`). Three cards,
+  the one in use marked, Apply -> confirm -> `session_switch_start` polled in `onTick`; a program waiting: Wait / Force
+  / Cancel. The density / scale choice of the study's §8.4 is left for P6 (nothing reads `metrics=` / `scale=` yet).
+  `tools/pkg/packages.ini`: `[onyx]` `needs systemkit >= 1.89` (modeconf is a Settings app: `[onyx]`'s `apps =
+  Settings` takes it; `bin/session` and `etc/session/` are in `bin/` and `etc/`).
+- **Tests (PC)**: **`sh tools/tests/session/run.sh`** (new): SystemKit 111 checks (the split of the card's old
+  autostart -- `tools/tests/session/autostart.before` -- every line kept in order in one file, once, the user's lines,
+  `\r\n`, too big, read-only; the programs; the modes; `autostart_*` across the files; Setup's end), `/bin/session` 96
+  checks against stand-in processes / windows / `KAPI_WS_SWITCH` (boot, commands, parsing errors, a program waiting,
+  `--force`, `--no-ask`, `--keep`, a parent kept, the fallback, `EBUSY`, an old kernel, `migrate`), `session.h` in C
+  without warnings. `tools/tests/pkg/test.py`: + the commit splits the card's autostart once (0 failures).
+  `run_notes_test.sh` (its card case on `session/desktop`) and `run_notes_sim_test.sh` (G7 on `session/desktop`):
+  pass. `run_clock_test.sh` passes; `run_clock_sim_test.sh` 2/220 as before. `check_stubs.py`: 214 programs, 0 wrong.
+  Build (`kernel/ make -j8`): no warning in the new or changed files (irc, slides, qbstudio's warnings are old).
+  Screenshots: `screenshots/modeconf.png`, `modeconf-fr.png` (new; `shots.sh modeconf`), `control.png` (the new applet
+  in the list), `fileviewer.png` (its scenario clicks one row lower: `SD:/etc` has the `session` folder, the
+  autostart's new text in the preview). `shots.sh` at HEAD's sources (a worktree) and here, the same 68 names: 92
+  pictures identical, the others the new ones above and `archiver*` (a timestamp / size area, as noted at P3); the
+  committed pictures of ledger, qbstudio, filedialog were already stale at HEAD. `server_sim/run.sh`: 21 passed.
+- **Pi checklist** (not done):
+  1. Stage (kernel unchanged; `SD:/bin/session`, `SD:/bin/pkg`, `SD:/lib/systemkit.so`, `SD:/apps/modeconf.app`,
+     Setup, the Clock, `SD:/etc/autostart`, `SD:/etc/session/*`) on a card that finished Setup: the desktop as before
+     (wallpaper, menu bar, dock, agenda, Stickies, notifications); `kmsg`: `session: desktop -- its programs started`.
+  2. An OLD card (autostart with the desktop lines, no `session/`) updated by the package manager: first boot as
+     before; at the next boot's `pkg commit` -> `SD:/etc/autostart split...`; `cat SD:/etc/autostart`,
+     `SD:/etc/session/desktop`, `autostart.old`; the boot after: the same desktop, no program twice (`ps`).
+  3. Control Panel > Mode: Pocket, Apply, OK -> the apps close, PocketUI comes up with the menu bar (once PocketUI's
+     fix accepts it) and the Terminal; `cat SD:/etc/system.ini` -> `shell=pocket`; `session mode`.
+  4. With an unsaved Tinypad document: Mode > Console -> Tinypad asks; wait 5 s without answering -> the applet says
+     "Tinypad ... is waiting for an answer": Cancel (nothing switched, shell= unchanged), again + Force (switched).
+  5. From the pocket Terminal: `session switch desktop` -> the desktop's programs back, the Terminal ends last.
+  6. Fallback: `mv SD:/bin/pocketui SD:/bin/pocketui.x`, `session switch pocket` -> exit 1, the desktop, the
+     notification, `shell=desktop`; put it back.
+  7. A full-screen game running (from telnet: `run gbemu ...` F11) + `session switch console` over telnet -> exit 3,
+     the desktop's programs back.
+  8. Reboot in each mode: the right session (`shell=console` -> the Game Library in front, the Terminal behind).
+  9. Notes > View > Show Stickies on a card without its line: added in `SD:/etc/session/desktop`.
+- **Next**: P5 (`pocketshell`: it replaces `run terminal` in `session/pocket`; it serves `notify`), P6 (the adaptive
+  widgets; the Mode applet's density / scale), P8 (Setup's mode page: the session files' `run setup`, the mode
+  preselected from the screen / the inputs).
+
 ## PocketUI phase P3: PocketUI's skeleton, `user/Servers/common/`, the pocket UIKit (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
 
 The decided design is `docs/POCKETUI-TECH-STUDY.md` §4.3, §5, §7, §9 (P3); the look and behaviour `docs/COMPACT-SHELL-STUDY.md`

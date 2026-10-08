@@ -159,11 +159,13 @@ static bool cmdline_size (int w, int h)
 	return file_write ("SD:/cmdline.txt", out, o);
 }
 
-// ---- SD:/etc/autostart ----------------------------------------------------------------------------------------
+// ---- SD:/etc/autostart and the sessions' files ------------------------------------------------------------------
 // While the wizard runs, the lines it holds back (the menu bar, the dock...) are written
 // "#setup: <line>"; at its end it gives them back, removes its own "run setup" line and the comment
 // lines about it ("#setup# ..."), sets the keyboard's line and turns the remote services' lines on
-// or off ("#telnetd" when off).
+// or off ("#telnetd" when off). Since the sessions (2026-10-08, SystemKit's session.h) the held-back lines,
+// Setup's line and its comments are in the session's file (SD:/etc/session/desktop on a new card); the
+// keyboard's and the services' lines stay in the autostart. Both are handled: each file's Setup lines.
 #define AUTOSTART	"SD:/etc/autostart"
 static const char *const SERVICES[4] = { "telnetd", "vncd", "rdpd", "ftpd" };
 
@@ -179,13 +181,27 @@ static void services_read (bool on[4])
 		for (int k = 0; k < 4; k++) if (line_word (in + s, in + e, SERVICES[k], false)) on[k] = true;
 	}
 }
-// The autostart as it will be -> the held-back lines to run now in held (one a line).
-static bool autostart_finish (const char *keyb, const bool on[4], char *held, int heldCap)
+// Setup's own lines of a line [ls, le): 1 its "run setup" line or a "#setup#" comment (dropped), 2 a held-back line
+// (line + 8 is the line given back), 0 another.
+static int setup_line (const char *ls, const char *le, const char *line)
+{
+	if (line_word (ls, le, "run", false))
+	{
+		const char *a = strstr (line, "run") + 3; while (*a == ' ' || *a == '\t') a++;
+		if (!strncmp (a, "setup", 5) && (a[5] == 0 || a[5] == ' ' || a[5] == '\r')) return 1;	// (the wizard's own line)
+	}
+	if (!strncmp (line, "#setup# ", 8)) return 1;		// (the comment about the wizard)
+	if (!strncmp (line, "#setup: ", 8)) return 2;
+	return 0;
+}
+
+// A session's file (SD:/etc/session/<mode>): Setup's line and comments removed, the held-back lines given back --
+// and, when run, added to held (the session running: they start now). A file without Setup's lines: not written.
+static void session_finish (const char *path, bool run, char *held, int heldCap, int *h)
 {
 	static char in[8192], out[8600];
-	int n = file_read (AUTOSTART, in, sizeof in); if (n < 0) n = 0;
-	int o = 0, h = 0; bool keybDone = false, seen[4] = { false, false, false, false };
-	held[0] = 0;
+	int n = file_read (path, in, sizeof in); if (n <= 0) return;
+	int o = 0; bool changed = false;
 	for (int i = 0; i < n; )
 	{
 		int s = i; while (i < n && in[i] != '\n') i++;
@@ -194,13 +210,44 @@ static bool autostart_finish (const char *keyb, const bool on[4], char *held, in
 		while (le > ls && le[-1] == '\r') le--;
 		char line[512]; int ll = (int) (le - ls) < 511 ? (int) (le - ls) : 511;
 		memcpy (line, ls, ll); line[ll] = 0;
-		if (line_word (ls, le, "run", false))
+		int k = setup_line (ls, le, line);
+		if (k == 1) { changed = true; continue; }
+		if (k == 2)
 		{
-			const char *a = strstr (line, "run") + 3; while (*a == ' ' || *a == '\t') a++;
-			if (!strncmp (a, "setup", 5) && (a[5] == 0 || a[5] == ' ')) continue;	// (the wizard's own line)
+			changed = true;
+			o += snprintf (out + o, sizeof out - o, "%s\n", line + 8);
+			if (run) *h += snprintf (held + *h, heldCap - *h, "%s\n", line + 8);
+			continue;
 		}
-		if (!strncmp (line, "#setup# ", 8)) continue;		// (the comment about the wizard)
-		if (!strncmp (line, "#setup: ", 8))			// a held-back line: given back, and run now
+		o += snprintf (out + o, sizeof out - o, "%s\n", line);
+		if (o >= (int) sizeof out - 600) return;			// (too long: left as it is)
+	}
+	if (changed) file_write (path, out, o);
+}
+
+// The autostart as it will be -> the held-back lines to run now in held (one a line).
+static bool autostart_finish (const char *keyb, const bool on[4], char *held, int heldCap)
+{
+	static char in[8192], out[8600];
+	int n = file_read (AUTOSTART, in, sizeof in); if (n < 0) n = 0;
+	int o = 0, h = 0; bool keybDone = false, seen[4] = { false, false, false, false };
+	held[0] = 0;
+	for (int m = 0; m < session_modes (); m++)		// the sessions' files (the one running: its lines started)
+	{
+		char path[64];
+		if (session_file (m, path, sizeof path)) session_finish (path, m == session_mode (), held, heldCap, &h);
+	}
+	for (int i = 0; i < n; )
+	{
+		int s = i; while (i < n && in[i] != '\n') i++;
+		int e = i; if (i < n) i++;
+		const char *ls = in + s, *le = in + e;
+		while (le > ls && le[-1] == '\r') le--;
+		char line[512]; int ll = (int) (le - ls) < 511 ? (int) (le - ls) : 511;
+		memcpy (line, ls, ll); line[ll] = 0;
+		int sl = setup_line (ls, le, line);
+		if (sl == 1) continue;				// (the wizard's own line, its comments)
+		if (sl == 2)						// a held-back line: given back, and run now
 		{
 			o += snprintf (out + o, sizeof out - o, "%s\n", line + 8);
 			h += snprintf (held + h, heldCap - h, "%s\n", line + 8);

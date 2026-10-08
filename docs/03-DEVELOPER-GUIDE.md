@@ -1356,6 +1356,80 @@ the Calculator under PocketUI at 800 × 480 (and 640 × 480, console), then **El
 extraction of `user/Servers/common/` on the same scripts — the same pixels required. Its pictures of PocketUI
 are in `docs/compact-shell/real/` (copied from its output folder by hand when they change).
 
+### 5.10.4. The sessions: the mode's programs, the switch (`systemkit/session.h`, `/bin/session`)
+
+*(docs/POCKETUI-TECH-STUDY.md §8, phase P4; the user's side: docs/04 §5 *Sessions*.)* The programs started at boot
+are split in two: **`SD:/etc/autostart`**, the **system's part** (`wait pkg commit`, the services `clockd`, `pkgd`,
+`clipd`, `printd`, `telnetd`, `vncd`, `rdpd`, `keyb`, `preload /boot`) with one line **`session`**, and the
+**session files** **`SD:/etc/session/desktop`**, **`pocket`**, **`console`** — the interface's programs of each mode,
+in the autostart's syntax (`run <app>`, a `/bin` tool, `sleep`, `wait`, Setup's `#setup: ` lines). Shipped:
+desktop = `voronoy`, `setup` (a new card), `menubar`, `notifyd`, `dock`, `agenda`, `stickies`; pocket = `menubar`
+(PocketUI's top band) and, until `pocketshell` (P5), `terminal`; console = `terminal`, `gamelib` until
+`consolehome` (P9) — no menu bar, no dock. A program of one mode only goes into that mode's file; a service of
+every mode into the autostart.
+
+**`/bin/session`** (`user/BinUtils/session.c`, C: `lib/systemkit.imp_c.a` + `lib/uikit.imp_c.a`):
+
+- alone (`init` runs the autostart's line): the mode is **the running server's** (UIKit's `uk_win_server`: a
+  `shell=pocket` whose PocketUI failed at boot got Elegant — the desktop's file runs), its file run line by line
+  as `init` does (fire-and-forget; `sleep`, `wait`; a `session` line skipped). The desktop's file missing: its
+  defaults (`voronoy`, `menubar`, `notifyd`, `dock`, `agenda`). `start MODE`, `mode`, `list [MODE]`.
+- **`switch MODE [--force] [--no-ask] [--wait S] [--keep PID,...]`**: (1) every program owning a window that is
+  not `WIN_FLAG_SYSTEM`, not one of the session files' programs, not kept, is asked to close (`uk_win_close` on
+  its first window: its close box — an unsaved document asks, `Include/docguard.h`), then waited for (`kapi_list_procs`,
+  5 s); the ones left: `SD:/tmp/session.wait` (`name<TAB>title` lines) and exit status 2, nothing changed, unless
+  `--force` (`kapi_kill_pid (pid, 1)`). The tool's **parents** (a program whose `kapi_proc_tree` holds it: the Mode
+  applet, the Control Panel, the Terminal it was typed in) and `--keep`'s are not asked: ended at the very end
+  (ending a terminal kills its tree, the tool with it). (2) the processes named in the three session files and
+  `notifyd` are ended (`kapi_kill_pid (pid, 0)`, 2 s, then 1), and `printd` (it maps the server's UIKit through
+  PrinterKit: started again after). (3) `session_set_mode`, (4) `kapi_ws_ctl (KAPI_WS_SWITCH)` (kapi v97): 0 the
+  new server, **1 it failed → Elegant**: `shell=desktop` put back, the desktop's file, a notification;
+  `-KAPI_EBUSY` (full screen): `shell=` back, the old session's file again, exit 3; `-KAPI_ENOSYS` / `-KAPI_EINVAL`
+  (a kernel before v97): `kapi_reboot` (shell= written). (5) the new mode's file, `printd`. Exit status: SystemKit's
+  `SESSION_*` (0 switched, 1 fell back, 2 programs waiting, 3 refused, 4 bad arguments, 5 failed).
+- `migrate`: SystemKit's `session_migrate ()`.
+
+**SystemKit `systemkit/session.h`** (C and C++; docs/12): `session_modes`, `session_mode_name`, `session_mode_find`;
+`session_mode ()` / `session_set_mode (m)` (`system.ini`'s `shell =`, through `locale_ini_get` / `_set`; no line or
+an unknown word: desktop), `session_file (m)`, `session_programs (m, out, cap)` (the names the processes of a mode's
+file have: `run <app>` → the app, a path → its file's name, `wait <cmd>` → the command's tool, `sleep` none),
+**`session_switch_start (m, flags, keep_pid)`** (spawns `SD:/bin/session switch …`: the handle for
+`kapi_proc_done` / `kapi_wait`; `SESSION_FORCE`, `SESSION_NO_ASK`) and `session_switch (m, flags)` (waited for),
+`session_waiting (out, cap)` (after `SESSION_WAITING_APPS`), **`session_migrate ()`**. **`autostart_has` /
+`autostart_ensure`** (`autostart.h`) look in the autostart **and** the session files, and add a line to the file
+that holds its anchor (Notes' `run stickies` after `run agenda`: `session/desktop`; the Clock's `run clockd`
+after `session`: the autostart).
+
+**The migration of a card**: an autostart from before the sessions (no `session` line — active, `#session` or
+`#setup: session` count) is split by **`session_migrate`**: the desktop's lines (`run voronoy`, `setup`, `menubar`,
+`notifyd`, `dock`, `agenda`, `stickies`, `wifimenu`, `imageview`, held or not, Setup's `#setup#` comments) and the
+comment lines just above each go to `SD:/etc/session/desktop` — **made anew from them** (the package's own
+`session/desktop`, written beside as a new config file, would hold `run setup`) —, the line `session` (with two
+comment lines) where the first of them was (before `preload` when there is none), every other line where it was;
+the desktop file is written first, then `autostart.old`, then the autostart (a failure leaves the autostart as it
+was: the next try makes it anew). It is called by **`pkg commit`** (`user/BinUtils/pkg.cpp`, at every boot's
+`wait pkg commit`; compiled in with `SK_INLINE` — the boot needs no library): the commit that brings this onyx
+version runs the old `pkg`, so the split happens at the next boot's commit, `init` still running the old lines
+from its buffer — the boot after that one is in the new layout. **Setup** (`user/Apps/setup/system.h`
+`autostart_finish`) gives back the `#setup:` lines of every session file (those of the mode chosen started now),
+removes its `run setup` line and comments there; the keyboard's and the services' lines stay the autostart's.
+
+**The Control Panel's Mode applet** (`user/Apps/modeconf/`, `SD:/apps/modeconf.app`, `applets/12-modeconf.lnk`):
+three cards (`ModeCard`: a 160 × 100 picture from `res/<mode>.bmp` — made by `tools/screenshot/modeconf_previews.py`
+from the design study's mock-ups —, the name, *in use*, a line), **Apply** → `uk_messagebox` → `session_switch_start
+(mode, 0, host)` (the applet's host pid from `--applet <surface> <host>`), polled in `Root::onTick`; on
+`SESSION_WAITING_APPS` a `Modal` names the program (`session_waiting`) with **Wait** (`SESSION_NO_ASK`), **Force**
+(`| SESSION_FORCE`), **Cancel**. On a switch the applet and the Control Panel are ended with the old session.
+
+**Tests (PC)**: **`sh tools/tests/session/run.sh`** — `session_test.cpp` (the split of the card's autostart of
+before, `tools/tests/session/autostart.before`: every line kept, in order, in one of the two files; once; the
+user's lines; `\r\n`; too big, read-only; the files' programs; the modes; `autostart_*` across the files; Setup's
+end on the new card) and `session_tool_test.cpp` (`/bin/session` with `main` renamed, against stand-in processes,
+windows and `KAPI_WS_SWITCH`: the boot, the commands, the parsing's errors, a program waiting, `--force`,
+`--keep`, a parent kept, the fallback, `EBUSY`, an old kernel, `migrate`); `tools/tests/pkg/test.py` (the commit
+splits the card's autostart, once); `run_notes_test.sh`, `run_notes_sim_test.sh` (Stickies' line in
+`session/desktop`).
+
 ## 6. Writing a graphical application
 
 > **Notifications and clipboard (ABI v40).** Notifications are AppKit's (`appkit/appkit.h`; it was `notify.h`):
