@@ -546,6 +546,14 @@ goes into the file that has it.
 if (shell_running ()) shell_ask (SHELL_MSG_QUICK);          // quick settings and the notifications (else: our own)
 ```
 
+**The documents opened last** (`recent.h`, 2026-10-08): `fa_open` notes every file it opens with its app; an app that
+opens a file by itself (its own Open dialog) may note it too. The pocket launcher's Recent shows them:
+
+```c
+recent_doc_add ("SD:/docs/letters-tour.rtf");             // first of SD:/etc/recent-docs (24 at most, a path once)
+struct recent_doc d[12]; int n = recent_docs (d, 12);       // the latest first: d[i].path, .date (YYYYMMDD), .time (HHMM)
+```
+
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
 | `notify.h` | Notifications |
@@ -561,6 +569,7 @@ if (shell_running ()) shell_ask (SHELL_MSG_QUICK);          // quick settings an
 | `locale.h` | The system's language and time zone (`SD:/etc/system.ini`) |
 | `session.h` | The interface's mode (desktop, pocket, console) and its session: `SD:/etc/session/<mode>`, the switch |
 | `shell.h` | The pocket shell's screens asked (`shell_ask (SHELL_MSG_HOME / _SWITCHER / _QUICK / _SEARCH)`, `shell_running ()`): the menu bar's way in pocket |
+| `recent.h` | The documents opened last (`recent_doc_add`, `recent_docs`: `SD:/etc/recent-docs`; `fa_open` notes them) |
 
 ## 6. NetKit — the network
 

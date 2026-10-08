@@ -42,7 +42,9 @@
 // Everything else is fakekapi.cpp's (wait, quit, exit...).
 //
 // Environment: SIM_SCREEN=WxH (the screen; fakekapi's), SIM_MODE=console (PocketUI's console mode), SIM_APPNAME
-// (the app's name, for the lists).
+// (the app's name, for the lists), SIM_SCREEN_STALE=WxH (the app's kapi_screen_size wrong: the server's screen kept),
+// SIM_SERVER_LATE=N (PocketUI: the first N PK_OP_SERVER refused -- uk_win_server falls back on kapi_screen_size: a
+// program started while the server comes up after a live switch).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -173,6 +175,15 @@ extern "C" long sim_ws_ctl (int op, long a0, long a1, long a2)
 		{
 			struct kapi_ws_call *c = (struct kapi_ws_call *) a0;
 			unsigned len = 0;
+#ifdef SIM_POCKET
+			static int s_nLate = getenv ("SIM_SERVER_LATE") ? atoi (getenv ("SIM_SERVER_LATE")) : 0;
+			if ((c->op & 0xFFFF) == PK_OP_SERVER && s_nLate > 0)	// (the server's answer not there yet: the first n asked)
+			{
+				s_nLate--;
+				c->out_len = 0;
+				return EL_E_BADOP;
+			}
+#endif
 			long st = el_op (APP_PID, c->op, c->a, (const unsigned char *) c->in, c->in_len, s_Out, &len);
 			if (getenv ("SIM_TRACE")) fprintf (stderr, "server_sim: request %d (window %d) %ld %ld %ld %ld -> %ld\n", c->op & 0xFFFF, c->op >> 16, c->a[0], c->a[1], c->a[2], c->a[3], st);
 			if (c->out != 0) memcpy (c->out, s_Out, len < c->out_cap ? len : c->out_cap);
@@ -263,6 +274,16 @@ static void SimFsEnd (void)
 	el_core_fullscreen (APP_PID, 0); s_bFull = false;
 }
 
+// SIM_SCREEN_STALE=WxH: the program's kapi_screen_size answers that size -- not the server's screen (the Pi's report
+// after a live switch from the desktop: pocketshell laid out small); the server keeps SIM_SCREEN's.
+static void SimStaleScreen (int *w, int *h)
+{
+	int sw = 800, sh = 480;
+	sscanf (getenv ("SIM_SCREEN_STALE"), "%dx%d", &sw, &sh);
+	if (w) *w = sw;
+	if (h) *h = sh;
+}
+
 static void Init (void)
 {
 	if (s_bInit) return;
@@ -273,6 +294,7 @@ static void Init (void)
 	s_pFsBegin = T->fullscreen_begin; T->fullscreen_begin = SimFsBegin;
 	s_pFsEnd = T->fullscreen_end; T->fullscreen_end = SimFsEnd;
 	kapi_screen_size (&s_nW, &s_nH);
+	if (getenv ("SIM_SCREEN_STALE")) T->screen_size = SimStaleScreen;	// (the app's kapi_screen_size: stale from now on)
 	s_pScreen = new unsigned[(size_t) s_nW * s_nH];
 #ifdef SIM_POCKET
 	const char *m = getenv ("SIM_MODE");

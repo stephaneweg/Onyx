@@ -4,11 +4,10 @@
 // (the desktop's menubar, kept as pocket's top band: the user's decision) shows its menus, the tray and the time; this
 // program is the rest -- a client of PocketUI through the pocket UIKit's shell calls (uikit/win.h uk_shell_*):
 //
-//   * the LAUNCHER (Home): its backmost window, at the work area, behind every app -- a search field, the category
-//     tabs (Recent, the categories of the apps' app.txt in the dock's order -- SystemKit's dock_layout_load --,
-//     Settings: the Control Panel's applets), the apps' grid (a dot under a running one), the Running strip (the
-//     open apps); typing searches the apps, the settings, the files of SD:/docs and offers the text as a command;
-//   * the TASK SWITCHER (Alt+Tab, the menu bar's Onyx > Open Apps): the open apps as cards, the most recent first,
+//   * the LAUNCHER (Home): its backmost window, at the work area, behind every app -- v2 (home.h: the round search
+//     field and Today, the categories as chips, one card of apps on plates, Recent's documents, the Running strip of
+//     window thumbnails; typing searches the apps, the settings, the files of SD:/docs and offers the text as a command);
+//   * the TASK SWITCHER (Alt+Tab): the open apps as cards, the most recent first,
 //     their pictures from PocketUI (uk_shell_thumb: no app redraws); release Alt (or Enter, a click) to switch, Del
 //     closes the chosen app, Esc stays;
 //   * QUICK SETTINGS (Super+N, a click on the menu bar's time): Wi-Fi, do not disturb, the sound, the mode, the
@@ -17,10 +16,11 @@
 //
 // Its keys come from PocketUI before the front app (uk_shell_keys): Super (alone) / Alt+F1 / Ctrl+Esc Home, Alt+Tab
 // and Alt+Shift+Tab the switcher, Super+N quick settings, Super+Space the search; while an overlay is up every key is
-// its (uk_shell_grab). The menu bar asks it through SystemKit's shell.h (the IPC service "shell"). Resolution
-// independent: every size in logical units times a scale (SD:/etc/theme.txt "scale =", else 1.5 from a 1080-line
-// screen up, 2 from 1800), the layout reflows by the logical width and height (the grid's columns, the hints, the
-// Running strip, the switcher's row or column, the panel's width).
+// its (uk_shell_grab). The menu bar asks it through SystemKit's shell.h (the IPC service "shell": its Onyx, the Home
+// button in pocket, and its time). Resolution independent: every size in logical units times a scale (SD:/etc/theme.txt
+// "scale =", else 1.5 from a 1080-line screen up, 2 from 1800) of the screen PocketUI gives -- read again whenever it
+// changes (screen_sync) --, the layout reflows by the logical width and height (home.h's lay (), the switcher's row
+// or column, the panel's width).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 //
@@ -35,6 +35,8 @@
 using namespace uikit;
 
 #include "catalog.h"
+#include "look.h"
+#include "today.h"
 
 // ---- the screen, the scale ------------------------------------------------------------------------------
 static int g_sw = 800, g_sh = 480;			// the screen
@@ -174,336 +176,29 @@ static const char *task_label (const struct uk_shell_task &t)
 	return a != 0 ? a->label : t.title[0] ? t.title : t.name;
 }
 
+// ---- the notifications (this shell serves "notify" in pocket): quick settings and the Today column show them ----
+struct Note { char title[64]; char text[200]; char action[124]; unsigned at; char hm[6]; };
+#define MAXNOTES 20
+static Note g_notes[MAXNOTES];				// the newest first
+static int g_nnotes;
+static const char *note_app (const Note &n)		// the app a notification is from (its icon), "" none
+{
+	const char *app = n.action[0] ? n.action : n.title;
+	char an[32]; int k = 0;
+	while (app[k] && app[k] != ' ' && k < 31) { an[k] = app[k]; k++; }
+	an[k] = 0;
+	for (int j = 0; j < g_napps; j++) if (ieq (g_apps[j].label, n.title) || ieq (g_apps[j].name, an)) return g_apps[j].name;
+	return "";
+}
+
+static const char *const WD[] = { TRN ("Sunday"), TRN ("Monday"), TRN ("Tuesday"), TRN ("Wednesday"), TRN ("Thursday"), TRN ("Friday"), TRN ("Saturday") };
+static const char *const MO[] = { TRN ("January"), TRN ("February"), TRN ("March"), TRN ("April"), TRN ("May"), TRN ("June"), TRN ("July"),
+				  TRN ("August"), TRN ("September"), TRN ("October"), TRN ("November"), TRN ("December") };
+
 // =========================================================================================================
-// THE LAUNCHER (the home window)
+// THE LAUNCHER (the home window): home.h
 // =========================================================================================================
-static int g_tab = 0;					// the tab shown (g_cats)
-static int g_tabFirst = 0;				// the first tab drawn (they scroll)
-static int g_focus = 0;					// the grid's focused tile
-static int g_gridTop = 0;				// the grid's first row shown
-static char g_query[64];				// the search's text ("": the tabs)
-static int g_resSel = 0, g_resTop = 0;
-enum { H_TAB = 1, H_CHEV, H_TILE, H_CHIP, H_CHIPX, H_RESULT, H_FIELD };
-
-static int g_items[MAXAPPS], g_nitems;			// the apps of the tab shown
-static void tab_items (void)
-{
-	g_nitems = 0;
-	if (g_tab < 0 || g_tab >= g_ncats) return;
-	const char *c = g_cats[g_tab].name;
-	if (ieq (c, "Recent"))
-	{
-		for (int r = 0; r < g_nrecent; r++)
-			for (int i = 0; i < g_napps; i++)
-				if (!g_apps[i].applet && ieq (g_apps[i].name, g_recent[r])) { g_items[g_nitems++] = i; break; }
-		return;
-	}
-	bool set = ieq (c, "Settings");
-	for (int i = 0; i < g_napps; i++)
-		if (set ? g_apps[i].applet : (!g_apps[i].applet && ieq (g_apps[i].cat, c))) g_items[g_nitems++] = i;
-}
-
-struct Grid { int x, y, w, h, tw, th, icon, cols, rows; };
-static bool strip_shown (void)		{ return !portrait () && LH () >= 440; }
-static bool hints_shown (void)		{ return LW () >= 700; }
-static int field_w (void)		{ return hints_shown () ? D (300) : g_aw - 2 * D (12); }
-static int tabs_y (void)		{ return D (10) + D (30) + D (8); }
-static int tabs_h (void)		{ return D (LH () < 420 ? 28 : 32); }
-static int strip_h (void)		{ return strip_shown () ? D (66) : 0; }
-
-static Grid grid (void)
-{
-	Grid g;
-	int M = D (12);
-	g.x = M; g.y = tabs_y () + tabs_h (); g.w = g_aw - 2 * M; g.h = g_ah - g.y - M - strip_h ();
-	bool big = LW () >= 600;
-	g.tw = D (big ? 94 : 80); g.th = D (big ? 84 : 76); g.icon = D (big ? 48 : 40);
-	g.cols = (g_aw - D (24)) / g.tw;
-	if (!big && g.cols < 3) g.cols = 3;
-	if (g.cols < 1) g.cols = 1;
-	if (g.cols * g.tw > g.w) g.tw = g.w / g.cols;
-	g.rows = (g.h - D (10)) / g.th;
-	if (g.rows < 1) g.rows = 1;
-	return g;
-}
-
-static void draw_search (Canvas &cv)
-{
-	int M = D (12), y = D (10), h = D (30), w = field_w ();
-	uk_rbox (cv, M, y, w, h, h / 2, 0xFFFFFF, 0xF4F5F7);
-	uk_rline (cv, M, y, w, h, h / 2, g_query[0] ? C_ACCENT : 0x9AA3B2);
-	// the magnifier: a ring and its handle
-	int r = D (5), cx = M + D (15), cy = y + h / 2 - D (2);
-	uk_rline (cv, cx - r, cy - r, 2 * r + 1, 2 * r + 1, r, 0x505660);
-	uk_rline (cv, cx - r + 1, cy - r + 1, 2 * r - 1, 2 * r - 1, r - 1, 0x505660);
-	for (int k = 0; k < D (5); k++)
-		for (int t = 0; t < 2; t++) cv.pixel (cx + r - 1 + k + t, cy + r - 1 + k, 0x505660);
-	int tx = M + D (30), ty = y + (h - uk_fh ()) / 2;
-	if (g_query[0])
-	{
-		text_fit (cv, tx, ty, w - D (40), g_query, 0x202428);
-		int cxp = tx + tw (g_query);
-		if (cxp < M + w - D (10)) cv.fillRect (cxp + 1, ty + D (1), D (2) > 1 ? 2 : 1, uk_fh () - D (2), 0x202428);	// (the caret)
-	}
-	else text_fit (cv, tx, ty, w - D (40), TR ("Type to find an app, a file, a setting"), 0x8A909A);
-	g_homeHits.add (M, y, w, h, H_FIELD, 0);
-	if (hints_shown ())
-	{
-		static const char *const H1[] = { TRN ("Tab"), TRN ("category"), TRN ("Arrows"), TRN ("choose"), TRN ("Enter"), TRN ("open") };
-		static const char *const H2[] = { TRN ("Up+Down"), TRN ("choose"), TRN ("Enter"), TRN ("open"), TRN ("Esc"), TRN ("clear") };
-		UkFaceScope f (g_small);
-		hints (cv, M + w + D (18), y + (h - uk_fh () - D (4)) / 2, g_query[0] ? H2 : H1, 6, 0xE8ECF2, false);
-	}
-}
-
-static void draw_tabs (Canvas &cv)
-{
-	int M = D (12), y = tabs_y (), h = tabs_h (), x = M, right = g_aw - M - D (30);
-	if (g_tab < g_tabFirst) g_tabFirst = g_tab;
-	for (;;)							// (the tab shown kept in view)
-	{
-		int xx = x;
-		for (int i = g_tabFirst; i <= g_tab; i++) xx += tw (TR (g_cats[i].name), 2) + D (40) + D (4);
-		if (xx <= right || g_tabFirst >= g_tab) break;
-		g_tabFirst++;
-	}
-	bool more = false;
-	for (int i = g_tabFirst; i < g_ncats; i++)
-	{
-		const char *n = TR (g_cats[i].name);
-		bool on = i == g_tab;
-		int w = tw (n, 2) + D (40);
-		if (x + w > right) { more = true; break; }
-		if (on) uk_rbox (cv, x, y, w, h + D (2), D (6), 0xFFFFFF, C_PANEL, 255, UK_TL | UK_TR);
-		else
-		{
-			uk_rbox (cv, x, y + D (3), w, h - D (3), D (6), uk_tone (C_SILVER, 150), uk_tone (C_SILVER, 118), 255, UK_TL | UK_TR);
-			uk_rline (cv, x, y + D (3), w, h - D (3), D (6), uk_tone (C_SILVER, 80), 255, UK_TL | UK_TR);
-		}
-		int ty = y + (on ? 0 : D (2)) + (h - uk_fh ()) / 2;
-		int d = D (8);
-		uk_rbox (cv, x + D (12), ty + (uk_fh () - d) / 2, d, d, d / 2, g_cats[i].dot, uk_tone (g_cats[i].dot, 110));
-		text (cv, x + D (26), ty, n, on ? 0x14181E : 0x30343C, 2);
-		g_homeHits.add (x, y, w, h, H_TAB, i);
-		x += w + D (4);
-	}
-	if (more || g_tabFirst > 0)					// the chevron: the next tabs
-	{
-		int cx = g_aw - M - D (24), cy = y + D (4), s = D (24);
-		uk_rbox (cv, cx, cy, s, s, D (5), uk_tone (C_SILVER, 140), uk_tone (C_SILVER, 112));
-		uk_glyph (cv, more ? WKG_CHEV_RIGHT : WKG_CHEV_LEFT, cx + s / 2, cy + s / 2, D (10), 0x30343C);
-		g_homeHits.add (cx, cy, s, s, H_CHEV, more ? 1 : -1);
-	}
-}
-
-static void draw_grid (Canvas &cv)
-{
-	Grid g = grid ();
-	uk_rbox (cv, g.x, g.y, g.w, g.h, D (8), C_PANEL, uk_tone (C_PANEL, 122), 255, UK_BL | UK_BR | (g_tab == g_tabFirst ? 0 : UK_TL) | UK_TR);
-	tab_items ();
-	if (g_focus >= g_nitems) g_focus = g_nitems > 0 ? g_nitems - 1 : 0;
-	int frow = g_focus / g.cols;
-	if (frow < g_gridTop) g_gridTop = frow;
-	if (frow >= g_gridTop + g.rows) g_gridTop = frow - g.rows + 1;
-	int gap = (g.w - g.cols * g.tw) / g.cols;
-	if (g_nitems == 0)
-		text_cfit (cv, g.x, g.y + g.h / 2 - uk_fh (), g.w, ieq (g_cats[g_tab].name, "Recent") ? TR ("The apps you open come here.") : TR ("No apps here."), C_INKDIM);
-	for (int k = g_gridTop * g.cols; k < g_nitems && k < (g_gridTop + g.rows) * g.cols; k++)
-	{
-		int r = k / g.cols - g_gridTop, c = k % g.cols;
-		int x = g.x + gap / 2 + c * (g.tw + gap), y = g.y + D (10) + r * g.th;
-		App &a = g_apps[g_items[k]];
-		bool on = k == g_focus;
-		if (on) uk_hilite (cv, x + D (2), y, g.tw - D (4), g.th - D (4), D (8), true);
-		draw_icon (cv, x + (g.tw - g.icon) / 2, y + D (6), a, g.icon);
-		const char *l = a.applet ? TR (a.label) : a.label;
-		text_cfit (cv, x + D (3), y + D (6) + g.icon + D (4), g.tw - D (6), l, on ? uk_hilite_ink (true) : C_INK, on ? 2 : 0);
-		if (!a.applet && task_of (a.name) >= 0)				// running: a dot under its name
-		{
-			int d = D (5);
-			uk_rbox (cv, x + (g.tw - d) / 2, y + g.th - D (8), d, d, d / 2, on ? 0xFFFFFF : C_ACCENT, on ? 0xFFFFFF : C_ACCENT);
-		}
-		g_homeHits.add (x, y, g.tw, g.th, H_TILE, k);
-	}
-	int total = (g_nitems + g.cols - 1) / g.cols;
-	if (total > g.rows)						// (more rows: a thin bar on the right)
-	{
-		int th = g.h * g.rows / total, ty = g.y + (g.h - th) * g_gridTop / (total - g.rows);
-		uk_rbox (cv, g.x + g.w - D (6), ty + D (4), D (3), th - D (8), D (1), 0xA0A6B0, 0xA0A6B0);
-	}
-}
-
-static void draw_strip (Canvas &cv)
-{
-	if (!strip_shown ()) return;
-	int M = D (12), y = g_ah - strip_h () + D (2);
-	text (cv, M + D (4), y + D (2), TR ("Running"), 0xE8ECF2, 2);
-	static const char *const H[] = { TRN ("Alt+Tab"), TRN ("switch") };
-	{ UkFaceScope f (g_small); hints (cv, M + D (4) + tw (TR ("Running"), 2) + D (14), y + D (1), H, 2, 0xE8ECF2); }
-	int x = M, cy = y + D (24), ch = D (34);
-	if (g_ntasks == 0) { UkFaceScope f (g_small); text (cv, x + D (4), cy + D (8), TR ("No open apps."), 0xB8C0CC); }
-	for (int i = 0; i < g_ntasks; i++)
-	{
-		const char *l = task_label (g_tasks[i]);
-		int w = tw (l) + D (68);
-		if (w > D (180)) w = D (180);
-		if (x + w > g_aw - M) break;
-		bool front = (g_tasks[i].flags & UK_TASK_FRONT) != 0;
-		uk_rbox (cv, x, cy, w, ch, D (7), uk_tone (C_SILVER, 156), uk_tone (C_SILVER, 128));
-		uk_rline (cv, x, cy, w, ch, D (7), front ? C_ACCENT : uk_tone (C_SILVER, 70));
-		icon_of (cv, x + D (8), cy + (ch - D (20)) / 2, g_tasks[i].name, l, D (20));
-		text_fit (cv, x + D (34), cy + (ch - uk_fh ()) / 2, w - D (58), l, 0x202428);
-		uk_glyph (cv, WKG_CLOSE, x + w - D (14), cy + ch / 2, D (8), 0x60666E);
-		g_homeHits.add (x, cy, w - D (26), ch, H_CHIP, i);
-		g_homeHits.add (x + w - D (26), cy, D (26), ch, H_CHIPX, i);
-		x += w + D (8);
-	}
-}
-
-static void draw_results (Canvas &cv)
-{
-	int M = D (12), y0 = tabs_y () - D (4), x = M, w = g_aw - 2 * M, h = g_ah - y0 - M;
-	uk_rbox (cv, x, y0, w, h, D (8), C_PANEL, uk_tone (C_PANEL, 122));
-	int row = D (40), head = D (24);
-	if (g_resSel >= g_nres) g_resSel = g_nres - 1;
-	if (g_resSel < 0) g_resSel = 0;
-	// the rows' places (the group heads between them), the selected one kept in view
-	int Y[MAXRESULTS], yy = 0;
-	for (int i = 0; i < g_nres; i++)
-	{
-		if (i == 0 || g_res[i].kind != g_res[i - 1].kind) yy += head;
-		Y[i] = yy; yy += row;
-	}
-	if (g_resTop > g_resSel) g_resTop = g_resSel;
-	while (g_resTop < g_resSel && Y[g_resSel] + row - Y[g_resTop] + head > h - D (12)) g_resTop++;
-	static const char *const G[] = { TRN ("APPS"), TRN ("SETTINGS"), TRN ("FILES"), TRN ("RUN") };
-	int base = (g_nres > 0 ? Y[g_resTop] : 0) - head - D (2);	// (the top row's group head shown above it)
-	for (int i = g_resTop; i < g_nres; i++)
-	{
-		int ry = y0 + Y[i] - base;
-		if (ry + row > y0 + h - D (4)) break;
-		const Result &r = g_res[i];
-		if (i == g_resTop || r.kind != g_res[i - 1].kind)
-		{
-			UkFaceScope f (g_small);
-			text (cv, x + D (16), ry - head + D (6), TR (G[r.kind]), 0x7A808A, 2);
-		}
-		bool on = i == g_resSel;
-		if (on) uk_hilite (cv, x + D (6), ry, w - D (12), row - D (2), D (6), true);
-		unsigned ink = on ? uk_hilite_ink (true) : 0x14181E, dim = on ? uk_mix (uk_hilite_ink (true), C_ACCENT, 80) : 0x6A707A;
-		int is = D (24), ix = x + D (16), iy = ry + (row - is) / 2;
-		if (r.kind == R_APP || r.kind == R_SETTING) { App &a = g_apps[r.app]; draw_icon (cv, ix, iy, a, is); }
-		else if (r.kind == R_RUN) icon_of (cv, ix, iy, "terminal", "T", is);
-		else
-		{
-			char app[32];
-			if (fa_app_for (r.path, app, sizeof app)) icon_of (cv, ix, iy, app, r.title, is);
-			else icon_of (cv, ix, iy, "fileviewer", r.title, is);
-		}
-		text_fit (cv, ix + is + D (12), ry + D (3), w - is - D (110), r.title, ink, 2);
-		{ UkFaceScope f (g_small); text_fit (cv, ix + is + D (12), ry + D (3) + g_fh, w - is - D (110), r.sub, dim); }
-		if (on) text (cv, x + w - D (16) - tw (TR ("Enter"), 2), ry + (row - uk_fh ()) / 2, TR ("Enter"), ink, 2);
-		g_homeHits.add (x, ry, w, row, H_RESULT, i);
-	}
-}
-
-static void draw_home (void)
-{
-	Canvas &cv = g_hc;
-	g_homeHits.clear ();
-	for (int y = 0; y < g_ah; y++)					// the navy of the desktop, a gradient
-		cv.fillRect (0, y, g_aw, 1, uk_mix (C_NAVY2, C_NAVY1, y * 256 / (g_ah > 1 ? g_ah : 1)));
-	draw_search (cv);
-	if (g_query[0]) draw_results (cv);
-	else { draw_tabs (cv); draw_grid (cv); draw_strip (cv); }
-	present (W_HOME);
-	g_homeDirty = false;
-}
-
-// ---- the launcher's keys and clicks -------------------------------------------------------------------------
-static void query_changed (void)
-{
-	g_resSel = 0; g_resTop = 0;
-	search (g_query);
-	g_homeDirty = true;
-}
-
-static void open_focused (void)
-{
-	if (g_query[0]) { if (g_resSel < g_nres) { Result r = g_res[g_resSel]; g_query[0] = 0; query_changed (); open_result (r); } return; }
-	tab_items ();
-	if (g_focus < g_nitems) open_app (g_apps[g_items[g_focus]].name);
-}
-
-static void set_tab (int t)
-{
-	if (g_ncats == 0) return;
-	g_tab = (t + g_ncats) % g_ncats;
-	g_focus = 0; g_gridTop = 0;
-	g_homeDirty = true;
-}
-
-static void home_key (unsigned long, int ev, long v)
-{
-	if (ev != GUI_EVENT_KEY) return;
-	static bool said;					// (the Pi's kmsg: the keys reach the launcher)
-	if (!said) { said = true; ax_puts ("pocketshell: the launcher gets the keys\n"); }
-	int k = (int) v;
-	unsigned mods = (unsigned) kapi_get_modifiers ();
-	Grid g = grid ();
-	int ql = (int) strlen (g_query);
-	switch (k)
-	{
-	case KEY_ENTER: open_focused (); return;
-	case 0x1b:
-		if (ql) { g_query[0] = 0; query_changed (); }
-		else if (g_ntasks > 0) uk_shell_front (g_tasks[0].id, 1);	// (Home again: back to the app)
-		return;
-	case KEY_BACKSPACE:
-		if (ql) { do ql--; while (ql > 0 && ((unsigned char) g_query[ql] & 0xC0) == 0x80); g_query[ql] = 0; query_changed (); }
-		return;
-	case '\t':
-		if (!ql) set_tab (g_tab + ((mods & MOD_SHIFT) ? -1 : 1));
-		return;
-	case KEY_UP:	if (ql) g_resSel--; else if (g_focus >= g.cols) g_focus -= g.cols; g_homeDirty = true; return;
-	case KEY_DOWN:	if (ql) g_resSel++; else if (g_focus + g.cols < g_nitems) g_focus += g.cols; g_homeDirty = true; return;
-	case KEY_LEFT:	if (!ql) { if (g_focus > 0) g_focus--; else set_tab (g_tab - 1); g_homeDirty = true; } return;
-	case KEY_RIGHT:	if (!ql) { if (g_focus + 1 < g_nitems) g_focus++; else set_tab (g_tab + 1); g_homeDirty = true; } return;
-	case KEY_PGDN:	if (!ql) { g_focus += g.cols * g.rows; if (g_focus >= g_nitems) g_focus = g_nitems - 1; g_homeDirty = true; } return;
-	case KEY_PGUP:	if (!ql) { g_focus -= g.cols * g.rows; if (g_focus < 0) g_focus = 0; g_homeDirty = true; } return;
-	case KEY_HOME:	if (!ql) { g_focus = 0; g_homeDirty = true; } return;
-	case KEY_END:	if (!ql) { g_focus = g_nitems - 1; g_homeDirty = true; } return;
-	}
-	if (k >= 32 && k < 256 && k != 127 && !(mods & MOD_CTRL) && ql < (int) sizeof g_query - 3)	// typing: the search
-	{
-		if (k < 128) g_query[ql++] = (char) k;
-		else { g_query[ql++] = (char) (0xC0 | (k >> 6)); g_query[ql++] = (char) (0x80 | (k & 0x3F)); }	// (Latin-1 -> UTF-8)
-		g_query[ql] = 0;
-		query_changed ();
-	}
-}
-
-static void home_click (int x, int y, bool right)
-{
-	const Hit *h = g_homeHits.at (x, y);
-	if (h == 0) return;
-	switch (h->kind)
-	{
-	case H_TAB: set_tab (h->i); break;
-	case H_CHEV:
-		if (h->i > 0) { if (g_tabFirst + 1 < g_ncats) g_tabFirst++; if (g_tab < g_tabFirst) set_tab (g_tabFirst); }
-		else { g_tabFirst = 0; }
-		g_homeDirty = true;
-		break;
-	case H_TILE:
-		g_focus = h->i; g_homeDirty = true;
-		if (!right) open_focused ();
-		break;
-	case H_CHIP: uk_shell_front (g_tasks[h->i].id, 1); break;
-	case H_CHIPX: uk_win_close (g_tasks[h->i].id); break;
-	case H_RESULT: g_resSel = h->i; open_focused (); break;
-	}
-}
+#include "home.h"
 
 // =========================================================================================================
 // THE OVERLAYS: the switcher, quick settings (one topmost window over the work area, see-through)
@@ -663,19 +358,11 @@ static void switcher_key (int code, unsigned mods)
 }
 
 // ---- quick settings and the notifications --------------------------------------------------------------------
-struct Note { char title[64]; char text[200]; char action[124]; unsigned at; };
-#define MAXNOTES 20
-static Note g_notes[MAXNOTES];				// the newest first
-static int g_nnotes;
 static bool g_dnd;					// do not disturb: no toast
 static int g_vol = 7, g_mute;
 static bool g_volDrag;
 enum { H_WIFI = 40, H_DND, H_SOUND, H_MODE, H_VOL, H_CLEAR, H_NOTE, H_CONTROL, H_LOCK, H_POWER, H_PANEL };
 static int g_volX0, g_volX1;
-
-static const char *const WD[] = { TRN ("Sunday"), TRN ("Monday"), TRN ("Tuesday"), TRN ("Wednesday"), TRN ("Thursday"), TRN ("Friday"), TRN ("Saturday") };
-static const char *const MO[] = { TRN ("January"), TRN ("February"), TRN ("March"), TRN ("April"), TRN ("May"), TRN ("June"), TRN ("July"),
-				  TRN ("August"), TRN ("September"), TRN ("October"), TRN ("November"), TRN ("December") };
 
 static void num2 (char *o, int v) { o[0] = (char) ('0' + v / 10 % 10); o[1] = (char) ('0' + v % 10); o[2] = 0; }
 
@@ -781,13 +468,7 @@ static void draw_quick (void)
 		Note &n = g_notes[i];
 		uk_rbox (cv, x, y, w, D (50), D (8), 0xFFFFFF, 0xF8F8FA);
 		uk_rline (cv, x, y, w, D (50), D (8), 0xC4C9D2);
-		const char *app = n.action[0] ? n.action : n.title;
-		char an[32]; int k = 0;
-		while (app[k] && app[k] != ' ' && k < 31) { an[k] = app[k]; k++; }
-		an[k] = 0;
-		App *a = 0;
-		for (int j = 0; j < g_napps && a == 0; j++) if (ieq (g_apps[j].label, n.title) || ieq (g_apps[j].name, an)) a = &g_apps[j];
-		icon_of (cv, x + D (8), y + D (11), a ? a->name : "", n.title, D (28));
+		icon_of (cv, x + D (8), y + D (11), note_app (n), n.title, D (28));
 		char t[16]; ago (n.at, t);
 		{ UkFaceScope f (g_small); text (cv, x + w - D (10) - tw (t), y + D (6), t, 0x6A707A); }
 		text_fit (cv, x + D (46), y + D (5), w - D (100), n.title, 0x14181E, 2);
@@ -836,6 +517,25 @@ static void vol_at (int x)
 	g_overDirty = true;
 }
 
+// A notification clicked (quick settings, the Today column, the toast): taken off the list, its action run.
+static void note_open (int i)
+{
+	if (i < 0 || i >= g_nnotes) return;
+	Note n = g_notes[i];
+	for (int k = i; k + 1 < g_nnotes; k++) g_notes[k] = g_notes[k + 1];
+	g_nnotes--;
+	g_overDirty = true; g_homeDirty = true;
+	if (n.action[0])
+	{
+		char app[48]; int k = 0; const char *a = n.action;
+		while (*a && *a != ' ' && k < 47) app[k++] = *a++;
+		app[k] = 0;
+		while (*a == ' ') a++;
+		over_hide ();
+		lx_launch (app, a);
+	}
+}
+
 static void quick_click (const Hit *h, int x)
 {
 	switch (h->kind)
@@ -846,24 +546,8 @@ static void quick_click (const Hit *h, int x)
 	case H_SOUND: { int r = kapi_sound_volume (-1, g_mute ? 0 : 1); g_mute = (r & 0x100) ? 1 : 0; volume_save (g_vol, g_mute); g_overDirty = true; break; }
 	case H_MODE: over_hide (); open_app ("modeconf"); break;
 	case H_VOL: g_volDrag = true; vol_at (x); break;
-	case H_CLEAR: g_nnotes = 0; g_overDirty = true; break;
-	case H_NOTE:
-		{
-			Note n = g_notes[h->i];
-			for (int i = h->i; i + 1 < g_nnotes; i++) g_notes[i] = g_notes[i + 1];
-			g_nnotes--;
-			g_overDirty = true;
-			if (n.action[0])
-			{
-				char app[48]; int k = 0; const char *a = n.action;
-				while (*a && *a != ' ' && k < 47) app[k++] = *a++;
-				app[k] = 0;
-				while (*a == ' ') a++;
-				over_hide ();
-				lx_launch (app, a);
-			}
-			break;
-		}
+	case H_CLEAR: g_nnotes = 0; g_overDirty = true; g_homeDirty = true; break;
+	case H_NOTE: note_open (h->i); break;
 	case H_CONTROL: over_hide (); open_app ("control"); break;
 	case H_LOCK: over_hide (); lx_launch ("lock", 0); break;
 	case H_POWER: over_hide (); lx_launch ("shutdown", 0); break;
@@ -963,38 +647,92 @@ static void note_add (const char *buf, int n)
 	i++; k = 0;
 	for (; i < n && buf[i] && k < (int) sizeof q.action - 1; i++) q.action[k++] = buf[i];
 	q.at = kapi_get_ticks ();
+	{ int hh = 0, mi = 0; kapi_get_datetime (0, 0, 0, &hh, &mi, 0); hm_text (q.hm, hh * 60 + mi); }
 	if (g_nnotes < MAXNOTES) g_nnotes++;
 	for (int j = g_nnotes - 1; j > 0; j--) g_notes[j] = g_notes[j - 1];
 	g_notes[0] = q;
+	g_homeDirty = true;					// (the Today column)
 	if (g_over == OV_QUICK) g_overDirty = true;
+	else if (g_home && lay ().side) {}			// (home with the Today column: shown there, no toast)
 	else if (!g_dnd) toast_show ();
 }
 
 // =========================================================================================================
 // THE SHELL'S EVENTS, KEYS, MESSAGES
 // =========================================================================================================
+// The screen, the work area: PocketUI's answer (uk_win_server), else the kernel's screen.
 static void area_read (void)
 {
 	struct uk_win_server_info si;
 	memset (&si, 0, sizeof si);
 	si.size = sizeof si;
-	uk_win_server (&si);
-	if (si.screen_w > 0) { g_sw = si.screen_w; g_sh = si.screen_h; }
+	int sw = 0, sh = 0;
+	kapi_screen_size (&sw, &sh);
+	if (uk_win_server (&si) == 1 && si.screen_w > 0 && si.screen_h > 0) { sw = si.screen_w; sh = si.screen_h; }
+	if (sw > 0 && sh > 0) { g_sw = sw; g_sh = sh; }
 	if (si.work_w > 0 && si.work_h > 0) { g_ax = si.work_x; g_ay = si.work_y; g_aw = si.work_w; g_ah = si.work_h; }
 	if (g_aw > g_sw) g_aw = g_sw;
 	if (g_ah > g_sh) g_ah = g_sh;
 }
 
-static void relayout (void)
+static int scale_of (void);
+static int g_capW, g_capH;				// the home's and the overlay's canvases (the screen they were made for)
+static int g_lastSW, g_lastSH, g_lastAX, g_lastAY, g_lastAW, g_lastAH;
+
+// The screen, the work area and the scale followed (the Pi's report, 2026-10-08: after a live switch from the desktop
+// the shell was laid out small -- its sizes taken once at its start): read again at PocketUI's AREA event, a display
+// resize and every second at home; a bigger screen grows the canvases, another scale opens the faces again; the
+// home laid out again. -> true: something changed.
+static bool screen_sync (bool force)
 {
 	area_read ();
+	bool changed = force || g_sw != g_lastSW || g_sh != g_lastSH || g_ax != g_lastAX || g_ay != g_lastAY || g_aw != g_lastAW || g_ah != g_lastAH;
+	if (g_sw > g_capW || g_sh > g_capH)			// (a bigger screen: the canvases its size)
+	{
+		int w = g_sw > g_capW ? g_sw : g_capW, h = g_sh > g_capH ? g_sh : g_capH, st = w;
+		uk_win_select (W_HOME);
+		unsigned *fb = uk_win_resize2 (w, h, &st);
+		if (fb) { g_hc.adopt (fb, w, h, st); g_homeStride = st; }
+		uk_win_select (W_OVER);
+		fb = uk_win_resize2 (w, h, &st);
+		if (fb) { g_oc.adopt (fb, w, h, st); g_overStride = st; for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) fb[y * st + x] = CLEAR; }
+		uk_win_select (0);
+		if (fb) { g_capW = w; g_capH = h; }
+		changed = true;
+	}
+	int s = scale_of ();
+	if (s != S)						// another scale: the faces at their new sizes, the toast's window
+	{
+		S = s;
+		if (ft_uikit_install ("DejaVu Sans", D (13))) g_fh = uk_fh ();
+		faces_rescale ();
+		int st = D (340);
+		uk_win_select (W_TOAST);
+		unsigned *tb = uk_win_resize2 (D (340), D (80), &st);
+		if (tb) { for (int i = 0; i < st * D (80); i++) tb[i] = CLEAR; g_tc.adopt (tb, D (340), D (80), st); }
+		uk_win_select (0);
+		for (int i = 0; i < g_napps; i++) { delete [] g_apps[i].scaled; g_apps[i].scaled = 0; g_apps[i].ss = 0; }
+		g_runSig = 0;
+		changed = true;
+	}
+	if (!changed) return false;
+	g_lastSW = g_sw; g_lastSH = g_sh; g_lastAX = g_ax; g_lastAY = g_ay; g_lastAW = g_aw; g_lastAH = g_ah;
 	uk_win_select (W_HOME);
+	uk_win_move (g_ax, g_ay);
 	uk_win_resize (g_aw, g_ah);
 	uk_win_select (0);
 	g_hc.adopt (g_hc.px, g_aw, g_ah, g_homeStride);
 	if (g_over != OV_NONE) over_show (g_over);
 	g_homeDirty = true;
+	char m[160]; int k = 0;
+	lx_cat (m, sizeof m, &k, "pocketshell: the screen "); num_cat (m, sizeof m, &k, g_sw); lx_cat (m, sizeof m, &k, " x "); num_cat (m, sizeof m, &k, g_sh);
+	lx_cat (m, sizeof m, &k, ", the work area "); num_cat (m, sizeof m, &k, g_aw); lx_cat (m, sizeof m, &k, " x "); num_cat (m, sizeof m, &k, g_ah);
+	lx_cat (m, sizeof m, &k, ", the scale "); num_cat (m, sizeof m, &k, S); lx_cat (m, sizeof m, &k, "%\n");
+	ax_puts (m);
+	return true;
 }
+
+static void relayout (void) { screen_sync (true); }
 
 static void go_home (bool search_)
 {
@@ -1055,16 +793,7 @@ static void ptr (unsigned long win, int ev, long v)
 {
 	if (ev == GUI_EVENT_DISPLAY_RESIZE)
 	{
-		int w = GUI_DISPLAY_W (v), h = GUI_DISPLAY_H (v), st = w;
-		g_sw = w; g_sh = h;
-		uk_win_select (W_HOME);
-		unsigned *fb = uk_win_resize2 (w, h, &st);
-		if (fb) { g_hc.adopt (fb, w, h, st); g_homeStride = st; }
-		uk_win_select (W_OVER);
-		fb = uk_win_resize2 (w, h, &st);
-		if (fb) { g_oc.adopt (fb, w, h, st); g_overStride = st; }
-		uk_win_select (0);
-		relayout ();
+		relayout ();					// (the screen's size: PocketUI's, the canvases grown when it is bigger)
 		return;
 	}
 	int x = GUI_PTR_X (v), y = GUI_PTR_Y (v), c = GUI_PTR_CHANGED (v);
@@ -1073,9 +802,10 @@ static void ptr (unsigned long win, int ev, long v)
 		if (ev == GUI_EVENT_PTR_DOWN && (c & 3)) home_click (x, y, (c & 2) != 0);
 		if (ev == GUI_EVENT_PTR_WHEEL && !g_query[0])
 		{
-			Grid g = grid ();
+			tab_items ();
+			Card g = card (lay ());
 			g_focus -= GUI_PTR_WHEEL (v) * g.cols;
-			if (g_focus >= g_nitems) g_focus = g_nitems - 1;
+			if (g_focus >= g.total) g_focus = g.total - 1;
 			if (g_focus < 0) g_focus = 0;
 			g_homeDirty = true;
 		}
@@ -1154,8 +884,7 @@ int main (void)
 	uikit::init ();
 	S = scale_of ();
 	if (ft_uikit_install ("DejaVu Sans", D (13))) g_fh = uk_fh ();
-	g_big = new FtTextFace; if (!g_big->open ("DejaVu Sans", D (16))) { delete g_big; g_big = 0; }
-	g_small = new FtTextFace; if (!g_small->open ("DejaVu Sans", D (11))) { delete g_small; g_small = 0; }
+	g_big = F (16); g_small = F (11);
 	uk_lang_init ();
 	colours ();
 
@@ -1178,6 +907,7 @@ int main (void)
 	g_overStride = g_sw;
 	g_oc.adopt (ob, g_aw, g_ah, g_overStride);
 	g_tc.adopt (tb, D (340), D (80));
+	g_capW = g_sw; g_capH = g_sh;
 	uk_win_select (W_OVER); uk_win_on_pointer (ptr); uk_win_alpha (0); uk_win_move (-g_sw - 50, g_ay); uk_win_present ();
 	uk_win_select (W_TOAST); uk_win_on_pointer (ptr); uk_win_alpha (0); uk_win_move (-g_sw - 50, g_ay); uk_win_present ();
 	uk_win_select (0);
@@ -1186,7 +916,10 @@ int main (void)
 	if (!kapi_ipc_register (NOTIFY_SERVICE)) ax_puts ("pocketshell: another program serves the notifications (notifyd)\n");
 	scan_apps ();
 	recent_load ();
+	agenda_load ();
+	docs_load ();
 	tab_items ();
+	screen_sync (true);
 	static const int K[] = {
 		UK_SHELL_KEY (MOD_ALT, '\t'), UK_SHELL_KEY (MOD_ALT | MOD_SHIFT, '\t'), UK_SHELL_KEY (0, UK_SHELL_KEY_SUPER),
 		UK_SHELL_KEY (MOD_ALT, KEY_F1), UK_SHELL_KEY (MOD_CTRL, 0x1b), UK_SHELL_KEY (UK_SHELL_MOD_SUPER, 'n'),
@@ -1205,7 +938,15 @@ int main (void)
 		toast_tick ();
 		int mi = 0;
 		kapi_get_datetime (0, 0, 0, 0, &mi, 0);
-		if (mi != lastMin) { lastMin = mi; if (g_over == OV_QUICK) g_overDirty = true; }
+		if (mi != lastMin) { lastMin = mi; if (g_over == OV_QUICK) g_overDirty = true; g_homeDirty = true; }	// (the Today line's "in 25 min")
+		static unsigned lastSync;
+		if (kapi_get_ticks () - lastSync >= 100)			// every second: the screen, the agenda, the documents
+		{
+			lastSync = kapi_get_ticks ();
+			screen_sync (false);
+			if (agenda_load ()) g_homeDirty = true;
+			if (g_home && g_over == OV_NONE) { int n = g_ndocs; docs_load (); if (n != g_ndocs) g_homeDirty = true; }
+		}
 		if (kapi_get_ticks () - lastScan > 1000 && g_home && g_over == OV_NONE)	// (an app installed meanwhile: every 10 s at home)
 		{
 			lastScan = kapi_get_ticks ();

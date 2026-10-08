@@ -261,6 +261,9 @@ October, the agenda, the notifications of Telegram, Mail and Packages).*
 
 *The real pocketshell today beside v2: the launcher, the search, and 1920 × 1080.*
 
+**Built** (2026-10-08, `pocketshell`: docs/HANDOFF.md; the real pictures `docs/compact-shell/real/pocketshell-*.png`):
+the menu bar's Onyx is the Home button in pocket; the documents are SystemKit's `recent.h`.
+
 What v2 asks of the code is small: the shell's drawing (plates, chips, shadows: UIKit's existing rounded
 boxes and gradients, a blurred shadow drawn once per layout), `EL_OP_SHOT` thumbnails (already used by the
 switcher), the Agenda's next event and the notifications (SystemKit), and a recent-documents list.

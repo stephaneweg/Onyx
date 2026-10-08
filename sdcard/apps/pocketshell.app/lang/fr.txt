@@ -2,14 +2,11 @@
 running	ouverte
 Control Panel	Panneau de configuration
 run it in a Terminal (a /bin command)	l'exécuter dans un Terminal (une commande de /bin)
-Type to find an app, a file, a setting	Chercher une app, un fichier, un réglage
 Tab	Tab
 category	catégorie
-Arrows	Flèches
 choose	choisir
 Enter	Entrée
 open	ouvrir
-Up+Down	Haut+Bas
 Up	Haut
 Down	Bas
 Esc	Échap
@@ -90,3 +87,45 @@ Printers	Imprimantes
 Gamepad	Manette
 Packages	Paquets
 App Settings	Réglages des apps
+Search apps, files and settings	Chercher des apps, des fichiers, des réglages
+today	aujourd'hui
+yesterday	hier
+tomorrow	demain
+in	dans
+days	jours
+File	Fichier
+opened last	ouvertes en dernier
+app	app
+apps	apps
+Documents	Documents
+the files opened last, with the app that opens them	les fichiers ouverts en dernier, avec l'app qui les ouvre
+AGENDA	AGENDA
+Nothing planned.	Rien de prévu.
+NOTIFICATIONS	NOTIFICATIONS
+bring it	l'afficher
+applets	modules
+All	Tout
+Apps	Apps
+Files	Fichiers
+Run "%s" in a Terminal	Exécuter « %s » dans un Terminal
+next group	groupe suivant
+Nothing found: Enter runs it as a command.	Rien trouvé : Entrée l'exécute comme une commande.
+BEST MATCH	MEILLEUR RÉSULTAT
+Sun	dim.
+Mon	lun.
+Tue	mar.
+Wed	mer.
+Thu	jeu.
+Fri	ven.
+Sat	sam.
+Jan	janv.
+Feb	févr.
+Mar	mars
+Apr	avr.
+Jun	juin
+Jul	juil.
+Aug	août
+Sep	sept.
+Oct	oct.
+Nov	nov.
+Dec	déc.

@@ -4,6 +4,61 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## The pocket launcher v2; Onyx is Home in pocket; the shell's scale after a switch; full screen in Onyx Remote (2026-10-08): built, tested on the PC, NOT yet on the Pi, committed (not pushed), not published
+
+- **pocketshell's launcher v2** (`user/Apps/pocketshell/home.h` new -- the launcher, out of `main.cpp`; `look.h` new --
+  anti-aliased rounded boxes of any radius by their signed distance, outlines, soft shadows / glows, pictures clipped
+  to a rounded box, the match in a text, integer only; `today.h` new -- the agenda): as the approved mock-ups
+  (`docs/COMPACT-SHELL-STUDY.md` §6.2, `docs/compact-shell/mockups/pocket-home-v2*.png`). The round search field with
+  its shadow; **Today** beside it (the Calendar's next appointment from `SD:/apps/calendar.app/agenda.txt`, hidden when
+  there is none; under the field below 700 lp) becoming a **Today column** at lw >= 1100 (the date, the agenda, the
+  notifications -- no toast at home there); the categories as chips; one raised card with its header, plates of 60 lp,
+  the focus an accent ring + glow and the label in a pill; **the Running strip with window thumbnails**
+  (`uk_shell_thumb`, the window's top; icon + name on a dark foot, a close button; the key hints at its right end, the
+  first ones dropped when they do not fit); Down from the card's last row into the strip (Enter brings the app, Del
+  closes it, Up back). **Recent** holds **Documents** when a row fits (1280 x 720 and up, portrait): SystemKit's new
+  **`recent.h`** (`recent_doc_add`, `recent_docs`, `SD:/etc/recent-docs`; SystemKit's `fa_open` notes each file it opens
+  with its app -- the File Viewer's double click, the launcher; abi 91, 92 appended) -- an app opening a file through
+  its own dialog does not note it yet (a later step: UIKit's file dialog, or each app). **The search**: the chips are
+  the kinds with their counts (a click filters), the best match a card at the left (the score: the name begins, a word
+  begins, contains; an app opened last first), the others grouped (apps -- two rows on a tall card --, the settings by
+  their help lines now in the system's language from the Control Panel's catalogue, the files with their app, folder,
+  size), the match in the accent, "Run "x" in a Terminal" on the bottom line; Tab the next group. The accent is the
+  theme's (`C_ACCENT`), as everywhere. The Control Panel is now found by the search (hidden from the categories).
+- **Menu bar, pocket: "Onyx" is the Home button** (`user/Apps/menubar/main.cpp`: a gem + "Onyx", lit while the
+  launcher shows; a click sends `SHELL_MSG_HOME` -- pocketshell's toggle: home, again the app back; no Onyx menu in
+  pocket -- its Home / Open Apps / Quick Settings items removed with their French lines; quick settings stay on the
+  clock's click and Super+N). The desktop's bar and Onyx menu: pixel-identical (server_sim compares them with HEAD's).
+- **The Pi's report "after a live switch desktop -> pocket the shell is small"** (right after a boot in pocket): the
+  shell took its screen, work area and scale ONCE at its start; started by `/bin/session` while PocketUI comes up,
+  `uk_win_server` may not answer yet and the port falls back on `kapi_screen_size` (and the canvases were made for that
+  size). Now `screen_sync` (main.cpp) reads them again at `UK_SHELL_EV_AREA`, a display resize and every second: a
+  bigger screen grows the canvases (`uk_win_resize2`), another scale reopens the faces and the toast's window, the home
+  is laid out again; each change logged **`pocketshell: the screen W x H, the work area W x H, the scale S%`** -- on the
+  Pi, after a switch, kmsg must end with the right line. Reproduced on the PC: server_sim `SIM_SERVER_LATE=3` (the
+  first PK_OP_SERVER refused) + `SIM_SCREEN_STALE=800x480`: HEAD's pocketshell stays 800 x 480, the new one 1920 x 1050
+  at 150% (`shell-late-1080`). If it still happens on the Pi, the kmsg line says what PocketUI answered.
+- **Onyx Remote showed full-screen programs as normal framed windows** (the emulators and Arkanoid alike): the
+  servers were right (the list: 0,0, the screen's size, no frame, `KAPI_WIN_FULLSCREEN` -- now checked under Elegant
+  too, server_sim `elegant-fullscreen`; the BASIC runtime takes the full screen through `uk_win_fullscreen_begin`, the
+  emulators' path), but the Windows client makes a window in the FULLSCREEN state a NATIVE framed one
+  (`RemoteWindow.Apply`). `rdpd` (separate commit) now tells the full-screen window alone (the Pi shows nothing else),
+  as a plain frameless window that takes the keys (its state without FULLSCREEN); the others come back after. No
+  change to `OnyxRemote.exe`. `run_rdpd_test.sh`: MOCK_POCKET=3 (PocketUI, a BASIC window) and 4 (the desktop, an
+  emulator's framed window).
+- **Tests (PC)**: `tools/tests/server_sim/run.sh`: 345 checks + shell-strip-keys, shell-onyx (SHELL_MSG_HOME twice:
+  home, the app back), shell-late-1080, bar-onyx (the click asks the shell twice, no menu), the desktop menu bar
+  identical, elegant-fullscreen: all passed; `adaptive.sh` 115, `session/run.sh` all; `run_rdpd_test.sh` 0 failed;
+  `check.py pocketshell menubar` 0 missing; `make -j8` no new warning; `check_stubs.py`: 215 programs, 0 wrong. Pictures
+  (`SHELL_PNG=docs/compact-shell/real sh tools/tests/server_sim/run.sh`): `docs/compact-shell/real/pocketshell-*.png`
+  (v2 at 800 x 480, 640, 720, 1920 x 1080, portrait, French; the switcher and quick settings as before).
+- **Pi checklist**: stage `SD:/apps/pocketshell.app`, `SD:/apps/menubar.app`, `SD:/lib/systemkit.so`, `SD:/bin/rdpd`.
+  1. Boot in pocket at 1920 x 1080: the launcher as `pocketshell-home-1080.png`; kmsg `pocketshell: the screen 1920 x
+     1080 ... the scale 150%`. 2. Desktop -> pocket by the Mode applet: the same size (the kmsg line). 3. The menu bar's
+     Onyx: the home (lit), again: the app back. 4. A file opened from the File Viewer shows in Recent's Documents. 5. An
+     emulator / Arkanoid in full screen through Onyx Remote: one frameless PC window, the keys reach it; given back: the
+     windows return.
+
 ## PocketUI phase P6: the adaptive widgets in UIKit; the Control Panel and the File Viewer (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
 
 The decided design is `docs/POCKETUI-TECH-STUDY.md` §6.3–6.14, §9 (P6) and `docs/COMPACT-SHELL-STUDY.md` §6.11 (the

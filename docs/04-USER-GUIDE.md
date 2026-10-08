@@ -641,9 +641,11 @@ With **`shell=pocket`** in `SD:/etc/system.ini` (§3; the Control Panel's **Mode
 starts **PocketUI** (`SD:/bin/pocketui`) instead of Elegant: the interface of small screens (an 800 × 480 display, a
 handheld, a 7-inch panel), **one app at a time**, as on a phone. Its parts:
 
-- **the menu bar** at the top, as on the desktop: the Onyx menu, the front app's name and menus, the status icons,
-  the time. In pocket its **Onyx** menu starts with **Home**, **Open Apps** and **Quick Settings**, and a click on
-  the **time** opens quick settings (on the desktop: the calendar);
+- **the menu bar** at the top, as on the desktop: the front app's name and menus, the status icons, the time. In
+  pocket **Onyx** is the **Home button** (its gem and its name, lit blue while the launcher shows): a click shows the
+  launcher, the app in front going behind (as Super does); a second click brings the app back. There is no Onyx menu
+  in pocket (the launcher has the apps, quick settings Lock and Power); a click on the **time** opens quick settings
+  (on the desktop: the calendar; the desktop's Onyx menu is unchanged);
 - **the apps full screen**: every app's window fills the screen under the menu bar, without a frame, whatever its
   size; an app whose window cannot be resized (a game, a demo) is shown in the middle of the screen on its own
   background colour, until it is adapted; a window too big for the screen that cannot shrink (Setup's 800 × 600 on
@@ -658,25 +660,39 @@ handheld, a 7-inch panel), **one app at a time**, as on a phone. Its parts:
 - **the launcher (Home)**, behind every app: what you see when no app is in front;
 - **the task switcher** and **quick settings**, over the app.
 
-**The launcher.** A search field at the top (with its key hints on a wide screen); the **category tabs** — *Recent*
-(the apps opened last, kept in `SD:/etc/pocket/recent`), the categories of the apps in the dock's order (`SD:/etc/dock.ini`:
-the Control Panel's Panel applet sets it) and *Settings* (the Control Panel's applets: one opens the **Control Panel
-full screen** on that applet — a Control Panel already open shows it); the
-**apps** of the tab, a dot under a running one; on a landscape screen tall enough, the **Running** strip — the open
-apps, a click brings one to the front, its × closes it. **Typing searches** the apps, the settings (their names
-and lines of help), the files of `SD:/docs`, `SD:/Notes` and `SD:/home`, and offers the text as a command to run
-in a Terminal; Up / Down choose, Enter opens, Esc clears. Opening a running app brings it to the front.
+**The launcher.** At the top a round **search field** and, beside it, **Today**: the Calendar's next appointment
+(“Mon 28 Sep | 14:00 Team call — in 1 h 26”; read from `SD:/apps/calendar.app/agenda.txt`, which the Calendar
+writes; a click opens the Calendar; nothing planned: the line is not shown). On a wide screen (1920 × 1080) Today
+becomes a **column at the right**: the date, the day's agenda (the next appointment in blue, the past ones grey, the
+next days' after them) and the **notifications** (a click runs one's action). Under the search field the
+**categories as chips**: *Recent* (the apps opened last, kept in `SD:/etc/pocket/recent`), the categories of the apps
+in the dock's order (`SD:/etc/dock.ini`: the Control Panel's Panel applet sets it) and *Settings* (the Control
+Panel's applets: one opens the **Control Panel full screen** on that applet — a Control Panel already open shows it);
+more than fit scroll (the chevron). Then **one card** with the category's name and how many apps it has, the apps on
+plates, a blue dot under a running one; the keyboard's focus is a blue ring with a glow, the name in a blue pill. In
+*Recent*, when there is room (1280 × 720 and more, portrait), the card also holds **Documents**: the files opened last
+(`SD:/etc/recent-docs`, which SystemKit keeps: every file opened through its app — the File Viewer's double click, the
+launcher's search — is noted), each with the icon of the app that opens it, its folder and when. At the bottom the
+**Running** strip: the open apps as **pictures of their windows**, the icon and the name on a dark foot — a click
+brings one to the front, its × closes it — and the key hints at the line's right end.
+
+**Typing searches**: the field takes the width, the chips become the kinds of results with their counts (*All*,
+*Apps*, *Settings*, *Files*: a click shows one kind), the **best match** is a card at the left with an Open button
+(Enter), the others are grouped — the apps, the settings (by their names and their lines of help, in the system's
+language), the files of `SD:/docs`, `SD:/Notes` and `SD:/home` (their app, folder and size) — with the letters typed
+in blue; the bottom line runs the text as a command in a Terminal. Up / Down choose, Tab goes to the next group, Enter
+opens, Esc clears. Opening a running app brings it to the front.
 
 ![](compact-shell/real/pocketshell-home-800.png)
 
 *The launcher at 800 × 480 (the real pocketshell, the real menu bar and PocketUI, run on the PC:
-`tools/tests/server_sim/run.sh`).*
+`tools/tests/server_sim/run.sh`): Today beside the search field, the chips, the card, the Running strip.*
 
 ![](compact-shell/real/pocketshell-search-800.png)
 
-*Typing on the launcher: the apps, the settings, the files and the text as a command.*
+*Typing on the launcher: the best match, the apps, the settings, the files and the text as a command.*
 
-**The task switcher** (Alt+Tab, Onyx > Open Apps): the open apps as cards with their pictures, the most recent first
+**The task switcher** (Alt+Tab): the open apps as cards with their pictures, the most recent first
 (the one in front, "now", on the left), the next one chosen. Alt+Tab again (or →, Tab) chooses the next one, Shift+Tab
 (or ←) the one before; **releasing Alt switches** — opened from the menu: Enter or a click; **Del** (or the chosen
 card's ×) closes the app; Esc (or a click beside the cards) stays.
@@ -685,11 +701,12 @@ card's ×) closes the app; Esc (or a click beside the cards) stays.
 
 *Alt+Tab: the open apps, their pictures from PocketUI (no app redraws for the switcher).*
 
-**Quick settings** (Super+N, a click on the time, Onyx > Quick Settings): the date and the time; Wi-Fi (its state;
+**Quick settings** (Super+N, a click on the time): the date and the time; Wi-Fi (its state;
 a click: the Wi-Fi menu), Do not disturb (no notification's bubble while it is on), Sound (mute), Mode (the Control Panel
 full screen on its Mode applet); the volume; **the notifications** — in pocket the pocket shell receives them (no `notifyd`): each one shows
 for a few seconds as a bubble under the menu bar, then waits here, the newest first (a click runs its action and
-removes it; Clear all); the Control Panel, Lock and Power. Esc or a click beside the panel closes it.
+removes it; Clear all) — on the launcher at 1920 × 1080 no bubble: its Today column shows them; the Control Panel,
+Lock and Power. Esc or a click beside the panel closes it.
 
 ![](compact-shell/real/pocketshell-quick-800.png)
 
@@ -700,23 +717,26 @@ its keys):
 
 | Keys | What |
 |---|---|
-| **Super** (the Windows key, alone), **Alt+F1**, **Ctrl+Esc** | Home; again: back to the app |
+| **Super** (the Windows key, alone), **Alt+F1**, **Ctrl+Esc**, a click on **Onyx** | Home; again: back to the app |
 | **Alt+Tab** / **Alt+Shift+Tab** | the switcher (release Alt to switch; Del closes the chosen app; Esc stays) |
 | **Super+N** | quick settings and the notifications |
 | **Super+Space** | the launcher, the search emptied |
-| on the launcher: typing, Up / Down, Enter, Esc | search, choose, open, clear (Esc on an empty search: back to the app) |
-| on the launcher: Tab / Shift+Tab, arrows, PgUp / PgDn, Home / End | the tabs, the apps |
+| on the launcher: typing, Up / Down, Tab, Enter, Esc | search, choose, the next group, open, clear (Esc on an empty search: back to the app) |
+| on the launcher: Tab / Shift+Tab, arrows, PgUp / PgDn, Home / End | the categories, the apps (and in Recent the documents) |
+| on the launcher: Down from the card's last row | the Running strip: ← → choose, Enter brings the app, Del closes it, Up back |
 
 **The size of things.** The launcher, the switcher and quick settings are drawn at a **scale**: `scale = 1`, `1.5`
 or `2` in `SD:/etc/theme.txt`, else from the screen (1.5 from a 1080-line screen, 2 from 1800 lines). Their layout
-follows the screen: the number of columns of apps, the hints beside the search field (a wide screen), the Running
-strip (landscape and tall enough), the switcher as a row of cards (landscape) or a column (portrait), the quick
-settings panel's width — 800 × 480, 1280 × 720, 1920 × 1080 and portrait 480 × 800 alike. (The apps themselves
-and the menu bar are not scaled yet.)
+follows the screen: the number of columns of apps, Today beside the search field (under it in portrait) or as a
+column (1920 × 1080), the Documents of Recent (when there is room), the hints of the Running strip (those that fit),
+the switcher as a row of cards (landscape) or a column (portrait), the quick settings panel's width — 640 × 480,
+800 × 480, 1280 × 720, 1920 × 1080 and portrait 480 × 800 alike; the screen and the scale are read again when PocketUI
+says the work area changed and every second (after a switch from the desktop the launcher takes the screen's real
+size as soon as PocketUI gives it). (The apps themselves and the menu bar are not scaled yet.)
 
 ![](compact-shell/real/pocketshell-home-1080.png)
 
-*The launcher at 1920 × 1080 (scale 1.5).*
+*The launcher at 1920 × 1080 (scale 1.5): Recent with the Documents, the Today column (the agenda, the notifications).*
 
 ![](compact-shell/real/pocketshell-switcher-portrait.png)
 

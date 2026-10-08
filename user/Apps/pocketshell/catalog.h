@@ -17,8 +17,9 @@ struct App
 	char name[32];			// its folder: SD:/apps/<name>.app
 	char label[40];			// app.txt's name
 	char cat[24];			// app.txt's category ("Other": none)
-	char text[64];			// (an applet: its line of help)
+	char text[128];			// (an applet: its line of help, in the language)
 	bool applet;			// a Control Panel applet (the Settings tab)
+	bool hidden;			// found by the search only (the Control Panel: its applets have the Settings tab)
 	unsigned *icon; int iw, ih;	// icon.bmp (read the first time it is drawn)
 	bool tried;
 	unsigned *scaled; int ss;	// ... scaled to ss x ss (0xTTRRGGBB)
@@ -72,6 +73,31 @@ static void app_icon (App &a, int s)		// its icon at s x s (read once, scaled ag
 	a.scaled = new unsigned[s * s];
 	a.ss = s;
 	if (a.icon == 0 || a.iw <= 0 || a.ih <= 0) { for (int i = 0; i < s * s; i++) a.scaled[i] = 0xFF000000u; return; }
+	if (s > a.iw)						// enlarged: bilinear, the see-through pixels (magenta) left out
+	{
+		for (int j = 0; j < s; j++)
+			for (int i = 0; i < s; i++)
+			{
+				int fx = ((2 * i + 1) * a.iw * 128) / s - 128, fy = ((2 * j + 1) * a.ih * 128) / s - 128;	// (1/256 px)
+				if (fx < 0) fx = 0;
+				if (fy < 0) fy = 0;
+				int x0 = fx >> 8, y0 = fy >> 8, wx = fx & 255, wy = fy & 255;
+				unsigned r = 0, g = 0, b = 0, wsum = 0;
+				for (int k = 0; k < 4; k++)
+				{
+					int x = x0 + (k & 1), y = y0 + (k >> 1);
+					if (x >= a.iw) x = a.iw - 1;
+					if (y >= a.ih) y = a.ih - 1;
+					unsigned w = (unsigned) (((k & 1) ? wx : 256 - wx) * ((k >> 1) ? wy : 256 - wy));
+					unsigned c = a.icon[y * a.iw + x] & 0xFFFFFF;
+					if (c == 0xFF00FF || w == 0) continue;
+					r += ((c >> 16) & 255) * w; g += ((c >> 8) & 255) * w; b += (c & 255) * w; wsum += w;
+				}
+				unsigned op = wsum * 255 / 65536;
+				a.scaled[j * s + i] = wsum == 0 ? 0xFF000000u : ((255 - op) << 24) | ((r / wsum) << 16) | ((g / wsum) << 8) | (b / wsum);
+			}
+		return;
+	}
 	// 4 x 4 samples a pixel: the colour of the opaque ones, the opacity their share (magenta: see-through)
 	for (int j = 0; j < s; j++)
 		for (int i = 0; i < s; i++)
@@ -127,12 +153,43 @@ static void scan_apps (void)
 			const char *ct = app_ini_get (0, "category", 0);
 			if (ct && ct[0]) fs_copy (a.cat, ct, sizeof a.cat);
 		}
-		// the desktop's parts (Shell), the applets (Settings: their .lnk below) and the emulators (the Game Library's)
-		if (!ieq (a.cat, "Shell") && !ieq (a.cat, "Settings") && !ieq (a.cat, "Emulators")) g_napps++;
+		// the desktop's parts (Shell), the applets (Settings: their .lnk below) and the emulators (the Game Library's);
+		// the Control Panel itself: found by the search (its applets: the Settings tab)
+		if (ieq (a.name, "control")) { a.hidden = true; g_napps++; }
+		else if (!ieq (a.cat, "Shell") && !ieq (a.cat, "Settings") && !ieq (a.cat, "Emulators")) g_napps++;
 		*e = c;
 		p = *e ? e + 1 : e;
 	}
-	// the Control Panel's applets: the Settings tab (each opens the Control Panel full screen on it: open_app)
+	// the Control Panel's applets: the Settings tab (each opens the Control Panel full screen on it: open_app); their
+	// help lines in the language from the Control Panel's own catalogue (SD:/apps/control.app/lang/<code>.txt)
+	static char cat_[16384];
+	int ncat = 0;
+	if (uk_lang ()[0] && !ieq (uk_lang (), "en"))
+	{
+		char q[80]; int k = 0;
+		lx_cat (q, sizeof q, &k, "SD:/apps/control.app/lang/"); lx_cat (q, sizeof q, &k, uk_lang ()); lx_cat (q, sizeof q, &k, ".txt");
+		void *h = kapi_open (q);
+		if (h != 0) { ncat = kapi_read (h, cat_, sizeof cat_ - 1); kapi_close (h); }
+		if (ncat < 0) ncat = 0;
+	}
+	cat_[ncat] = 0;
+	auto ctl_tr = [&] (const char *en, char *o, int cap)	// en's line "en<TAB>translation" -> o (else en)
+	{
+		int L = (int) strlen (en);
+		for (int i = 0; L > 0 && i + L < ncat; )
+		{
+			if ((i == 0 || cat_[i - 1] == '\n') && memcmp (cat_ + i, en, (size_t) L) == 0 && cat_[i + L] == '\t')
+			{
+				int j = i + L + 1, m = 0;
+				while (j < ncat && cat_[j] != '\n' && cat_[j] != '\r' && m < cap - 1) o[m++] = cat_[j++];
+				o[m] = 0;
+				return;
+			}
+			while (i < ncat && cat_[i] != '\n') i++;
+			i++;
+		}
+		fs_copy (o, en, cap);
+	};
 	void *d = kapi_opendir ("SD:/apps/control.app/applets");
 	struct kapi_dirent de;
 	while (d != 0 && kapi_readdir (d, &de) && g_napps < MAXAPPS)
@@ -149,7 +206,7 @@ static void scan_apps (void)
 		fs_copy (a.name, t, sizeof a.name);
 		fs_copy (a.label, nm && nm[0] ? nm : t, sizeof a.label);
 		fs_copy (a.cat, "Settings", sizeof a.cat);
-		fs_copy (a.text, tx ? tx : "", sizeof a.text);
+		ctl_tr (tx ? tx : "", a.text, sizeof a.text);
 		a.applet = true;
 	}
 	if (d != 0) kapi_closedir (d);
@@ -178,7 +235,7 @@ static void scan_apps (void)
 		for (int a = 0; a < g_napps && !any; a++) any = !g_apps[a].applet && ieq (g_apps[a].cat, L.cat[i].cat);
 		if (any) add_cat (L.cat[i].cat);
 	}
-	for (int a = 0; a < g_napps; a++) if (!g_apps[a].applet) add_cat (g_apps[a].cat);
+	for (int a = 0; a < g_napps; a++) if (!g_apps[a].applet && !g_apps[a].hidden) add_cat (g_apps[a].cat);
 	add_cat ("Settings");
 }
 
@@ -273,9 +330,12 @@ static void open_app (const char *name)
 }
 
 // ---- the search: apps, settings, files, a command ---------------------------------------------------------
+// The results: the best match first, then the apps, the settings (the applets, by their names and help lines), the
+// files, and the text as a command last. kind (0 all, 1 apps, 2 settings, 3 files) keeps one kind; counts[] says how
+// many of each kind match (counts[0] all of them).
 enum { R_APP, R_SETTING, R_FILE, R_RUN };
-struct Result { int kind; int app; char title[64]; char sub[96]; char path[128]; };
-#define MAXRESULTS	24
+struct Result { int kind; int app; int score; char title[64]; char sub[128]; char path[128]; };
+#define MAXRESULTS	40
 static Result g_res[MAXRESULTS];
 static int g_nres;
 
@@ -290,10 +350,22 @@ static bool contains (const char *s, const char *q)		// q in s, ignoring the cas
 	}
 	return false;
 }
+static int match_score (const char *s, const char *q)		// 3 s begins with q, 2 one of its words does, 1 q in it, 0 not
+{
+	for (int i = 0; s[i]; i++)
+	{
+		if (i > 0 && s[i - 1] != ' ' && s[i - 1] != '-' && s[i - 1] != '_' && s[i - 1] != '.') continue;
+		int k = 0;
+		while (q[k] && s[i + k] && lx_low (s[i + k]) == lx_low (q[k])) k++;
+		if (!q[k]) return i == 0 ? 3 : 2;
+	}
+	return contains (s, q) ? 1 : 0;
+}
 
 // The files the search sees: SD:/docs and the user's folders (two levels), read once a search starts.
 #define MAXFILES	200
 static char g_files[MAXFILES][96];
+static unsigned g_fsize[MAXFILES];
 static int g_nfiles = -1;
 static void files_scan (const char *dir, int depth)
 {
@@ -305,60 +377,104 @@ static void files_scan (const char *dir, int depth)
 		char p[128]; int k = 0;
 		lx_cat (p, sizeof p, &k, dir); if (k > 0 && p[k - 1] != '/') lx_cat (p, sizeof p, &k, "/"); lx_cat (p, sizeof p, &k, de.name);
 		if (de.is_dir) { if (depth > 0) files_scan (p, depth - 1); continue; }
+		g_fsize[g_nfiles] = (unsigned) de.size;
 		fs_copy (g_files[g_nfiles++], p, sizeof g_files[0]);
 	}
 	if (d != 0) kapi_closedir (d);
 }
+static void size_cat (char *o, int cap, int *k, unsigned b)	// "1.2 KB", "152 KB", "3.4 MB"
+{
+	const char *u = " B"; unsigned d = 1;
+	if (b >= 1024u * 1024u) { u = " MB"; d = 1024u * 1024u; }
+	else if (b >= 1024u) { u = " KB"; d = 1024u; }
+	unsigned w = b / d, t = (b % d) * 10 / d;
+	char n[16]; int i = 0;
+	do { n[i++] = (char) ('0' + w % 10); w /= 10; } while (w);
+	while (i) { char c[2] = { n[--i], 0 }; lx_cat (o, cap, k, c); }
+	if (d > 1 && b / d < 10) { char c[3] = { '.', (char) ('0' + t), 0 }; lx_cat (o, cap, k, c); }
+	lx_cat (o, cap, k, u);
+}
 
-static void search (const char *q)
+static void search (const char *q, int kind, int *counts)
 {
 	g_nres = 0;
+	for (int i = 0; i < 4; i++) counts[i] = 0;
 	if (!q[0]) return;
-	for (int i = 0; i < g_napps && g_nres < MAXRESULTS; i++)		// the apps
+	static Result all[MAXRESULTS * 3];
+	int n = 0;
+	for (int i = 0; i < g_napps && n < MAXRESULTS * 3; i++)		// the apps
 	{
 		App &a = g_apps[i];
-		if (a.applet || (!contains (a.label, q) && !contains (a.name, q))) continue;
-		Result &r = g_res[g_nres++];
-		r.kind = R_APP; r.app = i;
+		if (a.applet) continue;
+		int sc = match_score (a.label, q);
+		if (sc == 0 && contains (a.name, q)) sc = 1;
+		if (sc == 0) continue;
+		Result &r = all[n++];
+		memset (&r, 0, sizeof r);
+		int rk = 0;							// (as good: the one opened last first)
+		for (int k = 0; k < g_nrecent; k++) if (ieq (g_recent[k], a.name)) { rk = RECENT_MAX - k; break; }
+		r.kind = R_APP; r.app = i; r.score = (sc + 1) * 100 + rk;	// (an app before a setting or a file as good)
 		fs_copy (r.title, a.label, sizeof r.title);
 		char s[96]; int k = 0; s[0] = 0;
 		lx_cat (s, sizeof s, &k, TR (a.cat));
-		if (task_of (a.name) >= 0) { lx_cat (s, sizeof s, &k, " -- "); lx_cat (s, sizeof s, &k, TR ("running")); }
+		if (task_of (a.name) >= 0) { lx_cat (s, sizeof s, &k, "  -  "); lx_cat (s, sizeof s, &k, TR ("running")); }
 		fs_copy (r.sub, s, sizeof r.sub);
 	}
-	for (int i = 0; i < g_napps && g_nres < MAXRESULTS; i++)		// the settings
+	for (int i = 0; i < g_napps && n < MAXRESULTS * 3; i++)		// the settings: by their names, their help lines
 	{
 		App &a = g_apps[i];
-		if (!a.applet || (!contains (TR (a.label), q) && !contains (a.label, q) && !contains (a.text, q))) continue;
-		Result &r = g_res[g_nres++];
-		r.kind = R_SETTING; r.app = i;
-		char t[64]; int k = 0; t[0] = 0;
-		lx_cat (t, sizeof t, &k, TR (a.label)); lx_cat (t, sizeof t, &k, ": "); lx_cat (t, sizeof t, &k, a.text);
-		fs_copy (r.title, t, sizeof r.title);
-		fs_copy (r.sub, TR ("Control Panel"), sizeof r.sub);
+		if (!a.applet) continue;
+		int sc = match_score (TR (a.label), q);
+		if (sc == 0) sc = match_score (a.label, q);
+		if (sc == 0 && (contains (TR (a.text), q) || contains (a.text, q))) sc = 1;
+		if (sc == 0) continue;
+		Result &r = all[n++];
+		memset (&r, 0, sizeof r);
+		r.kind = R_SETTING; r.app = i; r.score = sc * 100;
+		fs_copy (r.title, TR (a.label), sizeof r.title);
+		fs_copy (r.sub, TR (a.text), sizeof r.sub);
 	}
 	if (g_nfiles < 0) { g_nfiles = 0; files_scan ("SD:/docs", 2); files_scan ("SD:/Notes", 0); files_scan ("SD:/home", 2); }
-	for (int i = 0; i < g_nfiles && g_nres < MAXRESULTS - 1; i++)		// the files
+	for (int i = 0; i < g_nfiles && n < MAXRESULTS * 3; i++)		// the files
 	{
 		const char *base = g_files[i];
 		for (const char *p = g_files[i]; *p; p++) if (*p == '/') base = p + 1;
-		if (!contains (base, q)) continue;
-		Result &r = g_res[g_nres++];
-		r.kind = R_FILE; r.app = -1;
+		int sc = match_score (base, q);
+		if (sc == 0) continue;
+		Result &r = all[n++];
+		memset (&r, 0, sizeof r);
+		r.kind = R_FILE; r.app = -1; r.score = sc * 100;
 		fs_copy (r.title, base, sizeof r.title);
 		fs_copy (r.path, g_files[i], sizeof r.path);
-		int n = (int) (base - g_files[i]);
-		if (n > (int) sizeof r.sub - 1) n = (int) sizeof r.sub - 1;
-		memcpy (r.sub, g_files[i], (size_t) n); r.sub[n] = 0;
-		r.app = -1;
+		char app[32], s[128]; int k = 0; s[0] = 0;
+		if (fa_app_for (g_files[i], app, sizeof app)) { App *a = find_app (app); lx_cat (s, sizeof s, &k, a ? a->label : app); lx_cat (s, sizeof s, &k, "  -  "); }
+		int dn = (int) (base - g_files[i]) - 1;
+		char dir[96]; if (dn > 95) dn = 95; if (dn < 0) dn = 0;
+		memcpy (dir, g_files[i], (size_t) dn); dir[dn] = 0;
+		lx_cat (s, sizeof s, &k, dir); lx_cat (s, sizeof s, &k, "  -  "); size_cat (s, sizeof s, &k, g_fsize[i]);
+		fs_copy (r.sub, s, sizeof r.sub);
 	}
-	if (g_nres < MAXRESULTS)						// the text as a command
-	{
-		Result &r = g_res[g_nres++];
-		r.kind = R_RUN; r.app = -1;
-		fs_copy (r.title, q, sizeof r.title);
-		fs_copy (r.sub, TR ("run it in a Terminal (a /bin command)"), sizeof r.sub);
-	}
+	for (int i = 0; i < n; i++) { counts[0]++; counts[all[i].kind + 1]++; }
+	// each kind by its score (the best first), then its name
+	for (int i = 1; i < n; i++)
+		for (int j = i; j > 0; j--)
+		{
+			Result &a = all[j], &b = all[j - 1];
+			bool before = a.kind < b.kind || (a.kind == b.kind && (a.score > b.score || (a.score == b.score && fs_ci_cmp (a.title, b.title) < 0)));
+			if (!before) break;
+			Result t = a; a = b; b = t;
+		}
+	int best = -1;							// the best match: the best score of the kinds shown
+	for (int i = 0; i < n; i++)
+		if ((kind == 0 || all[i].kind == kind - 1) && (best < 0 || all[i].score > all[best].score)) best = i;
+	if (best >= 0) g_res[g_nres++] = all[best];
+	for (int i = 0; i < n && g_nres < MAXRESULTS - 1; i++)
+		if (kind == 0 || all[i].kind == kind - 1) g_res[g_nres++] = all[i];
+	Result &r = g_res[g_nres++];						// the text as a command
+	memset (&r, 0, sizeof r);
+	r.kind = R_RUN; r.app = -1;
+	fs_copy (r.title, q, sizeof r.title);
+	fs_copy (r.sub, TR ("run it in a Terminal (a /bin command)"), sizeof r.sub);
 }
 
 static void open_result (const Result &r)

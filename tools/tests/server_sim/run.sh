@@ -122,7 +122,11 @@ done
 echo "server_sim: the pocket shell"
 NOTES='1:3:Telegram\0Marie: on se voit demain ? -- 2 unread\0telegram\n1:3:Packages\03 updates: onyx 2026.10.125, jet, ledger\0control pkgman\n1:3:Calendar\0Dentist at 17:30\0'
 # langdir <code>: the writes' folder with etc/system.ini's "language=" (empty: English)
-langdir () { d="$OUT/writes-$1"; rm -rf "$d"; mkdir -p "$d/etc"; if [ -n "$1" ]; then { grep -v '^language' sdcard/etc/system.ini; echo "language=$1"; } > "$d/etc/system.ini"; fi; echo "$d"; }
+# (and the launcher v2's data: the Calendar's agenda -- the Today line / column --, the documents opened last -- Recent)
+langdir () { d="$OUT/writes-$1"; rm -rf "$d"; mkdir -p "$d/etc" "$d/apps/calendar.app"; if [ -n "$1" ]; then { grep -v '^language' sdcard/etc/system.ini; echo "language=$1"; } > "$d/etc/system.ini"; fi
+	printf '20260928|09:30 Stand-up\n20260928|14:00 Team call\n20260928|18:30 Swimming\n20261001|Pay the rent\n' > "$d/apps/calendar.app/agenda.txt"
+	printf '202609281120|SD:/docs/letters-tour.rtf\n202609280905|SD:/docs/cafe-2026.xlsx\n202609271830|SD:/docs/demo-company.ledger\n202609271700|SD:/docs/pictures/sunset-sea.jpg\n202609241000|SD:/docs/cafe-2026.odp\n202609240900|SD:/docs/contacts.card\n202609201500|SD:/docs/new-year-letter.rtf\n202609151200|SD:/docs/books.card\n' > "$d/etc/recent-docs"
+	echo "$d"; }
 shellshots () {		# shellshots <W>x<H> <tag> <shots: home search switcher quick> [lang]
 	sz=$1; t=$2; want=" $3 "; lg=$4; w=${sz%x*}; h=${sz#*x}; sfx=$t${lg:+-$lg}
 	WR=$(langdir "$lg")
@@ -137,7 +141,8 @@ shellshots () {		# shellshots <W>x<H> <tag> <shots: home search switcher quick> 
 		SC="otherpic $w 30 menubar $OUT/bar-home-$sfx.elsm 0 0 0x35 0 0;$W;$W;expect shell app;expect kind home;expect home 1;$APPS;expect front other;expect home 0;expect tasks 3"
 		SC="$SC;mods 8;mods 0;$W;$W;expect home 1;expect focus app;expect aside 0;expect area 0,30,$w,$((h - 30));expect pos 0,30;dump $OUT/pocketshell-home-$sfx.elsm"
 		SC="$SC;key t;key e;$W;$W;expect keys 2;dump $OUT/pocketshell-search-$sfx.elsm;key 0x1b;$W;mods 8;mods 0;$W;$W;expect home 0;expect front other"
-		run pocket_pocketshell shell-home-$sfx "$SC" $E ;;
+		HN=""; [ "$w" -ge 1600 ] && HN="$NOTES"		# (1920 x 1080: the Today column shows the notifications, no toast)
+		run pocket_pocketshell shell-home-$sfx "$SC" $E SIM_MBOX="$HN" ;;
 	esac
 	case "$want" in *" switcher "*|*" quick "*)
 		SC="otherpic $w 30 menubar $OUT/bar-term-$sfx.elsm 0 0 0x35 0 0;$W;$W;$APPS;expect front other;expect shown1 0"
@@ -170,6 +175,32 @@ L=$(grep "^sim: launch" "$OUT/log.txt" | tail -n +$((n0 + 1)) | tr '\n' ' ')
 case "$L" in "sim: launch tinycalc sim: launch terminal ") ;; "sim: launch tinycalc sim: launch "?*" ") L=ok ;; esac	# (terminal: "qqq" not cleared, run)
 if [ "$L" = ok ]; then echo "  shell-keys-1080: the search's result and the grid's app opened"
 else echo "  shell-keys-1080: FAILED (opened: $L)"; FAIL=1; fi
+# the Running strip from the keys: Down from the card's last row chooses the first open app, Enter brings it
+WR=$(langdir "")
+APPS8="otherpic 800 450 tinypad $OUT/app-pad-800.elsm 0 24;$W;otherpic 260 300 tinycalc $OUT/pocket-calculator.elsm 262 115 0x40;$W;otherpic 800 450 terminal $OUT/app-term-800.elsm 0 24;$W"
+run pocket_pocketshell shell-strip-keys "otherpic 800 30 menubar $OUT/bar-home-800.elsm 0 0 0x35 0 0;$W;$W;$APPS8;mods 8;mods 0;$W;$W;expect home 1;key 0x101;key 0x101;$W;expect home 1;key 13;$W;$W;expect home 0;expect front other" \
+	SIM_SCREEN=800x480 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$WR
+# the menu bar's Onyx in pocket (SHELL_MSG_HOME, as menubar sends it: a click on "Onyx"): the home shown, the app
+# behind; again: the app back (pocketshell's side; the menu bar's side below)
+W10="$W;$W;$W;wait"
+run pocket_pocketshell shell-onyx "otherpic 800 30 menubar $OUT/bar-home-800.elsm 0 0 0x35 0 0;$W;$W;$APPS8;expect front other;expect home 0;$W10;$W10;$W10;expect home 1;expect front none;$W10;$W10;$W10;$W10;expect home 0;expect front other" \
+	SIM_SCREEN=800x480 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$WR SIM_MBOX='@200:101:7:\n@400:101:7:\n'
+# a start while the server's answer is not there yet (the Pi's report: after a live switch from the desktop the shell was
+# laid out small -- its sizes from a stale screen, never read again): the first PK_OP_SERVER refused, kapi_screen_size
+# wrong; the shell follows the server's screen when it comes -- its home the work area of 1920 x 1080, the scale 1.5
+W26=$(printf '%s;' $(seq 1 26 | sed "s/.*/$W/")); W26=${W26%;}
+run pocket_pocketshell shell-late-1080 "otherpic 1920 30 menubar $OUT/bar-home-1080.elsm 0 0 0x35 0 0;$W26;expect client 1920,1050;expect pos 0,30" \
+	SIM_SCREEN=1920x1080 SIM_SCREEN_STALE=800x480 SIM_SERVER_LATE=3 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$WR
+if grep -q "pocketshell: the screen 1920 x 1080, the work area 1920 x 1050, the scale 150%" "$OUT/log.txt"; then echo "  shell-late-1080: the scale followed the server (150%)"
+else echo "  shell-late-1080: FAILED (the scale not followed)"; FAIL=1; fi
+# the menu bar (pocket, the shell running): a click on "Onyx" asks the shell for its home (SHELL_MSG_HOME) and opens no
+# menu -- twice: twice asked; the bar the same before and after (no drop-down)
+n0=$(grep -c 'sim: send shell type 101' "$OUT/log.txt" || true)
+run pocket_menubar bar-onyx "$W;move 30 14;$W;dump $OUT/bar-onyx-0.elsm;down 30 14;up 30 14;$W;dump $OUT/bar-onyx-1.elsm;down 30 14;up 30 14;$W" SIM_SCREEN=800x480 SIM_APPNAME=menubar SIM_APP=menubar SIM_SERVICES=shell
+n1=$(grep -c 'sim: send shell type 101' "$OUT/log.txt" || true)
+if [ $((n1 - n0)) = 2 ] && cmp -s "$OUT/bar-onyx-0.elsm" "$OUT/bar-onyx-1.elsm"; then echo "  bar-onyx: Onyx is Home (asked twice, no menu)"
+else echo "  bar-onyx: FAILED ($((n1 - n0)) asked; the bar changed: a menu?)"; FAIL=1; fi
+png bar-onyx-0
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1
 echo "  checks: $(grep -c 'server_sim: PASS' "$OUT/log.txt") passed, $(grep -c 'server_sim: FAIL' "$OUT/log.txt") failed"
 
@@ -222,6 +253,20 @@ if git cat-file -e "$REVC:user/Servers/common/core.cpp" 2>/dev/null; then
 	done
 else
 	echo "  (skipped: $REVC has no user/Servers/common)"
+fi
+# ---- the menu bar on the desktop: unchanged by the pocket's Home button (MENUBAR_BEFORE, default HEAD) -------------
+REVM=${MENUBAR_BEFORE:-HEAD}
+echo "server_sim: the desktop's menu bar of $REVM against the working tree (the Onyx menu opened)"
+if git cat-file -e "$REVM:user/Apps/menubar/main.cpp" 2>/dev/null; then
+	OM="$OUT/menubar-before"; rm -rf "$OM"; mkdir -p "$OM"; git show "$REVM:user/Apps/menubar/main.cpp" > "$OM/main.cpp"
+	ftapp elegant menubar uikit_wire user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp
+	$CXX $INC -Iuser/Kits/fontkit -I$FT/include -o "$OUT/elegant_menubar_before" "$OUT/obj/elegant"/*.o "$OUT/fakekapi.o" "$OM/main.cpp" user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp "$OUT/libuikit_wire.a" "$OUT/libft.a" -lpthread
+	for v in elegant_menubar elegant_menubar_before; do
+		run $v $v "$W;$W;down 30 14;up 30 14;$W;$W;dump $OUT/$v.elsm" SIM_SCREEN=1024x768 SIM_APPNAME=menubar SIM_APP=menubar
+	done
+	if cmp -s "$OUT/elegant_menubar.elsm" "$OUT/elegant_menubar_before.elsm"; then echo "  the desktop's menu bar and its Onyx menu: the same pixels"
+	else echo "  the desktop's menu bar: DIFFERENT pixels (elegant_menubar.elsm / elegant_menubar_before.elsm)"; FAIL=1; fi
+	png elegant_menubar
 fi
 [ $FAIL = 0 ] && echo "server_sim: all passed ($OUT)" || echo "server_sim: FAILED ($OUT)"
 exit $FAIL

@@ -1452,21 +1452,34 @@ splits the card's autostart, once); `run_notes_test.sh`, `run_notes_sim_test.sh`
 
 *(docs/POCKETUI-TECH-STUDY.md §4.3, §7.2, phase P5; the look and rules: docs/COMPACT-SHELL-STUDY.md §6; the user's
 side: docs/04 §5 *The pocket mode*.)* **`user/Apps/pocketshell/`** (`main.cpp`: the windows, the launcher, the
-switcher, quick settings, the toasts, the keys; `catalog.h`: the apps, the applets, the categories, the recent apps,
-the search — one unit; FT_APPS; `sdcard/apps/pocketshell.app/`, category `Shell`: the `onyx` package) is the pocket
+switcher, quick settings, the toasts, the keys, the screen and the scale followed; `home.h`: the launcher v2;
+`look.h`: its drawing -- rounded boxes of any radius by their signed distance, outlines, soft shadows and glows, pictures
+clipped to a rounded box, the match in a text; `today.h`: the agenda; `catalog.h`: the apps, the applets, the
+categories, the recent apps, the search — one unit; FT_APPS; `sdcard/apps/pocketshell.app/`, category `Shell`: the `onyx` package) is the pocket
 mode's shell, started by `SD:/etc/session/pocket` after the menu bar. One program, three windows (v94): its **home**
 (window 0, `WIN_FLAG_BACKMOST`: the launcher, its canvas the screen's size, resized to the work area), the
 **overlay** (window 1, topmost, `WIN_FLAG_ALPHA`, the work area: the switcher or quick settings; parked off the
 screen and see-through when hidden — made on the screen first: a place off it would be "placed by the server") and
 the **toast** (window 2). It serves the IPC services **`shell`** (SystemKit's `systemkit/shell.h`: `shell_ask
-(SHELL_MSG_HOME | _SWITCHER | _QUICK | _SEARCH)`, `shell_running ()` — the menu bar's Onyx menu and its time ask it)
+(SHELL_MSG_HOME | _SWITCHER | _QUICK | _SEARCH)`, `shell_running ()` — the menu bar's Onyx (the Home button in pocket) and its time ask it)
 and **`notify`** (SystemKit's `notify.h`: in pocket no `notifyd` runs — a notification is a toast, then a line of
 quick settings; the message types are apart: `NOTIFY_MSG_SHOW` 1, `SHELL_MSG_*` from 101). Everything is drawn by
-hand (the menu bar's way: `uikit/paint.h`, FreeType faces at 13, 16 and 11 px times the scale) and laid out from the
-logical size (the study's §6.1 rules: tiles 94 × 84 / 80 × 76, the columns, the hints from 700 lp, the Running strip
-in landscape from 440 lp, the switcher's row — as many cards as fit: 5 at 800, 4 at 640 — or column in portrait, the
-panel 340 lp or the width under 420 lp). The scale: `SD:/etc/theme.txt` `scale =`, else 1.5 from a 1000-line screen,
-2 from 1800 (the apps are not scaled yet: P6/P10). Its words: `TR` and `sdcard/apps/pocketshell.app/lang/fr.txt` (the
+hand (`look.h`, `uikit/paint.h`; FreeType faces of 10 to 22 lp times the scale, opened again when the scale changes)
+and laid out from the logical size: the launcher v2 as its approved mock-ups (`docs/COMPACT-SHELL-STUDY.md` §6.2,
+`tools/screenshot/mockup_compact.py` `pocket_home_v2`) -- the search field 34 lp, Today beside it (380 lp field) or
+under it below 700 lp, the Today column (300 lp) from 1100 lp, chips 30 lp, the card with plates of 60 lp in cells of
+94 × 100, the Documents of Recent when a row of them fits, the Running strip (104 lp) from 400 lp of height with
+thumbnails of 134 × 62 (`uk_shell_thumb`, the window's top, taken again when the tasks change or after a second);
+the search's best match (216 lp) at the left from 700 lp, else one column. The Today data: `SD:/apps/calendar.app/agenda.txt`
+(`YYYYMMDD|[HH:MM ]what`, which the Calendar writes for the Agenda widget) and the notifications it serves; the
+documents: SystemKit's **`recent.h`** (`recent_docs`, `recent_doc_add`; `SD:/etc/recent-docs`; `fa_open` notes every
+file it opens). The switcher's row — as many cards as fit: 5 at 800, 4 at 640 — or column in portrait, the panel
+340 lp or the width under 420 lp. The scale: `SD:/etc/theme.txt` `scale =`, else 1.5 from a 1000-line screen, 2 from
+1800 (the apps are not scaled yet: P6/P10), of the screen PocketUI gives (`uk_win_server`; `kapi_screen_size` until it
+answers): read again at `UK_SHELL_EV_AREA`, a display resize and every second -- a bigger screen grows the canvases,
+another scale reopens the faces; each change logged `pocketshell: the screen W x H, the work area ..., the scale S%`
+(the Pi's report: after a live switch from the desktop the shell was laid out for a stale screen -- server_sim's
+`shell-late-1080`: `SIM_SERVER_LATE`, `SIM_SCREEN_STALE`). Its words: `TR` and `sdcard/apps/pocketshell.app/lang/fr.txt` (the
 categories and the applets' names by `// TR:` lines). The recent apps: `SD:/etc/pocket/recent` (the app fronted,
 whoever started it).
 

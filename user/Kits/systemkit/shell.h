@@ -1,8 +1,8 @@
 //
 // shell.h -- asking the pocket shell for one of its screens (docs/POCKETUI-TECH-STUDY.md phase P5; docs/03 "The pocket
 // shell"). In the pocket mode (PocketUI) the shell is pocketshell: the launcher (Home) behind the apps, the task
-// switcher, quick settings and the notifications. It serves the IPC service "shell"; the menu bar asks it from its
-// Onyx menu (Home, Open Apps, Quick Settings) and from a click on the time. On the desktop no program serves it:
+// switcher, quick settings and the notifications. It serves the IPC service "shell"; the menu bar asks it from a click
+// on its Onyx (the Home button in pocket: SHELL_MSG_HOME) and on the time (SHELL_MSG_QUICK). On the desktop no program serves it:
 // shell_ask answers 0. C and C++.
 //
 //   shell_ask (SHELL_MSG_HOME);        // the launcher (again: back to the app)

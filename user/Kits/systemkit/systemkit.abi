@@ -94,3 +94,5 @@
 88 session_waiting
 89 shell_ask
 90 shell_running
+91 recent_doc_add
+92 recent_docs

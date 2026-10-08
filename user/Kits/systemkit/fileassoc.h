@@ -10,6 +10,7 @@
 #define _fileassoc_h
 #include "appkit/appkit.h"
 #include "sk_api.h"
+#include "recent.h"
 #include "filekit/fsutil.h"
 
 

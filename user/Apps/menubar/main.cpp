@@ -23,9 +23,11 @@
 // the File Viewer; "Disks..." opens the Disks app. The bar also says what happened through notifyd:
 // a stick connected, one that can be removed safely, one pulled out without an eject.
 //
-// In the pocket mode (PocketUI; the bar is its top band) the Onyx menu starts with the pocket shell's screens -- Home,
-// Open Apps, Quick Settings (pocketshell, asked through SystemKit's shell.h) -- and a click on the time opens quick
-// settings and the notifications instead of the calendar.
+// In the pocket mode (PocketUI; the bar is its top band) "Onyx" is the HOME button (a gem and its name, lit while the
+// pocket shell's home shows): a click shows the home -- the front app goes behind, as Super does -- and a second
+// click brings the app back (pocketshell, asked through SystemKit's shell.h: SHELL_MSG_HOME); there is no Onyx menu
+// there (the launcher has the apps, quick settings Power). A click on the time opens quick settings and the
+// notifications instead of the calendar. The desktop: the Onyx menu as ever.
 //
 // A click on the time opens a calendar (the month; "Open Calendar" starts the Calendar app; "Alarms and timers..."
 // opens the Clock on its Alarms tab -- when the Clock is on the card). A small bell left of the time says an alarm of
@@ -180,9 +182,12 @@ static void fill_windows (SubDef &sd)
 
 // ---- menus ------------------------------------------------------------------------------
 // Onyx system-menu item ids (>= 1000: handled here, never sent to the app).
-enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_TASKS, ONYX_SHUTDOWN, ONYX_SUB, ONYX_CONTROL,
-       ONYX_HOME, ONYX_SWITCHER, ONYX_QUICK };		// (the pocket shell's: SystemKit's shell.h)
+enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_TASKS, ONYX_SHUTDOWN, ONYX_SUB, ONYX_CONTROL };
 static bool g_pocket;			// PocketUI's pocket mode: the bar is its top band, the pocket shell beside it
+// Pocket, the pocket shell running: "Onyx" is the Home button (lit while the shell's home shows: no app's menus) --
+// a click shows the home, the front app going behind (as Super does); again: the app back. No Onyx menu there.
+static bool onyx_is_home (void) { return g_pocket && shell_running (); }
+#define GEM_W	18			// (the Home button's gem and its gap)
 
 static void add_quit_menu (const char *app)
 {
@@ -204,13 +209,6 @@ static void build_onyx_menu (MenuDef &m)
 		x.id = id; x.sep = id == -2; x.key[0] = '\0'; x.sub = sub;
 		scopy (x.label, l ? l : "", sizeof x.label);
 	};
-	if (g_pocket && shell_running ())		// the pocket shell's screens first (pocketshell: the launcher...)
-	{
-		add (ONYX_HOME, TR ("Home"), -1); add (ONYX_SWITCHER, TR ("Open Apps"), -1); add (ONYX_QUICK, TR ("Quick Settings"), -1);
-		scopy (m.items[0].key, "Super", sizeof m.items[0].key); scopy (m.items[1].key, "Alt+Tab", sizeof m.items[1].key);
-		scopy (m.items[2].key, "Super+N", sizeof m.items[2].key);
-		add (-2, 0, -1);
-	}
 	add (ONYX_TERMINAL, TR ("Terminal"), -1); add (ONYX_CONTROL, TR ("Control Panel"), -1);
 	add (ONYX_FILES, TR ("File Viewer"), -1); add (ONYX_TASKS, TR ("Task Manager"), -1);
 	add (-2, 0, -1);
@@ -296,7 +294,7 @@ static void layout_titles (void)
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		g_menus[i].x = x;
-		g_menus[i].w = uk_tw (g_menus[i].title, title_style (i)) + 16;
+		g_menus[i].w = uk_tw (g_menus[i].title, title_style (i)) + 16 + (i == 0 && g_pocket ? GEM_W : 0);
 		x += g_menus[i].w;
 	}
 }
@@ -784,6 +782,18 @@ static void usb_action (int row)		// the row's button
 	g_dirty = true;
 }
 
+// Onyx's gem, 14 x 13 px at (x, y): a cut stone -- its crown (a trapezoid) over its pavilion (a triangle).
+static void draw_gem (int x, int y, unsigned c)
+{
+	for (int j = 0; j < 13; j++)
+	{
+		int l, r;					// (twice the half width, to keep the edges even)
+		if (j < 4) { l = 3 - j; r = 10 + j; }		// the crown widens
+		else { int k = j - 4; l = k * 7 / 9; r = 13 - k * 7 / 9; }	// the pavilion narrows to its point
+		for (int i = l; i <= r; i++) g_cv.pixel (x + i, y + j, j == 4 ? uk_mix (c, C_MENUBAR, 110) : c);	// (the girdle a line lighter)
+	}
+}
+
 static void draw (void)
 {
 	bool full = g_open >= 0 || g_volOpen || g_calOpen || g_usbOpen;
@@ -798,6 +808,15 @@ static void draw (void)
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		const MenuDef &m = g_menus[i];
+		if (i == 0 && g_pocket)				// pocket: the Home button -- the gem and "Onyx", lit on the home
+		{
+			bool lit = g_onyx;
+			if (lit) uk_rbox (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 116));
+			else if (i == g_titleHot) uk_rbox (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
+			draw_gem (m.x + 8, (BAR_H - 1 - 13) / 2, lit ? 0xFFFFFF : C_BARTXT);
+			uk_text_l (g_cv, m.x + 8 + GEM_W, 0, BAR_H - 1, m.title, lit ? 0xFFFFFF : C_BARTXT, 2);
+			continue;
+		}
 		if (i == g_open) uk_hilite (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, true);
 		else if (i == g_titleHot)			// under the pointer: a shade lighter than the bar
 			uk_rbox (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
@@ -882,9 +901,6 @@ static void run_item (const Item &it)
 	case ONYX_FILES:    kapi_launch ("fileviewer"); return;
 	case ONYX_TASKS:    kapi_launch ("taskman"); return;
 	case ONYX_SHUTDOWN: kapi_launch ("shutdown"); return;
-	case ONYX_HOME:     shell_ask (SHELL_MSG_HOME); return;
-	case ONYX_SWITCHER: shell_ask (SHELL_MSG_SWITCHER); return;
-	case ONYX_QUICK:    shell_ask (SHELL_MSG_QUICK); return;
 	case ONYX_SUB:      return;			// (it opens its sub-menu)
 	}
 	uk_win_menu_command (it.id);		// the active app's own item (or MENU_QUIT)
@@ -1040,6 +1056,13 @@ static void ptr (unsigned long, int ev, long v)
 			g_volOpen = false; g_dirty = true;			// a click outside closes it
 			if (t < 0) break;
 		}
+		if (t == 0 && onyx_is_home ())			// pocket: Onyx is Home (again: back to the app)
+		{
+			if (g_open >= 0) close_menu ();
+			shell_ask (SHELL_MSG_HOME);
+			g_dirty = true;
+			break;
+		}
 		if (t >= 0) { if (t == g_open) close_menu (); else open_menu (t); g_pressedTitle = true; }
 		else if (g_open >= 0 && item_at (x, y) < 0 && !in_sub (x, y)) close_menu ();	// click outside
 		break;
@@ -1102,7 +1125,7 @@ static void ptr (unsigned long, int ev, long v)
 		}
 		if (g_open >= 0)
 		{
-			if (t >= 0 && t != g_open) open_menu (t);		// slide across titles
+			if (t >= 0 && t != g_open && !(t == 0 && onyx_is_home ())) open_menu (t);	// slide across titles
 			if (in_sub (x, y))
 			{
 				int si = sub_item_at (x, y);

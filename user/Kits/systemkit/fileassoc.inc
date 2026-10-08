@@ -102,7 +102,9 @@ SK_FN bool fa_open (const char *path)
 		for (int i = 0; pre[i] && p < (int) sizeof exe - 1; i++) exe[p++] = pre[i];
 		for (int i = 0; app[i] && p < (int) sizeof exe - 1; i++) exe[p++] = app[i];
 		(void) p;
-		return lx_launch (app, path) != 0;			// (a BASIC app too)
+		if (lx_launch (app, path) == 0) return false;		// (a BASIC app too)
+		recent_doc_add (path);					// (the documents opened last: recent.h)
+		return true;
 	}
 	if (!remote && fa_is_program (path)) return lx_open (path, "") != 0;
 	return false;
