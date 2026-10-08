@@ -382,6 +382,26 @@ static void pocket_flags (const struct kapi_win_info *L, int n, unsigned *F)
 	}
 }
 
+// A program with the full screen (the servers list its window at 0, 0, the screen's size, no frame, state
+// KAPI_WIN_FULLSCREEN -- an emulator, a BASIC game): the Pi shows it alone, so it is told alone, as a plain window
+// without a frame that takes the keys -- the client made a window in the FULLSCREEN state a native framed one, a PC
+// window with a title bar in the middle of the others (the user's report, 2026-10-08: "shown as a normal client
+// window"); the others come back when it gives the screen back. -> how many windows are told.
+static int full_only (struct kapi_win_info *L, int n)
+{
+	for (int i = n - 1; i >= 0; i--)
+		if (L[i].id != KAPI_WIN_DESKTOP && (L[i].state & KAPI_WIN_FULLSCREEN))
+		{
+			L[0] = L[i];
+			L[0].state &= ~KAPI_WIN_FULLSCREEN;
+			L[0].x = L[0].y = 0;
+			L[0].ow = L[0].oh = L[0].il = L[0].it = 0;
+			L[0].flags = (L[0].flags & ~(WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_BACKMOST | WIN_FLAG_ALPHA | WIN_FLAG_SYSTEM));
+			return 1;
+		}
+	return n;
+}
+
 // Under PocketUI a system window (the matte, the shell's home) is never raised from the PC: the matte would cover
 // the app (PocketUI keeps only the apps' windows in order).
 static int raisable (const struct Win *w)
@@ -472,6 +492,7 @@ static int round_send (void)
 		for (int i = 0; i < n; i++) if (L[i].id != KAPI_WIN_DESKTOP) L[k++] = L[i];
 		n = k;
 	}
+	n = full_only (L, n);
 	unsigned F[MAXWIN];
 	pocket_flags (L, n, F);
 	for (int i = 0; i < MAXWIN; i++) g_win[i].alive = 0;

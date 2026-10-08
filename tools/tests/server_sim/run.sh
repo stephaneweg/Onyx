@@ -93,6 +93,10 @@ for sz in 800x480 1920x1080; do
 	SC="$SC;other 300 200 notes;$W;$W;expect full 1;expect pos 0,0;key g;$W;$W;expect full 0;expect pos $CP;expect focus other"
 	run pocket_fsapp fullscreen-$sz "$SC" SIM_SCREEN=$sz SIM_APPNAME=fsapp
 done
+# ... and on the desktop (Elegant: an emulator's full screen, its framed window): the list says it, frameless, at 0, 0
+# (rdpd tells it alone, a plain window: tools/tests/run_rdpd_test.sh MOCK_POCKET=3, 4)
+$CXX $INC -o "$OUT/elegant_fsapp" "$OUT/obj/elegant"/*.o "$OUT/fakekapi.o" $S/fsapp.cpp "$OUT/libuikit_wire.a" -lpthread
+run elegant_fsapp elegant-fullscreen "$W;$W;expect full 0;key f;$W;$W;expect full 1;expect focus app;expect keys 1;key g;$W;$W;expect full 0" SIM_SCREEN=1024x768 SIM_APPNAME=fsapp
 for p in pocket-terminal pocket-card-over pocket-calculator console-terminal pocket-terminal-640 pocket-front pocket-menubar; do png $p; done
 # GPIO Lab filled (the Pi's report on 2026.10.126: "a bit too wide and too tall"): its window exactly the work area, its
 # layout (LabRoot::onResized) inside it -- the pictures pocket-gpiolab-<size>.png (its Code view: -code)

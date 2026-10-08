@@ -18,9 +18,14 @@ g++ -w -I"$b" -x c++ "$b/main.c" -o "$b/rdpd"
 "$b/rdpd" 3391 > "$b/log" & pid=$!
 MOCK_POCKET=1 "$b/rdpd" 3392 > "$b/log1" & pid1=$!
 MOCK_POCKET=2 "$b/rdpd" 3393 > "$b/log2" & pid2=$!
-trap 'kill $pid $pid1 $pid2 2>/dev/null; rm -rf "$b"' EXIT
+MOCK_POCKET=3 "$b/rdpd" 3394 > "$b/log3" & pid3=$!
+MOCK_POCKET=4 "$b/rdpd" 3395 > "$b/log4" & pid4=$!
+trap 'kill $pid $pid1 $pid2 $pid3 $pid4 2>/dev/null; rm -rf "$b"' EXIT
 sleep 0.5
 python3 "$here/rdpd/rdpd_test.py" 3391 "$b/log"
 # under PocketUI (the mock's MOCK_POCKET): the frameless main windows and the home told as plain ones (the keys)
 python3 "$here/rdpd/rdpd_pocket_test.py" 3392 "$b/log1" 1
 python3 "$here/rdpd/rdpd_pocket_test.py" 3393 "$b/log2" 2
+# a program with the full screen (PocketUI: a BASIC game; the desktop: an emulator): told alone, a plain window
+python3 "$here/rdpd/rdpd_pocket_test.py" 3394 "$b/log3" 3
+python3 "$here/rdpd/rdpd_pocket_test.py" 3395 "$b/log4" 4

@@ -3,7 +3,9 @@
 // (its counter too); the input rdpd injects is logged to stdout.
 // MOCK_POCKET=1 (the environment): the graphics server is PocketUI's (pocket mode) and the windows are its: the
 // shell's home (backmost), PocketUI's matte, an app's centred main window and its popup, the menu bar (topmost,
-// see-through); MOCK_POCKET=2: the home alone (no app: home), the menu bar.
+// see-through); MOCK_POCKET=2: the home alone (no app: home), the menu bar; MOCK_POCKET=3: the app's window has the
+// full screen (a BASIC game's way: borderless, KAPI_WIN_FULLSCREEN, at 0, 0, the screen's size), the others there too;
+// MOCK_POCKET=4: the same on the desktop's server (an emulator's way: a framed window, its frame gone while full screen).
 #ifndef MOCK_RDPD_H
 #define MOCK_RDPD_H
 #define MOD_CTRL 1
@@ -28,7 +30,7 @@
 #define UK_MODE_POCKET 1
 struct uk_win_server_info { unsigned size; char name[16]; int mode; int screen_w, screen_h; int work_x, work_y, work_w, work_h; int scale; int size_class; int reserved[8]; };
 static inline int mock_pocket (void) { const char *e = getenv ("MOCK_POCKET"); return e ? atoi (e) : 0; }
-static inline int uk_win_server (struct uk_win_server_info *o) { o->mode = mock_pocket () ? UK_MODE_POCKET : UK_MODE_DESKTOP; return 1; }
+static inline int uk_win_server (struct uk_win_server_info *o) { o->mode = mock_pocket () && mock_pocket () != 4 ? UK_MODE_POCKET : UK_MODE_DESKTOP; return 1; }
 static inline unsigned kapi_clock_us (void) { struct timespec t; clock_gettime (CLOCK_MONOTONIC, &t); return (unsigned) (t.tv_sec * 1000000ull + t.tv_nsec / 1000); }
 static inline int kapi_write (int fd, const void *b, unsigned n) { (void) fd; fprintf (stderr, "%.*s\n", (int) n, (const char *) b); return (int) n; }
 struct kapi_win_info { unsigned id, pid; int x, y, w, h; unsigned flags; int alpha; unsigned gen, state; char title[48]; int ow, oh, il, it; unsigned chromeGen; };
@@ -50,9 +52,14 @@ static inline int uk_win_list (struct kapi_win_info *o, int max)
 			{ 22, 3, 10, 35, 30, 10, 1, 255, 1, 1, "App", 0, 0, 0, 0, 0 },
 			{ 23, 3, 12, 40, 8, 4, 1, 255, 1, 0, "popup", 0, 0, 0, 0, 0 },
 			{ 24, 6, 0, 0, 50, 30, 1 | 4 | 16 | 32, 255, 1, 0, "menubar", 0, 0, 0, 0, 0 } };
+		if (mock_pocket () >= 3)	// (the full screen: the window at 0, 0, the screen's size, no frame, its state)
+		{
+			W[2].x = W[2].y = 0; W[2].w = 1024; W[2].h = 768; W[2].state = 1 | 2;
+			if (mock_pocket () == 4) W[2].flags = 0;
+		}
 		int k = 0;
 		for (int i = 0; i < 5 && k < max; i++)
-			if (mock_pocket () == 1 || W[i].id == 20 || W[i].id == 24) o[k++] = W[i];
+			if (mock_pocket () != 2 || W[i].id == 20 || W[i].id == 24) o[k++] = W[i];
 		return k;
 	}
 	struct kapi_win_info a = { 7, 3, 107, 132, 100, 70, 0, 255, mock_lists >= 3 ? 2u : 1u, 1, "Test A", 114, 109, 7, 32, 1 };
