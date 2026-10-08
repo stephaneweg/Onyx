@@ -1,0 +1,15 @@
+# SD:/etc/session/pocket -- the pocket session's programs: run by /bin/session (the autostart's line
+# `session`) when SD:/etc/system.ini says "shell = pocket" (PocketUI, one app at a time on a small screen),
+# ended when the mode is switched to another (the Control Panel's Mode, `session switch`). The same syntax
+# as SD:/etc/autostart.
+#
+# The menu bar is always there: the front app's menus, the clock, the status icons (PocketUI takes it as its
+# top band). No dock, no agenda, no Stickies in pocket.
+run menubar
+# The rest of the pocket shell -- the launcher, the switcher -- comes with PocketUI's phase P5
+# (docs/POCKETUI-TECH-STUDY.md); it will be this file's line:
+#   run pocketshell
+# Until then the Terminal stands in for the launcher (`run <app>`, `session switch desktop`); Alt+Tab goes from
+# one app to the next. The notifications: notifyd starts with the first one (SystemKit's notify) until
+# pocketshell serves them (P5).
+run terminal

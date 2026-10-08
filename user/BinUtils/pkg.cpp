@@ -11,14 +11,18 @@
 //   pkg check                    the index read again: the updates available
 //   pkg mode <name> manual|auto|never
 //   pkg commit                   the staged packages moved in (etc/autostart, at boot); reboots
+//                                when the kernel or the firmware changed; a card from before the sessions: its
+//                                autostart's desktop lines moved into etc/session/desktop, once (SystemKit's
+//                                session_migrate, compiled in)
 //   pkg assoc                    SD:/etc/fileassoc.ini and runners.ini made to follow the packages installed
-//                                when the kernel or the firmware changed
 //   -r <repo>                    another repository (a URL or a folder) for this command
 //
 // Exit code: 0 done, 1 nothing to do / a warning, 2 an error, 3 a bad command line.
 //
 #include "pkg/pkglib.h"
 #include "BinUtils/arccli.h"
+#define SK_INLINE			// (SystemKit's session_migrate compiled in: the boot's commit needs no library)
+#include "systemkit/session.h"
 
 using namespace pkg;
 
@@ -258,6 +262,11 @@ static int run (const char *c, char **rest, int nr)
 	if (eq (c, "commit"))
 	{
 		m.commit (R);
+		// the sessions (2026-10-08): a card from before them has the desktop's lines in its autostart -- moved
+		// into etc/session/desktop once (the autostart then has a `session` line: nothing done the next times)
+		int s = session_migrate ();
+		if (s > 0) printf ("SD:/etc/autostart split: the desktop's programs moved into SD:/etc/session/desktop (the old file: autostart.old)\n");
+		else if (s < 0) printf ("SD:/etc/autostart could not be split into the sessions (left as it was)\n");
 		if (m.kernelChanged) { printf ("the system changed: restarting\n"); fflush (stdout); kapi_msleep (1500); kapi_reboot (); }
 		return 0;
 	}

@@ -96,6 +96,9 @@ PROGS  += preload.elf unload.elf
 preload.elf unload.elf: imgname.h
 preload.elf: ../Kits/systemkit/preloadini.h
 
+# the session's tool: the mode's programs and the switch (docs/POCKETUI-TECH-STUDY.md P4; its kits below)
+PROGS  += session.elf
+
 # Console tools linked against newlib (real libc/libm). Add a tool here, not to the
 # integer-only PROGS pattern rule above.
 LIBC_PROGS = libctest.elf rdpd.elf
@@ -168,6 +171,10 @@ ftpfs.elf: ../lib/netkit.imp.a
 # link UIKit's C side (the library opened before main). rdpd (newlib) and gpcdemo: their rules below.
 el0test.elf: KITLIBS = ../lib/uikit.imp_c.a
 el0test.elf: ../lib/uikit.imp_c.a ../Kits/uikit/win.h
+# session (docs/POCKETUI-TECH-STUDY.md P4): the mode's programs, the switch -- SystemKit's session.h (the files, the
+# mode) and UIKit's window calls (the open programs asked to close, the server's mode)
+session.elf: KITLIBS = ../lib/systemkit.imp_c.a ../lib/uikit.imp_c.a
+session.elf: ../lib/systemkit.imp_c.a ../lib/uikit.imp_c.a ../Kits/uikit/win.h ../Kits/systemkit/session.h ../Kits/systemkit/session.inc
 %.elf: %.c ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Runtime/umm.h
 	$(CC) $(CFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< $(KITLIBS) -o $@
 

@@ -161,7 +161,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits pinball critters clock " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits pinball critters clock " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
@@ -170,7 +170,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies circuits pinball critters clock telegram"
+      config wpaconf padconf soundconf displayconf keyconf langconf modeconf preloadconf disks notes stickies circuits pinball critters clock telegram"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -282,7 +282,7 @@ if want irc; then			# (a session canned (SIM_NET): #onyx and its users, #raspber
 	sim irc irc-pm "$W;$W" $P SIM_ARGS="--pm alice" SIM_MBOX='7204:7:1\tstephan\tirc.libera.chat\talice\n7202:7:m\t12:30\talice\thi! I saw your message in #onyx\n7202:7:m\t12:30\talice\tis Onyx open source? I would love to try it on my Pi 4\n7202:7:M\t12:31\tstephan\tyes, it is on GitHub\n7202:7:M\t12:31\tstephan\tyou just copy the files to a FAT32 SD card and boot\n7202:7:m\t12:32\talice\tnice, and does the Wi-Fi work?\n7202:7:M\t12:48\tstephan\tit does -- I am chatting with you from it right now :)\n7202:7:a\t12:49\talice\tis impressed\n7202:7:m\t12:49\talice\tthat is so cool'
 	png irc-pm
 fi
-if want fileviewer; then sim fileviewer fileviewer "wait;down 300 205;up 300 205;wait;down 480 109;up 480 109;$W" $P; png fileviewer; fi
+if want fileviewer; then sim fileviewer fileviewer "wait;down 300 205;up 300 205;wait;down 480 133;up 480 133;$W" $P; png fileviewer; fi	# (etc, then its autostart: under the session folder)
 if want fmtracker; then			# (a song of SD:/music/fms; a block chosen; the instrument dialog: a click on a channel's name)
 	sim fmtracker fmtracker "wait;wait;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;down 600 250;move 700 300;up 700 300;$W" $P SIM_ARGS=SD:/music/fms/AIRWOLF.FMS; png fmtracker
 	sim fmtracker fmtracker-instrument "wait;wait;down 330 64;up 330 64;$W" $P SIM_ARGS=SD:/music/fms/AIRWOLF.FMS; png fmtracker-instrument
@@ -560,6 +560,10 @@ if want dockconf; then applet dockconf dockconf "$W"; png dockconf; fi
 for a in displayconf soundconf keyconf langconf preloadconf wpaconf config; do
 	if want $a; then applet $a $a "$W"; png $a; fi
 done
+if want modeconf; then			# (the Mode applet: the desktop in use; in French as well)
+	applet modeconf modeconf "$W"; png modeconf
+	lang fr; applet modeconf modeconf-fr "$W"; png modeconf-fr; lang "$SHOTS_LANG"
+fi
 if want padconf; then			# (an Xbox 360 pad plugged in, SIM_PAD: two buttons held, the stick pushed)
 	sim padconf padconf_ap "$W" SIM_APPLET=1 SIM_PAD=1
 	sim control padconf "$W" $P SIM_ARGS=padconf SIM_MAIL=40:7 SIM_SURFACE="$OUT/padconf_ap.elsm"; png padconf

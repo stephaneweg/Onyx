@@ -3,7 +3,9 @@
 > **Where it stands (2026-10-08):** phases **P1** (the kernel: kapi v97), **P2** (the window API in UIKit) and **P3**
 > (`user/Servers/common/`, PocketUI's skeleton `user/Servers/pocketui/`, its protocol `user/Kits/uikit/port/pocket.h` —
 > beside `elegant.h` rather than in the server's folder —, the pocket UIKit `lib/pocket/uikit.so`,
-> `tools/libgen/abi_same.py`, the PC test `tools/tests/server_sim`) are built; not yet tried on the Pi. `docs/HANDOFF.md`
+> `tools/libgen/abi_same.py`, the PC test `tools/tests/server_sim`) and **P4** (the sessions: `SD:/etc/session/*`, `/bin/session`,
+> SystemKit's `session.h`, the autostart's split by `pkg commit`, the Mode applet `modeconf`; the pocket session starts the
+> menu bar — the user's decision —, the console's none; Setup's mode page stays P8's) are built; not yet tried on the Pi. `docs/HANDOFF.md`
 > says what was done and the Pi's checklists; the text below is the study as it was written.
 
 *Status (2026-10-08): **a technical analysis only, nothing built.** No code changed. It works out the

@@ -38,6 +38,8 @@ using namespace uikit;
 // in lang/fr.txt).
 // TR: Theme
 // TR: Colours of the windows, menu bar, dock; the wallpaper
+// TR: Mode
+// TR: The interface: desktop, pocket or console
 // TR: Display
 // TR: The screen's resolution, changed at once
 // TR: Panel

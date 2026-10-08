@@ -20,10 +20,17 @@
 #define AS_HELD		"#setup:"		// (Setup's held-back lines: "#setup: <line>")
 
 static inline int as_blank_ (char c) { return c == ' ' || c == '\t' || c == '\r'; }
-// The file into buf (cap - 1 bytes at most) -> its length, 0 no file, -1 bigger than cap - 1.
-static inline int as_read_ (char *buf, int cap)
+// The files looked in: the autostart (the system's part), then the sessions' (SD:/etc/session/<mode>).
+static inline const char *as_file_ (int k)
 {
-	void *f = kapi_open (AUTOSTART_PATH);
+	static const char *const F[] = { AUTOSTART_PATH, AUTOSTART_SESSIONS "desktop", AUTOSTART_SESSIONS "pocket",
+					 AUTOSTART_SESSIONS "console", 0 };
+	return k >= 0 && k < 4 ? F[k] : 0;
+}
+// The file into buf (cap - 1 bytes at most) -> its length, 0 no file, -1 bigger than cap - 1.
+static inline int as_read_ (const char *path, char *buf, int cap)
+{
+	void *f = kapi_open (path);
 	if (f == 0) return 0;
 	unsigned size = kapi_fsize (f);
 	int n = 0;
@@ -91,21 +98,36 @@ static inline int as_len_ (const char *s) { int n = 0; while (s && s[n]) n++; re
 SK_FN int autostart_has (const char *cmd)
 {
 	static char in[AUTOSTART_MAX + 1];
-	int n = as_read_ (in, sizeof in), held;
-	if (n <= 0 || cmd == 0) return 0;
-	return as_find_ (in, n, cmd, 0, &held) >= 0;
+	if (cmd == 0) return 0;
+	for (int k = 0; as_file_ (k); k++)
+	{
+		int n = as_read_ (as_file_ (k), in, sizeof in), held;
+		if (n > 0 && as_find_ (in, n, cmd, 0, &held) >= 0) return 1;
+	}
+	return 0;
 }
 
 SK_FN int autostart_ensure (const char *cmd, const char *after, const char *comment)
 {
 	static char in[AUTOSTART_MAX + 1], out[AUTOSTART_MAX + 1024];
 	if (cmd == 0 || !*cmd) return 0;
-	int n = as_read_ (in, sizeof in), held = 0;
-	if (n < 0) return 0;						// (too big: left alone)
-	if (as_find_ (in, n, cmd, 0, &held) >= 0) return 1;
-	int at = after && *after ? as_find_ (in, n, after, 0, &held) : -1;
-	if (at < 0) { at = as_find_ (in, n, "preload", 1, &held); held = 0; }
-	if (at < 0) at = n;
+	if (autostart_has (cmd)) return 1;
+	// the file whose line `after` is (the autostart first, then the sessions'); else the autostart
+	int n = -1, held = 0, at = -1;
+	const char *path = AUTOSTART_PATH;
+	for (int k = 0; after && *after && as_file_ (k) && at < 0; k++)
+	{
+		n = as_read_ (as_file_ (k), in, sizeof in);
+		if (n > 0) at = as_find_ (in, n, after, 0, &held);
+		if (at >= 0) path = as_file_ (k);
+	}
+	if (at < 0)
+	{
+		n = as_read_ (AUTOSTART_PATH, in, sizeof in);
+		if (n < 0) return 0;					// (too big: left alone)
+		at = as_find_ (in, n, "preload", 1, &held); held = 0;
+		if (at < 0) at = n;
+	}
 	int o = 0, cap = (int) sizeof out;
 	as_put_ (out, &o, cap, in, at);
 	if (o > 0 && out[o - 1] != '\n') as_put_ (out, &o, cap, "\n", 1);	// (a last line without its '\n')
@@ -115,7 +137,7 @@ SK_FN int autostart_ensure (const char *cmd, const char *after, const char *comm
 	as_put_ (out, &o, cap, "\n", 1);
 	as_put_ (out, &o, cap, in + at, n - at);
 	if (o >= cap) return 0;
-	return kapi_save_file (AUTOSTART_PATH, out, (unsigned) o) == o ? 2 : 0;
+	return kapi_save_file (path, out, (unsigned) o) == o ? 2 : 0;
 }
 
 #undef AS_HELD

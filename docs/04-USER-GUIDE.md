@@ -98,7 +98,8 @@ Card contents:
 | `kernel8-rpi4.img` | **the Onyx kernel** |
 | `apps/<name>.app/` | the **applications** (one per `.app` folder): `main` (the ELF, no extension; `main.bax` / `main.bas` for a BASIC app), `app.txt` (title, category, icon, stack), icons, resources |
 | `bin/<tool>` | the terminal **command-line tools** (§8), `init` included |
-| `etc/autostart` | commands run automatically at boot (read by `init`) |
+| `etc/autostart` | commands run automatically at boot (read by `init`): the system's part — the services — and the line `session` |
+| `etc/session/desktop`, `pocket`, `console` | the **session** of each mode: the interface's programs (the menu bar, the dock...), run by `/bin/session` (§5 *Sessions*) |
 | `etc/system.ini` | general settings (§3) |
 | `etc/theme.txt`, `etc/wallpaper.ini`, `etc/dock.ini` | the desktop's colours and style, the wallpaper, the dock (the Control Panel writes them) |
 | `etc/keymaps/*.kmap` | the keyboard layouts (§10) |
@@ -241,7 +242,8 @@ shell=desktop      # the interface: desktop (Elegant; no line: desktop), pocket 
 does not know — is the desktop as always (Elegant); `pocket` and `console` start PocketUI (`SD:/bin/pocketui`,
 the compact modes, §5 *The pocket and console modes*; [`POCKETUI-TECH-STUDY.md`](POCKETUI-TECH-STUDY.md)). A
 server that is missing or does not start is replaced by Elegant, so the screen never stays dark. It is read at
-boot (and at a switch of mode): until the Control Panel's Mode applet (to come), edit the line and restart.
+boot and at a switch of mode: the Control Panel's **Mode** applet (§11) or `session switch <mode>` (§8) write it and
+switch at once (§5 *Sessions: the mode's programs, the switch*); edited by hand, it is taken at the next start.
 
 `ramfs=` is read at boot (restart to apply it). The memory is taken only as files are written to
 `RAM:`, and given back when they are removed; some memory is always left to the applications (a
@@ -292,12 +294,13 @@ On power-on:
    a shell command. By default:
    - **`wait pkg commit`** moves in a system update staged for this boot (and restarts once
      when the kernel or the firmware changed: §8 *Packages*);
-   - **`run voronoy`** paints the **wallpaper** (Voronoi pattern) and then exits;
-   - **`run pkgd`** starts the **update daemon** (§11 *The Package Manager*);
-   - **`run setup`** — on a new card only — starts **Setup**, the first-run wizard (below);
-   - **`run menubar`** starts the **menu bar**, **`run dock`** the **dock**, **`run agenda`**
-     the **agenda widget**, **`run stickies`** the **pinned notes** (Stickies), **`run notifyd`**
-     the notifications;
+   - **`session`** starts the **session** of the interface's mode (§5 *Sessions*): for the desktop the lines of
+     `SD:/etc/session/desktop` — **`run voronoy`** paints the **wallpaper** (Voronoi pattern) and then exits;
+     **`run setup`** — on a new card only — starts **Setup**, the first-run wizard (below); **`run menubar`**
+     starts the **menu bar**, **`run dock`** the **dock**, **`run agenda`** the **agenda widget**, **`run
+     stickies`** the **pinned notes** (Stickies), **`run notifyd`** the notifications;
+   - **`run clockd`**, **`run pkgd`** (the **update daemon**, §11 *The Package Manager*), **`run clipd`**,
+     **`run printd`** start the services;
    - **`keyb FR`** sets the keyboard layout.
 
    Optional: a line **`preload <program>`** loads a large program ahead and keeps it in memory, so
@@ -307,7 +310,8 @@ On power-on:
 ### Setup, the first-run wizard
 
 On a new card Onyx starts with **Setup** alone over the wallpaper: the menu bar, the dock and the
-agenda are held back until it is done (their autostart lines read `#setup: run menubar`...). Its
+agenda are held back until it is done (their lines in the desktop's session file, `SD:/etc/session/desktop`,
+read `#setup: run menubar`...). Its
 window stays in the middle of the screen — it cannot be moved, and it is centred again when the
 resolution changes. The steps are on the left (a green tick once done); **Back** and **Continue**
 at the bottom; everything can be changed later in the Control Panel.
@@ -342,11 +346,11 @@ at the bottom; everything can be changed later in the Control Panel.
    file sharing (FTP, 21, user `onyx` password `onyx`): only FTP asks for a password, so turn on
    only what you use, on a network you trust.
 7. **Ready.** A summary, a **Change** link on each line. **Start Onyx** writes `system.ini`
-   (`timezone` and `zone`, `ntp`, `hostname`) and the autostart — its own `run setup` line and its comments
-   removed, the held-back lines given back, the `keyb` line set, each service's line on or
+   (`timezone` and `zone`, `ntp`, `hostname`), the session's files — its own `run setup` line and its comments
+   removed, the held-back lines given back — and the autostart — the `keyb` line set, each service's line on or
    commented out (`#telnetd`) — starts the menu bar, the dock and the agenda and the services
    turned on (stops those turned off), and ends: it does not come back. To see it again, put
-   `run setup` back in the autostart (`run setup` in a terminal works too).
+   `run setup` back in `SD:/etc/session/desktop` (`run setup` in a terminal works too).
 
 ![Setup: the welcome page, the language at its top right](../screenshots/setup-0.png)
 
@@ -567,9 +571,10 @@ itself — also one changed by another program (the Text Editor, FTP).
 - **Drag the header**: moves the widget; its place is kept in `SD:/apps/stickies.app/config.ini` (`x`, `y`).
 - Notes' **View ▸ Hide Stickies from the Desktop** ends it and keeps it off (`stickies = 0` in
   `SD:/apps/notes.app/config.ini`: started at boot, it then quits at once); **View ▸ Show Stickies on the
-  Desktop** starts it again — and, if `SD:/etc/autostart` has no `run stickies` line (a card updated from
-  an older one), adds it after the agenda's line, saying so in Notes' status line. Hide never edits
-  `autostart`: remove its line by hand to keep it from starting at all.
+  Desktop** starts it again — and, if neither `SD:/etc/autostart` nor a session's file has a `run stickies`
+  line (a card updated from an older one), adds it after the agenda's line (in `SD:/etc/session/desktop`),
+  saying so in Notes' status line. Hide never edits these files: remove its line by hand to keep it from
+  starting at all.
 - Nothing is edited on the desktop: the cards only show the notes. Files read: `SD:/Notes/*.txt`,
   `SD:/Notes/notes.ini`, `SD:/apps/notes.app/config.ini`; written: its own `config.ini`.
 
@@ -659,13 +664,48 @@ run on the PC: `tools/tests/server_sim/run.sh`).*
 
 **`shell=console`** is the same for now without the band (the whole screen is the app's): the console mode's
 home and its pad-driven menus come later. What is not there yet: the launcher (start the apps from the
-Terminal: `run tinycalc`, or over telnet), the task switcher, the quick settings, the Mode applet. The desktop's
-**menu bar** stays in pocket (it takes the place of the status band, the front app's menus and the clock); the
-dock, the agenda and the stickies are not shown (PocketUI refuses them; console refuses the menu bar too); the
-notifications' bubbles still appear. The app started last (or raised: `run` of an app already running, Alt+Tab)
-is the one in front, the others set aside; a card does not move (its title bar does not drag it). Back to the
-desktop: `shell=desktop` (or remove the line) and restart. PocketUI gives the apps their pocket UIKit
+Terminal: `run tinycalc`, or over telnet), the task switcher, the quick settings. The pocket session starts the
+desktop's **menu bar** (it takes the place of the status band: the front app's menus, the clock, the status icons)
+and the Terminal; the dock, the agenda and Stickies are the desktop's only (PocketUI refuses them; console refuses
+the menu bar too); the notifications' bubbles still appear. The app started last (or raised: `run` of an app
+already running, Alt+Tab) is the one in front, the others set aside; a card does not move (its title bar does
+not drag it). Back to the desktop: the Control Panel's **Mode** applet, or `session switch desktop` in the
+Terminal (below). PocketUI gives the apps their pocket UIKit
 (`SD:/lib/pocket/uikit.so`, under the name `SD:/lib/uikit.so`): the same apps, the same binaries.
+
+### Sessions: the mode's programs, the switch
+
+The programs started at boot are in two places. **`SD:/etc/autostart`** is the **system's part**: the update
+of the packages, the services (`clockd`, `pkgd`, `clipd`, `printd`, `telnetd`, `vncd`, `rdpd`), the keyboard's
+layout, `preload /boot` — they run whatever the mode. Its line **`session`** runs **`/bin/session`**, which starts
+the **session** of the interface's mode — the lines of **`SD:/etc/session/<mode>`** (the same syntax as the
+autostart):
+
+| Mode | Its session file starts |
+|---|---|
+| **desktop** (`shell=desktop`, or no line) | the wallpaper (`voronoy`), Setup on a new card, the menu bar, the notifications (`notifyd`), the dock, the agenda, Stickies |
+| **pocket** (`shell=pocket`) | the menu bar (PocketUI's top band) and, until the pocket shell's launcher comes, the Terminal |
+| **console** (`shell=console`) | until the console's home comes: the Terminal and the Game Library in front (no menu bar, no dock) |
+
+The mode is the running graphics server's: when the server of `shell=` does not start and the kernel starts
+Elegant instead, the desktop's session runs. A line added by hand to a session file runs in that mode only; a
+line in the autostart, in every mode. (A card updated from an Onyx before the sessions keeps the desktop's lines
+in its autostart until the first `pkg commit` at boot moves them into `SD:/etc/session/desktop` — the line just
+above each one with it — and puts `session` where they were; the old file is kept as `SD:/etc/autostart.old`.
+Your own lines stay where they were, in the autostart.)
+
+**Switching the mode** — the Control Panel's **Mode** applet (§11), or `session switch pocket` in the Terminal:
+
+1. **the open programs are asked to close**, as by their close box: a program with an unsaved document asks
+   what to do with it. A program still open after 5 seconds is waiting for an answer: the Mode applet says
+   which, with **Wait** (5 seconds more), **Force** (it is ended, its unsaved work lost) and **Cancel** (nothing
+   is switched);
+2. the session's programs end (the menu bar, the dock...), `printd` is started again after the switch;
+3. `SD:/etc/system.ini`'s `shell=` is written, the kernel ends the graphics server and starts the other one;
+4. the new mode's session file runs. If its server does not start, the desktop comes back instead (`shell=desktop`
+   put back, a notification says so). Not while a full-screen program has the display (said; nothing changed).
+
+The services (telnet, VNC, Onyx Remote, the clipboard, the alarms) go on through a switch.
 
 ### The pointer's shapes
 
@@ -1165,8 +1205,9 @@ it: `ed notes.txt < edits.txt`.
 | `run` | `run <app\|path> [args]` | Launches an **application**: `run mandelbrot` = `SD:apps/mandelbrot.app/main`; a name containing `/` is taken as an explicit **ELF path**; the following arguments are passed as `argv` (e.g. `run tinypad SD:/notes.txt`). |
 | `keyb` | `keyb [XX]` | With no argument: shows the current layout + the list. `keyb FR`: switches to the layout (US, UK, DE, FR, BE, ES, IT, DV). |
 | `cmd` | `cmd`, `cmd <script> [args]`, `cmd -c "line"` | **The shell itself**, an ordinary `/bin` program: reads command lines from `stdin` (up to 2047 characters), runs their commands (`;`, `&&`, `\|\|`; variables, `if` / `while` / `for`: the script language of §7), builds the pipelines (`\|`, `<`, `>`, `>>`; `"…"`, `'…'` and `\` quote), spawns `/bin/<cmd>` for each stage with its exact argument list; builtins `cd`, `pwd`, `clear`, `exit`, `source`, `test`, `echo`, `read`, `set`, `unset`, `shift` (§7). With a file: **runs that script** and ends with its exit code (§7 *Scripts*); `-c`: one line. The terminal runs it; `telnetd` serves it over the network. |
-| `init` | (started by the kernel) | The **first program** at boot (`cmdline.txt` `init=`, §3): runs each line of `SD:/etc/autostart` as a shell command (`run <app>`, a `/bin` tool; `sleep <s>`; `wait <command>`: waits for its end — `wait pkg commit`, the packages staged for this boot), then exits. Not meant to be run by hand. |
-| `pkg` | `pkg list [-a] [filter]`, `pkg info <name>`, `pkg add <name\|file.opk>…`, `pkg delete [-p] <name>…`, `pkg update <name>…\|-a`, `pkg upgrade`, `pkg check`, `pkg assoc`, `pkg mode <name> manual\|auto\|never`, `pkg commit`; `-r <repo>` | **The packages from the shell** — the Package Manager's engine (§11, `docs/pkg/README.md`): lists, installs (with what a package needs), removes, updates from the signed repository; `commit` moves the staged packages in (at boot, from `SD:/etc/autostart`) and reboots when the kernel or the firmware changed. Exit code 0 done, 1 nothing to do, 2 an error, 3 a bad command line. **`pkg assoc`**: `SD:/etc/fileassoc.ini` and `runners.ini` made to follow what the installed packages say they open and run (the lines you changed are left alone). |
+| `init` | (started by the kernel) | The **first program** at boot (`cmdline.txt` `init=`, §3): runs each line of `SD:/etc/autostart` as a shell command (`run <app>`, a `/bin` tool; `sleep <s>`; `wait <command>`: waits for its end — `wait pkg commit`, the packages staged for this boot), then exits; its line `session` starts the mode's programs (`session`, below). Not meant to be run by hand. |
+| `session` | `session`, `session start [MODE]`, `session mode`, `session list [MODE]`, `session switch MODE [--force] [--no-ask] [--wait S] [--keep PID[,PID]]`, `session migrate` | **The interface's session** (§5 *Sessions*; MODE: `desktop`, `pocket`, `console`). Alone (the autostart's line `session`, at boot): runs `SD:/etc/session/<mode>` — the running server's mode — as `init` runs the autostart (`run <app>`, a tool, `sleep`, `wait`); `start MODE`: that mode's file. `mode`: the mode chosen (`system.ini`) and the one running. `list`: the programs a mode's file starts. **`switch MODE`**: the open programs asked to close (an unsaved document asked by its program) and waited for (`--wait`, 5 s); some still open: they are listed (also in `SD:/tmp/session.wait`), nothing is switched, exit status 2 — unless `--force` (ended); `--no-ask`: not asked again, only waited for. Then the session's programs end, `shell=` is written, the kernel switches the graphics server and the new mode's file runs; the terminal it was typed in (and `--keep`'s programs) stay open meanwhile, then end. Exit status 0 switched, 1 its server failed (the desktop instead), 2 programs still open, 3 refused (a full-screen program), 4 a bad command line, 5 failed. On a kernel before kapi v97: `shell=` written and the Pi restarted. **`migrate`**: a card from before the sessions — the autostart's desktop lines moved into `SD:/etc/session/desktop` (what `pkg commit` does once at boot). |
+| `pkg` | `pkg list [-a] [filter]`, `pkg info <name>`, `pkg add <name\|file.opk>…`, `pkg delete [-p] <name>…`, `pkg update <name>…\|-a`, `pkg upgrade`, `pkg check`, `pkg assoc`, `pkg mode <name> manual\|auto\|never`, `pkg commit`; `-r <repo>` | **The packages from the shell** — the Package Manager's engine (§11, `docs/pkg/README.md`): lists, installs (with what a package needs), removes, updates from the signed repository; `commit` moves the staged packages in (at boot, from `SD:/etc/autostart`) and reboots when the kernel or the firmware changed; on a card from before the sessions it also moves the autostart's desktop lines into `SD:/etc/session/desktop`, once (§5 *Sessions*). Exit code 0 done, 1 nothing to do, 2 an error, 3 a bad command line. **`pkg assoc`**: `SD:/etc/fileassoc.ini` and `runners.ini` made to follow what the installed packages say they open and run (the lines you changed are left alone). |
 
 **Networking and logs**
 
@@ -1720,6 +1761,7 @@ the list **scrolls** (the wheel, the bar at its right, the arrow keys).
 
 | Applet | What it sets |
 |---|---|
+| **Mode** (`modeconf`) | The **interface**: **Desktop** (windows side by side, the menu bar, the dock: a monitor, a keyboard and a mouse), **Pocket** (one app at a time, full screen, on a small screen: a handheld, a 7-inch display) or **Console** (the games first, a television, a gamepad) — three cards, a picture of each, the one *in use* marked; click one, **Apply**: *The open programs will be closed, then the interface starts again* (OK / Cancel), then the switch (§5 *Sessions*): every program is asked to close — one that waits for an answer about its unsaved work is named: **Wait**, **Force** (ended), **Cancel** (nothing switched). The Control Panel itself closes with the session. Kept in `SD:/etc/system.ini` (`shell=`); the programs of each mode in `SD:/etc/session/`. |
 | **Theme** (`theme`) | The desktop's colours and wallpaper, with a preview (below). |
 | **Display** (`displayconf`) | The screen's **resolution**: pick a size in the list (1024 × 768 … 2560 × 1440, 4:3, 16:9, 16:10…), **Apply** (or a double click): the screen changes **at once** — the menu bar, the dock and the notifications follow it, a maximised window fills the new screen, a window too big for it is shrunk into it, the wallpaper is painted again — and it is kept in `SD:/cmdline.txt` (`width=` / `height=`) for the next start. Not while an app has the full screen. The monitor shows any size (the Pi scales the picture to it); its own resolution is the sharpest. |
 | **Panel** (`dockconf`) | The dock: its **drawers** — the list holds **every category of the card's apps** (the `category` of their `app.txt`; a new one appears by itself), left to right as in the dock: **^** / **v** move the chosen one, **Hidden** takes its drawer off the dock, and the list beside picks its **main app**, whose icon the drawer shows —, the **launchers** after them (the Terminal, the File Viewer…: add any app, remove, move), the **workspaces** (how many, 1 to 6, and their names). **Apply** writes `SD:/etc/dock.ini` and starts the dock again: it takes it at once (a new group, a new launcher). |
@@ -1732,6 +1774,10 @@ the list **scrolls** (the wheel, the bar at its right, the arrow keys).
 | **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
 | **App Settings** (`config`) | An app's own settings, its `SD:/apps/<name>.app/config.ini`: the apps (those with settings first, marked `*`), then the chosen one's `key = value` lines — pick one, change its key or its value, **Set** (Enter; a new key adds a line), **Delete**; **Save** writes the file (the app reads it when it starts again), **Reload**. |
 | **Packages** (`pkgman`) | The **Onyx Package Manager**: the updates, the packages installed, more to install (below). |
+
+![The Mode applet](../screenshots/modeconf.png)
+
+*Mode: the desktop, pocket or console — the one in use marked.*
 
 ![The Language & Region applet](../screenshots/langconf.png)
 
@@ -1944,8 +1990,11 @@ silver).
   ignored; the **`sleep <seconds>`** line (an init builtin) waits before the next line,
   to stagger the startup, and **`wait <command>`** runs the command and waits for its end
   (`wait pkg commit`, the first line: the packages staged for this boot moved in). Launch a **desktop app** with the `run` tool (`run <name>` →
-  `/apps/<name>.app/main`). Defaults: `run voronoy`, `run menubar`, `run notifyd`, `run dock`, `run agenda`, `run stickies`, `keyb FR` (sets the
-  keyboard layout at boot) `telnetd` (remote shell) and `vncd` (remote desktop) — see §8. Which program plays the `init` role is itself set
+  `/apps/<name>.app/main`). Defaults: `wait pkg commit`, `session` (the mode's programs: §5 *Sessions*), `run clockd`, `run pkgd`, `run clipd`, `run printd`, `keyb FR` (sets the
+  keyboard layout at boot), `telnetd` (remote shell), `vncd` (remote desktop), `rdpd`, `preload /boot` — see §8.
+- **`SD:/etc/session/<mode>`** (`desktop`, `pocket`, `console`): the same syntax — the interface's programs of
+  that mode, run by `/bin/session` (the desktop's: `run voronoy`, `run setup` on a new card, `run menubar`, `run
+  notifyd`, `run dock`, `run agenda`, `run stickies`). Which program plays the `init` role is itself set
   by `init=` in `cmdline.txt` (see §3).
 
 ### Wallpaper

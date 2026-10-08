@@ -13,6 +13,8 @@ No memory for the applets' pane.	Mémoire insuffisante pour le volet des modules
 # the applets: their link files' name = and text = (applets/*.lnk)
 Theme	Thème
 Colours of the windows, menu bar, dock; the wallpaper	Couleurs des fenêtres, de la barre de menus, du dock ; le fond d'écran
+Mode	Mode
+The interface: desktop, pocket or console	L'interface : bureau, poche ou console
 Display	Affichage
 The screen's resolution, changed at once	La résolution de l'écran, changée immédiatement
 Panel	Dock

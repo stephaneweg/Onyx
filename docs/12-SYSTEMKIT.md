@@ -18,7 +18,8 @@
 12. [`systemkit/preloadini.h`](#systemkitpreloadinih)
 13. [`systemkit/autostart.h`](#systemkitautostarth)
 14. [`systemkit/locale.h`](#systemkitlocaleh)
-15. [`systemkit/applet_proto.h`](#systemkitappletprotoh)
+15. [`systemkit/session.h`](#systemkitsessionh)
+16. [`systemkit/applet_proto.h`](#systemkitappletprotoh)
 
 ---
 
@@ -30,7 +31,7 @@ SystemKit is what a program says to the system and to the other programs: notifi
 |---|---|
 | Include | `#include "systemkit/systemkit.h"` |
 | Link | `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C) |
-| Library | `SD:/lib/systemkit.so` — 78 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
+| Library | `SD:/lib/systemkit.so` — 89 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
 | Sources | `user/Kits/systemkit/` |
 
 ## Using it
@@ -245,6 +246,17 @@ Everything the headers declare, in their order — the details are in each heade
 | `locale_set_zone` | the clock's offset at once, zone= and timezone= kept -> 1 written | `locale.h` |
 | `locale_zone_offset_at` | The zone's offset from UTC at that instant (minutes since 1970, UTC), the hour of the change counted | `locale.h` |
 | `locale_zone_sync` | The zone named by system.ini's zone= (that one only | `locale.h` |
+| `session_modes` | how many modes: 3 | `session.h` |
+| `session_mode_name` | "desktop", "pocket", "console" ("" out of range) | `session.h` |
+| `session_mode_find` | the mode of that name (any case) -> SESSION_*, -1 none | `session.h` |
+| `session_mode` | The mode chosen | `session.h` |
+| `session_set_mode` | "shell = <name>" written -> 1 (0: not written) | `session.h` |
+| `session_file` | the mode's session file's path ("SD:/etc/session/pocket") -> its length, 0 | `session.h` |
+| `session_programs` | The programs the mode's file starts ("menubar", "dock", "notifyd"... | `session.h` |
+| `session_switch_start` | The switch to mode m (/bin/session switch, started with the flags | `session.h` |
+| `session_switch` | ... and waited for -> SESSION_* | `session.h` |
+| `session_waiting` | After SESSION_WAITING_APPS | `session.h` |
+| `session_migrate` | The autostart of a card from before the sessions split, once | `session.h` |
 
 ---
 
@@ -801,22 +813,23 @@ int preload_ini_save (const struct PreloadList *l);
 
 ## `systemkit/autostart.h`
 
-autostart.h -- SD:/etc/autostart, the programs started at boot (one shell command a line: `run agenda`, `keyb FR`, `preload /boot` the last one), as an app that offers "start it at every boot" changes it: a line looked for, a line added where it belongs -- never moved, never removed, every other line kept byte for byte. Setup's held-back lines count: on a card whose first-run wizard has not ended, a line is written "#setup: <command>" and given back by Setup at its end (apps/setup) -- such a line is "there", and a line added after one of them is held back the same way. Used by Notes (View > Show Stickies on the Desktop). C and C++.
+autostart.h -- SD:/etc/autostart, the programs started at boot (one shell command a line: `run agenda`, `keyb FR`, `preload /boot` the last one), as an app that offers "start it at every boot" changes it: a line looked for, a line added where it belongs -- never moved, never removed, every other line kept byte for byte. Setup's held-back lines count: on a card whose first-run wizard has not ended, a line is written "#setup: <command>" and given back by Setup at its end (apps/setup) -- such a line is "there", and a line added after one of them is held back the same way. Used by Notes (View > Show Stickies on the Desktop) and the Clock (clockd). Since the sessions (session.h, 2026-10-08) the programs started at boot are in two places: SD:/etc/autostart, the system's part (the services), and the session files SD:/etc/session/<mode> (desktop, pocket, console: the interface's programs -- the menu bar, the dock, the agenda...). Both functions look in all of them: a line is "there" in any one, and a line is added to the file whose `after` line it follows (Stickies after the agenda: SD:/etc/session/desktop). C and C++.
 
 MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 
 ```cpp
 #define AUTOSTART_PATH	"SD:/etc/autostart"
+#define AUTOSTART_SESSIONS	"SD:/etc/session/"	// + "desktop", "pocket", "console": the sessions' files
 #define AUTOSTART_MAX	16384			// a bigger file is left alone (never cut)
 ```
 
-Is `cmd` ("run stickies", say) started at boot? A line whose words begin with cmd's words -- blanks before it, more words after it allowed ("run stickies --x") -- either active or held back by Setup ("#setup: run stickies"). A plain comment ("# run stickies") is not. -> 1 there, 0 not (or no file)
+Is `cmd` ("run stickies", say) started at boot? A line whose words begin with cmd's words -- blanks before it, more words after it allowed ("run stickies --x") -- either active or held back by Setup ("#setup: run stickies"), in the autostart or in a session's file. A plain comment ("# run stickies") is not. -> 1 there, 0 not (or no file)
 
 ```cpp
 int autostart_has (const char *cmd);
 ```
 
-Make sure `cmd` is started at boot. Nothing written when autostart_has (cmd). Else the line `cmd`, after the comment line `comment` ("# ...", or 0: none), is INSERTED: right after the first line whose command starts with the words `after` (e.g. "run agenda"; 0: no such rule) -- with that line's "#setup: " when it has one (held back as it is); else just before the first `preload` line (it stays the last); else at the end (no file: a new one). -> 1 already there, 2 added, 0 not written (the file too big, the write failed)
+Make sure `cmd` is started at boot. Nothing written when autostart_has (cmd). Else the line `cmd`, after the comment line `comment` ("# ...", or 0: none), is INSERTED: right after the first line whose command starts with the words `after` (e.g. "run agenda"; 0: no such rule) -- looked for in the autostart, then in the sessions' files: in the file that has it --, with that line's "#setup: " when it has one (held back as it is); else in the autostart, just before the first `preload` line (it stays the last); else at its end (no file: a new one). -> 1 already there, 2 added, 0 not written (the file too big, the write failed)
 
 ```cpp
 int autostart_ensure (const char *cmd, const char *after, const char *comment);
@@ -887,6 +900,84 @@ The zone named by system.ini's zone= (that one only: never locale_zone ()'s gues
 
 ```cpp
 int locale_zone_sync (void);
+```
+
+## `systemkit/session.h`
+
+session.h -- the interface's mode and its session (docs/POCKETUI-TECH-STUDY.md section 8). Onyx has three modes:
+
+```
+  desktop   Elegant, the desktop (the menu bar, the dock, the agenda...)            SD:/etc/session/desktop
+  pocket    PocketUI, one app at a time on a small screen                           SD:/etc/session/pocket
+  console   PocketUI's console mode: the games, a television, a pad                 SD:/etc/session/console
+```
+
+The mode is SD:/etc/system.ini's "shell =" (no line: desktop), which the kernel reads to start the matching graphics server. The SESSION is the mode's programs: SD:/etc/autostart keeps the system's part (the services: clockd, pkgd, clipd, printd, telnetd...) and one line, `session`, where /bin/session runs the file of the mode (the same syntax as the autostart: `run menubar`, `#setup: run dock`, `sleep 1`...). Switching the mode closes the open programs (an unsaved document asked), ends the session's programs, writes "shell =", has the kernel start the other server (KAPI_WS_SWITCH) and runs the other mode's file: /bin/session does it, asked by the Control Panel's Mode applet (modeconf) or typed (`session switch pocket`). A card from before the sessions keeps the desktop's lines in its autostart until `pkg commit` (at boot) moves them into SD:/etc/session/desktop once (session_migrate). C and C++.
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+```cpp
+#define SESSION_DESKTOP		0	// the modes (UIKit's UK_MODE_* are the same numbers)
+#define SESSION_POCKET		1
+#define SESSION_CONSOLE		2
+#define SESSION_DIR		"SD:/etc/session"	// SESSION_DIR "/<mode's name>": the mode's programs
+#define SESSION_TOOL		"SD:/bin/session"
+#define SESSION_WAITING		"SD:/tmp/session.wait"	// the programs that did not close (session_waiting)
+```
+
+session_switch's flags
+
+```cpp
+#define SESSION_FORCE		1	// the programs still open after the wait are ended (their documents lost)
+#define SESSION_NO_ASK		2	// they are not asked again (they were: their question is up), only waited for
+```
+
+session_switch's answers (/bin/session switch's exit status)
+
+```cpp
+#define SESSION_SWITCHED	0	// the mode asked for runs, its programs started
+#define SESSION_FELL_BACK	1	// its server failed: the desktop runs ("shell =" put back to desktop)
+#define SESSION_WAITING_APPS	2	// programs did not close in time (session_waiting): nothing switched
+#define SESSION_REFUSED		3	// a full-screen program has the display, or a switch is under way
+#define SESSION_BAD		4	// an unknown mode, wrong arguments
+#define SESSION_FAILED		5	// system.ini not written, no server took the display, the tool missing
+
+int session_modes (void);				// how many modes: 3
+const char *session_mode_name (int m);		// "desktop", "pocket", "console" ("" out of range)
+int session_mode_find (const char *name);		// the mode of that name (any case) -> SESSION_*, -1 none
+```
+
+The mode chosen: system.ini's "shell =" (no line, or an unknown word: SESSION_DESKTOP). Read at each call. (The server running may differ: its server failed at boot and the kernel started Elegant -- UIKit's uk_win_server says which runs.)
+
+```cpp
+int session_mode (void);
+int session_set_mode (int m);			// "shell = <name>" written -> 1 (0: not written)
+int session_file (int m, char *out, int cap);	// the mode's session file's path ("SD:/etc/session/pocket") -> its length, 0
+```
+
+The programs the mode's file starts ("menubar", "dock", "notifyd"...: the names their processes have; a `run <app>` line gives the app, another line its /bin tool; Setup's held-back "#setup: " lines count), one a line into out -> how many (0: no file).
+
+```cpp
+int session_programs (int m, char *out, int cap);
+```
+
+The switch to mode m (/bin/session switch, started with the flags; keep_pid: a program kept open meanwhile -- a Control Panel applet's host --, 0 none; the caller and its parents always are, then ended once the new session runs) -> its process handle (kapi_proc_done, kapi_wait: SESSION_* answer), 0 not started.
+
+```cpp
+void *session_switch_start (int m, int flags, int keep_pid);
+int session_switch (int m, int flags);		// ... and waited for -> SESSION_*
+```
+
+After SESSION_WAITING_APPS: the programs that did not close, "<name>\t<window title>" a line -> how many.
+
+```cpp
+int session_waiting (char *out, int cap);
+```
+
+The autostart of a card from before the sessions split, once: the desktop's lines (voronoy, Setup and its "#setup#" lines, menubar, notifyd, dock, agenda, stickies, wifimenu, imageview -- with the comment lines just above each) moved into SD:/etc/session/desktop (made anew from them), a line `session` where the first of them was, the old file kept as SD:/etc/autostart.old; every other line where it was. Nothing done when the autostart has a `session` line already. -> 1 split, 0 nothing to do, -1 not written (the card as it was).
+
+```cpp
+int session_migrate (void);
 ```
 
 ## `systemkit/applet_proto.h`
