@@ -203,6 +203,18 @@ shellshots 480x800 portrait "home search switcher quick"
 shellshots 800x480 800 "home search switcher quick" fr
 # console: the shell's home is the whole screen (no band)
 run pocket_pocketshell shell-console "$W;$W;expect shell app;expect kind home;expect area 0,0,800,480;expect pos 0,0" SIM_SCREEN=800x480 SIM_MODE=console SIM_APPNAME=pocketshell
+# the launcher's keys from the start (the Pi's report on 2026.10.126: "the shell does not react to the keyboard"):
+# typing goes to the search (calc), Down / Up choose, Enter opens the result (the Calculator); "qqq" (no app: its only
+# result is to run it) then Esc clears the search, the arrows move in the grid (Right x3, Left: its 3rd app), Enter
+# opens it (not "qqq" run)
+n0=$(grep -c "^sim: launch" "$OUT/log.txt" || true)
+SK="otherpic 1920 30 menubar $OUT/bar-home-1080.elsm 0 0 0x35 0 0;$W;$W;expect home 1;key c;key a;key l;key c;$W;key 0x101;key 0x100;$W;key 13;$W"
+SK="$SK;key q;key q;key q;$W;key 0x1b;$W;key 0x103;key 0x103;key 0x103;key 0x102;$W;key 13;$W;$W;expect keys 16;expect home 1"
+run pocket_pocketshell shell-keys-1080 "$SK" SIM_SCREEN=1920x1080 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$(langdir "")
+L=$(grep "^sim: launch" "$OUT/log.txt" | tail -n +$((n0 + 1)) | tr '\n' ' ')
+case "$L" in "sim: launch tinycalc sim: launch terminal ") ;; "sim: launch tinycalc sim: launch "?*" ") L=ok ;; esac	# (terminal: "qqq" not cleared, run)
+if [ "$L" = ok ]; then echo "  shell-keys-1080: the search's result and the grid's app opened"
+else echo "  shell-keys-1080: FAILED (opened: $L)"; FAIL=1; fi
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1
 echo "  checks: $(grep -c 'server_sim: PASS' "$OUT/log.txt") passed, $(grep -c 'server_sim: FAIL' "$OUT/log.txt") failed"
 
