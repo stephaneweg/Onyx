@@ -560,9 +560,12 @@ Alt+Tab. Console mode uses the same buttons with its own meanings (§7.2: L1/R1 
 > ships its own UIKit** with the same exports (UIKit is to its server what AppKit is to the kernel), which
 > the server loads under the **alias `SD:/lib/uikit.so`** (a new kernel call, `kapi_lib_open_as`) and keeps
 > referenced while it runs, so the apps get it without knowing; **switching mode closes the graphical
-> session and starts it again**. Elegant, the apps and (beyond that one call) the kernel stay unchanged.
-> The technical analysis, `docs/POCKETUI-TECH-STUDY.md`, works this out; §11.1–11.2 below are the
-> design's first proposal, kept for the record.
+> session and starts it again**. Elegant and the apps stay unchanged. The technical analysis,
+> `docs/POCKETUI-TECH-STUDY.md`, works this out — it finds that PocketUI must also serve Elegant's whole
+> base protocol (it is AppKit's, used by programs without UIKit), and that the kernel needs two more small
+> changes beside `lib_open_as` (the server chosen from `shell=`, a "switch the server" operation: its
+> §3.8 and question 1); the E1–E10 needs below become PocketUI's private operations (its §4.4).
+> §11.1–11.2 below are the design's first proposal, kept for the record.
 
 ### 11.1 Choosing the shell
 
