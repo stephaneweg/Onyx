@@ -34,6 +34,8 @@ LIBC_SRC  = ../Runtime/libc/crt0libc.S ../Runtime/libc/onyx_syscalls.c
 LIBC_DEP  = ../Runtime/libc/crt0libc.S ../Runtime/libc/onyx_syscalls.c ../Kits/appkit/appkit.h ../Runtime/user.ld
 # (every program reaches the kernel through AppKit: its import stubs, ../Makefile)
 LDFLAGS = -Wl,-T,../Runtime/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none ../lib/appkit_stubs.o
+# (everything is made again when AppKit's stubs change -- a slot moved: user/Makefile; not in $^)
+.EXTRA_PREREQS = ../lib/appkit_stubs.o
 # Freestanding tools (no libc): alias memset/memcpy/memmove onto the kapi ones (appkit/appkit.h,
 # ABI v36). NOT used by the newlib programs, which keep newlib's own.
 KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \

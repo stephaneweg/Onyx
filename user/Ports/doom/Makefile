@@ -16,6 +16,8 @@ CFLAGS  = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfi
 CXXFLAGS = -mcpu=cortex-a72 -O2 -fno-stack-protector -fno-pic -fno-pie -nostartfiles \
 	  -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit -I../.. -I../../Kits -I../../Runtime -I../../Include -I../../Libs -I../../Emulators -I../../Ports -I../../../kernel/include
 LDFLAGS = -Wl,-T,../../Runtime/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none -Wl,--gc-sections ../../lib/appkit_stubs.o
+# (everything is made again when AppKit's stubs change -- a slot moved: user/Makefile; not in $^)
+.EXTRA_PREREQS = ../../lib/appkit_stubs.o
 
 DG_SRC = dummy am_map doomdef doomstat dstrings d_event d_items d_iwad d_loop d_main d_mode d_net \
 	 f_finale f_wipe g_game hu_lib hu_stuff info i_cdmus i_endoom i_joystick i_scale i_sound \
