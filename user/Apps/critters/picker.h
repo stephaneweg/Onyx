@@ -216,6 +216,7 @@ public:
 		double s = fmin ((width - 8.0) / e.w, (height - 8.0) / e.h);
 		int pw = (int) (e.w * s), ph = (int) (e.h * s), x0 = (width - pw) / 2, y0 = (height - ph) / 2;
 		uk_rbox (canvas, x0 - 4, y0 - 4, pw + 8, ph + 8, 6, uk_tone (C_BG, 90), uk_tone (C_BG, 70));
+		if (e.thumb && (e.thumb->w != pw || e.thumb->h != ph)) { delete e.thumb; e.thumb = 0; }	// (the window resized: made again)
 		if (!e.thumb) make_thumb (e, pw, ph);
 		if (e.thumb && e.thumb->px) canvas.putOther (*e.thumb, x0, y0, false);
 		else canvas.fillRect (x0, y0, pw, ph, 0x101830);

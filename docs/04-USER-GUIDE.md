@@ -4953,8 +4953,8 @@ and Play is disabled — correct the file in Tinypad: the list is read again eac
 ![Pinball: a refused table](../screenshots/pinball-broken.png)
 *A player's table with a typo on line 12: the picker says why it cannot be played.*
 
-**Playing.** The playfield on the left (scaled to the window, which can be resized or maximised: the table grows
-with the height), the **panel** on the right: the table's name, the **score** and the ball (*BALL 2 / 3*), the
+**Playing.** The playfield on the left (scaled to the window, which can be resized or maximised — down to 600 × 440,
+filled to the screen in the pocket mode: the table grows with the height; the picker's preview grows too), the **panel** on the right: the table's name, the **score** and the ball (*BALL 2 / 3*), the
 **message line** (*"Ball 2: launch it!"*, the rules' messages, *MULTIBALL!*, *TILT*…), the **bonus**, the bonus
 **multiplier**, the table's **best** score, the **tilt** dots (one red a nudge), the **goal** and each of the table's
 rules as a goal — its count as dots that fill as it is reached, a check when a once-only rule is done — and the keys.
@@ -5102,6 +5102,9 @@ a text file** (the `.level` format below) is played the same way.
 ![Critters: the level picker](../screenshots/critters.png)
 *The picker: Training 1 to 3 solved (the tick and the best result), Up the Wall open and new, the rest locked; under
 My levels, a player's level refused by the reader (its error in red).*
+
+The window is **resizable** (filled to the screen in the pocket mode): the picker's list gets taller and the preview
+bigger; in play the field gets as wide as the window (more of the level seen), the bar centred under it.
 
 **The picker** (the home screen). On the left, the levels: *Training* 1–6, *Expedition* 1–6, then under *My levels
 (SD:/docs/critters)* the player's `.level` files, then a level opened from elsewhere. Each row shows its number, its
