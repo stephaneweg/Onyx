@@ -3470,6 +3470,14 @@ The **Calendar** keeps your **appointments** and your **tasks** (its text drawn 
 DejaVu Sans: accents and other scripts as typed). On top: **New event**, **Today**,
 **<** and **>** (the previous / next day, week or month), the period shown, and **Day / Week /
 Month**.
+The Calendar speaks the **system's language** (English or French: Control Panel ▸ Language &
+Region): the days, the months and a date's order too (*Wednesday, October 9, 2026* / *Mercredi 9 octobre
+2026*) — not the names of the calendars it made at first (*Work*, *Personal*...: they are yours to rename).
+
+**In the pocket and console modes** (the same program) the left side — the month, the calendars, the
+tasks — is a **drawer**: the tab at the window's left edge opens it over the period, a click beside it
+closes it (a wide screen, 1280 × 720 and more, keeps it whole). In a narrow window the toolbar keeps *New
+event*, **<** **>** and *Day / Week / Month*; *Today* and the period's title wait behind its **»**.
 
 **Day and Week** show the hours down the side (the evening and the night a shade darker), the
 week number in the corner, today's date in a circle and **now as a red line**. Each appointment

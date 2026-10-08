@@ -11,7 +11,7 @@
 #   - the pilots: the Task Manager (the grid's roles: cards in portrait), the Terminal (its tabs, no source change);
 #   - the viewport: Setup (800 x 600, fixed) at 800 x 480 scrolled by the wheel over its indicator;
 #   - the File Viewer: resizable, its places a SidePanel in pocket (landscape, portrait's drawer) and console.
-# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail]
+# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar]
 # SHOTS_PNG=<folder>: the pictures copied there too (docs/compact-shell/real/).
 set -e
 cd "$(dirname "$0")/../../.."
@@ -234,6 +234,24 @@ if want mail; then
 		mrun mail-console 640x480 console "" "$W"
 		kill $MS1 $MS2 2>/dev/null
 	else echo "adaptive: Mail skipped (no $MS/libmb.a, $MS/mkaccounts: sh tools/tests/desktop_sim/shots.sh mail)"; fi
+fi
+
+# ---- P7: the Calendar (its side -- the month, the calendars, the tasks -- a SidePanel of free content: a drawer in pocket) --
+if want calendar; then
+	echo "adaptive: the Calendar"
+	ftapp pocket calendar uikit_pocket
+	for t in 800x480:800 1280x720:720 480x800:portrait 640x480:console; do
+		sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
+		WR=$(langdir "")
+		run pocket_calendar calendar-$tg "$WWW;expect kind fill;expect frame 0;$W;dump $OUT/calendar-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=calendar SIM_APP=calendar SIM_WRITES=$WR SIM_DATE=20260930 SIM_TIME=1042
+		out calendar-$tg
+	done
+	WR=$(langdir "")
+	run pocket_calendar calendar-800-drawer "$WWW;down 6 250;up 6 250;$W;dump $OUT/calendar-800-drawer.elsm" SIM_SCREEN=800x480 SIM_APPNAME=calendar SIM_APP=calendar SIM_WRITES=$WR SIM_DATE=20260930 SIM_TIME=1042
+	out calendar-800-drawer
+	WR=$(langdir fr)
+	run pocket_calendar calendar-720-fr "$WWW;dump $OUT/calendar-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=calendar SIM_APP=calendar SIM_WRITES=$WR SIM_DATE=20260930 SIM_TIME=1042
+	out calendar-720-fr
 fi
 
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1

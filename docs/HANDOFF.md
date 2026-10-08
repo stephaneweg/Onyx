@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## PocketUI phase P7, begun: the Media Player, Photos, the Game Library and Mail migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, not published (no signing key on this PC)
+## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail and the Calendar migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, not published (no signing key on this PC)
 
 P7 is the apps' migration to P6's adaptive widgets (`docs/POCKETUI-TECH-STUDY.md` §6.15, §9: about 32 session-days, one
 app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10.6):
@@ -61,6 +61,16 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   (`tools/tests/mail/modeltest.cpp`). `adaptive.sh <out> mail` (it starts `fakemail.py`'s two servers; needs
   `MEDIA_SHOTS`'s `libmb.a` and `mkaccounts`): 800 x 480 (a conversation opened), 1280 x 720 in French, portrait (the
   list; a conversation; the drawer), console.
+- **Calendar** (`user/Apps/calendar/main.cpp`, `views.h`, `dialogs.h`, `model.h`): its side `Panel` (the month, the
+  calendars, the tasks, *+ Add a task*) is the **content** of a navigation SidePanel (`setContent`: free content, no
+  items -- whole on the desktop and a screen four times its 272 px, a **drawer** otherwise, never a rail); the period's
+  panel is no longer anchored but placed by `lay_out ()` beside `reservedWidth ()`. Its `uikit::ToolBar` got
+  priorities (*Today* and the period's title `UK_TB_IF_ROOM`: they wait behind » in a narrow window); *New event* and
+  *Today* are as wide as their words. Translated: 127 words -- the months' and days' tables `TRN` + `TR` where drawn,
+  the dialogs' two drop-down lists made in the language at the first dialog (`lists_tr`), the weekday picker's letters
+  the days' first letters, a date day first in French (`day_first ()`); the categories made at first (*Work*...) are
+  the user's data: not translated. A task's due date measured bold when it is drawn bold (it was cut). The desktop:
+  unchanged but the bar's two buttons in French. `adaptive.sh <out> calendar`: 8 checks pass.
 - **Ledger was looked at and NOT migrated**: its side bar has a head above the items (the company, its VAT number, the
   fiscal year's `ChoiceBox`) and a foot (the file; the Mac's language switch), and SidePanel has no slot above its
   items -- a rail or a drawer would lose the year chooser. It needs `SidePanel::setHeader (Widget *, int h)` (an
@@ -90,7 +100,7 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   (`InputBox`, `PropsBox`, `VPropsBox`, `NameBox`: the scrolling sheet meanwhile), `uk_set_input_type` on the
   search fields. Media's pages (the album's band, the videos' grid) were looked at in landscape only.
 - **Next apps, in the study's order**: Courier, Ledger (above), PDF, Slides, Paint, QBStudio, 3DForge,
-  Calendar, IRC, Archiver, Icon Editor, fmtracker, Telegram's pane; then the toolbars, tabs, dialog bases, tables;
+  IRC, Archiver, Icon Editor, fmtracker, Telegram's pane; then the toolbars, tabs, dialog bases, tables;
   the Control Panel's applets laid out in their pane (Theme first).
 
 ## The pocket launcher v2; Onyx is Home in pocket; the shell's scale after a switch; full screen in Onyx Remote (2026-10-08): built, tested on the PC, NOT yet on the Pi, committed (not pushed), not published
