@@ -156,6 +156,19 @@ for sz in 800x480 1920x1080; do
 	run pocket_fsapp fullscreen-$sz "$SC" SIM_SCREEN=$sz SIM_APPNAME=fsapp
 done
 for p in pocket-terminal pocket-card-over pocket-calculator console-terminal pocket-terminal-640 pocket-front pocket-menubar; do png $p; done
+# GPIO Lab filled (the Pi's report on 2026.10.126: "a bit too wide and too tall"): its window exactly the work area, its
+# layout (LabRoot::onResized) inside it -- the pictures pocket-gpiolab-<size>.png (its Code view: -code)
+mkdir -p "$OUT/glz"
+for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/glz/$f.o"; done
+ftapp pocket gpiolab uikit_pocket -Ithird_party/zlib-1.3.1 user/Kits/gpiokit/gkcore.cpp user/Kits/filekit/fkcore.cpp "$OUT"/glz/*.o \
+	user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp
+GW=$(printf 'wait;%.0s' $(seq 1 30))
+for sz in 1920x1080 1280x720; do
+	w=${sz%x*}; h=${sz#*x}
+	run pocket_gpiolab gpiolab-$sz "${GW}expect kind fill;expect pos 0,24;expect client $w,$((h - 24));dump $OUT/pocket-gpiolab-$sz.elsm" SIM_SCREEN=$sz SIM_APPNAME=gpiolab "SIM_ARGS=--demo --tab chart"
+	run pocket_gpiolab gpiolab-code-$sz "${GW}expect client $w,$((h - 24));dump $OUT/pocket-gpiolab-code-$sz.elsm" SIM_SCREEN=$sz SIM_APPNAME=gpiolab "SIM_ARGS=--demo --code"
+	png pocket-gpiolab-$sz; png pocket-gpiolab-code-$sz
+done
 
 # ---- the pocket shell (pocketshell, phase P5): the launcher, the search, the switcher, quick settings ----------
 # The real pocketshell as the client; the other programs are canvases painted from the real apps' pictures (the
