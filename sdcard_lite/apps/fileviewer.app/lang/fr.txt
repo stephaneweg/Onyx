@@ -1,0 +1,149 @@
+# The File Viewer's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included).
+File Viewer	Visionneuse de fichiers
+ items   -   	 éléments   -   
+ items	 éléments
+Launched 	Lancé : 
+Opened in 	Ouvert dans 
+Running 	Exécution de 
+No application to open 	Aucune application pour ouvrir 
+Cancel	Annuler
+Invalid name	Nom incorrect
+A name cannot contain / \\ or :	Un nom ne peut pas contenir / \\ ni :
+New folder in this column	Nouveau dossier dans cette colonne
+New Folder	Nouveau dossier
+Could not create folder 	Impossible de créer le dossier 
+Created folder 	Dossier créé : 
+Select something to rename	Sélectionnez quelque chose à renommer
+Rename	Renommer
+Could not rename to 	Impossible de renommer en 
+Renamed to 	Renommé en 
+Select something to delete	Sélectionnez quelque chose à supprimer
+Moved to the Trash: 	Mis à la corbeille : 
+Could not move to the Trash: 	Impossible de mettre à la corbeille : 
+Delete the folder for good\n	Supprimer définitivement le dossier\n
+Delete for good\n	Supprimer définitivement\n
+\nand everything in it?	\net tout son contenu ?
+Delete	Supprimer
+Deleted 	Supprimé : 
+Could not delete 	Impossible de supprimer 
+Trash: Restore puts an item back, Del deletes it for good	Corbeille : Restaurer remet un élément en place, Suppr le supprime définitivement
+No FAT / exFAT partition there: 	Aucune partition FAT / exFAT ici : 
+No RAM: volume	Pas de volume RAM:
+No USB stick is plugged in (or it is not formatted: Format...)	Aucune clé USB branchée (ou elle n'est pas formatée : Formater...)
+Eject	Éjecter
+Files are still open on this stick (they were saved). Eject it anyway?	Des fichiers sont encore ouverts sur cette clé (ils ont été enregistrés). L'éjecter quand même ?
+ is still in use	 est encore utilisée
+ can be removed safely	 peut être retirée en toute sécurité
+Could not eject 	Impossible d'éjecter 
+No USB stick to eject	Aucune clé USB à éjecter
+ (all its partitions)	 (toutes ses partitions)
+Personal	Personnel
+Computer	Ordinateur
+Network	Réseau
+Trash	Corbeille
+SD Card	Carte SD
+SD1: partition 2	SD1: partition 2
+SD2: partition 3	SD2: partition 3
+SD3: partition 4	SD3: partition 4
+VD0: disk image	VD0: image disque
+VD1: disk image	VD1: image disque
+VD2: disk image	VD2: image disque
+VD3: disk image	VD3: image disque
+RAM: memory	RAM: mémoire
+USB stick	Clé USB
+Add a Server...	Ajouter un serveur...
+This folder is not there any more: 	Ce dossier n'existe plus : 
+16 pinned folders at most	16 dossiers épinglés au plus
+Already pinned: 	Déjà épinglé : 
+Pin to the sidebar as	Épingler dans la barre latérale sous le nom
+Pinned: 	Épinglé : 
+Protocol	Protocole
+Server	Serveur
+User	Utilisateur
+Password	Mot de passe
+Folder	Dossier
+Name	Nom
+Port	Port
+The server's name in the sidebar (Network): empty = its address	Le nom du serveur dans la barre latérale (Réseau) : vide = son adresse
+Remember password	Retenir le mot de passe
+Kept in SD:/etc/ftpfs.ini (obfuscated, not encrypted) for next boots	Gardé dans SD:/etc/ftpfs.ini (masqué, pas chiffré) pour les prochains démarrages
+A name (ftp.example.com) or an IP address; the arrow lists the remembered servers	Un nom (ftp.example.com) ou une adresse IP ; la flèche liste les serveurs retenus
+Empty = anonymous	Vide = anonyme
+Explicit TLS on port 21 (AUTH TLS); implicit TLS on port 990	TLS explicite sur le port 21 (AUTH TLS) ; TLS implicite sur le port 990
+Forget	Oublier
+Forget the remembered login of this server	Oublier l'identifiant retenu de ce serveur
+Connect	Connecter
+No remembered server yet (SD:/etc/ftpfs.ini)	Aucun serveur retenu pour l'instant (SD:/etc/ftpfs.ini)
+ remembered server: click the arrow or press Down	 serveur retenu : cliquez sur la flèche ou appuyez sur Bas
+ remembered servers: click the arrow or press Down	 serveurs retenus : cliquez sur la flèche ou appuyez sur Bas
+This server is not remembered.	Ce serveur n'est pas retenu.
+Forget the remembered login of this server?	Oublier l'identifiant retenu de ce serveur ?
+Connect to Server	Connexion à un serveur
+Cannot start /bin/ftpfs	Impossible de démarrer /bin/ftpfs
+Connecting to 	Connexion à 
+Cannot connect to 	Impossible de se connecter à 
+Connection failed (address, login or network?).	La connexion a échoué (adresse, identifiant ou réseau ?).
+Connected: 	Connecté : 
+Select an item in the Trash to restore	Sélectionnez un élément de la corbeille à restaurer
+Restored to 	Restauré dans 
+Could not restore 	Impossible de restaurer 
+The Trash is empty	La corbeille est vide
+Empty Trash	Vider la corbeille
+Delete everything in the Trash for good?	Supprimer définitivement tout le contenu de la corbeille ?
+The Trash was emptied	La corbeille a été vidée
+The Trash was emptied.	La corbeille a été vidée.
+Select something to 	Sélectionnez quelque chose à 
+cut	couper
+copy	copier
+Cut: 	Coupé : 
+Copied: 	Copié : 
+No longer exists: 	N'existe plus : 
+Cannot put a folder into itself	Impossible de mettre un dossier dans lui-même
+Cannot put a folder inside itself	Impossible de mettre un dossier à l'intérieur de lui-même
+Nothing to paste	Rien à coller
+Pasted into 	Collé dans 
+Paste failed into 	Le collage a échoué dans 
+Item moved.	Élément déplacé.
+Item copied.	Élément copié.
+Paste failed.	Le collage a échoué.
+Refreshed	Actualisé
+(empty)	(vide)
+Application	Application
+Image	Image
+Program	Programme
+Text	Texte
+Empty file	Fichier vide
+File	Fichier
+ image	 (image)
+Double-click to run	Double-cliquez pour lancer
+Open	Ouvrir
+Rename...	Renommer...
+Unpin	Désépingler
+Empty Trash...	Vider la corbeille...
+Rename the place	Renommer l'emplacement
+Pin to Sidebar...	Épingler dans la barre latérale...
+Copy	Copier
+Cut	Couper
+Delete Permanently...	Supprimer définitivement...
+Move to Trash	Mettre à la corbeille
+Moved to the Trash	Mis à la corbeille
+Copied into 	Copié dans 
+Moved into 	Déplacé dans 
+Some items could not be moved.	Certains éléments n'ont pas pu être déplacés.
+The USB stick is not there any more	La clé USB n'est plus là
+The Trash has its own place	La corbeille a son propre emplacement
+Refresh	Actualiser
+Go	Aller
+SD1: (partition 2)	SD1: (partition 2)
+SD2: (partition 3)	SD2: (partition 3)
+SD3: (partition 4)	SD3: (partition 4)
+RAM: (memory)	RAM: (mémoire)
+USB Stick	Clé USB
+Eject USB Stick	Éjecter la clé USB
+Disks (Format...)	Disques (Formater...)
+Connect to Server...	Connexion à un serveur...
+Pin This Folder...	Épingler ce dossier...
+Restore from Trash	Restaurer depuis la corbeille
+Edit	Édition
+Paste	Coller
