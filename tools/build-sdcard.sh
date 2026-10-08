@@ -82,7 +82,9 @@ aarch64-none-elf-gcc --version | head -1
 # 3. Circle, the hardware layer (a git submodule: the fork stephaneweg/circle, branch onyx)
 say "3/5 Circle"
 cd "$ROOT"
-[ -e circle/Rules.mk ] || git submodule update --init --recursive
+# (circle/ there is not enough: a clone made with git submodule update --init, without --recursive,
+# lacks Circle's own submodules -- hostap for the Wi-Fi, lvgl)
+[ -e circle/Rules.mk ] && [ -e circle/addon/wlan/hostap/wpa_supplicant/Makefile.circle ] || git submodule update --init --recursive
 if [ $CLEAN = 1 ] || [ ! -e circle/lib/libcircle.a ] || [ ! -e circle/addon/wlan/hostap/wpa_supplicant/libwpa_supplicant.a ]; then
     # DEPTH=32 is required: Onyx draws 32-bit pixels (Circle's default is 16)
     (cd circle && ./configure -r 4 -p aarch64-none-elf- -d DEPTH=32 -f)

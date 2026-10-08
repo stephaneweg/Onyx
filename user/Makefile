@@ -549,7 +549,7 @@ archiver.elf: Apps/archiver/main.cpp $(wildcard Apps/archiver/*.h) Kits/filekit/
 
 # The shared clipboard (docs/clipboard/README.md): clipd, its service (no window, newlib), and clipboard, its widget
 # (the dock's button; FreeType's text). The apps reach clipd through Kits/systemkit/clipboard.h (Kits/systemkit/clipproto.h).
-clipd.elf: Apps/clipd/main.cpp Apps/clipd/ring.h Kits/systemkit/clipproto.h Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+clipd.elf: Apps/clipd/main.cpp Apps/clipd/ring.h Kits/systemkit/clipproto.h Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h lib/systemkit.imp.a
 	$(CXX) $(NL_CXXFLAGS) -IApps/clipd $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< lib/systemkit.imp.a -o $@
 # The print service (docs/03 "Printing"): printd, no window, newlib -- the queue, the printers, a job's pages
 # rendered (Kits/printerkit/raster.h: FreeType; the images' codecs: uikit.so's) and sent to a network printer (Kits/printerkit/ipp.h).
