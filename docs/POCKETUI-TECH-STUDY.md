@@ -10,7 +10,13 @@
 > with the notifications — it serves `notify` —, the system keys; the shell's operations `PK_OP_SHELL`..`PK_OP_GRAB`
 > and UIKit's `uk_shell_*`, `uk_shell_tasks` / `uk_shell_grab` added; the menu bar kept as the top band, its Onyx menu
 > and its time opening the shell's screens through SystemKit's `shell.h`; quick settings came at P5 rather than P8; the
-> status bar of §7.2 is the menu bar, not pocketshell's) are built; P1–P4 first tried on the Pi (the user's reports), P5 not yet. With P5, the
+> status bar of §7.2 is the menu bar, not pocketshell's) and **P6** (the adaptive widgets: `uikit/adapt.h` — the size
+> class, the metrics, `Root::onSizeClass`, `uk_scroll_gutter`, input types, the focus ring and arrows —, `SidePanel` with
+> `place` / `setSubtitle`, `FormDialog`, `ToolBar`'s priorities and », `TabStrip`'s presentations, `DataGrid`'s roles
+> and cards, `TreeView`'s drill-down, the menus' / dialogs' / scroll bars' renderings; PocketUI's viewport; 99 entries
+> appended to `uikit.abi`, both UIKits the same; pilots: the Control Panel — its links-and-applet layout also the
+> desktop's, the user's decision —, the File Viewer made resizable, the Task Manager, the Terminal's tabs; pocketshell's
+> Settings open the Control Panel; docs/03 §5.10.6) are built; P1–P4 first tried on the Pi (the user's reports), P5 and P6 not yet. With P5, the
 > user's rule after the Pi's first run: every app's main window full screen (cards: an app's other windows and the
 > apps of `SD:/etc/pocketui.ini`), the keys following the front app. `docs/HANDOFF.md` says what was done and the Pi's
 > checklists; the text below is the study as it was written.

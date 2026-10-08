@@ -155,6 +155,13 @@ char names[512]; session_programs (m, names, sizeof names); // "menubar\ntermina
 `autostart_has` / `autostart_ensure` look in the autostart and in the session files: a line added after an anchor
 goes into the file that has it.
 
+**The pocket shell** (`shell.h`, 2026-10-08): in the pocket mode a program may open one of the pocket shell's screens
+(`pocketshell` serves the IPC service `shell`); on the desktop nothing serves it and the call answers 0:
+
+```c
+if (shell_running ()) shell_ask (SHELL_MSG_QUICK);          // quick settings and the notifications (else: our own)
+```
+
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
 | `notify.h` | Notifications |
@@ -169,6 +176,7 @@ goes into the file that has it.
 | `applet_proto.h` | A settings applet shown inside the Control Panel |
 | `locale.h` | The system's language and time zone (`SD:/etc/system.ini`) |
 | `session.h` | The interface's mode (desktop, pocket, console) and its session: `SD:/etc/session/<mode>`, the switch |
+| `shell.h` | The pocket shell's screens asked (`shell_ask (SHELL_MSG_HOME / _SWITCHER / _QUICK / _SEARCH)`, `shell_running ()`): the menu bar's way in pocket |
 
 ## Index
 
@@ -1014,6 +1022,8 @@ applet_proto.h -- the Control Panel's applets (apps/control): an applet is a uik
                                coordinates; x < 0: it left the pane)
                    AP_KEY      struct ApKey: a key typed (a character or a KEY_* code)
                    AP_CLOSE    please end (the user went back to the applets' list)
+  anyone -> host   AP_OPEN     the target's name (an applet's app, NUL-terminated): show that applet -- a second
+                               `control <target>` asks the one running (2026-10-08: pocket's Settings)
 ```
 
 The host is the IPC service AP_SERVICE: an applet whose host is gone ends by itself. Another host (Mail, showing Web as its HTML view) adds its own service's name: "--applet <surface id> <host pid> <service>"; its own message types go to the applet's uk_applet_on_message (uikit/root.h; Jet's web view: Apps/jet/webview_proto.h, types 60..79). The surface's frames live as long as either process maps it (kernel v65: its users).
@@ -1023,7 +1033,7 @@ The host is the IPC service AP_SERVICE: an applet whose host is gone ends by its
 
 enum
 {
-	AP_HELLO = 40, AP_PRESENT = 41, AP_EXIT = 42, AP_THEME = 43,
+	AP_HELLO = 40, AP_PRESENT = 41, AP_EXIT = 42, AP_THEME = 43, AP_OPEN = 44,
 	AP_PTR = 50, AP_KEY = 51, AP_CLOSE = 52
 };
 

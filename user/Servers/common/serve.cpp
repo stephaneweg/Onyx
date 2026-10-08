@@ -238,7 +238,9 @@ int el_serve (int demo, int restart)
 				switch (in[i].type)
 				{
 				case KAPI_WS_IN_POINTER:
-					el_core_pointer (in[i].x, in[i].y, in[i].buttons, in[i].a);
+					if (g_pWsPolicy == 0 || g_pWsPolicy->pointer == 0
+					    || !g_pWsPolicy->pointer (in[i].x, in[i].y, in[i].buttons, in[i].a))
+						el_core_pointer (in[i].x, in[i].y, in[i].buttons, in[i].a);
 					break;
 				case KAPI_WS_IN_KEY:
 					if (demo && in[i].keys[0] == 27 && in[i].keys[1] == 0) quit = 1;

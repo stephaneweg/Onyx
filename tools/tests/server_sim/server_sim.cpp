@@ -533,6 +533,15 @@ static void Other (int w, int h, const char *title, unsigned flags, int x, int y
 	el_core_window_present (id);
 }
 
+// The pointer as serve.cpp gives it: the policy's hook first (PocketUI's viewport, P6), then the window manager.
+static void Pointer (int x, int y, unsigned b, int wheel)
+{
+#ifdef WS_POLICY_HAS_POINTER
+	if (g_pWsPolicy != 0 && g_pWsPolicy->pointer != 0 && g_pWsPolicy->pointer (x, y, b, wheel)) return;
+#endif
+	el_core_pointer (x, y, b, wheel);
+}
+
 extern "C" int sim_server_step (const char *st)
 {
 	Init ();
@@ -545,10 +554,10 @@ extern "C" int sim_server_step (const char *st)
 		unsigned bit = cmd[0] == 'r' ? 2 : 1;
 		if (!strcmp (cmd, "down") || !strcmp (cmd, "rdown")) s_nButtons |= bit;
 		else if (strcmp (cmd, "move")) s_nButtons &= ~bit;
-		el_core_pointer (a, b, s_nButtons, 0);
+		Pointer (a, b, s_nButtons, 0);
 		return 1;
 	}
-	if (!strcmp (cmd, "wheel")) { sscanf (st, "%*s %d %d %d", &a, &b, &c); el_core_pointer (a, b, s_nButtons, c); return 1; }
+	if (!strcmp (cmd, "wheel")) { sscanf (st, "%*s %d %d %d", &a, &b, &c); Pointer (a, b, s_nButtons, c); return 1; }
 	if (!strcmp (cmd, "key"))
 	{
 		sscanf (st, "%*s %255s", arg);
@@ -566,6 +575,7 @@ extern "C" int sim_server_step (const char *st)
 #endif
 		return 1;
 	}
+	if (!strcmp (cmd, "dump") && getenv ("SIM_APPLET")) return 0;	// (an applet: its surface, the stand-in kernel's dump)
 	if (!strcmp (cmd, "dump")) { sscanf (st, "%*s %255s", arg); Dump (arg); return 1; }
 	if (!strcmp (cmd, "screen")) { sscanf (st, "%*s %255s", arg); Dump (arg, false); return 1; }
 	if (!strcmp (cmd, "otherpic"))				// otherpic W H T FILE SX SY [F [X Y]]: its canvas from a dump

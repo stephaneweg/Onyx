@@ -201,6 +201,7 @@ static const struct ws_policy s_Elegant =
 	start,
 	demo_scene, demo_closed,
 	0,					// mods: the window manager's own (Ctrl, Shift, Alt)
+	0,					// pointer: the window manager's
 };
 const struct ws_policy *g_pWsPolicy = &s_Elegant;
 

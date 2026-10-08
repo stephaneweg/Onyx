@@ -8,6 +8,7 @@
 #include "appkit/appkit.h"
 #include "uikit/win.h"		// the window API (uk_win_*: the port)
 #include "systemkit/systemkit.h"
+#include "uikit/internal/adapt_int.h"	// (P6: the size class, the focus told to the server, the arrows)
 
 namespace uikit {
 
@@ -191,6 +192,8 @@ void Root::onClose () { closeWindow (); }
 void Root::onTray (int kind) { (void) kind; }
 void Root::uk_rootReserved0 () {}
 void Root::uk_rootReserved1 () {}
+void Root::uk_rootReserved2 () {}
+void Root::onSizeClass (int sizeClass) { (void) sizeClass; }
 
 // ---- the status area's icon (v95) ----------------------------------------------------------------
 static void tray_event (unsigned long, int ev, gui_value v)
@@ -249,6 +252,13 @@ void Root::closeWindow ()
 }
 
 Root *Root::winFirst () { return s_win[0]; }
+
+// (P6) Each of the program's windows (an applet's: its one Root) -- uikit/adapt.cpp tells them the size class.
+void internal::each_root (void (*fn) (Root *))
+{
+	if (uk_applet () || s_win[0] == 0) { if (Root::current ()) fn (Root::current ()); return; }
+	for (int i = 0; i < UK_WINDOWS; i++) if (s_win[i] != 0) fn (s_win[i]);
+}
 
 int Root::winCount ()
 {
@@ -316,9 +326,11 @@ bool Root::step ()
 {
 	if (uk_quit ()) return false;
 	uk_pump ();
+	internal::class_check ();			// (P6: the size class changed -- a resize, the screen turned)
 	onTick ();
 	displayTick ();
 	tooltipTick ();
+	internal::root_tick (this);			// (P6, pocket and console: the focused control told to the server)
 	if (this != s_win[0] || winCount () <= 1) { if (!valid) { winSelect (); draw (); uk_present (); } return !uk_quit (); }
 	for (int i = 1; i < UK_WINDOWS; i++)		// (v94) the program's other windows
 	{
@@ -353,6 +365,10 @@ static void cursor_end ()
 }
 
 Root *&Root::active () { static Root *p = 0; return p; }
+
+// (P6) The left button's releases (ToolBar's "»" panel: closed after a tool was used in it).
+static unsigned s_relN; static int s_relX, s_relY;
+unsigned internal::ptr_release (int *x, int *y) { if (x) *x = s_relX; if (y) *y = s_relY; return s_relN; }
 Root *Root::current () { return active (); }
 
 // (v94) The window an event is for: its sender is the window's number (0: the first). It becomes
@@ -392,6 +408,7 @@ void Root::ptrEvent (unsigned long sender, int ev, gui_value v)
 		if (c & 4) bm = 1;
 		break;
 	case GUI_EVENT_PTR_UP:
+		if (c & 1) { s_relN++; s_relX = GUI_PTR_X (v); s_relY = GUI_PTR_Y (v); }
 		if (c & 1) bl = 0;
 		if (c & 2) br = 0;
 		if (c & 4) bm = 0;
@@ -401,7 +418,8 @@ void Root::ptrEvent (unsigned long sender, int ev, gui_value v)
 		return;
 	case GUI_EVENT_PTR_WHEEL:		// route a scroll notch to the widget under the cursor
 		cursor_begin ();
-		r->handleMouse (GUI_PTR_X (v), GUI_PTR_Y (v), bl, br, bm, GUI_PTR_WHEEL (v));
+		if (!r->handleMouse (GUI_PTR_X (v), GUI_PTR_Y (v), bl, br, bm, GUI_PTR_WHEEL (v)))
+			internal::sheet_scroll (r, 0, GUI_PTR_WHEEL (v) * 40);	// (P6: a dialog taller than the window)
 		cursor_end ();
 		return;
 	case GUI_EVENT_DROP:			// drag & drop (ABI v42)
@@ -421,10 +439,12 @@ void Root::ptrEvent (unsigned long sender, int ev, gui_value v)
 		r->onDragDone (GUI_DND_PID (v), GUI_DND_FLAGS (v));
 		return;
 	case GUI_EVENT_DISPLAY_RESIZE:		// the screen's size changed (v66)
+		internal::class_dirty ();
 		r->m_dispPending = true; r->m_dispT = kapi_get_ticks ();
 		r->onDisplayResize (GUI_DISPLAY_W (v), GUI_DISPLAY_H (v));
 		return;
 	case GUI_EVENT_WINRESIZE:		// the frame dragged to a new size (v82)
+		internal::class_dirty ();
 		r->frameResize (GUI_WINRESIZE_X (v), GUI_WINRESIZE_Y (v), GUI_WINRESIZE_W (v), GUI_WINRESIZE_H (v));
 		return;
 	case GUI_EVENT_WINCTL:			// a title button (v64): the window menu, maximise
@@ -446,7 +466,7 @@ void Root::keyEvent (unsigned long sender, int ev, gui_value v)
 	if (r == 0 || ev != GUI_EVENT_KEY) return;
 	active () = r;
 	if (Menu::current () && Menu::current ()->shortcut (v)) return;	// menu shortcuts first
-	r->handleKey (v);
+	if (!r->handleKey (v)) internal::key_fallback (r, v);	// (P6, pocket and console: the arrows, L1 / R1)
 }
 
 // ---- tooltips -------------------------------------------------------------------------------

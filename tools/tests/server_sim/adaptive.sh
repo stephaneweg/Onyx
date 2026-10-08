@@ -1,0 +1,134 @@
+#!/bin/sh
+# tools/tests/server_sim/adaptive.sh -- PocketUI's phase P6, the adaptive widgets (docs/POCKETUI-TECH-STUDY.md sections
+# 6.3-6.14): real apps built against the pocket UIKit's wire port, run under PocketUI at 800 x 480, 1920 x 1080, in
+# portrait (480 x 800) and in console (640 x 480) -- their checks counted (expect ...; the gallery's own), their
+# screens dumped to PNG pictures:
+#   - the Control Panel (user/Apps/control, the SidePanel pilot): its applets as links at the left in landscape, the
+#     chosen one (Language & Region, run first as an applet at the pane's size) filling the rest; portrait: the list,
+#     then an applet with its "<" bar; console: the SidePanel's column; in French too;
+#   - the gallery (tools/tests/server_sim/adaptive.cpp): a ToolBar with priorities and its overflow, a TabStrip, a
+#     navigation SidePanel, a DataGrid with roles, a FormDialog, a context menu -- each widget's presentation checked;
+#   - the pilots: the Task Manager (the grid's roles: cards in portrait), the Terminal (its tabs, no source change);
+#   - the viewport: Setup (800 x 600, fixed) at 800 x 480 scrolled by the wheel over its indicator;
+#   - the File Viewer: resizable, its places a SidePanel in pocket (landscape, portrait's drawer) and console.
+# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer]
+# SHOTS_PNG=<folder>: the pictures copied there too (docs/compact-shell/real/).
+set -e
+cd "$(dirname "$0")/../../.."
+WANT=" $2 "
+. tools/tests/server_sim/common.sh
+want () { [ "$WANT" = "  " ] || case "$WANT" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+out () { png "$1"; if [ -n "$SHOTS_PNG" ]; then mkdir -p "$SHOTS_PNG"; cp "$OUT/$1.png" "$SHOTS_PNG/"; fi; }
+langdir () { d="$OUT/writes-$1"; rm -rf "$d"; mkdir -p "$d/etc"; if [ -n "$1" ]; then { grep -v '^language' sdcard/etc/system.ini; echo "language=$1"; } > "$d/etc/system.ini"; fi; echo "$d"; }
+WWW="$WW;$WW;$WW"
+
+# ---- the Control Panel ----------------------------------------------------------------------------------------------
+if want control; then
+	echo "adaptive: the Control Panel"
+	ftapp pocket control uikit_pocket
+	ftapp pocket langconf uikit_pocket
+	# cpanel <screen> <tag> <mode> [lang]: the Control Panel once (the size of its applets' surface: its log), Language
+	# & Region as an applet at that size, then the Control Panel showing it
+	cpanel () {
+		sz=$1; t=$2; md=$3; lg=$4; sfx=$t${lg:+-$lg}; WR=$(langdir "$lg")
+		SIM_OVERLAY=$D/sd SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=control SIM_APP=control SIM_ARGS=langconf SIM_WRITES=$WR \
+			SIM="$WWW;exit" "$OUT/pocket_control" > "$OUT/cp-$sfx.txt" 2>&1 || true
+		pane=$(sed -n 's/^sim: surface_create //p' "$OUT/cp-$sfx.txt" | tail -1)
+		echo "    $sfx: the applets' surface $pane"
+		run pocket_langconf langconf-ap-$sfx "$W;$W;dump $OUT/langconf-ap-$sfx.elsm" SIM_APPLET=1 SIM_SURFSIZE=$pane SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=langconf SIM_APP=langconf SIM_WRITES=$WR
+		run pocket_control control-$sfx "$WWW;expect kind fill;expect frame 0;$WW;dump $OUT/control-$sfx.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=control SIM_APP=control \
+			SIM_ARGS=langconf SIM_MAIL=40:7 SIM_SURFACE="$OUT/langconf-ap-$sfx.elsm" SIM_WRITES=$WR
+		out control-$sfx
+	}
+	cpanel 800x480 800 pocket
+	cpanel 1920x1080 1080 pocket
+	cpanel 1280x720 720 pocket
+	cpanel 640x480 console console
+	cpanel 480x800 portrait pocket
+	cpanel 800x480 800 pocket fr
+	cpanel 1280x720 720 pocket fr
+	# portrait: the list (no applet asked), one column
+	run pocket_control control-portrait-list "$WWW;expect kind fill;dump $OUT/control-portrait-list.elsm" SIM_SCREEN=480x800 SIM_APPNAME=control SIM_APP=control
+	out control-portrait-list
+	# the keys: Ctrl+Page Down (R1) the next applet in landscape; Esc back to the list in portrait
+	run pocket_control control-keys "$WWW;mods 1;key 0x107;mods 0;$WW;dump $OUT/control-r1.elsm" SIM_SCREEN=800x480 SIM_APPNAME=control SIM_APP=control
+fi
+
+# ---- the gallery and the widgets' host tests -----------------------------------------------------------------------
+if want gallery; then
+	echo "adaptive: the widgets (host tests, then the gallery)"
+	$CXX $INC -Iuser/Kits/fontkit -I$FT/include -o "$OUT/pocket_gallery" "$OUT/obj/pocket"/*.o "$OUT/fakekapi.o" $S/adaptive.cpp "$OUT/libuikit_pocket.a" "$OUT/libft.a" -lpthread
+	if env ADAPT_TEST=1 SIM_OVERLAY=$D/sd SIM="exit" "$OUT/pocket_gallery" >>"$OUT/log.txt" 2>&1; then echo "  tests: ok"
+	else echo "  tests: FAILED (see $OUT/log.txt)"; FAIL=1; fi
+	# gal <screen> <tag> <mode> [arg]: the gallery under PocketUI (an argument: a dialog, a menu, a panel opened)
+	gal () {
+		sz=$1; tg=$2; md=$3; ar=$4
+		run pocket_gallery gallery-$tg "$WWW;expect kind fill;$WW;$WW;dump $OUT/gallery-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=gallery SIM_APP=gallery SIM_ARGS=$ar
+		out gallery-$tg
+	}
+	gal 800x480 800 pocket
+	gal 1920x1080 1080 pocket
+	gal 480x800 portrait pocket
+	gal 640x480 console console
+	gal 800x480 800-overflow pocket overflow
+	gal 800x480 800-form pocket form
+	gal 800x480 800-menu pocket menu
+	gal 800x480 800-inspector pocket inspector
+	gal 480x800 portrait-form pocket form
+	gal 480x800 portrait-menu pocket menu
+	gal 480x800 portrait-tabs pocket tabs
+	gal 480x800 portrait-drawer pocket drawer
+	gal 480x800 portrait-inspector pocket inspector
+	gal 640x480 console-form console form
+	gal 640x480 console-menu console menu
+	# the desktop's UIKit (Elegant): the same binary as it always looks
+	$CXX $INC -Iuser/Kits/fontkit -I$FT/include -o "$OUT/elegant_gallery" "$OUT/obj/elegant"/*.o "$OUT/fakekapi.o" $S/adaptive.cpp "$OUT/libuikit_wire.a" "$OUT/libft.a" -lpthread
+	run elegant_gallery gallery-desktop "$W;$W;dump $OUT/gallery-desktop.elsm" SIM_SCREEN=1280x800 SIM_APPNAME=gallery SIM_APP=gallery
+	out gallery-desktop
+fi
+
+# ---- the pilots: the Task Manager (the grid's roles), the Terminal (its tabs: TabStrip, no source change) ---------
+if want pilots; then
+	echo "adaptive: the pilots"
+	ftapp pocket taskman uikit_pocket
+	app pocket terminal uikit_pocket
+	for t in 800x480:800 480x800:portrait 640x480:console; do
+		sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
+		run pocket_taskman taskman-$tg "$WWW;expect kind fill;$W;dump $OUT/taskman-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=taskman SIM_APP=taskman
+		out taskman-$tg
+	done
+	# landscape: the "+" clicked three times -- four tabs; portrait: the title and its count (the Terminal's least width,
+	# half its first one, is over 480: the window wider than the screen, in the viewport -- P7)
+	for t in "800x480:800:down 99 39;up 99 39;$W;down 180 39;up 180 39;$W;down 262 39;up 262 39;$W" "480x800:portrait:" "640x480:console:"; do
+		sz=${t%%:*}; r=${t#*:}; tg=${r%%:*}; clicks=${r#*:}; md=pocket; [ $tg = console ] && md=console
+		run pocket_terminal terminal-tabs-$tg "$WW;$clicks;$WW;expect kind fill;dump $OUT/terminal-tabs-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=terminal SIM_PIPE="$PIPE" SIM_PIPE2='SD:/docs $ ' SIM_PIPE3='SD:/ $ ' SIM_PIPE4='SD:/ $ '
+		out terminal-tabs-$tg
+	done
+fi
+
+# ---- the viewport: a window bigger than the work area that will not shrink (Setup: 800 x 600, fixed) ----------------
+if want viewport; then
+	echo "adaptive: the viewport"
+	ftapp pocket setup uikit_pocket
+	run pocket_setup viewport-setup "$WWW;expect kind fill;dump $OUT/viewport-setup.elsm;wheel 795 300 -3;$W;dump $OUT/viewport-setup-scrolled.elsm" SIM_SCREEN=800x480 SIM_APPNAME=setup SIM_APP=setup
+	out viewport-setup; out viewport-setup-scrolled
+fi
+
+# ---- the File Viewer: resizable, the places a SidePanel in pocket and console ------------------------------------------
+if want fileviewer; then
+	echo "adaptive: the File Viewer"
+	ftapp pocket fileviewer uikit_pocket
+	for t in 800x480:800 1920x1080:1080 480x800:portrait 640x480:console; do
+		sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console	# (not $n: run sets it)
+		run pocket_fileviewer fileviewer-$tg "$WWW;expect kind fill;expect frame 0;$W;dump $OUT/fileviewer-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=fileviewer SIM_APP=fileviewer SIM_ARGS=SD:/apps
+		out fileviewer-$tg
+	done
+	# portrait: the places' drawer opened by its tab at the left edge
+	run pocket_fileviewer fileviewer-portrait-drawer "$WWW;down 6 400;up 6 400;$W;dump $OUT/fileviewer-portrait-drawer.elsm" SIM_SCREEN=480x800 SIM_APPNAME=fileviewer SIM_APP=fileviewer
+	out fileviewer-portrait-drawer
+fi
+
+grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1
+echo "  checks: $(grep -c 'server_sim: PASS' "$OUT/log.txt") passed, $(grep -c 'server_sim: FAIL' "$OUT/log.txt") failed"
+[ $FAIL = 0 ] && echo "adaptive: all passed ($OUT)" || echo "adaptive: FAILED ($OUT)"
+exit $FAIL

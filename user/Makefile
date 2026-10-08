@@ -157,7 +157,7 @@ Kits/uikit/layout_lock.cpp:
 uikit-layout-update:
 	$(UIKIT_LAYOUT) --update
 lib/uikit_table.S: $(UIKIT_SO_OBJ) Kits/uikit/uikit.abi ../tools/libgen/libgen.py
-	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data --exclude '^_ZN5uikit4port' \
+	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data --exclude '^_ZN5uikit(4port|8internal)' \
 		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$|onyx_systemkit_table$$)' --table lib/uikit_table.S --stubs lib/uikit_stubs.S --bind lib/uikit_bind.cpp \
 		--bind-c lib/uikit_bind_c.c $(UIKIT_SO_OBJ)
 Kits/uikit/uikit.abi:
@@ -177,7 +177,7 @@ lib/pocket/port.o: Kits/uikit/port.cpp $(wildcard Kits/uikit/port/*.h Kits/uikit
 	@mkdir -p lib/pocket
 	$(CXX) $(LIB_CXXFLAGS) -DONYX_LIB_BUILD -DUK_PORT_POCKET -c $< -o $@
 lib/pocket/uikit_table.S: $(UIKIT_POCKET_OBJ) Kits/uikit/uikit.abi ../tools/libgen/libgen.py | lib/uikit_table.S
-	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data --exclude '^_ZN5uikit4port' \
+	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data --exclude '^_ZN5uikit(4port|8internal)' \
 		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$|onyx_systemkit_table$$)' --frozen --table lib/pocket/uikit_table.S $(UIKIT_POCKET_OBJ)
 lib/pocket/uikit.so: $(UIKIT_POCKET_OBJ) lib/imagekit_stubs.o lib/systemkit_stubs.o lib/pocket/uikit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)

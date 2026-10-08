@@ -645,9 +645,14 @@ handheld, a 7-inch panel), **one app at a time**, as on a phone. Its parts:
   the time. In pocket its **Onyx** menu starts with **Home**, **Open Apps** and **Quick Settings**, and a click on
   the **time** opens quick settings (on the desktop: the calendar);
 - **the apps full screen**: every app's window fills the screen under the menu bar, without a frame, whatever its
-  size; an app whose window cannot be resized (a game, a demo, the File Viewer on a large screen) is shown in the
-  middle of the screen on its own background colour, until it is adapted; a window too big for the screen starts
-  at the top left (what does not fit is cut, until a later version scrolls it). **Cards** — a framed window in the
+  size; an app whose window cannot be resized (a game, a demo) is shown in the middle of the screen on its own
+  background colour, until it is adapted; a window too big for the screen that cannot shrink (Setup's 800 × 600 on
+  an 800 × 480 display) is shown in a **viewport**: thin bars at the screen's right and bottom edges tell where you
+  are — the wheel over a bar, or a bar dragged, scrolls it, and the control with the keyboard's focus is kept in
+  view. The apps adapted to the mode (the Control Panel, the File Viewer, the Task Manager and every app as it is
+  worked on) lay themselves out for it: side panels become rails or drawers, toolbars keep what fits and put the
+  rest behind **»**, tabs scroll (in portrait: the current tab's title opens the list), tables become cards in
+  portrait, dialogs become sheets, menus action sheets; the arrows move the focus between the controls. **Cards** — a framed window in the
   middle, the rest of the screen behind it — are an app's other windows (a dialog, an about box, a second window)
   and the apps listed in **`SD:/etc/pocketui.ini`** (below; the Calculator by default);
 - **the launcher (Home)**, behind every app: what you see when no app is in front;
@@ -655,7 +660,8 @@ handheld, a 7-inch panel), **one app at a time**, as on a phone. Its parts:
 
 **The launcher.** A search field at the top (with its key hints on a wide screen); the **category tabs** — *Recent*
 (the apps opened last, kept in `SD:/etc/pocket/recent`), the categories of the apps in the dock's order (`SD:/etc/dock.ini`:
-the Control Panel's Panel applet sets it) and *Settings* (the Control Panel's applets, each one run alone); the
+the Control Panel's Panel applet sets it) and *Settings* (the Control Panel's applets: one opens the **Control Panel
+full screen** on that applet — a Control Panel already open shows it); the
 **apps** of the tab, a dot under a running one; on a landscape screen tall enough, the **Running** strip — the open
 apps, a click brings one to the front, its × closes it. **Typing searches** the apps, the settings (their names
 and lines of help), the files of `SD:/docs`, `SD:/Notes` and `SD:/home`, and offers the text as a command to run
@@ -680,8 +686,8 @@ card's ×) closes the app; Esc (or a click beside the cards) stays.
 *Alt+Tab: the open apps, their pictures from PocketUI (no app redraws for the switcher).*
 
 **Quick settings** (Super+N, a click on the time, Onyx > Quick Settings): the date and the time; Wi-Fi (its state;
-a click: the Wi-Fi menu), Do not disturb (no notification's bubble while it is on), Sound (mute), Mode (the Mode
-applet); the volume; **the notifications** — in pocket the pocket shell receives them (no `notifyd`): each one shows
+a click: the Wi-Fi menu), Do not disturb (no notification's bubble while it is on), Sound (mute), Mode (the Control Panel
+full screen on its Mode applet); the volume; **the notifications** — in pocket the pocket shell receives them (no `notifyd`): each one shows
 for a few seconds as a bubble under the menu bar, then waits here, the newest first (a click runs its action and
 removes it; Clear all); the Control Panel, Lock and Power. Esc or a click beside the panel closes it.
 
@@ -1616,8 +1622,13 @@ the Trash — the dock's Trash does so).
   shown by their **friendly name** — the `name =` line of their `app.txt`, e.g. `demoB.app`
   shows as *Colour Field*; the folder name without `.app` if there is none) and files,
   sorted alphabetically by what is shown, with room round the names. When there are more
-  columns than fit (3), the view follows the deepest one; the scrollbar below the columns
-  scrolls back.
+  columns than fit (3 in the first window; as many as fit at 200 px or more, 6 at most, when the window is
+  bigger), the view follows the deepest one; the scrollbar below the columns scrolls back.
+- **The window resizes** (its frame's edges, maximise): the places keep their width, the columns share the rest,
+  the path bar and the status line span it. In the **pocket** mode it fills the screen and **the places are a side
+  panel** (UIKit's `SidePanel`): whole at the left in landscape, a **drawer** in portrait (the tab at the screen's
+  left edge opens it over the columns; a place chosen closes it), a column of big rows in **console** — the same
+  places, their groups folding, a right click for their menu, files dropped on them.
 - **Path bar** (above the columns, as elementary OS's): the folders of the path as links —
   underlined under the pointer, the current one in the accent colour; click one to jump
   straight back to that folder.
@@ -1659,6 +1670,13 @@ the Trash — the dock's Trash does so).
 ![File Viewer](../screenshots/fileviewer.png)
 *The File Viewer: the sidebar (Personal, Computer, Network), `SD:` ▸ `etc` in the path bar, one
 folder per column, and the preview of the selected `autostart` file.*
+
+| | |
+|---|---|
+| ![](../screenshots/pocket/fileviewer-800.png) | ![](../screenshots/pocket/fileviewer-portrait-drawer.png) |
+| *Pocket, 800 × 480: the places as a side panel, three columns.* | *Pocket, portrait: the places' drawer opened.* |
+
+The File Viewer speaks the system's language (English or French: Control Panel ▸ Language & Region).
 
 ### Disks, the volumes (`disks`)
 
@@ -1813,11 +1831,21 @@ takes it (`12,50 €`), the other apps' text fields do not yet.
 
 The system's settings are gathered in one window, as Windows' Control Panel: the **Control
 Panel** (the menu bar's **Onyx ▸ Control Panel**, just below Terminal, or the dock's **gear**).
-Its home lists the **applets**, an icon, a name and a line of help each; **click one** to open it
-**inside the Control Panel's window**. The path bar at the top reads *Control Panel ▸ Theme*…:
-click **Control Panel** (or the menu's **All Settings**) to go back to the list. One Control
-Panel at a time (started again, it brings the open one to the front). When the applets do not all fit,
-the list **scrolls** (the wheel, the bar at its right, the arrow keys).
+The **applets** are **links in a column at the left** — an icon and a name each (and, in a big window, their line
+of help under the name); the chosen one is lit and **opens inside the rest of the window**, under its title and
+its line of help. It opens on **the applet shown last** (kept in `SD:/etc/control.ini`), else the first. The window
+**resizes** (and maximises): an applet keeps its own layout and, when the window is smaller than it, scroll bars
+show the rest. Keys: **F6** moves the keyboard between the links and the applet; in the links **↑ / ↓** and
+**Enter** choose, **→** or **Tab** go into the applet. One Control Panel at a time: started again (`control <applet>`,
+the dock's *Panel Settings…*, pocket's Settings), it shows that applet in the open one and brings it to the front.
+
+**In the pocket mode** it opens **full screen** from the launcher's *Settings* tab, quick settings or the search: in
+**landscape** the same links and applet (at 1280 × 720 and more, the links with their help lines); in **portrait**
+the **list** of the applets, one column (its icon, name, help line and a chevron), and an applet chosen takes the
+screen under a bar **‹ Control Panel** + its title — a tap on it (or **Esc**) goes back to the list (a window
+narrower than 600 px shows the same list on the desktop); in **console** the links are a column of big rows and
+**L1 / R1** (Ctrl+Page Up / Down) step through the applets. (The applets keep their own layouts for now: in a small
+pane they scroll.)
 
 | Applet | What it sets |
 |---|---|
@@ -1829,7 +1857,7 @@ the list **scrolls** (the wheel, the bar at its right, the arrow keys).
 | **Preload** (`preloadconf`) | The programs **loaded ahead at boot and kept in memory**: they start without reading the card (worth it for the large ones, as Jet: 100 MB, 5 s of card each start otherwise). At the left the list (each program, its size, *loading* / *in memory*), at the right what can be added — the apps, then the `/bin` tools: **< Add** (or a double click), **Remove**. A change is done **at once** (the program added is loaded now, the one removed is released: its memory is freed when its last window closes) and kept in `SD:/etc/preload.ini`, which the last line of `SD:/etc/autostart`, `preload /boot`, reads at every boot. The line under the lists gives the memory the list takes. |
 | **Printers** (`printconf`) | The printers Onyx prints on (the **PDF** printer, network printers added by their address), the default one, a test page, and the **print queue** (below: *Printing*). |
 | **Keyboard & Mouse** (`keyconf`) | The keyboard **layout** (the maps of `SD:/etc/keymaps`: a click takes one at once and keeps it in `SD:/etc/autostart`'s `keyb` line; a field to try it) and the **wheel**'s speed (lines a notch: at once, kept in `SD:/etc/theme.txt`). |
-| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, the menu bar, Ledger, Notes and Stickies, the Clock, Turtle Quest (its BASIC too), Circuits, Pinball, Critters, the Graphing Calculator and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). **While `clockd` runs** (the Clock's alarm service, started at boot), **the summer time changes the clock by itself**: on the night it begins or ends, the system's clock moves within a minute of 02:00 / 03:00 and `timezone=` is written (a city chosen here, `zone=`, is needed: with only a `timezone=` nothing is guessed). |
+| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, the menu bar, Ledger, Notes and Stickies, the Clock, Turtle Quest (its BASIC too), Circuits, Pinball, Critters, the Graphing Calculator, the File Viewer, the Task Manager and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). **While `clockd` runs** (the Clock's alarm service, started at boot), **the summer time changes the clock by itself**: on the night it begins or ends, the system's clock moves within a minute of 02:00 / 03:00 and `timezone=` is written (a city chosen here, `zone=`, is needed: with only a `timezone=` nothing is guessed). |
 | **Gamepad** (`padconf`) | The USB gamepads (§12). |
 | **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
 | **App Settings** (`config`) | An app's own settings, its `SD:/apps/<name>.app/config.ini`: the apps (those with settings first, marked `*`), then the chosen one's `key = value` lines — pick one, change its key or its value, **Set** (Enter; a new key adds a line), **Delete**; **Save** writes the file (the app reads it when it starts again), **Reload**. |
@@ -1855,7 +1883,14 @@ text   = Colours of the windows, the menu bar, the dock; the wallpaper
 ```
 
 ![The Control Panel](../screenshots/control.png)
-*The Control Panel's home: the applets.*
+*The Control Panel: the applets as links at the left, Language & Region open.*
+
+| | | |
+|---|---|---|
+| ![](../screenshots/pocket/control-800.png) | ![](../screenshots/pocket/control-portrait-list.png) | ![](../screenshots/pocket/control-portrait.png) |
+| *Pocket, 800 × 480* | *Portrait: the list* | *Portrait: an applet, its back bar* |
+| ![](../screenshots/pocket/control-720.png) | ![](../screenshots/pocket/control-console.png) | ![](../screenshots/control-fr.png) |
+| *Pocket, 1280 × 720: the help lines* | *Console: the column* | *In French* |
 
 The Control Panel and its applets draw their text with FreeType (DejaVu Sans, anti-aliased), as
 the Game Library and Setup do.
@@ -2214,13 +2249,13 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **stickies** (Stickies) | Desktop widget: the notes pinned in Notes, as cards at the top right; a click opens Notes on a note, the header drags it (see §5, *Stickies*). Reads `SD:/Notes`; writes `SD:/apps/stickies.app/config.ini`. |
 | **dock** (Dock) | The desktop's dock at the bottom: the drawers (a group's main app, the strip above opens the group's apps), the workspaces, lock / Control Panel / power, the Terminal, the File Viewer, the Trash (see §5, *The dock*). Reads `SD:/etc/dock.ini` (the Panel applet writes it). |
 | **lock** (Lock Screen) | The locked screen (the dock's padlock): the time and the date full screen; a click or a key unlocks it, or a PIN from `SD:/etc/lock.ini` (`pin = 1234`) then Enter (see §5). |
-| **fileviewer** (File Viewer) | NeXTSTEP-style column browser with a clickable path bar, file previews and copy/cut/paste (see §9). |
+| **fileviewer** (File Viewer) | NeXTSTEP-style column browser with a clickable path bar, file previews and copy/cut/paste (see §9). The window resizes; in pocket its places are a side panel (a drawer in portrait). In English and French. |
 | **terminal** | Terminal/shell (see §7). |
 | **Gamepad** (`padconf`) | A Control Panel applet (alone: a window of its own). The USB gamepads (Xbox 360 / One, PlayStation 3 / 4, Switch Pro and any USB HID gamepad; up to 4). Tabs **Pad 1–4** (or keys 1–4): the pad's USB ids and which mapping it uses, its buttons (numbered, lit while held), axes and hats live, and on a drawn pad **what the apps see**. **Pad ▸ Map Buttons...** (**M**): press each button when asked (the d-pad, then the bottom / right / left / top face buttons, the shoulders L1 / R1, the triggers L2 / R2 — buttons or analog triggers, both are recognised — Select, Start, the sticks' clicks, Home); **Esc** = the pad has none, **Backspace** = cancel. It writes the pad model's section of **`SD:/etc/gamepad.ini`** — every app uses it at once. **Forget Mapping** removes it. Pads Circle knows need no mapping; other pads start from `[default]` (the usual generic layout). An axis the d-pad / left stick (or a trigger) uses is never read as the right stick too: a pad whose d-pad is on axes 3 / 4, once mapped, no longer presses the Nintendo 64's C buttons when it moves. |
-| **taskman** (Task Manager) | The system's monitor, in **tabs** (as Windows' Task Manager). **Processes**: every task in a **grid that scrolls** — its name, an app or a kernel task, its state (Running, Sleeping, Waiting), the **memory** it owns, an app's **system calls per second**; **click a title to sort** (again: the other way round; by memory, the largest first, at the start); refreshed twice a second, the selection kept. Arrows (Page Up / Down, Home, End) or a click select; **Enter**, a double click or **Bring to Front** brings the app's window to the foreground; **`k`** / **Delete** or **End Task** stops the app (not a kernel task); `r` refreshes now. **Memory** (what the Memory Monitor showed, which it replaces): the memory **in use** (and its share of the total), **free**, the **apps'**, the **system's** (the kernel, the GPU); the use **over the last minute**, drawn; **what uses it** — a bar and its legend: the system, the four largest apps, the others —; below, the RAM detected, the apps' pool and the page size. **Processor**: a panel a core — what it does (core 0: the system and every app; core 1: the sound; an app core and the app that holds it, or *free*; the network's: busy while the network works, a few per cent when it is quiet), its **load** over the last second and, drawn, over the last minute. **Network**: the rates now (**receiving**, **sending**) and the bytes received and sent since the start; the two rates over the last minute, drawn (their scale's top written beside); then **by app** — the apps that used the network, the busiest first: the bytes received and sent, the two rates; at the foot, the address, the host name and the sockets open. These are the bytes the apps exchange through their sockets (no header, nothing of the system's own traffic). On a kernel older than kapi v80 these two tabs stay grey. The window resizes (and maximises): the views follow. |
+| **taskman** (Task Manager) | The system's monitor, in **tabs** (as Windows' Task Manager). **Processes**: every task in a **grid that scrolls** — its name, an app or a kernel task, its state (Running, Sleeping, Waiting), the **memory** it owns, an app's **system calls per second**; **click a title to sort** (again: the other way round; by memory, the largest first, at the start); refreshed twice a second, the selection kept. Arrows (Page Up / Down, Home, End) or a click select; **Enter**, a double click or **Bring to Front** brings the app's window to the foreground; **`k`** / **Delete** or **End Task** stops the app (not a kernel task); `r` refreshes now. **Memory** (what the Memory Monitor showed, which it replaces): the memory **in use** (and its share of the total), **free**, the **apps'**, the **system's** (the kernel, the GPU); the use **over the last minute**, drawn; **what uses it** — a bar and its legend: the system, the four largest apps, the others —; below, the RAM detected, the apps' pool and the page size. **Processor**: a panel a core — what it does (core 0: the system and every app; core 1: the sound; an app core and the app that holds it, or *free*; the network's: busy while the network works, a few per cent when it is quiet), its **load** over the last second and, drawn, over the last minute. **Network**: the rates now (**receiving**, **sending**) and the bytes received and sent since the start; the two rates over the last minute, drawn (their scale's top written beside); then **by app** — the apps that used the network, the busiest first: the bytes received and sent, the two rates; at the foot, the address, the host name and the sockets open. These are the bytes the apps exchange through their sockets (no header, nothing of the system's own traffic). On a kernel older than kapi v80 these two tabs stay grey. The window resizes (and maximises): the views follow. In pocket's portrait each task is a card (its name; its kind, state and memory under it); in a narrow window the calls, then the memory give way. In English and French. |
 | **GPIO Lab** (`gpiolab`) | The Raspberry Pi's **40-pin header** on the screen: the pins drawn as on the board, a pin's mode (input, pull-up, pull-down, output, PWM), outputs set or blinking, a PWM's frequency and duty, a **timing chart** of the chosen pins, the **I2C bus** scanned, the **edges** logged; a **Code view**: a mini IDE where a BASIC program runs line by line and the header shows its pins live; a **simulator** when there is no hardware. See *GPIO Lab* below. |
 | **theme** (Theme) | The Control Panel's Theme applet: the colours of the frames, the windows' content, the buttons, the fields, the selection, the menu bar, the dock (a palette or any colour), the theme (Classic, Modern) and its scheme (Classic: Peach … Slate; Modern: Milk — soft greys and coloured beads for the title buttons — and Dark Coffee, its dark sister), the outline, the wallpaper (Voronoi, gradient, bubbles, a colour, a picture, a coloured pattern), on a desktop preview (see §11). Writes `SD:/etc/theme.txt` and `SD:/etc/wallpaper.ini`. |
-| **control** (Control Panel) | The settings in one window: its applets drawn inside it (see §11). Its list: the link files of `SD:/apps/control.app/applets/`. |
+| **control** (Control Panel) | The settings in one window: the applets as links at the left, the chosen one drawn in the rest (see §11); `control <applet>` opens that one. Its links: the link files of `SD:/apps/control.app/applets/`. Reads and writes `SD:/etc/control.ini` (the applet shown last). Pocket: full screen; portrait: the list, then the applet under a back bar. |
 | **dockconf** (Panel) | The Control Panel's Panel applet: the dock's drawers (every category of the apps: their order, main app, hidden or not), launchers and workspaces (see §11). Writes `SD:/etc/dock.ini`. |
 | **soundconf** (Sound) | The Control Panel's Sound applet: the output, the master volume, mute, a test sound, and the mixer — each playing program's own volume (see §11). Writes `SD:/etc/sound.ini` and `SD:/etc/mixer.ini`. |
 | **printconf** (Printers) | The Control Panel's Printers applet: the printers, the default one, a test page, the print queue (see §11 *Printing*). Talks to `printd`; `SD:/etc/printers.ini`. |

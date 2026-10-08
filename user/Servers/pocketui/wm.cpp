@@ -58,7 +58,10 @@ unsigned g_nPkSelf;
 // What the policy made of each window (by its number in the store); a window it has not seen yet (made by a
 // request: the kind create chose; given back to a server started again: from its flags) is looked at by tick.
 // (A window is known by its pointer AND its id: a slot freed then given to a new window may get the same memory.)
-static struct TState { CWindow *pWin; unsigned nWinId; int nKind; int nSentW, nSentH; unsigned nSentAt; boolean bMaxSent; } s_St[EL_WINDOWS_MAX];
+static struct TState { CWindow *pWin; unsigned nWinId; int nKind; int nSentW, nSentH; unsigned nSentAt; boolean bMaxSent;
+		       int nVx, nVy;				// (P6) the viewport: a window bigger than the work area, scrolled by
+		       boolean bFocus; int nFx, nFy, nFw, nFh;	// ... its focused control (PK_OP_FOCUS_RECT), to show
+		       int nHint, nUnits; } s_St[EL_WINDOWS_MAX];	// ... its focused field's type, its units (P10's)
 #define FILL_WAIT	25		// ticks (0.25 s) a program has to apply GUI_EVENT_WINRESIZE before it is asked to maximise
 static struct { unsigned nPid; int nWin, nKind; } s_Pending;	// (create's choice, for the window about to be made)
 static unsigned s_nFront;					// the program in front (0: none)
@@ -110,6 +113,8 @@ static void Promote (unsigned nPid);
 static CWindow *pk_front_window (void);
 static void Recentre (void);
 static void Matte (CWindow *pFront, int ax, int ay, int aw, int ah);
+static void Viewport (int id, CWindow *p, int ax, int ay, int aw, int ah, int *pvx, int *pvy);
+static void Bars (int ax, int ay, int aw, int ah);
 
 // A window's state, up to date: one the policy had not seen (made since the last turn, given back to a server
 // started again) is classified now.
@@ -121,6 +126,7 @@ static int KindOf (int id)
 	{
 		s_St[id].pWin = p; s_St[id].nWinId = p != 0 ? p->Id () : 0;
 		s_St[id].nSentW = s_St[id].nSentH = -1; s_St[id].bMaxSent = FALSE;
+		s_St[id].nVx = s_St[id].nVy = 0; s_St[id].bFocus = FALSE; s_St[id].nHint = -1; s_St[id].nUnits = 0;
 		s_St[id].nKind = p != 0 ? Classify (id, p) : PK_KIND_NONE;
 		if (p != 0) p->SetPinned (s_St[id].nKind == PK_KIND_CARD || s_St[id].nKind == PK_KIND_FILL || s_St[id].nKind == PK_KIND_CENTRE);
 		if (p != 0) p->SetNoInset (s_St[id].nKind == PK_KIND_SHELL || s_St[id].nKind == PK_KIND_HOME);	// (not a band)
@@ -600,6 +606,23 @@ static int Op (unsigned nPid, int nOp, int nWin, const long *a, const unsigned c
 		*pnStatus = -KAPI_ENOSYS;			// (split view: P8; the overlays draw their own dim)
 		return 1;
 
+	// (P6) the adaptive layer's: the focused control (the viewport shows it), the focused field's type, the units
+	case PK_OP_FOCUS_RECT: case PK_OP_TEXT_HINT: case PK_OP_UNITS:
+		{
+			int id = IdOfWin (nPid, nWin);
+			if (id < 0) { *pnStatus = 0; return 1; }
+			KindOf (id);
+			if (nOp == PK_OP_FOCUS_RECT)
+			{
+				s_St[id].nFx = (int) a[0]; s_St[id].nFy = (int) a[1]; s_St[id].nFw = (int) a[2]; s_St[id].nFh = (int) a[3];
+				s_St[id].bFocus = TRUE;
+			}
+			else if (nOp == PK_OP_TEXT_HINT) s_St[id].nHint = (int) a[0];
+			else s_St[id].nUnits = a[0] != 0;
+			*pnStatus = 1;
+			return 1;
+		}
+
 	case EL_OP_DESK:					// one workspace
 		if (((g_pElWM->DeskInfo () >> 8) & 0xFF) != 1) g_pElWM->SetDesk (0, 1);
 		*pnStatus = g_pElWM->DeskInfo ();
@@ -936,7 +959,9 @@ static void Tick (unsigned self)
 			if (p->X () != cx || p->Y () != cy) { p->Move (cx, cy); ScreenDirty (); }
 		}
 		if (p == 0 || bFull || k != PK_KIND_FILL) continue;
-		if (p->X () != ax || p->Y () != ay) { p->Move (ax, ay); ScreenDirty (); }
+		int vx = 0, vy = 0;
+		Viewport (id, p, ax, ay, aw, ah, &vx, &vy);		// (P6: bigger than the work area: scrolled)
+		if (p->X () != ax - vx || p->Y () != ay - vy) { p->Move (ax - vx, ay - vy); ScreenDirty (); }
 		// A resizable filled window: the work area's size, told once for each size of the work area (UIKit's Root
 		// applies GUI_EVENT_WINRESIZE as a frame dragged). A program whose own pointer handler does not pass that
 		// event on (the Terminal, the Media Player, the PDF Viewer, Screenshot: their frames do not resize on the
@@ -996,6 +1021,7 @@ static void Tick (unsigned self)
 	}
 	pk_band_update (pF != 0 ? pF->Title () : "");		// (the front program's topmost window: the band's title)
 	Matte (pF != 0 && !bFull && !s_bHome ? pF : 0, ax, ay, aw, ah);
+	Bars (ax, ay, aw, ah);					// (P6: the viewport's indicators)
 
 	// The shell told when the tasks changed: a window opened, closed, retitled, minimised, the front one, home.
 	if (s_nShell != 0 && s_ulShellEv != 0)
@@ -1061,6 +1087,164 @@ static void Matte (CWindow *pFront, int ax, int ay, int aw, int ah)
 	}
 }
 
+// ---- (P6) the viewport: a filled window bigger than the work area keeps its canvas; PocketUI shows the part that fits
+// and scrolls it (docs/POCKETUI-TECH-STUDY.md section 6.3): the window moved up / left under the work area's edges (the
+// band above it covers what passed the top), the wheel over the indicators at the work area's right and bottom edges or
+// with Alt held anywhere, the indicators dragged, the focused control kept in view (PK_OP_FOCUS_RECT). No copy, the
+// pointer's coordinates the window's own: it works for every program, UIKit or not.
+enum { VP_BAR = 6, VP_ZONE = 14, VP_STEP = 48, VP_MARGIN = 8 };
+static int s_nVBar = -1, s_nHBar = -1;				// the indicators' windows (PocketUI's own), -1: none
+static int s_nDrag;						// 1: the vertical one dragged, 2: the horizontal one
+static unsigned s_nPrevButtons;
+
+// The window a viewport scrolls now: the front program's topmost window when it is filled and bigger -> its number, -1.
+static int ViewportId (void)
+{
+	if (g_pElWM == 0 || g_pElWM->FullscreenWindow () != 0 || s_bHome || s_bGrab) return -1;	// (an overlay up: none)
+	CWindow *pF = pk_front_window ();
+	if (pF == 0) return -1;
+	int id = IdOfWinId (pF->Id ());
+	if (id < 0 || s_St[id].nKind != PK_KIND_FILL) return -1;
+	int ax, ay, aw, ah;
+	Area (&ax, &ay, &aw, &ah);
+	return pF->ClientWidth () > aw || pF->ClientHeight () > ah ? id : -1;
+}
+
+int pk_viewport (int id, int *vx, int *vy)
+{
+	if (id < 0 || id >= EL_WINDOWS_MAX || g_pElWin[id] == 0) return 0;
+	int ax, ay, aw, ah;
+	Area (&ax, &ay, &aw, &ah);
+	CWindow *p = g_pElWin[id];
+	if (s_St[id].nKind != PK_KIND_FILL || (p->ClientWidth () <= aw && p->ClientHeight () <= ah)) return 0;
+	*vx = s_St[id].nVx; *vy = s_St[id].nVy;
+	return 1;
+}
+int pk_text_hint (int id) { return id >= 0 && id < EL_WINDOWS_MAX ? s_St[id].nHint : -1; }
+
+static void Viewport (int id, CWindow *p, int ax, int ay, int aw, int ah, int *pvx, int *pvy)
+{
+	int mw = p->ClientWidth () - aw, mh = p->ClientHeight () - ah;	// (how far it can scroll)
+	if (mw < 0) mw = 0;
+	if (mh < 0) mh = 0;
+	TState &S = s_St[id];
+	if (S.bFocus && (mw > 0 || mh > 0))			// its focused control shown (with a margin)
+	{
+		S.bFocus = FALSE;
+		if (S.nFy < S.nVy + VP_MARGIN) S.nVy = S.nFy - VP_MARGIN;
+		else if (S.nFy + S.nFh > S.nVy + ah - VP_MARGIN) S.nVy = S.nFy + S.nFh - ah + VP_MARGIN;
+		if (S.nFx < S.nVx + VP_MARGIN) S.nVx = S.nFx - VP_MARGIN;
+		else if (S.nFx + S.nFw > S.nVx + aw - VP_MARGIN) S.nVx = S.nFx + S.nFw - aw + VP_MARGIN;
+	}
+	if (S.nVx > mw) S.nVx = mw;
+	if (S.nVy > mh) S.nVy = mh;
+	if (S.nVx < 0) S.nVx = 0;
+	if (S.nVy < 0) S.nVy = 0;
+	*pvx = S.nVx; *pvy = S.nVy;
+}
+
+static void Scroll (int id, int dx, int dy)			// the viewport moved (its window placed at once)
+{
+	CWindow *p = g_pElWin[id];
+	int ax, ay, aw, ah;
+	Area (&ax, &ay, &aw, &ah);
+	s_St[id].nVx += dx; s_St[id].nVy += dy;
+	int vx, vy;
+	Viewport (id, p, ax, ay, aw, ah, &vx, &vy);
+	if (p->X () != ax - vx || p->Y () != ay - vy) { p->Move (ax - vx, ay - vy); ScreenDirty (); }
+	Bars (ax, ay, aw, ah);
+}
+
+static void BarDraw (int nBar, boolean bVertical, int nPos, int nLen, int nTotal)
+{
+	int w = 0, h = 0;
+	unsigned *px = el_core_window_canvas (nBar, &w, &h);
+	if (px == 0) return;
+	int span = bVertical ? h : w;
+	int t = nTotal > 0 ? span * nLen / nTotal : span, o = nTotal > 0 ? span * nPos / nTotal : 0;
+	if (t < 24) t = 24;
+	if (o + t > span) o = span - t;
+	for (int y = 0; y < h; y++)
+		for (int x = 0; x < w; x++)
+		{
+			int along = bVertical ? y : x, across = bVertical ? x : y;
+			boolean bThumb = along >= o && along < o + t && across >= 1 && across < VP_BAR - 1;
+			px[y * w + x] = bThumb ? 0x00586070 : 0x00D8DCE2;
+		}
+	el_core_window_present (nBar);
+}
+
+static int BarMake (int nOld, int x, int y, int w, int h)
+{
+	if (nOld >= 0)
+	{
+		int cw = 0, ch = 0;
+		el_core_window_canvas (nOld, &cw, &ch);
+		CWindow *p = g_pElWin[nOld];
+		if (p != 0 && cw == w && ch == h) { if (p->X () != x || p->Y () != y) p->Move (x, y); return nOld; }
+		el_core_window_remove (nOld);
+	}
+	el_core_owner (0);
+	int id = el_core_window_add (x, y, w, h, "viewport", WIN_FLAG_TOPMOST | WIN_FLAG_BORDERLESS | WIN_FLAG_SYSTEM, g_nPkSelf);
+	if (id >= 0 && g_pElWin[id] != 0) g_pElWin[id]->SetNoInset (TRUE);	// (never a band of the work area)
+	return id;
+}
+
+static void Bars (int ax, int ay, int aw, int ah)
+{
+	int id = ViewportId ();
+	CWindow *p = id >= 0 ? g_pElWin[id] : 0;
+	boolean bV = p != 0 && p->ClientHeight () > ah, bH = p != 0 && p->ClientWidth () > aw;
+	if (bV)
+	{
+		s_nVBar = BarMake (s_nVBar, ax + aw - VP_BAR, ay, VP_BAR, ah - (bH ? VP_BAR : 0));
+		if (s_nVBar >= 0) BarDraw (s_nVBar, TRUE, s_St[id].nVy, ah, p->ClientHeight ());
+	}
+	else if (s_nVBar >= 0) { el_core_window_remove (s_nVBar); s_nVBar = -1; ScreenDirty (); }
+	if (bH)
+	{
+		s_nHBar = BarMake (s_nHBar, ax, ay + ah - VP_BAR, aw - (bV ? VP_BAR : 0), VP_BAR);
+		if (s_nHBar >= 0) BarDraw (s_nHBar, FALSE, s_St[id].nVx, aw, p->ClientWidth ());
+	}
+	else if (s_nHBar >= 0) { el_core_window_remove (s_nHBar); s_nHBar = -1; ScreenDirty (); }
+}
+
+// The pointer before the window manager: the viewport's wheel and indicators -> 1 taken.
+static int Pointer (int x, int y, unsigned buttons, int wheel)
+{
+	unsigned nPrev = s_nPrevButtons;
+	s_nPrevButtons = buttons;
+	int id = ViewportId ();
+	if (id < 0) { s_nDrag = 0; return 0; }
+	CWindow *p = g_pElWin[id];
+	int ax, ay, aw, ah;
+	Area (&ax, &ay, &aw, &ah);
+	boolean bV = p->ClientHeight () > ah, bH = p->ClientWidth () > aw;
+	boolean inV = bV && x >= ax + aw - VP_ZONE && x < ax + aw && y >= ay && y < ay + ah;
+	boolean inH = bH && !inV && y >= ay + ah - VP_ZONE && y < ay + ah && x >= ax && x < ax + aw;
+	if (s_nDrag != 0)					// an indicator dragged: the place under the pointer
+	{
+		if (!(buttons & 1)) { s_nDrag = 0; return 1; }
+		if (s_nDrag == 1) Scroll (id, 0, (y - ay) * (p->ClientHeight () - ah) / (ah > 0 ? ah : 1) - s_St[id].nVy);
+		else Scroll (id, (x - ax) * (p->ClientWidth () - aw) / (aw > 0 ? aw : 1) - s_St[id].nVx, 0);
+		return 1;
+	}
+	if (wheel != 0 && (inV || inH || (s_nMods & MOD_ALT)))
+	{
+		boolean bSide = inH || (!bV && bH) || ((s_nMods & MOD_SHIFT) != 0 && bH);
+		if (bSide) Scroll (id, -wheel * VP_STEP, 0); else Scroll (id, 0, -wheel * VP_STEP);
+		return 1;
+	}
+	if ((buttons & 1) && !(nPrev & 1) && (inV || inH))
+	{
+		s_nDrag = inV ? 1 : 2;
+		if (inV) Scroll (id, 0, (y - ay) * (p->ClientHeight () - ah) / (ah > 0 ? ah : 1) - s_St[id].nVy);
+		else Scroll (id, (x - ax) * (p->ClientWidth () - aw) / (aw > 0 ? aw : 1) - s_St[id].nVx, 0);
+		return 1;
+	}
+	return 0;
+}
+
 // ---- the screen, the start ----------------------------------------------------------------------------------
 
 static void Recentre (void)					// the cards in the middle of the work area again
@@ -1105,5 +1289,6 @@ static const struct ws_policy s_Pocket =
 	Start,
 	0, 0,							// (no demonstration)
 	Mods,
+	Pointer,						// (P6: the viewport)
 };
 const struct ws_policy *g_pWsPolicy = &s_Pocket;

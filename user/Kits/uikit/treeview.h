@@ -27,6 +27,11 @@ public:
 	int  parentOf (int id) const { return (id >= 0 && id < m_n) ? m_nodes[id].parent : -1; }
 	int  userData (int id) const { return (id >= 0 && id < m_n) ? m_nodes[id].data : 0; }
 	void setUserData (int id, int d) { if (id >= 0 && id < m_n) m_nodes[id].data = d; }
+	// (P6) Portrait: one level at a time (docs/POCKETUI-TECH-STUDY.md section 6.12) -- the children of the level shown,
+	// "<" and its parent's name at the top; a node with children opens its level (a click, Right, Enter), "<" (Left,
+	// Backspace) goes back. Elsewhere (the desktop, landscape) the tree as always.
+	void setDrillDown (bool on);
+	int  drillLevel ();			// the node whose children are shown (-1: the roots), -2: not drilling now
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
 	bool onKey (long k) override;

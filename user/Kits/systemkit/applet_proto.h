@@ -16,6 +16,8 @@
 //                                coordinates; x < 0: it left the pane)
 //                    AP_KEY      struct ApKey: a key typed (a character or a KEY_* code)
 //                    AP_CLOSE    please end (the user went back to the applets' list)
+//   anyone -> host   AP_OPEN     the target's name (an applet's app, NUL-terminated): show that applet -- a second
+//                                `control <target>` asks the one running (2026-10-08: pocket's Settings)
 //
 // The host is the IPC service AP_SERVICE: an applet whose host is gone ends by itself. Another
 // host (Mail, showing Web as its HTML view) adds its own service's name: "--applet <surface id>
@@ -30,7 +32,7 @@
 
 enum
 {
-	AP_HELLO = 40, AP_PRESENT = 41, AP_EXIT = 42, AP_THEME = 43,
+	AP_HELLO = 40, AP_PRESENT = 41, AP_EXIT = 42, AP_THEME = 43, AP_OPEN = 44,
 	AP_PTR = 50, AP_KEY = 51, AP_CLOSE = 52
 };
 

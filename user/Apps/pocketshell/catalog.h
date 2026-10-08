@@ -132,7 +132,7 @@ static void scan_apps (void)
 		*e = c;
 		p = *e ? e + 1 : e;
 	}
-	// the Control Panel's applets: the Settings tab (their app run alone, as the Control Panel's own window)
+	// the Control Panel's applets: the Settings tab (each opens the Control Panel full screen on it: open_app)
 	void *d = kapi_opendir ("SD:/apps/control.app/applets");
 	struct kapi_dirent de;
 	while (d != 0 && kapi_readdir (d, &de) && g_napps < MAXAPPS)
@@ -248,8 +248,24 @@ static void tasks_read (void)
 }
 
 // An app opened from the shell: brought to the front when it runs, else started (its name: SD:/apps/<name>.app).
+// An applet's name (the Settings tab, a setting found, quick settings' Mode): the Control Panel, full screen, opens it
+// -- `control <target>`; a Control Panel already running shows it (AP_OPEN) -- no applet runs alone (P6, the user).
+static bool is_applet (const char *name)
+{
+	for (int i = 0; i < g_napps; i++) if (g_apps[i].applet && ieq (g_apps[i].name, name)) return true;
+	return false;
+}
+
 static void open_app (const char *name)
 {
+	if (is_applet (name))
+	{
+		int c = task_of ("control");
+		if (c >= 0) uk_shell_front (g_tasks[c].id, 1);
+		lx_launch ("control", name);
+		recent_add ("control");
+		return;
+	}
 	int t = task_of (name);
 	if (t >= 0) uk_shell_front (g_tasks[t].id, 1);
 	else lx_launch (name, 0);

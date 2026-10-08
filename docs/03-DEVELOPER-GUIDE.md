@@ -1348,7 +1348,8 @@ and structures (`port/elegant.h` included) with PocketUI's meanings, and its own
 | Keys | with a shell: the keys it registered (`PK_OP_KEYS`: Alt+Tab, Super alone, Super+N...) go to it as `UK_SHELL_KEYEV` events, every key and the modifiers' changes while it grabs them (`PK_OP_GRAB`: an overlay up); a lone **Super** is seen through the policy's `mods` hook (the kernel gives the server the Super bit, `KAPI_WS_MOD_SUPER`, which `serve.cpp` keeps from the window manager). Without a shell: Alt+Tab / Alt+Shift+Tab cycle the programs. **The keys follow the front program**: typed keys go to its topmost window (home: the shell's home) even when the window manager would give them to another window standing above it — logged once `pocketui: the keys to <app> ...` — and its window is raised when another one has the window manager's keys (`KAPI_WS_FOCUS`: `kapi_key_held`, the pads). A program in full screen keeps every key |
 | Full screen | as Elegant (`KAPI_WS_IN_FULLSCREEN`: `el_core_fullscreen`): the window at 0,0, `KAPI_WIN_FULLSCREEN` in the list; the policy moves, fills, sets aside nothing meanwhile; logged `pocketui: full screen: <app>` / `the full screen given back`. (Both servers, common `ops.cpp`, 2026-10-08: the list gives the full-screen window no frame and a gen moving every 50 ms, `EL_OP_WIN_READ` of it what the screen shows — `el_sys_screen_grab` — so rdpd shows the game, not its stale canvas) |
 | The remote desktop | a window set aside is listed with `KAPI_WIN_OFFDESK` (rdpd hides it on the PC: only the app in front shows); the Super key comes from vncd / rdpd too (`remotekeys.h`, `kapi_inject_modifiers`) |
-| Not yet | `consolehome` (P9), split view (P8: `PK_OP_SPLIT`), the viewport for windows bigger than the work area and the scale (P6, P10), a dim behind a card (`PK_OP_DIM`) |
+| The viewport (P6) | a filled window **bigger than the work area** that will not shrink (a fixed size, a least size over the screen: Setup's 800 × 600 at 800 × 480) keeps its canvas; PocketUI moves it up / left under the work area's edges and draws thin indicators at the work area's right and bottom (its own topmost windows): the wheel over an indicator, or an indicator dragged, scrolls; the focused control the pocket UIKit tells (`PK_OP_FOCUS_RECT`, each time the focus moves) is kept in view. The policy's new **`pointer`** hook (`common/policy.h`, `WS_POLICY_HAS_POINTER`; Elegant's is 0) sees the pointer before the window manager. `PK_OP_TEXT_HINT` (the focused field's type: P10's on-screen keyboard) and `PK_OP_UNITS` (`uk_logical_units`: P10's native scale) are kept per window |
+| Not yet | `consolehome` (P9), split view (P8: `PK_OP_SPLIT`), the scale (P10), a dim behind a card (`PK_OP_DIM`) |
 
 **On the PC** (`tools/tests/server_sim/run.sh [out]`): the servers' code built for the host with a real app
 as their client in one process (`server_sim.cpp` stands for the kernel's side: `kapi_ws_ctl`'s operations, the
@@ -1495,6 +1496,131 @@ hook (`policy.h`, `WS_POLICY_HAS_MODS`); `core.h` gains `el_core_xfer` (a progra
 `el_core_next_key` (the window manager's reading of a cooked key string, for a policy); `CWindow::SetNoInset` (a
 topmost window that is not a band: the work area ignores it). **The Terminal** takes a command as its arguments
 (typed into its first tab once the prompt came): the search's "run" line.
+
+### 5.10.6. The adaptive widgets: one binary laid out for every mode (`uikit/adapt.h`, `sidepanel.h`, `form.h`)
+
+*(PocketUI's phase P6; docs/POCKETUI-TECH-STUDY.md §6.5–6.14; the reference: docs/11 `adapt.h`, `sidepanel.h`,
+`form.h`, `toolbar.h`, `tabstrip.h`, `datagrid.h`, `treeview.h`.)* An app is **one binary for the desktop, pocket and
+console**: it runs on the desktop's UIKit (Elegant, `SD:/lib/uikit.so`) and on PocketUI's (`SD:/lib/pocket/uikit.so`,
+loaded under the same name), the two built from one source with the same table (`abi_same.py`). Instead of laying
+itself out for one screen, an app **says what its parts are** and each UIKit shows them for its mode. **On the desktop
+every one of them looks and behaves as it always did** (the size class is *regular*, the metrics today's): an app that
+adopts them is unchanged there (its screenshots pixel-identical).
+
+**What comes without a source change** (library code, rebuilt with UIKit): in pocket and console the popup menus
+(touch-size rows at the pointer in landscape, an **action sheet** at the window's foot in portrait, a deep-blue list in
+the middle in console), the dialogs (`Modal::run`: the window **dimmed** behind the box; a box taller or wider than the
+window becomes a **sheet** that scrolls — the wheel nobody took, Page Up / Down, the focused control kept in view —;
+console: the PS2's panel), the lists' and grids' **rows of the profile**, the **overlay scroll bars** (a thin thumb at
+the edge, no groove; `uk_scroll_bar`), the **focus ring** (always drawn in pocket and console) and the **arrows moving
+the focus** to the nearest control in their direction (`uk_focus_move`, for the keys nobody took), **L1 / R1**
+(Ctrl+Page Up / Down: the window's tabs, else its navigation panel's sections), `TabStrip`'s renderings (the Terminal's
+tabs adapt by themselves). A window bigger than the screen that will not shrink is shown in PocketUI's **viewport**
+(§5.10.3).
+
+**The size class and the metrics** — for an app's own layout code:
+
+```cpp
+int sc = uk_size_class ();          // UK_SC_REGULAR (the desktop), _COMPACT (pocket, landscape), _NARROW (portrait), _CONSOLE
+const UkMetrics &m = uk_metrics ();  // m.row, m.button, m.field, m.tab, m.toolbar, m.rail, m.pad, m.touch, m.scale
+int gw = uk_scroll_gutter ();       // what a scrolled view leaves for its bar: UK_SBW (10) on the desktop, 0 under overlay bars
+class MyRoot : public Root {
+    void onSizeClass (int sc) override { lay_out (); }   // the class changed (the screen turned): every window told
+    void onResized () override { lay_out (); }           // PocketUI fills a resizable window: GUI_EVENT_WINRESIZE
+};
+```
+
+The class is PocketUI's (`uk_win_server`: by the work area's logical size — portrait when it is taller than wide),
+asked once and again after a resize; console's whatever the shape. The metrics' profile is `SD:/etc/theme.txt`
+`metrics = regular | compact | touch` and `scale = 1 | 1.5 | 2` in pocket (compact when not said), console's own in
+console. `uk_lp (v)` scales a logical size. `uk_logical_units (true)` says the app draws only through UIKit (P10's
+native scale may be given). Replace a compiled `UK_SBW` by `uk_scroll_gutter ()` where the app subtracts the bar.
+
+**SidePanel** — a side panel that says whether it is a **navigation** list (left: the places of a library, the
+mailboxes, the applets) or an **inspector** (right: layers, properties):
+
+| | the desktop | pocket, landscape | pocket, portrait | console |
+|---|---|---|---|---|
+| navigation | `UK_SP_FULL` (today's sidebar) | a **rail** of icons (48 lp; it expands over the content under the pointer or the focus) — **whole** when the window is at least four times its width, or `setRail (false)` | a **drawer** (a tab at the left edge, or the app's `toggleButton ()`) | a **column** of big rows; L1 / R1 the sections |
+| inspector | `UK_SP_FULL` | a **slide-over** from the right (its edge's tab) | a **bottom sheet** (half; its grabber: whole) | a slide-over |
+
+```cpp
+SidePanel *sp = new SidePanel (0, 52, 208, h, UK_SP_LEFT, UK_SP_NAVIGATION);
+sp->setIconFn (my_icon);                   // the app's icons (else an icon is a WKG_* glyph)
+sp->addHeading ("LIBRARY", UK_SPI_FOLDABLE);
+sp->addItem (1, "Songs", I_SONGS);  sp->setBadge (1, 12);  sp->setTrailing (2, "42");
+sp->setSubtitle (1, "Every song");         // a help line: shown whole, 240 px wide or more, when every item fits at two lines
+sp->onSelect = go;  sp->onItemMenu = menu;  sp->onDrop = dropped;  sp->onPresentation = relayout;
+root.addChild (sp);
+void relayout () {                         // the window's resize, onSizeClass, onPresentation
+    sp->place (0, 52, 208, height - 52);   // the panel's rectangle as the app means it (NOT left / top / resizeTo)
+    content->left = sp->reservedWidth ();  // the width it takes now: whole 208, a rail 48, an overlay 0
+}
+```
+
+Items carry a small fixed set of accessories (icon, indent, badge — a count or a dot —, a trailing value, a picture,
+a toggle such as a layer's eye); anything richer goes in a **footer** (`setFooter`), **pages** (`addPage`: an
+inspector's tabs) or a **content** under the items (`setContent`: a tree, a month — such a panel becomes a drawer,
+never a rail). `place ()` is the API for the app's own geometry: writes to `left` / `top` / `resizeTo` are taken as
+what the parent's anchors did to the panel shown. Pilots: the **Control Panel** (its applets as links, on the desktop
+too — docs/04), the **File Viewer** (its places in pocket and console; the desktop keeps its own sidebar).
+
+**ToolBar** — the priorities of its tools; the desktop as built (every tool, every row), pocket **one row** of what fits
+by priority and a **»** button opening a panel that hosts the other tools themselves (a toggle stays a toggle, a drop-down
+a drop-down; a group a row):
+
+```cpp
+bar->setPriority (save, UK_TB_ALWAYS);          // the default
+bar->setPriority (cut, UK_TB_IF_ROOM, 2);       // shown when there is room; rank 2 leaves before rank 1
+bar->setPriority (gear, UK_TB_OVERFLOW);        // only behind »
+second->foldInto (bar);                         // a second row joins the first when compact (and is hidden)
+int rowsNow = bar->rows ();                     // the app's layout: the desktop 1 + the folded bars, else 1
+```
+
+**TabStrip** — `presentation ()`: the desktop's strip; pocket landscape a strip that **scrolls** (each tab its title's
+width) with a **⋯** list when they do not fit; portrait **the current tab's title (n) ▾** opening the list (its marks,
+close crosses, "New Tab"), or a **segmented control** for 2–3 short fixed tabs; console a **header row** (the current
+tab big, L1 / R1). `setEdge (UK_TAB_BOTTOM)` (a spreadsheet's sheets), `setStyle`, `setNav` (this strip takes L1 / R1;
+the first one made does), `showList ()`.
+
+**DataGrid** — the columns' **roles** and **priorities**: `setColumnRole (c, UK_COL_PRIMARY | _SECONDARY | _DETAIL,
+priority)`; in pocket the highest priorities give way when the grid is narrow (0: never); in portrait a grid with a
+primary column draws **two-line cards** (the primary, then the secondary ones) and `setDetailView (w)` opens the app's
+detail on a click (Esc back); `setMultiSelect`, `isSelected`, `setSelected`, `selectedCount`. Pilot: the **Task
+Manager** (a task a card in portrait). *Beware: DataGrid has fields of its own named `left` and `top` (its scroll) —
+place it with `grid->Widget::left` / `Widget::top`, or anchors.* **TreeView** `setDrillDown (true)`: in portrait one
+level at a time, "‹ parent" at the top.
+
+**FormDialog** — a dialog of rows the UIKit lays out: two columns in a box on the desktop and in landscape (the buttons
+at the bottom right, the default then Cancel), **a sheet the window's size** in portrait (each label over its control,
+Cancel at the title's left, the default at its right), the PS2's panel in console (✕ / ○ beside the buttons):
+
+```cpp
+FormDialog f (TR ("New Playlist"));
+Textbox *name = new Textbox (0, 0, 240, 26, "");
+f.addSection (TR ("Playlist"));  f.addRow (TR ("Name:"), name);  f.addText (TR ("A smart playlist fills itself."));
+f.addButton (TR ("Create"), UK_FB_DEFAULT, 1);  f.addButton (TR ("Cancel"), UK_FB_CANCEL, 0);
+if (f.run () == 1) ...                 // Enter: the default's result, Esc: the Cancel's
+```
+
+**A field's type** — `uk_set_input_type (w, UK_IN_NUMBER | _DECIMAL | _URL | _EMAIL | _PASSWORD | _TERMINAL | _SEARCH)`
+(a `Textbox` with `password` is `UK_IN_PASSWORD` by itself): told to PocketUI with the focus (the on-screen keyboard's
+layout in pocket, P10; console never raises one).
+
+**The state behind `Widget::ext`** — the classes' fields are frozen (`uikit/abi.h`): what a widget gained at P6 is
+kept in an extension (`uikit/internal/adapt_int.h`, `namespace uikit::internal`, left out of the table) freed with the
+widget. `ToolBar` gained a `layout ()` override: a program built before P6 keeps its bar as built until rebuilt.
+`Root::onSizeClass` is the former reserved slot `uk_rootReserved2` (the name kept as a plain entry of the table).
+P6 appended 99 entries to `uikit.abi` (850–948: `uikit >= 1.949`), the same both UIKits; the layout lock gained
+`SidePanel`, `FormDialog`, `UkMetrics`.
+
+**On the PC**: `sh tools/tests/server_sim/adaptive.sh [out] [control gallery pilots viewport fileviewer]` — the
+widgets' host tests (`tools/tests/server_sim/adaptive.cpp` with `ADAPT_TEST=1`: each widget's layout in the four
+classes, forced) and the real apps under PocketUI at 800 × 480, 1280 × 720, 1920 × 1080, portrait 480 × 800 and
+console 640 × 480, their pictures dumped: the Control Panel (and in French), the gallery (a toolbar and its »,
+tabs, both panels, a grid with roles, a form, a menu, in every mode, and on Elegant), the Task Manager, the Terminal's
+tabs, the viewport (Setup), the File Viewer. A selection is in `screenshots/pocket/`. In the desktop simulator
+(`tools/tests/desktop_sim`) the class is the desktop's: `shots.sh` checks that nothing changed there.
 
 ## 6. Writing a graphical application
 

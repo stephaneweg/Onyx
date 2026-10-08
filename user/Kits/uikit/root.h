@@ -107,7 +107,11 @@ public:
 	// (v95) A click on the program's icon of the status area (uk_tray): KAPI_TRAY_OPEN (a double click:
 	// the first window already shown again), KAPI_TRAY_MENU (a right click). To the first window.
 	virtual void onTray (int kind);
-	virtual void uk_rootReserved2 () {}
+	// (P6) The size class changed (uikit/adapt.h: UK_SC_REGULAR on the desktop, _COMPACT, _NARROW, _CONSOLE under
+	// PocketUI -- the screen turned, the mode): the app lays itself out again for it (its adaptive widgets -- SidePanel,
+	// ToolBar, TabStrip, DataGrid -- already have). Called on every window of the program; never on the desktop.
+	virtual void onSizeClass (int sizeClass);
+	void uk_rootReserved2 ();		// (the slot's former name: an entry of the table)
 	virtual void uk_rootReserved3 () {}
 	virtual void uk_rootReserved4 () {}
 	virtual void uk_rootReserved5 () {}

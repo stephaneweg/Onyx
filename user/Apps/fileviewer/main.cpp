@@ -43,10 +43,16 @@
 
 using namespace uikit;
 
-#define W	880
-#define H	540
-#define SIDE_W	188			// the places (left)
-#define VIS	3			// columns visible at once
+// The window follows its size (resizable; PocketUI fills it): 880 x 540 at first, the places at the left, as many
+// columns as fit (200 px at least, 3 at first, 6 at most), the path bar across, the status line at the bottom.
+#define W0	880
+#define H0	540
+#define SIDE0	188			// the places (left)
+static int g_W = W0, g_H = H0, g_sideW = SIDE0, g_vis = 3;
+#define W	g_W
+#define H	g_H
+#define SIDE_W	g_sideW
+#define VIS	g_vis			// columns visible at once
 #define COLX	SIDE_W			// the columns' left edge
 #define COLW	((W - SIDE_W) / VIS)
 #define TB_H	0			// (no toolbar: commands are in the menu bar)
@@ -354,10 +360,10 @@ static void update_status (void)
 	while (m) n[p++] = t[--m];
 	n[p] = '\0';
 	const Entry *e = sel_entry (g_active);
-	if (e && !e->isdir) { fmt_size (sz, e->size); status (n, " items   -   "); int q = slen (g_status);
+	if (e && !e->isdir) { fmt_size (sz, e->size); status (n, TR (" items   -   ")); int q = slen (g_status);
 		for (int i = 0; e->name[i] && q < (int) sizeof g_status - 20; i++) g_status[q++] = e->name[i];
 		g_status[q++] = ' '; g_status[q++] = '('; for (int i = 0; sz[i]; i++) g_status[q++] = sz[i]; g_status[q++] = ')'; g_status[q] = '\0'; }
-	else status (n, " items");
+	else status (n, TR (" items"));
 }
 
 // Select entry idx of column c: a plain folder opens in column c+1, anything else shows
@@ -444,16 +450,16 @@ static void open_entry (int c)
 		char name[NAMEL]; scopy (name, e->name, sizeof name);
 		name[slen (name) - 4] = '\0';
 		lx_launch (name, 0);
-		status ("Launched ", name);
+		status (TR ("Launched "), name);
 	}
 	else if (e->isdir) { if (c + 1 < g_ncol && g_col[c + 1].count > 0) select (c + 1, 0); }
 	else
 	{
 		// SD:/etc/fileassoc.ini ("ext = app"), else an ELF program runs (fileassoc.h).
 		char app[48];
-		if (fa_app_for (path, app, sizeof app) && fa_open (path)) status ("Opened in ", app);
-		else if (fa_open (path)) status ("Running ", e->name);
-		else status ("No application to open ", e->name);
+		if (fa_app_for (path, app, sizeof app) && fa_open (path)) status (TR ("Opened in "), app);
+		else if (fa_open (path)) status (TR ("Running "), e->name);
+		else status (TR ("No application to open "), e->name);
 	}
 }
 
@@ -486,7 +492,7 @@ public:
 		addChild (tb);
 		Button *b;
 		b = new Button (width - 180, height - 36, 82, 28, "OK", dlg_btn);     b->tag = 1; addChild (b);
-		b = new Button (width - 92,  height - 36, 82, 28, "Cancel", dlg_btn); b->tag = 0; addChild (b);
+		b = new Button (width - 92,  height - 36, 82, 28, TR ("Cancel"), dlg_btn); b->tag = 0; addChild (b);
 	}
 	void onButton (int tag) override { close (tag); }
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
@@ -498,7 +504,7 @@ static bool ask_name (const char *title, const char *init, char *out, int cap)
 	InputBox box (title, init);
 	if (!box.run () || box.tb->text[0] == '\0') return false;
 	for (int i = 0; box.tb->text[i]; i++)
-		if (box.tb->text[i] == '/' || box.tb->text[i] == '\\' || box.tb->text[i] == ':') { uk_messagebox ("Invalid name", "A name cannot contain / \\ or :", MB_OK); return false; }
+		if (box.tb->text[i] == '/' || box.tb->text[i] == '\\' || box.tb->text[i] == ':') { uk_messagebox (TR ("Invalid name"), TR ("A name cannot contain / \\ or :"), MB_OK); return false; }
 	scopy (out, box.tb->text, cap);
 	return true;
 }
@@ -506,57 +512,57 @@ static bool ask_name (const char *title, const char *init, char *out, int cap)
 static void op_new_folder ()
 {
 	char name[NAMEL];
-	if (!ask_name ("New folder in this column", "New Folder", name, sizeof name)) return;
+	if (!ask_name (TR ("New folder in this column"), TR ("New Folder"), name, sizeof name)) return;
 	char p[300]; join (p, sizeof p, g_col[g_active].path, name);
-	if (exists (p) || kapi_mkdir (p) != 0) { status ("Could not create folder ", name); return; }
+	if (exists (p) || kapi_mkdir (p) != 0) { status (TR ("Could not create folder "), name); return; }
 	refresh ();
 	for (int i = 0; i < g_col[g_active].count; i++)
 		if (ci_cmp (g_col[g_active].e[i].name, name) == 0) { select (g_active, i); break; }
-	status ("Created folder ", name);
+	status (TR ("Created folder "), name);
 }
 static void op_rename ()
 {
 	const Entry *e = sel_entry (g_active);
-	if (!e) { status ("Select something to rename"); return; }
+	if (!e) { status (TR ("Select something to rename")); return; }
 	char name[NAMEL], old[NAMEL];
 	scopy (old, e->name, sizeof old);
-	if (!ask_name ("Rename", old, name, sizeof name) || ci_cmp (name, old) == 0) return;
+	if (!ask_name (TR ("Rename"), old, name, sizeof name) || ci_cmp (name, old) == 0) return;
 	char s[300], d[300];
 	join (s, sizeof s, g_col[g_active].path, old);
 	join (d, sizeof d, g_col[g_active].path, name);
-	if (exists (d) || kapi_rename (s, d) != 0) { status ("Could not rename to ", name); return; }
+	if (exists (d) || kapi_rename (s, d) != 0) { status (TR ("Could not rename to "), name); return; }
 	g_col[g_active].sel = -1; g_ncol = g_active + 1;
 	refresh ();
 	for (int i = 0; i < g_col[g_active].count; i++)
 		if (ci_cmp (g_col[g_active].e[i].name, name) == 0) { select (g_active, i); break; }
-	status ("Renamed to ", name);
+	status (TR ("Renamed to "), name);
 }
 static void op_delete_permanently ();
 static void op_delete ()			// Del: move to the trash (in the trash: for good)
 {
 	const Entry *e = sel_entry (g_active);
-	if (!e) { status ("Select something to delete"); return; }
+	if (!e) { status (TR ("Select something to delete")); return; }
 	if (in_trash ()) { op_delete_permanently (); return; }
 	char path[300]; join (path, sizeof path, g_col[g_active].path, e->name);
 	char name[NAMEL]; scopy (name, e->name, sizeof name);
 	bool ok = trash_move (path);
 	g_col[g_active].sel = -1; g_ncol = g_active + 1;
 	refresh ();
-	status (ok ? "Moved to the Trash: " : "Could not move to the Trash: ", name);
+	status (ok ? TR ("Moved to the Trash: ") : TR ("Could not move to the Trash: "), name);
 }
 
 static void op_delete_permanently ()
 {
 	const Entry *e = sel_entry (g_active);
-	if (!e) { status ("Select something to delete"); return; }
+	if (!e) { status (TR ("Select something to delete")); return; }
 	char msg[128]; int p = 0;
-	const char *a = e->isdir ? "Delete the folder for good\n" : "Delete for good\n";
-	for (int i = 0; a[i]; i++) msg[p++] = a[i];
+	const char *a = e->isdir ? TR ("Delete the folder for good\n") : TR ("Delete for good\n");
+	for (int i = 0; a[i] && p < 60; i++) msg[p++] = a[i];
 	for (int i = 0; e->name[i] && p < 100; i++) msg[p++] = e->name[i];
-	if (e->isdir) { const char *b = "\nand everything in it?"; for (int i = 0; b[i]; i++) msg[p++] = b[i]; }
+	if (e->isdir) { const char *b = TR ("\nand everything in it?"); for (int i = 0; b[i] && p < 126; i++) msg[p++] = b[i]; }
 	else msg[p++] = '?';
 	msg[p] = '\0';
-	if (!uk_messagebox ("Delete", msg, MB_YESNO)) return;
+	if (!uk_messagebox (TR ("Delete"), msg, MB_YESNO)) return;
 	char path[300]; join (path, sizeof path, g_col[g_active].path, e->name);
 	char name[NAMEL]; scopy (name, e->name, sizeof name);
 	bool ok;
@@ -564,7 +570,7 @@ static void op_delete_permanently ()
 	else ok = e->isdir ? remove_tree (path, 0) : kapi_remove (path) == 0;
 	g_col[g_active].sel = -1; g_ncol = g_active + 1;
 	refresh ();
-	status (ok ? "Deleted " : "Could not delete ", name);
+	status (ok ? TR ("Deleted ") : TR ("Could not delete "), name);
 }
 
 static void show_root (const char *path)
@@ -574,19 +580,19 @@ static void show_root (const char *path)
 	preview_build ();
 	update_status ();
 }
-static void op_open_trash () { trash_ensure (); show_root (TRASH_FILES); status ("Trash: Restore puts an item back, Del deletes it for good"); }
+static void op_open_trash () { trash_ensure (); show_root (TRASH_FILES); status (TR ("Trash: Restore puts an item back, Del deletes it for good")); }
 static void op_show_sd ()    { show_root ("SD:/"); }
 static bool volume_mounted (const char *root) { void *d = kapi_opendir (root); if (d) kapi_closedir (d); return d != 0; }
 static void show_volume (const char *root)
 {
 	if (volume_mounted (root)) show_root (root);
-	else status ("No FAT / exFAT partition there: ", root);
+	else status (TR ("No FAT / exFAT partition there: "), root);
 }
 static void op_show_sd1 ()   { show_volume ("SD1:/"); }
 static void op_show_sd2 ()   { show_volume ("SD2:/"); }
 static void op_show_sd3 ()   { show_volume ("SD3:/"); }
 // RAM:, the volume in memory (absent with "ramfs=0" in system.ini)
-static void op_show_ram ()   { if (volume_mounted ("RAM:/")) show_root ("RAM:/"); else status ("No RAM: volume", ""); }
+static void op_show_ram ()   { if (volume_mounted ("RAM:/")) show_root ("RAM:/"); else status (TR ("No RAM: volume"), ""); }
 
 // ---- USB sticks (kapi v93: mounted when plugged in as USB:, USB2:, USB3:) -------------------------
 #define MAXVOL	16
@@ -624,7 +630,7 @@ static void op_show_usb ()
 			show_root (r);
 			return;
 		}
-	status ("No USB stick is plugged in (or it is not formatted: Format...)");
+	status (TR ("No USB stick is plugged in (or it is not formatted: Format...)"));
 }
 // The USB device of a path: 1..3 ("USB2:/x", "USB2P1:/x" -> 2; "USB:" is USB1:), 0 = not on a USB volume.
 static int usb_dev (const char *p)
@@ -640,11 +646,11 @@ static void eject_dev (int dev)
 	int r = kapi_vol_eject (vol, 0);
 	if (r == -KAPI_EBUSY)
 	{
-		if (!uk_messagebox ("Eject", "Files are still open on this stick (they were saved). Eject it anyway?", MB_YESNO)) { status (vol, " is still in use"); return; }
+		if (!uk_messagebox (TR ("Eject"), TR ("Files are still open on this stick (they were saved). Eject it anyway?"), MB_YESNO)) { status (vol, TR (" is still in use")); return; }
 		r = kapi_vol_eject (vol, KAPI_EJECT_FORCE);
 	}
-	if (r == 0) status (vol, " can be removed safely");
-	else status ("Could not eject ", vol);
+	if (r == 0) status (vol, TR (" can be removed safely"));
+	else status (TR ("Could not eject "), vol);
 }
 // Eject the USB device shown (else the one plugged in).
 static void op_eject ()
@@ -660,16 +666,17 @@ static void op_eject ()
 				dev = usb_dev (r);
 			}
 	}
-	if (!dev) { status ("No USB stick to eject"); return; }
+	if (!dev) { status (TR ("No USB stick to eject")); return; }
 	eject_dev (dev);
 }
 // The right-click menu's line for a path on a USB volume: "Eject USB1" (a partition's: its whole device).
 static void eject_label (const char *path, char *out)
 {
-	const char *a = "Eject USB1"; int n = 0;
-	for (; a[n]; n++) out[n] = a[n];
-	out[n - 1] = (char) ('0' + usb_dev (path));
-	if (sd_volume (path) == 7) for (const char *b = " (all its partitions)"; *b; b++) out[n++] = *b;
+	int n = 0;						// (out: 64 bytes at least)
+	for (const char *a = TR ("Eject"); *a && n < 30; a++) out[n++] = *a;
+	for (const char *a = " USB"; *a; a++) out[n++] = *a;
+	out[n++] = (char) ('0' + usb_dev (path));
+	if (sd_volume (path) == 7) for (const char *b = TR (" (all its partitions)"); *b && n < 63; b++) out[n++] = *b;
 	out[n] = 0;
 }
 static void op_format ()				// the Disks app: the volumes, Eject, Format
@@ -711,7 +718,7 @@ static void open_path (const char *path)
 #define PLACES_INI	"SD:/etc/places.ini"
 #define MAXPIN		16
 enum { G_PERSONAL, G_COMPUTER, G_NETWORK, NGROUPS };
-static const char *const GROUP_NAME[NGROUPS] = { "Personal", "Computer", "Network" };
+static const char *const GROUP_NAME[NGROUPS] = { TRN ("Personal"), TRN ("Computer"), TRN ("Network") };
 static const char *const GROUP_KEY[NGROUPS] = { "personal", "computer", "network" };
 enum { PL_PIN, PL_TRASH, PL_VOL, PL_NET, PL_CONNECT };
 struct Place { int kind, group, index; char label[40]; char path[200]; };
@@ -795,13 +802,13 @@ static void places_build (void)
 {
 	g_npl = 0;
 	for (int i = 0; i < g_npin; i++) add_place (PL_PIN, G_PERSONAL, i, g_pinName[i], g_pinPath[i]);
-	add_place (PL_TRASH, G_PERSONAL, -1, "Trash", TRASH_FILES);
-	add_place (PL_VOL, G_COMPUTER, -1, "SD Card", "SD:/");
-	static const char *const VOLS[][2] = { { "SD1:/", "SD1: partition 2" }, { "SD2:/", "SD2: partition 3" },
-		{ "SD3:/", "SD3: partition 4" }, { "VD0:/", "VD0: disk image" }, { "VD1:/", "VD1: disk image" },
-		{ "VD2:/", "VD2: disk image" }, { "VD3:/", "VD3: disk image" }, { "RAM:/", "RAM: memory" } };
+	add_place (PL_TRASH, G_PERSONAL, -1, TR ("Trash"), TRASH_FILES);
+	add_place (PL_VOL, G_COMPUTER, -1, TR ("SD Card"), "SD:/");
+	static const char *const VOLS[][2] = { { "SD1:/", TRN ("SD1: partition 2") }, { "SD2:/", TRN ("SD2: partition 3") },
+		{ "SD3:/", TRN ("SD3: partition 4") }, { "VD0:/", TRN ("VD0: disk image") }, { "VD1:/", TRN ("VD1: disk image") },
+		{ "VD2:/", TRN ("VD2: disk image") }, { "VD3:/", TRN ("VD3: disk image") }, { "RAM:/", TRN ("RAM: memory") } };
 	for (unsigned i = 0; i < sizeof VOLS / sizeof VOLS[0]; i++)
-		if (volume_mounted (VOLS[i][0])) add_place (PL_VOL, G_COMPUTER, -1, VOLS[i][1], VOLS[i][0]);
+		if (volume_mounted (VOLS[i][0])) add_place (PL_VOL, G_COMPUTER, -1, TR (VOLS[i][1]), VOLS[i][0]);
 	vols_read ();						// (v93) the USB sticks mounted
 	g_volSig = vols_sig ();
 	for (int i = 0; i < g_nvols; i++)
@@ -811,21 +818,23 @@ static void places_build (void)
 		int n = 0;
 		for (const char *q = r; *q && *q != '/'; q++) label[n++] = *q;
 		label[n++] = ' ';
-		const char *t = g_vols[i].label[0] ? g_vols[i].label : "USB stick";
+		const char *t = g_vols[i].label[0] ? g_vols[i].label : TR ("USB stick");
 		while (*t && n < (int) sizeof label - 1) label[n++] = *t++;
 		label[n] = 0;
 		add_place (PL_VOL, G_COMPUTER, -1, label, r);
 	}
 	for (int i = 0; i < g_nnet; i++) add_place (PL_NET, G_NETWORK, i, g_netName[i], g_netPath[i]);
-	add_place (PL_CONNECT, G_NETWORK, -1, "Add a Server...", "");
+	add_place (PL_CONNECT, G_NETWORK, -1, TR ("Add a Server..."), "");
 }
 
 // The sidebar's rows: a group's title (place -1), then its places unless it is folded.
 struct SideRow { int group, place; };
 static SideRow g_srow[sizeof g_pl / sizeof g_pl[0] + NGROUPS];
 static int     g_nsrow;
+static void sp_build (void);
 static void side_rows (void)
 {
+	sp_build ();					// (pocket, console: the SidePanel's items again -- the end of this)
 	g_nsrow = 0;
 	for (int g = 0; g < NGROUPS; g++)
 	{
@@ -864,7 +873,7 @@ static void open_place (int i)
 	switch (p.kind)
 	{
 	case PL_PIN:
-		if (!is_remote (p.path) && !fs_is_dir (p.path)) { status ("This folder is not there any more: ", p.path); return; }
+		if (!is_remote (p.path) && !fs_is_dir (p.path)) { status (TR ("This folder is not there any more: "), p.path); return; }
 		open_path (p.path); break;
 	case PL_TRASH:   op_open_trash (); break;
 	case PL_VOL:     show_volume (p.path); break;
@@ -877,14 +886,14 @@ static void open_place (int i)
 static bool ask_name (const char *title, const char *init, char *out, int cap);
 static void pin_folder (const char *path)
 {
-	if (g_npin >= MAXPIN) { status ("16 pinned folders at most"); return; }
-	for (int i = 0; i < g_npin; i++) if (ci_cmp (g_pinPath[i], path) == 0) { status ("Already pinned: ", g_pinName[i]); return; }
+	if (g_npin >= MAXPIN) { status (TR ("16 pinned folders at most")); return; }
+	for (int i = 0; i < g_npin; i++) if (ci_cmp (g_pinPath[i], path) == 0) { status (TR ("Already pinned: "), g_pinName[i]); return; }
 	const char *base = fs_basename (path);
 	char name[40];
-	if (!ask_name ("Pin to the sidebar as", base[0] ? base : path, name, sizeof name)) return;
+	if (!ask_name (TR ("Pin to the sidebar as"), base[0] ? base : path, name, sizeof name)) return;
 	scopy (g_pinName[g_npin], name, 40); scopy (g_pinPath[g_npin], path, 200); g_npin++;
 	places_save (); places_build (); side_rows ();
-	status ("Pinned: ", name);
+	status (TR ("Pinned: "), name);
 }
 
 // A network place: add it (or rename it if its server is there already).
@@ -918,32 +927,32 @@ public:
 		Root *r = Root::current ();
 		left = ((r ? r->width : W) - width) / 2; top = ((r ? r->height : H) - height) / 2;
 		int y = uk_fh () + 18, lx = 12, fx = 100, rh = 32;
-		const char *labels[6] = { "Protocol", "Server", "User", "Password", "Folder", "Name" };
-		for (int i = 0; i < 6; i++) addChild (new Label (lx, y + i * rh + 4, 86, 20, labels[i], C_TEXT, C_FACE));
+		const char *labels[6] = { TRN ("Protocol"), TRN ("Server"), TRN ("User"), TRN ("Password"), TRN ("Folder"), TRN ("Name") };
+		for (int i = 0; i < 6; i++) addChild (new Label (lx, y + i * rh + 4, 86, 20, TR (labels[i]), C_TEXT, C_FACE));
 		ftp  = new RadioButton (fx,      y, 80, 24, "FTP",  1, true,  0, C_FACE); addChild (ftp);
 		ftps = new RadioButton (fx + 90, y, 180, 24, "FTPS (TLS)", 1, false, 0, C_FACE); addChild (ftps);
 		host   = new Combobox (fx, y + rh, 190, 26, "", 0, connect_picked);
-		addChild (new Label (fx + 198, y + rh + 4, 36, 20, "Port", C_TEXT, C_FACE));
+		addChild (new Label (fx + 198, y + rh + 4, 36, 20, TR ("Port"), C_TEXT, C_FACE));
 		port   = new Textbox (fx + 238, y + rh, width - fx - 250, 26, "21");
 		user   = new Textbox (fx, y + 2 * rh, width - fx - 12, 26, "");
 		pass   = new Textbox (fx, y + 3 * rh, width - fx - 12, 26, "", dlg_enter);
 		pass->password = true;
 		folder = new Textbox (fx, y + 4 * rh, width - fx - 12, 26, "/", dlg_enter);
 		name   = new Textbox (fx, y + 5 * rh, width - fx - 12, 26, "", dlg_enter);
-		name->tip = "The server's name in the sidebar (Network): empty = its address";
+		name->tip = TR ("The server's name in the sidebar (Network): empty = its address");
 		addChild (port); addChild (user); addChild (pass); addChild (folder); addChild (name);
-		remember = new Checkbox (fx, y + 6 * rh + 18, width - fx - 12, 24, "Remember password", true, 0, C_FACE);
-		remember->tip = "Kept in SD:/etc/ftpfs.ini (obfuscated, not encrypted) for next boots";
+		remember = new Checkbox (fx, y + 6 * rh + 18, width - fx - 12, 24, TR ("Remember password"), true, 0, C_FACE);
+		remember->tip = TR ("Kept in SD:/etc/ftpfs.ini (obfuscated, not encrypted) for next boots");
 		addChild (remember);
-		host->tip = "A name (ftp.example.com) or an IP address; the arrow lists the remembered servers";
-		user->tip = "Empty = anonymous";
-		ftps->tip = "Explicit TLS on port 21 (AUTH TLS); implicit TLS on port 990";
+		host->tip = TR ("A name (ftp.example.com) or an IP address; the arrow lists the remembered servers");
+		user->tip = TR ("Empty = anonymous");
+		ftps->tip = TR ("Explicit TLS on port 21 (AUTH TLS); implicit TLS on port 990");
 		Button *b;
-		forget = new Button (12, height - 38, 98, 28, "Forget", dlg_btn); forget->tag = 2;
-		forget->tip = "Forget the remembered login of this server";
+		forget = new Button (12, height - 38, 98, 28, TR ("Forget"), dlg_btn); forget->tag = 2;
+		forget->tip = TR ("Forget the remembered login of this server");
 		addChild (forget);
-		b = new Button (width - 196, height - 38, 98, 28, "Connect", dlg_btn); b->tag = 1; addChild (b);
-		b = new Button (width - 92,  height - 38, 82, 28, "Cancel",  dlg_btn); b->tag = 0; addChild (b);
+		b = new Button (width - 196, height - 38, 98, 28, TR ("Connect"), dlg_btn); b->tag = 1; addChild (b);
+		b = new Button (width - 92,  height - 38, 82, 28, TR ("Cancel"),  dlg_btn); b->tag = 0; addChild (b);
 		addChild (host);					// last: its list opens over the fields below
 		reload ();
 		host->setFocus ();
@@ -958,13 +967,13 @@ public:
 	}
 	void set_hint ()					// under the fields: what the server list holds
 	{
-		if (nsites == 0) { scopy (hint, "No remembered server yet (SD:/etc/ftpfs.ini)", sizeof hint); return; }
+		if (nsites == 0) { scopy (hint, TR ("No remembered server yet (SD:/etc/ftpfs.ini)"), sizeof hint); return; }
 		char nb[8]; int k = 0, v = nsites; char t[8]; int m = 0;
 		while (v) { t[m++] = (char) ('0' + v % 10); v /= 10; } while (m) nb[k++] = t[--m]; nb[k] = '\0';
 		scopy (hint, nb, sizeof hint);
 		int n = slen (hint);
-		scopy (hint + n, nsites == 1 ? " remembered server: click the arrow or press Down"
-					    : " remembered servers: click the arrow or press Down", sizeof hint - n);
+		scopy (hint + n, nsites == 1 ? TR (" remembered server: click the arrow or press Down")
+					    : TR (" remembered servers: click the arrow or press Down"), sizeof hint - n);
 	}
 	int saved (const char *h)
 	{
@@ -986,8 +995,8 @@ public:
 	{
 		if (tag != 2) { close (tag); return; }
 		int i = saved (host->text);
-		if (i < 0) { uk_messagebox ("Forget", "This server is not remembered.", MB_OK); return; }
-		if (!uk_messagebox ("Forget", "Forget the remembered login of this server?", MB_YESNO)) return;
+		if (i < 0) { uk_messagebox (TR ("Forget"), TR ("This server is not remembered."), MB_OK); return; }
+		if (!uk_messagebox (TR ("Forget"), TR ("Forget the remembered login of this server?"), MB_YESNO)) return;
 		ftpfs_forget (sites[i].host);
 		sites[i] = sites[--nsites];				// (ftpfs rewrites the file: update the list here)
 		host->clearOptions ();
@@ -1013,7 +1022,7 @@ public:
 	}
 	void onDraw () override
 	{
-		drawBox ("Connect to Server");
+		drawBox (TR ("Connect to Server"));
 		canvas.text (100, uk_fh () + 18 + 6 * 32 - 2, hint, C_DIS);
 	}
 };
@@ -1051,7 +1060,7 @@ static void op_connect ()
 	bool remember = dlg.remember->checked, wasSaved = dlg.saved (st.host) >= 0;
 	if (!remember && wasSaved) ftpfs_forget (st.host);
 	if ((remember || st.user[0]) && !ftpfs_login_site (&st, remember ? 1 : 0))
-	{ status ("Cannot start /bin/ftpfs"); return; }
+	{ status (TR ("Cannot start /bin/ftpfs")); return; }
 	char addr[200];
 	scopy (addr, lastTls ? "FTPS:" : "FTP:", sizeof addr);
 	int n = slen (addr);
@@ -1061,14 +1070,14 @@ static void op_connect ()
 	if (lastFolder[0] != '/') addr[n++] = '/';
 	for (int i = 0; lastFolder[i] && n < 198; i++) addr[n++] = lastFolder[i];
 	addr[n] = '\0';
-	status ("Connecting to ", addr);
+	status (TR ("Connecting to "), addr);
 	if (g_root) { g_root->draw (); uk_win_present (); }
 	void *d = kapi_opendir (addr);
-	if (d == 0) { status ("Cannot connect to ", addr); notify ("File Viewer", "Connection failed (address, login or network?)."); return; }
+	if (d == 0) { status (TR ("Cannot connect to "), addr); notify (TR ("File Viewer"), TR ("Connection failed (address, login or network?).")); return; }
 	kapi_closedir (d);
 	show_root (addr);
 	net_place (s_lastName[0] ? s_lastName : dlg.host->text, addr);		// (the sidebar's Network)
-	status ("Connected: ", addr);
+	status (TR ("Connected: "), addr);
 }
 
 // A network place clicked: the saved login of its server handed to ftpfs again (ftpfs.ini), then
@@ -1089,11 +1098,11 @@ static void connect_place (const char *addr)
 		if (ci_cmp (sites[i].host, host) == 0 && (!port[0] || ci_cmp (sites[i].port, port) == 0)) found = i;
 	if (found >= 0) ftpfs_login_site (&sites[found], 0);
 	else ftpfs__pid ();					// (anonymous: ftpfs running is enough)
-	status ("Connecting to ", addr);
+	status (TR ("Connecting to "), addr);
 	if (g_root) { g_root->draw (); uk_win_present (); }
 	void *d = kapi_opendir (addr);
-	if (d != 0) { kapi_closedir (d); show_root (addr); status ("Connected: ", addr); return; }
-	status ("Cannot connect to ", addr);
+	if (d != 0) { kapi_closedir (d); show_root (addr); status (TR ("Connected: "), addr); return; }
+	status (TR ("Cannot connect to "), addr);
 	scopy (s_lastHost, host, sizeof s_lastHost); scopy (s_lastPort, port[0] ? port : "21", sizeof s_lastPort);
 	s_lastTls = tls;
 	const char *fo = q; scopy (s_lastFolder, *fo ? fo : "/", sizeof s_lastFolder);
@@ -1104,48 +1113,48 @@ static void connect_place (const char *addr)
 static void op_restore ()
 {
 	const Entry *e = sel_entry (0);
-	if (!in_trash () || !e || g_active != 0) { status ("Select an item in the Trash to restore"); return; }
+	if (!in_trash () || !e || g_active != 0) { status (TR ("Select an item in the Trash to restore")); return; }
 	char name[NAMEL]; scopy (name, e->name, sizeof name);
 	char where[300];
 	bool ok = trash_restore (name, where, sizeof where);
 	g_col[0].sel = -1; g_ncol = 1;
 	refresh ();
-	status (ok ? "Restored to " : "Could not restore ", ok ? where : name);
-	if (ok) notify ("Trash", where);
+	status (ok ? TR ("Restored to ") : TR ("Could not restore "), ok ? where : name);
+	if (ok) notify (TR ("Trash"), where);
 }
 static void op_empty_trash ()
 {
 	int n = trash_count ();
-	if (n == 0) { status ("The Trash is empty"); return; }
-	if (!uk_messagebox ("Empty Trash", "Delete everything in the Trash for good?", MB_YESNO)) return;
+	if (n == 0) { status (TR ("The Trash is empty")); return; }
+	if (!uk_messagebox (TR ("Empty Trash"), TR ("Delete everything in the Trash for good?"), MB_YESNO)) return;
 	trash_empty ();
 	if (in_trash ()) { g_col[0].sel = -1; g_ncol = 1; refresh (); }
-	status ("The Trash was emptied");
-	notify ("Trash", "The Trash was emptied.");
+	status (TR ("The Trash was emptied"));
+	notify (TR ("Trash"), TR ("The Trash was emptied."));
 }
 // Copy / Cut put the selected path on the SYSTEM clipboard (shared with every app and
 // every File Viewer window); Paste reads it back.
 static void clip_set (bool cut)
 {
 	const Entry *e = sel_entry (g_active);
-	if (!e) { status ("Select something to ", cut ? "cut" : "copy"); return; }
+	if (!e) { status (TR ("Select something to "), cut ? TR ("cut") : TR ("copy")); return; }
 	char p[300];
 	join (p, sizeof p, g_col[g_active].path, e->name);
 	clip_set_files (p, cut ? 1 : 0);
-	status (cut ? "Cut: " : "Copied: ", e->name);
+	status (cut ? TR ("Cut: ") : TR ("Copied: "), e->name);
 }
 // Move (or copy) src into folder dir under a unique name. false + a status message if it
 // cannot (missing, a folder into itself). Used by Paste and by drag & drop.
 static bool transfer (const char *src, const char *dir, bool move)
 {
-	if (!exists (src)) { status ("No longer exists: ", src); return false; }
+	if (!exists (src)) { status (TR ("No longer exists: "), src); return false; }
 	bool isDir = fs_is_dir (src);
 	char parent[300]; fs_dirname (parent, sizeof parent, src);
 	if (move && ci_cmp (parent, dir) == 0) return true;		// already there
 	int n = slen (src);
-	if (isDir && ci_cmp (dir, src) == 0) { status ("Cannot put a folder into itself"); return false; }
+	if (isDir && ci_cmp (dir, src) == 0) { status (TR ("Cannot put a folder into itself")); return false; }
 	bool inside = true; for (int i = 0; i < n; i++) if (lower (dir[i]) != lower (src[i])) { inside = false; break; }
-	if (isDir && inside && dir[n] == '/') { status ("Cannot put a folder inside itself"); return false; }
+	if (isDir && inside && dir[n] == '/') { status (TR ("Cannot put a folder inside itself")); return false; }
 	char dst[300];
 	unique_name (dst, sizeof dst, dir, fs_basename (src));
 	if (move)
@@ -1168,18 +1177,18 @@ static void op_cut ()  { clip_set (true); }
 static void op_paste ()
 {
 	char g_clip[256]; int cutFlag = 0;
-	if (!clip_get_file (g_clip, sizeof g_clip, &cutFlag)) { status ("Nothing to paste"); return; }
+	if (!clip_get_file (g_clip, sizeof g_clip, &cutFlag)) { status (TR ("Nothing to paste")); return; }
 	bool g_clipCut = cutFlag != 0;
 	const char *dir = g_col[g_active].path;
 	char before[160]; scopy (before, g_status, sizeof before);
 	bool ok = transfer (g_clip, dir, g_clipCut);
 	if (ok && g_clipCut) clip_clear ();
 	refresh ();
-	if (ok) status ("Pasted into ", dir);
-	else if (ci_cmp (before, g_status) == 0) status ("Paste failed into ", dir);
-	notify ("File Viewer", ok ? (g_clipCut ? "Item moved." : "Item copied.") : "Paste failed.");
+	if (ok) status (TR ("Pasted into "), dir);
+	else if (ci_cmp (before, g_status) == 0) status (TR ("Paste failed into "), dir);
+	notify (TR ("File Viewer"), ok ? (g_clipCut ? TR ("Item moved.") : TR ("Item copied.")) : TR ("Paste failed."));
 }
-static void op_refresh () { refresh (); status ("Refreshed"); }
+static void op_refresh () { refresh (); status (TR ("Refreshed")); }
 static void op_open () { open_entry (g_active); }
 
 static void on_hscroll (Widget &w)
@@ -1237,12 +1246,16 @@ static void vscroll_to (int slot, int my)
 }
 static unsigned g_lastTick = 0; static int g_lastSlot = -1, g_lastRow = -1;
 
+// (P6) In pocket and console the places are a navigation SidePanel (uikit/sidepanel.h: whole in landscape, a drawer in
+// portrait, the d-pad's column in console); 0 on the desktop -- its own sidebar below, as always.
+static SidePanel *g_sp;
+
 // The sidebar's row at (mx, my) (an index in g_srow), -1 none.
 #define SIDE_RH	(g_fh + 10)
 #define SIDE_Y	(BC_H + 6)
 static int side_at (int mx, int my)
 {
-	if (mx < 0 || mx >= SIDE_W - 4 || my < SIDE_Y || my >= H - ST_H) return -1;
+	if (g_sp || mx < 0 || mx >= SIDE_W - 4 || my < SIDE_Y || my >= H - ST_H) return -1;	// (the SidePanel: its own)
 	int r = (my - SIDE_Y) / SIDE_RH;
 	return r >= 0 && r < g_nsrow ? r : -1;
 }
@@ -1254,6 +1267,20 @@ static int side_drop_at (int mx, int my)
 	if (r < 0 || g_srow[r].place < 0) return -1;
 	int k = g_pl[g_srow[r].place].kind;
 	return k == PL_PIN || k == PL_TRASH || k == PL_VOL ? r : -1;
+}
+// The place (a g_pl index) files dropped at (mx, my) of the window go to, -1 none.
+static int drop_place (int mx, int my)
+{
+	if (g_sp)
+	{
+		if (g_sp->hidden || mx < g_sp->left || my < g_sp->top || mx >= g_sp->left + g_sp->width || my >= g_sp->top + g_sp->height) return -1;
+		int i = g_sp->itemAt (mx - g_sp->left, my - g_sp->top);
+		if (i < 0 || i >= g_npl) return -1;
+		int k = g_pl[i].kind;
+		return k == PL_PIN || k == PL_TRASH || k == PL_VOL ? i : -1;
+	}
+	int r = side_drop_at (mx, my);
+	return r >= 0 ? g_srow[r].place : -1;
 }
 // The path bar's segment at (mx, my), -1 none.
 static int crumb_at (int mx, int my)
@@ -1295,10 +1322,46 @@ static void place_glyph (Canvas &cv, int x, int y, int kind, unsigned ink)
 	}
 }
 
+static void sp_icon (Canvas &cv, int id, int x, int y, int size, unsigned ink, bool)
+{
+	if (id >= 0 && id < g_npl) place_glyph (cv, x + (size - 16) / 2, y + (size - 16) / 2, g_pl[id].kind, ink);
+}
+static void sp_build (void)			// the places as the SidePanel's items: a heading a group (it folds), the places
+{
+	if (!g_sp) return;
+	g_sp->clear ();
+	for (int g = 0; g < NGROUPS; g++)
+	{
+		int h = g_sp->addHeading (TR (GROUP_NAME[g]), UK_SPI_FOLDABLE | (g_folded[g] ? UK_SPI_FOLDED : 0));
+		for (int i = 0; i < g_npl; i++) if (g_pl[i].group == g) g_sp->addItem (i, g_pl[i].label, i, 0, h);
+	}
+	g_sp->select (current_place ());
+}
+
 class ViewerRoot : public Root
 {
 public:
-	ViewerRoot () : Root (W, H, "File Viewer") {}
+	ViewerRoot () : Root (W, H, TR ("File Viewer")) {}
+
+	// The window's size: the parts placed again (the places' width, the columns that fit, the scroll bar, the rows).
+	void relayout ()
+	{
+		g_W = width; g_H = height;
+		if (g_sp)
+		{
+			g_sp->place (0, BC_H, SIDE0, H - BC_H - ST_H);
+			g_sideW = g_sp->reservedWidth ();
+		}
+		else g_sideW = SIDE0;
+		int v = (W - SIDE_W) / 200;
+		g_vis = v < 1 ? 1 : v > 6 ? 6 : v;
+		g_rows = (COL_H - 2 * ROW_PAD) / g_rowH; if (g_rows < 1) g_rows = 1;
+		if (g_hsb) { g_hsb->left = COLX; g_hsb->top = COL_Y + COL_H; g_hsb->resizeTo (W - COLX > 1 ? W - COLX : 1, SB_H); }
+		sync_hsb ();
+		invalidate (true);
+	}
+	void onResized () override { relayout (); }
+	void onSizeClass (int) override { relayout (); }
 
 	// The path bar (elementary OS's): an entry-like field across the window, the path's folders
 	// in it as links -- the one shown in the accent, underlined; the one pointed at underlined.
@@ -1317,7 +1380,7 @@ public:
 			char buf[NAMEL];
 			if (c == 0)
 			{
-				if (in_trash ()) seg = "Trash";
+				if (in_trash ()) seg = TR ("Trash");
 				else if (!is_remote (g_col[0].path))
 				{
 					volume_of (g_col[0].path, buf, sizeof buf);
@@ -1357,6 +1420,7 @@ public:
 	// folder shown lit.
 	void drawSidebar ()
 	{
+		if (g_sp) { g_sp->select (current_place ()); return; }	// (pocket, console: the SidePanel draws itself)
 		canvas.fillRect (0, BC_H, SIDE_W, H - BC_H - ST_H, C_BG);
 		uk_etch_v (canvas, SIDE_W - 2, BC_H + 4, H - BC_H - ST_H - 8, C_BG);
 		int cur = current_place ();
@@ -1370,7 +1434,7 @@ public:
 			if (sr.place < 0)
 			{
 				uk_glyph (canvas, g_folded[sr.group] ? WKG_CHEV_RIGHT : WKG_CHEV_DOWN, 14, y + SIDE_RH / 2, 8, hot ? C_TEXT : dim);
-				uk_text (canvas, 24, y + (SIDE_RH - g_fh) / 2, GROUP_NAME[sr.group], hot ? C_TEXT : dim, 2);
+				uk_text (canvas, 24, y + (SIDE_RH - g_fh) / 2, TR (GROUP_NAME[sr.group]), hot ? C_TEXT : dim, 2);
 				continue;
 			}
 			const Place &p = g_pl[sr.place];
@@ -1416,7 +1480,7 @@ public:
 				uk_rline (canvas, x + 1, COL_Y + 1, COLW - 3, COL_H - 2, 4, C_ACCENT);
 		}
 		if (t.show) uk_draw_vscroll (canvas, x + COLW - 3 - UK_SBW, COL_Y + 2, UK_SBW, COL_H - 4, t, C_COL, g_vdrag == slot);
-		if (k.count == 0) canvas.text (x + TXT_PAD, COL_Y + ROW_PAD + (g_rowH - g_fh) / 2, "(empty)", C_DIMTXT);
+		if (k.count == 0) canvas.text (x + TXT_PAD, COL_Y + ROW_PAD + (g_rowH - g_fh) / 2, TR ("(empty)"), C_DIMTXT);
 	}
 
 	void drawPreview (int x)
@@ -1465,16 +1529,16 @@ public:
 		}
 
 		const char *kind =
-			g_pvKind == PV_APP     ? "Application" :
-			g_pvKind == PV_IMAGE   ? "Image" :
-			g_pvKind == PV_PROGRAM ? "Program" :
-			g_pvKind == PV_TEXT    ? "Text" :
-			g_pvKind == PV_EMPTY   ? "Empty file" : "File";
+			g_pvKind == PV_APP     ? TR ("Application") :
+			g_pvKind == PV_IMAGE   ? TR ("Image") :
+			g_pvKind == PV_PROGRAM ? TR ("Program") :
+			g_pvKind == PV_TEXT    ? TR ("Text") :
+			g_pvKind == PV_EMPTY   ? TR ("Empty file") : TR ("File");
 		if (g_pvKind == PV_IMAGE)				// "PNG image"
 		{
-			char k[24]; int p = 0;
+			char k[48]; int p = 0;
 			for (int i = 0; g_pvFormat[i] && p < 12; i++) k[p++] = g_pvFormat[i];
-			const char *t = " image"; for (int i = 0; t[i]; i++) k[p++] = t[i];
+			const char *t = TR (" image"); for (int i = 0; t[i] && p < 47; i++) k[p++] = t[i];
 			k[p] = '\0';
 			canvas.text (tx, y, k, C_DIMTXT);
 		}
@@ -1482,7 +1546,7 @@ public:
 		y += g_fh + 2;
 		if (g_pvKind != PV_APP) { char sz[24]; fmt_size (sz, e->size); canvas.text (tx, y, sz, C_DIMTXT); y += g_fh + 2; }
 		if (g_pvKind == PV_APP || g_pvKind == PV_PROGRAM)
-			{ canvas.text (tx, y, "Double-click to run", C_DIMTXT); y += g_fh + 2; }
+			{ canvas.text (tx, y, TR ("Double-click to run"), C_DIMTXT); y += g_fh + 2; }
 		if (g_pvKind == PV_IMAGE && g_pvImg)
 		{
 			char d[24]; int p = 0; int v[2] = { g_pvW, g_pvH };
@@ -1537,17 +1601,20 @@ public:
 	void placeMenu (int r, int mx, int my)
 	{
 		const SideRow &sr = g_srow[r];
-		if (sr.place < 0) return;
-		int i = sr.place;
+		if (sr.place >= 0) placeMenuOf (sr.place, mx, my);
+	}
+	void placeMenuOf (int i, int mx, int my)
+	{
+		if (i < 0 || i >= g_npl) return;
 		const Place p = g_pl[i];
 		enum { M_OPEN = 1, M_RENAME, M_REMOVE, M_EMPTY, M_EJECT };
 		PopupMenu m (mx, my);
-		m.add (p.kind == PL_NET ? "Connect" : "Open", M_OPEN);
+		m.add (p.kind == PL_NET ? TR ("Connect") : TR ("Open"), M_OPEN);
 		int dev = p.kind == PL_VOL ? usb_dev (p.path) : 0;	// a USB volume: its device ejected from here
-		char ej[40];
+		char ej[64];
 		if (dev) { eject_label (p.path, ej); m.separator (); m.add (ej, M_EJECT); }
-		if (p.kind == PL_PIN || p.kind == PL_NET) { m.add ("Rename...", M_RENAME); m.add (p.kind == PL_PIN ? "Unpin" : "Forget", M_REMOVE); }
-		if (p.kind == PL_TRASH) { m.separator (); m.add ("Empty Trash...", M_EMPTY, trash_count () > 0); }
+		if (p.kind == PL_PIN || p.kind == PL_NET) { m.add (TR ("Rename..."), M_RENAME); m.add (p.kind == PL_PIN ? TR ("Unpin") : TR ("Forget"), M_REMOVE); }
+		if (p.kind == PL_TRASH) { m.separator (); m.add (TR ("Empty Trash..."), M_EMPTY, trash_count () > 0); }
 		if (p.kind == PL_CONNECT) return (void) (op_connect ());
 		int c = m.run ();
 		if (c == M_OPEN) open_place (i);
@@ -1556,7 +1623,7 @@ public:
 		else if (c == M_RENAME)
 		{
 			char name[40];
-			if (!ask_name ("Rename the place", p.label, name, sizeof name)) return;
+			if (!ask_name (TR ("Rename the place"), p.label, name, sizeof name)) return;
 			if (p.kind == PL_PIN) scopy (g_pinName[p.index], name, 40); else scopy (g_netName[p.index], name, 40);
 			places_save (); places_build (); side_rows ();
 		}
@@ -1582,7 +1649,7 @@ public:
 	{
 		int dev = usb_dev (g_col[0].path);
 		if (!dev) return;
-		char ej[40]; eject_label (g_col[0].path, ej);
+		char ej[64]; eject_label (g_col[0].path, ej);
 		PopupMenu m (mx, my);
 		m.add (ej, 1);
 		if (m.run () == 1) { eject_dev (dev); places_build (); side_rows (); }
@@ -1599,13 +1666,13 @@ public:
 		bool folder = e.isdir && !e.isapp;
 		enum { M_OPEN = 1, M_PIN, M_RENAME, M_TRASH, M_COPY, M_CUT };
 		PopupMenu m (mx, my);
-		m.add ("Open", M_OPEN, true, "Enter");
-		if (folder) m.add ("Pin to Sidebar...", M_PIN);
+		m.add (TR ("Open"), M_OPEN, true, "Enter");
+		if (folder) m.add (TR ("Pin to Sidebar..."), M_PIN);
 		m.separator ();
-		m.add ("Copy", M_COPY, true, "Ctrl+C");
-		m.add ("Cut", M_CUT, true, "Ctrl+X");
-		m.add ("Rename...", M_RENAME, true, "Ctrl+R");
-		m.add (in_trash () ? "Delete Permanently..." : "Move to Trash", M_TRASH, true, "Del");
+		m.add (TR ("Copy"), M_COPY, true, "Ctrl+C");
+		m.add (TR ("Cut"), M_CUT, true, "Ctrl+X");
+		m.add (TR ("Rename..."), M_RENAME, true, "Ctrl+R");
+		m.add (in_trash () ? TR ("Delete Permanently...") : TR ("Move to Trash"), M_TRASH, true, "Del");
 		switch (m.run ())
 		{
 		case M_OPEN:   open_entry (slot); break;
@@ -1747,13 +1814,13 @@ public:
 	void onDrop (int x, int y, int type, const char *data, int, unsigned flags) override
 	{
 		g_dropSlot = g_dropRow = -1;
-		int sd = side_drop_at (x, y);			// onto a place of the sidebar
+		int sd = drop_place (x, y);			// onto a place of the sidebar
 		g_dropSide = -1;
 		char dir[300]; int s = -1, r;
-		if (sd >= 0) scopy (dir, g_pl[g_srow[sd].place].path, sizeof dir);
+		if (sd >= 0) scopy (dir, g_pl[sd].path, sizeof dir);
 		if (type != DND_FILES || (sd < 0 && !drop_target_at (x, y, dir, sizeof dir, &s, &r))) { invalidate (true); return; }
 		bool copy = (flags & DND_F_COPY) != 0;
-		bool toTrash = sd >= 0 ? g_pl[g_srow[sd].place].kind == PL_TRASH : in_trash () && s >= 0 && ci_cmp (dir, TRASH_FILES) == 0;
+		bool toTrash = sd >= 0 ? g_pl[sd].kind == PL_TRASH : in_trash () && s >= 0 && ci_cmp (dir, TRASH_FILES) == 0;
 		int done = 0, failed = 0;
 		for (const char *p = data; *p; )
 		{
@@ -1766,8 +1833,8 @@ public:
 			if (ok) done++; else failed++;
 		}
 		refresh ();
-		if (done) status (toTrash ? "Moved to the Trash" : copy ? "Copied into " : "Moved into ", toTrash ? "" : dir);
-		if (failed) notify ("File Viewer", "Some items could not be moved.");
+		if (done) status (toTrash ? TR ("Moved to the Trash") : copy ? TR ("Copied into ") : TR ("Moved into "), toTrash ? "" : dir);
+		if (failed) notify (TR ("File Viewer"), TR ("Some items could not be moved."));
 		invalidate (true);
 	}
 
@@ -1790,7 +1857,7 @@ public:
 		if (vols_sig () == g_volSig) return;
 		places_build (); side_rows ();
 		const char *cur = g_col[g_active].path;
-		if (is_usb_path (cur) && !volume_mounted (cur)) { show_root ("SD:/"); status ("The USB stick is not there any more"); }
+		if (is_usb_path (cur) && !volume_mounted (cur)) { show_root ("SD:/"); status (TR ("The USB stick is not there any more")); }
 		invalidate (true);
 	}
 
@@ -1835,7 +1902,7 @@ static void op_pin ()
 	char p[300];
 	if (e && e->isdir && !e->isapp) join (p, sizeof p, g_col[g_active].path, e->name);
 	else scopy (p, g_col[g_active].path, sizeof p);
-	if (in_trash ()) { status ("The Trash has its own place"); return; }
+	if (in_trash ()) { status (TR ("The Trash has its own place")); return; }
 	pin_folder (p);
 	if (g_root) g_root->invalidate (true);
 }
@@ -1843,6 +1910,7 @@ static void op_pin ()
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);			// (FreeType's text: uk_fw / uk_fh follow it)
+	uk_lang_init ();					// the words in the system's language (the face first: UTF-8)
 	g_fw = uk_fw (); g_fh = uk_fh ();
 	g_rowH = g_fh + 8;					// (rows with room: a padding above and below)
 	g_rows = (COL_H - 2 * ROW_PAD) / g_rowH; if (g_rows < 1) g_rows = 1;
@@ -1855,42 +1923,55 @@ int main (void)
 	ViewerRoot root;
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
+	root.setResizable (true);
+	root.setMinSize (560, 360);
+	if (uk_size_class () != UK_SC_REGULAR)			// pocket, console: the places as a SidePanel
+	{
+		g_sp = new SidePanel (0, BC_H, SIDE0, H - BC_H - ST_H, UK_SP_LEFT, UK_SP_NAVIGATION);
+		g_sp->setIconFn (sp_icon);
+		g_sp->onSelect = [] (SidePanel &, int id) { open_place (id); if (g_root) g_root->invalidate (true); };
+		g_sp->onItemMenu = [] (SidePanel &, int id, int x, int y) { if (g_root) ((ViewerRoot *) g_root)->placeMenuOf (id, x, y); };
+		g_sp->onPresentation = [] (SidePanel &, int) { if (g_root) ((ViewerRoot *) g_root)->relayout (); };
+		root.addChild (g_sp);
+		sp_build ();
+	}
 
 	// Commands live in the system menu bar (shortcuts handled by uikit::Menu).
 	static Menu menu;
-	menu.menu ("File");
-	menu.item ("Open",       "Enter", 0,             op_open);
-	menu.item ("New Folder", "^N",    UK_CTRL ('N'), op_new_folder);
-	menu.item ("Rename...",  "^R",    UK_CTRL ('R'), op_rename);
+	menu.menu (TR ("File"));
+	menu.item (TR ("Open"),       "Enter", 0,             op_open);
+	menu.item (TR ("New Folder"), "^N",    UK_CTRL ('N'), op_new_folder);
+	menu.item (TR ("Rename..."),  "^R",    UK_CTRL ('R'), op_rename);
 	menu.separator ();
-	menu.item ("Move to Trash",       "Del", KEY_DEL, op_delete);
-	menu.item ("Delete Permanently...", "",  0,       op_delete_permanently);
+	menu.item (TR ("Move to Trash"),       "Del", KEY_DEL, op_delete);
+	menu.item (TR ("Delete Permanently..."), "",  0,       op_delete_permanently);
 	menu.separator ();
-	menu.item ("Refresh",    "^L",    UK_CTRL ('L'), op_refresh);
-	menu.menu ("Go");
-	menu.item ("SD Card",    "",      0,             op_show_sd);
+	menu.item (TR ("Refresh"),    "^L",    UK_CTRL ('L'), op_refresh);
+	menu.menu (TR ("Go"));
+	menu.item (TR ("SD Card"),    "",      0,             op_show_sd);
 	// the card's other FAT / exFAT partitions, when there are some
-	if (volume_mounted ("SD1:/")) menu.item ("SD1: (partition 2)", "", 0, op_show_sd1);
-	if (volume_mounted ("SD2:/")) menu.item ("SD2: (partition 3)", "", 0, op_show_sd2);
-	if (volume_mounted ("SD3:/")) menu.item ("SD3: (partition 4)", "", 0, op_show_sd3);
-	if (volume_mounted ("RAM:/")) menu.item ("RAM: (memory)", "", 0, op_show_ram);
-	menu.item ("USB Stick",  "",      0,             op_show_usb);
-	menu.item ("Eject USB Stick", "^E", UK_CTRL ('E'), op_eject);
-	menu.item ("Disks (Format...)", "", 0,           op_format);
-	menu.item ("Trash",      "",      0,             op_open_trash);
-	menu.item ("Connect to Server...", "", 0,       op_connect);
+	if (volume_mounted ("SD1:/")) menu.item (TR ("SD1: (partition 2)"), "", 0, op_show_sd1);
+	if (volume_mounted ("SD2:/")) menu.item (TR ("SD2: (partition 3)"), "", 0, op_show_sd2);
+	if (volume_mounted ("SD3:/")) menu.item (TR ("SD3: (partition 4)"), "", 0, op_show_sd3);
+	if (volume_mounted ("RAM:/")) menu.item (TR ("RAM: (memory)"), "", 0, op_show_ram);
+	menu.item (TR ("USB Stick"),  "",      0,             op_show_usb);
+	menu.item (TR ("Eject USB Stick"), "^E", UK_CTRL ('E'), op_eject);
+	menu.item (TR ("Disks (Format...)"), "", 0,           op_format);
+	menu.item (TR ("Trash"),      "",      0,             op_open_trash);
+	menu.item (TR ("Connect to Server..."), "", 0,       op_connect);
 	menu.separator ();
-	menu.item ("Pin This Folder...", "^D", UK_CTRL ('D'), op_pin);
+	menu.item (TR ("Pin This Folder..."), "^D", UK_CTRL ('D'), op_pin);
 	menu.separator ();
-	menu.item ("Restore from Trash", "", 0,          op_restore);
-	menu.item ("Empty Trash...",     "", 0,          op_empty_trash);
-	menu.menu ("Edit");
-	menu.item ("Copy",       "^C",    UK_CTRL ('C'), op_copy);
-	menu.item ("Cut",        "^X",    UK_CTRL ('X'), op_cut);
-	menu.item ("Paste",      "^V",    UK_CTRL ('V'), op_paste);
+	menu.item (TR ("Restore from Trash"), "", 0,          op_restore);
+	menu.item (TR ("Empty Trash..."),     "", 0,          op_empty_trash);
+	menu.menu (TR ("Edit"));
+	menu.item (TR ("Copy"),       "^C",    UK_CTRL ('C'), op_copy);
+	menu.item (TR ("Cut"),        "^X",    UK_CTRL ('X'), op_cut);
+	menu.item (TR ("Paste"),      "^V",    UK_CTRL ('V'), op_paste);
 	menu.publish ();
 	g_hsb = new Scrollbar (COLX, COL_Y + COL_H, W - COLX, SB_H, false, 1, 0, on_hscroll);
 	root.addChild (g_hsb);
+	root.relayout ();
 
 	// Start at the root; an argument (e.g. `run fileviewer SD:/apps`) opens that path.
 	char args[256];

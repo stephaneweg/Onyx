@@ -64,9 +64,9 @@ static Worker g_worker;
 static int g_sideOn = 1, g_defLayout = L_SCROLL, g_defZoom = Z_WIDTH;
 static unsigned g_tick;
 
-class TabBar; class ToolBar; class SidePanel; class View; class Home; class SearchBox;
+class TabBar; class ToolBar; class PdfSidePanel; class View; class Home; class SearchBox;
 static Root *g_root;
-static TabBar *g_tabbar; static ToolBar *g_tb; static SidePanel *g_side; static View *g_view; static Home *g_home;
+static TabBar *g_tabbar; static ToolBar *g_tb; static PdfSidePanel *g_side; static View *g_view; static Home *g_home;
 
 static void refresh_all ();
 static void layout_parts ();
@@ -546,11 +546,11 @@ static const char *ci_find (const char *s, const char *n)
 // ---- the side panel: the pages, the contents, the search's hits ---------------------------------------------------------
 enum { SP_TAB = 1, SP_THUMB, SP_OL_TOGGLE, SP_OL, SP_CASE, SP_WORDS, SP_HIT };
 static void find_box_changed (Widget &);
-class SidePanel : public Widget
+class PdfSidePanel : public Widget
 {
 public:
 	HitList hits; int hot; Textbox *findBox; int listTop, listH, contentH;
-	SidePanel (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1), listTop (0), listH (0), contentH (0)
+	PdfSidePanel (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1), listTop (0), listH (0), contentH (0)
 	{
 		findBox = new Textbox (10, 52, w - 20, 28, "", find_box_changed); findBox->maxLen = 190; addChild (findBox);
 	}
@@ -1945,7 +1945,7 @@ int main (void)
 	root.setBg (C_BG);
 	g_tabbar = new TabBar (0, 0, 1000, TABS_H); root.addChild (g_tabbar);
 	g_tb = new ToolBar (0, TABS_H, 1000, TB_H); root.addChild (g_tb);
-	g_side = new SidePanel (0, TABS_H + TB_H, SIDE_W, 640 - TABS_H - TB_H); root.addChild (g_side);
+	g_side = new PdfSidePanel (0, TABS_H + TB_H, SIDE_W, 640 - TABS_H - TB_H); root.addChild (g_side);
 	g_view = new View (SIDE_W, TABS_H + TB_H, 1000 - SIDE_W, 640 - TABS_H - TB_H); root.addChild (g_view);
 	g_home = new Home (0, TABS_H, 1000, 640 - TABS_H); root.addChild (g_home);
 	g_worker.start (on_done, on_hits);

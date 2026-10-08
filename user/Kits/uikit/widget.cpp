@@ -3,6 +3,7 @@
 // mouse/key routing, focus. Compiled into libuikit.a.
 //
 #include "uikit/widget.h"
+#include "uikit/internal/adapt_int.h"	// (P6: the extension freed, the focus ring)
 
 namespace uikit {
 
@@ -16,7 +17,10 @@ Widget::Widget (int l, int t, int w, int h)
 { canvas.alloc (w, h); }
 
 Widget::~Widget ()
-{ Widget *c = firstChild; while (c) { Widget *n = c->nextSib; removeChild (c); delete c; c = n; } }
+{
+	Widget *c = firstChild; while (c) { Widget *n = c->nextSib; removeChild (c); delete c; c = n; }
+	if (ext) internal::ext_free (this);		// (what the library keeps of it: uikit/internal/adapt_int.h)
+}
 
 // ---- damage ------------------------------------------------------------------
 void Widget::invalidate (bool redraw)
@@ -101,6 +105,7 @@ void Widget::draw ()
 		if (c->hidden) continue;			// an inactive tab: not composited
 		c->draw ();					// refresh the child's own canvas if dirty
 		canvas.putOther (c->canvas, c->left - scrollX, c->top - scrollY, c->transparent);
+		if (c->hasFocus && c->canFocus) internal::focus_ring (canvas, c, c->left - scrollX, c->top - scrollY);	// (P6: pocket, console)
 	}
 	valid = true;
 }

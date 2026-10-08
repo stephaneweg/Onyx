@@ -10,6 +10,7 @@
 #
 #   sh tools/tests/desktop_sim/shots.sh [name ...]	(default: all of them)
 #
+# SHOTS_KEEPGOING=1: an app that fails is said, the others are made all the same.
 # SHOTS_LANG=fr: the apps in that language (the system's: etc/system.ini's "language=", written in the
 # writes' folder) -- with SHOTS_PNG=<folder> to look at them without touching screenshots/.
 #
@@ -115,6 +116,13 @@ build () {
 		$CXX -Iuser/Kits/fontkit -I$FT/include -I$M/include -Ithird_party/zlib-1.3.1 -Iuser/Kits/filekit -o "$OUT/telegram" "$OUT/fakekapi.o" user/Apps/telegram/main.cpp \
 			user/Kits/filekit/fkcore.cpp "$OUT"/tgz/*.o "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmbtg.a" -lpthread; return
 	fi
+	case " paint slides letters photos sheet printconf " in
+	*" $1 "*)				# (FreeType's text; Paint's and Slides' layers composited by gpucomp -- its CPU path
+						#  on the PC --; their printing is PrinterKit's, not linked here: never called by a shot)
+		gcc -O2 -w -ffp-contract=off -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp_$1.o" || return 1
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/gpucomp_$1.o" $AK \
+			-Wl,--unresolved-symbols=ignore-all; return ;;
+	esac
 	if [ "$1" = pdf ]; then				# (the PDF Viewer: MuPDF for the PC -- user/Apps/pdf/mupdf.mk with gcc; its FreeType)
 		make -s -j8 -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_AR=ar MU_OUT="$OUT/mupdf" MU_CFLAGS=-O2 || return 1
 		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pdf.bin" "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
@@ -182,7 +190,7 @@ wait
 sim () {
 	app=$1; dump=$2; script=$3; shift 3
 	if ! env SIM_OVERLAY=$D/sd "$@" SIM="$script;dump $OUT/$dump.elsm;exit" "$OUT/$app" >>"$OUT/log.txt" 2>&1
-	then echo "shots: $app failed (see $OUT/log.txt)"; exit 1; fi
+	then echo "shots: $app failed (see $OUT/log.txt)"; [ -n "$SHOTS_KEEPGOING" ] && return 0; exit 1; fi
 }
 png () { python3 $D/shot.py "$OUT/$1.elsm" "$PNG/$1.png" >/dev/null && echo "  $PNG/$1.png"; }
 scene () { out=$1; shift; python3 $D/compose.py "$PNG/$out.png" "$@" >/dev/null && echo "  $PNG/$out.png"; }
@@ -542,7 +550,10 @@ if want stickies || want stickies-empty || want notes-desktop; then	# (Stickies,
 	rm -rf "$NW"
 fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
-if want control; then sim control control "wait;move 200 130;$W" $P; png control; fi
+if want control; then			# (the links at the left, Language & Region shown; in French as well)
+	applet langconf control "$W"; png control
+	lang fr; applet langconf control-fr "$W"; png control-fr; lang "$SHOTS_LANG"
+fi
 if want basicdemo; then sim basic basicdemo "$W;$W;$W" $P SIM_APP=basic SIM_ARGS=SD:/apps/basicdemo.app/main.bas; png basicdemo; fi
 if want gamelib; then
 	python3 $D/gamelib_samples.py "$OUT/writes"

@@ -7,6 +7,7 @@
 #include "onyxpp.hpp"
 #include "Kits/uikit/uikit.h"
 #include "Kits/uikit/abi.h"
+#include "Kits/uikit/adapt.h"
 #include "Kits/uikit/bmp.h"
 #include "Kits/uikit/button.h"
 #include "Kits/uikit/calendar.h"
@@ -20,6 +21,7 @@
 #include "Kits/uikit/dropdown.h"
 #include "Kits/uikit/flat.h"
 #include "Kits/uikit/font.h"
+#include "Kits/uikit/form.h"
 #include "Kits/uikit/global.h"
 #include "Kits/uikit/groupbox.h"
 #include "Kits/uikit/icon.h"
@@ -29,6 +31,7 @@
 #include "Kits/uikit/lang.h"
 #include "Kits/uikit/layout.h"
 #include "Kits/uikit/lcd.h"
+#include "Kits/uikit/lift.h"
 #include "Kits/uikit/listbox.h"
 #include "Kits/uikit/menu.h"
 #include "Kits/uikit/numeric.h"
@@ -40,6 +43,7 @@
 #include "Kits/uikit/root.h"
 #include "Kits/uikit/scrollbar.h"
 #include "Kits/uikit/segmented.h"
+#include "Kits/uikit/sidepanel.h"
 #include "Kits/uikit/skin.h"
 #include "Kits/uikit/slider.h"
 #include "Kits/uikit/splitter.h"
@@ -57,6 +61,7 @@
 #include "Kits/uikit/vpaint.h"
 #include "Kits/uikit/vumeter.h"
 #include "Kits/uikit/widget.h"
+#include "Kits/uikit/win.h"
 
 static_assert (sizeof (uikit::Button) == 296, "sizeof (Button) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::Calendar) == 256, "sizeof (Calendar) changed: programs built before break (uikit/abi.h)");
@@ -71,6 +76,7 @@ static_assert (sizeof (uikit::DatePicker) == 272, "sizeof (DatePicker) changed: 
 static_assert (sizeof (uikit::Dropdown) == 272, "sizeof (Dropdown) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::FileDialog) == 12968, "sizeof (FileDialog) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::Font) == 40, "sizeof (Font) changed: programs built before break (uikit/abi.h)");
+static_assert (sizeof (uikit::FormDialog) == 248, "sizeof (FormDialog) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::GroupBox) == 280, "sizeof (GroupBox) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::HSplitter) == 280, "sizeof (HSplitter) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::HorizontalStackPanel) == 240, "sizeof (HorizontalStackPanel) changed: programs built before break (uikit/abi.h)");
@@ -83,6 +89,7 @@ static_assert (sizeof (uikit::ListBox) == 280, "sizeof (ListBox) changed: progra
 static_assert (sizeof (uikit::Menu) == 3088, "sizeof (Menu) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::MessageBox) == 256, "sizeof (MessageBox) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::Modal) == 232, "sizeof (Modal) changed: programs built before break (uikit/abi.h)");
+static_assert (sizeof (uikit::NewWindow) == 1, "sizeof (NewWindow) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::NumericUpDown) == 272, "sizeof (NumericUpDown) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::Panel) == 232, "sizeof (Panel) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::PopupMenu) == 592, "sizeof (PopupMenu) changed: programs built before break (uikit/abi.h)");
@@ -93,6 +100,7 @@ static_assert (sizeof (uikit::Root) == 336, "sizeof (Root) changed: programs bui
 static_assert (sizeof (uikit::RtStyle) == 4, "sizeof (RtStyle) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::Scrollbar) == 248, "sizeof (Scrollbar) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::SegmentedControl) == 696, "sizeof (SegmentedControl) changed: programs built before break (uikit/abi.h)");
+static_assert (sizeof (uikit::SidePanel) == 312, "sizeof (SidePanel) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::Skin) == 48, "sizeof (Skin) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::Slider) == 256, "sizeof (Slider) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::Splitter) == 280, "sizeof (Splitter) changed: programs built before break (uikit/abi.h)");
@@ -108,6 +116,7 @@ static_assert (sizeof (uikit::TreeView) == 288, "sizeof (TreeView) changed: prog
 static_assert (sizeof (uikit::UkBarDrag) == 2, "sizeof (UkBarDrag) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::UkCorner) == 292, "sizeof (UkCorner) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::UkFaceScope) == 16, "sizeof (UkFaceScope) changed: programs built before break (uikit/abi.h)");
+static_assert (sizeof (uikit::UkMetrics) == 84, "sizeof (UkMetrics) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::UkNamedTheme) == 24, "sizeof (UkNamedTheme) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::UkPalette) == 28, "sizeof (UkPalette) changed: programs built before break (uikit/abi.h)");
 static_assert (sizeof (uikit::UkTheme) == 44, "sizeof (UkTheme) changed: programs built before break (uikit/abi.h)");

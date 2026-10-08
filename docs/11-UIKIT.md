@@ -17,47 +17,50 @@
 11. [`uikit/label.h`](#uikitlabelh)
 12. [`uikit/button.h`](#uikitbuttonh)
 13. [`uikit/dialog.h`](#uikitdialogh)
-14. [`uikit/bmp.h`](#uikitbmph)
-15. [`uikit/calendar.h`](#uikitcalendarh)
-16. [`uikit/checkbox.h`](#uikitcheckboxh)
-17. [`uikit/codeedit.h`](#uikitcodeedith)
-18. [`uikit/colorpick.h`](#uikitcolorpickh)
-19. [`uikit/combobox.h`](#uikitcomboboxh)
-20. [`uikit/datagrid.h`](#uikitdatagridh)
-21. [`uikit/dropdown.h`](#uikitdropdownh)
-22. [`uikit/flat.h`](#uikitflath)
-23. [`uikit/font.h`](#uikitfonth)
-24. [`uikit/global.h`](#uikitglobalh)
-25. [`uikit/groupbox.h`](#uikitgroupboxh)
-26. [`uikit/icon.h`](#uikiticonh)
-27. [`uikit/imagebox.h`](#uikitimageboxh)
-28. [`uikit/knob.h`](#uikitknobh)
-29. [`uikit/lang.h`](#uikitlangh)
-30. [`uikit/layout.h`](#uikitlayouth)
-31. [`uikit/lcd.h`](#uikitlcdh)
-32. [`uikit/listbox.h`](#uikitlistboxh)
-33. [`uikit/menu.h`](#uikitmenuh)
-34. [`uikit/numeric.h`](#uikitnumerich)
-35. [`uikit/paint.h`](#uikitpainth)
-36. [`uikit/panel.h`](#uikitpanelh)
-37. [`uikit/progress.h`](#uikitprogressh)
-38. [`uikit/radio.h`](#uikitradioh)
-39. [`uikit/richtextbox.h`](#uikitrichtextboxh)
-40. [`uikit/scrollbar.h`](#uikitscrollbarh)
-41. [`uikit/segmented.h`](#uikitsegmentedh)
-42. [`uikit/skin.h`](#uikitskinh)
-43. [`uikit/slider.h`](#uikitsliderh)
-44. [`uikit/splitter.h`](#uikitsplitterh)
-45. [`uikit/sysclip.h`](#uikitsyscliph)
-46. [`uikit/tabhost.h`](#uikittabhosth)
-47. [`uikit/tabstrip.h`](#uikittabstriph)
-48. [`uikit/textarea.h`](#uikittextareah)
-49. [`uikit/textbox.h`](#uikittextboxh)
-50. [`uikit/toggle.h`](#uikittoggleh)
-51. [`uikit/toolbar.h`](#uikittoolbarh)
-52. [`uikit/treeview.h`](#uikittreeviewh)
-53. [`uikit/vpaint.h`](#uikitvpainth)
-54. [`uikit/vumeter.h`](#uikitvumeterh)
+14. [`uikit/adapt.h`](#uikitadapth)
+15. [`uikit/bmp.h`](#uikitbmph)
+16. [`uikit/calendar.h`](#uikitcalendarh)
+17. [`uikit/checkbox.h`](#uikitcheckboxh)
+18. [`uikit/codeedit.h`](#uikitcodeedith)
+19. [`uikit/colorpick.h`](#uikitcolorpickh)
+20. [`uikit/combobox.h`](#uikitcomboboxh)
+21. [`uikit/datagrid.h`](#uikitdatagridh)
+22. [`uikit/dropdown.h`](#uikitdropdownh)
+23. [`uikit/flat.h`](#uikitflath)
+24. [`uikit/font.h`](#uikitfonth)
+25. [`uikit/form.h`](#uikitformh)
+26. [`uikit/global.h`](#uikitglobalh)
+27. [`uikit/groupbox.h`](#uikitgroupboxh)
+28. [`uikit/icon.h`](#uikiticonh)
+29. [`uikit/imagebox.h`](#uikitimageboxh)
+30. [`uikit/knob.h`](#uikitknobh)
+31. [`uikit/lang.h`](#uikitlangh)
+32. [`uikit/layout.h`](#uikitlayouth)
+33. [`uikit/lcd.h`](#uikitlcdh)
+34. [`uikit/listbox.h`](#uikitlistboxh)
+35. [`uikit/menu.h`](#uikitmenuh)
+36. [`uikit/numeric.h`](#uikitnumerich)
+37. [`uikit/paint.h`](#uikitpainth)
+38. [`uikit/panel.h`](#uikitpanelh)
+39. [`uikit/progress.h`](#uikitprogressh)
+40. [`uikit/radio.h`](#uikitradioh)
+41. [`uikit/richtextbox.h`](#uikitrichtextboxh)
+42. [`uikit/scrollbar.h`](#uikitscrollbarh)
+43. [`uikit/segmented.h`](#uikitsegmentedh)
+44. [`uikit/sidepanel.h`](#uikitsidepanelh)
+45. [`uikit/skin.h`](#uikitskinh)
+46. [`uikit/slider.h`](#uikitsliderh)
+47. [`uikit/splitter.h`](#uikitsplitterh)
+48. [`uikit/sysclip.h`](#uikitsyscliph)
+49. [`uikit/tabhost.h`](#uikittabhosth)
+50. [`uikit/tabstrip.h`](#uikittabstriph)
+51. [`uikit/textarea.h`](#uikittextareah)
+52. [`uikit/textbox.h`](#uikittextboxh)
+53. [`uikit/toggle.h`](#uikittoggleh)
+54. [`uikit/toolbar.h`](#uikittoolbarh)
+55. [`uikit/treeview.h`](#uikittreeviewh)
+56. [`uikit/vpaint.h`](#uikitvpainth)
+57. [`uikit/vumeter.h`](#uikitvumeterh)
 
 ---
 
@@ -69,7 +72,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 850 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 949 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -400,6 +403,18 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_file_save` | with a name box (defName in it) | `dialog.h` |
 | `uk_folder_open` | pick a directory | `dialog.h` |
 | `uk_color_dialog` | true = OK (*color set) | `dialog.h` |
+| `uk_size_class` | UK_SC_REGULAR (the desktop), UK_SC_COMPACT, UK_SC_NARROW, UK_SC_CONSOLE | `adapt.h` |
+| `uk_mode` | UK_MODE_DESKTOP, UK_MODE_POCKET, UK_MODE_CONSOLE | `adapt.h` |
+| `uk_compact` |  | `adapt.h` |
+| `UkMetrics` | (a type) | `adapt.h` |
+| `uk_metrics` |  | `adapt.h` |
+| `uk_scroll_gutter` | UK_SBW (10) on the desktop, 0 under the overlay bars (pocket, console) | `adapt.h` |
+| `uk_lp` | logical pixels at the metrics' scale (v on the desktop) | `adapt.h` |
+| `uk_logical_units` | The app draws only through UIKit (its widgets and Canvas' methods) | `adapt.h` |
+| `uk_logical_units_on` | The app draws only through UIKit (its widgets and Canvas' methods) | `adapt.h` |
+| `uk_set_input_type` | any widget that takes text (a Textbox, a terminal's view...) | `adapt.h` |
+| `uk_input_type` | UK_IN_* (a Textbox with `password` set: UK_IN_PASSWORD; else UK_IN_TEXT) | `adapt.h` |
+| `uk_focus_move` | The focus moved from the focused control of root's tree to the nearest focusable one in that direction (dx, dy | `adapt.h` |
 | `icon_load` | The picture of a file (new[] | `bmp.h` |
 | `bmp_decode` | (the name the programs knew | `bmp.h` |
 | `Calendar` | uikit/calendar.h -- Calendar | `calendar.h` |
@@ -457,6 +472,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `init` | load the theme (SD:/etc/theme.txt) and the font families; only the first call works | `font.h` |
 | `font` | the family for `id`, or Sans if it isn't loaded | `font.h` |
 | `draw_text` | Draw `s` into a raw 0x00RRGGBB framebuffer (W x H) via the font registry -- for app-drawn windows that don't own a uikit Canvas. | `font.h` |
+| `FormDialog` | (a type) | `form.h` |
 | `GroupBox` | uikit/groupbox.h -- GroupBox | `groupbox.h` |
 | `Icon` | uikit/icon.h -- a magenta-keyed BMP centred above an optional label | `icon.h` |
 | `ImageBox` | (a type) | `imagebox.h` |
@@ -519,6 +535,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `RichTextBox` | (a type) | `richtextbox.h` |
 | `Scrollbar` | uikit/scrollbar.h -- draggable thumb (vertical or horizontal), value in [0,vmax]. | `scrollbar.h` |
 | `SegmentedControl` | uikit/segmented.h -- SegmentedControl | `segmented.h` |
+| `SpIconFn` | The app's icons | `sidepanel.h` |
+| `SidePanel` | (a type) | `sidepanel.h` |
 | `uk_tint` | Multiply a 0x00RRGGBB pixel by a 0x00RRGGBB tint (per channel /255). | `skin.h` |
 | `Skin` | (a type) | `skin.h` |
 | `uk_decorate_window` | Draw the window's frame (the modernised CDE | `skin.h` |
@@ -531,7 +549,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `VSplitter` | (a type) | `splitter.h` |
 | `uk_clip_ready` | SystemKit is there (false: no clipboard -- the field does nothing) | `sysclip.h` |
 | `TabHost` | uikit/tabhost.h -- a section that hosts several "tasks" (apps) and shows ONE at a time, chosen from a popup menu in its header (the activity-shell tab strip, po | `tabhost.h` |
-| `TabStrip` | uikit/tabstrip.h -- TabStrip | `tabstrip.h` |
+| `TabStrip` | (a type) | `tabstrip.h` |
 | `Textarea` | uikit/textarea.h -- multi-line editable text (own '\n'-separated buffer), caret-driven vertical+horizontal scroll, click to position. | `textarea.h` |
 | `Textbox` | uikit/textbox.h -- single-line editable field | `textbox.h` |
 | `ToggleSwitch` | uikit/toggle.h -- ToggleSwitch | `toggle.h` |
@@ -856,7 +874,11 @@ public:
 	// (v95) A click on the program's icon of the status area (uk_tray): KAPI_TRAY_OPEN (a double click:
 	// the first window already shown again), KAPI_TRAY_MENU (a right click). To the first window.
 	virtual void onTray (int kind);
-	virtual void uk_rootReserved2 () {}
+	// (P6) The size class changed (uikit/adapt.h: UK_SC_REGULAR on the desktop, _COMPACT, _NARROW, _CONSOLE under
+	// PocketUI -- the screen turned, the mode): the app lays itself out again for it (its adaptive widgets -- SidePanel,
+	// ToolBar, TabStrip, DataGrid -- already have). Called on every window of the program; never on the desktop.
+	virtual void onSizeClass (int sizeClass);
+	void uk_rootReserved2 ();		// (the slot's former name: an entry of the table)
 	virtual void uk_rootReserved3 () {}
 	virtual void uk_rootReserved4 () {}
 	virtual void uk_rootReserved5 () {}
@@ -1651,6 +1673,83 @@ bool uk_folder_open (char *out, unsigned cap, const char *startDir);	// pick a d
 bool uk_color_dialog (unsigned *color, const char *title = "Colour");	// true = OK (*color set)
 ```
 
+## `uikit/adapt.h`
+
+uikit/adapt.h -- the adaptive layer: what an app asks to lay itself out in every mode (docs/POCKETUI-TECH-STUDY.md sections 6.5-6.14, phase P6; docs/03 "The adaptive widgets"). One binary runs on the desktop's UIKit (Elegant: lib/uikit.so) and on PocketUI's (pocket and console: lib/pocket/uikit.so, loaded under the same name): the app declares WHAT its parts are -- a navigation or inspector SidePanel (uikit/sidepanel.h), tools with priorities (uikit/toolbar.h), tabs (uikit/tabstrip.h), a dialog of rows (uikit/form.h), columns with roles (uikit/datagrid.h), a field's type -- and each UIKit renders it for its mode. On the desktop every call below answers what today is (the size class regular, today's metrics): an app that uses them looks the same there.
+
+```
+  int sc = uk_size_class ();               // UK_SC_REGULAR (desktop), _COMPACT, _NARROW (portrait), _CONSOLE
+  const UkMetrics &m = uk_metrics ();       // the rows', buttons', rail's sizes of the profile
+  int gw = uk_scroll_gutter ();            // what a scrolled view leaves at its right for the bar (10; 0 in pocket)
+  uk_set_input_type (urlBox, UK_IN_URL);    // the on-screen keyboard's layout (pocket), "a keyboard is needed" (console)
+  class MyRoot : public Root { void onSizeClass (int sc) override { ...lay out again... } };
+```
+
+The size class (uikit/win.h's UK_SC_*): the server's (uk_win_server), asked once and again when the window or the screen changes size; Root::onSizeClass (uikit/root.h) is called on each Root when it changes.
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+### the mode and the size class
+
+```cpp
+int uk_size_class ();			// UK_SC_REGULAR (the desktop), UK_SC_COMPACT, UK_SC_NARROW, UK_SC_CONSOLE
+int uk_mode ();				// UK_MODE_DESKTOP, UK_MODE_POCKET, UK_MODE_CONSOLE
+bool uk_compact ();
+```
+
+### the metrics: the profile's sizes (SD:/etc/theme.txt "metrics = regular | compact | touch", pocket)
+
+```cpp
+enum { UK_PROFILE_REGULAR = 0, UK_PROFILE_COMPACT = 1, UK_PROFILE_TOUCH = 2, UK_PROFILE_CONSOLE = 3 };
+struct UkMetrics
+{
+	int	 profile;			// UK_PROFILE_* (the desktop: regular; console: its own)
+	int	 scale;				// percent (100; "scale =" of theme.txt in pocket) -- the sizes below include it
+	int	 row;				// a list's, a grid's row (regular: the text's height + 8)
+	int	 menuRow;			// a popup menu's row
+	int	 button;			// a push button's height
+	int	 field;				// a text field's height
+	int	 tab;				// a tab strip's height
+	int	 toolbar;			// a toolbar's height (and a tool's 28 + 6)
+	int	 rail;				// a SidePanel's rail: its width (48 lp)
+	int	 scrollbar;			// the scroll bar as drawn (regular 10; pocket's overlay 4)
+	int	 gutter;			// what a scrolled view leaves for it (uk_scroll_gutter)
+	int	 pad;				// the padding between controls
+	int	 touch;				// a touch target's least size (0: no touch)
+	int	 reserved[8];
+};
+const UkMetrics &uk_metrics ();
+int uk_scroll_gutter ();		// UK_SBW (10) on the desktop, 0 under the overlay bars (pocket, console)
+int uk_lp (int v);			// logical pixels at the metrics' scale (v on the desktop)
+```
+
+The app draws only through UIKit (its widgets and Canvas' methods): its window may be given device pixels when the display is scaled (the native scale of docs/POCKETUI-TECH-STUDY.md section 6.3, phase P10) -- said to the server, kept; nothing changes on the desktop.
+
+```cpp
+void uk_logical_units (bool on);
+bool uk_logical_units_on ();
+```
+
+### a field's type: the on-screen keyboard's layout (pocket), "a keyboard is needed" (console)
+
+```cpp
+enum { UK_IN_TEXT = 0, UK_IN_NUMBER, UK_IN_DECIMAL, UK_IN_URL, UK_IN_EMAIL, UK_IN_PASSWORD, UK_IN_TERMINAL, UK_IN_SEARCH };
+void uk_set_input_type (Widget *w, int type);	// any widget that takes text (a Textbox, a terminal's view...)
+int  uk_input_type (Widget *w);		// UK_IN_* (a Textbox with `password` set: UK_IN_PASSWORD; else UK_IN_TEXT)
+```
+
+### the focus by the arrows (pocket, console: a d-pad)
+
+The focus moved from the focused control of root's tree to the nearest focusable one in that direction (dx, dy: -1, 0, 1) -> true moved. UIKit does it itself with the arrows nobody took, in pocket and console.
+
+```cpp
+bool uk_focus_move (Widget *root, int dx, int dy);
+```
+
+### the console's shoulders
+
+L1 / R1 (on a keyboard: Ctrl+Page Up / Ctrl+Page Down) step through the window's tabs, else through its navigation SidePanel's sections; L2 / R2 (Page Up / Page Down) page a list. The pad's buttons are given these keys by the console's shell (phase P9).
+
 ## `uikit/bmp.h`
 
 bmp.h -- an icon's picture for UIKit and the apps (the docks, the lists, the skins).
@@ -1876,6 +1975,12 @@ A cell's text is cut to its column with "..." (the app's text: control character
 
 ```cpp
 enum { GRID_LEFT = 0, GRID_RIGHT = 1, GRID_CENTRE = 2 };
+```
+
+(P6) A column's role (setColumnRole; docs/POCKETUI-TECH-STUDY.md section 6.12): what a portrait card shows of it -- the PRIMARY column its title, the SECONDARY ones its subtitle, the DETAIL ones only the detail view.
+
+```cpp
+enum { UK_COL_NONE = 0, UK_COL_PRIMARY = 1, UK_COL_SECONDARY = 2, UK_COL_DETAIL = 3 };
 
 class DataGrid : public Widget
 {
@@ -1913,6 +2018,22 @@ public:
 	int  rowAt (int y) const;		// the row under y (grid coordinates), -1 none
 	int  totalWidth () const;		// the columns' widths added
 	int  visibleRows () const;		// how many rows the body shows
+	// (P6) The adaptive part (its state behind Widget::ext: the class's fields are frozen). On the desktop the grid is
+	// as always; in pocket the columns of the highest priorities give way when the grid is too narrow (priority 0:
+	// never), the rows are the profile's; in portrait a grid with a PRIMARY column draws its rows as two-line cards
+	// (the primary column, then the secondary ones) and a click opens the detail view (setDetailView: the app's widget,
+	// filled by its onActivate; Esc or Backspace goes back); console: big rows, the selection glowing.
+	void setColumnRole (int c, int role, int priority = 0);	// UK_COL_*; priority 0: never hidden, 1, 2...: hidden first
+	bool columnShown (int c);			// (pocket: false when it gave way to the room)
+	bool cards ();					// the rows drawn as cards now (portrait, a primary column)
+	void setDetailView (Widget *w);			// (portrait) the widget shown over the grid when a card is opened
+	void closeDetail ();
+	// Several rows chosen: Ctrl + a click adds or takes away one, Shift + a click a range (sel stays the current row).
+	void setMultiSelect (bool on);
+	bool isSelected (int r);			// (single selection: r == sel)
+	void setSelected (int r, bool on);
+	int  selectedCount ();
+
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
 	bool onKey (long k) override;
@@ -2124,6 +2245,57 @@ Draw `s` into a raw 0x00RRGGBB framebuffer (W x H) via the font registry -- for 
 ```cpp
 void draw_text (unsigned *fb, int W, int H, int x, int y, const char *s, unsigned color,
 		int scale = 1, int style = 0, int id = FONT_SANS);
+```
+
+## `uikit/form.h`
+
+uikit/form.h -- FormDialog: a dialog that says what its rows are (a label and its control, a section's title, a paragraph, buttons with a role) and lets each UIKit lay them out (docs/POCKETUI-TECH-STUDY.md section 6.7, phase P6; docs/03 "The adaptive widgets"):
+
+```
+  the desktop, pocket in landscape  a box centred on the window: the labels in a column at the left, the controls
+                                    beside them, the buttons at the bottom right (the default first, then Cancel)
+  pocket in portrait                a sheet the window's width: each label over its control, the controls the
+                                    whole width, Cancel at the title's left and the default at its right
+  console                           the PS2's panel; Enter / the pad's cross the default, Esc / the circle Cancel
+```
+
+(Named FormDialog: QBStudio has a Form of its own, beside `using namespace uikit`.)
+
+```
+  FormDialog f (TR ("New Playlist"));
+  Textbox *name = new Textbox (0, 0, 240, 26, "");
+  f.addRow (TR ("Name:"), name);
+  f.addButton (TR ("Create"), UK_FB_DEFAULT, 1);
+  f.addButton (TR ("Cancel"), UK_FB_CANCEL, 0);
+  if (f.run () == 1) ... name->text ...
+```
+
+A row's control keeps its height; a control 100 px wide or more takes the column's width (a field, a list), a narrower one keeps its own (a check box, a spin box). The controls are the dialog's children (freed with it).
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+```cpp
+enum { UK_FB_DEFAULT = 0, UK_FB_CANCEL = 1, UK_FB_DESTRUCTIVE = 2, UK_FB_OTHER = 3 };	// a button's role
+
+class FormDialog : public Modal
+{
+public:
+	FormDialog (const char *title, int width = 0);	// width: the desktop's box (0: what the rows need, 360 at least)
+	~FormDialog () override;
+	void addSection (const char *title);		// a section's title over the rows that follow (copied)
+	Widget *addRow (const char *label, Widget *w);	// a label (copied; 0: the control alone, the row's width) -> w
+	void addText (const char *text);		// a paragraph, wrapped (copied)
+	Button *addButton (const char *label, int role, int result);	// UK_FB_*; run () gives `result` when it is pressed
+	int  run ();					// laid out, shown -> the result of the button pressed (Enter: the default's,
+							// Esc: the Cancel's -- 0 without one)
+	void onButton (int tag) override;
+	bool onKey (long k) override;
+	void onDraw () override;
+	void layout () override;
+	unsigned long fm_reserved_[2] = { 0, 0 };	// (uikit/abi.h rule 2: room for later; the rows are behind ext)
+	virtual void fm_reserved0 () {}			// (rule 3)
+	virtual void fm_reserved1 () {}
+};
 ```
 
 ## `uikit/global.h`
@@ -2874,6 +3046,127 @@ private:
 };
 ```
 
+## `uikit/sidepanel.h`
+
+uikit/sidepanel.h -- SidePanel: a side panel that says what it is -- a NAVIGATION list at the left (the places of a library, the mailboxes, the modules) or an INSPECTOR at the right (a layers' list, the properties) -- so that each UIKit shows it as its mode wants (docs/POCKETUI-TECH-STUDY.md section 6.8, phase P6; docs/03 "The adaptive widgets"):
+
+```
+  presentation    the desktop       pocket, landscape            pocket, portrait          console
+  navigation      UK_SP_FULL        UK_SP_RAIL (icons; the       UK_SP_DRAWER (opened by   UK_SP_COLUMN (big rows,
+                  (today's sidebar)  labels on hover / focus)      its button or its tab)    L1 / R1 the sections)
+  inspector       UK_SP_FULL        UK_SP_SLIDEOVER (over the    UK_SP_SHEET (a bottom     UK_SP_SLIDEOVER (opened
+                                    content from the right)      sheet, half or whole)     on demand)
+  (a wide pocket screen -- the window at least four times the panel's width -- keeps UK_SP_FULL; a navigation panel
+   of free content only, without items, goes from UK_SP_FULL to a drawer: a rail could not show it)
+```
+
+Its content: STRUCTURED ITEMS (what a rail, a drawer, a console column can all draw) -- headings (foldable), items with an icon, an indent, a badge (a count, a dot), a short value at the right, a picture (a layer, a page), a toggle (a layer's eye) -- and FREE CONTENT as the fallback: pages (an inspector's tabs: any widget each), a content under the items (a tree, a month), a footer (the chosen item's controls, buttons). The app lays its own content out with reservedWidth () (what the panel takes now at its side: the rail's width, 0 for an overlay) and onPresentation.
+
+```
+  SidePanel *sp = new SidePanel (0, 52, 208, h, UK_SP_LEFT, UK_SP_NAVIGATION);
+  sp->setIconFn (my_icon);                         // the app's icons (else: icon = a WKG_* glyph)
+  sp->addItem (1, "Home", I_HOME);
+  sp->addHeading ("LIBRARY");  sp->addItem (2, "Artists", I_PERSON);  ...
+  sp->onSelect = go;  sp->select (1);
+  sp->place (0, 52, 208, h);  content->left = sp->reservedWidth ();  (again in onPresentation and the window's resize)
+```
+
+On the desktop it is today's sidebar (rows of 28 px, the chosen one in the accent; the headings small, bold, dim); its width is the app's (setWidths gives the range a splitter may use).
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+```cpp
+enum { UK_SP_LEFT = 0, UK_SP_RIGHT = 1 };				// the side
+enum { UK_SP_NAVIGATION = 0, UK_SP_INSPECTOR = 1 };			// the role
+enum { UK_SP_FULL = 0, UK_SP_RAIL, UK_SP_DRAWER, UK_SP_SLIDEOVER, UK_SP_SHEET, UK_SP_COLUMN, UK_SP_HIDDEN };	// presentation ()
+enum { UK_SPI_HEADING = 1, UK_SPI_FOLDABLE = 2, UK_SPI_DISABLED = 4, UK_SPI_SEPARATOR = 8, UK_SPI_FOLDED = 16 };	// an item's flags
+enum { UK_SP_TOGGLE_ON = -2, UK_SP_TOGGLE_OFF = -3 };		// the icon ids an icon function gets for a toggle
+```
+
+The app's icons: icon `id` drawn in the size x size box at (x, y) in ink (selected: on the accent).
+
+```cpp
+typedef void (*SpIconFn) (Canvas &cv, int id, int x, int y, int size, unsigned ink, bool selected);
+
+class SidePanel : public Widget
+{
+public:
+	SidePanel (int l, int t, int w, int h, int side = UK_SP_LEFT, int role = UK_SP_NAVIGATION);
+	~SidePanel () override;
+
+	// ---- the structured items -----------------------------------------------------------------------------------
+	int  addHeading (const char *label, unsigned flags = 0);	// -> its id (UK_SPI_FOLDABLE: a click folds it)
+	int  addSeparator ();					// -> its id
+	// An item (id: the app's, >= 0) with an icon (-1: none), an indent level, under a heading (-1: the last one added).
+	int  addItem (int id, const char *label, int icon = -1, int level = 0, int under = -1);
+	void setLabel (int id, const char *label);		// (labels are copied, 63 bytes at most)
+	void setIcon (int id, int icon);
+	void setBadge (int id, int count);			// 0: none; > 0 a pill ("3"); -1 a dot
+	void setTrailing (int id, const char *text);		// a short value at the right ("80 %", "12")
+	// A line of help under the label (copied, 95 bytes at most): shown when the panel is whole, 240 px wide or more
+	// and every item fits at two lines (a settings list on a big screen); else the label alone.
+	void setSubtitle (int id, const char *text);
+	void setThumb (int id, const unsigned *px, int w, int h);	// a picture (copied; 0: none) -- the rows grow for it
+	void setToggle (int id, int on);			// -1: none; 0 / 1: a toggle (a layer's eye) before the label
+	void setFlags (int id, unsigned flags);
+	unsigned flags (int id);
+	void moveItem (int id, int beforeId);			// (-1: to the end)
+	void remove (int id);
+	void clear ();						// every item (the pages, the content and the footer stay)
+	void select (int id, bool fire = false);		// (-1: none)
+	int  selected ();
+	int  itemAt (int x, int y);				// the item under (x, y) of the panel, -1
+	bool dropAt (int x, int y, int type, const char *data, int len);	// a drop the app's Root got over the panel -> onDrop
+
+	void (*onSelect) (SidePanel &, int id);			// an item chosen (a click, Enter, L1 / R1)
+	void (*onToggle) (SidePanel &, int id, int on);		// its toggle clicked (on: the new state)
+	void (*onItemMenu) (SidePanel &, int id, int x, int y);	// a right click (x, y: the window's)
+	bool (*onDrop) (SidePanel &, int id, int type, const char *data, int len);	// a file dropped on a place (dropAt)
+	void (*onReorder) (SidePanel &, int id, int beforeId);	// an item dragged (0: the items do not move)
+	void (*onPresentation) (SidePanel &, int presentation);	// the presentation changed: lay the content out again
+
+	// ---- the free content -------------------------------------------------------------------------------------------
+	int  addPage (const char *label, int icon, Widget *content);	// an inspector's page -> its number (2 and more: tabs)
+	void setPage (int page);
+	int  page ();
+	void setContent (Widget *w);			// a navigation panel's content under its items (a tree, a month)
+	void setFooter (Widget *w, int h);		// under the rest: h px (the chosen item's controls, a button)
+
+	// ---- the look, the geometry, the state ------------------------------------------------------------------------
+	void setIconFn (SpIconFn fn);
+	void setFaces (TextFace *item, TextFace *heading);	// (0: the installed face; the headings bold)
+	void setColors (unsigned bg, unsigned edge);		// UK_AUTO: the sidebar's (the window's face towards the fields')
+	// The panel's rectangle in its parent as the app lays it out (its resize code): what the presentation shows of it
+	// follows (a rail narrows it, a closed drawer is a tab at its edge). Use it rather than left / top / resizeTo,
+	// which are taken as what the parent's anchors did to the panel shown.
+	void place (int l, int t, int w, int h);
+	void setWidths (int minW, int prefW, int maxW);		// the desktop: a splitter's range; prefW the panel's width
+	// false: never a rail -- in pocket's landscape a navigation panel whose labels matter (a settings list) stays whole
+	void setRail (bool allowed);
+	int  presentation ();				// UK_SP_* now (the desktop: UK_SP_FULL)
+	int  reservedWidth ();				// what the app leaves for it at its side now (a rail: its width; 0: overlaid)
+	void open (bool on);				// a drawer, a slide-over, a sheet opened / closed (the rail: expanded)
+	bool isOpen ();
+	// A button for the app's own bar that opens and closes it (portrait's "menu" of a navigation drawer, an
+	// inspector's): made once, the app places it (hidden on the desktop and whenever the panel is shown whole);
+	// asked, the panel draws no tab of its own at its edge.
+	Widget *toggleButton ();
+
+	void onDraw () override;
+	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
+	bool onKey (long k) override;
+	void layout () override;
+	void resizeTo (int w, int h) override;		// (the app's size kept: the presentation decides the panel's)
+	unsigned bgColor () override;
+
+	unsigned long sp_reserved_[4] = { 0, 0, 0, 0 };	// (uikit/abi.h rule 2: room for later; the state is behind ext)
+	virtual void sp_reserved0 () {}			// (rule 3: room for later virtuals)
+	virtual void sp_reserved1 () {}
+private:
+	int m_side, m_role;
+};
+```
+
 ## `uikit/skin.h`
 
 uikit/skin.h -- 9-slice bitmap skin (port of uikit's Skin / the kernel CSkin) plus user-side window decoration (drawn by code: uikit/paint.h). A skin BMP holds `count` states stacked vertically (button.bmp: normal/hover/pressed); margins mark the fixed corners/edges, the middle tiles. Magenta (UK_TRANSPARENT_KEY) is the transparency key. Skins draw into RAW 0x00RRGGBB buffers -- a Canvas's `px`, or a window-chrome buffer from uk_win_chrome.
@@ -3031,7 +3324,13 @@ uikit/tabstrip.h -- TabStrip: a row of tabs over a view (a terminal's shells, a 
 
 MIT licence (Onyx).
 
+(P6) The adaptive tabs (docs/POCKETUI-TECH-STUDY.md section 6.10): the edge the strip stands on, its style, and how it is shown now -- the desktop: as always (a strip, the bottom edge mirrored); pocket landscape: a strip that scrolls, a "..." list when the tabs do not fit; portrait: the current tab's title and a list (or a segmented control for 2 or 3 short fixed tabs -- no "+", no close); console: a header row (the current tab big, its neighbours dim; L1 / R1 switch).
+
 ```cpp
+enum { UK_TAB_TOP = 0, UK_TAB_BOTTOM = 1 };			// setEdge
+enum { UK_TAB_AUTO = 0, UK_TAB_STRIP = 1, UK_TAB_SEGMENTED = 2 };	// setStyle
+enum { UK_TABP_STRIP = 0, UK_TABP_SCROLL, UK_TABP_MENU, UK_TABP_SEGMENTED, UK_TABP_HEADER };	// presentation ()
+
 class TabStrip : public Widget
 {
 public:
@@ -3056,9 +3355,18 @@ public:
 	void *data (int i) const { return i >= 0 && i < m_n ? m_data[i] : 0; }
 	void setData (int i, void *p) { if (i >= 0 && i < m_n) m_data[i] = p; }
 	void setMark (int i, bool on);		// the dot before the title
+	bool marked (int i) const { return i >= 0 && i < m_n && m_mark[i]; }
 	void select (int i, bool fire = false);	// repainted; onChange if fire and it changed
 	void selectNext (int d, bool fire = true);	// d = +1 / -1, round
 	int  tabAt (int mx) const;		// the tab under x (-1: none)
+
+	// (P6) The adaptive part (its state behind Widget::ext: the class's fields are frozen).
+	void setEdge (int edge);		// UK_TAB_TOP (the default), UK_TAB_BOTTOM (a spreadsheet's sheets)
+	void setStyle (int style);		// UK_TAB_AUTO (the default), _STRIP, _SEGMENTED (portrait, 3 tabs at most)
+	// This strip takes the console's L1 / R1 (the first strip made in a window does without asking).
+	void setNav (bool on);
+	int  presentation ();			// UK_TABP_* now (the desktop: UK_TABP_STRIP)
+	void showList ();			// the list of the tabs (portrait's title, the "..." button): pick, close, new
 
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
@@ -3239,6 +3547,20 @@ private:
 	int m_part, m_down;			// the part under the pointer, the one pressed (-1 none; 1 the arrow)
 	unsigned face ();
 };
+```
+
+(P6) The adaptive toolbar (docs/POCKETUI-TECH-STUDY.md section 6.9): each tool may say how much it matters --
+
+```
+  UK_TB_ALWAYS    always shown (the default),
+  UK_TB_IF_ROOM   shown when there is room (the lower its rank, the longer it stays),
+  UK_TB_OVERFLOW  only in the overflow;
+```
+
+on the desktop the bar is as built (every tool, its rows); in pocket and console ONE row of what fits by priority, the rest behind "»": a panel that hosts the tools themselves (a toggle stays a toggle, a drop-down a drop-down), group by group (a separator's run is a group). A second bar folded into the first (foldInto) joins its row when compact. The app lays itself out with rows () (the rows the bar takes now).
+
+```cpp
+enum { UK_TB_ALWAYS = 0, UK_TB_IF_ROOM = 1, UK_TB_OVERFLOW = 2 };
 
 class ToolBar : public Widget
 {
@@ -3253,6 +3575,17 @@ public:
 	int  next () const { return m_x; }	// where the next one goes
 	unsigned bgColor () override { return bg == UK_AUTO ? C_BG : bg; }
 	void onDraw () override;
+	// (P6) The adaptive part (its state behind Widget::ext: the class's fields are frozen).
+	void setPriority (Widget *w, int prio, int rank = 0);	// UK_TB_*; rank: IF_ROOM's order of leaving (0 last)
+	void setLabel (Widget *w, const char *label);		// its words (the console's Tools section; kept, not copied)
+	void setGroup (Widget *w, int group);			// its group (default: its separator's run)
+	void setShortcut (Widget *w, int padButton);		// the console's button for it (gamepad.h's numbers; P9)
+	void foldInto (ToolBar *first);	// this second row's tools join first's row when compact (this one then hidden)
+	int  rows () const;			// the rows the bar takes now: the desktop 1 + the bars folded into it; else 1
+						// (a bar folded into another: 0 when compact)
+	void showOverflow ();			// the "»" panel (its button does it)
+	void layout () override;		// (the tools placed again for the room: a new override -- an older program
+						//  keeps the bar as built until it is rebuilt)
 private:
 	int m_x, m_rx, m_nsep, m_sepX[24];
 };
@@ -3278,6 +3611,11 @@ public:
 	int  parentOf (int id) const { return (id >= 0 && id < m_n) ? m_nodes[id].parent : -1; }
 	int  userData (int id) const { return (id >= 0 && id < m_n) ? m_nodes[id].data : 0; }
 	void setUserData (int id, int d) { if (id >= 0 && id < m_n) m_nodes[id].data = d; }
+	// (P6) Portrait: one level at a time (docs/POCKETUI-TECH-STUDY.md section 6.12) -- the children of the level shown,
+	// "<" and its parent's name at the top; a node with children opens its level (a click, Right, Enter), "<" (Left,
+	// Backspace) goes back. Elsewhere (the desktop, landscape) the tree as always.
+	void setDrillDown (bool on);
+	int  drillLevel ();			// the node whose children are shown (-1: the roots), -2: not drilling now
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
 	bool onKey (long k) override;

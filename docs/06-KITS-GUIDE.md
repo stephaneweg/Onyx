@@ -389,6 +389,31 @@ int main (void)
 }
 ```
 
+**The adaptive widgets** (`uikit/adapt.h`, `sidepanel.h`, `form.h`, PocketUI's phase P6; docs/03 §5.10.6): the
+same binary runs on the desktop, in pocket and in console; the app says **what** its parts are and each UIKit shows
+them for its mode — on the desktop exactly as before. A navigation **SidePanel** (a rail, a drawer, a console column
+away from the desktop), tools with **priorities** (pocket: one row and **»**), **column roles** (portrait: cards), a
+**FormDialog** (portrait: a sheet), a field's **type**, the **size class**:
+
+```cpp
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
+
+SidePanel *nav = new SidePanel (0, 40, 200, 560, UK_SP_LEFT, UK_SP_NAVIGATION);
+nav->addHeading ("LIBRARY");  nav->addItem (1, "Songs", WKG_HOME);  nav->setBadge (1, 12);
+nav->onSelect = [] (SidePanel &, int id) { show (id); };
+bar->setPriority (cut, UK_TB_IF_ROOM, 2);  bar->setPriority (settings, UK_TB_OVERFLOW);
+grid->setColumnRole (0, UK_COL_PRIMARY);  grid->setColumnRole (1, UK_COL_SECONDARY);  grid->setColumnRole (3, UK_COL_DETAIL, 1);
+uk_set_input_type (urlBox, UK_IN_URL);
+void relayout () {                                     // the window's resize, Root::onSizeClass, nav->onPresentation
+    nav->place (0, 40, 200, height - 40);
+    content->left = nav->reservedWidth ();             // 200 whole, 48 a rail, 0 a drawer
+    if (uk_size_class () == UK_SC_NARROW) { /* portrait: the app's own choices */ }
+}
+FormDialog f ("New Playlist");  f.addRow ("Name:", new Textbox (0, 0, 240, 26, ""));
+f.addButton ("Create", UK_FB_DEFAULT, 1);  f.addButton ("Cancel", UK_FB_CANCEL, 0);  int r = f.run ();
+```
+
 ## 5. SystemKit — talking to the system and the other programs
 
 `#include "systemkit/systemkit.h"` — link `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C).
@@ -949,6 +974,7 @@ The header of a kit a C program may use is written in C.
 | take the whole screen (a game, an emulator) | UIKit (then AppKit's `kapi_present_fb`) | `uk_win_fullscreen_begin`, `uk_win_fullscreen_end` |
 | list, raise, move the windows (a shell) | UIKit | `uk_win_list`, `uk_win_raise`, `uk_win_place` |
 | ask the user (message, file, colour) | UIKit | `uk_messagebox`, `uk_file_open`, `uk_color_dialog` |
+| lay the app out for every mode (desktop, pocket, console) | UIKit | `SidePanel`, `ToolBar::setPriority`, `DataGrid::setColumnRole`, `FormDialog`, `uk_size_class`, `Root::onSizeClass` |
 | load an icon | UIKit | `ui::icon_load` |
 | show a notification | SystemKit | `notify`, `notify_action` |
 | copy / paste | SystemKit | `clip_set_text`, `clip_get_text` |

@@ -32,6 +32,9 @@
 #include "uikit/win.h"
 #include "uikit/port/port.h"
 #include "uikit/port/pocket.h"
+#if !defined (__aarch64__) && !defined (UK_PORT_WIRE)
+#include <stdlib.h>				// (the PC's tests: getenv)
+#endif
 
 namespace uikit {
 namespace port {
@@ -59,6 +62,46 @@ static void server_copy (struct uk_win_server_info *out, const struct pk_server 
 	out->work_x = s->work_x; out->work_y = s->work_y; out->work_w = s->work_w; out->work_h = s->work_h;
 	out->scale = s->scale > 0 ? s->scale : 100;
 	out->size_class = s->size_class;
+}
+
+// The metrics' profile and scale (SD:/etc/theme.txt "metrics = regular | compact | touch", "scale = 1 | 1.5 | 2"; the
+// desktop's UIKit reads neither): -> *profile (compact when not said), *scale (percent, 100 when not said).
+static void theme_metrics (int *profile, int *scale)
+{
+	*profile = 1; *scale = 100;				// (uikit/adapt.h UK_PROFILE_COMPACT)
+	void *f = kapi_open ("SD:/etc/theme.txt");
+	if (f == 0) return;
+	static char b[4097];
+	int n = kapi_read (f, b, sizeof b - 1);
+	kapi_close (f);
+	if (n <= 0) return;
+	b[n] = 0;
+	for (char *p = b; *p; )
+	{
+		char *l = p; while (*p && *p != '\n') p++;
+		if (*p) *p++ = 0;
+		while (*l == ' ' || *l == '\t') l++;
+		const char *k = l; int kn = 0;
+		while (l[kn] && l[kn] != ' ' && l[kn] != '\t' && l[kn] != '=') kn++;
+		char *v = l + kn; while (*v == ' ' || *v == '\t' || *v == '=') v++;
+		if (kn == 7 && __builtin_memcmp (k, "metrics", 7) == 0)
+		{
+			if (v[0] == 'r') *profile = 0; else if (v[0] == 't') *profile = 2; else if (v[0] == 'c') *profile = 1;
+		}
+		else if (kn == 5 && __builtin_memcmp (k, "scale", 5) == 0 && v[0] >= '1' && v[0] <= '4')
+		{
+			int s = (v[0] - '0') * 100;
+			if (v[1] == '.' && v[2] >= '0' && v[2] <= '9') s += (v[2] - '0') * 10;
+			*scale = s;
+		}
+	}
+}
+
+static void adapt_from (const struct uk_win_server_info *in, int *mode, int *size_class, int *profile, int *scale)
+{
+	*mode = in->mode; *size_class = in->size_class;
+	theme_metrics (profile, scale);
+	if (*mode == UK_MODE_CONSOLE) *profile = 3;		// (UK_PROFILE_CONSOLE)
 }
 
 #if defined (__aarch64__) || defined (UK_PORT_WIRE)
@@ -148,6 +191,22 @@ long shell (int op, long a0, long a1, long a2, long a3, const void *in, unsigned
 	return r;
 }
 
+// ---- the adaptive layer (uikit/adapt.h): PocketUI's size class, the theme's profile; the focused control -----------
+
+int adapt_info (int *mode, int *size_class, int *profile, int *scale)
+{
+	struct uk_win_server_info in;
+	__builtin_memset (&in, 0, sizeof in);
+	in.size = sizeof in;
+	server (&in);					// (no PocketUI yet: what it would say -- the screen whole, pocket)
+	adapt_from (&in, mode, size_class, profile, scale);
+	return 1;
+}
+
+void focus_rect (int x, int y, int w, int h)	{ if (pk_hello () == 1 && ws__w[ws__cur].made) ws_raw (PK_OP_FOCUS_RECT, x, y, w, h, 0, 0, 0, 0); }
+void text_hint (int type)			{ if (pk_hello () == 1 && ws__w[ws__cur].made) ws_raw (PK_OP_TEXT_HINT, type, 0, 0, 0, 0, 0, 0, 0); }
+void logical_units (int on)			{ if (pk_hello () == 1 && ws__w[ws__cur].made) ws_raw (PK_OP_UNITS, on, 0, 0, 0, 0, 0, 0, 0); }
+
 #else
 // ===== On a PC: the stand-in kernel's window manager (kern/kapi_abi.h, NOT ON ONYX) ======================
 #include "uikit/port/host.inc"
@@ -166,6 +225,22 @@ int server (struct uk_win_server_info *out)
 }
 
 long shell (int, long, long, long, long, const void *, unsigned, void *, unsigned) { return -KAPI_ENOSYS; }
+
+// (the PC's tests: UK_SIM_MODE=console the console mode; the screen's shape the size class)
+int adapt_info (int *mode, int *size_class, int *profile, int *scale)
+{
+	struct uk_win_server_info in;
+	__builtin_memset (&in, 0, sizeof in);
+	in.size = sizeof in;
+	server (&in);
+	const char *m = getenv ("UK_SIM_MODE");
+	if (m != 0 && m[0] == 'c') { in.mode = UK_MODE_CONSOLE; in.size_class = UK_SC_CONSOLE; }
+	adapt_from (&in, mode, size_class, profile, scale);
+	return 1;
+}
+void focus_rect (int, int, int, int) {}
+void text_hint (int) {}
+void logical_units (int) {}
 
 #undef HT
 #endif

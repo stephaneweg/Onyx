@@ -40,7 +40,7 @@
 // the pointer for uk_win_cursor_pos; SIM_SLEEP=1: msleep really sleeps (an app whose timers read
 // the clock: NetSurf); SIM_MENU, SIM_RUNNING, SIM_WALL: below.
 // SIM_APPLET=1: the app runs as a Control Panel applet (its arguments "--applet 1 99", the host
-// pid 99 alive, a 700 x 470 surface -- dumped instead of a window); SIM_SURFACE=FILE.elsm: the
+// pid 99 alive, a 700 x 470 surface -- SIM_SURFSIZE=WxH another -- dumped instead of a window); SIM_SURFACE=FILE.elsm: the
 // pixels a surface is filled with when an applet says hello (SIM_MAIL); SIM_MAIL="type:pid": one
 // message of that type from that pid in the mailbox (a Control Panel applet's AP_HELLO: 40:7);
 // SIM_MBOX="type:pid:payload\n...": canned mailbox messages (irc's conversation windows; "\t" a tab, "\0" a NUL), any
@@ -513,7 +513,8 @@ static int tray_icon (unsigned pid, unsigned *px)
 }
 static int tray_activate (unsigned pid, int kind) { fprintf (stderr, "sim: tray_activate %u %d\n", pid, kind); return 1; }
 
-static unsigned *g_surf; static int g_surfW = 700, g_surfH = 470;	// (the one surface: applets)
+static unsigned *g_surf; static int g_surfW = 700, g_surfH = 470;	// (the one surface: applets; SIM_SURFSIZE=WxH another)
+static struct SurfSize { SurfSize () { const char *e = getenv ("SIM_SURFSIZE"); if (e) sscanf (e, "%dx%d", &g_surfW, &g_surfH); } } s_surfSize;
 static unsigned *g_fs; static int g_fsW, g_fsH;			// (a full-screen app's buffer, while it is)
 static unsigned *fs_begin (int *w, int *h)
 {
@@ -1577,9 +1578,16 @@ static void surface_fill (void)
 		if (fread (g_surf, 4, (size_t) g_surfW * g_surfH, fp) != (size_t) g_surfW * g_surfH) fprintf (stderr, "sim: short surface\n");
 	fclose (fp);
 }
-static int surface_create (int w, int h) { g_surfW = w; g_surfH = h; if (!g_surf) g_surf = (unsigned *) calloc ((size_t) w * h, 4); return 1; }
+static int surface_create (int w, int h)		// (made again at another size: pocket's Control Panel, its pane's)
+{
+	if (g_surf && (w != g_surfW || h != g_surfH)) { free (g_surf); g_surf = 0; }
+	fprintf (stderr, "sim: surface_create %dx%d\n", w, h);
+	g_surfW = w; g_surfH = h; if (!g_surf) g_surf = (unsigned *) calloc ((size_t) w * h, 4); return 1;
+}
 static unsigned *surface_map (int) { if (!g_surf) g_surf = (unsigned *) calloc ((size_t) g_surfW * g_surfH, 4); return g_surf; }
 static int surface_size (int, int *w, int *h) { if (w) *w = g_surfW; if (h) *h = g_surfH; return 1; }
+static int surface_destroy (int) { free (g_surf); g_surf = 0; return 1; }
+static int kill_pid (int pid, int force) { fprintf (stderr, "sim: kill_pid %d %d\n", pid, force); return 1; }
 // (v65) the workspaces
 static int s_desk = 0, s_desks = 4;
 static int desk (int set, int count)
@@ -1606,7 +1614,7 @@ static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int
 	if (getenv ("SIM_IPC")) return sipc_recv (from, type, buf, cap, blocking);
 	static bool mailed = false;
 	const char *mail = getenv ("SIM_MAIL");
-	if (mail && !mailed)						// one message (an applet's hello)
+	if (mail && !mailed && (g_surf || getenv ("SIM_APPLET")))	// one message (an applet's hello), once the host has its surface
 	{
 		mailed = true;
 		int t = 0, pid = 0; sscanf (mail, "%d:%d", &t, &pid);
@@ -1730,7 +1738,7 @@ static void setup (void)
 	T->tcp_connect = tcp_connect; T->tcp_send = tcp_send; T->tcp_recv = tcp_recv; T->tcp_close = tcp_close;
 	T->net_resolve = net_resolve;
 	T->wlan_scan = wlan_scan; T->wlan_reconnect = wlan_reconnect;
-	T->surface_create = surface_create; T->surface_map = surface_map; T->surface_size = surface_size;
+	T->surface_create = surface_create; T->surface_map = surface_map; T->surface_size = surface_size; T->surface_destroy = surface_destroy; T->kill_pid = kill_pid;
 	T->desk = desk; T->win_desk = win_desk;
 	T->sound_config = sound_config; T->sound_map = sound_map; T->wait_word = wait_word;
 	T->wake_word = wake_word; T->thread_priority = thread_priority;

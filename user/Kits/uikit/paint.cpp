@@ -6,6 +6,7 @@
 #include "uikit/theme.h"
 #include "uikit/font.h"
 #include "uikit/widget.h"
+#include "uikit/adapt.h"		// (P6: the overlay bars of pocket and console)
 
 namespace uikit {
 
@@ -307,6 +308,19 @@ void uk_scroll_bar (Canvas &cv, int x, int y, int w, int h, bool vertical, int p
 		    unsigned bg, int state)
 {
 	int across = vertical ? w : h;
+	if (uk_size_class () != UK_SC_REGULAR)			// (P6) pocket, console: no groove, a thin thumb at the edge
+	{							// (the overlay bar: nothing behind it, the content shows)
+		if (len <= 0) return;
+		int hot = (state & 15) == UK_HOT || (state & 15) == UK_PRESSED;
+		int t = uk_size_class () == UK_SC_CONSOLE ? 3 : hot ? 8 : uk_metrics ().scrollbar;
+		if (t > across) t = across;
+		unsigned ink = uk_bright (bg) < 110 ? 0x00E8ECF2 : 0x00303438;
+		unsigned c = uk_mix (bg, uk_size_class () == UK_SC_CONSOLE ? 0x0060C8FF : ink, hot ? 190 : 120);
+		int tx = vertical ? x + w - t - 1 : x + pos, ty = vertical ? y + pos : y + h - t - 1;
+		int tw = vertical ? t : len, th = vertical ? len : t;
+		uk_rbox (cv, tx, ty, tw, th, t / 2, c, c);
+		return;
+	}
 	int r = across / 2;
 	uk_rbox (cv, x, y, w, h, r, uk_mix (bg, 0, 34), uk_mix (bg, 0, 18));	// the groove
 	if (len <= 0) return;

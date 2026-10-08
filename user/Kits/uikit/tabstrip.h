@@ -20,6 +20,14 @@
 
 namespace uikit {
 
+// (P6) The adaptive tabs (docs/POCKETUI-TECH-STUDY.md section 6.10): the edge the strip stands on, its style, and how
+// it is shown now -- the desktop: as always (a strip, the bottom edge mirrored); pocket landscape: a strip that
+// scrolls, a "..." list when the tabs do not fit; portrait: the current tab's title and a list (or a segmented control
+// for 2 or 3 short fixed tabs -- no "+", no close); console: a header row (the current tab big, its neighbours dim; L1 / R1 switch).
+enum { UK_TAB_TOP = 0, UK_TAB_BOTTOM = 1 };			// setEdge
+enum { UK_TAB_AUTO = 0, UK_TAB_STRIP = 1, UK_TAB_SEGMENTED = 2 };	// setStyle
+enum { UK_TABP_STRIP = 0, UK_TABP_SCROLL, UK_TABP_MENU, UK_TABP_SEGMENTED, UK_TABP_HEADER };	// presentation ()
+
 class TabStrip : public Widget
 {
 public:
@@ -44,9 +52,18 @@ public:
 	void *data (int i) const { return i >= 0 && i < m_n ? m_data[i] : 0; }
 	void setData (int i, void *p) { if (i >= 0 && i < m_n) m_data[i] = p; }
 	void setMark (int i, bool on);		// the dot before the title
+	bool marked (int i) const { return i >= 0 && i < m_n && m_mark[i]; }
 	void select (int i, bool fire = false);	// repainted; onChange if fire and it changed
 	void selectNext (int d, bool fire = true);	// d = +1 / -1, round
 	int  tabAt (int mx) const;		// the tab under x (-1: none)
+
+	// (P6) The adaptive part (its state behind Widget::ext: the class's fields are frozen).
+	void setEdge (int edge);		// UK_TAB_TOP (the default), UK_TAB_BOTTOM (a spreadsheet's sheets)
+	void setStyle (int style);		// UK_TAB_AUTO (the default), _STRIP, _SEGMENTED (portrait, 3 tabs at most)
+	// This strip takes the console's L1 / R1 (the first strip made in a window does without asking).
+	void setNav (bool on);
+	int  presentation ();			// UK_TABP_* now (the desktop: UK_TABP_STRIP)
+	void showList ();			// the list of the tabs (portrait's title, the "..." button): pick, close, new
 
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;

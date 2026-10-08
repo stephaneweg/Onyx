@@ -97,5 +97,11 @@ long shell (int, long, long, long, long, const void *, unsigned, void *, unsigne
 #undef HT
 #endif
 
+// ---- the adaptive layer: the desktop says nothing (regular, today's sizes: uikit/adapt.cpp) ----------------------
+int adapt_info (int *, int *, int *, int *) { return 0; }
+void focus_rect (int, int, int, int) {}
+void text_hint (int) {}
+void logical_units (int) {}
+
 } // namespace port
 } // namespace uikit

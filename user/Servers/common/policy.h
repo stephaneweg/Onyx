@@ -56,8 +56,13 @@ struct ws_policy
 	// window manager never sees that one) -- the shell's keys: a Super pressed and released alone, Alt let go
 	// over the switcher. (The key hook gets them too, with each key.)
 	void (*mods) (unsigned mods);
+
+	// (2026-10-08, PocketUI's P6) The pointer, before the window manager (screen coordinates; buttons bit 0 left, 1 right,
+	// 2 middle; the wheel in notches) -> 1 taken here (PocketUI's viewport: a window bigger than the work area scrolled).
+	int  (*pointer) (int x, int y, unsigned buttons, int wheel);
 };
 #define WS_POLICY_HAS_MODS	1		// (the hook above: a test built against both revisions knows it)
+#define WS_POLICY_HAS_POINTER	1
 
 extern const struct ws_policy *g_pWsPolicy;	// (the server's: its main.cpp or its policy's file)
 

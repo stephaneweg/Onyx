@@ -54,7 +54,8 @@
 #include "uikit/win.h"			// (struct uk_shell_task, UK_SHELL_*: the shell's operations below)
 
 #define PK_PROTO_NAME		"pocketui"	// struct pk_hello's name
-#define PK_PROTO_VERSION	2		// PK_OP_HELLO's answer (this protocol's revision; 2: the shell's operations, P5)
+#define PK_PROTO_VERSION	3		// PK_OP_HELLO's answer (this protocol's revision; 2: the shell's operations, P5;
+						//  3: the adaptive layer's, P6)
 
 #define PK_MODE_POCKET		1		// (= uikit/win.h UK_MODE_POCKET)
 #define PK_MODE_CONSOLE		2		// (= UK_MODE_CONSOLE)
@@ -100,5 +101,14 @@ struct pk_server
 #define PK_OP_GRAB		0x118		// a[0] = on: every key and the modifiers' changes to the shell -> 1
 // The shell's operations from another program than the shell: -KAPI_EPERM (PK_OP_TASKS and PK_OP_THUMB: anyone --
 // a task manager, a remote desktop may show them).
+
+// THE ADAPTIVE LAYER'S (uikit/adapt.h, phase P6; docs/POCKETUI-TECH-STUDY.md sections 6.3, 6.11): what the pocket UIKit
+// tells PocketUI of a window (the window bits of the operation say which).
+#define PK_OP_FOCUS_RECT	0x120		// a = x, y, w, h: the focused control in its client area -- a window bigger
+						// than the work area (the viewport) is scrolled to show it -> 1
+#define PK_OP_TEXT_HINT		0x121		// a[0] = the focused field's type (UK_IN_*), -1 none: the on-screen keyboard's
+						// layout (pocket; kept until the keyboard, P10) -> 1
+#define PK_OP_UNITS		0x122		// a[0] = 1: the program draws only through UIKit (uk_logical_units: the native
+						// scale may be given, P10) -> 1
 
 #endif

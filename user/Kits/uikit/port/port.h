@@ -93,6 +93,17 @@ int server (struct uk_win_server_info *out);
 enum { SHELL_REGISTER, SHELL_EVENTS, SHELL_KEYS, SHELL_THUMB, SHELL_FRONT, SHELL_SPLIT, SHELL_DIM, SHELL_TASKS, SHELL_GRAB };
 long shell (int op, long a0, long a1, long a2, long a3, const void *in, unsigned in_len, void *out, unsigned cap);
 
+// The adaptive layer (uikit/adapt.h; docs/POCKETUI-TECH-STUDY.md section 6.14): the server's mode (UK_MODE_*), size
+// class (UK_SC_*), the metrics' profile (UK_PROFILE_*) and scale (percent) -> 1 said, 0 nothing said (the desktop: the
+// caller keeps regular, today's sizes).
+int adapt_info (int *mode, int *size_class, int *profile, int *scale);
+// The focused control's rectangle in the current window's client area (the server's viewport keeps it shown);
+// the focused field's type (UK_IN_*, -1: no field -- the on-screen keyboard's layout); the app draws only through
+// UIKit (uk_logical_units). The desktop: nothing.
+void focus_rect (int x, int y, int w, int h);
+void text_hint (int type);
+void logical_units (int on);
+
 } // namespace port
 } // namespace uikit
 

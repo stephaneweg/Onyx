@@ -1333,6 +1333,9 @@ windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant
   (`KAPI_WS_IN_MODS`) also carries **`KAPI_WS_MOD_SUPER`** (8: a Super key, the USB modifiers' bits 3 / 7) —
   PocketUI's Home; the common `serve.cpp` keeps it from the window manager (Elegant sees Ctrl, Shift, Alt as
   before) and gives it to the policy's `mods` hook; `kapi_get_modifiers` is unchanged;
+  (P6) `serve.cpp` gives each pointer event to the policy's **`pointer`** hook first (`policy.h`,
+  `WS_POLICY_HAS_POINTER`): PocketUI's viewport takes the wheel and the drags over its scroll indicators; Elegant's
+  hook is 0 (the window manager's, as before);
 - **one wait** (`KAPI_WS_WAIT`, on the I/O generation: an input event wakes it at once);
 - **the way back** — the server's process ends (`WsOnProcessGone`, the teardown), or calls nothing for 5 s
   (`WsWatch`, the compositor's loop): the display and the input are the kernel's again and the whole

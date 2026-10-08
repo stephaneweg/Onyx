@@ -12,6 +12,8 @@
 #include "uikit/lang.h"
 #include "appkit/appkit.h"		// MB_*, KEY_*, kapi_opendir/readdir
 #include "uikit/win.h"		// uk_win_present
+#include "uikit/adapt.h"		// (P6: the dialogs' presentation in pocket and console)
+#include "uikit/internal/adapt_int.h"
 // operator new[]/delete[] resolve at link from the app's onyxpp.hpp (see canvas.cpp).
 
 namespace uikit {
@@ -29,6 +31,18 @@ int Modal::titleH () { return uk_fh () + 10; }
 
 void Modal::drawBox (const char *title)
 {
+	if (uk_size_class () == UK_SC_CONSOLE)			// (P6) console: the PS2's panel -- a deep blue title, a glow
+	{
+		canvas.clear (UK_TRANSPARENT_KEY);
+		uk_rbox (canvas, 0, 0, width, height, 10, C_FACE, C_FACE);
+		int th = titleH () + 4;
+		uk_rbox (canvas, 1, 1, width - 2, th, 9, 0x00243A66, 0x00101C38, 255, UK_TL | UK_TR);
+		uk_text_l (canvas, 14, 1, th, title ? title : "", 0x00F2F6FF, 2);
+		uk_rline (canvas, 0, 0, width, height, 10, 0x0060C8FF, 255);
+		uk_rline (canvas, 1, 1, width - 2, height - 2, 9, 0x0060C8FF, 110);
+		uk_corner_key (canvas, 0, 0, width, height, 10);
+		return;
+	}
 	unsigned ol = UK_OUTLINE == 2 ? 0x00000000 : uk_tone (C_FRAME_ACTIVE, 44);
 	canvas.clear (ol);
 	uk_rbox (canvas, 0, 0, width, height, 8, C_FACE, C_FACE);
@@ -37,10 +51,92 @@ void Modal::drawBox (const char *title)
 	uk_corner_key (canvas, 0, 0, width, height, 8);
 }
 
+// ---- the presentation in pocket and console (P6; docs/POCKETUI-TECH-STUDY.md section 6.7) ----------------------------
+// The desktop: the box over the window, as it always was. Pocket and console: the window dimmed behind the box (a copy
+// of its pixels, darkened); a box taller or wider than the window is a SHEET -- it scrolls inside the window (the wheel
+// nobody took, Page Up / Down, and the focused control kept in view), its controls where its code put them.
+namespace {
+class DimLayer : public Widget
+{
+public:
+	DimLayer (Root *r) : Widget (0, 0, r->width, r->height)
+	{
+		internal::dim_copy (canvas, r, 0, 0, width, height, uk_size_class () == UK_SC_CONSOLE ? 150 : 110);
+		shouldRedraw = false;
+	}
+	void onDraw () override {}		// (its pixels: the copy, made once)
+};
+struct Sheet { Modal *m; Root *r; };
+Sheet s_sheet[8]; int s_nsheet;
+int s_nextDim = 1;			// (PopupMenu::run: its next run without a dim -- a context menu at the pointer)
+}
+
+static void sheet_clamp (Modal *m, Root *r)
+{
+	if (m->height > r->height) { if (m->top > 0) m->top = 0; if (m->top < r->height - m->height) m->top = r->height - m->height; }
+	if (m->width > r->width) { if (m->left > 0) m->left = 0; if (m->left < r->width - m->width) m->left = r->width - m->width; }
+}
+
+// The window's top sheet scrolled by dx, dy pixels (the content moved down / right) -> true it scrolled.
+bool internal::sheet_scroll (Root *r, int dx, int dy)
+{
+	for (int i = s_nsheet - 1; i >= 0; i--)
+	{
+		if (s_sheet[i].r != r) continue;
+		Modal *m = s_sheet[i].m;
+		if (m->height <= r->height && m->width <= r->width) return false;
+		int ot = m->top, ol = m->left;
+		if (m->height > r->height) m->top += dy;
+		if (m->width > r->width) m->left += dx;
+		sheet_clamp (m, r);
+		if (m->top == ot && m->left == ol) return false;
+		r->invalidate (true);
+		return true;
+	}
+	return false;
+}
+
+static Widget *focused_in (Widget *w)
+{
+	for (Widget *c = w->firstChild; c; c = c->nextSib)
+	{
+		if (c->hidden || !c->hasFocus) continue;
+		Widget *d = focused_in (c);
+		if (d) return d;
+		if (c->canFocus) return c;
+	}
+	return 0;
+}
+
+static void sheet_follow (Modal *m, Root *r)		// the focused control kept in view
+{
+	if (m->height <= r->height && m->width <= r->width) return;
+	Widget *f = focused_in (m);
+	if (f == 0) return;
+	int x, y; internal::abs_pos (f, &x, &y);
+	int ot = m->top, ol = m->left;
+	if (y < 8) m->top += 8 - y;
+	else if (y + f->height > r->height - 8) m->top -= y + f->height - (r->height - 8);
+	if (x < 8) m->left += 8 - x;
+	else if (x + f->width > r->width - 8) m->left -= x + f->width - (r->width - 8);
+	sheet_clamp (m, r);
+	if (m->top != ot || m->left != ol) r->invalidate (true);
+}
+
 int Modal::run ()
 {
 	Root *r = Root::current ();
 	if (r == 0) return 0;
+	bool adapt = internal::ring_on ();		// (pocket, console)
+	int dimWanted = s_nextDim; s_nextDim = 1;
+	Widget *dim = 0;
+	if (adapt)
+	{
+		if (dimWanted) { r->draw (); dim = new DimLayer (r); r->addChild (dim); }
+		if (height > r->height) top = 0;
+		if (width > r->width) left = 0;
+		if (s_nsheet < 8) { s_sheet[s_nsheet].m = this; s_sheet[s_nsheet].r = r; s_nsheet++; }
+	}
 	r->addChild (this);			// becomes the topmost (modal) child of the window
 	done = false; hasFocus = true; invalidate (true);
 	bool focused = false;			// (nothing focused yet: its first text field, ready to type in)
@@ -51,10 +147,17 @@ int Modal::run ()
 	while (!done && !uk_quit ())
 	{
 		uk_pump ();
+		if (adapt) { sheet_follow (this, r); internal::root_tick (r); }
 		Root::paintAll ();			// (v94: each of the program's windows that changed)
 		msleep (16);
 	}
 	r->removeChild (this);
+	if (adapt)
+	{
+		for (int i = s_nsheet - 1; i >= 0; i--)
+			if (s_sheet[i].m == this) { for (int k = i; k + 1 < s_nsheet; k++) s_sheet[k] = s_sheet[k + 1]; s_nsheet--; break; }
+		if (dim) { r->removeChild (dim); delete dim; }
+	}
 	r->invalidate (true);			// repaint the app, erasing the dialog
 	return result;
 }
@@ -707,7 +810,7 @@ void FileDialog::getResult (char *out, unsigned cap)
 // ---- convenience -------------------------------------------------------------
 // ---- PopupMenu ------------------------------------------------------------------------------------
 enum { PM_PAD = 4, PM_SEP = 9 };
-static int pm_row () { return uk_fh () + 8; }
+static int pm_row () { return uk_size_class () == UK_SC_REGULAR ? uk_fh () + 8 : uk_metrics ().menuRow; }	// (P6: touch-size rows)
 
 PopupMenu::PopupMenu (int x, int y) : Modal (120, 2 * PM_PAD), m_n (0), m_hot (-1) { left = x; top = y; }
 
@@ -757,7 +860,21 @@ int PopupMenu::run ()
 	if (w < 150) w = 150;
 	int h = rowY (m_n) + PM_PAD;
 	Root *r = Root::current ();
-	if (r)							// (in the window)
+	int sc = uk_size_class ();
+	if (r && sc == UK_SC_NARROW)				// (P6) portrait: an action sheet at the window's foot
+	{
+		w = r->width - 16;
+		left = 8; top = r->height - h - 8;
+		if (top < 0) top = 0;
+	}
+	else if (r && sc == UK_SC_CONSOLE)			// console: a list in the middle
+	{
+		if (w < 280) w = 280;
+		if (w > r->width - 16) w = r->width - 16;
+		left = (r->width - w) / 2; top = (r->height - h) / 2;
+		if (top < 0) top = 0;
+	}
+	else if (r)						// (in the window)
 	{
 		if (left + w > r->width) left = r->width - w;
 		if (top + h > r->height) top = r->height - h;
@@ -765,6 +882,7 @@ int PopupMenu::run ()
 		if (top < 0) top = 0;
 	}
 	resizeTo (w, h);
+	if (sc == UK_SC_COMPACT) s_nextDim = 0;		// (landscape: at the pointer, the window not dimmed)
 	int res = Modal::run ();
 	return res > 0 ? m_id[res - 1] : -1;
 }
@@ -773,6 +891,21 @@ void PopupMenu::onDraw ()
 {
 	int fh = uk_fh ();
 	canvas.clear (UK_TRANSPARENT_KEY);
+	if (uk_size_class () == UK_SC_CONSOLE)			// (P6) console: a deep blue list, the chosen row glowing
+	{
+		uk_rbox (canvas, 0, 0, width, height, 10, 0x00182644, 0x000C1428);
+		uk_rline (canvas, 0, 0, width, height, 10, 0x0060C8FF, 200);
+		for (int i = 0; i < m_n; i++)
+		{
+			int y = rowY (i);
+			if (m_sep[i]) { canvas.fillRect (12, y + PM_SEP / 2, width - 24, 1, 0x00304870); continue; }
+			bool hot = i == m_hot;
+			if (hot) { uk_rbox (canvas, PM_PAD, y, width - 2 * PM_PAD, pm_row (), 6, 0x002E5FA8, 0x00224A88); uk_rline (canvas, PM_PAD, y, width - 2 * PM_PAD, pm_row (), 6, 0x0060C8FF, 255); }
+			unsigned ink = !m_on[i] ? 0x00687890 : 0x00F2F6FF;
+			canvas.text (18, y + (pm_row () - fh) / 2, m_label[i], ink);
+		}
+		return;
+	}
 	uk_popup (canvas, 0, 0, width, height, 7, C_FIELD);
 	for (int i = 0; i < m_n; i++)
 	{

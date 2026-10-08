@@ -4,6 +4,87 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## PocketUI phase P6: the adaptive widgets in UIKit; the Control Panel and the File Viewer (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
+
+The decided design is `docs/POCKETUI-TECH-STUDY.md` §6.3–6.14, §9 (P6) and `docs/COMPACT-SHELL-STUDY.md` §6.11 (the
+approved mock-ups `docs/compact-shell/mockups/pocket-control-*.png`); how an app uses it: **docs/03 §5.10.6**; the
+reference: docs/11 (`adapt.h`, `sidepanel.h`, `form.h`, `toolbar.h`, `tabstrip.h`, `datagrid.h`, `treeview.h`).
+
+- **UIKit** (one source, both UIKits; everything below is the desktop's look unchanged -- `shots.sh`: every desktop
+  picture identical except the apps changed on purpose):
+  - `uikit/adapt.h` + `adapt.cpp`: `uk_size_class` / `uk_mode` (the port's `adapt_info`: PocketUI's class, the
+    theme's `metrics =` / `scale =`), `uk_metrics` (`UkMetrics`: regular / compact / touch / console profiles),
+    `uk_scroll_gutter`, `uk_lp`, `uk_logical_units`, `uk_set_input_type` / `uk_input_type`, `uk_focus_move`;
+    `Root::onSizeClass` (the former `uk_rootReserved2` slot). `uikit/internal/adapt_int.h` (NOT a programs' header,
+    `uikit::internal` excluded from the table: libgen `--exclude '^_ZN5uikit(4port|8internal)'`): the widgets'
+    extensions behind `Widget::ext` (freed by `~Widget`), the class told to the Roots and widgets, the focus ring, the
+    arrows and L1 / R1 for the keys nobody took (`Root::keyEvent`), the focused control and field type told to the
+    server (`PK_OP_FOCUS_RECT`, `PK_OP_TEXT_HINT`, `PK_OP_UNITS`: `pocket.h` revision 3), the dialogs' sheets.
+  - **SidePanel** (`sidepanel.h/.cpp`): navigation / inspector; FULL, RAIL, DRAWER, SLIDEOVER, SHEET, COLUMN; items
+    (headings foldable, icon, indent, badge, trailing, picture, toggle, **subtitle** -- shown when there is room),
+    pages, content, footer, `toggleButton`, `onDrop` / `onReorder` / `onItemMenu`, **`place ()`** (the app's own
+    rectangle: `left` / `top` / `resizeTo` are read as the anchors' doing), L1 / R1, F6.
+  - **FormDialog** (`form.h/.cpp`): rows, sections, text, buttons with roles; two columns / a portrait sheet / console.
+  - `ToolBar`: priorities, ranks, groups, `foldInto`, `rows ()`, the » panel hosting the tools themselves (a new
+    `layout ()` override). `TabStrip`: `presentation ()` (strip, scroll + ⋯, portrait title ▾ and list, segmented for
+    2–3 fixed tabs, console header), `setEdge`, `setStyle`, `setNav`, `showList`, `marked`. `DataGrid`: column roles and
+    priorities, cards, detail view, multi-select. `TreeView`: drill-down. `ListBox` / popups / dialogs / scroll bars:
+    the profile's rows, action sheets, dims and sheets, overlay bars.
+  - `uikit.abi` +99 (850–948: **`uikit >= 1.949`**); `abi_same`: the same 949 entries; the layout lock regenerated
+    (`make uikit-layout-update`: `SidePanel`, `FormDialog`, `UkMetrics`...).
+- **PocketUI**: the **viewport** (`wm.cpp`: a filled window bigger than the work area moved under its edges, two
+  indicator windows, the wheel / a drag over them, the focused control kept shown) through the policy's new
+  **`pointer`** hook (`common/policy.h`, `serve.cpp`; Elegant's 0); `PK_OP_FOCUS_RECT` / `TEXT_HINT` / `UNITS` kept.
+- **The Control Panel** (the SidePanel pilot; **the user's decision: its landscape layout replaces the desktop's
+  dashboard too**): the applets as links at the left (their pictures, names; help lines at 1280 × 720 and more), the
+  chosen one in the rest under its title and help, opened on the last one (`SD:/etc/control.ini`), resizable;
+  the applets' surface is the pane's size, 700 × 470 at least (a smaller pane scrolls it: the host's bars); portrait
+  (and a window under 600 px): the list (one column, chevrons) and the back bar *‹ Control Panel* + title; console: the
+  column, L1 / R1 the applets; `AP_OPEN` (`applet_proto.h`): a second `control <target>` shows that applet in the
+  running one. **pocketshell**: the Settings tab, a setting found and quick settings' Mode open `control <applet>`
+  (no applet runs alone). The applets themselves keep their own layouts (P7).
+- **The File Viewer** (the user's request): resizable (`W` / `H` / `VIS` follow the window: the places 188 px, as many
+  columns as fit at 200 px, 3 at 880 × 540, 6 at most); in pocket and console its places are a navigation SidePanel
+  (whole in landscape, a drawer in portrait, the column in console); the desktop keeps its own sidebar (pixel-identical
+  but the frame's maximise button). **Translated** (CLAUDE.md: worked on): `sdcard/apps/fileviewer.app/lang/fr.txt`, 147
+  words. **The Task Manager**: its grid's roles (cards in portrait) and translated (`taskman.app/lang/fr.txt`, 54).
+- **Tests (PC)**: `sh tools/tests/server_sim/adaptive.sh`: **115 checks pass** -- the widgets' host tests
+  (`adaptive.cpp`, `ADAPT_TEST=1`: 70, each widget in the four classes) and the apps under PocketUI at 800 × 480,
+  1280 × 720, 1920 × 1080, 480 × 800, console 640 × 480: the Control Panel (and French), the gallery (toolbar », tabs,
+  both panels, grid, form, menu; and on Elegant), the Task Manager, the Terminal's tabs, the viewport (Setup), the File
+  Viewer. `run.sh`: 317 pass (the File Viewer now filled at 1080p: the check changed). `shots.sh`: every picture as at
+  HEAD (a worktree of HEAD compared) but the Control Panel's (all the applets' pictures: the new window) and the File
+  Viewer's maximise button -- regenerated, `control-fr.png` new; pocket pictures in `screenshots/pocket/`.
+  `check_stubs.py`: 215 programs, 0 wrong; `abi_same_test.sh`: pass; build: no new warning; `check.py control
+  fileviewer taskman pocketshell`: 0 missing.
+- **Pi checklist** (not done): stage everything (`SD:/lib/uikit.so`, `SD:/lib/pocket/uikit.so`, `SD:/bin/pocketui`, the
+  Control Panel, the File Viewer, the Task Manager, pocketshell, their `lang/`), then:
+  1. **The desktop** (`shell=desktop`): the Control Panel opens on the links + Theme (or the last applet); every applet
+     works in it (click, keys, Apply), F6 / → / Tab between links and applet, the window resized and maximised, a
+     narrow window (< 600 px) the list; the dock's *Panel Settings…* while it is open: it switches to Panel. The File
+     Viewer as before, resizable (columns added when wider). Other apps unchanged (`pi_apps.py`).
+  2. **Pocket** at 800 × 480: Home > Settings > Sound: the Control Panel full screen on Sound; Settings > Wi-Fi: the same
+     window switches; quick settings' Mode: Mode. The applets usable (a smaller pane: its scroll bars).
+  3. Pocket at 1920 × 1080: the links with their help lines; the File Viewer with more columns, its places panel.
+  4. Setup (or any fixed big window) at 800 × 480: the viewport's bars, the wheel over them scrolls; Tab through
+     Setup's fields keeps the focused one shown.
+  5. The arrows in a dialog move the focus (pocket), the ring drawn; a context menu (the File Viewer's right click):
+     touch-size rows; a message box: the app dimmed behind it.
+  6. Console (`shell=console`): the Control Panel's column, Ctrl+Page Up / Down (L1 / R1) the applets.
+  7. A portrait panel when there is one (P10): the Control Panel's list and back bar, the File Viewer's drawer.
+- **What P7 migrates** (the study's §6.15): the side panels of Media, Game Library, Photos, Mail, Courier, Ledger, PDF
+  (its own class is now `PdfSidePanel`), Slides, Paint, QBStudio, 3DForge, Calendar, IRC, Archiver, Icon Editor,
+  fmtracker, Telegram's pane; the toolbars of Letters (`foldInto`), Mail, Photos, PDF, Paint, Media; the tabs of
+  Courier, PDF, QBStudio, the Spreadsheet (`setEdge (UK_TAB_BOTTOM)`); Letters' and the Spreadsheet's dialog bases on
+  `FormDialog`; the tables of Media, File Viewer (its details), Mail, Ledger, Cardfile on `DataGrid` with roles; input
+  types; `uk_scroll_gutter` in the 22 + 3 apps; **the Control Panel's applets laid out in the pane they are given**
+  (Theme first: the mock-ups); apps whose least width is over 480 (the Terminal: half its first width) for portrait.
+  Not in P6: PocketUI's resize-to-fit beyond fill, the on-screen keyboard (P10), the console's revealed menu with the
+  toolbar's Tools section (P9 -- the toolbar stays shown in console meanwhile), `PK_OP_PANEL` (the ☰ in the band), the
+  console Control Panel of the mock-ups (`consolehome`, P9).
+- **Publishing**: `versions.ini` uikit 1.949.x, the Control Panel, pocketshell, the onyx package (PocketUI, the File
+  Viewer and the Task Manager with their new `lang/` folders: `packages.ini` takes their whole `.app` folders).
+
 ## PocketUI phase P5: the pocket shell `pocketshell`; the full-screen rule, the keys, the full screen (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
 
 The decided design is `docs/POCKETUI-TECH-STUDY.md` §4.3, §7.2, §9 (P5) and `docs/COMPACT-SHELL-STUDY.md` §6 (the

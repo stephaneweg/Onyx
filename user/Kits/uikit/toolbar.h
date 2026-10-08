@@ -67,6 +67,16 @@ private:
 	unsigned face ();
 };
 
+// (P6) The adaptive toolbar (docs/POCKETUI-TECH-STUDY.md section 6.9): each tool may say how much it matters --
+//   UK_TB_ALWAYS    always shown (the default),
+//   UK_TB_IF_ROOM   shown when there is room (the lower its rank, the longer it stays),
+//   UK_TB_OVERFLOW  only in the overflow;
+// on the desktop the bar is as built (every tool, its rows); in pocket and console ONE row of what fits by priority,
+// the rest behind "»": a panel that hosts the tools themselves (a toggle stays a toggle, a drop-down a drop-down),
+// group by group (a separator's run is a group). A second bar folded into the first (foldInto) joins its row when
+// compact. The app lays itself out with rows () (the rows the bar takes now).
+enum { UK_TB_ALWAYS = 0, UK_TB_IF_ROOM = 1, UK_TB_OVERFLOW = 2 };
+
 class ToolBar : public Widget
 {
 public:
@@ -80,6 +90,17 @@ public:
 	int  next () const { return m_x; }	// where the next one goes
 	unsigned bgColor () override { return bg == UK_AUTO ? C_BG : bg; }
 	void onDraw () override;
+	// (P6) The adaptive part (its state behind Widget::ext: the class's fields are frozen).
+	void setPriority (Widget *w, int prio, int rank = 0);	// UK_TB_*; rank: IF_ROOM's order of leaving (0 last)
+	void setLabel (Widget *w, const char *label);		// its words (the console's Tools section; kept, not copied)
+	void setGroup (Widget *w, int group);			// its group (default: its separator's run)
+	void setShortcut (Widget *w, int padButton);		// the console's button for it (gamepad.h's numbers; P9)
+	void foldInto (ToolBar *first);	// this second row's tools join first's row when compact (this one then hidden)
+	int  rows () const;			// the rows the bar takes now: the desktop 1 + the bars folded into it; else 1
+						// (a bar folded into another: 0 when compact)
+	void showOverflow ();			// the "»" panel (its button does it)
+	void layout () override;		// (the tools placed again for the room: a new override -- an older program
+						//  keeps the bar as built until it is rebuilt)
 private:
 	int m_x, m_rx, m_nsep, m_sepX[24];
 };
