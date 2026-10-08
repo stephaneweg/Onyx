@@ -1,7 +1,7 @@
 # uikit.bi -- uikit for Onyx BASIC (#import uikit): made by tools/kitbi/kitbi.py from uikit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit uikit 848
+kit uikit 850
 struct win_server_info 88 uk_win_server_info
 field size 0 u
 field name 4 a 16
@@ -14,6 +14,14 @@ field work_w 40 i
 field work_h 44 i
 field scale 48 i
 field size_class 52 i
+struct shell_task 92 uk_shell_task
+field id 0 u
+field pid 4 u
+field flags 8 u
+field w 12 i
+field h 16 i
+field title 20 a 48
+field name 68 a 24
 lang_init 2 v - uk_lang_init
 lang_load 3 b s uk_lang_load code
 lang_choose 4 b s uk_lang_choose code
@@ -110,3 +118,5 @@ win_wallpaper_commit 844 v - uk_win_wallpaper_commit
 win_wallpaper_generate 845 i iii uk_win_wallpaper_generate base,pts,seed
 win_wheel_get 846 i - uk_win_wheel_get
 win_wheel_set 847 v i uk_win_wheel_set lines
+shell_grab 848 i i uk_shell_grab on
+shell_tasks 849 i pi uk_shell_tasks out,max

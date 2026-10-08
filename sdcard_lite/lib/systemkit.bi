@@ -1,7 +1,7 @@
 # systemkit.bi -- systemkit for Onyx BASIC (#import systemkit): made by tools/kitbi/kitbi.py from systemkit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit systemkit 89
+kit systemkit 91
 struct PreloadList 4100 PreloadList
 field n 0 i
 clip_clear 0 v - clip_clear
@@ -82,3 +82,5 @@ session_set_mode 85 i i session_set_mode m
 session_switch 86 i ii session_switch m,flags
 session_switch_start 87 l iii session_switch_start m,flags,keep_pid
 session_waiting 88 i pi session_waiting out,cap
+shell_ask 89 i i shell_ask what
+shell_running 90 i - shell_running
