@@ -13,8 +13,12 @@
 // And the display transfer that turns a colour buffer into a screen's framebuffer.
 // The procedural texture (unit 3: a colour computed from two coordinates through look-up tables -- what citro2d
 // tints its pictures with) is there but for its noise and its filtering.
-// Not done yet: lighting, fog, shadows, stencil, the geometry shader, texture filtering (the nearest texel is
-// taken), mipmaps -- noted when a program asks.
+// Fragment lighting: each fragment has a normal (a quaternion from the shader, turned into a vector) and a view
+// vector; up to 8 lights give a "primary" colour (ambient and diffuse) and a "secondary" one (two speculars),
+// shaped by look-up tables (D0, D1, the reflection's three, Fresnel, the distance's) -- the combiner's sources 1
+// and 2. Not in it: spot lights, bump mapping, shadows, the geometric factors.
+// Not done yet: fog, shadows, stencil, the geometry shader, texture filtering (the nearest texel is taken),
+// mipmaps -- noted when a program asks.
 //
 // Written from the public documentation of the GPU (3dbrew's register and shader pages); no code of another
 // emulator.
@@ -37,6 +41,9 @@ enum
 	R_TEX_CONFIG = 0x080, R_TEX0 = 0x081, R_TEX0_TYPE = 0x08E, R_LIGHTING = 0x08F, R_TEX1 = 0x091, R_TEX1_TYPE = 0x096, R_TEX2 = 0x099, R_TEX2_TYPE = 0x09E,
 	R_PROCTEX0 = 0x0A8, R_PROCTEX4 = 0x0AC, R_PROCTEX5 = 0x0AD, R_PROCTEX_LUT = 0x0AF, R_PROCTEX_LUT_DATA = 0x0B0,
 	R_TEV_UPDATE = 0x0E0, R_TEV_BUFFER = 0x0FD,
+	R_LIGHT0 = 0x140, R_LIGHT_AMBIENT = 0x1C0, R_LIGHT_COUNT = 0x1C2, R_LIGHT_CONFIG0 = 0x1C3, R_LIGHT_CONFIG1 = 0x1C4,
+	R_LIGHT_LUT_INDEX = 0x1C5, R_LIGHT_LUT_DATA = 0x1C8, R_LIGHT_LUT_ABS = 0x1D0, R_LIGHT_LUT_SELECT = 0x1D1, R_LIGHT_LUT_SCALE = 0x1D2,
+	R_LIGHT_PERMUTATION = 0x1D9,
 	R_COLOR_OP = 0x100, R_BLEND_FUNC = 0x101, R_LOGIC_OP = 0x102, R_BLEND_COLOR = 0x103, R_ALPHA_TEST = 0x104, R_STENCIL_TEST = 0x105, R_DEPTH_COLOR_MASK = 0x107,
 	R_COLOR_WRITE = 0x113, R_DEPTH_WRITE = 0x115, R_DEPTH_FORMAT = 0x116, R_COLOR_FORMAT = 0x117, R_DEPTH_ADDR = 0x11C, R_COLOR_ADDR = 0x11D, R_FB_DIM = 0x11E,
 	R_ATTR_BASE = 0x200, R_ATTR_FORMAT_LO = 0x201, R_ATTR_FORMAT_HI = 0x202, R_ATTR_LOADER = 0x203,
@@ -67,6 +74,9 @@ struct Pica
 	// the procedural texture's tables: the two maps (128 values and their slopes), the colours (256)
 	float procMap[2][128], procMapDiff[2][128]; u32 procColor[256];
 	u32 procIndex, procTable;
+	// the lighting's tables: 0 D0, 1 D1, 3 Fresnel, 4-6 the reflection's blue / green / red, 8-15 the spots', 16-23 the distances'
+	float lightLut[24][256], lightLutDiff[24][256];
+	u32 lightLutIndex, lightLutType;
 	// the triangle being assembled
 	Vertex prim[3]; int primCount; bool stripFlip;
 	u32 codeTop; int dumped;			// (traces: how much code was loaded; shaders already printed)
@@ -406,6 +416,139 @@ static void procTexel (const Pica *p, const ProcTex &pt, float cu, float cv, int
 	if (pt.separateA) out[3] = (int) (procMapped (p, 1, procCombine (u, v, pt.funcA)) * 255.0f + 0.5f);
 }
 
+// ---- lighting ---------------------------------------------------------------------------------------------------------
+enum { LUT_D0 = 0, LUT_D1 = 1, LUT_FR = 3, LUT_RB = 4, LUT_RG = 5, LUT_RR = 6, LUT_DA = 16 };
+
+static float f16 (u32 v)						// the GPU's 16-bit float: a sign, 5 bits of exponent, 10 of mantissa
+{
+	v &= 0xFFFF;
+	const u32 sign = v >> 15, exp = v >> 10 & 31, mant = v & 0x3FF;
+	u32 bits = !exp && !mant ? 0 : exp == 31 ? 0xFFu << 23 | mant << 13 : (exp + 112) << 23 | mant << 13;
+	bits |= sign << 31;
+	return bitsFloat (bits);
+}
+static float f20 (u32 v)						// ... 20-bit: a sign, 7 of exponent, 12 of mantissa
+{
+	v &= 0xFFFFF;
+	const u32 sign = v >> 19, exp = v >> 12 & 0x7F, mant = v & 0xFFF;
+	u32 bits = !exp && !mant ? 0 : exp == 0x7F ? 0xFFu << 23 | mant << 11 : (exp + 64) << 23 | mant << 11;
+	bits |= sign << 31;
+	return bitsFloat (bits);
+}
+static inline void lightColor (u32 v, float out[3]) { out[0] = (float) (v >> 20 & 255) / 255.0f; out[1] = (float) (v >> 10 & 255) / 255.0f; out[2] = (float) (v & 255) / 255.0f; }
+
+struct Lighting
+{
+	bool on; int count;
+	float ambient[3];
+	struct Light { float spec0[3], spec1[3], diff[3], amb[3], pos[3]; bool directional, twoSided, distance; float bias, scale; int id; } light[8];
+	struct Lut { bool on, abs; u32 input; float scale; } d0, d1, fr, rr, rg, rb;
+	u32 fresnel; bool clampHighlights;
+};
+
+static void lightingState (const Pica *p, Lighting &l)
+{
+	const u32 *r = p->regs;
+	l.on = (r[R_LIGHTING] & 1) != 0;
+	if (!l.on) return;
+	l.count = (int) (r[R_LIGHT_COUNT] & 7) + 1;
+	lightColor (r[R_LIGHT_AMBIENT], l.ambient);
+	const u32 c0 = r[R_LIGHT_CONFIG0], c1 = r[R_LIGHT_CONFIG1];
+	l.fresnel = c0 >> 2 & 3; l.clampHighlights = (c0 >> 27 & 1) != 0;
+	for (int i = 0; i < l.count; i++)
+	{
+		Lighting::Light &g = l.light[i];
+		g.id = (int) (r[R_LIGHT_PERMUTATION] >> (i * 4) & 7);
+		const u32 *q = r + R_LIGHT0 + g.id * 0x10;
+		lightColor (q[0], g.spec0); lightColor (q[1], g.spec1); lightColor (q[2], g.diff); lightColor (q[3], g.amb);
+		g.pos[0] = f16 (q[4]); g.pos[1] = f16 (q[4] >> 16); g.pos[2] = f16 (q[5]);
+		g.directional = (q[9] & 1) != 0; g.twoSided = (q[9] & 2) != 0;
+		g.distance = !(c1 >> (24 + g.id) & 1);
+		g.bias = f20 (q[10]); g.scale = f20 (q[11]);
+	}
+	// which tables the chosen configuration has, and which the program switched off
+	static const u8 HAS[9] = { 0x01 | 0x08, 0x04 | 0x08, 0x01 | 0x02 | 0x08, 0x01 | 0x02 | 0x04, 0x01 | 0x02 | 0x08 | 0x30, 0x01 | 0x04 | 0x08 | 0x30, 0x01 | 0x02 | 0x04 | 0x08, 0, 0x3F };
+	const u32 cfg = c0 >> 4 & 15, has = cfg < 9 ? HAS[cfg] : 0x3F;	// bits: D0, D1, FR, RR, RG, RB
+	static const float SCALE[8] = { 1, 2, 4, 8, 1, 1, 0.25f, 0.5f };
+	struct { Lighting::Lut *lut; u32 hasBit, offBit, shift; } T[6] = {
+		{ &l.d0, 0x01, 16, 0 }, { &l.d1, 0x02, 17, 4 }, { &l.fr, 0x04, 19, 12 }, { &l.rr, 0x08, 22, 24 }, { &l.rg, 0x10, 21, 20 }, { &l.rb, 0x20, 20, 16 } };
+	for (int i = 0; i < 6; i++)
+	{
+		Lighting::Lut &t = *T[i].lut;
+		t.on = (has & T[i].hasBit) && !(c1 >> T[i].offBit & 1);
+		t.abs = !(r[R_LIGHT_LUT_ABS] >> (T[i].shift + 1) & 1);
+		t.input = r[R_LIGHT_LUT_SELECT] >> T[i].shift & 7;
+		t.scale = SCALE[r[R_LIGHT_LUT_SCALE] >> T[i].shift & 7];
+	}
+}
+
+static inline float lutLook (const Pica *p, int table, float x, bool abs)
+{
+	int i; float d;
+	if (abs) { x = fabsf (x) * 256.0f; i = (int) x; if (i > 255) i = 255; d = x - (float) i; }
+	else { x *= 128.0f; float fl = floorf (x); i = (int) fl; if (i < -128) i = -128; else if (i > 127) i = 127; d = x - (float) i; i &= 0xFF; }
+	return p->lightLut[table][i] + p->lightLutDiff[table][i] * d;
+}
+static inline void norm3 (float v[3]) { const float n = sqrtf (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); if (n > 0) { v[0] /= n; v[1] /= n; v[2] /= n; } }
+static inline float dot3 (const float a[3], const float b[3]) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+
+// A fragment's primary (ambient + diffuse) and secondary (specular) colours from its normal's quaternion and its
+// view vector.
+static void lightFragment (const Pica *p, const Lighting &l, const float quat[4], const float viewIn[3], int primary[4], int secondary[4])
+{
+	float q[4] = { quat[0], quat[1], quat[2], quat[3] };
+	const float qn = sqrtf (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+	if (qn > 0) for (int i = 0; i < 4; i++) q[i] /= qn;
+	float n[3] = { 2 * (q[0] * q[2] + q[3] * q[1]), 2 * (q[1] * q[2] - q[3] * q[0]), 1 - 2 * (q[0] * q[0] + q[1] * q[1]) };
+	float v[3] = { viewIn[0], viewIn[1], viewIn[2] };
+	norm3 (v);
+	float diffuse[3] = { l.ambient[0], l.ambient[1], l.ambient[2] }, specular[3] = { 0, 0, 0 }, alphaP = 1, alphaS = 1;
+	for (int i = 0; i < l.count; i++)
+	{
+		const Lighting::Light &g = l.light[i];
+		float lv[3] = { g.pos[0], g.pos[1], g.pos[2] };
+		if (!g.directional) { lv[0] += viewIn[0]; lv[1] += viewIn[1]; lv[2] += viewIn[2]; }
+		float att = 1;
+		if (g.distance)
+		{
+			const float dist = sqrtf (lv[0] * lv[0] + lv[1] * lv[1] + lv[2] * lv[2]);
+			float x = g.scale * dist + g.bias;
+			x = x < 0 ? 0 : x > 1 ? 1 : x;
+			att = lutLook (p, LUT_DA + g.id, x, true);
+		}
+		norm3 (lv);
+		float h[3] = { v[0] + lv[0], v[1] + lv[1], v[2] + lv[2] };
+		norm3 (h);
+		const float nl = dot3 (n, lv);
+		const float lit = g.twoSided ? fabsf (nl) : nl > 0 ? nl : 0;
+		const float in[6] = { dot3 (n, h), dot3 (v, h), dot3 (n, v), nl, 0, 0 };
+#define LUT(t, table) (l.t.on ? lutLook (p, table, in[l.t.input < 6 ? l.t.input : 0], l.t.abs) * l.t.scale : 1.0f)
+		const float d0 = LUT (d0, LUT_D0), d1 = LUT (d1, LUT_D1);
+		const float rr = LUT (rr, LUT_RR), rgv = l.rg.on ? LUT (rg, LUT_RG) : rr, rbv = l.rb.on ? LUT (rb, LUT_RB) : rr;
+		const float refl[3] = { rr, rgv, rbv };
+		const float clampH = l.clampHighlights && nl <= 0 ? 0.0f : 1.0f;
+		for (int c = 0; c < 3; c++)
+		{
+			diffuse[c] += (g.diff[c] * lit + g.amb[c]) * att;
+			specular[c] += (d0 * g.spec0[c] + d1 * refl[c] * g.spec1[c]) * clampH * att;
+		}
+		if (i == l.count - 1 && l.fr.on)
+		{
+			const float fr = LUT (fr, LUT_FR);
+			if (l.fresnel & 1) alphaP = fr;
+			if (l.fresnel & 2) alphaS = fr;
+		}
+#undef LUT
+	}
+	for (int c = 0; c < 3; c++)
+	{
+		primary[c] = diffuse[c] <= 0 ? 0 : diffuse[c] >= 1 ? 255 : (int) (diffuse[c] * 255.0f + 0.5f);
+		secondary[c] = specular[c] <= 0 ? 0 : specular[c] >= 1 ? 255 : (int) (specular[c] * 255.0f + 0.5f);
+	}
+	primary[3] = alphaP <= 0 ? 0 : alphaP >= 1 ? 255 : (int) (alphaP * 255.0f + 0.5f);
+	secondary[3] = alphaS <= 0 ? 0 : alphaS >= 1 ? 255 : (int) (alphaS * 255.0f + 0.5f);
+}
+
 // ---- the fragment's way to the buffers ---------------------------------------------------------------------------------
 struct Target
 {
@@ -546,6 +689,7 @@ struct Fragment
 {
 	Texture tex[3];
 	ProcTex proc;
+	Lighting light;
 	struct Stage { u32 src[3], srcA[3], op[3], opA[3], mode, modeA; int konst[4]; int scale, scaleA; bool pass; } stage[6];
 	int bufferColor[4]; u32 updateRgb, updateA;
 	bool alphaTest; u32 alphaFunc, alphaRef;
@@ -556,6 +700,7 @@ struct Fragment
 static void fragmentState (const Pica *p, Fragment &f)
 {
 	for (int i = 0; i < 3; i++) texInfo (p, i, f.tex[i]);
+	lightingState (p, f.light);
 	{
 		const u32 cfg = p->regs[R_TEX_CONFIG], r0 = p->regs[R_PROCTEX0];
 		f.proc.on = (cfg >> 10 & 1) != 0; f.proc.coord = (int) (cfg >> 8 & 3);
@@ -660,6 +805,13 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, S
 				const int ai = u == 0 ? A_TC0 : u == 1 ? A_TC1 : A_TC2;
 				texel (tx, (int) floorf (ATTR (ai) * (float) tx.w), (int) floorf (ATTR (ai + 1) * (float) tx.h), texc[u]);
 			}
+			int litP[4] = { primary[0], primary[1], primary[2], primary[3] }, litS[4] = { 0, 0, 0, 255 };
+			if (f.light.on)
+			{
+				const float quat[4] = { ATTR (A_QUAT), ATTR (A_QUAT + 1), ATTR (A_QUAT + 2), ATTR (A_QUAT + 3) };
+				const float view[3] = { ATTR (A_VIEW), ATTR (A_VIEW + 1), ATTR (A_VIEW + 2) };
+				lightFragment (p, f.light, quat, view, litP, litS);
+			}
 			int proc[4] = { 0, 0, 0, 255 };
 			if (f.proc.on)
 			{
@@ -669,20 +821,21 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, S
 #undef ATTR
 			// the combiner's stages
 			int prev[4] = { primary[0], primary[1], primary[2], primary[3] };
-			int buffer[4] = { f.bufferColor[0], f.bufferColor[1], f.bufferColor[2], f.bufferColor[3] }, nextBuffer[4] = { buffer[0], buffer[1], buffer[2], buffer[3] };
+			// (the combiner's buffer is two stages late: a stage that "updates" it is seen by the stage after the next;
+			// the first stage sees nothing, the second the buffer's colour register)
+			int buffer[4] = { 0, 0, 0, 0 }, nextBuffer[4] = { f.bufferColor[0], f.bufferColor[1], f.bufferColor[2], f.bufferColor[3] };
 			for (int st = 0; st < 6; st++)
 			{
 				const Fragment::Stage &sg = f.stage[st];
-				for (int i = 0; i < 4; i++) buffer[i] = nextBuffer[i];
 				if (!sg.pass)
 				{
 					int c[3][3], a[3];
 					for (int k = 0; k < 3; k++)
 					{
 						const int *src;
-						switch (sg.src[k]) { case 0: case 1: case 2: src = primary; break; case 3: src = texc[0]; break; case 4: src = texc[1]; break; case 5: src = texc[2]; break; case 6: src = proc; break; case 13: src = buffer; break; case 14: src = sg.konst; break; default: src = prev; break; }
+						switch (sg.src[k]) { case 0: src = primary; break; case 1: src = litP; break; case 2: src = litS; break; case 3: src = texc[0]; break; case 4: src = texc[1]; break; case 5: src = texc[2]; break; case 6: src = proc; break; case 13: src = buffer; break; case 14: src = sg.konst; break; default: src = prev; break; }
 						tevColor (src, sg.op[k], c[k]);
-						switch (sg.srcA[k]) { case 0: case 1: case 2: src = primary; break; case 3: src = texc[0]; break; case 4: src = texc[1]; break; case 5: src = texc[2]; break; case 6: src = proc; break; case 13: src = buffer; break; case 14: src = sg.konst; break; default: src = prev; break; }
+						switch (sg.srcA[k]) { case 0: src = primary; break; case 1: src = litP; break; case 2: src = litS; break; case 3: src = texc[0]; break; case 4: src = texc[1]; break; case 5: src = texc[2]; break; case 6: src = proc; break; case 13: src = buffer; break; case 14: src = sg.konst; break; default: src = prev; break; }
 						a[k] = tevAlpha (src, sg.opA[k]);
 					}
 					int out[4];
@@ -696,6 +849,7 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, S
 					for (int i = 0; i < 3; i++) prev[i] = clamp255 (out[i] * sg.scale);
 					prev[3] = clamp255 (out[3] * sg.scaleA);
 				}
+				for (int i = 0; i < 4; i++) buffer[i] = nextBuffer[i];
 				if (st < 4)
 				{
 					if (f.updateRgb >> st & 1) { nextBuffer[0] = prev[0]; nextBuffer[1] = prev[1]; nextBuffer[2] = prev[2]; }
@@ -734,7 +888,7 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, S
 			}
 			for (int i = 0; i < 4; i++) if (!f.rgbaMask[i]) out[i] = dst[i];
 			if (p->m->traceGpu && x == t.w / 2 && y == t.h / 2)
-				fprintf (stderr, "   centre: primary %d %d %d %d, tex0 %d %d %d %d, combined %d %d %d %d, there %d %d %d %d -> %d %d %d %d%c", primary[0], primary[1], primary[2], primary[3],
+				fprintf (stderr, "   centre: lit %d %d %d %d + %d %d %d %d, primary %d %d %d %d, tex0 %d %d %d %d, combined %d %d %d %d, there %d %d %d %d -> %d %d %d %d%c", litP[0], litP[1], litP[2], litP[3], litS[0], litS[1], litS[2], litS[3], primary[0], primary[1], primary[2], primary[3],
 					 texc[0][0], texc[0][1], texc[0][2], texc[0][3], prev[0], prev[1], prev[2], prev[3], dst[0], dst[1], dst[2], dst[3], out[0], out[1], out[2], out[3], 10);
 			writeColor (t, cq, out);
 		}
@@ -751,6 +905,12 @@ static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c
 	fragmentState (p, f);
 	Vertex poly[2][12]; int n = 3, cur = 0;
 	poly[0][0] = a; poly[0][1] = b; poly[0][2] = c;
+	// (a normal's quaternion and its opposite are the same turn: all three on one side, to interpolate them)
+	for (int i = 1; i < 3; i++)
+	{
+		float *q = poly[0][i].a + A_QUAT; const float *q0 = poly[0][0].a + A_QUAT;
+		if (q[0] * q0[0] + q[1] * q0[1] + q[2] * q0[2] + q[3] * q0[3] < 0) for (int k = 0; k < 4; k++) q[k] = -q[k];
+	}
 	for (int plane = 0; plane < 7 && n >= 3; plane++)
 	{
 		const Vertex *in = poly[cur]; Vertex *out = poly[cur ^ 1]; int m = 0;
@@ -860,6 +1020,18 @@ static void draw (Pica *p, bool indexed)
 		for (int i = 0; i < 96; i++) fprintf (stderr, " %d:[%g %g %g %g]", i, (double) p->fu[i][0], (double) p->fu[i][1], (double) p->fu[i][2], (double) p->fu[i][3]);
 		fprintf (stderr, "%c", 10);
 	}
+	if (p->m->traceGpu && (p->regs[R_LIGHTING] & 1))
+	{
+		Lighting l; lightingState (p, l);
+		fprintf (stderr, "   lights %d, ambient %g %g %g, config %08x %08x, luts abs %08x select %08x scale %08x: d0 %d d1 %d fr %d rr %d rg %d rb %d%c", l.count, (double) l.ambient[0], (double) l.ambient[1], (double) l.ambient[2],
+			 (unsigned) p->regs[R_LIGHT_CONFIG0], (unsigned) p->regs[R_LIGHT_CONFIG1], (unsigned) p->regs[R_LIGHT_LUT_ABS], (unsigned) p->regs[R_LIGHT_LUT_SELECT], (unsigned) p->regs[R_LIGHT_LUT_SCALE], l.d0.on, l.d1.on, l.fr.on, l.rr.on, l.rg.on, l.rb.on, 10);
+		for (int i = 0; i < l.count; i++)
+			fprintf (stderr, "     light %d: at %g %g %g%s, diffuse %g %g %g, ambient %g %g %g, specular %g %g %g / %g %g %g, distance %d (bias %g scale %g)%c", l.light[i].id,
+				 (double) l.light[i].pos[0], (double) l.light[i].pos[1], (double) l.light[i].pos[2], l.light[i].directional ? " (a direction)" : "",
+				 (double) l.light[i].diff[0], (double) l.light[i].diff[1], (double) l.light[i].diff[2], (double) l.light[i].amb[0], (double) l.light[i].amb[1], (double) l.light[i].amb[2],
+				 (double) l.light[i].spec0[0], (double) l.light[i].spec0[1], (double) l.light[i].spec0[2], (double) l.light[i].spec1[0], (double) l.light[i].spec1[1], (double) l.light[i].spec1[2],
+				 l.light[i].distance, (double) l.light[i].bias, (double) l.light[i].scale, 10);
+	}
 	const u64 pixelsBefore = p->pixels, trisBefore = p->triangles, depthBefore = p->depthFailed, alphaBefore = p->alphaFailed;
 	p->primCount = 0; p->stripFlip = false;
 	for (u32 n = 0; n < count; n++)
@@ -926,7 +1098,7 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 	case R_DRAW_ELEMENTS: draw (p, true); break;
 	case R_PRIM_RESTART: p->primCount = 0; p->stripFlip = false; break;
 	case R_PRIM_CONFIG: p->primCount = 0; p->stripFlip = false; break;
-	case R_LIGHTING: if (v & 1) p->m->note ("lighting"); break;
+	case R_LIGHT_LUT_INDEX: p->lightLutIndex = v & 0xFF; p->lightLutType = v >> 8 & 31; break;
 	case R_CMD_JUMP0: case R_CMD_JUMP1: p->jump = (int) (id - R_CMD_JUMP0) + 1; break;	// (taken by the list's loop)
 	case R_FIXED_INDEX: p->fixedIndex = v & 15; p->fixedCount = 0; if (p->fixedIndex == 15) p->immediateCount = 0; break;
 	case R_FIXED_DATA: case R_FIXED_DATA + 1: case R_FIXED_DATA + 2:
@@ -957,6 +1129,17 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 	case R_VSH_CODE_INDEX: p->codeIndex = v & 0xFFF; break;
 	case R_VSH_OPDESC_INDEX: p->opdescIndex = v & 0x7F; break;
 	default:
+		if (id >= R_LIGHT_LUT_DATA && id < R_LIGHT_LUT_DATA + 8)		// a lighting table's next entry: 12 bits, and a signed 11-bit slope
+		{
+			const u32 i = p->lightLutIndex++;
+			if (p->lightLutType < 24 && i < 256)
+			{
+				p->lightLut[p->lightLutType][i] = (float) (value & 0xFFF) / 4095.0f;
+				const float d = (float) (value >> 12 & 0x7FF) / 2047.0f;
+				p->lightLutDiff[p->lightLutType][i] = (value >> 23 & 1) ? -d : d;
+			}
+			break;
+		}
 		if (id >= R_PROCTEX_LUT_DATA && id < R_PROCTEX_LUT_DATA + 8)	// a table's next entry: 2 the colour map, 3 the alpha map, 4 the colours
 		{
 			const u32 i = p->procIndex++;
