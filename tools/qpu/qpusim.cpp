@@ -14,7 +14,7 @@ extern "C" {
 namespace qpusim
 {
 
-static v3d_device_info dev () { v3d_device_info d; memset (&d, 0, sizeof d); d.ver = 42; return d; }
+static v3d_device_info dev (int ver) { v3d_device_info d; memset (&d, 0, sizeof d); d.ver = (uint8_t) (ver >= 71 ? 71 : 42); return d; }
 
 static inline float asF (uint32_t u) { float f; memcpy (&f, &u, 4); return f; }
 static inline uint32_t asU (float f) { uint32_t u; memcpy (&u, &f, 4); return u; }
@@ -52,11 +52,11 @@ float fromHalf (uint16_t h)
 enum { L = 16 };
 typedef uint32_t Vec[L];
 
-struct Pending { int reg; int at; Vec v; bool mask[L]; };	// a write landing later (r4, r5)
+struct Pending { int reg; int at; Vec v; bool mask[L]; };	// a write landing later: reg a slot (0..5 r0..r5, 6 + n rf n)
 
 struct State
 {
-	Vec acc[6], rf[64];
+	Vec acc[6], rf[64];			// (V3D 7.1: no accumulators -- acc unused)
 	bool fa[L], fb[L];
 	uint32_t msf[L];
 	std::vector<Pending> pend;
@@ -150,6 +150,12 @@ static bool addOp (v3d_qpu_add_op op, uint32_t a, uint32_t b, uint32_t *r, State
 	case V3D_QPU_A_FCEIL: *r = fixF (ceilf (asF (a))); *isF = true; return true;
 	case V3D_QPU_A_FTRUNC: *r = fixF (truncf (asF (a))); *isF = true; return true;
 	case V3D_QPU_A_FROUND: *r = fixF (nearbyintf (asF (a))); *isF = true; return true;
+	// V3D 7.1: the SFU as add operations (the result in the destination, Mesa's latency 2)
+	case V3D_QPU_A_RECIP: *r = fixF (1.0f / asF (a)); *isF = true; return true;
+	case V3D_QPU_A_RSQRT: case V3D_QPU_A_RSQRT2: *r = fixF (1.0f / sqrtf (asF (a))); *isF = true; return true;
+	case V3D_QPU_A_EXP: *r = fixF (exp2f (asF (a))); *isF = true; return true;
+	case V3D_QPU_A_LOG: *r = fixF (log2f (asF (a))); *isF = true; return true;
+	case V3D_QPU_A_SIN: *r = fixF (sinf (asF (a) * 3.14159265f)); *isF = true; return true;
 	default: err = std::string ("add op not modelled: ") + v3d_qpu_add_op_name (op); return false;
 	}
 }
@@ -181,9 +187,10 @@ static bool isFloatAdd (v3d_qpu_add_op op)
 	    || op == V3D_QPU_A_FTOUZ || op == V3D_QPU_A_FFLOOR || op == V3D_QPU_A_FCEIL || op == V3D_QPU_A_FTRUNC || op == V3D_QPU_A_FROUND;
 }
 
-bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run &run)
+static bool runProgram (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run &run, bool vertex)
 {
-	v3d_device_info d = dev ();
+	v3d_device_info d = dev (run.version);
+	const bool v71 = d.ver >= 71;
 	std::vector<v3d_qpu_instr> ins ((size_t) n);
 	for (int i = 0; i < n; i++)
 		if (!v3d_qpu_instr_unpack (&d, words[i], &ins[(size_t) i])) { run.error = "cannot decode instruction " + std::to_string (i); return false; }
@@ -194,10 +201,17 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 		State &s = *S;
 		memset (s.acc, 0, sizeof s.acc); memset (s.rf, 0, sizeof s.rf);
 		size_t np = pixels.size () - base < L ? pixels.size () - base : L;
-		for (int l = 0; l < L; l++) { s.fa[l] = s.fb[l] = false; s.msf[l] = (size_t) l < np ? 1 : 0; s.rf[0][l] = asU (1.0f); s.rf[1][l] = asU (1.0f); s.rf[2][l] = 0; }
+		// the fragment payload: W, centroid W, Z -- rf0 rf1 rf2 on V3D 4.2, rf3 rf1 rf2 on 7.1 (W = 1, Z = 0 here)
+		for (int l = 0; l < L; l++)
+		{
+			s.fa[l] = s.fb[l] = false; s.msf[l] = (size_t) l < np ? 1 : 0;
+			if (vertex) continue;
+			float w = (size_t) l < np ? pixels[base + (size_t) l].w : 1.0f;
+			s.rf[v71 ? 3 : 0][l] = asU (w); s.rf[1][l] = asU (w); s.rf[2][l] = 0;
+		}
 		s.ncfg = 0; s.haveT = false; s.uni = 0;
 		std::vector<size_t> varyAt (L, 0);
-		for (size_t k = 0; k < np; k++) { pixels[base + k].written = false; pixels[base + k].nTlb = 0; }
+		for (size_t k = 0; k < np; k++) { pixels[base + k].written = false; pixels[base + k].nTlb = 0; pixels[base + k].vpmOut.assign (pixels[base + k].vpmOut.size (), 0); }
 		for (int ip = 0; ip < n; ip++)
 		{
 			const v3d_qpu_instr &in = ins[(size_t) ip];
@@ -206,8 +220,17 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 			if (in.flags.auf != V3D_QPU_UF_NONE || in.flags.muf != V3D_QPU_UF_NONE) { run.error = "flag updates: not modelled"; delete S; return false; }
 			// the operands (before any write of this instruction)
 			uint32_t smallImm = 0;
-			if (in.sig.small_imm_b) v3d_qpu_small_imm_unpack (&d, in.raddr_b, &smallImm);
-			auto read = [&] (v3d_qpu_mux m, int l) -> uint32_t {
+			if (!v71 && in.sig.small_imm_b) v3d_qpu_small_imm_unpack (&d, in.raddr_b, &smallImm);
+			// V3D 4.2: an input is a mux (r0..r5, regfile A / B); 7.1: its own address, or the small immediate
+			// of its class (cls 0 add a, 1 add b, 2 mul a, 3 mul b)
+			auto read71 = [&] (const v3d_qpu_input &inp, int cls, int l) -> uint32_t {
+				bool imm = cls == 0 ? in.sig.small_imm_a : cls == 1 ? in.sig.small_imm_b : cls == 2 ? in.sig.small_imm_c : in.sig.small_imm_d;
+				if (imm) { uint32_t v = 0; v3d_qpu_small_imm_unpack (&d, inp.raddr, &v); return v; }
+				return s.rf[inp.raddr & 63][l];
+			};
+			auto read = [&] (const v3d_qpu_input &inp, int cls, int l) -> uint32_t {
+				if (v71) return read71 (inp, cls, l);
+				v3d_qpu_mux m = inp.mux;
 				if (m <= V3D_QPU_MUX_R5) return s.acc[m][l];
 				if (m == V3D_QPU_MUX_A) return s.rf[in.raddr_a][l];
 				return in.sig.small_imm_b ? smallImm : s.rf[in.raddr_b][l];
@@ -217,19 +240,33 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 			int ansrc = haveAdd ? v3d_qpu_add_op_num_src (in.alu.add.op) : 0, mnsrc = haveMul ? v3d_qpu_mul_op_num_src (in.alu.mul.op) : 0;
 			for (int l = 0; l < L; l++)
 			{
-				if (haveAdd && in.alu.add.op != V3D_QPU_A_SETMSF && in.alu.add.op != V3D_QPU_A_TMUWT && in.alu.add.op != V3D_QPU_A_MSF)
+				bool vpmOp = in.alu.add.op == V3D_QPU_A_LDVPMV_IN || in.alu.add.op == V3D_QPU_A_STVPMV || in.alu.add.op == V3D_QPU_A_VPMWT;
+				if (haveAdd && vpmOp && !vertex) { run.error = "a VPM operation in a fragment shader"; delete S; return false; }
+				if (haveAdd && in.alu.add.op == V3D_QPU_A_LDVPMV_IN)
+				{
+					uint32_t a = read (in.alu.add.a, 0, l);
+					const std::vector<uint32_t> &vin = (size_t) l < np ? pixels[base + (size_t) l].vpmIn : std::vector<uint32_t> ();
+					addR[l] = a < vin.size () ? vin[a] : 0; addF[l] = false;
+				}
+				else if (haveAdd && in.alu.add.op == V3D_QPU_A_STVPMV)
+				{
+					uint32_t a = read (in.alu.add.a, 0, l), b = read (in.alu.add.b, 1, l);
+					if ((size_t) l < np) { std::vector<uint32_t> &o = pixels[base + (size_t) l].vpmOut; if (a >= o.size ()) o.resize (a + 1, 0); o[a] = b; }
+				}
+				else if (haveAdd && in.alu.add.op != V3D_QPU_A_SETMSF && in.alu.add.op != V3D_QPU_A_TMUWT && in.alu.add.op != V3D_QPU_A_MSF
+					 && in.alu.add.op != V3D_QPU_A_VPMWT)
 				{
 					bool f = isFloatAdd (in.alu.add.op);
-					uint32_t a = ansrc >= 1 ? unpackIn (read (in.alu.add.a.mux, l), in.alu.add.a.unpack, f) : 0;
-					uint32_t b = ansrc >= 2 ? unpackIn (read (in.alu.add.b.mux, l), in.alu.add.b.unpack, f) : 0;
+					uint32_t a = ansrc >= 1 ? unpackIn (read (in.alu.add.a, 0, l), in.alu.add.a.unpack, f) : 0;
+					uint32_t b = ansrc >= 2 ? unpackIn (read (in.alu.add.b, 1, l), in.alu.add.b.unpack, f) : 0;
 					if (!addOp (in.alu.add.op, a, b, &addR[l], s, l, run.error, &addF[l])) { delete S; return false; }
 				}
 				if (haveAdd && in.alu.add.op == V3D_QPU_A_MSF) addR[l] = s.msf[l];
 				if (haveMul)
 				{
 					bool f = in.alu.mul.op == V3D_QPU_M_FMUL || in.alu.mul.op == V3D_QPU_M_FMOV;
-					uint32_t a = mnsrc >= 1 ? unpackIn (read (in.alu.mul.a.mux, l), in.alu.mul.a.unpack, f) : 0;
-					uint32_t b = mnsrc >= 2 ? unpackIn (read (in.alu.mul.b.mux, l), in.alu.mul.b.unpack, f) : 0;
+					uint32_t a = mnsrc >= 1 ? unpackIn (read (in.alu.mul.a, 2, l), in.alu.mul.a.unpack, f) : 0;
+					uint32_t b = mnsrc >= 2 ? unpackIn (read (in.alu.mul.b, 3, l), in.alu.mul.b.unpack, f) : 0;
 					if (!mulOp (in.alu.mul.op, a, b, &mulR[l], run.error, &mulF[l])) { delete S; return false; }
 				}
 			}
@@ -263,7 +300,10 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 					uint32_t v = r[l];
 					int slot = -1;
 					if (!magicW) slot = 6 + waddr;
-					else if (waddr <= 5) slot = waddr;
+					else if (waddr <= 5 && !v71) slot = waddr;
+					else if (waddr <= 5) { run.error = "a magic write reserved on V3D 7.1 (r0..r4 / quad)"; return false; }
+					if (v71 && magicW && waddr >= V3D_QPU_WADDR_RECIP && waddr <= V3D_QPU_WADDR_RSQRT2)
+					{ run.error = "an SFU magic write: reserved on V3D 7.1 (the SFU is add operations)"; return false; }
 					if (slot >= 0)
 					{
 						uint32_t old = slot < 6 ? s.acc[slot][l] : s.rf[slot - 6][l];
@@ -313,10 +353,10 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 				if (in.alu.add.op == V3D_QPU_A_SETMSF)
 				{
 					uint32_t a[L];
-					for (int l = 0; l < L; l++) a[l] = unpackIn (read (in.alu.add.a.mux, l), in.alu.add.a.unpack, false);
+					for (int l = 0; l < L; l++) a[l] = unpackIn (read (in.alu.add.a, 0, l), in.alu.add.a.unpack, false);
 					for (int l = 0; l < L; l++) if (condOk (in.flags.ac, l)) s.msf[l] = a[l] & 15;
 				}
-				else if (in.alu.add.op != V3D_QPU_A_TMUWT)
+				else if (in.alu.add.op != V3D_QPU_A_TMUWT && in.alu.add.op != V3D_QPU_A_VPMWT && in.alu.add.op != V3D_QPU_A_STVPMV)
 				{
 					push (in.flags.apf, addR, addF, 0, 0);
 					if (v3d_qpu_add_op_has_dst (in.alu.add.op) && !dest (in.alu.add.waddr, in.alu.add.magic_write, in.alu.add.output_pack, addR, in.flags.ac, addF, "add")) { delete S; return false; }
@@ -346,7 +386,8 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 				if (s.uni >= run.uniforms.size ()) { run.error = "ldunif: no uniform left"; delete S; return false; }
 				Vec v; for (int l = 0; l < L; l++) v[l] = run.uniforms[s.uni];
 				s.uni++;
-				if (in.sig.ldunif) { for (int l = 0; l < L; l++) { wr[5][l] = v[l]; wrMask[5][l] = true; } wrAny[5] = true; }
+				int implicitSlot = v71 ? 6 + 0 : 5;	// (ldunif: r5 on V3D 4.2, rf0 on 7.1)
+				if (in.sig.ldunif) { for (int l = 0; l < L; l++) { wr[implicitSlot][l] = v[l]; wrMask[implicitSlot][l] = true; } wrAny[implicitSlot] = true; }
 				else sigWrite (v);
 			}
 			if (in.sig.ldvary)
@@ -355,12 +396,18 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 				for (int l = 0; l < L; l++)
 				{
 					float p = 0;
-					if ((size_t) l < np) { Pixel &px = pixels[base + (size_t) l]; if (varyAt[l] < px.vary.size ()) p = px.vary[varyAt[l]]; }
+					float cc = 0;
+					if ((size_t) l < np)
+					{
+						Pixel &px = pixels[base + (size_t) l];
+						if (varyAt[l] < px.vary.size ()) p = px.vary[varyAt[l]];
+						if (varyAt[l] < px.varyC.size ()) cc = px.varyC[varyAt[l]];
+					}
 					varyAt[l]++;
-					v[l] = asU (p); c[l] = 0;
+					v[l] = asU (p); c[l] = asU (cc);
 				}
 				sigWrite (v);
-				Pending pd; pd.reg = 5; pd.at = ip + 1; for (int l = 0; l < L; l++) { pd.v[l] = c[l]; pd.mask[l] = true; }
+				Pending pd; pd.reg = v71 ? 6 + 0 : 5; pd.at = ip + 1; for (int l = 0; l < L; l++) { pd.v[l] = c[l]; pd.mask[l] = true; }
 				s.pend.push_back (pd);
 			}
 			if (in.sig.ldtmu)
@@ -373,7 +420,7 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 				}
 				sigWrite (v);
 			}
-			if (in.sig.thrsw && !(ip > 0 && ins[(size_t) ip - 1].sig.thrsw))	// (a switch after its 2 delay slots -- a pair
+			if (!v71 && in.sig.thrsw && !(ip > 0 && ins[(size_t) ip - 1].sig.thrsw))	// (a switch after its 2 delay slots -- a pair
 			{									// is one switch --: the accumulators lost)
 				for (int r = 0; r < 6; r++)
 				{
@@ -392,7 +439,8 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 			{
 				if (s.pend[k].at == ip)
 				{
-					for (int l = 0; l < L; l++) if (s.pend[k].mask[l]) s.acc[s.pend[k].reg][l] = s.pend[k].v[l];
+					for (int l = 0; l < L; l++)
+						if (s.pend[k].mask[l]) { int r = s.pend[k].reg; if (r < 6) s.acc[r][l] = s.pend[k].v[l]; else s.rf[r - 6][l] = s.pend[k].v[l]; }
 					s.pend.erase (s.pend.begin () + (long) k);
 				}
 				else k++;
@@ -413,7 +461,7 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 			if (in.alu.add.magic_write && in.alu.add.waddr == V3D_QPU_WADDR_TMUS && haveAdd) { s.ncfg = 0; s.haveT = false; }
 		}
 		// the colours: two f16 pairs (R G, B A) -> RGBA8
-		for (size_t k = 0; k < np; k++)
+		for (size_t k = 0; k < np && !vertex; k++)
 		{
 			Pixel &p = pixels[base + k];
 			if (!s.msf[k] || p.nTlb < 2) continue;
@@ -431,5 +479,8 @@ bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run 
 	}
 	return true;
 }
+
+bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run &run) { return runProgram (words, n, pixels, run, false); }
+bool runVertex (const uint64_t *words, int n, std::vector<Pixel> &vertices, Run &run) { return runProgram (words, n, vertices, run, true); }
 
 } // namespace qpusim

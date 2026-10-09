@@ -1,11 +1,13 @@
 /*
- * qpuasm -- the V3D 4.2 QPU assembler (host tool) for the kernel's hand-written shaders
- * (kernel/sys/v3d_shaders.qasm -> v3d_shaders.inc). The assembler itself is qpulib.c (also used
- * at run time by the apps); this reads the file, splits it at ".name NAME vertex|coord|frag"
- * and writes a C header of u64 arrays, each word commented with its disassembly.
+ * qpuasm -- the V3D QPU assembler (host tool) for the kernel's hand-written shaders
+ * (kernel/sys/v3d_shaders.qasm -> v3d_shaders.inc: V3D 4.2, the Pi 4; v3d_shaders71.qasm ->
+ * v3d_shaders71.inc: V3D 7.1, the Pi 5). The assembler itself is qpulib.c (also used at run time by
+ * the apps); this reads the file, splits it at ".name NAME vertex|coord|frag" and writes a C header of
+ * u64 arrays, each word commented with its disassembly. ".version 71" (before the first .name) makes
+ * the file V3D 7.1's.
  *
  *   qpuasm in.qasm out.inc      assemble
- *   qpuasm -d HEX ...           disassemble words
+ *   qpuasm [-v71] -d HEX ...    disassemble words
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +28,7 @@ static int flush (const char *file, const char *name, int kind, const char *text
 
 int main (int argc, char **argv)
 {
+	if (argc >= 2 && strcmp (argv[1], "-v71") == 0) { qpu_set_version (71); argv++; argc--; }
 	if (argc >= 2 && strcmp (argv[1], "-d") == 0)
 	{
 		for (int i = 2; i < argc; i++)
@@ -45,6 +48,14 @@ int main (int argc, char **argv)
 	while (fgets (buf, sizeof buf, f))
 	{
 		line++;
+		if (strncmp (buf, ".version", 8) == 0)
+		{
+			int v = atoi (buf + 8);
+			if (open || (v != 42 && v != 71)) { fprintf (stderr, "%s:%d: .version 42|71, before the first .name\n", argv[1], line); return 1; }
+			qpu_set_version (v);
+			no += (size_t) snprintf (out + no, sizeof out - no, "// V3D %d.%d\n", v / 10, v % 10);
+			continue;
+		}
 		if (strncmp (buf, ".name", 5) == 0)
 		{
 			if (open) { text[nt] = 0; int n = flush (argv[1], name, kind, text, first, out, &no, sizeof out); if (n < 0) return 1; count += n; }

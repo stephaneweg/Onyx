@@ -1,10 +1,17 @@
 /*
- * qpulib -- the V3D 4.2 QPU assembler as a library (tools/qpu/qpuasm's core): a program in the
+ * qpulib -- the V3D 4.2 and 7.1 QPU assembler as a library (tools/qpu/qpuasm's core): a program in the
  * syntax of Mesa's disassembler, one instruction a line, assembled into 64-bit words, each line
  * checked by its round trip (packed, unpacked, disassembled: the same text) and the program
  * against the hardware's instruction restrictions. Used by the qpuasm tool (the kernel's
  * shaders) and at run time by the apps that generate their shaders (user/Libs/v3d, the GameCube's
  * TEV). The encoding is Mesa's (mesa/broadcom/qpu, MIT).
+ *
+ * V3D 7.1 (the Raspberry Pi 5's VideoCore VII, qpu_set_version (71)): no accumulators (r0..r5 refused),
+ * each of the four ALU inputs reads its own register-file address (add a, add b, mul a, mul b) and
+ * may be the one small immediate of the instruction; the SFU is ALU operations (recip rf1, rf2), its
+ * magic writes reserved; ldunif / ldunifa / ldvary write rf0 implicitly (ldvary's C term one
+ * instruction later); a fragment shader's payload is rf1 (centroid W), rf2 (Z), rf3 (W). The
+ * restrictions are Mesa's qpu_validate.c and its scheduler's v71 rules (docs/PI5-PORT.md §9).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +24,15 @@
 #include "broadcom/qpu/qpu_instr.h"
 
 static struct v3d_device_info devinfo = { .ver = 42 };
+#define V71 (devinfo.ver >= 71)
+
+int qpu_set_version (int ver)
+{
+	int old = devinfo.ver;
+	if (ver == 42 || ver == 71) devinfo.ver = (uint8_t) ver;
+	return old;
+}
+int qpu_version (void) { return devinfo.ver; }
 static jmp_buf *g_err; static char *g_errmsg; static unsigned g_errcap;
 
 static void die (const char *msg, const char *what)
@@ -48,7 +64,7 @@ static int find_magic (const char *s)
 {
 	for (int w = 0; w < 64; w++)
 	{
-		if (w <= 5) { char r[4] = { 'r', (char) ('0' + w), 0 }; if (strcmp (r, s) == 0) return w; continue; }
+		if (w <= 5 && !V71) { char r[4] = { 'r', (char) ('0' + w), 0 }; if (strcmp (r, s) == 0) return w; continue; }
 		const char *n = v3d_qpu_magic_waddr_name (&devinfo, (enum v3d_qpu_waddr) w);
 		if (n && strcmp (n, s) == 0) return w;
 	}
@@ -93,9 +109,37 @@ static int split_args (char *s, char **out)
 	return n;
 }
 
+/* V3D 7.1: an operand of the input `cls` (0 add a, 1 add b, 2 mul a, 3 mul b): its own read address, or the
+   instruction's one small immediate */
+static int smallimm_count (const struct v3d_qpu_instr *in)
+{
+	return in->sig.small_imm_a + in->sig.small_imm_b + in->sig.small_imm_c + in->sig.small_imm_d;
+}
+static void parse_src71 (struct v3d_qpu_instr *in, char *tok, int cls, uint8_t *raddr)
+{
+	if (tok[0] == 'r' && tok[1] == 'f')
+	{
+		char *end; long r = strtol (tok + 2, &end, 10);
+		if (*end || r < 0 || r > 63) die ("bad register", tok);
+		*raddr = (uint8_t) r;
+		return;
+	}
+	if (tok[0] == 'r' && tok[1] >= '0' && tok[1] <= '5' && tok[2] == 0) die ("no accumulators on V3D 7.1 (an rf register)", tok);
+	char *end;
+	unsigned long v = strtoul (tok, &end, 0);
+	if (tok[0] == '-') v = (unsigned long) strtol (tok, &end, 0);
+	if (*end) die ("bad operand", tok);
+	uint32_t packed;
+	if (!v3d_qpu_small_imm_pack (&devinfo, (uint32_t) v, &packed)) die ("not a small immediate", tok);
+	if (smallimm_count (in)) die ("one small immediate an instruction on V3D 7.1", tok);
+	if (cls == 0) in->sig.small_imm_a = true; else if (cls == 1) in->sig.small_imm_b = true;
+	else if (cls == 2) in->sig.small_imm_c = true; else in->sig.small_imm_d = true;
+	*raddr = (uint8_t) packed;
+}
+
 /* an operand: register / small immediate, with an optional unpack suffix */
 static void parse_src (struct v3d_qpu_instr *in, struct rfuse *rf, char *tok, enum v3d_qpu_mux *mux,
-		       enum v3d_qpu_input_unpack *unpack)
+		       enum v3d_qpu_input_unpack *unpack, int cls, uint8_t *raddr)
 {
 	*unpack = V3D_QPU_UNPACK_NONE;
 	char *dot = (tok[0] == '-' || isdigit ((unsigned char) tok[0])) ? 0 : strchr (tok, '.');
@@ -106,6 +150,7 @@ static void parse_src (struct v3d_qpu_instr *in, struct rfuse *rf, char *tok, en
 		*unpack = (enum v3d_qpu_input_unpack) u;
 		*dot = 0;
 	}
+	if (V71) { parse_src71 (in, tok, cls, raddr); return; }
 	if (tok[0] == 'r' && tok[1] == 'f')
 	{
 		int r = atoi (tok + 2);
@@ -145,6 +190,7 @@ static void parse_dst (char *tok, uint8_t *waddr, bool *magic, enum v3d_qpu_outp
 		*dot = 0;
 	}
 	if (tok[0] == 'r' && tok[1] == 'f') { *waddr = (uint8_t) atoi (tok + 2); *magic = false; return; }
+	if (V71 && tok[0] == 'r' && tok[1] >= '0' && tok[1] <= '5' && tok[2] == 0) die ("no accumulators on V3D 7.1 (an rf register)", tok);
 	int m = find_magic (tok);
 	if (m < 0) die ("unknown destination", tok);
 	*waddr = (uint8_t) m; *magic = true;
@@ -221,12 +267,14 @@ static void parse_alu (struct v3d_qpu_instr *in, struct rfuse *rf, char *part, i
 	if (has_dst) parse_dst (args[a++], &waddr, &magic, &pack);
 	enum v3d_qpu_mux m[2] = { V3D_QPU_MUX_R0, V3D_QPU_MUX_R0 };
 	enum v3d_qpu_input_unpack u[2] = { V3D_QPU_UNPACK_NONE, V3D_QPU_UNPACK_NONE };
-	for (int i = 0; i < nsrc; i++) parse_src (in, rf, args[a++], &m[i], &u[i]);
+	uint8_t ra[2] = { 0, 0 };
+	for (int i = 0; i < nsrc; i++) parse_src (in, rf, args[a++], &m[i], &u[i], (mul ? 2 : 0) + i, &ra[i]);
 	if (mul)
 	{
 		in->alu.mul.op = (enum v3d_qpu_mul_op) op; in->alu.mul.waddr = waddr; in->alu.mul.magic_write = magic;
 		in->alu.mul.output_pack = pack;
 		in->alu.mul.a.mux = m[0]; in->alu.mul.a.unpack = u[0]; in->alu.mul.b.mux = m[1]; in->alu.mul.b.unpack = u[1];
+		if (V71) { in->alu.mul.a.raddr = ra[0]; in->alu.mul.b.raddr = ra[1]; }
 		in->flags.mc = c; in->flags.mpf = pf; in->flags.muf = uf;
 	}
 	else
@@ -234,6 +282,7 @@ static void parse_alu (struct v3d_qpu_instr *in, struct rfuse *rf, char *part, i
 		in->alu.add.op = (enum v3d_qpu_add_op) op; in->alu.add.waddr = waddr; in->alu.add.magic_write = magic;
 		in->alu.add.output_pack = pack;
 		in->alu.add.a.mux = m[0]; in->alu.add.a.unpack = u[0]; in->alu.add.b.mux = m[1]; in->alu.add.b.unpack = u[1];
+		if (V71) { in->alu.add.a.raddr = ra[0]; in->alu.add.b.raddr = ra[1]; }
 		in->flags.ac = c; in->flags.apf = pf; in->flags.auf = uf;
 	}
 }
@@ -259,7 +308,14 @@ static uint64_t assemble (char *line, struct v3d_qpu_instr *out)
 	parse_alu (&in, &rf, parts[0], 0);
 	parse_alu (&in, &rf, parts[1], 1);
 	uint64_t w;
-	if (!v3d_qpu_instr_pack (&devinfo, &in, &w)) die ("cannot be encoded", 0);
+	if (!v3d_qpu_instr_pack (&devinfo, &in, &w))
+	{
+		struct v3d_qpu_sig g = in.sig; g.small_imm_a = g.small_imm_b = g.small_imm_c = g.small_imm_d = false;
+		struct v3d_qpu_sig z; memset (&z, 0, sizeof z);
+		if (V71 && smallimm_count (&in) && memcmp (&g, &z, sizeof z) != 0)
+			die ("cannot be encoded: on V3D 7.1 a small immediate is the instruction's signal (no other signal with it)", 0);
+		die ("cannot be encoded", 0);
+	}
 	if (!v3d_qpu_instr_unpack (&devinfo, w, out)) die ("cannot be decoded back", 0);
 	return w;
 }
@@ -270,6 +326,7 @@ struct vstate
 {
 	int kind;			/* 0 vertex / coordinate (start in the final thread section), 1 fragment */
 	int ip, last_sfu, last_thrsw, last_ldvary, end_thrsw, thrsw_count, lock_ip;
+	int last_rf0_implicit;		/* V3D 7.1: the tick of the last implicit rf0 write (ldunif: its own, ldvary: +1) */
 	bool last_thrsw_found, thrend_found;
 	bool prev_valid; struct v3d_qpu_instr prev;
 };
@@ -286,8 +343,12 @@ static int magic_writes (const struct v3d_qpu_instr *in, bool (*pred) (enum v3d_
 static bool is_tmu (enum v3d_qpu_waddr w) { return v3d_qpu_magic_waddr_is_tmu (&devinfo, w); }
 static bool is_reserved (enum v3d_qpu_waddr w)
 {
+	if (V71) return w <= 4 || w == 10 || (w >= 14 && w <= 15) || (w >= 19 && w <= 31) || (w >= 47 && w <= 54) || w >= 55;
 	return w == 10 || (w >= 14 && w <= 15) || (w >= 25 && w <= 31) || (w >= 47 && w <= 54) || (w >= 56 && w <= 63);
 }
+/* V3D 7.1: the instruction reads rf r through one of its inputs (not a small immediate) */
+static bool reads_rf71 (const struct v3d_qpu_instr *in, int r) { return v3d71_qpu_reads_raddr (in, (uint8_t) r); }
+static bool sfu71 (const struct v3d_qpu_instr *in) { return V71 && v3d_qpu_instr_is_sfu (in); }
 static bool rf_written (const struct v3d_qpu_instr *in, int r)
 {
 	if (in->alu.add.op != V3D_QPU_A_NOP && v3d_qpu_add_op_has_dst (in->alu.add.op) && !in->alu.add.magic_write && in->alu.add.waddr == r) return true;
@@ -312,23 +373,48 @@ static void validate (struct vstate *v, const struct v3d_qpu_instr *in)
 
 	if (v->end_thrsw >= 0 && ip > v->end_thrsw + 2) vfail ("an instruction after the program end");
 	if (v->prev_valid && v->prev.sig.ldvary && (in->sig.ldunif || in->sig.ldunifa)) vfail ("LDUNIF right after a LDVARY");
-	if (in_thrsw_slots && sfu) vfail ("SFU write in THRSW delay slots");
-	if (in_thrsw_slots && in->sig.ldvary) vfail ("LDVARY in THRSW delay slots");
+	if (in_thrsw_slots && (sfu || (sfu71 (in) && ip != v->last_thrsw))) vfail ("SFU write in THRSW delay slots");
+	if (in_thrsw_slots && in->sig.ldvary && (!V71 || ip - v->last_thrsw == 2)) vfail (V71 ? "LDVARY in the 2nd THRSW delay slot" : "LDVARY in THRSW delay slots");
 	if (magic_writes (in, is_reserved)) vfail ("write to a reserved magic waddr");
-	if (ip - v->last_sfu <= 2 && v3d_qpu_uses_mux (in, V3D_QPU_MUX_R4)) vfail ("r4 read too soon after SFU (3 instructions)");
-	if (ip - v->last_sfu < 2 && (v3d_qpu_writes_r4 (&devinfo, in) || sfu)) vfail ("r4 / SFU write too soon after SFU");
-	if (ip - v->last_ldvary <= 1 && v3d_qpu_uses_mux (in, V3D_QPU_MUX_R5)) vfail ("r5 read too soon after LDVARY (2 instructions)");
-	if (tmu + sfu + vpm + tlb + tsy + in->sig.ldtmu + in->sig.ldtlb + in->sig.ldvpm + in->sig.ldtlbu > 1)
+	if (!V71)
+	{
+		if (in->sig.small_imm_a || in->sig.small_imm_c || in->sig.small_imm_d) vfail ("small immediates a / c / d: V3D 7.1 only");
+		if (ip - v->last_sfu <= 2 && v3d_qpu_uses_mux (in, V3D_QPU_MUX_R4)) vfail ("r4 read too soon after SFU (3 instructions)");
+		if (ip - v->last_sfu < 2 && (v3d_qpu_writes_r4 (&devinfo, in) || sfu)) vfail ("r4 / SFU write too soon after SFU");
+		if (ip - v->last_ldvary <= 1 && v3d_qpu_uses_mux (in, V3D_QPU_MUX_R5)) vfail ("r5 read too soon after LDVARY (2 instructions)");
+	}
+	else
+	{
+		if ((in->sig.small_imm_a || in->sig.small_imm_b) && in->alu.add.op == V3D_QPU_A_NOP) vfail ("small immediate a / b without an add op");
+		if ((in->sig.small_imm_c || in->sig.small_imm_d) && in->alu.mul.op == V3D_QPU_M_NOP) vfail ("small immediate c / d without a mul op");
+		if (smallimm_count (in) > 1) vfail ("one small immediate an instruction");
+		/* ldvary's C term lands in rf0 one instruction later: not read before, not written then */
+		if (ip - v->last_ldvary <= 1 && reads_rf71 (in, 0)) vfail ("rf0 read too soon after LDVARY (2 instructions)");
+		if (ip - v->last_ldvary == 1 && (v3d71_qpu_writes_waddr_explicitly (&devinfo, in, 0)
+						 || ((in->sig.ldunif || in->sig.ldunifa) && !in->sig.ldvary)))
+			vfail ("rf0 written right after LDVARY (its C term lands there)");
+	}
+	if (tmu + sfu + vpm + tlb + tsy + (V71 ? 0 : in->sig.ldtmu) + in->sig.ldtlb + in->sig.ldvpm + in->sig.ldtlbu > 1)
 		vfail ("only one of TMU, SFU, TSY, TLB, VPM an instruction");
 	if (v->prev_valid)	/* regfile read of what the previous instruction wrote (kept conservative) */
 	{
-		if (v3d_qpu_uses_mux (in, V3D_QPU_MUX_A) && rf_written (&v->prev, in->raddr_a)) vfail ("regfile A read right after its write");
-		if (v3d_qpu_uses_mux (in, V3D_QPU_MUX_B) && !in->sig.small_imm_b && rf_written (&v->prev, in->raddr_b)) vfail ("regfile B read right after its write");
+		if (!V71)
+		{
+			if (v3d_qpu_uses_mux (in, V3D_QPU_MUX_A) && rf_written (&v->prev, in->raddr_a)) vfail ("regfile A read right after its write");
+			if (v3d_qpu_uses_mux (in, V3D_QPU_MUX_B) && !in->sig.small_imm_b && rf_written (&v->prev, in->raddr_b)) vfail ("regfile B read right after its write");
+		}
+		else if (sfu71 (&v->prev) && !v->prev.alu.add.magic_write && reads_rf71 (in, v->prev.alu.add.waddr))
+			vfail ("an SFU result read right after (2 instructions: Mesa's latency)");
 	}
 	if (v->kind == 1 && (tlb || in->sig.ldtlb || in->sig.ldtlbu) && !(v->last_thrsw_found && ip >= v->lock_ip))
 		vfail ("TLB access before the scoreboard wait (last THRSW + 3)");
-	if (sfu) v->last_sfu = ip;
+	if (V71 && in_thrsw_slots && ip - v->last_thrsw == 2 && v3d_qpu_sig_writes_address (&devinfo, &in->sig)
+	    && !in->sig_magic && v->last_rf0_implicit == ip)
+		vfail ("a signal writing the register file in the 2nd THRSW delay slot while rf0 is written implicitly (rf0 undefined after)");
+	if (sfu || sfu71 (in)) v->last_sfu = ip;
 	if (in->sig.ldvary) v->last_ldvary = ip;
+	if (V71 && (in->sig.ldunif || in->sig.ldunifa)) v->last_rf0_implicit = ip;
+	if (V71 && in->sig.ldvary) v->last_rf0_implicit = ip + 1;
 	if (in->sig.thrsw)
 	{
 		if (v->last_thrsw_found) { v->thrend_found = true; v->end_thrsw = ip; }
@@ -347,8 +433,24 @@ static void validate (struct vstate *v, const struct v3d_qpu_instr *in)
 	}
 	if (v->thrend_found && ip - v->last_thrsw <= 2)
 	{
-		if (writes_any_rf (in)) vfail ("regfile write after THREND");
-		if (ip - v->last_thrsw == 2 && in->alu.add.op == V3D_QPU_A_TMUWT) vfail ("TMUWT in the last instruction");
+		if (!V71)
+		{
+			if (writes_any_rf (in)) vfail ("regfile write after THREND");
+			if (ip - v->last_thrsw == 2 && in->alu.add.op == V3D_QPU_A_TMUWT) vfail ("TMUWT in the last instruction");
+		}
+		else
+		{
+			bool aw = in->alu.add.op != V3D_QPU_A_NOP && !in->alu.add.magic_write;
+			bool mw = in->alu.mul.op != V3D_QPU_M_NOP && !in->alu.mul.magic_write;
+			if (ip == v->last_thrsw && (aw || mw)) vfail ("an ALU regfile write at THREND");
+			if ((aw && (in->alu.add.waddr == 2 || in->alu.add.waddr == 3)) || (mw && (in->alu.mul.waddr == 2 || in->alu.mul.waddr == 3))
+			    || (v3d_qpu_sig_writes_address (&devinfo, &in->sig) && !in->sig_magic && (in->sig_addr == 2 || in->sig_addr == 3)))
+				vfail ("rf2 / rf3 written after THREND");
+			if (reads_rf71 (in, 2) || reads_rf71 (in, 3)) vfail ("rf2 / rf3 read in the THREND delay slots (the next fragment's payload)");
+		}
+		if (in->sig.ldvary) vfail ("LDVARY in the THREND delay slots");
+		if (ip > v->last_thrsw && (in->sig.ldunif || in->sig.ldunifa || in->sig.ldunifrf || in->sig.ldunifarf || in->sig.wrtmuc))
+			vfail ("a uniform read in the THREND delay slots");
 	}
 	v->prev = *in; v->prev_valid = true;
 	v->ip++;
@@ -371,13 +473,28 @@ static void squeeze (const char *s, char *out, size_t cap)
 }
 
 
+/* V3D 7.1's encoder orders the operands of fadd / faddnf / fmin / fmax (the order tells the op apart): the
+   line with its add part's two sources swapped -- what the disassembler may give back for it */
+static void swap_add_sources (const char *line, char *out, size_t cap)
+{
+	snprintf (out, cap, "%s", line);
+	char *semi = strchr (out, ';'); if (!semi) return;
+	char *c1 = strchr (out, ','); if (!c1 || c1 > semi) return;
+	char *c2 = strchr (c1 + 1, ','); if (!c2 || c2 > semi) return;
+	char a[128], b[128];
+	snprintf (a, sizeof a, "%.*s", (int) (c2 - c1 - 1), c1 + 1);
+	snprintf (b, sizeof b, "%.*s", (int) (semi - c2 - 1), c2 + 1);
+	char rest[512]; snprintf (rest, sizeof rest, "%s", semi);
+	snprintf (c1 + 1, cap - (size_t) (c1 + 1 - out), "%s,%s%s", b, a, rest);
+}
+
 /* ---- the program -------------------------------------------------------------------------------------------------- */
 int qpu_assemble (const char *text, int kind, uint64_t *out, int max, char *err, unsigned errcap)
 {
 	jmp_buf jb; g_err = &jb; g_errmsg = err; g_errcap = errcap;
 	int line = 0, n = 0;
 	struct vstate vs; memset (&vs, 0, sizeof vs);
-	vs.last_sfu = vs.last_thrsw = vs.last_ldvary = -10; vs.end_thrsw = -1;
+	vs.last_sfu = vs.last_thrsw = vs.last_ldvary = vs.last_rf0_implicit = -10; vs.end_thrsw = -1;
 	vs.kind = kind == QPU_FRAG ? 1 : 0;
 	if (vs.kind == 0) vs.last_thrsw_found = true;
 	if (setjmp (jb))
@@ -402,7 +519,14 @@ int qpu_assemble (const char *text, int kind, uint64_t *out, int max, char *err,
 		const char *d = v3d_qpu_disasm (&devinfo, w);
 		char a[512], b[512];
 		squeeze (copy, a, sizeof a); squeeze (d, b, sizeof b);
-		if (strcmp (a, b) != 0) die ("the encoding does not give the line back, it gives", d);
+		if (strcmp (a, b) != 0)
+		{
+			char sw[512], c[512];
+			swap_add_sources (a, sw, sizeof sw); squeeze (sw, c, sizeof c);
+			bool comm = in.alu.add.op == V3D_QPU_A_FADD || in.alu.add.op == V3D_QPU_A_FADDNF
+				 || in.alu.add.op == V3D_QPU_A_FMIN || in.alu.add.op == V3D_QPU_A_FMAX;
+			if (!(V71 && comm && strcmp (c, b) == 0)) die ("the encoding does not give the line back, it gives", d);
+		}
 		if (n >= max) die ("the program is too long", 0);
 		out[n++] = w;
 	}
@@ -417,7 +541,7 @@ int qpu_check (const uint64_t *w, int n, int kind, char *err, unsigned errcap)
 	jmp_buf jb; g_err = &jb; g_errmsg = err; g_errcap = errcap;
 	int i = 0;
 	struct vstate vs; memset (&vs, 0, sizeof vs);
-	vs.last_sfu = vs.last_thrsw = vs.last_ldvary = -10; vs.end_thrsw = -1;
+	vs.last_sfu = vs.last_thrsw = vs.last_ldvary = vs.last_rf0_implicit = -10; vs.end_thrsw = -1;
 	vs.kind = kind == QPU_FRAG ? 1 : 0;
 	if (vs.kind == 0) vs.last_thrsw_found = true;
 	if (vs.kind == 1)			/* a fragment shader without a last-THRSW pair: single segment */

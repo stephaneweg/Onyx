@@ -1,7 +1,12 @@
 //
-// qpusim.h -- a functional V3D 4.2 QPU simulator (PC only), for testing the shaders the apps
-// generate (user/Libs/v3d, the GameCube's TEV) without a Raspberry Pi: 16 lanes (pixels) run one
-// fragment shader, as a QPU does. The instructions are decoded by Mesa (tools/qpu/mesa).
+// qpusim.h -- a functional V3D 4.2 / 7.1 QPU simulator (PC only), for testing the shaders the apps
+// generate (user/Libs/v3d, the GameCube's TEV) and the kernel's (kernel/sys/v3d_shaders*.qasm) without
+// a Raspberry Pi: 16 lanes (pixels, or vertices) run one shader, as a QPU does. The instructions are
+// decoded by Mesa (tools/qpu/mesa).
+//
+// V3D 7.1 (Run::version 71, the Pi 5): no accumulators, each input its own read address or the small
+// immediate, ldunif / ldvary's C term -> rf0, the SFU as add operations, the payload W in rf3.
+// Vertex shaders (runVertex): ldvpmv_in reads Pixel::vpmIn, stvpmv writes Pixel::vpmOut, vpmwt nothing.
 //
 // What is modelled: the accumulators r0..r5 and the register file (64), both ALUs reading before
 // either writes, the add / mul operations the shaders use (float, integer, f16 pack / unpack,
@@ -34,7 +39,10 @@ struct Texture
 
 struct Pixel
 {
-	std::vector<float> vary;		// the varyings in the order the shader reads them (p: ldvary gives p, C = 0, W = 1)
+	std::vector<float> vary;		// the varyings in the order the shader reads them (p: ldvary gives p; with W and C below)
+	std::vector<uint32_t> vpmIn, vpmOut;	// a vertex shader's VPM input (by index) and output
+	float w = 1.0f;				// the payload's W (a varying = ldvary * W + C)
+	std::vector<float> varyC;		// each varying's C term (absent: 0)
 	uint32_t rgba;				// out: 0xAABBGGRR (R in the low byte), valid when written
 	bool written;
 	uint32_t tlbWords[4]; int nTlb;		// out: the raw TLB writes
@@ -48,10 +56,13 @@ struct Run
 	struct Watch { int ip, reg; long long lo, hi; };	// (tests: after instruction ip, register reg -- 0..5 r0..r5,
 	std::vector<Watch> watch;			//  6 + n rf n -- must be in lo..hi as a signed integer, else an error)
 	long instructions;
+	int version = 42;			// the QPU: 42 (V3D 4.2) or 71 (V3D 7.1)
 };
 
 // runs the fragment shader words[n] over the pixels (16 a group); false: error in run.error
 bool runFragment (const uint64_t *words, int n, std::vector<Pixel> &pixels, Run &run);
+// runs the vertex (or coordinate) shader words[n] over the vertices (vpmIn -> vpmOut)
+bool runVertex (const uint64_t *words, int n, std::vector<Pixel> &vertices, Run &run);
 
 // f16 helpers (also for the tests' references)
 uint16_t toHalf (float f);
