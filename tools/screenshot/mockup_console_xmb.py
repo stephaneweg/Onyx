@@ -301,7 +301,7 @@ def hints (img, scr, items, left = None):
 		text_l (img, M ("tx") + gs + L (8), y0, bh, left, f, (200, 214, 240))
 	# measure, then draw from the right
 	def width (key, word):
-		if key in PADC or key in ("lr", "ud"): kw = d
+		if key in PADC or key in ("lr", "ud", "dpad"): kw = d
 		else: kw = sum (tw (p, fb) + L (12) + L (3) for p in key.split ("/"))
 		return kw + L (6) + tw (scr.tr (word), f) + L (18)
 	x = scr.W - M ("tx") - sum (width (k, w) for k, w in items) + L (18); y = y0 + (bh - d) // 2
@@ -309,11 +309,11 @@ def hints (img, scr, items, left = None):
 		if key in PADC:
 			rrect (img, x, y, d, d, d / 2, (10, 16, 36)); ring (img, x, y, d, d, d / 2, PADC[key], t = L (1.4))
 			text_c (img, x, y - L (1), d, d, key, fb, PADC[key]); x += d
-		elif key in ("lr", "ud"):
+		elif key in ("lr", "ud", "dpad"):
 			u = d / 16
 			def fn (dd, s, key = key):
 				for (ax, ay, aw, ah), arm in [((5.5, 0.5, 5, 6), "u"), ((5.5, 9.5, 5, 6), "d"), ((0.5, 5.5, 6, 5), "l"), ((9.5, 5.5, 6, 5), "r")]:
-					lit = (arm in "lr") == (key == "lr")
+					lit = key == "dpad" or (arm in "lr") == (key == "lr")
 					dd.rounded_rectangle ([ax * u * s, ay * u * s, (ax + aw) * u * s, (ay + ah) * u * s], u * s, fill = 255 if lit else 80)
 				dd.rectangle ([5.5 * u * s, 5.5 * u * s, 10.5 * u * s, 10.5 * u * s], fill = 140)
 			glyph (img, x, y, d, d, fn, (230, 238, 252)); x += d

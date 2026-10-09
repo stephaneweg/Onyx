@@ -1325,6 +1325,303 @@ list (an animation of a few frames, optional).
 8. As in v2: save states need the emulators' work first (§16.9 question 1); GB and GBC as two consoles; empty
    consoles hidden.
 
+## 18. Console mode: the settings applets (XMB) (2026-10-09, mock-ups)
+
+*A design proposal with mock-ups only: nothing built.* v3 is built (`user/Apps/consolehome/xmb.h`), and its
+**Settings** column lists the Control Panel's applets. Pressing A on one opens the **desktop** Control Panel
+(`user/Apps/control` and the applets): windows, lists, text fields and small buttons that are unusable with a
+pad. The user wants **console applets in the XMB's own style, usable with a pad alone**, and a **virtual
+keyboard** wherever text must be typed (a Wi-Fi password, a package search, a network's name).
+
+The pictures are made by **`python3 tools/screenshot/mockup_console_settings.py`**, which imports
+`mockup_console_xmb.py` and `mockup_console_ps4.py` for the background, the white icons, the hints and the
+card's apps. They land in `docs/compact-shell/mockups/console-set-*.png`. Every row below sets exactly what the
+desktop applet sets: the same files, keys, ranges and kit functions. The one addition is the games' resolutions
+in `SD:/etc/console.ini [screen]`.
+
+![](compact-shell/mockups/console-set-overview.png)
+
+*The settings applets: the moves that lead to each screen are in the badges.*
+
+### 18.1 The model (Lakka's settings)
+
+- **The Settings column** holds the eight console applets: Sound, Gamepad, Keyboard & Mouse, Language & Region,
+  Wi-Fi, Packages, Mode, Display. Each is an item with its help line under it when focused.
+- **A enters an applet.** This is the XMB's deeper level: the column row slides to the left (the gear stays,
+  faded), the applets become **the parent column**, faded at the left with the current one larger, and the
+  applet's **settings become the list**.
+- **A row** is an icon, a label and **its value right-aligned**, with a **help line under the focused row** (what
+  it does, and often where it is kept). The kinds of row:
+  - **choice**: `< value >` on the focused row; Left / Right cycle the values.
+  - **slider**: ten segments and a number; Left / Right take a step.
+  - **toggle**: a switch; Left / Right or A flip it.
+  - **action**: A does it.
+  - **submenu**: a chevron; A goes deeper.
+  - **info**: read only.
+  - **network**: signal bars and a lock.
+  - **radio**: one of several.
+  - **progress**: a bar inline.
+  - A small **heading** can separate groups ("Programs playing", "Mouse", "Updates").
+- **Changes apply at once and are kept at once**, as in the desktop applets; there is no Save button. When a
+  value is changed, a small level flash appears at the top right (Sound).
+- **Confirmations** use the XMB's small dialog: a dark box centred over the dimmed page, a title, a few words, the
+  choices in a row (the chosen one white). Left / Right choose, A confirms, B is the safe choice. A countdown is
+  drawn as a bar.
+- **Progress** is shown inline: an install's percentage on its package's row, "Scanning..." on the Wi-Fi's Scan
+  row. The pad stays free during the work.
+- **Buttons in an applet**:
+
+  | Button | What it does |
+  |---|---|
+  | Up / Down | the row (L2 / R2 a page) |
+  | Left / Right | change the value |
+  | A | act, or go deeper |
+  | B | back (the applet, then the Settings column) |
+  | Y | the applet's second action (Scan, Search, a row's default) |
+  | Home | consolehome's menu |
+
+  The bottom bar names the buttons that work on each screen.
+
+![](compact-shell/mockups/console-set-column.png)
+
+*The Settings column: the eight applets and their help lines (Sound focused).*
+
+### 18.2 The applets, row by row
+
+**Sound** (`soundconf`; kit: SystemKit `volume.h`; kept in `SD:/etc/sound.ini`, `mixer.ini`)
+
+| Row | Value | Left / Right | A | Writes |
+|---|---|---|---|---|
+| Play on | Automatic / HDMI / Headphone jack / USB headset: the ones present | cycle | — | `volume_set_output` (kapi v84), sound.ini |
+| Volume | 0..10, ten segments | −1 / +1, applied at once (the level flash) | — | `volume_set` (kapi v60), sound.ini `volume=` |
+| Mute | switch | flip | flip | sound.ini |
+| Play a test sound | — | — | plays the chime | — |
+| *Programs playing*: one row each (the app's icon and name) | 0..100 % by tens | −10 / +10 | its mute | `mixer_set`, mixer.ini `<name> = 60`, `<name>.mute` |
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-set-sound.png) | **Sound**: Volume focused, 7 / 10; HDMI; Mute off; the Media Player and the GBA emulator playing. |
+| ![](compact-shell/mockups/console-set-sound-volume.png) | **Right on Volume**: 8 / 10 at once, the arrows lit, the level flash at the top right. |
+
+**Gamepad** (`padconf`; `gamepad.h`; kept in `SD:/etc/gamepad.ini`)
+
+| Row | Value | A | Writes |
+|---|---|---|---|
+| Pad 1 … Pad 4 | the pad's name and VID:PID, "nothing plugged in" | its page: Circle-known or generic HID, its mapping's source (its own / [default] / built-in), its live buttons, axes and hats | — |
+| Map the buttons | — | the **wizard** (below) | the pad model's section `[vvvv:pppp]` |
+| Keyboard as pad 1 | "21 keys" | a list of the 21 functions (Up ... Home, the right stick's four), each with its key; A on one: "press the key" (**a physical keyboard is needed**, that is the point) | `[keyboard]` |
+| Forget this pad's mapping | — | asks, then removes the section | gamepad.ini |
+| Read gamepad.ini again | — | `pad_config_reload` | — |
+
+The right panel draws **what the apps see**, live: a generic pad with the buttons held now lit.
+
+**The wizard** (Map the buttons):
+- **The prompt**: "Step 6 of 17", **"Press the RIGHT face button"**, padconf's own words, the button drawn glowing
+  on the generic pad. The buttons already learnt are filled, and there is a dot per step.
+- **The pad cannot steer while it is learnt**. **Holding Home** cancels; **Select** skips (this pad has none);
+  **no press for 8 s** skips too. A keyboard can use Esc (skip) and Backspace (cancel), as padconf does.
+- **The end**: the section is written at the last step.
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-set-gamepad.png) | **Gamepad**: Pad 1, Map the buttons focused, Pad 2 absent, Keyboard as pad 1, Forget, Read again; what the apps see (A and Right held). |
+| ![](compact-shell/mockups/console-set-gamepad-map.png) | **Map the buttons, step 6 of 17**: the right face button asked (B in the apps), the d-pad and A learnt. |
+
+**Keyboard & Mouse** (`keyconf`)
+
+| Row | Value | Left / Right | A | Writes |
+|---|---|---|---|---|
+| Keyboard layout | the 8 maps of `SD:/etc/keymaps/*.kmap` by name (American (qwerty), Belgian (azerty), British, Dvorak, French (azerty), German (qwertz), Italian, Spanish) | cycle, taken at once (`ax_load_keymap`) | — | `SD:/etc/autostart` `keyb XX` |
+| Try it | "a physical keyboard" | — | a field to type in with the keyboard plugged in | — |
+| *Mouse*: Wheel, lines a notch scrolls | 1..16 | −1 / +1 | — | `SD:/etc/theme.txt` `wheelspeed=` |
+
+**Language & Region** (`langconf`; SystemKit `locale.h`; `SD:/etc/system.ini`)
+
+| Row | Value | Left / Right | Writes |
+|---|---|---|---|
+| Language | English, Français (`locale_language_*`) | cycle; the programs started from now on speak it | `language=` |
+| Time zone | the 23 cities, "Brussels (UTC+2, summer time)" | cycle; the clock follows at once | `zone=`, `timezone=` |
+| Now | the date and the time | — (information) | — |
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-set-keyboard.png) | **Keyboard & Mouse**: Belgian (azerty), Try it, the wheel at 3. |
+| ![](compact-shell/mockups/console-set-language.png) | **Language & Region**: English; Brussels (UTC+2, summer time) focused; now. |
+
+**Wi-Fi** (`wpaconf`, plus the menu bar's Wi-Fi menu; kapi v45 `wlan_scan`, v60 `wlan_reconnect`; `SD:/etc/wpa_supplicant.conf`)
+
+| Row | Value | A / Left / Right | Writes |
+|---|---|---|---|
+| each network around (the scan) | **Connected** (green), a lock when protected, **four signal bars**, "open" | A: **its page** | — |
+| Scan again | "5 found, 3 s ago" / "Scanning..." inline | A (or Y anywhere): scans (3 s) | — |
+| A hidden network... | — | A: its name with the virtual keyboard, then its page | — |
+| Country | BE, FR, ... | Left / Right: cycle | `country=` |
+
+**A network's page**:
+- **Connect** joins it at once: the file is regenerated from the template, as wpaconf does, then `wlan_reconnect`.
+  The security is set from the scan (WPA2 → `proto=WPA2 key_mgmt=WPA-PSK`, open → `NONE`); WEP is refused.
+- **Password**: A opens the virtual keyboard (8 to 63 characters, checked).
+- **Show password** toggle, then **Security** and **Signal** for information.
+- **Forget this network** removes it from the file.
+
+*Note*: wpaconf writes one network and drops the others. The console page keeps the known networks (the menu
+bar's way): an open question.
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-set-wifi.png) | **Wi-Fi**: Maison connected, Maison-5G focused (WPA2, good signal), Voisin, FreeWifi (open), Livebox-1280; Scan again, a hidden network. |
+| ![](compact-shell/mockups/console-set-wifi-password.png) | **Maison-5G > Password**: the virtual keyboard (QWERTY) over the page, the password in dots, the last letter shown a moment, L3 shows it. |
+
+**Packages** (`pkgman`; the library `pkg/pkglib.h`)
+
+| Row | Value | A | X | Writes |
+|---|---|---|---|---|
+| Install the N updates | — | installs them one after the other (a thread); the system's is staged, then "Restart" is asked | — | `SD:/var/pkg` |
+| *Updates*: one row per package | "1.0.40 > 1.0.41"; the system's in amber ("restart"); **"Installing 42 %"** with a bar | its page: Update, Remove (not the system's), its updates mode, its summary and size | its updates mode: Manual / Auto / Never (cycled) | the database |
+| Installed | "64 packages" | the list (same rows: Remove, updates mode) | | |
+| Available | "12 more" | the list (Install) | | |
+| Search... | — | the virtual keyboard: the matches **live above the keyboard**; Done shows them as the list | | |
+| Check now | "index of today 09:12, signed" | reads the index again | | |
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-set-packages.png) | **Packages**: Install the 3 updates; Super Nintendo focused (1.0.40 > 1.0.41), the Media Player installing (42 %), Onyx (the system) in amber; Installed, Available, Search. |
+| ![](compact-shell/mockups/console-set-packages-search.png) | **Search "game"**: Game Boy, Game Boy Advance, Game Library, gamekit, above the keyboard. |
+
+**Mode** (`modeconf`; SystemKit `session_switch_start`; `SD:/etc/system.ini shell=`)
+
+- **Three radio rows**: Desktop, Pocket, Console (**in use**, green).
+- **The right side**: the focused mode's picture (`SD:/apps/modeconf.app/res/*.bmp`) and its description.
+- **A on another mode** asks in the dialog: "The open programs will be closed, then the interface starts again"
+  (Switch / Cancel).
+- **While switching**, a program that does not close shows modeconf's own dialog: "... is waiting for an answer",
+  with Wait / Force / Cancel.
+
+**Display** (`displayconf`, kapi v66 `screen_set`; `SD:/cmdline.txt width= height=`; plus the console's own)
+
+| Row | Value | Left / Right | A | Writes |
+|---|---|---|---|---|
+| Resolution | the 12 sizes, "1920 x 1080 (16:9, Full HD)" | cycle (nothing applied yet) | **tries it**, then the dialog **"Keep this resolution?"** | cmdline.txt, only when kept |
+| The screen now | "1280 x 720" | — | — | — |
+| The games' resolutions | "6 consoles" | — | the list below | — |
+
+**The resolution dialog** (new; the desktop applet has none):
+- **The layout**: Keep / Go back, with a bar counting down 15 s.
+- **The default**: nothing pressed, or B, goes back to the previous size by itself. A black screen therefore
+  repairs itself.
+- **The refusals**: displayconf's answers stay ("a full-screen app owns the display", "the firmware refused this
+  size").
+
+**The games' resolutions** (`SD:/etc/console.ini [screen]`: the screen's size while that app is in front;
+consolehome already applies it):
+- **One row per emulator**: GameCube, Nintendo 64, Super Nintendo, Game Boy Advance, Game Boy / Color (one app),
+  NES.
+- **The value**: "its own: 640 x 480" (its `app.txt` `resolution =`), **System** (`<emu> = system`), or one of the
+  sizes from 640 x 480 to 2560 x 1600 (`<emu> = 1024x768`).
+- **The keys**: Left / Right cycle the value; **Y** returns that emulator to its own (the line removed).
+  **"All back to their own"** empties `[screen]`.
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-set-mode.png) | **Mode**: Desktop focused (its picture and description at the right), Pocket, Console in use. |
+| ![](compact-shell/mockups/console-set-display.png) | **Display**: 1920 x 1080 chosen (A tries it), the screen now 1280 x 720, the games' resolutions. |
+| ![](compact-shell/mockups/console-set-display-confirm.png) | **A on Resolution**: "Keep this resolution?", 12 s left; Keep / Go back. |
+| ![](compact-shell/mockups/console-set-display-games.png) | **The games' resolutions**: Nintendo 64 set to 1024 x 768 (`n64emu = 1024x768`, its own is 640 x 480), GameCube on System, the others their own. |
+
+### 18.3 The virtual keyboard
+
+- **When it appears**: only where text is needed. It is shown **over the dimmed page**, low on the screen, so the
+  page's top (or the search's matches) stays visible.
+- **The field at its top**:
+  - its label ("Password for Maison-5G");
+  - the text with its caret;
+  - for a secret, **dots** with the **last letter shown** for a moment, and an eye at the right: **L3** shows /
+    hides it.
+- **The grid**: 4 rows of 10 keys (digits, then the letters). It is **QWERTY, or AZERTY when the system's language
+  is French** (`locale_language`; a keyboard layout choice could override it). The punctuation a password needs
+  (`- _ , .`) is on the letter rows.
+- **The special row**: Shift, ?123 (the symbols page: `! @ # $ % ^ & * ( ) ~ = + [ ] { } ; : ' " < > / ? € £`...),
+  Space, < and >, Delete, **Done**. Each special key names its button under its word.
+- **Keys**: 56 × 48 lp with 8 lp gaps (40 × 34 and 5 when compact); the panel is 644 lp wide.
+- **The buttons**:
+
+  | Button | Action |
+  |---|---|
+  | d-pad | move on the grid (wraps at the edges) |
+  | A | type the key |
+  | B | delete the letter before the caret |
+  | X | space |
+  | Y | shift (twice: the symbols page) |
+  | L1 / R1 | move the caret |
+  | Start | Done |
+  | B on an empty field, or Home | cancel |
+
+- **A physical keyboard** plugged in types into the field as well; the grid stays for the pad.
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-set-wifi-password-fr.png) | **In French**: AZERTY, "Mot de passe de Maison-5G", Maj, Espace, Effacer, Valider; the hints Aller, Taper, Effacer, Espace, Maj, Curseur, Valider. |
+| ![](compact-shell/mockups/console-set-column-fr.png) | **The column in French**: Réglages, Wi-Fi focused: "Les réseaux autour : en rejoindre un, en oublier un, le pays". |
+| ![](compact-shell/mockups/console-set-wifi-640.png) | **640 × 480 (compact)**: the parent column a rail of icons, the rows at 30 lp, the values still right-aligned. |
+
+### 18.4 Metrics (lp; the XMB's, §17.3, plus)
+
+| | regular | compact |
+|---|---|---|
+| parent column: icons at x / label size / its width | 110 / 17 / 232 | 22 / — (icons only) |
+| the rows: icons at x / row height / values' right edge | 420 / 54 / 1220 | 76 / 30 / 620 |
+| with a right panel (Gamepad's pad, Mode's picture): values end / panel x, width | 790 / 830, 400 | 410 / 424, 200 |
+| slider: segments / gap / height | 14 / 4 / 12 | 9 / 3 / 9 |
+| toggle | 44 × 24 | 32 × 18 |
+| dialog: width / button | 560 / 150 × 42 | 400 / the same |
+
+Colours: v3's, plus **green** `#78DC8C` (connected, in use, progress), **amber** `#FAC850` (a system update, the
+countdown), the accent `#60AAFF` only for the keyboard's focused key glow and a value being stepped.
+
+### 18.5 How to build them: pages in consolehome, the logic in the kits (recommended)
+
+**The two ways:**
+
+| | A. Pages inside `consolehome` | B. A console program per applet (`soundconf --console`...) |
+|---|---|---|
+| The look and the pad | one XMB code: the rows, the dialog, the keyboard drawn by the shell itself; the deeper level is just a deeper level | each program must draw the XMB rows, the background, the slide and the parent column again, or a shared renderer must be written for them |
+| PocketUI's "one binary per app" | the applets are **parts of the shell** (as the file browser of §7.5 is); the desktop applets stay one binary each, unchanged | a second mode inside each applet: one binary, two UIs, against the adaptive-widget idea (an applet is a form, not an adaptive layout) |
+| `applet_proto.h` | not needed: no surface, no host / applet messages, no latency | the protocol would have to carry pad keys and the XMB's slide; console has no host window to share a surface with |
+| Memory, start | the shell grows (pkglib, the wlan scan, the wizard): a few hundred KB, nothing to start | each opens in its own process: slower, but only what is used |
+| Duplication | the settings' **logic** must not be copied from the applets' UI code | the logic stays where it is |
+
+**Recommended: A, with the logic moved into the kits.** Today most of the logic already lives in kits; what
+remains inside an applet's UI code moves to the kit that fits (the "kits first" rule):
+- SystemKit `volume.h` (output, volume, mute, mixer) and `locale.h` (language, zones) are used as they are.
+- The keymap list, `keyb` in autostart and `wheelspeed=` go into a small SystemKit `input.h`.
+- The `wpa_supplicant.conf` parse and write (several networks, Forget) go into NetKit (`wifi.h`).
+- `cmdline.txt` sizes, the 12 modes and `console.ini [screen]` go into SystemKit (`display.h`).
+- `gamepad.ini`'s sections and the mapping wizard's steps (PAD_* order, rest detection) go into `gamepad.h` or a
+  future input kit.
+- `pkglib` becomes a kit or stays a library linked into both.
+
+The desktop applets and consolehome's pages then call the same functions, and each keeps its own UI.
+
+**The virtual keyboard goes into UIKit** (`uk_osk`: a field label, a secret flag, the layout from the language), so
+that any console app (Jet's address bar, the Terminal, a game's name entry) can ask for it, not only the settings.
+**Packages may be the exception**: if consolehome's size matters, its page can be a small console program
+started by the shell, drawn with the same UIKit XMB rows; the user decides.
+
+### 18.6 Open questions for the user
+
+1. **Pages in consolehome with the logic in the kits (recommended), or a console program per applet?**
+2. **Wi-Fi**: keep several known networks (the menu bar's way, proposed) instead of wpaconf's one network?
+3. **The resolution's "Keep it?" dialog**: also for the desktop's Display applet?
+4. **Applets left out of console**: Theme, Panel, Preload, Printers, App Settings, as §7.6 proposed; and an
+   **About** page (version, kernel, card, memory)?
+5. **Missing settings the console could want**: the key repeat (no setting exists today), a date format (langconf
+   has none), the screen's overscan or scale, a sleep timer. Add them?
+6. **The virtual keyboard**: QWERTY / AZERTY by the language (proposed), or by the keyboard layout chosen in
+   Keyboard & Mouse? Should the d-pad wrap at the edges (proposed)?
+7. **Keyboard as pad 1** needs a physical keyboard. Show it in console at all, or only when a keyboard is plugged
+   in?
+8. **Packages' updates mode** (Manual / Auto / Never) on X from the list, or only on the package's page?
+
 ## Résumé (FR)
 
 L'utilisateur demandait si, maintenant qu'Elegant est en espace utilisateur, on pouvait remplacer le bureau
