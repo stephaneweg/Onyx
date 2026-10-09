@@ -37,6 +37,10 @@ enum : u32 {
 	VA_CONFIG      = 0x1FF80000,		// the kernel's configuration page
 	VA_SHARED      = 0x1FF81000,		// the shared page (time, 3D slider...)
 	VA_TLS         = 0x1FF82000,		// the threads' local storage, 0x200 bytes each
+	VA_FONT        = 0x18000000,		// the shared system font (inside the linear range: FCRAM past the application's 64 MB)
+	FONT_FCRAM     = 0x04000000,		// ... its place in FCRAM
+	FONT_SIZE      = 0x00332000,
+	APP_LINEAR_MAX = 0x04000000,		// the application's share of FCRAM (the linear heap never passes it)
 	FCRAM_SIZE     = 0x08000000,		// 128 MB
 	VRAM_SIZE      = 0x00600000,
 	PA_FCRAM       = 0x20000000,
@@ -77,6 +81,7 @@ enum : u32 {
 };
 
 struct Machine;
+struct Pica;
 
 // ---- memory ----------------------------------------------------------------------------------------------------------
 struct Memory
@@ -189,7 +194,8 @@ struct Timer : Object
 struct SharedMem : Object
 {
 	u8 *host; u32 size;
-	SharedMem (u8 *h, u32 n) : Object (OBJ_SHMEM), host (h), size (n) {}
+	u32 va;					// where it goes when the program maps it "at 0" (the system's own blocks), or 0
+	SharedMem (u8 *h, u32 n, u32 at = 0) : Object (OBJ_SHMEM), host (h), size (n), va (at) {}
 };
 
 // A program's end of a connection to a service: a request (the command buffer in the thread's TLS) is answered
@@ -254,8 +260,9 @@ struct Machine
 		u64 frames;				// VBlanks since the start
 		u32 fills, transfers, cmdLists;		// (counters: what the program asked the GPU)
 	} gsp;
+	struct Pica *pica;			// the GPU's state (n3ds_pica.cpp), made at its first command list
 	// APT (n3ds_apt.cpp): the application's life -- its events, the parameter the system sends it (the wake-up)
-	struct Apt { Mutex *lock; Event *signal, *param; bool pending; u32 cpuLimit; } apt;
+	struct Apt { Mutex *lock; Event *signal, *param; bool pending; u32 cpuLimit; SharedMem *font; bool fontReady; } apt;
 	// HID (n3ds_hid.cpp): the buttons, the circle pad and the touch screen, in a shared page
 	struct Hid { SharedMem *shared; Event *events[5]; u32 buttons; s16 cpadX, cpadY; bool touch; u16 touchX, touchY; u32 padIndex, touchIndex; } hid;
 	// the program's read-only files (RomFS): a piece of the file it was loaded from (kept by the host)
@@ -274,6 +281,9 @@ struct Machine
 	bool load (const u8 *file, u32 size);
 	bool loadElf (const u8 *file, u32 size);
 	bool load3dsx (const u8 *file, u32 size);
+	// The shared system font, a BCFNT file (ours: tools/n3ds/mkfont.py -> data/sysfont.bcfnt; never Nintendo's
+	// unless the user gives the dump of their own console's). Before the program runs. false: not a font.
+	bool setSharedFont (const u8 *bcfnt, u32 size);
 	// what the player does: BTN_* held, the circle pad (-156..156), the touch screen (pixels of the bottom screen)
 	void setInput (u32 buttons, int cpadX, int cpadY, bool touch, int touchX, int touchY);
 	bool start (u32 entryPoint, u32 stackSize);			// the main thread
@@ -316,6 +326,10 @@ inline u32 ipcHeader (u32 command, u32 normal, u32 translate) { return command <
 void ipcStub (Machine *m, const char *service, u32 *cmd);
 void srvRequest (Machine *m, Session *s, u32 *cmd);			// srv: (n3ds_ipc.cpp)
 void gspRequest (Machine *m, Session *s, u32 *cmd);			// gsp::Gpu (n3ds_gsp.cpp)
+// the GPU (n3ds_pica.cpp): a command list at a program's address; a display transfer (the GX command's 8 words)
+void picaCommandList (Machine *m, u32 va, u32 size);
+void picaDisplayTransfer (Machine *m, const u32 *c);
+void picaFree (Machine *m);
 void aptRequest (Machine *m, Session *s, u32 *cmd);			// APT:U / APT:S / APT:A (n3ds_apt.cpp)
 void hidRequest (Machine *m, Session *s, u32 *cmd);			// hid:USER / hid:SPVR (n3ds_hid.cpp)
 void hidUpdate (Machine *m);						// (each frame: the input into the shared page)

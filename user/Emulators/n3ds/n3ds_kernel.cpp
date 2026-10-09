@@ -34,15 +34,16 @@ Machine::Machine ()
 	memset (&gsp, 0, sizeof gsp);
 	memset (&apt, 0, sizeof apt); apt.cpuLimit = 30;
 	memset (&hid, 0, sizeof hid);
-	romfs = 0; romfsSize = 0; trace = false;
+	romfs = 0; romfsSize = 0; trace = false; pica = 0;
 	svcCount = switchCount = 0; unknownSvcs = 0;
 }
 
 Machine::~Machine ()
 {
 	delete cpu;
+	picaFree (this);
 	release (gsp.irq); release (gsp.shared);
-	release (apt.lock); release (apt.signal); release (apt.param);
+	release (apt.lock); release (apt.signal); release (apt.param); release (apt.font);
 	release (hid.shared); for (int i = 0; i < 5; i++) release (hid.events[i]);
 	for (int i = 0; i < HANDLE_MAX; i++) if (handles[i]) release (handles[i]);
 	for (int i = 0; i < threadCount; i++) release (threads[i]);
@@ -333,7 +334,7 @@ u32 Machine::svcControlMemory (u32 op, u32 addr0, u32 addr1, u32 size, u32 perm,
 	case 3:									// commit
 		if (linear)
 		{
-			if (size > FCRAM_SIZE - mem.linearUsed - mem.topUsed || mem.linearUsed + size > VA_LINEAR_END - VA_LINEAR) return RES_OUT_OF_MEMORY;
+			if (size > FCRAM_SIZE - mem.linearUsed - mem.topUsed || mem.linearUsed + size > APP_LINEAR_MAX) return RES_OUT_OF_MEMORY;
 			u32 va = VA_LINEAR + mem.linearUsed;
 			if (addr0 && addr0 != va) return RES_INVALID_ADDRESS;	// (the linear heap only grows, in order)
 			memset (mem.fcram + mem.linearUsed, 0, size);
@@ -550,8 +551,9 @@ void Machine::svc (u32 n)
 	{
 		SharedMem *sm = (SharedMem *) handleGet (r[0], OBJ_SHMEM);
 		if (!sm) { r[0] = RES_INVALID_HANDLE; break; }
-		if (!r[1] || (r[1] & (PAGE_SIZE - 1)) || mem.pages[r[1] >> PAGE_BITS]) { r[0] = RES_INVALID_ADDRESS; break; }
-		mem.map (r[1], sm->size, sm->host, (r[2] & 3) ? (int) (r[2] & 3) : PERM_RW);
+		const u32 at = r[1] ? r[1] : sm->va;				// (at 0: the block's own address -- the shared font)
+		if (!at || (at & (PAGE_SIZE - 1)) || mem.pages[at >> PAGE_BITS]) { r[0] = RES_INVALID_ADDRESS; break; }
+		mem.map (at, sm->size, sm->host, (r[2] & 3) ? (int) (r[2] & 3) : PERM_RW);
 		r[0] = RES_OK;
 		break;
 	}
@@ -559,8 +561,9 @@ void Machine::svc (u32 n)
 	{
 		SharedMem *sm = (SharedMem *) handleGet (r[0], OBJ_SHMEM);
 		if (!sm) { r[0] = RES_INVALID_HANDLE; break; }
-		if (mem.ptr (r[1]) != sm->host) { r[0] = RES_INVALID_ADDRESS; break; }
-		mem.unmap (r[1], sm->size);
+		const u32 at = r[1] ? r[1] : sm->va;
+		if (!at || mem.ptr (at) != sm->host) { r[0] = RES_INVALID_ADDRESS; break; }
+		mem.unmap (at, sm->size);
 		r[0] = RES_OK;
 		break;
 	}

@@ -58,6 +58,17 @@ int main (int argc, char **argv)
 	if (!m->init ()) { fprintf (stderr, "not enough memory for the machine\n"); return 2; }
 	m->debugOut = debugOut;
 	m->trace = getenv ("N3DS_TRACE") != 0;
+	// N3DS_FONT=<sysfont.bcfnt>  the shared system font (tools/n3ds/mkfont.py makes ours)
+	if (const char *fontPath = getenv ("N3DS_FONT"))
+	{
+		FILE *ff = fopen (fontPath, "rb");
+		if (ff)
+		{
+			static unsigned char font[0x332000];
+			size_t fn = fread (font, 1, sizeof font, ff); fclose (ff);
+			if (!m->setSharedFont (font, (n3ds::u32) fn)) fprintf (stderr, "%s is not a font (BCFNT)\n", fontPath);
+		}
+	}
 	if (!m->load (file, (n3ds::u32) size)) { fprintf (stderr, "%s\n", m->lastError); return 2; }
 	// N3DS_KEYS=100-110:1;200-210:8  buttons held over frame ranges, a hex mask each (n3ds.h's BTN_*)
 	// N3DS_TOUCH=300-305:160,120      the touch screen pressed there over frames

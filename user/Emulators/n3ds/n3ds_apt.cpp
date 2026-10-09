@@ -15,6 +15,47 @@ enum { APPID_HOME_MENU = 0x101, APPID_APPLICATION = 0x300, APTCMD_WAKEUP = 1 };
 
 static u32 share (Machine *m, Object *o) { o->refs++; return m->handleNew (o); }
 
+static u32 get32 (const u8 *p) { return (u32) p[0] | (u32) p[1] << 8 | (u32) p[2] << 16 | (u32) p[3] << 24; }
+static void put32 (u8 *p, u32 v) { p[0] = (u8) v; p[1] = (u8) (v >> 8); p[2] = (u8) (v >> 16); p[3] = (u8) (v >> 24); }
+
+// The font goes into FCRAM where the console keeps it (the programs map it at VA_FONT, and give the GPU its
+// glyph sheets by their linear address), after a header of 0x80 bytes. A BCFNT file holds offsets from its start;
+// the console hands the font with addresses instead ("CFNU"): the font's three tables, the sheets, and the
+// chains of width and character-map blocks.
+bool Machine::setSharedFont (const u8 *bcfnt, u32 size)
+{
+	if (size < 0x34 || size > FONT_SIZE - 0x80 || memcmp (bcfnt, "CFNT", 4) != 0 || memcmp (bcfnt + 0x14, "FINF", 4) != 0) return false;
+	u8 *block = mem.fcram + FONT_FCRAM, *f = block + 0x80;
+	const u32 base = VA_FONT + 0x80;
+	memset (block, 0, FONT_SIZE);
+	memcpy (f, bcfnt, size);
+	put32 (block, 2); put32 (block + 4, 1); put32 (block + 8, size);		// loaded, the region, its size
+	memcpy (f, "CFNU", 4);
+	u8 *finf = f + 0x14;
+	const u32 tglp = get32 (finf + 0x10), cwdh = get32 (finf + 0x14), cmap = get32 (finf + 0x18);
+	if (tglp < 0x34 || tglp + 0x18 > size) return false;
+	put32 (finf + 0x10, tglp + base);
+	put32 (f + tglp + 0x14, get32 (f + tglp + 0x14) + base);			// the sheets
+	put32 (finf + 0x14, cwdh ? cwdh + base : 0);
+	for (u32 at = cwdh, n = 0; at && n < 64; n++)
+	{
+		if (at + 8 > size) return false;
+		const u32 next = get32 (f + at + 4);
+		put32 (f + at + 4, next ? next + base : 0);
+		at = next;
+	}
+	put32 (finf + 0x18, cmap ? cmap + base : 0);
+	for (u32 at = cmap, n = 0; at && n < 64; n++)
+	{
+		if (at + 12 > size) return false;
+		const u32 next = get32 (f + at + 8);
+		put32 (f + at + 8, next ? next + base : 0);
+		at = next;
+	}
+	apt.fontReady = true;
+	return true;
+}
+
 void aptRequest (Machine *m, Session *s, u32 *cmd)
 {
 	const u32 id = cmd[0] >> 16;
@@ -60,6 +101,18 @@ void aptRequest (Machine *m, Session *s, u32 *cmd)
 		cmd[2] = APPID_HOME_MENU; cmd[3] = had ? APTCMD_WAKEUP : 0; cmd[4] = 0;
 		cmd[5] = 0; cmd[6] = 0;						// (no handle)
 		cmd[7] = 2; cmd[8] = stat[1];					// (an empty buffer)
+		break;
+	}
+	case 0x44:								// GetSharedFont -> where to map it, the font's memory
+	{
+		if (!a.fontReady)
+		{
+			m->note ("the system font (no sysfont.bcfnt given)");
+			cmd[0] = ipcHeader (id, 1, 0); cmd[1] = 0xC8A0CFEFu;
+			break;
+		}
+		if (!a.font) a.font = new SharedMem (m->mem.fcram + FONT_FCRAM, FONT_SIZE, VA_FONT);
+		cmd[0] = ipcHeader (id, 2, 2); cmd[1] = RES_OK; cmd[2] = VA_FONT; cmd[3] = 0; cmd[4] = share (m, a.font);
 		break;
 	}
 	case 0x4B:								// AppletUtility (id, sizes, a buffer) -> the applet's result

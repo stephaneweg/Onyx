@@ -28,10 +28,15 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
   (`sh tools/tests/run_n3ds_test.sh sdcard/roms/3ds/2048.3dsx 180 out.ppm`, `N3DS_KEYS="60-63:20"` = left;
   `N3DS_TRACE=1` shows every system call and request). The user's ROM, *A Link Between Worlds* (EU, CTR-P-BZLP),
   is at `C:/Temp/Roms/ZeldaLinkBetweenWorlds/` and **is decrypted** (NoCrypto, ExeFS and RomFS readable): for T5.
-- **Next: T2, with *Snake* as the target** (the user's choice): it stops at `APT GetSharedFont` -- it needs the
-  **PICA200** (command lists, the vertex shader, the combiners, display transfers: `gsp::Gpu` only counts them
-  today) and the **shared system font** (our own BCFNT from a free font, a tool in `tools/`: planned in T5, to do
-  now). Then the NCCH loader and the rest. The app `n3dsemu` starts with a mock-up of its screens (the user's
+- **T2's first slice is done** (section 9f): our own system font (`tools/n3ds/mkfont.py` ->
+  `user/Emulators/n3ds/data/sysfont.bcfnt`, from DejaVu Sans; `N3DS_FONT` for `n3dstest`, set by the script) and
+  **the PICA200 in software** (`n3ds_pica.cpp`: the vertex shader, the rasterizer, textures, the six combiners,
+  blending, depth, the display transfer). ***Snake* (the user's target) plays** under `n3dstest`; *Cube Adventures*
+  shows its menu; *Mars* wants `cfg:u`.
+- **Next**: a GPU test program of ours (a shader written as words or with a small assembler, the picture's
+  checksum) -- today only the homebrew's pictures check the renderer; `cfg:u` (Mars) and `ptm:sysm`; texture
+  filtering; the SD card's archive (saves); what the next homebrew or the first game asks (`Machine::notes`).
+  Then T3 (the Pi: the speed, the V3D), T4 (sound), T5 (the NCCH loader: *A Link Between Worlds*). The app `n3dsemu` starts with a mock-up of its screens (the user's
   rule), at T7.
 - **Homebrew to try** (the user asked for some in `sdcard/roms`, git-ignored since 2026-10-09 but for its README;
   never committed, never packaged): `sdcard/roms/3ds/` on the local PC holds four `.3dsx` taken from Universal-DB

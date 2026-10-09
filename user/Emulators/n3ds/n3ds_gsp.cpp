@@ -85,8 +85,9 @@ static void gxCommand (Machine *m, const u32 *c)
 		m->gspInterrupt (GSP_DMA);
 		break;
 	}
-	case 1:									// a PICA200 command list (address, size): phase T2
+	case 1:									// a PICA200 command list (address, size)
 		m->gsp.cmdLists++;
+		picaCommandList (m, c[1], c[2]);
 		m->gspInterrupt (GSP_P3D);
 		break;
 	case 2:									// memory fill: two areas (start, value, end), their controls
@@ -101,8 +102,13 @@ static void gxCommand (Machine *m, const u32 *c)
 			m->gspInterrupt (k ? GSP_PSC1 : GSP_PSC0);
 		}
 		break;
-	case 3:									// display transfer (what the GPU rendered -> a framebuffer): phase T2
+	case 3:									// display transfer (what the GPU rendered -> a framebuffer)
+		m->gsp.transfers++;
+		picaDisplayTransfer (m, c);
+		m->gspInterrupt (GSP_PPF);
+		break;
 	case 4:									// texture copy
+		m->note ("a texture copy");
 		m->gsp.transfers++;
 		m->gspInterrupt (GSP_PPF);
 		break;

@@ -37,6 +37,8 @@ aarch64-none-elf-gcc -O2 -I"$D/onyx" -c "$HERE/n3ds/t0_shim.c" -o "$B/t0_shim.o"
 aarch64-none-elf-g++ $ARCH -static -nostartfiles --specs=nosys.specs -Wl,--gc-sections $OBJS "$B/dynarmic/libdynarmic.a" \
 	"$B/linux_shim.o" "$B/t0_shim.o" -o "$B/n3dstest" 2>&1 | grep -v "is not implemented and will always fail" | grep -v "in function" || true
 [ -x "$B/n3dstest" ] || { echo "n3dstest did not build"; exit 1; }
+# the shared system font: ours (tools/n3ds/mkfont.py)
+: "${N3DS_FONT:=$ROOT/user/Emulators/n3ds/data/sysfont.bcfnt}"; export N3DS_FONT
 if [ -n "$1" ]; then exec qemu-aarch64 "$B/n3dstest" "$@"; fi
 if command -v arm-none-eabi-gcc > /dev/null; then sh "$HERE/n3ds/src/build.sh" > /dev/null; fi
 [ -d "$HERE/n3ds/progs" ] || { echo "no test program (tools/tests/n3ds/src/build.sh needs arm-none-eabi-gcc)"; exit 0; }

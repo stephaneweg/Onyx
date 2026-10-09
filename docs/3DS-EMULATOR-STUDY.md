@@ -282,6 +282,34 @@ The core's skeleton, `user/Emulators/n3ds/` (`n3ds.h` declares everything), and 
   It needs phase T2 (the PICA200) and the shared font (our own BCFNT, planned in T5: to bring forward).
   *Cube Adventures* and *Mars* use the GPU too.
 
+## 9f. Phase T2, first slice -- done (2026-10-09): the PICA200 in software, the system font; *Snake* plays
+
+- **The shared system font, ours**: `tools/n3ds/mkfont.py` draws a BCFNT from **DejaVu Sans** (already in
+  `third_party/`): 368 glyphs (ASCII, Latin-1, Latin Extended-A, punctuation, arrows, the buttons as a letter in a
+  disc), the console's metrics (cells of 24 x 30, sheets of 128 x 32 in A4) -> `user/Emulators/n3ds/data/sysfont.bcfnt`
+  (154 KB, committed; to ship with the app at T7). `Machine::setSharedFont` puts it in FCRAM where the console
+  keeps it (past the application's 64 MB: the programs give the GPU the glyph sheets by their linear address) and
+  turns its offsets into addresses; `APT GetSharedFont` hands the block, mapped "at 0" = at its own address
+  (0x18000000). A user's own console font (a BCFNT) can be given instead; none of Nintendo's is shipped.
+- **The PICA200** (`n3ds_pica.cpp`, ~700 lines, written from 3dbrew's register and shader pages): the command
+  lists (register, byte mask, runs); the **vertex shader** interpreter (the whole arithmetic set, MAD, CMP, the
+  flow: CALL / IF / LOOP / JMP on comparisons and uniforms; float, integer and boolean uniforms, 24-bit and 32-bit
+  uploads); attribute buffers (12 loaders, the four types, padding, fixed attributes) and vertices given one by
+  one; the output map; triangle lists, strips and fans; clipping (7 planes), culling, the viewport, the scissor;
+  a rasterizer with perspective-correct interpolation; three texture units (RGBA8, RGB8, RGB5A1, RGB565, RGBA4,
+  LA8, HILO8, L8, A8, LA4, L4, A4; the wrap modes; nearest texel); the **six combiner stages** with their buffer;
+  alpha test, depth test, blending (all factors and equations) or the logic operations, the write masks; tiled
+  colour (5 formats) and depth (16 / 24 bits) buffers. **The display transfer** (tiled -> linear, format
+  conversion, flip, halving). `gsp::Gpu` now runs the command lists and the transfers.
+- **Not done** (noted in `Machine::notes` when asked): lighting, fog, procedural textures, shadows, stencil, ETC1,
+  the geometry shader, texture filtering and mipmaps, the texture copy, jumps in command lists.
+- **Results** (under `n3dstest`, the pictures looked at): ***Snake* plays** -- the snake, the food, the score and
+  "Game Over" in our font, the d-pad obeyed (it draws one game frame every 8 VBlanks: taken to be the game's own
+  pace, not verified against a console). *Cube Adventures* shows its menu and runs. *2048* still right. *Mars*
+  stops for want of `cfg:u`.
+- **No test of our own for the GPU yet**: what checks it is the homebrew's pictures. To write: a test program with
+  a shader of ours (the T2 item "our 3D tests"), its picture's checksum in `tools/tests/n3ds/expect/`.
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 
