@@ -29,6 +29,22 @@ session tests and debugs it on the Pi. Done: D0 to D5.
   the idle-loop skip is the JIT's only; no Wi-Fi, no GBA slot, no microphone.
 - **The 3DS** (the user's question): a study first, see the chat's answer; nothing started.
 
+## The console: the pad as a mouse in the desktop's apps (2026-10-09, night) -- NOT tried on the Pi
+
+The user: "the desktop's apps that need the mouse (the browser) must be usable with a pad: the stick moves the
+pointer, A clicks the links and the buttons, L up / R down and the right stick scroll". consolehome's `pad_app`
+(main.cpp): over an app not of the Games / Emulators categories, the left stick moves the pointer, A / X are the left
+/ right buttons, L1 / R1 and the right stick the wheel; the d-pad arrows, B Esc, Y Tab, Start Enter (A was Enter
+before: it clicks now). To try on the Pi: Jet, the File Viewer.
+
+## The console: a Games page (the ROM folders), the home's moves animated (2026-10-09, night) -- tested on the PC, NOT on the Pi
+
+The user (Onyx Remote's keys: fixed). The Game Library is not shown in the console, so its watched folders could not
+be set there: the settings' first page is now **Games** (`xset.h`: the folders, a browser for the pad over the
+volumes, *Look for the games again*). And the home's moves are animated (`xmb.h`: `anim_step`, `draw_list` by a
+fractional position). Each frame is a whole redraw of the home: over RDP that is the whole screen sent (the user
+knows: "the slowness is the remote", leave it for now).
+
 ## Onyx Remote: the keys sent from its desktop view (2026-10-09, night) -- NOT tried on a PC yet
 
 RDP's keyboard still dead in console mode on 2026.10.151: Onyx Remote sent the keys only from a RemoteWindow (a

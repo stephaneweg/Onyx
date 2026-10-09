@@ -367,37 +367,71 @@ static bool thumb_for (int r)
 	return false;
 }
 
-// ---- the home drawn --------------------------------------------------------------------------------------------------
-// A vertical list: item f at FY (big, white, its line under it), the ones after it below, the ones before it above the
-// category row (faded); its icons centred at cx, its words from cx + lx, w wide. dim: the whole list fainter.
-static void draw_list (Canvas &cv, const XMet &m, const XCol &c, int n, int f, int cx, int w, bool focus, bool dim, bool sub)
+// ---- the home drawn ----------------------------------------------------------------------------------------------
+// THE MOVES ARE ANIMATED (the user, 2026-10-09: "fluid, not static"): what is drawn follows the chosen column and item
+// by an easing (1/256 units: g_ax the columns' position, g_ay the items', g_asub Apps' apps'), a frame each 16 ms
+// until it is there; a new column's list slides in from the right (g_slide). No animation reaches a game: only the home.
+static int g_ax = -1, g_ay, g_asub, g_slide, g_ayCol = -1;
+static bool g_anim;					// still moving: the main loop draws again soon
+static int ease (int a, int t)				// a step towards t (about a third of the way; there at once when close)
 {
-	int H = g_sh;
+	int d = t - a;
+	if (d > -6 && d < 6) return t;
+	return a + d * 85 / 256 + (d > 0 ? 1 : -1);
+}
+static void anim_step (void)
+{
+	if (!g_nx) { g_anim = false; return; }
+	const XCol &c = g_x[g_xf];
+	int tx = g_xf * 256, ty = c.sel * 256, ts = g_subSel * 256;
+	if (g_ax < 0) { g_ax = tx; g_ay = ty; g_asub = ts; g_ayCol = g_xf; }
+	if (g_ayCol != g_xf) { g_ayCol = g_xf; g_ay = ty; g_asub = ts; g_slide = 256; }	// (another column: its list slides in)
+	g_ax = ease (g_ax, tx); g_ay = ease (g_ay, ty); g_asub = ease (g_asub, ts);
+	g_slide = g_slide > 8 ? g_slide * 150 / 256 : 0;
+	g_anim = g_ax != tx || g_ay != ty || g_asub != ts || g_slide != 0;
+}
+static int lerp (int a, int b, int w) { return a + (int) ((long) (b - a) * w / 256); }	// w: 0..256
+
+// A vertical list: the item at fpos (1/256 of an item: between two while it moves) at FY (big, white, its line under
+// it), the ones after it below, the ones before it above the category row (faded); its icons centred at cx, its words
+// from cx + lx, w wide. dim: the whole list fainter; slide: 0..256, the list coming in from the right.
+static void draw_list (Canvas &cv, const XMet &m, const XCol &c, int n, int fpos, int cx, int w, bool focus, bool dim, bool sub, int slide)
+{
+	int H = g_sh, f = (fpos + 128) / 256;		// (the item nearest: its line, its hit)
+	cx += (int) ((long) slide * D (m.c ? 120 : 260) / 256);
+	int fadeIn = 256 - slide;
 	for (int j = 0; j < n; j++)
 	{
-		int y, s, a, lp;
-		if (j == f) { y = m.FY; s = m.fi; a = focus ? 255 : dim ? 130 : 200; lp = m.flab; }
-		else if (j > f) { y = m.FY + m.gap + (j - f - 1) * m.dy; s = m.oi; a = dim ? 90 : 150; lp = m.olab; if (y > H - m.bar - D (14)) break; }
-		else
-		{
-			if (sub) { y = m.FY - m.gap - (f - j - 1) * m.dy; a = (dim ? 90 : 150) - 25 * (f - j - 1); }
-			else { y = m.CY - m.above - (f - j - 1) * m.dy; a = 90 - 30 * (f - j - 1); }
-			s = m.oi; lp = m.olab;
-			if (y < m.ty + D (m.title) + D (24) || a <= 0) continue;
-		}
+		int d = j * 256 - fpos;			// its distance from the chosen place, in 1/256 of an item
+		if (d > 256 * 20 || d < -256 * 8) continue;
+		int y;
+		if (d >= 0) y = d <= 256 ? m.FY + (int) ((long) m.gap * d / 256) : m.FY + m.gap + (int) ((long) (d - 256) * m.dy / 256);
+		else if (sub) y = -d <= 256 ? m.FY - (int) ((long) m.gap * -d / 256) : m.FY - m.gap - (int) ((long) (-d - 256) * m.dy / 256);
+		else y = -d <= 256 ? lerp (m.FY, m.CY - m.above, -d) : m.CY - m.above - (int) ((long) (-d - 256) * m.dy / 256);
+		int wt = 256 - (d < 0 ? -d : d); if (wt < 0) wt = 0;	// 256: at the chosen place
+		int aOn = focus ? 255 : dim ? 130 : 200, aOff;
+		if (d >= 0) aOff = dim ? 90 : 150;
+		else if (sub) aOff = (dim ? 90 : 150) - (-d > 256 ? 25 * (-d - 256) / 256 : 0);
+		else aOff = 90 - (-d > 256 ? 30 * (-d - 256) / 256 : 0);
+		int a = lerp (aOff, aOn, wt) * fadeIn / 256;
+		if (a <= 0) continue;
+		if (d > 0 && y > H - m.bar - D (14)) continue;
+		if (d < 0 && y < m.ty + D (m.title) + D (24)) continue;
+		int s = lerp (m.oi, m.fi, wt), lp = lerp (m.olab, m.flab, wt);
 		if (sub) app_icon_at (cv, g_apps[g_sub[j]], cx, y, s, a);
 		else item_icon (cv, c, j, cx, y, s, a);
 		const char *lab = sub ? g_apps[g_sub[j]].label : item_label (c, j);
 		char line[160] = "";
-		if (j == f && !sub) item_sub (c, j, line, sizeof line);
-		if (j == f && sub) { int k = 0; lx_cat (line, sizeof line, &k, g_apps[g_sub[j]].name); }
+		bool near = wt > 128;			// (its line: the item at the chosen place)
+		if (near && !sub) item_sub (c, j, line, sizeof line);
+		if (near && sub) { int k = 0; lx_cat (line, sizeof line, &k, g_apps[g_sub[j]].name); }
 		{
 			UkFaceScope fc (F (lp));
-			int ly = line[0] && j == f ? y - D (14) - uk_fh () / 2 + D (2) : y - uk_fh () / 2;
-			text_fit (cv, cx + m.lx, ly, w, lab, fade (a), j == f ? 2 : 0);
-			if (j == f && line[0]) { UkFaceScope f2 (F (m.sub)); text_fit (cv, cx + m.lx + D (1), y + D (8), w, line, focus ? 0xD2E0F8 : fade (a * 3 / 4)); }
+			int ly = line[0] ? y - D (14) - uk_fh () / 2 + D (2) : y - uk_fh () / 2;
+			text_fit (cv, cx + m.lx, ly, w, lab, fade (a), wt > 200 ? 2 : 0);
+			if (line[0]) { UkFaceScope f2 (F (m.sub)); text_fit (cv, cx + m.lx + D (1), y + D (8), w, line, focus ? uk_mix (0x285096, 0xD2E0F8, a) : fade (a * 3 / 4)); }
 		}
-		g_homeHits.add (cx - s / 2, y - m.dy / 2, w + m.lx + s / 2, m.dy, sub ? H_SUB : H_ITEM, j);
+		if (j == f || d != 0) g_homeHits.add (cx - s / 2, y - m.dy / 2, w + m.lx + s / 2, m.dy, sub ? H_SUB : H_ITEM, j);
 	}
 }
 static void draw_home (void)
@@ -411,6 +445,7 @@ static void draw_home (void)
 	g_homeHits.clear ();
 	uk_paint_alpha (false);
 	XMet m = xm ();
+	anim_step ();
 	if (g_setOn)						// a settings page (xset.h)
 	{
 		draw_settings (cv);
@@ -450,16 +485,15 @@ static void draw_home (void)
 		return;
 	}
 
-	// level 1: the columns across, the chosen one at FX (hidden behind Apps' sub-level? no: always shown)
+	// level 1: the columns across, the chosen one at FX (between two while it moves: g_ax)
 	for (int i = 0; i < g_nx; i++)
 	{
-		int x;
-		if (i == g_xf) x = m.FX;
-		else if (i > g_xf) x = m.FX + m.big / 2 + (m.spr - m.big / 2) + (i - g_xf - 1) * m.spr;
-		else x = m.FX - (g_xf - i) * m.spl;
-		int s = i == g_xf ? m.big : m.small;
+		int d = i * 256 - g_ax;				// its distance from the chosen place, in 1/256 of a column
+		int x = d >= 0 ? m.FX + (int) ((long) d * m.spr / 256) : m.FX + (int) ((long) d * m.spl / 256);
+		int wt = 256 - (d < 0 ? -d : d); if (wt < 0) wt = 0;
+		int s = lerp (m.small, m.big, wt);
 		if (x < -s || x > W + s) continue;
-		col_icon (cv, g_x[i], x, m.CY, s, i == g_xf ? 255 : 110);
+		col_icon (cv, g_x[i], x, m.CY, s, lerp (110, 255, wt));
 		g_homeHits.add (x - m.spl / 2, m.CY - m.big / 2, m.spl, m.big, H_CAT, i);
 	}
 	{
@@ -471,13 +505,13 @@ static void draw_home (void)
 	int thx = W - m.thr - m.thw;				// the picture's place at the right
 	if (c->kind == X_APPS)
 	{
-		draw_list (cv, m, *c, c->n, c->sel, m.FX, m.SX - m.FX - m.lx - D (40), !g_inSub, g_inSub, false);
-		if (g_nsub) draw_list (cv, m, *c, g_nsub, g_subSel, m.SX, W - m.SX - m.lx - m.tx, g_inSub, !g_inSub, true);
+		draw_list (cv, m, *c, c->n, g_ay, m.FX, m.SX - m.FX - m.lx - D (40), !g_inSub, g_inSub, false, g_slide);
+		if (g_nsub) draw_list (cv, m, *c, g_nsub, g_asub, m.SX, W - m.SX - m.lx - m.tx, g_inSub, !g_inSub, true, g_slide);
 	}
 	else
 	{
 		int w = (c->kind == X_SYS ? thx - D (24) : W - m.tx) - (m.FX + m.lx);
-		draw_list (cv, m, *c, c->n, c->sel, m.FX, w, true, false, false);
+		draw_list (cv, m, *c, c->n, g_ay, m.FX, w, true, false, false, g_slide);
 	}
 	if (c->kind == X_SYS)					// the ROM's title screen, big at the right
 	{
@@ -538,6 +572,7 @@ static void draw_home (void)
 			text_fit (cv, m.tx, y0 + (m.bar - uk_fh ()) / 2, W - m.tx - tot - D (40), l, 0xC8D6F0);
 		}
 	}
+	if (g_anim) g_homeDirty = true;			// (the next frame of the move)
 	unsigned t1 = kapi_clock_us ();
 	uk_win_select (W_HOME); uk_win_present (); uk_win_select (0);
 	unsigned t2 = kapi_clock_us ();
@@ -600,7 +635,7 @@ static void move_item (int d)
 		c.sel += d;
 		if (c.sel < 0) c.sel = 0;
 		if (c.sel >= c.n) c.sel = c.n ? c.n - 1 : 0;
-		if (c.kind == X_APPS && c.sel != was) { g_subSel = 0; sub_read (); }
+		if (c.kind == X_APPS && c.sel != was) { g_subSel = 0; g_asub = 0; sub_read (); }
 	}
 	g_homeDirty = true;
 }
