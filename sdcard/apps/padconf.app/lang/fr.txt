@@ -58,3 +58,31 @@ Could not write SD:/etc/gamepad.ini	Impossible d'écrire SD:/etc/gamepad.ini
 Mapping cancelled.	Réglage annulé.
 This pad model's mapping was removed.	Le réglage de ce modèle de manette a été supprimé.
 gamepad.ini read again.	gamepad.ini relu.
+Up	Haut
+Down	Bas
+Left	Gauche
+Right	Droite
+A (bottom)	A (bas)
+B (right)	B (droite)
+X (left)	X (gauche)
+Y (top)	Y (haut)
+L	L
+R	R
+L2	L2
+R2	R2
+Select	Select
+Start	Start
+L3	L3
+R3	R3
+Home	Home
+Right stick up	Stick droit haut
+Right stick down	Stick droit bas
+Right stick left	Stick droit gauche
+Right stick right	Stick droit droite
+Saved in SD:/etc/gamepad.ini: the emulators use it now.	Enregistré dans SD:/etc/gamepad.ini : les émulateurs l'utilisent déjà.
+The keyboard as pad 1 in the emulators: a key for each button.	Le clavier comme manette 1 dans les émulateurs : une touche par bouton.
+Press the key for 	Appuyez sur la touche de 
+   (Esc: cancel)	   (Échap : annuler)
+Up / Down: a button   Enter or a click: its key   Forget: the keys of the start	Haut / Bas : un bouton   Entrée ou un clic : sa touche   Oublier : les touches d'origine
+Keyboard	Clavier
+The keyboard's keys are the first ones again.	Le clavier a de nouveau ses touches d'origine.

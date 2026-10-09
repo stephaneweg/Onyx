@@ -4,8 +4,8 @@
 //   nesemu <rom.nes> [--fullscreen]   (without a ROM: opens the Game Library)
 //                               (its app.txt "games": opening a .nes file starts it; the Game Library
 //                               app lists the ROMs of a folder)
-//   * Keys: arrows = the D-pad, X = A, Z = B, Enter = Start, Backspace = Select (held keys,
-//     kapi_key_held); a USB gamepad too (user/Include/gamepad.h: right / top button = A, bottom /
+//   * Keys: the keyboard is pad 0 (gamepad.h's [keyboard], the Gamepad applet: by default the arrows, X = A,
+//     Z = B, Enter = Start, Backspace = Select); a USB gamepad too (user/Include/gamepad.h: right / top button = A, bottom /
 //     left = B, Start, Select); F11 or View > Full Screen: the whole display, stretched with the
 //     proportions kept and centred (Esc / F11 back).
 //   * View > Zoom 1x / 2x / 3x, Region: NTSC (60 Hz) / PAL (50 Hz) -- guessed from the ROM's
@@ -224,14 +224,6 @@ bool EmuRoot::onKey (long k)
 static int buttons (void)
 {
 	int b = 0;
-	if (kapi_key_held (KEY_RIGHT)) b |= nes::BTN_RIGHT;
-	if (kapi_key_held (KEY_LEFT)) b |= nes::BTN_LEFT;
-	if (kapi_key_held (KEY_UP)) b |= nes::BTN_UP;
-	if (kapi_key_held (KEY_DOWN)) b |= nes::BTN_DOWN;
-	if (kapi_key_held ('x')) b |= nes::BTN_A;
-	if (kapi_key_held ('z')) b |= nes::BTN_B;
-	if (kapi_key_held (KEY_ENTER)) b |= nes::BTN_START;
-	if (kapi_key_held (KEY_BACKSPACE)) b |= nes::BTN_SELECT;
 	// USB gamepads (user/Include/gamepad.h): by place, as on Nintendo's pads -- the right face
 	// button is A, the bottom one B (and the top / left ones the same)
 	unsigned p = pad_buttons (-1);
@@ -270,6 +262,7 @@ static void show_frame (void)
 
 int main (void)
 {
+	pad_keyboard (1);				// (the keyboard is pad 0 too: gamepad.h's [keyboard] keys)
 	char args[256] = "";
 	kapi_get_args (args, sizeof args);
 	int i = 0; while (args[i] == ' ') i++;

@@ -4,8 +4,8 @@
 //   snesemu <rom.sfc | rom.smc> [--fullscreen]   (without a ROM: opens the Game Library)
 //                               (its app.txt "games": opening a .sfc / .smc file starts it; the Game
 //                               Library app lists the ROMs of a folder)
-//   * Keys: arrows = the D-pad, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start,
-//     Backspace = Select (held keys, kapi_key_held); a USB gamepad too (user/Include/gamepad.h, by
+//   * Keys: the keyboard is pad 0 (gamepad.h's [keyboard], the Gamepad applet: by default the arrows, X = A,
+//     Z = B, S = X, A = Y, Q = L, W = R, Enter = Start, Backspace = Select); a USB gamepad too (user/Include/gamepad.h, by
 //     place as on a Super Nintendo pad: right = A, bottom = B, top = X, left = Y, L, R, Start,
 //     Select); F11 or View > Full Screen: the whole display, stretched with the proportions
 //     kept and centred (Esc / F11 back).
@@ -213,18 +213,6 @@ bool EmuRoot::onKey (long k)
 static int buttons (void)
 {
 	int b = 0;
-	if (kapi_key_held (KEY_RIGHT)) b |= snes::BTN_RIGHT;
-	if (kapi_key_held (KEY_LEFT)) b |= snes::BTN_LEFT;
-	if (kapi_key_held (KEY_UP)) b |= snes::BTN_UP;
-	if (kapi_key_held (KEY_DOWN)) b |= snes::BTN_DOWN;
-	if (kapi_key_held ('x')) b |= snes::BTN_A;
-	if (kapi_key_held ('z')) b |= snes::BTN_B;
-	if (kapi_key_held ('s')) b |= snes::BTN_X;
-	if (kapi_key_held ('a')) b |= snes::BTN_Y;
-	if (kapi_key_held ('q')) b |= snes::BTN_L;
-	if (kapi_key_held ('w')) b |= snes::BTN_R;
-	if (kapi_key_held (KEY_ENTER)) b |= snes::BTN_START;
-	if (kapi_key_held (KEY_BACKSPACE)) b |= snes::BTN_SELECT;
 	// USB gamepads (user/Include/gamepad.h): by place, as on the Super Nintendo's pad -- right A,
 	// bottom B, top X, left Y
 	unsigned p = pad_buttons (-1);
@@ -267,6 +255,7 @@ static void show_frame (void)
 
 int main (void)
 {
+	pad_keyboard (1);				// (the keyboard is pad 0 too: gamepad.h's [keyboard] keys)
 	char args[256] = "";
 	kapi_get_args (args, sizeof args);
 	int i = 0; while (args[i] == ' ') i++;

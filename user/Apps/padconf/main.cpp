@@ -4,7 +4,8 @@
 // buttons of user/Include/gamepad.h, on a drawn pad), and "Map Buttons..." -- press each button when
 // asked -- which writes the pad model's section of SD:/etc/gamepad.ini.
 //
-//   * Pads 1-4: click the tabs or keys 1-4. Map Buttons... (M), Forget Mapping (the pad's
+//   * Pads 1-4: click the tabs or keys 1-4. Keyboard (the 5th tab, key 5): the keyboard as pad 1 in the emulators --
+//     a key for each button (gamepad.h's [keyboard]): a row chosen, Enter or a click, then the key (Esc: cancel). Map Buttons... (M), Forget Mapping (the pad's
 //     section removed: back to the built-in / [default] mapping), Reload gamepad.ini: the
 //     buttons at the bottom (and the Pad menu when it is a window of its own).
 //   * The Control Panel's Gamepad applet (applet_proto.h), or a window of its own when run alone.
@@ -141,8 +142,8 @@ static void map_poll (void)
 	}
 }
 
-// Replace (or add) the pad model's section in SD:/etc/gamepad.ini.
-static bool write_section (const char *body)
+// Replace (or add) a section of SD:/etc/gamepad.ini: the pad model's ([vvvv:pppp]), or head's ("[keyboard]").
+static bool write_section (const char *body, const char *headWanted = 0)
 {
 	static char buf[8192], out[8192];
 	int n = 0;
@@ -152,6 +153,7 @@ static bool write_section (const char *body)
 	char head[16]; int hn = 0; head[0] = 0;
 	cat (head, &hn, sizeof head, "["); cathex (head, &hn, sizeof head, g_raw.vid, 4); cat (head, &hn, sizeof head, ":");
 	cathex (head, &hn, sizeof head, g_raw.pid, 4); cat (head, &hn, sizeof head, "]");
+	if (headWanted) { hn = 0; head[0] = 0; cat (head, &hn, sizeof head, headWanted); }
 	int o = 0; bool skip = false;
 	for (int i = 0; i < n; )
 	{
@@ -227,6 +229,51 @@ static void pad_shape (Canvas &c, int x, int y, unsigned b)
 		key_cap (c, x + k[i].dx, y + k[i].dy, k[i].w, k[i].h, (b >> k[i].bit) & 1, k[i].t);
 }
 
+// ---- the keyboard as pad 1 (gamepad.h's [keyboard]: the emulators read it) -------------------------------------
+// The Keyboard tab (g_pad == PAD_MAX): a key for each button (and the right stick), lit while held; a row chosen
+// (Up / Down or a click) and Enter (or a click on it): the next key pressed is its (Esc: cancel). Saved at once.
+static const char *const KROW[PAD_KEYS] = {
+	TRN ("Up"), TRN ("Down"), TRN ("Left"), TRN ("Right"), TRN ("A (bottom)"), TRN ("B (right)"), TRN ("X (left)"),
+	TRN ("Y (top)"), TRN ("L"), TRN ("R"), TRN ("L2"), TRN ("R2"), TRN ("Select"), TRN ("Start"), TRN ("L3"), TRN ("R3"),
+	TRN ("Home"), TRN ("Right stick up"), TRN ("Right stick down"), TRN ("Right stick left"), TRN ("Right stick right") };
+static int g_ksel = 0;
+static bool g_kwait = false;				// waiting for the key of row g_ksel
+#define KROWS	11					// rows a column
+#define KY0	76
+#define KRH	22
+static void kbd_save (void)
+{
+	static char body[1024]; int n = 0; body[0] = 0;
+	cat (body, &n, sizeof body, "[keyboard]\t; the keyboard as pad 1 (the emulators), set with the Gamepad app\n");
+	for (int i = 0; i < PAD_KEYS; i++)
+	{
+		cat (body, &n, sizeof body, i < PAD_NBUTTONS ? pad_names[i] : pad_key_names[i - PAD_NBUTTONS]);
+		cat (body, &n, sizeof body, " = "); cat (body, &n, sizeof body, g_pad_kbd[i] ? pad_key_word (g_pad_kbd[i]) : "none");
+		cat (body, &n, sizeof body, "\n");
+	}
+	int m = 0; g_msg[0] = 0;
+	if (write_section (body, "[keyboard]")) cat (g_msg, &m, sizeof g_msg, TR ("Saved in SD:/etc/gamepad.ini: the emulators use it now."));
+	else cat (g_msg, &m, sizeof g_msg, TR ("Could not write SD:/etc/gamepad.ini"));
+	pad_config_reload ();
+}
+static void kbd_draw (Canvas &c, int width, int height)
+{
+	c.text (14, 46, TR ("The keyboard as pad 1 in the emulators: a key for each button."), C_TEXT);
+	for (int i = 0; i < PAD_KEYS; i++)
+	{
+		int col = i / KROWS, row = i % KROWS, x = 14 + col * 292, y = KY0 + row * KRH;
+		bool sel = i == g_ksel, held = g_pad_kbd[i] && kapi_key_held (g_pad_kbd[i]);
+		if (sel) uk_hilite (c, x - 4, y - 2, 284, KRH - 2, 5, true);
+		c.text (x + 4, y + 1, TR (KROW[i]), sel ? C_SEL_TEXT : C_TEXT);
+		const char *w = g_kwait && sel ? "?" : g_pad_kbd[i] ? pad_key_word (g_pad_kbd[i]) : "-";
+		key_cap (c, x + 170, y - 1, 96, KRH - 4, held || (g_kwait && sel), w);
+	}
+	int y = KY0 + KROWS * KRH + 8;
+	if (g_kwait) { char s[160]; int n = 0; s[0] = 0; cat (s, &n, sizeof s, TR ("Press the key for ")); cat (s, &n, sizeof s, TR (KROW[g_ksel])); cat (s, &n, sizeof s, TR ("   (Esc: cancel)")); uk_text_l (c, 14, y, 16, s, uk_tone (C_ACCENT, 84), 2); }
+	else c.text (14, y, TR ("Up / Down: a button   Enter or a click: its key   Forget: the keys of the start"), C_DIS);
+	(void) width; (void) height;
+}
+
 class PadRoot : public Root
 {
 public:
@@ -238,9 +285,9 @@ public:
 		char s[200]; int n;
 		uk_rbox (canvas, 0, 0, W, 38, 0, uk_tone (C_FACE, 170), uk_tone (C_FACE, 130));
 		uk_etch_h (canvas, 0, 38, W, C_FACE);
-		for (int i = 0; i < PAD_MAX; i++)				// the tabs: the current one in the accent
+		for (int i = 0; i <= PAD_MAX; i++)				// the tabs (the pads, the keyboard): the current one in the accent
 		{
-			struct kapi_pad p; bool there = kapi_pad_state (i, &p) != 0, cur = i == g_pad;
+			struct kapi_pad p; bool there = i == PAD_MAX || kapi_pad_state (i, &p) != 0, cur = i == g_pad;
 			int tx = 10 + i * TABW;
 			if (cur)
 			{
@@ -248,10 +295,13 @@ public:
 				uk_rline (canvas, tx, 8, TABW - 6, 24, 6, uk_tone (C_ACCENT, 70), 200);
 			}
 			else uk_raised (canvas, tx, 8, TABW - 6, 24, 6, C_FACE);
-			n = 0; s[0] = 0; cat (s, &n, sizeof s, TR ("Pad ")); cati (s, &n, sizeof s, i + 1); if (!there) cat (s, &n, sizeof s, " -");
+			n = 0; s[0] = 0;
+			if (i == PAD_MAX) cat (s, &n, sizeof s, TR ("Keyboard"));
+			else { cat (s, &n, sizeof s, TR ("Pad ")); cati (s, &n, sizeof s, i + 1); if (!there) cat (s, &n, sizeof s, " -"); }
 			uk_text_l (canvas, tx + 12, 8, 24, s, cur ? C_SEL_TEXT : there ? C_TEXT : C_DIS, cur ? 2 : 0);
 		}
 		int y = 44;
+		if (g_pad == PAD_MAX) { kbd_draw (canvas, width, height); if (g_msg[0]) canvas.text (14, height - 70, g_msg, msg); return; }
 		if (!g_there)
 		{
 			canvas.text (14, y, TR ("No gamepad in this slot. Plug a USB gamepad in (Xbox 360 / One,"), C_TEXT);
@@ -322,26 +372,60 @@ public:
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
 		static bool down = false;
-		if (bl && !down && my >= 8 && my < 32 && mx >= 10 && mx < 10 + PAD_MAX * TABW) { g_pad = (mx - 10) / TABW; g_mapping = false; invalidate (true); }
+		if (bl && !down && my >= 8 && my < 32 && mx >= 10 && mx < 10 + (PAD_MAX + 1) * TABW) { g_pad = (mx - 10) / TABW; g_mapping = false; g_kwait = false; invalidate (true); }
+		else if (bl && !down && g_pad == PAD_MAX && my >= KY0 - 2 && my < KY0 + KROWS * KRH && mx >= 10 && mx < 10 + 2 * 292)
+		{
+			int i = ((mx - 10) / 292) * KROWS + (my - KY0 + 2) / KRH;
+			if (i >= 0 && i < PAD_KEYS) { g_kwait = i == g_ksel && !g_kwait; g_ksel = i; invalidate (true); }
+		}
 		down = bl != 0;
 		return true;
 	}
 	bool onKey (long k) override
 	{
+		if (g_pad == PAD_MAX)					// the keyboard's keys
+		{
+			if (g_kwait)
+			{
+				g_kwait = false;
+				if (k != 27)
+				{
+					int c = k >= 'A' && k <= 'Z' ? (int) k + 32 : (int) k;
+					if (c == '\n' || c == '\r') c = KEY_ENTER;
+					for (int i = 0; i < PAD_KEYS; i++) if (i != g_ksel && g_pad_kbd[i] == c) g_pad_kbd[i] = 0;	// (a key does one thing)
+					g_pad_kbd[g_ksel] = c;
+					kbd_save ();
+				}
+				invalidate (true); return true;
+			}
+			if (k == KEY_UP && g_ksel > 0) { g_ksel--; invalidate (true); return true; }
+			if (k == KEY_DOWN && g_ksel < PAD_KEYS - 1) { g_ksel++; invalidate (true); return true; }
+			if (k == KEY_LEFT && g_ksel >= KROWS) { g_ksel -= KROWS; invalidate (true); return true; }
+			if (k == KEY_RIGHT && g_ksel + KROWS < PAD_KEYS) { g_ksel += KROWS; invalidate (true); return true; }
+			if (k == KEY_ENTER || k == '\n') { g_kwait = true; invalidate (true); return true; }
+		}
 		if (g_mapping)
 		{
 			if (k == 27) { if (!g_waitRelease && g_step < PAD_NBUTTONS) next_step (); g_waitRelease = false; invalidate (true); return true; }
 			if (k == KEY_BACKSPACE) { g_mapping = false; int n = 0; g_msg[0] = 0; cat (g_msg, &n, sizeof g_msg, TR ("Mapping cancelled.")); invalidate (true); return true; }
 		}
-		if (k >= '1' && k <= '4') { g_pad = (int) (k - '1'); g_mapping = false; invalidate (true); return true; }
+		if (k >= '1' && k <= '5') { g_pad = (int) (k - '1'); g_mapping = false; g_kwait = false; invalidate (true); return true; }
 		if (k == 'm' || k == 'M') { map_start (); invalidate (true); return true; }
 		return Root::onKey (k);
 	}
 };
 
-static void on_map () { map_start (); g_root->invalidate (true); }
+static void on_map () { if (g_pad == PAD_MAX) g_kwait = true; else map_start (); g_root->invalidate (true); }
 static void on_forget ()
 {
+	if (g_pad == PAD_MAX)					// the keyboard: the keys of the start
+	{
+		int n = 0; g_msg[0] = 0;
+		if (write_section ("", "[keyboard]")) cat (g_msg, &n, sizeof g_msg, TR ("The keyboard's keys are the first ones again."));
+		pad_config_reload ();
+		g_root->invalidate (true);
+		return;
+	}
 	if (!g_there) return;
 	int n = 0; g_msg[0] = 0;
 	if (write_section ("")) cat (g_msg, &n, sizeof g_msg, TR ("This pad model's mapping was removed."));
@@ -378,7 +462,14 @@ int main (void)
 	while (!uk_quit ())
 	{
 		uk_pump ();
-		g_there = kapi_pad_state (g_pad, &g_raw) != 0;
+		g_there = g_pad < PAD_MAX && kapi_pad_state (g_pad, &g_raw) != 0;
+		if (g_pad == PAD_MAX)					// (the keys lit while held)
+		{
+			static unsigned lastHeld;
+			unsigned h = 0;
+			for (int i = 0; i < PAD_KEYS; i++) if (g_pad_kbd[i] && kapi_key_held (g_pad_kbd[i])) h |= 1u << i;
+			if (h != lastHeld) { lastHeld = h; root.invalidate (true); }
+		}
 		map_poll ();
 		if (g_there != lastThere || g_pad != lastPad || (g_there && g_raw.seq != lastSeq))
 		{

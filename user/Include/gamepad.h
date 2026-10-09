@@ -86,6 +86,51 @@ static inline void pad_map_default (struct pad_map *m, int known, unsigned props
 	m->stick = 1; m->dead = 400;
 }
 
+// ---- the keyboard as a pad (pad 0), for a program that asks for it: pad_keyboard (1) ----------------------------
+// [keyboard] in SD:/etc/gamepad.ini: a key for each PAD_* button (its ini key, as above) and for the right stick
+// (rs_up, rs_down, rs_left, rs_right): a letter or a digit, or up, down, left, right, enter, backspace, space, tab,
+// esc, home, end, pgup, pgdn, del, f1..f12, none. By default (the buttons by their place, as Nintendo's pads: the
+// right one is A): the arrows the d-pad (and the left stick), x the right button (b), z the bottom one (a), s the top
+// one (y), a the left one (x), q / w L / R, e / r L2 / R2, Enter Start, Backspace Select; i / k / j / l the right stick.
+// Held keys (kapi_key_held: only while the program has the keyboard). The Gamepad applet sets them.
+#define PAD_KEYS	(PAD_NBUTTONS + 4)		// the buttons, then the right stick's up, down, left, right
+static const char *const pad_key_names[4] = { "rs_up", "rs_down", "rs_left", "rs_right" };
+static const int pad_kbd_default[PAD_KEYS] = { KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, 'z', 'x', 'a', 's', 'q', 'w', 'e', 'r',
+	KEY_BACKSPACE, KEY_ENTER, 0, 0, 0, 'i', 'k', 'j', 'l' };
+static int g_pad_kbd[PAD_KEYS] = { KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, 'z', 'x', 'a', 's', 'q', 'w', 'e', 'r',
+	KEY_BACKSPACE, KEY_ENTER, 0, 0, 0, 'i', 'k', 'j', 'l' };
+static int g_pad_kbd_on;
+static inline void pad_keyboard (int on) { g_pad_kbd_on = on; }
+static const struct { const char *name; int code; } pad_key_words[] = {
+	{ "up", KEY_UP }, { "down", KEY_DOWN }, { "left", KEY_LEFT }, { "right", KEY_RIGHT }, { "enter", KEY_ENTER },
+	{ "backspace", KEY_BACKSPACE }, { "space", ' ' }, { "tab", KEY_TAB }, { "esc", 27 }, { "home", KEY_HOME },
+	{ "end", KEY_END }, { "pgup", KEY_PGUP }, { "pgdn", KEY_PGDN }, { "del", KEY_DEL }, { "none", 0 } };
+// A key's word in gamepad.ini -> its code (the KEY_* of appkit.h, a lower-case character), -1 not a key.
+static inline int pad_key_code (const char *w, int n)
+{
+	if (n == 1) { int c = w[0] >= 'A' && w[0] <= 'Z' ? w[0] + 32 : w[0]; return c > ' ' && c < 127 ? c : -1; }
+	for (unsigned i = 0; i < sizeof pad_key_words / sizeof pad_key_words[0]; i++)
+	{
+		int k = 0; while (k < n && pad_key_words[i].name[k] && (w[k] >= 'A' && w[k] <= 'Z' ? w[k] + 32 : w[k]) == pad_key_words[i].name[k]) k++;
+		if (k == n && !pad_key_words[i].name[k]) return pad_key_words[i].code;
+	}
+	if ((w[0] == 'f' || w[0] == 'F') && n >= 2 && n <= 3)
+	{
+		int v = 0; for (int k = 1; k < n; k++) { if (w[k] < '0' || w[k] > '9') return -1; v = v * 10 + w[k] - '0'; }
+		if (v >= 1 && v <= 12) return KEY_F1 + v - 1;
+	}
+	return -1;
+}
+// A key's code -> its word (the applet shows it, writes it).
+static inline const char *pad_key_word (int code)
+{
+	static char one[2];
+	for (unsigned i = 0; i < sizeof pad_key_words / sizeof pad_key_words[0]; i++) if (pad_key_words[i].code == code) return pad_key_words[i].name;
+	if (code >= KEY_F1 && code <= KEY_F12) { static char f[4]; int v = code - KEY_F1 + 1; f[0] = 'f'; f[1] = (char) ('0' + (v >= 10 ? 1 : v)); f[2] = v >= 10 ? (char) ('0' + v - 10) : 0; f[3] = 0; return f; }
+	one[0] = code > ' ' && code < 127 ? (char) code : '?'; one[1] = 0;
+	return one;
+}
+
 // ---- SD:/etc/gamepad.ini ---------------------------------------------------------------------------
 #define PAD_CFG_MAX	12
 struct pad_cfg_entry { int kind; unsigned id; struct pad_map map; unsigned set; };	// kind 1 [default], 2 [vvvv:pppp]; set: keys given
@@ -145,6 +190,7 @@ static inline void pad_config_reload (void)
 {
 	static char buf[4096];
 	g_pad_ncfg = 0;
+	for (int i = 0; i < PAD_KEYS; i++) g_pad_kbd[i] = pad_kbd_default[i];	// ([keyboard] below, else these)
 	void *f = kapi_open ("SD:/etc/gamepad.ini");
 	if (!f) return;
 	int n = kapi_read (f, buf, sizeof buf - 1);
@@ -152,6 +198,7 @@ static inline void pad_config_reload (void)
 	if (n <= 0) return;
 	buf[n] = 0;
 	struct pad_cfg_entry *cur = 0;
+	int kbd = 0;					// in [keyboard]
 	for (int i = 0; i < n; )
 	{
 		int s = i; while (i < n && buf[i] != '\n') i++;
@@ -163,6 +210,8 @@ static inline void pad_config_reload (void)
 		{
 			cur = 0;
 			int c = s + 1; while (c < e && buf[c] != ']') c++;
+			kbd = pad_word_eq (buf + s + 1, c - s - 1, "keyboard");
+			if (kbd) continue;
 			if (g_pad_ncfg >= PAD_CFG_MAX) continue;
 			struct pad_cfg_entry *en = &g_pad_cfg[g_pad_ncfg];
 			unsigned v = 0, p = 0; int colon = s + 1; while (colon < c && buf[colon] != ':') colon++;
@@ -173,12 +222,20 @@ static inline void pad_config_reload (void)
 			cur = en; g_pad_ncfg++;
 			continue;
 		}
-		if (!cur) continue;
+		if (!cur && !kbd) continue;
 		int eq = s; while (eq < e && buf[eq] != '=') eq++;
 		if (eq >= e) continue;
 		int ke = eq; while (ke > s && (buf[ke - 1] == ' ' || buf[ke - 1] == '\t')) ke--;
 		int vs = eq + 1; while (vs < e && (buf[vs] == ' ' || buf[vs] == '\t')) vs++;
 		int ve = vs; while (ve < e && buf[ve] != ' ' && buf[ve] != '\t' && buf[ve] != ';' && buf[ve] != '#') ve++;
+		if (kbd)					// [keyboard]: a button's key
+		{
+			int code = pad_key_code (buf + vs, ve - vs);
+			if (code < 0) continue;
+			for (int b = 0; b < PAD_KEYS; b++)
+				if (pad_word_eq (buf + s, ke - s, b < PAD_NBUTTONS ? pad_names[b] : pad_key_names[b - PAD_NBUTTONS])) g_pad_kbd[b] = code;
+			continue;
+		}
 		pad_cfg_set (cur, buf + s, ke - s, buf + vs, ve - vs);
 	}
 	// a button a section gives to one function leaves the functions it had by default
@@ -260,19 +317,49 @@ static inline unsigned pad_apply (const struct kapi_pad *p, const struct pad_map
 	return b;
 }
 
-// Pad 0..3: 1 if there (out filled; buttons and sticks 0 while the window has not the keyboard).
+// The PAD_* buttons held on the keyboard ([keyboard]), its sticks (-1000..1000; 0 none) -- whatever pad_keyboard says.
+static inline unsigned pad_keys (int *lx, int *ly, int *rx, int *ry)
+{
+	if (g_pad_ncfg < 0) pad_config_reload ();
+	unsigned b = 0;
+	for (int i = 0; i < PAD_NBUTTONS; i++) if (g_pad_kbd[i] && kapi_key_held (g_pad_kbd[i])) b |= 1u << i;
+	if ((b & PAD_LEFT) && (b & PAD_RIGHT)) b &= ~(unsigned) (PAD_LEFT | PAD_RIGHT);
+	if ((b & PAD_UP) && (b & PAD_DOWN)) b &= ~(unsigned) (PAD_UP | PAD_DOWN);
+	if (lx) *lx = (b & PAD_LEFT) ? -1000 : (b & PAD_RIGHT) ? 1000 : 0;
+	if (ly) *ly = (b & PAD_UP) ? -1000 : (b & PAD_DOWN) ? 1000 : 0;
+	int h[4];
+	for (int i = 0; i < 4; i++) h[i] = g_pad_kbd[PAD_NBUTTONS + i] && kapi_key_held (g_pad_kbd[PAD_NBUTTONS + i]);
+	if (rx) *rx = h[2] && !h[3] ? -1000 : h[3] && !h[2] ? 1000 : 0;
+	if (ry) *ry = h[0] && !h[1] ? -1000 : h[1] && !h[0] ? 1000 : 0;
+	return b;
+}
+
+// Pad 0..3: 1 if there (out filled; buttons and sticks 0 while the window has not the keyboard). With pad_keyboard (1),
+// pad 0 is there even with no pad plugged in: the keyboard's keys ([keyboard]) added to the first pad's.
 static inline int pad_read (int index, struct pad_input *out)
 {
 	struct kapi_pad p;
 	out->connected = out->focus = out->known = 0; out->vid = out->pid = 0;
 	out->buttons = 0; out->lx = out->ly = out->rx = out->ry = 0; out->raw = 0;
-	if (!kapi_pad_state (index, &p)) return 0;
-	struct pad_map m;
-	pad_map_for (&p, &m);
-	out->connected = 1; out->focus = p.focus; out->known = (p.props & 1) != 0;
-	out->vid = p.vid; out->pid = p.pid; out->raw = p.buttons;
-	if (p.focus) out->buttons = pad_apply (&p, &m, &out->lx, &out->ly, &out->rx, &out->ry);
-	return 1;
+	int there = kapi_pad_state (index, &p);
+	if (there)
+	{
+		struct pad_map m;
+		pad_map_for (&p, &m);
+		out->connected = 1; out->focus = p.focus; out->known = (p.props & 1) != 0;
+		out->vid = p.vid; out->pid = p.pid; out->raw = p.buttons;
+		if (p.focus) out->buttons = pad_apply (&p, &m, &out->lx, &out->ly, &out->rx, &out->ry);
+	}
+	if (index == 0 && g_pad_kbd_on)
+	{
+		int lx, ly, rx, ry;
+		out->buttons |= pad_keys (&lx, &ly, &rx, &ry);
+		if (!out->lx && !out->ly) { out->lx = lx; out->ly = ly; }
+		if (!out->rx && !out->ry) { out->rx = rx; out->ry = ry; }
+		if (!there) { out->connected = 1; out->focus = 1; }
+		return 1;
+	}
+	return there;
 }
 
 // The PAD_* buttons of pad 0..3, or of every pad OR'ed (-1).
