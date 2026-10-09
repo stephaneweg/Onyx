@@ -1,24 +1,20 @@
 //
-// k_files.cpp -- the files, the folders and the streams (onyxrun.h), on host folders: SD: is the runner's root (the
-// repository's sdcard/ by default), RAM: a folder of its own. FAT's rules kept where a program sees them: names
-// without case (an existing name found whatever its case), "SD:x" = "SD:/x", '\' = '/'.
+// k_files.cpp -- the files, the folders and the streams (onyxrun.h, kobj.h), on host folders: SD: is the runner's
+// root (the repository's sdcard/ by default), RAM: a folder of its own. FAT's rules kept where a program sees them:
+// names without case (an existing name found whatever its case), "SD:x" = "SD:/x", '\' = '/'.
 //
 //   - the v1..v59 calls (kernel/sys/kapi.cpp): open / read / fsize / seek / close (read-only files), save_file,
 //     opendir / readdir / closedir, mkdir / remove / rename, chdir / getcwd, the streams (pipe, file_in, file_out,
 //     stream_*, the console's);
 //   - the v75 calls (kernel/sys/ofile.cpp, vfs.cpp): file_open / read / write / seek / truncate / sync / stat /
 //     close, path_stat / unlink / mkdir / rename / utime, dir_read, stream_write_nb, handle_close.
-// Every object is a handle of one table (a number >= 0x1000, given as a pointer to the old calls).
 //
 // MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors.
 //
 #include "onyxrun.h"
+#include "kobj.h"
 #include <filesystem>
 #include <algorithm>
-#include <condition_variable>
-#include <map>
-#include <memory>
-#include <deque>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -35,27 +31,14 @@
 
 namespace fs = std::filesystem;
 
-bool guest_str (const char *p, std::string &out, size_t max);
-int str_out (char *buf, unsigned cap, const std::string &s);
-template <class T> static void put (T *p, T v) { if (p && hm_ok (p, sizeof (T), MEM_W)) *p = v; }
-
 static fs::path U8 (const std::string &s)
 {
-#if __cplusplus >= 202002L
-	return fs::path (std::u8string (s.begin (), s.end ()));
-#else
 	return fs::u8path (s);
-#endif
 }
 
 static std::string S8 (const fs::path &p)
 {
-#if __cplusplus >= 202002L
-	auto u = p.u8string ();
-	return std::string (u.begin (), u.end ());
-#else
 	return p.u8string ();
-#endif
 }
 
 static bool ieq (const std::string &a, const std::string &b)
@@ -67,8 +50,7 @@ static bool ieq (const std::string &a, const std::string &b)
 }
 
 // ---- the paths -------------------------------------------------------------------------------------------------
-// An Onyx path made absolute and clean: "VOL:/a/b" (the volume upper case), "" if bad.
-std::string onyx_abs (const char *p)
+std::string onyx_abs (const char *p, const std::string &cwd)
 {
 	std::string s = p ? p : "";
 	for (auto &c : s) if (c == '\\') c = '/';
@@ -81,9 +63,8 @@ std::string onyx_abs (const char *p)
 	}
 	else
 	{
-		std::string cwd;
-		{ std::lock_guard<std::mutex> L (g_Proc.lock); cwd = g_Proc.cwd; }
 		size_t c = cwd.find (':');
+		if (c == std::string::npos) return "";
 		vol = cwd.substr (0, c);
 		rest = s.size () && s[0] == '/' ? s : cwd.substr (c + 1) + "/" + s;
 	}
@@ -107,15 +88,14 @@ std::string onyx_abs (const char *p)
 
 static std::string vol_root (const std::string &vol)
 {
-	if (vol == "SD") return g_Proc.root;
-	if (vol == "RAM") return g_Proc.ramRoot;
+	if (vol == "SD") return g_Run.root;
+	if (vol == "RAM") return g_Run.ramRoot;
 	return "";
 }
 
-// The host path of an Onyx path ("" when its volume is not the runner's). Each part's case: the existing entry's.
-std::string host_path (const char *onyx)
+std::string host_path (const char *onyx, const std::string &cwd)
 {
-	std::string a = onyx_abs (onyx);
+	std::string a = onyx_abs (onyx, cwd);
 	if (a.empty ()) return "";
 	size_t c = a.find (':');
 	std::string root = vol_root (a.substr (0, c));
@@ -182,90 +162,147 @@ static int err_of (const std::error_code &ec)
 }
 
 // ---- the handles -----------------------------------------------------------------------------------------------
-enum Kind { H_FILE, H_DIR, H_PIPE, H_CONIN, H_CONOUT, H_FILEIN, H_FILEOUT };
-
-struct Pipe
+Obj::~Obj ()
 {
-	std::mutex m;
-	std::condition_variable cv;
-	std::deque<u8> data;
-	bool eof = false;
-	int readers = 0, writers = 0;
-};
+	if (f) fclose (f);
+	if (pipe && kind == H_PIPE)
+	{
+		std::lock_guard<std::mutex> L (pipe->m);
+		pipe->eof = true;		// (the last reference to a pipe: its readers see the end)
+		pipe->cv.notify_all ();
+	}
+}
 
-struct Obj
+u64 h_add (Proc *P, std::shared_ptr<Obj> o)
 {
-	Kind kind;
-	FILE *f = 0;				// H_FILE, H_FILEIN, H_FILEOUT
-	unsigned oflags = 0;
-	long long pos = 0;			// H_FILE's offset
-	std::string onyx, host;
-	std::vector<fs::directory_entry> entries;	// H_DIR
-	size_t next = 0;
-	std::shared_ptr<Pipe> pipe;		// H_PIPE
-	int refs = 1;
-	std::mutex m;
-};
-
-static std::mutex s_HM;
-static std::map<u64, std::shared_ptr<Obj>> s_H;
-static u64 s_NextH = 0x1000;
-
-static u64 h_add (std::shared_ptr<Obj> o)
-{
-	std::lock_guard<std::mutex> L (s_HM);
-	u64 h = s_NextH++;
-	s_H[h] = o;
+	std::lock_guard<std::mutex> L (P->m);
+	u64 h = P->nextHandle++;
+	P->handles[h] = o;
 	return h;
 }
 
-static std::shared_ptr<Obj> h_get (u64 h, int kind = -1)
+std::shared_ptr<Obj> h_get (Proc *P, u64 h, int kind)
 {
-	std::lock_guard<std::mutex> L (s_HM);
-	auto it = s_H.find (h);
-	if (it == s_H.end () || (kind >= 0 && it->second->kind != kind)) return nullptr;
+	std::lock_guard<std::mutex> L (P->m);
+	auto it = P->handles.find (h);
+	if (it == P->handles.end () || (kind >= 0 && it->second->kind != kind)) return nullptr;
 	return it->second;
 }
 
-static void obj_close (Obj &o)
-{
-	if (o.f) { fclose (o.f); o.f = 0; }
-	if (o.pipe && o.kind == H_PIPE)
-	{
-		std::lock_guard<std::mutex> L (o.pipe->m);
-		o.pipe->eof = true;		// (the last reference to a pipe stream: its readers see the end)
-		o.pipe->cv.notify_all ();
-	}
-}
-
-static bool h_drop (u64 h)
+bool h_drop (Proc *P, u64 h)
 {
 	std::shared_ptr<Obj> o;
 	{
-		std::lock_guard<std::mutex> L (s_HM);
-		auto it = s_H.find (h);
-		if (it == s_H.end ()) return false;
+		std::lock_guard<std::mutex> L (P->m);
+		auto it = P->handles.find (h);
+		if (it == P->handles.end ()) return false;
 		o = it->second;
-		if (--o->refs > 0) return true;
-		s_H.erase (it);
+		P->handles.erase (it);
 	}
-	std::lock_guard<std::mutex> L (o->m);
-	obj_close (*o);
-	return true;
+	return true;					// (the object goes when its last holder lets it go)
 }
 
-static u64 s_StdIn, s_StdOut;
-void *stream_stdin (void)
+void h_drop_all (Proc *P)
 {
-	std::lock_guard<std::mutex> L (s_HM);
-	if (!s_StdIn) { auto o = std::make_shared<Obj> (); o->kind = H_CONIN; o->refs = 1 << 30; s_StdIn = s_NextH++; s_H[s_StdIn] = o; }
-	return (void *) s_StdIn;
+	std::map<u64, std::shared_ptr<Obj>> all;
+	{
+		std::lock_guard<std::mutex> L (P->m);
+		all.swap (P->handles);
+	}
 }
-void *stream_stdout (void)
+
+std::shared_ptr<Obj> obj_console_in (void)
 {
-	std::lock_guard<std::mutex> L (s_HM);
-	if (!s_StdOut) { auto o = std::make_shared<Obj> (); o->kind = H_CONOUT; o->refs = 1 << 30; s_StdOut = s_NextH++; s_H[s_StdOut] = o; }
-	return (void *) s_StdOut;
+	static std::shared_ptr<Obj> o = [] { auto x = std::make_shared<Obj> (); x->kind = H_CONIN; return x; } ();
+	return o;
+}
+std::shared_ptr<Obj> obj_console_out (void)
+{
+	static std::shared_ptr<Obj> o = [] { auto x = std::make_shared<Obj> (); x->kind = H_CONOUT; return x; } ();
+	return o;
+}
+std::shared_ptr<Obj> obj_pipe (void)
+{
+	auto o = std::make_shared<Obj> ();
+	o->kind = H_PIPE;
+	o->pipe = std::make_shared<Pipe> ();
+	return o;
+}
+
+void obj_eof (Obj &o)
+{
+	if (!o.pipe) return;
+	std::lock_guard<std::mutex> L (o.pipe->m);
+	o.pipe->eof = true;
+	o.pipe->cv.notify_all ();
+}
+
+int obj_read (Obj &o, void *buf, unsigned n, bool nb)
+{
+	switch (o.kind)
+	{
+	case H_CONIN:
+		if (nb) return -1;		// (the host's console: a blocking read only)
+		return (int) fread (buf, 1, n, stdin);
+	case H_FILEIN: case H_FILE:
+	{
+		std::lock_guard<std::mutex> L (o.m);
+		return (int) fread (buf, 1, n, o.f);
+	}
+	case H_PIPE:
+	{
+		Pipe &P = *o.pipe;
+		std::unique_lock<std::mutex> L (P.m);
+		while (P.data.empty () && !P.eof)
+		{
+			if (nb) return -1;
+			P.cv.wait_for (L, std::chrono::milliseconds (50));
+			if (P.data.empty () && !P.eof) { L.unlock (); check_dying (); L.lock (); }
+		}
+		unsigned k = 0;
+		while (k < n && !P.data.empty ()) { ((u8 *) buf)[k++] = P.data.front (); P.data.pop_front (); }
+		P.cv.notify_all ();
+		return (int) k;
+	}
+	default: return -1;
+	}
+}
+
+int obj_write (Obj &o, const void *buf, unsigned n, bool nb)
+{
+	switch (o.kind)
+	{
+	case H_CONOUT:
+		fwrite (buf, 1, n, stdout);
+		fflush (stdout);
+		return (int) n;
+	case H_FILEOUT: case H_FILE:
+	{
+		std::lock_guard<std::mutex> L (o.m);
+		return (int) fwrite (buf, 1, n, o.f);
+	}
+	case H_PIPE:
+	{
+		Pipe &P = *o.pipe;
+		std::unique_lock<std::mutex> L (P.m);
+		const size_t CAP = 64 * 1024;
+		if (nb && P.data.size () >= CAP) return -KAPI_EAGAIN;
+		unsigned k = 0;
+		while (k < n)
+		{
+			while (P.data.size () >= CAP && !nb)
+			{
+				P.cv.wait_for (L, std::chrono::milliseconds (50));
+				if (P.data.size () >= CAP) { L.unlock (); check_dying (); L.lock (); }
+			}
+			if (P.data.size () >= CAP) break;
+			P.data.push_back (((const u8 *) buf)[k++]);
+		}
+		P.cv.notify_all ();
+		return (int) k;
+	}
+	default: return -1;
+	}
 }
 
 // ---- stat --------------------------------------------------------------------------------------------------------
@@ -292,8 +329,6 @@ static bool host_stat (const std::string &h, u64 *size, long long *mtime, bool *
 	return true;
 }
 
-static int vol_dev (const std::string &onyx) { return onyx.compare (0, 4, "RAM:") == 0 ? 9 : 0; }
-
 static void fill_stat (struct kapi_stat *S, const std::string &onyx, u64 size, long long mtime, bool dir)
 {
 	memset (S, 0, sizeof *S);
@@ -301,23 +336,26 @@ static void fill_stat (struct kapi_stat *S, const std::string &onyx, u64 size, l
 	S->mtime = S->ctime = mtime;
 	S->ino = fnv_upper (onyx);
 	S->mode = dir ? (KAPI_S_IFDIR | 0777) : (KAPI_S_IFREG | 0666);
-	S->dev = (unsigned) vol_dev (onyx);
+	S->dev = onyx.compare (0, 4, "RAM:") == 0 ? 9 : 0;
 	S->blksize = 32768;
 	S->attr = dir ? 0x10 : 0x20;
 	S->blocks = (size + 511) / 512;
 }
 
 // ---- the v1 calls: read-only files -----------------------------------------------------------------------------
-static bool arg_path (const char *p, std::string &onyx, std::string &host)
+static bool arg_path (u64 p, std::string &onyx, std::string &host)
 {
 	std::string s;
-	if (!guest_str (p, s, 1024)) return false;
-	onyx = onyx_abs (s.c_str ());
-	host = host_path (s.c_str ());
+	if (!gstr (p, s, 1024)) return false;
+	Proc *P = cur ();
+	std::string cwd;
+	{ std::lock_guard<std::mutex> L (P->m); cwd = P->cwd; }
+	onyx = onyx_abs (s.c_str (), cwd);
+	host = host_path (s.c_str (), cwd);
 	return !onyx.empty () && !host.empty ();
 }
 
-static void *k_open (const char *path)
+static u64 k_open (u64 path)
 {
 	std::string onyx, host;
 	if (!arg_path (path, onyx, host)) return 0;
@@ -327,57 +365,57 @@ static void *k_open (const char *path)
 	if (!f) return 0;
 	auto o = std::make_shared<Obj> ();
 	o->kind = H_FILE; o->f = f; o->onyx = onyx; o->host = host; o->oflags = KAPI_O_RDONLY;
-	return (void *) h_add (o);
+	return h_add (cur (), o);
 }
 
-static int k_read (void *h, void *buf, unsigned n)
+static int k_read (u64 h, u64 buf, unsigned n)
 {
-	auto o = h_get ((u64) h, H_FILE);
-	if (!o || !hm_ok (buf, n, MEM_W)) return -1;
+	auto o = h_get (cur (), h, H_FILE);
+	u8 *b = GB (buf, n, MEM_W);
+	if (!o || !b) return -1;
 	std::lock_guard<std::mutex> L (o->m);
 	fseek64 (o->f, o->pos, SEEK_SET);
-	size_t r = fread (buf, 1, n, o->f);
+	size_t r = fread (b, 1, n, o->f);
 	o->pos += (long long) r;
 	return (int) r;
 }
 
-static unsigned long long k_fsize64 (void *h)
+static unsigned long long k_fsize64 (u64 h)
 {
-	auto o = h_get ((u64) h, H_FILE);
+	auto o = h_get (cur (), h, H_FILE);
 	if (!o) return 0;
 	std::lock_guard<std::mutex> L (o->m);
-	long long here = ftell64 (o->f);
 	fseek64 (o->f, 0, SEEK_END);
 	long long n = ftell64 (o->f);
-	fseek64 (o->f, here, SEEK_SET);
 	return n < 0 ? 0 : (unsigned long long) n;
 }
-static unsigned k_fsize (void *h) { u64 n = k_fsize64 (h); return n > 0xFFFFFFFFull ? 0xFFFFFFFFu : (unsigned) n; }
+static unsigned k_fsize (u64 h) { u64 n = k_fsize64 (h); return n > 0xFFFFFFFFull ? 0xFFFFFFFFu : (unsigned) n; }
 
-static int k_seek (void *h, unsigned long long pos)
+static int k_seek (u64 h, unsigned long long pos)
 {
-	auto o = h_get ((u64) h, H_FILE);
+	auto o = h_get (cur (), h, H_FILE);
 	if (!o) return -1;
 	std::lock_guard<std::mutex> L (o->m);
 	o->pos = (long long) pos;
 	return 0;
 }
 
-static void k_close (void *h) { h_drop ((u64) h); }
+static void k_close (u64 h) { h_drop (cur (), h); }
 
-static int k_save_file (const char *path, const void *data, unsigned n)
+static int k_save_file (u64 path, u64 data, unsigned n)
 {
 	std::string onyx, host;
-	if (!arg_path (path, onyx, host) || !hm_ok (data, n, MEM_R)) return 0;
+	u8 *d = GB (data, n, MEM_R);
+	if (!arg_path (path, onyx, host) || (!d && n)) return 0;
 	FILE *f = host_fopen (host, "wb");
 	if (!f) return 0;
-	bool ok = fwrite (data, 1, n, f) == n;
+	bool ok = n == 0 || fwrite (d, 1, n, f) == n;
 	ok = fclose (f) == 0 && ok;
 	return ok ? 1 : 0;
 }
 
 // ---- folders ----------------------------------------------------------------------------------------------------
-static void *k_opendir (const char *path)
+static u64 k_opendir (u64 path)
 {
 	std::string onyx, host;
 	if (!arg_path (path, onyx, host)) return 0;
@@ -393,7 +431,7 @@ static void *k_opendir (const char *path)
 			for (auto &c : y) c = (char) tolower ((unsigned char) c);
 			return x < y;
 		});
-	return (void *) h_add (o);
+	return h_add (cur (), o);
 }
 
 static bool dir_next (Obj &o, std::string &name, u64 *size, long long *mtime, bool *dir)
@@ -407,41 +445,43 @@ static bool dir_next (Obj &o, std::string &name, u64 *size, long long *mtime, bo
 	return false;
 }
 
-static int k_readdir (void *h, struct kapi_dirent *ent)
+static int k_readdir (u64 h, u64 ent)
 {
-	auto o = h_get ((u64) h, H_DIR);
-	if (!o || !hm_ok (ent, sizeof *ent, MEM_W)) return 0;
+	auto o = h_get (cur (), h, H_DIR);
+	struct kapi_dirent *e = G<struct kapi_dirent> (ent, MEM_W);
+	if (!o || !e) return 0;
 	std::lock_guard<std::mutex> L (o->m);
 	std::string name; u64 size; long long mt; bool dir;
 	if (!dir_next (*o, name, &size, &mt, &dir)) return 0;
-	memset (ent, 0, sizeof *ent);
-	strncpy (ent->name, name.c_str (), sizeof ent->name - 1);
-	ent->size = size > 0xFFFFFFFFull ? 0xFFFFFFFFu : (unsigned) size;
-	ent->is_dir = dir ? 1 : 0;
+	memset (e, 0, sizeof *e);
+	strncpy (e->name, name.c_str (), sizeof e->name - 1);
+	e->size = size > 0xFFFFFFFFull ? 0xFFFFFFFFu : (unsigned) size;
+	e->is_dir = dir ? 1 : 0;
 	return 1;
 }
 
-static int k_dir_read (void *h, struct kapi_dirent2 *out)
+static int k_dir_read (u64 h, u64 out)
 {
-	auto o = h_get ((u64) h, H_DIR);
+	auto o = h_get (cur (), h, H_DIR);
 	if (!o) return -KAPI_EBADF;
-	if (!hm_ok (out, sizeof *out, MEM_W)) return -KAPI_EFAULT;
+	struct kapi_dirent2 *e = G<struct kapi_dirent2> (out, MEM_W);
+	if (!e) return -KAPI_EFAULT;
 	std::lock_guard<std::mutex> L (o->m);
 	std::string name; u64 size; long long mt; bool dir;
 	if (!dir_next (*o, name, &size, &mt, &dir)) return 0;
-	memset (out, 0, sizeof *out);
-	strncpy (out->name, name.c_str (), sizeof out->name - 1);
-	out->size = size;
-	out->mtime = mt;
-	out->mode = dir ? (KAPI_S_IFDIR | 0777) : (KAPI_S_IFREG | 0666);
-	out->attr = dir ? 0x10 : 0x20;
-	out->ino = fnv_upper (o->onyx + "/" + name);
+	memset (e, 0, sizeof *e);
+	strncpy (e->name, name.c_str (), sizeof e->name - 1);
+	e->size = size;
+	e->mtime = mt;
+	e->mode = dir ? (KAPI_S_IFDIR | 0777) : (KAPI_S_IFREG | 0666);
+	e->attr = dir ? 0x10 : 0x20;
+	e->ino = fnv_upper (o->onyx + "/" + name);
 	return 1;
 }
 
-static void k_closedir (void *h) { h_drop ((u64) h); }
+static void k_closedir (u64 h) { h_drop (cur (), h); }
 
-static int k_mkdir (const char *path)
+static int k_mkdir (u64 path)
 {
 	std::string onyx, host;
 	if (!arg_path (path, onyx, host)) return -1;
@@ -449,7 +489,7 @@ static int k_mkdir (const char *path)
 	return fs::create_directory (U8 (host), ec) ? 0 : -1;
 }
 
-static int k_remove (const char *path)
+static int k_remove (u64 path)
 {
 	std::string onyx, host;
 	if (!arg_path (path, onyx, host)) return -1;
@@ -457,7 +497,7 @@ static int k_remove (const char *path)
 	return fs::remove (U8 (host), ec) ? 0 : -1;
 }
 
-static int k_rename (const char *from, const char *to)
+static int k_rename (u64 from, u64 to)
 {
 	std::string o1, h1, o2, h2;
 	if (!arg_path (from, o1, h1) || !arg_path (to, o2, h2)) return -1;
@@ -466,34 +506,30 @@ static int k_rename (const char *from, const char *to)
 	return ec ? -1 : 0;
 }
 
-static int k_chdir (const char *path)
+static int k_chdir (u64 path)
 {
 	std::string onyx, host;
 	if (!arg_path (path, onyx, host)) return 0;
 	std::error_code ec;
 	if (!fs::is_directory (U8 (host), ec)) return 0;
-	std::lock_guard<std::mutex> L (g_Proc.lock);
-	g_Proc.cwd = onyx;
+	Proc *P = cur ();
+	std::lock_guard<std::mutex> L (P->m);
+	P->cwd = onyx;
 	return 1;
 }
 
-static int k_getcwd (char *buf, unsigned cap)
+static int k_getcwd (u64 buf, unsigned cap)
 {
+	Proc *P = cur ();
 	std::string c;
-	{ std::lock_guard<std::mutex> L (g_Proc.lock); c = g_Proc.cwd; }
-	return str_out (buf, cap, c);
+	{ std::lock_guard<std::mutex> L (P->m); c = P->cwd; }
+	return gstr_out (buf, cap, c);
 }
 
 // ---- streams -----------------------------------------------------------------------------------------------------
-static void *k_pipe (void)
-{
-	auto o = std::make_shared<Obj> ();
-	o->kind = H_PIPE;
-	o->pipe = std::make_shared<Pipe> ();
-	return (void *) h_add (o);
-}
+static u64 k_pipe (void) { return h_add (cur (), obj_pipe ()); }
 
-static void *k_file_in (const char *path)
+static u64 k_file_in (u64 path)
 {
 	std::string onyx, host;
 	if (!arg_path (path, onyx, host)) return 0;
@@ -501,10 +537,10 @@ static void *k_file_in (const char *path)
 	if (!f) return 0;
 	auto o = std::make_shared<Obj> ();
 	o->kind = H_FILEIN; o->f = f; o->onyx = onyx;
-	return (void *) h_add (o);
+	return h_add (cur (), o);
 }
 
-static void *k_file_out (const char *path, int append)
+static u64 k_file_out (u64 path, int append)
 {
 	std::string onyx, host;
 	if (!arg_path (path, onyx, host)) return 0;
@@ -512,112 +548,53 @@ static void *k_file_out (const char *path, int append)
 	if (!f) return 0;
 	auto o = std::make_shared<Obj> ();
 	o->kind = H_FILEOUT; o->f = f; o->onyx = onyx;
-	return (void *) h_add (o);
+	return h_add (cur (), o);
 }
 
-// -> bytes, 0 the end, -1 an error; nb: -1 would block (as stream_read_nb)
-static int stream_read (u64 h, void *buf, unsigned n, bool nb)
+static int k_stream_read (u64 h, u64 buf, unsigned n)
 {
-	auto o = h_get (h);
-	if (!o || !hm_ok (buf, n, MEM_W)) return -1;
-	switch (o->kind)
-	{
-	case H_CONIN:
-		if (nb) return -1;		// (the console: a blocking read only)
-		return (int) fread (buf, 1, n, stdin);
-	case H_FILEIN: case H_FILE:
-	{
-		std::lock_guard<std::mutex> L (o->m);
-		return (int) fread (buf, 1, n, o->f);
-	}
-	case H_PIPE:
-	{
-		Pipe &P = *o->pipe;
-		std::unique_lock<std::mutex> L (P.m);
-		while (P.data.empty () && !P.eof)
-		{
-			if (nb) return -1;
-			P.cv.wait (L);
-		}
-		unsigned k = 0;
-		while (k < n && !P.data.empty ()) { ((u8 *) buf)[k++] = P.data.front (); P.data.pop_front (); }
-		P.cv.notify_all ();
-		return (int) k;
-	}
-	default: return -1;
-	}
+	auto o = h_get (cur (), h);
+	u8 *b = GB (buf, n, MEM_W);
+	return o && b ? obj_read (*o, b, n, false) : -1;
 }
-
-static int stream_write (u64 h, const void *buf, unsigned n, bool nb)
+static int k_stream_read_nb (u64 h, u64 buf, unsigned n)
 {
-	auto o = h_get (h);
-	if (!o || !hm_ok (buf, n, MEM_R)) return -1;
-	switch (o->kind)
-	{
-	case H_CONOUT:
-		fwrite (buf, 1, n, stdout);
-		fflush (stdout);
-		return (int) n;
-	case H_FILEOUT: case H_FILE:
-	{
-		std::lock_guard<std::mutex> L (o->m);
-		return (int) fwrite (buf, 1, n, o->f);
-	}
-	case H_PIPE:
-	{
-		Pipe &P = *o->pipe;
-		std::unique_lock<std::mutex> L (P.m);
-		const size_t CAP = 64 * 1024;
-		if (nb && P.data.size () >= CAP) return -KAPI_EAGAIN;
-		unsigned k = 0;
-		while (k < n)
-		{
-			while (P.data.size () >= CAP && !nb) P.cv.wait (L);
-			if (P.data.size () >= CAP) break;
-			P.data.push_back (((const u8 *) buf)[k++]);
-		}
-		P.cv.notify_all ();
-		return (int) k;
-	}
-	default: return -1;
-	}
+	auto o = h_get (cur (), h);
+	u8 *b = GB (buf, n, MEM_W);
+	return o && b ? obj_read (*o, b, n, true) : -1;
 }
-
-static int k_stream_read (void *h, void *buf, unsigned n)	{ return stream_read ((u64) h, buf, n, false); }
-static int k_stream_read_nb (void *h, void *buf, unsigned n)	{ return stream_read ((u64) h, buf, n, true); }
-static int k_stream_write (void *h, const void *buf, unsigned n){ return stream_write ((u64) h, buf, n, false); }
-static int k_stream_write_nb (void *h, const void *buf, unsigned n)
+static int k_stream_write (u64 h, u64 buf, unsigned n)
 {
-	if (!h_get ((u64) h)) return -KAPI_EBADF;
-	return stream_write ((u64) h, buf, n, true);
+	auto o = h_get (cur (), h);
+	u8 *b = GB (buf, n, MEM_R);
+	return o && b ? obj_write (*o, b, n, false) : -1;
 }
-static void k_stream_close (void *h)				{ h_drop ((u64) h); }
-static void k_stream_eof (void *h)
+static int k_stream_write_nb (u64 h, u64 buf, unsigned n)
 {
-	auto o = h_get ((u64) h, H_PIPE);
-	if (!o) return;
-	std::lock_guard<std::mutex> L (o->pipe->m);
-	o->pipe->eof = true;
-	o->pipe->cv.notify_all ();
+	auto o = h_get (cur (), h);
+	if (!o) return -KAPI_EBADF;
+	u8 *b = GB (buf, n, MEM_R);
+	return b ? obj_write (*o, b, n, true) : -KAPI_EFAULT;
 }
+static void k_stream_close (u64 h)	{ h_drop (cur (), h); }
+static void k_stream_eof (u64 h)	{ auto o = h_get (cur (), h, H_PIPE); if (o) obj_eof (*o); }
 
 // ---- the v75 files ---------------------------------------------------------------------------------------------
-static long long k_file_open (const char *path, unsigned flags, unsigned mode)
+static long long k_file_open (u64 path, unsigned flags, unsigned mode)
 {
 	(void) mode;
+	std::string onyx, host;
 	std::string s;
-	if (!guest_str (path, s, 1024)) return -KAPI_EFAULT;
-	std::string onyx = onyx_abs (s.c_str ()), host = host_path (s.c_str ());
-	if (onyx.empty ()) return -KAPI_ENAMETOOLONG;
-	if (host.empty ()) return -KAPI_ENOENT;
+	if (!gstr (path, s, 1024)) return -KAPI_EFAULT;
+	if (!arg_path (path, onyx, host)) return onyx.empty () ? -KAPI_ENAMETOOLONG : -KAPI_ENOENT;
 	bool dir = false, exists; u64 size; long long mt;
 	exists = host_stat (host, &size, &mt, &dir);
-	if (exists && dir) return (flags & KAPI_O_ACCMODE) == KAPI_O_RDONLY ? -KAPI_EISDIR : -KAPI_EISDIR;
+	if (exists && dir) return -KAPI_EISDIR;
 	if (exists && (flags & KAPI_O_CREAT) && (flags & KAPI_O_EXCL)) return -KAPI_EEXIST;
 	if (!exists && !(flags & KAPI_O_CREAT)) return -KAPI_ENOENT;
 	unsigned acc = flags & KAPI_O_ACCMODE;
 	const char *m;
-	if (!exists || (flags & KAPI_O_TRUNC)) m = acc == KAPI_O_RDONLY ? "wb+" : "wb+";
+	if (!exists || (flags & KAPI_O_TRUNC)) m = "wb+";
 	else m = acc == KAPI_O_RDONLY ? "rb" : "rb+";
 	if (!exists)
 	{
@@ -628,34 +605,36 @@ static long long k_file_open (const char *path, unsigned flags, unsigned mode)
 	if (!f) return -KAPI_EACCES;
 	auto o = std::make_shared<Obj> ();
 	o->kind = H_FILE; o->f = f; o->onyx = onyx; o->host = host; o->oflags = flags;
-	return (long long) h_add (o);
+	return (long long) h_add (cur (), o);
 }
 
-static long long k_file_read (long long h, void *buf, unsigned long long n, long long off)
+static long long k_file_read (long long h, u64 buf, unsigned long long n, long long off)
 {
-	auto o = h_get ((u64) h, H_FILE);
+	auto o = h_get (cur (), (u64) h, H_FILE);
 	if (!o) return -KAPI_EBADF;
 	if ((o->oflags & KAPI_O_ACCMODE) == KAPI_O_WRONLY) return -KAPI_EBADF;
-	if (!hm_ok (buf, n, MEM_W)) return -KAPI_EFAULT;
+	u8 *b = GB (buf, n, MEM_W);
+	if (!b && n) return -KAPI_EFAULT;
 	std::lock_guard<std::mutex> L (o->m);
 	long long at = off >= 0 ? off : o->pos;
 	fseek64 (o->f, at, SEEK_SET);
-	size_t r = fread (buf, 1, (size_t) n, o->f);
+	size_t r = n ? fread (b, 1, (size_t) n, o->f) : 0;
 	if (off < 0) o->pos = at + (long long) r;
 	return (long long) r;
 }
 
-static long long k_file_write (long long h, const void *buf, unsigned long long n, long long off)
+static long long k_file_write (long long h, u64 buf, unsigned long long n, long long off)
 {
-	auto o = h_get ((u64) h, H_FILE);
+	auto o = h_get (cur (), (u64) h, H_FILE);
 	if (!o) return -KAPI_EBADF;
 	if ((o->oflags & KAPI_O_ACCMODE) == KAPI_O_RDONLY) return -KAPI_EBADF;
-	if (!hm_ok (buf, n, MEM_R)) return -KAPI_EFAULT;
+	u8 *b = GB (buf, n, MEM_R);
+	if (!b && n) return -KAPI_EFAULT;
 	std::lock_guard<std::mutex> L (o->m);
 	long long at = off >= 0 ? off : o->pos;
 	if (off < 0 && (o->oflags & KAPI_O_APPEND)) { fseek64 (o->f, 0, SEEK_END); at = ftell64 (o->f); }
 	fseek64 (o->f, at, SEEK_SET);
-	size_t w = fwrite (buf, 1, (size_t) n, o->f);
+	size_t w = n ? fwrite (b, 1, (size_t) n, o->f) : 0;
 	fflush (o->f);
 	if (off < 0) o->pos = at + (long long) w;
 	return w == n ? (long long) w : (w ? (long long) w : -KAPI_ENOSPC);
@@ -663,7 +642,7 @@ static long long k_file_write (long long h, const void *buf, unsigned long long 
 
 static long long k_file_seek (long long h, long long off, int whence)
 {
-	auto o = h_get ((u64) h, H_FILE);
+	auto o = h_get (cur (), (u64) h, H_FILE);
 	if (!o) return -KAPI_EBADF;
 	std::lock_guard<std::mutex> L (o->m);
 	long long base = 0;
@@ -677,7 +656,7 @@ static long long k_file_seek (long long h, long long off, int whence)
 
 static int k_file_truncate (long long h, long long size)
 {
-	auto o = h_get ((u64) h, H_FILE);
+	auto o = h_get (cur (), (u64) h, H_FILE);
 	if (!o) return -KAPI_EBADF;
 	if (size < 0) return -KAPI_EINVAL;
 	std::lock_guard<std::mutex> L (o->m);
@@ -687,52 +666,46 @@ static int k_file_truncate (long long h, long long size)
 	return ec ? err_of (ec) : 0;
 }
 
-static int k_file_sync (long long h) { auto o = h_get ((u64) h, H_FILE); if (!o) return -KAPI_EBADF; fflush (o->f); return 0; }
+static int k_file_sync (long long h) { auto o = h_get (cur (), (u64) h, H_FILE); if (!o) return -KAPI_EBADF; fflush (o->f); return 0; }
 
-static int k_file_stat (long long h, struct kapi_stat *out)
+static int k_file_stat (long long h, u64 out)
 {
-	auto o = h_get ((u64) h);
+	auto o = h_get (cur (), (u64) h);
 	if (!o) return -KAPI_EBADF;
-	if (!hm_ok (out, sizeof *out, MEM_W)) return -KAPI_EFAULT;
-	if (o->kind != H_FILE) { struct kapi_stat S; fill_stat (&S, "", 0, 0, false); S.mode = 0010000 | 0666; *out = S; return 0; }
+	struct kapi_stat *S = G<struct kapi_stat> (out, MEM_W);
+	if (!S) return -KAPI_EFAULT;
+	if (o->kind != H_FILE) { fill_stat (S, "", 0, 0, false); S->mode = 0010000 | 0666; return 0; }	// (a FIFO)
 	std::lock_guard<std::mutex> L (o->m);
 	fflush (o->f);
 	u64 size; long long mt; bool dir;
 	if (!host_stat (o->host, &size, &mt, &dir)) return -KAPI_EIO;
-	struct kapi_stat S;
-	fill_stat (&S, o->onyx, size, mt, dir);
-	*out = S;
+	fill_stat (S, o->onyx, size, mt, dir);
 	return 0;
 }
 
-static int k_file_close (long long h)	{ return h_get ((u64) h, H_FILE) && h_drop ((u64) h) ? 0 : -KAPI_EBADF; }
-static int k_handle_close (long long h)	{ return h_drop ((u64) h) ? 0 : -KAPI_EBADF; }
+static int k_file_close (long long h)	{ return h_get (cur (), (u64) h, H_FILE) && h_drop (cur (), (u64) h) ? 0 : -KAPI_EBADF; }
+static int k_handle_close (long long h)	{ return h_drop (cur (), (u64) h) ? 0 : -KAPI_EBADF; }
 
-static int k_path_stat (const char *path, struct kapi_stat *out)
+static int k_path_stat (u64 path, u64 out)
 {
-	std::string s;
-	if (!guest_str (path, s, 1024) || !hm_ok (out, sizeof *out, MEM_W)) return -KAPI_EFAULT;
-	std::string onyx = onyx_abs (s.c_str ()), host = host_path (s.c_str ());
-	if (host.empty ()) return -KAPI_ENOENT;
+	std::string onyx, host;
+	struct kapi_stat *S = G<struct kapi_stat> (out, MEM_W);
+	if (!S) return -KAPI_EFAULT;
+	if (!arg_path (path, onyx, host)) return -KAPI_ENOENT;
+	if (onyx.back () == '/') { fill_stat (S, onyx, 0, 0, true); return 0; }	// (a volume's root)
 	u64 size; long long mt; bool dir;
-	if (onyx.size () > 0 && onyx.back () == '/')	// a volume's root
-	{
-		struct kapi_stat S; fill_stat (&S, onyx, 0, 0, true); *out = S; return 0;
-	}
 	if (!host_stat (host, &size, &mt, &dir)) return -KAPI_ENOENT;
-	struct kapi_stat S;
-	fill_stat (&S, onyx, size, mt, dir);
-	*out = S;
+	fill_stat (S, onyx, size, mt, dir);
 	return 0;
 }
 
-static int k_path_unlink (const char *path, unsigned flags)
+static int k_path_unlink (u64 path, unsigned flags)
 {
 	std::string onyx, host;
 	if (!arg_path (path, onyx, host)) return -KAPI_ENOENT;
 	std::error_code ec;
-	bool isdir = fs::is_directory (U8 (host), ec);
 	if (!fs::exists (U8 (host), ec)) return -KAPI_ENOENT;
+	bool isdir = fs::is_directory (U8 (host), ec);
 	if (flags & 1) { if (!isdir) return -KAPI_ENOTDIR; }	// (KAPI_UNLINK_DIR)
 	else if (isdir) return -KAPI_EISDIR;
 	if (isdir && !fs::is_empty (U8 (host), ec)) return -KAPI_ENOTEMPTY;
@@ -740,7 +713,7 @@ static int k_path_unlink (const char *path, unsigned flags)
 	return ec ? err_of (ec) : 0;
 }
 
-static int k_path_mkdir (const char *path, unsigned mode)
+static int k_path_mkdir (u64 path, unsigned mode)
 {
 	(void) mode;
 	std::string onyx, host;
@@ -752,7 +725,7 @@ static int k_path_mkdir (const char *path, unsigned mode)
 	return ec ? err_of (ec) : 0;
 }
 
-static int k_path_rename (const char *from, const char *to)
+static int k_path_rename (u64 from, u64 to)
 {
 	std::string o1, h1, o2, h2;
 	if (!arg_path (from, o1, h1) || !arg_path (to, o2, h2)) return -KAPI_ENOENT;
@@ -763,7 +736,7 @@ static int k_path_rename (const char *from, const char *to)
 	return ec ? err_of (ec) : 0;
 }
 
-static int k_path_utime (const char *path, long long mtime)
+static int k_path_utime (u64 path, long long mtime)
 {
 	std::string onyx, host;
 	if (!arg_path (path, onyx, host)) return -KAPI_ENOENT;
@@ -776,14 +749,12 @@ static int k_path_utime (const char *path, long long mtime)
 #endif
 }
 
-static int k_vol_info (const char *path, struct kapi_vol_info *out)
+static int k_vol_info (u64 path, u64 out)
 {
-	std::string s;
-	if (!guest_str (path, s, 1024) || !hm_ok (out, sizeof *out, MEM_W)) return -1;
-	std::string onyx = onyx_abs (s.c_str ());
-	std::string vol = onyx.substr (0, onyx.find (':'));
-	if (vol_root (vol).empty ()) return -1;
-	memset (out, 0, sizeof *out);
+	std::string onyx, host;
+	struct kapi_vol_info *o = G<struct kapi_vol_info> (out, MEM_W);
+	if (!o || !arg_path (path, onyx, host)) return -1;
+	memset (o, 0, sizeof *o);
 	return 0;
 }
 
