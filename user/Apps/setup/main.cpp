@@ -1350,7 +1350,14 @@ static void finish ()
 	}
 	// (P8) another interface than the session running: switched to (the session's tool ends this session's programs,
 	// writes "shell =", has the kernel start the other server and runs its file) -- the desktop's lines are not started.
-	if (g_iface != session_mode () && session_switch_start (g_iface, SESSION_NO_ASK | SESSION_FORCE, 0) != 0) kapi_exit (0);
+	// Setup WAITS for the tool: a program whose parent has ended is ended by the kernel (its orphan scan), so leaving
+	// at once ended the switch before it wrote "shell =" -- nothing started, the desktop after a reboot (the user,
+	// 2026-10-09). The tool keeps its caller open until the new session runs, then ends it.
+	if (g_iface != session_mode ())
+	{
+		void *h = session_switch_start (g_iface, SESSION_NO_ASK | SESSION_FORCE, 0);
+		if (h != 0) { kapi_wait (h); kapi_exit (0); }	// (the tool starts a session whatever its answer)
+	}
 	for (char *l = strtok (held, "\n"); l; l = strtok (0, "\n")) run_line (l);	// the menu bar, the dock...
 	kapi_exit (0);
 }

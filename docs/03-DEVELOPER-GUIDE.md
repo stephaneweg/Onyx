@@ -1435,7 +1435,8 @@ every mode into the autostart.
 an unknown word: desktop), `session_file (m)`, `session_programs (m, out, cap)` (the names the processes of a mode's
 file have: `run <app>` → the app, a path → its file's name, `wait <cmd>` → the command's tool, `sleep` none),
 **`session_switch_start (m, flags, keep_pid)`** (spawns `SD:/bin/session switch …`: the handle for
-`kapi_proc_done` / `kapi_wait`; `SESSION_FORCE`, `SESSION_NO_ASK`) and `session_switch (m, flags)` (waited for),
+`kapi_proc_done` / `kapi_wait`; `SESSION_FORCE`, `SESSION_NO_ASK`; **the caller must stay until it ends**: the kernel
+ends a process whose parent has ended — Setup left at once and its switch died, fixed 2026-10-09) and `session_switch (m, flags)` (waited for),
 `session_waiting (out, cap)` (after `SESSION_WAITING_APPS`), **`session_migrate ()`**. **`autostart_has` /
 `autostart_ensure`** (`autostart.h`) look in the autostart **and** the session files, and add a line to the file
 that holds its anchor (Notes' `run stickies` after `run agenda`: `session/desktop`; the Clock's `run clockd`

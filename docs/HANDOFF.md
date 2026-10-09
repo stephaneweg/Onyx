@@ -4,6 +4,14 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Setup's interface choice fixed (2026-10-09, night) -- NOT tried on the Pi yet
+
+The user's report: the console chosen on Setup's welcome page, nothing started at its end, and after a reboot the
+desktop again. Setup started `/bin/session switch` (`session_switch_start`) and left at once: the kernel ends a
+process whose parent has ended (the reaper's orphan scan, `TerminateOrphans`), so the switch died before it wrote
+`shell =`. Setup now waits for the tool (`kapi_wait`), which keeps its caller open until the new session runs (as
+the Mode applet and the console's Mode page do). **Any program that starts the switch must stay until it ends.**
+
 ## The console's settings pages in the XMB (2026-10-09, night) -- tested on the PC, NOT on the Pi yet
 
 The user asked for console-specific settings usable with a pad, a virtual keyboard where text is needed: Sound,
