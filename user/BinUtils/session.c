@@ -194,6 +194,48 @@ static void run_line (char *line)
 	}
 	if (!kapi_exec (path, args)) { put ("session: cannot run "); ax_putln (path); }
 }
+// The console's file as it was before its shell (phase P9: `run terminal`, `run gamelib`, nothing else): the package
+// manager kept it -- a config file it saw changed -- and wrote the new one beside it (.new), or the system's update
+// waits for its restart: no consolehome, so nothing answered the menu's button (F10, the pad's Home; the user,
+// 2026-10-09). That old default, consolehome installed: the file written anew (the old one kept as console.old).
+static const char CONSOLE_DEFAULT[] =
+	"# SD:/etc/session/console -- the console session's programs (/bin/session): consolehome is the console's shell\n"
+	"# (the home, the menu over an app: the pad's Home, F10, the Super key). Written by session in place of the file\n"
+	"# of before the shell (run terminal, run gamelib), kept as console.old.\n"
+	"run consolehome\n";
+static int console_was_default (const char *b, int n, const char *path)
+{
+	int terminal = 0, gamelib = 0, other = 0;
+	for (int i = 0; i < n; )
+	{
+		int s = i;
+		while (i < n && b[i] != '\n') i++;
+		int e = i++;
+		while (s < e && (b[s] == ' ' || b[s] == '\t')) s++;
+		while (e > s && (b[e - 1] == ' ' || b[e - 1] == '\t' || b[e - 1] == '\r')) e--;
+		if (s == e || b[s] == '#') continue;
+		char l[48]; int k = 0;
+		for (int j = s; j < e && k < 47; j++) l[k++] = b[j];
+		l[k] = 0;
+		if (seq (l, "run terminal")) terminal = 1;
+		else if (seq (l, "run gamelib")) gamelib = 1;
+		else other = 1;
+	}
+	if (!terminal || !gamelib || other) return 0;
+	void *f = kapi_open ("SD:/apps/consolehome.app/main");
+	if (!f) return 0;
+	kapi_close (f);
+	char old[72]; int k = 0;
+	for (int j = 0; path[j] && k < 60; j++) old[k++] = path[j];
+	old[k] = 0;
+	const char *dot = ".old";
+	for (int j = 0; dot[j]; j++) old[k++] = dot[j];
+	old[k] = 0;
+	kapi_save_file (old, b, (unsigned) n);
+	kapi_save_file (path, CONSOLE_DEFAULT, (unsigned) slen (CONSOLE_DEFAULT));
+	put ("session: "); put (path); ax_putln (" was the console's file of before its shell: written anew (the old one: console.old)");
+	return 1;
+}
 static int run_file (int m)
 {
 	static char buf[16384];
@@ -219,6 +261,7 @@ static int run_file (int m)
 	}
 	else { put ("session: no "); ax_putln (path); return 0; }
 	buf[n] = 0;
+	if (m == SESSION_CONSOLE && console_was_default (buf, n, path)) { scpy (buf, sizeof buf, CONSOLE_DEFAULT); n = slen (buf); }
 	put ("session: "); put (session_mode_name (m)); ax_putln (" -- its programs started");
 	int start = 0;
 	for (int i = 0; i <= n; i++)
