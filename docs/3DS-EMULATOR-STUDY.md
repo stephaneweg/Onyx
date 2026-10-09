@@ -214,6 +214,30 @@ Each phase ends with something visible and a test, as for the DS (D0–D5).
   with T1, when there is a second CPU to compare with -- Dynarmic's own tests need Unicorn); fastmem (needs the
   kernel to forward faults: T6); a speed measure (T3 / T6); the hook in `user/Makefile` (with the app, T1).
 
+## 9c. Phase T1, first slice -- done (2026-10-09)
+
+The core's skeleton, `user/Emulators/n3ds/` (`n3ds.h` declares everything), and its first test program:
+
+- `n3ds_mem.cpp`: one host pointer a 4 KB page (the table Dynarmic's code reads), the 128 MB of FCRAM taken from
+  both ends (the linear heap from its start -- a linear address is its FCRAM offset --, the rest from its end), VRAM.
+- `n3ds_cpu.cpp`: **the only file that sees Dynarmic**, behind `Cpu` (run / halt / registers / save / load /
+  invalidate): ARMv6K, the page table, CP15's thread registers (the TLS address every program reads), an exclusive
+  monitor for LDREX / STREX, SVC to `Machine::svc`.
+- `n3ds_kernel.cpp`: the handle table, threads (0x200 bytes of TLS each) and the scheduler (the highest priority
+  runs until it waits; one priority's threads take turns when they yield), events (one-shot, sticky, pulse),
+  mutexes (recursive, freed at their owner's end), semaphores, address arbiters, waits on one or several objects
+  with a time-out, sleeps, the heaps (ControlMemory), and 26 system calls.
+- `n3ds_loader.cpp`: an ELF (our test programs); `.3dsx` and NCCH next.
+- **Tests**: `sh tools/tests/run_n3ds_test.sh` builds `n3dstest` for AArch64 and runs it under qemu-aarch64 (the
+  real JIT; there is no x86-64 build: the vendored Dynarmic has the AArch64 back end only).
+  `tools/tests/n3ds/src/` is our own start-up, SVC wrappers and `kernel.c` (built with `arm-none-eabi-gcc`,
+  ARMv6K + VFP hard float): **137 checks, 0 failed** (the processor in a real program -- Thumb, VFP, 64-bit
+  helpers, LDREX / STREX, the TLS --, the heap, threads and priorities, mutexes, events, time-outs measured in
+  ticks, semaphores, WaitSynchronizationN, arbiters, handles).
+- **Left in T1**: IPC (ports, sessions, the command buffer in the TLS) and `srv:`; `apt:U`, `gsp::Gpu` (the
+  framebuffers, the VBlank interrupts), `hid:USER`, `fs:USER`; the `.3dsx` and NCCH loaders; timers; shared memory
+  blocks; the configuration and shared pages' content; then a homebrew of ours that draws on both screens.
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 

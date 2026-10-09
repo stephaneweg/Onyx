@@ -1,0 +1,554 @@
+//
+// n3ds/n3ds_kernel.cpp -- the 3DS's kernel, emulated: the handle table, the threads and their scheduler (the
+// application core: a thread runs until it waits or a thread of a higher priority is ready; one priority's
+// threads take turns when they yield), events, mutexes, semaphores, address arbiters, waits with a time-out,
+// the heap (ControlMemory), and the system calls a program makes (SVC n: arguments in r0-r5, the result in r0,
+// what it returns in r1...). Services and IPC come with the next slice.
+//
+// A thread that is not running has its registers in Thread::ctx; the running one in the Cpu (`current`). A
+// thread that starts to wait is saved at once and `current` cleared: what wakes it later writes its results
+// into ctx.
+//
+// MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors (see n3ds.h).
+//
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+#include "n3ds/n3ds.h"
+
+namespace n3ds {
+
+static const u64 NEVER = ~0ull;
+
+Machine::Machine ()
+{
+	memset (&mem, 0, sizeof mem);
+	cpu = 0; now = 0; ticksLeft = 0;
+	memset (handles, 0, sizeof handles);
+	memset (threads, 0, sizeof threads); threadCount = 0;
+	current = 0; nextThreadId = 1; nextSeq = 1;
+	resched = false; exited = false; exitCode = 0; heapSize = 0; entry = 0;
+	lastError[0] = 0; debugOut = 0; debugUser = 0;
+	svcCount = switchCount = 0; unknownSvcs = 0;
+}
+
+Machine::~Machine ()
+{
+	delete cpu;
+	for (int i = 0; i < HANDLE_MAX; i++) if (handles[i]) release (handles[i]);
+	for (int i = 0; i < threadCount; i++) release (threads[i]);
+	mem.quit ();
+}
+
+bool Machine::init ()
+{
+	if (!mem.init ()) return false;
+	u8 *cfg = mem.allocTop (2 * PAGE_SIZE);				// the configuration and shared pages
+	u8 *tls = mem.allocTop (TLS_MAX * TLS_SIZE);
+	if (!cfg || !tls) return false;
+	mem.map (VA_CONFIG, PAGE_SIZE, cfg, PERM_R);
+	mem.map (VA_SHARED, PAGE_SIZE, cfg + PAGE_SIZE, PERM_R);
+	mem.map (VA_TLS, TLS_MAX * TLS_SIZE, tls, PERM_RW);
+	cpu = Cpu::create (this);
+	return cpu != 0;
+}
+
+void Machine::fail (const char *fmt, ...)
+{
+	if (!lastError[0])
+	{
+		va_list ap; va_start (ap, fmt);
+		vsnprintf (lastError, sizeof lastError, fmt, ap);
+		va_end (ap);
+	}
+	exited = true; exitCode = 0xFFFFFFFF;
+	if (cpu) cpu->halt ();
+}
+
+u64 Machine::nsToTicks (s64 ns) const
+{
+	u64 n = (u64) ns;
+	return n / 1000000000ull * TICKS_PER_SECOND + n % 1000000000ull * TICKS_PER_SECOND / 1000000000ull;
+}
+
+// ---- handles ---------------------------------------------------------------------------------------------------------
+enum { HANDLE_BASE = 0x10 };
+
+u32 Machine::handleNew (Object *o)
+{
+	for (int i = 0; i < HANDLE_MAX; i++) if (!handles[i]) { handles[i] = o; return (u32) (HANDLE_BASE + i); }
+	release (o);
+	return 0;
+}
+
+Object *Machine::handleGet (u32 h, int type)
+{
+	Object *o = 0;
+	if (h == HANDLE_CUR_THREAD) o = current;
+	else if (h >= HANDLE_BASE && h < HANDLE_BASE + HANDLE_MAX) o = handles[h - HANDLE_BASE];
+	if (o && type && o->type != type) return 0;
+	return o;
+}
+
+bool Machine::handleClose (u32 h)
+{
+	if (h < HANDLE_BASE || h >= HANDLE_BASE + HANDLE_MAX || !handles[h - HANDLE_BASE]) return false;
+	Object *o = handles[h - HANDLE_BASE];
+	handles[h - HANDLE_BASE] = 0;
+	release (o);
+	return true;
+}
+
+void Machine::release (Object *o) { if (o && --o->refs == 0) delete o; }
+
+// ---- threads ---------------------------------------------------------------------------------------------------------
+Thread *Machine::threadNew (u32 entryPoint, u32 arg, u32 stackTop, s32 priority)
+{
+	if (threadCount >= (int) TLS_MAX) return 0;
+	bool used[TLS_MAX]; memset (used, 0, sizeof used);
+	for (int i = 0; i < threadCount; i++) if (threads[i]->tlsSlot >= 0) used[threads[i]->tlsSlot] = true;
+	int slot = 0; while (slot < (int) TLS_MAX && used[slot]) slot++;
+	if (slot == (int) TLS_MAX) return 0;
+	Thread *t = new Thread;
+	t->id = nextThreadId++; t->priority = priority; t->readySeq = nextSeq++; t->tlsSlot = slot;
+	memset (&t->ctx, 0, sizeof t->ctx);
+	t->ctx.r[0] = arg; t->ctx.r[13] = stackTop & ~7u; t->ctx.r[15] = entryPoint & ~1u;
+	t->ctx.cpsr = 0x10 | ((entryPoint & 1) ? 0x20 : 0);		// user mode; Thumb when the address is odd
+	t->ctx.fpscr = 0x03C00000;					// default NaN, flush to zero, round to zero: the console's
+	t->ctx.tls = VA_TLS + (u32) slot * TLS_SIZE;
+	mem.fill (t->ctx.tls, 0, TLS_SIZE);
+	threads[threadCount++] = t;					// (the list's reference: the one `new` gave)
+	return t;
+}
+
+bool Machine::start (u32 entryPoint, u32 stackSize)
+{
+	stackSize = (stackSize + PAGE_SIZE - 1) & ~(u32) (PAGE_SIZE - 1);
+	u8 *stack = mem.allocTop (stackSize);
+	if (!stack) return false;
+	mem.map (VA_HEAP_END - stackSize, stackSize, stack, PERM_RW);
+	entry = entryPoint;
+	return threadNew (entryPoint, 0, VA_HEAP_END, 0x30) != 0;
+}
+
+void Machine::threadExit (Thread *t)
+{
+	t->status = THREAD_DEAD; t->tlsSlot = -1;
+	for (int i = 0; i < t->waitCount; i++) release (t->waitOn[i]);
+	t->waitCount = 0;
+	// its mutexes are freed (their waiters go on)
+	for (int i = 0; i < HANDLE_MAX; i++)
+		if (handles[i] && handles[i]->type == OBJ_MUTEX && ((Mutex *) handles[i])->owner == t)
+		{
+			Mutex *mu = (Mutex *) handles[i]; mu->owner = 0; mu->count = 0;
+			wakeWaiters (mu);
+		}
+	wakeWaiters (t);
+	for (int i = 0; i < threadCount; i++)
+		if (threads[i] == t) { threads[i] = threads[--threadCount]; threads[threadCount] = 0; break; }
+	if (current == t) { current = 0; resched = true; }
+	release (t);
+	if (threadCount == 0) exited = true;				// (the last thread left: the program is over)
+}
+
+// The thread to run: the ready one of the highest priority; among equals the running one, else the one ready first.
+Thread *Machine::pick ()
+{
+	Thread *best = 0;
+	for (int i = 0; i < threadCount; i++)
+	{
+		Thread *t = threads[i];
+		if (t->status != THREAD_READY) continue;
+		if (!best || t->priority < best->priority) { best = t; continue; }
+		if (t->priority > best->priority) continue;
+		if (best == current) continue;
+		if (t == current || t->readySeq < best->readySeq) best = t;
+	}
+	return best;
+}
+
+void Machine::switchTo (Thread *t)
+{
+	if (current) cpu->save (current->ctx);
+	cpu->load (t->ctx);
+	current = t;
+	switchCount++;
+}
+
+// Does the wait of t end now? Then what it waited for is taken and its results are written -- into the Cpu
+// when t is the thread making the call (inSvc), into its saved registers otherwise.
+bool Machine::tryWait (Thread *t, bool inSvc)
+{
+	int index = -1;
+	if (t->waitAll)
+	{
+		for (int i = 0; i < t->waitCount; i++) if (!t->waitOn[i]->available (t)) return false;
+		for (int i = 0; i < t->waitCount; i++) t->waitOn[i]->acquire (t);
+		index = 0;
+	}
+	else
+	{
+		for (int i = 0; i < t->waitCount && index < 0; i++) if (t->waitOn[i]->available (t)) index = i;
+		if (index < 0) return false;
+		t->waitOn[index]->acquire (t);
+	}
+	u32 *r = inSvc ? cpu->regs () : t->ctx.r;
+	r[0] = RES_OK;
+	if (t->waitOut) r[1] = (u32) index;
+	return true;
+}
+
+// o changed: the threads waiting for it that can go on do, the highest priority first.
+void Machine::wakeWaiters (Object *o)
+{
+	for (;;)
+	{
+		Thread *best = 0;
+		for (int i = 0; i < threadCount; i++)
+		{
+			Thread *t = threads[i];
+			if (t->status != THREAD_WAIT_SYNC) continue;
+			bool has = false;
+			for (int k = 0; k < t->waitCount; k++) if (t->waitOn[k] == o) has = true;
+			if (!has) continue;
+			bool can = t->waitAll;					// (all of them: every one must be free now)
+			for (int k = 0; k < t->waitCount; k++)
+				if (t->waitAll) { if (!t->waitOn[k]->available (t)) can = false; }
+				else if (t->waitOn[k]->available (t)) can = true;
+			if (!can) continue;
+			if (!best || t->priority < best->priority || (t->priority == best->priority && t->readySeq < best->readySeq)) best = t;
+		}
+		if (!best || !tryWait (best, false)) return;
+		for (int k = 0; k < best->waitCount; k++) release (best->waitOn[k]);
+		best->waitCount = 0;
+		best->status = THREAD_READY; best->readySeq = nextSeq++; best->wakeTick = NEVER;
+		resched = true;
+	}
+}
+
+// ---- the scheduler ---------------------------------------------------------------------------------------------------
+void Machine::run (u64 ticks)
+{
+	const u64 end = now + ticks;
+	while (!exited && now < end)
+	{
+		// sleeps and timed waits that are over
+		u64 nextWake = NEVER;
+		for (int i = 0; i < threadCount; i++)
+		{
+			Thread *t = threads[i];
+			if (t->status == THREAD_READY || t->wakeTick == NEVER) continue;
+			if (t->wakeTick > now) { if (t->wakeTick < nextWake) nextWake = t->wakeTick; continue; }
+			if (t->status != THREAD_WAIT_SLEEP) t->ctx.r[0] = RES_TIMEOUT;
+			for (int k = 0; k < t->waitCount; k++) release (t->waitOn[k]);
+			t->waitCount = 0;
+			t->status = THREAD_READY; t->readySeq = nextSeq++; t->wakeTick = NEVER;
+		}
+		Thread *t = pick ();
+		if (!t)								// everyone waits: the time passes
+		{
+			if (current) { cpu->save (current->ctx); current = 0; }
+			now = nextWake < end ? nextWake : end;
+			continue;
+		}
+		if (t != current) switchTo (t);
+		u64 limit = nextWake < end ? nextWake : end;
+		ticksLeft = (s64) (limit - now);
+		if (ticksLeft < 1) ticksLeft = 1;
+		resched = false;
+		cpu->run ();
+	}
+}
+
+// ---- memory ----------------------------------------------------------------------------------------------------------
+u32 Machine::svcControlMemory (u32 op, u32 addr0, u32 addr1, u32 size, u32 perm, u32 *out)
+{
+	*out = addr0;
+	if ((addr0 | addr1 | size) & (PAGE_SIZE - 1)) return RES_INVALID_ARG;
+	if (!size) return RES_INVALID_ARG;
+	const bool linear = (op & 0x10000) != 0;
+	const int p = (int) (perm & 3);
+	switch (op & 0xFF)
+	{
+	case 3:									// commit
+		if (linear)
+		{
+			if (size > FCRAM_SIZE - mem.linearUsed - mem.topUsed || mem.linearUsed + size > VA_LINEAR_END - VA_LINEAR) return RES_OUT_OF_MEMORY;
+			u32 va = VA_LINEAR + mem.linearUsed;
+			if (addr0 && addr0 != va) return RES_INVALID_ADDRESS;	// (the linear heap only grows, in order)
+			memset (mem.fcram + mem.linearUsed, 0, size);
+			mem.map (va, size, mem.fcram + mem.linearUsed, p ? p : PERM_RW);
+			mem.linearUsed += size;
+			*out = va;
+			return RES_OK;
+		}
+		else
+		{
+			if (!addr0) addr0 = VA_HEAP + heapSize;
+			if (addr0 < VA_HEAP || addr0 + size > VA_HEAP_END || addr0 + size < addr0) return RES_INVALID_ADDRESS;
+			if (mem.pages[addr0 >> PAGE_BITS]) return RES_INVALID_ADDRESS;	// (there already)
+			u8 *host = mem.allocTop (size);
+			if (!host) return RES_OUT_OF_MEMORY;
+			mem.map (addr0, size, host, p ? p : PERM_RW);
+			if (addr0 + size - VA_HEAP > heapSize) heapSize = addr0 + size - VA_HEAP;
+			*out = addr0;
+			return RES_OK;
+		}
+	case 1:									// free (the pages are not taken back yet)
+		if (!mem.mapped (addr0, size)) return RES_INVALID_ADDRESS;
+		mem.unmap (addr0, size);
+		cpu->invalidate (addr0, size);
+		return RES_OK;
+	case 4:									// map: addr0 shows what addr1 holds
+		if (!mem.mapped (addr1, size)) return RES_INVALID_ADDRESS;
+		for (u32 o = 0; o < size; o += PAGE_SIZE) mem.map (addr0 + o, PAGE_SIZE, mem.pages[(addr1 + o) >> PAGE_BITS], p ? p : PERM_RW);
+		return RES_OK;
+	case 5:									// unmap
+		mem.unmap (addr0, size);
+		return RES_OK;
+	case 6:									// protect
+		if (!mem.mapped (addr0, size)) return RES_INVALID_ADDRESS;
+		for (u32 o = 0; o < size; o += PAGE_SIZE) mem.perms[(addr0 + o) >> PAGE_BITS] = (u8) (perm & 7);
+		return RES_OK;
+	}
+	return RES_INVALID_ARG;
+}
+
+// ---- the system calls ------------------------------------------------------------------------------------------------
+void Machine::svc (u32 n)
+{
+	u32 *r = cpu->regs ();
+	Thread *t = current;
+	svcCount++;
+	if (!t) return;
+	switch (n)
+	{
+	case 0x01:								// ControlMemory (op, addr0, addr1, size, perm) -> addr
+	{
+		u32 out = 0;
+		r[0] = svcControlMemory (r[0], r[1], r[2], r[3], r[4], &out);
+		r[1] = out;
+		break;
+	}
+	case 0x02:								// QueryMemory (-, -, addr) -> base, size, perm, state
+	{
+		u32 a = r[2] & ~(u32) (PAGE_SIZE - 1), pg = a >> PAGE_BITS;
+		u8 pm = mem.perms[pg]; bool there = mem.pages[pg] != 0;
+		u32 lo = pg, hi = pg + 1;
+		while (lo > 0 && (mem.pages[lo - 1] != 0) == there && mem.perms[lo - 1] == pm) lo--;
+		while (hi < PAGE_COUNT && (mem.pages[hi] != 0) == there && mem.perms[hi] == pm) hi++;
+		r[0] = RES_OK; r[1] = lo << PAGE_BITS; r[2] = (hi - lo) << PAGE_BITS; r[3] = pm; r[4] = there ? 5 : 0; r[5] = 0;	// (5: private)
+		break;
+	}
+	case 0x03:								// ExitProcess
+		exited = true; exitCode = 0; resched = true;
+		break;
+	case 0x08:								// CreateThread (priority, entry, arg, stack top, processor) -> handle
+	{
+		s32 prio = (s32) r[0];
+		if (prio < 0 || prio > 0x3F) { r[0] = RES_OUT_OF_RANGE; break; }
+		Thread *nt = threadNew (r[1], r[2], r[3], prio);
+		if (!nt) { r[0] = RES_OUT_OF_HANDLES; break; }
+		nt->refs++;
+		u32 h = handleNew (nt);
+		if (!h) { threadExit (nt); r[0] = RES_OUT_OF_HANDLES; break; }
+		r[0] = RES_OK; r[1] = h;
+		if (prio < t->priority) resched = true;
+		break;
+	}
+	case 0x09:								// ExitThread
+		threadExit (t);
+		break;
+	case 0x0A:								// SleepThread (ns)
+	{
+		s64 ns = (s64) ((u64) r[1] << 32 | r[0]);
+		r[0] = RES_OK;
+		if (ns <= 0) { t->readySeq = nextSeq++; cpu->save (t->ctx); current = 0; resched = true; break; }	// (a yield: the others of its priority first)
+		t->status = THREAD_WAIT_SLEEP; t->wakeTick = now + nsToTicks (ns);
+		cpu->save (t->ctx); current = 0; resched = true;
+		break;
+	}
+	case 0x0B:								// GetThreadPriority (-, handle) -> priority
+	{
+		Thread *o = (Thread *) handleGet (r[1], OBJ_THREAD);
+		if (!o) { r[0] = RES_INVALID_HANDLE; break; }
+		r[0] = RES_OK; r[1] = (u32) o->priority;
+		break;
+	}
+	case 0x0C:								// SetThreadPriority (handle, priority)
+	{
+		Thread *o = (Thread *) handleGet (r[0], OBJ_THREAD);
+		if (!o) { r[0] = RES_INVALID_HANDLE; break; }
+		if ((s32) r[1] < 0 || (s32) r[1] > 0x3F) { r[0] = RES_OUT_OF_RANGE; break; }
+		o->priority = (s32) r[1]; r[0] = RES_OK; resched = true;
+		break;
+	}
+	case 0x13:								// CreateMutex (-, initially locked) -> handle
+	{
+		Mutex *mu = new Mutex;
+		if (r[1]) mu->acquire (t);
+		u32 h = handleNew (mu);
+		r[0] = h ? (u32) RES_OK : (u32) RES_OUT_OF_HANDLES; r[1] = h;
+		break;
+	}
+	case 0x14:								// ReleaseMutex (handle)
+	{
+		Mutex *mu = (Mutex *) handleGet (r[0], OBJ_MUTEX);
+		if (!mu) { r[0] = RES_INVALID_HANDLE; break; }
+		if (mu->owner != t) { r[0] = RES_NOT_OWNER; break; }
+		r[0] = RES_OK;
+		if (--mu->count == 0) { mu->owner = 0; wakeWaiters (mu); }
+		break;
+	}
+	case 0x15:								// CreateSemaphore (-, initial, max) -> handle
+	{
+		if ((s32) r[1] < 0 || (s32) r[2] < (s32) r[1]) { r[0] = RES_INVALID_ARG; break; }
+		u32 h = handleNew (new Semaphore ((s32) r[1], (s32) r[2]));
+		r[0] = h ? (u32) RES_OK : (u32) RES_OUT_OF_HANDLES; r[1] = h;
+		break;
+	}
+	case 0x16:								// ReleaseSemaphore (-, handle, count) -> the count before
+	{
+		Semaphore *s = (Semaphore *) handleGet (r[1], OBJ_SEMAPHORE);
+		if (!s) { r[0] = RES_INVALID_HANDLE; break; }
+		if ((s32) r[2] < 0 || s->count + (s32) r[2] > s->max) { r[0] = RES_OUT_OF_RANGE; break; }
+		r[0] = RES_OK; r[1] = (u32) s->count;
+		s->count += (s32) r[2];
+		wakeWaiters (s);
+		break;
+	}
+	case 0x17:								// CreateEvent (-, reset type) -> handle
+	{
+		u32 h = handleNew (new Event ((int) r[1]));
+		r[0] = h ? (u32) RES_OK : (u32) RES_OUT_OF_HANDLES; r[1] = h;
+		break;
+	}
+	case 0x18:								// SignalEvent (handle)
+	{
+		Event *e = (Event *) handleGet (r[0], OBJ_EVENT);
+		if (!e) { r[0] = RES_INVALID_HANDLE; break; }
+		r[0] = RES_OK;
+		e->signaled = true;
+		wakeWaiters (e);
+		if (e->reset == RESET_PULSE) e->signaled = false;
+		break;
+	}
+	case 0x19:								// ClearEvent (handle)
+	{
+		Event *e = (Event *) handleGet (r[0], OBJ_EVENT);
+		if (!e) { r[0] = RES_INVALID_HANDLE; break; }
+		e->signaled = false; r[0] = RES_OK;
+		break;
+	}
+	case 0x21:								// CreateAddressArbiter -> handle
+	{
+		u32 h = handleNew (new Arbiter);
+		r[0] = h ? (u32) RES_OK : (u32) RES_OUT_OF_HANDLES; r[1] = h;
+		break;
+	}
+	case 0x22:								// ArbitrateAddress (arbiter, addr, type, value, ns)
+	{
+		if (!handleGet (r[0], OBJ_ARBITER)) { r[0] = RES_INVALID_HANDLE; break; }
+		const u32 addr = r[1], type = r[2]; const s32 value = (s32) r[3];
+		const s64 ns = (s64) ((u64) r[5] << 32 | r[4]);
+		r[0] = RES_OK;
+		if (type == 0)							// signal: wake `value` waiters on addr (negative: all)
+		{
+			s32 left = value;
+			for (;;)
+			{
+				if (value >= 0 && left <= 0) break;
+				Thread *best = 0;
+				for (int i = 0; i < threadCount; i++)
+				{
+					Thread *w = threads[i];
+					if (w->status != THREAD_WAIT_ARBITER || w->arbiterAddr != addr) continue;
+					if (!best || w->priority < best->priority || (w->priority == best->priority && w->readySeq < best->readySeq)) best = w;
+				}
+				if (!best) break;
+				best->status = THREAD_READY; best->readySeq = nextSeq++; best->wakeTick = NEVER; best->ctx.r[0] = RES_OK;
+				left--; resched = true;
+			}
+			break;
+		}
+		if (type > 4) { r[0] = RES_INVALID_ARG; break; }
+		if (!mem.mapped (addr, 4)) { r[0] = RES_INVALID_ADDRESS; break; }
+		s32 v = (s32) mem.r32 (addr);
+		if (v >= value) break;						// (not less: no wait)
+		if (type == 2 || type == 4) mem.w32 (addr, (u32) (v - 1));
+		const bool timed = type == 3 || type == 4;
+		if (timed && ns == 0) { r[0] = RES_TIMEOUT; break; }
+		t->status = THREAD_WAIT_ARBITER; t->arbiterAddr = addr;
+		t->wakeTick = timed && ns > 0 ? now + nsToTicks (ns) : NEVER;
+		cpu->save (t->ctx); current = 0; resched = true;
+		break;
+	}
+	case 0x23:								// CloseHandle (handle)
+		r[0] = handleClose (r[0]) ? (u32) RES_OK : (u32) RES_INVALID_HANDLE;
+		break;
+	case 0x24:								// WaitSynchronization1 (handle, -, ns)
+	case 0x25:								// WaitSynchronizationN (ns low, handles, count, all, ns high) -> index
+	{
+		const bool many = n == 0x25;
+		const s64 ns = many ? (s64) ((u64) r[4] << 32 | r[0]) : (s64) ((u64) r[3] << 32 | r[2]);
+		const s32 count = many ? (s32) r[2] : 1;
+		if (count < 0 || count > WAIT_MAX) { r[0] = RES_OUT_OF_RANGE; break; }
+		if (many && count && !mem.mapped (r[1], (u32) count * 4)) { r[0] = RES_INVALID_ADDRESS; break; }
+		Object *objs[WAIT_MAX]; bool ok = true;
+		for (s32 i = 0; i < count && ok; i++)
+		{
+			objs[i] = handleGet (many ? mem.r32 (r[1] + (u32) i * 4) : r[0]);
+			if (!objs[i] || !objs[i]->waitable ()) ok = false;
+		}
+		if (!ok) { r[0] = RES_INVALID_HANDLE; break; }
+		for (s32 i = 0; i < count; i++) t->waitOn[i] = objs[i];
+		t->waitCount = count; t->waitAll = many && r[3] != 0; t->waitOut = many;
+		if (count && tryWait (t, true)) { t->waitCount = 0; break; }
+		if (ns == 0) { t->waitCount = 0; r[0] = RES_TIMEOUT; break; }
+		for (s32 i = 0; i < count; i++) objs[i]->refs++;		// (kept while waited for)
+		t->status = THREAD_WAIT_SYNC; t->wakeTick = ns > 0 ? now + nsToTicks (ns) : NEVER;
+		cpu->save (t->ctx); current = 0; resched = true;
+		break;
+	}
+	case 0x27:								// DuplicateHandle (-, handle) -> handle
+	{
+		Object *o = handleGet (r[1]);
+		if (!o) { r[0] = RES_INVALID_HANDLE; break; }
+		o->refs++;
+		u32 h = handleNew (o);
+		r[0] = h ? (u32) RES_OK : (u32) RES_OUT_OF_HANDLES; r[1] = h;
+		break;
+	}
+	case 0x28:								// GetSystemTick -> ticks
+		r[0] = (u32) now; r[1] = (u32) (now >> 32);
+		break;
+	case 0x35:								// GetProcessId (-, handle) -> id
+		r[0] = RES_OK; r[1] = 1;
+		break;
+	case 0x37:								// GetThreadId (-, handle) -> id
+	{
+		Thread *o = (Thread *) handleGet (r[1], OBJ_THREAD);
+		if (!o) { r[0] = RES_INVALID_HANDLE; break; }
+		r[0] = RES_OK; r[1] = o->id;
+		break;
+	}
+	case 0x3C:								// Break (reason)
+		fail ("the program stopped itself (svcBreak %u) at %08x", (unsigned) r[0], (unsigned) r[14]);
+		break;
+	case 0x3D:								// OutputDebugString (text, length)
+	{
+		char buf[1024];
+		u32 len = r[1] < sizeof buf ? r[1] : (u32) sizeof buf;
+		if (len && mem.read (r[0], buf, len) && debugOut) debugOut (debugUser, buf, len);
+		break;
+	}
+	default:
+		unknownSvcs++;
+		if (!lastError[0]) snprintf (lastError, sizeof lastError, "system call %02x is not emulated (called from %08x)", (unsigned) n, (unsigned) r[15]);
+		r[0] = RES_NOT_IMPLEMENTED;
+		break;
+	}
+	if (resched || exited) cpu->halt ();
+}
+
+}

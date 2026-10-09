@@ -13,14 +13,20 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
   `tools/n3ds/vendor_dynarmic.py`, unpatched); `user/Libs/dynarmic/Makefile` builds `libdynarmic.a` + `codemem.o`
   with the apps' toolchain (Onyx's three shim files in `user/Libs/dynarmic/onyx/`); `sh tools/tests/run_n3ds_t0.sh`
   passes under qemu-aarch64 **and on the Pi 4** (ARM / Thumb / VFP, callbacks and page table, invalidation).
-- **Next: T1** -- the loader (NCSD / NCCH / `.3dsx`), the memory map, the HLE kernel (threads, sync, IPC), `srv:`,
-  `apt:U`, `gsp::Gpu` (framebuffers), `hid:USER`, `fs:USER`; done when a homebrew of ours prints and draws on both
-  screens. The core goes in `user/Emulators/n3ds/` (its `Dynarmic::A32::Jit` behind our own CPU interface, so the
-  fallback JIT stays possible); hook `Libs/dynarmic` into `user/Makefile` then. The app `n3dsemu` starts with a
-  mock-up of its screens (the user's rule), at T7.
+- **T1's first slice is done** (the study's section 9c): the core `user/Emulators/n3ds/` -- memory, the CPU
+  (Dynarmic behind `Cpu`, in `n3ds_cpu.cpp` only), the kernel (threads, scheduler, events, mutexes, semaphores,
+  arbiters, waits, the heaps, 26 SVCs), an ELF loader. `sh tools/tests/run_n3ds_test.sh` (under qemu-aarch64):
+  our ARM test program `tools/tests/n3ds/src/kernel.c`, **137 checks, 0 failed**. Not on the Pi yet, not in
+  `user/Makefile` yet (no app).
+- **Next (the rest of T1)**: IPC and `srv:`, `apt:U`, `gsp::Gpu` (framebuffers, VBlank), `hid:USER`, `fs:USER`;
+  the `.3dsx` and NCCH loaders; timers, shared memory; done when a homebrew of ours draws on both screens (a
+  picture from `n3dstest`, as `ndstest` does). The app `n3dsemu` starts with a mock-up of its screens (the user's
+  rule), at T7.
 - **On the local PC**: the work folder `~/n3ds` in WSL (Dynarmic's clone, Boost, CMake builds) is only needed to
-  run `vendor_dynarmic.py` again (another Dynarmic version); the test builds into `~/.cache/onyx_n3ds`. No ARM
-  assembler there (`arm-none-eabi-gcc` missing): the test's ARM code is written as words.
+  run `vendor_dynarmic.py` again (another Dynarmic version); the test builds into `~/.cache/onyx_n3ds`. The ARM
+  toolchain is in `~/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi/bin` (installed 2026-10-09, no
+  sudo: put it on the PATH); with it the DS's 25 checks run too (`sh tools/tests/run_nds_test.sh`: all pass with
+  the 1.0.2 save fix).
 
 ## The Nintendo DS emulator `ndsemu` (2026-10-09) -- built on the PC; the first game starts on the Pi (1.0.2)
 
@@ -67,9 +73,9 @@ session tests and debugs it on the Pi. Done: D0 to D5.
   ~60 of its 1 MB reads), the hang watchdog restarted the Pi. `lastcrash.txt`: ndsemu's task in the kernel, in the SD
   driver's status wait and its data-port loop (pc 126170 / 126640 / 168334 of 2026.10.154's image), the reaper's
   last pass 13 s before. The next start (no capture during the loading) and the user's own starts were fine.
-- **Not possible on the local PC as it is**: `tools/tests/nds/check.sh` (no `arm-none-eabi-gcc`: the test ROMs are
-  not built) and the JIT under qemu (no `aarch64-linux-gnu-g++`) -- `sudo apt install gcc-arm-none-eabi
-  g++-aarch64-linux-gnu` in WSL.
+- **The 25 checks pass with the fix** (interpreter, on the PC: the ARM toolchain was installed in WSL's
+  `~/toolchains` on 2026-10-09). Still not run: the JIT under qemu (no `aarch64-linux-gnu-g++`; the bare-metal
+  toolchain + `tools/tests/basic/a64/linux_shim.c` would do, as the 3DS tests do).
 - **The local session's tests**: `docs/LOCAL-AGENT-NDS.md` (its brief).
 - **The 3DS**: the study is `docs/3DS-EMULATOR-STUDY.md` (option C recommended: our core under MIT + Dynarmic;
   the plan T0-T8); nothing built. The user's answers (2026-10-09, §11): option C, Old 3DS only to begin

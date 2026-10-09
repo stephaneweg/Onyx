@@ -1,0 +1,236 @@
+//
+// n3ds/n3ds.h -- a Nintendo 3DS emulator core for Onyx (docs/3DS-EMULATOR-STUDY.md, option C): the Old 3DS's
+// application processor (ARM11 MPCore, ARMv6K + VFPv2) run by Dynarmic behind our own interface (Cpu), and the
+// console's operating system emulated at a high level -- the process's memory, the kernel's objects and system
+// calls, the services (to come). No Nintendo key, firmware or system file: decrypted dumps and homebrew only.
+//
+// Phase T1, first slice: the memory (n3ds_mem.cpp), the processor (n3ds_cpu.cpp: the only file that sees
+// Dynarmic), the kernel -- threads, events, mutexes, semaphores, address arbiters, waiting, time -- and its
+// system calls (n3ds_kernel.cpp), an ELF loader (n3ds_loader.cpp). The core uses the C library (Dynarmic needs
+// it anyway) but nothing of Onyx: it runs on the PC too (tools/tests/n3ds).
+//
+// MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors (docs/LICENSING.md).
+//
+#ifndef ONYX_N3DS_H
+#define ONYX_N3DS_H
+
+#include <stdint.h>
+#include <stddef.h>
+
+namespace n3ds {
+
+typedef uint8_t u8; typedef uint16_t u16; typedef uint32_t u32; typedef uint64_t u64;
+typedef int8_t s8; typedef int16_t s16; typedef int32_t s32; typedef int64_t s64;
+
+enum { PAGE_BITS = 12, PAGE_SIZE = 1 << PAGE_BITS, PAGE_COUNT = 1 << (32 - PAGE_BITS) };
+enum { PERM_R = 1, PERM_W = 2, PERM_X = 4, PERM_RW = 3, PERM_RX = 5 };
+
+// The process's address space (the Old 3DS's layout).
+enum : u32 {
+	VA_CODE        = 0x00100000,		// the program
+	VA_HEAP        = 0x08000000,		// ControlMemory's ordinary heap
+	VA_HEAP_END    = 0x10000000,		// (the main thread's stack ends here too)
+	VA_LINEAR      = 0x14000000,		// the linear heap: FCRAM in order, what the GPU is given
+	VA_LINEAR_END  = 0x1C000000,
+	VA_VRAM        = 0x1F000000,
+	VA_CONFIG      = 0x1FF80000,		// the kernel's configuration page
+	VA_SHARED      = 0x1FF81000,		// the shared page (time, 3D slider...)
+	VA_TLS         = 0x1FF82000,		// the threads' local storage, 0x200 bytes each
+	FCRAM_SIZE     = 0x08000000,		// 128 MB
+	VRAM_SIZE      = 0x00600000,
+	PA_FCRAM       = 0x20000000,
+	PA_VRAM        = 0x18000000,
+	TLS_SIZE       = 0x200,
+	TLS_MAX        = 0x40,			// threads at most (0x8000 bytes of TLS)
+};
+
+// The processor's clock: SVC times are in nanoseconds, ours in its ticks.
+static const u64 TICKS_PER_SECOND = 268111856ull;
+static const u64 TICKS_PER_FRAME  = 4481136ull;			// (59.83 frames a second)
+
+// Result codes (the ones the kernel gives).
+enum : u32 {
+	RES_OK              = 0,
+	RES_TIMEOUT         = 0x09401BFE,
+	RES_INVALID_HANDLE  = 0xD8E007F7,
+	RES_INVALID_ADDRESS = 0xE0E01BF5,
+	RES_INVALID_ARG     = 0xE0E01BEE,		// (invalid combination / size)
+	RES_OUT_OF_MEMORY   = 0xD86007F3,
+	RES_OUT_OF_HANDLES  = 0xD8600413,
+	RES_OUT_OF_RANGE    = 0xE0E01BFD,
+	RES_NOT_OWNER       = 0xD8E0041F,		// (ReleaseMutex by another thread)
+	RES_PORT_NOT_FOUND  = 0xD88007FA,
+	RES_NOT_IMPLEMENTED = 0xF8C007F4,
+};
+
+struct Machine;
+
+// ---- memory ----------------------------------------------------------------------------------------------------------
+struct Memory
+{
+	u8 **pages;				// [PAGE_COUNT] the host's page of each guest page, or 0 (Dynarmic reads it too)
+	u8 *perms;				// [PAGE_COUNT] PERM_*
+	u8 *fcram, *vram;
+	u32 linearUsed;				// FCRAM taken from its start (the linear heap: va - VA_LINEAR = its offset)
+	u32 topUsed;				// ... and from its end (the program, its heap, stacks, TLS)
+
+	bool init ();
+	void quit ();
+	u8 *allocTop (u32 size);		// zeroed pages from FCRAM's end, 0 when it is full
+	bool map (u32 va, u32 size, u8 *host, int perm);
+	void unmap (u32 va, u32 size);
+	bool mapped (u32 va, u32 size) const;
+	inline u8 *ptr (u32 va) const { u8 *p = pages[va >> PAGE_BITS]; return p ? p + (va & (PAGE_SIZE - 1)) : 0; }
+	u8 r8 (u32 va) const; u16 r16 (u32 va) const; u32 r32 (u32 va) const; u64 r64 (u32 va) const;
+	void w8 (u32 va, u8 v); void w16 (u32 va, u16 v); void w32 (u32 va, u32 v); void w64 (u32 va, u64 v);
+	bool read (u32 va, void *dst, u32 n) const;
+	bool write (u32 va, const void *src, u32 n);
+	bool fill (u32 va, u8 v, u32 n);
+	u32 faults;				// accesses outside the mapped pages (read as 0, writes dropped)
+	u32 faultAddr;
+};
+
+// ---- the processor ---------------------------------------------------------------------------------------------------
+struct CpuState
+{
+	u32 r[16];
+	u32 cpsr;
+	u32 vfp[64];				// d0-d31 as words (the 3DS has d0-d15)
+	u32 fpscr;
+	u32 tls;				// the thread's TLS address (CP15 c13, c0, 3: read by every program)
+};
+
+struct Cpu
+{
+	static Cpu *create (Machine *m);	// (n3ds_cpu.cpp: Dynarmic)
+	virtual ~Cpu () {}
+	virtual void run () = 0;		// until the machine's ticks run out, or halt ()
+	virtual void halt () = 0;		// (from a system call: leave run () now)
+	virtual u32 *regs () = 0;		// the running thread's r0-r15, valid inside a system call
+	virtual void save (CpuState &s) = 0;
+	virtual void load (const CpuState &s) = 0;
+	virtual void invalidate (u32 va, u32 size) = 0;		// the code there changed
+};
+
+// ---- the kernel's objects --------------------------------------------------------------------------------------------
+enum { OBJ_THREAD = 1, OBJ_EVENT, OBJ_MUTEX, OBJ_SEMAPHORE, OBJ_ARBITER, OBJ_PROCESS };
+enum { RESET_ONESHOT = 0, RESET_STICKY = 1, RESET_PULSE = 2 };
+enum { THREAD_READY, THREAD_WAIT_SLEEP, THREAD_WAIT_SYNC, THREAD_WAIT_ARBITER, THREAD_DEAD };
+enum { HANDLE_MAX = 1024, WAIT_MAX = 16 };
+enum : u32 { HANDLE_CUR_THREAD = 0xFFFF8000, HANDLE_CUR_PROCESS = 0xFFFF8001 };
+
+struct Thread;
+
+struct Object
+{
+	int type;
+	int refs;
+	Object (int t) : type (t), refs (1) {}
+	virtual ~Object () {}
+	virtual bool waitable () const { return false; }
+	virtual bool available (const Thread *) const { return false; }	// would a wait on it end now, for this thread?
+	virtual void acquire (Thread *) {}				// ... and what ending it takes
+};
+
+struct Event : Object
+{
+	int reset; bool signaled;
+	Event (int r) : Object (OBJ_EVENT), reset (r), signaled (false) {}
+	bool waitable () const override { return true; }
+	bool available (const Thread *) const override { return signaled; }
+	void acquire (Thread *) override { if (reset != RESET_STICKY) signaled = false; }
+};
+
+struct Mutex : Object
+{
+	Thread *owner; int count;
+	Mutex () : Object (OBJ_MUTEX), owner (0), count (0) {}
+	bool waitable () const override { return true; }
+	bool available (const Thread *t) const override { return !owner || owner == t; }
+	void acquire (Thread *t) override { owner = t; count++; }
+};
+
+struct Semaphore : Object
+{
+	s32 count, max;
+	Semaphore (s32 c, s32 m) : Object (OBJ_SEMAPHORE), count (c), max (m) {}
+	bool waitable () const override { return true; }
+	bool available (const Thread *) const override { return count > 0; }
+	void acquire (Thread *) override { count--; }
+};
+
+struct Arbiter : Object { Arbiter () : Object (OBJ_ARBITER) {} };
+struct Process : Object { Process () : Object (OBJ_PROCESS) {} };
+
+struct Thread : Object
+{
+	u32 id;
+	int status;
+	s32 priority;				// 0 the highest, 0x3F the lowest
+	u64 readySeq;				// the order threads of one priority run in
+	u64 wakeTick;				// a sleep's or a timed wait's end (~0: none)
+	Object *waitOn[WAIT_MAX]; int waitCount; bool waitAll;
+	u32 waitOut;				// (WaitSynchronizationN: where the index goes -- r1)
+	u32 arbiterAddr;
+	int tlsSlot;
+	CpuState ctx;
+	Thread () : Object (OBJ_THREAD), id (0), status (THREAD_READY), priority (0x30), readySeq (0), wakeTick (~0ull),
+		    waitCount (0), waitAll (false), waitOut (0), arbiterAddr (0), tlsSlot (-1) {}
+	bool waitable () const override { return true; }
+	bool available (const Thread *) const override { return status == THREAD_DEAD; }
+};
+
+// ---- the machine -----------------------------------------------------------------------------------------------------
+struct Machine
+{
+	Memory mem;
+	Cpu *cpu;
+	// time
+	u64 now;				// ticks since the start
+	s64 ticksLeft;				// of the slice the processor runs (the Cpu counts it down)
+	// the kernel
+	Object *handles[HANDLE_MAX];
+	Thread *threads[TLS_MAX]; int threadCount;
+	Thread *current;
+	u32 nextThreadId; u64 nextSeq;
+	bool resched;				// a system call changed who should run
+	bool exited; u32 exitCode;
+	u32 heapSize;				// the ordinary heap's committed bytes (from VA_HEAP)
+	u32 entry;
+	char lastError[160];
+	// what the program says (svcOutputDebugString): the host's
+	void (*debugOut) (void *user, const char *text, u32 len);
+	void *debugUser;
+	// counters (tests, the speed display)
+	u64 svcCount; u64 switchCount; u32 unknownSvcs;
+
+	Machine ();
+	~Machine ();
+	bool init ();
+	bool loadElf (const u8 *file, u32 size);			// (n3ds_loader.cpp)
+	bool start (u32 entryPoint, u32 stackSize);			// the main thread
+	void run (u64 ticks);						// the scheduler: runs the threads for that long
+	void runFrame () { run (TICKS_PER_FRAME); }
+
+	// the kernel (n3ds_kernel.cpp)
+	void svc (u32 n);						// called by the Cpu
+	u32 handleNew (Object *o);					// (takes the caller's reference; 0: the table is full)
+	Object *handleGet (u32 h, int type = 0);
+	bool handleClose (u32 h);
+	void release (Object *o);
+	Thread *threadNew (u32 entryPoint, u32 arg, u32 stackTop, s32 priority);
+	void wakeWaiters (Object *o);
+	void fail (const char *fmt, ...);
+
+private:
+	Thread *pick ();
+	void switchTo (Thread *t);
+	void threadExit (Thread *t);
+	bool tryWait (Thread *t, bool first);
+	u64 nsToTicks (s64 ns) const;
+	u32 svcControlMemory (u32 op, u32 addr0, u32 addr1, u32 size, u32 perm, u32 *out);
+};
+
+}
+
+#endif
