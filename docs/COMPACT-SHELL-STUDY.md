@@ -411,7 +411,8 @@ item, memory-card-like tiles. It stays Onyx: Milk's Aqua blue is the glow, the O
 the apps and the kits are the same.
 
 > **A second look, 2026-10-09**: §16 proposes a console home in the manner of a modern TV console (the PS4)
-> and of Lakka, the games classified by console — mock-ups only.
+> and of Lakka, the games classified by console; §17 a v3 much closer to Lakka's menu (RetroArch's XMB), and
+> a v2 / v3 comparison — mock-ups only.
 
 ![](compact-shell/mockups/console-handheld.png)
 
@@ -1141,6 +1142,183 @@ menus) in this style; the game's part (save states, screenshot) appears only for
 9. **The font**: DejaVu Sans as asked here, or v1's Selawik Light for the big words?
 10. **Does v2 replace v1**, or is it a choice in the Settings (Display > Home style)?
 
+## 17. Console mode v3: the XMB-like shell (Lakka) (2026-10-09, mock-ups)
+
+*A design proposal with mock-ups only, nothing built.* The user liked v2 (§16) and asked for a **v3 much closer
+to Lakka's menu** (RetroArch's XMB), so that the two can be compared and one chosen. The pictures are made by
+**`python3 tools/screenshot/mockup_console_xmb.py`** (it imports v2's script for the helpers and the content:
+the card's apps, icons and categories, the consoles from the emulators' `games =`, the made-up ROMs and their
+160 × 144 pictures). They land in `docs/compact-shell/mockups/console-v3-*.png`. As before, no console maker's
+logo, game or button symbol is drawn. The consoles' icons are **generic white shapes** (an upright handheld, a
+wide handheld, a flat controller, a cartridge, a disc), each with its short name in it.
+
+![](compact-shell/mockups/console-v3-overview.png)
+
+*v3's six main screens; the badge above each says how it is reached.*
+
+### 17.1 The structure: two axes
+
+The home has **two axes and nothing else**: **Left / Right choose a category, Up / Down choose an item in it**.
+Pressing **A on an item goes one level deeper**, **B comes back**.
+
+- **The category row**: big white flat icons across the upper third, at a **fixed centre line**. The focused
+  category sits at a **fixed x (the left third)**; it is larger, fully opaque, with its name under it. The others
+  are smaller, faded and evenly spaced, and the row **slides** so that the focused one never moves. The order:
+  - **Main Menu** (the Onyx gem): Load from a folder, Packages, Information, Restart, Shut down, Switch mode.
+  - **Settings**.
+  - **History** (the last games and apps).
+  - **Favourites**.
+  - **One icon per console that has games**, in the emulators' `order =` (GameCube, N64, SNES, GBA, GBC, GB, NES).
+  - **Onyx games**.
+  - **Apps**.
+- **The item list**: a vertical list under the focused category, in the same column as the focused icon. The
+  **focused item stays at a fixed y** just under the row: larger icon, bold white label, its **sublabel** under
+  it. The next items follow below, smaller and faded. The previous items are **lifted above the category row**,
+  fainter as they get farther (the XMB's signature). A console's list is a playlist: **alphabetical**. A ROM's icon
+  is its console's icon; an app's is its real icon; a setting's is a white glyph.
+- **The thumbnail**: for a ROM, its **title screen large at the right** (430 lp wide), as Lakka shows thumbnails.
+  For an Onyx game it is the game's screenshot; for a running app, its live picture.
+- **Top left**: the category's name as the title, with its count ("Game Boy Advance  9 games"); in a deeper
+  level, the item's name ("Star Courier  Game Boy Advance"). **Top right**: the date, the battery, the time.
+- **Bottom**: a thin bar. On the left is the gem and where you are ("Onyx - Game Boy Advance (gbaemu)", the
+  file, the `.ini`); on the right are the buttons that work, right-aligned as in Lakka.
+- **A deeper level** (A on a game): the category row disappears. The game's icon stays **faded at the left** (its
+  parent), and **its actions** form the list:
+  - Run.
+  - Add to Favourites.
+  - Save states (its value: "2 of 3 slots").
+  - Information.
+  - Delete.
+  
+  In a deeper level, the items before the focused one sit evenly above it. **A on Save states** goes one level
+  further: the slots as a list with their dates and the focused slot's picture at the right (A loads it,
+  Y deletes it).
+- **The quick menu** (Home in a game) is the same list style over the paused, dimmed game:
+  - Resume, Restart, Close game.
+  - **Save state** with its slot as a value "< Slot 2 >" (Left / Right change it), Load state, Undo load state.
+  - Screenshot, Add to Favourites, Controls, Emulator options.
+  - Switch app, Home.
+
+  The focused slot's picture is at the right.
+- **The background**: a calm blue diagonal gradient (`#0A1A4A` → `#1A56A8` → `#3C8CD6`) with **the soft white
+  ribbon**: a faint band twisting across the lower half, its threads a little brighter, plus a soft light at the
+  top left. A **theme colour** can change it (the Settings picture shows the violet variant `#1A0E3C` →
+  `#52308C` → `#9660C8`). It is drawn once per theme (the ribbon is still); a slow drift of the ribbon could be
+  an option.
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-v3-home.png) | **(a) Home, 1280 × 720**: Game Boy Advance focused among the categories (SNES at its left, GBC, GB, NES, Onyx games, Apps at its right); its 9 games; Star Courier focused with `star-courier.gba - Last played Monday 21:04`; Rune Tactics lifted above the row, Tiny Racer below; the title screen at the right. |
+| ![](compact-shell/mockups/console-v3-game.png) | **(d) A on Star Courier**: the deeper level — Run (starts it with gbaemu), Add to Favourites, Save states (2 of 3 slots), Information, Delete; the game faded at the left. |
+| ![](compact-shell/mockups/console-v3-savestates.png) | **A on Save states**: Slot 1 (Mon 21:04), **Slot 2** (Sun 10:12, its picture at the right), Slot 3 empty; the game and Save states faded at the left. |
+| ![](compact-shell/mockups/console-v3-settings.png) | **(c) Settings** (the violet theme): Display, **Sound** (its help line), Gamepad, Keyboard & Mouse, Wi-Fi, Language & Region, Mode, Packages, About; A opens the page (§7.6's rows in this list style). |
+| ![](compact-shell/mockups/console-v3-apps.png) | **Apps**: all 41 apps with their real icons (sorted by category); Letters focused, **running** as its value, its live picture at the right. |
+| ![](compact-shell/mockups/console-v3-onyx.png) | **Onyx games**: their real icons; Tetris focused, its screenshot at the right. |
+| ![](compact-shell/mockups/console-v3-quickmenu.png) | **(e) The quick menu over Star Courier**: Resume, Restart, Close game above; **Save state < Slot 2 >** focused; Load state, Undo load state, Screenshot, Add to Favourites, Controls below; slot 2's picture at the right. |
+| ![](compact-shell/mockups/console-v3-game-fr.png) | **(f) In French**: Lancer, Ajouter aux favoris, Sauvegardes (2 emplacements sur 3), Informations, Supprimer; Élément, Retour. |
+| ![](compact-shell/mockups/console-v3-home-fr.png) | **The home in French**: 9 jeux, Dernière partie : lundi 21:04; Catégorie, Élément, Rechercher, Jouer direct, Retour, OK. |
+
+### 17.2 The buttons, screen by screen
+
+| Where | Left / Right | Up / Down | A | B | Y | X | L1 / R1 | Home |
+|---|---|---|---|---|---|---|---|---|
+| **Home** (a category's list) | the category | the item | **OK**: a game's or an app's actions (deeper); a setting's page | back to the category's first item, then nothing | **Search** the list (a physical keyboard) | **Quick play**: run the game at once, without its actions | a page up / down (the next first letter) | the menu (§16.5's system part) |
+| **A game's actions** | — | the action | Run / add / open the slots / show the information | back to the list | — | — | — | the menu |
+| **Save states** | — | the slot | **load** it | back | **delete** it | — | — | — |
+| **Quick menu** (in a game) | on Save / Load state: **the slot** | the item | OK | back (to the game when at the top) | — | — | — | **resume** |
+| **An app running** | — | — | — | — | — | — | — | the menu (Resume, the app's menus, Home, Close, Settings, Shut Down) |
+
+The keyboard and the mouse map as in v1 and v2 (§7.2): the arrows, Enter = A, Esc / Backspace = B, F10 / Alt =
+Home; the wheel moves the list, a click on a category icon chooses it.
+
+### 17.3 Resolution independence and the metrics
+
+Logical units × the scale (the same rule as v1 and v2); a compact set below 560 logical lines. Every distance
+is measured from the two fixed points (the focused category's centre, the focused item's centre), so the screen
+does not jump as the focus moves.
+
+| Metric (lp) | regular (1280 × 720 at 1, 1920 × 1080 at 1.5) | compact (640 × 480 at 1) |
+|---|---|---|
+| title: x, y / size / count | 40, 20 / 24 b / 15 | 16, 10 / 16 b / 11 |
+| category row centre y / focused x | 176 / 250 | 92 / 104 |
+| category icon: focused / others / spacing right / left | 88 / 52 / 146 / 136 | 50 / 30 / 78 / 72 |
+| category name under it | 15 b | 11 b |
+| focused item centre y | 322 | 184 |
+| item icon: focused / others | 56 / 40 | 34 / 24 |
+| label: focused / others / sublabel | 25 b / 19 / 15 | 16 b / 13 / 10 |
+| label start from the icon's centre | 50 | 30 |
+| first item below / then every | 80 / 58 | 50 / 36 |
+| first item above (from the row's centre) | 100 | 60 |
+| thumbnail: x, y / width (10:9) | 792, 248 / 430 | 404, 136 / 220 |
+| values right-aligned at | 760 | 388 |
+| bottom bar / hints | 38 / 14 | 28 / 10 |
+| alpha: focused / below / first above | 100 % / 59 % / 35 % | the same |
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-v3-home-1080.png) | **(b) 1920 × 1080 at 1.5**: the Nintendo 64 playlist (cartridge labels), Kite Rally focused, Hover Derby above. |
+| ![](compact-shell/mockups/console-v3-home-640.png) | **(b) 640 × 480, compact**: the Game Boy playlist, Frog Hop focused; the thumbnail smaller, the hints shortened (no Y, X). |
+
+### 17.4 Colours
+
+- The background as above; the words **white** (focused), the others white mixed toward the background's blue
+  (59 % below, 35 % above), sublabels `#D2E0F8`. The thin bar `#040A1E` at 55 %.
+- **No accent colour, no glow, no box around the focus**: as in the XMB, the focus is **size and opacity** alone
+  (the icon larger, the label bold and white, everything else faded). The pad buttons keep today's colours
+  (A blue, B red, Y amber, X violet) in small rings.
+- A theme per user (blue by default, violet, and others) in Settings > Display.
+
+### 17.5 What differs from v2
+
+| | v2 (§16) — TV console home | v3 (§17) — XMB / Lakka |
+|---|---|---|
+| Levels | 4 stacked rows (function row, shelves, content row, details) | 2 axes (categories across, items down) + deeper levels with A |
+| Games shown | ~7 at once, **as pictures** in one row | ~6 at once, **as names** in a list; one picture (the focused one's) at the right |
+| A long list (100 ROMs) | slow to cross by pictures; no first-letter jump | fast: a list, L1 / R1 jump by letter, Y searches |
+| The focus | a white ring, an Aqua glow, the tile larger | size and opacity only (no ring) |
+| Background | the focused game's picture, blurred | a theme gradient and the white ribbon (still) |
+| Game actions | under the row, visible at once (Play, the slots) | one level deeper (A): Run, Favourites, Save states... |
+| Notifications, Power | the function row at the top | Main Menu (the gem category); notifications as a passing toast |
+| Apps, Settings | shelves with tiles (Apps: category dividers) | categories with lists (Settings items as rows, Apps with real icons) |
+| Cost to draw | a blur per focus change, big pictures | cheap: white glyphs, text, one picture; the background drawn once |
+| Familiar to | PS4 / PS5, Switch-like homes | Lakka, RetroArch, the PSP / PS3 XMB |
+
+### 17.6 What it reuses
+
+The same as v2 (§16.8): `consolehome`'s role (PocketUI's shell, the home as the backmost window, the menu as a
+topmost overlay), the catalogue (`Apps/pocketshell/catalog.h`), the Control Panel's applets and their help lines,
+the scale rule and the faces, the hint pills, the pad and keyboard mappings, the words of `lang/fr.txt`; the
+consoles from the emulators' `games =` and `order =`, the Game Library's index and thumbnails
+(`SD:/apps/gamelib.app/thumbs/`). New for v3: the white console and setting glyphs (a small set to draw once,
+at two sizes), the ribbon background per theme, Favourites (a list in `SD:/etc`), the slide of the row and the
+list (an animation of a few frames, optional).
+
+### 17.7 v2 or v3?
+
+![](compact-shell/mockups/console-v2-v3-compare.png)
+
+*The same moment in both: the Game Boy Advance's games, Star Courier focused, 1280 × 720.*
+
+- **v2** suits **a few games per console with good pictures** and a living-room TV: it is visual, the save slots are
+  in sight, but it has more levels and draws more.
+- **v3** suits **many ROMs per console** and those who know Lakka / RetroArch: two axes, fast lists, search, cheap
+  to draw, closer to "a console of consoles"; the pictures are one at a time.
+- A middle way is possible: v3's structure with v2's backdrop (the focused picture blurred behind the list).
+
+### 17.8 Open questions for the user
+
+1. **v2 or v3** (or v3 with v2's blurred backdrop)?
+2. In v3, **the Main Menu category**: Packages, Information, Switch mode, Restart / Shut down; is Files there or in
+   Apps? And **notifications**: a toast for a few seconds, plus a list in the Main Menu?
+3. **Favourites and History** as separate categories (Lakka's way) or merged into one "Recent & favourites"?
+4. **Playlist order**: alphabetical (Lakka, proposed) or the last played first?
+5. **Quick play on X** (run without the actions' level): keep it, or A runs at once and the actions go on X / Y?
+6. **Themes**: blue by default; which others (violet shown)? And the ribbon still, or slowly drifting while
+   nothing runs?
+7. **The console icons**: generic shapes with the short names (shown), or plain glyphs with the names only?
+8. As in v2: save states need the emulators' work first (§16.9 question 1); GB and GBC as two consoles; empty
+   consoles hidden.
+
 ## Résumé (FR)
 
 L'utilisateur demandait si, maintenant qu'Elegant est en espace utilisateur, on pouvait remplacer le bureau
@@ -1174,4 +1352,4 @@ taille (une barre latérale repliée en rail, comme pour Ledger), une racine dé
 visible partout et le tactile. Côté Elegant : un même serveur avec une politique par mode, un rôle de
 shell, des raccourcis système, un clavier à l'écran, le tactile, la rotation, la manette comme entrée
 système et la batterie. Les questions ouvertes sont au §14 ; les étapes suivantes (§15) s'arrêtent avant
-toute implémentation. Ajouts du 2026-10-08 : le Panneau de configuration en mode pocket (§6.11 : en paysage, les applets en liens à gauche et l'applet qui remplit le reste — cette mise en page remplace aussi le tableau de bord du bureau ; en portrait, la liste puis une barre de retour) et en mode console (§7.6 : les applets utiles à la manette à gauche, leur page en grandes lignes à droite, ←/→ pour changer une valeur ; le mot de passe Wi-Fi demande un vrai clavier), et une proposition de lanceur pocket plus abouti, la v2 (§6.2 : vrai champ de recherche, « Aujourd'hui », puces de catégories, icônes sur plaques, focus net, vignettes des apps ouvertes ; une colonne Aujourd'hui à 1920 × 1080). Ajout du 2026-10-09 (§16, maquettes seulement) : une **v2 du mode console** façon accueil de console de salon (PS4) et Lakka — une rangée de fonctions en haut, des **étagères** (Récents, Jeux Onyx, **une par console** d'après les lignes `games =` des émulateurs, Apps, Réglages), une grande rangée de tuiles dont la tuile choisie est agrandie, son image floutée en fond, et sous la rangée les détails (Jouer, les emplacements de sauvegarde) ; le menu par-dessus un jeu avec ses emplacements.
+toute implémentation. Ajouts du 2026-10-08 : le Panneau de configuration en mode pocket (§6.11 : en paysage, les applets en liens à gauche et l'applet qui remplit le reste — cette mise en page remplace aussi le tableau de bord du bureau ; en portrait, la liste puis une barre de retour) et en mode console (§7.6 : les applets utiles à la manette à gauche, leur page en grandes lignes à droite, ←/→ pour changer une valeur ; le mot de passe Wi-Fi demande un vrai clavier), et une proposition de lanceur pocket plus abouti, la v2 (§6.2 : vrai champ de recherche, « Aujourd'hui », puces de catégories, icônes sur plaques, focus net, vignettes des apps ouvertes ; une colonne Aujourd'hui à 1920 × 1080). Ajout du 2026-10-09 (§16, maquettes seulement) : une **v2 du mode console** façon accueil de console de salon (PS4) et Lakka — une rangée de fonctions en haut, des **étagères** (Récents, Jeux Onyx, **une par console** d'après les lignes `games =` des émulateurs, Apps, Réglages), une grande rangée de tuiles dont la tuile choisie est agrandie, son image floutée en fond, et sous la rangée les détails (Jouer, les emplacements de sauvegarde) ; le menu par-dessus un jeu avec ses emplacements. Puis une **v3** (§17) bien plus proche du menu de **Lakka** (le XMB de RetroArch) : des icônes blanches de catégories en travers (Menu principal, Réglages, Historique, Favoris, une par console, Jeux Onyx, Apps), la liste verticale des éléments dessous, l'écran titre du jeu à droite, un niveau plus profond pour les actions d'un jeu, le menu rapide en jeu, sur un dégradé bleu avec le ruban blanc — et une comparaison v2 / v3 pour choisir.
