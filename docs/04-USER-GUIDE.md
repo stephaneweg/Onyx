@@ -42,8 +42,13 @@ same way — its kernel `kernel_2712.img`, its device trees, no boot firmware (t
 its packages from the repository's `pi5/` folder. A Pi 4's card does not start a Pi 5, nor the reverse. **Not run
 on a Pi 5 yet** (2026-10-09, docs/PI5-PORT.md): its GPU (the 3D, the browser's compositing, the emulators' GPU
 paths) is written for it but untried -- `gpu71=0` in `cmdline.txt` turns it off if it misbehaves --, the 40-pin
-header's GPIO is not there yet, the sound goes to USB or HDMI (no jack on the Pi 5); its kernel log goes to the 3-pin debug UART between the HDMI
-ports.
+header's pins, edges, I2C and SPI go through the RP1 (its PWM not yet), the sound goes to USB or HDMI (no jack on
+the Pi 5); its kernel log goes to the 3-pin debug UART between the HDMI ports. What the Pi 5 has more: the
+**Gigabit Ethernet** (`network=` in `system.ini`, below: the cable when it is plugged in at the start, else the
+Wi-Fi), the **power button** (a press opens the Shut Down dialog; Shut Down then turns the board off, and a press
+starts it again), the **real-time clock** (the time kept while the board is off, with the optional RTC battery;
+written with `SD:/etc/clock`), the **fan** of the Active Cooler (on above 60 °C, off 5 °C below: `gpiofanpin=45` in
+`cmdline.txt`, `socmaxtemp=` another threshold).
 
 **The file dialog** (Open, Save, Choose folder — every program's; redone on 2026-10-05):
 
@@ -247,7 +252,14 @@ zone=Brussels      # the time zone's city (written with timezone= by Language & 
 ramfs=128          # the size of RAM:, the volume in memory (§2): MB, or "10%" of the free
                    # memory; "0" = no RAM:. No line: 128 MB, at most a quarter of the free memory
 shell=desktop      # the interface: desktop (Elegant; no line: desktop), pocket or console (PocketUI)
+network=auto       # the network port: auto, ethernet or wlan (no line: wlan on the Pi 4, auto on the Pi 5)
 ```
+
+`network=` (read at boot) chooses the port the kernel brings up: `wlan` the Wi-Fi (§ *Wi-Fi* below), `ethernet`
+the cable (DHCP on it; the link may come later), `auto` the cable when its link is up within 6 seconds of the
+start, else the Wi-Fi. No line: `wlan` on the Pi 4 (as always), `auto` on the Pi 5, whose Gigabit Ethernet (the
+RP1's) Circle drives. The choice holds until the next start: unplugging the cable later does not switch to the
+Wi-Fi. `netstat` and `kapi_net_info` say which (`link ethernet` / `link wlan`).
 
 `shell=` (kernel kapi v97) chooses the graphics server the kernel starts: `desktop` — or no line, or a word it
 does not know — is the desktop as always (Elegant); `pocket` and `console` start PocketUI (`SD:/bin/pocketui`,

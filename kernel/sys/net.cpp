@@ -821,7 +821,9 @@ static boolean SlotOwned (int h, unsigned nPid)
 // (and come back) later, so also ask wpa_supplicant (the menu bar's Wi-Fi icon polls this).
 int NetStatus (char *pIPOut, unsigned nIPLen)
 {
-	if (!NetIsUp () || !CWPASupplicant::IsConnected ())
+	boolean bLink = g_nNetLink == NETLINK_ETHERNET ? g_pNet != 0 && g_pNet->GetNetDeviceLayer ()->IsRunning ()
+						       : CWPASupplicant::IsConnected ();	// (the cable's link / the association)
+	if (!NetIsUp () || !bLink)
 	{
 		if (pIPOut != 0 && nIPLen > 0) pIPOut[0] = '\0';
 		return 0;
@@ -927,6 +929,7 @@ static int DoInfo (char *pBuf, unsigned nCap)
 	auto put = [&] (const char *s) { for (unsigned i = 0; s[i] && n + 1 < nCap; i++) pBuf[n++] = s[i]; };
 	auto putu = [&] (unsigned v) { char t[12]; int k = 0; if (!v) t[k++] = '0'; while (v) { t[k++] = (char) ('0' + v % 10); v /= 10; } while (k) { if (n + 1 < nCap) pBuf[n++] = t[--k]; else k--; } };
 	put ("up "); put (NetIsUp () ? "yes" : "no"); put ("\n");
+	put ("link "); put (g_nNetLink == NETLINK_ETHERNET ? "ethernet" : g_nNetLink == NETLINK_WLAN ? "wlan" : "none"); put ("\n");
 	if (g_pNet != 0 && NetIsUp ())
 	{
 		CNetConfig *pC = g_pNet->GetConfig ();

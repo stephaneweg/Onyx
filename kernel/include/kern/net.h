@@ -23,6 +23,12 @@ extern volatile boolean g_bNetUp;
 
 static inline boolean NetIsUp (void) { return g_pNet != 0 && g_bNetUp; }
 
+// The link the stack uses (system.ini "network = auto | ethernet | wlan": the default wlan on the
+// Pi 4, auto on the Pi 5 -- the cable if its link is up at boot, else the Wi-Fi). Set by the
+// bring-up (kernel.cpp) before the link is up; NETLINK_NONE until then.
+enum { NETLINK_NONE, NETLINK_WLAN, NETLINK_ETHERNET };
+extern volatile unsigned g_nNetLink;
+
 // ---- Socket kapi backend (implemented in sys/net.cpp) -----------------------
 // Thin handle-based TCP wrapper over Circle's CSocket, exposed to apps through
 // the kapi table. Handles are small non-negative ints; negative returns are

@@ -42,6 +42,8 @@
 #endif
 #include <circle/net/ipaddress.h>
 #include <circle/net/ntpdaemon.h>
+#include <circle/netdevice.h>
+#include <circle/startup.h>		// is_power_button_pressed (the Pi 5)
 
 static const char FromKernel[] = "kernel";
 
@@ -54,6 +56,15 @@ static const char FromKernel[] = "kernel";
 // object exists; g_bNetUp flips TRUE when the link is DHCP-bound.
 CNetSubSystem	 *g_pNet   = 0;
 volatile boolean  g_bNetUp = FALSE;
+volatile unsigned g_nNetLink = NETLINK_NONE;		// (kern/net.h)
+// system.ini "network = auto | ethernet | wlan": the wired port or the Wi-Fi (the Pi 4's default
+// is the Wi-Fi, as before; the Pi 5's the cable when its link comes up at boot, else the Wi-Fi).
+enum { NETPORT_WLAN, NETPORT_ETHERNET, NETPORT_AUTO };
+#if RASPPI >= 5
+static unsigned g_nNetPort = NETPORT_AUTO;
+#else
+static unsigned g_nNetPort = NETPORT_WLAN;
+#endif
 
 // Clock: timezone offset from UTC in minutes (system.ini "timezone="; default CET
 // +60, set "120" for CEST summer time) + the NTP server to sync against once the
@@ -917,6 +928,11 @@ public:
 			unsigned nNow = CTimer::Get ()->GetTicks ();
 
 			CrashLogPower ();			// (under-voltage / heat: kmsg + the crash record)
+#if RASPPI >= 5
+			// The fan (cmdline gpiofanpin=45, the Pi 5's header): on above socmaxtemp, off 5 degrees
+			// below (Circle, every 4 s). Not without a fan: Update () would lower the clock instead.
+			if (CKernelOptions::Get ()->GetGPIOFanPin () != 0) CCPUThrottle::Get ()->Update ();
+#endif
 			CrashLogMemory ();			// (the free memory: the crash record)
 			if (nSec % 600 == 60) CrashLogClockSave ();	// (SD:/etc/clock: the time at the next boot)
 
@@ -1531,29 +1547,71 @@ public:
 		g_pNet = m_pNet;		// publish (still down until associated)
 		NetTrialLoad ();		// (a one-boot trial of the driver's switches, sys/net.cpp)
 
-		m_pLogger->Write (FromKernel, LogNotice,
-				  "net: bringing up WLAN (firmware " WLAN_FIRMWARE_PATH ")");
-		if (!m_pWLAN->Initialize ())
+		// The cable first (network = auto | ethernet): its link must come up within a few
+		// seconds, else (auto) the Wi-Fi. DHCP starts on the first device whose link is up
+		// (CNetSubSystem::Process), so the switch happens before any address is asked for.
+		CNetDeviceLayer *pDev = m_pNet->GetNetDeviceLayer ();
+		boolean bEth = FALSE;
+		if (g_nNetPort != NETPORT_WLAN)
 		{
-			m_pLogger->Write (FromKernel, LogWarning,
-				"net: WLAN init failed -- is " WLAN_FIRMWARE_PATH " present?");
-			return;
+			pDev->SetDeviceType (NetDeviceTypeEthernet);	// (the fork, docs/05)
+			if (!m_pNet->Initialize (FALSE))
+			{
+				m_pLogger->Write (FromKernel, LogWarning, "net: TCP/IP init failed");
+				return;
+			}
+			if (CNetDevice::GetNetDevice (NetDeviceTypeEthernet) == 0)
+				m_pLogger->Write (FromKernel, LogWarning, "net: no Ethernet device");
+			else
+			{
+				m_pLogger->Write (FromKernel, LogNotice, "net: waiting for the Ethernet link ...");
+				for (unsigned nMs = 0; nMs < 6000 && !(bEth = pDev->IsRunning ()); nMs += 100)
+					CScheduler::Get ()->MsSleep (100);
+				if (!bEth && g_nNetPort == NETPORT_ETHERNET) bEth = TRUE;	// (it may come later)
+			}
+			if (!bEth && g_nNetPort == NETPORT_ETHERNET)
+			{
+				m_pLogger->Write (FromKernel, LogWarning, "net: no Ethernet (network = ethernet)");
+				return;
+			}
 		}
-
-		if (!m_pNet->Initialize (FALSE))	// FALSE: don't block here for activate
+		if (bEth)
 		{
-			m_pLogger->Write (FromKernel, LogWarning, "net: TCP/IP init failed");
-			return;
+			g_nNetLink = NETLINK_ETHERNET;
+			m_pLogger->Write (FromKernel, LogNotice, "net: Ethernet%s", pDev->IsRunning () ? ", link up" : " (no link yet)");
 		}
-
-		m_pLogger->Write (FromKernel, LogNotice,
-				  "net: associating (" WLAN_CONFIG_FILE ") ...");
-		NetWlanNames (WLAN_CONFIG_FILE);	// the driver's scan probes for the networks by name
-		if (!m_pWPA->Initialize ())
+		else
 		{
-			m_pLogger->Write (FromKernel, LogWarning,
-				"net: wpa_supplicant init failed -- is " WLAN_CONFIG_FILE " present?");
-			return;
+			if (g_nNetPort == NETPORT_AUTO)
+				m_pLogger->Write (FromKernel, LogNotice, "net: no Ethernet link, Wi-Fi then");
+			m_pLogger->Write (FromKernel, LogNotice,
+					  "net: bringing up WLAN (firmware " WLAN_FIRMWARE_PATH ")");
+			if (!m_pWLAN->Initialize ())
+			{
+				m_pLogger->Write (FromKernel, LogWarning,
+					"net: WLAN init failed -- is " WLAN_FIRMWARE_PATH " present?");
+				return;
+			}
+			if (g_nNetPort == NETPORT_WLAN)
+			{
+				if (!m_pNet->Initialize (FALSE))	// FALSE: don't block here for activate
+				{
+					m_pLogger->Write (FromKernel, LogWarning, "net: TCP/IP init failed");
+					return;
+				}
+			}
+			else pDev->SetDeviceType (NetDeviceTypeWLAN);	// (initialized above, for the cable)
+			g_nNetLink = NETLINK_WLAN;
+
+			m_pLogger->Write (FromKernel, LogNotice,
+					  "net: associating (" WLAN_CONFIG_FILE ") ...");
+			NetWlanNames (WLAN_CONFIG_FILE);	// the driver's scan probes for the networks by name
+			if (!m_pWPA->Initialize ())
+			{
+				m_pLogger->Write (FromKernel, LogWarning,
+					"net: wpa_supplicant init failed -- is " WLAN_CONFIG_FILE " present?");
+				return;
+			}
 		}
 
 		// Wait for the link to come up (DHCP bind). Log progress occasionally so a
@@ -1564,7 +1622,7 @@ public:
 			CScheduler::Get ()->MsSleep (250);
 			if ((nWaited += 250) % 10000 == 0)
 				m_pLogger->Write (FromKernel, LogNotice,
-						  "net: still associating (%u s) ...", nWaited / 1000);
+						  bEth ? "net: still no address (%u s) ..." : "net: still associating (%u s) ...", nWaited / 1000);
 		}
 
 		CString IPString;
@@ -1725,6 +1783,13 @@ static void ReadSystemConfig (void)
 				g_szRamFs[i++] = *q;
 			}
 			g_szRamFs[i] = '\0';
+		}
+		else if (KeyEq (ls, ke, "network"))
+		{
+			const char *q = vs; while (q < le && *q != ' ' && *q != '\t') q++;
+			if (KeyEq (vs, q, "auto")) g_nNetPort = NETPORT_AUTO;
+			else if (KeyEq (vs, q, "ethernet") || KeyEq (vs, q, "eth")) g_nNetPort = NETPORT_ETHERNET;
+			else if (KeyEq (vs, q, "wlan") || KeyEq (vs, q, "wifi")) g_nNetPort = NETPORT_WLAN;
 		}
 		else if (KeyEq (ls, ke, "hostname"))
 		{
@@ -2307,6 +2372,17 @@ TShutdownMode CKernel::Run (void)
 		m_Scheduler.MsSleep (50);
 		if (nTick % 5 == 4) NetCorePoll ();	// the network core's notices (IpcNotify), every 250 ms
 		if (nTick % 5 == 4) NetTrialPoll ();	// (a trial of the Wi-Fi driver's switches ends by a restart)
+#if RASPPI >= 5
+		// The Pi 5's power button: the end-of-session dialog (its Shut Down: kapi_shutdown, the
+		// board off). One press, one dialog: the next ones are ignored for 5 s.
+		static unsigned s_nPowerTick = 0;
+		if (nTick % 2 == 0 && is_power_button_pressed () && (s_nPowerTick == 0 || nTick - s_nPowerTick >= 100))
+		{
+			s_nPowerTick = nTick | 1;
+			m_Logger.Write (FromKernel, LogNotice, "power button");
+			LaunchApp ("shutdown", &m_Logger);
+		}
+#endif
 	}
 
 	return ShutdownHalt;

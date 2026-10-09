@@ -837,9 +837,40 @@ void CrashLogPower (void)
 #define CLOCK_PATH	"SD:/etc/clock"
 #define CLOCK_VALID	1700000000u			// (2023: a time NTP or the file gave)
 
+#if RASPPI >= 5
+// The Pi 5's real-time clock (in its PMIC, kept by the optional battery), through the firmware's
+// mailbox (as Circle's addon/rtc/firmwarertc.cpp): read at boot before SD:/etc/clock, written with
+// it. Without a battery it starts from 0 at power-on: then the file's time, as on the Pi 4.
+static unsigned RtcGet (void)
+{
+	CBcmPropertyTags Tags;
+	TPropertyTagRTCRegister Reg;
+	Reg.nRegNum = RTC_REGISTER_TIME;
+	return Tags.GetTag (PROPTAG_GET_RTC_REG, &Reg, sizeof Reg, 4) ? Reg.nValue : 0;
+}
+
+static void RtcSet (unsigned nTime)
+{
+	CBcmPropertyTags Tags;
+	TPropertyTagRTCRegister Reg;
+	Reg.nRegNum = RTC_REGISTER_TIME;
+	Reg.nValue = nTime;
+	Tags.GetTag (PROPTAG_SET_RTC_REG, &Reg, sizeof Reg, 8);
+}
+#endif
+
 void CrashLogClockRestore (void)
 {
 	if (CTimer::Get ()->GetUniversalTime () >= CLOCK_VALID) return;
+#if RASPPI >= 5
+	unsigned nRtc = RtcGet ();
+	if (nRtc >= CLOCK_VALID)
+	{
+		CTimer::Get ()->SetTime (nRtc, FALSE);
+		CLogger::Get ()->Write ("clock", LogNotice, "time from the real-time clock");
+		return;
+	}
+#endif
 	FIL File; UINT n; char Buf[24];
 	if (f_open (&File, CLOCK_PATH, FA_READ) != FR_OK) return;
 	boolean bOK = f_read (&File, Buf, sizeof Buf - 1, &n) == FR_OK;
@@ -857,6 +888,9 @@ void CrashLogClockSave (void)
 {
 	unsigned nTime = CTimer::Get ()->GetUniversalTime ();
 	if (nTime < CLOCK_VALID) return;
+#if RASPPI >= 5
+	RtcSet (nTime);
+#endif
 	char Buf[16]; int i = 15; Buf[i] = 0; Buf[--i] = '\n';
 	do { Buf[--i] = (char) ('0' + nTime % 10); nTime /= 10; } while (nTime != 0);
 	FIL File; UINT n;

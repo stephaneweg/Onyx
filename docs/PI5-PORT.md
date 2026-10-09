@@ -28,6 +28,18 @@
 > **To check on the Pi 5** (§9.3's ladder): `gpu_info` (`V3D 7.1`, "SMS idle"), then `gpudemo`, `v3dprog`,
 > `gpcdemo`; `gpu71=0` in `cmdline.txt` if the GPU's start hangs. Open points: the V3D MMU off on 7.1
 > (§14.8), gxtev's register budget on 7.1 (25 registers: half of the big random TEV configurations fall back).
+> **Also done (2026-10-09, after the GPU; built, not run on a Pi 5):** the **Gigabit Ethernet** (§8:
+> `system.ini` `network = auto | ethernet | wlan`, `auto` on the Pi 5 -- the cable if its link is up within 6 s,
+> else the Wi-Fi; fork patch 30 `CNetDeviceLayer::SetDeviceType`; `net_info`'s `link` line; the Pi 4 keeps `wlan`
+> and its path), the **fan** (§6 item 7: `CCPUThrottle::Update ()` from the GUI watchdog with `gpiofanpin=45`), the
+> **RTC** (§10 item 4: read at boot before `SD:/etc/clock`, written with it), the **power button and the power-off**
+> (§10 item 5: a press opens the Shut Down dialog, `kapi_shutdown (0)` ends in PSCI `SYSTEM_OFF`), the **GPIO on
+> the RP1** (pins, edges, I2C 1 without repeated start, SPI 0 through Circle's RP1 classes; the PWM still
+> `ENODEV`). `kapi_wait_word` was already bounded by `USER_VA_BASE`, not 4 GB (§5.2). **Left on purpose:** the
+> RNG200 for `kapi_random` (§10 item 11: on the Pi 4 a read of an unclocked RNG froze the bus -- to try on the
+> board first), the menu bar's network icon for Ethernet (it shows the Wi-Fi icon, connected), the RP1's PWM, the
+> 16 GB layout (policy B), a Pi-5-tuned userland and TLS with the crypto extensions (§10 items 2, 8), NVMe.
+>
 > The fork was then brought to upstream **Circle 51.1.1** (docs/05 *Upstream merges*: for the Pi 5 the DSI
 > touchscreens, the RP1's I2C 4 and 6, the xHCI endpoint recovery); both kernels build on it.
 >

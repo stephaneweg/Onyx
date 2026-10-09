@@ -2230,6 +2230,10 @@ void kapi_shutdown (int nMode)
 		reboot ();
 	}
 	CActLED::Get ()->Off ();
+#if RASPPI >= 5
+	poweroff ();		// PSCI SYSTEM_OFF: the board off (the power button starts it again;
+				// the EEPROM's POWER_OFF_ON_HALT=1 also cuts the 3.3 V rail)
+#endif
 	halt ();
 }
 

@@ -19,6 +19,9 @@
 //     the owner: up to 8 processes with a queue of 256 events each (the oldest kept, "lost" marked).
 //   * I2C bus 1 (GPIO 2 SDA / 3 SCL, the header's 1k8 pull-ups) and SPI 0 (GPIO 7..11): one process at a
 //     time, their pins taken with them.
+//   * The Pi 5: the header is on the RP1 (Circle's gpiopin2712, i2cmaster-rp1, spimaster-rp1: the same
+//     classes) -- the pins, the edges, I2C 1 and SPI 0 as above (I2C without the repeated start); the
+//     PWM not yet (ENODEV).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -48,8 +51,6 @@
 #include <circle/new.h>
 #include <circle/util.h>
 
-#if RASPPI <= 4		// (the Pi 5: at the end)
-
 #define NPINS		KAPI_GPIO_PINS
 #define NQUEUES		8
 #define QSIZE		256			// events a queue (a power of two)
@@ -74,7 +75,9 @@ static CGPIOManager *s_pManager = 0;		// the GPIO interrupt (the first edges ask
 // PWM0's two channels: their pin (-1: off), frequency, duty
 static int      s_nPwmPin[2] = { -1, -1 };
 static unsigned s_nPwmFreq[2], s_nPwmDuty[2];
+#if RASPPI <= 4
 static CGPIOClock s_PwmClock (GPIOClockPWM);
+#endif
 
 static CI2CMaster *s_pI2C = 0;  static unsigned s_nI2COwner = 0;
 static CSPIMaster *s_pSPI = 0;  static unsigned s_nSPIOwner = 0;
@@ -96,7 +99,11 @@ static CAddressSpace *CurrentAS (void)
 }
 static unsigned CallerPid (void) { CAddressSpace *pAS = CurrentAS (); return pAS != 0 ? pAS->GetPid () : 0; }
 
+#if RASPPI >= 5
+static unsigned Levels (void) { return CGPIOPin::ReadAll () & ((1u << NPINS) - 1); }	// (the RP1's bank 0)
+#else
 static unsigned Levels (void) { return read32 (ARM_GPIO_GPLEV0) & ((1u << NPINS) - 1); }
+#endif
 
 // ---- the edges -------------------------------------------------------------------------------------
 
@@ -199,6 +206,8 @@ static long Takeable (unsigned nPin, unsigned nPid)
 
 static int PwmChannel (unsigned nPin) { return nPin == 12 || nPin == 18 ? 0 : nPin == 13 || nPin == 19 ? 1 : -1; }
 
+#if RASPPI <= 4
+
 void GpioPwmClockKeep (void)
 {
 	if (s_nPwmPin[0] < 0 && s_nPwmPin[1] < 0) return;
@@ -247,6 +256,14 @@ static long Pwm (unsigned nPin, unsigned nFreq, unsigned nDuty, unsigned nPid)
 	PeripheralExit ();
 	return 0;
 }
+
+#else	// the Pi 5: the header's PWM is the RP1's (PWM0, one range for its channels): to come
+
+void GpioPwmClockKeep (void) {}
+static void PwmOff (unsigned nPin) {}
+static long Pwm (unsigned nPin, unsigned nFreq, unsigned nDuty, unsigned nPid) { return -KAPI_ENODEV; }
+
+#endif
 
 // ---- a pin given back --------------------------------------------------------------------------------
 
@@ -316,8 +333,11 @@ static long I2CXfer (const struct kapi_gpio_i2c *pUser, unsigned nPid)
 	if (pBuf == 0) return -KAPI_ENOMEM;
 	long r = 0;
 	if (X.wlen > 0 && !UserCopyIn (pBuf, X.wr, X.wlen)) r = -KAPI_EFAULT;
+#if RASPPI <= 4
 	else if (X.wlen > 0 && X.rlen > 0 && X.wlen <= 16)
 		r = s_pI2C->WriteReadRepeatedStart ((u8) X.addr, pBuf, X.wlen, pBuf + X.wlen, X.rlen);
+#endif
+	// (the Pi 5's RP1 driver has no repeated start: a write then a read, two transactions)
 	else
 	{
 		if (X.wlen > 0) r = s_pI2C->Write ((u8) X.addr, pBuf, X.wlen);
@@ -501,18 +521,3 @@ extern "C" long kapi_gpio_ctl (int nOp, long a0, long a1, long a2)
 	default:		 return -KAPI_EINVAL;
 	}
 }
-
-#else	// RASPPI >= 5
-
-// The Pi 5: the header's pins are on the RP1 (its own GPIO block, PWM, I2C and SPI on PCIe), not on
-// the registers above -- that port is to come (docs/PI5-PORT.md). Until then gpio_ctl says ENODEV.
-
-void GpioOnProcessGone (unsigned nPid) {}
-void GpioPwmClockKeep (void) {}
-
-extern "C" long kapi_gpio_ctl (int nOp, long a0, long a1, long a2)
-{
-	return -KAPI_ENODEV;
-}
-
-#endif
