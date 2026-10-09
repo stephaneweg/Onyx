@@ -2,8 +2,10 @@
 # run_n3ds_test.sh -- the Nintendo 3DS core (user/Emulators/n3ds) on the PC: builds tools/tests/n3ds/n3dstest for
 # AArch64 with Onyx's toolchain (Dynarmic: user/Libs/dynarmic; newlib's system calls done by Linux ones:
 # basic/a64/linux_shim.c, n3ds/t0_shim.c) and runs the test programs of tools/tests/n3ds/progs under
-# qemu-aarch64 -- the real JIT. Each program checks itself and ends with "<n> checks, 0 failed".
-#   sh tools/tests/run_n3ds_test.sh [program.elf [frames]]	(a program: run it and show what it says)
+# qemu-aarch64 -- the real JIT. Each program checks itself and ends with "<n> checks, 0 failed"; the screens it
+# leaves must have the checksum of n3ds/expect/<program>.crc when that file is there (the picture:
+# $N3DS_BUILD/<program>.ppm).
+#   sh tools/tests/run_n3ds_test.sh [program.elf [frames [picture.ppm]]]	(a program: run it and show what it says)
 # Needs aarch64-none-elf-g++, qemu-aarch64, and arm-none-eabi-gcc for the test programs (built here when it is
 # on the PATH: n3ds/src/build.sh).
 set -e
@@ -41,9 +43,15 @@ if command -v arm-none-eabi-gcc > /dev/null; then sh "$HERE/n3ds/src/build.sh" >
 fail=0
 for p in "$HERE"/n3ds/progs/*.elf; do
 	name=$(basename "$p" .elf)
-	out=$(qemu-aarch64 "$B/n3dstest" "$p" 2> "$B/$name.err") && st=0 || st=$?
+	out=$(qemu-aarch64 "$B/n3dstest" "$p" 600 "$B/$name.ppm" 2> "$B/$name.err") && st=0 || st=$?
 	last=$(printf '%s\n' "$out" | tail -1)
-	if [ $st = 0 ] && printf '%s' "$last" | grep -q "checks, 0 failed$"; then echo "ok   $name ($last)"
-	else echo "FAIL $name"; printf '%s\n' "$out" | grep -E "^FAIL|^     " | head -20; echo "     $last"; cat "$B/$name.err"; fail=1; fi
+	crc=$(sed -n 's/^screens \([0-9a-f]*\).*/\1/p' "$B/$name.err")
+	want=$crc; [ -f "$HERE/n3ds/expect/$name.crc" ] && want=$(cat "$HERE/n3ds/expect/$name.crc")
+	if [ $st = 0 ] && [ "$crc" = "$want" ] && printf '%s' "$last" | grep -q "checks, 0 failed$"; then echo "ok   $name ($last; screens $crc)"
+	else
+		echo "FAIL $name"; printf '%s\n' "$out" | grep -E "^FAIL|^     " | head -20; echo "     $last"
+		[ "$crc" = "$want" ] || echo "     the screens: $crc, expected $want"
+		cat "$B/$name.err"; fail=1
+	fi
 done
 exit $fail

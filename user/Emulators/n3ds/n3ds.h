@@ -4,10 +4,11 @@
 // console's operating system emulated at a high level -- the process's memory, the kernel's objects and system
 // calls, the services (to come). No Nintendo key, firmware or system file: decrypted dumps and homebrew only.
 //
-// Phase T1, first slice: the memory (n3ds_mem.cpp), the processor (n3ds_cpu.cpp: the only file that sees
-// Dynarmic), the kernel -- threads, events, mutexes, semaphores, address arbiters, waiting, time -- and its
-// system calls (n3ds_kernel.cpp), an ELF loader (n3ds_loader.cpp). The core uses the C library (Dynarmic needs
-// it anyway) but nothing of Onyx: it runs on the PC too (tools/tests/n3ds).
+// Phase T1: the memory (n3ds_mem.cpp), the processor (n3ds_cpu.cpp: the only file that sees Dynarmic), the
+// kernel -- threads, events, mutexes, semaphores, timers, address arbiters, shared memory, waiting, time -- and
+// its system calls (n3ds_kernel.cpp), the services a program reaches through `srv:` (n3ds_ipc.cpp), the graphics
+// service gsp::Gpu and the two screens (n3ds_gsp.cpp), an ELF loader (n3ds_loader.cpp). The core uses the C
+// library (Dynarmic needs it anyway) but nothing of Onyx: it runs on the PC too (tools/tests/n3ds).
 //
 // MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors (docs/LICENSING.md).
 //
@@ -61,7 +62,13 @@ enum : u32 {
 	RES_NOT_OWNER       = 0xD8E0041F,		// (ReleaseMutex by another thread)
 	RES_PORT_NOT_FOUND  = 0xD88007FA,
 	RES_NOT_IMPLEMENTED = 0xF8C007F4,
+	RES_NO_SERVICE      = 0xD8E06406,		// (srv: no such service)
 };
+
+// The screens: the top one 400 x 240, the bottom one 320 x 240 (the touch screen).
+enum { SCREEN_TOP = 0, SCREEN_BOTTOM = 1, TOP_W = 400, BOTTOM_W = 320, SCREEN_H = 240 };
+// The graphics interrupts a program is told (gsp::Gpu's queue).
+enum { GSP_PSC0 = 0, GSP_PSC1, GSP_PDC0, GSP_PDC1, GSP_PPF, GSP_P3D, GSP_DMA };
 
 struct Machine;
 
@@ -113,10 +120,10 @@ struct Cpu
 };
 
 // ---- the kernel's objects --------------------------------------------------------------------------------------------
-enum { OBJ_THREAD = 1, OBJ_EVENT, OBJ_MUTEX, OBJ_SEMAPHORE, OBJ_ARBITER, OBJ_PROCESS };
+enum { OBJ_THREAD = 1, OBJ_EVENT, OBJ_MUTEX, OBJ_SEMAPHORE, OBJ_ARBITER, OBJ_PROCESS, OBJ_TIMER, OBJ_SHMEM, OBJ_SESSION };
 enum { RESET_ONESHOT = 0, RESET_STICKY = 1, RESET_PULSE = 2 };
 enum { THREAD_READY, THREAD_WAIT_SLEEP, THREAD_WAIT_SYNC, THREAD_WAIT_ARBITER, THREAD_DEAD };
-enum { HANDLE_MAX = 1024, WAIT_MAX = 16 };
+enum { HANDLE_MAX = 1024, WAIT_MAX = 16, TIMER_MAX = 32 };
 enum : u32 { HANDLE_CUR_THREAD = 0xFFFF8000, HANDLE_CUR_PROCESS = 0xFFFF8001 };
 
 struct Thread;
@@ -159,6 +166,36 @@ struct Semaphore : Object
 	void acquire (Thread *) override { count--; }
 };
 
+// A timer: signalled when its time comes (and again every interval), waited for as an event is.
+struct Timer : Object
+{
+	Machine *m;
+	int reset; bool signaled;
+	u64 fireTick, interval;			// (fireTick ~0: not set)
+	Timer (Machine *machine, int r);
+	~Timer () override;
+	bool waitable () const override { return true; }
+	bool available (const Thread *) const override { return signaled; }
+	void acquire (Thread *) override { if (reset != RESET_STICKY) signaled = false; }
+};
+
+// A block of memory several address ranges (or the system and the program) show.
+struct SharedMem : Object
+{
+	u8 *host; u32 size;
+	SharedMem (u8 *h, u32 n) : Object (OBJ_SHMEM), host (h), size (n) {}
+};
+
+// A program's end of a connection to a service: a request (the command buffer in the thread's TLS) is answered
+// at once by the service's function.
+struct Session;
+typedef void (*ServiceFn) (Machine *m, Session *s, u32 *cmd);
+struct Session : Object
+{
+	ServiceFn fn; const char *name;
+	Session (ServiceFn f, const char *n) : Object (OBJ_SESSION), fn (f), name (n) {}
+};
+
 struct Arbiter : Object { Arbiter () : Object (OBJ_ARBITER) {} };
 struct Process : Object { Process () : Object (OBJ_PROCESS) {} };
 
@@ -198,6 +235,18 @@ struct Machine
 	u32 heapSize;				// the ordinary heap's committed bytes (from VA_HEAP)
 	u32 entry;
 	char lastError[160];
+	char notes[256];			// what is not emulated that the program asked for (not an error by itself)
+	Timer *timers[TIMER_MAX]; int timerCount;		// (the timers that exist: no reference held)
+	// gsp::Gpu and the screens (n3ds_gsp.cpp)
+	struct Framebuffer { u32 active, left, right, stride, format, select, unknown; bool set; };
+	struct Gsp
+	{
+		Event *irq;				// the program's event, signalled at each interrupt
+		SharedMem *shared;			// the interrupt queue, the framebuffers' updates, the command queue
+		Framebuffer fb[2];
+		u64 frames;				// VBlanks since the start
+		u32 fills, transfers, cmdLists;		// (counters: what the program asked the GPU)
+	} gsp;
 	// what the program says (svcOutputDebugString): the host's
 	void (*debugOut) (void *user, const char *text, u32 len);
 	void *debugUser;
@@ -210,7 +259,9 @@ struct Machine
 	bool loadElf (const u8 *file, u32 size);			// (n3ds_loader.cpp)
 	bool start (u32 entryPoint, u32 stackSize);			// the main thread
 	void run (u64 ticks);						// the scheduler: runs the threads for that long
-	void runFrame () { run (TICKS_PER_FRAME); }
+	void runFrame () { run (TICKS_PER_FRAME); vblank (); }
+	// the picture of a screen: TOP_W or BOTTOM_W by SCREEN_H pixels, 0x00RRGGBB
+	void screenImage (int screen, u32 *dst) const;
 
 	// the kernel (n3ds_kernel.cpp)
 	void svc (u32 n);						// called by the Cpu
@@ -221,6 +272,13 @@ struct Machine
 	Thread *threadNew (u32 entryPoint, u32 arg, u32 stackTop, s32 priority);
 	void wakeWaiters (Object *o);
 	void fail (const char *fmt, ...);
+	void note (const char *fmt, ...);
+	// services (n3ds_ipc.cpp, n3ds_gsp.cpp)
+	Session *serviceOpen (const char *name);			// 0: no such service
+	void vblank ();
+	void gspInterrupt (int id);
+	u8 *physPtr (u32 pa, u32 size) const;				// FCRAM or VRAM, 0 outside
+	static u32 virtToPhys (u32 va);
 
 private:
 	Thread *pick ();
@@ -230,6 +288,15 @@ private:
 	u64 nsToTicks (s64 ns) const;
 	u32 svcControlMemory (u32 op, u32 addr0, u32 addr1, u32 size, u32 perm, u32 *out);
 };
+
+// ---- services --------------------------------------------------------------------------------------------------------
+// A request's first word: the command, how many plain words follow, how many words of handles / buffers after them.
+// The answer goes in the same buffer: its header, the result in cmd[1].
+inline u32 ipcHeader (u32 command, u32 normal, u32 translate) { return command << 16 | normal << 6 | translate; }
+// A command that is not emulated: noted, and answered "done" (what lets a program go on most often).
+void ipcStub (Machine *m, const char *service, u32 *cmd);
+void srvRequest (Machine *m, Session *s, u32 *cmd);			// srv: (n3ds_ipc.cpp)
+void gspRequest (Machine *m, Session *s, u32 *cmd);			// gsp::Gpu (n3ds_gsp.cpp)
 
 }
 

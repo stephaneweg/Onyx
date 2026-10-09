@@ -2,8 +2,9 @@
 // n3ds/n3ds_kernel.cpp -- the 3DS's kernel, emulated: the handle table, the threads and their scheduler (the
 // application core: a thread runs until it waits or a thread of a higher priority is ready; one priority's
 // threads take turns when they yield), events, mutexes, semaphores, address arbiters, waits with a time-out,
-// the heap (ControlMemory), and the system calls a program makes (SVC n: arguments in r0-r5, the result in r0,
-// what it returns in r1...). Services and IPC come with the next slice.
+// timers, shared memory blocks, the heap (ControlMemory), and the system calls a program makes (SVC n: arguments
+// in r0-r5, the result in r0, what it returns in r1...). A request to a service (SendSyncRequest) is answered at
+// once by the service's function (n3ds_ipc.cpp).
 //
 // A thread that is not running has its registers in Thread::ctx; the running one in the Cpu (`current`). A
 // thread that starts to wait is saved at once and `current` cleared: what wakes it later writes its results
@@ -28,13 +29,16 @@ Machine::Machine ()
 	memset (threads, 0, sizeof threads); threadCount = 0;
 	current = 0; nextThreadId = 1; nextSeq = 1;
 	resched = false; exited = false; exitCode = 0; heapSize = 0; entry = 0;
-	lastError[0] = 0; debugOut = 0; debugUser = 0;
+	lastError[0] = 0; notes[0] = 0; debugOut = 0; debugUser = 0;
+	memset (timers, 0, sizeof timers); timerCount = 0;
+	memset (&gsp, 0, sizeof gsp);
 	svcCount = switchCount = 0; unknownSvcs = 0;
 }
 
 Machine::~Machine ()
 {
 	delete cpu;
+	release (gsp.irq); release (gsp.shared);
 	for (int i = 0; i < HANDLE_MAX; i++) if (handles[i]) release (handles[i]);
 	for (int i = 0; i < threadCount; i++) release (threads[i]);
 	mem.quit ();
@@ -63,6 +67,30 @@ void Machine::fail (const char *fmt, ...)
 	}
 	exited = true; exitCode = 0xFFFFFFFF;
 	if (cpu) cpu->halt ();
+}
+
+// Something the program asked for that is not emulated: kept (once each) for whoever looks at a game that fails.
+void Machine::note (const char *fmt, ...)
+{
+	char one[96];
+	va_list ap; va_start (ap, fmt);
+	vsnprintf (one, sizeof one, fmt, ap);
+	va_end (ap);
+	if (strstr (notes, one)) return;
+	size_t n = strlen (notes), k = strlen (one);
+	if (n + k + 3 > sizeof notes) return;
+	if (n) { memcpy (notes + n, "; ", 2); n += 2; }
+	memcpy (notes + n, one, k + 1);
+}
+
+Timer::Timer (Machine *machine, int r) : Object (OBJ_TIMER), m (machine), reset (r), signaled (false), fireTick (~0ull), interval (0)
+{
+	if (m->timerCount < (int) TIMER_MAX) m->timers[m->timerCount++] = this;
+}
+Timer::~Timer ()
+{
+	for (int i = 0; i < m->timerCount; i++)
+		if (m->timers[i] == this) { m->timers[i] = m->timers[--m->timerCount]; break; }
 }
 
 u64 Machine::nsToTicks (s64 ns) const
@@ -232,8 +260,23 @@ void Machine::run (u64 ticks)
 	const u64 end = now + ticks;
 	while (!exited && now < end)
 	{
-		// sleeps and timed waits that are over
+		// timers whose time has come
 		u64 nextWake = NEVER;
+		for (int i = 0; i < timerCount; i++)
+		{
+			Timer *tm = timers[i];
+			if (tm->fireTick == NEVER) continue;
+			if (tm->fireTick <= now)
+			{
+				tm->signaled = true;
+				tm->fireTick = tm->interval ? tm->fireTick + tm->interval : NEVER;
+				if (tm->fireTick != NEVER && tm->fireTick <= now) tm->fireTick = now + tm->interval;	// (late: no burst)
+				wakeWaiters (tm);
+				if (tm->reset == RESET_PULSE) tm->signaled = false;
+			}
+			if (tm->fireTick < nextWake) nextWake = tm->fireTick;
+		}
+		// sleeps and timed waits that are over
 		for (int i = 0; i < threadCount; i++)
 		{
 			Thread *t = threads[i];
@@ -440,6 +483,68 @@ void Machine::svc (u32 n)
 		e->signaled = false; r[0] = RES_OK;
 		break;
 	}
+	case 0x1A:								// CreateTimer (-, reset type) -> handle
+	{
+		if (timerCount >= (int) TIMER_MAX) { r[0] = RES_OUT_OF_HANDLES; break; }
+		u32 h = handleNew (new Timer (this, (int) r[1]));
+		r[0] = h ? (u32) RES_OK : (u32) RES_OUT_OF_HANDLES; r[1] = h;
+		break;
+	}
+	case 0x1B:								// SetTimer (handle, interval low, initial, interval high)
+	{
+		Timer *tm = (Timer *) handleGet (r[0], OBJ_TIMER);
+		if (!tm) { r[0] = RES_INVALID_HANDLE; break; }
+		const s64 initial = (s64) ((u64) r[3] << 32 | r[2]), interval = (s64) ((u64) r[4] << 32 | r[1]);
+		if (initial < 0 || interval < 0) { r[0] = RES_OUT_OF_RANGE; break; }
+		tm->fireTick = now + nsToTicks (initial); tm->interval = nsToTicks (interval);
+		r[0] = RES_OK; resched = true;					// (the scheduler takes its time into account)
+		break;
+	}
+	case 0x1C:								// CancelTimer (handle)
+	case 0x1D:								// ClearTimer (handle)
+	{
+		Timer *tm = (Timer *) handleGet (r[0], OBJ_TIMER);
+		if (!tm) { r[0] = RES_INVALID_HANDLE; break; }
+		if (n == 0x1C) tm->fireTick = NEVER; else tm->signaled = false;
+		r[0] = RES_OK;
+		break;
+	}
+	case 0x1E:								// CreateMemoryBlock (other's rights, addr, size, my rights) -> handle
+	{
+		const u32 addr = r[1], size = r[2];
+		if (!size || (size & (PAGE_SIZE - 1)) || (addr & (PAGE_SIZE - 1))) { r[0] = RES_INVALID_ARG; break; }
+		u8 *host;
+		if (addr)							// the program's own pages, shared (one piece in the host)
+		{
+			if (!mem.mapped (addr, size)) { r[0] = RES_INVALID_ADDRESS; break; }
+			host = mem.ptr (addr);
+			bool whole = true;
+			for (u32 o = 0; o < size; o += PAGE_SIZE) if (mem.pages[(addr + o) >> PAGE_BITS] != host + o) whole = false;
+			if (!whole) { r[0] = RES_INVALID_ADDRESS; break; }
+		}
+		else if (!(host = mem.allocTop (size))) { r[0] = RES_OUT_OF_MEMORY; break; }
+		u32 h = handleNew (new SharedMem (host, size));
+		r[0] = h ? (u32) RES_OK : (u32) RES_OUT_OF_HANDLES; r[1] = h;
+		break;
+	}
+	case 0x1F:								// MapMemoryBlock (handle, addr, my rights, other's rights)
+	{
+		SharedMem *sm = (SharedMem *) handleGet (r[0], OBJ_SHMEM);
+		if (!sm) { r[0] = RES_INVALID_HANDLE; break; }
+		if (!r[1] || (r[1] & (PAGE_SIZE - 1)) || mem.pages[r[1] >> PAGE_BITS]) { r[0] = RES_INVALID_ADDRESS; break; }
+		mem.map (r[1], sm->size, sm->host, (r[2] & 3) ? (int) (r[2] & 3) : PERM_RW);
+		r[0] = RES_OK;
+		break;
+	}
+	case 0x20:								// UnmapMemoryBlock (handle, addr)
+	{
+		SharedMem *sm = (SharedMem *) handleGet (r[0], OBJ_SHMEM);
+		if (!sm) { r[0] = RES_INVALID_HANDLE; break; }
+		if (mem.ptr (r[1]) != sm->host) { r[0] = RES_INVALID_ADDRESS; break; }
+		mem.unmap (r[1], sm->size);
+		r[0] = RES_OK;
+		break;
+	}
 	case 0x21:								// CreateAddressArbiter -> handle
 	{
 		u32 h = handleNew (new Arbiter);
@@ -522,6 +627,26 @@ void Machine::svc (u32 n)
 	case 0x28:								// GetSystemTick -> ticks
 		r[0] = (u32) now; r[1] = (u32) (now >> 32);
 		break;
+	case 0x2D:								// ConnectToPort (-, name) -> handle
+	{
+		char name[12]; memset (name, 0, sizeof name);
+		mem.read (r[1], name, 11);
+		Session *s = strcmp (name, "srv:") == 0 ? serviceOpen ("srv:") : 0;
+		if (!s) { note ("port %s", name); r[0] = RES_PORT_NOT_FOUND; break; }
+		u32 h = handleNew (s);
+		r[0] = h ? (u32) RES_OK : (u32) RES_OUT_OF_HANDLES; r[1] = h;
+		break;
+	}
+	case 0x32:								// SendSyncRequest (session): the command buffer is in the TLS
+	{
+		Session *s = (Session *) handleGet (r[0], OBJ_SESSION);
+		if (!s) { r[0] = RES_INVALID_HANDLE; break; }
+		u32 *cmd = (u32 *) mem.ptr (t->ctx.tls + 0x80);
+		r[0] = RES_OK;
+		if (cmd) s->fn (this, s, cmd);
+		r = cpu->regs ();
+		break;
+	}
 	case 0x35:								// GetProcessId (-, handle) -> id
 		r[0] = RES_OK; r[1] = 1;
 		break;
@@ -544,7 +669,7 @@ void Machine::svc (u32 n)
 	}
 	default:
 		unknownSvcs++;
-		if (!lastError[0]) snprintf (lastError, sizeof lastError, "system call %02x is not emulated (called from %08x)", (unsigned) n, (unsigned) r[15]);
+		note ("system call %02x", (unsigned) n);
 		r[0] = RES_NOT_IMPLEMENTED;
 		break;
 	}

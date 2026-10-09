@@ -8,7 +8,7 @@ mkdir -p "$O"
 CC=arm-none-eabi-gcc
 CF="-march=armv6k -mtune=mpcore -mfloat-abi=hard -mfpu=vfp -marm -O2 -Wall -Wextra -ffreestanding -fno-builtin -fno-strict-aliasing -nostdlib -I$S"
 LIBGCC=$($CC -march=armv6k -mfloat-abi=hard -mfpu=vfp -marm -print-libgcc-file-name)
-for t in kernel; do
+for t in kernel gfx; do
 	$CC $CF -T "$S/link.ld" -Wl,--build-id=none -Wl,-z,max-page-size=0x1000 "$S/sys.S" "$S/util.c" "$S/$t.c" "$LIBGCC" -o "$O/$t.elf"
 	echo "  $O/$t.elf"
 done

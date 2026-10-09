@@ -238,6 +238,29 @@ The core's skeleton, `user/Emulators/n3ds/` (`n3ds.h` declares everything), and 
   framebuffers, the VBlank interrupts), `hid:USER`, `fs:USER`; the `.3dsx` and NCCH loaders; timers; shared memory
   blocks; the configuration and shared pages' content; then a homebrew of ours that draws on both screens.
 
+## 9d. Phase T1, second slice -- done (2026-10-09): IPC, `srv:`, `gsp::Gpu`, the screens
+
+- **IPC** (`n3ds_kernel.cpp`, `n3ds_ipc.cpp`): `ConnectToPort` ("srv:"), `SendSyncRequest` -- the command buffer in
+  the thread's TLS (+0x80), answered in place by the service's function (`Session`, `ServiceFn`); a command that is
+  not emulated is answered "done" and **noted** (`Machine::notes`, printed by `n3dstest` as *not emulated: ...* --
+  the list to read first when a game stops). `srv:`: RegisterClient, EnableNotification, GetServiceHandle (an
+  unknown service is refused and noted), Subscribe / ReceiveNotification.
+- **The kernel**: timers (one-shot, periodic; counted in the scheduler's time), shared memory blocks
+  (Create / Map / UnmapMemoryBlock): 35 system calls now.
+- **`gsp::Gpu`** (`n3ds_gsp.cpp`): RegisterInterruptRelayQueue (the program's event, the shared page), the
+  interrupt queue (PSC0 / PSC1 / PDC0 / PDC1 / PPF / P3D / DMA), the framebuffers a program asks for in the shared
+  page (taken at the VBlank) or by SetBufferSwap, TriggerCmdReqQueue with the GX commands: **memory fill** and DMA
+  done; a command list and a display transfer are counted and their interrupt given (**nothing drawn: T2**).
+  `Machine::runFrame` = one frame of the processor, then `vblank ()`.
+- **The screens**: `Machine::screenImage` reads a screen's picture from the program's framebuffer (turned a
+  quarter, columns from the bottom; RGBA8, BGR8, RGB565, RGB5A1, RGBA4).
+- **Test**: `tools/tests/n3ds/src/gfx.c` -- srv:, gsp::Gpu, a picture drawn on both screens, VBlanks timed, a fill
+  by the GPU, timers, shared blocks: **45 checks, 0 failed**, and the picture's checksum
+  (`tools/tests/n3ds/expect/gfx.crc`; `n3dstest <elf> <frames> <picture.ppm>` writes it).
+- **Left in T1**: `apt:U`, `hid:USER`, `fs:USER`, `cfg:u` (what a real homebrew's start-up asks, libctru's), the
+  system calls it makes at its start (GetSystemInfo, GetProcessInfo, GetResourceLimit...), the `.3dsx` and NCCH
+  loaders, the configuration and shared pages' content; then a public homebrew (not ours) on both screens.
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 

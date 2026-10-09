@@ -43,12 +43,25 @@ Result svcWaitSynchronizationN (s32 *out, Handle *handles, s32 count, int all, s
 Result svcDuplicateHandle (Handle *out, Handle h);
 u64 svcGetSystemTick (void);
 Result svcGetThreadId (u32 *out, Handle h);
+Result svcCreateTimer (Handle *out, u32 resetType);
+Result svcSetTimer (Handle timer, s64 initial, s64 interval);
+Result svcCancelTimer (Handle timer);
+Result svcClearTimer (Handle timer);
+Result svcCreateMemoryBlock (Handle *out, u32 addr, u32 size, u32 myPerm, u32 otherPerm);
+Result svcMapMemoryBlock (Handle h, u32 addr, u32 myPerm, u32 otherPerm);
+Result svcUnmapMemoryBlock (Handle h, u32 addr);
+Result svcConnectToPort (Handle *out, const char *name);
+Result svcSendSyncRequest (Handle session);
 void svcBreak (u32 reason);
 void svcOutputDebugString (const char *text, int length);
 Result svcUnknown (void);
 u32 *getTls (void);
 s32 atomicAdd (s32 *p, s32 n);
 u32 thumbSum (u32 n);
+
+/* a request to a service: the command buffer (the thread's TLS + 0x80), its header */
+#define IPC_HEADER(command, normal, translate)	((u32) (command) << 16 | (u32) (normal) << 6 | (u32) (translate))
+static inline u32 *ipcBuffer (void) { return getTls () + 0x20; }
 
 /* printing and checking (util.c) */
 void print (const char *s);

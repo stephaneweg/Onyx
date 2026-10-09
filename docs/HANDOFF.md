@@ -18,9 +18,14 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
   arbiters, waits, the heaps, 26 SVCs), an ELF loader. `sh tools/tests/run_n3ds_test.sh` (under qemu-aarch64):
   our ARM test program `tools/tests/n3ds/src/kernel.c`, **137 checks, 0 failed**. Not on the Pi yet, not in
   `user/Makefile` yet (no app).
-- **Next (the rest of T1)**: IPC and `srv:`, `apt:U`, `gsp::Gpu` (framebuffers, VBlank), `hid:USER`, `fs:USER`;
-  the `.3dsx` and NCCH loaders; timers, shared memory; done when a homebrew of ours draws on both screens (a
-  picture from `n3dstest`, as `ndstest` does). The app `n3dsemu` starts with a mock-up of its screens (the user's
+- **T1's second slice is done** (section 9d): IPC (`ConnectToPort`, `SendSyncRequest`, `Session`), `srv:`,
+  timers, shared memory blocks, **`gsp::Gpu`** (the interrupt queue, the framebuffers, the GX queue's memory fill
+  and DMA) and the screens' pictures (`Machine::screenImage`). `tools/tests/n3ds/src/gfx.c`: **our program draws
+  on both screens**, 45 checks pass, its picture's checksum is in `tools/tests/n3ds/expect/gfx.crc`. What a
+  program asks that is not emulated is listed in `Machine::notes` (never silently).
+- **Next (the rest of T1)**: `apt:U`, `hid:USER`, `fs:USER`, `cfg:u`, the start-up system calls of a real homebrew
+  (libctru's), the `.3dsx` and NCCH loaders; done when a public homebrew runs. Then T2: the PICA200 in software
+  (the command lists and display transfers `gsp::Gpu` only counts today). The app `n3dsemu` starts with a mock-up of its screens (the user's
   rule), at T7.
 - **On the local PC**: the work folder `~/n3ds` in WSL (Dynarmic's clone, Boost, CMake builds) is only needed to
   run `vendor_dynarmic.py` again (another Dynarmic version); the test builds into `~/.cache/onyx_n3ds`. The ARM

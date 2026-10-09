@@ -176,6 +176,63 @@ FN svcGetThreadId
 	str	r1, [r3]
 	bx	lr
 
+@ Result svcCreateTimer (Handle *out, u32 resetType)
+FN svcCreateTimer
+	str	r0, [sp, #-4]!
+	svc	0x1A
+	ldr	r3, [sp], #4
+	str	r1, [r3]
+	bx	lr
+
+@ Result svcSetTimer (Handle timer, s64 initial, s64 interval)	(initial in r2:r3, interval on the stack)
+FN svcSetTimer
+	str	r4, [sp, #-4]!
+	ldr	r1, [sp, #4]
+	ldr	r4, [sp, #8]
+	svc	0x1B
+	ldr	r4, [sp], #4
+	bx	lr
+
+FN svcCancelTimer
+	svc	0x1C
+	bx	lr
+
+FN svcClearTimer
+	svc	0x1D
+	bx	lr
+
+@ Result svcCreateMemoryBlock (Handle *out, u32 addr, u32 size, u32 myPerm, u32 otherPerm)
+FN svcCreateMemoryBlock
+	str	r0, [sp, #-4]!
+	ldr	r0, [sp, #4]
+	svc	0x1E
+	ldr	r2, [sp], #4
+	str	r1, [r2]
+	bx	lr
+
+@ Result svcMapMemoryBlock (Handle h, u32 addr, u32 myPerm, u32 otherPerm)
+FN svcMapMemoryBlock
+	svc	0x1F
+	bx	lr
+
+@ Result svcUnmapMemoryBlock (Handle h, u32 addr)
+FN svcUnmapMemoryBlock
+	svc	0x20
+	bx	lr
+
+@ Result svcConnectToPort (Handle *out, const char *name)
+FN svcConnectToPort
+	str	r0, [sp, #-4]!
+	svc	0x2D
+	ldr	r3, [sp], #4
+	str	r1, [r3]
+	bx	lr
+
+@ Result svcSendSyncRequest (Handle session)	(the command buffer: the thread's TLS + 0x80)
+FN svcSendSyncRequest
+	svc	0x32
+	bx	lr
+
 FN svcBreak
 	svc	0x3C
 	bx	lr
