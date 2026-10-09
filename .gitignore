@@ -52,6 +52,9 @@ __pycache__/
 # Wi-Fi settings (wpaconf) or the menu bar's Wi-Fi menu write it on the card.
 !/sdcard/
 !/sdcard/**
+# ... but never a game: what is put in sdcard/roms to try an emulator (the user's dumps, homebrew) stays out
+/sdcard/roms/**
+!/sdcard/roms/README.txt
 # ... and the smallest card, sdcard_lite (the required packages only, made by tools/pkg/mkrepo.py --lite)
 !/sdcard_lite/
 !/sdcard_lite/**

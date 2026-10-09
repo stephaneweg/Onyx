@@ -27,6 +27,12 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
   (libctru's), the `.3dsx` and NCCH loaders; done when a public homebrew runs. Then T2: the PICA200 in software
   (the command lists and display transfers `gsp::Gpu` only counts today). The app `n3dsemu` starts with a mock-up of its screens (the user's
   rule), at T7.
+- **Homebrew to try** (the user asked for some in `sdcard/roms`, git-ignored since 2026-10-09 but for its README;
+  never committed, never packaged): `sdcard/roms/3ds/` on the local PC holds four `.3dsx` taken from Universal-DB
+  (`db.universal-team.net/data/full.json`: titles, licences, download addresses) -- *2048* and *Snake* (MIT; the
+  text console: the first targets once the `.3dsx` loader and `apt` / `hid` / `fs` are there), *Cube Adventures*
+  (Apache-2.0) and *Mars* (MIT; they draw with the GPU: T2). They name `fs:USER`, `gsp::Gpu`, `hid:USER` /
+  `hid:SPVR`, `ir:rst`, `ptm:sysm` (and `APT:U`); Mars also `cfg:u`.
 - **On the local PC**: the work folder `~/n3ds` in WSL (Dynarmic's clone, Boost, CMake builds) is only needed to
   run `vendor_dynarmic.py` again (another Dynarmic version); the test builds into `~/.cache/onyx_n3ds`. The ARM
   toolchain is in `~/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi/bin` (installed 2026-10-09, no
