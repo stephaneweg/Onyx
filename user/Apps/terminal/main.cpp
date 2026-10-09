@@ -437,6 +437,7 @@ int main (void)
 	root.addChild (g_strip);
 	TermView *view = new TermView (PAD, STRIP_H + PAD, W - 2 * PAD, H - STRIP_H - 2 * PAD);	// (the window's face around it)
 	view->anchor = ANCHOR_FILL;
+	uk_set_input_type (view, UK_IN_TERMINAL);	// (the pocket mode's on-screen keyboard: its row of Esc, Tab, Ctrl, the arrows)
 	root.addChild (view);
 	g_view = view;
 	root.setResizable (true);			// (the view reflows to any size: maximise works)

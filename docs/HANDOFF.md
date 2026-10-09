@@ -13,6 +13,10 @@ answer in French. The docs stay in English.
   on demand (the default -- every pocket screen today has a real keyboard or a remote desktop) or with the text
   fields (`SD:/etc/pocket/keyboard`). QWERTY / AZERTY by the system's language, figures, signs and accents, a
   Terminal's row. No uikit ABI change (one event value added to `win.h`).
+  **Which widgets bring it**: a `Textbox` (always did), a `Textarea` (its constructor now calls
+  `uk_set_input_type (this, UK_IN_TEXT)` -- uikit 1.950.1), the Terminal's view (`UK_IN_TERMINAL`). An app's OWN
+  text widget (Letters' page, the Spreadsheet's grid, QBStudio's editor, Jet's page...) must call
+  `uk_set_input_type` itself: not done yet (P7's remaining list) -- there the keyboard comes by Super+K / the tile.
 - **Fixed: a session switch left the old session's programs running** (seen on the Pi: after pocket -> console the
   old `menubar` and `pocketshell` stayed, polling the new server). `/bin/session` read the kernel's process list
   without its pages column (`<pid> <a|k> <state> <pages> <name>`): no name ever matched, nothing was ended. Setup's
