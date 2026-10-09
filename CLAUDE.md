@@ -16,7 +16,7 @@ The reference documentation is in **`docs/`** and is written in **English**:
 - `docs/02-KERNEL-INTERNALS.md` (kernel internals, excluding Circle)
 - `docs/03-DEVELOPER-GUIDE.md`
 - `docs/04-USER-GUIDE.md`
-- `docs/05-CIRCLE-CHANGES.md` (patches in our Circle fork vs upstream `Step51`)
+- `docs/05-CIRCLE-CHANGES.md` (patches in our Circle fork vs upstream `Step51.1.1`)
 - `docs/06-KITS-GUIDE.md` (**the kits**: one per domain, how a program uses them, an example for each — keep it up to date when a kit gains a subject)
 - `docs/10-APPKIT.md` … `docs/18-PRINTERKIT.md` (**one reference per kit**: every operation it exposes — GENERATED from the kits' headers by `python tools/docgen/kitdocs.py`: never edit them by hand; after a kit's header changes, run it, then `python docs/build_docs.py`)
 - `docs/08-WEBKIT-PORT.md` (Jet Browser, the Onyx web browser: the WebKit port — its status and how to resume, the plan, the patch series in `tools/webkit/patches/`, `jsc`; the NetSurf Jet and its documents 06 and 07 were removed on 2026-10-04)

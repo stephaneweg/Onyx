@@ -241,7 +241,11 @@ private:
 	void AddTask (CTask *pTask);
 	friend class CTask;
 
-	boolean BlockTask (CTask **ppWaitListHead, unsigned nMicroSeconds);
+	// pState (Circle 51.1's lost-wakeup fix): the event's state, checked again under the wait
+	// lock together with the registration -- set meanwhile (by another core, an interrupt):
+	// no block at all
+	boolean BlockTask (CTask **ppWaitListHead, unsigned nMicroSeconds,
+			   const volatile boolean *pState = 0);
 	void WakeTasks (CTask **ppWaitListHead); // can be called from interrupt context
 	friend class CSynchronizationEvent;
 

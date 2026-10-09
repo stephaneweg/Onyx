@@ -8,6 +8,8 @@
 > cap (Circle maps no RAM above 8 GB on the Pi 5); **B4** the V3D refuses to start (`gpu_info` 0). Also:
 > `HasJack ()` says no on the Pi 5 (`auto` sound → USB, else HDMI), and **`gpio_ctl` says ENODEV** on the
 > Pi 5 (the header is on the RP1: a port to come). Next: `sdcard5/` (§4.4), then a first boot (§6).
+> The fork was then brought to upstream **Circle 51.1.1** (docs/05 *Upstream merges*: for the Pi 5 the DSI
+> touchscreens, the RP1's I2C 4 and 6, the xHCI endpoint recovery); both kernels build on it.
 >
 > **Status of the rest: a plan (written 2026-09-30).** It comes from a read-only audit of
 > the tree at `fb2b27a1` (the Circle fork: `Step51` + 24 Onyx commits) and of the public sources

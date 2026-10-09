@@ -115,7 +115,7 @@ git): `sh tools/pi5/circle5.sh` (again after any change in `circle/`), then `mak
 `kernel/kernel_2712.img`. The kernel's objects are shared by both boards: switching `BOARD` cleans them first
 (`kernel/.board`). The Pi 5's card `sdcard5/` is not made yet (`make BOARD=pi5 stage` says so).
 
-> The Onyx-specific patches carried by this fork (branch `onyx`, on upstream tag `Step51`)
+> The Onyx-specific patches carried by this fork (branch `onyx`, on upstream tag `Step51.1.1`)
 > are documented in [Circle Changes](05-CIRCLE-CHANGES.md).
 
 ## 3. Building the kernel and applications

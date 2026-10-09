@@ -230,7 +230,7 @@ circle/           Circle, as a git submodule (the fork stephaneweg/circle, branc
 | **[03 — Developer Guide](03-DEVELOPER-GUIDE.md)** | anyone who wants to build/compile/extend | toolchain, build, app model, extending the ABI, conventions, debugging |
 | **[04 — User Guide](04-USER-GUIDE.md)** | anyone who wants to use it | SD card, desktop, terminal, files, applications, customization |
 | **[06 — The kits](06-KITS-GUIDE.md)** | anyone writing a program | one kit per domain, how a program uses them (their references: 10 to 19) |
-| [05 — Circle Changes](05-CIRCLE-CHANGES.md) | anyone touching `circle/` | the patches of our Circle fork vs upstream `Step51` |
+| [05 — Circle Changes](05-CIRCLE-CHANGES.md) | anyone touching `circle/` | the patches of our Circle fork vs upstream `Step51.1.1` |
 | [08 — Jet Browser, the WebKit port](08-WEBKIT-PORT.md) | the browser | the port of WebKit to Onyx: its status, the patch series, how to build |
 | [EL0 protected mode](EL0-PROTECTED-MODE.md) | the execution model | how apps moved to EL0, the design |
 | [Licensing](LICENSING.md) | distributors | the licences of everything Onyx contains |

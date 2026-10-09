@@ -6,17 +6,19 @@ changes we need live in a **fork**, pulled in as a **git submodule**:
 
 - **Submodule:** `circle/` → `https://github.com/stephaneweg/circle.git` (`.gitmodules`),
   branch **`onyx`**.
-- **Upstream base:** `https://github.com/rsta2/circle.git`, tag **`Step51`** (remote `upstream`).
+- **Upstream base:** `https://github.com/rsta2/circle.git`, tag **`Step51.1.1`** (remote `upstream`) —
+  `Step51` until 2026-10-09, when upstream's 51.1 and 51.1.1 were merged in (see *Upstream merges* below).
 - The superproject pins a specific fork commit; `git submodule status` shows it (currently
   `Step51-6-g…`).
 
-The patches on top of `Step51` are small and surgical. The diffs below are the exact output
-of `git diff Step51..onyx` inside `circle/`. To reproduce:
+The patches on top of upstream are small and surgical. The diffs below are the output of
+`git diff Step51..onyx` inside `circle/` at the time each was written (since the merge of 51.1.1, compare
+with `Step51.1.1`). To reproduce:
 
 ```sh
 git -C circle remote -v                  # origin = the fork, upstream = rsta2/circle
-git -C circle log  --oneline Step51..onyx
-git -C circle diff Step51..onyx
+git -C circle log  --oneline --no-merges Step51.1.1..onyx
+git -C circle diff Step51.1.1..onyx
 ```
 
 > **Design rule.** Patch Circle as little as possible. When a change can be header-only (no
@@ -1055,12 +1057,32 @@ upstream `develop` (the scheduler's `WakeTasks` race, the SD High Speed fixes, l
 reuse, partial display updates with a DMA source stride, the DHCP restart), with the patches and
 the pull-request texts: see [`docs/circle-upstream/README.md`](circle-upstream/README.md).
 
+## Upstream merges
+
+**2026-10-09: Circle 51.1 and 51.1.1** (84 upstream commits after `Step51`, merge `c06e5a52`). What Onyx gains:
+the xHCI endpoint recovered from Halted after a transfer error (#704: the Pi 4's and the Pi 5's USB); transient HID
+report errors tolerated, a generic HID mouse-shaped report taken as a mouse (#693); the 8BitDo controllers,
+keyboards and Wireless Adapter 2, the Xbox 360 wireless receiver (and clones); Wi-Fi: the eero 7 routers (#696) and
+the hidden networks (hostap at `circle-step51.1`); FatFs R0.16 patch 2 (the Onyx patches merged automatically:
+`tools/tests/run_fs_test.sh` passes); the lost wake-up of `CSynchronizationEvent` (`BlockTask` checks the state under
+its lock) — **ported into Onyx's own scheduler** (`kernel/sched/scheduler.cpp`, `kernel/compat/circle/sched/scheduler.h`:
+it replaces Circle's); for the Pi 5: the official DSI touchscreens (`addon/rp1dsi`), the RP1's I2C buses 4 and 6.
+Upstream's DWHCI / `usbboost` / USB-MIDI work is for the Pi 1-3 only.
+Three conflicts: `usbkeyboard.h` (our `GetKeyMap ()` beside upstream's protected `ConfigureKeyboard`),
+`ether4330.c` (our scan kept — both bands, the configured networks probed by name — with upstream's directed probe
+for a hidden network added as one more name), `tcpconnection.cpp` (our duplicate-ACK test kept: patch 20, the same
+RFC 5681 test without resetting the count on another segment). The keymap decoupling (patch 1) came through intact.
+Tested on the PC (`run_fs_test.sh`, `run_circlenet_test.sh`, `run_ramfs_test.sh`, `run_gui_test.sh`,
+`run_gamepad_test.sh`); **to test on the Pi**: the Wi-Fi join, TCP (FTP, VNC), USB keyboards, mice and gamepads.
+
 ## Updating the fork (submodule)
 
 ```sh
-# rebase the Onyx patches onto a newer upstream, inside the submodule:
-git -C circle fetch upstream
-git -C circle rebase upstream/master onyx     # resolve conflicts in the patched files
+# merge a newer upstream into the Onyx branch, inside the submodule (a merge, not a rebase: the
+# branch is published and the superproject pins its commits):
+git -C circle fetch upstream --tags
+git -C circle merge upstream/master            # resolve conflicts in the patched files
+# then the skill resync-circle-keymap-patch (the keymap decoupling), and the Pi 5's tree: sh tools/pi5/circle5.sh
 # rebuild the affected libraries: libcircle (heap + page accounting), libinput (keymap)
 # then record the new fork commit in the superproject:
 git add circle && git commit -m "Bump circle submodule"

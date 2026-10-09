@@ -807,7 +807,8 @@ void CScheduler::RemoveTask (CTask *pTask)
 	IrqRestore (nFlags);
 }
 
-boolean CScheduler::BlockTask (CTask **ppWaitListHead, unsigned nMicroSeconds)
+boolean CScheduler::BlockTask (CTask **ppWaitListHead, unsigned nMicroSeconds,
+				const volatile boolean *pState)
 {
 	assert (ppWaitListHead != 0);
 	assert (m_pCurrent->m_pWaitListNext == 0);
@@ -815,6 +816,16 @@ boolean CScheduler::BlockTask (CTask **ppWaitListHead, unsigned nMicroSeconds)
 	assert (m_pCurrent->GetState () == TaskStateReady);
 
 	s_WaitLock.Acquire ();
+
+	// The event set between its owner's check (CSynchronizationEvent::Wait) and here -- Set ()
+	// on another core or in an interrupt found the list still empty and woke nobody: checked
+	// again under the lock WakeTasks takes, so the check and the registration are one step
+	// (upstream Circle 51.1, ab0768dc). The already-set answer of WaitWithTimeout.
+	if (pState != 0 && *pState)
+	{
+		s_WaitLock.Release ();
+		return nMicroSeconds == 0;
+	}
 
 	// Add current task to the waiting task list
 	m_pCurrent->m_pWaitListNext = *ppWaitListHead;
