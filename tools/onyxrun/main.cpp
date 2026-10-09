@@ -11,6 +11,9 @@
 //     --screen WxH the screen's size (default 1280x800); --headless: no window on the PC
 //     --shot FILE.bmp [--shot-after MS]   the screen written there (after MS, default 5000), then the end
 //     --input "SCRIPT"   input played (display.cpp: wait MS; move X Y; click X Y; key TEXT; ...)
+//     --desktop    the whole desktop: Elegant, then the session (SD:/bin/session: the wallpaper, the menu bar, the
+//                  dock...) and the system's services that need no network (clockd, clipd, printd, notifyd); the
+//                  runner ends with Elegant (its window closed). PROGRAM, if given, is started too.
 //
 // An app (SD:/apps/...) is run with the graphics server: Elegant (SD:/bin/elegant --serve) is started first, its
 // screen shown in a window of the PC (or kept in memory: --headless).
@@ -42,6 +45,7 @@ static void usage (void)
 		 "onyxrun -- Onyx programs' Pi binaries run on this PC\n"
 		 "usage: onyxrun [--root DIR] [--ram DIR] [--cwd PATH] [--trace] [--console | --screen WxH] [--headless]\n"
 		 "               [--shot FILE.bmp [--shot-after MS]] [--input SCRIPT] PROGRAM [ARGS...]\n"
+		 "       onyxrun --desktop [options] [PROGRAM [ARGS...]]   (the whole desktop)\n"
 		 "  PROGRAM: SD:/bin/echo, SD:/apps/clock.app/main, echo (a /bin tool), clock (an app)\n");
 	exit (2);
 }
@@ -76,10 +80,14 @@ static std::string find_root (const char *argv0)
 	_exit (status & 0xFF);
 }
 
-// A process ended: the runner's own (the one it started: no parent) -> the runner ends with its status.
+// A process ended: the runner's own (the one it started: no parent) -> the runner ends with its status. In
+// --desktop, the runner ends with the graphics server instead.
+static bool s_FollowServer = false;
+void runner_follow_server (void) { s_FollowServer = true; }
+
 void runner_proc_ended (Proc *P)
 {
-	if (P->ppid == 0) runner_exit (P->status);
+	if (s_FollowServer ? P->name == "elegant" : P->ppid == 0) runner_exit (P->status);
 }
 
 int main (int argc, char **argv)
@@ -87,6 +95,7 @@ int main (int argc, char **argv)
 	std::string root, ram, cwd = "SD:/";
 	DisplayOpts D;
 	int gui = -1;				// -1: an app gets the graphics server, a /bin tool not
+	bool desktop = false;
 	D.shotAfterMs = 5000;
 	int i = 1;
 	g_Run.trace = getenv ("ONYXRUN_TRACE") && atoi (getenv ("ONYXRUN_TRACE")) != 0;
@@ -97,6 +106,7 @@ int main (int argc, char **argv)
 		else if (!strcmp (argv[i], "--cwd") && i + 1 < argc) cwd = argv[++i];
 		else if (!strcmp (argv[i], "--trace")) g_Run.trace = true;
 		else if (!strcmp (argv[i], "--console")) gui = 0;
+		else if (!strcmp (argv[i], "--desktop")) { desktop = true; gui = 1; }
 		else if (!strcmp (argv[i], "--gui")) gui = 1;
 		else if (!strcmp (argv[i], "--headless")) D.headless = true;
 		else if (!strcmp (argv[i], "--screen") && i + 1 < argc) { sscanf (argv[++i], "%dx%d", &D.w, &D.h); gui = gui < 0 ? 1 : gui; }
@@ -105,7 +115,7 @@ int main (int argc, char **argv)
 		else if (!strcmp (argv[i], "--input") && i + 1 < argc) D.input = argv[++i];
 		else usage ();
 	}
-	if (i >= argc) usage ();
+	if (i >= argc && !desktop) usage ();
 	if (root.empty ()) root = find_root (argv[0]);
 	if (root.empty ()) { rlog ("no SD card folder (sdcard/ with lib/appkit.so): give --root"); return 2; }
 	std::error_code ec;
@@ -115,7 +125,8 @@ int main (int argc, char **argv)
 	g_Run.ramRoot = fs::absolute (ram, ec).string ();
 
 	// the program: an Onyx path, a /bin tool's name, an app's name
-	std::string prog = argv[i], onyx;
+	std::string prog = i < argc ? argv[i] : "", onyx;
+	if (desktop && prog.empty ()) prog = "SD:/bin/session";
 	if (prog.find (':') != std::string::npos && prog.size () > 2 && prog[1] != ':') onyx = onyx_abs (prog.c_str (), "SD:/");
 	else if (fs::is_regular_file (host_path (("SD:/bin/" + prog).c_str (), "SD:/"), ec)) onyx = "SD:/bin/" + prog;
 	else if (fs::is_regular_file (host_path (("SD:/apps/" + prog + ".app/main").c_str (), "SD:/"), ec)) onyx = "SD:/apps/" + prog + ".app/main";
@@ -137,9 +148,26 @@ int main (int argc, char **argv)
 		int t = 0;
 		for (; t < 200 && !ws_active (); t++) std::this_thread::sleep_for (std::chrono::milliseconds (50));
 		if (!ws_active ()) { rlog ("Elegant did not take the display"); return 2; }
+		if (desktop)
+		{
+			// the session and the services without network (autostart's), none of them the runner's own program
+			const char *svc[][2] = { { "SD:/bin/session", "" }, { "SD:/apps/clockd.app/main", "clockd" }, { "SD:/apps/clipd.app/main", "clipd" },
+						 { "SD:/apps/printd.app/main", "printd" } };
+			for (auto &sv : svc)
+			{
+				if (prog == sv[0]) continue;
+				SpawnOpts so;
+				so.path = sv[0]; so.argv = { sv[0] }; so.name = sv[1]; so.ppid = -1;
+				std::string w;
+				if (!proc_spawn (so, &w)) rlog ("%s: %s", sv[0], w.c_str ());
+			}
+			extern void runner_follow_server (void);
+			runner_follow_server ();		// (the runner ends with Elegant)
+		}
 	}
 
 	SpawnOpts o;
+	if (desktop) o.ppid = -1;
 	o.path = onyx;
 	o.argv.push_back (onyx);
 	for (int k = i + 1; k < argc; k++) o.argv.push_back (argv[k]);

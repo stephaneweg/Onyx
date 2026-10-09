@@ -4981,7 +4981,11 @@ onyxrun cmd -c "ls SD:/etc | sort"   # the shell, its pipes, its children
 onyxrun clock                        # an app: Elegant started first, the screen in a window of the PC
 onyxrun --headless --shot out.bmp --shot-after 8000 clock      # no window: the screen written after 8 s
 onyxrun --headless --input "wait 5000; click 640 300; key hello; enter; shot a.bmp" notes
+onyxrun --desktop --root copy-of-sdcard   # the whole desktop: Elegant, the session, the services without network
 ```
+
+The programs write into the folder SD: stands for (Setup at the first start, the settings, the apps'
+files): give `--root` a copy of `sdcard/` when the repository's must stay as it is.
 
 Options: `--root DIR` (the folder for SD:), `--ram DIR`, `--cwd PATH`, `--screen WxH` (1280x800),
 `--console` / `--gui`, `--trace` (every system call on stderr; also `ONYXRUN_TRACE=1`),
@@ -4998,9 +5002,11 @@ parallel; `k_*.cpp` are the kapi's slots (`KAPI (slot, function)`), `k_ws.cpp` t
 (`kern/wsrv.h`), `display.cpp` the PC's window (Win32) or the headless screen.
 
 What it does not show: the kernel (not run), the weak memory ordering (an x86 PC orders more than the
-A72: a missing barrier passes), the caches (a missing cache clean passes), the timing. Not there yet
-(their calls answer as a Pi without them would): the GPU (`gpu_info` empty: gpucomp and the apps take
-their CPU path), the sound, the network, the gamepads. The Pi stays the reference.
+A72: a missing barrier passes), the caches (a missing cache clean passes), the timing. The GPU's
+stock calls (`gpu_draw`, `gpu_texture`, `gpu_render`: gpucomp, the 3D apps) are drawn by the PC in native
+code (`k_gpu.cpp`); the network is the PC's sockets (`k_net.cpp`). Not there yet (their calls answer as a
+Pi without them would): the apps' own QPU programs (`gpu_program`: gcemu, n64emu take their CPU path), the
+sound, the gamepads, USB, GPIO. The Pi stays the reference.
 
 
 ## 13. Known pitfalls

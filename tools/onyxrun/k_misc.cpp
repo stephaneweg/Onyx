@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <string.h>
+#include <chrono>
 
 namespace fs = std::filesystem;
 
@@ -130,3 +131,153 @@ KAPI (midi_devices, k_midi_devices);
 KAPI (midi_read, k_midi_read);
 KAPI (shutdown, k_shutdown);
 KAPI (reboot, k_reboot);
+
+// ---- the shared surfaces (kapi v35): a pixel buffer several processes map -------------------------------------
+struct Surface { u8 *host; u64 len; int w, h, owner; };
+static std::mutex s_SurfM;
+static std::map<int, Surface> s_Surf;
+static int s_SurfNext = 1;
+
+static int k_surface_create (int w, int h)
+{
+	if (w < 1 || h < 1 || w > 4096 || h > 4096) return 0;
+	u64 len = ALIGN_UP ((u64) w * h * 4);
+	u8 *m = host_shared_alloc (len);
+	if (!m) return 0;
+	std::lock_guard<std::mutex> L (s_SurfM);
+	int id = s_SurfNext++;
+	s_Surf[id] = Surface { m, len, w, h, cur ()->pid };
+	return id;
+}
+
+static u64 k_surface_map (int id)
+{
+	Surface S;
+	{
+		std::lock_guard<std::mutex> L (s_SurfM);
+		auto it = s_Surf.find (id);
+		if (it == s_Surf.end ()) return 0;
+		S = it->second;
+	}
+	Proc *P = cur ();
+	PLock L (P);
+	u64 va = P->mem.find_free (USER_SURFACE_BASE, USER_SURFACE_END, S.len);
+	if (!va || !P->mem.map_shared (va, S.len, MEM_R | MEM_W, "a shared surface", S.host, KAPI_VMK_FIXED)) return 0;
+	return va;
+}
+
+static int k_surface_size (int id, u64 w, u64 h)
+{
+	std::lock_guard<std::mutex> L (s_SurfM);
+	auto it = s_Surf.find (id);
+	if (it == s_Surf.end ()) return 0;
+	gput<int> (w, it->second.w); gput<int> (h, it->second.h);
+	return 1;
+}
+
+static void k_surface_present (int) { }
+
+static int k_surface_destroy (int id)
+{
+	std::lock_guard<std::mutex> L (s_SurfM);
+	auto it = s_Surf.find (id);
+	if (it == s_Surf.end () || it->second.owner != cur ()->pid) return 0;
+	s_Surf.erase (it);			// (its memory kept: the processes that mapped it may still read it)
+	return 1;
+}
+
+// ---- the process tree (kapi v91) -----------------------------------------------------------------------------------
+static void descendants (int pid, std::vector<int> &out)
+{
+	for (Proc *P : proc_list ())
+		if (!P->ended && P->ppid == pid) { out.push_back (P->pid); descendants (P->pid, out); }
+}
+
+static int k_proc_tree (int pid, int op, u64 out, unsigned cap)
+{
+	Proc *T = proc_find (pid);
+	if (!T || T->ended) return -KAPI_ESRCH;
+	std::vector<int> d;
+	descendants (pid, d);
+	if (op == KAPI_TREE_LIST)
+	{
+		for (unsigned i = 0; i < d.size () && i < cap; i++) gput<int> (out + i * 4, d[i]);
+		return (int) d.size ();
+	}
+	if (op != KAPI_TREE_KILL && op != KAPI_TREE_KILL_CHILDREN) return -KAPI_EINVAL;
+	Proc *me = cur ();
+	for (Proc *a = me; a; a = a->ppid > 0 ? proc_find (a->ppid) : 0)	// (never the caller or its ancestors)
+		if (a->pid == pid && op == KAPI_TREE_KILL) return -KAPI_EPERM;
+	for (int c : d) if (c == me->pid) return -KAPI_EPERM;
+	if (op == KAPI_TREE_KILL) d.insert (d.begin (), pid);
+	int n = 0;
+	for (auto it = d.rbegin (); it != d.rend (); ++it)		// (the leaves first)
+	{
+		Proc *P = proc_find (*it);
+		if (!P || P->ended) continue;
+		if (!P->dying.exchange (true)) { P->status = -9; P->reason = KAPI_PROC_KILLED; }
+		cpu_stop_all (P);
+		n++;
+	}
+	return n;
+}
+
+// ---- statistics (the PC's: approximate) -----------------------------------------------------------------------------
+static int k_proc_stats (int pid, u64 out)
+{
+	Proc *P = pid == 0 ? cur () : proc_find (pid);
+	if (!P) return -1;
+	struct kapi_syscall_stats *o = G<struct kapi_syscall_stats> (out, MEM_W);
+	if (!o) return -2;
+	memset (o, 0, sizeof *o);
+	o->slots = (unsigned) KAPI_SLOTS_HOST;
+	return 0;
+}
+
+static int k_cpu_stats (u64 out)
+{
+	struct kapi_cpu_stats *o = G<struct kapi_cpu_stats> (out, MEM_W);
+	if (!o) return -KAPI_EFAULT;
+	memset (o, 0, sizeof *o);
+	o->now_us = (unsigned long long) std::chrono::duration_cast<std::chrono::microseconds> (std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+	o->cores = 4;
+	o->core[0].role = KAPI_CORE_SYSTEM; o->core[1].role = KAPI_CORE_SOUND; o->core[2].role = KAPI_CORE_APP; o->core[3].role = KAPI_CORE_APP;
+	return 0;
+}
+
+static int k_net_stats (int, u64 out)
+{
+	struct kapi_net_stats *o = G<struct kapi_net_stats> (out, MEM_W);
+	if (!o) return -KAPI_EFAULT;
+	memset (o, 0, sizeof *o);
+	return 0;
+}
+
+static int k_ram_detail (u64 detected, u64 pool, u64 poolFree, u64 above4g, u64 nseg)
+{
+	gput<u64> (detected, (u64) 4 << 20); gput<u64> (pool, (u64) 3 << 20); gput<u64> (poolFree, (u64) 2 << 20);
+	gput<u64> (above4g, 0); gput<unsigned> (nseg, 1);
+	return 1;
+}
+
+static u64 k_gpu_vbuf (unsigned) { return 0; }		// (for the QPU programs' render3: not yet)
+
+// ---- the program images (kapi v77): the runner reads a program's file at each start ----------------------------------
+static int k_image_preload (u64) { return 0; }
+static int k_image_unload (u64) { return -KAPI_ENOENT; }
+static int k_image_list (u64, u64, unsigned) { return 0; }
+
+KAPI (surface_create, k_surface_create);
+KAPI (surface_map, k_surface_map);
+KAPI (surface_size, k_surface_size);
+KAPI (surface_present, k_surface_present);
+KAPI (surface_destroy, k_surface_destroy);
+KAPI (proc_tree, k_proc_tree);
+KAPI (proc_stats, k_proc_stats);
+KAPI (cpu_stats, k_cpu_stats);
+KAPI (net_stats, k_net_stats);
+KAPI (ram_detail, k_ram_detail);
+KAPI (gpu_vbuf, k_gpu_vbuf);
+KAPI (image_preload, k_image_preload);
+KAPI (image_unload, k_image_unload);
+KAPI (image_list, k_image_list);
