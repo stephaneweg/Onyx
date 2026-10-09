@@ -231,6 +231,9 @@ public:
 	{
 		u64 nMPIDR;
 		asm volatile ("mrs %0, mpidr_el1" : "=r" (nMPIDR));
+#if RASPPI >= 5
+		nMPIDR >>= 8;			// the A76 (MPIDR.MT = 1): the core number is in Aff1
+#endif
 		return (unsigned) (nMPIDR & (SCHED_CORES - 1));
 	}
 

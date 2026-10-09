@@ -231,6 +231,14 @@ static boolean Up (void)
 {
 	if (s_nState) return s_nState > 0;
 	s_nState = -1;
+#if RASPPI >= 5
+	// The Pi 5's V3D 7.1 is elsewhere (hub 0x10_0200_0000, no ASB, the SMS, other IRQs) and speaks
+	// other control lists and another QPU ISA (docs/PI5-PORT.md §9): until that port, no GPU -- no
+	// register touched, no IRQ connected; gpu_info says 0 and the apps take their software paths.
+	Fmt (s_Info, sizeof s_Info, "V3D: the Pi 5's GPU is not supported yet", 0, 0, 0);
+	CLogger::Get ()->Write (From, LogNotice, "%s", s_Info);
+	return FALSE;
+#endif
 	if (!PowerOn ()) { Fmt (s_Info, sizeof s_Info, "V3D: power-up failed", 0, 0, 0); return FALSE; }
 	u32 nId0 = read32 (V3D_HUB_IDENT0), nId1 = read32 (V3D_HUB_IDENT1), nId2 = read32 (V3D_HUB_IDENT2);
 	u32 nCtl = read32 (V3D_CTL_IDENT0);

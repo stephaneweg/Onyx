@@ -54,6 +54,7 @@ git -C circle diff Step51..onyx
 | 26 | **Wi-Fi: the chip polled** when the network has its own core (the SDIO card interrupt came 2.5–5 ms late), **a scan over both bands** with the configured networks probed by name, **5 GHz preferred**, **a frame in one SDIO command**, the frames' locks without a yield, **the SDIO bus at 50 MHz**, **no A-MPDU for the frames sent** (half of them were lost during a download) | `addon/wlan/ether4330.c`, `addon/wlan/emmc.c`, `addon/wlan/p9util.cpp` | `libwlan` |
 | 27 | **TCP: window scaling** (RFC 7323), **a receive window that follows the receive queue** (it was a constant), a 256 KB transmit threshold, **delayed acknowledgements** (one for eight segments) | `lib/net/tcpconnection.cpp`, `include/circle/net/tcpconnection.h`, `include/circle/net/sizes.h` | `libnet` |
 | 28 | **USB volumes**: `f_mkfs` and the labels on (`FF_USE_MKFS`, `FF_USE_LABEL`), FatFs' objects checked again once the volume lock is held, the volume mutex kept across an unmount, a yield between two USB transfers, SCSI SYNCHRONIZE CACHE for the eject | `addon/fatfs/ffconf.h`, `ff.c`, `ffsystem.cpp`, `diskio.cpp`, `lib/usb/usbmassdevice.cpp`, `include/circle/usb/usbmassdevice.h` | `libfatfs`, `libusb` + the kernel (no structure changes: no clean rebuild) |
+| 29 | **The Pi 5's high RAM registered once**: seg0 = [1 GB, 8 GB) is all of it; no reclaim above it (its fallback registered [4 GB, 8 GB) a second time: two allocators, the same frames); the crash record at seg0's top. The Pi 4 unchanged | `lib/memory64.cpp` | `libcircle` (the Pi 5's, `circle5/`) |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
 
 ---
@@ -1031,6 +1032,21 @@ Windows), a FAT32 superfloppy, all found by `USB1:`'s auto search; a device of t
 a file is written (errors, the lock free, the old objects invalid on the next stick); an unmount while a call
 waits for the lock — which fails with upstream's `ff.c` (the write accepted, the open succeeding). Not tested
 on the Pi yet (docs/HANDOFF.md).
+
+## 29. The Pi 5's high RAM registered once
+
+**Why.** On the Pi 5 (`RASPPI = 5`) `MEM_HIGHMEM_END` is 8 GB and the RAM is one block (the I/O is above
+64 GB, no hole at 3-4 GB): `SetupHighMem` already makes seg0 = [1 GB, min (RAM, 8 GB)). Onyx's
+`SetupHighMemAbove4G` (§15 and the high-memory patch) then found nothing above 8 GB in the device tree and its
+fallback (B) registered [4 GB, 8 GB) **a second time**: two page allocators handing out the same frames on an
+8 GB board.
+
+**What.** `lib/memory64.cpp`, under `#if RASPPI >= 5`: `SetupHighMem` takes the crash record's 64 KB
+(`ONYX_CRASH_AREA_SIZE`, `g_ulOnyxCrashArea`) from seg0's top, and `SetupHighMemAbove4G` is not called. RAM
+above 8 GB (a 16 GB board) stays unused until the Pi 5's user window moves above it (docs/PI5-PORT.md §5.2,
+policy B). `g_ulOnyxCrashArea` is defined before `SetupHighMem` now. The Pi 4's code is unchanged (its object
+differs only by the `assert` line numbers). Fork commit `065871f9`; built in `circle5/` by
+`tools/pi5/circle5.sh`. **Not tested on a Pi 5 yet.**
 
 ## Contributions to upstream Circle
 

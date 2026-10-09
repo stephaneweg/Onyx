@@ -125,3 +125,7 @@ sdcard_lite/res/wallpaper.*
 
 # tools/pkg/publish.sh: the Jet package its program was taken back from
 .jet-from-package
+
+# Circle built for the Pi 5 (tools/pi5/circle5.sh: a copy of circle/ configured -r 5)
+/circle5/
+kernel/.board

@@ -12,7 +12,26 @@
 #   make
 #
 
+# The board (docs/PI5-PORT.md §4.4): pi4 (the default: circle/, kernel8-rpi4.img, sdcard/) or pi5
+# (circle5/ made by tools/pi5/circle5.sh, kernel_2712.img, sdcard5/). The objects are in this tree
+# for both: switching boards cleans them first (.board says whose they are).
+BOARD ?= pi4
+ifeq ($(BOARD),pi5)
+CIRCLEHOME = ../circle5
+SDCARD = ../sdcard5
+else ifeq ($(BOARD),pi4)
 CIRCLEHOME = ../circle
+SDCARD = ../sdcard
+else
+$(error BOARD must be pi4 or pi5)
+endif
+ifneq ($(shell cat .board 2>/dev/null || echo pi4),$(BOARD))
+$(shell find . -name '*.o' -delete; find . -name '*.d' -delete; rm -f *.img *.elf *.map *.lst)
+endif
+$(shell echo $(BOARD) > .board)
+ifeq ($(wildcard $(CIRCLEHOME)/Config.mk),)
+$(error $(CIRCLEHOME) is not configured: sh tools/pi5/circle5.sh (Pi 5), or docs/03 §1 (Pi 4))
+endif
 
 OBJS = \
 	main.o \
@@ -127,7 +146,6 @@ all: $(TARGET).img sizecheck apps
 # layout). The app name is the ELF basename; autostart.txt names them per line.
 # Executables on the card carry NO extension: the build's <name>.elf outputs are
 # staged as apps/<name>.app/main and bin/<name>.
-SDCARD = ../sdcard
 # Apps written in BASIC: compiled on this machine (tools/basc, the same compiler core) to
 # apps/<name>.app/main.bax -- "name=source.bas" pairs.
 BASIC_APPS = arkanoid=$(SDCARD)/basic/examples/arkanoid.bas planets3d=$(SDCARD)/basic/examples/planets3d.bas
@@ -137,6 +155,7 @@ $(BASC): $(BASC_SRC) ../user/Libs/basic/bas.h ../user/Libs/basic/basint.h ../use
 	@g++ -std=c++17 -O1 -I../user -I../user/Kits -I../user/Runtime -I../user/Include -I../user/Libs -I../user/Emulators -I../user/Ports -o $@ $(BASC_SRC)
 .PHONY: stage
 stage: sizecheck apps $(BASC)
+	@[ -d $(SDCARD) ] || { echo "no $(SDCARD) yet: the Pi 5 card is made from sdcard/ (docs/PI5-PORT.md §4.4)"; exit 1; }
 	@cp $(TARGET).img $(SDCARD)/
 	@for elf in ../user/*.elf; do \
 		name=$$(basename $$elf .elf); \

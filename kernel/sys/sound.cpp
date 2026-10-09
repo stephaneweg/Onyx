@@ -373,9 +373,13 @@ static boolean UsbPresent (void)
 {
 	return CDeviceNameService::Get ()->GetDevice (USB_AUDIO_NAME, FALSE) != 0;
 }
-static boolean HasJack (void)				// the Pi 400 has none
+static boolean HasJack (void)				// the Pi 400 has none, nor the Pi 5 / Pi 500
 {
+#if RASPPI >= 5
+	return FALSE;
+#else
 	return CMachineInfo::Get ()->GetMachineModel () != MachineModel400;
+#endif
 }
 static const char *OutName (int n)
 {

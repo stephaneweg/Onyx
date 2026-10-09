@@ -48,6 +48,8 @@
 #include <circle/new.h>
 #include <circle/util.h>
 
+#if RASPPI <= 4		// (the Pi 5: at the end)
+
 #define NPINS		KAPI_GPIO_PINS
 #define NQUEUES		8
 #define QSIZE		256			// events a queue (a power of two)
@@ -499,3 +501,18 @@ extern "C" long kapi_gpio_ctl (int nOp, long a0, long a1, long a2)
 	default:		 return -KAPI_EINVAL;
 	}
 }
+
+#else	// RASPPI >= 5
+
+// The Pi 5: the header's pins are on the RP1 (its own GPIO block, PWM, I2C and SPI on PCIe), not on
+// the registers above -- that port is to come (docs/PI5-PORT.md). Until then gpio_ctl says ENODEV.
+
+void GpioOnProcessGone (unsigned nPid) {}
+void GpioPwmClockKeep (void) {}
+
+extern "C" long kapi_gpio_ctl (int nOp, long a0, long a1, long a2)
+{
+	return -KAPI_ENODEV;
+}
+
+#endif

@@ -109,6 +109,12 @@ The libraries linked by the kernel (cf. [`kernel/Makefile`](../kernel/Makefile))
 `libsched.a`, `libusb.a`, `libinput.a`, `libfs.a`, `libcircle.a`. Circle is built
 **multi-core** (`ARM_ALLOW_MULTI_CORE`, fork patch #4): core 1 runs the sound producer.
 
+**The Raspberry Pi 5** (a separate distribution, docs/PI5-PORT.md): Circle's libraries are per board, so the
+Pi 5's are built in their own tree, **`circle5/`** (a copy of `circle/`'s sources configured `-r 5`, not in
+git): `sh tools/pi5/circle5.sh` (again after any change in `circle/`), then `make -C kernel BOARD=pi5` →
+`kernel/kernel_2712.img`. The kernel's objects are shared by both boards: switching `BOARD` cleans them first
+(`kernel/.board`). The Pi 5's card `sdcard5/` is not made yet (`make BOARD=pi5 stage` says so).
+
 > The Onyx-specific patches carried by this fork (branch `onyx`, on upstream tag `Step51`)
 > are documented in [Circle Changes](05-CIRCLE-CHANGES.md).
 

@@ -1,6 +1,15 @@
 # Onyx on the Raspberry Pi 5 — the porting plan, A to Z
 
-> **Status: a plan, nothing done yet (written 2026-09-30).** It comes from a read-only audit of
+> **Done on 2026-10-09 (built, not run on a Pi 5 yet):** the board switch `make -C kernel BOARD=pi5` with
+> Circle built for the Pi 5 in `circle5/` (`tools/pi5/circle5.sh`) — `kernel_2712.img` links, 271 KB below
+> the 2 MB limit; the four blockers fenced or fixed under `#if RASPPI >= 5` (the Pi 4's kernel code is
+> unchanged, checked object by object): **B1** `ThisCore ()` reads Aff1; **B2** the fork's `memory64.cpp`
+> registers the RAM once, the crash area at seg0's top (fork patch 29, docs/05); **B3** nothing for the 8 GB
+> cap (Circle maps no RAM above 8 GB on the Pi 5); **B4** the V3D refuses to start (`gpu_info` 0). Also:
+> `HasJack ()` says no on the Pi 5 (`auto` sound → USB, else HDMI), and **`gpio_ctl` says ENODEV** on the
+> Pi 5 (the header is on the RP1: a port to come). Next: `sdcard5/` (§4.4), then a first boot (§6).
+>
+> **Status of the rest: a plan (written 2026-09-30).** It comes from a read-only audit of
 > the tree at `fb2b27a1` (the Circle fork: `Step51` + 24 Onyx commits) and of the public sources
 > (Linux `drm/v3d`, the Raspberry Pi device trees, Mesa's `src/broadcom`). Line numbers drift:
 > search for the symbol when a reference is off. Items marked **(verify)** could not be settled
