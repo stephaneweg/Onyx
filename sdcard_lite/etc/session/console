@@ -1,12 +1,11 @@
 # SD:/etc/session/console -- the console session's programs: run by /bin/session (the autostart's line
 # `session`) when SD:/etc/system.ini says "shell = console" (PocketUI's console mode: the games, a television,
 # a pad), ended when the mode is switched to another (the Control Panel's Mode, `session switch`). The same
-# syntax as SD:/etc/autostart. No menu bar, no dock: the menus are revealed on demand (PocketUI's phase P9).
+# syntax as SD:/etc/autostart. No menu bar, no dock: an app fills the screen.
 #
-# The console's home -- the library, the save states, the settings -- comes with phase P9
-# (docs/POCKETUI-TECH-STUDY.md); it will be this file's line:
-#   run consolehome
-# Until then the Game Library stands in for it, the Terminal behind it (Alt+Tab: `session switch desktop`).
+# consolehome is the console's shell (PocketUI's phase P9): the home -- the categories, the apps as tiles, moved
+# with a pad, the keyboard or the mouse -- and the menu over an app (the pad's Home, F10, the Super key): the app's
+# own menus, Home, the other open apps, Close, Settings, Shut Down. `session switch desktop` from a Terminal, or
+# Settings > Mode, goes back to the desktop.
 # The notifications: notifyd starts with the first one (SystemKit's notify).
-run terminal
-run gamelib
+run consolehome
