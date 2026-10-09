@@ -721,9 +721,10 @@ UIKit is the only code that speaks its server's protocol.
   + `build.sh` (UIKit's C import side; untested here: no POSIX toolchain). Links: `BinUtils/Makefile`
   (`el0test` KITLIBS, `gpcdemo`, `rdpd` with `-DONYX_BIND_LIBC lib/uikit_bind_c.c lib/uikit_stubs.o`), plasma
   includes `onyxpp.hpp` (UIKit's C++ bind needs its `operator new`). **Jet** (built apart,
-  `tools/webkit/build-web.sh`) needs a rebuild to get its window features back (its direct window calls -- the
-  frame's chrome, the console's and downloads' windows -- hit retired slots until then): its sources are
-  migrated. `fsrace` (a kernel test) keeps the kernel's `kapi_fullscreen_*`.
+  `tools/build-jet.sh`): its sources are migrated and it was **rebuilt on 2026-10-08** from `721153c95`
+  (the user tried it on the Pi: it works), published as `jet 2.0.14`, then `2.0.15` with its needs raised
+  (`uikit >= 1.850`). A WebKit tree patched before the `user/Libs` move stops at CMake on `user/gpucomp`:
+  re-apply the series on the pin (docs/08's note). `fsrace` (a kernel test) keeps the kernel's `kapi_fullscreen_*`.
 - **Tests (PC)**: `shots.sh` before / after into scratch folders: **173 pictures, 0 pixels different** (letters,
   paint, sheet, slides, pdf do not build on the PC at HEAD already -- PrinterKit's symbols; unchanged).
   `desktop_sim/run.sh` (wmtest + gallery): identical. The tests' scripts: as before (archiver, circuits_sim,
@@ -735,7 +736,7 @@ UIKit is the only code that speaks its server's protocol.
   (they return 0 / their error); the new UIKit and the rebuilt programs run on the old AppKit too (UIKit needs
   only `kapi_ws_ctl`, kapi 89: `tools/pkg/packages.ini` `[uikit] kapi = 89`). So the packages may arrive in any
   order; publish them together anyway (UIKit before the apps that call `uk_win_*`: their `needs` on the new
-  `uikit` version). Jet: rebuild and republish.
+  `uikit` version). Jet: rebuilt and republished (2026-10-09, `jet 2.0.15`).
 - **Pi checklist** (not done):
   1. Build and stage everything (kernel, AppKit, UIKit, every app and `/bin` tool, Elegant, Doom); boot: the
      desktop as before (wallpaper, menu bar with its tray, dock, agenda, stickies, notifyd's bubbles).
