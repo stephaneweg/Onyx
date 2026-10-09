@@ -1541,8 +1541,10 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
 - **Tests**: `tools/tests/server_sim/run.sh`'s `conshots` (800 × 480, 1920 × 1080, 640 × 480 in French): the home
   is the whole screen, Right / Down move, F10 shows and Esc hides the menu; over an app with menus: the menu, its
   File menu, Esc twice — the app still in front. Pictures `consolehome-*.png` (`CONSOLE_PNG=<folder>`).
+- **The tip**: a third window (`W_TIP`, see-through, parked): `front_look ()` shows it for 3 s when another app
+  comes to the front (`tip_show`, `tip_tick`).
 - **Not done** (the study's §7.5): the quick menu of games (save / load state — the emulators have no common
-  call for it yet), the pointer held at the top edge, the hint when an app starts, the library's ROMs on the home
+  call for it yet), the pointer held at the top edge, the library's ROMs on the home
   (the Game Library is a tile of *Games*), `PK_OP_TOOLS`. A full-screen game (the kernel's direct path) hides the
   menu: the emulators are to stay windowed in console (a window fills the screen there).
 

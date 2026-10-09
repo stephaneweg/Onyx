@@ -792,7 +792,7 @@ Multimedia, System, Settings — the Control Panel's applets), the chosen one li
 without one), **F10**, the **Super** key, a right click at home: *Resume* the app, **the app's own menus** (File ›,
 Edit ›... — its commands, since console has no menu bar), *Home*, the other open apps (to switch to), *Close* the
 app, *Settings* (the Control Panel), *Shut Down*. While the menu is up the pad is the menu's: the game under it
-reads nothing.
+reads nothing. When an app comes to the front, a small **Home · Menu** tip shows at the top right for three seconds.
 
 | Pad | Keyboard | What |
 |---|---|---|

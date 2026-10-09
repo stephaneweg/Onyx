@@ -51,7 +51,7 @@ static FtTextFace *F (int lp)
 	return g_faces[lp];
 }
 
-enum { W_HOME = 0, W_OVER = 1 };
+enum { W_HOME = 0, W_OVER = 1, W_TIP = 2 };
 static Canvas g_hc, g_oc;
 static int g_homeStride, g_overStride;
 static bool g_homeDirty = true, g_overDirty;
@@ -644,15 +644,47 @@ static unsigned pad_any (void)
 // keys to the app in front): the d-pad the arrows, A Enter, B Esc, X Space, Y Tab, L1 / R1 Ctrl+Page Up / Down (the
 // tabs), L2 / R2 Page Up / Down.
 static bool g_padKeys;
+// THE TIP: an app that comes to the front fills the screen with nothing of the shell's left -- for three seconds a
+// small pill at the top right says how to get the menu ("Home  Menu"; a third window, see-through, parked after).
+static Canvas g_tc;
+static int g_tipW, g_tipH;
+static unsigned g_tipT;
+static bool g_tipOn;
+static void tip_hide (void)
+{
+	if (!g_tipOn) return;
+	g_tipOn = false;
+	uk_win_select (W_TIP); uk_win_alpha (0); uk_win_move (-g_sw - 50, 0); uk_win_select (0);
+}
+static void tip_show (void)
+{
+	if (g_tc.px == 0 || g_menu) return;
+	Canvas &cv = g_tc;
+	for (int i = 0; i < cv.stride * g_tipH; i++) cv.px[i] = CLEAR;
+	uk_paint_alpha (true);
+	lk_fill (cv, 0, 0, g_tipW, g_tipH, g_tipH / 2, 0x101C38, 0x0A1428, 225);
+	lk_ring (cv, 0, 0, g_tipW, g_tipH, g_tipH / 2, 16, 0x5E86C8, 220);
+	hint (cv, D (10), (g_tipH - (F (12) ? D (12) + D (12) : D (24))) / 2, "Home", 0x9AA8C0, TR ("Menu"));
+	uk_paint_alpha (false);
+	uk_win_select (W_TIP); uk_win_move (g_sw - g_tipW - D (16), D (14)); uk_win_alpha (255); uk_win_raise (0); uk_win_present (); uk_win_select (0);
+	g_tipOn = true; g_tipT = kapi_get_ticks ();
+}
+static void tip_tick (void) { if (g_tipOn && (kapi_get_ticks () - g_tipT > 300 || g_menu || g_home)) tip_hide (); }
+
 static void front_look (void)				// (after tasks_read: who is in front)
 {
+	static char s_was[32];
+	char now[32] = "";
 	g_padKeys = false;
 	for (int i = 0; i < g_ntasks; i++)
 		if (g_tasks[i].flags & UK_TASK_FRONT)
 		{
 			App *a = find_app (g_tasks[i].name);
 			g_padKeys = !(a && (ieq (a->cat, "Games") || ieq (a->cat, "Emulators")));
+			fs_copy (now, g_tasks[i].name, sizeof now);
 		}
+	if (now[0] && !ieq (now, s_was)) tip_show ();		// (another app in front: the tip)
+	fs_copy (s_was, now, sizeof s_was);
 }
 static void pad_type (unsigned press, unsigned held, bool rep)
 {
@@ -805,6 +837,16 @@ int main (void)
 	g_oc.adopt (ob, g_sw, g_sh, g_overStride);
 	uk_win_select (W_OVER); uk_win_on_pointer (ptr); uk_win_alpha (0); uk_win_move (-g_sw - 50, 0); uk_win_present ();
 	uk_win_select (0);
+	{	// the tip's window (made on the screen, see-through, then parked off it)
+		unsigned *tb = 0;
+		g_tipW = D (122); g_tipH = D (34);
+		if (uk_win_new (0, 0, g_tipW, g_tipH, "consolehome tip", WIN_FLAG_TOPMOST | WIN_FLAG_BORDERLESS | WIN_FLAG_ALPHA | WIN_FLAG_SYSTEM, &tb) == W_TIP)
+		{
+			for (int i = 0; i < g_tipW * g_tipH; i++) tb[i] = CLEAR;
+			g_tc.adopt (tb, g_tipW, g_tipH, g_tipW);
+			uk_win_select (W_TIP); uk_win_alpha (0); uk_win_move (-g_sw - 50, 0); uk_win_present (); uk_win_select (0);
+		}
+	}
 
 	kapi_ipc_register (SHELL_SERVICE);
 	scan_apps ();
@@ -839,6 +881,7 @@ int main (void)
 		}
 		if (g_homeDirty && g_home) draw_home ();
 		if (g_overDirty && g_menu) draw_menu ();
+		tip_tick ();
 		msleep (g_menu ? 16 : 30);
 	}
 	return 0;
