@@ -1,5 +1,8 @@
 # Onyx on the Raspberry Pi 3 (and the Zero 2 W) — the porting study
 
+> **Set aside by the user on 2026-10-09: no Pi 3 port for now -- do not start it unasked.** The study stays for
+> the record.
+>
 > **A study only (2026-10-09), nothing built.** It comes from a read-only audit of the tree at `7dc12c1d` (the
 > Circle fork at `ec821a94`, upstream Circle 51.1.1) and follows the shape of [`PI5-PORT.md`](PI5-PORT.md). Line
 > numbers drift: search for the symbol when a reference is off. **(verify)** marks what only a board on the desk
