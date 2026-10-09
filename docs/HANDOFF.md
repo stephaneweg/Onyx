@@ -4,6 +4,15 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Onyx Remote: the keys sent from its desktop view (2026-10-09, night) -- NOT tried on a PC yet
+
+RDP's keyboard still dead in console mode on 2026.10.151: Onyx Remote sent the keys only from a RemoteWindow (a
+framed Onyx window), never from the desktop view (`DeskView`), and rdpd's trick (the console home told as a plain
+window) did not suffice. `pc/OnyxRemote/MainForm.cs`: `DeskView` is selectable, takes the focus on a click, when the
+form is activated and when no Onyx window remains, and sends the keys as RemoteWindow does (F11, Ctrl+Shift+S / W
+stay Onyx Remote's). Built on Linux with the .NET 8 SDK (`dotnet-install.sh`, `pc/build.sh`'s line):
+`pc/dist/OnyxRemote.exe`.
+
 ## Setup's interface choice fixed (2026-10-09, night) -- NOT tried on the Pi yet
 
 The user's report: the console chosen on Setup's welcome page, nothing started at its end, and after a reboot the

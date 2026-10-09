@@ -1629,7 +1629,9 @@ again (see below) the bar stays shown, the Pi's name followed by *(reconnecting.
   closes the app, the window menu, minimise and maximise are pressed on the Pi). Move it by its
   title bar inside Onyx Remote: **the Pi's window is put at the same place** (with an up-to-date
   rdpd — an older one leaves it where it was); moved or maximised on the Pi, it follows; its close button (or Alt+F4) closes the Onyx app; clicking a window brings it to
-  the front on the Pi too, so it gets the keyboard. The keys are typed with the PC's layout.
+  the front on the Pi too, so it gets the keyboard. The keys are typed with the PC's layout. With no Onyx window of its own in Onyx Remote (the console's home, the
+  pocket launcher), a click on the Pi's screen gives it the keys: they go to whatever has the keyboard on the Pi (since
+  2026-10-09; before, nothing typed there was sent).
   A minimised window, or one on another workspace, is not shown (as on the Pi).
 - **Over the windows, see-through as on the Pi**: the menu bar's menus (and its volume box and
   calendar), the **dock** and its drawers, the **notifications**, the Wi-Fi menu — the parts

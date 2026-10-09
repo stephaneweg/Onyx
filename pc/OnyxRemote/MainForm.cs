@@ -101,7 +101,8 @@ namespace OnyxRemote
 		public DeskView (MainForm m)
 		{
 			main = m;
-			SetStyle (ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+			SetStyle (ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Selectable, true);
+			TabStop = true;
 			BackColor = Color.FromArgb (16, 18, 28);
 		}
 		protected override void OnPaint (PaintEventArgs e)
@@ -125,9 +126,57 @@ namespace OnyxRemote
 			bool all = main.DesktopShown;
 			c.Pointer (WinModel.DESKTOP_ID, e.X, e.Y, all ? RemoteWindow.Buttons (MouseButtons) : 0, all ? wheel : 0);
 		}
-		protected override void OnMouseDown (MouseEventArgs e) { Send (e, 0); }
+		protected override void OnMouseDown (MouseEventArgs e) { if (!Focused) Focus (); Send (e, 0); }
 		protected override void OnMouseUp (MouseEventArgs e) { Send (e, 0); }
 		protected override void OnMouseMove (MouseEventArgs e) { Send (e, 0); }
+
+		// ---- the keyboard (2026-10-09): with no Onyx window of its own here (the console's home, the pocket launcher,
+		// an app told as a picture...) the keys typed over the Pi's screen still go to the Pi -- its graphics server
+		// gives them to the window that has the keyboard there. As RemoteWindow's; F11, Ctrl+Shift+S / W stay
+		// Onyx Remote's (MainForm). Without this nothing typed was sent ("the RDP keyboard in console mode").
+		public void TakeKeys () { if (Visible && !ContainsFocus) Focus (); }	// (not from one of its windows)
+		protected override bool IsInputKey (Keys keyData) { return true; }	// (the arrows, Tab: to the Pi, not the dialog's navigation)
+		protected override bool ProcessCmdKey (ref Message msg, Keys keyData)
+		{
+			const int WM_KEYDOWN = 0x100, WM_SYSKEYDOWN = 0x104;
+			var c = main.Conn;
+			if (c == null || keyData == Keys.F11 || keyData == (Keys.Control | Keys.Shift | Keys.S) || keyData == (Keys.Control | Keys.Shift | Keys.W))
+				return base.ProcessCmdKey (ref msg, keyData);
+			if (msg.Msg == WM_KEYDOWN || msg.Msg == WM_SYSKEYDOWN)
+			{
+				Keys k = keyData & Keys.KeyCode;
+				uint sym = KeyMap.Special (k);
+				if (sym != 0 && !KeyMap.IsModifier (k)) { c.Key (true, false, sym); return true; }
+			}
+			return base.ProcessCmdKey (ref msg, keyData);
+		}
+		protected override void OnKeyDown (KeyEventArgs e)
+		{
+			var c = main.Conn;
+			if (c == null) return;
+			if (KeyMap.IsModifier (e.KeyCode)) c.Key (true, false, KeyMap.Special (e.KeyCode));
+			else { uint hk = KeyMap.Held (e.KeyCode); if (hk != 0) c.Key (true, true, hk); }
+			if (e.Alt && e.KeyCode == Keys.F4) return;
+			e.Handled = true;
+		}
+		protected override void OnKeyUp (KeyEventArgs e)
+		{
+			var c = main.Conn;
+			if (c == null) return;
+			uint s = KeyMap.Special (e.KeyCode);
+			if (s != 0) c.Key (false, false, s);
+			else { uint hk = KeyMap.Held (e.KeyCode); if (hk != 0) c.Key (false, true, hk); }
+			e.Handled = true;
+		}
+		protected override void OnKeyPress (KeyPressEventArgs e)
+		{
+			var c = main.Conn;
+			if (c == null) return;
+			char ch = e.KeyChar;
+			if (ch == '\r' || ch == '\b' || ch == '\t' || ch == (char) 27) return;	// (sent as keys)
+			if (ch < 256) c.Char (ch);
+			e.Handled = true;
+		}
 	}
 
 	// The scrolling area: stays where it is scrolled when a child takes the focus (a click on the
@@ -300,6 +349,7 @@ namespace OnyxRemote
 			desk.Location = Point.Empty;
 			desk.Size = new Size (Math.Max (1, c.ScreenW), Math.Max (1, c.ScreenH));
 			desk.Visible = true;
+			desk.TakeKeys ();
 			var area = Screen.FromRectangle (openedNear).WorkingArea;
 			WindowState = FormWindowState.Normal;
 			Location = area.Location;
@@ -341,6 +391,9 @@ namespace OnyxRemote
 			if (fullBar.Visible && (DateTime.Now - fullAway).TotalMilliseconds > 1000) fullBar.Hide ();
 			else if (onEdge || lost || fullBar.Visible) fullBar.ShowOn (scr, name);
 		}
+
+		// Back to Onyx Remote: the keys to the Pi at once (the desktop view's, when no Onyx window has them)
+		protected override void OnActivated (EventArgs e) { base.OnActivated (e); if (desk != null && Conn != null) desk.TakeKeys (); }
 
 		// F11: the full screen on and off; Ctrl+Shift+S / Ctrl+Shift+W: a quick screenshot of the
 		// screen / of the active window (the keys go to the Pi otherwise)
@@ -567,6 +620,7 @@ namespace OnyxRemote
 				}
 				foreach (var id in new List<uint> (wins.Keys))
 					if (!keep.Contains (id)) { wins[id].GoneOnPi = true; wins[id].Close (); wins.Remove (id); }
+				if (Form.ActiveForm == this) desk.TakeKeys ();		// (no Onyx window has the keys here: the desktop view takes them)
 				foreach (var id in new List<uint> (overlays.Keys))
 					if (!keepOver.Contains (id)) { overlays[id].Close (); overlays.Remove (id); }
 				foreach (var id in new List<uint> (bubbles.Keys))
