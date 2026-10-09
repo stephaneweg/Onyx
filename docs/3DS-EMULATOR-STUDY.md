@@ -307,8 +307,19 @@ The core's skeleton, `user/Emulators/n3ds/` (`n3ds.h` declares everything), and 
   "Game Over" in our font, the d-pad obeyed (it draws one game frame every 8 VBlanks: taken to be the game's own
   pace, not verified against a console). *Cube Adventures* shows its menu and runs. *2048* still right. *Mars*
   stops for want of `cfg:u`.
-- **No test of our own for the GPU yet**: what checks it is the homebrew's pictures. To write: a test program with
-  a shader of ours (the T2 item "our 3D tests"), its picture's checksum in `tools/tests/n3ds/expect/`.
+- **The GPU's own test** (`tools/tests/n3ds/src/gpu.c`, no library): a command list of its own with a vertex
+  shader written as the GPU's machine words (7 entry points), read back from the tiled colour buffer -- flat and
+  interpolated colours to the pixel (a rectangle's first and last pixels, none further), MAD with a 24-bit
+  uniform, CMP / IFC both ways, LOOP over indexed uniforms, MOVA, MIN / MAX / RCP / SGE, RSQ / FLR / MUL / DP3 /
+  SLT, CALL; an RGBA8 texture's texels (replace, modulate), an A4 texture with a constant colour, blending, a logic
+  operation, the colour mask, the depth test, culling, the scissor's edges, vertices given one by one, indexed
+  triangles, a fan; the display transfer. **51 checks, 0 failed**, the picture's checksum in
+  `tools/tests/n3ds/expect/gpu.crc`. One unit is allowed where a colour of exactly one half is expected (127 or
+  128: what the console does there is not known to us). The expected values were worked out from the GPU's rules
+  before the first run: 46 of 51 passed at once, the 5 others were that half.
+- **Not covered by it**: the other texture formats and wrap modes, strips' winding, clipping, the other blend
+  factors and depth formats, the display transfer's flip / scaling / other formats, uniforms' boolean flow (IFU,
+  JMP), DP4's use aside from the position.
 
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
