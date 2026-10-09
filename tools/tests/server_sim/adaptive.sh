@@ -11,7 +11,7 @@
 #   - the pilots: the Task Manager (the grid's roles: cards in portrait), the Terminal (its tabs, no source change);
 #   - the viewport: Setup (800 x 600, fixed) at 800 x 480 scrolled by the wheel over its indicator;
 #   - the File Viewer: resizable, its places a SidePanel in pocket (landscape, portrait's drawer) and console.
-# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar irc ledger archiver iconedit fmtracker]
+# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar irc ledger archiver iconedit fmtracker telegram]
 # SHOTS_PNG=<folder>: the pictures copied there too (docs/compact-shell/real/).
 set -e
 cd "$(dirname "$0")/../../.."
@@ -358,6 +358,26 @@ if want fmtracker; then
 		run pocket_fmtracker fmtracker-720-fr "$WWW;dump $OUT/fmtracker-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=fmtracker SIM_APP=fmtracker SIM_WRITES=$WR $F
 		out fmtracker-720-fr
 	else echo "adaptive: FM Tracker skipped (no $MS/libaudiokit.a: sh tools/tests/desktop_sim/shots.sh fmtracker)"; fi
+fi
+
+# ---- P7: Telegram (--demo): the list and a conversation side by side in landscape, the list alone in a narrow window ------
+# mbedTLS for the PC from shots.sh's folder (MEDIA_SHOTS: libmbtg.a), FileKit and zlib compiled in; skipped without it.
+if want telegram; then
+	MS=${MEDIA_SHOTS:-/tmp/onyx_shots}; M=third_party/mbedtls-3.6.3
+	if [ -f "$MS/libmbtg.a" ]; then
+		echo "adaptive: Telegram"
+		mkdir -p "$OUT/tgz"
+		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/tgz/$f.o"; done
+		ftapp pocket telegram uikit_pocket -I$M/include -Ithird_party/zlib-1.3.1 -Iuser/Kits/filekit user/Kits/filekit/fkcore.cpp "$OUT"/tgz/*.o "$MS/libmbtg.a"
+		# tgrun <name> <screen> <mode> <windows=>: the demo's conversations
+		tgrun () { WR=$(langdir ""); mkdir -p "$WR/apps/telegram.app"; printf '[telegram]\nwindows=%s\n' "$4" > "$WR/apps/telegram.app/config.ini"
+			run pocket_telegram $1 "$WWW;expect kind fill;expect frame 0;$W;dump $OUT/$1.elsm" SIM_SCREEN=$2 SIM_MODE=$3 SIM_APPNAME=telegram SIM_APP=telegram SIM_WRITES=$WR SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify
+			out $1; }
+		tgrun telegram-800 800x480 pocket 0
+		tgrun telegram-720 1280x720 pocket 0
+		tgrun telegram-portrait 480x800 pocket 0
+		tgrun telegram-console 640x480 console 0
+	else echo "adaptive: Telegram skipped (no $MS/libmbtg.a: sh tools/tests/desktop_sim/shots.sh telegram)"; fi
 fi
 
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1

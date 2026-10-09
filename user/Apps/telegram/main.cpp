@@ -90,6 +90,12 @@ static void save_api (int id, const char *hash)
 
 // ---- the layout -----------------------------------------------------------------------------------------
 
+// (P7) Pocket and console: in a window too narrow for the list and a conversation side by side (under 720 px:
+// portrait, a small console) the conversations take their own windows whatever "windows=" says -- PocketUI shows one
+// window at a time, so a conversation covers the list and closing it comes back (the study's master-detail).
+static bool pocket_mode (void) { return uk_size_class () != UK_SC_REGULAR; }
+static bool windowed (void) { return g_windowed || (pocket_mode () && g_root && g_root->width < 720); }
+
 static void place (Widget *w, int x, int y, int ww, int hh) { w->left = x; w->top = y; w->resizeTo (ww < 1 ? 1 : ww, hh < 1 ? 1 : hh); w->invalidate (true); }
 
 // A conversation's pane (buddylist.h, TgPane) placed at x in a window w x h (its height from the top): the
@@ -118,7 +124,7 @@ static void relayout ()
 	Root &r = *g_root;
 	int w = r.width, h = r.height - SB_H;
 	bool ready = g_c.state == tg::AS_READY;
-	bool list_only = ready && g_windowed;		// (the conversations in their own windows)
+	bool list_only = ready && windowed ();		// (the conversations in their own windows)
 	g_signin->hidden = ready;
 	place (g_signin, 0, 0, w, r.height);
 	g_list->hidden = !ready;
@@ -155,7 +161,8 @@ static void main_size (int cw, int ch)
 static void apply_mode ()
 {
 	Root &r = *g_root;
-	bool list_only = g_windowed && g_c.state == tg::AS_READY;
+	bool list_only = windowed () && g_c.state == tg::AS_READY;
+	if (pocket_mode ()) { relayout (); return; }		// (PocketUI fills the window: its size is not ours to choose)
 	if (list_only && r.width > LIST_WIN_W + 40) { r.setMinSize (300, 400); main_size (LIST_WIN_W, r.height); }
 	else if (!list_only && r.width < 720) { main_size (W0, r.height < H0 ? H0 : r.height); r.setMinSize (720, 500); }
 	relayout ();
@@ -169,7 +176,7 @@ static void close_windows ();
 static void open_conversation (long long peer)
 {
 	if (!peer) return;
-	if (g_windowed && g_c.state == tg::AS_READY && open_window (peer)) return;
+	if (windowed () && g_c.state == tg::AS_READY && open_window (peer)) return;
 	tg_use (&g_mainPane);
 	g_open = peer;
 	if (g_demo) { tg::Conv *c = g_c.conv (peer); if (c) { c->unread = 0; c->rev++; } g_c.rev++; }
@@ -651,7 +658,7 @@ static bool open_window (long long peer)
 // Is this conversation on the screen? (its window, or beside the list)
 static bool peer_shown (long long peer)
 {
-	if (!g_windowed && peer == g_mainPane.open) return true;
+	if (!windowed () && peer == g_mainPane.open) return true;
 	for (int i = 0; i < KAPI_WS_WINDOWS_MORE; i++)
 		if (g_wins[i] && !g_wins[i]->gone && g_wins[i]->pane.open == peer) return true;
 	return false;
@@ -702,6 +709,7 @@ class TgRoot : public Root
 public:
 	TgRoot (int w, int h) : Root (w, h, "Telegram"), m_state (-1), m_title (0) {}
 	void onResized () override { relayout (); }
+	void onSizeClass (int) override { relayout (); }
 	void onTick () override
 	{
 		tg_use (&g_mainPane);

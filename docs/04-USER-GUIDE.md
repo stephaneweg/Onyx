@@ -4024,6 +4024,12 @@ message, reactions. **Randomness:** the keys of the connection are made with a r
 from several sources (the system's, the processor's timing jitter, your typing, a seed kept from the
 previous start), as the Pi's hardware generator cannot be used yet — good, not perfect (docs/03).
 
+**In the pocket and console modes** (the same program): on a landscape screen the list and the conversation sit
+side by side as on the desktop (the contact's pictures' column shows from 640 pixels of conversation); in a narrow
+window (portrait) the list fills the screen and **a conversation opens over it, in its own window** — closing it
+(or the launcher's switcher) comes back to the list — whatever *View ▸ Conversations in Their Own Windows* says.
+
+
 ### Ledger, the accounts (`ledger`)
 
 ![Ledger](../screenshots/ledger.png)

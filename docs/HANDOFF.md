@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail, the Calendar, IRC, Ledger, the Archiver, the Icon Editor and FM Tracker migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, published
+## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail, the Calendar, IRC, Ledger, the Archiver, the Icon Editor, FM Tracker and Telegram migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, published
 
 P7 is the apps' migration to P6's adaptive widgets (`docs/POCKETUI-TECH-STUDY.md` §6.15, §9: about 32 session-days, one
 app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10.6):
@@ -129,6 +129,13 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   grid, the channels' heads and the piano take the width. The desktop: unchanged. Translated: 133 words. Its toolbar is
   a fixed row: in a 480 px portrait window the edit buttons are under *Follow* (the menus have them) -- to do with the
   toolbars' pass. `adaptive.sh <out> fmtracker` (needs `MEDIA_SHOTS`'s AudioKit): 8 checks.
+- **Telegram** (`user/Apps/telegram/main.cpp`; translated before): it needed little -- its conversations already open
+  in their own windows by default (`windows=1`: under PocketUI, one window at a time, that IS the master-detail), and a
+  pane under 640 px drops the contact's pictures' column by itself. Added: `windowed ()` -- in pocket and console a
+  window under 720 px takes the own-window mode whatever `windows=` says (the list alone, a conversation over it);
+  `apply_mode` no longer resizes the main window there (PocketUI fills it). The contact's column as an inspector
+  SidePanel: not done (it hides itself when narrow). `adaptive.sh <out> telegram` (`--demo`, `windows=0`; needs
+  `MEDIA_SHOTS`'s `libmbtg.a`): side by side at 800 x 480 and 1280 x 720, the list alone at 480 x 800; 8 checks.
 - **Tests (PC)**: `sh tools/tests/server_sim/adaptive.sh <out> media` and `... photos` -- each app under PocketUI at
   800 x 480 (the rail; the rail expanded under the pointer), 1280 x 720 (whole; in French), 480 x 800 (the drawer's tab;
   the drawer opened), console 640 x 480 (the column): 8 checks each, all pass; the pictures looked at. The Media
@@ -164,8 +171,7 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   `DataGrid` with roles (in portrait its columns are cut, not cards), their custom dialogs on `FormDialog`
   (`InputBox`, `PropsBox`, `VPropsBox`, `NameBox`: the scrolling sheet meanwhile), `uk_set_input_type` on the
   search fields. Media's pages (the album's band, the videos' grid) were looked at in landscape only.
-- **Next apps, in the study's order**: Courier, PDF, Slides, Paint, QBStudio, 3DForge,
-  Telegram's pane; then the toolbars, tabs, dialog bases, tables;
+- **Next apps, in the study's order**: Courier, PDF, Slides, Paint, QBStudio, 3DForge; then the toolbars, tabs, dialog bases, tables;
   the Control Panel's applets laid out in their pane (Theme first).
 
 ## The pocket launcher v2; Onyx is Home in pocket; the shell's scale after a switch; full screen in Onyx Remote (2026-10-08): built, tested on the PC, NOT yet on the Pi, committed (not pushed), not published
