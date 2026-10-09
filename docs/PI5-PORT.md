@@ -40,6 +40,13 @@
 > board first), the menu bar's network icon for Ethernet (it shows the Wi-Fi icon, connected), the RP1's PWM, the
 > 16 GB layout (policy B), a Pi-5-tuned userland and TLS with the crypto extensions (§10 items 2, 8), NVMe.
 >
+> **First test on a board (a tester's Pi 500, 2026-10-09):** the boot log showed, then the screen went black when the
+> desktop came, the ACT LED blinking slowly (the kernel running, no network). Cause taken: the Pi 5's display takes
+> the alpha byte, Onyx's pixels have 0 (`framebuffer_ignore_alpha=1` not honoured on the Pi 500). Fixed in the fork
+> (patch 31, docs/05: `C2DGraphics` makes the presented pixels opaque) and the direct full-screen mode turned off on
+> the Pi 5 (`fullscreen_direct` → 0). Onyx needs `framebuffer_depth=32`: with 24 the kernel stops early (the LED
+> dark). **To check again** on the board.
+>
 > The fork was then brought to upstream **Circle 51.1.1** (docs/05 *Upstream merges*: for the Pi 5 the DSI
 > touchscreens, the RP1's I2C 4 and 6, the xHCI endpoint recovery); both kernels build on it.
 >

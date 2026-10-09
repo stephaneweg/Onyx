@@ -1064,6 +1064,21 @@ address was asked on the other one. The kernel (`kernel/kernel.cpp`, `CNetBringu
 `GetNetDeviceLayer ()`. Unused with `network = wlan` (the Pi 4's default): the Pi 4 runs as before. **Not tested on
 a board yet.** Fork commit `ec821a94`.
 
+## 31. The Pi 5's presented pixels made opaque
+
+**Why.** The first test on a board (a Pi 500, 2026-10-09, a tester's report): the boot log showed, then the
+screen went black when the desktop came, the ACT LED still blinking (the kernel alive). Onyx's pixels are
+`0x00RRGGBB` (the alpha byte 0) and the Pi 5's display takes the alpha: the log's text, Circle's colours with alpha
+255, showed; the desktop, alpha 0, was transparent. `framebuffer_ignore_alpha=1` in `config.txt` (on the Pi 5's
+card) was not honoured there.
+
+**What.** `C2DGraphics::Opaque` (`include/circle/2dgraphics.h`, `lib/2dgraphics.cpp`, `#if RASPPI >= 5 && DEPTH ==
+32`): the rectangle's alpha bytes set to 0xFF in the off-screen buffer before it is sent (`UpdateDisplay`, the
+partial `UpdateDisplay`, `UpdateDisplayAsync`, `UpdateDisplayStart`) -- one pass over the presented rows, before
+the DMA cleans them from the cache. The Pi 4 is unchanged. With it, the kernel's direct mode (`fullscreen_direct`:
+a program writing the displayed framebuffer itself, n64emu and gcemu) is off on the Pi 5 (`MapScreen` gives 0: the
+programs present through `fullscreen_begin` / `present_fb`). Fork commit `9266885b`. **Not tested on a board yet.**
+
 ## Contributions to upstream Circle
 
 The fork's changes useful to every Circle user are prepared as clean pull-request branches on

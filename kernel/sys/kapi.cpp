@@ -420,6 +420,12 @@ static boolean FsDirect (CWindowManager *pWM)
 // kernel's own map of it is Device memory, slow to read); its first pixel's VA, 0 if none.
 static unsigned *MapScreen (CAddressSpace *pAS, unsigned *pPitch)
 {
+#if RASPPI >= 5
+	// The Pi 5's display takes the alpha byte and the programs write 0 (0x00RRGGBB): a program writing
+	// the screen itself would be invisible. No direct mode there: the program presents (fullscreen_begin
+	// / present_fb), C2DGraphics making the pixels opaque on their way (the fork, docs/05 patch 31).
+	return 0;
+#endif
 	CBcmFrameBuffer *pFB = g_pGraphics != 0 && pAS != 0 ? (CBcmFrameBuffer *) g_pGraphics->GetDisplay () : 0;
 	if (pFB == 0 || pFB->GetDepth () != 32 || pFB->GetBuffer () == 0)
 	{
