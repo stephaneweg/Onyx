@@ -563,7 +563,7 @@ void Arm::updateTcm ()
 	if (cpCtl & 0x10000) { dtcmBase = cpDtcm & 0xFFFFF000 & ~(ds - 1); dtcmSize = ds; }
 	else { dtcmBase = 0xFFFFFFFF; dtcmSize = 0; }
 	itcmSize = (cpCtl & 0x40000) ? is : 0;
-	m->pagesDirty = true;
+	m->pagesRange (0, 0xFFFFFFFF);				// (the ARM9's only would do: rare)
 }
 
 void Arm::execArm (u32 op)

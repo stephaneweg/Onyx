@@ -20,7 +20,7 @@ Machine::Machine ()
 	gpu3d.fifoCmd = new u32[Gpu3D::FIFO_SIZE];
 	gpu3d.fifoPar = new u32[Gpu3D::FIFO_SIZE * 2];
 	for (int i = 0; i < 2; i++) { gpu3d.vram[i] = new Vertex[Gpu3D::MAX_VERTS]; gpu3d.pram[i] = new Polygon[Gpu3D::MAX_POLYS]; }
-	cart.rom = 0; cart.romSize = 0; cart.romMask = 0; cart.save = 0; cart.saveSize = 0; cart.saveType = SAVE_UNKNOWN; cart.saveDirty = false;
+	cart.rom = 0; cart.romSize = 0; cart.romMask = 0; cart.save = new u8[Cart::SAVE_MAX]; cart.saveSize = 0; cart.saveType = SAVE_UNKNOWN; cart.saveDirty = false;
 	render3dKick = 0; render3dCtx = 0; render3dWait = 0;
 	jit = 0; useJit = false;
 	bios7Key = 0; romCopy = 0;
@@ -116,7 +116,7 @@ void Machine::setSaveData (const u8 *data, u32 n)
 	else if (n == 0x20000) t = SAVE_EEPROM3;
 	else t = SAVE_FLASH;
 	cart.setType (t, n);
-	for (u32 i = 0; i < n; i++) cart.save[i] = data[i];
+	for (u32 i = 0; i < cart.saveSize && i < n; i++) cart.save[i] = data[i];
 	cart.saveDirty = false;
 	save = cart.save; saveSize = cart.saveSize; saveDirty = false;
 }
@@ -134,6 +134,7 @@ void Machine::reset ()
 	vramMap ();
 	arm9.reset (this, 0);
 	arm7.reset (this, 1);
+	arm9.rdTab = rdPage[0]; arm9.wrTab = wrPage[0]; arm7.rdTab = rdPage[1]; arm7.wrTab = wrPage[1];
 	gpuA.reset (this, 0); gpuB.reset (this, 1);
 	gpu3d.reset (this);
 	r3d.reset (this);
@@ -301,9 +302,10 @@ int Machine::audioRead (short *lr, int maxFrames)
 	return n;
 }
 
-void Machine::codeWritten (u32 a, int cpu)
+void Machine::codeWrittenSlow (u32 a, int kind)
 {
-	if (jit) jitInvalidate (this, cpu, a);
+	u8 *p = kind == 2 ? mainRam + (a & 0x3FFFFF) : kind == 0 ? host9 (a) : host7 (a);
+	if (p) jitInvalidateHost (this, p);
 }
 
 } // namespace nds

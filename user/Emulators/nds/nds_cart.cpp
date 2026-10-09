@@ -23,15 +23,15 @@ void Cart::reset ()
 	detectLen = 0; detectCmd = 0; spiOut = 0;
 }
 
+// (no allocation: the machine may run on an app core -- the buffer is made with the machine, SAVE_MAX)
 void Cart::setType (int t, u32 size)
 {
 	saveType = t;
+	if (size > SAVE_MAX) size = SAVE_MAX;
 	if (size != saveSize)
 	{
-		u8 *n = size ? new u8[size] : 0;
-		for (u32 i = 0; i < size; i++) n[i] = (save && i < saveSize) ? save[i] : 0xFF;
-		delete [] save;
-		save = n; saveSize = size;
+		for (u32 i = saveSize; i < size; i++) save[i] = 0xFF;
+		saveSize = size;
 	}
 	spiAddrBytes = t == SAVE_EEPROM512 ? 1 : t == SAVE_EEPROM ? 2 : 3;
 }

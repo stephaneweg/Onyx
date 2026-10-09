@@ -20,6 +20,9 @@
 #ifdef NDS_DEBUG
 namespace nds { extern u32 g_watch[2][2]; extern bool g_watchHit; }
 #endif
+#if defined(__aarch64__)
+namespace nds { extern unsigned g_jitNoKinds, g_jitNoDP; }
+#endif
 #if defined(__aarch64__) || defined(__x86_64__)
 #include <sys/mman.h>
 #endif
@@ -87,6 +90,10 @@ int main (int argc, char **argv)
 		FILE *sf = fopen (sav, "rb");
 		if (sf) { fseek (sf, 0, SEEK_END); long k = ftell (sf); fseek (sf, 0, SEEK_SET); unsigned char *b = (unsigned char *) malloc ((size_t) k); if (fread (b, 1, (size_t) k, sf) == (size_t) k) m->setSaveData (b, (unsigned) k); fclose (sf); free (b); }
 	}
+#if defined(__aarch64__)
+	if (getenv ("NDS_JITNODP")) nds::g_jitNoDP = (unsigned) strtoul (getenv ("NDS_JITNODP"), 0, 16);
+	if (getenv ("NDS_JITNO")) nds::g_jitNoKinds = (unsigned) strtoul (getenv ("NDS_JITNO"), 0, 16);
+#endif
 	if (getenv ("NDS_JIT") && atoi (getenv ("NDS_JIT"))) printf ("JIT: %s\n", m->jitEnable (hostCode) ? "on" : "unavailable");
 	m->setAudioRate (48000);
 	Range keys[64], touch[64];

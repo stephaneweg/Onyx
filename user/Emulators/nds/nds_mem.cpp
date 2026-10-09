@@ -79,7 +79,6 @@ void Machine::vramMap ()
 		}
 		#undef MAP
 	}
-	pagesDirty = true;
 }
 
 // the ARM9's VRAM: the region's page -> its mask (0 none)
@@ -154,47 +153,76 @@ static inline u8 *sharedWram7 (Machine *m, u32 a)
 
 extern bool jitPageHasCode (Machine *m, const u8 *host);
 
-void Machine::pagesUpdate ()
+// the pages of [from, to) (addresses, 16 KB aligned), both processors: the plain map, the TCMs over the
+// ARM9's, no write pointer where the JIT has code
+void Machine::pagesRange (u32 from, u32 to)
 {
-	pagesDirty = false;
+	u32 p0 = from >> PAGE_BITS, p1 = (u32) (((u64) to + 0x3FFF) >> PAGE_BITS);
 	for (int cpu = 0; cpu < 2; cpu++)
 	{
 		u8 **rp = rdPage[cpu], **wp = wrPage[cpu];
-		for (int i = 0; i < NPAGES; i++) rp[i] = wp[i] = 0;
-		for (u32 pg = 0x02000000 >> PAGE_BITS; pg < (0x03000000u >> PAGE_BITS); pg++) rp[pg] = wp[pg] = mainRam + ((pg << PAGE_BITS) & 0x3FFFFF);
-		for (u32 pg = 0x03000000 >> PAGE_BITS; pg < (0x04000000u >> PAGE_BITS); pg++)
+		for (u32 pg = p0; pg < p1; pg++)
 		{
 			u32 a = pg << PAGE_BITS;
-			u8 *p = cpu ? (a >= 0x03800000 ? wram7 + (a & 0xFFFF) : sharedWram7 (this, a)) : sharedWram9 (this, a);
+			u8 *p = 0;
+			switch (a >> 24)
+			{
+			case 0x02: p = mainRam + (a & 0x3FFFFF); break;
+			case 0x03: p = cpu ? (a >= 0x03800000 ? wram7 + (a & 0xFFFF) : sharedWram7 (this, a)) : sharedWram9 (this, a); break;
+			case 0x06:
+				if (cpu) { int ix = (int) (a >> 14) & 15; if (mapARM7[ix] && !(mapARM7[ix] & (mapARM7[ix] - 1))) p = ptrARM7[ix]; }
+				else { int ix; const u16 *map = vregion (this, a, ix); if (map && map[ix] && !(map[ix] & (map[ix] - 1))) p = vramPtr (a); }
+				break;
+			}
 			rp[pg] = wp[pg] = p;
+			if (cpu && pg == 0) rp[0] = bios7;			// (the ARM7's BIOS: read only)
 		}
-		if (cpu == 0)
+		if (cpu == 0)							// the TCMs over the rest (the ITCM wins)
 		{
-			for (u32 pg = 0x06000000 >> PAGE_BITS; pg < (0x07000000u >> PAGE_BITS); pg++)
-			{
-				u32 a = pg << PAGE_BITS;
-				int ix; const u16 *map = vregion (this, a, ix);
-				if (map && map[ix] && !(map[ix] & (map[ix] - 1))) rp[pg] = wp[pg] = vramPtr (a);
-			}
-			// the TCMs over the rest (the DTCM first, the ITCM wins)
 			if (arm9.dtcmSize >= 0x4000)
-				for (u32 a = arm9.dtcmBase; a - arm9.dtcmBase < arm9.dtcmSize; a += 0x4000) { rp[a >> PAGE_BITS] = wp[a >> PAGE_BITS] = dtcm; if (a + 0x4000 < a) break; }
-			else if (arm9.dtcmSize) rp[arm9.dtcmBase >> PAGE_BITS] = wp[arm9.dtcmBase >> PAGE_BITS] = 0;
-			for (u32 a = 0; a < arm9.itcmSize; a += 0x4000) rp[a >> PAGE_BITS] = wp[a >> PAGE_BITS] = itcm + (a & 0x7FFF);
+				for (u32 a = arm9.dtcmBase; a - arm9.dtcmBase < arm9.dtcmSize; a += 0x4000)
+				{
+					u32 pg = a >> PAGE_BITS;
+					if (pg >= p0 && pg < p1) rp[pg] = wp[pg] = dtcm;
+					if (a + 0x4000 < a) break;
+				}
+			else if (arm9.dtcmSize) { u32 pg = arm9.dtcmBase >> PAGE_BITS; if (pg >= p0 && pg < p1) rp[pg] = wp[pg] = 0; }
+			for (u32 a = 0; a < arm9.itcmSize; a += 0x4000) { u32 pg = a >> PAGE_BITS; if (pg >= p0 && pg < p1) rp[pg] = wp[pg] = itcm + (a & 0x7FFF); }
 		}
-		else
-		{
-			rp[0] = bios7;					// (the BIOS: read only)
-			for (u32 pg = 0x06000000 >> PAGE_BITS; pg < (0x07000000u >> PAGE_BITS); pg++)
-			{
-				u32 a = pg << PAGE_BITS;
-				int ix = (int) (a >> 14) & 15;
-				if (mapARM7[ix] && !(mapARM7[ix] & (mapARM7[ix] - 1))) rp[pg] = wp[pg] = ptrARM7[ix];
-			}
-		}
-		if (jit)						// (pages with translated code: written through the functions)
-			for (int i = 0; i < NPAGES; i++) if (wp[i] && jitPageHasCode (this, wp[i])) wp[i] = 0;
+		if (jit) for (u32 pg = p0; pg < p1; pg++) if (wp[pg] && jitPageHasCode (this, wp[pg])) wp[pg] = 0;
 	}
+}
+
+void Machine::pagesUpdate ()
+{
+	pagesDirty = false;
+	pagesRange (0, 0xFFFFFFFF);
+}
+
+u8 *Machine::host9 (u32 a)
+{
+	if (a < arm9.itcmSize) return itcm + (a & 0x7FFF);
+	if (a - arm9.dtcmBase < arm9.dtcmSize) return dtcm + (a & 0x3FFF);
+	switch (a >> 24)
+	{
+	case 0x02: return mainRam + (a & 0x3FFFFF);
+	case 0x03: return sharedWram9 (this, a);
+	case 0x06: return vramPtr (a);
+	case 0xFF: return a >= 0xFFFF0000 ? bios9 + (a & 0xFFF) : 0;
+	}
+	return 0;
+}
+
+u8 *Machine::host7 (u32 a)
+{
+	switch (a >> 24)
+	{
+	case 0x00: return a < 0x4000 ? bios7 + a : 0;
+	case 0x02: return mainRam + (a & 0x3FFFFF);
+	case 0x03: return a >= 0x03800000 ? wram7 + (a & 0xFFFF) : sharedWram7 (this, a);
+	case 0x06: return vramPtr7 (a);
+	}
+	return 0;
 }
 
 // ---- the ARM9 ---------------------------------------------------------------------------------------------------

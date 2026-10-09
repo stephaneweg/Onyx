@@ -77,10 +77,12 @@ struct Arm
 	// the ARM9's CP15
 	u32 cpCtl, cpDtcm, cpItcm;
 	u32 dtcmBase, dtcmSize, itcmSize;	// (size 0: off)
+	u8 **rdTab, **wrTab;				// the Machine's page tables of this processor
 	u32 cpRegs[64];				// the protection unit's settings and the rest: kept, unused
 	u32 excBase;				// 0xFFFF0000 or 0
 	// the JIT's
 	bool jitOn;
+	volatile bool jitExit;				// the block running must stop (its code changed, a halt...)
 #ifdef NDS_DEBUG
 	u32 hist[4096]; unsigned histN;			// the last instructions' addresses
 #endif
@@ -320,6 +322,7 @@ struct Cart
 	u32 xferAddr, xferLeft, xferPos; int xferCmd;
 	u32 dataLatch; bool dataReady;
 	// the save chip
+	enum { SAVE_MAX = 8 << 20 };
 	u8 *save; u32 saveSize; int saveType; bool saveDirty;
 	int spiState, spiCmd, spiAddrBytes, spiAddrGot; u32 spiAddr; bool spiWel; u8 spiStatus;
 	u8  detectBuf[300]; int detectLen; int detectCmd;	// (the first write, to find the chip)
@@ -417,7 +420,8 @@ public:
 	// the fast memory tables (16 KB pages; 0: through the functions) -- the interpreter and the JIT
 	enum { PAGE_BITS = 14, NPAGES = 1 << 18 };
 	u8 **rdPage[2], **wrPage[2];
-	void pagesUpdate ();				// after a map changes (WRAMCNT, VRAMCNT, TCMs)
+	void pagesUpdate ();				// all of them (the reset, the JIT flushed)
+	void pagesRange (u32 from, u32 to);		// a range, after its map changed (WRAMCNT, VRAMCNT, the TCMs)
 	bool pagesDirty;
 
 	// buses (nds_mem.cpp)
@@ -435,7 +439,10 @@ public:
 	void io9Write32 (u32 a, u32 v); void io9Write16 (u32 a, u32 v); void io9Write8 (u32 a, u32 v);
 	u32  io7Read32 (u32 a); u32 io7Read16 (u32 a); u32 io7Read8 (u32 a);
 	void io7Write32 (u32 a, u32 v); void io7Write16 (u32 a, u32 v); void io7Write8 (u32 a, u32 v);
-	void codeWritten (u32 a, int cpu);		// a write where the JIT has code
+	void codeWritten (u32 a, int kind) { if (jit) codeWrittenSlow (a, kind); }	// a write (kind: 0 the ARM9's view, 1 the ARM7's, 2 main memory)
+	void codeWrittenSlow (u32 a, int kind);
+	u8  *host9 (u32 a);				// where an ARM9 / ARM7 address is in memory (0: I/O or nothing)
+	u8  *host7 (u32 a);
 
 	// interrupts
 	u32 ie[2], iflag[2]; u8 ime[2];
@@ -548,7 +555,7 @@ public:
 // The JIT (nds_jit.cpp): one per machine, both processors.
 bool jitAvailable ();
 void jitRun (Machine *m, Arm &c);			// runs c until c.ts >= c.target or halted
-void jitInvalidate (Machine *m, int cpu, u32 addr);	// code at addr's page changed
+void jitInvalidateHost (Machine *m, const u8 *p);	// the memory at p changed (its code, if any, is dropped)
 void jitFlushAll (Machine *m);
 
 } // namespace nds

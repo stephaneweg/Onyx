@@ -624,10 +624,10 @@ void Machine::io9Write8 (u32 a, u32 v)
 	{
 		static const int MAP[10] = { 0, 1, 2, 3, 4, 5, 6, -1, 7, 8 };
 		int k = MAP[off - 0x240];
-		if (k < 0) { wramcnt = (u8) (v & 3); pagesUpdate (); return; }
+		if (k < 0) { wramcnt = (u8) (v & 3); pagesRange (0x03000000, 0x04000000); return; }
 		static const u8 MASK[9] = { 0x9B, 0x9B, 0x9F, 0x9F, 0x87, 0x9F, 0x9F, 0x83, 0x83 };
 		u8 nv = (u8) (v & MASK[k]);
-		if (vramcnt[k] != nv) { vramcnt[k] = nv; vramMap (); pagesUpdate (); }
+		if (vramcnt[k] != nv) { vramcnt[k] = nv; vramMap (); pagesRange (0x06000000, 0x07000000); }
 		return;
 	}
 	switch (off)
@@ -811,7 +811,7 @@ void Machine::io7Write8 (u32 a, u32 v)
 	case 0x1A2: cartSpiData ((u8) v); return;
 	case 0x300: postflg[1] = (u8) (postflg[1] | (v & 1)); return;
 	case 0x301:						// HALTCNT
-		if ((v & 0xC0) == 0x80 || (v & 0xC0) == 0xC0) arm7.halted = true;
+		if ((v & 0xC0) == 0x80 || (v & 0xC0) == 0xC0) { arm7.halted = true; arm7.jitExit = true; }
 		return;
 	case 0x180: return;
 	case 0x181:
