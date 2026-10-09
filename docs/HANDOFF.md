@@ -6,7 +6,7 @@ answer in French. The docs stay in English.
 
 ## Where PocketUI stands on the morning of 2026-10-09 (the night's work, P7 to P10) -- read this first
 
-Everything below is in `main`, published (onyx 2026.10.136, uikit 1.950.2 and the apps' packages) and on the Pi
+Everything below is in `main`, published (onyx 2026.10.137, uikit 1.950.2 and the apps' packages) and on the Pi
 (192.168.0.10, left in **pocket** mode).
 
 | Phase | State | Seen on the Pi |
