@@ -199,16 +199,16 @@ conshots () {		# conshots <W>x<H> <tag> [lang]
 	R6="key 0x103;key 0x103;key 0x103;key 0x103;key 0x103;key 0x103"
 	run pocket_consolehome console-home-$sfx "$W;$W;$W;expect shell app;expect kind home;expect area 0,0,$w,$h;expect pos 0,0;expect home 1;key 0x103;key 0x101;$W;dump $OUT/consolehome-home-$sfx.elsm;$R6;$W;dump $OUT/consolehome-apps-$sfx.elsm;key 13;key 0x101;$W;dump $OUT/consolehome-appsub-$sfx.elsm;key 0x102;key 0x103;$W;dump $OUT/consolehome-settings-$sfx.elsm;key 0x119;$W;$W;expect shown1 1;key 0x1b;$W;expect shown1 0;expect home 1" $E
 	run pocket_consolehome console-menu-$sfx "$W;$W;other $w $h Notes;othermenu MFile|I1~New~^N|I2~Open...~^O|-|I3~Save~^S|MEdit|I4~Copy~^C|I5~Paste~^V;$W;$W;$W;expect home 0;expect front other;key 0x119;$W;$W;expect shown1 1;expect front other;dump $OUT/consolehome-menu-$sfx.elsm;key 0x101;key 13;$W;$W;expect shown1 1;dump $OUT/consolehome-appmenu-$sfx.elsm;key 0x1b;$W;expect shown1 1;key 0x1b;$W;$W;expect shown1 0;expect front other;expect home 0" $E
-	# the settings' pages (xset.h): the last column; Sound (Volume focused), Gamepad, Wi-Fi (the scan), a network's
+	# the settings' pages (xset.h): the last column; Games (the watched folders, the folder browser), Sound (Volume focused), Gamepad, Wi-Fi (the scan), a network's
 	# page and its password on the virtual keyboard, Packages, Mode, Display and its keep-this-size dialog, the games'
 	R10="$R6;key 0x103;key 0x103;key 0x103;key 0x103"; P="png consolehome-set"
-	SC="$W;$W;$W;$R10;$W;key 13;$W;expect home 1;key 0x101;$W;dump $OUT/consolehome-set-sound-$sfx.elsm;key 0x1b;key 0x101;key 13;$W;dump $OUT/consolehome-set-gamepad-$sfx.elsm"
+	SC="$W;$W;$W;$R10;$W;key 13;$W;expect home 1;dump $OUT/consolehome-set-roms-$sfx.elsm;key 0x101;key 13;$W;dump $OUT/consolehome-set-browse-$sfx.elsm;key 0x1b;key 0x1b;key 0x101;key 13;$W;key 0x101;$W;dump $OUT/consolehome-set-sound-$sfx.elsm;key 0x1b;key 0x101;key 13;$W;dump $OUT/consolehome-set-gamepad-$sfx.elsm"
 	SC="$SC;key 0x1b;key 0x101;key 0x101;key 0x101;key 13;$W;$W;$W;$W;dump $OUT/consolehome-set-wifi-$sfx.elsm;key 0x101;key 13;$W;dump $OUT/consolehome-set-net-$sfx.elsm"
 	SC="$SC;key 0x101;key 13;$W;key m;key a;key i;key s;key o;key n;$W;dump $OUT/consolehome-set-osk-$sfx.elsm;key 0x1b;key 0x1b;key 0x1b"
 	SC="$SC;key 0x101;key 13;$W;$W;dump $OUT/consolehome-set-packages-$sfx.elsm;key 0x1b;key 0x101;key 13;$W;dump $OUT/consolehome-set-mode-$sfx.elsm"
 	SC="$SC;key 0x1b;key 0x101;key 13;$W;key 0x103;$W;dump $OUT/consolehome-set-display-$sfx.elsm;key 13;$W;dump $OUT/consolehome-set-keep-$sfx.elsm;key 0x1b;$W;key 0x101;key 0x101;key 13;$W;dump $OUT/consolehome-set-games-$sfx.elsm;key 0x1b;key 0x1b;$W;expect home 1"
 	run pocket_consolehome console-set-$sfx "$SC" $E
-	for s in sound gamepad wifi net osk packages mode display keep games; do png consolehome-set-$s-$sfx; if [ -n "$CONSOLE_PNG" ]; then cp "$OUT/consolehome-set-$s-$sfx.png" "$CONSOLE_PNG/"; fi; done
+	for s in roms browse sound gamepad wifi net osk packages mode display keep games; do png consolehome-set-$s-$sfx; if [ -n "$CONSOLE_PNG" ]; then cp "$OUT/consolehome-set-$s-$sfx.png" "$CONSOLE_PNG/"; fi; done
 	for s in home apps appsub settings menu appmenu; do png consolehome-$s-$sfx; if [ -n "$CONSOLE_PNG" ]; then mkdir -p "$CONSOLE_PNG"; cp "$OUT/consolehome-$s-$sfx.png" "$CONSOLE_PNG/"; fi; done
 }
 conshots 800x480 800

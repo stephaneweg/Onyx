@@ -1556,7 +1556,9 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   keyboard's handler, the pad's poll; `home_ptr` the pointer's). A ROM opens with `lx_open` (its emulator by its
   extension), the screen switched to the emulator's `resolution =` first (`play_rom`). The ROMs are read again when
   the home comes back, at most every 30 s. Sizes: the mock-up's metrics (`xm ()`), a compact set under 560 logical
-  lines.
+  lines. **The moves are animated** (2026-10-09): `anim_step ()` eases what is drawn towards the chosen column and
+  item (`g_ax`, `g_ay`, `g_asub` in 1/256: `draw_list` places, sizes and fades each item by its fractional distance;
+  a new column's list slides in, `g_slide`); while it moves the home is drawn every 16 ms (`g_anim`).
 - **The menu**: `menu_build ()` — *Resume*, the front app's menus (its spec read by `uk_win_menu_get` when the menu
   comes up; one of them chosen: `g_level`, its items, `uk_win_menu_command (id)` once the overlay is hidden), *Home*
   (`uk_shell_front (0, 0)`), the other tasks (`uk_shell_front (id, 1)`), *Close* (`uk_win_close`), *Settings*,
@@ -1572,7 +1574,8 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   with `gamelib_samples.py`'s made-up ROMs): the home is the whole screen; a console's games, Apps and its unrolled
   apps, Settings; F10 shows and Esc hides the menu; over an app with menus: the menu, its
   File menu, Esc twice — the app still in front. Pictures `consolehome-<home|apps|appsub|settings|menu|appmenu>-*.png` (`CONSOLE_PNG=<folder>`).
-- **The settings** (`xset.h`, 2026-10-09 — docs/COMPACT-SHELL-STUDY.md §18): A on an item of the Settings column
+- **The settings** (`xset.h`, 2026-10-09; the **Games** page — the watched folders, GameKit's `games_folders_save`,
+  a folder browser over `kapi_vol_list` / `kapi_opendir` — added the same night — docs/COMPACT-SHELL-STUDY.md §18): A on an item of the Settings column
   calls `set_enter (page)`; while `g_setOn`, `draw_home` draws `draw_settings` and every input goes to `set_key`
   (`pad_poll` gives the pad's buttons that have no key their own codes `K_A`, `K_B`, `K_X`, `K_Y`, `K_START`, `K_L3`;
   `set_ptr` the pointer's). A **screen stack** (`g_ss`: the page, then deeper screens — a pad's page, the wizard, the

@@ -4,6 +4,14 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## The console: a Games page (the ROM folders), the home's moves animated (2026-10-09, night) -- tested on the PC, NOT on the Pi
+
+The user (Onyx Remote's keys: fixed). The Game Library is not shown in the console, so its watched folders could not
+be set there: the settings' first page is now **Games** (`xset.h`: the folders, a browser for the pad over the
+volumes, *Look for the games again*). And the home's moves are animated (`xmb.h`: `anim_step`, `draw_list` by a
+fractional position). Each frame is a whole redraw of the home: over RDP that is the whole screen sent (the user
+knows: "the slowness is the remote", leave it for now).
+
 ## Onyx Remote: the keys sent from its desktop view (2026-10-09, night) -- NOT tried on a PC yet
 
 RDP's keyboard still dead in console mode on 2026.10.151: Onyx Remote sent the keys only from a RemoteWindow (a

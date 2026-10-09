@@ -22,10 +22,11 @@
 enum { K_A = 0x7101, K_B, K_X, K_Y, K_START, K_L3 };
 
 // ---- the pages, the screens -------------------------------------------------------------------------------------------
-enum { SC_SOUND, SC_PAD, SC_KBD, SC_LANG, SC_WIFI, SC_PKG, SC_MODE, SC_DISP,		// (the pages: SP[] order)
-	SC_PADINFO, SC_WIZ, SC_KEYS, SC_NET, SC_PKGLIST, SC_PKGONE, SC_GAMES };
+enum { SC_ROMS, SC_SOUND, SC_PAD, SC_KBD, SC_LANG, SC_WIFI, SC_PKG, SC_MODE, SC_DISP,	// (the pages: SP[] order)
+	SC_PADINFO, SC_WIZ, SC_KEYS, SC_NET, SC_PKGLIST, SC_PKGONE, SC_GAMES, SC_FOLDER, SC_BROWSE };
 struct SPage { const char *name, *app, *help; };
 static const SPage SP[] = {
+	{ TRN ("Games"), "gamelib", TRN ("The folders the games are looked for in, on the card and the USB sticks") },
 	{ TRN ("Sound"), "soundconf", TRN ("The volume, the output, each program's level") },
 	{ TRN ("Gamepad"), "padconf", TRN ("The pads, their buttons, the keyboard as a pad") },
 	{ TRN ("Keyboard & Mouse"), "keyconf", TRN ("The keyboard's layout, the mouse's wheel") },
@@ -102,7 +103,7 @@ static bool contains_ci (const char *s, const char *q)
 }
 
 // ---- the dialog -------------------------------------------------------------------------------------------------------
-enum { D_KEEP = 1, D_FORGET_NET, D_FORGET_PAD, D_MODE, D_WAIT, D_REMOVE, D_RESTART };
+enum { D_KEEP = 1, D_FORGET_NET, D_FORGET_PAD, D_MODE, D_WAIT, D_REMOVE, D_RESTART, D_UNWATCH };
 struct Dlg { bool on; int purpose, arg; char title[80], text[400]; const char *b[3]; int n, sel, safe; unsigned t0, ticks; };
 static Dlg g_dlg;
 static void dlg_open (int purpose, int arg, const char *title, const char *text, const char *b0, const char *b1, const char *b2 = 0, int safe = 1, unsigned ticks = 0)
@@ -1046,12 +1047,146 @@ static void games_change (SRow &r, int d)
 	else { int w, h; display_mode (v, &w, &h); display_game_set (emu, w, h); }
 }
 
+// ---- Games: the watched folders (GameKit: GAMES_CONFIG, the Game Library's -- not shown in the console) ----------------
+// A folder is chosen on a small browser moved with the pad: the volumes (the card, its partitions, the USB sticks), then
+// their folders; "Watch this folder" adds the one shown. The ROMs are read again at once (the home's columns follow).
+static char g_fold[GAMES_FOLDERS_MAX][GAMES_PATH];
+static int g_nfold;
+static char g_brPath[GAMES_PATH];			// the browser's folder ("": the volumes)
+#define BR_MAX	96
+static char g_brName[BR_MAX][64];
+static int g_nbr;
+static void folders_read (void) { g_nfold = games_folders (g_fold, GAMES_FOLDERS_MAX); }
+static int games_in (const char *folder)		// the ROMs found under a folder
+{
+	int n = 0, l = (int) strlen (folder);
+	for (int r = 0; r < g_nroms; r++)
+	{
+		const char *p = g_roms[r].path;
+		int k = 0;
+		while (k < l && p[k] && (p[k] | 32) == (folder[k] | 32)) k++;
+		if (k == l && (p[k] == '/' || folder[l - 1] == '/')) n++;
+	}
+	return n;
+}
+static void roms_again (void)				// the ROMs read again (the home's columns follow)
+{
+	roms_read (); g_thumbOf = -1; xmb_build ();
+	char m[80]; snprintf (m, sizeof m, g_nroms == 1 ? TR ("%d game found") : TR ("%d games found"), g_nroms);
+	flash (m);
+}
+static void br_read (void)				// the browser's entries: the volumes, or the folder's sub-folders (sorted)
+{
+	g_nbr = 0;
+	if (!g_brPath[0])
+	{
+		struct kapi_volume v[16];
+		int n = kapi_vol_list (v, 16, 0);
+		for (int i = 0; i < n && i < 16 && g_nbr < BR_MAX; i++)
+			if (v[i].state == KAPI_VST_MOUNTED && strcmp (v[i].name, "RAM")) snprintf (g_brName[g_nbr++], 64, "%s:", v[i].name);
+		return;
+	}
+	void *d = kapi_opendir (g_brPath);
+	if (!d) return;
+	struct kapi_dirent e;
+	while (g_nbr < BR_MAX && kapi_readdir (d, &e))
+		if (e.is_dir && e.name[0] != '.') fs_copy (g_brName[g_nbr++], e.name, 64);
+	kapi_closedir (d);
+	for (int i = 1; i < g_nbr; i++)
+		for (int j = i; j > 0; j--)
+		{
+			const char *a = g_brName[j - 1], *b = g_brName[j];
+			int k = 0; while (a[k] && (a[k] | 32) == (b[k] | 32)) k++;
+			if ((a[k] | 32) <= (b[k] | 32)) break;
+			char t[64]; memcpy (t, g_brName[j], 64); memcpy (g_brName[j], g_brName[j - 1], 64); memcpy (g_brName[j - 1], t, 64);
+		}
+}
+static void br_go (const char *path) { fs_copy (g_brPath, path, sizeof g_brPath); br_read (); if (g_nss) scr ().sel = 0; g_homeDirty = true; }
+static void br_up (void)
+{
+	int l = (int) strlen (g_brPath);
+	if (l >= 2 && g_brPath[l - 1] == '/' && g_brPath[l - 2] == ':') { br_go (""); return; }	// "SD:/" -> the volumes
+	while (l > 0 && g_brPath[l - 1] != '/') l--;
+	if (l > 0 && g_brPath[l - 2] == ':') g_brPath[l] = 0;	// "SD:/roms" -> "SD:/"
+	else if (l > 0) g_brPath[l - 1] = 0;
+	br_go (g_brPath);
+}
+static void roms_rows (void)
+{
+	folders_read ();
+	char v[64];
+	for (int f = 0; f < g_nfold; f++)
+	{
+		int n = games_in (g_fold[f]);
+		snprintf (v, sizeof v, n == 1 ? TR ("%d game") : TR ("%d games"), n);
+		row_add (R_SUB, 1, g_fold[f], v, TR ("Watched with its sub-folders: A to stop watching it")).arg = f;
+	}
+	if (!g_nfold) row_add (R_INFO, 0, TR ("No folder watched"), "", TR ("Add one: the games found there show in the home"));
+	if (g_nfold < GAMES_FOLDERS_MAX) row_add (R_ACTION, 2, TR ("Add a folder..."), "", TR ("The card, its partitions and the USB sticks: choose a folder, then Watch this folder"));
+	int nc = 0; for (int i = 0; i < g_nx; i++) if (g_x[i].kind == X_SYS) nc++;
+	snprintf (v, sizeof v, TR ("%d games, %d consoles"), g_nroms, nc);
+	row_add (R_ACTION, 3, TR ("Look for the games again"), v, TR ("After games were copied (Y does it anywhere on this page)"));
+	row_add (R_INFO, 0, TR ("Title screens"), TR ("the Game Library's"), TR ("Made by the Game Library (desktop mode): it plays each game a moment"));
+}
+static void folder_rows (int f)
+{
+	if (f >= g_nfold) return;
+	row_add (R_INFO, 0, g_fold[f], "", TR ("Watched with its sub-folders (6 deep)"));
+	char v[32]; int n = games_in (g_fold[f]);
+	snprintf (v, sizeof v, n == 1 ? TR ("%d game") : TR ("%d games"), n);
+	row_add (R_INFO, 0, TR ("Games found"), v, "");
+	row_add (R_ACTION, 1, TR ("Stop watching this folder"), "", TR ("Its games leave the home; the files stay"));
+}
+static void browse_rows (void)
+{
+	if (g_brPath[0])
+	{
+		row_add (R_ACTION, 1, TR ("Watch this folder"), g_brPath, TR ("Its games, and those of its sub-folders, show in the home"));
+		row_add (R_SUB, 2, TR (".. (the folder above)"), "", "");
+	}
+	for (int i = 0; i < g_nbr; i++) row_add (R_SUB, 3, g_brName[i], "", g_brPath[0] ? "" : TR ("A volume: the card, a partition, a USB stick")).arg = i;
+	if (!g_nbr) row_add (R_INFO, 0, g_brPath[0] ? TR ("No sub-folder") : TR ("No volume"), "", "");
+}
+static void roms_act (SRow &r)
+{
+	if (r.id == 1) { g_ss[g_nss++] = { SC_FOLDER, r.arg, 0, 0 }; return; }
+	if (r.id == 2) { g_ss[g_nss++] = { SC_BROWSE, 0, 0, 0 }; br_go (g_nfold ? "" : "SD:/"); return; }
+	if (r.id == 3) roms_again ();
+}
+static void browse_act (SRow &r)
+{
+	if (r.id == 2) { br_up (); return; }
+	if (r.id == 3 && r.arg < g_nbr)
+	{
+		char p[GAMES_PATH];
+		if (!g_brPath[0]) snprintf (p, sizeof p, "%s/", g_brName[r.arg]);
+		else { int l = (int) strlen (g_brPath); snprintf (p, sizeof p, l && g_brPath[l - 1] == '/' ? "%s%s" : "%s/%s", g_brPath, g_brName[r.arg]); }
+		br_go (p);
+		return;
+	}
+	if (r.id != 1) return;
+	char p[GAMES_PATH]; fs_copy (p, g_brPath, sizeof p);
+	int l = (int) strlen (p);
+	if (l > 1 && p[l - 1] == '/' && p[l - 2] != ':') p[--l] = 0;	// "SD:/roms/" -> "SD:/roms"
+	if (l > 63) { flash (TR ("This folder's path is too long (63 characters at most)")); return; }
+	folders_read ();
+	for (int f = 0; f < g_nfold; f++) if (ieq (g_fold[f], p)) { flash (TR ("This folder is watched already")); return; }
+	if (g_nfold >= GAMES_FOLDERS_MAX) { flash (TR ("Too many folders (8 at most)")); return; }
+	fs_copy (g_fold[g_nfold++], p, GAMES_PATH);
+	if (!games_folders_save (g_fold, g_nfold)) { flash (TR ("The Game Library's settings could not be written")); return; }
+	g_nss--;						// (back to the page: the folder in its list)
+	roms_again ();
+}
+
 // ---- the rows of the screen shown --------------------------------------------------------------------------------------
 static void rows_build (void)
 {
 	g_nsr = 0;
 	switch (scr ().kind)
 	{
+	case SC_ROMS: roms_rows (); break;
+	case SC_FOLDER: folder_rows (scr ().arg); break;
+	case SC_BROWSE: browse_rows (); break;
 	case SC_SOUND: sound_rows (); break;
 	case SC_PAD: pad_rows (-1); break;
 	case SC_PADINFO: pad_rows (scr ().arg); break;
@@ -1078,6 +1213,8 @@ static const char *scr_title (const Scr &s)
 	{
 	case SC_PADINFO: { static char t[24]; snprintf (t, sizeof t, TR ("Pad %d"), s.arg + 1); return t; }
 	case SC_WIZ: return TR ("Map the buttons");
+	case SC_FOLDER: return s.arg < g_nfold ? g_fold[s.arg] : TR ("Games");
+	case SC_BROWSE: return g_brPath[0] ? g_brPath : TR ("Add a folder");
 	case SC_KEYS: return TR ("Keyboard as pad 1");
 	case SC_NET: return g_net.ssid;
 	case SC_PKGLIST: return s.arg == 0 ? TR ("Installed") : s.arg == 1 ? TR ("Available") : TR ("Search");
@@ -1130,6 +1267,16 @@ static void dlg_done (int choice)
 		break;
 	case D_REMOVE: if (choice == 0) { const char *nm = g_pkgName; pkg_start (pkg::J_REMOVE, &nm, 1); } break;
 	case D_RESTART: if (choice == 0) kapi_reboot (); break;
+	case D_UNWATCH:
+		if (choice == 0 && d.arg < g_nfold)
+		{
+			for (int k = d.arg; k < g_nfold - 1; k++) memcpy (g_fold[k], g_fold[k + 1], GAMES_PATH);
+			g_nfold--;
+			games_folders_save (g_fold, g_nfold);
+			if (g_nss > 1) g_nss--;
+			roms_again ();
+		}
+		break;
 	}
 }
 static void osk_done (bool ok)
@@ -1189,6 +1336,9 @@ static void row_act (void)
 	SRow &r = g_sr[s.sel];
 	switch (s.kind)
 	{
+	case SC_ROMS: roms_act (r); break;
+	case SC_FOLDER: if (r.id == 1) dlg_open (D_UNWATCH, s.arg, TR ("Stop watching this folder?"), TR ("Its games leave the home; the files stay on the volume."), TR ("Stop watching"), TR ("Cancel")); break;
+	case SC_BROWSE: browse_act (r); break;
 	case SC_SOUND: sound_act (r); break;
 	case SC_PAD: case SC_PADINFO: pad_act (r); break;
 	case SC_KEYS: keys_act (r); break;
@@ -1208,6 +1358,7 @@ static void scr_y (void)				// Y: the page's second action
 	Scr &s = scr ();
 	SRow *r = s.sel < g_nsr ? &g_sr[s.sel] : 0;
 	if (s.kind == SC_WIFI) scan_start ();
+	else if (s.kind == SC_ROMS) roms_again ();
 	else if (s.kind == SC_PKG || s.kind == SC_PKGLIST) osk_open (O_SEARCH, TR ("Search the packages"), g_pkgFind, false, 0, 40);
 	else if (s.kind == SC_GAMES && r && r->id == 1 && r->arg < g_nemu) display_game_set (g_emu[r->arg], DISPLAY_OWN, 0);
 	g_homeDirty = true;
@@ -1623,7 +1774,8 @@ static void draw_set_hints (Canvas &cv)
 	{
 		const SRow *r = scr ().sel < g_nsr ? &g_sr[scr ().sel] : 0;
 		int k = scr ().kind;
-		if (k == SC_WIFI || k == SC_PKG || k == SC_PKGLIST || k == SC_GAMES) add ("Y", YL, k == SC_WIFI ? TR ("Scan") : k == SC_GAMES ? TR ("Its own") : TR ("Search"));
+		if (k == SC_WIFI || k == SC_PKG || k == SC_PKGLIST || k == SC_GAMES || k == SC_ROMS)
+			add ("Y", YL, k == SC_WIFI ? TR ("Scan") : k == SC_GAMES ? TR ("Its own") : k == SC_ROMS ? TR ("Look again") : TR ("Search"));
 		if ((k == SC_PKG || k == SC_PKGLIST) && r && r->id == 2) add ("X", GN, TR ("Updates mode"));
 		if (r && (r->kind == R_CHOICE || r->kind == R_SLIDER || r->kind == R_TOGGLE)) add ("\xE2\x97\x80\xE2\x96\xB6", GR, TR ("Change"));
 		add ("B", RD, TR ("Back"));

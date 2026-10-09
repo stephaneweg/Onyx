@@ -806,7 +806,8 @@ the **console home** as its shell (below).
 #### The console mode (the console home, `consolehome`)
 
 For a television and a **gamepad**, in the manner of Lakka's menu (RetroArch's XMB): a calm blue gradient with a soft
-white ribbon, white icons, big words. **The home** has two levels:
+white ribbon, white icons, big words; the moves are animated (the icons and the lists glide, a new column's list
+slides in). **The home** has two levels:
 
 - **Across the top**, a white icon per **console that has games** — Nintendo 64, Super Nintendo, Game Boy Advance,
   Game Boy Color, Game Boy, NES, GameCube...: one for each console an installed emulator plays (its `app.txt`'s
@@ -850,8 +851,8 @@ To choose another size for an app, or keep the system's: *Settings* › **Displa
 `SD:/etc/console.ini`, section `[screen]`, a line `gbemu = 640x480` or `n64emu = system` (from 640x480 to 2560x1600).
 
 **The settings (since 2026-10-09).** The **Settings** column holds the console's own pages, drawn in the home's style
-and made for a pad: **Sound**, **Gamepad**, **Keyboard & Mouse**, **Language & Region**, **Wi-Fi**, **Packages**,
-**Mode**, **Display**. **A** enters one: the pages become a faded column at the left, the page's settings the list — a
+and made for a pad: **Games**, **Sound**, **Gamepad**, **Keyboard & Mouse**, **Language & Region**, **Wi-Fi**,
+**Packages**, **Mode**, **Display**. **A** enters one: the pages become a faded column at the left, the page's settings the list — a
 label, its value at the right, a line of help under the chosen one. Each setting does what the desktop applet does,
 with the same files, and is applied and kept at once (there is no Save button).
 
@@ -861,9 +862,14 @@ with the same files, and is applied and kept at once (there is no Save button).
 | Left / Right | the arrows | change its value (a choice, a slider, a switch) |
 | **A** | Enter | do it, or go deeper |
 | **B** | Esc, Backspace | back (the page, then the Settings column) |
-| **Y** | Y | the page's second action: *Scan* (Wi-Fi), *Search* (Packages), *Its own* (a game's resolution) |
+| **Y** | Y | the page's second action: *Look again* (Games), *Scan* (Wi-Fi), *Search* (Packages), *Its own* (a game's resolution) |
 | **X** | X | Packages: an update's mode (manual, automatic, never) |
 
+- **Games**: the **watched folders** (the Game Library's, whose app the console does not show) and the games found in
+  each — **A** on one: *Stop watching this folder* —, **Add a folder...** (a browser for the pad: the card, its
+  partitions, the USB sticks, then their folders; **Watch this folder** adds the one shown), **Look for the games
+  again** (**Y**: after games were copied). The home's consoles follow at once. The title screens are still the Game
+  Library's (desktop mode).
 - **Sound**: the output (Automatic, HDMI, the jack, a USB headset: those present), the volume (ten steps; a small
   flash at the top right), mute, a test chime, and each program that plays (its own volume; **A** mutes it).
 - **Gamepad**: the four pads (their model, how they are mapped, the buttons held now), **Map the buttons** (the
@@ -898,6 +904,8 @@ deletes (on an empty field: cancels), **X** a space, **Y** Shift (twice: the sym
 
 | | |
 |---|---|
+| ![](compact-shell/real/consolehome-set-roms-720.png) | ![](compact-shell/real/consolehome-set-browse-720.png) |
+| *Games: the watched folders.* | *Add a folder: the browser.* |
 | ![](compact-shell/real/consolehome-set-sound-720.png) | ![](compact-shell/real/consolehome-set-wifi-720.png) |
 | *Sound: the volume chosen.* | *Wi-Fi: the networks around.* |
 | ![](compact-shell/real/consolehome-set-osk-720.png) | ![](compact-shell/real/consolehome-set-keep-720.png) |

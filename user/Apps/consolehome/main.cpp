@@ -159,7 +159,7 @@ static void draw_settings (Canvas &cv);
 static void set_enter (int page);
 static void set_key (int k);
 static void set_ptr (int ev, int x, int y, int c, long v);
-#define SP_N	8					// the settings' pages (xset.h's SP)
+#define SP_N	9					// the settings' pages (xset.h's SP)
 static const char *sp_name (int i);
 static const char *sp_help (int i);
 static void page_icon (Canvas &cv, int i, int cx, int cy, int s, int a);
@@ -728,7 +728,7 @@ int main (void)
 		if (g_homeDirty && g_home) draw_home ();
 		if (g_overDirty && g_menu) draw_menu ();
 		tip_tick ();
-		msleep (g_menu ? 16 : 30);
+		msleep (g_menu || (g_anim && g_home) ? 16 : 30);	// (a move animated: a frame each 16 ms)
 	}
 	return 0;
 }
