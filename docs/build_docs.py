@@ -42,6 +42,7 @@ DOCS = [
     "17-FONTKIT.md",
     "18-PRINTERKIT.md",
     "19-GPIOKIT.md",
+    "20-GAMEKIT.md",
 ]
 
 
