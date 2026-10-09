@@ -1884,6 +1884,12 @@ tabs, the viewport (Setup), the File Viewer. A selection is in `screenshots/pock
 > model, `[default]` for the other generic pads; analog triggers as `l2_axis` / `r2_axis`; written by the
 > Gamepad app, `padconf`) or the
 > built-in mapping (pads Circle knows). Used by gbemu, gamelib, BASIC (`PAD`, `STICK`, `STRIG`).
+> **The keyboard as pad 0** (2026-10-09): a program that calls **`pad_keyboard (1)`** (the emulators) gets the keys of
+> `[keyboard]` (a key for each `PAD_*` button and the right stick: `rs_up`...; by default by place -- arrows, Z bottom,
+> X right, A left, S top, Q / W, E / R, Backspace Select, Enter Start, I J K L the right stick) added to pad 0, and pad
+> 0 is there with no pad plugged in (`pad_keys` alone: the keyboard's state; `pad_key_code` / `pad_key_word` the
+> words). Off by default: an app that reads the keys itself would see each twice. The Gamepad applet's **Keyboard**
+> tab writes the section. Host test: `tools/tests/run_gamepad_test.sh`.
 > Host test: `sh tools/tests/run_gamepad_test.sh`.
 > **USB MIDI input (ABI v68)**: class-compliant USB MIDI devices (keyboards, interfaces) are found
 > when plugged in, at boot or later. `kapi_midi_read (ev, max)` takes up to `max` queued

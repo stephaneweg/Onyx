@@ -4,6 +4,15 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## The keyboard as a gamepad (2026-10-09, evening) -- tested on the PC, NOT on the Pi
+
+`Include/gamepad.h`: **`pad_keyboard (1)`** adds the keys of `[keyboard]` in `SD:/etc/gamepad.ini` to pad 0 (pad 0
+is there with no pad plugged in); the defaults are by place (arrows, Z bottom, X right, A left, S top, Q / W, E / R,
+Backspace, Enter, I J K L the right stick). The six emulators call it and lost their own keys (GB / GBA / NES / SNES
+keep the same keys but GBA's L / R: Q / W now; the N64 and the GameCube's keys changed: by place, as a pad's). The
+Gamepad applet's **Keyboard** tab (key 5) sets them (`screenshots/padconf-keyboard.png`). Host test:
+`run_gamepad_test.sh`. **To try on the Pi**: a game with the keyboard alone, the Keyboard tab.
+
 ## The console's home in Lakka's manner, GameKit, a game's resolution (2026-10-09, afternoon) -- tested on the PC, NOT on the Pi
 
 The user's report: in console mode the Game Library showed as on the desktop and F10 / Home did nothing. **The cause**

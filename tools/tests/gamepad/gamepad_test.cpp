@@ -46,5 +46,21 @@ int main ()
 	fake_pad.axes[2].value = 255;
 	pad_read (0, &in);
 	printf ("d-pad on axes 3/4: %x, rx %d\n", in.buttons, in.rx); assert (in.buttons == PAD_RIGHT && in.rx == 0 && in.lx == 1000);
+	// the keyboard as pad 0 (pad_keyboard): off -> nothing; on -> the default keys by place, with no pad plugged in
+	fake_ini = ""; pad_config_reload (); fake_there = 0;
+	fake_held[0] = 'x'; fake_held[1] = KEY_LEFT; fake_held[2] = 'i'; fake_nheld = 3;
+	assert (pad_buttons (-1) == 0 && !pad_read (0, &in));
+	pad_keyboard (1);
+	assert (pad_read (0, &in) && in.connected);
+	printf ("keyboard: %x lx %d ry %d\n", in.buttons, in.lx, in.ry); assert (in.buttons == (PAD_B | PAD_LEFT) && in.lx == -1000 && in.ry == -1000);
+	// [keyboard] in gamepad.ini: A on Space, Start on F5, B none
+	fake_ini = "[keyboard]\na = space\nstart = F5\nb = none\n[0079:0011]\na = 1\n";
+	pad_config_reload ();
+	fake_held[0] = ' '; fake_held[1] = KEY_F1 + 4; fake_held[2] = 'x'; fake_nheld = 3;
+	printf ("[keyboard]: %x\n", pad_buttons (0)); assert (pad_buttons (0) == (PAD_A | PAD_START));
+	assert (pad_key_code ("F5", 2) == KEY_F1 + 4 && pad_key_code ("Q", 1) == 'q' && !strcmp (pad_key_word (KEY_ENTER), "enter") && !strcmp (pad_key_word (KEY_F1 + 9), "f10"));
+	// with a pad plugged in: the two added on pad 0
+	fake_there = 1; memset (&fake_pad, 0, sizeof fake_pad); fake_pad.vid = 0x0079; fake_pad.pid = 0x0011; fake_pad.focus = 1; fake_pad.nbuttons = 10; fake_pad.buttons = 1 << 9;
+	printf ("pad + keyboard: %x\n", pad_buttons (0)); assert (pad_buttons (0) == (PAD_A | PAD_START));
 	puts ("ok"); return 0;
 }

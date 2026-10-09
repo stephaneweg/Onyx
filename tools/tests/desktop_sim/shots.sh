@@ -571,6 +571,9 @@ fi
 if want padconf; then			# (an Xbox 360 pad plugged in, SIM_PAD: two buttons held, the stick pushed)
 	sim padconf padconf_ap "$W" SIM_APPLET=1 SIM_PAD=1
 	sim control padconf "$W" $P SIM_ARGS=padconf SIM_MAIL=40:7 SIM_SURFACE="$OUT/padconf_ap.elsm"; png padconf
+	# the Keyboard tab (key 5): the keyboard as pad 1, its keys; B (right) chosen
+	sim padconf padconf_kb_ap "$W;key 53;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;$W" SIM_APPLET=1
+	sim control padconf-keyboard "$W" $P SIM_ARGS=padconf SIM_MAIL=40:7 SIM_SURFACE="$OUT/padconf_kb_ap.elsm"; png padconf-keyboard
 fi
 
 # ---- the desktop's parts, over the wallpaper ------------------------------------------------------

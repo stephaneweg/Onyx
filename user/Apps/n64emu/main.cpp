@@ -7,8 +7,9 @@
 //     drawn by the GPU (kapi v53 gpu_render) straight into the window, at the window's size
 //     (sharper than the console's 320 x 240). A game that draws its picture with the CPU is
 //     shown from its framebuffer.
-//   * Keys: arrows = the stick, X = A, C = B, Z = Z, Enter = Start, Q / W = L / R, I J K L =
-//     the C buttons, T F G H = the D-pad; a USB gamepad (user/Include/gamepad.h): the left stick, A
+//   * Keys: the keyboard is pad 0 (gamepad.h's [keyboard], the Gamepad applet -- by place, as a pad: by default
+//     the arrows = the stick and the D-pad, Z = A, A = B, E / R = Z, Q / W = L / R, Enter = Start, I J K L = the C
+//     buttons); a USB gamepad (user/Include/gamepad.h): the left stick, A
 //     (bottom) = A, X (left) = B, L2 / R2 = Z, L / R, Start, the right stick = the C buttons,
 //     the D-pad. F11: full screen (Esc back; the GPU then renders straight into the displayed
 //     framebuffer, kapi v55, at the screen's resolution), F12: the speed, P: pause.
@@ -286,24 +287,6 @@ bool EmuRoot::onKey (long k)
 static int pad_state (void)
 {
 	int b = 0, x = 0, y = 0;
-	if (kapi_key_held (KEY_RIGHT)) x += 80;
-	if (kapi_key_held (KEY_LEFT)) x -= 80;
-	if (kapi_key_held (KEY_UP)) y += 80;
-	if (kapi_key_held (KEY_DOWN)) y -= 80;
-	if (kapi_key_held ('x')) b |= n64::BTN_A;
-	if (kapi_key_held ('c')) b |= n64::BTN_B;
-	if (kapi_key_held ('z')) b |= n64::BTN_Z;
-	if (kapi_key_held (KEY_ENTER)) b |= n64::BTN_START;
-	if (kapi_key_held ('q')) b |= n64::BTN_L;
-	if (kapi_key_held ('w')) b |= n64::BTN_R;
-	if (kapi_key_held ('i')) b |= n64::BTN_CUP;
-	if (kapi_key_held ('k')) b |= n64::BTN_CDOWN;
-	if (kapi_key_held ('j')) b |= n64::BTN_CLEFT;
-	if (kapi_key_held ('l')) b |= n64::BTN_CRIGHT;
-	if (kapi_key_held ('t')) b |= n64::BTN_DUP;
-	if (kapi_key_held ('g')) b |= n64::BTN_DDOWN;
-	if (kapi_key_held ('f')) b |= n64::BTN_DLEFT;
-	if (kapi_key_held ('h')) b |= n64::BTN_DRIGHT;
 	struct pad_input in;
 	if (pad_read (0, &in))
 	{
@@ -346,6 +329,7 @@ static void n64_frame (EmuCore *ec)
 
 int main (void)
 {
+	pad_keyboard (1);				// (the keyboard is pad 0 too: gamepad.h's [keyboard] keys)
 	char args[256] = "";
 	kapi_get_args (args, sizeof args);
 	int i = 0; while (args[i] == ' ') i++;

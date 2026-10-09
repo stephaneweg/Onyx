@@ -10,8 +10,9 @@
 //     FPCR 0 (IEEE: the Gekko's arithmetic is emulated so).
 //   * A disc image (1.4 GB) is not loaded: the DVD's reads are done from the file on demand
 //     (kapi v57 seek) by the main thread for the app core (a request, then the core waits).
-//   * Keys: arrows = the stick, X = A, C = B, S = X, A = Y, Z = Z, Enter = Start, Q / W = L / R,
-//     I J K L = the C stick, T F G H = the D-pad; a USB gamepad (user/Include/gamepad.h). F11: full
+//   * Keys: the keyboard is pad 0 (gamepad.h's [keyboard], the Gamepad applet -- by place, as a pad: by default
+//     the arrows = the stick and the D-pad, Z = A, A = B, X = X, S = Y, Q / W = Z, E / R = L / R, Enter = Start,
+//     I J K L = the C stick); a USB gamepad (user/Include/gamepad.h). F11: full
 //     screen (Esc back), F12: the speed, F10: the frames a second alone, P: pause.
 //   * The CPU: the JIT (user/Emulators/gc/gc_jit.cpp: the PowerPC code translated to AArch64, in memory
 //     from kapi v58 code_alloc); Game > Interpreter (or --interp) runs the interpreter instead.
@@ -398,26 +399,6 @@ static volatile unsigned g_padW[3];
 static void pad_state (void)
 {
 	unsigned b = 0; int x = 0, y = 0, cx = 0, cy = 0, l = 0, r = 0;
-	if (kapi_key_held (KEY_RIGHT)) x += 90;
-	if (kapi_key_held (KEY_LEFT)) x -= 90;
-	if (kapi_key_held (KEY_UP)) y += 90;
-	if (kapi_key_held (KEY_DOWN)) y -= 90;
-	if (kapi_key_held ('x')) b |= gc::Machine::PAD_A;
-	if (kapi_key_held ('c')) b |= gc::Machine::PAD_B;
-	if (kapi_key_held ('s')) b |= gc::Machine::PAD_X;
-	if (kapi_key_held ('a')) b |= gc::Machine::PAD_Y;
-	if (kapi_key_held ('z')) b |= gc::Machine::PAD_Z;
-	if (kapi_key_held (KEY_ENTER)) b |= gc::Machine::PAD_START;
-	if (kapi_key_held ('q')) { b |= gc::Machine::PAD_L; l = 255; }
-	if (kapi_key_held ('w')) { b |= gc::Machine::PAD_R; r = 255; }
-	if (kapi_key_held ('t')) b |= gc::Machine::PAD_UP;
-	if (kapi_key_held ('g')) b |= gc::Machine::PAD_DOWN;
-	if (kapi_key_held ('f')) b |= gc::Machine::PAD_LEFT;
-	if (kapi_key_held ('h')) b |= gc::Machine::PAD_RIGHT;
-	if (kapi_key_held ('l')) cx += 90;
-	if (kapi_key_held ('j')) cx -= 90;
-	if (kapi_key_held ('i')) cy += 90;
-	if (kapi_key_held ('k')) cy -= 90;
 	struct pad_input in;
 	if (pad_read (0, &in))
 	{
@@ -696,6 +677,7 @@ static void on_sound ()
 
 int main (void)
 {
+	pad_keyboard (1);				// (the keyboard is pad 0 too: gamepad.h's [keyboard] keys)
 	char args[256] = "";
 	kapi_get_args (args, sizeof args);
 	int i = 0; while (args[i] == ' ') i++;
