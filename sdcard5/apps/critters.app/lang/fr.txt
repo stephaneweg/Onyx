@@ -1,0 +1,124 @@
+# Critters' words in French (uikit/lang.h: English<TAB>French; tools/lang/check.py critters).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+Critters	Bestioles
+Training	Entraînement
+Expedition	Expédition
+My levels	Mes niveaux
+new	nouveau
+Climber	Grimpeur
+Floater	Planeur
+Blocker	Bloqueur
+Builder	Bâtisseur
+Digger	Creuseur
+Exploder	Artificier
+Basher	Perceur
+Miner	Mineur
+Walker	Marcheuse
+Floating	En vol plané
+Falling	En chute
+Climbing	Grimpe
+Out of bricks	Plus de briques
+Leaving	Sort
+none left	il n'en reste plus
+leaving	elle sort
+has it already	l'a déjà
+a blocker keeps blocking	un bloqueur reste bloqueur
+already counting down	compte à rebours lancé
+cannot block now	ne peut pas bloquer maintenant
+cannot build now	ne peut pas bâtir maintenant
+cannot dig now	ne peut pas creuser maintenant
+%d left	encore %d
+(%d here)	(%d ici)
+%s · key %s	%s · touche %s
+Out	Dehors
+Saved	Sauvées
+Time	Temps
+Only blockers are left: N (All explode) ends the level.	Plus que des bloqueurs : N pour tout faire sauter.
+RATE	DÉBIT
+Slower release (-)	Débit plus lent (-)
+Faster release (+)	Débit plus rapide (+)
+Pause	Pause
+Fast forward	Accéléré
+All explode	Tout faire sauter
+%s · level %d of %d	%s · niveau %d sur %d
+Save	À sauver
+Rate	Débit
+%d of %d	%d sur %d
+Best: %d saved · %s	Record : %d sauvées · %s
+Not solved yet.	Pas encore réussi.
+Solve “%s” to open this level.	Réussissez « %s » pour ouvrir ce niveau.
+Play	Jouer
+Play this level (Enter)	Jouer ce niveau (Entrée)
+choose	choisir
+play	jouer
+quit	quitter
+Enter	Entrée
+Esc	Échap
+This level cannot be played.	Ce niveau ne peut pas être joué.
+Correct the file in a text editor (Tinypad): the list is read again when you come back to it.	Corrigez le fichier dans un éditeur de texte (Tinypad) : la liste est relue quand vous y revenez.
+No level found in SD:/apps/critters.app/levels.	Aucun niveau trouvé dans SD:/apps/critters.app/levels.
+Not enough memory for this level.	Pas assez de mémoire pour ce niveau.
+Save %d of %d	Sauvez-en %d sur %d
+Click or press a key to start	Cliquez ou appuyez sur une touche pour commencer
+Paused	Pause
+P or Space: resume	P ou Espace : reprendre
+Esc: resume	Échap : reprendre
+Resume	Reprendre
+Restart Level	Recommencer le niveau
+Back to the levels	Retour aux niveaux
+All explode?	Tout faire sauter ?
+Every critter still out bursts after a 5-second countdown, and no more come out. The level then ends.	Chaque bestiole encore dehors éclate après un compte à rebours de 5 secondes, et plus aucune ne sort. Le niveau se termine alors.
+N or Enter: all explode · Esc: cancel	N ou Entrée : tout faire sauter · Échap : annuler
+Cancel	Annuler
+Level complete!	Niveau réussi !
+Not enough critters saved	Pas assez de bestioles sauvées
+saved (%d %%)	sauvées (%d %%)
+Needed	Requises
+New best!	Nouveau record !
+The next level is open.	Le niveau suivant est ouvert.
+Well done!	Bravo !
+Try another role, or give it sooner.	Essayez un autre rôle, ou donnez-le plus tôt.
+Retry	Rejouer
+Next	Suivant
+Levels	Niveaux
+How to play	Comment jouer
+Critters come out of the hatch and walk on. Click a role, then a critter, to give it a job. Lead enough of them to the glowing exit before the time runs out.	Les bestioles sortent de la trappe et avancent. Cliquez sur un rôle, puis sur une bestiole, pour lui donner un travail. Menez-en assez jusqu'à la sortie lumineuse avant la fin du temps.
+climbs walls instead of turning	monte aux murs au lieu de tourner
+survives any fall under its leaf	survit à toute chute sous sa feuille
+stands still: the others turn back	reste sur place : les autres font demi-tour
+lays a stair of 12 bricks	pose un escalier de 12 briques
+digs straight down through earth	creuse tout droit dans la terre
+bursts after 5 seconds, with the earth	éclate après 5 secondes, avec la terre
+Esc or F1: close	Échap ou F1 : fermer
+Game	Partie
+Fast Forward	Accéléré
+All Explode	Tout faire sauter
+Levels...	Niveaux...
+Open a Level File...	Ouvrir un fichier de niveau...
+Sound On / Off	Son activé / désactivé
+Quit	Quitter
+Help	Aide
+How to Play	Comment jouer
+About Critters	À propos de Bestioles
+Critters 1.0 — lead the little creatures to the exit.\nMIT License.	Bestioles 1.0 — menez les petites créatures jusqu'à la sortie.\nLicence MIT.
+Critters levels|*.level|All files|*	Niveaux de Bestioles|*.level|Tous les fichiers|*
+line %d: 	ligne %d : 
+unknown block [%s]	bloc inconnu [%s]
+[level] must be the first block, once	[level] doit être le premier bloc, une seule fois
+[%s] needs %s	[%s] demande %s
+[shape] needs one of rect, points, circle	[shape] demande rect, points ou circle
+bad value for %s	valeur incorrecte pour %s
+%s out of range	%s hors limites
+the level needs 1 to 4 [%s]	le niveau demande de 1 à 4 [%s]
+[%s] is inside the terrain	[%s] est dans le terrain
+role %s is not available	le rôle %s n'est pas disponible
+too many %s (max %s)	trop de %s (max %s)
+the file is too big	le fichier est trop gros
+cannot read the file	impossible de lire le fichier
+shapes	formes
+points	points
+labels	inscriptions
+bad step	étape incorrecte
+bad action	action incorrecte
+bad creature	bestiole incorrecte
+too many actions (max 1024)	trop d'actions (max 1024)

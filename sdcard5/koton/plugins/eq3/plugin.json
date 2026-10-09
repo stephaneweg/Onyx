@@ -1,0 +1,18 @@
+{
+  "name": "EQ 3-band",
+  "kind": "effect",
+  "version": 1,
+  "vendor": "Onyx",
+  "text": "A three-band equaliser: a low shelf, a peaking middle, a high shelf.",
+  "aliases": [],
+  "params": [
+    {"id": "low_gain", "name": "Low", "min": -18, "max": 18, "default": 0, "unit": "dB"},
+    {"id": "low_freq", "name": "Low freq", "min": 40, "max": 800, "default": 150, "unit": "Hz"},
+    {"id": "mid_gain", "name": "Mid", "min": -18, "max": 18, "default": 0, "unit": "dB"},
+    {"id": "mid_freq", "name": "Mid freq", "min": 200, "max": 8000, "default": 1000, "unit": "Hz"},
+    {"id": "mid_q", "name": "Mid width", "min": 0.3, "max": 6, "default": 0.8, "unit": "Q"},
+    {"id": "high_gain", "name": "High", "min": -18, "max": 18, "default": 0, "unit": "dB"},
+    {"id": "high_freq", "name": "High freq", "min": 1500, "max": 16000, "default": 5000, "unit": "Hz"},
+    {"id": "output", "name": "Output", "min": -18, "max": 12, "default": 0, "unit": "dB"}
+  ]
+}

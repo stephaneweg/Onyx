@@ -342,9 +342,12 @@ extern const char g_BuildStamp[], g_BuildRev[];
 int kapi_kernel_info (char *pBuf, unsigned nCap)
 {
 	CString Text;
-	Text.Format ("name Onyx\nabi %u\nbuilt %s\nrev %s\nmachine aarch64\nmodel %s\nram %u\n",
+	// board: the distribution this kernel is of (pi4 | pi5, docs/PI5-PORT.md) -- what pkg picks its
+	// repository by, and refuses another board's index with
+	Text.Format ("name Onyx\nabi %u\nbuilt %s\nrev %s\nmachine aarch64\nmodel %s\nram %u\nboard pi%u\n",
 		     (unsigned) KAPI_ABI_VERSION, g_BuildStamp, g_BuildRev,
-		     CMachineInfo::Get ()->GetMachineName (), (unsigned) CMachineInfo::Get ()->GetRAMSize ());
+		     CMachineInfo::Get ()->GetMachineName (), (unsigned) CMachineInfo::Get ()->GetRAMSize (),
+		     (unsigned) (RASPPI >= 5 ? 5 : 4));
 	unsigned n = Text.GetLength ();
 	if (nCap == 0) return (int) n;
 	unsigned k = n < nCap - 1 ? n : nCap - 1;

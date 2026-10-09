@@ -1,0 +1,13 @@
+# Lisa -- Groq chat API settings. Copy this file to config.ini (same folder) and put
+# your API key in it. KEEP config.ini PRIVATE: it holds your key (it is never committed).
+# Get a free key at https://console.groq.com (API Keys).
+key = gsk_your_key_here
+# Any chat model Groq serves (see console.groq.com/docs/models).
+model = llama-3.3-70b-versatile
+temperature = 0.7
+max_tokens = 1024
+# The role (system prompt) sent first with every request; repeated "role =" lines are
+# joined with line breaks.
+role = You are Lisa, a friendly and concise assistant living inside Onyx, a small
+role = operating system for the Raspberry Pi 4. Answer in the user's language.
+role = Write plain text for a small window: short paragraphs, no Markdown tables.

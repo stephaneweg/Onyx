@@ -125,7 +125,46 @@ sdcard_lite/res/wallpaper.*
 
 # tools/pkg/publish.sh: the Jet package its program was taken back from
 .jet-from-package
+.jet-from-package5
 
 # Circle built for the Pi 5 (tools/pi5/circle5.sh: a copy of circle/ configured -r 5)
 /circle5/
 kernel/.board
+
+# The Raspberry Pi 5's cards (docs/PI5-PORT.md §4.4): committed wholesale as sdcard/ and sdcard_lite/ are --
+# made by tools/pi5/mkcard5.py (from sdcard/ + tools/pi5/overlay/) and tools/pkg/publish.sh --board pi5 --
+# with the same private files left out
+!/sdcard5/
+!/sdcard5/**
+!/sdcard5_lite/
+!/sdcard5_lite/**
+!/tools/pi5/overlay/
+!/tools/pi5/overlay/**
+/sdcard5/etc/wpa_supplicant.conf
+/sdcard5_lite/etc/wpa_supplicant.conf
+sdcard5/etc/ftpfs.ini
+sdcard5/etc/mail/accounts.ini
+sdcard5/etc/mail/secrets
+sdcard5/etc/mail/key
+sdcard5/mail/
+sdcard5_lite/etc/mail/accounts.ini
+sdcard5_lite/etc/mail/secrets
+sdcard5_lite/etc/mail/key
+sdcard5_lite/mail/
+sdcard5/apps/lisa.app/config.ini
+sdcard5/apps/jet.app/main
+sdcard5/var/webkit/
+sdcard5/roms/**/*.gb
+sdcard5/roms/**/*.gbc
+sdcard5/roms/**/*.gba
+sdcard5/roms/**/*.sav
+sdcard5/apps/gamelib.app/thumbs/
+sdcard5/apps/gamelib.app/config.ini
+sdcard5/doom/*.wad
+!sdcard5/doom/freedoom1.wad
+sdcard5/doom/*.WAD
+sdcard5/doom/savegame/
+sdcard5/doom/*.cfg
+sdcard5/etc/clock
+sdcard5/res/wallpaper.*
+sdcard5_lite/res/wallpaper.*

@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = Packages
+icon   = SD:/apps/pkgman.app/icon.bmp
+target = pkgman
+text   = Updates, the apps installed, more apps to install

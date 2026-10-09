@@ -1,0 +1,16 @@
+{
+  "name": "Reverb",
+  "kind": "effect",
+  "version": 1,
+  "vendor": "Onyx",
+  "text": "Freeverb: a room's size, its damping, a pre-delay, the stereo width.",
+  "aliases": [],
+  "params": [
+    {"id": "room", "name": "Room size", "min": 0, "max": 1, "default": 0.75, "unit": ""},
+    {"id": "damping", "name": "Damping", "min": 0, "max": 1, "default": 0.5, "unit": ""},
+    {"id": "width", "name": "Width", "min": 0, "max": 1, "default": 1, "unit": ""},
+    {"id": "predelay", "name": "Pre-delay", "min": 0, "max": 100, "default": 10, "unit": "ms"},
+    {"id": "wet", "name": "Wet", "min": 0, "max": 1, "default": 0.3, "unit": ""},
+    {"id": "dry", "name": "Dry", "min": 0, "max": 1, "default": 1, "unit": ""}
+  ]
+}

@@ -1,0 +1,185 @@
+# Onyx Setup's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included); a key "context|English" is a TRC's.
+# What Setup writes to the card (files, keys, the services' names) is not here: never translated.
+#
+# ---- the window, the rail, the footer
+Onyx Setup	Configuration d'Onyx
+Setup	Configuration
+Welcome	Bienvenue
+Region & keyboard	Région et clavier
+Wi-Fi	Wi-Fi
+Display	Affichage
+Appearance	Apparence
+Name & privacy	Nom et vie privée
+Ready	Prêt
+Step %d of %d	Étape %d sur %d
+Get started	Commencer
+Continue	Continuer
+Start Onyx	Démarrer Onyx
+Back	Retour
+Skip for now	Passer cette étape
+#
+# ---- 0: welcome
+Language	Langue
+Welcome to Onyx	Bienvenue dans Onyx
+Interface	Interface
+Desktop	Bureau
+Pocket	Poche
+Console	Console
+Windows side by side, the menu bar and the dock: a monitor, a keyboard and a mouse.	Des fenêtres côte à côte, la barre de menus et le dock : un écran, un clavier et une souris.
+One app at a time, full screen: a small screen, a handheld.	Une application à la fois, en plein écran : un petit écran, un appareil portable.
+The games first, with a gamepad, on a television.	Les jeux d'abord, à la manette, sur un téléviseur.
+Let's get your Raspberry Pi ready. A few choices -- your language, your keyboard, the network, the screen and the look of the desktop -- and you are done. It takes about two minutes; everything can be changed later in the Control Panel.	Préparons votre Raspberry Pi. Quelques choix – la langue, le clavier, le réseau, l'écran et l'aspect du bureau – et c'est terminé. Comptez environ deux minutes ; tout pourra être modifié plus tard dans le Panneau de configuration.
+Keyboard, country and time zone	Clavier, pays et fuseau horaire
+Wi-Fi network	Réseau Wi-Fi
+Screen resolution	Résolution de l'écran
+Colours and wallpaper	Couleurs et fond d'écran
+#
+# ---- 1: region & keyboard
+Your country sets the time zone and which Wi-Fi channels the radio may use; the keyboard layout is proposed from it.	Votre pays détermine le fuseau horaire et les canaux Wi-Fi autorisés ; la disposition du clavier en est déduite.
+Country or region	Pays ou région
+Keyboard layout	Disposition du clavier
+Time zone	Fuseau horaire
+Set the clock from the Internet	Régler l'horloge par Internet
+Try it	Essayer
+Austria	Autriche
+Belgium	Belgique
+Canada	Canada
+Denmark	Danemark
+Finland	Finlande
+France	France
+Germany	Allemagne
+Greece	Grèce
+Ireland	Irlande
+Italy	Italie
+Japan	Japon
+Luxembourg	Luxembourg
+Netherlands	Pays-Bas
+Poland	Pologne
+Portugal	Portugal
+Spain	Espagne
+Sweden	Suède
+Switzerland	Suisse
+United Kingdom	Royaume-Uni
+United States	États-Unis
+Belgian (AZERTY)	Belge (AZERTY)
+French (AZERTY)	Français (AZERTY)
+German (QWERTZ)	Allemand (QWERTZ)
+English, UK	Anglais (Royaume-Uni)
+English, US	Anglais (États-Unis)
+Spanish	Espagnol
+Italian	Italien
+Dvorak	Dvorak
+UTC  (no summer time)	UTC  (pas d'heure d'été)
+, summer time	, heure d'été
+Brussels	Bruxelles
+Vienna	Vienne
+Warsaw	Varsovie
+London	Londres
+Lisbon	Lisbonne
+Athens	Athènes
+#
+# ---- 2: Wi-Fi
+Connect to Wi-Fi	Connexion au Wi-Fi
+Pick your network and type its password. You can skip this and connect later from the Wi-Fi icon in the menu bar.	Choisissez votre réseau et saisissez son mot de passe. Vous pourrez aussi vous connecter plus tard, par l'icône Wi-Fi de la barre de menus.
+Networks nearby	Réseaux à proximité
+Rescan	Actualiser
+Other network (hidden name)...	Autre réseau (nom masqué)...
+Looking for networks...	Recherche des réseaux...
+No network found. Is the Wi-Fi router on?	Aucun réseau trouvé. Le routeur Wi-Fi est-il allumé ?
+net|Open	Ouvert
+Connected	Connecté
+Saved	Enregistré
+Password	Mot de passe
+Password (leave empty: the saved one)	Mot de passe (vide : celui enregistré)
+Shared with the Wi-Fi menu	Partagé avec le menu Wi-Fi
+Connect	Se connecter
+Connect automatically	Se connecter automatiquement
+Connecting to %s...	Connexion à %s...
+Authenticating  ·  getting an address	Authentification  ·  obtention d'une adresse
+Network name	Nom du réseau
+Password (empty: an open network)	Mot de passe (vide : réseau ouvert)
+You are online	Vous êtes en ligne
+Address %s	Adresse %s
+Address %s  ·  the clock is set from the Internet	Adresse %s  ·  l'horloge est réglée par Internet
+Cannot write SD:/etc/wpa_supplicant.conf	Impossible d'écrire SD:/etc/wpa_supplicant.conf
+Saved: it joins at the next start	Enregistré : connexion au prochain démarrage
+WEP networks are not supported	Les réseaux WEP ne sont pas pris en charge
+The password is 8 to 63 characters	Mot de passe : 8 à 63 caractères
+Not connected yet (saved: joined at the next start). Check the password	Non connecté (réseau enregistré). Vérifiez le mot de passe
+#
+# ---- 3: display
+Onyx found a monitor able to show %d × %d. Bigger means more room for windows; smaller means bigger text.	Onyx a détecté un moniteur capable d'afficher %d × %d. Plus grand : plus de place pour les fenêtres ; plus petit : un texte plus gros.
+The monitor did not tell its size: pick the one written in its manual. Bigger means more room for windows; smaller means bigger text.	Le moniteur n'a pas indiqué sa taille : choisissez celle de son manuel. Plus grand : plus de place pour les fenêtres ; plus petit : un texte plus gros.
+Best	Optimal
+now	actuelle
+the monitor's own	résolution native
+the screen now	résolution actuelle
+Applied at once; if the picture does not come back, Onyx returns to the previous size by itself after 15 seconds.	Appliquée aussitôt ; si l'image ne revient pas, Onyx reprend seul la taille précédente après 15 secondes.
+Not now: a full-screen app owns the display.	Pas maintenant : une application plein écran occupe l'affichage.
+The monitor or the firmware refused this size.	Le moniteur ou le micrologiciel a refusé cette taille.
+This size is not possible here.	Cette taille n'est pas possible ici.
+Kept: Onyx starts at this size from now on.	Conservée : Onyx démarrera désormais à cette taille.
+Back to the size before.	Retour à la taille précédente.
+Keep this resolution?	Conserver cette résolution ?
+The screen is now %d × %d. Onyx goes back to %d × %d in %d second.	L'écran est maintenant en %d × %d. Onyx reviendra à %d × %d dans %d seconde.
+The screen is now %d × %d. Onyx goes back to %d × %d in %d seconds.	L'écran est maintenant en %d × %d. Onyx reviendra à %d × %d dans %d secondes.
+Keep	Conserver
+Revert	Rétablir
+Revert (%d)	Rétablir (%d)
+#
+# ---- 4: appearance
+Choose the colour of the window in front and the wallpaper. The preview shows the desktop you will get.	Choisissez la couleur de la fenêtre active et le fond d'écran. L'aperçu montre le bureau que vous obtiendrez.
+Wallpaper and its tint	Fond d'écran et sa teinte
+Peach	Pêche
+Steel	Acier
+Sage	Sauge
+Brick	Brique
+Slate	Ardoise
+Milk	Lait
+Dark Coffee	Café noir
+Generated (Voronoi) -- a new one at every start	Généré (Voronoï) – un nouveau à chaque démarrage
+Hexagons	Hexagones
+Low poly	Low poly
+Waves	Vagues
+Dunes	Dunes
+Bokeh	Bokeh
+Silk	Soie
+Contours	Contours
+Onyx   File   Edit   View	Onyx   Fichier   Édition   Affichage
+Calendar	Calendrier
+Text Editor	Éditeur de texte
+Hello, Onyx.	Bonjour, Onyx.
+#
+# ---- 5: name & privacy
+How this Raspberry Pi shows itself on your network, and who may reach it from there.	Comment ce Raspberry Pi se présente sur votre réseau, et qui peut y accéder.
+Computer name	Nom de l'ordinateur
+Seen by that name on the network (from the next start)	Visible sous ce nom sur le réseau (au prochain démarrage)
+Letters, digits and '-' only (not at the ends)	Lettres, chiffres et « - » uniquement (pas aux extrémités)
+Remote access	Accès à distance
+Only file sharing asks for a password: turn on only what you use, on a network you trust.	Seul le FTP demande un mot de passe : n'activez que l'utile, sur un réseau de confiance.
+Remote shell (telnet)	Terminal distant (telnet)
+Remote desktop (VNC)	Bureau à distance (VNC)
+Remote windows (Onyx Remote)	Fenêtres distantes (Onyx Remote)
+File sharing (FTP)	Partage de fichiers (FTP)
+A command line from another computer, port 23	Une ligne de commande depuis un autre ordinateur, port 23
+See and drive this screen from any VNC viewer, port 5900	Voir et piloter cet écran depuis un client VNC, port 5900
+The Onyx windows on a Windows PC, port 3390	Les fenêtres d'Onyx sur un PC Windows, port 3390
+The SD card from another computer, port 21 (user onyx, password onyx)	La carte SD à distance, port 21 (utilisateur onyx, mot de passe onyx)
+Each one can be turned on or off later: its line in SD:/etc/autostart.	Chacun peut être activé ou désactivé plus tard : sa ligne dans SD:/etc/autostart.
+#
+# ---- 6: ready
+You're all set	Tout est prêt
+Here is what Onyx will use. Change any of it now, or later in the Control Panel.	Voici ce qu'Onyx utilisera. Modifiez ces choix maintenant, ou plus tard dans le Panneau de configuration.
+Change	Modifier
+%s  ·  connected, %s	%s  ·  connecté, %s
+Not connected  ·  later, from the Wi-Fi icon in the menu bar	Non connecté  ·  plus tard, par l'icône Wi-Fi de la barre de menus
+a pattern wallpaper	fond d'écran à motif
+generated wallpaper	fond d'écran généré
+no remote access	aucun accès distant
+remote services on	services distants activés
+remote shell (telnet) on	terminal distant (telnet) activé
+remote desktop (VNC) on	bureau à distance (VNC) activé
+remote windows on	fenêtres distantes activées
+file sharing (FTP) on	partage de fichiers (FTP) activé
+Start Onyx: the menu bar and the dock appear; this assistant does not come back.	Démarrer Onyx : la barre de menus et le dock apparaissent ; cet assistant ne reviendra plus.

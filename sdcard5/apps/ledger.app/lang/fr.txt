@@ -1,0 +1,936 @@
+# Ledger's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included); a key "context|English" is a TRC's.
+     Out 	     Sorties 
+     Total 	     Total 
+     VAT 	     TVA 
+  (customer)	  (client)
+  (supplier)	  (fournisseur)
+ (closed)	 (clôturé)
+ (hidden)	 (masqué)
+ (Settings > Printing)	 (Paramètres > Impression)
+ (the grids as filed)	 (grilles telles que déposées)
+ -- upload it to your bank	 -- chargez-le sur le site de votre banque
+ / 793000) by an entry on its last day.	 / 793000) par une écriture à son dernier jour.
+ account	 compte
+ accounts	 comptes
+ added	 ajouté
+ customer	 client
+ customer)	 client)
+ customers	 clients
+ customers)	 clients)
+ d	 j
+ day late	 j de retard
+ days	 jours
+ days late	 j de retard
+ document	 document
+ document shown	 document affiché
+ documents	 documents
+ documents shown	 documents affichés
+ for good? Its matchings are undone.	 définitivement ? Ses lettrages seront annulés.
+ for good? Its payments' matchings are undone.	 définitivement ? Les lettrages de ses paiements sont annulés.
+ is already posted (	 est déjà comptabilisée (
+ is carried forward (	 est reportée (
+ is carried forward (693000 / 	 est reporté (693000 / 
+ is missing. Check the movements (or empty the new balance).	 manque. Vérifiez les mouvements (ou videz le nouveau solde).
+ is negative: Intervat takes no negative amount -- check its credit notes.	 négative : Intervat refuse les montants négatifs -- voyez ses notes de crédit.
+ is repeated for each line.	 est répétée pour chaque ligne.
+ Its entries are then locked (a year can be reopened).	 Ses écritures sont alors verrouillées (un exercice peut être rouvert).
+ made	 : document créé
+ movement to complete	 mouvement à compléter
+ movements to complete	 mouvements à compléter
+ of 	 sur 
+ open	 ouverts
+ overdue	 en retard
+ plus the movements makes 	 plus les mouvements donne 
+ posted	 comptabilisé
+ reverse charge	 autoliquidation
+ saved	 enregistré
+ supplier	 fournisseur
+ suppliers	 fournisseurs
+ template: make one from the French one?	) : le créer à partir du modèle français ?
+ The next year is added.	 L'exercice suivant est ajouté.
+ to 	 au 
+ to follow up	 à suivre
+ transfer	 virement
+ transfers	 virements
+ with movements	 avec mouvements
+(a bank or cash journal) 550000...	(journal de banque ou de caisse) 550000...
+(matched)	(lettré)
+(no file)	(aucun fichier)
+(none)	(aucun)
+(the company)	(la société)
+) by an entry on its last day.	) par une écriture à son dernier jour.
+). Post it again?	). La comptabiliser à nouveau ?
+, credit 	, crédit 
+, not the new balance typed: 	, pas le nouveau solde tapé : 
+, out 	, sorties 
+.rtf). Choose a Letters document to use?	.rtf). Choisir un document Letters à utiliser ?
+1-30 days	1-30 jours
+31-60 days	31-60 jours
+6 digits	6 chiffres
+61-90 days	61-90 jours
+: 	 : 
+: every movement has its party or account; Save posts it	 : chaque mouvement a son tiers ou son compte ; Enregistrer le comptabilise
+: in no fiscal year of the books (Settings > Fiscal years).	: dans aucun exercice de la comptabilité (Paramètres > Exercices).
+: the bank's old balance is not the books' (a statement missing?)	 : l'ancien solde de la banque n'est pas celui de la comptabilité (un extrait manquant ?)
+: type its IBAN in its journal (Settings > Journals), then import the file again.	: encodez son IBAN dans son journal (Paramètres > Journaux), puis importez à nouveau le fichier.
+?\n	 ?\n
+A bank or cash journal needs its account (55..., 57...).	Un journal de banque ou de caisse a besoin de son compte (55..., 57...).
+A code of 1 to 5 letters or digits.	Un code de 1 à 5 lettres ou chiffres.
+A credit is positive: type the debit in its column.	Un crédit est positif : tapez le débit dans sa colonne.
+A customer or a supplier	Un client ou un fournisseur
+A debit is positive: type the credit in its column.	Un débit est positif : tapez le crédit dans sa colonne.
+A document is printed by Letters from its template, a Letters document (.rtf, .docx, .odt)	Un document est imprimé par Letters à partir de son modèle, un document Letters (.rtf, .docx, .odt)
+A fiscal year lasts 24 months at most.	Un exercice dure au plus 24 mois.
+A heading of the PCMN: its accounts are edited	Une rubrique du PCMN : ce sont ses comptes qui se modifient
+A journal posts to this account.	Un journal comptabilise sur ce compte.
+A line has a purchases' VAT code.	Une ligne a un code TVA d'achat.
+A line has a sales' VAT code.	Une ligne a un code TVA de vente.
+A line has no account.	Une ligne n'a pas de compte.
+A line has no VAT code.	Une ligne n'a pas de code TVA.
+A line on a customers' or suppliers' account needs its party.	Une ligne sur un compte clients ou fournisseurs doit avoir son tiers.
+A line posts to a customers' or suppliers' account: choose a revenue or expense account.	Une ligne est imputée à un compte clients ou fournisseurs : choisissez un compte de produits ou de charges.
+A line's account is not in the chart (or is a heading).	Le compte d'une ligne n'est pas dans le plan comptable (ou est un titre).
+A movement has neither a party nor an account.	Un mouvement n'a ni tiers ni compte.
+A movement has no amount.	Un mouvement n'a pas de montant.
+A movement on a customers' or suppliers' account needs its party.	Un mouvement sur un compte clients ou fournisseurs doit avoir son tiers.
+A movement pays twelve items at most	Un mouvement paie douze postes au plus
+A movement posts to the journal's own account.	Un mouvement est imputé au compte même du journal.
+A movement's account is not in the chart (or is a heading).	Le compte d'un mouvement n'est pas dans le plan comptable (ou est un titre).
+A movement's party is unknown.	Le tiers d'un mouvement est inconnu.
+A new bank or cash statement (Ctrl+N)	Un nouvel extrait bancaire ou de caisse (Ctrl+N)
+A new bank statement	Un nouvel extrait bancaire
+A new card (Ctrl+N)	Une nouvelle fiche (Ctrl+N)
+A new credit note	Une nouvelle note de crédit
+A new invoice (Ctrl+N)	Une nouvelle facture (Ctrl+N)
+A new miscellaneous operation (Ctrl+N)	Une nouvelle opération diverse (Ctrl+N)
+A new party (its card)	Un nouveau tiers (sa fiche)
+A new purchase invoice	Une nouvelle facture d'achat
+A new quote (Ctrl+N)	Un nouveau devis (Ctrl+N)
+A new sales invoice	Une nouvelle facture de vente
+A party's account	Compte d'un tiers
+A party's card names this account.	La fiche d'un tiers cite ce compte.
+A party's documents take its language (its card), else the company's (its chart's).	Les documents d'un tiers prennent sa langue (sa fiche), sinon celle de la société (de son plan comptable).
+A statement is dated 	Un extrait est daté du 
+A statement's movements do not add up to its new balance: the file is incomplete.	Les mouvements d'un extrait ne donnent pas son nouveau solde : le fichier est incomplet.
+A table's row holding 	Une ligne de tableau contenant 
+Accepted	Accepté
+Account	Compte
+Account added	Compte ajouté
+Account saved	Compte enregistré
+ACCOUNTING	COMPTABILITÉ
+Accounts	Comptes
+Accrued charges and deferred income	Comptes de régularisation
+Accumulated profits (losses)	Bénéfice (perte) reporté(e)
+Add	Ajouter
+Add a line	Ajouter une ligne
+Add a movement	Ajouter un mouvement
+Add the next year	Ajouter l'exercice suivant
+Added: 	Ajouté : 
+Advance paid for December (monthly filers)	Acompte payé pour décembre (déclarants mensuels)
+Advance to associates	Avance aux associés
+All	Tous
+All the journals	Tous les journaux
+Amount	Montant
+Amounts 	Montants 
+AMOUNTS PAYABLE	DETTES
+Amounts payable after more than one year	Dettes à plus d'un an
+Amounts payable within one year	Dettes à un an au plus
+Amounts receivable after more than one year	Créances à plus d'un an
+Amounts receivable within one year	Créances à un an au plus
+An account added to the chart (Ctrl+N)	Ajouter un compte au plan comptable (Ctrl+N)
+An account's number: 4 to 10 digits (the PCMN's: 6).	Le numéro d'un compte : 4 à 10 chiffres (ceux du PCMN : 6).
+An entry needs two lines at least.	Une écriture doit avoir au moins deux lignes.
+An order from a quote, a delivery note from an order, the invoice	Une commande d'après un devis, un bon de livraison d'après une commande, la facture
+An order, a delivery note, a purchase order	Une commande, un bon de livraison, un bon de commande
+Another journal has this code.	Un autre journal a ce code.
+Another movement of this statement pays it	Un autre mouvement de cet extrait le paie
+Another party has this code already.	Un autre tiers a déjà ce code.
+Apr	Avr
+April	Avril
+As the bank says	Selon la banque
+Ask for payment forms	Formules de paiement
+Ask for the refund	Demander le remboursement
+ASSETS	ACTIF
+At	Au
+At 	Au 
+Aug	Août
+August	Août
+Balance	Solde
+balance at the year's end 	solde en fin d'exercice 
+Balance brought forward	Solde reporté
+Balance it on this line	Équilibrer sur cette ligne
+Balance sheet	Bilan
+Balance sheet (abbreviated scheme)	Bilan (schéma abrégé)
+Balanced	Équilibré
+balanced	équilibrée
+Bank	Banque
+Bank account	Compte bancaire
+Bank and cash	Banque et caisse
+Bank and Cash	Banque et caisse
+Bank Statement	Extrait bancaire
+Belgian accounting	Comptabilité belge
+Belgian co-contractor (reverse charge)	Cocontractant belge (autoliquidation)
+Belgian co-contractor (reverse charge) 12 %	Cocontractant belge (autoliquidation) 12 %
+Belgian co-contractor (reverse charge) 21 %	Cocontractant belge (autoliquidation) 21 %
+Belgian co-contractor (reverse charge) 6 %	Cocontractant belge (autoliquidation) 6 %
+Belgian, subject to VAT	Belge, assujetti à la TVA
+BIC	BIC
+by an entry in the miscellaneous journal on its last day, and locks its entries.	par une écriture du journal des opérations diverses à son dernier jour, et verrouille ses écritures.
+By its number	Selon son numéro
+By its situation	Selon sa situation
+Cancel	Annuler
+Capital and contributions	Capital et apport
+Card	Fiche
+Card saved	Fiche enregistrée
+Cash	Caisse
+Cash at bank and in hand	Valeurs disponibles
+Cash Statement	Extrait de caisse
+cdoc| saved	 : document enregistré
+Changes in stocks and contracts in progress	Variation des stocks et des commandes en cours d'exécution
+Charges	Charges
+Chart of accounts	Plan comptable
+Chart of Accounts	Plan comptable
+Choose a bank or cash journal.	Choisissez un journal de banque ou de caisse.
+Choose a journal.	Choisissez un journal.
+Choose a movement's party: its open invoices show here.	Choisissez le tiers d'un mouvement : ses factures ouvertes s'affichent ici.
+Choose a sales or purchases journal.	Choisissez un journal de ventes ou d'achats.
+Choose the customer.	Choisissez le client.
+Choose the party from the list (or add it: the + button).	Choisissez le tiers dans la liste (ou ajoutez-le : le bouton +).
+Choose the supplier.	Choisissez le fournisseur.
+Choose the VAT code from the list.	Choisissez le code TVA dans la liste.
+City	Localité
+Class 	Classe 
+Classes 0 to 7 only (the PCMN's).	Classes 0 à 7 uniquement (celles du PCMN).
+Close the fiscal year 	Clôturer l'exercice 
+Close the Fiscal Year...	Clôturer l'exercice...
+Close the year	Clôturer l'exercice
+Close the year...	Clôturer l'exercice...
+Closed	Clôturé
+Closing a year carries its result forward (a profit: 693000 / 140000; a loss: 141000 / 793000)	Clôturer un exercice reporte son résultat (un bénéfice : 693000 / 140000 ; une perte : 141000 / 793000)
+CN	NC
+Co-contractor	Cocontractant
+Code	Code
+col|Document	Pièce
+col|Due	Échéance
+COMMERCIAL	COMMERCIAL
+Communication	Communication
+Company	Société
+company|Register	Registre
+Copy written: 	Copie écrite : 
+Country	Pays
+Create	Créer
+Create a company...	Créer une société...
+Credit	Crédit
+credit 	crédit 
+Credit  	Crédit  
+Credit balance	Solde créditeur
+Credit note	Note de crédit
+Credit note 	Note de crédit 
+Credit notes 44/46	NC 44/46
+Credit notes 86/88	NC 86/88
+Credit notes issued: grids 44 and 46	Notes de crédit émises : grilles 44 et 46
+Credit notes issued: other operations	Notes de crédit émises : autres opérations
+Credit notes received: grids 86 and 88	Notes de crédit reçues : grilles 86 et 88
+Credit notes received: other operations	Notes de crédit reçues : autres opérations
+Credit open	Crédit ouvert
+CSV file (;)...	Fichier CSV (;)...
+CURRENT ASSETS	ACTIFS CIRCULANTS
+Current investments	Placements de trésorerie
+Customer	Client
+Customer listing	Listing clients
+Customer listing 	Listing clients 
+Customers	Clients
+Customers' balance	Balance clients
+Customers' balances	Soldes des clients
+Customers' open items by age	Balance âgée clients
+Date	Date
+days	jours
+Debit	Débit
+Debit 	Débit 
+Debit  	Débit  
+Debit balance	Solde débiteur
+Dec	Déc
+December	Décembre
+December advance	Acompte décembre
+Deductible VAT	TVA déductible
+Deferred charges and accrued income	Comptes de régularisation
+Delete	Supprimer
+Delete 	Supprimer 
+Delete the document...	Supprimer le document...
+Delete this card for good?	Supprimer définitivement cette fiche ?
+Delete this document for good?	Supprimer ce document définitivement ?
+Delete this operation for good?	Supprimer cette opération définitivement ?
+Delete this statement for good? Its matchings are undone.	Supprimer cet extrait définitivement ? Ses lettrages sont annulés.
+Delete...	Supprimer...
+Delivered	Livré
+Delivery	Livraison
+Delivery note	Bon de livraison
+Delivery Note	Bon de livraison
+Delivery notes	Bons de livraison
+Demo	Démo
+Depreciation, write-downs and provisions	Amortissements, réductions de valeur et provisions
+Description	Description
+Detail	Détail
+difference 	différence 
+Difference 	Différence 
+Difference (entries not balanced?): 	Différence (écritures non équilibrées ?) : 
+docs|All	Toutes
+docs|Open	Ouvertes
+docs|Paid	Payées
+Document	Document
+Document deleted	Document supprimé
+Documents	Documents
+Done	Terminé
+Draft	Brouillon
+Due	Échéance
+Due 	Éch. 
+due 	éch. 
+Due by State	Due par l'État
+Due date	Échéance
+Due on 	À déposer le 
+Due to State	Due à l'État
+Dutch	Néerlandais
+E-mail	E-mail
+Each role needs an account of the chart.	Chaque rôle demande un compte du plan comptable.
+Edit	Modifier
+Edit in Letters	Modifier dans Letters
+Edit...	Modifier...
+English	Anglais
+EQUITY	CAPITAUX PROPRES
+EQUITY AND LIABILITIES	PASSIF
+Equity, provisions and debts over one year	Fonds propres, provisions et dettes à plus d'un an
+EU acquisitions	Acquisitions UE
+EU number (its form)	Numéro UE (sa forme)
+EU services	Services UE
+EU supplies	Livraisons UE
+Every period so far is filed.	Toutes les périodes écoulées sont déposées.
+Excl. VAT	HTVA
+Excl. VAT 	HTVA 
+Exempt (art. 44), not in the return	Exempté (art. 44), hors déclaration
+Exempt intra-EU supplies and ABC sales	Livraisons intracommunautaires exemptées et ventes ABC
+Exempt, abroad	Exempté, étranger
+Expired	Expiré
+Export	Exporter
+Exports outside the EU	Exportations hors UE
+Feb	Févr
+February	Février
+fem| posted	 comptabilisée
+fem| saved	 enregistrée
+File	Fichier
+Filed	Déposée
+filed on 	déposée le 
+Files VAT returns	Dépose des déclarations TVA
+Financial charges	Charges financières
+Financial fixed assets	Immobilisations financières
+Financial income	Produits financiers
+First	Premier
+First fiscal year	Premier exercice
+Fiscal year 	Exercice 
+Fiscal years	Exercices
+FIXED ASSETS	ACTIFS IMMOBILISÉS
+For the State	Pour l'État
+For you	Pour vous
+Foreign number	Numéro étranger
+Formation expenses	Frais d'établissement
+Formation expenses, fixed assets and receivables over one year	Frais d'établissement, actifs immobilisés et créances à plus d'un an
+French	Français
+French one	Le français
+From	Du
+From 	Du 
+From the account	Depuis le compte
+fy|Year	Exercice
+General ledger	Grand livre
+Go	Aller
+Goods (grid 81)	Marchandises (grille 81)
+Goods, materials	Marchandises
+Goods, raw and auxiliary materials	Marchandises, matières premières et auxiliaires
+Grid	Grille
+Grid 	Grille 
+Grid 54 differs from the VAT on grids 01, 02 and 03 (their rates).	La grille 54 diffère de la TVA des grilles 01, 02 et 03 (leurs taux).
+Grid 55 holds VAT but grids 86 and 88 are empty.	La grille 55 contient de la TVA mais les grilles 86 et 88 sont vides.
+Grid 63 is more than 21 % of grids 84 and 85.	La grille 63 dépasse 21 % des grilles 84 et 85.
+Grid 64 is more than 21 % of grid 49.	La grille 64 dépasse 21 % de la grille 49.
+Grids 56 / 57 hold VAT but grid 87 is empty.	Les grilles 56 / 57 contiennent de la TVA mais la grille 87 est vide.
+Grids 86 / 88 hold acquisitions but grid 55 holds no VAT due.	Grilles 86 / 88 remplies mais aucune TVA due en grille 55.
+Hidden (no longer offered)	Masqué (plus proposé)
+IBAN	IBAN
+II  Operations (sales)	II  Opérations (ventes)
+III  Incoming (purchases)	III  Entrées (achats)
+Import CODA	Importer CODA
+Import CODA...	Importer CODA...
+Import VAT	TVA importation
+Imports, VAT deferred (ET 14000) 21 %	Importations, TVA reportée (ET 14000) 21 %
+In	Entrées
+in 	entrées 
+In 	Entrées 
+In a file	Dans un fichier
+In the year: debit 	Dans l'exercice : débit 
+In Letters, Tools > Mail Merge lists all the fields (their sample: templates/fields.card).	Dans Letters, Tools > Mail Merge liste tous les champs (leur exemple : templates/fields.card).
+Income	Produits
+Income statement	Compte de résultats
+Income statement (abbreviated scheme)	Compte de résultats (schéma abrégé)
+Income taxes	Impôts sur le résultat
+Intangible fixed assets	Immobilisations incorporelles
+Intra-community listing	Relevé intracommunautaire
+Intra-community listing 	Relevé intracommunautaire 
+Intra-community sales, but their customers' VAT numbers are not valid EU ones: correct their cards.	Des ventes intracommunautaires, mais les N° de TVA de leurs clients ne sont pas des numéros UE valides : corrigez leurs fiches.
+Intra-EU acquisitions and ABC sales	Acquisitions intracommunautaires et ventes ABC
+Intra-EU acquisitions of goods 12 %	Acquisitions intracommunautaires de biens 12 %
+Intra-EU acquisitions of goods 21 %	Acquisitions intracommunautaires de biens 21 %
+Intra-EU acquisitions of goods 6 %	Acquisitions intracommunautaires de biens 6 %
+Intra-EU services	Services intracommunautaires
+Intra-EU services (the customer's VAT)	Services intracommunautaires (TVA due par le client)
+Intra-EU services received 21 %	Services intracommunautaires reçus 21 %
+Intra-EU services with reverse charge	Services intracommunautaires avec autoliquidation
+Intra-EU supplies of goods	Livraisons intracommunautaires de biens
+Intra-EU triangular sales (ABC)	Ventes triangulaires intracommunautaires (ABC)
+Invalid	Non valide
+Investment goods	Biens d'investissement
+Investment grants	Subsides en capital
+Investments	Investissements
+Investments (grid 83)	Investissements (grille 83)
+Investments and cash	Placements de trésorerie et valeurs disponibles
+Invoice	Facture
+Invoice 	Facture 
+Invoiced	Facturé
+Invoiced: 	Facturé : 
+Invoices overdue	Factures en retard
+in|Dutch	néerlandais
+in|French	français
+Its check digits are wrong	Chiffres de contrôle erronés
+Its fiscal year is closed.	Son exercice est clôturé.
+Its invoice found by the structured communication	Sa facture trouvée par la communication structurée
+Its loss of 	Sa perte de 
+Its name, its legal form (SRL, SA...)	Son nom, sa forme juridique (SRL, SA...)
+Its own	Le sien
+Its profit of 	Son bénéfice de 
+Its result is appropriated already.	Son résultat est déjà affecté.
+Its supplier has no IBAN (its card).	Son fournisseur n'a pas d'IBAN (sa fiche).
+Its supplier is unknown.	Son fournisseur est inconnu.
+Its supplier's IBAN is not a valid one (its card).	L'IBAN de son fournisseur n'est pas valide (sa fiche).
+Its template	Son modèle
+Its template: 	Son modèle : 
+IV  VAT due	IV  TVA due
+Jan	Janv
+January	Janvier
+Journal	Journal
+Journal added	Journal ajouté
+Journal saved	Journal enregistré
+JOURNALS	JOURNAUX
+Journals	Journaux
+Jul	Juil
+July	Juillet
+Jun	Juin
+June	Juin
+Kind	Type
+Language	Langue
+Last	Dernier
+Late	En retard
+Late: it was due on 	En retard : à déposer pour le 
+Leave it without saving (Esc)	Le quitter sans enregistrer (Échap)
+Leave this document without saving its changes?	Quitter ce document sans enregistrer ses modifications ?
+Legal form	Forme jur.
+Lines	Lignes
+Lines matched	Lignes lettrées
+Listings	Listings
+Locked: 	Verrouillée : 
+Loss carried forward	Perte reportée
+Loss of the years before, not appropriated	Perte des exercices antérieurs, non affectée
+Made by Letters in 	Produit par Letters dans 
+Made from the name	Tiré du nom
+Made when saved	Générée à l'enregistrement
+Make a credit note for it	En faire une note de crédit
+Make a delivery note	Créer un bon de livraison
+Make the file	Créer le fichier
+Make the invoice	Créer la facture
+Make the order	Créer la commande
+Make the purchase invoice	Créer la facture d'achat
+Mar	Mars
+March	Mars
+Mark as filed	Marquer déposée
+Match	Lettrer
+Matched	Lettré
+Matched with this movement: to undo it, Unmatch in the party's account	Lettré avec ce mouvement : pour l'annuler, Délettrer dans le compte du tiers
+Matching undone	Lettrage annulé
+May	Mai
+menu|Edit	Édition
+Misc. operations	Opérations diverses
+Miscellaneous	Opérations diverses
+Miscellaneous Operation	Opération diverse
+Miscellaneous operations	Opérations diverses
+Miscellaneous Operations	Opérations diverses
+miscellaneous operations) are made: all can be changed afterwards.	opérations diverses) sont créés : tout peut être modifié ensuite.
+Missing	Manquant
+Month	Mois
+Monthly	Mensuelles
+Monthly returns	Déclarations mensuelles
+movements 	mouvements 
+Movements  	Mouvements  
+Name	Nom
+New	Nouveau
+New account	Nouveau compte
+New balance	Nouveau solde
+New balance  	Nouveau solde  
+New bank statement	Nouvel extrait bancaire
+New cash statement	Nouvel extrait de caisse
+New company	Nouvelle société
+New Company...	Nouvelle société...
+New customer	Nouveau client
+New delivery note	Nouveau bon de livraison
+New document	Nouveau document
+New invoice	Nouvelle facture
+New journal	Nouveau journal
+New journal...	Nouveau journal...
+New miscellaneous operation	Nouvelle opération diverse
+New operation	Nouvelle opération
+New order	Nouvelle commande
+New purchase	Nouvel achat
+New purchase credit note	Nouvelle note de crédit d'achat
+New purchase invoice	Nouvelle facture d'achat
+New purchase order	Nouveau bon de commande
+New quote	Nouveau devis
+New sales credit note	Nouvelle note de crédit de vente
+New sales invoice	Nouvelle facture de vente
+New statement	Nouvel extrait
+New supplier	Nouveau fournisseur
+Next step	Étape suivante
+No	Non
+No account to pay from: type the IBAN of a bank journal (Settings > Journals).	Aucun compte d'où payer : tapez l'IBAN d'un journal de banque (Paramètres > Journaux).
+No bank journal has the account 	Aucun journal de banque n'a le compte 
+No Belgian VAT-registered customer reached 250 EUR this year: the listing is nil (say so in the year's last return: its file does it).	Aucun client belge assujetti n'a atteint 250 EUR cette année : le listing est néant (à indiquer dans la dernière déclaration de l'année : son fichier le fait).
+No customer yet: New customer adds one.	Aucun client : Nouveau client en ajoute un.
+No IBAN	Pas d'IBAN
+No intra-community supply in this period: no listing to file.	Aucune livraison intracommunautaire dans cette période : pas de relevé à déposer.
+No journal for it (Settings > Journals).	Aucun journal pour cela (Paramètres > Journaux).
+No journal of that kind (Settings > Journals).	Aucun journal de ce type (Paramètres > Journaux).
+No line in the year.	Aucune ligne dans l'exercice.
+No line in this fiscal year.	Aucune ligne dans cet exercice.
+No more journals can be added.	Plus aucun journal ne peut être ajouté.
+No quote or order yet: New quote makes the first one.	Aucun devis ni commande : Nouveau devis crée le premier.
+No such account.	Ce compte n'existe pas.
+No such account: choose one from the list (or add it in the chart).	Ce compte n'existe pas : choisissez-en un dans la liste (ou ajoutez-le au plan comptable).
+No such party: choose one from the list (or add it: the + button).	Ce tiers n'existe pas : choisissez-en un dans la liste (ou ajoutez-le : le bouton +).
+No such VAT code: choose one from the list.	Ce code TVA n'existe pas : choisissez-en un dans la liste.
+No supplier yet: New supplier adds one.	Aucun fournisseur : Nouveau fournisseur en ajoute un.
+No supplier's invoice to pay.	Aucune facture fournisseur à payer.
+No template for this kind of document (	Aucun modèle pour ce type de document (
+No VAT on this line	Pas de TVA sur cette ligne
+No year can be added.	Aucun exercice ne peut être ajouté.
+No.	N°
+Non-recurring operating charges	Charges d'exploitation non récurrentes
+Non-recurring operating income	Produits d'exploitation non récurrents
+None: every customer pays on time.	Aucune : tous les clients paient à temps.
+Not a VAT number	Pas un N° de TVA
+Not a VAT number's form	Pas la forme d'un n° de TVA
+Not due	Non échu
+Not posted (its invoice will be)	Non comptabilisé (sa facture le sera)
+Not subject to VAT	Non assujetti à la TVA
+Not subject to VAT (art. 44)	Non assujetti à la TVA (art. 44)
+Not subject to VAT: no return	Non assujetti à la TVA : pas de déclaration
+Not subject to VAT: no VAT return.	Non assujetti à la TVA : pas de déclaration TVA.
+Notes	Notes
+Nothing in this period.	Rien dans cette période.
+Nothing open for this party: its documents are paid.	Rien d'ouvert pour ce tiers : ses documents sont payés.
+Nothing overdue	Rien en retard
+Nothing to pay.	Rien à payer.
+Nothing yet: the button at the top right makes the first one.	Rien pour l'instant : le bouton en haut à droite crée le premier.
+Nov	Nov
+November	Novembre
+Number	Numéro
+Number or name	Numéro ou nom
+Oct	Oct
+October	Octobre
+Off by 	Écart de 
+Off-balance sheet rights and commitments	Droits et engagements hors bilan
+OK	OK
+Old balance 	Ancien solde 
+Old balance  	Ancien solde  
+on 	le 
+On credit notes	Sur NC
+one| open	 ouvert
+Only the journal's last sales document can be deleted: make a credit note instead.	Seul le dernier document de vente du journal peut être supprimé : faites plutôt une note de crédit.
+Only the lines not matched yet, of every year	Seulement les lignes pas encore lettrées, de tous les exercices
+Open	Ouverte
+Open a company's books first (File > Open, or New Company)	Ouvrez d'abord la comptabilité d'une société (Fichier > Ouvrir, ou Nouvelle société)
+Open a company's books...	Ouvrir la comptabilité d'une société...
+Open items	Postes ouverts
+Open items of 	Postes ouverts de 
+Open items only	Non lettrés
+Open the folder	Ouvrir le dossier
+Open, due on 	Ouverte, échéance le 
+Open, overdue since 	Ouverte, en retard depuis le 
+Open...	Ouvrir...
+Opened: 	Ouvert : 
+Opening	Ouverture
+Opening balances	Soldes d'ouverture
+Operating charges	Charges d'exploitation
+Operating income	Produits d'exploitation
+OPERATING PROFIT (LOSS)	BÉNÉFICE (PERTE) D'EXPLOITATION
+Operation 	Opération 
+Operation deleted	Opération supprimée
+Operations subject to 12 % VAT	Opérations soumises à la TVA à 12 %
+Operations subject to 21 % VAT	Opérations soumises à la TVA à 21 %
+Operations subject to 6 % VAT	Opérations soumises à la TVA à 6 %
+Operations subject to a special scheme	Opérations soumises à un régime particulier
+Operations with VAT due by the co-contractor	Opérations avec TVA due par le cocontractant
+Order	Commande
+Order, your reference	Commande, votre référence
+Ordered	Commandé
+Orders	Commandes
+origin|From 	Origine : 
+Other credit notes	Autres NC
+Other EU country, VAT number	Autre pays de l'UE, n° de TVA
+Other exempt operations, operations abroad	Autres opérations exemptées, opérations à l'étranger
+Other incoming operations, VAT due by you	Autres opérations entrantes, TVA due par vous
+Other operating charges	Autres charges d'exploitation
+Other operating income	Autres produits d'exploitation
+Other...	Autre...
+Out	Sorties
+Outside the EU	Hors UE
+Over 90	Plus de 90
+Overdue	En retard
+overdue 	en retard 
+Overview	Vue d'ensemble
+Own work capitalised	Production immobilisée
+P. order	B. de cde
+page	page
+Paid	Payée
+Paid (matched)	Payée (lettrée)
+Paid on	Payé le
+PARTIES	TIERS
+Party	Tiers
+Party or account	Tiers ou compte
+Pay suppliers	Payer les fournisseurs
+Pay Suppliers (SEPA)...	Payer les fournisseurs (SEPA)...
+Pay...	Payer...
+Payables by age	Balance âgée fournisseurs
+Payment terms	Délai de paiement
+Pays	Paie
+PCMN in 	PCMN en 
+Period marked filed, its settlement posted: its VAT entries are locked	Période marquée déposée, sa liquidation comptabilisée : ses écritures TVA sont verrouillées
+Period marked filed: its VAT entries are locked	Période marquée déposée : ses écritures TVA sont verrouillées
+Period reopened	Période rouverte
+Phone	Téléphone
+Post the period's settlement too? Its VAT due (451000) and deductible (411000) moved to the VAT current account -- 451200 what is paid to the State, 411200 what it refunds -- by a miscellaneous operation on the period's last day.	Comptabiliser aussi la liquidation de la période ? Sa TVA due (451000) et déductible (411000) transférées au compte courant TVA -- 451200 ce qui est payé à l'État, 411200 ce qu'il rembourse -- par une opération diverse au dernier jour de la période.
+Postcode	Code postal
+Print	Imprimer
+Printing	Impression
+Private person (no VAT number)	Particulier (sans n° de TVA)
+PROFIT (LOSS) BEFORE TAXES	BÉNÉFICE (PERTE) AVANT IMPÔTS
+PROFIT (LOSS) OF THE PERIOD	BÉNÉFICE (PERTE) DE LA PÉRIODE
+Profit carried forward	Bénéfice reporté
+Profit of the years before, not appropriated	Bénéfice des exercices antérieurs, non affecté
+PROVISIONS AND DEFERRED TAXES	PROVISIONS ET IMPÔTS DIFFÉRÉS
+Purchase	Achat
+Purchase Credit Note	Note de crédit d'achat
+Purchase credit note 	Note de crédit d'achat 
+Purchase Invoice	Facture d'achat
+Purchase invoice 	Facture d'achat 
+Purchase order	Bon de commande
+Purchase Order	Bon de commande
+Purchase orders	Bons de commande
+Purchases	Achats
+Purchases 0 % or exempt	Achats 0 % ou exemptés
+Purchases 12 %	Achats 12 %
+Purchases 12 %, not deductible	Achats 12 %, non déductibles
+Purchases 21 %	Achats 21 %
+Purchases 21 %, half deductible (cars)	Achats 21 %, déductibles à moitié (voitures)
+Purchases 21 %, not deductible	Achats 21 %, non déductibles
+Purchases 6 %	Achats 6 %
+Q	T
+Q1	T1
+Q2	T2
+Q3	T3
+Q4	T4
+Quantity	Quantité
+Quarterly	Trimestrielles
+Quarterly returns	Déclarations trimestrielles
+quarter|Q	T
+Quote	Devis
+Quotes	Devis
+Quotes and orders	Devis et commandes
+Quotes and Orders	Devis et commandes
+Raw materials, consumables and goods for resale	Approvisionnements et marchandises
+Receivables and debts within one year	Créances et dettes à un an au plus
+Receivables by age	Balance âgée clients
+Reference	Référence
+Refused	Refusé
+Regularisation for the declarant (grid 62)	Régularisation en faveur du déclarant (grille 62)
+Regularisation for the State (grid 61)	Régularisation en faveur de l'État (grille 61)
+Regularisations in favour of the declarant	Régularisations en faveur du déclarant
+Regularisations in favour of the State	Régularisations en faveur de l'État
+Remove this account from the chart?	Retirer ce compte du plan comptable ?
+Remuneration, social security and pensions	Rémunérations, charges sociales et pensions
+Reopen	Rouvrir
+Reopen the year	Rouvrir l'exercice
+Reopen this fiscal year? Its entries can then be changed (its appropriation entry stays: delete it if the result changes).	Rouvrir cet exercice ? Ses écritures pourront alors être modifiées (son écriture d'affectation reste : supprimez-la si le résultat change).
+Reopen this period? Its entries can then be changed again (a return filed again must then be corrected on Intervat).	Rouvrir cette période ? Ses écritures pourront alors être modifiées à nouveau (une déclaration déposée à nouveau doit alors être rectifiée sur Intervat).
+Report	Rapport
+Reports	Rapports
+Reserves	Réserves
+Result	Résultat
+Result 	Résultat 
+Result of the year (not appropriated)	Résultat de l'exercice (non affecté)
+Returns	Déclarations
+Revaluation surpluses	Plus-values de réévaluation
+Rubric	Rubrique
+Running	En cours
+Salaries of September, depreciation 2026...	Salaires de septembre, amortissements 2026...
+Sales	Ventes
+Sales 0 %	Ventes 0 %
+Sales 12 %	Ventes 12 %
+Sales 21 %	Ventes 21 %
+Sales 6 %	Ventes 6 %
+Sales and purchases by month (excl. VAT)	Ventes et achats par mois (HTVA)
+Sales at 12 %	Ventes à 12 %
+Sales at 21 %	Ventes à 21 %
+Sales at 6 %	Ventes à 6 %
+Sales Credit Note	Note de crédit de vente
+Sales credit note 	Note de crédit 
+Sales Invoice	Facture de vente
+Sales invoice 	Facture 
+Sales, VAT due by the Belgian co-contractor	Ventes, TVA due par le cocontractant belge
+Save	Enregistrer
+Save & New	Enr. + nouveau
+Save a Copy	Enregistrer une copie
+Save a Copy As...	Enregistrer une copie sous...
+Save as...	Enregistrer sous...
+Save it and type the next one	L'enregistrer et encoder le suivant
+Save the changes	Enregistrer les modifications
+Save the Document	Enregistrer le document
+Save the document and go back to the list (Ctrl+S)	Enregistrer le document et revenir à la liste (Ctrl+S)
+Search	Rechercher
+Sent	Envoyé
+Sep	Sept
+September	Septembre
+Services	Services
+Services (grid 82)	Services (grille 82)
+Services and miscellaneous goods	Services et biens divers
+Services and other goods	Services et biens divers
+Services from outside the EU 21 % (rev. charge)	Services hors UE 21 % (autoliq.)
+Settings	Paramètres
+Settled	Soldée
+Several accounts match: choose one from the list.	Plusieurs comptes correspondent : choisissez-en un dans la liste.
+Several parties match: choose one from the list.	Plusieurs tiers correspondent : choisissez-en un dans la liste.
+short|City	Ville
+short|Phone	Tél.
+Small business franchise	Régime de la franchise
+Some customers have no valid EU VAT number: they are left out. Make the file anyway?	Certains clients n'ont pas de N° de TVA UE valide : ils sont omis. Créer le fichier quand même ?
+Special scheme	Régime particulier
+Spreadsheet	Tableur
+Spreadsheet workbook (.xlsx)...	Classeur du Tableur (.xlsx)...
+State	État
+Statement	Extrait
+Statement 	Extrait 
+Statement 12, the bank's reference...	Extrait 12, la référence de la banque...
+Statement deleted	Extrait supprimé
+Status	Statut
+Stocks and contracts in progress	Stocks et commandes en cours d'exécution
+Street	Rue
+Supplier	Fournisseur
+Suppliers	Fournisseurs
+Suppliers' balance	Balance fournisseurs
+Suppliers' balances	Soldes des fournisseurs
+Suppliers' open items by age	Balance âgée fournisseurs
+Suspense account	Compte d'attente
+Suspense accounts	Comptes d'attente
+Tangible fixed assets	Immobilisations corporelles
+That is a credit note already	C'est déjà une note de crédit
+That is a customers' or suppliers' account: choose a revenue, expense or other account.	C'est un compte clients ou fournisseurs : choisissez un compte de produits, de charges ou un autre compte.
+That is a purchases' VAT code.	C'est un code TVA d'achat.
+That is a sales' VAT code.	C'est un code TVA de vente.
+That year is closed already	Cet exercice est déjà clôturé
+The account is not one of the chart: choose it from the list.	Ce compte n'est pas dans le plan comptable : choisissez-le dans la liste.
+The accounts by role saved	Comptes par rôle enregistrés
+The accounts of a Belgian company or self-employed person: invoices, VAT, bank, reports.	La comptabilité d'une société ou d'un indépendant belge : factures, TVA, banque, rapports.
+The accounts without a balance or a movement listed too	Les comptes sans solde ni mouvement listés aussi
+The annual customer listing, the intra-community listing (XML)	Le listing clients annuel, le relevé intracommunautaire (XML)
+The balance sheet's accounts go on from year to year: no opening entry is needed.	Les comptes de bilan continuent d'un exercice à l'autre : aucune écriture d'ouverture n'est nécessaire.
+The bank's statements file (CODA): its movements, their parties and invoices found	Le fichier d'extraits de la banque (CODA) : ses mouvements, leurs tiers et factures retrouvés
+The books could not be written to their file (the card full, write-protected?). They are kept in memory: try File > Save a Copy As.	La comptabilité n'a pas pu être écrite dans son fichier (carte pleine, protégée en écriture ?). Elle est gardée en mémoire : essayez Fichier > Enregistrer une copie sous.
+The chart (PCMN) and the journals (sales, purchases, bank, cash,	Le plan comptable (PCMN) et les journaux (ventes, achats, banque, caisse,
+The chart of accounts (PCMN), sales and purchases, bank statements, VAT returns for Intervat,	Le plan comptable (PCMN), les ventes et les achats, les extraits bancaires, les déclarations TVA pour Intervat,
+The checks found something to look at (below the form). Make the file anyway?	Les contrôles signalent un point à vérifier (sous le formulaire). Créer le fichier quand même ?
+The checks Intervat makes find nothing wrong.	Les contrôles d'Intervat ne relèvent aucune erreur.
+The choice of language could not be written.	Le choix de la langue n'a pas pu être enregistré.
+The chosen account's name, its purchases' nature	Le nom du compte choisi, la nature de ses achats
+The chosen line's matching undone	Annuler le lettrage de la ligne choisie
+The chosen one's card	La fiche du tiers choisi
+The CODA file's statements are in the books	Les extraits du fichier CODA sont dans la comptabilité
+The company's books are ready: its chart, its journals, its first fiscal year	La comptabilité de la société est prête : son plan comptable, ses journaux, son premier exercice
+The company's details saved	Coordonnées de la société enregistrées
+The customer: a name, a code, a VAT number	Le client : un nom, un code, un n° de TVA
+the customers' and suppliers' accounts, the general ledger, the balance sheet.	les comptes des clients et des fournisseurs, le grand livre, le bilan.
+The date is in no fiscal year (Settings > Fiscal years).	La date n'est dans aucun exercice (Paramètres > Exercices).
+The demo company's file (SD:/docs/demo-company.ledger) is not on the card.	Le fichier de la société de démo (SD:/docs/demo-company.ledger) n'est pas sur la carte.
+The difference put on the active line	La différence reportée sur la ligne active
+The document has no line.	Le document n'a aucune ligne.
+The document made by Letters from its template	Le document produit par Letters à partir de son modèle
+The documents made go to SD:/docs/Quotes, Orders, Delivery notes, Invoices...	Les documents créés vont dans SD:/docs/Quotes, Orders, Delivery notes, Invoices...
+The due date is before the invoice's date.	L'échéance précède la date de la facture.
+The entry does not balance: its debits and credits differ.	L'écriture n'est pas équilibrée : ses débits et ses crédits diffèrent.
+The entry it makes	L'écriture générée
+The file could not be read.	Le fichier n'a pas pu être lu.
+The file could not be written (the card full, write-protected?).	Le fichier n'a pas pu être écrit (carte pleine, protégée en écriture ?).
+The file could not be written.	Le fichier n'a pas pu être écrit.
+The file goes to SD:/docs/Payments: upload it to your bank's site.	Le fichier va dans SD:/docs/Payments : chargez-le sur le site de votre banque.
+The file holds no CODA statement (its lines: 128 characters, the first one starting with 0).	Le fichier ne contient aucun extrait CODA (ses lignes : 128 caractères, la première commençant par 0).
+The file holds too many statements.	Le fichier contient trop d'extraits.
+The file is not a CODA file (a line starts with neither 0, 1, 2, 3, 4, 8 nor 9).	Ce n'est pas un fichier CODA (une ligne ne commence ni par 0, 1, 2, 3, 4, 8 ni 9).
+The file is written: send it on Intervat (intervat.minfin.fgov.be). Mark the period as filed now (its VAT entries then locked)?	Le fichier est écrit : envoyez-le sur Intervat (intervat.minfin.fgov.be). Marquer la période comme déposée maintenant (ses écritures TVA alors verrouillées) ?
+The File Viewer could not be started.	Le File Viewer n'a pas pu être lancé.
+The fiscal year of that date is closed.	L'exercice de cette date est clôturé.
+The fiscal year shown is closed: choose another one (at the top of the side bar).	L'exercice affiché est clôturé : choisissez-en un autre (en haut de la barre latérale).
+The fiscal year the pages show	L'exercice que les pages affichent
+The French template could not be read.	Le modèle français n'a pas pu être lu.
+The IBAN is not a valid one. Keep it anyway?	L'IBAN n'est pas valide. Le garder quand même ?
+The invoice has no amount.	La facture n'a pas de montant.
+The invoice made by Letters from its template	La facture produite par Letters à partir de son modèle
+The invoice's total is zero.	Le total de la facture est nul.
+The journal's account is not in the chart (Settings > Journals).	Le compte du journal n'est pas dans le plan comptable (Paramètres > Journaux).
+The language changes when Ledger starts again	La langue change au prochain démarrage de Ledger
+The language of its quotes, orders, invoices (their templates)	La langue de ses devis, commandes, factures (leurs modèles)
+The lines behind each grid	Les lignes derrière chaque grille
+The lines ticked (adding up to zero) matched together: an invoice and its payment	Lettrer ensemble les lignes cochées (de somme nulle) : une facture et son paiement
+The new balance is not the old one plus the movements.	Le nouveau solde n'est pas l'ancien plus les mouvements.
+The next VAT return	La prochaine déclaration TVA
+The old balance 	L'ancien solde 
+The period marked filed: its VAT entries locked	La période marquée déposée : ses écritures TVA verrouillées
+The period reopened: its entries can be changed again	La période rouverte : ses écritures peuvent à nouveau être modifiées
+The purchases' account by default	Le compte d'achats par défaut
+The report opened in the Spreadsheet (a workbook)	Le rapport ouvert dans le Tableur (un classeur)
+The report opened in Letters (a document to print)	Le rapport ouvert dans Letters (un document à imprimer)
+The report written in a file: a Letters document, a workbook, CSV	Le rapport enregistré dans un fichier : un document Letters, un classeur, CSV
+The return's file for Intervat (the SPF Finances' site)	Le fichier de la déclaration pour Intervat (le site du SPF Finances)
+The sales' account by default	Le compte de ventes par défaut
+The small business franchise: no VAT return to file (the customer listing still is)	Régime de la franchise : pas de déclaration TVA à déposer (le listing clients bien)
+The small business franchise: no VAT return.	Régime de la franchise : pas de déclaration TVA.
+The Spreadsheet could not be started.	Le Tableur n'a pas pu être lancé.
+The statement has no movement.	L'extrait n'a aucun mouvement.
+The structured communication's check digits are wrong (+++123/4567/89012+++).	Les chiffres de contrôle de la communication structurée sont erronés (+++123/4567/89012+++).
+The supplier's invoice number	Le numéro de facture du fournisseur
+The supplier: a name, a code, a VAT number	Le fournisseur : un nom, un code, un n° de TVA
+The suppliers' invoices paid: a SEPA transfers file for the bank	Payer les factures des fournisseurs : un fichier de virements SEPA pour la banque
+The template could not be written.	Le modèle n'a pas pu être écrit.
+The VAT number is not a valid one. Keep it anyway?	Le numéro de TVA n'est pas valide. Le garder quand même ?
+The VAT return of its period has been filed.	La déclaration TVA de sa période a été déposée.
+The VAT return of that period has been filed (VAT > the period: reopen it).	La déclaration TVA de cette période a été déposée (TVA > la période : rouvrez-la).
+Their number	Leur numéro
+Their reference, an order number	Leur référence, un numéro de commande
+There is no template for this document: put one (a Letters document) in SD:/apps/ledger.app/templates.	Il n'y a pas de modèle pour ce document : placez-en un (un document Letters) dans SD:/apps/ledger.app/templates.
+These statements are in the books already.	Ces extraits sont déjà dans la comptabilité.
+This account has lines in the books: hide it instead (Edit > Hidden).	Ce compte a des lignes dans la comptabilité : masquez-le plutôt (Modifier > Masqué).
+This company files no periodic VAT return (Settings > Company: its VAT situation).	Cette société ne dépose pas de déclaration TVA périodique (Paramètres > Société : sa situation TVA).
+This document has changes not saved. Save it now?	Ce document a des modifications non enregistrées. L'enregistrer maintenant ?
+This document has no 	Ce document n'a pas de modèle (
+This entry is not an invoice Ledger made.	Cette écriture n'est pas une facture faite par Ledger.
+This file is not a Ledger company's books.	Ce fichier n'est pas la comptabilité d'une société Ledger.
+This number is in the chart already.	Ce numéro est déjà dans le plan comptable.
+This party has documents in the books: its card cannot be deleted.	Ce tiers a des documents dans la comptabilité : sa fiche ne peut pas être supprimée.
+This party has quotes or orders (Quotes and orders): its card cannot be deleted.	Ce tiers a des devis ou des commandes (Devis et commandes) : sa fiche ne peut pas être supprimée.
+This statement is in the books already.	Cet extrait est déjà dans la comptabilité.
+This supplier's invoice 	La facture fournisseur 
+Tick the invoices to pay.	Cochez les factures à payer.
+tick those this movement pays	cochez ceux que ce mouvement paie
+to	au
+To	Au
+To come	À venir
+To complete: a party or an account	À compléter : un tiers ou un compte
+To file	À déposer
+To pay	À payer
+to pay 	à payer 
+To pay (so far)	À payer (à ce jour)
+To receive	À recevoir
+to receive 	à recevoir 
+To recover (so far)	À récupérer (à ce jour)
+Tools	Outils
+Total	Total
+Total 	Total 
+TOTAL ASSETS	TOTAL DE L'ACTIF
+Total class 	Total classe 
+TOTAL EQUITY AND LIABILITIES	TOTAL DU PASSIF
+Total excl. VAT	Total HTVA
+Total to pay	Total à payer
+Total to refund	Total à rembourser
+Transfer sent	Virement envoyé
+Transfers to / from deferred taxes and untaxed reserves	Transferts aux / prélèvements sur les impôts différés et réserves immunisées
+Trial balance	Balance des comptes
+Try the demo company	Essayer la société de démonstration
+Turnover	Chiffre d'affaires
+Turnover 	CA 
+Type a name, a code, a VAT number	Tapez un nom, un code, un n° de TVA
+Type a quantity, as 2,5.	Tapez une quantité, par exemple 2,5.
+Type an amount, as 1.234,56.	Tapez un montant, par exemple 1.234,56.
+Type its name.	Tapez son nom.
+Type the company's name.	Tapez le nom de la société.
+Type the customer, the dates, the lines; Save posts it.	Tapez le client, les dates, les lignes ; Enregistrer la comptabilise.
+Type the date, as 29/09/2026.	Tapez la date, par exemple 29/09/2026.
+Type the day the bank pays, as 29/09/2026.	Tapez le jour où la banque paie, par exemple 29/09/2026.
+Type the due date, as 29/09/2026 (or leave it empty).	Tapez l'échéance, par exemple 29/09/2026 (ou laissez-la vide).
+Type the entry's date.	Tapez la date de l'écriture.
+Type the first fiscal year's first and last days.	Tapez le premier et le dernier jour du premier exercice.
+Type the invoice's date.	Tapez la date de la facture.
+Type the name.	Tapez le nom.
+Type the new balance as an amount, or leave it empty.	Tapez le nouveau solde comme un montant, ou laissez-le vide.
+Type the statement's date, as 29/09/2026.	Tapez la date de l'extrait, par exemple 29/09/2026.
+Type the statement's date.	Tapez la date de l'extrait.
+Type the supplier, the dates, the lines; Save posts it.	Tapez le fournisseur, les dates, les lignes ; Enregistrer la comptabilise.
+Unit price	Prix unit.
+Unmatch	Délettrer
+Unsaved document	Document non enregistré
+V  VAT deductible	V  TVA déductible
+Valid	Valide
+Valid Belgian number	Numéro belge valide
+Valid until	Validité
+VAT	TVA
+VAT 	TVA 
+VAT code	Code TVA
+VAT deductible	TVA déductible
+VAT detail	Détail TVA
+VAT detail by grid	Détail TVA par grille
+VAT due	TVA due
+VAT due 	TVA due 
+VAT due by the State	TVA due par l'État
+VAT due by you	TVA due par vous
+VAT due to the State	TVA due à l'État
+VAT Listings...	Listings TVA...
+VAT not deductible	TVA non déductible
+VAT number	N° de TVA
+VAT on 01-03	TVA sur 01-03
+VAT on 86, 88	TVA sur 86, 88
+VAT on 87	TVA sur 87
+VAT on grid 87 (except deferred imports)	TVA sur la grille 87 (hors importations avec report)
+VAT on grids 01, 02 and 03	TVA sur les grilles 01, 02 et 03
+VAT on grids 86 and 88	TVA sur les grilles 86 et 88
+VAT on imports with deferral	TVA sur importations avec report de perception
+VAT returns	Déclarations TVA
+VAT settlement	Liquidation TVA
+VAT settlement 	Liquidation TVA 
+VAT situation	Situation TVA
+VAT to pay back on credit notes received	TVA à reverser sur notes de crédit reçues
+VAT to recover on credit notes issued	TVA à récupérer sur notes de crédit émises
+verb|Open	Ouvrir
+VI  Balance	VI  Solde
+Web site	Site web
+Welcome to Ledger	Bienvenue dans Ledger
+What it is about, its conditions	Son objet, ses conditions
+What the invoice is for	L'objet de la facture
+whose merge fields Ledger fills: 	dont Ledger remplit les champs de fusion : 
+With a balance	Avec un solde
+With movements	Avec mouvements
+With VAT	Avec TVA
+Words of a party, a description, a number, an amount (Ctrl+F)	Mots d'un tiers, d'une description, un numéro, un montant (Ctrl+F)
+Letters could not be started.	Letters n'a pas pu être lancé.
+Letters document (.rtf)...	Document Letters (.rtf)...
+Letters makes the document in 	Letters crée le document dans 
+Letters opens 	Letters ouvre 
+Written: 	Écrit : 
+Wrong check digits	Chiffres de contrôle erronés
+Year closed	Exercice clôturé
+Year reopened	Exercice rouvert
+year|Open	Ouvert
+Yes	Oui
+yes	oui
+Your books, the Belgian way	Votre comptabilité, à la belge
+Zero balances too	Soldes nuls aussi

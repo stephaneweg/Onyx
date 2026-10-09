@@ -1,0 +1,39 @@
+# The Panel applet's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included); a key "context|English" is a TRC's.
+Panel	Dock
+Drawers	Tiroirs
+The dock's drawers, left to right: one for each category of the apps	Les tiroirs du dock, de gauche à droite : un par catégorie d'applications
+Further left	Plus à gauche
+Further right	Plus à droite
+Hidden	Masqué
+No drawer for this category (its apps stay in the Onyx menu)	Pas de tiroir pour cette catégorie (ses applications restent dans le menu Onyx)
+Main app	Application principale
+The drawer's icon: a click on it starts this app	L'icône du tiroir : un clic dessus démarre cette application
+: 	 : 
+  -- hidden	  -- masqué
+Workspaces	Bureaux
+Number	Nombre
+Its name (the dock's square shows it)	Son nom (affiché dans le carré du dock)
+Launchers (after the drawers)	Lanceurs (après les tiroirs)
+< Add	< Ajouter
+Remove	Retirer
+Every app: pick one, then < Add (or double-click it)	Toutes les applications : choisissez-en une, puis < Ajouter (ou double-cliquez dessus)
+Apply	Appliquer
+Discard	Rétablir
+Pick an app in the list on the right first.	Choisissez d'abord une application dans la liste de droite.
+6 launchers at most.	6 lanceurs au plus.
+Keep one drawer at least.	Gardez au moins un tiroir.
+Could not write SD:/etc/dock.ini.	Impossible d'écrire SD:/etc/dock.ini.
+Applied: the dock has it.	Appliqué : le dock en tient compte.
+# the categories (the apps' app.txt; dock.ini keeps the English)
+Demos	Démos
+Emulators	Émulateurs
+Games	Jeux
+Graphics	Graphisme
+Internet	Internet
+Multimedia	Multimédia
+Productivity	Bureautique
+Programming	Programmation
+Settings	Paramètres
+System	Système
+Other	Autres

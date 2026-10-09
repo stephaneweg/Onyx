@@ -1,0 +1,49 @@
+# uikit's own words in French (uikit/lang.h): English<TAB>French. The apps' words: SD:/apps/<app>.app/lang/fr.txt.
+January	Janvier
+February	Février
+March	Mars
+April	Avril
+May	Mai
+June	Juin
+July	Juillet
+August	Août
+September	Septembre
+October	Octobre
+November	Novembre
+December	Décembre
+Mo	Lu
+Tu	Ma
+We	Me
+Th	Je
+Fr	Ve
+Sa	Sa
+Su	Di
+Yes	Oui
+No	Non
+Cancel	Annuler
+OK	OK
+Choose	Choisir
+Save	Enregistrer
+Open	Ouvrir
+Choose folder	Choisir un dossier
+Save file	Enregistrer le fichier
+Open file	Ouvrir un fichier
+Volumes	Volumes
+Restore	Restaurer
+Maximise	Agrandir
+Minimise	Réduire
+Move to 	Déplacer vers 
+Workspace 	Bureau 
+On All Workspaces	Sur tous les bureaux
+On This Workspace Only	Sur ce bureau uniquement
+Close	Fermer
+(none)	(aucun)
+Today	Aujourd'hui
+Clear	Effacer
+DD/MM/YYYY	JJ/MM/AAAA
+Colour	Couleur
+No colour	Pas de couleur
+More Colours...	Plus de couleurs...
+None	Aucune
+Search	Rechercher
+Search the records (Ctrl+F)	Rechercher dans les fiches (Ctrl+F)

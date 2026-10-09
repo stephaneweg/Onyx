@@ -1,0 +1,9 @@
+# Settings.form -- a user control: another page, in a Grid whose first column is 110 pixels, the second the rest
+UserControl Settings size=370x270
+  Grid padding=14 gap=10 widths=110,*
+    Label "Volume:"
+    Slider volume max=100 value=40 fill
+    Label "Level:"
+    Progress level value=40 fill
+    Label "Options:"
+    CheckBox loud "Loud" checked

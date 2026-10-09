@@ -1,0 +1,420 @@
+# Haunted Manor -- a Pinball table (SD:/apps/pinball.app/tables), the format in docs/04 "Pinball";
+# made by tools/pinball/mktables.py -- edit it there, then run sh tools/tests/run_pinball_test.sh.
+# MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors.
+
+[table]
+format     = 1
+name       = Haunted Manor
+name.fr    = Manoir hanté
+goal       = Clear the ghosts and the bats, then lock 2 balls in the crypt: 3-ball multiball.
+goal.fr    = Abattez les fantômes et les chauves-souris, puis bloquez 2 billes dans la crypte : multiball à 3 billes.
+size       = 520 1040
+gravity    = 1400
+ball       = 13
+balls      = 3
+ballsave   = 8
+drain      = 1010
+rotate     = top
+background = #1C1028
+
+[shape]
+points     = 0 0, 0 262, 2 260, 4.2 226.3, 10.8 193.2, 21.6 161.3, 36.6 131, 55.3 102.9, 77.6 77.6, 102.9 55.3, 131 36.6, 161.3 21.6, 193.2 10.8, 226.3 4.2, 260 2, 260 0
+colour     = #2A1A30
+
+[shape]
+points     = 260 0, 260 2, 293.7 4.2, 326.8 10.8, 358.7 21.6, 389 36.6, 417.1 55.3, 442.4 77.6, 464.7 102.9, 483.4 131, 498.4 161.3, 509.2 193.2, 515.8 226.3, 518 260, 520 262, 520 0
+colour     = #2A1A30
+
+[shape]
+points     = 478 300, 520 300, 520 1040, 478 1040
+colour     = #140A1C
+
+[shape]
+points     = 0 1000, 476 1000, 476 1040, 0 1040
+colour     = #2A1A30
+
+[shape]
+points     = 0 880, 38 880, 38 1000, 0 1000
+colour     = #140A1C
+
+[shape]
+points     = 438 880, 476 880, 476 1000, 438 1000
+colour     = #140A1C
+
+[shape]
+points     = 370 170, 368.6 180.4, 364.6 190, 358.3 198.3, 350 204.6, 340.4 208.6, 330 210, 319.6 208.6, 310 204.6, 301.7 198.3, 295.4 190, 291.4 180.4, 290 170, 291.4 159.6, 295.4 150, 301.7 141.7, 310 135.4, 319.6 131.4, 330 130, 340.4 131.4, 350 135.4, 358.3 141.7, 364.6 150, 368.6 159.6
+colour     = #E8E0B8
+
+[shape]
+points     = 380 160, 378.8 168.8, 375.4 177, 370 184, 363 189.4, 354.8 192.8, 346 194, 337.2 192.8, 329 189.4, 322 184, 316.6 177, 313.2 168.8, 312 160, 313.2 151.2, 316.6 143, 322 136, 329 130.6, 337.2 127.2, 346 126, 354.8 127.2, 363 130.6, 370 136, 375.4 143, 378.8 151.2
+colour     = #1C1028
+
+[shape]
+points     = 120 700, 120 560, 170 500, 220 560, 220 520, 250 470, 280 520, 280 560, 330 500, 380 560, 380 700
+colour     = #2A1838
+
+[shape]
+points     = 140 600, 160 600, 160 630, 140 630
+colour     = #F0C040
+
+[shape]
+points     = 240 600, 260 600, 260 630, 240 630
+colour     = #F0C040
+
+[shape]
+points     = 340 600, 360 600, 360 630, 340 630
+colour     = #F0C040
+
+[label]
+at         = 250 680
+text       = MANOR
+text.fr    = MANOIR
+size       = 3
+colour     = #3C2850
+
+[label]
+at         = 238 1020
+text       = HAUNTED MANOR
+text.fr    = MANOIR HANTÉ
+size       = 2
+colour     = #B090C0
+
+[wall]
+id         = outline
+closed     = 1
+points     = 0 0, 520 0, 520 1040, 0 1040
+colour     = #C0A070
+
+[arc]
+centre     = 260 260
+radius     = 258
+from       = 180
+to         = 360
+colour     = #C0A070
+width      = 5
+
+# the shooter lane: its inner wall, its one-way gate at the top (slanted: a ball resting on it rolls off)
+[wall]
+points     = 476 1040, 476 300
+colour     = #C0A070
+
+[gate]
+a          = 476 300
+b          = 518 284
+pass      = up
+
+# the outlanes' dividers, a rubber post on each; they go on as the inlanes' guides down to the flippers
+[wall]
+points     = 38 700, 38 850, 144 894
+colour     = #C0A070
+
+[wall]
+points     = 438 700, 438 850, 332 894
+colour     = #C0A070
+
+[post]
+at         = 38 700
+radius     = 6
+colour     = #F0E6D0
+
+[post]
+at         = 438 700
+radius     = 6
+colour     = #F0E6D0
+
+# the slingshots: a closed body, its face the hypotenuse
+[wall]
+closed     = 1
+points     = 96 740, 96 820, 132 830
+colour     = #9C5BD0
+bounce     = 0.3
+
+[wall]
+closed     = 1
+points     = 380 740, 380 820, 344 830
+colour     = #9C5BD0
+bounce     = 0.3
+
+[sling]
+id         = sl
+a          = 96 740
+b          = 132 830
+colour     = #9C5BD0
+
+[sling]
+id         = sr
+a          = 380 740
+b          = 344 830
+colour     = #9C5BD0
+
+[flipper]
+side       = left
+pivot      = 150 905
+length     = 70
+colour     = #F4F0E6
+
+[flipper]
+side       = right
+pivot      = 326 905
+length     = 70
+colour     = #F4F0E6
+
+[plunger]
+at         = 498 980
+
+# inlanes and outlanes
+[lane]
+id         = out-l
+group      = out
+rect       = 7 770 24 40
+colour     = #B0E0A0
+
+[lane]
+id         = in-l
+group      = in
+rect       = 55 770 24 40
+colour     = #B0E0A0
+
+[lane]
+id         = in-r
+group      = in
+rect       = 397 770 24 40
+colour     = #B0E0A0
+
+[lane]
+id         = out-r
+group      = out
+rect       = 445 770 24 40
+colour     = #B0E0A0
+
+# the right orbit's channel
+[wall]
+points     = 440 560, 440 380
+colour     = #C0A070
+
+[ramp]
+id         = orbit
+a          = 442 540
+b          = 474 540
+pass      = up
+path       = 458 520, 458 330, 496 260, 490.7 210.4, 475.1 162.9, 449.9 119.9, 416.2 83.1, 375.4 54.2, 329.6 34.5, 280.6 24.9, 230.7 25.8, 182.1 37.2, 136.9 58.6, 97.3 89, 65 127.1, 41.4 171, 27.6 219, 30 340, 30 690, 55 745
+time       = 1.2
+out        = 0 320
+score      = 2000
+colour     = #70C0A0
+width      = 24
+
+# the top lanes (rotate group), their separators
+[lane]
+id         = l1
+group      = top
+rect       = 165 108 30 50
+colour     = #F0C040
+
+[lane]
+id         = l2
+group      = top
+rect       = 235 108 30 50
+colour     = #F0C040
+
+[lane]
+id         = l3
+group      = top
+rect       = 305 108 30 50
+colour     = #F0C040
+
+[wall]
+points     = 145 92, 145 160
+colour     = #C0A070
+width      = 6
+
+[wall]
+points     = 215 92, 215 160
+colour     = #C0A070
+width      = 6
+
+[wall]
+points     = 285 92, 285 160
+colour     = #C0A070
+width      = 6
+
+[wall]
+points     = 355 92, 355 160
+colour     = #C0A070
+width      = 6
+
+[bumper]
+id         = b1
+at         = 190 250
+radius     = 28
+kick       = 950
+score      = 100
+colour     = #6EE07A
+
+[bumper]
+id         = b2
+at         = 310 250
+radius     = 28
+kick       = 950
+score      = 100
+colour     = #6EE07A
+
+[bumper]
+id         = b3
+at         = 250 330
+radius     = 28
+kick       = 950
+score      = 100
+colour     = #6EE07A
+
+[saucer]
+id         = crypt
+at         = 110 300
+radius     = 18
+hold       = 1.5
+out        = 350 420
+score      = 750
+colour     = #A050D0
+
+[label]
+at         = 110 338
+text       = CRYPT
+text.fr    = CRYPTE
+size       = 1
+colour     = #C080F0
+
+[target]
+id         = g1
+kind       = drop
+bank       = ghosts
+a          = 66 430
+b          = 66 464
+colour     = #E8E8F0
+
+[target]
+id         = g2
+kind       = drop
+bank       = ghosts
+a          = 66 470
+b          = 66 504
+colour     = #E8E8F0
+
+[target]
+id         = g3
+kind       = drop
+bank       = ghosts
+a          = 66 510
+b          = 66 544
+colour     = #E8E8F0
+
+[target]
+id         = g4
+kind       = drop
+bank       = ghosts
+a          = 66 550
+b          = 66 584
+colour     = #E8E8F0
+
+[target]
+id         = v1
+kind       = drop
+bank       = bats
+a          = 410 430
+b          = 410 464
+colour     = #D04848
+
+[target]
+id         = v2
+kind       = drop
+bank       = bats
+a          = 410 470
+b          = 410 504
+colour     = #D04848
+
+[target]
+id         = v3
+kind       = drop
+bank       = bats
+a          = 410 510
+b          = 410 544
+colour     = #D04848
+
+[target]
+id         = v4
+kind       = drop
+bank       = bats
+a          = 410 550
+b          = 410 584
+colour     = #D04848
+
+[label]
+at         = 92 500
+text       = GHOSTS
+text.fr    = FANTÔMES
+size       = 1
+colour     = #E8E8F0
+angle      = 90
+
+[label]
+at         = 384 500
+text       = BATS
+text.fr    = CHAUVES-SOURIS
+size       = 1
+colour     = #E07070
+angle      = 90
+
+[target]
+id         = s1
+kind       = standup
+a          = 186 420
+b          = 214 420
+colour     = #F0C040
+
+[target]
+id         = s2
+kind       = standup
+a          = 236 420
+b          = 264 420
+colour     = #F0C040
+
+[target]
+id         = s3
+kind       = standup
+a          = 286 420
+b          = 314 420
+colour     = #F0C040
+
+[rule]
+when       = lanes top
+do         = multiplier
+message    = Bonus x up!
+message.fr = Bonus x augmenté !
+
+[rule]
+when       = bank ghosts
+do         = score 10000
+message    = Ghosts banished!
+message.fr = Fantômes chassés !
+
+[rule]
+when       = bank bats
+do         = score 10000
+message    = Bats scattered!
+message.fr = Chauves-souris dispersées !
+
+[rule]
+when       = saucer crypt
+count      = 2
+do         = multiball 3
+message    = MULTIBALL!
+message.fr = MULTIBALL !
+
+# (02 asks: both banks twice -> an extra ball; one event per rule: the bats twice, once a game)
+[rule]
+when       = bank bats
+count      = 2
+once       = 1
+do         = extraball
+message    = Extra ball!
+message.fr = Bille supplémentaire !
+

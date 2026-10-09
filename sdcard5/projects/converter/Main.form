@@ -1,0 +1,23 @@
+# Main.form -- the converter's window (QBStudio writes it; it reads as you see it)
+Window Main "Temperature converter" size=380x260 min=320x220 resizable
+  Menu
+    "&File"
+      "&Copy the result" name=mnuCopy key=Ctrl+C
+      -
+      "&Quit" name=mnuQuit key=Ctrl+Q
+    "&Help"
+      "&About Converter" name=mnuAbout
+  Column padding=14 gap=10
+    Row gap=8
+      Label "Celsius:" width=90
+      TextBox celsius "20" fill
+    Row gap=8
+      Label "Fahrenheit:" width=90
+      TextBox fahrenheit "" fill readonly
+    CheckBox live "Convert as I type" checked
+    Slider scale max=200 fill
+    Spacer
+    Row gap=8 align=right
+      Button wipe "Clear"
+      Button convert "Convert" default
+  StatusBar status "Ready"

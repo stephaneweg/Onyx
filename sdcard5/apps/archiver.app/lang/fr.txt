@@ -1,0 +1,176 @@
+# The Archiver's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included): many are the pieces of a line put together.
+Archiver	Archiveur
+Replace	Remplacer
+Replace All	Tout remplacer
+Skip	Ignorer
+Skip All	Tout ignorer
+Keep Both	Garder les deux
+A file exists already	Un fichier existe déjà
+ is there already.	 existe déjà.
+In	Dans
+Background	Arrière-plan
+Properties	Propriétés
+Ask for each one	Demander pour chacun
+Replace them	Les remplacer
+Skip them	Les ignorer
+Keep both (a new name)	Garder les deux (un nouveau nom)
+Extract from 	Extraire de 
+ item, 	 élément, 
+ items, 	 éléments, 
+ file, 	 fichier, 
+ files, 	 fichiers, 
+The selection	La sélection
+Everything	Tout
+Browse...	Parcourir...
+Into a new folder named	Dans un nouveau dossier nommé
+Keep the archive's folders	Garder les dossiers de l'archive
+From the current folder down	À partir du dossier courant
+All in one folder (flat)	Tout dans un seul dossier (à plat)
+Show the folder after	Montrer le dossier ensuite
+Extract	Extraire
+WHAT	QUOI
+WHERE	OÙ
+FOLDERS	DOSSIERS
+IF A FILE EXISTS	SI UN FICHIER EXISTE
+Existing files:	Fichiers existants :
+Password:	Mot de passe :
+(nothing is encrypted)	(rien n'est chiffré)
+Replace it	Le remplacer
+Keep the old one	Garder l'ancien
+Add to 	Ajouter à 
+Add Files...	Ajouter des fichiers...
+Add Folder...	Ajouter un dossier...
+Remove	Retirer
+Keep the folders I add	Garder les dossiers que j'ajoute
+Only the files	Seulement les fichiers
+Store	Stocker
+Fast	Rapide
+Normal	Normal
+Best	Maximal
+Add	Ajouter
+Add to the Archive	Ajouter à l'archive
+ item to add	 élément à ajouter
+ items to add	 éléments à ajouter
+Nothing yet: Add Files... / Add Folder..., or drop them on the archive	Rien encore : Ajouter des fichiers... / un dossier..., ou déposez-les sur l'archive
+WHERE IN THE ARCHIVE	OÙ DANS L'ARCHIVE
+COMPRESSION	COMPRESSION
+Into the folder:	Dans le dossier :
+a folder keeps its name and its tree	un dossier garde son nom et son arborescence
+the files of the folders, side by side	les fichiers des dossiers, côte à côte
+Deflate; png, jpg, zip... are stored	Deflate ; png, jpg, zip... sont stockés
+If a name exists:	Si un nom existe :
+No archive open	Aucune archive ouverte
+ of 	 sur 
+ selected  (	 sélectionnés  (
+ item	 élément
+ items	 éléments
+ found	 trouvés
+ in 	 dans 
+ file  -  	 fichier  -  
+ files  -  	 fichiers  -  
+, read only	, lecture seule
+Format	Format
+Files	Fichiers
+Folders	Dossiers
+Original size	Taille d'origine
+Packed size	Taille compressée
+Saved	Gain
+Encrypted	Chiffré
+yes	oui
+some files	certains fichiers
+no	non
+Comment	Commentaire
+Nothing found	Rien trouvé
+This folder is empty	Ce dossier est vide
+  -  read only	  -  lecture seule
+Cannot open the archive	Impossible d'ouvrir l'archive
+Test	Tester
+No errors: 	Aucune erreur : 
+ files checked.	 fichiers vérifiés.
+ file extracted to 	 fichier extrait vers 
+ files extracted to 	 fichiers extraits vers 
+ item added	 élément ajouté
+ items added	 éléments ajoutés
+Another job is running: wait for it, or cancel it.	Une autre tâche est en cours : attendez-la, ou annulez-la.
+Cannot start the job (no thread).	Impossible de lancer la tâche (pas de thread).
+Password	Mot de passe
+Some files are encrypted. The password:	Certains fichiers sont chiffrés. Le mot de passe :
+the archive's top	la racine de l'archive
+Extracting	Extraction
+This archive is read only.	Cette archive est en lecture seule.
+ file is in the archive already.\nReplace it?	 fichier est déjà dans l'archive.\nLe remplacer ?
+ files are in the archive already.\nReplace them?	 fichiers sont déjà dans l'archive.\nLes remplacer ?
+Adding	Ajout
+Delete 	Supprimer 
+ from the archive?	 de l'archive ?
+Delete these 	Supprimer ces 
+ items from the archive?	 éléments de l'archive ?
+Delete	Supprimer
+Deleting	Suppression
+Rename	Renommer
+Select one file or folder to rename.	Sélectionnez un fichier ou un dossier à renommer.
+The new name:	Le nouveau nom :
+A name cannot hold / or \\.	Un nom ne peut pas contenir / ni \\.
+That name is taken in this folder.	Ce nom est déjà pris dans ce dossier.
+Renaming	Renommage
+New Folder	Nouveau dossier
+The folder's name:	Le nom du dossier :
+New folder	Nouveau dossier
+Testing	Test
+Archive	Archive
+Folder	Dossier
+ (read only)	 (lecture seule)
+File size	Taille du fichier
+ % saved)	 % gagnés)
+ file	 fichier
+ files	 fichiers
+none	aucun
+New Archive	Nouvelle archive
+No archive format can be written.	Aucun format d'archive ne peut être écrit.
+That file exists. Replace it?	Ce fichier existe. Le remplacer ?
+Making the archive	Création de l'archive
+This file is encrypted. The password:	Ce fichier est chiffré. Le mot de passe :
+Opening	Ouverture
+ was changed.\nPut it back in the archive?	 a été modifié.\nLe remettre dans l'archive ?
+Too large to drag: use Extract...	Trop gros pour être glissé : utilisez Extraire...
+This archive is read only: nothing can be added to it.	Cette archive est en lecture seule : rien ne peut y être ajouté.
+Open Folder	Ouvrir le dossier
+Open	Ouvrir
+Extract...	Extraire...
+Extract Here	Extraire ici
+Rename...	Renommer...
+Delete from Archive	Supprimer de l'archive
+New Folder...	Nouveau dossier...
+Select All	Tout sélectionner
+Extract All...	Tout extraire...
+New	Nouveau
+Extract All	Tout extraire
+File	Fichier
+New Archive...	Nouvelle archive...
+Open...	Ouvrir...
+Edit	Édition
+Invert Selection	Inverser la sélection
+Find	Rechercher
+View	Affichage
+Up	Remonter
+Back	Retour
+Sort by Name	Trier par nom
+Sort by Size	Trier par taille
+Sort by Ratio	Trier par taux
+Sort by Date	Trier par date
+Search in the archive	Chercher dans l'archive
+Name	Nom
+Size	Taille
+Packed	Compressé
+Ratio	Taux
+Modified	Modifié
+Method	Méthode
+..  (parent folder)	..  (dossier parent)
+Drop to add to	Déposez pour ajouter à
+Drop it here	Déposez-la ici
+Drop an archive here to open it	Déposez une archive ici pour l'ouvrir
+or files and folders to make a new one	ou des fichiers et dossiers pour en créer une
+Open an Archive...	Ouvrir une archive...
+FORMATS	FORMATS
+RECENT	RÉCENTS

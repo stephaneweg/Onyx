@@ -1,0 +1,31 @@
+{
+  "name": "Subtractive",
+  "kind": "instrument",
+  "version": 1,
+  "vendor": "Onyx",
+  "text": "Subtractive: two oscillators and noise into a resonant filter, an envelope on each.",
+  "aliases": [],
+  "params": [
+    {"id": "osc1", "name": "Osc 1", "min": 0, "max": 3, "default": 0, "unit": "", "step": 1, "choices": ["Saw", "Square", "Triangle", "Sine"]},
+    {"id": "osc2", "name": "Osc 2", "min": 0, "max": 3, "default": 1, "unit": "", "step": 1, "choices": ["Saw", "Square", "Triangle", "Sine"]},
+    {"id": "osc2_semi", "name": "Osc 2 pitch", "min": -24, "max": 24, "default": -12, "unit": "st", "step": 1},
+    {"id": "osc2_fine", "name": "Osc 2 fine", "min": -50, "max": 50, "default": 7, "unit": "ct"},
+    {"id": "mix", "name": "Osc mix", "min": 0, "max": 1, "default": 0.4, "unit": ""},
+    {"id": "noise", "name": "Noise", "min": 0, "max": 1, "default": 0, "unit": ""},
+    {"id": "pw", "name": "Pulse width", "min": 0.05, "max": 0.95, "default": 0.5, "unit": ""},
+    {"id": "filter", "name": "Filter", "min": 0, "max": 2, "default": 0, "unit": "", "step": 1, "choices": ["Low-pass", "Band-pass", "High-pass"]},
+    {"id": "cutoff", "name": "Cutoff", "min": 20, "max": 18000, "default": 1200, "unit": "Hz"},
+    {"id": "resonance", "name": "Resonance", "min": 0.5, "max": 12, "default": 1.5, "unit": ""},
+    {"id": "env_amt", "name": "Env amount", "min": -4, "max": 6, "default": 2.5, "unit": "oct"},
+    {"id": "key_track", "name": "Key track", "min": 0, "max": 1, "default": 0.5, "unit": ""},
+    {"id": "attack", "name": "Attack", "min": 0.001, "max": 3, "default": 0.01, "unit": "s"},
+    {"id": "decay", "name": "Decay", "min": 0.01, "max": 5, "default": 0.3, "unit": "s"},
+    {"id": "sustain", "name": "Sustain", "min": 0, "max": 1, "default": 0.7, "unit": ""},
+    {"id": "release", "name": "Release", "min": 0.01, "max": 5, "default": 0.3, "unit": "s"},
+    {"id": "f_attack", "name": "F attack", "min": 0.001, "max": 3, "default": 0.005, "unit": "s"},
+    {"id": "f_decay", "name": "F decay", "min": 0.01, "max": 5, "default": 0.4, "unit": "s"},
+    {"id": "f_sustain", "name": "F sustain", "min": 0, "max": 1, "default": 0.2, "unit": ""},
+    {"id": "f_release", "name": "F release", "min": 0.01, "max": 5, "default": 0.3, "unit": "s"},
+    {"id": "volume", "name": "Volume", "min": -30, "max": 6, "default": -6, "unit": "dB"}
+  ]
+}

@@ -1,0 +1,11 @@
+# The desktop's look (the modernised CDE), read by every app when it starts (uikit/theme.h);
+# written by the Theme app. theme: Peach, Steel, Sage, Brick, Slate, Milk (the window in front's
+# frame; active = a colour instead); style: cde or milk (the title buttons framed, or OS X's
+# beads); inactive: the frames behind; face: the apps'; accent: focus and selection; outline:
+# none, dark or black; dock: the dock's face. wheelspeed: lines a notch.
+theme    = Peach
+inactive = 0xACACB0
+face     = 0xD0C2BA
+accent   = 0x4992A7
+outline  = dark
+dock     = 0xA4BACE

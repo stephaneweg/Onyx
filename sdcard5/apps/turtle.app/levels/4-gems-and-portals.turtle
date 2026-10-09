@@ -1,0 +1,240 @@
+# Turtle Quest -- a pack of levels (user/Apps/turtle/world.h says the format)
+[pack]
+title = 4. Gems and portals
+title.fr = 4. Gemmes et portails
+
+[level]
+id = gems-line
+title = Gems in a row
+title.fr = Gemmes en rang
+concept = gems
+words = FORWARD BACK LEFT RIGHT PICK ITEM
+text = Pick the gems in order -- 1, then 2, then 3 -- and reach the flag.
+text.fr = Ramasse les gemmes dans l'ordre -- 1, puis 2, puis 3 -- et rejoins le drapeau.
+hint = REPEAT 3: FORWARD 2 and PICK. Then one more step.
+hint.fr = REPETER 3 : AVANCER 2 et RAMASSER. Puis encore un pas.
+par = 4 7
+map =
+| ##########
+| #>.1.2.3*#
+| ##########
+solution =
+| REPEAT 3
+|   FORWARD 2
+|   PICK
+| END REPEAT
+| FORWARD
+
+[level]
+id = gems-back
+title = Wrong way round
+title.fr = À l'envers
+concept = gems
+words = FORWARD BACK LEFT RIGHT PICK ITEM
+text = Gem 1 is at the far end, the flag behind you. Go there first, then pick the others on the way back.
+text.fr = La gemme 1 est tout au bout, le drapeau derrière toi. Va d'abord là-bas, puis ramasse les autres en revenant.
+hint = FORWARD 6 and PICK; then BACK 2 and PICK, twice; then BACK 3.
+hint.fr = AVANCER 6 et RAMASSER ; puis RECULER 2 et RAMASSER, deux fois ; puis RECULER 3.
+par = 6 9
+map =
+| ##########
+| #*>.3.2.1#
+| ##########
+solution =
+| FORWARD 6
+| PICK
+| REPEAT 2
+|   BACK 2
+|   PICK
+| END REPEAT
+| BACK 3
+
+[level]
+id = gems-corners
+title = Round the square
+title.fr = Le tour du carré
+concept = gems
+words = FORWARD BACK LEFT RIGHT PICK ITEM
+text = A gem in three corners -- but gem 1 is not the nearest one. Which way round?
+text.fr = Une gemme dans trois coins -- mais la gemme 1 n'est pas la plus proche. Dans quel sens tourner ?
+hint = RIGHT first. Then REPEAT 3: FORWARD 4, PICK, LEFT. Then FORWARD 3 to the flag.
+hint.fr = D'abord DROITE. Puis REPETER 3 : AVANCER 4, RAMASSER, GAUCHE. Puis AVANCER 3 jusqu'au drapeau.
+par = 6 9
+map =
+| #######
+| #>*..3#
+| #.###.#
+| #.###.#
+| #.###.#
+| #1...2#
+| #######
+solution =
+| RIGHT
+| REPEAT 3
+|   FORWARD 4
+|   PICK
+|   LEFT
+| END REPEAT
+| FORWARD 3
+
+[level]
+id = gems-count
+title = Back and forth
+title.fr = Aller et retour
+concept = gems
+words = FORWARD BACK LEFT RIGHT PICK ITEM GEM WALL
+text = Gems 1 to 4 are mixed up. Walk to the wall and back, as often as needed: GEM () says which gem is under you.
+text.fr = Les gemmes 1 à 4 sont mélangées. Va jusqu'au mur et reviens, autant qu'il faut : GEMME () dit quelle gemme est sous toi.
+hint = n = 1, then WHILE n <= 4: IF WALL () THEN RIGHT 180, FORWARD, and IF GEM () = n THEN PICK : n = n + 1.
+hint.fr = n = 1, puis TANTQUE n <= 4 : SI MUR () ALORS DROITE 180, AVANCER, et SI GEMME () = n ALORS RAMASSER : n = n + 1.
+par = 6 9
+map =
+| ##########
+| #>3.1.4.2#
+| ##########
+solution =
+| n = 1
+| WHILE n <= 4
+|   IF WALL () THEN RIGHT 180
+|   FORWARD
+|   IF GEM () = n THEN PICK: n = n + 1
+| WEND
+
+[level]
+id = gem-door
+title = The locked gem
+title.fr = Gemme sous clé
+concept = gems
+words = FORWARD BACK LEFT RIGHT PICK ITEM
+text = Gem 2 is locked behind a door: take the key on the way. Gem 3 waits behind you, near the flag.
+text.fr = La gemme 2 est derrière une porte : prends la clé en passant. La gemme 3 t'attend derrière toi, près du drapeau.
+hint = REPEAT 3: FORWARD 2 and PICK -- the door opens on the way. Then BACK to gem 3, and to the flag.
+hint.fr = REPETER 3 : AVANCER 2 et RAMASSER -- la porte s'ouvre en passant. Puis RECULER jusqu'à la gemme 3, et au drapeau.
+par = 6 9
+map =
+| ############
+| #*.3>.1.kD2#
+| ############
+solution =
+| REPEAT 3
+|   FORWARD 2
+|   PICK
+| END REPEAT
+| BACK 7
+| PICK
+| BACK 2
+
+[level]
+id = portal
+title = A first jump
+title.fr = Un premier saut
+concept = teleport
+words = FORWARD BACK LEFT RIGHT FRONT WALL
+text = No way between the two rooms... but a portal in each. Step on it and come out of its twin.
+text.fr = Pas de passage entre les deux salles... mais un portail dans chacune. Pose-toi dessus et ressors par son jumeau.
+hint = FORWARD 4: two steps to the portal, two more from its twin.
+hint.fr = AVANCER 4 : deux pas jusqu'au portail, deux autres depuis son jumeau.
+par = 1 3
+map =
+| ###########
+| #>.T###T.*#
+| ###########
+solution =
+| FORWARD 4
+
+[level]
+id = portal-chain
+title = Portal hopping
+title.fr = Saut sur saut
+concept = teleport
+words = FORWARD BACK LEFT RIGHT FRONT WALL
+text = Three rooms, two pairs of portals. Pads of the same colour go together: jump, turn, jump again.
+text.fr = Trois salles, deux paires de portails. Les portails de la même couleur vont ensemble : saute, tourne, saute encore.
+hint = FORWARD 2, RIGHT, FORWARD 2, LEFT, FORWARD 2.
+hint.fr = AVANCER 2, DROITE, AVANCER 2, GAUCHE, AVANCER 2.
+par = 5 8
+map =
+| ##########
+| #>.T######
+| ##########
+| #T####U.*#
+| #.########
+| #U########
+| ##########
+solution =
+| FORWARD 2
+| RIGHT
+| FORWARD 2
+| LEFT
+| FORWARD 2
+
+[level]
+id = portal-shortcut
+title = The short way
+title.fr = Le raccourci
+concept = teleport
+words = FORWARD BACK LEFT RIGHT FRONT WALL
+text = The corridor to the flag is long and winding. Is there a shorter way? Two instructions are enough.
+text.fr = Le couloir vers le drapeau est long et tortueux. Y a-t-il plus court ? Deux instructions suffisent.
+hint = The portal just below you leads next to the flag: RIGHT, then FORWARD 2.
+hint.fr = Le portail juste sous toi mène près du drapeau : DROITE, puis AVANCER 2.
+par = 2 4
+map =
+| ##########
+| #>..#...##
+| #T#.#.#.##
+| ###.#.#.##
+| ###...#.##
+| #######.T#
+| #######.*#
+| ##########
+solution =
+| RIGHT
+| FORWARD 2
+
+[level]
+id = portal-gems
+title = Past the portal
+title.fr = Après le portail
+concept = gems
+words = FORWARD BACK LEFT RIGHT PICK ITEM GEM FRONT WALL ONGOAL KEYS
+text = The corridor has no end: its last square is a portal back to the first. Pick gems 1 to 4 in order, round and round.
+text.fr = Le couloir n'a pas de fin : sa dernière case est un portail vers la première. Ramasse les gemmes 1 à 4 dans l'ordre.
+hint = n = 1, then WHILE n <= 4: FORWARD, and IF GEM () = n THEN PICK : n = n + 1.
+hint.fr = n = 1, puis TANTQUE n <= 4 : AVANCER, et SI GEMME () = n ALORS RAMASSER : n = n + 1.
+par = 5 8
+map =
+| #############
+| #T>2.4.1.3.T#
+| #############
+solution =
+| n = 1
+| WHILE n <= 4
+|   FORWARD
+|   IF GEM () = n THEN PICK: n = n + 1
+| WEND
+
+[level]
+id = grand-finale
+title = Grand finale
+title.fr = Le grand final
+concept = teleport
+words = FORWARD BACK LEFT RIGHT PICK ITEM GEM FRONT WALL ONGOAL KEYS
+text = Five gems in order, two pairs of portals, a key and its door -- then the flag. The shortest program is a loop.
+text.fr = Cinq gemmes dans l'ordre, deux paires de portails, une clé, sa porte, puis le drapeau. Le plus court : une boucle.
+hint = WHILE NOT ONGOAL (): FORWARD, and PICK when ITEM () says there is something.
+hint.fr = TANTQUE NON SURBUT () : AVANCER, et RAMASSER quand OBJET () dit qu'il y a quelque chose.
+par = 3 5
+map =
+| ############
+| #>.1.2.T####
+| ############
+| #T..3..U####
+| ############
+| #U.4.k.D5.*#
+| ############
+solution =
+| WHILE NOT ONGOAL ()
+|   FORWARD
+|   IF ITEM () THEN PICK
+| WEND

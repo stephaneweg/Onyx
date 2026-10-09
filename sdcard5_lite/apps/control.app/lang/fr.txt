@@ -1,0 +1,39 @@
+# The Control Panel's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included); a key "context|English" is a TRC's.
+Control Panel	Panneau de configuration
+Settings	Paramètres
+All Settings	Tous les paramètres
+Quit	Quitter
+Starting...	Démarrage...
+Closing...	Fermeture...
+No applet: SD:/apps/control.app/applets/*.lnk	Aucun module : SD:/apps/control.app/applets/*.lnk
+Cannot start this applet (its program is missing?)	Impossible de démarrer ce module (programme manquant ?)
+The applet did not start.	Le module n'a pas démarré.
+No memory for the applets' pane.	Mémoire insuffisante pour le volet des modules.
+# the applets: their link files' name = and text = (applets/*.lnk)
+Theme	Thème
+Colours of the windows, menu bar, dock; the wallpaper	Couleurs des fenêtres, de la barre de menus, du dock ; le fond d'écran
+Mode	Mode
+The interface: desktop, pocket or console	L'interface : bureau, poche ou console
+Display	Affichage
+The screen's resolution, changed at once	La résolution de l'écran, changée immédiatement
+Panel	Dock
+The dock's drawers and launchers; the workspaces	Les tiroirs et les lanceurs du dock ; les bureaux
+Sound	Son
+The volume, mute, a test sound	Le volume, la sourdine, un son d'essai
+Preload	Préchargement
+The programs loaded at boot and kept in memory	Les programmes chargés au démarrage et gardés en mémoire
+Keyboard & Mouse	Clavier et souris
+The keyboard's layout; the mouse wheel's speed	La disposition du clavier ; la vitesse de la molette
+Language & Region	Langue et région
+The language of the programs; the time zone	La langue des programmes ; le fuseau horaire
+Printers	Imprimantes
+The printers (PDF, network), the default one, a test page, the print queue	Imprimantes (PDF, réseau), par défaut, page de test, file d'attente
+Gamepad	Manette
+The USB gamepads: what they send, their buttons mapped	Les manettes USB : ce qu'elles envoient, l'affectation des boutons
+Wi-Fi	Wi-Fi
+The Wi-Fi network: its name, its password, the country	Le réseau Wi-Fi : son nom, son mot de passe, le pays
+Packages	Paquets
+Updates, the apps installed, more apps to install	Mises à jour, applications installées, d'autres à installer
+App Settings	Paramètres des applications
+An app's own settings (its config.ini), key by key	Les paramètres d'une application (son config.ini), clé par clé

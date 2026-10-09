@@ -14,6 +14,10 @@ the version's last number (versions.ini is rewritten). An unchanged package keep
 --lite DIR also makes a card of the required packages only (the system and the firmware) with their
 database: the packages manager's test card (sdcard_lite), every other package installed from there.
 --sd DIR: another card (tests); --versions FILE: another versions.ini; --no-sign: no index.sig.
+--board pi5: the Raspberry Pi 5's distribution (docs/PI5-PORT.md §4.4; publish.sh --board pi5 passes its card
+sdcard5, versions5.ini and the repository's pi5/ folder): a section's `files.pi5` / `summary.pi5` take the place
+of its `files` / `summary`, a section whose `boards =` does not name the board is left out, and the index says
+`board = pi5` in [repo] (pkg refuses another board's index; the Pi 4's says nothing: pi4).
 """
 import argparse, configparser, fnmatch, hashlib, io, os, re, sys, zipfile, datetime
 
@@ -71,7 +75,7 @@ def bump (v):
 
 def vkey (v): return [int (x) if x.isdigit () else 0 for x in re.split (r"[.\-]", v)]
 
-def plan (sd, ini):
+def plan (sd, ini, board = "pi4"):
 	"""-> [package dict], in the ini's order; the files left to no package."""
 	files = card_files (sd)
 	taken = {}
@@ -99,7 +103,9 @@ def plan (sd, ini):
 			if not val or not val.strip (): sys.exit ("mkrepo: packages.ini: '%s' names no app / program" % part)
 			out += ["%s=%s" % (e.lower (), val.strip ()) for e in exts.split ()]
 		return out
+	def on_board (sec): return board in split (sec.get ("boards", "pi4 pi5")) if sec else True
 	def make (name, sec, pats, extra = {}, app = None):
+		if sec.get ("summary." + board): sec = dict (sec); sec["summary"] = sec["summary." + board]
 		p = { "name": name, "title": sec.get ("title", name), "category": sec.get ("category", "Other"),
 		      "summary": sec.get ("summary", ""), "author": sec.get ("author", "Onyx"),
 		      "needs": [n.strip () for n in sec.get ("needs", "").split (",") if n.strip ()],
@@ -124,12 +130,14 @@ def plan (sd, ini):
 	for s in cfg.sections ():
 		if s.startswith ("app."): continue
 		sec = cfg[s]
+		if not on_board (sec): continue
 		if s == "*apps":
 			for a in apps:
 				if any (f.startswith ("apps/%s.app/" % a) and f in taken for f in files): continue
 				at = read_app_txt (sd, a)
 				x = cfg["app." + a] if cfg.has_section ("app." + a) else {}
-				pats = ["apps/%s.app/" % a] + split (x.get ("files", "") if x else "")
+				if not on_board (x): continue
+				pats = ["apps/%s.app/" % a] + split ((x.get ("files." + board) or x.get ("files", "")) if x else "")
 				d = dict (x) if x else {}
 				d.setdefault ("title", at.get ("name", a)); d.setdefault ("category", at.get ("category", "Other"))
 				d.setdefault ("icon", "apps/%s.app/icon.bmp" % a)
@@ -137,7 +145,7 @@ def plan (sd, ini):
 					d["needs"] = ", ".join (n for n in (sec.get ("needs"), d.get ("needs", "")) if n.strip ())
 				make (a, d, pats, app = a)
 			continue
-		pats = split (sec.get ("files", ""))
+		pats = split (sec.get ("files." + board) or sec.get ("files", ""))
 		for c in split (sec.get ("apps", "")):
 			pats += ["apps/%s.app/" % a for a in apps if app_cat[a] == c]
 		icon = sec.get ("icon", "")
@@ -157,7 +165,8 @@ def manifest_text (p, version, kapi):
 	# A package may state the kernel it needs itself (packages.ini: `kapi = N`): a kit the system's own
 	# programs wait for must install BEFORE the kernel that comes with them (UIKit, kapi v90).
 	if p.get ("kapi"): kapi = int (p["kapi"])
-	needs = p["needs"] + (["kapi >= %d" % kapi] if "kernel8-rpi4.img" not in p["files"] and p["restart"] != "1" else [])
+	brings = "kernel8-rpi4.img" in p["files"] or "kernel_2712.img" in p["files"]	# (the package of the kernel)
+	needs = p["needs"] + (["kapi >= %d" % kapi] if not brings and p["restart"] != "1" else [])
 	cfgfiles = [f for f in p["files"] if any (matches (f, c) for c in p["config_pats"])]
 	lines = ["# Onyx package manifest (tools/pkg/mkrepo.py)",
 		 "name = " + p["name"], "title = " + p["title"], "version = " + version,
@@ -252,10 +261,11 @@ def main ():
 	ap.add_argument ("--versions", default = os.path.join (HERE, "versions.ini"))
 	ap.add_argument ("--lite", help = "also make this card: the required packages only");
 	ap.add_argument ("--no-sign", action = "store_true"); ap.add_argument ("--repo-name", default = "onyx-packages")
+	ap.add_argument ("--board", default = "pi4", choices = ["pi4", "pi5"])
 	a = ap.parse_args ()
 	if not a.no_sign and not a.key: sys.exit ("mkrepo: --key KEY.pem (the private key: tools/pkg/keygen.py) or --no-sign")
 	kapi = kapi_version ()
-	pkgs, left = plan (a.sd, a.ini)
+	pkgs, left = plan (a.sd, a.ini, a.board)
 	if left:
 		print ("mkrepo: %d file(s) in no package:" % len (left), file = sys.stderr)
 		for f in left[:20]: print ("   " + f, file = sys.stderr)
@@ -287,7 +297,8 @@ def main ():
 		f.write ("# tools/pkg/versions.ini -- each package's version (mkrepo.py --bump raises them)\n")
 		vcfg.write (f)
 	idx = ["# Onyx package index -- tools/pkg/mkrepo.py (docs/pkg/README.md)", "[repo]", "name = " + a.repo_name,
-	       "date = " + datetime.datetime.utcnow ().strftime ("%Y-%m-%d %H:%M"), "kapi = %d" % kapi, "packages = %d" % len (pkgs), ""]
+	       "date = " + datetime.datetime.utcnow ().strftime ("%Y-%m-%d %H:%M"), "kapi = %d" % kapi, "packages = %d" % len (pkgs)] \
+	    + (["board = " + a.board] if a.board != "pi4" else []) + [""]
 	for p in pkgs:
 		man, needs, cfgfiles = manifest_text (p, p["version"], kapi)
 		p["needs_all"], p["cfgfiles"] = needs, cfgfiles

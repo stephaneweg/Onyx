@@ -1,0 +1,4 @@
+# Onyx application metadata -- read by the category launcher (key=value, no section).
+name = Doom
+category = Games
+opens = wad

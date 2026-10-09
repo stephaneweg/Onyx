@@ -1,0 +1,18 @@
+{
+  "name": "Plucked strings",
+  "kind": "instrument",
+  "version": 1,
+  "vendor": "Onyx",
+  "text": "Plucked strings (Karplus-Strong): a kora, a harp, a guitar.",
+  "aliases": [],
+  "params": [
+    {"id": "decay", "name": "Decay", "min": 0.1, "max": 20, "default": 4, "unit": "s"},
+    {"id": "damping", "name": "Damping", "min": 0, "max": 1, "default": 0.35, "unit": ""},
+    {"id": "brightness", "name": "Brightness", "min": 0, "max": 1, "default": 0.7, "unit": ""},
+    {"id": "pick", "name": "Pick point", "min": 0.02, "max": 0.5, "default": 0.13, "unit": ""},
+    {"id": "release", "name": "Release", "min": 0.02, "max": 2, "default": 0.25, "unit": "s"},
+    {"id": "width", "name": "Width", "min": 0, "max": 1, "default": 0.6, "unit": ""},
+    {"id": "vel_sens", "name": "Velocity", "min": 0, "max": 1, "default": 0.6, "unit": ""},
+    {"id": "volume", "name": "Volume", "min": -30, "max": 6, "default": -3, "unit": "dB"}
+  ]
+}

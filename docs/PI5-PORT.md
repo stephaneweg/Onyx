@@ -7,7 +7,13 @@
 > registers the RAM once, the crash area at seg0's top (fork patch 29, docs/05); **B3** nothing for the 8 GB
 > cap (Circle maps no RAM above 8 GB on the Pi 5); **B4** the V3D refuses to start (`gpu_info` 0). Also:
 > `HasJack ()` says no on the Pi 5 (`auto` sound → USB, else HDMI), and **`gpio_ctl` says ENODEV** on the
-> Pi 5 (the header is on the RP1: a port to come). Next: `sdcard5/` (§4.4), then a first boot (§6).
+> Pi 5 (the header is on the RP1: a port to come). **Also done (2026-10-09): the distribution** (§4.4) — `sdcard5/`
+> and `sdcard5_lite/` committed (`make -C kernel BOARD=pi5 stage`: `tools/pi5/mkcard5.py`, `tools/pi5/overlay/`),
+> its packages in `onyx-packages/pi5/` (`publish.sh --board pi5`, `versions5.ini`, `files.pi5` / `summary.pi5` /
+> `boards =` in `packages.ini`, `board = pi5` in its index), `kapi_kernel_info`'s new `board` line, `pkg` taking
+> `…/pi5` by default on a Pi 5 and refusing the other board's index (`tools/tests/run_pkg_test.sh`: two boards).
+> Not done: a userland of its own (the Pi 4's programs, ARMv8.0, run on the A76), `CCPUThrottle::Update ()` for
+> the fan. **Next: a first boot (§6)**, with the debug UART.
 > The fork was then brought to upstream **Circle 51.1.1** (docs/05 *Upstream merges*: for the Pi 5 the DSI
 > touchscreens, the RP1's I2C 4 and 6, the xHCI endpoint recovery); both kernels build on it.
 >

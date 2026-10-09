@@ -37,6 +37,13 @@ application catalog.
 Copy **all the contents** of the [`sdcard/`](../sdcard/) folder to the **root** of a
 FAT32 card, then insert it into the Pi 4 and power on.
 
+**A Raspberry Pi 5** has its own card: [`sdcard5/`](../sdcard5/) (or the smallest one, `sdcard5_lite/`), copied the
+same way — its kernel `kernel_2712.img`, its device trees, no boot firmware (the Pi 5's is in the board's EEPROM),
+its packages from the repository's `pi5/` folder. A Pi 4's card does not start a Pi 5, nor the reverse. **Not run
+on a Pi 5 yet** (2026-10-09, docs/PI5-PORT.md): the GPU (3D) and the 40-pin header's GPIO are not there yet, the
+sound goes to USB or HDMI (no jack on the Pi 5); its kernel log goes to the 3-pin debug UART between the HDMI
+ports.
+
 **The file dialog** (Open, Save, Choose folder — every program's; redone on 2026-10-05):
 
 ![The file dialog](../screenshots/filedialog.png)

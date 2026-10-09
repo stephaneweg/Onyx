@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = Keyboard & Mouse
+icon   = SD:/apps/keyconf.app/icon.bmp
+target = keyconf
+text   = The keyboard's layout; the mouse wheel's speed

@@ -1,0 +1,239 @@
+# Mail's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included; the formats' % kept in the same order).
+Mail	Mail
+Google asks for an app password: turn on 2-Step Verification, then make one at myaccount.google.com/apppasswords.	Google demande un mot de passe d'application : activez la validation en deux étapes, puis créez-en un sur myaccount.google.com/apppasswords.
+Microsoft signs you in with a code, on a phone or a PC.	Microsoft vous connecte avec un code, sur un téléphone ou un PC.
+Apple asks for an app-specific password: make one at account.apple.com (Sign-In and Security).	Apple demande un mot de passe pour application : créez-en un sur account.apple.com (Connexion et sécurité).
+Yahoo asks for an app password: Account security > Generate app password.	Yahoo demande un mot de passe d'application : Sécurité du compte > Générer un mot de passe d'application.
+Turn on IMAP access in GMX's settings (POP3 & IMAP) first.	Activez d'abord l'accès IMAP dans les réglages de GMX (POP3 & IMAP).
+Fastmail asks for an app password (Settings > Privacy & Security).	Fastmail demande un mot de passe d'application (Settings > Privacy & Security).
+Proton Mail needs its Bridge, which does not run on Onyx.	Proton Mail a besoin de son Bridge, qui ne fonctionne pas sur Onyx.
+Thu	jeu.
+Fri	ven.
+Sat	sam.
+Sun	dim.
+Mon	lun.
+Tue	mar.
+Wed	mer.
+Yesterday	Hier
+Thursday	Jeudi
+Friday	Vendredi
+Saturday	Samedi
+Sunday	Dimanche
+Monday	Lundi
+Tuesday	Mardi
+Wednesday	Mercredi
+Today, %02d:%02d	Aujourd'hui, %02d:%02d
+Yesterday, %02d:%02d	Hier, %02d:%02d
+%ld bytes	%ld octets
+%ld KB	%ld Ko
+%ld.%ld MB	%ld,%ld Mo
+Send	Envoyer
+Attach...	Joindre...
+Save draft	Enregistrer le brouillon
+Discard	Abandonner
+From	De
+To	À
+Cc	Cc
+Bcc	Cci
+Subject	Objet
+Cc Bcc	Cc Cci
+Keep	Garder
+A new contact	Nouveau contact
+Name	Nom
+E-mail	E-mail
+Other e-mail	Autre e-mail
+Phone	Téléphone
+Mobile	Mobile
+Company	Société
+Address	Adresse
+Birthday	Anniversaire
+Notes	Notes
+(dd/mm/yyyy)	(jj/mm/aaaa)
+Search the contacts	Chercher dans les contacts
+New	Nouveau
+Nobody by that name.	Personne de ce nom.
+No contacts yet.	Pas encore de contact.
+Contacts are kept in SD:/Documents/Contacts.card	Les contacts sont dans SD:/Documents/Contacts.card
+Cardfile opens the same file.	Cardfile ouvre le même fichier.
+Open in Cardfile	Ouvrir dans Cardfile
+Write	Écrire
+Edit	Modifier
+Delete	Supprimer
+Delete %s from the contacts?	Supprimer %s des contacts ?
+Search the mail	Chercher dans le courrier
+New message	Nouveau message
+Reply	Répondre
+Reply all	Répondre à tous
+Forward	Transférer
+All inboxes	Toutes les boîtes
+Starred	Suivis
+Add an account...	Ajouter un compte...
+Contacts	Contacts
+Accounts and settings	Comptes et réglages
+TODAY	AUJOURD'HUI
+YESTERDAY	HIER
+THIS WEEK	CETTE SEMAINE
+THIS MONTH	CE MOIS-CI
+OLDER	PLUS ANCIENS
+No account yet.	Pas encore de compte.
+Nothing found.	Rien trouvé.
+Nothing unread.	Rien de non lu.
+Getting the mail...	Relève du courrier...
+No messages.	Aucun message.
+All	Tous
+Unread	Non lus
+To: %s	À : %s
+(nobody)	(personne)
+(no subject)	(sans objet)
+Mark as read	Marquer comme lu
+Mark as unread	Marquer comme non lu
+Remove the star	Ne plus suivre
+Star	Suivre
+Archive	Archiver
+Junk	Indésirable
+Move to...	Déplacer vers...
+Welcome to Mail	Bienvenue dans Mail
+Gmail, Outlook.com, iCloud, Yahoo, any IMAP or POP3 account.	Gmail, Outlook.com, iCloud, Yahoo, tout compte IMAP ou POP3.
+Add an account	Ajouter un compte
+This account has no Archive folder.	Ce compte n'a pas de dossier Archives.
+Archived.	Archivé.
+Deleted.	Supprimé.
+This account has no Junk folder.	Ce compte n'a pas de dossier Indésirables.
+Moved to Junk.	Déplacé dans Indésirables.
+\n\n---------- Forwarded message ----------\n	\n\n---------- Message transféré ----------\n
+\n\nOn %s, %s wrote:\n	\n\nLe %s, %s a écrit :\n
+This message is a file. To answer it, open Mail with your accounts.	Ce message est un fichier. Pour y répondre, ouvrez Mail avec vos comptes.
+Leave the message being written?	Quitter le message en cours de rédaction ?
+Throw away this message?	Jeter ce message ?
+16 attachments at most.	16 pièces jointes au plus.
+The file could not be read.	Le fichier n'a pas pu être lu.
+This file is too big to send by mail (20 MB at most).	Ce fichier est trop gros pour être envoyé par mail (20 Mo au plus).
+Whom to? Type an address in To.	À qui ? Tapez une adresse dans À.
+"%s" does not look like an e-mail address.	« %s » ne ressemble pas à une adresse e-mail.
+Send it without a subject?	L'envoyer sans objet ?
+Sending...	Envoi...
+The draft is kept in Drafts.	Le brouillon est gardé dans Brouillons.
+Sent.	Envoyé.
+Mail: not sent	Mail : non envoyé
+The message could not be sent.	Le message n'a pas pu être envoyé.
+A new message	Un nouveau message
+%d new messages	%d nouveaux messages
+Open the message first (it is fetched then).	Ouvrez d'abord le message (il est alors récupéré).
+The file could not be written.	Le fichier n'a pas pu être écrit.
+File	Fichier
+New Message	Nouveau message
+Check for New Mail	Relever le courrier
+Add an Account...	Ajouter un compte...
+Accounts and Settings...	Comptes et réglages...
+Save the Message as .eml...	Enregistrer le message en .eml...
+Find...	Rechercher...
+View	Affichage
+Conversations (grouped)	Conversations (groupées)
+Unread Only	Non lus seulement
+Message	Message
+Reply All	Répondre à tous
+Star / Unstar	Suivre / ne plus suivre
+Mark as Unread	Marquer comme non lu
+Reply...	Répondre...
+Choose a conversation to read it.	Choisissez une conversation pour la lire.
+Nothing here.	Rien ici.
+(unknown)	(inconnu)
+%s  ·  to %s	%s  ·  à %s
+me	moi
+This message is not on the card any more.	Ce message n'est plus sur la carte.
+Getting the message...	Récupération du message...
+Reply to %s...	Répondre à %s...
+Pictures from the web are hidden.	Les images du web sont masquées.
+Show the pictures	Afficher les images
+%d attachments  ·  %s  ·  	%d pièces jointes  ·  %s  ·  
+%d attachment  ·  %s  ·  	%d pièce jointe  ·  %s  ·  
+Save all	Tout enregistrer
+Save	Enregistrer
+Open this link in Jet?\n\n%.600s	Ouvrir ce lien dans Jet ?\n\n%.600s
+Write to them	Leur écrire
+Show in the contacts	Montrer dans les contacts
+Add to the contacts	Ajouter aux contacts
+Copy the address	Copier l'adresse
+Added to the contacts.	Ajouté aux contacts.
+Open (%s)	Ouvrir (%s)
+Open	Ouvrir
+Save as...	Enregistrer sous...
+The attachment could not be written to the card.	La pièce jointe n'a pas pu être écrite sur la carte.
+The attachment could not be written.	La pièce jointe n'a pas pu être écrite.
+%d of %d saved in SD:/Downloads.	%d sur %d enregistrées dans SD:/Downloads.
+Microsoft asks you to sign in again (Accounts and settings).	Microsoft vous demande de vous reconnecter (Comptes et réglages).
+Connecting to %s...	Connexion à %s...
+Checking %s...	Vérification de %s...
+%s: %d new...	%s : %d nouveaux...
+%s: message %d of %d...	%s : message %d sur %d...
+Opening the message...	Ouverture du message...
+Trying %s...	Essai de %s...
+Incoming (POP3): %s	Réception (POP3) : %s
+Incoming (IMAP): %s	Réception (IMAP) : %s
+Outgoing (SMTP): %s	Envoi (SMTP) : %s
+Asking Microsoft for a code...	Demande d'un code à Microsoft...
+Waiting for Microsoft...	Attente de Microsoft...
+The code has expired: try again.	Le code a expiré : réessayez.
+Cancelled.	Annulé.
+Fetching the pictures...	Récupération des images...
+The picture's server said %d.	Le serveur de l'image a répondu %d.
+Open the page in Jet	Ouvrir la page dans Jet
+Settings by hand...	Réglages manuels...
+Microsoft 365 (Outlook)	Microsoft 365 (Outlook)
+Google Workspace (Gmail)	Google Workspace (Gmail)
+Get a code	Obtenir un code
+Copy the code	Copier le code
+None	Aucune
+Leave the messages on the server (POP3)	Laisser les messages sur le serveur (POP3)
+Back	Retour
+Finish	Terminer
+Sign in	Se connecter
+Next	Suivant
+Type your whole e-mail address (name@example.com).	Tapez votre adresse e-mail complète (nom@exemple.com).
+Type the password.	Tapez le mot de passe.
+The sign-in did not finish.	La connexion n'a pas abouti.
+Add a mail account	Ajouter un compte de messagerie
+Your mail account	Votre compte de messagerie
+Gmail, Outlook.com, iCloud, Yahoo and others are recognised by their address: their servers are filled in for you.	Gmail, Outlook.com, iCloud, Yahoo et d'autres sont reconnus à leur adresse : leurs serveurs sont remplis pour vous.
+Your name	Votre nom
+E-mail address	Adresse e-mail
+Your name is what the people you write to see.	Votre nom est ce que voient vos correspondants.
+%s: an app password	%s : un mot de passe d'application
+Make one on the page below (in Jet), then type its letters here. Mail keeps it encrypted on this card.	Créez-en un sur la page ci-dessous (dans Jet), puis tapez ses lettres ici. Mail le garde chiffré sur cette carte.
+App password	Mot de passe d'application
+Mail will try %s (IMAP) and %s (SMTP).	Mail essaiera %s (IMAP) et %s (SMTP).
+Password	Mot de passe
+A work or school address whose mail Microsoft 365 or Google Workspace keeps? Choose it:	Une adresse professionnelle ou scolaire hébergée par Microsoft 365 ou Google Workspace ? Choisissez :
+Microsoft 365: sign in at Microsoft	Microsoft 365 : connexion chez Microsoft
+Outlook.com: sign in at Microsoft	Outlook.com : connexion chez Microsoft
+Microsoft does not take passwords from mail apps: you sign in on its own page, on a phone or a PC, with a code Mail gets for you.	Microsoft n'accepte pas les mots de passe des applications de messagerie : vous vous connectez sur sa propre page, sur un téléphone ou un PC, avec un code que Mail obtient pour vous.
+1. On a phone or a PC, open  %s	1. Sur un téléphone ou un PC, ouvrez  %s
+2. Type this code:	2. Tapez ce code :
+3. Sign in with your Microsoft account and allow "Onyx Mail".	3. Connectez-vous avec votre compte Microsoft et autorisez « Onyx Mail ».
+The code is in the clipboard: paste it in Microsoft's page. Mail goes on by itself as soon as it is done.	Le code est dans le presse-papiers : collez-le dans la page de Microsoft. Mail continue tout seul dès que c'est fait.
+Mail goes on by itself as soon as it is done.	Mail continue tout seul dès que c'est fait.
+Incoming	Réception
+Server, port	Serveur, port
+User, password	Utilisateur, mot de passe
+Outgoing (SMTP)	Envoi (SMTP)
+(empty: the same as for the incoming mail)	(vide : comme pour la réception)
+Checking the settings...	Vérification des réglages...
+Connecting...	Connexion...
+Your account is ready	Votre compte est prêt
+Mail now fetches your messages. New mail is looked for every 5 minutes (Accounts and settings).	Mail récupère maintenant vos messages. Le courrier est relevé toutes les 5 minutes (Comptes et réglages).
+By hand only	À la main seulement
+Every minute	Chaque minute
+Every 5 minutes	Toutes les 5 minutes
+Every 15 minutes	Toutes les 15 minutes
+Every 30 minutes	Toutes les 30 minutes
+Every hour	Toutes les heures
+Remove...	Retirer...
+Remove %s from Mail? Its messages stay on the server; Mail's copy on this card goes.	Retirer %s de Mail ? Ses messages restent sur le serveur ; la copie de Mail sur cette carte est effacée.
+Shown as	Affiché comme
+New mail	Nouveau courrier
+Signature (added to what you write)	Signature (ajoutée à ce que vous écrivez)
+New password	Nouveau mot de passe
+%s %s:%d (%s)  ·  SMTP %s:%d (%s)%s	%s %s:%d (%s)  ·  SMTP %s:%d (%s)%s
+plain	en clair
+  ·  Microsoft sign-in	  ·  connexion Microsoft

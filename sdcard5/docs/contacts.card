@@ -1,0 +1,56 @@
+# Onyx Cardfile -- a form and its records (open it with Cardfile)
+[form]
+version = 1
+title = Contacts
+description = Family, friends and work
+sort = name
+merge = SD:/docs/new-year-letter.rtf
+
+[field]
+column = name
+label = Name
+type = text
+
+[field]
+column = group
+label = Group
+type = choice
+choice = Family
+choice = Friends
+choice = Work
+choice = Neighbours
+
+[field]
+column = phone
+label = Phone
+type = text
+
+[field]
+column = email
+label = E-mail
+type = text
+
+[field]
+column = birthday
+label = Birthday
+type = date
+
+[field]
+column = card
+label = Christmas card
+type = yesno
+
+[field]
+column = address
+label = Address
+type = multiline
+
+[records]
+name	group	phone	email	birthday	card	address
+Alice Martin	Friends	06 12 34 56 78	alice.martin@example.org	1990-03-14	yes	12 rue des Lilas\n69003 Lyon
+Bruno Lefebvre	Work	01 44 55 66 77	b.lefebvre@example.com	1985-11-02		
+Chloé Dubois	Family	06 98 76 54 32	chloe@example.net	2001-07-21	yes	3 place du Marché\n35000 Rennes
+David Nguyen	Neighbours	07 11 22 33 44			yes	Next door, number 14
+Élodie Rousseau	Friends	06 55 44 33 22	elodie.r@example.org	1993-12-30		
+François Petit	Work	01 23 45 67 89	f.petit@example.com	1978-05-09		Meets on Thursdays.
+Grand-mère	Family	02 99 88 77 66		1941-02-17	yes	La Ferme des Chênes\n29000 Quimper

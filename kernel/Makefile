@@ -155,7 +155,10 @@ $(BASC): $(BASC_SRC) ../user/Libs/basic/bas.h ../user/Libs/basic/basint.h ../use
 	@g++ -std=c++17 -O1 -I../user -I../user/Kits -I../user/Runtime -I../user/Include -I../user/Libs -I../user/Emulators -I../user/Ports -o $@ $(BASC_SRC)
 .PHONY: stage
 stage: sizecheck apps $(BASC)
-	@[ -d $(SDCARD) ] || { echo "no $(SDCARD) yet: the Pi 5 card is made from sdcard/ (docs/PI5-PORT.md §4.4)"; exit 1; }
+ifeq ($(BOARD),pi5)
+	@# The Pi 5's card: sdcard/'s files (the Pi 4's own left out) + tools/pi5/overlay/, then this build's below
+	@python3 ../tools/pi5/mkcard5.py
+endif
 	@cp $(TARGET).img $(SDCARD)/
 	@for elf in ../user/*.elf; do \
 		name=$$(basename $$elf .elf); \

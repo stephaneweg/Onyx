@@ -1,0 +1,24 @@
+#
+# config.txt -- the Raspberry Pi 5's (Onyx's Pi 5 distribution, docs/PI5-PORT.md): read by the
+# firmware in the board's EEPROM -- no start*.elf / fixup*.dat / armstub on this card, only the
+# kernel, the device trees (bcm2712*.dtb, overlays/bcm2712d0.dtbo) and this file.
+#
+arm_64bit=1
+kernel=kernel_2712.img
+kernel_address=0x80000
+initial_turbo=0
+
+# Onyx draws 32-bit pixels and writes alpha 0: without these two the screen is 16-bit, or black
+framebuffer_depth=32
+framebuffer_ignore_alpha=1
+
+# The serial console (the board's 3-pin debug UART takes the kernel's log) + no rainbow splash
+enable_uart=1
+disable_splash=1
+
+# Headless boot (no monitor): pretend HDMI is connected so the firmware still allocates
+# a framebuffer -- otherwise Onyx skips the GUI *and* the userland (init, telnetd).
+hdmi_force_hotplug=1
+
+# Enable this for JTAG / SWD debugging!
+#enable_jtag_gpio=1

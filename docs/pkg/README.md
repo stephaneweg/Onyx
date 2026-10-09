@@ -92,6 +92,16 @@ icons/<name>.bmp   the store's icons (the app's own icon.bmp)
 notes/<name>-<version>.txt
 ```
 
+**The Raspberry Pi 5** (a separate distribution, docs/PI5-PORT.md §4.4): its packages are in the repository's
+**`pi5/`** folder, laid out the same (`pi5/index.txt`, `pi5/index.sig`, `pi5/pkgs/`, `pi5/icons/`), signed with
+the same key; its index says `board = pi5` in `[repo]` (the Pi 4's, at the root, says nothing: pi4). The same
+package names on both boards, their versions apart (`tools/pkg/versions5.ini`). A Pi 5's card reads
+`repo = …/onyx-packages/pi5` (`sdcard5/etc/pkg/pkg.ini`; without a `repo =`, `pkg` takes it by the kernel's
+`board` line, `kapi_kernel_info`), and **`pkg` refuses an index of the other board** (its programs and its kernel
+are not this board's). In `tools/pkg/packages.ini` a section's `files.pi5` / `summary.pi5` are the Pi 5's when
+they differ (the system's kernel `kernel_2712.img`, the firmware's device trees), `boards = pi4` keeps a package
+off the Pi 5's.
+
 **The trust**: the index is **signed** with a key kept off the repository (the user's PC, or a GitHub
 secret); its public half is on the card, `SD:/etc/pkg/keys/onyx.pub` (the system package carries it).
 Each archive's **SHA-256** is in the signed index: an archive changed on the server (or on the way —
@@ -160,6 +170,9 @@ beside (`$ONYX_PACKAGES_DIR`, default `../onyx-packages`) brought up to date, `m
 index's signature checked with the cards' public key, `tools/tests/run_pkg_test.sh`, then
 `onyx-packages` committed and pushed (GitHub Pages serves its `main`); then commit in onyx
 `versions.ini`, `sdcard/var/pkg/db`, `sdcard_lite`. Nothing changed: nothing published.
+**The Pi 5's**: `make -C kernel BOARD=pi5 stage` (sdcard5/), then **`sh tools/pkg/publish.sh --board pi5`** — into
+`onyx-packages/pi5/`, then commit `tools/pkg/versions5.ini`, `sdcard5/var/pkg/db`, `sdcard5_lite`. A change to the
+cards is published for both boards.
 
 The private key signs the index: kept off the repositories — `~/.onyx/pkg-key.pem` on the PC, or the
 environment variable **`ONYX_PKG_KEY`** (its PEM; `\n` escapes or base64 taken) in the cloud

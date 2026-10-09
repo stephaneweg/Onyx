@@ -22,8 +22,8 @@ def put (path, data):
 	os.makedirs (os.path.dirname (path), exist_ok = True)
 	open (path, "wb").write (data if isinstance (data, bytes) else data.encode ())
 
-def pkg (*args):
-	env = dict (os.environ, SIM_SD = CARD, SIM_WRITES = W, SIM_RAM = OUT + "/ram", SIM_ARGS = " ".join (args))
+def pkg (*args, board = "pi4"):
+	env = dict (os.environ, SIM_SD = CARD, SIM_WRITES = W, SIM_RAM = OUT + "/ram", SIM_ARGS = " ".join (args), SIM_BOARD = board)
 	r = subprocess.run ([PKG], env = env, capture_output = True, text = True, timeout = 60)
 	return r.returncode, r.stdout + r.stderr
 
@@ -165,6 +165,26 @@ check (not os.path.exists (card ("var/pkg/db/olda.ini")) and not os.path.exists 
 check (os.path.exists (card ("docs/tour.txt")) and not os.path.exists (card ("docs/tour.txt.new")), "the sample taken over: kept, no .new")
 rc, o = pkg ("info", "newa"); check ("auto" in o, "newa: olda's mode (auto)")
 rc, o = pkg ("check"); check ("olda" not in o and "newa" not in o, "nothing more for them")
+
+print ("two boards (the Pi 5's distribution: mkrepo --board pi5, the repository's pi5/ folder)")
+SRC5 = OUT + "/src5"
+shutil.copytree (SRC, SRC5); os.remove (SRC5 + "/kernel8-rpi4.img"); put (SRC5 + "/kernel_2712.img", b"KERNEL-5" * 100)
+ini = open (OUT + "/packages.ini").read ().replace ("files = kernel8-rpi4.img bin/ etc/\n", "files = kernel8-rpi4.img bin/ etc/\nfiles.pi5 = kernel_2712.img bin/ etc/\n", 1)
+open (OUT + "/packages.ini", "w").write (ini + "[pi4only]\ntitle = Pi 4 only\nboards = pi4\nfiles = docs/\n")
+r = subprocess.run ([sys.executable, ROOT + "/tools/pkg/mkrepo.py", "--board", "pi5", "--sd", SRC5, "--ini", OUT + "/packages.ini",
+		     "--versions", OUT + "/versions5.ini", "--out", CARD + "/repo/pi5", "--key", OUT + "/key.pem"], capture_output = True, text = True)
+idx5 = open (CARD + "/repo/pi5/index.txt").read () if r.returncode == 0 else ""
+check (r.returncode == 0 and "\nboard = pi5\n" in idx5, "mkrepo --board pi5: the index says board = pi5")
+on5 = idx5.split ("[onyx]")[1].split ("\n[")[0] if "[onyx]" in idx5 else ""
+z5 = [f for f in os.listdir (CARD + "/repo/pi5/pkgs") if f.startswith ("onyx-")] if r.returncode == 0 else []
+check (z5 and "kernel_2712.img" in zipfile.ZipFile (CARD + "/repo/pi5/pkgs/" + z5[0]).namelist () and "kapi >=" not in on5, "the Pi 5's onyx: its kernel (files.pi5), no kapi need (it brings the kernel)")
+check ("[pi4only]" not in idx5, "a package of boards = pi4: not in the Pi 5's")
+put (CARD + "/etc/pkg/pkg.ini", "repo = SD:/repo/pi5\nkey = SD:/etc/pkg/onyx.pub\n")
+rc, o = pkg ("check"); check (rc != 0 and "for the pi5, this is a pi4" in o, "a Pi 4 reading the Pi 5's repository: refused")
+rc, o = pkg ("check", board = "pi5"); check (rc in (0, 1) and "refused" not in o and "signature" not in o, "a Pi 5 reading it: taken (checked: nothing to update)")
+put (CARD + "/etc/pkg/pkg.ini", "repo = SD:/repo\nkey = SD:/etc/pkg/onyx.pub\n")
+rc, o = pkg ("check", board = "pi5"); check (rc != 0 and "for the pi4, this is a pi5" in o, "a Pi 5 reading the Pi 4's repository: refused")
+rc, o = pkg ("check"); check (rc == 0, "the Pi 4 reading its own: taken")
 
 print ("trust")
 idx = open (CARD + "/repo/index.txt").read ()

@@ -1,0 +1,20 @@
+# Keyboard & Mouse's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the source's text, exactly (spaces included); a key "context|English" is a TRC's.
+Keyboard & Mouse	Clavier et souris
+Keyboard layout	Disposition du clavier
+Belgian (azerty)	Belge (azerty)
+German (qwertz)	Allemand (qwertz)
+Dvorak	Dvorak
+Spanish	Espagnol
+French (azerty)	Français (azerty)
+Italian	Italien
+British	Britannique
+American (qwerty)	Américain (qwerty)
+Click a layout: it is taken at once, and	Cliquez sur une disposition : elle est prise
+set again at every boot.	aussitôt, et remise à chaque démarrage.
+Try it here:	Essayez-la ici :
+Mouse	Souris
+Wheel: lines a notch scrolls	Molette : lignes par cran
+Could not load this layout.	Impossible de charger cette disposition.
+: taken, and set at every boot (SD:/etc/autostart).	 : prise, et remise à chaque démarrage (SD:/etc/autostart).
+: taken (autostart not written).	 : prise (autostart non écrit).

@@ -1,0 +1,37 @@
+3dforge 1
+segs 96
+upto 9
+body 0 92AACC 1 Bracket
+step box op 0 target -1 xy 0 0 size 90 60 8 flags 0 0 sketch -1 r 2 mv 0 0 0 tool -1 name Box 1
+plane 0 0 0  1 0 0  0 0 1
+step fillet op 0 target 0 xy 0 0 size 0 0 0 flags 1 0 sketch -1 r 8 mv 0 0 0 tool -1 name Fillet 1
+plane 0 0 0  1 0 0  0 0 1
+edge 0 0 4
+edge 0 60 4
+edge 90 0 4
+edge 90 60 4
+step box op 1 target 0 xy 0 52 size 90 8 37 flags 0 0 sketch -1 r 2 mv 0 0 0 tool -1 name Box 2
+plane 0 0 8  1 0 0  0 0 1
+step fillet op 0 target 0 xy 0 0 size 0 0 0 flags 1 0 sketch -1 r 12 mv 0 0 0 tool -1 name Fillet 2
+plane 0 0 0  1 0 0  0 0 1
+edge 0 56 45
+edge 90 56 45
+step cyl op 2 target 0 xy 45 27 size 22 0 -8 flags 1 1 sketch -1 r 2 mv 0 0 0 tool -1 name Cylinder 1
+plane -0 52 -0  1 0 -0  0 -1 0
+step sketch op 0 target -1 xy 0 0 size 0 0 0 flags 1 0 sketch -1 r 2 mv 0 0 0 tool -1 name Sketch 1
+plane 0 0 8  1 0 0  0 0 1
+el 2 0 0 16 22 0 0 0 0 0 9 0
+el 2 0 0 74 22 0 0 0 0 0 9 0
+el 0 0 0 36 17 0 18 0 0 0 0 0
+el 1 1 0 0 0 0 0 5 90 180 0 0
+el 0 1 0 0 0 180 18 0 0 0 0 0
+el 1 1 0 0 0 0 0 5 -90 180 0 0
+step extrude op 2 target 0 xy 0 0 size 0 0 -8 flags 1 1 sketch 5 r 2 mv 0 0 0 tool -1 name Extrude 1
+plane 0 0 0  1 0 0  0 0 1
+step chamfer op 0 target 0 xy 0 0 size 0 0 0 flags 1 0 sketch -1 r 2.5 mv 0 0 0 tool -1 name Chamfer 1
+plane 0 0 0  1 0 0  0 0 1
+edge 20.5 22 8
+edge 78.5 22 8
+step fillet op 0 target 0 xy 0 0 size 0 0 0 flags 1 0 sketch -1 r 6 mv 0 0 0 tool -1 name Fillet 3
+plane 0 0 0  1 0 0  0 0 1
+edge 45 52 8

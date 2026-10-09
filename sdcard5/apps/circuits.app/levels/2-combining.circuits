@@ -1,0 +1,200 @@
+# Circuits -- a pack of levels (the format: user/Apps/circuits/circuit.h, docs/04 "Circuits")
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+[pack]
+title = 2. Combining
+title.fr = 2. Combiner
+
+[level]
+id = nandor
+title = An OR made of NAND
+title.fr = Un OU en NAND
+inputs = A B
+outputs = Out
+parts = NAND
+par = 3 4
+text = Build an OR -- the lamp lit when A or B is on -- with NAND gates only.
+text.fr = Construis un OU -- la lampe allumée quand A ou B est en marche -- avec des portes NON-ET seulement.
+hint = OR is a NAND of NOT A and NOT B. And a NAND with one signal on both inputs is a NOT.
+hint.fr = OU est une NON-ET de NON A et NON B. Et une NON-ET avec un seul signal sur ses deux entrées est une NON.
+table =
+| A B | Out
+| 0 0 | 0
+| 0 1 | 1
+| 1 0 | 1
+| 1 1 | 1
+solution =
+| part g1 NAND 10 4
+| part g2 NAND 10 19
+| part g3 NAND 20 12
+| wire A g1.1
+| wire A g1.2
+| wire B g2.1
+| wire B g2.2
+| wire g1 g3.1
+| wire g2 g3.2
+| wire g3 Out
+
+[level]
+id = xor
+title = The hallway light
+title.fr = La lumière du couloir
+concept = xor
+inputs = A B
+outputs = Out
+parts = NOT AND OR NAND NOR
+par = 3 5
+text = A hallway has a switch at each end. The lamp is lit when exactly one switch is on.
+text.fr = Un couloir a un interrupteur à chaque bout. La lampe est allumée quand exactement un interrupteur est en marche.
+hint = "A or B", but "not both": two gates for those two ideas, and one to join them.
+hint.fr = « A ou B », mais « pas les deux » : deux portes pour ces deux idées, et une pour les réunir.
+table =
+| A B | Out
+| 0 0 | 0
+| 0 1 | 1
+| 1 0 | 1
+| 1 1 | 0
+solution =
+| part g1 OR 10 4
+| part g2 NAND 10 19
+| part g3 AND 20 12
+| wire A g1.1
+| wire B g1.2
+| wire A g2.1
+| wire B g2.2
+| wire g1 g3.1
+| wire g2 g3.2
+| wire g3 Out
+
+[level]
+id = nandxor
+title = XOR made of NAND
+title.fr = Un OU exclusif en NAND
+concept = nandxor
+inputs = A B
+outputs = Out
+parts = NAND
+par = 4 5
+text = The hallway light again, with NAND gates only.
+text.fr = Encore la lumière du couloir, avec des portes NON-ET seulement.
+hint = Start with n = NAND (A, B). Then NAND (A, n) and NAND (B, n), and a last NAND of those two.
+hint.fr = Commence par n = NON-ET (A, B). Puis NON-ET (A, n) et NON-ET (B, n), et une dernière NON-ET des deux.
+table =
+| A B | Out
+| 0 0 | 0
+| 0 1 | 1
+| 1 0 | 1
+| 1 1 | 0
+solution =
+| part g1 NAND 8 12
+| part g2 NAND 15 4
+| part g3 NAND 15 19
+| part g4 NAND 23 12
+| wire A g1.1
+| wire B g1.2
+| wire A g2.1
+| wire g1 g2.2
+| wire g1 g3.1
+| wire B g3.2
+| wire g2 g4.1
+| wire g3 g4.2
+| wire g4 Out
+
+[level]
+id = same
+title = Same or not
+title.fr = Pareil ou pas
+concept = equal
+inputs = A B
+outputs = Out
+parts = NOT AND OR XOR NAND NOR
+par = 2 3
+text = The lamp must light when both switches are in the same position: both on or both off.
+text.fr = La lampe doit s'allumer quand les deux interrupteurs sont dans la même position : tous deux en marche ou tous deux arrêtés.
+hint = XOR is now in the palette: it says when they differ.
+hint.fr = OUX est maintenant dans la palette : il dit quand ils sont différents.
+table =
+| A B | Out
+| 0 0 | 1
+| 0 1 | 0
+| 1 0 | 0
+| 1 1 | 1
+solution =
+| part g1 XOR 10 12
+| part g2 NOT 20 12
+| wire A g1.1
+| wire B g1.2
+| wire g1 g2.1
+| wire g2 Out
+
+[level]
+id = majority
+title = Majority vote
+title.fr = Vote à la majorité
+concept = majority
+inputs = A B C
+outputs = Out
+parts = NOT AND OR XOR NAND NOR
+par = 4 5
+text = Three judges vote with their switches. The lamp shows the majority: lit when at least two switches are on.
+text.fr = Trois juges votent avec leurs interrupteurs. La lampe montre la majorité : allumée quand au moins deux interrupteurs sont en marche.
+hint = A and B agreeing wins at once. Otherwise C decides, if A or B is on.
+hint.fr = Si A et B sont d'accord, c'est gagné. Sinon C décide, si A ou B est en marche.
+table =
+| A B C | Out
+| 0 0 0 | 0
+| 0 0 1 | 0
+| 0 1 0 | 0
+| 0 1 1 | 1
+| 1 0 0 | 0
+| 1 0 1 | 1
+| 1 1 0 | 1
+| 1 1 1 | 1
+solution =
+| part g1 AND 8 3
+| part g2 OR 8 12
+| part g3 AND 16 18
+| part g4 OR 24 12
+| wire A g1.1
+| wire B g1.2
+| wire A g2.1
+| wire B g2.2
+| wire g2 g3.1
+| wire C g3.2
+| wire g1 g4.1
+| wire g3 g4.2
+| wire g4 Out
+
+[level]
+id = mux
+title = Railway points
+title.fr = L'aiguillage
+concept = mux
+inputs = S A B
+outputs = Out
+parts = NOT AND OR XOR NAND NOR
+par = 3 4
+text = S sets the points: when S is off the lamp follows A, when S is on it follows B.
+text.fr = S règle l'aiguillage : quand S est arrêté la lampe suit A, quand S est en marche elle suit B.
+hint = A with NOT S, or B with S: (A AND NOT S) OR (B AND S). A smaller circuit exists...
+hint.fr = A avec NON S, ou B avec S : (A ET NON S) OU (B ET S). Il existe un circuit plus petit...
+table =
+| S A B | Out
+| 0 0 0 | 0
+| 0 0 1 | 0
+| 0 1 0 | 1
+| 0 1 1 | 1
+| 1 0 0 | 0
+| 1 0 1 | 1
+| 1 1 0 | 0
+| 1 1 1 | 1
+solution =
+| part g1 XOR 8 18
+| part g2 AND 16 6
+| part g3 XOR 24 12
+| wire A g1.1
+| wire B g1.2
+| wire S g2.1
+| wire g1 g2.2
+| wire g2 g3.1
+| wire A g3.2
+| wire g3 Out

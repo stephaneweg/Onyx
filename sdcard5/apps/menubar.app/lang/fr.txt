@@ -1,0 +1,42 @@
+# The menu bar's French (user/Apps/menubar): English<TAB>French -- tools/lang/check.py menubar
+Quit	Quitter
+Terminal	Terminal
+Control Panel	Panneau de configuration
+File Viewer	Explorateur de fichiers
+Task Manager	Gestionnaire des tâches
+Productivity	Bureautique
+Internet	Internet
+Graphics	Graphisme
+Programming	Programmation
+Games	Jeux
+BASIC	BASIC
+Demos	Démos
+System	Système
+Other	Autres
+Multimedia	Multimédia
+Open Windows	Fenêtres ouvertes
+Shut Down...	Éteindre…
+(no open window)	(aucune fenêtre ouverte)
+(empty)	(vide)
+Volume	Volume
+Muted	Coupé
+Mute	Couper le son
+Open Calendar	Ouvrir le Calendrier
+Alarms and timers…	Alarmes et minuteurs…
+%s is connected as %s (%s, %s). Click to open it.	%s est branchée en %s (%s, %s). Cliquez pour l'ouvrir.
+A USB stick	Une clé USB
+%s can be removed safely.	%s peut être retirée sans risque.
+%s could not be read.	%s n'a pas pu être lue.
+%s has no FAT / exFAT file system. Click to format it.	%s n'a pas de système de fichiers FAT / exFAT. Cliquez pour la formater.
+%s was removed without being ejected: what was being written to it may be lost.	%s a été retirée sans être éjectée : ce qui s'y écrivait peut être perdu.
+USB stick	Clé USB
+in use: Eject again to force	utilisée : Éjecter encore pour forcer
+Ejected: it can be removed	Éjectée : elle peut être retirée
+Cannot be read	Illisible
+Not formatted	Non formatée
+Eject	Éjecter
+Mount	Monter
+Format...	Formater…
+Disks...	Disques…
+The stick could not be ejected.	La clé n'a pas pu être éjectée.
+The stick could not be mounted again.	La clé n'a pas pu être remontée.

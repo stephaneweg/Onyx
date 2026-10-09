@@ -113,7 +113,13 @@ The libraries linked by the kernel (cf. [`kernel/Makefile`](../kernel/Makefile))
 Pi 5's are built in their own tree, **`circle5/`** (a copy of `circle/`'s sources configured `-r 5`, not in
 git): `sh tools/pi5/circle5.sh` (again after any change in `circle/`), then `make -C kernel BOARD=pi5` →
 `kernel/kernel_2712.img`. The kernel's objects are shared by both boards: switching `BOARD` cleans them first
-(`kernel/.board`). The Pi 5's card `sdcard5/` is not made yet (`make BOARD=pi5 stage` says so).
+(`kernel/.board`). **`make -C kernel BOARD=pi5 stage`** makes the Pi 5's card **`sdcard5/`**: `tools/pi5/mkcard5.py`
+copies `sdcard/`'s files without the Pi 4's own (its kernel, boot firmware, device trees, Wi-Fi files,
+`config.txt`, `cmdline.txt`) and adds `tools/pi5/overlay/` (the Pi 5's `config.txt` — 32-bit framebuffer, no alpha —
+`cmdline.txt` with `gpiofanpin=45`, the `bcm2712*` device trees and `overlays/bcm2712d0.dtbo` from
+`raspberrypi/firmware`, the Wi-Fi chip's files under the Pi 5's names, `etc/pkg/pkg.ini` → the repository's
+`pi5/`), then the kernel and the programs as for the Pi 4 (one userland for both boards so far). Stage the Pi 4's
+card first: `sdcard/` is the source of what is not built. Its packages: `sh tools/pkg/publish.sh --board pi5`.
 
 > The Onyx-specific patches carried by this fork (branch `onyx`, on upstream tag `Step51.1.1`)
 > are documented in [Circle Changes](05-CIRCLE-CHANGES.md).

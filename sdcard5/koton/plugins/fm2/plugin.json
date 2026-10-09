@@ -1,0 +1,22 @@
+{
+  "name": "FM 2-op",
+  "kind": "instrument",
+  "version": 1,
+  "vendor": "Onyx",
+  "text": "Two-operator FM: a modulator bends a sine carrier; its index fades with its own envelope.",
+  "aliases": [],
+  "params": [
+    {"id": "ratio", "name": "Ratio", "min": 0.5, "max": 16, "default": 2, "unit": "", "step": 0.5},
+    {"id": "index", "name": "Index", "min": 0, "max": 12, "default": 3, "unit": ""},
+    {"id": "feedback", "name": "Feedback", "min": 0, "max": 1, "default": 0, "unit": ""},
+    {"id": "attack", "name": "Attack", "min": 0.001, "max": 2, "default": 0.005, "unit": "s"},
+    {"id": "decay", "name": "Decay", "min": 0.01, "max": 5, "default": 0.8, "unit": "s"},
+    {"id": "sustain", "name": "Sustain", "min": 0, "max": 1, "default": 0.5, "unit": ""},
+    {"id": "release", "name": "Release", "min": 0.01, "max": 5, "default": 0.4, "unit": "s"},
+    {"id": "mod_decay", "name": "Mod decay", "min": 0.01, "max": 5, "default": 0.5, "unit": "s"},
+    {"id": "mod_sustain", "name": "Mod sustain", "min": 0, "max": 1, "default": 0.3, "unit": ""},
+    {"id": "detune", "name": "Detune", "min": -50, "max": 50, "default": 0, "unit": "ct"},
+    {"id": "vel_sens", "name": "Velocity", "min": 0, "max": 1, "default": 0.7, "unit": ""},
+    {"id": "volume", "name": "Volume", "min": -30, "max": 6, "default": -6, "unit": "dB"}
+  ]
+}

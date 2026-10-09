@@ -16,11 +16,29 @@
 # $ONYX_PKG_KEY (the PEM itself; "\n" escapes or base64 taken too -- the cloud environment's variable),
 # or ~/.onyx/pkg-key.pem. Without one: nothing is published (exit 2).
 #
-#   sh tools/pkg/publish.sh [--no-push]      then commit in onyx: versions.ini, sdcard/var/pkg/db, sdcard_lite
+#   sh tools/pkg/publish.sh [--board pi5] [--no-push]      then commit in onyx: versions.ini, sdcard/var/pkg/db, sdcard_lite
+#
+# --board pi5: the Raspberry Pi 5's distribution (docs/PI5-PORT.md §4.4) -- from sdcard5/ (make -C kernel BOARD=pi5
+# stage), its versions in tools/pkg/versions5.ini, into the repository's pi5/ folder, sdcard5/var/pkg/db and
+# sdcard5_lite made again; the same key. Every change to the cards: publish both boards.
 set -e
 cd "$(dirname "$0")/../.."
-PUSH=1; [ "$1" = "--no-push" ] && PUSH=0
+PUSH=1; BOARD=pi4
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--no-push) PUSH=0 ;;
+	--board) BOARD=$2; shift ;;
+	*) echo "usage: publish.sh [--board pi4|pi5] [--no-push]" >&2; exit 1 ;;
+	esac
+	shift
+done
 REPO=${ONYX_PACKAGES_DIR:-../onyx-packages}
+case $BOARD in
+pi4) SD=sdcard; LITE=sdcard_lite; VERS=tools/pkg/versions.ini; SUB="" ;;
+pi5) SD=sdcard5; LITE=sdcard5_lite; VERS=tools/pkg/versions5.ini; SUB=/pi5 ;;
+*) echo "publish: --board pi4 or pi5" >&2; exit 1 ;;
+esac
+[ -d $SD ] || { echo "publish: no $SD/ (make -C kernel BOARD=$BOARD stage)" >&2; exit 1; }
 
 # ---- the key ----
 KEY=""; TMPKEY=""
@@ -58,17 +76,18 @@ fi
 # a Jet without its program (2.0.2 and 2.0.4 were): taken back from the last package, else nothing published. One
 # taken back before is taken again when a newer package came since (2.0.7 had 2.0.5's program again): the marker
 # .jet-from-package (not in git) names the package it came from; a program built here since (newer than the marker) stays.
-JM=.jet-from-package
+# (The Pi 5's card: the same program -- one userland for both boards so far -- taken from the Pi 4's packages.)
+JM=.jet-from-package; [ $BOARD = pi5 ] && JM=.jet-from-package5
 LAST=$(ls -v "$REPO"/pkgs/jet-*.opk 2>/dev/null | tail -1)
-if [ ! -f sdcard/apps/jet.app/main ] || { [ -f $JM ] && [ -n "$LAST" ] && [ "$(cat $JM)" != "$(basename "$LAST")" ] && [ ! sdcard/apps/jet.app/main -nt $JM ]; }; then
+if [ ! -f $SD/apps/jet.app/main ] || { [ -f $JM ] && [ -n "$LAST" ] && [ "$(cat $JM)" != "$(basename "$LAST")" ] && [ ! $SD/apps/jet.app/main -nt $JM ]; }; then
 	if [ -n "$LAST" ] && python3 -c "
 import sys, zipfile
-z = zipfile.ZipFile (sys.argv[1]); open ('sdcard/apps/jet.app/main', 'wb').write (z.read ('apps/jet.app/main'))" "$LAST" 2>/dev/null; then
+z = zipfile.ZipFile (sys.argv[1]); open (sys.argv[2] + '/apps/jet.app/main', 'wb').write (z.read ('apps/jet.app/main'))" "$LAST" $SD 2>/dev/null; then
 		basename "$LAST" > $JM
 		echo "publish: Jet's program taken back from $(basename "$LAST")"
 	else
-		rm -f sdcard/apps/jet.app/main
-		echo "publish: sdcard/apps/jet.app/main is missing (build it: tools/webkit/build-web.sh): nothing published" >&2
+		rm -f $SD/apps/jet.app/main
+		echo "publish: $SD/apps/jet.app/main is missing (build it: tools/webkit/build-web.sh): nothing published" >&2
 		exit 2
 	fi
 fi
@@ -76,13 +95,14 @@ fi
 # ---- every program's AppKit stubs against appkit.abi (tools/libgen/check_stubs.py: a program linked with older
 # stubs calls the wrong functions -- 2026-10-08's build could not start one): wrong ones, nothing published ----
 PATH="$PATH:$HOME/.cache/onyx/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin:/opt/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin"
-python3 tools/libgen/check_stubs.py user/Kits/appkit/appkit.abi sdcard || { echo "publish: programs with stale AppKit stubs: rebuild them (make in kernel/), make stage, publish again"; exit 1; }
+python3 tools/libgen/check_stubs.py user/Kits/appkit/appkit.abi $SD || { echo "publish: programs with stale AppKit stubs: rebuild them (make in kernel/), make stage, publish again"; exit 1; }
 
 # ---- the packages ----
-python3 tools/pkg/mkrepo.py --out "$REPO" --key "$KEY" --db --lite sdcard_lite --bump
+mkdir -p "$REPO$SUB"
+python3 tools/pkg/mkrepo.py --board $BOARD --sd $SD --versions $VERS --out "$REPO$SUB" --key "$KEY" --db --lite $LITE --bump
 
 # ---- the signature, with the cards' key ----
-python3 - "$REPO" <<'EOF'
+python3 - "$REPO$SUB" <<'EOF'
 import sys
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -101,9 +121,9 @@ sh tools/tests/run_pkg_test.sh | tail -1
 cd "$REPO"
 if [ -n "$(git status --porcelain)" ]; then
 	git add -A
-	VERS=$(grep -A2 '^\[onyx\]' index.txt | sed -n 's/^version = //p')
+	OV=$(grep -A2 '^\[onyx\]' ./$SUB/index.txt | sed -n 's/^version = //p')
 	git -c user.name="$(git -C "$OLDPWD" config user.name || echo Onyx)" -c user.email="$(git -C "$OLDPWD" config user.email || echo onyx@localhost)" \
-	    commit -q -m "Onyx packages: onyx $VERS ($(grep -c '^file = ' index.txt) packages), from onyx $(git -C "$OLDPWD" rev-parse --short HEAD)"
+	    commit -q -m "Onyx packages${SUB:+ ($BOARD)}: onyx $OV ($(grep -c '^file = ' ./$SUB/index.txt) packages), from onyx $(git -C "$OLDPWD" rev-parse --short HEAD)"
 	if [ $PUSH = 1 ]; then git push -q origin HEAD:main && echo "publish: pushed to stephaneweg/onyx-packages (GitHub Pages: a minute or two)"; fi
 else
 	echo "publish: nothing changed in the repository"

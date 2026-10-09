@@ -37,7 +37,7 @@ using arc::u64; using arc::u32; using arc::u8;
 
 #define PKG_CONF	"SD:/etc/pkg/pkg.ini"
 #define PKG_KEY		"SD:/etc/pkg/onyx.pub"
-#define PKG_REPO	"https://stephaneweg.github.io/onyx-packages"
+#define PKG_REPO	"https://stephaneweg.github.io/onyx-packages"	// (+ "/pi5" on the Pi 5: board ())
 #define PKG_VAR		"SD:/var/pkg"
 #define PKG_DB		"SD:/var/pkg/db"
 #define PKG_STAGE	"SD:/var/pkg/stage"
@@ -48,6 +48,24 @@ static inline char *sdup (const char *s) { size_t n = strlen (s); char *d = (cha
 static inline void cpy (char *d, const char *s, int cap) { int i = 0; for (; s && s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
 static inline bool eq (const char *a, const char *b) { return a && b && !strcmp (a, b); }
 static inline bool starts (const char *s, const char *p) { return !strncmp (s, p, strlen (p)); }
+
+// The board the kernel is of (kapi_kernel_info's "board" line: pi4 | pi5, docs/PI5-PORT.md) -- a kernel
+// older than that line is the Pi 4's. Each board has its own packages: the repository's root holds the
+// Pi 4's, its pi5/ folder the Pi 5's.
+static inline const char *board (void)
+{
+	static char b[8];
+	if (b[0]) return b;
+	char t[512]; cpy (b, "pi4", sizeof b);
+	if (kapi_kernel_info (t, sizeof t) > 0)
+		for (char *s = t; *s; )
+		{
+			char *e = s; while (*e && *e != '\n') e++;
+			if (e - s > 6 && !strncmp (s, "board ", 6)) { int n = (int) (e - s - 6); if (n > 7) n = 7; memcpy (b, s + 6, n); b[n] = 0; }
+			s = *e ? e + 1 : e;
+		}
+	return b;
+}
 
 // "1.10.2" against "1.9": numbers compared one by one (a missing one is 0) -> <0, 0, >0
 static inline int vcmp (const char *a, const char *b)
@@ -503,7 +521,8 @@ public:
 	Manager () : haveIndex (false), verified (false), kernelChanged (false), appsChanged (false)
 	{
 		Ini c; c.load (PKG_CONF);
-		cpy (repo, c.get ("", "repo", PKG_REPO), sizeof repo);
+		char def[300]; snprintf (def, sizeof def, "%s%s", PKG_REPO, eq (board (), "pi4") ? "" : eq (board (), "pi5") ? "/pi5" : "");
+		cpy (repo, c.get ("", "repo", def), sizeof repo);
 		cpy (key, c.get ("", "key", PKG_KEY), sizeof key);
 		db.load ();
 	}
@@ -558,6 +577,18 @@ public:
 		{
 			r.sayf ("the index's signature is %s: refused", pem ? "wrong" : "unchecked (no key: " PKG_KEY ")");
 			free (t); return E_SIG;
+		}
+		// the index of another board's packages (a Pi 4's repository read by a Pi 5, or the reverse: its
+		// [repo] board =, absent in the Pi 4's): refused -- its programs and its kernel are not this board's
+		{
+			char *cp = (char *) malloc ((size_t) n + 1); memcpy (cp, t, (size_t) n); cp[n] = 0;	// (parse takes and cuts its text)
+			Ini ii; ii.parse (cp);
+			const char *ib = ii.get ("repo", "board", "pi4");
+			if (!eq (ib, board ()))
+			{
+				r.sayf ("the repository's packages are for the %s, this is a %s: refused (SD:/etc/pkg/pkg.ini's repo =)", ib, board ());
+				free (t); return E_SIG;
+			}
 		}
 		write_file (PKG_VAR "/index.txt", t, n);
 		index.ini.parse (t); index.build (); haveIndex = verified = true;
@@ -900,10 +931,12 @@ public:
 				{
 					char from[300], to[300]; snprintf (from, sizeof from, "%s/%s", dir, f); snprintf (to, sizeof to, "SD:/%s", f);
 					if (!exists (from)) continue;
-					if (eq (f, "kernel8-rpi4.img") || eq (f, "start4.elf") || eq (f, "fixup4.dat") || eq (f, "armstub8-rpi4.bin") || strstr (f, ".dtb"))
+					if (eq (f, "kernel8-rpi4.img") || eq (f, "kernel_2712.img") || eq (f, "start4.elf") || eq (f, "fixup4.dat")
+					    || eq (f, "armstub8-rpi4.bin") || strstr (f, ".dtb"))		// (.dtbo too: the Pi 5's overlays/)
 					{
 						kernelChanged = true;
 						if (eq (f, "kernel8-rpi4.img")) move (to, "SD:/kernel8-rpi4.img.old");	// (the one to come back to)
+						if (eq (f, "kernel_2712.img")) move (to, "SD:/kernel_2712.img.old");
 					}
 					if (move (from, to)) moved++;
 				}

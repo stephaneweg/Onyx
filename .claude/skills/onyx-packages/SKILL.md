@@ -77,7 +77,15 @@ automatically). Then decide, and write in `tools/pkg/packages.ini`:
    or `~/.onyx/pkg-key.pem` on their PC). If it exits with *no signing key*: **stop the publishing
    there** and tell the user, in one line, to add `ONYX_PKG_KEY` (the content of their
    `pkg-key.pem`) to the environment's variables — never ask for the key in the chat.
-4. Commit in **onyx** what the procedure changed: `tools/pkg/versions.ini`, `sdcard/var/pkg/db/`,
+   **Then the Raspberry Pi 5's distribution** (docs/PI5-PORT.md §4.4): `make -C kernel BOARD=pi5 stage` (it makes
+   `sdcard5/` from the staged `sdcard/` + `tools/pi5/overlay/`, the Pi 5's kernel and the programs), then
+   ```
+   ONYX_PACKAGES_DIR=/home/user/onyx-packages sh tools/pkg/publish.sh --board pi5
+   ```
+   (into the repository's `pi5/` folder, versions in `tools/pkg/versions5.ini`, `sdcard5/var/pkg/db`,
+   `sdcard5_lite`). **Every change to the cards is published for both boards.**
+4. Commit in **onyx** what the procedure changed (and for the Pi 5: `sdcard5/`, `sdcard5_lite/`,
+   `tools/pkg/versions5.ini`): `tools/pkg/versions.ini`, `sdcard/var/pkg/db/`,
    `sdcard_lite/` (and `tools/pkg/packages.ini`, the app's `app.txt`), with the new versions in the
    commit message; push as usual.
 5. Tell the user the packages published and their versions (mkrepo's "bumped: …" line). GitHub

@@ -1,0 +1,5 @@
+# Onyx application metadata
+name = Jet
+category = Internet
+stack = 8M
+opens = html htm

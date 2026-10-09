@@ -1942,7 +1942,7 @@ own traffic (DHCP, DNS, NTP).
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 220 | `kernel_info (buf, cap)` | what the running kernel is, as `key value` lines: `name` (Onyx), `abi` (`KAPI_ABI_VERSION`), `built` (the date and time of the image's link), `rev` (the source's git revision; `+`: built from changed sources), `machine` (aarch64), `model` (the board's name), `ram` (MB). Up to `cap` − 1 bytes and a NUL → the text's whole length; `EFAULT`. Keys may be added: a reader looks its keys up. |
+| 220 | `kernel_info (buf, cap)` | what the running kernel is, as `key value` lines: `name` (Onyx), `abi` (`KAPI_ABI_VERSION`), `built` (the date and time of the image's link), `rev` (the source's git revision; `+`: built from changed sources), `machine` (aarch64), `model` (the board's name), `ram` (MB), `board` (`pi4` or `pi5`: the distribution the kernel is of, docs/PI5-PORT.md -- `pkg` takes its repository and checks the index by it). Up to `cap` − 1 bytes and a NUL → the text's whole length; `EFAULT`. Keys may be added: a reader looks its keys up. |
 
 The date and the revision are `kernel/buildstamp.cpp`'s, an object that depends on every other
 object and library of the kernel (`kernel/Makefile`): it is compiled again at each link, so the

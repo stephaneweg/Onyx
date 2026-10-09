@@ -1071,6 +1071,16 @@ static int vol_format (const char *v, const struct kapi_format *f)
 	g_usbState = KAPI_VST_MOUNTED; g_usbGen++;
 	return 0;
 }
+// What the kernel is (v79): the Pi 4's, or SIM_BOARD's board (pi5: the Pi 5's distribution, docs/PI5-PORT.md)
+static int kernel_info (char *b, unsigned n)
+{
+	const char *bd = getenv ("SIM_BOARD");
+	char t[200];
+	int l = snprintf (t, sizeof t, "name Onyx\nabi %u\nbuilt sim\nrev sim\nmachine aarch64\nmodel the desktop simulator\nram 4096\nboard %s\n",
+			  (unsigned) KAPI_ABI_VERSION, bd && *bd ? bd : "pi4");
+	if (b && n) snprintf (b, n, "%s", t);
+	return l;
+}
 static int list_tasks (char *b, unsigned n)
 {
 	if (b && n) snprintf (b, n, "Rk idle\nSk compositor\nSk usb\nSk net\nSa voronoy\nRa menubar\nRa dock\nSa agenda\n"
@@ -1719,7 +1729,7 @@ static void setup (void)
 	T->chdir = h_chdir; T->stdout_stream = h_stdout_stream; T->kbd_ready = h_kbd_ready; T->gpu_info = h_gpu_info;
 	T->get_keymap = get_keymap; T->set_wheel_speed = set_wheel; T->get_wheel_speed = get_wheel;
 	T->kill = h_kill; T->set_keymap_data = set_keymap_data;
-	T->app_dir = app_dir; T->mkdir = f_mkdir; T->remove = f_remove; T->rename = f_rename; T->list_tasks = list_tasks;
+	T->app_dir = app_dir; T->mkdir = f_mkdir; T->remove = f_remove; T->rename = f_rename; T->list_tasks = list_tasks; T->kernel_info = kernel_info;
 	T->sound_acquire = sound_acquire; T->sound_release = sound_release; T->sound_start = sound_start;
 	T->sound_stop = sound_stop; T->sound_write = sound_write; T->sound_status = sound_status;
 	T->proc_done = proc_done; T->wait = h_wait; T->proc_wait = proc_wait; T->proc_tree = proc_tree; T->stream_read = stream_read; T->file_in = file_in; T->file_out = file_out; T->stream_read_nb = stream_read_nb;

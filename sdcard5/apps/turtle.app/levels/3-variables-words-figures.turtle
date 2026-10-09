@@ -1,0 +1,317 @@
+# Turtle Quest -- a pack of levels (user/Apps/turtle/world.h says the format)
+[pack]
+title = 3. Variables, words and figures
+title.fr = 3. Variables, mots et figures
+
+[level]
+id = spiral
+title = The spiral
+title.fr = La spirale
+concept = variable
+words = FORWARD BACK LEFT RIGHT
+text = Each leg of the spiral is one square longer than the one before. A variable can remember the length.
+text.fr = Chaque trajet de la spirale a une case de plus que le précédent. Une variable peut retenir la longueur.
+hint = n = 1, then REPEAT 6: FORWARD n, RIGHT, n = n + 1.
+hint.fr = n = 1, puis REPETER 6 : AVANCER n, DROITE, n = n + 1.
+par = 5 9
+map =
+| #########
+| #......*#
+| #.#######
+| #.#...###
+| #.#^#.###
+| #.###.###
+| #.....###
+| #########
+solution =
+| n = 1
+| REPEAT 6
+|   FORWARD n
+|   RIGHT
+|   n = n + 1
+| END REPEAT
+
+[level]
+id = bigger
+title = Bigger and bigger
+title.fr = De plus en plus loin
+concept = variable
+words = FORWARD BACK LEFT RIGHT PICK
+text = The coins are 1, 2, 3, then 4 squares apart, and the flag 5 squares further.
+text.fr = Les pièces sont à 1, 2, 3, puis 4 cases l'une de l'autre, et le drapeau 5 cases plus loin.
+hint = FOR i = 1 TO 4: FORWARD i, PICK. NEXT. Then FORWARD 5.
+hint.fr = POUR i = 1 JUSQUE 4 : AVANCER i, RAMASSER. SUITE. Puis AVANCER 5.
+par = 4 7
+map =
+| ##################
+| #>c.c..c...c....*#
+| ##################
+solution =
+| FOR i = 1 TO 4
+|   FORWARD i
+|   PICK
+| NEXT
+| FORWARD 5
+
+[level]
+id = rooms
+title = Visiting the rooms
+title.fr = La visite des salles
+concept = sub
+words = FORWARD BACK LEFT RIGHT PICK
+text = Four little rooms, each with a coin at its end, but not evenly spaced. Teach the turtle a word, Room, that visits one.
+text.fr = Quatre petites salles, chacune avec une pièce au fond, mais pas régulièrement espacées. Apprends à la tortue un mot, Visite, qui en visite une.
+hint = SUB Room: LEFT, FORWARD 2, PICK, BACK 2, RIGHT. END SUB. Then: FORWARD, Room, FORWARD 3, Room...
+hint.fr = SUB Visite : GAUCHE, AVANCER 2, RAMASSER, RECULER 2, DROITE. FIN SUB. Puis : AVANCER, Visite, AVANCER 3, Visite...
+par = 15 20
+map =
+| ##############
+| ##c##cc###c###
+| ##.##..###.###
+| #>..........*#
+| ##############
+solution =
+| FORWARD
+| Room
+| FORWARD 3
+| Room
+| FORWARD
+| Room
+| FORWARD 4
+| Room
+| FORWARD 2
+|
+| SUB Room
+|   LEFT
+|   FORWARD 2
+|   PICK
+|   BACK 2
+|   RIGHT
+| END SUB
+
+[level]
+id = paint
+title = Paint the frame
+title.fr = Peins le cadre
+concept = pen
+words = FORWARD BACK LEFT RIGHT PENUP PENDOWN COLOR
+text = The turtle paints where it walks. Paint every marked tile of the frame.
+text.fr = La tortue peint là où elle passe. Peins toutes les cases marquées du cadre.
+hint = Four sides of 3 squares: REPEAT 4.
+hint.fr = Quatre côtés de 3 cases : REPETER 4.
+par = 3 5
+map =
+| ######
+| #>ppp#
+| #p##p#
+| #p##p#
+| #pppp#
+| ######
+solution =
+| REPEAT 4
+|   FORWARD 3
+|   RIGHT
+| END REPEAT
+
+[level]
+id = dashes
+title = A dashed line
+title.fr = Les pointillés
+concept = pen
+words = FORWARD BACK LEFT RIGHT PENUP PENDOWN COLOR
+draw = 1
+text = Draw the dashed line: one square drawn, one square left blank -- PENUP and PENDOWN.
+text.fr = Dessine les pointillés : une case tracée, une case vide -- LEVERCRAYON et BAISSERCRAYON.
+hint = REPEAT 4: FORWARD, PENUP, FORWARD, PENDOWN.
+hint.fr = REPETER 4 : AVANCER, LEVERCRAYON, AVANCER, BAISSERCRAYON.
+par = 5 9
+map =
+| ...........
+| ...........
+| ...........
+| ...........
+| .>.........
+| ...........
+| ...........
+| ...........
+| ...........
+solution =
+| REPEAT 4
+|   FORWARD
+|   PENUP
+|   FORWARD
+|   PENDOWN
+| END REPEAT
+
+[level]
+id = draw-square
+title = A square
+title.fr = Un carré
+concept = draw
+words = FORWARD BACK LEFT RIGHT PENUP PENDOWN COLOR
+draw = 1
+text = Draw the grey square: sides of 4 squares.
+text.fr = Dessine le carré gris : des côtés de 4 cases.
+hint = REPEAT 4: FORWARD 4, RIGHT.
+hint.fr = REPETER 4 : AVANCER 4, DROITE.
+par = 3 8
+map =
+| ...........
+| ...........
+| ...>.......
+| ...........
+| ...........
+| ...........
+| ...........
+| ...........
+| ...........
+solution =
+| REPEAT 4
+|   FORWARD 4
+|   RIGHT
+| END REPEAT
+
+[level]
+id = triangle
+title = A triangle
+title.fr = Un triangle
+concept = draw
+words = FORWARD BACK LEFT RIGHT PENUP PENDOWN COLOR
+draw = 1
+text = Three equal sides. At each corner the turtle turns by 360 / 3 degrees.
+text.fr = Trois côtés égaux. À chaque coin la tortue tourne de 360 / 3 degrés.
+hint = REPEAT 3: FORWARD 4, LEFT 120.
+hint.fr = REPETER 3 : AVANCER 4, GAUCHE 120.
+par = 3 6
+map =
+| ...........
+| ...........
+| ...........
+| ...........
+| ...........
+| ...........
+| ...>.......
+| ...........
+| ...........
+solution =
+| REPEAT 3
+|   FORWARD 4
+|   LEFT 120
+| END REPEAT
+
+[level]
+id = hexagon
+title = A hexagon
+title.fr = Un hexagone
+concept = draw
+words = FORWARD BACK LEFT RIGHT PENUP PENDOWN COLOR
+draw = 1
+text = Six sides of 2 squares, like a honeycomb cell.
+text.fr = Six côtés de 2 cases, comme une alvéole d'abeille.
+hint = 360 / 6 = 60.
+hint.fr = 360 / 6 = 60.
+par = 3 12
+map =
+| ...........
+| ...........
+| ....>......
+| ...........
+| ...........
+| ...........
+| ...........
+| ...........
+| ...........
+solution =
+| REPEAT 6
+|   FORWARD 2
+|   RIGHT 60
+| END REPEAT
+
+[level]
+id = star
+title = A star
+title.fr = Une étoile
+concept = draw
+words = FORWARD BACK LEFT RIGHT PENUP PENDOWN COLOR
+draw = 1
+text = Five branches of 6 squares. The star turns twice round itself: each turn is 2 x 360 / 5 degrees.
+text.fr = Cinq branches de 6 cases. L'étoile fait deux fois le tour : chaque virage fait 2 x 360 / 5 degrés.
+hint = RIGHT 144.
+hint.fr = DROITE 144.
+par = 3 10
+map =
+| ...........
+| ...........
+| ...........
+| ..>........
+| ...........
+| ...........
+| ...........
+| ...........
+| ...........
+solution =
+| REPEAT 5
+|   FORWARD 6
+|   RIGHT 144
+| END REPEAT
+
+[level]
+id = flower
+title = The flower
+title.fr = La fleur
+concept = draw
+words = FORWARD BACK LEFT RIGHT PENUP PENDOWN COLOR
+draw = 1
+text = Eight squares of 2, each turned by 45 degrees from the one before: a loop inside a loop.
+text.fr = Huit carrés de 2, chacun tourne de 45 degrés par rapport au précédent : une boucle dans une boucle.
+hint = REPEAT 8: (REPEAT 4: FORWARD 2, RIGHT), then RIGHT 45.
+hint.fr = REPETER 8 : (REPETER 4 : AVANCER 2, DROITE), puis DROITE 45.
+par = 5 10
+map =
+| ...........
+| ...........
+| ...........
+| ...........
+| .....>.....
+| ...........
+| ...........
+| ...........
+| ...........
+solution =
+| REPEAT 8
+|   REPEAT 4
+|     FORWARD 2
+|     RIGHT
+|   END REPEAT
+|   RIGHT 45
+| END REPEAT
+
+[level]
+id = square-spiral
+title = The square snail
+title.fr = L'escargot carré
+concept = variable
+words = FORWARD BACK LEFT RIGHT PENUP PENDOWN COLOR
+draw = 1
+text = Twelve legs, each half a square longer than the one before, from 1 square.
+text.fr = Douze trajets, chacun d'une demi-case plus long que le précédent, à partir d'une case.
+hint = n = 1, REPEAT 12: FORWARD n, RIGHT, n = n + 0.5.
+hint.fr = n = 1, REPETER 12 : AVANCER n, DROITE, n = n + 0.5.
+par = 5 14
+map =
+| ...........
+| ...........
+| ...........
+| ...........
+| .....>.....
+| ...........
+| ...........
+| ...........
+| ...........
+solution =
+| n = 1
+| REPEAT 12
+|   FORWARD n
+|   RIGHT
+|   n = n + 0.5
+| END REPEAT

@@ -1,0 +1,215 @@
+# Circuits -- a pack of levels (the format: user/Apps/circuits/circuit.h, docs/04 "Circuits")
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+[pack]
+title = 1. Gates
+title.fr = 1. Les portes
+
+[level]
+id = wire
+title = First light
+title.fr = Première lumière
+concept = wire
+inputs = A
+outputs = Out
+parts =
+par = 0 0
+text = Make the lamp follow the switch: when A is on, the lamp is lit; when A is off, it is dark.
+text.fr = Fais suivre l'interrupteur à la lampe : quand A est en marche, la lampe est allumée ; quand A est arrêté, elle est éteinte.
+hint = No gate needed: one wire from A's pin to the lamp's pin.
+hint.fr = Pas besoin de porte : un seul fil de la borne de A à la borne de la lampe.
+table =
+| A | Out
+| 0 | 0
+| 1 | 1
+solution =
+| wire A Out
+
+[level]
+id = not
+title = Upside down
+title.fr = À l'envers
+concept = not
+inputs = A
+outputs = Out
+parts = NOT
+par = 1 1
+text = The lamp must do the opposite of the switch: lit when A is off, dark when A is on.
+text.fr = La lampe doit faire le contraire de l'interrupteur : allumée quand A est arrêté, éteinte quand A est en marche.
+hint = Put a NOT gate between the switch and the lamp.
+hint.fr = Mets une porte NON entre l'interrupteur et la lampe.
+table =
+| A | Out
+| 0 | 1
+| 1 | 0
+solution =
+| part g1 NOT 16 13
+| wire A g1.1
+| wire g1 Out
+
+[level]
+id = and
+title = Both at once
+title.fr = Les deux à la fois
+concept = and
+inputs = A B
+outputs = Out
+parts = NOT AND
+par = 1 1
+text = The lamp must light only when both switches are on.
+text.fr = La lampe doit s'allumer seulement quand les deux interrupteurs sont en marche.
+hint = One AND gate: wire A and B to its inputs, its output to the lamp.
+hint.fr = Une porte ET : relie A et B à ses entrées, sa sortie à la lampe.
+table =
+| A B | Out
+| 0 0 | 0
+| 0 1 | 0
+| 1 0 | 0
+| 1 1 | 1
+solution =
+| part g1 AND 16 12
+| wire A g1.1
+| wire B g1.2
+| wire g1 Out
+
+[level]
+id = or
+title = One or the other
+title.fr = L'un ou l'autre
+concept = or
+inputs = A B
+outputs = Out
+parts = NOT AND OR
+par = 1 1
+text = The lamp must light when A is on, or B, or both. It stays dark only when both are off.
+text.fr = La lampe doit s'allumer quand A est en marche, ou B, ou les deux. Elle ne reste éteinte que si les deux sont arrêtés.
+hint = One OR gate does it.
+hint.fr = Une seule porte OU suffit.
+table =
+| A B | Out
+| 0 0 | 0
+| 0 1 | 1
+| 1 0 | 1
+| 1 1 | 1
+solution =
+| part g1 OR 16 12
+| wire A g1.1
+| wire B g1.2
+| wire g1 Out
+
+[level]
+id = and3
+title = Three keys
+title.fr = Trois clés
+concept = chain
+inputs = A B C
+outputs = Out
+parts = NOT AND OR
+par = 2 2
+text = Three switches now: the lamp lights only when all three are on.
+text.fr = Trois interrupteurs maintenant : la lampe ne s'allume que quand les trois sont en marche.
+hint = An AND gate has two inputs: chain two of them -- A AND B first, then that AND C.
+hint.fr = Une porte ET a deux entrées : enchaînes-en deux -- d'abord A ET B, puis ce résultat ET C.
+table =
+| A B C | Out
+| 0 0 0 | 0
+| 0 0 1 | 0
+| 0 1 0 | 0
+| 0 1 1 | 0
+| 1 0 0 | 0
+| 1 0 1 | 0
+| 1 1 0 | 0
+| 1 1 1 | 1
+solution =
+| part g1 AND 10 8
+| part g2 AND 20 13
+| wire A g1.1
+| wire B g1.2
+| wire g1 g2.1
+| wire C g2.2
+| wire g2 Out
+
+[level]
+id = nand
+title = Not both
+title.fr = Pas les deux
+concept = nand
+inputs = A B
+outputs = Out
+parts = NOT AND OR
+par = 2 3
+text = The lamp must be lit, except when both switches are on.
+text.fr = La lampe doit être allumée, sauf quand les deux interrupteurs sont en marche.
+hint = It is the opposite of AND: an AND, then a NOT.
+hint.fr = C'est le contraire de ET : un ET, puis un NON.
+table =
+| A B | Out
+| 0 0 | 1
+| 0 1 | 1
+| 1 0 | 1
+| 1 1 | 0
+solution =
+| part g1 AND 10 12
+| part g2 NOT 20 12
+| wire A g1.1
+| wire B g1.2
+| wire g1 g2.1
+| wire g2 Out
+
+[level]
+id = nor
+title = Neither one
+title.fr = Ni l'un ni l'autre
+concept = nor
+inputs = A B
+outputs = Out
+parts = NOT AND OR NAND
+par = 2 3
+text = The lamp must light only when both switches are off.
+text.fr = La lampe ne doit s'allumer que quand les deux interrupteurs sont arrêtés.
+hint = It is the opposite of OR: an OR, then a NOT.
+hint.fr = C'est le contraire de OU : un OU, puis un NON.
+table =
+| A B | Out
+| 0 0 | 1
+| 0 1 | 0
+| 1 0 | 0
+| 1 1 | 0
+solution =
+| part g1 OR 10 12
+| part g2 NOT 20 12
+| wire A g1.1
+| wire B g1.2
+| wire g1 g2.1
+| wire g2 Out
+
+[level]
+id = nandonly
+title = NAND does it all
+title.fr = NAND sait tout faire
+concept = universal
+inputs = A B
+outputs = X Y
+parts = NAND
+par = 3 4
+text = With NAND gates only: lamp X must be NOT A, lamp Y must be A AND B.
+text.fr = Avec des portes NON-ET seulement : la lampe X doit valoir NON A, la lampe Y doit valoir A ET B.
+hint = A NAND with A on both its inputs is a NOT. A NAND of A and B, then a NAND with that on both inputs, is an AND.
+hint.fr = Une NON-ET avec A sur ses deux entrées est une NON. Une NON-ET de A et B, puis une NON-ET avec ce résultat sur ses deux entrées, donne un ET.
+table =
+| A B | X Y
+| 0 0 | 1 0
+| 0 1 | 1 0
+| 1 0 | 0 0
+| 1 1 | 0 1
+solution =
+| part g1 NAND 16 4
+| part g2 NAND 10 16
+| part g3 NAND 20 19
+| wire A g1.1
+| wire A g1.2
+| wire A g2.1
+| wire B g2.2
+| wire g2 g3.1
+| wire g2 g3.2
+| wire g1 X
+| wire g3 Y

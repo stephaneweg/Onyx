@@ -1,0 +1,179 @@
+# The Media Player's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included; the formats' % kept in the same order).
+Media Player	Lecteur multimédia
+New playlist	Nouvelle liste
+Looking for songs...  %d	Recherche des morceaux...  %d
+%d songs  ·  %d videos	%d morceaux  ·  %d vidéos
+%d songs	%d morceaux
+Home	Accueil
+LIBRARY	BIBLIOTHÈQUE
+Artists	Artistes
+Albums	Albums
+Songs	Morceaux
+Genres	Genres
+Folders	Dossiers
+VIDEOS	VIDÉOS
+Films	Films
+Clips and series	Clips et séries
+PLAYLISTS	LISTES DE LECTURE
+Favourites	Favoris
+Recently added	Ajouts récents
+Music	Musique
+Playlists	Listes de lecture
+Now playing	En lecture
+Search: “%s”	Recherche : « %s »
+Folders to watch	Dossiers surveillés
+Videos	Vidéos
+Search the library	Chercher dans la bibliothèque
+Title	Titre
+Artist	Artiste
+Album	Album
+Time	Durée
+%s  ·  %s: not played here	%s  ·  %s : non lu ici
+%s  ·  %s left	%s  ·  reste %s
+Resume	Reprendre
+%s  ·  song %d of %d	%s  ·  morceau %d sur %d
+Playing	En lecture
+Paused	En pause
+Played last	Dernière écoute
+Pause	Pause
+Play	Lire
+Good night	Bonne nuit
+Good morning	Bonjour
+Good afternoon	Bon après-midi
+Good evening	Bonsoir
+%d songs  ·  %d videos  ·  %d playlists	%d morceaux  ·  %d vidéos  ·  %d listes
+%d songs  ·  %d albums  ·  %d playlists	%d morceaux  ·  %d albums  ·  %d listes
+See all  ›	Tout voir  ›
+Recently played	Écoutés récemment
+%d video  ·  %s	%d vidéo  ·  %s
+%d videos  ·  %s	%d vidéos  ·  %s
+Looking for videos...  %d	Recherche des vidéos...  %d
+No films yet.	Pas encore de film.
+No clips or episodes yet.	Pas encore de clip ni d'épisode.
+No videos yet.	Pas encore de vidéo.
+Put them in SD:/Videos (Films, Series, Clips...) or in a folder watched: Media Player finds them at each start.	Placez-les dans SD:/Videos (Films, Series, Clips...) ou dans un dossier surveillé : le lecteur les trouve à chaque démarrage.
+MP4, MKV, WebM, AVI, MPEG, TS, WMV, FLV, OGV... -- H.264, H.265, VP9, AV1, MPEG-4, AAC, AC-3...	MP4, MKV, WebM, AVI, MPEG, TS, WMV, FLV, OGV... -- H.264, H.265, VP9, AV1, MPEG-4, AAC, AC-3...
+Open a video...	Ouvrir une vidéo...
+%d albums  ·  %d songs  ·  %s	%d albums  ·  %d morceaux  ·  %s
+Sort: Name	Tri : nom
+Sort: Artist	Tri : artiste
+Sort: Year	Tri : année
+Sort: Recently added	Tri : ajouts récents
+%d songs  ·  %s	%d morceaux  ·  %s
+Shuffle	Aléatoire
+%s%s%s%d songs  ·  %s  ·  %s	%s%s%s%d morceaux  ·  %s  ·  %s
+ALBUM	ALBUM
+%d artists	%d artistes
+%d album	%d album
+%d albums	%d albums
+ARTIST	ARTISTE
+No songs yet.	Pas encore de morceau.
+Add the folders where your music is (SD:/Music, another partition, a USB drive):	Ajoutez les dossiers où se trouve votre musique (SD:/Music, une autre partition, une clé USB) :
+Media Player finds the songs in them, and looks again at each start.	Le lecteur y trouve les morceaux, et regarde à nouveau à chaque démarrage.
+Add a folder...	Ajouter un dossier...
+%d songs  ·  %d album	%d morceaux  ·  %d album
+%d songs  ·  %d albums	%d morceaux  ·  %d albums
+No favourites yet: the ♥ of a song, of the bar below, adds it here.	Pas encore de favori : le ♥ d'un morceau, ou de la barre du bas, l'ajoute ici.
+This playlist is empty: right click songs, then “Add to a playlist”.	Cette liste est vide : clic droit sur des morceaux, puis « Ajouter à une liste ».
+Nothing here.	Rien ici.
+Search	Recherche
+Nothing found.	Rien trouvé.
+Your music, all in one place	Toute votre musique au même endroit
+Media Player finds the songs in the folders you give it, and looks again at each start.	Le lecteur trouve les morceaux dans les dossiers que vous lui donnez, et regarde à nouveau à chaque démarrage.
+MP3, OGG, FLAC, WAV and MIDI (played through a SoundFont); videos: MP4, MKV, WebM, AVI, WMV and more.	MP3, OGG, FLAC, WAV et MIDI (joué par une SoundFont) ; vidéos : MP4, MKV, WebM, AVI, WMV et d'autres.
+looking...  %d	recherche...  %d
+%d songs, %d videos	%d morceaux, %d vidéos
+%d songs found	%d morceaux trouvés
+No folder: add one.	Aucun dossier : ajoutez-en un.
+Done	Terminé
+MIDI  ·  NOW PLAYING	MIDI  ·  EN LECTURE
+MIDI  ·  PAUSED	MIDI  ·  EN PAUSE
+%s  ·  %d instrument%s  ·  ♩ = %d	%s  ·  %d instrument%s  ·  ♩ = %d
+%s  ·  %d instruments%s  ·  ♩ = %d	%s  ·  %d instruments%s  ·  ♩ = %d
+ and drums	 et batterie
+Played by	Joué par
+a SoundFont	une SoundFont
+Nothing is playing. Choose a song, an album...	Rien en lecture. Choisissez un morceau, un album...
+MIDI  ·  played by %s	MIDI  ·  joué par %s
+%s  ·  %d.%d kHz  ·  %d bit  ·  %d kbit/s	%s  ·  %d,%d kHz  ·  %d bits  ·  %d kbit/s
+Up next	À suivre
+The queue starts again.	La file reprend au début.
+Nothing after this song.	Rien après ce morceau.
+%d more	%d de plus
+GENRE	GENRE
+FOLDER	DOSSIER
+PLAYLIST	LISTE DE LECTURE
+Album artist	Artiste de l'album
+Genre	Genre
+Year	Année
+%d (disc %d)	%d (disque %d)
+Track	Piste
+Length	Durée
+%s  ·  %.1f MB	%s  ·  %.1f Mo
+File	Fichier
+Where	Emplacement
+Played	Écoutes
+Properties	Propriétés
+Its name:	Son nom :
+Enter	Entrée
+Play next	Lire ensuite
+Add to the queue	Ajouter à la file
+Add to a playlist...	Ajouter à une liste...
+Remove from Favourites	Retirer des favoris
+Add to Favourites	Ajouter aux favoris
+Remove from this playlist	Retirer de cette liste
+Go to the album	Aller à l'album
+Go to the artist	Aller à l'artiste
+Properties...	Propriétés...
+Show in the File Viewer	Montrer dans l'Explorateur de fichiers
+New playlist...	Nouvelle liste...
+Rename the playlist...	Renommer la liste...
+Delete the playlist	Supprimer la liste
+Rename the playlist	Renommer la liste
+Its new name:	Son nouveau nom :
+Delete this playlist? (Its songs stay in the library.)	Supprimer cette liste ? (Ses morceaux restent dans la bibliothèque.)
+Name	Nom
+Choose a song, an album, then ▶	Choisissez un morceau, un album, puis ▶
+Nothing playing	Rien en lecture
+This file is not a video Media Player\ncan read.	Ce fichier n'est pas une vidéo que le\nlecteur sait lire.
+This video cannot be read.	Cette vidéo ne peut pas être lue.
+“%s” cannot be played:\nits picture (%s) or its sound (%s)\nis in a format Onyx cannot decode.	« %s » ne peut pas être lu :\nson image (%s) ou son audio (%s)\nest dans un format qu'Onyx ne décode pas.
+none	aucun
+This video cannot be played.	Cette vidéo ne peut pas être lue.
+Its picture or sound is in a format Onyx does not decode yet.	Son image ou son audio est dans un format qu'Onyx ne décode pas encore.
+The file is damaged, or its data could not be read.	Le fichier est abîmé, ou ses données n'ont pas pu être lues.
+Watch again	Revoir
+Next: S%d E%d	Suivant : S%d E%d
+Kind	Type
+Picture	Image
+  (not decoded by Onyx yet)	  (pas encore décodé par Onyx)
+Video	Vidéo
+Sound	Audio
+left at %s	arrêtée à %s
+Watched	Vue
+to the end	jusqu'à la fin
+Play from the Start	Lire depuis le début
+Mark as Not Watched	Marquer comme non vue
+Mark as Watched	Marquer comme vue
+None of this playlist's songs is in the library (Folders to Watch...).	Aucun morceau de cette liste n'est dans la bibliothèque (Dossiers surveillés...).
+This file cannot be played (MP3, OGG,\nFLAC, WAV, MIDI and FM songs are; MP4,\nMKV, WebM, AVI, WMV... videos).	Ce fichier ne peut pas être lu (morceaux MP3,\nOGG, FLAC, WAV, MIDI et FM ; vidéos MP4,\nMKV, WebM, AVI, WMV...).
+Open a File...	Ouvrir un fichier...
+Open a Video...	Ouvrir une vidéo...
+Folders to Watch...	Dossiers surveillés...
+Look for New Songs	Chercher les nouveaux morceaux
+New Playlist...	Nouvelle liste...
+Play / Pause	Lecture / Pause
+Next	Suivant
+Previous	Précédent
+Repeat (all, one, off)	Répéter (tout, un, non)
+Full Screen (a video)	Plein écran (une vidéo)
+View	Affichage
+Clips and Series	Clips et séries
+Now Playing	En lecture
+Back	Retour
+Mini Player	Mini-lecteur
+Series  ·  S%d E%d	Série  ·  S%d E%d
+Film	Film
+Series	Série
+Clip	Clip

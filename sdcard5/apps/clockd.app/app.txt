@@ -1,0 +1,4 @@
+# Onyx application metadata -- read by the category launcher (key=value, no section).
+#   clockd: the Clock's alarm service (no window; started at boot by SD:/etc/autostart, "run clockd")
+name = Clock Service
+category = Shell

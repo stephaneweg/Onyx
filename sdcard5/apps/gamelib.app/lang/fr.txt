@@ -1,0 +1,35 @@
+# The Game Library's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included; the formats' % kept in the same order).
+Game Library	Ludothèque
+All Games	Tous les jeux
+Library	Bibliothèque
+Systems	Consoles
+Folders	Dossiers
+Add Folder...	Ajouter un dossier...
+Show	Afficher
+Show in File Viewer	Montrer dans l'Explorateur de fichiers
+Remove Folder	Retirer le dossier
+Play	Jouer
+Enter	Entrée
+Play Full Screen	Jouer en plein écran
+No game found in	Aucun jeu trouvé dans
+Put %s files there	Placez-y des fichiers %s
+Put an emulator first (Control Panel > Packages)	Installez d'abord un émulateur (Panneau de configuration > Paquets)
+(sub-folders too), or Folders > Add Folder...	(sous-dossiers compris), ou Dossiers > Ajouter un dossier...
+No %s game yet.	Pas encore de jeu %s.
+Put %s files in a watched folder	Placez des fichiers %s dans un dossier surveillé
+(sub-folders too), then Library > Refresh.	(sous-dossiers compris), puis Bibliothèque > Actualiser.
+No game in this folder.	Aucun jeu dans ce dossier.
+(loading)	(chargement)
+%d game	%d jeu
+%d games	%d jeux
+Making the picture of %s...	Création de l'image de %s...
+   (Enter: play full screen)	   (Entrée : jouer en plein écran)
+   (Enter or a double-click: play)	   (Entrée ou double clic : jouer)
+Too many folders (8 at most).	Trop de dossiers (8 au plus).
+This folder's path is too long (63 characters at most).	Le chemin de ce dossier est trop long (63 caractères au plus).
+Refresh	Actualiser
+Quit	Quitter
+Remove %s	Retirer %s
+View	Affichage
+Play Full Screen On / Off	Plein écran : oui / non

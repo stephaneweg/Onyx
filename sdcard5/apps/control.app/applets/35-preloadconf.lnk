@@ -1,0 +1,5 @@
+; a Control Panel applet (apps/control): its title, icon, program (an app) and help
+name   = Preload
+icon   = SD:/apps/preloadconf.app/icon.bmp
+target = preloadconf
+text   = The programs loaded at boot and kept in memory

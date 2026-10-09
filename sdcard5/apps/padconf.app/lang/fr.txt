@@ -1,0 +1,60 @@
+# Gamepad's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the source's text, exactly (spaces included); a key "context|English" is a TRC's.
+Gamepad	Manette
+menu|Pad	Manette
+Pad 	Manette 
+Map Buttons...	Régler les boutons...
+Forget Mapping	Oublier le réglage
+Reload gamepad.ini	Relire gamepad.ini
+Reload	Recharger
+Quit	Quitter
+No gamepad in this slot. Plug a USB gamepad in (Xbox 360 / One,	Aucune manette à cet emplacement. Branchez une manette USB (Xbox 360 / One,
+PlayStation 3 / 4, Switch Pro, or any USB HID gamepad).	PlayStation 3 / 4, Switch Pro, ou toute manette USB HID).
+   known to Circle	   connue de Circle
+   generic HID pad	   manette HID générique
+   mapping: 	   réglage : 
+its own (gamepad.ini)	le sien (gamepad.ini)
+[default] of gamepad.ini	[default] de gamepad.ini
+built-in	intégré
+Buttons	Boutons
+Axes	Axes
+Hats	Croix
+N	N
+NE	NE
+E	E
+SE	SE
+S	S
+SW	SO
+W	O
+NW	NO
+centre	centre
+  none	  aucune
+What the apps see:	Vu par les apps :
+Release every button...	Relâchez tous les boutons...
+Release, then press 	Relâchez, puis pressez 
+Press 	Pressez 
+UP on the d-pad	HAUT sur la croix directionnelle
+DOWN on the d-pad	BAS sur la croix directionnelle
+LEFT on the d-pad	GAUCHE sur la croix directionnelle
+RIGHT on the d-pad	DROITE sur la croix directionnelle
+the BOTTOM face button (Xbox A, PlayStation Cross, Nintendo B)	le bouton du BAS (Xbox A, PlayStation Croix, Nintendo B)
+the RIGHT face button (Xbox B, PlayStation Circle, Nintendo A)	le bouton de DROITE (Xbox B, PlayStation Rond, Nintendo A)
+the LEFT face button (Xbox X, PlayStation Square, Nintendo Y)	le bouton de GAUCHE (Xbox X, PlayStation Carré, Nintendo Y)
+the TOP face button (Xbox Y, PlayStation Triangle, Nintendo X)	le bouton du HAUT (Xbox Y, PlayStation Triangle, Nintendo X)
+the LEFT shoulder button (L / L1 / LB)	le bouton d'épaule GAUCHE (L / L1 / LB)
+the RIGHT shoulder button (R / R1 / RB)	le bouton d'épaule DROIT (R / R1 / RB)
+the LEFT trigger (L2 / LT / ZL: a button or an analog trigger)	la gâchette GAUCHE (L2 / LT / ZL : bouton ou analogique)
+the RIGHT trigger (R2 / RT / ZR)	la gâchette DROITE (R2 / RT / ZR)
+SELECT (Back / Share / -)	SELECT (Back / Share / -)
+START (Options / +)	START (Options / +)
+the LEFT stick's click (L3)	le clic du stick GAUCHE (L3)
+the RIGHT stick's click (R3)	le clic du stick DROIT (R3)
+HOME (Guide / PS)	HOME (Guide / PS)
+Esc: the pad has none (skip)   Backspace: cancel	Échap : la manette n'en a pas (passer)   Retour arrière : annuler
+Map Buttons... (M) if the buttons above are not in their places.	Régler les boutons... (M) si les boutons ci-dessus ne sont pas à leur place.
+No gamepad here: plug one in.	Pas de manette ici : branchez-en une.
+Saved in SD:/etc/gamepad.ini: every app uses it now.	Enregistré dans SD:/etc/gamepad.ini : toutes les apps l'utilisent désormais.
+Could not write SD:/etc/gamepad.ini	Impossible d'écrire SD:/etc/gamepad.ini
+Mapping cancelled.	Réglage annulé.
+This pad model's mapping was removed.	Le réglage de ce modèle de manette a été supprimé.
+gamepad.ini read again.	gamepad.ini relu.

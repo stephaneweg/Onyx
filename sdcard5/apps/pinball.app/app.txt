@@ -1,0 +1,5 @@
+# Onyx application metadata -- read by the category launcher (key=value, no section).
+name = Pinball
+category = Games
+opens = table
+stack = 4M

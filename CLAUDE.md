@@ -138,7 +138,9 @@ session**, without being asked, following the skill **`.claude/skills/onyx-packa
 app's package declared in `tools/pkg/packages.ini` (its extra files, its needs, its user files, its
 samples; an emulator's `games =`), then `sh tools/pkg/publish.sh` → the new versions, the signed
 index pushed to `stephaneweg/onyx-packages`, and `tools/pkg/versions.ini`, `sdcard/var/pkg/db`,
-`sdcard_lite` committed in onyx. The signing key comes from the environment (`ONYX_PKG_KEY`); without
+`sdcard_lite` committed in onyx — **and the same for the Pi 5's distribution** (`make -C kernel BOARD=pi5 stage`,
+`sh tools/pkg/publish.sh --board pi5`: `sdcard5/`, `sdcard5_lite/`, `tools/pkg/versions5.ini`, the repository's
+`pi5/` folder). The signing key comes from the environment (`ONYX_PKG_KEY`); without
 it, say so to the user and do not publish. Never generate another key.
 
 ## RULE — licences: our own software under MIT
