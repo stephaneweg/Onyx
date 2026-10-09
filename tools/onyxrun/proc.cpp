@@ -154,6 +154,10 @@ static void proc_mark_ended (Proc *P)
 		std::lock_guard<std::mutex> L (s_M);
 		if (P->ended) return;
 	}
+	extern void ws_proc_gone (Proc *P);		// (k_ws.cpp)
+	ws_proc_gone (P);
+	extern void ipc_proc_gone (Proc *P);		// (k_ipc.cpp)
+	ipc_proc_gone (P);
 	h_drop_all (P);
 	if (P->stdoutStream && P->stdoutStream->pipe)
 	{

@@ -7,6 +7,13 @@
 //     --ram DIR    the folder standing for RAM: (default: a folder in the host's temporary folder)
 //     --cwd PATH   the program's working folder (default SD:/)
 //     --trace      every system call on stderr (also ONYXRUN_TRACE=1)
+//     --console    no graphics server: a console program alone (the default for SD:/bin tools)
+//     --screen WxH the screen's size (default 1280x800); --headless: no window on the PC
+//     --shot FILE.bmp [--shot-after MS]   the screen written there (after MS, default 5000), then the end
+//     --input "SCRIPT"   input played (display.cpp: wait MS; move X Y; click X Y; key TEXT; ...)
+//
+// An app (SD:/apps/...) is run with the graphics server: Elegant (SD:/bin/elegant --serve) is started first, its
+// screen shown in a window of the PC (or kept in memory: --headless).
 //
 // The runner's own messages start with "onyxrun:" on stderr; the program's output is on stdout; the runner ends with
 // the program it started, with its exit status.
@@ -14,6 +21,7 @@
 // MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors.
 //
 #include "onyxrun.h"
+#include "display.h"
 #include <filesystem>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,7 +40,8 @@ static void usage (void)
 {
 	fprintf (stderr,
 		 "onyxrun -- Onyx programs' Pi binaries run on this PC\n"
-		 "usage: onyxrun [--root DIR] [--ram DIR] [--cwd PATH] [--trace] PROGRAM [ARGS...]\n"
+		 "usage: onyxrun [--root DIR] [--ram DIR] [--cwd PATH] [--trace] [--console | --screen WxH] [--headless]\n"
+		 "               [--shot FILE.bmp [--shot-after MS]] [--input SCRIPT] PROGRAM [ARGS...]\n"
 		 "  PROGRAM: SD:/bin/echo, SD:/apps/clock.app/main, echo (a /bin tool), clock (an app)\n");
 	exit (2);
 }
@@ -76,6 +85,9 @@ void runner_proc_ended (Proc *P)
 int main (int argc, char **argv)
 {
 	std::string root, ram, cwd = "SD:/";
+	DisplayOpts D;
+	int gui = -1;				// -1: an app gets the graphics server, a /bin tool not
+	D.shotAfterMs = 5000;
 	int i = 1;
 	g_Run.trace = getenv ("ONYXRUN_TRACE") && atoi (getenv ("ONYXRUN_TRACE")) != 0;
 	for (; i < argc && argv[i][0] == '-' && argv[i][1] == '-'; i++)
@@ -84,6 +96,13 @@ int main (int argc, char **argv)
 		else if (!strcmp (argv[i], "--ram") && i + 1 < argc) ram = argv[++i];
 		else if (!strcmp (argv[i], "--cwd") && i + 1 < argc) cwd = argv[++i];
 		else if (!strcmp (argv[i], "--trace")) g_Run.trace = true;
+		else if (!strcmp (argv[i], "--console")) gui = 0;
+		else if (!strcmp (argv[i], "--gui")) gui = 1;
+		else if (!strcmp (argv[i], "--headless")) D.headless = true;
+		else if (!strcmp (argv[i], "--screen") && i + 1 < argc) { sscanf (argv[++i], "%dx%d", &D.w, &D.h); gui = gui < 0 ? 1 : gui; }
+		else if (!strcmp (argv[i], "--shot") && i + 1 < argc) D.shot = argv[++i];
+		else if (!strcmp (argv[i], "--shot-after") && i + 1 < argc) D.shotAfterMs = atoi (argv[++i]);
+		else if (!strcmp (argv[i], "--input") && i + 1 < argc) D.input = argv[++i];
 		else usage ();
 	}
 	if (i >= argc) usage ();
@@ -101,6 +120,24 @@ int main (int argc, char **argv)
 	else if (fs::is_regular_file (host_path (("SD:/bin/" + prog).c_str (), "SD:/"), ec)) onyx = "SD:/bin/" + prog;
 	else if (fs::is_regular_file (host_path (("SD:/apps/" + prog + ".app/main").c_str (), "SD:/"), ec)) onyx = "SD:/apps/" + prog + ".app/main";
 	else { rlog ("no program %s (not an Onyx path, nor in SD:/bin, nor SD:/apps)", prog.c_str ()); return 2; }
+
+	if (gui < 0) gui = onyx.compare (0, 8, "SD:/apps") == 0 ? 1 : 0;
+	if (gui)
+	{
+		if (D.w < 640 || D.h < 480 || D.w > 2560 || D.h > 1600) { rlog ("--screen: 640x480 .. 2560x1600"); return 2; }
+		D.title = "Onyx -- " + prog;
+		display_start (D);
+		SpawnOpts e;
+		e.path = "SD:/bin/elegant";
+		e.argv = { "SD:/bin/elegant", "--serve" };
+		e.ppid = -1;				// (not the runner's own program: its end does not end the runner)
+		std::string why;
+		if (!proc_spawn (e, &why)) { rlog ("cannot start Elegant: %s", why.c_str ()); return 2; }
+		extern int ws_active (void);
+		int t = 0;
+		for (; t < 200 && !ws_active (); t++) std::this_thread::sleep_for (std::chrono::milliseconds (50));
+		if (!ws_active ()) { rlog ("Elegant did not take the display"); return 2; }
+	}
 
 	SpawnOpts o;
 	o.path = onyx;

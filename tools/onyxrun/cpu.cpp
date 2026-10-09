@@ -33,6 +33,10 @@ struct Thread
 
 static thread_local Thread *t_Self = 0;
 
+// ONYXRUN_PROFILE=N: every N ms, where each running thread is (its pc, its lr) on stderr.
+static std::atomic<bool> s_ProfileReq { false };
+static int s_ProfileMs = 0;
+
 Thread *cpu_self (void) { return t_Self; }
 int cpu_tid (void) { return t_Self ? t_Self->tid : 0; }
 Proc *cur (void) { return t_Self ? t_Self->P : 0; }
@@ -277,6 +281,13 @@ static void run_thread (Thread *T, u64 pc)
 			T->code = -11;
 			break;
 		}
+		if (s_ProfileMs > 0 && s_ProfileReq.load ())
+		{
+			const Region *r = P->mem.find (pc);
+			u64 lr = xreg (T->uc, UC_ARM64_REG_X30);
+			rlog ("profile: %s thread %d at pc %llx (%s +%llx), lr %llx", P->name.c_str (), T->tid, (unsigned long long) pc,
+			      r ? r->what.c_str () : "?", (unsigned long long) (r ? pc - r->va : 0), (unsigned long long) lr);
+		}
 		// stopped by the tick (or the process's end): let the others run, then go on
 		int d = punlock_all (P);
 		std::this_thread::yield ();
@@ -293,14 +304,18 @@ static void run_thread (Thread *T, u64 pc)
 // The tick: in every process, the running engine stopped when another thread of it waits and it has run 10 ms.
 static void ticker (void)
 {
+	u64 lastProfile = now_us ();
 	for (;;)
 	{
 		std::this_thread::sleep_for (std::chrono::milliseconds (5));
 		u64 now = now_us ();
+		bool profile = s_ProfileMs > 0 && now - lastProfile >= (u64) s_ProfileMs * 1000;
+		s_ProfileReq = profile;
+		if (profile) lastProfile = now;
 		for (Proc *P : proc_list ())
 		{
 			Thread *T = P->running.load ();
-			if (T && P->lockWaiting.load () > 0 && now - P->runningSince.load () >= 10000)
+			if (T && (profile || (P->lockWaiting.load () > 0 && now - P->runningSince.load () >= 10000)))
 			{
 				std::lock_guard<std::mutex> L (P->lockM);	// (T's engine is not closed meanwhile)
 				if (P->running.load () == T && T->uc) uc_emu_stop (T->uc);
@@ -312,7 +327,10 @@ static void ticker (void)
 int cpu_thread_start (Proc *P, u64 pc, u64 arg, u64 sp, u64 lr, u64 tls, const char *name)
 {
 	static std::once_flag s_Tick;
-	std::call_once (s_Tick, [] { std::thread (ticker).detach (); });
+	std::call_once (s_Tick, [] {
+		if (getenv ("ONYXRUN_PROFILE")) s_ProfileMs = atoi (getenv ("ONYXRUN_PROFILE"));
+		std::thread (ticker).detach ();
+	});
 	Thread *T = new Thread ();
 	T->P = P;
 	T->name = name ? name : "";

@@ -218,7 +218,7 @@ static int k_get_args (u64 buf, unsigned cap)
 }
 static int k_get_argv (u64 buf, unsigned cap)	{ return block_out (buf, cap, cur ()->argv); }
 static int k_get_env (u64 buf, unsigned cap)	{ return block_out (buf, cap, cur ()->env); }
-static int k_getpid (int which)			{ Proc *P = cur (); return which == 0 ? P->pid : which == 1 ? P->ppid : -KAPI_EINVAL; }
+static int k_getpid (int which)			{ Proc *P = cur (); return which == 0 ? P->pid : which == 1 ? (P->ppid > 0 ? P->ppid : 1) : -KAPI_EINVAL; }
 static int k_app_dir (u64 buf, unsigned cap)	{ return gstr_out (buf, cap, "SD:apps/" + cur ()->name + ".app/"); }
 static int k_should_exit (void)			{ Proc *P = cur (); std::lock_guard<std::mutex> L (P->m); return P->exitAsked ? 1 : 0; }
 
