@@ -171,3 +171,4 @@ sdcard5/doom/*.cfg
 sdcard5/etc/clock
 sdcard5/res/wallpaper.*
 sdcard5_lite/res/wallpaper.*
+tools/onyxrun/build/
