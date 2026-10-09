@@ -27,7 +27,8 @@ session tests and debugs it on the Pi. Done: D0 to D5.
   latency, commercial games (the user's own dumps; the save type guessed at the first write), a `bios7.bin` for
   games whose secure area matters. **Known gaps**: SMULxy/QADD... interpreted; the rasterizer divides per pixel;
   the idle-loop skip is the JIT's only; no Wi-Fi, no GBA slot, no microphone.
-- **The 3DS** (the user's question): a study first, see the chat's answer; nothing started.
+- **The 3DS**: the study is `docs/3DS-EMULATOR-STUDY.md` (option C recommended: our core under MIT + Dynarmic;
+  the plan T0-T8); nothing built, the user's answers awaited (§11).
 
 ## The console: the pad as a mouse in the desktop's apps (2026-10-09, night) -- NOT tried on the Pi
 

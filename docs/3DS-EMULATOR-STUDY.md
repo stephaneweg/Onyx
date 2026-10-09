@@ -1,0 +1,230 @@
+# A Nintendo 3DS emulator for Onyx — feasibility study
+
+*2026-10-09. A study only: nothing built. The user's request: "toutes les options sont possibles
+(portage, portage partiel, from scratch)"; no crypto, no Nintendo key — the user brings decrypted
+dumps of their own games.*
+
+## Contents
+
+1. Verdict and recommendation
+2. The 3DS in one page
+3. Without keys: what is legal, what the emulator never needs
+4. What an emulator must provide (high-level emulation)
+5. Option A — from scratch, MIT
+6. Option B — a full port (Azahar, Panda3DS)
+7. Option C — partial port: our core, permissive pieces (Dynarmic, Teakra)
+8. Performance budget on the Pi 4 (and the Pi 5)
+9. The plan T0–T8 (option C, falling back to A)
+10. Tests
+11. Risks and open questions
+12. Sources
+
+---
+
+## 1. Verdict and recommendation
+
+**Feasible, and within reach of what Onyx already did** (the GameCube: a PowerPC JIT, the TEV
+compiled to V3D shaders, the GX on a second app core; the DS: an ARM JIT, a PICA-like fixed 3D
+pipeline in software). The 3DS is a **lighter CPU** than the GameCube (one ARM11 at 268 MHz
+emulated, against a 486 MHz PowerPC) but a **wider system**: an operating system (Horizon) whose
+services the games call, a GPU with programmable vertex shaders, a DSP.
+
+| Option | Licence of `n3dsemu` | Effort | Fit with Onyx | Verdict |
+|---|---|---|---|---|
+| A. From scratch | MIT | ~25 k lines, the largest emulator of Onyx (DS ~7 k, GameCube ~11 k) | best: our kits, our GPU path, our JIT | possible, longest |
+| B. Full port of Azahar / Panda3DS | GPL-2.0 / GPL-3.0 | the renderer rewritten for `kapi_gpu` (they need OpenGL 3.3+/GLES 3.2/Vulkan, Onyx has none), Qt/SDL/Boost replaced, C++20 + exceptions runtime | poor: desktop architecture, heavy | not recommended |
+| **C. Partial port** | **MIT** (Dynarmic 0BSD, Teakra MIT) | ~18–20 k lines of ours + Dynarmic | good | **recommended** |
+
+**Recommendation: option C**, our own core (MIT) with **Dynarmic** (0BSD, the ARM JIT that
+Citra, Azahar and Panda3DS all use, with an AArch64 backend) for the ARM11 — the risky,
+compatibility-critical piece already proven on thousands of games — and everything else ours:
+the loader, the HLE kernel and services, the PICA200 on V3D (reusing gcemu's shader generator),
+the DSP in HLE. If Dynarmic cannot be brought up on Onyx's runtime in phase T0 (C++20, its
+dependencies, exceptions), fall back to **A**: extend the DS's own JIT (`nds_jit.cpp`) to ARMv6K
+and VFPv2.
+
+**Expected result on the Pi 4** (estimates, to be measured from T3 on): 2D and light 3D games at
+full speed; the big 3D games (Pokémon X/Y–Sun/Moon, Monster Hunter) likely 20–30 fps at first.
+On the **Pi 5** (~2.5× the CPU), most games at full speed. New-3DS-only games (a handful:
+Xenoblade, …) out of scope.
+
+## 2. The 3DS in one page
+
+| Part | Old 3DS (the target) | New 3DS |
+|---|---|---|
+| Application CPU | ARM11 MPCore (ARMv6K, VFPv2), **268 MHz**; core 0 runs the game ("appcore") | 4 cores at 804 MHz, L2 cache |
+| System CPU | ARM11 core 1 (the "syscore": services, GSP, some audio) | |
+| Security CPU | ARM9 (Process9: file system, crypto) — **never emulated in HLE** | |
+| Memory | FCRAM 128 MB, VRAM 6 MB, AXI WRAM 512 KB | FCRAM 256 MB |
+| GPU | **PICA200** (DMP) 268 MHz: programmable vertex shaders (and geometry shaders), fixed-function fragment stage: 6 texture-combiner stages (TEV-like), per-fragment lighting with look-up tables, fog, procedural textures, shadows | same |
+| Screens | top 400 × 240 (800 × 240 in stereoscopic 3D), bottom 320 × 240 touch | |
+| Sound | XpertTeak DSP 134 MHz, its firmware loaded by the game; 24 voices, 32728 Hz | |
+| Inputs | buttons, Circle Pad, touch, gyroscope / accelerometer, microphone, cameras | + C-Stick, ZL / ZR |
+| OS | Horizon: microkernel, ~40 services (processes) reached by IPC | |
+
+A game is an ARM11 process: it talks to the kernel (SVCs: memory, threads, synchronisation, IPC)
+and, through IPC, to services (`fs:USER`, `gsp::Gpu`, `hid:USER`, `apt:U`, `dsp::DSP`, `cfg:u`,
+`ptm:u`, `ldr:ro`, `y2r:u`, `cecd`, `frd`, `ac:u`, `ndm:u`, `nwm`…). The GPU is driven by
+command lists that the game submits through `gsp::Gpu`.
+
+## 3. Without keys: what is legal, what the emulator never needs
+
+- A retail cartridge or eShop title is **encrypted** (AES, keys inside the console's ARM9
+  bootrom). Tools on the user's own console (GodMode9) dump it **decrypted** — the NCCH header
+  then says *NoCrypto* — and an emulator reads it like any file: **no key, no AES, no bootrom**.
+  Onyx will refuse an encrypted dump with a clear message (as `ndsemu` does for an encrypted
+  secure area) and will never read an `aes_keys.txt`.
+- **No system firmware either**: high-level emulation replaces the OS. Two data files of the
+  console are used by many games: the **shared system font** (a BCFNT) and the Mii data. We
+  **generate our own** replacement font (a BCFNT built from a free font, e.g. DejaVu / Noto, by a
+  tool in `tools/`), and Mii data stubs; a user may also put the dump of their own console's
+  font in `SD:/apps/n3dsemu.app/sysdata/`.
+- Formats read: `.3ds` / `.cci` (cartridge image, NCSD), `.cxi` (one NCCH), `.3dsx` (homebrew),
+  `.elf`. `.cia` (installable, may carry a ticket and title key) only when decrypted; later.
+- The project rule stays: no ROM, BIOS, font or firmware of Nintendo committed or shipped.
+
+## 4. What an emulator must provide (high-level emulation)
+
+| Block | Content | Size (ours) |
+|---|---|---|
+| Loader | NCSD / NCCH / ExeFS / RomFS, the code's LZ ("BLZ") decompression, the exheader (memory, stack, services allowed), `.3dsx` relocations | ~1.5 k |
+| CPU | ARMv6K + Thumb + VFPv2 on the application core; the syscore not emulated | Dynarmic, or ~2.5 k on top of the DS JIT |
+| Memory | the process's virtual space (code 0x00100000, heap 0x08000000, linear heap 0x14000000 / 0x30000000, VRAM 0x1F000000, shared pages, TLS), page tables as in `ndsemu` | ~1 k |
+| Kernel HLE | ~60 SVCs used by games: memory (ControlMemory, MapMemoryBlock), threads (priority scheduler, cooperative on one host core), mutex / semaphore / event / timer / address arbiter, IPC (SendSyncRequest, ports, sessions, handles), time | ~3.5 k |
+| Services | `srv:`, `apt:U` (applets: the software keyboard, error display as stubs or small UIs), `gsp::Gpu` (command lists, framebuffers, interrupts), `hid:USER` (buttons, circle pad, touch, gyro), `fs:USER` (archives: RomFS, SaveData, ExtSaveData, SDMC, the shared font), `cfg:u` (the language — Onyx's —, region, user name), `dsp::DSP`, `ptm:u`, `ldr:ro` (**CRO** dynamic modules: Pokémon, Smash, Mario Kart 7), `y2r:u` (YUV videos), `cecd`, `frd`, `ac:u`, `ndm:u`, `news`, `boss`, `act`, `am`, `cam`, `mic`, `ir:USER` (stubs) | ~7 k |
+| GPU | the PICA200: command list decoding, vertex attributes / index buffers, the vertex shader (and geometry shader), primitive assembly, clipping, the fragment stage (combiners, lighting LUTs, fog, procedural textures, shadow / stencil / depth, blending, logic op), textures (14 formats, Morton-tiled, ETC1/ETC1A4), the framebuffers and their transfers (display transfer, texture copy, memory fill) | ~6 k |
+| DSP (HLE) | the "DspFirmware" interface: 24 sources (PCM8/16, ADPCM; AAC in a few games), mixers, effects (delay, reverb kept simple), the output through AudioKit | ~2 k |
+| App | `n3dsemu`: two screens (as `ndsemu`), the touch screen, the Circle Pad from the pad's stick, saves, the Game Library | ~1.5 k |
+
+## 5. Option A — from scratch, MIT
+
+All of section 4 written for Onyx, the CPU by extending the DS's JIT:
+- **ARMv6K over ARMv5TE** (the DS's ARM9): the media instructions (`SADD16`, `UQADD8`, `SEL`,
+  `SXTB` / `UXTAH` …, `REV` / `REV16`, `SSAT` / `USAT`, `PKHBT`, `SMUAD` / `SMLAD`…), `LDREX` /
+  `STREX` / `CLREX`, `CPS`, `SRS` / `RFE` (kernel only), the CP15 thread-ID registers; **VFPv2**
+  (single and double: map onto NEON / FP registers, the FPSCR's rounding, the rarely-used vector
+  mode in the interpreter). The DS JIT's design carries over (host NZCV = guest flags, register
+  cache, inline page-table accesses, chaining, idle-loop skip); the media ops map well to NEON /
+  SIMD-within-a-register.
+- **Pros**: one licence (MIT), the code sized for Onyx (no C++20 runtime, no exceptions), we know
+  every line. **Cons**: compatibility of the JIT on real games is the long tail (Dynarmic needed
+  years); ~25 k lines.
+
+## 6. Option B — a full port
+
+| | **Azahar** (Citra + Lime3DS + PabloMK7's fork) | **Panda3DS** |
+|---|---|---|
+| Licence | GPL-2.0 (Citra: GPL-2.0-or-later) | GPL-3.0 |
+| Maturity | the reference: most games playable on PC and Android | "many games boot, many don't" |
+| CPU | Dynarmic | Dynarmic |
+| GPU | OpenGL 4.3 / GLES 3.2 / Vulkan 1.1; a software renderer (slow) | OpenGL 4.1 / Vulkan, shaders recompiled for the GPU |
+| Android floor | Snapdragon 835 (Kryo 280, faster than the Pi 4's A72), GLES 3.2 | arm64 APK |
+| Size | very large (Qt, SDL, Boost, many services fully emulated, network, cameras…) | medium |
+
+Porting either means: **a new renderer** for Onyx's GPU path (`kapi_gpu_program` / batches /
+textures — there is no OpenGL on Onyx and V3D 4.2's own GLES lacks geometry shaders anyway),
+their threading model on our threads and app cores, a C++20 runtime with exceptions (Jet has the
+pieces), the frontends replaced by an Onyx app. The core would stay theirs: our kits (GameKit,
+AudioKit, UIKit) at the edges only. The app becomes **GPL** (allowed by `docs/LICENSING.md` like
+Doom or the Media Player, but against "ours under MIT"). The renderer is the largest single
+piece of option A anyway, so the port saves the services and the kernel, not the hardest part.
+**Not recommended**; Azahar stays the **behaviour reference** (read, not copied — the clean-room
+rule of `docs/LICENSING.md`, extended to Citra / Azahar / Panda3DS).
+
+## 7. Option C — partial port: our core, permissive pieces
+
+- **Dynarmic** (0BSD — public-domain-like: no notice required; its dependencies mcl, oaknut MIT,
+  fmt MIT-like, robin-map MIT; xbyak / zydis only for the x86 backend, not built): the ARM11 JIT.
+  ARMv6K, Thumb, VFPv2; an AArch64 backend; "fastmem" (a 4 GB host window) optional — Onyx can
+  start with its page-table callbacks and add fastmem later (the kernel's fault forwarding that
+  gcemu's study already listed). **Bring-up risks** (phase T0): C++20 with the Onyx toolchain
+  (GCC 14: fine), whether it needs exceptions / RTTI (it builds with `-fno-exceptions`? to
+  check; else its few throw sites patched), its code memory through `kapi_code_alloc`
+  (write then execute: the same as our JITs), its use of `std::` containers (newlib + libstdc++:
+  available).
+- **Teakra** (MIT): a low-level emulator of the XpertTeak DSP — exact but too slow for real time
+  on a Pi (the PC emulators run it only as an option). Use it **on the PC only**, to check our
+  DSP HLE against the real firmware's output; the app ships the HLE.
+- **Our own**: everything else (sections 4 and 9). The app stays **MIT**.
+
+## 8. Performance budget on the Pi 4 (and the Pi 5)
+
+Onyx's cores: core 0 the kernel / the display, core 1 the sound, **cores 2–3 the app cores**
+(gcemu: the machine on one, the GX on the other).
+
+| Work | Where | Estimate |
+|---|---|---|
+| ARM11 at 268 MHz, games often idle-waiting on VBlank / events | app core 2 (JIT) | ARM→AArch64 ≈ 1.5–3 host instructions a guest one at best (same ISA family); ~40–70 % of a 1.5 GHz A72 for a busy game — **fits** (gcemu: a 486 MHz PowerPC on one core at ~95 %) |
+| HLE kernel + services | core 2 (between JIT runs) | small (C++ calls) |
+| PICA vertex shaders, primitive assembly, clipping | **app core 3**: the shader JIT'd to NEON (4 vertices at once) | 10–60 k vertices a frame in 3D games; ~100–200 host instructions a vertex → 2–12 M instr. a frame: **fits** at 30–60 fps |
+| Fragments: combiners, lighting LUTs, fog, depth / stencil, blending | **V3D** (QPU fragment shaders generated per configuration, like `v3d/gxtev`) | the screens are tiny (400 × 240 + 320 × 240 = 173 k pixels): the GPU has a large margin; lighting LUTs as 1-D textures |
+| Texture decoding (Morton tiles, ETC1) | core 3, cached by address + hash | as gcemu's |
+| Render-to-texture, read-backs, display transfers | **shared memory** (V3D and the CPUs see the same RAM: no PCIe copies as on a PC) | an advantage of the Pi |
+| DSP HLE + AudioKit | core 2 or the app's main thread | small |
+
+The PC emulators' high requirements come mostly from **desktop GPU-driver overhead and
+accuracy features** (resolution scaling, shader compilation stutter, texture filtering): Onyx
+renders at native resolution with its own command path. **Risks**: geometry-shader games (few),
+heavy CRO games, the per-pixel lighting shaders' length on V3D 4.2 (a QPU program limit: split
+or fall back), thermal throttling (the Pi needs its fan, as for gcemu).
+
+**Pi 5**: Cortex-A76 at 2.4 GHz (~2–3× a Pi 4 core), V3D 7.1 — the same code (Onyx's v42/v71
+shader paths) with a comfortable margin.
+
+## 9. The plan T0–T8 (option C, falling back to A)
+
+Each phase ends with something visible and a test, as for the DS (D0–D5).
+
+| Phase | Content | Done when |
+|---|---|---|
+| **T0** | Dynarmic built for Onyx (`user/Libs/dynarmic/`, its licence files), a bring-up test under qemu-aarch64 and on the PC; **decision C or A** | an ARM test program runs JIT'd, same results as an interpreter |
+| **T1** | Loader (NCSD / NCCH / `.3dsx`), memory map, kernel HLE (threads, sync, IPC, handles), `srv:`, `apt:U`, `gsp::Gpu` (framebuffers only), `hid:USER`, `fs:USER` (RomFS, SDMC) | our own homebrew prints and draws on both screens (2D framebuffers) |
+| **T2** | PICA200 in **software** (a reference rasterizer like `nds_render3d.cpp`: vertex shader interpreter, combiners, lighting, fog, textures), command lists, display / texture transfers, memory fill | our 3D tests and public homebrew 3D demos render right on the PC |
+| **T3** | PICA200 on the Pi: vertex shader JIT (NEON) on app core 3, fragment stage as V3D shaders (generator in `user/Libs/v3d/`, the `gxtev` approach), texture cache; the software path kept as reference and fallback | the same pictures on the Pi, the speed measured |
+| **T4** | DSP HLE (sources, ADPCM, mixing, AudioKit), `y2r:u`, `mic`/`cam` stubs; checked against Teakra on the PC | homebrew with sound; first retail games' music |
+| **T5** | Retail compatibility: `ldr:ro` (CRO), save archives (SaveData, ExtSaveData: `<rom>.sav/` folder), the shared font (our BCFNT), `cfg:u` from Onyx's settings, the software keyboard applet (Onyx's own), Mii stubs, more SVCs / services as games ask | a first list of the user's games boots to play |
+| **T6** | Speed: block linking / fastmem (Dynarmic options), idle-loop and VBlank-wait skips, vertex batching, frame pacing; `sysstat`-style timings like gcemu's | per-game measures on the Pi 4 |
+| **T7** | App `n3dsemu` (EN / FR, FreeType): two screens with the DS app's layouts, touch with the mouse, Circle Pad on the pad's left stick, C-Stick / ZL / ZR mapped, F12 speed; GameKit / Game Library (`3ds cci cxi 3dsx`), console home "3DS"; docs 01 / 03 / 04, HANDOFF, LICENSING; packages Pi 4 and Pi 5 | published |
+| **T8** | Later: `.cia` (decrypted), stereoscopic 3D (left eye only first), the gyroscope from a pad that has one, New 3DS mode, AAC | |
+
+**Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
+harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
+
+## 10. Tests
+
+- **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours
+  (no Nintendo SDK): CPU (ARMv6K media ops, VFP: differential against a PC reference, as the DS's
+  `cputest`), kernel (threads, events, IPC), PICA (triangles, combiners, lighting, textures:
+  pictures compared with the software renderer), DSP (tones).
+- **libctru** (zlib licence) homebrew and public-domain 3DS homebrew (demos, games) — not
+  committed, fetched by the tests as for the DS.
+- A **JIT differential fuzzer** as `tools/tests/nds/jitfuzz` (Dynarmic or ours against an
+  interpreter) under qemu-aarch64.
+- The desktop simulator for the app's screenshots; the user's own decrypted dumps on the Pi for
+  compatibility.
+
+## 11. Risks and open questions
+
+1. **Dynarmic on Onyx** (T0): exceptions / RTTI, its memory callbacks' speed without fastmem.
+   Fallback: our own JIT (option A).
+2. **V3D 4.2 shader limits** for the fragment lighting (8 lights, LUTs): long programs; split
+   passes or a simplified path.
+3. **Compatibility long tail**: services and SVC corner cases (the reason Citra took years);
+   prioritise the user's own game list.
+4. **Geometry shaders** (a few games): in the CPU vertex path, it is just more JIT'd code.
+5. **Memory**: 128 MB guest + caches: fine on a 4 GB / 8 GB Pi 4; a 2 GB Pi 4 to check.
+6. **Legal**: decrypted dumps only, no key handling code at all, own replacement font — to state
+   in the app's messages and `docs/04`.
+7. **Questions for the user**: (a) option C (Dynarmic, MIT kept) — agreed? (b) which games first
+   (the compatibility work follows them)? (c) Old 3DS only to begin with — agreed?
+
+## 12. Sources
+
+- 3dbrew wiki (hardware, services, file formats, PICA200 registers): https://www.3dbrew.org/
+- GBATEK's 3DS sections (Martin Korth): https://problemkaputt.de/gbatek.htm
+- Azahar (GPL-2.0, Citra's successor; Android floor Snapdragon 835, GLES 3.2): https://github.com/azahar-emu/azahar
+- Panda3DS (GPL-3.0, HLE, Dynarmic, OpenGL / Vulkan, decrypted or encrypted dumps): https://github.com/wheremyfoodat/Panda3DS
+- Dynarmic (0BSD; ARMv3–v8 guests, x86-64 and AArch64 hosts; C++20): https://github.com/azahar-emu/dynarmic
+- Teakra (MIT; the XpertTeak DSP): https://github.com/wwylele/teakra
+- libretro's Panda3DS core options (shader JIT on x86-64 / ARM64): https://docs.libretro.com/library/panda3ds/
+- Onyx: `docs/HANDOFF.md` (gcemu's speed analysis, the DS emulator), `user/Libs/v3d/gxtev.h`, `user/Emulators/nds/`.
