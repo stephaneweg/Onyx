@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## The Nintendo DS emulator `ndsemu` (2026-10-09) -- built and tested on the PC, NOT on the Pi yet
+## The Nintendo DS emulator `ndsemu` (2026-10-09) -- built on the PC; the first game starts on the Pi (1.0.2)
 
 The user asked for a DS emulator written from scratch (MIT, no melonDS code) up to the plan's step D5, then a local
 session tests and debugs it on the Pi. Done: D0 to D5.
@@ -33,6 +33,25 @@ session tests and debugs it on the Pi. Done: D0 to D5.
   beside them; `Asm::patch` traps an out-of-range branch under `NDS_DEBUG`. Reproduced and checked under qemu with
   NitroTracker (`ndstest`'s new `NDS_JITCODE=<file>`: every block's host code, for objdump; a fault in the JIT's
   code is reported with its offset in the buffer).
+- **Fixed by the local session, on the Pi with the user's dump (`ndsemu` 1.0.2)**: Explorers of Sky no longer crashed
+  (1.0.1) but said *The save data could not be accessed* at once, with the interpreter on the PC too. The game clears
+  AUXSPICNT's hold bit BEFORE a command's last byte (`05`, hold cleared, then the status byte); `cartSpiCnt` released
+  the chip at that write, so the status read was a new command and answered FF (busy for ever). The hold bit cleared
+  now releases the chip after the next byte only (`spiXfer`); the slot or its SPI mode switched off still does at once.
+- **The games tried** (the local session; ROMs outside the repository, `C:/Temp/Roms` on the user's PC):
+
+  | Game | Code | Boots | Plays | Saves | Speed | Notes |
+  |---|---|---|---|---|---|---|
+  | Pokemon Mystery Dungeon: Explorers of Sky (EU) | C2SP | yes: logos, intro, title on the Pi (JIT) and the PC; a new game reaches the quiz on the PC | not tried | not tried: the chip is read with 3 address bytes (128 KB), its type is set at the first write (then Flash, 512 KB) | not measured (F12) | a thin diagonal line on the black top screen during two of the intro's fades (PC, interpreter): to look at |
+
+- **Seen once on the Pi, not understood (the kernel, not the emulator)**: `run ndsemu <rom on SD1:>` from telnet while
+  rdpd served Onyx Remote and a VNC capture was asked 8 s later -- core 0 stopped in the 128 MB ROM's loading (after
+  ~60 of its 1 MB reads), the hang watchdog restarted the Pi. `lastcrash.txt`: ndsemu's task in the kernel, in the SD
+  driver's status wait and its data-port loop (pc 126170 / 126640 / 168334 of 2026.10.154's image), the reaper's
+  last pass 13 s before. The next start (no capture during the loading) and the user's own starts were fine.
+- **Not possible on the local PC as it is**: `tools/tests/nds/check.sh` (no `arm-none-eabi-gcc`: the test ROMs are
+  not built) and the JIT under qemu (no `aarch64-linux-gnu-g++`) -- `sudo apt install gcc-arm-none-eabi
+  g++-aarch64-linux-gnu` in WSL.
 - **The local session's tests**: `docs/LOCAL-AGENT-NDS.md` (its brief).
 - **The 3DS**: the study is `docs/3DS-EMULATOR-STUDY.md` (option C recommended: our core under MIT + Dynarmic;
   the plan T0-T8); nothing built, the user's answers awaited (§11).

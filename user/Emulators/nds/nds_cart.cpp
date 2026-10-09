@@ -143,7 +143,9 @@ void Machine::cartSpiCnt (u16 v)
 {
 	u16 old = cart.spicnt;
 	cart.spicnt = (u16) ((v & 0xE043) | (old & 0x80) );
-	if ((old & 0x40) && !(v & 0x40)) cart.spiEnd ();		// (chip select released)
+	// (the hold bit cleared releases the chip AFTER the next byte -- spiXfer: games clear it before a command's
+	// last byte, e.g. 05 then the status read; only the slot or its SPI mode switched off releases it here)
+	if ((old & 0xA000) == 0xA000 && (v & 0xA000) != 0xA000) cart.spiEnd ();
 }
 
 void Machine::cartSpiData (u8 v)
