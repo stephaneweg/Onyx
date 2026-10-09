@@ -1079,8 +1079,8 @@ static void fill_summary ()
 	char off[16], zone[48]; off[0] = 0; locale_zone_utc (g_zone, off, sizeof off);
 	if (!strcmp (city, "UTC")) scpy (zone, sizeof zone, "UTC"); else snprintf (zone, sizeof zone, "%s (%s)", TR (city), off);
 	snprintf (g_sum->val[0], 120, "%s  \xC2\xB7  %s  \xC2\xB7  %s  \xC2\xB7  %s", locale_language_name (g_lang), TR (c.name), g_keybOpts[g_keyb], zone);
-	bool on = g_netlist->state == NET_CONNECTED && g_netlist->sel >= 0;
-	if (on) snprintf (g_sum->val[1], 120, TR ("%s  \xC2\xB7  connected, %s"), g_nets[g_netlist->sel].ssid, g_ip);
+	bool on = g_netlist->state == NET_CONNECTED;
+	if (on) snprintf (g_sum->val[1], 120, TR ("%s  \xC2\xB7  connected, %s"), g_netlist->sel >= 0 ? g_nets[g_netlist->sel].ssid : "Wi-Fi", g_ip);
 	else snprintf (g_sum->val[1], 120, "%s", TR ("Not connected  \xC2\xB7  later, from the Wi-Fi icon in the menu bar"));
 	snprintf (g_sum->val[2], 120, "%d \xC3\x97 %d%s%s", g_scrW, g_scrH, aspect (g_scrW, g_scrH)[0] ? ", " : "", aspect (g_scrW, g_scrH));
 	snprintf (g_sum->val[3], 120, "%s  \xC2\xB7  %s", TR (SCHEMES[g_scheme].name), g_wall ? TR ("a pattern wallpaper") : TR ("generated wallpaper"));
@@ -1171,6 +1171,17 @@ static void show_net (int state)
 	g_netlist->place ();
 	update_nav ();
 	g_pages[2]->invalidate (true);
+}
+// Online (kapi_net_status says so): the network we are on chosen in the list -- the scan's "connected" one, else the
+// only one saved there -- and the page connected. The scan's flag alone is not trusted: an access point on our channel
+// can be missed by a scan made while associated.
+static void online_now ()
+{
+	int s = -1, nKnown = 0, k = -1;
+	for (int i = 0; i < g_nnets; i++) { if (g_nets[i].con && s < 0) s = i; if (g_nets[i].known) { nKnown++; k = i; } }
+	if (s < 0 && nKnown == 1) s = k;
+	g_netlist->sel = s;
+	show_net (NET_CONNECTED);
 }
 static void start_join (const char *ssid, const char *psk, bool open)
 {
@@ -1371,8 +1382,18 @@ public:
 		{
 			g_scanPending = false;
 			scan_nets ();
-			if (g_nnets && g_nets[0].con && kapi_net_status (0, 0)) { g_netlist->sel = 0; show_net (NET_CONNECTED); }
+			if (kapi_net_status (0, 0)) online_now ();
 			else show_net (NET_LIST);
+		}
+		// Online already, or since the scan (the card's network joined at the start, after the page was shown; a scan
+		// that did not see the access point we are on): the page says so and Continue is allowed. Every 2 s, while the
+		// list is shown (not while a network is being picked, joined or typed).
+		static unsigned s_pollT;
+		if (g_page == 2 && !g_demo && g_scanned && !g_scanPending && g_netlist->state == NET_LIST && g_hiddenNet->hidden
+		    && now - s_pollT >= 200)
+		{
+			s_pollT = now;
+			if (kapi_net_status (0, 0)) online_now ();
 		}
 		if (g_netlist->state == NET_CONNECTING)
 		{
