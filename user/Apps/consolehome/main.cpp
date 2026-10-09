@@ -222,11 +222,22 @@ static void choose_cat (int c)
 	if (g_nitems == 0) g_inTiles = false;
 	g_homeDirty = true;
 }
+static bool screen_of (const char *app, int *w, int *h);
+static void screen_to (int w, int h, const char *who);
+static char g_launch[32];				// an app just opened: its size before it comes in front (screen_follow)
+static unsigned g_launchT;
 static void open_tile (int i)
 {
 	if (i < 0 || i >= g_nitems) return;
 	tasks_read ();
-	open_app (g_apps[g_items[i]].name);
+	const char *name = g_apps[g_items[i]].name;
+	int w, h;
+	if (task_of (name) < 0 && screen_of (name, &w, &h))		// (its own size before it starts: screen_follow)
+	{
+		fs_copy (g_launch, name, sizeof g_launch); g_launchT = kapi_get_ticks ();
+		screen_to (w, h, name);
+	}
+	open_app (name);
 }
 
 // ---- the home drawn ------------------------------------------------------------------------------------------
@@ -671,6 +682,7 @@ static void tip_show (void)
 }
 static void tip_tick (void) { if (g_tipOn && (kapi_get_ticks () - g_tipT > 300 || g_menu || g_home)) tip_hide (); }
 
+static char g_front[32];				// the app in front ("": none, the home)
 static void front_look (void)				// (after tasks_read: who is in front)
 {
 	static char s_was[32];
@@ -685,6 +697,7 @@ static void front_look (void)				// (after tasks_read: who is in front)
 		}
 	if (now[0] && !ieq (now, s_was)) tip_show ();		// (another app in front: the tip)
 	fs_copy (s_was, now, sizeof s_was);
+	fs_copy (g_front, now, sizeof g_front);
 }
 static void pad_type (unsigned press, unsigned held, bool rep)
 {
@@ -738,6 +751,86 @@ static void pad_poll (void)
 	if (k == KEY_UP || k == KEY_DOWN || k == KEY_LEFT || k == KEY_RIGHT) t0 = now + (press ? 22 : 0);
 	if (g_menu) { if (k != -1 && k != '\t' && k != KEY_PGUP && k != KEY_PGDN) menu_key (k); }
 	else go (k);
+}
+
+// ---- the games' screen sizes ----------------------------------------------------------------------------------
+// An app may want its own resolution on the console (an emulator: the size its picture scales best to, the GPU's
+// work for the 3D ones): its app.txt's `resolution = 800x600`, or the
+// user's SD:/etc/console.ini, section [screen], `<app> = 640x480` (`system`: the system's). While that app is in
+// front the screen has its size (kapi_screen_set, switched before it starts when this shell opens it); at home, the
+// game ended or another app in front, the system's size again (the one the screen had before).
+static int g_sysW, g_sysH;
+static bool size_parse (const char *s, int *w, int *h)
+{
+	int a = 0, b = 0, k = 0;
+	while (s[k] == ' ') k++;
+	while (s[k] >= '0' && s[k] <= '9') a = a * 10 + (s[k++] - '0');
+	while (s[k] == ' ') k++;
+	if (s[k] != 'x' && s[k] != 'X' && s[k] != '*') return false;
+	k++;
+	while (s[k] == ' ') k++;
+	while (s[k] >= '0' && s[k] <= '9') b = b * 10 + (s[k++] - '0');
+	if (a < 640 || b < 480 || a > 2560 || b > 1600) return false;
+	*w = a & ~1; *h = b;
+	return true;
+}
+static bool screen_of (const char *app, int *w, int *h)	// the app's own size -> true (cached by name)
+{
+	static char s_app[32]; static int s_w, s_h; static unsigned s_t;
+	if (!ieq (app, s_app) || kapi_get_ticks () - s_t > 500)	// (read again every 5 s: a file changed meanwhile)
+	{
+		fs_copy (s_app, app, sizeof s_app); s_t = kapi_get_ticks (); s_w = s_h = 0;
+		bool said = false;
+		if (app_ini_load_path ("SD:/etc/console.ini") >= 0)
+		{
+			const char *v = app_ini_get ("screen", app, 0);
+			if (v) { said = true; if (!size_parse (v, &s_w, &s_h)) s_w = s_h = 0; }
+		}
+		char p[80]; int n = 0;
+		lx_cat (p, sizeof p, &n, "SD:/apps/"); lx_cat (p, sizeof p, &n, app); lx_cat (p, sizeof p, &n, ".app/app.txt");
+		if (!said && app_ini_load_path (p) >= 0)
+		{
+			const char *v = app_ini_get (0, "resolution", 0);
+			if (v && !size_parse (v, &s_w, &s_h)) s_w = s_h = 0;
+		}
+	}
+	*w = s_w; *h = s_h;
+	return s_w > 0;
+}
+// The screen at w x h for an app (w 0: the system's size again). The system's size is the screen's whenever no app's
+// own size is on (a change made meanwhile -- the Display applet -- followed); only a size set here is undone.
+static bool g_ours;					// the screen has an app's size, set here
+static void screen_to (int w, int h, const char *who)
+{
+	int cw = 0, ch = 0;
+	kapi_screen_size (&cw, &ch);
+	if (w == 0 && !g_ours) { if (cw > 0) { g_sysW = cw; g_sysH = ch; } return; }
+	if (w == 0) { w = g_sysW; h = g_sysH; }
+	else if (!g_ours && cw > 0) { g_sysW = cw; g_sysH = ch; }
+	static unsigned s_fail; static int s_fw, s_fh;
+	if (cw == w && ch == h) { g_ours = w != g_sysW || h != g_sysH; return; }
+	if (w == s_fw && h == s_fh && kapi_get_ticks () - s_fail < 200) return;	// (refused: again in 2 s)
+	int r = kapi_screen_set (w, h);
+	char m[96]; int n = 0;
+	lx_cat (m, sizeof m, &n, "consolehome: the screen at "); num_cat (m, sizeof m, &n, w); lx_cat (m, sizeof m, &n, " x "); num_cat (m, sizeof m, &n, h);
+	lx_cat (m, sizeof m, &n, who[0] ? " for " : " (the system's)"); if (who[0]) lx_cat (m, sizeof m, &n, who);
+	if (r != 0) { lx_cat (m, sizeof m, &n, " -- not now: "); num_cat (m, sizeof m, &n, r); s_fail = kapi_get_ticks (); s_fw = w; s_fh = h; }
+	else g_ours = w != g_sysW || h != g_sysH;
+	static char s_said[96];
+	if (strcmp (m, s_said) != 0) { strcpy (s_said, m); ax_putln (m); }	// (a refusal said once)
+}
+static void screen_follow (void)			// (every 0.1 s: the screen at the size of what is in front)
+{
+	if (g_sysW == 0) return;
+	const char *who = g_home ? "" : g_front;
+	if (g_launch[0])
+	{
+		if (ieq (g_front, g_launch) || kapi_get_ticks () - g_launchT > 1000) g_launch[0] = 0;	// (in front, or 10 s)
+		else who = g_launch;
+	}
+	int w = 0, h = 0;
+	if (!(who[0] && screen_of (who, &w, &h))) w = h = 0;
+	screen_to (w, h, w ? who : "");
 }
 
 static void messages (void)
@@ -812,6 +905,7 @@ int main (void)
 		return 0;
 	}
 	kapi_screen_size (&g_sw, &g_sh);
+	g_sysW = g_sw; g_sysH = g_sh;				// (the system's size: the screen's with no game's size on)
 	{
 		struct uk_win_server_info si;
 		memset (&si, 0, sizeof si);
@@ -871,7 +965,7 @@ int main (void)
 		int mi = 0;
 		kapi_get_datetime (0, 0, 0, 0, &mi, 0);
 		if (mi != lastMin) { lastMin = mi; g_homeDirty = true; }
-		if (kapi_get_ticks () - lastSync >= 100) { lastSync = kapi_get_ticks (); screen_sync (); }
+		if (kapi_get_ticks () - lastSync >= 10) { lastSync = kapi_get_ticks (); screen_follow (); screen_sync (); }
 		if (kapi_get_ticks () - lastScan > 1000 && g_home && !g_menu)		// (an app installed meanwhile: every 10 s at home)
 		{
 			lastScan = kapi_get_ticks ();

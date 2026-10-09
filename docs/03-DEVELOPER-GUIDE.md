@@ -1555,6 +1555,13 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   File menu, Esc twice — the app still in front. Pictures `consolehome-*.png` (`CONSOLE_PNG=<folder>`).
 - **The tip**: a third window (`W_TIP`, see-through, parked): `front_look ()` shows it for 3 s when another app
   comes to the front (`tip_show`, `tip_tick`).
+- **A game's resolution**: an app's `app.txt` may say `resolution = 800x600` (the emulators do), overridden by
+  `SD:/etc/console.ini` `[screen]` `<app> = WxH | system`. `screen_follow ()` (every 0.1 s) puts the screen at the
+  front app's size (`screen_of`, cached) with `kapi_screen_set`, and back at the system's when none is wanted;
+  `open_tile` switches before the app starts (`g_launch`, 10 s at most). The system's size is the screen's whenever
+  no app's size is on (`g_ours`): a change made meanwhile (the Display applet) is followed, only a size set by the
+  shell is undone. A refusal (`-2`: a full-screen program has the display) is said once and tried again every 2 s.
+  The kernel's switch is not simulated by `server_sim` (its stand-in has no `screen_set`).
 - **Not done** (the study's §7.5): the quick menu of games (save / load state — the emulators have no common
   call for it yet), the pointer held at the top edge, the library's ROMs on the home
   (the Game Library is a tile of *Games*), `PK_OP_TOOLS`. A full-screen game (the kernel's direct path) hides the
