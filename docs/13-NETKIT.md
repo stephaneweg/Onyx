@@ -21,7 +21,7 @@ NetKit is the network for the programs: a small HTTP client, the FTP volumes, an
 |---|---|
 | Include | `#include "netkit/netkit.h"` |
 | Link | `lib/netkit.imp.a` (C++) or `lib/netkit.imp_c.a` (C) |
-| Library | `SD:/lib/netkit.so` — 21 entries in its table (`user/Kits/netkit/netkit.abi`, append-only) |
+| Library | `SD:/lib/netkit.so` — 28 entries in its table (`user/Kits/netkit/netkit.abi`, append-only) |
 | Sources | `user/Kits/netkit/` |
 
 ## Using it
@@ -71,6 +71,20 @@ if (ftpfs_login ("ftp.example.com", "me", "secret", 1))      // 1: remembered
     /* kapi_read ... kapi_close */
 }
 ```
+
+**The known Wi-Fi networks** (`wifi.h`, 2026-10-09): `SD:/etc/wpa_supplicant.conf` read and written with every
+network kept (the one joined last first), joining one at once (the scan itself is AppKit's `kapi_wlan_scan`). The menu
+bar's Wi-Fi menu, the Wi-Fi applet and the console's Wi-Fi page share it:
+
+```c
+struct wifi_known k[WIFI_KNOWN_MAX]; char cc[8];
+int n = wifi_known_load (k, WIFI_KNOWN_MAX, cc, sizeof cc);   // the networks, the country
+int r = wifi_join ("Maison", WLAN_SEC_WPA2, "the password");  // WIFI_OK (joining), WIFI_SAVED (a reboot joins it), WIFI_E*
+wifi_forget ("Voisin");
+wifi_set_country ("BE");
+```
+
+The passwords are in clear text on the card (the radio needs them).
 
 The raw sockets (`kapi_tcp_connect`, `kapi_tcp_send`…) are AppKit's; NetKit is where protocols built on
 them belong.

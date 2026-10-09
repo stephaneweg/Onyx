@@ -17,7 +17,20 @@ set -e
 cd "$(dirname "$0")/../../.."
 . tools/tests/server_sim/common.sh
 ftapp pocket pocketshell uikit_pocket
-ftapp pocket consolehome uikit_pocket user/Kits/gamekit/gamekit.cpp
+# (consolehome: its Packages page is pkg/pkglib.h -- zlib, mbedTLS built for the PC, once; its Sound page's chime AudioKit)
+if [ ! -f "$OUT/libaudiokit.a" ]; then
+	mkdir -p "$OUT/ak"
+	for c in codecs vorbis; do gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ithird_party -c user/Apps/media/$c.c -o "$OUT/ak/$c.o"; done
+	for f in user/Apps/koton/synth/*.cpp user/Kits/audiokit/*.cpp; do $CXX $INC -Iuser/Apps/koton -Iuser/Apps/media -Ithird_party -c "$f" -o "$OUT/ak/$(basename "$f" .cpp).o"; done
+	ar rcs "$OUT/libaudiokit.a" "$OUT"/ak/*.o
+fi
+M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mb" "$OUT/pkzlib"
+if [ ! -f "$OUT/libmb.a" ]; then
+	for f in $M/library/*.c; do gcc -O1 -w -I$M/include -I$M/library -c $f -o "$OUT/mb/$(basename $f .c).o"; done
+	ar rcs "$OUT/libmb.a" "$OUT"/mb/*.o
+fi
+for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/pkzlib/$f.o"; done
+ftapp pocket consolehome uikit_pocket user/Kits/gamekit/gamekit.cpp -Ithird_party/zlib-1.3.1 -I$M/include "$OUT"/pkzlib/*.o "$OUT/libmb.a" "$OUT/libaudiokit.a" -lm
 ftapp pocket menubar uikit_pocket user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp
 app pocket terminal uikit_pocket
 app pocket tinycalc uikit_pocket
@@ -184,6 +197,16 @@ conshots () {		# conshots <W>x<H> <tag> [lang]
 	R6="key 0x103;key 0x103;key 0x103;key 0x103;key 0x103;key 0x103"
 	run pocket_consolehome console-home-$sfx "$W;$W;$W;expect shell app;expect kind home;expect area 0,0,$w,$h;expect pos 0,0;expect home 1;key 0x103;key 0x101;$W;dump $OUT/consolehome-home-$sfx.elsm;$R6;$W;dump $OUT/consolehome-apps-$sfx.elsm;key 13;key 0x101;$W;dump $OUT/consolehome-appsub-$sfx.elsm;key 0x102;key 0x103;$W;dump $OUT/consolehome-settings-$sfx.elsm;key 0x119;$W;$W;expect shown1 1;key 0x1b;$W;expect shown1 0;expect home 1" $E
 	run pocket_consolehome console-menu-$sfx "$W;$W;other $w $h Notes;othermenu MFile|I1~New~^N|I2~Open...~^O|-|I3~Save~^S|MEdit|I4~Copy~^C|I5~Paste~^V;$W;$W;$W;expect home 0;expect front other;key 0x119;$W;$W;expect shown1 1;expect front other;dump $OUT/consolehome-menu-$sfx.elsm;key 0x101;key 13;$W;$W;expect shown1 1;dump $OUT/consolehome-appmenu-$sfx.elsm;key 0x1b;$W;expect shown1 1;key 0x1b;$W;$W;expect shown1 0;expect front other;expect home 0" $E
+	# the settings' pages (xset.h): the last column; Sound (Volume focused), Gamepad, Wi-Fi (the scan), a network's
+	# page and its password on the virtual keyboard, Packages, Mode, Display and its keep-this-size dialog, the games'
+	R10="$R6;key 0x103;key 0x103;key 0x103;key 0x103"; P="png consolehome-set"
+	SC="$W;$W;$W;$R10;$W;key 13;$W;expect home 1;key 0x101;$W;dump $OUT/consolehome-set-sound-$sfx.elsm;key 0x1b;key 0x101;key 13;$W;dump $OUT/consolehome-set-gamepad-$sfx.elsm"
+	SC="$SC;key 0x1b;key 0x101;key 0x101;key 0x101;key 13;$W;$W;$W;$W;dump $OUT/consolehome-set-wifi-$sfx.elsm;key 0x101;key 13;$W;dump $OUT/consolehome-set-net-$sfx.elsm"
+	SC="$SC;key 0x101;key 13;$W;key m;key a;key i;key s;key o;key n;$W;dump $OUT/consolehome-set-osk-$sfx.elsm;key 0x1b;key 0x1b;key 0x1b"
+	SC="$SC;key 0x101;key 13;$W;$W;dump $OUT/consolehome-set-packages-$sfx.elsm;key 0x1b;key 0x101;key 13;$W;dump $OUT/consolehome-set-mode-$sfx.elsm"
+	SC="$SC;key 0x1b;key 0x101;key 13;$W;key 0x103;$W;dump $OUT/consolehome-set-display-$sfx.elsm;key 13;$W;dump $OUT/consolehome-set-keep-$sfx.elsm;key 0x1b;$W;key 0x101;key 0x101;key 13;$W;dump $OUT/consolehome-set-games-$sfx.elsm;key 0x1b;key 0x1b;$W;expect home 1"
+	run pocket_consolehome console-set-$sfx "$SC" $E
+	for s in sound gamepad wifi net osk packages mode display keep games; do png consolehome-set-$s-$sfx; if [ -n "$CONSOLE_PNG" ]; then cp "$OUT/consolehome-set-$s-$sfx.png" "$CONSOLE_PNG/"; fi; done
 	for s in home apps appsub settings menu appmenu; do png consolehome-$s-$sfx; if [ -n "$CONSOLE_PNG" ]; then mkdir -p "$CONSOLE_PNG"; cp "$OUT/consolehome-$s-$sfx.png" "$CONSOLE_PNG/"; fi; done
 }
 conshots 800x480 800

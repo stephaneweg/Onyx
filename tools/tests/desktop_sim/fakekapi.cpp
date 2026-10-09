@@ -1325,6 +1325,8 @@ static int wlan_scan (struct kapi_wlan_ap *o, int max)
 	return n;
 }
 static int wlan_reconnect (void) { return 0; }
+// the screen's resolution changed (the Display settings): taken, the picture unchanged (the window server's size stays)
+static int screen_set (int, int) { return 0; }
 // SIM_WINS="x,y,w,h,desk,keys;...": the windows (the dock's workspaces draw them small)
 static int win_list (struct kapi_win_info *o, int max)
 {
@@ -1747,7 +1749,7 @@ static void setup (void)
 	T->ipc_register = ipc_register_note; T->pad_state = pad_state_sim;
 	T->tcp_connect = tcp_connect; T->tcp_send = tcp_send; T->tcp_recv = tcp_recv; T->tcp_close = tcp_close;
 	T->net_resolve = net_resolve;
-	T->wlan_scan = wlan_scan; T->wlan_reconnect = wlan_reconnect;
+	T->wlan_scan = wlan_scan; T->wlan_reconnect = wlan_reconnect; T->screen_set = screen_set;
 	T->surface_create = surface_create; T->surface_map = surface_map; T->surface_size = surface_size; T->surface_destroy = surface_destroy; T->kill_pid = kill_pid;
 	T->desk = desk; T->win_desk = win_desk;
 	T->sound_config = sound_config; T->sound_map = sound_map; T->wait_word = wait_word;

@@ -1,7 +1,7 @@
 # systemkit.bi -- systemkit for Onyx BASIC (#import systemkit): made by tools/kitbi/kitbi.py from systemkit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit systemkit 93
+kit systemkit 110
 struct PreloadList 4100 PreloadList
 field n 0 i
 struct recent_doc 168 recent_doc
@@ -90,3 +90,20 @@ shell_ask 89 i i shell_ask what
 shell_running 90 i - shell_running
 recent_doc_add 91 v s recent_doc_add path
 recent_docs 92 i pi recent_docs out,max
+display_game_own 93 i sII display_game_own app,w,h
+display_game_reset 94 i - display_game_reset
+display_game_said 95 i sII display_game_said app,w,h
+display_game_set 96 i sii display_game_set app,w,h
+display_game_size 97 i sII display_game_size app,w,h
+display_mode 98 s iII display_mode i,w,h
+display_modes 99 i - display_modes
+display_parse_size 100 i sII display_parse_size s,w,h
+display_save_size 101 i ii display_save_size w,h
+display_saved_size 102 i II display_saved_size w,h
+input_keymap_kind 103 i s input_keymap_kind code
+input_keymap_name 104 s s input_keymap_name code
+input_keymap_now 105 i pi input_keymap_now out,cap
+input_keymap_set 106 i s input_keymap_set code
+input_keymaps 107 i ci input_keymaps out,max
+input_wheel 108 i - input_wheel
+input_wheel_save 109 i i input_wheel_save lines

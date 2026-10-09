@@ -4,7 +4,7 @@
 //
 // LEVEL 1, across the upper third, white icons: ONE PER CONSOLE that has games (GameKit: the installed emulators'
 // `games =`, the ROMs of the watched folders; their order =), then ONYX (the native games: the apps of category Games),
-// APPS (the apps' categories) and SETTINGS (the Control Panel's applets). The chosen one stays at a fixed place, big,
+// APPS (the apps' categories) and SETTINGS (the console's own settings pages: xset.h). The chosen one stays at a fixed place, big,
 // its name under it; the others small and faded. Under it, LEVEL 2, its items as a vertical list -- a console's ROMs
 // (alphabetical, the chosen one's title screen big at the right), Onyx's games, the applets, or Apps' categories: the
 // chosen category unrolls its apps at its right (A goes into them, Left or B comes back).
@@ -82,7 +82,7 @@ static void xmb_build (void)
 	}
 	if (g_nonyx) g_x[g_nx++] = { X_ONYX, -1, 0, g_nonyx, 0 };
 	if (g_nacat) g_x[g_nx++] = { X_APPS, -1, 0, g_nacat, 0 };
-	if (g_nset) g_x[g_nx++] = { X_SET, -1, 0, g_nset, 0 };
+	g_x[g_nx++] = { X_SET, -1, 0, SP_N, 0 };		// (the console's settings: xset.h)
 	g_xf = 0;
 	for (int i = 0; i < g_nx; i++)
 	{
@@ -331,14 +331,15 @@ static void item_icon (Canvas &cv, const XCol &c, int i, int cx, int cy, int s, 
 {
 	if (c.kind == X_SYS) white_icon (cv, XI_CONSOLE, sys_code (c.sys), cx, cy, s, a);
 	else if (c.kind == X_APPS) white_icon (cv, XI_FOLDER, 0, cx, cy, s, a);
-	else app_icon_at (cv, g_apps[c.kind == X_ONYX ? g_onyx[i] : g_set[i]], cx, cy, s, a);
+	else if (c.kind == X_SET) page_icon (cv, i, cx, cy, s, a);
+	else app_icon_at (cv, g_apps[g_onyx[i]], cx, cy, s, a);
 }
 static const char *item_label (const XCol &c, int i)
 {
 	if (c.kind == X_SYS) return g_roms[c.first + i].name;
 	if (c.kind == X_APPS) return TR (g_cats[g_acat[i]].name);
-	App &a = g_apps[c.kind == X_ONYX ? g_onyx[i] : g_set[i]];
-	return a.applet ? TR (a.label) : a.label;
+	if (c.kind == X_SET) return sp_name (i);
+	return g_apps[g_onyx[i]].label;
 }
 static void item_sub (const XCol &c, int i, char *o, int cap)
 {
@@ -352,7 +353,7 @@ static void item_sub (const XCol &c, int i, char *o, int cap)
 	}
 	else if (c.kind == X_APPS) { int n = 0; for (int a = 0; a < g_napps; a++) if (!g_apps[a].hidden && !g_apps[a].applet && ieq (g_apps[a].cat, g_cats[g_acat[i]].name)) n++; snprintf (o, (size_t) cap, n == 1 ? TR ("%d app") : TR ("%d apps"), n); }
 	else if (c.kind == X_ONYX) lx_cat (o, cap, &k, TR ("Onyx game"));
-	else lx_cat (o, cap, &k, g_apps[g_set[i]].text);
+	else lx_cat (o, cap, &k, sp_help (i));
 }
 
 // ---- a ROM's picture (GameKit: the Game Library's title screens) ---------------------------------------------------------
@@ -410,6 +411,12 @@ static void draw_home (void)
 	g_homeHits.clear ();
 	uk_paint_alpha (false);
 	XMet m = xm ();
+	if (g_setOn)						// a settings page (xset.h)
+	{
+		draw_settings (cv);
+		uk_win_select (W_HOME); uk_win_present (); uk_win_select (0);
+		return;
+	}
 	const XCol *c = g_nx ? &g_x[g_xf] : 0;
 
 	// the top: the column's name and its count; the day and the time
@@ -570,7 +577,7 @@ static void activate (void)
 	if (c.n == 0) return;
 	if (c.kind == X_SYS) play_rom (c.first + c.sel);
 	else if (c.kind == X_ONYX) open_app_at (g_onyx[c.sel]);
-	else if (c.kind == X_SET) open_app_at (g_set[c.sel]);
+	else if (c.kind == X_SET) set_enter (c.sel);
 	else if (!g_inSub) { if (g_nsub) { g_inSub = true; g_subSel = 0; } }
 	else if (g_subSel < g_nsub) open_app_at (g_sub[g_subSel]);
 }

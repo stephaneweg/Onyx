@@ -4,8 +4,8 @@
 //
 // THE HOME (its backmost window, the whole screen: console mode has no band): across the upper third a white icon per
 // CONSOLE that has games (GameKit: the installed emulators, the ROMs of the watched folders), then ONYX (the native
-// games), APPS (the apps' categories, each unrolling its apps at its right) and SETTINGS (the Control Panel's
-// applets); under the chosen one its items as a vertical list, a ROM's title screen big at the right. THE MENU (a
+// games), APPS (the apps' categories, each unrolling its apps at its right) and SETTINGS (the console's own settings
+// pages, made for a pad: xset.h); under the chosen one its items as a vertical list, a ROM's title screen big at the right. THE MENU (a
 // topmost overlay, asked with the pad's Home or Select, F10, the Super key, or the shell's message): the app in front,
 // Home, the other running apps (to switch to), Close this app, Settings, Shut Down -- over any app, since an app in
 // console mode fills the screen with no chrome. A game (an emulator) gets its own screen size while it is in front.
@@ -141,7 +141,7 @@ struct Hits { Hit h[MAXHITS]; int n; void clear () { n = 0; } void add (int x, i
 	{ if (n < MAXHITS) h[n++] = { x, y, w, h_, k, i }; }
 	const Hit *at (int x, int y) const { for (int k = n - 1; k >= 0; k--) if (x >= h[k].x && x < h[k].x + h[k].w && y >= h[k].y && y < h[k].y + h[k].h) return &h[k]; return 0; } };
 static Hits g_homeHits, g_overHits;
-enum { H_CAT = 1, H_ITEM, H_SUB };
+enum { H_CAT = 1, H_ITEM, H_SUB, H_ROW, H_PAGE, H_DBTN, H_KEY };
 static bool screen_of (const char *app, int *w, int *h);
 static void screen_to (int w, int h, const char *who);
 static char g_launch[32];				// an app just opened: its size before it comes in front (screen_follow)
@@ -154,6 +154,15 @@ static int hint_w (const char *btn, const char *word)
 	if (bw < h) bw = h;
 	return bw + D (7) + tw (word) + D (22);
 }
+static bool g_setOn;					// the settings' pages are up (xset.h)
+static void draw_settings (Canvas &cv);
+static void set_enter (int page);
+static void set_key (int k);
+static void set_ptr (int ev, int x, int y, int c, long v);
+#define SP_N	8					// the settings' pages (xset.h's SP)
+static const char *sp_name (int i);
+static const char *sp_help (int i);
+static void page_icon (Canvas &cv, int i, int cx, int cy, int s, int a);
 #include "xmb.h"				// the home: Lakka's XMB -- the consoles, Onyx, Apps, Settings across, their items down
 
 // ---- the menu: an overlay over whatever is in front ----------------------------------------------------------------
@@ -348,6 +357,7 @@ static void home_key (unsigned long, int ev, long v)
 	int k = (int) v;
 	unsigned mods = (unsigned) kapi_get_modifiers ();
 	if (k == KEY_F1 + 9) { menu_toggle (); return; }
+	if (g_setOn) { set_key (k == '\n' || k == '\r' ? KEY_ENTER : k); return; }
 	if ((k == KEY_PGUP || k == KEY_PGDN) && (mods & MOD_CTRL)) { go (k == KEY_PGDN ? '\t' : -1); return; }
 	if (k == '\t' && (mods & MOD_SHIFT)) { go (-1); return; }
 	if (k == '\n' || k == '\r') k = KEY_ENTER;
@@ -380,7 +390,8 @@ static void ptr (unsigned long win, int ev, long v)
 		if (ev == GUI_EVENT_PTR_DOWN && (c & 1)) { if (h) menu_do (h->i); else menu_hide (); }
 		return;
 	}
-	home_ptr (ev, x, y, c, v);
+	if (g_setOn) set_ptr (ev, x, y, c, v);
+	else home_ptr (ev, x, y, c, v);
 	if (ev == GUI_EVENT_PTR_DOWN && (c & 2)) menu_show ();		// (a right click: the menu)
 }
 
@@ -402,6 +413,8 @@ static unsigned pad_any (void)
 	}
 	return b;
 }
+#include "xset.h"				// the settings' pages: Sound, Gamepad ... Display, in the XMB's style
+
 // THE PAD AS KEYS: an app that is not a game (app.txt's category: not Games, not Emulators -- those read the pad
 // themselves) is moved by the pad as by a keyboard, this shell typing for it (kapi_inject_key: the server routes the
 // keys to the app in front): the d-pad the arrows, A Enter, B Esc, X Space, Y Tab, L1 / R1 Ctrl+Page Up / Down (the
@@ -479,6 +492,7 @@ static void pad_poll (void)
 	bool rep = (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) && (int) (now - t0) > 16;
 	last = b;
 	bool mine = g_menu || g_home;
+	if (mine && !g_menu && set_grabs_pad ()) return;		// (the buttons being learnt: the wizard reads them)
 	if ((press & PAD_HOME) || (mine && (press & PAD_SELECT))
 	    || (!mine && (press & (PAD_SELECT | PAD_START)) && (b & PAD_SELECT) && (b & PAD_START))) { menu_toggle (); return; }
 	if (!press && !rep) return;
@@ -491,10 +505,15 @@ static void pad_poll (void)
 		}
 		return;
 	}
+	bool set = g_setOn && !g_menu;				// (the settings: every button has its own code)
 	unsigned d = press ? press : b;
 	int k = (d & PAD_RIGHT) ? KEY_RIGHT : (d & PAD_LEFT) ? KEY_LEFT : (d & PAD_DOWN) ? KEY_DOWN : (d & PAD_UP) ? KEY_UP : 0;
-	if (press & (PAD_A | PAD_START)) k = KEY_ENTER;
-	else if (press & PAD_B) k = 0x1b;
+	if (press & PAD_A) k = set ? K_A : KEY_ENTER;
+	else if (press & PAD_START) k = set ? K_START : KEY_ENTER;
+	else if (press & PAD_B) k = set ? K_B : 0x1b;
+	else if (press & PAD_X) k = set ? K_X : 0;
+	else if (press & PAD_Y) k = set ? K_Y : 0;
+	else if (press & PAD_L3) k = set ? K_L3 : 0;
 	else if (press & PAD_L) k = -1;
 	else if (press & PAD_R) k = '\t';
 	else if (press & PAD_L2) k = KEY_PGUP;
@@ -502,6 +521,7 @@ static void pad_poll (void)
 	if (k == 0) return;
 	if (k == KEY_UP || k == KEY_DOWN || k == KEY_LEFT || k == KEY_RIGHT) t0 = now + (press ? 22 : 0);
 	if (g_menu) { if (k != -1 && k != '\t' && k != KEY_PGUP && k != KEY_PGDN) menu_key (k); }
+	else if (set) set_key (k);
 	else go (k);
 }
 
@@ -512,39 +532,13 @@ static void pad_poll (void)
 // front the screen has its size (kapi_screen_set, switched before it starts when this shell opens it); at home, the
 // game ended or another app in front, the system's size again (the one the screen had before).
 static int g_sysW, g_sysH;
-static bool size_parse (const char *s, int *w, int *h)
-{
-	int a = 0, b = 0, k = 0;
-	while (s[k] == ' ') k++;
-	while (s[k] >= '0' && s[k] <= '9') a = a * 10 + (s[k++] - '0');
-	while (s[k] == ' ') k++;
-	if (s[k] != 'x' && s[k] != 'X' && s[k] != '*') return false;
-	k++;
-	while (s[k] == ' ') k++;
-	while (s[k] >= '0' && s[k] <= '9') b = b * 10 + (s[k++] - '0');
-	if (a < 640 || b < 480 || a > 2560 || b > 1600) return false;
-	*w = a & ~1; *h = b;
-	return true;
-}
-static bool screen_of (const char *app, int *w, int *h)	// the app's own size -> true (cached by name)
+static bool screen_of (const char *app, int *w, int *h)	// the app's own size (SystemKit display.h) -> true (cached by name)
 {
 	static char s_app[32]; static int s_w, s_h; static unsigned s_t;
 	if (!ieq (app, s_app) || kapi_get_ticks () - s_t > 500)	// (read again every 5 s: a file changed meanwhile)
 	{
-		fs_copy (s_app, app, sizeof s_app); s_t = kapi_get_ticks (); s_w = s_h = 0;
-		bool said = false;
-		if (app_ini_load_path ("SD:/etc/console.ini") >= 0)
-		{
-			const char *v = app_ini_get ("screen", app, 0);
-			if (v) { said = true; if (!size_parse (v, &s_w, &s_h)) s_w = s_h = 0; }
-		}
-		char p[80]; int n = 0;
-		lx_cat (p, sizeof p, &n, "SD:/apps/"); lx_cat (p, sizeof p, &n, app); lx_cat (p, sizeof p, &n, ".app/app.txt");
-		if (!said && app_ini_load_path (p) >= 0)
-		{
-			const char *v = app_ini_get (0, "resolution", 0);
-			if (v && !size_parse (v, &s_w, &s_h)) s_w = s_h = 0;
-		}
+		fs_copy (s_app, app, sizeof s_app); s_t = kapi_get_ticks ();
+		if (!display_game_size (app, &s_w, &s_h)) s_w = s_h = 0;
 	}
 	*w = s_w; *h = s_h;
 	return s_w > 0;
@@ -714,6 +708,7 @@ int main (void)
 		pump_events ();
 		messages ();
 		pad_poll ();
+		set_tick ();
 		int mi = 0;
 		kapi_get_datetime (0, 0, 0, 0, &mi, 0);
 		if (mi != lastMin) { lastMin = mi; g_homeDirty = true; }

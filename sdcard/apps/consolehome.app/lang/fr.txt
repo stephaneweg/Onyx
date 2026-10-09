@@ -54,3 +54,325 @@ Dec	déc.
 No picture yet: the Game Library makes them	Pas encore d'image : la Ludothèque les crée
 Play	Jouer
 May	mai
+# the settings pages (xset.h): words shared with the desktop applets
+Mode	Mode
+Automatic	Automatique
+Playing on: 	Lecture sur : 
+Not playing yet: the sound starts with the first app that plays.	Pas encore de son : il démarre avec la première app qui joue.
+Play on	Lire sur
+Volume	Volume
+Mute	Couper le son
+Play a test sound	Jouer un son de test
+Programs playing	Programmes en lecture
+muted	coupé
+Up	Haut
+Down	Bas
+Left	Gauche
+Right	Droite
+Select	Select
+Start	Démarrer
+Right stick up	Stick droit haut
+Right stick down	Stick droit bas
+Right stick left	Stick droit gauche
+Right stick right	Stick droit droite
+Kind	Type
+none	aucun
+Forget	Oublier
+Keyboard layout	Disposition du clavier
+Try it	Essayer
+Mouse	Souris
+Language	Langue
+, summer time	, heure d'été
+Time zone	Fuseau horaire
+Now	Maintenant
+open	ouvrir
+Connected	Connecté
+Country	Pays
+Connect	Connecter
+Password	Mot de passe
+Show password	Afficher le mot de passe
+Security	Sécurité
+WEP networks are not supported	Les réseaux WEP ne sont pas pris en charge
+Connecting to 	Connexion à 
+The password is 8 to 63 characters	Mot de passe : 8 à 63 caractères
+Cannot write SD:/etc/wpa_supplicant.conf	Impossible d'écrire SD:/etc/wpa_supplicant.conf
+Removing...	Suppression...
+Updates	Mises à jour
+Installed	Installé
+%d more	%d de plus
+Available	Disponibles
+Search...	Rechercher...
+Reading the repository...	Lecture du dépôt...
+, signed	, signé
+Update	Mettre à jour
+Install	Installer
+Remove	Supprimer
+Size	Taille
+Restart	Redémarrer
+Desktop	Bureau
+Pocket	Poche
+Console	Console
+in use	utilisé
+Closing the open programs...	Fermeture des programmes ouverts...
+The interface	L'interface
+The open programs will be closed, then the interface starts again.	Les programmes ouverts vont être fermés, puis l'interface redémarre.
+A program	Un programme
+is waiting for an answer	attend une réponse
+Answer its question, or force it to end (its unsaved work is lost).	Répondez à sa question, ou forcez sa fin (son travail non enregistré est perdu).
+Wait	Attendre
+Force	Forcer
+Resolution	Résolution
+Keep this resolution?	Conserver cette résolution ?
+Keep	Garder
+Not now: a full-screen app owns the display. Kept for the next start.	Pas maintenant : une application occupe tout l'écran. Conservé pour le prochain démarrage.
+Step %d of %d	Étape %d sur %d
+Shift	Maj
+Space	Espace
+Delete	Supprimer
+Done	Fait
+Skip	Ignorer
+Stop	Arrêter
+Scan	Scanner
+Its own	Le sien
+Change	Modifier
+UP on the d-pad	HAUT sur la croix directionnelle
+DOWN on the d-pad	BAS sur la croix directionnelle
+LEFT on the d-pad	GAUCHE sur la croix directionnelle
+RIGHT on the d-pad	DROITE sur la croix directionnelle
+the BOTTOM face button (Xbox A, PlayStation Cross, Nintendo B)	le bouton du BAS (Xbox A, PlayStation Croix, Nintendo B)
+the RIGHT face button (Xbox B, PlayStation Circle, Nintendo A)	le bouton de DROITE (Xbox B, PlayStation Rond, Nintendo A)
+the LEFT face button (Xbox X, PlayStation Square, Nintendo Y)	le bouton de GAUCHE (Xbox X, PlayStation Carré, Nintendo Y)
+the TOP face button (Xbox Y, PlayStation Triangle, Nintendo X)	le bouton du HAUT (Xbox Y, PlayStation Triangle, Nintendo X)
+the LEFT shoulder button (L / L1 / LB)	le bouton d'épaule GAUCHE (L / L1 / LB)
+the RIGHT shoulder button (R / R1 / RB)	le bouton d'épaule DROIT (R / R1 / RB)
+the LEFT trigger (L2 / LT / ZL: a button or an analog trigger)	la gâchette GAUCHE (L2 / LT / ZL : bouton ou analogique)
+the RIGHT trigger (R2 / RT / ZR)	la gâchette DROITE (R2 / RT / ZR)
+SELECT (Back / Share / -)	SELECT (Back / Share / -)
+START (Options / +)	START (Options / +)
+HOME (Guide / PS)	HOME (Guide / PS)
+Brussels	Bruxelles
+Vienna	Vienne
+Warsaw	Varsovie
+London	Londres
+Lisbon	Lisbonne
+Athens	Athènes
+American (qwerty)	Américain (qwerty)
+Belgian (azerty)	Belge (azerty)
+Dvorak	Dvorak
+French (azerty)	Français (azerty)
+German (qwertz)	Allemand (qwertz)
+16:9, HD	16:9, HD
+16:10, WXGA	16:10, WXGA
+5:4, SXGA	5:4, SXGA
+16:9, HD+	16:9, HD+
+16:10, WXGA+	16:10, WXGA+
+16:9, Full HD	16:9, Full HD
+16:10, WUXGA	16:10, WUXGA
+16:9, QHD	16:9, QHD
+British	Britannique
+Italian	Italien
+Spanish	Espagnol
+16:9, laptop screens	16:9, écrans de portables
+4:3, UXGA	4:3, UXGA
+16:10, WSXGA+	16:10, WSXGA+
+# the settings pages (xset.h): their own words
+The pads, their buttons, the keyboard as a pad	Les manettes, leurs boutons, le clavier comme manette
+The networks around: join one, forget one, the country	Les réseaux autour : en rejoindre un, en oublier un, le pays
+The updates, the installed programs, the others to install	Les mises à jour, les programmes installés, les autres à installer
+Desktop, pocket or console: the interface	Bureau, poche ou console : l'interface
+Headphone jack	Prise casque
+USB headset	Casque USB
+HDMI	HDMI
+No sound at all, the volume kept	Plus aucun son, le volume gardé
+A short chime (when no program holds the sound)	Un court carillon (quand aucun programme ne tient le son)
+Its own volume (kept in SD:/etc/mixer.ini); A mutes it	Son propre volume (gardé dans SD:/etc/mixer.ini) ; A le coupe
+none now	aucun maintenant
+Each program that plays gets its own volume here	Chaque programme qui joue a ici son propre volume
+nothing	rien
+Plug in a pad first	Branchez d'abord une manette
+Pad %d	Manette %d
+ (known)	 (connue)
+ (generic)	 (générique)
+Its model, its mapping, its buttons; map them	Son modèle, sa correspondance, ses boutons ; les associer
+nothing plugged in	rien de branché
+A USB or Bluetooth pad plugged in shows here	Une manette USB ou Bluetooth branchée apparaît ici
+This pad	Cette manette
+unplugged	débranchée
+Model (vendor:product)	Modèle (fabricant:produit)
+The USB ids its mapping is kept by in SD:/etc/gamepad.ini	Les identifiants USB sous lesquels sa correspondance est gardée dans SD:/etc/gamepad.ini
+known to the system	connue du système
+generic USB pad	manette USB générique
+A known pad has its buttons mapped already	Une manette connue a déjà ses boutons associés
+Its mapping	Sa correspondance
+its own	la sienne
+[default]	[default]
+built in	intégrée
+Held now	Enfoncés maintenant
+What the games see: press a button to try it	Ce que voient les jeux : appuyez sur un bouton pour l'essayer
+Map the buttons	Associer les boutons
+%d keys	%d touches
+Keyboard as pad 1	Clavier comme manette 1
+Its section removed from gamepad.ini: the built-in mapping again	Sa section retirée de gamepad.ini : de nouveau la correspondance intégrée
+Read gamepad.ini again	Relire gamepad.ini
+After the file was changed by hand	Après une modification du fichier à la main
+press a key...	appuyez sur une touche...
+Press the key on the keyboard (Esc: none)	Appuyez sur la touche du clavier (Échap : aucune)
+A: give it another key (a keyboard is needed)	A : lui donner une autre touche (il faut un clavier)
+Back to the defaults	Revenir aux touches par défaut
+The arrows, Z X A S, Q W E R...	Les flèches, Z X A S, Q W E R...
+Its buttons go back to the built-in mapping.	Ses boutons reviennent à la correspondance intégrée.
+gamepad.ini read again	gamepad.ini relu
+The default keys again	De nouveau les touches par défaut
+This key cannot be used	Cette touche ne peut pas servir
+The pad was unplugged	La manette a été débranchée
+The buttons are kept for this pad	Les boutons sont gardés pour cette manette
+gamepad.ini could not be written	gamepad.ini n'a pas pu être écrit
+Taken at once and kept for every start	Pris tout de suite et gardé à chaque démarrage
+a physical keyboard	un vrai clavier
+A field to type in with the keyboard plugged in	Un champ où taper avec le clavier branché
+Wheel	Molette
+The lines a notch of the wheel scrolls	Les lignes que fait défiler un cran de la molette
+This layout could not be loaded	Cette disposition n'a pas pu être chargée
+The programs started from now on speak it	Les programmes démarrés à partir de maintenant la parlent
+The clock follows at once	L'horloge suit tout de suite
+Cannot scan now	Impossible de chercher maintenant
+, known	, connu
+: A for its page	 : A pour sa page
+No network around	Aucun réseau autour
+Is the Wi-Fi up? Scan again in a moment	Le Wi-Fi est-il actif ? Cherchez de nouveau dans un instant
+Scanning...	Recherche...
+%d found, %d s ago	%d trouvés, il y a %d s
+Scan again	Chercher de nouveau
+Looks for the networks around (3 s); Y does it anywhere on this page	Cherche les réseaux autour (3 s) ; Y le fait partout sur cette page
+A hidden network...	Un réseau caché...
+Its name typed, then its page	Son nom tapé, puis sa page
+Known, not around	Connus, pas à portée
+known	connu
+Kept in SD:/etc/wpa_supplicant.conf: A to forget it	Gardé dans SD:/etc/wpa_supplicant.conf : A pour l'oublier
+Joined now	Connecté maintenant
+Joins it now; it is kept with the others, first	S'y connecte maintenant ; il est gardé avec les autres, en premier
+none yet	aucun pour l'instant
+8 to 63 characters: A types it on the keyboard	8 à 63 caractères : A pour le taper au clavier
+Its letters on the screen	Ses lettres à l'écran
+WEP is not supported	Le WEP n'est pas pris en charge
+not around	pas à portée
+Signal	Signal
+Forget this network	Oublier ce réseau
+Removed from SD:/etc/wpa_supplicant.conf	Retiré de SD:/etc/wpa_supplicant.conf
+Password for 	Mot de passe de 
+Saved: a restart joins it	Enregistré : un redémarrage s'y connecte
+Too many known networks: forget one first	Trop de réseaux connus : oubliez-en un d'abord
+: its password is removed from the card.	 : son mot de passe est retiré de la carte.
+Forget this network?	Oublier ce réseau ?
+automatic	automatique
+never	jamais
+manual	manuel
+Installing %d %%	Installation %d %%
+Install the update	Installer la mise à jour
+Install the %d updates	Installer les %d mises à jour
+Everything is up to date	Tout est à jour
+No list of packages yet	Pas encore de liste des paquets
+Check now reads the repository	« Vérifier maintenant » lit le dépôt
+Restart to finish	Redémarrer pour terminer
+(X: its updates mode)	(X : son mode de mise à jour)
+  restart	  redémarrage
+The packages	Les paquets
+%d package	%d paquet
+%d packages	%d paquets
+Remove one, set its updates mode	En retirer un, régler son mode de mise à jour
+The others the repository has: install one	Les autres du dépôt : en installer un
+A name, a word of its summary	Un nom, un mot de son résumé
+list of 	liste du 
+, not checked	, non vérifiée
+never read	jamais lue
+Check now	Vérifier maintenant
+Nothing matches	Aucun résultat
+not installed	non installé
+Its needs come with it	Ce dont il a besoin vient avec
+Staged	En attente
+at the restart	au redémarrage
+Its updates	Ses mises à jour
+Its files leave the card (the documents stay)	Ses fichiers quittent la carte (les documents restent)
+the system needs it	le système en a besoin
+Restart now?	Redémarrer maintenant ?
+Later	Plus tard
+Removed	Retiré
+Kept	Gardé
+Done: the apps open with their new version	Terminé : les apps s'ouvrent avec leur nouvelle version
+It did not work	Cela n'a pas marché
+A job is running: wait for its end	Un travail est en cours : attendez sa fin
+Cannot start the job	Impossible de lancer le travail
+Search the packages	Chercher dans les paquets
+: its files leave the card.	 : ses fichiers quittent la carte.
+Remove this package?	Retirer ce paquet ?
+Windows, the menu bar and the dock: the mouse and the keyboard	Des fenêtres, la barre de menus et le dock : la souris et le clavier
+One app at a time, big and clear: a small screen, a touch screen	Une app à la fois, grande et claire : un petit écran, un écran tactile
+The games on a television, played with a pad	Les jeux sur une télévision, joués à la manette
+switching...	bascule...
+Switch the interface?	Changer d'interface ?
+Switch	Changer
+The interface was switched	L'interface a changé
+That interface could not start: the desktop instead	Cette interface n'a pas pu démarrer : le bureau à la place
+Not now: a full-screen program has the display	Pas maintenant : un programme plein écran tient l'affichage
+The interface could not be switched	L'interface n'a pas pu changer
+Left / Right choose a size, A tries it (kept only when you say so)	Gauche / Droite choisissent une taille, A l'essaie (gardée seulement si vous le dites)
+The screen now	L'écran maintenant
+%d console	%d console
+%d consoles	%d consoles
+This is the size in use: kept	C'est la taille utilisée : gardée
+Nothing pressed: the previous size comes back by itself.	Sans réponse, la taille précédente revient d'elle-même.
+Go back	Revenir
+The firmware refused this size: the screen kept its own	Le firmware a refusé cette taille : l'écran a gardé la sienne
+The screen could not change its size	L'écran n'a pas pu changer de taille
+its own: 	la sienne : 
+Its own: 	La sienne : 
+; Y gives it back	 ; Y la lui rend
+No emulator installed	Aucun émulateur installé
+All back to their own	Tous à leur propre taille
+Every emulator at the size its app.txt says	Chaque émulateur à la taille que dit son app.txt
+Kept for every start	Gardée pour chaque démarrage
+The previous size again	De nouveau la taille précédente
+Forgotten	Oublié
+Nothing changed: the interface stays as it is	Rien n'a changé : l'interface reste telle quelle
+At least %d characters	Au moins %d caractères
+Type with the keyboard to try it	Tapez au clavier pour l'essayer
+Every emulator at its own size	Chaque émulateur à sa propre taille
+Nothing changed	Rien n'a changé
+Let go of every button...	Relâchez tous les boutons...
+Press	Appuyez sur
+No such button on this pad? In %d s it is skipped.	Pas ce bouton sur cette manette ? Dans %d s il est passé.
+A keyboard: Esc skips, Backspace stops (nothing kept).	Au clavier : Échap passe, Retour arrière arrête (rien n'est gardé).
+%d s	%d s
+Cursor	Curseur
+Type	Taper
+Updates mode	Mode de mise à jour
+Do	Faire
+Volume %d (muted)	Volume %d (coupé)
+Volume %d	Volume %d
+the LEFT stick's click (L3)	le clic du stick GAUCHE (L3)
+the RIGHT stick's click (R3)	le clic du stick DROIT (R3)
+4:3, XGA (Onyx's default)	4:3, XGA (par défaut dans Onyx)
+The volume, the output, each program's level	Le volume, la sortie, le niveau de chaque programme
+The keyboard's layout, the mouse's wheel	La disposition du clavier, la molette de la souris
+The system's language, the time zone	La langue du système, le fuseau horaire
+The screen's resolution, the games' own	La résolution de l'écran, celle des jeux
+The whole system's volume (kept in SD:/etc/sound.ini)	Le volume de tout le système (gardé dans SD:/etc/sound.ini)
+Its own section in gamepad.ini, the [default] one, or the system's	Sa propre section de gamepad.ini, la section [default], ou celle du système
+Asks for each button in turn, then keeps them for this pad's model	Demande chaque bouton tour à tour, puis les garde pour ce modèle de manette
+The keys that play as pad 1 (a keyboard plugged in, or Remote Desktop's)	Les touches qui jouent comme manette 1 (un clavier branché, ou celui du Bureau à distance)
+Forget this pad's mapping	Oublier la correspondance de cette manette
+Forget this pad's mapping?	Oublier la correspondance de cette manette ?
+The date and the time (the network's clock when there is one)	La date et l'heure (l'horloge du réseau quand il y en a un)
+The radio's channels follow the country's rules	Les canaux radio suivent les règles du pays
+The hidden network's name	Le nom du réseau caché
+One after the other; the system's waits for a restart	L'une après l'autre ; celle du système attend un redémarrage
+The system's update is staged: it is moved in at the restart	La mise à jour du système est prête : elle est mise en place au redémarrage
+Reads the repository's list again (its signature checked)	Relit la liste du dépôt (sa signature vérifiée)
+The system's: it waits for a restart	Celle du système : elle attend un redémarrage
+Manual: installed when asked; automatic: by the updates' daemon; never	Manuel : installé à la demande ; automatique : par le démon des mises à jour ; jamais
+The system's update is ready: it is moved in at the restart.	La mise à jour du système est prête : elle est mise en place au redémarrage.
+The session's tool (SD:/bin/session) could not be started	L'outil de session (SD:/bin/session) n'a pas pu être lancé
+The games' resolutions	Les résolutions des jeux
+Each emulator's screen size while it plays (SD:/etc/console.ini)	La taille d'écran de chaque émulateur pendant qu'il joue (SD:/etc/console.ini)
+the system's	celle du système
+The repository could not be read	Le dépôt n'a pas pu être lu

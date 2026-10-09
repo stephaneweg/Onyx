@@ -556,6 +556,29 @@ recent_doc_add ("SD:/docs/letters-tour.rtf");             // first of SD:/etc/re
 struct recent_doc d[12]; int n = recent_docs (d, 12);       // the latest first: d[i].path, .date (YYYYMMDD), .time (HHMM)
 ```
 
+**The screen's resolution** (`display.h`, 2026-10-09): the sizes offered, the one kept for the next start, and in the
+console mode each app's own (an emulator's `resolution =`, `SD:/etc/console.ini [screen]`). The Display applet and the
+console's Display page share it:
+
+```c
+int w, h;
+const char *what = display_mode (8, &w, &h);               // 1920 x 1080, "16:9, Full HD" (English: translate it)
+if (kapi_screen_set (w, h) == 0) display_save_size (w, h);  // applied, then kept in SD:/cmdline.txt
+display_game_set ("n64emu", 1024, 768);                    // the N64 emulator at 1024 x 768 while it plays
+display_game_set ("gcemu", DISPLAY_SYSTEM, 0);             // ... the system's size; DISPLAY_OWN: its app.txt's again
+if (display_game_size ("snesemu", &w, &h)) { /* the size consolehome switches to */ }
+```
+
+**The keyboard and the mouse** (`input.h`, 2026-10-09): the layouts on the card, the one in use, taking one (kept for
+every start), whether it is AZERTY or QWERTZ (a virtual keyboard follows it), the wheel's speed:
+
+```c
+char maps[INPUT_KEYMAPS_MAX][12]; int n = input_keymaps (maps, INPUT_KEYMAPS_MAX);   // "BE", "DE", "FR", "US"...
+input_keymap_set ("BE");                                    // INPUT_KEPT: loaded now and in SD:/etc/autostart
+if (input_keymap_kind ("FR") == 1) { /* AZERTY */ }
+input_wheel_save (3);                                       // SD:/etc/theme.txt wheelspeed= (apply: uk_win_wheel_set)
+```
+
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
 | `notify.h` | Notifications |
@@ -572,6 +595,8 @@ struct recent_doc d[12]; int n = recent_docs (d, 12);       // the latest first:
 | `session.h` | The interface's mode (desktop, pocket, console) and its session: `SD:/etc/session/<mode>`, the switch |
 | `shell.h` | The pocket shell's screens asked (`shell_ask (SHELL_MSG_HOME / _SWITCHER / _QUICK / _SEARCH)`, `shell_running ()`): the menu bar's way in pocket |
 | `recent.h` | The documents opened last (`recent_doc_add`, `recent_docs`: `SD:/etc/recent-docs`; `fa_open` notes them) |
+| `display.h` | The screen's resolution: the sizes, the one kept (`SD:/cmdline.txt`), the console's games' own (`SD:/etc/console.ini [screen]`) |
+| `input.h` | The keyboard's layouts (`SD:/etc/keymaps`, kept in `SD:/etc/autostart`) and the mouse wheel's speed |
 
 ## 6. NetKit — the network
 
@@ -623,6 +648,20 @@ if (ftpfs_login ("ftp.example.com", "me", "secret", 1))      // 1: remembered
     /* kapi_read ... kapi_close */
 }
 ```
+
+**The known Wi-Fi networks** (`wifi.h`, 2026-10-09): `SD:/etc/wpa_supplicant.conf` read and written with every
+network kept (the one joined last first), joining one at once (the scan itself is AppKit's `kapi_wlan_scan`). The menu
+bar's Wi-Fi menu, the Wi-Fi applet and the console's Wi-Fi page share it:
+
+```c
+struct wifi_known k[WIFI_KNOWN_MAX]; char cc[8];
+int n = wifi_known_load (k, WIFI_KNOWN_MAX, cc, sizeof cc);   // the networks, the country
+int r = wifi_join ("Maison", WLAN_SEC_WPA2, "the password");  // WIFI_OK (joining), WIFI_SAVED (a reboot joins it), WIFI_E*
+wifi_forget ("Voisin");
+wifi_set_country ("BE");
+```
+
+The passwords are in clear text on the card (the radio needs them).
 
 The raw sockets (`kapi_tcp_connect`, `kapi_tcp_send`…) are AppKit's; NetKit is where protocols built on
 them belong.

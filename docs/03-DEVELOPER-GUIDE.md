@@ -1547,7 +1547,7 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   the columns (`xmb_build`): one per console that has ROMs (**GameKit**, `roms_read`: `games_systems`,
   `games_folders`, `games_scan`), then Onyx (the apps of category *Games* but the Game Library), Apps (the categories
   of `scan_apps` but Recent / Settings / Games / Shell / Emulators; the chosen one's apps `g_sub`, `g_inSub`) and
-  Settings (the applets). `draw_home ()`: the background made once per size (`xmb_bg_make`: the gradient, a soft
+  Settings (the console's eight pages, `xset.h`). `draw_home ()`: the background made once per size (`xmb_bg_make`: the gradient, a soft
   light, the ribbon from an integer sine table — the apps are built `-mgeneral-regs-only`), the white icons drawn into
   a cached mask (`xi_mask`: generic console shapes with their short names, the gem, the grid, the gear, a folder;
   `look.h`'s rounded boxes), the lists (`draw_list`: the chosen item at a fixed height), a ROM's title screen
@@ -1571,11 +1571,29 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   with `gamelib_samples.py`'s made-up ROMs): the home is the whole screen; a console's games, Apps and its unrolled
   apps, Settings; F10 shows and Esc hides the menu; over an app with menus: the menu, its
   File menu, Esc twice — the app still in front. Pictures `consolehome-<home|apps|appsub|settings|menu|appmenu>-*.png` (`CONSOLE_PNG=<folder>`).
+- **The settings** (`xset.h`, 2026-10-09 — docs/COMPACT-SHELL-STUDY.md §18): A on an item of the Settings column
+  calls `set_enter (page)`; while `g_setOn`, `draw_home` draws `draw_settings` and every input goes to `set_key`
+  (`pad_poll` gives the pad's buttons that have no key their own codes `K_A`, `K_B`, `K_X`, `K_Y`, `K_START`, `K_L3`;
+  `set_ptr` the pointer's). A **screen stack** (`g_ss`: the page, then deeper screens — a pad's page, the wizard, the
+  keyboard's keys, a network's page, a package list, a package, the games' resolutions); each screen's **rows** are
+  built again for every draw and key (`rows_build`: `R_CHOICE`, `R_SLIDER`, `R_TOGGLE`, `R_ACTION`, `R_SUB`, `R_INFO`,
+  `R_NET`, `R_RADIO`, `R_HEAD`; a label, a value, a help line, an icon, a progress), so they always show the files'
+  and the kernel's state; Left / Right go to the page's `*_change`, A to its `*_act`. **The dialog** (`dlg_open`:
+  two or three choices, the safe one for B, an optional countdown that chooses it — Display's 15 s) and **the virtual
+  keyboard** (`osk_open`: its rows QWERTY / AZERTY / QWERTZ after `input_keymap_kind` of the keymap in use, a symbols
+  page, a secret's dots, `osk_done` per purpose) draw over the page. The logic is the kits': SystemKit (`volume.h`,
+  `locale.h`, `session.h` — `session_switch_start`, `display.h`, `input.h`), NetKit (`wifi.h`; the scan in a thread),
+  `gamepad.h` (`pad_learn_*`, `pad_keyboard_*`, `pad_forget`), `pkg/pkgjob.h` (a `pkg::Manager`; HTTPS: the Makefile
+  links mbedTLS and zlib into consolehome), AudioKit (the test chime). `set_tick ()` each turn: the dialog's countdown,
+  the scan's end, the package job's progress, the mode switch's answer, the wizard (`wiz_tick`: the raw pad, 8 s per
+  step), a redraw when a live value changed. Tests: `conshots`' `console-set-*` (Sound, Gamepad, Wi-Fi, a network,
+  the virtual keyboard, Packages, Mode, Display, the games' resolutions); `tools/tests/gamepad` (the wizard, the
+  keyboard's keys).
 - **The tip**: a third window (`W_TIP`, see-through, parked): `front_look ()` shows it for 3 s when another app
   comes to the front (`tip_show`, `tip_tick`).
 - **A game's resolution**: an app's `app.txt` may say `resolution = 800x600` (the emulators do), overridden by
   `SD:/etc/console.ini` `[screen]` `<app> = WxH | system`. `screen_follow ()` (every 0.1 s) puts the screen at the
-  front app's size (`screen_of`, cached) with `kapi_screen_set`, and back at the system's when none is wanted;
+  front app's size (`screen_of`, cached: SystemKit's `display_game_size`) with `kapi_screen_set`, and back at the system's when none is wanted;
   `open_tile` switches before the app starts (`g_launch`, 10 s at most). The system's size is the screen's whenever
   no app's size is on (`g_ours`): a change made meanwhile (the Display applet) is followed, only a size set by the
   shell is undone. A refusal (`-2`: a full-screen program has the display) is said once and tried again every 2 s.
@@ -3101,6 +3119,7 @@ The design, the formats and the plan: `docs/pkg/README.md`. Done so far:
 | `tools/pkg/publish.sh` | The publishing, in one command (the skill `.claude/skills/onyx-packages`): the `onyx-packages` clone updated, `mkrepo.py --bump --db --lite`, the signature checked with `onyx.pub`, the host test, commit + push; the key from `ONYX_PKG_KEY` / `ONYX_PKG_KEY_FILE` / `~/.onyx/pkg-key.pem`. |
 | `tools/pkg/keygen.py` | The key pair, once: the private key kept off the repositories, the public one `sdcard/etc/pkg/onyx.pub`. |
 | `user/Libs/pkg/pkglib.h` | The library (`pkg`, later `pkgman` and `pkgd`): the ini text, the index fetched (`http.hpp` with TLS when `PKG_NET`, else a folder) and its signature checked (mbedTLS `pk_verify`), the database (`SD:/var/pkg/db`), `resolve` (the needs, the kernel's ABI), `install` (the download's size and SHA-256 those of the index, then the Archiver's ZIP engine: each file written beside and swapped in, a changed setting kept and the new one written as `.new`, the old version's other files removed — unless another installed package has them, `owned_elsewhere`, as when `bin/pkg` moved from `onyx` into `pkgman`), the staging of `restart` packages (`SD:/var/pkg/stage`) and `commit` (moved in, `kernel8-rpi4.img.old` kept), `remove` (the needs, an app running, the empty folders), `set_mode`, `refresh_desktop` (an app's files installed or removed: the dock killed and started again, called by `pkg`, `pkgman`, `pkgd` at the end of their job). |
+| `user/Libs/pkg/pkgjob.h` | A job in a thread, the window alive (2026-10-09, out of `pkgman`): `job_start (J_CHECK / J_INSTALL / J_REMOVE / J_MODE, names, n, mode)` with `g_jobM` the `Manager`; what it says each frame in `g_job` (`cur`, `pct`, `msg`, `failed`, `staged`, `finished`, `done`, then `kapi_thread_join`). `pkgman` and the console's Packages page (`consolehome`'s `xset.h`) share it. |
 | `user/BinUtils/pkg.cpp` | The command (docs/04 §8 *Packages*); `PKG_PROGS` in `user/BinUtils/Makefile` (newlib + mbedTLS + zlib). |
 | `user/Apps/pkgman` | The **Package Manager**, the Control Panel's applet (`70-pkgman.lnk`; FreeType): a snapshot of the index and the database (`Row`s, rebuilt after each job) drawn by its own widgets (`Tabs`, `PkgList`: the rows, the boxes, the mode pills, the buttons, the restart banner); a job (check, install, remove, mode) in a thread (`kapi_thread_create`), its progress read each frame (`onTick`: the package being done, its percentage — `http.hpp`'s new `progress ()` callback and the extraction —, the packages finished). Built by `pkgman.elf` in `user/Makefile` (newlib + FreeType + mbedTLS + zlib, `-DPKG_NET -DONYX_HTTP_TLS`). |
 | `user/Apps/pkgd` | The **update daemon** (no window; `run pkgd` in `etc/autostart`): waits for the network and the time, then once a day (`SD:/var/pkg/lastcheck`) `refresh`, the "auto" packages installed (their new needs first; the system staged), `notify_action` for the others; `--once`: one round; `check = never` in `pkg.ini`: it ends. |

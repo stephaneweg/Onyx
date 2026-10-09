@@ -1327,7 +1327,12 @@ list (an animation of a few frames, optional).
 
 ## 18. Console mode: the settings applets (XMB) (2026-10-09, mock-ups)
 
-*A design proposal with mock-ups only: nothing built.* v3 is built (`user/Apps/consolehome/xmb.h`), and its
+**Built on 2026-10-09** (`user/Apps/consolehome/xset.h`; the logic in the kits: SystemKit `display.h` and `input.h`,
+NetKit `wifi.h`, `gamepad.h`'s wizard, `pkg/pkgjob.h`; docs/03 §5.10.5b, docs/04 *The console mode*). The user's
+answers to the open questions: the pages inside consolehome, the logic in the kits; **every known network kept**
+(the desktop's Wi-Fi applet too); Display's *Keep this resolution?* on the desktop as well; no About page; the
+virtual keyboard **follows the keyboard's layout** (AZERTY with a Belgian or French keymap, QWERTZ with a German one);
+*Keyboard as pad 1* **always shown** (Remote Desktop's keyboard). Below, the proposal as it was. v3 is built (`user/Apps/consolehome/xmb.h`), and its
 **Settings** column lists the Control Panel's applets. Pressing A on one opens the **desktop** Control Panel
 (`user/Apps/control` and the applets): windows, lists, text fields and small buttons that are unusable with a
 pad. The user wants **console applets in the XMB's own style, usable with a pad alone**, and a **virtual
@@ -1464,8 +1469,8 @@ The right panel draws **what the apps see**, live: a generic pad with the button
 - **Show password** toggle, then **Security** and **Signal** for information.
 - **Forget this network** removes it from the file.
 
-*Note*: wpaconf writes one network and drops the others. The console page keeps the known networks (the menu
-bar's way): an open question.
+*Note*: wpaconf wrote one network and dropped the others; since the build every program keeps them all (NetKit's
+`wifi.h`).
 
 | | |
 |---|---|

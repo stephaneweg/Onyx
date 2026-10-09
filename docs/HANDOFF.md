@@ -4,6 +4,27 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## The console's settings pages in the XMB (2026-10-09, night) -- tested on the PC, NOT on the Pi yet
+
+The user asked for console-specific settings usable with a pad, a virtual keyboard where text is needed: Sound,
+Gamepad, Keyboard, Language & Region, Wi-Fi, Packages, Mode, Display (UX design first: docs/COMPACT-SHELL-STUDY.md §18,
+its mock-ups; the user's answers are noted there).
+- **consolehome** (`user/Apps/consolehome/xset.h`): the Settings column holds the eight pages; the engine (a screen
+  stack, rows rebuilt from the files at each draw, the dialog with a countdown, the virtual keyboard after the
+  keymap's kind) and the pages. docs/03 §5.10.5b, docs/04 *The console mode*.
+- **The logic went into the kits first**, the desktop applets switched to it: SystemKit `display.h` (sizes, the size
+  kept, the games' resolutions in `console.ini`) and `input.h` (keymaps, the wheel) -- systemkit.abi 110; NetKit
+  `wifi.h` (every known network kept: `wifimenu` and `wpaconf` too, which dropped the others) -- netkit.abi;
+  `gamepad.h`'s learning wizard and keyboard pad (`pad_learn_*`, `pad_keyboard_set/reset`, `pad_forget`: padconf uses
+  them); `Libs/pkg/pkgjob.h` (pkgman's job thread). Display's **Keep this resolution?** (15 s) on the desktop applet
+  too.
+- consolehome now links the package library (HTTPS: mbedTLS, zlib) and AudioKit (the chime): the Makefile's
+  `FT_EXTRA_consolehome`.
+- Tests: `server_sim/run.sh` `console-set-*` at the four sizes (pictures in `docs/compact-shell/real/consolehome-set-*`),
+  `tools/tests/gamepad` (the wizard, the keys). The wizard needs a real pad (the sim's pad is held).
+- **To try on the Pi**: the pages with a pad and over RDP (the keyboard: 'y' is Y, 'x' is X in a page); the Wi-Fi
+  join from the virtual keyboard; a package installed from the console; the Display dialog's revert after 15 s.
+
 ## The console tried on the Pi (2026-10-09, evening): fixes -- tested on the PC, NOT on the Pi yet
 
 The user's report: it works, a little slow; F10 did nothing; the app's menu stayed after the app was quit; a SNES

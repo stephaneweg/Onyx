@@ -836,8 +836,11 @@ agenda.elf:
 setup.elf: Apps/setup/system.h Kits/systemkit/wallpaper.h Kits/imagekit/img/imgload.hpp
 # The FreeType apps (FT_APPS): newlib + lib/fontkit.imp.a, as the Calendar. The Game Library also links the
 # emulators it takes the covers and the save states' pictures from.
-FT_EXTRA_consolehome = lib/gamekit.imp.a
-consolehome.elf: lib/gamekit.imp.a Kits/gamekit/gamekit.h Apps/consolehome/xmb.h Apps/pocketshell/catalog.h Apps/pocketshell/look.h
+# (consolehome's settings pages, Apps/consolehome/xset.h: the Packages page is the package manager's library -- HTTPS,
+# zlib --, the Sound page's chime AudioKit's)
+FT_EXTRA_consolehome = lib/gamekit.imp.a lib/audiokit.imp.a Libs/zlib/libz.a -L$(PKG_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto
+consolehome.elf: NL_CXXFLAGS += -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation -I$(ZLIB_SRC) -I$(PKG_MBEDTLS)/include
+consolehome.elf: lib/gamekit.imp.a lib/audiokit.imp.a Kits/gamekit/gamekit.h Apps/consolehome/xmb.h Apps/consolehome/xset.h Apps/pocketshell/catalog.h Apps/pocketshell/look.h $(PKG_DEPS) Include/gamepad.h
 FT_EXTRA_gamelib = lib/gamekit.imp.a Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a
 FT_EXTRA_fmtracker = lib/audiokit.imp.a
 FT_EXTRA_soundconf = lib/audiokit.imp.a
