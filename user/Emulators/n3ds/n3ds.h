@@ -34,6 +34,8 @@ enum : u32 {
 	VA_LINEAR      = 0x14000000,		// the linear heap: FCRAM in order, what the GPU is given
 	VA_LINEAR_END  = 0x1C000000,
 	VA_VRAM        = 0x1F000000,
+	VA_DSP_RAM     = 0x1FF00000,		// the sound processor's memory (0x80000 bytes; shared structures at +0x50000, +0x70000)
+	DSP_RAM_SIZE   = 0x00080000,
 	VA_CONFIG      = 0x1FF80000,		// the kernel's configuration page
 	VA_SHARED      = 0x1FF81000,		// the shared page (time, 3D slider...)
 	VA_TLS         = 0x1FF82000,		// the threads' local storage, 0x200 bytes each
@@ -82,6 +84,16 @@ enum : u32 {
 
 struct Machine;
 struct Pica;
+struct Storage;
+
+// Where a program comes from: a file the host reads pieces of (a game is hundreds of MB: only its code is loaded,
+// its RomFS is read as the game asks).
+struct Source
+{
+	void *user;
+	u64 size;
+	bool (*read) (void *user, u64 offset, void *dst, u32 n);
+};
 
 // ---- memory ----------------------------------------------------------------------------------------------------------
 struct Memory
@@ -134,7 +146,7 @@ struct Cpu
 enum { OBJ_THREAD = 1, OBJ_EVENT, OBJ_MUTEX, OBJ_SEMAPHORE, OBJ_ARBITER, OBJ_PROCESS, OBJ_TIMER, OBJ_SHMEM, OBJ_SESSION };
 enum { RESET_ONESHOT = 0, RESET_STICKY = 1, RESET_PULSE = 2 };
 enum { THREAD_READY, THREAD_WAIT_SLEEP, THREAD_WAIT_SYNC, THREAD_WAIT_ARBITER, THREAD_DEAD };
-enum { HANDLE_MAX = 1024, WAIT_MAX = 16, TIMER_MAX = 32 };
+enum { HANDLE_MAX = 1024, WAIT_MAX = 16, TIMER_MAX = 32, STORAGE_MAX = 512, ARCHIVES_MAX = 16 };
 enum : u32 { HANDLE_CUR_THREAD = 0xFFFF8000, HANDLE_CUR_PROCESS = 0xFFFF8001 };
 
 struct Thread;
@@ -205,8 +217,11 @@ typedef void (*ServiceFn) (Machine *m, Session *s, u32 *cmd);
 struct Session : Object
 {
 	ServiceFn fn; const char *name;
-	const u8 *data; u64 size;		// (a file's session: what it reads -- n3ds_fs.cpp)
-	Session (ServiceFn f, const char *n) : Object (OBJ_SESSION), fn (f), name (n), data (0), size (0) {}
+	// (n3ds_fs.cpp) a file of the RomFS: the piece of the program's source it reads; a stored file or a folder being
+	// listed: its full name (and how many entries were given)
+	u64 base, size; int kind; char *path;
+	Session (ServiceFn f, const char *n) : Object (OBJ_SESSION), fn (f), name (n), base (0), size (0), kind (0), path (0) {}
+	~Session () override;
 };
 
 struct Arbiter : Object { Arbiter () : Object (OBJ_ARBITER) {} };
@@ -265,11 +280,19 @@ struct Machine
 	struct Apt { Mutex *lock; Event *signal, *param; bool pending; u32 cpuLimit; SharedMem *font; bool fontReady; } apt;
 	// HID (n3ds_hid.cpp): the buttons, the circle pad and the touch screen, in a shared page
 	struct Hid { SharedMem *shared; Event *events[5]; u32 buttons; s16 cpadX, cpadY; bool touch; u16 touchX, touchY; u32 padIndex, touchIndex; } hid;
+	// the sound processor (n3ds_dsp.cpp): its memory, the pipe's answer, the events of each audio frame
+	struct Dsp { u8 *ram; bool on; u64 nextTick, frames; u16 pipe[16]; u32 pipeLen, pipePos; Event *interrupt, *semaphore; } dsp;
 	// the console's user (cfg): the name (UTF-16), the language (0 Japanese, 1 English, 2 French, 3 German, 4 Italian,
 	// 5 Spanish...), the region (0 Japan, 1 USA, 2 Europe)
 	struct User { u16 name[11]; u8 language, region; } user;
-	// the program's read-only files (RomFS): a piece of the file it was loaded from (kept by the host)
-	const u8 *romfs; u32 romfsSize;
+	// what the program writes -- save data, extra data, the SD card -- (n3ds_fs.cpp): files in memory, stored by the host
+	Storage *storage; bool storageDirty;
+	char archives[ARCHIVES_MAX][40];	// the archives the program opened: their roots' names
+	// the program's source, and in it its read-only files (RomFS: romfsSize 0 = none)
+	Source source;
+	u64 romfsBase, romfsSize;
+	const u8 *memFile; u32 memSize;		// (load (file, size): the source is that memory)
+	char title[16]; char productCode[20];	// (a game's: from its headers)
 	bool trace;				// the system calls and the requests, on stderr (tests)
 	// what the program says (svcOutputDebugString): the host's
 	void (*debugOut) (void *user, const char *text, u32 len);
@@ -280,11 +303,18 @@ struct Machine
 	Machine ();
 	~Machine ();
 	bool init ();
-	// (n3ds_loader.cpp) an ELF or a .3dsx; the file must stay in memory while the machine lives (its RomFS)
-	bool load (const u8 *file, u32 size);
+	// (n3ds_loader.cpp) an ELF, a .3dsx, or a game (.3ds / .cci: NCSD, .cxi: NCCH -- decrypted). The source must
+	// stay readable while the machine lives (the RomFS is read from it).
+	bool loadFrom (const Source &src);
+	bool load (const u8 *file, u32 size);	// (a file in memory, kept by the caller)
+	bool loadNcch (u64 at);
 	bool loadElf (const u8 *file, u32 size);
 	bool load3dsx (const u8 *file, u32 size);
 	void setUser (const char *name, int language, int region);
+	// What the program wrote, as one block (the host keeps it in a file beside the game): storageExport gives the
+	// size it needs (and fills dst when it is big enough); storageImport before the program runs.
+	u32 storageExport (u8 *dst, u32 cap) const;
+	bool storageImport (const u8 *src, u32 size);
 	// The shared system font, a BCFNT file (ours: tools/n3ds/mkfont.py -> data/sysfont.bcfnt; never Nintendo's
 	// unless the user gives the dump of their own console's). Before the program runs. false: not a font.
 	bool setSharedFont (const u8 *bcfnt, u32 size);
@@ -334,10 +364,13 @@ void gspRequest (Machine *m, Session *s, u32 *cmd);			// gsp::Gpu (n3ds_gsp.cpp)
 void picaCommandList (Machine *m, u32 va, u32 size);
 void picaDisplayTransfer (Machine *m, const u32 *c);
 void picaFree (Machine *m);
+void storageFree (Machine *m);
 void aptRequest (Machine *m, Session *s, u32 *cmd);			// APT:U / APT:S / APT:A (n3ds_apt.cpp)
 void hidRequest (Machine *m, Session *s, u32 *cmd);			// hid:USER / hid:SPVR (n3ds_hid.cpp)
 void hidUpdate (Machine *m);						// (each frame: the input into the shared page)
 void fsRequest (Machine *m, Session *s, u32 *cmd);			// fs:USER (n3ds_fs.cpp)
+void dspRequest (Machine *m, Session *s, u32 *cmd);			// dsp::DSP (n3ds_dsp.cpp)
+void dspFrame (Machine *m);						// (an audio frame has passed)
 void cfgRequest (Machine *m, Session *s, u32 *cmd);			// cfg:u / cfg:s / cfg:i (n3ds_cfg.cpp)
 void ptmRequest (Machine *m, Session *s, u32 *cmd);			// ptm:u / ptm:sysm
 

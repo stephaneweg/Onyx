@@ -14,6 +14,7 @@
 //
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "n3ds/n3ds.h"
 
@@ -34,7 +35,10 @@ Machine::Machine ()
 	memset (&gsp, 0, sizeof gsp);
 	memset (&apt, 0, sizeof apt); apt.cpuLimit = 30;
 	memset (&hid, 0, sizeof hid);
-	romfs = 0; romfsSize = 0; trace = false; pica = 0;
+	memset (&source, 0, sizeof source); romfsBase = 0; romfsSize = 0; memFile = 0; memSize = 0; trace = false; pica = 0;
+	title[0] = 0; productCode[0] = 0;
+	memset (&dsp, 0, sizeof dsp);
+	storage = 0; storageDirty = false; memset (archives, 0, sizeof archives);
 	memset (&user, 0, sizeof user); setUser ("Onyx", 1, 2);
 	svcCount = switchCount = 0; unknownSvcs = 0;
 }
@@ -43,8 +47,10 @@ Machine::~Machine ()
 {
 	delete cpu;
 	picaFree (this);
+	storageFree (this);
 	release (gsp.irq); release (gsp.shared);
 	release (apt.lock); release (apt.signal); release (apt.param); release (apt.font);
+	release (dsp.interrupt); release (dsp.semaphore);
 	release (hid.shared); for (int i = 0; i < 5; i++) release (hid.events[i]);
 	for (int i = 0; i < HANDLE_MAX; i++) if (handles[i]) release (handles[i]);
 	for (int i = 0; i < threadCount; i++) release (threads[i]);
@@ -60,6 +66,9 @@ bool Machine::init ()
 	mem.map (VA_CONFIG, PAGE_SIZE, cfg, PERM_R);
 	mem.map (VA_SHARED, PAGE_SIZE, cfg + PAGE_SIZE, PERM_R);
 	mem.map (VA_TLS, TLS_MAX * TLS_SIZE, tls, PERM_RW);
+	dsp.ram = mem.allocTop (DSP_RAM_SIZE);
+	if (!dsp.ram) return false;
+	mem.map (VA_DSP_RAM, DSP_RAM_SIZE, dsp.ram, PERM_RW);
 	// the configuration page: the kernel's and the firmware's versions (11.x), a retail unit, the memory's shares
 	cfg[0x02] = 57; cfg[0x03] = 2;					// kernel 2.57
 	cfg[0x10] = 2;							// SYSCOREVER
@@ -101,6 +110,8 @@ void Machine::note (const char *fmt, ...)
 	if (n) { memcpy (notes + n, "; ", 2); n += 2; }
 	memcpy (notes + n, one, k + 1);
 }
+
+Session::~Session () { free (path); }
 
 Timer::Timer (Machine *machine, int r) : Object (OBJ_TIMER), m (machine), reset (r), signaled (false), fireTick (~0ull), interval (0)
 {
@@ -279,8 +290,13 @@ void Machine::run (u64 ticks)
 	const u64 end = now + ticks;
 	while (!exited && now < end)
 	{
-		// timers whose time has come
+		// the sound processor's frames, timers whose time has come
 		u64 nextWake = NEVER;
+		if (dsp.on)
+		{
+			if (dsp.nextTick <= now) { dspFrame (this); dsp.nextTick += 1310720; if (dsp.nextTick <= now) dsp.nextTick = now + 1310720; }
+			nextWake = dsp.nextTick;
+		}
 		for (int i = 0; i < timerCount; i++)
 		{
 			Timer *tm = timers[i];

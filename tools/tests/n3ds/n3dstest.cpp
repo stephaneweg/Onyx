@@ -43,6 +43,12 @@ static unsigned char *screens (const n3ds::Machine *m)
 	return rgb;
 }
 
+static bool fileRead (void *user, n3ds::u64 offset, void *dst, n3ds::u32 n)
+{
+	FILE *f = (FILE *) user;
+	return fseek (f, (long) offset, SEEK_SET) == 0 && fread (dst, 1, n, f) == n;
+}
+
 int main (int argc, char **argv)
 {
 	if (argc < 2) { fprintf (stderr, "usage: n3dstest <program.elf> [frames [picture.ppm]]\n"); return 2; }
@@ -50,9 +56,8 @@ int main (int argc, char **argv)
 	FILE *f = fopen (argv[1], "rb");
 	if (!f) { fprintf (stderr, "cannot open %s\n", argv[1]); return 2; }
 	fseek (f, 0, SEEK_END); long size = ftell (f); fseek (f, 0, SEEK_SET);
-	unsigned char *file = (unsigned char *) malloc ((size_t) size);
-	if (!file || fread (file, 1, (size_t) size, f) != (size_t) size) { fprintf (stderr, "cannot read %s\n", argv[1]); return 2; }
-	fclose (f);
+	// (the file is read piece by piece: a game is hundreds of MB)
+	n3ds::Source src = { f, (n3ds::u64) size, fileRead };
 
 	n3ds::Machine *m = new n3ds::Machine;
 	if (!m->init ()) { fprintf (stderr, "not enough memory for the machine\n"); return 2; }
@@ -69,7 +74,8 @@ int main (int argc, char **argv)
 			if (!m->setSharedFont (font, (n3ds::u32) fn)) fprintf (stderr, "%s is not a font (BCFNT)\n", fontPath);
 		}
 	}
-	if (!m->load (file, (n3ds::u32) size)) { fprintf (stderr, "%s\n", m->lastError); return 2; }
+	if (!m->loadFrom (src)) { fprintf (stderr, "%s\n", m->lastError); return 2; }
+	if (m->title[0]) fprintf (stderr, "%s [%s]\n", m->title, m->productCode);
 	// N3DS_KEYS=100-110:1;200-210:8  buttons held over frame ranges, a hex mask each (n3ds.h's BTN_*)
 	// N3DS_TOUCH=300-305:160,120      the touch screen pressed there over frames
 	// N3DS_SHOTS=<prefix> N3DS_SHOTEVERY=<n>  a picture every n frames (default 60)

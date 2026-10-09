@@ -40,7 +40,7 @@ enum
 	R_COLOR_WRITE = 0x113, R_DEPTH_WRITE = 0x115, R_DEPTH_FORMAT = 0x116, R_COLOR_FORMAT = 0x117, R_DEPTH_ADDR = 0x11C, R_COLOR_ADDR = 0x11D, R_FB_DIM = 0x11E,
 	R_ATTR_BASE = 0x200, R_ATTR_FORMAT_LO = 0x201, R_ATTR_FORMAT_HI = 0x202, R_ATTR_LOADER = 0x203,
 	R_INDEX_CONFIG = 0x227, R_NUM_VERTICES = 0x228, R_GEO_CONFIG = 0x229, R_VERTEX_OFFSET = 0x22A, R_DRAW_ARRAYS = 0x22E, R_DRAW_ELEMENTS = 0x22F,
-	R_FIXED_INDEX = 0x232, R_FIXED_DATA = 0x233, R_CMD_JUMP0 = 0x23C, R_CMD_JUMP1 = 0x23D, R_PRIM_CONFIG = 0x25E, R_PRIM_RESTART = 0x25F,
+	R_FIXED_INDEX = 0x232, R_FIXED_DATA = 0x233, R_CMD_SIZE0 = 0x238, R_CMD_ADDR0 = 0x23A, R_CMD_JUMP0 = 0x23C, R_CMD_JUMP1 = 0x23D, R_PRIM_CONFIG = 0x25E, R_PRIM_RESTART = 0x25F,
 	R_VSH_BOOL = 0x2B0, R_VSH_INT = 0x2B1, R_VSH_INPUT = 0x2B9, R_VSH_ENTRY = 0x2BA, R_VSH_PERM_LO = 0x2BB, R_VSH_PERM_HI = 0x2BC, R_VSH_OUTMASK = 0x2BD,
 	R_VSH_FLOAT_INDEX = 0x2C0, R_VSH_FLOAT_DATA = 0x2C1, R_VSH_CODE_INDEX = 0x2CB, R_VSH_CODE_DATA = 0x2CC, R_VSH_OPDESC_INDEX = 0x2D5, R_VSH_OPDESC_DATA = 0x2D6,
 	REG_COUNT = 0x300, CODE_MAX = 4096, OPDESC_MAX = 128,
@@ -68,6 +68,7 @@ struct Pica
 	u32 procIndex, procTable;
 	// the triangle being assembled
 	Vertex prim[3]; int primCount; bool stripFlip;
+	int jump;					// a jump asked by the command being run: 1 or 2 (which buffer), 0 none
 	// counters
 	u64 triangles, pixels;
 };
@@ -840,7 +841,7 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 	case R_PRIM_RESTART: p->primCount = 0; p->stripFlip = false; break;
 	case R_PRIM_CONFIG: p->primCount = 0; p->stripFlip = false; break;
 	case R_LIGHTING: if (v & 1) p->m->note ("lighting"); break;
-	case R_CMD_JUMP0: case R_CMD_JUMP1: p->m->note ("a jump in a command list"); break;
+	case R_CMD_JUMP0: case R_CMD_JUMP1: p->jump = (int) (id - R_CMD_JUMP0) + 1; break;	// (taken by the list's loop)
 	case R_FIXED_INDEX: p->fixedIndex = v & 15; p->fixedCount = 0; if (p->fixedIndex == 15) p->immediateCount = 0; break;
 	case R_FIXED_DATA: case R_FIXED_DATA + 1: case R_FIXED_DATA + 2:
 		p->fixedWords[p->fixedCount++] = value;
@@ -915,21 +916,34 @@ void picaFree (Machine *m) { free (m->pica); m->pica = 0; }
 
 // A command list: a value, then a header -- the register, a mask of the value's bytes, how many more values
 // follow, and whether they go to the following registers or all to this one. Each command fills 8 bytes' multiples.
+// A list may go on in another buffer (two registers pairs give an address and a size; writing the jump register
+// goes there): games build their frame from such pieces.
 void picaCommandList (Machine *m, u32 va, u32 size)
 {
 	Pica *p = pica (m);
-	if (!p || (va & 3) || size > 0x400000 || !m->mem.mapped (va, size)) return;
-	u32 at = 0;
-	const u32 words = size / 4;
-	while (at + 2 <= words)
+	if (!p || (va & 3) || size > 0x400000) return;
+	const u32 *list = (const u32 *) m->physPtr (Machine::virtToPhys (va), size);
+	if (!list) { m->note ("a command list outside the linear memory"); return; }
+	u32 at = 0, words = size / 4;
+	p->jump = 0;
+	for (int jumps = 0; at + 2 <= words; )
 	{
-		const u32 value = m->mem.r32 (va + at * 4), header = m->mem.r32 (va + at * 4 + 4);
+		const u32 value = list[at], header = list[at + 1];
 		at += 2;
 		const u32 id = header & 0xFFFF, mask = header >> 16 & 15, extra = header >> 20 & 0xFF;
 		const bool consecutive = (header >> 31) != 0;
 		writeReg (p, id, value, mask);
-		for (u32 i = 0; i < extra && at < words; i++, at++) writeReg (p, consecutive ? id + i + 1 : id, m->mem.r32 (va + at * 4), mask);
+		for (u32 i = 0; i < extra && at < words; i++, at++) writeReg (p, consecutive ? id + i + 1 : id, list[at], mask);
 		if (extra & 1) at++;						// (padded to 8 bytes)
+		if (p->jump)
+		{
+			const int k = p->jump - 1;
+			p->jump = 0;
+			const u32 bytes = p->regs[R_CMD_SIZE0 + k] << 3;
+			const u32 *next = bytes <= 0x400000 ? (const u32 *) m->physPtr (p->regs[R_CMD_ADDR0 + k] << 3, bytes) : 0;
+			if (!next || ++jumps > 4096) { m->note ("a command list's jump to nowhere"); return; }
+			list = next; words = bytes / 4; at = 0;
+		}
 	}
 }
 

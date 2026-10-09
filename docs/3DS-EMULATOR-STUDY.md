@@ -340,6 +340,33 @@ The core's skeleton, `user/Emulators/n3ds/` (`n3ds.h` declares everything), and 
   sprites), and goes on at each press of A. A thin diagonal line on its bottom screen: its own or a fault of
   ours -- not known.
 
+## 9h. Phase T5 begun (2026-10-09): a game loads -- *A Link Between Worlds* reaches its first pictures
+
+- **The game loader** (`n3ds_loader.cpp`): NCSD (a cartridge's image: its first partition) and NCCH -- the header
+  (an encrypted dump is refused with a clear message: no key is in Onyx), the extended header (the name, the three
+  segments, the stack), the ExeFS's `.code` unpacked (the backwards LZ, "BLZ"), the RomFS given from its third
+  level. A program now comes from a **`Source`** the host reads pieces of (`Machine::loadFrom`): a game of 1 GB is
+  not loaded in memory -- its RomFS is read as it asks.
+- **The services a game opens**: `dsp::DSP` (`n3ds_dsp.cpp`: LoadComponent, the audio pipe's "initialize" and its
+  answer -- where the 15 shared structures are, **at places of ours** --, the address conversion, the interrupt and
+  semaphore events at every audio frame of 4.9 ms; **no sound yet**: the sources are not played); and 49 others
+  that exist on a console and are not emulated (`ndm:u`, `cecd:u`, `ac:u`, `frd:u`, `boss:U`, `y2r:u`, `ldr:ro`,
+  `csnd:SND`, `mic:u`, `cam:u`, `nwm::UDS`...) are **opened and answered "done, nothing"**, each command noted (a game
+  stops at once when one cannot be opened; a homebrew's unknown service is still refused).
+- **What a program writes** (`n3ds_fs.cpp`, rewritten): save data (archive 4: "not formatted" until the game
+  formats it), extra data (6), the system's shared extra data (7: always there), the SD card (9) -- a small file
+  system in memory (files and folders by their full names; Create / Delete / Rename, folders listed, files read,
+  written, resized). The host stores it whole beside the game: `Machine::storageExport` / `storageImport`,
+  `storageDirty` (not wired in `n3dstest` yet: nothing is kept between two runs).
+- **The GPU**: a command list goes on in another buffer (the jump registers): games build their frame from such
+  pieces -- without it the screen stayed black.
+- **Result** (the user's dump, EU, CTR-P-BZLP, under `n3dstest`, 600 frames in 7 minutes of qemu): the game runs its
+  start-up, its sound's handshake, reads its settings and its RomFS, opens its saves, and **runs its main loop**:
+  5993 command lists, 1724 display transfers. From about the 450th frame **both screens show the game's dark red
+  ornate panel**. Wrong or missing, seen: the first 400 frames are black (its logos?), the top screen's picture is
+  shifted right by 80 pixels, lighting is asked (not done), ETC1 textures (not done: most of a game's textures).
+  Asked and not emulated: `ndm:u` 0006 / 0007 / 0014, `ptm:u` 000B, `cecd:u` 0012.
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 

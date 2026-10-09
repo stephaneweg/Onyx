@@ -19,12 +19,31 @@ static const struct { const char *name; ServiceFn fn; } SERVICES[] = {
 	{ "fs:USER",  fsRequest },
 	{ "cfg:u",    cfgRequest }, { "cfg:s", cfgRequest }, { "cfg:i", cfgRequest },
 	{ "ptm:u",    ptmRequest }, { "ptm:sysm", ptmRequest },
+	{ "dsp::DSP", dspRequest },
 };
+
+// Services that exist on the console and are not emulated: a game stops at once when one of them cannot be
+// opened, so they are opened and every command is answered "done, nothing" -- and noted, by its number.
+static const char *const ABSENT[] = {
+	"ac:u", "ac:i", "act:u", "act:a", "am:app", "am:net", "am:u", "am:sys", "boss:U", "boss:P", "cam:u", "cam:c", "cecd:u", "cecd:s",
+	"csnd:SND", "dlp:SRVR", "dlp:CLNT", "dlp:FKCL", "err:f", "frd:u", "frd:a", "gsp::Lcd", "http:C", "ir:u", "ir:USER",
+	"ir:rst", "ldr:ro", "mcu::HWC", "mic:u", "ndm:u", "news:u", "news:s", "nfc:u", "nfc:m", "nim:aoc", "nim:u", "nwm::UDS", "nwm::EXT",
+	"ps:ps", "ptm:gets", "ptm:sets", "ptm:play", "pxi:dev", "qtm:u", "qtm:s", "soc:U", "ssl:C", "y2r:u",
+};
+static void absentRequest (Machine *m, Session *s, u32 *cmd)
+{
+	m->note ("%s %04x", s->name, (unsigned) (cmd[0] >> 16));
+	const u32 id = cmd[0] >> 16;
+	cmd[0] = ipcHeader (id, 1, 0); cmd[1] = RES_OK;
+	for (int i = 2; i < 8; i++) cmd[i] = 0;
+}
 
 Session *Machine::serviceOpen (const char *name)
 {
 	for (size_t i = 0; i < sizeof SERVICES / sizeof SERVICES[0]; i++)
 		if (strcmp (SERVICES[i].name, name) == 0) return new Session (SERVICES[i].fn, SERVICES[i].name);
+	for (size_t i = 0; i < sizeof ABSENT / sizeof ABSENT[0]; i++)
+		if (strcmp (ABSENT[i], name) == 0) return new Session (absentRequest, ABSENT[i]);
 	return 0;
 }
 
