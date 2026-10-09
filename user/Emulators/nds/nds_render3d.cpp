@@ -138,7 +138,7 @@ u32 Render3D::sampleTex (const Polygon *p, s32 s, s32 t, u32 vcolor)
 
 // ---- a polygon -------------------------------------------------------------------------------------------------------------
 namespace {
-struct EdgeVal { s32 x; s32 r, g, b, s, t; s64 z; s32 w; };		// x in 16.16
+struct EdgeVal { s32 x, xn; s32 r, g, b, s, t; s64 z; s32 w; };	// x (and at the next line) in 16.16
 
 // the value at y along the edge a -> b (perspective-correct with w)
 static void edgeAt (const Vertex *a, const Vertex *b, s32 wa, s32 wb, s32 y, bool wbuf, EdgeVal &o)
@@ -146,6 +146,8 @@ static void edgeAt (const Vertex *a, const Vertex *b, s32 wa, s32 wb, s32 y, boo
 	s32 dy = b->sy - a->sy;
 	s64 t = dy ? ((s64) (y - a->sy) << 16) / dy : 0;			// 0..65536, linear
 	o.x = (s32) (((s64) a->sx << 16) + (((s64) (b->sx - a->sx) << 16) * t >> 16));
+	s64 tn = dy ? ((s64) (y + 1 - a->sy) << 16) / dy : 0; if (tn > 65536) tn = 65536;
+	o.xn = (s32) (((s64) a->sx << 16) + (((s64) (b->sx - a->sx) << 16) * tn >> 16));
 	s64 den = (65536 - t) * wb + t * wa;
 	s64 tp = den ? (t * wa << 16) / den : t;				// the perspective weight of b
 	o.r = a->cr + (s32) (((s64) (b->cr - a->cr) * tp) >> 16);
@@ -221,9 +223,16 @@ void Render3D::drawPolygon (const Polygon *p)
 		s32 span = xr - xl;
 		s32 x0 = xl < 0 ? 0 : xl, x1 = xr > W ? W : xr;
 		s32 wl = e[0].w > 0 ? e[0].w : 1, wr = e[1].w > 0 ? e[1].w : 1;
+		// the edges' pixels on this line: from the edge's x here to its x on the next one
+		s32 el0 = (e[0].x + 0x8000) >> 16, el1 = (e[0].xn + 0x8000) >> 16, er0 = (e[1].x + 0x8000) >> 16, er1 = (e[1].xn + 0x8000) >> 16;
+		if (el1 < el0) { s32 t = el0; el0 = el1; el1 = t; }
+		if (er1 < er0) { s32 t = er0; er0 = er1; er1 = t; }
+		if (el1 <= el0) el1 = el0 + 1;
+		if (er0 >= er1) er0 = er1 - 1;
 		for (s32 x = x0; x < x1; x++)
 		{
-			if (wire && !(x == xl || x == xr - 1 || y == ymin || y == ymax - 1)) continue;
+			bool onEdge = (x >= el0 && x < el1) || (x >= er0 && x < er1) || x == xl || x == xr - 1 || y == ymin || y == ymax - 1;
+			if (wire && !onEdge) continue;
 			int idx = y * W + x;
 			s64 t = span > 1 ? ((s64) (x - xl) << 16) / (span - 1) : 0;
 			if (t > 65536) t = 65536;
@@ -296,7 +305,7 @@ void Render3D::drawPolygon (const Polygon *p)
 			{
 				color[idx] = rgb | (31u << 24);
 				depth[idx] = (u32) z;
-				attr[idx] = (pid << A_OPAQUE_ID) | ((pattr & 0x8000) ? A_FOG : 0) | ((x == xl || x == xr - 1 || y == ymin || y == ymax - 1) ? A_EDGE : 0);
+				attr[idx] = (pid << A_OPAQUE_ID) | ((pattr & 0x8000) ? A_FOG : 0) | (onEdge ? A_EDGE : 0);
 			}
 			else
 			{
