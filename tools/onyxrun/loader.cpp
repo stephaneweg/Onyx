@@ -57,7 +57,7 @@ static unsigned prot_of (u32 flags)
 
 // The PT_LOAD segments of an image mapped at base + vaddr (64 KB pages, a page shared by two segments gets both
 // protections), their bytes copied -> false (said why in *why).
-static bool map_segments (const std::vector<u8> &F, u64 base, const char *what, const char **why)
+static bool map_segments (Proc *P, const std::vector<u8> &F, u64 base, const char *what, int kind, const char **why)
 {
 	const Ehdr *eh = (const Ehdr *) F.data ();
 	std::map<u64, unsigned> pages;					// page -> protection
@@ -76,13 +76,13 @@ static bool map_segments (const std::vector<u8> &F, u64 base, const char *what, 
 		u64 a = it->first; unsigned prot = it->second; u64 e = a + HM_GRAIN;
 		++it;
 		while (it != pages.end () && it->first == e && it->second == prot) { e += HM_GRAIN; ++it; }
-		if (!hm_map (a, e - a, prot, what)) { *why = "its memory cannot be mapped (taken, or no memory)"; return false; }
+		if (!P->mem.map (a, e - a, prot, what, kind)) { *why = "its memory cannot be mapped (taken, or no memory)"; return false; }
 	}
 	for (int i = 0; i < eh->phnum; i++)
 	{
 		const Phdr *ph = (const Phdr *) (F.data () + eh->phoff + (u64) i * eh->phentsize);
 		if (ph->type != PT_LOAD || ph->memsz == 0) continue;
-		memcpy ((void *) (base + ph->vaddr), F.data () + ph->offset, ph->filesz);
+		memcpy (P->mem.g2h (base + ph->vaddr, ph->memsz, 0), F.data () + ph->offset, ph->filesz);
 	}
 	return true;
 }
@@ -98,14 +98,14 @@ static bool check_elf (const std::vector<u8> &F, u16 type, const char **why)
 	return true;
 }
 
-u64 load_program (const char *hostFile)
+u64 load_program (Proc *P, const std::string &hostFile, std::string *why)
 {
 	std::vector<u8> F;
-	const char *why = "";
-	if (!read_file (hostFile, F)) { rlog ("cannot read %s", hostFile); return 0; }
-	if (!check_elf (F, ET_EXEC, &why) || !map_segments (F, 0, ("program " + g_Proc.name).c_str (), &why))
+	const char *w = "";
+	if (!read_file (hostFile.c_str (), F)) { *why = "cannot read " + hostFile; return 0; }
+	if (!check_elf (F, ET_EXEC, &w) || !map_segments (P, F, 0, ("program " + P->name).c_str (), KAPI_VMK_IMAGE, &w))
 	{
-		rlog ("%s: %s", hostFile, why);
+		*why = P->path + ": " + w;
 		return 0;
 	}
 	const Ehdr *eh = (const Ehdr *) F.data ();
@@ -113,14 +113,12 @@ u64 load_program (const char *hostFile)
 }
 
 // ---- the libraries -----------------------------------------------------------------------------------------
-struct Lib { std::string path; u64 base, table; };
-static std::vector<Lib> s_Libs;				// the process's (16 at most, as the kernel's)
 #define LIB_MAX		16
 
-// A library image mapped and relocated -> its table's address, 0 (*err).
-static u64 map_library (const std::string &onyxPath, int *err)
+// A library image mapped and relocated in P (its lock held) -> its table's address, 0 (*err).
+static u64 map_library (Proc *P, const std::string &onyxPath, int *err)
 {
-	std::string host = host_path (onyxPath.c_str ());
+	std::string host = host_path (onyxPath.c_str (), P->cwd);
 	std::vector<u8> F;
 	const char *why = "";
 	if (host.empty () || !read_file (host.c_str (), F)) { *err = -KAPI_ENOENT; return 0; }
@@ -134,11 +132,11 @@ static u64 map_library (const std::string &onyxPath, int *err)
 		if (ph->type == PT_DYNAMIC) { dynOff = ph->offset; dynSize = ph->filesz; }
 	}
 	if (span == 0 || dynSize == 0 || dynOff + dynSize > F.size ()) { rlog ("%s: not of lib.ld's shape", onyxPath.c_str ()); *err = -KAPI_EINVAL; return 0; }
-	u64 base = hm_find_free (USER_LIB_BASE, USER_LIB_END, span);
+	u64 base = P->mem.find_free (USER_LIB_BASE, USER_LIB_END, span);
 	if (base == 0) { *err = -KAPI_ENOMEM; return 0; }
 	std::string what = "library " + onyxPath;
-	if (!map_segments (F, base, what.c_str (), &why)) { rlog ("%s: %s", onyxPath.c_str (), why); *err = -KAPI_ENOMEM; return 0; }
-	// the relocations (read from the file's copy of the dynamic table; written into the mapped data)
+	if (!map_segments (P, F, base, what.c_str (), KAPI_VMK_IMAGE, &why)) { rlog ("%s: %s", onyxPath.c_str (), why); *err = -KAPI_ENOMEM; return 0; }
+	// the relocations (the dynamic table read from the file; the entries from the mapped text, written into the data)
 	u64 rela = 0, relasz = 0, relaent = sizeof (Rela);
 	for (const Dyn *d = (const Dyn *) (F.data () + dynOff); (const u8 *) (d + 1) <= F.data () + dynOff + dynSize && d->tag != DT_NULL; d++)
 	{
@@ -147,63 +145,63 @@ static u64 map_library (const std::string &onyxPath, int *err)
 		else if (d->tag == DT_RELAENT) relaent = d->val;
 		else if (d->tag == DT_TEXTREL) { rlog ("%s: DT_TEXTREL", onyxPath.c_str ()); *err = -KAPI_EINVAL; return 0; }
 	}
+	const u8 *img = P->mem.g2h (base, span, 0);
 	for (u64 o = 0; relaent >= sizeof (Rela) && o + sizeof (Rela) <= relasz; o += relaent)
 	{
-		const Rela *r = (const Rela *) (base + rela + o);	// (in the mapped text segment)
+		const Rela *r = (const Rela *) (img + rela + o);
 		if ((u32) r->info != R_AARCH64_RELATIVE || r->offset + 8 > span)
 		{
 			rlog ("%s: relocation type %u", onyxPath.c_str (), (unsigned) (u32) r->info);
 			*err = -KAPI_EINVAL; return 0;
 		}
-		*(u64 *) (base + r->offset) = base + (u64) r->addend;
+		*(u64 *) (img + r->offset) = base + (u64) r->addend;
 	}
-	cpu_flush_code (base, span);
-	if (g_Proc.trace) rlog ("lib %s at %llx", onyxPath.c_str (), (unsigned long long) base);
+	cpu_flush_code (P, base, span);
+	if (g_Run.trace) rlog ("%s: lib %s at %llx", P->name.c_str (), onyxPath.c_str (), (unsigned long long) base);
 	return base + eh->entry;
 }
 
 // The library's canonical Onyx path: a bare name is SD:/lib/<name>.so, anything with '/', '\' or ':' a path.
-static std::string lib_canon (const char *name)
+static std::string lib_canon (const char *name, const std::string &cwd)
 {
 	bool path = false;
 	for (const char *q = name; *q; q++) if (*q == '/' || *q == '\\' || *q == ':') path = true;
-	return onyx_abs (path ? name : ("SD:/lib/" + std::string (name) + ".so").c_str ());
+	return onyx_abs (path ? name : ("SD:/lib/" + std::string (name) + ".so").c_str (), cwd);
 }
 
-u64 load_library (const char *name, unsigned minVersion, int *err)
+u64 load_library (Proc *P, const char *name, unsigned minVersion, int *err)
 {
 	*err = 0;
 	if (!name || !*name) { *err = -KAPI_EINVAL; return 0; }
-	std::string canon = lib_canon (name);
+	std::string canon = lib_canon (name, P->cwd);
 	if (canon.empty ()) { *err = -KAPI_ENAMETOOLONG; return 0; }
-	BigLockHold L;
+	PLock L (P);
 	u64 table = 0;
-	for (auto &l : s_Libs)
-		if (strcasecmp (l.path.c_str (), canon.c_str ()) == 0) table = l.table;
+	for (auto &l : P->libs)
+		if (strcasecmp (l.first.c_str (), canon.c_str ()) == 0) table = l.second;
 	if (table == 0)
 	{
-		if (s_Libs.size () >= LIB_MAX) { *err = -KAPI_EMFILE; return 0; }
-		table = map_library (canon, err);
+		if (P->libs.size () >= LIB_MAX) { *err = -KAPI_EMFILE; return 0; }
+		table = map_library (P, canon, err);
 		if (table == 0) return 0;
-		s_Libs.push_back (Lib { canon, 0, table });
+		P->libs.push_back ({ canon, table });
 	}
-	if (*(const u32 *) table < minVersion) { *err = -KAPI_ENOTSUP; return 0; }
+	const u32 *v = (const u32 *) P->mem.g2h (table, 4, 0);
+	if (!v || *v < minVersion) { *err = -KAPI_ENOTSUP; return 0; }
 	return table;
 }
 
-bool load_appkit (void)
+bool load_appkit (Proc *P, std::string *why)
 {
 	int err = 0;
-	u64 t;
-	{
-		BigLockHold L;
-		t = map_library ("SD:/lib/appkit.so", &err);
-		if (t) s_Libs.push_back (Lib { "SD:/lib/appkit.so", 0, t });
-	}
-	if (t == 0) { rlog ("cannot load SD:/lib/appkit.so (%d): THE PROGRAM CANNOT CALL THE KERNEL", err); return false; }
-	u32 n = *(const u32 *) t, size = *(const u32 *) (t + 4);
-	if (n < 1 || n > APPKIT_TABLE_MAX || size < 16 + n * 8) { rlog ("SD:/lib/appkit.so is not AppKit (its table)"); return false; }
-	u64 *dst = (u64 *) APPKIT_TABLE_VA;
-	for (u32 i = 0; i < APPKIT_TABLE_MAX; i++) dst[i] = i < n ? ((const u64 *) (t + 16))[i] : 0;
+	u64 t = map_library (P, "SD:/lib/appkit.so", &err);
+	if (t == 0) { *why = "cannot load SD:/lib/appkit.so: the program cannot call the kernel"; return false; }
+	P->libs.push_back ({ "SD:/lib/appkit.so", t });
+	const u32 *h = (const u32 *) P->mem.g2h (t, 16, 0);
+	u32 n = h[0], size = h[1];
+	if (n < 1 || n > APPKIT_TABLE_MAX || size < 16 + n * 8) { *why = "SD:/lib/appkit.so is not AppKit (its table)"; return false; }
+	const u64 *src = (const u64 *) P->mem.g2h (t + 16, (u64) n * 8, 0);
+	u64 *dst = (u64 *) P->mem.g2h (APPKIT_TABLE_VA, APPKIT_TABLE_MAX * 8, 0);
+	for (u32 i = 0; i < APPKIT_TABLE_MAX; i++) dst[i] = i < n ? src[i] : 0;
 	return true;
 }
