@@ -3,7 +3,8 @@
 //   language = fr        the language of the programs' words ("en" when no line): uikit/lang.h's TR () reads
 //                        it (uk_lang_init), a program with words of its own asks locale_language ()
 //   zone     = Brussels  the time zone's city (locale_zone_*), beside "timezone=" -- its offset in minutes,
-//                        the summer time counted, which the kernel reads at boot
+//                        the summer time counted, which the kernel reads at boot (and locale_zone_sync keeps
+//                        right when the summer time begins or ends)
 // Chosen in the Control Panel's Language & Region applet and in Setup (the first-run wizard). A language is
 // taken by a program when it starts.
 //
@@ -45,6 +46,18 @@ SK_API int locale_zone_offset (int z);			// minutes from UTC today (the summer t
 SK_API void locale_zone_utc (int z, char *out, int cap);	// "UTC+2", "UTC-3:30", "UTC"
 SK_API int locale_zone (void);				// the one chosen: system.ini's zone=, else the first of its timezone= (-1 none)
 SK_API int locale_set_zone (int z);			// the clock's offset at once, zone= and timezone= kept -> 1 written
+// The zone's offset from UTC at that instant (minutes since 1970, UTC), the hour of the change counted: the EU's
+// summer time from the last Sunday of March 01:00 UTC to the last Sunday of October 01:00 UTC; the US' from the
+// second Sunday of March 02:00 local standard time to the first Sunday of November 02:00 local summer time
+// -> minutes (0 for a zone out of range). Judged from UTC, which never goes back: a city's time is
+// UTC + locale_zone_offset_at (city, UTC), right on the night of a change whatever the local day says.
+SK_API int locale_zone_offset_at (int z, long long utc_minutes);
+// The zone named by system.ini's zone= (that one only: never locale_zone ()'s guess from timezone=), its offset now
+// (kapi_clock_info's UTC, locale_zone_offset_at) given to the clock (kapi_set_timezone) and to system.ini's
+// timezone= when it differs from the clock's (kapi_clock_info's tz_minutes) -> 1 changed, 0 not (no zone= or an
+// unknown city, no real date yet, already right). Called once a minute (clockd does), the clock follows the summer
+// time by itself: on the night it ends, 03:00 becomes 02:00 at 01:00 UTC.
+SK_API int locale_zone_sync (void);
 
 #if defined (SK_BODIES_INLINE) && !defined (SK_IMPL)
 #include "locale.inc"

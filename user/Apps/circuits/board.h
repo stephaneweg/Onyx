@@ -32,10 +32,27 @@ public:
 		mvI (-1), mvDX (0), mvDY (0), mvX (0), mvY (0), pressX (0), pressY (0), px (-1), py (-1), tgt (-1), tpin (0), tok (false),
 		lbl (false), lbr (false), hoverGate (-1), hoverOut (-1), inside (false) {}
 
+	// The cell: the most the board's room gives (12 px at the window's default size; 6 at the least), the grid centred;
+	// the strokes and the texts follow it (Z: px at a 12 px cell -> px at this one; the faces opened at its sizes)
 	void fit ()
 	{
-		c = (width - 20) / BOARD_W; int ch = (height - 20) / BOARD_H; if (ch < c) c = ch; if (c < 10) c = 10;
+		c = (width - 20) / BOARD_W; int ch = (height - 20) / BOARD_H; if (ch < c) c = ch; if (c < 6) c = 6;
 		ox = (width - BOARD_W * c) / 2; oy = (height - BOARD_H * c) / 2;
+		if (c != fc) faces ();
+	}
+	int fc = -1;					// the cell the faces were opened for (-1: none yet)
+	TextFace *fSmall = 0, *fTiny = 0, *fText = 0;	// the gates' names (10 px at 12), a name too long (9), the rest (13)
+	FtTextFace *own[3] = { 0, 0, 0 };
+	int Z (int px) { return c == 12 ? px : (px * c + 6) / 12; }
+	int VZ (int v) { return c == 12 ? v : v * c / 12; }	// (1/16 px)
+	void faces ()
+	{
+		for (int i = 0; i < 3; i++) { delete own[i]; own[i] = 0; }
+		fc = c;
+		if (c == 12) { fSmall = g_small; fTiny = g_tiny; fText = 0; return; }	// (the window's: 0, the installed face)
+		int sz[3] = { Z (10) < 8 ? 8 : Z (10), Z (9) < 7 ? 7 : Z (9), Z (13) < 10 ? 10 : Z (13) };
+		for (int i = 0; i < 3; i++) own[i] = open_face (sz[i]);
+		fSmall = own[0] ? own[0] : g_small; fTiny = own[1] ? own[1] : g_tiny; fText = own[2];
 	}
 	void resizeTo (int w, int h) override { Widget::resizeTo (w, h); fit (); }
 	// cells -> px; 1/16 cell -> 1/16 px; px -> 1/16 cell
@@ -49,7 +66,7 @@ public:
 
 	// ---- drawing ------------------------------------------------------------------------------------------------
 	unsigned level_col (int part) { int v = g_ev.v[part]; return v == LX ? WIRE_X : v ? WIRE_1 : WIRE_0; }
-	int level_w (unsigned col) { return col == WIRE_1 ? V (3) : col == WIRE_X ? V (2) : V (2) + 8; }
+	int level_w (unsigned col) { return VZ (col == WIRE_1 ? V (3) : col == WIRE_X ? V (2) : V (2) + 8); }
 	void seg (Canvas &cv, int x0, int y0, int x1, int y1, unsigned col, int w, int alpha = 255)	// (1/16 px)
 	{ VPath p; p.line (x0, y0, x1, y1, w); p.fill (cv, col, alpha); }
 	void dashed (int x0, int y0, int x1, int y1, unsigned col, int w)				// (1/16 px)
@@ -64,9 +81,9 @@ public:
 			     x0 + (int) ((long long) (x1 - x0) * e / len), y0 + (int) ((long long) (y1 - y0) * e / len), col, w);
 		}
 	}
-	void pin_dot (int gx16, int gy16, unsigned col) { VPath d; d.circle (X16 (gx16), Y16 (gy16), V (2) + 8); d.fill (canvas, col); }
-	void ring (int cx, int cy, int r0, int r1, unsigned col, int alpha = 255)	// (1/16 px; radii in px)
-	{ VPath r; r.circle (cx, cy, V (r1)); r.hole (cx, cy, V (r0)); r.fill (canvas, col, alpha); }
+	void pin_dot (int gx16, int gy16, unsigned col) { VPath d; d.circle (X16 (gx16), Y16 (gy16), VZ (V (2) + 8)); d.fill (canvas, col); }
+	void ring (int cx, int cy, int r0, int r1, unsigned col, int alpha = 255)	// (1/16 px; radii in px at a 12 px cell)
+	{ VPath r; r.circle (cx, cy, V (Z (r1))); r.hole (cx, cy, V (Z (r0))); r.fill (canvas, col, alpha); }
 	void draw_wire (int dst, int pin)
 	{
 		int xy[12], n = g_c.route (dst, pin, xy, 12);
@@ -74,10 +91,10 @@ public:
 		int s = g_c.p[dst].in[pin];
 		unsigned col = level_col (s);
 		bool sel = dst == g_selDst && pin == g_selPin;
-		if (sel) { VPath h; for (int k = 0; k + 1 < n; k++) h.line (X16 (xy[2 * k] * 16), Y16 (xy[2 * k + 1] * 16), X16 (xy[2 * k + 2] * 16), Y16 (xy[2 * k + 3] * 16), V (8)); h.fill (canvas, C_ACCENT, 90); }
+		if (sel) { VPath h; for (int k = 0; k + 1 < n; k++) h.line (X16 (xy[2 * k] * 16), Y16 (xy[2 * k + 1] * 16), X16 (xy[2 * k + 2] * 16), Y16 (xy[2 * k + 3] * 16), VZ (V (8))); h.fill (canvas, C_ACCENT, 90); }
 		if (col == WIRE_X)
 		{
-			for (int k = 0; k + 1 < n; k++) dashed (X16 (xy[2 * k] * 16), Y16 (xy[2 * k + 1] * 16), X16 (xy[2 * k + 2] * 16), Y16 (xy[2 * k + 3] * 16), col, V (2));
+			for (int k = 0; k + 1 < n; k++) dashed (X16 (xy[2 * k] * 16), Y16 (xy[2 * k + 1] * 16), X16 (xy[2 * k + 2] * 16), Y16 (xy[2 * k + 3] * 16), col, VZ (V (2)));
 			return;
 		}
 		VPath p;
@@ -94,35 +111,35 @@ public:
 		{
 			int y = type == P_NOT ? gy + 2 : gy + (k ? 3 : 1), s = ghost ? -1 : q->in[k];
 			unsigned col = s >= 0 ? level_col (s) : WIRE_OPEN;
-			seg (canvas, X16 (gx * 16), Y16 (y * 16), X16 (gx * 16 + 32), Y16 (y * 16), col, s >= 0 && col == WIRE_1 ? V (3) : V (2), ghost ? 120 : 255);
+			seg (canvas, X16 (gx * 16), Y16 (y * 16), X16 (gx * 16 + 32), Y16 (y * 16), col, VZ (s >= 0 && col == WIRE_1 ? V (3) : V (2)), ghost ? 120 : 255);
 		}
 		unsigned oc = ghost ? WIRE_OPEN : level_col (i);
-		seg (canvas, X16 (gx * 16 + 56), Y16 (gy * 16 + 32), X16 (gx * 16 + 80), Y16 (gy * 16 + 32), oc, !ghost && oc == WIRE_1 ? V (3) : V (2), ghost ? 120 : 255);
+		seg (canvas, X16 (gx * 16 + 56), Y16 (gy * 16 + 32), X16 (gx * 16 + 80), Y16 (gy * 16 + 32), oc, VZ (!ghost && oc == WIRE_1 ? V (3) : V (2)), ghost ? 120 : 255);
 		if (!ghost && (i == g_sel || i == hoverGate))
 		{
 			int x0 = X16 (gx * 16 + 9) / 16, y0 = Y16 (gy * 16 + 3) / 16, x1 = X16 (gx * 16 + 76) / 16, y1 = Y16 (gy * 16 + 61) / 16;
-			if (i == g_sel) uk_rbox (canvas, x0, y0, x1 - x0, y1 - y0, 6, uk_mix (BOARD_BG, C_ACCENT, 50), uk_mix (BOARD_BG, C_ACCENT, 50));
-			uk_rline (canvas, x0, y0, x1 - x0, y1 - y0, 6, C_ACCENT, i == g_sel ? 255 : 60);
+			if (i == g_sel) uk_rbox (canvas, x0, y0, x1 - x0, y1 - y0, Z (6), uk_mix (BOARD_BG, C_ACCENT, 50), uk_mix (BOARD_BG, C_ACCENT, 50));
+			uk_rline (canvas, x0, y0, x1 - x0, y1 - y0, Z (6), C_ACCENT, i == g_sel ? 255 : 60);
 		}
 		int L = X16 (gx * 16 + 16), R = X16 (gx * 16 + 66), cy = Y16 (gy * 16 + 32), h2 = c * 16 * 145 / 100, rb = c * 16 * 3 / 10;
 		unsigned face = ghost ? (ok ? 0x00E6F4EA : 0x00FBE0DC) : g_ev.v[i] == LX ? GATE_FACEX : g_ev.v[i] ? GATE_FACE1 : GATE_FACE;
 		unsigned ink = ghost ? (ok ? OK_GREEN : ERR_RED) : i == g_errPart ? ERR_RED : GATE_INK;
-		draw_gate_shape (canvas, type, L, cy - h2, R, cy + h2, rb, face, ink, V (1) + 10, alpha);
+		draw_gate_shape (canvas, type, L, cy - h2, R, cy + h2, rb, face, ink, VZ (V (1) + 10), alpha);
 		{						// its name, small, inside
-			UkFaceScope fs (g_small);
+			UkFaceScope fs (fSmall);
 			int tx = type == P_NOT ? 18 : type == P_XOR || type == P_OR || type == P_NOR ? 30 : 22;
 			int tw = type == P_NOT ? 26 : type == P_AND || type == P_NAND ? 34 : 32;
 			int x0 = X16 (gx * 16 + tx) / 16, w0 = X16 (gx * 16 + tx + tw) / 16 - x0;
 			const char *nm = gate_word (type);
-			if (uk_tw (nm) > w0 + 6) { UkFaceScope ft (g_tiny); uk_text_c (canvas, x0 - 4, cy / 16 - 8, w0 + 8, 16, nm, ghost ? ink : uk_mix (face, GATE_INK, 190), 0); }
-			else uk_text_c (canvas, x0 - 4, cy / 16 - 8, w0 + 8, 16, nm, ghost ? ink : uk_mix (face, GATE_INK, 190), 0);
+			if (uk_tw (nm) > w0 + Z (6)) { UkFaceScope ft (fTiny); uk_text_c (canvas, x0 - Z (4), cy / 16 - Z (8), w0 + Z (8), Z (16), nm, ghost ? ink : uk_mix (face, GATE_INK, 190), 0); }
+			else uk_text_c (canvas, x0 - Z (4), cy / 16 - Z (8), w0 + Z (8), Z (16), nm, ghost ? ink : uk_mix (face, GATE_INK, 190), 0);
 		}
 		if (g_step >= 0 && !ghost)			// step mode: the gate's depth in a disc above it
 		{
-			int bx = X (gx) + c * 5 / 2, by = Y (gy) - 2;
-			VPath d; d.circle (V (bx), V (by), V (7)); d.fill (canvas, g_ev.v[i] == LX ? 0x00B5BDC4 : C_ACCENT);
+			int bx = X (gx) + c * 5 / 2, by = Y (gy) - Z (2), br = Z (7);
+			VPath d; d.circle (V (bx), V (by), V (br)); d.fill (canvas, g_ev.v[i] == LX ? 0x00B5BDC4 : C_ACCENT);
 			char t[8]; snprintf (t, sizeof t, "%d", g_ev.depth[i]);
-			UkFaceScope fs (g_small); uk_text_c (canvas, bx - 7, by - 7, 14, 14, t, 0x00FFFFFF, 2);
+			UkFaceScope fs (fSmall); uk_text_c (canvas, bx - br, by - br, 2 * br, 2 * br, t, 0x00FFFFFF, 2);
 		}
 		for (int k = 0; k < n; k++) { int y = type == P_NOT ? gy + 2 : gy + (k ? 3 : 1); pin_dot (gx * 16, y * 16, ghost ? WIRE_OPEN : 0x005A6570); }
 		pin_dot (gx * 16 + 80, gy * 16 + 32, oc);
@@ -132,10 +149,11 @@ public:
 		const Part &q = g_c.p[i];
 		bool on = g_ev.v[i] == L1;
 		int kx = X16 (q.x * 16 + 38) / 16, ky = Y16 (q.y * 16 + 1) / 16, ks = Y16 (q.y * 16 + 31) / 16 - ky, kw = X16 (q.x * 16 + 72) / 16 - kx;
-		seg (canvas, X16 (q.x * 16 + 69), Y16 (q.y * 16 + 16), X16 (q.x * 16 + 80), Y16 (q.y * 16 + 16), on ? WIRE_1 : WIRE_0, on ? V (3) : V (2) + 8);
-		uk_text_l (canvas, kx - 5 - uk_tw (q.name, 2), ky, ks, q.name, GATE_INK, 2);
-		if (on) { uk_rbox (canvas, kx, ky, kw, ks, 5, uk_tone (WIRE_1, 150), WIRE_1); uk_rline (canvas, kx, ky, kw, ks, 5, uk_tone (WIRE_1, 80)); }
-		else uk_raised (canvas, kx, ky, kw, ks, 5, C_FACE);
+		seg (canvas, X16 (q.x * 16 + 69), Y16 (q.y * 16 + 16), X16 (q.x * 16 + 80), Y16 (q.y * 16 + 16), on ? WIRE_1 : WIRE_0, VZ (on ? V (3) : V (2) + 8));
+		UkFaceScope fs (fText);
+		uk_text_l (canvas, kx - Z (5) - uk_tw (q.name, 2), ky, ks, q.name, GATE_INK, 2);
+		if (on) { uk_rbox (canvas, kx, ky, kw, ks, Z (5), uk_tone (WIRE_1, 150), WIRE_1); uk_rline (canvas, kx, ky, kw, ks, Z (5), uk_tone (WIRE_1, 80)); }
+		else uk_raised (canvas, kx, ky, kw, ks, Z (5), C_FACE);
 		uk_text_c (canvas, kx, ky, kw, ks, on ? "1" : "0", on ? 0x00FFFFFF : C_TEXT, 2);
 		pin_dot (q.x * 16 + 80, q.y * 16 + 16, on ? WIRE_1 : WIRE_0);
 	}
@@ -144,20 +162,21 @@ public:
 		const Part &q = g_c.p[i];
 		int s = q.in[0];
 		unsigned col = s >= 0 ? level_col (s) : WIRE_OPEN;
-		seg (canvas, X16 (q.x * 16), Y16 (q.y * 16 + 16), X16 (q.x * 16 + 16), Y16 (q.y * 16 + 16), col, s >= 0 && col == WIRE_1 ? V (3) : V (2));
+		seg (canvas, X16 (q.x * 16), Y16 (q.y * 16 + 16), X16 (q.x * 16 + 16), Y16 (q.y * 16 + 16), col, VZ (s >= 0 && col == WIRE_1 ? V (3) : V (2)));
 		int cx = X16 (q.x * 16 + 28) / 16, cy = Y (q.y + 1), r = c * 9 / 10 + 1;
 		bool unknown = g_ev.v[i] == LX, on = !unknown && g_ev.v[i] == L1 && s >= 0;
-		if (i == g_errPart) ring (V (cx), V (cy), r + 3, r + 6, ERR_RED);
+		if (i == g_errPart) { VPath e; e.circle (V (cx), V (cy), V (r + Z (6))); e.hole (V (cx), V (cy), V (r + Z (3))); e.fill (canvas, ERR_RED); }
 		if (on)
 		{
-			VPath g1; g1.circle (V (cx), V (cy), V (r + 7)); g1.fill (canvas, LAMP_ON, 50);
-			VPath g2; g2.circle (V (cx), V (cy), V (r + 3)); g2.fill (canvas, LAMP_ON, 90);
+			VPath g1; g1.circle (V (cx), V (cy), V (r + Z (7))); g1.fill (canvas, LAMP_ON, 50);
+			VPath g2; g2.circle (V (cx), V (cy), V (r + Z (3))); g2.fill (canvas, LAMP_ON, 90);
 		}
 		VPath b; b.circle (V (cx), V (cy), V (r)); b.fill (canvas, on ? 0x00C99A12 : unknown ? 0x009AA3AB : 0x00403B30);
-		VPath bi; bi.circle (V (cx), V (cy), V (r - 2)); bi.fill (canvas, on ? LAMP_ON : unknown ? 0x00C3CAD0 : LAMP_OFF);
+		VPath bi; bi.circle (V (cx), V (cy), V (r - Z (2))); bi.fill (canvas, on ? LAMP_ON : unknown ? 0x00C3CAD0 : LAMP_OFF);
 		VPath hl; hl.circle (V (cx - r / 3), V (cy - r / 3), V (r / 3)); hl.fill (canvas, 0x00FFFFFF, on ? 170 : 60);
+		UkFaceScope fs (fText);
 		if (unknown) uk_text_c (canvas, cx - r, cy - r, 2 * r, 2 * r, "?", 0x00FFFFFF, 2);
-		uk_text_l (canvas, cx + r + 6, cy - 10, 20, q.name, GATE_INK, 2);
+		uk_text_l (canvas, cx + r + Z (6), cy - Z (10), Z (20), q.name, GATE_INK, 2);
 		pin_dot (q.x * 16, q.y * 16 + 16, col);
 	}
 	// The wire being drawn: its future route, dashed, from the source's pin to the pointer (or the input pin under it)
@@ -167,7 +186,7 @@ public:
 		int sx = X16 (x0 * 16), sy = Y16 (y0 * 16), ex = V (px), ey = V (py), t16 = G16x (px);
 		if (tgt >= 0) { int tx, ty; g_c.pinIn (tgt, tpin, tx, ty); ex = X16 (tx * 16); ey = Y16 (ty * 16); t16 = tx * 16; }
 		int xm16 = t16 > x0 * 16 + 16 ? (x0 * 16 + t16) / 2 / 16 * 16 : x0 * 16 + 16, xm = X16 (xm16);
-		dashed (sx, sy, xm, sy, C_ACCENT, V (2) + 8); dashed (xm, sy, xm, ey, C_ACCENT, V (2) + 8); dashed (xm, ey, ex, ey, C_ACCENT, V (2) + 8);
+		int dw = VZ (V (2) + 8); dashed (sx, sy, xm, sy, C_ACCENT, dw); dashed (xm, sy, xm, ey, C_ACCENT, dw); dashed (xm, ey, ex, ey, C_ACCENT, dw);
 		if (tgt >= 0) ring (ex, ey, 5, 7, tok ? OK_GREEN : ERR_RED);
 		ring (sx, sy, 4, 6, C_ACCENT);
 	}
@@ -176,7 +195,9 @@ public:
 		bool first = g_L && g_L->parts == 0;
 		const char *t = first ? TR ("Press on the switch's pin, drag to the lamp's pin, let go.")
 				      : TR ("Take a gate from the palette and put it on the board, then drag from a pin to a pin to wire it.");
-		int bx = X (9), by = Y (6), bw = X (31) - bx, n = wrap_count (t, bw - 32, 4), bh = 44 + n * 18 + 12;
+		int bx = X (9), by = Y (6), bw = X (31) - bx;
+		if (c < 12) { bw = width - 16 < 300 ? width - 16 : 300; bx = (width - bw) / 2; }	// (a small cell: its text all the same)
+		int n = wrap_count (t, bw - 32, 4), bh = 44 + n * 18 + 12;
 		uk_rbox (canvas, bx, by, bw, bh, 10, 0x00FFFFFF, 0x00FFFFFF, 170);
 		for (int x = bx + 8; x < bx + bw - 8; x += 10) { canvas.fillRect (x, by, 5, 1, 0x009DB0A4); canvas.fillRect (x, by + bh - 1, 5, 1, 0x009DB0A4); }
 		for (int y = by + 8; y < by + bh - 8; y += 10) { canvas.fillRect (bx, y, 1, 5, 0x009DB0A4); canvas.fillRect (bx + bw - 1, y, 1, 5, 0x009DB0A4); }
@@ -192,9 +213,9 @@ public:
 		uk_rbox (canvas, X (GATE_MAXX), 1, width - X (GATE_MAXX) - 1, height - 2, 10, STRIP_BG, STRIP_BG, 255, UK_TR | UK_BR);
 		for (int gy = 0; gy <= BOARD_H; gy++) for (int gx = GATE_MINX + 1; gx < GATE_MAXX; gx++) canvas.fillRect (X (gx), Y (gy), 2, 1, BOARD_DOT);
 		{
-			UkFaceScope fs (g_small); unsigned cap = uk_mix (STRIP_BG, GATE_INK, 120);
-			uk_text_c (canvas, 0, 4, X (GATE_MINX), 14, TR ("INPUTS"), cap, 2);
-			uk_text_c (canvas, X (GATE_MAXX), 4, width - X (GATE_MAXX), 14, TR ("OUTPUTS"), cap, 2);
+			UkFaceScope fs (fSmall); unsigned cap = uk_mix (STRIP_BG, GATE_INK, 120);
+			uk_text_c (canvas, 0, Z (4), X (GATE_MINX), Z (14), TR ("INPUTS"), cap, 2);
+			uk_text_c (canvas, X (GATE_MAXX), Z (4), width - X (GATE_MAXX), Z (14), TR ("OUTPUTS"), cap, 2);
 		}
 		uk_rline (canvas, 0, 0, width, height, 10, uk_mix (BOARD_BG, GATE_INK, 60));
 		if (!g_L) return;
@@ -209,7 +230,7 @@ public:
 			{
 				int pin = 0, d = g_c.wireAt (xy[2 * j] * 16, xy[2 * j + 1] * 16, &pin);
 				unsigned col = d >= 0 && g_c.p[d].in[pin] >= 0 ? level_col (g_c.p[d].in[pin]) : WIRE_0;
-				VPath dot; dot.circle (X16 (xy[2 * j] * 16), Y16 (xy[2 * j + 1] * 16), V (3) + 8); dot.fill (canvas, col);
+				VPath dot; dot.circle (X16 (xy[2 * j] * 16), Y16 (xy[2 * j + 1] * 16), VZ (V (3) + 8)); dot.fill (canvas, col);
 			}
 		}
 		for (int i = 0; i < g_c.n; i++)

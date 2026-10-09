@@ -279,32 +279,57 @@ static void arm (int type)
 
 // ---- the level shown ------------------------------------------------------------------------------------------------------
 enum { PAD = 10, LISTW = 214, RIGHTW = 238, TBH = 46, MSGH = 50 };
+static int g_palN = 0;					// the palette's gates shown (palette_setup)
+// Three columns: the levels (a fixed width), the level's card, palette, board and message bar in the middle (taking
+// what is left: the board scales its cell to it), the bench (a fixed width) on the right. Narrower than 920: the
+// list narrower; lower than 600 (a pocket's 800 x 456): Step, Reset and Check on one row, the table's rows shorter.
 static void layout ()
 {
 	Root &R = *g_root;
 	int W = R.width, H = R.height;
-	int mid = PAD + LISTW + PAD, rx = W - PAD - RIGHTW, mw = rx - PAD - mid;
-	g_list->left = PAD; g_list->top = PAD; g_list->resizeTo (LISTW, H - 2 * PAD);
+	int listW = W < 920 ? 172 : LISTW;
+	bool low = H < 600;
+	int mid = PAD + listW + PAD, rx = W - PAD - RIGHTW, mw = rx - PAD - mid;
+	g_list->left = PAD; g_list->top = PAD; g_list->resizeTo (listW, H - 2 * PAD);
+	// compact: Hint and Lesson on the bench (in the place of its title), the card's text on its whole width
+	bool compact = low || W < 920;
+	g_card->btnRoom = compact ? 0 : 180;
 	g_card->left = mid; g_card->top = PAD; g_card->resizeTo (mw, 66);
 	int ch = g_card->need (); g_card->resizeTo (mw, ch);
-	g_btHint->left = mid + mw - 176; g_btHint->top = PAD + 10;
-	g_btLesson->left = mid + mw - 90; g_btLesson->top = PAD + 10;
+	g_btHint->left = compact ? rx : mid + mw - 176; g_btHint->top = compact ? PAD : PAD + 10;
+	g_btLesson->left = compact ? rx + (RIGHTW + 6) / 2 : mid + mw - 90; g_btLesson->top = compact ? PAD : PAD + 10;
+	g_btHint->resizeTo (compact ? (RIGHTW - 6) / 2 : 80, 28); g_btLesson->resizeTo (compact ? (RIGHTW - 6) / 2 : 80, 28);
+	((Widget *) g_lbTable)->hidden = compact;
 	int ty = PAD + ch + 6;
 	g_tb->left = mid; g_tb->top = ty; g_tb->resizeTo (mw, TBH);
+	// Delete, Undo, Redo at the toolbar's right; no room after the palette: Undo and Redo away (Ctrl+Z, Ctrl+Y)
+	int palR = 6 + 40 + 11 + 1 + g_palN * 41 + 6;
+	bool undo = mw - 112 >= palR;
+	((Widget *) g_btUndo)->hidden = ((Widget *) g_btRedo)->hidden = !undo;
+	((Widget *) g_btRedo)->left = mw - 40; ((Widget *) g_btUndo)->left = mw - 74;
+	((Widget *) g_btDel)->left = undo ? mw - 112 : mw - 40;
+	g_noGate->resizeTo (((Widget *) g_btDel)->left - g_noGate->left - 4 < 290 ? ((Widget *) g_btDel)->left - g_noGate->left - 4 : 290, 30);
 	int by = ty + TBH + 6, bh = H - PAD - MSGH - 8 - by;
 	g_board->left = mid; g_board->top = by; g_board->resizeTo (mw, bh);
 	g_msg->left = mid; g_msg->top = H - PAD - MSGH; g_msg->resizeTo (mw, MSGH);
 	g_btNext->left = mid + mw - 140; g_btNext->top = H - PAD - MSGH + 10;
 	g_lbTable->left = rx; g_lbTable->top = PAD; g_lbTable->resizeTo (RIGHTW, 22);
-	g_table->left = rx; g_table->top = PAD + 24; g_table->resizeTo (RIGHTW, g_table->need ());
+	// the bench's buttons: Step and Reset over Check; low: the three on one row at the bottom
+	int bw = low ? (RIGHTW - 12) / 3 : (RIGHTW - 6) / 2, sy = low ? H - PAD - 32 : H - PAD - 36 - 8 - 32;
+	g_btStep->resizeTo (bw, 32); g_btReset->resizeTo (bw, 32); g_btCheck->resizeTo (low ? RIGHTW - 2 * (bw + 6) : RIGHTW, low ? 32 : 36);
+	((Widget *) g_btStep)->left = rx; ((Widget *) g_btStep)->top = sy;
+	((Widget *) g_btReset)->left = low ? rx + bw + 6 : rx + (RIGHTW + 6) / 2; ((Widget *) g_btReset)->top = sy;
+	((Widget *) g_btCheck)->left = low ? rx + 2 * (bw + 6) : rx; ((Widget *) g_btCheck)->top = low ? sy : H - PAD - 36;
+	// the table: its rows shorter (15 px at the least) when the count and the buttons leave it less than it needs
+	int tt = compact ? PAD + 28 + 6 : PAD + 24;		// the table's top
+	g_table->rh = TruthTable::RH;
+	int room = sy - 10 - 66 - 10 - tt;
+	if (g_L && g_table->need () > room) { int r = (room - TruthTable::Y0 - 8) / g_L->rows (); g_table->rh = r < 15 ? 15 : r > TruthTable::RH ? TruthTable::RH : r; }
+	g_table->left = rx; g_table->top = tt; g_table->resizeTo (RIGHTW, g_table->need ());
 	int cy = g_table->top + g_table->height + 10;
 	g_count->left = rx; g_count->top = cy; g_count->resizeTo (RIGHTW, 66);
-	int sy = H - PAD - 36 - 8 - 32;
 	g_lbMode->left = rx; g_lbMode->top = sy - 22; g_lbMode->resizeTo (RIGHTW, 18);
 	((Widget *) g_lbMode)->hidden = cy + 66 > sy - 22;		// (16 rows at the minimum height: no room)
-	((Widget *) g_btStep)->left = rx; ((Widget *) g_btStep)->top = sy;
-	((Widget *) g_btReset)->left = rx + (RIGHTW + 6) / 2; ((Widget *) g_btReset)->top = sy;
-	((Widget *) g_btCheck)->left = rx; ((Widget *) g_btCheck)->top = H - PAD - 36;
 	// the cards, centred over the board
 	int lw = mw - 16 < 500 ? mw - 16 : 500, lh = bh - 16 < 330 ? bh - 16 : 330;
 	g_lesson->left = mid + (mw - lw) / 2; g_lesson->top = by + (bh - lh) / 2; g_lesson->resizeTo (lw, lh); g_lesson->place ();
@@ -316,14 +341,14 @@ static void layout ()
 // The palette: the gates the level allows, in their order (the others hidden); none: the label
 static void palette_setup ()
 {
-	int k = 0;
+	int k = 0; g_palN = 0;
 	for (int t = P_NOT; t < P_COUNT_; t++)
 	{
 		PaletteButton *b = g_pal[t];
 		((Widget *) b)->hidden = !g_L->allows (t);
 		if (!g_L->allows (t)) continue;
 		b->left = 6 + 40 + 11 + 1 + k * 41; b->top = (TBH - 40) / 2;
-		k++;
+		k++; g_palN = k;
 		snprintf (b->tipText, sizeof b->tipText, TR ("Put a gate: %s (%d)"), gate_word (t), k);
 	}
 	((Widget *) g_noGate)->hidden = k > 0;
@@ -581,7 +606,7 @@ public:
 	{
 		if (g_dirty && kapi_get_ticks () - g_dirtyAt >= 100) save_board ();	// (1 s after the last change)
 	}
-	void onResized () override { layout (); }
+	void onResized () override { ::layout (); }
 	bool onKey (long k) override
 	{
 		if (card_shown ())				// a card: Enter its default button, Esc closes it
@@ -672,7 +697,7 @@ int main (void)
 	g_lesson = new LessonCard (0, 0, 500, 330); ((Widget *) g_lesson)->hidden = true; root.addChild (g_lesson);
 	g_result = new ResultCard (0, 0, 420, 250); ((Widget *) g_result)->hidden = true; root.addChild (g_result);
 	root.setResizable (true);
-	root.setMinSize (920, 600);
+	root.setMinSize (800, 440);			// (a pocket's 800 x 480: the compact layout)
 	build_menu ();
 	layout ();
 	root.fitWorkArea ();

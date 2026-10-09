@@ -330,7 +330,7 @@ static void full_screen (bool on)
 {
 	if (on && !g_fs)
 	{
-		g_fs = kapi_fullscreen_begin (&g_fsw, &g_fsh);
+		g_fs = uk_win_fullscreen_begin (&g_fsw, &g_fsh);
 		g_fsStride = g_fsw;
 		if (g_fs)
 		{
@@ -340,7 +340,7 @@ static void full_screen (bool on)
 			for (int y = 0; y < g_fsh; y++) for (int x = 0; x < g_fsw; x++) g_fs[(long) y * g_fsStride + x] = 0;
 		}
 	}
-	else if (!on && g_fs) { kapi_fullscreen_end (); g_fs = 0; g_root->invalidate (true); }
+	else if (!on && g_fs) { uk_win_fullscreen_end (); g_fs = 0; g_root->invalidate (true); }
 }
 static void show_frame (void)
 {
@@ -357,14 +357,14 @@ static void show_frame (void)
 		if (g_note[0] && kapi_get_ticks () < g_noteUntil) c.text (8, 24, g_note, 0x00FFFF60);
 		kapi_present_fb ();
 	}
-	else { g_root->invalidate (true); g_root->draw (); kapi_present (); }
+	else { g_root->invalidate (true); g_root->draw (); uk_win_present (); }
 }
 
 static void set_zoom (int z)
 {
 	g_zoom = z;
 	int w = z == 1 ? 640 : 960, h = z == 1 ? 480 : 720;
-	g_root->canvas.adopt (kapi_resize_window (w, h), w, h, g_stride);
+	g_root->canvas.adopt (uk_win_resize (w, h), w, h, g_stride);
 	uikit::uk_decorate_window ();
 	g_root->width = w; g_root->height = h;
 	g_root->invalidate (true);
@@ -761,7 +761,7 @@ int main (void)
 	g_root = &root;
 	set_zoom (g_zoom);
 	root.attach ();
-	root.invalidate (true); root.draw (); kapi_present ();
+	root.invalidate (true); root.draw (); uk_win_present ();
 
 	g_m = new gc::Machine;
 	g_m->setAudioRate (SOUND_RATE);
@@ -959,7 +959,7 @@ int main (void)
 	ec_shutdown (&g_ec);
 	if (g_gxCore >= 0) { g_gxStop = 1; ec_sev (); kapi_core_release (g_gxCore); }
 	card_save ();
-	if (g_fs) kapi_fullscreen_end ();
+	if (g_fs) uk_win_fullscreen_end ();
 	if (g_disc) kapi_close (g_disc);
 	return 0;
 }

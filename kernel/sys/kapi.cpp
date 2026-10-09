@@ -288,26 +288,48 @@ int kapi_image_list (const char *pPath, struct kapi_image_info *pOut, unsigned n
 }
 
 // --- v83: shared libraries (kern/image.h, docs/SHARED-LIBS-PLAN.md) -------------
-// The library mapped into the caller -> its export table (0: *pErr says why). A bare name is
-// SD:/lib/<name>.so; anything with a '/', a '\\' or a ':' is a path.
+// A library's name made its canonical path: a bare name is SD:/lib/<name>.so; anything with a '/',
+// a '\\' or a ':' is a path (relative: to the caller's working directory). -> 0 / -KAPI_E*.
+static int LibCanon (const char *pUserName, char *pCanon)
+{
+	CUserStr Name (pUserName, UPATH_MAX);
+	if (!Name.OK ()) return -KAPI_EFAULT;
+	const char *p = Name.Get ();
+	if (p[0] == '\0') return -KAPI_EINVAL;
+	boolean bPath = FALSE;
+	for (const char *q = p; *q != '\0'; q++) if (*q == '/' || *q == '\\' || *q == ':') bPath = TRUE;
+	CString Path;
+	if (bPath) Path = p; else Path.Format ("SD:/lib/%s.so", p);
+	return ImageCanonPath (Path, CurCwd (), pCanon) ? 0 : -KAPI_ENAMETOOLONG;
+}
+
+// The library mapped into the caller -> its export table (0: *pErr says why).
 const void *kapi_lib_open (const char *pName, unsigned nMinVersion, int *pErr)
 {
 	int nErr = 0;
 	u64 ulTable = 0;
-	CUserStr Name (pName, UPATH_MAX);
 	CAddressSpace *pAS = CurrentAS ();
-	if (!Name.OK ()) nErr = -KAPI_EFAULT;
-	else if (pAS == 0 || Name.Get ()[0] == '\0') nErr = -KAPI_EINVAL;
-	else
+	char Canon[IMG_PATH_MAX];
+	if (pAS == 0) nErr = -KAPI_EINVAL;
+	else if ((nErr = LibCanon (pName, Canon)) == 0) nErr = LibraryOpen (Canon, nMinVersion, pAS, &ulTable);
+	if (pErr != 0 && !UserPut (pErr, nErr)) return 0;
+	return nErr < 0 ? 0 : (const void *) (uintptr) ulTable;
+}
+
+// (v97) The same, and the library found under pAlias from now on (docs/POCKETUI-TECH-STUDY.md section
+// 3): the graphics server's own UIKit under the name every program opens. Only the server (the role,
+// kern/wsrv.h); the rest is kern/image.h's (the paths allowed, one alias a key, its lifetime).
+const void *kapi_lib_open_as (const char *pPath, const char *pAlias, unsigned nMinVersion, int *pErr)
+{
+	int nErr = 0;
+	u64 ulTable = 0;
+	CAddressSpace *pAS = CurrentAS ();
+	char Canon[IMG_PATH_MAX], Alias[IMG_PATH_MAX];
+	if (pAS == 0) nErr = -KAPI_EINVAL;
+	else if ((nErr = LibCanon (pPath, Canon)) == 0 && (nErr = LibCanon (pAlias, Alias)) == 0)
 	{
-		const char *p = Name.Get ();
-		boolean bPath = FALSE;
-		for (const char *q = p; *q != '\0'; q++) if (*q == '/' || *q == '\\' || *q == ':') bPath = TRUE;
-		CString Path;
-		if (bPath) Path = p; else Path.Format ("SD:/lib/%s.so", p);
-		char Canon[IMG_PATH_MAX];
-		if (!ImageCanonPath (Path, CurCwd (), Canon)) nErr = -KAPI_ENAMETOOLONG;
-		else nErr = LibraryOpen (Canon, nMinVersion, pAS, &ulTable);
+		if (!WsIsServer ()) nErr = -KAPI_EPERM;
+		else nErr = LibraryOpenAs (Canon, Alias, nMinVersion, pAS, &ulTable, pAS->GetPid ());
 	}
 	if (pErr != 0 && !UserPut (pErr, nErr)) return 0;
 	return nErr < 0 ? 0 : (const void *) (uintptr) ulTable;
@@ -2232,7 +2254,8 @@ unsigned kapi_get_modifiers (void)
 void kapi_inject_modifiers (unsigned nMods)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
-	WsInputMods (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT));	// (and kept here: kapi_get_modifiers)
+	WsInputMods (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT | KAPI_WS_MOD_SUPER));	// (the server: Super too -- PocketUI's
+										// Home from vncd / rdpd; kept here: kapi_get_modifiers, not Super)
 	if (pWM != 0) pWM->SetModifiers (nMods & (MOD_CTRL | MOD_SHIFT | MOD_ALT));
 }
 

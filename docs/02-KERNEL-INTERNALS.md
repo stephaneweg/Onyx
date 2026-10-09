@@ -137,7 +137,7 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
      them merged (modifiers ORed, held keys joined), so one keyboard's empty report does not
      release the keys held on another. The mouse is still `mouse1` only. **Print Screen** (USB usage
      0x46) is no longer the kernel's (kapi v90): the held keys' report goes to **Elegant**
-     (`KAPI_WS_IN_HELD_USB`), which sees the key's press (`print_screen`, `user/Servers/elegant/server.cpp`)
+     (`KAPI_WS_IN_HELD_USB`), which sees the key's press (`print_screen`, `user/Servers/common/serve.cpp`)
      and tells the **Screenshot** app through its service `screenshot` (message type 1, `"now"` or
      `"window <id>"` — with Alt, the window that has the keyboard, which Elegant knows), else starts it
      (`kapi_exec_as ("SD:/apps/screenshot.app/main", "--now" | "--window <id>", "screenshot")`). No key
@@ -918,6 +918,48 @@ not `RELATIVE` / outside the data / text relocations refused); `sh tools/tests/s
 [file.so...]` checks a library's format. On the Pi: **`/bin/libtest`** (docs/04) — 17 checks against
 `SD:/lib/demo.so`, passed on the Pi 4 on 2026-10-04.
 
+### Aliases (v97): the graphics server's library under the common name
+
+*(The design: [`docs/POCKETUI-TECH-STUDY.md`](POCKETUI-TECH-STUDY.md) §3; the call: §8 *v97*.)* Each
+graphics server has its own UIKit with the same exports (Elegant `SD:/lib/uikit.so`, PocketUI
+`SD:/lib/pocket/uikit.so`); a program always opens `"uikit"`. **`lib_open_as (path, alias, min_version,
+err)`** opens and maps `path` exactly as `lib_open` does (the version checked on the real library), then
+gives its image **a second key, its alias** (`TImage::Alias`, `nAliasOwner`, `bAliasOrphan`,
+`proc/image.cpp`):
+
+- **Looked up first.** `FindNamed (key)` looks at the aliases before the named images' paths: while
+  `sd:/lib/uikit.so` is an alias, a named image whose real path is `sd:/lib/uikit.so` (the desktop's
+  UIKit, preloaded or still mapped) is not returned for that key. Nothing else changes: the aliased image
+  keeps its real `Path`, its place in the arena (so the server and every program map it **at the same
+  address**, one copy), its references. `LibraryOpen`'s log names the real path and the alias:
+  `lib: sd:/lib/pocket/uikit.so (as sd:/lib/uikit.so): shared in 0 ms at 0x400000000, ...`.
+- **Who, what.** Only the process holding the graphics server's role (`WsIsServer`, `sys/wsrv.cpp`);
+  both names under `sd:/lib/`, never `sd:/lib/appkit.so` (`ImageAliasAllowed`: an alias there would
+  hijack every program); `path` ≠ `alias`. One image a key, one key an image (`-EBUSY` otherwise). The
+  alias is checked before the mapping and set after it (`ImageSetAlias (…, bCommit)`), with no yield
+  between. The order in a server's start: `KAPI_WS_REGISTER`, `lib_open_as`, `KAPI_WS_DISPLAY` —
+  `WsBootStart` returns when the display is taken, so every program init starts finds the alias.
+- **Lifetime, anchored on the server.** The alias goes with its image (its last reference, or the end of
+  its pin). Its owner ends (`WsOnProcessGone` → `ImageUnalias (pid, TRUE)`): **orphaned**, kept —
+  programs started meanwhile still get it; the same server started again (`WsPoll`) asking the same real
+  path takes it over (`ImageAliasHeld`: the very image the alias names, even if its file changed since),
+  a different path replaces it. **Another server started** (the fallback to Elegant, `KAPI_WS_SWITCH`):
+  every alias dropped at once (`ImageUnalias (0, FALSE)`) — the images keep their real names and their
+  processes. (Without the anchor a windowless daemon mapping UIKit — `printd`, through PrinterKit —
+  would keep the pocket UIKit as everyone's `uikit.so` after a switch back to the desktop.)
+- **Files, preload, lists.** `ImageFileChanged` compares the **real** path only: an update of the desktop's
+  `uikit.so` does not touch the alias; an update of `pocket/uikit.so` unnames the real path but keeps the
+  alias on the old image (the session stays on one UIKit; the new file is the next session's). A preload
+  of the alias key pins the aliased image (dropped with the alias if its path was unnamed meanwhile);
+  `image_unload` of an alias key → `-EBUSY` (it ends with its server). `image_list` flags it
+  `KAPI_IMG_ALIAS` (16): `path` is the real key and the alias follows its NUL in the same field —
+  `/bin/preload` prints `sd:/lib/uikit.so -> sd:/lib/pocket/uikit.so`.
+
+Tests: `sh tools/tests/run_image_test.sh`'s *aliases* (the names allowed, looked up first, the check
+without the commit, idempotent, `-EBUSY` for a second owner / image / key, unload refused, the two file
+changes, orphaned / taken over / replaced, dropped, a pin through the alias, gone with the last
+reference, the list's flag and second path); on the Pi `/bin/aliastest` (docs/04), also a stand-in server.
+
 Tests: on the PC `sh tools/tests/run_image_test.sh` (the real `image.cpp` and `elf.cpp`, the
 kernel around them stubbed, ASan: the canonical path, the header checks against crafted files, the
 load, two processes on the same frames, a start waiting for another task's load, a failed load,
@@ -1093,7 +1135,7 @@ TKApiTable`) at a **fixed virtual address**:
   slots (`memcpy`, `memset`, `memmove`, `pump_events`, `wait_for_exit`, `pump_wait`) at routines
   that run in the app itself (`arch/aarch64/el0blob.S`; §6, *Protected mode*).
 - AppKit's side (`user/Kits/appkit/appkit_calls.inc`, the only place) defines `#define KT ((const struct TKApiTable *) KAPI_TABLE_VA)` and
-  one inline function per entry (`kapi_create_window`, `kapi_open`, …) that does nothing but
+  one inline function per entry (`kapi_open`, `kapi_launch`, …) that does nothing but
   call through the table — a plain indirect call into the stub, which makes the system call.
   `user/BinUtils/kapi_names.h` (generated by `tools/gen_kapi_names.py` from `kapi_abi.h`) names the slots
   for `/bin/sysstat`.
@@ -1185,6 +1227,47 @@ from now on calls them in AppKit, so its package says `kapi >= 87`.
 v88 = **AppKit: program starting**: no entry added — the `lx_*` functions (an app or a file started by its
 runner) are AppKit's (they were `user/launch.h`). The same day **SystemKit** and **NetKit** appear (docs/03 §5.9.0).
 
+**The window API moves to UIKit** (2026-10-08; `docs/POCKETUI-TECH-STUDY.md` §2.2, §4, phase P2) — no kernel
+change, kapi stays **97**: the 46 window functions of AppKit (`kapi_create_window`, `kapi_present`,
+`kapi_set_menu`, `kapi_win_list`, `kapi_tray_set`, `kapi_desk`, `kapi_drag_begin`...) are **removed** from
+`appkit.h` and `appkit_calls.inc` — and their names from **`appkit.abi`**: their **slots are kept**, retired
+(`kapi_retired_<slot>`, not declared, answering 0 or the call's old error value), so nothing is renumbered: a
+program built before keeps working but for its direct window calls, which now fail (Jet: rebuilt to get its
+window features back) —, and `appkit_ws.inc` with them. They are UIKit's **`uk_win_*`** (`user/Kits/uikit/win.h`, C linkage, entries of
+`uikit.abi`; docs/03 §5.10.1 the renaming), spoken to Elegant by UIKit's desktop port
+(`user/Kits/uikit/port/port_desktop.cpp`, the code of `appkit_ws.inc`, the replay included; the protocol
+`user/Kits/uikit/port/elegant.h`). AppKit keeps the kernel's side: `kapi_ws_ctl` (the transport),
+`kapi_fullscreen_begin` / `_end` (the kernel's primitives: no longer telling the server — UIKit's
+`uk_win_fullscreen_begin` does), `kapi_present_fb`, `kapi_fullscreen_direct`, the pump, `kapi_screen_size`.
+C programs reach UIKit through `lib/uikit.imp_c.a` (`libgen --bind-c`).
+
+v97 = **the graphics server per mode** (2026-10-08; `docs/POCKETUI-TECH-STUDY.md` §3, phase P1): + `lib_open_as`
+(slot **234**: a library mapped and found under an alias too — the graphics server's own UIKit under
+`SD:/lib/uikit.so`; §7 *Aliases*), `KAPI_IMG_ALIAS` (16) in `kapi_image_info.flags`; the server chosen from
+`SD:/etc/system.ini` **`shell =`** (desktop: Elegant as before; pocket / console: `SD:/bin/pocketui --serve
+--mode <m>`; Elegant if it fails), `KAPI_WS_REGISTER` for the started program's name, + `KAPI_WS_SWITCH` (19, a
+`ws_ctl` operation: the server ended, its successor started) and `KAPI_WS_IN_QUIT` (10) (*v97* below, §10).
+AppKit: `kapi_lib_open_as` (`-KAPI_ENOSYS` before v97).
+
+v96 = **a window moved by another program** (2026-10-08): no table entry changes — AppKit's `kapi_win_move (id, x, y)`
+(Elegant's `EL_OP_WIN_MOVE`: a window of `kapi_win_list`, 0 the caller's, its client area put at x, y; not the
+desktop's, a topmost or a full-screen one). rdpd uses it: a window dragged in Onyx Remote is put at the same place
+on the Pi (its protocol 2, client message `MOVE`).
+
+v95 = **the status area's icons** (2026-10-08): no table entry changes — Elegant keeps one icon a program
+(`EL_OP_TRAY_*`), AppKit's `kapi_tray_set` / `_clear` (a program) and `kapi_tray_list` / `_icon` / `_activate`
+(the menu bar); `KAPI_TRAY_PX` (20), `KAPI_TRAY_MAX` (16), `struct kapi_tray_info`, `GUI_EVENT_TRAY` (21) with
+`KAPI_TRAY_OPEN` (a double click: Elegant raises the program's first window, back from minimised) or `KAPI_TRAY_MENU`.
+
+v94 = **several windows a program** (2026-10-07; `docs/MULTI-WINDOW-STUDY.md`): no table entry changes — the
+windows are Elegant's, reached by AppKit (`kapi_win_new`, `kapi_win_select`, `kapi_win_destroy`: docs/03 §6 *Several
+windows*). The kernel's part (`sys/wsrv.cpp`, `kern/layout.h`): a program's windows 1..16 beside its first have their
+canvas and their frame's two copies at fixed addresses of their own (`KAPI_WS_VA_WIN (w, p)` = 28 GB + (w − 1) × 256
+MB + p × 64 MB; the library arena now ends at 28 GB), the buffers' slots `KAPI_WS_SLOT_WIN (w, p)` (`KAPI_WS_SLOTS` =
+53), `KAPI_WS_KICK (window)` says which window was presented, the event queue holds 64 events (32), and the graphics
+server's view has 256 buffers (`USER_WS_SLOTS`; 128 before: `USER_WS_BASE` = 44 GB). Elegant holds 64 windows (16
+before; `WM_MAX_WINDOWS` = `EL_WINDOWS_MAX`). An event of a window other than the first comes with `sender` = its number.
+
 v93 = **the volumes** (2026-10-06; `kernel/sys/volume.cpp`, `kern/volume.h`, §18): `vol_list` 230, `vol_eject` 231,
 `vol_mount` 232, `vol_format` 233 (`struct kapi_volume`, `struct kapi_format`, `KAPI_VST_*`, `KAPI_VF_*`,
 `KAPI_FMT_*`). The USB mass-storage volumes `USB1:`, `USB2:`, `USB3:` (or `USB1P1:`… per partition; `USB:` = `USB1:`) are mounted when a stick is plugged in
@@ -1246,7 +1329,13 @@ windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant
 - **the raw input** — while the server owns the display, the mouse, the cooked keys, the modifiers and the
   held keys, from the USB callbacks and from `inject_*` (`vncd`, `rdpd`), go to a ring of 256 events the
   server reads (`KAPI_WS_INPUT`) instead of `CWindowManager::OnMouse` / `OnKey` (a pointer move replaces an
-  unread one; a full ring drops, counted);
+  unread one; a full ring drops, counted). (2026-10-08, no version change) The modifiers' event
+  (`KAPI_WS_IN_MODS`) also carries **`KAPI_WS_MOD_SUPER`** (8: a Super key, the USB modifiers' bits 3 / 7) —
+  PocketUI's Home; the common `serve.cpp` keeps it from the window manager (Elegant sees Ctrl, Shift, Alt as
+  before) and gives it to the policy's `mods` hook; `kapi_get_modifiers` is unchanged;
+  (P6) `serve.cpp` gives each pointer event to the policy's **`pointer`** hook first (`policy.h`,
+  `WS_POLICY_HAS_POINTER`): PocketUI's viewport takes the wheel and the drags over its scroll indicators; Elegant's
+  hook is 0 (the window manager's, as before);
 - **one wait** (`KAPI_WS_WAIT`, on the I/O generation: an input event wakes it at once);
 - **the way back** — the server's process ends (`WsOnProcessGone`, the teardown), or calls nothing for 5 s
   (`WsWatch`, the compositor's loop): the display and the input are the kernel's again and the whole
@@ -1277,16 +1366,16 @@ windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant
 
   - two more slots for a program's shared memory: its copy of the wallpaper (`KAPI_WS_SLOT_WALLPAPER`, at
     `USER_WALLPAPER_CANVAS`) and a transfer buffer (`KAPI_WS_SLOT_XFER`, 13 GB + 256 MB: the pixels of
-    `kapi_win_read`);
+    `uk_win_read`);
   - **the window as last presented** (2026-10-06, no kernel change): a program paints in its canvas, the
     memory Elegant reads, so a reader that came between a repaint's first stroke and its present got a
     picture half made -- Onyx Remote flickered when the pointer moved over a window (`rdpd` reads a
     window for about 100 ms a round; measured with `tools/tests/rdpd/flicker_bench.py`: 56 of 450
     pictures of the Control Panel half painted in 25 s, 0 since). The canvas' shared buffer is now
     *canvas, one 64 KB page of control, a second copy of the pixels* (`WinPixelsAlloc`, `core.cpp`; a
-    canvas that would not fit twice in a slot's 64 MB has none). AppKit asks where they are after the
-    window is made or grown (`EL_OP_SHOT`, `appkit/elegant.h`); while Elegant wants it (`el_shot.want`: a
-    `win_read` of that window in the last 5 s), AppKit's `kapi_present` copies the rows shown into the
+    canvas that would not fit twice in a slot's 64 MB has none). UIKit's desktop port (AppKit's until
+    2026-10-08) asks where they are after the window is made or grown (`EL_OP_SHOT`, `uikit/port/elegant.h`);
+    while Elegant wants it (`el_shot.want`: a `win_read` of that window in the last 5 s), `uk_win_present` copies the rows shown into the
     second copy before its `KAPI_WS_KICK`, raising `el_shot.seq` before and after (odd: being made).
     `win_read` (part 0) gives that copy once a present has filled it since it was asked, and reads it
     again if a present came meanwhile; before that, the canvas itself as it always did;
@@ -1296,17 +1385,26 @@ windows are leaving the kernel for a user process, **Elegant** (`SD:/bin/elegant
 - **the start** (`WsBootStart`, before init) — the kernel starts `SD:bin/elegant --serve` at every boot and
   waits (5 s at most) until it has the display; init then starts the desktop, whose programs have their
   windows in Elegant. There is no other window manager (§10): without a server, the kernel's console.
+  (v97) The server is the one `SD:/etc/system.ini` `shell =` names — PocketUI for pocket / console —, Elegant
+  if that one fails (§10 *The server per mode*).
 
-**AppKit's window calls speak to Elegant** (`appkit_calls.inc`'s `KAPI_WS`, `appkit_ws.inc`): the protocol
-is `user/Kits/appkit/elegant.h` (private to AppKit and Elegant: 31 operations, each doing what the kernel's
-call of the same name did). A call that finds no server (it is being started, or started again) waits for
-it, 5 s at most. No program is rebuilt. (The builds that take the calls inline against a stand-in kernel
-with a window manager -- the PC's simulator -- still call that table.) The kernel still serves: the pump (`pop_event`, `should_exit`,
+**The window calls speak to Elegant** — **UIKit's** since 2026-10-08 (`uk_win_*`, `user/Kits/uikit/win.h`; its
+desktop port `user/Kits/uikit/port/port_desktop.cpp`; docs/POCKETUI-TECH-STUDY.md phase P2), AppKit's
+`kapi_*` window functions before (`appkit_ws.inc`, removed with them): the protocol is
+`user/Kits/uikit/port/elegant.h` (private to the desktop UIKit's port and Elegant — it was
+`user/Kits/appkit/elegant.h` —: 31 operations, each doing what the kernel's call of the same name did). Each
+graphics server has its own UIKit (loaded under `SD:/lib/uikit.so`, §7 *Aliases*), whose port is the only code
+speaking that server's protocol; AppKit keeps the transport, `kapi_ws_ctl` (`KAPI_WS_CALL`, `KAPI_WS_KICK`,
+`KAPI_WS_ACTIVE`). A call that finds no server (it is being started, or started again) waits for it, 5 s at
+most; what the program asked is kept by the port and asked again of an Elegant started again (the replay).
+(The builds against a stand-in kernel with a window manager -- the PC's simulator -- have the port relay each
+call to that table.) The kernel still serves: the pump (`pop_event`, `should_exit`,
 `pump_sleep`, `post`), `screen_size`, `screen_grab` (the off-screen buffer), `inject_*` (to the server's
-ring), `get_modifiers`, `key_held`, `draw_text_buf` (AppKit's `kapi_draw_text` draws into the canvas with
+ring), `get_modifiers`, `key_held`, `draw_text_buf` (UIKit's `uk_win_draw_text` draws into the canvas with
 it), the surfaces, the clipboard — and **the full screen**: `fullscreen_begin` / `present_fb` /
 `fullscreen_direct` / `fullscreen_end` are the kernel's as before (its buffer, the direct mode: no round
-trip a frame), on the program's kernel-side window (AppKit makes the program a window in Elegant first);
+trip a frame), on the program's kernel-side window (UIKit's `uk_win_fullscreen_begin` makes the program a
+window in Elegant first, then calls AppKit's `kapi_fullscreen_begin`, which no longer does it itself);
 the kernel tells Elegant (`KAPI_WS_IN_FULLSCREEN`), which sends that program all the input and shows
 nothing meanwhile (`KAPI_WS_PRESENT` answers `-KAPI_EBUSY`), then draws the whole screen again.
 `screen_set` is the kernel's too: its compositor does the resize between two of the server's presents and
@@ -1321,7 +1419,7 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 
 | Category | Examples |
 |---|---|
-| Windowing | `create_window(_ex)` (the canvas; **0** when the client area is bigger than the screen — `g_nScreenWidth/Height`; before v66, 1024 × 768 — or memory is short — an app must check it: drawing into a null canvas faults, and the app is killed), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `uk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
+| Windowing (on Onyx: UIKit's `uk_win_*` since 2026-10-08 — these entries only in a PC's stand-in kernel, *v90*) | `create_window(_ex)` (the canvas; **0** when the client area is bigger than the screen — `g_nScreenWidth/Height`; before v66, 1024 × 768 — or memory is short — an app must check it: drawing into a null canvas faults, and the app is killed), `resize_window` (the client size shown, ≤ the canvas made at creation; the frame — `OuterW/H`, the chrome copies' size — follows it, and the app redraws its chrome: `uk_decorate_window`), `move_window`, `present`, `exit`. Window flags: `WIN_FLAG_BORDERLESS`, `WIN_FLAG_BACKMOST` (desktop, bottom band), `WIN_FLAG_TOPMOST` (the menu bar: top band, never the active app nor the key target; at y=0 it reserves its smallest logical height — `CWindowManager::TopInset()` — so auto-placement and title-bar drags stay below it), `WIN_FLAG_TRANSPARENT` (client blitted with the magenta key), `WIN_FLAG_SYSTEM` (a shell component — menu bar, notifications, panel, app list: skipped by `list_windows`, so never in the taskbar; a plain flag bit, no ABI change). The z-order is three bands: backmost < normal < topmost (`Add`/`RaiseLocked` keep them). The **key target** is the frontmost non-topmost window; the **active app** (menus, chrome highlight uses the key target) is the frontmost window that is neither topmost, backmost nor borderless. |
 | Menu bar (v39) | `set_menu(spec, handler)` stores the app's menu spec (≤ 2 KB; lines `M<title>`, `I<id>\t<label>\t<shortcut>`, `-`) + a `GUI_EVENT_MENU` (14) handler on its `CWindow`; `get_menu(buf, cap, title, tcap)` returns the **active app**'s spec + title and a serial that changes with the active window or its menu (0 = none); `menu_command(id)` queues `GUI_EVENT_MENU(id)` to the active window (`MENU_QUIT` = -1 → `RequestExit`, like the close box). Used by `menubar` + `uikit::Menu`. |
 | Launch/management | `launch`, `toggle_app`, `raise_app`, `exec`, `kill`, `kill_pid`, `proc_tree` (v91) |
 | Threads (v67) | `thread_create(fn, arg, stack_size, name)` → tid ≥ 2 (main: 1), −1 no memory, −2 too many (32); `thread_exit(code)` (the main thread: the process); `thread_join(tid, timeout_ms, &code)` → 0, −1 timeout, −2 none / joined already, −3 itself; `thread_self`. `mutex_create`/`mutex_lock(h, timeout)`/`mutex_unlock` (recursive), `event_create(manual, initial)`/`event_set`/`event_reset`/`event_wait(h, timeout)`, `barrier_create(count)`/`barrier_wait` (1 for the last one in), `sync_close` — handles, 256 per process; timeouts in ms, 0 = only try, `KAPI_WAIT_FOREVER`. `post(fn, ctx, value)` → queued for the pump (−1 full: 256); `pump_wait(timeout)` sleeps until an event / a post / the close box, pumps → what was pending. See §7. |
@@ -1672,8 +1770,8 @@ key). A path is a program file's, relative to the caller's working directory; ev
 | Slot | Entry | What it does |
 |---|---|---|
 | 217 | `image_preload (path)` | the program loaded ahead and **kept**: a kernel task reads the file, the call returns at once; from then on a run of that path maps the image without reading the card, and the image stays when no process runs it. Kept already: 0, nothing done → 0; `ENOENT` (no such file), `ENAMETOOLONG`, `ENOMEM`, `EFAULT`. A load that fails later is in the kernel log |
-| 218 | `image_unload (path)` | the path's image loses its pin and its name at once: no new process maps it; its memory is freed when the last process running it ends → 0; `ENOENT` (no image), `EFAULT` |
-| 219 | `image_list (path, out, cap)` | `path` 0: the live images, up to `cap` written → how many there are. `path`: the image a run of that path would map → 1 (`out[0]` written if `cap` > 0) / 0. Flags: `KAPI_IMG_KEPT` (preloaded), `KAPI_IMG_LOADING`, `KAPI_IMG_UNNAMED` (unloaded, or its file changed: only its processes still use it) |
+| 218 | `image_unload (path)` | the path's image loses its pin and its name at once: no new process maps it; its memory is freed when the last process running it ends → 0; `ENOENT` (no image), `EBUSY` (v97: the path is the graphics server's alias), `EFAULT` |
+| 219 | `image_list (path, out, cap)` | `path` 0: the live images, up to `cap` written → how many there are. `path`: the image a run of that path would map → 1 (`out[0]` written if `cap` > 0) / 0. Flags: `KAPI_IMG_KEPT` (preloaded), `KAPI_IMG_LOADING`, `KAPI_IMG_UNNAMED` (unloaded, or its file changed: only its processes still use it), `KAPI_IMG_LIB` (v83), `KAPI_IMG_ALIAS` (v97: also found under an alias, which follows `path`'s NUL) |
 
 Users: `/bin/preload` (`preload /boot`, the last line of `/etc/autostart`: the list of
 `SD:/etc/preload.ini`, `user/Include/preloadini.h`, edited by the Control Panel's Preload applet,
@@ -1699,6 +1797,26 @@ stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywher
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
 
+### v97: lib_open_as, the graphics server per mode
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 234 | `lib_open_as (path, alias, min_version, err)` | `path` (`lib_open`'s forms: a bare name or a path) opened and mapped into the caller as `lib_open` does — the version checked on it, the real library —, then found under `alias` too: every `lib_open` of `alias` gets this image, before a library whose real path is `alias` → its export table, or 0 with `*err` = `-EPERM` (the caller does not hold the graphics server's role; `alias` or `path` not under `SD:/lib/`; either is `SD:/lib/appkit.so`), `-EBUSY` (`alias` held by another live process, or by the caller on another library; this library has another alias), `-EINVAL` (`path` = `alias`; not a library), `lib_open`'s errors. Asked again by its owner: the same table (the same image, even if its file changed). Lifetime: §7 *Aliases*. |
+
+`ws_ctl` (slot 227) gains: **`KAPI_WS_REGISTER`** gives the role to the program the kernel started for the mode
+(by its task's name: `elegant` or `pocketui`), when no live process holds it — `EPERM` for any other;
+**`KAPI_WS_SWITCH` (19)**, anyone's but the server's: the server is sent **`KAPI_WS_IN_QUIT` (10)** (Elegant gives
+the display back and ends; a server that does not is killed after 3 s), every alias dropped, `shell =` read again,
+its server started and waited for (5 s), Elegant if it fails → 0 (the one asked for has the display), 1 (Elegant
+instead: the desktop), `-EBUSY` (a full-screen program has the display, or a start / switch is under way),
+`-EINVAL` (called by the server), `-EIO` (no server took the display: the console). The caller sleeps meanwhile
+(up to about 10 s). The programs keep running; their windows come back as after a restart of Elegant (AppKit
+asks the new server). Which server, the fallback: §10.
+
+AppKit: `kapi_lib_open_as` (`-KAPI_ENOSYS` before v97); `kapi_ws_ctl (KAPI_WS_SWITCH, 0, 0, 0)`. `image_list`'s
+`KAPI_IMG_ALIAS`, `image_unload`'s `-EBUSY` for an alias key. Tests: `sh tools/tests/run_image_test.sh`
+(*aliases*); on the Pi `/bin/aliastest` (docs/04).
+
 ### v93: the volumes
 
 | Slot | Entry | What it does |
@@ -1719,7 +1837,7 @@ rewritten), `posixtest` (`mmap PROT_EXEC`).
 | Slot | Entry | What it does |
 |---|---|---|
 | 225 | `sound_clients (out, max)` | The programs that have a channel now → how many; `out`: up to `max` `struct kapi_sound_client` (`pid`, `name` — the program's, 24 bytes —, `volume` 0..100, `mute`, `peak` — its level now, 0..32767 —, `queued` frames). `0, 0`: only the count. |
-| 227 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program `elegant`. The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT` \| `_CALL`; `KAPI_WS_ATTACH (pid)`, `KAPI_WS_POST (pid, struct kapi_event *)` → 1 queued / 0 full, `KAPI_WS_EXIT (pid)`, `KAPI_WS_BUF_MAP (struct kapi_ws_buf *)`, `KAPI_WS_BUF_FREE (id)`, `KAPI_WS_NEXT (struct kapi_ws_req *)` → 1 / 0, `KAPI_WS_REPLY (struct kapi_ws_reply *)`. A program's (through AppKit): `KAPI_WS_CALL (struct kapi_ws_call *)` → the server's status, `ESRCH` no server; `KAPI_WS_KICK`. AppKit: `kapi_ws_ctl`. |
+| 227 | `ws_ctl (op, a0, a1, a2)` | (v89) The graphics server's mechanisms (above; `KAPI_WS_*`, `kern/kapi_abi.h`) → ≥ 0, or `-KAPI_Exxx`. `KAPI_WS_ACTIVE` (anyone): the server's pid while it owns the display, else 0. `KAPI_WS_REGISTER`: 1 the caller is the display server, 0 another one is, `EPERM` not the program the kernel started (v97: `elegant`, or `pocketui` for `shell = pocket / console`). `KAPI_WS_SWITCH` (v97, anyone's): the server switched (*v97* above). The server's own: `KAPI_WS_DISPLAY (take, struct kapi_ws_display *out)` → 0, `EBUSY` a full-screen program has it; `KAPI_WS_PRESENT (struct kapi_ws_present *)`: the rectangle (w ≤ 0: the screen) of its pixels shown; `KAPI_WS_INPUT (struct kapi_ws_input *out, max)` → the events taken; `KAPI_WS_WAIT (ms ≤ 1000)` → `KAPI_WS_PENDING_INPUT` \| `_CALL`; `KAPI_WS_ATTACH (pid)`, `KAPI_WS_POST (pid, struct kapi_event *)` → 1 queued / 0 full, `KAPI_WS_EXIT (pid)`, `KAPI_WS_BUF_MAP (struct kapi_ws_buf *)`, `KAPI_WS_BUF_FREE (id)`, `KAPI_WS_NEXT (struct kapi_ws_req *)` → 1 / 0, `KAPI_WS_REPLY (struct kapi_ws_reply *)`. A program's (through AppKit): `KAPI_WS_CALL (struct kapi_ws_call *)` → the server's status, `ESRCH` no server; `KAPI_WS_KICK`. AppKit: `kapi_ws_ctl`. |
 | 228 | `proc_tree (pid, op, out, cap)` | (v91) A process's tree, by the parent pids recorded at the spawns (above). `KAPI_TREE_LIST` → how many descendants `pid` has, up to `cap` of their pids into `out` (its children, then theirs…); `KAPI_TREE_KILL` → `pid` and all its descendants terminated now, the leaves first → how many; `KAPI_TREE_KILL_CHILDREN` → its descendants only. `ESRCH` no such process, `EPERM` a kill whose tree holds the caller, `EINVAL`, `EFAULT`. AppKit: `kapi_proc_tree`. |
 | 226 | `sound_client_volume (pid, volume, mute)` | That channel's volume 0..100 (−1: kept) and mute 0 / 1 (−1: kept), applied at once and remembered for the program's **name** until the restart → `volume \| 0x100` if muted, −1: no such channel. Any program may call it (the mixer's panel). |
 
@@ -1893,10 +2011,11 @@ The terminal thus chains the `stdout` of one stage to the `stdin` of the next vi
 
 > **Since 2026-10-05 the window manager, the compositor and the routing of the input are no longer in
 > the kernel.** They are **Elegant**'s, the graphics server, a user process (`SD:/bin/elegant`,
-> `user/Servers/elegant`; §8, v89: what the kernel gives it; `docs/GUI-USERSPACE-STUDY.md`). The window
-> manager described in §10.2 and §10.3 below is the same code, moved: `user/Servers/elegant/wm/window.cpp`
-> and `wm/kern/gui/window.h` (with `wm/cursors.inc`), built for a user process with stand-ins for the few
-> Circle headers it includes (`user/Servers/elegant/port`) — read "the kernel" there as "Elegant".
+> `user/Servers/elegant`; §8, v89: what the kernel gives it; `docs/GUI-USERSPACE-STUDY.md`) — and, since
+> 2026-10-08, **PocketUI**'s in the pocket and console modes (below). The window manager described in §10.2
+> and §10.3 below is the same code, moved: `user/Servers/common/wm/window.cpp` and `wm/kern/gui/window.h`
+> (with `wm/cursors.inc`), built for a user process with stand-ins for the few Circle headers it includes
+> (`user/Servers/common/port`) — read "the kernel" there as "the graphics server".
 >
 > **What the kernel keeps** (`kernel/gui/kwin.cpp`, `kern/gui/window.h`, 150 lines):
 > - `CWindow` — only a program's **queue of events** (with the request to end and the wake of
@@ -1915,11 +2034,58 @@ The terminal thus chains the `stdout` of one stage to the `stdin` of the next vi
 >   (`create_window`, `present`, `set_menu`, `win_list`, `drag_begin`, `wallpaper_*`, `desk`...) and the
 >   2 of the activity shell (`register_shell`, `shell_request`) are removed, the table is compacted
 >   (228 entries), their functions are gone from `sys/kapi.cpp` (740 lines). AppKit's functions of those
->   names speak to Elegant (`appkit_ws.inc`); no program is rebuilt. The kernel image lost 43 KB.
-> - **Print Screen** and **the wheel's speed** are Elegant's too (§2's input task; `server.cpp`).
+>   names spoke to Elegant (`appkit_ws.inc`); no program was rebuilt. The kernel image lost 43 KB. Since
+>   2026-10-08 the window calls are **UIKit's** (`uk_win_*`, `uikit/win.h`; the protocol
+>   `user/Kits/uikit/port/elegant.h`), AppKit's removed (§8 *The window API moves to UIKit*).
+> - **Print Screen** and **the wheel's speed** are the graphics server's too (§2's input task;
+>   `user/Servers/common/serve.cpp`).
+>
+> **The server per mode (v97, 2026-10-08; `docs/POCKETUI-TECH-STUDY.md` §3.8, §8):** the kernel reads
+> `SD:/etc/system.ini` **`shell =`** (`sys/wsrv.cpp` `ShellRead`, at the boot and at each switch):
+> `desktop`, no line, or a word it does not know (logged) → **Elegant**, `SD:bin/elegant --serve` — exactly as
+> before; `pocket` / `console` → **PocketUI**, `SD:bin/pocketui --serve --mode <m>` (phase P3, below). The role
+> (`KAPI_WS_REGISTER`) is for the program started (its task's name). The server asked for that is missing,
+> ends before it has the display, or does not take it in 5 s (then it is killed) → **Elegant instead**, its
+> aliases dropped (`KAPI_WS_SWITCH` answers 1) — a bad setting never leaves the screen dark; Elegant failing
+> too → the console. `WsPoll` starts **the server that was started** again (`--serve --restart`, plus its
+> `--mode`), 5 times at most; PocketUI that cannot stay up → Elegant, then the console. A start (the boot's,
+> a switch) holds `WsPoll` off. **`KAPI_WS_SWITCH`** (§8 *v97*): the server ended (`KAPI_WS_IN_QUIT`, killed
+> after 3 s), every alias dropped, the relaunch counter reset, `shell =` read again, its server started with
+> the same fallback. The graphics session's programs are `/bin/session`'s (phase P4: it closes them, writes
+> `shell =`, switches, runs the new mode's session file); until then a switch by hand: `aliastest --switch`.
+
+> **Two servers, one common code (PocketUI's phase P3, 2026-10-08; `docs/POCKETUI-TECH-STUDY.md` §7):**
+> `user/Servers/common/` holds what is not a policy, compiled into both servers (`common/common.mk`):
+> `serve.cpp` (the loop: `KAPI_WS_REGISTER`, the display, the raw input, the requests, the 16 ms pace, the
+> present, the shared buffers `el_shared_*`, the kernel's `el_sys_*`, Print Screen, the wheel's speed, the 5 s
+> statistics), `route.cpp` (the keys to the policy then to the window that has them; the programs' events
+> forwarded; the windows' places kept in the kernel — `KAPI_WS_STATE` — for a server started again; the focus
+> told), `core.cpp` / `core.h` (the window store behind plain functions, the shots), `ops.cpp` (the requests'
+> decoding: Elegant's operations, `uikit/port/elegant.h`) and `wm/` (`CWindowManager`, the compositor).
+> A server's **policy** (`common/policy.h`, `struct ws_policy`: `create` — a window's place, size and flags, or
+> refused —, `op` — a request answered first —, `key`, `tick` — once a turn —, `screen`, `registered` — the role
+> taken, the display not yet —, `start`) is all that differs; every hook may be 0. **Elegant**
+> (`user/Servers/elegant/main.cpp`) has none but `start` (voronoy run again after a restart) and its
+> demonstration: its behaviour is unchanged (checked on the PC: `tools/tests/server_sim/run.sh` composes the
+> same app under Elegant before and after the extraction — the same pixels). **PocketUI** (`SD:/bin/pocketui`,
+> `user/Servers/pocketui/`: `main.cpp`, `wm.cpp` the policy, `band.cpp` the status band) is described in docs/03
+> §5.10.3 and docs/04 §5 "The pocket and console modes": its UIKit under the name `SD:/lib/uikit.so`
+> (`kapi_lib_open_as` in its `registered` hook, after the role and before the display — §7 *Aliases*), a 24 px
+> status band of its own (a topmost system window at y = 0: the work area below it; none in console), a
+> program's window **filled** (frameless, at the work area's top left; a resizable one sent
+> `GUI_EVENT_WINRESIZE` to the work area's size, then `GUI_EVENT_WINCTL` maximise if it did not apply it) or a
+> **card** (framed, centred, when it fits), its popups where asked, the desktop's bands (a backmost window, a
+> topmost one on the top or bottom edge) refused, one workspace, **one app in front** (the others' windows
+> set aside: `CWindow::SetAside`, hidden as an off-desk window — a flag Elegant never sets), Alt+Tab. Its
+> protocol is `user/Kits/uikit/port/pocket.h`: Elegant's operations and numbers (`elegant.h`, included) with
+> PocketUI's meanings, plus its own from 0x100 (`PK_OP_HELLO`, `PK_OP_SERVER`; the shell's `PK_OP_SHELL`..
+> `PK_OP_GRAB` since phase P5 — the pocket shell `pocketshell`: its home, the tasks, the thumbnails, the system
+> keys, docs/03 §5.10.5). Since 2026-10-08 (the user's rule) **every app's main window is full screen** (filled; a
+> fixed one smaller than the work area centred over a matte of its colour), cards being a program's other windows
+> and the apps of `SD:/etc/pocketui.ini` `[cards]`; the keys follow the front program.
 
 Source: `kernel/gui/{gimage,kwin,surface}.cpp` + headers (`kern/gui/`); the window manager:
-`user/Servers/elegant/wm`. Rendering core ported from the author's FreeBASIC `SimpleOS`.
+`user/Servers/common/wm`. Rendering core ported from the author's FreeBASIC `SimpleOS`.
 
 ### 10.1 `GImage` — software rendering engine
 

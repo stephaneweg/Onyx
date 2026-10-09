@@ -1,9 +1,13 @@
 # systemkit.bi -- systemkit for Onyx BASIC (#import systemkit): made by tools/kitbi/kitbi.py from systemkit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit systemkit 76
+kit systemkit 93
 struct PreloadList 4100 PreloadList
 field n 0 i
+struct recent_doc 168 recent_doc
+field path 0 a 160
+field date 160 i
+field time 164 i
 clip_clear 0 v - clip_clear
 clip_get 1 b pipiLI clip_get fmt,nf,got,cap,data,len
 clip_get_file 2 i piI clip_get_file buf,cap,cut
@@ -69,3 +73,20 @@ locale_zone_summer 72 i i locale_zone_summer z
 locale_zone_utc 73 v ipi locale_zone_utc z,out,cap
 autostart_ensure 74 i sss autostart_ensure cmd,after,comment
 autostart_has 75 i s autostart_has cmd
+locale_zone_offset_at 76 i ii locale_zone_offset_at z,utc_minutes
+locale_zone_sync 77 i - locale_zone_sync
+session_file 78 i ipi session_file m,out,cap
+session_migrate 79 i - session_migrate
+session_mode 80 i - session_mode
+session_mode_find 81 i s session_mode_find name
+session_mode_name 82 s i session_mode_name m
+session_modes 83 i - session_modes
+session_programs 84 i ipi session_programs m,out,cap
+session_set_mode 85 i i session_set_mode m
+session_switch 86 i ii session_switch m,flags
+session_switch_start 87 l iii session_switch_start m,flags,keep_pid
+session_waiting 88 i pi session_waiting out,cap
+shell_ask 89 i i shell_ask what
+shell_running 90 i - shell_running
+recent_doc_add 91 v s recent_doc_add path
+recent_docs 92 i pi recent_docs out,max

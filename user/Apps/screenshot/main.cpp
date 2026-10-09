@@ -6,7 +6,7 @@
 // stroke away, a crop, Undo / Redo) --, the capture below, fitted in the window.
 //
 // A capture: the window hides itself (minimised), the screen is grabbed (kapi_screen_grab: what the
-// display shows), then shown frozen and darkened full screen (kapi_fullscreen_begin: every pointer and
+// display shows), then shown frozen and darkened full screen (uk_win_fullscreen_begin: every pointer and
 // key event comes here) while a rectangle is dragged or a window clicked; the full screen is taken at
 // once. A delay counts down in the window first. The picture is copied to the clipboard at once (clipd:
 // an image item) and notifyd says so; it is saved only on Save As (PNG, JPEG or BMP).
@@ -750,14 +750,14 @@ static void set_tool (int t) { if (t == TOOL_CROP && g_tool != TOOL_CROP) g_prev
 static void resize_root (int cw, int ch)
 {
 	struct kapi_win_geom g;
-	if (kapi_win_geometry (&g) != 0) return;
+	if (uk_win_geometry (&g) != 0) return;
 	int fw = g.w - g.cw, fh = g.h - g.ch;
 	if (g.aw > 0 && cw > g.aw - fw) cw = g.aw - fw;
 	if (g.ah > 0 && ch > g.ah - fh) ch = g.ah - fh;
 	if (cw == g_root->width && ch == g_root->height) return;
 	if (g_root->maximised ()) return;
 	int stride = cw;
-	unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+	unsigned *fb = uk_win_resize2 (cw, ch, &stride);
 	if (!fb) return;
 	g_root->canvas.adopt (fb, cw, ch, stride);
 	g_root->width = cw; g_root->height = ch;
@@ -770,7 +770,7 @@ static void resize_root (int cw, int ch)
 		if (y + ch + fh > g.ay + g.ah) y = g.ay + g.ah - ch - fh;
 		if (x < g.ax) x = g.ax; if (y < g.ay) y = g.ay;
 	}
-	if (x != g.x || y != g.y) kapi_move_window (x, y);
+	if (x != g.x || y != g.y) uk_win_move (x, y);
 }
 
 // ---- the capture: hiding, grabbing, choosing -----------------------------------------------------------------
@@ -812,7 +812,7 @@ static void ov_windows (Overlay &o)
 {
 	int pid = 0;
 	{	// (mine: the one minimised)
-		kapi_win_info all[48]; int n = kapi_win_list (all, 48);
+		kapi_win_info all[48]; int n = uk_win_list (all, 48);
 		o.nwin = 0;
 		for (int i = n - 1; i >= 0 && o.nwin < 48; i--)	// top first
 		{
@@ -941,14 +941,14 @@ static void ov_draw (Overlay &o)
 }
 static bool ov_run (Overlay &o)
 {
-	int w, h; unsigned *fb = kapi_fullscreen_begin (&w, &h);
-	if (!fb || w != o.W || h != o.H) { if (fb) kapi_fullscreen_end (); return false; }
+	int w, h; unsigned *fb = uk_win_fullscreen_begin (&w, &h);
+	if (!fb || w != o.W || h != o.H) { if (fb) uk_win_fullscreen_end (); return false; }
 	o.fb = fb;
 	o.barH = 48; o.barW = 8 + 3 * 44 + 6 + 44; o.barX = (o.W - o.barW) / 2; o.barY = 12;
-	kapi_cursor_pos (&o.mx, &o.my);
+	uk_win_cursor_pos (&o.mx, &o.my);
 	g_ov = &o;
-	kapi_set_pointer_handler (ov_ptr);
-	kapi_set_key_handler (ov_key);
+	uk_win_on_pointer (ov_ptr);
+	uk_win_on_key (ov_key);
 	ov_windows (o);
 	o.hotWin = ov_window_at (o, o.mx, o.my);
 	int lmx = -1, lmy = -1, lmode = -1, lhot = -2; bool ldrag = false;
@@ -1006,7 +1006,7 @@ static bool ov_run (Overlay &o)
 		}
 		else kapi_msleep (8);
 	}
-	kapi_fullscreen_end ();
+	uk_win_fullscreen_end ();
 	g_ov = 0;
 	g_root->attach ();						// (the window's event streams again)
 	// clip to the screen
@@ -1022,7 +1022,7 @@ static bool ov_run (Overlay &o)
 static void after_capture ()
 {
 	// the window back, as large as the capture wants
-	kapi_raise_app ("screenshot");
+	uk_win_app_raise ("screenshot");
 	if (g_base)
 	{
 		refresh_ui ();						// (Copy, Save As placed)
@@ -1092,12 +1092,12 @@ static void start_capture (int mode, unsigned winId)
 	if (mode != -2 && DELAYS[g_delay] > 0)
 	{
 		g_state = ST_COUNT; g_t0 = kapi_get_ticks ();
-		kapi_raise_app ("screenshot");
+		uk_win_app_raise ("screenshot");
 		refresh_ui (); g_view->invalidate (true);
 		return;
 	}
 	g_state = ST_HIDE; g_t0 = kapi_get_ticks ();
-	kapi_win_minimise (0);
+	uk_win_minimise (0);
 	refresh_ui ();
 }
 static void cancel_countdown () { if (g_state == ST_COUNT) { g_state = ST_IDLE; refresh_ui (); g_view->invalidate (true); } }
@@ -1205,7 +1205,7 @@ public:
 		if (g_state == ST_COUNT)
 		{
 			int el = (int) (kapi_get_ticks () - g_t0);
-			if (el >= DELAYS[g_delay] * 100) { g_state = ST_HIDE; g_t0 = kapi_get_ticks (); kapi_win_minimise (0); }
+			if (el >= DELAYS[g_delay] * 100) { g_state = ST_HIDE; g_t0 = kapi_get_ticks (); uk_win_minimise (0); }
 			g_view->invalidate (true);
 		}
 		else if (g_state == ST_HIDE && kapi_get_ticks () - g_t0 >= 35)	// (the compositor has drawn the screen without us)

@@ -12,7 +12,7 @@
 //                  Ctrl+Cmd+F are the Mac's own.
 //   the mouse      a right click (or Ctrl+click, a two-finger click) is the right button; the trackpad's
 //                  scrolling is made notches.
-//   the menu bar   the app's menus (kapi_set_menu) after the application menu (About, Hide, Quit), then
+//   the menu bar   the app's menus (uk_win_menu_set) after the application menu (About, Hide, Quit), then
 //                  Window and Help (the app's manual, when the card has one).
 //   files          dropped on the window or opened from the Finder (a .ledger double-clicked): the app's
 //                  GUI_EVENT_DROP, the paths made Onyx ones (MAC:/Users/...).

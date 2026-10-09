@@ -43,7 +43,7 @@ static Shape *g_shapes[N];
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "cppdemo");
+	fb = uk_win_create (W, H, "cppdemo");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 

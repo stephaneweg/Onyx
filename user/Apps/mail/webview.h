@@ -85,7 +85,7 @@ static void wv_start ()
 	{
 		int w = 1920, h = 1080;
 		struct kapi_win_geom g;
-		if (kapi_win_geometry (&g) == 0 && g.aw > 0 && g.ah > 0) { w = g.aw; h = g.ah; }
+		if (uk_win_geometry (&g) == 0 && g.aw > 0 && g.ah > 0) { w = g.aw; h = g.ah; }
 		g_wv.sid = kapi_surface_create (w, h);
 		g_wv.spx = g_wv.sid > 0 ? kapi_surface_map (g_wv.sid) : 0;
 		if (!g_wv.spx || !kapi_surface_size (g_wv.sid, &g_wv.sw, &g_wv.sh) || g_wv.sw <= 0 || g_wv.sh <= 0) { g_wv.sid = 0; wv_fail ("no surface"); return; }
@@ -214,7 +214,7 @@ static void wv_draw (Canvas &cv, int x, int y, int w, int h, int clipH)
 	if (!pixels)
 	{
 		cv.fillRect (x, y0, w, y1 - y0, 0xFFFFFF);
-		if (y + 40 >= y0 && y + 40 < y1) text_c (cv, x, y + 20, w, 40, g_wv.state == WS_STARTING ? "Opening the message..." : "", col_dim ());
+		if (y + 40 >= y0 && y + 40 < y1) text_c (cv, x, y + 20, w, 40, g_wv.state == WS_STARTING ? TR ("Opening the message...") : "", col_dim ());
 		return;
 	}
 	for (int yy = y0; yy < y1; yy++)

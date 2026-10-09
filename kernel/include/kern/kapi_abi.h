@@ -235,7 +235,31 @@
 //      syncs the volume's open files, flushes the stick's cache and unmounts it (-EBUSY while files are
 //      open, unless forced); vol_format makes a FAT / FAT32 / exFAT file system with a label -- never on
 //      SD: (the system's volume), on SD1:..SD3: only with KAPI_FMT_CARD.
-#define KAPI_ABI_VERSION	93
+// v94: several windows a program (docs/MULTI-WINDOW-STUDY.md): the graphics server's buffers in
+//      KAPI_WS_SLOTS slots (a program's windows 1..16 beside its first: KAPI_WS_SLOT_WIN, at
+//      KAPI_WS_VA_WIN in its memory -- the library arena ends at 28 GB), KAPI_WS_KICK names the window,
+//      the event queue 64 deep (32), USER_WS_SLOTS 256 (128). No table entry changes: AppKit's
+//      kapi_win_new / kapi_win_select / kapi_win_destroy speak to Elegant.
+// v95: the status area's icons (the menu bar's tray, kapi_tray_*: KAPI_TRAY_*, struct kapi_tray_info,
+//      GUI_EVENT_TRAY) -- Elegant's, reached by AppKit; no table entry changes.
+// v96: kapi_win_move (AppKit, Elegant's EL_OP_WIN_MOVE): any window (by its id, kapi_win_list's) moved -- the
+//      remote desktop puts a Pi window where the PC's copy of it was dragged.
+// v97: the graphics server per mode (docs/POCKETUI-TECH-STUDY.md section 3, phase P1): + lib_open_as (slot
+//      234): a library mapped into the caller AND found from now on under a second name, its ALIAS (the
+//      graphics server's own UIKit, SD:/lib/pocket/uikit.so, under SD:/lib/uikit.so: every program then
+//      maps it by that name) -- only the process holding the graphics server's role, only under SD:/lib/,
+//      never SD:/lib/appkit.so; kept while the server or a program holds it, orphaned when the server
+//      ends (taken over by the same server started again), dropped when another server is started.
+//      + KAPI_IMG_ALIAS in kapi_image_info.flags (the alias after the path's NUL). The server is chosen
+//      from SD:/etc/system.ini "shell =" (desktop: SD:/bin/elegant --serve, as before; pocket / console:
+//      SD:/bin/pocketui --serve --mode <m>), Elegant if it is missing or does not take the display;
+//      KAPI_WS_REGISTER gives the role to the program the kernel started (its name), not only "elegant".
+//      + KAPI_WS_SWITCH (a ws_ctl operation): the server ended, "shell =" read again, the matching one
+//      started; + KAPI_WS_IN_QUIT (the server asked to end).
+//      (Later the same day, no version change: the window API moved from AppKit -- its kapi_* window
+//      functions removed -- to UIKit, uk_win_* (user/Kits/uikit/win.h; docs/POCKETUI-TECH-STUDY.md phase
+//      P2). The table's entries and the KAPI_WS_* operations are unchanged.)
+#define KAPI_ABI_VERSION	97
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -395,7 +419,7 @@ struct kapi_dirent
 };
 
 // The calling app's window surfaces, for a user-side chrome (decoration) drawer
-// (ABI v28, kapi_get_chrome). `content` is the client canvas; `active`/`inactive` are
+// (ABI v28; uk_win_chrome). `content` is the client canvas; `active`/`inactive` are
 // the two pre-composited chrome copies the app draws its title bar / borders / close
 // box into (the compositor blits the one matching focus, magenta = transparent). Both
 // chrome pointers are 0 for a borderless window. Insets give the client offset inside
@@ -559,6 +583,20 @@ struct kapi_gpu_batch
 #define KAPI_DESK_MAX		8	// (v65) workspaces at most (kapi desk)
 #define KAPI_WIN_DESKTOP	0xFFFFFFFFu	// the id of the desktop (listed first: the wallpaper
 						// + the backmost windows, screen-sized; read whole only)
+// (v95) The status area of the menu bar (AppKit's kapi_tray_*): an icon a program, KAPI_TRAY_PX square,
+// 0xTTRRGGBB (TT its transparency: 0 opaque .. 255 see-through), a tip; a double click on it shows the
+// program's first window (back from minimised) and tells the program: GUI_EVENT_TRAY with value
+// KAPI_TRAY_OPEN to the handler it gave; a right click: KAPI_TRAY_MENU (the program only).
+#define KAPI_TRAY_PX		20
+#define KAPI_TRAY_MAX		16
+#define KAPI_TRAY_OPEN		1
+#define KAPI_TRAY_MENU		2
+struct kapi_tray_info
+{
+	unsigned pid;			// its program
+	unsigned gen;			// changes when its icon or its tip does
+	char	 tip[56];
+};
 struct kapi_win_info
 {
 	unsigned id;			// never reused
@@ -1004,6 +1042,8 @@ struct kapi_msghdr				// 48 bytes
 #define KAPI_IMG_LOADING	2		// being read from its file
 #define KAPI_IMG_UNNAMED	4		// unloaded, or its file changed: only its processes still use it
 #define KAPI_IMG_LIB		8		// (v83) a shared library (lib_open), not a program
+#define KAPI_IMG_ALIAS		16		// (v97) also found under an alias (lib_open_as): path is the real
+						// key, the alias follows the path's NUL in the same field
 
 // (v85) A channel of the sound's mixer (sound_clients).
 #define KAPI_SOUND_NAME	24
@@ -1109,8 +1149,9 @@ struct kapi_gpio_spi
 };
 
 // (v89) The graphics server's operations (ws_ctl (op, a0, a1, a2) -> >= 0, or -KAPI_Exxx; kern/wsrv.h).
-// KAPI_WS_ACTIVE is anyone's; KAPI_WS_REGISTER makes the caller the server (the program "elegant",
-// when no live process is); the others are the server's own (-KAPI_EPERM).
+// KAPI_WS_ACTIVE, KAPI_WS_SWITCH are anyone's; KAPI_WS_REGISTER makes the caller the server (v97: the
+// program the kernel started for the mode -- "elegant" or "pocketui", by its name --, when no live
+// process is); the others are the server's own (-KAPI_EPERM).
 #define KAPI_WS_ACTIVE		0	// () -> the server's pid while it owns the display, else 0
 #define KAPI_WS_REGISTER	1	// () -> 1 the caller is the display server, 0 another one is
 #define KAPI_WS_DISPLAY		2	// (take 1 / give back 0, struct kapi_ws_display *out or 0) -> 0;
@@ -1120,7 +1161,8 @@ struct kapi_gpio_spi
 #define KAPI_WS_WAIT		5	// (timeout ms, at most 1000) -> KAPI_WS_PENDING_* bits
 #define KAPI_WS_PENDING_INPUT	1	// events to take (KAPI_WS_INPUT)
 #define KAPI_WS_PENDING_CALL	2	// a program's request to take (KAPI_WS_NEXT)
-// The programs' windows (the server's own, but KAPI_WS_CALL and KAPI_WS_KICK: a program's, through AppKit):
+// The programs' windows (the server's own, but KAPI_WS_CALL and KAPI_WS_KICK: a program's, through UIKit's port
+// and AppKit's kapi_ws_ctl):
 #define KAPI_WS_ATTACH		6	// (pid) -> 0: the process's windows are the server's -- the kernel
 					// keeps its event queue (pop_event, should_exit, pump_wait as before)
 #define KAPI_WS_POST		7	// (pid, const struct kapi_event *) -> 1 queued for its pump, 0 full
@@ -1131,8 +1173,9 @@ struct kapi_gpio_spi
 #define KAPI_WS_REPLY		12	// (const struct kapi_ws_reply *) -> 0: its caller goes on
 #define KAPI_WS_CALL		13	// (struct kapi_ws_call *) -> the server's status (>= 0, or its
 					// own negative codes); -KAPI_ESRCH: no server owns the display
-#define KAPI_WS_KICK		14	// () -> the server's pid (> 0): it is told this program's pixels changed
-					// (another pid than before: the server was started again)
+#define KAPI_WS_KICK		14	// (window) -> the server's pid (> 0): it is told this program's pixels
+					// changed (another pid than before: the server was started again);
+					// window: the program's window's number (v94; 0 its first one)
 #define KAPI_WS_FOCUS		15	// (pid, 0: none) -> 0: the program that has the keyboard (kapi_key_held,
 					// a pad's focus answer by it)
 #define KAPI_WS_PROC_NAME	16	// (pid, char *out, cap) -> its length: a live process's name
@@ -1141,13 +1184,23 @@ struct kapi_gpio_spi
 					// it: what a server started again makes it anew from); zero until set
 #define KAPI_WS_STATE_BYTES	2304
 #define KAPI_WS_CLIENTS		18	// (unsigned *pids, max) -> how many: the attached programs
+#define KAPI_WS_SWITCH		19	// (v97) () -> 0: the graphics server ended (KAPI_WS_IN_QUIT, killed after
+					// 3 s), every alias dropped, SD:/etc/system.ini "shell =" read again and
+					// its server started and waited for (5 s); 1: it failed, Elegant was
+					// started instead (the desktop); -KAPI_EBUSY: a full-screen program has
+					// the display, or a start / switch is under way; -KAPI_EINVAL: called by
+					// the server itself; -KAPI_EIO: no server took the display (the console)
 #define KAPI_WS_DATA_MAX	4096	// a request's, an answer's bytes at most
 #define KAPI_WS_SLOT_CANVAS	0	// a buffer's place in the program: its window's client area,
 #define KAPI_WS_SLOT_FRAME	1	// its frame's active copy,
 #define KAPI_WS_SLOT_FRAME_OFF	2	// its frame's inactive copy
-#define KAPI_WS_SLOT_WALLPAPER	3	// the program's copy of the wallpaper (kapi_wallpaper_buffer)
-#define KAPI_WS_SLOT_XFER	4	// pixels the server hands the program (kapi_win_read)
-#define KAPI_WS_SLOTS		5
+#define KAPI_WS_SLOT_WALLPAPER	3	// the program's copy of the wallpaper (uk_win_wallpaper_buffer)
+#define KAPI_WS_SLOT_XFER	4	// pixels the server hands the program (uk_win_read)
+#define KAPI_WS_SLOT_MORE	5	// (v94) a program's other windows: window w (1 .. KAPI_WS_WINDOWS_MORE),
+					// part p (0 canvas, 1 / 2 its frame's copies) -> KAPI_WS_SLOT_WIN (w, p)
+#define KAPI_WS_WINDOWS_MORE	16
+#define KAPI_WS_SLOT_WIN(w, p)	(KAPI_WS_SLOT_MORE + ((w) - 1) * 3 + (p))
+#define KAPI_WS_SLOTS		(KAPI_WS_SLOT_MORE + KAPI_WS_WINDOWS_MORE * 3)
 // ... and where each is in the program's memory (kern/layout.h USER_WINDOW_*: where a window's canvas
 // and frame always were)
 #define KAPI_WS_VA_CANVAS	0x300000000ULL
@@ -1155,6 +1208,8 @@ struct kapi_gpio_spi
 #define KAPI_WS_VA_FRAME_OFF	0x330000000ULL
 #define KAPI_WS_VA_WALLPAPER	0x340000000ULL
 #define KAPI_WS_VA_XFER		0x350000000ULL
+#define KAPI_WS_VA_MORE		0x700000000ULL	// (v94) window w's part p: + (w - 1) * 256 MB + p * 64 MB
+#define KAPI_WS_VA_WIN(w, p)	(KAPI_WS_VA_MORE + (unsigned long long) ((w) - 1) * 0x10000000ULL + (unsigned long long) (p) * 0x4000000ULL)
 #define KAPI_WS_BUF_ADOPT	1	// the buffer the program already has in that slot, of that size, left by a
 					// server that ended: taken as it is (its pixels kept) instead of a new one
 struct kapi_ws_buf
@@ -1206,13 +1261,16 @@ struct kapi_ws_present
 };
 #define KAPI_WS_IN_POINTER	1	// x, y (screen), buttons (bit 0 left, 1 right, 2 middle), a = wheel notches
 #define KAPI_WS_IN_KEY		2	// keys: the keyboard's cooked string (characters, VT100 escapes)
-#define KAPI_WS_IN_MODS		3	// a = the modifiers held (1 Ctrl, 2 Shift, 4 Alt)
+#define KAPI_WS_IN_MODS		3	// a = the modifiers held (1 Ctrl, 2 Shift, 4 Alt, KAPI_WS_MOD_SUPER)
+#define KAPI_WS_MOD_SUPER	8	// (2026-10-08, no version change) a Super key (the Windows key) held: PocketUI's Home
 #define KAPI_WS_IN_HELD_USB	4	// keys[0..5]: the USB keyboards' report (usage codes held)
 #define KAPI_WS_IN_HELD		5	// a = a logical key code, buttons = 1 down / 0 up (injected: vncd, rdpd)
 #define KAPI_WS_IN_GONE		6	// a = the pid of an attached program that ended
 #define KAPI_WS_IN_KICK		7	// a = the pid of a program whose pixels changed (KAPI_WS_KICK)
 #define KAPI_WS_IN_SCREEN	9	// x, y = the screen's new size (kapi_screen_set, done by the kernel)
 #define KAPI_WS_IN_FULLSCREEN	8	// a = the pid of a program that took (buttons 1) / gave back (0) the full screen
+#define KAPI_WS_IN_QUIT		10	// (v97) the kernel asks the server to end (KAPI_WS_SWITCH): it gives the
+					// display back and exits; else it is killed after 3 s
 struct kapi_ws_input
 {
 	unsigned type;			// KAPI_WS_IN_*
@@ -2069,12 +2127,28 @@ struct TKApiTable
 	int (*vol_mount) (const char *vol);
 	int (*vol_format) (const char *vol, const struct kapi_format *fmt);
 
+	// --- v97: a library under a second name (kern/image.h; kernel.cpp, sys/kapi.cpp; docs/POCKETUI-TECH-STUDY.md) ---
+	// lib_open_as: the library `path` opened and mapped into the caller exactly as lib_open (same forms:
+	// a bare name or a path; the version checked on it, the real library), then found under `alias` too
+	// -- every lib_open of alias (a program's bind of "uikit") gets this image, before any library whose
+	// real path is alias -> its export table, or 0 with *err = -KAPI_EPERM (the caller is not the
+	// graphics server -- KAPI_WS_REGISTER --; or alias or path not under SD:/lib/, or either is
+	// SD:/lib/appkit.so), -KAPI_EBUSY (alias held by another live process, or by the caller on another
+	// library; this library has another alias), -KAPI_EINVAL (path = alias; not a library), or
+	// lib_open's errors. Asked again by its owner: the same table (the same image, even if its file
+	// changed). The alias lives with the image while the server or a program holds it; the server
+	// ended: orphaned (programs started meanwhile still get it), taken over by the same server started
+	// again (same path), replaced by another path; another server started: dropped. image_unload of the
+	// alias: -KAPI_EBUSY. The order in a server's start: KAPI_WS_REGISTER, lib_open_as, KAPI_WS_DISPLAY.
+	const void *(*lib_open_as) (const char *path, const char *alias, unsigned min_version, int *err);
+
 #ifndef __aarch64__
 	// --- NOT ON ONYX: the windows, for a stand-in kernel that has a window manager (the PC's simulator,
-	// the hosts of the tests, Koton for Windows) -- the builds that take AppKit's calls inline against
-	// such a table (appkit_calls.inc's KAPI_HOST). On Onyx the windows are Elegant's, the graphics
-	// server (a user process: kern/wsrv.h, user/Kits/appkit/elegant.h), and the kernel's table ends
-	// above: these entries were removed from it on 2026-10-05 (kapi v90).
+	// the hosts of the tests, Koton for Windows) -- UIKit's window API (uk_win_*) relays to them there
+	// (user/Kits/uikit/port/port_desktop.cpp; AppKit's KAPI_HOST bodies until 2026-10-08). On Onyx the
+	// windows are Elegant's, the graphics server (a user process: kern/wsrv.h; its protocol
+	// user/Kits/uikit/port/elegant.h), and the kernel's table ends above: these entries were removed
+	// from it on 2026-10-05 (kapi v90).
 
 	// --- windowing ---
 	unsigned *(*create_window) (int w, int h, const char *title);
@@ -2207,6 +2281,21 @@ struct TKApiTable
 	// GUI_EVENT_WINRESIZE, lValue = (x << 48) | (y << 32) | (client_w << 16) | client_h (x, y: the
 	// frame's top left on the screen, 16 bits signed each), and the app resizes and moves itself.
 	int (*win_resizable) (int on, int min_w, int min_h);
+
+	// --- v94: a program's other windows (uikit/win.h uk_win_new / _select / _destroy) ---
+	int (*win_new) (int x, int y, int w, int h, const char *title, unsigned flags, unsigned **canvas);
+	int (*win_select) (int win);
+	void (*win_destroy) (int win);
+
+	// --- v95: the status area's icons (uikit/win.h uk_win_tray_*) ---
+	int (*tray_set) (const unsigned *px, const char *tip, gui_handler h);
+	void (*tray_clear) (void);
+	int (*tray_list) (struct kapi_tray_info *out, int max);
+	int (*tray_icon) (unsigned pid, unsigned *px);
+	int (*tray_activate) (unsigned pid, int kind);
+
+	// --- v96 ---
+	int (*win_move) (unsigned id, int x, int y);
 #endif
 };
 
@@ -2286,6 +2375,7 @@ KAPI_CHECK_SLOT (vol_list, 230);
 KAPI_CHECK_SLOT (vol_eject, 231);
 KAPI_CHECK_SLOT (vol_mount, 232);
 KAPI_CHECK_SLOT (vol_format, 233);
+KAPI_CHECK_SLOT (lib_open_as, 234);
 
 #ifdef __cplusplus
 }

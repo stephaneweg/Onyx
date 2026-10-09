@@ -2,10 +2,11 @@
 // same.c -- SameGame. A grid of coloured blocks; click a block and its connected
 // same-colour group (>= 2) vanishes, the column blocks fall, and empty columns
 // collapse left. Score grows with bigger groups. Mouse-driven via the canvas-click
-// event (kapi_set_click_handler); 'r' starts a new board.
+// event (uk_win_on_click); 'r' starts a new board.
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
+#include "../games/game.h"		// (gwin_*: the window resizable, the game scaled to it -- PocketUI fills it)
 
 #define GW	18
 #define GH	13
@@ -188,22 +189,22 @@ static void redraw (void)
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "same");
+	fb = gwin_create (W, H, "same");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 
 	g_rng = kapi_get_ticks () | 1u;
-	kapi_set_click_handler (on_click);
-	kapi_set_key_handler (on_key);
+	gwin_on_click (on_click);
+	uk_win_on_key (on_key);
 	restart ();
 
 	while (!should_exit ())
 	{
 		pump_events ();
 		redraw ();
-		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
+		gwin_present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (16);
 	}
 	return 0;

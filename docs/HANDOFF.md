@@ -4,6 +4,949 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Where PocketUI stands on the morning of 2026-10-09 (the night's work, P7 to P10) -- read this first
+
+Everything below is in `main`, published (onyx 2026.10.137, uikit 1.950.2 and the apps' packages) and on the Pi
+(192.168.0.10, left in **pocket** mode).
+
+| Phase | State | Seen on the Pi |
+|---|---|---|
+| **P7** the apps' migration | **12 apps done** (Media Player, Photos, Game Library, Mail, Calendar, IRC, Ledger, Archiver, Icon Editor, FM Tracker, Telegram, PDF Viewer), each in English and French. **Left**: Courier, Slides, Paint, QBStudio, 3DForge (side panels + translation: 4 000 to 10 000 lines each); the toolbars' priorities, the tabs, the dialogs on `FormDialog`, the tables on `DataGrid`, `uk_set_input_type` in the apps' own editors, the Control Panel's applets | they start and stay up; Ledger's panel captured |
+| **P8** | done: the split view (Super+Left / Right, the switcher's S), Setup's interface choice | not tried by hand (needs a keyboard: Super+Left) |
+| **P9** | first version: `consolehome` (the home, the menu over an app with the app's menus, the pad, the pad as keys in the apps). **Left**: the games' quick menu (save states), the ROMs on the home, the top edge | the home captured at 1920 x 1080 (`docs/compact-shell/real/pi-consolehome-1080.png`); **no pad tried** |
+| **P10** | the on-screen keyboard (pocket). **Left, needs a device**: the scale (2 x composition, native scale, `icon@2x`), portrait sizes, the rotation, the touch input | the keyboard captured under the text editor (`pi-keyboard-1080.png`) |
+
+**Fixed on the way**: a session switch never ended the old session's programs (`/bin/session`, Setup: the
+process list's pages column); Telegram's `CONNECTION_NOT_INITED` (not confirmed with a real sign-in: no API id here).
+
+**For the user to try** (a keyboard and a pad on the Pi): Super+Left with two apps open; Settings > Mode > Console,
+the pad's d-pad / A / B / Home, an emulator then Home (or Select + Start); quick settings > Show keyboard, and the
+Keyboard tile on "with the text fields"; Telegram's sign-in.
+
+**Owed, not doable here**: `screenshots/media-*.png` (no `ffmpeg` program in WSL: `sudo apt install ffmpeg`), the
+Word / PDF exports (`python docs/build_docs.py`: no pandoc), Ledger's Mac build. (The copy of the packages' key that lay
+untracked in the repository's root was moved out by the user on 2026-10-09; it was never committed.)
+
+## PocketUI phase P10, the part that needs no new hardware (2026-10-09): the on-screen keyboard; a session-switch fix
+
+- **The on-screen keyboard** (pocket only; docs/04 *The on-screen keyboard*, docs/03 §5.10.3's table):
+  `user/Apps/pocketshell/keys.h` -- a fourth window of the shell (`W_KEYS`), opaque, on the bottom edge: PocketUI
+  takes it for a band (the work area ends above it) and tells the shell the front program's focused field
+  (`UK_SHELL_EV_TEXT`); the keys are `kapi_inject_key`. Super+K, quick settings' *Show keyboard*; the *Keyboard* tile:
+  on demand (the default -- every pocket screen today has a real keyboard or a remote desktop) or with the text
+  fields (`SD:/etc/pocket/keyboard`). QWERTY / AZERTY by the system's language, figures, signs and accents, a
+  Terminal's row. No uikit ABI change (one event value added to `win.h`).
+  **Which widgets bring it**: a `Textbox` (always did), a `Textarea` (its constructor now calls
+  `uk_set_input_type (this, UK_IN_TEXT)` -- uikit 1.950.1), the Terminal's view (`UK_IN_TERMINAL`). An app's OWN
+  text widget (Letters' page, the Spreadsheet's grid, QBStudio's editor, Jet's page...) must call
+  `uk_set_input_type` itself: not done yet (P7's remaining list) -- there the keyboard comes by Super+K / the tile.
+  An app with a loop of its own (no `Root::step`: the Terminal and most of the big apps) never told the server its
+  focused control: `Widget::draw` now does it for the program's first window (uikit 1.950.2) -- the viewport's
+  "focused control kept in view" gains from it too. **Seen on the Pi**: the keyboard under the text editor
+  (`docs/compact-shell/real/pi-keyboard-1080.png`), the editor sized again above it.
+- **Fixed: a session switch left the old session's programs running** (seen on the Pi: after pocket -> console the
+  old `menubar` and `pocketshell` stayed, polling the new server). `/bin/session` read the kernel's process list
+  without its pages column (`<pid> <a|k> <state> <pages> <name>`): no name ever matched, nothing was ended. Setup's
+  `system.h` had the same mistake. Checked on the Pi: `session: ending menubar / pocketshell / consolehome`.
+- **NOT done in P10 -- needs a device or a kernel session, the user to decide** (the study's §6.3, §6.4, §7.4):
+  the **scale** (per-window 2 x composition in the compositor, the native scale opt-in `apps.ini` /
+  `uk_logical_units`, `icon@2x.bmp`), **portrait sizes** under 640 px wide in `kapi_screen_set`, the **rotation**,
+  the **touch input** (`KAPI_WS_IN_TOUCH`: Circle's touch drivers are in the nested `circle/` repository, not
+  checked out in this clone; no touch screen here to try it). The on-screen keyboard is drawn for a finger (44-unit
+  keys) and takes the pointer's presses: a touch driver that feeds the pointer makes it work as it is.
+
+## PocketUI phase P9, first version (2026-10-09): `consolehome`, the console mode's shell -- tested on the PC
+
+`user/Apps/consolehome/` (docs/03 §5.10.5b, docs/04 *The console mode*): the home (categories + tiles, the PS2
+browser's mood of the design study's mock-ups `docs/compact-shell/mockups/console-*.png`), the menu over an app with
+**the app's own menus** in it, the pad / keyboard / mouse; `SD:/etc/session/console` now runs it (a card whose file
+was changed by hand keeps its own). PocketUI: the policy's `focus` hook (the shell has the pads while its overlay is
+up and at home). **The pad as keys** in the apps that are not games (consolehome types for it: `pad_type`). In
+English and French (40 words).
+
+- **Left for later, the user to decide** (the study's §7.5): the games' quick menu (save / load state: needs a call
+  every emulator answers), the ROMs on the home itself (today: the Game Library is a tile), the top edge's reveal,
+  Home + L1 / R1 as a switcher, `apps.ini`. (The 3 s tip "Home  Menu" at an app's start: done.)
+- **Known**: the button that closes the menu (A, B) is still held when the game gets the pad back: the game sees
+  it pressed once. A game in the kernel's full screen (F11) cannot be covered by the menu.
+- **To try on the Pi**: `session switch console` (from pocket: Settings > Mode), a pad's d-pad / A / B / Home, an
+  emulator started from the Game Library's tile then Home (or Select + Start), back by the menu's Settings > Mode.
+
+## PocketUI phase P8 done (2026-10-09): the split view, Setup's interface choice -- tested on the PC (`server_sim`: 363 checks)
+
+- **Split view** (`user/Servers/pocketui/wm.cpp`: `s_nSide`, `s_nSplit`, `SplitOn`, `AreaOf`, `ServerInfoFor`,
+  `SplitKey`, `Divider`; docs/03 §5.10.3's table, docs/04 *The split view*): two programs, each laid out in its half
+  (`uk_win_server` answers the half and its size class); Super+Left / Right starts it, Super+Up or home ends it,
+  Super+[ ] the divider, Super+Tab or a press passes the front; the switcher's **S** (`uk_shell_split`,
+  `PK_OP_SPLIT`, now implemented -- the shell only). Scenes `pocket-split`, `pocket-split-portrait` in
+  `tools/tests/server_sim/run.sh`.
+- **Setup**'s welcome page chooses the interface (Desktop / Pocket / Console; pocket proposed under 1024 x 600);
+  `finish ()` calls `session_switch_start` when it is not the session running. Quick settings were done at P5.
+- To try on the Pi: the split with two real apps (Notes + Ledger), with RDP's Super key; Setup ending into pocket
+  (`run setup` from a terminal on a card that may be switched).
+
+## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail, the Calendar, IRC, Ledger, the Archiver, the Icon Editor, FM Tracker, Telegram and the PDF Viewer migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, published
+
+P7 is the apps' migration to P6's adaptive widgets (`docs/POCKETUI-TECH-STUDY.md` §6.15, §9: about 32 session-days, one
+app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10.6):
+
+1. Its sidebar class becomes a `SidePanel` (`UK_SP_LEFT`, `UK_SP_NAVIGATION`): `side_build ()` makes the items (made
+   again only when a signature of what they show changes -- a hash of the names and counts --, so the scroll and the
+   hover survive a refresh), `side_select ()` the item of the page shown, `onSelect` navigates, `onItemMenu` the right
+   click's menus, `setIconFn` the app's own icons (centred in the box given: `x + (size - 16) / 2`), `setFaces (0,
+   <the app's small face>)` the headings' face. What was under the items (Media's *+ New playlist* and the songs'
+   count) is a small widget given to `setFooter` -- in console it takes the column's dark blue itself
+   (`uk_size_class () == UK_SC_CONSOLE`). A link among the items (Photos' *New album...*) is an item whose `onSelect`
+   selects the shown page back, then acts.
+2. The layout code calls `side->place (x, y, w, h)` (never `left` / `top` / `resizeTo`) and gives the content
+   `side->reservedWidth ()`; `onPresentation`, `Root::onResized` and **`Root::onSizeClass`** all lay out again.
+3. **The panel is added to the Root AFTER the content and the bars** (the last child is on top): a drawer's tab and an
+   open drawer or an expanded rail must cover them -- added first, the tab was hidden under the content.
+4. `uk_scroll_gutter ()` where the app subtracted `UK_SBW` for its content's width.
+5. The app is **translated** (CLAUDE.md: an app worked on): `TR ()` around its words, `uk_lang_init ()` after the faces,
+   `sdcard/apps/<app>.app/lang/fr.txt`. A table of words at namespace scope takes `TRN ("...")` and `TR (T[i])` where
+   it is drawn (a `TR ()` there would run before `uk_lang_init`). **A header a kit includes too** (Photos'
+   `imgops.h`, included by ImageKit) defines `TRN` itself when UIKit's is not there. Never wrap what is stored or
+   compared (Media's *Unknown artist*, the file kinds' filters, paths).
+6. Its fixed layouts that break in a narrow window are given a width rule (below); the desktop's geometry is kept
+   exactly where the window is as wide as before.
+
+- **Media Player** (`user/Apps/media/main.cpp`, `videos.h`): the sidebar a SidePanel + `SideFoot`; the bar of what
+  plays in three layouts by its width (`NowBar::narrow ()`, `seekW ()`, `seekX ()`: >= 1000 the desktop's, a 300 px
+  line under it, under 760 the line across the bar, the cover alone, the queue and the speaker); the welcome page's
+  lines wrapped (`Content::text_cw`), its buttons as wide as their words; a page title's sub line cut where the page
+  ends (`section_head`). Translated: 180 words. Desktop: the sidebar's labels are 6 px further right and its icons
+  3 px (the shared SidePanel's look, the study's decision 9); nothing else moves.
+- **Photos** (`grid.h`, `app.h`, `main.cpp` and the others for `TR`): the left column a SidePanel with the counts as
+  trailing values; **All albums** is now an item (it was a click on the *ALBUMS* heading -- a heading is not
+  clickable); *New album...* and *Add a folder...* items with a +; the albums' and folders' right-click menus through
+  `onItemMenu`. Translated: 185 words (the days and months too). `shots.sh`'s `photos-albums` clicks the new item.
+- **Game Library** (`user/Apps/gamelib/main.cpp`, a Root that draws itself, as the File Viewer): the pilot's way --
+  **in pocket and console its sidebar is a SidePanel** (`g_sp`, made when `uk_size_class () != UK_SC_REGULAR`: the
+  groups as foldable headings, the systems with their emulators' icons and counts, one without a game disabled, the
+  folders, *Add Folder...*; a folder's right-click menu), **the desktop keeps its own sidebar, pixel for pixel**
+  (`shots.sh gamelib`: the picture unchanged). `SIDE_W` is now what the panel takes (`g_sideW`: `SIDE0` 220, the
+  rail's width, 0 for a drawer). Translated: 33 words -- its messages built by `lx_cat` are `snprintf` formats now.
+  `adaptive.sh <out> gamelib`: 8 checks pass (the sample ROMs of `gamelib_samples.py`).
+- **Mail** (`user/Apps/mail/main.cpp`, `app.h`; `TR` in the UI headers, `sync.h`, `accounts.h`, `webview.h`): the left
+  column a SidePanel -- *All inboxes* (a badge), *Starred*, then **each account an item** (its coloured mark drawn by
+  the icon function, `SI_ACCOUNT + a`; ▾ / ▸ as its trailing value; choosing it folds its folders: `g_open`, the items
+  made again) and its folders (indented by their depth, the unread as badges); a `SideFoot` (Contacts, Accounts and
+  settings, the worker's line / the last error). On the desktop an account's row no longer shows its address under
+  its name. **One pane in a narrow window** (`g_onePane`: the panes' room under 560 px): the list, or the conversation
+  opened across the window; back by the toolbar's ‹ (`T_BACK`, it was declared and unused) or Esc
+  (`MailRoot::onKey`); `refresh_all` lays out again when a conversation opens or closes. The toolbar under 600 px:
+  the pill without its words, a 110 px search. Translated: 239 words -- **not** *Re:* / *Fwd:* (compared), the default
+  file names, the protocol's words; the quoted reply's line and the forwarded header ARE translated (they are what the
+  user writes). `sync.h` and `accounts.h` define `TR` / `TRN` as the word itself when UIKit is not included
+  (`tools/tests/mail/modeltest.cpp`). `adaptive.sh <out> mail` (it starts `fakemail.py`'s two servers; needs
+  `MEDIA_SHOTS`'s `libmb.a` and `mkaccounts`): 800 x 480 (a conversation opened), 1280 x 720 in French, portrait (the
+  list; a conversation; the drawer), console.
+- **Calendar** (`user/Apps/calendar/main.cpp`, `views.h`, `dialogs.h`, `model.h`): its side `Panel` (the month, the
+  calendars, the tasks, *+ Add a task*) is the **content** of a navigation SidePanel (`setContent`: free content, no
+  items -- whole on the desktop and a screen four times its 272 px, a **drawer** otherwise, never a rail); the period's
+  panel is no longer anchored but placed by `lay_out ()` beside `reservedWidth ()`. Its `uikit::ToolBar` got
+  priorities (*Today* and the period's title `UK_TB_IF_ROOM`: they wait behind » in a narrow window); *New event* and
+  *Today* are as wide as their words. Translated: 127 words -- the months' and days' tables `TRN` + `TR` where drawn,
+  the dialogs' two drop-down lists made in the language at the first dialog (`lists_tr`), the weekday picker's letters
+  the days' first letters, a date day first in French (`day_first ()`); the categories made at first (*Work*...) are
+  the user's data: not translated. A task's due date measured bold when it is drawn bold (it was cut). The desktop:
+  unchanged but the bar's two buttons in French. `adaptive.sh <out> calendar`: 8 checks pass.
+- **IRC** (`user/Apps/irc/main.cpp`, a plain app: UIKit's bitmap font): the pilot's way again -- in pocket and console
+  the conversations are a SidePanel (`g_sp`: the server, the channels indented, *Private messages* a heading, the
+  unread as badges, a mention " @" in the label) and the conversation's panel is a child of the Root placed by
+  `sp_lay_out ()`; **the desktop keeps its `HSplitter` and `TreeView`** (SidePanel's `setWidths` only stores the range:
+  no divider to drag yet -- replacing the splitter would have lost it). Translated: 75 words, most of them the pieces
+  of lines put together (`scat`): their spaces matter. `adaptive.sh <out> irc` (shots.sh's canned session): 8 checks.
+- **A catalogue's trailing spaces**: the tool that wrote `lang/fr.txt` took the spaces off the lines' ends -- *" at "*
+  became *" à"* (the Calendar's reminders, Mail's attachments line, IRC's pieces). Fixed in the three catalogues
+  (`check.py` does not see it: it compares the keys). After writing a catalogue, give each translation its English's
+  trailing spaces back (a five-line script did it here) and look for ` $` in the file.
+- **The menu bar's gem** (the user, 2026-10-09: "a black diamond on the Pi; I prefer the simulator's light blue
+  lozenge"): `menubar`'s `draw_gem` now draws PocketUI's band's lozenge (`Servers/pocketui/band.cpp`: light blue,
+  lighter at its top, a darker rim -- white on the lit Home button) instead of a one-colour cut stone in the bar's ink.
+  Pocket only (the desktop's bar: the same pixels, `run.sh`'s check). `run.sh`: all passed.
+- **"The keyboard does not work from RDP in pocket mode"** (the user, 2026-10-09): **a false alarm** (the user, the
+  same day: it works). What stays of it: `rdpd` logs what it tells the client under PocketUI each time the windows or
+  their flags change (`told_log`: kmsg `rdpd: told N windows`, a line a window, *(plain: takes the keys)* on those
+  Onyx Remote makes a child window of) -- the first thing to read at the next report. And an observation NOT looked
+  into: after a switch pocket -> desktop from the Mode applet, the old session's `pocketshell` and `menubar` still ran
+  beside the desktop's (session.c keeps the switcher's ancestors, `is_parent`: the applet was opened from pocketshell).
+- **Ledger** (the user: "a SidePanel"): **`SidePanel::setHeader (Widget *, int h)`** added to UIKit (`uikit.abi` entry
+  949, **uikit 1.950**, both UIKits -- `abi_same`: the same 950 entries; the layout lock untouched: the state is behind
+  `ext`): h px over the items and the pages, a child placed by `layout ()`, hidden while the panel shows no box (a rail
+  not expanded, an overlay closed) -- `sp_head ()` is its height now, taken off the box wherever the items are drawn,
+  hit and scrolled. Ledger's `SideBar` is no longer a widget but what the pages call (`set`, `refresh`, `invalidate`)
+  over a SidePanel: its **header** `SideHead` (the company, its VAT number, the years' `ChoiceBox` a child), its
+  **footer** `SideFoot` (the books' file; the Mac's language switch), the pages its items (ids = the pages, made once;
+  `build ()` sets their disabled state -- no books open -- and badges). The pages are placed by `side_lay_out ()` at
+  `g_sideW` (`reservedWidth ()`); the panel is brought to the front after each page is made (`make_page`). The late
+  documents' badges are the accent's pills now (they were red / amber: the shared look). `adaptive.sh <out> ledger`
+  (the demo company): 8 checks. Ledger's Mac build (`pc/macOS`) takes UIKit's sources: NOT rebuilt here.
+- **The menu bar in pocket, again** (the user, 2026-10-09: "the Onyx menu in pocket too, the icon beside it the shortcut
+  to Home"): the **gem** is Home (`on_gem (x)`, lit while the home shows), the **name** opens the Onyx menu as on the
+  desktop (highlighted while open). `run.sh`'s `bar-onyx`: two clicks on the gem ask the shell twice and open nothing,
+  a click on the name changes the bar and asks nothing; all passed.
+- **Telegram "CONNECTION_NOT_INITED" at sign-in** (the user, 2026-10-09): `mtproto.h` noted the connection initialised
+  as soon as the first request was SENT in `invokeWithLayer (initConnection (...))`; the server often refuses that
+  first message before reading it (`bad_server_salt`: the salt is not known yet; `bad_msg_notification` 16 / 17: the
+  Pi's clock) and it was sent again BARE. Now every request is wrapped until the server has answered a wrapped one
+  (`Req::wrapped`, `m_inited` set in `rpc_result`), and an `rpc_error` CONNECTION_NOT_INITED sends the request again
+  wrapped (3 times at most) instead of failing. The offline tests pass (56 checks); **the sign-in itself was NOT tried
+  here** (no `TG_API_ID` / `TG_API_HASH` on this PC): the user's to confirm.
+- **Archiver** (`user/Apps/archiver/main.cpp`; `TR` in `widgets.h`, `dialogs.h`): the pilot's way -- in pocket and
+  console its left pane (the folders' tree and the archive's card) is the **content** of a SidePanel inside a body
+  panel (`g_sp`, `body_lay_out ()`: the list beside `reservedWidth ()`), a drawer on a small screen; the desktop keeps
+  its `HSplitter`. Translated: 177 words (many are pieces of a line: their spaces; `arcfk.h`'s three engine errors and
+  the default file name stay English). `adaptive.sh <out> archiver` (arc_sample.py's archive): 8 checks.
+- **Icon Editor** (`user/Apps/iconedit/main.cpp`, a plain app, a FIXED 700 x 520 window on the desktop -- unchanged):
+  in pocket and console it is **resizable and fills** (`lay_out ()`: the grid takes what is left, the status line at
+  the foot), and its right column (the palette, *More...*, the previews, the mouse's hints) is built into a `Panel`
+  given to an **inspector** SidePanel as its one page (`UK_SP_RIGHT`, `addPage`: the first inspector of P7 -- a
+  slide-over in landscape under 4 x 170 px, a bottom sheet in portrait). Translated: 46 words (the tools' names fit
+  their 66 px buttons). `adaptive.sh <out> iconedit`: 8 checks.
+- **FM Tracker** (`user/Apps/fmtracker/main.cpp`): in pocket and console its side panel is the content of a navigation
+  SidePanel (a drawer on a small screen); `SIDE_W` is now `g_sideW` (what the panel takes: `SIDE0` 156, or 0), so the
+  grid, the channels' heads and the piano take the width. The desktop: unchanged. Translated: 133 words. Its toolbar is
+  a fixed row: in a 480 px portrait window the edit buttons are under *Follow* (the menus have them) -- to do with the
+  toolbars' pass. `adaptive.sh <out> fmtracker` (needs `MEDIA_SHOTS`'s AudioKit): 8 checks.
+- **Telegram** (`user/Apps/telegram/main.cpp`; translated before): it needed little -- its conversations already open
+  in their own windows by default (`windows=1`: under PocketUI, one window at a time, that IS the master-detail), and a
+  pane under 640 px drops the contact's pictures' column by itself. Added: `windowed ()` -- in pocket and console a
+  window under 720 px takes the own-window mode whatever `windows=` says (the list alone, a conversation over it);
+  `apply_mode` no longer resizes the main window there (PocketUI fills it). The contact's column as an inspector
+  SidePanel: not done (it hides itself when narrow). `adaptive.sh <out> telegram` (`--demo`, `windows=0`; needs
+  `MEDIA_SHOTS`'s `libmbtg.a`): side by side at 800 x 480 and 1280 x 720, the list alone at 480 x 800; 8 checks.
+- **PDF Viewer** (`user/Apps/pdf/main.cpp`): in pocket and console its side panel (`PdfSidePanel`: the pages, the
+  contents, the search) is the content of a navigation SidePanel -- beside the pages on a wide screen when *Side Panel*
+  is on, a **drawer** on a small one (its tab always there with a document; F9 / the toolbar's button open and close
+  it: `toggle_side`). The desktop: unchanged. Translated: 145 words (the plurals as whole formats; the home's folders'
+  names `TRN`). Its home-made tabs and toolbar: not yet `TabStrip` / `uikit::ToolBar` (in a 480 px window the toolbar's
+  last tools are cut). `adaptive.sh <out> pdf` (needs `MEDIA_SHOTS`'s MuPDF; a manual of `sdcard/manuals`): 8 checks.
+- **Tests (PC)**: `sh tools/tests/server_sim/adaptive.sh <out> media` and `... photos` -- each app under PocketUI at
+  800 x 480 (the rail; the rail expanded under the pointer), 1280 x 720 (whole; in French), 480 x 800 (the drawer's tab;
+  the drawer opened), console 640 x 480 (the column): 8 checks each, all pass; the pictures looked at. The Media
+  Player's part needs what `shots.sh media` builds (AudioKit, `user/Libs/av`, FFmpeg for the PC): `MEDIA_SHOTS=<its
+  SHOTS_TMP> FFMPEG_HOST=<its folder>`; skipped with a line when they are not there. `check.py media photos`: 0
+  missing. Both run on the desktop simulator (Elegant's stand-in) in English and French.
+- **NOT done here**: `screenshots/media-*.png` were NOT regenerated -- `tools/tests/media/make_library.py` needs the
+  `ffmpeg` program (with libvorbis, libvpx, libaom, x264, lame) and this PC's WSL has none (`sudo apt install ffmpeg`,
+  the user's to run); they also predate the bar-across-the-window layout. `docs/build_docs.py` not run (no pandoc
+  here). **Published** on 2026-10-09 with the user's key (`ONYX_PKG_KEY_FILE=/mnt/c/Users/troll/onyx_pkg-key.pem`, a fresh
+  shallow clone `C:\Projects\onyx-packages-p7` given as `ONYX_PACKAGES_DIR`, `publish.sh --no-push` in WSL, the commit
+  looked at, pushed from Windows): calendar 1.0.26, gamelib 1.0.25, mail 1.0.28, media 1.0.38, photos 1.0.31 -- and
+  **jet 2.0.14**: `sdcard/apps/jet.app/main` in this checkout (built 2026-10-08 23:59 by the Jet session, not in git)
+  differs from 2.0.13's by a kilobyte, so `mkrepo` bumped it.
+  A second publish the same day: **onyx 2026.10.130** (the menu bar's gem), calendar 1.0.27, irc 1.0.31, mail 1.0.29.
+  Then onyx 2026.10.131 (rdpd's log) and **onyx 2026.10.132, uikit 1.950.0, ledger 1.0.33, telegram 1.0.13** (the Onyx menu in
+  pocket, `setHeader`, Ledger's panel, Telegram's sign-in).
+  Then archiver 1.0.27, fmtracker 1.0.30, iconedit 1.0.31. **Two publishers the same day**: another session published
+  **jet 2.0.15** between two of these (the same program, `[jet] needs = onyx >= 2026.10.126, uikit >= 1.850, systemkit
+  >= 1.91` -- a packages.ini line not yet in main), so this session's push was refused (not fast-forward) and its
+  rebuilt index would have published a jet 2.0.16 with the OLD needs (a package's content includes its needs:
+  `mkrepo.py`). Done instead: the clone reset to `origin/main`, that `[jet] needs` line taken into packages.ini,
+  `versions.ini` given `jet = 2.0.15`, published again -- only this session's two packages changed. **Before a
+  publish: `git fetch` the packages clone and read `bumped:` -- a package this session did not touch must not be in it.**
+- **Pi checklist** (not done): `pkg update -a` (media, photos, gamelib, mail, calendar, irc, onyx), then:
+  1. Desktop: both as before but the sidebars' labels; Photos' *All albums*, a right click on an album and a folder;
+     a playlist made in Media shows in its sidebar at once; `language=fr`: both in French.
+  2. Pocket 800 x 480: the rails, the names under the pointer; Media's bar (the 300 px line). Pocket at
+     1920 x 1080: the sidebars whole.
+  3. Console: the columns, Ctrl+Page Up / Down (L1 / R1) from place to place.
+- **Left in these two apps** (the study's table): Media's and Photos' own top bars on `uikit::ToolBar` with
+  priorities (they hold in 480 px as they are: Media's path bar shrinks, Photos' slider stays), Media's song table on
+  `DataGrid` with roles (in portrait its columns are cut, not cards), their custom dialogs on `FormDialog`
+  (`InputBox`, `PropsBox`, `VPropsBox`, `NameBox`: the scrolling sheet meanwhile), `uk_set_input_type` on the
+  search fields. Media's pages (the album's band, the videos' grid) were looked at in landscape only.
+- **Next apps, in the study's order**: Courier, Slides, Paint, QBStudio, 3DForge; then the toolbars, tabs, dialog bases, tables;
+  the Control Panel's applets laid out in their pane (Theme first).
+
+## The pocket launcher v2; Onyx is Home in pocket; the shell's scale after a switch; full screen in Onyx Remote (2026-10-08): built, tested on the PC, NOT yet on the Pi, committed (not pushed), not published
+
+- **pocketshell's launcher v2** (`user/Apps/pocketshell/home.h` new -- the launcher, out of `main.cpp`; `look.h` new --
+  anti-aliased rounded boxes of any radius by their signed distance, outlines, soft shadows / glows, pictures clipped
+  to a rounded box, the match in a text, integer only; `today.h` new -- the agenda): as the approved mock-ups
+  (`docs/COMPACT-SHELL-STUDY.md` §6.2, `docs/compact-shell/mockups/pocket-home-v2*.png`). The round search field with
+  its shadow; **Today** beside it (the Calendar's next appointment from `SD:/apps/calendar.app/agenda.txt`, hidden when
+  there is none; under the field below 700 lp) becoming a **Today column** at lw >= 1100 (the date, the agenda, the
+  notifications -- no toast at home there); the categories as chips; one raised card with its header, plates of 60 lp,
+  the focus an accent ring + glow and the label in a pill; **the Running strip with window thumbnails**
+  (`uk_shell_thumb`, the window's top; icon + name on a dark foot, a close button; the key hints at its right end, the
+  first ones dropped when they do not fit); Down from the card's last row into the strip (Enter brings the app, Del
+  closes it, Up back). **Recent** holds **Documents** when a row fits (1280 x 720 and up, portrait): SystemKit's new
+  **`recent.h`** (`recent_doc_add`, `recent_docs`, `SD:/etc/recent-docs`; SystemKit's `fa_open` notes each file it opens
+  with its app -- the File Viewer's double click, the launcher; abi 91, 92 appended) -- an app opening a file through
+  its own dialog does not note it yet (a later step: UIKit's file dialog, or each app). **The search**: the chips are
+  the kinds with their counts (a click filters), the best match a card at the left (the score: the name begins, a word
+  begins, contains; an app opened last first), the others grouped (apps -- two rows on a tall card --, the settings by
+  their help lines now in the system's language from the Control Panel's catalogue, the files with their app, folder,
+  size), the match in the accent, "Run "x" in a Terminal" on the bottom line; Tab the next group. The accent is the
+  theme's (`C_ACCENT`), as everywhere. The Control Panel is now found by the search (hidden from the categories).
+- **Menu bar, pocket: "Onyx" is the Home button** (`user/Apps/menubar/main.cpp`: a gem + "Onyx", lit while the
+  launcher shows; a click sends `SHELL_MSG_HOME` -- pocketshell's toggle: home, again the app back; no Onyx menu in
+  pocket -- its Home / Open Apps / Quick Settings items removed with their French lines; quick settings stay on the
+  clock's click and Super+N). The desktop's bar and Onyx menu: pixel-identical (server_sim compares them with HEAD's).
+- **The Pi's report "after a live switch desktop -> pocket the shell is small"** (right after a boot in pocket): the
+  shell took its screen, work area and scale ONCE at its start; started by `/bin/session` while PocketUI comes up,
+  `uk_win_server` may not answer yet and the port falls back on `kapi_screen_size` (and the canvases were made for that
+  size). Now `screen_sync` (main.cpp) reads them again at `UK_SHELL_EV_AREA`, a display resize and every second: a
+  bigger screen grows the canvases (`uk_win_resize2`), another scale reopens the faces and the toast's window, the home
+  is laid out again; each change logged **`pocketshell: the screen W x H, the work area W x H, the scale S%`** -- on the
+  Pi, after a switch, kmsg must end with the right line. Reproduced on the PC: server_sim `SIM_SERVER_LATE=3` (the
+  first PK_OP_SERVER refused) + `SIM_SCREEN_STALE=800x480`: HEAD's pocketshell stays 800 x 480, the new one 1920 x 1050
+  at 150% (`shell-late-1080`). If it still happens on the Pi, the kmsg line says what PocketUI answered.
+- **Onyx Remote showed full-screen programs as normal framed windows** (the emulators and Arkanoid alike): the
+  servers were right (the list: 0,0, the screen's size, no frame, `KAPI_WIN_FULLSCREEN` -- now checked under Elegant
+  too, server_sim `elegant-fullscreen`; the BASIC runtime takes the full screen through `uk_win_fullscreen_begin`, the
+  emulators' path), but the Windows client makes a window in the FULLSCREEN state a NATIVE framed one
+  (`RemoteWindow.Apply`). `rdpd` (separate commit) now tells the full-screen window alone (the Pi shows nothing else),
+  as a plain frameless window that takes the keys (its state without FULLSCREEN); the others come back after. No
+  change to `OnyxRemote.exe`. `run_rdpd_test.sh`: MOCK_POCKET=3 (PocketUI, a BASIC window) and 4 (the desktop, an
+  emulator's framed window).
+- **Tests (PC)**: `tools/tests/server_sim/run.sh`: 345 checks + shell-strip-keys, shell-onyx (SHELL_MSG_HOME twice:
+  home, the app back), shell-late-1080, bar-onyx (the click asks the shell twice, no menu), the desktop menu bar
+  identical, elegant-fullscreen: all passed; `adaptive.sh` 115, `session/run.sh` all; `run_rdpd_test.sh` 0 failed;
+  `check.py pocketshell menubar` 0 missing; `make -j8` no new warning; `check_stubs.py`: 215 programs, 0 wrong. Pictures
+  (`SHELL_PNG=docs/compact-shell/real sh tools/tests/server_sim/run.sh`): `docs/compact-shell/real/pocketshell-*.png`
+  (v2 at 800 x 480, 640, 720, 1920 x 1080, portrait, French; the switcher and quick settings as before).
+- **Pi checklist**: stage `SD:/apps/pocketshell.app`, `SD:/apps/menubar.app`, `SD:/lib/systemkit.so`, `SD:/bin/rdpd`.
+  1. Boot in pocket at 1920 x 1080: the launcher as `pocketshell-home-1080.png`; kmsg `pocketshell: the screen 1920 x
+     1080 ... the scale 150%`. 2. Desktop -> pocket by the Mode applet: the same size (the kmsg line). 3. The menu bar's
+     Onyx: the home (lit), again: the app back. 4. A file opened from the File Viewer shows in Recent's Documents. 5. An
+     emulator / Arkanoid in full screen through Onyx Remote: one frameless PC window, the keys reach it; given back: the
+     windows return.
+
+## PocketUI phase P6: the adaptive widgets in UIKit; the Control Panel and the File Viewer (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
+
+The decided design is `docs/POCKETUI-TECH-STUDY.md` §6.3–6.14, §9 (P6) and `docs/COMPACT-SHELL-STUDY.md` §6.11 (the
+approved mock-ups `docs/compact-shell/mockups/pocket-control-*.png`); how an app uses it: **docs/03 §5.10.6**; the
+reference: docs/11 (`adapt.h`, `sidepanel.h`, `form.h`, `toolbar.h`, `tabstrip.h`, `datagrid.h`, `treeview.h`).
+
+- **UIKit** (one source, both UIKits; everything below is the desktop's look unchanged -- `shots.sh`: every desktop
+  picture identical except the apps changed on purpose):
+  - `uikit/adapt.h` + `adapt.cpp`: `uk_size_class` / `uk_mode` (the port's `adapt_info`: PocketUI's class, the
+    theme's `metrics =` / `scale =`), `uk_metrics` (`UkMetrics`: regular / compact / touch / console profiles),
+    `uk_scroll_gutter`, `uk_lp`, `uk_logical_units`, `uk_set_input_type` / `uk_input_type`, `uk_focus_move`;
+    `Root::onSizeClass` (the former `uk_rootReserved2` slot). `uikit/internal/adapt_int.h` (NOT a programs' header,
+    `uikit::internal` excluded from the table: libgen `--exclude '^_ZN5uikit(4port|8internal)'`): the widgets'
+    extensions behind `Widget::ext` (freed by `~Widget`), the class told to the Roots and widgets, the focus ring, the
+    arrows and L1 / R1 for the keys nobody took (`Root::keyEvent`), the focused control and field type told to the
+    server (`PK_OP_FOCUS_RECT`, `PK_OP_TEXT_HINT`, `PK_OP_UNITS`: `pocket.h` revision 3), the dialogs' sheets.
+  - **SidePanel** (`sidepanel.h/.cpp`): navigation / inspector; FULL, RAIL, DRAWER, SLIDEOVER, SHEET, COLUMN; items
+    (headings foldable, icon, indent, badge, trailing, picture, toggle, **subtitle** -- shown when there is room),
+    pages, content, footer, `toggleButton`, `onDrop` / `onReorder` / `onItemMenu`, **`place ()`** (the app's own
+    rectangle: `left` / `top` / `resizeTo` are read as the anchors' doing), L1 / R1, F6.
+  - **FormDialog** (`form.h/.cpp`): rows, sections, text, buttons with roles; two columns / a portrait sheet / console.
+  - `ToolBar`: priorities, ranks, groups, `foldInto`, `rows ()`, the » panel hosting the tools themselves (a new
+    `layout ()` override). `TabStrip`: `presentation ()` (strip, scroll + ⋯, portrait title ▾ and list, segmented for
+    2–3 fixed tabs, console header), `setEdge`, `setStyle`, `setNav`, `showList`, `marked`. `DataGrid`: column roles and
+    priorities, cards, detail view, multi-select. `TreeView`: drill-down. `ListBox` / popups / dialogs / scroll bars:
+    the profile's rows, action sheets, dims and sheets, overlay bars.
+  - `uikit.abi` +99 (850–948: **`uikit >= 1.949`**); `abi_same`: the same 949 entries; the layout lock regenerated
+    (`make uikit-layout-update`: `SidePanel`, `FormDialog`, `UkMetrics`...).
+- **PocketUI**: the **viewport** (`wm.cpp`: a filled window bigger than the work area moved under its edges, two
+  indicator windows, the wheel / a drag over them, the focused control kept shown) through the policy's new
+  **`pointer`** hook (`common/policy.h`, `serve.cpp`; Elegant's 0); `PK_OP_FOCUS_RECT` / `TEXT_HINT` / `UNITS` kept.
+- **The Control Panel** (the SidePanel pilot; **the user's decision: its landscape layout replaces the desktop's
+  dashboard too**): the applets as links at the left (their pictures, names; help lines at 1280 × 720 and more), the
+  chosen one in the rest under its title and help, opened on the last one (`SD:/etc/control.ini`), resizable;
+  the applets' surface is the pane's size, 700 × 470 at least (a smaller pane scrolls it: the host's bars); portrait
+  (and a window under 600 px): the list (one column, chevrons) and the back bar *‹ Control Panel* + title; console: the
+  column, L1 / R1 the applets; `AP_OPEN` (`applet_proto.h`): a second `control <target>` shows that applet in the
+  running one. **pocketshell**: the Settings tab, a setting found and quick settings' Mode open `control <applet>`
+  (no applet runs alone). The applets themselves keep their own layouts (P7).
+- **The File Viewer** (the user's request): resizable (`W` / `H` / `VIS` follow the window: the places 188 px, as many
+  columns as fit at 200 px, 3 at 880 × 540, 6 at most); in pocket and console its places are a navigation SidePanel
+  (whole in landscape, a drawer in portrait, the column in console); the desktop keeps its own sidebar (pixel-identical
+  but the frame's maximise button). **Translated** (CLAUDE.md: worked on): `sdcard/apps/fileviewer.app/lang/fr.txt`, 147
+  words. **The Task Manager**: its grid's roles (cards in portrait) and translated (`taskman.app/lang/fr.txt`, 54).
+- **Tests (PC)**: `sh tools/tests/server_sim/adaptive.sh`: **115 checks pass** -- the widgets' host tests
+  (`adaptive.cpp`, `ADAPT_TEST=1`: 70, each widget in the four classes) and the apps under PocketUI at 800 × 480,
+  1280 × 720, 1920 × 1080, 480 × 800, console 640 × 480: the Control Panel (and French), the gallery (toolbar », tabs,
+  both panels, grid, form, menu; and on Elegant), the Task Manager, the Terminal's tabs, the viewport (Setup), the File
+  Viewer. `run.sh`: 317 pass (the File Viewer now filled at 1080p: the check changed). `shots.sh`: every picture as at
+  HEAD (a worktree of HEAD compared) but the Control Panel's (all the applets' pictures: the new window) and the File
+  Viewer's maximise button -- regenerated, `control-fr.png` new; pocket pictures in `screenshots/pocket/`.
+  `check_stubs.py`: 215 programs, 0 wrong; `abi_same_test.sh`: pass; build: no new warning; `check.py control
+  fileviewer taskman pocketshell`: 0 missing.
+- **Pi checklist** (not done): stage everything (`SD:/lib/uikit.so`, `SD:/lib/pocket/uikit.so`, `SD:/bin/pocketui`, the
+  Control Panel, the File Viewer, the Task Manager, pocketshell, their `lang/`), then:
+  1. **The desktop** (`shell=desktop`): the Control Panel opens on the links + Theme (or the last applet); every applet
+     works in it (click, keys, Apply), F6 / → / Tab between links and applet, the window resized and maximised, a
+     narrow window (< 600 px) the list; the dock's *Panel Settings…* while it is open: it switches to Panel. The File
+     Viewer as before, resizable (columns added when wider). Other apps unchanged (`pi_apps.py`).
+  2. **Pocket** at 800 × 480: Home > Settings > Sound: the Control Panel full screen on Sound; Settings > Wi-Fi: the same
+     window switches; quick settings' Mode: Mode. The applets usable (a smaller pane: its scroll bars).
+  3. Pocket at 1920 × 1080: the links with their help lines; the File Viewer with more columns, its places panel.
+  4. Setup (or any fixed big window) at 800 × 480: the viewport's bars, the wheel over them scrolls; Tab through
+     Setup's fields keeps the focused one shown.
+  5. The arrows in a dialog move the focus (pocket), the ring drawn; a context menu (the File Viewer's right click):
+     touch-size rows; a message box: the app dimmed behind it.
+  6. Console (`shell=console`): the Control Panel's column, Ctrl+Page Up / Down (L1 / R1) the applets.
+  7. A portrait panel when there is one (P10): the Control Panel's list and back bar, the File Viewer's drawer.
+- **What P7 migrates** (the study's §6.15): the side panels of Media, Game Library, Photos, Mail, Courier, Ledger, PDF
+  (its own class is now `PdfSidePanel`), Slides, Paint, QBStudio, 3DForge, Calendar, IRC, Archiver, Icon Editor,
+  fmtracker, Telegram's pane; the toolbars of Letters (`foldInto`), Mail, Photos, PDF, Paint, Media; the tabs of
+  Courier, PDF, QBStudio, the Spreadsheet (`setEdge (UK_TAB_BOTTOM)`); Letters' and the Spreadsheet's dialog bases on
+  `FormDialog`; the tables of Media, File Viewer (its details), Mail, Ledger, Cardfile on `DataGrid` with roles; input
+  types; `uk_scroll_gutter` in the 22 + 3 apps; **the Control Panel's applets laid out in the pane they are given**
+  (Theme first: the mock-ups); apps whose least width is over 480 (the Terminal: half its first width) for portrait.
+  Not in P6: PocketUI's resize-to-fit beyond fill, the on-screen keyboard (P10), the console's revealed menu with the
+  toolbar's Tools section (P9 -- the toolbar stays shown in console meanwhile), `PK_OP_PANEL` (the ☰ in the band), the
+  console Control Panel of the mock-ups (`consolehome`, P9).
+- **Publishing**: `versions.ini` uikit 1.949.x, the Control Panel, pocketshell, the onyx package (PocketUI, the File
+  Viewer and the Task Manager with their new `lang/` folders: `packages.ini` takes their whole `.app` folders).
+
+## The Pi's reports on 2026.10.126 (pocket, 1920 x 1080): Onyx Remote's typing, the launcher's keys, GPIO Lab (2026-10-08): fixed / checked on the PC, NOT yet on the Pi, committed, not pushed, not published
+
+1. **Typing from Onyx Remote did nothing under PocketUI** (the mouse worked, the USB and Pi 400 keyboards too). Root
+   cause: the PC client sends keys only from a child window of its own (`RemoteWindow`), which it makes only of a
+   FRAMED window -- a borderless one becomes an overlay (or a picture on the desktop), a backmost one is skipped. Under
+   PocketUI every app's main window is frameless and the shell's home is backmost, so no PC window could ever take the
+   keyboard. The injection itself (`remotekeys.h` -> `kapi_inject_key` -> `KAPI_WS_IN_KEY`) was fine. **Fix in rdpd
+   only** (`user/BinUtils/rdpd.c` `pocket_flags`; the client unchanged, no rebuild of `OnyxRemote.exe`): under PocketUI
+   (`uk_win_server` mode, asked every 2 s) a program's MAIN window (its lowest borderless, non-topmost, non-ALPHA,
+   non-SYSTEM one) is told as a plain window; the shell's home too while no app shows; the popups, the menu bar, the
+   shell's overlays and the home behind an app as they were; PocketUI's matte a picture on the desktop (Desktop
+   checked) or hidden (an overlay would cover the app); a SYSTEM window is never raised from the PC (the matte would
+   cover the app on the Pi: PocketUI keeps only the apps' windows in order). Elegant unchanged. (The uncommitted
+   draft found in the clone told EVERY frameless window plain: the popups would have taken the PC's focus, the matte
+   become a child window over the app -- replaced.) **VNC**: vncd sends the screen and injects the keys the same way
+   (the USB keys' path, the keys following the front app / the home): it needed nothing.
+2. **"The launcher does not react to the keyboard (even with USB)"**: through Onyx Remote, the cause above (the home
+   was backmost: never a PC window -- only in the desktop's picture, off by default, where a click is not sent).
+   From the Pi's own keyboards: not reproduced -- server_sim's keys take the same path (policy `Key` -> `ShellKey` ->
+   `KeysToFront` / the window manager's key target -> the home's handler): new `shell-keys-1080` from the boot's home
+   (no Super first): typing reaches the search, Down / Up, Enter opens the result, Esc clears, the arrows move in the
+   grid, Enter opens the app (the launches checked). pocketshell now logs **`pocketshell: the launcher gets the keys`**
+   at its first key.
+3. **GPIO Lab "a bit too wide and too tall" in pocket**: not reproduced -- under PocketUI its window is exactly the work
+   area and `LabRoot::onResized` lays everything inside it (1920 x 1080, 1280 x 720, Pins and Code, English and French,
+   with PocketUI's band or the menu bar's). Neither GPIO Lab nor PocketUI has scroll bars: the ones seen were most
+   likely Onyx Remote's (its view is the Pi's screen at 1:1 -- a 1920 x 1080 Pi does not fit a PC's window; F11 =
+   full screen), where the old rdpd also drew the frameless window as an overlay. New server_sim runs
+   `gpiolab-<size>` / `gpiolab-code-<size>` (kind fill, the client = the work area; pictures `pocket-gpiolab-*.png`).
+   GPIO Lab's code unchanged.
+- **Tests**: `run_rdpd_test.sh` (+ `rdpd/rdpd_pocket_test.py` on a mock PocketUI, `MOCK_POCKET=1|2` in `mock_rdpd.h`:
+  the flags told, the matte never raised, the keys injected; it fails on the previous rdpd); server_sim 326 checks, all
+  pass (Elegant: the same pixels); `check_stubs.py`: 215 programs, 0 wrong; `kernel/ make -j8`: no new warning.
+- **Pi checklist** (stage `SD:/bin/rdpd`, `SD:/apps/pocketshell.app/main`; `shell=pocket`):
+  1. Onyx Remote (Desktop unchecked, then checked): at home the launcher is a window on the PC -- type `tin`: the results;
+     Enter opens the Text Editor; type in it: the text arrives; Alt+Tab / Super from the Pi, then type again from the PC.
+     kmsg: `rdpd: the graphics server is PocketUI's...`. A popup (a menu, a dropdown) stays over the app on the PC and the
+     typing goes on in the app after it closes. A centred app (Calculator listed as card: no; a fixed demo): the matte
+     never comes over it after a click beside it.
+  2. The launcher by the Pi's own keyboard at boot (no Super first): type, Up / Down, Esc, the arrows, Enter.
+     kmsg: `pocketshell: the launcher gets the keys` at the first key; if it never comes, the `pocketui: the keys to ...`
+     lines say who had them.
+  3. GPIO Lab in pocket on the Pi's own screen (not through Onyx Remote): the right column and the status line inside
+     the screen; if it still overflows, a photo of the screen (which edge, how much).
+
+## PocketUI phase P5: the pocket shell `pocketshell`; the full-screen rule, the keys, the full screen (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
+
+The decided design is `docs/POCKETUI-TECH-STUDY.md` §4.3, §7.2, §9 (P5) and `docs/COMPACT-SHELL-STUDY.md` §6 (the
+mock-ups `docs/compact-shell/mockups/pocket-*.png`); docs/03 §5.10.3 (the policy) and **§5.10.5** (the shell and its
+protocol), docs/04 §5 *The pocket mode*, docs/02 §8 (the Super bit), §10.
+
+- **`user/Apps/pocketshell/`** (`main.cpp`, `catalog.h`; FT_APPS; `sdcard/apps/pocketshell.app/`: `app.txt` category
+  `Shell` -- the `onyx` package's `apps = Shell` --, `icon.bmp`, `lang/fr.txt`, `check.py pocketshell`: 91 words, 0
+  missing) -- started by `SD:/etc/session/pocket` instead of the Terminal: its **home** (backmost window: the launcher
+  -- search, the category tabs Recent / the dock's categories / Settings = the Control Panel's applets, the grid, the
+  Running strip; the search: apps, settings, files of `SD:/docs` `SD:/Notes` `SD:/home`, the text as a Terminal command),
+  the **switcher** (Alt+Tab held, release to switch; Del closes; thumbnails by `uk_shell_thumb`), **quick settings**
+  (Wi-Fi, Do not disturb, Sound, Mode, the volume, the notifications -- it registers `notify`: toasts then the list --,
+  Control Panel / Lock / Power), the keys (Super alone / Alt+F1 / Ctrl+Esc Home, Alt+Tab, Super+N, Super+Space).
+  Reflow by the logical size (study §6.1) and a scale (`theme.txt scale=`, else 1.5 from 1000 lines, 2 from 1800).
+  Recent apps: `SD:/etc/pocket/recent`.
+- **The menu bar stays the top band** (the user's decision): in pocket (`uk_win_server` mode) its **Onyx menu** starts
+  with Home / Open Apps / Quick Settings and **a click on the time** opens quick settings -- through SystemKit's new
+  **`systemkit/shell.h`** (`shell_ask`, `shell_running`; `systemkit.abi` 89-90 -> `systemkit >= 1.91`). Its fr.txt + 3.
+- **The protocol** (`uikit/port/pocket.h`, revision 2; `uikit/win.h`): `PK_OP_SHELL`, `EVENTS`, `KEYS`, `THUMB`,
+  `FRONT`, `TASKS` (new, 0x117), `GRAB` (new, 0x118) given their meaning in PocketUI's `wm.cpp` (`SPLIT`, `DIM`: still
+  ENOSYS); `uk_shell_tasks`, `uk_shell_grab` appended to `uikit.abi` (850 entries -> `uikit >= 1.850`; abi_same: the
+  same table both UIKits); the pocket port keeps the registration / handler / keys and asks them again of a PocketUI
+  started again; thumbnails through the transfer buffer (`el_core_xfer`). Home: no app in front (`PK_OP_FRONT (0,0)`,
+  or no app showing), `EL_OP_MENU_GET` then answers no menus. The shell's windows: `PK_KIND_HOME` / `PK_KIND_SHELL`,
+  never apps, never a band of the work area (`CWindow::SetNoInset` -- the overlay at y = 0 in console made the work
+  area empty).
+- **The kernel**: `PublishKeys` gives the server the Super bit (`KAPI_WS_MOD_SUPER` 8 in `KAPI_WS_IN_MODS`, no version
+  change); **common**: `serve.cpp` keeps it from the window manager and calls the policy's new `mods` hook;
+  `el_core_next_key`, `el_core_xfer`, `SetNoInset`. Elegant unchanged (server_sim: Elegant from HEAD's `common/` and
+  from these, the same pixels; Elegant's policy gives `mods` 0).
+- **The Terminal**: `terminal <command>` types it into its first tab once the prompt came (the search's "run" line).
+- **The Pi's reports on 2026.10.124, fixed after P5's scope** (the coordinator's messages):
+  1. *Apps not full screen* -> **the user's rule**: every app's MAIN window is full screen -- filled (frameless, the work
+     area; bigger: cut until P6's viewport), or of a fixed size smaller than the work area **centred** over a **matte**
+     (`PK_KIND_CENTRE`: PocketUI's own window just under it, in the app's background colour -- its client's top left
+     pixel); it fills once it says it is resizable. **Cards**: a program's other windows (dialogs, a second window) and
+     the apps of **`SD:/etc/pocketui.ini`** `[cards]` (new, a config file of `onyx`: kept once edited; read again at each
+     program's first window; shipped: `tinycalc` -- the study's §6.8 mock-up shows the Calculator as a card) or with
+     **`pocket = card`** in their `app.txt` (honoured). Under the rule FMTracker, Disks, the demos, the games, GPIO Lab,
+     the Graphing Calculator, the File Viewer (880 x 540, not resizable) are filled or centred on their colour -- no more
+     framed cards; tinycalc stays a card (listed; without the list: centred over its matte, tested).
+  2. *No keyboard* -> not reproduced on the PC (Letters, TinyPad, the Terminal typed into under PocketUI at 800 x 480 and
+     1920 x 1080: the keys arrive). Made robust: **the keys follow the front program** -- typed keys go to its topmost
+     window (home: the shell's) whatever stands above it in the window manager's order (a window of no app, a
+     borderless one), logged once `pocketui: the keys to <app> (...)`, and its window is raised when another one holds
+     the window manager's keys (`KAPI_WS_FOCUS`: `kapi_key_held`, the pads). Tested with a borderless system window
+     put above TinyPad. **If it persists on the Pi, the kmsg line says who held the keys** (step 4 below).
+  3. *Arkanoid black, framed in Onyx Remote* -> the full screen under PocketUI tested on the PC (`server_sim/fsapp.cpp`:
+     a window, then `uk_win_fullscreen_begin`, as the BASIC runtime): the server's state set (`KAPI_WIN_FULLSCREEN` in the
+     list), the window at 0,0 left there, the keys its own (Alt+Tab too), nothing set aside, given back: centred again.
+     Not reproduced: PocketUI now logs `pocketui: full screen: <app>` / `the full screen given back` -- step 6 below.
+- **Through Onyx Remote and VNC** (the user tests without a screen: rdpd, each Onyx window a Windows window; vncd):
+  (a) **the windows PocketUI sets aside were listed as shown** (`EL_OP_WIN_LIST`'s state knew only minimised /
+  off-desk): rdpd showed every app's window on the PC, the user typed into one that was behind on the Pi -- the keys
+  went to the app in front. Fixed in the common `ops.cpp`: a window set aside reports `KAPI_WIN_OFFDESK` (rdpd hides it;
+  Elegant never sets aside -- unchanged). (b) **a full-screen program**: rdpd read its window's canvas (its frames are
+  the kernel's, not the canvas: black or stale -- on Elegant too) and kept its frame. Now `EL_OP_WIN_READ` of the
+  full-screen window gives what the screen shows (`kapi_screen_grab` through the new `el_sys_screen_grab`), its list
+  entry has no frame (`ow`/`oh` 0) and a gen that moves every 50 ms (rdpd reads it again) -- for both servers. (c) the
+  **Super key** from a remote client: `remotekeys.h` (vncd, rdpd) sends Super L/R as `KAPI_WS_MOD_SUPER` and the kernel's
+  `kapi_inject_modifiers` passes it to the server (not to `kapi_get_modifiers`); Windows usually keeps its Windows key for
+  itself in an RDP client: Alt+F1 is Home there. The injected keys take the USB keys' path (`kapi_inject_key` ->
+  `KAPI_WS_IN_KEY`): what the keys-follow-the-front fix covers. `run_rdpd_test.sh`: 0 failed; `run_rdpd_pipeline_test.sh`
+  does not build (it includes the old `kapi.h`: at HEAD too).
+- **Tests (PC)**: `tools/tests/server_sim/run.sh`: **315 checks pass** (+ `hidden`: an app set aside is off the list's desk) (P3/P4's, the full-screen rule at 800 x 480 and
+  1920 x 1080 -- Letters, File Viewer, Terminal, TinyPad, the Calculator card / centred, a dialog card --, the keys, the
+  full screen, the pocket shell at 800 x 480, 1280 x 720, 640 x 480, 1920 x 1080, 480 x 800 and in French) + Elegant
+  from HEAD's `common/` against these: the same pixels (Calculator, Terminal, TinyPad with keys, Alt+Tab, Super held).
+  New test steps: `otherpic`, `othermenu`, `owin`, `oclose`, `mods 8`; checks `home`, `shell`, `tasks`, `kindN`,
+  `okind[N]`, `shownN`, `focus`, `keys`, `matte`, `full`; fakekapi's `SIM_MBOX` takes `\0`. `sh tools/tests/session/run.sh`:
+  all pass (the pocket file's `pocketshell`). `check_stubs.py`: 215 programs, 0 wrong. `abi_same_test.sh`: pass. Build
+  (`kernel/ make -j8`): no new warning. `shots.sh` (the names that build here -- paint, letters, ledger, pdf, photos,
+  sheet, slides, printconf fail to link on this PC: PrinterKit is not linked by shots.sh, before this work too; media
+  needs `mutagen`): 131 pictures identical; `fileviewer.png` new (`SD:/etc` has `pocketui.ini`); dock, desktop,
+  dockconf (Critters, Pinball on the card since), archiver*, filedialog, qbstudio*, screenshot-*, widgets differ the
+  same way without this work (stale or timing). Pictures: `docs/compact-shell/real/pocketshell-*.png` (launcher, search,
+  switcher, quick at the sizes above; `-fr`), `pocket-centre-800x480.png`.
+- **Pi checklist** (not done): stage everything (kernel: the Super bit; `SD:/bin/pocketui`, `SD:/lib/uikit.so`,
+  `SD:/lib/pocket/uikit.so`, `SD:/lib/systemkit.so`, `SD:/apps/pocketshell.app`, the menu bar, the Terminal,
+  `SD:/etc/session/pocket`, `SD:/etc/pocketui.ini`), `shell=pocket`:
+  1. Boot: the menu bar at the top, the launcher under it (Recent, the tabs, the grid); kmsg `pocketui: the shell:
+     pocketshell`, `pocketui: home`. `ps`: no `notifyd`, no Terminal.
+  2. Type on the launcher (`tin`): the results; Enter opens the Text Editor full screen; Super (the Windows key) -> the
+     launcher, Super again -> back; Alt+F1, Ctrl+Esc the same; the Running strip shows it, its x closes it.
+  3. Open three apps; **Alt+Tab** held: the cards with their pictures, Tab moves, releasing Alt switches; Del closes the
+     chosen one; Esc stays. Onyx > Open Apps: the same, Enter switches.
+  4. **Typing reaches the app** (Letters, the Terminal, TinyPad) after starting it, after Alt+Tab, after a click on the
+     menu bar; if not, `kmsg` for `pocketui: the keys to ...` and say which window held them.
+  5. **Super+N** / a click on the time: quick settings; `notifytest -t Test hello` (telnet): a toast under the bar, then
+     the line in quick settings; Clear all; the volume slider; Wi-Fi opens the Wi-Fi menu; Mode opens the Mode applet;
+     Power the shutdown dialog.
+  6. **Full screen**: Arkanoid (from the launcher's Games), an emulator (F11), Doom -- the game shows, its keys and the
+     pad work, Onyx Remote shows it full screen; `kmsg`: `pocketui: full screen: <app>` then `the full screen given
+     back` at its end, the launcher / the app back. In console too (`shell=console`).
+  7. FMTracker, Disks, GPIO Lab, the Graphing Calculator, a demo, a game: full screen (or centred on their colour);
+     the Calculator a card; its About box (or any dialog) a card. Edit `SD:/etc/pocketui.ini` (add `tetris`): the next
+     Tetris is a card.
+  8. At 1920 x 1080 the launcher at scale 1.5; `scale = 1` in `SD:/etc/theme.txt` -> smaller, more columns.
+  9. `kill pocketui` (telnet): the kernel starts it again, the shell's home comes back behind the apps (the port asks
+     `PK_OP_SHELL` again), the keys still work.
+  10. The desktop unchanged: `shell=desktop` (or the Mode applet): the desktop's menu bar without the pocket items, the
+      calendar on the time; `pi_wstest.py`, `pi_apps.py`.
+  11. **Through Onyx Remote** (rdpd, port 3390), no screen on the Pi: only the app in front (with the menu bar and the
+      launcher behind) shows on the PC -- the apps behind are hidden, a switch (Alt+Tab, the launcher) shows the other
+      one; typing in the front app's window reaches it; Alt+F1 = Home; Arkanoid (the launcher's Games) shows full screen
+      in one PC window without a frame and its picture moves; its end gives the window back.
+  12. **Through VNC** (vncd): the same screen as the Pi's; typing reaches the front app; the Super key (if the viewer
+      sends it) = Home; Arkanoid shows.
+- **Next**: P6 (the adaptive widgets, the viewport for windows bigger than the work area -- the File Viewer at 800 x
+  480 --, the Mode applet's density / scale; the apps scaled with the shell), P8 (Setup's mode page, split view:
+  `PK_OP_SPLIT`, the switcher's S), P9 (`consolehome`). Publishing: raise `versions.ini` to uikit 1.850.x and systemkit
+  1.91.x (the `onyx` package's `needs` say so).
+
+## The apps follow their window: PocketUI's fill (2026-10-08): built, tested on the PC, NOT yet on the Pi, committed, not pushed, not published
+
+The user's Pi test in pocket mode (1920 x 1080, every app's main window filled): the apps drew their fixed layout in
+the bigger canvas. Done (one commit per app or group):
+- **The bug behind Circuits and Turtle Quest**: `void onResized () override { layout (); }` inside a `Root`
+  subclass calls `Root::layout` (the member hides the app's static `layout ()`), so a resize, a maximise or
+  PocketUI's WINRESIZE never re-laid the app out. Now `::layout ()`. (`grep -rn "onResized.*{ *layout *()" user/Apps`
+  found only these two.)
+- **Circuits**: three columns -- the levels and the bench fixed, the middle (card, palette, board, message) fills;
+  the board's cell follows the room and its strokes and texts scale with it (the faces opened at the cell's sizes;
+  at the default 12 px cell everything as before: desktop screenshots pixel-identical); compact below 920 x 600
+  (Hint / Lesson on the bench, Step / Reset / Check on one row, Undo / Redo hidden when the palette needs the room,
+  the truth table's rows down to 15 px); minimum 800 x 440. `run_circuits_sim_test.sh` + the 800 x 440 check.
+- **Turtle Quest**: the program's column (the 2nd) takes the rest, the board's column about as wide as the window
+  is high; narrow below 920 (minimum 800 x 440).
+- **GPIO Lab** (`LabRoot::onResized`, minimum 940 x 600), **Graphing Calculator** (the plot fills; translated to
+  French on the way: `sdcard/apps/graphcalc.app/lang/fr.txt`), **FM Tracker** (`g_W` / `g_H` behind `W` / `H`),
+  **Disks**, **Critters** (the field as wide as the window, the bar centred; the picker grows; minimum its
+  800 x 448), **Pinball** (the picker's preview grows; minimum 600 x 440).
+- **The fixed-size games scaled to their window** -- `user/Apps/games/game.h`: `gscale_fit` / `gscale_blit` /
+  `gscale_bands` (aspect kept, centred; a whole factor from 2x, sharp; bilinear below -- a pocket's 800 x 480
+  included; the bands in the colour of the game's edge); `GameRoot::scaleToFit ()` for the GameView games
+  (Solitaire, FreeCell, Invaders, Pipes: the view covers the window, paint / handlers / tick see the game's size,
+  the pointer mapped back); `gwin_create` / `gwin_on_click` / `gwin_present` for the games drawing into a plain
+  window (tetris, snake, pong, life, minesweeper, same, sokoban, 2048).
+- Tested with `tools/tests/server_sim` objects: each app linked against the pocket UIKit's wire port, run under
+  PocketUI at 1920 x 1080, 1280 x 720, 800 x 480 (dumps looked at; a click mapped in scaled Solitaire and
+  minesweeper). The desktop screenshots: identical, or only the frame's new maximise button (regenerated).
+- **Left**: the demos stay fixed (centred by the server, as asked); `arkanoid` is a BASIC program (`main.bax`);
+  `gamelib` was already resizable. Not translated yet although worked on (CLAUDE.md's rule): FM Tracker, Disks
+  and the twelve scaled games (their words are still English literals). `run_games_test.sh` fails at the link
+  (AudioKit's `ak_fm_start` missing in its host build) -- already so before these changes.
+- On the Pi: each of these apps in pocket mode at 1920 x 1080 and 800 x 480 (filled, laid out / scaled, clicks
+  where they look), and on the desktop: a frame dragged, maximise / restore.
+
+## PocketUI phase P4: the sessions, `/bin/session`, the Mode applet (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
+
+The decided design is `docs/POCKETUI-TECH-STUDY.md` §8 and §9 (P4); docs/03 §5.10.4, docs/04 §5 *Sessions*, §8
+`session`, §11 *Mode*. Setup's mode page is P8's (the study's plan): only what P4 needs was done in Setup.
+
+- **The files** (`sdcard/etc/`): **`autostart`** = the system's part (`wait pkg commit`, the line **`session`**, `run
+  clockd`, `run pkgd`, `run clipd`, `run printd`, `keyb FR`, `telnetd`, `vncd`, `rdpd`, `preload /boot`);
+  **`session/desktop`** = `run voronoy`, Setup (`#setup#` comments, `run setup`), `#setup: run menubar`, `run notifyd`,
+  `#setup: run dock`, `#setup: run agenda`, `#setup: run stickies`; **`session/pocket`** = `run menubar` (**the user's
+  decision, 2026-10-08: the menu bar always there in pocket**, PocketUI accepting it as its top band -- that fix is
+  PocketUI's, made in another clone: nothing of `user/Servers/` was touched here) and `run terminal` (the launcher's
+  stand-in until `pocketshell`, P5); **`session/console`** = `run terminal`, `run gamelib` (no menu bar, no dock;
+  `consolehome` is P9). notifyd: the desktop's file only (the study: pocketshell serves the notifications at P5; meanwhile
+  SystemKit's `notify` starts notifyd on demand). `system.ini`: `shell=`'s comment.
+- **SystemKit** `user/Kits/systemkit/session.h` + `session.inc` (C and C++), `systemkit.abi` 78-88 (89 entries:
+  `systemkit >= 1.89`): `session_modes`, `session_mode_name`, `session_mode_find`, `session_mode`, `session_set_mode`,
+  `session_file`, `session_programs`, `session_switch_start (m, flags, keep_pid)`, `session_switch`, `session_waiting`,
+  `session_migrate`; `SESSION_*` answers and flags. **`autostart.h`** generalised: `autostart_has` / `autostart_ensure`
+  look in the autostart and `SD:/etc/session/{desktop,pocket,console}`, a line goes into the file of its anchor
+  (Notes unchanged: Stickies after the agenda -> `session/desktop`). **The Clock**'s `autostart_ensure ("run clockd",
+  ...)` now anchors on `session` (it anchored on `run notifyd`, which is the desktop session's now: clockd would have
+  gone there).
+- **`/bin/session`** (`user/BinUtils/session.c`, C, SystemKit's and UIKit's C imports): alone = the running server's
+  mode's file (uk_win_server: a failed PocketUI at boot gives the desktop's), `start`, `mode`, `list`, `migrate`,
+  **`switch MODE [--force] [--no-ask] [--wait S] [--keep PIDs]`** (docs/03 §5.10.4 says each step: the open programs
+  asked to close by their first window's close box, the stragglers in `SD:/tmp/session.wait` + exit 2; the tool's
+  parents -- the applet, the Control Panel, the Terminal -- and `--keep` left open, ended last; the session files'
+  programs + notifyd ended, printd restarted; `shell=`; `KAPI_WS_SWITCH`: 1 -> `shell=desktop` + the desktop's file +
+  a notification, `EBUSY` -> the old session back, a kernel before v97 -> `kapi_reboot`). Who starts the session at
+  boot: `init`, through the autostart's `session` line (the study's §8.2); the server starts nothing.
+- **The migration**: `pkg commit` (every boot) calls `session_migrate ()` (compiled into `pkg` with `SK_INLINE`, no
+  library needed at boot): an autostart without a `session` line (`#session`, `#setup: session` count as one) has
+  its desktop lines (+ the comments just above them, Setup's `#setup#` lines) moved into `session/desktop` -- made
+  anew, so a package's fresh `session/desktop` (with `run setup`) never runs on a card that finished Setup --, the
+  `session` line where the first one was, `autostart.old` kept; the user's own lines stay in the autostart. The
+  commit that brings it runs the old `pkg`: the split happens at the next boot's commit (init still runs the old
+  lines from its buffer that time), the boot after is in the new layout. The package's `etc/session/*` are config
+  files (`etc/*`): kept once changed. A card whose autostart was never changed (Setup pending) gets the new
+  autostart itself (no split needed).
+- **Setup** (`user/Apps/setup/system.h`): `autostart_finish` gives back the `#setup:` lines of every session file
+  (those of the mode in `system.ini` run now), removes `run setup` and its comments there; the keyboard's and the
+  services' lines stay in the autostart (`setup_line`, `session_finish`). No visible change.
+- **The Mode applet** `user/Apps/modeconf/main.cpp` (FT_APPS), `sdcard/apps/modeconf.app/` (`app.txt` Settings,
+  `icon.bmp`, `res/desktop.bmp`, `pocket.bmp`, `console.bmp` 160 x 100 -- `tools/screenshot/modeconf_previews.py`
+  makes them from `docs/compact-shell/mockups`), `lang/fr.txt` (`check.py modeconf`: 0 missing),
+  `control.app/applets/12-modeconf.lnk` (+ its two words in the Control Panel's `TR:` list and `fr.txt`). Three cards,
+  the one in use marked, Apply -> confirm -> `session_switch_start` polled in `onTick`; a program waiting: Wait / Force
+  / Cancel. The density / scale choice of the study's §8.4 is left for P6 (nothing reads `metrics=` / `scale=` yet).
+  `tools/pkg/packages.ini`: `[onyx]` `needs systemkit >= 1.89` (modeconf is a Settings app: `[onyx]`'s `apps =
+  Settings` takes it; `bin/session` and `etc/session/` are in `bin/` and `etc/`).
+- **Tests (PC)**: **`sh tools/tests/session/run.sh`** (new): SystemKit 111 checks (the split of the card's old
+  autostart -- `tools/tests/session/autostart.before` -- every line kept in order in one file, once, the user's lines,
+  `\r\n`, too big, read-only; the programs; the modes; `autostart_*` across the files; Setup's end), `/bin/session` 96
+  checks against stand-in processes / windows / `KAPI_WS_SWITCH` (boot, commands, parsing errors, a program waiting,
+  `--force`, `--no-ask`, `--keep`, a parent kept, the fallback, `EBUSY`, an old kernel, `migrate`), `session.h` in C
+  without warnings. `tools/tests/pkg/test.py`: + the commit splits the card's autostart once (0 failures).
+  `run_notes_test.sh` (its card case on `session/desktop`) and `run_notes_sim_test.sh` (G7 on `session/desktop`):
+  pass. `run_clock_test.sh` passes; `run_clock_sim_test.sh` 2/220 as before. `check_stubs.py`: 214 programs, 0 wrong.
+  Build (`kernel/ make -j8`): no warning in the new or changed files (irc, slides, qbstudio's warnings are old).
+  Screenshots: `screenshots/modeconf.png`, `modeconf-fr.png` (new; `shots.sh modeconf`), `control.png` (the new applet
+  in the list), `fileviewer.png` (its scenario clicks one row lower: `SD:/etc` has the `session` folder, the
+  autostart's new text in the preview). `shots.sh` at HEAD's sources (a worktree) and here, the same 68 names: 92
+  pictures identical, the others the new ones above and `archiver*` (a timestamp / size area, as noted at P3); the
+  committed pictures of ledger, qbstudio, filedialog were already stale at HEAD. `server_sim/run.sh`: 21 passed.
+- **Pi checklist** (not done):
+  1. Stage (kernel unchanged; `SD:/bin/session`, `SD:/bin/pkg`, `SD:/lib/systemkit.so`, `SD:/apps/modeconf.app`,
+     Setup, the Clock, `SD:/etc/autostart`, `SD:/etc/session/*`) on a card that finished Setup: the desktop as before
+     (wallpaper, menu bar, dock, agenda, Stickies, notifications); `kmsg`: `session: desktop -- its programs started`.
+  2. An OLD card (autostart with the desktop lines, no `session/`) updated by the package manager: first boot as
+     before; at the next boot's `pkg commit` -> `SD:/etc/autostart split...`; `cat SD:/etc/autostart`,
+     `SD:/etc/session/desktop`, `autostart.old`; the boot after: the same desktop, no program twice (`ps`).
+  3. Control Panel > Mode: Pocket, Apply, OK -> the apps close, PocketUI comes up with the menu bar (once PocketUI's
+     fix accepts it) and the Terminal; `cat SD:/etc/system.ini` -> `shell=pocket`; `session mode`.
+  4. With an unsaved Tinypad document: Mode > Console -> Tinypad asks; wait 5 s without answering -> the applet says
+     "Tinypad ... is waiting for an answer": Cancel (nothing switched, shell= unchanged), again + Force (switched).
+  5. From the pocket Terminal: `session switch desktop` -> the desktop's programs back, the Terminal ends last.
+  6. Fallback: `mv SD:/bin/pocketui SD:/bin/pocketui.x`, `session switch pocket` -> exit 1, the desktop, the
+     notification, `shell=desktop`; put it back.
+  7. A full-screen game running (from telnet: `run gbemu ...` F11) + `session switch console` over telnet -> exit 3,
+     the desktop's programs back.
+  8. Reboot in each mode: the right session (`shell=console` -> the Game Library in front, the Terminal behind).
+  9. Notes > View > Show Stickies on a card without its line: added in `SD:/etc/session/desktop`.
+- **Next**: P5 (`pocketshell`: it replaces `run terminal` in `session/pocket`; it serves `notify`), P6 (the adaptive
+  widgets; the Mode applet's density / scale), P8 (Setup's mode page: the session files' `run setup`, the mode
+  preselected from the screen / the inputs).
+
+## PocketUI phase P3: PocketUI's skeleton, `user/Servers/common/`, the pocket UIKit (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
+
+The decided design is `docs/POCKETUI-TECH-STUDY.md` §4.3, §5, §7, §9 (P3); the look and behaviour `docs/COMPACT-SHELL-STUDY.md`
+§6 (one app at a time, frameless, fixed windows as centred cards, the status bar's band). docs/02 §10 *Two servers, one
+common code*, docs/03 §5.10.1–5.10.3, docs/04 §5 *The pocket and console modes* and `/bin/pocketui`.
+
+- **`user/Servers/common/`** (extracted from Elegant, `git mv` + edits; its behaviour unchanged): `serve.cpp` (was
+  `server.cpp`: the loop, the display, the raw input, the requests, the pace, `el_shared_*`, `el_sys_*`, Print Screen,
+  the wheel, the statistics -- the log lines now `<server>: ...`, Elegant's word for word the same), **`route.cpp`**
+  (new: `ws_route_key`, `ws_route_turn` -- the events forwarded, the places saved, the focus), `core.cpp`/`core.h`/
+  `corepriv.h`/`kws.h`/`ops.cpp`, `wm/` (`window.cpp`, `window.h`, `cursors.inc`), `port/` (the Circle stand-ins),
+  **`policy.h`** (new: `struct ws_policy` -- `create`, `op`, `key`, `tick`, `screen`, `registered`, `start`, the demo's
+  two; every hook may be 0) and **`common.mk`** (the servers' Makefile body). `ops.cpp` calls `create` in `OpCreate`
+  (after the size check) and `op` first in `el_op`; `window.cpp` gained `CWindow::Aside/SetAside` (in `Hidden ()`),
+  `CWindow::DropChrome`, `CWindowManager::SetAside` -- Elegant never calls them. **Elegant** = `elegant/main.cpp`
+  (its policy: `start` launches voronoy after a restart, as `server.cpp` did; the demo) + `elegant/Makefile` (3 lines +
+  `common.mk`). Paths updated: `tools/tests/desktop_sim/run.sh`, `tools/gui/gen_cursors.py` (its output),
+  the comments of `kernel/gui/kwin.cpp` and `kernel/include/kern/gui/window.h` (comments only: the image is the
+  same), docs/02, docs/03.
+- **PocketUI** (`user/Servers/pocketui/`: `main.cpp`, `wm.cpp` the policy, `band.cpp` the status band, `pocketui.h`,
+  `Makefile`) -> `SD:/bin/pocketui` (`make stage` copies `Servers/*/*.elf`). `--serve [--restart] --mode pocket|console`.
+  In its `registered` hook (after `KAPI_WS_REGISTER`, before `KAPI_WS_DISPLAY`): `kapi_lib_open_as
+  ("SD:/lib/pocket/uikit.so", "SD:/lib/uikit.so", 1, &err)`, the table kept (logged; a failure logged and the
+  programs get the desktop's UIKit -- they still run: the same operations). The policy (docs/03 §5.10.3's table):
+  status band 24 px (pocket; a topmost system window of its own, the kernel's font: gem, front app's title in
+  bold, HH:MM); a window that fits with its frame -> **card** (centred); else **filled** (borderless forced, work
+  area's top left); `EL_OP_RESIZABLE` on -> filled (`DropChrome`) and `GUI_EVENT_WINRESIZE` to the work area, then
+  once `GUI_EVENT_WINCTL` maximise if the client did not apply it (**finding**: the Terminal, Media, PDF and
+  Screenshot install their own pointer handler that drops `GUI_EVENT_WINRESIZE` -- their frames do not resize by
+  a drag on the desktop either; a one-line fix each, left for when they are worked on); popups where asked
+  (clamped); backmost windows and topmost ones on the top / bottom edge refused (the desktop's menubar and dock,
+  which the autostart still runs until P4); moves of filled windows ignored; one desk; **one app in front** (the
+  others set aside, recomputed each turn); Alt+Tab / Alt+Shift+Tab. Console: the same, no band.
+- **The protocol** `user/Kits/uikit/port/pocket.h` (beside `elegant.h`, private to the pocket port and PocketUI --
+  the study said `user/Servers/pocketui/pocket.h`; it follows P2's `elegant.h` instead): Elegant's operations and
+  structures by their numbers (it includes `elegant.h`), PocketUI's meanings written in its head; its own ops
+  `PK_OP_HELLO` (0x100, the port's first request -> `PK_PROTO_VERSION` + `struct pk_server`), `PK_OP_SERVER`,
+  `PK_OP_SHELL`..`PK_OP_DIM` (0x110..0x116: `-KAPI_ENOSYS` until P5).
+- **The pocket UIKit**: `port/port_pocket.cpp` (hello, `uk_win_server` from `PK_OP_SERVER`, `uk_shell_*` -> PK ops);
+  the client shared with the desktop port moved to **`port/client.inc`** (port_desktop's Onyx part verbatim + the
+  `WS_HELLO` hook; the desktop's `lib/uikit/port.o` disassembles byte for byte as before) and the PC relay to
+  **`port/host.inc`**; `port.cpp` picks `UK_PORT_POCKET`. `user/Makefile`: `lib/pocket/port.o`,
+  `lib/pocket/uikit_table.S` (libgen `--frozen` on the same `uikit.abi`, order-only after the desktop's table),
+  `lib/pocket/uikit.so`, `lib/pocket/abi_same.stamp` (in `libs`); `servers` builds PocketUI too, `clean` cleans it.
+  `kernel/Makefile` `stage`: `lib/pocket/*.so` -> `SD:/lib/pocket/`. **`tools/libgen/abi_same.py`** (the two tables
+  from the ELF files, slot by slot by symbol name, + the generated `.S`): "the same 848 entries".
+  `tools/tests/shlib/abi_same_test.sh` (it, then two negative cases): PASS.
+- **Packages** (`tools/pkg/packages.ini`): `[uikit] files` += `lib/pocket/uikit.so`; `bin/pocketui` is onyx's (`bin/`).
+  `mkrepo.plan` on a copy of the card with both files: no orphan, uikit / onyx. Not published (the session's rule).
+- **Tests (PC)**: **`tools/tests/server_sim/run.sh`** (new: `server_sim.cpp`, `sim_mem.cpp`; fakekapi.cpp gained
+  three weak hooks, nothing changes without them): the servers' code built for the host, a real app as client
+  through UIKit's **wire** port (`-DUK_PORT_WIRE`: the Onyx client code on the PC) -- PocketUI: the Terminal filled
+  at 800 x 480 (and 640 x 480, console: 800 x 480 whole), the Calculator a card, Alt+Tab with a second program, 17
+  checks PASS, pictures `pocket-terminal.png`, `pocket-calculator.png`, `pocket-card-over.png`,
+  `console-terminal.png`, `pocket-terminal-640.png` in its output folder; **Elegant before (HEAD's sources) and
+  after the extraction: the same pixels** (Calculator, Terminal). `desktop_sim/run.sh`: wmtest passes, gallery
+  identical. `shots.sh`: 173 pictures, 171 identical to P2's; `archiver.png` (an archive's size, 29.8 / 29.7 KB)
+  and `courier-tests.png` (the tab shown) differ the same way at HEAD's sources in a worktree -- the data and the
+  timing, not this work. Build (`kernel/ make -j8`): no error, no warning in the new or changed files.
+- **Fixes after the first Pi run (2026-10-08, the user's reports with `shell=pocket`)**, `wm.cpp` + `common/wm/`:
+  (1) **a program started over another stayed hidden behind it** -- the front program was read back each turn
+  from the z-order (the topmost app window), so whatever put the old app's window back on top re-elected it; the
+  PC sim did not reproduce it (tinypad + a card at 800 x 480 and 1920 x 1080, the screen composed by damage as on
+  the Pi): the Pi's exact trigger is not identified -- to watch in step 3 below; the policy no longer depends on it.
+  Now the front program is **kept by the policy**: a program that opens a window or is raised (`EL_OP_WIN_RAISE`,
+  `EL_OP_APP_RAISE` = `run` of a running app, its tray icon opened, Alt+Tab) is fronted (an MRU list), its windows
+  raised and kept above every other program's each turn; the front one gone or minimised: the previous one; the
+  policy's per-window state keyed by pointer AND id. (2) **the dock was shown**: the bottom-band test asked for at
+  least half the screen's width -- the dock is 839 px, less than half of 1920: refused now whatever its width; the
+  agenda and the stickies are backmost (refused already). (3) **the menu bar stays in pocket** (study §6.4): a
+  topmost window across the top edge is the top band (`PK_KIND_BAR`), PocketUI's status band removed while it
+  runs, made again when it goes, the work area under it, the cards centred again; `EL_OP_MENU_GET` / `_COMMAND`
+  answer the **front app's** window (Elegant's active window skips borderless ones, so a filled app had no menus;
+  `GetActiveMenu` / `SendMenuCommand` gained an optional window, Elegant passes none); console refuses it.
+  (4) **cards do not move**: `CWindow::SetPinned` (cards and filled windows; Elegant never sets it) -- the title
+  bar neither drags nor maximises, no resize edge; `EL_OP_MOVE` / `EL_OP_WIN_MOVE` ignored for cards too. Also
+  `EL_OP_DESK`'s count test read the generation bits. server_sim: + 6 runs (tinypad then a card, at 800 x 480 and
+  1920 x 1080; a card's title dragged and a move asked; the menu bar + the dock + a backmost window; the dock at
+  1080p; console's menu bar), `screen` (the damage-composed screen, as on the Pi), 53 checks PASS; Elegant built
+  from HEAD's `common/` and from these: the same pixels and checks (tinycalc, terminal, tinypad, with drags and a
+  second program); `desktop_sim` wmtest passes.
+- **Pi checklist** (not done):
+  1. Build, stage (`SD:/bin/pocketui`, `SD:/lib/pocket/uikit.so` new), boot with no `shell=` line: the desktop exactly as
+     before (Elegant is rebuilt from `common/`): `pi_wstest.py`, `el0test`, `pi_apps.py`; `kill elegant` -> every window
+     back, the wallpaper repainted (voronoy).
+  2. `shell=pocket`, restart: the band at the top (the time), `kmsg` shows `pocketui: SD:/lib/pocket/uikit.so is
+     SD:/lib/uikit.so for this session` and `pocketui: the global menu bar: the top band` (the menu bar replaces the status band: the front app's menus, the
+     clock) and `pocketui: a desktop's band refused (the screen's bottom edge: the dock)`;
+     `preload` lists `sd:/lib/uikit.so -> sd:/lib/pocket/uikit.so`.
+  3. From telnet (`kmsg`: `pocketui: in front: <app>` at each change): `run terminal` -> filled under the band, no frame, its tabs at the top; `run tinycalc` -> a card in the
+     middle with the Milk title, the Terminal hidden; Alt+Tab -> the Terminal back; close the Calculator's bead -> the
+     Terminal. `run fileviewer`, `run tinypad`, a game (`run tetris`: a card), an emulator full screen (F11), Setup (a
+     fixed 800 x 600: filled frameless at 800 x 480, cut).
+  4. `pi_apps.py` under PocketUI: every app starts (its window opens; note the ones that look wrong for P6).
+  5. `kill pocketui` (telnet): the kernel starts it again (`--restart`): the band back, every window back (UIKit's
+     replay: the hello asked again), `preload` still shows the alias (orphaned, taken over).
+  6. `rdpd` + Onyx Remote and `vncd` under PocketUI: the windows listed, the screen seen.
+  7. `shell=console`, restart: no band, the Terminal fills 800 x 480 (or the screen).
+  8. Back: remove the `shell=` line (or `shell=desktop`), restart: the desktop. A desktop app started by hand during a
+     pocket session after `cp` of an old UIKit is out of scope.
+- **Next**: P4 (sessions: `/bin/session`, `SD:/etc/session/*`, the autostart split -- then the desktop's menu bar and dock
+  are not started under PocketUI at all; the Mode applet; K3's switch from the Control Panel), P5 (`pocketshell`: the
+  status bar with the app's menus, the launcher, the switcher -- `PK_OP_SHELL`... given their meaning in `wm.cpp`),
+  P6 (the adaptive widgets, the viewport for windows bigger than the work area, the dim behind cards).
+
+## PocketUI phase P2: the window API in UIKit (`uk_win_*`), AppKit's window functions removed (2026-10-08): built, tested on the PC, NOT yet on the Pi, not committed, not published
+
+The decided design is `docs/POCKETUI-TECH-STUDY.md` §2.2, §4, §5, §9 (P2). **The decision of 2026-10-05 "the protocol
+is AppKit's" (below, in the Elegant section) is reversed**: the window API is UIKit's, and each graphics server's
+UIKit is the only code that speaks its server's protocol.
+
+- **UIKit**: `user/Kits/uikit/win.h` (new; C linkage, C-compatible, in `uikit/uikit.h`): `uk_win_*` -- 48 window
+  calls per the study's table (`kapi_create_window` -> `uk_win_create`, `kapi_win_move` -> `uk_win_place`,
+  `kapi_list_windows` -> `uk_win_apps`, `kapi_set_*_handler` -> `uk_win_on_*`, `kapi_get/set_wheel_speed` ->
+  `uk_win_wheel_get/_set`, `kapi_fullscreen_begin/_end` -> `uk_win_fullscreen_begin/_end`...), plus
+  `uk_win_server` (`struct uk_win_server_info`: name, mode, screen, work area, scale, size class; `UK_MODE_*`,
+  `UK_SC_*`) and seven `uk_shell_*` (register, events, keys, thumb, front, split, dim: the desktop answers
+  `-KAPI_ENOSYS`; their meaning is PocketUI's, to be written at P5). `win.cpp`: the entries (thin). **The port**:
+  `user/Kits/uikit/port/` -- `port.h` (namespace `uikit::port`, one function per `uk_win_*`; libgen
+  `--exclude '^_ZN5uikit4port'`), `port_desktop.cpp` (= `appkit_ws.inc` + the `KAPI_WS` bodies, moved verbatim:
+  the requests through AppKit's `kapi_ws_ctl`, the window state, the replay; on a PC the relay to the stand-in
+  kernel's entries, = the old `KAPI_HOST` bodies), `elegant.h` (moved from `user/Kits/appkit/`; Elegant and
+  `wstest` include `uikit/port/elegant.h`). `user/Kits/uikit/port.cpp` compiles the desktop port (`UK_PORT_POCKET`
+  is P3's) -- so every script that compiles `user/Kits/uikit/*.cpp` (shots.sh, the tests, Koton for Windows)
+  got it with no change. `uikit.abi`: + 55 entries (793 -> 848), slot 781 `_ZN5uikit13uk_win_selectEi` renamed
+  `uk_win_select` (the rename the rule allows; the old C++ wrapper is gone). **`lib/uikit.imp_c.a`** (new: the
+  stubs + `libgen --bind-c`; libgen now accepts `--bind-c` with `--data` -- a C program hands no variables, the
+  library keeps its own copy of UIKit's globals). Not built yet: `lib/pocket/uikit.so` (`--frozen`) and
+  `abi_same.py` (P3, with the pocket port).
+- **AppKit**: the 46 window functions removed from `appkit.h` and `appkit_calls.inc`; in **`appkit.abi`** their
+  lines stay in place as **retired placeholders** `kapi_retired_<slot>` (the coordinator's decision, option b:
+  bodies in `appkit_calls.inc` under `KAPI_IMPL`, not declared, returning 0 -- a null canvas, nothing listed,
+  false -- or the call's old error value: -1, `-3` for `win_desk`, `1 << 8` for `desk`); **every slot number is
+  the same as in `main`** (checked against `git show HEAD:user/Kits/appkit/appkit.abi`), no `kapi_win_*` name
+  is left. `appkit_ws.inc` deleted, the `KAPI_WS`/`KAPI_HOST` macros gone. Kept: `kapi_ws_ctl` (the
+  transport), `kapi_fullscreen_begin` / `_end` (the kernel's primitives: **begin no longer tells the server** --
+  `uk_win_fullscreen_begin` does, then calls it), `kapi_present_fb`, `kapi_fullscreen_direct`, the pump, the
+  constants and structures (`WIN_FLAG_*`, `GUI_EVENT_*`, `KEY_*`, `struct kapi_chrome`... stay in
+  `appkit.h` / `kapi_abi.h`: Elegant and the pump share them). The demos' aliases `create_window` / `present`
+  moved to `uikit/win.h`. Still only AppKit reads the kernel's table (the port reads it on a PC only, the
+  stand-in's window entries).
+- **Migrated** (≈ 75 files, renames + includes): UIKit's `root.cpp`, `menu.cpp`, `skin.cpp`, `dialog.cpp`
+  (+ comments in `root.h`, `skin.h`, `canvas.h`); A: 2048, cppdemo, demoA-C, eyes, inidemo, life, mandelbrot,
+  minesweeper, pong, same, snake, sokoban, tetris, spin, gpudemo, teapot, `BinUtils/gpcdemo.c`; B: the six
+  emulators, gamelib, Doom (`Ports/doom/doom_onyx.c`), `Libs/basic/runtime.cpp`, plasma, lock, Slides' show,
+  PDF, Photos' share, Media, Screenshot, Mail's webview; C: menubar, dock, agenda, stickies, wifimenu, voronoy;
+  D: notifyd, the Clock (`main.cpp`, `clock_proto.h`, `ring.h`, `timerview.h`), Notes; E: Telegram, Control
+  Panel, Jet (`console.cpp`, `downloads.cpp`, `main.cpp`), File Viewer, Archiver, imageview, taskman,
+  clipboard, keyconf, setup, shutdown, terminal, theme; F: `BinUtils/rdpd.c`, `el0test.c` (wstest speaks the
+  protocol by hand: only its include moved); Elegant's demo mode (`Servers/elegant/main.cpp`: its own
+  `KAPI_WS_CALL`s -- Elegant links no UIKit); the hosts: `tools/tests/rdpd/` (`mock_rdpd.h`, `build_host.sh`,
+  `run_rdpd_test.sh`), `tools/tests/notes/sim_probe.cpp` + `run_notes_test.sh`, `tools/ports/skia/skiademo.cpp`
+  + `build.sh` (UIKit's C import side; untested here: no POSIX toolchain). Links: `BinUtils/Makefile`
+  (`el0test` KITLIBS, `gpcdemo`, `rdpd` with `-DONYX_BIND_LIBC lib/uikit_bind_c.c lib/uikit_stubs.o`), plasma
+  includes `onyxpp.hpp` (UIKit's C++ bind needs its `operator new`). **Jet** (built apart,
+  `tools/build-jet.sh`): its sources are migrated and it was **rebuilt on 2026-10-08** from `721153c95`
+  (the user tried it on the Pi: it works), published as `jet 2.0.14`, then `2.0.15` with its needs raised
+  (`uikit >= 1.850`). A WebKit tree patched before the `user/Libs` move stops at CMake on `user/gpucomp`:
+  re-apply the series on the pin (docs/08's note). `fsrace` (a kernel test) keeps the kernel's `kapi_fullscreen_*`.
+- **Tests (PC)**: `shots.sh` before / after into scratch folders: **173 pictures, 0 pixels different** (letters,
+  paint, sheet, slides, pdf do not build on the PC at HEAD already -- PrinterKit's symbols; unchanged).
+  `desktop_sim/run.sh` (wmtest + gallery): identical. The tests' scripts: as before (archiver, circuits_sim,
+  clipboard, clock, critters(_sim), gamepad, image, kvtext, letters, notes(_sim), pinball_sim, qbstudio,
+  slides, stickies_sim, trash, gui, doom, gpiokit, Koton's plugin host: pass; clock_sim 2/220, games (AudioKit
+  link), rdpd_pipeline (its old rev's `kapi.h`): failing before too). **`run_rdpd_test.sh` passes now** (it
+  failed at HEAD: its mock lacked calls). The whole build (`kernel/ make -j8`): no error, no new warning. Re-checked after the retired slots: build clean, the 173 pictures still identical, notes / rdpd / image / clipboard / gui pass.
+- **Compatibility** (no renumbering): an old program runs on the new AppKit except its direct window calls
+  (they return 0 / their error); the new UIKit and the rebuilt programs run on the old AppKit too (UIKit needs
+  only `kapi_ws_ctl`, kapi 89: `tools/pkg/packages.ini` `[uikit] kapi = 89`). So the packages may arrive in any
+  order; publish them together anyway (UIKit before the apps that call `uk_win_*`: their `needs` on the new
+  `uikit` version). Jet: rebuilt and republished (2026-10-09, `jet 2.0.15`).
+- **Pi checklist** (not done):
+  1. Build and stage everything (kernel, AppKit, UIKit, every app and `/bin` tool, Elegant, Doom); boot: the
+     desktop as before (wallpaper, menu bar with its tray, dock, agenda, stickies, notifyd's bubbles).
+  2. `tools/tests/shlib/pi_apps.py`: every app starts on Elegant; `pi_wstest.py`; `el0test` all PASS (its
+     win_list check now through UIKit).
+  3. Elegant killed (`kill elegant` over telnet): every window comes back (the replay is UIKit's now), the menus,
+     the tray icons, a second window of Telegram.
+  4. `rdpd` with Onyx Remote (list, pixels, raise, move, close, the pointer's shape); `vncd`.
+  5. Full screen: an emulator (gbemu), Doom, plasma, `gpcdemo`; Esc gives the desktop back.
+  6. Drag and drop (File Viewer -> Archiver), the wallpaper (voronoy, theme), workspaces (dock), Screenshot.
+- **Next**: P3 -- done since (the section above).
+
+## PocketUI phase P1: the kernel's side -- the alias, the server per mode, the switch (2026-10-08, kapi v97): built, tested on the PC, NOT yet on the Pi, not committed
+
+The decided design is `docs/POCKETUI-TECH-STUDY.md`; P1 is its §3.8 K1-K3 (§9's table). (P2 -- the window API in
+UIKit -- is done since: the section above. No PocketUI yet, no `/bin/session`, no Mode applet.)
+
+- **K1 `kapi_lib_open_as (path, alias, min_version, err)`** -- slot 234, AppKit's `kapi_lib_open_as` (`appkit.abi`
+  line 314). The cache (`kernel/proc/image.cpp`): `TImage::Alias` / `nAliasOwner` / `bAliasOrphan`; `FindNamed`
+  looks at the aliases first; `ImageAliasAllowed` (both under `sd:/lib/`, never `appkit.so`, path != alias),
+  `ImageSetAlias (img, alias, owner, bCommit)` (checked before the mapping, set after it, no yield between),
+  `ImageAliasHeld` (the server asking again / taking its orphan over gets that very image, even if its file
+  changed), `ImageUnalias (owner, bOrphan)`. `kernel.cpp` `LibraryOpenImpl` (LibraryOpen and LibraryOpenAs; the
+  log says `(as sd:/lib/uikit.so)`), `sys/kapi.cpp` `kapi_lib_open_as` (only `WsIsServer ()`). Lifetime: with the
+  image; the server ended -> orphaned (`WsOnProcessGone`); another server started -> dropped. `image_list`:
+  `KAPI_IMG_ALIAS` (16), the alias after the path's NUL (`/bin/preload` prints `alias -> real`); `image_unload`
+  of an alias key -> `-EBUSY` (`/bin/unload` says so).
+- **K2** (`kernel/sys/wsrv.cpp`): `ShellRead` reads `SD:/etc/system.ini` `shell =` (the kernel's own reader in
+  wsrv, at the boot and at each switch -- not `kernel.cpp`'s `ReadSystemConfig`, which runs once); desktop /
+  none / unknown -> `SD:bin/elegant --serve` (unchanged), pocket / console -> `SD:bin/pocketui --serve --mode <m>`
+  (relaunch: `--serve --restart --mode <m>`). `ServerStart`: the chosen server tried (5 s; it ended -> at once; a
+  hung non-Elegant one is killed), else Elegant (aliases dropped), else the console. `WsPoll` relaunches the
+  started server; PocketUI ending 5 times -> Elegant. `Register` accepts the started server's task name.
+- **K3** `KAPI_WS_SWITCH` (19): anyone's but the server's; the server gets `KAPI_WS_IN_QUIT` (10) -- Elegant now ends
+  on it (`server.cpp`, two lines: the only Elegant change) --, killed after 3 s, aliases dropped, `shell =` read
+  again, `ServerStart` -> 0 / 1 (Elegant instead) / `-EBUSY` (full screen, or a start under way) / `-EINVAL` (the
+  server itself) / `-EIO` (the console). The new server gets plain `--serve` (a switch is a new session: no
+  `--restart`, so Elegant does not run voronoy -- the P4 session file will).
+- **Tests**: `sh tools/tests/run_image_test.sh` -> 617 checks, 0 failed (its *aliases* part; the script now links
+  `user/lib/appkit_stubs.o` into the demo library -- it had stopped building since the libraries call AppKit).
+  On the Pi: **`/bin/aliastest`** (new, `user/BinUtils/aliastest.cpp`; docs/04), also a stand-in server.
+- **Pi checklist** (not done yet):
+  1. Stage, boot with no `shell=` line: the desktop exactly as before (`pi_wstest.py`, `el0test`, `pi_apps.py`);
+     `kmsg` shows `wsrv: the graphics server (elegant) has the display`. `aliastest` -> PASS (EPERM, not aliased,
+     build 1). `libtest` all passed.
+  2. `shell=pocket` with no `SD:/bin/pocketui`: reboot -> the desktop (the log: `cannot start SD:bin/pocketui`,
+     `Elegant instead`).
+  3. `cp SD:/bin/aliastest SD:/bin/pocketui`, `shell=pocket`, reboot: a green band at the top;
+     `SD:/tmp/aliastest.txt` all PASS; over telnet `aliastest --expect 2`, `preload` shows
+     `sd:/lib/demo.so -> sd:/lib/demo2.so`, `unload demo.so` refused.
+  4. Crash and relaunch: `preload SD:/lib/demo.so` (pins the aliased image), press `x` on the Pi's keyboard -> the
+     band comes back blue (`--restart`), `aliastest --expect 2` still passes (the orphan taken over).
+  5. Switch: edit `shell=desktop`, `aliastest --switch` -> "the server asked for has the display" (Elegant;
+     programs' windows come back by AppKit's replay, no wallpaper until voronoy runs); `aliastest --expect 1`
+     (alias dropped). Then `shell=console` + `aliastest --switch`: the stand-in never takes the display -> after
+     5 s killed, Elegant, the answer "its server failed: Elegant" (1). With a full-screen program running:
+     `-EBUSY`.
+  6. Remove `SD:/bin/pocketui` and the `shell=` line.
+- **Next**: P2 (the window API into UIKit, `uk_win_*`; AppKit's window functions removed), then P3 (PocketUI's
+  skeleton, which calls `KAPI_WS_REGISTER` -> `kapi_lib_open_as` -> `KAPI_WS_DISPLAY` and handles
+  `KAPI_WS_IN_QUIT`).
+
+## Telegram for Onyx, an instant messenger in the way of Windows Live Messenger (2026-10-07): built, tested on the PC, in `main`, published
+
+Asked by the user ("une app de messagerie pour Telegram, avec un look soigné comme Live ou Yahoo Messenger"), after
+studying Discord / WhatsApp / Messenger (their terms forbid third-party clients; Telegram allows them). **Read docs/04 §12
+*Telegram*** (the use) and **docs/03 *Telegram*** (the code: its own MTProto 2.0, no TDLib).
+
+- **Done**: `user/Apps/telegram` -- the TL codec driven by the API's schema (layer 229, `tools/telegram/mkschema.py`), the
+  crypto on mbedTLS (AES-IGE, RSA_PAD, DH, pq, SRP, an entropy pool + CTR_DRBG + `seed.bin`), the MTProto session
+  (key exchange, encrypted messages, service messages, TCP intermediate transport), the client (sign-in with code,
+  cloud password and sign-up; migrations; the model kept by the updates and getDifference; sending, reading, typing,
+  status; profile photos from any data centre), the window (contact list with Favourites / Conversations / Contacts,
+  the conversation "X says:", read ticks, display pictures, emoticons drawn by vectors and typed `:)`, the picker,
+  notifications, `--demo`), `lang/fr.txt` (209 words), `app.txt`, `icon.bmp` (`tools/icons/telegram_icon.py`),
+  `[app.telegram]` in `tools/pkg/packages.ini`, the `user/Makefile` rule (`telegram.elf`), `shots.sh telegram`.
+- **Tested on the PC**: `sh tools/tests/telegram/run_tgclient_test.sh` -- offline 21 + 56 checks (the codec, the crypto,
+  the model fed the server's objects, SRP against the server's side); live (TG_API_ID / TG_API_HASH: my.telegram.org's,
+  the session used TDLib's public test pair) over MTProto's HTTP transport through the proxy: keys with the test and
+  production servers, the code sent, a wrong code refused, PHONE_MIGRATE followed. **Telegram's test servers refuse
+  their own sign-in codes since late 2024** (tdlib/td#3083): the signed-in part is tried with `TG_TEST_LOGIN=1` only.
+- **The app's key** (2026-10-07, the user's choice: public): api_id 35701384, built in (`main.cpp` `TG_API_ID` / `TG_API_HASH`),
+  checked against production (an impossible number refused with PHONE_NUMBER_INVALID, not API_ID_INVALID). If Telegram
+  ever answers API_ID_PUBLISHED_FLOOD, a new key at my.telegram.org (the user's account) and `config.ini` meanwhile.
+- **Not tried (to do on the Pi)**: the TCP transport (`tgplat.h`'s `TcpTransport`, port 443 of the data centres) and a
+  real account end to end: sign in, the conversations, a message both ways, a photo from another data centre, the
+  status, Sign out; the frame rate of the list with many conversations; `log.txt` says what the connection did.
+- **Pictures** (2026-10-07, after the user's test on the Pi -- "il marche bien"): sent (the picture button, Ctrl+V of a
+  picture or a picture file, a drop; 1280 px JPEG, parts of 128 KB, sendMedia, the progress) and shown (received and
+  sent; a click: the Image Viewer). Offline-tested (tgmodel_test: 47 checks); the upload against Telegram: on the Pi.
+- **Contacts added by phone number** (2026-10-07): the "+" by the search, Ctrl+N, `contacts.importContacts`; tgmodel_test 50
+  checks.
+- **A person not in the contacts** (2026-10-07): the bar Add to contacts / Block / Unblock / hide (getFullUser's settings);
+  tgmodel_test 56 checks.
+- **Follow-ups**: show the stickers and videos, send other files, reply / edit / delete, reactions, a sound for a new message (AudioKit), the notification's click opening the
+  conversation, a kernel entropy source (the RNG200) to replace the pool's stopgap, the chat's pop-out windows (one
+  process each, as IRC's private conversations), the reusable pieces into kits (the TL codec + MTProto into NetKit if a
+  second program wants them; the emoticons into UIKit).
+
 ## Critters, lead the little creatures to the exit (AutoDev round 5, 2026-10-07): built, tested on the PC, branch `AutoDev` only
 
 Made by the AutoDev pipeline (`autodev/rounds/05-critters/`: 02 the analysis and its 37 acceptance criteria, 03 the
@@ -375,6 +1318,9 @@ the user says so -- and **do not publish packages from it** until then (the Pi i
   it. The pump (`el0blob.S`), `kapi_post` and `kapi_pump_wait` do not change.
 - **The protocol is AppKit's** (private to it, shared with Elegant; no program includes it): its `kapi_*`
   window names cannot move, UIKit depends on AppKit, `vncd` / `rdpd` / `plasma` / `gpcdemo` have no UIKit.
+  **(REVERSED by the user on 2026-10-08 -- `docs/POCKETUI-TECH-STUDY.md` §2.2, done in PocketUI's phase P2: the
+  window API is UIKit's, `uk_win_*`, the protocol `user/Kits/uikit/port/elegant.h`, AppKit's window functions
+  removed, every program migrated -- `rdpd`, `plasma`, `gpcdemo` included. See this file's top.)**
   What Elegant brings that is new (several windows a process, damage rectangles, a frame-done pace) is
   shown to the programs by UIKit.
 - **`rdpd` stays a process of its own** (and `vncd`), with an access to what it needs: a capture channel
@@ -831,6 +1777,25 @@ an example) and `docs/04` §11 *Printing*.
   `N64_GFX=prefix N64_GFXEVERY=n`, `N64_FRAMELOG=f`, `N64_CIMG=f` (see the file's header). With
   the user's OoT ROM, the pause menu is reached with the input script: Start at 1000, A at 1200,
   1450, 1550, 1650, then A every 80 frames from 1800 to 16000, Start at 16500.
+
+## Several windows per program: built (2026-10-07) — `docs/MULTI-WINDOW-STUDY.md`
+
+**Done, in `main`, NOT yet tried on the Pi** (the session had no Pi; the PC's simulator only). Elegant holds 64
+windows (16 before); a program may have 16 windows besides its first: the kernel maps their buffers at fixed
+addresses of their own (`KAPI_WS_VA_WIN`, kapi v94), Elegant keys a window by (pid, number) — the number in the
+request's op (`EL_OP_WINDOW_SHIFT`) —, stamps it in the events' `sender`, turns a close box into
+`GUI_EVENT_WINCTL KAPI_FRAME_CLOSE` for a window that is not the first, and copies the first window's menu to the
+others; AppKit has `kapi_win_new` / `kapi_win_select` / `kapi_win_destroy` and a per-window state (replayed when
+Elegant starts again — the first window as before, the others made again); UIKit's `Root (NewWindow, ...)`, the
+events routed by `sender`, `Root::paintAll`, `onClose`. **Telegram** opens each conversation in its own window
+(`windows=0` in its `config.ini`: as before). The PC's simulator has the windows (`win N`, `winclose`); the
+screenshot `telegram-windows.png`. What the study's Part A also lists and is not done: the window list paged past
+36 (`EL_OP_WIN_LIST`), the per-program ceiling, a "no memory for a window" notification, Elegant's own growable
+lists. **To check first on the Pi**: two conversations open, typing in each, closing one, Elegant killed and started
+again with three windows open, the dock and the menu bar with a conversation window active.
+**The status area** (2026-10-08, kapi v95): a program's icon in the menu bar (`uk_tray`; Elegant's `EL_OP_TRAY_*`,
+AppKit's `kapi_tray_*`, the menu bar's `tray_poll` / `draw_tray`); a double click raises the program's first
+window even minimised, `Root::onTray`. Telegram's icon (its tip: the unread messages). Not yet tried on the Pi.
 
 ## Several users: studied, then set aside by the user (2026-10-05) — `docs/MULTI-USER-PLAN.md`
 
@@ -1964,7 +2929,7 @@ guide: docs/04 *Ledger, the accounts*; the pieces: docs/03):
   the machine emulates the game's CPU whatever is drawn; SVE / SVE2 -- the Cortex-A72 has NEON
   only, and the JIT already keeps the FPRs and paired singles in NEON registers.
 - **Testing on the Pi yourself** (on the user's network; ask its IP -- it was 192.168.0.7):
-  - a console: `telnet <pi-ip>` (telnetd, port 23; or OnyxRemote's Console button). If telnetd
+  - a console: `telnet <pi-ip>` (telnetd, port 23; or OnyxRemote's Terminal button). If telnetd
     stops answering (a process spinning, see below): in the Pi's Terminal `ps`, then
     `kill <pid> --force`; or `reboot`.
   - files: an anonymous FTP server on the PC (e.g. Python's `pyftpdlib`, port 2121) and on the Pi
@@ -2071,7 +3036,7 @@ Every new app: FreeType text through uikit's face, polished, its catalog entry i
   `AutoDev`, waiting for the user's validation: *Notes* and *Stickies*, the section at the top).
 - (Storage applet: not for now. Updates: part of the future package manager / app store.)
 
-**Priority 3–4**: **Clock** (moved here by the user, 2026-10-02): alarms, timer, stopwatch, world clocks (notifications through notifyd; a small service for the alarms when the app is closed). **Video player** -- **done** (2026-10-02: the Media Player's videos); the **app store / package manager** (see IDEAS.md below; `docs/pkg/README.md`: `pkg`, the Package Manager `pkgman`, the daemon `pkgd` done and tested on the PC, the repository `onyx-packages` published (signed with the user's key, kept off the repositories), `sdcard_lite`; the Game Library finds its emulators from their app.txt; next: try it on the Pi; tryboot: not for now).
+**Priority 3–4**: **Clock** (moved here by the user, 2026-10-02): alarms, timer, stopwatch, world clocks (notifications through notifyd; a small service for the alarms when the app is closed) -- **built** (AutoDev round 6, branch `AutoDev`, awaiting the user's validation: `clock` + the service `clockd`, docs/04 §12 *Clock*). **Video player** -- **done** (2026-10-02: the Media Player's videos); the **app store / package manager** (see IDEAS.md below; `docs/pkg/README.md`: `pkg`, the Package Manager `pkgman`, the daemon `pkgd` done and tested on the PC, the repository `onyx-packages` published (signed with the user's key, kept off the repositories), `sdcard_lite`; the Game Library finds its emulators from their app.txt; next: try it on the Pi; tryboot: not for now).
 
 **Priority 5**: a global **key vault** (encrypted secrets store) with seamless integration in
 the apps that hold secrets (Wi-Fi, Lisa / Groq keys, mail passwords, Courier, ftpfs...).

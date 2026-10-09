@@ -1,0 +1,237 @@
+/* Onyx web site -- design tokens and base styles. Direction D: "Onyx, the stone".
+   Dark is the site: neutral blacks without a blue cast, thin light titles, one vivid colour -- the green.
+   It is the default for every visitor; nothing depends on prefers-color-scheme.
+   Light is an option the visitor switches on (<html data-theme="light">): a white, airy page with soft
+   cool washes behind the hero and the stages, the same green (darkened) for every accent.
+   Load it first, then the components (site.css). No external request. MIT licence (ours). */
+
+/* ------------------------------------------------------------------ tokens */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces: the page's rhythm comes from these neutrals, never from a second colour. */
+  --bg:        #0B0B0B;        /* the page: black stone */
+  --bg-alt:    #131313;        /* the alternate band: graphite */
+  --bg-lift:   #1A1A1A;        /* a lifted band (the app showcase), cards */
+  --surface:   #1C1C1C;        /* cards on --bg or --bg-alt */
+  --header-bg: #0B0B0B;
+  --footer-bg: #070707;
+  --hero-bg:   radial-gradient(90% 70% at 50% 0%, #2B2B2B 0%, #161616 45%, #0B0B0B 100%);
+  --band-bg:   radial-gradient(80% 120% at 50% 100%, #262626 0%, #121212 60%, #0B0B0B 100%);  /* the CTA band */
+  /* A stage is always lighter than the band it stands on (a veil of white, so it works on every surface). */
+  --stage-bg:  linear-gradient(180deg, rgba(255, 255, 255, .085) 0%, rgba(255, 255, 255, .04) 100%);
+
+  --ink:       #F4F4F2;        /* titles, text of first rank; 18:1 on --bg */
+  --ink-2:     #B8B8B4;        /* text; 10:1 */
+  --ink-3:     #8E8E8A;        /* captions; 6:1 on --bg, 5.6:1 on --bg-alt */
+  --line:      rgba(244, 244, 242, .12);
+  --line-2:    rgba(244, 244, 242, .28);
+
+  /* The one vivid colour. Text and marks: 11:1 on --bg. As a ground it takes dark text. */
+  --accent:    #3EDB8F;
+  --accent-hi: #7BE8B3;        /* hover */
+  --on-accent: #04130B;
+  --focus:     #3EDB8F;
+
+  /* A capture's outline on black: a hairline of light that follows its rounded corners, then the depth. */
+  --shadow-win: drop-shadow(0 0 1px rgba(255, 255, 255, .55)) drop-shadow(0 24px 40px rgba(0, 0, 0, .7));
+  --shadow-card: 0 0 0 1px var(--line);
+  --bezel: #1D1D1D; --bezel-line: rgba(255, 255, 255, .16); --bezel-shadow: rgba(0, 0, 0, .8);
+
+  /* Type: the system's interface font. Nothing is downloaded. */
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "DejaVu Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  --w-title: 300;              /* thin titles; 400 under 600 px (see below) */
+
+  --t-display: clamp(2.5rem, 1.4rem + 5.2vw, 5rem);      /* 40 -> 80  the hero */
+  --t-h2:      clamp(2rem, 1.35rem + 3vw, 3.5rem);       /* 32 -> 56  a section's title */
+  --t-h3:      clamp(1.375rem, 1.2rem + .8vw, 1.75rem);  /* 22 -> 28  a card's, a step's title */
+  --t-lead:    clamp(1.125rem, 1.02rem + .5vw, 1.375rem);/* 18 -> 22  the sentence under a title */
+  --t-body:    1.0625rem;                                /* 17 */
+  --t-small:   .875rem;                                  /* 14 */
+  --t-eyebrow: .8125rem;                                 /* 13, capitals */
+
+  /* Space: a 4 px step. */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px; --s-5: 24px;
+  --s-6: 32px; --s-7: 48px; --s-8: 64px; --s-9: 96px; --s-10: 128px;
+  --section-y: clamp(72px, 11vw, 152px);     /* a section's top and bottom */
+  --gutter:    clamp(20px, 5vw, 48px);       /* the page's side margin */
+  --w-text:    42rem;                        /* a centred text block */
+  --w-page:    1120px;                       /* the container */
+  --w-wide:    1320px;                       /* showcases */
+
+  --r-s: 6px;   /* fields, chips */
+  --r-m: 10px;  /* buttons -- Onyx's push button, not a pill */
+  --r-l: 18px;  /* cards */
+  --r-xl: 28px; /* stages */
+
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --t-fast: 160ms;
+  --t-slow: 700ms;
+  --header-h: 56px;
+}
+/* Thin type is too frail on a phone's small titles: a floor of 400 there. */
+@media (max-width: 600px) { :root { --w-title: 400; } }
+
+/* ------------------------------------------------------- the light option */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg:        #FFFFFF;
+  --bg-alt:    #F6F7F9;
+  --bg-lift:   #EEF1F4;
+  --surface:   #FFFFFF;
+  --header-bg: #FFFFFF;
+  --footer-bg: #F6F7F9;
+  --hero-bg:   linear-gradient(168deg, #DCEBFF 0%, #DFF3F7 52%, #E1F6EB 100%);   /* blueberry -> lagoon -> mint */
+  --band-bg:   linear-gradient(168deg, #E1F6EB 0%, #DFF3F7 48%, #DCEBFF 100%);
+  --stage-bg:  linear-gradient(155deg, #EEF1F4 0%, #E3E7EC 100%);                /* a stage without a wash */
+
+  --ink:       #1B1D21;        /* 17:1 on white */
+  --ink-2:     #474B52;        /* 9:1 */
+  --ink-3:     #666B73;        /* 5.3:1 on white, 4.9:1 on --bg-alt */
+  --line:      rgba(27, 29, 33, .10);
+  --line-2:    rgba(27, 29, 33, .24);
+
+  /* The same green, darkened: 5.4:1 as text on white, 4.7:1 on the hero's wash; white text on it. */
+  --accent:    #0A7848;
+  --accent-hi: #075C37;
+  --on-accent: #FFFFFF;
+  --focus:     #0A7848;
+
+  /* A capture's outline on white: a hairline of shade that follows its corners, then the depth. */
+  --shadow-win: drop-shadow(0 0 1px rgba(20, 30, 50, .45)) drop-shadow(0 22px 38px rgba(20, 30, 50, .2));
+  --shadow-card: 0 1px 2px rgba(20, 30, 50, .06), 0 8px 24px rgba(20, 30, 50, .07);
+  --bezel: #17181A; --bezel-line: transparent; --bezel-shadow: rgba(20, 30, 50, .4);
+  --w-title: 400;              /* thin type is weak on white: one step heavier in light */
+}
+/* The washes: light only, behind a stage (data-wash on the .stage). Four cool hues that sit well with the
+   captures' peach frames. In dark the attribute changes nothing: the stages stay neutral. */
+:root[data-theme="light"] [data-wash="blueberry"] { --stage-bg: linear-gradient(155deg, #E1EEFF 0%, #C6DDFF 100%); }
+:root[data-theme="light"] [data-wash="lagoon"]    { --stage-bg: linear-gradient(155deg, #DCF4FA 0%, #BDE9F4 100%); }
+:root[data-theme="light"] [data-wash="mint"]      { --stage-bg: linear-gradient(155deg, #DBF6EA 0%, #BDECD7 100%); }
+:root[data-theme="light"] [data-wash="grape"]     { --stage-bg: linear-gradient(155deg, #EFE6FF 0%, #DDCBFF 100%); }
+:root[data-theme="light"] .stage { box-shadow: none; }
+
+/* ------------------------------------------------------------------- reset */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-padding-top: calc(var(--header-h) + 16px); background: var(--bg); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink-2);
+  font: 400 var(--t-body)/1.55 var(--font);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  overflow-x: clip;
+}
+h1, h2, h3, h4, p, figure, ul, ol { margin: 0; }
+ul[class], ol[class] { padding: 0; list-style: none; }
+img, svg, video { display: block; max-width: 100%; height: auto; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hi); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 4px; }
+::selection { background: var(--accent); color: var(--on-accent); }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+/* -------------------------------------------------------------- typography */
+h1, h2, h3, h4 { color: var(--ink); text-wrap: balance; }
+.t-display, h1 { font-size: var(--t-display); font-weight: var(--w-title); line-height: 1.06; letter-spacing: -.035em; }
+.t-h2, h2      { font-size: var(--t-h2);      font-weight: var(--w-title); line-height: 1.1;  letter-spacing: -.03em; }
+.t-h3, h3      { font-size: var(--t-h3);      font-weight: 600;            line-height: 1.2;  letter-spacing: -.015em; }
+.t-lead  { font-size: var(--t-lead); line-height: 1.45; color: var(--ink-2); text-wrap: pretty; }
+.t-small { font-size: var(--t-small); line-height: 1.5; color: var(--ink-3); }
+p { text-wrap: pretty; }
+b, strong { color: var(--ink); font-weight: 600; }
+/* The small capitals label above a title: the apps' own sidebar headings (LIBRARY, VIDEOS). Green. */
+.eyebrow {
+  font-size: var(--t-eyebrow); font-weight: 700; line-height: 1.2;
+  letter-spacing: .09em; text-transform: uppercase; color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ layout */
+.container { width: min(100% - 2 * var(--gutter), var(--w-page)); margin-inline: auto; }
+.container--wide { width: min(100% - 2 * var(--gutter), var(--w-wide)); }
+.section { padding-block: var(--section-y); background: var(--bg); }
+.section--alt  { background: var(--bg-alt); }
+.section--lift { background: var(--bg-lift); }
+.section--band { background: var(--band-bg); }
+.stack > * + * { margin-top: var(--s-5); }
+.center { text-align: center; }
+.center > .t-lead, .center > p { max-width: var(--w-text); margin-inline: auto; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+/* ----------------------------------------------------------------- buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+  min-height: 48px; padding: 0 22px;
+  border: 1.5px solid transparent; border-radius: var(--r-m);
+  font-size: 1rem; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease),
+              color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.btn:active { transform: translateY(1px); }
+/* The green button: one a screen, no more. */
+.btn--primary { background: var(--accent); color: var(--on-accent); }
+.btn--primary:hover { background: var(--accent-hi); color: var(--on-accent); }
+.btn--ghost { border-color: var(--line-2); color: var(--ink); background: transparent; }
+.btn--ghost:hover { border-color: var(--ink); color: var(--ink); }
+.btn--small { min-height: 36px; padding: 0 14px; font-size: var(--t-small); border-radius: 8px; }
+/* A text link with a chevron: "See all >" as in the Media Player. */
+.more { font-weight: 600; white-space: nowrap; }
+.more::after {
+  content: ""; display: inline-block; width: .42em; height: .42em; margin-left: .45em;
+  border: solid currentColor; border-width: 2px 2px 0 0; transform: translateY(-.08em) rotate(45deg);
+  transition: margin-left var(--t-fast) var(--ease);
+}
+.more:hover::after { margin-left: .7em; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--s-3) var(--s-5); align-items: center; }
+.center > .actions { justify-content: center; }
+
+/* ------------------------------------------------------ screenshot framing */
+/* 1. A window capture (RGBA: it carries Onyx's own frame and rounded, see-through corners).
+      Shown as it is: no border, no radius, no device. Only its hairline and shadow, which follow its corners. */
+.shot-window { filter: var(--shadow-win); }
+
+/* 2. A whole-screen capture (1024 x 768 or 1920 x 1080, RGB): in a thin display, its edge a hairline. */
+.shot-screen {
+  padding: clamp(5px, 1vw, 10px); border-radius: clamp(10px, 1.8vw, 18px);
+  background: var(--bezel); box-shadow: 0 0 0 1px var(--bezel-line), 0 30px 60px -20px var(--bezel-shadow);
+}
+.shot-screen > img { width: 100%; border-radius: clamp(3px, .6vw, 6px); }
+
+/* 3. A piece of the desktop (the menu bar, the dock, a strip): a plain rounded crop. */
+.shot-crop { border-radius: var(--r-l); overflow: hidden; box-shadow: 0 0 0 1px var(--line-2); }
+.shot-crop > img { width: 100%; }
+
+/* The stage a window stands on. Dark: neutral, lighter than its band, a hairline round it, never coloured.
+   Light: a soft wash chosen by data-wash. */
+.stage {
+  position: relative; border-radius: var(--r-xl); overflow: hidden;
+  padding: clamp(20px, 5vw, 56px);
+  display: grid; place-items: center;
+  background: var(--stage-bg); box-shadow: 0 0 0 1px var(--line) inset;
+}
+/* Never enlarge a capture beyond its pixels: set --native on the image (its width in px). */
+.stage > img, .stage > picture > img { width: 100%; max-width: calc(var(--native, 1008) * 1px); }
+/* On a phone a wide window is unreadable when shrunk: show its top-left part at a readable size. */
+@media (max-width: 600px) {
+  .stage--bleed { padding: 20px 0 0 20px; place-items: start; }
+  .stage--bleed > img { width: 150%; max-width: none; margin-bottom: -18%; }
+}
+
+/* The apps' icons are 40 x 40 pixel art: whole multiples only, never smoothed. */
+.app-icon { width: 40px; height: 40px; image-rendering: pixelated; }
+.app-icon--2x { width: 80px; height: 80px; }
+
+/* ------------------------------------------------------------------ motion */
+/* .reveal is hidden only when the script has said it runs (html.js): no script, no hidden content. */
+@media (prefers-reduced-motion: no-preference) {
+  .js .reveal { opacity: 0; transform: translateY(20px); transition: opacity var(--t-slow) var(--ease), transform var(--t-slow) var(--ease); }
+  .js .reveal.is-in { opacity: 1; transform: none; }
+  .js .reveal[data-delay="1"] { transition-delay: 90ms; }
+  .js .reveal[data-delay="2"] { transition-delay: 180ms; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

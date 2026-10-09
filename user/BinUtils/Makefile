@@ -34,6 +34,8 @@ LIBC_SRC  = ../Runtime/libc/crt0libc.S ../Runtime/libc/onyx_syscalls.c
 LIBC_DEP  = ../Runtime/libc/crt0libc.S ../Runtime/libc/onyx_syscalls.c ../Kits/appkit/appkit.h ../Runtime/user.ld
 # (every program reaches the kernel through AppKit: its import stubs, ../Makefile)
 LDFLAGS = -Wl,-T,../Runtime/user.ld -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none ../lib/appkit_stubs.o
+# (everything is made again when AppKit's stubs change -- a slot moved: user/Makefile; not in $^)
+.EXTRA_PREREQS = ../lib/appkit_stubs.o
 # Freestanding tools (no libc): alias memset/memcpy/memmove onto the kapi ones (appkit/appkit.h,
 # ABI v36). NOT used by the newlib programs, which keep newlib's own.
 KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
@@ -94,6 +96,9 @@ PROGS  += preload.elf unload.elf
 preload.elf unload.elf: imgname.h
 preload.elf: ../Kits/systemkit/preloadini.h
 
+# the session's tool: the mode's programs and the switch (docs/POCKETUI-TECH-STUDY.md P4; its kits below)
+PROGS  += session.elf
+
 # Console tools linked against newlib (real libc/libm). Add a tool here, not to the
 # integer-only PROGS pattern rule above.
 LIBC_PROGS = libctest.elf rdpd.elf
@@ -104,6 +109,10 @@ CXX_PROGS = httpget.elf
 # kapi v83 shared libraries (docs/SHARED-LIBS-PLAN.md): the loader's tests, against ../lib/demo.so
 CXX_PROGS += libtest.elf
 libtest.elf: ../Runtime/lib.h ../Libs/demo/demo.h ../Runtime/onyxpp.hpp ../Runtime/umm.h
+# kapi v97 a library under a second name (lib_open_as), the server per mode, its switch: the Pi's test
+# (docs/POCKETUI-TECH-STUDY.md section 3.9) -- also a stand-in graphics server (copied to SD:/bin/pocketui)
+CXX_PROGS += aliastest.elf
+aliastest.elf: ../Runtime/lib.h ../Libs/demo/demo.h ../Runtime/onyxpp.hpp ../Runtime/umm.h
 
 # play: a sound file from the command line, through AudioKit (../lib/audiokit.so). Built with the FPU
 # off (it only uses the library's integer entries); links the library's import archive.
@@ -158,13 +167,25 @@ ftp.elf wget.elf: KITLIBS = ../lib/netkit.imp_c.a
 ftp.elf wget.elf: ../lib/netkit.imp_c.a
 ftpfs.elf: KITLIBS = ../lib/netkit.imp.a
 ftpfs.elf: ../lib/netkit.imp.a
+# The window API is UIKit's (uikit/win.h, uk_win_*; docs/POCKETUI-TECH-STUDY.md P2): the C tools with a window
+# link UIKit's C side (the library opened before main). rdpd (newlib) and gpcdemo: their rules below.
+el0test.elf: KITLIBS = ../lib/uikit.imp_c.a
+el0test.elf: ../lib/uikit.imp_c.a ../Kits/uikit/win.h
+# session (docs/POCKETUI-TECH-STUDY.md P4): the mode's programs, the switch -- SystemKit's session.h (the files, the
+# mode) and UIKit's window calls (the open programs asked to close, the server's mode)
+session.elf: KITLIBS = ../lib/systemkit.imp_c.a ../lib/uikit.imp_c.a
+session.elf: ../lib/systemkit.imp_c.a ../lib/uikit.imp_c.a ../Kits/uikit/win.h ../Kits/systemkit/session.h ../Kits/systemkit/session.inc
 %.elf: %.c ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Runtime/umm.h
 	$(CC) $(CFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< $(KITLIBS) -o $@
 
 # newlib apps: crt0libc + the kapi syscall layer + the app, linked with -lm (libc is
 # pulled automatically since this is not -nostdlib).
 $(LIBC_PROGS): %.elf: %.c $(LIBC_DEP)
-	$(CC) $(CFLAGS_LIBC) $(LDFLAGS) $(LIBC_SRC) $< -lm -o $@
+	$(CC) $(CFLAGS_LIBC) $(LDFLAGS) $(LIBC_SRC) $< $(LIBC_KITS) -lm -o $@
+# rdpd: UIKit's window API (the windows listed, read, raised, moved, closed); its C bind compiled for newlib
+# (the library's allocations by malloc: -DONYX_BIND_LIBC) with UIKit's stubs.
+rdpd.elf: LIBC_KITS = -DONYX_BIND_LIBC ../lib/uikit_bind_c.c ../lib/uikit_stubs.o
+rdpd.elf: ../lib/uikit_bind_c.c ../lib/uikit_stubs.o ../Kits/uikit/win.h
 
 # libonyxposix programs: the library is built (or brought up to date) first.
 .PHONY: posixlib
@@ -237,7 +258,8 @@ $(V3D_PROGS): %.elf: %.cpp ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/a
 	$(CXX) $(CXXFLAGS_FP) -I../../tools/qpu/mesa $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../Libs/v3d/libv3d.a -o $@
 
 $(GPC_PROGS): %.elf: %.c ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Runtime/umm.h ../Libs/gpucomp/libgpucomp.a ../Libs/gpucomp/gpucomp.h
-	$(CC) $(CFLAGS_FP) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../Libs/gpucomp/libgpucomp.a -o $@
+	$(CC) $(CFLAGS_FP) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../Libs/gpucomp/libgpucomp.a ../lib/uikit.imp_c.a -o $@
+$(GPC_PROGS): ../lib/uikit.imp_c.a ../Kits/uikit/win.h
 
 # HTTPS apps (newlib C++ + mbedTLS). Built only when MBEDTLS_DIR is set. The C startup
 # + syscalls are compiled as C objects (gcc), then linked with g++ alongside the libs.

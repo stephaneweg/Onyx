@@ -3,7 +3,7 @@
 //
 // The windows are no longer the kernel's: the window manager, the compositor and the routing of
 // the input are Elegant's, the graphics server, a user process (user/Servers/elegant; its window
-// manager is the one that was here: user/Servers/elegant/wm). The kernel gives it mechanisms
+// manager is the one that was here: user/Servers/common/wm). The kernel gives it mechanisms
 // (kern/wsrv.h) and keeps, here:
 //
 //  - CWindow: what a program's pump reads -- its queue of events, the request to end, the wake of
@@ -52,7 +52,7 @@ void DisplayPresentIdle (void);
 extern volatile unsigned g_nScreenGen;
 void ScreenDirty (void);
 
-#define WIN_EVENT_QUEUE		32
+#define WIN_EVENT_QUEUE		64		// (v94; 32 before)
 
 // Window flags and event kinds: the programs' (kern/kapi_abi.h has the frame's metrics; these are
 // kept numerically identical to user/Kits/appkit/appkit.h).

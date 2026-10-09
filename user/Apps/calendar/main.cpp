@@ -52,6 +52,8 @@ static TaskList *g_tasks;
 static Heading *g_tasksHead;
 static HintBox *g_addTask;
 static Panel *g_side, *g_main;
+// A date said day first ("9 octobre") in French, the month first otherwise
+static bool day_first (void) { const char *l = uk_lang (); return l && l[0] == 'f' && l[1] == 'r'; }
 
 // ---- the file ------------------------------------------------------------------------------------------
 
@@ -105,9 +107,9 @@ static void take_over_agenda (void)
 static void reminder_text (const Event &e, int start, char *t, int cap)
 {
 	t[0] = '\0';
-	scat (t, cap, e.title[0] ? e.title : "(No title)");
-	if (e.allDay) scat (t, cap, start / 1440 > (start - e.remind) / 1440 ? " (tomorrow)" : " (today)");
-	else { char hm[8]; fmt_hm (start, hm, sizeof hm); scat (t, cap, " at "); scat (t, cap, hm); }
+	scat (t, cap, e.title[0] ? e.title : TR ("(No title)"));
+	if (e.allDay) scat (t, cap, start / 1440 > (start - e.remind) / 1440 ? TR (" (tomorrow)") : TR (" (today)"));
+	else { char hm[8]; fmt_hm (start, hm, sizeof hm); scat (t, cap, TR (" at ")); scat (t, cap, hm); }
 	if (e.place[0]) { scat (t, cap, ", "); scat (t, cap, e.place); }
 }
 
@@ -189,7 +191,7 @@ static void refresh (void)
 	if (g_view == 2)
 	{
 		g_month->year = y; g_month->month = m; g_month->sel = g_anchor;
-		scat (t, sizeof t, MONTH[m - 1]); scat (t, sizeof t, " "); scatn (t, sizeof t, y);
+		scat (t, sizeof t, TR (MONTH[m - 1])); scat (t, sizeof t, " "); scatn (t, sizeof t, y);
 		g_month->invalidate (true);
 	}
 	else
@@ -198,15 +200,33 @@ static void refresh (void)
 		g_grid->ndays = g_view == 1 ? 7 : 1; g_grid->day0 = d0;
 		if (g_view == 0)
 		{
-			scat (t, sizeof t, WDAY[wday (d0)]); scat (t, sizeof t, ", "); scat (t, sizeof t, MONTH[m - 1]);
-			scat (t, sizeof t, " "); scatn (t, sizeof t, d); scat (t, sizeof t, ", "); scatn (t, sizeof t, y);
+			if (day_first ())		// "Mercredi 9 octobre 2026"
+			{
+				scat (t, sizeof t, TR (WDAY[wday (d0)])); scat (t, sizeof t, " "); scatn (t, sizeof t, d); scat (t, sizeof t, " ");
+				scat (t, sizeof t, TR (MONTH[m - 1])); scat (t, sizeof t, " "); scatn (t, sizeof t, y);
+			}
+			else
+			{
+				scat (t, sizeof t, TR (WDAY[wday (d0)])); scat (t, sizeof t, ", "); scat (t, sizeof t, TR (MONTH[m - 1]));
+				scat (t, sizeof t, " "); scatn (t, sizeof t, d); scat (t, sizeof t, ", "); scatn (t, sizeof t, y);
+			}
 		}
 		else
 		{
 			int d1 = d0 + 6;
-			scat (t, sizeof t, MONTH[dn_m (d0) - 1]); scat (t, sizeof t, " "); scatn (t, sizeof t, dn_d (d0)); scat (t, sizeof t, " - ");
-			if (dn_m (d1) != dn_m (d0)) { scat (t, sizeof t, MONTH[dn_m (d1) - 1]); scat (t, sizeof t, " "); }
-			scatn (t, sizeof t, dn_d (d1)); scat (t, sizeof t, ", "); scatn (t, sizeof t, dn_y (d1));
+			if (day_first ())		// "6 - 12 octobre 2026", "29 septembre - 5 octobre 2026"
+			{
+				scatn (t, sizeof t, dn_d (d0));
+				if (dn_m (d1) != dn_m (d0)) { scat (t, sizeof t, " "); scat (t, sizeof t, TR (MONTH[dn_m (d0) - 1])); }
+				scat (t, sizeof t, " - "); scatn (t, sizeof t, dn_d (d1)); scat (t, sizeof t, " "); scat (t, sizeof t, TR (MONTH[dn_m (d1) - 1]));
+				scat (t, sizeof t, " "); scatn (t, sizeof t, dn_y (d1));
+			}
+			else
+			{
+				scat (t, sizeof t, TR (MONTH[dn_m (d0) - 1])); scat (t, sizeof t, " "); scatn (t, sizeof t, dn_d (d0)); scat (t, sizeof t, " - ");
+				if (dn_m (d1) != dn_m (d0)) { scat (t, sizeof t, TR (MONTH[dn_m (d1) - 1])); scat (t, sizeof t, " "); }
+				scatn (t, sizeof t, dn_d (d1)); scat (t, sizeof t, ", "); scatn (t, sizeof t, dn_y (d1));
+			}
 		}
 		g_grid->invalidate (true);
 	}
@@ -241,7 +261,7 @@ static void run_editor (Event &src, int index, int occStart)
 		if (index < 0) { Event &e = ev_new (); e = d.e; g_sel = g_nev - 1; g_selStart = e.start; goto_day (e.start / 1440, -1); }
 		else if (g_ev[index].freq != RP_NONE)		// an occurrence of a series was edited
 		{
-			int c = choose ("Change a repeating event", "Change only this occurrence, or all of them?", "Only this one", "All of them");
+			int c = choose (TR ("Change a repeating event"), TR ("Change only this occurrence, or all of them?"), TR ("Only this one"), TR ("All of them"));
 			if (c == 0) return;
 			Event &orig = g_ev[index];
 			if (c == 1)					// this one: out of the series, an event of its own
@@ -267,7 +287,7 @@ static void run_editor (Event &src, int index, int occStart)
 		Event &e = g_ev[index];
 		if (e.freq != RP_NONE)
 		{
-			int c = choose ("Delete a repeating event", "Delete only this occurrence, or all of them?", "Only this one", "All of them");
+			int c = choose (TR ("Delete a repeating event"), TR ("Delete only this occurrence, or all of them?"), TR ("Only this one"), TR ("All of them"));
 			if (c == 0) return;
 			if (c == 1 && e.nex < MAXEX) { e.exdate[e.nex++] = occStart / 1440; g_sel = -1; data_changed (true); return; }
 		}
@@ -300,7 +320,7 @@ static void event_moved (int ev, int oldOcc, int ns, int ne)
 	Event &e = g_ev[ev];
 	if (e.freq != RP_NONE)
 	{
-		int c = choose ("Move a repeating event", "Move only this occurrence, or all of them?", "Only this one", "All of them");
+		int c = choose (TR ("Move a repeating event"), TR ("Move only this occurrence, or all of them?"), TR ("Only this one"), TR ("All of them"));
 		if (c == 0) { refresh (); return; }
 		if (c == 1)
 		{
@@ -363,12 +383,12 @@ static void m_import ()
 	char path[256];
 	if (!uk_file_open (path, sizeof path, "SD:/", ICS_KINDS)) return;
 	char *t = read_file (path, 0);
-	if (!t) { uk_messagebox ("Import", "The file could not be read.", MB_OK); return; }
+	if (!t) { uk_messagebox (TR ("Import"), TR ("The file could not be read."), MB_OK); return; }
 	int n = ics_read (t, true);
 	delete [] t;
 	data_changed (true);
-	char m[80] = ""; scatn (m, sizeof m, n); scat (m, sizeof m, n == 1 ? " event or task imported." : " events and tasks imported.");
-	uk_messagebox ("Import", m, MB_OK);
+	char m[80] = ""; scatn (m, sizeof m, n); scat (m, sizeof m, n == 1 ? TR (" event or task imported.") : TR (" events and tasks imported."));
+	uk_messagebox (TR ("Import"), m, MB_OK);
 }
 static void m_export ()
 {
@@ -378,7 +398,7 @@ static void m_export ()
 	char *t = ics_write (&len);
 	int ok = kapi_save_file (path, t, (unsigned) len);
 	delete [] t;
-	uk_messagebox ("Export", ok >= 0 ? "The calendar was exported." : "The file could not be written.", MB_OK);
+	uk_messagebox (TR ("Export"), ok >= 0 ? TR ("The calendar was exported.") : TR ("The file could not be written."), MB_OK);
 }
 static void m_edit ()  { if (g_sel >= 0) open_event (g_sel, g_selStart); }
 static void m_delete ()
@@ -387,7 +407,7 @@ static void m_delete ()
 	Event &e = g_ev[g_sel];
 	if (e.freq != RP_NONE)
 	{
-		int c = choose ("Delete a repeating event", "Delete only this occurrence, or all of them?", "Only this one", "All of them");
+		int c = choose (TR ("Delete a repeating event"), TR ("Delete only this occurrence, or all of them?"), TR ("Only this one"), TR ("All of them"));
 		if (c == 0) return;
 		if (c == 1 && e.nex < MAXEX) { e.exdate[e.nex++] = g_selStart / 1440; g_sel = -1; data_changed (true); return; }
 	}
@@ -420,16 +440,28 @@ static void reminders (void)
 		if (at > lastMin && at <= now)
 		{
 			char t[200]; reminder_text (e, occ[i].start, t, sizeof t);
-			notify ("Calendar", t);
+			notify (TR ("Calendar"), t);
 		}
 	}
 	lastMin = now;
 }
 
+static SidePanel *g_sp; static Root *g_rootp;
+static void lay_out (void)			// the side panel's place, the period's panel beside it
+{
+	if (!g_sp || !g_rootp) return;
+	int w = g_rootp->width, h = g_rootp->height - TB_H;
+	g_sp->place (0, TB_H, SIDE_W, h);
+	int sw = g_sp->reservedWidth ();
+	g_main->left = sw; g_main->top = TB_H; g_main->resizeTo (w - sw > 1 ? w - sw : 1, h > 1 ? h : 1);
+	g_rootp->invalidate (true);
+}
 class CalRoot : public Root
 {
 public:
-	CalRoot () : Root (W, H, "Calendar") {}
+	CalRoot () : Root (W, H, TR ("Calendar")) {}
+	void onResized () override { lay_out (); }
+	void onSizeClass (int) override { lay_out (); }
 	void onTick () override
 	{
 		int y = 0, mo = 0, d = 0, h = 0, mi = 0;
@@ -463,10 +495,12 @@ int main (void)
 		if (n < 8) g_view = ieq (v, "day") ? 0 : ieq (v, "month") ? 2 : 1;
 	}
 	g_utf8 = ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	uk_lang_init ();
 	load ();
 
 	CalRoot root;
 	if (root.canvas.px == 0) return 1;
+	g_rootp = &root;
 	g_fh = uk_fh ();
 
 	// The toolbar: New event, Today, < >, the period; Day / Week / Month on the right.
@@ -474,55 +508,61 @@ int main (void)
 	tb->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	root.addChild (tb);
 	tb->space (12);
-	AccentButton *nb = new AccentButton (0, 0, 132, 32, "New event", on_new, true);
-	nb->tip = "A new event (Ctrl+N) -- or double-click a free slot";
+	int nbw = uk_tw (TR ("New event"), 2) + 50; if (nbw < 132) nbw = 132;		// (as wide as its words: the system's language)
+	AccentButton *nb = new AccentButton (0, 0, nbw, 32, TR ("New event"), on_new, true);
+	nb->tip = TR ("A new event (Ctrl+N) -- or double-click a free slot");
 	tb->add (nb, 0);
 	tb->space (18);
-	Button *tdy = new Button (0, 0, 74, 30, "Today", on_today); tdy->tip = "Back to today (Ctrl+T)";
+	int tdw = uk_tw (TR ("Today")) + 28; if (tdw < 74) tdw = 74;
+	Button *tdy = new Button (0, 0, tdw, 30, TR ("Today"), on_today); tdy->tip = TR ("Back to today (Ctrl+T)");
 	tb->add (tdy, 0);
 	tb->space (6);
-	ToolButton *pv = (new ToolButton (30, 30, "Previous", on_prev))->setIcon (chevron, 0);
-	ToolButton *nx = (new ToolButton (30, 30, "Next", on_next))->setIcon (chevron, 1);
+	ToolButton *pv = (new ToolButton (30, 30, TR ("Previous"), on_prev))->setIcon (chevron, 0);
+	ToolButton *nx = (new ToolButton (30, 30, TR ("Next"), on_next))->setIcon (chevron, 1);
 	tb->add (pv, 0); tb->add (nx, 2);
 	tb->space (10);
 	g_title = new Title (0, 0, 380, 30);
 	tb->add (g_title, 0);
-	static const char *const VIEWS[] = { "Day", "Week", "Month" };
+	static const char *const VIEWS[] = { TR ("Day"), TR ("Week"), TR ("Month") };
 	g_seg = new SegmentedControl (0, 0, 240, 30, VIEWS, 3, g_view, on_seg);
 	tb->addRight (g_seg, 12);
 
 	// The side bar.
 	int bodyH = H - TB_H;
-	g_side = new Panel (0, TB_H, SIDE_W, bodyH, C_BG);
-	g_side->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_BOTTOM;
-	root.addChild (g_side);
+	// (P7) A navigation SidePanel (uikit/sidepanel.h) of free content: whole on the desktop and a wide screen, a
+	// drawer otherwise (pocket, console: the tab at the left edge); the period's panel takes what it leaves.
+	g_side = new Panel (0, 0, SIDE_W, bodyH, C_BG);
+	g_sp = new SidePanel (0, TB_H, SIDE_W, bodyH, UK_SP_LEFT, UK_SP_NAVIGATION);
+	g_sp->setColors (C_BG, UK_AUTO);
+	g_sp->setContent (g_side);
+	g_sp->onPresentation = [] (SidePanel &, int) { lay_out (); };
 	int sy = 10;
 	int yy, mm, dd; civil_from_days (g_anchor, yy, mm, dd);
 	g_mini = new Calendar ((SIDE_W - CAL_W) / 2, sy, yy, mm, dd, on_mini);
-	g_mini->tip = "Pick a day to go to it";
+	g_mini->tip = TR ("Pick a day to go to it");
 	g_side->addChild (g_mini);
 	sy += CAL_H + 16;
-	g_side->addChild (new Heading (16, sy, SIDE_W - 32, g_fh + 6, "CALENDARS"));
+	g_side->addChild (new Heading (16, sy, SIDE_W - 32, g_fh + 6, TR ("CALENDARS")));
 	sy += g_fh + 10;
 	g_cats = new CategoryList (12, sy, SIDE_W - 24, g_ncat * CategoryList::rowH ());
-	g_cats->tip = "Click a calendar to show or hide its events";
+	g_cats->tip = TR ("Click a calendar to show or hide its events");
 	g_side->addChild (g_cats);
 	sy += g_ncat * CategoryList::rowH () + 14;
-	g_tasksHead = new Heading (16, sy, SIDE_W - 32, g_fh + 6, "TASKS");
+	g_tasksHead = new Heading (16, sy, SIDE_W - 32, g_fh + 6, TR ("TASKS"));
 	g_side->addChild (g_tasksHead);
 	sy += g_fh + 10;
 	g_tasks = new TaskList (12, sy, SIDE_W - 24, bodyH - sy - 48);
 	g_tasks->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_BOTTOM;
-	g_tasks->tip = "The round box ticks a task off; a double click edits it";
+	g_tasks->tip = TR ("The round box ticks a task off; a double click edits it");
 	g_side->addChild (g_tasks);
-	g_addTask = new HintBox (12, bodyH - 40, SIDE_W - 24, 30, "+ Add a task", on_add_task);
+	g_addTask = new HintBox (12, bodyH - 40, SIDE_W - 24, 30, TR ("+ Add a task"), on_add_task);
 	g_addTask->maxLen = 120; g_addTask->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM;
 	g_side->addChild (g_addTask);
 
 	// The period.
 	Panel *mainP = g_main = new Panel (SIDE_W, TB_H, W - SIDE_W, bodyH, C_FIELD);
-	mainP->anchor = ANCHOR_FILL;
 	root.addChild (mainP);
+	root.addChild (g_sp);				// (over the period: a drawer and its tab)
 	g_grid = new TimeGrid (0, 0, W - SIDE_W, bodyH); g_grid->anchor = ANCHOR_FILL;
 	g_grid->scrollY = 8 * g_grid->hourH;
 	mainP->addChild (g_grid);
@@ -530,27 +570,31 @@ int main (void)
 	mainP->addChild (g_month);
 
 	static Menu menu;
-	menu.menu ("File");
-	menu.item ("New Event", "^N", UK_CTRL ('N'), m_new);
-	menu.item ("New Task...", "", 0, m_task);
+	menu.menu (TR ("File"));
+	menu.item (TR ("New Event"), "^N", UK_CTRL ('N'), m_new);
+	menu.item (TR ("New Task..."), "", 0, m_task);
 	menu.separator ();
-	menu.item ("Import iCalendar...", "", 0, m_import);
-	menu.item ("Export iCalendar...", "", 0, m_export);
-	menu.menu ("Event");
-	menu.item ("Open", "Enter", 0, m_edit);
-	menu.item ("Delete", "", 0, m_delete);
-	menu.menu ("View");
-	menu.item ("Day", "", 0, m_day);
-	menu.item ("Week", "", 0, m_week);
-	menu.item ("Month", "", 0, m_month);
+	menu.item (TR ("Import iCalendar..."), "", 0, m_import);
+	menu.item (TR ("Export iCalendar..."), "", 0, m_export);
+	menu.menu (TR ("Event"));
+	menu.item (TR ("Open"), "Enter", 0, m_edit);
+	menu.item (TR ("Delete"), "", 0, m_delete);
+	menu.menu (TR ("View"));
+	menu.item (TR ("Day"), "", 0, m_day);
+	menu.item (TR ("Week"), "", 0, m_week);
+	menu.item (TR ("Month"), "", 0, m_month);
 	menu.separator ();
-	menu.item ("Today", "^T", UK_CTRL ('T'), m_today);
-	menu.item ("Previous", "", 0, m_prev);
-	menu.item ("Next", "", 0, m_next);
+	menu.item (TR ("Today"), "^T", UK_CTRL ('T'), m_today);
+	menu.item (TR ("Previous"), "", 0, m_prev);
+	menu.item (TR ("Next"), "", 0, m_next);
 	menu.publish ();
 
+	// in a narrow window the bar keeps what matters: Today and the period's title give way (their ranks)
+	tb->setPriority (tdy, UK_TB_IF_ROOM, 1);
+	tb->setPriority (g_title, UK_TB_IF_ROOM, 2);
 	root.setResizable (true);
 	root.fitWorkArea ();
+	lay_out ();
 	refresh ();
 	g_grid->setFocus ();
 	root.run ();

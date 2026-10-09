@@ -7,7 +7,7 @@
 //   run SD:/bin/wstest                 a window of 320 x 200: each click in it changes its colour;
 //                                      its close button ends the program
 //
-// It talks the protocol itself (appkit/elegant.h) -- a program never does: this is a test.
+// It talks the protocol itself (uikit/port/elegant.h) -- a program never does: this is a test.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -19,7 +19,7 @@
 // IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 //
 #include "appkit/appkit.h"
-#include "appkit/elegant.h"
+#include "uikit/port/elegant.h"
 
 #define W	320
 #define H	200

@@ -513,7 +513,7 @@ public:
 			y += 12;
 			avatar (canvas, PADL, y + 2, AV, l.nick);
 			char nm[40]; scpy (nm, sizeof nm, l.nick);
-			if (l.kind == LK_NOTICE) scat (nm, sizeof nm, " (notice)");
+			if (l.kind == LK_NOTICE) scat (nm, sizeof nm, TR (" (notice)"));
 			uk_text_l (canvas, TX, y, RH, nm, nick_color (l.nick), 2);
 			uk_text_l (canvas, TX + uk_text_w (nm, 2) + 10, y, RH, t, ink_soft ());
 			y += RH;
@@ -552,8 +552,8 @@ public:
 		sc.total = total; sc.scroll = b->scroll; sc.clamp (); b->scroll = sc.scroll;
 		if (n == 0)
 		{
-			uk_text_c (canvas, 0, height / 2 - RH, width, RH, b->kind == BK_SERVER ? "No server messages yet" : "No messages yet", ink_soft (), 2);
-			uk_text_c (canvas, 0, height / 2, width, RH, b->kind == BK_SERVER ? "Connect to a server to start." : "Say hello to the channel.", ink_soft ());
+			uk_text_c (canvas, 0, height / 2 - RH, width, RH, b->kind == BK_SERVER ? TR ("No server messages yet") : TR ("No messages yet"), ink_soft (), 2);
+			uk_text_c (canvas, 0, height / 2, width, RH, b->kind == BK_SERVER ? TR ("Connect to a server to start.") : TR ("Say hello to the channel."), ink_soft ());
 			return;
 		}
 		int y = 6 + (sc.view > total ? sc.view - total : sc.view - total + sc.scroll);
@@ -587,15 +587,15 @@ public:
 		unsigned dot = g_state == 2 ? 0x0027AE60 : g_state == 1 ? 0x00E0A020 : 0x009A9A9A;
 		uk_rbox (canvas, 10, (height - 8) / 2 + 1, 8, 8, 4, uk_tone (dot, 170), dot);
 		char t[160] = "";
-		if (g_state == 2) { scat (t, sizeof t, "Connected as "); scat (t, sizeof t, g_nick); }
-		else if (g_state == 1) { scat (t, sizeof t, "Connecting to "); scat (t, sizeof t, g_server); scat (t, sizeof t, "..."); }
-		else if (g_state == 0) scat (t, sizeof t, "Waiting for the network...");
-		else scat (t, sizeof t, "Offline");
+		if (g_state == 2) { scat (t, sizeof t, TR ("Connected as ")); scat (t, sizeof t, g_nick); }
+		else if (g_state == 1) { scat (t, sizeof t, TR ("Connecting to ")); scat (t, sizeof t, g_server); scat (t, sizeof t, "..."); }
+		else if (g_state == 0) scat (t, sizeof t, TR ("Waiting for the network..."));
+		else scat (t, sizeof t, TR ("Offline"));
 		uk_text_l (canvas, 24, 1, height - 1, t, C_TEXT);
 		char r[160] = "";
 		int nch = 0; for (int i = 0; i < g_nbuf; i++) if (g_buf[i]->kind == BK_CHAN && g_buf[i]->joined) nch++;
 		if (g_sock >= 0) { scat (r, sizeof r, g_server); scat (r, sizeof r, ":"); scatn (r, sizeof r, (int) g_port); scat (r, sizeof r, "   "); }
-		scatn (r, sizeof r, nch); scat (r, sizeof r, nch == 1 ? " channel" : " channels");
+		scatn (r, sizeof r, nch); scat (r, sizeof r, nch == 1 ? TR (" channel") : TR (" channels"));
 		uk_text_l (canvas, width - 10 - uk_text_w (r), 1, height - 1, r, uk_mix (C_TEXT, C_BG, 90));
 	}
 };
@@ -662,7 +662,7 @@ static void mailbox_pump (void)
 			for (int i = 0; i < g_nbuf; i++) if (g_buf[i]->kind == BK_QUERY && g_buf[i]->pmPid == from) bi = i;
 			if (bi < 0) continue;
 			if (type == T_BYE) { g_buf[bi]->pmPid = 0; continue; }
-			if (g_sock < 0 || g_state != 2) { add_line (bi, LK_ERROR, "", "Not connected: the message was not sent."); continue; }
+			if (g_sock < 0 || g_state != 2) { add_line (bi, LK_ERROR, "", TR ("Not connected: the message was not sent.")); continue; }
 			if (m[0] == '/' && m[1] == 'm' && m[2] == 'e' && m[3] == ' ')
 			{
 				char w[520]; to_wire (m + 4, w, sizeof w);
@@ -757,12 +757,12 @@ static bool room_less (int a, int b)
 static void rooms_info (void)
 {
 	char t[160] = "";
-	if (g_sock < 0 || g_state != 2) scpy (t, sizeof t, "Connect to a server to see its rooms.");
-	else if (g_listing) { scat (t, sizeof t, "Receiving the list... "); scatn (t, sizeof t, g_nrooms); scat (t, sizeof t, " rooms so far"); }
+	if (g_sock < 0 || g_state != 2) scpy (t, sizeof t, TR ("Connect to a server to see its rooms."));
+	else if (g_listing) { scat (t, sizeof t, TR ("Receiving the list... ")); scatn (t, sizeof t, g_nrooms); scat (t, sizeof t, TR (" rooms so far")); }
 	else
 	{
-		scatn (t, sizeof t, g_nview); scat (t, sizeof t, " of "); scatn (t, sizeof t, g_nrooms);
-		scat (t, sizeof t, " rooms.  Double-click a room (or Join) to join it.");
+		scatn (t, sizeof t, g_nview); scat (t, sizeof t, TR (" of ")); scatn (t, sizeof t, g_nrooms);
+		scat (t, sizeof t, TR (" rooms.  Double-click a room (or Join) to join it."));
 	}
 	g_roomsInfo->setText (t);
 }
@@ -802,7 +802,7 @@ static const char *room_cell (DataGrid &, int row, int col, char *buf, int cap)
 }
 static void join_chan (const char *ch)
 {
-	if (g_sock < 0 || g_state != 2) { info_here ("Not connected."); return; }
+	if (g_sock < 0 || g_state != 2) { info_here (TR ("Not connected.")); return; }
 	char j[96] = "JOIN "; scat (j, sizeof j, ch); send_line (j);
 }
 static void show_rooms (bool on);
@@ -836,11 +836,11 @@ static void layout_chat (void)
 	g_head->rightPad = g_leave->hidden ? 0 : g_leave->width + 16;
 	if (b->kind == BK_SERVER)
 	{
-		char s[160] = "Server messages";
-		if (g_state == 2) { scat (s, sizeof s, "  -  you are "); scat (s, sizeof s, g_nick); }
+		char s[160]; scpy (s, sizeof s, TR ("Server messages"));
+		if (g_state == 2) { scat (s, sizeof s, TR ("  -  you are ")); scat (s, sizeof s, g_nick); }
 		g_head->set (g_server, s);
 	}
-	else g_head->set (b->name, b->topic[0] ? b->topic : (b->joined ? "No topic" : "You are not in this channel"));
+	else g_head->set (b->name, b->topic[0] ? b->topic : (b->joined ? TR ("No topic") : TR ("You are not in this channel")));
 	g_chatPane->invalidate (true);
 }
 static void switch_to (int i)
@@ -861,8 +861,8 @@ static void show_rooms (bool on)
 	g_roomsBtn->setOn (on);
 	if (on)
 	{
-		char s[120] = "Rooms on "; scat (s, sizeof s, g_server);
-		g_roomsHead->set (s, "The server's public channels: search them, sort them, join one.");
+		char s[120]; scpy (s, sizeof s, TR ("Rooms on ")); scat (s, sizeof s, g_server);
+		g_roomsHead->set (s, TR ("The server's public channels: search them, sort them, join one."));
 		if (g_nrooms == 0 && !g_listing) rooms_request (); else rooms_refresh ();
 		g_filter->setFocus ();
 	}
@@ -919,10 +919,10 @@ static void handle_line (char *raw)
 		if (ieq (m.nick, g_nick))
 		{
 			b->joined = true; b->nnick = 0;
-			scpy (t, sizeof t, "You joined "); scat (t, sizeof t, ch); chan_event (bi, t);
+			scpy (t, sizeof t, TR ("You joined ")); scat (t, sizeof t, ch); chan_event (bi, t);
 			switch_to (bi);
 		}
-		else { nick_add (b, m.nick); scpy (t, sizeof t, m.nick); scat (t, sizeof t, " joined"); chan_event (bi, t); }
+		else { nick_add (b, m.nick); scpy (t, sizeof t, m.nick); scat (t, sizeof t, TR (" joined")); chan_event (bi, t); }
 		g_treeDirty = true;
 		return;
 	}
@@ -935,8 +935,8 @@ static void handle_line (char *raw)
 		if (ieq (who, g_nick)) { g_buf[bi]->joined = false; g_buf[bi]->nnick = 0; g_usersDirty = true; }
 		else nick_del (g_buf[bi], who);
 		scpy (t, sizeof t, who);
-		if (kick) { scat (t, sizeof t, " was kicked by "); scat (t, sizeof t, m.nick); }
-		else scat (t, sizeof t, " left");
+		if (kick) { scat (t, sizeof t, TR (" was kicked by ")); scat (t, sizeof t, m.nick); }
+		else scat (t, sizeof t, TR (" left"));
 		if (m.np > (kick ? 2 : 1) && text[0]) { scat (t, sizeof t, " ("); scat (t, sizeof t, text); scat (t, sizeof t, ")"); }
 		chan_event (bi, t);
 		if (bi == g_cur) layout_chat ();
@@ -944,7 +944,7 @@ static void handle_line (char *raw)
 	}
 	if (ax_streq (cmd, "QUIT"))
 	{
-		scpy (t, sizeof t, m.nick); scat (t, sizeof t, " quit");
+		scpy (t, sizeof t, m.nick); scat (t, sizeof t, TR (" quit"));
 		if (text[0]) { scat (t, sizeof t, " ("); scat (t, sizeof t, text); scat (t, sizeof t, ")"); }
 		for (int i = 0; i < g_nbuf; i++)
 			if ((g_buf[i]->kind == BK_CHAN && nick_del (g_buf[i], m.nick)) || (g_buf[i]->kind == BK_QUERY && ieq (g_buf[i]->name, m.nick)))
@@ -958,7 +958,7 @@ static void handle_line (char *raw)
 	{
 		const char *nn = arg (m, 0);
 		bool me = ieq (m.nick, g_nick);
-		scpy (t, sizeof t, me ? "You are" : m.nick); scat (t, sizeof t, me ? " now known as " : " is now known as "); scat (t, sizeof t, nn);
+		scpy (t, sizeof t, me ? TR ("You are") : m.nick); scat (t, sizeof t, me ? TR (" now known as ") : TR (" is now known as ")); scat (t, sizeof t, nn);
 		for (int i = 0; i < g_nbuf; i++)
 		{
 			Buf *b = g_buf[i];
@@ -975,7 +975,7 @@ static void handle_line (char *raw)
 		int bi = buf_find (arg (m, 0));
 		if (bi < 0) return;
 		scpy (g_buf[bi]->topic, sizeof g_buf[bi]->topic, text);
-		scpy (t, sizeof t, m.nick); scat (t, sizeof t, " set the topic: "); scat (t, sizeof t, text);
+		scpy (t, sizeof t, m.nick); scat (t, sizeof t, TR (" set the topic: ")); scat (t, sizeof t, text);
 		chan_event (bi, t);
 		if (bi == g_cur) layout_chat ();
 		return;
@@ -986,7 +986,7 @@ static void handle_line (char *raw)
 		int bi = buf_find (ch);
 		if (bi < 0 || !is_chan (ch)) return;
 		Buf *b = g_buf[bi];
-		scpy (t, sizeof t, m.nick); scat (t, sizeof t, " sets mode");
+		scpy (t, sizeof t, m.nick); scat (t, sizeof t, TR (" sets mode"));
 		for (int i = 1; i < m.np; i++) { scat (t, sizeof t, " "); scat (t, sizeof t, m.p[i]); }
 		chan_event (bi, t);
 		const char *md = arg (m, 1); bool plus = true; int pi = 2;	// (+o / +v: the users' marks)
@@ -1020,7 +1020,7 @@ static void handle_line (char *raw)
 			if (g_password[0])
 			{
 				char l[160] = "PRIVMSG NickServ :IDENTIFY "; scat (l, sizeof l, g_nick); scat (l, sizeof l, " "); scat (l, sizeof l, g_password);
-				send_line (l); info ("Identifying with NickServ...", LK_EVENT);
+				send_line (l); info (TR ("Identifying with NickServ..."), LK_EVENT);
 			}
 			if (g_autojoin[0]) join_chan (g_autojoin);
 			pm_state_all (); layout_chat ();
@@ -1038,7 +1038,7 @@ static void handle_line (char *raw)
 				if (n < 15) { nn[n] = '_'; nn[n + 1] = '\0'; }
 				else nn[n - 1] = (char) ('0' + (kapi_get_ticks () % 10));
 				char l[64] = "NICK "; scat (l, sizeof l, nn); send_line (l);
-				scpy (t, sizeof t, "Trying the nickname "); scat (t, sizeof t, nn); info (t, LK_EVENT);
+				scpy (t, sizeof t, TR ("Trying the nickname ")); scat (t, sizeof t, nn); info (t, LK_EVENT);
 			}
 			if (g_buf[g_cur]->kind != BK_SERVER) info_here (t);
 			return;
@@ -1128,7 +1128,7 @@ static void go_offline (const char *why)
 	for (int i = 1; i < g_nbuf; i++)
 		if (g_buf[i]->kind == BK_CHAN && g_buf[i]->joined) { g_buf[i]->joined = false; g_buf[i]->nnick = 0; chan_event (i, why); }
 	g_usersDirty = true; g_listing = false;
-	scpy (g_connBtn->text, sizeof g_connBtn->text, "Connect"); g_connBtn->invalidate (true);
+	scpy (g_connBtn->text, sizeof g_connBtn->text, TR ("Connect")); g_connBtn->invalidate (true);
 	pm_state_all (); layout_chat ();
 }
 
@@ -1146,7 +1146,7 @@ static void drain_socket (void)
 			else if (g_rxlen < (int) sizeof g_rx - 1) g_rx[g_rxlen++] = c;
 			if (g_sock < 0) return;
 		}
-	if (guard <= 16 && n < 0) go_offline ("Disconnected from the server.");
+	if (guard <= 16 && n < 0) go_offline (TR ("Disconnected from the server."));
 }
 
 // ---- the servers used, the nickname ----------------------------------------------------------------
@@ -1228,18 +1228,18 @@ static void connect_now (void)
 	if (g_sock >= 0) { send_line ("QUIT :reconnecting"); kapi_tcp_close (g_sock); g_sock = -1; }
 	for (int i = 1; i < g_nbuf; i++) if (g_buf[i]->kind == BK_CHAN) { g_buf[i]->joined = false; g_buf[i]->nnick = 0; }
 	g_nrooms = 0; g_listing = false;
-	char t[160] = "Connecting to "; scat (t, sizeof t, g_server); scat (t, sizeof t, ":"); scatn (t, sizeof t, (int) g_port); scat (t, sizeof t, "...");
+	char t[160]; scpy (t, sizeof t, TR ("Connecting to ")); scat (t, sizeof t, g_server); scat (t, sizeof t, ":"); scatn (t, sizeof t, (int) g_port); scat (t, sizeof t, "...");
 	info (t, LK_EVENT);
 	g_state = 1;
 	switch_to (0);
 	if (Root::current ()) { Root::current ()->draw (); uk_present (); }	// (painted before the blocking connect)
 	g_sock = kapi_tcp_connect (g_server, g_port);
-	if (g_sock < 0) { g_state = 3; info ("The connection failed.", LK_ERROR); layout_chat (); return; }
+	if (g_sock < 0) { g_state = 3; info (TR ("The connection failed."), LK_ERROR); layout_chat (); return; }
 	char l[160];
 	scpy (l, sizeof l, "NICK "); scat (l, sizeof l, g_nick); send_line (l);
 	scpy (l, sizeof l, "USER "); scat (l, sizeof l, g_user); scat (l, sizeof l, " 0 * :"); scat (l, sizeof l, g_real); send_line (l);
-	scpy (t, sizeof t, "Signing in as "); scat (t, sizeof t, g_nick); scat (t, sizeof t, "..."); info (t, LK_EVENT);
-	scpy (g_connBtn->text, sizeof g_connBtn->text, "Disconnect"); g_connBtn->invalidate (true);
+	scpy (t, sizeof t, TR ("Signing in as ")); scat (t, sizeof t, g_nick); scat (t, sizeof t, "..."); info (t, LK_EVENT);
+	scpy (g_connBtn->text, sizeof g_connBtn->text, TR ("Disconnect")); g_connBtn->invalidate (true);
 	hist_add (g_server, g_port);
 	layout_chat ();
 }
@@ -1249,7 +1249,7 @@ static void on_connect (Widget &)
 	if (g_sock >= 0)
 	{
 		send_line ("QUIT :Onyx IRC");
-		go_offline ("You disconnected.");
+		go_offline (TR ("You disconnected."));
 		return;
 	}
 	connect_now ();
@@ -1268,9 +1268,9 @@ static void on_nick_enter (Widget &)
 static void say (int bi, const char *s, bool action)
 {
 	Buf *b = g_buf[bi];
-	if (b->kind == BK_SERVER) { info_here ("This is the server's page: pick a channel (or /msg nick text)."); return; }
-	if (g_sock < 0 || g_state != 2) { info_here ("Not connected."); return; }
-	if (b->kind == BK_CHAN && !b->joined) { info_here ("You are not in this channel: /join it again."); return; }
+	if (b->kind == BK_SERVER) { info_here (TR ("This is the server's page: pick a channel (or /msg nick text).")); return; }
+	if (g_sock < 0 || g_state != 2) { info_here (TR ("Not connected.")); return; }
+	if (b->kind == BK_CHAN && !b->joined) { info_here (TR ("You are not in this channel: /join it again.")); return; }
 	char w[520]; to_wire (s, w, sizeof w);
 	char l[640] = "PRIVMSG "; scat (l, sizeof l, b->name); scat (l, sizeof l, " :");
 	if (action) { scat (l, sizeof l, "\x01" "ACTION "); scat (l, sizeof l, w); scat (l, sizeof l, "\x01"); }
@@ -1358,8 +1358,44 @@ static void on_rooms (Widget &) { show_rooms (!g_showRooms); }
 
 // ---- keeping the widgets up to date --------------------------------------------------------------
 
+// (P7) In pocket and console the conversations are a navigation SidePanel (uikit/sidepanel.h: a rail in landscape -- a
+// conversation's first letter, a dot when it has something unread --, a drawer in portrait, the column in console);
+// 0 on the desktop: its tree in the splitter, as always.
+static SidePanel *g_sp; static Panel *g_mainP; static Root *g_rootp;
+enum { SP_DM_HEAD = 9000 };
+static void sp_rebuild (void)
+{
+	g_sp->clear ();
+	char l[48];
+	const char *sv = g_server; if (sv[0] == 'i' && sv[1] == 'r' && sv[2] == 'c' && sv[3] == '.') sv += 4;
+	g_sp->addItem (0, sv);
+	bool dm = false;
+	for (int pass = 0; pass < 2; pass++)
+		for (int i = 1; i < g_nbuf; i++)
+		{
+			Buf *b = g_buf[i];
+			if ((pass == 0) != (b->kind == BK_CHAN)) continue;
+			scpy (l, sizeof l, b->name);
+			if (b->kind == BK_CHAN && !b->joined) scat (l, sizeof l, TR (" (left)"));
+			if (b->mention) scat (l, sizeof l, " @");
+			if (pass == 1 && !dm) { dm = true; g_sp->addHeading (TR ("Private messages")); }
+			g_sp->addItem (i, l, -1, pass == 0 ? 1 : 0);
+			g_sp->setBadge (i, b->unread > 999 ? 999 : b->unread);
+		}
+	g_sp->select (g_cur);
+}
+static void sp_lay_out (void)			// the panel's place, the conversation's pane beside it
+{
+	if (!g_sp || !g_rootp) return;
+	int w = g_rootp->width, h = g_rootp->height - TB_H - SB_H;
+	g_sp->place (0, TB_H, SIDE_W, h);
+	int sw = g_sp->reservedWidth ();
+	g_mainP->left = sw; g_mainP->top = TB_H; g_mainP->resizeTo (w - sw > 1 ? w - sw : 1, h > 1 ? h : 1);
+	g_rootp->invalidate (true);
+}
 static void tree_rebuild (void)
 {
+	if (g_sp) { sp_rebuild (); return; }
 	int top = g_tree->top;
 	g_tree->clear ();
 	char l[48];
@@ -1372,12 +1408,12 @@ static void tree_rebuild (void)
 			Buf *b = g_buf[i];
 			if ((pass == 0) != (b->kind == BK_CHAN)) continue;
 			scpy (l, sizeof l, b->name);
-			if (b->kind == BK_CHAN && !b->joined) scat (l, sizeof l, " (left)");
+			if (b->kind == BK_CHAN && !b->joined) scat (l, sizeof l, TR (" (left)"));
 			if (b->unread) { scat (l, sizeof l, "  ("); scatn (l, sizeof l, b->unread); if (b->mention) scat (l, sizeof l, " @"); scat (l, sizeof l, ")"); }
 			int parent = srv;
 			if (pass == 1)
 			{
-				if (dm < 0) { dm = g_tree->add (-1, "Private messages"); g_tree->setUserData (dm, -1); }
+				if (dm < 0) { dm = g_tree->add (-1, TR ("Private messages")); g_tree->setUserData (dm, -1); }
 				parent = dm;
 			}
 			int id = g_tree->add (parent, l);
@@ -1407,7 +1443,7 @@ static void users_rebuild (void)
 		}
 	}
 	g_users->top = top < g_users->count ? top : 0;
-	char t[40] = "Users  "; scatn (t, sizeof t, b->nnick);
+	char t[40]; scpy (t, sizeof t, TR ("Users  ")); scatn (t, sizeof t, b->nnick);
 	g_usersLbl->setText (t);
 	g_users->invalidate (true);
 }
@@ -1416,6 +1452,8 @@ class IrcRoot : public Root
 {
 public:
 	IrcRoot () : Root (W, H, "IRC") {}
+	void onResized () override { sp_lay_out (); }
+	void onSizeClass (int) override { sp_lay_out (); }
 	void onTick () override
 	{
 		if (g_state == 0)
@@ -1423,7 +1461,7 @@ public:
 			char ip[32];
 			if (kapi_net_status (ip, sizeof ip))
 			{
-				char m[80] = "Network up ("; scat (m, sizeof m, ip); scat (m, sizeof m, ")"); info (m, LK_EVENT);
+				char m[80]; scpy (m, sizeof m, TR ("Network up (")); scat (m, sizeof m, ip); scat (m, sizeof m, ")"); info (m, LK_EVENT);
 				connect_now ();
 			}
 		}
@@ -1482,66 +1520,80 @@ static int main_window (void)
 	tb->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	root.addChild (tb);
 	tb->space (6);
-	tb->add (label (0, 0, 24, "Server", C_BG, C_TEXT), 0);
+	tb->add (label (0, 0, 24, TR ("Server"), C_BG, C_TEXT), 0);
 	char addr[96]; scpy (addr, sizeof addr, g_server);
 	if (g_port != 6667) { scat (addr, sizeof addr, ":"); scatn (addr, sizeof addr, (int) g_port); }
 	g_srv = new Combobox (0, 0, 220, 28, addr, on_server_enter, 0);
-	g_srv->tip = "The server (host or host:port) -- the arrow: the ones used before";
+	g_srv->tip = TR ("The server (host or host:port) -- the arrow: the ones used before");
 	hist_options ();
 	tb->add (g_srv, 4);
 	tb->space (10);
-	tb->add (label (0, 0, 24, "Nickname", C_BG, C_TEXT), 0);
+	tb->add (label (0, 0, 24, TR ("Nickname"), C_BG, C_TEXT), 0);
 	g_nickTb = new Textbox (0, 0, 130, 28, g_nick, on_nick_enter);
 	g_nickTb->maxLen = 30;
-	g_nickTb->tip = "Your nickname: sent when you connect (Enter while connected: change it)";
+	g_nickTb->tip = TR ("Your nickname: sent when you connect (Enter while connected: change it)");
 	tb->add (g_nickTb, 4);
-	g_connBtn = new Button (0, 0, 104, 28, "Connect", on_connect);
+	g_connBtn = new Button (0, 0, 104, 28, TR ("Connect"), on_connect);
 	tb->add (g_connBtn, 8);
-	g_roomsBtn = (new ToolButton (0, 30, "Browse the server's rooms", on_rooms))->setGlyph (WKT_SEARCH)->setText ("Rooms")->setToggle (true)->fitWidth ();
+	g_roomsBtn = (new ToolButton (0, 30, TR ("Browse the server's rooms"), on_rooms))->setGlyph (WKT_SEARCH)->setText (TR ("Rooms"))->setToggle (true)->fitWidth ();
 	tb->addRight (g_roomsBtn, 8);
 
 	// The body: the conversations | the channel (or the rooms).
 	int bodyH = H - TB_H - SB_H;
-	HSplitter *split = new HSplitter (0, TB_H, W, bodyH, SIDE_W, C_BG);
-	split->anchor = ANCHOR_FILL; split->minA = 140; split->minB = 400;
-	root.addChild (split);
-
-	Panel *side = new Panel (0, 0, SIDE_W, bodyH, C_BG);
-	g_tree = new TreeView (8, 8, SIDE_W - 12, bodyH - 16, on_tree, on_tree);
-	g_tree->anchor = ANCHOR_FILL;
-	g_tree->tip = "Your conversations: click one to show it";
-	side->addChild (g_tree);
-
 	int mw = W - SIDE_W - 6, mh = bodyH;
-	Panel *mainP = new Panel (0, 0, mw, mh, C_FIELD);
-	split->setPanes (side, mainP);
+	Panel *mainP;
+	g_rootp = &root;
+	if (uk_size_class () != UK_SC_REGULAR)		// pocket, console: the conversations as a SidePanel
+	{
+		mw = W - SIDE_W;
+		mainP = g_mainP = new Panel (SIDE_W, TB_H, mw, mh, C_FIELD);
+		root.addChild (mainP);
+		g_sp = new SidePanel (0, TB_H, SIDE_W, bodyH, UK_SP_LEFT, UK_SP_NAVIGATION);
+		g_sp->onSelect = [] (SidePanel &, int id) { if (id >= 0 && id < g_nbuf) switch_to (id); };
+		g_sp->onPresentation = [] (SidePanel &, int) { sp_lay_out (); };
+	}
+	else
+	{
+		HSplitter *split = new HSplitter (0, TB_H, W, bodyH, SIDE_W, C_BG);
+		split->anchor = ANCHOR_FILL; split->minA = 140; split->minB = 400;
+		root.addChild (split);
+
+		Panel *side = new Panel (0, 0, SIDE_W, bodyH, C_BG);
+		g_tree = new TreeView (8, 8, SIDE_W - 12, bodyH - 16, on_tree, on_tree);
+		g_tree->anchor = ANCHOR_FILL;
+		g_tree->tip = TR ("Your conversations: click one to show it");
+		side->addChild (g_tree);
+
+		mainP = new Panel (0, 0, mw, mh, C_FIELD);
+		split->setPanes (side, mainP);
+	}
 	mw = mainP->width; mh = mainP->height;
 
 	g_chatPane = new Panel (0, 0, mw, mh, C_FIELD); g_chatPane->anchor = ANCHOR_FILL;
 	mainP->addChild (g_chatPane);
 	g_head = new HeaderBar (0, 0, mw, HEAD_H); g_head->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	g_chatPane->addChild (g_head);
-	g_leave = new Button (mw - 96, 9, 84, 28, "Leave", on_leave);
-	g_leave->anchor = ANCHOR_RIGHT | ANCHOR_TOP; g_leave->tip = "Leave this channel";
+	g_leave = new Button (mw - 96, 9, 84, 28, TR ("Leave"), on_leave);
+	g_leave->anchor = ANCHOR_RIGHT | ANCHOR_TOP; g_leave->tip = TR ("Leave this channel");
 	g_chatPane->addChild (g_leave);
 	g_chat = new ChatView (0, HEAD_H, mw - USERS_W, mh - HEAD_H - IN_H); g_chat->anchor = ANCHOR_FILL;
 	g_chatPane->addChild (g_chat);
-	g_usersLbl = new Label (mw - USERS_W + 4, HEAD_H + 6, USERS_W - 12, 20, "Users", uk_mix (C_FIELD_TEXT, C_FIELD, 120), C_FIELD);
+	g_usersLbl = new Label (mw - USERS_W + 4, HEAD_H + 6, USERS_W - 12, 20, TR ("Users"), uk_mix (C_FIELD_TEXT, C_FIELD, 120), C_FIELD);
 	g_usersLbl->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
 	g_chatPane->addChild (g_usersLbl);
 	g_users = new ListBox (mw - USERS_W + 2, HEAD_H + 28, USERS_W - 12, mh - HEAD_H - IN_H - 28 - 38, 0, on_user_pm);
 	g_users->anchor = ANCHOR_RIGHT | ANCHOR_TOP | ANCHOR_BOTTOM;
-	g_users->tip = "Double-click someone to talk to them privately";
+	g_users->tip = TR ("Double-click someone to talk to them privately");
 	g_chatPane->addChild (g_users);
-	g_pmBtn = new Button (mw - USERS_W + 2, mh - IN_H - 34, USERS_W - 12, 28, "Message", on_user_pm);
-	g_pmBtn->anchor = ANCHOR_RIGHT | ANCHOR_BOTTOM; g_pmBtn->tip = "A private conversation with the user selected";
+	g_pmBtn = new Button (mw - USERS_W + 2, mh - IN_H - 34, USERS_W - 12, 28, TR ("Message"), on_user_pm);
+	g_pmBtn->anchor = ANCHOR_RIGHT | ANCHOR_BOTTOM; g_pmBtn->tip = TR ("A private conversation with the user selected");
 	g_chatPane->addChild (g_pmBtn);
 	g_inRow = new Panel (0, mh - IN_H, mw, IN_H, C_FIELD); g_inRow->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
 	g_chatPane->addChild (g_inRow);
 	g_input = new Textbox (12, 8, mw - 12 - 100, 30, "", on_send);
 	g_input->maxLen = 400; g_input->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_TOP;
 	g_inRow->addChild (g_input);
-	g_send = new Button (mw - 92, 8, 80, 30, "Send", on_send);
+	g_send = new Button (mw - 92, 8, 80, 30, TR ("Send"), on_send);
 	g_send->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
 	g_inRow->addChild (g_send);
 
@@ -1550,22 +1602,22 @@ static int main_window (void)
 	g_roomsHead = new HeaderBar (0, 0, mw, HEAD_H); g_roomsHead->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	g_roomsPane->addChild (g_roomsHead);
 	int ry = HEAD_H + 10, x = 12;
-	Label *l1 = label (x, ry + 2, 24, "Search", C_FIELD, C_FIELD_TEXT); g_roomsPane->addChild (l1); x += l1->width + 4;
-	g_filter = new Textbox (x, ry, 200, 28, "", room_filter); g_filter->tip = "Rooms whose name or topic has this";
+	Label *l1 = label (x, ry + 2, 24, TR ("Search"), C_FIELD, C_FIELD_TEXT); g_roomsPane->addChild (l1); x += l1->width + 4;
+	g_filter = new Textbox (x, ry, 200, 28, "", room_filter); g_filter->tip = TR ("Rooms whose name or topic has this");
 	g_roomsPane->addChild (g_filter); x += 200 + 14;
-	Label *l2 = label (x, ry + 2, 24, "Min. users", C_FIELD, C_FIELD_TEXT); g_roomsPane->addChild (l2); x += l2->width + 4;
+	Label *l2 = label (x, ry + 2, 24, TR ("Min. users"), C_FIELD, C_FIELD_TEXT); g_roomsPane->addChild (l2); x += l2->width + 4;
 	g_minU = new NumericUpDown (x, ry, 86, 28, 0, 100000, 5, 5, room_filter); g_roomsPane->addChild (g_minU); x += 86 + 14;
-	Button *rf = new Button (x, ry, 96, 28, "Refresh", room_reload); rf->tip = "Ask the server for the list again";
+	Button *rf = new Button (x, ry, 96, 28, TR ("Refresh"), room_reload); rf->tip = TR ("Ask the server for the list again");
 	g_roomsPane->addChild (rf);
-	Button *jb = new Button (mw - 96, ry, 84, 28, "Join", room_join); jb->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
+	Button *jb = new Button (mw - 96, ry, 84, 28, TR ("Join"), room_join); jb->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
 	g_roomsPane->addChild (jb);
 	g_grid = new DataGrid (12, ry + 40, mw - 24, mh - ry - 40 - 34);
 	g_grid->anchor = ANCHOR_FILL;
 	g_grid->setColumns (3);
-	g_grid->setColumn (0, "Room", 190); g_grid->setColumn (1, "Users", 70, GRID_RIGHT); g_grid->setColumn (2, "Topic", mw - 24 - 190 - 70 - UK_SBW - 6);
+	g_grid->setColumn (0, TR ("Room"), 190); g_grid->setColumn (1, TR ("Users"), 70, GRID_RIGHT); g_grid->setColumn (2, TR ("Topic"), mw - 24 - 190 - 70 - UK_SBW - 6);
 	g_grid->cellText = room_cell; g_grid->sortable = true; g_grid->sortCol = 1; g_grid->sortDesc = true;
 	g_grid->onSort = room_sort; g_grid->onActivate = room_join;
-	g_grid->emptyText = "No room to show";
+	g_grid->emptyText = TR ("No room to show");
 	g_roomsPane->addChild (g_grid);
 	g_roomsInfo = new Label (12, mh - 28, mw - 24, 22, "", ink_soft (), C_FIELD);
 	g_roomsInfo->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
@@ -1574,10 +1626,12 @@ static int main_window (void)
 	g_status = new StatusBar (0, H - SB_H, W, SB_H);
 	g_status->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
 	root.addChild (g_status);
+	if (g_sp) root.addChild (g_sp);			// (over the conversation: a rail's names, a drawer and its tab)
 
 	root.setResizable (true);
 	root.fitWorkArea ();
-	info ("Onyx IRC -- waiting for the network...", LK_EVENT);
+	sp_lay_out ();
+	info (TR ("Onyx IRC -- waiting for the network..."), LK_EVENT);
 	layout_chat ();
 	g_input->setFocus ();
 	root.run ();
@@ -1622,9 +1676,9 @@ public:
 		unsigned dot = g_online ? 0x0027AE60 : 0x009A9A9A;
 		uk_rbox (canvas, 58, height / 2 + (RH - 8) / 2 + 1, 8, 8, 4, uk_tone (dot, 170), dot);
 		char s[140] = "";
-		if (!g_mainPid) scpy (s, sizeof s, "IRC is not running");
-		else if (g_online) { scat (s, sizeof s, "Online on "); scat (s, sizeof s, g_psrv); }
-		else scpy (s, sizeof s, "Offline");
+		if (!g_mainPid) scpy (s, sizeof s, TR ("IRC is not running"));
+		else if (g_online) { scat (s, sizeof s, TR ("Online on ")); scat (s, sizeof s, g_psrv); }
+		else scpy (s, sizeof s, TR ("Offline"));
 		fit (s, width - 90, b, sizeof b);
 		uk_text_l (canvas, 72, height / 2 + 1, RH, b, ink_soft ());
 		canvas.fillRect (0, height - 1, width, 1, line_col ());
@@ -1700,7 +1754,7 @@ public:
 		{
 			avatar (canvas, (width - 64) / 2, height / 2 - 90, 64, g_peer);
 			uk_text_c (canvas, 0, height / 2 - 14, width, RH, g_peer, C_FIELD_TEXT, 2);
-			char s[80] = "Say hello to "; scat (s, sizeof s, g_peer);
+			char s[80]; scpy (s, sizeof s, TR ("Say hello to ")); scat (s, sizeof s, g_peer);
 			uk_text_c (canvas, 0, height / 2 + 8, width, RH, s, ink_soft ());
 			return;
 		}
@@ -1818,7 +1872,7 @@ static int pm_window (const char *peer)
 	g_pin = new Textbox (10, 10, PW - 20 - 76, 30, "", pm_send);
 	g_pin->maxLen = 400; g_pin->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_TOP;
 	row->addChild (g_pin);
-	g_psend = new Button (PW - 80, 10, 70, 30, "Send", pm_send); g_psend->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
+	g_psend = new Button (PW - 80, 10, 70, 30, TR ("Send"), pm_send); g_psend->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
 	row->addChild (g_psend);
 
 	g_mainPid = kapi_ipc_lookup ("irc");
@@ -1832,6 +1886,7 @@ static int pm_window (const char *peer)
 
 int main (void)
 {
+	uk_lang_init ();				// (the words in the system's language: uikit/lang.h)
 	char a[128];
 	int n = kapi_get_args (a, sizeof a);
 	if (n < 0) n = 0;

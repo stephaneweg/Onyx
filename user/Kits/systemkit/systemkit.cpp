@@ -24,16 +24,22 @@
 #include "clipboard.h"
 #include "dockconf.h"
 #include "locale.h"
+#include "session.h"
+#include "shell.h"
+#include "recent.h"
 #include "wallpaper.inc"
 #include "volume.inc"
 #include "trash.inc"
 #include "preloadini.inc"
 #include "autostart.inc"
+#include "recent.inc"
 #include "fileassoc.inc"
 #include "notify.inc"
 #include "clipboard.inc"
 #include "dockconf.inc"
 #include "locale.inc"
+#include "session.inc"
+#include "shell.inc"
 
 // (the library's table: its init -- the library runtime's, Runtime/librt.cpp)
 extern "C" int onyx_lib_init (const TLibImports *imp);

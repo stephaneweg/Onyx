@@ -4,12 +4,13 @@
 # Copyright (c) 2026 the Onyx authors. MIT licence (see docs/LICENSING.md).
 #
 # A parametric generator: python3 hardware/case/make_case.py
-#   -> onyx_case_base.stl, onyx_case_cover.stl, onyx_case_logo_inlay.stl (print orientation)
+#   -> onyx_case_base.stl, onyx_case_cover.stl, onyx_case_logo_inlay.stl,
+#      onyx_case_logo_accent.stl (print orientation)
 #      onyx_case_assembled.stl (the two parts in place, to look at), preview.png
-# Needs: pip install manifold3d trimesh numpy matplotlib
+# Needs: pip install manifold3d trimesh numpy (and pillow for render_preview.py)
 #
 # The look: a Mac mini's soft rounded slab, a GameCube's disc on the top (a circular
-# groove, the Onyx gem and its name engraved inside, a ring of vents around it), a
+# groove, the Onyx gem engraved inside, a ring of vents around it), a
 # shadow line where the two halves meet, a vented bottom.
 #
 # Coordinates: the board's frame -- x along the 85 mm side (x=0 at the micro-SD edge),
@@ -131,55 +132,39 @@ def slot_y(y, z0, z1, w, r=1.0):
     return cs.extrude(WALL + 4).rotate((90, 0, 90)).translate((IN_X1 - 2, y, 0))
 
 # ---------------------------------------------------------------- the logo
-def logo_2d():
-    """The Onyx mark: a cut gem (crown and pavilion, its facets) above the word ONYX."""
-    W = 0.95                                   # stroke width (a 0.4 nozzle: 2 lines)
-    s = 1.35
-    # the gem, centred on (0, 5): table, crown, girdle, pavilion
-    gx, gy = 0.0, 4.6
-    tw, gw, ch, ph = 7.0, 15.0, 3.6, 8.2       # table, girdle widths; crown, pavilion heights
-    T0, T1 = (gx - tw / 2, gy + ch), (gx + tw / 2, gy + ch)
-    G0, G1 = (gx - gw / 2, gy), (gx + gw / 2, gy)
-    C = (gx, gy - ph)                           # the culet
-    segs = [(T0, T1), (T0, G0), (T1, G1), (G0, G1), (G0, C), (G1, C),
-            # crown facets
-            (T0, (gx - gw / 4, gy)), (T1, (gx + gw / 4, gy)),
-            ((gx - gw / 4, gy), (gx, gy + ch)), ((gx + gw / 4, gy), (gx, gy + ch)),
-            # pavilion facets
-            ((gx - gw / 4, gy), C), ((gx + gw / 4, gy), C)]
-    gem = CrossSection.batch_boolean([stroke(p, q, W) for p, q in segs], m3d.OpType.Add)
+# The Onyx mark, as on the Onyx web site: the gem -- a hexagon cut in facets, one facet in peach.
+GEM_HEX  = [(16, 1.5), (28.5, 9), (28.5, 23), (16, 30.5), (3.5, 23), (3.5, 9)]   # the SVG's 32x32 box, y down
+GEM_EDGES = [((3.5, 9), (16, 13)), ((28.5, 9), (16, 13)), ((16, 1.5), (16, 13)), ((16, 13), (16, 30.5)),
+             ((28.5, 14.5), (16, 19))]
+GEM_ACCENT = [(16, 13), (28.5, 9), (28.5, 14.5), (16, 19)]
+GEM_R = 14.5                                  # the hexagon's radius in the box (its centre: 16, 16)
 
-    # the word, from DejaVu Sans Bold (Bitstream Vera licence, in sdcard/res/fonts)
-    from matplotlib.textpath import TextPath
-    from matplotlib.font_manager import FontProperties
-    font = os.path.join(HERE, '..', '..', 'sdcard', 'res', 'fonts', 'DejaVuSans-Bold.ttf')
-    size, track = 7.4, 1.3
-    letters, x = [], 0.0
-    for ch_ in "ONYX":
-        tp = TextPath((x, 0), ch_, size=size, prop=FontProperties(fname=font))
-        polys = [p for p in tp.to_polygons() if len(p) >= 3]
-        letters.append(CrossSection(polys, FillRule.EvenOdd))
-        bb = tp.get_extents()
-        x = bb.x1 + track
-    word = CrossSection.batch_boolean(letters, m3d.OpType.Add)
-    (bx0, by0, bx1, by1) = word.bounds()
-    word = word.translate((-(bx0 + bx1) / 2, -by1 - 6.0))
-    return (gem + word).scale((s, s))
+def logo_2d(radius, stroke_w=0.9):
+    """The gem, its hexagon `radius` mm, centred on (0, 0): (lines, accent) -- its outline and
+    facets, and the peach facet, apart for a second colour."""
+    k = radius / GEM_R
+    P = lambda p: ((p[0] - 16) * k, (16 - p[1]) * k)      # SVG -> mm, y up
+    hexa = [P(p) for p in GEM_HEX]
+    segs = [(hexa[i], hexa[(i + 1) % 6]) for i in range(6)] + [(P(p), P(q)) for p, q in GEM_EDGES]
+    lines = CrossSection.batch_boolean([stroke(p, q, stroke_w) for p, q in segs], m3d.OpType.Add)
+    accent = CrossSection([[P(p) for p in GEM_ACCENT]], FillRule.EvenOdd).offset(-stroke_w / 2, m3d.JoinType.Miter)
+    return lines, accent
 
-LOGO_R    = 24.0     # the disc's groove radius
+LOGO_R    = 28.0     # the disc's groove radius
+GEM_SIZE  = 20.0     # the gem's radius in it
 GROOVE_W  = 1.0
 ENGRAVE   = 0.6      # the logo's and groove's depth
 LOGO_CX, LOGO_CY = CX, CY
 
 def top_marks_2d():
-    lg = logo_2d()
-    (bx0, by0, bx1, by1) = lg.bounds()
-    lg = lg.translate((-(bx0 + bx1) / 2, -(by0 + by1) / 2))
+    """The engravings on the top: (the mark's lines, its accent, the disc's groove)."""
+    # the widest mark the disc holds, 2.5 mm inside the groove
+    lines, accent = logo_2d(GEM_SIZE)
     # the vented side (y-max) is the front, the cables leave at the back and sides (a Mac
-    # mini): the logo reads from the front
-    lg = lg.rotate(180).translate((LOGO_CX, LOGO_CY))
+    # mini): the gem reads from the front, as on the site
+    place = lambda cs: cs.rotate(180).translate((LOGO_CX, LOGO_CY))
     ring = CrossSection.circle(LOGO_R + GROOVE_W / 2, 128) - CrossSection.circle(LOGO_R - GROOVE_W / 2, 128)
-    return lg, ring.translate((LOGO_CX, LOGO_CY))
+    return place(lines), place(accent), ring.translate((LOGO_CX, LOGO_CY))
 
 def vent_ring_2d():
     """Arc vents around the disc (the SoC lies beneath)."""
@@ -247,8 +232,8 @@ def build():
         cuts.append(cs.extrude(WALL + 4).rotate((90, 0, 0)).translate((x, Y1 + 2, 0)))
 
     # the top: the disc's groove, the logo (engraved), the arc vents
-    logo, ring = top_marks_2d()
-    cuts.append((logo + ring).extrude(ENGRAVE + 0.01).translate((0, 0, Z_TOP - ENGRAVE)))
+    logo, accent, ring = top_marks_2d()
+    cuts.append((logo + accent + ring).extrude(ENGRAVE + 0.01).translate((0, 0, Z_TOP - ENGRAVE)))
     cuts.append(vent_ring_2d().extrude(TOP + 1).translate((0, 0, Z_CEIL - 0.5)))
     if GPIO_SLOT:
         cuts.append(box(6.0, 48.5, Z_CEIL - 1, 59.5, 56.5, Z_TOP + 1))
@@ -282,8 +267,9 @@ def build():
         lip = lip - cyl(bx, by, 0, 100, BOSS_D + 0.6)
     base = base + lip
 
-    inlay = logo.extrude(ENGRAVE - 0.05).translate((0, 0, Z_TOP - ENGRAVE))
-    return base, cover, inlay
+    inlay  = logo.extrude(ENGRAVE - 0.05).translate((0, 0, Z_TOP - ENGRAVE))
+    inlay2 = accent.extrude(ENGRAVE - 0.05).translate((0, 0, Z_TOP - ENGRAVE))
+    return base, cover, inlay, inlay2
 
 # ---------------------------------------------------------------- output
 def to_trimesh(man):
@@ -294,8 +280,8 @@ def to_trimesh(man):
 
 def main():
     import trimesh
-    base, cover, inlay = build()
-    for name, man in (("base", base), ("cover", cover), ("inlay", inlay)):
+    base, cover, inlay, accent = build()
+    for name, man in (("base", base), ("cover", cover), ("inlay", inlay), ("accent", accent)):
         if man.status() != m3d.Error.NoError or man.is_empty():
             sys.exit(f"{name}: bad solid ({man.status()})")
     out = HERE
@@ -304,8 +290,9 @@ def main():
     to_trimesh(base).export(os.path.join(out, "onyx_case_base.stl"))
     to_trimesh(flip(cover)).export(os.path.join(out, "onyx_case_cover.stl"))
     to_trimesh(flip(inlay)).export(os.path.join(out, "onyx_case_logo_inlay.stl"))
+    to_trimesh(flip(accent)).export(os.path.join(out, "onyx_case_logo_accent.stl"))
     to_trimesh(base + cover).export(os.path.join(out, "onyx_case_assembled.stl"))
-    for name, man in (("base", base), ("cover", cover), ("inlay", inlay)):
+    for name, man in (("base", base), ("cover", cover), ("inlay", inlay), ("accent", accent)):
         bb = man.bounding_box()
         print(f"{name:6s} {man.num_tri():7d} tris  {man.volume()/1000:6.1f} cm3  "
               f"{bb[3]-bb[0]:.1f} x {bb[4]-bb[1]:.1f} x {bb[5]-bb[2]:.1f} mm  genus {man.genus()}")

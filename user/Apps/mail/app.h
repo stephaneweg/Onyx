@@ -21,8 +21,9 @@ static const int TB_H = 50, SIDE_W = 214, LIST_W = 316;
 
 static Model g_m;
 static Root *g_root;
-class ToolBar; class Sidebar; class ListPane; class ReadPane; class ComposePane; class ContactsPane; class Welcome;
-static ToolBar *g_tb; static Sidebar *g_side; static ListPane *g_list; static ReadPane *g_read; static ComposePane *g_compose; static ContactsPane *g_contacts; static Welcome *g_welcome;
+static bool g_onePane, g_oneConv;		// a narrow window: one pane shown; the conversation's (else the list)
+class ToolBar; class ListPane; class ReadPane; class ComposePane; class ContactsPane; class Welcome;
+static ToolBar *g_tb; static SidePanel *g_side; static ListPane *g_list; static ReadPane *g_read; static ComposePane *g_compose; static ContactsPane *g_contacts; static Welcome *g_welcome;
 static int g_conv = -1;				// the conversation shown (view.convs index), -1 none
 static bool g_showContacts;
 static unsigned g_tick;
@@ -81,11 +82,11 @@ static void fmt_short (long long t, char *b, int cap)
 	long long now = now_utc ();
 	long long dn = day_num (now), dt = day_num (t);
 	long long l = local_of (t); int sec = (int) (l - dt * 86400);
-	static const char *const WD[7] = { "Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed" };
+	static const char *const WD[7] = { TR ("Thu"), TR ("Fri"), TR ("Sat"), TR ("Sun"), TR ("Mon"), TR ("Tue"), TR ("Wed") };
 	int y, m, d; civil (dt, &y, &m, &d);
 	int ny, nm, nd; civil (dn, &ny, &nm, &nd);
 	if (dt == dn) snprintf (b, cap, "%02d:%02d", sec / 3600, sec / 60 % 60);
-	else if (dt == dn - 1) snprintf (b, cap, "Yesterday");
+	else if (dt == dn - 1) snprintf (b, cap, TR ("Yesterday"));
 	else if (dn - dt < 7) snprintf (b, cap, "%s", WD[((dt % 7) + 7) % 7]);
 	else if (y == ny) snprintf (b, cap, "%d %s", d, MONTHS3[m - 1]);
 	else snprintf (b, cap, "%02d/%02d/%04d", d, m, y);
@@ -95,9 +96,9 @@ static void fmt_long (long long t, char *b, int cap)
 	long long dt = day_num (t), dn = day_num (now_utc ());
 	long long l = local_of (t); int sec = (int) (l - dt * 86400);
 	int y, m, d; civil (dt, &y, &m, &d);
-	static const char *const WD[7] = { "Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday" };
-	if (dt == dn) snprintf (b, cap, "Today, %02d:%02d", sec / 3600, sec / 60 % 60);
-	else if (dt == dn - 1) snprintf (b, cap, "Yesterday, %02d:%02d", sec / 3600, sec / 60 % 60);
+	static const char *const WD[7] = { TR ("Thursday"), TR ("Friday"), TR ("Saturday"), TR ("Sunday"), TR ("Monday"), TR ("Tuesday"), TR ("Wednesday") };
+	if (dt == dn) snprintf (b, cap, TR ("Today, %02d:%02d"), sec / 3600, sec / 60 % 60);
+	else if (dt == dn - 1) snprintf (b, cap, TR ("Yesterday, %02d:%02d"), sec / 3600, sec / 60 % 60);
 	else snprintf (b, cap, "%s %d %s %d, %02d:%02d", WD[((dt % 7) + 7) % 7], d, MONTHS3[m - 1], y, sec / 3600, sec / 60 % 60);
 }
 // the list's day groups: 0 today, 1 yesterday, 2 this week, 3 this month, 4 older
@@ -113,9 +114,9 @@ static int day_group (long long t)
 }
 static void fmt_size (long n, char *b, int cap)
 {
-	if (n < 1024) snprintf (b, cap, "%ld bytes", n);
-	else if (n < 1024 * 1024) snprintf (b, cap, "%ld KB", (n + 512) / 1024);
-	else snprintf (b, cap, "%ld.%ld MB", n / 1048576, n % 1048576 * 10 / 1048576);
+	if (n < 1024) snprintf (b, cap, TR ("%ld bytes"), n);
+	else if (n < 1024 * 1024) snprintf (b, cap, TR ("%ld KB"), (n + 512) / 1024);
+	else snprintf (b, cap, TR ("%ld.%ld MB"), n / 1048576, n % 1048576 * 10 / 1048576);
 }
 static const char *folder_label (const Folder &f) { return f.show[0] ? f.show : f.name; }
 static int folder_icon (const Folder &f)

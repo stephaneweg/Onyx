@@ -1,0 +1,38 @@
+# consolehome, the console mode's shell: French (English<TAB>French)
+Recent	Récentes
+Productivity	Productivité
+Internet	Internet
+Graphics	Graphisme
+Multimedia	Multimédia
+Games	Jeux
+Programming	Programmation
+System	Système
+Demos	Démos
+BASIC	BASIC
+Settings	Réglages
+Other	Autres
+Theme	Thème
+Display	Affichage
+Panel	Panneau
+Sound	Son
+Preload	Préchargement
+Keyboard & Mouse	Clavier et souris
+Language & Region	Langue et région
+Printers	Imprimantes
+Gamepad	Manette
+Wi-Fi	Wi-Fi
+Packages	Paquets
+App Settings	Réglages des apps
+settings	réglages
+app	app
+apps	apps
+Nothing here yet	Rien ici pour le moment
+more	de plus
+Enter	Entrer
+Back	Retour
+Category	Catégorie
+Menu	Menu
+Resume	Reprendre
+Home	Accueil
+Shut Down...	Éteindre...
+The menu	Le menu

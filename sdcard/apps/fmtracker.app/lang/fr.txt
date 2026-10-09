@@ -1,0 +1,133 @@
+# FM Tracker's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included). The side panel's and the dialog's labels are short.
+FM Tracker	FM Tracker
+Nothing to 	Rien à 
+undo.	annuler.
+redo.	rétablir.
+Sine	Sinus
+Half sine	Demi-sinus
+Abs sine	Sinus abs.
+Pulses	Impulsions
+Additive	Additif
+(preset...)	(préréglage...)
+Name	Nom
+Load...	Charger...
+Save...	Enregistrer...
+Algorithm	Algorithme
+Feedback	Rétroaction
+Attack	Attaque
+Decay	Chute
+Sustain	Maintien
+Release	Relâche
+Volume	Volume
+Multiplier	Multipl.
+Key scale	Suivi clavier
+Held (sustain)	Tenu
+Tremolo	Trémolo
+Vibrato	Vibrato
+Key scale rate	Suivi (durée)
+Test	Tester
+Instrument	Instrument
+Not an .FMI instrument file.	Ce n'est pas un fichier d'instrument .FMI.
+Cannot write the file.	Impossible d'écrire le fichier.
+Instrument of channel %d	Instrument du canal %d
+Op 1	Op 1
+Op 2	Op 2
+Operator 2	Opérateur 2
+Operator 2 - carrier (what is heard)	Opérateur 2 - porteuse (ce qu'on entend)
+Operator 1	Opérateur 1
+Operator 1 - modulator (the timbre)	Opérateur 1 - modulateur (le timbre)
+The sound's wave, as the note sounds	L'onde du son, pendant la note
+The sound's wave (two periods, at full volume)	L'onde du son (deux périodes, à plein volume)
+Test plays it: the wave moves with the note.	Tester le joue : l'onde suit la note.
+(none)	(aucun)
+%d rows	%d lignes
+Copied: %d rows x %d channels.	Copié : %d lignes x %d canaux.
+Nothing to paste: copy a block first.	Rien à coller : copiez d'abord un bloc.
+Stopped.	Arrêté.
+Playing this pattern in a loop -- Esc or Stop to stop.	Lecture de ce motif en boucle -- Échap ou Stop pour arrêter.
+Playing -- Esc or Stop to stop.	Lecture -- Échap ou Stop pour arrêter.
+Loop: the pattern plays again and again.	Boucle : le motif est rejoué sans fin.
+Loop off: the patterns play in order.	Boucle désactivée : les motifs sont joués dans l'ordre.
+Untitled	Sans titre
+  (modified)	  (modifié)
+The song has changed. Save it first?	Le morceau a changé. L'enregistrer d'abord ?
+Cannot open 	Impossible d'ouvrir 
+This is not an FM Song (.FMS) file.	Ce n'est pas un fichier FM Song (.FMS).
+Cannot save 	Impossible d'enregistrer 
+Cannot export 	Impossible d'exporter 
+Exporting 	Exportation de 
+Exported 	Exporté : 
+Title	Titre
+Author	Auteur
+Comment	Commentaire
+Song information	Informations du morceau
+At most 64 patterns.	64 motifs au plus.
+A song keeps at least one pattern.	Un morceau garde au moins un motif.
+Pattern	Motif
+Delete this pattern?	Supprimer ce motif ?
+Play from the cursor / stop (Ctrl+P)	Lire depuis le curseur / arrêter (Ctrl+P)
+Play from the start	Lire depuis le début
+Stop (Esc)	Arrêter (Échap)
+Loop: play this pattern again and again (Ctrl+L)	Boucle : rejouer ce motif sans fin (Ctrl+L)
+PATTERN : ROW	MOTIF : LIGNE
+Undo (Ctrl+Z)	Annuler (Ctrl+Z)
+Redo (Ctrl+Y)	Rétablir (Ctrl+Y)
+Cut the block (Ctrl+X)	Couper le bloc (Ctrl+X)
+Copy the block (Ctrl+C)	Copier le bloc (Ctrl+C)
+Paste at the cursor (Ctrl+V)	Coller au curseur (Ctrl+V)
+Follow the position while it plays	Suivre la position pendant la lecture
+Follow	Suivre
+PATTERNS	MOTIFS
+A new pattern after this one	Un nouveau motif après celui-ci
+Duplicate this pattern	Dupliquer ce motif
+Move it earlier in the song	Le placer plus tôt dans le morceau
+Move it later in the song	Le placer plus tard dans le morceau
+Delete this pattern	Supprimer ce motif
+THIS PATTERN	CE MOTIF
+Rows	Lignes
+Speed	Vitesse
+A row lasts speed / 20 s	Une ligne dure vitesse / 20 s
+TYPING	SAISIE
+Octave	Octave
+Step	Pas
+The rows the cursor goes down after a note	Les lignes dont le curseur descend après une note
+SONG	MORCEAU
+File	Fichier
+New	Nouveau
+Open...	Ouvrir...
+Save	Enregistrer
+Save As...	Enregistrer sous...
+Export WAV...	Exporter en WAV...
+Song Info...	Infos du morceau...
+Edit	Édition
+Undo	Annuler
+Redo	Rétablir
+Cut	Couper
+Copy	Copier
+Paste	Coller
+Select the Pattern	Sélectionner le motif
+Insert Slice	Insérer une tranche
+Delete Slice	Supprimer la tranche
+Clear Channel	Vider le canal
+Semitone Up	Demi-ton au-dessus
+Semitone Down	Demi-ton au-dessous
+Octave Up	Octave au-dessus
+Octave Down	Octave au-dessous
+Previous	Précédent
+Next	Suivant
+New Pattern	Nouveau motif
+Duplicate	Dupliquer
+Move Earlier	Placer plus tôt
+Move Later	Placer plus tard
+Delete...	Supprimer...
+Channel	Canal
+Instrument...	Instrument...
+Mute in this Pattern	Muet dans ce motif
+Solo	Solo
+Play	Lecture
+Play / Stop	Lire / arrêter
+From the Start	Depuis le début
+Loop the Pattern	Boucler le motif
+Stop	Arrêter
+C D E F G A B: a note (Shift = #), 0-7: octave, Space: silence, Del: ---, Shift+arrows: a block, ^P: play	C D E F G A B : une note (Maj = #), 0-7 : octave, Espace : silence, Suppr : ---, Maj+flèches : un bloc, ^P : lire

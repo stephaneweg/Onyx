@@ -11,7 +11,7 @@
 //     the same folder; Home / End: first / last.
 //   * Transparent pixels are shown over a checkerboard; animated GIFs play.
 //   * imageview --background [-tile] <image>: no window -- the image becomes the desktop
-//     wallpaper (the kernel's shared buffer, kapi_wallpaper_buffer / commit), scaled to
+//     wallpaper (the kernel's shared buffer, uk_win_wallpaper_buffer / commit), scaled to
 //     cover the screen (proportions kept, the overflow cut), or with -tile repeated from
 //     the top-left corner; then it exits (the wallpaper stays). E.g. in SD:/etc/autostart:
 //     run imageview --background SD:/pictures/sky.jpg
@@ -284,7 +284,7 @@ static int set_background (const char *path, bool tile)
 	ik_image *im = ik_load (path, IK_ORIENT);
 	if (im == 0) return 2;
 	int sw = 0, sh = 0;
-	unsigned *bg = kapi_wallpaper_buffer (&sw, &sh);
+	unsigned *bg = uk_win_wallpaper_buffer (&sw, &sh);
 	if (!bg || sw <= 0 || sh <= 0) { ik_image_free (im); return 3; }
 	ik_flatten (im, 0x000000);
 	const unsigned *src = ik_pixels (im);
@@ -305,7 +305,7 @@ static int set_background (const char *path, bool tile)
 		for (long i = 0, n = (long) sw * sh; i < n; i++) bg[i] &= 0xFFFFFF;
 	}
 	ik_image_free (im);
-	kapi_wallpaper_commit ();
+	uk_win_wallpaper_commit ();
 	return 0;
 }
 

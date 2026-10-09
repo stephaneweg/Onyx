@@ -673,13 +673,15 @@ static void cb_next (Widget &) { if (g_view->nextEntry >= 0) start_level (g_view
 static void place_buttons ()
 {
 	int th = uk_fh () + 10;
-	auto at = [] (Widget *b, int x, int y) { b->left = x; b->top = y; };
-	int cx = (WW - 260) / 2, cy = (PLAYH - 176) / 2 + th;
+	static int vl, vt; vl = g_view->left; vt = g_view->top;	// (the cards are centred in the view)
+	auto at = [] (Widget *b, int x, int y) { b->left = vl + x; b->top = vt + y; };
+	int VW = g_view->width;
+	int cx = (VW - 260) / 2, cy = (PLAYH - 176) / 2 + th;
 	at (g_btResume, cx + 30, cy + 12); at (g_btRestart, cx + 30, cy + 48); at (g_btBack, cx + 30, cy + 84);
-	cx = (WW - 400) / 2; cy = (PLAYH - 172) / 2 + th;
+	cx = (VW - 400) / 2; cy = (PLAYH - 172) / 2 + th;
 	at (g_btNuke, cx + 400 - 20 - 150 - 10 - 110, cy + 82); at (g_btCancel, cx + 400 - 20 - 110, cy + 82);
 	int n = g_view->hasNext ? 3 : 2, bw = 104, gap = 12;
-	cx = (WW - 380) / 2; cy = (PLAYH - 232) / 2 + th;
+	cx = (VW - 380) / 2; cy = (PLAYH - 232) / 2 + th;
 	int bx = cx + (380 - n * bw - (n - 1) * gap) / 2;
 	at (g_btRetry, bx, cy + 150); bx += bw + gap;
 	if (n == 3) { at (g_btNext, bx, cy + 150); bx += bw + gap; }
@@ -965,6 +967,7 @@ class CrRoot : public GameRoot
 public:
 	CrRoot () : GameRoot (WW, WH, TR ("Critters")) {}
 	void onTick () override { GameRoot::onTick (); update_bar (); }
+	void onResized () override { relayout (); }
 	void onDrop (int, int, int type, const char *data, int, unsigned) override
 	{
 		if (type != DND_FILES || g_view->mode != M_PICKER) return;
@@ -981,7 +984,24 @@ static void relayout ()
 	for (Widget *w : playW) show (w, play);
 	for (int i = 0; i < NSLOT; i++) show (g_slot[i], play);
 	bool ok = g_sel >= 0 && g_sel < g_nent && g_ent[g_sel]->ok;
-	g_preview->resizeTo (WW - 336, ok ? 150 : 200);
+	// The window resized (PocketUI fills it): the play screen -- the field as wide as the window (more of the level
+	// seen), the status line and the bar under it, the three centred in its height; the picker's list taller, the
+	// preview bigger, the facts and Play under it. At the default 800 x 448 everything where it always was.
+	int W = g_root->width, H = g_root->height, fy = H > WH ? (H - WH) / 2 : 0, dx = W > WW ? (W - WW) / 2 : 0, ex = H > WH ? H - WH : 0;
+	g_view->left = 0; g_view->top = fy; g_view->resizeTo (W, PLAYH); g_view->clampVx ();
+	g_status->left = 0; g_status->top = fy + STATUSY; g_status->resizeTo (W, STATUSH);
+	g_barFace->left = 0; g_barFace->top = fy + BARY; g_barFace->resizeTo (W, WH - BARY);
+	for (int i = 0; i < NSLOT; i++) { g_slot[i]->left = dx + (i < 8 ? 8 + i * 44 : 466 + (i - 8) * 44); g_slot[i]->top = fy + BARY + 6; }
+	((Widget *) g_rate)->left = dx + 370; ((Widget *) g_rate)->top = fy + BARY + 6;
+	((Widget *) g_minus)->left = dx + 370; ((Widget *) g_minus)->top = fy + BARY + 52;
+	((Widget *) g_plus)->left = dx + 413; ((Widget *) g_plus)->top = fy + BARY + 52;
+	g_mini->left = dx + 610; g_mini->top = fy + BARY + 6;
+	g_help->left = (W - HELPW) / 2; g_help->top = (H - HELPH) / 2;
+	g_list->resizeTo (300, H - 24);
+	g_preview->resizeTo (W - 336, (ok ? 150 : 200) + ex);
+	g_info->top = 174 + ex; g_info->resizeTo (W - 340, 216);
+	((Widget *) g_play)->left = W - 12 - 140; ((Widget *) g_play)->top = H - 12 - 36;
+	g_legend->top = H - 12 - 29; g_legend->resizeTo (W - 326 - 12 - 140 - 8, 22);
 	Widget *pick[] = { g_list, g_preview, g_info, g_legend, g_play };
 	for (Widget *w : pick) show (w, !play);
 	if (!play) show (g_info, ok);
@@ -1221,6 +1241,8 @@ int main (void)
 		ft_messagebox (TR ("Critters"), TR ("No level found in SD:/apps/critters.app/levels."), MB_OK);
 		return 1;
 	}
+	root.setResizable (true);
+	root.setMinSize (WW, WH);
 	relayout ();
 	root.fitWorkArea ();
 	if (g_argPath[0])

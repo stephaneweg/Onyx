@@ -167,7 +167,7 @@ static void relayout (void)
 	g_pass->hidden = !show; g_show->hidden = !show; g_connect->hidden = g_open < 0;
 	g_pass->left = 14; g_pass->top = y; g_show->left = 14; g_show->top = y + 32;
 	g_connect->left = W - 104; g_connect->top = show ? y + 30 : y + 8;
-	if (h != g_h) { g_h = h; g_root->setBounds (W, h); kapi_resize_window (W, h); }
+	if (h != g_h) { g_h = h; g_root->setBounds (W, h); uk_win_resize (W, h); }
 	g_root->invalidate (true);
 }
 
@@ -259,7 +259,7 @@ public:
 		if (!press) return true;
 		if (my >= height - FOOT)					// the footer links
 		{
-			if (mx < W / 2) { g_scanning = true; scpy (g_status, "Scanning...", sizeof g_status); g_open = -1; relayout (); draw (); kapi_present (); scan (); relayout (); }
+			if (mx < W / 2) { g_scanning = true; scpy (g_status, "Scanning...", sizeof g_status); g_open = -1; relayout (); draw (); uk_win_present (); scan (); relayout (); }
 			else { lx_launch ("wpaconf", 0); kapi_exit (0); }
 			return true;
 		}
@@ -285,7 +285,7 @@ public:
 static bool have_keys (void)
 {
 	static struct kapi_win_info wi[32];
-	int n = kapi_win_list (wi, 32);
+	int n = uk_win_list (wi, 32);
 	for (int i = 0; i < n; i++) if ((wi[i].state & KAPI_WIN_KEYS) && seq (wi[i].title, "Wi-Fi")) return true;
 	return n <= 0;							// (an older kernel: never closed this way)
 }
@@ -306,7 +306,7 @@ int main (void)
 	g_connect = new Button (W - 104, 0, 90, 28, "Connect", on_connect); root.addChild (g_connect);
 	relayout ();
 	root.attach ();
-	root.draw (); kapi_present ();
+	root.draw (); uk_win_present ();
 	scan ();
 	relayout ();
 	bool hadKeys = false; unsigned lastKeys = 0;
@@ -339,7 +339,7 @@ int main (void)
 			}
 		}
 		if (g_join == JOINED && now - g_joinT > 150) return 0;		// (1.5 s to read it)
-		if (!root.valid) { root.draw (); kapi_present (); }
+		if (!root.valid) { root.draw (); uk_win_present (); }
 		msleep (16);
 	}
 	return 0;

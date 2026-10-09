@@ -30,12 +30,14 @@ KITS = [
    "reads the kernel's table, so the kernel can change without a program being rebuilt."),
   ("11-UIKIT", "UIKit", 4, "uikit", '#include "uikit/uikit.h"', "`lib/uikit.imp.a`",
    None,
-   "UIKit is the interface: the windows and their frames, the widgets, the dialogs, the theme, the icons. "
-   "Everything is in the namespace `uikit`. A window is a `Root`; widgets are added to it; `run ()` is "
-   "the event loop."),
+   "UIKit is the interface: the windows and their frames, the widgets, the dialogs, the theme, the icons — "
+   "and the window API itself, `uk_win_*` (`uikit/win.h`, plain C functions: what speaks to the graphics "
+   "server; a C program links `lib/uikit.imp_c.a`). The rest is in the namespace `uikit`. A window is a "
+   "`Root`; widgets are added to it; `run ()` is the event loop."),
   ("12-SYSTEMKIT", "SystemKit", 5, "systemkit", '#include "systemkit/systemkit.h"', "`lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C)",
    ["systemkit/notify.h", "systemkit/clipboard.h", "systemkit/clipproto.h", "systemkit/trash.h", "systemkit/fileassoc.h",
-    "systemkit/volume.h", "systemkit/wallpaper.h", "systemkit/dockconf.h", "systemkit/preloadini.h", "systemkit/autostart.h", "systemkit/applet_proto.h"],
+    "systemkit/volume.h", "systemkit/wallpaper.h", "systemkit/dockconf.h", "systemkit/preloadini.h", "systemkit/autostart.h", "systemkit/locale.h", "systemkit/session.h",
+    "systemkit/applet_proto.h"],
    "SystemKit is what a program says to the system and to the other programs: notifications, the "
    "clipboard, the trash, the file associations, the volume, the wallpaper, the dock, the programs loaded "
    "ahead and started at boot, the Control Panel's applets."),
@@ -212,8 +214,8 @@ def esc(s): return s.replace("|", "\\|").replace("\n", " ")
 
 def uikit_headers():
     d = os.path.join(K, "uikit")
-    hs = sorted(f for f in os.listdir(d) if f.endswith(".h") and f not in ("abi.h",))
-    first = ["uikit.h", "widget.h", "root.h", "canvas.h", "theme.h", "text.h", "label.h", "button.h", "dialog.h"]
+    hs = sorted(f for f in os.listdir(d) if f.endswith(".h") and f not in ("abi.h", "lift.h"))
+    first = ["uikit.h", "widget.h", "root.h", "win.h", "canvas.h", "theme.h", "text.h", "label.h", "button.h", "dialog.h"]
     return ["uikit/" + f for f in first if f in hs] + ["uikit/" + f for f in hs if f not in first]
 
 def abi_names(kit):

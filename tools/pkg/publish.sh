@@ -73,6 +73,11 @@ z = zipfile.ZipFile (sys.argv[1]); open ('sdcard/apps/jet.app/main', 'wb').write
 	fi
 fi
 
+# ---- every program's AppKit stubs against appkit.abi (tools/libgen/check_stubs.py: a program linked with older
+# stubs calls the wrong functions -- 2026-10-08's build could not start one): wrong ones, nothing published ----
+PATH="$PATH:$HOME/.cache/onyx/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin:/opt/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-elf/bin"
+python3 tools/libgen/check_stubs.py user/Kits/appkit/appkit.abi sdcard || { echo "publish: programs with stale AppKit stubs: rebuild them (make in kernel/), make stage, publish again"; exit 1; }
+
 # ---- the packages ----
 python3 tools/pkg/mkrepo.py --out "$REPO" --key "$KEY" --db --lite sdcard_lite --bump
 

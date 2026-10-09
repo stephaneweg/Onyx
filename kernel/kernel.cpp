@@ -246,47 +246,92 @@ int ProgramPreload (const char *pCanonPath)		// (kern/applaunch.h: kapi_image_pr
 
 // (v83) A shared library for pAS (kern/applaunch.h: kapi_lib_open), on the calling task: in
 // memory already -- a process has it, or it is preloaded -- nothing is read from the card.
-int LibraryOpen (const char *pCanonPath, unsigned nMinVersion, CAddressSpace *pAS, u64 *pTable)
+// (v97) pAlias (canonical, 0: none): kapi_lib_open_as -- the library also found under it from now on,
+// for nOwner (the graphics server). The version is checked on the real library; the alias is checked
+// before the mapping and set after it, with no yield between (kern/image.h ImageSetAlias).
+static int LibraryOpenImpl (const char *pCanonPath, const char *pAlias, unsigned nMinVersion, CAddressSpace *pAS,
+			    u64 *pTable, unsigned nOwner)
 {
 	unsigned nT0 = CTimer::GetClockTicks ();
 	TImage *pImage = 0;
-	unsigned nHow = 0;
+	unsigned nHow = IMG_HOW_SHARED;
 	const char *pWhy = "";
-	int nErr = ProgramImage (pCanonPath, IMG_OPEN_LIB, &pImage, &nHow, &pWhy);
+	int nErr = 0;
+	if (pAlias != 0)
+	{
+		nErr = ImageAliasAllowed (pCanonPath, pAlias);
+		if (nErr < 0)
+		{
+			CLogger::Get ()->Write ("lib", LogWarning, "%s refused as %s (%d)", pCanonPath, pAlias, nErr);
+			return nErr;
+		}
+		pImage = ImageAliasHeld (pAlias, pCanonPath);	// (asked again, or its orphan taken over)
+	}
+	if (pImage == 0) nErr = ProgramImage (pCanonPath, IMG_OPEN_LIB, &pImage, &nHow, &pWhy);
 	if (nErr < 0)
 	{
 		CLogger::Get ()->Write ("lib", LogWarning, "cannot load %s: %s", pCanonPath, pWhy);
 		return nErr;
 	}
+	// what was found: its real path, and the alias it was found by (a program's "uikit" while the
+	// graphics server has aliased its own)
+	const char *pReal = ImagePath (pImage);
+	const char *pAs = ImageAliasOf (pImage);
+	if (pAlias != 0) pAs = pAlias;
+	else if (strcmp (pAs, pCanonPath) != 0) pAs = "";
 	u64 ulBase = 0;
 	unsigned nRelocs = 0, nVersion = 0;
 	ImageLibInfo (pImage, &ulBase, &nRelocs, &nVersion);
 	if (nVersion < nMinVersion)
 	{
 		CLogger::Get ()->Write ("lib", LogWarning, "%s is version %u: version %u or later is asked for",
-					pCanonPath, nVersion, nMinVersion);
+					pReal, nVersion, nMinVersion);
 		ImageRelease (pImage);
 		return -KAPI_ENOTSUP;
 	}
+	if (pAlias != 0 && (nErr = ImageSetAlias (pImage, pAlias, nOwner, FALSE)) < 0)
+	{
+		CLogger::Get ()->Write ("lib", LogWarning, "%s cannot be %s (%d): %s", pReal, pAlias, nErr,
+					nErr == -KAPI_EBUSY ? "the name is another library's, or this one has another" : "refused");
+		ImageRelease (pImage);
+		return nErr;
+	}
 	int nMapped = ImageMapLib (pImage, pAS, pTable);
+	if (nMapped >= 0 && pAlias != 0)
+	{
+		ImageSetAlias (pImage, pAlias, nOwner, TRUE);	// (checked above: nothing ran meanwhile)
+		CLogger::Get ()->Write ("lib", LogNotice, "%s: every program now gets it as %s (pid %u)", pReal, pAlias, nOwner);
+	}
 	if (nMapped == 1)
 	{
 		SyncDataAndInstructionCache ();		// (code written through the identity mapping)
 		u64 nShared = 0, nPrivate = 0;
 		ImageSizes (pImage, &nShared, &nPrivate);
 		CLogger::Get ()->Write ("lib", LogNotice,
-					"%s: %s in %u ms at 0x%lx, version %u, %u relocations, %u KB shared, %u KB private",
-					pCanonPath,
+					"%s%s%s%s: %s in %u ms at 0x%lx, version %u, %u relocations, %u KB shared, %u KB private",
+					pReal, pAs[0] != '\0' ? " (as " : "", pAs, pAs[0] != '\0' ? ")" : "",
 					nHow == IMG_HOW_LOADED ? "loaded" : nHow == IMG_HOW_WAITED ? "shared after a wait" : "shared",
 					(CTimer::GetClockTicks () - nT0) / 1000, (unsigned long) ulBase, nVersion, nRelocs,
 					(unsigned) (nShared >> 10), (unsigned) (nPrivate >> 10));
 	}
 	else if (nMapped < 0)
 	{
-		CLogger::Get ()->Write ("lib", LogWarning, "cannot map %s (%d)", pCanonPath, nMapped);
+		CLogger::Get ()->Write ("lib", LogWarning, "cannot map %s (%d)", pReal, nMapped);
 	}
 	ImageRelease (pImage);				// (ours: pAS holds the library from now on)
 	return nMapped < 0 ? nMapped : 0;
+}
+
+int LibraryOpen (const char *pCanonPath, unsigned nMinVersion, CAddressSpace *pAS, u64 *pTable)
+{
+	return LibraryOpenImpl (pCanonPath, 0, nMinVersion, pAS, pTable, 0);
+}
+
+int LibraryOpenAs (const char *pCanonPath, const char *pCanonAlias, unsigned nMinVersion, CAddressSpace *pAS,
+		   u64 *pTable, unsigned nOwner)
+{
+	if (pCanonAlias == 0 || pCanonAlias[0] == '\0' || nOwner == 0) return -KAPI_EINVAL;
+	return LibraryOpenImpl (pCanonPath, pCanonAlias, nMinVersion, pAS, pTable, nOwner);
 }
 
 // ---- AppKit (kern/kapi_abi.h): the interface between the programs and the kernel -----------------------
@@ -1360,8 +1405,11 @@ private:
 		static unsigned s_nWsMods = 0;
 		if (WsDisplayOwned ())			// (the graphics server's: kern/wsrv.h)
 		{
-			if (nMods != s_nWsMods) WsInputMods (nMods);
-			s_nWsMods = nMods;
+			// (the server also gets the Super keys -- bit 3/7, the Windows key: PocketUI's Home -- the
+			// kernel's own modifiers do not: kapi_get_modifiers answers Ctrl, Shift, Alt as before)
+			unsigned nWsMods = nMods | ((ucMods & 0x88) ? KAPI_WS_MOD_SUPER : 0);
+			if (nWsMods != s_nWsMods) WsInputMods (nWsMods);
+			s_nWsMods = nWsMods;
 			WsInputHeldUsb (Keys);		// (the kernel's window manager keeps them too: it
 		}					// answers kapi_key_held / kapi_get_modifiers)
 		if (pWM != 0 && pWM->Modifiers () != nMods) pWM->SetModifiers (nMods);

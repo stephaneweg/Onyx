@@ -21,8 +21,8 @@ static const int TB_H = 50, SIDE_W = 204, ST_H = 26;
 static Library g_lib;
 static Thumbs g_th;
 static Root *g_root;
-class ToolBar; class Sidebar; class Grid; class Viewer; class Editor;
-static ToolBar *g_tb; static Sidebar *g_side; static Grid *g_grid; static Viewer *g_view; static Editor *g_edit;
+class ToolBar; class Grid; class Viewer; class Editor;
+static ToolBar *g_tb; static SidePanel *g_side; static Grid *g_grid; static Viewer *g_view; static Editor *g_edit;
 
 // ---- what is shown -------------------------------------------------------------------------------------------------------------
 enum { SRC_ALL, SRC_FAV, SRC_RECENT, SRC_ALBUM, SRC_FOLDER, SRC_ALBUMS };	// (SRC_ALBUMS: the albums' page)
@@ -40,13 +40,13 @@ static const char *src_title ()
 {
 	switch (g_src)
 	{
-	case SRC_FAV: return "Favourites";
-	case SRC_RECENT: return "Recently added";
-	case SRC_ALBUM: return g_srcArg >= 0 && g_srcArg < g_lib.albums.n ? g_lib.albums[g_srcArg].name : "Album";
-	case SRC_FOLDER: return g_srcArg >= 0 && g_srcArg < g_lib.nroots ? base_name (g_lib.roots[g_srcArg]) : "Folder";
-	case SRC_ALBUMS: return "Albums";
+	case SRC_FAV: return TR ("Favourites");
+	case SRC_RECENT: return TR ("Recently added");
+	case SRC_ALBUM: return g_srcArg >= 0 && g_srcArg < g_lib.albums.n ? g_lib.albums[g_srcArg].name : TR ("Album");
+	case SRC_FOLDER: return g_srcArg >= 0 && g_srcArg < g_lib.nroots ? base_name (g_lib.roots[g_srcArg]) : TR ("Folder");
+	case SRC_ALBUMS: return TR ("Albums");
 	}
-	return "All photos";
+	return TR ("All photos");
 }
 
 // a folder watched as the sidebar names it: "Pictures", "Camera", "SD1: DCIM"

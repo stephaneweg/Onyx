@@ -66,7 +66,7 @@ KAPI_FN unsigned long long kapi_table_slot (unsigned slot);
 #define GUI_EVENT_CANVAS_CLICK	6	// client-area press; value = (buttons<<32)|(x<<16)|y
 #define GUI_EVENT_CANVAS_MOTION	7	// drag (button held) over the client area; same value
 					// buttons: bit0 left, bit1 right
-// Full pointer stream (ABI v22, opt-in via kapi_set_pointer_handler) for app-side
+// Full pointer stream (ABI v22, opt-in via uk_win_on_pointer) for app-side
 // widget toolkits (uikit.h). value packs (wheel<<48)|(changed<<40)|(buttons<<32)|(x<<16)|y,
 // all client-relative; decode with the GUI_PTR_* macros below.
 #define GUI_EVENT_PTR_MOVE	8	// cursor moved
@@ -76,9 +76,9 @@ KAPI_FN unsigned long long kapi_table_slot (unsigned slot);
 #define GUI_EVENT_PTR_LEAVE	12	// cursor left the client area
 #define GUI_EVENT_PTR_WHEEL	13	// scroll wheel turned (GUI_PTR_WHEEL = signed notch delta)
 #define GUI_EVENT_MENU		14	// menu-bar command chosen (value = item id, ABI v39)
-#define MENU_QUIT		(-1)	// kapi_menu_command id: close the active app
-// Drag & drop (ABI v42) -- to the pointer handler (see kapi_drag_begin):
-#define GUI_EVENT_DROP		15	// dropped on us: GUI_PTR_X/Y + GUI_DND_FLAGS; kapi_drag_data
+#define MENU_QUIT		(-1)	// uk_win_menu_command id: close the active app
+// Drag & drop (ABI v42) -- to the pointer handler (see uk_win_drag_begin):
+#define GUI_EVENT_DROP		15	// dropped on us: GUI_PTR_X/Y + GUI_DND_FLAGS; uk_win_drag_data
 #define GUI_EVENT_DRAG_OVER	16	// a drag hovers us (GUI_DND_FLAGS & DND_F_LEAVE: it left)
 #define GUI_EVENT_DRAG_DONE	17	// to the source: GUI_DND_PID (0 = none) + GUI_DND_FLAGS
 #define GUI_EVENT_DISPLAY_RESIZE 19	// (v66) the screen's size changed: GUI_DISPLAY_W / _H (value)
@@ -121,28 +121,16 @@ KAPI_FN unsigned long long kapi_table_slot (unsigned slot);
 #define KEY_F12			0x11B
 
 // --- windowing ---------------------------------------------------------------
-// This process's window (one a process), a client area of w x h pixels titled t, placed by the system
-// -> its canvas (0x00RRGGBB pixels), 0 on failure (bigger than the screen, no memory).
-KAPI_FN unsigned * kapi_create_window (int w, int h, const char *t);
-// This process's window at x, y (the frame's top left, negative = placed by the system) with the flags f
-// (WIN_FLAG_*) -> its canvas, 0 on failure.
-KAPI_FN unsigned * kapi_create_window_ex (int x, int y, int w, int h, const char *t, unsigned f);
-// This window's size set to w x h, within the canvas it was created with (which stays) -> the canvas, 0 no window.
-KAPI_FN unsigned * kapi_resize_window (int w, int h);
-KAPI_FN void kapi_move_window (int x, int y);	// this window's frame moved to x, y (screen coordinates)
+// The windows are UIKit's (2026-10-08): uk_win_create, uk_win_present, uk_win_menu_set, uk_win_list... in
+// uikit/win.h -- the graphics server (Elegant; PocketUI to come) is spoken to by each server's UIKit, its
+// port. The flags, the events and the keys above and the structures of kern/kapi_abi.h keep their place
+// here: the events come through the kernel's pump (kapi_pump_events, kapi_pump_wait, kapi_should_exit).
 KAPI_FN int kapi_launch (const char *n);	// start the app n (SD:apps/<n>.app/main) as a new process -> 1, 0 failure
-// Toggle the app n -> 0 it was running and is asked to close (its window's exit flag), 1 it was started, -1 on error.
-KAPI_FN int kapi_toggle_app (const char *n);
-// The running app n's window (one on the current workspace) to the front -> 1, 0 not running / no window.
-KAPI_FN int kapi_raise_app (const char *n);
-// The names of the open apps (a window on the current workspace, not a WIN_FLAG_SYSTEM one), one a line,
-// into b (s bytes) -> how many.
-KAPI_FN int kapi_list_windows (char *b, unsigned s);
 // Every task, one line each "<state><kind> <name>" (state R / S / B / N, kind a = an app or k = a kernel task),
 // into b (s bytes) -> how many.
 KAPI_FN int kapi_list_tasks (char *b, unsigned s);
 KAPI_FN int kapi_kill (const char *name);	// kill the app of that name -> 1, 0 (not running, a kernel task, the caller)
-// ps / kill by PID. list_procs: lines "<pid> <a|k> <state> <name>". kill_pid:
+// ps / kill by PID. list_procs: lines "<pid> <a|k> <state> <pages> <name>" (pages: its 64 KB frames). kill_pid:
 // force 0 = clean close, 1 = hard terminate; 1 ok / 0 no such pid / -1 protected.
 KAPI_FN int kapi_list_procs (char *b, unsigned s);
 KAPI_FN int kapi_kill_pid (int pid, int force);
@@ -166,11 +154,6 @@ KAPI_FN int kapi_get_keymap (char *b, unsigned s);
 KAPI_FN int kapi_exec (const char *path, const char *args);
 // Framebuffer size in pixels (for edge-pinned borderless windows).
 KAPI_FN void kapi_screen_size (int *w, int *h);
-KAPI_FN int kapi_wallpaper_generate (unsigned base, int pts, unsigned seed);
-// App-drawn wallpaper: get the shared screen-sized buffer, draw into it, then commit.
-KAPI_FN unsigned * kapi_wallpaper_buffer (int *w, int *h);
-KAPI_FN void kapi_wallpaper_commit (void);
-KAPI_FN void kapi_present (void);
 KAPI_FN unsigned kapi_get_ticks (void);
 KAPI_FN void kapi_msleep (unsigned ms);
 KAPI_FN void kapi_yield (void);
@@ -180,35 +163,23 @@ KAPI_FN void kapi_exit (int s);
 // app now builds its UI with the user-side uikit.hpp toolkit. See uikit.hpp.)
 
 // --- events ------------------------------------------------------------------
-// Run what is pending -- the kapi_post calls, then this window's events through their handlers -- and return (no wait).
+// Run what is pending -- the kapi_post calls, then this program's events through their handlers -- and return (no wait).
 KAPI_FN void kapi_pump_events (void);
 KAPI_FN void kapi_wait_for_exit (void);	// pump the events (sleeping between them) until this window is asked to close
-KAPI_FN int kapi_should_exit (void);	// 1 once this window was asked to close (its close box, kapi_toggle_app), else 0
+KAPI_FN int kapi_should_exit (void);	// 1 once this window was asked to close (its close box, uk_win_app_toggle), else 0
 
-// --- app-drawn text + keyboard -----------------------------------------------
-// One line of text s in the kernel's font at x, y of this window's canvas, colour c (0x00RRGGBB), the background kept.
-KAPI_FN void kapi_draw_text (int x, int y, const char *s, unsigned c);
+// --- kernel-font text ---------------------------------------------------------
 // Draw kernel-font text into an arbitrary app-mapped 0x00RRGGBB buffer (e.g. a window-
-// chrome copy from kapi_get_chrome). Transparent background; dst must be a user VA.
+// chrome copy from uk_win_chrome). Transparent background; dst must be a user VA.
 KAPI_FN void kapi_draw_text_buf (unsigned *dst, int dw, int dh, int x, int y, const char *s, unsigned c);
-// Window surfaces for a user-side chrome drawer (ABI v28). Returns 1 + fills *out
-// (content canvas + active/inactive chrome copies + insets + title), or 0 if no window.
-KAPI_FN int kapi_get_chrome (struct kapi_chrome *out);
 KAPI_FN int kapi_font_width (void);
 KAPI_FN int kapi_font_height (void);
-KAPI_FN void kapi_set_key_handler (gui_handler fn);
-KAPI_FN void kapi_set_click_handler (gui_handler fn);
-KAPI_FN void kapi_set_pointer_handler (gui_handler fn);
 // Memory snapshot (KB): total RAM, free, app-owned, page size. Any pointer may be 0.
 KAPI_FN int kapi_meminfo (unsigned long *total_kb, unsigned long *free_kb, unsigned long *app_kb, unsigned *page_kb);
 // ABI v33: firmware-detected board RAM + app page-pool (HIGH zone) total/free, the bytes
 // reclaimed above 4GB, and the high-segment count. All KB; any pointer may be 0. (detected =
 // physical board RAM e.g. 8192 MB; apppool = the zone backing app frames via palloc_high.)
 KAPI_FN int kapi_ram_detail (unsigned long *detected_kb, unsigned long *apppool_kb, unsigned long *apppool_free_kb, unsigned long *above4g_kb, unsigned *nsegments);
-// ABI v34: scroll-wheel speed = lines scrolled per notch, applied system-wide (clamped
-// 1..16). The theme editor sets + persists it (SD:/etc/theme.txt wheelspeed=N).
-KAPI_FN void kapi_set_wheel_speed (int lines_per_notch);
-KAPI_FN int kapi_get_wheel_speed (void);
 // Per-process heap: move the break by `inc` bytes (Unix sbrk); returns the previous
 // break or (void*)-1. The user allocator (umm.h) is built on this; apps rarely call it.
 KAPI_FN void * kapi_sbrk (long inc);
@@ -244,7 +215,6 @@ KAPI_FN void kapi_closedir (void *d);	// close a folder opened with kapi_opendir
 KAPI_FN int kapi_mkdir (const char *p);
 KAPI_FN int kapi_remove (const char *p);
 KAPI_FN int kapi_rename (const char *from, const char *to);
-KAPI_FN void kapi_cursor_pos (int *x, int *y);
 
 // --- stdio / streams / processes ---------------------------------------------
 KAPI_FN void * kapi_pipe (void);	// a new pipe (a FIFO in memory) -> its stream handle, 0 failure
@@ -302,14 +272,6 @@ KAPI_FN int kapi_screen_grab (unsigned *dst, int w, int h);
 KAPI_FN void kapi_inject_pointer (int x, int y, unsigned buttons, int wheel);
 KAPI_FN void kapi_inject_key (const char *keys);
 
-// System menu bar (ABI v39). set_menu: declare this app's menus (spec lines "M<title>",
-// "I<id>\t<label>\t<shortcut>", "-") + the GUI_EVENT_MENU handler -- apps normally use
-// uikit::Menu. get_menu / menu_command: for the menu-bar app (active window's spec+title ->
-// change serial, 0 = none; send item id, MENU_QUIT closes the active app).
-KAPI_FN int kapi_set_menu (const char *spec, gui_handler h);
-KAPI_FN unsigned kapi_get_menu (char *buf, unsigned cap, char *title, unsigned tcap);
-KAPI_FN int kapi_menu_command (int id);
-
 // Named IPC services (ABI v40): ipc_register -> become service `name` (1 / 0 taken);
 // ipc_lookup -> its pid or 0. Messages go through kapi_mailbox_send / _recv (<= 512 B).
 KAPI_FN int kapi_ipc_register (const char *name);
@@ -324,8 +286,7 @@ KAPI_FN int kapi_clipboard_set (int type, const void *d, unsigned n);
 // Up to cap bytes of the clipboard into b, its type and its serial (which changes at every set) -> the content's
 // whole length, 0 empty. b, type and serial may each be 0.
 KAPI_FN int kapi_clipboard_get (int *type, void *b, unsigned cap, unsigned *serial);
-// Window opacity 0..255 (ABI v40; fades) and end of session (0 = halt, 1 = restart).
-KAPI_FN void kapi_set_window_alpha (int a);
+// End of session (0 = halt, 1 = restart).
 #define SHUTDOWN_HALT		0
 #define SHUTDOWN_RESTART	1
 KAPI_FN void kapi_shutdown (int mode);	// end the session: the card unmounted, then halt (SHUTDOWN_HALT) or restart; does not return
@@ -333,17 +294,14 @@ KAPI_FN void kapi_shutdown (int mode);	// end the session: the card unmounted, t
 // Full-screen apps (ABI v41): fullscreen_begin -> a screen-sized 0x00RRGGBB back buffer
 // (w/h filled); the desktop stops drawing and all input (screen coords) comes to you.
 // Draw, present_fb to show it; fullscreen_end (or exiting) gives the desktop back.
+// (2026-10-08) The kernel's primitives: a program calls UIKit's uk_win_fullscreen_begin / _end (uikit/win.h),
+// which tells its graphics server first, then calls these. kapi_fullscreen_begin no longer tells the server.
 KAPI_FN unsigned * kapi_fullscreen_begin (int *w, int *h);
 KAPI_FN void kapi_present_fb (void);
 KAPI_FN void kapi_fullscreen_end (void);
 
-// Drag & drop (ABI v42). drag_begin: while the left button is held (from a pointer-move
-// handler, after a few pixels of motion), drag (type, data <= 4 KB) with `label` on the
-// cursor -> 1 / 0. The target gets GUI_EVENT_DROP and reads the payload with drag_data
-// (copies <= cap, returns the full length); the source gets GUI_EVENT_DRAG_DONE.
+// The keyboard's modifiers (ABI v42; drag and drop is UIKit's: uk_win_drag_begin / _data).
 // get_modifiers: MOD_* held now; inject_modifiers: set them (vncd).
-KAPI_FN int kapi_drag_begin (int type, const void *data, unsigned len, const char *label);
-KAPI_FN int kapi_drag_data (int *type, void *buf, unsigned cap);
 KAPI_FN unsigned kapi_get_modifiers (void);
 KAPI_FN void kapi_inject_modifiers (unsigned mods);
 
@@ -425,12 +383,6 @@ KAPI_FN int kapi_gpu_render (const struct kapi_gpu_frame *f, const struct kapi_g
 // Full screen straight into the displayed framebuffer (v55; after kapi_fullscreen_begin):
 // its pixels (stride in pixels), or 0 (keep drawing into the back buffer + present_fb).
 KAPI_FN unsigned * kapi_fullscreen_direct (int *w, int *h, int *stride);
-// The windows as objects (v56, the remote desktop rdpd): list (bottom to top), a client
-// rectangle's pixels, to the front, close.
-KAPI_FN int kapi_win_list (struct kapi_win_info *out, int max);
-KAPI_FN int kapi_win_read (unsigned id, int part, int x, int y, int w, int h, unsigned *dst, int stride);
-KAPI_FN int kapi_win_raise (unsigned id);
-KAPI_FN int kapi_win_close (unsigned id);
 // The read position of an opened file (v57): 0, or -1 (an older kernel, a file not seekable).
 KAPI_FN int kapi_seek (void *h, unsigned long long pos);
 // Writable + executable memory for generated code, a JIT (v58): 0 on an older kernel / full.
@@ -567,25 +519,33 @@ KAPI_FN int kapi_cpu_stats (struct kapi_cpu_stats *out);
 // (v80) The bytes pid's sockets received and sent, its open sockets (pid 0: every process's) -> 0;
 // -KAPI_ENOSYS (out zeroed) on an older kernel.
 KAPI_FN int kapi_net_stats (int pid, struct kapi_net_stats *out);
-// (v81) The pointer's shape over this window (KAPI_CURSOR_*) -> the shape it had; -1 on an older
-// kernel (the arrow stays). uikit: uk_cursor, from a widget's onMouse.
-KAPI_FN int kapi_set_cursor (int shape);
-// (v82) This window can be resized by its frame (min_w x min_h: its smallest client area) -> 0; -1
-// on an older kernel, or for a borderless / fixed window. At the release of a drag the pointer
+// (v82) A window resized by its frame (uk_win_resizable): at the release of a drag the pointer
 // handler gets GUI_EVENT_WINRESIZE: GUI_WINRESIZE_X / _Y (the frame's new top left), _W / _H (the
 // client area's new size) of its value; the app applies them. uikit: Root::setResizable.
 #define GUI_EVENT_WINRESIZE	20
+#define GUI_EVENT_TRAY		21	// (v95) the program's icon of the status area: value KAPI_TRAY_OPEN (a double click) / _MENU
 #define GUI_WINRESIZE_X(v)	((int) (short) ((unsigned long long) (v) >> 48))
 #define GUI_WINRESIZE_Y(v)	((int) (short) ((unsigned long long) (v) >> 32))
 #define GUI_WINRESIZE_W(v)	((int) (((unsigned long long) (v) >> 16) & 0xFFFF))
 #define GUI_WINRESIZE_H(v)	((int) ((unsigned long long) (v) & 0xFFFF))
-KAPI_FN int kapi_win_resizable (int on, int min_w, int min_h);	// this window resizable by its frame (on 0: no longer), min_w x min_h its smallest client area -> 0, -1
 // (v83) A shared library (docs/SHARED-LIBS-PLAN.md): "uikit" is SD:/lib/uikit.so, anything with a '/'
 // or a ':' a path -> its export table (unsigned version, size; int (*init) (const TLibImports *);
 // then its entries), mapped in this process until it ends; 0 with *err = -KAPI_E* (-KAPI_ENOTSUP:
 // the library is older than min_version; -KAPI_ENOSYS on an older kernel). Apps do not call this:
 // the library's bind object does, before main (user/Runtime/lib.h).
 KAPI_FN const void * kapi_lib_open (const char *name, unsigned min_version, int *err);
+// (v97) The graphics server's own library under another name (docs/POCKETUI-TECH-STUDY.md section 3):
+// `path` opened and mapped as kapi_lib_open does (its version checked against min_version), and from
+// now on every kapi_lib_open of `alias` -- any process's, a program's bind of "uikit" -- gets it, before
+// a library whose real path is alias (PocketUI: kapi_lib_open_as ("SD:/lib/pocket/uikit.so",
+// "SD:/lib/uikit.so", n, &err)). Only the process holding the graphics server's role (call it after
+// KAPI_WS_REGISTER, before KAPI_WS_DISPLAY: every program of the session then finds the alias); both
+// names under SD:/lib/, never SD:/lib/appkit.so. -> its export table; 0 with *err = -KAPI_EPERM (not the
+// server, or a name refused), -KAPI_EBUSY (alias another live process's, or the caller's on another
+// library), -KAPI_EINVAL (path = alias), kapi_lib_open's errors, -KAPI_ENOSYS on a kernel before v97.
+// Asked again: the same table. The alias lives while the server or a program holds the library: the
+// server ended, it is kept for the same server started again; another server started, it is dropped.
+KAPI_FN const void * kapi_lib_open_as (const char *path, const char *alias, unsigned min_version, int *err);
 // (v84) The sound's output: KAPI_SND_OUT_AUTO / _JACK / _USB / _HDMI (-1: only ask) -> what plays
 // now, what is asked and which outputs are there (KAPI_SND_OUT_NOW / _ASKED / _HAS of the result);
 // -KAPI_ENOSYS on an older kernel (the jack only). The Sound applet; kept in SD:/etc/sound.ini.
@@ -616,22 +576,11 @@ KAPI_FN void * kapi_gpu_vbuf (unsigned bytes);
 // rest kept -> 0, -1 no GPU / older kernel, -2 bad arguments. (Also v70: KAPI_GPU_F_ALPHA, a frame's
 // target keeping its alpha; the GPU compositing service over these: user/Libs/gpucomp/gpucomp.h.)
 KAPI_FN int kapi_gpu_texture_rect (int handle, int x, int y, int w, int h, const unsigned *pixels, int stride);
-// (v64) the windows of the modernised CDE desktop: minimise one (0: mine; back with win_raise /
-// raise_app), my window's place and size and the work area (the screen less the menu bar and the
-// dock), resize my window letting its canvas grow (*stride: its pixels a row; redraw everything,
-// the frame too) -> 0 on an older kernel / no memory.
-KAPI_FN int kapi_win_minimise (unsigned id);
-KAPI_FN int kapi_win_geometry (struct kapi_win_geom *out);
-KAPI_FN unsigned * kapi_resize_window2 (int w, int h, int *stride);
-// (v65) the workspaces (virtual desktops): kapi_desk (set, count) shows desk `set` (-1 keeps it) and
-// sets how many there are (0 keeps it) -> the current desk | the count << 8 | a change counter << 16
-// (KAPI_DESK_CUR / _COUNT / _GEN); an older kernel: one desk. kapi_win_desk: window id (0: mine) to
-// desk n (-1: every desk; -2: only asked) -> its desk, -3 none.
+// (v65) the workspaces (virtual desktops): UIKit's uk_win_desk (set, count) -> the current desk | the count
+// << 8 | a change counter << 16, read with these:
 #define KAPI_DESK_CUR(i)	((i) & 0xFF)
 #define KAPI_DESK_COUNT(i)	(((i) >> 8) & 0xFF)
 #define KAPI_DESK_GEN(i)	(((unsigned) (i) >> 16) & 0x7FFF)
-KAPI_FN int kapi_desk (int set, int count);	// show the desk `set` (-1: keep) and set their number (0: keep) -> KAPI_DESK_CUR / _COUNT / _GEN of the result
-KAPI_FN int kapi_win_desk (unsigned id, int n);	// the window id (0: mine) moved to the desk n (-1: every desk; -2: only ask) -> its desk, -3 no such window
 // (v66) screen_set: the screen's resolution now (640 x 480 .. 2560 x 1600, w even); every window
 // kept on the screen and sent GUI_EVENT_DISPLAY_RESIZE -> 0; -1 out of bounds; -2 not now (a
 // full-screen app...); -3 the firmware refused it (old size kept); -4 an older kernel. Not kept
@@ -812,15 +761,11 @@ KAPI_FN int kapi_shell_request (int type, const void *in, unsigned len);
 KAPI_FN int kapi_mailbox_send (int target_pid, int type, const void *in, unsigned len);
 KAPI_FN int kapi_mailbox_recv (int *from_pid, int *type, void *buf, unsigned cap, int blocking);
 
-// (v89) The pointer's shape shown now, whatever window it is over (KAPI_CURSOR_*: the arrow, the hand
-// over a link, the I bar over text, the arrows of a frame's edge...) -- for a remote desktop, which
-// shows it on the other machine (rdpd -> Onyx Remote). -1: not known (the kernel's own window manager
-// does not say; Elegant, the graphics server, does).
-KAPI_FN int kapi_cursor_shown (void);
-
 // (v89) The graphics server's own door to the kernel (Elegant, SD:/bin/elegant): the display, the raw
-// input, its wait -- KAPI_WS_* (kern/kapi_abi.h). Not for programs: a program's windows are the calls
-// above, whoever serves them. -> >= 0, or -KAPI_Exxx (-KAPI_ENOSYS: a kernel before v89).
+// input, its wait -- KAPI_WS_* (kern/kapi_abi.h) -- and the transport of UIKit's window calls (its port:
+// KAPI_WS_CALL a request, KAPI_WS_KICK "my pixels changed", KAPI_WS_ACTIVE "is there a server"). Not for
+// programs: a program's windows are UIKit's uk_win_* (uikit/win.h), whoever serves them. -> >= 0, or
+// -KAPI_Exxx (-KAPI_ENOSYS: a kernel before v89).
 KAPI_FN long kapi_ws_ctl (int op, long a0, long a1, long a2);
 
 // Memory primitives (ABI v36): the kernel's (Circle's) memset/memcpy/memmove. Real
@@ -840,9 +785,7 @@ void *kapi_memmove (void *dst, const void *src, unsigned long n);
 #endif
 #endif
 
-// Friendly aliases used by the demos.
-static inline unsigned *create_window (int w, int h, const char *t) { return kapi_create_window (w, h, t); }
-static inline void      present (void)             { kapi_present (); }
+// Friendly aliases used by the demos (create_window, present: UIKit's, uikit/win.h).
 static inline unsigned  get_ticks (void)           { return kapi_get_ticks (); }
 static inline void      msleep (unsigned ms)       { kapi_msleep (ms); }
 static inline void      pump_events (void)         { kapi_pump_events (); }
@@ -929,9 +872,6 @@ KAPI_FN int lx_launch (const char *name, const char *args);
 
 // (the tests of the kernel's table, and the PC builds: the bodies inline -- see this header's top)
 #if (defined (KAPI_INLINE) || !defined (__aarch64__)) && !defined (KAPI_IMPL)
-#ifdef __aarch64__
-#include "appkit_ws.inc"		// (the window calls speak to Elegant: on Onyx only)
-#endif
 #include "appkit_calls.inc"
 #include "appkit_lib.inc"
 #endif

@@ -1,0 +1,7 @@
+# Onyx application metadata -- read by the category launcher (key=value, no section).
+#   name     = friendly display name shown under the icon
+#   category = grouping bucket (Games, Graphics, Productivity, Internet, Demos; Settings: the Control Panel's applets; Emulators: the Game Library's; Shell: the desktop's parts)
+# The pocket mode's shell (PocketUI): the launcher, the task switcher, quick settings and the notifications --
+# started by SD:/etc/session/pocket, not from a menu.
+name = Pocket Shell
+category = Shell

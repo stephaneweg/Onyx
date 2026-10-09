@@ -1,0 +1,138 @@
+# Pocket Shell's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+running	ouverte
+Control Panel	Panneau de configuration
+run it in a Terminal (a /bin command)	l'exécuter dans un Terminal (une commande de /bin)
+Tab	Tab
+category	catégorie
+choose	choisir
+Enter	Entrée
+open	ouvrir
+Up	Haut
+Down	Bas
+Esc	Échap
+clear	effacer
+The apps you open come here.	Les apps que vous ouvrez viennent ici.
+No apps here.	Aucune app ici.
+Running	Ouvertes
+Alt+Tab	Alt+Tab
+switch	passer
+No open apps.	Aucune app ouverte.
+APPS	APPS
+SETTINGS	RÉGLAGES
+FILES	FICHIERS
+RUN	EXÉCUTER
+Open apps -- the most recent first	Apps ouvertes -- la plus récente d'abord
+now	maintenant
+next	suivante
+Shift+Tab	Maj+Tab
+Shift	Maj
+back	précédente
+Del	Suppr
+close the app	fermer l'app
+S	S
+beside	à côté
+stay	rester
+close	fermer
+Sunday	dimanche
+Monday	lundi
+Tuesday	mardi
+Wednesday	mercredi
+Thursday	jeudi
+Friday	vendredi
+Saturday	samedi
+January	janvier
+February	février
+March	mars
+April	avril
+May	mai
+June	juin
+July	juillet
+August	août
+September	septembre
+October	octobre
+November	novembre
+December	décembre
+Wi-Fi	Wi-Fi
+connected	connecté
+not connected	non connecté
+Do not disturb	Ne pas déranger
+on	activé
+off	désactivé
+Sound	Son
+muted	coupé
+Mode	Mode
+Pocket	Poche
+Notifications	Notifications
+Clear all	Tout effacer
+No notifications.	Aucune notification.
+Lock	Verrouiller
+Power	Éteindre
+Recent	Récentes
+Productivity	Productivité
+Internet	Internet
+Graphics	Graphisme
+Multimedia	Multimédia
+Games	Jeux
+Programming	Programmation
+System	Système
+Demos	Démos
+BASIC	BASIC
+Settings	Réglages
+Other	Autres
+Theme	Thème
+Display	Affichage
+Panel	Panneau
+Preload	Préchargement
+Keyboard & Mouse	Clavier et souris
+Language & Region	Langue et région
+Printers	Imprimantes
+Gamepad	Manette
+Packages	Paquets
+App Settings	Réglages des apps
+Search apps, files and settings	Chercher des apps, des fichiers, des réglages
+today	aujourd'hui
+yesterday	hier
+tomorrow	demain
+in	dans
+days	jours
+File	Fichier
+opened last	ouvertes en dernier
+app	app
+apps	apps
+Documents	Documents
+the files opened last, with the app that opens them	les fichiers ouverts en dernier, avec l'app qui les ouvre
+AGENDA	AGENDA
+Nothing planned.	Rien de prévu.
+NOTIFICATIONS	NOTIFICATIONS
+bring it	l'afficher
+applets	modules
+All	Tout
+Apps	Apps
+Files	Fichiers
+Run "%s" in a Terminal	Exécuter « %s » dans un Terminal
+next group	groupe suivant
+Nothing found: Enter runs it as a command.	Rien trouvé : Entrée l'exécute comme une commande.
+BEST MATCH	MEILLEUR RÉSULTAT
+Sun	dim.
+Mon	lun.
+Tue	mar.
+Wed	mer.
+Thu	jeu.
+Fri	ven.
+Sat	sam.
+Jan	janv.
+Feb	févr.
+Mar	mars
+Apr	avr.
+Jun	juin
+Jul	juil.
+Aug	août
+Sep	sept.
+Oct	oct.
+Nov	nov.
+Dec	déc.
+Keyboard	Clavier
+with the text fields	avec les champs de texte
+on demand	sur demande
+Show keyboard	Afficher le clavier
+Hide keyboard	Masquer le clavier

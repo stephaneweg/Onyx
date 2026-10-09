@@ -75,9 +75,9 @@ static Page g_hist[64]; static int g_nhist, g_hpos;	// back / forward
 static Page &page () { return g_hist[g_hpos]; }
 static char g_search[128];
 
-class Sidebar; class TopBar; class Content; class NowBar; class MiniView; class WatchView;
+class TopBar; class Content; class NowBar; class MiniView; class WatchView;
 static Root *g_root;
-static Sidebar *g_side; static TopBar *g_top; static Content *g_content; static NowBar *g_now; static MiniView *g_mini; static WatchView *g_watch;
+static SidePanel *g_side; static TopBar *g_top; static Content *g_content; static NowBar *g_now; static MiniView *g_mini; static WatchView *g_watch;
 static bool g_miniMode; static int g_restore[4];	// the window before the mini player (x, y, w, h)
 static unsigned g_tick;
 
@@ -368,69 +368,38 @@ struct HitList
 	const Hit *at (int x, int y) const { for (int i = n - 1; i >= 0; i--) if (x >= h[i].x && y >= h[i].y && x < h[i].x + h[i].w && y < h[i].y + h[i].h) return &h[i]; return 0; }
 };
 
-// ---- the sidebar ------------------------------------------------------------------------------------------------
+// ---- the sidebar: a navigation SidePanel (uikit/sidepanel.h) -- the desktop's sidebar, a rail of icons in pocket's
+// landscape, a drawer in portrait, the column in console; under its items a foot: a new playlist, the scan ---------
 enum { SB_PAGE = 1, SB_PLAYLIST, SB_NEWPL, SB_FOLDERS, SB_VIDEOS };
-class Sidebar : public Widget
+static inline int sb_id (int kind, int arg) { return kind == SB_PAGE ? 100 + arg : kind == SB_VIDEOS ? 200 + arg : 302 + arg; }	// (PL_RECENT: 300)
+static void sb_icon (Canvas &cv, int id, int x, int y, int size, unsigned ink, bool selected)
+{
+	icon (cv, id, x + (size - 16) / 2, y + (size - 16) / 2, 16, id == I_HEART && !selected ? 0xD8484E : ink);
+}
+class SideFoot : public Widget
 {
 public:
 	HitList hits; int hot;
-	Sidebar (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1) {}
-	unsigned bgColor () override { return col_side (); }
-	bool selected (int kind, int arg)
-	{
-		int k = page ().kind, a = page ().arg;
-		if (kind == SB_PLAYLIST) return k == P_PLAYLIST && a == arg;
-		if (kind == SB_VIDEOS) return k == P_VIDEOS && a == arg;
-		if (arg == P_ALBUMS) return k == P_ALBUMS || k == P_ALBUM;
-		if (arg == P_ARTISTS) return k == P_ARTISTS || k == P_ARTIST;
-		if (arg == P_GENRES) return k == P_GENRES || k == P_GENRE;
-		if (arg == P_FOLDERS) return k == P_FOLDERS || k == P_FOLDER;
-		return k == arg;
-	}
-	void item (int &y, const char *label, int ic, int kind, int arg)
-	{
-		bool on = selected (kind, arg), h = hits.n == hot;
-		if (on) uk_rbox (canvas, 8, y, width - 16, 28, 6, C_ACCENT, C_ACCENT);
-		else if (h) uk_rbox (canvas, 8, y, width - 16, 28, 6, uk_mix (col_side (), C_ACCENT, 40), uk_mix (col_side (), C_ACCENT, 40));
-		unsigned ink = on ? C_SEL_TEXT : C_TEXT;
-		icon (canvas, ic, 18, y + 6, 16, ic == I_HEART ? (on ? C_SEL_TEXT : 0xD8484E) : ink);
-		text_v (canvas, 44, y, 28, label, ink, F_UI, on ? 2 : 0, width - 56);
-		hits.add (8, y, width - 16, 28, kind, arg);
-		y += 30;
-	}
-	void head (int &y, const char *s) { y += 8; text (canvas, 16, y, s, col_dim_bg (), F_SMALL, 2); y += 20; }
+	SideFoot () : Widget (0, 0, 10, 64), hot (-1) {}
+	bool con () { return uk_size_class () == UK_SC_CONSOLE; }		// (console: the column's dark blue)
+	unsigned bgColor () override { return con () ? 0x00142038 : col_side (); }
 	void onDraw () override
 	{
-		canvas.clear (col_side ());
-		canvas.fillRect (width - 1, 0, 1, height, uk_tone (C_BG, 100));
+		unsigned link = con () ? 0x0060C8FF : C_ACCENT, dim = con () ? 0x007C94B8 : col_dim_bg ();
+		canvas.clear (bgColor ());
+		canvas.fillRect (width - 1, 0, 1, height, con () ? 0x00304870 : uk_tone (C_BG, 100));
 		hits.clear ();
-		int y = 10;
-		item (y, "Home", I_HOME, SB_PAGE, P_HOME);
-		head (y, "LIBRARY");
-		item (y, "Artists", I_PERSON, SB_PAGE, P_ARTISTS);
-		item (y, "Albums", I_DISC, SB_PAGE, P_ALBUMS);
-		item (y, "Songs", I_NOTE, SB_PAGE, P_SONGS);
-		item (y, "Genres", I_TAG, SB_PAGE, P_GENRES);
-		item (y, "Folders", I_FOLDER, SB_PAGE, P_FOLDERS);
-		head (y, "VIDEOS");
-		item (y, "Films", I_FILM, SB_VIDEOS, VK_FILM);
-		item (y, "Clips and series", I_TV, SB_VIDEOS, VK_CLIP);
-		head (y, "PLAYLISTS");
-		item (y, "Favourites", I_HEART, SB_PLAYLIST, PL_FAV);
-		item (y, "Recently added", I_CLOCK, SB_PLAYLIST, PL_RECENT);
-		int bottom = height - 64;
-		for (int i = 0; i < g_npl && y + 30 < bottom; i++) item (y, g_pl[i].name, I_LIST, SB_PLAYLIST, i);
-		// at the bottom: a new playlist; the scan
-		int by = height - 58;
+		int by = 6;
 		bool h = hits.n == hot;
-		text_v (canvas, 18, by, 26, "+  New playlist", h ? C_ACCENT : uk_mix (C_TEXT, C_ACCENT, 200), F_UI);
+		char np[80]; snprintf (np, sizeof np, "+  %s", TR ("New playlist"));
+		text_v (canvas, 18, by, 26, np, h ? link : con () ? 0x00E4ECF8 : uk_mix (C_TEXT, C_ACCENT, 200), F_UI, 0, width - 30);
 		hits.add (8, by, width - 16, 26, SB_NEWPL);
 		char st[96];
-		if (g_scan && !g_scan->done) snprintf (st, sizeof st, "Looking for songs...  %d", g_scan->found + g_scan->vfound);
-		else if (VL && VL->n) snprintf (st, sizeof st, "%d songs  \xC2\xB7  %d videos", L ? L->n : 0, VL->n);
-		else snprintf (st, sizeof st, "%d songs", L ? L->n : 0);
+		if (g_scan && !g_scan->done) snprintf (st, sizeof st, TR ("Looking for songs...  %d"), g_scan->found + g_scan->vfound);
+		else if (VL && VL->n) snprintf (st, sizeof st, TR ("%d songs  \xC2\xB7  %d videos"), L ? L->n : 0, VL->n);
+		else snprintf (st, sizeof st, TR ("%d songs"), L ? L->n : 0);
 		h = hits.n == hot;
-		text_v (canvas, 18, by + 28, 22, st, h ? C_ACCENT : col_dim_bg (), F_SMALL, 0, width - 30);
+		text_v (canvas, 18, by + 28, 22, st, h ? link : dim, F_SMALL, 0, width - 30);
 		hits.add (8, by + 28, width - 16, 22, SB_FOLDERS);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -443,15 +412,58 @@ public:
 		{
 			pressed = false;
 			if (!ht) return true;
-			if (ht->kind == SB_PAGE) navigate (ht->a);
-			else if (ht->kind == SB_PLAYLIST) navigate (P_PLAYLIST, ht->a);
-			else if (ht->kind == SB_VIDEOS) navigate (P_VIDEOS, ht->a);
-			else if (ht->kind == SB_NEWPL) { extern void new_playlist_dialog (const IntList *); new_playlist_dialog (0); }
+			if (ht->kind == SB_NEWPL) { extern void new_playlist_dialog (const IntList *); new_playlist_dialog (0); }
 			else if (ht->kind == SB_FOLDERS) navigate (P_WELCOME);
 		}
 		return mx >= 0 && my >= 0 && mx < width && my < height;
 	}
 };
+static SideFoot *g_foot;
+static unsigned g_sideSig = ~0u;			// (the playlists the items were made for)
+static void side_select ()			// the item of the page shown (an album's page: Albums...)
+{
+	int k = page ().kind, a = page ().arg, id = -1;
+	switch (k)
+	{
+	case P_HOME: case P_SONGS: id = sb_id (SB_PAGE, k); break;
+	case P_ALBUMS: case P_ALBUM: id = sb_id (SB_PAGE, P_ALBUMS); break;
+	case P_ARTISTS: case P_ARTIST: id = sb_id (SB_PAGE, P_ARTISTS); break;
+	case P_GENRES: case P_GENRE: id = sb_id (SB_PAGE, P_GENRES); break;
+	case P_FOLDERS: case P_FOLDER: id = sb_id (SB_PAGE, P_FOLDERS); break;
+	case P_VIDEOS: if (a == VK_FILM || a == VK_CLIP) id = sb_id (SB_VIDEOS, a); break;
+	case P_PLAYLIST: id = sb_id (SB_PLAYLIST, a); break;
+	}
+	if (g_side->selected () != id) g_side->select (id);
+}
+static void side_build ()			// the items: made again when the playlists change
+{
+	unsigned sig = 2166136261u;
+	for (int i = 0; i < g_npl; i++) for (const char *c = g_pl[i].name; ; c++) { sig = (sig ^ (unsigned char) *c) * 16777619u; if (!*c) break; }
+	if (sig == g_sideSig) { side_select (); return; }
+	g_sideSig = sig;
+	g_side->clear ();
+	g_side->addItem (sb_id (SB_PAGE, P_HOME), TR ("Home"), I_HOME);
+	g_side->addHeading (TR ("LIBRARY"));
+	g_side->addItem (sb_id (SB_PAGE, P_ARTISTS), TR ("Artists"), I_PERSON);
+	g_side->addItem (sb_id (SB_PAGE, P_ALBUMS), TR ("Albums"), I_DISC);
+	g_side->addItem (sb_id (SB_PAGE, P_SONGS), TR ("Songs"), I_NOTE);
+	g_side->addItem (sb_id (SB_PAGE, P_GENRES), TR ("Genres"), I_TAG);
+	g_side->addItem (sb_id (SB_PAGE, P_FOLDERS), TR ("Folders"), I_FOLDER);
+	g_side->addHeading (TR ("VIDEOS"));
+	g_side->addItem (sb_id (SB_VIDEOS, VK_FILM), TR ("Films"), I_FILM);
+	g_side->addItem (sb_id (SB_VIDEOS, VK_CLIP), TR ("Clips and series"), I_TV);
+	g_side->addHeading (TR ("PLAYLISTS"));
+	g_side->addItem (sb_id (SB_PLAYLIST, PL_FAV), TR ("Favourites"), I_HEART);
+	g_side->addItem (sb_id (SB_PLAYLIST, PL_RECENT), TR ("Recently added"), I_CLOCK);
+	for (int i = 0; i < g_npl; i++) g_side->addItem (sb_id (SB_PLAYLIST, i), g_pl[i].name, I_LIST);
+	side_select ();
+}
+static void side_chosen (SidePanel &, int id)
+{
+	if (id >= 300) navigate (P_PLAYLIST, id - 302);
+	else if (id >= 200) navigate (P_VIDEOS, id - 200);
+	else if (id >= 100) navigate (id - 100);
+}
 
 // ---- the bar on top: back / forward, where we are, the search, grid or list ----------------------------------------
 enum { TB_BACK = 1, TB_FWD, TB_CRUMB, TB_GRID, TB_LIST };
@@ -481,22 +493,22 @@ public:
 		static char t[160];
 		switch (p.kind)
 		{
-		case P_HOME: a = "Home"; break;
-		case P_ALBUMS: a = "Music"; b = "Albums"; break;
-		case P_ALBUM: a = "Albums"; ak = P_ALBUMS; b = L && p.arg < L->nal ? L->al[p.arg].title : ""; break;
-		case P_ARTISTS: a = "Music"; b = "Artists"; break;
-		case P_ARTIST: a = "Artists"; ak = P_ARTISTS; b = L && p.arg < L->nar ? L->ar[p.arg].name : ""; break;
-		case P_SONGS: a = "Music"; b = "Songs"; break;
-		case P_GENRES: a = "Music"; b = "Genres"; break;
-		case P_GENRE: a = "Genres"; ak = P_GENRES; b = L && p.arg < L->nge ? L->ge[p.arg].name : ""; break;
-		case P_FOLDERS: a = "Music"; b = "Folders"; break;
-		case P_FOLDER: a = "Folders"; ak = P_FOLDERS; b = L && p.arg < L->nfo ? L->fo[p.arg].name : ""; break;
-		case P_PLAYLIST: a = "Playlists"; b = p.arg == PL_FAV ? "Favourites" : p.arg == PL_RECENT ? "Recently added" : p.arg < g_npl ? g_pl[p.arg].name : ""; break;
-		case P_NOW: a = "Now playing"; break;
-		case P_SEARCH: snprintf (t, sizeof t, "Search: \xE2\x80\x9C%s\xE2\x80\x9D", g_search); a = t; break;
-		case P_WELCOME: a = "Music"; b = "Folders to watch"; break;
-		case P_VIDEOS: a = "Videos"; b = p.arg == VK_FILM ? "Films" : p.arg == VK_CLIP ? "Clips and series" : 0; if (b) ak = P_VIDEOS; break;
-		case P_WATCH: a = "Videos"; b = VL && p.arg >= 0 && p.arg < VL->n ? VL->v[p.arg].title : ""; break;
+		case P_HOME: a = TR ("Home"); break;
+		case P_ALBUMS: a = TR ("Music"); b = TR ("Albums"); break;
+		case P_ALBUM: a = TR ("Albums"); ak = P_ALBUMS; b = L && p.arg < L->nal ? L->al[p.arg].title : ""; break;
+		case P_ARTISTS: a = TR ("Music"); b = TR ("Artists"); break;
+		case P_ARTIST: a = TR ("Artists"); ak = P_ARTISTS; b = L && p.arg < L->nar ? L->ar[p.arg].name : ""; break;
+		case P_SONGS: a = TR ("Music"); b = TR ("Songs"); break;
+		case P_GENRES: a = TR ("Music"); b = TR ("Genres"); break;
+		case P_GENRE: a = TR ("Genres"); ak = P_GENRES; b = L && p.arg < L->nge ? L->ge[p.arg].name : ""; break;
+		case P_FOLDERS: a = TR ("Music"); b = TR ("Folders"); break;
+		case P_FOLDER: a = TR ("Folders"); ak = P_FOLDERS; b = L && p.arg < L->nfo ? L->fo[p.arg].name : ""; break;
+		case P_PLAYLIST: a = TR ("Playlists"); b = p.arg == PL_FAV ? TR ("Favourites") : p.arg == PL_RECENT ? TR ("Recently added") : p.arg < g_npl ? g_pl[p.arg].name : ""; break;
+		case P_NOW: a = TR ("Now playing"); break;
+		case P_SEARCH: snprintf (t, sizeof t, TR ("Search: \xE2\x80\x9C%s\xE2\x80\x9D"), g_search); a = t; break;
+		case P_WELCOME: a = TR ("Music"); b = TR ("Folders to watch"); break;
+		case P_VIDEOS: a = TR ("Videos"); b = p.arg == VK_FILM ? TR ("Films") : p.arg == VK_CLIP ? TR ("Clips and series") : 0; if (b) ak = P_VIDEOS; break;
+		case P_WATCH: a = TR ("Videos"); b = VL && p.arg >= 0 && p.arg < VL->n ? VL->v[p.arg].title : ""; break;
 		}
 		unsigned field = uk_mix (C_BG, C_FIELD, 170), ink = uk_ink_on (field), dim = uk_mix (field, ink, 120);
 		uk_rbox (canvas, bx, by, bw, bh, 8, uk_tone (field, 136), field);
@@ -568,7 +580,7 @@ public:
 	void onDraw () override
 	{
 		Textbox::onDraw ();
-		if (!text[0] && !hasFocus) text_v (canvas, 10, 0, height, "Search the library", uk_mix (C_FIELD, C_FIELD_TEXT, 110));
+		if (!text[0] && !hasFocus) text_v (canvas, 10, 0, height, TR ("Search the library"), uk_mix (C_FIELD, C_FIELD_TEXT, 110));
 		icon (canvas, I_SEARCH, width - 22, (height - 14) / 2, 14, uk_mix (C_FIELD, C_FIELD_TEXT, 120));
 	}
 };
@@ -604,7 +616,11 @@ public:
 	void section_head (int x, int y, int w, const char *title, const char *sub, const char *right, int rightKind)
 	{
 		text (canvas, x, y, title, C_FIELD_TEXT, F_H1, 2);
-		if (sub) text (canvas, x + tw (title, F_H1, 2) + 14, y + 10, sub, col_dim ());
+		if (sub)				// (cut where the page ends, or the button at the right begins: a narrow window)
+		{
+			int sx = x + tw (title, F_H1, 2) + 14, room = x + w - sx - (right ? tw (right) + 52 : 0);
+			if (room > 40) text (canvas, sx, y + 10, sub, col_dim (), F_UI, 0, room);
+		}
 		if (right)
 		{
 			int rw = tw (right) + 40; bool h = hits.n == hot;
@@ -645,8 +661,8 @@ public:
 		// the head
 		uk_rbox (canvas, x, y, w, 28, 5, uk_mix (C_FIELD, C_BG, 90), uk_mix (C_FIELD, C_BG, 90));
 		const Page &pg = page ();
-		struct { const char *s; int x; int col; bool right; } heads[] = { { "#", x + 30, 0, true }, { "Title", colTitle, 1, false }, { "Artist", colArtist, 2, false },
-			{ "Album", colAlbum, 3, false }, { "Time", colTime, 4, true }, { "", colFmt, 5, false } };
+		struct { const char *s; int x; int col; bool right; } heads[] = { { "#", x + 30, 0, true }, { TR ("Title"), colTitle, 1, false }, { TR ("Artist"), colArtist, 2, false },
+			{ TR ("Album"), colAlbum, 3, false }, { TR ("Time"), colTime, 4, true }, { "", colFmt, 5, false } };
 		for (auto &hd : heads)
 		{
 			if (hd.col == 0 && !showNum) continue;
@@ -711,7 +727,7 @@ public:
 		if (!texts) return;
 		text (canvas, x, y + h + 7, v.title, C_FIELD_TEXT, F_UI, 2, w);
 		char k[96]; video_kind_line (v, k, sizeof k);
-		if (!v.playable) { char t[140]; snprintf (t, sizeof t, "%s  \xC2\xB7  %s: not played here", k, codec_label (v.vcodec)); text (canvas, x, y + h + 26, t, col_dim (), F_SMALL, 0, w); }
+		if (!v.playable) { char t[140]; snprintf (t, sizeof t, TR ("%s  \xC2\xB7  %s: not played here"), k, codec_label (v.vcodec)); text (canvas, x, y + h + 26, t, col_dim (), F_SMALL, 0, w); }
 		else text (canvas, x, y + h + 26, k, col_dim (), F_SMALL, 0, w);
 	}
 	// over a video's frame: its length, the part watched (a red line), seen to the end, a codec not built in
@@ -765,9 +781,9 @@ public:
 		char k[64], line[140], left[24]; video_kind_line (v, k, sizeof k);
 		int rest = v.durMs - v.posMs;
 		if (rest < 60000) snprintf (left, sizeof left, "%d s", rest > 0 ? rest / 1000 : 0); else fmt_long (left, sizeof left, rest);
-		snprintf (line, sizeof line, "%s  \xC2\xB7  %s left", k, left);
+		snprintf (line, sizeof line, TR ("%s  \xC2\xB7  %s left"), k, left);
 		text (canvas, tx, y + 31, line, col_dim (), F_SMALL, 0, tmax);
-		small_button (tx, y + 46, 96, I_PLAY, "Resume", H_VRESUME, vi);
+		small_button (tx, y + 46, 96, I_PLAY, TR ("Resume"), H_VRESUME, vi);
 	}
 	// the song playing (else the last played) -> its card
 	void resume_song_card (int x, int y, int cw, int cur, bool half)
@@ -780,11 +796,11 @@ public:
 		text (canvas, x + 82, y + 12, s.title, C_FIELD_TEXT, F_BIG, 2, tmax);
 		char line[200];
 		int pos = -1; if (s.alb >= 0 && cur >= 0) for (int i = 0; i < L->al[s.alb].n; i++) if (L->al[s.alb].songs[i] == cur) pos = i;
-		if (half && pos >= 0) snprintf (line, sizeof line, "%s  \xC2\xB7  song %d of %d", L->artist_of (s), pos + 1, L->al[s.alb].n);
+		if (half && pos >= 0) snprintf (line, sizeof line, TR ("%s  \xC2\xB7  song %d of %d"), L->artist_of (s), pos + 1, L->al[s.alb].n);
 		else snprintf (line, sizeof line, "%s  \xC2\xB7  %s", L->artist_of (s), s.album);
 		text (canvas, x + 82, y + 34, line, col_dim (), F_SMALL, 0, tmax);
-		if (playing) { eq_bars (canvas, x + 82, y + 55, 12, C_ACCENT, g_tick); text (canvas, x + 100, y + 54, "Playing", C_ACCENT, F_SMALL, 2); }
-		else text (canvas, x + 82, y + 54, cur == g_playing ? "Paused" : "Played last", col_dim (), F_SMALL);
+		if (playing) { eq_bars (canvas, x + 82, y + 55, 12, C_ACCENT, g_tick); text (canvas, x + 100, y + 54, TR ("Playing"), C_ACCENT, F_SMALL, 2); }
+		else text (canvas, x + 82, y + 54, cur == g_playing ? TR ("Paused") : TR ("Played last"), col_dim (), F_SMALL);
 		if (half)
 		{
 			bool h = hits.n == hot;
@@ -792,17 +808,17 @@ public:
 			icon (canvas, playing ? I_PAUSE : I_PLAY, x + cw - 43, y + 30, 18, 0xFFFFFF);
 			hits.add (x + cw - 52, y + 21, 36, 36, H_RESUME, cur);
 		}
-		else { band_button (x + cw - 130, y + 22, 118, playing ? I_PAUSE : I_PLAY, playing ? "Pause" : cur == g_playing ? "Resume" : "Play", true, H_RESUME); hits.h[hits.n - 1].a = cur; }
+		else { band_button (x + cw - 130, y + 22, 118, playing ? I_PAUSE : I_PLAY, playing ? TR ("Pause") : cur == g_playing ? TR ("Resume") : TR ("Play"), true, H_RESUME); hits.h[hits.n - 1].a = cur; }
 	}
 
 	// ---- the pages ----
 	int draw_home (int x, int y, int w)
 	{
 		int hr = 0, mi = 0; kapi_get_datetime (0, 0, 0, &hr, &mi, 0);
-		const char *hello = hr < 5 ? "Good night" : hr < 12 ? "Good morning" : hr < 18 ? "Good afternoon" : "Good evening";
+		const char *hello = hr < 5 ? TR ("Good night") : hr < 12 ? TR ("Good morning") : hr < 18 ? TR ("Good afternoon") : TR ("Good evening");
 		char sub[120];
-		if (VL->n) snprintf (sub, sizeof sub, "%d songs  \xC2\xB7  %d videos  \xC2\xB7  %d playlists", L->n, VL->n, g_npl);
-		else snprintf (sub, sizeof sub, "%d songs  \xC2\xB7  %d albums  \xC2\xB7  %d playlists", L->n, L->nal, g_npl);
+		if (VL->n) snprintf (sub, sizeof sub, TR ("%d songs  \xC2\xB7  %d videos  \xC2\xB7  %d playlists"), L->n, VL->n, g_npl);
+		else snprintf (sub, sizeof sub, TR ("%d songs  \xC2\xB7  %d albums  \xC2\xB7  %d playlists"), L->n, L->nal, g_npl);
 		section_head (x, y, w, hello, sub, 0, 0);
 		y += 50;
 		// go on with: the video left half way; the song playing, else the last played
@@ -828,9 +844,9 @@ public:
 			{
 				IntList vl; VL->recent (vl);
 				if (!vl.n) continue;
-				text (canvas, x, y, "Videos", C_FIELD_TEXT, F_BIG, 2);
+				text (canvas, x, y, TR ("Videos"), C_FIELD_TEXT, F_BIG, 2);
 				bool h = hits.n == hot;
-				text_r (canvas, x + w, y, 22, "See all  \xE2\x80\xBA", h ? C_ACCENT : uk_mix (C_FIELD_TEXT, C_ACCENT, 200));
+				text_r (canvas, x + w, y, 22, TR ("See all  \xE2\x80\xBA"), h ? C_ACCENT : uk_mix (C_FIELD_TEXT, C_ACCENT, 200));
 				hits.add (x + w - 80, y, 80, 22, H_SEEALL, 2);
 				y += 32;
 				const int VW = 166, VG = 16;
@@ -853,9 +869,9 @@ public:
 			else { L->album_order (o, 3); for (int i = 0; i < L->nal; i++) al.push (o[i]); }
 			free (o);
 			if (!al.n) continue;
-			text (canvas, x, y, row == 0 ? "Recently played" : "Recently added", C_FIELD_TEXT, F_BIG, 2);
+			text (canvas, x, y, row == 0 ? TR ("Recently played") : TR ("Recently added"), C_FIELD_TEXT, F_BIG, 2);
 			bool h = hits.n == hot;
-			text_r (canvas, x + w, y, 22, "See all  \xE2\x80\xBA", h ? C_ACCENT : uk_mix (C_FIELD_TEXT, C_ACCENT, 200));
+			text_r (canvas, x + w, y, 22, TR ("See all  \xE2\x80\xBA"), h ? C_ACCENT : uk_mix (C_FIELD_TEXT, C_ACCENT, 200));
 			hits.add (x + w - 80, y, 80, 22, H_SEEALL, row == 0 ? 0 : 1);
 			y += 32;
 			for (int i = 0; i < al.n && i < cols; i++) album_tile (x + i * (S + G), y, S, al.v[i]);
@@ -870,17 +886,17 @@ public:
 		IntList vl; VL->list (vl, kind);
 		long long ms = 0; for (int i = 0; i < vl.n; i++) ms += VL->v[vl.v[i]].durMs;
 		char sub[96], d[24]; fmt_long (d, sizeof d, ms);
-		snprintf (sub, sizeof sub, vl.n == 1 ? "%d video  \xC2\xB7  %s" : "%d videos  \xC2\xB7  %s", vl.n, d);
-		section_head (x, y, w, kind == VK_FILM ? "Films" : kind == VK_CLIP ? "Clips and series" : "Videos", sub, 0, 0);
+		snprintf (sub, sizeof sub, vl.n == 1 ? TR ("%d video  \xC2\xB7  %s") : TR ("%d videos  \xC2\xB7  %s"), vl.n, d);
+		section_head (x, y, w, kind == VK_FILM ? TR ("Films") : kind == VK_CLIP ? TR ("Clips and series") : TR ("Videos"), sub, 0, 0);
 		y += 54;
 		if (!vl.n)
 		{
-			if (g_scan && !g_scan->done) { char t[64]; snprintf (t, sizeof t, "Looking for videos...  %d", g_scan->vfound); text_c (canvas, x, y + 80, w, 24, t, C_FIELD_TEXT, F_BIG, 2); return y + 120; }
+			if (g_scan && !g_scan->done) { char t[64]; snprintf (t, sizeof t, TR ("Looking for videos...  %d"), g_scan->vfound); text_c (canvas, x, y + 80, w, 24, t, C_FIELD_TEXT, F_BIG, 2); return y + 120; }
 			VPath c; c.circle (V (x + w / 2), V (y + 70), V (40)); c.fill (canvas, C_ACCENT); icon (canvas, I_FILM, x + w / 2 - 20, y + 50, 40, 0xFFFFFF);
-			text_c (canvas, x, y + 124, w, 24, kind == VK_FILM ? "No films yet." : kind == VK_CLIP ? "No clips or episodes yet." : "No videos yet.", C_FIELD_TEXT, F_BIG, 2);
-			text_c (canvas, x, y + 154, w, 20, "Put them in SD:/Videos (Films, Series, Clips...) or in a folder watched: Media Player finds them at each start.", col_dim ());
-			text_c (canvas, x, y + 174, w, 20, "MP4, MKV, WebM, AVI, MPEG, TS, WMV, FLV, OGV... -- H.264, H.265, VP9, AV1, MPEG-4, AAC, AC-3...", col_dim ());
-			band_button (x + w / 2 - 85, y + 210, 170, I_PLAY, "Open a video...", true, H_OPENVID);
+			text_c (canvas, x, y + 124, w, 24, kind == VK_FILM ? TR ("No films yet.") : kind == VK_CLIP ? TR ("No clips or episodes yet.") : TR ("No videos yet."), C_FIELD_TEXT, F_BIG, 2);
+			text_c (canvas, x, y + 154, w, 20, TR ("Put them in SD:/Videos (Films, Series, Clips...) or in a folder watched: Media Player finds them at each start."), col_dim ());
+			text_c (canvas, x, y + 174, w, 20, TR ("MP4, MKV, WebM, AVI, MPEG, TS, WMV, FLV, OGV... -- H.264, H.265, VP9, AV1, MPEG-4, AAC, AC-3..."), col_dim ());
+			band_button (x + w / 2 - 85, y + 210, 170, I_PLAY, TR ("Open a video..."), true, H_OPENVID);
 			return y + 260;
 		}
 		const int S = 206, G = 22;
@@ -893,9 +909,9 @@ public:
 	{
 		char sub[64]; long long ms = 0; for (int i = 0; i < L->nal; i++) ms += L->al[i].durMs;
 		char d[24]; fmt_long (d, sizeof d, ms);
-		snprintf (sub, sizeof sub, "%d albums  \xC2\xB7  %d songs  \xC2\xB7  %s", L->nal, L->n, d);
-		static const char *const SORTS[4] = { "Sort: Name", "Sort: Artist", "Sort: Year", "Sort: Recently added" };
-		section_head (x, y, w, "Albums", sub, SORTS[g_albumSort & 3], H_SORT);
+		snprintf (sub, sizeof sub, TR ("%d albums  \xC2\xB7  %d songs  \xC2\xB7  %s"), L->nal, L->n, d);
+		static const char *const SORTS[4] = { TR ("Sort: Name"), TR ("Sort: Artist"), TR ("Sort: Year"), TR ("Sort: Recently added") };
+		section_head (x, y, w, TR ("Albums"), sub, SORTS[g_albumSort & 3], H_SORT);
 		y += 54;
 		int *o = (int *) malloc (sizeof (int) * (L->nal ? L->nal : 1));
 		L->album_order (o, g_albumSort);
@@ -914,7 +930,7 @@ public:
 					char t[64], dd[24]; fmt_long (dd, sizeof dd, a.durMs);
 					if (a.year) snprintf (t, sizeof t, "%d", a.year); else t[0] = 0;
 					text_v (canvas, x + w / 2, ry, 52, t, col_dim ());
-					snprintf (t, sizeof t, "%d songs  \xC2\xB7  %s", a.n, dd); text_r (canvas, x + w - 10, ry, 52, t, col_dim (), F_SMALL);
+					snprintf (t, sizeof t, TR ("%d songs  \xC2\xB7  %s"), a.n, dd); text_r (canvas, x + w - 10, ry, 52, t, col_dim (), F_SMALL);
 				}
 				hits.add (x, ry, w, 52, H_ALBUM, o[i]);
 			}
@@ -949,8 +965,8 @@ public:
 		text (canvas, tx, y + 44, title, 0xFFFFFF, F_H1, 2, w - 224);
 		if (by) text (canvas, tx, y + 82, by, 0xF0F0F0, F_MID, 0, w - 224);
 		text (canvas, tx, y + 106, meta, lite, F_SMALL, 0, w - 224);
-		band_button (tx, y + 140, 100, I_PLAY, "Play", true, H_PLAY);
-		band_button (tx + 110, y + 140, 112, I_SHUFFLE, "Shuffle", false, H_SHUFFLE);
+		band_button (tx, y + 140, 100, I_PLAY, TR ("Play"), true, H_PLAY);
+		band_button (tx + 110, y + 140, 112, I_SHUFFLE, TR ("Shuffle"), false, H_SHUFFLE);
 		band_button (tx + 232, y + 140, 40, I_MORE, 0, false, H_MORE);
 		return y + 216;
 	}
@@ -968,15 +984,15 @@ public:
 		char meta[160], d[24]; fmt_long (d, sizeof d, a.durMs);
 		const Song &f = L->s[a.songs[0]];
 		char yr[16] = ""; if (a.year) snprintf (yr, sizeof yr, "%d  \xC2\xB7  ", a.year);
-		snprintf (meta, sizeof meta, "%s%s%s%d songs  \xC2\xB7  %s  \xC2\xB7  %s", yr, a.genre[0] ? a.genre : "", a.genre[0] ? "  \xC2\xB7  " : "", a.n, d, FMT_NAME[f.fmt >= 0 ? f.fmt : 0]);
-		y = draw_header_band (x, y, w, pg.arg, "ALBUM", a.title, a.artist, meta, false);
+		snprintf (meta, sizeof meta, TR ("%s%s%s%d songs  \xC2\xB7  %s  \xC2\xB7  %s"), yr, a.genre[0] ? a.genre : "", a.genre[0] ? "  \xC2\xB7  " : "", a.n, d, FMT_NAME[f.fmt >= 0 ? f.fmt : 0]);
+		y = draw_header_band (x, y, w, pg.arg, TR ("ALBUM"), a.title, a.artist, meta, false);
 		hits.add (x + 204, y - 216 + 82, tw (a.artist, F_MID), 22, H_ARTIST, f.art);
 		return song_table (x, y, w, rows, false, true);
 	}
 	int draw_artists (int x, int y, int w)
 	{
-		char sub[48]; snprintf (sub, sizeof sub, "%d artists", L->nar);
-		section_head (x, y, w, "Artists", sub, 0, 0);
+		char sub[48]; snprintf (sub, sizeof sub, TR ("%d artists"), L->nar);
+		section_head (x, y, w, TR ("Artists"), sub, 0, 0);
 		y += 54;
 		const int S = 128, G = 26;
 		int cols = (w + G) / (S + G); if (cols < 1) cols = 1;
@@ -992,7 +1008,7 @@ public:
 			if (al >= 0) g_covers.draw (canvas, al, tx, ty, S, S / 2, C_FIELD);
 			if (h) { VPath o; o.arc (V (tx + S / 2), V (ty + S / 2), V (S / 2 + 3), 0, 360, V (3)); o.fill (canvas, C_ACCENT); }
 			text_c (canvas, tx - 10, ty + S + 6, S + 20, 20, g.name, C_FIELD_TEXT, F_UI, 2);
-			char t[48]; snprintf (t, sizeof t, g.na == 1 ? "%d album" : "%d albums", g.na);
+			char t[48]; snprintf (t, sizeof t, g.na == 1 ? TR ("%d album") : TR ("%d albums"), g.na);
 			text_c (canvas, tx, ty + S + 26, S, 18, t, col_dim (), F_SMALL);
 		}
 		return y + ((L->nar + cols - 1) / cols) * (S + 60);
@@ -1003,14 +1019,14 @@ public:
 		if (pg.arg < 0 || pg.arg >= L->nar) return y;
 		const Group &g = L->ar[pg.arg];
 		char meta[96], d[24]; fmt_long (d, sizeof d, g.durMs);
-		snprintf (meta, sizeof meta, "%d albums  \xC2\xB7  %d songs  \xC2\xB7  %s", g.na, g.n, d);
-		y = draw_header_band (x, y, w, g.na ? g.albums[0] : -1, "ARTIST", g.name, 0, meta, true);
-		text (canvas, x, y + 4, "Albums", C_FIELD_TEXT, F_BIG, 2); y += 34;
+		snprintf (meta, sizeof meta, TR ("%d albums  \xC2\xB7  %d songs  \xC2\xB7  %s"), g.na, g.n, d);
+		y = draw_header_band (x, y, w, g.na ? g.albums[0] : -1, TR ("ARTIST"), g.name, 0, meta, true);
+		text (canvas, x, y + 4, TR ("Albums"), C_FIELD_TEXT, F_BIG, 2); y += 34;
 		const int S = 120, G = 18;
 		int cols = (w + G) / (S + G); if (cols < 1) cols = 1;
 		for (int i = 0; i < g.na; i++) album_tile (x + (i % cols) * (S + G), y + (i / cols) * (S + 62), S, g.albums[i], false);
 		y += ((g.na + cols - 1) / cols) * (S + 62) + 8;
-		text (canvas, x, y, "Songs", C_FIELD_TEXT, F_BIG, 2); y += 34;
+		text (canvas, x, y, TR ("Songs"), C_FIELD_TEXT, F_BIG, 2); y += 34;
 		return song_table (x, y, w, rows, true, false);
 	}
 	// the library has no song yet: where to add a folder, in sight
@@ -1018,14 +1034,14 @@ public:
 	{
 		if (g_scan && !g_scan->done)
 		{
-			char t[64]; snprintf (t, sizeof t, "Looking for songs...  %d", g_scan->found);
+			char t[64]; snprintf (t, sizeof t, TR ("Looking for songs...  %d"), g_scan->found);
 			text_c (canvas, x, y + 110, w, 24, t, C_FIELD_TEXT, F_BIG, 2);
 			return y + 150;
 		}
-		text_c (canvas, x, y + 110, w, 24, "No songs yet.", C_FIELD_TEXT, F_BIG, 2);
-		text_c (canvas, x, y + 140, w, 20, "Add the folders where your music is (SD:/Music, another partition, a USB drive):", col_dim ());
-		text_c (canvas, x, y + 160, w, 20, "Media Player finds the songs in them, and looks again at each start.", col_dim ());
-		band_button (x + w / 2 - 85, y + 196, 170, I_PLUS, "Add a folder...", true, H_ADDFOLDER);
+		text_c (canvas, x, y + 110, w, 24, TR ("No songs yet."), C_FIELD_TEXT, F_BIG, 2);
+		text_c (canvas, x, y + 140, w, 20, TR ("Add the folders where your music is (SD:/Music, another partition, a USB drive):"), col_dim ());
+		text_c (canvas, x, y + 160, w, 20, TR ("Media Player finds the songs in them, and looks again at each start."), col_dim ());
+		band_button (x + w / 2 - 85, y + 196, 170, I_PLUS, TR ("Add a folder..."), true, H_ADDFOLDER);
 		return y + 250;
 	}
 	int draw_groups (int x, int y, int w, Group *gs, int n, const char *title, int kind, bool paths)
@@ -1034,7 +1050,7 @@ public:
 		section_head (x, y, w, title, sub, 0, 0);
 		if (paths)
 		{	// the folders: where to add one, in sight (the menu's Folders to Watch... too)
-			band_button (x + w - 170, y, 170, I_PLUS, "Add a folder...", true, H_ADDFOLDER);
+			band_button (x + w - 170, y, 170, I_PLUS, TR ("Add a folder..."), true, H_ADDFOLDER);
 			if (!n) return empty_library (x, y, w);
 		}
 		y += 54;
@@ -1050,7 +1066,7 @@ public:
 				bool h = hits.n - 1 == hot;
 				uk_rbox (canvas, tx, ty, TW, TH, 10, uk_tone (c, h ? 150 : 138), uk_tone (c, h ? 120 : 108));
 				text (canvas, tx + 16, ty + 16, gs[i].name, 0xFFFFFF, F_BIG, 2, TW - 32);
-				char t[48]; snprintf (t, sizeof t, gs[i].na == 1 ? "%d songs  \xC2\xB7  %d album" : "%d songs  \xC2\xB7  %d albums", gs[i].n, gs[i].na);
+				char t[48]; snprintf (t, sizeof t, gs[i].na == 1 ? TR ("%d songs  \xC2\xB7  %d album") : TR ("%d songs  \xC2\xB7  %d albums"), gs[i].n, gs[i].na);
 				text (canvas, tx + 16, ty + TH - 30, t, 0xF0F0F0, F_SMALL);
 			}
 			return y + ((n + cols - 1) / cols) * (TH + G);
@@ -1063,19 +1079,19 @@ public:
 			if (h) uk_rbox (canvas, x, ry, w, 40, 6, uk_mix (C_FIELD, C_BG, 70), uk_mix (C_FIELD, C_BG, 70));
 			icon (canvas, I_FOLDER, x + 10, ry + 10, 20, 0);
 			text_v (canvas, x + 42, ry, 40, gs[i].name, C_FIELD_TEXT, F_UI, 2, w - 200);
-			char t[48]; snprintf (t, sizeof t, "%d songs", gs[i].n); text_r (canvas, x + w - 12, ry, 40, t, col_dim (), F_SMALL);
+			char t[48]; snprintf (t, sizeof t, TR ("%d songs"), gs[i].n); text_r (canvas, x + w - 12, ry, 40, t, col_dim (), F_SMALL);
 		}
 		return y + n * 44;
 	}
 	int draw_list_page (int x, int y, int w, const char *kind, const char *title, int coverAlbum)
 	{
 		long long ms = 0; for (int i = 0; i < rows.n; i++) ms += L->s[rows.v[i]].durMs;
-		char meta[96], d[24]; fmt_long (d, sizeof d, ms); snprintf (meta, sizeof meta, "%d songs  \xC2\xB7  %s", rows.n, d);
+		char meta[96], d[24]; fmt_long (d, sizeof d, ms); snprintf (meta, sizeof meta, TR ("%d songs  \xC2\xB7  %s"), rows.n, d);
 		y = draw_header_band (x, y, w, coverAlbum, kind, title, 0, meta, false);
 		if (!rows.n)
 		{
-			const char *m = page ().kind == P_PLAYLIST && page ().arg == PL_FAV ? "No favourites yet: the \xE2\x99\xA5 of a song, of the bar below, adds it here."
-				: page ().kind == P_PLAYLIST ? "This playlist is empty: right click songs, then \xE2\x80\x9C" "Add to a playlist\xE2\x80\x9D." : "Nothing here.";
+			const char *m = page ().kind == P_PLAYLIST && page ().arg == PL_FAV ? TR ("No favourites yet: the \xE2\x99\xA5 of a song, of the bar below, adds it here.")
+				: page ().kind == P_PLAYLIST ? TR ("This playlist is empty: right click songs, then \xE2\x80\x9C" "Add to a playlist\xE2\x80\x9D.") : TR ("Nothing here.");
 			text (canvas, x, y + 20, m, col_dim ());
 			return y + 60;
 		}
@@ -1083,8 +1099,8 @@ public:
 	}
 	int draw_search (int x, int y, int w)
 	{
-		char sub[64]; snprintf (sub, sizeof sub, "%d songs", rows.n);
-		section_head (x, y, w, "Search", sub, 0, 0);
+		char sub[64]; snprintf (sub, sizeof sub, TR ("%d songs"), rows.n);
+		section_head (x, y, w, TR ("Search"), sub, 0, 0);
 		y += 54;
 		// the albums and artists that match
 		int na = 0;
@@ -1098,8 +1114,22 @@ public:
 		for (int i = 0; i < VL->n && nv < vc; i++)
 			if (!VL->v[i].ext && matches (VL->v[i].title, g_search)) { video_tile (x + nv * (VW + VG), y, VW, i); nv++; }
 		if (nv) y += VW * 9 / 16 + 62;
-		if (!rows.n && !na && !nv) { text (canvas, x, y, "Nothing found.", col_dim ()); return y + 40; }
+		if (!rows.n && !na && !nv) { text (canvas, x, y, TR ("Nothing found."), col_dim ()); return y + 40; }
 		return song_table (x, y, w, rows, true, false);
+	}
+	// s centred in (x, w), wrapped when it is wider -> the y under it
+	int text_cw (int x, int y, int w, const char *s, unsigned c, int f = F_UI)
+	{
+		UkFaceScope sc (f == F_UI ? 0 : g_face[f]);
+		int st[6], ln[6], lh = 20, dy = (20 - uk_fh ()) / 2;		// (y: the top of the first line, 20 px each)
+		int n = uk_text_wrap (s, (int) strlen (s), w, 6, st, ln);
+		for (int k = 0; k < n; k++)
+		{
+			char b[300]; int l = ln[k] < 299 ? ln[k] : 299;
+			memcpy (b, s + st[k], (size_t) l); b[l] = 0;
+			uk_text (canvas, x + (w - uk_tw (b)) / 2, y + dy + k * lh, b, c);
+		}
+		return y + (n > 0 ? n : 1) * lh;
 	}
 	int draw_welcome (int x, int y, int w)
 	{
@@ -1109,10 +1139,11 @@ public:
 		for (int j = 0; j < 3 && L && L->nal; j++) { int k = ORDER[j]; g_covers.draw (canvas, k % L->nal, mx - 110 + k * 70 - 45, y + (k == 1 ? 0 : 10), 90, 8, C_FIELD); }
 		if (!L || !L->nal) { VPath c; c.circle (V (mx), V (y + 45), V (45)); c.fill (canvas, C_ACCENT); icon (canvas, I_NOTE, mx - 24, y + 21, 48, 0xFFFFFF); }
 		y += 120;
-		text_c (canvas, x, y, w, 34, "Your music, all in one place", C_FIELD_TEXT, F_H1, 2);
-		text_c (canvas, x, y + 40, w, 20, "Media Player finds the songs in the folders you give it, and looks again at each start.", col_dim ());
-		text_c (canvas, x, y + 60, w, 20, "MP3, OGG, FLAC, WAV and MIDI (played through a SoundFont); videos: MP4, MKV, WebM, AVI, WMV and more.", col_dim ());
-		int fw = 460, fx = mx - fw / 2, fy = y + 100;
+		if (tw (TR ("Your music, all in one place"), F_H1, 2) > w) { text_c (canvas, x, y, w, 34, TR ("Your music, all in one place"), C_FIELD_TEXT, F_H2, 2); }
+		else text_c (canvas, x, y, w, 34, TR ("Your music, all in one place"), C_FIELD_TEXT, F_H1, 2);
+		int ty = text_cw (x, y + 40, w, TR ("Media Player finds the songs in the folders you give it, and looks again at each start."), col_dim ());
+		ty = text_cw (x, ty, w, TR ("MP3, OGG, FLAC, WAV and MIDI (played through a SoundFont); videos: MP4, MKV, WebM, AVI, WMV and more."), col_dim ());
+		int fw = w < 460 ? w : 460, fx = mx - fw / 2, fy = ty + 20;
 		int fh_ = 10 + (g_nfolders ? g_nfolders : 1) * 36;
 		uk_rbox (canvas, fx, fy, fw, fh_, 8, 0xFFFFFF, 0xFFFFFF); uk_rline (canvas, fx, fy, fw, fh_, 8, uk_tone (C_BG, 110));
 		for (int i = 0; i < g_nfolders; i++)
@@ -1124,17 +1155,19 @@ public:
 			for (int k = 0; L && k < L->n; k++) if (!strncasecmp (L->s[k].path, g_folders[i], (size_t) pl)) cnt++;
 			for (int k = 0; VL && k < VL->n; k++) if (!strncasecmp (VL->v[k].path, g_folders[i], (size_t) pl)) vc++;
 			char t[64];
-			if (g_scan && !g_scan->done) snprintf (t, sizeof t, "looking...  %d", g_scan->found + g_scan->vfound);
-			else if (vc) snprintf (t, sizeof t, "%d songs, %d videos", cnt, vc); else snprintf (t, sizeof t, "%d songs found", cnt);
+			if (g_scan && !g_scan->done) snprintf (t, sizeof t, TR ("looking...  %d"), g_scan->found + g_scan->vfound);
+			else if (vc) snprintf (t, sizeof t, TR ("%d songs, %d videos"), cnt, vc); else snprintf (t, sizeof t, TR ("%d songs found"), cnt);
 			text_r (canvas, fx + fw - 44, ry, 36, t, 0x707070, F_SMALL);
 			bool h = hits.n == hot;
 			icon (canvas, I_CLOSE, fx + fw - 30, ry + 11, 14, h ? 0xC04040 : 0x909090);
 			hits.add (fx + fw - 36, ry + 4, 28, 28, H_DELFOLDER, i);
 		}
-		if (!g_nfolders) text_c (canvas, fx, fy + 5, fw, 36, "No folder: add one.", 0x909090);
+		if (!g_nfolders) text_c (canvas, fx, fy + 5, fw, 36, TR ("No folder: add one."), 0x909090);
 		fy += fh_ + 18;
-		band_button (mx - 160, fy, 150, I_PLUS, "Add a folder...", false, H_ADDFOLDER);
-		band_button (mx + 10, fy, 150, I_DISC, "Done", true, H_DONE);
+		int bw = tw (TR ("Add a folder...")) + 50;
+		if (bw < 150) bw = 150;
+		band_button (mx - bw - 10, fy, bw, I_PLUS, TR ("Add a folder..."), false, H_ADDFOLDER);
+		band_button (mx + 10, fy, bw, I_DISC, TR ("Done"), true, H_DONE);
 		return fy + 60;
 	}
 	// ---- now playing: the cover large (a MIDI file: its notes), up next ----
@@ -1216,17 +1249,17 @@ public:
 		if (!s) return y;
 		if (s->alb >= 0 && g_playing >= 0) g_covers.draw (canvas, s->alb, x, y, 104, 6, C_FIELD);
 		int tx = x + 124;
-		text (canvas, tx, y + 2, g_player.state == PS_PLAYING ? "MIDI  \xC2\xB7  NOW PLAYING" : "MIDI  \xC2\xB7  PAUSED", 0x7860C4, F_SMALL, 2);
+		text (canvas, tx, y + 2, g_player.state == PS_PLAYING ? TR ("MIDI  \xC2\xB7  NOW PLAYING") : TR ("MIDI  \xC2\xB7  PAUSED"), 0x7860C4, F_SMALL, 2);
 		text (canvas, tx, y + 19, s->title, C_FIELD_TEXT, F_H2, 2, w - 124);
 		int ninst = 0; if (m) for (int c = 0; c < 16; c++) if (m->used[c] && c != 9) ninst++;
 		char line[200];
-		snprintf (line, sizeof line, "%s  \xC2\xB7  %d instrument%s%s  \xC2\xB7  \xE2\x99\xA9 = %d", g_playing >= 0 ? L->artist_of (*s) : s->artist, ninst, ninst == 1 ? "" : "s",
-			  m && m->used[9] ? " and drums" : "", m ? m->bpm : 120);
+		snprintf (line, sizeof line, ninst == 1 ? TR ("%s  \xC2\xB7  %d instrument%s  \xC2\xB7  \xE2\x99\xA9 = %d") : TR ("%s  \xC2\xB7  %d instruments%s  \xC2\xB7  \xE2\x99\xA9 = %d"), g_playing >= 0 ? L->artist_of (*s) : s->artist, ninst,
+			  m && m->used[9] ? TR (" and drums") : "", m ? m->bpm : 120);
 		text (canvas, tx, y + 48, line, col_dim (), F_SMALL, 0, w - 124);
-		text_v (canvas, tx, y + 70, 28, "Played by", col_dim (), F_SMALL);
-		int fx = tx + 64, fw = tw (ak_soundfont_name ()[0] ? ak_soundfont_name () : "a SoundFont") + 24;
+		text_v (canvas, tx, y + 70, 28, TR ("Played by"), col_dim (), F_SMALL);
+		int fx = tx + 64, fw = tw (ak_soundfont_name ()[0] ? ak_soundfont_name () : TR ("a SoundFont")) + 24;
 		uk_rbox (canvas, fx, y + 70, fw, 28, 6, uk_mix (C_FIELD, C_BG, 60), uk_mix (C_FIELD, C_BG, 110)); uk_rline (canvas, fx, y + 70, fw, 28, 6, uk_tone (C_BG, 96));
-		text_v (canvas, fx + 12, y + 70, 28, ak_soundfont_name ()[0] ? ak_soundfont_name () : "a SoundFont", C_FIELD_TEXT);
+		text_v (canvas, fx + 12, y + 70, 28, ak_soundfont_name ()[0] ? ak_soundfont_name () : TR ("a SoundFont"), C_FIELD_TEXT);
 		y += 122;
 		piano_roll (x, y, w, hRoll, m, g_player.posMs);
 		y += hRoll + 12;
@@ -1266,8 +1299,8 @@ int Content::draw_now (int x, int y, int w)
 	VPath c; c.circle (V (x0 + 16), V (y0 + 16), V (16)); c.fill (canvas, 0xFFFFFF, 40);
 	icon (canvas, I_DOWN, x0 + 8, y0 + 8, 16, 0xFFFFFF);
 	hits.add (x0, y0, 32, 32, H_NOWCLOSE);
-	text_v (canvas, x0 + 44, y0, 32, "Now playing", 0xFFFFFF, F_UI, 2);
-	if (!s) { text (canvas, x0, y0 + 80, "Nothing is playing. Choose a song, an album...", 0xE0E0E0, F_MID); return y + height; }
+	text_v (canvas, x0 + 44, y0, 32, TR ("Now playing"), 0xFFFFFF, F_UI, 2);
+	if (!s) { text (canvas, x0, y0 + 80, TR ("Nothing is playing. Choose a song, an album..."), 0xE0E0E0, F_MID); return y + height; }
 	int qw = 330, avail = width - 80 - qw - 40;
 	bool midi = s->fmt == FMT_MIDI;
 	int S = avail < 320 ? avail : 320; if (S > height - 260) S = height - 260; if (S < 120) S = 120;
@@ -1279,15 +1312,15 @@ int Content::draw_now (int x, int y, int w)
 	char line[220]; snprintf (line, sizeof line, "%s  \xC2\xB7  %s%s", g_playing >= 0 ? L->artist_of (*s) : s->artist, s->album, "");
 	text (canvas, cx, ty + 38, line, 0xD8E0E8, F_MID, 0, avail);
 	char fmtl[120];
-	if (midi) snprintf (fmtl, sizeof fmtl, "MIDI  \xC2\xB7  played by %s", ak_soundfont_name ()[0] ? ak_soundfont_name () : "a SoundFont");
-	else if (g_player.rate) snprintf (fmtl, sizeof fmtl, "%s  \xC2\xB7  %d.%d kHz  \xC2\xB7  %d bit  \xC2\xB7  %d kbit/s", g_player.fmt, g_player.rate / 1000, g_player.rate % 1000 / 100,
+	if (midi) snprintf (fmtl, sizeof fmtl, TR ("MIDI  \xC2\xB7  played by %s"), ak_soundfont_name ()[0] ? ak_soundfont_name () : TR ("a SoundFont"));
+	else if (g_player.rate) snprintf (fmtl, sizeof fmtl, TR ("%s  \xC2\xB7  %d.%d kHz  \xC2\xB7  %d bit  \xC2\xB7  %d kbit/s"), g_player.fmt, g_player.rate / 1000, g_player.rate % 1000 / 100,
 					  g_player.bits ? g_player.bits : 16, g_player.kbps);
 	else fmtl[0] = 0;
 	text (canvas, cx, ty + 62, fmtl, 0xA8B4C0, F_SMALL);
 	// up next
 	int qx = width - 40 - qw, qy = y0 + 54, qh = height - (qy - scrollY) - 30;
 	uk_rbox (canvas, qx, qy, qw, qh, 12, 0xFFFFFF, 0xFFFFFF, 26);
-	text (canvas, qx + 18, qy + 14, "Up next", 0xFFFFFF, F_BIG, 2);
+	text (canvas, qx + 18, qy + 14, TR ("Up next"), 0xFFFFFF, F_BIG, 2);
 	int rowsMax = (qh - 60) / 56;
 	int shown = 0;
 	for (int i = g_qpos + 1; i < g_queue.n && shown < rowsMax; i++, shown++)
@@ -1302,8 +1335,8 @@ int Content::draw_now (int x, int y, int w)
 		char t[16]; fmt_time (t, sizeof t, q->durMs); text_r (canvas, qx + qw - 18, ry + 2, 40, t, 0xC0CCD8, F_SMALL);
 		hits.add (qx + 8, ry - 4, qw - 16, 52, H_QUEUE, i);
 	}
-	if (!shown) text (canvas, qx + 18, qy + 56, g_repeat == 1 ? "The queue starts again." : "Nothing after this song.", 0xB0BCC8);
-	else if (g_queue.n - g_qpos - 1 > shown) { char t[48]; snprintf (t, sizeof t, "%d more", g_queue.n - g_qpos - 1 - shown); text (canvas, qx + 18, qy + qh - 26, t, 0xB0BCC8, F_SMALL); }
+	if (!shown) text (canvas, qx + 18, qy + 56, g_repeat == 1 ? TR ("The queue starts again.") : TR ("Nothing after this song."), 0xB0BCC8);
+	else if (g_queue.n - g_qpos - 1 > shown) { char t[48]; snprintf (t, sizeof t, TR ("%d more"), g_queue.n - g_qpos - 1 - shown); text (canvas, qx + 18, qy + qh - 26, t, 0xB0BCC8, F_SMALL); }
 	return y + height;
 }
 
@@ -1315,13 +1348,13 @@ void Content::onDraw ()
 	if (!rowsValid) { page_songs (page (), rows); sort_songs (rows, page ().sortCol, page ().sortDesc); rowsValid = true; }
 	// the pages draw in the view's coordinates: their top at 22 - the page's scroll (Widget::scrollY stays 0:
 	// the pieces cull against 0 .. height)
-	int sy_ = sy (), x = 28, w = width - 56 - UK_SBW, y0 = 22 - sy_, yEnd = y0;
+	int sy_ = sy (), x = 28, w = width - 56 - uk_scroll_gutter (), y0 = 22 - sy_, yEnd = y0;
 	switch (page ().kind)
 	{
 	case P_ALBUMS: case P_ARTISTS: case P_SONGS: case P_GENRES:
 		if (!L->n)
 		{
-			static const char *T[] = { "Albums", "Artists", "Songs", "Genres" };
+			static const char *T[] = { TR ("Albums"), TR ("Artists"), TR ("Songs"), TR ("Genres") };
 			int k = page ().kind == P_ALBUMS ? 0 : page ().kind == P_ARTISTS ? 1 : page ().kind == P_SONGS ? 2 : 3;
 			section_head (x, y0, w, T[k], "0", 0, 0);
 			yEnd = empty_library (x, y0, w);
@@ -1329,20 +1362,20 @@ void Content::onDraw ()
 		}
 		if (page ().kind == P_ALBUMS) yEnd = draw_albums (x, y0, w);
 		else if (page ().kind == P_ARTISTS) yEnd = draw_artists (x, y0, w);
-		else if (page ().kind == P_GENRES) yEnd = draw_groups (x, y0, w, L->ge, L->nge, "Genres", H_GENRE, false);
-		else { char sub[32]; snprintf (sub, sizeof sub, "%d songs", rows.n); section_head (x, y0, w, "Songs", sub, 0, 0); yEnd = song_table (x, y0 + 54, w, rows, true, false); }
+		else if (page ().kind == P_GENRES) yEnd = draw_groups (x, y0, w, L->ge, L->nge, TR ("Genres"), H_GENRE, false);
+		else { char sub[32]; snprintf (sub, sizeof sub, TR ("%d songs"), rows.n); section_head (x, y0, w, TR ("Songs"), sub, 0, 0); yEnd = song_table (x, y0 + 54, w, rows, true, false); }
 		break;
 	case P_HOME: yEnd = draw_home (x, y0, w); break;
 	case P_ALBUM: yEnd = draw_album (x, y0, w); break;
 	case P_ARTIST: yEnd = draw_artist (x, y0, w); break;
-	case P_GENRE: yEnd = draw_list_page (x, y0, w, "GENRE", L->ge[page ().arg].name, L->ge[page ().arg].na ? L->ge[page ().arg].albums[0] : -1); break;
-	case P_FOLDERS: yEnd = draw_groups (x, y0, w, L->fo, L->nfo, "Folders", H_FOLDER, true); break;
-	case P_FOLDER: yEnd = draw_list_page (x, y0, w, "FOLDER", L->fo[page ().arg].name, L->fo[page ().arg].na ? L->fo[page ().arg].albums[0] : -1); break;
+	case P_GENRE: yEnd = draw_list_page (x, y0, w, TR ("GENRE"), L->ge[page ().arg].name, L->ge[page ().arg].na ? L->ge[page ().arg].albums[0] : -1); break;
+	case P_FOLDERS: yEnd = draw_groups (x, y0, w, L->fo, L->nfo, TR ("Folders"), H_FOLDER, true); break;
+	case P_FOLDER: yEnd = draw_list_page (x, y0, w, TR ("FOLDER"), L->fo[page ().arg].name, L->fo[page ().arg].na ? L->fo[page ().arg].albums[0] : -1); break;
 	case P_PLAYLIST:
 	{
-		const char *nm = page ().arg == PL_FAV ? "Favourites" : page ().arg == PL_RECENT ? "Recently added" : page ().arg < g_npl ? g_pl[page ().arg].name : "";
+		const char *nm = page ().arg == PL_FAV ? TR ("Favourites") : page ().arg == PL_RECENT ? TR ("Recently added") : page ().arg < g_npl ? g_pl[page ().arg].name : "";
 		int cov = rows.n ? L->s[rows.v[0]].alb : -1;
-		yEnd = draw_list_page (x, y0, w, "PLAYLIST", nm, cov);
+		yEnd = draw_list_page (x, y0, w, TR ("PLAYLIST"), nm, cov);
 		break;
 	}
 	case P_NOW: yEnd = draw_now (x, y0, w); contentH = height; return;
@@ -1378,8 +1411,8 @@ public:
 		centre (this);
 		tb = new Textbox (16, titleH () + 40, width - 32, 28, init, dlg_enter);
 		tb->maxLen = 90; tb->setText (init); tb->caret = (int) strlen (init); tb->hasFocus = true; addChild (tb);
-		Button *b = new Button (width - 196, height - 44, 86, 30, "OK", dlg_btn); b->tag = 1; addChild (b);
-		b = new Button (width - 102, height - 44, 86, 30, "Cancel", dlg_btn); b->tag = 0; addChild (b);
+		Button *b = new Button (width - 196, height - 44, 86, 30, TR ("OK"), dlg_btn); b->tag = 1; addChild (b);
+		b = new Button (width - 102, height - 44, 86, 30, TR ("Cancel"), dlg_btn); b->tag = 0; addChild (b);
 	}
 	void onButton (int tag) override { close (tag); }
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
@@ -1401,21 +1434,21 @@ public:
 	{
 		centre (this);
 		char t[64];
-		add ("Title", s.title); add ("Artist", s.artist); add ("Album artist", s.albumArtist); add ("Album", s.album); add ("Genre", s.genre);
-		if (s.year) { snprintf (t, sizeof t, "%d", s.year); add ("Year", t); }
-		if (s.track) { snprintf (t, sizeof t, s.disc ? "%d (disc %d)" : "%d", s.track, s.disc); add ("Track", t); }
-		fmt_time (t, sizeof t, s.durMs); add ("Length", t);
-		snprintf (t, sizeof t, "%s  \xC2\xB7  %.1f MB", s.fmt >= 0 ? FMT_NAME[s.fmt] : "?", s.size / 1048576.0); add ("File", t);
-		add ("Where", s.path);
-		snprintf (t, sizeof t, "%d", s.plays); add ("Played", t);
-		Button *b = new Button (width - 102, height - 44, 86, 30, "Close", dlg_btn); b->tag = 1; addChild (b);
+		add (TR ("Title"), s.title); add (TR ("Artist"), s.artist); add (TR ("Album artist"), s.albumArtist); add (TR ("Album"), s.album); add (TR ("Genre"), s.genre);
+		if (s.year) { snprintf (t, sizeof t, "%d", s.year); add (TR ("Year"), t); }
+		if (s.track) { snprintf (t, sizeof t, s.disc ? TR ("%d (disc %d)") : "%d", s.track, s.disc); add (TR ("Track"), t); }
+		fmt_time (t, sizeof t, s.durMs); add (TR ("Length"), t);
+		snprintf (t, sizeof t, TR ("%s  \xC2\xB7  %.1f MB"), s.fmt >= 0 ? FMT_NAME[s.fmt] : "?", s.size / 1048576.0); add (TR ("File"), t);
+		add (TR ("Where"), s.path);
+		snprintf (t, sizeof t, "%d", s.plays); add (TR ("Played"), t);
+		Button *b = new Button (width - 102, height - 44, 86, 30, TR ("Close"), dlg_btn); b->tag = 1; addChild (b);
 	}
 	void add (const char *k, const char *v) { if (!v || !v[0] || m_n >= 12) return; scopy (m_lines[m_n][0], k, 160); scopy (m_lines[m_n][1], v, 160); m_n++; }
 	void onButton (int tag) override { close (tag); }
 	bool onKey (long k) override { if (k == 27 || k == KEY_ENTER) { close (1); return true; } return false; }
 	void onDraw () override
 	{
-		drawBox ("Properties");
+		drawBox (TR ("Properties"));
 		for (int i = 0; i < m_n; i++)
 		{
 			int y = titleH () + 14 + i * 22;
@@ -1427,7 +1460,7 @@ public:
 void new_playlist_dialog (const IntList *ids)
 {
 	char name[96];
-	if (!ask_text ("New playlist", "Its name:", "", name, sizeof name)) return;
+	if (!ask_text (TR ("New playlist"), TR ("Its name:"), "", name, sizeof name)) return;
 	int k = playlist_new (name);
 	if (ids && ids->n) playlist_add (k, *ids);
 	refresh_all ();
@@ -1471,19 +1504,19 @@ static void context_menu (int mx, int my, IntList &ids, bool inPlaylist)
 	if (!ids.n) return;
 	const Song &f = L->s[ids.v[0]];
 	PopupMenu m (mx, my);
-	m.add ("Play", 1, true, "Enter");
-	m.add ("Play next", 2);
-	m.add ("Add to the queue", 3);
+	m.add (TR ("Play"), 1, true, TR ("Enter"));
+	m.add (TR ("Play next"), 2);
+	m.add (TR ("Add to the queue"), 3);
 	m.separator ();
-	m.add ("Add to a playlist...", 4);
-	m.add (f.fav ? "Remove from Favourites" : "Add to Favourites", 5);
-	if (inPlaylist) m.add ("Remove from this playlist", 10);
+	m.add (TR ("Add to a playlist..."), 4);
+	m.add (f.fav ? TR ("Remove from Favourites") : TR ("Add to Favourites"), 5);
+	if (inPlaylist) m.add (TR ("Remove from this playlist"), 10);
 	m.separator ();
-	m.add ("Go to the album", 6, ids.n == 1);
-	m.add ("Go to the artist", 7, ids.n == 1);
+	m.add (TR ("Go to the album"), 6, ids.n == 1);
+	m.add (TR ("Go to the artist"), 7, ids.n == 1);
 	m.separator ();
-	m.add ("Properties...", 8, ids.n == 1);
-	m.add ("Show in the File Viewer", 9, ids.n == 1);
+	m.add (TR ("Properties..."), 8, ids.n == 1);
+	m.add (TR ("Show in the File Viewer"), 9, ids.n == 1);
 	switch (m.run ())
 	{
 	case 1: play_list (ids, 0, false); break;
@@ -1492,7 +1525,7 @@ static void context_menu (int mx, int my, IntList &ids, bool inPlaylist)
 	case 4:
 	{
 		PopupMenu p (mx + 20, my + 20);
-		p.add ("New playlist...", 1000); if (g_npl) p.separator ();
+		p.add (TR ("New playlist..."), 1000); if (g_npl) p.separator ();
 		for (int i = 0; i < g_npl && i < 12; i++) p.add (g_pl[i].name, i);
 		int r = p.run ();
 		if (r == 1000) new_playlist_dialog (&ids); else if (r >= 0) playlist_add (r, ids);
@@ -1520,24 +1553,24 @@ static void more_menu (int mx, int my)
 	IntList &rows = g_content->rows;
 	bool userPl = page ().kind == P_PLAYLIST && page ().arg >= 0;
 	PopupMenu m (mx, my);
-	m.add ("Play next", 1, rows.n > 0);
-	m.add ("Add to the queue", 2, rows.n > 0);
-	m.add ("Add to a playlist...", 3, rows.n > 0);
-	m.add ("Add to Favourites", 4, rows.n > 0);
-	if (page ().kind == P_ALBUM || page ().kind == P_FOLDER) { m.separator (); m.add ("Show in the File Viewer", 5); }
-	if (userPl) { m.separator (); m.add ("Rename the playlist...", 6); m.add ("Delete the playlist", 7); }
+	m.add (TR ("Play next"), 1, rows.n > 0);
+	m.add (TR ("Add to the queue"), 2, rows.n > 0);
+	m.add (TR ("Add to a playlist..."), 3, rows.n > 0);
+	m.add (TR ("Add to Favourites"), 4, rows.n > 0);
+	if (page ().kind == P_ALBUM || page ().kind == P_FOLDER) { m.separator (); m.add (TR ("Show in the File Viewer"), 5); }
+	if (userPl) { m.separator (); m.add (TR ("Rename the playlist..."), 6); m.add (TR ("Delete the playlist"), 7); }
 	switch (m.run ())
 	{
 	case 1: play_next_ids (rows, true); break;
 	case 2: play_next_ids (rows, false); break;
-	case 3: { PopupMenu p (mx + 20, my + 20); p.add ("New playlist...", 1000); for (int i = 0; i < g_npl && i < 12; i++) p.add (g_pl[i].name, i);
+	case 3: { PopupMenu p (mx + 20, my + 20); p.add (TR ("New playlist..."), 1000); for (int i = 0; i < g_npl && i < 12; i++) p.add (g_pl[i].name, i);
 		  int r = p.run (); if (r == 1000) new_playlist_dialog (&rows); else if (r >= 0) playlist_add (r, rows); break; }
 	case 4: for (int i = 0; i < rows.n; i++) L->s[rows.v[i]].fav = true; L->save_stats (); break;
 	case 5: if (rows.n) { char d[300]; scopy (d, L->s[rows.v[0]].path, sizeof d); char *sl = strrchr (d, '/'); if (sl) *sl = 0; fa_open (d); } break;
 	case 6:
 	{
 		Plist &p = g_pl[page ().arg]; char nm[96];
-		if (ask_text ("Rename the playlist", "Its new name:", p.name, nm, sizeof nm))
+		if (ask_text (TR ("Rename the playlist"), TR ("Its new name:"), p.name, nm, sizeof nm))
 		{
 			char np[300]; snprintf (np, sizeof np, "%s/%s.m3u", PLAYLIST_DIR, nm);
 			if (kapi_rename (p.path, np) == 0) { scopy (p.path, np, sizeof p.path); scopy (p.name, nm, sizeof p.name); }
@@ -1545,7 +1578,7 @@ static void more_menu (int mx, int my)
 		break;
 	}
 	case 7:
-		if (uk_messagebox ("Delete the playlist", "Delete this playlist? (Its songs stay in the library.)", MB_YESNO) == 1)
+		if (uk_messagebox (TR ("Delete the playlist"), TR ("Delete this playlist? (Its songs stay in the library.)"), MB_YESNO) == 1)
 		{ kapi_remove (g_pl[page ().arg].path); playlists_load (); go_back (); }
 		break;
 	}
@@ -1624,7 +1657,7 @@ bool Content::onMouse (int mx, int my, int bl, int br, int, int wheel)
 		case H_SORT:
 		{
 			PopupMenu m (ax + ht->x, ay + ht->y + ht->h + 2);
-			m.add ("Name", 0); m.add ("Artist", 1); m.add ("Year", 2); m.add ("Recently added", 3);
+			m.add (TR ("Name"), 0); m.add (TR ("Artist"), 1); m.add (TR ("Year"), 2); m.add (TR ("Recently added"), 3);
 			int r = m.run (); if (r >= 0) { g_albumSort = r; save_settings (); }
 			invalidate (true); break;
 		}
@@ -1680,8 +1713,11 @@ public:
 	NowBar (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1), drag (0), dragMs (0) {}
 	unsigned face () { return uk_mix (C_FIELD, C_BG, 90); }
 	unsigned bgColor () override { return face (); }
-	int seekX () { return width / 2 - 200; }
-	int seekW () { return 400; }
+	// Its layout by its width: 1000 px and more the desktop's; less, a shorter line; under 760 (pocket's portrait)
+	// the line across the bar, the cover alone at the left, the queue and the sound's button at the right.
+	bool narrow () { return width < 760; }
+	int seekW () { return narrow () ? width - 88 : width >= 1000 ? 400 : 300; }
+	int seekX () { return narrow () ? 44 : width / 2 - seekW () / 2; }
 	void onDraw () override
 	{
 		unsigned f = face ();
@@ -1690,7 +1726,13 @@ public:
 		hits.clear ();
 		const Song *s = song (g_playing);
 		unsigned dim = uk_mix (f, C_FIELD_TEXT, 150);
-		if (s)
+		if (s && narrow ())
+		{
+			if (s->alb >= 0 && g_playing >= 0) g_covers.draw (canvas, s->alb, 10, 5, 38, 5, f);
+			else { uk_rbox (canvas, 10, 5, 38, 38, 5, C_ACCENT, C_ACCENT); icon (canvas, I_NOTE, 18, 13, 22, 0xFFFFFF); }
+			hits.add (10, 5, 38, 38, N_COVER);
+		}
+		else if (s)
 		{
 			if (s->alb >= 0 && g_playing >= 0) g_covers.draw (canvas, s->alb, 12, 12, 56, 5, f);
 			else { uk_rbox (canvas, 12, 12, 56, 56, 5, C_ACCENT, C_ACCENT); icon (canvas, I_NOTE, 24, 24, 32, 0xFFFFFF); }
@@ -1703,7 +1745,7 @@ public:
 			int hx = 80 + (tw (s->title, F_UI, 2) < maxw ? tw (s->title, F_UI, 2) : maxw) + 10;
 			if (g_playing >= 0) { icon (canvas, s->fav ? I_HEART : I_HEART_O, hx, 18, 16, s->fav || hits.n == hot ? 0xD8484E : dim); hits.add (hx - 3, 15, 22, 22, N_FAV); }
 		}
-		else text_v (canvas, 16, 0, height, "Choose a song, an album, then \xE2\x96\xB6", dim);
+		else if (!narrow ()) text_v (canvas, 16, 0, height, TR ("Choose a song, an album, then \xE2\x96\xB6"), dim, F_UI, 0, width / 2 - 140 - 16);
 		// the transport
 		int mx = width / 2;
 		auto btn = [&] (int x, int y, int sz, int ic, unsigned c, int kind) { bool h = hits.n == hot; icon (canvas, ic, x, y, sz, h ? C_ACCENT : c); hits.add (x - 4, y - 4, sz + 8, sz + 8, kind); };
@@ -1726,6 +1768,12 @@ public:
 		hits.add (bx - 6, 48, bw + 12, 22, N_SEEK);
 		// the right: the queue, the mini player, the volume
 		int rx = width - 16, vw = 90;
+		if (narrow ())
+		{
+			btn (rx - 18, 15, 18, g_muted || !g_volume ? I_MUTE : I_VOLUME, C_FIELD_TEXT, N_MUTE);
+			btn (rx - 50, 15, 18, I_QUEUE, page ().kind == P_NOW ? C_ACCENT : C_FIELD_TEXT, N_QUEUE);
+			return;
+		}
 		int vf = g_muted ? 0 : g_volume * vw / 100;
 		uk_rbox (canvas, rx - vw, 38, vw, 4, 2, uk_tone (f, 112), uk_tone (f, 112));
 		if (vf) uk_rbox (canvas, rx - vw, 38, vf, 4, 2, uk_mix (f, C_FIELD_TEXT, 170), uk_mix (f, C_FIELD_TEXT, 170));
@@ -1807,7 +1855,7 @@ public:
 		if (s && s->alb >= 0 && g_playing >= 0) g_covers.draw (canvas, s->alb, 10, 10, height - 20, 6, uk_mix (top, bot, 128));
 		else { uk_rbox (canvas, 10, 10, height - 20, height - 20, 6, C_ACCENT, C_ACCENT); icon (canvas, I_NOTE, 24, 24, height - 48, 0xFFFFFF); }
 		int x = height + 4, w = width - x - 12;
-		text (canvas, x, 10, s ? s->title : "Nothing playing", 0xFFFFFF, F_UI, 2, w - 30);
+		text (canvas, x, 10, s ? s->title : TR ("Nothing playing"), 0xFFFFFF, F_UI, 2, w - 30);
 		if (s) text (canvas, x, 29, s->artist[0] ? s->artist : s->albumArtist, 0xD0D4DC, F_SMALL, 0, w - 30);
 		long long len = g_player.lenMs > 0 ? g_player.lenMs : s ? s->durMs : 0, pos = g_player.posMs;
 		int fill = len > 0 ? (int) (pos * w / len) : 0; if (fill > w) fill = w;
@@ -1881,7 +1929,7 @@ static bool video_start (int vi, bool fromStart)
 	int r = g_vp.open (x.path, fromStart || x.watched && !x.posMs ? 0 : x.posMs, g_volume, g_muted);
 	if (r != AV_OK)
 	{
-		uk_messagebox ("Media Player", r == AV_EUNSUP ? "This file is not a video Media Player\ncan read." : "This video cannot be read.", MB_OK);
+		uk_messagebox (TR ("Media Player"), r == AV_EUNSUP ? TR ("This file is not a video Media Player\ncan read.") : TR ("This video cannot be read."), MB_OK);
 		return false;
 	}
 	g_vidx = vi; g_vpEnded = false;
@@ -1898,8 +1946,8 @@ void play_video (int vi, bool fromStart)
 	if (!x.playable)
 	{
 		char m[300], t[28]; scopy (t, x.title, sizeof t);
-		snprintf (m, sizeof m, "\xE2\x80\x9C%s\xE2\x80\x9D cannot be played:\nits picture (%s) or its sound (%s)\nis in a format Onyx cannot decode.", t, codec_label (x.vcodec), x.acodec[0] ? codec_label (x.acodec) : "none");
-		uk_messagebox ("Media Player", m, MB_OK);
+		snprintf (m, sizeof m, TR ("\xE2\x80\x9C%s\xE2\x80\x9D cannot be played:\nits picture (%s) or its sound (%s)\nis in a format Onyx cannot decode."), t, codec_label (x.vcodec), x.acodec[0] ? codec_label (x.acodec) : TR ("none"));
+		uk_messagebox (TR ("Media Player"), m, MB_OK);
 		return;
 	}
 	if (!video_start (vi, fromStart)) return;
@@ -1952,8 +2000,8 @@ static void draw_watch (Canvas &cv, int W, int H, WatchUi &u)
 	if (st.error)
 	{
 		uk_rbox (cv, cx - 260, cy - 60, 520, 120, 12, 0x1C1C22, 0x1C1C22, 230);
-		text_c (cv, cx - 260, cy - 44, 520, 26, "This video cannot be played.", 0xFFFFFF, F_BIG, 2);
-		const char *why = st.error == AV_EUNSUP ? "Its picture or sound is in a format Onyx does not decode yet." : "The file is damaged, or its data could not be read.";
+		text_c (cv, cx - 260, cy - 44, 520, 26, TR ("This video cannot be played."), 0xFFFFFF, F_BIG, 2);
+		const char *why = st.error == AV_EUNSUP ? TR ("Its picture or sound is in a format Onyx does not decode yet.") : TR ("The file is damaged, or its data could not be read.");
 		text_c (cv, cx - 260, cy - 10, 520, 20, why, 0xC8CCD4);
 	}
 	else if (st.ended)
@@ -1964,13 +2012,13 @@ static void draw_watch (Canvas &cv, int W, int H, WatchUi &u)
 		int bx = cx - bw / 2 + 16;
 		bool h = u.hits.n == u.hot;
 		uk_rbox (cv, bx, cy - 18, 168, 36, 8, h ? 0xFFFFFF : 0xE8E8EE, h ? 0xF0F0F4 : 0xD8D8E0);
-		icon (cv, I_REPEAT, bx + 14, cy - 9, 18, 0x202028); text_v (cv, bx + 42, cy - 18, 36, "Watch again", 0x202028, F_UI, 2);
+		icon (cv, I_REPEAT, bx + 14, cy - 9, 18, 0x202028); text_v (cv, bx + 42, cy - 18, 36, TR ("Watch again"), 0x202028, F_UI, 2);
 		u.hits.add (bx, cy - 18, 168, 36, W_AGAIN);
 		if (ne >= 0)
 		{
 			bx += 180; h = u.hits.n == u.hot;
 			uk_rbox (cv, bx, cy - 18, 168, 36, 8, uk_tone (C_ACCENT, h ? 150 : 140), uk_tone (C_ACCENT, h ? 128 : 118));
-			char t[48]; snprintf (t, sizeof t, "Next: S%d E%d", VL->v[ne].season, VL->v[ne].episode);
+			char t[48]; snprintf (t, sizeof t, TR ("Next: S%d E%d"), VL->v[ne].season, VL->v[ne].episode);
 			icon (cv, I_NEXT, bx + 14, cy - 9, 18, 0xFFFFFF); text_v (cv, bx + 42, cy - 18, 36, t, 0xFFFFFF, F_UI, 2);
 			u.hits.add (bx, cy - 18, 168, 36, W_NEXTEP, ne);
 		}
@@ -2146,9 +2194,9 @@ static void video_full_screen ()
 {
 	if (!g_vp.active ()) return;
 	int W, H;
-	unsigned *fb = kapi_fullscreen_begin (&W, &H);
+	unsigned *fb = uk_win_fullscreen_begin (&W, &H);
 	if (!fb) return;
-	kapi_set_key_handler (fs_key); kapi_set_pointer_handler (fs_ptr);
+	uk_win_on_key (fs_key); uk_win_on_pointer (fs_ptr);
 	g_fsKey = 0; g_fsDown = g_fsUp = g_fsWheel = g_fsMoved = 0;
 	Canvas cv; cv.adopt (fb, W, H, W);
 	static WatchUi u; u.hits.clear (); u.hot = -1; u.drag = 0; u.full = true;
@@ -2194,7 +2242,7 @@ static void video_full_screen ()
 		g_thumbs.busy = !g_vp.st.paused;
 		if (dirty) { draw_watch (cv, W, H, u); kapi_present_fb (); dirty = false; }
 	}
-	kapi_fullscreen_end ();
+	uk_win_fullscreen_end ();
 	g_root->attach ();
 	g_vpMoveT = kapi_get_ticks ();
 	refresh_all ();
@@ -2209,24 +2257,24 @@ public:
 	{
 		centre (this);
 		char t[160], k[64];
-		add ("Title", x.title);
-		video_kind_line (x, k, sizeof k); add ("Kind", k);
-		fmt_time (t, sizeof t, x.durMs); add ("Length", t);
-		if (x.w) { snprintf (t, sizeof t, "%d \xC3\x97 %d", x.w, x.h); add ("Picture", t); }
-		snprintf (t, sizeof t, "%s%s", codec_label (x.vcodec), x.playable ? "" : "  (not decoded by Onyx yet)"); add ("Video", t);
-		if (x.acodec[0]) add ("Sound", codec_label (x.acodec));
-		snprintf (t, sizeof t, "%s  \xC2\xB7  %.1f MB", ext_of (x.path), x.size / 1048576.0); add ("File", t);
-		add ("Where", x.path);
-		if (x.posMs > 0) { char a[24]; fmt_time (a, sizeof a, x.posMs); snprintf (t, sizeof t, "left at %s", a); add ("Watched", t); }
-		else if (x.watched) add ("Watched", "to the end");
-		Button *b = new Button (width - 102, height - 44, 86, 30, "Close", dlg_btn); b->tag = 1; addChild (b);
+		add (TR ("Title"), x.title);
+		video_kind_line (x, k, sizeof k); add (TR ("Kind"), k);
+		fmt_time (t, sizeof t, x.durMs); add (TR ("Length"), t);
+		if (x.w) { snprintf (t, sizeof t, "%d \xC3\x97 %d", x.w, x.h); add (TR ("Picture"), t); }
+		snprintf (t, sizeof t, "%s%s", codec_label (x.vcodec), x.playable ? "" : TR ("  (not decoded by Onyx yet)")); add (TR ("Video"), t);
+		if (x.acodec[0]) add (TR ("Sound"), codec_label (x.acodec));
+		snprintf (t, sizeof t, TR ("%s  \xC2\xB7  %.1f MB"), ext_of (x.path), x.size / 1048576.0); add (TR ("File"), t);
+		add (TR ("Where"), x.path);
+		if (x.posMs > 0) { char a[24]; fmt_time (a, sizeof a, x.posMs); snprintf (t, sizeof t, TR ("left at %s"), a); add (TR ("Watched"), t); }
+		else if (x.watched) add (TR ("Watched"), TR ("to the end"));
+		Button *b = new Button (width - 102, height - 44, 86, 30, TR ("Close"), dlg_btn); b->tag = 1; addChild (b);
 	}
 	void add (const char *k, const char *v) { if (!v || !v[0] || m_n >= 12) return; scopy (m_lines[m_n][0], k, 160); scopy (m_lines[m_n][1], v, 160); m_n++; }
 	void onButton (int tag) override { close (tag); }
 	bool onKey (long k) override { if (k == 27 || k == KEY_ENTER) { close (1); return true; } return false; }
 	void onDraw () override
 	{
-		drawBox ("Properties");
+		drawBox (TR ("Properties"));
 		for (int i = 0; i < m_n; i++)
 		{
 			int y = titleH () + 14 + i * 22;
@@ -2240,13 +2288,13 @@ void video_menu (int mx, int my, int vi)
 	if (vi < 0 || vi >= VL->n) return;
 	Video &x = VL->v[vi];
 	PopupMenu m (mx, my);
-	m.add (x.posMs > 0 ? "Resume" : "Play", 1, x.playable, "Enter");
-	m.add ("Play from the Start", 2, x.playable && x.posMs > 0);
+	m.add (x.posMs > 0 ? TR ("Resume") : TR ("Play"), 1, x.playable, TR ("Enter"));
+	m.add (TR ("Play from the Start"), 2, x.playable && x.posMs > 0);
 	m.separator ();
-	m.add (x.watched || x.posMs ? "Mark as Not Watched" : "Mark as Watched", 3);
+	m.add (x.watched || x.posMs ? TR ("Mark as Not Watched") : TR ("Mark as Watched"), 3);
 	m.separator ();
-	m.add ("Properties...", 4);
-	m.add ("Show in the File Viewer", 5);
+	m.add (TR ("Properties..."), 4);
+	m.add (TR ("Show in the File Viewer"), 5);
 	switch (m.run ())
 	{
 	case 1: play_video (vi, false); break;
@@ -2277,27 +2325,29 @@ static void layout_parts ()
 	}
 	g_side->hidden = g_top->hidden = g_content->hidden = g_now->hidden = false;
 	g_top->left = 0; g_top->top = 0; g_top->resizeTo (W, TOP_H);			// (the bar across the window, the sidebar under it)
-	g_side->left = 0; g_side->top = TOP_H; g_side->resizeTo (SIDE_W, H - TOP_H - NOW_H);
+	side_build ();
+	g_side->place (0, TOP_H, SIDE_W, H - TOP_H - NOW_H);			// (whole, a rail, a drawer: what it takes at its side)
+	int sw = g_side->reservedWidth ();
 	g_top->search->left = g_top->width - 300 - (page ().kind == P_ALBUMS ? 0 : -60); g_top->search->top = 12;
-	g_content->left = SIDE_W; g_content->top = TOP_H; g_content->resizeTo (W - SIDE_W, H - TOP_H - NOW_H);
+	g_content->left = sw; g_content->top = TOP_H; g_content->resizeTo (W - sw, H - TOP_H - NOW_H);
 	g_now->left = 0; g_now->top = H - NOW_H; g_now->resizeTo (W, NOW_H);
 }
 static void refresh_all ()
 {
 	if (!g_root) return;
 	layout_parts ();
-	g_side->invalidate (true); g_top->invalidate (true); g_content->invalidate (true); g_now->invalidate (true); g_mini->invalidate (true); g_watch->invalidate (true);
+	g_side->invalidate (true); g_foot->invalidate (true); g_top->invalidate (true); g_content->invalidate (true); g_now->invalidate (true); g_mini->invalidate (true); g_watch->invalidate (true);
 	g_root->invalidate (false);
 }
 static void resize_to (int cw, int ch, int x, int y)
 {
 	int stride = cw;
-	unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+	unsigned *fb = uk_win_resize2 (cw, ch, &stride);
 	if (!fb) return;
 	g_root->canvas.adopt (fb, cw, ch, stride);
 	g_root->width = cw; g_root->height = ch;
 	uk_decorate_window ();
-	kapi_move_window (x, y);
+	uk_win_move (x, y);
 	refresh_all ();
 }
 static void enter_mini (bool on)
@@ -2305,10 +2355,10 @@ static void enter_mini (bool on)
 	if (on == g_miniMode) return;
 	if (on && page ().kind == P_WATCH) go_back_page ();		// (the mini player is the music's)
 	struct kapi_win_geom g;
-	if (kapi_win_geometry (&g) != 0) return;
+	if (uk_win_geometry (&g) != 0) return;
 	if (on)
 	{
-		if (g_root->maximised ()) g_root->maximise (false), kapi_win_geometry (&g);
+		if (g_root->maximised ()) g_root->maximise (false), uk_win_geometry (&g);
 		g_restore[0] = g.x; g_restore[1] = g.y; g_restore[2] = g.cw; g_restore[3] = g.ch;
 		int fw = g.w - g.cw, fh_ = g.h - g.ch, cw = 330, ch = 92;
 		g_miniMode = true;
@@ -2392,8 +2442,9 @@ class MediaRoot : public Root
 {
 public:
 	int lastSec, lastState, ended, errs; unsigned lastAnim, lastSide; char lastSearch[128];
-	MediaRoot (int w, int h) : Root (w, h, "Media Player"), lastSec (-1), lastState (-1), ended (0), errs (0), lastAnim (0), lastSide (0) { lastSearch[0] = 0; }
+	MediaRoot (int w, int h) : Root (w, h, TR ("Media Player")), lastSec (-1), lastState (-1), ended (0), errs (0), lastAnim (0), lastSide (0) { lastSearch[0] = 0; }
 	void onResized () override { refresh_all (); }
+	void onSizeClass (int) override { refresh_all (); }
 	void onTick () override
 	{
 		g_tick = kapi_get_ticks ();
@@ -2410,7 +2461,7 @@ public:
 			g_thumbs.busy = !g_vp.st.paused;
 		}
 		if (g_player.endedGen != ended) { ended = g_player.endedGen; play_next (false); }
-		if (g_player.errGen != errs) { errs = g_player.errGen; notify ("Media Player", g_player.err); g_playing = g_player.state == PS_STOPPED && g_playing >= 0 ? g_playing : g_playing; refresh_all (); }
+		if (g_player.errGen != errs) { errs = g_player.errGen; notify (TR ("Media Player"), g_player.err); g_playing = g_player.state == PS_STOPPED && g_playing >= 0 ? g_playing : g_playing; refresh_all (); }
 		int sec = (int) (g_player.posMs / 1000);
 		if (sec != lastSec || g_player.state != lastState)
 		{
@@ -2425,7 +2476,7 @@ public:
 		bool roll = s && s->fmt == FMT_MIDI && (page ().kind == P_NOW || (page ().kind == P_ALBUM && page ().arg == s->alb && g_playing >= 0));
 		unsigned every = roll ? 3 : 20;
 		if (playing && g_tick - lastAnim >= every && !g_miniMode) { lastAnim = g_tick; g_content->invalidate (true); }
-		if (g_scan && g_tick - lastSide >= 50) { lastSide = g_tick; g_side->invalidate (true); if (page ().kind == P_WELCOME) g_content->invalidate (true); }
+		if (g_scan && g_tick - lastSide >= 50) { lastSide = g_tick; g_foot->invalidate (true); if (page ().kind == P_WELCOME) g_content->invalidate (true); }
 		// the search
 		const char *q = g_top->search->text;
 		if (strcmp (q, lastSearch))
@@ -2493,7 +2544,7 @@ void open_file (const char *p)
 		if (vi < 0)
 		{
 			Video &x = VL->add ();
-			if (!probe_video (p, &x)) { VL->n--; uk_messagebox ("Media Player", "This file is not a video Media Player\ncan read.", MB_OK); return; }
+			if (!probe_video (p, &x)) { VL->n--; uk_messagebox (TR ("Media Player"), TR ("This file is not a video Media Player\ncan read."), MB_OK); return; }
 			char t[200]; video_names (p, t, sizeof t, &x.kind, &x.season, &x.episode);
 			if (x.kind < 0) x.kind = x.durMs >= 40 * 60000 ? VK_FILM : VK_CLIP;
 			x.path = sdup (p); x.title = sdup (t); x.ext = true; x.added = now_stamp ();
@@ -2509,7 +2560,7 @@ void open_file (const char *p)
 		IntList l; for (int i = 0; i < pl.n; i++) { int id = L->find (pl.paths[i]); if (id >= 0) l.push (id); free (pl.paths[i]); }
 		free (pl.paths);
 		if (l.n) play_list (l, 0, false);
-		else uk_messagebox ("Media Player", "None of this playlist's songs is in the library (Folders to Watch...).", MB_OK);
+		else uk_messagebox (TR ("Media Player"), TR ("None of this playlist's songs is in the library (Folders to Watch...)."), MB_OK);
 		return;
 	}
 	int id = L ? L->find (p) : -1;
@@ -2521,7 +2572,7 @@ void open_file (const char *p)
 		return;
 	}
 	Tags t;
-	if (!read_tags (p, &t)) { uk_messagebox ("Media Player", "This file cannot be played (MP3, OGG,\nFLAC, WAV, MIDI and FM songs are; MP4,\nMKV, WebM, AVI, WMV... videos).", MB_OK); return; }
+	if (!read_tags (p, &t)) { uk_messagebox (TR ("Media Player"), TR ("This file cannot be played (MP3, OGG,\nFLAC, WAV, MIDI and FM songs are; MP4,\nMKV, WebM, AVI, WMV... videos)."), MB_OK); return; }
 	int k = g_next < 16 ? g_next++ : 15;
 	Song &x = g_ext[k];
 	if (x.path) { free (x.path); free (x.title); free (x.artist); free (x.albumArtist); free (x.album); free (x.genre); free (x.folderCover); }
@@ -2536,6 +2587,7 @@ int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);
 	faces_open ();
+	uk_lang_init ();
 	load_settings ();
 	ak_soundfont_prefer (g_sfPath);			// (the MIDI files: AudioKit plays them)
 	kapi_mkdir (LIB_DIR);
@@ -2553,7 +2605,11 @@ int main (void)
 	root.setResizable (true);
 	root.setBg (C_BG);
 
-	g_side = new Sidebar (0, TOP_H, SIDE_W, 640 - TOP_H - NOW_H); root.addChild (g_side);
+	g_side = new SidePanel (0, TOP_H, SIDE_W, 640 - TOP_H - NOW_H, UK_SP_LEFT, UK_SP_NAVIGATION);
+	g_side->setIconFn (sb_icon); g_side->setFaces (0, g_face[F_SMALL]);
+	g_side->setFooter (g_foot = new SideFoot, 64);
+	g_side->onSelect = side_chosen;
+	g_side->onPresentation = [] (SidePanel &, int) { refresh_all (); };
 	g_top = new TopBar (0, 0, 1000, TOP_H); root.addChild (g_top);
 	{	// the search field: the one with a placeholder
 		g_top->removeChild (g_top->search); delete g_top->search;
@@ -2561,6 +2617,7 @@ int main (void)
 	}
 	g_content = new Content (SIDE_W, TOP_H, 1000 - SIDE_W, 640 - TOP_H - NOW_H); root.addChild (g_content);
 	g_now = new NowBar (0, 640 - NOW_H, 1000, NOW_H); root.addChild (g_now);
+	root.addChild (g_side);				// (over the content: a rail's labels, a drawer and its tab)
 	g_mini = new MiniView (0, 0, 330, 92); g_mini->hidden = true; root.addChild (g_mini);
 	g_watch = new WatchView (0, 0, 1000, 640); g_watch->hidden = true; root.addChild (g_watch);
 
@@ -2569,36 +2626,36 @@ int main (void)
 	g_player.volume = g_volume; g_player.start ();
 
 	static Menu menu;
-	menu.menu ("File");
-	menu.item ("Open a File...", "^O", UK_CTRL ('O'), m_open);
-	menu.item ("Open a Video...", "", 0, m_open_video);
+	menu.menu (TR ("File"));
+	menu.item (TR ("Open a File..."), "^O", UK_CTRL ('O'), m_open);
+	menu.item (TR ("Open a Video..."), "", 0, m_open_video);
 	menu.separator ();
-	menu.item ("Folders to Watch...", "", 0, m_folders);
-	menu.item ("Look for New Songs", "", 0, m_rescan);
+	menu.item (TR ("Folders to Watch..."), "", 0, m_folders);
+	menu.item (TR ("Look for New Songs"), "", 0, m_rescan);
 	menu.separator ();
-	menu.item ("New Playlist...", "", 0, m_newpl);
-	menu.menu ("Play");
-	menu.item ("Play / Pause", "^P", UK_CTRL ('P'), m_play);
-	menu.item ("Next", "^F", UK_CTRL ('F'), m_next);
-	menu.item ("Previous", "^B", UK_CTRL ('B'), m_prev);
+	menu.item (TR ("New Playlist..."), "", 0, m_newpl);
+	menu.menu (TR ("Play"));
+	menu.item (TR ("Play / Pause"), "^P", UK_CTRL ('P'), m_play);
+	menu.item (TR ("Next"), "^F", UK_CTRL ('F'), m_next);
+	menu.item (TR ("Previous"), "^B", UK_CTRL ('B'), m_prev);
 	menu.separator ();
-	menu.item ("Shuffle", "^S", UK_CTRL ('S'), m_shuffle);
-	menu.item ("Repeat (all, one, off)", "^T", UK_CTRL ('T'), m_repeat);
+	menu.item (TR ("Shuffle"), "^S", UK_CTRL ('S'), m_shuffle);
+	menu.item (TR ("Repeat (all, one, off)"), "^T", UK_CTRL ('T'), m_repeat);
 	menu.separator ();
-	menu.item ("Full Screen (a video)", "F", 0, m_full);
-	menu.menu ("View");
-	menu.item ("Home", "", 0, m_home);
-	menu.item ("Albums", "", 0, m_albums);
-	menu.item ("Artists", "", 0, m_artists);
-	menu.item ("Songs", "", 0, m_songs);
-	menu.item ("Films", "", 0, m_films);
-	menu.item ("Clips and Series", "", 0, m_clips);
-	menu.item ("Now Playing", "^L", UK_CTRL ('L'), m_now);
+	menu.item (TR ("Full Screen (a video)"), "F", 0, m_full);
+	menu.menu (TR ("View"));
+	menu.item (TR ("Home"), "", 0, m_home);
+	menu.item (TR ("Albums"), "", 0, m_albums);
+	menu.item (TR ("Artists"), "", 0, m_artists);
+	menu.item (TR ("Songs"), "", 0, m_songs);
+	menu.item (TR ("Films"), "", 0, m_films);
+	menu.item (TR ("Clips and Series"), "", 0, m_clips);
+	menu.item (TR ("Now Playing"), "^L", UK_CTRL ('L'), m_now);
 	menu.separator ();
-	menu.item ("Search", "^E", UK_CTRL ('E'), m_search);
-	menu.item ("Back", "", 0, m_back);
+	menu.item (TR ("Search"), "^E", UK_CTRL ('E'), m_search);
+	menu.item (TR ("Back"), "", 0, m_back);
 	menu.separator ();
-	menu.item ("Mini Player", "^K", UK_CTRL ('K'), m_mini);
+	menu.item (TR ("Mini Player"), "^K", UK_CTRL ('K'), m_mini);
 	menu.publish ();
 
 	refresh_all ();

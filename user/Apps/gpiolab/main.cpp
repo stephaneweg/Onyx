@@ -872,6 +872,7 @@ public:
 		if ((frames % 30) == 0) invalidate (true);	// (the status line)
 	}
 	bool onKey (long k) override;
+	void onResized () override;
 };
 
 // ---- the Code view: a mini IDE ----------------------------------------------------------------------------------
@@ -1266,6 +1267,31 @@ static void m_sim (void) { use_sim (); Root::current ()->invalidate (true); }
 static void m_release (void) { release_all (); }
 static void m_demo (void) { demo (); refresh_pins (); sync_controls (); redraw_all (); }
 
+// The window resized (a frame dragged, maximised, PocketUI's fill): the header keeps its width (taller), the right
+// column -- the pin's panel, the tabs and their views, or the Code view -- takes the rest; the same sums as main's.
+void LabRoot::onResized ()
+{
+	W = width; H = height;
+	int rx = 436, rw = W - rx - 12;
+	g_header->resizeTo (412, H - BANNER - 44);
+	g_panel->resizeTo (rw, 214);
+	g_modes->resizeTo (rw - 28, 28);
+	Widget *duty = (Widget *) g_slDuty; duty->resizeTo (rw - 274 - ((Widget *) g_lbDuty)->width, 30);
+	((Widget *) g_btPause)->left = W - 12 - 90; ((Widget *) g_btScan)->left = W - 12 - 90;
+	((Widget *) g_btOled)->left = W - 12 - 90 - 8 - 130;
+	int vy = BANNER + 6 + 214 + 12 + 38, vh = H - vy - 40;
+	g_chart->resizeTo (rw, vh); g_i2c->resizeTo (rw, vh); g_edges->resizeTo (rw, vh);
+	((Widget *) g_viewSw)->left = W - 12 - 192;
+	int cy = BANNER + 6, ddx = W - 12 - 190;
+	((Widget *) g_ddEx)->left = ddx;
+	int x = ((Widget *) g_speed)->left, wSlider = ddx - 12 - x; if (wSlider > 120) wSlider = 120; if (wSlider < 60) wSlider = 60;
+	g_speed->resizeTo (wSlider, 30);
+	int conH = 150, ey = cy + 40, eh = H - 40 - ey - conH - 8;
+	g_ed->resizeTo (rw, eh);
+	((Widget *) g_con)->top = ey + eh + 8; ((Widget *) g_con)->resizeTo (rw, conH);
+	invalidate (true);
+}
+
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);
@@ -1422,6 +1448,8 @@ int main (void)
 	g_view = codeArg ? 1 : 0; g_viewSw->selected = g_view;
 	apply_view ();
 	if (g_view == 1) g_ed->setFocus (); else g_header->setFocus ();
+	root.setResizable (true);
+	root.setMinSize (940, 600);
 	if (strstr (args, "--run")) g_runReq = 1;
 	// the loop (Root::run's), with the programs started from it -- never from a callback: their run gives the
 	// window its rounds (pump)

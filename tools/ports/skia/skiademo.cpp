@@ -1,6 +1,6 @@
 // skiademo -- the visual check of Onyx's Skia port on the Pi (tools/ports/skia; docs/04): the scene of
 // scene.h (the one skiatest checks) rendered by Skia's CPU raster back end straight into a window's canvas
-// (raw kapi: kapi_create_window's 0x00RRGGBB buffer wrapped as an N32 SkSurface), with the render time.
+// (raw kapi: uk_win_create's 0x00RRGGBB buffer wrapped as an N32 SkSurface), with the render time.
 // Space draws it again (the time of a second, warm render); Esc or the close box quits.
 //
 //   skiademo [font directory]          default SD:/res/fonts/
@@ -14,6 +14,7 @@
 // SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 #include "scene.h"
 #include "appkit/appkit.h"
+#include "uikit/win.h"		// the window API (UIKit's: uk_win_*)
 #include <stdio.h>
 #include <time.h>
 
@@ -66,19 +67,19 @@ static void on_key (unsigned long, int ev, long key)
 int main (int argc, char **argv)
 {
 	const char *fonts = argc > 1 ? argv[1] : "SD:/res/fonts/";
-	g_fb = kapi_create_window (W, H, "Skia demo");
+	g_fb = uk_win_create (W, H, "Skia demo");
 	if (!g_fb) {
 		fprintf (stderr, "skiademo: no window\n");
 		return 1;
 	}
 	g_mgr = SkFontMgr_New_Onyx (fonts);
-	kapi_set_key_handler (on_key);
+	uk_win_on_key (on_key);
 	while (!g_quit && !kapi_should_exit ()) {
 		kapi_pump_events ();
 		if (g_redraw) {
 			g_redraw = false;
 			render ();
-			kapi_present ();
+			uk_win_present ();
 		}
 		kapi_msleep (30);
 	}

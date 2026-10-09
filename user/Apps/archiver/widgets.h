@@ -119,7 +119,7 @@ public:
 	{
 		Textbox::onDraw ();
 		unsigned dm = uk_mix (C_FIELD_TEXT, C_FIELD, 120);
-		if (!text[0] && !hasFocus) small_v (canvas, 9, 0, height, "Search in the archive", dm);
+		if (!text[0] && !hasFocus) small_v (canvas, 9, 0, height, TR ("Search in the archive"), dm);
 		uk_tool_glyph (canvas, WKT_SEARCH, width - 22, (height - 14) / 2, 14, dm);
 	}
 };
@@ -306,7 +306,7 @@ public:
 		unsigned bg = uk_mix (C_BG, C_FIELD, 120);
 		uk_rbox (canvas, 0, 0, width, height, 6, bg, bg);
 		uk_rline (canvas, 0, 0, width, height, 6, uk_tone (C_BG, 90), 160);
-		small_v (canvas, 12, 6, 18, "Archive", dim_on (bg), 2);
+		small_v (canvas, 12, 6, 18, TR ("Archive"), dim_on (bg), 2);
 		UkFaceScope sc (g_small);
 		for (int i = 0; i < n; i++)
 		{
@@ -381,7 +381,7 @@ public:
 		switch (c)
 		{
 		case COL_SIZE:
-			if (n.dir) { char b[16]; arc::u64_str ((arc::u64) n.files, b, sizeof b); arc::scopy (out, b, cap); arc::scat (out, n.files == 1 ? " file" : " files", cap); }
+			if (n.dir) { char b[16]; arc::u64_str ((arc::u64) n.files, b, sizeof b); arc::scopy (out, b, cap); arc::scat (out, n.files == 1 ? TR (" file") : TR (" files"), cap); }
 			else arc::human_size (n.size, out, cap);
 			break;
 		case COL_PACKED: if (!n.dir) arc::human_size (n.packed, out, cap); break;
@@ -397,7 +397,7 @@ public:
 		unsigned hd = uk_mix (C_FIELD, C_BG, 150);
 		uk_rbox (canvas, 1, 1, width - 2, headH, 4, uk_mix (C_FIELD, C_BG, 90), hd, 255, UK_TL | UK_TR);
 		canvas.fillRect (1, headH + 1, width - 2, 1, uk_tone (C_BG, 110));
-		static const char *title[NCOL] = { "Name", "Size", "Packed", "Ratio", "Modified", "Method" };
+		static const char *title[NCOL] = { TR ("Name"), TR ("Size"), TR ("Packed"), TR ("Ratio"), TR ("Modified"), TR ("Method") };
 		static const int scol[NCOL] = { SORT_NAME, SORT_SIZE, SORT_PACKED, SORT_RATIO, SORT_TIME, SORT_METHOD };
 		for (int c = 0; c < NCOL; c++)
 		{
@@ -429,7 +429,7 @@ public:
 			if (node < 0)
 			{
 				uk_glyph (canvas, WKG_UP, x + 9, y + rowH / 2 - 1, 12, dm);
-				text_v (canvas, x + 26, y, rowH - 2, "..  (parent folder)", dm);
+				text_v (canvas, x + 26, y, rowH - 2, TR ("..  (parent folder)"), dm);
 				continue;
 			}
 			const Node &n = g_model.n[node];
@@ -476,7 +476,7 @@ public:
 			uk_rline (canvas, bx, by, bw, 60, 10, C_ACCENT, 255);
 			uk_rline (canvas, bx + 1, by + 1, bw - 2, 58, 9, C_ACCENT, 140);
 			icon_archive (canvas, bx + 16, by + 13, 34);
-			small_v (canvas, bx + 64, by + 8, 20, "Drop to add to", dim_on (bg));
+			small_v (canvas, bx + 64, by + 8, 20, TR ("Drop to add to"), dim_on (bg));
 			char t[160]; fit (dropText, bw - 80, t, sizeof t, 2);
 			text_v (canvas, bx + 64, by + 28, 22, t, uk_mix (C_ACCENT, 0x000000, 70), 2);
 		}
@@ -625,12 +625,12 @@ public:
 		uk_rbox (canvas, zx, zy, zw, zh, 12, uk_mix (C_FIELD, C_ACCENT, dropHot ? 60 : 22), uk_mix (C_FIELD, C_ACCENT, dropHot ? 70 : 30));
 		dashed (canvas, zx, zy, zw, zh, C_ACCENT);
 		icon_archive (canvas, mx - 30, zy + 18, 60);
-		const char *a = dropHot ? "Drop it here" : "Drop an archive here to open it";
+		const char *a = dropHot ? TR ("Drop it here") : TR ("Drop an archive here to open it");
 		text_v (canvas, mx - uk_tw (a, 2) / 2, zy + 86, 24, a, C_FIELD_TEXT, 2);
-		const char *b = "or files and folders to make a new one";
+		const char *b = TR ("or files and folders to make a new one");
 		small_v (canvas, mx - small_w (b) / 2, zy + 110, 20, b, dim_ink ());
 		bw = 180; bh = 30; by = zy + 144; bx[0] = mx - bw - 8; bx[1] = mx + 8;
-		static const char *lab[2] = { "Open an Archive...", "New Archive..." };
+		static const char *lab[2] = { TR ("Open an Archive..."), TR ("New Archive...") };
 		for (int i = 0; i < 2; i++)
 		{
 			int st = (hot == 100 + i) ? (down == 100 + i ? UK_PRESSED : UK_HOT) : UK_NORMAL;
@@ -641,7 +641,7 @@ public:
 		}
 		// the formats
 		int fy = zy + zh + 28;
-		small_v (canvas, mx - small_w ("FORMATS", 2) / 2, fy, 16, "FORMATS", dim_ink (), 2);
+		small_v (canvas, mx - small_w (TR ("FORMATS"), 2) / 2, fy, 16, TR ("FORMATS"), dim_ink (), 2);
 		// (asked from FileKit: what it reads is listed, what it also writes in green)
 		int nf = arc::formats (); if (nf > 6) nf = 6;
 		int cw[6], tot = 0;
@@ -662,7 +662,7 @@ public:
 		if (nrec)
 		{
 			int lx = mx - 330 < 20 ? 20 : mx - 330, lw = width - 2 * lx;
-			small_v (canvas, lx + 4, ry0, 16, "RECENT", dim_ink (), 2);
+			small_v (canvas, lx + 4, ry0, 16, TR ("RECENT"), dim_ink (), 2);
 			for (int i = 0; i < nrec && ry0 + 22 + i * 38 + 34 < height; i++)
 			{
 				int y = ry0 + 22 + i * 38;

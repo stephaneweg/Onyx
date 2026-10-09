@@ -1,0 +1,31 @@
+# Clock -- the alarms (written by the Clock app, rung by clockd). One [alarm] block an alarm.
+
+[alarm]
+id = 1
+time = 07:00
+label = School
+on = 1
+days = mon tue wed thu fri
+date =
+sound = chimes
+snooze =
+
+[alarm]
+id = 2
+time = 14:30
+label = Medicine
+on = 1
+days =
+date = 20260928
+sound = marimba
+snooze =
+
+[alarm]
+id = 3
+time = 09:00
+label = Gym
+on = 0
+days = sat sun
+date =
+sound = beeps
+snooze =

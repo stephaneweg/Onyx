@@ -1,6 +1,6 @@
 #!/bin/sh
 # tools/tests/desktop_sim/run.sh -- the modernised CDE desktop on the PC, without a Pi:
-#   * the window manager and compositor (Elegant's: user/Servers/elegant/wm/window.cpp) built for the host with
+#   * the window manager and compositor (Elegant's and PocketUI's: user/Servers/common/wm/window.cpp) built for the host with
 #     stand-ins for Circle (kstub/): its checks (wmtest.cpp) and a picture of what it draws;
 #   * uikit apps built for the host against a stand-in kernel (fakekapi.cpp), run through a script
 #     of events, their windows (frame + client) dumped, then laid over the wallpaper (compose.py).
@@ -12,7 +12,7 @@ mkdir -p "$OUT"
 D=tools/tests/desktop_sim
 
 # the kernel: its checks
-g++ -std=gnu++17 -O1 -g -w -I $D/kstub -I user/Servers/elegant/wm -I kernel/include -o "$OUT/wmtest" $D/wmtest.cpp user/Servers/elegant/wm/window.cpp kernel/gui/gimage.cpp
+g++ -std=gnu++17 -O1 -g -w -I $D/kstub -I user/Servers/common/wm -I kernel/include -o "$OUT/wmtest" $D/wmtest.cpp user/Servers/common/wm/window.cpp kernel/gui/gimage.cpp
 "$OUT/wmtest" "$OUT"
 
 # the apps (uikit) on the PC

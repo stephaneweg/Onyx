@@ -376,10 +376,31 @@ public:
 
 // ---- 0: welcome ------------------------------------------------------------------------------------------
 static void choose_lang (int i);
+// (P8) The interface's mode (SystemKit's session.h: desktop, pocket, console), chosen on the welcome page under the
+// features -- proposed from the screen (a small one: pocket). Another one than the session running: "Start Onyx"
+// switches to it (/bin/session switch) instead of starting the desktop's programs.
+static int g_iface;
+static const char *const IFACE_NAME[3] = { TRN ("Desktop"), TRN ("Pocket"), TRN ("Console") };
+static const char *const IFACE_WHAT[3] =
+{
+	TRN ("Windows side by side, the menu bar and the dock: a monitor, a keyboard and a mouse."),
+	TRN ("One app at a time, full screen: a small screen, a handheld."),
+	TRN ("The games first, with a gamepad, on a television."),
+};
 class Welcome : public Widget
 {
 public:
 	Pic ic[4]; int hot; static const int LW = 112, LH = 36, LY = 7;
+	// The interface: a card of three choices at the page's foot, its line of help under it.
+	static const int IW = 124, IH = 32;
+	int ifY () const { return height - 74; }
+	int ifX () const { UkFaceScope sc (g_small); return uk_tw (TR ("Interface")) + 12; }
+	int ifAt (int mx, int my) const
+	{
+		if (mx < ifX () + 4 || my < ifY () + 4 || my >= ifY () + 4 + IH) return -1;
+		int i = (mx - ifX () - 4) / IW;
+		return i < 3 ? i : -1;
+	}
 	Welcome (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1)
 	{ ic[0] = icon ("keyconf"); ic[1] = icon ("wifimenu"); ic[2] = icon ("displayconf"); ic[3] = icon ("theme"); }
 	// The languages: a card at the top right, beside the gem; each one in its own words.
@@ -409,16 +430,32 @@ public:
 		}
 		ftext (canvas, g_hero, 0, 72, 44, TR ("Welcome to Onyx"), ink, 2);
 		int y = fwrap (&canvas, g_lead, 0, 126, width - 30, 23, TR ("Let's get your Raspberry Pi ready. A few choices -- your language, your keyboard, the network, the screen and the look of the desktop -- and you are done. It takes about two minutes; everything can be changed later in the Control Panel."), dim);
-		y += 22;
+		y += 14;
 		static const char *const L[] = { TRN ("Keyboard, country and time zone"), TRN ("Wi-Fi network"), TRN ("Screen resolution"), TRN ("Colours and wallpaper") };
-		for (int i = 0; i < 4; i++, y += 38) { draw_pic (canvas, ic[i], 0, y, 28); uk_text_l (canvas, 42, y, 28, TR (L[i]), ink); }
+		for (int i = 0; i < 4; i++, y += 32) { draw_pic (canvas, ic[i], 0, y, 28); uk_text_l (canvas, 42, y, 28, TR (L[i]), ink); }
+		// the interface
+		int ix = ifX (), iy = ifY ();
+		ftext (canvas, g_small, 0, iy, IH + 8, TR ("Interface"), dim);
+		card (canvas, ix, iy, 8 + 3 * IW, IH + 8);
+		for (int i = 0; i < 3; i++)
+		{
+			int x = ix + 4 + i * IW; bool s = i == g_iface;
+			if (s) sel_row (canvas, x, iy + 4, IW, IH);
+			else if (i + 100 == hot) { unsigned f = uk_mix (0x00FFFFFF, C_BG, 110); uk_rbox (canvas, x, iy + 4, IW, IH, 6, f, f); }
+			uk_radio_mark (canvas, x + 10, iy + 4 + (IH - 16) / 2, 16, s, UK_NORMAL);
+			uk_text_l (canvas, x + 34, iy + 4, IH, TR (IFACE_NAME[i]), ink, s ? 2 : 0);
+		}
+		ftext (canvas, g_small, 0, iy + IH + 12, 18, TR (IFACE_WHAT[g_iface]), dim);
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
 		int h = mx < 0 ? -1 : langAt (mx, my);
+		int f = mx < 0 || h >= 0 ? -1 : ifAt (mx, my);
+		if (f >= 0) h = f + 100;				// (100..: the interface's choices)
 		if (h != hot) { hot = h; invalidate (true); }
 		if (mx < 0) return false;
-		if (bl && !pressed && h >= 0) { choose_lang (h); invalidate (true); }
+		if (bl && !pressed && f >= 0) { g_iface = f; invalidate (true); }
+		else if (bl && !pressed && h >= 0) { choose_lang (h); invalidate (true); }
 		pressed = bl; return true;
 	}
 };
@@ -1245,7 +1282,7 @@ static void apply_look ()
 	if (g_demo) return;
 	static char buf[1400];
 	int p = uk_theme_write (t, buf, sizeof buf - 40);
-	p += snprintf (buf + p, sizeof buf - p, "wheelspeed=%d\n", kapi_get_wheel_speed ());
+	p += snprintf (buf + p, sizeof buf - p, "wheelspeed=%d\n", uk_win_wheel_get ());
 	kapi_save_file ("SD:/etc/theme.txt", buf, (unsigned) p);
 	Wallpaper wp; wp_load (wp);
 	wp.c1 = tint1 (); wp.c2 = tint2 ();
@@ -1300,6 +1337,9 @@ static void finish ()
 		if (g_services[k] && !running (SERVICES[k])) run_line (SERVICES[k]);
 		if (!g_services[k] && was[k]) stop_process (SERVICES[k]);
 	}
+	// (P8) another interface than the session running: switched to (the session's tool ends this session's programs,
+	// writes "shell =", has the kernel start the other server and runs its file) -- the desktop's lines are not started.
+	if (g_iface != session_mode () && session_switch_start (g_iface, SESSION_NO_ASK | SESSION_FORCE, 0) != 0) kapi_exit (0);
 	for (char *l = strtok (held, "\n"); l; l = strtok (0, "\n")) run_line (l);	// the menu bar, the dock...
 	kapi_exit (0);
 }
@@ -1367,6 +1407,12 @@ int main (void)
 	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets)
 	uk_lang_init ();				// the words in the system's language (before the pages)
 	g_lang = locale_language_index ();
+	g_iface = session_mode ();
+	{	// a small screen (under 1024 x 600): the pocket interface proposed
+		int sw = 0, sh = 0;
+		kapi_screen_size (&sw, &sh);
+		if (g_iface == SESSION_DESKTOP && sw > 0 && (sw < 1024 || sh < 600)) g_iface = SESSION_POCKET;
+	}
 	g_h1 = face ("DejaVu Sans", 22); g_hero = face ("DejaVu Sans", 32); g_lead = face ("DejaVu Sans", 15); g_small = face ("DejaVu Sans", 11);
 	char *a = g_args; int na = kapi_get_args (a, sizeof g_args); a[na > 0 && na < 32 ? na : 0] = 0;
 	int demo = -1; char variant = 0;
@@ -1409,7 +1455,7 @@ int main (void)
 	g_root = &root;
 	{
 		struct kapi_win_geom g;
-		if (kapi_win_geometry (&g) == 0) kapi_move_window ((sw - g.w) / 2, (sh - g.h) / 2);
+		if (uk_win_geometry (&g) == 0) uk_win_move ((sw - g.w) / 2, (sh - g.h) / 2);
 	}
 	root.setBg (C_FIELD);
 

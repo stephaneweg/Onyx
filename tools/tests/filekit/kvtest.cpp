@@ -202,6 +202,72 @@ static void test_roundtrip_pipes ()
 	fk_kv_free (back); fk_kv_free (kv);
 }
 
+// Blocks of the same name written (AutoDev round 6: the Clock's [alarm] list): fk_kv_block_new / _get / _set
+static void test_blocks ()
+{
+	fk_kv *kv = fk_kv_new (0);
+	EQI (fk_kv_block_new (kv, "alarm"), 1);
+	EQI (fk_kv_block_new (kv, "alarm"), 2);
+	EQI (fk_kv_blocks (kv), 2);
+	EQS (fk_kv_block_name (kv, 2), "alarm");
+	EQI (fk_kv_block_line (kv, 2), 0);					// (made, not read)
+	CHECK (fk_kv_block_set (kv, 1, "id", "1") == 0);
+	CHECK (fk_kv_block_set (kv, 1, "time", "07:00") == 0);
+	CHECK (fk_kv_block_set (kv, 2, "id", "2") == 0);
+	CHECK (fk_kv_block_set (kv, 2, "label", "Medicine") == 0);		// a key in the 2nd block only
+	CHECK (fk_kv_block_set (kv, 1, "label", "School") == 0);		// added at the 1st block's end, not after the 2nd's
+	CHECK (fk_kv_block_set (kv, 2, "time", "14:30") == 0);
+	CHECK (fk_kv_block_set (kv, 1, "time", "07:05") == 0);			// replaced in its place
+	EQS (fk_kv_block_get (kv, 1, "time", "-"), "07:05");
+	EQS (fk_kv_block_get (kv, 2, "time", "-"), "14:30");
+	EQS (fk_kv_block_get (kv, 2, "label", "-"), "Medicine");
+	EQS (fk_kv_block_get (kv, 1, "none", "-"), "-");
+	EQS (fk_kv_block_get (kv, 0, "time", "-"), "-");			// block 0 (before any header): def
+	EQS (fk_kv_block_get (kv, 3, "time", "-"), "-");			// out of range
+	EQS (fk_kv_block_get (kv, -1, "time", "-"), "-");
+	CHECK (fk_kv_block_get (kv, 1, "none", 0) == 0);
+	EQS (fk_kv_get (kv, "alarm", "label", "-"), "School");		// (fk_kv_get: the first block)
+	EQI (fk_kv_block_set (kv, 0, "x", "1"), -1);				// no block 0 / 3, no key
+	EQI (fk_kv_block_set (kv, 3, "x", "1"), -1);
+	EQI (fk_kv_block_set (kv, 1, "", "1"), -1);
+	EQI (fk_kv_block_set (kv, 1, 0, "1"), -1);
+	EQI (fk_kv_block_set (0, 1, "x", "1"), -1);
+	EQI (fk_kv_block_new (0, "x"), -1);
+	EQS (fk_kv_block_get (0, 1, "x", "d"), "d");
+	EQS (fk_kv_text (kv, "# alarms", 0),
+	     "# alarms\n\n[alarm]\nid = 1\ntime = 07:05\nlabel = School\n\n[alarm]\nid = 2\nlabel = Medicine\ntime = 14:30\n");
+	fk_kv *back = fk_kv_parse (fk_kv_text (kv, 0, 0), 0);			// written then parsed back: equal
+	CHECK (same_entries (kv, back));
+	EQI (fk_kv_blocks (back), 2);
+	EQS (fk_kv_block_get (back, 2, "label", "-"), "Medicine");
+	EQS (fk_kv_block_get (back, 1, "label", "-"), "School");
+	// a document read: a key set in its 2nd [level] (between two others), an empty value, the 1st untouched
+	fk_kv_free (back);
+	back = fk_kv_parse ("top = 1\n[level]\nid = a\n[level]\nid = b\n[end]\nk = v\n", 0);
+	EQI (fk_kv_blocks (back), 3);
+	CHECK (fk_kv_block_set (back, 2, "best", "") == 0);
+	CHECK (fk_kv_block_set (back, 2, "id", "B") == 0);
+	EQS (fk_kv_text (back, 0, 0), "top = 1\n\n[level]\nid = a\n\n[level]\nid = B\nbest =\n\n[end]\nk = v\n");
+	EQS (fk_kv_block_get (back, 1, "id", "-"), "a");
+	EQI (fk_kv_line (back, 1), 3);						// (the lines read kept)
+	// a new block after the ones read, then a key: at the end
+	EQI (fk_kv_block_new (back, "level"), 4);
+	CHECK (fk_kv_block_set (back, 4, "id", "c") == 0);
+	fk_kv *again = fk_kv_parse (fk_kv_text (back, 0, 0), 0);
+	CHECK (same_entries (back, again));
+	EQS (fk_kv_block_get (again, 4, "id", "-"), "c");
+	EQS (fk_kv_block_name (again, 4), "level");
+	// with ESCAPES: a value with a new line in the 2nd block
+	fk_kv *esc = fk_kv_new (FK_KV_ESCAPES);
+	fk_kv_block_new (esc, "n"); int b2 = fk_kv_block_new (esc, "n");
+	CHECK (fk_kv_block_set (esc, b2, "text", "a\nb") == 0);
+	fk_kv *eback = fk_kv_parse (fk_kv_text (esc, 0, 0), FK_KV_ESCAPES);
+	EQS (fk_kv_block_get (eback, 2, "text", "-"), "a\nb");
+	EQS (fk_kv_block_get (eback, 1, "text", "-"), "-");
+	fk_kv_free (eback); fk_kv_free (esc);
+	fk_kv_free (again); fk_kv_free (back); fk_kv_free (kv);
+}
+
 #ifndef KV_NO_FILES
 static void test_files ()
 {
@@ -246,6 +312,7 @@ int main ()
 	test_escapes ();
 	test_changes ();
 	test_roundtrip_pipes ();
+	test_blocks ();
 #ifndef KV_NO_FILES
 	test_files ();
 #endif

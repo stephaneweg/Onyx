@@ -21,7 +21,7 @@ FileKit is files and folders: whole files read and written, trees copied, moved 
 |---|---|
 | Include | `#include "filekit/filekit.h"` |
 | Link | `lib/filekit.imp.a` |
-| Library | `SD:/lib/filekit.so` — 96 entries in its table (`user/Kits/filekit/filekit.abi`, append-only) |
+| Library | `SD:/lib/filekit.so` — 99 entries in its table (`user/Kits/filekit/filekit.abi`, append-only) |
 | Sources | `user/Kits/filekit/` |
 
 ## Using it
@@ -96,6 +96,17 @@ fk_kv_free (kv);
 A level pack (`FK_KV_PIPES`): many `[level]` blocks (`fk_kv_block`, `fk_kv_blocks`, `fk_kv_block_name`), a value
 going on over the `|` lines that follow, and the line of each value (`fk_kv_line`) for an error message. Circuits
 reads its packs and its `progress.ini` so.
+
+Blocks of the same name written (the Clock's `[alarm]` list; `fk_kv_set` reaches only a name's first block): a new
+block made at the end, its keys set and read by its number —
+
+```c
+fk_kv *kv = fk_kv_new (0);
+int b = fk_kv_block_new (kv, "alarm");                      // its number (1-based), -1 no memory
+fk_kv_block_set (kv, b, "time", "07:00");                   // replaced in block b, else added at its end
+const char *t = fk_kv_block_get (kv, b, "time", "");        // block b's value ("" if none)
+fk_kv_save (kv, "SD:/apps/clock.app/alarms.txt", "# Clock -- the alarms");
+```
 
 ## Index
 
@@ -197,6 +208,9 @@ Everything the headers declare, in their order — the details are in each heade
 | `fk_kv_blocks` | the "[...]" headers read / made | `kvtext.h` |
 | `fk_kv_block_name` | block b's name, "level" (b 1-based; "" for 0 / out of range) | `kvtext.h` |
 | `fk_kv_block_line` | its header's line (0: made, not read) | `kvtext.h` |
+| `fk_kv_block_new` | Blocks of the same name, each its own (a list of [alarm]s, a pack's [level]s) | `kvtext.h` |
+| `fk_kv_block_get` | block b's value of key, def if none (b 0 / out of range: def) | `kvtext.h` |
+| `fk_kv_block_set` | in block b: replaced, else added at its end -> 0, -1 (no memory, no key, no block b) | `kvtext.h` |
 | `fk_kv_get` | The value of the first entry with that section and key, def if none (section "" or 0 = before any header, case-sensitive). | `kvtext.h` |
 | `fk_kv_set` | The first match's value replaced, or a new entry at the end of that section's first block -> 0, -1 (no memory, no key). | `kvtext.h` |
 | `fk_kv_remove` | the first match removed -> 1, 0 none | `kvtext.h` |
@@ -582,6 +596,14 @@ int fk_kv_line (const fk_kv *kv, int i);
 int fk_kv_blocks (const fk_kv *kv);				// the "[...]" headers read / made
 const char *fk_kv_block_name (const fk_kv *kv, int b);	// block b's name, "level" (b 1-based; "" for 0 / out of range)
 int fk_kv_block_line (const fk_kv *kv, int b);		// its header's line (0: made, not read)
+```
+
+Blocks of the same name, each its own (a list of [alarm]s, a pack's [level]s): a new "[name]" block made at the end -> its number (1-based), -1 no memory. fk_kv_set reaches only a name's first block; these, any block by number.
+
+```cpp
+int fk_kv_block_new (fk_kv *kv, const char *name);
+const char *fk_kv_block_get (const fk_kv *kv, int b, const char *key, const char *def);	// block b's value of key, def if none (b 0 / out of range: def)
+int fk_kv_block_set (fk_kv *kv, int b, const char *key, const char *value);	// in block b: replaced, else added at its end -> 0, -1 (no memory, no key, no block b)
 ```
 
 ### looking up and changing

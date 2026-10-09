@@ -67,6 +67,11 @@ FK_KV_API int fk_kv_line (const fk_kv *kv, int i);
 FK_KV_API int fk_kv_blocks (const fk_kv *kv);				// the "[...]" headers read / made
 FK_KV_API const char *fk_kv_block_name (const fk_kv *kv, int b);	// block b's name, "level" (b 1-based; "" for 0 / out of range)
 FK_KV_API int fk_kv_block_line (const fk_kv *kv, int b);		// its header's line (0: made, not read)
+// Blocks of the same name, each its own (a list of [alarm]s, a pack's [level]s): a new "[name]" block made at the end
+// -> its number (1-based), -1 no memory. fk_kv_set reaches only a name's first block; these, any block by number.
+FK_KV_API int fk_kv_block_new (fk_kv *kv, const char *name);
+FK_KV_API const char *fk_kv_block_get (const fk_kv *kv, int b, const char *key, const char *def);	// block b's value of key, def if none (b 0 / out of range: def)
+FK_KV_API int fk_kv_block_set (fk_kv *kv, int b, const char *key, const char *value);	// in block b: replaced, else added at its end -> 0, -1 (no memory, no key, no block b)
 
 // ---- looking up and changing ------------------------------------------------------------------
 // The value of the first entry with that section and key, def if none (section "" or 0 = before any header,

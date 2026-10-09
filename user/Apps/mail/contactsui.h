@@ -25,17 +25,17 @@ public:
 		int y = titleH () + 14;
 		for (int i = 0; i < 8; i++) { t[i] = new Textbox (PAD + 130, y + i * 38, W - 2 * PAD - 130, 30, v[i]); t[i]->maxLen = 290; addChild (t[i]); }
 		notes = new Textarea (PAD + 130, y + 8 * 38, W - 2 * PAD - 130, 70, 600); notes->setContent (c.notes); addChild (notes);
-		Button *b = new Button (W - PAD - 220, H - 48, 100, 32, "Cancel", [] (Widget &w) { ((Modal *) w.parent)->close (0); }); addChild (b);
-		b = new Button (W - PAD - 110, H - 48, 110, 32, "Keep", [] (Widget &w) { ((Modal *) w.parent)->close (1); }); addChild (b);
+		Button *b = new Button (W - PAD - 220, H - 48, 100, 32, TR ("Cancel"), [] (Widget &w) { ((Modal *) w.parent)->close (0); }); addChild (b);
+		b = new Button (W - PAD - 110, H - 48, 110, 32, TR ("Keep"), [] (Widget &w) { ((Modal *) w.parent)->close (1); }); addChild (b);
 		t[0]->setFocus ();
 	}
 	void onDraw () override
 	{
-		drawBox (c.name[0] ? c.name : "A new contact");
-		static const char *const L[9] = { "Name", "E-mail", "Other e-mail", "Phone", "Mobile", "Company", "Address", "Birthday", "Notes" };
+		drawBox (c.name[0] ? c.name : TR ("A new contact"));
+		static const char *const L[9] = { TR ("Name"), TR ("E-mail"), TR ("Other e-mail"), TR ("Phone"), TR ("Mobile"), TR ("Company"), TR ("Address"), TR ("Birthday"), TR ("Notes") };
 		int y = titleH () + 14;
 		for (int i = 0; i < 9; i++) text_v (canvas, PAD, y + i * 38, 30, L[i], C_TEXT);
-		text (canvas, PAD, y + 7 * 38 + 30, "(dd/mm/yyyy)", uk_mix (C_BG, C_TEXT, 140), F_TINY);
+		text (canvas, PAD, y + 7 * 38 + 30, TR ("(dd/mm/yyyy)"), uk_mix (C_BG, C_TEXT, 140), F_TINY);
 	}
 	bool get (Contact &out)
 	{
@@ -61,8 +61,8 @@ public:
 	ContactsPane (int l, int t, int w, int h) : Widget (l, t, w, h), n (0), sel (-1), sy (0)
 	{
 		hidden = true; lastQ[0] = 0;
-		search = new HintBox (12, 12, LW - 24 - 64, 30, "Search the contacts"); addChild (search);
-		bNew = new Button (LW - 70, 12, 58, 30, "New", [] (Widget &) { ((ContactsPane *) g_contacts)->add_new (); }); addChild (bNew);
+		search = new HintBox (12, 12, LW - 24 - 64, 30, TR ("Search the contacts")); addChild (search);
+		bNew = new Button (LW - 70, 12, 58, 30, TR ("New"), [] (Widget &) { ((ContactsPane *) g_contacts)->add_new (); }); addChild (bNew);
 		reload ();
 	}
 	unsigned bgColor () override { return C_FIELD; }
@@ -107,14 +107,14 @@ public:
 			hits.add (0, y, LW, 46, H_ROW, i);
 			y += 48;
 		}
-		if (!n) text_c (canvas, 0, 80, LW, 30, g_m.contacts.count () ? "Nobody by that name." : "No contacts yet.", col_dim ());
+		if (!n) text_c (canvas, 0, 80, LW, 30, g_m.contacts.count () ? TR ("Nobody by that name.") : TR ("No contacts yet."), col_dim ());
 		// the card
 		int x = LW + 30, W = width - x - 30;
 		if (sel < 0 || sel >= n)
 		{
-			text_c (canvas, LW, height / 2 - 30, width - LW, 24, "Contacts are kept in SD:/Documents/Contacts.card", col_dim ());
-			text_c (canvas, LW, height / 2, width - LW, 24, "Cardfile opens the same file.", col_dim (), F_SMALL);
-			const char *l = "Open in Cardfile"; int lw = tw (l, F_UI, 1);
+			text_c (canvas, LW, height / 2 - 30, width - LW, 24, TR ("Contacts are kept in SD:/Documents/Contacts.card"), col_dim ());
+			text_c (canvas, LW, height / 2, width - LW, 24, TR ("Cardfile opens the same file."), col_dim (), F_SMALL);
+			const char *l = TR ("Open in Cardfile"); int lw = tw (l, F_UI, 1);
 			text_c (canvas, LW, height / 2 + 30, width - LW, 24, l, C_ACCENT, F_UI, 1);
 			hits.add (LW + (width - LW - lw) / 2, height / 2 + 30, lw, 24, H_CARDFILE);
 			return;
@@ -126,7 +126,7 @@ public:
 		if (c.company[0]) text (canvas, x + 90, cy + 44, c.company, col_dim (), F_MID, 0, W - 90);
 		cy += 96;
 		// the buttons
-		static const char *const B[4] = { "Write", "Edit", "Delete", "Open in Cardfile" };
+		static const char *const B[4] = { TR ("Write"), TR ("Edit"), TR ("Delete"), TR ("Open in Cardfile") };
 		static const int BK[4] = { H_WRITE, H_EDIT, H_DELETE, H_CARDFILE };
 		int bx = x;
 		for (int k = 0; k < 4; k++)
@@ -139,7 +139,7 @@ public:
 		}
 		cy += 52;
 		// the fields
-		const char *L[9] = { "E-mail", "Other e-mail", "Phone", "Mobile", "Company", "Address", "Birthday", "Notes", 0 };
+		const char *L[9] = { TR ("E-mail"), TR ("Other e-mail"), TR ("Phone"), TR ("Mobile"), TR ("Company"), TR ("Address"), TR ("Birthday"), TR ("Notes"), 0 };
 		const char *V[8] = { c.email, c.email2, c.phone, c.mobile, c.company, c.address, c.birthday, c.notes };
 		for (int k = 0; k < 8; k++)
 		{
@@ -185,8 +185,8 @@ public:
 		case H_EDIT: { ContactBox b (c); Contact out = c; if (b.get (out)) { g_m.contacts.set (order[sel], out); g_m.contacts.save (); reload (); } break; }
 		case H_DELETE:
 		{
-			char q[300]; snprintf (q, sizeof q, "Delete %s from the contacts?", c.name[0] ? c.name : c.email);
-			if (uk_messagebox ("Mail", q, MB_YESNO) == 1) { g_m.contacts.remove (order[sel]); g_m.contacts.save (); reload (); }
+			char q[300]; snprintf (q, sizeof q, TR ("Delete %s from the contacts?"), c.name[0] ? c.name : c.email);
+			if (uk_messagebox (TR ("Mail"), q, MB_YESNO) == 1) { g_m.contacts.remove (order[sel]); g_m.contacts.save (); reload (); }
 			break;
 		}
 		case H_CARDFILE: kapi_exec ("SD:apps/cardfile.app/main", "SD:/Documents/Contacts.card"); break;

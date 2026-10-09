@@ -3,6 +3,7 @@
 // calendar).
 //
 #include "uikit/calendar.h"
+#include "uikit/lift.h"		// the open pop-up over everything
 #include "uikit/lang.h"
 
 namespace uikit {
@@ -174,6 +175,7 @@ void DatePicker::setOpen (bool o)
 	int w = width < CAL_W ? CAL_W : width;
 	if (o)
 	{
+		uk_lift (this);						// out of its parents: only the window clips it now
 		resizeTo (w, rowH + 2 + CAL_H);
 		if (!cal)
 		{
@@ -192,6 +194,7 @@ void DatePicker::setOpen (bool o)
 		// handleMouse, which still runs -- and ours remembers it as the last one handled)
 		if (cal) removeChild (cal);
 		resizeTo (origW, rowH);
+		uk_unlift (this);					// back where it was
 		setFocus ();
 	}
 	invalidate (true);

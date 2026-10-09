@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The desktop — Onyx</title>
+<meta name="description" content="Menu bar, dock, workspaces, themes, files and updates: a tour of the Onyx desktop.">
+<link rel="alternate" hreflang="fr" href="../../fr/bureau/">
+<link rel="alternate" hreflang="en" href="../../en/desktop/">
+<link rel="alternate" hreflang="x-default" href="../../en/desktop/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Onyx">
+<meta property="og:title" content="The desktop — Onyx">
+<meta property="og:description" content="Menu bar, dock, workspaces, themes, files and updates: a tour of the Onyx desktop.">
+<meta property="og:locale" content="en_GB">
+<meta name="theme-color" content="#0B0B0B">
+<link rel="icon" href="../../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../../apple-touch-icon.png">
+<link rel="stylesheet" href="../../assets/css/tokens.css">
+<link rel="stylesheet" href="../../assets/css/site.css">
+<script>
+/* Before the first paint: dark unless the visitor chose light (no flash). ?theme=light forces it (a link, a test). */
+(function (d) {
+  d.classList.add('js');
+  /* If site.js never runs to its end (not loaded, an error), nothing may stay hidden: back to the page without script. */
+  window.addEventListener('load', function () { if (!window.onyxReady) d.classList.remove('js'); });
+  try { if (/[?&]theme=light/.test(location.search) || localStorage.getItem('onyx-theme') === 'light') d.setAttribute('data-theme', 'light'); } catch (e) {}
+})(document.documentElement);
+</script>
+</head>
+<body class="page-desktop">
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="container container--wide bar">
+    <a class="brand" href="../../en/" aria-label="Onyx, home"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 13 28.5 9v5.5L16 19Z" style="fill:var(--accent)"/><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/><path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/></g></svg> Onyx</a>
+    <nav class="nav" id="nav" aria-label="Main">
+      <a href="../../en/apps/">Apps</a>
+      <a href="../../en/desktop/" aria-current="page">Desktop</a>
+      <a class="nav-cta" href="../../en/get/">Get Onyx</a>
+    </nav>
+    <div class="header-end">
+      <div class="lang" role="group" aria-label="Language"><a href="../../fr/bureau/" lang="fr" hreflang="fr">FR</a><a href="../../en/desktop/" lang="en" hreflang="en" aria-current="true">EN</a></div>
+      <button class="theme-btn" type="button" aria-label="Light mode" aria-pressed="false">
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M5.3 18.7l1.5-1.5M17.2 6.8l1.5-1.5"/></svg>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.2A8 8 0 0 1 9.8 4a8 8 0 1 0 10.2 10.2Z"/></svg>
+      </button>
+      <a class="btn btn--ghost btn--small header-cta" href="../../en/get/">Get Onyx</a>
+      <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav"><span></span></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+<section class="hero hero--sub hero--media">
+  <div class="container center">
+    <h1 class="reveal">A desktop that gets out of your way.</h1>
+    <p class="t-lead reveal" data-delay="1">Classic in spirit, careful in the details: Onyx keeps what has always worked and softens the edges.</p>
+  </div>
+  <div class="container container--wide">
+    <figure class="showcase-media reveal" data-delay="2">
+      <div class="shot-screen" style="--native:1024;--fx:0;--fy:0"><img src="../../assets/img/notes-desktop.webp" srcset="../../assets/img/notes-desktop-half.webp 512w, ../../assets/img/notes-desktop.webp 1024w" sizes="(max-width: 1100px) 92vw, 1024px" width="1024" height="768" style="--native:1024" decoding="async" alt="The Onyx desktop with Notes open, the next appointments on the left and three pinned notes on the right of the wallpaper."></div>
+    </figure>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container container--wide feature">
+    <div class="feature-text reveal">
+    <h2>Up top, the essentials.</h2>
+    <p class="t-lead">The current app’s menus, the time, the sound, the Wi-Fi. Click the time for the month’s calendar, click the Wi-Fi to join a network, no restart needed.</p>
+    </div>
+    <figure class="feature-media reveal" data-delay="1"><div class="shot-crop shot-crop--zoom" style="--native:1024;--zoom:2.2"><img src="../../assets/img/menubar.webp" srcset="../../assets/img/menubar-half.webp 512w, ../../assets/img/menubar.webp 1024w" sizes="(max-width: 600px) 220vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1024px" width="1024" height="200" style="--native:1024" loading="lazy" decoding="async" alt="The Onyx menu bar with an app’s File menu open, and the sound, Wi-Fi and clock on the right."></div></figure>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container container--wide feature feature--flip">
+    <div class="feature-text reveal">
+    <h2>Down below, your apps.</h2>
+    <p class="t-lead">One drawer per family: productivity, internet, graphics, games. A click starts an app or brings it back in front of you. Drop a file on an icon to open it, on the Trash to throw it away.</p>
+    </div>
+    <figure class="feature-media reveal" data-delay="1"><div class="shot-crop shot-crop--zoom" style="--native:1024;--zoom:1.7"><img src="../../assets/img/dock.webp" srcset="../../assets/img/dock-half.webp 512w, ../../assets/img/dock.webp 1024w" sizes="(max-width: 600px) 220vw, (max-width: 900px) 88vw, (max-width: 1440px) 58vw, 1024px" width="1024" height="592" style="--native:1024" loading="lazy" decoding="async" alt="The Onyx dock with its Games drawer open, listing fifteen games from 2048 to Tetris."></div></figure>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container container--wide feature">
+    <div class="feature-text reveal">
+    <h2>Your appointments and reminders, in plain sight.</h2>
+    <p class="t-lead">Your next calendar appointments show right on the wallpaper. Pin a note and it appears beside them. A click opens the day or the note.</p>
+    </div>
+    <div class="crop-pair reveal" data-delay="1"><figure class="shot-crop" style="--native:400"><img src="../../assets/img/agenda.webp" width="400" height="180" style="--native:400" loading="lazy" decoding="async" alt="The next appointments shown on the Onyx wallpaper: dentist, rent, birthday party."></figure><figure class="shot-crop" style="--native:320"><img src="../../assets/img/stickies.webp" width="320" height="620" style="--native:320" loading="lazy" decoding="async" alt="Three notes pinned to the Onyx wallpaper: a to-do list, a shopping list and a reminder."></figure></div>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container container--wide feature feature--flip">
+    <div class="feature-text reveal">
+    <h2>Your files, column by column.</h2>
+    <p class="t-lead">Each folder opens in the next column, so you always see where you came from. Previews of pictures and text, a Trash that loses nothing, drag and drop everywhere. Plug in a USB stick and it shows up by itself.</p>
+    </div>
+    <figure class="stage stage--bleed stage--cut-r reveal" data-wash="blueberry" data-delay="1"><img class="shot-window" src="../../assets/img/fileviewer-crop.webp" width="650" height="572" style="--native:650" loading="lazy" decoding="async" alt="The Onyx File Viewer: the sidebar and the folders in columns."></figure>
+  </div>
+</section>
+
+<section class="section section--lift showcase looks">
+  <div class="container center">
+    <h2 class="reveal">Peach, steel, sage or dark coffee.</h2>
+    <p class="t-lead reveal" data-delay="1">Seven ready-made looks, classic or modern, or colours of your own. Eight wallpaper patterns that take any tint you like, or one of your photos.</p>
+    <div class="swatches reveal" data-delay="1" role="group" aria-label="Looks">
+      <button type="button" class="swatch" style="--swatch:#F2B27E" data-look="desktop" aria-pressed="true"><span class="swatch-dot" aria-hidden="true"></span>Peach</button>
+      <button type="button" class="swatch" style="--swatch:#ECEAE4" data-look="milk" aria-pressed="false"><span class="swatch-dot" aria-hidden="true"></span>Milk</button>
+    </div>
+  </div>
+  <div class="container container--wide reveal" data-delay="1">
+    <figure class="showcase-media look" data-look="desktop"><div class="shot-screen" style="--native:1024;--fx:0;--fy:0"><img src="../../assets/img/desktop.webp" srcset="../../assets/img/desktop-half.webp 512w, ../../assets/img/desktop.webp 1024w" sizes="(max-width: 1100px) 92vw, 1024px" width="1024" height="768" style="--native:1024" loading="lazy" decoding="async" alt="The Onyx desktop: the menu bar, the next appointments on the wallpaper, a calculator, a terminal and the dock."></div><figcaption class="t-small">Peach</figcaption></figure>
+    <figure class="showcase-media look" data-look="milk"><div class="shot-screen" style="--native:1024;--fx:0;--fy:0"><img src="../../assets/img/milk.webp" srcset="../../assets/img/milk-half.webp 512w, ../../assets/img/milk.webp 1024w" sizes="(max-width: 1100px) 92vw, 1024px" width="1024" height="768" style="--native:1024" loading="lazy" decoding="async" alt="Onyx in its light Milk theme: the calendar’s week view and a window showing buttons, lists, sliders and date pickers."></div><figcaption class="t-small">Milk</figcaption></figure>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container container--wide feature">
+    <div class="feature-text reveal">
+    <h2>Every setting in one place.</h2>
+    <p class="t-lead">Display, sound, keyboard, Wi-Fi, printers, gamepads: the Control Panel gathers it all. Onyx speaks English and French, and knows eight keyboard layouts.</p>
+    <p class="t-small feature-note">The French translation is arriving app by app; some apps are still in English only.</p>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="lagoon" data-delay="1"><img class="shot-window" src="../../assets/img/control.webp" width="708" height="548" style="--native:708" loading="lazy" decoding="async" alt="The Onyx Control Panel: twelve settings, from the theme to the printers, each with its icon."></figure>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container container--wide feature feature--flip">
+    <div class="feature-text reveal">
+    <h2>Updates come to you.</h2>
+    <p class="t-lead">Every day Onyx looks for what is new and lets you know. Choose for each app: update automatically, on request, or never. The system itself updates at the next restart.</p>
+    </div>
+    <figure class="stage stage--bleed reveal" data-wash="mint" data-delay="1"><img class="shot-window" src="../../assets/img/pkgman-installed.webp" width="708" height="548" style="--native:708" loading="lazy" decoding="async" alt="The Onyx Package Manager: the installed apps, each with its update choice — manual, automatic or never."></figure>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="container container--wide also-grid also-grid--2">
+    <article class="also-card reveal"><svg class="line-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg><h2>Several desktops in one.</h2><p>Four workspaces by default, up to six. Mail here, a document there: each thing has its place, and a keyboard shortcut takes you from one to the next.</p></article>
+    <article class="also-card reveal" data-delay="1"><svg class="line-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 8V3.5h10V8"/><rect x="3" y="8" width="18" height="9" rx="2"/><path d="M7 14h10v6.5H7zM17.5 11.5h.01"/></svg><h2>Printing, the simple way.</h2><p>Onyx finds the AirPrint-compatible printers on your network, with no driver to install. If you don’t have one, everything prints to PDF.</p></article>
+  </div>
+</section>
+
+<section class="section section--band cta">
+  <div class="container center">
+    <h2 class="reveal">Ready to try it?</h2>
+    <div class="actions reveal" data-delay="2"><a class="btn btn--primary" href="../../en/get/">Get Onyx</a></div>
+  </div>
+</section>
+</main>
+<footer class="site-footer">
+  <div class="container container--wide">
+    <div class="footer-top">
+      <a class="brand" href="../../en/" aria-label="Onyx, home"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 13 28.5 9v5.5L16 19Z" style="fill:var(--accent)"/><g stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M16 1.5 28.5 9v14L16 30.5 3.5 23V9Z"/><path d="M3.5 9 16 13 28.5 9M16 1.5v29M28.5 14.5 16 19"/></g></svg> Onyx</a>
+      <nav class="footer-col" aria-label="Onyx">
+        <p class="footer-h">Onyx</p>
+        <ul class="footer-links"><li><a href="../../en/">Home</a></li><li><a href="../../en/apps/">Apps</a></li><li><a href="../../en/desktop/">Desktop</a></li><li><a href="../../en/get/">Get Onyx</a></li></ul>
+      </nav>
+      <div class="footer-col">
+        <p class="footer-h">Language</p>
+        <ul class="footer-links"><li><a href="../../fr/bureau/" lang="fr" hreflang="fr">Français</a></li></ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <p>Onyx is designed by Stephan Wegener, working with Claude, Anthropic’s AI.</p>
+      <p>Raspberry Pi is a trademark of Raspberry Pi Ltd. Other names mentioned belong to their respective owners. Onyx is an independent project.</p>
+      <p>© 2026 Stephan Wegener</p>
+    </div>
+  </div>
+</footer>
+
+<script src="../../assets/js/site.js" onerror="document.documentElement.classList.remove('js')"></script>
+</body>
+</html>

@@ -65,11 +65,11 @@ static int add_months (int dn, int k)				// the same day k months on (clamped to
 	return days_from_civil (y, m, d);
 }
 
-static const char *const MONTH[12] = { "January", "February", "March", "April", "May", "June", "July",
-				       "August", "September", "October", "November", "December" };
-static const char *const MON3[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
-static const char *const WDAY[7] = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" };
-static const char *const WD3[7] = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+static const char *const MONTH[12] = { TRN ("January"), TRN ("February"), TRN ("March"), TRN ("April"), TRN ("May"), TRN ("June"), TRN ("July"),
+				       TRN ("August"), TRN ("September"), TRN ("October"), TRN ("November"), TRN ("December") };
+static const char *const MON3[12] = { TRN ("Jan"), TRN ("Feb"), TRN ("Mar"), TRN ("Apr"), TRN ("May"), TRN ("Jun"), TRN ("Jul"), TRN ("Aug"), TRN ("Sep"), TRN ("Oct"), TRN ("Nov"), TRN ("Dec") };
+static const char *const WDAY[7] = { TRN ("Monday"), TRN ("Tuesday"), TRN ("Wednesday"), TRN ("Thursday"), TRN ("Friday"), TRN ("Saturday"), TRN ("Sunday") };
+static const char *const WD3[7] = { TRN ("Mon"), TRN ("Tue"), TRN ("Wed"), TRN ("Thu"), TRN ("Fri"), TRN ("Sat"), TRN ("Sun") };
 static const char *const WD2[7] = { "MO", "TU", "WE", "TH", "FR", "SA", "SU" };	// (iCalendar's)
 
 static void fmt_hm (int mins, char *o, int cap)			// "9:05"

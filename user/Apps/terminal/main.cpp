@@ -5,7 +5,7 @@
 // pipelines / builtins live in cmd, not here. The terminal does local line editing + echo
 // (lineedit.h: the cursor moves in the line with Left / Right / Home / End, Up / Down recall the lines
 // sent before, Enter sends the line, Ctrl-C stops the running command, Ctrl-D sends EOF); cmd prints
-// the prompt.
+// the prompt. Started with arguments ("terminal ls /bin"), its first tab runs them as a command typed there.
 //
 // The tabs (uikit::TabStrip): each its own cmd, screen, scrollback, history and current folder. A new
 // one with the "+", Shell > New Tab or Ctrl+Shift+T; Ctrl+Tab / Ctrl+Shift+Tab, Ctrl+PgDn / Ctrl+PgUp
@@ -437,6 +437,7 @@ int main (void)
 	root.addChild (g_strip);
 	TermView *view = new TermView (PAD, STRIP_H + PAD, W - 2 * PAD, H - STRIP_H - 2 * PAD);	// (the window's face around it)
 	view->anchor = ANCHOR_FILL;
+	uk_set_input_type (view, UK_IN_TERMINAL);	// (the pocket mode's on-screen keyboard: its row of Esc, Tab, Ctrl, the arrows)
 	root.addChild (view);
 	g_view = view;
 	root.setResizable (true);			// (the view reflows to any size: maximise works)
@@ -453,9 +454,15 @@ int main (void)
 	menu.publish ();
 
 	new_tab ();
+	// (2026-10-08) "terminal <command>": the command typed into the first tab's shell once its prompt came, as if
+	// typed there (the pocket launcher's search runs a /bin command so)
+	static char s_first[200];
+	s_first[0] = 0;
+	kapi_get_args (s_first, sizeof s_first);
+	Tab *first = g_tab;
 
-	kapi_set_pointer_handler (sa_ptr);
-	kapi_set_key_handler (sa_key);
+	uk_win_on_pointer (sa_ptr);
+	uk_win_on_key (sa_key);
 	unsigned frame = 0;
 	while (!should_exit () && !g_quit)
 	{
@@ -464,6 +471,15 @@ int main (void)
 			Tab *t = (Tab *) g_strip->data (i);
 			if (drain_cmd (t) > 0)
 			{
+				if (s_first[0] && t == first && t->to_cmd)	// (its prompt: the command given)
+				{
+					unsigned n = 0;
+					while (s_first[n]) n++;
+					term_puts (t, s_first); term_putc (t, '\n');
+					kapi_stream_write (t->to_cmd, s_first, n);
+					kapi_stream_write (t->to_cmd, "\n", 1);
+					s_first[0] = 0;
+				}
 				refresh_tab (t);		// (a new prompt: its folder in the title)
 				if (t == g_tab) view->invalidate (true);
 			}
@@ -487,7 +503,7 @@ int main (void)
 				update_busy (t);
 				refresh_tab (t);
 			}
-		if (!root.valid) { root.draw (); kapi_present (); }
+		if (!root.valid) { root.draw (); uk_win_present (); }
 		msleep (16);
 	}
 	while (g_strip->count () > 0)			// the window closed: every tab's shell and what it runs

@@ -180,13 +180,13 @@ static void sample_stats (void)
 			else if (!strncmp (l, "hostname ", 9)) snprintf (host, sizeof host, "%s", l + 9);
 			l = e ? e + 1 : 0;
 		}
-		if (ip[0]) snprintf (g_netLine, sizeof g_netLine, "%s  -  %s  -  %u socket%s open", ip, host, g_net.sockets, g_net.sockets == 1 ? "" : "s");
-		else snprintf (g_netLine, sizeof g_netLine, "The network is down");
+		if (ip[0]) snprintf (g_netLine, sizeof g_netLine, g_net.sockets == 1 ? TR ("%s  -  %s  -  %u socket open") : TR ("%s  -  %s  -  %u sockets open"), ip, host, g_net.sockets);
+		else snprintf (g_netLine, sizeof g_netLine, "%s", TR ("The network is down"));
 	}
 }
 static void bytes_text (char *o, int cap, unsigned long long b)		// "812 bytes", "34.2 KB", "118 MB", "2.31 GB"
 {
-	if (b < 1024) snprintf (o, (size_t) cap, "%u bytes", (unsigned) b);
+	if (b < 1024) snprintf (o, (size_t) cap, TR ("%u bytes"), (unsigned) b);
 	else if (b < 1024 * 1024) snprintf (o, (size_t) cap, "%u.%u KB", (unsigned) (b / 1024), (unsigned) (b % 1024 * 10 / 1024));
 	else if (b < 100ULL * 1024 * 1024) snprintf (o, (size_t) cap, "%u.%u MB", (unsigned) (b >> 20), (unsigned) ((b & 0xFFFFF) * 10 >> 20));
 	else if (b < 1024ULL * 1024 * 1024) snprintf (o, (size_t) cap, "%u MB", (unsigned) (b >> 20));
@@ -215,8 +215,8 @@ static const char *cell (DataGrid &, int row, int col, char *buf, int cap)
 	switch (col)
 	{
 	case 0: return p->name;
-	case 1: return p->kind == 'k' ? "Kernel" : "App";
-	case 2: return p->state == 'R' ? "Running" : p->state == 'S' ? "Sleeping" : p->state == 'B' ? "Waiting" : p->state == 'N' ? "New" : "?";
+	case 1: return p->kind == 'k' ? TR ("Kernel") : TR ("App");
+	case 2: return p->state == 'R' ? TR ("Running") : p->state == 'S' ? TR ("Sleeping") : p->state == 'B' ? TR ("Waiting") : p->state == 'N' ? TR ("New") : "?";
 	case 3: if (!p->pages) return ""; mb (buf, cap, (unsigned long) p->pages * g_pageKb); return buf;
 	default: if (p->rate < 0) return ""; snprintf (buf, (size_t) cap, "%d", p->rate); return buf;
 	}
@@ -246,14 +246,14 @@ public:
 		unsigned long used = used_kb (), sys = used > g_apps ? used - g_apps : 0;
 		// the figures
 		int gap = 10, tw = (width - 3 * gap) / 4;
-		char pct[24]; snprintf (pct, sizeof pct, "%lu %% of %lu MB", g_total ? used * 100 / g_total : 0, g_total / 1024);
-		tile (0, 0, tw, "In use", used, pct);
-		tile (tw + gap, 0, tw, "Free", g_free, 0);
-		tile (2 * (tw + gap), 0, tw, "Apps", g_apps, 0);
-		tile (3 * (tw + gap), 0, width - 3 * (tw + gap), "System", sys, "kernel and GPU");
+		char pct[24]; snprintf (pct, sizeof pct, TR ("%lu %% of %lu MB"), g_total ? used * 100 / g_total : 0, g_total / 1024);
+		tile (0, 0, tw, TR ("In use"), used, pct);
+		tile (tw + gap, 0, tw, TR ("Free"), g_free, 0);
+		tile (2 * (tw + gap), 0, tw, TR ("Apps"), g_apps, 0);
+		tile (3 * (tw + gap), 0, width - 3 * (tw + gap), TR ("System"), sys, TR ("kernel and GPU"));
 		// the use over the last minute
 		int y = 74;
-		uk_text_l (canvas, 2, y, 18, "MEMORY IN USE, THE LAST MINUTE", dim, 2); y += 22;
+		uk_text_l (canvas, 2, y, 18, TR ("MEMORY IN USE, THE LAST MINUTE"), dim, 2); y += 22;
 		int gh = height - y - 104; if (gh < 50) gh = 50;
 		uk_sunken (canvas, 0, y, width, gh, 5, C_FIELD);
 		unsigned line = uk_mix (C_FIELD, C_FIELD_TEXT, 22);
@@ -271,7 +271,7 @@ public:
 		}
 		y += gh + 10;
 		// what uses it: the system, the four largest apps, the others -- then what is free
-		uk_text_l (canvas, 2, y, 18, "WHAT USES IT", dim, 2); y += 22;
+		uk_text_l (canvas, 2, y, 18, TR ("WHAT USES IT"), dim, 2); y += 22;
 		int top[4], nt = 0;
 		for (int k = 0; k < 4; k++)			// the largest app not taken yet, four times
 		{
@@ -286,10 +286,10 @@ public:
 			top[nt++] = best;
 		}
 		unsigned long kb[6]; const char *nm[6]; int ns = 0;
-		kb[ns] = sys; nm[ns++] = "System";
+		kb[ns] = sys; nm[ns++] = TR ("System");
 		unsigned long shown = 0;
 		for (int k = 0; k < nt; k++) { kb[ns] = (unsigned long) g_p[top[k]].pages * g_pageKb; shown += kb[ns]; nm[ns++] = g_p[top[k]].name; }
-		if (g_apps > shown) { kb[ns] = g_apps - shown; nm[ns++] = "the other apps"; }
+		if (g_apps > shown) { kb[ns] = g_apps - shown; nm[ns++] = TR ("the other apps"); }
 		uk_rbox (canvas, 0, y, width, 18, 4, C_FIELD, C_FIELD);
 		int x = 1;
 		for (int k = 0; k < ns && g_total; k++)
@@ -351,7 +351,7 @@ public:
 		unsigned bg = bgColor (), dim = uk_mix (bg, C_TEXT, 150);
 		canvas.clear (bg);
 		int n = (int) g_cpu.cores; if (n > KAPI_CPU_CORES) n = KAPI_CPU_CORES;
-		if (n <= 0) { uk_text_c (canvas, 0, 0, width, height, "No core to show", dim); return; }
+		if (n <= 0) { uk_text_c (canvas, 0, 0, width, height, TR ("No core to show"), dim); return; }
 		int cols = n > 1 ? 2 : 1, rows = (n + cols - 1) / cols, gap = 10;
 		int cw = (width - (cols - 1) * gap) / cols, ch = (height - (rows - 1) * gap) / rows;
 		if (ch < 96) ch = 96;
@@ -360,19 +360,19 @@ public:
 			int x = (c % cols) * (cw + gap), y = (c / cols) * (ch + gap);
 			const struct kapi_cpu_core &k = g_cpu.core[c];
 			char t[24], what[80];
-			snprintf (t, sizeof t, "Core %d", c);
+			snprintf (t, sizeof t, TR ("Core %d"), c);
 			uk_text_l (canvas, x + 2, y, 20, t, C_TEXT, 2);
 			switch (k.role)
 			{
-			case KAPI_CORE_SYSTEM:	snprintf (what, sizeof what, "the system and every app"); break;
-			case KAPI_CORE_SOUND:	snprintf (what, sizeof what, "the sound"); break;
-			case KAPI_CORE_NETWORK:	snprintf (what, sizeof what, "the network"); break;
+			case KAPI_CORE_SYSTEM:	snprintf (what, sizeof what, "%s", TR ("the system and every app")); break;
+			case KAPI_CORE_SOUND:	snprintf (what, sizeof what, "%s", TR ("the sound")); break;
+			case KAPI_CORE_NETWORK:	snprintf (what, sizeof what, "%s", TR ("the network")); break;
 			default:
 			{
 				const char *owner = 0;
 				for (int i = 0; i < g_np && k.pid; i++) if (g_p[i].pid == (int) k.pid) { owner = g_p[i].name; break; }
-				if (owner) snprintf (what, sizeof what, "an app core: %.40s", owner);
-				else snprintf (what, sizeof what, k.pid ? "an app core: in use" : "an app core: free");
+				if (owner) snprintf (what, sizeof what, TR ("an app core: %.40s"), owner);
+				else snprintf (what, sizeof what, "%s", k.pid ? TR ("an app core: in use") : TR ("an app core: free"));
 			}
 			}
 			uk_text_l (canvas, x + 2 + uk_text_w (t, 2) + 10, y + 1, 18, what, dim);
@@ -408,16 +408,16 @@ public:
 		canvas.clear (bg);
 		char a[24], b[24];
 		int gap = 10, tw = (width - 3 * gap) / 4;
-		rate_text (a, sizeof a, g_rxRate); tile (0, 0, tw, "Receiving", a, 0, C_ACCENT);
-		rate_text (a, sizeof a, g_txRate); tile (tw + gap, 0, tw, "Sending", a, 0, C_SENT);
-		bytes_text (a, sizeof a, g_net.rx_bytes); tile (2 * (tw + gap), 0, tw, "Received", a, "since the start", 0);
-		bytes_text (a, sizeof a, g_net.tx_bytes); tile (3 * (tw + gap), 0, width - 3 * (tw + gap), "Sent", a, "since the start", 0);
+		rate_text (a, sizeof a, g_rxRate); tile (0, 0, tw, TR ("Receiving"), a, 0, C_ACCENT);
+		rate_text (a, sizeof a, g_txRate); tile (tw + gap, 0, tw, TR ("Sending"), a, 0, C_SENT);
+		bytes_text (a, sizeof a, g_net.rx_bytes); tile (2 * (tw + gap), 0, tw, TR ("Received"), a, TR ("since the start"), 0);
+		bytes_text (a, sizeof a, g_net.tx_bytes); tile (3 * (tw + gap), 0, width - 3 * (tw + gap), TR ("Sent"), a, TR ("since the start"), 0);
 		// the two rates over the last minute, to the largest of them (64 KB/s at least)
 		int y = 74;
 		int top = 64 * 1024;
 		for (int i = 0; i < g_nnetHist; i++) { if (g_rxHist[i] > top) top = g_rxHist[i]; if (g_txHist[i] > top) top = g_txHist[i]; }
-		uk_text_l (canvas, 2, y, 18, "THE LAST MINUTE", dim, 2);
-		rate_text (a, sizeof a, top); snprintf (b, sizeof b, "top: %s", a);
+		uk_text_l (canvas, 2, y, 18, TR ("THE LAST MINUTE"), dim, 2);
+		rate_text (a, sizeof a, top); snprintf (b, sizeof b, TR ("top: %s"), a);
 		text_r (canvas, width - 2, y, 18, b, dim);
 		y += 22;
 		// the apps: as many rows as fit under a graph of 70 pixels at least
@@ -438,17 +438,17 @@ public:
 		plot (canvas, 0, y, width, gh, g_rxHist, g_nnetHist, top, C_ACCENT, true);
 		plot (canvas, 0, y, width, gh, g_txHist, g_nnetHist, top, C_SENT, false);
 		y += gh + 10;
-		uk_text_l (canvas, 2, y, 18, "BY APP", dim, 2); y += 22;
+		uk_text_l (canvas, 2, y, 18, TR ("BY APP"), dim, 2); y += 22;
 		int c4 = width - 2, c3 = c4 - 92, c2 = c3 - 92, c1 = c2 - 92;		// the columns' right edges
 		if (c1 < 150) { c1 = c2; }						// (a narrow window: no "Received" column)
-		uk_text_l (canvas, 2, y, 18, "App", dim);
-		if (c1 != c2) text_r (canvas, c1, y, 18, "Received", dim);
-		text_r (canvas, c2, y, 18, c1 != c2 ? "Sent" : "Received", dim);
-		text_r (canvas, c3, y, 18, "Receiving", dim);
-		text_r (canvas, c4, y, 18, "Sending", dim);
+		uk_text_l (canvas, 2, y, 18, TR ("App"), dim);
+		if (c1 != c2) text_r (canvas, c1, y, 18, TR ("Received"), dim);
+		text_r (canvas, c2, y, 18, c1 != c2 ? TR ("Sent") : TR ("Received"), dim);
+		text_r (canvas, c3, y, 18, TR ("Receiving"), dim);
+		text_r (canvas, c4, y, 18, TR ("Sending"), dim);
 		y += 20;
 		canvas.fillRect (0, y - 2, width, 1, uk_tone (bg, 100));
-		if (!no) { uk_text_l (canvas, 2, y, 18, "No app has used the network", dim); return; }
+		if (!no) { uk_text_l (canvas, 2, y, 18, TR ("No app has used the network"), dim); return; }
 		for (int i = 0; i < no && y + rowH <= height; i++, y += rowH)
 		{
 			const Proc &p = g_p[ord[i]];
@@ -498,13 +498,13 @@ static void refresh (bool sample)
 	g_btRaise->disabled = g_btKill->disabled = !app;
 	g_btRaise->invalidate (true); g_btKill->invalidate (true);
 	char t[96];
-	if (g_tab == 0) snprintf (t, sizeof t, "%d task%s", g_np, g_np == 1 ? "" : "s");
-	else if (g_tab == 2) snprintf (t, sizeof t, "%u cores  -  the load over the last second, and the last minute", g_cpu.cores);
+	if (g_tab == 0) snprintf (t, sizeof t, g_np == 1 ? TR ("%d task") : TR ("%d tasks"), g_np);
+	else if (g_tab == 2) snprintf (t, sizeof t, TR ("%u cores  -  the load over the last second, and the last minute"), g_cpu.cores);
 	else if (g_tab == 3) snprintf (t, sizeof t, "%s", g_netLine);
-	else snprintf (t, sizeof t, "Detected %lu MB  -  the apps' pool %lu MB, %lu free  -  pages of %u KB", g_detected / 1024, g_pool / 1024, g_poolFree / 1024, g_pageKb);
+	else snprintf (t, sizeof t, TR ("Detected %lu MB  -  the apps' pool %lu MB, %lu free  -  pages of %u KB"), g_detected / 1024, g_pool / 1024, g_poolFree / 1024, g_pageKb);
 	if (strcmp (t, g_lbInfo->text)) g_lbInfo->setText (t);
 }
-static void do_raise (void) { const Proc *p = row_proc (g_grid->sel); if (p && p->kind == 'a') kapi_raise_app (p->name); }
+static void do_raise (void) { const Proc *p = row_proc (g_grid->sel); if (p && p->kind == 'a') uk_win_app_raise (p->name); }
 static void do_kill (void) { const Proc *p = row_proc (g_grid->sel); if (p && p->kind == 'a') { kapi_kill (p->name); refresh (false); } }
 static void on_raise (Widget &) { do_raise (); g_grid->setFocus (); }
 static void on_kill (Widget &) { do_kill (); g_grid->setFocus (); }
@@ -521,7 +521,7 @@ class TaskRoot : public Root
 {
 public:
 	int frames, half;
-	TaskRoot () : Root (W, H, "Task Manager"), frames (0), half (0) {}
+	TaskRoot () : Root (W, H, TR ("Task Manager")), frames (0), half (0) {}
 	void onDraw () override { Root::onDraw (); canvas.fillRect (0, TOP - 1, width, 1, uk_tone (bg, 100)); }
 	void onTick () override { if (++frames >= 30) { frames = 0; half ^= 1; refresh (half == 0); } }	// twice a second; a sample a second
 	bool onKey (long k) override
@@ -540,10 +540,11 @@ public:
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);		// (FreeType's text: uk_fw / uk_fh follow it)
+	uk_lang_init ();				// the words in the system's language (the face first: UTF-8)
 	TaskRoot root;
 	if (root.canvas.px == 0) return 1;
 
-	static const char *const TABS[4] = { "Processes", "Memory", "Processor", "Network" };
+	static const char *const TABS[4] = { TR ("Processes"), TR ("Memory"), TR ("Processor"), TR ("Network") };
 	g_tabs = new SegmentedControl (10, 10, 400, 28, TABS, 4, 0, on_tab);
 	g_cpuOk = kapi_cpu_stats (&g_cpu) == 0; g_cpuPrev = g_cpu;	// (kapi v80: an older kernel has neither)
 	g_netOk = kapi_net_stats (0, &g_net) == 0; g_netPrev = g_net; g_netPrevUs = g_cpu.now_us;
@@ -553,16 +554,23 @@ int main (void)
 	g_grid = new DataGrid (10, TOP + 8, W - 20, H - TOP - FOOT - 8);
 	g_grid->anchor = ANCHOR_FILL;
 	g_grid->setColumns (5);
-	g_grid->setColumn (0, "Task", 176);
-	g_grid->setColumn (1, "Kind", 70);
-	g_grid->setColumn (2, "State", 84);
-	g_grid->setColumn (3, "Memory", 100, GRID_RIGHT);
-	g_grid->setColumn (4, "Calls / s", 80, GRID_RIGHT);
+	g_grid->setColumn (0, TR ("Task"), 176);
+	g_grid->setColumn (1, TR ("Kind"), 70);
+	g_grid->setColumn (2, TR ("State"), 84);
+	g_grid->setColumn (3, TR ("Memory"), 100, GRID_RIGHT);
+	g_grid->setColumn (4, TR ("Calls / s"), 80, GRID_RIGHT);
+	// (P6) the columns' roles: in portrait a task is a card -- its name, then its kind and state; in a narrow pocket
+	// window the calls, then the memory give way (docs/03 "The adaptive widgets")
+	g_grid->setColumnRole (0, UK_COL_PRIMARY, 0);
+	g_grid->setColumnRole (1, UK_COL_SECONDARY, 0);
+	g_grid->setColumnRole (2, UK_COL_SECONDARY, 0);
+	g_grid->setColumnRole (3, UK_COL_SECONDARY, 1);
+	g_grid->setColumnRole (4, UK_COL_DETAIL, 2);
 	g_grid->cellText = cell;
 	g_grid->sortable = true; g_grid->onSort = on_sort;
 	g_grid->onSelect = on_select;
 	g_grid->onActivate = on_raise;
-	g_grid->emptyText = "No task";
+	g_grid->emptyText = TR ("No task");
 	root.addChild (g_grid);
 
 	g_mem = new MemView (10, TOP + 8, W - 20, H - TOP - FOOT - 8);
@@ -579,11 +587,11 @@ int main (void)
 	g_lbInfo = new Label (12, H - FOOT + 12, W - 24, 22, "", C_DIS, root.bg);
 	g_lbInfo->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM | ANCHOR_RIGHT;
 	root.addChild (g_lbInfo);
-	g_btRaise = new Button (W - 10 - 2 * 124 - 6, H - FOOT + 7, 124, 30, "Bring to Front", on_raise);
-	g_btRaise->anchor = ANCHOR_RIGHT | ANCHOR_BOTTOM; g_btRaise->tip = "The app's window in front (Enter, a double click)";
+	g_btRaise = new Button (W - 10 - 2 * 124 - 6, H - FOOT + 7, 124, 30, TR ("Bring to Front"), on_raise);
+	g_btRaise->anchor = ANCHOR_RIGHT | ANCHOR_BOTTOM; g_btRaise->tip = TR ("The app's window in front (Enter, a double click)");
 	root.addChild (g_btRaise);
-	g_btKill = new Button (W - 10 - 124, H - FOOT + 7, 124, 30, "End Task", on_kill);
-	g_btKill->anchor = ANCHOR_RIGHT | ANCHOR_BOTTOM; g_btKill->tip = "Stop the app (k, Delete); a kernel task cannot be stopped";
+	g_btKill = new Button (W - 10 - 124, H - FOOT + 7, 124, 30, TR ("End Task"), on_kill);
+	g_btKill->anchor = ANCHOR_RIGHT | ANCHOR_BOTTOM; g_btKill->tip = TR ("Stop the app (k, Delete); a kernel task cannot be stopped");
 	root.addChild (g_btKill);
 
 	root.setResizable (true);

@@ -1,10 +1,11 @@
 //
-// uikit/menu.cpp -- see menu.h. The spec format is the kapi_set_menu one (kapi_abi.h):
+// uikit/menu.cpp -- see menu.h. The spec format is the uk_win_menu_set one (uikit/win.h):
 // "M<title>" / "I<id>\t<label>\t<shortcut>" / "-", one per line; item ids are indices
 // into m_cb.
 //
 #include "uikit/menu.h"
 #include "uikit/root.h"
+#include "uikit/win.h"		// uk_win_menu_set, uk_win_menu_command
 
 namespace uikit {
 
@@ -40,7 +41,7 @@ void Menu::item (const char *label, const char *shortcutText, long key, MenuActi
 void Menu::publish ()
 {
 	s_current = this;
-	kapi_set_menu (m_spec, handler);
+	uk_win_menu_set (m_spec, handler);
 }
 
 Menu *Menu::current () { return s_current; }
@@ -58,7 +59,7 @@ static bool modal_open ()
 bool Menu::shortcut (long key)
 {
 	if (modal_open ()) return false;
-	if (key == UK_CTRL ('Q')) { kapi_menu_command (MENU_QUIT); return true; }	// Quit
+	if (key == UK_CTRL ('Q')) { uk_win_menu_command (MENU_QUIT); return true; }	// Quit
 	if (key <= 0) return false;
 	// ^H, ^I and ^M share their codes with Backspace, Tab and Enter: without Ctrl held, the
 	// key is the editing key and goes to the focused widget, not to the menu.

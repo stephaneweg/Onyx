@@ -94,7 +94,7 @@ int main (void)
 		last = t;
 		root.invalidate (true);
 		root.draw ();
-		kapi_present ();
+		uk_win_present ();
 		frames++;
 		if (t - statT >= 1000000 || !g_status[0])
 		{

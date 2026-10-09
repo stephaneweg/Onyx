@@ -35,15 +35,17 @@ Onyx Remote
 ===========
 
 OnyxRemote.exe (+ OnyxRemote.exe.config): the Onyx session in one window of this PC -- the
-client of rdpd (port 3390, started at boot on the Pi). Type the Pi's address, Connect (the
-window then takes the size of the Pi's screen, not resizable). The Onyx
+client of rdpd (port 3390, started at boot on the Pi). It starts with a small dialog: type the
+Pi's address (its arrow lists the last ones used), unfold "Options" for the port and what the
+session shows, tick "Full screen" if wanted, then Connect (Enter) -- or Terminal. Connected, the
+session's window takes the size of the Pi's screen; Disconnect brings the dialog back. The Onyx
 menu bar across the top; the Onyx windows as child windows inside (normal windows, or with their
 Onyx frame: "Onyx frames" -- its window menu, minimise and maximise buttons pressed on the Pi),
 moved freely; their close button closes the Onyx app; clicking a window gives it the keyboard.
 The menu bar's menus, the dock, the notifications and the Wi-Fi menu are drawn over the windows,
 see-through where they are clear on the Pi. A minimised window, or one on another workspace, is
 not shown. "Desktop" shows the Onyx desktop behind them; "16-bit colours" sends half the data
-(games). "Console": a telnet console on the Pi (telnetd, port 23; or type
+(games). "Terminal": a telnet console on the Pi (telnetd, port 23; or type
 address:port) in its own window -- scroll, select and copy the output, Enter sends the command
 line, Up / Down the history, Ctrl+C interrupts. No password, no encryption: trusted LAN only.
 

@@ -3,7 +3,7 @@
 // user-side window decoration (drawn by code: uikit/paint.h). A skin BMP holds `count` states stacked vertically
 // (button.bmp: normal/hover/pressed); margins mark the fixed corners/edges, the middle
 // tiles. Magenta (UK_TRANSPARENT_KEY) is the transparency key. Skins draw into RAW
-// 0x00RRGGBB buffers -- a Canvas's `px`, or a window-chrome buffer from kapi_get_chrome.
+// 0x00RRGGBB buffers -- a Canvas's `px`, or a window-chrome buffer from uk_win_chrome.
 //
 #ifndef _uikit_skin_h
 #define _uikit_skin_h
@@ -42,7 +42,7 @@ public:
 // colour, rounded corners, the theme's outline, the title buttons: the window menu, minimise,
 // maximise, close; the title in bold) into both chrome copies of this window. No-op for a
 // borderless window / no window. Drawn once per size, title, theme and state (guarded); Root
-// calls it after creating its window; call it again after kapi_resize_window (the frame then
+// calls it after creating its window; call it again after uk_win_resize (the frame then
 // follows the new size).
 void uk_decorate_window ();
 // The frame's state, drawn by uk_decorate_window (Root keeps it): the window can be maximised

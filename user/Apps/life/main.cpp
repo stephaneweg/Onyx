@@ -4,6 +4,7 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
+#include "../games/game.h"		// (gwin_*: the window resizable, the game scaled to it -- PocketUI fills it)
 
 #define GW	48
 #define GH	34
@@ -101,21 +102,21 @@ static void redraw (void)
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "life");
+	fb = gwin_create (W, H, "life");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 	g_rng = kapi_get_ticks () | 1u;
-	kapi_set_key_handler (on_key);
-	kapi_set_click_handler (on_click);
+	uk_win_on_key (on_key);
+	gwin_on_click (on_click);
 	randomize ();
 	while (!should_exit ())
 	{
 		pump_events ();
 		if (g_run && ++g_frames >= 6) { step (); g_frames = 0; }
 		redraw ();
-		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
+		gwin_present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (16);
 	}
 	return 0;

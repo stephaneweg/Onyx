@@ -249,7 +249,7 @@ public:
 		if (h >= 16)
 		{
 			// The title (wrapped over the rows it may take), the time, the place -- what fits.
-			const char *ti = e.title[0] ? e.title : "(No title)";
+			const char *ti = e.title[0] ? e.title : TR ("(No title)");
 			int rows = (h - 4) / (g_fh + 1), tw = w - 11, ty = y + 2;
 			char a[8], b[8], t[40]; fmt_hm (s, a, sizeof a); fmt_hm (en, b, sizeof b);
 			scpy (t, sizeof t, a); scat (t, sizeof t, " - "); scat (t, sizeof t, b);
@@ -371,12 +371,12 @@ public:
 			unsigned ink = today ? C_ACCENT : wday (dn) >= 5 ? soft_ink () : C_FIELD_TEXT;
 			if (ndays == 1)
 			{
-				char t[40]; scpy (t, sizeof t, WDAY[wday (dn)]);
+				char t[40]; scpy (t, sizeof t, TR (WDAY[wday (dn)]));
 				uk_text_l (canvas, x + 12, 6, g_fh, t, today ? C_ACCENT : soft_ink (), 2);
 			}
 			else
 			{
-				char t[8]; scpy (t, sizeof t, WD3[wday (dn)]); for (int i = 0; t[i]; i++) if (t[i] >= 'a') t[i] = (char) (t[i] - 32);
+				char t[8]; scpy (t, sizeof t, TR (WD3[wday (dn)])); for (int i = 0; t[i]; i++) if (t[i] >= 'a') t[i] = (char) (t[i] - 32);
 				uk_text_c (canvas, x, 6, cw, g_fh, t, today ? C_ACCENT : soft_ink (), 2);
 			}
 			char num[4] = ""; scatn (num, sizeof num, dn_d (dn));
@@ -385,7 +385,7 @@ public:
 			else uk_text_c (canvas, cx, cy, s, s, num, ink, 2);
 			if (di > 0) canvas.fillRect (x, HDR_H - 8, 1, y0 - HDR_H + 8, grid_line ());
 		}
-		uk_text_l (canvas, 6, HDR_H + 3, ADROW - 4, "all-day", soft_ink ());
+		uk_text_l (canvas, 6, HDR_H + 3, ADROW - 4, TR ("all-day"), soft_ink ());
 		{ char wk[12] = "W"; scatn (wk, sizeof wk, iso_week (day0)); uk_text_c (canvas, 0, 6, GUTTER, g_fh, wk, soft_ink ()); }
 		for (int i = 0; i < nad; i++)
 		{
@@ -395,7 +395,7 @@ public:
 			bool sel = o.ev == g_sel && o.start == g_selStart;
 			unsigned fill = sel ? c : uk_mix (C_FIELD, c, 170);
 			uk_rbox (canvas, x, y, w, ADROW - 3, 5, fill, fill);
-			text_fit (canvas, x + 7, y, w - 10, ADROW - 3, e.title[0] ? e.title : "(No title)", uk_ink_on (fill), 2);
+			text_fit (canvas, x + 7, y, w - 10, ADROW - 3, e.title[0] ? e.title : TR ("(No title)"), uk_ink_on (fill), 2);
 			add_hit (x, y, w, ADROW - 3, o, true);
 		}
 		canvas.fillRect (0, y0 - 1, width, 1, uk_mix (C_FIELD, C_FIELD_TEXT, 60));
@@ -542,7 +542,7 @@ public:
 		int cw = cellW (), ch = cellH (), d0 = first ();
 		for (int i = 0; i < 7; i++)
 		{
-			char t[8]; scpy (t, sizeof t, WD3[i]); for (int k = 0; t[k]; k++) if (t[k] >= 'a') t[k] = (char) (t[k] - 32);
+			char t[8]; scpy (t, sizeof t, TR (WD3[i])); for (int k = 0; t[k]; k++) if (t[k] >= 'a') t[k] = (char) (t[k] - 32);
 			uk_text_l (canvas, 1 + i * cw + 10, 0, MHDR, t, soft_ink (), 2);
 		}
 		static Occ occ[800];
@@ -559,7 +559,7 @@ public:
 				canvas.fillRect (x, y, cw, 1, grid_line ());
 				canvas.fillRect (x, y, 1, ch, grid_line ());
 				char num[12] = "";
-				if (dn_d (dn) == 1) { scat (num, sizeof num, MON3[dn_m (dn) - 1]); scat (num, sizeof num, " "); }
+				if (dn_d (dn) == 1) { scat (num, sizeof num, TR (MON3[dn_m (dn) - 1])); scat (num, sizeof num, " "); }
 				scatn (num, sizeof num, dn_d (dn));
 				if (today)
 				{
@@ -599,7 +599,7 @@ public:
 				}
 				if (total > shown)
 				{
-					char t[24] = "+"; scatn (t, sizeof t, total - shown); scat (t, sizeof t, " more");
+					char t[24] = "+"; scatn (t, sizeof t, total - shown); scat (t, sizeof t, TR (" more"));
 					uk_text_l (canvas, x + 8, yy, g_fh + 1, t, soft_ink (), 2);
 				}
 			}
@@ -716,7 +716,7 @@ public:
 		canvas.clear (C_BG);
 		if (top > n - rows ()) top = n - rows ();
 		if (top < 0) top = 0;
-		if (n == 0) { uk_text_c (canvas, 0, 6, width, g_fh, "Nothing to do", face_soft ()); return; }
+		if (n == 0) { uk_text_c (canvas, 0, 6, width, g_fh, TR ("Nothing to do"), face_soft ()); return; }
 		for (int r = 0; r < rows () && top + r < n; r++)
 		{
 			int i = order[top + r], y = r * rowH ();
@@ -728,11 +728,11 @@ public:
 			char due[24] = ""; unsigned dc = face_soft ();
 			if (t.due && !t.done)
 			{
-				if (t.due == g_today) { scpy (due, sizeof due, "Today"); dc = C_ACCENT; }
-				else if (t.due == g_today + 1) scpy (due, sizeof due, "Tomorrow");
-				else { scpy (due, sizeof due, MON3[dn_m (t.due) - 1]); scat (due, sizeof due, " "); scatn (due, sizeof due, dn_d (t.due)); if (t.due < g_today) dc = RED; }
+				if (t.due == g_today) { scpy (due, sizeof due, TR ("Today")); dc = C_ACCENT; }
+				else if (t.due == g_today + 1) scpy (due, sizeof due, TR ("Tomorrow"));
+				else { scpy (due, sizeof due, TR (MON3[dn_m (t.due) - 1])); scat (due, sizeof due, " "); scatn (due, sizeof due, dn_d (t.due)); if (t.due < g_today) dc = RED; }
 			}
-			int dw = due[0] ? uk_text_w (due) + 8 : 0;
+			int dw = due[0] ? uk_text_w (due, t.due <= g_today ? 2 : 0) + 8 : 0;
 			unsigned ink = t.done ? face_soft () : C_TEXT;
 			char b[140]; fit (t.title, width - 32 - dw, b, sizeof b);
 			uk_text_l (canvas, 30, y, rowH (), b, ink);

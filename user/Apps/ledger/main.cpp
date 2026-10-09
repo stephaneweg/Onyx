@@ -73,25 +73,139 @@ enum { NLANG = sizeof LANGS / sizeof LANGS[0] };
 static void choose_lang (const char *code);
 #endif
 
-class SideBar : public Widget
+// (P7) A navigation SidePanel (uikit/sidepanel.h): the desktop's side bar, a rail of the pages' icons in pocket's
+// landscape, a drawer in portrait, the column in console. Its HEADER (SidePanel::setHeader, uikit 1.950) is the company
+// and the fiscal year's chooser, its FOOTER the books' file (and the Mac's language switch); the pages are its items,
+// their late documents badges. SideBar keeps what the pages call (set, refresh, invalidate).
+static int g_sideW = SIDE_W;		// what the panel takes at the window's left now (a rail: its width; 0: a drawer)
+static unsigned side_face () { return uk_tone (C_BG, 116); }
+class SideHead : public Widget		// the company, its VAT number; under them the years (SideBar's ChoiceBox, a child)
 {
 public:
-	ChoiceBox *years; const char *ynames[MAXYEARS]; char ybuf[MAXYEARS][48];
-	int cur, hot, langHot = -1; int badge[P_COUNT]; unsigned badgeCol[P_COUNT];
-	SideBar () : Widget (0, 0, SIDE_W, H), cur (P_OVERVIEW), hot (-1)
+	SideHead () : Widget (0, 0, SIDE_W, NAV_Y - 10) {}
+	unsigned bgColor () override { return side_face (); }
+	void onDraw () override
 	{
-		anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_BOTTOM;
+		unsigned bg = side_face (), ink = uk_ink_for (bg), dim = uk_mix (bg, ink, 140);
+		canvas.clear (bg);
+		canvas.fillRect (width - 1, 0, 1, height, uk_tone (C_BG, 92));
+		bool open = g_b.nacc != 0;
+		text_fit_l (canvas, 14, 10, width - 28, 24, open ? (g_b.name[0] ? g_b.name : TR ("(the company)")) : "Ledger", ink, 2);
+		char v[40] = ""; if (open && g_b.vat[0]) vat_show (g_b.vat, v, sizeof v); else if (open) scpy (v, g_b.vatRegime == VR_NORMAL ? "(no VAT number)" : "Not subject to VAT", sizeof v);
+		else scpy (v, TR ("Belgian accounting"), sizeof v);
+		text_fit_l (canvas, 14, 32, width - 28, 20, v, dim);
+	}
+};
+class SideFoot : public Widget		// the books' file; the Mac's language switch
+{
+public:
+	int langHot = -1;
+	SideFoot () : Widget (0, 0, SIDE_W, 38) {}
+	unsigned bgColor () override { return side_face (); }
+#ifdef LEDGER_LANG_SWITCH
+	enum { LANG_W = 30 };
+	int langX (int k) const { return width - 14 - (NLANG - k) * (LANG_W + 4) + 4; }
+	int langAt (int mx, int my) const
+	{
+		if (my < height - 30 || my >= height - 8) return -1;
+		for (int k = 0; k < NLANG; k++) if (mx >= langX (k) && mx < langX (k) + LANG_W) return k;
+		return -1;
+	}
+#else
+	int langX (int) const { return width - 8; }
+	int langAt (int, int) const { return -1; }
+#endif
+	void onDraw () override
+	{
+		unsigned bg = side_face (), ink = uk_ink_for (bg), dim = uk_mix (bg, ink, 140);
+		canvas.clear (bg);
+		canvas.fillRect (width - 1, 0, 1, height, uk_tone (C_BG, 92));
+		int fy = height - 30;
+		uk_etch_h (canvas, 12, fy - 8, width - 24, bg);
+		if (g_path[0])
+		{
+			const char *f = g_path; for (const char *q = g_path; *q; q++) if (*q == '/' || *q == ':') f = q + 1;
+			unsigned c = g_saveFailed ? C_BAD : C_GOOD;
+			uk_rbox (canvas, 16, fy + 7, 8, 8, 4, c, c);
+			text_fit_l (canvas, 30, fy, langX (0) - 36, 22, f, dim);
+		}
+#ifdef LEDGER_LANG_SWITCH
+		for (int k = 0; k < NLANG; k++)
+		{
+			bool on = ci_eq (uk_lang (), LANGS[k].code), h = k == langHot;
+			int x = langX (k);
+			if (on) uk_rbox (canvas, x, fy + 1, LANG_W, 20, 5, C_ACCENT, C_ACCENT);
+			else uk_rbox (canvas, x, fy + 1, LANG_W, 20, 5, h ? uk_tone (bg, 150) : bg, uk_tone (bg, 92));
+			uk_text_c (canvas, x, fy + 1, LANG_W, 20, LANGS[k].tag, on ? uk_ink_for (C_ACCENT) : dim, on ? 2 : 0);
+		}
+#endif
+	}
+	bool onMouse (int mx, int my, int bl, int, int, int) override
+	{
+		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
+		int lh = in ? langAt (mx, my) : -1;
+		if (lh != langHot) { langHot = lh; invalidate (true); }
+		if (bl && !pressed)
+		{
+			pressed = true;
+#ifdef LEDGER_LANG_SWITCH
+			if (lh >= 0) { choose_lang (LANGS[lh].code); return in; }
+#endif
+		}
+		else if (!bl) pressed = false;
+		return in;
+	}
+};
+class SideBar
+{
+public:
+	SidePanel *sp; SideHead *head; SideFoot *foot;
+	ChoiceBox *years; const char *ynames[MAXYEARS]; char ybuf[MAXYEARS][48];
+	int cur; int badge[P_COUNT]; unsigned badgeCol[P_COUNT];
+	bool wasOpen = false, built = false;
+	SideBar () : cur (P_OVERVIEW)
+	{
+		sp = new SidePanel (0, 0, SIDE_W, H, UK_SP_LEFT, UK_SP_NAVIGATION);
+		sp->setColors (side_face (), uk_tone (C_BG, 92));
+		sp->setIconFn (icon);
+		head = new SideHead; foot = new SideFoot;
 		years = new ChoiceBox (12, 62, SIDE_W - 24); years->onChange = on_year; years->tip = TR ("The fiscal year the pages show");
-		addChild (years);
+		years->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
+		head->addChild (years);
+		sp->setHeader (head, NAV_Y - 10);
+		sp->setFooter (foot, 38);
+		sp->onSelect = [] (SidePanel &p, int id) { if (g_b.nacc || id == P_OVERVIEW) go (id); else p.select (g_side_cur ()); };
+		sp->onPresentation = [] (SidePanel &, int) { side_lay_out (); };
 		for (int i = 0; i < P_COUNT; i++) { badge[i] = 0; badgeCol[i] = 0; }
 	}
-	unsigned face () const { return uk_tone (C_BG, 116); }
-	unsigned bgColor () override { return face (); }
-	int itemY (int i) const { int y = NAV_Y; for (int k = 0; k < i; k++) y += NAV[k].page < 0 ? CAP_H : ITEM_H; return y; }
-	int itemAt (int my) const
+	static void icon (Canvas &cv, int id, int x, int y, int size, unsigned ink, bool on)
 	{
-		for (int i = 0; i < NNAV; i++) { int y = itemY (i), h = NAV[i].page < 0 ? CAP_H : ITEM_H; if (my >= y && my < y + h) return NAV[i].page < 0 ? -1 : i; }
-		return -1;
+		if (id >= 0 && id < P_COUNT) draw_ni (cv, PAGE_ICON[id], x + (size - 20) / 2, y + (size - 20) / 2, ink, on ? ink : C_ACCENT);
+	}
+	static int g_side_cur ();
+	static void side_lay_out ();
+	void build ()				// the pages as items (made once; then their state and badges)
+	{
+		bool open = g_b.nacc != 0;
+		if (!built)
+		{
+			built = true;
+			for (int i = 0; i < NNAV; i++)
+			{
+				const NavItem &n = NAV[i];
+				if (n.page >= 0) sp->addItem (n.page, TR (n.label), n.page);
+				else if (n.label[0]) sp->addHeading (TR (n.label));
+				else sp->addSeparator ();
+			}
+		}
+		for (int i = 0; i < NNAV; i++)
+		{
+			const NavItem &n = NAV[i];
+			if (n.page < 0) continue;
+			sp->setFlags (n.page, open || n.page == P_OVERVIEW ? 0 : UK_SPI_DISABLED);
+			sp->setBadge (n.page, open ? badge[n.page] : 0);
+		}
+		sp->select (cur);
 	}
 	void refresh ()
 	{
@@ -134,97 +248,15 @@ public:
 				}
 			badge[P_VAT] = late; badgeCol[P_VAT] = C_BAD;
 		}
+		build ();
 		invalidate (true);
 	}
-	void onDraw () override
-	{
-		unsigned bg = face (), ink = uk_ink_for (bg), dim = uk_mix (bg, ink, 140);
-		canvas.clear (bg);
-		canvas.fillRect (width - 1, 0, 1, height, uk_tone (C_BG, 92));
-		bool open = g_b.nacc != 0;
-		// the company
-		text_fit_l (canvas, 14, 10, width - 28, 24, open ? (g_b.name[0] ? g_b.name : TR ("(the company)")) : "Ledger", ink, 2);
-		char v[40] = ""; if (open && g_b.vat[0]) vat_show (g_b.vat, v, sizeof v); else if (open) scpy (v, g_b.vatRegime == VR_NORMAL ? "(no VAT number)" : "Not subject to VAT", sizeof v);
-		else scpy (v, TR ("Belgian accounting"), sizeof v);
-		text_fit_l (canvas, 14, 32, width - 28, 20, v, dim);
-		for (int i = 0; i < NNAV; i++)
-		{
-			int y = itemY (i);
-			const NavItem &n = NAV[i];
-			if (n.page < 0)
-			{
-				if (n.label[0]) uk_text_l (canvas, 16, y + 4, CAP_H - 4, TR (n.label), uk_mix (bg, ink, 110));
-				else uk_etch_h (canvas, 12, y + CAP_H / 2, width - 24, bg);
-				continue;
-			}
-			bool on = n.page == cur, h = i == hot && open;
-			if (on) uk_hilite (canvas, 8, y + 1, width - 16, ITEM_H - 2, 6, true);
-			else if (h) uk_rbox (canvas, 8, y + 1, width - 16, ITEM_H - 2, 6, uk_tone (bg, 150), uk_tone (bg, 140));
-			unsigned in = on ? uk_hilite_ink (true) : open || n.page == P_OVERVIEW ? ink : uk_mix (bg, ink, 90);
-			draw_ni (canvas, PAGE_ICON[n.page], 18, y + (ITEM_H - 20) / 2, in, on ? in : C_ACCENT);
-			uk_text_l (canvas, 48, y, ITEM_H, TR (n.label), in, on ? 2 : 0);
-			if (open && badge[n.page])
-			{
-				char b[8]; itoa10 (badge[n.page], b);
-				int pw = pill_w (b);
-				draw_pill (canvas, width - 16 - pw, y + (ITEM_H - 18) / 2, 18, b, badgeCol[n.page], true);
-			}
-		}
-		// the file, at the foot
-		int fy = height - 30;
-		uk_etch_h (canvas, 12, fy - 8, width - 24, bg);
-		if (g_path[0])
-		{
-			const char *f = g_path; for (const char *q = g_path; *q; q++) if (*q == '/' || *q == ':') f = q + 1;
-			unsigned c = g_saveFailed ? C_BAD : C_GOOD;
-			uk_rbox (canvas, 16, fy + 7, 8, 8, 4, c, c);
-			text_fit_l (canvas, 30, fy, langX (0) - 36, 22, f, dim);
-		}
-#ifdef LEDGER_LANG_SWITCH
-		for (int k = 0; k < NLANG; k++)
-		{
-			bool on = ci_eq (uk_lang (), LANGS[k].code), h = k == langHot;
-			int x = langX (k);
-			if (on) uk_rbox (canvas, x, fy + 1, LANG_W, 20, 5, C_ACCENT, C_ACCENT);
-			else uk_rbox (canvas, x, fy + 1, LANG_W, 20, 5, h ? uk_tone (bg, 150) : bg, uk_tone (bg, 92));
-			uk_text_c (canvas, x, fy + 1, LANG_W, 20, LANGS[k].tag, on ? uk_ink_for (C_ACCENT) : dim, on ? 2 : 0);
-		}
-#endif
-	}
-#ifdef LEDGER_LANG_SWITCH
-	enum { LANG_W = 30 };
-	int langX (int k) const { return width - 14 - (NLANG - k) * (LANG_W + 4) + 4; }
-	int langAt (int mx, int my) const
-	{
-		if (my < height - 30 || my >= height - 8) return -1;
-		for (int k = 0; k < NLANG; k++) if (mx >= langX (k) && mx < langX (k) + LANG_W) return k;
-		return -1;
-	}
-#else
-	int langX (int) const { return width - 8; }
-	int langAt (int, int) const { return -1; }
-#endif
-	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
-	{
-		if (wheel) return false;
-		bool in = mx >= 0 && my >= 0 && mx < width && my < height;
-		int h = in ? itemAt (my) : -1, lh = in ? langAt (mx, my) : -1;
-		if (h != hot || lh != langHot) { hot = h; langHot = lh; invalidate (true); }
-		if (bl && !pressed)
-		{
-			pressed = true;
-#ifdef LEDGER_LANG_SWITCH
-			if (lh >= 0) { choose_lang (LANGS[lh].code); return in; }
-#endif
-			if (h >= 0 && (g_b.nacc || NAV[h].page == P_OVERVIEW)) go (NAV[h].page);
-		}
-		else if (!bl) pressed = false;
-		return in;
-	}
-	void set (int page) { if (page != cur) { cur = page; invalidate (true); } }
+	void set (int page) { if (page != cur) { cur = page; sp->select (cur); } }
+	void invalidate (bool deep) { head->invalidate (deep); foot->invalidate (deep); sp->invalidate (deep); }
 	static void on_year (Widget &w);
 };
 static SideBar *g_side;
+int SideBar::g_side_cur () { return g_side ? g_side->cur : P_OVERVIEW; }
 
 // ---- the status: a word at the foot of the page, for a few seconds -------------------------------------------------------------
 class Toast : public Widget
@@ -235,9 +267,9 @@ public:
 	void show (const char *m)
 	{
 		scpy (msg, m, sizeof msg);
-		int w = imin (uk_text_w (msg) + 40, W - SIDE_W - 40);
 		Widget *p = parent;
-		if (p) { left = SIDE_W + (p->width - SIDE_W - w) / 2; top = p->height - height - 18; bringToFront (); }
+		int w = imin (uk_text_w (msg) + 40, (p ? p->width : W) - g_sideW - 40);
+		if (p) { left = g_sideW + (p->width - g_sideW - w) / 2; top = p->height - height - 18; bringToFront (); }
 		if (w != width) resizeTo (w, height);
 		hidden = false; t0 = kapi_get_ticks ();
 		invalidate (true);
@@ -275,9 +307,10 @@ static Page *make_page (int id)
 	case P_DOCS: p = g_dp = new DocsPage (); break;
 	case E_CDOC: p = g_cdp = new CDocPage (); break;
 	}
-	p->left = SIDE_W; p->top = 0; p->hidden = true;
-	p->resizeTo (g_root->width - SIDE_W, g_root->height);
+	p->left = g_sideW; p->top = 0; p->hidden = true;
+	p->resizeTo (g_root->width - g_sideW, g_root->height);
 	g_root->addChild (p);
+	if (g_side) g_side->sp->bringToFront ();		// (over the pages: a rail's names, a drawer and its tab)
 	if (g_toast) g_toast->bringToFront ();
 	return p;
 }
@@ -377,6 +410,15 @@ static void open_account (const char *code)
 {
 	if (!show_page (P_ACCOUNTS)) return;
 	g_ap->show (code);
+}
+void SideBar::side_lay_out ()		// the panel's place, the pages beside it
+{
+	if (!g_side || !g_root) return;
+	g_side->sp->place (0, 0, SIDE_W, g_root->height);
+	g_sideW = g_side->sp->reservedWidth ();
+	for (int i = 0; i < NPAGES; i++)
+		if (g_page[i]) { g_page[i]->left = g_sideW; g_page[i]->resizeTo (g_root->width - g_sideW > 1 ? g_root->width - g_sideW : 1, g_root->height); }
+	g_root->invalidate (true);
 }
 void SideBar::on_year (Widget &w)
 {
@@ -604,11 +646,8 @@ public:
 		if (g_toast) g_toast->tick ();
 		if (g_cur >= 0) g_page[g_cur]->tick ();
 	}
-	void onResized () override
-	{
-		for (int i = 0; i < NPAGES; i++) if (g_page[i]) g_page[i]->resizeTo (width - SIDE_W, height);
-		if (g_side) g_side->resizeTo (SIDE_W, height);
-	}
+	void onResized () override { SideBar::side_lay_out (); }
+	void onSizeClass (int) override { SideBar::side_lay_out (); }
 	void onDrop (int, int, int type, const char *data, int, unsigned) override
 	{
 		char path[200];
@@ -635,7 +674,9 @@ int main (void)
 	book_init (g_b);
 	root.setBg (C_BG);
 	g_side = new SideBar ();
-	root.addChild (g_side);
+	root.addChild (g_side->sp);
+	g_side->build ();
+	SideBar::side_lay_out ();
 	g_toast = new Toast ();
 	root.addChild (g_toast);
 	root.setResizable (true);

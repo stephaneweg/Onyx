@@ -549,7 +549,7 @@ static void apply (void)
 	static char buf[1400];
 	int p = uk_theme_write (g_t, buf, sizeof buf - 40);
 	ax_strcat (buf, sizeof buf, &p, "wheelspeed=");			// (the Keyboard & Mouse applet's)
-	p += ax_itoa (kapi_get_wheel_speed (), buf + p);
+	p += ax_itoa (uk_win_wheel_get (), buf + p);
 	buf[p++] = '\n'; buf[p] = 0;
 	kapi_save_file ("SD:/etc/theme.txt", buf, (unsigned) p);
 	int n = 0; while (g_tbImage->text[n] && n < (int) sizeof g_wp.image - 1) { g_wp.image[n] = g_tbImage->text[n]; n++; }

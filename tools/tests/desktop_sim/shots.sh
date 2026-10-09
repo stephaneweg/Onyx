@@ -10,6 +10,7 @@
 #
 #   sh tools/tests/desktop_sim/shots.sh [name ...]	(default: all of them)
 #
+# SHOTS_KEEPGOING=1: an app that fails is said, the others are made all the same.
 # SHOTS_LANG=fr: the apps in that language (the system's: etc/system.ini's "language=", written in the
 # writes' folder) -- with SHOTS_PNG=<folder> to look at them without touching screenshots/.
 #
@@ -63,6 +64,8 @@ build () {
 	[ "$1" = circuits ] && extra=user/Apps/circuits/circuit.cpp		# (its engine: the board, the packs, the progress)
 	[ "$1" = pinball ] && extra="user/Apps/pinball/table.cpp user/Apps/pinball/physics.cpp user/Apps/pinball/rules.cpp user/Apps/pinball/scores.cpp"	# (its core)
 	[ "$1" = critters ] && extra="user/Apps/critters/terrain.cpp user/Apps/critters/level.cpp user/Apps/critters/world.cpp user/Apps/critters/solution.cpp user/Apps/critters/progress.cpp"	# (its core)
+	[ "$1" = clock ] && extra="user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp"	# (its core, shared with clockd)
+	[ "$1" = menubar ] && extra="user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp"	# (the bell: the Clock's alarms)
 	[ "$1" = gamelib ] && extra="user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
@@ -103,14 +106,28 @@ build () {
 		$CXX -Iuser/Kits/fontkit -I$FT/include -I$M/include -o "$OUT/mail" "$OUT/fakekapi.o" user/Apps/mail/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmb.a" -lpthread || return 1
 		$CXX -I$M/include -o "$OUT/mkaccounts" "$OUT/fakekapi.o" tools/tests/mail/mkaccounts.cpp "$OUT/libmb.a" -lpthread; return
 	fi
-	if [ "$1" = pdf ]; then				# (the PDF Viewer: MuPDF for the PC -- user/Apps/pdf/mupdf.mk with gcc; its FreeType)
+	if [ "$1" = telegram ]; then			# (Telegram: mbedTLS built for the PC -- its own copy, built once --, FileKit and zlib compiled in)
+		M=third_party/mbedtls-3.6.3; mkdir -p "$OUT/mbtg" "$OUT/tgz"
+		if [ ! -f "$OUT/libmbtg.a" ]; then
+			ls $M/library/*.c | xargs -P 8 -I{} sh -c 'gcc -O1 -w -I'"$M"'/include -I'"$M"'/library -c {} -o '"$OUT"'/mbtg/$(basename {} .c).o' || return 1
+			ar rcs "$OUT/libmbtg.a" "$OUT"/mbtg/*.o
+		fi
+		for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/tgz/$f.o" || return 1; done
+		$CXX -Iuser/Kits/fontkit -I$FT/include -I$M/include -Ithird_party/zlib-1.3.1 -Iuser/Kits/filekit -o "$OUT/telegram" "$OUT/fakekapi.o" user/Apps/telegram/main.cpp \
+			user/Kits/filekit/fkcore.cpp "$OUT"/tgz/*.o "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmbtg.a" -lpthread; return
+	fi
+	case " paint slides letters photos sheet printconf " in
+	*" $1 "*)				# (FreeType's text; Paint's and Slides' layers composited by gpucomp -- its CPU path
+						#  on the PC --; their printing is PrinterKit's, not linked here: never called by a shot)
+		gcc -O2 -w -ffp-contract=off -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp_$1.o" || return 1
+		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/gpucomp_$1.o" $AK \
+			-Wl,--unresolved-symbols=ignore-all; return ;;
+	esac
+	if [ "$1" = pdf ]; then				# (the PDF Viewer: MuPDF for the PC -- user/Apps/pdf/mupdf.mk with gcc; its FreeType;
+							#  its printing is PrinterKit's, not linked here: never called by a shot)
 		make -s -j8 -f user/Apps/pdf/mupdf.mk MU_ROOT=. MU_CC=gcc MU_AR=ar MU_OUT="$OUT/mupdf" MU_CFLAGS=-O2 || return 1
 		$CXX -Iuser/Kits/fontkit -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pdf.bin" "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
-			"$OUT/libuikit.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm; return
-	fi
-	if [ "$1" = paint ]; then			# (newlib-like: FreeType; the canvas through gpucomp -- the CPU's path here)
-		gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp.o" || return 1
-		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/paint" "$OUT/fakekapi.o" user/Apps/paint/main.cpp "$OUT/gpucomp.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
+			"$OUT/libuikit.a" "$OUT/mupdf/libmupdf.a" -lpthread -lm -Wl,--unresolved-symbols=ignore-all; return
 	fi
 	if [ "$1" = 3dforge ]; then			# (newlib-like: FreeType; Manifold and Clipper2 compiled for the PC; the view by the CPU here)
 		MF=third_party/manifold-3.5.4; CL=third_party/clipper2-46f6391/CPP/Clipper2Lib
@@ -121,10 +138,6 @@ build () {
 			ar rcs "$OUT/libmanifold.a" "$OUT"/mf/*.o
 		fi
 		$CXX $MFD -Iuser/Kits/fontkit -I$FT/include -Iuser/Apps/3dforge -o "$OUT/3dforge" "$OUT/fakekapi.o" user/Apps/3dforge/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" "$OUT/libmanifold.a"; return
-	fi
-	if [ "$1" = slides ]; then			# (newlib-like: FreeType; the slides' layers through gpucomp -- the CPU's path here)
-		gcc -O2 -w -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Iuser/Emulators -Iuser/Ports -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$OUT/gpucomp_sl.o" || return 1
-		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/slides" "$OUT/fakekapi.o" user/Apps/slides/main.cpp "$OUT/gpucomp_sl.o" "$OUT/libuikit.a" "$OUT/libft.a"; return
 	fi
 	if [ "$1" = qbstudio ]; then			# (newlib-like: FreeType; Onyx BASIC's compiler built in)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/qbstudio" "$OUT/fakekapi.o" user/Apps/qbstudio/main.cpp user/Libs/basic/bascomp.cpp user/Libs/basic/basvm.cpp \
@@ -149,7 +162,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits pinball critters " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits pinball critters clock " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
@@ -158,7 +171,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf langconf preloadconf disks notes stickies circuits pinball critters"
+      config wpaconf padconf soundconf displayconf keyconf langconf modeconf preloadconf disks notes stickies circuits pinball critters clock telegram"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -170,7 +183,7 @@ wait
 sim () {
 	app=$1; dump=$2; script=$3; shift 3
 	if ! env SIM_OVERLAY=$D/sd "$@" SIM="$script;dump $OUT/$dump.elsm;exit" "$OUT/$app" >>"$OUT/log.txt" 2>&1
-	then echo "shots: $app failed (see $OUT/log.txt)"; exit 1; fi
+	then echo "shots: $app failed (see $OUT/log.txt)"; [ -n "$SHOTS_KEEPGOING" ] && return 0; exit 1; fi
 }
 png () { python3 $D/shot.py "$OUT/$1.elsm" "$PNG/$1.png" >/dev/null && echo "  $PNG/$1.png"; }
 scene () { out=$1; shift; python3 $D/compose.py "$PNG/$out.png" "$@" >/dev/null && echo "  $PNG/$out.png"; }
@@ -270,7 +283,7 @@ if want irc; then			# (a session canned (SIM_NET): #onyx and its users, #raspber
 	sim irc irc-pm "$W;$W" $P SIM_ARGS="--pm alice" SIM_MBOX='7204:7:1\tstephan\tirc.libera.chat\talice\n7202:7:m\t12:30\talice\thi! I saw your message in #onyx\n7202:7:m\t12:30\talice\tis Onyx open source? I would love to try it on my Pi 4\n7202:7:M\t12:31\tstephan\tyes, it is on GitHub\n7202:7:M\t12:31\tstephan\tyou just copy the files to a FAT32 SD card and boot\n7202:7:m\t12:32\talice\tnice, and does the Wi-Fi work?\n7202:7:M\t12:48\tstephan\tit does -- I am chatting with you from it right now :)\n7202:7:a\t12:49\talice\tis impressed\n7202:7:m\t12:49\talice\tthat is so cool'
 	png irc-pm
 fi
-if want fileviewer; then sim fileviewer fileviewer "wait;down 300 205;up 300 205;wait;down 480 109;up 480 109;$W" $P; png fileviewer; fi
+if want fileviewer; then sim fileviewer fileviewer "wait;down 300 205;up 300 205;wait;down 480 133;up 480 133;$W" $P; png fileviewer; fi	# (etc, then its autostart: under the session folder)
 if want fmtracker; then			# (a song of SD:/music/fms; a block chosen; the instrument dialog: a click on a channel's name)
 	sim fmtracker fmtracker "wait;wait;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;key 0x101;down 600 250;move 700 300;up 700 300;$W" $P SIM_ARGS=SD:/music/fms/AIRWOLF.FMS; png fmtracker
 	sim fmtracker fmtracker-instrument "wait;wait;down 330 64;up 330 64;$W" $P SIM_ARGS=SD:/music/fms/AIRWOLF.FMS; png fmtracker-instrument
@@ -486,6 +499,26 @@ if want notes; then			# (Notes, AutoDev round 1: the six sample notes of sd/Note
 	sim notes notes-empty "$W" $P SIM_WRITES="$NW" SIM_SERVICES=notify; png notes-empty
 	rm -rf "$NW"
 fi
+if want telegram; then				# (Telegram: --demo's made-up conversations, Alice's open; the emoticons' picker; a picture dropped and sent; adding a contact; a stranger's message and its bar; a group; the contacts; the
+					#  sign-in's phone page)
+	TW="$OUT/tg_w"; rm -rf "$TW"; mkdir -p "$TW/apps/telegram.app"; nlang "$TW"
+	printf '[telegram]\nwindows=0\n' > "$TW/apps/telegram.app/config.ini"	# (these: the conversation beside the list)
+	sim telegram telegram "$W" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram
+	sim telegram telegram-emoticons "$W;move 322 503;down 322 503;up 322 503;wait;move 418 425;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-emoticons
+	sim telegram telegram-group "$W;down 120 170;up 120 170;wait;move 600 300" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-group
+	sim telegram telegram-picture "$W;drop 600 300 SD:/docs/pictures/sunset-sea.jpg;wait;$(typ 'Sunset at the beach');key 13;wait;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-picture
+	sim telegram telegram-addcontact "$W;down 276 108;up 276 108;wait;$(typ '+33612345678');key 0x09;$(typ Dora);key 0x09;$(typ Laurent);wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-addcontact
+	sim telegram telegram-stranger "$W;down 120 300;up 120 300;wait;move 600 400;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-stranger
+	sim telegram telegram-contacts "$W;down 80 215;up 80 215;wait;move 120 320;wait" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify; png telegram-contacts
+	sim telegram telegram-signin "$W;$(typ +33612345678)" $P SIM_WRITES="$TW" SIM_STAT=1 SIM_SERVICES=notify; png telegram-signin
+	# (the conversations in their own windows -- Onyx's windows of a program, kapi v94: the list, Alice's window beside it)
+	TW2="$OUT/tg_w2"; rm -rf "$TW2"; mkdir -p "$TW2/apps/telegram.app"; nlang "$TW2"
+	sim telegram tg_list "$W" SIM_POS=4,32 SIM_WRITES="$TW2" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify SIM_INACTIVE=1
+	rm -rf "$TW2"; mkdir -p "$TW2/apps/telegram.app"; nlang "$TW2"
+	sim telegram tg_conv "$W;win 1" SIM_POS=4,32 SIM_WRITES="$TW2" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify
+	scene telegram-windows "$OUT/tg_list.elsm" "$OUT/tg_conv.elsm"
+	rm -rf "$TW"
+fi
 if want stickies || want stickies-empty || want notes-desktop; then	# (Stickies, AutoDev round 1: the pinned notes on the
 					#  desktop, top right -- the sample notes, three of them pinned --; then none pinned: the
 					#  hint; then the whole desktop: the agenda, Stickies, the Notes window in front, the dock)
@@ -510,7 +543,10 @@ if want stickies || want stickies-empty || want notes-desktop; then	# (Stickies,
 	rm -rf "$NW"
 fi
 if want widgets; then sim widgets widgets "$W" $P; png widgets; fi
-if want control; then sim control control "wait;move 200 130;$W" $P; png control; fi
+if want control; then			# (the links at the left, Language & Region shown; in French as well)
+	applet langconf control "$W"; png control
+	lang fr; applet langconf control-fr "$W"; png control-fr; lang "$SHOTS_LANG"
+fi
 if want basicdemo; then sim basic basicdemo "$W;$W;$W" $P SIM_APP=basic SIM_ARGS=SD:/apps/basicdemo.app/main.bas; png basicdemo; fi
 if want gamelib; then
 	python3 $D/gamelib_samples.py "$OUT/writes"
@@ -528,6 +564,10 @@ if want dockconf; then applet dockconf dockconf "$W"; png dockconf; fi
 for a in displayconf soundconf keyconf langconf preloadconf wpaconf config; do
 	if want $a; then applet $a $a "$W"; png $a; fi
 done
+if want modeconf; then			# (the Mode applet: the desktop in use; in French as well)
+	applet modeconf modeconf "$W"; png modeconf
+	lang fr; applet modeconf modeconf-fr "$W"; png modeconf-fr; lang "$SHOTS_LANG"
+fi
 if want padconf; then			# (an Xbox 360 pad plugged in, SIM_PAD: two buttons held, the stick pushed)
 	sim padconf padconf_ap "$W" SIM_APPLET=1 SIM_PAD=1
 	sim control padconf "$W" $P SIM_ARGS=padconf SIM_MAIL=40:7 SIM_SURFACE="$OUT/padconf_ap.elsm"; png padconf
@@ -552,6 +592,10 @@ if want volume; then
 	sim menubar volume "wait;wait;down 925 15;up 925 15;$W" SIM_MENU="$MENU_TINYPAD"
 	scene volume "$OUT/volume.elsm" --crop=0,0,1024,150
 fi
+if want menubar-tray; then		# (v95: an icon in the status area -- SIM_TRAY --, the pointer over it: its tip)
+	sim menubar menubar-tray "wait;wait;move 896 15;$W" SIM_MENU="$MENU_TINYPAD" SIM_TRAY="Telegram - 2 unread messages"
+	scene menubar-tray "$OUT/menubar-tray.elsm" --crop=524,0,1024,80
+fi
 if want disks; then			# (v93: a USB stick plugged in -- SIM_USB --, SD1: there; the stick chosen)
 	sim disks disks "$W;down 140 110;up 140 110;$W" $P SIM_USB=2 SIM_VOLS=SD1; png disks	# (a stick of two partitions: USB1P1:, USB1P2:)
 fi
@@ -560,8 +604,42 @@ if want usbmenu; then			# (the menu bar's USB box: a stick plugged in)
 	scene usbmenu "$OUT/usbmenu.elsm" --crop=524,0,1024,180
 fi
 if want clock; then
-	sim menubar clock "wait;wait;down 990 15;up 990 15;$W" SIM_MENU="$MENU_TINYPAD"
+	# The Clock (AutoDev round 6): desktop_sim/clock's config.ini (cities = Tokyo,New York,London) and alarms.txt (07:00
+	# School weekdays, 14:30 Medicine once today, 09:00 Gym weekends, off) in the writes' folder before each run; clockd
+	# and notifyd "running" (SIM_SERVICES: no clockd started). The simulator's frozen Monday 2026-09-28 12:34:00, the
+	# card's timezone=120 (Brussels). clock.png is the menu bar's calendar (its bell: an alarm within 24 hours; its
+	# Alarms and timers... button: the Clock on the card); the Clock's own: clock-<tab>.png, each -fr.
+	KQ="$OUT/writes/apps/clock.app"; KS="SIM_SERVICES=notify,clockd"
+	kfix () { rm -rf "$KQ"; mkdir -p "$KQ"; cp $D/clock/config.ini $D/clock/alarms.txt "$KQ/"; }
+	kfix; sim menubar clock "wait;wait;down 990 15;up 990 15;$W" SIM_MENU="$MENU_TINYPAD"
 	scene clock "$OUT/clock.elsm" --crop=624,0,1024,330
+	kw () { printf 'wait;%.0s' $(seq 1 $1); }		# (n script steps: 20 ms each)
+	KT="wait;down 421 193;up 421 193;key 32;$(kw 120)"	# (the Timer: the 5 min preset clicked, Space, ~2.4 s)
+	KW="wait;key 32;$(kw 600)key l;$(kw 590)key l;$(kw 640)key l;key 32;$W"	# (the Stopwatch: three laps, stopped)
+	kfix; sim clock clock-world     "wait;wait;$W" $KS SIM_ARGS=world;                        png clock-world
+	kfix; sim clock clock-cities    "wait;mods 1;key 14;mods 0;wait;$W" $KS SIM_ARGS=world;   png clock-cities		# (Ctrl+N: Add a City)
+	kfix; sim clock clock-alarms    "wait;wait;$W" $KS SIM_ARGS=alarms;                       png clock-alarms
+	kfix; sim clock clock-edit      "wait;key 13;wait;$W" $KS SIM_ARGS=alarms;                png clock-edit		# (Enter: School edited)
+	kfix; sim clock clock-ring      "wait;wait;$W" $KS "SIM_ARGS=--ring 1";                   png clock-ring
+	kfix; sim clock clock-timer     "$KT" $KS SIM_ARGS=timer;                                 png clock-timer
+	kfix; cp $D/clock/config-3s.ini "$KQ/config.ini"
+	      sim clock clock-timesup   "wait;key 32;$(kw 170)" $KS SIM_ARGS=timer;               png clock-timesup
+	kfix; sim clock clock-stopwatch "$KW" $KS SIM_ARGS=stopwatch;                             png clock-stopwatch
+	kfix; echo "face = analogue" >> "$KQ/config.ini"
+	      sim clock clock-analogue  "wait;wait;$W" $KS SIM_ARGS=world;                        png clock-analogue		# (View > Analogue Clock)
+	kfix; lang fr
+	sim clock clock-world-fr     "wait;wait;$W" $KS SIM_ARGS=world;                        png clock-world-fr
+	kfix; sim clock clock-cities-fr    "wait;mods 1;key 14;mods 0;wait;$W" $KS SIM_ARGS=world;   png clock-cities-fr	# (Ajouter une ville)
+	kfix; sim clock clock-alarms-fr    "wait;wait;$W" $KS SIM_ARGS=alarms;                       png clock-alarms-fr
+	kfix; sim clock clock-edit-fr      "wait;key 13;wait;$W" $KS SIM_ARGS=alarms;                png clock-edit-fr		# (Modifier l'alarme)
+	kfix; sim clock clock-ring-fr      "wait;wait;$W" $KS "SIM_ARGS=--ring 1";                   png clock-ring-fr		# (Rappel dans 10 min)
+	kfix; sim clock clock-timer-fr     "$KT" $KS SIM_ARGS=timer;                                 png clock-timer-fr		# (Remettre à zéro fits)
+	kfix; cp $D/clock/config-3s.ini "$KQ/config.ini"
+	      sim clock clock-timesup-fr   "wait;key 32;$(kw 170)" $KS SIM_ARGS=timer;               png clock-timesup-fr	# (Temps écoulé)
+	kfix; sim clock clock-stopwatch-fr "$KW" $KS SIM_ARGS=stopwatch;                             png clock-stopwatch-fr	# (Chronomètre, Tour)
+	kfix; echo "face = analogue" >> "$KQ/config.ini"
+	      sim clock clock-analogue-fr  "wait;wait;$W" $KS SIM_ARGS=world;                        png clock-analogue-fr	# (Horloge analogique)
+	lang "$SHOTS_LANG"; rm -rf "$KQ"
 fi
 if want wifimenu; then
 	sim menubar bar "$W" SIM_MENU="$MENU_TINYPAD"
@@ -715,7 +793,7 @@ if want photos; then			# (Photos over a made-up library -- tools/tests/photos/ma
 	pp photos-edit "$S0;$EDIT;down 857 151;up 857 151;$W10;$W10"
 	pp photos-crop "$S0;$EDIT;down 767 83;up 767 83;$W;down 749 324;up 749 324;$W10;$W10"
 	pp photos-filters "$S0;$EDIT;down 950 110;up 950 110;$W10;$W10;down 800 300;up 800 300;$W10;$W10"
-	pp photos-albums "$S0;down 60 196;up 60 196;$W10;$W10"
+	pp photos-albums "$S0;down 60 222;up 60 222;$W10;$W10"
 	pp photos-menu "$S0;rdown 300 360;rup 300 360;$W;$W"
 fi
 if want milk; then			# (the Milk scheme: the overlay milk/, its theme.txt)

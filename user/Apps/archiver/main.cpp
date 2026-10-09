@@ -130,27 +130,27 @@ static void recent_add (const char *path)
 // ---- the view ------------------------------------------------------------------------------------------------
 static void update_status ()
 {
-	if (!g_arc) { g_status->set ("No archive open", "Archiver"); return; }
+	if (!g_arc) { g_status->set (TR ("No archive open"), TR ("Archiver")); return; }
 	char l[160], r[160], a[32], b[32];
 	int nodes[4096]; int n = sel_nodes (nodes, 4096);
 	if (n)
 	{
 		u64 sz = 0; for (int i = 0; i < n; i++) sz += g_model.n[nodes[i]].size;
 		arc::u64_str ((u64) n, a, sizeof a); arc::u64_str ((u64) (g_list->nitems - (g_list->nitems && g_list->items[0] < 0)), b, sizeof b);
-		arc::scopy (l, a, sizeof l); arc::scat (l, " of ", sizeof l); arc::scat (l, b, sizeof l); arc::scat (l, " selected  (", sizeof l);
+		arc::scopy (l, a, sizeof l); arc::scat (l, TR (" of "), sizeof l); arc::scat (l, b, sizeof l); arc::scat (l, TR (" selected  ("), sizeof l);
 		arc::human_size (sz, a, sizeof a); arc::scat (l, a, sizeof l); arc::scat (l, ")", sizeof l);
 	}
 	else
 	{
 		int items = g_list->nitems - (g_list->nitems && g_list->items[0] < 0);
 		arc::u64_str ((u64) items, a, sizeof a);
-		arc::scopy (l, a, sizeof l); arc::scat (l, items == 1 ? " item" : " items", sizeof l);
-		if (g_list->search) arc::scat (l, " found", sizeof l);
-		else if (g_folder) { char p[300]; g_model.pathOf (g_folder, p, sizeof p); arc::scat (l, " in ", sizeof l); arc::scat (l, p, sizeof l); arc::scat (l, "/", sizeof l); }
+		arc::scopy (l, a, sizeof l); arc::scat (l, items == 1 ? TR (" item") : TR (" items"), sizeof l);
+		if (g_list->search) arc::scat (l, TR (" found"), sizeof l);
+		else if (g_folder) { char p[300]; g_model.pathOf (g_folder, p, sizeof p); arc::scat (l, TR (" in "), sizeof l); arc::scat (l, p, sizeof l); arc::scat (l, "/", sizeof l); }
 	}
 	arc::scopy (r, arc::base_of (g_arc->path), sizeof r);
 	arc::u64_str ((u64) g_model.n[0].files, a, sizeof a); arc::scat (r, "  -  ", sizeof r); arc::scat (r, a, sizeof r);
-	arc::scat (r, g_model.n[0].files == 1 ? " file  -  " : " files  -  ", sizeof r);
+	arc::scat (r, g_model.n[0].files == 1 ? TR (" file  -  ") : TR (" files  -  "), sizeof r);
 	arc::human_size (g_model.n[0].size, a, sizeof a); arc::human_size (g_arc->totalPacked (), b, sizeof b);
 	arc::scat (r, a, sizeof r); arc::scat (r, " -> ", sizeof r); arc::scat (r, b, sizeof r);
 	g_status->set (l, r);
@@ -161,18 +161,18 @@ static void update_card ()
 	if (!g_arc) return;
 	char t[64], u[32];
 	arc::scopy (t, g_arc->format (), sizeof t);
-	if (!g_arc->writable ()) arc::scat (t, ", read only", sizeof t);
-	g_card->row ("Format", t);
+	if (!g_arc->writable ()) arc::scat (t, TR (", read only"), sizeof t);
+	g_card->row (TR ("Format"), t);
 	int folders = 0; for (int i = 1; i < g_model.count; i++) if (g_model.n[i].dir) folders++;
-	arc::u64_str ((u64) g_model.n[0].files, t, sizeof t); g_card->row ("Files", t);
-	arc::u64_str ((u64) folders, t, sizeof t); g_card->row ("Folders", t);
-	arc::human_size (g_model.n[0].size, t, sizeof t); g_card->row ("Original size", t);
-	arc::human_size (g_arc->totalPacked (), t, sizeof t); g_card->row ("Packed size", t);
+	arc::u64_str ((u64) g_model.n[0].files, t, sizeof t); g_card->row (TR ("Files"), t);
+	arc::u64_str ((u64) folders, t, sizeof t); g_card->row (TR ("Folders"), t);
+	arc::human_size (g_model.n[0].size, t, sizeof t); g_card->row (TR ("Original size"), t);
+	arc::human_size (g_arc->totalPacked (), t, sizeof t); g_card->row (TR ("Packed size"), t);
 	u64 s = g_model.n[0].size, p = g_arc->totalPacked ();
-	arc::u64_str (s && p < s ? (s - p) * 100 / s : 0, u, sizeof u); arc::scat (u, " %", sizeof u); g_card->row ("Saved", u);
+	arc::u64_str (s && p < s ? (s - p) * 100 / s : 0, u, sizeof u); arc::scat (u, " %", sizeof u); g_card->row (TR ("Saved"), u);
 	int enc = 0; for (int i = 0; i < g_arc->n; i++) if (g_arc->e[i].encrypted) enc++;
-	g_card->row ("Encrypted", enc ? (enc == g_arc->n ? "yes" : "some files") : "no");
-	g_card->row ("Comment", g_arc->comment && g_arc->comment[0] ? g_arc->comment : "-");
+	g_card->row (TR ("Encrypted"), enc ? (enc == g_arc->n ? TR ("yes") : TR ("some files")) : TR ("no"));
+	g_card->row (TR ("Comment"), g_arc->comment && g_arc->comment[0] ? g_arc->comment : "-");
 }
 static void refresh_list (int keepNode = -1)
 {
@@ -182,7 +182,7 @@ static void refresh_list (int keepNode = -1)
 	else m = g_model.list (g_folder, &v);
 	g_list->set (v, m, search);
 	free (v);
-	g_list->emptyText = search ? "Nothing found" : "This folder is empty";
+	g_list->emptyText = search ? TR ("Nothing found") : TR ("This folder is empty");
 	if (keepNode >= 0) g_list->selectNode (keepNode);
 	update_status ();
 	g_tools->refresh ();
@@ -227,7 +227,7 @@ static void reload (const char *keepPath)
 	char why[200], p[300];
 	arc::scopy (p, g_arc->path, sizeof p);
 	arc::Archive *a = arc::archive_open (p, why, sizeof why);
-	if (!a) { uk_messagebox ("Archiver", why, MB_OK); return; }
+	if (!a) { uk_messagebox (TR ("Archiver"), why, MB_OK); return; }
 	// the folders open in the tree, open again after
 	char *openP[256]; int nopen = 0;
 	for (int i = 1; i < g_model.count && nopen < 256; i++)
@@ -246,7 +246,7 @@ static void reload (const char *keepPath)
 	g_folder = k < 0 ? 0 : k; g_nhist = 0;
 	g_model.n[g_folder].open = true;
 	g_path->badge[0] = 0; arc::scopy (g_path->badge, g_arc->format (), sizeof g_path->badge);
-	if (!g_arc->writable ()) arc::scat (g_path->badge, "  -  read only", sizeof g_path->badge);
+	if (!g_arc->writable ()) arc::scat (g_path->badge, TR ("  -  read only"), sizeof g_path->badge);
 	refresh_list ();
 	g_tree->reveal (g_folder);
 	update_card ();
@@ -260,7 +260,7 @@ static bool open_archive (const char *path)
 	if (!a)
 	{
 		char msg[400]; arc::scopy (msg, arc::base_of (path), sizeof msg); arc::scat (msg, "\n", sizeof msg); arc::scat (msg, why, sizeof msg);
-		uk_messagebox ("Cannot open the archive", msg, MB_OK);
+		uk_messagebox (TR ("Cannot open the archive"), msg, MB_OK);
 		return false;
 	}
 	delete g_arc; g_arc = a; g_password[0] = 0;
@@ -270,7 +270,7 @@ static bool open_archive (const char *path)
 	g_folder = 0; g_nhist = 0;
 	g_path->search->setText (""); g_lastSearch[0] = 0;
 	arc::scopy (g_path->badge, g_arc->format (), sizeof g_path->badge);
-	if (!g_arc->writable ()) arc::scat (g_path->badge, "  -  read only", sizeof g_path->badge);
+	if (!g_arc->writable ()) arc::scat (g_path->badge, TR ("  -  read only"), sizeof g_path->badge);
 	show_archive (true);
 	refresh_list ();
 	g_tree->top = 0; g_tree->reveal (0);
@@ -330,7 +330,7 @@ static void job_show (Job *j)
 		g_pbox->pct = pct;
 		arc::scopy (g_pbox->file, j->cur, sizeof g_pbox->file);
 		char a[24], b[24]; arc::human_size (j->done, a, sizeof a); arc::human_size (j->total, b, sizeof b);
-		arc::scopy (g_pbox->line, a, sizeof g_pbox->line); arc::scat (g_pbox->line, " of ", sizeof g_pbox->line); arc::scat (g_pbox->line, b, sizeof g_pbox->line);
+		arc::scopy (g_pbox->line, a, sizeof g_pbox->line); arc::scat (g_pbox->line, TR (" of "), sizeof g_pbox->line); arc::scat (g_pbox->line, b, sizeof g_pbox->line);
 		g_pbox->invalidate (true);
 	}
 	g_status->busy = pct; g_status->invalidate (true);
@@ -426,12 +426,12 @@ static void job_done (void *ctx, long again)
 	char msg[400];
 	if (j->kind == JOB_EXTRACT || j->kind == JOB_OPEN || j->kind == JOB_TEST)
 	{
-		if (!j->ok) { arc::scopy (msg, j->error, sizeof msg); uk_messagebox (j->kind == JOB_TEST ? "Test" : "Extract", msg, MB_OK); }
+		if (!j->ok) { arc::scopy (msg, j->error, sizeof msg); uk_messagebox (j->kind == JOB_TEST ? TR ("Test") : TR ("Extract"), msg, MB_OK); }
 		else if (j->kind == JOB_TEST)
 		{
 			char n[24]; arc::u64_str ((u64) j->files, n, sizeof n);
-			arc::scopy (msg, "No errors: ", sizeof msg); arc::scat (msg, n, sizeof msg); arc::scat (msg, " files checked.", sizeof msg);
-			uk_messagebox ("Test", msg, MB_OK);
+			arc::scopy (msg, TR ("No errors: "), sizeof msg); arc::scat (msg, n, sizeof msg); arc::scat (msg, TR (" files checked."), sizeof msg);
+			uk_messagebox (TR ("Test"), msg, MB_OK);
 		}
 		else if (j->kind == JOB_OPEN)
 		{
@@ -447,7 +447,7 @@ static void job_done (void *ctx, long again)
 		else
 		{
 			char n[24]; arc::u64_str ((u64) j->files, n, sizeof n);
-			arc::scopy (msg, n, sizeof msg); arc::scat (msg, j->files == 1 ? " file extracted to " : " files extracted to ", sizeof msg);
+			arc::scopy (msg, n, sizeof msg); arc::scat (msg, j->files == 1 ? TR (" file extracted to ") : TR (" files extracted to "), sizeof msg);
 			arc::scat (msg, j->x.dest, sizeof msg);
 			g_status->set (msg, g_status->right);
 			if (j->openAfter) fa_open (j->destShow[0] ? j->destShow : j->x.dest);
@@ -456,23 +456,23 @@ static void job_done (void *ctx, long again)
 		return;
 	}
 	// a change: the archive again from the disk
-	if (!j->ok) { uk_messagebox ("Archiver", j->error, MB_OK); }
+	if (!j->ok) { uk_messagebox (TR ("Archiver"), j->error, MB_OK); }
 	if (j->kind == JOB_CREATE) { if (j->ok) open_archive (j->a->path); }
 	else if (g_arc) reload (j->keepPath);
 	if (j->ok && (j->kind == JOB_ADD || j->kind == JOB_CREATE))
 	{
 		char n[24]; arc::u64_str ((u64) j->files, n, sizeof n);
-		arc::scopy (msg, n, sizeof msg); arc::scat (msg, j->files == 1 ? " item added" : " items added", sizeof msg);
+		arc::scopy (msg, n, sizeof msg); arc::scat (msg, j->files == 1 ? TR (" item added") : TR (" items added"), sizeof msg);
 		g_status->set (msg, g_status->right);
 	}
 	delete j;
 }
 static void start_job (Job *j, const char *title)
 {
-	if (g_job) { uk_messagebox ("Archiver", "Another job is running: wait for it, or cancel it.", MB_OK); delete j; return; }
+	if (g_job) { uk_messagebox (TR ("Archiver"), TR ("Another job is running: wait for it, or cancel it."), MB_OK); delete j; return; }
 	g_job = j;
 	j->tid = kapi_thread_create (job_thread, j, 0, "job");
-	if (j->tid < 0) { g_job = 0; uk_messagebox ("Archiver", "Cannot start the job (no thread).", MB_OK); delete j; return; }
+	if (j->tid < 0) { g_job = 0; uk_messagebox (TR ("Archiver"), TR ("Cannot start the job (no thread)."), MB_OK); delete j; return; }
 	ProgressBox box (title);
 	g_pbox = &box;
 	job_show (j);
@@ -485,7 +485,7 @@ static arc::Archive *job_archive ()
 {
 	char why[200];
 	arc::Archive *a = arc::archive_open (g_arc->path, why, sizeof why);
-	if (!a) { uk_messagebox ("Archiver", why, MB_OK); return 0; }
+	if (!a) { uk_messagebox (TR ("Archiver"), why, MB_OK); return 0; }
 	if (!strcmp (a->format (), "ZIP")) arc::scopy (((arc::ZipArchive *) a)->password, g_password, 128);
 	return a;
 }
@@ -499,7 +499,7 @@ static bool need_password (const char *sel)
 	for (int i = 0; i < g_arc->n; i++) if ((!sel || sel[i]) && g_arc->e[i].encrypted) any = true;
 	if (!any) return true;
 	char pw[128];
-	if (!ask_text ("Password", "Some files are encrypted. The password:", "", pw, sizeof pw, true)) return false;
+	if (!ask_text (TR ("Password"), TR ("Some files are encrypted. The password:"), "", pw, sizeof pw, true)) return false;
 	arc::scopy (g_password, pw, sizeof g_password);
 	return true;
 }
@@ -510,7 +510,7 @@ static void do_extract (bool all)
 	u64 selSize = 0; int nodes[4096]; int nn = sel_nodes (nodes, 4096);
 	for (int i = 0; i < nn; i++) selSize += g_model.n[nodes[i]].size;
 	char cur[300]; g_model.pathOf (g_folder, cur, sizeof cur);
-	char sub[300]; arc::scopy (sub, cur[0] ? cur : "the archive's top", sizeof sub); arc::scat (sub, "/", sizeof sub);
+	char sub[300]; arc::scopy (sub, cur[0] ? cur : TR ("the archive's top"), sizeof sub); arc::scat (sub, "/", sizeof sub);
 	char base[128]; arc::scopy (base, arc::base_of (g_arc->path), sizeof base);
 	char *dot = strrchr (base, '.'); if (dot && dot != base) *dot = 0;
 	// the hints: the first file selected (or the first file there is) under each layout
@@ -548,7 +548,7 @@ static void do_extract (bool all)
 	j->x.a = j->a; j->x.sel = j->sel;
 	j->total = arc::extract_total (j->x);
 	j->openAfter = c.openAfter;
-	start_job (j, "Extracting");
+	start_job (j, TR ("Extracting"));
 }
 static void extract_here ()
 {
@@ -565,19 +565,19 @@ static void extract_here ()
 	j->x.layout = arc::LAY_FROM_CURRENT; j->x.overwrite = arc::OW_ASK;
 	j->x.a = j->a; j->x.sel = j->sel;
 	j->total = arc::extract_total (j->x);
-	start_job (j, "Extracting");
+	start_job (j, TR ("Extracting"));
 }
 static void add_paths (char **paths, int np, const char *into, bool keepFolders, int level, bool replace, bool askConflicts)
 {
-	if (!writable ()) { uk_messagebox ("Archiver", "This archive is read only.", MB_OK); return; }
+	if (!writable ()) { uk_messagebox (TR ("Archiver"), TR ("This archive is read only."), MB_OK); return; }
 	if (askConflicts)
 	{
 		int c = arc::add_conflicts (*g_arc, (const char *const *) paths, np, into, keepFolders);
 		if (c)
 		{
 			char msg[200], n[16]; arc::u64_str ((u64) c, n, sizeof n);
-			arc::scopy (msg, n, sizeof msg); arc::scat (msg, c == 1 ? " file is in the archive already.\nReplace it?" : " files are in the archive already.\nReplace them?", sizeof msg);
-			int r = uk_messagebox ("Add", msg, MB_YESNOCANCEL);
+			arc::scopy (msg, n, sizeof msg); arc::scat (msg, c == 1 ? TR (" file is in the archive already.\nReplace it?") : TR (" files are in the archive already.\nReplace them?"), sizeof msg);
+			int r = uk_messagebox (TR ("Add"), msg, MB_YESNOCANCEL);
 			if (!r) return;
 			replace = r == 1;
 		}
@@ -589,11 +589,11 @@ static void add_paths (char **paths, int np, const char *into, bool keepFolders,
 	arc::scopy (j->add.into, into, sizeof j->add.into); j->add.keepFolders = keepFolders; j->add.level = level; j->add.replace = replace;
 	j->total += arc::add_bytes (*g_arc, (const char *const *) paths, np, into, keepFolders, replace);
 	keep_here (j);
-	start_job (j, "Adding");
+	start_job (j, TR ("Adding"));
 }
 static void do_add ()
 {
-	if (!writable ()) { uk_messagebox ("Archiver", "This archive is read only.", MB_OK); return; }
+	if (!writable ()) { uk_messagebox (TR ("Archiver"), TR ("This archive is read only."), MB_OK); return; }
 	char cur[300]; g_model.pathOf (g_folder, cur, sizeof cur);
 	AddBox box (arc::base_of (g_arc->path), cur, g_lastDir);
 	if (!box.run () || !box.nitem) return;
@@ -607,25 +607,25 @@ static void do_delete ()
 	char *names[4096]; int n = sel_paths (names, 4096);
 	if (!n) return;
 	char msg[300];
-	if (n == 1) { arc::scopy (msg, "Delete ", sizeof msg); arc::scat (msg, arc::base_of (names[0]), sizeof msg); arc::scat (msg, " from the archive?", sizeof msg); }
-	else { char c[16]; arc::u64_str ((u64) n, c, sizeof c); arc::scopy (msg, "Delete these ", sizeof msg); arc::scat (msg, c, sizeof msg); arc::scat (msg, " items from the archive?", sizeof msg); }
-	if (uk_messagebox ("Delete", msg, MB_YESNO) != 1) { free_names (names, n); return; }
+	if (n == 1) { arc::scopy (msg, TR ("Delete "), sizeof msg); arc::scat (msg, arc::base_of (names[0]), sizeof msg); arc::scat (msg, TR (" from the archive?"), sizeof msg); }
+	else { char c[16]; arc::u64_str ((u64) n, c, sizeof c); arc::scopy (msg, TR ("Delete these "), sizeof msg); arc::scat (msg, c, sizeof msg); arc::scat (msg, TR (" items from the archive?"), sizeof msg); }
+	if (uk_messagebox (TR ("Delete"), msg, MB_YESNO) != 1) { free_names (names, n); return; }
 	Job *j = new Job; j->kind = JOB_DELETE;
 	j->a = job_archive (); if (!j->a) { delete j; free_names (names, n); return; }
 	j->sel = arc::select_names (*g_arc, names, n);
 	free_names (names, n);
 	for (int i = 0; i < g_arc->n; i++) if (!j->sel[i]) j->total += g_arc->e[i].packed;
 	keep_here (j);
-	start_job (j, "Deleting");
+	start_job (j, TR ("Deleting"));
 }
 static void do_rename ()
 {
 	if (!writable ()) return;
-	int nodes[2]; if (sel_nodes (nodes, 2) != 1) { uk_messagebox ("Rename", "Select one file or folder to rename.", MB_OK); return; }
+	int nodes[2]; if (sel_nodes (nodes, 2) != 1) { uk_messagebox (TR ("Rename"), TR ("Select one file or folder to rename."), MB_OK); return; }
 	char old[600]; g_model.pathOf (nodes[0], old, sizeof old);
 	char name[256];
-	if (!ask_text ("Rename", "The new name:", g_model.n[nodes[0]].name, name, sizeof name)) return;
-	if (strchr (name, '/') || strchr (name, '\\')) { uk_messagebox ("Rename", "A name cannot hold / or \\.", MB_OK); return; }
+	if (!ask_text (TR ("Rename"), TR ("The new name:"), g_model.n[nodes[0]].name, name, sizeof name)) return;
+	if (strchr (name, '/') || strchr (name, '\\')) { uk_messagebox (TR ("Rename"), TR ("A name cannot hold / or \\."), MB_OK); return; }
 	if (!strcmp (name, g_model.n[nodes[0]].name)) return;
 	Job *j = new Job; j->kind = JOB_RENAME;
 	j->a = job_archive (); if (!j->a) { delete j; return; }
@@ -633,26 +633,26 @@ static void do_rename ()
 	g_model.pathOf (g_model.n[nodes[0]].parent, j->to, sizeof j->to);
 	if (j->to[0]) arc::scat (j->to, "/", sizeof j->to);
 	arc::scat (j->to, name, sizeof j->to);
-	if (g_model.find (j->to) >= 0) { uk_messagebox ("Rename", "That name is taken in this folder.", MB_OK); delete j; return; }
+	if (g_model.find (j->to) >= 0) { uk_messagebox (TR ("Rename"), TR ("That name is taken in this folder."), MB_OK); delete j; return; }
 	j->total = g_arc->totalPacked ();
 	keep_here (j);
-	start_job (j, "Renaming");
+	start_job (j, TR ("Renaming"));
 }
 static void do_new_folder ()
 {
 	if (!writable ()) return;
 	char name[256];
-	if (!ask_text ("New Folder", "The folder's name:", "New Folder", name, sizeof name)) return;
-	if (strchr (name, '/') || strchr (name, '\\')) { uk_messagebox ("New Folder", "A name cannot hold / or \\.", MB_OK); return; }
+	if (!ask_text (TR ("New Folder"), TR ("The folder's name:"), TR ("New Folder"), name, sizeof name)) return;
+	if (strchr (name, '/') || strchr (name, '\\')) { uk_messagebox (TR ("New Folder"), TR ("A name cannot hold / or \\."), MB_OK); return; }
 	Job *j = new Job; j->kind = JOB_MKDIR;
 	j->a = job_archive (); if (!j->a) { delete j; return; }
 	g_model.pathOf (g_folder, j->to, sizeof j->to);
 	if (j->to[0]) arc::scat (j->to, "/", sizeof j->to);
 	arc::scat (j->to, name, sizeof j->to);
-	if (g_model.find (j->to) >= 0) { uk_messagebox ("New Folder", "That name is taken in this folder.", MB_OK); delete j; return; }
+	if (g_model.find (j->to) >= 0) { uk_messagebox (TR ("New Folder"), TR ("That name is taken in this folder."), MB_OK); delete j; return; }
 	j->total = g_arc->totalPacked ();
 	keep_here (j);
-	start_job (j, "New folder");
+	start_job (j, TR ("New folder"));
 }
 static void do_test ()
 {
@@ -660,26 +660,26 @@ static void do_test ()
 	Job *j = new Job; j->kind = JOB_TEST;
 	j->a = job_archive (); if (!j->a) { delete j; return; }
 	j->total = g_model.n[0].size;
-	start_job (j, "Testing");
+	start_job (j, TR ("Testing"));
 }
 static void do_properties ()
 {
 	if (!g_arc) return;
 	PropsBox b (9);
 	char t[160], u[32];
-	b.row ("Archive", arc::base_of (g_arc->path));
-	dirname_of (g_arc->path, t, sizeof t); b.row ("Folder", t);
-	arc::scopy (t, g_arc->format (), sizeof t); if (!g_arc->writable ()) arc::scat (t, " (read only)", sizeof t); b.row ("Format", t);
-	{ long long fs = fk_file_size (g_arc->path); arc::human_size (fs > 0 ? (u64) fs : 0, t, sizeof t); b.row ("File size", t); }
-	arc::u64_str ((u64) g_model.n[0].files, t, sizeof t); b.row ("Files", t);
-	arc::human_size (g_model.n[0].size, t, sizeof t); b.row ("Original size", t);
+	b.row (TR ("Archive"), arc::base_of (g_arc->path));
+	dirname_of (g_arc->path, t, sizeof t); b.row (TR ("Folder"), t);
+	arc::scopy (t, g_arc->format (), sizeof t); if (!g_arc->writable ()) arc::scat (t, TR (" (read only)"), sizeof t); b.row (TR ("Format"), t);
+	{ long long fs = fk_file_size (g_arc->path); arc::human_size (fs > 0 ? (u64) fs : 0, t, sizeof t); b.row (TR ("File size"), t); }
+	arc::u64_str ((u64) g_model.n[0].files, t, sizeof t); b.row (TR ("Files"), t);
+	arc::human_size (g_model.n[0].size, t, sizeof t); b.row (TR ("Original size"), t);
 	arc::human_size (g_arc->totalPacked (), t, sizeof t);
 	u64 s = g_model.n[0].size, p = g_arc->totalPacked ();
-	arc::u64_str (s && p < s ? (s - p) * 100 / s : 0, u, sizeof u); arc::scat (t, "  (", sizeof t); arc::scat (t, u, sizeof t); arc::scat (t, " % saved)", sizeof t);
-	b.row ("Packed size", t);
+	arc::u64_str (s && p < s ? (s - p) * 100 / s : 0, u, sizeof u); arc::scat (t, "  (", sizeof t); arc::scat (t, u, sizeof t); arc::scat (t, TR (" % saved)"), sizeof t);
+	b.row (TR ("Packed size"), t);
 	int enc = 0; for (int i = 0; i < g_arc->n; i++) if (g_arc->e[i].encrypted) enc++;
-	arc::u64_str ((u64) enc, t, sizeof t); arc::scat (t, enc == 1 ? " file" : " files", sizeof t); b.row ("Encrypted", enc ? t : "none");
-	b.row ("Comment", g_arc->comment && g_arc->comment[0] ? g_arc->comment : "-");
+	arc::u64_str ((u64) enc, t, sizeof t); arc::scat (t, enc == 1 ? TR (" file") : TR (" files"), sizeof t); b.row (TR ("Encrypted"), enc ? t : TR ("none"));
+	b.row (TR ("Comment"), g_arc->comment && g_arc->comment[0] ? g_arc->comment : "-");
 	b.run ();
 }
 static void do_open_dialog ()
@@ -697,14 +697,14 @@ static void do_new (char **paths = 0, int np = 0)
 	if (!uk_file_save (p, sizeof p, dir, def, arc::format_kinds (true))) return;
 	char x[12], wx[12]; arc::ext_of (p, x, sizeof x);
 	arc::format_ext (arc::format_written (), wx, sizeof wx);
-	if (!wx[0]) { uk_messagebox ("New Archive", "No archive format can be written.", MB_OK); return; }
+	if (!wx[0]) { uk_messagebox (TR ("New Archive"), TR ("No archive format can be written."), MB_OK); return; }
 	if (strcmp (x, wx)) { arc::scat (p, ".", sizeof p); arc::scat (p, wx, sizeof p); }
-	if (arc::path_exists (p) && uk_messagebox ("New Archive", "That file exists. Replace it?", MB_YESNO) != 1) return;
+	if (arc::path_exists (p) && uk_messagebox (TR ("New Archive"), TR ("That file exists. Replace it?"), MB_YESNO) != 1) return;
 	if (arc::path_exists (p)) kapi_remove (p);
 	arc::Archive *a = arc::archive_new (p);
 	if (!np)
 	{
-		if (!a->writeEmpty ()) { uk_messagebox ("New Archive", a->error, MB_OK); delete a; return; }
+		if (!a->writeEmpty ()) { uk_messagebox (TR ("New Archive"), a->error, MB_OK); delete a; return; }
 		delete a;
 		open_archive (p);
 		return;
@@ -714,7 +714,7 @@ static void do_new (char **paths = 0, int np = 0)
 	for (int i = 0; i < np; i++) j->paths[i] = arc::sdup (paths[i]);
 	j->add.into[0] = 0; j->add.keepFolders = true; j->add.level = 6; j->add.replace = true;
 	j->total = arc::add_bytes (*a, (const char *const *) paths, np, "", true, true);
-	start_job (j, "Making the archive");
+	start_job (j, TR ("Making the archive"));
 }
 
 // Double click / Enter: a folder is entered, a file is opened (extracted to RAM:, then its app)
@@ -734,7 +734,7 @@ void ui::app_activate (int item)
 	if (g_arc->e[e].encrypted && !g_password[0])
 	{
 		char pw[128];
-		if (!ask_text ("Password", "This file is encrypted. The password:", "", pw, sizeof pw, true)) return;
+		if (!ask_text (TR ("Password"), TR ("This file is encrypted. The password:"), "", pw, sizeof pw, true)) return;
 		arc::scopy (g_password, pw, sizeof g_password);
 	}
 	Job *j = new Job; j->kind = JOB_OPEN;
@@ -747,7 +747,7 @@ void ui::app_activate (int item)
 	arc::join (j->openPath, sizeof j->openPath, j->x.dest, arc::base_of (name));
 	arc::scopy (j->from, name, sizeof j->from);
 	j->total = g_arc->e[e].size;
-	start_job (j, "Opening");
+	start_job (j, TR ("Opening"));
 }
 
 // put back what was changed in RAM:
@@ -765,8 +765,8 @@ static void watch_tick ()
 		if (sz == w.size && crc == w.crc) continue;
 		w.size = sz; w.crc = crc;
 		if (!g_arc || arc::ci_cmp (g_arc->path, w.archive) || !writable ()) continue;
-		char msg[400]; arc::scopy (msg, arc::base_of (w.entry), sizeof msg); arc::scat (msg, " was changed.\nPut it back in the archive?", sizeof msg);
-		if (uk_messagebox ("Archiver", msg, MB_YESNO) != 1) continue;
+		char msg[400]; arc::scopy (msg, arc::base_of (w.entry), sizeof msg); arc::scat (msg, TR (" was changed.\nPut it back in the archive?"), sizeof msg);
+		if (uk_messagebox (TR ("Archiver"), msg, MB_YESNO) != 1) continue;
 		char into[600]; arc::scopy (into, w.entry, sizeof into);
 		char *s = strrchr (into, '/'); if (s) *s = 0; else into[0] = 0;
 		char *p[1] = { w.ram };
@@ -785,7 +785,7 @@ void ui::app_drag_out ()
 	arc::Extract x; x.a = g_arc;
 	char *sel = arc::select_names (*g_arc, names, n); x.sel = sel;
 	u64 tot = arc::extract_total (x);
-	if (tot > 96u * 1024 * 1024) { free (sel); free_names (names, n); g_status->set ("Too large to drag: use Extract...", g_status->right); return; }
+	if (tot > 96u * 1024 * 1024) { free (sel); free_names (names, n); g_status->set (TR ("Too large to drag: use Extract..."), g_status->right); return; }
 	char seq[16]; arc::u64_str ((u64) ++g_dragSeq, seq, sizeof seq);
 	arc::scopy (x.dest, "RAM:/archiver/drag/", sizeof x.dest); arc::scat (x.dest, seq, sizeof x.dest);
 	if (g_list->search) x.layout = arc::LAY_FLAT;
@@ -804,9 +804,9 @@ void ui::app_drag_out ()
 	}
 	char label[64];
 	if (n == 1) arc::scopy (label, arc::base_of (names[0]), sizeof label);
-	else { arc::u64_str ((u64) n, label, sizeof label); arc::scat (label, " items", sizeof label); }
+	else { arc::u64_str ((u64) n, label, sizeof label); arc::scat (label, TR (" items"), sizeof label); }
 	free_names (names, n);
-	kapi_drag_begin (DND_FILES, buf, (unsigned) strlen (buf) + 1, label);
+	uk_win_drag_begin (DND_FILES, buf, (unsigned) strlen (buf) + 1, label);
 }
 
 // The folder a drop at (x, y) goes into (-1: not on the archive)
@@ -845,10 +845,23 @@ static bool looks_like_archive (const char *p)
 	return false;
 }
 
+// (P7) Pocket, console: the folders' panel (g_sp) and the list in the body, laid out by hand.
+static SidePanel *g_sp;
+static void body_lay_out (void)
+{
+	if (!g_sp || !g_body) return;
+	int w = g_body->width, h = g_body->height;
+	g_sp->place (0, 0, 240, h);
+	int sw = g_sp->reservedWidth (); if (sw) sw += 6;
+	g_list->left = sw; g_list->top = 0; g_list->resizeTo (w - sw > 1 ? w - sw : 1, h > 1 ? h : 1);
+	g_body->invalidate (true);
+}
 class ArcRoot : public Root
 {
 public:
-	ArcRoot () : Root (W, H, "Archiver") {}
+	ArcRoot () : Root (W, H, TR ("Archiver")) {}
+	void onResized () override { body_lay_out (); }
+	void onSizeClass (int) override { body_lay_out (); }
 	void onDragOver (int x, int y, bool leave, unsigned) override
 	{
 		if (leave) { drop_clear (); return; }
@@ -894,7 +907,7 @@ public:
 		}
 		int row; int k = drop_target (x, y, &row);
 		if (k < 0) return;
-		if (!writable ()) { uk_messagebox ("Archiver", "This archive is read only: nothing can be added to it.", MB_OK); return; }
+		if (!writable ()) { uk_messagebox (TR ("Archiver"), TR ("This archive is read only: nothing can be added to it."), MB_OK); return; }
 		char into[300]; g_model.pathOf (k, into, sizeof into);
 		add_paths (paths, np, into, true, 6, true, true);
 	}
@@ -954,25 +967,25 @@ void ui::app_context (int item, int lx, int ly)
 	{
 		int node = g_list->items[item];
 		bool dir = node >= 0 && g_model.n[node].dir;
-		m.add (dir ? "Open Folder" : "Open", 1, node >= 0, "Enter");
+		m.add (dir ? TR ("Open Folder") : TR ("Open"), 1, node >= 0, "Enter");
 		m.separator ();
-		m.add ("Extract...", 2, true, "^E");
-		m.add ("Extract Here", 3, true);
+		m.add (TR ("Extract..."), 2, true, "^E");
+		m.add (TR ("Extract Here"), 3, true);
 		m.separator ();
-		m.add ("Rename...", 4, w && node >= 0, "F2");
-		m.add ("Delete from Archive", 5, w && node >= 0, "Del");
+		m.add (TR ("Rename..."), 4, w && node >= 0, "F2");
+		m.add (TR ("Delete from Archive"), 5, w && node >= 0, "Del");
 		m.separator ();
-		m.add ("New Folder...", 6, w);
-		m.add ("Properties", 7, true);
+		m.add (TR ("New Folder..."), 6, w);
+		m.add (TR ("Properties"), 7, true);
 	}
 	else
 	{
-		m.add ("Add Files...", 8, w);
-		m.add ("New Folder...", 6, w);
+		m.add (TR ("Add Files..."), 8, w);
+		m.add (TR ("New Folder..."), 6, w);
 		m.separator ();
-		m.add ("Select All", 9, g_list->nitems > 0, "^A");
-		m.add ("Extract All...", 10, true);
-		m.add ("Properties", 7, true);
+		m.add (TR ("Select All"), 9, g_list->nitems > 0, "^A");
+		m.add (TR ("Extract All..."), 10, true);
+		m.add (TR ("Properties"), 7, true);
 	}
 	switch (m.run ())
 	{
@@ -1015,6 +1028,7 @@ static void m_sort_time () { sort_by (SORT_TIME); }
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);			// (before the widgets)
+	uk_lang_init ();					// (the words in the system's language)
 	FtTextFace *sm = new FtTextFace;
 	if (sm->open ("DejaVu Sans", 11)) g_small = sm;
 	kapi_mkdir ("RAM:/archiver"); kapi_mkdir ("RAM:/archiver/open"); kapi_mkdir ("RAM:/archiver/drag");
@@ -1026,10 +1040,10 @@ int main (void)
 
 	g_tools = new ToolStrip (0, 0, W, 64);
 	g_tools->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
-	g_tools->add (IC_OPEN, "Open"); g_tools->add (IC_NEW, "New"); g_tools->sep ();
-	g_tools->add (IC_ADD, "Add"); g_tools->add (IC_EXTRACT, "Extract"); g_tools->add (IC_EXTRACT_ALL, "Extract All");
-	g_tools->add (IC_DELETE, "Delete"); g_tools->sep ();
-	g_tools->add (IC_TEST, "Test"); g_tools->add (IC_INFO, "Properties");
+	g_tools->add (IC_OPEN, TR ("Open")); g_tools->add (IC_NEW, TR ("New")); g_tools->sep ();
+	g_tools->add (IC_ADD, TR ("Add")); g_tools->add (IC_EXTRACT, TR ("Extract")); g_tools->add (IC_EXTRACT_ALL, TR ("Extract All"));
+	g_tools->add (IC_DELETE, TR ("Delete")); g_tools->sep ();
+	g_tools->add (IC_TEST, TR ("Test")); g_tools->add (IC_INFO, TR ("Properties"));
 	root.addChild (g_tools);
 
 	g_path = new PathBar (8, 70, W - 16, 32);
@@ -1037,8 +1051,6 @@ int main (void)
 	root.addChild (g_path);
 
 	int bodyH = H - 108 - 30;
-	HSplitter *split = new HSplitter (8, 108, W - 16, bodyH, 240);
-	split->anchor = ANCHOR_FILL; split->minA = 160; split->minB = 300;
 	Panel *left = new Panel (0, 0, 240, bodyH);
 	int cardH = 28 + 8 * 19 + 8;
 	g_tree = new FolderTree (0, 0, 240, bodyH - cardH - 8);
@@ -1047,49 +1059,68 @@ int main (void)
 	g_card->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
 	left->addChild (g_tree); left->addChild (g_card);
 	g_list = new EntryList (0, 0, W - 16 - 240 - 6, bodyH);
-	split->setPanes (left, g_list);
-	root.addChild (split);
-	g_body = split;
+	if (uk_size_class () != UK_SC_REGULAR)
+	{	// (P7) pocket, console: the folders and the archive's card are the content of a navigation SidePanel
+		// (uikit/sidepanel.h: whole on a wide screen, a drawer otherwise -- the tab at the body's left edge); the list
+		// takes what it leaves. The desktop keeps its splitter.
+		Panel *body = new Panel (8, 108, W - 16, bodyH);
+		body->anchor = ANCHOR_FILL;
+		g_sp = new SidePanel (0, 0, 240, bodyH, UK_SP_LEFT, UK_SP_NAVIGATION);
+		g_sp->setContent (left);
+		g_sp->onPresentation = [] (SidePanel &, int) { body_lay_out (); };
+		body->addChild (g_list); body->addChild (g_sp);
+		root.addChild (body);
+		g_body = body;
+	}
+	else
+	{
+		HSplitter *split = new HSplitter (8, 108, W - 16, bodyH, 240);
+		split->anchor = ANCHOR_FILL; split->minA = 160; split->minB = 300;
+		split->setPanes (left, g_list);
+		root.addChild (split);
+		g_body = split;
+	}
 
 	g_welcome = new Welcome (8, 70, W - 16, H - 70 - 30);
 	g_welcome->anchor = ANCHOR_FILL;
 	root.addChild (g_welcome);
 
+	body_lay_out ();
 	g_status = new StatusBar (0, H - 26, W, 26);
 	g_status->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
 	root.addChild (g_status);
 
 	static Menu menu;
-	menu.menu ("File");
-	menu.item ("New Archive...", "^N", UK_CTRL ('N'), m_new);
-	menu.item ("Open...", "^O", UK_CTRL ('O'), m_open);
-	menu.item ("Close", "^W", UK_CTRL ('W'), m_close);
+	menu.menu (TR ("File"));
+	menu.item (TR ("New Archive..."), "^N", UK_CTRL ('N'), m_new);
+	menu.item (TR ("Open..."), "^O", UK_CTRL ('O'), m_open);
+	menu.item (TR ("Close"), "^W", UK_CTRL ('W'), m_close);
 	menu.separator ();
-	menu.item ("Add Files...", "^D", UK_CTRL ('D'), m_add);
+	menu.item (TR ("Add Files..."), "^D", UK_CTRL ('D'), m_add);
 	menu.separator ();
-	menu.item ("Extract...", "^E", UK_CTRL ('E'), m_extract);
-	menu.item ("Extract All...", "", 0, m_extract_all);
-	menu.item ("Extract Here", "", 0, m_extract_here);
+	menu.item (TR ("Extract..."), "^E", UK_CTRL ('E'), m_extract);
+	menu.item (TR ("Extract All..."), "", 0, m_extract_all);
+	menu.item (TR ("Extract Here"), "", 0, m_extract_here);
 	menu.separator ();
-	menu.item ("Test", "^T", UK_CTRL ('T'), m_test);
-	menu.item ("Properties", "^P", UK_CTRL ('P'), m_props);
-	menu.menu ("Edit");
-	menu.item ("Select All", "^A", UK_CTRL ('A'), m_select_all);
-	menu.item ("Invert Selection", "", 0, m_invert);
+	menu.item (TR ("Test"), "^T", UK_CTRL ('T'), m_test);
+	menu.item (TR ("Properties"), "^P", UK_CTRL ('P'), m_props);
+	menu.menu (TR ("Edit"));
+	menu.item (TR ("Select All"), "^A", UK_CTRL ('A'), m_select_all);
+	menu.item (TR ("Invert Selection"), "", 0, m_invert);
 	menu.separator ();
-	menu.item ("Rename...", "F2", 0, m_rename);
-	menu.item ("Delete from Archive", "Del", 0, m_delete);
-	menu.item ("New Folder...", "^K", UK_CTRL ('K'), m_new_folder);
+	menu.item (TR ("Rename..."), "F2", 0, m_rename);
+	menu.item (TR ("Delete from Archive"), "Del", 0, m_delete);
+	menu.item (TR ("New Folder..."), "^K", UK_CTRL ('K'), m_new_folder);
 	menu.separator ();
-	menu.item ("Find", "^F", UK_CTRL ('F'), m_find);
-	menu.menu ("View");
-	menu.item ("Up", "Backspace", 0, m_up);
-	menu.item ("Back", "", 0, m_back);
+	menu.item (TR ("Find"), "^F", UK_CTRL ('F'), m_find);
+	menu.menu (TR ("View"));
+	menu.item (TR ("Up"), "Backspace", 0, m_up);
+	menu.item (TR ("Back"), "", 0, m_back);
 	menu.separator ();
-	menu.item ("Sort by Name", "", 0, m_sort_name);
-	menu.item ("Sort by Size", "", 0, m_sort_size);
-	menu.item ("Sort by Ratio", "", 0, m_sort_ratio);
-	menu.item ("Sort by Date", "", 0, m_sort_time);
+	menu.item (TR ("Sort by Name"), "", 0, m_sort_name);
+	menu.item (TR ("Sort by Size"), "", 0, m_sort_size);
+	menu.item (TR ("Sort by Ratio"), "", 0, m_sort_ratio);
+	menu.item (TR ("Sort by Date"), "", 0, m_sort_time);
 	menu.publish ();
 
 	recent_load ();

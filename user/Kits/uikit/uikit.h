@@ -14,6 +14,7 @@
 
 #include "onyxpp.hpp"		// operator new/delete (umm) -- ensure it's emitted in the app TU
 
+#include "uikit/win.h"		// the window API (uk_win_*: C functions; a C program includes it alone)
 #include "uikit/canvas.h"
 #include "uikit/font.h"
 #include "uikit/text.h"		// the text face an app installs (FreeType's: fontkit/uikitface.h)
@@ -57,6 +58,9 @@
 #include "uikit/codeedit.h"	// a code editor (BASIC: colours, line numbers, a line lit, marks)
 #include "uikit/flat.h"		// the same behind C functions on handles (BASIC, C programs)
 #include "uikit/lang.h"		// TR (): the words in the language chosen
+#include "uikit/adapt.h"		// (P6) the size class, the metrics, a field's type: an app laid out for every mode
+#include "uikit/sidepanel.h"	// (P6) a navigation / inspector side panel that each mode shows its way
+#include "uikit/form.h"		// (P6) FormDialog: a dialog of rows laid out for the mode
 // (uikit/toolbar.h -- ToolBar, ToolButton, the WKT_* icons -- is included by the app itself: Letters,
 //  the Spreadsheet and Cardfile have their own ToolBar / ToolButton next to `using namespace uikit`.)
 

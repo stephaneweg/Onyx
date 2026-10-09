@@ -78,7 +78,7 @@ struct TImage
 	unsigned nState;			// IMG_ST_*
 	int	 nErr;				// FAILED: why (-KAPI_E*)
 	boolean	 bNamed;			// found by its path (new processes map it)
-	boolean	 bPinned;			// kept at zero references (only while named)
+	boolean	 bPinned;			// kept at zero references (only while named, or v97 aliased)
 	u64	 ulEntry;
 	unsigned nSegs;
 	TImgSeg	 Seg[ELF_MAX_SEGS];
@@ -94,6 +94,10 @@ struct TImage
 	unsigned nRelocs;			// the relocations applied to its data's copy at the load
 	unsigned nVersion;			// its export table's version
 	char	 Path[IMG_PATH_MAX];		// canonical ("": none)
+	// (v97) an alias: a second key, looked up before the paths (docs/POCKETUI-TECH-STUDY.md section 3)
+	char	 Alias[IMG_PATH_MAX];		// canonical ("": none) -- only on a ready library
+	unsigned nAliasOwner;			// the pid that set it (the graphics server)
+	boolean	 bAliasOrphan;			// its owner ended: kept for the same server started again
 	TImage	*pNext;
 };
 
@@ -218,9 +222,22 @@ boolean ImageCanonPath (const char *pIn, const char *pCwd, char *pOut)
 
 // ---- the objects -------------------------------------------------------------------------------------
 
-static TImage *FindNamed (const char *pKey)
+// The image an alias key names (0: none) -- named by its path or not (its file may have changed).
+static TImage *FindAlias (const char *pKey)
 {
 	for (TImage *o = s_pImages; o != 0; o = o->pNext)
+	{
+		if (o->Alias[0] != '\0' && strcmp (o->Alias, pKey) == 0) return o;
+	}
+	return 0;
+}
+
+// The image a key names: (v97) an alias first, then the named images' paths.
+static TImage *FindNamed (const char *pKey)
+{
+	TImage *o = FindAlias (pKey);
+	if (o != 0) return o;
+	for (o = s_pImages; o != 0; o = o->pNext)
 	{
 		if (o->bNamed && strcmp (o->Path, pKey) == 0) return o;
 	}
@@ -704,6 +721,7 @@ int ImageUnload (const char *pPath, const char *pCwd)
 {
 	char Key[IMG_PATH_MAX];
 	if (s_pImages == 0 || !ImageCanonPath (pPath, pCwd, Key)) return -KAPI_ENOENT;
+	if (FindAlias (Key) != 0) return -KAPI_EBUSY;	// (v97: an alias ends with its server)
 	TImage *o = FindNamed (Key);
 	if (o == 0) return -KAPI_ENOENT;
 	Unname (o);
@@ -741,8 +759,12 @@ static void Describe (const TImage *o, struct kapi_image_info *pOut)
 	pOut->file_size = o->nFileSize;
 	pOut->refs = (unsigned) o->nRefs;
 	pOut->flags = (o->bPinned ? KAPI_IMG_KEPT : 0) | (o->nState == IMG_ST_LOADING ? KAPI_IMG_LOADING : 0)
-		    | (o->bNamed ? 0 : KAPI_IMG_UNNAMED) | (o->bLib ? KAPI_IMG_LIB : 0);
+		    | (o->bNamed ? 0 : KAPI_IMG_UNNAMED) | (o->bLib ? KAPI_IMG_LIB : 0)
+		    | (o->Alias[0] != '\0' ? KAPI_IMG_ALIAS : 0);
 	strcpy (pOut->path, o->Path);
+	// (v97) its alias after the path's end, when both fit (they do: two paths of sd:/lib/)
+	unsigned nPath = strlen (o->Path), nAlias = strlen (o->Alias);
+	if (nAlias != 0 && nPath + 1 + nAlias + 1 <= sizeof pOut->path) strcpy (pOut->path + nPath + 1, o->Alias);
 }
 
 unsigned ImageList (const char *pPath, const char *pCwd, struct kapi_image_info *pOut, unsigned nCap)
@@ -763,6 +785,90 @@ unsigned ImageList (const char *pPath, const char *pCwd, struct kapi_image_info 
 		n++;
 	}
 	return n;
+}
+
+// ---- (v97) the aliases ------------------------------------------------------------------------------
+
+static const char s_LibDir[] = "sd:/lib/";
+static const char s_AppKit[] = "sd:/lib/appkit.so";
+
+static boolean UnderLib (const char *p)
+{
+	return strncmp (p, s_LibDir, sizeof s_LibDir - 1) == 0 && p[sizeof s_LibDir - 1] != '\0';
+}
+
+int ImageAliasAllowed (const char *pReal, const char *pAlias)
+{
+	if (pReal == 0 || pAlias == 0 || !UnderLib (pReal) || !UnderLib (pAlias)) return -KAPI_EPERM;
+	if (strcmp (pReal, s_AppKit) == 0 || strcmp (pAlias, s_AppKit) == 0) return -KAPI_EPERM;
+	if (strcmp (pReal, pAlias) == 0) return -KAPI_EINVAL;
+	return 0;
+}
+
+// o loses its alias. An image no longer found by any key (its path unnamed) is not kept by a pin
+// taken through the alias: freed if nothing maps it.
+static void DropAlias (TImage *o)
+{
+	o->Alias[0] = '\0';
+	o->nAliasOwner = 0;
+	o->bAliasOrphan = FALSE;
+	if (!o->bNamed)
+	{
+		o->bPinned = FALSE;
+		if (o->nRefs == 0) Free (o);
+	}
+}
+
+int ImageSetAlias (TImage *o, const char *pAlias, unsigned nOwner, boolean bCommit)
+{
+	if (!Is (o) || o->nState != IMG_ST_READY || !o->bLib || pAlias == 0 || nOwner == 0) return -KAPI_EINVAL;
+	int nErr = ImageAliasAllowed (o->Path, pAlias);
+	if (nErr < 0) return nErr;
+	if (o->Alias[0] != '\0' && strcmp (o->Alias, pAlias) != 0) return -KAPI_EBUSY;	// (one key an image)
+	TImage *pHolder = FindAlias (pAlias);
+	if (pHolder == o)
+	{
+		if (!o->bAliasOrphan && o->nAliasOwner != nOwner) return -KAPI_EBUSY;	// (another server's)
+		if (bCommit) { o->nAliasOwner = nOwner; o->bAliasOrphan = FALSE; }	// (the same, or taken over)
+		return 0;
+	}
+	if (pHolder != 0 && !pHolder->bAliasOrphan) return -KAPI_EBUSY;		// (a live owner's elsewhere)
+	if (!bCommit) return 0;
+	if (pHolder != 0) DropAlias (pHolder);		// (orphaned on another image: replaced)
+	strcpy (o->Alias, pAlias);
+	o->nAliasOwner = nOwner;
+	o->bAliasOrphan = FALSE;
+	return 0;
+}
+
+TImage *ImageAliasHeld (const char *pAlias, const char *pReal)
+{
+	if (pAlias == 0 || pReal == 0 || pAlias[0] == '\0') return 0;
+	TImage *o = FindAlias (pAlias);
+	if (o == 0 || o->nState != IMG_ST_READY || !o->bLib || strcmp (o->Path, pReal) != 0) return 0;
+	o->nRefs++;
+	return o;
+}
+
+void ImageUnalias (unsigned nOwner, boolean bOrphan)
+{
+	for (TImage *o = s_pImages, *pNext; o != 0; o = pNext)
+	{
+		pNext = o->pNext;
+		if (o->Alias[0] == '\0' || (nOwner != 0 && o->nAliasOwner != nOwner)) continue;
+		if (bOrphan) o->bAliasOrphan = TRUE;
+		else DropAlias (o);
+	}
+}
+
+const char *ImagePath (const TImage *o)
+{
+	return Is (o) ? o->Path : "";
+}
+
+const char *ImageAliasOf (const TImage *o)
+{
+	return Is (o) ? o->Alias : "";
 }
 
 unsigned ImagePagesTotal (void)

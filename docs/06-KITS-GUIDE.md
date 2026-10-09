@@ -116,15 +116,16 @@ functions.
 ### On a PC
 
 The same sources build on a PC for the tests and the screenshots. There is no shared library there:
-the kits' headers bring their code inline, and UIKit's sources are compiled with the program. Nothing
-changes in the program's code.
+the kits' headers bring their code inline, and UIKit's sources are compiled with the program (its window
+API relayed to the stand-in kernel's window manager: `user/Kits/uikit/port.cpp`). Nothing changes in the
+program's code.
 
 ## 3. AppKit — what makes a program run
 
 `#include "appkit/appkit.h"` — nothing to link.
 
-AppKit is the program's link to the system: files, processes, time, windows, sockets… (the `kapi_*`
-calls, listed in the Developer Guide), plus the small services every program needs: strings without a
+AppKit is the program's link to the system: files, processes, time, sockets, the events' pump… (the `kapi_*`
+calls, listed in the Developer Guide; the windows are UIKit's since 2026-10-08: `uk_win_*`, §4), plus the small services every program needs: strings without a
 C library, the console, a reader of `.ini` files, the starting of other programs.
 
 **A console tool**: read a file, print to the console.
@@ -338,6 +339,81 @@ kind, detail)` for each item offered after `object.` (or Ctrl+Space: `object` em
 
 **A timer or polling**: derive from `Root` and override `onTick ()` (called about 60 times a second).
 
+**Several windows** (2026-10-07, kapi v94): one more window of the program is a `Root` made with `NewWindow`; the first
+window's `run ()` serves them all (their events, `onTick`, drawing), a click in one makes it `Root::current ()`, its close
+box calls `onClose ()` (by default `closeWindow ()`; closing the first window ends the program). Telegram has one a
+conversation (docs/03 §6 *Several windows*).
+
+```cpp
+class ChatWin : public Root
+{
+public:
+	ChatWin (const char *who) : Root (NewWindow (), -1, -1, 500, 400, who) { if (!winOpened ()) return; /* its widgets */ }
+	void onClose () override { closeWindow (); gone = true; }	// (deleted later, by the main window's onTick)
+	bool gone = false;
+};
+ChatWin *w = new ChatWin ("Alice");
+if (!w->winOpened ()) { delete w; /* one window only: show it beside */ }
+```
+
+**An icon in the menu bar's status area** (kapi v95): `uk_tray ("SD:/apps/myapp.app/icon.bmp", "My App - 3 new")`; a double
+click on it shows the program's first window again (even minimised) and calls the first `Root`'s `onTray (KAPI_TRAY_OPEN)`,
+a right click `onTray (KAPI_TRAY_MENU)`; `uk_tray_clear ()` takes it away.
+
+**The window API** (`uikit/win.h`, 2026-10-08; in `uikit/uikit.h`, or included alone by a C program, which links
+`lib/uikit.imp_c.a`): the program's windows and what it asks of the graphics server, as plain C functions —
+`uk_win_create`, `uk_win_present`, `uk_win_on_key`, `uk_win_menu_set`, `uk_win_list`, `uk_win_tray_set`,
+`uk_win_fullscreen_begin`… (they were AppKit's `kapi_create_window`, `kapi_present`…: docs/03 §5.10.1 has the
+table). A `Root` calls them for you; a game that draws its own canvas, a full-screen program or a shell
+program (the dock, the menu bar) calls them itself. Each graphics server has its own UIKit (the desktop's
+speaks to Elegant), so the same binary runs on every one; `uk_win_server` says which.
+
+```c
+#include "appkit/appkit.h"
+#include "uikit/win.h"
+
+static void on_key (unsigned long sender, int ev, gui_value v) { (void) sender; if (ev == GUI_EVENT_KEY && v == 27) kapi_exit (0); }
+
+int main (void)
+{
+    unsigned *fb = uk_win_create (320, 200, "Plasma");     /* the canvas: 0x00RRGGBB, 320 a row */
+    if (fb == 0) return 1;
+    uk_win_on_key (on_key);
+    for (int t = 0; !kapi_should_exit (); t++)
+    {
+        for (int i = 0; i < 320 * 200; i++) fb[i] = (unsigned) (i + t) * 2654435761u >> 8;
+        uk_win_present ();                                 /* the server shows it */
+        kapi_pump_wait (16);                               /* the events (AppKit's pump) */
+    }
+    return 0;
+}
+```
+
+**The adaptive widgets** (`uikit/adapt.h`, `sidepanel.h`, `form.h`, PocketUI's phase P6; docs/03 §5.10.6): the
+same binary runs on the desktop, in pocket and in console; the app says **what** its parts are and each UIKit shows
+them for its mode — on the desktop exactly as before. A navigation **SidePanel** (a rail, a drawer, a console column
+away from the desktop), tools with **priorities** (pocket: one row and **»**), **column roles** (portrait: cards), a
+**FormDialog** (portrait: a sheet), a field's **type**, the **size class**:
+
+```cpp
+#include "uikit/uikit.h"
+#include "uikit/toolbar.h"
+
+SidePanel *nav = new SidePanel (0, 40, 200, 560, UK_SP_LEFT, UK_SP_NAVIGATION);
+nav->addHeading ("LIBRARY");  nav->addItem (1, "Songs", WKG_HOME);  nav->setBadge (1, 12);
+nav->onSelect = [] (SidePanel &, int id) { show (id); };
+bar->setPriority (cut, UK_TB_IF_ROOM, 2);  bar->setPriority (settings, UK_TB_OVERFLOW);
+grid->setColumnRole (0, UK_COL_PRIMARY);  grid->setColumnRole (1, UK_COL_SECONDARY);  grid->setColumnRole (3, UK_COL_DETAIL, 1);
+uk_set_input_type (urlBox, UK_IN_URL);
+void relayout () {                                     // the window's resize, Root::onSizeClass, nav->onPresentation
+    nav->place (0, 40, 200, height - 40);
+    content->left = nav->reservedWidth ();             // 200 whole, 48 a rail, 0 a drawer
+    if (uk_size_class () == UK_SC_NARROW) { /* portrait: the app's own choices */ }
+}
+FormDialog f ("New Playlist");  f.addRow ("Name:", new Textbox (0, 0, 240, 26, ""));
+f.addButton ("Create", UK_FB_DEFAULT, 1);  f.addButton ("Cancel", UK_FB_CANCEL, 0);  int r = f.run ();
+```
+
 ## 5. SystemKit — talking to the system and the other programs
 
 `#include "systemkit/systemkit.h"` — link `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C).
@@ -424,6 +500,60 @@ locale_set_language ("fr");                           // kept: the programs star
 locale_set_zone (0);                                  // a time zone (locale_zone_count / _city / _offset): now, and kept
 ```
 
+**The time zones at an instant** (the Clock's World tab): `locale_zone_offset (z)` judges the summer time by
+today's date only; `locale_zone_offset_at (z, utc_minutes)` gives a zone's offset at an exact instant, the hour of
+the change counted (the EU's at 01:00 UTC, the US' at 02:00 local) — a city's time is its UTC plus that offset,
+right on the night of a change whatever the local day says:
+
+```c
+struct kapi_clock_info ci;
+if (kapi_clock_info (&ci) == 0 && (ci.flags & KAPI_CLOCK_REALTIME_VALID))
+{
+    long long utc = ci.utc_us / 60000000;                        // minutes since 1970, UTC
+    int ny = 16;                                                 // locale_zone_city (16): "New York"
+    long long there = utc + locale_zone_offset_at (ny, utc);     // its wall minute now
+}
+```
+
+The kernel reads `timezone=` once at boot; `locale_zone_sync ()` puts the system's clock on the zone chosen in
+Language & Region or Setup (`zone=` only — a card with a `timezone=` and no `zone=` is left as it is) when the summer
+time begins or ends: called once a minute (clockd, the Clock's service, does), on 25 October 2026 at 03:00 CEST the
+clock becomes 02:00 CET, `timezone=` rewritten (1 changed, 0 not).
+
+**The interface's mode and its session** (`session.h`, 2026-10-08): the mode — `SESSION_DESKTOP`, `SESSION_POCKET`,
+`SESSION_CONSOLE` — is `system.ini`'s `shell=`; each mode's programs are its session file `SD:/etc/session/<mode>`.
+A settings page switches the mode as the Control Panel's Mode applet does: `/bin/session` is started, closes the
+open programs (each one asks about its unsaved work), and the caller polls it:
+
+```c
+void *h = session_switch_start (SESSION_POCKET, 0, 0);     // the caller and its parents are kept open, then ended
+/* ... each turn: */ if (h && kapi_proc_done (h)) {
+    int r = kapi_wait (h); h = 0;
+    if (r == SESSION_WAITING_APPS) { char who[512]; session_waiting (who, sizeof who);   // "name\ttitle" lines
+        /* ask: Wait -> session_switch_start (m, SESSION_NO_ASK, 0); Force -> ... SESSION_NO_ASK | SESSION_FORCE */ }
+}
+int m = session_mode ();                                   // the mode chosen (no line: the desktop)
+char names[512]; session_programs (m, names, sizeof names); // "menubar\nterminal\n": what its session starts
+```
+
+`autostart_has` / `autostart_ensure` look in the autostart and in the session files: a line added after an anchor
+goes into the file that has it.
+
+**The pocket shell** (`shell.h`, 2026-10-08): in the pocket mode a program may open one of the pocket shell's screens
+(`pocketshell` serves the IPC service `shell`); on the desktop nothing serves it and the call answers 0:
+
+```c
+if (shell_running ()) shell_ask (SHELL_MSG_QUICK);          // quick settings and the notifications (else: our own)
+```
+
+**The documents opened last** (`recent.h`, 2026-10-08): `fa_open` notes every file it opens with its app; an app that
+opens a file by itself (its own Open dialog) may note it too. The pocket launcher's Recent shows them:
+
+```c
+recent_doc_add ("SD:/docs/letters-tour.rtf");             // first of SD:/etc/recent-docs (24 at most, a path once)
+struct recent_doc d[12]; int n = recent_docs (d, 12);       // the latest first: d[i].path, .date (YYYYMMDD), .time (HHMM)
+```
+
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
 | `notify.h` | Notifications |
@@ -434,9 +564,12 @@ locale_set_zone (0);                                  // a time zone (locale_zon
 | `wallpaper.h` | The wallpaper's settings and its painter |
 | `dockconf.h` | The dock's settings |
 | `preloadini.h` | The programs loaded ahead at boot |
-| `autostart.h` | The programs started at boot (`SD:/etc/autostart`) |
+| `autostart.h` | The programs started at boot (`SD:/etc/autostart` and the session files) |
 | `applet_proto.h` | A settings applet shown inside the Control Panel |
 | `locale.h` | The system's language and time zone (`SD:/etc/system.ini`) |
+| `session.h` | The interface's mode (desktop, pocket, console) and its session: `SD:/etc/session/<mode>`, the switch |
+| `shell.h` | The pocket shell's screens asked (`shell_ask (SHELL_MSG_HOME / _SWITCHER / _QUICK / _SEARCH)`, `shell_running ()`): the menu bar's way in pocket |
+| `recent.h` | The documents opened last (`recent_doc_add`, `recent_docs`: `SD:/etc/recent-docs`; `fa_open` notes them) |
 
 ## 6. NetKit — the network
 
@@ -566,6 +699,17 @@ fk_kv_free (kv);
 A level pack (`FK_KV_PIPES`): many `[level]` blocks (`fk_kv_block`, `fk_kv_blocks`, `fk_kv_block_name`), a value
 going on over the `|` lines that follow, and the line of each value (`fk_kv_line`) for an error message. Circuits
 reads its packs and its `progress.ini` so.
+
+Blocks of the same name written (the Clock's `[alarm]` list; `fk_kv_set` reaches only a name's first block): a new
+block made at the end, its keys set and read by its number —
+
+```c
+fk_kv *kv = fk_kv_new (0);
+int b = fk_kv_block_new (kv, "alarm");                      // its number (1-based), -1 no memory
+fk_kv_block_set (kv, b, "time", "07:00");                   // replaced in block b, else added at its end
+const char *t = fk_kv_block_get (kv, b, "time", "");        // block b's value ("" if none)
+fk_kv_save (kv, "SD:/apps/clock.app/alarms.txt", "# Clock -- the alarms");
+```
 
 ## 8. ImageKit — pictures
 
@@ -835,7 +979,11 @@ The header of a kit a C program may use is written in C.
 | read an `.ini` file | AppKit | `app_ini_load`, `app_ini_get` |
 | start another program | AppKit | `lx_launch`, `lx_open` |
 | open a window with widgets | UIKit | `Root`, `Label`, `Button`… |
+| open a bare window, draw its pixels | UIKit | `uk_win_create`, `uk_win_present`, `uk_win_on_key` |
+| take the whole screen (a game, an emulator) | UIKit (then AppKit's `kapi_present_fb`) | `uk_win_fullscreen_begin`, `uk_win_fullscreen_end` |
+| list, raise, move the windows (a shell) | UIKit | `uk_win_list`, `uk_win_raise`, `uk_win_place` |
 | ask the user (message, file, colour) | UIKit | `uk_messagebox`, `uk_file_open`, `uk_color_dialog` |
+| lay the app out for every mode (desktop, pocket, console) | UIKit | `SidePanel`, `ToolBar::setPriority`, `DataGrid::setColumnRole`, `FormDialog`, `uk_size_class`, `Root::onSizeClass` |
 | load an icon | UIKit | `ui::icon_load` |
 | show a notification | SystemKit | `notify`, `notify_action` |
 | copy / paste | SystemKit | `clip_set_text`, `clip_get_text` |

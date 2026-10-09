@@ -38,13 +38,13 @@
 //     5 END     (one round of updates is complete: the client shows it, then asks again)
 //     8 SCREEN  u16 w h (the screen's new size: kapi_screen_set, kernel v66; an older client
 //               skips it)
-//     9 CAPS    u8 protocol (1), u8 rounds in flight (the window: sent once, first, only to a
+//     9 CAPS    u8 protocol (1; 2: MOVE understood), u8 rounds in flight (the window: sent once, first, only to a
 //               client that set option bit 2)
 //    10 PING    u32 the server's clock in ms (between rounds, never inside one; a client
 //               skips an unknown type, so an older one ignores it)
 //    11 CURSOR  u8 the pointer's shape now (KAPI_CURSOR_*: 0 arrow, 1 hand, 2 text, 3 move, 4 .. 7
 //               the size arrows, 8 cell, 9 cross, 10 wait, 11 no), sent when it changes, between
-//               rounds -- the client shows its own pointer of that shape (kapi_cursor_shown: known
+//               rounds -- the client shows its own pointer of that shape (uk_win_cursor_shown: known
 //               only when Elegant, the graphics server, has the display)
 //   client -> server: u8 type, payload
 //     1 READY   (send the next round)
@@ -60,6 +60,9 @@
 //     5 CLOSE   u32 id (its close box)
 //     8 PONG    u32 the PING's value echoed (pipelined clients only: an older rdpd would
 //               end the session on it)
+//     9 MOVE    u32 id, s16 x y: the window's client area put there on the Pi's screen (its copy was
+//               dragged on the PC; only to an rdpd whose CAPS said protocol 2: an older one would end
+//               the session on it)
 //
 // Rounds and credits. A round is sent only when something changed (no empty rounds: an idle
 // screen costs no traffic), and only while the server has credit: each READY gives one, each
@@ -84,6 +87,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include "appkit/appkit.h"
+#include "uikit/win.h"		// the window API (UIKit's: uk_win_*)
 #include "remotekeys.h"
 
 // ---- diagnostics (kmsg, "app: rdpd ..." lines) ----------------------------------------------
@@ -143,7 +147,7 @@ static void stats_tick (int force)
 }
 
 #define TILE		64
-#define MAXWIN		20		// (the window manager's 16 + the desktop)
+#define MAXWIN		40		// (uk_win_list gives 37 at most: the desktop + 36 windows; Elegant has 64 since v94)
 #define MIN_ROUND_TICKS	2		// >= 20 ms between rounds (<= 50 a second)
 #define BUSY_FACTOR	2		// ... and twice the last round's time (core 0 kept for the apps)
 
@@ -271,6 +275,7 @@ struct Win
 	struct kapi_win_info info;
 	unsigned *prev, *cur; int bw, bh;	// the content the client has / as read now
 	int sent;				// its WIN message went out
+	unsigned flags;				// the flags it told (pocket_flags)
 	int stale;				// its pixels not sent yet (new, or hidden until now)
 	int alive;
 };
@@ -310,14 +315,129 @@ static void send_rect (unsigned id, int part, const unsigned *src, int stride, i
 	put (useLz ? g_lz : g_pack, useLz ? z : n);
 }
 
-static void send_win (const struct kapi_win_info *I)
+// ---- PocketUI (the pocket and console modes): the flags told to the client ------------------
+// Onyx Remote sends the PC's keys only from a child window of its own (RemoteWindow), and makes one only of a
+// framed window: a borderless one becomes a see-through overlay or a picture on the desktop (a popup, the dock:
+// never the keyboard's) and a backmost one is skipped (it is in the desktop's picture). Under PocketUI every app's
+// main window is frameless (filled, or centred over a matte) and the shell's home is backmost -- so no window of
+// the PC could take the keyboard and nothing typed was sent (the Pi's report on 2026.10.126: typing from Onyx
+// Remote did nothing, in the apps and in the launcher; the mouse worked, the Pi's own keyboards too). There, rdpd
+// tells the client:
+//   - a program's MAIN window (its lowest borderless one, not topmost, not see-through, not a system one) as a
+//     plain window without a frame: a child window that takes the focus and sends the keys -- its popups (above
+//     it, borderless) stay overlays, the see-through ones (the menu bar, the shell's overlays, toasts) too;
+//   - the shell's HOME (its backmost window) the same way while no app shows (the keys are the home's then);
+//     behind an app it stays backmost (not shown by the client: the app covers it on the Pi);
+//   - PocketUI's matte (its own borderless window under a centred app) a picture on the desktop (as it was) when
+//     the client asked for the desktop, else not shown (an overlay would cover the app's window).
+// Elegant's windows are told as they are. (The server asked every 2 s: the mode switched.)
+static int g_pocket;			// the graphics server is PocketUI's (uk_win_server's mode)
+static unsigned g_pocketAt;
+
+static void pocket_poll (void)
+{
+	unsigned now = kapi_get_ticks ();
+	if (g_pocketAt != 0 && now - g_pocketAt < 200) return;
+	g_pocketAt = now | 1;
+	struct uk_win_server_info si;
+	memset (&si, 0, sizeof si);
+	si.size = sizeof si;
+	int was = g_pocket;
+	g_pocket = uk_win_server (&si) > 0 && si.mode != UK_MODE_DESKTOP;
+	if (g_pocket != was) rdlog ("rdpd: the graphics server is %s", g_pocket ? "PocketUI's: its frameless main windows and its home sent as plain ones (the keys)" : "the desktop's");
+}
+
+#define POCKET_SHOWN(I)	(!((I)->state & (KAPI_WIN_MINIMISED | KAPI_WIN_OFFDESK)))
+
+// The flags told for each of the n windows L (bottom to top) -> F.
+static void pocket_flags (const struct kapi_win_info *L, int n, unsigned *F)
+{
+	const unsigned B = WIN_FLAG_BORDERLESS, K = WIN_FLAG_BACKMOST;
+	int app = 0;					// an app's window shows (not the home's, the matte, a band)
+	for (int i = 0; i < n; i++)
+	{
+		F[i] = L[i].flags;
+		if (L[i].id != KAPI_WIN_DESKTOP && POCKET_SHOWN (&L[i]) && !(L[i].flags & (WIN_FLAG_TOPMOST | WIN_FLAG_SYSTEM | K))) app = 1;
+	}
+	if (!g_pocket) return;
+	for (int i = 0; i < n; i++)
+	{
+		unsigned f = L[i].flags;
+		if (L[i].id == KAPI_WIN_DESKTOP || !(f & B) || (f & (WIN_FLAG_TOPMOST | WIN_FLAG_ALPHA))) continue;
+		if (f & K)					// the shell's home
+		{
+			if (!app) F[i] = f & ~(B | K);
+			continue;
+		}
+		if (f & WIN_FLAG_SYSTEM)			// PocketUI's matte
+		{
+			if (!g_desktop) F[i] = f | K;
+			continue;
+		}
+		int lowest = 1;					// its program's main window: none of its own below it
+		for (int j = 0; j < i && lowest; j++)
+			if (L[j].pid == L[i].pid && L[j].id != KAPI_WIN_DESKTOP && POCKET_SHOWN (&L[j]) && (L[j].flags & B)
+			    && !(L[j].flags & (WIN_FLAG_TOPMOST | WIN_FLAG_ALPHA | WIN_FLAG_SYSTEM | K))) lowest = 0;
+		if (lowest) F[i] = f & ~B;
+	}
+}
+
+// Under PocketUI, what the client is told is logged each time the windows or their flags change (kmsg): which window
+// is a plain one -- the one the PC's keys come from -- is what a report "the keyboard does nothing in Onyx Remote"
+// needs (2026-10-09). One line a window: its id, its program, the server's flags -> the flags told, its state.
+static void told_log (const struct kapi_win_info *L, int n, const unsigned *F)
+{
+	static unsigned last;
+	if (!g_pocket) { last = 0; return; }
+	unsigned sig = 2166136261u;
+	for (int i = 0; i < n; i++)
+	{
+		unsigned v[4] = { L[i].id, L[i].flags, F[i], L[i].state & (KAPI_WIN_MINIMISED | KAPI_WIN_OFFDESK | KAPI_WIN_FULLSCREEN | KAPI_WIN_KEYS) };
+		for (int k = 0; k < 4; k++) sig = (sig ^ v[k]) * 16777619u;
+	}
+	if (sig == last) return;
+	last = sig;
+	rdlog ("rdpd: told %d window%s (bottom to top)", n, n == 1 ? "" : "s");
+	for (int i = 0; i < n && i < 16; i++)
+		rdlog ("rdpd:   %u pid %u \"%.24s\" %d,%d %dx%d flags %x -> %x state %x%s", L[i].id, L[i].pid, L[i].title, L[i].x, L[i].y, L[i].w, L[i].h,
+		       L[i].flags, F[i], L[i].state, !(F[i] & WIN_FLAG_BORDERLESS) && L[i].id != KAPI_WIN_DESKTOP ? "  (plain: takes the keys)" : "");
+}
+
+// A program with the full screen (the servers list its window at 0, 0, the screen's size, no frame, state
+// KAPI_WIN_FULLSCREEN -- an emulator, a BASIC game): the Pi shows it alone, so it is told alone, as a plain window
+// without a frame that takes the keys -- the client made a window in the FULLSCREEN state a native framed one, a PC
+// window with a title bar in the middle of the others (the user's report, 2026-10-08: "shown as a normal client
+// window"); the others come back when it gives the screen back. -> how many windows are told.
+static int full_only (struct kapi_win_info *L, int n)
+{
+	for (int i = n - 1; i >= 0; i--)
+		if (L[i].id != KAPI_WIN_DESKTOP && (L[i].state & KAPI_WIN_FULLSCREEN))
+		{
+			L[0] = L[i];
+			L[0].state &= ~KAPI_WIN_FULLSCREEN;
+			L[0].x = L[0].y = 0;
+			L[0].ow = L[0].oh = L[0].il = L[0].it = 0;
+			L[0].flags = (L[0].flags & ~(WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_BACKMOST | WIN_FLAG_ALPHA | WIN_FLAG_SYSTEM));
+			return 1;
+		}
+	return n;
+}
+
+// Under PocketUI a system window (the matte, the shell's home) is never raised from the PC: the matte would cover
+// the app (PocketUI keeps only the apps' windows in order).
+static int raisable (const struct Win *w)
+{
+	return w != 0 && !(w->info.flags & (WIN_FLAG_BACKMOST | WIN_FLAG_TOPMOST)) && !(g_pocket && (w->info.flags & WIN_FLAG_SYSTEM));
+}
+
+static void send_win (const struct kapi_win_info *I, unsigned flags)
 {
 	int tn = (int) strlen (I->title);
 	msg (1, 4 + 4 + 4 + 8 + 4 + 3 + (unsigned) tn);
 	put32 (I->id); put16 ((unsigned) (short) I->x); put16 ((unsigned) (short) I->y);
 	put16 ((unsigned) I->w); put16 ((unsigned) I->h);
 	put16 ((unsigned) I->ow); put16 ((unsigned) I->oh); put16 ((unsigned) I->il); put16 ((unsigned) I->it);
-	put32 (I->flags); put8 ((unsigned) I->alpha); put8 (I->state); put8 ((unsigned) tn); put (I->title, tn);
+	put32 (flags); put8 ((unsigned) I->alpha); put8 (I->state); put8 ((unsigned) tn); put (I->title, tn);
 }
 
 // The content: the tiles that changed since the client's copy, a row of tiles at a time
@@ -334,7 +454,7 @@ static void send_content (struct Win *w, int full)
 		if (!w->prev || !w->cur) { free (w->prev); free (w->cur); w->prev = w->cur = 0; return; }
 	}
 	unsigned tr = kapi_clock_us ();
-	if (kapi_win_read (w->id, 0, 0, 0, W, H, w->cur, W) != 0) return;
+	if (uk_win_read (w->id, 0, 0, 0, W, H, w->cur, W) != 0) return;
 	g_st.read_us += kapi_clock_us () - tr;
 	for (int ty = 0; ty < H; ty += TILE)
 	{
@@ -369,7 +489,7 @@ static void send_chrome (struct Win *w)
 	unsigned *b = (unsigned *) malloc ((size_t) W * H * 4);
 	if (!b) return;
 	for (int part = 1; part <= 2; part++)
-		if (kapi_win_read (w->id, part, 0, 0, W, H, b, W) == 0)
+		if (uk_win_read (w->id, part, 0, 0, W, H, b, W) == 0)
 			for (int y = 0; y < H; y += TILE) send_rect (w->id, part, b, W, 0, y, W, H - y < TILE ? H - y : TILE, 1);
 	free (b);
 }
@@ -384,14 +504,19 @@ static int round_send (void)
 		kapi_screen_size (&w, &h);
 		if (w != g_W || h != g_H) { g_W = w; g_H = h; msg (8, 4); put16 ((unsigned) w); put16 ((unsigned) h); }
 	}
+	pocket_poll ();
 	struct kapi_win_info L[MAXWIN];
-	int n = kapi_win_list (L, MAXWIN);
+	int n = uk_win_list (L, MAXWIN);
 	if (!g_desktop)							// (only when asked for)
 	{
 		int k = 0;
 		for (int i = 0; i < n; i++) if (L[i].id != KAPI_WIN_DESKTOP) L[k++] = L[i];
 		n = k;
 	}
+	n = full_only (L, n);
+	unsigned F[MAXWIN];
+	pocket_flags (L, n, F);
+	told_log (L, n, F);
 	for (int i = 0; i < MAXWIN; i++) g_win[i].alive = 0;
 	for (int i = 0; i < n; i++)
 	{
@@ -402,9 +527,9 @@ static int round_send (void)
 		w->info = L[i];
 		int moved = !w->sent || old.x != L[i].x || old.y != L[i].y || old.w != L[i].w || old.h != L[i].h
 			  || old.ow != L[i].ow || old.oh != L[i].oh || old.flags != L[i].flags || old.alpha != L[i].alpha
-			  || old.state != L[i].state || strcmp (old.title, L[i].title) != 0;
-		if (moved) send_win (&L[i]);
-		w->sent = 1;
+			  || old.state != L[i].state || strcmp (old.title, L[i].title) != 0 || w->flags != F[i];
+		if (moved) send_win (&L[i], F[i]);
+		w->sent = 1; w->flags = F[i];
 		if (L[i].state & (KAPI_WIN_MINIMISED | KAPI_WIN_OFFDESK)) { w->stale = 1; continue; }	// (not shown)
 		int newChrome = w->stale || w->chromeGen != L[i].chromeGen || old.ow != L[i].ow || old.oh != L[i].oh;
 		if (newChrome && !g_noFrames) send_chrome (w);
@@ -455,7 +580,7 @@ static void cursor_poll (unsigned now)
 {
 	if (now - g_cursorAt < CURSOR_POLL) return;
 	g_cursorAt = now;
-	int shape = kapi_cursor_shown ();
+	int shape = uk_win_cursor_shown ();
 	if (shape < 0 || shape == g_cursor) return;
 	g_cursor = shape;
 	msg (11, 1); put8 ((unsigned) shape); flush_out ();
@@ -485,8 +610,8 @@ static void pointer (unsigned id, int x, int y, unsigned buttons, int wheel)
 	struct Win *w = find (id);
 	if (!w && id != KAPI_WIN_DESKTOP) return;		// (the desktop: the screen, sent or not)
 	if (w && id != KAPI_WIN_DESKTOP && buttons && !g_btn && !(w->info.state & KAPI_WIN_KEYS)
-	    && !(w->info.flags & WIN_FLAG_TOPMOST))		// (not the menu bar, the dock)
-		kapi_win_raise (id);				// clicked: on top on the Pi too
+	    && !(w->info.flags & WIN_FLAG_TOPMOST) && raisable (w))	// (not the menu bar, the dock; PocketUI's matte)
+		uk_win_raise (id);				// clicked: on top on the Pi too
 	kapi_inject_pointer (w ? w->info.x + x : x, w ? w->info.y + y : y, buttons, wheel);
 	g_btn = buttons;
 }
@@ -517,7 +642,7 @@ static int acceptor (void *arg)
 
 static void session (void)
 {
-	g_inlen = g_outlen = 0; g_dead = 0; g_desktop = 0; g_ctrl = 0; g_mods = 0; g_btn = 0; g_norder = -1;
+	g_inlen = g_outlen = 0; g_dead = 0; g_desktop = 0; g_ctrl = 0; g_mods = 0; g_btn = 0; g_norder = -1; g_pocketAt = 0;
 	memset (g_held, 0, sizeof g_held);
 	for (int i = 0; i < MAXWIN; i++) drop (&g_win[i]);
 	put ("ONYXRDP1", 8); put16 ((unsigned) g_W); put16 ((unsigned) g_H); put16 (kapi_abi_version ()); flush_out ();
@@ -528,7 +653,7 @@ static void session (void)
 	g_credit = g_window - 1;			// (+ the client's first READY)
 	g_endn = 0; g_probes = 0;
 	g_lastRx = g_lastEnd = g_lastPing = kapi_clock_us ();
-	if (g_pipe) { msg (9, 2); put8 (1); put8 ((unsigned) g_window); flush_out (); }
+	if (g_pipe) { msg (9, 2); put8 (2); put8 ((unsigned) g_window); flush_out (); }	// (protocol 2: MOVE)
 	memset (&g_st, 0, sizeof g_st); g_st.t0 = kapi_clock_us ();
 	rdlog ("rdpd: session start (%d bits a pixel%s, %s)", g_bpp16 ? 16 : 32, g_noFrames ? ", no frames" : "",
 	       g_pipe ? "pipelined: 3 rounds in flight" : "lock-step: an older client");
@@ -546,6 +671,7 @@ static void session (void)
 			else if (t == 4 || t == 5 || t == 6) len = 5;
 			else if (t == 7) len = 2;
 			else if (t == 8 && g_pipe) len = 5;
+			else if (t == 9 && g_pipe) len = 9;
 			else { rdlog ("rdpd: unknown message %d: the session ends", t); g_dead = 1; break; }
 			if (g_inlen < len) break;
 			const unsigned char *m = g_in + 1;
@@ -575,8 +701,13 @@ static void session (void)
 				key_event (m[0] & 1, get32 (m + 1));
 			}
 			else if (t == 6) { unsigned c = get32 (m); char one[2] = { (char) c, 0 }; if (c > 0 && c < 256) kapi_inject_key (one); }
-			else if (t == 4) { struct Win *w = find (get32 (m)); if (w && !(w->info.flags & 6)) kapi_win_raise (get32 (m)); }
-			else if (t == 5) kapi_win_close (get32 (m));
+			else if (t == 4) { struct Win *w = find (get32 (m)); if (raisable (w)) uk_win_raise (get32 (m)); }
+			else if (t == 5) uk_win_close (get32 (m));
+			else if (t == 9)				// MOVE: dragged on the PC, put there on the Pi too
+			{
+				struct Win *w = find (get32 (m));
+				if (w && !(w->info.flags & 6)) uk_win_place (get32 (m), (short) get16 (m + 4), (short) get16 (m + 6));
+			}
 			else if (t == 7) g_desktop = m[0] != 0;
 			consume (len);
 		}
@@ -637,7 +768,7 @@ int main (void)
 	if (args[0] == 'l')					// rdpd list
 	{
 		struct kapi_win_info L[MAXWIN];
-		int n = kapi_win_list (L, MAXWIN);
+		int n = uk_win_list (L, MAXWIN);
 		printf ("kapi v%u, screen %d x %d, %d windows listed:\n", kapi_abi_version (), g_W, g_H, n);
 		for (int i = 0; i < n; i++)
 			printf ("  %08X pid %u  %d,%d %dx%d  frame %dx%d  flags %X alpha %d gen %u state %u  %s\n", L[i].id, L[i].pid,
@@ -645,7 +776,7 @@ int main (void)
 		if (n > 0)
 		{
 			unsigned px[16];
-			int r = kapi_win_read (L[n - 1].id, 0, 0, 0, 4, 4, px, 4);
+			int r = uk_win_read (L[n - 1].id, 0, 0, 0, 4, 4, px, 4);
 			printf ("read of the top one: %d, first pixel %06X\n", r, r == 0 ? px[0] : 0);
 		}
 		return 0;

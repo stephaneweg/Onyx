@@ -16,6 +16,7 @@
 // the stand-in kernel tools/tests/gpucomp/hostkapi.cpp).
 //
 #include "appkit/appkit.h"
+#include "uikit/win.h"		// the window API (UIKit's: uk_win_*)
 #include "umm.h"
 #include "gpucomp/gpucomp.h"
 #ifdef GPC_HOST
@@ -214,7 +215,7 @@ static int demo (int forceCpu)
 	gpc_ctx *g = gpc_create (&cfg);
 	Scene S;
 	if (!g || !make_all () || !scene_make (g, &S, s_page, s_image, s_card, s_banner)) { ax_putln ("gpcdemo: no memory"); return 1; }
-	unsigned *canvas = kapi_create_window (W, H, "GPU compositing (gpucomp)");
+	unsigned *canvas = uk_win_create (W, H, "GPU compositing (gpucomp)");
 	if (!canvas) { ax_putln ("gpcdemo: no window"); return 1; }
 	ax_puts ("gpcdemo: "); ax_putln (gpc_info (g));
 	gpc_target T = { canvas, W, H, W, 0 };
@@ -233,7 +234,7 @@ static int demo (int forceCpu)
 			scene_free (g, &S); scene_make (g, &S, s_page, s_image, s_card, s_banner);
 		}
 		gpc_stats st; gpc_get_stats (g, &st); us += st.last_us;
-		kapi_present ();
+		uk_win_present ();
 		frames++;
 		if (t - last >= 1000000)
 		{

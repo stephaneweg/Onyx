@@ -99,3 +99,6 @@
 93 fk_kv_set
 94 fk_kv_text
 95 fk_kv_value
+96 fk_kv_block_get
+97 fk_kv_block_new
+98 fk_kv_block_set

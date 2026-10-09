@@ -98,7 +98,7 @@ static void on_map (Widget &)
 static void on_wheel (Widget &w)
 {
 	int v = ((NumericUpDown &) w).value;
-	kapi_set_wheel_speed (v);
+	uk_win_wheel_set (v);
 	char line[24]; int n = 0;
 	ax_strcat (line, sizeof line, &n, "wheelspeed="); n += ax_itoa (v, line + n);
 	set_line ("SD:/etc/theme.txt", "wheelspeed", line);
@@ -136,7 +136,7 @@ int main (void)
 	root.addChild (gm);
 	int mt = gm->contentTop () + 8;
 	gm->addChild (new Label (14, mt + 4, 250, 20, TR ("Wheel: lines a notch scrolls"), C_TEXT, gm->bg));
-	g_nuWheel = new NumericUpDown (270, mt, 80, 28, 1, 16, kapi_get_wheel_speed (), 1, on_wheel); gm->addChild (g_nuWheel);
+	g_nuWheel = new NumericUpDown (270, mt, 80, 28, 1, 16, uk_win_wheel_get (), 1, on_wheel); gm->addChild (g_nuWheel);
 
 	g_status = new Label (X + 12, 396, W - 24, 22, "", C_DIS, root.bg);
 	root.addChild (g_status);

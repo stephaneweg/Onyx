@@ -1,0 +1,56 @@
+# The Task Manager's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included; the formats' % kept in the same order).
+Task Manager	Gestionnaire des tâches
+%s  -  %s  -  %u socket open	%s  -  %s  -  %u socket ouvert
+%s  -  %s  -  %u sockets open	%s  -  %s  -  %u sockets ouverts
+The network is down	Le réseau est coupé
+%u bytes	%u octets
+Kernel	Noyau
+App	Appli
+Running	En cours
+Sleeping	En veille
+Waiting	En attente
+New	Nouveau
+%lu %% of %lu MB	%lu %% de %lu MB
+In use	Utilisée
+Free	Libre
+Apps	Applis
+System	Système
+kernel and GPU	noyau et GPU
+MEMORY IN USE, THE LAST MINUTE	MÉMOIRE UTILISÉE, LA DERNIÈRE MINUTE
+WHAT USES IT	CE QUI L'UTILISE
+the other apps	les autres applis
+No core to show	Aucun cœur à afficher
+Core %d	Cœur %d
+the system and every app	le système et toutes les applis
+the sound	le son
+the network	le réseau
+an app core: %.40s	un cœur d'appli : %.40s
+an app core: in use	un cœur d'appli : utilisé
+an app core: free	un cœur d'appli : libre
+Receiving	Réception
+Sending	Envoi
+Received	Reçu
+since the start	depuis le démarrage
+Sent	Envoyé
+THE LAST MINUTE	LA DERNIÈRE MINUTE
+top: %s	max : %s
+BY APP	PAR APPLI
+No app has used the network	Aucune appli n'a utilisé le réseau
+%d task	%d tâche
+%d tasks	%d tâches
+%u cores  -  the load over the last second, and the last minute	%u cœurs  -  la charge sur la dernière seconde et la dernière minute
+Detected %lu MB  -  the apps' pool %lu MB, %lu free  -  pages of %u KB	Détectée %lu MB  -  réserve des applis %lu MB, %lu libres  -  pages de %u KB
+Processes	Processus
+Memory	Mémoire
+Processor	Processeur
+Network	Réseau
+Task	Tâche
+Kind	Type
+State	État
+Calls / s	Appels / s
+No task	Aucune tâche
+Bring to Front	Mettre devant
+The app's window in front (Enter, a double click)	La fenêtre de l'appli devant (Entrée, un double clic)
+End Task	Terminer la tâche
+Stop the app (k, Delete); a kernel task cannot be stopped	Arrêter l'appli (k, Suppr) ; une tâche du noyau ne peut pas être arrêtée

@@ -57,26 +57,33 @@ struct Provider
 	const char *out; int outPort, outSec;
 	const char *note;		// what the wizard tells
 };
+// The words shown are in the system's language (uikit/lang.h); a test that includes this header without UIKit keeps them
+#ifndef TR
+#define TR(s)	(s)
+#endif
+#ifndef TRN
+#define TRN(s)	(s)
+#endif
 static const Provider PROVIDERS[] = {
 	{ "gmail.com googlemail.com", "Gmail", PV_GMAIL, AU_PASSWORD, "imap.gmail.com", 993, SEC_TLS, "smtp.gmail.com", 465, SEC_TLS,
-	  "Google asks for an app password: turn on 2-Step Verification, then make one at myaccount.google.com/apppasswords." },
+	  TRN ("Google asks for an app password: turn on 2-Step Verification, then make one at myaccount.google.com/apppasswords.") },
 	{ "outlook.com hotmail.com hotmail.fr hotmail.be hotmail.co.uk live.com live.fr live.be msn.com outlook.fr outlook.be", "Outlook", PV_OUTLOOK, AU_OAUTH,
-	  "outlook.office365.com", 993, SEC_TLS, "smtp-mail.outlook.com", 587, SEC_STARTTLS, "Microsoft signs you in with a code, on a phone or a PC." },
+	  "outlook.office365.com", 993, SEC_TLS, "smtp-mail.outlook.com", 587, SEC_STARTTLS, TRN ("Microsoft signs you in with a code, on a phone or a PC.") },
 	{ "icloud.com me.com mac.com", "iCloud", PV_ICLOUD, AU_PASSWORD, "imap.mail.me.com", 993, SEC_TLS, "smtp.mail.me.com", 587, SEC_STARTTLS,
-	  "Apple asks for an app-specific password: make one at account.apple.com (Sign-In and Security)." },
+	  TRN ("Apple asks for an app-specific password: make one at account.apple.com (Sign-In and Security).") },
 	{ "yahoo.com yahoo.fr yahoo.be yahoo.co.uk ymail.com", "Yahoo", PV_YAHOO, AU_PASSWORD, "imap.mail.yahoo.com", 993, SEC_TLS, "smtp.mail.yahoo.com", 465, SEC_TLS,
-	  "Yahoo asks for an app password: Account security > Generate app password." },
+	  TRN ("Yahoo asks for an app password: Account security > Generate app password.") },
 	{ "gmx.com gmx.net gmx.de gmx.fr", "GMX", PV_OTHER, AU_PASSWORD, "imap.gmx.net", 993, SEC_TLS, "mail.gmx.net", 587, SEC_STARTTLS,
-	  "Turn on IMAP access in GMX's settings (POP3 & IMAP) first." },
+	  TRN ("Turn on IMAP access in GMX's settings (POP3 & IMAP) first.") },
 	{ "proximus.be skynet.be", "Proximus", PV_OTHER, AU_PASSWORD, "imap.proximus.be", 993, SEC_TLS, "relay.proximus.be", 587, SEC_STARTTLS, "" },
 	{ "telenet.be", "Telenet", PV_OTHER, AU_PASSWORD, "imap.telenet.be", 993, SEC_TLS, "smtp.telenet.be", 587, SEC_STARTTLS, "" },
 	{ "orange.fr wanadoo.fr", "Orange", PV_OTHER, AU_PASSWORD, "imap.orange.fr", 993, SEC_TLS, "smtp.orange.fr", 465, SEC_TLS, "" },
 	{ "free.fr", "Free", PV_OTHER, AU_PASSWORD, "imap.free.fr", 993, SEC_TLS, "smtp.free.fr", 465, SEC_TLS, "" },
 	{ "laposte.net", "La Poste", PV_OTHER, AU_PASSWORD, "imap.laposte.net", 993, SEC_TLS, "smtp.laposte.net", 465, SEC_TLS, "" },
 	{ "fastmail.com fastmail.fm", "Fastmail", PV_OTHER, AU_PASSWORD, "imap.fastmail.com", 993, SEC_TLS, "smtp.fastmail.com", 465, SEC_TLS,
-	  "Fastmail asks for an app password (Settings > Privacy & Security)." },
+	  TRN ("Fastmail asks for an app password (Settings > Privacy & Security).") },
 	{ "proton.me protonmail.com", "Proton", PV_OTHER, AU_PASSWORD, "127.0.0.1", 1143, SEC_STARTTLS, "127.0.0.1", 1025, SEC_STARTTLS,
-	  "Proton Mail needs its Bridge, which does not run on Onyx." },
+	  TRN ("Proton Mail needs its Bridge, which does not run on Onyx.") },
 };
 static const int NPROVIDERS = (int) (sizeof PROVIDERS / sizeof PROVIDERS[0]);
 // the provider of an address (-1: unknown)

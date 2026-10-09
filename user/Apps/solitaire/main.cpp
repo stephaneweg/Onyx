@@ -338,6 +338,7 @@ int main (void)
 	g_game = new Klondike (0, 0, W, H);
 	root.addChild (g_game);
 	root.view = g_game;
+	root.scaleToFit ();				// (resizable: the game scaled to the window -- PocketUI fills it)
 	static Menu menu;
 	menu.menu ("Game");
 	menu.item ("Deal",                "^N", UK_CTRL ('N'), on_new);

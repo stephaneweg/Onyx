@@ -1,4 +1,5 @@
 #include "uikit/textarea.h"
+#include "uikit/adapt.h"		// uk_set_input_type
 #include "uikit/menu.h"		// UK_CTRL
 #include "systemkit/systemkit.h"
 #include "sysclip.h"
@@ -10,7 +11,10 @@ Textarea::Textarea (int l, int t, int w, int h, int capacity)
   : Widget (l, t, w, h), cap (capacity < 16 ? 16 : capacity),
     len (0), caret (0), top (0), left (0), rows (1), cols (1), readonly (false), barDrag (false), leftPx (0), anchor (-1),
     ownColors (false), colBg (0), colText (0), colCaret (0), colSel (0)
-{ canFocus = true; buf = new char[cap]; buf[0] = '\0'; }
+{
+	canFocus = true; buf = new char[cap]; buf[0] = '\0';
+	uk_set_input_type (this, UK_IN_TEXT);		// (text is typed here: the pocket mode's on-screen keyboard comes with its focus)
+}
 
 Textarea::~Textarea () { delete [] buf; }
 

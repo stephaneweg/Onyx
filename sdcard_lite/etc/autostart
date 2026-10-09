@@ -1,29 +1,24 @@
-# autostart.txt -- programs started automatically at boot, one per line.
+# autostart -- programs started automatically at boot, one per line: the SYSTEM's part (the services);
+# the interface's programs (the menu bar, the dock...) are the SESSION's, below.
 #
 # Each line is a shell command, run like in the terminal: the first word is a /bin
 # tool (/bin/<word>) and the rest are its arguments. Launch a DESKTOP app with
 # the `run` tool. Blank lines and '#' comments are ignored.
 #
-#   run voronoy   -> /bin/run voronoy  -> launches apps/voronoy.app/main
+#   run clockd    -> /bin/run clockd   -> launches apps/clockd.app/main
 #   keyb FR       -> /bin/keyb FR      -> set the French keyboard layout
 #   sleep 5       -> init builtin: wait 5 s before the next line (staggered startup)
 #
-# voronoy draws the generated wallpaper then exits -- optional (drop it for the plain
-# blue desktop). It no longer masks the old single-GUI-app boot hang, fixed in the
-# kernel (the compositor now runs as soon as it is created: CScheduler::YieldTo).
 # The packages staged for this boot (a system update: docs/pkg/README.md) moved in first; it
 # restarts the Pi when the kernel or the firmware changed.
 wait pkg commit
-run voronoy
-#setup# FIRST BOOT: Setup, the first-run wizard (apps/setup), runs alone over the wallpaper. The
-#setup# lines it holds back meanwhile are written "#setup: <line>"; when it ends ("Start Onyx") it
-#setup# gives them back (and starts them), removes its own "run setup" line and these "#setup#"
-#setup# lines, sets the keyb line and turns the remote services below on or off ("#telnetd": off).
-run setup
-# System menu bar across the top of the screen: the active app's menus + the clock.
-#setup: run menubar
-# Notification bubbles (the "notify" IPC service; apps call notify() from notify.h).
-run notifyd
+# The session: the programs of the interface's mode (SD:/etc/system.ini "shell =": desktop, pocket or
+# console) are in SD:/etc/session/<mode>, which /bin/session runs (and switches: the Control Panel's Mode).
+# The desktop's: the wallpaper (voronoy), Setup at the first boot, the menu bar, the notifications, the dock,
+# the agenda, Stickies -- SD:/etc/session/desktop.
+session
+# The Clock's alarms (rung with the app closed): clockd, the alarm service (the Clock's alarms.txt).
+run clockd
 # The update daemon: once a day, the packages set "auto" updated, a notification for the others
 # (docs/pkg/README.md; SD:/etc/pkg/pkg.ini: check = never stops it).
 run pkgd
@@ -32,13 +27,6 @@ run clipd
 # The print service: the queue of the jobs the apps print (docs/03 "Printing"; the printers: the Control
 # Panel's Printers applet). Started here for the jobs left in the queue when the Pi was turned off.
 run printd
-# The dock along the bottom (the drawers of apps, the workspaces, the Terminal, the File Viewer,
-# the Trash, lock / Control Panel / power: SD:/etc/dock.ini). It replaced the Shelf (removed on 2026-10-05)
-# and the panel.
-#setup: run dock
-#setup: run agenda
-# Stickies: the pinned notes on the desktop (Notes, View menu)
-#setup: run stickies
 keyb FR
 # Remote text shell on TCP port 23 (telnet / tools/onyx-telnet.py). NO password,
 # NO encryption: remove this line on an untrusted network.
@@ -50,6 +38,6 @@ rdpd
 # Programs loaded ahead and kept in memory (large ones: they then start without reading the
 # card, and their code is in memory once whatever the number of their processes): the list of
 # SD:/etc/preload.ini (the Control Panel's Preload applet; one program a line -- a path, an
-# app's name or a /bin tool's). Here, after the desktop's lines: the load runs in the
+# app's name or a /bin tool's). Here, after the session's line: the load runs in the
 # background. `preload` alone lists them, `unload <program>` releases one.
 preload /boot

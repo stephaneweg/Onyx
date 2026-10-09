@@ -130,7 +130,8 @@ boolean ImageLibTableRead (const TImage *pImage, u64 ulOffset, void *pOut, u64 n
 void ImageRelease (TImage *pImage);
 
 // The image of pPath loses its pin and its name at once: no new process maps it; its frames are
-// freed when the last process running it ends (now if none). -> 0 / -KAPI_ENOENT (no image).
+// freed when the last process running it ends (now if none). -> 0 / -KAPI_ENOENT (no image) /
+// -KAPI_EBUSY (v97: pPath is an alias's key -- it ends with its server).
 int ImageUnload (const char *pPath, const char *pCwd);
 
 // The file layer's hook: the file (or folder) at pAbsPath -- an absolute path, as ResolvePath
@@ -142,8 +143,50 @@ int ImageUnload (const char *pPath, const char *pCwd);
 void ImageFileChanged (const char *pAbsPath);
 
 // pPath 0: every live image, up to nCap written to pOut -> how many there are. pPath: the image
-// a new process of that path would map -> 1 (pOut[0] filled if nCap > 0) / 0.
+// a new process of that path would map -> 1 (pOut[0] filled if nCap > 0) / 0. (v97) An aliased
+// image: KAPI_IMG_ALIAS in flags, path its real key, then its alias after the path's NUL when both
+// fit in the field.
 unsigned ImageList (const char *pPath, const char *pCwd, struct kapi_image_info *pOut, unsigned nCap);
+
+// ---- (v97) an ALIAS: a second key on a library's image (docs/POCKETUI-TECH-STUDY.md section 3) ----
+// The graphics server loads ITS UIKit (SD:/lib/pocket/uikit.so) under the name every program opens
+// (SD:/lib/uikit.so): kapi_lib_open_as. The alias is looked up BEFORE the real paths (an image whose
+// real path is the alias key is not found by that key while the alias is set); the aliased image keeps
+// its real path, its place, its references -- nothing else changes. One alias per key, one key per
+// image. Its owner is the process that set it (the graphics server, sys/wsrv.cpp decides who may).
+// Lifetime: with the image (its last reference, or its pin's end); its owner ended -> ORPHANED, kept
+// (a crash of the server: the same server started again takes it over, ImageSetAlias); another server
+// started -> dropped (ImageUnalias). A change of the alias key's file does not touch it; a change of
+// its real path unnames the real path and keeps the alias (the session stays on one library).
+
+// May pReal (a library's canonical path) be aliased under pAlias (canonical)? -> 0; -KAPI_EPERM: either
+// is not under sd:/lib/, or either is sd:/lib/appkit.so (an alias there would hijack every program);
+// -KAPI_EINVAL: they are the same path. Pure (no image looked at): the kapi checks before any load.
+int ImageAliasAllowed (const char *pReal, const char *pAlias);
+
+// pImage (a ready library) gets the alias pAlias (canonical, ImageCanonPath) for nOwner (a pid > 0).
+// -> 0: set now -- or already nOwner's on that image (nothing changes: idempotent), or taken over (the
+// key's alias was orphaned on this image), or replaced (it was orphaned on another image, which loses
+// it); -KAPI_EBUSY: the key is held by a live owner on another image (nOwner included: one image a
+// key), or by another live owner on this one, or this image has another alias; -KAPI_EINVAL: not a
+// ready library; and ImageAliasAllowed's answers for its real path. bCommit FALSE: only the answer,
+// nothing changed (the caller maps the library between the check and the set: no yield between).
+int ImageSetAlias (TImage *pImage, const char *pAlias, unsigned nOwner, boolean bCommit);
+
+// The image the alias pAlias names now, a reference taken (ImageRelease) -- only when its real path
+// is pReal (both canonical) and it is a ready library (a server taking its orphaned alias over, or
+// asking again: the same image, even if its file changed since). 0: none.
+TImage *ImageAliasHeld (const char *pAlias, const char *pReal);
+
+// nOwner's aliases (nOwner 0: every alias): bOrphan, marked orphaned (their owner ended: kept for the
+// same server started again); else dropped -- the images keep their real names, the processes mapping
+// them keep them (an unnamed image no process maps goes with it). No yield, no I/O, nothing allocated
+// (a process's teardown calls it, with bOrphan).
+void ImageUnalias (unsigned nOwner, boolean bOrphan);
+
+// An image's real key ("": none) and its alias ("": none) -- for the log.
+const char *ImagePath (const TImage *pImage);
+const char *ImageAliasOf (const TImage *pImage);
 
 // The 64 KB frames held by every image (kapi_meminfo counts them with the apps' pages).
 unsigned ImagePagesTotal (void);

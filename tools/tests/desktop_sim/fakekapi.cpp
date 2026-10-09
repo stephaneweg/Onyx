@@ -24,6 +24,9 @@
 //   dump FILE            the window: "ELSM" w h x y (int32), then w * h pixels 0xTTRRGGBB
 //                        (TT = transparency: 0 opaque) -- its frame (the active copy, or the
 //                        inactive one with SIM_INACTIVE=1) around its client canvas
+//   win N                the program's window N (kapi v94 uk_win_new: 0 its first) gets the events and
+//                        the dumps from now on (its handlers called with sender N)
+//   winclose             the close box of that window (N > 0: GUI_EVENT_WINCTL KAPI_FRAME_CLOSE)
 //   quit                 the window closed (kapi_should_exit () from now on: the app's loop ends
 //                        and what it does before returning from main runs)
 //   exit                 the process ends here (what follows the app's loop never runs)
@@ -34,18 +37,18 @@
 // program (the terminal's shell) writes, read back from its pipe (SIM_PIPE2...: the next ones'; SIM_BUSY:
 // below); SIM_NET: what a server sends
 // on a TCP connection (irc) -- "\n" a new line, "\r" a return, "\e" an escape; SIM_CURSOR="x,y":
-// the pointer for kapi_cursor_pos; SIM_SLEEP=1: msleep really sleeps (an app whose timers read
+// the pointer for uk_win_cursor_pos; SIM_SLEEP=1: msleep really sleeps (an app whose timers read
 // the clock: NetSurf); SIM_MENU, SIM_RUNNING, SIM_WALL: below.
 // SIM_APPLET=1: the app runs as a Control Panel applet (its arguments "--applet 1 99", the host
-// pid 99 alive, a 700 x 470 surface -- dumped instead of a window); SIM_SURFACE=FILE.elsm: the
+// pid 99 alive, a 700 x 470 surface -- SIM_SURFSIZE=WxH another -- dumped instead of a window); SIM_SURFACE=FILE.elsm: the
 // pixels a surface is filled with when an applet says hello (SIM_MAIL); SIM_MAIL="type:pid": one
 // message of that type from that pid in the mailbox (a Control Panel applet's AP_HELLO: 40:7);
-// SIM_MBOX="type:pid:payload\n...": canned mailbox messages (irc's conversation windows), any
+// SIM_MBOX="type:pid:payload\n...": canned mailbox messages (irc's conversation windows; "\t" a tab, "\0" a NUL), any
 // service looked up is pid 7; SIM_DESKS="cur,count": the workspaces (kapi v65); SIM_VOLS: the volumes besides the card (below);
 // SIM_WALLDUMP=FILE.elsm: the wallpaper an app makes live (voronoy) written there.
 // SIM_GRAB=FILE.elsm: what kapi_screen_grab gives (the screen, e.g. screenshots/desktop.png made an .elsm:
-// Screenshot's captures); a full-screen app (kapi_fullscreen_begin) is dumped as its whole buffer. SIM_WINS'
-// windows may end with ",title" (kapi_win_list's).
+// Screenshot's captures); a full-screen app (uk_win_fullscreen_begin) is dumped as its whole buffer. SIM_WINS'
+// windows may end with ",title" (uk_win_list's).
 // SIM_RAM: the folder that stands for the RAM: volume (the kernel's RAM file system: until the Pi
 // restarts) -- the same folder for several runs is several launches within one boot; unset, each
 // run has its own (a fresh temporary folder, deleted at its end: a boot of its own).
@@ -64,7 +67,7 @@
 // SIM_ROFS="SD:/Notes[,SD:/etc]": read-only folders -- kapi_save_file, kapi_mkdir, kapi_remove, kapi_rename
 //   and kapi_file_out on a path under one of them (compared without the volume, case-insensitively) fail,
 //   logged `sim: rofs <path>` (chmod a-w is no test when the tests run as root).
-// SIM_CURSOR=follow: kapi_cursor_pos gives the script's pointer in SCREEN coordinates: the client origin
+// SIM_CURSOR=follow: uk_win_cursor_pos gives the script's pointer in SCREEN coordinates: the client origin
 //   the window had at the last "down" (before any: at the first pointer step) plus the scripted point -- a
 //   drag "down 50 10;move 150 10;up 150 10" moves a widget that drags itself (the agenda's way) by 100 px.
 // The script step "copy SRC DST": the host file SRC copied to the card path DST (into SIM_WRITES, its
@@ -76,6 +79,15 @@
 // Each window made is logged: `sim: window <title> flags 0x<hex>` (WIN_FLAG_*: a widget's kind checked).
 // A SIM_MBOX line "@<ticks>:type:pid:payload" is held back until <ticks> ticks after the start (a script step
 //   is 2 ticks; the lines after it wait as well): a message that comes mid-run (Stickies' STK_MSG_RELOAD after a change on the card).
+//
+// For the Clock and clockd (AutoDev round 6); nothing changes while SIM_CLOCK is unset:
+// SIM_CLOCK="YYYYMMDDHHMMSS": the wall time at the start, which then ADVANCES with the ticks (kapi_get_datetime =
+//   that time + (ticks - 1000) / 100 seconds: msleep (n) adds n / 10 + 1 ticks, so a script step of msleep (16) is
+//   20 ms, clockd's msleep (500) 0.51 s); kapi_clock_info answers (valid, even without SIM_STAT) with the UTC =
+//   the wall time - SIM_TZ minutes (default 120: Brussels in summer) and tz_minutes = SIM_TZ; kapi_set_timezone (m)
+//   changes that offset for the run (the UTC goes on, the wall time follows it). Unset: the date frozen at
+//   2026-09-28 12:34:00, kapi_clock_info as SIM_STAT says, kapi_set_timezone changing nothing -- as before.
+// Every kapi_set_timezone is logged, `sim: set_timezone <m>` (SIM_CLOCK set or not: only the log line).
 //
 #include <sys/mman.h>
 #include <pthread.h>
@@ -109,6 +121,13 @@
 #define SIM_BORDER	4
 #endif
 
+// A graphics server built for the PC, when linked in (tools/tests/server_sim: Elegant's or PocketUI's code with
+// UIKit's wire port, UK_PORT_WIRE): the kernel's kapi_ws_ctl is its (the programs' requests, the server's
+// mechanisms), it runs a turn at each step of the script, and it takes the steps it knows (the pointer and the
+// keys in SCREEN coordinates, "dump" of the composed screen) -- unset, nothing changes.
+extern "C" long sim_ws_ctl (int op, long a0, long a1, long a2) __attribute__ ((weak));
+extern "C" void sim_server_turn (void) __attribute__ ((weak));
+extern "C" int sim_server_step (const char *step) __attribute__ ((weak));
 /* the host program's last words before a SIM exit (the NetSurf bench: NS_PROF's samples) */
 extern "C" void onyx_host_exit_hook (void) __attribute__ ((weak));
 
@@ -391,7 +410,111 @@ static int get_chrome (struct kapi_chrome *out)
 	return 1;
 }
 
-static unsigned *g_surf; static int g_surfW = 700, g_surfH = 470;	// (the one surface: applets)
+// ---- a program's other windows (kapi v94: uk_win_new / uk_win_select / uk_win_destroy) -----------
+// The window the calls act on is the one in the globals above; the others wait in g_wins.
+struct SimWin { bool used; unsigned *canvas; int cw, ch, stride, x, y, lw, lh; unsigned flags; unsigned *act, *ina; int ow, oh; char title[48]; gui_handler ptr, key; };
+enum { SIM_WINS = KAPI_WS_WINDOWS_MORE + 1 };
+static SimWin g_wins[SIM_WINS];
+static int g_curWin, g_evWin;				// the selected window, the script's (its events, its dumps)
+static void win_save (int n)
+{
+	SimWin &w = g_wins[n];
+	w.canvas = g_canvas; w.cw = g_cw; w.ch = g_ch; w.stride = g_stride; w.x = g_x; w.y = g_y; w.lw = g_lw; w.lh = g_lh;
+	w.flags = g_flags; w.act = g_act; w.ina = g_ina; w.ow = g_ow; w.oh = g_oh; memcpy (w.title, g_title, sizeof w.title);
+	w.ptr = g_ptr; w.key = g_key;
+}
+static void win_load (int n)
+{
+	SimWin &w = g_wins[n];
+	g_canvas = w.canvas; g_cw = w.cw; g_ch = w.ch; g_stride = w.stride; g_x = w.x; g_y = w.y; g_lw = w.lw; g_lh = w.lh;
+	g_flags = w.flags; g_act = w.act; g_ina = w.ina; g_ow = w.ow; g_oh = w.oh; memcpy (g_title, w.title, sizeof g_title);
+	g_ptr = w.ptr; g_key = w.key;
+}
+static int win_select (int n)
+{
+	if (n < 0) return g_curWin;
+	if (n >= SIM_WINS || (n > 0 && !g_wins[n].used)) return -1;
+	int was = g_curWin;
+	if (n == was) return was;
+	win_save (was);
+	win_load (n);
+	g_curWin = n;
+	return was;
+}
+static int win_new (int x, int y, int w, int h, const char *t, unsigned f, unsigned **canvas)
+{
+	if (canvas) *canvas = 0;
+	int n = 1;
+	while (n < SIM_WINS && g_wins[n].used) n++;
+	if (n >= SIM_WINS) return -1;
+	int was = g_curWin;
+	win_save (was);
+	g_canvas = 0; g_act = g_ina = 0; g_ptr = g_key = 0;	// (a window of its own)
+	g_curWin = n;
+	if (x < 0 || y < 0) { x = 376 + 30 * (n - 1); y = 40 + 30 * (n - 1); }	// (beside a window at the left: the screenshots)
+	unsigned *px = create_ex (x, y, w, h, t, f);
+	g_x = x; g_y = y;
+	if (!px) { g_curWin = was; win_load (was); return -1; }
+	g_wins[n].used = true;
+	win_save (n);
+	g_curWin = was; win_load (was);
+	if (canvas) *canvas = px;
+	fprintf (stderr, "sim: window %d made: %s\n", n, t ? t : "");
+	return n;
+}
+static void win_destroy (int n)
+{
+	if (n <= 0 || n >= SIM_WINS || !g_wins[n].used) return;
+	if (g_curWin == n) win_select (0);
+	SimWin &w = g_wins[n];
+	free (w.canvas); free (w.act); free (w.ina);
+	memset (&w, 0, sizeof w);
+	if (g_evWin == n) g_evWin = 0;
+	fprintf (stderr, "sim: window %d closed\n", n);
+}
+
+static int win_raise (unsigned id) { fprintf (stderr, "sim: win_raise %u (window %d)\n", id, g_curWin); return 0; }
+
+// ---- the status area's icon (kapi v95): the program's own (SIM_TRAYDUMP=FILE.elsm: written there, a
+// KAPI_TRAY_PX square), or SIM_TRAY="tip" (the menu bar: one made-up icon of pid 42) ---------------------
+static unsigned g_trayPx[KAPI_TRAY_PX * KAPI_TRAY_PX]; static char g_trayTip[56]; static bool g_traySet;
+static int tray_set (const unsigned *px, const char *tip, gui_handler)
+{
+	memcpy (g_trayPx, px, sizeof g_trayPx); snprintf (g_trayTip, sizeof g_trayTip, "%s", tip ? tip : ""); g_traySet = true;
+	fprintf (stderr, "sim: tray \"%s\"\n", g_trayTip);
+	if (const char *d = getenv ("SIM_TRAYDUMP"))
+		if (FILE *f = fopen (d, "wb"))
+		{
+			int hdr[5] = { 0x4D534C45, KAPI_TRAY_PX, KAPI_TRAY_PX, 0, 0 };
+			fwrite (hdr, 4, 5, f); fwrite (g_trayPx, 4, KAPI_TRAY_PX * KAPI_TRAY_PX, f); fclose (f);
+		}
+	return 1;
+}
+static void tray_clear (void) { g_traySet = false; }
+static int tray_list (struct kapi_tray_info *o, int max)
+{
+	const char *e = getenv ("SIM_TRAY");
+	if ((!g_traySet && !e) || max < 1) return 0;
+	memset (o, 0, sizeof *o); o->pid = 42; o->gen = 1;
+	snprintf (o->tip, sizeof o->tip, "%s", g_traySet ? g_trayTip : e);
+	return 1;
+}
+static int tray_icon (unsigned pid, unsigned *px)
+{
+	if (pid != 42) return 0;
+	if (g_traySet) { memcpy (px, g_trayPx, sizeof g_trayPx); return 1; }
+	for (int y = 0; y < KAPI_TRAY_PX; y++)			// (a made-up icon: a blue disc, a white dot)
+		for (int x = 0; x < KAPI_TRAY_PX; x++)
+		{
+			int dx = 2 * x - KAPI_TRAY_PX + 1, dy = 2 * y - KAPI_TRAY_PX + 1, r2 = dx * dx + dy * dy, R = KAPI_TRAY_PX - 1;
+			px[y * KAPI_TRAY_PX + x] = r2 > R * R ? 0xFF000000u : r2 < R * R / 9 ? 0x00FFFFFFu : 0x002AABEEu;
+		}
+	return 1;
+}
+static int tray_activate (unsigned pid, int kind) { fprintf (stderr, "sim: tray_activate %u %d\n", pid, kind); return 1; }
+
+static unsigned *g_surf; static int g_surfW = 700, g_surfH = 470;	// (the one surface: applets; SIM_SURFSIZE=WxH another)
+static struct SurfSize { SurfSize () { const char *e = getenv ("SIM_SURFSIZE"); if (e) sscanf (e, "%dx%d", &g_surfW, &g_surfH); } } s_surfSize;
 static unsigned *g_fs; static int g_fsW, g_fsH;			// (a full-screen app's buffer, while it is)
 static unsigned *fs_begin (int *w, int *h)
 {
@@ -587,13 +710,18 @@ static void step (void)
 {
 	if (g_step >= g_script.size ()) { fprintf (stderr, "sim: end of the script\n"); exit (0); }
 	std::string st = g_script[g_step++];
+	if (sim_server_step && sim_server_step (st.c_str ())) return;	// (the server's: tools/tests/server_sim)
 	char cmd[32] = "", arg[256] = ""; int a = 0, b = 0, c = 0;
 	sscanf (st.c_str (), "%31s", cmd);
-	auto ptrev = [] (int ev, int x, int y, int btn, int chg, int wheel)
+	int sel = g_curWin;					// (v94) the script's window: its events, then the app's selection back
+	if (g_evWin != g_curWin && win_select (g_evWin) < 0) g_evWin = 0;
+	struct Back { int n; ~Back () { if (g_wins[n].used || n == 0) win_select (n); } } back { sel };
+	unsigned long snd = (unsigned long) g_evWin;
+	auto ptrev = [snd] (int ev, int x, int y, int btn, int chg, int wheel)
 	{
 		long v = ((long) (wheel & 0xFF) << 48) | ((long) chg << 40) | ((long) btn << 32) | ((long) x << 16) | (long) y;
 		ptr_track (x, y, ev == GUI_EVENT_PTR_DOWN);
-		if (g_ptr) g_ptr (0, ev, v);
+		if (g_ptr) g_ptr (snd, ev, v);
 	};
 	auto click = [] (int ev, int x, int y)				// (the legacy canvas-click handler too)
 	{ if (g_click) g_click (0, ev, ((long) g_btn << 32) | ((long) x << 16) | (long) y); };
@@ -614,7 +742,7 @@ static void step (void)
 		if (g_btn) click (GUI_EVENT_CANVAS_MOTION, a, b);
 	}
 	else if (!strcmp (cmd, "wheel")) { sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c); ptrev (GUI_EVENT_PTR_WHEEL, a, b, 0, 0, c); }
-	else if (!strcmp (cmd, "key")) { sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0]; if (g_key) g_key (0, GUI_EVENT_KEY, k); }
+	else if (!strcmp (cmd, "key")) { sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0]; if (g_key) g_key (snd, GUI_EVENT_KEY, k); }
 	else if (!strcmp (cmd, "hold") || !strcmp (cmd, "release"))
 	{
 		sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0];
@@ -623,7 +751,7 @@ static void step (void)
 		{
 			if (cmd[0] == 'h') g_held[h >> 5] |= 1u << (h & 31); else g_held[h >> 5] &= ~(1u << (h & 31));
 		}
-		if (cmd[0] == 'h' && g_key) g_key (0, GUI_EVENT_KEY, k);	// (the kernel sends the press too)
+		if (cmd[0] == 'h' && g_key) g_key (snd, GUI_EVENT_KEY, k);	// (the kernel sends the press too)
 	}
 	else if (!strcmp (cmd, "menu")) { sscanf (st.c_str (), "%*s %d", &a); if (g_menuFn) g_menuFn (0, GUI_EVENT_MENU, a); }
 	// drag & drop (ABI v42) from another app: "dragover X Y [FLAGS]" (FLAGS 1 = Ctrl, 4 = left),
@@ -631,17 +759,19 @@ static void step (void)
 	else if (!strcmp (cmd, "dragover"))
 	{
 		c = 0; sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c);
-		if (g_ptr) g_ptr (0, GUI_EVENT_DRAG_OVER, ((long) c << 32) | ((long) a << 16) | (long) b);
+		if (g_ptr) g_ptr (snd, GUI_EVENT_DRAG_OVER, ((long) c << 32) | ((long) a << 16) | (long) b);
 	}
 	else if (!strcmp (cmd, "drop"))
 	{
 		c = 0; sscanf (st.c_str (), "%*s %d %d %255s %d", &a, &b, arg, &c);
 		g_dragData = arg; for (char &ch : g_dragData) if (ch == '|') ch = '\n';
-		if (g_ptr) g_ptr (0, GUI_EVENT_DROP, ((long) c << 32) | ((long) a << 16) | (long) b);
+		if (g_ptr) g_ptr (snd, GUI_EVENT_DROP, ((long) c << 32) | ((long) a << 16) | (long) b);
 	}
 	else if (!strcmp (cmd, "mods")) { sscanf (st.c_str (), "%*s %d", &a); g_mods = (unsigned) a; }
 	else if (!strcmp (cmd, "winstate")) { sscanf (st.c_str (), "%*s %d", &a); g_winstate = (unsigned) a; }
-	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (0, GUI_EVENT_WINCTL, a); }
+	else if (!strcmp (cmd, "winctl")) { sscanf (st.c_str (), "%*s %d", &a); if (g_ptr) g_ptr (snd, GUI_EVENT_WINCTL, a); }
+	else if (!strcmp (cmd, "win")) { sscanf (st.c_str (), "%*s %d", &a); g_evWin = a >= 0 && a < SIM_WINS ? a : 0; back.n = sel; }
+	else if (!strcmp (cmd, "winclose")) { if (g_evWin > 0 && g_ptr) g_ptr (snd, GUI_EVENT_WINCTL, KAPI_FRAME_CLOSE); }
 	else if (!strcmp (cmd, "dump")) { sscanf (st.c_str (), "%*s %255s", arg); dump (arg); }
 	else if (!strcmp (cmd, "copy")) { char dst[256] = ""; sscanf (st.c_str (), "%*s %255s %255s", arg, dst); sim_copy (arg, dst); }
 	// "waitlog N TEXT": stay on this step (one main-loop turn each) until the app's log (SIM_LOG, the
@@ -672,6 +802,7 @@ static void h_msleep (unsigned ms)
 	if (!on_main ()) { usleep (ms * 1000); return; }	// (a thread's: the script is the main thread's)
 	g_ticks += ms / 10 + 1;
 	if (getenv ("SIM_SLEEP")) usleep (ms * 1000);	// real time (NetSurf's scheduler reads the clock)
+	if (sim_server_turn) sim_server_turn ();	// (a graphics server for the PC: its turn)
 	step ();
 }
 // SIM_REALCLOCK: the ticks are the PC's monotonic clock (a test whose threads wait on the network)
@@ -685,8 +816,34 @@ static int h_pump_wait (unsigned ms) { h_msleep (ms < 16 ? ms : 16); pump (); re
 static void yield (void) {}
 
 // ---- the system --------------------------------------------------------------------------------------
+// SIM_CLOCK (the header): the UTC at the start (tick 1000), seconds since 1970; -1 unset. SIM_TZ: the offset.
+static long long g_simUtc0 = -2; static int g_simTz = 120;
+static bool sim_clock (void)
+{
+	if (g_simUtc0 == -2)
+	{
+		g_simUtc0 = -1;
+		const char *e = getenv ("SIM_CLOCK"), *z = getenv ("SIM_TZ");
+		struct tm tm; memset (&tm, 0, sizeof tm);
+		if (z && *z) g_simTz = atoi (z);
+		if (e && sscanf (e, "%4d%2d%2d%2d%2d%2d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min, &tm.tm_sec) == 6)
+		{
+			tm.tm_year -= 1900; tm.tm_mon -= 1;
+			g_simUtc0 = (long long) timegm (&tm) - g_simTz * 60LL;
+		}
+		else if (e && *e) fprintf (stderr, "sim: SIM_CLOCK=%s is not YYYYMMDDHHMMSS (ignored)\n", e);
+	}
+	return g_simUtc0 >= 0;
+}
+static long long sim_utc_cs (void) { return g_simUtc0 * 100 + (long long) (g_ticks - 1000); }	// (hundredths)
 static int get_datetime (int *y, int *mo, int *d, int *h, int *mi, int *s)
 {
+	if (sim_clock ()) {			// SIM_CLOCK: the wall time = the UTC + SIM_TZ, advancing with the ticks
+		time_t t = (time_t) (sim_utc_cs () / 100 + g_simTz * 60LL); struct tm tm; gmtime_r (&t, &tm);
+		if (y) *y = tm.tm_year + 1900; if (mo) *mo = tm.tm_mon + 1; if (d) *d = tm.tm_mday;
+		if (h) *h = tm.tm_hour; if (mi) *mi = tm.tm_min; if (s) *s = tm.tm_sec;
+		return 1;
+	}
 	if (getenv ("SIM_REALNET")) {		// the real network: the real clock (TLS checks the dates)
 		time_t t = time (0); struct tm tm; localtime_r (&t, &tm);
 		if (y) *y = tm.tm_year + 1900; if (mo) *mo = tm.tm_mon + 1; if (d) *d = tm.tm_mday;
@@ -820,6 +977,12 @@ static int clock_info (struct kapi_clock_info *o)
 {
 	if (!o) return -KAPI_EINVAL;
 	memset (o, 0, sizeof *o);
+	if (sim_clock ())			// SIM_CLOCK: the advancing UTC, the offset SIM_TZ (kapi_set_timezone's)
+	{
+		o->freq = 54000000; o->cnt = (unsigned long long) g_ticks * 540000; o->utc_us = sim_utc_cs () * 10000;
+		o->tz_minutes = g_simTz; o->flags = KAPI_CLOCK_REALTIME_VALID;
+		return 0;
+	}
 	struct tm tm; memset (&tm, 0, sizeof tm);
 	tm.tm_year = 2026 - 1900; tm.tm_mon = 8; tm.tm_mday = 28; tm.tm_hour = 12; tm.tm_min = 34;
 	long long t = getenv ("SIM_REALNET") ? (long long) time (0) : (long long) timegm (&tm);
@@ -991,7 +1154,13 @@ static int screen_native (int *w, int *h)
 	if (!e || sscanf (e, "%dx%d", w, h) != 2) { *w = 1920; *h = 1080; }
 	return 1;
 }
-static int set_timezone (int m) { return m >= -720 && m <= 840; }
+static int set_timezone (int m)
+{
+	fprintf (stderr, "sim: set_timezone %d\n", m);
+	if (m < -720 || m > 840) return 0;
+	if (sim_clock ()) g_simTz = m;		// (SIM_CLOCK: the wall time follows; unset: nothing changes, as before)
+	return 1;
+}
 // The programs spawned (the terminal's shells): handles 0x5000 + k, pid 100 + k, running until a
 // proc_tree kill; SIM_BUSY="2,3": the 2nd and the 3rd have a child (a command running).
 static bool g_spawnKilled[64];
@@ -1409,9 +1578,16 @@ static void surface_fill (void)
 		if (fread (g_surf, 4, (size_t) g_surfW * g_surfH, fp) != (size_t) g_surfW * g_surfH) fprintf (stderr, "sim: short surface\n");
 	fclose (fp);
 }
-static int surface_create (int w, int h) { g_surfW = w; g_surfH = h; if (!g_surf) g_surf = (unsigned *) calloc ((size_t) w * h, 4); return 1; }
+static int surface_create (int w, int h)		// (made again at another size: pocket's Control Panel, its pane's)
+{
+	if (g_surf && (w != g_surfW || h != g_surfH)) { free (g_surf); g_surf = 0; }
+	fprintf (stderr, "sim: surface_create %dx%d\n", w, h);
+	g_surfW = w; g_surfH = h; if (!g_surf) g_surf = (unsigned *) calloc ((size_t) w * h, 4); return 1;
+}
 static unsigned *surface_map (int) { if (!g_surf) g_surf = (unsigned *) calloc ((size_t) g_surfW * g_surfH, 4); return g_surf; }
 static int surface_size (int, int *w, int *h) { if (w) *w = g_surfW; if (h) *h = g_surfH; return 1; }
+static int surface_destroy (int) { free (g_surf); g_surf = 0; return 1; }
+static int kill_pid (int pid, int force) { fprintf (stderr, "sim: kill_pid %d %d\n", pid, force); return 1; }
 // (v65) the workspaces
 static int s_desk = 0, s_desks = 4;
 static int desk (int set, int count)
@@ -1438,7 +1614,7 @@ static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int
 	if (getenv ("SIM_IPC")) return sipc_recv (from, type, buf, cap, blocking);
 	static bool mailed = false;
 	const char *mail = getenv ("SIM_MAIL");
-	if (mail && !mailed)						// one message (an applet's hello)
+	if (mail && !mailed && (g_surf || getenv ("SIM_APPLET")))	// one message (an applet's hello), once the host has its surface
 	{
 		mailed = true;
 		int t = 0, pid = 0; sscanf (mail, "%d:%d", &t, &pid);
@@ -1466,7 +1642,9 @@ static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int
 		int t = 0, pid = 0, at = 0; sscanf (l.c_str (), "%d:%d:%n", &t, &pid, &at);
 		std::string m = l.substr (at), d;
 		for (size_t i = 0; i < m.size (); i++)
-			if (m[i] == '\\' && i + 1 < m.size () && m[i + 1] == 't') { d += '\t'; i++; } else d += m[i];
+			if (m[i] == '\\' && i + 1 < m.size () && m[i + 1] == 't') { d += '\t'; i++; }
+			else if (m[i] == '\\' && i + 1 < m.size () && m[i + 1] == '0') { d += '\0'; i++; }	// (a NUL: a notification's parts)
+			else d += m[i];
 		unsigned n = (unsigned) d.size () < cap ? (unsigned) d.size () : cap;
 		memcpy (buf, d.data (), n);
 		if (from) *from = pid; if (type) *type = t;
@@ -1517,6 +1695,7 @@ static void setup (void)
 	// (v75) the POSIX entries absent here: 0, so appkit.h's wrappers return -KAPI_ENOSYS
 	for (size_t i = __builtin_offsetof (TKApiTable, vm_map) / 8; i < sizeof (TKApiTable) / 8; i++) ((void **) T)[i] = 0;
 	if (getenv ("SIM_STAT")) { T->path_stat = path_stat; T->clock_info = clock_info; }	// (... but these two, asked)
+	if (sim_clock ()) T->clock_info = clock_info;			// (SIM_CLOCK: the clock's UTC answers)
 	T->create_window = create; T->create_window_ex = create_ex; T->resize_window = resize; T->move_window = move_window;
 	T->set_pointer_handler = set_ptr; T->set_key_handler = set_key; T->screen_size = screen_size;
 	T->font_width = font_w; T->font_height = font_h; T->present = h_present; T->pump_events = pump;
@@ -1552,12 +1731,14 @@ static void setup (void)
 	T->vol_format = vol_format;
 	T->seek = f_seek; T->fsize64 = f_fsize64; T->net_info = net_info; T->exit = h_exit; T->toggle_app = toggle_app;
 	T->ram_detail = ram_detail; T->draw_text = draw_text; T->win_list = win_list;
+	T->win_new = win_new; T->win_select = win_select; T->win_destroy = win_destroy; T->win_raise = win_raise;
+	T->tray_set = tray_set; T->tray_clear = tray_clear; T->tray_list = tray_list; T->tray_icon = tray_icon; T->tray_activate = tray_activate;
 	T->list_procs = list_procs; T->proc_stats = proc_stats; T->meminfo = meminfo; T->mailbox_recv = mailbox_recv_note;
 	T->ipc_register = ipc_register_note; T->pad_state = pad_state_sim;
 	T->tcp_connect = tcp_connect; T->tcp_send = tcp_send; T->tcp_recv = tcp_recv; T->tcp_close = tcp_close;
 	T->net_resolve = net_resolve;
 	T->wlan_scan = wlan_scan; T->wlan_reconnect = wlan_reconnect;
-	T->surface_create = surface_create; T->surface_map = surface_map; T->surface_size = surface_size;
+	T->surface_create = surface_create; T->surface_map = surface_map; T->surface_size = surface_size; T->surface_destroy = surface_destroy; T->kill_pid = kill_pid;
 	T->desk = desk; T->win_desk = win_desk;
 	T->sound_config = sound_config; T->sound_map = sound_map; T->wait_word = wait_word;
 	T->wake_word = wake_word; T->thread_priority = thread_priority;
@@ -1574,6 +1755,7 @@ static void setup (void)
 	while (i <= s.size ()) { size_t j = s.find (';', i); if (j == std::string::npos) j = s.size (); if (j > i) g_script.push_back (s.substr (i, j - i)); i = j + 1; }
 	// GPC_SOFTGPU=1: the GPU compositing service's GPU path on the software V3D (when linked in)
 	if (hostkapi_install_gpu && getenv ("GPC_SOFTGPU")) hostkapi_install_gpu (T);
+	if (sim_ws_ctl) T->ws_ctl = sim_ws_ctl;			// (a graphics server for the PC: tools/tests/server_sim)
 }
 
 // (a static object's constructor, after the globals above: a constructor-attribute function would

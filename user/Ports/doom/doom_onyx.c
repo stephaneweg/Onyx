@@ -25,6 +25,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "appkit/appkit.h"
+#include "uikit/win.h"		// the window API (UIKit's: uk_win_*)
 #include "systemkit/systemkit.h"
 #include "gamepad.h"
 #include "doomgeneric.h"
@@ -129,10 +130,10 @@ static void full_screen (int on)
 {
 	if (on && !s_fs)
 	{
-		s_fs = kapi_fullscreen_begin (&s_fsw, &s_fsh);
+		s_fs = uk_win_fullscreen_begin (&s_fsw, &s_fsh);
 		if (s_fs) memset (s_fs, 0, (size_t) s_fsw * s_fsh * 4);
 	}
-	else if (!on && s_fs) { kapi_fullscreen_end (); s_fs = 0; }
+	else if (!on && s_fs) { uk_win_fullscreen_end (); s_fs = 0; }
 }
 
 static const pixel_t *s_shown;					// the picture to show (see present)
@@ -163,7 +164,7 @@ static void show_picture (const pixel_t *pic)
 	if (s_wantFull != (s_fs != 0)) full_screen (s_wantFull);
 	if (s_fs) { blit_full (); kapi_present_fb (); return; }
 	if ((const void *) pic != (const void *) s_canvas) memcpy (s_canvas, pic, DOOMGENERIC_RESX * DOOMGENERIC_RESY * 4);
-	kapi_present ();
+	uk_win_present ();
 }
 
 void DG_DrawFrame (void)
@@ -276,15 +277,15 @@ int DG_GetKey (int *pressed, unsigned char *key)
 // ---- start ----------------------------------------------------------------------------------------
 void DG_Init (void)
 {
-	s_canvas = kapi_create_window (DOOMGENERIC_RESX, DOOMGENERIC_RESY, "Doom");
+	s_canvas = uk_win_create (DOOMGENERIC_RESX, DOOMGENERIC_RESY, "Doom");
 	if (!s_canvas) { printf ("doom: no window\n"); exit (1); }
 	onyx_decorate ();
 	free (DG_ScreenBuffer);
 	DG_ScreenBuffer = (pixel_t *) s_canvas;			// Doom draws straight into the window
 	memset (s_canvas, 0, DOOMGENERIC_RESX * DOOMGENERIC_RESY * 4);
-	kapi_set_key_handler (key_event);
+	uk_win_on_key (key_event);
 	onyx_menu (on_full, on_quit);
-	kapi_present ();
+	uk_win_present ();
 }
 
 static const char *const IWADS[] = { "doom2.wad", "plutonia.wad", "tnt.wad", "doom.wad", "doom1.wad",

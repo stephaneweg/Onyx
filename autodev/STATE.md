@@ -1,7 +1,7 @@
 # AutoDev — state
 
-rounds_max: 5
-rounds_done: 5
+rounds_max: 10
+rounds_done: 6
 lock:
 
 ## History
@@ -14,3 +14,4 @@ until the user merges it into main)
 - Round 3, 2026-10-06, **Turtle Quest: more missions** (gems in order, portals, colour drawings, packs 4-5 = 21 levels incl. recursion/fractals, editor tools, best program; EN/FR), `autodev/reports/round-03-turtle-missions.md` — awaiting the user's validation
 - Round 4, 2026-10-07, **Pinball** (physics pinball, 3 tables as `.table` text files, multiball, scores, keyboard + gamepad, EN/FR; simulator `hold`/`release`), `autodev/reports/round-04-pinball.md` — awaiting the user's validation
 - Round 5, 2026-10-07, **Critters** (Lemmings-like puzzle game "Bestioles": 6 roles, pixel terrain, 12 `.level` levels with recorded winning solutions, EN/FR), `autodev/reports/round-05-critters.md` — awaiting the user's validation
+- Round 6, 2026-10-07, **Clock** (Horloge: world clocks + analogue face, alarms rung by the windowless service clockd even with the app closed, timer, stopwatch with laps; the menu bar's bell; SystemKit `locale_zone_offset_at` / `locale_zone_sync`, FileKit `fk_kv_block_*`; EN/FR), `autodev/reports/round-06-clock.md` — awaiting the user's validation

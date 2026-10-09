@@ -30,6 +30,9 @@
 namespace uikit {
 
 enum { GRID_LEFT = 0, GRID_RIGHT = 1, GRID_CENTRE = 2 };
+// (P6) A column's role (setColumnRole; docs/POCKETUI-TECH-STUDY.md section 6.12): what a portrait card shows of it --
+// the PRIMARY column its title, the SECONDARY ones its subtitle, the DETAIL ones only the detail view.
+enum { UK_COL_NONE = 0, UK_COL_PRIMARY = 1, UK_COL_SECONDARY = 2, UK_COL_DETAIL = 3 };
 
 class DataGrid : public Widget
 {
@@ -67,6 +70,22 @@ public:
 	int  rowAt (int y) const;		// the row under y (grid coordinates), -1 none
 	int  totalWidth () const;		// the columns' widths added
 	int  visibleRows () const;		// how many rows the body shows
+	// (P6) The adaptive part (its state behind Widget::ext: the class's fields are frozen). On the desktop the grid is
+	// as always; in pocket the columns of the highest priorities give way when the grid is too narrow (priority 0:
+	// never), the rows are the profile's; in portrait a grid with a PRIMARY column draws its rows as two-line cards
+	// (the primary column, then the secondary ones) and a click opens the detail view (setDetailView: the app's widget,
+	// filled by its onActivate; Esc or Backspace goes back); console: big rows, the selection glowing.
+	void setColumnRole (int c, int role, int priority = 0);	// UK_COL_*; priority 0: never hidden, 1, 2...: hidden first
+	bool columnShown (int c);			// (pocket: false when it gave way to the room)
+	bool cards ();					// the rows drawn as cards now (portrait, a primary column)
+	void setDetailView (Widget *w);			// (portrait) the widget shown over the grid when a card is opened
+	void closeDetail ();
+	// Several rows chosen: Ctrl + a click adds or takes away one, Shift + a click a range (sel stays the current row).
+	void setMultiSelect (bool on);
+	bool isSelected (int r);			// (single selection: r == sel)
+	void setSelected (int r, bool on);
+	int  selectedCount ();
+
 	void onDraw () override;
 	bool onMouse (int mx, int my, int bl, int br, int bm, int wheel) override;
 	bool onKey (long k) override;

@@ -7,7 +7,8 @@
 #include "uikit/theme.h"		// the frame's colours
 #include "uikit/text.h"		// (the frame bypasses an app's text face)
 #include "bmp.h"		// ui::bmp_decode
-#include "appkit/appkit.h"		// kapi_get_chrome, kapi_draw_text_buf, kapi_font_height
+#include "appkit/appkit.h"		// kapi_draw_text_buf, kapi_font_height
+#include "uikit/win.h"		// uk_win_chrome, uk_win_select
 // operator new[]/delete[] resolve at link from the app's onyxpp.hpp (see canvas.cpp).
 
 namespace uikit {
@@ -298,10 +299,11 @@ void uk_decorate_window ()
 	init ();					// the fonts and the theme (every app-drawn window calls
 							// this; Root apps init () too -- idempotent)
 	struct kapi_chrome c;
-	if (!kapi_get_chrome (&c) || c.active == 0) return;	// no window / borderless
+	if (!uk_win_chrome (&c) || c.active == 0) return;	// no window / borderless
 	unsigned sig = C_FRAME_ACTIVE * 31u + C_FRAME_INACTIVE * 7u + (unsigned) UK_OUTLINE * 3u + (unsigned) s_winFlags
 		       + (UK_STYLE == UK_STYLE_MILK ? 101u + C_BG * 13u : 0u);	// (Milk's: the window's colour too)
 	for (int i = 0; c.title[i]; i++) sig = sig * 33u + (unsigned char) c.title[i];
+	sig = sig * 31u + (unsigned) uk_win_select (-1);	// (v94: which of the program's windows)
 	if (c.chrome_w == s_w && c.chrome_h == s_h && sig == s_sig) return;
 	s_w = c.chrome_w; s_h = c.chrome_h; s_sig = sig;
 	draw_frame (c.active, c.chrome_w, c.chrome_h, c.inset_t, c.title, C_FRAME_ACTIVE, true);

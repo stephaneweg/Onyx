@@ -1,0 +1,77 @@
+# IRC's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included): many are the pieces of a line put together.
+ (notice)	 (notice)
+No server messages yet	Pas encore de message du serveur
+No messages yet	Pas encore de message
+Connect to a server to start.	Connectez-vous à un serveur pour commencer.
+Say hello to the channel.	Dites bonjour au salon.
+Connected as 	Connecté en tant que 
+Connecting to 	Connexion à 
+Waiting for the network...	Attente du réseau...
+Offline	Hors ligne
+ channel	 salon
+ channels	 salons
+Not connected: the message was not sent.	Non connecté : le message n'a pas été envoyé.
+Connect to a server to see its rooms.	Connectez-vous à un serveur pour voir ses salons.
+Receiving the list... 	Réception de la liste... 
+ rooms so far	 salons pour l'instant
+ of 	 sur 
+ rooms.  Double-click a room (or Join) to join it.	 salons.  Double-cliquez un salon (ou Rejoindre) pour y entrer.
+Not connected.	Non connecté.
+Server messages	Messages du serveur
+  -  you are 	  -  vous êtes 
+No topic	Pas de sujet
+You are not in this channel	Vous n'êtes pas dans ce salon
+Rooms on 	Salons sur 
+The server's public channels: search them, sort them, join one.	Les salons publics du serveur : cherchez, triez, rejoignez-en un.
+You joined 	Vous avez rejoint 
+ joined	 a rejoint le salon
+ was kicked by 	 a été expulsé par 
+ left	 est parti
+ quit	 s'est déconnecté
+You are	Vous êtes
+ now known as 	 maintenant 
+ is now known as 	 s'appelle maintenant 
+ set the topic: 	 a défini le sujet : 
+ sets mode	 change le mode
+Identifying with NickServ...	Identification auprès de NickServ...
+Trying the nickname 	Essai du pseudo 
+Connect	Connecter
+Disconnected from the server.	Déconnecté du serveur.
+The connection failed.	La connexion a échoué.
+Signing in as 	Connexion en tant que 
+Disconnect	Déconnecter
+You disconnected.	Vous vous êtes déconnecté.
+This is the server's page: pick a channel (or /msg nick text).	Ceci est la page du serveur : choisissez un salon (ou /msg pseudo texte).
+You are not in this channel: /join it again.	Vous n'êtes pas dans ce salon : rejoignez-le avec /join.
+ (left)	 (quitté)
+Private messages	Messages privés
+Users  	Utilisateurs  
+Network up (	Réseau disponible (
+Server	Serveur
+The server (host or host:port) -- the arrow: the ones used before	Le serveur (hôte ou hôte:port) -- la flèche : ceux déjà utilisés
+Nickname	Pseudo
+Your nickname: sent when you connect (Enter while connected: change it)	Votre pseudo : envoyé à la connexion (Entrée une fois connecté : le changer)
+Browse the server's rooms	Parcourir les salons du serveur
+Rooms	Salons
+Your conversations: click one to show it	Vos conversations : cliquez-en une pour l'afficher
+Leave	Quitter
+Leave this channel	Quitter ce salon
+Users	Utilisateurs
+Double-click someone to talk to them privately	Double-cliquez quelqu'un pour lui parler en privé
+Message	Message
+A private conversation with the user selected	Une conversation privée avec l'utilisateur choisi
+Send	Envoyer
+Search	Chercher
+Rooms whose name or topic has this	Les salons dont le nom ou le sujet contient ceci
+Min. users	Util. min.
+Refresh	Actualiser
+Ask the server for the list again	Redemander la liste au serveur
+Join	Rejoindre
+Room	Salon
+Topic	Sujet
+No room to show	Aucun salon à afficher
+Onyx IRC -- waiting for the network...	Onyx IRC -- attente du réseau...
+IRC is not running	IRC n'est pas lancé
+Online on 	En ligne sur 
+Say hello to 	Dites bonjour à 

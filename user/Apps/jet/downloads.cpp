@@ -111,10 +111,10 @@ bool g_eof;
 void raise_self ()
 {
 	static kapi_win_info w[64];
-	int n = kapi_win_list (w, 64);
+	int n = uk_win_list (w, 64);
 	unsigned me = (unsigned) getpid ();
 	for (int i = 0; i < n; i++)
-		if (w[i].pid == me) { kapi_win_raise (w[i].id); return; }
+		if (w[i].pid == me) { uk_win_raise (w[i].id); return; }
 }
 
 void line (char *s)

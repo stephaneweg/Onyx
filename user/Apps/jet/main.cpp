@@ -194,7 +194,7 @@ static WebRoot *g_root;
 static void draw_title ()
 {
 	struct kapi_chrome c;
-	if (!kapi_get_chrome (&c) || !c.active) return;
+	if (!uk_win_chrome (&c) || !c.active) return;
 	const char *t = g_title[0] ? g_title : "Jet";
 	uk_draw_frame (c.active, c.chrome_w, c.chrome_h, c.inset_t, t, C_FRAME_ACTIVE, true);
 	if (c.inactive) uk_draw_frame (c.inactive, c.chrome_w, c.chrome_h, c.inset_t, t, C_FRAME_INACTIVE, false);

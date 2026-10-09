@@ -1164,6 +1164,163 @@ static void TestLib (void)
 	CheckClean ();
 }
 
+
+// ---- (v97) an alias: a second key on a library's image (docs/POCKETUI-TECH-STUDY.md section 3.9) ----------
+
+static TImage *OpenLib (const char *pPath, TFile *pFile = 0)
+{
+	TImage *p = 0;
+	return Open (pPath, pFile, IMG_OPEN_LIB, &p) == 0 ? p : 0;
+}
+
+static void TestAlias (void)
+{
+	const char *pSo = getenv ("ONYX_DEMO_SO");
+	if (pSo == 0 || pSo[0] == '\0')
+	{
+		printf ("aliases: SKIPPED (no cross toolchain: ONYX_DEMO_SO is not set)\n");
+		return;
+	}
+	printf ("aliases\n");
+	TFile F;
+	{
+		FILE *fp = fopen (pSo, "rb");
+		CHECK (fp != 0);
+		if (fp == 0) return;
+		u8 Buf[4096]; size_t n;
+		while ((n = fread (Buf, 1, sizeof Buf, fp)) > 0) F.Data.insert (F.Data.end (), Buf, Buf + n);
+		fclose (fp);
+	}
+	const char *KEY = "sd:/lib/uikit.so", *REAL = "sd:/lib/pocket/uikit.so";
+
+	// the names allowed (pure)
+	CHECK (ImageAliasAllowed (REAL, KEY) == 0);
+	CHECK (ImageAliasAllowed (REAL, "sd:/lib/appkit.so") == -KAPI_EPERM);
+	CHECK (ImageAliasAllowed ("sd:/lib/appkit.so", KEY) == -KAPI_EPERM);
+	CHECK (ImageAliasAllowed ("sd:/bin/pocketui", KEY) == -KAPI_EPERM);
+	CHECK (ImageAliasAllowed (REAL, "sd:/apps/x.so") == -KAPI_EPERM);
+	CHECK (ImageAliasAllowed (REAL, "sd:/lib/") == -KAPI_EPERM);
+	CHECK (ImageAliasAllowed (REAL, "sd1:/lib/uikit.so") == -KAPI_EPERM);
+	CHECK (ImageAliasAllowed (KEY, KEY) == -KAPI_EINVAL);
+
+	// the desktop's library loaded first (a program has it, or a preload), then the server's
+	TImage *pD = OpenLib ("SD:/lib/uikit.so", &F);
+	TImage *pP = OpenLib ("SD:/lib/pocket/uikit.so", &F);
+	CHECK (pD != 0 && pP != 0 && pD != pP);
+	if (pD == 0 || pP == 0) return;
+	CHECK (ImageSetAlias (pD, KEY, 7, FALSE) == -KAPI_EINVAL);		// (its own path)
+	TFile Prog = MakeElf (s_Usual);
+	TImage *pProg = 0;
+	CHECK (Open ("SD:/lib/prog", &Prog, 0, &pProg) == 0);
+	CHECK (ImageSetAlias (pProg, KEY, 7, TRUE) == -KAPI_EINVAL);		// (not a library)
+	ImageRelease (pProg);
+	CHECK (ImageSetAlias (pP, "sd:/lib/appkit.so", 7, TRUE) == -KAPI_EPERM);
+	// only checked: nothing changes
+	CHECK (ImageSetAlias (pP, KEY, 7, FALSE) == 0);
+	TImage *pX = OpenLib ("SD:/lib/uikit.so");
+	CHECK (pX == pD);
+	ImageRelease (pX);
+	CHECK (ImageAliasOf (pP)[0] == '\0');
+	// set: the alias is looked up before the real path of the same key
+	CHECK (ImageSetAlias (pP, KEY, 7, TRUE) == 0);
+	CHECK (strcmp (ImageAliasOf (pP), KEY) == 0 && strcmp (ImagePath (pP), REAL) == 0);
+	pX = OpenLib ("SD:/lib/UIKit.so");
+	CHECK (pX == pP);
+	ImageRelease (pX);
+	pX = OpenLib ("SD:/lib/pocket/uikit.so");					// (its real path still finds it)
+	CHECK (pX == pP);
+	ImageRelease (pX);
+	unsigned nVersion = 0;
+	CHECK (ImageLibInfo (pP, 0, 0, &nVersion) && nVersion == 2);			// (the real library's table)
+	// the lists: the key's image, its real path, the flag, the alias after the path's end
+	struct kapi_image_info Info;
+	CHECK (InfoOf ("SD:/lib/uikit.so", &Info) && (Info.flags & KAPI_IMG_ALIAS) && (Info.flags & KAPI_IMG_LIB));
+	CHECK (strcmp (Info.path, REAL) == 0 && strcmp (Info.path + strlen (REAL) + 1, KEY) == 0);
+	{
+		struct kapi_image_info All[8];
+		unsigned n = ImageList (0, 0, All, 8), nAliased = 0;
+		for (unsigned i = 0; i < n && i < 8; i++) if (All[i].flags & KAPI_IMG_ALIAS) nAliased++;
+		CHECK (n == 2 && nAliased == 1);
+	}
+	// again by its owner: nothing changes; another owner, another image, another key: refused
+	CHECK (ImageSetAlias (pP, KEY, 7, TRUE) == 0 && strcmp (ImageAliasOf (pP), KEY) == 0);
+	CHECK (ImageSetAlias (pP, KEY, 8, TRUE) == -KAPI_EBUSY);
+	TImage *pQ = OpenLib ("SD:/lib/pocket2/uikit.so", &F);
+	CHECK (pQ != 0);
+	CHECK (ImageSetAlias (pQ, KEY, 8, TRUE) == -KAPI_EBUSY);
+	CHECK (ImageSetAlias (pQ, KEY, 7, TRUE) == -KAPI_EBUSY);			// (the owner's on another image)
+	CHECK (ImageSetAlias (pP, "sd:/lib/other.so", 7, TRUE) == -KAPI_EBUSY);	// (one key an image)
+	// unload of the alias: refused; of the real path of the key: the desktop's image is not the key's
+	CHECK (ImageUnload ("SD:/lib/uikit.so", 0) == -KAPI_EBUSY);
+	// a change of the key's file: the alias untouched (the desktop's image unnamed)
+	ImageFileChanged ("SD:/lib/uikit.so");
+	pX = OpenLib ("SD:/lib/uikit.so");
+	CHECK (pX == pP);
+	ImageRelease (pX);
+	// a change of its real path: the path unnamed, the alias kept on the old image
+	ImageFileChanged ("SD:/lib/pocket/uikit.so");
+	pX = 0;
+	CHECK (Open ("SD:/lib/pocket/uikit.so", 0, IMG_OPEN_LIB, &pX) == -KAPI_ENOENT);
+	pX = OpenLib ("SD:/lib/uikit.so");
+	CHECK (pX == pP);
+	ImageRelease (pX);
+	CHECK (InfoOf ("SD:/lib/uikit.so", &Info) && (Info.flags & KAPI_IMG_UNNAMED) && (Info.flags & KAPI_IMG_ALIAS));
+	// the server asking again: the image the alias names (only for its real path)
+	pX = ImageAliasHeld (KEY, REAL);
+	CHECK (pX == pP);
+	if (pX != 0) ImageRelease (pX);
+	CHECK (ImageAliasHeld (KEY, "sd:/lib/pocket2/uikit.so") == 0);
+	CHECK (ImageAliasHeld ("sd:/lib/none.so", REAL) == 0);
+	// its owner ended: orphaned, kept -- programs still get it; the same server started again takes it over
+	ImageUnalias (8, TRUE);								// (another pid: nothing)
+	CHECK (ImageSetAlias (pP, KEY, 9, FALSE) == -KAPI_EBUSY);
+	ImageUnalias (7, TRUE);
+	pX = OpenLib ("SD:/lib/uikit.so");
+	CHECK (pX == pP);
+	ImageRelease (pX);
+	CHECK (ImageSetAlias (pP, KEY, 9, TRUE) == 0);					// (taken over)
+	CHECK (ImageSetAlias (pP, KEY, 7, TRUE) == -KAPI_EBUSY);			// (pid 9's now)
+	// orphaned again, and another real path asked: replaced (the old image keeps its processes)
+	ImageUnalias (9, TRUE);
+	CHECK (ImageSetAlias (pQ, KEY, 10, TRUE) == 0);
+	CHECK (ImageAliasOf (pP)[0] == '\0' && strcmp (ImageAliasOf (pQ), KEY) == 0);
+	pX = OpenLib ("SD:/lib/uikit.so");
+	CHECK (pX == pQ);
+	ImageRelease (pX);
+	ImageRelease (pP);								// (unnamed, no alias, no reference: freed)
+	CHECK (Images () == 2);								// (pD unnamed, pQ aliased)
+	// a pin taken through the alias on an image whose path is unnamed: dropped with the alias
+	ImageFileChanged ("SD:/lib/pocket2/uikit.so");
+	pX = 0;
+	CHECK (Open ("SD:/lib/uikit.so", 0, IMG_OPEN_LIB | IMG_OPEN_PIN, &pX) == 0 && pX == pQ);
+	ImageRelease (pX);
+	ImageRelease (pQ);								// (kept: pinned, aliased)
+	CHECK (InfoOf ("SD:/lib/uikit.so", &Info) && (Info.flags & KAPI_IMG_KEPT) && Info.refs == 0);
+	// another server started: every alias dropped -- the key is the real paths' again
+	ImageUnalias (0, FALSE);
+	CHECK (!InfoOf ("SD:/lib/uikit.so", &Info));					// (pQ freed, pD unnamed)
+	ImageRelease (pD);
+	CheckClean ();
+
+	// the alias goes with its image's last reference
+	pP = OpenLib ("SD:/lib/pocket/uikit.so", &F);
+	CHECK (pP != 0 && ImageSetAlias (pP, KEY, 7, TRUE) == 0);
+	{
+		CAddressSpace A;
+		u64 t = 0;
+		CHECK (ImageMapLib (pP, &A, &t) == 1);
+		ImageRelease (pP);							// (A holds it)
+		ImageUnalias (7, TRUE);							// (the server ended: orphaned)
+		pX = OpenLib ("SD:/lib/uikit.so");
+		CHECK (pX == pP);
+		ImageRelease (pX);
+	}										// (A's teardown: the last reference)
+	CheckClean ();
+	pX = 0;
+	CHECK (Open ("SD:/lib/uikit.so", 0, IMG_OPEN_LIB, &pX) == -KAPI_ENOENT);
+	CheckClean ();
+}
+
 int main (void)
 {
 	TestCanon ();
@@ -1177,6 +1334,7 @@ int main (void)
 	TestFileChanged ();
 	TestLoadELF ();
 	TestLib ();
+	TestAlias ();
 	printf ("%d checks, %d failed\n", s_nChecks, s_nFailed);
 	return s_nFailed == 0 ? 0 : 1;
 }

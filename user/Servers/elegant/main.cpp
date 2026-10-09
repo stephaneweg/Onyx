@@ -12,7 +12,9 @@
 //                       the kernel's compositor and reads the RAW INPUT; the desktop is back when
 //                       it ends (Esc, its last window closed, 60 s) -- or dies.
 //
-// While it serves, the programs that ask have their windows there (appkit/elegant.h; the plan: docs/HANDOFF.md).
+// While it serves, the programs that ask have their windows there (uikit/port/elegant.h; the plan: docs/HANDOFF.md).
+// Since 2026-10-08 (PocketUI's phase P3) the server's code is shared with PocketUI (user/Servers/common/):
+// this file is Elegant's own part -- its policy (below) and its demonstration.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -26,6 +28,8 @@
 #include "appkit/appkit.h"
 #include "onyxpp.hpp"
 #include "core.h"
+#include "policy.h"
+#include "uikit/port/elegant.h"
 
 extern "C" int memcmp (const void *a, const void *b, __SIZE_TYPE__ n)
 {
@@ -120,16 +124,45 @@ static int demo_closed (void)			// the windows closed since the last call, remov
 	return n;
 }
 
+// The demonstration is a program of the graphics server that serves (another Elegant): it asks it as UIKit's
+// desktop port does (uikit/port/port_desktop.cpp -- Elegant links no UIKit): a request, the server waited for
+// 5 s at most when there is none.
+static long demo_ask (int op, long a0, long a1, long a2, long a3, const void *in, unsigned in_len)
+{
+	static int s_bLost;
+	struct kapi_ws_call c;
+	__builtin_memset (&c, 0, sizeof c);
+	c.op = op; c.in = in; c.in_len = in_len;
+	c.a[0] = a0; c.a[1] = a1; c.a[2] = a2; c.a[3] = a3;
+	long r = kapi_ws_ctl (KAPI_WS_CALL, (long) &c, 0, 0);
+	if (r != -KAPI_ESRCH || s_bLost) return r;
+	int t = 0;
+	for (; t < 100 && kapi_ws_ctl (KAPI_WS_ACTIVE, 0, 0, 0) <= 0; t++) kapi_msleep (50);
+	if (t == 100) { s_bLost = 1; return r; }
+	return kapi_ws_ctl (KAPI_WS_CALL, (long) &c, 0, 0);
+}
+
+static unsigned *demo_fullscreen (int *pW, int *pH)	// (uk_win_fullscreen_begin: the server told, then the kernel's)
+{
+	struct el_create c;
+	__builtin_memset (&c, 0, sizeof c);
+	c.flags = WIN_FLAG_BORDERLESS;
+	const char *t = "fullscreen";
+	for (unsigned i = 0; t[i] != 0; i++) c.title[i] = t[i];
+	demo_ask (EL_OP_CREATE, 0, 0, 64, 64, &c, sizeof c);
+	return kapi_fullscreen_begin (pW, pH);
+}
+
 static int demo (void)
 {
 	int w = 0, h = 0;
-	unsigned *fb = kapi_fullscreen_begin (&w, &h);
+	unsigned *fb = demo_fullscreen (&w, &h);
 	if (fb == 0 || w <= 0 || h <= 0) { say ("elegant: no full screen\n"); return 1; }
 	int nOpen = demo_scene (w, h);
 	if (nOpen == 0) { kapi_fullscreen_end (); say ("elegant: no memory\n"); return 1; }
 
-	kapi_set_pointer_handler (demo_pointer);
-	kapi_set_key_handler (demo_key);
+	demo_ask (EL_OP_HANDLER, EL_HANDLER_POINTER, (long) demo_pointer, 0, 0, 0, 0);	// (uk_win_on_pointer)
+	demo_ask (EL_OP_HANDLER, EL_HANDLER_KEY, (long) demo_key, 0, 0, 0, 0);		// (uk_win_on_key)
 	while (!s_bQuit && !kapi_should_exit () && nOpen > 0)
 	{
 		kapi_pump_wait (16);
@@ -140,19 +173,37 @@ static int demo (void)
 	return 0;
 }
 
-// (server.cpp) The graphics server: the display and the raw input taken from the kernel, the
-// programs' windows served. demo: with the demonstration's three windows, and ended by Esc, by
-// its last window closed, or after 60 s.
-int el_serve (int demo, int restart);		// restart: started again by the kernel after a server that ended
+// ---- Elegant's policy (../common/policy.h) -------------------------------------------------------
+// The graphics server's loop, the routing, the window manager and the requests' decoding are common to
+// Elegant and PocketUI (user/Servers/common/, el_serve: the display and the raw input taken from the
+// kernel, the programs' windows served). Elegant's policy is the common behaviour -- overlapping windows,
+// placed and moved freely, workspaces --: it only adds the wallpaper painted again when it is started
+// again, and its demonstration (--display: its three windows; ended by Esc, its last window closed, 60 s).
 
-int el_demo_scene (int w, int h)		{ return demo_scene (w, h); }
-int el_demo_closed (unsigned self)
+static int demo_closed (unsigned self)
 {
 	int n = 0;
 	for (int id = 0; id < EL_WINDOWS_MAX; id++)
 		if (el_core_window_pid (id) == self && el_core_window_closing (id)) { el_core_window_remove (id); n++; }
 	return n;
 }
+
+static void start (int, int, int restart)
+{
+	if (restart) kapi_launch ("voronoy");	// (the wallpaper went with the server before: painted again)
+}
+
+static const struct ws_policy s_Elegant =
+{
+	"elegant",
+	0, 0, 0, 0, 0,				// create, op, key, tick, screen: the common behaviour
+	0,					// registered: nothing before the display
+	start,
+	demo_scene, demo_closed,
+	0,					// mods: the window manager's own (Ctrl, Shift, Alt)
+	0,					// pointer: the window manager's
+};
+const struct ws_policy *g_pWsPolicy = &s_Elegant;
 
 static int arg_is (const char *a, const char *d)
 {

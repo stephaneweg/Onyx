@@ -188,7 +188,7 @@ static void dock_log (const char *a, const char *b)
 }
 static void launch_or_raise (const char *name)
 {
-	if (kapi_raise_app (name)) { dock_log (name, ": its window raised"); return; }
+	if (uk_win_app_raise (name)) { dock_log (name, ": its window raised"); return; }
 	if (lx_launch (name, 0)) dock_log (name, ": started");
 	else dock_log (name, ": NOT started (no SD:/apps/<name>.app/main, nor a main.<ext>)");
 }
@@ -220,14 +220,14 @@ static void build (void)
 		g_ndr++;
 	}
 	// the kernel's workspaces: as many as named
-	kapi_desk (-1, g_conf.ndesks > 0 ? g_conf.ndesks : 1);
+	uk_win_desk (-1, g_conf.ndesks > 0 ? g_conf.ndesks : 1);
 }
 
-// The apps with a window on this workspace (kapi_list_windows): their dots. -> changed?
+// The apps with a window on this workspace (uk_win_apps): their dots. -> changed?
 static bool poll_running (void)
 {
 	static char buf[2048];
-	kapi_list_windows (buf, sizeof buf);
+	uk_win_apps (buf, sizeof buf);
 	bool changed = false;
 	for (int i = 0; i < g_napps; i++)
 	{
@@ -257,17 +257,17 @@ static bool poll_running (void)
 
 // The windows on each workspace, small (the squares): their place on the screen, focused or not.
 struct Mini { int desk; short x, y, w, h; bool keys; };
-static Mini     g_mini[24];
+static Mini     g_mini[40];		// (uk_win_list: 37 at most)
 static int      g_nmini;
 static unsigned g_miniSig;
 
 static bool poll_minis (void)
 {
-	struct kapi_win_info L[24];
-	int n = kapi_win_list (L, 24);
+	struct kapi_win_info L[40];
+	int n = uk_win_list (L, 40);
 	g_nmini = 0;
 	unsigned sig = 5381;
-	for (int i = 0; i < n && g_nmini < 24; i++)
+	for (int i = 0; i < n && g_nmini < 40; i++)
 	{
 		const kapi_win_info &w = L[i];
 		if (w.id == KAPI_WIN_DESKTOP || (w.flags & (WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_BACKMOST | WIN_FLAG_SYSTEM))) continue;
@@ -481,11 +481,11 @@ public:
 		if (x == wx && y == wy && w == width && h == height) return;
 		settleUntil = kapi_get_ticks () + 6;		// (onMouse: the moves sent for the old place)
 		int stride = w;
-		unsigned *fb = kapi_resize_window2 (w, h, &stride);
+		unsigned *fb = uk_win_resize2 (w, h, &stride);
 		if (fb == 0) return;
 		canvas.adopt (fb, w, h, stride);
 		width = w; height = h;
-		kapi_move_window (x, y);
+		uk_win_move (x, y);
 		wx = x; wy = y;
 		invalidate (true);
 	}
@@ -552,7 +552,7 @@ public:
 		int sx = ox + g_pgX;
 		uk_rbox (canvas, sx, oy + 8, g_pgW, DH - 16, 10, uk_tone (d, 104), uk_tone (d, 122), 200);
 		uk_rline (canvas, sx, oy + 8, g_pgW, DH - 16, 10, uk_tone (d, 76), 120);
-		int info = kapi_desk (-1, 0), cur = KAPI_DESK_CUR (info);
+		int info = uk_win_desk (-1, 0), cur = KAPI_DESK_CUR (info);
 		for (int i = 0; i < g_ndesk; i++)
 		{
 			int bx, by; desk_box (i, &bx, &by);
@@ -712,7 +712,7 @@ public:
 		unsigned now = kapi_get_ticks ();
 		if (now - lastPoll >= 50) { lastPoll = now; if (poll_running ()) invalidate (true); }
 		if (now - lastMini >= 25) { lastMini = now; if (poll_minis ()) invalidate (true); }
-		int info = kapi_desk (-1, 0) & 0xFFFF;
+		int info = uk_win_desk (-1, 0) & 0xFFFF;
 		if (info != lastDeskInfo) { lastDeskInfo = info; invalidate (true); }
 		if (now - lastTrash >= 200)
 		{
@@ -751,7 +751,7 @@ public:
 			break;
 		}
 		case H_STRIP: openDrawer (g_slot[h.index].index); break;
-		case H_DESK:  closeDrawer (); kapi_desk (h.index, 0); invalidate (true); break;
+		case H_DESK:  closeDrawer (); uk_win_desk (h.index, 0); invalidate (true); break;
 		case H_LOCK:  closeDrawer (); kapi_launch ("lock"); break;
 		case H_GEAR:  closeDrawer (); launch_or_raise ("control"); break;
 		case H_POWER: closeDrawer (); kapi_launch ("shutdown"); break;
@@ -869,7 +869,7 @@ int main (void)
 	if (root.canvas.px == 0) return 1;
 	root.placeWindow ();
 	struct kapi_win_geom g;
-	if (kapi_win_geometry (&g) == 0 && g.ay > 0) g_top = g.ay;
+	if (uk_win_geometry (&g) == 0 && g.ay > 0) g_top = g.ay;
 	root.trashFull = trash_count () > 0;
 	poll_running ();
 	poll_minis ();

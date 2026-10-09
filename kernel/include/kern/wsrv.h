@@ -13,6 +13,11 @@
 //    held keys -- the USB ones and the injected ones (vncd, rdpd: kapi_inject_*) -- go to a ring
 //    the server reads (KAPI_WS_INPUT) instead of the kernel's window manager.
 //  - ONE WAIT (KAPI_WS_WAIT): until something is there for the server.
+//  - (v97) WHICH SERVER: SD:/etc/system.ini "shell =" -- desktop (or none, or anything else): Elegant,
+//    SD:/bin/elegant --serve; pocket / console: PocketUI, SD:/bin/pocketui --serve --mode <m>
+//    (docs/POCKETUI-TECH-STUDY.md). A server that is missing, ends or does not take the display in
+//    5 s: Elegant instead (a bad setting never leaves the screen dark). KAPI_WS_SWITCH ends the
+//    server and starts the one "shell =" names now. The role is the started program's (its name).
 //
 // Core 0. The input's feeders may run in an interrupt (the USB callbacks): the ring has a lock;
 // the rest is task context on a kernel that is not preempted.
@@ -50,9 +55,12 @@ boolean WsInputMods (unsigned nMods);			// MOD_*
 boolean WsInputHeldUsb (const unsigned char RawKeys[6]);	// the USB report's usage codes
 boolean WsInputHeld (int nKey, boolean bDown);		// an injected key down / up (logical code)
 
-// (kernel.cpp, before init) The one-boot trial: SD:/etc/elegant.trial -> removed, the server started
-// and waited for.
+// (kernel.cpp, before init) The graphics server "shell =" names started and waited for (5 s), Elegant
+// if it fails; neither: the kernel's console.
 void WsBootStart (void);
+
+// (v97) Is the calling process the graphics server (it holds the role)? kapi_lib_open_as.
+boolean WsIsServer (void);
 
 // The process that has the keyboard, as the server says (KAPI_WS_FOCUS): kapi_key_held, the pads.
 unsigned WsFocusPid (void);

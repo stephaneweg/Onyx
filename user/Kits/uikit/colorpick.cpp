@@ -1,4 +1,5 @@
 #include "uikit/colorpick.h"
+#include "uikit/lift.h"		// the open pop-up over everything
 
 namespace uikit {
 
@@ -31,8 +32,10 @@ void ColorPicker::setOpen (bool o)
 	catchOutside = o;
 	transparent = o;					// (the panel's rounded corners: see-through)
 	int gw = PAL_COLS * PAL_CELL + 2 * PAL_PAD, gh = PAL_ROWS * PAL_CELL + 2 * PAL_PAD;
+	if (o) uk_lift (this);					// out of its parents: only the window clips it now
 	resizeTo (o ? (m_boxW > gw ? m_boxW : gw) : m_boxW, o ? m_boxH + PAL_GAP + gh : m_boxH);
 	if (o) bringToFront ();
+	else uk_unlift (this);					// back where it was
 	invalidate (true);
 	if (parent) parent->invalidate (true);
 }

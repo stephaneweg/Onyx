@@ -41,6 +41,14 @@ int ProgramPreload (const char *pCanonPath);
 class CAddressSpace;
 int LibraryOpen (const char *pCanonPath, unsigned nMinVersion, CAddressSpace *pAS, u64 *pTable);
 
+// (v97) The same, then the library found under pCanonAlias too, for nOwner (the graphics server's pid:
+// the caller checked the role) -- kern/image.h's alias; asked again (or an orphaned alias taken over
+// with the same real path): the image the alias names, whatever its file did since. -> 0 and *pTable,
+// or -KAPI_E* (ImageAliasAllowed's, ImageSetAlias's, LibraryOpen's). Defined in kernel.cpp
+// (kapi_lib_open_as).
+int LibraryOpenAs (const char *pCanonPath, const char *pCanonAlias, unsigned nMinVersion, CAddressSpace *pAS,
+		   u64 *pTable, unsigned nOwner);
+
 // Keyboard layout control (defined in kernel.cpp): switch the live keyboard to a
 // compiled-in country map and read the current layout name. Declared here (a plain
 // C++ header) so sys/kapi.cpp sees C++ linkage, matching the kernel.cpp definitions.

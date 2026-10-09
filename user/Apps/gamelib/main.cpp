@@ -7,7 +7,7 @@
 //     games only -- and Folders (the watched folders, their games; Add Folder...; a right click
 //     on one: Show / Remove Folder);
 //   * above, the path bar ("Game Library > Super Nintendo", the number of games; a click on
-//     "Game Library" shows them all); below, the status bar (the game chosen; the picture being
+//     TR ("Game Library") shows them all); below, the status bar (the game chosen; the picture being
 //     made);
 //   * the cards, one section per system -- the systems of the installed emulators, each from its
 //     app.txt (`games = Super Nintendo: sfc smc`, `order =`): an emulator's package installed, its
@@ -29,6 +29,7 @@
 //
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include "appkit/appkit.h"
 #include "gamepad.h"
 #include "uikit/bmp.h"
@@ -43,7 +44,9 @@ using namespace uikit;
 
 #define WIN_W	980			// (four columns of cards beside the sidebar)
 #define WIN_H	580
-#define SIDE_W	220			// the sidebar: the systems, the folders
+#define SIDE0	220			// the sidebar: the systems, the folders
+static int g_sideW = SIDE0;		// what it takes at the window's left now (pocket, console: its SidePanel's rail, 0 a drawer)
+#define SIDE_W	g_sideW
 #define BAR_H	46			// the path bar
 #define ST_H	22			// the status bar
 #define SIDE_Y	(BAR_H + 4)
@@ -480,7 +483,7 @@ static const char *filter_name (void)
 {
 	if (g_filter >= F_FOLDER) return g_folder[g_filter - F_FOLDER];
 	if (g_filter >= F_SYS) return SYS_NAME(g_filter - F_SYS);
-	return "All Games";
+	return TR ("All Games");
 }
 // Tab, a gamepad's shoulders: the next / previous system that has games (All Games between)
 static void next_filter (int dir)
@@ -546,14 +549,16 @@ static void play_shown (int v) { if (v >= 0 && v < g_nvis) play (g_vis[v]); }
 
 // ---- the sidebar ----------------------------------------------------------------------------------------
 enum { G_LIBRARY, G_SYSTEMS, G_FOLDERS, NGROUPS };
-static const char *const GROUP_NAME[NGROUPS] = { "Library", "Systems", "Folders" };
+static const char *const GROUP_NAME[NGROUPS] = { TRN ("Library"), TRN ("Systems"), TRN ("Folders") };
 static bool g_folded[NGROUPS];
 enum { SR_GROUP, SR_ALL, SR_SYS, SR_FOLDER, SR_ADD };
 struct SideRow { int kind, index; };
 static SideRow g_srow[NGROUPS + 2 + MAXSYS + MAXF + 1]; static int g_nsrow;
 static int g_sideHot = -1, g_crumbHot = -1, g_crumbX = 0;
+static void sp_build (void);
 static void side_rows (void)
 {
+	sp_build ();					// (pocket, console: the SidePanel's items again)
 	g_nsrow = 0;
 	for (int gr = 0; gr < NGROUPS; gr++)
 	{
@@ -564,9 +569,14 @@ static void side_rows (void)
 		else { for (int f = 0; f < g_nf; f++) g_srow[g_nsrow++] = { SR_FOLDER, f }; g_srow[g_nsrow++] = { SR_ADD, 0 }; }
 	}
 }
+// (P7) In pocket and console the sidebar is a navigation SidePanel (uikit/sidepanel.h: a rail of the systems' icons in
+// landscape, a drawer in portrait, the d-pad's column in console); 0 on the desktop -- its own sidebar, as always.
+static SidePanel *g_sp;
+enum { SP_ADD = 9000, SPI_ALL = 0, SPI_SYS = 1, SPI_FOLDER = 500, SPI_PLUS = 501 };	// (an item's id: its filter; its icon)
+static void sp_build (void);
 static int side_at (int mx, int my)
 {
-	if (mx < 0 || mx >= SIDE_W - 4 || my < SIDE_Y || my >= grid_bottom ()) return -1;
+	if (g_sp || mx < 0 || mx >= SIDE_W - 4 || my < SIDE_Y || my >= grid_bottom ()) return -1;
 	int r = (my - SIDE_Y) / SIDE_RH;
 	return r >= 0 && r < g_nsrow ? r : -1;
 }
@@ -635,6 +645,51 @@ static void blit_icon (Canvas &cv, int x, int y, const unsigned *px)
 
 static void on_add ();
 static void remove_folder (int f);
+static void folder_menu (int f, int mx, int my);
+static void sp_icon (Canvas &cv, int id, int x, int y, int size, unsigned ink, bool on)
+{
+	int ix = x + (size - SICON) / 2, iy = y + (size - SICON) / 2;
+	if (id >= SPI_SYS && id < SPI_FOLDER) blit_icon (cv, ix, iy, sys_icon (id - SPI_SYS));
+	else if (id == SPI_ALL)						// four cards
+		for (int q = 0; q < 4; q++)
+			uk_rbox (cv, ix + 2 + (q & 1) * 10, iy + 2 + (q >> 1) * 10, 8, 8, 2, on ? ink : uk_tone (C_ACCENT, 150), on ? ink : uk_tone (C_ACCENT, 120));
+	else if (id == SPI_FOLDER)					// a folder
+	{
+		uk_rbox (cv, ix + 3, iy + 5, 7, 4, 1, 0x00D8AA52, 0x00C89A48);
+		uk_rbox (cv, ix + 3, iy + 7, 16, 11, 2, 0x00EEC46C, 0x00D8A850);
+		uk_rline (cv, ix + 3, iy + 7, 16, 11, 2, 0x00906A28, 190);
+	}
+	else uk_glyph (cv, WKG_PLUS, x + size / 2, y + size / 2, 10, ink);
+}
+static void sp_build (void)			// the groups as headings (they fold), the places with their number of games
+{
+	if (!g_sp) return;
+	g_sp->clear ();
+	auto count = [] (int id, int n) { char t[12]; int m = ax_itoa (n, t); t[m] = 0; g_sp->setTrailing (id, t); };
+	for (int gr = 0; gr < NGROUPS; gr++)
+	{
+		int h = g_sp->addHeading (TR (GROUP_NAME[gr]), UK_SPI_FOLDABLE | (g_folded[gr] ? UK_SPI_FOLDED : 0));
+		if (gr == G_LIBRARY) { g_sp->addItem (F_ALL, TR ("All Games"), SPI_ALL, 0, h); count (F_ALL, g_ng); }
+		else if (gr == G_SYSTEMS)
+			for (int k = 0; k < NSYS; k++)
+			{
+				g_sp->addItem (F_SYS + k, SYS_NAME(k), SPI_SYS + k, 0, h); count (F_SYS + k, g_nsys[k]);
+				if (g_nsys[k] == 0) g_sp->setFlags (F_SYS + k, UK_SPI_DISABLED);
+			}
+		else
+		{
+			for (int f = 0; f < g_nf; f++) { g_sp->addItem (F_FOLDER + f, g_folder[f], SPI_FOLDER, 0, h); count (F_FOLDER + f, g_nfold[f]); }
+			g_sp->addItem (SP_ADD, TR ("Add Folder..."), SPI_PLUS, 0, h);
+		}
+	}
+	g_sp->select (g_filter);
+}
+static void sp_place (void)			// its rectangle, what it takes of the window's left
+{
+	if (!g_sp || !g_root) return;
+	g_sp->place (0, BAR_H, SIDE0, g_root->height - ST_H - BAR_H);
+	g_sideW = g_sp->reservedWidth ();
+}
 static void side_click (int r)
 {
 	const SideRow &sr = g_srow[r];
@@ -645,10 +700,10 @@ static void side_click (int r)
 static void folder_menu (int f, int mx, int my)
 {
 	PopupMenu m (mx, my);
-	m.add ("Show", 1);
-	m.add ("Show in File Viewer", 2);
+	m.add (TR ("Show"), 1);
+	m.add (TR ("Show in File Viewer"), 2);
 	m.separator ();
-	m.add ("Remove Folder", 3);
+	m.add (TR ("Remove Folder"), 3);
 	int r = m.run ();
 	if (r == 1) set_filter (F_FOLDER + f);
 	else if (r == 2) lx_launch ("fileviewer", g_folder[f]);
@@ -658,10 +713,10 @@ static void folder_menu (int f, int mx, int my)
 static void tile_menu (int v, int mx, int my)
 {
 	PopupMenu m (mx, my);
-	m.add ("Play", 1, true, "Enter");
-	m.add ("Play Full Screen", 2);
+	m.add (TR ("Play"), 1, true, TR ("Enter"));
+	m.add (TR ("Play Full Screen"), 2);
 	m.separator ();
-	m.add ("Show in File Viewer", 3);
+	m.add (TR ("Show in File Viewer"), 3);
 	int r = m.run ();
 	const Game &g = g_games[g_vis[v]];
 	if (r == 1) play (g_vis[v]);
@@ -684,10 +739,12 @@ static void tile_menu (int v, int mx, int my)
 class LibRoot : public Root
 {
 public:
-	LibRoot () : Root (WIN_W, WIN_H, "Game Library") {}
-	void onResized () override { clamp (); invalidate (true); }	// (the grid follows the width)
+	LibRoot () : Root (WIN_W, WIN_H, TR ("Game Library")) {}
+	void onResized () override { sp_place (); clamp (); invalidate (true); }	// (the grid follows the width)
+	void onSizeClass (int) override { sp_place (); clamp (); invalidate (true); }
 	void onDraw () override
 	{
+		if (g_sp && g_sp->selected () != g_filter) g_sp->select (g_filter);
 		canvas.clear (C_BG);
 		drawGrid ();					// (first: the bars cover what scrolls past them)
 		drawSidebar ();
@@ -705,25 +762,25 @@ public:
 			int y = BAR_H + 30;
 			if (g_ng == 0)
 			{
-				canvas.text (gx + 24, y, "No game found in", ink);
+				canvas.text (gx + 24, y, TR ("No game found in"), ink);
 				for (int f = 0; f < g_nf; f++) uk_text (canvas, gx + 24, y + 22 + f * 20, g_folder[f], ink, 2);
 				y += 34 + g_nf * 20;
-				char h[200]; int hn = 0; lx_cat (h, sizeof h, &hn, "Put ");
-				for (int k = 0; k < NSYS && hn < 150; k++) { if (k) lx_cat (h, sizeof h, &hn, " / "); lx_cat (h, sizeof h, &hn, g_sys[k].extText); }
-				lx_cat (h, sizeof h, &hn, NSYS ? " files there" : "an emulator first (Control Panel > Packages)");
+				char e[160], h[240]; int en = 0; e[0] = 0;
+				for (int k = 0; k < NSYS && en < 150; k++) { if (k) lx_cat (e, sizeof e, &en, " / "); lx_cat (e, sizeof e, &en, g_sys[k].extText); }
+				if (NSYS) snprintf (h, sizeof h, TR ("Put %s files there"), e); else snprintf (h, sizeof h, "%s", TR ("Put an emulator first (Control Panel > Packages)"));
 				canvas.text (gx + 24, y, h, dim);
-				canvas.text (gx + 24, y + 20, "(sub-folders too), or Folders > Add Folder...", dim);
+				canvas.text (gx + 24, y + 20, TR ("(sub-folders too), or Folders > Add Folder..."), dim);
 			}
 			else if (g_filter >= F_SYS && g_filter < F_FOLDER)
 			{
 				int k = g_filter - F_SYS;
-				char t[64]; int n = 0; lx_cat (t, sizeof t, &n, "No "); lx_cat (t, sizeof t, &n, SYS_NAME(k)); lx_cat (t, sizeof t, &n, " game yet.");
+				char t[96]; snprintf (t, sizeof t, TR ("No %s game yet."), SYS_NAME(k));
 				uk_text (canvas, gx + 24, y, t, ink, 2);
-				char h[96]; n = 0; lx_cat (h, sizeof h, &n, "Put "); lx_cat (h, sizeof h, &n, g_sys[k].extText); lx_cat (h, sizeof h, &n, " files in a watched folder");
+				char h[160]; snprintf (h, sizeof h, TR ("Put %s files in a watched folder"), g_sys[k].extText);
 				canvas.text (gx + 24, y + 26, h, dim);
-				canvas.text (gx + 24, y + 46, "(sub-folders too), then Library > Refresh.", dim);
+				canvas.text (gx + 24, y + 46, TR ("(sub-folders too), then Library > Refresh."), dim);
 			}
-			else canvas.text (gx + 24, y, "No game in this folder.", dim);
+			else canvas.text (gx + 24, y, TR ("No game in this folder."), dim);
 			return;
 		}
 		// the sections' titles: the system and its number of games
@@ -766,7 +823,7 @@ public:
 			else
 			{
 				uk_sunken (canvas, px, py, TW, TH, 4, uk_tone (C_FACE, 112));
-				canvas.text (px + 44, py + TH / 2 - 8, g_tgame == g_vis[i] ? "(loading)" : "", C_TEXT);
+				canvas.text (px + 44, py + TH / 2 - 8, g_tgame == g_vis[i] ? TR ("(loading)") : "", C_TEXT);
 				int bw = 0, bh = 0; const unsigned *ic = g_sys[g.sys].core == CORE_NONE ? sys_big (g.sys, &bw, &bh) : 0;
 				for (int r = 0; ic && r < bh * 2; r++)		// (no picture made: its emulator's icon, twice its size)
 				{
@@ -786,6 +843,7 @@ public:
 
 	void drawSidebar ()
 	{
+		if (g_sp) return;				// (pocket, console: the SidePanel draws itself)
 		int gb = grid_bottom ();
 		canvas.fillRect (0, BAR_H, SIDE_W, gb - BAR_H, C_BG);
 		uk_etch_v (canvas, SIDE_W - 2, BAR_H + 4, gb - BAR_H - 8, C_BG);
@@ -800,7 +858,7 @@ public:
 			if (sr.kind == SR_GROUP)
 			{
 				uk_glyph (canvas, g_folded[sr.index] ? WKG_CHEV_RIGHT : WKG_CHEV_DOWN, 14, y + SIDE_RH / 2, 8, hot ? C_TEXT : dim);
-				uk_text (canvas, 24, y + (SIDE_RH - fh) / 2, GROUP_NAME[sr.index], hot ? C_TEXT : dim, 2);
+				uk_text (canvas, 24, y + (SIDE_RH - fh) / 2, TR (GROUP_NAME[sr.index]), hot ? C_TEXT : dim, 2);
 				continue;
 			}
 			int f = row_filter (sr);
@@ -822,7 +880,7 @@ public:
 			}
 			else uk_glyph (canvas, WKG_PLUS, ix + SICON / 2, y + SIDE_RH / 2, 10, ink);
 			char lab[48];
-			scpy (lab, sr.kind == SR_ALL ? "All Games" : sr.kind == SR_SYS ? SYS_NAME(sr.index) : sr.kind == SR_FOLDER ? g_folder[sr.index] : "Add Folder...", sizeof lab);
+			scpy (lab, sr.kind == SR_ALL ? TR ("All Games") : sr.kind == SR_SYS ? SYS_NAME(sr.index) : sr.kind == SR_FOLDER ? g_folder[sr.index] : TR ("Add Folder..."), sizeof lab);
 			char num[12] = ""; int nw = 0;
 			if (n >= 0) { int m = ax_itoa (n, num); num[m] = 0; nw = uk_text_w (num) + 8; }
 			char fit[48]; uk_text_fit (lab, SIDE_W - 20 - 44 - nw - 6, fit, sizeof fit);	// (cut at a character, "...")
@@ -831,7 +889,7 @@ public:
 		}
 	}
 
-	// The path bar: "Game Library" (a link back to all the games), then what is shown; at the right
+	// The path bar: TR ("Game Library") (a link back to all the games), then what is shown; at the right
 	// the number of games.
 	void drawBar ()
 	{
@@ -842,7 +900,7 @@ public:
 		uk_rline (canvas, fx, fy, fw, fh, 8, uk_tone (C_BG, 88), 190);
 		int x = fx + 14, y = fy + (fh - uk_fh ()) / 2;
 		bool top = g_filter == F_ALL;
-		const char *root = "Game Library";
+		const char *root = TR ("Game Library");
 		int tw = uk_text_w (root, top ? 2 : 0);
 		uk_text (canvas, x, y, root, top ? uk_tone (C_ACCENT, 84) : ink, top ? 2 : 0);
 		if (top) canvas.fillRect (x, y + uk_fh () + 1, tw, 2, C_ACCENT);
@@ -857,8 +915,7 @@ public:
 			uk_text (canvas, x, y, nm, uk_tone (C_ACCENT, 84), 2);
 			canvas.fillRect (x, y + uk_fh () + 1, uk_text_w (nm, 2), 2, C_ACCENT);
 		}
-		char cnt[24]; int n = ax_itoa (g_nvis, cnt); cnt[n] = 0;
-		lx_cat (cnt, sizeof cnt, &n, g_nvis == 1 ? " game" : " games");
+		char cnt[48]; snprintf (cnt, sizeof cnt, g_nvis == 1 ? TR ("%d game") : TR ("%d games"), g_nvis);
 		canvas.text (fx + fw - 14 - uk_text_w (cnt), y, cnt, dim);
 	}
 
@@ -869,12 +926,12 @@ public:
 		uk_rbox (canvas, 0, y, width, ST_H, 0, uk_tone (C_FACE, 160), uk_tone (C_FACE, 124));
 		uk_etch_h (canvas, 0, y, width, C_FACE);
 		char s[160]; int n = 0; s[0] = 0;
-		if (g_tgame >= 0) { lx_cat (s, sizeof s, &n, "Making the picture of "); lx_cat (s, sizeof s, &n, g_games[g_tgame].name); lx_cat (s, sizeof s, &n, "..."); }
+		if (g_tgame >= 0) snprintf (s, sizeof s, TR ("Making the picture of %s..."), g_games[g_tgame].name);
 		else if (g_nvis > 0)
 		{
 			const Game &g = g_games[g_vis[g_sel]];
 			lx_cat (s, sizeof s, &n, g.name); lx_cat (s, sizeof s, &n, "   -   "); lx_cat (s, sizeof s, &n, SYS_NAME(g.sys));
-			lx_cat (s, sizeof s, &n, g_full ? "   (Enter: play full screen)" : "   (Enter or a double-click: play)");
+			lx_cat (s, sizeof s, &n, g_full ? TR ("   (Enter: play full screen)") : TR ("   (Enter or a double-click: play)"));
 		}
 		canvas.text (10, y + (ST_H - uk_fh ()) / 2 + 1, s, C_TEXT);
 	}
@@ -976,10 +1033,10 @@ static void save_folders ()
 static void on_add ()
 {
 	char p[256];
-	if (g_nf >= MAXF) { uk_messagebox ("Game Library", "Too many folders (8 at most).", MB_OK); return; }
+	if (g_nf >= MAXF) { uk_messagebox (TR ("Game Library"), TR ("Too many folders (8 at most)."), MB_OK); return; }
 	if (!uk_folder_open (p, sizeof p, g_folder[g_nf - 1 >= 0 ? g_nf - 1 : 0])) return;
 	int e = slen (p); if (e > 1 && p[e - 1] == '/' && p[e - 2] != ':') p[--e] = 0;	// "SD:/roms/" -> "SD:/roms"
-	if (e > 63) { uk_messagebox ("Game Library", "This folder's path is too long (63 characters at most).", MB_OK); return; }
+	if (e > 63) { uk_messagebox (TR ("Game Library"), TR ("This folder's path is too long (63 characters at most)."), MB_OK); return; }
 	for (int f = 0; f < g_nf; f++) { const char *a = g_folder[f], *b = p; while (*a && low (*a) == low (*b)) a++, b++; if (!*a && !*b) return; }
 	scpy (g_folder[g_nf++], p, sizeof g_folder[0]);
 	save_folders (); build_menu (); on_refresh ();
@@ -1013,30 +1070,31 @@ static Menu g_menu;
 static void build_menu ()
 {
 	g_menu = Menu ();
-	g_menu.menu ("Library");
-	g_menu.item ("Play",              "Enter", 0, on_play);
-	g_menu.item ("Refresh",           "^R", UK_CTRL ('R'), on_refresh);
+	g_menu.menu (TR ("Library"));
+	g_menu.item (TR ("Play"),              TR ("Enter"), 0, on_play);
+	g_menu.item (TR ("Refresh"),           "^R", UK_CTRL ('R'), on_refresh);
 	g_menu.separator ();
-	g_menu.item ("Quit",              "^Q", UK_CTRL ('Q'), on_quit);
-	g_menu.menu ("Folders");
-	g_menu.item ("Add Folder...",     "",   0, on_add);
+	g_menu.item (TR ("Quit"),              "^Q", UK_CTRL ('Q'), on_quit);
+	g_menu.menu (TR ("Folders"));
+	g_menu.item (TR ("Add Folder..."),     "",   0, on_add);
 	if (g_nf > 0) g_menu.separator ();
 	for (int f = 0; f < g_nf; f++)
 	{
-		char l[220]; int n = 0; lx_cat (l, sizeof l, &n, "Remove "); lx_cat (l, sizeof l, &n, g_folder[f]);
+		char l[220]; int n = 0; snprintf (l, sizeof l, TR ("Remove %s"), g_folder[f]); (void) n;
 		g_menu.item (l, "", 0, ON_RM[f]);
 	}
-	g_menu.menu ("View");
-	g_menu.item ("All Games",         "Tab", 0, on_all);
+	g_menu.menu (TR ("View"));
+	g_menu.item (TR ("All Games"),         "Tab", 0, on_all);
 	for (int k = 0; k < NSYS; k++) g_menu.item (SYS_NAME(k), "", 0, ON_SYS[k]);
 	g_menu.separator ();
-	g_menu.item ("Play Full Screen On / Off", "", 0, on_full);
+	g_menu.item (TR ("Play Full Screen On / Off"), "", 0, on_full);
 	g_menu.publish ();
 }
 
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
+	uk_lang_init ();
 	if (app_ini_load_path ("SD:/apps/gamelib.app/config.ini") >= 0)
 	{
 		// one `folder = <path>` line per watched folder (an .ini value: 63 characters at most)
@@ -1052,7 +1110,17 @@ int main (void)
 	build_menu ();
 	load_systems ();				// (the installed emulators: their app.txt)
 	rescan ();
+	if (uk_size_class () != UK_SC_REGULAR)		// pocket, console: the sidebar as a SidePanel
+	{
+		g_sp = new SidePanel (0, BAR_H, SIDE0, WIN_H - BAR_H - ST_H, UK_SP_LEFT, UK_SP_NAVIGATION);
+		g_sp->setIconFn (sp_icon);
+		g_sp->onSelect = [] (SidePanel &, int id) { if (id == SP_ADD) { g_sp->select (g_filter); on_add (); } else set_filter (id); if (g_root) g_root->invalidate (true); };
+		g_sp->onItemMenu = [] (SidePanel &, int id, int x, int y) { if (id >= F_FOLDER && id < SP_ADD) folder_menu (id - F_FOLDER, x, y); };
+		g_sp->onPresentation = [] (SidePanel &, int) { sp_place (); if (g_root) g_root->invalidate (true); };
+		root.addChild (g_sp);
+	}
 	side_rows ();
+	sp_place ();
 	root.setResizable (true);			// (the grid lays itself out from the width)
 	root.attach ();
 	while (!should_exit ())
@@ -1060,7 +1128,7 @@ int main (void)
 		pump_events ();
 		thumb_work ();
 		pad_poll ();
-		if (!root.valid) { root.draw (); kapi_present (); }
+		if (!root.valid) { root.draw (); uk_win_present (); }
 		kapi_msleep (g_tgame >= 0 ? 1 : 16);
 	}
 	return 0;

@@ -1,0 +1,3 @@
+# generated for the preview by make_case_wood.py
+_*.stl
+__pycache__/

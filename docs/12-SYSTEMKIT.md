@@ -17,7 +17,9 @@
 11. [`systemkit/dockconf.h`](#systemkitdockconfh)
 12. [`systemkit/preloadini.h`](#systemkitpreloadinih)
 13. [`systemkit/autostart.h`](#systemkitautostarth)
-14. [`systemkit/applet_proto.h`](#systemkitappletprotoh)
+14. [`systemkit/locale.h`](#systemkitlocaleh)
+15. [`systemkit/session.h`](#systemkitsessionh)
+16. [`systemkit/applet_proto.h`](#systemkitappletprotoh)
 
 ---
 
@@ -29,7 +31,7 @@ SystemKit is what a program says to the system and to the other programs: notifi
 |---|---|
 | Include | `#include "systemkit/systemkit.h"` |
 | Link | `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C) |
-| Library | `SD:/lib/systemkit.so` — 76 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
+| Library | `SD:/lib/systemkit.so` — 93 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
 | Sources | `user/Kits/systemkit/` |
 
 ## Using it
@@ -114,6 +116,60 @@ locale_set_language ("fr");                           // kept: the programs star
 locale_set_zone (0);                                  // a time zone (locale_zone_count / _city / _offset): now, and kept
 ```
 
+**The time zones at an instant** (the Clock's World tab): `locale_zone_offset (z)` judges the summer time by
+today's date only; `locale_zone_offset_at (z, utc_minutes)` gives a zone's offset at an exact instant, the hour of
+the change counted (the EU's at 01:00 UTC, the US' at 02:00 local) — a city's time is its UTC plus that offset,
+right on the night of a change whatever the local day says:
+
+```c
+struct kapi_clock_info ci;
+if (kapi_clock_info (&ci) == 0 && (ci.flags & KAPI_CLOCK_REALTIME_VALID))
+{
+    long long utc = ci.utc_us / 60000000;                        // minutes since 1970, UTC
+    int ny = 16;                                                 // locale_zone_city (16): "New York"
+    long long there = utc + locale_zone_offset_at (ny, utc);     // its wall minute now
+}
+```
+
+The kernel reads `timezone=` once at boot; `locale_zone_sync ()` puts the system's clock on the zone chosen in
+Language & Region or Setup (`zone=` only — a card with a `timezone=` and no `zone=` is left as it is) when the summer
+time begins or ends: called once a minute (clockd, the Clock's service, does), on 25 October 2026 at 03:00 CEST the
+clock becomes 02:00 CET, `timezone=` rewritten (1 changed, 0 not).
+
+**The interface's mode and its session** (`session.h`, 2026-10-08): the mode — `SESSION_DESKTOP`, `SESSION_POCKET`,
+`SESSION_CONSOLE` — is `system.ini`'s `shell=`; each mode's programs are its session file `SD:/etc/session/<mode>`.
+A settings page switches the mode as the Control Panel's Mode applet does: `/bin/session` is started, closes the
+open programs (each one asks about its unsaved work), and the caller polls it:
+
+```c
+void *h = session_switch_start (SESSION_POCKET, 0, 0);     // the caller and its parents are kept open, then ended
+/* ... each turn: */ if (h && kapi_proc_done (h)) {
+    int r = kapi_wait (h); h = 0;
+    if (r == SESSION_WAITING_APPS) { char who[512]; session_waiting (who, sizeof who);   // "name\ttitle" lines
+        /* ask: Wait -> session_switch_start (m, SESSION_NO_ASK, 0); Force -> ... SESSION_NO_ASK | SESSION_FORCE */ }
+}
+int m = session_mode ();                                   // the mode chosen (no line: the desktop)
+char names[512]; session_programs (m, names, sizeof names); // "menubar\nterminal\n": what its session starts
+```
+
+`autostart_has` / `autostart_ensure` look in the autostart and in the session files: a line added after an anchor
+goes into the file that has it.
+
+**The pocket shell** (`shell.h`, 2026-10-08): in the pocket mode a program may open one of the pocket shell's screens
+(`pocketshell` serves the IPC service `shell`); on the desktop nothing serves it and the call answers 0:
+
+```c
+if (shell_running ()) shell_ask (SHELL_MSG_QUICK);          // quick settings and the notifications (else: our own)
+```
+
+**The documents opened last** (`recent.h`, 2026-10-08): `fa_open` notes every file it opens with its app; an app that
+opens a file by itself (its own Open dialog) may note it too. The pocket launcher's Recent shows them:
+
+```c
+recent_doc_add ("SD:/docs/letters-tour.rtf");             // first of SD:/etc/recent-docs (24 at most, a path once)
+struct recent_doc d[12]; int n = recent_docs (d, 12);       // the latest first: d[i].path, .date (YYYYMMDD), .time (HHMM)
+```
+
 | Its part (a header of its own, beside `systemkit.h`) | Subject |
 |---|---|
 | `notify.h` | Notifications |
@@ -124,9 +180,12 @@ locale_set_zone (0);                                  // a time zone (locale_zon
 | `wallpaper.h` | The wallpaper's settings and its painter |
 | `dockconf.h` | The dock's settings |
 | `preloadini.h` | The programs loaded ahead at boot |
-| `autostart.h` | The programs started at boot (`SD:/etc/autostart`) |
+| `autostart.h` | The programs started at boot (`SD:/etc/autostart` and the session files) |
 | `applet_proto.h` | A settings applet shown inside the Control Panel |
 | `locale.h` | The system's language and time zone (`SD:/etc/system.ini`) |
+| `session.h` | The interface's mode (desktop, pocket, console) and its session: `SD:/etc/session/<mode>`, the switch |
+| `shell.h` | The pocket shell's screens asked (`shell_ask (SHELL_MSG_HOME / _SWITCHER / _QUICK / _SEARCH)`, `shell_running ()`): the menu bar's way in pocket |
+| `recent.h` | The documents opened last (`recent_doc_add`, `recent_docs`: `SD:/etc/recent-docs`; `fa_open` notes them) |
 
 ## Index
 
@@ -207,6 +266,34 @@ Everything the headers declare, in their order — the details are in each heade
 | `preload_ini_save` | -> 1 written, 0 not | `preloadini.h` |
 | `autostart_has` | Is `cmd` ("run stickies", say) started at boot? A line whose words begin with cmd's words -- blanks before it, more words after it allowed ("run stickies --x")  | `autostart.h` |
 | `autostart_ensure` | Make sure `cmd` is started at boot. | `autostart.h` |
+| `locale_ini_get` | system.ini's "key=value" | `locale.h` |
+| `locale_ini_set` | system.ini's "key=value" | `locale.h` |
+| `locale_language_count` |  | `locale.h` |
+| `locale_language_code` | "en", "fr" ("" out of range) | `locale.h` |
+| `locale_language_name` | in the language itself, UTF-8: "English", "Français" | `locale.h` |
+| `locale_language` | The system's language | `locale.h` |
+| `locale_language_index` | its place in the list | `locale.h` |
+| `locale_set_language` | kept in system.ini -> 1 written (the programs started next take it) | `locale.h` |
+| `locale_zone_count` |  | `locale.h` |
+| `locale_zone_city` | "Brussels" ("" out of range) | `locale.h` |
+| `locale_zone_summer` | 1: the zone is on summer time today (by the clock's date) | `locale.h` |
+| `locale_zone_offset` | minutes from UTC today (the summer time counted) | `locale.h` |
+| `locale_zone_utc` | "UTC+2", "UTC-3:30", "UTC" | `locale.h` |
+| `locale_zone` | the one chosen: system.ini's zone=, else the first of its timezone= (-1 none) | `locale.h` |
+| `locale_set_zone` | the clock's offset at once, zone= and timezone= kept -> 1 written | `locale.h` |
+| `locale_zone_offset_at` | The zone's offset from UTC at that instant (minutes since 1970, UTC), the hour of the change counted | `locale.h` |
+| `locale_zone_sync` | The zone named by system.ini's zone= (that one only | `locale.h` |
+| `session_modes` | how many modes: 3 | `session.h` |
+| `session_mode_name` | "desktop", "pocket", "console" ("" out of range) | `session.h` |
+| `session_mode_find` | the mode of that name (any case) -> SESSION_*, -1 none | `session.h` |
+| `session_mode` | The mode chosen | `session.h` |
+| `session_set_mode` | "shell = <name>" written -> 1 (0: not written) | `session.h` |
+| `session_file` | the mode's session file's path ("SD:/etc/session/pocket") -> its length, 0 | `session.h` |
+| `session_programs` | The programs the mode's file starts ("menubar", "dock", "notifyd"... | `session.h` |
+| `session_switch_start` | The switch to mode m (/bin/session switch, started with the flags | `session.h` |
+| `session_switch` | ... and waited for -> SESSION_* | `session.h` |
+| `session_waiting` | After SESSION_WAITING_APPS | `session.h` |
+| `session_migrate` | The autostart of a card from before the sessions split, once | `session.h` |
 
 ---
 
@@ -763,25 +850,171 @@ int preload_ini_save (const struct PreloadList *l);
 
 ## `systemkit/autostart.h`
 
-autostart.h -- SD:/etc/autostart, the programs started at boot (one shell command a line: `run agenda`, `keyb FR`, `preload /boot` the last one), as an app that offers "start it at every boot" changes it: a line looked for, a line added where it belongs -- never moved, never removed, every other line kept byte for byte. Setup's held-back lines count: on a card whose first-run wizard has not ended, a line is written "#setup: <command>" and given back by Setup at its end (apps/setup) -- such a line is "there", and a line added after one of them is held back the same way. Used by Notes (View > Show Stickies on the Desktop). C and C++.
+autostart.h -- SD:/etc/autostart, the programs started at boot (one shell command a line: `run agenda`, `keyb FR`, `preload /boot` the last one), as an app that offers "start it at every boot" changes it: a line looked for, a line added where it belongs -- never moved, never removed, every other line kept byte for byte. Setup's held-back lines count: on a card whose first-run wizard has not ended, a line is written "#setup: <command>" and given back by Setup at its end (apps/setup) -- such a line is "there", and a line added after one of them is held back the same way. Used by Notes (View > Show Stickies on the Desktop) and the Clock (clockd). Since the sessions (session.h, 2026-10-08) the programs started at boot are in two places: SD:/etc/autostart, the system's part (the services), and the session files SD:/etc/session/<mode> (desktop, pocket, console: the interface's programs -- the menu bar, the dock, the agenda...). Both functions look in all of them: a line is "there" in any one, and a line is added to the file whose `after` line it follows (Stickies after the agenda: SD:/etc/session/desktop). C and C++.
 
 MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
 
 ```cpp
 #define AUTOSTART_PATH	"SD:/etc/autostart"
+#define AUTOSTART_SESSIONS	"SD:/etc/session/"	// + "desktop", "pocket", "console": the sessions' files
 #define AUTOSTART_MAX	16384			// a bigger file is left alone (never cut)
 ```
 
-Is `cmd` ("run stickies", say) started at boot? A line whose words begin with cmd's words -- blanks before it, more words after it allowed ("run stickies --x") -- either active or held back by Setup ("#setup: run stickies"). A plain comment ("# run stickies") is not. -> 1 there, 0 not (or no file)
+Is `cmd` ("run stickies", say) started at boot? A line whose words begin with cmd's words -- blanks before it, more words after it allowed ("run stickies --x") -- either active or held back by Setup ("#setup: run stickies"), in the autostart or in a session's file. A plain comment ("# run stickies") is not. -> 1 there, 0 not (or no file)
 
 ```cpp
 int autostart_has (const char *cmd);
 ```
 
-Make sure `cmd` is started at boot. Nothing written when autostart_has (cmd). Else the line `cmd`, after the comment line `comment` ("# ...", or 0: none), is INSERTED: right after the first line whose command starts with the words `after` (e.g. "run agenda"; 0: no such rule) -- with that line's "#setup: " when it has one (held back as it is); else just before the first `preload` line (it stays the last); else at the end (no file: a new one). -> 1 already there, 2 added, 0 not written (the file too big, the write failed)
+Make sure `cmd` is started at boot. Nothing written when autostart_has (cmd). Else the line `cmd`, after the comment line `comment` ("# ...", or 0: none), is INSERTED: right after the first line whose command starts with the words `after` (e.g. "run agenda"; 0: no such rule) -- looked for in the autostart, then in the sessions' files: in the file that has it --, with that line's "#setup: " when it has one (held back as it is); else in the autostart, just before the first `preload` line (it stays the last); else at its end (no file: a new one). -> 1 already there, 2 added, 0 not written (the file too big, the write failed)
 
 ```cpp
 int autostart_ensure (const char *cmd, const char *after, const char *comment);
+```
+
+## `systemkit/locale.h`
+
+locale.h -- the system's language and region, kept in SD:/etc/system.ini:
+
+```
+  language = fr        the language of the programs' words ("en" when no line): uikit/lang.h's TR () reads
+                       it (uk_lang_init), a program with words of its own asks locale_language ()
+  zone     = Brussels  the time zone's city (locale_zone_*), beside "timezone=" -- its offset in minutes,
+                       the summer time counted, which the kernel reads at boot (and locale_zone_sync keeps
+                       right when the summer time begins or ends)
+```
+
+Chosen in the Control Panel's Language & Region applet and in Setup (the first-run wizard). A language is taken by a program when it starts.
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+```cpp
+#define LOCALE_INI	"SD:/etc/system.ini"
+```
+
+system.ini's "key=value": the value in out ("" none) -> 1 found; the key's line replaced (else added) -> 1 written.
+
+```cpp
+int locale_ini_get (const char *key, char *out, int cap);
+int locale_ini_set (const char *key, const char *value);
+```
+
+### the languages Onyx speaks
+
+```cpp
+int locale_language_count (void);
+const char *locale_language_code (int i);	// "en", "fr" ("" out of range)
+const char *locale_language_name (int i);	// in the language itself, UTF-8: "English", "Français"
+```
+
+The system's language: one of the codes ("en" when none, or an unknown one, is said). Read from the file at each call: a program keeps it.
+
+```cpp
+const char *locale_language (void);
+int locale_language_index (void);		// its place in the list
+int locale_set_language (const char *code);	// kept in system.ini -> 1 written (the programs started next take it)
+```
+
+### the time zones
+
+```cpp
+int locale_zone_count (void);
+const char *locale_zone_city (int z);		// "Brussels" ("" out of range)
+int locale_zone_summer (int z);			// 1: the zone is on summer time today (by the clock's date)
+int locale_zone_offset (int z);			// minutes from UTC today (the summer time counted)
+void locale_zone_utc (int z, char *out, int cap);	// "UTC+2", "UTC-3:30", "UTC"
+int locale_zone (void);				// the one chosen: system.ini's zone=, else the first of its timezone= (-1 none)
+int locale_set_zone (int z);			// the clock's offset at once, zone= and timezone= kept -> 1 written
+```
+
+The zone's offset from UTC at that instant (minutes since 1970, UTC), the hour of the change counted: the EU's summer time from the last Sunday of March 01:00 UTC to the last Sunday of October 01:00 UTC; the US' from the second Sunday of March 02:00 local standard time to the first Sunday of November 02:00 local summer time -> minutes (0 for a zone out of range). Judged from UTC, which never goes back: a city's time is UTC + locale_zone_offset_at (city, UTC), right on the night of a change whatever the local day says.
+
+```cpp
+int locale_zone_offset_at (int z, long long utc_minutes);
+```
+
+The zone named by system.ini's zone= (that one only: never locale_zone ()'s guess from timezone=), its offset now (kapi_clock_info's UTC, locale_zone_offset_at) given to the clock (kapi_set_timezone) and to system.ini's timezone= when it differs from the clock's (kapi_clock_info's tz_minutes) -> 1 changed, 0 not (no zone= or an unknown city, no real date yet, already right). Called once a minute (clockd does), the clock follows the summer time by itself: on the night it ends, 03:00 becomes 02:00 at 01:00 UTC.
+
+```cpp
+int locale_zone_sync (void);
+```
+
+## `systemkit/session.h`
+
+session.h -- the interface's mode and its session (docs/POCKETUI-TECH-STUDY.md section 8). Onyx has three modes:
+
+```
+  desktop   Elegant, the desktop (the menu bar, the dock, the agenda...)            SD:/etc/session/desktop
+  pocket    PocketUI, one app at a time on a small screen                           SD:/etc/session/pocket
+  console   PocketUI's console mode: the games, a television, a pad                 SD:/etc/session/console
+```
+
+The mode is SD:/etc/system.ini's "shell =" (no line: desktop), which the kernel reads to start the matching graphics server. The SESSION is the mode's programs: SD:/etc/autostart keeps the system's part (the services: clockd, pkgd, clipd, printd, telnetd...) and one line, `session`, where /bin/session runs the file of the mode (the same syntax as the autostart: `run menubar`, `#setup: run dock`, `sleep 1`...). Switching the mode closes the open programs (an unsaved document asked), ends the session's programs, writes "shell =", has the kernel start the other server (KAPI_WS_SWITCH) and runs the other mode's file: /bin/session does it, asked by the Control Panel's Mode applet (modeconf) or typed (`session switch pocket`). A card from before the sessions keeps the desktop's lines in its autostart until `pkg commit` (at boot) moves them into SD:/etc/session/desktop once (session_migrate). C and C++.
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+```cpp
+#define SESSION_DESKTOP		0	// the modes (UIKit's UK_MODE_* are the same numbers)
+#define SESSION_POCKET		1
+#define SESSION_CONSOLE		2
+#define SESSION_DIR		"SD:/etc/session"	// SESSION_DIR "/<mode's name>": the mode's programs
+#define SESSION_TOOL		"SD:/bin/session"
+#define SESSION_WAITING		"SD:/tmp/session.wait"	// the programs that did not close (session_waiting)
+```
+
+session_switch's flags
+
+```cpp
+#define SESSION_FORCE		1	// the programs still open after the wait are ended (their documents lost)
+#define SESSION_NO_ASK		2	// they are not asked again (they were: their question is up), only waited for
+```
+
+session_switch's answers (/bin/session switch's exit status)
+
+```cpp
+#define SESSION_SWITCHED	0	// the mode asked for runs, its programs started
+#define SESSION_FELL_BACK	1	// its server failed: the desktop runs ("shell =" put back to desktop)
+#define SESSION_WAITING_APPS	2	// programs did not close in time (session_waiting): nothing switched
+#define SESSION_REFUSED		3	// a full-screen program has the display, or a switch is under way
+#define SESSION_BAD		4	// an unknown mode, wrong arguments
+#define SESSION_FAILED		5	// system.ini not written, no server took the display, the tool missing
+
+int session_modes (void);				// how many modes: 3
+const char *session_mode_name (int m);		// "desktop", "pocket", "console" ("" out of range)
+int session_mode_find (const char *name);		// the mode of that name (any case) -> SESSION_*, -1 none
+```
+
+The mode chosen: system.ini's "shell =" (no line, or an unknown word: SESSION_DESKTOP). Read at each call. (The server running may differ: its server failed at boot and the kernel started Elegant -- UIKit's uk_win_server says which runs.)
+
+```cpp
+int session_mode (void);
+int session_set_mode (int m);			// "shell = <name>" written -> 1 (0: not written)
+int session_file (int m, char *out, int cap);	// the mode's session file's path ("SD:/etc/session/pocket") -> its length, 0
+```
+
+The programs the mode's file starts ("menubar", "dock", "notifyd"...: the names their processes have; a `run <app>` line gives the app, another line its /bin tool; Setup's held-back "#setup: " lines count), one a line into out -> how many (0: no file).
+
+```cpp
+int session_programs (int m, char *out, int cap);
+```
+
+The switch to mode m (/bin/session switch, started with the flags; keep_pid: a program kept open meanwhile -- a Control Panel applet's host --, 0 none; the caller and its parents always are, then ended once the new session runs) -> its process handle (kapi_proc_done, kapi_wait: SESSION_* answer), 0 not started.
+
+```cpp
+void *session_switch_start (int m, int flags, int keep_pid);
+int session_switch (int m, int flags);		// ... and waited for -> SESSION_*
+```
+
+After SESSION_WAITING_APPS: the programs that did not close, "<name>\t<window title>" a line -> how many.
+
+```cpp
+int session_waiting (char *out, int cap);
+```
+
+The autostart of a card from before the sessions split, once: the desktop's lines (voronoy, Setup and its "#setup#" lines, menubar, notifyd, dock, agenda, stickies, wifimenu, imageview -- with the comment lines just above each) moved into SD:/etc/session/desktop (made anew from them), a line `session` where the first of them was, the old file kept as SD:/etc/autostart.old; every other line where it was. Nothing done when the autostart has a `session` line already. -> 1 split, 0 nothing to do, -1 not written (the card as it was).
+
+```cpp
+int session_migrate (void);
 ```
 
 ## `systemkit/applet_proto.h`
@@ -798,6 +1031,8 @@ applet_proto.h -- the Control Panel's applets (apps/control): an applet is a uik
                                coordinates; x < 0: it left the pane)
                    AP_KEY      struct ApKey: a key typed (a character or a KEY_* code)
                    AP_CLOSE    please end (the user went back to the applets' list)
+  anyone -> host   AP_OPEN     the target's name (an applet's app, NUL-terminated): show that applet -- a second
+                               `control <target>` asks the one running (2026-10-08: pocket's Settings)
 ```
 
 The host is the IPC service AP_SERVICE: an applet whose host is gone ends by itself. Another host (Mail, showing Web as its HTML view) adds its own service's name: "--applet <surface id> <host pid> <service>"; its own message types go to the applet's uk_applet_on_message (uikit/root.h; Jet's web view: Apps/jet/webview_proto.h, types 60..79). The surface's frames live as long as either process maps it (kernel v65: its users).
@@ -807,7 +1042,7 @@ The host is the IPC service AP_SERVICE: an applet whose host is gone ends by its
 
 enum
 {
-	AP_HELLO = 40, AP_PRESENT = 41, AP_EXIT = 42, AP_THEME = 43,
+	AP_HELLO = 40, AP_PRESENT = 41, AP_EXIT = 42, AP_THEME = 43, AP_OPEN = 44,
 	AP_PTR = 50, AP_KEY = 51, AP_CLOSE = 52
 };
 

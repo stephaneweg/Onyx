@@ -187,7 +187,7 @@ public:
 		}
 		// gone when another window has the keyboard (a click elsewhere)
 		struct kapi_win_geom g;
-		if (kapi_get_ticks () - openT > 30 && kapi_win_geometry (&g) == 0 && !(g.state & KAPI_WIN_KEYS)) kapi_exit (0);
+		if (kapi_get_ticks () - openT > 30 && uk_win_geometry (&g) == 0 && !(g.state & KAPI_WIN_KEYS)) kapi_exit (0);
 	}
 };
 
@@ -200,8 +200,8 @@ int main (void)
 	if (card.canvas.px == 0) return 1;
 	struct kapi_win_geom g;
 	int x = 600, y = 300;
-	if (kapi_win_geometry (&g) == 0 && g.aw > 0) { x = g.ax + g.aw - W - 12; y = g.ay + g.ah - HMAX - 10; }
-	kapi_move_window (x, y);
+	if (uk_win_geometry (&g) == 0 && g.aw > 0) { x = g.ax + g.aw - W - 12; y = g.ay + g.ah - HMAX - 10; }
+	uk_win_move (x, y);
 	send (CLIP_SUBSCRIBE, "", 1);
 	ask_list ();
 	card.run ();

@@ -22,6 +22,13 @@ Skip for now	Passer cette étape
 # ---- 0: welcome
 Language	Langue
 Welcome to Onyx	Bienvenue dans Onyx
+Interface	Interface
+Desktop	Bureau
+Pocket	Poche
+Console	Console
+Windows side by side, the menu bar and the dock: a monitor, a keyboard and a mouse.	Des fenêtres côte à côte, la barre de menus et le dock : un écran, un clavier et une souris.
+One app at a time, full screen: a small screen, a handheld.	Une application à la fois, en plein écran : un petit écran, un appareil portable.
+The games first, with a gamepad, on a television.	Les jeux d'abord, à la manette, sur un téléviseur.
 Let's get your Raspberry Pi ready. A few choices -- your language, your keyboard, the network, the screen and the look of the desktop -- and you are done. It takes about two minutes; everything can be changed later in the Control Panel.	Préparons votre Raspberry Pi. Quelques choix – la langue, le clavier, le réseau, l'écran et l'aspect du bureau – et c'est terminé. Comptez environ deux minutes ; tout pourra être modifié plus tard dans le Panneau de configuration.
 Keyboard, country and time zone	Clavier, pays et fuseau horaire
 Wi-Fi network	Réseau Wi-Fi

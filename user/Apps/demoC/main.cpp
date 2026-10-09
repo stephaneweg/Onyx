@@ -123,7 +123,7 @@ int main (void)
 	build_palette (mode);
 
 	// Cycle the palette on any click in the window (the kernel button widget is gone).
-	kapi_set_click_handler (on_color);
+	uk_win_on_click (on_color);
 
 	// Animation loop: render, dispatch GUI events (the Color click), and check
 	// whether the window's close box asked us to quit -> clean exit.

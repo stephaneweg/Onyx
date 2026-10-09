@@ -4,6 +4,7 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
+#include "../games/game.h"		// (gwin_*: the window resizable, the game scaled to it -- PocketUI fills it)
 
 #define W	480
 #define H	320
@@ -105,12 +106,12 @@ static void paint_frame (void)
 
 int main (void)
 {
-	fb = kapi_create_window (WW, WH, "pong");
+	fb = gwin_create (WW, WH, "pong");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	paint_frame ();
-	kapi_set_key_handler (on_key);
+	uk_win_on_key (on_key);
 	reset ();
-	while (!should_exit ()) { pump_events (); step (); redraw (); present (); msleep (16); }
+	while (!should_exit ()) { pump_events (); step (); redraw (); gwin_present (); msleep (16); }
 	return 0;
 }

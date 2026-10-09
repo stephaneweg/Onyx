@@ -1,9 +1,9 @@
 //
 // menubar -- the system menu bar across the top of the screen (macOS-style).
 //
-// It shows the ACTIVE app's name and its menus (kapi_get_menu, declared by the app with
-// uikit::Menu / kapi_set_menu), opens a drop-down on click and sends the chosen command
-// back to the app (kapi_menu_command). The first menu is always the "Onyx" system menu:
+// It shows the ACTIVE app's name and its menus (uk_win_menu_get, declared by the app with
+// uikit::Menu / uk_win_menu_set), opens a drop-down on click and sends the chosen command
+// back to the app (uk_win_menu_command). The first menu is always the "Onyx" system menu:
 // Terminal / Control Panel / File Viewer / Task Manager, then one entry per app CATEGORY (the
 // "category" of each SD:/apps/<name>.app/app.txt; the "Shell" components, the Control Panel's
 // "Settings" applets and the "Emulators" -- reached from the Game Library -- are left out) opening a sub-menu
@@ -23,7 +23,19 @@
 // the File Viewer; "Disks..." opens the Disks app. The bar also says what happened through notifyd:
 // a stick connected, one that can be removed safely, one pulled out without an eject.
 //
-// A click on the time opens a calendar (the month; "Open Calendar" starts the Calendar app).
+// In the pocket mode (PocketUI; the bar is its top band) the blue GEM before "Onyx" is the HOME button (lit while the
+// pocket shell's home shows): a click shows the home -- the front app goes behind, as Super does -- and a second
+// click brings the app back (pocketshell, asked through SystemKit's shell.h: SHELL_MSG_HOME); the name beside it
+// opens the Onyx menu, as on the desktop (the user, 2026-10-09: "the Onyx menu in pocket too, the icon beside it the
+// shortcut to Home"). A click on the time opens quick settings and the notifications instead of the calendar.
+//
+// A click on the time opens a calendar (the month; "Open Calendar" starts the Calendar app; "Alarms and timers..."
+// opens the Clock on its Alarms tab -- when the Clock is on the card). A small bell left of the time says an alarm of
+// the Clock rings within 24 hours (SD:/apps/clock.app/alarms.txt read once a minute, through the Clock's own model,
+// Apps/clock/alarms.cpp -- AutoDev round 6, S1); a click on it opens the Clock's Alarms too.
+//
+// Its words are in the system's language (uikit/lang.h: TR, SD:/apps/menubar.app/lang/<code>.txt); the apps' names
+// and the windows' titles are theirs.
 //
 // The look: the modernised CDE (uikit/paint.h) -- a light bar in the theme's menu bar colour, the open title
 // in the accent, rounded drop-downs, anti-aliased on what lies below.
@@ -37,10 +49,13 @@
 // another title to switch, click an item to run it; press on a title + release on an
 // item works too.
 //
+#include <stdio.h>
 #include "appkit/appkit.h"
 #include "fontkit/uikitface.h"
 #include "uikit/uikit.h"
 #include "systemkit/systemkit.h"
+#include "Apps/clock/alarms.h"
+#include "Apps/clock/clocktime.h"
 
 using namespace uikit;
 
@@ -153,7 +168,7 @@ static void sub_add (SubDef &sd, const char *label, const char *app)	// sorted b
 static void fill_windows (SubDef &sd)
 {
 	static char buf[1024];
-	kapi_list_windows (buf, sizeof buf);
+	uk_win_apps (buf, sizeof buf);
 	sd.count = 0;
 	for (int i = 0; buf[i]; )
 	{
@@ -168,13 +183,21 @@ static void fill_windows (SubDef &sd)
 // ---- menus ------------------------------------------------------------------------------
 // Onyx system-menu item ids (>= 1000: handled here, never sent to the app).
 enum { ONYX_TERMINAL = 1000, ONYX_FILES, ONYX_TASKS, ONYX_SHUTDOWN, ONYX_SUB, ONYX_CONTROL };
+static bool g_pocket;			// PocketUI's pocket mode: the bar is its top band, the pocket shell beside it
+// Pocket, the pocket shell running: the gem before "Onyx" is the Home button (lit while the shell's home shows: no
+// app's menus) -- a click shows the home, the front app going behind (as Super does); again: the app back. The name
+// beside it: the Onyx menu.
+static bool onyx_is_home (void) { return g_pocket && shell_running (); }
+#define GEM_W	18			// (the Home button's gem and its gap)
+static int g_menu0x (void);		// (the first title's left)
+static bool on_gem (int x) { return x >= g_menu0x () && x < g_menu0x () + 8 + GEM_W - 2; }
 
 static void add_quit_menu (const char *app)
 {
 	MenuDef &m = g_menus[g_nmenus++];
 	scopy (m.title, app, sizeof m.title); m.count = 0;
 	Item &q = m.items[m.count++];
-	q.id = MENU_QUIT; scopy (q.label, "Quit", sizeof q.label); scopy (q.key, "^Q", sizeof q.key); q.sep = false; q.sub = -1;
+	q.id = MENU_QUIT; scopy (q.label, TR ("Quit"), sizeof q.label); scopy (q.key, "^Q", sizeof q.key); q.sep = false; q.sub = -1;
 }
 
 // The system menu, always first: tools, the apps by category, the open windows, the end.
@@ -189,12 +212,14 @@ static void build_onyx_menu (MenuDef &m)
 		x.id = id; x.sep = id == -2; x.key[0] = '\0'; x.sub = sub;
 		scopy (x.label, l ? l : "", sizeof x.label);
 	};
-	add (ONYX_TERMINAL, "Terminal", -1); add (ONYX_CONTROL, "Control Panel", -1);
-	add (ONYX_FILES, "File Viewer", -1); add (ONYX_TASKS, "Task Manager", -1);
+	add (ONYX_TERMINAL, TR ("Terminal"), -1); add (ONYX_CONTROL, TR ("Control Panel"), -1);
+	add (ONYX_FILES, TR ("File Viewer"), -1); add (ONYX_TASKS, TR ("Task Manager"), -1);
 	add (-2, 0, -1);
 	// the categories: the usual ones first, then any other, "Other" last
 	g_nsubs = 0;
-	static const char *const order[] = { "Productivity", "Internet", "Graphics", "Programming", "Games", "BASIC", "Demos", "System", 0 };
+	static const char *const order[] = { TRN ("Productivity"), TRN ("Internet"), TRN ("Graphics"), TRN ("Programming"), TRN ("Games"), TRN ("BASIC"), TRN ("Demos"), TRN ("System"), 0 };
+	// TR: Other
+	// TR: Multimedia
 	char cats[MAXSUBS][20]; int nc = 0;
 	for (int i = 0; order[i]; i++) scopy (cats[nc++], order[i], 20);
 	for (int a = 0; a < g_napps && nc < MAXSUBS - 2; a++)
@@ -208,13 +233,13 @@ static void build_onyx_menu (MenuDef &m)
 	{
 		SubDef &sd = g_subs[g_nsubs]; sd.count = 0; sd.windows = false;
 		for (int a = 0; a < g_napps; a++) if (eq (g_apps[a].cat, cats[c])) sub_add (sd, g_apps[a].label, g_apps[a].name);
-		if (sd.count) add (ONYX_SUB, cats[c], g_nsubs++);
+		if (sd.count) add (ONYX_SUB, TR (cats[c]), g_nsubs++);	// (the category's name shown in the language; app.txt's kept)
 	}
 	add (-2, 0, -1);
 	SubDef &w = g_subs[g_nsubs]; w.count = 0; w.windows = true;
-	add (ONYX_SUB, "Open Windows", g_nsubs++);
+	add (ONYX_SUB, TR ("Open Windows"), g_nsubs++);
 	add (-2, 0, -1);
-	add (ONYX_SHUTDOWN, "Shut Down...", -1);
+	add (ONYX_SHUTDOWN, TR ("Shut Down..."), -1);
 }
 static void add_onyx_menu (void) { build_onyx_menu (g_menus[g_nmenus++]); }
 
@@ -265,6 +290,7 @@ static void parse (const char *spec, const char *title)
 }
 
 // ---- geometry ------------------------------------------------------------------------------
+static int g_menu0x (void) { return g_nmenus > 0 ? g_menus[0].x : 10; }
 static int title_style (int i) { return i == (g_onyx ? 0 : 1) ? 2 : 0; }	// the app's name: bold
 static void layout_titles (void)
 {
@@ -272,7 +298,7 @@ static void layout_titles (void)
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		g_menus[i].x = x;
-		g_menus[i].w = uk_tw (g_menus[i].title, title_style (i)) + 16;
+		g_menus[i].w = uk_tw (g_menus[i].title, title_style (i)) + 16 + (i == 0 && g_pocket ? GEM_W : 0);
 		x += g_menus[i].w;
 	}
 }
@@ -295,7 +321,7 @@ static int sub_w (const SubDef &sd)
 {
 	int w = 140;
 	for (int i = 0; i < sd.count; i++) { int ww = uk_tw (sd.items[i].label) + 28; if (ww > w) w = ww; }
-	if (sd.count == 0) w = uk_tw ("(no open window)") + 28;
+	if (sd.count == 0) w = uk_tw (sd.windows ? TR ("(no open window)") : TR ("(empty)")) + 28;
 	return w;
 }
 static int sub_h (const SubDef &sd) { return 10 + (sd.count ? sd.count : 1) * (g_fh + 8); }
@@ -333,7 +359,8 @@ static int title_at (int x, int y)
 static int clk_w (void) { return uk_tw ("00:00", 2); }
 static int clk_x (void) { return g_sw - clk_w () - 14; }
 static bool on_clock (int x, int y) { return y >= 0 && y < BAR_H && x >= clk_x () - 6 && x < g_sw; }
-static int wifi_x (void) { return clk_x () - 27; }
+static int bell_w (void);
+static int wifi_x (void) { return clk_x () - 27 - bell_w (); }
 static int spk_x (void) { return wifi_x () - 26; }
 static bool on_wifi (int x, int y) { return y >= 0 && y < BAR_H && x >= wifi_x () - 3 && x < wifi_x () + 20; }
 static bool on_speaker (int x, int y) { return y >= 0 && y < BAR_H && x >= spk_x () - 3 && x < spk_x () + 19; }
@@ -430,18 +457,17 @@ static void draw_volume_box (void)
 {
 	int bx, by; vol_box (&bx, &by);
 	panel (bx, by, VW, VH);
-	uk_text_l (g_cv, bx + 14, by + 6, 24, "Volume", C_FIELD_TEXT, 2);
-	char v[8]; int n = 0;
-	if (g_mute) { const char *m = "Muted"; while (m[n]) { v[n] = m[n]; n++; } }
-	else { if (g_vol >= 10) { v[n++] = '1'; v[n++] = '0'; } else v[n++] = (char) ('0' + g_vol); }
-	v[n] = 0;
+	uk_text_l (g_cv, bx + 14, by + 6, 24, TR ("Volume"), C_FIELD_TEXT, 2);
+	char v[40]; int n = 0;
+	if (g_mute) scopy (v, TR ("Muted"), sizeof v);
+	else { if (g_vol >= 10) { v[n++] = '1'; v[n++] = '0'; } else v[n++] = (char) ('0' + g_vol); v[n] = 0; }
 	uk_text_l (g_cv, bx + VW - 14 - uk_tw (v), by + 6, 24, v, C_DIM);
 	int x0, x1, ty; vol_track (&x0, &x1, &ty);
 	int kx = x0 + (x1 - x0) * g_vol / 10;
 	for (int i = 0; i <= 10; i++) g_cv.fillRect (x0 + (x1 - x0) * i / 10, ty + 10, 1, 3, C_DIM);
 	uk_slider_mark (g_cv, x0 - 6, ty - 8, x1 - x0 + 12, 20, kx - x0 + 6, kx - 6, 12, g_mute ? UK_DISABLED : g_volDrag ? UK_PRESSED : UK_NORMAL);
 	uk_check_mark (g_cv, bx + 18, by + 65, 15, g_mute != 0, UK_NORMAL);
-	uk_text_l (g_cv, bx + 42, by + 65, 15, "Mute", C_FIELD_TEXT);
+	uk_text_l (g_cv, bx + 42, by + 65, 15, TR ("Mute"), C_FIELD_TEXT);
 }
 
 // ---- the calendar (a click on the time) ----------------------------------------------------------
@@ -452,27 +478,76 @@ public:
 	unsigned bgColor () override { return C_DROP; }
 };
 static CalCard *g_cal;
-static bool g_calOpen = false, g_calBtnHot = false, g_calBtnDown = false;
+static bool g_calOpen = false;
+static int g_calBtnHot = 0, g_calBtnDown = 0;		// the button pointed at / pressed: 1 Open Calendar, 2 Alarms and timers
+static bool g_calClock = false;				// the Clock is on the card: its button shown (read as the calendar opens)
 #define CALW	(CAL_W + 20)
-#define CALH	(CAL_H + 20 + 36)
+static int cal_h (void) { return CAL_H + 20 + 36 + (g_calClock ? 34 : 0); }
 static void cal_box (int *x, int *y) { *x = g_sw - CALW - 6; *y = BAR_H + 4; }
-static void cal_btn (int *x, int *y, int *w, int *h)
+static void cal_btn (int i, int *x, int *y, int *w, int *h)	// i: 1 Open Calendar, 2 Alarms and timers (under it)
 {
 	int bx, by; cal_box (&bx, &by);
-	*w = 150; *h = 28; *x = bx + (CALW - *w) / 2; *y = by + 10 + CAL_H + 6;
+	int tw = uk_tw (TR ("Open Calendar"));
+	if (g_calClock && uk_tw (TR ("Alarms and timers\xE2\x80\xA6")) > tw) tw = uk_tw (TR ("Alarms and timers\xE2\x80\xA6"));
+	*w = tw + 32 < 150 ? 150 : tw + 32 > CAL_W ? CAL_W : tw + 32; *h = 28;
+	*x = bx + (CALW - *w) / 2; *y = by + 10 + CAL_H + 6 + (i == 2 ? 34 : 0);
 }
-static bool in_cal_box (int x, int y) { int bx, by; cal_box (&bx, &by); return x >= bx && x < bx + CALW && y >= by && y < by + CALH; }
-static bool on_cal_btn (int x, int y) { int bx, by, bw, bh; cal_btn (&bx, &by, &bw, &bh); return x >= bx && x < bx + bw && y >= by && y < by + bh; }
+static bool in_cal_box (int x, int y) { int bx, by; cal_box (&bx, &by); return x >= bx && x < bx + CALW && y >= by && y < by + cal_h (); }
+static int on_cal_btn (int x, int y)			// -> 1, 2, 0 none
+{
+	for (int i = 1; i <= (g_calClock ? 2 : 1); i++)
+	{
+		int bx, by, bw, bh; cal_btn (i, &bx, &by, &bw, &bh);
+		if (x >= bx && x < bx + bw && y >= by && y < by + bh) return i;
+	}
+	return 0;
+}
 
 static void draw_calendar_box (void)
 {
 	int bx, by; cal_box (&bx, &by);
-	panel (bx, by, CALW, CALH);
+	panel (bx, by, CALW, cal_h ());
 	g_cal->draw ();
 	g_cv.putOther (g_cal->canvas, bx + 10, by + 10, false);
-	int x, y, w, h, lx, ly, lw, lh; cal_btn (&x, &y, &w, &h);
-	uk_framed (g_cv, x, y, w, h, C_BUTTON, g_calBtnDown ? UK_PRESSED : g_calBtnHot ? UK_HOT : UK_NORMAL, &lx, &ly, &lw, &lh);
-	uk_text_c (g_cv, lx, ly, lw, lh, "Open Calendar", C_BUTTON_TEXT);
+	for (int i = 1; i <= (g_calClock ? 2 : 1); i++)
+	{
+		int x, y, w, h, lx, ly, lw, lh; cal_btn (i, &x, &y, &w, &h);
+		uk_framed (g_cv, x, y, w, h, C_BUTTON, g_calBtnDown == i ? UK_PRESSED : g_calBtnHot == i ? UK_HOT : UK_NORMAL, &lx, &ly, &lw, &lh);
+		uk_text_c (g_cv, lx, ly, lw, lh, i == 1 ? TR ("Open Calendar") : TR ("Alarms and timers\xE2\x80\xA6"), C_BUTTON_TEXT);
+	}
+}
+static void open_clock_alarms (void) { lx_launch ("clock", "alarms"); }	// (a Clock running: told, and raised)
+
+// ---- the bell: an alarm of the Clock within 24 hours (S1) ------------------------------------------------------------
+static AlarmSet g_alarms;
+static bool g_bell = false;				// shown (left of the time)
+static void bell_poll (void)				// alarms.txt read again: once a minute, and when the calendar opens
+{
+	int y = 0, mo = 0, d = 0, h = 0, mi = 0;
+	bool real = kapi_get_datetime (&y, &mo, &d, &h, &mi, 0) == 1;
+	bool was = g_bell;
+	g_bell = false;
+	if (real && alarms_load (g_alarms, ALARMS_PATH) > 0)
+	{
+		long now = clk_minute (y, mo, d, h, mi), next = alarms_next (g_alarms, now, 0);
+		g_bell = next >= 0 && next - now <= 1440;
+	}
+	alarms_free (g_alarms);
+	if (g_bell != was) g_dirty = true;
+}
+static int bell_w (void) { return g_bell ? 20 : 0; }
+static int bell_x (void) { return clk_x () - 6 - 16; }
+static bool on_bell (int x, int y) { return g_bell && y >= 0 && y < BAR_H && x >= bell_x () - 2 && x < clk_x () - 6; }
+// A bell, 14 x 14 px at (x, y): its dome, its rim, its clapper (VPath, 1/16 px)
+static void draw_bell (int x, int y, unsigned c)
+{
+	VPath p;
+	p.circle (V (x + 7), V (y + 5), V (4));
+	int body[8] = { V (x + 3), V (y + 5), V (x + 11), V (y + 5), V (x + 12) + 8, V (y + 10), V (x + 1) + 8, V (y + 10) };
+	p.poly (body, 4);
+	p.rrect (V (x), V (y + 9) + 8, V (14), V (2), V (1));
+	p.circle (V (x + 7), V (y + 12) + 8, V (1) + 12);
+	p.fill (g_cv, c);
 }
 
 // ---- the USB sticks (kapi v93) ---------------------------------------------------------------------
@@ -552,31 +627,28 @@ static void usb_poll (void)
 		g_seen[k].gen = v.gen;
 		g_dirty = true;
 		char vn[12]; vname (v, vn);
-		char msg[160]; msg[0] = 0;
+		char msg[320]; msg[0] = 0;
 		char act[48]; act[0] = 0;
 		switch (v.state)
 		{
 		case KAPI_VST_MOUNTED:
 		{
 			char sz[24]; size_text (v.total, sz, sizeof sz);
-			cat (msg, sizeof msg, v.label[0] ? v.label : "A USB stick"); cat (msg, sizeof msg, " is connected as ");
-			cat (msg, sizeof msg, vn); cat (msg, sizeof msg, " ("); cat (msg, sizeof msg, sz); cat (msg, sizeof msg, ", ");
-			cat (msg, sizeof msg, v.type); cat (msg, sizeof msg, "). Click to open it.");
+			snprintf (msg, sizeof msg, TR ("%s is connected as %s (%s, %s). Click to open it."), v.label[0] ? v.label : TR ("A USB stick"), vn, sz, v.type);
 			cat (act, sizeof act, "fileviewer "); cat (act, sizeof act, vn); cat (act, sizeof act, "/");
 			break;
 		}
 		case KAPI_VST_EJECTED:
-			cat (msg, sizeof msg, vn); cat (msg, sizeof msg, " can be removed safely.");
+			snprintf (msg, sizeof msg, TR ("%s can be removed safely."), vn);
 			break;
 		case KAPI_VST_UNREADABLE:
-			cat (msg, sizeof msg, vn); cat (msg, sizeof msg, (v.flags & KAPI_VF_IOERR) ? " could not be read." : " has no FAT / exFAT file system. Click to format it.");
+			snprintf (msg, sizeof msg, (v.flags & KAPI_VF_IOERR) ? TR ("%s could not be read.") : TR ("%s has no FAT / exFAT file system. Click to format it."), vn);
 			if (!(v.flags & KAPI_VF_IOERR)) { cat (act, sizeof act, "disks "); cat (act, sizeof act, vn); }
 			break;
 		case KAPI_VST_REMOVED:
 			if (v.flags & KAPI_VF_UNSAFE)
 			{
-				cat (msg, sizeof msg, vn);
-				cat (msg, sizeof msg, " was removed without being ejected: what was being written to it may be lost.");
+				snprintf (msg, sizeof msg, TR ("%s was removed without being ejected: what was being written to it may be lost."), vn);
 			}
 			break;
 		}
@@ -597,6 +669,63 @@ static void draw_usb (int x, int y)
 	g_cv.fillRect (x + 2, y + 5, 3, 3, uk_tone (C_MENUBAR, 176));	// a light
 }
 
+// ---- the status area: the programs' icons (kapi v95, kapi_tray_*) ---------------------------------
+// Each program may put an icon there (UIKit's uk_tray: Telegram's); a double click shows its first window
+// again -- even minimised -- (Elegant does it, and tells the program), a right click tells the program.
+struct TrayIcon { unsigned pid, gen; char tip[56]; unsigned px[KAPI_TRAY_PX * KAPI_TRAY_PX]; };
+static TrayIcon g_tray[KAPI_TRAY_MAX];
+static int g_ntray = 0;
+static int g_trayHot = -1;				// the icon under the pointer (its tip shown)
+static int g_trayClick = -1; static unsigned g_trayClickT;	// (a double click: two presses in 0.4 s)
+#define TRAY_STEP	(KAPI_TRAY_PX + 6)
+
+static int tray_right (void) { return (usb_shown () ? usb_x () : spk_x ()) - 8; }
+static int tray_x (int i) { return tray_right () - (i + 1) * TRAY_STEP + 3; }
+static int tray_at (int x, int y)
+{
+	if (y < 0 || y >= BAR_H) return -1;
+	for (int i = 0; i < g_ntray; i++) if (x >= tray_x (i) - 3 && x < tray_x (i) + KAPI_TRAY_PX + 3) return i;
+	return -1;
+}
+
+// The icons as Elegant has them now -> true: something changed.
+static bool tray_poll (void)
+{
+	struct kapi_tray_info L[KAPI_TRAY_MAX];
+	int n = uk_win_tray_list (L, KAPI_TRAY_MAX);
+	if (n < 0) n = 0;
+	bool changed = n != g_ntray;
+	for (int i = 0; i < n; i++)
+	{
+		TrayIcon &t = g_tray[i];
+		if (!changed && t.pid == L[i].pid && t.gen == L[i].gen) continue;
+		changed = true;
+		t.pid = L[i].pid; t.gen = L[i].gen;
+		scopy (t.tip, L[i].tip, sizeof t.tip);
+		if (!uk_win_tray_icon (t.pid, t.px)) for (int k = 0; k < KAPI_TRAY_PX * KAPI_TRAY_PX; k++) t.px[k] = CLEAR;
+	}
+	g_ntray = n;
+	if (changed) { g_trayHot = -1; g_trayClick = -1; }
+	return changed;
+}
+
+static void draw_tray (void)
+{
+	int y0 = (BAR_H - 1 - KAPI_TRAY_PX) / 2;
+	for (int i = 0; i < g_ntray; i++)
+	{
+		int x0 = tray_x (i);
+		if (i == g_trayHot) uk_rbox (g_cv, x0 - 3, 3, KAPI_TRAY_PX + 6, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
+		const unsigned *px = g_tray[i].px;
+		for (int y = 0; y < KAPI_TRAY_PX; y++)
+			for (int x = 0; x < KAPI_TRAY_PX; x++)
+			{
+				unsigned p = px[y * KAPI_TRAY_PX + x], t = p >> 24;
+				if (t < 255) uk_blend_px (g_cv, x0 + x, y0 + y, p & 0x00FFFFFFu, (int) (255 - t));
+			}
+	}
+}
+
 static void draw_usb_box (void)
 {
 	int bx, by, bh; usb_box (&bx, &by, &bh);
@@ -607,28 +736,28 @@ static void draw_usb_box (void)
 		int ry = by + 5 + r * UROW;
 		if (r == g_usbHot) uk_hilite (g_cv, bx + 4, ry + 2, UW - 8 - 96, UROW - 4, 5, true);
 		char vn[12]; vname (v, vn);
-		char line[64]; line[0] = 0;
-		cat (line, sizeof line, vn); cat (line, sizeof line, "  "); cat (line, sizeof line, v.label[0] ? v.label : "USB stick");
+		char line[96]; line[0] = 0;
+		cat (line, sizeof line, vn); cat (line, sizeof line, "  "); cat (line, sizeof line, v.label[0] ? v.label : TR ("USB stick"));
 		unsigned ink = r == g_usbHot ? C_SEL_TEXT : C_FIELD_TEXT, dim = r == g_usbHot ? C_SEL_TEXT : C_DIM;
 		uk_text_l (g_cv, bx + 14, ry + 4, g_fh + 2, line, ink, 2);
-		char sub[80]; sub[0] = 0;
+		char sub[160]; sub[0] = 0;
 		if (v.state == KAPI_VST_MOUNTED)
 		{
 			char sz[24]; size_text (v.total, sz, sizeof sz);
 			cat (sub, sizeof sub, sz); cat (sub, sizeof sub, " "); cat (sub, sizeof sub, v.type);
-			if (r == g_usbBusy) cat (sub, sizeof sub, " - in use: Eject again to force");
+			if (r == g_usbBusy) { cat (sub, sizeof sub, " - "); cat (sub, sizeof sub, TR ("in use: Eject again to force")); }
 		}
-		else if (v.state == KAPI_VST_EJECTED) cat (sub, sizeof sub, "Ejected: it can be removed");
-		else cat (sub, sizeof sub, (v.flags & KAPI_VF_IOERR) ? "Cannot be read" : "Not formatted");
+		else if (v.state == KAPI_VST_EJECTED) cat (sub, sizeof sub, TR ("Ejected: it can be removed"));
+		else cat (sub, sizeof sub, (v.flags & KAPI_VF_IOERR) ? TR ("Cannot be read") : TR ("Not formatted"));
 		uk_text_l (g_cv, bx + 14, ry + 6 + g_fh, g_fh + 2, sub, dim);
 		if (!usb_has_btn (r)) continue;
 		int x, y, w, h, lx, ly, lw, lh; usb_btn (r, &x, &y, &w, &h);
 		uk_framed (g_cv, x, y, w, h, C_BUTTON, g_usbBtnDown == r ? UK_PRESSED : UK_NORMAL, &lx, &ly, &lw, &lh);
-		uk_text_c (g_cv, lx, ly, lw, lh, v.state == KAPI_VST_MOUNTED ? "Eject" : v.state == KAPI_VST_EJECTED ? "Mount" : "Format...", C_BUTTON_TEXT);
+		uk_text_c (g_cv, lx, ly, lw, lh, v.state == KAPI_VST_MOUNTED ? TR ("Eject") : v.state == KAPI_VST_EJECTED ? TR ("Mount") : TR ("Format..."), C_BUTTON_TEXT);
 	}
 	int x, y, w, h, lx, ly, lw, lh; usb_foot (&x, &y, &w, &h);
 	uk_framed (g_cv, x, y, w, h, C_BUTTON, g_usbFootHot ? UK_HOT : UK_NORMAL, &lx, &ly, &lw, &lh);
-	uk_text_c (g_cv, lx, ly, lw, lh, "Disks...", C_BUTTON_TEXT);
+	uk_text_c (g_cv, lx, ly, lw, lh, TR ("Disks..."), C_BUTTON_TEXT);
 }
 
 static void usb_action (int row)		// the row's button
@@ -642,26 +771,42 @@ static void usb_action (int row)		// the row's button
 		int r = kapi_vol_eject (vn, g_usbBusy == row ? KAPI_EJECT_FORCE : 0);
 		if (r == -KAPI_EBUSY) { g_usbBusy = row; g_dirty = true; return; }
 		g_usbBusy = -1;
-		if (r != 0) notify ("USB", "The stick could not be ejected.");
+		if (r != 0) notify ("USB", TR ("The stick could not be ejected."));
 	}
 	else if (v.state == KAPI_VST_EJECTED)
 	{
-		if (kapi_vol_mount (vn) != 0) notify ("USB", "The stick could not be mounted again.");
+		if (kapi_vol_mount (vn) != 0) notify ("USB", TR ("The stick could not be mounted again."));
 	}
 	else
 	{
 		g_usbOpen = false;
-		if (kapi_raise_app ("disks") == 0) lx_launch ("disks", vn);
+		if (uk_win_app_raise ("disks") == 0) lx_launch ("disks", vn);
 	}
 	usb_poll ();
 	g_dirty = true;
 }
 
+// Onyx's gem, 13 x 13 px at (x, y): the light blue lozenge of PocketUI's own band (Servers/pocketui/band.cpp) -- lighter
+// at its top, a darker rim (white on the lit Home button, to stand out of the accent).
+static void draw_gem (int x, int y, bool lit)
+{
+	for (int j = -6; j <= 6; j++)
+		for (int i = -6; i <= 6; i++)
+		{
+			int d = (i < 0 ? -i : i) + (j < 0 ? -j : j);
+			if (d > 6) continue;
+			unsigned c = d == 6 ? (lit ? 0x00FFFFFFu : 0x002A64B0u) : j < 0 ? uk_mix (0x0078B4F0, 0x003D86DA, (j + 6) * 255 / 6) : 0x003D86DAu;
+			g_cv.pixel (x + 6 + i, y + 6 + j, c);
+		}
+}
+
 static void draw (void)
 {
 	bool full = g_open >= 0 || g_volOpen || g_calOpen || g_usbOpen;
-	int h = full ? g_sh : BAR_H;
+	int tipH = !full && g_trayHot >= 0 && g_trayHot < g_ntray && g_tray[g_trayHot].tip[0] ? g_fh + 16 : 0;	// (an icon's tip)
+	int h = full ? g_sh : BAR_H + tipH;
 	if (full) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, CATCH);	// (catches a click elsewhere)
+	else if (tipH) g_cv.fillRect (0, BAR_H, g_sw, tipH, CLEAR);
 	uk_paint_alpha (true);
 	// the bar: a light gradient of the face, a light line on top, a darker one below
 	uk_rbox (g_cv, 0, 0, g_sw, BAR_H - 1, 0, uk_tone (C_MENUBAR, 196), uk_tone (C_MENUBAR, 150));
@@ -669,6 +814,17 @@ static void draw (void)
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		const MenuDef &m = g_menus[i];
+		if (i == 0 && g_pocket)				// pocket: the gem (Home, lit on the home), then "Onyx" (its menu)
+		{
+			bool lit = g_onyx && onyx_is_home ();
+			int tx = m.x + 8 + GEM_W - 4;			// (the name's box: the title's, after the gem)
+			if (lit) uk_rbox (g_cv, m.x + 2, 3, GEM_W + 4, BAR_H - 7, 5, uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 116));
+			if (i == g_open) uk_hilite (g_cv, tx, 3, m.x + m.w - 2 - tx, BAR_H - 7, 5, true);
+			else if (i == g_titleHot) uk_rbox (g_cv, tx, 3, m.x + m.w - 2 - tx, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
+			draw_gem (m.x + 8, (BAR_H - 1 - 13) / 2, lit);
+			uk_text_l (g_cv, m.x + 8 + GEM_W, 0, BAR_H - 1, m.title, i == g_open ? C_SEL_TEXT : C_BARTXT, title_style (i));
+			continue;
+		}
 		if (i == g_open) uk_hilite (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, true);
 		else if (i == g_titleHot)			// under the pointer: a shade lighter than the bar
 			uk_rbox (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
@@ -680,11 +836,22 @@ static void draw (void)
 	int clkX = clk_x ();
 	if (g_calOpen) uk_hilite (g_cv, clkX - 6, 3, clk_w () + 12, BAR_H - 7, 5, true);
 	uk_text_l (g_cv, clkX, 0, BAR_H - 1, clk, g_calOpen ? C_SEL_TEXT : C_BARTXT, 2);
+	if (g_bell) draw_bell (bell_x (), (BAR_H - 1 - 14) / 2, C_BARTXT);
 	g_lastMin = mm;
 	if (g_wifi < 0) g_wifi = kapi_net_status (0, 0) ? 1 : 0;
 	draw_wifi (wifi_x (), (BAR_H - 1 - 12) / 2, g_wifi == 1);
 	draw_speaker (spk_x (), (BAR_H - 1 - 12) / 2);
 	if (usb_shown ()) draw_usb (usb_x (), (BAR_H - 1 - 12) / 2);
+	draw_tray ();
+	if (tipH)
+	{
+		const char *tip = g_tray[g_trayHot].tip;
+		int tw = uk_tw (tip) + 16, tx = tray_x (g_trayHot) + KAPI_TRAY_PX / 2 - tw / 2;
+		if (tx + tw > g_sw - 2) tx = g_sw - 2 - tw;
+		if (tx < 2) tx = 2;
+		panel (tx, BAR_H + 2, tw, tipH - 4);
+		uk_text_l (g_cv, tx + 8, BAR_H + 2, tipH - 4, tip, C_FIELD_TEXT);
+	}
 	if (g_volOpen) draw_volume_box ();
 	if (g_usbOpen) draw_usb_box ();
 	if (g_calOpen) draw_calendar_box ();
@@ -716,7 +883,7 @@ static void draw (void)
 			int sx, sy, sw, sh; sub_rect (&sx, &sy, &sw, &sh);
 			panel (sx, sy, sw, sh);
 			int ih = g_fh + 8;
-			if (sd.count == 0) uk_text_l (g_cv, sx + 14, sy + 5, ih, sd.windows ? "(no open window)" : "(empty)", C_DIM);
+			if (sd.count == 0) uk_text_l (g_cv, sx + 14, sy + 5, ih, sd.windows ? TR ("(no open window)") : TR ("(empty)"), C_DIM);
 			for (int i = 0; i < sd.count; i++)
 			{
 				int iy = sy + 5 + i * ih;
@@ -726,8 +893,8 @@ static void draw (void)
 		}
 	}
 	uk_paint_alpha (false);
-	kapi_resize_window (g_sw, h);
-	kapi_present ();
+	uk_win_resize (g_sw, h);
+	uk_win_present ();
 	g_dirty = false;
 }
 
@@ -738,13 +905,13 @@ static void run_item (const Item &it)
 	switch (it.id)
 	{
 	case ONYX_TERMINAL: kapi_launch ("terminal"); return;
-	case ONYX_CONTROL:  if (!kapi_raise_app ("control")) kapi_launch ("control"); return;
+	case ONYX_CONTROL:  if (!uk_win_app_raise ("control")) kapi_launch ("control"); return;
 	case ONYX_FILES:    kapi_launch ("fileviewer"); return;
 	case ONYX_TASKS:    kapi_launch ("taskman"); return;
 	case ONYX_SHUTDOWN: kapi_launch ("shutdown"); return;
 	case ONYX_SUB:      return;			// (it opens its sub-menu)
 	}
-	kapi_menu_command (it.id);		// the active app's own item (or MENU_QUIT)
+	uk_win_menu_command (it.id);		// the active app's own item (or MENU_QUIT)
 }
 
 static void open_menu (int i)
@@ -767,8 +934,8 @@ static void run_sub_item (int i)
 	SubItem it = g_subs[g_sub].items[i];
 	bool windows = g_subs[g_sub].windows;
 	close_menu (); draw ();
-	if (windows) kapi_raise_app (it.app);
-	else if (kapi_raise_app (it.app) == 0) lx_launch (it.app, 0);	// running: to the front
+	if (windows) uk_win_app_raise (it.app);
+	else if (uk_win_app_raise (it.app) == 0) lx_launch (it.app, 0);	// running: to the front
 }
 
 // the slider at x -> the volume (moving it unmutes, as on Windows)
@@ -791,13 +958,36 @@ static void ptr (unsigned long, int ev, long v)
 	switch (ev)
 	{
 	case GUI_EVENT_PTR_DOWN:
+		if ((c & 2) && tray_at (x, y) >= 0)			// a right click on an icon: its program told
+		{
+			uk_win_tray_activate (g_tray[tray_at (x, y)].pid, KAPI_TRAY_MENU);
+			break;
+		}
 		if (!(c & 1)) break;
+		if (tray_at (x, y) >= 0)				// an icon of the status area: a double click shows its program
+		{
+			int ti = tray_at (x, y);
+			if (g_open >= 0) close_menu ();
+			g_volOpen = false; g_calOpen = false; g_usbOpen = false;
+			unsigned now = kapi_get_ticks ();
+			if (ti == g_trayClick && now - g_trayClickT < 40) { uk_win_tray_activate (g_tray[ti].pid, KAPI_TRAY_OPEN); g_trayClick = -1; }
+			else { g_trayClick = ti; g_trayClickT = now; }
+			g_trayHot = -1; g_dirty = true;
+			break;
+		}
 		if (g_calOpen && in_cal_box (x, y))			// the calendar: its month, its button
 		{
 			int bx, by; cal_box (&bx, &by);
-			if (on_cal_btn (x, y)) g_calBtnDown = true;
+			if (on_cal_btn (x, y)) g_calBtnDown = on_cal_btn (x, y);
 			else g_cal->handleMouse (x - bx - 10, y - by - 10, 1, 0, 0, 0);
 			g_dirty = true;
+			break;
+		}
+		if (on_clock (x, y) && g_pocket && shell_running ())	// (pocket: the time opens quick settings, the notifications)
+		{
+			if (g_open >= 0) close_menu ();
+			g_volOpen = false; g_calOpen = false; g_usbOpen = false; g_dirty = true;
+			shell_ask (SHELL_MSG_QUICK);
 			break;
 		}
 		if (on_clock (x, y))					// the calendar, open / closed
@@ -805,11 +995,21 @@ static void ptr (unsigned long, int ev, long v)
 			if (g_open >= 0) close_menu ();
 			g_volOpen = false;
 			g_calOpen = !g_calOpen; g_dirty = true;
-			if (g_calOpen)					// (today's month)
+			if (g_calOpen)					// (today's month; the Clock's button when it is there)
 			{
 				int yy = 2026, mo = 1, dd = 1; kapi_get_datetime (&yy, &mo, &dd, 0, 0, 0);
 				g_cal->setDate (yy, mo, dd);
+				char p[80]; ax_app_path (p, sizeof p, "clock", ".app/app.txt");
+				g_calClock = lx_exists (p) != 0;
+				bell_poll ();
 			}
+			break;
+		}
+		if (on_bell (x, y))					// the bell: the Clock's alarms
+		{
+			if (g_open >= 0) close_menu ();
+			g_volOpen = false; g_calOpen = false; g_usbOpen = false; g_dirty = true;
+			open_clock_alarms ();
 			break;
 		}
 		if (g_calOpen) { g_calOpen = false; g_dirty = true; if (t < 0) break; }	// a click elsewhere
@@ -817,7 +1017,7 @@ static void ptr (unsigned long, int ev, long v)
 		{
 			int r = usb_row_at (x, y);
 			if (r >= 0 && on_usb_btn (r, x, y)) g_usbBtnDown = r;
-			else if (on_usb_foot (x, y)) { g_usbOpen = false; if (kapi_raise_app ("disks") == 0) lx_launch ("disks", 0); }
+			else if (on_usb_foot (x, y)) { g_usbOpen = false; if (uk_win_app_raise ("disks") == 0) lx_launch ("disks", 0); }
 			else if (r >= 0)
 			{
 				const struct kapi_volume &v = g_vols[usb_index (r)];
@@ -850,7 +1050,7 @@ static void ptr (unsigned long, int ev, long v)
 		{
 			if (g_open >= 0) close_menu ();
 			g_volOpen = false; g_dirty = true;
-			if (kapi_raise_app ("wifimenu") == 0) lx_launch ("wifimenu", 0);
+			if (uk_win_app_raise ("wifimenu") == 0) lx_launch ("wifimenu", 0);
 			break;
 		}
 		if (g_volOpen)
@@ -864,6 +1064,13 @@ static void ptr (unsigned long, int ev, long v)
 			g_volOpen = false; g_dirty = true;			// a click outside closes it
 			if (t < 0) break;
 		}
+		if (t == 0 && onyx_is_home () && on_gem (x))	// pocket: the gem is Home (again: back to the app); the name: the menu
+		{
+			if (g_open >= 0) close_menu ();
+			shell_ask (SHELL_MSG_HOME);
+			g_dirty = true;
+			break;
+		}
 		if (t >= 0) { if (t == g_open) close_menu (); else open_menu (t); g_pressedTitle = true; }
 		else if (g_open >= 0 && item_at (x, y) < 0 && !in_sub (x, y)) close_menu ();	// click outside
 		break;
@@ -874,8 +1081,14 @@ static void ptr (unsigned long, int ev, long v)
 			int bx, by; cal_box (&bx, &by);
 			if (g_calBtnDown)
 			{
-				g_calBtnDown = false;
-				if (on_cal_btn (x, y)) { g_calOpen = false; if (kapi_raise_app ("calendar") == 0) lx_launch ("calendar", 0); }
+				int b = g_calBtnDown;
+				g_calBtnDown = 0;
+				if (on_cal_btn (x, y) == b)
+				{
+					g_calOpen = false;
+					if (b == 2) open_clock_alarms ();
+					else if (uk_win_app_raise ("calendar") == 0) lx_launch ("calendar", 0);
+				}
 			}
 			else if (in_cal_box (x, y)) g_cal->handleMouse (x - bx - 10, y - by - 10, 0, 0, 0, 0);
 			g_dirty = true;
@@ -899,9 +1112,13 @@ static void ptr (unsigned long, int ev, long v)
 		g_pressedTitle = false;
 		break;
 	case GUI_EVENT_PTR_MOVE:
+		{
+			int th = g_open < 0 && !g_volOpen && !g_calOpen && !g_usbOpen ? tray_at (x, y) : -1;
+			if (th != g_trayHot) { g_trayHot = th; g_dirty = true; }
+		}
 		if (g_calOpen)
 		{
-			bool h = on_cal_btn (x, y);
+			int h = on_cal_btn (x, y);
 			if (h != g_calBtnHot) { g_calBtnHot = h; g_dirty = true; }
 			break;
 		}
@@ -916,7 +1133,7 @@ static void ptr (unsigned long, int ev, long v)
 		}
 		if (g_open >= 0)
 		{
-			if (t >= 0 && t != g_open) open_menu (t);		// slide across titles
+			if (t >= 0 && t != g_open && !(t == 0 && onyx_is_home ())) open_menu (t);	// slide across titles
 			if (in_sub (x, y))
 			{
 				int si = sub_item_at (x, y);
@@ -931,6 +1148,7 @@ static void ptr (unsigned long, int ev, long v)
 		if (t != g_titleHot) { g_titleHot = t; g_dirty = true; }	// the title pointed at
 		break;
 	case GUI_EVENT_PTR_LEAVE:
+		if (g_trayHot != -1) { g_trayHot = -1; g_dirty = true; }
 		if (g_hover != -1) { g_hover = -1; g_dirty = true; }
 		if (g_titleHot != -1) { g_titleHot = -1; g_dirty = true; }
 		break;
@@ -946,19 +1164,23 @@ int main (void)
 	g_fw = kapi_font_width ();  if (g_fw < 1) g_fw = 8;
 	g_fh = kapi_font_height (); if (g_fh < 1) g_fh = 16;
 
-	g_fb = kapi_create_window_ex (0, 0, g_sw, g_sh, "menubar",
+	g_fb = uk_win_create_ex (0, 0, g_sw, g_sh, "menubar",
 				      WIN_FLAG_BORDERLESS | WIN_FLAG_TOPMOST | WIN_FLAG_ALPHA | WIN_FLAG_SYSTEM);
 	if (g_fb == 0) return 1;
-	kapi_resize_window (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
+	uk_win_resize (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
 	g_cv.adopt (g_fb, g_sw, g_sh);
 	uikit::init ();					// the fonts, the theme: the palette
 	if (ft_uikit_install ("DejaVu Sans", 13))		// FreeType's anti-aliased text (else the bitmap font)
 		g_fh = uk_fh ();
+	uk_lang_init ();					// the words in the system's language (after the text face)
 	C_BARTXT = uk_ink_on (uk_tone (C_MENUBAR, 176));
 	C_BARDIM = uk_mix (uk_tone (C_MENUBAR, 176), C_BARTXT, 110);
 	C_DROP = C_FIELD; C_DIM = uk_mix (C_FIELD, C_FIELD_TEXT, 130); C_OUT = uk_tone (C_MENUBAR, 70);
 	{ int yy = 2026, mo = 1, dd = 1; kapi_get_datetime (&yy, &mo, &dd, 0, 0, 0); g_cal = new CalCard (yy, mo, dd); }
-	kapi_set_pointer_handler (ptr);
+	uk_win_on_pointer (ptr);
+	{ struct uk_win_server_info si; memset (&si, 0, sizeof si); si.size = sizeof si; uk_win_server (&si); g_pocket = si.mode == UK_MODE_POCKET; }
+	alarms_init (g_alarms);
+	bell_poll ();							// (the Clock's alarms: the bell)
 	volume_restore ();						// the saved volume (SD:/etc/sound.ini)
 	{ int r = kapi_sound_volume (-1, -1); g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; }
 
@@ -973,13 +1195,13 @@ int main (void)
 			int w = g_newW, h = g_newH, stride = w;
 			g_newW = 0;
 			g_volOpen = false; g_calOpen = false; g_usbOpen = false; close_menu ();
-			unsigned *fb = kapi_resize_window2 (w, h, &stride);	// (the canvas: the whole screen, for the drop-downs)
+			unsigned *fb = uk_win_resize2 (w, h, &stride);	// (the canvas: the whole screen, for the drop-downs)
 			if (fb != 0) { g_fb = fb; g_sw = w; g_sh = h; g_cv.adopt (fb, w, h, stride); }
-			kapi_resize_window (g_sw, BAR_H);
+			uk_win_resize (g_sw, BAR_H);
 			layout_titles ();
 			g_dirty = true;
 		}
-		unsigned s = kapi_get_menu (spec, sizeof spec, title, sizeof title);
+		unsigned s = uk_win_menu_get (spec, sizeof spec, title, sizeof title);
 		if (s != serial)
 		{
 			serial = s;
@@ -990,9 +1212,10 @@ int main (void)
 		}
 		int hh = 0, mm = 0;
 		kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
-		if (mm != g_lastMin) g_dirty = true;
-		static unsigned lastNet = 0;				// Wi-Fi state: about once a second
+		if (mm != g_lastMin) { g_dirty = true; bell_poll (); }
+		static unsigned lastNet = 0, lastTray = 0;		// Wi-Fi state: about once a second
 		unsigned now = kapi_get_ticks ();
+		if (now - lastTray >= 25) { lastTray = now; if (tray_poll ()) g_dirty = true; }	// (v95) the programs' icons
 		if (now - lastNet >= 100)
 		{
 			lastNet = now;

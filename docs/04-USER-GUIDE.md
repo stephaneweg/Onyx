@@ -98,7 +98,9 @@ Card contents:
 | `kernel8-rpi4.img` | **the Onyx kernel** |
 | `apps/<name>.app/` | the **applications** (one per `.app` folder): `main` (the ELF, no extension; `main.bax` / `main.bas` for a BASIC app), `app.txt` (title, category, icon, stack), icons, resources |
 | `bin/<tool>` | the terminal **command-line tools** (§8), `init` included |
-| `etc/autostart` | commands run automatically at boot (read by `init`) |
+| `etc/autostart` | commands run automatically at boot (read by `init`): the system's part — the services — and the line `session` |
+| `etc/session/desktop`, `pocket`, `console` | the **session** of each mode: the interface's programs (the menu bar, the dock...), run by `/bin/session` (§5 *Sessions*) |
+| `etc/pocketui.ini`, `etc/pocket/recent`, `etc/pocket/keyboard` | the pocket mode: the apps shown as cards rather than full screen; the launcher's recent apps; when the on-screen keyboard comes (`auto` / `manual`) (§5 *The pocket mode*) |
 | `etc/system.ini` | general settings (§3) |
 | `etc/theme.txt`, `etc/wallpaper.ini`, `etc/dock.ini` | the desktop's colours and style, the wallpaper, the dock (the Control Panel writes them) |
 | `etc/keymaps/*.kmap` | the keyboard layouts (§10) |
@@ -234,7 +236,15 @@ language=fr        # the language of the programs' words: en, fr (no line: Engli
 zone=Brussels      # the time zone's city (written with timezone= by Language & Region and Setup)
 ramfs=128          # the size of RAM:, the volume in memory (§2): MB, or "10%" of the free
                    # memory; "0" = no RAM:. No line: 128 MB, at most a quarter of the free memory
+shell=desktop      # the interface: desktop (Elegant; no line: desktop), pocket or console (PocketUI)
 ```
+
+`shell=` (kernel kapi v97) chooses the graphics server the kernel starts: `desktop` — or no line, or a word it
+does not know — is the desktop as always (Elegant); `pocket` and `console` start PocketUI (`SD:/bin/pocketui`,
+the compact modes, §5 *The pocket and console modes*; [`POCKETUI-TECH-STUDY.md`](POCKETUI-TECH-STUDY.md)). A
+server that is missing or does not start is replaced by Elegant, so the screen never stays dark. It is read at
+boot and at a switch of mode: the Control Panel's **Mode** applet (§11) or `session switch <mode>` (§8) write it and
+switch at once (§5 *Sessions: the mode's programs, the switch*); edited by hand, it is taken at the next start.
 
 `ramfs=` is read at boot (restart to apply it). The memory is taken only as files are written to
 `RAM:`, and given back when they are removed; some memory is always left to the applications (a
@@ -285,12 +295,13 @@ On power-on:
    a shell command. By default:
    - **`wait pkg commit`** moves in a system update staged for this boot (and restarts once
      when the kernel or the firmware changed: §8 *Packages*);
-   - **`run voronoy`** paints the **wallpaper** (Voronoi pattern) and then exits;
-   - **`run pkgd`** starts the **update daemon** (§11 *The Package Manager*);
-   - **`run setup`** — on a new card only — starts **Setup**, the first-run wizard (below);
-   - **`run menubar`** starts the **menu bar**, **`run dock`** the **dock**, **`run agenda`**
-     the **agenda widget**, **`run stickies`** the **pinned notes** (Stickies), **`run notifyd`**
-     the notifications;
+   - **`session`** starts the **session** of the interface's mode (§5 *Sessions*): for the desktop the lines of
+     `SD:/etc/session/desktop` — **`run voronoy`** paints the **wallpaper** (Voronoi pattern) and then exits;
+     **`run setup`** — on a new card only — starts **Setup**, the first-run wizard (below); **`run menubar`**
+     starts the **menu bar**, **`run dock`** the **dock**, **`run agenda`** the **agenda widget**, **`run
+     stickies`** the **pinned notes** (Stickies), **`run notifyd`** the notifications;
+   - **`run clockd`**, **`run pkgd`** (the **update daemon**, §11 *The Package Manager*), **`run clipd`**,
+     **`run printd`** start the services;
    - **`keyb FR`** sets the keyboard layout.
 
    Optional: a line **`preload <program>`** loads a large program ahead and keeps it in memory, so
@@ -300,14 +311,19 @@ On power-on:
 ### Setup, the first-run wizard
 
 On a new card Onyx starts with **Setup** alone over the wallpaper: the menu bar, the dock and the
-agenda are held back until it is done (their autostart lines read `#setup: run menubar`...). Its
+agenda are held back until it is done (their lines in the desktop's session file, `SD:/etc/session/desktop`,
+read `#setup: run menubar`...). Its
 window stays in the middle of the screen — it cannot be moved, and it is centred again when the
 resolution changes. The steps are on the left (a green tick once done); **Back** and **Continue**
 at the bottom; everything can be changed later in the Control Panel.
 
 1. **Welcome.** The **language** (English / Français, at the top right): a click starts the wizard
    again in that language, and every program translated speaks it afterwards (`system.ini`'s
-   `language=`; later: the Control Panel's **Language & Region**).
+   `language=`; later: the Control Panel's **Language & Region**). The **interface**, at the page's foot:
+   **Desktop** (windows side by side, the menu bar and the dock), **Pocket** (one app at a time, full screen: a
+   small screen — proposed by itself when the screen is under 1024 × 600) or **Console** (the games first, a
+   gamepad, a television); another one than the one running is switched to when Setup ends (*Start Onyx*); later:
+   the Control Panel's **Mode**.
 2. **Region & keyboard.** The **country** (type its first letter, or the arrows) proposes the
    keyboard layout and the time zone and gives the Wi-Fi its country code (the radio's channels:
    `country=` of `SD:/etc/wpa_supplicant.conf`). The **layout** is taken at once (type in *Try it*;
@@ -335,11 +351,11 @@ at the bottom; everything can be changed later in the Control Panel.
    file sharing (FTP, 21, user `onyx` password `onyx`): only FTP asks for a password, so turn on
    only what you use, on a network you trust.
 7. **Ready.** A summary, a **Change** link on each line. **Start Onyx** writes `system.ini`
-   (`timezone` and `zone`, `ntp`, `hostname`) and the autostart — its own `run setup` line and its comments
-   removed, the held-back lines given back, the `keyb` line set, each service's line on or
+   (`timezone` and `zone`, `ntp`, `hostname`), the session's files — its own `run setup` line and its comments
+   removed, the held-back lines given back — and the autostart — the `keyb` line set, each service's line on or
    commented out (`#telnetd`) — starts the menu bar, the dock and the agenda and the services
    turned on (stops those turned off), and ends: it does not come back. To see it again, put
-   `run setup` back in the autostart (`run setup` in a terminal works too).
+   `run setup` back in `SD:/etc/session/desktop` (`run setup` in a terminal works too).
 
 ![Setup: the welcome page, the language at its top right](../screenshots/setup-0.png)
 
@@ -381,8 +397,11 @@ the **Control Panel** (§11).
 A system **menu bar** runs across the top of the screen (started by `autostart`), light, in
 the theme's face, its text drawn with FreeType (DejaVu Sans, anti-aliased): it shows the **active application's name** (in bold) and **its menus**,
 and the time on the right — **click the time** for a **calendar** of the month (the arrows or
-the wheel change the month; **Open Calendar** starts the Calendar app) — with the **Wi-Fi
-state** just left of it: the usual arcs when
+the wheel change the month; **Open Calendar** starts the Calendar app; **Alarms and timers…** opens the
+**Clock** on its Alarms tab, §12) — a small **bell** left of the time when an alarm of the Clock rings
+within the next 24 hours (the Clock's `alarms.txt` read once a minute; a click on the bell opens the Clock's
+alarms too), and the **Wi-Fi
+state** left of them: the usual arcs when
 the Pi is connected, a grey barred circle when it is not (checked about once a second, so
 a lost or restored connection shows up by itself), and the **volume** left of that (a
 speaker: 1–3 waves by the volume, a cross when muted).
@@ -398,6 +417,13 @@ speaker: 1–3 waves by the volume, a cross when muted).
   File Viewer; **Disks…** opens Disks. The bar also tells, by notifications, when a stick is
   connected (click: open it), can be removed safely, cannot be read (click: format it), or was
   pulled out without an eject.
+- **The status area** (left of those, kapi v95): the icons of the programs that put one there
+  (**Telegram**'s, with the unread messages in its tip). The pointer over an icon shows its tip; a
+  **double click** shows the program's main window again — even minimised, even on another workspace;
+  a right click is for the program (what it does with it is its own).
+
+![The menu bar's status area](../screenshots/menubar-tray.png)
+*Telegram's icon in the status area, its tip.*
 - **Click the Wi-Fi icon**: the **Wi-Fi menu** — the networks around, strongest first (the
   scan takes ~3 s), signal bars, a padlock for the secured ones, *Connected* / *Known*. Click a
   network to join it: a secured one not known yet asks its **password** (Show password; Enter
@@ -411,7 +437,8 @@ speaker: 1–3 waves by the volume, a cross when muted).
 ![The USB box](../screenshots/usbmenu.png)
 ![The Wi-Fi menu](../screenshots/wifimenu.png)
 ![The calendar under the time](../screenshots/clock.png)
-*The volume box, the USB box (a stick plugged in), the Wi-Fi menu, the calendar of the month under the time.*
+*The volume box, the USB box (a stick plugged in), the Wi-Fi menu, the calendar of the month under the time (the
+bell: an alarm today; Alarms and timers… opens the Clock).*
 
 The active application is the frontmost decorated window; clicking the dock or the desktop
 does not change it.
@@ -445,6 +472,9 @@ does not change it.
   out; a click dismisses it; several notifications are shown one after the other
   (`notifyd`, started by `autostart`).
 - Windows open and are dragged **below** the bar, never under it; they open above the dock.
+- The bar's own words (the Onyx menu, the categories, Quit, the boxes, the USB notifications) are in the
+  **system's language** (English or French: Control Panel ▸ Language & Region, taken at the next boot); the
+  apps' names are their `app.txt`'s, the menus the active app's own.
 
 ![Menu bar](../screenshots/menubar.png)
 *The menu bar with tinypad active and its File menu open.*
@@ -546,9 +576,10 @@ itself — also one changed by another program (the Text Editor, FTP).
 - **Drag the header**: moves the widget; its place is kept in `SD:/apps/stickies.app/config.ini` (`x`, `y`).
 - Notes' **View ▸ Hide Stickies from the Desktop** ends it and keeps it off (`stickies = 0` in
   `SD:/apps/notes.app/config.ini`: started at boot, it then quits at once); **View ▸ Show Stickies on the
-  Desktop** starts it again — and, if `SD:/etc/autostart` has no `run stickies` line (a card updated from
-  an older one), adds it after the agenda's line, saying so in Notes' status line. Hide never edits
-  `autostart`: remove its line by hand to keep it from starting at all.
+  Desktop** starts it again — and, if neither `SD:/etc/autostart` nor a session's file has a `run stickies`
+  line (a card updated from an older one), adds it after the agenda's line (in `SD:/etc/session/desktop`),
+  saying so in Notes' status line. Hide never edits these files: remove its line by hand to keep it from
+  starting at all.
 - Nothing is edited on the desktop: the cards only show the notes. Files read: `SD:/Notes/*.txt`,
   `SD:/Notes/notes.ini`, `SD:/apps/notes.app/config.ini`; written: its own `config.ini`.
 
@@ -607,6 +638,226 @@ follow the packages installed at once (the update service also does it when it s
   menu bar's **Onyx ▸ Open Windows**; another workspace: the dock's squares, Ctrl+Alt+←/→.
 - **Close**: the **×** button of the title bar, **Ctrl-Q**, the window menu's **Close**, or
   the task manager (`taskman`) / `kill`.
+
+### The pocket mode (PocketUI and the pocket shell)
+
+With **`shell=pocket`** in `SD:/etc/system.ini` (§3; the Control Panel's **Mode** applet writes it, §11) the kernel
+starts **PocketUI** (`SD:/bin/pocketui`) instead of Elegant: the interface of small screens (an 800 × 480 display, a
+handheld, a 7-inch panel), **one app at a time**, as on a phone. Its parts:
+
+- **the menu bar** at the top, as on the desktop: the front app's name and menus, the status icons, the time. In
+  pocket the **gem** before *Onyx* (a light blue lozenge) is the **Home button**, lit while the launcher shows: a
+  click shows the launcher, the app in front going behind (as Super does); a second click brings the app back. The
+  name **Onyx** beside it opens the **Onyx menu**, as on the desktop (the Terminal, the Control Panel, the apps by
+  category, the open windows, Shut Down); a click on the **time** opens quick settings (on the desktop: the calendar);
+- **the apps full screen**: every app's window fills the screen under the menu bar, without a frame, whatever its
+  size; an app whose window cannot be resized (a game, a demo) is shown in the middle of the screen on its own
+  background colour, until it is adapted; a window too big for the screen that cannot shrink (Setup's 800 × 600 on
+  an 800 × 480 display) is shown in a **viewport**: thin bars at the screen's right and bottom edges tell where you
+  are — the wheel over a bar, or a bar dragged, scrolls it, and the control with the keyboard's focus is kept in
+  view. The apps adapted to the mode (the Control Panel, the File Viewer, the Task Manager and every app as it is
+  worked on) lay themselves out for it: side panels become rails or drawers, toolbars keep what fits and put the
+  rest behind **»**, tabs scroll (in portrait: the current tab's title opens the list), tables become cards in
+  portrait, dialogs become sheets, menus action sheets; the arrows move the focus between the controls. **Cards** — a framed window in the
+  middle, the rest of the screen behind it — are an app's other windows (a dialog, an about box, a second window)
+  and the apps listed in **`SD:/etc/pocketui.ini`** (below; the Calculator by default);
+- **the launcher (Home)**, behind every app: what you see when no app is in front;
+- **the task switcher** and **quick settings**, over the app.
+
+**The launcher.** At the top a round **search field** and, beside it, **Today**: the Calendar's next appointment
+(“Mon 28 Sep | 14:00 Team call — in 1 h 26”; read from `SD:/apps/calendar.app/agenda.txt`, which the Calendar
+writes; a click opens the Calendar; nothing planned: the line is not shown). On a wide screen (1920 × 1080) Today
+becomes a **column at the right**: the date, the day's agenda (the next appointment in blue, the past ones grey, the
+next days' after them) and the **notifications** (a click runs one's action). Under the search field the
+**categories as chips**: *Recent* (the apps opened last, kept in `SD:/etc/pocket/recent`), the categories of the apps
+in the dock's order (`SD:/etc/dock.ini`: the Control Panel's Panel applet sets it) and *Settings* (the Control
+Panel's applets: one opens the **Control Panel full screen** on that applet — a Control Panel already open shows it);
+more than fit scroll (the chevron). Then **one card** with the category's name and how many apps it has, the apps on
+plates, a blue dot under a running one; the keyboard's focus is a blue ring with a glow, the name in a blue pill. In
+*Recent*, when there is room (1280 × 720 and more, portrait), the card also holds **Documents**: the files opened last
+(`SD:/etc/recent-docs`, which SystemKit keeps: every file opened through its app — the File Viewer's double click, the
+launcher's search — is noted), each with the icon of the app that opens it, its folder and when. At the bottom the
+**Running** strip: the open apps as **pictures of their windows**, the icon and the name on a dark foot — a click
+brings one to the front, its × closes it — and the key hints at the line's right end.
+
+**Typing searches**: the field takes the width, the chips become the kinds of results with their counts (*All*,
+*Apps*, *Settings*, *Files*: a click shows one kind), the **best match** is a card at the left with an Open button
+(Enter), the others are grouped — the apps, the settings (by their names and their lines of help, in the system's
+language), the files of `SD:/docs`, `SD:/Notes` and `SD:/home` (their app, folder and size) — with the letters typed
+in blue; the bottom line runs the text as a command in a Terminal. Up / Down choose, Tab goes to the next group, Enter
+opens, Esc clears. Opening a running app brings it to the front.
+
+![](compact-shell/real/pocketshell-home-800.png)
+
+*The launcher at 800 × 480 (the real pocketshell, the real menu bar and PocketUI, run on the PC:
+`tools/tests/server_sim/run.sh`): Today beside the search field, the chips, the card, the Running strip.*
+
+![](compact-shell/real/pocketshell-search-800.png)
+
+*Typing on the launcher: the best match, the apps, the settings, the files and the text as a command.*
+
+**The task switcher** (Alt+Tab): the open apps as cards with their pictures, the most recent first
+(the one in front, "now", on the left), the next one chosen. Alt+Tab again (or →, Tab) chooses the next one, Shift+Tab
+(or ←) the one before; **releasing Alt switches** — opened from the menu: Enter or a click; **Del** (or the chosen
+card's ×) closes the app; **S** puts the chosen app **beside** the one in front (the split view, below); Esc (or a
+click beside the cards) stays.
+
+**The split view**: two apps at once, side by side on a landscape screen, one over the other on a portrait one.
+**Super+←** or **Super+→** sends the app in front to that half, the app used before it taking the other (or **S** in
+the switcher: the chosen app beside the one in front). A thin divider separates them, lit on the side of the app
+that has the keyboard and the menus: **Super+Tab**, or a click in the other app, passes them over; **Super+[** and
+**Super+]** give one app 40, 50 or 60 % of the screen; **Super+↑**, or going Home, ends the split (the app in front
+fills the screen again). Each app lays itself out for its half — its side panel a drawer when the half is narrow.
+
+![](compact-shell/real/pocketshell-switcher-800.png)
+
+*Alt+Tab: the open apps, their pictures from PocketUI (no app redraws for the switcher).*
+
+**Quick settings** (Super+N, a click on the time): the date and the time; Wi-Fi (its state;
+a click: the Wi-Fi menu), Do not disturb (no notification's bubble while it is on), Sound (mute), Mode (the Control Panel
+full screen on its Mode applet), Keyboard (the on-screen keyboard: on demand, or with the text fields) and Show
+keyboard; the volume; **the notifications** — in pocket the pocket shell receives them (no `notifyd`): each one shows
+for a few seconds as a bubble under the menu bar, then waits here, the newest first (a click runs its action and
+removes it; Clear all) — on the launcher at 1920 × 1080 no bubble: its Today column shows them; the Control Panel,
+Lock and Power. Esc or a click beside the panel closes it.
+
+![](compact-shell/real/pocketshell-quick-800.png)
+
+*Quick settings and the notifications.*
+
+**The on-screen keyboard** (pocket only): **Super+K**, or quick settings' **Show keyboard**, brings a keyboard up
+from the screen's bottom edge; the app in front is laid out again in the room left above it, and what you click
+is typed into it as a real keyboard's keys. Letters (QWERTY; **AZERTY** when the system's language is French),
+**⇧** for one capital, **123** for the figures and the punctuation, **#+=** for more signs and the accented letters
+(é è ê à â ç ù û î ô ë ï ü ö), **ABC** back; a key held repeats; **▾** hides it. In a Terminal it has a row more:
+Esc, Tab, **Ctrl** (for the next key: Ctrl then c is Ctrl+C) and the arrows. A field of numbers opens on the
+figures; an e-mail field has **@**, an address field **/** beside the space. Quick settings' **Keyboard** tile
+chooses when it comes: **on demand** (as shipped: a screen with a real keyboard) or **with the text fields** (a
+device without one: it comes when a text field takes the focus and goes with it) — kept in
+`SD:/etc/pocket/keyboard`. The console mode has none.
+
+![](compact-shell/real/pocketshell-keys-800.png)
+
+*The on-screen keyboard under the Terminal, 800 × 480.*
+
+**The keys** (PocketUI gives them to the pocket shell before the app in front; a program in full screen keeps all
+its keys):
+
+| Keys | What |
+|---|---|
+| **Super** (the Windows key, alone), **Alt+F1**, **Ctrl+Esc**, a click on the gem before **Onyx** | Home; again: back to the app |
+| **Alt+Tab** / **Alt+Shift+Tab** | the switcher (release Alt to switch; Del closes the chosen app; Esc stays) |
+| **Super+N** | quick settings and the notifications |
+| **Super+Space** | the launcher, the search emptied |
+| **Super+K** | the on-screen keyboard shown / hidden |
+| **Super+←** / **Super+→**, **Super+↑** | the split view: the app in front to that half; the split ended |
+| **Super+Tab**, **Super+[** / **Super+]** | in the split view: the other app in front; the divider at 40 / 50 / 60 % |
+| on the launcher: typing, Up / Down, Tab, Enter, Esc | search, choose, the next group, open, clear (Esc on an empty search: back to the app) |
+| on the launcher: Tab / Shift+Tab, arrows, PgUp / PgDn, Home / End | the categories, the apps (and in Recent the documents) |
+| on the launcher: Down from the card's last row | the Running strip: ← → choose, Enter brings the app, Del closes it, Up back |
+
+**The size of things.** The launcher, the switcher and quick settings are drawn at a **scale**: `scale = 1`, `1.5`
+or `2` in `SD:/etc/theme.txt`, else from the screen (1.5 from a 1080-line screen, 2 from 1800 lines). Their layout
+follows the screen: the number of columns of apps, Today beside the search field (under it in portrait) or as a
+column (1920 × 1080), the Documents of Recent (when there is room), the hints of the Running strip (those that fit),
+the switcher as a row of cards (landscape) or a column (portrait), the quick settings panel's width — 640 × 480,
+800 × 480, 1280 × 720, 1920 × 1080 and portrait 480 × 800 alike; the screen and the scale are read again when PocketUI
+says the work area changed and every second (after a switch from the desktop the launcher takes the screen's real
+size as soon as PocketUI gives it). (The apps themselves and the menu bar are not scaled yet.)
+
+![](compact-shell/real/pocketshell-home-1080.png)
+
+*The launcher at 1920 × 1080 (scale 1.5): Recent with the Documents, the Today column (the agenda, the notifications).*
+
+![](compact-shell/real/pocketshell-switcher-portrait.png)
+
+*The switcher on a portrait screen, 480 × 800: a column.*
+
+**`SD:/etc/pocketui.ini`**: its section `[cards]` names the apps not shown full screen (one app's folder name a line,
+`#` comments) — they keep their window's size as a card in the middle. An app may ask for it itself with
+`pocket = card` in its `app.txt`. The file is read again whenever a program opens its first window. It is a
+configuration file: a package update never overwrites it once you changed it.
+
+**`shell=console`** is the same server without the band nor the menu bar (the whole screen is the app's), with
+the **console home** as its shell (below).
+
+#### The console mode (the console home, `consolehome`)
+
+For a television and a **gamepad**: a deep blue space, big words, a glow on what is chosen. **The home**: at the
+left the **categories** of the card's apps (Recent, Productivity, Internet, Graphics, Programming, Games,
+Multimedia, System, Settings — the Control Panel's applets), the chosen one lit with its count; at the right the
+**apps** of that category as tiles. An app opened fills the screen, with no frame, no menu bar.
+
+**The menu** comes over whatever is in front — the pad's **Home** button (or **Select + Start** together on a pad
+without one), **F10**, the **Super** key, a right click at home: *Resume* the app, **the app's own menus** (File ›,
+Edit ›... — its commands, since console has no menu bar), *Home*, the other open apps (to switch to), *Close* the
+app, *Settings* (the Control Panel), *Shut Down*. While the menu is up the pad is the menu's: the game under it
+reads nothing. When an app comes to the front, a small **Home · Menu** tip shows at the top right for three seconds.
+
+| Pad | Keyboard | What |
+|---|---|---|
+| the d-pad | the arrows | move: the categories; Right goes into the tiles, Left comes back |
+| **A** (or Start) | Enter | enter the category; open the app; choose the menu's item |
+| **B** | Esc, Backspace | back to the categories; leave a menu |
+| **L1** / **R1** | Shift+Tab / Tab, Ctrl+Page Up / Down | the previous / next category |
+| **L2** / **R2** | Page Up / Down | a page of tiles |
+| **Home** (Select at home; Select + Start over an app) | F10, Super | the menu |
+
+**In an app that is not a game** the pad works as a keyboard: the d-pad the arrows, **A** Enter, **B** Esc, **X**
+Space, **Y** Tab, **L1** / **R1** the previous / next tab (Ctrl+Page Up / Down), **L2** / **R2** Page Up / Down. The
+games and the emulators (the categories *Games* and *Emulators*) read the pad themselves.
+
+The mouse works too: the glow follows the pointer, a click opens, the wheel scrolls. Everything is drawn at a
+**scale** (`scale =` in `SD:/etc/theme.txt`, else 1.5 from a 1080-line screen, 2 from 1800), in the system's
+language. Back to the desktop: the menu's *Settings* › **Mode**, or `session switch desktop` in a Terminal.
+
+| | |
+|---|---|
+| ![](compact-shell/real/consolehome-tiles-800.png) | ![](compact-shell/real/consolehome-appmenu-800.png) |
+| *The home, 800 × 480: a category's apps.* | *The menu over an app: the app's own File menu.* |
+
+![](compact-shell/real/consolehome-home-1080.png)
+
+*The console home at 1920 × 1080.*
+
+No workspaces in pocket; Print Screen, the wheel's speed, full-screen games and emulators as on the desktop. Back to
+the desktop: the Control Panel's **Mode** applet, or `session switch desktop` in a Terminal (below). PocketUI gives
+the apps their pocket UIKit (`SD:/lib/pocket/uikit.so`, under the name `SD:/lib/uikit.so`): the same apps, the same
+binaries.
+
+### Sessions: the mode's programs, the switch
+
+The programs started at boot are in two places. **`SD:/etc/autostart`** is the **system's part**: the update
+of the packages, the services (`clockd`, `pkgd`, `clipd`, `printd`, `telnetd`, `vncd`, `rdpd`), the keyboard's
+layout, `preload /boot` — they run whatever the mode. Its line **`session`** runs **`/bin/session`**, which starts
+the **session** of the interface's mode — the lines of **`SD:/etc/session/<mode>`** (the same syntax as the
+autostart):
+
+| Mode | Its session file starts |
+|---|---|
+| **desktop** (`shell=desktop`, or no line) | the wallpaper (`voronoy`), Setup on a new card, the menu bar, the notifications (`notifyd`), the dock, the agenda, Stickies |
+| **pocket** (`shell=pocket`) | the menu bar (PocketUI's top band) and the pocket shell (`pocketshell`: the launcher, the switcher, quick settings, the notifications) |
+| **console** (`shell=console`) | the console home (`consolehome`: the categories and the apps for a pad, the menu over an app); no menu bar, no dock |
+
+The mode is the running graphics server's: when the server of `shell=` does not start and the kernel starts
+Elegant instead, the desktop's session runs. A line added by hand to a session file runs in that mode only; a
+line in the autostart, in every mode. (A card updated from an Onyx before the sessions keeps the desktop's lines
+in its autostart until the first `pkg commit` at boot moves them into `SD:/etc/session/desktop` — the line just
+above each one with it — and puts `session` where they were; the old file is kept as `SD:/etc/autostart.old`.
+Your own lines stay where they were, in the autostart.)
+
+**Switching the mode** — the Control Panel's **Mode** applet (§11), or `session switch pocket` in the Terminal:
+
+1. **the open programs are asked to close**, as by their close box: a program with an unsaved document asks
+   what to do with it. A program still open after 5 seconds is waiting for an answer: the Mode applet says
+   which, with **Wait** (5 seconds more), **Force** (it is ended, its unsaved work lost) and **Cancel** (nothing
+   is switched);
+2. the session's programs end (the menu bar, the dock...), `printd` is started again after the switch;
+3. `SD:/etc/system.ini`'s `shell=` is written, the kernel ends the graphics server and starts the other one;
+4. the new mode's session file runs. If its server does not start, the desktop comes back instead (`shell=desktop`
+   put back, a notification says so). Not while a full-screen program has the display (said; nothing changed).
+
+The services (telnet, VNC, Onyx Remote, the clipboard, the alarms) go on through a switch.
 
 ### The pointer's shapes
 
@@ -675,6 +926,10 @@ take the theme's colours; only the **console** itself stays dark (light text on 
 the theme. The Terminal's own words (its menu, the tabs' default title, its questions) are in the
 system's language (English or French: the Control Panel's Language & Region); what the shell and the
 commands print is not translated.
+
+Started with arguments — `terminal ls /bin` (from another program: `lx_launch ("terminal", "ls /bin")`) — the
+Terminal types them into its first tab as a command once the shell's prompt appeared: the pocket launcher's search
+runs a `/bin` command so.
 
 | Action | How |
 |---|---|
@@ -1100,14 +1355,15 @@ it: `ed notes.txt < edits.txt`.
 | Tool | Usage | Description |
 |---|---|---|
 | `ps` | `ps` | Lists the processes in columns `PID  K  S  PAGES  MEM  SYSC/s  NAME` (SYSC/s: the app's system calls per second) — `K`: `a` (app) / `k` (kernel); `S`: `R` (ready), `S` (sleeping), `B` (blocked), `N` (new); `PAGES` = 64 KB frames owned by the app, `MEM` = that in KB. A program's code and constants are not in it: they are in memory once, shared by all its processes (`preload` lists them). |
-| `preload` | `preload <program>…`, `preload /boot`, `preload` | **Loads programs ahead and keeps them in memory**: a preloaded program starts **without reading the card** (its code is mapped, shared by all its processes) and stays in memory when none runs. `<program>` is a path (`SD:/bin/jsc`; relative to the current folder), or a bare name: the app of that name (`apps/<name>.app/main`) if there is one, else the `/bin` tool. It returns at once — the load runs in the background (a start meanwhile waits for it); the memory is taken until `unload` or the next restart. With no argument: **lists the program images in memory** — every running program (shared by its processes) and the kept ones: size in KB, `uses` (processes running it), `state` (`loading` / `ready`), `kept` (`yes`: preloaded; `no`: freed when its last process ends; `gone`: unloaded or its file replaced — only its running processes still use it), and its path (lower case: the image's key; a **shared library** — `SD:/lib/<name>.so`, which `preload` keeps as it keeps a program — is marked `(library)`). **At every boot: `preload /boot`**, the last line of `SD:/etc/autostart`, loads the programs listed in **`SD:/etc/preload.ini`** (one a line — a path, an app's name or a tool's; `#` or `;` starts a comment) — the list the Control Panel's **Preload** applet edits (§11); an empty or missing file: nothing. (A card set up before this option: add that line at the end of its `autostart`; `preload <program>` lines there still work.) A program whose file is replaced, renamed or removed loses its image by itself; `pkg` preloads the new one again. |
-| `unload` | `unload <program>…` | **Releases a program's image** (see `preload`; the same names): its next start reads the file again; the processes running it go on, and its memory is freed when the last of them ends (at once if none runs). |
+| `preload` | `preload <program>…`, `preload /boot`, `preload` | **Loads programs ahead and keeps them in memory**: a preloaded program starts **without reading the card** (its code is mapped, shared by all its processes) and stays in memory when none runs. `<program>` is a path (`SD:/bin/jsc`; relative to the current folder), or a bare name: the app of that name (`apps/<name>.app/main`) if there is one, else the `/bin` tool. It returns at once — the load runs in the background (a start meanwhile waits for it); the memory is taken until `unload` or the next restart. With no argument: **lists the program images in memory** — every running program (shared by its processes) and the kept ones: size in KB, `uses` (processes running it), `state` (`loading` / `ready`), `kept` (`yes`: preloaded; `no`: freed when its last process ends; `gone`: unloaded or its file replaced — only its running processes still use it), and its path (lower case: the image's key; a **shared library** — `SD:/lib/<name>.so`, which `preload` keeps as it keeps a program — is marked `(library)`; the graphics server's library published under the common name — kapi v97 — shows as `sd:/lib/uikit.so -> sd:/lib/pocket/uikit.so`). **At every boot: `preload /boot`**, the last line of `SD:/etc/autostart`, loads the programs listed in **`SD:/etc/preload.ini`** (one a line — a path, an app's name or a tool's; `#` or `;` starts a comment) — the list the Control Panel's **Preload** applet edits (§11); an empty or missing file: nothing. (A card set up before this option: add that line at the end of its `autostart`; `preload <program>` lines there still work.) A program whose file is replaced, renamed or removed loses its image by itself; `pkg` preloads the new one again. |
+| `unload` | `unload <program>…` | **Releases a program's image** (see `preload`; the same names): its next start reads the file again; the processes running it go on, and its memory is freed when the last of them ends (at once if none runs). The graphics server's alias (`sd:/lib/uikit.so` while it names another library) is refused: it ends with its server. |
 | `kill` | `kill <pid> [--force\|-f\|--tree\|-t]` | Terminates a process by **PID** (seen with `ps`). By default: **clean** shutdown (the app terminates itself); `--force`/`-f`: **immediate** stop; `--tree`/`-t`: the process **and every process under it** (what it started, what they started…) stopped at once — the count is printed. Kernel tasks and the terminal itself are protected (a tree that holds `kill` itself is refused). |
 | `run` | `run <app\|path> [args]` | Launches an **application**: `run mandelbrot` = `SD:apps/mandelbrot.app/main`; a name containing `/` is taken as an explicit **ELF path**; the following arguments are passed as `argv` (e.g. `run tinypad SD:/notes.txt`). |
 | `keyb` | `keyb [XX]` | With no argument: shows the current layout + the list. `keyb FR`: switches to the layout (US, UK, DE, FR, BE, ES, IT, DV). |
 | `cmd` | `cmd`, `cmd <script> [args]`, `cmd -c "line"` | **The shell itself**, an ordinary `/bin` program: reads command lines from `stdin` (up to 2047 characters), runs their commands (`;`, `&&`, `\|\|`; variables, `if` / `while` / `for`: the script language of §7), builds the pipelines (`\|`, `<`, `>`, `>>`; `"…"`, `'…'` and `\` quote), spawns `/bin/<cmd>` for each stage with its exact argument list; builtins `cd`, `pwd`, `clear`, `exit`, `source`, `test`, `echo`, `read`, `set`, `unset`, `shift` (§7). With a file: **runs that script** and ends with its exit code (§7 *Scripts*); `-c`: one line. The terminal runs it; `telnetd` serves it over the network. |
-| `init` | (started by the kernel) | The **first program** at boot (`cmdline.txt` `init=`, §3): runs each line of `SD:/etc/autostart` as a shell command (`run <app>`, a `/bin` tool; `sleep <s>`; `wait <command>`: waits for its end — `wait pkg commit`, the packages staged for this boot), then exits. Not meant to be run by hand. |
-| `pkg` | `pkg list [-a] [filter]`, `pkg info <name>`, `pkg add <name\|file.opk>…`, `pkg delete [-p] <name>…`, `pkg update <name>…\|-a`, `pkg upgrade`, `pkg check`, `pkg assoc`, `pkg mode <name> manual\|auto\|never`, `pkg commit`; `-r <repo>` | **The packages from the shell** — the Package Manager's engine (§11, `docs/pkg/README.md`): lists, installs (with what a package needs), removes, updates from the signed repository; `commit` moves the staged packages in (at boot, from `SD:/etc/autostart`) and reboots when the kernel or the firmware changed. Exit code 0 done, 1 nothing to do, 2 an error, 3 a bad command line. **`pkg assoc`**: `SD:/etc/fileassoc.ini` and `runners.ini` made to follow what the installed packages say they open and run (the lines you changed are left alone). |
+| `init` | (started by the kernel) | The **first program** at boot (`cmdline.txt` `init=`, §3): runs each line of `SD:/etc/autostart` as a shell command (`run <app>`, a `/bin` tool; `sleep <s>`; `wait <command>`: waits for its end — `wait pkg commit`, the packages staged for this boot), then exits; its line `session` starts the mode's programs (`session`, below). Not meant to be run by hand. |
+| `session` | `session`, `session start [MODE]`, `session mode`, `session list [MODE]`, `session switch MODE [--force] [--no-ask] [--wait S] [--keep PID[,PID]]`, `session migrate` | **The interface's session** (§5 *Sessions*; MODE: `desktop`, `pocket`, `console`). Alone (the autostart's line `session`, at boot): runs `SD:/etc/session/<mode>` — the running server's mode — as `init` runs the autostart (`run <app>`, a tool, `sleep`, `wait`); `start MODE`: that mode's file. `mode`: the mode chosen (`system.ini`) and the one running. `list`: the programs a mode's file starts. **`switch MODE`**: the open programs asked to close (an unsaved document asked by its program) and waited for (`--wait`, 5 s); some still open: they are listed (also in `SD:/tmp/session.wait`), nothing is switched, exit status 2 — unless `--force` (ended); `--no-ask`: not asked again, only waited for. Then the session's programs end, `shell=` is written, the kernel switches the graphics server and the new mode's file runs; the terminal it was typed in (and `--keep`'s programs) stay open meanwhile, then end. Exit status 0 switched, 1 its server failed (the desktop instead), 2 programs still open, 3 refused (a full-screen program), 4 a bad command line, 5 failed. On a kernel before kapi v97: `shell=` written and the Pi restarted. **`migrate`**: a card from before the sessions — the autostart's desktop lines moved into `SD:/etc/session/desktop` (what `pkg commit` does once at boot). |
+| `pkg` | `pkg list [-a] [filter]`, `pkg info <name>`, `pkg add <name\|file.opk>…`, `pkg delete [-p] <name>…`, `pkg update <name>…\|-a`, `pkg upgrade`, `pkg check`, `pkg assoc`, `pkg mode <name> manual\|auto\|never`, `pkg commit`; `-r <repo>` | **The packages from the shell** — the Package Manager's engine (§11, `docs/pkg/README.md`): lists, installs (with what a package needs), removes, updates from the signed repository; `commit` moves the staged packages in (at boot, from `SD:/etc/autostart`) and reboots when the kernel or the firmware changed; on a card from before the sessions it also moves the autostart's desktop lines into `SD:/etc/session/desktop`, once (§5 *Sessions*). Exit code 0 done, 1 nothing to do, 2 an error, 3 a bad command line. **`pkg assoc`**: `SD:/etc/fileassoc.ini` and `runners.ini` made to follow what the installed packages say they open and run (the lines you changed are left alone). |
 
 **Networking and logs**
 
@@ -1153,6 +1409,8 @@ it: `ed notes.txt < edits.txt`.
 | `faulttest` | `faulttest <write\|read\|ro\|kernel\|mmio\|null\|jump\|wild\|pcalign\|udf\|brk\|irqoff\|sysreg\|thread\|post\|memcpy\|kapi>` | **Faults on purpose** to check that a crashing app is killed and the system goes on: a load or store at an unmapped address, into read-only memory, into the kernel's memory (`kernel`), a device register (`mmio`), address 0 (`null`), a jump to garbage, a misaligned PC, an undefined instruction, `brk`, masking the interrupts (`irqoff`), a privileged register (`sysreg`), a fault in a thread (the whole process ends), in a posted call, in `memcpy`. After each one: an `el0: faulttest (pid N) killed: …` line in `kmsg`, an "Application error" notice, the prompt back. `kapi`: hands bad, kernel and read-only pointers to about fifteen kapis — every line PASS, the process ends normally. |
 | `el0test` | `el0test`, `el0test fault\|exec\|sysreg\|corefault` | Self-test of **the apps at EL0**: that it runs at EL0, the user-side `memcpy`/`memmove`/`memset`, the counters at EL0, the core number, `getcwd` and `win_list` into stack buffers, three threads with a mutex, a post run by `pump_wait`, a job on an app core at EL0 → `ok` lines then PASS. `fault` (a write into the kernel's memory), `exec` (a jump into it), `sysreg` (a privileged register read) must get it killed (a notice, an `el0:` line in `kmsg`, the prompt back); `corefault`: a job that faults on an app core, the app goes on (PASS). |
 | `libtest` | `libtest [starts]` | Self-test of **the shared libraries** (kernel kapi v83; docs/02 §7 *Shared libraries*) against the test library `SD:/lib/demo.so` and its second build `SD:/lib/demo2.so`: one process's use of a library (its table, `init` twice, its static constructors, the pointers relocated in its data, a class with virtuals called both ways, `new` on one side and `delete` on the other, its own data), a bare name, the errors (a library too old, missing, a program given as a library, a library run as a program), two processes sharing one image, a fault inside the library (only that process dies), the file replaced while a process runs it (that one keeps the old build, a new process gets the new one), preload / unload, `starts` (default 200) starts in a loop without a leak → a `PASS` / `FAIL` line each, `libtest: all passed`, exit status 0. Writes and removes `SD:/lib/libtest-scratch.so`. |
+| `aliastest` | `aliastest [--expect 1\|2]`, `aliastest --switch`, `aliastest --serve …` | Test of **the graphics server per mode** (kernel kapi v97; docs/02 §7 *Aliases*, §10): with no option, as an ordinary program — `kapi_lib_open_as` refused to it, whether `SD:/lib/demo.so` is aliased now (to `demo2.so`), `unload` of the alias refused, and which build a program opening `demo.so` gets (`libtest`'s child: 1 or 2; `--expect` says which is expected) → `PASS` / `FAIL` lines, exit status 0 if all passed. **`--switch`**: switches the graphics server — the one running ends, `SD:/etc/system.ini` `shell =` (`desktop`, `pocket`, `console`; no line: desktop) is read again and its server started (Elegant if it fails) — and says what came of it. **`--serve`**: a stand-in graphics server for the tests, copied by hand to `SD:/bin/pocketui` (the kernel starts it for `shell = pocket` / `console`): it registers, aliases `demo2.so` as `demo.so` (its checks in `SD:/tmp/aliastest.txt`) and, for `pocket`, shows a band at the top of the screen (green: passed, red: failed, blue: started again after a crash) and answers the programs' window requests with an error (they get no window); the key `x` ends it as a crash would; for `console` it never takes the display (the kernel then starts Elegant: the fallback). Remove `SD:/bin/pocketui` after the tests. |
+| `pocketui` | `pocketui --serve [--restart] --mode pocket\|console` (started by the kernel) | **PocketUI**, the graphics server of the **pocket and console modes** (§5 *The pocket and console modes*): the kernel starts it instead of Elegant when `SD:/etc/system.ini` says `shell=pocket` or `shell=console` (`--restart` when it starts it again after a crash: the apps' windows come back). It loads `SD:/lib/pocket/uikit.so` under the name `SD:/lib/uikit.so`, shows the status band (pocket), fills the screen with the app in front or shows it as a card; Alt+Tab switches. Without `--serve` it prints its usage. Not to be run by hand while another server has the display. Its log lines in `kmsg` start with `pocketui:`. |
 | `sysstat` | `sysstat`, `sysstat <pid\|name>` | The **system calls** of the apps (every call to the kernel costs a little at EL0): each app's calls per second, its calls in all, the CPU-identity reads the kernel emulated; with an app, also its 8 most called kernel functions by name with their share. An app making tens of thousands a second is worth a look. |
 | `threadtest` | `threadtest` | Self-test of the **threads** (kernel v67): threads created and joined with their exit codes, a counter shared under a mutex, the allocator used by four threads at once, a manual- and an auto-reset event, a barrier, timeouts, the limit of 32 threads per process, and a worker whose results are posted to the main thread while it waits for events. One line per check, then PASS/FAIL. It quits with a thread still running: the prompt must come back anyway (the threads end with the process). Takes a few seconds. |
 | `memtest` | `memtest [oom\|net]` | Self-test of the **demand paging** and the memory calls (kernel v75: `vm_map` / `vm_unmap` / `vm_protect` / `vm_advise` / `vm_query` / `vm_stats`, `thread_create_ex` / `thread_info`): memory filled on first touch (zero-filled), a 1 GB reservation committed 64 KB at a time, a region split by an unmap, `MADV_DONTNEED`, fixed addresses and the error values, frames returned by an unmap and by `sbrk`, kernel reads and copies into untouched memory, threads faulting the same pages, a futex on a lazy page, an unmap while another thread is blocked reading into that memory, per-thread TLS (`TPIDR_EL0`), stack bounds, an app-core job touching unfilled memory (timed), the overcommit refusal; and children it starts that must be killed — a write to read-only memory, a `PROT_NONE` read, an unmapped page, a thread's and the main thread's stack overflow (kmsg: `(stack overflow)`). A child that touches 256 MB (a quarter of the free memory at most) and exits normally must give it all back (`meminfo`'s free memory within 8 MB). One line per check, then `memtest: PASS` / `FAIL (n)`; a few seconds. `oom`: also a child that touches memory until the kernel kills it (`vm: … killed: out of memory`), twice — each time the free memory must come back to where it was (and the normal-exit child touches 512 MB) — it takes the whole app pool for a moment, so run it alone. `net`: also a socket read into untouched memory (the network up). Writes and deletes `RAM:/memtest.bin` (or `SD:/memtest.bin`). |
@@ -1196,6 +1454,9 @@ at once, without the apps being updated.
 - After a library's file is replaced, the apps already running keep the old one until they are
   closed; the ones started after use the new one. A restart renews the desktop itself.
 - `SD:/lib/demo.so` and `demo2.so` are the test libraries of `libtest` (§8).
+- **`SD:/lib/pocket/uikit.so`** (package **uikit** too) is the pocket and console modes' UIKit: PocketUI loads
+  it under the name `SD:/lib/uikit.so` for the session (`preload` shows `sd:/lib/uikit.so ->
+  sd:/lib/pocket/uikit.so`); the same functions at the same places, only its talk with the server differs.
 
 ### Remote shell (`telnetd`)
 
@@ -1232,12 +1493,20 @@ foreground: `run SD:/bin/ftpd SD:/`.
 *The pointer's shape* (2026-10-05): over the Onyx windows the PC's pointer takes the shape the Pi's has
 — the hand over a link, the I bar over text, the arrows of a frame's edge, the hourglass... (`rdpd`'s
 message 11, when it changes). Known only when **Elegant**, the graphics server, has the display (kapi
-v89, `kapi_cursor_shown`); under the kernel's own window manager the pointer stays an arrow, as before.
+v89, `uk_win_cursor_shown`); under the kernel's own window manager the pointer stays an arrow, as before.
 
 `rdpd` (started by `SD:/etc/autostart`, port **3390**) serves the Onyx windows one by one to
 **Onyx Remote** (`OnyxRemote.exe` in `pc/dist/`, .NET Framework 4.8 — already on Windows 10 /
-11): **one window** on the PC holding the Onyx session. Type the Pi's address in its tool bar,
-**Connect**. Below the tool bar, the **Pi's screen at its size**, pixel for pixel (the Onyx
+11). It starts with a small **connection dialog**: the Pi's **address** (the arrow at its right,
+or the Down key, lists the last ones used), **Options** unfolding the **port** (3390) and what the
+session shows — **Show the Onyx desktop**, **Onyx window frames**, **16-bit colours** —, and at the
+bottom **Full screen**, **Terminal** (a telnet console on the Pi in its own window; the dialog
+stays) and **Connect** (or Enter). While it connects, Connect is **Cancel** (or Esc); what went
+wrong is said in the dialog. Connected, the dialog gives way to **one window** on the PC holding
+the Onyx session, its tool bar reduced to **Disconnect**, **Terminal**, **Desktop**, **Full
+screen**, **Screenshot** and the status; **Disconnect** (or the connection ended by the Pi) brings
+the dialog back, closing the window ends Onyx Remote. Everything chosen is kept
+(`%APPDATA%\OnyxRemote.txt`). Below the tool bar, the **Pi's screen at its size**, pixel for pixel (the Onyx
 windows, the dock at the bottom, where they are on the Pi), in a scrolling area: connected, the
 window takes that size as far as the PC's screen allows; smaller (or made smaller), **scroll
 bars** show the rest; bigger, the Pi's screen sits in its middle, black around it. **Full screen** (the tool
@@ -1255,8 +1524,8 @@ again (see below) the bar stays shown, the Pi's name followed by *(reconnecting.
   normal window (its title, its close button) showing the Onyx window's content — or, with
   **Onyx frames**, with the frame drawn by Onyx (its rounded corners; its title buttons: close
   closes the app, the window menu, minimise and maximise are pressed on the Pi). Move it by its
-  title bar inside Onyx Remote (the Pi's window stays where it is; moved or maximised on the Pi,
-  it follows); its close button (or Alt+F4) closes the Onyx app; clicking a window brings it to
+  title bar inside Onyx Remote: **the Pi's window is put at the same place** (with an up-to-date
+  rdpd — an older one leaves it where it was); moved or maximised on the Pi, it follows; its close button (or Alt+F4) closes the Onyx app; clicking a window brings it to
   the front on the Pi too, so it gets the keyboard. The keys are typed with the PC's layout.
   A minimised window, or one on another workspace, is not shown (as on the Pi).
 - **Over the windows, see-through as on the Pi**: the menu bar's menus (and its volume box and
@@ -1444,8 +1713,13 @@ the Trash — the dock's Trash does so).
   shown by their **friendly name** — the `name =` line of their `app.txt`, e.g. `demoB.app`
   shows as *Colour Field*; the folder name without `.app` if there is none) and files,
   sorted alphabetically by what is shown, with room round the names. When there are more
-  columns than fit (3), the view follows the deepest one; the scrollbar below the columns
-  scrolls back.
+  columns than fit (3 in the first window; as many as fit at 200 px or more, 6 at most, when the window is
+  bigger), the view follows the deepest one; the scrollbar below the columns scrolls back.
+- **The window resizes** (its frame's edges, maximise): the places keep their width, the columns share the rest,
+  the path bar and the status line span it. In the **pocket** mode it fills the screen and **the places are a side
+  panel** (UIKit's `SidePanel`): whole at the left in landscape, a **drawer** in portrait (the tab at the screen's
+  left edge opens it over the columns; a place chosen closes it), a column of big rows in **console** — the same
+  places, their groups folding, a right click for their menu, files dropped on them.
 - **Path bar** (above the columns, as elementary OS's): the folders of the path as links —
   underlined under the pointer, the current one in the accent colour; click one to jump
   straight back to that folder.
@@ -1488,6 +1762,13 @@ the Trash — the dock's Trash does so).
 *The File Viewer: the sidebar (Personal, Computer, Network), `SD:` ▸ `etc` in the path bar, one
 folder per column, and the preview of the selected `autostart` file.*
 
+| | |
+|---|---|
+| ![](../screenshots/pocket/fileviewer-800.png) | ![](../screenshots/pocket/fileviewer-portrait-drawer.png) |
+| *Pocket, 800 × 480: the places as a side panel, three columns.* | *Pocket, portrait: the places' drawer opened.* |
+
+The File Viewer speaks the system's language (English or French: Control Panel ▸ Language & Region).
+
 ### Disks, the volumes (`disks`)
 
 ![Disks](../screenshots/disks.png)
@@ -1495,7 +1776,8 @@ folder per column, and the preview of the selected `autostart` file.*
 **Disks** (the Onyx menu ▸ System, the menu bar's USB box ▸ **Disks…**, the File Viewer's **Go ▸ Disks**)
 lists every volume: the SD card (`SD:`, *the system's volume*), its other partitions (`SD1:` …), the USB
 sticks (`USB1:` …, or a stick's partitions `USB1P1:` …) and `RAM:`, each with its label, size and file system; the one chosen shows its free
-space (a bar), the files open on it and its device. It follows the sticks as they come and go.
+space (a bar), the files open on it and its device. It follows the sticks as they come and go. The window is
+**resizable** (filled in the pocket mode): the boxes get as wide as the window, the list of volumes taller.
 
 - **Open**: the volume in the File Viewer (a double click on it too).
 - **Eject**: a USB stick made safe to remove (it asks when files are open on it); a partition's Eject ejects its whole stick.
@@ -1525,6 +1807,10 @@ in it (`fileassoc.ini`), as `run archiver SD:/path/file.zip` does. **tar, .tar.g
 are opened and extracted too (read only). The formats are **FileKit's** (`SD:/lib/filekit.so`): the
 welcome page lists the ones the library says it reads and writes; 7z, RAR, xz and bzip2 come later, there.
 
+- **Languages and modes**: the Archiver speaks the **system's language** (English or French: Control Panel ▸
+  Language & Region). In the **pocket and console modes** (the same program) the folders' tree and the archive's
+  card are a **drawer** on a small screen (the tab at the list's left edge opens it over the list; a click beside it
+  closes it) and stay beside the list on a wide one (1280 × 720 and more); the desktop keeps its divider.
 - **The window**: the toolbar (**Open**, **New** · **Add**, **Extract**, **Extract All**, **Delete** ·
   **Test**, **Properties**), the path bar (Back, Up, the archive and its folders — click one to go
   there —, the format's badge, **Search in the archive**: every name holding the text, with its
@@ -1640,14 +1926,25 @@ takes it (`12,50 €`), the other apps' text fields do not yet.
 
 The system's settings are gathered in one window, as Windows' Control Panel: the **Control
 Panel** (the menu bar's **Onyx ▸ Control Panel**, just below Terminal, or the dock's **gear**).
-Its home lists the **applets**, an icon, a name and a line of help each; **click one** to open it
-**inside the Control Panel's window**. The path bar at the top reads *Control Panel ▸ Theme*…:
-click **Control Panel** (or the menu's **All Settings**) to go back to the list. One Control
-Panel at a time (started again, it brings the open one to the front). When the applets do not all fit,
-the list **scrolls** (the wheel, the bar at its right, the arrow keys).
+The **applets** are **links in a column at the left** — an icon and a name each (and, in a big window, their line
+of help under the name); the chosen one is lit and **opens inside the rest of the window**, under its title and
+its line of help. It opens on **the applet shown last** (kept in `SD:/etc/control.ini`), else the first. The window
+**resizes** (and maximises): an applet keeps its own layout and, when the window is smaller than it, scroll bars
+show the rest. Keys: **F6** moves the keyboard between the links and the applet; in the links **↑ / ↓** and
+**Enter** choose, **→** or **Tab** go into the applet. One Control Panel at a time: started again (`control <applet>`,
+the dock's *Panel Settings…*, pocket's Settings), it shows that applet in the open one and brings it to the front.
+
+**In the pocket mode** it opens **full screen** from the launcher's *Settings* tab, quick settings or the search: in
+**landscape** the same links and applet (at 1280 × 720 and more, the links with their help lines); in **portrait**
+the **list** of the applets, one column (its icon, name, help line and a chevron), and an applet chosen takes the
+screen under a bar **‹ Control Panel** + its title — a tap on it (or **Esc**) goes back to the list (a window
+narrower than 600 px shows the same list on the desktop); in **console** the links are a column of big rows and
+**L1 / R1** (Ctrl+Page Up / Down) step through the applets. (The applets keep their own layouts for now: in a small
+pane they scroll.)
 
 | Applet | What it sets |
 |---|---|
+| **Mode** (`modeconf`) | The **interface**: **Desktop** (windows side by side, the menu bar, the dock: a monitor, a keyboard and a mouse), **Pocket** (one app at a time, full screen, on a small screen: a handheld, a 7-inch display) or **Console** (the games first, a television, a gamepad) — three cards, a picture of each, the one *in use* marked; click one, **Apply**: *The open programs will be closed, then the interface starts again* (OK / Cancel), then the switch (§5 *Sessions*): every program is asked to close — one that waits for an answer about its unsaved work is named: **Wait**, **Force** (ended), **Cancel** (nothing switched). The Control Panel itself closes with the session. Kept in `SD:/etc/system.ini` (`shell=`); the programs of each mode in `SD:/etc/session/`. |
 | **Theme** (`theme`) | The desktop's colours and wallpaper, with a preview (below). |
 | **Display** (`displayconf`) | The screen's **resolution**: pick a size in the list (1024 × 768 … 2560 × 1440, 4:3, 16:9, 16:10…), **Apply** (or a double click): the screen changes **at once** — the menu bar, the dock and the notifications follow it, a maximised window fills the new screen, a window too big for it is shrunk into it, the wallpaper is painted again — and it is kept in `SD:/cmdline.txt` (`width=` / `height=`) for the next start. Not while an app has the full screen. The monitor shows any size (the Pi scales the picture to it); its own resolution is the sharpest. |
 | **Panel** (`dockconf`) | The dock: its **drawers** — the list holds **every category of the card's apps** (the `category` of their `app.txt`; a new one appears by itself), left to right as in the dock: **^** / **v** move the chosen one, **Hidden** takes its drawer off the dock, and the list beside picks its **main app**, whose icon the drawer shows —, the **launchers** after them (the Terminal, the File Viewer…: add any app, remove, move), the **workspaces** (how many, 1 to 6, and their names). **Apply** writes `SD:/etc/dock.ini` and starts the dock again: it takes it at once (a new group, a new launcher). |
@@ -1655,11 +1952,15 @@ the list **scrolls** (the wheel, the bar at its right, the arrow keys).
 | **Preload** (`preloadconf`) | The programs **loaded ahead at boot and kept in memory**: they start without reading the card (worth it for the large ones, as Jet: 100 MB, 5 s of card each start otherwise). At the left the list (each program, its size, *loading* / *in memory*), at the right what can be added — the apps, then the `/bin` tools: **< Add** (or a double click), **Remove**. A change is done **at once** (the program added is loaded now, the one removed is released: its memory is freed when its last window closes) and kept in `SD:/etc/preload.ini`, which the last line of `SD:/etc/autostart`, `preload /boot`, reads at every boot. The line under the lists gives the memory the list takes. |
 | **Printers** (`printconf`) | The printers Onyx prints on (the **PDF** printer, network printers added by their address), the default one, a test page, and the **print queue** (below: *Printing*). |
 | **Keyboard & Mouse** (`keyconf`) | The keyboard **layout** (the maps of `SD:/etc/keymaps`: a click takes one at once and keeps it in `SD:/etc/autostart`'s `keyb` line; a field to try it) and the **wheel**'s speed (lines a notch: at once, kept in `SD:/etc/theme.txt`). |
-| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, Ledger, Turtle Quest (its BASIC too), Circuits, Pinball, Critters and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). |
+| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, the menu bar, Ledger, Notes and Stickies, the Clock, Turtle Quest (its BASIC too), Circuits, Pinball, Critters, the Graphing Calculator, the File Viewer, the Task Manager and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). **While `clockd` runs** (the Clock's alarm service, started at boot), **the summer time changes the clock by itself**: on the night it begins or ends, the system's clock moves within a minute of 02:00 / 03:00 and `timezone=` is written (a city chosen here, `zone=`, is needed: with only a `timezone=` nothing is guessed). |
 | **Gamepad** (`padconf`) | The USB gamepads (§12). |
 | **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
 | **App Settings** (`config`) | An app's own settings, its `SD:/apps/<name>.app/config.ini`: the apps (those with settings first, marked `*`), then the chosen one's `key = value` lines — pick one, change its key or its value, **Set** (Enter; a new key adds a line), **Delete**; **Save** writes the file (the app reads it when it starts again), **Reload**. |
 | **Packages** (`pkgman`) | The **Onyx Package Manager**: the updates, the packages installed, more to install (below). |
+
+![The Mode applet](../screenshots/modeconf.png)
+
+*Mode: the desktop, pocket or console — the one in use marked.*
 
 ![The Language & Region applet](../screenshots/langconf.png)
 
@@ -1677,7 +1978,14 @@ text   = Colours of the windows, the menu bar, the dock; the wallpaper
 ```
 
 ![The Control Panel](../screenshots/control.png)
-*The Control Panel's home: the applets.*
+*The Control Panel: the applets as links at the left, Language & Region open.*
+
+| | | |
+|---|---|---|
+| ![](../screenshots/pocket/control-800.png) | ![](../screenshots/pocket/control-portrait-list.png) | ![](../screenshots/pocket/control-portrait.png) |
+| *Pocket, 800 × 480* | *Portrait: the list* | *Portrait: an applet, its back bar* |
+| ![](../screenshots/pocket/control-720.png) | ![](../screenshots/pocket/control-console.png) | ![](../screenshots/control-fr.png) |
+| *Pocket, 1280 × 720: the help lines* | *Console: the column* | *In French* |
 
 The Control Panel and its applets draw their text with FreeType (DejaVu Sans, anti-aliased), as
 the Game Library and Setup do.
@@ -1872,8 +2180,11 @@ silver).
   ignored; the **`sleep <seconds>`** line (an init builtin) waits before the next line,
   to stagger the startup, and **`wait <command>`** runs the command and waits for its end
   (`wait pkg commit`, the first line: the packages staged for this boot moved in). Launch a **desktop app** with the `run` tool (`run <name>` →
-  `/apps/<name>.app/main`). Defaults: `run voronoy`, `run menubar`, `run notifyd`, `run dock`, `run agenda`, `run stickies`, `keyb FR` (sets the
-  keyboard layout at boot) `telnetd` (remote shell) and `vncd` (remote desktop) — see §8. Which program plays the `init` role is itself set
+  `/apps/<name>.app/main`). Defaults: `wait pkg commit`, `session` (the mode's programs: §5 *Sessions*), `run clockd`, `run pkgd`, `run clipd`, `run printd`, `keyb FR` (sets the
+  keyboard layout at boot), `telnetd` (remote shell), `vncd` (remote desktop), `rdpd`, `preload /boot` — see §8.
+- **`SD:/etc/session/<mode>`** (`desktop`, `pocket`, `console`): the same syntax — the interface's programs of
+  that mode, run by `/bin/session` (the desktop's: `run voronoy`, `run setup` on a new card, `run menubar`, `run
+  notifyd`, `run dock`, `run agenda`, `run stickies`). Which program plays the `init` role is itself set
   by `init=` in `cmdline.txt` (see §3).
 
 ### Wallpaper
@@ -1928,6 +2239,8 @@ A few applications (the real apps, run on a PC by `tools/tests/desktop_sim/shots
 | *sheet — spreadsheet* | *irc — IRC client* | *ledger — accounting* |
 | ![archiver](../screenshots/archiver.png) | ![screenshot](../screenshots/screenshot-edit.png) | ![media](../screenshots/media-albums.png) |
 | *archiver — archive manager* | *screenshot — screen capture* | *media — the music and video library* |
+| ![telegram](../screenshots/telegram.png) | ![telegram, contacts](../screenshots/telegram-contacts.png) | ![telegram, sign-in](../screenshots/telegram-signin.png) |
+| *telegram — the instant messenger* | *telegram — the contacts, who is online* | *telegram — the sign-in* |
 
 ### PDF Viewer, the reader of PDF documents (`pdf`)
 
@@ -1939,6 +2252,10 @@ The PDF Viewer shows **PDF documents** in the way of Acrobat Reader or Edge: Ony
 app list (*Productivity*), double click a `.pdf` in the File Viewer, or drop PDF files on its window.
 **Each document opens in its own tab** (the `+` tab: the home; a middle click or × closes a tab;
 Ctrl+Tab goes to the next one).
+
+The PDF Viewer speaks the **system's language** (English or French: Control Panel ▸ Language & Region). **In the
+pocket and console modes** (the same program) the side panel is a **drawer** on a small screen: the tab at the left
+edge, F9 or the toolbar's first button open it over the pages; on a wide screen it sits beside them as on the desktop.
 
 **The window**: the **tabs** on top, the **toolbar** — the side panel (F9), Open, the previous / next
 page, **the page's number** (type one and Enter to go there) and the count, the **zoom** (− / the
@@ -2006,40 +2323,43 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 |---|---|
 | **tinypad** | Text editor. The file's path is shown above the text; click the area to edit; arrows/Home/End/Page to navigate. **Select** text with **Shift** + those keys, a mouse drag, Shift+click or ^A (Select All); typing replaces the selection. Menu **Edit**: Cut (^X), Copy (^C), Paste (^V), Select All (^A), Copy All. Menu **File**: New (^N), Open... (^O, file dialog), Save (^S), Save As... (loads/saves the whole file). **Drop** a file on the window to open it, or text to insert it; New / Open / a drop first ask to **save unsaved changes** (Yes / No / Cancel). |
 | **Notes** (`notes`) | **Quick notes**, kept by themselves: the list of the notes on the left (newest first: a colour dot, the title — the first line —, the date, a pin when shown on the desktop), the note's text on the right in its colour; no Save: a note is written a second after the typing stops. **New Note** (^N), **Delete** (^D, Delete in the list: to the Trash), **Pin** (^P: on the desktop, by Stickies), six colours, Edit ▸ Copy Note, File ▸ Open in Text Editor (^E), View ▸ Show / Hide Stickies; `.txt` / `.md` files dropped on it become notes (see *Notes* below). Files: `SD:/Notes/*.txt`, `SD:/Notes/notes.ini`, `SD:/apps/notes.app/config.ini`. |
+| **Clock** (`clock`) | **The time here and around the world, alarms, a timer, a stopwatch**, in four tabs: **World** (here big — the date, the city, UTC+h, *Summer time*; an **analogue face** if you like, View ▸ Analogue Clock — and up to 12 cities with their time, their day and the difference), **Alarms** (up to 20: a time, a label, once or on chosen days, Chimes / Beeps / Marimba; they **ring with the Clock closed**, by `clockd`), **Timer** (presets, Start / Pause, *Time's up*; it rings with the Clock closed too), **Stopwatch** (laps, the fastest and slowest marked, Copy Laps). Ctrl+1…4 the tabs, Ctrl+N, Space, L, R. Files: `SD:/apps/clock.app/alarms.txt`, `config.ini`. See *Clock* below. |
 | **PDF Viewer** (`pdf`) | The **reader of PDF documents** (MuPDF): a tab a document, the pages' thumbnails, the contents, a search with its hits by page, the zoom (fit the page / the width, 50 to 400 %), one page / continuous / two pages, rotation, full screen; text selected and copied, links followed, passwords, Properties; the home's recent documents reopened at their page. See *PDF Viewer* above. |
 | **Letters** | The **word processor**, in the way of AbiWord and Word: pages laid out and drawn with FreeType from the card's TrueType fonts, two toolbars (styles, fonts, sizes, bold / italic / underline / strike-through, superscript / subscript, colours, highlights, alignments, lists, indents, a table), a ruler (the indents, margins and a table's columns dragged), **tables** (merged cells, lines, shading, a heading row), **headers and footers** (the first page's own), **page numbers** and **fields** (date, time, pages), **tab stops** with leaders, a **table of contents**, images, Find and Replace, Special Character, Page Setup, Word Count, a **mail merge** (a Cardfile form's records into letters); **Word (.docx)**, **OpenDocument (.odt)** and **RTF** read and written with everything, text, HTML export. See *Letters, the word processor* below. |
 | **Koton** (`koton`) | The **music studio** (Koton Studio for Onyx): a song thought in harmony — a chord track of degree-locked chords with a next-chord co-pilot and cadences drives accompaniments (28 styles or a drawn grid of the chord's voices), melodic lines (the pitches from the harmony), riffs on a harmony-aware piano roll, drums (a catalog or drawn, euclidean), polyrhythmic rings; a SoundFont synthesizer on the third core, plugins as processes (instruments, effects, generators), **Compose with AI**, WAV export, a USB MIDI keyboard. Opens Koton's `.sq`, saves `.kson`. See *Koton, the studio* below. |
 | **Cardfile** (`cardfile`) | A small **database** in the way of Access, without SQL: one `.card` file holds a **form** (its fields — text, multi-line text, integer, decimal number, date, colour, yes / no, choice list) and its **records**. Three views: **Form** (a record at a time, on an index card; Page Up / Down between records), **List** (a grid: a click on a column's name sorts), **Design** (the fields added, moved, named, typed — the values converted). Search, Undo / Redo, CSV export and import. Reads / writes `.card` files, `.csv`. See *Cardfile, a small database* below. |
 | **Ledger** (`ledger`) | **Accounting** for a Belgian company or self-employed person, in the way of BOB 50 and GnuCash: the **PCMN** (French or Dutch), customers and suppliers, sales and purchase **invoices** and credit notes, **bank and cash** statements (a bank's **CODA** file imported: parties and invoices found), miscellaneous operations, **quotes, orders, delivery notes, purchase orders** (each becomes the next, then the invoice), documents **printed by Letters** from templates (French, Dutch, English), the suppliers **paid** by a SEPA file, the **VAT returns** as Intervat XML with the customer and intra-Community listings, **reports** (journals, general ledger, trial balance, balance sheet, income statement, ages) to Letters or the Spreadsheet, the fiscal years closed. Reads / writes `.ledger` files. See *Ledger, the accounts* below. |
 | **Courier** (`courier`) | An **HTTP client** in the way of **Postman**: requests (GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS) with their query params, headers, authorization (Bearer, Basic, API key, inherited from the folder or the collection) and body (raw JSON / XML / HTML / text / JavaScript, x-www-form-urlencoded, multipart form-data with files, a binary file); `{{variables}}` from **environments**, the collection and the globals; **collections** with folders; the **history**; the cookie jar; the response pretty-printed, previewed, its headers, cookies, tests; **tests and captures**; the request as **code** (cURL, HTTP, Python, JavaScript); Postman's collections and environments **imported and exported**, a cURL command imported. `http://` and `https://`. Reads / writes `SD:/courier/`. See *Courier, the HTTP client* below. |
-| **Graphing Calculator** (`graphcalc`) | Plots up to four functions of x, in colour, live as you type them (left: `y1=` … `y4=`, a check box shows / hides each; a red frame = syntax error). Syntax: `+ - * / ^`, parentheses, `x`, `pi`, `e`, `sin cos tan asin acos atan sqrt abs ln log exp floor ceil round sign`, implicit multiplication (`2x`, `3sin(x)`, `(x+1)(x-1)`). **Drag** the graph to move, the **wheel** (or **+ / −**) zooms around the pointer, the arrows pan; the pointer **traces** the curves (x and each y shown on the left). **Standard** (−10…10), **Trig** (−2π…2π), **Square** (same scale on both axes); View menu: Zoom In / Out, Grid; Edit ▸ Clear Functions. The functions are kept in `SD:/apps/graphcalc.app/functions.txt`. |
-| **Icon Editor** (`iconedit`) | Draws icons: 24-bit BMP where **magenta** (#FF00FF) is transparent — the desktop's convention (app icons are 40×40, `SD:/apps/<name>.app/icon.bmp`). The enlarged pixel grid in the middle (transparency as a checkerboard); **left button** = 1st colour, **right button** = 2nd colour (**X** swaps them). Tools: **P**en, **L**ine, **R**ect, **B**ox (filled), Ellipse (**O**), **F**ill, Pic**k**er (takes a pixel's colour), **E**raser. Palette (32 colours + transparency) and **More...** (the colour dialog); live previews at 1× on light and dark and 2×. **^Z** undo / **^Y** redo, **G** grid. File: New 40×40 (^N) / 16 / 24 / 32 / 48 / 64, Open... (^O, up to 64×64), Save (^S), Save As...; Image: Flip, Rotate 90, Shift, Clear. Drop a BMP on the window to open it. |
+| **Graphing Calculator** (`graphcalc`) | Plots up to four functions of x, in colour, live as you type them (left: `y1=` … `y4=`, a check box shows / hides each; a red frame = syntax error). Syntax: `+ - * / ^`, parentheses, `x`, `pi`, `e`, `sin cos tan asin acos atan sqrt abs ln log exp floor ceil round sign`, implicit multiplication (`2x`, `3sin(x)`, `(x+1)(x-1)`). **Drag** the graph to move, the **wheel** (or **+ / −**) zooms around the pointer, the arrows pan; the pointer **traces** the curves (x and each y shown on the left). **Standard** (−10…10), **Trig** (−2π…2π), **Square** (same scale on both axes); View menu: Zoom In / Out, Grid; Edit ▸ Clear Functions. The functions are kept in `SD:/apps/graphcalc.app/functions.txt`. The window is **resizable** (filled in the pocket mode): the plot takes all the room the panel leaves. In English and French (the system's language). |
+| **Icon Editor** (`iconedit`) | Draws icons: 24-bit BMP where **magenta** (#FF00FF) is transparent — the desktop's convention (app icons are 40×40, `SD:/apps/<name>.app/icon.bmp`). The enlarged pixel grid in the middle (transparency as a checkerboard); **left button** = 1st colour, **right button** = 2nd colour (**X** swaps them). Tools: **P**en, **L**ine, **R**ect, **B**ox (filled), Ellipse (**O**), **F**ill, Pic**k**er (takes a pixel's colour), **E**raser. Palette (32 colours + transparency) and **More...** (the colour dialog); live previews at 1× on light and dark and 2×. **^Z** undo / **^Y** redo, **G** grid. File: New 40×40 (^N) / 16 / 24 / 32 / 48 / 64, Open... (^O, up to 64×64), Save (^S), Save As...; Image: Flip, Rotate 90, Shift, Clear. Drop a BMP on the window to open it. In the system's language (English or French). **In the pocket and console modes** the window fills the screen: the grid takes the room, and the colours (the palette, the previews) are a panel at the right — a slide-over on a small landscape screen (the tab at the right edge), a sheet at the foot in portrait. |
 | **RTF Reader** (`rtfview`) | Shows **Rich Text Format** documents (`.rtf`, e.g. saved by WordPad or Word) with their bold / italic / underline / strikethrough, colours, highlights and sizes, word-wrapped; accents and typographic quotes / dashes are converted. File ▸ Open... (^O) or drop a `.rtf` on the window (a double click on a `.rtf` in the File Viewer opens it in **Letters**: `fileassoc.ini`); Edit ▸ Copy (^C) / Select All (^A); File ▸ **Edit in Letters**. Paragraph layout (alignment, indents, tables), pictures and fonts are not kept (Letters keeps them). Sample: `SD:/docs/onyx-rtf-sample.rtf`. |
 | **tinycalc** | Scientific calculator (fixed-point). Buttons + keyboard (`+ - * / ( ) ^ =`), square root, trigonometric/exp/log functions. |
 | **Spreadsheet** (`sheet`) | A **spreadsheet** in the way of LibreOffice Calc and Gnumeric: workbooks of several sheets (1 048 576 rows × 16 384 columns), **formulas** as Excel writes them (237 functions: mathematics, statistics, logic, text, lookups, dates, finance; references to other sheets, ranges, whole columns; arrays), number formats, fonts, colours, borders, merged cells, frozen panes, the fill handle's series, sort, Find and Replace, **charts** (column, bar, line, area, pie, scatter), **conditional formatting** (rules, colour scales, data bars), the **AutoFilter**, **defined names**, Undo / Redo. Reads and writes Excel's **`.xlsx`** and **CSV**, reads LibreOffice's **`.ods`**. See *The Spreadsheet* below. |
 | **Slides** (`slides`) | A **presentation program** in the way of PowerPoint and LibreOffice Impress: slides on a **theme** (six: Café, Peach, Steel, Sage, Brick, Slate — their colours and fonts) and **layouts** (title, title and content, two contents, comparison, section, title only, picture and text, blank), **text boxes** (fonts, sizes, colours, bullets and numbering on five levels, autofit), **shapes** (28, with gradients, lines, shadows, rotation), pictures, **tables**, **charts** (column, bar, line, pie, area), **sections**, the speaker's **notes**, the slide sorter, the **master and layouts** edited, find and replace, **transitions** and **animation effects** (by paragraph too) played full screen by the GPU, a **presenter view**. Reads / writes OpenDocument **`.odp`** and PowerPoint's **`.pptx`** (PowerPoint and LibreOffice open them; theirs are read); exports **PDF** (the slides, notes pages, handouts) and a slide as **PNG**. See *Slides, the presentation program* below. |
 | **qbasic** (QBasic) | The BASIC editor (see §13): main module and SUBs / FUNCTIONs edited separately (View ▸ SUBs... ^L, Edit ▸ New SUB...), Run ▸ Start (^R) with errors shown at their line, File ▸ Make App... Opens `.bas` files. Reads/writes `.bas` files, `SD:/tmp/<name>.bas` (the copy it runs). |
 | **QBStudio** (`qbstudio`) | The **IDE for desktop apps in BASIC**, in the way of Visual Studio's designers: a project's window **drawn** (the controls dragged from the toolbox into its layout — columns, rows, grids, groups —, moved, sized; their **properties** and **events** at the right) and kept in step with its text, **`Main.form`** (a control a line, the parent by the indentation); its code, **`Main.bas`**, an event a SUB (`convert_Click`), the controls as objects (`celsius.Text`), with BASIC's colours, **completion** and the **problems as you type**; the window's code generated (`Main.form.bas`, read-only). **Run** (F5) starts it; **Make App** writes it as an app. Reads / writes `SD:/projects/<name>/` (`project.ini`, `*.form`, `*.bas`, `Main.form.bas`), `SD:/tmp/qbstudio/<name>.bas` (the program run), `SD:/apps/<name>.app/` (Make App), `SD:/apps/qbstudio.app/last.txt` (the last project), `settings.ini` (the grid). Opens `.form` files. See *QBStudio* in §13. |
-| **fmtracker** (FM Tracker) | A music tracker with 8 channels of **FM instruments** (the sound system's FM synthesizer, like the AdLib), in the desktop's theme. **The window**: a transport bar — **Play** from the cursor (^P), **from the start**, **Stop** (Esc), **Loop** (the pattern again and again, ^L), a display of the position (pattern : row) and the time, **Undo / Redo**, **Cut / Copy / Paste**, **Follow** (the view goes with the position while it plays) —; on the left the song's **patterns** (a click shows one; **+** new, duplicate, move earlier / later, delete), **this pattern**'s **Rows** and **Speed** (a slice lasts speed / 20 s), the **typing**'s **Octave** and **Step** (the rows the cursor goes down after a note), the song's title and author; the **grid**; a **piano** under it. **The grid**: a column per channel, a row per time slice; a cell holds a note that starts there (`C#4`), `---` (the note goes on) or nothing (silence) — a note lasts until the next note or silence of its channel; every 4th and 16th row is shaded. A channel's **header**: its colour, its instrument — **click it for the instrument dialog** —, **M** (mute the channel in this pattern; a right click too), **S** (solo: heard alone, while the app runs), a level meter. **Keys**: **C D E F G A B** a note (Shift = sharp; you hear it), **0–7** the octave, **Space** a silence, **Delete** `---` (a block chosen: cleared), **Backspace** clears the slice above, **#** toggles the sharp, arrows / Page Up / Down / Home / End move (←/→ = channel), Tab the next channel; **Shift + those** or a **drag** choose a **block**: **^X ^C ^V** cut, copy, paste it (at the cursor), **^A** the whole pattern, **Ctrl+↑ / Ctrl+↓** move its notes a semitone (with Shift: an octave); **^Z / ^Y** undo and redo (the pattern's notes, 48 steps). A **click on the piano** enters that note; its keys light in the channels' colours as they sound. **The instrument dialog**: the name, a **preset** (`SD:/apps/fmtracker.app/ins`), **Load / Save** `.FMI`; the **algorithm** — **FM** (operator 1 bends operator 2's sound: the timbre) or **Additive** (both are heard), drawn — and the **feedback**; then each of the two operators: its **wave** (four drawn: sine, half sine, absolute sine, pulses — click one), its **envelope drawn** as the sliders move (**Attack, Decay, Sustain, Release**), its **Volume**, its frequency's **Multiplier**, its **Key scale**, its switches (held, tremolo, vibrato, key scale rate); below, **the sound's wave** (what the two operators make together); **Test** plays the instrument and the wave moves with the note; every change is heard at once. A song is a list of **patterns** played in order (Pattern menu: New, Duplicate, Move Earlier / Later, Delete). Opens and saves **FM Song `.FMS` files** (QBasic's FM Song, 2001 — `SD:/music/fms` has 59 songs) and `.FMI` instruments; double-clicking a `.fms` file opens it. Standard tuning (A4 = 440 Hz; FM Song's AdLib table played a semitone higher). Edit ▸ Insert / Delete slice (^E / ^D), File ▸ Song Info. **File ▸ Export WAV…** writes the song as a 16-bit stereo WAV file (44.1 kHz), as AudioKit plays it. |
+| **fmtracker** (FM Tracker) | A music tracker with 8 channels of **FM instruments** (the sound system's FM synthesizer, like the AdLib), in the desktop's theme. **The window** (resizable, filled in the pocket mode: the channels get wider, the grid shows more rows, the piano more keys): a transport bar — **Play** from the cursor (^P), **from the start**, **Stop** (Esc), **Loop** (the pattern again and again, ^L), a display of the position (pattern : row) and the time, **Undo / Redo**, **Cut / Copy / Paste**, **Follow** (the view goes with the position while it plays) —; on the left the song's **patterns** (a click shows one; **+** new, duplicate, move earlier / later, delete), **this pattern**'s **Rows** and **Speed** (a slice lasts speed / 20 s), the **typing**'s **Octave** and **Step** (the rows the cursor goes down after a note), the song's title and author; the **grid**; a **piano** under it. **The grid**: a column per channel, a row per time slice; a cell holds a note that starts there (`C#4`), `---` (the note goes on) or nothing (silence) — a note lasts until the next note or silence of its channel; every 4th and 16th row is shaded. A channel's **header**: its colour, its instrument — **click it for the instrument dialog** —, **M** (mute the channel in this pattern; a right click too), **S** (solo: heard alone, while the app runs), a level meter. **Keys**: **C D E F G A B** a note (Shift = sharp; you hear it), **0–7** the octave, **Space** a silence, **Delete** `---` (a block chosen: cleared), **Backspace** clears the slice above, **#** toggles the sharp, arrows / Page Up / Down / Home / End move (←/→ = channel), Tab the next channel; **Shift + those** or a **drag** choose a **block**: **^X ^C ^V** cut, copy, paste it (at the cursor), **^A** the whole pattern, **Ctrl+↑ / Ctrl+↓** move its notes a semitone (with Shift: an octave); **^Z / ^Y** undo and redo (the pattern's notes, 48 steps). A **click on the piano** enters that note; its keys light in the channels' colours as they sound. **The instrument dialog**: the name, a **preset** (`SD:/apps/fmtracker.app/ins`), **Load / Save** `.FMI`; the **algorithm** — **FM** (operator 1 bends operator 2's sound: the timbre) or **Additive** (both are heard), drawn — and the **feedback**; then each of the two operators: its **wave** (four drawn: sine, half sine, absolute sine, pulses — click one), its **envelope drawn** as the sliders move (**Attack, Decay, Sustain, Release**), its **Volume**, its frequency's **Multiplier**, its **Key scale**, its switches (held, tremolo, vibrato, key scale rate); below, **the sound's wave** (what the two operators make together); **Test** plays the instrument and the wave moves with the note; every change is heard at once. A song is a list of **patterns** played in order (Pattern menu: New, Duplicate, Move Earlier / Later, Delete). Opens and saves **FM Song `.FMS` files** (QBasic's FM Song, 2001 — `SD:/music/fms` has 59 songs) and `.FMI` instruments; double-clicking a `.fms` file opens it. Standard tuning (A4 = 440 Hz; FM Song's AdLib table played a semitone higher). Edit ▸ Insert / Delete slice (^E / ^D), File ▸ Song Info. **File ▸ Export WAV…** writes the song as a 16-bit stereo WAV file (44.1 kHz), as AudioKit plays it. In the system's language (English or French). **In the pocket and console modes** the side panel (the patterns, this pattern, the typing, the song) is a drawer on a small screen (the tab at the left edge) and the grid takes the window's width; a wide screen keeps it beside the grid. |
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. The pictures are read by **ImageKit**: a photo is shown **the way the camera was held** (its EXIF orientation), and a picture made the wallpaper is brought to the screen's size by a true average. |
 | **paint** (Paint) | Drawing on **layers** with **blend modes** (normal, multiply, screen, add, subtract, lighten, mask, cut out; a mask on the layer below only), assembled by the GPU: brushes (pencil, brush, soft, calligraphy, airbrush, marker, crayon, patterns), eraser, fill (a colour, a pattern or a **gradient along a line**), gradients (GIMP's `.ggr`, an editor), text (TrueType fonts), shapes, selections (rectangle, lasso, magic wand), colours (brightness, contrast, hue, desaturate, colorize, the channels remapped, invert, sepia, posterize, threshold — on the selection, the layer or every layer), filters (blur, sharpen, pixelate), colour picker, zoom to 3200 %. Opens PNG, JPEG, BMP, GIF (WebP, PCX), a picture as a layer; saves OpenRaster (`.ora`); exports PNG, JPEG, BMP or GIF. See *Paint* below. |
 | **calendar** | The **planner**: appointments by the **day, the week or the month** (blocks in their calendar's colour, now as a red line; double-click or drag to make one, drag to move it, its edge to resize it), all-day ones, **repetitions** (days, weekdays, weeks on chosen days, months, years; until a date), **reminders** (notifications), **calendars** (Work, Personal... shown or hidden), **tasks** (due dates, ticked off). Kept as **iCalendar** in `calendar.ics`; **import / export `.ics`** (Google Calendar, Outlook). An argument `YYYYMMDD` opens that day. See *Calendar, the planner* below. |
-| **setup** (Onyx Setup) | The **first-run wizard** (§4, *Setup*): language, country, keyboard, time zone, Wi-Fi, resolution, colours and wallpaper, the computer's name and the remote services; started by `run setup` in `SD:/etc/autostart` on a new card, it removes that line when done. Writes `SD:/etc/system.ini` (`timezone`, `ntp`, `hostname`), `SD:/etc/wpa_supplicant.conf`, `SD:/cmdline.txt` (the size kept), `SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini` and `SD:/etc/autostart`. The Wi-Fi page's **Connect** writes the network into `wpa_supplicant.conf` first, then joins it, waiting up to 60 s (a 2.4 GHz network's association and address can take a while); past that it says *Not connected yet (saved: joined at the next start)* — the network is kept either way. |
+| **consolehome** (Console Home) | The **console mode's shell** (§5 *The console mode*): the home — the categories, the apps as tiles, moved with a gamepad, the keyboard or the mouse — and the menu over an app (the app's own menus, Home, the open apps, Close, Settings, Shut Down). Started by `SD:/etc/session/console`, not from a menu; under the desktop's server it says so and ends. Reads the apps' `app.txt`, `SD:/etc/pocket/recent`, `SD:/etc/theme.txt` (`scale`); writes `SD:/etc/pocket/recent`. In English and French. |
+| **setup** (Onyx Setup) | The **first-run wizard** (§4, *Setup*): language, country, keyboard, time zone, Wi-Fi, resolution, colours and wallpaper, the computer's name and the remote services; started by `run setup` in `SD:/etc/autostart` on a new card, it removes that line when done; its welcome page chooses the **interface** too (desktop, pocket, console: switched to when it ends). Writes `SD:/etc/system.ini` (`timezone`, `ntp`, `hostname`; `shell` through `/bin/session`), `SD:/etc/wpa_supplicant.conf`, `SD:/cmdline.txt` (the size kept), `SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini` and `SD:/etc/autostart`. The Wi-Fi page's **Connect** writes the network into `wpa_supplicant.conf` first, then joins it, waiting up to 60 s (a 2.4 GHz network's association and address can take a while); past that it says *Not connected yet (saved: joined at the next start)* — the network is kept either way. |
 | **wifimenu** (Wi-Fi Menu) | The box the menu bar's Wi-Fi icon opens (§5, *The menu bar*): the networks around, strongest first, the current one marked; a click joins one (a password field for a new secured network) without a reboot (`SD:/etc/wpa_supplicant.conf`, then the reconnect); **Wi-Fi Settings...** opens `wpaconf`. Esc closes it. |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
 | **stickies** (Stickies) | Desktop widget: the notes pinned in Notes, as cards at the top right; a click opens Notes on a note, the header drags it (see §5, *Stickies*). Reads `SD:/Notes`; writes `SD:/apps/stickies.app/config.ini`. |
 | **dock** (Dock) | The desktop's dock at the bottom: the drawers (a group's main app, the strip above opens the group's apps), the workspaces, lock / Control Panel / power, the Terminal, the File Viewer, the Trash (see §5, *The dock*). Reads `SD:/etc/dock.ini` (the Panel applet writes it). |
 | **lock** (Lock Screen) | The locked screen (the dock's padlock): the time and the date full screen; a click or a key unlocks it, or a PIN from `SD:/etc/lock.ini` (`pin = 1234`) then Enter (see §5). |
-| **fileviewer** (File Viewer) | NeXTSTEP-style column browser with a clickable path bar, file previews and copy/cut/paste (see §9). |
+| **fileviewer** (File Viewer) | NeXTSTEP-style column browser with a clickable path bar, file previews and copy/cut/paste (see §9). The window resizes; in pocket its places are a side panel (a drawer in portrait). In English and French. |
 | **terminal** | Terminal/shell (see §7). |
 | **Gamepad** (`padconf`) | A Control Panel applet (alone: a window of its own). The USB gamepads (Xbox 360 / One, PlayStation 3 / 4, Switch Pro and any USB HID gamepad; up to 4). Tabs **Pad 1–4** (or keys 1–4): the pad's USB ids and which mapping it uses, its buttons (numbered, lit while held), axes and hats live, and on a drawn pad **what the apps see**. **Pad ▸ Map Buttons...** (**M**): press each button when asked (the d-pad, then the bottom / right / left / top face buttons, the shoulders L1 / R1, the triggers L2 / R2 — buttons or analog triggers, both are recognised — Select, Start, the sticks' clicks, Home); **Esc** = the pad has none, **Backspace** = cancel. It writes the pad model's section of **`SD:/etc/gamepad.ini`** — every app uses it at once. **Forget Mapping** removes it. Pads Circle knows need no mapping; other pads start from `[default]` (the usual generic layout). An axis the d-pad / left stick (or a trigger) uses is never read as the right stick too: a pad whose d-pad is on axes 3 / 4, once mapped, no longer presses the Nintendo 64's C buttons when it moves. |
-| **taskman** (Task Manager) | The system's monitor, in **tabs** (as Windows' Task Manager). **Processes**: every task in a **grid that scrolls** — its name, an app or a kernel task, its state (Running, Sleeping, Waiting), the **memory** it owns, an app's **system calls per second**; **click a title to sort** (again: the other way round; by memory, the largest first, at the start); refreshed twice a second, the selection kept. Arrows (Page Up / Down, Home, End) or a click select; **Enter**, a double click or **Bring to Front** brings the app's window to the foreground; **`k`** / **Delete** or **End Task** stops the app (not a kernel task); `r` refreshes now. **Memory** (what the Memory Monitor showed, which it replaces): the memory **in use** (and its share of the total), **free**, the **apps'**, the **system's** (the kernel, the GPU); the use **over the last minute**, drawn; **what uses it** — a bar and its legend: the system, the four largest apps, the others —; below, the RAM detected, the apps' pool and the page size. **Processor**: a panel a core — what it does (core 0: the system and every app; core 1: the sound; an app core and the app that holds it, or *free*; the network's: busy while the network works, a few per cent when it is quiet), its **load** over the last second and, drawn, over the last minute. **Network**: the rates now (**receiving**, **sending**) and the bytes received and sent since the start; the two rates over the last minute, drawn (their scale's top written beside); then **by app** — the apps that used the network, the busiest first: the bytes received and sent, the two rates; at the foot, the address, the host name and the sockets open. These are the bytes the apps exchange through their sockets (no header, nothing of the system's own traffic). On a kernel older than kapi v80 these two tabs stay grey. The window resizes (and maximises): the views follow. |
+| **taskman** (Task Manager) | The system's monitor, in **tabs** (as Windows' Task Manager). **Processes**: every task in a **grid that scrolls** — its name, an app or a kernel task, its state (Running, Sleeping, Waiting), the **memory** it owns, an app's **system calls per second**; **click a title to sort** (again: the other way round; by memory, the largest first, at the start); refreshed twice a second, the selection kept. Arrows (Page Up / Down, Home, End) or a click select; **Enter**, a double click or **Bring to Front** brings the app's window to the foreground; **`k`** / **Delete** or **End Task** stops the app (not a kernel task); `r` refreshes now. **Memory** (what the Memory Monitor showed, which it replaces): the memory **in use** (and its share of the total), **free**, the **apps'**, the **system's** (the kernel, the GPU); the use **over the last minute**, drawn; **what uses it** — a bar and its legend: the system, the four largest apps, the others —; below, the RAM detected, the apps' pool and the page size. **Processor**: a panel a core — what it does (core 0: the system and every app; core 1: the sound; an app core and the app that holds it, or *free*; the network's: busy while the network works, a few per cent when it is quiet), its **load** over the last second and, drawn, over the last minute. **Network**: the rates now (**receiving**, **sending**) and the bytes received and sent since the start; the two rates over the last minute, drawn (their scale's top written beside); then **by app** — the apps that used the network, the busiest first: the bytes received and sent, the two rates; at the foot, the address, the host name and the sockets open. These are the bytes the apps exchange through their sockets (no header, nothing of the system's own traffic). On a kernel older than kapi v80 these two tabs stay grey. The window resizes (and maximises): the views follow. In pocket's portrait each task is a card (its name; its kind, state and memory under it); in a narrow window the calls, then the memory give way. In English and French. |
 | **GPIO Lab** (`gpiolab`) | The Raspberry Pi's **40-pin header** on the screen: the pins drawn as on the board, a pin's mode (input, pull-up, pull-down, output, PWM), outputs set or blinking, a PWM's frequency and duty, a **timing chart** of the chosen pins, the **I2C bus** scanned, the **edges** logged; a **Code view**: a mini IDE where a BASIC program runs line by line and the header shows its pins live; a **simulator** when there is no hardware. See *GPIO Lab* below. |
 | **theme** (Theme) | The Control Panel's Theme applet: the colours of the frames, the windows' content, the buttons, the fields, the selection, the menu bar, the dock (a palette or any colour), the theme (Classic, Modern) and its scheme (Classic: Peach … Slate; Modern: Milk — soft greys and coloured beads for the title buttons — and Dark Coffee, its dark sister), the outline, the wallpaper (Voronoi, gradient, bubbles, a colour, a picture, a coloured pattern), on a desktop preview (see §11). Writes `SD:/etc/theme.txt` and `SD:/etc/wallpaper.ini`. |
-| **control** (Control Panel) | The settings in one window: its applets drawn inside it (see §11). Its list: the link files of `SD:/apps/control.app/applets/`. |
+| **control** (Control Panel) | The settings in one window: the applets as links at the left, the chosen one drawn in the rest (see §11); `control <applet>` opens that one. Its links: the link files of `SD:/apps/control.app/applets/`. Reads and writes `SD:/etc/control.ini` (the applet shown last). Pocket: full screen; portrait: the list, then the applet under a back bar. |
 | **dockconf** (Panel) | The Control Panel's Panel applet: the dock's drawers (every category of the apps: their order, main app, hidden or not), launchers and workspaces (see §11). Writes `SD:/etc/dock.ini`. |
 | **soundconf** (Sound) | The Control Panel's Sound applet: the output, the master volume, mute, a test sound, and the mixer — each playing program's own volume (see §11). Writes `SD:/etc/sound.ini` and `SD:/etc/mixer.ini`. |
 | **printconf** (Printers) | The Control Panel's Printers applet: the printers, the default one, a test page, the print queue (see §11 *Printing*). Talks to `printd`; `SD:/etc/printers.ini`. |
+| **clockd** (Clock Service) | The Clock's **alarm service**, no window (started at boot by `SD:/etc/autostart`, `run clockd`; the Clock starts it when it does not run): reads `SD:/apps/clock.app/alarms.txt`, rings each alarm on its minute — the Clock opened (or told, when it runs) with the ring card —, rings a timer the Clock handed over when it closed, says at its start the once alarms missed while the Pi was off (the last 12 hours), and keeps the system's clock on the summer time of the zone chosen in Language & Region. Writes nothing of the Clock's; writes `timezone=` in `SD:/etc/system.ini` on the summer time's nights. |
 | **printd** (Print Service) | The print queue's service, no window (started at boot by `SD:/etc/autostart` and when an app prints): prints the jobs of `SD:/var/spool/print` — PDF files, network printers (IPP) — and notifies. Reads and writes `SD:/etc/printers.ini`. |
 | **preloadconf** (Preload) | The Control Panel's Preload applet: the programs loaded at boot and kept in memory (see §11). Reads the apps' `app.txt` and `SD:/bin`; writes `SD:/etc/preload.ini`. |
 | **langconf** (Language & Region) | The Control Panel's Language & Region applet: the language of the programs (English, Français) and the time zone, kept in `SD:/etc/system.ini` (`language=`, `zone=`, `timezone=`) (see §11). Its words: `SD:/apps/langconf.app/lang/fr.txt`. |
@@ -2050,6 +2370,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **inidemo** | Demonstration of the `.ini` reader (displays values from `config.ini`). |
 | **archiver** | The **archive manager** (on the command line: `zip` / `unzip`, §8): ZIP archives opened, browsed as folders, extracted (the selection or all; the archive's folders kept, from the current folder down, or flat), changed — files and folders **dropped from the File Viewer go into the folder under the pointer**, Add Files, Delete, Rename, New Folder; a file opened from the archive and saved is put back. 7z, tar and RAR next. See *Archiver, the archive manager* (§9). Files: `recent.txt` in `SD:/apps/archiver.app`. |
 | **irc** | The **IRC client**, a messaging app's look: the server (a combo box of the servers used) and your **nickname** on top — sent at once on connecting, `nickname_` tried when it is taken —, your conversations on the left (unread counts), a channel's messages grouped by author under coloured avatars, its users on the right; **Rooms** lists the server's channels (search, minimum of users, sort; double-click to join). A private conversation opens in a **window of its own**, with bubbles, as a messenger's. Files: `config.ini`, `servers.txt`, `nick.txt` in `SD:/apps/irc.app`. See *IRC, the chat client* below. Needs the network up (see §3). |
+| **telegram** | **Telegram**, the instant messenger in the way of **Windows Live Messenger**: your contact list on the left (your picture in its glass frame and your status, Favourites, Conversations with their last message and unread count, Contacts and who is online), the conversation on the right ("Alice says:", the times and the read ticks, the display pictures, **emoticons** drawn as pictures — the picker, or typed `:)` `;)` `(Y)` `<3`), notifications for the other conversations; each conversation in **a window of its own** (or beside the list: **View** menu). Your real Telegram account (phone number, code, cloud password); `telegram --demo` to look without one. Files: `config.ini`, `session.dat`, `cache/` in `SD:/apps/telegram.app`. See *Telegram, the instant messenger* below. Needs the network up (see §3). |
 | **jet** (Jet Browser) | **Jet Browser**, the Onyx web browser, on **WebKit** (the dock's Internet drawer, or `run jet [address]`): `http://` and `https://`, JavaScript, video and sound, one page per window — its own section below, *Jet Browser (`jet`)*. (Until 2026-10-04 Jet was a NetSurf port, and this browser was the package **web**: `pkg update jet` brings the new one; `pkg delete web` then removes the old copy.) |
 | **wpaconf** (Wi-Fi Settings) | A Control Panel applet (alone: a window of its own). Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID — a combo box: **Scan** lists the networks around (about 3 s), pick one with its arrow (or Down / Up) and the proto / key mgmt follow its security (an open network gets `key_mgmt=NONE`, no password) — password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** rewrites the file; **Save & Reboot** writes it then restarts so the kernel re-reads it at boot (the only way new credentials take effect); **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |
 | **Lisa** | A chat with an AI assistant (a modern *Eliza*), through the **Groq** API over HTTPS. Type in the box at the bottom: **Enter** sends, **Shift+Enter** starts a new line; Lisa's answer appears in the conversation above (word-wrapped; "Lisa is thinking..." meanwhile). Every request sends Lisa's **role** and the **whole conversation**, so she keeps the context. Menus: **Chat** ▸ New Conversation (^N), Save Transcript... (^S); **Edit** ▸ Copy (the selected text), Paste, Copy Last Answer; **Settings** ▸ Edit Configuration... (opens `config.ini` in tinypad). **Setup**: get a free API key at console.groq.com and put it in `SD:/apps/lisa.app/config.ini` as `key = gsk_...` (see `config.ini.example` in the same folder: `model`, `role`, `temperature`, `max_tokens`). That file holds your key: keep it private — it is never committed. Needs the network up (see §3). |
@@ -2130,6 +2451,137 @@ Pinning a note while Stickies is hidden pins it only (Stickies shows it once sho
 | `SD:/etc/autostart` | `run stickies` (or `#setup: run stickies` on a new card), added by *View ▸ Show Stickies* when missing |
 
 Deleted notes are in the Trash (`SD:/.Trash`, the dock's Trash: restore one there).
+
+### Clock, the time, alarms, a timer and a stopwatch (`clock`)
+
+The **Clock** tells the time here and in the cities you follow, wakes you with **alarms that ring even when the
+Clock is closed**, counts down with a kitchen **timer** and measures with a **stopwatch**. In the dock's
+**Productivity** drawer (*Horloge* in French: the window's title; the dock shows `app.txt`'s *Clock*), or
+`run clock [world | alarms | timer | stopwatch]`. It speaks the system's language (English or French: Control
+Panel ▸ Language & Region), the dates included (*lundi 28 septembre 2026*, *Tous les jours*). One Clock at a time:
+starting it again (the dock, the menu bar's bell, `run clock alarms`) brings the running one forward on that tab.
+
+![Clock, World](../screenshots/clock-world.png)
+*World: here (Brussels, UTC+2, summer time) and three cities, Tokyo chosen.*
+
+**The window** (560 × 440 at least; it resizes and maximises, its size kept) has four tabs under a segmented
+bar — **World**, **Alarms**, **Timer**, **Stopwatch** —, the one of last time shown at the start. Each tab has a
+status line at its foot and its buttons at the right. The dialogs are cards over the window (the clock goes on
+under them).
+
+**World.** *Here*, big: the time with its seconds, the date, the city of the zone chosen in Language & Region,
+its offset (*UTC+2*) and *Summer time* when it is. **View ▸ Analogue Clock** shows a clock face beside the time
+instead (**View ▸ Digital Clock**: back; kept in `config.ini`). Under it, the **cities** you follow (up to 12):
+each with a sun or a moon (day or night there), its difference to here (*+7 h*, *−6 h*, *Same time*), its offset,
+*Tomorrow* / *Yesterday* when its day is not yours, and its time. **Add City** (Ctrl+N) opens *Add a City*: the
+zones not followed yet with their time and offset; type to filter (*dub*, *ath* — the French names too), **Enter**
+or a double click adds it, Esc cancels. **Remove** (Delete) takes the city chosen away, **▲ / ▼** (Ctrl+Up /
+Ctrl+Down) move it; Up / Down / Home / End choose one. The cities are SystemKit's zones (the summer time of each
+counted at the instant: on the night it changes there, the city's time changes then). With **no time zone
+chosen** the tab says *Time zone not set* with a **Language & Region…** button (it opens the applet), and the
+cities show only their offset.
+
+![Clock, the analogue face](../screenshots/clock-analogue.png)
+![Add a City](../screenshots/clock-cities.png)
+*View ▸ Analogue Clock; Add a City (Ctrl+N), the zones not followed yet.*
+
+**Alarms.** At the top, the **next alarm** (*Next alarm: today 14:30 — in 1 h 56 min*; *Snoozed until 12:44 —
+School*; *No alarm set*): a click chooses it in the list. The list (sorted by time) shows each alarm's time, its
+label, its days (*Once*, *Every day*, *Weekdays*, *Weekends*, *Mon, Wed, Fri*) and an on / off switch; an alarm
+off, or a once alarm gone by, is greyed; a row says *Snoozed until 12:44*, *Missed at 07:00* or *Invalid* (a line
+of `alarms.txt` written wrong by hand: never rung, kept as it was). **New Alarm** (Ctrl+N; 20 at most), **Edit**
+(Enter, or a double click), **Delete** (Delete: no question), **Space** turns the alarm chosen on or off.
+
+The **alarm editor** (*New Alarm* / *Edit Alarm*): the time (the hours and minutes boxes: type or use the arrows;
+*Next: tomorrow 07:00* under them), the **label** (40 characters), the **days** (seven toggles, *Every day*,
+*Weekdays*; none chosen: **once**, on the next 07:00 to come), the **sound** (**Chimes**, **Beeps**, **Marimba**;
+**Test** plays it once), then **OK** (Enter) or **Cancel** (Esc); **Delete** when editing. Each change is written at
+once and clockd told.
+
+![Clock, Alarms](../screenshots/clock-alarms.png)
+![The alarm editor](../screenshots/clock-edit.png)
+*Alarms: the next one, three alarms (Gym off); the editor on School, weekdays, Chimes.*
+
+**When an alarm rings** (the Clock open or closed — `clockd` rings it within a second of its minute): a
+notification *Clock — 07:00 School*, the Clock comes forward on its Alarms tab with the **ring card** — a bell, the
+time, the label, its days and sound — and the sound plays in a loop. **Snooze 10 min** (Enter) rings it again 10
+minutes later (*Snoozed until …* on its row and in the next-alarm line; the minutes: `snooze =` in `config.ini`,
+1 to 30); **Stop** (Esc) ends it (a once alarm turns off, a repeating one waits for its next day). Not answered
+within **2 minutes**: the sound stops, *Missed alarm: 07:00 School* is notified and the row says *Missed at 07:00*.
+A Clock started only to ring closes by itself after the answer. No sound can be heard (no output, or another
+program — the Media Player — holds it): the card says *Sound unavailable* (*… the sound output is busy*), the
+card and the notification still come.
+
+![An alarm ringing](../screenshots/clock-ring.png)
+*An alarm ringing: Snooze 10 min (Enter) or Stop (Esc); here the PC has no sound.*
+
+**What rings and when** (`clockd`): an alarm rings **once** on its minute — never twice, also when the file
+changes; a **once** alarm rings on its day and then turns off; the days are the calendar days of the wall clock
+the menu bar shows. An alarm whose minute went by **while the Pi was off** (or in the first 90 s after the boot,
+before the clock is trusted) is not rung late: when `clockd` starts it notifies the once alarms missed in the
+last 12 hours (*Missed alarm: 07:00 School*, no sound; *Missed at* on the row). On the night the **summer time
+begins**, an alarm inside the skipped hour (02:30) does not ring that day; on the night it **ends**, the repeated
+hour rings nothing twice.
+
+**Timer.** A ring shows the time left, shrinking from 12 o'clock, *of 05:00* and *Ends at 12:38* (the wall time it
+will ring). At the right the **duration** (hours, minutes, seconds: locked while it runs), five **presets** (1, 3,
+5, 10, 15 min: a click sets the duration, a double click sets it and starts), **Start** / **Pause** / **Resume**
+(Space) and **Reset** (R, not while it runs). At zero, **Time's up**: a notification *Clock — Timer — 05:00 done*,
+the Chimes in a loop, the card **Stop** (Enter or Esc: back to the duration) or **+1 min** (+ or =: one more
+minute); unanswered 2 minutes, the sound stops. The duration is kept. **Closing the Clock while the timer runs
+asks nothing: it goes on** — `clockd` rings it (*Time's up* then comes by itself); the Clock reopened before its
+end shows it running. A paused timer is kept paused.
+
+![Clock, Timer](../screenshots/clock-timer.png)
+![Time's up](../screenshots/clock-timesup.png)
+*The timer running (5 min preset); Time's up.*
+
+**Stopwatch.** The time big (*00:36.68*), the lap running under it; **Start / Stop** (Space), **Lap** (L, while it
+runs), **Reset** (R, stopped). The laps, newest first: the lap, its time, the total; from three laps the
+**fastest** in green (*▲ Fastest*), the **slowest** in red (*▼ Slowest*). **Copy Laps** (Ctrl+C) puts them on the
+clipboard as tab-separated text (*Lap · Lap time · Total*, in the system's language: a spreadsheet takes it).
+Closing keeps it: reopened it goes on (across a restart too when the clock was set both times; else it comes back
+stopped at its time).
+
+![Clock, Stopwatch](../screenshots/clock-stopwatch.png)
+*The stopwatch stopped after three laps: lap 2 the fastest, lap 3 the slowest.*
+
+| Menu | Items |
+|---|---|
+| View | World (Ctrl+1), Alarms (Ctrl+2), Timer (Ctrl+3), Stopwatch (Ctrl+4), Next Tab (Ctrl+Tab; Shift: back), Analogue Clock, Digital Clock |
+| Alarm | New Alarm… (Ctrl+N), Edit Alarm… (Enter), Turn On / Off (Space), Delete Alarm (Delete) |
+| City | Add City… (Ctrl+N), Remove City (Delete), Move up (Ctrl+Up), Move down (Ctrl+Down) |
+| Timer | Start / Pause (Space), Reset (R), 1 minute, 3 / 5 / 10 / 15 minutes |
+| Stopwatch | Start / Stop (Space), Lap (L), Reset (R), Copy Laps (Ctrl+C) |
+
+The letter keys and Space act when no field has the focus; in a card, **Enter** is its default (OK, Add, Snooze,
+Stop), **Esc** cancels, **Tab** goes to its next control. **Ctrl+Q**, Clock ▸ Quit and the close box close at once,
+nothing lost (the timer handed to clockd, the stopwatch kept).
+
+**clockd**, the alarm service (no window; `run clockd` in `SD:/etc/autostart`, after `notifyd`; the Clock adds
+the line if a card updated from an older one lacks it, and starts clockd when it does not run). It reads the
+Clock's `alarms.txt` (again when the Clock says so, and when the file changed — a hand edit is seen within 30 s),
+looks at the clock twice a second, and hands each ring to the Clock — which shows it, in the system's language
+(the Clock cannot be started: clockd's own notification, the time and the label). It also keeps the **system's
+clock on the summer time** of the zone chosen in Language & Region (§11).
+
+**Files**:
+
+| File | What |
+|---|---|
+| `SD:/apps/clock.app/alarms.txt` | the alarms (written by the Clock only; clockd reads it): one `[alarm]` block each — `id`, `time = 07:00`, `label`, `on = 1`, `days = mon tue wed thu fri` (empty: once, on `date = 20260929`), `sound = chimes \| beeps \| marimba`, `snooze = 202609290710` (it rings again then), `missed =` (a ring not answered); a `[timer]` block (`end`, `set`, `utc`, `label`) while a timer handed to clockd runs. Keys the Clock does not know are kept. |
+| `SD:/apps/clock.app/config.ini` | `[clock]`: `tab`, `cities = Tokyo,New York,London`, `snooze` (minutes, 1–30), `timer` (the duration, seconds), `face = digital \| analogue`, `width`, `height`; a paused timer `timer_left`, `timer_of`; the stopwatch `sw_run`, `sw_start`, `sw_base`, `sw_total`, `sw_tick`, `sw_utc`, `sw_laps` |
+| `SD:/etc/system.ini` | read: `language=`, `zone=`, `timezone=`; written by clockd: `timezone=` on the summer time's nights |
+| `SD:/etc/autostart` | `run clockd` (added by the Clock when missing) |
+
+**In French.** With the system in French (Control Panel ▸ **Language & Region**, §11) everything is in French — the
+tabs (*Monde, Alarmes, Minuteur, Chronomètre*), the dates, the days (*lun., mer., ven.*), the cities that have a
+French name (*Bruxelles, Londres*), the notifications (*Horloge — Alarme manquée : 07:00 École*) and the laps'
+header copied (*Tour · Temps du tour · Total*); `alarms.txt` keeps the same English tokens (`mon`, `chimes`).
+
+![Clock in French](../screenshots/clock-alarms-fr.png)
+![Le minuteur](../screenshots/clock-timer-fr.png)
+*In French: Alarmes; le Minuteur.*
 
 ### Letters, the word processor (`letters`)
 
@@ -2807,7 +3259,16 @@ click shows the folders watched) and the page,
 and at the bottom, always, **the bar of what plays**: the cover (a click: *Now playing*), the song and
 its ♥ (a favourite), **shuffle**, **previous**, **play / pause**, **next**, **repeat** (all, one, off),
 the position (drag it), the queue, the **mini player**, the volume (drag it, or the wheel; a click on
-the speaker mutes).
+the speaker mutes). Media Player speaks the **system's language** (English or French: Control Panel ▸
+Language & Region).
+
+**In the pocket and console modes** (the same program): the sidebar is a **rail of icons** in landscape
+(the pointer or the focus over it shows the names; a screen at least four times its width keeps it
+whole), a **drawer** in portrait (the tab at the left edge opens it, a place chosen closes it) and the
+**column** of big rows in console (L1 / R1: the next place). The bar of what plays follows the window's
+width: a shorter position line under 1000 pixels; under 760 (portrait) the line across the bar, the
+cover alone at the left (a click: *Now playing*), the queue and the speaker at the right — no mini
+player, no volume line (the wheel still changes it).
 
 | | |
 |:---:|:---:|
@@ -3089,6 +3550,14 @@ The **Calendar** keeps your **appointments** and your **tasks** (its text drawn 
 DejaVu Sans: accents and other scripts as typed). On top: **New event**, **Today**,
 **<** and **>** (the previous / next day, week or month), the period shown, and **Day / Week /
 Month**.
+The Calendar speaks the **system's language** (English or French: Control Panel ▸ Language &
+Region): the days, the months and a date's order too (*Wednesday, October 9, 2026* / *Mercredi 9 octobre
+2026*) — not the names of the calendars it made at first (*Work*, *Personal*...: they are yours to rename).
+
+**In the pocket and console modes** (the same program) the left side — the month, the calendars, the
+tasks — is a **drawer**: the tab at the window's left edge opens it over the period, a click beside it
+closes it (a wide screen, 1280 × 720 and more, keeps it whole). In a narrow window the toolbar keeps *New
+event*, **<** **>** and *Day / Week / Month*; *Today* and the period's title wait behind its **»**.
 
 **Day and Week** show the hours down the side (the evening and the night a shade darker), the
 week number in the corner, today's date in a circle and **now as a red line**. Each appointment
@@ -3164,9 +3633,17 @@ far it is (*Thumbnails 120 / 2814*); the window stays usable meanwhile.
 the picture (its EXIF), else a date in the file's name (`IMG_20260927_164200.jpg`,
 `Screenshot 2026-09-27 at 16.42.00.png`). A photo taken standing is shown standing. At the right the
 **years**: click or drag there to jump through thousands of photos. The slider in the toolbar makes the
-thumbnails bigger or smaller (Ctrl + / Ctrl −). At the left: **All photos**, **Favourites**, **Recently
-added** (the last 30 days), the **albums** (*Albums* shows them all, with their covers), the **folders**.
-The **search** finds a name, a date (`september`, `2025`, `saturday`), a camera, an album, a description.
+thumbnails bigger or smaller (Ctrl + / Ctrl −). At the left, each with its count: **All photos**,
+**Favourites**, **Recently added** (the last 30 days), the **albums** (*All albums* shows them all, with
+their covers; *New album...*), the **folders** (*Add a folder...*); a right click on an album or a folder:
+its menu. The **search** finds a name, a date (`september`, `2025`, `saturday`), a camera, an album, a
+description. Photos speaks the **system's language** (English or French: Control Panel ▸ Language &
+Region) — the days and months too, and the search takes them in that language.
+
+**In the pocket and console modes** (the same program) the left column is a **rail of icons** in
+landscape (the pointer or the focus over it shows the names and the counts; a wide screen keeps it
+whole), a **drawer** in portrait (the tab at the left edge) and the **column** of big rows in console
+(L1 / R1: the next place).
 
 | | |
 |:---:|:---:|
@@ -3364,6 +3841,15 @@ Mail is doing. In the middle the **conversations** by day (Today, Yesterday, thi
 messages, the subject, the first words, when, a paper clip, a star, the account's stripe; *All* /
 *Unread*. At the right the conversation. The **toolbar**: *New message*, Reply, Reply all, Forward,
 Archive, Delete, Junk, Star, the **search** (who, subject, text, in every account), *Check now*.
+Mail speaks the **system's language** (English or French: Control Panel ▸ Language & Region) — its
+wizard, its messages and the line a reply quotes (*On …, … wrote:*) too.
+
+**In the pocket and console modes** (the same program) the left column is a **rail of icons** in
+landscape when the screen is narrow (the accounts' coloured marks among them; the names under the
+pointer or the focus), a **drawer** in portrait (the tab at the left edge) and the **column** in console
+(L1 / R1: the next place). In a **narrow window** (portrait) Mail shows **one pane at a time**: the
+conversations, then the one opened across the window — the toolbar's **‹** or **Esc** comes back to the
+list; *New message* is a pen alone and the search shorter.
 
 | | |
 |:---:|:---:|
@@ -3475,6 +3961,151 @@ Plain-text IRC only (port 6667: there is no TLS in IRC yet). The text is UTF-8 o
 Latin-1 on the screen (the font's: a character beyond it shows as `?`); colours and bold of
 mIRC are removed.
 
+IRC speaks the **system's language** (English or French: Control Panel ▸ Language & Region) — its own
+words; what the server and the people say stays as sent. **In the pocket and console modes** (the same
+program) the conversations at the left are a **rail** in landscape on a narrow screen (a conversation's
+first letter, a dot when it has something unread; the names under the pointer or the focus), a **drawer**
+in portrait (the tab at the left edge) and the **column** in console (L1 / R1: the next conversation);
+the unread lines are counted in a badge. The desktop keeps its tree and its divider.
+
+
+### Telegram, the instant messenger (`telegram`)
+
+![Telegram](../screenshots/telegram.png)
+*Telegram with made-up conversations (`telegram --demo`): Alice's open, she is typing; the group
+"Onyx builders" pinned in the Favourites with 3 unread messages.*
+
+**Telegram for Onyx** is a client of your real **Telegram** account, drawn in the way of **Windows
+Live Messenger**: the sky-blue headers, the pictures in glass frames whose colour says the status
+(green online, orange away a moment, grey offline), the little buddies of the contact list, "Alice
+says:" over what she wrote, the emoticons as pictures. It talks to Telegram's servers itself
+(MTProto 2.0, Telegram's open API: no other program needed), through the WLAN. It is an
+**unofficial** client: Telegram allows them, with a key of their own (below).
+
+**The app's key.** Telegram asks every app for a key of its own (an *api_id* and an *api_hash*, made at
+my.telegram.org). Telegram for Onyx has its own built in: there is nothing to give. (Another key can be put in
+`SD:/apps/telegram.app/config.ini`: `api_id = …`, `api_hash = …`.)
+
+![Telegram, the sign-in](../screenshots/telegram-signin.png)
+*The sign-in: the phone number, and the status to sign in with.*
+
+**Signing in.** Your **phone number** with its country code (`+33 6 12 34 56 78`); **Sign in as**:
+*Online* or *Appear offline* (a click changes it). Telegram sends a **code** — in the Telegram app
+of your phone, or by SMS —: type it. If your account has a **cloud password** (two-step
+verification), it is asked next (its hint shown; it is checked with SRP: the password itself never
+leaves Onyx). A number without an account: your **first name** (and last name) makes one. **Use
+another number** goes back. The errors say what is wrong in plain words (a wrong code, too many
+tries: how long to wait). Once signed in, Telegram starts signed in: the session is kept in
+`session.dat` (its keys are secret: whoever has this file has your account — **Sign out** removes
+it).
+
+**The contact list (on the left).** On top, **you**: your picture, your name, your status — a click
+on *(Online)* gives *Online*, *Appear offline* and *Sign out* —, your `@username`. The search field
+keeps the conversations and contacts whose name has what you type. Then the groups, each folded or
+unfolded by a click on its title:
+- **Favourites**: your pinned conversations;
+- **Conversations**: the others, the latest first — the picture (a photo, or the initials on a
+  colour), a green dot when the person is online, the name (two little buddies for a group), the
+  time of the last message, the last message itself (*typing...* while they write), the number of
+  unread messages in a blue pill;
+- **Contacts**: your Telegram contacts, those online first — the buddy in the status's colour, the
+  name, when they were last seen.
+
+![Telegram, the contacts](../screenshots/telegram-contacts.png)
+*The Conversations folded: the contacts, who is online, who was seen when.*
+
+![Telegram, adding a contact](../screenshots/telegram-addcontact.png)
+*Adding a contact by their phone number.*
+
+**Adding a contact.** The **+** beside the search field (or **Telegram ▸ Add a Contact...**, **Ctrl+N**):
+their **phone number** with its country code, a **first name** and a last name (how they will be named in
+your list; Tab goes from one field to the next), **Add**. If the number has a Telegram account, they join
+your Contacts and their conversation opens: write to them. If not — or if its owner does not let
+strangers find them by their number (Telegram's privacy setting) — a message says so.
+
+![Telegram, someone not in the contacts](../screenshots/telegram-stranger.png)
+*A message from someone who is not in your contacts: the bar.*
+
+**When someone adds you.** Telegram has no friend requests: someone may put you in their contacts without
+you being told. When they **write** to you, their conversation comes in with a notification (with their name
+and picture); if they are not in your contacts, a yellow **bar** over the conversation says so: **Add to
+contacts** (in one click, under the name they gave themselves: no phone number needed), **Block** (asked
+first: they can no longer write to you or call you; the bar then offers **Unblock**), or the cross (the bar
+hidden, for good, as on your phone). A contact of yours who joins Telegram shows as *"... joined Telegram"*.
+
+**A window for each conversation.** Telegram opens each conversation in **a window of its own**: the main
+window keeps your list (narrowed to it), a click on a conversation or a contact opens its window — or brings
+it forward when it is open already. Several can be open side by side (up to 16), each with its line to
+write in, its emoticons, its pictures; a message that comes into a conversation whose window is open
+shows there, without a notification. A conversation's **close box** closes that window only; closing the
+**main window** ends Telegram (its conversations' windows with it). **View ▸ Conversations Beside the
+List** goes back to one window (the list on the left, the conversation on the right, as below); **View ▸
+Conversations in Their Own Windows** comes back to the windows (kept in `config.ini`: `windows=`).
+Telegram's **icon in the menu bar's status area** (its tip: the unread messages) brings the main window
+back with a **double click**, even when it was minimised.
+
+![Telegram, a conversation in its own window](../screenshots/telegram-windows.png)
+*The list in the main window, Alice's conversation in a window of its own (`telegram --demo`).*
+
+**A conversation (on the right, or in its window).** A click on a conversation or a contact opens it (**Ctrl+Up /
+Ctrl+Down**: the previous / next one). On top: the picture, the name, the status ("last seen 10 min
+ago", "14 members") or **"Alice is typing a message..."**. The messages, Messenger's way: **"Alice
+says:"** (in purple; you in blue) over what she wrote, again when the sender changes or after ten
+minutes; the time on the right, and for yours the ticks — one grey when sent, two green when read
+(a clock while it goes, a red `!` if it could not); a line with the day between the days; a group's
+events (someone joined, renamed it...) in grey; a message of only one to three emoticons drawn
+big; **photos** as pictures (a click opens one in the Image Viewer); videos, voice messages, files,
+stickers, places and polls as a labelled line; links underlined (a click opens them in **Jet Browser**). The
+wheel, **Page Up / Page Down** scroll; scrolling to the top loads the older messages. On the right,
+the **display pictures**: theirs on top, yours at the bottom (**View ▸ Hide the Display Pictures**
+gives their room to the messages).
+
+![Telegram, the emoticons](../screenshots/telegram-emoticons.png)
+*The emoticons' picker.*
+
+**Writing.** Type in the box at the bottom: **Enter** sends, **Shift+Enter** starts a new line,
+**Ctrl+V** pastes. The smiley over it opens the **emoticons**: a click puts one in (Telegram's
+emoji: your contacts see them on their phones). The old typed forms become pictures too: `:)` `:D`
+`;)` `:(` `:'(` `:P` `:O` `:@` `(H)` `:*` `:S` `:|` `:$` `<3` `</3` `(Y)` `(N)` `(*)` `(#)` `(C)`
+`(F)` `(G)` (pointing at an emoticon in the picker shows its name and typed form). While you write,
+the other side sees that you are typing.
+
+![Telegram, a picture sent](../screenshots/telegram-picture.png)
+*A picture dropped from the File Viewer, sent with its caption: on its way.*
+
+**Sending a picture.** Three ways: the **picture button** (beside the smiley: choose a file — JPEG,
+PNG, GIF, BMP, WebP, PCX), **Ctrl+V** (a picture copied — in Paint, by Screenshot... — or a picture
+file copied in the File Viewer), or **drop** a picture file on the window. It waits in the strip
+(its little view, its name and size; the cross takes it back): what you type is its **caption**, and
+**Enter** (or Send) sends both. It is sent as a photo (brought down to 1280 pixels at most, JPEG): it
+shows at once in the conversation, with *Sending... 45 %* and a bar until it is there.
+
+**Notifications.** A message in another conversation than the one shown: a notification bubble
+(*"Alice says: ..."*, a click brings Telegram back), and its unread count in the list. The menu
+bar: **Telegram** (Search **Ctrl+F**, Add a Contact **Ctrl+N**, Sign Out, Quit **Ctrl+Q**), **Status** (Online, Appear Offline),
+**View** (the display pictures), **Help** (About).
+
+![Telegram, a group](../screenshots/telegram-group.png)
+*A group: each one's name over their messages, their picture beside it.*
+
+**Files** (in `SD:/apps/telegram.app`): `config.ini` (`[telegram]`: `api_id`, `api_hash` — another key than the app's own —, `test = 1`
+for Telegram's test servers, `pictures = 0` to hide the display pictures, `windows = 0`: the conversation beside the list instead of its own window), `session.dat` (the
+account's keys: secret), `cache/` (the profile photos), `seed.bin` (the random generator's seed,
+renewed at each start), `log.txt` (what the connection did: to look at when something goes wrong).
+`telegram --demo` shows made-up conversations, without the network or an account.
+
+**What it does not do yet:** show the videos and stickers themselves (they are named), send other
+files, voice and video calls, secret chats (end-to-end: phones only), edit or delete a
+message, reactions. **Randomness:** the keys of the connection are made with a random generator fed
+from several sources (the system's, the processor's timing jitter, your typing, a seed kept from the
+previous start), as the Pi's hardware generator cannot be used yet — good, not perfect (docs/03).
+
+**In the pocket and console modes** (the same program): on a landscape screen the list and the conversation sit
+side by side as on the desktop (the contact's pictures' column shows from 640 pixels of conversation); in a narrow
+window (portrait) the list fills the screen and **a conversation opens over it, in its own window** — closing it
+(or the launcher's switcher) comes back to the list — whatever *View ▸ Conversations in Their Own Windows* says.
+
+
 ### Ledger, the accounts (`ledger`)
 
 ![Ledger](../screenshots/ledger.png)
@@ -3523,6 +4154,11 @@ line (`ledger SD:/docs/x.ledger`); started alone, Ledger opens the books it had 
 (`SD:/apps/ledger.app/last.txt`), else it welcomes you — **New company**, **Open**, or the **demo
 company** (`SD:/docs/demo-company.ledger`: *Atelier Lumen SRL*, a Brussels design studio, from January
 2025 to September 2026, 2025 closed). **File ▸ Save a Copy As...** writes a copy elsewhere.
+
+**In the pocket and console modes** (the same program) the side bar is a **rail of the pages' icons** in
+landscape on a narrow screen (the pointer or the focus over it shows the whole bar: the company, the fiscal
+year's chooser, the names), a **drawer** in portrait (the tab at the left edge) and the **column** in console
+(L1 / R1: the next page). The late documents' counts are badges in the accent colour.
 
 **The window.** At the left, the side bar: the company, the **fiscal year shown** (the lists, reports
 and the VAT follow it), the pages — **Overview**; the journals **Sales**, **Purchases**, **Bank and
@@ -4338,7 +4974,9 @@ GPIO 27 and a switch on GPIO 22 in the timing chart.*
 
 GPIO Lab shows the Raspberry Pi's **40-pin header** and lets you drive it: a quick way to try a wire, an
 LED, a button, a servo or an I2C sensor before writing a program (in BASIC: §13 *GPIO*; in C or C++:
-GPIOKit, docs/06). Start it from the dock or the app list (*Programming*).
+GPIOKit, docs/06). Start it from the dock or the app list (*Programming*). The window is **resizable** (at least
+940 × 600; filled to the screen in the pocket mode): the header keeps its column, the pin's panel, the timing chart
+and the other tabs — or the Code view's editor and console — take the rest.
 
 **Before wiring: 3.3 V only.** The band at the top says it: a GPIO pin never takes 5 V (the header's
 pins 2 and 4 are 5 V — power, not a signal), and gives at most about 16 mA — an LED goes through a
@@ -4459,6 +5097,11 @@ column on the left, the lamps in the *Outputs* column on the right, the gates be
 On the right, the **truth table** (the goal: the inputs, then the outputs; after a Check, *Yours* — the outputs
 the circuit gave — with a mark on each row), the **gate count** with what three and two stars ask, the circuit's
 depth, then **Step**, **Reset** and **Check**.
+The window is **resizable** (and filled to the screen in the pocket mode): the levels and the bench keep their width,
+the middle column takes the rest and the board grows with it, its gates, wires and names drawn bigger (at 1920 × 1080
+about twice the desktop's size). Narrower than 920 or lower than 600 pixels (a pocket's 800 × 480, the smallest
+size), the layout is compact: **Hint** and **Lesson** move to the top of the bench, Step, Reset and Check share one
+row, Undo and Redo leave the palette when it has no room (Ctrl+Z, Ctrl+Y) and the truth table's rows get shorter.
 
 **Building.** *Placing a gate*: click its button in the palette (or press **1**–**6**), then click a free place on
 the board — or drag the button onto the board. The tool goes back to *Select* after each gate. Gates stand
@@ -4558,8 +5201,8 @@ and Play is disabled — correct the file in Tinypad: the list is read again eac
 ![Pinball: a refused table](../screenshots/pinball-broken.png)
 *A player's table with a typo on line 12: the picker says why it cannot be played.*
 
-**Playing.** The playfield on the left (scaled to the window, which can be resized or maximised: the table grows
-with the height), the **panel** on the right: the table's name, the **score** and the ball (*BALL 2 / 3*), the
+**Playing.** The playfield on the left (scaled to the window, which can be resized or maximised — down to 600 × 440,
+filled to the screen in the pocket mode: the table grows with the height; the picker's preview grows too), the **panel** on the right: the table's name, the **score** and the ball (*BALL 2 / 3*), the
 **message line** (*"Ball 2: launch it!"*, the rules' messages, *MULTIBALL!*, *TILT*…), the **bonus**, the bonus
 **multiplier**, the table's **best** score, the **tilt** dots (one red a nudge), the **goal** and each of the table's
 rules as a goal — its count as dots that fill as it is reached, a check when a once-only rule is done — and the keys.
@@ -4707,6 +5350,9 @@ a text file** (the `.level` format below) is played the same way.
 ![Critters: the level picker](../screenshots/critters.png)
 *The picker: Training 1 to 3 solved (the tick and the best result), Up the Wall open and new, the rest locked; under
 My levels, a player's level refused by the reader (its error in red).*
+
+The window is **resizable** (filled to the screen in the pocket mode): the picker's list gets taller and the preview
+bigger; in play the field gets as wide as the window (more of the level seen), the bar centred under it.
 
 **The picker** (the home screen). On the left, the levels: *Training* 1–6, *Expedition* 1–6, then under *My levels
 (SD:/docs/critters)* the player's `.level` files, then a level opened from elsewhere. Each row shows its number, its
@@ -4898,6 +5544,13 @@ always give the same run, on the PC as on the Pi.
 
 ### Games
 
+**Any window size.** tetris, snake, pong, life, minesweeper, same, sokoban, 2048, Solitaire, FreeCell, Pipes and
+Invaders are drawn at their own size and **scaled to their window**: drag its frame or maximise it (in the pocket
+mode it fills the screen) and the game grows with it, its aspect kept, centred — by a whole factor when it is twice
+its size or more (sharp pixels), smoothly otherwise (a little bigger, or smaller on an 800 × 480 screen); the space
+around takes the colour of the game's edge. The mouse works on the scaled game as on the original. Circuits, Turtle
+Quest, Pinball and Critters lay themselves out again instead (their board grows, the side panels keep their width).
+
 | Game | Goal and controls |
 |---|---|
 | **tetris** | Stack the pieces. Arrows: left/right/rotate/drop; **Space**: instant drop; `r`: restart. |
@@ -4921,7 +5574,7 @@ always give the same run, on the PC as on the Pi.
 | **Teapot (GPU)** (`teapot`) | The demo of the Raspberry Pi 4's **GPU** (V3D): the Utah teapot turning, lit (6400 triangles), drawn by the GPU with a depth buffer. The top line shows the renderer (`V3D 4.2 (1 core)`), the triangles, the frames a second and the time of one frame. **Space** pause, **G** GPU / software (the same picture drawn by the CPU, to compare), **Up / Down** tilt. Without a usable GPU it draws in software and the top line says why (the details are in `kmsg`). Reads and writes no file. |
 | **GPU demo** (`gpudemo`) | The GPU's full pipeline: six **textured cubes** turning (each moved by the GPU with its own matrix), a **glass pane** in front (transparency) and **glowing sparks** (additive light). Each cube's texture has a size that the GPU stores differently (its label: `4x4 LT`, `8x8 UB1`, `16x16 UB2`, `64x64 UIF`, `256 UIF/XOR`, `100x60 UIF`); every face should show a white border, a yellow dot in a corner and a dark arrow — a scrambled face means that layout is wrong. **F** nearest / linear filtering, **C** culling (back / none / front: with *back* only the outer faces show), **B** blending on / off, **T** textures on / off, **Space** pause. The top line: the GPU, the settings, frames a second, time of a frame (and the error, if the GPU refused a frame). Reads and writes no file. |
 | **Doom** (`doom`) | id Software's Doom (the GPL source, through doomgeneric). Onyx ships **Freedoom Phase 1** (`SD:/doom/freedoom1.wad`, free content); copy your own `doom.wad`, `doom2.wad`, `doom1.wad` (shareware), `plutonia.wad` or `tnt.wad` into **`SD:/doom`** to play the original — the first found is used. Opening a `.wad` in the File Viewer starts Doom with it (a mod — a PWAD — is loaded over the game). **Arrows** move, **Ctrl** fires, **Space** opens / uses, **Alt** + arrows or **,** / **.** strafe, **Shift** runs, **1–7** weapons, **Tab** the map, **Esc** the menu, **F1–F10** as in DOS Doom (F2 save, F3 load…). **USB gamepad**: d-pad, **A** fire, **B** use, **X** run, **L / R** strafe, **Start** menu, **Select** map. The picture is Doom's 320 × 200 doubled in a 640 × 400 window; **F11** / Game ▸ **Full Screen** stretches it to the display at 4:3. Sound effects and **music** (MUS or MIDI) on the Onyx synthesizer's FM voices with the WAD's own OPL instruments (GENMIDI), like the DOS version on an AdLib / Sound Blaster. Settings in `SD:/doom/default.cfg`, saved games in `SD:/doom/savegame/<iwad>/`. Loading a 28 MB WAD takes a couple of seconds. The game runs on an **app core** (core 2 or 3) when one is free: steadier, and the rest of Onyx stays fluid. |
-| **Game Library** (`gamelib`) | A "Netflix for ROMs", laid out as the File Viewer: every GameCube (`.iso` / `.gcm`), Nintendo 64 (`.z64` / `.n64` / `.v64`), Super Nintendo (`.sfc` / `.smc`), Game Boy Advance (`.gba`), Game Boy Color (`.gbc`), Game Boy (`.gb`) and NES (`.nes`) game of the **watched folders** (**`SD:/roms`** by default) and their sub-folders, one card each — a picture of its title screen and its name (a Nintendo 64 game: a label with the name from its header; a GameCube disc: its banner). **On the left, the sidebar** (click a group's title to fold it): **Library ▸ All Games**, **Systems** — the emulators, each with its icon and its number of games: **click one to see its games only** — and **Folders** (the watched folders and their games; **Add Folder…**; right-click one: Show, Show in File Viewer, **Remove Folder**). Above, the path bar (*Game Library ▸ Super Nintendo*, the number of games; click *Game Library* for all of them); below, the status bar (the game chosen, the picture being made). The cards: one section per system; **click** one to select it, **double-click** it (or **Enter**) to play; right-click: **Play**, **Play Full Screen**, **Show in File Viewer**. Keys: arrows, Enter, Page Up / Down, **Tab** = the next system. With a **gamepad**: the d-pad moves, **Start** (or A) plays, **L / R** the previous / next system, **L2 / R2** turn a page. The pictures are made in the background the first time (each game runs a few seconds unseen; the games shown first) and cached in `SD:/apps/gamelib.app/thumbs/`. Library ▸ **Refresh** (^R) finds new ROMs. **Several folders** are watched, on any volume (e.g. `SD1:/roms` on an exFAT partition): the sidebar's Add Folder… / Folders ▸ **Add Folder...** (the folder dialog), Folders ▸ **Remove <folder>** — kept in `SD:/apps/gamelib.app/config.ini`, one `folder = <path>` line each (63 characters at most); View ▸ All Games / a system, **Play Full Screen On / Off**. The **emulators** are in no menu of the desktop (their `category` is `Emulators`): the Game Library starts the right one for a game (and an emulator started without a ROM opens the Game Library). **The systems are those of the installed emulators**: each says in its `app.txt` the systems it plays and their files' extensions (`games = Game Boy Color: gbc; Game Boy: gb`) and the place of their sections (`order = 50`) — install an emulator's package (Control Panel ▸ Packages) and its games show; remove it and they go. A game whose emulator has no picture maker here shows its emulator's icon. |
+| **Game Library** (`gamelib`) | A "Netflix for ROMs", laid out as the File Viewer: every GameCube (`.iso` / `.gcm`), Nintendo 64 (`.z64` / `.n64` / `.v64`), Super Nintendo (`.sfc` / `.smc`), Game Boy Advance (`.gba`), Game Boy Color (`.gbc`), Game Boy (`.gb`) and NES (`.nes`) game of the **watched folders** (**`SD:/roms`** by default) and their sub-folders, one card each — a picture of its title screen and its name (a Nintendo 64 game: a label with the name from its header; a GameCube disc: its banner). **On the left, the sidebar** (click a group's title to fold it): **Library ▸ All Games**, **Systems** — the emulators, each with its icon and its number of games: **click one to see its games only** — and **Folders** (the watched folders and their games; **Add Folder…**; right-click one: Show, Show in File Viewer, **Remove Folder**). Above, the path bar (*Game Library ▸ Super Nintendo*, the number of games; click *Game Library* for all of them); below, the status bar (the game chosen, the picture being made). The cards: one section per system; **click** one to select it, **double-click** it (or **Enter**) to play; right-click: **Play**, **Play Full Screen**, **Show in File Viewer**. Keys: arrows, Enter, Page Up / Down, **Tab** = the next system. With a **gamepad**: the d-pad moves, **Start** (or A) plays, **L / R** the previous / next system, **L2 / R2** turn a page. The pictures are made in the background the first time (each game runs a few seconds unseen; the games shown first) and cached in `SD:/apps/gamelib.app/thumbs/`. Library ▸ **Refresh** (^R) finds new ROMs. **Several folders** are watched, on any volume (e.g. `SD1:/roms` on an exFAT partition): the sidebar's Add Folder… / Folders ▸ **Add Folder...** (the folder dialog), Folders ▸ **Remove <folder>** — kept in `SD:/apps/gamelib.app/config.ini`, one `folder = <path>` line each (63 characters at most); View ▸ All Games / a system, **Play Full Screen On / Off**. The **emulators** are in no menu of the desktop (their `category` is `Emulators`): the Game Library starts the right one for a game (and an emulator started without a ROM opens the Game Library). **The systems are those of the installed emulators**: each says in its `app.txt` the systems it plays and their files' extensions (`games = Game Boy Color: gbc; Game Boy: gb`) and the place of their sections (`order = 50`) — install an emulator's package (Control Panel ▸ Packages) and its games show; remove it and they go. A game whose emulator has no picture maker here shows its emulator's icon. In the system's language (English or French). **In the pocket and console modes** the sidebar is a rail of the systems' icons in landscape (the names and the counts under the pointer or the focus; whole on a wide screen), a drawer in portrait (the tab at the left edge), the column of big rows in console (L1 / R1: the next place); a system with no game is greyed. |
 | **Super Nintendo** (`snesemu`) | The Super Nintendo / Super Famicom emulator. Opening a `.sfc` / `.smc` file starts it (its `app.txt`: `games = Super Nintendo: sfc smc`); without a ROM it opens the Game Library. **Arrows** D-pad, **X** = A, **Z** = B, **S** = X, **A** = Y, **Q** = L, **W** = R, **Enter** = Start, **Backspace** = Select (held), **P** pause; or a **USB gamepad** (the buttons by place, as on a Super Nintendo pad: right = A, bottom = B, top = X, left = Y, the shoulders L / R). View ▸ **Full Screen** (**F11**; **Esc** back), **Zoom 1x/2x/3x**, **Region: NTSC (60 Hz) / PAL (50 Hz)** (read from the ROM's header: a European game runs at 50 Hz), **Show Speed** (**F12**); Sound ▸ On / Off; Game ▸ Reset. The cartridge's battery RAM (e.g. Zelda: A Link to the Past's three files) is **`<rom>.sav`** beside the ROM (written every 5 s after a change and on exit). Games with an **enhancement chip** in the cartridge (Super FX: Star Fox, Yoshi's Island; SA-1: Super Mario RPG; DSP-1: Super Mario Kart, Pilotwings…) are not supported: a message says so. Runs on an **app core** when one is free, like the other emulators. |
 | **GameCube** (`gcemu`) | The Nintendo GameCube emulator — **just started**: the console's CPU (checked instruction by instruction against a reference) and chips, the graphics by the GPU, the start of a disc through its own loader; the **sound** (the game's audio stream and the Zelda games' music; Sound ▸ **Sound On / Off** — AX games are still silent) and a **memory card** in slot A, kept as **`<game>.sav`** beside the disc image (the same file as NintendoEMU's on the PC: a save moves between them), and its CPU is **recompiled** to the Pi's own code as it runs (a JIT: the integer, floating point and paired-single code; the rarer instructions still go through the interpreter — the speed on real games is being worked on: The Wind Waker, a PAL disc, runs at ~46-49 fields a second of its 50 on Outset (~23-24 frames a second of its 25: smooth on a TV), 50 in the lighter scenes; a sound that stutters is the game running below real time; a Pi 4 without a fan slows down above ~80 °C). Opening a `.iso` / `.gcm` disc image or a `.dol` program starts it (the disc is read from the file as the game asks, not loaded); the Game Library shows the discs with their banner. **Arrows** the stick, **X** = A, **C** = B, **S** = X, **A** = Y, **Z** = Z, **Enter** = Start, **Q / W** = L / R, **I J K L** the C stick, **T F G H** the D-pad, **P** pause; or a **USB gamepad**. The pictures are drawn by the GPU with the console's **TEV** turned into GPU shaders (every stage of its colour combiner computed as the console does, the textures, the alpha test — the fog, the indirect textures and the render-to-texture effects not yet); View ▸ **TEV Shaders On / Off** goes back to the older, simpler drawing (one texture, the colours computed per vertex). View ▸ **Full Screen** (**F11**), **Size 640 × 480 / 960 × 720**, **Show FPS** (**F10**: the game's frames a second and its speed against real time, in a corner), **Show Speed** (**F12**: fields/s, JIT or interpreter, `TEV` and the number of shaders made, or `GPU`; with the TEV shaders a third line tells what the graphics card did with the frame — useful in a problem report — and a fourth where the time goes: the graphics commands, the textures, the vertices, the second core's share, and the frame's drawing), **Dump the Frame (TEV)** (**F9**: the frame shown saved into `SD:/gcdump/frame_<n>.gxf`, for the developers; `gcemu <disc> --diag` does it by itself: the speed lines every second into `SD:/gcdump/diag.txt`, a frame every 60 s, and it quits after 200 s). Game ▸ **Interpreter (no JIT)** (or `--interp`) runs the plain interpreter, to compare. Runs on an **app core** when one is free, its graphics commands on a **second** one when there is one (`netcore=0` in `SD:/cmdline.txt` leaves both cores to the apps; `--gxone` keeps them on one); `--pmu`, `--jitprof` (with `--diag`), `--statlog` (the speed lines every second into `SD:/gcdump/statlog.txt`, for as long as it runs) and `--nodraw` are measures for the developers. |
 | **Nintendo 64** (`n64emu`) | The Nintendo 64 emulator — **in progress**: the CPU and the console's chips are emulated, the graphics are drawn by the **GPU** (at the window's size, sharper than the console), the **sound** of Zelda Ocarina of Time / Majora's Mask is played (other games run silent for now; Sound ▸ **Sound On / Off**) and some effects are still approximate (the title screen of Ocarina of Time shows; the rest is being worked on). Opening a `.z64` / `.n64` / `.v64` file starts it; without a ROM it opens the Game Library. **Arrows** the stick, **X** = A, **C** = B, **Z** = Z, **Enter** = Start, **Q / W** = L / R, **I J K L** the C buttons, **T F G H** the D-pad, **P** pause; or a **USB gamepad** (left stick, A = A, X = B, L2 / R2 = Z, L / R, Start, the right stick = the C buttons, the D-pad). View ▸ **Full Screen** (**F11**; **Esc** back, 4:3 centred, drawn by the GPU straight on the screen at its resolution), **Zoom 1x/2x/3x** (the window's frame follows), **Show Speed** (**F12**: frames a second, the time of a frame, GPU, software or framebuffer, the sound queued, the core), **Draw with the GPU On / Off** (off: the 3D is drawn by the processor, slowly — to tell a graphics-card problem from another one); Game ▸ Reset. The cartridge's save (SRAM / EEPROM) is **`<rom>.sav`** beside the ROM. Runs on an **app core** when one is free. |
@@ -5656,6 +6309,10 @@ the fewest instructions of your won runs (*Best: 6*, in French *Record : 6*; kep
 — F1 — the card of the level's idea, shown by itself the first time a new idea comes), the board, and the
 message bar. Above the board, the **HUD** counts what is left to do: *Coins 2 / 5*, *Gems 2 / 5* (with the colour of
 the next gem to pick, a ✓ once all are picked), *Keys 1*. The window is at least **920 × 600**.
+The window is **resizable** (filled to the screen in the pocket mode): wider than its default, the board's column
+grows with the window's height (the board's cells bigger) and the program's column takes all the rest; narrower than
+920 pixels (a pocket's 800 × 480, the smallest size), the levels and the program get narrower and the card's Hint
+and Lesson go under its text.
 
 **The turtle's words** (the French names in brackets). A program may be written **in English or in French
 whatever the system's language** (even mixed): the language — the Control Panel's **Language & Region**, §11 —

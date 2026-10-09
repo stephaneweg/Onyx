@@ -42,14 +42,17 @@ APPS = tinycalc tinypad cppdemo \
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters
+FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf pocketshell consolehome preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters clock
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom
+all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom
 # (AppKit's stubs are linked into every program: made first)
-$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf photos.elf pkgman.elf pkgd.elf printd.elf BinUtils/basic.elf: | lib/appkit_stubs.o
+# (a real prerequisite, not an order-only one: every program relinks when AppKit's stubs change -- libgen
+# rewrites them only when a slot moved. On 2026-10-08 an order-only one let the programs keep stale stubs:
+# none could start. The link lines use $< and LDFLAGS, never $^: it is not linked twice)
+$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf BinUtils/basic.elf $(KPLUG_ELFS): lib/appkit_stubs.o
 
 # ---- Shared libraries (docs/SHARED-LIBS-PLAN.md; kapi v83): position-independent code linked with
 # Runtime/lib.ld at 0 -- the kernel places it --, ONE exported symbol (Runtime/lib.vers), the export table, which is
@@ -139,6 +142,9 @@ lib/uikit/%.o: Kits/uikit/%.cpp $(UIKIT_HDR) Kits/uikit/globals.inc $(LIB_DEP)
 lib/uikit/canvas.o: Kits/uikit/canvas.cpp $(UIKIT_HDR) $(LIB_DEP)
 	@mkdir -p lib/uikit
 	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -c $< -o $@
+# The port (Kits/uikit/port/: what differs between the graphics servers -- the window driver, the server's
+# protocol; docs/POCKETUI-TECH-STUDY.md section 5): Kits/uikit/port.cpp compiles the desktop's (Elegant's).
+lib/uikit/port.o: $(wildcard Kits/uikit/port/*.h Kits/uikit/port/*.cpp Kits/uikit/port/*.inc)
 lib/uikit/imgload.o: Kits/uikit/imgload.cpp Kits/imagekit/img/imgload.hpp Kits/imagekit/imagekit.h $(LIB_DEP)
 	@mkdir -p lib/uikit
 	$(CXX) $(LIB_CXXFLAGS_NEON) -DONYX_LIB_BUILD -Wno-unused-parameter -Wno-sign-compare -c $< -o $@
@@ -151,19 +157,45 @@ Kits/uikit/layout_lock.cpp:
 uikit-layout-update:
 	$(UIKIT_LAYOUT) --update
 lib/uikit_table.S: $(UIKIT_SO_OBJ) Kits/uikit/uikit.abi ../tools/libgen/libgen.py
-	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data \
-		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$|onyx_systemkit_table$$)' --table lib/uikit_table.S --stubs lib/uikit_stubs.S --bind lib/uikit_bind.cpp $(UIKIT_SO_OBJ)
+	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data --exclude '^_ZN5uikit(4port|8internal)' \
+		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$|onyx_systemkit_table$$)' --table lib/uikit_table.S --stubs lib/uikit_stubs.S --bind lib/uikit_bind.cpp \
+		--bind-c lib/uikit_bind_c.c $(UIKIT_SO_OBJ)
 Kits/uikit/uikit.abi:
 	@touch $@
-lib/uikit_stubs.S lib/uikit_bind.cpp: lib/uikit_table.S ;
+lib/uikit_stubs.S lib/uikit_bind.cpp lib/uikit_bind_c.c: lib/uikit_table.S ;
 # (its img_load... are relays to ImageKit: that library's import stubs linked in, opened at the first picture)
 lib/uikit.so: $(UIKIT_SO_OBJ) lib/imagekit_stubs.o lib/systemkit_stubs.o lib/uikit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
+# ---- lib/pocket/uikit.so: PocketUI's UIKit (the pocket and console modes' server loads it under the name
+# SD:/lib/uikit.so: kapi_lib_open_as). The SAME objects as lib/uikit.so but the port, compiled with UK_PORT_POCKET
+# (Kits/uikit/port/port_pocket.cpp: PocketUI's protocol); its table generated against the same Kits/uikit/uikit.abi
+# with --frozen (a function new to one library only is an error: entries come through the desktop's build first),
+# no stubs nor bind of its own (the programs link the desktop's lib/uikit.imp.a: the stubs are by slot, the same for
+# both). tools/libgen/abi_same.py then checks the two tables identical slot by slot (docs/03 "One UIKit per server").
+UIKIT_POCKET_OBJ = $(patsubst lib/uikit/port.o,lib/pocket/port.o,$(UIKIT_SO_OBJ))
+lib/pocket/port.o: Kits/uikit/port.cpp $(wildcard Kits/uikit/port/*.h Kits/uikit/port/*.cpp Kits/uikit/port/*.inc) $(UIKIT_HDR) $(LIB_DEP)
+	@mkdir -p lib/pocket
+	$(CXX) $(LIB_CXXFLAGS) -DONYX_LIB_BUILD -DUK_PORT_POCKET -c $< -o $@
+lib/pocket/uikit_table.S: $(UIKIT_POCKET_OBJ) Kits/uikit/uikit.abi ../tools/libgen/libgen.py | lib/uikit_table.S
+	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data --exclude '^_ZN5uikit(4port|8internal)' \
+		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$|onyx_systemkit_table$$)' --frozen --table lib/pocket/uikit_table.S $(UIKIT_POCKET_OBJ)
+lib/pocket/uikit.so: $(UIKIT_POCKET_OBJ) lib/imagekit_stubs.o lib/systemkit_stubs.o lib/pocket/uikit_table.o lib/librt.o $(LIB_KAPI)
+	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
+lib/pocket/abi_same.stamp: lib/uikit.so lib/pocket/uikit.so lib/uikit_table.S lib/pocket/uikit_table.S ../tools/libgen/abi_same.py
+	python3 ../tools/libgen/abi_same.py --nm $(PREFIX)nm lib/uikit.so lib/pocket/uikit.so --tables lib/uikit_table.S lib/pocket/uikit_table.S
+	@touch $@
+
 # The program side: the stubs, the bind constructor, and the variables (Kits/uikit/globals.cpp).
 lib/uikit_globals.o: Kits/uikit/globals.cpp Kits/uikit/globals.inc $(UIKIT_HDR)
 	@mkdir -p lib
 	$(CXX) $(CXXFLAGS) -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -c $< -o $@
 lib/uikit.imp.a: lib/uikit_stubs.o lib/uikit_bind.o lib/uikit_globals.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+# A C program's side (the window API, uikit/win.h: rdpd, gpcdemo, el0test, wstest): the stubs and the C bind
+# (no C++ runtime, no variables handed over: the library keeps its own copy of UIKit's globals). A newlib
+# program compiles lib/uikit_bind_c.c itself with -DONYX_BIND_LIBC (its malloc) instead of this archive's bind.
+lib/uikit.imp_c.a: lib/uikit_stubs.o lib/uikit_bind_c.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
@@ -300,7 +332,7 @@ lib/imagekit.imp.a: lib/imagekit_stubs.o lib/imagekit_bind.o
 # table where the kernel copies it for every program (APPKIT_TABLE_VA, kern/kapi_abi.h): --fixed-table. No
 # state, no library runtime (so no strlen / memset of GCC's own making in it: -fno-tree-loop-distribute-patterns); built with the FPU on (some calls take floats: they pass through).
 APPKIT_TABLE_VA = 0x380008000
-lib/appkit/appkit.o: Kits/appkit/appkit.c Kits/appkit/appkit_calls.inc Kits/appkit/appkit_lib.inc Kits/appkit/appkit_ws.inc Kits/appkit/elegant.h Kits/appkit/appkit.h Runtime/lib.h ../kernel/include/kern/kapi_abi.h
+lib/appkit/appkit.o: Kits/appkit/appkit.c Kits/appkit/appkit_calls.inc Kits/appkit/appkit_lib.inc Kits/appkit/appkit.h Runtime/lib.h ../kernel/include/kern/kapi_abi.h
 	@mkdir -p lib/appkit
 	$(CC) $(AK_FLAGS) -Wall -Wno-unused-function -fno-tree-loop-distribute-patterns -fno-builtin -c $< -o $@
 Kits/appkit/appkit.abi:
@@ -378,7 +410,7 @@ lib/gpiokit.imp_c.a: lib/gpiokit_stubs.o lib/gpiokit_bind_c.o
 
 SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/fontkit.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so lib/systemkit.so lib/netkit.so lib/gpiokit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a lib/gpiokit.imp.a lib/gpiokit.imp_c.a
+libs: $(SHLIBS) lib/pocket/uikit.so lib/pocket/abi_same.stamp lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a lib/gpiokit.imp.a lib/gpiokit.imp_c.a lib/uikit.imp_c.a
 
 # The kits' descriptions for Onyx BASIC (lib/<kit>.bi -> SD:/lib/<kit>.bi; `#import filekit`): each kit's functions,
 # their places (its .abi) and their types (its headers' prototypes), by tools/kitbi/kitbi.py -- every kit of Kits/,
@@ -405,10 +437,12 @@ bin: Libs/v3d/libv3d.a Libs/gpucomp/libgpucomp.a libs
 	@$(MAKE) --no-print-directory -C BinUtils
 
 # The system's servers live in Servers/<name>/ (their own Makefile), staged to SD:/bin/<name>:
-# Elegant, the graphics server.
+# Elegant, the desktop's graphics server; PocketUI, the pocket and console modes' (both built with what they
+# share: Servers/common/, Servers/common/common.mk).
 .PHONY: servers
 servers: lib/appkit_stubs.o
 	@$(MAKE) --no-print-directory -C Servers/elegant
+	@$(MAKE) --no-print-directory -C Servers/pocketui
 
 # Apps/<name>/main.cpp -> <name>.elf. -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts so a nested source finds the user-side headers.
 # uikit toolkit: compiled once into a static library, linked into every app.
@@ -533,6 +567,16 @@ mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard Libs/mail/*.h)
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -IKits/fontkit -I$(FT_SRC)/include -I$(MAIL_MBEDTLS)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
 	       lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a -L$(MAIL_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
+# Telegram, the instant messenger in the way of Windows Live Messenger (Apps/telegram: docs/04 "Telegram"): a newlib app as
+# Mail (FreeType's text through uikit), its own MTProto 2.0 (tl.h, mtproto.h, client.h) on mbedTLS's cryptography, the API's
+# schema compiled in (schema.inc: tools/telegram/mkschema.py), FileKit's inflate (gzip_packed), uikit's image codecs, ImageKit's
+# JPEG writer (the pictures sent).
+TG_MBEDTLS ?= ../third_party/mbedtls-3.6.3
+telegram.elf: Apps/telegram/main.cpp $(wildcard Apps/telegram/*.h) Apps/telegram/schema.inc Kits/imagekit/img/imgload.hpp Kits/imagekit/img/pngsave.hpp lib/fontkit.imp.a Kits/fontkit/uikitface.h \
+	      lib/imagekit.imp.a Kits/imagekit/imagekit.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+	$(CXX) $(NL_CXXFLAGS) -DPNGSAVE_USE_IMAGEKIT -Wno-format-truncation -IKits/fontkit -I$(FT_SRC)/include -I$(TG_MBEDTLS)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       lib/imagekit.imp.a lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a -L$(TG_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
+
 # Photos, the photo library (Apps/photos: docs/photos/README.md): a newlib app as Letters (FreeType's text through
 # uikit), the image codecs (uikit's imgload), the JPEG / PNG writers (Kits/imagekit/img/pngsave.hpp), the PDF writer (Libs/pdf/pdfwrite.h).
 photos.elf: Apps/photos/main.cpp $(wildcard Apps/photos/*.h) Kits/imagekit/img/imgload.hpp Kits/imagekit/img/pngsave.hpp Libs/pdf/pdfwrite.h Kits/systemkit/clipboard.h Kits/systemkit/trash.h Kits/systemkit/wallpaper.h \
@@ -557,7 +601,7 @@ archiver.elf: Apps/archiver/main.cpp $(wildcard Apps/archiver/*.h) Kits/filekit/
 
 # The shared clipboard (docs/clipboard/README.md): clipd, its service (no window, newlib), and clipboard, its widget
 # (the dock's button; FreeType's text). The apps reach clipd through Kits/systemkit/clipboard.h (Kits/systemkit/clipproto.h).
-clipd.elf: Apps/clipd/main.cpp Apps/clipd/ring.h Kits/systemkit/clipproto.h Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+clipd.elf: Apps/clipd/main.cpp Apps/clipd/ring.h Kits/systemkit/clipproto.h Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h lib/systemkit.imp.a
 	$(CXX) $(NL_CXXFLAGS) -IApps/clipd $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< lib/systemkit.imp.a -o $@
 # The print service (docs/03 "Printing"): printd, no window, newlib -- the queue, the printers, a job's pages
 # rendered (Kits/printerkit/raster.h: FreeType; the images' codecs: uikit.so's) and sent to a network printer (Kits/printerkit/ipp.h).
@@ -568,6 +612,12 @@ clipboard.elf: Apps/clipboard/main.cpp Kits/systemkit/clipboard.h Kits/systemkit
 	$(CXX) $(NL_CXXFLAGS) -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
 	       lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a -lm -o $@
 
+# clockd (AutoDev round 6): the Clock's alarm service -- no window, newlib, as clipd; the Clock's core (the alarms
+# model, the Ringer, the wall time: Apps/clock/alarms.cpp, clocktime.cpp) compiled in; FileKit (alarms.txt) and
+# SystemKit (locale_zone_sync, notify_action) by their import libraries.
+clockd.elf: Apps/clockd/main.cpp Apps/clock/alarms.cpp Apps/clock/clocktime.cpp Apps/clock/alarms.h Apps/clock/clocktime.h Apps/clock/clock_proto.h \
+	    Kits/filekit/kvtext.h Kits/systemkit/locale.h lib/filekit.imp.a lib/systemkit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+	$(CXX) $(NL_CXXFLAGS) $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< Apps/clock/alarms.cpp Apps/clock/clocktime.cpp lib/filekit.imp.a lib/systemkit.imp.a -o $@
 # The packages (docs/pkg/README.md): pkgman, the Package Manager (the Control Panel's applet), and pkgd, the
 # update daemon (no window) -- on Libs/pkg/pkglib.h as BinUtils/pkg: HTTPS (mbedTLS), the Archiver's ZIP engine, zlib.
 PKG_MBEDTLS ?= ../third_party/mbedtls-3.6.3
@@ -815,6 +865,15 @@ pinball.elf: NL_CXXFLAGS += -ffp-contract=off
 FT_EXTRA_critters = Apps/critters/terrain.cpp Apps/critters/level.cpp Apps/critters/world.cpp Apps/critters/solution.cpp Apps/critters/progress.cpp lib/audiokit.imp.a
 critters.elf: Apps/critters/terrain.cpp Apps/critters/level.cpp Apps/critters/world.cpp Apps/critters/solution.cpp Apps/critters/progress.cpp \
 	      $(wildcard Apps/critters/*.h) Apps/games/game.h lib/audiokit.imp.a Kits/audiokit/audiokit.h Kits/filekit/kvtext.h Kits/filekit/kvtext.inc Kits/uikit/toolbar.h Kits/uikit/lcd.h
+# Clock (AutoDev round 6): its core beside the window, shared with clockd (the alarms model and the Ringer, the wall
+# time, the world rows, the timer and the stopwatch); ui.h, world.h, alarmsview.h, timerview.h, swview.h, ring.h,
+# sounds.h are the window's own headers (one translation unit with main.cpp). Its sounds: AudioKit's FM voices.
+FT_EXTRA_clock = Apps/clock/alarms.cpp Apps/clock/clocktime.cpp lib/audiokit.imp.a
+clock.elf: Apps/clock/alarms.cpp Apps/clock/clocktime.cpp $(wildcard Apps/clock/*.h) lib/audiokit.imp.a Kits/audiokit/audiokit.h \
+	   Kits/filekit/kvtext.h Kits/filekit/kvtext.inc Kits/systemkit/locale.h Kits/uikit/toolbar.h
+# The menu bar's bell (AutoDev round 6, S1): an alarm of the Clock within 24 hours -- the Clock's model read.
+FT_EXTRA_menubar = Apps/clock/alarms.cpp Apps/clock/clocktime.cpp
+menubar.elf: Apps/clock/alarms.cpp Apps/clock/clocktime.cpp Apps/clock/alarms.h Apps/clock/clocktime.h Kits/filekit/kvtext.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
 printconf.elf: lib/printerkit.imp.a Kits/printerkit/printerkit.h
 $(FT_APP_ELFS): %.elf: Apps/%/main.cpp Kits/uikit/bmp.h Runtime/umm.h Runtime/onyxpp.hpp lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a 		       Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
@@ -836,4 +895,5 @@ clean:
 	rm -rf Apps/pdf/obj Apps/koton/obj Apps/media/obj
 	@$(MAKE) --no-print-directory -C BinUtils clean
 	@$(MAKE) --no-print-directory -C Servers/elegant clean
+	@$(MAKE) --no-print-directory -C Servers/pocketui clean
 	@$(MAKE) --no-print-directory -C Ports/doom clean

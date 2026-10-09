@@ -4,8 +4,11 @@
 #include "uikit/lang.h"		// TR (the window menu's words)
 #include "uikit/font.h"		// uikit::init (load the global font family at startup)
 #include "uikit/dialog.h"		// PopupMenu (the window menu)
+#include "uikit/bmp.h"		// ui::icon_load (the status area's icon)
 #include "appkit/appkit.h"
+#include "uikit/win.h"		// the window API (uk_win_*: the port)
 #include "systemkit/systemkit.h"
+#include "uikit/internal/adapt_int.h"	// (P6: the size class, the focus told to the server, the arrows)
 
 namespace uikit {
 
@@ -100,7 +103,7 @@ void uk_pump ()
 
 void uk_present ()
 {
-	if (!uk_applet ()) { kapi_present (); return; }
+	if (!uk_applet ()) { uk_win_present (); return; }
 	if (s_apClosed) return;
 	int r[4] = { 0, 0, 0, 0 };
 	kapi_mailbox_send (s_apHost, AP_PRESENT, r, sizeof r);
@@ -129,7 +132,7 @@ Root::Root (int w, int h, const char *title) : Widget (0, 0, w, h), bg (C_BG),
   m_dispPending (false), m_winFlags (0), m_dispT (0)
 {
 	if (uk_applet ()) initApplet ();
-	else init (kapi_create_window (w, h, title));
+	else init (uk_win_create (w, h, title));
 }
 
 Root::Root (int x, int y, int w, int h, const char *title, unsigned flags)
@@ -139,7 +142,144 @@ Root::Root (int x, int y, int w, int h, const char *title, unsigned flags)
   m_dispPending (false), m_winFlags (flags), m_dispT (0)
 {
 	if (uk_applet ()) initApplet ();
-	else init (kapi_create_window_ex (x, y, w, h, title, flags));
+	else init (uk_win_create_ex (x, y, w, h, title, flags));
+}
+
+// (v94) The program's windows by their number (0: the first; uk_win_new gives the others: uikit/win.h).
+#define UK_WINDOWS	(KAPI_WS_WINDOWS_MORE + 1)
+static Root *s_win[UK_WINDOWS];
+
+// More windows than the first, only on a kernel that has them (v94): this UIKit also ran on an older one --
+// one window a program, as before (tools/pkg/packages.ini: UIKit's kapi).
+static bool uk_more_windows ()
+{
+	static int s_ok = -1;
+	if (s_ok < 0) s_ok = kapi_abi_version () >= 94 ? 1 : 0;
+	return s_ok != 0;
+}
+
+Root::Root (NewWindow, int x, int y, int w, int h, const char *title, unsigned flags)
+  : Widget (0, 0, w, h), bg (C_BG),
+    m_tipBox (0), m_mx (-1), m_my (-1), m_moveT (0), m_tipDone (true),
+    m_resizable (false), m_maxed (false), m_rx (0), m_ry (0), m_rw (w), m_rh (h),
+  m_dispPending (false), m_winFlags (flags), m_dispT (0)
+{
+	m_reserved[1] = 1;				// (not opened until made)
+	if (uk_applet () || s_win[0] == 0 || !uk_more_windows ()) return;	// (an applet, no first window, an older kernel)
+	unsigned *fb = 0;
+	int n = uk_win_new (x, y, w, h, title, flags, &fb);
+	if (n <= 0 || n >= UK_WINDOWS || fb == 0) return;
+	m_reserved[0] = (unsigned long) n; m_reserved[1] = 0;
+	s_win[n] = this;
+	int was = uk_win_select (n);
+	canvas.adopt (fb, width, height);
+	uk_window_state ((m_winFlags & WIN_FLAG_FIXED) ? UK_WIN_FIXED : UK_WIN_MENU);
+	uk_decorate_window ();
+	bg = C_BG;
+	uk_win_on_pointer (ptrEvent);		// (the same handlers: an event says its window)
+	uk_win_on_key (keyEvent);
+	uk_win_select (was);
+	hasFocus = true;
+	invalidate (true);
+}
+
+void Root::winSelect ()
+{
+	if (!uk_applet () && winOpened ()) uk_win_select (winNumber ());
+}
+
+void Root::onClose () { closeWindow (); }
+void Root::onTray (int kind) { (void) kind; }
+void Root::uk_rootReserved0 () {}
+void Root::uk_rootReserved1 () {}
+void Root::uk_rootReserved2 () {}
+void Root::onSizeClass (int sizeClass) { (void) sizeClass; }
+
+// ---- the status area's icon (v95) ----------------------------------------------------------------
+static void tray_event (unsigned long, int ev, gui_value v)
+{
+	if (ev != GUI_EVENT_TRAY || s_win[0] == 0) return;
+	Root *r = s_win[0];
+	r->winSelect ();
+	r->onTray ((int) v);
+}
+
+bool uk_tray (const char *picture, const char *tip)
+{
+	if (uk_applet () || kapi_abi_version () < 95 || picture == 0) return false;
+	int w = 0, h = 0;
+	unsigned *src = ui::icon_load (picture, &w, &h);
+	if (src == 0 || w <= 0 || h <= 0) { delete [] src; return false; }
+	static unsigned px[KAPI_TRAY_PX * KAPI_TRAY_PX];
+	const int N = KAPI_TRAY_PX;
+	for (int y = 0; y < N; y++)			// (each pixel: the mean of what it covers; the key colour see-through)
+		for (int x = 0; x < N; x++)
+		{
+			int x0 = x * w / N, x1 = (x + 1) * w / N, y0 = y * h / N, y1 = (y + 1) * h / N;
+			if (x1 <= x0) x1 = x0 + 1;
+			if (y1 <= y0) y1 = y0 + 1;
+			unsigned r = 0, g = 0, b = 0, n = 0, all = 0;
+			for (int j = y0; j < y1 && j < h; j++)
+				for (int i = x0; i < x1 && i < w; i++)
+				{
+					unsigned c = src[(long) j * w + i] & 0x00FFFFFFu;
+					all++;
+					if (c == 0x00FF00FFu) continue;
+					r += (c >> 16) & 0xFF; g += (c >> 8) & 0xFF; b += c & 0xFF; n++;
+				}
+			if (n == 0) { px[y * N + x] = 0xFF000000u; continue; }
+			unsigned t = 255 - n * 255 / (all ? all : 1);
+			px[y * N + x] = t << 24 | (r / n) << 16 | (g / n) << 8 | (b / n);
+		}
+	delete [] src;
+	return uk_win_tray_set (px, tip, tray_event) == 1;
+}
+
+void uk_tray_clear ()
+{
+	if (!uk_applet () && kapi_abi_version () >= 95) uk_win_tray_clear ();
+}
+
+void Root::closeWindow ()
+{
+	int n = winNumber ();
+	if (n <= 0 || !winOpened ()) return;		// (the first window: the program's end, uk_quit)
+	tooltipHide ();
+	if (s_win[n] == this) s_win[n] = 0;
+	uk_win_destroy (n);
+	m_reserved[1] = 1;
+	if (active () == this) active () = s_win[0];
+}
+
+Root *Root::winFirst () { return s_win[0]; }
+
+// (P6) Each of the program's windows (an applet's: its one Root) -- uikit/adapt.cpp tells them the size class.
+void internal::each_root (void (*fn) (Root *))
+{
+	if (uk_applet () || s_win[0] == 0) { if (Root::current ()) fn (Root::current ()); return; }
+	for (int i = 0; i < UK_WINDOWS; i++) if (s_win[i] != 0) fn (s_win[i]);
+}
+
+int Root::winCount ()
+{
+	int n = 0;
+	for (int i = 0; i < UK_WINDOWS; i++) if (s_win[i] != 0) n++;
+	return n;
+}
+
+void Root::paintAll ()
+{
+	if (uk_applet () || s_win[0] == 0) { Root *r = active (); if (r && !r->valid) { r->draw (); uk_present (); } return; }
+	int was = uk_win_select (-1);
+	for (int i = 0; i < UK_WINDOWS; i++)
+	{
+		Root *r = s_win[i];
+		if (r == 0 || r->valid) continue;
+		uk_win_select (i);
+		r->draw ();
+		uk_present ();
+	}
+	uk_win_select (was >= 0 ? was : 0);
 }
 
 // An applet: its Root is the host's pane (the surface's size, whatever the app asked for).
@@ -170,6 +310,7 @@ void Root::init (unsigned *fb)
 	uikit::init ();					// load the global font family once (SD:/fonts/ns-sans.fnt)
 	bg = C_BG;					// (the theme is read by now: SD:/etc/theme.txt)
 	active () = this;
+	s_win[0] = this;				// (v94) the program's first window (the latest made)
 	hasFocus = true;
 }
 
@@ -177,18 +318,32 @@ void Root::onDraw () { canvas.clear (bg); }		// client-area background
 
 void Root::attach ()
 {
-	kapi_set_pointer_handler (ptrEvent);
-	kapi_set_key_handler (keyEvent);
+	uk_win_on_pointer (ptrEvent);
+	uk_win_on_key (keyEvent);
 }
 
 bool Root::step ()
 {
 	if (uk_quit ()) return false;
 	uk_pump ();
+	internal::class_check ();			// (P6: the size class changed -- a resize, the screen turned)
 	onTick ();
 	displayTick ();
 	tooltipTick ();
-	if (!valid) { draw (); uk_present (); }
+	internal::root_tick (this);			// (P6, pocket and console: the focused control told to the server)
+	if (this != s_win[0] || winCount () <= 1) { if (!valid) { winSelect (); draw (); uk_present (); } return !uk_quit (); }
+	for (int i = 1; i < UK_WINDOWS; i++)		// (v94) the program's other windows
+	{
+		Root *r = s_win[i];
+		if (r == 0) continue;
+		r->winSelect ();
+		r->onTick ();
+		if (s_win[i] != r) continue;		// (closed by its onTick)
+		r->displayTick ();
+		r->tooltipTick ();
+	}
+	winSelect ();
+	paintAll ();
 	return !uk_quit ();
 }
 void Root::run ()
@@ -201,21 +356,41 @@ void Root::run ()
 static int s_curWant = 0, s_curShown = 0;
 void uk_cursor (int shape) { s_curWant = shape; }
 static void cursor_begin () { s_curWant = KAPI_CURSOR_ARROW; }
+static void uk_cursor_forget () { s_curShown = -1; }	// (v94) another window: its pointer set anew
 static void cursor_end ()
 {
 	if (s_curWant == s_curShown) return;
 	s_curShown = s_curWant;
-	kapi_set_cursor (s_curShown);
+	uk_win_cursor (s_curShown);
 }
 
 Root *&Root::active () { static Root *p = 0; return p; }
+
+// (P6) The left button's releases (ToolBar's "»" panel: closed after a tool was used in it).
+static unsigned s_relN; static int s_relX, s_relY;
+unsigned internal::ptr_release (int *x, int *y) { if (x) *x = s_relX; if (y) *y = s_relY; return s_relN; }
 Root *Root::current () { return active (); }
 
-void Root::ptrEvent (unsigned long, int ev, gui_value v)
+// (v94) The window an event is for: its sender is the window's number (0: the first). It becomes
+// the current one (the dialogs open in it) and the window calls act on it.
+static Root *s_evRoot;
+static Root *event_root (unsigned long sender)
+{
+	Root *r = 0;
+	if (!uk_applet () && sender > 0 && sender < (unsigned long) UK_WINDOWS) r = s_win[sender];
+	if (r == 0 && sender == 0 && s_win[0] != 0 && !uk_applet ()) r = s_win[0];
+	if (r == 0) return Root::current ();
+	if (r != s_evRoot) { s_evRoot = r; uk_cursor_forget (); }
+	r->winSelect ();
+	return r;
+}
+
+void Root::ptrEvent (unsigned long sender, int ev, gui_value v)
 {
 	static int bl = 0, br = 0, bm = 0;		// persistent button state across events
-	Root *r = active ();
+	Root *r = event_root (sender);
 	if (r == 0) return;
+	active () = r;
 	if (ev >= GUI_EVENT_PTR_MOVE && ev <= GUI_EVENT_PTR_WHEEL)		// tooltips: note the rest
 	{
 		r->tooltipHide ();
@@ -233,6 +408,7 @@ void Root::ptrEvent (unsigned long, int ev, gui_value v)
 		if (c & 4) bm = 1;
 		break;
 	case GUI_EVENT_PTR_UP:
+		if (c & 1) { s_relN++; s_relX = GUI_PTR_X (v); s_relY = GUI_PTR_Y (v); }
 		if (c & 1) bl = 0;
 		if (c & 2) br = 0;
 		if (c & 4) bm = 0;
@@ -242,13 +418,14 @@ void Root::ptrEvent (unsigned long, int ev, gui_value v)
 		return;
 	case GUI_EVENT_PTR_WHEEL:		// route a scroll notch to the widget under the cursor
 		cursor_begin ();
-		r->handleMouse (GUI_PTR_X (v), GUI_PTR_Y (v), bl, br, bm, GUI_PTR_WHEEL (v));
+		if (!r->handleMouse (GUI_PTR_X (v), GUI_PTR_Y (v), bl, br, bm, GUI_PTR_WHEEL (v)))
+			internal::sheet_scroll (r, 0, GUI_PTR_WHEEL (v) * 40);	// (P6: a dialog taller than the window)
 		cursor_end ();
 		return;
 	case GUI_EVENT_DROP:			// drag & drop (ABI v42)
 	{
 		static char data[4097];
-		int type = 0, n = kapi_drag_data (&type, data, sizeof data - 1);
+		int type = 0, n = uk_win_drag_data (&type, data, sizeof data - 1);
 		if (n > (int) sizeof data - 1) n = (int) sizeof data - 1;
 		if (n < 0) n = 0;
 		data[n] = '\0';
@@ -262,13 +439,16 @@ void Root::ptrEvent (unsigned long, int ev, gui_value v)
 		r->onDragDone (GUI_DND_PID (v), GUI_DND_FLAGS (v));
 		return;
 	case GUI_EVENT_DISPLAY_RESIZE:		// the screen's size changed (v66)
+		internal::class_dirty ();
 		r->m_dispPending = true; r->m_dispT = kapi_get_ticks ();
 		r->onDisplayResize (GUI_DISPLAY_W (v), GUI_DISPLAY_H (v));
 		return;
 	case GUI_EVENT_WINRESIZE:		// the frame dragged to a new size (v82)
+		internal::class_dirty ();
 		r->frameResize (GUI_WINRESIZE_X (v), GUI_WINRESIZE_Y (v), GUI_WINRESIZE_W (v), GUI_WINRESIZE_H (v));
 		return;
 	case GUI_EVENT_WINCTL:			// a title button (v64): the window menu, maximise
+		if (v == KAPI_FRAME_CLOSE) { if (r->winNumber () > 0) r->onClose (); return; }	// (v94) another window's close box
 		if (v == KAPI_FRAME_MENU) r->windowMenu ();
 		else if (v == KAPI_FRAME_MAXIMISE) r->maximise (!r->maximised ());
 		return;
@@ -280,18 +460,20 @@ void Root::ptrEvent (unsigned long, int ev, gui_value v)
 	cursor_end ();
 }
 
-void Root::keyEvent (unsigned long, int ev, gui_value v)
+void Root::keyEvent (unsigned long sender, int ev, gui_value v)
 {
-	Root *r = active ();
+	Root *r = event_root (sender);
 	if (r == 0 || ev != GUI_EVENT_KEY) return;
+	active () = r;
 	if (Menu::current () && Menu::current ()->shortcut (v)) return;	// menu shortcuts first
-	r->handleKey (v);
+	if (!r->handleKey (v)) internal::key_fallback (r, v);	// (P6, pocket and console: the arrows, L1 / R1)
 }
 
 // ---- tooltips -------------------------------------------------------------------------------
 // ---- the frame's buttons (v64) -------------------------------------------------------------
 void Root::setResizable (bool on)
 {
+	winSelect ();
 	m_resizable = on;
 	if (m_winFlags & WIN_FLAG_FIXED) return;		// (a fixed window: no buttons, never resized)
 	uk_window_state (UK_WIN_MENU | (m_resizable ? UK_WIN_RESIZABLE : 0) | (m_maxed ? UK_WIN_MAXIMISED : 0));
@@ -299,13 +481,14 @@ void Root::setResizable (bool on)
 	// (v82) the frame's edges and corners drag: never smaller than the smallest size
 	if (m_minW <= 0) { m_minW = width / 2; if (m_minW < 160) m_minW = 160; if (m_minW > width) m_minW = width; }
 	if (m_minH <= 0) { m_minH = height / 2; if (m_minH < 100) m_minH = 100; if (m_minH > height) m_minH = height; }
-	kapi_win_resizable (m_resizable, m_minW, m_minH);
+	uk_win_resizable (m_resizable, m_minW, m_minH);
 }
 
 void Root::setMinSize (int w, int h)
 {
 	m_minW = w; m_minH = h;
-	if (m_resizable && !(m_winFlags & WIN_FLAG_FIXED)) kapi_win_resizable (1, m_minW, m_minH);
+	winSelect ();
+	if (m_resizable && !(m_winFlags & WIN_FLAG_FIXED)) uk_win_resizable (1, m_minW, m_minH);
 }
 
 // The frame was dragged to a new place and size (the kernel showed its outline): the canvas made
@@ -313,15 +496,16 @@ void Root::setMinSize (int w, int h)
 void Root::frameResize (int x, int y, int cw, int ch)
 {
 	if (!m_resizable || cw < 1 || ch < 1) return;
+	winSelect ();
 	if (cw != width || ch != height)
 	{
 		int stride = cw;
-		unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+		unsigned *fb = uk_win_resize2 (cw, ch, &stride);
 		if (fb == 0) return;
 		canvas.adopt (fb, cw, ch, stride);
 		width = cw; height = ch;
 	}
-	kapi_move_window (x, y);
+	uk_win_move (x, y);
 	m_maxed = false;				// (no longer the work area's size)
 	layout ();
 	invalidate (true);
@@ -333,8 +517,9 @@ void Root::frameResize (int x, int y, int cw, int ch)
 void Root::maximise (bool on)
 {
 	if (!m_resizable || on == m_maxed) return;
+	winSelect ();
 	struct kapi_win_geom g;
-	if (kapi_win_geometry (&g) != 0) return;
+	if (uk_win_geometry (&g) != 0) return;
 	int x, y, cw, ch;
 	if (on)
 	{
@@ -344,10 +529,10 @@ void Root::maximise (bool on)
 	else { x = m_rx; y = m_ry; cw = m_rw; ch = m_rh; }
 	if (cw < 1 || ch < 1) return;
 	int stride = cw;
-	unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+	unsigned *fb = uk_win_resize2 (cw, ch, &stride);
 	if (fb == 0) return;
 	canvas.adopt (fb, cw, ch, stride);
-	kapi_move_window (x, y);
+	uk_win_move (x, y);
 	m_maxed = on;
 	width = cw; height = ch;
 	layout ();					// (the anchors, the layouts)
@@ -360,8 +545,9 @@ void Root::maximise (bool on)
 void Root::fitWorkArea ()
 {
 	if (m_maxed) return;
+	winSelect ();
 	struct kapi_win_geom g;
-	if (kapi_win_geometry (&g) != 0 || g.aw <= 0 || g.ah <= 0) return;
+	if (uk_win_geometry (&g) != 0 || g.aw <= 0 || g.ah <= 0) return;
 	int fw = g.w - g.cw, fh = g.h - g.ch;		// the frame: title bar, borders
 	int cw = m_resizable && g.w > g.aw ? g.aw - fw : width, ch = m_resizable && g.h > g.ah ? g.ah - fh : height;	// (not resizable: moved only)
 	int x = g.x, y = g.y;
@@ -373,7 +559,7 @@ void Root::fitWorkArea ()
 	if (cw != width || ch != height)
 	{
 		int stride = cw;
-		unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+		unsigned *fb = uk_win_resize2 (cw, ch, &stride);
 		if (fb == 0) return;
 		canvas.adopt (fb, cw, ch, stride);
 		width = cw; height = ch;
@@ -382,7 +568,7 @@ void Root::fitWorkArea ()
 		uk_decorate_window ();
 		onResized ();
 	}
-	if (x != g.x || y != g.y) kapi_move_window (x, y);
+	if (x != g.x || y != g.y) uk_win_move (x, y);
 }
 
 // GUI_EVENT_DISPLAY_RESIZE, ~0.3 s later (the menu bar and the dock placed again: the work area
@@ -392,11 +578,12 @@ void Root::displayTick ()
 {
 	if (!m_dispPending || kapi_get_ticks () - m_dispT < 30) return;
 	m_dispPending = false;
+	winSelect ();
 	if (m_winFlags & (WIN_FLAG_BORDERLESS | WIN_FLAG_FIXED)) return;	// (the menu bar, the dock...: onDisplayResize;
 							//  a fixed window: the kernel centred it)
 	if (!m_maxed) { fitWorkArea (); return; }
 	struct kapi_win_geom g;
-	if (kapi_win_geometry (&g) != 0 || g.aw <= 0 || g.ah <= 0) return;
+	if (uk_win_geometry (&g) != 0 || g.aw <= 0 || g.ah <= 0) return;
 	int fw = g.w - g.cw, fh = g.h - g.ch;
 	if (m_rw > g.aw - fw) m_rw = g.aw - fw;		// (Restore: inside the new work area too)
 	if (m_rh > g.ah - fh) m_rh = g.ah - fh;
@@ -409,7 +596,7 @@ void Root::displayTick ()
 	if (cw != width || ch != height)
 	{
 		int stride = cw;
-		unsigned *fb = kapi_resize_window2 (cw, ch, &stride);
+		unsigned *fb = uk_win_resize2 (cw, ch, &stride);
 		if (fb == 0) return;
 		canvas.adopt (fb, cw, ch, stride);
 		width = cw; height = ch;
@@ -418,7 +605,7 @@ void Root::displayTick ()
 		uk_decorate_window ();
 		onResized ();
 	}
-	if (g.x != g.ax || g.y != g.ay) kapi_move_window (g.ax, g.ay);
+	if (g.x != g.ax || g.y != g.ay) uk_win_move (g.ax, g.ay);
 }
 
 // The workspaces' names (SD:/etc/dock.ini, "desk = name" lines: the Control Panel's Panel
@@ -458,8 +645,8 @@ void Root::windowMenu ()
 	else m.add (TR ("Maximise"), WM_MAXIMISE, m_resizable);
 	m.add (TR ("Minimise"), WM_MINIMISE);
 	// (v65) the workspaces: this window to another one, or on every one
-	int info = kapi_desk (-1, 0), count = KAPI_DESK_COUNT (info), cur = KAPI_DESK_CUR (info);
-	int mine = kapi_win_desk (0, -2);
+	int info = uk_win_desk (-1, 0), count = KAPI_DESK_COUNT (info), cur = KAPI_DESK_CUR (info);
+	int mine = uk_win_to_desk (0, -2);
 	static char label[KAPI_DESK_MAX][40];
 	if (count > 1 && mine >= -1)
 	{
@@ -487,16 +674,17 @@ void Root::windowMenu ()
 	m.separator ();
 	m.add (TR ("Close"), WM_CLOSE, true, "Ctrl+Q");
 	int r = m.run ();
+	winSelect ();					// (the menu's loop may have served another window)
 	switch (r)
 	{
 	case WM_RESTORE:  maximise (false); break;
 	case WM_MAXIMISE: maximise (true); break;
-	case WM_MINIMISE: kapi_win_minimise (0); break;
-	case WM_CLOSE:    kapi_menu_command (MENU_QUIT); break;
-	case WM_ALLDESKS: kapi_win_desk (0, -1); break;
-	case WM_ONEDESK:  kapi_win_desk (0, cur); break;
+	case WM_MINIMISE: uk_win_minimise (0); break;
+	case WM_CLOSE:    if (winNumber () > 0) onClose (); else uk_win_menu_command (MENU_QUIT); break;
+	case WM_ALLDESKS: uk_win_to_desk (0, -1); break;
+	case WM_ONEDESK:  uk_win_to_desk (0, cur); break;
 	default:
-		if (r >= WM_DESK0 && r < WM_DESK0 + KAPI_DESK_MAX) kapi_win_desk (0, r - WM_DESK0);
+		if (r >= WM_DESK0 && r < WM_DESK0 + KAPI_DESK_MAX) uk_win_to_desk (0, r - WM_DESK0);
 		break;
 	}
 }

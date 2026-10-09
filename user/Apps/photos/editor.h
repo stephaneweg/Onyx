@@ -15,7 +15,7 @@
 
 namespace photos {
 
-static const char *const RATIO_NAME[6] = { "Free", "Original", "1:1", "4:3", "3:2", "16:9" };
+static const char *const RATIO_NAME[6] = { TRN ("Free"), TRN ("Original"), "1:1", "4:3", "3:2", "16:9" };
 
 class Editor : public Widget
 {
@@ -50,7 +50,7 @@ public:
 		if (!pic_info (path, info)) memset (&info, 0, sizeof info);
 		src.free_ ();
 		if (have && have->px) src.copy_of (*have);
-		else if (!Thumbs::load_full (path, g_lib.ph[pi].orient, src)) { uk_messagebox ("Photos", "This picture cannot be read.", MB_OK); return false; }
+		else if (!Thumbs::load_full (path, g_lib.ph[pi].orient, src)) { uk_messagebox (TR ("Photos"), TR ("This picture cannot be read."), MB_OK); return false; }
 		fit (src, base, 1600, 1600);
 		rot = 0; straight = 0; c0x = c0y = 0; c1x = c1y = 1; ratio = 0; memset (&adj, 0, sizeof adj); enhanced = false;
 		tab = 1; before = false; geoRot = -1; viewDirty = true; fthumbDirty = true; changed = false; drag = D_NONE; slider = -1;
@@ -150,14 +150,14 @@ public:
 		// the bar
 		canvas.fillRect (0, 0, width, BAR_H, D_BAR);
 		{
-			int w = tw ("Cancel") + 44;
+			int w = tw (TR ("Cancel")) + 44;
 			if (hot == E_CANCEL) fill_round (canvas, 8, 6, w, 34, 6, 0xFFFFFF, 30);
-			icon (canvas, I_BACK, 16, 13, 20, D_TEXT); text_v (canvas, 40, 6, 34, "Cancel", D_TEXT);
+			icon (canvas, I_BACK, 16, 13, 20, D_TEXT); text_v (canvas, 40, 6, 34, TR ("Cancel"), D_TEXT);
 			hits.add (8, 6, w, 34, E_CANCEL);
 			int rx = width - 8;
-			button (rx -= 84, 7, 84, "Save", E_SAVE, true);
-			button (rx -= 104, 7, 96, "Save as...", E_SAVEAS, false);
-			button (rx -= 128, 7, 120, "Before / after", E_BEFORE, false);
+			button (rx -= 84, 7, 84, TR ("Save"), E_SAVE, true);
+			button (rx -= 104, 7, 96, TR ("Save as..."), E_SAVEAS, false);
+			button (rx -= 128, 7, 120, TR ("Before / after"), E_BEFORE, false);
 			text_c (canvas, w + 10, 0, rx - w - 20, BAR_H, base_name (path), 0xDCDEE2, F_UI, 1);
 		}
 		draw_panel ();
@@ -184,9 +184,9 @@ public:
 		int cx = ix, cy = height - 42;
 		for (int r = 0; r < 6; r++)
 		{
-			int w = tw (RATIO_NAME[r], F_SMALL, r == ratio) + 24;
+			int w = tw (TR (RATIO_NAME[r]), F_SMALL, r == ratio) + 24;
 			fill_round (canvas, cx, cy, w, 28, 14, r == ratio ? C_ACCENT : (hot == E_RATIO + 100 * (r + 1) ? 0x50555E : 0x3C4048));
-			text_c (canvas, cx, cy, w, 28, RATIO_NAME[r], r == ratio ? C_SEL_TEXT : D_TEXT, F_SMALL, r == ratio);
+			text_c (canvas, cx, cy, w, 28, TR (RATIO_NAME[r]), r == ratio ? C_SEL_TEXT : D_TEXT, F_SMALL, r == ratio);
 			hits.add (cx, cy, w, 28, E_RATIO, r); cx += w + 6;
 		}
 		cx += 8;
@@ -211,7 +211,7 @@ public:
 		int px = width - PANEL_W;
 		canvas.fillRect (px, BAR_H, PANEL_W, height - BAR_H, D_PANEL);
 		canvas.fillRect (px, BAR_H, 1, height - BAR_H, D_LINE);
-		static const char *const TN[3] = { "Crop", "Adjust", "Filters" }; static const int TI[3] = { I_CROP, I_SUN, I_FILTERS };
+		static const char *const TN[3] = { TR ("Crop"), TR ("Adjust"), TR ("Filters") }; static const int TI[3] = { I_CROP, I_SUN, I_FILTERS };
 		int tx = px + 14, y = BAR_H + 12;
 		for (int i = 0; i < 3; i++)
 		{
@@ -226,51 +226,51 @@ public:
 		int X = px + 18, W = PANEL_W - 36;
 		if (tab == 0)
 		{
-			text (canvas, X, y, "ROTATE", 0x969AA0, F_TINY, 1); y += 18;
+			text (canvas, X, y, TR ("ROTATE"), 0x969AA0, F_TINY, 1); y += 18;
 			for (int k = 0; k < 2; k++)
 			{
 				int bx = X + k * (W / 2 + 4), bw = W / 2 - 4, kind = k ? E_ROTR : E_ROTL;
 				fill_round (canvas, bx, y, bw, 34, 6, hot == kind ? 0x50555E : 0x3C4048);
 				icon (canvas, k ? I_ROTATE_R : I_ROTATE_L, bx + 12, y + 7, 20, D_TEXT);
-				text_v (canvas, bx + 40, y, 34, k ? "Right" : "Left", D_TEXT);
+				text_v (canvas, bx + 40, y, 34, k ? TR ("Right") : TR ("Left"), D_TEXT);
 				hits.add (bx, y, bw, 34, kind);
 			}
 			y += 52;
 			char s[16]; snprintf (s, sizeof s, "%+.1f\xC2\xB0", straight); if (straight == 0) scpy (s, "0\xC2\xB0", sizeof s);
-			draw_slider (X, y, W, "Straighten", (int) (straight * 10), -150, 150, E_STRAIGHT, 0, s); y += 56;
-			text (canvas, X, y, "SHAPE", 0x969AA0, F_TINY, 1); y += 18;
+			draw_slider (X, y, W, TR ("Straighten"), (int) (straight * 10), -150, 150, E_STRAIGHT, 0, s); y += 56;
+			text (canvas, X, y, TR ("SHAPE"), 0x969AA0, F_TINY, 1); y += 18;
 			int cx = X;
 			for (int r = 0; r < 6; r++)
 			{
-				int w = tw (RATIO_NAME[r], F_SMALL, r == ratio) + 22;
+				int w = tw (TR (RATIO_NAME[r]), F_SMALL, r == ratio) + 22;
 				if (cx + w > X + W) { cx = X; y += 34; }
 				fill_round (canvas, cx, y, w, 28, 14, r == ratio ? C_ACCENT : 0x3C4048);
-				text_c (canvas, cx, y, w, 28, RATIO_NAME[r], r == ratio ? C_SEL_TEXT : D_TEXT, F_SMALL, r == ratio);
+				text_c (canvas, cx, y, w, 28, TR (RATIO_NAME[r]), r == ratio ? C_SEL_TEXT : D_TEXT, F_SMALL, r == ratio);
 				hits.add (cx, y, w, 28, E_RATIO, r); cx += w + 6;
 			}
 			y += 48;
 			int x, yy, w, h; crop_px (src.w, src.h, &x, &yy, &w, &h);
 			if (rot & 1) { int t = w; w = h; h = t; }
-			char d[80]; snprintf (d, sizeof d, "The result: %d \xC3\x97 %d", (int) ((c1x - c0x) * ((rot & 1) ? src.h : src.w)), (int) ((c1y - c0y) * ((rot & 1) ? src.w : src.h)));
+			char d[80]; snprintf (d, sizeof d, TR ("The result: %d \xC3\x97 %d"), (int) ((c1x - c0x) * ((rot & 1) ? src.h : src.w)), (int) ((c1y - c0y) * ((rot & 1) ? src.w : src.h)));
 			text (canvas, X, y, d, D_DIM, F_SMALL);
 			y += 30;
-			text (canvas, X, y, "Reset", hot == E_RESET ? 0xFFFFFF : uk_mix (C_ACCENT, 0xFFFFFF, 90), F_UI, 1); hits.add (X, y - 4, tw ("Reset", F_UI, 1), 24, E_RESET);
+			text (canvas, X, y, TR ("Reset"), hot == E_RESET ? 0xFFFFFF : uk_mix (C_ACCENT, 0xFFFFFF, 90), F_UI, 1); hits.add (X, y - 4, tw (TR ("Reset"), F_UI, 1), 24, E_RESET);
 		}
 		else if (tab == 1)
 		{
 			fill_round (canvas, X - 4, y, W + 8, 36, 6, enhanced ? uk_mix (0x3C4048, C_ACCENT, 100) : (hot == E_ENHANCE ? 0x484C55 : 0x3C4048));
-			icon (canvas, I_MAGIC, X + 6, y + 8, 20, AMBER); text_v (canvas, X + 36, y, 36, "Enhance (automatic)", D_TEXT, F_UI, 1);
+			icon (canvas, I_MAGIC, X + 6, y + 8, 20, AMBER); text_v (canvas, X + 36, y, 36, TR ("Enhance (automatic)"), D_TEXT, F_UI, 1);
 			if (enhanced) icon (canvas, I_CHECK, X + W - 20, y + 9, 18, 0xFFFFFF);
 			hits.add (X - 4, y, W + 8, 36, E_ENHANCE);
 			y += 50;
-			static const char *const SEC[3] = { "LIGHT", "COLOUR", "DETAIL" }; static const int FROM[3] = { 0, 4, 6 }, TO[3] = { 4, 6, 7 };
+			static const char *const SEC[3] = { TR ("LIGHT"), TR ("COLOUR"), TR ("DETAIL") }; static const int FROM[3] = { 0, 4, 6 }, TO[3] = { 4, 6, 7 };
 			for (int s = 0; s < 3; s++)
 			{
 				text (canvas, X, y, SEC[s], 0x969AA0, F_TINY, 1); y += 18;
-				for (int a = FROM[s]; a < TO[s]; a++) { draw_slider (X, y, W, ADJ_NAME[a], adj.v[a], a == A_SHARPNESS ? 0 : -100, 100, E_SLIDER, a); y += 44; }
+				for (int a = FROM[s]; a < TO[s]; a++) { draw_slider (X, y, W, TR (ADJ_NAME[a]), adj.v[a], a == A_SHARPNESS ? 0 : -100, 100, E_SLIDER, a); y += 44; }
 				y += 4;
 			}
-			text (canvas, X, y, "Reset", hot == E_RESET ? 0xFFFFFF : uk_mix (C_ACCENT, 0xFFFFFF, 90), F_UI, 1); hits.add (X, y - 4, tw ("Reset", F_UI, 1), 24, E_RESET);
+			text (canvas, X, y, TR ("Reset"), hot == E_RESET ? 0xFFFFFF : uk_mix (C_ACCENT, 0xFFFFFF, 90), F_UI, 1); hits.add (X, y - 4, tw (TR ("Reset"), F_UI, 1), 24, E_RESET);
 		}
 		else
 		{
@@ -281,7 +281,7 @@ public:
 				if (f == adj.filter) fill_round (canvas, fx - 4, fy - 4, 126, 92, 8, C_ACCENT);
 				if (fthumb[f].px) Thumbs::blit (canvas, fthumb[f].px, fx, fy, 118, 84);
 				round_corners (canvas, fx, fy, 118, 84, 5, f == adj.filter ? C_ACCENT : D_PANEL);
-				text_c (canvas, fx - 4, fy + 88, 126, 20, FILTER_NAME[f], f == adj.filter ? 0xFFFFFF : D_DIM, F_SMALL, f == adj.filter);
+				text_c (canvas, fx - 4, fy + 88, 126, 20, TR (FILTER_NAME[f]), f == adj.filter ? 0xFFFFFF : D_DIM, F_SMALL, f == adj.filter);
 				hits.add (fx, fy, 118, 108, E_FILTER, f);
 			}
 		}
@@ -361,7 +361,7 @@ public:
 		if (!up || !h) return true;
 		switch (h->kind)
 		{
-		case E_CANCEL: if (!changed || uk_messagebox ("Photos", "Leave without saving the changes?", MB_YESNO) == 1) close_editor (); break;
+		case E_CANCEL: if (!changed || uk_messagebox (TR ("Photos"), TR ("Leave without saving the changes?"), MB_YESNO) == 1) close_editor (); break;
 		case E_SAVE: save (false); break;
 		case E_SAVEAS: save (true); break;
 		case E_TAB: tab = h->a; viewDirty = true; invalidate (true); break;
@@ -382,7 +382,7 @@ public:
 	}
 	bool key (long k)
 	{
-		if (k == 27) { if (!changed || uk_messagebox ("Photos", "Leave without saving the changes?", MB_YESNO) == 1) close_editor (); return true; }
+		if (k == 27) { if (!changed || uk_messagebox (TR ("Photos"), TR ("Leave without saving the changes?"), MB_YESNO) == 1) close_editor (); return true; }
 		if (k == UK_CTRL ('S')) { save (false); return true; }
 		return false;
 	}
@@ -403,7 +403,7 @@ public:
 		char out[400]; scpy (out, path, sizeof out);
 		if (!as && !png && !jpg)
 		{
-			uk_messagebox ("Photos", "Photos writes JPEG and PNG pictures: choose a name for the edited one.", MB_OK);
+			uk_messagebox (TR ("Photos"), TR ("Photos writes JPEG and PNG pictures: choose a name for the edited one."), MB_OK);
 			as = true;
 		}
 		if (as)
@@ -415,14 +415,14 @@ public:
 			if (!ends (out, ".png") && !ends (out, ".jpg") && !ends (out, ".jpeg")) { int k = (int) strlen (out); if (k < 390) strcpy (out + k, png ? ".png" : ".jpg"); }
 			png = ends (out, ".png");
 		}
-		status_note ("Saving...");
-		Pix r; if (!render (r)) { uk_messagebox ("Photos", "Not enough memory to save this picture.", MB_OK); return; }
+		status_note (TR ("Saving..."));
+		Pix r; if (!render (r)) { uk_messagebox (TR ("Photos"), TR ("Not enough memory to save this picture."), MB_OK); return; }
 		opaque (r);
 		unsigned n = 0; unsigned char *data = png ? pngsave::png_encode (r.px, r.w, r.h, false, &n) : pngsave::jpeg_encode (r.px, r.w, r.h, 92, &n);
 		if (data && !png && info.exifOff) { unsigned m = 0; unsigned char *x = jpeg_with_exif (data, n, path, info, &m); if (x) { delete[] data; data = x; n = m; } }
 		int ok = data ? kapi_save_file (out, data, n) : -1;
 		delete[] data;
-		if (ok < 0) { uk_messagebox ("Photos", "The picture could not be written.", MB_OK); return; }
+		if (ok < 0) { uk_messagebox (TR ("Photos"), TR ("The picture could not be written."), MB_OK); return; }
 		// the library follows
 		PicInfo ni; pic_info (out, ni);
 		int k = g_lib.find (out);
@@ -440,7 +440,7 @@ public:
 		}
 		g_lib.save ();
 		changed = false;
-		char s[300]; snprintf (s, sizeof s, "Saved: %s", base_name (out)); status_note (s);
+		char s[300]; snprintf (s, sizeof s, TR ("Saved: %s"), base_name (out)); status_note (s);
 		int show = g_lib.find (out);
 		close_editor ();
 		lib_changed ();

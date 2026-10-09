@@ -1,0 +1,128 @@
+# The Calendar's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included; the formats' % kept in the same order).
+Calendar	Calendrier
+Does not repeat	Ne se répète pas
+Every day	Tous les jours
+Every weekday (Mon - Fri)	En semaine (lun - ven)
+Every week	Toutes les semaines
+Every 2 weeks	Toutes les 2 semaines
+Every month	Tous les mois
+Every year	Tous les ans
+Custom (as imported)	Personnalisé (tel qu'importé)
+No reminder	Pas de rappel
+At the start	Au début
+5 minutes before	5 minutes avant
+10 minutes before	10 minutes avant
+15 minutes before	15 minutes avant
+30 minutes before	30 minutes avant
+1 hour before	1 heure avant
+2 hours before	2 heures avant
+1 day before	1 jour avant
+2 days before	2 jours avant
+Add a title	Ajouter un titre
+All day	Toute la journée
+Starts	Début
+Ends	Fin
+Repeat	Répétition
+Until	Jusqu'au
+On	Le
+Reminder	Rappel
+Category	Catégorie
+None	Aucune
+Place	Lieu
+Add a place	Ajouter un lieu
+Notes	Notes
+Delete	Supprimer
+Save	Enregistrer
+It ends before it starts.	La fin précède le début.
+A time is not valid (9:30).	Une heure n'est pas valide (9:30).
+The repetition ends before it starts.	La répétition finit avant de commencer.
+New event	Nouvel événement
+Edit event	Modifier l'événement
+What is there to do?	Qu'y a-t-il à faire ?
+Due	Échéance
+Done	Fait
+New task	Nouvelle tâche
+Edit task	Modifier la tâche
+(No title)	(Sans titre)
+ (tomorrow)	 (demain)
+ (today)	 (aujourd'hui)
+ at 	 à 
+Change a repeating event	Modifier un événement répété
+Change only this occurrence, or all of them?	Modifier seulement cette occurrence, ou toutes ?
+Only this one	Celle-ci seulement
+All of them	Toutes
+Delete a repeating event	Supprimer un événement répété
+Delete only this occurrence, or all of them?	Supprimer seulement cette occurrence, ou toutes ?
+Move a repeating event	Déplacer un événement répété
+Move only this occurrence, or all of them?	Déplacer seulement cette occurrence, ou toutes ?
+Import	Importer
+The file could not be read.	Le fichier n'a pas pu être lu.
+ event or task imported.	 événement ou tâche importé.
+ events and tasks imported.	 événements et tâches importés.
+Export	Exporter
+The calendar was exported.	Le calendrier a été exporté.
+The file could not be written.	Le fichier n'a pas pu être écrit.
+A new event (Ctrl+N) -- or double-click a free slot	Un nouvel événement (Ctrl+N) -- ou double-cliquez un créneau libre
+Today	Aujourd'hui
+Back to today (Ctrl+T)	Revenir à aujourd'hui (Ctrl+T)
+Previous	Précédent
+Next	Suivant
+Day	Jour
+Week	Semaine
+Month	Mois
+Pick a day to go to it	Choisissez un jour pour y aller
+CALENDARS	AGENDAS
+Click a calendar to show or hide its events	Cliquez un agenda pour afficher ou masquer ses événements
+TASKS	TÂCHES
+The round box ticks a task off; a double click edits it	Le rond coche une tâche ; un double clic la modifie
++ Add a task	+ Ajouter une tâche
+File	Fichier
+New Event	Nouvel événement
+New Task...	Nouvelle tâche...
+Import iCalendar...	Importer iCalendar...
+Export iCalendar...	Exporter iCalendar...
+Event	Événement
+Open	Ouvrir
+View	Affichage
+January	janvier
+February	février
+March	mars
+April	avril
+May	mai
+June	juin
+July	juillet
+August	août
+September	septembre
+October	octobre
+November	novembre
+December	décembre
+Jan	janv.
+Feb	févr.
+Mar	mars
+Apr	avr.
+Jun	juin
+Jul	juil.
+Aug	août
+Sep	sept.
+Oct	oct.
+Nov	nov.
+Dec	déc.
+Monday	Lundi
+Tuesday	Mardi
+Wednesday	Mercredi
+Thursday	Jeudi
+Friday	Vendredi
+Saturday	Samedi
+Sunday	Dimanche
+Mon	lun
+Tue	mar
+Wed	mer
+Thu	jeu
+Fri	ven
+Sat	sam
+Sun	dim
+all-day	journée
+ more	 de plus
+Nothing to do	Rien à faire
+Tomorrow	Demain

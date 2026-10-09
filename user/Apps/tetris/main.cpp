@@ -1,11 +1,12 @@
 //
-// tetris.c -- Tetris. App-drawn playfield (raw pixels) + kapi_draw_text for the
+// tetris.c -- Tetris. App-drawn playfield (raw pixels) + uk_win_draw_text for the
 // score; keyboard via the window key handler. Gravity is frame-counted (no timer
 // dependency). Keys: left/right move, up rotate, down soft-drop, space hard-drop,
 // 'r' restart.
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
+#include "../games/game.h"		// (gwin_*: the window resizable, the game scaled to it -- PocketUI fills it)
 
 #define COLS	10
 #define ROWS	20
@@ -208,14 +209,14 @@ static void redraw (void)
 
 int main (void)
 {
-	fb = kapi_create_window (W, H, "tetris");
+	fb = gwin_create (W, H, "tetris");
 	if (fb == 0) return 1;
 	uikit::uk_decorate_window ();			// (reads the theme: the palette)
 	g_cv.adopt (fb, W, H);
 	paint_bg ();
 
 	g_rng = kapi_get_ticks () | 1u;
-	kapi_set_key_handler (on_key);
+	uk_win_on_key (on_key);
 	restart ();
 
 	while (!should_exit ())
@@ -229,7 +230,7 @@ int main (void)
 			if (g_frames - g_lastdrop >= speed) { step_down (); g_lastdrop = g_frames; }
 		}
 		redraw ();
-		present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
+		gwin_present ();				// (the frame drawn into the canvas: shown -- the compositor redraws only what it is told)
 		msleep (16);
 	}
 	return 0;

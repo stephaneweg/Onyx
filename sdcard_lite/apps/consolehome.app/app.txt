@@ -1,0 +1,5 @@
+# Onyx application metadata -- read by the category launcher (key=value, no section).
+# The console mode's shell (PocketUI): the home of the games and the apps for a pad, the menu over an app --
+# started by SD:/etc/session/console, not from a menu.
+name = Console Home
+category = Shell

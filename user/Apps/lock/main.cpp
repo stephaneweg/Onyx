@@ -113,13 +113,13 @@ int main (void)
 		const char *p = app_ini_get (0, "pin", 0);
 		if (p) { int i = 0; for (; p[i] && i < 15; i++) g_pin[i] = p[i]; g_pin[i] = '\0'; }
 	}
-	g_wall = kapi_wallpaper_buffer (&g_ww, &g_wh);
+	g_wall = uk_win_wallpaper_buffer (&g_ww, &g_wh);
 	if (g_wall && g_ww > 0 && g_wh > 0 && !g_wall[0] && !g_wall[(long) (g_wh / 2) * g_ww + g_ww / 2]
 	    && !g_wall[(long) g_wh * g_ww - 1]) g_wall = 0;	// (none drawn: a plain colour)
-	g_fb = kapi_fullscreen_begin (&g_w, &g_h);
+	g_fb = uk_win_fullscreen_begin (&g_w, &g_h);
 	if (g_fb == 0) return 1;
-	kapi_set_key_handler (on_key);
-	kapi_set_pointer_handler (on_pointer);
+	uk_win_on_key (on_key);
+	uk_win_on_pointer (on_pointer);
 	draw ();
 	int lastMin = -1;
 	while (!g_done && !should_exit ())
@@ -129,6 +129,6 @@ int main (void)
 		if (mi != lastMin) { lastMin = mi; draw (); }
 		msleep (100);
 	}
-	kapi_fullscreen_end ();
+	uk_win_fullscreen_end ();
 	return 0;
 }
