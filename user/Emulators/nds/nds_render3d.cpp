@@ -242,7 +242,8 @@ void Render3D::drawPolygon (const Polygon *p)
 			if (wbuf) z = den ? ((s64) wl * wr << 16) / den : wl;
 			else z = e[0].z + (((e[1].z - e[0].z) * t) >> 16);
 			if (wbuf) z <<= wsh;
-			if (z > 0xFFFFFF) z = 0xFFFFFF; if (z < 0) z = 0;
+			if (z > 0xFFFFFF) z = 0xFFFFFF;
+			if (z < 0) z = 0;
 			// the depth test
 			u32 dz = depth[idx];
 			bool pass = depthEq ? ((s64) dz - z <= 0x200 && z - (s64) dz <= 0x200) : (u32) z < dz;
@@ -296,8 +297,12 @@ void Render3D::drawPolygon (const Polygon *p)
 					a = ((ta + 1) * (a + 1) - 1) >> 5;
 				}
 			}
-			if (r > 63) r = 63; if (gg > 63) gg = 63; if (b > 63) b = 63;
-			if (r < 0) r = 0; if (gg < 0) gg = 0; if (b < 0) b = 0;
+			if (r > 63) r = 63;
+			if (gg > 63) gg = 63;
+			if (b > 63) b = 63;
+			if (r < 0) r = 0;
+			if (gg < 0) gg = 0;
+			if (b < 0) b = 0;
 			if (!a) continue;
 			if (alphaTest && a <= alphaRef) continue;
 			u32 rgb = (u32) r | ((u32) gg << 6) | ((u32) b << 12);

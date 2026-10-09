@@ -108,7 +108,8 @@ static bool chanStep (Machine *m, Spu::Chan &c, int idx)
 		if (nib & 8) { c.adpcmVal -= diff; if (c.adpcmVal < -0x7FFF) c.adpcmVal = -0x7FFF; }
 		else { c.adpcmVal += diff; if (c.adpcmVal > 0x7FFF) c.adpcmVal = 0x7FFF; }
 		c.adpcmIdx += ADPCM_IDX[nib & 7];
-		if (c.adpcmIdx < 0) c.adpcmIdx = 0; if (c.adpcmIdx > 88) c.adpcmIdx = 88;
+		if (c.adpcmIdx < 0) c.adpcmIdx = 0;
+		if (c.adpcmIdx > 88) c.adpcmIdx = 88;
 		c.sample = c.adpcmVal;
 		break;
 	}
@@ -121,7 +122,8 @@ static void capWrite (Machine *m, Spu::Cap &k, s32 v)
 {
 	if (!(k.cnt & 0x80)) return;
 	u32 lenBytes = (u32) (k.len ? k.len : 1) * 4;
-	if (v > 0x7FFF) v = 0x7FFF; if (v < -0x8000) v = -0x8000;
+	if (v > 0x7FFF) v = 0x7FFF;
+	if (v < -0x8000) v = -0x8000;
 	if (k.cnt & 8) { m->a7Write8 (k.dad + k.pos, (u32) (u8) (v >> 8)); k.pos += 1; }
 	else { m->a7Write16 (k.dad + k.pos, (u32) (u16) v); k.pos += 2; }
 	if (k.pos >= lenBytes)
@@ -182,8 +184,10 @@ void Spu::sample ()
 		L = (L * mv) >> 7; R = (R * mv) >> 7;
 	}
 	L >>= 1; R >>= 1;
-	if (L > 0x7FFF) L = 0x7FFF; if (L < -0x8000) L = -0x8000;
-	if (R > 0x7FFF) R = 0x7FFF; if (R < -0x8000) R = -0x8000;
+	if (L > 0x7FFF) L = 0x7FFF;
+	if (L < -0x8000) L = -0x8000;
+	if (R > 0x7FFF) R = 0x7FFF;
+	if (R < -0x8000) R = -0x8000;
 	prevL = curL; prevR = curR;
 	curL = (s32) L; curR = (s32) R;
 	// to the output rate (linear between the last two)

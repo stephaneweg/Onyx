@@ -369,7 +369,9 @@ u32 Gpu2D::windowMask (int x, int y) const
 static inline u32 blendAlpha (u32 a, u32 b, u32 eva, u32 evb)
 {
 	u32 r = ((a & 63) * eva + (b & 63) * evb) >> 4, g = (((a >> 6) & 63) * eva + ((b >> 6) & 63) * evb) >> 4, bl = (((a >> 12) & 63) * eva + ((b >> 12) & 63) * evb) >> 4;
-	if (r > 63) r = 63; if (g > 63) g = 63; if (bl > 63) bl = 63;
+	if (r > 63) r = 63;
+	if (g > 63) g = 63;
+	if (bl > 63) bl = 63;
 	return r | (g << 6) | (bl << 12);
 }
 static inline u32 brighten (u32 a, u32 evy)
@@ -427,7 +429,9 @@ void Gpu2D::compose (int y, u32 *out)
 	u16 bldcnt = r16 (0x50);
 	int effect = (bldcnt >> 6) & 3;
 	u32 eva = reg[0x52] & 31, evb = reg[0x53] & 31, evy = reg[0x54] & 31;
-	if (eva > 16) eva = 16; if (evb > 16) evb = 16; if (evy > 16) evy = 16;
+	if (eva > 16) eva = 16;
+	if (evb > 16) evb = 16;
+	if (evy > 16) evy = 16;
 	bool anyWin = dispcnt & 0xE000;
 	bool objOn = dispcnt & 0x1000;
 	for (int x = 0; x < W; x++)
@@ -534,7 +538,9 @@ void Machine::captureLine (int y, const u32 *lineA)
 			u32 ea = aA ? eva : 0, eb = aB ? evb : 0;
 			u32 r = (((a15 & 31) * ea + (b15 & 31) * eb) + 8) >> 4, g = ((((a15 >> 5) & 31) * ea + ((b15 >> 5) & 31) * eb) + 8) >> 4,
 			    b = ((((a15 >> 10) & 31) * ea + ((b15 >> 10) & 31) * eb) + 8) >> 4;
-			if (r > 31) r = 31; if (g > 31) g = 31; if (b > 31) b = 31;
+			if (r > 31) r = 31;
+			if (g > 31) g = 31;
+			if (b > 31) b = 31;
 			o = r | (g << 5) | (b << 10) | ((ea || eb) ? 0x8000 : 0);
 		}
 		wr16 (dst + ((dofs + (u32) x * 2) & 0x1FFFF), (u16) o);

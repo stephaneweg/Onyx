@@ -21,7 +21,7 @@
 namespace nds { extern u32 g_watch[2][2]; extern bool g_watchHit; }
 #endif
 #if defined(__aarch64__)
-namespace nds { extern unsigned g_jitNoKinds, g_jitNoDP; }
+namespace nds { extern unsigned g_jitNoKinds, g_jitNoDP; extern u64 g_jitStats[8]; extern u32 g_jitInterpOps[256][2]; }
 #endif
 #if defined(__aarch64__) || defined(__x86_64__)
 #include <sys/mman.h>
@@ -140,6 +140,17 @@ int main (int argc, char **argv)
 	printf ("%d frames in %.2f s: %.1f fps (%.0f%% of a DS)\n", frames, secs, frames / (secs > 0 ? secs : 1), frames / (secs > 0 ? secs : 1) / 59.8261 * 100);
 	printf ("arm9 pc=%08x cpsr=%08x  arm7 pc=%08x cpsr=%08x\n", m->arm9.r[15], m->arm9.cpsr, m->arm7.r[15], m->arm7.cpsr);
 	printf ("3D polygons: %d  save: type %d, %u bytes\n", m->gpu3d.nPolys[m->gpu3d.rdSet], m->saveType (), m->saveSize);
+#if defined(__aarch64__)
+	if (m->jit) printf ("JIT: %llu compiled, %llu flushes, %llu invalidations, %llu slow reads, %llu slow writes, %llu blocks run, %llu interpreted, %llu slow block transfers\n",
+		nds::g_jitStats[0], nds::g_jitStats[1], nds::g_jitStats[2], nds::g_jitStats[3], nds::g_jitStats[4], nds::g_jitStats[5], nds::g_jitStats[6], nds::g_jitStats[7]);
+	if (m->jit && getenv ("NDS_JITOPS"))
+		for (int k = 0; k < 12; k++)
+		{
+			int best = -1; for (int i = 0; i < 256; i++) if (nds::g_jitInterpOps[i][1] && (best < 0 || nds::g_jitInterpOps[i][1] > nds::g_jitInterpOps[best][1])) best = i;
+			if (best < 0) break;
+			printf ("  interpreted %08x x %u\n", nds::g_jitInterpOps[best][0], nds::g_jitInterpOps[best][1]); nds::g_jitInterpOps[best][1] = 0;
+		}
+#endif
 	if (m->lastError[0]) printf ("note: %s\n", m->lastError);
 	if (argc > 3) writePpm (argv[3], *m);
 	if (getenv ("NDS_DUMP"))					// NDS_DUMP=<address>,<words>: main memory

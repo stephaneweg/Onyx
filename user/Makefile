@@ -38,7 +38,7 @@ APPS = tinycalc tinypad cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        mandelbrot minesweeper \
-       eyes voronoy irc spin wtkdemo notifyd shutdown plasma agenda imageview widgets qbasic lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock cardfile
+       eyes voronoy irc spin wtkdemo notifyd shutdown plasma agenda imageview widgets qbasic lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu ndsemu wifimenu dock lock cardfile
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
@@ -489,8 +489,8 @@ Kits/uikit/libuikit.a: $(UIKIT_OBJ)
 # (Kits/uikit/libuikit.a, the static build: no app of this Makefile links it any more -- they link the shared
 # library's import library, lib/uikit.imp.a --; Jet's hosted build compiles that import side for its own toolchain, tools/webkit/build-web.sh; the PC builds make their own static toolkit.)
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp Runtime/crt0.S Runtime/user.ld Kits/appkit/appkit.h Kits/uikit/bmp.h Runtime/umm.h Runtime/onyxpp.hpp Apps/games/game.h Apps/games/cards.h Include/gamepad.h Emulators/emucore.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/audiokit.imp.a Kits/audiokit/audiokit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h Libs/basic/libbasic.a Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Emulators/n64/libn64.a Emulators/gc/libgc.a Libs/v3d/libv3d.a
-	$(CXX) $(CXXFLAGS) -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) Runtime/crt0.S $< lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/audiokit.imp.a lib/imagekit.imp.a Libs/basic/libbasic.a Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Emulators/n64/libn64.a Emulators/gc/libgc.a Libs/v3d/libv3d.a -o $@
+$(APP_ELFS): %.elf: Apps/%/main.cpp Runtime/crt0.S Runtime/user.ld Kits/appkit/appkit.h Kits/uikit/bmp.h Runtime/umm.h Runtime/onyxpp.hpp Apps/games/game.h Apps/games/cards.h Include/gamepad.h Emulators/emucore.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/audiokit.imp.a Kits/audiokit/audiokit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h Libs/basic/libbasic.a Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Emulators/n64/libn64.a Emulators/gc/libgc.a Emulators/nds/libnds.a Libs/v3d/libv3d.a
+	$(CXX) $(CXXFLAGS) -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) Runtime/crt0.S $< lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/audiokit.imp.a lib/imagekit.imp.a Libs/basic/libbasic.a Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Emulators/n64/libn64.a Emulators/gc/libgc.a Emulators/nds/libnds.a Libs/v3d/libv3d.a -o $@
 
 # ---- Letters: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,
 # as Doom's), with the apps' TrueType-only FreeType (Kits/fontkit/: its options and modules -- no bytecode
@@ -744,6 +744,12 @@ Emulators/n64/%.o: Emulators/n64/%.cpp Emulators/n64/n64.h
 	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -mno-outline-atomics -fno-math-errno -O3 -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -c $< -o $@
 Emulators/n64/libn64.a: $(N64_OBJS)
 	$(AR) rcs $@ $^
+# The Nintendo DS core (Emulators/nds/: integer only, no libc; -O3 with SIMD for its renderers), for ndsemu.
+NDS_OBJS = Emulators/nds/nds.o Emulators/nds/nds_cpu.o Emulators/nds/nds_mem.o Emulators/nds/nds_io.o Emulators/nds/nds_cart.o Emulators/nds/nds_bios.o Emulators/nds/nds_gpu2d.o Emulators/nds/nds_gpu3d.o Emulators/nds/nds_render3d.o Emulators/nds/nds_spu.o Emulators/nds/nds_jit.o
+Emulators/nds/%.o: Emulators/nds/%.cpp Emulators/nds/nds.h Emulators/nds/nds_tables.inc
+	$(CXX) $(filter-out -mgeneral-regs-only,$(CXXFLAGS)) -mcpu=cortex-a72 -mno-outline-atomics -O3 -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -c $< -o $@
+Emulators/nds/libnds.a: $(NDS_OBJS)
+	$(AR) rcs $@ $^
 # The GameCube core (Emulators/gc/: the FPU is used, as Emulators/n64/), for gcemu.
 GC_OBJS = Emulators/gc/gc_cpu.o Emulators/gc/gc_mem.o Emulators/gc/gc_hw.o Emulators/gc/gc_gx.o Emulators/gc/gc_gxdraw.o Emulators/gc/gc_dsp.o Emulators/gc/gc_boot.o Emulators/gc/gc_jit.o Emulators/gc/gc_card.o Emulators/gc/gc_zelda.o Emulators/gc/gc_gxgpu.o
 Emulators/gc/%.o: Emulators/gc/%.cpp Emulators/gc/gc.h
@@ -897,7 +903,7 @@ BinUtils/basic.elf: Libs/basic/runtime.cpp Libs/basic/libbasic.a lib/uikit.imp.a
 	$(CXX) $(CXXFLAGS_FP) -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts $(LDFLAGS) $(KAPI_ALIASES) Runtime/crt0.S Libs/basic/runtime.cpp Libs/basic/libbasic.a lib/audiokit.imp.a lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a -o $@
 
 clean:
-	rm -f *.elf *.o Kits/fontkit/*.o Kits/fontkit/*.a Libs/zlib/*.o Libs/zlib/*.a Runtime/libc/*.o Libs/basic/*.o Libs/basic/*.a $(KPLUG_ELFS) Emulators/gb/*.o Emulators/gb/*.a Emulators/gba/*.o Emulators/gba/*.a Emulators/nes/*.o Emulators/nes/*.a Emulators/snes/*.o Emulators/snes/*.a Emulators/n64/*.o Emulators/n64/*.a Emulators/gc/*.o Emulators/gc/*.a Libs/v3d/*.o Libs/v3d/*.a Libs/gpucomp/*.o Libs/gpucomp/*.a BinUtils/basic.elf
+	rm -f *.elf *.o Kits/fontkit/*.o Kits/fontkit/*.a Libs/zlib/*.o Libs/zlib/*.a Runtime/libc/*.o Libs/basic/*.o Libs/basic/*.a $(KPLUG_ELFS) Emulators/gb/*.o Emulators/gb/*.a Emulators/gba/*.o Emulators/gba/*.a Emulators/nes/*.o Emulators/nes/*.a Emulators/snes/*.o Emulators/snes/*.a Emulators/n64/*.o Emulators/n64/*.a Emulators/gc/*.o Emulators/gc/*.a Emulators/nds/*.o Emulators/nds/*.a Libs/v3d/*.o Libs/v3d/*.a Libs/gpucomp/*.o Libs/gpucomp/*.a BinUtils/basic.elf
 	rm -f Kits/uikit/*.o Kits/uikit/*.a
 	rm -rf lib
 	rm -rf Apps/pdf/obj Apps/koton/obj Apps/media/obj

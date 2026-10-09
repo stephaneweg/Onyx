@@ -28,8 +28,11 @@ namespace nds {
 extern unsigned g_jitNoKinds, g_jitNoDP;
 extern void (*g_jitDumpHook) (const u32 *code, int words, u32 pc);
 
+
 #define OFF(f) ((u32) __builtin_offsetof (Arm, f))
 
+enum { FAST_BITS = 16 };
+struct FastEntry { u32 key, pad; u32 *code; };
 enum { CODE_SIZE = 16 << 20, MAX_BLOCKS = 1 << 16, HASH = 1 << 15, MAX_INS = 48, NCHUNKS = 4096 + 32 + 64 + 32 + 656 };
 enum { FN = 8, FZ = 4, FC = 2, FV = 1, FALL = 15 };
 
@@ -39,6 +42,7 @@ struct Block
 	u32 *code;
 	Block *hnext, *cnext;
 	int chunk;
+	const u8 *hostLo, *hostHi;		// its instructions' bytes
 };
 
 class Jit
@@ -49,26 +53,32 @@ public:
 	u32 *exitStub;
 	Block *blocks; int nBlocks;
 	Block *hash[2][HASH];
+	FastEntry *fast[2];
 	Block *chunkList[NCHUNKS];
 	u16 pageCount[NCHUNKS / 16 + 1];
 	u32 helpers;
 };
+u64 g_jitStats[8];				// compiled, flushes, invalidations, slow reads, slow writes, dispatches, interp, block xfer slow
 
 // ---- the helpers the code calls ------------------------------------------------------------------------------
-static u32 hRead32 (Arm *c, u32 a) { return c->read32 (a & ~3u); }
-static u32 hRead32r (Arm *c, u32 a) { u32 v = c->read32 (a & ~3u); int n = (int) (a & 3) * 8; return n ? (v >> n) | (v << (32 - n)) : v; }
-static u32 hRead16 (Arm *c, u32 a) { return c->read16 (a & ~1u); }
-static u32 hRead8 (Arm *c, u32 a) { return c->read8 (a); }
+extern u64 g_jitStats[8];
+static u32 hRead32 (Arm *c, u32 a) { g_jitStats[3]++; return c->read32 (a & ~3u); }
+static u32 hRead32r (Arm *c, u32 a) { g_jitStats[3]++; u32 v = c->read32 (a & ~3u); int n = (int) (a & 3) * 8; return n ? (v >> n) | (v << (32 - n)) : v; }
+static u32 hRead16 (Arm *c, u32 a) { g_jitStats[3]++; return c->read16 (a & ~1u); }
+static u32 hRead8 (Arm *c, u32 a) { g_jitStats[3]++; return c->read8 (a); }
 static u32 hReadS8 (Arm *c, u32 a) { return (u32) (s32) (s8) c->read8 (a); }
 static u32 hReadS16 (Arm *c, u32 a) { return (u32) (s32) (s16) c->read16 (a & ~1u); }
 static u32 hRead16r (Arm *c, u32 a) { u32 v = c->read16 (a & ~1u); return (a & 1) ? (v >> 8) | (v << 24) : v; }	// (ARM7: rotated)
 static u32 hReadS16x (Arm *c, u32 a) { return (a & 1) ? (u32) (s32) (s8) c->read8 (a) : (u32) (s32) (s16) c->read16 (a); }	// (ARM7 LDRSH)
-static u32 hWrite32 (Arm *c, u32 a, u32 v) { c->write32 (a & ~3u, v); return c->jitExit; }
-static u32 hWrite16 (Arm *c, u32 a, u32 v) { c->write16 (a & ~1u, v); return c->jitExit; }
-static u32 hWrite8 (Arm *c, u32 a, u32 v) { c->write8 (a, v); return c->jitExit; }
+static u32 hWrite32 (Arm *c, u32 a, u32 v) { g_jitStats[4]++; c->write32 (a & ~3u, v); return c->jitExit; }
+static u32 hWrite16 (Arm *c, u32 a, u32 v) { g_jitStats[4]++; c->write16 (a & ~1u, v); return c->jitExit; }
+static u32 hWrite8 (Arm *c, u32 a, u32 v) { g_jitStats[4]++; c->write8 (a, v); return c->jitExit; }
 // one instruction in the interpreter (r[15] = its address + 8 / + 4 on entry): it ends the block
+u32 g_jitInterpOps[256][2];			// (tests: the instructions left to the interpreter, sampled)
 static void hInterp (Arm *c, u32 op, u32 addr)
 {
+	g_jitStats[6]++;
+	{ u32 h = (op * 2654435761u) >> 24; g_jitInterpOps[h][0] = op | (c->cpsr & 0x20 ? 0x80000000u : 0); g_jitInterpOps[h][1]++; }
 	bool thumb = c->cpsr & 0x20;
 	c->r[15] = addr + (thumb ? 4 : 8);
 	c->branched = false; c->cyc = 1;
@@ -79,6 +89,7 @@ static void hInterp (Arm *c, u32 op, u32 addr)
 // a block transfer that left the fast path (another page, a missing one): the interpreter's, on Arm::r
 static u32 hBlockXfer (Arm *c, u32 op, u32 addr)
 {
+	g_jitStats[7]++;
 	c->r[15] = addr + 8;
 	c->branched = false;
 	c->armBlock (op);
@@ -443,6 +454,24 @@ struct Gen
 		a.addxi (T6, T6, (u32) (cyc << c->shift));
 		a.strx (T6, XC, OFF (ts));
 	}
+	// to the next block straight from here (key: its address | Thumb) while there is time and nothing to look at,
+	// else back to jitRun
+	void chain (int key)
+	{
+		a.ldrx (T1, XC, OFF (ts)); a.ldrx (T2, XC, OFF (target));
+		a.dp (0xEB000000, WZR, T1, T2);				// cmp x10, x11
+		Asm::patch (a.bcond (GE), j->exitStub);
+		a.ldrbi (T1, XC, OFF (jitExit));
+		Asm::patch (a.cbnz (T1), j->exitStub);
+		a.ldrx (T2, XC, OFF (jitFast));
+		a.ubfx (T1, key, 1, FAST_BITS);
+		a.e (0x8B000000 | ((u32) T1 << 16) | (4u << 10) | ((u32) T2 << 5) | (u32) T2);	// add x11, x11, x10, lsl 4
+		a.ldrw (T1, T2, 0);
+		a.dp (0x6B000000, WZR, T1, key);			// cmp w10, wkey
+		Asm::patch (a.bcond (NE), j->exitStub);
+		a.ldrx (T2, T2, 8);
+		a.br (T2);
+	}
 	// an exit to a constant address (in the current state, or switching)
 	void exitTo (u32 pc, int cyc, int setThumb = -1)
 	{
@@ -458,7 +487,8 @@ struct Gen
 		}
 		a.movw (T5, pc);
 		a.strw (T5, XC, OFF (r) + 60);
-		a.bTo (j->exitStub);
+		a.movw (T0, pc | (u32) (setThumb >= 0 ? setThumb : thumb ? 1 : 0));
+		chain (T0);
 	}
 	// an exit to the address in WTGT: interworking (bit 0 = Thumb) or in the current state
 	void exitReg (int cyc, bool interwork)
@@ -478,14 +508,17 @@ struct Gen
 			a.dp (0x2A000000, T4, T4, T5);			// ~3 | (bit0 << 1)
 			a.dp (0x0A000000, T5, WTGT, T4);
 			a.strw (T5, XC, OFF (r) + 60);
+			a.ubfx (T4, WTGT, 0, 1);
+			a.dp (0x2A000000, T0, T5, T4);			// the key: pc | T
 		}
 		else
 		{
 			a.movw (T4, thumb ? 0xFFFFFFFE : 0xFFFFFFFC);
 			a.dp (0x0A000000, T5, WTGT, T4);
 			a.strw (T5, XC, OFF (r) + 60);
+			if (thumb) { a.movw (T4, 1); a.dp (0x2A000000, T0, T5, T4); } else a.mov (T0, T5);
 		}
-		a.bTo (j->exitStub);
+		chain (T0);
 	}
 
 	// ---- loads and stores -----------------------------------------------------------------------------------------
@@ -621,22 +654,46 @@ struct Gen
 			int vm = rd (rm, T0, in.pcv + 4);
 			int vs = rd (rs, T1, in.pcv + 4);
 			a.ubfx (T2, vs, 0, 8);					// the amount: Rs & 0xFF
-			// (no compare: the flags may be the host's) m = amount < 32 ? -1 : 0
-			a.lsri (T3, T2, 5); a.subi (T3, T3, 1); a.asri (T3, T3, 31);
+			// (no compare: the flags may be the host's) the amount clamped to K: (a & m) | (K & ~m), m = a < K ? -1 : 0
+			auto clamp = [&] (int K) { a.subi (T3, T2, (u32) K); a.asri (T3, T3, 31); a.dp (0x0A000000, T2, T2, T3); a.movw (T4, (u32) K); a.dp (0x0A200000, T4, T4, T3); a.dp (0x2A000000, T2, T2, T4); };
+			if (wantCarry)						// the old C kept when the amount is 0 -> T6 (0 / 1), zm -> T4
+			{
+				loadFlags ();
+				a.mrs (T6); a.ubfx (T6, T6, 29, 1);
+			}
 			switch (type)
 			{
-			case 0: case 1:
-				a.var (type ? 0x1AC02400u : 0x1AC02000u, tmp, vm, T2);
-				a.dp (0x0A000000, tmp, tmp, T3);			// and: 0 from 32 on
+			case 0:							// x = Rm << min (a, 33) in 64 bits: C bit 32
+				if (wantCarry) { a.subi (T4, T2, 1); a.lsri (T4, T4, 31); a.strw (T4, SP, 104); }
+				clamp (33);
+				a.ubfm (IP0, vm, 0, 31);				// (zero-extended)
+				a.e (0x9AC02000 | ((u32) T2 << 16) | ((u32) IP0 << 5) | (u32) IP0);	// lslv x16, x16, x11
+				if (wantCarry) a.e (0xD3608000 | ((u32) IP0 << 5) | (u32) T5);	// ubfx x14, x16, 32, 1
+				a.mov (tmp, IP0);
 				break;
-			case 2:
-				a.dp (0x0A000000, T2, T2, T3);			// amount & m | 31 & ~m
-				a.movw (T4, 31);
-				a.dp (0x0A200000, T4, T4, T3);			// bic
-				a.dp (0x2A000000, T2, T2, T4);
-				a.var (0x1AC02800, tmp, vm, T2);
+			case 1:							// x = (Rm << 1) >> min (a, 33): C bit 0
+			case 2:							// (signed, min (a, 32))
+				if (wantCarry) { a.subi (T4, T2, 1); a.lsri (T4, T4, 31); a.strw (T4, SP, 104); }
+				clamp (type == 1 ? 33 : 32);
+				if (type == 1) a.ubfm (IP0, vm, 0, 31); else a.e (0x93407C00 | ((u32) vm << 5) | (u32) IP0);	// sxtw x16, w(vm)
+				a.e (0xD37FF800 | ((u32) IP0 << 5) | (u32) IP0);	// lsl x16, x16, 1
+				a.e ((type == 1 ? 0x9AC02400u : 0x9AC02800u) | ((u32) T2 << 16) | ((u32) IP0 << 5) | (u32) IP0);	// lsrv / asrv x16, x16, x11
+				if (wantCarry) a.ubfx (T5, IP0, 0, 1);
+				a.e (0xD341FC00 | ((u32) IP0 << 5) | (u32) tmp);	// lsr x(tmp), x16, 1 (w: the low half)
 				break;
-			default: a.var (0x1AC02C00, tmp, vm, T2); break;
+			default:
+				if (wantCarry) { a.subi (T4, T2, 1); a.lsri (T4, T4, 31); a.strw (T4, SP, 104); }
+				a.var (0x1AC02C00, tmp, vm, T2);
+				if (wantCarry) a.ubfx (T5, tmp, 31, 1);
+				break;
+			}
+			if (wantCarry)						// C = zm ? old : new  ->  new ^ ((new ^ old) & zm)
+			{
+				a.ldrw (T4, SP, 104);
+				a.dp (0x4A000000, T3, T5, T6);
+				a.dp (0x0A000000, T3, T3, T4);
+				a.dp (0x4A000000, T5, T5, T3);
+				carryKnown = true;
 			}
 			return tmp;
 		}
@@ -703,7 +760,6 @@ struct Gen
 		u8 need = S ? in.flagsNeed : 0;
 		bool logical = opc < 2 || opc == 8 || opc == 9 || opc >= 12;
 		bool regShift = !(op & 0x02000000) && (op & 0x10);
-		if (logical && S && regShift && (need & FC)) return false;	// (the carry of a register shift: the interpreter's)
 		bool carryKnown; int carryConst;
 		bool wantC = logical && S && (need & FC);
 		int b = operand2 (in, T1, wantC, carryKnown, carryConst);
@@ -911,7 +967,7 @@ struct Gen
 			u32 off = (u32) i * 4;
 			if (L)
 			{
-				int d = g == 15 ? WTGT : (hostOf[g] >= 0 ? hostOf[g] : T0);
+				int d = g == 15 ? (int) WTGT : (hostOf[g] >= 0 ? (int) hostOf[g] : (int) T0);
 				a.ldrw (d, IP1, off);
 				if (g != 15 && hostOf[g] < 0) a.strw (d, XC, roff (g));
 				if (g != 15) written |= (u16) (1u << g);
@@ -1056,7 +1112,9 @@ void jitFlushAll (Machine *m)
 {
 	Jit *j = m->jit;
 	if (!j) return;
+	g_jitStats[1]++;
 	for (int c = 0; c < 2; c++) for (int i = 0; i < HASH; i++) j->hash[c][i] = 0;
+	for (int c = 0; c < 2; c++) for (int i = 0; i < (1 << FAST_BITS); i++) { j->fast[c][i].key = 0xFFFFFFFF; j->fast[c][i].code = 0; }
 	for (int i = 0; i < NCHUNKS; i++) j->chunkList[i] = 0;
 	for (int i = 0; i < NCHUNKS / 16 + 1; i++) j->pageCount[i] = 0;
 	j->nBlocks = 0;
@@ -1069,8 +1127,21 @@ void jitInvalidateHost (Machine *m, const u8 *p)
 	Jit *j = m->jit;
 	int ch = chunkOf (m, p);
 	if (ch < 0 || !j->chunkList[ch]) return;
-	for (Block *b = j->chunkList[ch]; b; b = b->cnext) b->valid = 0;
-	j->chunkList[ch] = 0;
+	// only the blocks whose bytes these are (data beside code is written often)
+	bool any = false;
+	for (Block **pb = &j->chunkList[ch]; *pb; )
+	{
+		Block *b = *pb;
+		if (p >= b->hostLo && p < b->hostHi)
+		{
+			b->valid = 0; *pb = b->cnext; any = true;
+			FastEntry &f = j->fast[b->cpu][(b->pc >> 1) & ((1 << FAST_BITS) - 1)];
+			if (f.code == b->code) f.key = 0xFFFFFFFF;
+		}
+		else pb = &b->cnext;
+	}
+	if (!any) return;
+	g_jitStats[2]++;
 	m->arm9.jitExit = true; m->arm7.jitExit = true;
 }
 
@@ -1093,7 +1164,6 @@ static int decode (Machine *m, Arm &c, u32 pc, bool thumb, Ins *ins)
 	int n = 0;
 	u32 a = pc;
 	u32 chunkEnd = (pc & ~0x3FFu) + 0x400;
-	extern unsigned g_jitNoKinds;
 	while (n < MAX_INS && a < chunkEnd)
 	{
 		Ins &in = ins[n];
@@ -1159,8 +1229,6 @@ static int decode (Machine *m, Arm &c, u32 pc, bool thumb, Ins *ins)
 		}
 	}
 	(void) m;
-	extern unsigned g_jitNoDP;
-void (*g_jitDumpHook) (const u32 *code, int words, u32 pc);	// (tests: each block's code)
 	for (int k = 0; k < n; k++)
 		if (ins[k].kind == K_DP && g_jitNoDP)
 		{
@@ -1192,6 +1260,7 @@ void (*g_jitDumpHook) (const u32 *code, int words, u32 pc);	// (tests: each bloc
 static Block *compile (Machine *m, Arm &c, u32 pc, bool thumb)
 {
 	Jit *j = m->jit;
+	g_jitStats[0]++;
 	if (j->nBlocks >= MAX_BLOCKS || j->size - j->pos < 16384) jitFlushAll (m);
 	static Gen g;
 	g.m = m; g.j = j; g.c = &c; g.cpu = c.num; g.thumb = thumb;
@@ -1269,8 +1338,15 @@ static Block *compile (Machine *m, Arm &c, u32 pc, bool thumb)
 	b->pc = pc; b->cpu = (u8) c.num; b->thumb = thumb; b->valid = 1; b->code = start;
 	Block **slot = &j->hash[c.num][(pc >> 1) & (HASH - 1)];
 	b->hnext = *slot; *slot = b;
+	FastEntry &fe = j->fast[c.num][(pc >> 1) & ((1 << FAST_BITS) - 1)];
+	fe.key = pc | (thumb ? 1u : 0u); fe.code = start;
 	u8 *host = c.num ? m->host7 (pc) : m->host9 (pc);
 	b->chunk = host ? chunkOf (m, host) : -1;
+	{
+		const Ins &last = g.ins[g.n - 1];
+		u32 bytes = last.addr - pc + (thumb ? (last.kind == K_THUMB_BL ? 4u : 2u) : 4u);
+		b->hostLo = host - 3; b->hostHi = host + bytes;		// (a byte write just before an instruction's word: -3)
+	}
 	if (b->chunk >= 0)
 	{
 		b->cnext = j->chunkList[b->chunk]; j->chunkList[b->chunk] = b;
@@ -1282,8 +1358,8 @@ static Block *compile (Machine *m, Arm &c, u32 pc, bool thumb)
 
 bool jitAvailable () { return true; }
 unsigned g_jitNoKinds;				// (tests: the kinds left to the interpreter, 1 << Kind)
-unsigned g_jitNoDP;
-void (*g_jitDumpHook) (const u32 *code, int words, u32 pc);	// (tests: each block's code)				// (tests: the data-processing ones: 1 << opcode, 16 S, 17 register shift, 18 immediate, 19 shifted, 20 thumb)
+unsigned g_jitNoDP;				// (tests: the data-processing ones: 1 << opcode, 16 S, 17 register shift, 18 immediate, 19 shifted, 20 thumb)
+void (*g_jitDumpHook) (const u32 *code, int words, u32 pc);	// (tests: each block's code)
 
 bool Machine::jitEnable (void *(*codeAlloc) (u32 size))
 {
@@ -1294,6 +1370,8 @@ bool Machine::jitEnable (void *(*codeAlloc) (u32 size))
 	Jit *j = new Jit;
 	j->buf = (u32 *) mem; j->size = CODE_SIZE / 4; j->pos = 0;
 	j->blocks = new Block[MAX_BLOCKS];
+	for (int c = 0; c < 2; c++) j->fast[c] = new FastEntry[1 << FAST_BITS];
+	arm9.jitFast = j->fast[0]; arm7.jitFast = j->fast[1];
 	// the entry and the exit
 	Asm a; a.p = j->buf;
 	u32 *enter = a.p;
@@ -1343,6 +1421,7 @@ void jitRun (Machine *m, Arm &c)
 		if (!b) b = compile (m, c, pc, thumb);
 		if (!b) { int k = thumb ? c.stepThumb () : c.stepArm (); c.ts += (s64) k << c.shift; continue; }
 		c.jitExit = false;
+		g_jitStats[5]++;
 		j->enter (&c, b->code);
 	}
 }

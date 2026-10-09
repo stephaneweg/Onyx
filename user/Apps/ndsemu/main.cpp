@@ -122,7 +122,7 @@ static void r3d_wait (void *, int line)
 
 // ---- the layout ------------------------------------------------------------------------------------------
 // the two screens' places in a w x h area at a scale (s / 256 of a DS pixel): top-left corners
-static void layout (int w, int h, int &s, int &tx, int &ty, int &bx, int &by)
+static void screens_at (int w, int h, int &s, int &tx, int &ty, int &bx, int &by)
 {
 	int lw = g_side ? 2 * SW : SW, lh = g_side ? SH : 2 * SH;
 	s = w * 256 / lw; if (h * 256 / lh < s) s = h * 256 / lh;
@@ -172,7 +172,7 @@ public:
 			return;
 		}
 		int s, tx, ty, bx, by;
-		layout (width, height, s, tx, ty, bx, by);
+		screens_at (width, height, s, tx, ty, bx, by);
 		const unsigned *f = ec_front (&g_ec);
 		blit (canvas.px, canvas.stride, width, height, tx, ty, s, f);
 		blit (canvas.px, canvas.stride, width, height, bx, by, s, f + SW * SH);
@@ -185,7 +185,7 @@ public:
 		(void) br; (void) bm; (void) wheel;
 		if (g_loading) return false;
 		int s, tx, ty, bx, by;
-		layout (width, height, s, tx, ty, bx, by);
+		screens_at (width, height, s, tx, ty, bx, by);
 		int x = (mx - bx) * 256 / s, y = (my - by) * 256 / s;
 		if (bl && x >= 0 && y >= 0 && x < SW && y < SH) { g_touchX = x; g_touchY = y; g_touchDown = 1; }
 		else if (!bl) g_touchDown = 0;
@@ -206,7 +206,7 @@ static void full_screen (bool on)
 static void blit_full (void)
 {
 	int s, tx, ty, bx, by;
-	layout (g_fsw, g_fsh, s, tx, ty, bx, by);
+	screens_at (g_fsw, g_fsh, s, tx, ty, bx, by);
 	const unsigned *f = ec_front (&g_ec);
 	blit (g_fs, g_fsw, g_fsw, g_fsh, tx, ty, s, f);
 	blit (g_fs, g_fsw, g_fsw, g_fsh, bx, by, s, f + SW * SH);

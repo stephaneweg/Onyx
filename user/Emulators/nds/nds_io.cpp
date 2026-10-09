@@ -14,6 +14,7 @@ namespace nds {
 void Machine::raise (int cpu, int bit)
 {
 	iflag[cpu] |= 1u << bit;
+	(cpu ? arm7 : arm9).jitExit = true;			// (the JIT's blocks stop chaining: the interrupt is looked at)
 }
 
 void Machine::checkIrq (int cpu) { (void) cpu; }

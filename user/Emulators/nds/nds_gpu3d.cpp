@@ -598,11 +598,14 @@ void Gpu3D::emitPolygon ()
 			v->sx = (s32) ((((s64) v->x + w) * vw) / (w * 2) + vpX1);
 			v->sy = (s32) ((((s64) -v->y + w) * vh) / (w * 2) + vy0);
 		}
-		if (v->sx < 0) v->sx = 0; if (v->sx > 256) v->sx = 256;
-		if (v->sy < 0) v->sy = 0; if (v->sy > 192) v->sy = 192;
+		if (v->sx < 0) v->sx = 0;
+		if (v->sx > 256) v->sx = 256;
+		if (v->sy < 0) v->sy = 0;
+		if (v->sy > 192) v->sy = 192;
 		if (w) v->sz = (s32) ((((s64) v->z * 0x4000) / w + 0x3FFF) * 0x200);
 		else v->sz = 0x7FFE00;
-		if (v->sz < 0) v->sz = 0; if (v->sz > 0xFFFFFF) v->sz = 0xFFFFFF;
+		if (v->sz < 0) v->sz = 0;
+		if (v->sz > 0xFFFFFF) v->sz = 0xFFFFFF;
 		v->sw = v->w;
 		P.v[i] = v;
 		if (v->sy < P.ymin) P.ymin = v->sy;

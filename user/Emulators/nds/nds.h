@@ -82,7 +82,8 @@ struct Arm
 	u32 excBase;				// 0xFFFF0000 or 0
 	// the JIT's
 	bool jitOn;
-	volatile bool jitExit;				// the block running must stop (its code changed, a halt...)
+	volatile bool jitExit;				// the block running must stop (its code changed, a halt, an interrupt...)
+	void *jitFast;					// the JIT's table of blocks (address -> code), read by its code
 #ifdef NDS_DEBUG
 	u32 hist[4096]; unsigned histN;			// the last instructions' addresses
 #endif
