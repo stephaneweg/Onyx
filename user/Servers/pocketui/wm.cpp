@@ -1436,6 +1436,13 @@ static void Start (int w, int, int restart)
 
 void pk_main_registered (int restart);				// (main.cpp: the alias)
 
+// (P9) Who has the keys, for the kernel (kapi_key_held, the pads): the shell while its overlay grabs them, and at
+// home -- the console's menu over a game is moved with the pad, the game under it reads nothing meanwhile.
+static unsigned Focus (unsigned pid)
+{
+	return s_nShell != 0 && (s_bGrab || s_bHome) ? s_nShell : pid;
+}
+
 static const struct ws_policy s_Pocket =
 {
 	"pocketui",
@@ -1445,5 +1452,6 @@ static const struct ws_policy s_Pocket =
 	0, 0,							// (no demonstration)
 	Mods,
 	Pointer,						// (P6: the viewport)
+	Focus,							// (P9: the shell's overlay has the pads)
 };
 const struct ws_policy *g_pWsPolicy = &s_Pocket;

@@ -1350,7 +1350,8 @@ and structures (`port/elegant.h` included) with PocketUI's meanings, and its own
 | The remote desktop | a window set aside is listed with `KAPI_WIN_OFFDESK` (rdpd hides it on the PC: only the app in front shows); the Super key comes from vncd / rdpd too (`remotekeys.h`, `kapi_inject_modifiers`) |
 | The viewport (P6) | a filled window **bigger than the work area** that will not shrink (a fixed size, a least size over the screen: Setup's 800 × 600 at 800 × 480) keeps its canvas; PocketUI moves it up / left under the work area's edges and draws thin indicators at the work area's right and bottom (its own topmost windows): the wheel over an indicator, or an indicator dragged, scrolls; the focused control the pocket UIKit tells (`PK_OP_FOCUS_RECT`, each time the focus moves) is kept in view. The policy's new **`pointer`** hook (`common/policy.h`, `WS_POLICY_HAS_POINTER`; Elegant's is 0) sees the pointer before the window manager. `PK_OP_TEXT_HINT` (the focused field's type: P10's on-screen keyboard) and `PK_OP_UNITS` (`uk_logical_units`: P10's native scale) are kept per window |
 | Split view (P8) | two programs side by side (landscape) or one over the other (portrait): the **front** one and the **side** one, a divider between them (PocketUI's own window, the accent's colour on the front one's side). Asked by the shell (`PK_OP_SPLIT`: the switcher's **S**) or the keys **Super+←** / **Super+→** (the front program to that half, the one fronted before it to the other), ended by **Super+↑**, by home, or when one of the two goes. **Super+[** / **Super+]** move the divider (40 / 50 / 60 %), **Super+Tab** — or a press in the other half — passes the front (the keys, the menus) to the other program. Each program is laid out in **its half**: `uk_win_server` answers the half as its work area and the size class of that half (`UK_SC_NARROW` under 480 px), so the adaptive widgets fold by themselves; a full-screen program ends nothing but covers both. `pk_split ()` tells the rest of the server; tested by `server_sim`'s `pocket-split` and `pocket-split-portrait` scenes |
-| Not yet | `consolehome` (P9), the scale (P10), a dim behind a card (`PK_OP_DIM`) |
+| Who has the pads (P9) | the kernel gives the pads' buttons and `kapi_key_held` to the program the server names (`KAPI_WS_FOCUS`); the policy's new **`focus`** hook (`common/policy.h`, `WS_POLICY_HAS_FOCUS`; Elegant's is 0) lets PocketUI name **its shell** while the shell grabs the keys (an overlay up) and at home: the console's menu over a game takes the pad, the game reads none |
+| Not yet | the scale (P10), a dim behind a card (`PK_OP_DIM`), the console's quick menu for games (save states), the top edge's reveal |
 
 **On the PC** (`tools/tests/server_sim/run.sh [out]`): the servers' code built for the host with a real app
 as their client in one process (`server_sim.cpp` stands for the kernel's side: `kapi_ws_ctl`'s operations, the
@@ -1511,6 +1512,38 @@ hook (`policy.h`, `WS_POLICY_HAS_MODS`); `core.h` gains `el_core_xfer` (a progra
 `el_core_next_key` (the window manager's reading of a cooked key string, for a policy); `CWindow::SetNoInset` (a
 topmost window that is not a band: the work area ignores it). **The Terminal** takes a command as its arguments
 (typed into its first tab once the prompt came): the search's "run" line.
+
+### 5.10.5b. The console home (`consolehome`, phase P9)
+
+`user/Apps/consolehome/main.cpp` — one source, a FreeType app (`FT_APPS`), category **Shell** (the `onyx` package
+takes it), started by `SD:/etc/session/console`. It is PocketUI's shell exactly as `pocketshell` is
+(`uk_shell_register`, a **backmost** window = its home, a **topmost alpha** window = its menu's overlay parked off
+the screen when hidden, `uk_shell_keys` for Super and F10, `uk_shell_grab` while the menu is up) and shares
+pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan_apps`, `g_cats`, `recent_*`,
+`tasks_read`, `open_app`, `draw_icon`; `look.h`: `lk_fill`, `lk_ring`, `lk_shadow`).
+
+- **The home**: `draw_home ()` — the space behind made once per size (`space_make`: a gradient, motes, towers of
+  cubes), the categories (`cats_filter` drops Demos / Other / Shell / Emulators), the chosen category's tiles
+  (`items_read`); `go (key)` is the one function every input ends in (the keyboard's handler, the pad's poll, the
+  pointer's hits).
+- **The menu**: `menu_build ()` — *Resume*, the front app's menus (its spec read by `uk_win_menu_get` when the menu
+  comes up; one of them chosen: `g_level`, its items, `uk_win_menu_command (id)` once the overlay is hidden), *Home*
+  (`uk_shell_front (0, 0)`), the other tasks (`uk_shell_front (id, 1)`), *Close* (`uk_win_close`), *Settings*,
+  *Shut Down*.
+- **The pad**: `pad_poll ()` reads every pad **without the focus rule** (`pad_any`: `kapi_pad_state` +
+  `pad_map_for` + `pad_apply`) to see the menu's button over an app — Home, or Select + Start —, and moves only
+  at home or in the menu, where PocketUI names it as the program that has the pads (the policy's `focus` hook).
+- **The pad as keys**: over an app whose `app.txt` category is not *Games* nor *Emulators* (`front_look ()`, after
+  each `tasks_read`), `pad_type ()` types for the pad with `kapi_inject_key` / `kapi_inject_modifiers` (the server
+  routes the keys to the app in front): arrows, Enter, Esc, Space, Tab, Ctrl+Page Up / Down, Page Up / Down.
+- **Sizes**: logical units × the scale (`D ()`, `F (lp)` a face per size), as pocketshell.
+- **Tests**: `tools/tests/server_sim/run.sh`'s `conshots` (800 × 480, 1920 × 1080, 640 × 480 in French): the home
+  is the whole screen, Right / Down move, F10 shows and Esc hides the menu; over an app with menus: the menu, its
+  File menu, Esc twice — the app still in front. Pictures `consolehome-*.png` (`CONSOLE_PNG=<folder>`).
+- **Not done** (the study's §7.5): the quick menu of games (save / load state — the emulators have no common
+  call for it yet), the pointer held at the top edge, the hint when an app starts, the library's ROMs on the home
+  (the Game Library is a tile of *Games*), `PK_OP_TOOLS`. A full-screen game (the kernel's direct path) hides the
+  menu: the emulators are to stay windowed in console (a window fills the screen there).
 
 ### 5.10.6. The adaptive widgets: one binary laid out for every mode (`uikit/adapt.h`, `sidepanel.h`, `form.h`)
 

@@ -60,7 +60,13 @@ struct ws_policy
 	// (2026-10-08, PocketUI's P6) The pointer, before the window manager (screen coordinates; buttons bit 0 left, 1 right,
 	// 2 middle; the wheel in notches) -> 1 taken here (PocketUI's viewport: a window bigger than the work area scrolled).
 	int  (*pointer) (int x, int y, unsigned buttons, int wheel);
+
+	// (2026-10-09, PocketUI's P9) The program told to the kernel as the one that has the keys (KAPI_WS_FOCUS:
+	// kapi_key_held, the pads), given the window manager's -> the one to tell (PocketUI: its shell while its
+	// overlay grabs the keys -- the console's menu over a game takes the pad, the game reads none).
+	unsigned (*focus) (unsigned pid);
 };
+#define WS_POLICY_HAS_FOCUS	1
 #define WS_POLICY_HAS_MODS	1		// (the hook above: a test built against both revisions knows it)
 #define WS_POLICY_HAS_POINTER	1
 

@@ -72,5 +72,6 @@ void ws_route_turn (unsigned self)
 	forward_events (self);
 	el_core_save_states (self);				// (the windows' places, for a server started again)
 	unsigned focus = el_core_focus_pid ();			// (kapi_key_held, the pads: who has the keys)
+	if (g_pWsPolicy != 0 && g_pWsPolicy->focus != 0) focus = g_pWsPolicy->focus (focus);
 	if (focus != s_nFocus) { s_nFocus = focus; kapi_ws_ctl (KAPI_WS_FOCUS, (long) focus, 0, 0); }
 }

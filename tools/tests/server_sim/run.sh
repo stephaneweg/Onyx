@@ -17,6 +17,7 @@ set -e
 cd "$(dirname "$0")/../../.."
 . tools/tests/server_sim/common.sh
 ftapp pocket pocketshell uikit_pocket
+ftapp pocket consolehome uikit_pocket
 ftapp pocket menubar uikit_pocket user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp
 app pocket terminal uikit_pocket
 app pocket tinycalc uikit_pocket
@@ -171,6 +172,21 @@ shellshots 480x800 portrait "home search switcher quick"
 shellshots 800x480 800 "home search switcher quick" fr
 # console: the shell's home is the whole screen (no band)
 run pocket_pocketshell shell-console "$W;$W;expect shell app;expect kind home;expect area 0,0,800,480;expect pos 0,0" SIM_SCREEN=800x480 SIM_MODE=console SIM_APPNAME=pocketshell
+# ---- consolehome (phase P9): the console mode's shell -- the home (the categories, the apps' tiles), its menu over an
+# app (the app's own menus in it: console has no menu bar). The home is the whole screen; Right goes into the tiles;
+# F10 shows the menu (the shell grabs the keys), Down / Enter go into the app's first menu, Esc twice leaves.
+# The pictures: consolehome-<home|tiles|menu|appmenu>-<size>[-fr].png (CONSOLE_PNG=<folder>: copied there too).
+conshots () {		# conshots <W>x<H> <tag> [lang]
+	sz=$1; w=${sz%x*}; h=${sz#*x}; sfx=$2${3:+-$3}
+	WR=$(langdir "$3")
+	E="SIM_SCREEN=$sz SIM_MODE=console SIM_APPNAME=consolehome SIM_APP=consolehome SIM_WRITES=$WR"
+	run pocket_consolehome console-home-$sfx "$W;$W;$W;expect shell app;expect kind home;expect area 0,0,$w,$h;expect pos 0,0;expect home 1;dump $OUT/consolehome-home-$sfx.elsm;key 0x103;$W;key 0x101;$W;dump $OUT/consolehome-tiles-$sfx.elsm;key 0x119;$W;$W;expect shown1 1;key 0x1b;$W;expect shown1 0;expect home 1" $E
+	run pocket_consolehome console-menu-$sfx "$W;$W;other $w $h Notes;othermenu MFile|I1~New~^N|I2~Open...~^O|-|I3~Save~^S|MEdit|I4~Copy~^C|I5~Paste~^V;$W;$W;$W;expect home 0;expect front other;key 0x119;$W;$W;expect shown1 1;expect front other;dump $OUT/consolehome-menu-$sfx.elsm;key 0x101;key 13;$W;$W;expect shown1 1;dump $OUT/consolehome-appmenu-$sfx.elsm;key 0x1b;$W;expect shown1 1;key 0x1b;$W;$W;expect shown1 0;expect front other;expect home 0" $E
+	for s in home tiles menu appmenu; do png consolehome-$s-$sfx; if [ -n "$CONSOLE_PNG" ]; then mkdir -p "$CONSOLE_PNG"; cp "$OUT/consolehome-$s-$sfx.png" "$CONSOLE_PNG/"; fi; done
+}
+conshots 800x480 800
+conshots 1920x1080 1080
+conshots 640x480 640 fr
 # the launcher's keys from the start (the Pi's report on 2026.10.126: "the shell does not react to the keyboard"):
 # typing goes to the search (calc), Down / Up choose, Enter opens the result (the Calculator); "qqq" (no app: its only
 # result is to run it) then Esc clears the search, the arrows move in the grid (Right x3, Left: its 3rd app), Enter

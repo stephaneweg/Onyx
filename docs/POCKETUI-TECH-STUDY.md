@@ -1,7 +1,9 @@
 # PocketUI: the desktop, pocket and console modes — a technical study
 
 > **2026-10-09:** **P7** begun (twelve apps migrated: docs/HANDOFF.md) and **P8** done (the split view --
-> `PK_OP_SPLIT`, Super+Left / Right / Up / [ ] / Tab, the switcher's S --, Setup's interface choice).
+> `PK_OP_SPLIT`, Super+Left / Right / Up / [ ] / Tab, the switcher's S --, Setup's interface choice) and **P9**'s
+> first version (`consolehome`: the home, the menu over an app with the app's menus, the pad; the policy's `focus`
+> hook -- the games' quick menu and the ROMs on the home are left: docs/HANDOFF.md).
 >
 > **Where it stands (2026-10-08):** phases **P1** (the kernel: kapi v97), **P2** (the window API in UIKit) and **P3**
 > (`user/Servers/common/`, PocketUI's skeleton `user/Servers/pocketui/`, its protocol `user/Kits/uikit/port/pocket.h` —

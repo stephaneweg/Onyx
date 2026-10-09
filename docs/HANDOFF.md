@@ -4,6 +4,23 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## PocketUI phase P9, first version (2026-10-09): `consolehome`, the console mode's shell -- tested on the PC
+
+`user/Apps/consolehome/` (docs/03 §5.10.5b, docs/04 *The console mode*): the home (categories + tiles, the PS2
+browser's mood of the design study's mock-ups `docs/compact-shell/mockups/console-*.png`), the menu over an app with
+**the app's own menus** in it, the pad / keyboard / mouse; `SD:/etc/session/console` now runs it (a card whose file
+was changed by hand keeps its own). PocketUI: the policy's `focus` hook (the shell has the pads while its overlay is
+up and at home). **The pad as keys** in the apps that are not games (consolehome types for it: `pad_type`). In
+English and French (40 words).
+
+- **Left for later, the user to decide** (the study's §7.5): the games' quick menu (save / load state: needs a call
+  every emulator answers), the ROMs on the home itself (today: the Game Library is a tile), the top edge's reveal,
+  the 3 s hint at an app's start, Home + L1 / R1 as a switcher, `apps.ini`.
+- **Known**: the button that closes the menu (A, B) is still held when the game gets the pad back: the game sees
+  it pressed once. A game in the kernel's full screen (F11) cannot be covered by the menu.
+- **To try on the Pi**: `session switch console` (from pocket: Settings > Mode), a pad's d-pad / A / B / Home, an
+  emulator started from the Game Library's tile then Home (or Select + Start), back by the menu's Settings > Mode.
+
 ## PocketUI phase P8 done (2026-10-09): the split view, Setup's interface choice -- tested on the PC (`server_sim`: 363 checks)
 
 - **Split view** (`user/Servers/pocketui/wm.cpp`: `s_nSide`, `s_nSplit`, `SplitOn`, `AreaOf`, `ServerInfoFor`,

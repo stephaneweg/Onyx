@@ -42,7 +42,7 @@ APPS = tinycalc tinypad cppdemo \
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf pocketshell preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters clock
+FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf pocketshell consolehome preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters clock
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
