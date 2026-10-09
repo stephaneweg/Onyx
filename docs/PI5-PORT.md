@@ -27,9 +27,22 @@
 > - **§13**: `hangtest` is gone (an app can no longer freeze the machine); test the crash log with
 >   a kernel fault instead; `el0test` and `faulttest` test the EL0 paths.
 >
-> **Decision already taken:** Onyx may ship **two binary distributions**, one for the Pi 4
-> (`kernel8-rpi4.img`) and one for the Pi 5 (`kernel_2712.img`), each with its own apps build if
-> needed. The kapi ABI stays append-only *within* each distribution.
+> **Decision taken (the user, 2026-10-09): the Pi 5 is a separate binary distribution.** Its own
+> staged cards **`sdcard5/`** and **`sdcard5_lite/`** (beside `sdcard/` and `sdcard_lite/`), its own
+> kernel (`kernel_2712.img`), its own apps build, and its own package repository in a **`pi5/`
+> folder of `stephaneweg/onyx-packages`** (served at `https://stephaneweg.github.io/onyx-packages/pi5`).
+> No shared card: a Pi 4 card and a Pi 5 card are two products. The kapi ABI stays append-only
+> *within* each distribution. §4.4 says what it changes in the build and the packaging.
+>
+> **Re-checked on 2026-10-09 (tree `9195e372`):** the blockers of §2 still hold. B1: the kernel's
+> `ThisCore ()` still masks `MPIDR & (SCHED_CORES - 1)` (`kernel/compat/circle/sched/scheduler.h`).
+> B3 grew: the user window now fills [8 GB, 60 GB) — the shared libraries at [16 GB, 28 GB)
+> (`USER_LIB_BASE`, kits since 2026-10-05), the extra windows at 28 GB (`USER_WINDOW_MORE_BASE`,
+> v94), the window-server slots up to 60 GB (`USER_WS_BASE`) — so a 16 GB board needs policy (B),
+> which the separate distribution now makes cheap (the Pi 5 apps are rebuilt anyway). Elegant
+> (`user/Servers/elegant`) composes in user space, but the present path (the 2D DMA, `dispdma=`)
+> is still the kernel's (`kernel/kernel.cpp`): §6 item 2 unchanged. Jet (WebKit) replaces NetSurf
+> wherever this plan says NetSurf; the GPU users list (§9.1) is unchanged.
 
 ## Contents
 
@@ -151,14 +164,14 @@ reboot go through Circle and work on the Pi 5.
 
 - `kernel/Makefile` already uses `$(TARGET)` for `sizecheck` (`:85-93`) and `stage` (`:116-141`),
   so it produces `kernel_2712.img`. Add a **board switch** (e.g. `make BOARD=pi5`) that points at
-  the Pi 5 Circle tree and a `sdcard-pi5/` staging directory (or a `stage-pi5` target).
+  the Pi 5 Circle tree and the `sdcard5/` staging directory (§4.4).
 - `sys/v3d.o` is compiled unconditionally (`kernel/Makefile:38, 73`): keep it, but Phase 2 makes it
   refuse to start on the Pi 5 until Phase 6.
 - Hard-coded image names to make `$(TARGET)`-driven: `kernel/sys/crashlog.cpp:420` and
   `kernel/kernel.cpp:503` (the addr2line hints), `tools/tests/fs/fstest.cpp:64, 79`,
   `tools/tests/run_gui_test.sh:9` (`-DRASPPI=4`).
 
-### 4.3 The SD card for the Pi 5 (`sdcard-pi5/` or a shared card)
+### 4.3 The SD card for the Pi 5 (`sdcard5/`)
 
 | File | Source | Note |
 |---|---|---|
@@ -169,12 +182,60 @@ reboot go through Circle and work on the Pi 5.
 | `firmware/brcmfmac43455-sdio.raspberrypi,5-model-b.{bin,txt,clm_blob}` | `circle/addon/wlan/firmware/Makefile` target `firmware5` (cypress `cyfmac43455`) | the Pi 4 names in `sdcard/firmware/` are not picked up on the Pi 5 |
 | no `start*.elf`, `fixup*.dat`, `bootcode.bin`, armstub | — | the Pi 5 firmware and BL31 are in EEPROM |
 
-A single card can boot both boards: the `[pi4]` / `[pi5]` sections of `config.txt` pick the kernel,
-the two sets of DTBs coexist, the apps are shared (Phase 1-6 userland). The apps directory is the
-same; only the kernel differs.
+(Superseded by the 2026-10-09 decision: no shared card. `sdcard5/config.txt` has only what the
+Pi 5 needs; the Pi 4 card keeps its own.)
 
 **EEPROM (optional):** `POWER_OFF_ON_HALT=1` makes a halt cut the 3.3 V rail (~0.01 W instead of
 ~1.2 W) — see Phase 7 for a clean power-off.
+
+### 4.4 The Pi 5 distribution: build, cards and packages
+
+| | Pi 4 (today) | Pi 5 |
+|---|---|---|
+| staged card | `sdcard/` (`kernel/Makefile`: `SDCARD = ../sdcard`) | **`sdcard5/`** (`make BOARD=pi5 stage` → `SDCARD = ../sdcard5`) |
+| lite card | `sdcard_lite/` (`mkrepo.py --lite`) | **`sdcard5_lite/`** |
+| kernel | `kernel8-rpi4.img` | `kernel_2712.img` (`$(TARGET)` from Circle `-r 5`) |
+| apps | `-mcpu=cortex-a72` | rebuilt in their own output tree (e.g. `user/lib5/`, objects apart), A72 flags first, `-mcpu=cortex-a76` later (Phase 7) |
+| repository | `onyx-packages/` (root: `index`, `index.sig`, `pkgs/`) | **`onyx-packages/pi5/`** (the same layout one level down) |
+| card's `etc/pkg/pkg.ini` | `repo = https://stephaneweg.github.io/onyx-packages` | `repo = https://stephaneweg.github.io/onyx-packages/pi5` |
+| versions | `tools/pkg/versions.ini` | **`tools/pkg/versions5.ini`** (the two distributions bump apart) |
+| installed db | `sdcard/var/pkg/db` | `sdcard5/var/pkg/db` |
+
+What to change:
+
+1. **`kernel/Makefile`**: a `BOARD ?= pi4` switch picking the Circle tree (`circle/` or a second
+   worktree `circle5/` configured `-r 5`), `SDCARD` (`../sdcard` / `../sdcard5`) and the apps'
+   output folder, passed down to `user/Makefile`, `user/BinUtils/Makefile`, the kits and the ports
+   (25 makefiles name `-mcpu=cortex-a72`: one `CPU ?=` variable instead).
+2. **`sdcard5/` sources**: what is not built — `etc/`, `fonts/`, `res/`, wallpapers, samples, the
+   apps' resources (`apps/<x>.app/` minus `main`) — is the same as `sdcard/`. Keep **one source of
+   truth**: the Pi 5 `stage` copies them from `sdcard/` (rsync, the built files excluded), then
+   overlays `tools/pi5/overlay/` (the Pi 5 `config.txt`, `cmdline.txt` with `gpiofanpin=45`,
+   `etc/pkg/pkg.ini`). `sdcard5/` is then generated, like `sdcard_lite/`, and committed only if the
+   user wants it in git (it is large: decide before the first commit).
+3. **`tools/pkg/packages.ini`**: the packages are the same names on both, except
+   - `[base]`: `kernel_2712.img` instead of `kernel8-rpi4.img` (a per-board `files5 =` key, or
+     `$KERNEL` expanded by `mkrepo.py`);
+   - `[pi-firmware]`: on the Pi 5 no `start4.elf`/`fixup4.dat`/armstub (the firmware is in
+     EEPROM), but `bcm2712-rpi-5-b.dtb`, `bcm2712d0-rpi-5-b.dtb`, `bcm2712-rpi-500.dtb`,
+     `overlays/bcm2712d0.dtbo`, `config.txt`, `cmdline.txt` and the `brcmfmac43455-sdio.raspberrypi,5-model-b.*`
+     Wi-Fi files (§4.3) — a `files5 =` key again;
+   - a package can be **Pi-4-only or Pi-5-only** (`boards = pi4` / `pi5`): e.g. a GPU-only app
+     before Phase 6.
+4. **`tools/pkg/mkrepo.py`**: `--board pi5` → reads `files5`/`boards`, `versions5.ini`,
+   writes into `--out $REPO/pi5`, `--db sdcard5/var/pkg/db`, `--lite sdcard5_lite`; the root index
+   of `onyx-packages` stays the Pi 4's (the cards in the field read it — never move it).
+5. **`tools/pkg/publish.sh`**: `sh tools/pkg/publish.sh --board pi5` — same steps, same signing key
+   (`ONYX_PKG_KEY`; the Pi 5 card carries the same `etc/pkg/onyx.pub`), the AppKit stub check run on
+   `sdcard5`, the Jet `main` taken from `pi5/pkgs/jet-*.opk`; one commit in `onyx-packages`
+   touching `pi5/` only. The skill `.claude/skills/onyx-packages/SKILL.md` gets the Pi 5 run once
+   the distribution exists (each change to the card: publish both boards).
+6. **`user/Libs/pkg/pkglib.h`**: `PKG_REPO` is only the fallback when `pkg.ini` has no `repo`;
+   make it board-aware (append `/pi5` when `kapi_board_info` (§11) says Pi 5) so a Pi 5 card with
+   a lost `pkg.ini` never installs Pi 4 binaries. `pkgd`/`pkgman` need nothing else. Optional
+   guard: the index carries `board = pi5` and `pkg` refuses an index of the other board.
+7. **Docs**: `docs/03` (the second build), `docs/04` (the Pi 5 card), `docs/pkg/README.md`
+   (the `pi5/` folder), `CLAUDE.md` (the publish rule: both distributions).
 
 ## 5. Phase 2 — the four boot blockers
 
