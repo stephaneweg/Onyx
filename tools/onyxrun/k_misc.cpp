@@ -85,7 +85,6 @@ static int k_set_keymap_data (u64, u64, unsigned)	{ return 1; }
 static int k_pad_state (int, u64)			{ return 0; }
 static int k_wlan_scan (u64, int)			{ return 0; }
 static int k_wlan_reconnect (void)			{ return -1; }
-static int k_gpu_info (u64 buf, unsigned cap)		{ gstr_out (buf, cap, ""); return 0; }
 static int k_gpio_ctl (int, u64, u64, u64)		{ return -KAPI_ENODEV; }
 static int k_sound_acquire (void)			{ return -1; }
 static void k_sound_release (void)			{ }
@@ -119,7 +118,6 @@ KAPI (set_keymap_data, k_set_keymap_data);
 KAPI (pad_state, k_pad_state);
 KAPI (wlan_scan, k_wlan_scan);
 KAPI (wlan_reconnect, k_wlan_reconnect);
-KAPI (gpu_info, k_gpu_info);
 KAPI (gpio_ctl, k_gpio_ctl);
 KAPI (sound_acquire, k_sound_acquire);
 KAPI (sound_release, k_sound_release);

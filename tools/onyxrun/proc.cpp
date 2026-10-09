@@ -160,6 +160,8 @@ static void proc_mark_ended (Proc *P)
 	ipc_proc_gone (P);
 	extern void net_proc_gone (Proc *P);		// (k_net.cpp)
 	net_proc_gone (P);
+	extern void gpu_proc_gone (Proc *P);		// (k_gpu.cpp)
+	gpu_proc_gone (P);
 	h_drop_all (P);
 	if (P->stdoutStream && P->stdoutStream->pipe)
 	{
