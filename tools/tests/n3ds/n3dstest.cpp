@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #include "n3ds/n3ds.h"
 
 static void debugOut (void *, const char *text, n3ds::u32 len) { fwrite (text, 1, len, stdout); }
@@ -49,7 +50,7 @@ static bool fileRead (void *user, n3ds::u64 offset, void *dst, n3ds::u32 n)
 	return fseek (f, (long) offset, SEEK_SET) == 0 && fread (dst, 1, n, f) == n;
 }
 
-int main (int argc, char **argv)
+static int run (int argc, char **argv)
 {
 	if (argc < 2) { fprintf (stderr, "usage: n3dstest <program.elf> [frames [picture.ppm]]\n"); return 2; }
 	int frames = argc > 2 ? atoi (argv[2]) : 600;
@@ -64,7 +65,7 @@ int main (int argc, char **argv)
 	m->debugOut = debugOut;
 	m->trace = getenv ("N3DS_TRACE") != 0;
 	// N3DS_FONT=<sysfont.bcfnt>  the shared system font (tools/n3ds/mkfont.py makes ours)
-	if (const char *fontPath = getenv ("N3DS_FONT"))
+	if (const char *fontPath = argc > 4 ? argv[4] : getenv ("N3DS_FONT"))		// (or the 4th argument: where there is no environment)
 	{
 		FILE *ff = fopen (fontPath, "rb");
 		if (ff)
@@ -113,6 +114,7 @@ int main (int argc, char **argv)
 	const char *shots = getenv ("N3DS_SHOTS");
 	const int shotEvery = getenv ("N3DS_SHOTEVERY") ? atoi (getenv ("N3DS_SHOTEVERY")) : 60;
 	int n = 0;
+	struct timeval t0; gettimeofday (&t0, 0);
 	while (n < frames && !m->exited)
 	{
 		unsigned b = 0; bool down = false; int tx = 0, ty = 0;
@@ -129,6 +131,9 @@ int main (int argc, char **argv)
 		}
 	}
 	fflush (stdout);
+	struct timeval t1; gettimeofday (&t1, 0);
+	const double secs = (double) (t1.tv_sec - t0.tv_sec) + (double) (t1.tv_usec - t0.tv_usec) / 1e6;
+	if (n && secs > 0) fprintf (stderr, "%d frames in %.2f s: %.1f frames a second (the console: 59.8)%c", n, secs, (double) n / secs, 10);
 	fprintf (stderr, "%s after %d frames (%llu ticks): %llu system calls, %llu thread switches, %u memory faults\n",
 		 m->exited ? "ended" : "still running", n, (unsigned long long) m->now, (unsigned long long) m->svcCount,
 		 (unsigned long long) m->switchCount, (unsigned) m->mem.faults);
@@ -136,7 +141,7 @@ int main (int argc, char **argv)
 	const size_t rgbSize = (size_t) n3ds::TOP_W * n3ds::SCREEN_H * 2 * 3;
 	fprintf (stderr, "screens %08x (%llu VBlanks; the GPU was asked %u fills, %u transfers, %u command lists)\n", crc32 (rgb, rgbSize),
 		 (unsigned long long) m->gsp.frames, (unsigned) m->gsp.fills, (unsigned) m->gsp.transfers, (unsigned) m->gsp.cmdLists);
-	if (argc > 3)
+	if (argc > 3 && strcmp (argv[3], "-") != 0)
 	{
 		FILE *o = fopen (argv[3], "wb");
 		if (o) { fprintf (o, "P6\n%d %d\n255\n", n3ds::TOP_W, n3ds::SCREEN_H * 2); fwrite (rgb, 1, rgbSize, o); fclose (o); }
@@ -154,3 +159,26 @@ int main (int argc, char **argv)
 	if (m->lastError[0]) fprintf (stderr, "error: %s\n", m->lastError);
 	return m->exited && !m->lastError[0] && m->exitCode == 0 ? 0 : 1;
 }
+
+#ifdef N3DS_ONYX
+// On Onyx a program has no argc / argv: its arguments are one line, asked from the kernel (AppKit).
+#include "appkit/appkit.h"
+int main (void)
+{
+	static char line[512]; static char *argv[8];
+	int argc = 0;
+	argv[argc++] = (char *) "n3dstest";
+	kapi_get_args (line, sizeof line);
+	for (char *p = line; *p && argc < 8; )
+	{
+		while (*p == ' ') p++;
+		if (!*p) break;
+		argv[argc++] = p;
+		while (*p && *p != ' ') p++;
+		if (*p) *p++ = 0;
+	}
+	return run (argc, argv);
+}
+#else
+int main (int argc, char **argv) { return run (argc, argv); }
+#endif

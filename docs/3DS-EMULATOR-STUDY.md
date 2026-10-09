@@ -405,6 +405,26 @@ picture of the real game as the palette to reach.
 - **Not verified**: the camera's path over the map (the user expects Link's house in it; a run with a picture
   every 30 frames is to be looked at with him), the timing against a console. Still not done: fog, texture filtering.
 
+## 9k. The core on the Pi 4: first speeds (2026-10-10)
+
+`run_n3ds_test.sh` also links `n3dstest` as an Onyx program (`$N3DS_BUILD/n3dstest.elf`; its arguments from
+`kapi_get_args`, the font as a 4th argument, `-` for no picture; it prints the frames a second). Sent to the user's
+Pi 4 by FTP and run from telnet, **no display, one core** (the machine and the GPU's software renderer together):
+
+| Program | Frames a second (the console: 59.8) | What it draws |
+|---|---|---|
+| 2048 | 190 | the text console: no GPU |
+| Snake | 116 | a few small rectangles and text |
+| Cube Adventures | 63 | a menu: some rectangles |
+| Mars | **9.6** | full-screen textured layers on both screens |
+
+The same pictures' checksums as under qemu. **The processor is not the limit (Dynarmic on the Pi: fine); the
+software renderer is**: about 140 ns a pixel through the general path (six combiner stages, the procedural
+texture, per-pixel floats). *A Link Between Worlds* draws ~900 000 lit pixels a frame: a few frames a second at
+best this way. **Phase T3 is the next need** -- the fragments on the V3D (the study's plan), or first a much
+faster software path (stages compiled per draw, integer spans, the renderer on the second app core). The game
+itself was not run on the Pi (its ROM is on the PC).
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 

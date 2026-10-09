@@ -47,6 +47,9 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
   the logo, "Press A" -- after about 900 frames (10 minutes of qemu).
 - **Its title screen has the right colours and the file selection works** (section 9j: fragment lighting, the
   combiner buffer's two-stage delay; the save is written).
+- **On the Pi 4** (section 9k; `n3dstest.elf`, headless, one core): 2048 190 fps, Snake 116, Cube Adventures 63,
+  **Mars 9.6** -- the software renderer is the limit (~140 ns a pixel), not the CPU. The game would run at a few
+  frames a second: **T3 (the V3D, or a much faster software path) is the next need** before an app is worth making.
 - **Next for the game**: the software keyboard applet (*Rename* waits for it: `APT` 0x18 and the library applets),
   starting a game (*Begin*), the camera's path to check with the user, fog, texture filtering; then the sound (T4), the speed and the Pi (T3), the app (T7).
 - **Also**: texture filtering; the SD card's archive (saves); what the next homebrew or the first game asks (`Machine::notes`).

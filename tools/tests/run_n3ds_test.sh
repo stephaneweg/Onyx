@@ -37,6 +37,23 @@ aarch64-none-elf-gcc -O2 -I"$D/onyx" -c "$HERE/n3ds/t0_shim.c" -o "$B/t0_shim.o"
 aarch64-none-elf-g++ $ARCH -static -nostartfiles --specs=nosys.specs -Wl,--gc-sections $OBJS "$B/dynarmic/libdynarmic.a" \
 	"$B/linux_shim.o" "$B/t0_shim.o" -o "$B/n3dstest" 2>&1 | grep -v "is not implemented and will always fail" | grep -v "in function" || true
 [ -x "$B/n3dstest" ] || { echo "n3dstest did not build"; exit 1; }
+# the same runner as an Onyx program, when the apps' libraries are built (make -C user): $N3DS_BUILD/n3dstest.elf --
+# put it (stripped) in SD:/bin of a Pi: "n3dstest SD:/roms/3ds/Snake.3dsx 300" says the frames a second there
+UL="$ROOT/user"
+if [ -f "$UL/lib/appkit_stubs.o" ] && [ -f "$UL/Runtime/libc/crt0libc.o" ] && [ -f "$UL/Runtime/libc/onyx_syscalls.o" ]; then
+	OO=""
+	for src in "$ROOT"/user/Emulators/n3ds/*.cpp "$HERE/n3ds/n3dstest.cpp"; do
+		o="$B/core/$(basename "$src" .cpp).onyx.o"
+		if [ ! -f "$o" ] || [ "$src" -nt "$o" ] || [ "$ROOT/user/Emulators/n3ds/n3ds.h" -nt "$o" ]; then
+			case "$src" in
+			*n3ds_cpu.cpp) aarch64-none-elf-g++ -std=c++20 -O2 $ARCH -fno-pic -fno-pie -fno-stack-protector $INC $U -c "$src" -o "$o" ;;
+			*)             aarch64-none-elf-g++ -std=c++17 -O3 $ARCH -fno-pic -fno-pie -fno-stack-protector -fno-exceptions -fno-rtti -DN3DS_ONYX $U -I"$UL/Kits" -I"$ROOT/kernel/include" -c "$src" -o "$o" ;;
+			esac
+		fi
+		OO="$OO $o"
+	done
+	aarch64-none-elf-g++ $ARCH -fno-pic -fno-pie -nostartfiles -Wl,-T,"$UL/Runtime/user.ld" -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none -Wl,--gc-sections 		"$UL/lib/appkit_stubs.o" "$UL/Runtime/libc/crt0libc.o" "$UL/Runtime/libc/onyx_syscalls.o" $OO "$B/dynarmic/codemem.o" "$B/dynarmic/libdynarmic.a" -lm -o "$B/n3dstest.elf" 2>&1 | grep -v "warning" | head -5 || true
+fi
 # the shared system font: ours (tools/n3ds/mkfont.py)
 : "${N3DS_FONT:=$ROOT/user/Emulators/n3ds/data/sysfont.bcfnt}"; export N3DS_FONT
 if [ -n "$1" ]; then exec qemu-aarch64 "$B/n3dstest" "$@"; fi
