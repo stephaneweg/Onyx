@@ -23,11 +23,7 @@ Gamepad	Manette
 Wi-Fi	Wi-Fi
 Packages	Paquets
 App Settings	Réglages des apps
-settings	réglages
-app	app
-apps	apps
 Nothing here yet	Rien ici pour le moment
-more	de plus
 Enter	Entrer
 Back	Retour
 Category	Catégorie
@@ -36,3 +32,25 @@ Resume	Reprendre
 Home	Accueil
 Shut Down...	Éteindre...
 The menu	Le menu
+Apps	Apps
+%d app	%d app
+%d apps	%d apps
+Onyx game	Jeu Onyx
+%d game	%d jeu
+%d games	%d jeux
+%d item	%d élément
+%d items	%d éléments
+Jan	janv.
+Feb	févr.
+Mar	mars
+Apr	avr.
+Jun	juin
+Jul	juil.
+Aug	août
+Sep	sept.
+Oct	oct.
+Nov	nov.
+Dec	déc.
+No picture yet: the Game Library makes them	Pas encore d'image : la Ludothèque les crée
+Play	Jouer
+May	mai
