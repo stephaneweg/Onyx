@@ -514,6 +514,19 @@ static int round_send (void)
 		n = k;
 	}
 	n = full_only (L, n);
+	{	// a window not seen on the Pi -- fully see-through (opacity 0) or off the screen -- is not told: the console's
+		// home parks its overlays so, and a full-screen overlay put back on the screen (a game's resolution) became a
+		// window over everything in Onyx Remote that took the clicks and the focus but sent no key (2026-10-09)
+		int k = 0;
+		for (int i = 0; i < n; i++)
+		{
+			const struct kapi_win_info *I = &L[i];
+			int off = I->id != KAPI_WIN_DESKTOP && (I->x + I->w <= 0 || I->y + I->h <= 0 || I->x >= g_W || I->y >= g_H);
+			if (I->id != KAPI_WIN_DESKTOP && (I->alpha == 0 || off)) continue;
+			L[k++] = L[i];
+		}
+		n = k;
+	}
 	unsigned F[MAXWIN];
 	pocket_flags (L, n, F);
 	told_log (L, n, F);

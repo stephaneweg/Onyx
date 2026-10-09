@@ -17,8 +17,11 @@ game shown at the top left, the home around it; the tip "Home Menu" left at the 
   the top left: PocketUI's policy now centres it over the matte (and fills it again if it grows).
 - **Slower drawing**: the foot's band baked into the background, the title screen scaled once, no shadow under the
   faded icons; a draw over 40 ms is logged (`consolehome: the home drawn in N ms`).
-- **RDP**: Backspace (Select), Tab, Delete, Home / End / Page Up / Down are held keys now (`remotekeys.h`). Whether
-  Onyx Remote's keyboard reaches the console's home is NOT solved: the kmsg lines `rdpd: told ...` are needed.
+- **RDP's keyboard in console mode** (it worked under Elegant and in pocket): the console's home parks its full-screen
+  menu overlay (topmost, see-through, opacity 0) off the screen; a game's resolution put it back on the screen, and
+  Onyx Remote made of it a window over everything that took the clicks and the focus but sent no key. Now
+  re-parked at each screen size, and **rdpd no longer tells a window of opacity 0 or off the screen** (test:
+  `run_rdpd_test.sh`, MOCK_POCKET=2). Backspace (Select), Tab, Delete, Home / End / Page Up / Down are held keys too.
 
 ## The keyboard as a gamepad (2026-10-09, evening) -- tested on the PC, NOT on the Pi
 

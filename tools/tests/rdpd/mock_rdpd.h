@@ -15,6 +15,15 @@
 #define KEY_UP 0x100
 #define KEY_DOWN 0x101
 #define KEY_LEFT 0x102
+#ifndef KEY_HOME
+#define KEY_BACKSPACE 8
+#define KEY_TAB 9
+#define KEY_HOME 0x104
+#define KEY_END 0x105
+#define KEY_PGUP 0x106
+#define KEY_PGDN 0x107
+#define KEY_DEL 0x108
+#endif
 #define KEY_RIGHT 0x103
 #define KAPI_WIN_KEYS 1
 #define KAPI_WIN_FULLSCREEN 2
@@ -46,20 +55,24 @@ static inline int uk_win_list (struct kapi_win_info *o, int max)
 	mock_lists++;
 	if (mock_pocket ())		// home 20 (shell 5), matte 21 (PocketUI 2), app 22 + its popup 23 (pid 3), menu bar 24 (pid 6)
 	{
-		struct kapi_win_info W[5] = {
+		struct kapi_win_info W[7] = {
 			{ 20, 5, 0, 30, 50, 20, 2 | 1 | 16, 255, 1, 0, "pocketshell", 0, 0, 0, 0, 0 },
 			{ 21, 2, 0, 30, 50, 20, 1 | 16, 255, 1, 0, "matte", 0, 0, 0, 0, 0 },
 			{ 22, 3, 10, 35, 30, 10, 1, 255, 1, 1, "App", 0, 0, 0, 0, 0 },
 			{ 23, 3, 12, 40, 8, 4, 1, 255, 1, 0, "popup", 0, 0, 0, 0, 0 },
-			{ 24, 6, 0, 0, 50, 30, 1 | 4 | 16 | 32, 255, 1, 0, "menubar", 0, 0, 0, 0, 0 } };
+			{ 24, 6, 0, 0, 50, 30, 1 | 4 | 16 | 32, 255, 1, 0, "menubar", 0, 0, 0, 0, 0 },
+			// the shell's parked overlays (the console's home): one put back on the screen, see-through (opacity 0),
+			// one off the screen -- neither told (2026-10-09: the first took Onyx Remote's clicks and focus)
+			{ 25, 5, 0, 0, 1024, 768, 1 | 4 | 16 | 32, 0, 1, 0, "consolehome menu", 0, 0, 0, 0, 0 },
+			{ 26, 5, -2000, 0, 120, 34, 1 | 4 | 16 | 32, 255, 1, 0, "consolehome tip", 0, 0, 0, 0, 0 } };
 		if (mock_pocket () >= 3)	// (the full screen: the window at 0, 0, the screen's size, no frame, its state)
 		{
 			W[2].x = W[2].y = 0; W[2].w = 1024; W[2].h = 768; W[2].state = 1 | 2;
 			if (mock_pocket () == 4) W[2].flags = 0;
 		}
 		int k = 0;
-		for (int i = 0; i < 5 && k < max; i++)
-			if (mock_pocket () != 2 || W[i].id == 20 || W[i].id == 24) o[k++] = W[i];
+		for (int i = 0; i < 7 && k < max; i++)
+			if (mock_pocket () != 2 || W[i].id == 20 || W[i].id >= 24) o[k++] = W[i];
 		return k;
 	}
 	struct kapi_win_info a = { 7, 3, 107, 132, 100, 70, 0, 255, mock_lists >= 3 ? 2u : 1u, 1, "Test A", 114, 109, 7, 32, 1 };

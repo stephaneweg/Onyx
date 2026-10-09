@@ -42,6 +42,7 @@ if mode >= 3:					# a program with the full screen (3: PocketUI, a BASIC game; 4
 elif mode == 2:
     check(f.get(20) == SYS, "home, no app: the shell's home told as a plain window (%s)" % f.get(20))
     check(f.get(24) == B | T | SYS | A, "the menu bar as it is")
+    check(25 not in f and 26 not in f, "the shell's parked overlays (see-through, off the screen) not told (%s)" % sorted(f.keys()))
 else:
     check(f.get(22) == 0, "the app's frameless main window told as a plain window (%s)" % f.get(22))
     check(f.get(23) == B, "its popup stays borderless (an overlay: %s)" % f.get(23))
