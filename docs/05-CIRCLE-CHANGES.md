@@ -1073,7 +1073,9 @@ Three conflicts: `usbkeyboard.h` (our `GetKeyMap ()` beside upstream's protected
 for a hidden network added as one more name), `tcpconnection.cpp` (our duplicate-ACK test kept: patch 20, the same
 RFC 5681 test without resetting the count on another segment). The keymap decoupling (patch 1) came through intact.
 Tested on the PC (`run_fs_test.sh`, `run_circlenet_test.sh`, `run_ramfs_test.sh`, `run_gui_test.sh`,
-`run_gamepad_test.sh`); **to test on the Pi**: the Wi-Fi join, TCP (FTP, VNC), USB keyboards, mice and gamepads.
+`run_gamepad_test.sh`). **Tested on the Pi 4 (the user, 2026-10-09):** the Wi-Fi joins, TCP holds (YouTube audio
+and video in Jet, a remote desktop session over rdpd), the Game Boy Color emulator plays with its sound. Not checked
+yet: a keyboard unplugged and plugged again (its layout kept), the 8BitDo / Xbox 360 wireless devices.
 
 ## Updating the fork (submodule)
 
