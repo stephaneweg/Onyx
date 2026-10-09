@@ -415,10 +415,12 @@ static unsigned pad_any (void)
 }
 #include "xset.h"				// the settings' pages: Sound, Gamepad ... Display, in the XMB's style
 
-// THE PAD AS KEYS: an app that is not a game (app.txt's category: not Games, not Emulators -- those read the pad
-// themselves) is moved by the pad as by a keyboard, this shell typing for it (kapi_inject_key: the server routes the
-// keys to the app in front): the d-pad the arrows, A Enter, B Esc, X Space, Y Tab, L1 / R1 Ctrl+Page Up / Down (the
-// tabs), L2 / R2 Page Up / Down.
+// THE PAD AS A MOUSE AND KEYS (the user, 2026-10-09: the desktop's apps need the mouse -- the browser...): an app that is
+// not a game (app.txt's category: not Games, not Emulators -- those read the pad themselves) is moved by the pad as by
+// a mouse and a keyboard, this shell typing and pointing for it (kapi_inject_key / kapi_inject_pointer: the server
+// gives them to the app in front): the LEFT STICK moves the pointer (faster the further it is pushed), A is the left
+// button (held: a drag), X the right one; L1 / R1 and the RIGHT STICK up / down scroll (the wheel); the d-pad the arrows,
+// B Esc, Y Tab, Start Enter, L2 / R2 Page Up / Down.
 static bool g_padKeys;
 // THE TIP: an app that comes to the front fills the screen with nothing of the shell's left -- for three seconds a
 // small pill at the top right says how to get the menu ("Home  Menu"; a third window, see-through, parked after).
@@ -471,18 +473,81 @@ static void pad_type (unsigned press, unsigned held, bool rep)
 	else if (d & PAD_DOWN) kapi_inject_key ("\x1b[B");
 	else if (d & PAD_LEFT) kapi_inject_key ("\x1b[D");
 	else if (d & PAD_RIGHT) kapi_inject_key ("\x1b[C");
-	if (press & PAD_A) kapi_inject_key ("\n");
+	if (press & PAD_START) kapi_inject_key ("\n");
 	if (press & PAD_B) kapi_inject_key ("\x1b");
-	if (press & PAD_X) kapi_inject_key (" ");
 	if (press & PAD_Y) kapi_inject_key ("\t");
 	if (press & PAD_L2) kapi_inject_key ("\x1b[5~");
 	if (press & PAD_R2) kapi_inject_key ("\x1b[6~");
-	if (press & (PAD_L | PAD_R))
+}
+// The pads read for an app: the buttons (the left stick NOT as the d-pad: it is the pointer's), the sticks (the one
+// pushed furthest of all the pads, -1000..1000).
+static unsigned pad_app_read (int *lx, int *ly, int *rx, int *ry)
+{
+	unsigned b = 0;
+	*lx = *ly = *rx = *ry = 0;
+	for (int i = 0; i < PAD_MAX; i++)
 	{
-		kapi_inject_modifiers (MOD_CTRL);
-		kapi_inject_key (press & PAD_L ? "\x1b[5~" : "\x1b[6~");
-		kapi_inject_modifiers (0);
+		struct kapi_pad p;
+		struct pad_map m;
+		if (!kapi_pad_state (i, &p)) continue;
+		pad_map_for (&p, &m);
+		if (m.dpad != PAD_DPAD_AXES) m.stick = 0;
+		int x, y, u, v;
+		b |= pad_apply (&p, &m, &x, &y, &u, &v);
+		if (m.dpad == PAD_DPAD_AXES) x = y = 0;		// (its d-pad is that stick)
+		auto big = [] (int *o, int n) { if ((n < 0 ? -n : n) > (*o < 0 ? -*o : *o)) *o = n; };
+		big (lx, x); big (ly, y); big (rx, u); big (ry, v);
 	}
+	return b;
+}
+static int g_mx = -1, g_my;				// the pointer moved by the pad (-1: not yet: the screen's middle)
+static unsigned g_mbtn;
+static bool g_mMoving;					// the stick pushed: the main loop polls faster
+static int stick_step (int v, int max)			// a stick's push -> pixels this turn (the square of the push past the dead zone)
+{
+	const int dead = 180;
+	int a = v < 0 ? -v : v;
+	if (a <= dead) return 0;
+	long t = (long) (a - dead) * 1000 / (1000 - dead);	// 0..1000
+	int px = (int) (t * t * max / 1000000);
+	if (px < 1) px = 1;
+	return v < 0 ? -px : px;
+}
+static void pad_app (unsigned now)
+{
+	static unsigned last, t0, tw;
+	int lx, ly, rx, ry;
+	unsigned b = pad_app_read (&lx, &ly, &rx, &ry);
+	unsigned press = b & ~last;
+	bool rep = (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) && (int) (now - t0) > 16;
+	last = b;
+	if (b & PAD_SELECT) return;				// (Select + Start: the menu -- pad_poll)
+	if (press || rep)
+	{
+		if (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) t0 = now + (press ? 22 : 0);
+		pad_type (press, b, rep);
+	}
+	// the pointer: the left stick, A / X its buttons
+	if (g_mx < 0) { g_mx = g_sw / 2; g_my = g_sh / 2; }
+	int max = g_sw / 64 > 4 ? g_sw / 64 : 4;		// (full tilt, a turn each 16 ms: the screen's width in about a second)
+	int dx = stick_step (lx, max), dy = stick_step (ly, max);
+	g_mMoving = dx || dy || ry < -300 || ry > 300 || (b & (PAD_L | PAD_R));
+	unsigned btn = ((b & PAD_A) ? 1u : 0) | ((b & PAD_X) ? 2u : 0);
+	int wheel = 0;
+	if ((press & (PAD_L | PAD_R)) || (((b & (PAD_L | PAD_R)) || ry < -300 || ry > 300) && (int) (now - tw) >= 12))
+	{
+		tw = now;					// (held: a notch every 0.12 s)
+		wheel = (b & PAD_L) || ry < -300 ? 1 : (b & PAD_R) || ry > 300 ? -1 : 0;
+		if (press & PAD_L) wheel = 1; else if (press & PAD_R) wheel = -1;
+	}
+	if (!dx && !dy && btn == g_mbtn && !wheel) return;
+	g_mx += dx; g_my += dy;
+	if (g_mx < 0) g_mx = 0;
+	if (g_my < 0) g_my = 0;
+	if (g_mx >= g_sw) g_mx = g_sw - 1;
+	if (g_my >= g_sh) g_my = g_sh - 1;
+	g_mbtn = btn;
+	kapi_inject_pointer (g_mx, g_my, btn, wheel);
 }
 static void pad_poll (void)
 {
@@ -495,16 +560,14 @@ static void pad_poll (void)
 	if (mine && !g_menu && set_grabs_pad ()) return;		// (the buttons being learnt: the wizard reads them)
 	if ((press & PAD_HOME) || (mine && (press & PAD_SELECT))
 	    || (!mine && (press & (PAD_SELECT | PAD_START)) && (b & PAD_SELECT) && (b & PAD_START))) { menu_toggle (); return; }
-	if (!press && !rep) return;
-	if (!mine)						// (an app in front: the pad is its own, or types for it)
+	if (!mine)						// (an app in front: the pad is its own, or points and types for it)
 	{
-		if (g_padKeys && !(b & PAD_SELECT))
-		{
-			if (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT) && (press || rep)) t0 = now + (press ? 22 : 0);
-			pad_type (press, b, rep);
-		}
+		if (g_padKeys) pad_app (now);
+		else { g_mMoving = false; if (g_mbtn) { kapi_inject_pointer (g_mx, g_my, 0, 0); g_mbtn = 0; } }	// (no button left held)
 		return;
 	}
+	g_mMoving = false;
+	if (!press && !rep) return;
 	bool set = g_setOn && !g_menu;				// (the settings: every button has its own code)
 	unsigned d = press ? press : b;
 	int k = (d & PAD_RIGHT) ? KEY_RIGHT : (d & PAD_LEFT) ? KEY_LEFT : (d & PAD_DOWN) ? KEY_DOWN : (d & PAD_UP) ? KEY_UP : 0;
@@ -728,7 +791,7 @@ int main (void)
 		if (g_homeDirty && g_home) draw_home ();
 		if (g_overDirty && g_menu) draw_menu ();
 		tip_tick ();
-		msleep (g_menu || (g_anim && g_home) ? 16 : 30);	// (a move animated: a frame each 16 ms)
+		msleep (g_menu || (g_anim && g_home) || g_mMoving ? 16 : 30);	// (a move animated: a frame each 16 ms)
 	}
 	return 0;
 }

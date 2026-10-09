@@ -839,9 +839,11 @@ reads nothing. When an app comes to the front, a small **Home · Menu** tip show
 | **L2** / **R2** | Page Up / Down | eight items up / down |
 | **Home** (Select at home; Select + Start over an app) | F10, Super | the menu |
 
-**In an app that is not a game** the pad works as a keyboard: the d-pad the arrows, **A** Enter, **B** Esc, **X**
-Space, **Y** Tab, **L1** / **R1** the previous / next tab (Ctrl+Page Up / Down), **L2** / **R2** Page Up / Down. The
-games and the emulators (the categories *Games* and *Emulators*) read the pad themselves.
+**In an app that is not a game** (the browser, the File Viewer...) the pad works as a **mouse** and a keyboard
+(2026-10-09): the **left stick** moves the pointer (faster the further it is pushed), **A** is the left button (held: a
+drag), **X** the right one, **L1** / **R1** and the **right stick** up / down scroll (the wheel); the d-pad the arrows,
+**B** Esc, **Y** Tab, **Start** Enter, **L2** / **R2** Page Up / Down. The games and the emulators (the categories
+*Games* and *Emulators*) read the pad themselves.
 
 **A game's own resolution.** Each emulator says the screen size it plays best at (its `app.txt`: `resolution =
 800x600` for the Game Boy and the Game Boy Advance, `640x480` for the NES, the Super Nintendo, the Nintendo 64 and

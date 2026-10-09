@@ -1566,9 +1566,12 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
 - **The pad**: `pad_poll ()` reads every pad **without the focus rule** (`pad_any`: `kapi_pad_state` +
   `pad_map_for` + `pad_apply`) to see the menu's button over an app — Home, or Select + Start —, and moves only
   at home or in the menu, where PocketUI names it as the program that has the pads (the policy's `focus` hook).
-- **The pad as keys**: over an app whose `app.txt` category is not *Games* nor *Emulators* (`front_look ()`, after
-  each `tasks_read`), `pad_type ()` types for the pad with `kapi_inject_key` / `kapi_inject_modifiers` (the server
-  routes the keys to the app in front): arrows, Enter, Esc, Space, Tab, Ctrl+Page Up / Down, Page Up / Down.
+- **The pad as a mouse and keys**: over an app whose `app.txt` category is not *Games* nor *Emulators*
+  (`front_look ()`, after each `tasks_read`), `pad_app ()` points and types for the pad (the server routes them to the
+  app in front): the left stick moves the pointer (`pad_app_read`: the left stick not as the d-pad; `stick_step`: the
+  square of the push past a dead zone, the screen's width in about a second), A / X its buttons, L1 / R1 and the right
+  stick the wheel (`kapi_inject_pointer`); `pad_type ()` the keys (`kapi_inject_key`): arrows, Enter (Start), Esc,
+  Tab, Page Up / Down. The loop polls every 16 ms while the stick is pushed (`g_mMoving`).
 - **Sizes**: logical units × the scale (`D ()`, `F (lp)` a face per size), as pocketshell.
 - **Tests**: `tools/tests/server_sim/run.sh`'s `conshots` (800 × 480, 1280 × 720, 1920 × 1080, 640 × 480 in French,
   with `gamelib_samples.py`'s made-up ROMs): the home is the whole screen; a console's games, Apps and its unrolled

@@ -4,6 +4,14 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## The console: the pad as a mouse in the desktop's apps (2026-10-09, night) -- NOT tried on the Pi
+
+The user: "the desktop's apps that need the mouse (the browser) must be usable with a pad: the stick moves the
+pointer, A clicks the links and the buttons, L up / R down and the right stick scroll". consolehome's `pad_app`
+(main.cpp): over an app not of the Games / Emulators categories, the left stick moves the pointer, A / X are the left
+/ right buttons, L1 / R1 and the right stick the wheel; the d-pad arrows, B Esc, Y Tab, Start Enter (A was Enter
+before: it clicks now). To try on the Pi: Jet, the File Viewer.
+
 ## The console: a Games page (the ROM folders), the home's moves animated (2026-10-09, night) -- tested on the PC, NOT on the Pi
 
 The user (Onyx Remote's keys: fixed). The Game Library is not shown in the console, so its watched folders could not
