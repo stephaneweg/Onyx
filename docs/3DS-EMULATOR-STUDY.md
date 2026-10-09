@@ -215,8 +215,10 @@ harder GPU and an OS — **several sessions**, then the user's tests on the Pi a
 5. **Memory**: 128 MB guest + caches: fine on a 4 GB / 8 GB Pi 4; a 2 GB Pi 4 to check.
 6. **Legal**: decrypted dumps only, no key handling code at all, own replacement font — to state
    in the app's messages and `docs/04`.
-7. **Questions for the user**: (a) option C (Dynarmic, MIT kept) — agreed? (b) which games first
-   (the compatibility work follows them)? (c) Old 3DS only to begin with — agreed?
+7. **The user's answers (2026-10-09)**: (a) **option C** (Dynarmic, the app stays MIT) -- agreed; (c) **Old 3DS
+   only** to begin with -- agreed; (b) which games first: not said yet (the user asked how *The Legend of Zelda:
+   A Link Between Worlds* would run -- an Old 3DS game, light top-down scenes but aiming at 60 fps: a likely first
+   target and a good speed yardstick, to confirm).
 
 ## 12. Sources
 

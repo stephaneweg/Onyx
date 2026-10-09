@@ -54,7 +54,8 @@ session tests and debugs it on the Pi. Done: D0 to D5.
   g++-aarch64-linux-gnu` in WSL.
 - **The local session's tests**: `docs/LOCAL-AGENT-NDS.md` (its brief).
 - **The 3DS**: the study is `docs/3DS-EMULATOR-STUDY.md` (option C recommended: our core under MIT + Dynarmic;
-  the plan T0-T8); nothing built, the user's answers awaited (§11).
+  the plan T0-T8); nothing built. The user's answers (2026-10-09, §11): option C, Old 3DS only to begin
+  with; the first games not named yet (A Link Between Worlds asked about).
 
 ## The console: the pad as a mouse in the desktop's apps (2026-10-09, night) -- NOT tried on the Pi
 
