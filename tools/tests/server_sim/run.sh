@@ -103,6 +103,8 @@ for sz in 800x480 1920x1080; do
 		SIM_SCREEN=$sz SIM_APPNAME=tinycalc SIM_WRITES=$NOCARDS
 	run pocket_tinypad full-dialog-$sz "$WW;other 400 300 notes;$W;expect okind centre;owin 200 120 About;$W;expect okind1 card;expect made 1" SIM_SCREEN=$sz SIM_APPNAME=tinypad
 done
+# console: a fixed-size main window (a game's picture) centred over BLACK, not its first pixel's colour (2026-10-09)
+run pocket_tinycalc console-centre "$W;$W;expect kind centre;expect matte 1;expect mattecolour 000000" SIM_SCREEN=800x480 SIM_MODE=console SIM_APPNAME=tinycalc SIM_WRITES=$NOCARDS
 png pocket-centre-800x480
 # THE FULL SCREEN (a BASIC program's way, Arkanoid: a window, then uk_win_fullscreen_begin; tools/tests/server_sim/fsapp.cpp):
 # the server told, its state in the windows' list (rdpd's, vncd's), its window at 0,0 and left there by the policy, the

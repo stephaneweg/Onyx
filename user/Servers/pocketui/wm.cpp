@@ -1194,10 +1194,11 @@ static void Tick (unsigned self)
 	}
 }
 
-// ---- the matte: behind a fixed-size main window, the work area in that window's background colour ----------------
+// ---- the matte: behind a fixed-size main window, the work area in that window's background colour (console: black) -
 static int s_nMatte = -1;					// its window (PocketUI's own), -1: none
 static unsigned s_nMatteFor, s_nMatteColour;
 int pk_matte (void)	{ return s_nMatte >= 0 && g_pElWin[s_nMatte] != 0 && !g_pElWin[s_nMatte]->Aside () ? 1 : 0; }
+unsigned pk_matte_colour (void) { return s_nMatteColour; }
 
 static void Matte (CWindow *pFront, int ax, int ay, int aw, int ah)
 {
@@ -1222,9 +1223,10 @@ static void Matte (CWindow *pFront, int ax, int ay, int aw, int ah)
 		s_nMatteFor = 0; s_nMatteColour = 0xFFFFFFFFu;
 	}
 	if (pM->X () != ax || pM->Y () != ay) pM->Move (ax, ay);
-	// its colour: the window's own background (its client area's top left pixel), else Milk's face
+	// its colour: the window's own background (its client area's top left pixel), else Milk's face; in console mode
+	// black (a game on a television: its picture over black, not over its first pixel's colour -- the user, 2026-10-09)
 	const u32 *pC = pFront->CanvasBuffer ();
-	unsigned c = pC != 0 ? pC[0] & 0x00FFFFFF : 0x00E4E4E4;
+	unsigned c = g_nPkMode == PK_MODE_CONSOLE ? 0 : pC != 0 ? pC[0] & 0x00FFFFFF : 0x00E4E4E4;
 	if (c != s_nMatteColour)
 	{
 		s_nMatteColour = c;

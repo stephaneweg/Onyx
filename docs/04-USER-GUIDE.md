@@ -820,7 +820,7 @@ white ribbon, white icons, big words. **The home** has two levels:
   the chosen category **unrolls its apps at its right**; **A** goes into them, **B** or Left comes back.
 
 A ROM is played with its emulator, the screen at the emulator's own resolution (below). An app opened fills the screen,
-with no frame, no menu bar. (The Game Library itself has no place in the console's home: its ROMs are there.)
+with no frame, no menu bar; one of a fixed size smaller than the screen (a game's picture) is centred over black. (The Game Library itself has no place in the console's home: its ROMs are there.)
 
 **The menu** comes over whatever is in front — the pad's **Home** button (or **Select + Start** together on a pad
 without one), **F10** (a USB keyboard's too, since 2026-10-09), the **Super** key (the Windows key), a right click at home: *Resume* the app, **the app's own menus** (File ›,

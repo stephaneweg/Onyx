@@ -41,6 +41,7 @@ int pk_band_id (void);
 #define PK_INI		"SD:/etc/pocketui.ini"
 int pk_card_app (const char *name);
 int pk_matte (void);			// 1: the matte is shown (behind a centred main window)
+unsigned pk_matte_colour (void);		// its colour (0xRRGGBB; console: black)
 int pk_kind (int id);
 unsigned pk_front_pid (void);
 int pk_bar_id (void);			// the global menu bar's window, -1: none
