@@ -146,6 +146,13 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   A second publish the same day: **onyx 2026.10.130** (the menu bar's gem), calendar 1.0.27, irc 1.0.31, mail 1.0.29.
   Then onyx 2026.10.131 (rdpd's log) and **onyx 2026.10.132, uikit 1.950.0, ledger 1.0.33, telegram 1.0.13** (the Onyx menu in
   pocket, `setHeader`, Ledger's panel, Telegram's sign-in).
+  Then archiver 1.0.27, fmtracker 1.0.30, iconedit 1.0.31. **Two publishers the same day**: another session published
+  **jet 2.0.15** between two of these (the same program, `[jet] needs = onyx >= 2026.10.126, uikit >= 1.850, systemkit
+  >= 1.91` -- a packages.ini line not yet in main), so this session's push was refused (not fast-forward) and its
+  rebuilt index would have published a jet 2.0.16 with the OLD needs (a package's content includes its needs:
+  `mkrepo.py`). Done instead: the clone reset to `origin/main`, that `[jet] needs` line taken into packages.ini,
+  `versions.ini` given `jet = 2.0.15`, published again -- only this session's two packages changed. **Before a
+  publish: `git fetch` the packages clone and read `bumped:` -- a package this session did not touch must not be in it.**
 - **Pi checklist** (not done): `pkg update -a` (media, photos, gamelib, mail, calendar, irc, onyx), then:
   1. Desktop: both as before but the sidebars' labels; Photos' *All albums*, a right click on an album and a folder;
      a playlist made in Media shows in its sidebar at once; `language=fr`: both in French.
