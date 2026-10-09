@@ -507,6 +507,9 @@ static void Expect (const char *key, const char *want)
 		else if (!strcmp (key, "pos")) snprintf (got, sizeof got, "%d,%d", G.x, G.y);
 		else if (!strcmp (key, "aside")) snprintf (got, sizeof got, "%d", (G.state & KAPI_WIN_KEYS) ? 0 : 1);
 		else if (!strcmp (key, "hidden")) snprintf (got, sizeof got, "%d", (G.state & (KAPI_WIN_OFFDESK | KAPI_WIN_MINIMISED)) ? 1 : 0);
+#ifdef SIM_POCKET
+		else if (!strcmp (key, "hint")) snprintf (got, sizeof got, "%d", pk_text_hint (id));	// (the focused field's type, -1)
+#endif
 		else snprintf (got, sizeof got, "(unknown check %s)", key);
 	}
 	std::string what = std::string (key) + " = " + want;

@@ -3,6 +3,7 @@
 // mouse/key routing, focus. Compiled into libuikit.a.
 //
 #include "uikit/widget.h"
+#include "uikit/root.h"			// (Root::winFirst: Widget::draw)
 #include "uikit/internal/adapt_int.h"	// (P6: the extension freed, the focus ring)
 
 namespace uikit {
@@ -99,6 +100,9 @@ void Widget::bringToFront ()
 void Widget::draw ()
 {
 	if (valid) return;					// subtree already current
+	// (P10) The program's first window drawn by a loop of its own (the Terminal: no Root::step): its focused control
+	// and that control's input type told to the server here too -- the viewport, the on-screen keyboard.
+	if (parent == 0 && (Widget *) Root::winFirst () == this) internal::root_tick ((Root *) this);
 	if (shouldRedraw) { onDraw (); shouldRedraw = false; }
 	for (Widget *c = firstChild; c; c = c->nextSib)
 	{

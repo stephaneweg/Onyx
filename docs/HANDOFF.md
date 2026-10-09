@@ -4,6 +4,29 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Where PocketUI stands on the morning of 2026-10-09 (the night's work, P7 to P10) -- read this first
+
+Everything below is in `main`, published (onyx 2026.10.137, uikit 1.950.2 and the apps' packages) and on the Pi
+(192.168.0.10, left in **pocket** mode).
+
+| Phase | State | Seen on the Pi |
+|---|---|---|
+| **P7** the apps' migration | **12 apps done** (Media Player, Photos, Game Library, Mail, Calendar, IRC, Ledger, Archiver, Icon Editor, FM Tracker, Telegram, PDF Viewer), each in English and French. **Left**: Courier, Slides, Paint, QBStudio, 3DForge (side panels + translation: 4 000 to 10 000 lines each); the toolbars' priorities, the tabs, the dialogs on `FormDialog`, the tables on `DataGrid`, `uk_set_input_type` in the apps' own editors, the Control Panel's applets | they start and stay up; Ledger's panel captured |
+| **P8** | done: the split view (Super+Left / Right, the switcher's S), Setup's interface choice | not tried by hand (needs a keyboard: Super+Left) |
+| **P9** | first version: `consolehome` (the home, the menu over an app with the app's menus, the pad, the pad as keys in the apps). **Left**: the games' quick menu (save states), the ROMs on the home, the top edge | the home captured at 1920 x 1080 (`docs/compact-shell/real/pi-consolehome-1080.png`); **no pad tried** |
+| **P10** | the on-screen keyboard (pocket). **Left, needs a device**: the scale (2 x composition, native scale, `icon@2x`), portrait sizes, the rotation, the touch input | the keyboard captured under the text editor (`pi-keyboard-1080.png`) |
+
+**Fixed on the way**: a session switch never ended the old session's programs (`/bin/session`, Setup: the
+process list's pages column); Telegram's `CONNECTION_NOT_INITED` (not confirmed with a real sign-in: no API id here).
+
+**For the user to try** (a keyboard and a pad on the Pi): Super+Left with two apps open; Settings > Mode > Console,
+the pad's d-pad / A / B / Home, an emulator then Home (or Select + Start); quick settings > Show keyboard, and the
+Keyboard tile on "with the text fields"; Telegram's sign-in.
+
+**Owed, not doable here**: `screenshots/media-*.png` (no `ffmpeg` program in WSL: `sudo apt install ffmpeg`), the
+Word / PDF exports (`python docs/build_docs.py`: no pandoc), Ledger's Mac build. **A copy of the packages' key lies
+untracked in the repository's root (`onyx_pkg-key.pem.txt`): move it out -- never `git add -A` there.**
+
 ## PocketUI phase P10, the part that needs no new hardware (2026-10-09): the on-screen keyboard; a session-switch fix
 
 - **The on-screen keyboard** (pocket only; docs/04 *The on-screen keyboard*, docs/03 §5.10.3's table):
@@ -17,6 +40,10 @@ answer in French. The docs stay in English.
   `uk_set_input_type (this, UK_IN_TEXT)` -- uikit 1.950.1), the Terminal's view (`UK_IN_TERMINAL`). An app's OWN
   text widget (Letters' page, the Spreadsheet's grid, QBStudio's editor, Jet's page...) must call
   `uk_set_input_type` itself: not done yet (P7's remaining list) -- there the keyboard comes by Super+K / the tile.
+  An app with a loop of its own (no `Root::step`: the Terminal and most of the big apps) never told the server its
+  focused control: `Widget::draw` now does it for the program's first window (uikit 1.950.2) -- the viewport's
+  "focused control kept in view" gains from it too. **Seen on the Pi**: the keyboard under the text editor
+  (`docs/compact-shell/real/pi-keyboard-1080.png`), the editor sized again above it.
 - **Fixed: a session switch left the old session's programs running** (seen on the Pi: after pocket -> console the
   old `menubar` and `pocketshell` stayed, polling the new server). `/bin/session` read the kernel's process list
   without its pages column (`<pid> <a|k> <state> <pages> <name>`): no name ever matched, nothing was ended. Setup's

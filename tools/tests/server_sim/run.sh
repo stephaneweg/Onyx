@@ -207,6 +207,9 @@ run pocket_pocketshell shell-strip-keys "otherpic 800 30 menubar $OUT/bar-home-8
 # ---- the on-screen keyboard (phase P10): Super+K shows it over the app in front -- the shell's opaque window on the
 # screen's bottom edge is a band: the work area ends above it (184 px at 800 x 480), the app stays in front; Super+K
 # again hides it, the work area back. The pictures: pocketshell-keys-800.png (QWERTY), -fr (AZERTY).
+# The focused field's type reaches the server from an app with a loop of its own (the Terminal: no Root::step --
+# UIKit tells it when the first window is drawn): UK_IN_TERMINAL (6), what brings the keyboard with its row of keys.
+run pocket_terminal term-hint "$WW;expect kind fill;expect hint 6" SIM_SCREEN=800x480 SIM_APPNAME=terminal SIM_APP=terminal SIM_PIPE="$PIPE"
 for lg in "" fr; do
 	KB="otherpic 800 30 menubar $OUT/bar-home-800.elsm 0 0 0x35 0 0;$W;$W;$APPS8;expect front other;expect area 0,30,800,450"
 	KB="$KB;mods 8;key k;mods 0;$W;$W;$W;expect area 0,30,800,266;expect front other;expect home 0;dump $OUT/pocketshell-keys-800${lg:+-$lg}.elsm"
