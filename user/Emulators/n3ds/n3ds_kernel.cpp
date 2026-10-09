@@ -32,6 +32,9 @@ Machine::Machine ()
 	lastError[0] = 0; notes[0] = 0; debugOut = 0; debugUser = 0;
 	memset (timers, 0, sizeof timers); timerCount = 0;
 	memset (&gsp, 0, sizeof gsp);
+	memset (&apt, 0, sizeof apt); apt.cpuLimit = 30;
+	memset (&hid, 0, sizeof hid);
+	romfs = 0; romfsSize = 0; trace = false;
 	svcCount = switchCount = 0; unknownSvcs = 0;
 }
 
@@ -39,6 +42,8 @@ Machine::~Machine ()
 {
 	delete cpu;
 	release (gsp.irq); release (gsp.shared);
+	release (apt.lock); release (apt.signal); release (apt.param);
+	release (hid.shared); for (int i = 0; i < 5; i++) release (hid.events[i]);
 	for (int i = 0; i < HANDLE_MAX; i++) if (handles[i]) release (handles[i]);
 	for (int i = 0; i < threadCount; i++) release (threads[i]);
 	mem.quit ();
@@ -53,6 +58,18 @@ bool Machine::init ()
 	mem.map (VA_CONFIG, PAGE_SIZE, cfg, PERM_R);
 	mem.map (VA_SHARED, PAGE_SIZE, cfg + PAGE_SIZE, PERM_R);
 	mem.map (VA_TLS, TLS_MAX * TLS_SIZE, tls, PERM_RW);
+	// the configuration page: the kernel's and the firmware's versions (11.x), a retail unit, the memory's shares
+	cfg[0x02] = 57; cfg[0x03] = 2;					// kernel 2.57
+	cfg[0x10] = 2;							// SYSCOREVER
+	cfg[0x14] = 1;							// UNITINFO: retail
+	const u32 appMem = 0x04000000, sysMem = 0x02C00000, baseMem = 0x01400000;
+	memcpy (cfg + 0x40, &appMem, 4); memcpy (cfg + 0x44, &sysMem, 4); memcpy (cfg + 0x48, &baseMem, 4);
+	cfg[0x62] = 57; cfg[0x63] = 2; cfg[0x64] = 2;			// FIRM 2.57, its SYSCOREVER
+	const u32 sdk = 0x0000F297; memcpy (cfg + 0x68, &sdk, 4);
+	// the shared page: a product unit, the date (ms since 1900: 2026-10-09), the 3D slider down
+	u8 *sh = cfg + PAGE_SIZE;
+	sh[0x04] = 1;
+	const u64 date = 4000492800000ull; memcpy (sh + 0x20, &date, 8); memcpy (sh + 0x40, &date, 8);
 	cpu = Cpu::create (this);
 	return cpu != 0;
 }
@@ -364,6 +381,8 @@ void Machine::svc (u32 n)
 	Thread *t = current;
 	svcCount++;
 	if (!t) return;
+	if (trace && n != 0x32 && n != 0x24 && n != 0x25 && n != 0x22 && n != 0x28 && n != 0x3D)
+		fprintf (stderr, "svc %02x (%08x %08x %08x %08x) thread %u from %08x\n", (unsigned) n, (unsigned) r[0], (unsigned) r[1], (unsigned) r[2], (unsigned) r[3], (unsigned) t->id, (unsigned) r[14]);
 	switch (n)
 	{
 	case 0x01:								// ControlMemory (op, addr0, addr1, size, perm) -> addr
@@ -627,6 +646,48 @@ void Machine::svc (u32 n)
 	case 0x28:								// GetSystemTick -> ticks
 		r[0] = (u32) now; r[1] = (u32) (now >> 32);
 		break;
+	case 0x0D: case 0x0F:							// GetThreadAffinityMask, GetThreadIdealProcessor
+		r[0] = RES_OK; r[1] = 0;
+		break;
+	case 0x0E: case 0x10:							// SetThreadAffinityMask, SetThreadIdealProcessor
+		r[0] = RES_OK;
+		break;
+	case 0x11:								// GetCurrentProcessorNumber
+		r[0] = 0;
+		break;
+	case 0x2A:								// GetSystemInfo (-, type, parameter) -> a 64-bit value
+	case 0x2B:								// GetProcessInfo (-, process, type) -> a 64-bit value
+	{
+		const u32 type = n == 0x2A ? r[1] : r[2];
+		u64 v = 0;
+		if (n == 0x2A && type == 0) v = mem.linearUsed + mem.topUsed;			// memory used (any region)
+		else if (n == 0x2B && (type == 0 || type == 2)) v = mem.linearUsed + mem.topUsed;	// the process's memory
+		else if (n == 0x2B && type == 20) v = (u64) PA_FCRAM - VA_LINEAR;		// linear address -> physical
+		else note ("%s type %u", n == 0x2A ? "GetSystemInfo" : "GetProcessInfo", (unsigned) type);
+		r[0] = RES_OK; r[1] = (u32) v; r[2] = (u32) (v >> 32);
+		break;
+	}
+	case 0x38:								// GetResourceLimit (-, process) -> handle
+	{
+		u32 h = handleNew (new Process);
+		r[0] = h ? (u32) RES_OK : (u32) RES_OUT_OF_HANDLES; r[1] = h;
+		break;
+	}
+	case 0x39:								// GetResourceLimitLimitValues (values, handle, names, count)
+	case 0x3A:								// GetResourceLimitCurrentValues
+	{
+		for (u32 i = 0; i < r[3] && i < 16; i++)
+		{
+			const u32 name = mem.r32 (r[2] + i * 4);
+			u64 v = 0;
+			if (name == 1) v = n == 0x39 ? 0x04000000 : (u64) mem.linearUsed + mem.topUsed;	// committed memory
+			else if (name == 0) v = n == 0x39 ? 0x18 : 0x30;				// the highest priority allowed
+			else if (name == 2) v = n == 0x39 ? (u64) TLS_MAX : (u64) threadCount;		// threads
+			mem.w64 (r[0] + i * 8, v);
+		}
+		r[0] = RES_OK;
+		break;
+	}
 	case 0x2D:								// ConnectToPort (-, name) -> handle
 	{
 		char name[12]; memset (name, 0, sizeof name);
@@ -643,7 +704,10 @@ void Machine::svc (u32 n)
 		if (!s) { r[0] = RES_INVALID_HANDLE; break; }
 		u32 *cmd = (u32 *) mem.ptr (t->ctx.tls + 0x80);
 		r[0] = RES_OK;
+		const u32 header = cmd ? cmd[0] : 0;
 		if (cmd) s->fn (this, s, cmd);
+		if (trace && cmd) fprintf (stderr, "  %s %08x (%08x %08x %08x) -> %08x, %08x %08x %08x\n", s->name, (unsigned) header,
+					   (unsigned) cmd[1], (unsigned) cmd[2], (unsigned) cmd[3], (unsigned) cmd[1], (unsigned) cmd[2], (unsigned) cmd[3], (unsigned) cmd[4]);
 		r = cpu->regs ();
 		break;
 	}

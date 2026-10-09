@@ -55,6 +55,7 @@ void Machine::gspInterrupt (int id)
 void Machine::vblank ()
 {
 	gsp.frames++;
+	hidUpdate (this);
 	if (gsp.shared)
 		for (int sc = 0; sc < 2; sc++)
 		{

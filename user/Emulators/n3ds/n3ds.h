@@ -69,6 +69,12 @@ enum : u32 {
 enum { SCREEN_TOP = 0, SCREEN_BOTTOM = 1, TOP_W = 400, BOTTOM_W = 320, SCREEN_H = 240 };
 // The graphics interrupts a program is told (gsp::Gpu's queue).
 enum { GSP_PSC0 = 0, GSP_PSC1, GSP_PDC0, GSP_PDC1, GSP_PPF, GSP_P3D, GSP_DMA };
+// The buttons (hid's bits).
+enum : u32 {
+	BTN_A = 1, BTN_B = 2, BTN_SELECT = 4, BTN_START = 8, BTN_RIGHT = 0x10, BTN_LEFT = 0x20, BTN_UP = 0x40, BTN_DOWN = 0x80,
+	BTN_R = 0x100, BTN_L = 0x200, BTN_X = 0x400, BTN_Y = 0x800, BTN_TOUCH = 0x100000,
+	BTN_CPAD_RIGHT = 0x10000000, BTN_CPAD_LEFT = 0x20000000, BTN_CPAD_UP = 0x40000000, BTN_CPAD_DOWN = 0x80000000,
+};
 
 struct Machine;
 
@@ -193,7 +199,8 @@ typedef void (*ServiceFn) (Machine *m, Session *s, u32 *cmd);
 struct Session : Object
 {
 	ServiceFn fn; const char *name;
-	Session (ServiceFn f, const char *n) : Object (OBJ_SESSION), fn (f), name (n) {}
+	const u8 *data; u64 size;		// (a file's session: what it reads -- n3ds_fs.cpp)
+	Session (ServiceFn f, const char *n) : Object (OBJ_SESSION), fn (f), name (n), data (0), size (0) {}
 };
 
 struct Arbiter : Object { Arbiter () : Object (OBJ_ARBITER) {} };
@@ -247,6 +254,13 @@ struct Machine
 		u64 frames;				// VBlanks since the start
 		u32 fills, transfers, cmdLists;		// (counters: what the program asked the GPU)
 	} gsp;
+	// APT (n3ds_apt.cpp): the application's life -- its events, the parameter the system sends it (the wake-up)
+	struct Apt { Mutex *lock; Event *signal, *param; bool pending; u32 cpuLimit; } apt;
+	// HID (n3ds_hid.cpp): the buttons, the circle pad and the touch screen, in a shared page
+	struct Hid { SharedMem *shared; Event *events[5]; u32 buttons; s16 cpadX, cpadY; bool touch; u16 touchX, touchY; u32 padIndex, touchIndex; } hid;
+	// the program's read-only files (RomFS): a piece of the file it was loaded from (kept by the host)
+	const u8 *romfs; u32 romfsSize;
+	bool trace;				// the system calls and the requests, on stderr (tests)
 	// what the program says (svcOutputDebugString): the host's
 	void (*debugOut) (void *user, const char *text, u32 len);
 	void *debugUser;
@@ -256,7 +270,12 @@ struct Machine
 	Machine ();
 	~Machine ();
 	bool init ();
-	bool loadElf (const u8 *file, u32 size);			// (n3ds_loader.cpp)
+	// (n3ds_loader.cpp) an ELF or a .3dsx; the file must stay in memory while the machine lives (its RomFS)
+	bool load (const u8 *file, u32 size);
+	bool loadElf (const u8 *file, u32 size);
+	bool load3dsx (const u8 *file, u32 size);
+	// what the player does: BTN_* held, the circle pad (-156..156), the touch screen (pixels of the bottom screen)
+	void setInput (u32 buttons, int cpadX, int cpadY, bool touch, int touchX, int touchY);
 	bool start (u32 entryPoint, u32 stackSize);			// the main thread
 	void run (u64 ticks);						// the scheduler: runs the threads for that long
 	void runFrame () { run (TICKS_PER_FRAME); vblank (); }
@@ -297,6 +316,10 @@ inline u32 ipcHeader (u32 command, u32 normal, u32 translate) { return command <
 void ipcStub (Machine *m, const char *service, u32 *cmd);
 void srvRequest (Machine *m, Session *s, u32 *cmd);			// srv: (n3ds_ipc.cpp)
 void gspRequest (Machine *m, Session *s, u32 *cmd);			// gsp::Gpu (n3ds_gsp.cpp)
+void aptRequest (Machine *m, Session *s, u32 *cmd);			// APT:U / APT:S / APT:A (n3ds_apt.cpp)
+void hidRequest (Machine *m, Session *s, u32 *cmd);			// hid:USER / hid:SPVR (n3ds_hid.cpp)
+void hidUpdate (Machine *m);						// (each frame: the input into the shared page)
+void fsRequest (Machine *m, Session *s, u32 *cmd);			// fs:USER (n3ds_fs.cpp)
 
 }
 

@@ -57,9 +57,46 @@ int main (int argc, char **argv)
 	n3ds::Machine *m = new n3ds::Machine;
 	if (!m->init ()) { fprintf (stderr, "not enough memory for the machine\n"); return 2; }
 	m->debugOut = debugOut;
-	if (!m->loadElf (file, (n3ds::u32) size)) { fprintf (stderr, "%s\n", m->lastError); return 2; }
+	m->trace = getenv ("N3DS_TRACE") != 0;
+	if (!m->load (file, (n3ds::u32) size)) { fprintf (stderr, "%s\n", m->lastError); return 2; }
+	// N3DS_KEYS=100-110:1;200-210:8  buttons held over frame ranges, a hex mask each (n3ds.h's BTN_*)
+	// N3DS_TOUCH=300-305:160,120      the touch screen pressed there over frames
+	// N3DS_SHOTS=<prefix> N3DS_SHOTEVERY=<n>  a picture every n frames (default 60)
+	struct Range { int f0, f1; unsigned a, b; } keys[32], touch[32]; int nk = 0, nt = 0;
+	for (const char *e = getenv ("N3DS_KEYS"); e && *e && nk < 32; )
+	{
+		Range r; char *end;
+		r.f0 = (int) strtol (e, &end, 10); if (*end != '-') break;
+		r.f1 = (int) strtol (end + 1, &end, 10); if (*end != ':') break;
+		r.a = (unsigned) strtoul (end + 1, &end, 16); r.b = 0;
+		keys[nk++] = r; e = *end == ';' ? end + 1 : end; if (*end != ';') break;
+	}
+	for (const char *e = getenv ("N3DS_TOUCH"); e && *e && nt < 32; )
+	{
+		Range r; char *end;
+		r.f0 = (int) strtol (e, &end, 10); if (*end != '-') break;
+		r.f1 = (int) strtol (end + 1, &end, 10); if (*end != ':') break;
+		r.a = (unsigned) strtoul (end + 1, &end, 10); if (*end != ',') break;
+		r.b = (unsigned) strtoul (end + 1, &end, 10);
+		touch[nt++] = r; e = *end == ';' ? end + 1 : end; if (*end != ';') break;
+	}
+	const char *shots = getenv ("N3DS_SHOTS");
+	const int shotEvery = getenv ("N3DS_SHOTEVERY") ? atoi (getenv ("N3DS_SHOTEVERY")) : 60;
 	int n = 0;
-	while (n < frames && !m->exited) { m->runFrame (); n++; }
+	while (n < frames && !m->exited)
+	{
+		unsigned b = 0; bool down = false; int tx = 0, ty = 0;
+		for (int k = 0; k < nk; k++) if (n >= keys[k].f0 && n <= keys[k].f1) b |= keys[k].a;
+		for (int k = 0; k < nt; k++) if (n >= touch[k].f0 && n <= touch[k].f1) { down = true; tx = (int) touch[k].a; ty = (int) touch[k].b; }
+		m->setInput (b, 0, 0, down, tx, ty);
+		m->runFrame (); n++;
+		if (shots && shotEvery > 0 && n % shotEvery == 0)
+		{
+			char name[512]; snprintf (name, sizeof name, "%s%05d.ppm", shots, n);
+			FILE *o = fopen (name, "wb");
+			if (o) { fprintf (o, "P6\n%d %d\n255\n", n3ds::TOP_W, n3ds::SCREEN_H * 2); fwrite (screens (m), 1, (size_t) n3ds::TOP_W * n3ds::SCREEN_H * 2 * 3, o); fclose (o); }
+		}
+	}
 	fflush (stdout);
 	fprintf (stderr, "%s after %d frames (%llu ticks): %llu system calls, %llu thread switches, %u memory faults\n",
 		 m->exited ? "ended" : "still running", n, (unsigned long long) m->now, (unsigned long long) m->svcCount,

@@ -23,9 +23,15 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
   and DMA) and the screens' pictures (`Machine::screenImage`). `tools/tests/n3ds/src/gfx.c`: **our program draws
   on both screens**, 45 checks pass, its picture's checksum is in `tools/tests/n3ds/expect/gfx.crc`. What a
   program asks that is not emulated is listed in `Machine::notes` (never silently).
-- **Next (the rest of T1)**: `apt:U`, `hid:USER`, `fs:USER`, `cfg:u`, the start-up system calls of a real homebrew
-  (libctru's), the `.3dsx` and NCCH loaders; done when a public homebrew runs. Then T2: the PICA200 in software
-  (the command lists and display transfers `gsp::Gpu` only counts today). The app `n3dsemu` starts with a mock-up of its screens (the user's
+- **T1 is done** (section 9e): the `.3dsx` loader, `APT`, `hid`, `fs:USER` (the RomFS), the system pages and the
+  start-up system calls -- the public homebrew ***2048* runs and plays** under `n3dstest`
+  (`sh tools/tests/run_n3ds_test.sh sdcard/roms/3ds/2048.3dsx 180 out.ppm`, `N3DS_KEYS="60-63:20"` = left;
+  `N3DS_TRACE=1` shows every system call and request). The user's ROM, *A Link Between Worlds* (EU, CTR-P-BZLP),
+  is at `C:/Temp/Roms/ZeldaLinkBetweenWorlds/` and **is decrypted** (NoCrypto, ExeFS and RomFS readable): for T5.
+- **Next: T2, with *Snake* as the target** (the user's choice): it stops at `APT GetSharedFont` -- it needs the
+  **PICA200** (command lists, the vertex shader, the combiners, display transfers: `gsp::Gpu` only counts them
+  today) and the **shared system font** (our own BCFNT from a free font, a tool in `tools/`: planned in T5, to do
+  now). Then the NCCH loader and the rest. The app `n3dsemu` starts with a mock-up of its screens (the user's
   rule), at T7.
 - **Homebrew to try** (the user asked for some in `sdcard/roms`, git-ignored since 2026-10-09 but for its README;
   never committed, never packaged): `sdcard/roms/3ds/` on the local PC holds four `.3dsx` taken from Universal-DB

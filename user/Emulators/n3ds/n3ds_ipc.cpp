@@ -14,6 +14,9 @@ namespace n3ds {
 static const struct { const char *name; ServiceFn fn; } SERVICES[] = {
 	{ "srv:",     srvRequest },
 	{ "gsp::Gpu", gspRequest },
+	{ "APT:U",    aptRequest }, { "APT:S", aptRequest }, { "APT:A", aptRequest },
+	{ "hid:USER", hidRequest }, { "hid:SPVR", hidRequest },
+	{ "fs:USER",  fsRequest },
 };
 
 Session *Machine::serviceOpen (const char *name)

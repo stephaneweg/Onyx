@@ -261,6 +261,27 @@ The core's skeleton, `user/Emulators/n3ds/` (`n3ds.h` declares everything), and 
   system calls it makes at its start (GetSystemInfo, GetProcessInfo, GetResourceLimit...), the `.3dsx` and NCCH
   loaders, the configuration and shared pages' content; then a public homebrew (not ours) on both screens.
 
+## 9e. Phase T1, third slice -- done (2026-10-09): a public homebrew runs
+
+- **The `.3dsx` loader** (`n3ds_loader.cpp`: three segments, the absolute and relative words adjusted, the RomFS
+  at the file's end kept as `Machine::romfs`); `Machine::load` takes an ELF or a `.3dsx` (a game's NCSD / NCCH is
+  recognised and refused: T5).
+- **What a real homebrew's start-up asks** (libctru's): the configuration and shared pages (kernel 2.57, a retail
+  Old 3DS, the application's 64 MB, the date), GetSystemInfo / GetProcessInfo / GetResourceLimit and its values,
+  the thread affinity calls: 45 system calls now.
+- **`APT:U` / `APT:S` / `APT:A`** (`n3ds_apt.cpp`): the lock, the two events, Enable -> the wake-up parameter an
+  application waits for; no HOME menu, no sleep, no applet. **`hid:USER` / `hid:SPVR`** (`n3ds_hid.cpp`): the
+  shared page's pad and touch rings, written each frame from `Machine::setInput`. **`fs:USER`** (`n3ds_fs.cpp`):
+  the RomFS opened as one file (file sessions: Read, GetSize, Close); no SD card (said absent).
+- `n3dstest`: `N3DS_TRACE=1` (the system calls and every request with its answer), `N3DS_KEYS`, `N3DS_TOUCH`,
+  `N3DS_SHOTS` as `ndstest` has.
+- **Result**: *2048* (a public homebrew, MIT, the text console) **runs on both screens and plays** (the d-pad
+  moves and merges the tiles): T1's goal. Not emulated and asked by it: `ptm:sysm`, the SD card's archive.
+- ***Snake*** (the user's first target) starts, goes through libctru's whole start-up, then stops itself
+  (`svcBreak`) at `APT GetSharedFont`: it draws its text with the **system font** through **citro2d (the GPU)**.
+  It needs phase T2 (the PICA200) and the shared font (our own BCFNT, planned in T5: to bring forward).
+  *Cube Adventures* and *Mars* use the GPU too.
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 
