@@ -25,7 +25,7 @@ using namespace uikit;
 #define NUNDO	24
 
 enum { T_PEN, T_LINE, T_RECT, T_BOX, T_ELLIPSE, T_FILL, T_PICK, T_ERASE, NTOOL };
-static const char *const TOOL_NAME[NTOOL] = { "Pen", "Line", "Rect", "Box", "Ellipse", "Fill", "Picker", "Eraser" };
+static const char *const TOOL_NAME[NTOOL] = { TRN ("Pen"), TRN ("Line"), TRN ("Rect"), TRN ("Box"), TRN ("Ellipse"), TRN ("Fill"), TRN ("Picker"), TRN ("Eraser") };
 static const char TOOL_KEY[NTOOL] = { 'p', 'l', 'r', 'b', 'o', 'f', 'k', 'e' };
 // The kind of files the Open and Save dialogs offer (uikit/dialog.h).
 static const char *const BMP_KINDS = "BMP images|*.bmp|All files|*";
@@ -315,12 +315,12 @@ static void refresh ()
 	auto cat = [&] (const char *s) { while (*s && n < 126) t[n++] = *s++; t[n] = 0; };
 	auto num = [&] (long v) { char b[16]; int k = 0; if (v == 0) b[k++] = '0'; while (v) { b[k++] = (char) ('0' + v % 10); v /= 10; } while (k) { t[n++] = b[--k]; } t[n] = 0; };
 	num (g_w); cat (" x "); num (g_h); cat ("   ");
-	cat (TOOL_NAME[g_tool]);
+	cat (TR (TOOL_NAME[g_tool]));
 	if (g_hx >= 0)
 	{
 		cat ("   ("); num (g_hx); cat (", "); num (g_hy); cat (")  ");
 		unsigned v = g_img[g_hy * MAXS + g_hx];
-		if (v == TRANSP) cat ("transparent");
+		if (v == TRANSP) cat (TR ("transparent"));
 		else { static const char hx[] = "0123456789ABCDEF"; cat ("#"); for (int s = 20; s >= 0; s -= 4) { char d[2] = { hx[(v >> s) & 15], 0 }; cat (d); } }
 	}
 	cat ("   "); cat (g_path);
@@ -347,7 +347,7 @@ static bool save_bmp (const char *path)
 			p[x * 3] = (unsigned char) v; p[x * 3 + 1] = (unsigned char) (v >> 8); p[x * 3 + 2] = (unsigned char) (v >> 16);
 		}
 	}
-	if (kapi_save_file (path, out, (unsigned) size) < 0) { uk_messagebox ("Save", "Cannot write the file.", MB_OK); return false; }
+	if (kapi_save_file (path, out, (unsigned) size) < 0) { uk_messagebox (TR ("Save"), TR ("Cannot write the file."), MB_OK); return false; }
 	g_saved = hash_img ();
 	return true;
 }
@@ -355,8 +355,8 @@ static bool load_bmp (const char *path)
 {
 	int w, h;
 	unsigned *px = ui::bmp_decode (path, &w, &h);
-	if (px == 0) { uk_messagebox ("Open", "Not a 24-bit BMP file.", MB_OK); return false; }
-	if (w > MAXS || h > MAXS) { delete[] px; uk_messagebox ("Open", "Icons can be at most 64 x 64 pixels.", MB_OK); return false; }
+	if (px == 0) { uk_messagebox (TR ("Open"), TR ("Not a 24-bit BMP file."), MB_OK); return false; }
+	if (w > MAXS || h > MAXS) { delete[] px; uk_messagebox (TR ("Open"), TR ("Icons can be at most 64 x 64 pixels."), MB_OK); return false; }
 	g_w = w; g_h = h;
 	for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) g_img[y * MAXS + x] = px[y * w + x] & 0x00FFFFFF;
 	delete[] px;
@@ -451,22 +451,38 @@ static void on_grid () { g_gridOn = !g_gridOn; refresh (); }
 static void on_more ()
 {
 	unsigned c = g_col[0] == TRANSP ? 0x00808080 : g_col[0];
-	if (uk_color_dialog (&c, "Primary colour")) { g_col[0] = c & 0x00FFFFFF; if (g_col[0] == TRANSP) g_col[0] = 0x00FE00FE; }
+	if (uk_color_dialog (&c, TR ("Primary colour"))) { g_col[0] = c & 0x00FFFFFF; if (g_col[0] == TRANSP) g_col[0] = 0x00FE00FE; }
 	refresh ();
 }
 static void btn_more (Widget &) { on_more (); }
 static void btn_tool (Widget &w) { if (w.tag == T_PICK && g_tool != T_PICK) g_prevTool = g_tool; g_tool = w.tag; refresh (); g_grid->setFocus (); }
 static void on_swap () { unsigned t = g_col[0]; g_col[0] = g_col[1]; g_col[1] = t; refresh (); }
 
+// (P7) In pocket and console the window fills its screen: the grid takes what is left, and the colours (the palette,
+// the previews, the mouse's hints) are an INSPECTOR SidePanel at the right (uikit/sidepanel.h: a slide-over from the
+// right edge in landscape, a bottom sheet in portrait). 0 on the desktop: the fixed window, as always.
+static SidePanel *g_sp; static Root *g_rootp; static Label *g_statusL;
+static void lay_out (void)
+{
+	if (!g_sp || !g_rootp) return;
+	int cw = g_rootp->width, ch = g_rootp->height, fh = uk_fh ();
+	g_sp->place (cw - SIDE_W, 0, SIDE_W, ch - fh - 14);
+	int rw = g_sp->reservedWidth ();
+	g_grid->resizeTo (cw - TOOL_W - rw - (rw ? 0 : 6) > 8 ? cw - TOOL_W - rw - (rw ? 0 : 6) : 8, ch - fh - 16 > 8 ? ch - fh - 16 : 8);
+	g_statusL->top = ch - fh - 8; g_statusL->resizeTo (cw - 12 > 8 ? cw - 12 : 8, fh + 2);
+	g_rootp->invalidate (true);
+}
 class IconRoot : public Root
 {
 public:
-	IconRoot () : Root (W, H, "Icon Editor") {}
+	IconRoot () : Root (W, H, TR ("Icon Editor")) {}
 	void onDraw () override				// a groove above the status line
 	{
 		Root::onDraw ();
-		uk_etch_h (canvas, 6, H - uk_fh () - 11, W - 12, bg);
+		uk_etch_h (canvas, 6, height - uk_fh () - 11, width - 12, bg);
 	}
+	void onResized () override { lay_out (); }
+	void onSizeClass (int) override { lay_out (); }
 	bool onKey (long k) override
 	{
 		for (int i = 0; i < NTOOL; i++) if (k == TOOL_KEY[i] || k == TOOL_KEY[i] - 32)
@@ -486,63 +502,81 @@ public:
 
 int main (void)
 {
+	uk_lang_init ();				// (the words in the system's language, before the window: its title)
 	IconRoot root;
 	if (root.canvas.px == 0) return 1;
 	root.setBg (C_BG);
+	g_rootp = &root;
+	bool pocket = uk_size_class () != UK_SC_REGULAR;
+	Panel *side = pocket ? new Panel (0, 0, SIDE_W, 420, C_BG) : 0;	// (pocket: the inspector's content)
+	Widget *sp_ = pocket ? (Widget *) side : (Widget *) &root;
 	for (int i = 0; i < MAXS * MAXS; i++) g_img[i] = TRANSP;
 	int fh = uk_fh ();
 	for (int i = 0; i < NTOOL; i++)
 	{
-		g_toolBtn[i] = new Button (6, 8 + i * 34, TOOL_W - 12, 28, TOOL_NAME[i], btn_tool);
+		g_toolBtn[i] = new Button (6, 8 + i * 34, TOOL_W - 12, 28, TR (TOOL_NAME[i]), btn_tool);
 		g_toolBtn[i]->tag = i;
 		root.addChild (g_toolBtn[i]);
 	}
 	int gridW = W - TOOL_W - SIDE_W, gridH = H - fh - 16;
 	g_grid = new Grid (TOOL_W, 4, gridW, gridH);
 	root.addChild (g_grid);
-	int sx = W - SIDE_W + 6;
+	int sx = pocket ? 6 : W - SIDE_W + 6;
 	g_pal = new Palette (sx, 8);
-	root.addChild (g_pal);
-	root.addChild (new Button (sx + 60, 8 + g_pal->height - 36, 90, 26, "More...", btn_more));
-	root.addChild (new Label (sx, 8 + g_pal->height + 6, SIDE_W - 12, fh + 2, "Preview", C_DIS, C_BG));
+	sp_->addChild (g_pal);
+	sp_->addChild (new Button (sx + 60, 8 + g_pal->height - 36, 90, 26, TR ("More..."), btn_more));
+	sp_->addChild (new Label (sx, 8 + g_pal->height + 6, SIDE_W - 12, fh + 2, TR ("Preview"), C_DIS, C_BG));
 	g_prev = new Preview (sx - 4, 8 + g_pal->height + fh + 10, SIDE_W - 4, 2 * MAXS + 20);
-	root.addChild (g_prev);
-	root.addChild (new Label (sx, H - fh * 5 - 20, SIDE_W - 10, fh + 2, "Left: 1st colour", C_DIS, C_BG));
-	root.addChild (new Label (sx, H - fh * 4 - 18, SIDE_W - 10, fh + 2, "Right: 2nd colour", C_DIS, C_BG));
-	root.addChild (new Label (sx, H - fh * 3 - 16, SIDE_W - 10, fh + 2, "X: swap them", C_DIS, C_BG));
+	sp_->addChild (g_prev);
+	int hy = pocket ? g_prev->top + g_prev->height + 4 + fh * 5 + 20 : H;	// (the hints: at the window's foot; pocket: under the previews)
+	sp_->addChild (new Label (sx, hy - fh * 5 - 20, SIDE_W - 10, fh + 2, TR ("Left: 1st colour"), C_DIS, C_BG));
+	sp_->addChild (new Label (sx, hy - fh * 4 - 18, SIDE_W - 10, fh + 2, TR ("Right: 2nd colour"), C_DIS, C_BG));
+	sp_->addChild (new Label (sx, hy - fh * 3 - 16, SIDE_W - 10, fh + 2, TR ("X: swap them"), C_DIS, C_BG));
 	g_status = new Label (6, H - fh - 8, W - 12, fh + 2, "", C_TEXT, C_BG);
 	root.addChild (g_status);
+	g_statusL = g_status;
+	if (pocket)
+	{
+		g_sp = new SidePanel (W - SIDE_W, 0, SIDE_W, H - fh - 14, UK_SP_RIGHT, UK_SP_INSPECTOR);
+		g_sp->setColors (C_BG, UK_AUTO);
+		g_sp->addPage (TR ("Colours"), -1, side);
+		g_sp->onPresentation = [] (SidePanel &, int) { lay_out (); };
+		root.addChild (g_sp);
+		root.setResizable (true);
+		root.fitWorkArea ();
+		lay_out ();
+	}
 
 	static Menu menu;
-	menu.menu ("File");
-	menu.item ("New 40 x 40 (app icon)", "^N", UK_CTRL ('N'), on_new40);
-	menu.item ("New 16 x 16", "", 0, on_new16);
-	menu.item ("New 24 x 24", "", 0, on_new24);
-	menu.item ("New 32 x 32", "", 0, on_new32);
-	menu.item ("New 48 x 48", "", 0, on_new48);
-	menu.item ("New 64 x 64", "", 0, on_new64);
+	menu.menu (TR ("File"));
+	menu.item (TR ("New 40 x 40 (app icon)"), "^N", UK_CTRL ('N'), on_new40);
+	menu.item (TR ("New 16 x 16"), "", 0, on_new16);
+	menu.item (TR ("New 24 x 24"), "", 0, on_new24);
+	menu.item (TR ("New 32 x 32"), "", 0, on_new32);
+	menu.item (TR ("New 48 x 48"), "", 0, on_new48);
+	menu.item (TR ("New 64 x 64"), "", 0, on_new64);
 	menu.separator ();
-	menu.item ("Open...",    "^O", UK_CTRL ('O'), on_open);
-	menu.item ("Save",       "^S", UK_CTRL ('S'), on_save);
-	menu.item ("Save As...", "",   0,             on_save_as);
-	menu.menu ("Edit");
-	menu.item ("Undo",       "^Z", UK_CTRL ('Z'), on_undo);
-	menu.item ("Redo",       "^Y", UK_CTRL ('Y'), on_redo);
+	menu.item (TR ("Open..."),    "^O", UK_CTRL ('O'), on_open);
+	menu.item (TR ("Save"),       "^S", UK_CTRL ('S'), on_save);
+	menu.item (TR ("Save As..."), "",   0,             on_save_as);
+	menu.menu (TR ("Edit"));
+	menu.item (TR ("Undo"),       "^Z", UK_CTRL ('Z'), on_undo);
+	menu.item (TR ("Redo"),       "^Y", UK_CTRL ('Y'), on_redo);
 	menu.separator ();
-	menu.item ("Swap Colours", "X", 0, on_swap);
-	menu.item ("More Colours...", "", 0, on_more);
-	menu.menu ("Image");
-	menu.item ("Flip Horizontal", "", 0, on_fliph);
-	menu.item ("Flip Vertical",   "", 0, on_flipv);
-	menu.item ("Rotate 90",       "", 0, on_rot);
+	menu.item (TR ("Swap Colours"), "X", 0, on_swap);
+	menu.item (TR ("More Colours..."), "", 0, on_more);
+	menu.menu (TR ("Image"));
+	menu.item (TR ("Flip Horizontal"), "", 0, on_fliph);
+	menu.item (TR ("Flip Vertical"),   "", 0, on_flipv);
+	menu.item (TR ("Rotate 90"),       "", 0, on_rot);
 	menu.separator ();
-	menu.item ("Shift Left",  "", 0, on_sl);
-	menu.item ("Shift Right", "", 0, on_sr);
-	menu.item ("Shift Up",    "", 0, on_su);
-	menu.item ("Shift Down",  "", 0, on_sd);
+	menu.item (TR ("Shift Left"),  "", 0, on_sl);
+	menu.item (TR ("Shift Right"), "", 0, on_sr);
+	menu.item (TR ("Shift Up"),    "", 0, on_su);
+	menu.item (TR ("Shift Down"),  "", 0, on_sd);
 	menu.separator ();
-	menu.item ("Clear",        "", 0, on_clear);
-	menu.item ("Grid On / Off", "G", 0, on_grid);
+	menu.item (TR ("Clear"),        "", 0, on_clear);
+	menu.item (TR ("Grid On / Off"), "G", 0, on_grid);
 	menu.publish ();
 
 	char args[128];
