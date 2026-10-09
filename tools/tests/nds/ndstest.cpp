@@ -21,7 +21,7 @@
 namespace nds { extern u32 g_watch[2][2]; extern bool g_watchHit; }
 #endif
 #if defined(__aarch64__)
-namespace nds { extern unsigned g_jitNoKinds, g_jitNoDP; extern u64 g_jitStats[8]; extern u32 g_jitInterpOps[256][2]; }
+namespace nds { extern unsigned g_jitNoKinds, g_jitNoDP; extern u64 g_jitStats[8]; extern u32 g_jitInterpOps[256][2]; extern u64 g_jitSlowRegion[2][256]; }
 #endif
 #if defined(__aarch64__) || defined(__x86_64__)
 #include <sys/mman.h>
@@ -143,6 +143,8 @@ int main (int argc, char **argv)
 #if defined(__aarch64__)
 	if (m->jit) printf ("JIT: %llu compiled, %llu flushes, %llu invalidations, %llu slow reads, %llu slow writes, %llu blocks run, %llu interpreted, %llu slow block transfers\n",
 		nds::g_jitStats[0], nds::g_jitStats[1], nds::g_jitStats[2], nds::g_jitStats[3], nds::g_jitStats[4], nds::g_jitStats[5], nds::g_jitStats[6], nds::g_jitStats[7]);
+	if (m->jit && getenv ("NDS_JITOPS"))
+		for (int c = 0; c < 2; c++) for (int r = 0; r < 256; r++) if (nds::g_jitSlowRegion[c][r]) printf ("  ARM%d slow reads in %02x: %llu\n", c ? 7 : 9, r, nds::g_jitSlowRegion[c][r]);
 	if (m->jit && getenv ("NDS_JITOPS"))
 		for (int k = 0; k < 12; k++)
 		{

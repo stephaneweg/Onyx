@@ -101,7 +101,7 @@ sources.
   (accounting), Calendar, PDF Viewer (MuPDF), RTF reader, Archiver. Internet: Jet Browser,
   Mail, IRC, Courier (HTTP client), Lisa (an AI chat). Media: Paint, Photos, the Media
   Player (music and video), Screenshot, Koton (a music studio with plugins), FM Tracker.
-  Emulators: Game Boy / Color, GBA, NES, SNES, N64, GameCube, with a Game Library. Games
+  Emulators: Game Boy / Color, GBA, NES, SNES, N64, GameCube, Nintendo DS, with a Game Library. Games
   (Doom on Freedoom, Tetris, Solitaire, FreeCell, Invaders, Arkanoid…), a BASIC with its
   editor (QBasic), the Package Manager, a Task Manager, demos.
 - **USB input devices.** Keyboard and mouse (HID), USB gamepads and MIDI keyboards, with

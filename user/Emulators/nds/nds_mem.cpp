@@ -176,6 +176,7 @@ void Machine::pagesRange (u32 from, u32 to)
 			}
 			rp[pg] = wp[pg] = p;
 			if (cpu && pg == 0) rp[0] = bios7;			// (the ARM7's BIOS: read only)
+			if ((a >> 24) >= 0x08 && (a >> 24) <= 0x0A) rp[pg] = ffPage;	// (the GBA slot, empty: read only)
 		}
 		if (cpu == 0)							// the TCMs over the rest (the ITCM wins)
 		{

@@ -345,7 +345,7 @@ public:
 	void setBios7 (const u8 *b, u32 n);		// optional (only its KEY1 table: an encrypted secure area)
 	void reset ();
 	void runFrame ();				// up to the next VBlank (560190 master cycles, 59.83 Hz)
-	void setButtons (int mask) { keys = mask; }
+	void setButtons (int mask) { if ((keys & BTN_LID) && !(mask & BTN_LID)) raise (1, 22); keys = mask; }	// (the lid opened: its interrupt wakes a sleeping game)
 	void setTouch (bool down, int x, int y) { touchDown = down; touchX = x; touchY = y; }
 	void setAudioRate (int hz);
 	int  audioRead (short *lr, int maxFrames);
@@ -410,6 +410,7 @@ public:
 	u8 *ptrTexPal[8];				// texture palettes: 96 KB in 16 KB pages (6 used)
 	u8 *ptrABGExt[4], *ptrBBGExt[4], *ptrAOBJExt, *ptrBOBJExt;	// 8 KB slots
 	u8 zero16k[0x4000];
+	u8 ffPage[0x4000];				// (the empty GBA slot: reads 0xFF)
 	void vramMap ();
 	u8  *vramPtr (u32 a);				// the ARM9's view, 0 unmapped
 	u8  *vramPtr7 (u32 a);

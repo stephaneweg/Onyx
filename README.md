@@ -36,7 +36,7 @@ screenshots still say *Zircon* — renaming them is a separate, pending task.
     Mail (Gmail, Outlook, IMAP / POP3 / SMTP), IRC, Courier (an HTTP client), Lisa (AI chat).
   - *Media*: Paint (layers, blend modes on the GPU), Photos, Media Player (music and video,
     FFmpeg), Screenshot, Koton (a music studio with plugins), FM Tracker, Image Viewer.
-  - *Emulators*: Game Boy / Color, Game Boy Advance, NES, SNES, Nintendo 64, GameCube, and a
+  - *Emulators*: Game Boy / Color, Game Boy Advance, NES, SNES, Nintendo 64, GameCube, Nintendo DS, and a
     Game Library. *Games*: Doom (Freedoom), Tetris, Solitaire, FreeCell, Invaders, Arkanoid,
     Minesweeper, Sokoban, 2048…
   - *Programming*: Onyx BASIC (a compiler, a VM, 3D) with the QBasic editor; C / C++ apps.

@@ -2624,6 +2624,77 @@ tabs, the viewport (Setup), the File Viewer. A selection is in `screenshots/pock
 > (10485 result words identical), `pstest.S` the paired singles against the manual, `hwtest.c`
 > and `gxtest.c` bare-metal programs (built with `tools/gc/elf2dol.py`): the VI's picture and
 > interrupts, the FIFO / PE, a textured quad and a shaded triangle drawn by the GX path.
+> **Nintendo DS** (`user/Emulators/nds/`, `nds/libnds.a`; the app `ndsemu`): `nds::Machine` — `load` a
+> `.nds` (the ROM stays the caller's), `runFrame` (up to the next VBlank: 263 lines of 4260 master
+> cycles, 59.83 Hz) → `screen[0]` (top) / `screen[1]` (bottom), 256 × 192 each, `setButtons (nds::BTN_*)`,
+> `setTouch (down, x, y)`, `setAudioRate` / `audioRead`, `setSaveData` / `save` / `saveSize` / `saveDirty`,
+> `setTime`, `setUser` (the firmware's name and language), `setBios7` (optional: only its KEY1 table, for
+> a dump whose secure area is still encrypted). Integer only, no libc, no allocation once made (it runs
+> on an app core). `nds_cpu.cpp` the two interpreters: the ARM946E-S (ARMv5TE: BLX, CLZ, the
+> saturating and the 16-bit multiplies, LDRD / STRD, the CP15 with its ITCM / DTCM) and the ARM7TDMI,
+> in turns of 256 master cycles (the ARM7 at half the clock); `nds_mem.cpp` the maps, the VRAM banks
+> A–I by VRAMCNT (16 KB pages: the BG / OBJ / LCDC / ARM7 views, the texture and extended-palette
+> slots) and the **page tables** both the interpreter and the JIT read and write through
+> (`Machine::rdPage` / `wrPage`, updated by range when WRAMCNT, VRAMCNT or the TCMs change);
+> `nds_io.cpp` the interrupts, timers (cascade), DMA (immediate, V/H-blank, the card, the GX FIFO,
+> main-memory display), the IPC (sync, FIFOs), the divider / square root, the ARM7's SPI (power
+> manager, a made-up firmware — its user settings with their CRC —, the touch screen's TSC2046) and
+> the RTC; `nds_cart.cpp` the card's commands after the boot (B7 reads with the 4 KB wrap, B8 the
+> chip ID), the save chip on the AUXSPI — EEPROM 512 B / EEPROM-FRAM / Flash **found from the save
+> file's size, else from the game's first write** (a whole page of one of them), in a buffer made
+> once (8 MB at most) —, the secure area's KEY1 decryption; `nds_bios.cpp` the **direct boot**
+> (the header's two programs where the BIOS puts them, the memory it leaves at 0x027FF800 /
+> 0x027FFC00 / 0x027FFE00, the processors' registers) and the BIOS calls in C++ (IntrWait with the
+> DTCM + 0x3FF8 flags, Div, Sqrt, CpuSet, CRC16, BitUnPack, the decompressions — those reading
+> through the game's callbacks run them, `callGuest` —, the ARM7's sound tables `nds_tables.inc`);
+> the interrupt entries are a few ARM words of ours at 0xFFFF0000 / 0 (as the real ones: they call
+> DTCM + 0x3FFC / 0x0380FFFC). `nds_gpu2d.cpp` the two 2D engines a line at a time (text, affine,
+> extended — 16-bit map, 256-colour and direct bitmaps —, large BG, the extended palettes, the
+> sprites 1D / 2D / 256 colours / affine / bitmap, windows, blending with the 3D layer's and the
+> bitmap sprites' own alpha, mosaic, master brightness), the display modes (VRAM, main memory) and
+> the **display capture** (into an LCDC bank). `nds_gpu3d.cpp` the geometry: the commands packed
+> through GXFIFO or one per port, the four matrix stacks, lighting, the texture-coordinate
+> transforms, the polygons (strips, culling, clipping to the view volume, the viewport) into the
+> polygon RAM, the box / position / vector tests, the swap at the VBlank (the commands after a
+> SWAP_BUFFERS wait for it); `nds_render3d.cpp` the rasterizer in software (the perspective, the
+> seven texture formats, modulation / decal / toon / highlight, alpha test and blending, shadow
+> polygons, edge marking, fog, the rear-plane bitmap), started at the VBlank — on **another app
+> core** when the app gives `render3dKick` / `render3dWait` (ndsemu does), else inline.
+> `nds_spu.cpp` the 16 channels (PCM8 / PCM16 / IMA-ADPCM with its loop state, the PSG squares, the
+> noise), the mixer and the capture units, at 32728 Hz resampled to the host's rate.
+> **The JIT** (`nds_jit.cpp`, AArch64 hosts; `Machine::jitEnable (codeAlloc)` with `kapi_code_alloc`'s
+> memory, `useJit`): a block from an address to its branch out (48 instructions, within 1 KB); a
+> **Thumb instruction is rewritten as the ARM one** that does the same (its PC read as Thumb's), so
+> one translator serves both — BL pairs, the branches and the PC-relative loads apart. x19 = the
+> processor (`Arm`), up to 9 guest registers the block uses most in w20–w28 (loaded at its start,
+> stored at its exits); **the guest's NZCV is the host's** (the same meaning, carry included), a
+> backward liveness pass skipping the flags nothing reads, the logical ops' C / V kept or made
+> from the shifter (register shifts too: flag-free 64-bit shifts). Loads and stores read the page
+> table inline; a missing page goes to the memory functions through a stub after the block that
+> keeps the host flags; **the pages holding translated code have no write pointer**, so a write
+> there takes the functions, which drop **exactly the blocks whose bytes were written** (a chunk
+> list per KB) and stop the running block (`Arm::jitExit`, also set by an interrupt). The exits
+> **chain** to the next block through a direct-mapped table (address | Thumb → code) read by the
+> block itself while time is left and nothing asks to stop; else back to `jitRun` (C), which takes
+> the interrupts and the halts. MSR / MRS, the coprocessor, SWI, the DSP multiplies, LDRD / STRD,
+> LDM with ^ run in the interpreter (`execArm` / `execThumb`) and end the block.
+> **Host tests** (`sh tools/tests/run_nds_test.sh`): `tools/tests/nds/ndstest.cpp <rom> <frames> [out.ppm]`
+> runs a ROM headless (`NDS_KEYS`, `NDS_TOUCH`, `NDS_SAV`, `NDS_WAV`, `NDS_SHOTS`, `NDS_DUMP=<addr>,<words>`,
+> `NDS_JIT=1` on an AArch64 host — or under `qemu-aarch64` with `aarch64-linux-gnu-g++ -static`; built with
+> `-DNDS_DEBUG`, `NDS_WATCH9` / `NDS_WATCH7=<lo>,<hi>` stop when a processor leaves a range and print its
+> last 4096 addresses). The test programs are ours (`tools/tests/nds/src`, built by `build.sh` with
+> `arm-none-eabi-gcc`; `check.sh` runs them): **cputest** (C kernels — CRC, 64-bit arithmetic, division,
+> shifts, sorting, struct copies, switch tables, fixed point — run on the ARM9 and the ARM7 in ARM and
+> in Thumb must give the PC's own results; ARMv5 checks in assembly), **systest** (IRQs through the
+> BIOS, IntrWait, timers, DMA, divider, IPC both ways, the card polled and by DMA, the chip ID, a
+> Flash page saved and read back, the BIOS calls; the firmware, the touch screen, the clock and the
+> keys read by the ARM7), **gfx2d** / **gfx3d** (pixels probed: bitmaps, sprites, a lit quad, the
+> capture) and **sound** (440 Hz PSG on the left, a 1 kHz PCM loop on the right). **`jitfuzz`**
+> (`tools/tests/nds/jitfuzz.cpp`, under qemu-aarch64) runs random ARM / Thumb sequences — every
+> data-processing form and condition, the multiplies, loads / stores, block transfers — through the
+> interpreter and the JIT from the same state and compares the registers, the flags and the memory;
+> a mismatch is shrunk to its fewest instructions (`JITDUMP=<file>` writes its host code for
+> `aarch64-linux-gnu-objdump -b binary -m aarch64`).
 > **Doom** (`user/Ports/doom/`): doomgeneric (`third_party/doomgeneric`, GPL-2.0, only the portable
 > sources; `ONYX.md` lists the three `#ifdef ONYX` changes) built against **newlib** like the
 > `/bin` libc tools (`../libc/crt0libc.S` + `onyx_syscalls.c`, `main (void)` + `kapi_get_args`),

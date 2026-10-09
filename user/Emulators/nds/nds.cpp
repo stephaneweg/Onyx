@@ -34,6 +34,7 @@ Machine::Machine ()
 	lastError[0] = 0;
 	frames = 0; cyclesRun = 0;
 	mfill (zero16k, 0, sizeof zero16k);
+	mfill (ffPage, 0xFF, sizeof ffPage);
 }
 
 Machine::~Machine ()
@@ -129,6 +130,7 @@ void Machine::reset ()
 	mfill (pal, 0, sizeof pal); mfill (oam, 0, sizeof oam);
 	mfill (vram, 0, 0xA4000);
 	mfill (wifiRam, 0, sizeof wifiRam); mfill (wifiReg, 0, sizeof wifiReg);
+	wr16 (wifiReg, 0xC340);						// W_ID: a DS Lite's chip
 	for (int i = 0; i < 9; i++) vramcnt[i] = 0;
 	wramcnt = 0;
 	vramMap ();

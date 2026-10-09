@@ -58,14 +58,15 @@ public:
 	u16 pageCount[NCHUNKS / 16 + 1];
 	u32 helpers;
 };
-u64 g_jitStats[8];				// compiled, flushes, invalidations, slow reads, slow writes, dispatches, interp, block xfer slow
+u64 g_jitStats[8];				// (tests: compiled, flushes, invalidations, slow reads, slow writes, dispatches, interp, block xfer slow)
 
 // ---- the helpers the code calls ------------------------------------------------------------------------------
 extern u64 g_jitStats[8];
-static u32 hRead32 (Arm *c, u32 a) { g_jitStats[3]++; return c->read32 (a & ~3u); }
-static u32 hRead32r (Arm *c, u32 a) { g_jitStats[3]++; u32 v = c->read32 (a & ~3u); int n = (int) (a & 3) * 8; return n ? (v >> n) | (v << (32 - n)) : v; }
-static u32 hRead16 (Arm *c, u32 a) { g_jitStats[3]++; return c->read16 (a & ~1u); }
-static u32 hRead8 (Arm *c, u32 a) { g_jitStats[3]++; return c->read8 (a); }
+u64 g_jitSlowRegion[2][256];		// (tests: the slow reads by address >> 24)
+static u32 hRead32 (Arm *c, u32 a) { g_jitStats[3]++; g_jitSlowRegion[c->num][a >> 24]++; return c->read32 (a & ~3u); }
+static u32 hRead32r (Arm *c, u32 a) { g_jitStats[3]++; g_jitSlowRegion[c->num][a >> 24]++; u32 v = c->read32 (a & ~3u); int n = (int) (a & 3) * 8; return n ? (v >> n) | (v << (32 - n)) : v; }
+static u32 hRead16 (Arm *c, u32 a) { g_jitStats[3]++; g_jitSlowRegion[c->num][a >> 24]++; return c->read16 (a & ~1u); }
+static u32 hRead8 (Arm *c, u32 a) { g_jitStats[3]++; g_jitSlowRegion[c->num][a >> 24]++; return c->read8 (a); }
 static u32 hReadS8 (Arm *c, u32 a) { return (u32) (s32) (s8) c->read8 (a); }
 static u32 hReadS16 (Arm *c, u32 a) { return (u32) (s32) (s16) c->read16 (a & ~1u); }
 static u32 hRead16r (Arm *c, u32 a) { u32 v = c->read16 (a & ~1u); return (a & 1) ? (v >> 8) | (v << 24) : v; }	// (ARM7: rotated)
@@ -409,6 +410,7 @@ struct Gen
 	// the out-of-line stubs
 	struct Stub { int kind; u32 *from; u32 *back; int addrReg, valReg, dst, fn; int insIndex; u32 op; bool fh, fd; };
 	Stub stubs[MAX_INS * 4]; int nStubs;
+	int idleBranch;			// the branch back to the block's start of a loop that only polls (-1 none)
 
 	u32 roff (int g) const { return OFF (r) + (u32) g * 4; }
 	// the host register holding guest g (loading it into tmp if it lives in memory); pc reads as v
@@ -1013,6 +1015,11 @@ struct Gen
 	{
 		Ins &in = ins[k];
 		if (in.link) { a.movw (T0, (in.addr + (thumb ? 2 : 4)) | (thumb ? 1 : 0)); commit (14, T0); }
+		if (k == idleBranch)					// an idle loop going round again: to the slice's end
+		{
+			a.ldrx (T1, XC, OFF (target));
+			a.strx (T1, XC, OFF (ts));
+		}
 		exitTo (in.target, cycAt (k));
 		return true;
 	}
@@ -1257,6 +1264,58 @@ static int decode (Machine *m, Arm &c, u32 pc, bool thumb, Ins *ins)
 	return n;
 }
 
+// A loop that only polls: from the block's start to a branch back to it, loads (no write-back, not the I/O
+// that pops something: the IPC FIFO, the card's data -- their addresses unknown here, so loads only through a
+// register that is not a constant I/O pointer... any load is taken: those two are read by DMA or in handlers) and
+// data processing, no register carried from one round to the next (each is written before it is read, or never
+// written). Its rounds all do the same until something else changes the memory: the JIT skips them to the end of
+// the slice (-> the branch's index, -1 not one).
+static int idleLoop (const Ins *ins, int n, u32 pc)
+{
+	int br = -1;
+	for (int k = 0; k < n; k++) if ((ins[k].kind == K_B || ins[k].kind == K_TBRANCH) && !ins[k].link && ins[k].target == pc) { br = k; break; }
+	if (br < 0 || br > 8) return -1;
+	u32 writtenAll = 0;
+	for (int k = 0; k < br; k++)
+	{
+		const Ins &in = ins[k];
+		u32 op = in.op;
+		if (in.kind == K_DP) { if (((op >> 12) & 15) == 15) return -1; if (!(((op >> 21) & 15) >= 8 && ((op >> 21) & 15) <= 11)) writtenAll |= 1u << ((op >> 12) & 15); }
+		else if (in.kind == K_LDST || in.kind == K_LDSTH)
+		{
+			if (!(op & 0x00100000)) return -1;					// a store
+			if (!(op & 0x01000000) || (op & 0x00200000)) return -1;		// write-back
+			if (((op >> 12) & 15) == 15) return -1;
+			writtenAll |= 1u << ((op >> 12) & 15);
+		}
+		else if ((in.kind == K_B || in.kind == K_TBRANCH) && !in.link && in.target > ins[k].addr && in.target <= ins[br].addr) continue;	// (a forward branch inside)
+		else return -1;
+	}
+	// no register read before it is written in the round, among those the round writes
+	u32 w = 0;
+	for (int k = 0; k < br; k++)
+	{
+		const Ins &in = ins[k];
+		u32 op = in.op, reads = 0;
+		if (in.kind == K_DP)
+		{
+			int opc = (int) (op >> 21) & 15;
+			if (opc != 13 && opc != 15) reads |= 1u << ((op >> 16) & 15);
+			if (!(op & 0x02000000)) { reads |= 1u << (op & 15); if (op & 0x10) reads |= 1u << ((op >> 8) & 15); }
+			if (reads & writtenAll & ~w) return -1;
+			if (!(opc >= 8 && opc <= 11)) w |= 1u << ((op >> 12) & 15);
+		}
+		else if (in.kind == K_LDST || in.kind == K_LDSTH)
+		{
+			reads |= 1u << ((op >> 16) & 15);
+			if (in.kind == K_LDST ? (op & 0x02000000) : !(op & 0x00400000)) reads |= 1u << (op & 15);
+			if (reads & writtenAll & ~w) return -1;
+			w |= 1u << ((op >> 12) & 15);
+		}
+	}
+	return br;
+}
+
 static Block *compile (Machine *m, Arm &c, u32 pc, bool thumb)
 {
 	Jit *j = m->jit;
@@ -1266,6 +1325,7 @@ static Block *compile (Machine *m, Arm &c, u32 pc, bool thumb)
 	g.m = m; g.j = j; g.c = &c; g.cpu = c.num; g.thumb = thumb;
 	g.n = decode (m, c, pc, thumb, g.ins);
 	if (!g.n) return 0;
+	g.idleBranch = idleLoop (g.ins, g.n, pc);
 	// the registers: the most used ones in w20..w28
 	int uses[16] = { 0 };
 	for (int k = 0; k < g.n; k++)

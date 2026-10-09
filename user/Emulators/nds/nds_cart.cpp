@@ -46,7 +46,8 @@ void Cart::detect ()
 	else if (detectCmd == 0x02 || detectCmd == 0x0A)
 	{
 		// whole pages first: 16 (EEPROM 512 B), 32 / 128 (EEPROM), 256 (Flash)
-		if (n == 1 + 16 && (b[0] & 15) == 0) type = SAVE_EEPROM512;
+		if (n > 3 + 256) type = SAVE_EEPROM;				// (longer than any page: FRAM, 2 address bytes)
+		else if (n == 1 + 16 && (b[0] & 15) == 0) type = SAVE_EEPROM512;
 		else if ((n == 2 + 32 || n == 2 + 128) && (b[1] & 31) == 0) type = SAVE_EEPROM;
 		else if (n == 3 + 256 && b[2] == 0) type = SAVE_FLASH;
 		else

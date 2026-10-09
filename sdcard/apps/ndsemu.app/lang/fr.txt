@@ -1,0 +1,31 @@
+# The Nintendo DS emulator's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the source's text, exactly (spaces included).
+Loading...	Chargement...
+Paused	En pause
+The lid is closed (F9)	La console est fermée (F9)
+Nintendo DS	Nintendo DS
+Not enough memory for this game.	Pas assez de mémoire pour ce jeu.
+This is not a Nintendo DS game (.nds).	Ce n'est pas un jeu Nintendo DS (.nds).
+This game's secure area is encrypted: it needs a decrypted dump, or the ARM7 BIOS in SD:/apps/ndsemu.app/bios7.bin.	La zone sécurisée de ce jeu est chiffrée : il faut une copie déchiffrée, ou le BIOS ARM7 dans SD:/apps/ndsemu.app/bios7.bin.
+Game	Jeu
+Pause	Pause
+Reset	Redémarrer
+Interpreter (no JIT)	Interpréteur (sans JIT)
+Close / Open the Lid	Fermer / ouvrir la console
+Quit	Quitter
+View	Affichage
+Full Screen	Plein écran
+Side by Side	Côte à côte
+Swap Screens	Inverser les écrans
+Zoom 1x	Zoom 1x
+Zoom 2x	Zoom 2x
+Zoom 3x	Zoom 3x
+Show Speed	Afficher la vitesse
+Sound	Son
+Sound On / Off	Son activé / désactivé
+ fps  shown 	 i/s  affichées 
+  emu 	  émulation 
+ ms  draw 	 ms  dessin 
+  sound 	  son 
+  interpreter	  interpréteur
+  3D on a core	  3D sur un cœur

@@ -38,11 +38,11 @@ APPS = tinycalc tinypad cppdemo \
        tetris snake same terminal \
        2048 life pong sokoban \
        mandelbrot minesweeper \
-       eyes voronoy irc spin wtkdemo notifyd shutdown plasma agenda imageview widgets qbasic lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu ndsemu wifimenu dock lock cardfile
+       eyes voronoy irc spin wtkdemo notifyd shutdown plasma agenda imageview widgets qbasic lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock cardfile
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf pocketshell consolehome preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters clock
+FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf pocketshell consolehome preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters clock ndsemu
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
@@ -489,8 +489,8 @@ Kits/uikit/libuikit.a: $(UIKIT_OBJ)
 # (Kits/uikit/libuikit.a, the static build: no app of this Makefile links it any more -- they link the shared
 # library's import library, lib/uikit.imp.a --; Jet's hosted build compiles that import side for its own toolchain, tools/webkit/build-web.sh; the PC builds make their own static toolkit.)
 
-$(APP_ELFS): %.elf: Apps/%/main.cpp Runtime/crt0.S Runtime/user.ld Kits/appkit/appkit.h Kits/uikit/bmp.h Runtime/umm.h Runtime/onyxpp.hpp Apps/games/game.h Apps/games/cards.h Include/gamepad.h Emulators/emucore.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/audiokit.imp.a Kits/audiokit/audiokit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h Libs/basic/libbasic.a Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Emulators/n64/libn64.a Emulators/gc/libgc.a Emulators/nds/libnds.a Libs/v3d/libv3d.a
-	$(CXX) $(CXXFLAGS) -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) Runtime/crt0.S $< lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/audiokit.imp.a lib/imagekit.imp.a Libs/basic/libbasic.a Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Emulators/n64/libn64.a Emulators/gc/libgc.a Emulators/nds/libnds.a Libs/v3d/libv3d.a -o $@
+$(APP_ELFS): %.elf: Apps/%/main.cpp Runtime/crt0.S Runtime/user.ld Kits/appkit/appkit.h Kits/uikit/bmp.h Runtime/umm.h Runtime/onyxpp.hpp Apps/games/game.h Apps/games/cards.h Include/gamepad.h Emulators/emucore.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/audiokit.imp.a Kits/audiokit/audiokit.h lib/imagekit.imp.a Kits/imagekit/imagekit.h Libs/basic/libbasic.a Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Emulators/n64/libn64.a Emulators/gc/libgc.a Libs/v3d/libv3d.a
+	$(CXX) $(CXXFLAGS) -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -I$(V3D_MESA) $(LDFLAGS) $(KAPI_ALIASES) Runtime/crt0.S $< lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/audiokit.imp.a lib/imagekit.imp.a Libs/basic/libbasic.a Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Emulators/n64/libn64.a Emulators/gc/libgc.a Libs/v3d/libv3d.a -o $@
 
 # ---- Letters: a newlib app (FreeType wants a libc: ../libc's crt0libc.S + the kapi syscall layer,
 # as Doom's), with the apps' TrueType-only FreeType (Kits/fontkit/: its options and modules -- no bytecode
@@ -888,6 +888,9 @@ clock.elf: Apps/clock/alarms.cpp Apps/clock/clocktime.cpp $(wildcard Apps/clock/
 # The menu bar's bell (AutoDev round 6, S1): an alarm of the Clock within 24 hours -- the Clock's model read.
 FT_EXTRA_menubar = Apps/clock/alarms.cpp Apps/clock/clocktime.cpp
 menubar.elf: Apps/clock/alarms.cpp Apps/clock/clocktime.cpp Apps/clock/alarms.h Apps/clock/clocktime.h Kits/filekit/kvtext.h
+# The Nintendo DS emulator: its core (Emulators/nds/, the JIT included), AudioKit's sound output.
+FT_EXTRA_ndsemu = Emulators/nds/libnds.a lib/audiokit.imp.a
+ndsemu.elf: Emulators/nds/libnds.a Emulators/nds/nds.h Emulators/emucore.h Include/gamepad.h lib/audiokit.imp.a Kits/audiokit/audiokit.h
 FT_EXTRA_printconf = lib/printerkit.imp.a
 printconf.elf: lib/printerkit.imp.a Kits/printerkit/printerkit.h
 $(FT_APP_ELFS): %.elf: Apps/%/main.cpp Kits/uikit/bmp.h Runtime/umm.h Runtime/onyxpp.hpp lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a 		       Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h

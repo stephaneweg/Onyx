@@ -32,6 +32,7 @@
 #include "gamepad.h"
 #include "uikit/uikit.h"
 #include "uikit/lang.h"
+#include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 #include "nds/nds.h"
 #include "emucore.h"
 
@@ -308,6 +309,7 @@ static void *code_alloc (unsigned n) { return kapi_code_alloc (n); }
 int main (void)
 {
 	pad_keyboard (1);
+	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	uk_lang_init ();
 	char args[256] = "";
 	kapi_get_args (args, sizeof args);

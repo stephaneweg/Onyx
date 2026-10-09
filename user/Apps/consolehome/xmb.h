@@ -109,7 +109,7 @@ static int isin (int a)					// a: 256 a turn -> sin x 4096
 static const char *sys_code (int s)			// a console's short name (its icon's word)
 {
 	static const char *const N[][2] = { { "Game Boy Advance", "GBA" }, { "Game Boy Color", "GBC" }, { "Game Boy", "GB" },
-		{ "Super Nintendo", "SNES" }, { "NES", "NES" }, { "Nintendo 64", "N64" }, { "GameCube", "GC" } };
+		{ "Super Nintendo", "SNES" }, { "NES", "NES" }, { "Nintendo 64", "N64" }, { "GameCube", "GC" }, { "Nintendo DS", "DS" } };
 	for (unsigned i = 0; i < sizeof N / sizeof N[0]; i++) if (ieq (g_gsys[s].name, N[i][0])) return N[i][1];
 	static char c[8]; int k = 0;
 	for (const char *p = g_gsys[s].name; *p && k < 4; p++) if (*p >= 'A' && *p <= 'Z') c[k++] = *p;	// "Master System" -> "MS"

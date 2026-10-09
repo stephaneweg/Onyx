@@ -66,7 +66,7 @@ static int g_sideW = SIDE0;		// what it takes at the window's left now (pocket, 
 // The pictures of the games: the cores carried here (GB, GBA, NES, SNES), an N64 label, a GameCube
 // banner; another emulator's games: its icon.
 #define MAXSYS	12
-enum { CORE_NONE, CORE_GB, CORE_GBA, CORE_SNES, CORE_NES, CORE_N64, CORE_GC };
+enum { CORE_NONE, CORE_GB, CORE_GBA, CORE_SNES, CORE_NES, CORE_N64, CORE_GC, CORE_NDS };
 struct Sys { char name[40]; char ext[64]; char extText[64]; char emu[24]; int order, core; };
 static Sys g_sys[MAXSYS]; static int NSYS = 0;
 #define SYS_NAME(k)	g_sys[k].name
@@ -83,7 +83,7 @@ static void load_systems (void)		// (GameKit: the consoles of the installed emul
 		scpy (y.emu, ks[i].emu, sizeof y.emu); y.order = ks[i].order;
 		const char *emu = y.emu;
 		y.core = !strcmp (emu, "gbemu") ? CORE_GB : !strcmp (emu, "gbaemu") ? CORE_GBA : !strcmp (emu, "snesemu") ? CORE_SNES :
-			 !strcmp (emu, "nesemu") ? CORE_NES : !strcmp (emu, "n64emu") ? CORE_N64 : !strcmp (emu, "gcemu") ? CORE_GC : CORE_NONE;
+			 !strcmp (emu, "nesemu") ? CORE_NES : !strcmp (emu, "n64emu") ? CORE_N64 : !strcmp (emu, "gcemu") ? CORE_GC : !strcmp (emu, "ndsemu") ? CORE_NDS : CORE_NONE;
 	}
 }
 struct Game { char path[200]; char name[64]; char key[64]; int sys; unsigned *thumb; bool tried; };
@@ -261,6 +261,57 @@ static void gc_thumb (Game &g)
 	thumb_save (g);
 }
 
+// A Nintendo DS game (too big to run here): its banner's icon (32 x 32, 16 colours in 8 x 8 tiles), three times
+// its size, and its title (the banner's English one: name, subtitle, publisher, a line each).
+static void nds_thumb (Game &g)
+{
+	void *f = kapi_open (g.path); if (!f) return;
+	static unsigned char hdr[0x200], ban[0x440];
+	bool ok = disc_read (f, 0, hdr, sizeof hdr);
+	unsigned bo = ok ? (unsigned) hdr[0x68] | hdr[0x69] << 8 | hdr[0x6A] << 16 | (unsigned) hdr[0x6B] << 24 : 0;
+	bool hasBan = ok && bo && disc_read (f, bo, ban, sizeof ban);
+	kapi_close (f);
+	if (!ok) return;
+	g.thumb = new unsigned[TW * TH];
+	Canvas c; c.adopt (g.thumb, TW, TH);
+	c.clear (0x00282C34);
+	c.fillRect (8, 8, TW - 16, 20, 0x00A0A4B0);
+	c.text (14, 10, "NINTENDO DS", 0x00202020);
+	char name[72]; int nl = 0;
+	if (hasBan)
+	{
+		for (int y = 0; y < 32; y++)
+			for (int x = 0; x < 32; x++)
+			{
+				int tile = (y / 8) * 4 + x / 8;
+				unsigned char b = ban[0x20 + tile * 32 + (y & 7) * 4 + (x & 7) / 2];
+				int ci = (x & 1) ? b >> 4 : b & 15;
+				if (!ci) continue;
+				unsigned v = (unsigned) ban[0x220 + ci * 2] | ban[0x221 + ci * 2] << 8;
+				unsigned col = ((v & 31) * 255 / 31) << 16 | (((v >> 5) & 31) * 255 / 31) << 8 | ((v >> 10) & 31) * 255 / 31;
+				for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) g.thumb[(34 + y * 3 + dy) * TW + 32 + x * 3 + dx] = col;
+			}
+		for (int i = 0; i < 64 && nl < 70; i++)				// (UTF-16: Latin-1 kept, the line breaks as spaces)
+		{
+			unsigned ch = (unsigned) ban[0x340 + i * 2] | ban[0x341 + i * 2] << 8;
+			if (!ch) break;
+			name[nl++] = ch == '\n' ? ' ' : ch < 256 && ch >= ' ' ? (char) ch : '?';
+		}
+	}
+	if (!nl) for (; nl < 12 && hdr[nl] >= ' ' && hdr[nl] < 127; nl++) name[nl] = (char) hdr[nl];
+	name[nl] = 0;
+	int y = hasBan ? 132 - 16 : 50;
+	for (int s0 = 0; s0 < nl && y < TH - 12; y += 14)			// the name, a word wrap at 20 characters
+	{
+		int e = s0 + 20 < nl ? s0 + 20 : nl;
+		if (e < nl) { int b = e; while (b > s0 && name[b] != ' ') b--; if (b > s0) e = b; }
+		char line[24]; int k = 0; for (int i = s0; i < e && k < 23; i++) line[k++] = name[i]; line[k] = 0;
+		c.text (8, y, line, 0x00F0E8C0);
+		s0 = e; while (s0 < nl && name[s0] == ' ') s0++;
+	}
+	thumb_save (g);
+}
+
 static void thumb_work (void)
 {
 	if (g_tgame < 0)
@@ -276,6 +327,7 @@ static void thumb_work (void)
 				int core = g_sys[g_games[i].sys].core;
 				if (core == CORE_N64) { n64_thumb (g_games[i]); g_root->invalidate (true); return; }
 				if (core == CORE_GC) { gc_thumb (g_games[i]); g_root->invalidate (true); return; }
+				if (core == CORE_NDS) { nds_thumb (g_games[i]); g_root->invalidate (true); return; }
 				if (core == CORE_NONE) continue;			// (its emulator's icon instead)
 				g_tfile = kapi_open (g_games[i].path); if (!g_tfile) return;
 				g_tsize = kapi_fsize (g_tfile);
