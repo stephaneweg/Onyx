@@ -23,6 +23,7 @@
 //
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "appkit/appkit.h"
 #include "systemkit/systemkit.h"
 #include "filekit/filekit.h"
@@ -238,12 +239,20 @@ static void menu_build (void)
 	add (M_POWER, -1, TR ("Shut Down..."));
 	if (g_msel >= g_nmi) g_msel = 0;
 }
+// The overlays hidden: see-through (their pixels cleared) and parked off the screen -- a screen whose size changes
+// (a game's resolution, then the system's again) puts every window back on it: a parked one must show nothing there
+// (the user, 2026-10-09: "the app's menu stays when I quit the app").
+static void park (int win, Canvas &c, int h)
+{
+	if (c.px) for (long i = 0; i < (long) c.stride * h; i++) c.px[i] = CLEAR;
+	uk_win_select (win); uk_win_present (); uk_win_alpha (0); uk_win_move (-g_sw - 50, 0); uk_win_select (0);
+}
 static void menu_hide (void)
 {
 	if (!g_menu) return;
 	g_menu = false;
 	uk_shell_grab (0);
-	uk_win_select (W_OVER); uk_win_alpha (0); uk_win_move (-g_sw - 50, 0); uk_win_select (0);
+	park (W_OVER, g_oc, g_oc.h);
 }
 static void menu_show (void)
 {
@@ -408,7 +417,7 @@ static void tip_hide (void)
 {
 	if (!g_tipOn) return;
 	g_tipOn = false;
-	uk_win_select (W_TIP); uk_win_alpha (0); uk_win_move (-g_sw - 50, 0); uk_win_select (0);
+	park (W_TIP, g_tc, g_tipH);
 }
 static void tip_show (void)
 {
@@ -638,6 +647,9 @@ static void screen_sync (void)
 	uk_win_select (W_HOME); uk_win_move (0, 0); uk_win_resize (g_sw, g_sh); uk_win_select (0);
 	g_hc.adopt (g_hc.px, g_sw, g_sh, g_homeStride);
 	g_homeDirty = true;
+	if (!g_menu) park (W_OVER, g_oc, g_oc.h);		// (the server put them back on the new screen)
+	if (g_tipOn) tip_hide (); else park (W_TIP, g_tc, g_tipH);	// (the tip: placed for the old size)
+	if (g_menu) g_overDirty = true;
 }
 
 int main (void)

@@ -50,6 +50,13 @@ static int held_code (unsigned sym)
 	case 0xFF0D: case 0xFF8D: return KEY_ENTER;
 	case 0xFF1B: return 27;
 	case 0x20: return ' ';
+	case 0xFF08: return KEY_BACKSPACE;			// (a pad's Select on the keyboard: gamepad.h's [keyboard])
+	case 0xFF09: return KEY_TAB;
+	case 0xFFFF: case 0xFF9F: return KEY_DEL;
+	case 0xFF50: case 0xFF95: return KEY_HOME;
+	case 0xFF57: case 0xFF9C: return KEY_END;
+	case 0xFF55: case 0xFF9A: return KEY_PGUP;
+	case 0xFF56: case 0xFF9B: return KEY_PGDN;
 	}
 	if (sym >= 'a' && sym <= 'z') return (int) sym;
 	if (sym >= 'A' && sym <= 'Z') return (int) (sym - 'A' + 'a');

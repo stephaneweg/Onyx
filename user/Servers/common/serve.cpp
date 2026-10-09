@@ -120,6 +120,21 @@ static void print_screen (const char *held, unsigned mods)
 		kapi_exec_as ("SD:/apps/screenshot.app/main", args, "screenshot");
 }
 
+// F10, F11, F12 on a USB keyboard: Circle's key map gives them no string (its table: 0), so the cooked keys never
+// carry them -- the shells' menu (F10 in the console's home), the emulators' full screen (F11) and speed (F12) only
+// worked from a remote keyboard (2026-10-09). From the raw keys: a key newly held -> its xterm string, as typed.
+static void function_keys (const char *held, unsigned mods)
+{
+	static const struct { unsigned char hid; const char *s; } FK[] = { { 0x43, "\x1b[21~" }, { 0x44, "\x1b[23~" }, { 0x45, "\x1b[24~" } };
+	static unsigned s_was;
+	unsigned now = 0;
+	for (int k = 0; k < 6; k++)
+		for (unsigned f = 0; f < sizeof FK / sizeof FK[0]; f++) if ((unsigned char) held[k] == FK[f].hid) now |= 1u << f;
+	unsigned pressed = now & ~s_was;
+	s_was = now;
+	for (unsigned f = 0; f < sizeof FK / sizeof FK[0]; f++) if (pressed & (1u << f)) ws_route_key (FK[f].s, mods);
+}
+
 // The wheel's speed the Theme applet saved (SD:/etc/theme.txt: "wheelspeed=N").
 static void wheel_speed (void)
 {
@@ -253,6 +268,7 @@ int el_serve (int demo, int restart)
 					break;
 				case KAPI_WS_IN_HELD_USB:
 					print_screen (in[i].keys, mods);
+					function_keys (in[i].keys, mods);
 					break;
 				case KAPI_WS_IN_KICK:
 					el_core_window_present (el_core_window_of_win ((unsigned) in[i].a, in[i].x));

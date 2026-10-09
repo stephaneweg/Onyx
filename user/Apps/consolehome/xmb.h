@@ -183,6 +183,10 @@ static void xmb_bg_make (int w, int h)
 			if (yi >= 0 && yi + 1 < h) { lk_px (cv, x, yi, 0xFFFFFF, al * (16 - fr) / 16); lk_px (cv, x, yi + 1, 0xFFFFFF, al * fr / 16); }
 		}
 	}
+	// the foot's band (the hints' bar), made here once: darker, a faint line on top
+	int y0 = h - xm ().bar;
+	for (int y = y0; y < h; y++) for (int x = 0; x < w; x++) lk_px (cv, x, y, 0x040A1E, 140);
+	for (int x = 0; x < w; x++) lk_px (cv, x, y0, 0xFFFFFF, 40);
 }
 
 // ---- the white icons: drawn into a mask (white on black, through look.h's shapes), then laid in white -----------------
@@ -283,12 +287,13 @@ static void white_icon (Canvas &cv, int kind, const char *code, int cx, int cy, 
 	if (s < 4) return;
 	const unsigned char *m = xi_mask (kind, code, s);
 	int x0 = cx - s / 2, y0 = cy - s / 2, sh = s / 40 > 0 ? s / 40 : 1;
-	for (int j = 0; j < s; j++)
-		for (int i = 0; i < s; i++)
-		{
-			int v = m[j * s + i];
-			if (v) lk_px (cv, x0 + i, y0 + j + sh, 0x000A28, v * a / 255 * 35 / 100);
-		}
+	if (a > 200)						// (a faint shadow under the chosen one only)
+		for (int j = 0; j < s; j++)
+			for (int i = 0; i < s; i++)
+			{
+				int v = m[j * s + i];
+				if (v) lk_px (cv, x0 + i, y0 + j + sh, 0x000A28, v * a / 255 * 35 / 100);
+			}
 	for (int j = 0; j < s; j++)
 		for (int i = 0; i < s; i++)
 		{
@@ -353,10 +358,11 @@ static void item_sub (const XCol &c, int i, char *o, int cap)
 // ---- a ROM's picture (GameKit: the Game Library's title screens) ---------------------------------------------------------
 static unsigned g_thumb[GAMES_THUMB_W * GAMES_THUMB_H];
 static int g_thumbOf = -1;				// the ROM it is (g_roms), -2 none made yet
+static unsigned g_thumbGen;				// (+1 at each picture read: the scaled copy follows)
 static bool thumb_for (int r)
 {
 	if (g_thumbOf == r) return true;
-	if (games_thumb_load (&g_roms[r], g_thumb)) { g_thumbOf = r; return true; }
+	if (games_thumb_load (&g_roms[r], g_thumb)) { g_thumbOf = r; g_thumbGen++; return true; }
 	return false;
 }
 
@@ -395,6 +401,7 @@ static void draw_list (Canvas &cv, const XMet &m, const XCol &c, int n, int f, i
 }
 static void draw_home (void)
 {
+	unsigned t0 = kapi_clock_us ();
 	g_homeDirty = false;
 	Canvas &cv = g_hc;
 	int W = g_sw, H = g_sh;
@@ -473,14 +480,23 @@ static void draw_home (void)
 		{
 			if (thumb_for (r))
 			{
-				lk_shadow (cv, thx, m.thy, pw, ph, 0, D (12), 150, D (8));
-				for (int y = 0; y < ph; y++)
+				static unsigned *s_big, s_gen; static int s_w, s_h;	// (scaled once for a picture, a size)
+				if (s_gen != g_thumbGen || s_w != pw || s_h != ph || s_big == 0)
 				{
-					const unsigned *s = g_thumb + (y * GAMES_THUMB_H / ph) * GAMES_THUMB_W;
-					unsigned *d = cv.px + (long) (m.thy + y) * cv.stride + thx;
-					if (m.thy + y >= H) break;
-					for (int x = 0; x < pw && thx + x < W; x++) d[x] = s[x * GAMES_THUMB_W / pw];
+					delete [] s_big;
+					s_big = new unsigned[pw * ph]; s_gen = g_thumbGen; s_w = pw; s_h = ph;
+					for (int y = 0; y < ph; y++)
+					{
+						const unsigned *s = g_thumb + (y * GAMES_THUMB_H / ph) * GAMES_THUMB_W;
+						for (int x = 0; x < pw; x++) s_big[y * pw + x] = s[x * GAMES_THUMB_W / pw];
+					}
 				}
+				uk_paint_alpha (true);				// (a soft drop under it: two dark offsets, cheap)
+				lk_fill (cv, thx + D (3), m.thy + D (8), pw, ph, D (6), 0x000A28, 0x000A28, 60);
+				lk_fill (cv, thx + D (1), m.thy + D (4), pw, ph, D (3), 0x000A28, 0x000A28, 70);
+				uk_paint_alpha (false);
+				for (int y = 0; y < ph && m.thy + y < H; y++)
+					memcpy (cv.px + (long) (m.thy + y) * cv.stride + thx, s_big + y * pw, (size_t) (thx + pw <= W ? pw : W - thx) * 4);
 			}
 			else						// no picture yet: the console, and where the pictures come from
 			{
@@ -497,11 +513,7 @@ static void draw_home (void)
 
 	// the foot: where we are, the buttons that work (right-aligned)
 	{
-		int y0 = H - m.bar;
-		uk_paint_alpha (true);
-		for (int y = y0; y < H; y++) for (int x = 0; x < W; x++) lk_px (cv, x, y, 0x040A1E, 140);
-		cv.fillRect (0, y0, W, 1, uk_mix (cv.px[(long) y0 * cv.stride], 0xFFFFFF, 40));
-		uk_paint_alpha (false);
+		int y0 = H - m.bar;					// (its band: in the background, xmb_bg_make)
 		const char *ok = c->kind == X_SYS || c->kind == X_ONYX ? TR ("Play") : c->kind == X_APPS && !g_inSub ? TR ("Enter") : TR ("Open");
 		struct { const char *b; unsigned ring; const char *w; } hs[] = {
 			{ "L1 R1", 0x9AA8C0, TR ("Category") }, { "Home", 0x9AA8C0, TR ("Menu") }, { "B", 0xFF6A6A, TR ("Back") }, { "A", 0x5E9CFF, ok } };
@@ -519,7 +531,19 @@ static void draw_home (void)
 			text_fit (cv, m.tx, y0 + (m.bar - uk_fh ()) / 2, W - m.tx - tot - D (40), l, 0xC8D6F0);
 		}
 	}
+	unsigned t1 = kapi_clock_us ();
 	uk_win_select (W_HOME); uk_win_present (); uk_win_select (0);
+	unsigned t2 = kapi_clock_us ();
+	static unsigned s_said;
+	if (t2 - t0 > 40000 && kapi_get_ticks () - s_said > 1000)	// (slow: said, at most every 10 s -- kmsg)
+	{
+		s_said = kapi_get_ticks ();
+		char m[96]; int k = 0;
+		lx_cat (m, sizeof m, &k, "consolehome: the home drawn in "); num_cat (m, sizeof m, &k, (int) ((t1 - t0) / 1000));
+		lx_cat (m, sizeof m, &k, " ms, shown in "); num_cat (m, sizeof m, &k, (int) ((t2 - t1) / 1000)); lx_cat (m, sizeof m, &k, " ms");
+		ax_putln (m);
+	}
+	if (getenv ("XMB_TIME")) { char m[64]; snprintf (m, sizeof m, "XMBTIME draw %u us present %u us", t1 - t0, t2 - t1); ax_putln (m); }
 }
 
 // ---- the home's moves ---------------------------------------------------------------------------------------------------

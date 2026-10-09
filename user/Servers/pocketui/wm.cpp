@@ -1069,6 +1069,13 @@ static void Tick (unsigned self)
 		// (P8) its program's part of the work area: the whole of it, or a half in split view
 		int wx = ax, wy = ay, ww = aw, wh = ah;
 		if (p != 0) AreaOf (p->OwnerPid (), &wx, &wy, &ww, &wh);
+		// A fixed-size main window that became smaller than its area (an emulator made at 3x then shrunk to 2x when
+		// the screen took its game's size, 2026-10-09) is centred over the matte; one grown bigger is filled (cut).
+		if (p != 0 && !bFull && (k == PK_KIND_FILL || k == PK_KIND_CENTRE) && !p->Resizable () && AppWindow (p))
+		{
+			int want = p->OuterWidth () < ww && p->OuterHeight () < wh ? PK_KIND_CENTRE : PK_KIND_FILL;
+			if (want != k) { s_St[id].nKind = want; k = want; ScreenDirty (); }
+		}
 		if (p != 0 && k == PK_KIND_CENTRE && !bFull)		// (centred in the work area: a smaller one cut at its top left)
 		{
 			int cx = wx + (ww - p->OuterWidth ()) / 2, cy = wy + (wh - p->OuterHeight ()) / 2;

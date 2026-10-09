@@ -4,6 +4,22 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## The console tried on the Pi (2026-10-09, evening): fixes -- tested on the PC, NOT on the Pi yet
+
+The user's report: it works, a little slow; F10 did nothing; the app's menu stayed after the app was quit; a SNES
+game shown at the top left, the home around it; the tip "Home Menu" left at the top left; RDP's keyboard not taken.
+- **F10, F11, F12 on a USB keyboard**: Circle's key map gives them no string (`lib/input/keymap.cpp`: 0), so they
+  never reached a program from the Pi's own keyboard; the servers now make them from the raw keys
+  (`Servers/common/serve.cpp`, `function_keys`).
+- **The menu and the tip parked off the screen came back** when the screen's size changed (a game's resolution):
+  PocketUI keeps windows on the screen. Now cleared (see-through) before parking, parked again at each size.
+- **A fixed-size main window that shrank** (an emulator made at 3x, then 2x on a 640 x 480 screen) stayed "filled" at
+  the top left: PocketUI's policy now centres it over the matte (and fills it again if it grows).
+- **Slower drawing**: the foot's band baked into the background, the title screen scaled once, no shadow under the
+  faded icons; a draw over 40 ms is logged (`consolehome: the home drawn in N ms`).
+- **RDP**: Backspace (Select), Tab, Delete, Home / End / Page Up / Down are held keys now (`remotekeys.h`). Whether
+  Onyx Remote's keyboard reaches the console's home is NOT solved: the kmsg lines `rdpd: told ...` are needed.
+
 ## The keyboard as a gamepad (2026-10-09, evening) -- tested on the PC, NOT on the Pi
 
 `Include/gamepad.h`: **`pad_keyboard (1)`** adds the keys of `[keyboard]` in `SD:/etc/gamepad.ini` to pad 0 (pad 0
