@@ -624,7 +624,7 @@ clockd.elf: Apps/clockd/main.cpp Apps/clock/alarms.cpp Apps/clock/clocktime.cpp 
 # The packages (docs/pkg/README.md): pkgman, the Package Manager (the Control Panel's applet), and pkgd, the
 # update daemon (no window) -- on Libs/pkg/pkglib.h as BinUtils/pkg: HTTPS (mbedTLS), the Archiver's ZIP engine, zlib.
 PKG_MBEDTLS ?= ../third_party/mbedtls-3.6.3
-PKG_DEPS = Libs/pkg/pkglib.h Kits/netkit/http.hpp Libs/tls/onyx_tls.hpp $(wildcard Kits/filekit/*.h) Libs/zlib/libz.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+PKG_DEPS = Libs/pkg/pkglib.h Libs/pkg/pkgjob.h Kits/netkit/http.hpp Libs/tls/onyx_tls.hpp $(wildcard Kits/filekit/*.h) Libs/zlib/libz.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
 pkgman.elf: Apps/pkgman/main.cpp $(PKG_DEPS) Kits/uikit/bmp.h lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a
 	$(CXX) $(NL_CXXFLAGS) -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation -IKits/fontkit -I$(FT_SRC)/include -I$(ZLIB_SRC) -I$(PKG_MBEDTLS)/include \
 	       $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a Libs/zlib/libz.a \

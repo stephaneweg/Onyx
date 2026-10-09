@@ -16,8 +16,10 @@
 #include "lib.h"
 #include "ftpfs.h"
 #include "httpc.h"
+#include "wifi.h"
 #include "ftpfs.inc"
 #include "httpc.inc"
+#include "wifi.inc"
 
 // (the library's table: its init -- the library runtime's, Runtime/librt.cpp)
 extern "C" int onyx_lib_init (const TLibImports *imp);

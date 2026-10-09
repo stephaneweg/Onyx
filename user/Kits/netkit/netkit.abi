@@ -24,3 +24,10 @@
 18 http_get
 19 http_post
 20 http_request
+21 wifi_forget
+22 wifi_is_known
+23 wifi_join
+24 wifi_join_as
+25 wifi_known_load
+26 wifi_known_save
+27 wifi_set_country

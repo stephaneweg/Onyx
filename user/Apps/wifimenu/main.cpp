@@ -11,17 +11,16 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
+#include "netkit/netkit.h"
 
 using namespace uikit;
 
-#define WPA_PATH	"SD:/etc/wpa_supplicant.conf"
 #define W		330
 #define HEAD		48
 #define ROW		30
 #define EXTRA		66			// the open row's password / Connect part
 #define FOOT		34
 #define MAXNET		12
-#define MAXKNOWN	16
 #define HMAX		(HEAD + MAXNET * ROW + EXTRA + FOOT)	// the window's buffer (shown: its first g_h rows)
 
 // The panel's colours: the theme's, as the menu bar's drop-downs (set in main, once the theme is
@@ -36,93 +35,16 @@ static int g_open = -1, g_hover = -1;			// the row opened (joining), hovered
 static char g_status[96] = "Scanning...";
 static int g_fw = 8, g_fh = 16;
 
-// ---- the known networks: SD:/etc/wpa_supplicant.conf ----------------------------------------------
-struct Known { char ssid[33], psk[64], keymgmt[24], proto[16]; int priority; };
-static Known g_known[MAXKNOWN]; static int g_nknown = 0;
-static char g_country[8] = "BE";
+// ---- the known networks: SD:/etc/wpa_supplicant.conf (NetKit's wifi.h: all kept, the chosen one first) ---------------
+static struct wifi_known g_known[WIFI_KNOWN_MAX]; static int g_nknown = 0;
 
 static int slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
 static void scpy (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
 static bool seq (const char *a, const char *b) { while (*a && *a == *b) { a++; b++; } return *a == *b; }
 static void cat (char *d, int *n, int cap, const char *s) { while (*s && *n < cap - 1) d[(*n)++] = *s++; d[*n] = 0; }
 
-// "key=value" (quotes stripped) of a line [p, e)
-static bool line_kv (const char *p, const char *e, const char *key, char *out, int cap)
-{
-	while (p < e && (*p == ' ' || *p == '\t')) p++;
-	int kl = slen (key);
-	if (e - p <= kl || p[kl] != '=') return false;
-	for (int i = 0; i < kl; i++) if (p[i] != key[i]) return false;
-	p += kl + 1;
-	while (e > p && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r')) e--;
-	if (p < e && *p == '"') { p++; if (e > p && e[-1] == '"') e--; }
-	int n = 0; while (p < e && n < cap - 1) out[n++] = *p++;
-	out[n] = 0;
-	return true;
-}
-
-static void load_known (void)
-{
-	g_nknown = 0;
-	void *f = kapi_open (WPA_PATH);
-	if (!f) return;
-	static char buf[4096];
-	int n = kapi_read (f, buf, sizeof buf - 1); kapi_close (f);
-	if (n <= 0) return;
-	buf[n] = 0;
-	Known *cur = 0;
-	for (const char *p = buf; *p; )
-	{
-		const char *e = p; while (*e && *e != '\n') e++;
-		const char *q = p; while (q < e && (*q == ' ' || *q == '\t')) q++;
-		if (q < e && *q != '#')
-		{
-			char v[64];
-			if (!cur && e - q >= 9 && q[0] == 'n' && q[7] == '=' && q[8] == '{' && g_nknown < MAXKNOWN)
-			{ cur = &g_known[g_nknown++]; cur->ssid[0] = cur->psk[0] = cur->proto[0] = 0; scpy (cur->keymgmt, "WPA-PSK", sizeof cur->keymgmt); cur->priority = 0; }
-			else if (cur && *q == '}') cur = 0;
-			else if (cur)
-			{
-				if (line_kv (q, e, "ssid", v, sizeof v)) scpy (cur->ssid, v, sizeof cur->ssid);
-				else if (line_kv (q, e, "psk", v, sizeof v)) scpy (cur->psk, v, sizeof cur->psk);
-				else if (line_kv (q, e, "key_mgmt", v, sizeof v)) scpy (cur->keymgmt, v, sizeof cur->keymgmt);
-				else if (line_kv (q, e, "proto", v, sizeof v)) scpy (cur->proto, v, sizeof cur->proto);
-				else if (line_kv (q, e, "priority", v, sizeof v)) { int k = 0; for (int i = 0; v[i] >= '0' && v[i] <= '9'; i++) k = k * 10 + v[i] - '0'; cur->priority = k; }
-			}
-			else if (line_kv (q, e, "country", v, sizeof v)) scpy (g_country, v, sizeof g_country);
-		}
-		p = *e ? e + 1 : e;
-	}
-	if (cur && !cur->ssid[0]) g_nknown--;
-}
-static Known *known (const char *ssid) { for (int i = 0; i < g_nknown; i++) if (seq (g_known[i].ssid, ssid)) return &g_known[i]; return 0; }
-
-static bool save_known (void)
-{
-	static char out[4096]; int n = 0; out[0] = 0;
-	cat (out, &n, sizeof out,
-	     "#\n# wpa_supplicant.conf -- WLAN credentials for Onyx (read at boot, and again when a network is\n"
-	     "# joined from the Wi-Fi menu). The network with the highest priority is joined first.\n#\n"
-	     "# SECURITY: the passwords are stored in CLEAR TEXT. Keep this file on the SD card only;\n"
-	     "# do NOT commit it to a public repository. Managed by the Wi-Fi menu and Wi-Fi Settings.\n#\n\n");
-	cat (out, &n, sizeof out, "country="); cat (out, &n, sizeof out, g_country); cat (out, &n, sizeof out, "\n");
-	for (int i = 0; i < g_nknown; i++)
-	{
-		const Known &k = g_known[i];
-		cat (out, &n, sizeof out, "\nnetwork={\n\tssid=\""); cat (out, &n, sizeof out, k.ssid); cat (out, &n, sizeof out, "\"\n");
-		bool psk = !seq (k.keymgmt, "NONE");
-		if (psk) { cat (out, &n, sizeof out, "\tpsk=\""); cat (out, &n, sizeof out, k.psk); cat (out, &n, sizeof out, "\"\n"); }
-		if (psk && k.proto[0]) { cat (out, &n, sizeof out, "\tproto="); cat (out, &n, sizeof out, k.proto); cat (out, &n, sizeof out, "\n"); }
-		cat (out, &n, sizeof out, "\tkey_mgmt="); cat (out, &n, sizeof out, k.keymgmt); cat (out, &n, sizeof out, "\n");
-		if (k.priority > 0)
-		{
-			char b[12]; ax_itoa (k.priority, b);
-			cat (out, &n, sizeof out, "\tpriority="); cat (out, &n, sizeof out, b); cat (out, &n, sizeof out, "\n");
-		}
-		cat (out, &n, sizeof out, "}\n");
-	}
-	return kapi_save_file (WPA_PATH, out, (unsigned) n) >= 0;
-}
+static void load_known (void) { g_nknown = wifi_known_load (g_known, WIFI_KNOWN_MAX, 0, 0); }
+static bool known (const char *ssid) { for (int i = 0; i < g_nknown; i++) if (seq (g_known[i].ssid, ssid)) return true; return false; }
 
 static void scan (void)
 {
@@ -138,7 +60,7 @@ static void scan (void)
 		if (dup) continue;
 		Net &x = g_net[g_nnet++];
 		scpy (x.ssid, ap[i].ssid, sizeof x.ssid);
-		x.level = ap[i].level; x.security = ap[i].security; x.connected = ap[i].connected; x.known = known (x.ssid) != 0;
+		x.level = ap[i].level; x.security = ap[i].security; x.connected = ap[i].connected; x.known = known (x.ssid);
 	}
 	for (int i = 0; i < g_nnet; i++)				// the one we are on, first
 		if (g_net[i].connected && i > 0) { Net t = g_net[i]; for (int k = i; k > 0; k--) g_net[k] = g_net[k - 1]; g_net[0] = t; break; }
@@ -178,16 +100,10 @@ static void join (void)
 	if (n.security == WLAN_SEC_WEP) { scpy (g_status, "WEP networks are not supported", sizeof g_status); g_root->invalidate (true); return; }
 	int pl = slen (g_pass->text);
 	if (needs_password (n) && (pl < 8 || pl > 63)) { scpy (g_status, "The password is 8 to 63 characters", sizeof g_status); g_root->invalidate (true); return; }
-	load_known ();
-	Known *k = known (n.ssid);
-	if (!k && g_nknown < MAXKNOWN) { k = &g_known[g_nknown++]; scpy (k->ssid, n.ssid, sizeof k->ssid); k->psk[0] = k->proto[0] = 0; k->priority = 0; }
-	if (!k) { scpy (g_status, "Too many known networks (Wi-Fi Settings)", sizeof g_status); g_root->invalidate (true); return; }
-	if (needs_password (n)) scpy (k->psk, g_pass->text, sizeof k->psk);
-	scpy (k->keymgmt, n.security == WLAN_SEC_OPEN ? "NONE" : "WPA-PSK", sizeof k->keymgmt);
-	int top = 0; for (int i = 0; i < g_nknown; i++) if (g_known[i].priority > top) top = g_known[i].priority;
-	k->priority = top + 1;						// (joined first)
-	if (!save_known ()) { scpy (g_status, "Cannot write /etc/wpa_supplicant.conf", sizeof g_status); g_root->invalidate (true); return; }
-	if (kapi_wlan_reconnect () < 0) { scpy (g_status, "Saved: reboot to join (no live Wi-Fi)", sizeof g_status); g_root->invalidate (true); return; }
+	int r = wifi_join (n.ssid, n.security, needs_password (n) ? g_pass->text : 0);	// (NetKit: kept with the others, first)
+	if (r == WIFI_EFULL) { scpy (g_status, "Too many known networks (Wi-Fi Settings)", sizeof g_status); g_root->invalidate (true); return; }
+	if (r == WIFI_EWRITE || r < 0) { scpy (g_status, "Cannot write /etc/wpa_supplicant.conf", sizeof g_status); g_root->invalidate (true); return; }
+	if (r == WIFI_SAVED) { scpy (g_status, "Saved: reboot to join (no live Wi-Fi)", sizeof g_status); g_root->invalidate (true); return; }
 	scpy (g_joinSsid, n.ssid, sizeof g_joinSsid);
 	g_join = JOINING; g_joinT = kapi_get_ticks (); g_sawDown = false;
 	int m = 0; g_status[0] = 0; cat (g_status, &m, sizeof g_status, "Connecting to "); cat (g_status, &m, sizeof g_status, n.ssid); cat (g_status, &m, sizeof g_status, "...");

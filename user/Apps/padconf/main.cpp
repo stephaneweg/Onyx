@@ -57,147 +57,40 @@ static const char *const STEP_TEXT[PAD_NBUTTONS] = {
 	TRN ("the LEFT stick's click (L3)"), TRN ("the RIGHT stick's click (R3)"), TRN ("HOME (Guide / PS)") };
 
 static bool g_mapping = false;
-static int g_step = 0;
-static bool g_waitRelease = false;
-static struct kapi_pad g_base;				// the rest state of the step
-static struct pad_map g_new;
+static struct pad_learn g_learn;			// the wizard (gamepad.h: pad_learn_*)
 static char g_msg[160] = "";
-
-static int axis_dev (const struct kapi_pad &p, const struct kapi_pad &b, int i)
-{
-	int range = p.axes[i].maximum - p.axes[i].minimum;
-	if (range <= 0) return 0;
-	return (p.axes[i].value - b.axes[i].value) * 1000 / range;
-}
-static bool at_rest (const struct kapi_pad &p)
-{
-	if (p.buttons != g_base.buttons) return false;
-	for (int i = 0; i < p.nhats; i++) if (p.hats[i] >= 0 && p.hats[i] < 8) return false;
-	for (int i = 0; i < p.naxes; i++) { int d = axis_dev (p, g_base, i); if (d > 250 || d < -250) return false; }
-	return true;
-}
+#define g_step		g_learn.step
+#define g_waitRelease	g_learn.wait_release
 
 static void map_start (void)
 {
 	if (!g_there) { int n = 0; g_msg[0] = 0; cat (g_msg, &n, sizeof g_msg, TR ("No gamepad here: plug one in.")); return; }
-	g_mapping = true; g_step = 0; g_waitRelease = false;
-	g_base = g_raw;
-	for (int i = 0; i < g_base.nhats; i++) g_base.hats[i] = 8;	// (a rest hat: centred)
-	pad_map_default (&g_new, 0, 0);
-	for (int i = 0; i < PAD_NBUTTONS; i++) g_new.btn[i] = 0;
-	g_new.dpad = PAD_DPAD_NONE; g_new.x_axis = g_new.y_axis = 0; g_new.l2_axis = g_new.r2_axis = 0;
+	g_mapping = true;
+	pad_learn_start (&g_learn, &g_raw);
 	g_msg[0] = 0;
 }
-
-static void next_step (void)
-{
-	g_step++;
-	// a d-pad on a hat or axes is done with UP (hat) or UP + LEFT (axes)
-	while (g_step < 4 && (g_new.dpad == PAD_DPAD_HAT || (g_new.dpad == PAD_DPAD_AXES && (g_step == 1 || g_step == 3))))
-		g_step++;
-	g_waitRelease = true;
-}
-
-static void save_mapping (void);
-
-// A press for the current step: a hat, an axis or a button that left its rest state.
-static void map_poll (void)
-{
-	if (!g_mapping || !g_there) return;
-	const struct kapi_pad &p = g_raw;
-	if (g_waitRelease) { if (at_rest (p)) g_waitRelease = false; return; }
-	if (g_step >= PAD_NBUTTONS) { g_mapping = false; save_mapping (); return; }
-	if (g_step < 4)
-		for (int i = 0; i < p.nhats; i++)
-			if (p.hats[i] >= 0 && p.hats[i] < 8) { g_new.dpad = PAD_DPAD_HAT; g_new.hat = i; next_step (); return; }
-	if (g_step < 4)
-		for (int i = 0; i < p.naxes; i++)
-		{
-			int d = axis_dev (p, g_base, i);
-			if (d > 400 || d < -400)
-			{
-				g_new.dpad = PAD_DPAD_AXES;
-				if (g_step == 0 || g_step == 1) g_new.y_axis = i + 1; else g_new.x_axis = i + 1;
-				next_step (); return;
-			}
-		}
-	if (g_step == 10 || g_step == 11)				// L2 / R2: an analog trigger (an axis) too
-		for (int i = 0; i < p.naxes; i++)
-		{
-			int d = axis_dev (p, g_base, i);
-			if (d > 400 || d < -400)
-			{
-				int ax = d > 0 ? i + 1 : -(i + 1);
-				if (g_step == 10) g_new.l2_axis = ax; else g_new.r2_axis = ax;
-				next_step (); return;
-			}
-		}
-	unsigned nb = p.buttons & ~g_base.buttons;
-	if (nb)
-	{
-		int b = 0; while (!((nb >> b) & 1)) b++;
-		g_new.btn[g_step] = b + 1;
-		if (g_step < 4) g_new.dpad = PAD_DPAD_BUTTONS;
-		next_step ();
-	}
-}
-
-// Replace (or add) a section of SD:/etc/gamepad.ini: the pad model's ([vvvv:pppp]), or head's ("[keyboard]").
-static bool write_section (const char *body, const char *headWanted = 0)
-{
-	static char buf[8192], out[8192];
-	int n = 0;
-	void *f = kapi_open ("SD:/etc/gamepad.ini");
-	if (f) { n = kapi_read (f, buf, sizeof buf - 1); kapi_close (f); if (n < 0) n = 0; }
-	buf[n] = 0;
-	char head[16]; int hn = 0; head[0] = 0;
-	cat (head, &hn, sizeof head, "["); cathex (head, &hn, sizeof head, g_raw.vid, 4); cat (head, &hn, sizeof head, ":");
-	cathex (head, &hn, sizeof head, g_raw.pid, 4); cat (head, &hn, sizeof head, "]");
-	if (headWanted) { hn = 0; head[0] = 0; cat (head, &hn, sizeof head, headWanted); }
-	int o = 0; bool skip = false;
-	for (int i = 0; i < n; )
-	{
-		int s = i; while (i < n && buf[i] != '\n') i++;
-		if (i < n) i++;
-		int t = s; while (t < i && (buf[t] == ' ' || buf[t] == '\t')) t++;
-		if (buf[t] == '[')
-		{
-			skip = true;
-			for (int k = 0; k < hn; k++) if (pad_lc (buf[t + k]) != head[k]) { skip = false; break; }
-		}
-		if (!skip) for (int k = s; k < i && o < (int) sizeof out - 1; k++) out[o++] = buf[k];
-	}
-	if (o > 0 && out[o - 1] != '\n' && o < (int) sizeof out - 1) out[o++] = '\n';
-	out[o] = 0;
-	cat (out, &o, sizeof out, body);
-	return kapi_save_file ("SD:/etc/gamepad.ini", out, (unsigned) o) >= 0;
-}
+static void next_step (void) { pad_learn_skip (&g_learn); }
 
 static void save_mapping (void)
 {
-	static char body[1024]; int n = 0; body[0] = 0;
-	cat (body, &n, sizeof body, "["); cathex (body, &n, sizeof body, g_raw.vid, 4); cat (body, &n, sizeof body, ":");
-	cathex (body, &n, sizeof body, g_raw.pid, 4); cat (body, &n, sizeof body, "]\t; mapped with the Gamepad app\n");
-	cat (body, &n, sizeof body, "dpad = ");
-	cat (body, &n, sizeof body, g_new.dpad == PAD_DPAD_HAT ? "hat" : g_new.dpad == PAD_DPAD_AXES ? "axes" : g_new.dpad == PAD_DPAD_BUTTONS ? "buttons" : "none");
-	cat (body, &n, sizeof body, "\n");
-	if (g_new.dpad == PAD_DPAD_HAT) { cat (body, &n, sizeof body, "hat = "); cati (body, &n, sizeof body, g_new.hat + 1); cat (body, &n, sizeof body, "\n"); }
-	int xa = g_new.x_axis ? g_new.x_axis : 1, ya = g_new.y_axis ? g_new.y_axis : 2;
-	cat (body, &n, sizeof body, "x_axis = "); cati (body, &n, sizeof body, xa);
-	cat (body, &n, sizeof body, "\ny_axis = "); cati (body, &n, sizeof body, ya); cat (body, &n, sizeof body, "\n");
-	cat (body, &n, sizeof body, "stick = "); cati (body, &n, sizeof body, g_new.dpad == PAD_DPAD_AXES ? 0 : 1); cat (body, &n, sizeof body, "\n");
-	if (g_new.l2_axis) { cat (body, &n, sizeof body, "l2_axis = "); cati (body, &n, sizeof body, g_new.l2_axis); cat (body, &n, sizeof body, "\n"); }
-	if (g_new.r2_axis) { cat (body, &n, sizeof body, "r2_axis = "); cati (body, &n, sizeof body, g_new.r2_axis); cat (body, &n, sizeof body, "\n"); }
-	for (int i = 0; i < PAD_NBUTTONS; i++)
-	{
-		if (i < 4 && g_new.dpad != PAD_DPAD_BUTTONS) continue;
-		cat (body, &n, sizeof body, pad_names[i]); cat (body, &n, sizeof body, " = ");
-		cati (body, &n, sizeof body, g_new.btn[i]); cat (body, &n, sizeof body, "\n");
-	}
 	int m = 0; g_msg[0] = 0;
-	if (write_section (body)) cat (g_msg, &m, sizeof g_msg, TR ("Saved in SD:/etc/gamepad.ini: every app uses it now."));
+	if (pad_learn_save (&g_learn, "mapped with the Gamepad app")) cat (g_msg, &m, sizeof g_msg, TR ("Saved in SD:/etc/gamepad.ini: every app uses it now."));
 	else cat (g_msg, &m, sizeof g_msg, TR ("Could not write SD:/etc/gamepad.ini"));
-	pad_config_reload ();
+}
+// A press for the current step (gamepad.h's pad_learn_poll); every step done: the section written.
+static void map_poll (void)
+{
+	if (!g_mapping || !g_there) return;
+	if (pad_learn_poll (&g_learn, &g_raw) == 2) { g_mapping = false; save_mapping (); }
+}
+// A section of SD:/etc/gamepad.ini replaced (gamepad.h): the pad's model's, or headWanted ("[keyboard]").
+static bool write_section (const char *body, const char *headWanted = 0)
+{
+	if (headWanted) return pad_ini_section (headWanted, body) != 0;
+	char head[16]; int hn = 0; head[0] = 0;
+	cat (head, &hn, sizeof head, "["); cathex (head, &hn, sizeof head, g_raw.vid, 4); cat (head, &hn, sizeof head, ":");
+	cathex (head, &hn, sizeof head, g_raw.pid, 4); cat (head, &hn, sizeof head, "]");
+	return pad_ini_section (head, body) != 0;
 }
 
 // ---- the window ------------------------------------------------------------------------------------
@@ -243,18 +136,9 @@ static bool g_kwait = false;				// waiting for the key of row g_ksel
 #define KRH	22
 static void kbd_save (void)
 {
-	static char body[1024]; int n = 0; body[0] = 0;
-	cat (body, &n, sizeof body, "[keyboard]\t; the keyboard as pad 1 (the emulators), set with the Gamepad app\n");
-	for (int i = 0; i < PAD_KEYS; i++)
-	{
-		cat (body, &n, sizeof body, i < PAD_NBUTTONS ? pad_names[i] : pad_key_names[i - PAD_NBUTTONS]);
-		cat (body, &n, sizeof body, " = "); cat (body, &n, sizeof body, g_pad_kbd[i] ? pad_key_word (g_pad_kbd[i]) : "none");
-		cat (body, &n, sizeof body, "\n");
-	}
 	int m = 0; g_msg[0] = 0;
-	if (write_section (body, "[keyboard]")) cat (g_msg, &m, sizeof g_msg, TR ("Saved in SD:/etc/gamepad.ini: the emulators use it now."));
+	if (pad_keyboard_save ()) cat (g_msg, &m, sizeof g_msg, TR ("Saved in SD:/etc/gamepad.ini: the emulators use it now."));
 	else cat (g_msg, &m, sizeof g_msg, TR ("Could not write SD:/etc/gamepad.ini"));
-	pad_config_reload ();
 }
 static void kbd_draw (Canvas &c, int width, int height)
 {

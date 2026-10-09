@@ -14,13 +14,15 @@
 // picking one fills the SSID and sets Proto / Key mgmt from its security (open = NONE).
 //
 // Save applies at once (ABI v60 wlan_reconnect: wpa_supplicant reads the file again, our Circle
-// fork); "Save & Reboot" is still there (a modal, then kapi_reboot). Save writes ONE network: the
-// other known ones (added by the Wi-Fi menu of the menu bar) are dropped.
+// fork); "Save & Reboot" is still there (a modal, then kapi_reboot). Save adds the network (or updates
+// it) among the known ones, joined first: the others are kept (NetKit's wifi.h, 2026-10-09).
 //
 // The Control Panel's Wi-Fi applet (applet_proto.h), or a window of its own when run alone.
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"		// recursive widget toolkit + uk_messagebox
+#include "netkit/netkit.h"		// the known networks (wifi.h)
+#include <string.h>
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 
 using namespace uikit;
@@ -168,32 +170,18 @@ static int save_conf (void)
 	for (int i = 0; keymgmt[i]; i++) if (keymgmt[i] == 'P' && keymgmt[i+1] == 'S' && keymgmt[i+2] == 'K') psk_mode = 1;
 	if (psk_mode && (pl < 8 || pl > 63)) { set_status (TR ("PSK must be 8..63 chars")); return 0; }
 
-	static char out[2048]; int n = 0;
-	n = scat (out, n,
-		"#\n"
-		"# wpa_supplicant.conf -- WLAN credentials for Onyx (read at boot by the kernel).\n"
-		"#\n"
-		"# SECURITY: this file stores your Wi-Fi passphrase in CLEAR TEXT. Keep it on the\n"
-		"# SD card only; do NOT commit it to a public repository. Managed by the 'wpaconf'\n"
-		"# app (Wi-Fi Settings) -- reboot to apply changes.\n"
-		"#\n\n");
-	n = scat (out, n, "country=");  n = scat (out, n, country);  n = scat (out, n, "\n\n");
-	n = scat (out, n, "network={\n");
-	n = scat (out, n, "\tssid=\"");     n = scat (out, n, ssid);    n = scat (out, n, "\"\n");
-	if (psk_mode)			// (an open network: key_mgmt=NONE, no psk / proto)
-	{
-		n = scat (out, n, "\tpsk=\"");      n = scat (out, n, psk);     n = scat (out, n, "\"\n");
-		if (proto[0]) { n = scat (out, n, "\tproto="); n = scat (out, n, proto); n = scat (out, n, "\n"); }
-	}
-	n = scat (out, n, "\tkey_mgmt=");   n = scat (out, n, keymgmt); n = scat (out, n, "\n");
-	n = scat (out, n, "}\n");
-	if (kapi_save_file (WPA_PATH, out, (unsigned) n) < 0) { set_status (TR ("Save FAILED (write error)")); return 0; }
-	return 1;
+	// NetKit's wifi.h: this network added (or its fields updated) among the known ones, joined first; the others kept
+	int r = wifi_join_as (ssid, psk_mode ? psk : "", keymgmt, psk_mode ? proto : "");
+	char cc[8]; struct wifi_known k[1];
+	wifi_known_load (k, 0, cc, sizeof cc);
+	if (r >= 0 && country[0] && strcmp (cc, country) != 0) r = wifi_set_country (country);
+	if (r < 0) { set_status (TR ("Save FAILED (write error)")); return 0; }
+	return r == WIFI_OK ? 1 : 2;
 }
 
 // ---- callbacks ---------------------------------------------------------------
 static void on_show   (Widget &) { g_psk->password = !g_show->checked; g_psk->invalidate (true); }
-static void on_save   (Widget &) { if (save_conf ()) set_status (kapi_wlan_reconnect () == 0 ? TR ("Saved: joining it now (no reboot)") : TR ("Saved. Reboot to apply.")); }
+static void on_save   (Widget &) { int r = save_conf (); if (r) set_status (r == 1 ? TR ("Saved: joining it now (no reboot)") : TR ("Saved. Reboot to apply.")); }
 static void on_reload (Widget &) { load_conf (); }
 static void on_reboot (Widget &)
 {

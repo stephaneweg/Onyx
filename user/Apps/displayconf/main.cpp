@@ -4,39 +4,39 @@
 // every window kept on the screen and sent GUI_EVENT_DISPLAY_RESIZE: the menu bar, the dock, the
 // notifications place themselves again, a maximised window fills the new work area, one too big is
 // shrunk into it) and the wallpaper painted again at the new size (apps/voronoy, as the Theme
-// applet); kept in SD:/cmdline.txt (width= / height=) for the next start. An older kernel: kept
+// applet); kept in SD:/cmdline.txt (width= / height=) for the next start -- once "Keep this resolution?" was
+// answered (15 s, else the size before comes back by itself). An older kernel: kept
 // only, applied at the next start. The monitor shows any size (the firmware scales the picture to
 // its own mode); its native one is the sharpest.
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
+#include "systemkit/systemkit.h"		// display.h: the sizes, cmdline.txt
+#include <stdio.h>
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 
 using namespace uikit;
 
 #define W	700
 #define H	470
-#define CMDLINE	"SD:/cmdline.txt"
 
-struct Mode { int w, h; const char *what; };
-static const Mode MODES[] =
-{
-	{ 1024,  768, TRN ("4:3, XGA (Onyx's default)") },
-	{ 1280,  720, TRN ("16:9, HD") },
-	{ 1280,  800, TRN ("16:10, WXGA") },
-	{ 1280, 1024, TRN ("5:4, SXGA") },
-	{ 1366,  768, TRN ("16:9, laptop screens") },
-	{ 1440,  900, TRN ("16:10, WXGA+") },
-	{ 1600,  900, TRN ("16:9, HD+") },
-	{ 1600, 1200, TRN ("4:3, UXGA") },
-	{ 1680, 1050, TRN ("16:10, WSXGA+") },
-	{ 1920, 1080, TRN ("16:9, Full HD") },
-	{ 1920, 1200, TRN ("16:10, WUXGA") },
-	{ 2560, 1440, TRN ("16:9, QHD") },
-};
-#define NMODES	((int) (sizeof MODES / sizeof MODES[0]))
+// The sizes: SystemKit's display.h (display_modes, display_mode). Their words, translated here:
+// TR: 4:3, XGA (Onyx's default)
+// TR: 16:9, HD
+// TR: 16:10, WXGA
+// TR: 5:4, SXGA
+// TR: 16:9, laptop screens
+// TR: 16:10, WXGA+
+// TR: 16:9, HD+
+// TR: 4:3, UXGA
+// TR: 16:10, WSXGA+
+// TR: 16:9, Full HD
+// TR: 16:10, WUXGA
+// TR: 16:9, QHD
+#define NMODES	display_modes ()
 
 static ListBox *g_list;
+static Root *g_root;
 static Label   *g_now, *g_status;
 
 static int put_str (char *b, int n, const char *s) { while (*s) b[n++] = *s++; return n; }
@@ -48,50 +48,73 @@ static void show_now (void)
 	char s[64]; int n = put_str (s, 0, TR ("The screen now: "));
 	n = put_int (s, n, w); n = put_str (s, n, " x "); n = put_int (s, n, h); s[n] = 0;
 	g_now->setText (s);
-	for (int i = 0; i < NMODES; i++) if (MODES[i].w == w && MODES[i].h == h) g_list->setSel (i);
+	for (int i = 0; i < NMODES; i++) { int mw, mh; display_mode (i, &mw, &mh); if (mw == w && mh == h) g_list->setSel (i); }
 }
 
-// SD:/cmdline.txt with width= / height= the new size (its other options kept, one line) -> ok
-static bool save_cmdline (int w, int h)
+// "Keep this resolution?": 15 s to say Keep, else (Esc, Go back, nothing) the size before comes back by itself --
+// a size the monitor cannot show leaves a black screen: it mends itself (2026-10-09, as the console's Display page).
+#define KEEP_TICKS	1500
+class KeepBox : public Modal
 {
-	static char in[1024], out[1100];
-	int n = 0;
-	void *f = kapi_open (CMDLINE);
-	if (f) { n = kapi_read (f, in, sizeof in - 1); kapi_close (f); }
-	if (n < 0) n = 0;
-	in[n] = 0;
-	int o = put_str (out, 0, "width="); o = put_int (out, o, w);
-	o = put_str (out, o, " height="); o = put_int (out, o, h);
-	for (int i = 0; in[i]; )
+	unsigned m_t0;
+public:
+	KeepBox () : Modal (420, 150)
 	{
-		while (in[i] == ' ' || in[i] == '\t' || in[i] == '\r' || in[i] == '\n') i++;
-		int s = i;
-		while (in[i] && in[i] != ' ' && in[i] != '\t' && in[i] != '\r' && in[i] != '\n') i++;
-		if (i == s) break;
-		bool size = (i - s > 6 && in[s] == 'w' && in[s + 1] == 'i' && in[s + 2] == 'd' && in[s + 3] == 't' && in[s + 4] == 'h' && in[s + 5] == '=')
-			 || (i - s > 7 && in[s] == 'h' && in[s + 1] == 'e' && in[s + 2] == 'i' && in[s + 3] == 'g' && in[s + 4] == 'h' && in[s + 5] == 't' && in[s + 6] == '=');
-		if (size || o + (i - s) + 2 >= (int) sizeof out) continue;
-		out[o++] = ' ';
-		for (int k = s; k < i; k++) out[o++] = in[k];
+		Root *r = Root::current ();
+		left = ((r ? r->width : W) - width) / 2; top = ((r ? r->height : H) - height) / 2;
+		m_t0 = kapi_get_ticks ();
+		Button *k = new Button (width - 196, height - 40, 90, 28, TR ("Keep"), btn); k->tag = 1; addChild (k);
+		Button *g = new Button (width - 100, height - 40, 90, 28, TR ("Go back"), btn); g->tag = 0; addChild (g);
 	}
-	out[o++] = '\n';
-	return kapi_save_file (CMDLINE, out, (unsigned) o) >= 0;	// (-1: not written)
-}
+	static void btn (Widget &w) { if (w.parent) ((Modal *) w.parent)->onButton (w.tag); }
+	void onButton (int tag) override { close (tag); }
+	bool onKey (long k) override
+	{
+		if (k == 27) { close (0); return true; }
+		if (k == KEY_ENTER) { close (1); return true; }
+		return false;
+	}
+	void onDraw () override
+	{
+		unsigned el = kapi_get_ticks () - m_t0;
+		if (el >= KEEP_TICKS) { close (0); return; }
+		drawBox (TR ("Display"));
+		char s[96]; int left_s = (int) ((KEEP_TICKS - el + 99) / 100);
+		snprintf (s, sizeof s, TR ("Keep this resolution? Back to the one before in %d s."), left_s);
+		uk_text (canvas, 16, titleH () + 16, s, C_TEXT);
+		int bw = width - 32;
+		uk_sunken (canvas, 16, titleH () + 44, bw, 8, 3, C_FIELD);
+		int f = (int) ((long) bw * (KEEP_TICKS - el) / KEEP_TICKS);
+		if (f > 4) uk_rbox (canvas, 17, titleH () + 45, f - 2, 6, 2, C_ACCENT, C_ACCENT);
+		invalidate (true);					// (the count goes on: drawn again)
+	}
+};
 
 static void on_apply (Widget &)
 {
 	int i = g_list->sel;
 	if (i < 0 || i >= NMODES) { g_status->setText (TR ("Pick a size in the list first.")); return; }
-	int w = MODES[i].w, h = MODES[i].h;
-	bool saved = save_cmdline (w, h);
+	int w, h;
+	display_mode (i, &w, &h);
+	int ow = 0, oh = 0; kapi_screen_size (&ow, &oh);
 	int r = kapi_screen_set (w, h);
 	if (r == 0)
 	{
+		g_root->draw (); uk_present ();
+		KeepBox box;
+		if (box.run () != 1)					// (not kept: the size before)
+		{
+			kapi_screen_set (ow, oh);
+			g_status->setText (TR ("The resolution before is back."));
+			show_now ();
+			return;
+		}
+		bool saved = display_save_size (w, h) != 0;
 		kapi_exec ("SD:apps/voronoy.app/main", "");	// the wallpaper, at the new size
 		g_status->setText (saved ? TR ("Applied, and kept for the next start.") : TR ("Applied -- but SD:/cmdline.txt could not be written."));
 	}
-	else if (r == -4) g_status->setText (saved ? TR ("Kept: applied at the next start (this kernel cannot change it now).") : TR ("SD:/cmdline.txt could not be written."));
-	else if (r == -2) g_status->setText (TR ("Not now: a full-screen app owns the display. Kept for the next start."));
+	else if (r == -4) { bool saved = display_save_size (w, h) != 0; g_status->setText (saved ? TR ("Kept: applied at the next start (this kernel cannot change it now).") : TR ("SD:/cmdline.txt could not be written.")); }
+	else if (r == -2) { display_save_size (w, h); g_status->setText (TR ("Not now: a full-screen app owns the display. Kept for the next start.")); }
 	else if (r == -3) g_status->setText (TR ("The firmware refused this size: the screen kept its own."));
 	else g_status->setText (TR ("This size is not possible."));
 	show_now ();
@@ -110,6 +133,7 @@ int main (void)
 	uk_lang_init ();				// the words in the system's language (the face first: UTF-8)
 	DisplayRoot root;
 	if (root.canvas.px == 0) return 1;
+	g_root = &root;
 	int X = root.width > W ? (root.width - W) / 2 : 0;
 	GroupBox *gs = new GroupBox (X + 10, 8, W - 20, 330, TR ("Resolution"));
 	root.addChild (gs);
@@ -118,9 +142,10 @@ int main (void)
 	g_list = new ListBox (14, ct + 30, 330, 240, 0, on_apply);
 	for (int i = 0; i < NMODES; i++)
 	{
-		char s[64]; int n = put_int (s, 0, MODES[i].w); n = put_str (s, n, " x "); n = put_int (s, n, MODES[i].h);
+		int mw, mh; const char *what = display_mode (i, &mw, &mh);
+		char s[64]; int n = put_int (s, 0, mw); n = put_str (s, n, " x "); n = put_int (s, n, mh);
 		while (n < 13) s[n++] = ' ';
-		n = put_str (s, n, TR (MODES[i].what)); s[n] = 0;
+		n = put_str (s, n, TR (what)); s[n] = 0;
 		g_list->add (s);
 	}
 	gs->addChild (g_list);

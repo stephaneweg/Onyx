@@ -27,3 +27,5 @@ static inline int kapi_pad_state (int i, struct kapi_pad *o) { if (i || !fake_th
 #endif
 static int fake_held[8], fake_nheld;
 static inline int kapi_key_held (int k) { for (int i = 0; i < fake_nheld; i++) if (fake_held[i] == k) return 1; return 0; }
+static char fake_saved[8192]; static unsigned fake_saved_n;
+static inline int kapi_save_file (const char *p, const void *b, unsigned n) { (void) p; if (n >= sizeof fake_saved) return -1; memcpy (fake_saved, b, n); fake_saved[n] = 0; fake_saved_n = n; fake_ini = fake_saved; return (int) n; }

@@ -62,5 +62,22 @@ int main ()
 	// with a pad plugged in: the two added on pad 0
 	fake_there = 1; memset (&fake_pad, 0, sizeof fake_pad); fake_pad.vid = 0x0079; fake_pad.pid = 0x0011; fake_pad.focus = 1; fake_pad.nbuttons = 10; fake_pad.buttons = 1 << 9;
 	printf ("pad + keyboard: %x\n", pad_buttons (0)); assert (pad_buttons (0) == (PAD_A | PAD_START));
+	// learning a pad (the wizard): a hat d-pad, then buttons; Esc skips the rest; the section written
+	pad_keyboard (0); fake_ini = ""; pad_config_reload ();
+	struct kapi_pad raw; memset (&raw, 0, sizeof raw); raw.vid = 0x1234; raw.pid = 0xabcd; raw.nhats = 1; raw.hats[0] = 8; raw.nbuttons = 12;
+	struct pad_learn L; pad_learn_start (&L, &raw);
+	raw.hats[0] = 0; assert (pad_learn_poll (&L, &raw) == 1 && L.map.dpad == PAD_DPAD_HAT && L.step == 4);	// UP on a hat: the d-pad done
+	raw.hats[0] = 8; pad_learn_poll (&L, &raw);
+	raw.buttons = 1 << 2; assert (pad_learn_poll (&L, &raw) == 1 && L.map.btn[4] == 3);			// A: button 3
+	raw.buttons = 0; pad_learn_poll (&L, &raw);
+	while (L.step < PAD_NBUTTONS) pad_learn_skip (&L);
+	assert (pad_learn_poll (&L, &raw) == 2 && pad_learn_save (&L, "test"));
+	printf ("learnt: %s", fake_saved); assert (strstr (fake_saved, "[1234:abcd]") && strstr (fake_saved, "dpad = hat") && strstr (fake_saved, "a = 3"));
+	fake_there = 1; memset (&fake_pad, 0, sizeof fake_pad); fake_pad.vid = 0x1234; fake_pad.pid = 0xabcd; fake_pad.focus = 1; fake_pad.nbuttons = 12; fake_pad.buttons = 1 << 2;
+	assert (pad_buttons (0) == PAD_A);
+	// the keyboard's keys written: B on 'k' (taken from where it was), then the section removed
+	assert (pad_keyboard_set (5, 'K') && strstr (fake_saved, "b = k") && strstr (fake_saved, "rs_down = none"));
+	assert (pad_keyboard_reset () && !strstr (fake_saved, "[keyboard]") && strstr (fake_saved, "[1234:abcd]"));
+	assert (pad_forget (0x1234, 0xabcd) && !strstr (fake_saved, "[1234:abcd]"));
 	puts ("ok"); return 0;
 }

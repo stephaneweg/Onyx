@@ -372,4 +372,203 @@ static inline unsigned pad_buttons (int index)
 	return b;
 }
 
+// ---- learning a pad's buttons (the Gamepad applet's Map Buttons..., the console's Gamepad page) -------------------
+// The steps in PAD_* bit order (up, down, left, right, a, b, x, y, l, r, l2, r2, select, start, l3, r3, home): each asks
+// for a button and takes the first that leaves its rest state -- a hat or two axes for the d-pad (one press of UP, or
+// UP + LEFT), an axis for an analog trigger (L2 / R2), else a button. Then gamepad.ini's section of the pad's model.
+//   struct pad_learn L; pad_learn_start (&L, &raw);
+//   each turn: int r = pad_learn_poll (&L, &raw);  // 1 a step learnt, 2 every step done (pad_learn_save), 0 waiting
+//   pad_learn_skip (&L): this pad has no such button (Esc)
+static const char *const pad_learn_text[PAD_NBUTTONS] = {	// (English: the programs translate them -- TRN)
+	"UP on the d-pad", "DOWN on the d-pad", "LEFT on the d-pad", "RIGHT on the d-pad",
+	"the BOTTOM face button (Xbox A, PlayStation Cross, Nintendo B)",
+	"the RIGHT face button (Xbox B, PlayStation Circle, Nintendo A)",
+	"the LEFT face button (Xbox X, PlayStation Square, Nintendo Y)",
+	"the TOP face button (Xbox Y, PlayStation Triangle, Nintendo X)",
+	"the LEFT shoulder button (L / L1 / LB)", "the RIGHT shoulder button (R / R1 / RB)",
+	"the LEFT trigger (L2 / LT / ZL: a button or an analog trigger)", "the RIGHT trigger (R2 / RT / ZR)",
+	"SELECT (Back / Share / -)", "START (Options / +)",
+	"the LEFT stick's click (L3)", "the RIGHT stick's click (R3)", "HOME (Guide / PS)" };
+struct pad_learn
+{
+	int step;			// the button asked (PAD_* bit), PAD_NBUTTONS: done
+	int wait_release;		// the last press not let go yet
+	struct kapi_pad base;		// the pad at rest
+	struct pad_map map;		// what was learnt
+	unsigned vid, pid;		// the pad's model
+};
+static inline int pad_learn_dev (const struct kapi_pad *p, const struct kapi_pad *b, int i)
+{
+	int range = p->axes[i].maximum - p->axes[i].minimum;
+	return range <= 0 ? 0 : (p->axes[i].value - b->axes[i].value) * 1000 / range;
+}
+static inline int pad_learn_rest (const struct pad_learn *L, const struct kapi_pad *p)
+{
+	if (p->buttons != L->base.buttons) return 0;
+	for (int i = 0; i < p->nhats; i++) if (p->hats[i] >= 0 && p->hats[i] < 8) return 0;
+	for (int i = 0; i < p->naxes; i++) { int d = pad_learn_dev (p, &L->base, i); if (d > 250 || d < -250) return 0; }
+	return 1;
+}
+static inline void pad_learn_start (struct pad_learn *L, const struct kapi_pad *raw)
+{
+	L->step = 0; L->wait_release = 0; L->base = *raw; L->vid = raw->vid; L->pid = raw->pid;
+	for (int i = 0; i < L->base.nhats; i++) L->base.hats[i] = 8;	// (a rest hat: centred)
+	pad_map_default (&L->map, 0, 0);
+	for (int i = 0; i < PAD_NBUTTONS; i++) L->map.btn[i] = 0;
+	L->map.dpad = PAD_DPAD_NONE; L->map.x_axis = L->map.y_axis = 0; L->map.l2_axis = L->map.r2_axis = 0;
+}
+static inline void pad_learn_next (struct pad_learn *L)
+{
+	L->step++;
+	// a d-pad on a hat or axes is done with UP (hat) or UP + LEFT (axes)
+	while (L->step < 4 && (L->map.dpad == PAD_DPAD_HAT || (L->map.dpad == PAD_DPAD_AXES && (L->step == 1 || L->step == 3)))) L->step++;
+	L->wait_release = 1;
+}
+static inline void pad_learn_skip (struct pad_learn *L) { if (L->step < PAD_NBUTTONS) pad_learn_next (L); L->wait_release = 0; }
+static inline int pad_learn_poll (struct pad_learn *L, const struct kapi_pad *p)
+{
+	if (L->wait_release) { if (pad_learn_rest (L, p)) L->wait_release = 0; return 0; }
+	if (L->step >= PAD_NBUTTONS) return 2;
+	if (L->step < 4)
+		for (int i = 0; i < p->nhats; i++)
+			if (p->hats[i] >= 0 && p->hats[i] < 8) { L->map.dpad = PAD_DPAD_HAT; L->map.hat = i; pad_learn_next (L); return 1; }
+	if (L->step < 4)
+		for (int i = 0; i < p->naxes; i++)
+		{
+			int d = pad_learn_dev (p, &L->base, i);
+			if (d > 400 || d < -400)
+			{
+				L->map.dpad = PAD_DPAD_AXES;
+				if (L->step == 0 || L->step == 1) L->map.y_axis = i + 1; else L->map.x_axis = i + 1;
+				pad_learn_next (L); return 1;
+			}
+		}
+	if (L->step == 10 || L->step == 11)				// L2 / R2: an analog trigger (an axis) too
+		for (int i = 0; i < p->naxes; i++)
+		{
+			int d = pad_learn_dev (p, &L->base, i);
+			if (d > 400 || d < -400)
+			{
+				int ax = d > 0 ? i + 1 : -(i + 1);
+				if (L->step == 10) L->map.l2_axis = ax; else L->map.r2_axis = ax;
+				pad_learn_next (L); return 1;
+			}
+		}
+	unsigned nb = p->buttons & ~L->base.buttons;
+	if (nb)
+	{
+		int b = 0; while (!((nb >> b) & 1)) b++;
+		L->map.btn[L->step] = b + 1;
+		if (L->step < 4) L->map.dpad = PAD_DPAD_BUTTONS;
+		pad_learn_next (L);
+		return 1;
+	}
+	return 0;
+}
+
+// ---- writing SD:/etc/gamepad.ini --------------------------------------------------------------------------------
+static inline void pad_cat (char *d, int *n, int cap, const char *s) { while (*s && *n < cap - 1) d[(*n)++] = *s++; d[*n] = 0; }
+static inline void pad_cati (char *d, int *n, int cap, int v)
+{
+	char t[16]; int k = 0; int neg = v < 0; unsigned u = neg ? (unsigned) -v : (unsigned) v;
+	do { t[k++] = (char) ('0' + u % 10); u /= 10; } while (u);
+	if (neg) t[k++] = '-';
+	while (k && *n < cap - 1) d[(*n)++] = t[--k];
+	d[*n] = 0;
+}
+static inline void pad_cathex (char *d, int *n, int cap, unsigned v)
+{
+	for (int i = 3; i >= 0; i--) { int x = (v >> (i * 4)) & 15; if (*n < cap - 1) d[(*n)++] = (char) (x < 10 ? '0' + x : 'a' + x - 10); }
+	d[*n] = 0;
+}
+// A section of SD:/etc/gamepad.ini replaced by body (head "[045e:028e]", "[keyboard]"; body "" removes it) -> 1 written.
+static inline int pad_ini_section (const char *head, const char *body)
+{
+	static char buf[8192], out[8192];
+	int n = 0;
+	void *f = kapi_open ("SD:/etc/gamepad.ini");
+	if (f) { n = kapi_read (f, buf, sizeof buf - 1); kapi_close (f); if (n < 0) n = 0; }
+	buf[n] = 0;
+	int hn = 0; while (head[hn]) hn++;
+	int o = 0, skip = 0;
+	for (int i = 0; i < n; )
+	{
+		int s = i; while (i < n && buf[i] != '\n') i++;
+		if (i < n) i++;
+		int t = s; while (t < i && (buf[t] == ' ' || buf[t] == '\t')) t++;
+		if (buf[t] == '[')
+		{
+			skip = 1;
+			for (int k = 0; k < hn; k++) if (pad_lc (buf[t + k]) != pad_lc (head[k])) { skip = 0; break; }
+		}
+		if (!skip) for (int k = s; k < i && o < (int) sizeof out - 1; k++) out[o++] = buf[k];
+	}
+	if (o > 0 && out[o - 1] != '\n' && o < (int) sizeof out - 1) out[o++] = '\n';
+	out[o] = 0;
+	pad_cat (out, &o, sizeof out, body);
+	int ok = kapi_save_file ("SD:/etc/gamepad.ini", out, (unsigned) o) >= 0;
+	pad_config_reload ();
+	return ok;
+}
+// What was learnt written as the pad model's section -> 1 written.
+static inline int pad_learn_save (const struct pad_learn *L, const char *comment)
+{
+	static char body[1024]; int n = 0; body[0] = 0;
+	char head[16]; int hn = 0; head[0] = 0;
+	pad_cat (head, &hn, sizeof head, "["); pad_cathex (head, &hn, sizeof head, L->vid); pad_cat (head, &hn, sizeof head, ":");
+	pad_cathex (head, &hn, sizeof head, L->pid); pad_cat (head, &hn, sizeof head, "]");
+	const struct pad_map *g = &L->map;
+	pad_cat (body, &n, sizeof body, head); pad_cat (body, &n, sizeof body, "\t; "); pad_cat (body, &n, sizeof body, comment ? comment : "mapped"); pad_cat (body, &n, sizeof body, "\n");
+	pad_cat (body, &n, sizeof body, "dpad = ");
+	pad_cat (body, &n, sizeof body, g->dpad == PAD_DPAD_HAT ? "hat" : g->dpad == PAD_DPAD_AXES ? "axes" : g->dpad == PAD_DPAD_BUTTONS ? "buttons" : "none");
+	pad_cat (body, &n, sizeof body, "\n");
+	if (g->dpad == PAD_DPAD_HAT) { pad_cat (body, &n, sizeof body, "hat = "); pad_cati (body, &n, sizeof body, g->hat + 1); pad_cat (body, &n, sizeof body, "\n"); }
+	int xa = g->x_axis ? g->x_axis : 1, ya = g->y_axis ? g->y_axis : 2;
+	pad_cat (body, &n, sizeof body, "x_axis = "); pad_cati (body, &n, sizeof body, xa);
+	pad_cat (body, &n, sizeof body, "\ny_axis = "); pad_cati (body, &n, sizeof body, ya); pad_cat (body, &n, sizeof body, "\n");
+	pad_cat (body, &n, sizeof body, "stick = "); pad_cati (body, &n, sizeof body, g->dpad == PAD_DPAD_AXES ? 0 : 1); pad_cat (body, &n, sizeof body, "\n");
+	if (g->l2_axis) { pad_cat (body, &n, sizeof body, "l2_axis = "); pad_cati (body, &n, sizeof body, g->l2_axis); pad_cat (body, &n, sizeof body, "\n"); }
+	if (g->r2_axis) { pad_cat (body, &n, sizeof body, "r2_axis = "); pad_cati (body, &n, sizeof body, g->r2_axis); pad_cat (body, &n, sizeof body, "\n"); }
+	for (int i = 0; i < PAD_NBUTTONS; i++)
+	{
+		if (i < 4 && g->dpad != PAD_DPAD_BUTTONS) continue;
+		pad_cat (body, &n, sizeof body, pad_names[i]); pad_cat (body, &n, sizeof body, " = ");
+		pad_cati (body, &n, sizeof body, g->btn[i]); pad_cat (body, &n, sizeof body, "\n");
+	}
+	return pad_ini_section (head, body);
+}
+// A pad model's section removed (its mapping forgotten) -> 1 written.
+static inline int pad_forget (unsigned vid, unsigned pid)
+{
+	char head[16]; int hn = 0; head[0] = 0;
+	pad_cat (head, &hn, sizeof head, "["); pad_cathex (head, &hn, sizeof head, vid); pad_cat (head, &hn, sizeof head, ":");
+	pad_cathex (head, &hn, sizeof head, pid); pad_cat (head, &hn, sizeof head, "]");
+	return pad_ini_section (head, "");
+}
+// The keyboard's keys (g_pad_kbd) written as [keyboard] -> 1 written; pad_keyboard_reset: the section removed.
+static inline int pad_keyboard_save (void)
+{
+	static char body[1024]; int n = 0; body[0] = 0;
+	pad_cat (body, &n, sizeof body, "[keyboard]\t; the keyboard as pad 1 (the emulators)\n");
+	for (int i = 0; i < PAD_KEYS; i++)
+	{
+		pad_cat (body, &n, sizeof body, i < PAD_NBUTTONS ? pad_names[i] : pad_key_names[i - PAD_NBUTTONS]);
+		pad_cat (body, &n, sizeof body, " = "); pad_cat (body, &n, sizeof body, g_pad_kbd[i] ? pad_key_word (g_pad_kbd[i]) : "none");
+		pad_cat (body, &n, sizeof body, "\n");
+	}
+	return pad_ini_section ("[keyboard]", body);
+}
+static inline int pad_keyboard_reset (void) { return pad_ini_section ("[keyboard]", ""); }
+// A key given to button b (0..PAD_KEYS-1): taken from any other that had it (a key does one thing), then saved.
+static inline int pad_keyboard_set (int b, int code)
+{
+	if (b < 0 || b >= PAD_KEYS) return 0;
+	if (g_pad_ncfg < 0) pad_config_reload ();
+	if (code >= 'A' && code <= 'Z') code += 32;
+	if (code == '\n' || code == '\r') code = KEY_ENTER;
+	for (int i = 0; i < PAD_KEYS; i++) if (i != b && g_pad_kbd[i] == code) g_pad_kbd[i] = 0;
+	g_pad_kbd[b] = code;
+	return pad_keyboard_save ();
+}
+
 #endif
