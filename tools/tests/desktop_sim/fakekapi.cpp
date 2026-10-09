@@ -836,6 +836,9 @@ static bool sim_clock (void)
 	return g_simUtc0 >= 0;
 }
 static long long sim_utc_cs (void) { return g_simUtc0 * 100 + (long long) (g_ticks - 1000); }	// (hundredths)
+// (the app cores and the JIT's memory: none here -- an emulator then runs its frames inline, interpreted)
+static int core_acquire (void) { return -1; }
+static void *code_alloc (unsigned long) { return 0; }
 static int get_datetime (int *y, int *mo, int *d, int *h, int *mi, int *s)
 {
 	if (sim_clock ()) {			// SIM_CLOCK: the wall time = the UTC + SIM_TZ, advancing with the ticks
@@ -1720,6 +1723,7 @@ static void setup (void)
 	T->launch = launch; T->raise_app = raise_app; T->exec = exec; T->exec_as = exec_as;
 	T->menu_command = menu_command; T->set_menu = set_menu; T->get_menu = get_menu;
 	T->list_windows = list_windows; T->draw_text_buf = draw_text_buf;
+	T->core_acquire = core_acquire; T->code_alloc = code_alloc;
 	T->get_chrome = get_chrome; T->get_args = get_args; T->clipboard_set = clipboard_set;
 	T->clipboard_get = clipboard_get; T->set_click_handler = set_click; T->key_held = key_held;
 	T->cursor_pos = cursor_pos; T->set_window_alpha = set_alpha; T->random = random_fill; T->reboot = h_reboot;

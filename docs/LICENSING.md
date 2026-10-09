@@ -140,11 +140,12 @@ Two weaknesses, worth fixing:
 
 ### Emulators — clean-room, keep them that way
 
-The NES, SNES, Game Boy, GBA, N64 and GameCube emulators are written for Onyx. Their comments
+The NES, SNES, Game Boy, GBA, N64, GameCube and Nintendo DS emulators are written for Onyx (the DS's
+`user/Emulators/nds`, its JIT included, from scratch under MIT: GBATEK's documentation, no melonDS / DeSmuME code). Their comments
 cite the behaviour documented by others (FCEUX's palette, bsnes, Dolphin's DSP HLE and its
 microcode CRCs, mupen64plus-rsp-hle's audio — GPL-2.0 — "not copied") — knowledge, not code:
 fine. The one ported code (ares, ISC) carries its notice. Keep it so: **never paste code from
-Dolphin / mupen64plus / mGBA (GPL) or Snes9x (non-commercial: incompatible with the GPL)**. No
+Dolphin / mupen64plus / mGBA / melonDS / DeSmuME (GPL) or Snes9x (non-commercial: incompatible with the GPL)**. No
 BIOS, IPL or ROM is shipped (`sdcard/roms/README.txt` says so) — keep it so.
 
 ### Content to look at

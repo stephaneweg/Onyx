@@ -41,7 +41,7 @@ using namespace uikit;
 static nds::Machine *g_m = 0;
 static unsigned char *g_rom = 0;
 static char g_rom_path[256], g_sav_path[260];
-static int g_zoom = 2;
+static int g_zoom = 2, g_zmax = 3;				// (the largest zoom the screen holds: the window is made at it)
 static bool g_side = false, g_swap = false;
 static bool g_sound = true, g_paused = false;
 static unsigned *g_fs = 0; static int g_fsw, g_fsh;		// full screen back buffer
@@ -220,6 +220,7 @@ static void blit_full (void)
 
 static void set_size (void)
 {
+	if (g_zoom > g_zmax) g_zoom = g_zmax;
 	int w = (g_side ? 2 * SW : SW) * g_zoom, h = (g_side ? SH : 2 * SH) * g_zoom;
 	g_root->canvas.adopt (uk_win_resize (w, h), w, h, g_stride);
 	uikit::uk_decorate_window ();
@@ -340,8 +341,13 @@ int main (void)
 	if (r >= 0x10) { for (; tn < 12; tn++) { char c = (char) g_rom[tn]; if (c < 32 || c >= 127) break; title[tn] = c; } if (tn) title[tn] = 0; }
 	{ int b = slen (g_rom_path); while (b > 0 && g_rom_path[b - 1] != '/' && g_rom_path[b - 1] != ':') b--; scpy (g_loadName, g_rom_path + b, sizeof g_loadName); }
 	// the window at its largest (its buffer keeps that pitch), then shown at the size chosen
-	g_stride = 2 * SW * 3;
-	EmuRoot root (2 * SW * 3, 2 * SH * 3, title);
+	int scw = 0, sch = 0;
+	kapi_screen_size (&scw, &sch);
+	g_zmax = 3;
+	while (g_zmax > 1 && (2 * SW * g_zmax > scw || 2 * SH * g_zmax > sch - 80)) g_zmax--;
+	if (g_zoom > g_zmax) g_zoom = g_zmax;
+	g_stride = 2 * SW * g_zmax;
+	EmuRoot root (2 * SW * g_zmax, 2 * SH * g_zmax, title);
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
 	set_size ();

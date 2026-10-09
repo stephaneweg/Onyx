@@ -65,6 +65,7 @@ build () {
 	[ "$1" = pinball ] && extra="user/Apps/pinball/table.cpp user/Apps/pinball/physics.cpp user/Apps/pinball/rules.cpp user/Apps/pinball/scores.cpp"	# (its core)
 	[ "$1" = critters ] && extra="user/Apps/critters/terrain.cpp user/Apps/critters/level.cpp user/Apps/critters/world.cpp user/Apps/critters/solution.cpp user/Apps/critters/progress.cpp"	# (its core)
 	[ "$1" = clock ] && extra="user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp"	# (its core, shared with clockd)
+	[ "$1" = ndsemu ] && extra="$(ls user/Emulators/nds/*.cpp)"	# (its core: interpreted here, no app core)
 	[ "$1" = menubar ] && extra="user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp"	# (the bell: the Clock's alarms)
 	[ "$1" = gamelib ] && extra="user/Kits/gamekit/gamekit.cpp user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
@@ -162,7 +163,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits pinball critters clock " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits pinball critters clock ndsemu " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac
@@ -171,7 +172,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf langconf modeconf preloadconf disks notes stickies circuits pinball critters clock telegram"
+      config wpaconf padconf soundconf displayconf keyconf langconf modeconf preloadconf disks notes stickies circuits pinball critters clock telegram ndsemu"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -552,6 +553,14 @@ if want gamelib; then
 	python3 $D/gamelib_samples.py "$OUT/writes"
 	sim gamelib gamelib "$W;$W" $P
 	png gamelib
+fi
+if want ndsemu; then			# (our own 3D test program: tools/tests/nds/src, built with arm-none-eabi-gcc)
+	R=tools/tests/nds/roms/gfx3d.nds
+	[ -f $R ] || { command -v arm-none-eabi-gcc >/dev/null && sh tools/tests/nds/src/build.sh >/dev/null; }
+	if [ -f $R ]; then
+		mkdir -p "$OUT/writes/roms"; cp $R "$OUT/writes/roms/gfx3d.nds"
+		sim ndsemu ndsemu "$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W" $P SIM_ARGS=SD:/roms/gfx3d.nds; png ndsemu
+	else echo "shots: ndsemu skipped (no arm-none-eabi-gcc to build its test program)"; fi
 fi
 if want theme; then			# (the wallpaper a pattern: SD:/wallpapers' hexagons, coloured)
 	mkdir -p "$OUT/writes/etc"

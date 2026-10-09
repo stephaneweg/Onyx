@@ -4,6 +4,31 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## The Nintendo DS emulator `ndsemu` (2026-10-09) -- built and tested on the PC, NOT on the Pi yet
+
+The user asked for a DS emulator written from scratch (MIT, no melonDS code) up to the plan's step D5, then a local
+session tests and debugs it on the Pi. Done: D0 to D5.
+- **The core** `user/Emulators/nds/` (`nds.h` declares everything): ARM946E-S (CP15, ITCM/DTCM) and ARM7TDMI
+  interpreters, the buses and VRAM banks behind page tables, IPC, timers, DMA, div/sqrt, SPI (power, a generated
+  firmware with the user's settings, the touch screen), RTC, the cartridge (save chip detected: EEPROM, FRAM,
+  Flash), an HLE BIOS and a direct boot (a user's `bios7.bin` only decrypts the secure area); the 2D engines and the
+  capture; the 3D geometry engine and a software rasterizer (run on a second app core); the SPU; a **JIT** ARM/Thumb
+  -> AArch64 (`nds_jit.cpp`: the guest flags in the host's NZCV, a register cache, inline loads/stores through the
+  page tables, code pages write-watched, blocks chained, idle loops skipped).
+- **The app** `user/Apps/ndsemu/` (FreeType, EN/FR): the two screens stacked, side by side or swapped, zoomed; the
+  touch screen with the mouse; `<rom>.sav` beside the ROM; the JIT on by default (a menu switches to the interpreter);
+  F12 shows the speed. The Game Library knows `.nds` (the banner's icon and title), the console home lists "DS".
+- **Tests** (`tools/tests/nds/`, `sh tools/tests/run_nds_test.sh`): own homebrew ROMs built with `arm-none-eabi-gcc`
+  (`src/`: a CPU test checked against the PC, the system, 2D, 3D, sound, a benchmark), `check.sh` (25 checks, all
+  pass, interpreter on the PC and JIT under qemu-aarch64), `jitfuzz` (random blocks, JIT against the interpreter:
+  all the same). `ndstest` runs a ROM headless (`NDS_KEYS`, `NDS_TOUCH`, `NDS_SHOTS`, `NDS_JIT`...). Public-domain
+  homebrew (zophar.net: NitroTracker, POWDER, ethos's 3D demos...) boot and play; no ROM is committed.
+- **To do on the Pi**: the speed with the JIT (F12; aim 60 fps on 2D games), the 3D core's handshake, the sound's
+  latency, commercial games (the user's own dumps; the save type guessed at the first write), a `bios7.bin` for
+  games whose secure area matters. **Known gaps**: SMULxy/QADD... interpreted; the rasterizer divides per pixel;
+  the idle-loop skip is the JIT's only; no Wi-Fi, no GBA slot, no microphone.
+- **The 3DS** (the user's question): a study first, see the chat's answer; nothing started.
+
 ## Onyx Remote: the keys sent from its desktop view (2026-10-09, night) -- NOT tried on a PC yet
 
 RDP's keyboard still dead in console mode on 2026.10.151: Onyx Remote sent the keys only from a RemoteWindow (a

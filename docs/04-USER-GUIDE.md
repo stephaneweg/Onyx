@@ -5708,6 +5708,10 @@ And the new tools (their graph / canvas / document areas, rendered the same way)
 *The Game Library: the systems in the sidebar (their number of games), All Games shown by system
 (sample games, made up for the picture).*
 
+![Nintendo DS](../screenshots/ndsemu.png)
+*The Nintendo DS emulator running our own 3D test program (`tools/tests/nds/src/gfx3d`): the 3D
+on both screens (shaded, textured, translucent polygons).*
+
 ### The emulators on a Windows PC (NintendoEMU)
 
 `pc/dist/` also holds **NintendoEMU** (Windows 10 / 11, .NET Framework 4.8 — already there):

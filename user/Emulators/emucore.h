@@ -47,6 +47,7 @@ struct EmuCore
 	unsigned char *stack;
 };
 
+#if defined(__aarch64__)
 static inline void ec_fence (void) { __asm__ volatile ("dmb ish" ::: "memory"); }
 static inline void ec_sev (void)   { __asm__ volatile ("dsb ish; sev" ::: "memory"); }
 static inline void ec_wfe (void)   { __asm__ volatile ("wfe" ::: "memory"); }
@@ -66,6 +67,13 @@ static inline unsigned ec_xchg (volatile unsigned *p, unsigned v)
 			  : "=&r" (old), "=&r" (fail) : "r" (p), "r" (v) : "memory");
 	return old;
 }
+#else	// (the PC: the desktop simulator, the tests -- no app core there, the frames run inline)
+static inline void ec_fence (void) { __atomic_thread_fence (__ATOMIC_SEQ_CST); }
+static inline void ec_sev (void)   { __atomic_thread_fence (__ATOMIC_SEQ_CST); }
+static inline void ec_wfe (void)   { }
+static inline unsigned long long ec_now_us (void) { return (unsigned long long) kapi_get_ticks () * 10000ull; }
+static inline unsigned ec_xchg (volatile unsigned *p, unsigned v) { return __atomic_exchange_n (p, v, __ATOMIC_SEQ_CST); }
+#endif
 
 // ---- the machine's side ----------------------------------------------------------------------
 static inline unsigned *ec_back (EmuCore *ec) { return ec->slot[ec->back]; }
