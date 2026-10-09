@@ -4,6 +4,24 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## The Nintendo 3DS emulator: phase T0 done -- Dynarmic runs on Onyx (2026-10-09, the local session)
+
+The user's answers to `docs/3DS-EMULATOR-STUDY.md`: **option C** (our core under MIT + Dynarmic), **Old 3DS only**
+to begin with, "go ahead"; he gives the test ROM when it is needed (he asked about *A Link Between Worlds*).
+- **T0 is done** (the study's section 9b says it all): Dynarmic (0BSD) + fmt / mcl / oaknut / robin-map (MIT) in
+  `third_party/dynarmic-a466015`, the Boost headers it includes (BSL-1.0) in `third_party/boost-1.86.0` (copied by
+  `tools/n3ds/vendor_dynarmic.py`, unpatched); `user/Libs/dynarmic/Makefile` builds `libdynarmic.a` + `codemem.o`
+  with the apps' toolchain (Onyx's three shim files in `user/Libs/dynarmic/onyx/`); `sh tools/tests/run_n3ds_t0.sh`
+  passes under qemu-aarch64 **and on the Pi 4** (ARM / Thumb / VFP, callbacks and page table, invalidation).
+- **Next: T1** -- the loader (NCSD / NCCH / `.3dsx`), the memory map, the HLE kernel (threads, sync, IPC), `srv:`,
+  `apt:U`, `gsp::Gpu` (framebuffers), `hid:USER`, `fs:USER`; done when a homebrew of ours prints and draws on both
+  screens. The core goes in `user/Emulators/n3ds/` (its `Dynarmic::A32::Jit` behind our own CPU interface, so the
+  fallback JIT stays possible); hook `Libs/dynarmic` into `user/Makefile` then. The app `n3dsemu` starts with a
+  mock-up of its screens (the user's rule), at T7.
+- **On the local PC**: the work folder `~/n3ds` in WSL (Dynarmic's clone, Boost, CMake builds) is only needed to
+  run `vendor_dynarmic.py` again (another Dynarmic version); the test builds into `~/.cache/onyx_n3ds`. No ARM
+  assembler there (`arm-none-eabi-gcc` missing): the test's ARM code is written as words.
+
 ## The Nintendo DS emulator `ndsemu` (2026-10-09) -- built on the PC; the first game starts on the Pi (1.0.2)
 
 The user asked for a DS emulator written from scratch (MIT, no melonDS code) up to the plan's step D5, then a local

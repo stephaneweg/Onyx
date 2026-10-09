@@ -120,6 +120,9 @@ Two weaknesses, worth fixing:
 | HarfBuzz 14.5.1 | `third_party/harfbuzz-14.5.1`, `/bin/hbtest` (the POSIX ports for WebKit) | "Old MIT" | Keep `COPYING` |
 | Manifold 3.5.4 (boolean operations on closed meshes) | `third_party/manifold-3.5.4`, `user/Libs/manifold/libmanifold.a`, linked into 3DForge | Apache-2.0 | Keep `LICENSE`; the changes are listed in `README.onyx` (none in its sources) |
 | Clipper2 (the commit Manifold pins; polygon clipping and offsetting) | `third_party/clipper2-46f6391`, in `libmanifold.a` | Boost Software License 1.0 | Keep `LICENSE` with the sources (nothing owed for a binary) |
+| Dynarmic (Azahar's, commit a466015: the ARM JIT; its AArch64 back end and A32 front end) | `third_party/dynarmic-a466015`, `user/Libs/dynarmic/libdynarmic.a`: the 3DS emulator's CPU (phase T0: a test program only, nothing on the card yet) | 0BSD | Nothing owed; `LICENSE.txt` kept. Not patched (`ONYX-VENDOR.txt`; Onyx's shims are in `user/Libs/dynarmic/onyx`, MIT) |
+| fmt, mcl, oaknut, robin-map (Dynarmic's dependencies, the commits it pins) | `third_party/dynarmic-a466015/externals`, in `libdynarmic.a` | MIT | Keep each `LICENSE`; the notices go with a binary that links them |
+| Boost 1.86.0 (the 742 headers Dynarmic includes: `boost/icl`, `boost/variant`) | `third_party/boost-1.86.0`, compiled into `libdynarmic.a` | Boost Software License 1.0 | Keep `LICENSE_1_0.txt` with the sources (nothing owed for a binary) |
 | Skia (milestone 154: WebKit's copy) | `third_party/skia-m154`, `/bin/skiatest`, `/bin/skiademo` (the POSIX ports for WebKit) | BSD-3-Clause | Keep `LICENSE` |
 | libjpeg-turbo 3.1.4 | `third_party/libjpeg-turbo-3.1.4` (the POSIX ports for WebKit: Skia's and WebKit's JPEG) | IJG + BSD-3-Clause + zlib (`LICENSE.md`) | Docs: "This software is based in part on the work of the Independent JPEG Group"; keep `LICENSE.md` |
 | WebKit (pinned revision `b8a7a626`, not in this repository: fetched by `tools/webkit/fetch.sh`): WTF, JavaScriptCore, bmalloc's headers | `/bin/jsc` (the shell of JavaScriptCore: step 1 of the WebKit port, with ICU linked in) | JavaScriptCore: **LGPL-2.1-or-later** (parts BSD-2-Clause); WTF, bmalloc: BSD-2-Clause | `/bin/jsc` is distributed under LGPL-2.1+: its sources are WebKit's at that revision **plus Onyx's patches, published in `tools/webkit/patches/`** (with `revision.sh` and the build script: the complete corresponding source). Statically linked: the objects to relink it are rebuilt from those sources by `tools/webkit/build-jsc.sh`. Keep WebKit's notices |
@@ -145,8 +148,13 @@ The NES, SNES, Game Boy, GBA, N64, GameCube and Nintendo DS emulators are writte
 cite the behaviour documented by others (FCEUX's palette, bsnes, Dolphin's DSP HLE and its
 microcode CRCs, mupen64plus-rsp-hle's audio — GPL-2.0 — "not copied") — knowledge, not code:
 fine. The one ported code (ares, ISC) carries its notice. Keep it so: **never paste code from
-Dolphin / mupen64plus / mGBA / melonDS / DeSmuME (GPL) or Snes9x (non-commercial: incompatible with the GPL)**. No
+Dolphin / mupen64plus / mGBA / melonDS / DeSmuME / Citra / Azahar / Panda3DS (GPL) or Snes9x (non-commercial: incompatible with the GPL)**. No
 BIOS, IPL or ROM is shipped (`sdcard/roms/README.txt` says so) — keep it so.
+
+The **3DS emulator** (in the making, `docs/3DS-EMULATOR-STUDY.md`) is the one that links a third party's CPU core:
+**Dynarmic** (0BSD, with MIT and BSL-1.0 dependencies -- all permissive, the app stays MIT). Everything else of it
+is written for Onyx; Azahar and Panda3DS (GPL) are read for behaviour only, never copied. No key, no firmware, no
+system font of Nintendo: decrypted dumps of the user's own games.
 
 ### Content to look at
 

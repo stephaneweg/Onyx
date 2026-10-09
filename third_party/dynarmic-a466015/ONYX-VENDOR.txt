@@ -1,0 +1,8 @@
+Dynarmic for Onyx's 3DS emulator: the part Onyx builds (AArch64 back end, A32 front end).
+Copied by tools/n3ds/vendor_dynarmic.py -- do not edit by hand; Onyx's own pieces are in user/Libs/dynarmic.
+
+dynarmic   https://github.com/azahar-emu/dynarmic  a46601580d5512d324104f985b5f0209dc980ddc  (0BSD)
+fmt        https://github.com/fmtlib/fmt            7b273fbb541c7c9058800bc613f4291274b2d26e  (MIT)
+mcl        https://github.com/azahar-emu/mcl        5fc4beaf331037649b10625736b41365defb4f50  (MIT)
+oaknut     https://github.com/merryhime/oaknut      94c726ce0338b054eb8cb5ea91de8fe6c19f4392  (MIT)
+robin-map  https://github.com/Tessil/robin-map      054ec5ad67440fcd65e0497e5a27ef31f53fcc7f  (MIT)

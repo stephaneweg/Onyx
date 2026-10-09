@@ -1,6 +1,6 @@
 # A Nintendo 3DS emulator for Onyx — feasibility study
 
-*2026-10-09. A study only: nothing built. The user's request: "toutes les options sont possibles
+*2026-10-09. The study; since then **phase T0 is done** (section 9b): Dynarmic runs on Onyx, option C stands. The user's request: "toutes les options sont possibles
 (portage, portage partiel, from scratch)"; no crypto, no Nintendo key — the user brings decrypted
 dumps of their own games.*
 
@@ -187,6 +187,33 @@ Each phase ends with something visible and a test, as for the DS (D0–D5).
 | **T7** | App `n3dsemu` (EN / FR, FreeType): two screens with the DS app's layouts, touch with the mouse, Circle Pad on the pad's left stick, C-Stick / ZL / ZR mapped, F12 speed; GameKit / Game Library (`3ds cci cxi 3dsx`), console home "3DS"; docs 01 / 03 / 04, HANDOFF, LICENSING; packages Pi 4 and Pi 5 | published |
 | **T8** | Later: `.cia` (decrypted), stereoscopic 3D (left eye only first), the gyroscope from a pad that has one, New 3DS mode, AAC | |
 
+## 9b. Phase T0 -- done (2026-10-09, the local session)
+
+**Dynarmic's ARM11 JIT runs on Onyx: option C stands, the fallback to our own JIT is not needed.**
+
+- **What is in the repository**: `third_party/dynarmic-a466015` (Azahar's Dynarmic of 2026-09-26, with fmt, mcl,
+  oaknut, robin-map: 285 files, 3.2 MB) and `third_party/boost-1.86.0` (the 742 headers Dynarmic includes --
+  `boost/icl`, `boost/variant` and what they pull: 5.4 MB; **Boost was not in the study**: BSL-1.0, permissive,
+  nothing owed for a binary). Only the AArch64 back end and the **A32 front end** (121 sources instead of 190):
+  copied by `tools/n3ds/vendor_dynarmic.py` from a CMake build's dependency log, never edited by hand.
+- **The build**: `user/Libs/dynarmic/Makefile` (no cmake; the apps' toolchain, GCC 14.2; ~80 s on 12 threads) ->
+  `libdynarmic.a` (Dynarmic + fmt + mcl) and `codemem.o`. Dynarmic's sources are **not patched**; Onyx's pieces are
+  three small files in `user/Libs/dynarmic/onyx/`:
+  - `sys/mman.h` + `codemem.c`: the code memory (`mmap` = AppKit's `kapi_code_alloc`; newlib has no `<sys/mman.h>`);
+  - `onyx_std_mutex.h`: `std::mutex` as a spin lock (the bare-metal libstdc++ has none), put before every source.
+- **Exceptions**: Dynarmic does not compile with `-fno-exceptions` (its asserts `throw` in constant expressions),
+  so the library is built with exceptions and RTTI; it throws nothing in normal use, and a program built as the
+  apps are (`-fno-exceptions -fno-rtti`) links it and runs. The instruction cache is flushed from EL0
+  (`__builtin___clear_cache`), as Onyx's own JITs do.
+- **The test** `sh tools/tests/run_n3ds_t0.sh` (`tools/tests/n3ds/dynarmic_t0.cpp`): ARM (a loop, loads and stores,
+  ARMv6's UXTB / REV, MUL / UMULL, conditions, shifts with flags, PUSH / POP), VFP (conversions, add, multiply)
+  and Thumb programs, `ArchVersion::v6K`, once through the memory callbacks and once through a **page table**
+  (no callback then: the inline path), and a code invalidation. **All pass under qemu-aarch64 and on the Pi 4**
+  (the same test linked as an Onyx program, run from telnet). The program: 2.4 MB of code.
+- **Not done in T0**: a differential test against an interpreter on random instructions (section 10's fuzzer:
+  with T1, when there is a second CPU to compare with -- Dynarmic's own tests need Unicorn); fastmem (needs the
+  kernel to forward faults: T6); a speed measure (T3 / T6); the hook in `user/Makefile` (with the app, T1).
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 
@@ -205,8 +232,8 @@ harder GPU and an OS — **several sessions**, then the user's tests on the Pi a
 
 ## 11. Risks and open questions
 
-1. **Dynarmic on Onyx** (T0): exceptions / RTTI, its memory callbacks' speed without fastmem.
-   Fallback: our own JIT (option A).
+1. **Dynarmic on Onyx** (T0): **settled** (section 9b: it builds unpatched and runs on the Pi; built with
+   exceptions, linked into a `-fno-exceptions` program). Left: its speed through the page table, without fastmem.
 2. **V3D 4.2 shader limits** for the fragment lighting (8 lights, LUTs): long programs; split
    passes or a simplified path.
 3. **Compatibility long tail**: services and SVC corner cases (the reason Citra took years);

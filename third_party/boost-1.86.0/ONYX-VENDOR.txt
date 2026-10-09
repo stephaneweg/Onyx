@@ -1,0 +1,2 @@
+Boost 1.86.0 (Boost Software License 1.0): only the headers Dynarmic's build includes
+(boost/icl, boost/variant and what they pull). Copied by tools/n3ds/vendor_dynarmic.py.
