@@ -1050,6 +1050,20 @@ policy B). `g_ulOnyxCrashArea` is defined before `SetupHighMem` now. The Pi 4's 
 differs only by the `assert` line numbers). Fork commit `065871f9`; built in `circle5/` by
 `tools/pi5/circle5.sh`. **Not tested on a Pi 5 yet.**
 
+## 30. The net device chosen at run time
+
+**Why.** `CNetSubSystem` is made once, in `CKernel`'s constructor, with its device type (Onyx: the WLAN). The
+Pi 5 has Gigabit Ethernet (the RP1's MACB, which Circle drives): Onyx takes the cable when its link comes up at
+boot, else the Wi-Fi (`system.ini` `network = auto | ethernet | wlan`, docs/04) -- a choice made after the stack
+is initialized, since the MACB is brought up by `CNetSubSystem::Initialize`.
+
+**What.** `CNetDeviceLayer::SetDeviceType (TNetDeviceType)` (`include/circle/net/netdevlayer.h`,
+`lib/net/netdevlayer.cpp`): the type set and the device forgotten, so the next `Process ()` looks it up again.
+Called before the link is up (`CNetSubSystem::Process` starts the DHCP client on the first device running), so no
+address was asked on the other one. The kernel (`kernel/kernel.cpp`, `CNetBringupTask`) calls it through
+`GetNetDeviceLayer ()`. Unused with `network = wlan` (the Pi 4's default): the Pi 4 runs as before. **Not tested on
+a board yet.** Fork commit `ec821a94`.
+
 ## Contributions to upstream Circle
 
 The fork's changes useful to every Circle user are prepared as clean pull-request branches on
