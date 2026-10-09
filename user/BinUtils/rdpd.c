@@ -332,6 +332,7 @@ static void send_rect (unsigned id, int part, const unsigned *src, int stride, i
 //     the client asked for the desktop, else not shown (an overlay would cover the app's window).
 // Elegant's windows are told as they are. (The server asked every 2 s: the mode switched.)
 static int g_pocket;			// the graphics server is PocketUI's (uk_win_server's mode)
+static int g_console;			// ... in console mode
 static unsigned g_pocketAt;
 
 static void pocket_poll (void)
@@ -344,6 +345,7 @@ static void pocket_poll (void)
 	si.size = sizeof si;
 	int was = g_pocket;
 	g_pocket = uk_win_server (&si) > 0 && si.mode != UK_MODE_DESKTOP;
+	g_console = g_pocket && si.mode == UK_MODE_CONSOLE;
 	if (g_pocket != was) rdlog ("rdpd: the graphics server is %s", g_pocket ? "PocketUI's: its frameless main windows and its home sent as plain ones (the keys)" : "the desktop's");
 }
 
@@ -363,6 +365,11 @@ static void pocket_flags (const struct kapi_win_info *L, int n, unsigned *F)
 	for (int i = 0; i < n; i++)
 	{
 		unsigned f = L[i].flags;
+		// Console mode has no menu bar: a topmost borderless window at the top edge (the console home's menu, its
+		// tip) is told without TOPMOST -- Onyx Remote takes such a window for the menu bar, and a tall one for its
+		// open menu: a see-through overlay over everything that took the clicks and the focus, no key sent
+		// (2026-10-09: RDP's keyboard dead in console mode only). It stays an overlay above the home's window.
+		if (g_console && L[i].id != KAPI_WIN_DESKTOP && (f & WIN_FLAG_TOPMOST) && (f & B) && L[i].y == 0) { F[i] = f & ~WIN_FLAG_TOPMOST; continue; }
 		if (L[i].id == KAPI_WIN_DESKTOP || !(f & B) || (f & (WIN_FLAG_TOPMOST | WIN_FLAG_ALPHA))) continue;
 		if (f & K)					// the shell's home
 		{

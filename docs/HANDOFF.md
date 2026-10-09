@@ -21,7 +21,10 @@ game shown at the top left, the home around it; the tip "Home Menu" left at the 
   menu overlay (topmost, see-through, opacity 0) off the screen; a game's resolution put it back on the screen, and
   Onyx Remote made of it a window over everything that took the clicks and the focus but sent no key. Now
   re-parked at each screen size, and **rdpd no longer tells a window of opacity 0 or off the screen** (test:
-  `run_rdpd_test.sh`, MOCK_POCKET=2). Backspace (Select), Tab, Delete, Home / End / Page Up / Down are held keys too.
+  `run_rdpd_test.sh`, MOCK_POCKET=2). **The cause proper**: Onyx Remote takes a topmost borderless window at y = 0 for
+  the menu bar (a tall one for its open menu: a see-through overlay over everything) -- the console home's menu and
+  tip are at y = 0 (pocketshell's are under the band). In console mode (no menu bar there) rdpd tells them without
+  TOPMOST (MOCK_POCKET=5). Backspace (Select), Tab, Delete, Home / End / Page Up / Down are held keys too.
 
 ## The keyboard as a gamepad (2026-10-09, evening) -- tested on the PC, NOT on the Pi
 

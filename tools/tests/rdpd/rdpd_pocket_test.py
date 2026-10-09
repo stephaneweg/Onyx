@@ -33,12 +33,16 @@ def round_():
         if t == 5: return wins
 f = round_()
 B, K, T, SYS, A = 1, 2, 4, 16, 32
-if mode >= 3:					# a program with the full screen (3: PocketUI, a BASIC game; 4: the desktop, an emulator)
+if mode in (3, 4):					# a program with the full screen (3: PocketUI, a BASIC game; 4: the desktop, an emulator)
     check(list(f.keys()) == [22], "the full-screen window told alone (%s)" % sorted(f.keys()))
     check(f.get(22) == 0, "as a plain window, without a frame: it takes the keys (%s)" % f.get(22))
     g = geo.get(22, ())
     check(g[:4] == (0, 0, 1024, 768) and g[4:8] == (0, 0, 0, 0), "at 0, 0, the screen's size, no frame (%s)" % (g,))
     check(len(g) == 9 and g[8] & 2 == 0 and g[8] & 1, "its state without FULLSCREEN (the client's native frame), the keys kept (%s)" % (g[8:],))
+elif mode == 5:
+    check(f.get(20) == SYS, "console, home: the home told as a plain window (%s)" % f.get(20))
+    check(f.get(25) == B | SYS | A, "the home's menu at the top edge told without TOPMOST: not a menu bar (%s)" % f.get(25))
+    check(26 not in f, "its parked tip not told (%s)" % sorted(f.keys()))
 elif mode == 2:
     check(f.get(20) == SYS, "home, no app: the shell's home told as a plain window (%s)" % f.get(20))
     check(f.get(24) == B | T | SYS | A, "the menu bar as it is")
