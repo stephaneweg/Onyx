@@ -410,6 +410,9 @@ dark, big thin words ("Browser", "System Configuration" in the PS2), a glowing h
 item, memory-card-like tiles. It stays Onyx: Milk's Aqua blue is the glow, the Onyx gem is in the corner,
 the apps and the kits are the same.
 
+> **A second look, 2026-10-09**: §16 proposes a console home in the manner of a modern TV console (the PS4)
+> and of Lakka, the games classified by console — mock-ups only.
+
 ![](compact-shell/mockups/console-handheld.png)
 
 *Console mode on a Pi handheld (640 × 480).*
@@ -952,6 +955,192 @@ window's colour, OS X's beads), the user's preferred look. What carries over and
    the shell role → Pocket's shell programs (landscape and portrait from the start: the rules of §6.1) →
    console mode's home on top of them → split view → touch and the on-screen keyboard → rotation.
 
+## 16. Console mode v2: the PS4-like shell (2026-10-09, mock-ups)
+
+*A design proposal with mock-ups only — nothing built, `consolehome` unchanged.* The user asked for the console
+shell to move from the PlayStation 2 browser's mood (§7, §12) to **the manner of a modern TV console home (the
+PS4's) and of Lakka (RetroArch)**, with **the games (ROMs) classified by console**. The pictures are made by
+**`python3 tools/screenshot/mockup_console_ps4.py`** (PIL + numpy, self-contained: the helpers of
+`mockup_compact.py`, the card's DejaVu Sans, the apps' real icons and categories, the consoles from the
+emulators' `app.txt`, the Onyx games' real screenshots); they land in `docs/compact-shell/mockups/console-v2-*.png`.
+The ROMs are made up (invented names, title screens drawn at the Game Library's 160 × 144 thumbnail size, as
+`tools/tests/desktop_sim/gamelib_samples.py` does; an N64 game's picture is its cartridge label with its name, a
+GameCube game's its banner). No console maker's logo or button symbol is drawn: the pad's buttons are named
+A / B / X / Y / L1 / R1 / Home, as the current shell names them.
+
+![](compact-shell/mockups/console-v2-overview.png)
+
+*The six main screens and how the pad moves between them; at the bottom, the home's four levels.*
+
+### 16.1 The structure: four levels stacked, one row each
+
+The home is **four horizontal levels, top to bottom**, and the focus is always on exactly one of them. Up / Down
+move between levels, Left / Right move along the level; nothing moves diagonally, nothing wraps.
+
+| Level | What it holds | What it shows when the focus is elsewhere |
+|---|---|---|
+| **1. Function row** (the top) | the Onyx gem (the home's mark), then five round buttons: **Notifications** (a red count), **Updates** (a green dot when packages wait: `pkgd`), **Files** (the console file browser, §7.5), **Settings** (the console Control Panel, §7.6), **Power** (Shut down, Restart, Switch mode); at the right Wi-Fi, the battery, the date and the time | dim icons; the focused one's name appears after the row |
+| **2. Shelves** | **Recent**, **Onyx games**, then **one shelf per console that has games**, then **Apps** and **Settings** — small round chips; the chosen shelf opens into a pill with its name | the chosen shelf stays a lit pill (no ring) |
+| **3. Content row** | the chosen shelf's items as **big tiles in one row**: the focused one **larger, at the left**, its **title and a line beside it** (over the smaller tiles); a count "3 of 9" at the right; a chevron at the left when items scrolled off | the focused tile keeps its size and a thin ring |
+| **4. Details** | under the row, what the focused item offers: for a ROM its console, file, time played, **Play**, an options button (…), its **save-state slots**; for an app Resume / Open, Close app, Pin to Recent and its live picture when it runs; for an applet its page's first rows and Open | the same, unfocused |
+
+**The backdrop** is the focused item's picture (a ROM's title screen, an Onyx game's screenshot, an app's icon
+plate) **blurred to a soft wash**, darkened toward navy and much darker at the bottom, so the words stay
+readable; it follows the focus. The Settings shelf has the plain navy gradient. A few faint motes remain from v1.
+
+**What each shelf holds:**
+
+- **Recent** — the last games and apps used, mixed (the paused game first: one press of A resumes it); a ROM
+  tile carries its console's badge (GBA, SNES...), a running app a green **running** pill, a paused game an amber
+  **paused** pill. It replaces v1's Recent category and the switcher for everyday use.
+- **Onyx games** — `category = Games` of `app.txt` (Tetris, Pinball, Critters, Invaders, Solitaire, Doom,
+  Arkanoid, 2048...; the Game Library itself is not listed: the shelves replace it in console mode); each tile is
+  the game's screenshot (its icon on a plate when it has none).
+- **One shelf per console** — see §16.4.
+- **Apps** — every other app (Productivity, Internet, Graphics, Multimedia, Programming, System; not Demos, Shell,
+  Settings, Emulators), **sorted by category in one row**, each category opened by a **slim upright divider** (its
+  colour dot and its name turned); **L2 / R2 jump to the previous / next category**. Tiles are the app's icon on
+  a plate of the icon's own colour.
+- **Settings** — the console's applets (§7.6: Mode, Display, Sound, Keyboard & Mouse, Language & Region, Gamepad,
+  Wi-Fi, Packages, About), their icons on plates, their `.lnk` help line beside; the details show the applet's
+  first rows (Sound: Play on, Volume as a bar, Mute, Test sound) and **A opens the page** in the console Control
+  Panel.
+
+### 16.2 The navigation, button by button
+
+On every screen the bottom band lists **only the buttons that work there** (as today's shell does).
+
+| Where | d-pad | A | B | Y | X | L1 / R1 | L2 / R2 | Home |
+|---|---|---|---|---|---|---|---|---|
+| **Function row** | ←/→ the buttons; ↓ to the shelves | open (Notifications drop under the row) | back to the content row | — | — | shelf | — | the menu |
+| **Notifications open** | ↑/↓ the notes | open the note's app | close the list | — | clear all | — | — | — |
+| **Shelves** | ←/→ the shelf (the row follows at once); ↑ function row; ↓ content | enter the row | to the content row | — | — | shelf | — | the menu |
+| **Content row** | ←/→ the items (the focused tile stays at the left, the row scrolls); ↑ shelves; ↓ details | **Play** / Open / Resume | up to the shelves | options (Pin to Recent, Info, Delete ROM, Close app) | — | previous / next shelf | Apps: previous / next category | the menu |
+| **Details** | ←/→ Play, …, slot 1, slot 2...; ↑ content row | Play / **Load** the focused slot / the button | up to the content row | on a slot: **Delete** | — | shelf | — | the menu |
+| **In a game or an app** | — | — | — | — | — | — | — | **the menu** (§16.5) |
+
+L1 / R1 change the shelf **from any level** and bring the focus to the content row, so the consoles are one
+shoulder press apart. The keyboard and the mouse keep v1's mapping (§7.2): the arrows, Enter = A, Esc / Backspace
+= B, Page Up / Down = L1 / R1, F10 / Alt = Home; hover moves the focus, a click is A, a right click Y, the wheel
+scrolls the row.
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-v2-home.png) | **(a) Home, 1280 × 720**: the Game Boy Advance shelf, Star Courier focused (its title screen big, blurred behind), its 8 neighbours in the row; the details (unfocused): GBA, `SD:/roms/gba/star-courier.gba`, played 6 h 41 min, Play, two save states and an empty slot. |
+| ![](compact-shell/mockups/console-v2-game.png) | **(c) ↓: the details focused** — Play glowing; → reaches the slots. |
+| ![](compact-shell/mockups/console-v2-game-slot.png) | **→ →: slot 2 focused** — A loads it, Y deletes it. |
+| ![](compact-shell/mockups/console-v2-shelves.png) | **↑: the shelves focused** — Super Nintendo's pill with its ring; ←/→ walks the shelves, the row (Moon Garden...) follows. |
+| ![](compact-shell/mockups/console-v2-function.png) | **↑ again: the function row**, A on Notifications: Updates (3 packages) and a Telegram message; X clears them. |
+| ![](compact-shell/mockups/console-v2-recent.png) | **Recent**: Star Courier paused, Letters and the Media Player running, Moon Garden, Sky Fortress, Tetris... with their consoles' badges. |
+| ![](compact-shell/mockups/console-v2-onyx.png) | **Onyx games**: their real screenshots as pictures (Doom: its icon); Tetris: path, last played, best score, Play. |
+| ![](compact-shell/mockups/console-v2-apps.png) | **(d) Apps**: Letters (running) focused; the Internet divider in the row; Resume, Close app, Pin to Recent, "keyboard recommended", its live picture. |
+| ![](compact-shell/mockups/console-v2-settings.png) | **(d) Settings**: Sound focused, its page's first rows; A opens it. |
+
+### 16.3 Resolution independence
+
+Every size is in **logical units (lp) × a scale** (today's rule: `scale =` in `SD:/etc/theme.txt`, else 1 below
+1080 lines, 1.5 from 1080, 2 from 1800). The layout reads the logical size; below **560 logical lines** it takes a
+**compact** set of metrics (a 640 × 480 handheld). The row keeps its shape: it shows fewer tiles, it never wraps.
+
+| Metric (lp) | regular (1280 × 720 at 1, 1920 × 1080 at 1.5) | compact (640 × 480 at 1) |
+|---|---|---|
+| side margin | 64 | 24 |
+| function row: top / button | 22 / 36 | 10 / 28 |
+| shelves: top / chip / gap | 78 / 44 / 10 | 46 / 30 / 6 |
+| content row top | 150 | 92 |
+| focused tile (10:9, the pictures' shape) | 240 × 216 | 150 × 135 |
+| other tiles / gap | 160 × 144 / 16 | 100 × 90 / 10 |
+| row → details | 30 | 18 |
+| save-state card | 136 × 122 | 84 × 76 |
+| Play button height | 52 | 34 |
+| hints band | 56 | 40 |
+| words: title / line / details / small / buttons / hints | 26 b / 15 / 16 / 14 / 19 b / 15 | 17 b / 12 / 12 / 11 / 14 b / 12 |
+| corner radius: tile / chip, button | 12 / round | 8 / round |
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-v2-home-1080.png) | **(b) 1920 × 1080 at 1.5**: the same layout, every size × 1.5 — the Nintendo 64 shelf, its games as cartridge labels. |
+| ![](compact-shell/mockups/console-v2-home-640.png) | **(b) 640 × 480 at 1, compact**: the Game Boy shelf in its four greens; four tiles in the row, three slots, the hints without Y. |
+
+### 16.4 The ROMs, classified by console
+
+- **The consoles are the emulators' `games =` lines** (`SD:/apps/<emu>.app/app.txt`, as the Game Library's
+  sections): `gcemu` GameCube (`iso gcm`), `n64emu` Nintendo 64 (`z64 n64 v64`), `snesemu` Super Nintendo
+  (`sfc smc`), `gbaemu` Game Boy Advance (`gba`), `gbemu` **two** shelves, Game Boy Color (`gbc`) and Game Boy
+  (`gb`), `nesemu` NES (`nes`). A new emulator with a `games =` line gets its shelf with no change to the shell.
+- **The order is `order =`** (small first: GameCube 10, N64 20, SNES 30, GBA 40, GB / GBC 50, NES 60), the same
+  as the Game Library's sections; within an emulator, the order of its `games =` line.
+- **A ROM belongs to the console of its extension**, wherever it is in the Game Library's folders (`SD:/roms` by
+  default, Folders > Add Folder...): the index and the thumbnails are the Game Library's
+  (`SD:/apps/gamelib.app/thumbs/<key>.thm`, 160 × 144), shared, not rebuilt.
+- **A console with no game is hidden** (no empty shelf to walk through); an option in the Settings shelf could
+  show them dimmed (an open question).
+- **The chip** is the console's short name (GC, N64, SNES, GBA, GBC, GB, NES) on its own colour — words, not
+  logos — and the pill spells its `games =` name. The colours: GC indigo `#7062D6`, N64 green `#2E9668`, SNES
+  lavender `#9684C4`, GBA blue `#4270DE`, GBC rose `#CC5496`, GB olive `#7A962C`, NES red `#CE483E`.
+- **The pictures**: a title screen for the cartridge systems, the cartridge's label (with the name) for the N64,
+  the disc's banner for the GameCube — what the Game Library captures today.
+
+### 16.5 The menu over a running game (Home)
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-v2-quickmenu.png) | **(e) Home in a game**: the game paused, blurred and dimmed behind; at the left a panel — the game (its picture, GBA, paused, time played), then **Resume, Save state ›, Load state ›, Screenshot, Emulator menus ›** (the app's own menus, as v1 does), then **System: Home, the other running apps (Letters, Media Player) to switch to, Close game, Settings, Shut Down...** At the right, Save state's **slots** (two used with their pictures and dates, slot 3 focused "Save here", slot 4 empty); A saves, B resumes, ←/→ the slot. |
+| ![](compact-shell/mockups/console-v2-quickmenu-fr.png) | **The same in French**: Reprendre, Sauvegarder l'état, Charger un état, Capture d'écran, Menus de l'émulateur; Accueil, Fermer le jeu, Réglages, Éteindre... |
+
+For an ordinary app the panel is v1's menu (Resume, Home, the running apps, Close, Settings, Shut Down, the app's
+menus) in this style; the game's part (save states, screenshot) appears only for an emulator.
+
+### 16.6 In French
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-v2-game-fr.png) | **(f) The details in French**: Jouer, Dernière partie : lundi 21:04, Temps de jeu, Sauvegardes, Emplacement 1-3, Vide; the hints Jouer, Retour, Options, Aller, Menu; the date "jeu. 9 oct.". The existing `consolehome` words are kept (Récentes → *Récents* for the shelf, **Réglages** for Settings as in `lang/fr.txt`, Reprendre, Accueil, Éteindre...). |
+
+### 16.7 The colours and the look
+
+- **Navy, calm**: the backdrop is the picture washed into navy `#080E22` (58 %), darker at the top (−25 %) and
+  much darker at the bottom (−55 %); the hints band `#040814` at 72 %.
+- **Words**: white for titles, `#ECF2FA` for words, `#96A8C4` for lines, `#6E7E9C` faint; **DejaVu Sans**,
+  bold for titles and buttons.
+- **Focus = Milk's Aqua** `#3D86DA`: a white ring 3 lp outside the tile, a soft blue glow (`#60AAFF`) around it,
+  the tile larger; a focused button or chip is filled Aqua with a white ring. **Chosen but not focused** = a thin
+  white ring (tiles) or a translucent white pill (chips). Plain items: glass at 8-20 % white.
+- **Pad buttons** as today's shell draws them: A blue `#5E9CFF`, B red `#FF6A6A`, Y amber, X violet, in rings;
+  L1 / R1 / Home as outlined key pills; the d-pad as a small cross with the used arms lit.
+- **The Onyx gem** opens the function row; no other brand.
+
+### 16.8 What is reused from today's `consolehome`
+
+- The process and its role: PocketUI's shell (`uk_shell_register`, `uk_shell_keys`, `uk_shell_grab`), the home as
+  the backmost window, the menu as a topmost overlay, asked with Home / Select / F10 / the Super key.
+- The catalogue (`Apps/pocketshell/catalog.h`: the apps, the categories, the recent and the running ones), the
+  Control Panel's applets, the scale rule and the faces (`F (lp)`, `D (lp)`), the look helpers (`look.h`: rounded
+  boxes, rings, shadows), the hint pills, the menu's items and their words (`lang/fr.txt`).
+- The pad's mapping (`gamepad.h`) and the keyboard's: unchanged; L2 / R2 get the Apps shelf's categories.
+- **New**: the shelves from the emulators' `games =`, reading the Game Library's index and thumbnails, the
+  blurred backdrop (one small blur of a 160 × 144 picture per focus change, then a scaled copy: cheap), the
+  details level, the function row and its notifications (`notifyd`), the save-state slots.
+
+### 16.9 Open questions for the user
+
+1. **Save states do not exist yet**: the emulators keep only the cartridge's battery save (`<rom>.sav`). The slots
+   (and their pictures) need an emulator-side "save / load state to slot N" and a way for the shell to ask it
+   (a message to the front app, as the menus are). Build them, or show the slots only once an emulator offers them?
+2. **The shelves' order**: `order =` puts GameCube first and NES last. Keep it (as the Game Library), or the other
+   way (oldest first, as Lakka does), or by the most played?
+3. **Game Boy and Game Boy Color**: two shelves (as `games =` says, chosen here) or one "Game Boy" shelf?
+4. **Empty consoles**: hidden (proposed) or dimmed?
+5. **The Game Library in console mode**: hidden (the shelves replace it, proposed), or a tile of its own for its
+   folders and its refresh?
+6. **Apps**: one shelf with category dividers (proposed), or one shelf per category (more shelves to walk)?
+7. **The function row**: Notifications, Updates, Files, Settings, Power — is Files right there, or a shelf? Should a
+   Search (with a physical keyboard) join it?
+8. **The backdrop**: the blurred picture (proposed), or v1's space and towers behind everything, the picture only
+   in the tile?
+9. **The font**: DejaVu Sans as asked here, or v1's Selawik Light for the big words?
+10. **Does v2 replace v1**, or is it a choice in the Settings (Display > Home style)?
+
 ## Résumé (FR)
 
 L'utilisateur demandait si, maintenant qu'Elegant est en espace utilisateur, on pouvait remplacer le bureau
@@ -985,4 +1174,4 @@ taille (une barre latérale repliée en rail, comme pour Ledger), une racine dé
 visible partout et le tactile. Côté Elegant : un même serveur avec une politique par mode, un rôle de
 shell, des raccourcis système, un clavier à l'écran, le tactile, la rotation, la manette comme entrée
 système et la batterie. Les questions ouvertes sont au §14 ; les étapes suivantes (§15) s'arrêtent avant
-toute implémentation. Ajouts du 2026-10-08 : le Panneau de configuration en mode pocket (§6.11 : en paysage, les applets en liens à gauche et l'applet qui remplit le reste — cette mise en page remplace aussi le tableau de bord du bureau ; en portrait, la liste puis une barre de retour) et en mode console (§7.6 : les applets utiles à la manette à gauche, leur page en grandes lignes à droite, ←/→ pour changer une valeur ; le mot de passe Wi-Fi demande un vrai clavier), et une proposition de lanceur pocket plus abouti, la v2 (§6.2 : vrai champ de recherche, « Aujourd'hui », puces de catégories, icônes sur plaques, focus net, vignettes des apps ouvertes ; une colonne Aujourd'hui à 1920 × 1080).
+toute implémentation. Ajouts du 2026-10-08 : le Panneau de configuration en mode pocket (§6.11 : en paysage, les applets en liens à gauche et l'applet qui remplit le reste — cette mise en page remplace aussi le tableau de bord du bureau ; en portrait, la liste puis une barre de retour) et en mode console (§7.6 : les applets utiles à la manette à gauche, leur page en grandes lignes à droite, ←/→ pour changer une valeur ; le mot de passe Wi-Fi demande un vrai clavier), et une proposition de lanceur pocket plus abouti, la v2 (§6.2 : vrai champ de recherche, « Aujourd'hui », puces de catégories, icônes sur plaques, focus net, vignettes des apps ouvertes ; une colonne Aujourd'hui à 1920 × 1080). Ajout du 2026-10-09 (§16, maquettes seulement) : une **v2 du mode console** façon accueil de console de salon (PS4) et Lakka — une rangée de fonctions en haut, des **étagères** (Récents, Jeux Onyx, **une par console** d'après les lignes `games =` des émulateurs, Apps, Réglages), une grande rangée de tuiles dont la tuile choisie est agrandie, son image floutée en fond, et sous la rangée les détails (Jouer, les emplacements de sauvegarde) ; le menu par-dessus un jeu avec ses emplacements.
