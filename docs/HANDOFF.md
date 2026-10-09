@@ -45,8 +45,10 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
 - **The game reaches its title screen** (section 9i: culling was reversed, the stereo calibration block was zeros,
   0 x infinity; `N3DS_GPUTRACE=<frame>` and `tools/n3ds/picadis.py` to look into a frame): the Triforce, the town,
   the logo, "Press A" -- after about 900 frames (10 minutes of qemu).
-- **Next for the game**: lighting (the scenery is pale: its colours come from it) and fog; press A (`N3DS_KEYS`) and
-  see the file selection, a save (`N3DS_SAVE`); then the sound (T4), the speed and the Pi (T3), the app (T7).
+- **Its title screen has the right colours and the file selection works** (section 9j: fragment lighting, the
+  combiner buffer's two-stage delay; the save is written).
+- **Next for the game**: the software keyboard applet (*Rename* waits for it: `APT` 0x18 and the library applets),
+  starting a game (*Begin*), the camera's path to check with the user, fog, texture filtering; then the sound (T4), the speed and the Pi (T3), the app (T7).
 - **Also**: texture filtering; the SD card's archive (saves); what the next homebrew or the first game asks (`Machine::notes`).
   Then T3 (the Pi: the speed, the V3D), T4 (sound), T5 (the NCCH loader: *A Link Between Worlds*). The app `n3dsemu` starts with a mock-up of its screens (the user's
   rule), at T7.

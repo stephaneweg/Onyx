@@ -388,6 +388,23 @@ text) found why *A Link Between Worlds* drew next to nothing:
   white before it turns gold -- **lighting** is asked and not done (the scenery's colours come from it), fog
   neither. Not tried: pressing A, the file selection, a save, the game itself.
 
+## 9j. The title screen's colours (2026-10-10): lighting, and the combiner buffer's delay
+
+The user saw the scenery's colours were wrong (pale grey-violet, then too dark once lighting was in) and gave a
+picture of the real game as the palette to reach.
+- **Fragment lighting** (`n3ds_pica.cpp`): the normal from the shader's quaternion, the view vector, up to 8 lights
+  (ambient, diffuse, two speculars, the distance's attenuation), the tables D0 / D1 / reflection / Fresnel with their
+  inputs, absolute values and scales. Not in it: spot lights, bump mapping, shadows, the geometric factors.
+- **The combiner's buffer is two stages late**: a stage that updates it is seen by the stage after the next (the
+  first stage sees nothing, the second the buffer's colour register). Ours was one stage early, so the material's
+  "light x texture" stage read the wrong thing: found with the trace (a grass texel read right, the result black).
+- **Result**: the title screen has the game's colours -- green grass, blue water, brown paths, grey stone, the
+  Triforce gold with its dark twin. And after it (a run with A pressed): **the file selection**, "Start with this
+  file?", the game formats and writes its save (17.6 KB kept by `N3DS_SAVE`); choosing *Rename* calls the system's
+  software keyboard (`APT` 0x18: an applet we do not have -- to write: Onyx's own).
+- **Not verified**: the camera's path over the map (the user expects Link's house in it; a run with a picture
+  every 30 frames is to be looked at with him), the timing against a console. Still not done: fog, texture filtering.
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 
