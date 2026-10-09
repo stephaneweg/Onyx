@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail, the Calendar, IRC and Ledger migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, published
+## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail, the Calendar, IRC, Ledger and the Archiver migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, published
 
 P7 is the apps' migration to P6's adaptive widgets (`docs/POCKETUI-TECH-STUDY.md` §6.15, §9: about 32 session-days, one
 app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10.6):
@@ -113,6 +113,11 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   (`Req::wrapped`, `m_inited` set in `rpc_result`), and an `rpc_error` CONNECTION_NOT_INITED sends the request again
   wrapped (3 times at most) instead of failing. The offline tests pass (56 checks); **the sign-in itself was NOT tried
   here** (no `TG_API_ID` / `TG_API_HASH` on this PC): the user's to confirm.
+- **Archiver** (`user/Apps/archiver/main.cpp`; `TR` in `widgets.h`, `dialogs.h`): the pilot's way -- in pocket and
+  console its left pane (the folders' tree and the archive's card) is the **content** of a SidePanel inside a body
+  panel (`g_sp`, `body_lay_out ()`: the list beside `reservedWidth ()`), a drawer on a small screen; the desktop keeps
+  its `HSplitter`. Translated: 177 words (many are pieces of a line: their spaces; `arcfk.h`'s three engine errors and
+  the default file name stay English). `adaptive.sh <out> archiver` (arc_sample.py's archive): 8 checks.
 - **Tests (PC)**: `sh tools/tests/server_sim/adaptive.sh <out> media` and `... photos` -- each app under PocketUI at
   800 x 480 (the rail; the rail expanded under the pointer), 1280 x 720 (whole; in French), 480 x 800 (the drawer's tab;
   the drawer opened), console 640 x 480 (the column): 8 checks each, all pass; the pictures looked at. The Media
@@ -142,7 +147,7 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   (`InputBox`, `PropsBox`, `VPropsBox`, `NameBox`: the scrolling sheet meanwhile), `uk_set_input_type` on the
   search fields. Media's pages (the album's band, the videos' grid) were looked at in landscape only.
 - **Next apps, in the study's order**: Courier, PDF, Slides, Paint, QBStudio, 3DForge,
-  Archiver, Icon Editor, fmtracker, Telegram's pane; then the toolbars, tabs, dialog bases, tables;
+  Icon Editor, fmtracker, Telegram's pane; then the toolbars, tabs, dialog bases, tables;
   the Control Panel's applets laid out in their pane (Theme first).
 
 ## The pocket launcher v2; Onyx is Home in pocket; the shell's scale after a switch; full screen in Onyx Remote (2026-10-08): built, tested on the PC, NOT yet on the Pi, committed (not pushed), not published

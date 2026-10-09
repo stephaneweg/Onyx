@@ -11,7 +11,7 @@
 #   - the pilots: the Task Manager (the grid's roles: cards in portrait), the Terminal (its tabs, no source change);
 #   - the viewport: Setup (800 x 600, fixed) at 800 x 480 scrolled by the wheel over its indicator;
 #   - the File Viewer: resizable, its places a SidePanel in pocket (landscape, portrait's drawer) and console.
-# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar irc ledger]
+# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar irc ledger archiver]
 # SHOTS_PNG=<folder>: the pictures copied there too (docs/compact-shell/real/).
 set -e
 cd "$(dirname "$0")/../../.."
@@ -294,6 +294,28 @@ if want ledger; then
 	WR=$(langdir fr)
 	run pocket_ledger ledger-720-fr "$WWW;dump $OUT/ledger-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=ledger SIM_APP=ledger SIM_WRITES=$WR $L
 	out ledger-720-fr
+fi
+
+# ---- P7: the Archiver (pocket, console: its folders and card a SidePanel's content -- a drawer on a small screen) -------
+if want archiver; then
+	echo "adaptive: the Archiver"
+	mkdir -p "$OUT/arcz"
+	for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/arcz/$f.o"; done
+	ftapp pocket archiver uikit_pocket -Ithird_party/zlib-1.3.1 -Iuser/Apps/archiver -Iuser/Kits/filekit user/Kits/filekit/fkcore.cpp "$OUT"/arcz/*.o
+	rm -rf "$OUT/arc"; mkdir -p "$OUT/arc"; python3 $D/arc_sample.py "$OUT/arc/Projet-Onyx.zip"
+	A="SIM_RAM=$OUT/arc SIM_ARGS=RAM:/Projet-Onyx.zip"
+	for t in 800x480:800 1280x720:720 480x800:portrait 640x480:console; do
+		sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
+		WR=$(langdir "")
+		run pocket_archiver archiver-$tg "$WWW;expect kind fill;expect frame 0;$W;dump $OUT/archiver-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=archiver SIM_APP=archiver SIM_WRITES=$WR $A
+		out archiver-$tg
+	done
+	WR=$(langdir "")
+	run pocket_archiver archiver-800-drawer "$WWW;down 14 300;up 14 300;$W;dump $OUT/archiver-800-drawer.elsm" SIM_SCREEN=800x480 SIM_APPNAME=archiver SIM_APP=archiver SIM_WRITES=$WR $A
+	out archiver-800-drawer
+	WR=$(langdir fr)
+	run pocket_archiver archiver-720-fr "$WWW;dump $OUT/archiver-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=archiver SIM_APP=archiver SIM_WRITES=$WR $A
+	out archiver-720-fr
 fi
 
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1

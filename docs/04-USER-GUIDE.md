@@ -1736,6 +1736,10 @@ in it (`fileassoc.ini`), as `run archiver SD:/path/file.zip` does. **tar, .tar.g
 are opened and extracted too (read only). The formats are **FileKit's** (`SD:/lib/filekit.so`): the
 welcome page lists the ones the library says it reads and writes; 7z, RAR, xz and bzip2 come later, there.
 
+- **Languages and modes**: the Archiver speaks the **system's language** (English or French: Control Panel ▸
+  Language & Region). In the **pocket and console modes** (the same program) the folders' tree and the archive's
+  card are a **drawer** on a small screen (the tab at the list's left edge opens it over the list; a click beside it
+  closes it) and stay beside the list on a wide one (1280 × 720 and more); the desktop keeps its divider.
 - **The window**: the toolbar (**Open**, **New** · **Add**, **Extract**, **Extract All**, **Delete** ·
   **Test**, **Properties**), the path bar (Back, Up, the archive and its folders — click one to go
   there —, the format's badge, **Search in the archive**: every name holding the text, with its
