@@ -46,6 +46,7 @@ unsigned pk_front_pid (void);
 int pk_bar_id (void);			// the global menu bar's window, -1: none
 unsigned pk_shell_pid (void);		// the shell (uk_shell_register), 0: none
 int pk_home (void);			// 1: home -- no app in front, the shell's home shown
+int pk_split (void);			// (P8) 1: split view -- two programs share the work area
 // (P6) The viewport of window id (a filled window bigger than the work area): -> 1 and its scroll in *vx, *vy; 0 none.
 int pk_viewport (int id, int *vx, int *vy);
 int pk_text_hint (int id);		// its focused field's type (UIKit's UK_IN_*), -1 none (PK_OP_TEXT_HINT)

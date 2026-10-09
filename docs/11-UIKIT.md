@@ -374,7 +374,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_shell_grab` | While on | `win.h` |
 | `uk_shell_thumb` | Window id's client area as last presented, scaled to w x h (at most 512 x 512) into dst (w a row) -> 1, 0 no such window, -1 refused. | `win.h` |
 | `uk_shell_front` | front 1 | `win.h` |
-| `uk_shell_split` | two windows side by side (0 0: none) -- (not yet: -KAPI_ENOSYS) | `win.h` |
+| `uk_shell_split` | two programs' windows side by side (0 0: none) -> 1, 0 the work area is too small or upright (PocketUI: P8) | `win.h` |
 | `uk_shell_dim` | a dim behind an overlay -- (not yet: the overlays draw theirs) | `win.h` |
 | `uk_shell_task` | The running programs, the most recently in front first | `win.h` |
 | `uk_shell_tasks` |  | `win.h` |
@@ -1219,7 +1219,7 @@ front 1: window id's program to the front (home left); front 0 and id 0: HOME --
 
 ```cpp
 int uk_shell_front (unsigned id, int front);
-int uk_shell_split (unsigned left, unsigned right);	// two windows side by side (0 0: none) -- (not yet: -KAPI_ENOSYS)
+int uk_shell_split (unsigned left, unsigned right);	// two programs' windows side by side (0 0: none) -> 1, 0 the work area is too small or upright (PocketUI: P8)
 int uk_shell_dim (int alpha);				// a dim behind an overlay -- (not yet: the overlays draw theirs)
 ```
 

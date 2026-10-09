@@ -472,6 +472,7 @@ static void Expect (const char *key, const char *want)
 	}
 	else if (!strcmp (key, "bar")) snprintf (got, sizeof got, "%d", pk_bar_id () >= 0 ? 1 : 0);
 	else if (!strcmp (key, "home")) snprintf (got, sizeof got, "%d", pk_home ());
+	else if (!strcmp (key, "split")) snprintf (got, sizeof got, "%d", pk_split ());		// (P8) split view on
 	else if (!strcmp (key, "matte")) snprintf (got, sizeof got, "%d", pk_matte ());
 	else if (!strcmp (key, "shell")) snprintf (got, sizeof got, "%s", pk_shell_pid () == APP_PID ? "app" : pk_shell_pid () ? "other" : "none");
 	else if (!strcmp (key, "tasks"))

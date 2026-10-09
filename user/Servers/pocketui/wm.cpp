@@ -59,6 +59,7 @@ unsigned g_nPkSelf;
 // request: the kind create chose; given back to a server started again: from its flags) is looked at by tick.
 // (A window is known by its pointer AND its id: a slot freed then given to a new window may get the same memory.)
 static struct TState { CWindow *pWin; unsigned nWinId; int nKind; int nSentW, nSentH; unsigned nSentAt; boolean bMaxSent;
+		       int nRx, nRy, nRw, nRh;			// (P8) the part of the work area a card was centred in
 		       int nVx, nVy;				// (P6) the viewport: a window bigger than the work area, scrolled by
 		       boolean bFocus; int nFx, nFy, nFw, nFh;	// ... its focused control (PK_OP_FOCUS_RECT), to show
 		       int nHint, nUnits; } s_St[EL_WINDOWS_MAX];	// ... its focused field's type, its units (P10's)
@@ -81,6 +82,17 @@ static unsigned s_nTaskSig;					// what the shell was last told of the tasks
 static unsigned s_nMods;					// the modifiers held (Super too)
 static boolean s_bSuperAlone;					// a Super pressed, no key since
 
+// (P8) SPLIT VIEW: two programs share the work area -- the front one (it has the keys, the menu bar shows its menus)
+// and the one beside it -- each on its half, the divider between them (docs/COMPACT-SHELL-STUDY.md section 6.7).
+// Super+Left / Right: the front program to that half, the program fronted before it on the other; Super+Up: the front
+// one whole again; Super+[ / ]: the divider at 40 / 50 / 60 %; Super+Tab or a click: the other half in front. The
+// shell asks the same with PK_OP_SPLIT (its switcher's S). Only on a landscape work area of 640 px and more.
+enum { SPLIT_MIN_W = 640, SPLIT_GAP = 4 };
+static unsigned s_nSide;					// the program on the other half (0: one program at a time)
+static int s_nSplit = 50;					// the left half's share of the work area, in %
+static boolean s_bFrontLeft = TRUE;				// the front program has the left half
+static int s_nDivider = -1;					// the divider's window (PocketUI's own), -1: none
+
 static void Say (const char *s1, const char *s2 = "", const char *s3 = "")
 {
 	char line[160];
@@ -98,6 +110,25 @@ static void Area (int *x, int *y, int *w, int *h)
 	else { *x = 0; *y = 0; *w = g_nScreenWidth; *h = g_nScreenHeight; }
 }
 
+static boolean SplitOn (void)					// two programs share the work area now
+{
+	if (s_nSide == 0 || s_nFront == 0 || s_nSide == s_nFront || s_bHome || g_pElWM == 0 || g_pElWM->FullscreenWindow () != 0) return FALSE;
+	int x, y, w, h;
+	Area (&x, &y, &w, &h);
+	return w >= SPLIT_MIN_W && w > h;
+}
+int pk_split (void) { return SplitOn () ? 1 : 0; }
+
+// The part of the work area a program's windows have: the whole of it, or its half in split view.
+static void AreaOf (unsigned nPid, int *x, int *y, int *w, int *h)
+{
+	Area (x, y, w, h);
+	if (!SplitOn () || (nPid != s_nFront && nPid != s_nSide)) return;
+	int lw = *w * s_nSplit / 100 - SPLIT_GAP / 2;
+	if ((nPid == s_nFront) == (s_bFrontLeft != FALSE)) *w = lw;
+	else { *x += lw + SPLIT_GAP; *w -= lw + SPLIT_GAP; }
+}
+
 static void Clamp (int *x, int *y, int w, int h)		// a window of w x h (outer) kept on the screen
 {
 	if (*x + w > g_nScreenWidth) *x = g_nScreenWidth - w;
@@ -108,6 +139,9 @@ static void Clamp (int *x, int *y, int w, int h)		// a window of w x h (outer) k
 
 static int Classify (int id, CWindow *p);
 static void Fill (int id);
+static void Promote (unsigned nPid);
+static boolean Shown (unsigned nPid);
+static void Front (unsigned nPid);
 static boolean AppWindow (CWindow *p);
 static void Promote (unsigned nPid);
 static CWindow *pk_front_window (void);
@@ -115,6 +149,7 @@ static void Recentre (void);
 static void Matte (CWindow *pFront, int ax, int ay, int aw, int ah);
 static void Viewport (int id, CWindow *p, int ax, int ay, int aw, int ah, int *pvx, int *pvy);
 static void Bars (int ax, int ay, int aw, int ah);
+static void Divider (boolean bOn, int ax, int ay, int aw, int ah);
 
 // A window's state, up to date: one the policy had not seen (made since the last turn, given back to a server
 // started again) is classified now.
@@ -394,6 +429,16 @@ static void ServerInfo (struct pk_server *s)
 	s->band_h = s->work_y;
 }
 
+// What a program is told: in split view its own half as its work area, and "narrow" when the half is a slim one
+// (a rail of icons would be a waste there: UIKit's panels become drawers).
+static void ServerInfoFor (unsigned nPid, struct pk_server *s)
+{
+	ServerInfo (s);
+	if (!SplitOn () || (nPid != s_nFront && nPid != s_nSide)) return;
+	AreaOf (nPid, &s->work_x, &s->work_y, &s->work_w, &s->work_h);
+	if (g_nPkMode != PK_MODE_CONSOLE) s->size_class = s->work_w < 480 ? UK_SC_NARROW : UK_SC_COMPACT;
+}
+
 static int IdOfWin (unsigned nPid, int nWin)		{ return el_core_window_of_win (nPid, nWin); }
 
 static int IdOfWinId (unsigned nId)			// (a window's id, as uk_win_list gives it)
@@ -565,7 +610,7 @@ static int Op (unsigned nPid, int nOp, int nWin, const long *a, const unsigned c
 	case PK_OP_SERVER:
 		{
 			struct pk_server S;
-			ServerInfo (&S);
+			ServerInfoFor (nPid, &S);
 			memcpy (pOut, &S, sizeof S);
 			*pnOutLen = sizeof S;
 			*pnStatus = 1;
@@ -602,8 +647,26 @@ static int Op (unsigned nPid, int nOp, int nWin, const long *a, const unsigned c
 			*pnStatus = n;
 			return 1;
 		}
-	case PK_OP_SPLIT: case PK_OP_DIM:
-		*pnStatus = -KAPI_ENOSYS;			// (split view: P8; the overlays draw their own dim)
+	case PK_OP_SPLIT:					// (P8) a = the left window's id, the right one's; 0, 0: no split
+		{
+			if (nPid != s_nShell || s_nShell == 0) { *pnStatus = -KAPI_EINVAL; return 1; }
+			if (a[0] == 0 && a[1] == 0) { s_nSide = 0; ScreenDirty (); *pnStatus = 1; return 1; }
+			int l = IdOfWinId ((unsigned) a[0]), r = IdOfWinId ((unsigned) a[1]);
+			if (l < 0 || r < 0 || !AppWindow (g_pElWin[l]) || !AppWindow (g_pElWin[r])
+			    || g_pElWin[l]->OwnerPid () == g_pElWin[r]->OwnerPid ()) { *pnStatus = 0; return 1; }
+			if (g_pElWin[l]->Minimised ()) g_pElWM->Raise (g_pElWin[l]);
+			if (g_pElWin[r]->Minimised ()) g_pElWM->Raise (g_pElWin[r]);
+			unsigned nL = g_pElWin[l]->OwnerPid (), nR = g_pElWin[r]->OwnerPid ();
+			s_nSide = 0;
+			Promote (nL);
+			s_nSide = nR; s_bFrontLeft = TRUE;
+			Front (nR); Front (nL);
+			*pnStatus = SplitOn () ? 1 : 0;		// (0: the work area is too small, or upright)
+			if (!*pnStatus) s_nSide = 0;
+			return 1;
+		}
+	case PK_OP_DIM:
+		*pnStatus = -KAPI_ENOSYS;			// (the overlays draw their own dim)
 		return 1;
 
 	// (P6) the adaptive layer's: the focused control (the viewport shows it), the focused field's type, the units
@@ -755,6 +818,12 @@ static void Front (unsigned nPid)				// a program's windows to the front (their 
 static void Promote (unsigned nPid)
 {
 	if (nPid == 0) return;
+	if (s_nSide == nPid)					// (P8) the other half's program: the two swap their roles
+	{
+		unsigned nWas = s_nFront != 0 ? s_nFront : (s_nMru > 0 ? s_Mru[0] : 0);
+		s_nSide = nWas != nPid ? nWas : 0;
+		s_bFrontLeft = !s_bFrontLeft;
+	}
 	int i = 0;
 	while (i < s_nMru && s_Mru[i] != nPid) i++;
 	if (i == s_nMru && s_nMru < EL_WINDOWS_MAX) s_nMru++;
@@ -893,8 +962,42 @@ static int KeysToFront (const char *keys, unsigned mods)
 	return 1;
 }
 
+// (P8) Split view's keys, PocketUI's own (before the shell's): -> 1 taken.
+static int SplitKey (const char *keys, unsigned mods)
+{
+	if (!(mods & KAPI_WS_MOD_SUPER) || (mods & (MOD_ALT | MOD_CTRL)) || s_bGrab || g_pElWM->FullscreenWindow () != 0) return 0;
+	const char *p = keys;
+	unsigned m = 0;
+	int code = el_core_next_key (&p, &m);
+	if (code == 0 || *p != 0) return 0;
+	if (code == KEY_LEFT || code == KEY_RIGHT)
+	{
+		if (s_nFront == 0 || s_bHome) return 0;
+		int x, y, w, h;
+		Area (&x, &y, &w, &h);
+		if (w < SPLIT_MIN_W || w <= h) return 0;
+		if (s_nSide == 0 || !Shown (s_nSide) || s_nSide == s_nFront)	// the other half: the program fronted before
+		{
+			s_nSide = 0;
+			for (int i = 0; i < s_nMru && s_nSide == 0; i++) if (s_Mru[i] != s_nFront && Shown (s_Mru[i])) s_nSide = s_Mru[i];
+			if (s_nSide == 0) return 0;			// (nothing to put beside it)
+			Front (s_nSide); Front (s_nFront);
+		}
+		s_bFrontLeft = code == KEY_LEFT;
+		Say (s_bFrontLeft ? "split view: the front program at the left" : "split view: the front program at the right");
+	}
+	else if (code == KEY_UP) { if (s_nSide == 0) return 0; s_nSide = 0; Say ("split view: left"); }
+	else if ((code == '[' || code == ']') && SplitOn ()) { s_nSplit += code == '[' ? -10 : 10; if (s_nSplit < 40) s_nSplit = 40; if (s_nSplit > 60) s_nSplit = 60; }
+	else if (code == '\t' && SplitOn ()) Promote (s_nSide);
+	else return 0;
+	s_bSuperAlone = FALSE;
+	ScreenDirty ();
+	return 1;
+}
+
 static int Key (const char *keys, unsigned mods)
 {
+	if (SplitKey (keys, mods)) return 1;
 	int r = ShellKey (keys, mods);
 	if (r >= 0) return r ? r : KeysToFront (keys, mods);
 	if (keys[0] != '\t' || keys[1] != '\0' || (mods & MOD_ALT) == 0 || (mods & MOD_CTRL) != 0) return KeysToFront (keys, mods);
@@ -951,22 +1054,38 @@ static void Tick (unsigned self)
 		CWindow *p = g_pElWin[id];
 		int k = KindOf (id);
 		if (p != 0 && k == PK_KIND_HOME && (p->X () != ax || p->Y () != ay)) { p->Move (ax, ay); ScreenDirty (); }
+		// (P8) its program's part of the work area: the whole of it, or a half in split view
+		int wx = ax, wy = ay, ww = aw, wh = ah;
+		if (p != 0) AreaOf (p->OwnerPid (), &wx, &wy, &ww, &wh);
 		if (p != 0 && k == PK_KIND_CENTRE && !bFull)		// (centred in the work area: a smaller one cut at its top left)
 		{
-			int cx = ax + (aw - p->OuterWidth ()) / 2, cy = ay + (ah - p->OuterHeight ()) / 2;
-			if (cx < ax) cx = ax;
-			if (cy < ay) cy = ay;
+			int cx = wx + (ww - p->OuterWidth ()) / 2, cy = wy + (wh - p->OuterHeight ()) / 2;
+			if (cx < wx) cx = wx;
+			if (cy < wy) cy = wy;
 			if (p->X () != cx || p->Y () != cy) { p->Move (cx, cy); ScreenDirty (); }
+		}
+		if (p != 0 && k == PK_KIND_CARD && !bFull && AppWindow (p)
+		    && (s_St[id].nRx != wx || s_St[id].nRy != wy || s_St[id].nRw != ww || s_St[id].nRh != wh))
+		{	// a card: centred again when its part changed (split view begun, ended, the divider moved)
+			boolean bFirst = s_St[id].nRw == 0;
+			s_St[id].nRx = wx; s_St[id].nRy = wy; s_St[id].nRw = ww; s_St[id].nRh = wh;
+			if (!bFirst || ww != aw)
+			{
+				int cx = wx + (ww - p->OuterWidth ()) / 2, cy = wy + (wh - p->OuterHeight ()) / 2;
+				if (cx < wx) cx = wx;
+				if (cy < wy) cy = wy;
+				p->Move (cx, cy); ScreenDirty ();
+			}
 		}
 		if (p == 0 || bFull || k != PK_KIND_FILL) continue;
 		int vx = 0, vy = 0;
-		Viewport (id, p, ax, ay, aw, ah, &vx, &vy);		// (P6: bigger than the work area: scrolled)
-		if (p->X () != ax - vx || p->Y () != ay - vy) { p->Move (ax - vx, ay - vy); ScreenDirty (); }
+		Viewport (id, p, wx, wy, ww, wh, &vx, &vy);		// (P6: bigger than the work area: scrolled)
+		if (p->X () != wx - vx || p->Y () != wy - vy) { p->Move (wx - vx, wy - vy); ScreenDirty (); }
 		// A resizable filled window: the work area's size, told once for each size of the work area (UIKit's Root
 		// applies GUI_EVENT_WINRESIZE as a frame dragged). A program whose own pointer handler does not pass that
 		// event on (the Terminal, the Media Player, the PDF Viewer, Screenshot: their frames do not resize on the
 		// desktop either) is then asked to maximise, once (GUI_EVENT_WINCTL: Root::maximise fills the work area).
-		int w = aw > p->MinClientW () ? aw : p->MinClientW (), h = ah > p->MinClientH () ? ah : p->MinClientH ();
+		int w = ww > p->MinClientW () ? ww : p->MinClientW (), h = wh > p->MinClientH () ? wh : p->MinClientH ();
 		if (!p->Resizable () || p->PointerHandler () == 0) continue;
 		boolean bFits = p->ClientWidth () == w && p->ClientHeight () == h;
 		GUIEvent Ev;
@@ -977,7 +1096,7 @@ static void Tick (unsigned self)
 			s_St[id].nSentW = w; s_St[id].nSentH = h; s_St[id].nSentAt = el_port_ticks ();
 			if (bFits) continue;
 			Ev.nEvent = GUI_EVENT_WINRESIZE;
-			Ev.lValue = (long) (((u64) (u16) (s16) ax << 48) | ((u64) (u16) (s16) ay << 32) | ((u64) (u16) w << 16) | (u64) (u16) h);
+			Ev.lValue = (long) (((u64) (u16) (s16) wx << 48) | ((u64) (u16) (s16) wy << 32) | ((u64) (u16) w << 16) | (u64) (u16) h);
 			p->PushEvent (Ev);
 			continue;
 		}
@@ -992,6 +1111,8 @@ static void Tick (unsigned self)
 	if (s_nPromote != 0) { unsigned nPid = s_nPromote; s_nPromote = 0; if (Shown (nPid)) Promote (nPid); }
 	FrontNow ();
 	s_bReady = TRUE;
+	if (s_nSide != 0 && (!Shown (s_nSide) || s_nSide == s_nFront)) { s_nSide = 0; ScreenDirty (); }	// (P8: the other half's program gone)
+	boolean bSplit = SplitOn ();
 	CWindow *List[WM_MAX_WINDOWS];
 	unsigned n = g_pElWM->Snapshot (List, WM_MAX_WINDOWS);
 	// Its windows above every other program's, whatever raised those (a click cannot reach a window set aside,
@@ -1001,14 +1122,14 @@ static void Tick (unsigned self)
 	{
 		if (!AppWindow (List[j]) || List[j]->Minimised ()) continue;
 		if (List[j]->OwnerPid () == s_nFront) bFrontSeen = TRUE;
-		else bBuried = TRUE;
+		else if (!bSplit || List[j]->OwnerPid () != s_nSide) bBuried = TRUE;	// (the other half's program may be above: beside it)
 	}
 	if (bFrontSeen && bBuried) { Front (s_nFront); n = g_pElWM->Snapshot (List, WM_MAX_WINDOWS); }
 	for (unsigned j = 0; j < n; j++)
 	{
 		CWindow *p = List[j];
 		if (!AppWindow (p)) continue;
-		boolean bAside = (s_bHome || (s_nFront != 0 && p->OwnerPid () != s_nFront)) && !bFull;
+		boolean bAside = (s_bHome || (s_nFront != 0 && p->OwnerPid () != s_nFront && !(bSplit && p->OwnerPid () == s_nSide))) && !bFull;
 		if (p->Aside () != bAside) g_pElWM->SetAside (p, bAside);
 	}
 	CWindow *pF = pk_front_window ();
@@ -1020,13 +1141,16 @@ static void Tick (unsigned self)
 		if (pT != 0 && pT != pF && pT->OwnerPid () != s_nFront) { g_pElWM->Raise (pF); ScreenDirty (); }
 	}
 	pk_band_update (pF != 0 ? pF->Title () : "");		// (the front program's topmost window: the band's title)
-	Matte (pF != 0 && !bFull && !s_bHome ? pF : 0, ax, ay, aw, ah);
-	Bars (ax, ay, aw, ah);					// (P6: the viewport's indicators)
+	int fx = ax, fy = ay, fw = aw, fh = ah;			// (the front program's part of the work area)
+	AreaOf (s_nFront, &fx, &fy, &fw, &fh);
+	Matte (pF != 0 && !bFull && !s_bHome ? pF : 0, fx, fy, fw, fh);
+	Bars (fx, fy, fw, fh);					// (P6: the viewport's indicators)
+	Divider (bSplit && !bFull, ax, ay, aw, ah);		// (P8)
 
 	// The shell told when the tasks changed: a window opened, closed, retitled, minimised, the front one, home.
 	if (s_nShell != 0 && s_ulShellEv != 0)
 	{
-		unsigned nSig = 2166136261u ^ s_nFront ^ (s_bHome ? 0x80000000u : 0);
+		unsigned nSig = 2166136261u ^ s_nFront ^ (s_bHome ? 0x80000000u : 0) ^ (bSplit ? s_nSide * 31u : 0);
 		for (unsigned j = 0; j < n; j++)
 		{
 			CWindow *p = List[j];
@@ -1106,7 +1230,7 @@ static int ViewportId (void)
 	int id = IdOfWinId (pF->Id ());
 	if (id < 0 || s_St[id].nKind != PK_KIND_FILL) return -1;
 	int ax, ay, aw, ah;
-	Area (&ax, &ay, &aw, &ah);
+	AreaOf (pF->OwnerPid (), &ax, &ay, &aw, &ah);
 	return pF->ClientWidth () > aw || pF->ClientHeight () > ah ? id : -1;
 }
 
@@ -1114,8 +1238,8 @@ int pk_viewport (int id, int *vx, int *vy)
 {
 	if (id < 0 || id >= EL_WINDOWS_MAX || g_pElWin[id] == 0) return 0;
 	int ax, ay, aw, ah;
-	Area (&ax, &ay, &aw, &ah);
 	CWindow *p = g_pElWin[id];
+	AreaOf (p->OwnerPid (), &ax, &ay, &aw, &ah);
 	if (s_St[id].nKind != PK_KIND_FILL || (p->ClientWidth () <= aw && p->ClientHeight () <= ah)) return 0;
 	*vx = s_St[id].nVx; *vy = s_St[id].nVy;
 	return 1;
@@ -1147,7 +1271,7 @@ static void Scroll (int id, int dx, int dy)			// the viewport moved (its window 
 {
 	CWindow *p = g_pElWin[id];
 	int ax, ay, aw, ah;
-	Area (&ax, &ay, &aw, &ah);
+	AreaOf (p->OwnerPid (), &ax, &ay, &aw, &ah);
 	s_St[id].nVx += dx; s_St[id].nVy += dy;
 	int vx, vy;
 	Viewport (id, p, ax, ay, aw, ah, &vx, &vy);
@@ -1214,11 +1338,17 @@ static int Pointer (int x, int y, unsigned buttons, int wheel)
 {
 	unsigned nPrev = s_nPrevButtons;
 	s_nPrevButtons = buttons;
+	if ((buttons & 1) && !(nPrev & 1) && SplitOn ())		// (P8) a press on the other half: its program in front
+	{
+		int sx, sy, sw, sh;
+		AreaOf (s_nSide, &sx, &sy, &sw, &sh);
+		if (x >= sx && x < sx + sw && y >= sy && y < sy + sh) Promote (s_nSide);
+	}
 	int id = ViewportId ();
 	if (id < 0) { s_nDrag = 0; return 0; }
 	CWindow *p = g_pElWin[id];
 	int ax, ay, aw, ah;
-	Area (&ax, &ay, &aw, &ah);
+	AreaOf (p->OwnerPid (), &ax, &ay, &aw, &ah);
 	boolean bV = p->ClientHeight () > ah, bH = p->ClientWidth () > aw;
 	boolean inV = bV && x >= ax + aw - VP_ZONE && x < ax + aw && y >= ay && y < ay + ah;
 	boolean inH = bH && !inV && y >= ay + ah - VP_ZONE && y < ay + ah && x >= ax && x < ax + aw;
@@ -1243,6 +1373,31 @@ static int Pointer (int x, int y, unsigned buttons, int wheel)
 		return 1;
 	}
 	return 0;
+}
+
+// ---- (P8) split view's divider: PocketUI's own window between the halves -- two pixels in the accent colour on the
+// front program's side (which half has the keys), two grey ones on the other.
+static void Divider (boolean bOn, int ax, int ay, int aw, int ah)
+{
+	static int s_nLeft = -1;
+	if (!bOn)
+	{
+		if (s_nDivider >= 0) { el_core_window_remove (s_nDivider); s_nDivider = -1; s_nLeft = -1; ScreenDirty (); }
+		return;
+	}
+	int x = ax + aw * s_nSplit / 100 - SPLIT_GAP / 2;
+	int old = s_nDivider;
+	s_nDivider = BarMake (s_nDivider, x, ay, SPLIT_GAP, ah);
+	if (s_nDivider < 0) return;
+	if (s_nDivider == old && s_nLeft == (s_bFrontLeft ? 1 : 0)) return;
+	s_nLeft = s_bFrontLeft ? 1 : 0;
+	int w = 0, h = 0;
+	unsigned *px = el_core_window_canvas (s_nDivider, &w, &h);
+	for (int j = 0; px != 0 && j < h; j++)
+		for (int i = 0; i < w; i++)
+			px[j * w + i] = ((i < w / 2) == (s_bFrontLeft != FALSE)) ? 0x003D86DA : 0x00A8AEB8;
+	el_core_window_present (s_nDivider);
+	ScreenDirty ();
 }
 
 // ---- the screen, the start ----------------------------------------------------------------------------------

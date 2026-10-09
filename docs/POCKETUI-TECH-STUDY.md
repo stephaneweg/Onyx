@@ -1,5 +1,8 @@
 # PocketUI: the desktop, pocket and console modes — a technical study
 
+> **2026-10-09:** **P7** begun (twelve apps migrated: docs/HANDOFF.md) and **P8** done (the split view --
+> `PK_OP_SPLIT`, Super+Left / Right / Up / [ ] / Tab, the switcher's S --, Setup's interface choice).
+>
 > **Where it stands (2026-10-08):** phases **P1** (the kernel: kapi v97), **P2** (the window API in UIKit) and **P3**
 > (`user/Servers/common/`, PocketUI's skeleton `user/Servers/pocketui/`, its protocol `user/Kits/uikit/port/pocket.h` —
 > beside `elegant.h` rather than in the server's folder —, the pocket UIKit `lib/pocket/uikit.so`,

@@ -95,7 +95,7 @@ struct pk_server
 #define PK_OP_THUMB		0x113		// a = id, w, h (<= 512): its client area scaled into the caller's transfer
 						// buffer (KAPI_WS_VA_XFER, w a row) -> 1, 0 no such window, -1 no memory
 #define PK_OP_FRONT		0x114		// a = id, front: 1 its program in front; 0 with id 0: home; 0: behind -> 1, 0
-#define PK_OP_SPLIT		0x115		// a = left id, right id -- (not yet: -KAPI_ENOSYS; split view, P8)
+#define PK_OP_SPLIT		0x115		// a = left id, right id (0, 0: none) -> 1, 0 not possible (the work area) -- split view (P8), the shell's
 #define PK_OP_DIM		0x116		// a[0] = alpha -- (not yet: -KAPI_ENOSYS; the overlays draw their own dim)
 #define PK_OP_TASKS		0x117		// a[0] = max: out: struct uk_shell_task each, the most recent first -> how many
 #define PK_OP_GRAB		0x118		// a[0] = on: every key and the modifiers' changes to the shell -> 1

@@ -328,13 +328,13 @@ static void draw_switcher (void)
 			g_overHits.add (g_aw - M - D (36), y, D (36), row - D (6), H_CARDX, i);
 		}
 	}
-	static const char *const H[] = { TRN ("Alt+Tab"), TRN ("next"), TRN ("Shift+Tab"), TRN ("back"), TRN ("Del"), TRN ("close the app"), TRN ("Esc"), TRN ("stay") };
+	static const char *const H[] = { TRN ("Alt+Tab"), TRN ("next"), TRN ("Shift+Tab"), TRN ("back"), TRN ("S"), TRN ("beside"), TRN ("Del"), TRN ("close the app"), TRN ("Esc"), TRN ("stay") };
 	static const char *const H2[] = { TRN ("Tab"), TRN ("next"), TRN ("Del"), TRN ("close"), TRN ("Esc"), TRN ("stay") };
 	{
 		UkFaceScope f (g_small);
 		bool wide = LW () >= 560;
-		int w = hints (cv, 0, 0, wide ? H : H2, wide ? 8 : 6, 0, true, true);
-		hints (cv, (g_aw - w) / 2, g_ah - D (34), wide ? H : H2, wide ? 8 : 6, 0xE8ECF2, true);
+		int w = hints (cv, 0, 0, wide ? H : H2, wide ? 10 : 6, 0, true, true);
+		hints (cv, (g_aw - w) / 2, g_ah - D (34), wide ? H : H2, wide ? 10 : 6, 0xE8ECF2, true);
 	}
 	uk_paint_alpha (false);
 	present (W_OVER);
@@ -350,6 +350,15 @@ static void switcher_key (int code, unsigned mods)
 	case KEY_ENTER: case ' ': switch_to (g_sel); return;
 	case 0x1b: over_hide (); return;
 	case KEY_DEL: if (g_sel < g_ntasks) uk_win_close (g_tasks[g_sel].id); return;
+	case 's': case 'S':					// (P8) beside the app in front: split view (PocketUI says when it cannot)
+		{
+			int f = -1;
+			for (int i = 0; i < g_ntasks; i++) if (g_tasks[i].flags & UK_TASK_FRONT) f = i;
+			if (f < 0 && g_ntasks > 0) f = g_sel == 0 && g_ntasks > 1 ? 1 : 0;	// (home: beside the app shown last)
+			if (g_sel >= g_ntasks || f < 0 || f == g_sel || uk_shell_split (g_tasks[f].id, g_tasks[g_sel].id) <= 0) { switch_to (g_sel); return; }
+			over_hide ();
+			return;
+		}
 	case UK_SHELL_KEY_HELD: if (g_held && !(mods & MOD_ALT)) switch_to (g_sel); return;
 	default: return;
 	}

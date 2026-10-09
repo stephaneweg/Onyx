@@ -29,6 +29,8 @@ Shift	Maj
 back	précédente
 Del	Suppr
 close the app	fermer l'app
+S	S
+beside	à côté
 stay	rester
 close	fermer
 Sunday	dimanche

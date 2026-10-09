@@ -209,7 +209,7 @@ int uk_shell_thumb (unsigned id, unsigned *dst, int w, int h);
 // front 1: window id's program to the front (home left); front 0 and id 0: HOME -- every app set aside, the shell's
 // home has the keys; front 0 and an id: its program behind the others -> 1, 0 no such window.
 int uk_shell_front (unsigned id, int front);
-int uk_shell_split (unsigned left, unsigned right);	// two windows side by side (0 0: none) -- (not yet: -KAPI_ENOSYS)
+int uk_shell_split (unsigned left, unsigned right);	// two programs' windows side by side (0 0: none) -> 1, 0 the work area is too small or upright (PocketUI: P8)
 int uk_shell_dim (int alpha);				// a dim behind an overlay -- (not yet: the overlays draw theirs)
 // The running programs, the most recently in front first: each its topmost window -> how many (none in front of
 // them: home).

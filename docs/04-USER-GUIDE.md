@@ -319,7 +319,11 @@ at the bottom; everything can be changed later in the Control Panel.
 
 1. **Welcome.** The **language** (English / Français, at the top right): a click starts the wizard
    again in that language, and every program translated speaks it afterwards (`system.ini`'s
-   `language=`; later: the Control Panel's **Language & Region**).
+   `language=`; later: the Control Panel's **Language & Region**). The **interface**, at the page's foot:
+   **Desktop** (windows side by side, the menu bar and the dock), **Pocket** (one app at a time, full screen: a
+   small screen — proposed by itself when the screen is under 1024 × 600) or **Console** (the games first, a
+   gamepad, a television); another one than the one running is switched to when Setup ends (*Start Onyx*); later:
+   the Control Panel's **Mode**.
 2. **Region & keyboard.** The **country** (type its first letter, or the arrows) proposes the
    keyboard layout and the time zone and gives the Wi-Fi its country code (the radio's channels:
    `country=` of `SD:/etc/wpa_supplicant.conf`). The **layout** is taken at once (type in *Try it*;
@@ -695,7 +699,15 @@ opens, Esc clears. Opening a running app brings it to the front.
 **The task switcher** (Alt+Tab): the open apps as cards with their pictures, the most recent first
 (the one in front, "now", on the left), the next one chosen. Alt+Tab again (or →, Tab) chooses the next one, Shift+Tab
 (or ←) the one before; **releasing Alt switches** — opened from the menu: Enter or a click; **Del** (or the chosen
-card's ×) closes the app; Esc (or a click beside the cards) stays.
+card's ×) closes the app; **S** puts the chosen app **beside** the one in front (the split view, below); Esc (or a
+click beside the cards) stays.
+
+**The split view**: two apps at once, side by side on a landscape screen, one over the other on a portrait one.
+**Super+←** or **Super+→** sends the app in front to that half, the app used before it taking the other (or **S** in
+the switcher: the chosen app beside the one in front). A thin divider separates them, lit on the side of the app
+that has the keyboard and the menus: **Super+Tab**, or a click in the other app, passes them over; **Super+[** and
+**Super+]** give one app 40, 50 or 60 % of the screen; **Super+↑**, or going Home, ends the split (the app in front
+fills the screen again). Each app lays itself out for its half — its side panel a drawer when the half is narrow.
 
 ![](compact-shell/real/pocketshell-switcher-800.png)
 
@@ -721,6 +733,8 @@ its keys):
 | **Alt+Tab** / **Alt+Shift+Tab** | the switcher (release Alt to switch; Del closes the chosen app; Esc stays) |
 | **Super+N** | quick settings and the notifications |
 | **Super+Space** | the launcher, the search emptied |
+| **Super+←** / **Super+→**, **Super+↑** | the split view: the app in front to that half; the split ended |
+| **Super+Tab**, **Super+[** / **Super+]** | in the split view: the other app in front; the divider at 40 / 50 / 60 % |
 | on the launcher: typing, Up / Down, Tab, Enter, Esc | search, choose, the next group, open, clear (Esc on an empty search: back to the app) |
 | on the launcher: Tab / Shift+Tab, arrows, PgUp / PgDn, Home / End | the categories, the apps (and in Recent the documents) |
 | on the launcher: Down from the card's last row | the Running strip: ← → choose, Enter brings the app, Del closes it, Up back |
@@ -2271,7 +2285,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. The pictures are read by **ImageKit**: a photo is shown **the way the camera was held** (its EXIF orientation), and a picture made the wallpaper is brought to the screen's size by a true average. |
 | **paint** (Paint) | Drawing on **layers** with **blend modes** (normal, multiply, screen, add, subtract, lighten, mask, cut out; a mask on the layer below only), assembled by the GPU: brushes (pencil, brush, soft, calligraphy, airbrush, marker, crayon, patterns), eraser, fill (a colour, a pattern or a **gradient along a line**), gradients (GIMP's `.ggr`, an editor), text (TrueType fonts), shapes, selections (rectangle, lasso, magic wand), colours (brightness, contrast, hue, desaturate, colorize, the channels remapped, invert, sepia, posterize, threshold — on the selection, the layer or every layer), filters (blur, sharpen, pixelate), colour picker, zoom to 3200 %. Opens PNG, JPEG, BMP, GIF (WebP, PCX), a picture as a layer; saves OpenRaster (`.ora`); exports PNG, JPEG, BMP or GIF. See *Paint* below. |
 | **calendar** | The **planner**: appointments by the **day, the week or the month** (blocks in their calendar's colour, now as a red line; double-click or drag to make one, drag to move it, its edge to resize it), all-day ones, **repetitions** (days, weekdays, weeks on chosen days, months, years; until a date), **reminders** (notifications), **calendars** (Work, Personal... shown or hidden), **tasks** (due dates, ticked off). Kept as **iCalendar** in `calendar.ics`; **import / export `.ics`** (Google Calendar, Outlook). An argument `YYYYMMDD` opens that day. See *Calendar, the planner* below. |
-| **setup** (Onyx Setup) | The **first-run wizard** (§4, *Setup*): language, country, keyboard, time zone, Wi-Fi, resolution, colours and wallpaper, the computer's name and the remote services; started by `run setup` in `SD:/etc/autostart` on a new card, it removes that line when done. Writes `SD:/etc/system.ini` (`timezone`, `ntp`, `hostname`), `SD:/etc/wpa_supplicant.conf`, `SD:/cmdline.txt` (the size kept), `SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini` and `SD:/etc/autostart`. The Wi-Fi page's **Connect** writes the network into `wpa_supplicant.conf` first, then joins it, waiting up to 60 s (a 2.4 GHz network's association and address can take a while); past that it says *Not connected yet (saved: joined at the next start)* — the network is kept either way. |
+| **setup** (Onyx Setup) | The **first-run wizard** (§4, *Setup*): language, country, keyboard, time zone, Wi-Fi, resolution, colours and wallpaper, the computer's name and the remote services; started by `run setup` in `SD:/etc/autostart` on a new card, it removes that line when done; its welcome page chooses the **interface** too (desktop, pocket, console: switched to when it ends). Writes `SD:/etc/system.ini` (`timezone`, `ntp`, `hostname`; `shell` through `/bin/session`), `SD:/etc/wpa_supplicant.conf`, `SD:/cmdline.txt` (the size kept), `SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini` and `SD:/etc/autostart`. The Wi-Fi page's **Connect** writes the network into `wpa_supplicant.conf` first, then joins it, waiting up to 60 s (a 2.4 GHz network's association and address can take a while); past that it says *Not connected yet (saved: joined at the next start)* — the network is kept either way. |
 | **wifimenu** (Wi-Fi Menu) | The box the menu bar's Wi-Fi icon opens (§5, *The menu bar*): the networks around, strongest first, the current one marked; a click joins one (a password field for a new secured network) without a reboot (`SD:/etc/wpa_supplicant.conf`, then the reconnect); **Wi-Fi Settings...** opens `wpaconf`. Esc closes it. |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |
 | **stickies** (Stickies) | Desktop widget: the notes pinned in Notes, as cards at the top right; a click opens Notes on a note, the header drags it (see §5, *Stickies*). Reads `SD:/Notes`; writes `SD:/apps/stickies.app/config.ini`. |

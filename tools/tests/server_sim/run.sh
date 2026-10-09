@@ -56,6 +56,14 @@ SC="$SC;expect client 800,450;expect pos 0,30;other 784 89 dock 0x35 8 391;expec
 SC="$SC;other 280 296 Calc;$W;expect menu Calc;expect front other;screen $OUT/pocket-menubar.elsm"
 run pocket_tinypad pocket-menubar "$SC" SIM_SCREEN=800x480 SIM_APPNAME=tinypad
 run pocket_tinypad pocket-dock-1080 "$WW;other 839 92 dock 0x35 540 988;expect made 0;expect band 1" SIM_SCREEN=1920x1080 SIM_APPNAME=tinypad
+# (P8) split view: Super+Left puts the front program (the calculator, a card) on the left half and the one before it
+# (the app, a filled window) on the right one -- told its half's size --, Super+Tab gives the keys to the other half,
+# Super+] moves the divider, Super+Up leaves; none in a portrait work area
+SC="$WW;other 280 296 Calc;$W;expect front other;expect split 0;mods 8;key 0x102;mods 0;$WW;expect split 1;expect front other;expect home 0"
+SC="$SC;expect pos 402,24;expect client 398,456;screen $OUT/pocket-split.elsm;mods 8;key 0x09;mods 0;$W;expect front app;expect split 1;expect pos 402,24"
+SC="$SC;mods 8;key ];mods 0;$WW;expect pos 482,24;expect client 318,456;mods 8;key 0x100;mods 0;$WW;expect split 0;expect client 800,456;expect pos 0,24;expect front app"
+run pocket_tinypad pocket-split "$SC" SIM_SCREEN=800x480 SIM_APPNAME=tinypad
+run pocket_tinypad pocket-split-portrait "$WW;other 280 296 Calc;$W;mods 8;key 0x102;mods 0;$WW;expect split 0;expect front other" SIM_SCREEN=480x800 SIM_APPNAME=tinypad
 # console: no menu bar
 run pocket_tinypad console-menubar "$WW;other 800 30 menubar 0x35 0 0;expect made 0;expect bar 0;expect area 0,0,800,480" \
 	SIM_SCREEN=800x480 SIM_MODE=console SIM_APPNAME=tinypad
@@ -97,7 +105,7 @@ done
 # (rdpd tells it alone, a plain window: tools/tests/run_rdpd_test.sh MOCK_POCKET=3, 4)
 $CXX $INC -o "$OUT/elegant_fsapp" "$OUT/obj/elegant"/*.o "$OUT/fakekapi.o" $S/fsapp.cpp "$OUT/libuikit_wire.a" -lpthread
 run elegant_fsapp elegant-fullscreen "$W;$W;expect full 0;key f;$W;$W;expect full 1;expect focus app;expect keys 1;key g;$W;$W;expect full 0" SIM_SCREEN=1024x768 SIM_APPNAME=fsapp
-for p in pocket-terminal pocket-card-over pocket-calculator console-terminal pocket-terminal-640 pocket-front pocket-menubar; do png $p; done
+for p in pocket-terminal pocket-card-over pocket-calculator console-terminal pocket-terminal-640 pocket-front pocket-menubar pocket-split; do png $p; done
 # GPIO Lab filled (the Pi's report on 2026.10.126: "a bit too wide and too tall"): its window exactly the work area, its
 # layout (LabRoot::onResized) inside it -- the pictures pocket-gpiolab-<size>.png (its Code view: -code)
 mkdir -p "$OUT/glz"

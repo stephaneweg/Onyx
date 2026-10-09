@@ -4,6 +4,19 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## PocketUI phase P8 done (2026-10-09): the split view, Setup's interface choice -- tested on the PC (`server_sim`: 363 checks)
+
+- **Split view** (`user/Servers/pocketui/wm.cpp`: `s_nSide`, `s_nSplit`, `SplitOn`, `AreaOf`, `ServerInfoFor`,
+  `SplitKey`, `Divider`; docs/03 §5.10.3's table, docs/04 *The split view*): two programs, each laid out in its half
+  (`uk_win_server` answers the half and its size class); Super+Left / Right starts it, Super+Up or home ends it,
+  Super+[ ] the divider, Super+Tab or a press passes the front; the switcher's **S** (`uk_shell_split`,
+  `PK_OP_SPLIT`, now implemented -- the shell only). Scenes `pocket-split`, `pocket-split-portrait` in
+  `tools/tests/server_sim/run.sh`.
+- **Setup**'s welcome page chooses the interface (Desktop / Pocket / Console; pocket proposed under 1024 x 600);
+  `finish ()` calls `session_switch_start` when it is not the session running. Quick settings were done at P5.
+- To try on the Pi: the split with two real apps (Notes + Ledger), with RDP's Super key; Setup ending into pocket
+  (`run setup` from a terminal on a card that may be switched).
+
 ## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail, the Calendar, IRC, Ledger, the Archiver, the Icon Editor, FM Tracker, Telegram and the PDF Viewer migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, published
 
 P7 is the apps' migration to P6's adaptive widgets (`docs/POCKETUI-TECH-STUDY.md` §6.15, §9: about 32 session-days, one
