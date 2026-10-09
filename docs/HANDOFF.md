@@ -33,6 +33,7 @@ session tests and debugs it on the Pi. Done: D0 to D5.
   beside them; `Asm::patch` traps an out-of-range branch under `NDS_DEBUG`. Reproduced and checked under qemu with
   NitroTracker (`ndstest`'s new `NDS_JITCODE=<file>`: every block's host code, for objdump; a fault in the JIT's
   code is reported with its offset in the buffer).
+- **The local session's tests**: `docs/LOCAL-AGENT-NDS.md` (its brief).
 - **The 3DS**: the study is `docs/3DS-EMULATOR-STUDY.md` (option C recommended: our core under MIT + Dynarmic;
   the plan T0-T8); nothing built, the user's answers awaited (§11).
 

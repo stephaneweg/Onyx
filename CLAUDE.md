@@ -32,6 +32,7 @@ The reference documentation is in **`docs/`** and is written in **English**:
 - `docs/MULTI-WINDOW-STUDY.md` (more windows in Elegant — no fixed count — and several windows per program, e.g. Telegram's conversations: a feasibility study, 2026-10-07; B1-B5 built the same day: kapi v94, UIKit's `Root (NewWindow)`, Telegram one window a conversation)
 - `docs/MULTI-USER-PLAN.md` (several users: accounts, login and sessions, `/home`, rights on FAT enforced by the kernel, remote access per user — a study only: **set aside by the user on 2026-10-05, Onyx stays single-user** — do not start it unasked)
 - `docs/ARTICLE-PROGRAMMEZ.md` (in French: the working memory for the article in the magazine *Programmez!* on developing Onyx with Claude — the user's account, the plan, the draft, the pros/cons; waiting for the magazine's specs; not exported)
+- `docs/LOCAL-AGENT-NDS.md` (briefing for a local agent testing and debugging the Nintendo DS emulator `ndsemu` with the user's games: the PC tools (`ndstest`, qemu for the JIT), the Pi, the test campaign)
 - `docs/LOCAL-AGENT-WEBKIT.md` (briefing for a local agent continuing the WebKit port on the user's PC: setup, branches, plan)
 
 Word/PDF exports (with screenshots) live in `docs/exports/`, generated from the `.md` by
