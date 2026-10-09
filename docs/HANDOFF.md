@@ -112,13 +112,18 @@ session tests and debugs it on the Pi. Done: D0 to D5.
   the plan T0-T8); nothing built. The user's answers (2026-10-09, §11): option C, Old 3DS only to begin
   with; the first games not named yet (A Link Between Worlds asked about).
 
-## An app runner for the PC with the V3D bridged: a study (2026-10-09)
+## The app runner `tools/onyxrun`: Onyx's Pi binaries on a PC (2026-10-09, built)
 
-Asked by the user (a Pi 4 emulator for Windows to speed the tests up, then an app runner bridging the GPU):
-`docs/APP-RUNNER-STUDY.md` -- the Pi binaries unchanged against a host kapi (elfrun + posixsim + desktop_sim +
-server_sim merged, the kits' loader), Elegant run as its own binary, the `kapi_gpu_*` calls done in software
-(G1 the stock shaders, G2 the apps' QPU code in `tools/qpu/qpusim`); the plan R0-R7. Nothing built; the user's
-answers to §7 (WSL2 or native, exactness or speed, the kernel's V3D driver against a fake V3D) are awaited.
+Asked by the user (a Pi 4 emulator for Windows to speed the tests up; then a runner bridging the GPU; his answers:
+a native Windows .exe, speed for the GPU, G3 later). `docs/APP-RUNNER-STUDY.md` (§9 as built), docs/03 §12.1 (how).
+- `make -C tools/onyxrun` (Linux) / `make -C tools/onyxrun win` (`build/onyxrun.exe`, cross-built with mingw-w64);
+  `sh tools/onyxrun/get_unicorn.sh` first (Unicorn 2.1.4, AArch64 only, static). `onyxrun echo hi`, `onyxrun clock`
+  (Elegant + the app in a window), `--headless --shot x.bmp`, `--input "..."`, `--desktop`.
+- The programs write into the folder SD: stands for: run with `--root` on a copy when `sdcard/` must stay as it is
+  (`git clean -n sdcard` shows what a run left).
+- Unicorn's `uc_emu_stop` from another thread corrupts state: never use it; the tick sets `Thread::preempt`, read by
+  the block hook (cpu.cpp). `ONYXRUN_STRESS_TICK=1` must keep malloctest / threadtest / Doom passing.
+- Not there yet: the sound, the apps' QPU programs (`gpu_program` answers -1), gamepads, USB, GPIO.
 
 ## The console: the pad as a mouse in the desktop's apps (2026-10-09, night) -- NOT tried on the Pi
 

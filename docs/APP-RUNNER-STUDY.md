@@ -1,8 +1,9 @@
 # Onyx: an app runner for the PC, with the V3D bridged — a feasibility study
 
-*Status (2026-10-09, evening): **being built** -- `tools/onyxrun`, docs/03 §12.1; what is done is section 9
-(R0, R1, R2: the console programs, the processes, Elegant and the apps' windows, native Windows `.exe`). The
-user's answers are section 7. Asked by the user: since we know what Onyx expects
+*Status (2026-10-09, night): **built and working** -- `tools/onyxrun`, docs/03 §12.1; what is done is section 9
+(R0-R3 and R5's network: the console programs, the processes, Elegant and every app's window, the whole desktop,
+the GPU's stock calls drawn natively, the network; native Windows `.exe`). Not yet: the sound, the apps' QPU
+programs (G4), the gamepads. The user's answers are section 7. Asked by the user: since we know what Onyx expects
 of the hardware, how hard is a Pi 4 emulator for Windows that loads the binaries unchanged, to speed
 the tests up — and then: an **app runner** that also bridges the GPU to simulate the V3D? Facts
 marked **[repo]** were read in this repository, **[memory]** are from knowledge and were not
@@ -174,6 +175,37 @@ Estimates, not measurements.
 1. **A native Windows `.exe` from the start** (Unicorn; not WSL2).
 2. **The GPU: speed (G4)** -- the host's GPU, the stock shaders first, the QPU programs then.
 3. **G3 later**, when the rest works.
+
+## 9. As built (2026-10-09)
+
+What the plan became (the sources' comments say the details; docs/03 §12.1 how to use it):
+
+- **One host process for every Onyx process.** Each guest process's user range is one host reservation (56 GB
+  of address space; a region committed at the same offset: two regions next to each other in the guest are in the
+  host too); a system call's pointers are translated (`Mem::g2h`). A buffer two processes share (a window's
+  pixels, a surface, the full screen) is host memory of its own, mapped into both. This replaced the first
+  design (the guest's addresses as the host's, one host process each), which would have needed mappings at fixed
+  addresses in a Windows reservation.
+- **The CPU: Unicorn Engine 2.1.4**, one engine and one host thread a guest thread, one thread of a process
+  running at a time (its lock), the processes in parallel. **Unicorn's `uc_emu_stop` from another thread is not
+  safe** (a block resumed at its start after some of its instructions ran: `ldr x16, [x16]` done twice -- 2.1.1
+  and 2.1.4; a minimal harness reproduces it): the preemption tick sets a flag that a `UC_HOOK_BLOCK` hook reads
+  at each block's start (no measurable cost). `ONYXRUN_STRESS_TICK` / `ONYXRUN_STRESS_COUNT` test it.
+- **The kapi**: ~230 of the table's slots, in `k_base` (process, time, console, memory), `k_files` (SD: and RAM:
+  on host folders, FAT's case rules), `k_proc`, `k_threads` (threads, sync objects, wait_word, posts, app cores:
+  a core's job is a guest thread, `TPIDRRO_EL0` its core), `k_ipc`, `k_ws` (Elegant's side of `kern/wsrv.h`,
+  the full screen), `k_net` (the PC's sockets), `k_gpu` (the stock GPU calls), `k_misc`.
+- **The GPU (G1, natively)**: `gpu_draw` / `gpu_texture` / `gpu_render` drawn by a rasteriser in native code,
+  the frame in bands on the PC's cores, into a buffer of its own stored at the end (as the V3D's tile buffer:
+  Elegant never composes a half-drawn frame). Teapot: 46 frames a second against 11.7 by its CPU path emulated.
+- **The display**: a Win32 window (scaled; the keys as a Pi's USB keyboard gives them), or headless with
+  `--shot` and a script of input (`--input`, with `waitfile` / `include` for a test that looks before it clicks).
+- **Checked**: on Linux and as `onyxrun.exe` under Wine -- the /bin tests (fptest, libctest, threadtest,
+  coretest, futextest, malloctest), cmd with pipes, nslookup / httpget / curl / httpsget (TLS), every app of the
+  card headless (107: no fault, every app with a window shows it), Doom with its engine on an app core, the
+  whole desktop (`--desktop`: the wallpaper, Setup).
+
+Next: the sound (the PC's output), the apps' QPU programs (G4: gcemu, n64emu, BASIC's 3D), the gamepads, then G3.
 
 ## 8. For the record: the full-system emulator
 
