@@ -39,7 +39,7 @@ of the **Circle** bare-metal framework.
 | | **[Handoff](HANDOFF.md)** | the next session | where the work stands, the conventions, the next tasks |
 
 **Plans and studies** (each with its status at the top): [PI5-PORT](PI5-PORT.md) (the Raspberry Pi 5
-port, a plan), [SUPERTUXKART-PORT](SUPERTUXKART-PORT.md) (paused), [BASIC-VM-THREADS](BASIC-VM-THREADS.md)
+port, a plan), [ONYX-ON-LINUX-STUDY](ONYX-ON-LINUX-STUDY.md) (Onyx on the Linux kernel alone, a second target: a study), [SUPERTUXKART-PORT](SUPERTUXKART-PORT.md) (paused), [BASIC-VM-THREADS](BASIC-VM-THREADS.md)
 (an idea), [GC-WINDOWS-REPORT](GC-WINDOWS-REPORT.md) (the GameCube emulator on Windows),
 [JET-DEAD-CODE](JET-DEAD-CODE.md) (NetSurf's dead code removed). The apps' studies and mock-ups, the
 user's decisions: [gui-redesign](gui-redesign/README.md) (the modernised CDE desktop),
