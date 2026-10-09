@@ -24,8 +24,8 @@ the pad's d-pad / A / B / Home, an emulator then Home (or Select + Start); quick
 Keyboard tile on "with the text fields"; Telegram's sign-in.
 
 **Owed, not doable here**: `screenshots/media-*.png` (no `ffmpeg` program in WSL: `sudo apt install ffmpeg`), the
-Word / PDF exports (`python docs/build_docs.py`: no pandoc), Ledger's Mac build. **A copy of the packages' key lies
-untracked in the repository's root (`onyx_pkg-key.pem.txt`): move it out -- never `git add -A` there.**
+Word / PDF exports (`python docs/build_docs.py`: no pandoc), Ledger's Mac build. (The copy of the packages' key that lay
+untracked in the repository's root was moved out by the user on 2026-10-09; it was never committed.)
 
 ## PocketUI phase P10, the part that needs no new hardware (2026-10-09): the on-screen keyboard; a session-switch fix
 
