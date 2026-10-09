@@ -130,6 +130,7 @@ reboot go through Circle and work on the Pi 5.
    a USB-to-3.3 V UART adapter with a JST-SH 3-pin plug for the **debug UART** (the kernel log goes
    there by default, `SERIAL_DEVICE_DEFAULT` = 10), a spare SD card.
 2. **Decide the RAM policy** (drives Phase 2):
+   - **Chosen (the user, 2026-10-09): (A) first, then (B) — 16 GB is the target.**
    - **(A) Cap Onyx at 8 GB on the Pi 5** — no layout change, the same user VA and kapi table
      address as the Pi 4, so the same app binaries (after the B1 fix) run on both. **Recommended
      first.** A 16 GB board then runs with 8 GB.
@@ -211,8 +212,11 @@ What to change:
    apps' resources (`apps/<x>.app/` minus `main`) — is the same as `sdcard/`. Keep **one source of
    truth**: the Pi 5 `stage` copies them from `sdcard/` (rsync, the built files excluded), then
    overlays `tools/pi5/overlay/` (the Pi 5 `config.txt`, `cmdline.txt` with `gpiofanpin=45`,
-   `etc/pkg/pkg.ini`). `sdcard5/` is then generated, like `sdcard_lite/`, and committed only if the
-   user wants it in git (it is large: decide before the first commit).
+   `etc/pkg/pkg.ini`). `sdcard5/` is then generated and **committed like `sdcard/`** (the user, 2026-10-09), and
+   `sdcard5_lite/` like `sdcard_lite/`. As plain folders, not a zip: git stores a file once by
+   its content, so the resources shared with `sdcard/` cost nothing; only the binaries differ
+   (kernel, `apps/*/main`, `bin/`, `lib/`: ~155 MB on the Pi 4 card). A zip would be a new
+   blob at every change and would swell the history.
 3. **`tools/pkg/packages.ini`**: the packages are the same names on both, except
    - `[base]`: `kernel_2712.img` instead of `kernel8-rpi4.img` (a per-board `files5 =` key, or
      `$KERNEL` expanded by `mkrepo.py`);
@@ -334,6 +338,15 @@ Aim: the desktop on HDMI, USB keyboard and mouse, the SD card, the terminal, no 
    fan and the soft temperature limit act. Today Onyx never calls `Update()`.
 
 ## 7. Phase 4 — sound
+
+> **Mostly done since this plan:** the sound output is chosen independently of the board
+> (`kernel/sys/sound.cpp`: `SD:/etc/sound.ini` `output = auto | jack | usb | hdmi`, kapi
+> `sound_output`, the Sound applet) — HDMI (`COutHDMI`, 48 kHz, IEC958) and USB audio work, with
+> the rate converter; `auto` takes USB, else the jack, else HDMI on a board without one (the Pi
+> 400). **Left for the Pi 5:** `HasJack ()` must say FALSE on the Pi 5 / Pi 500 / CM5 (`#if RASPPI
+> >= 5`), so `auto` goes to HDMI and the jack is never offered; and `GpioPwmClockKeep ()` (Pi 4
+> GPIO) must not run there. The rest of this section is the original analysis, kept for the
+> record.
 
 The Pi 5 has **no 3.5 mm jack**. `COnyxSoundDevice : CPWMSoundBaseDevice` (`kernel/sys/sound.cpp:323`)
 becomes the RP1 PWM driver on GPIO12/13 — silent on a stock board.
