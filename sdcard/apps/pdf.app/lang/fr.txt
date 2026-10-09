@@ -1,0 +1,145 @@
+# The PDF Viewer's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included; the formats' % kept in the same order).
+PDF Viewer	Lecteur PDF
+Page %d of %d	Page %d sur %d
+Pages	Pages
+Contents	Sommaire
+Find	Chercher
+This document has no contents.	Ce document n'a pas de sommaire.
+Match case	Respecter la casse
+Whole words	Mots entiers
+Searching... %d result	Recherche... %d résultat
+Searching... %d results	Recherche... %d résultats
+No results	Aucun résultat
+%d result on %d page	%d résultat sur %d page
+%d results on %d page	%d résultats sur %d page
+%d results on %d pages	%d résultats sur %d pages
+Page %d	Page %d
+Home	Accueil
+Find in the document	Chercher dans le document
+Fit width	Pleine largeur
+Fit page	Page entière
+Jan	janv.
+Feb	févr.
+Mar	mars
+Apr	avr.
+May	mai
+Jun	juin
+Jul	juil.
+Aug	août
+Sep	sept.
+Oct	oct.
+Nov	nov.
+Dec	déc.
+Today, %02d:%02d	Aujourd'hui, %02d:%02d
+Yesterday	Hier
+Manuals	Manuels
+Documents	Documents
+Downloads	Téléchargements
+Second partition	Deuxième partition
+Recent documents	Documents récents
+Open a file...	Ouvrir un fichier...
+The documents you open will be here.	Les documents que vous ouvrez seront ici.
+Folders	Dossiers
+%s  ·  %d document	%s  ·  %d document
+%s  ·  %d documents	%s  ·  %d documents
+Or drop a PDF file here from the File Viewer.	Ou déposez ici un fichier PDF depuis l'Explorateur de fichiers.
+This document is no longer there (moved or deleted). It is taken off the list.	Ce document n'est plus là (déplacé ou supprimé). Il est retiré de la liste.
+Open	Ouvrir
+Open in a New Tab	Ouvrir dans un nouvel onglet
+Remove from the List	Retirer de la liste
+File	Fichier
+Location	Emplacement
+%.1f MB (%lld bytes)	%.1f Mo (%lld octets)
+%.0f KB (%lld bytes)	%.0f Ko (%lld octets)
+Size	Taille
+Title	Titre
+Author	Auteur
+Subject	Sujet
+Keywords	Mots-clés
+Created	Créé
+Modified	Modifié
+Application	Application
+PDF producer	Producteur PDF
+PDF version	Version PDF
+%d  ·  %s%.0f × %.0f mm	%d  ·  %s%.0f × %.0f mm
+Encryption	Chiffrement
+None	Aucun
+Printing	Impression
+Allowed	Autorisé
+Not allowed	Interdit
+Copying text and images	Copie du texte et des images
+Changing the document	Modification du document
+Comments, filling forms	Commentaires, formulaires
+January	janvier
+February	février
+March	mars
+April	avril
+June	juin
+July	juillet
+August	août
+September	septembre
+October	octobre
+November	novembre
+December	décembre
+Document Properties	Propriétés du document
+Description	Description
+Fonts	Polices
+Security	Sécurité
+No fonts (or not a PDF).	Aucune police (ou pas un PDF).
+Embedded subset	Sous-ensemble incorporé
+Embedded	Incorporée
+Not embedded	Non incorporée
+“%s” cannot be opened.\n%s	« %s » ne peut pas être ouvert.\n%s
+It is not a PDF document, or it is damaged.	Ce n'est pas un document PDF, ou il est abîmé.
+“%s” is protected. Its password:	« %s » est protégé. Son mot de passe :
+Password	Mot de passe
+That is not the password.	Ce n'est pas le mot de passe.
+“%s” cannot be read: %s	« %s » ne peut pas être lu : %s
+Too many documents are open: close one first.	Trop de documents sont ouverts : fermez-en un d'abord.
+Fit page  ✓	Page entière  ✓
+Fit width  ✓	Pleine largeur  ✓
+Actual size	Taille réelle
+Zoom in	Zoom avant
+Zoom out	Zoom arrière
+This document does not allow copying its text.	Ce document n'autorise pas la copie de son texte.
+This link (%.300s) cannot be opened on Onyx.	Ce lien (%.300s) ne peut pas être ouvert sur Onyx.
+Find the Selection	Chercher la sélection
+Find “%s%s”	Chercher « %s%s »
+Copy	Copier
+Select All	Tout sélectionner
+Look Up in Jet Browser	Chercher dans Jet Browser
+The copy could not be written.	La copie n'a pas pu être écrite.
+This document does not allow printing.	Ce document n'autorise pas l'impression.
+The document could not be put in the print queue.	Le document n'a pas pu être mis dans la file d'impression.
+Properties...	Propriétés...
+Save a Copy...	Enregistrer une copie...
+Show in the File Viewer	Montrer dans l'Explorateur de fichiers
+Close the Tab	Fermer l'onglet
+Not enough memory to start.	Pas assez de mémoire pour démarrer.
+Open...	Ouvrir...
+Print...	Imprimer...
+Edit	Édition
+Select All (the page)	Tout sélectionner (la page)
+Find...	Rechercher...
+Find Next	Résultat suivant
+Find Previous	Résultat précédent
+View	Affichage
+Side Panel	Panneau latéral
+Fit Page	Page entière
+Fit Width	Pleine largeur
+Actual Size	Taille réelle
+Zoom In	Zoom avant
+Zoom Out	Zoom arrière
+One Page at a Time	Une page à la fois
+Continuous	Continu
+Two Pages	Deux pages
+Rotate	Pivoter
+Full Screen	Plein écran
+Go	Aller
+Next Page	Page suivante
+Previous Page	Page précédente
+First Page	Première page
+Last Page	Dernière page
+Go to Page...	Aller à la page...
+Next Tab	Onglet suivant

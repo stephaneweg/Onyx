@@ -392,7 +392,7 @@ public:
 		// while it scrolls: the page
 		if (g_tick - g_pillT < 150)
 		{
-			char b[64]; snprintf (b, sizeof b, "Page %d of %d", t.cur + 1, D->npages);
+			char b[64]; snprintf (b, sizeof b, TR ("Page %d of %d"), t.cur + 1, D->npages);
 			bubble (canvas, W / 2, H - 46, b);
 		}
 	}
@@ -563,7 +563,7 @@ public:
 	}
 	void segs ()
 	{
-		static const char *L[3] = { "Pages", "Contents", "Find" };
+		static const char *L[3] = { TR ("Pages"), TR ("Contents"), TR ("Find") };
 		int x = 10, w = width - 20, sw = w / 3;
 		uk_rbox (canvas, x, 8, w, 28, 6, C_FIELD, C_FIELD); uk_rline (canvas, x, 8, w, 28, 6, 0x000000, 50);
 		for (int k = 0; k < 3; k++)
@@ -633,7 +633,7 @@ public:
 	void draw_contents (Tab &t, Doc *D)
 	{
 		listTop = 44; listH = height - listTop;
-		if (!D->nol) { text_c (canvas, 0, listTop + 20, width, 22, "This document has no contents.", col_dim_bg ()); contentH = 0; return; }
+		if (!D->nol) { text_c (canvas, 0, listTop + 20, width, 22, TR ("This document has no contents."), col_dim_bg ()); contentH = 0; return; }
 		int cur = ol_current (t, D);
 		int y = listTop + 4 - t.olScroll, total = 8;
 		for (int i = 0; i < D->nol; i++)
@@ -672,15 +672,15 @@ public:
 	void draw_find (Tab &t, Doc *D)
 	{
 		(void) D;
-		check (12, 90, "Match case", (t.opts & 1) != 0, SP_CASE);
-		check (12, 114, "Whole words", (t.opts & 2) != 0, SP_WORDS);
+		check (12, 90, TR ("Match case"), (t.opts & 1) != 0, SP_CASE);
+		check (12, 114, TR ("Whole words"), (t.opts & 2) != 0, SP_WORDS);
 		char sum[96] = "";
 		int pages = 0, last = -1; for (int k = 0; k < t.nhits; k++) if (t.hits[k].page != last) { pages++; last = t.hits[k].page; }
 		if (t.needle[0])
 		{
-			if (!t.done) snprintf (sum, sizeof sum, "Searching... %d result%s", t.nhits, t.nhits == 1 ? "" : "s");
-			else if (!t.nhits) snprintf (sum, sizeof sum, "No results");
-			else snprintf (sum, sizeof sum, "%d result%s on %d page%s", t.nhits, t.nhits == 1 ? "" : "s", pages, pages == 1 ? "" : "s");
+			if (!t.done) snprintf (sum, sizeof sum, t.nhits == 1 ? TR ("Searching... %d result") : TR ("Searching... %d results"), t.nhits);
+			else if (!t.nhits) snprintf (sum, sizeof sum, TR ("No results"));
+			else snprintf (sum, sizeof sum, t.nhits == 1 ? TR ("%d result on %d page") : pages == 1 ? TR ("%d results on %d page") : TR ("%d results on %d pages"), t.nhits, pages);
 		}
 		text (canvas, 12, 138, sum, col_dim_bg (), F_SMALL, 2);
 		listTop = 160; listH = height - listTop;
@@ -693,7 +693,7 @@ public:
 				int n = 0; for (int j = k; j < t.nhits && t.hits[j].page == h.page; j++) n++;
 				if (y + 22 > listTop && y < height)
 				{
-					char a[32], b[16]; snprintf (a, sizeof a, "Page %d", h.page + 1); snprintf (b, sizeof b, "%d", n);
+					char a[32], b[16]; snprintf (a, sizeof a, TR ("Page %d"), h.page + 1); snprintf (b, sizeof b, "%d", n);
 					text_v (canvas, 12, y, 22, a, C_TEXT, F_SMALL, 2); text_r (canvas, width - 16, y, 22, b, col_dim_bg (), F_SMALL);
 				}
 				y += 22; total += 22;
@@ -712,8 +712,8 @@ public:
 		contentH = total + 8;
 		canvas.fillRect (0, 0, width - 1, listTop, col_side ());
 		segs ();
-		check (12, 90, "Match case", (t.opts & 1) != 0, SP_CASE);
-		check (12, 114, "Whole words", (t.opts & 2) != 0, SP_WORDS);
+		check (12, 90, TR ("Match case"), (t.opts & 1) != 0, SP_CASE);
+		check (12, 114, TR ("Whole words"), (t.opts & 2) != 0, SP_WORDS);
 		text (canvas, 12, 138, sum, col_dim_bg (), F_SMALL, 2);
 	}
 	// a hit's line, the word in bold
@@ -793,7 +793,7 @@ public:
 		for (int k = 0; k < g_ntabs; k++)
 		{
 			Tab &t = g_tabs[k];
-			const char *name = t.doc ? t.doc->name : "Home";
+			const char *name = t.doc ? t.doc->name : TR ("Home");
 			int w = tw (name, F_UI, 2) + 64; if (w > each) w = each; if (w < 90) w = 90;
 			bool on = k == g_cur, h = hits.n == hot || hits.n + 1 == hot;
 			unsigned face = on ? C_BG : (h ? uk_tone (C_BG, 124) : uk_tone (C_BG, 118));
@@ -854,7 +854,7 @@ public:
 	{
 		Textbox::onDraw ();
 		unsigned dim = uk_mix (C_FIELD, C_FIELD_TEXT, 110);
-		if (!text[0] && !hasFocus) { canvas.fillRect (2, 2, width - 4, height - 4, C_FIELD); text_v (canvas, 32, 0, height, "Find in the document", dim); icon (canvas, I_SEARCH, 9, (height - 16) / 2, 16, dim); }
+		if (!text[0] && !hasFocus) { canvas.fillRect (2, 2, width - 4, height - 4, C_FIELD); text_v (canvas, 32, 0, height, TR ("Find in the document"), dim); icon (canvas, I_SEARCH, 9, (height - 16) / 2, 16, dim); }
 		Tab &t = tab ();
 		if (text[0] && t.doc && t.needle[0])
 		{
@@ -903,7 +903,7 @@ public:
 		x = btn (x, I_MINUS, TB_ZOUT);
 		// the zoom's drop-down
 		char z[32];
-		if (t.zoomMode == Z_WIDTH) scopy (z, "Fit width", sizeof z); else if (t.zoomMode == Z_PAGE) scopy (z, "Fit page", sizeof z);
+		if (t.zoomMode == Z_WIDTH) scopy (z, TR ("Fit width"), sizeof z); else if (t.zoomMode == Z_PAGE) scopy (z, TR ("Fit page"), sizeof z);
 		else snprintf (z, sizeof z, "%d %%", (int) (t.zoom * 72.0f / 96.0f * 100 + 0.5f));
 		{
 			bool h = hits.n == hot; zoomX = x + 2;
@@ -1021,20 +1021,20 @@ static long days_of (long long ymd)		// YYYYMMDD -> days (a count: only differen
 }
 static void fmt_when (long long w, char *b, int cap)
 {
-	static const char *MO[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+	static const char *MO[12] = { TR ("Jan"), TR ("Feb"), TR ("Mar"), TR ("Apr"), TR ("May"), TR ("Jun"), TR ("Jul"), TR ("Aug"), TR ("Sep"), TR ("Oct"), TR ("Nov"), TR ("Dec") };
 	if (!w) { b[0] = 0; return; }
 	long long nw = now_stamp ();
 	int mi = (int) (w % 100), h = (int) (w / 100 % 100), d = (int) (w / 10000 % 100), mo = (int) (w / 1000000 % 100);
 	long dw = days_of (w / 10000), dn = days_of (nw / 10000);
-	if (dw == dn) snprintf (b, cap, "Today, %02d:%02d", h, mi);
-	else if (dn - dw == 1) snprintf (b, cap, "Yesterday");
+	if (dw == dn) snprintf (b, cap, TR ("Today, %02d:%02d"), h, mi);
+	else if (dn - dw == 1) snprintf (b, cap, TR ("Yesterday"));
 	else snprintf (b, cap, "%d %s", d, MO[(mo + 11) % 12]);
 }
 
 // the folders shown on the home: those that are there, their PDFs counted
 struct Folder { const char *name, *path; int count; bool there; };
-static Folder g_folders[] = { { "Manuals", "SD:/manuals", 0, false }, { "Documents", "SD:/Documents", 0, false },
-			      { "Downloads", "SD:/Downloads", 0, false }, { "Second partition", "SD1:/", 0, false } };
+static Folder g_folders[] = { { TRN ("Manuals"), "SD:/manuals", 0, false }, { TRN ("Documents"), "SD:/Documents", 0, false },
+			      { TRN ("Downloads"), "SD:/Downloads", 0, false }, { TRN ("Second partition"), "SD1:/", 0, false } };
 enum { NFOLDERS = sizeof g_folders / sizeof g_folders[0] };
 static int count_pdfs (const char *dir, int depth)
 {
@@ -1065,18 +1065,18 @@ public:
 		canvas.clear (C_FIELD);
 		hits.clear (); g_nwantHome = 0;
 		int ax = 40, ay = 26;
-		text (canvas, ax, ay, "Recent documents", C_FIELD_TEXT, F_H1, 2);
+		text (canvas, ax, ay, TR ("Recent documents"), C_FIELD_TEXT, F_H1, 2);
 		{	// Open a file...
 			int bw = 160, bx = width - 40 - bw; bool h = hits.n == hot;
 			uk_rbox (canvas, bx, ay, bw, 36, 6, uk_tone (C_ACCENT, h ? 150 : 140), uk_tone (C_ACCENT, h ? 128 : 118));
 			icon (canvas, I_OPEN, bx + 12, ay + 9, 18, 0);
-			text_v (canvas, bx + 40, ay, 36, "Open a file...", 0xFFFFFF, F_UI, 2);
+			text_v (canvas, bx + 40, ay, 36, TR ("Open a file..."), 0xFFFFFF, F_UI, 2);
 			hits.add (bx, ay, bw, 36, HM_OPEN);
 		}
 		int S = 148, G = 30, th = (int) (S * 1.414f);
 		int cols = (width - 2 * ax + G) / (S + G); if (cols < 1) cols = 1;
 		int y = ay + 62, shown = 0;
-		if (!g_nrec) text_v (canvas, ax, y, 30, "The documents you open will be here.", col_dim (), F_MID);
+		if (!g_nrec) text_v (canvas, ax, y, 30, TR ("The documents you open will be here."), col_dim (), F_MID);
 		for (int k = 0; k < g_nrec && shown < cols; k++)
 		{
 			Recent &r = g_rec[k];
@@ -1110,7 +1110,7 @@ public:
 			hits.add (x + S - 28, y + 6, 22, 22, HM_RMORE, k);
 			const char *nm = r.path; for (const char *p = r.path; *p; p++) if (*p == '/' || *p == ':') nm = p + 1;
 			text (canvas, x, y + ph + 10, nm, C_FIELD_TEXT, F_UI, 2, S);
-			char b[64]; snprintf (b, sizeof b, r.npages ? "Page %d of %d" : "Page %d", r.page + 1, r.npages);
+			char b[64]; snprintf (b, sizeof b, r.npages ? TR ("Page %d of %d") : TR ("Page %d"), r.page + 1, r.npages);
 			text (canvas, x, y + ph + 28, b, col_dim (), F_SMALL);
 			fmt_when (r.when, b, sizeof b); text (canvas, x, y + ph + 44, b, uk_mix (C_FIELD, C_FIELD_TEXT, 110), F_SMALL);
 			shown++;
@@ -1119,7 +1119,7 @@ public:
 		int fy = y + th + 92;
 		if (fy + 100 < height)
 		{
-			text (canvas, ax, fy, "Folders", C_FIELD_TEXT, F_H2, 2);
+			text (canvas, ax, fy, TR ("Folders"), C_FIELD_TEXT, F_H2, 2);
 			int fx = ax, cw = 270;
 			for (int i = 0; i < NFOLDERS; i++)
 			{
@@ -1129,14 +1129,14 @@ public:
 				uk_rbox (canvas, fx, fy + 34, cw, 56, 8, h ? uk_mix (C_FIELD, C_ACCENT, 30) : 0xFFFFFF, h ? uk_mix (C_FIELD, C_ACCENT, 30) : 0xFFFFFF);
 				uk_rline (canvas, fx, fy + 34, cw, 56, 8, 0x000000, 30);
 				icon (canvas, I_FOLDER, fx + 14, fy + 48, 28, 0);
-				text (canvas, fx + 56, fy + 45, g_folders[i].name, C_FIELD_TEXT, F_UI, 2);
-				char b[96]; snprintf (b, sizeof b, "%s  \xC2\xB7  %d document%s", g_folders[i].path, g_folders[i].count, g_folders[i].count == 1 ? "" : "s");
+				text (canvas, fx + 56, fy + 45, TR (g_folders[i].name), C_FIELD_TEXT, F_UI, 2);
+				char b[96]; snprintf (b, sizeof b, g_folders[i].count == 1 ? TR ("%s  \xC2\xB7  %d document") : TR ("%s  \xC2\xB7  %d documents"), g_folders[i].path, g_folders[i].count);
 				text (canvas, fx + 56, fy + 65, b, col_dim (), F_SMALL, 0, cw - 66);
 				hits.add (fx, fy + 34, cw, 56, HM_FOLDER, i);
 				fx += cw + 20;
 			}
 		}
-		text_c (canvas, 0, height - 50, width, 20, "Or drop a PDF file here from the File Viewer.", uk_mix (C_FIELD, C_FIELD_TEXT, 110));
+		text_c (canvas, 0, height - 50, width, 20, TR ("Or drop a PDF file here from the File Viewer."), uk_mix (C_FIELD, C_FIELD_TEXT, 110));
 	}
 	bool onMouse (int mx, int my, int bl, int br, int, int) override
 	{
@@ -1154,7 +1154,7 @@ public:
 			else if (ht->kind == HM_RECENT)
 			{
 				Recent &r = g_rec[ht->a];
-				if (!file_exists (r.path)) { uk_messagebox ("PDF Viewer", "This document is no longer there (moved or deleted). It is taken off the list.", MB_OK); recent_remove (ht->a); invalidate (true); return true; }
+				if (!file_exists (r.path)) { uk_messagebox (TR ("PDF Viewer"), TR ("This document is no longer there (moved or deleted). It is taken off the list."), MB_OK); recent_remove (ht->a); invalidate (true); return true; }
 				char p[300]; scopy (p, r.path, sizeof p);
 				open_path (p, r.page, false);
 			}
@@ -1169,7 +1169,7 @@ public:
 	void recent_menu (int k, int mx, int my)
 	{
 		PopupMenu m (left + mx, top + my);
-		m.add ("Open", 1); m.add ("Open in a New Tab", 2); m.separator (); m.add ("Remove from the List", 3);
+		m.add (TR ("Open"), 1); m.add (TR ("Open in a New Tab"), 2); m.separator (); m.add (TR ("Remove from the List"), 3);
 		int r = m.run ();
 		if (r == 1 || r == 2) { char p[300]; scopy (p, g_rec[k].path, sizeof p); open_path (p, g_rec[k].page, r == 2); }
 		else if (r == 3) { recent_remove (k); invalidate (true); }
@@ -1191,7 +1191,7 @@ public:
 		tb = new Textbox (16, titleH () + 44, width - 32, 28, init, dlg_enter);
 		tb->maxLen = 120; tb->password = password; tb->setText (init); tb->caret = (int) strlen (init); tb->hasFocus = true; addChild (tb);
 		Button *b = new Button (width - 196, height - 44, 86, 30, ok, dlg_btn); b->tag = 1; addChild (b);
-		b = new Button (width - 102, height - 44, 86, 30, "Cancel", dlg_btn); b->tag = 0; addChild (b);
+		b = new Button (width - 102, height - 44, 86, 30, TR ("Cancel"), dlg_btn); b->tag = 0; addChild (b);
 	}
 	void error (const char *e) { scopy (m_err, e, sizeof m_err); tb->setText (""); tb->caret = 0; invalidate (true); }
 	void onButton (int tag) override { close (tag); }
@@ -1219,34 +1219,34 @@ public:
 		Doc *D = t.doc; char b[200], c[200];
 		const char *loc = D->path; char where[300]; scopy (where, loc, sizeof where);
 		{ char *e = where; for (char *p = where; *p; p++) if (*p == '/') e = p; if (e != where) *e = 0; }
-		add ("File", D->name); add ("Location", where);
+		add (TR ("File"), D->name); add (TR ("Location"), where);
 		long long sz = file_size (D->path); if (sz < 0) sz = 0;
-		if (sz >= 1048576) snprintf (b, sizeof b, "%.1f MB (%lld bytes)", sz / 1048576.0, sz); else snprintf (b, sizeof b, "%.0f KB (%lld bytes)", sz / 1024.0, sz);
-		add ("Size", b, true);
-		doc_meta (g_mu, D, FZ_META_INFO_TITLE, b, sizeof b); add ("Title", b[0] ? b : "\xE2\x80\x94");
-		doc_meta (g_mu, D, FZ_META_INFO_AUTHOR, b, sizeof b); add ("Author", b[0] ? b : "\xE2\x80\x94");
-		doc_meta (g_mu, D, FZ_META_INFO_SUBJECT, b, sizeof b); add ("Subject", b[0] ? b : "\xE2\x80\x94");
-		doc_meta (g_mu, D, FZ_META_INFO_KEYWORDS, b, sizeof b); add ("Keywords", b[0] ? b : "\xE2\x80\x94", true);
-		doc_meta (g_mu, D, FZ_META_INFO_CREATIONDATE, b, sizeof b); pdf_date (b, c, sizeof c); add ("Created", c[0] ? c : "\xE2\x80\x94");
-		doc_meta (g_mu, D, FZ_META_INFO_MODIFICATIONDATE, b, sizeof b); pdf_date (b, c, sizeof c); add ("Modified", c[0] ? c : "\xE2\x80\x94");
-		doc_meta (g_mu, D, FZ_META_INFO_CREATOR, b, sizeof b); app_name (b); add ("Application", b[0] ? b : "\xE2\x80\x94");
-		doc_meta (g_mu, D, FZ_META_INFO_PRODUCER, b, sizeof b); add ("PDF producer", b[0] ? b : "\xE2\x80\x94", true);
-		doc_meta (g_mu, D, FZ_META_FORMAT, b, sizeof b); add ("PDF version", strncmp (b, "PDF ", 4) ? b : b + 4);
+		if (sz >= 1048576) snprintf (b, sizeof b, TR ("%.1f MB (%lld bytes)"), sz / 1048576.0, sz); else snprintf (b, sizeof b, TR ("%.0f KB (%lld bytes)"), sz / 1024.0, sz);
+		add (TR ("Size"), b, true);
+		doc_meta (g_mu, D, FZ_META_INFO_TITLE, b, sizeof b); add (TR ("Title"), b[0] ? b : "\xE2\x80\x94");
+		doc_meta (g_mu, D, FZ_META_INFO_AUTHOR, b, sizeof b); add (TR ("Author"), b[0] ? b : "\xE2\x80\x94");
+		doc_meta (g_mu, D, FZ_META_INFO_SUBJECT, b, sizeof b); add (TR ("Subject"), b[0] ? b : "\xE2\x80\x94");
+		doc_meta (g_mu, D, FZ_META_INFO_KEYWORDS, b, sizeof b); add (TR ("Keywords"), b[0] ? b : "\xE2\x80\x94", true);
+		doc_meta (g_mu, D, FZ_META_INFO_CREATIONDATE, b, sizeof b); pdf_date (b, c, sizeof c); add (TR ("Created"), c[0] ? c : "\xE2\x80\x94");
+		doc_meta (g_mu, D, FZ_META_INFO_MODIFICATIONDATE, b, sizeof b); pdf_date (b, c, sizeof c); add (TR ("Modified"), c[0] ? c : "\xE2\x80\x94");
+		doc_meta (g_mu, D, FZ_META_INFO_CREATOR, b, sizeof b); app_name (b); add (TR ("Application"), b[0] ? b : "\xE2\x80\x94");
+		doc_meta (g_mu, D, FZ_META_INFO_PRODUCER, b, sizeof b); add (TR ("PDF producer"), b[0] ? b : "\xE2\x80\x94", true);
+		doc_meta (g_mu, D, FZ_META_FORMAT, b, sizeof b); add (TR ("PDF version"), strncmp (b, "PDF ", 4) ? b : b + 4);
 		{
 			float w = D->pw[0] / 72 * 25.4f, h = D->ph[0] / 72 * 25.4f;
 			const char *nm = "";
 			if (fabsf (w - 210) < 2 && fabsf (h - 297) < 2) nm = "A4, "; else if (fabsf (w - 216) < 2 && fabsf (h - 279) < 2) nm = "Letter, ";
 			else if (fabsf (w - 148) < 2 && fabsf (h - 210) < 2) nm = "A5, "; else if (fabsf (w - 297) < 2 && fabsf (h - 420) < 2) nm = "A3, ";
-			snprintf (b, sizeof b, "%d  \xC2\xB7  %s%.0f \xC3\x97 %.0f mm", D->npages, nm, w, h); add ("Pages", b);
+			snprintf (b, sizeof b, TR ("%d  \xC2\xB7  %s%.0f \xC3\x97 %.0f mm"), D->npages, nm, w, h); add (TR ("Pages"), b);
 		}
 		m_nf = doc_fonts (g_mu, D, m_f, MAXF);
 		doc_meta (g_mu, D, FZ_META_ENCRYPTION, b, sizeof b);
-		sec ("Encryption", b[0] && strcmp (b, "None") ? b : "None");
-		sec ("Printing", doc_allows (g_mu, D, FZ_PERMISSION_PRINT) ? "Allowed" : "Not allowed");
-		sec ("Copying text and images", doc_allows (g_mu, D, FZ_PERMISSION_COPY) ? "Allowed" : "Not allowed");
-		sec ("Changing the document", doc_allows (g_mu, D, FZ_PERMISSION_EDIT) ? "Allowed" : "Not allowed");
-		sec ("Comments, filling forms", doc_allows (g_mu, D, FZ_PERMISSION_ANNOTATE) ? "Allowed" : "Not allowed");
-		Button *bt = new Button (width - 106, height - 46, 90, 32, "Close", dlg_btn); bt->tag = 1; addChild (bt);
+		sec (TR ("Encryption"), b[0] && strcmp (b, TR ("None")) ? b : TR ("None"));
+		sec (TR ("Printing"), doc_allows (g_mu, D, FZ_PERMISSION_PRINT) ? TR ("Allowed") : TR ("Not allowed"));
+		sec (TR ("Copying text and images"), doc_allows (g_mu, D, FZ_PERMISSION_COPY) ? TR ("Allowed") : TR ("Not allowed"));
+		sec (TR ("Changing the document"), doc_allows (g_mu, D, FZ_PERMISSION_EDIT) ? TR ("Allowed") : TR ("Not allowed"));
+		sec (TR ("Comments, filling forms"), doc_allows (g_mu, D, FZ_PERMISSION_ANNOTATE) ? TR ("Allowed") : TR ("Not allowed"));
+		Button *bt = new Button (width - 106, height - 46, 90, 32, TR ("Close"), dlg_btn); bt->tag = 1; addChild (bt);
 	}
 	static void app_name (char *b)
 	{	// "Mozilla/5.0 (...) HeadlessChrome/141.0.0.0 Safari/537.36" -> "HeadlessChrome 141"
@@ -1255,7 +1255,7 @@ public:
 	}
 	static void pdf_date (const char *s, char *out, int cap)
 	{	// "D:20260929223430Z" -> "29 September 2026, 22:34"
-		static const char *MO[12] = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" };
+		static const char *MO[12] = { TR ("January"), TR ("February"), TR ("March"), TR ("April"), TR ("May"), TR ("June"), TR ("July"), TR ("August"), TR ("September"), TR ("October"), TR ("November"), TR ("December") };
 		out[0] = 0;
 		if (!strncmp (s, "D:", 2)) s += 2;
 		int n = (int) strlen (s);
@@ -1275,8 +1275,8 @@ public:
 	bool onKey (long k) override { if (k == 27 || k == KEY_ENTER) { close (1); return true; } return false; }
 	void onDraw () override
 	{
-		drawBox ("Document Properties");
-		static const char *T[3] = { "Description", "Fonts", "Security" };
+		drawBox (TR ("Document Properties"));
+		static const char *T[3] = { TR ("Description"), TR ("Fonts"), TR ("Security") };
 		int x = 16, y = titleH () + 14;
 		for (int k = 0; k < 3; k++)
 		{
@@ -1290,17 +1290,17 @@ public:
 		if (m_page == 0)
 			for (int i = 0; i < m_n; i++)
 			{
-				text_v (canvas, 24, y, 22, m_k[i], dim); text_v (canvas, 160, y, 22, m_v[i], C_TEXT, F_UI, !strcmp (m_k[i], "Title") ? 2 : 0, width - 176);
+				text_v (canvas, 24, y, 22, m_k[i], dim); text_v (canvas, 160, y, 22, m_v[i], C_TEXT, F_UI, !strcmp (m_k[i], TR ("Title")) ? 2 : 0, width - 176);
 				y += 22;
 				if (m_sepAfter[i]) { canvas.fillRect (16, y + 4, width - 32, 1, uk_tone (C_BG, 112)); y += 10; }
 			}
 		else if (m_page == 1)
 		{
-			if (!m_nf) text_v (canvas, 24, y, 22, "No fonts (or not a PDF).", dim);
+			if (!m_nf) text_v (canvas, 24, y, 22, TR ("No fonts (or not a PDF)."), dim);
 			for (int i = m_scroll; i < m_nf && y < height - 70; i++)
 			{
 				text_v (canvas, 24, y, 20, m_f[i].name, C_TEXT, F_UI, 2, width - 48);
-				char b[96]; snprintf (b, sizeof b, "%s  \xC2\xB7  %s", m_f[i].type, m_f[i].embedded ? (m_f[i].subset ? "Embedded subset" : "Embedded") : "Not embedded");
+				char b[96]; snprintf (b, sizeof b, "%s  \xC2\xB7  %s", m_f[i].type, m_f[i].embedded ? (m_f[i].subset ? TR ("Embedded subset") : TR ("Embedded")) : TR ("Not embedded"));
 				text_v (canvas, 24, y + 19, 18, b, dim, F_SMALL);
 				y += 42;
 			}
@@ -1313,7 +1313,7 @@ public:
 		if (wheel && m_page == 1) { m_scroll -= wheel; if (m_scroll > m_nf - 1) m_scroll = m_nf - 1; if (m_scroll < 0) m_scroll = 0; invalidate (true); return true; }
 		if (bl && my >= titleH () + 14 && my < titleH () + 42)
 		{
-			static const char *T[3] = { "Description", "Fonts", "Security" };
+			static const char *T[3] = { TR ("Description"), TR ("Fonts"), TR ("Security") };
 			int x = 16; for (int k = 0; k < 3; k++) { int w = tw (T[k]) + 28; if (mx >= x && mx < x + w) { m_page = k; m_scroll = 0; invalidate (true); } x += w + 4; }
 			return true;
 		}
@@ -1337,30 +1337,30 @@ static void open_path (const char *path, int page, bool newTab)
 	const char *nm = path; for (const char *p = path; *p; p++) if (*p == '/' || *p == ':') nm = p + 1;
 	if (!D)
 	{
-		char m[400]; snprintf (m, sizeof m, "\xE2\x80\x9C%s\xE2\x80\x9D cannot be opened.\n%s", nm, err[0] ? err : "It is not a PDF document, or it is damaged.");
-		uk_messagebox ("PDF Viewer", m, MB_OK); return;
+		char m[400]; snprintf (m, sizeof m, TR ("\xE2\x80\x9C%s\xE2\x80\x9D cannot be opened.\n%s"), nm, err[0] ? err : TR ("It is not a PDF document, or it is damaged."));
+		uk_messagebox (TR ("PDF Viewer"), m, MB_OK); return;
 	}
 	if (needPw)
 	{
-		char m[300]; snprintf (m, sizeof m, "\xE2\x80\x9C%s\xE2\x80\x9D is protected. Its password:", nm);
-		AskBox b ("Password", m, "", true, "Open");
+		char m[300]; snprintf (m, sizeof m, TR ("\xE2\x80\x9C%s\xE2\x80\x9D is protected. Its password:"), nm);
+		AskBox b (TR ("Password"), m, "", true, TR ("Open"));
 		bool ok = false;
 		while (b.run ())
 		{
 			if (doc_auth (g_mu, D, b.tb->text)) { ok = true; break; }
-			b.error ("That is not the password.");
+			b.error (TR ("That is not the password."));
 		}
 		if (!ok) { doc_free (g_mu, D); return; }
 	}
 	if (!doc_load (g_mu, D, err, sizeof err))
 	{
-		char m[400]; snprintf (m, sizeof m, "\xE2\x80\x9C%s\xE2\x80\x9D cannot be read: %s", nm, err);
-		uk_messagebox ("PDF Viewer", m, MB_OK); doc_free (g_mu, D); return;
+		char m[400]; snprintf (m, sizeof m, TR ("\xE2\x80\x9C%s\xE2\x80\x9D cannot be read: %s"), nm, err);
+		uk_messagebox (TR ("PDF Viewer"), m, MB_OK); doc_free (g_mu, D); return;
 	}
 	int k;
 	if (!newTab && !tab ().doc) k = g_cur;				// the home: replaced
 	else if (g_ntabs < MAX_TABS) k = g_ntabs++;
-	else { uk_messagebox ("PDF Viewer", "Too many documents are open: close one first.", MB_OK); doc_free (g_mu, D); return; }
+	else { uk_messagebox (TR ("PDF Viewer"), TR ("Too many documents are open: close one first."), MB_OK); doc_free (g_mu, D); return; }
 	tab_init (g_tabs[k], D);
 	if (page < 0) { int r = recent_find (D->path); if (r >= 0) page = g_rec[r].page; }
 	if (page > 0 && page < D->npages) { g_tabs[k].pendingPage = page; g_tabs[k].pendingY = -1; g_tabs[k].cur = page; }
@@ -1439,14 +1439,19 @@ static void zoom_step (int dir)
 	set_zoom (Z_CUSTOM, nz * 96.0f / 72.0f);
 }
 static void rotate () { Tab &t = tab (); if (!t.doc) return; int pg = t.cur; t.rot = (t.rot + 90) % 360; invalidate_layout (); show_page (t, pg); }
-static void toggle_side () { g_sideOn = !g_sideOn; save_settings (); invalidate_layout (); refresh_all (); }
+static SidePanel *g_sp;
+static void toggle_side ()
+{
+	if (g_sp && g_sp->presentation () != UK_SP_FULL) { g_sp->hidden = false; g_sp->open (!g_sp->isOpen ()); return; }	// (pocket: the drawer)
+	g_sideOn = !g_sideOn; save_settings (); invalidate_layout (); refresh_all ();
+}
 static void zoom_menu (int x, int y)
 {
 	Tab &t = tab (); if (!t.doc) return;
 	PopupMenu m (g_tb->left + x, g_tb->top + y);
-	m.add (t.zoomMode == Z_PAGE ? "Fit page  \xE2\x9C\x93" : "Fit page", 1, true, "Ctrl+0");
-	m.add (t.zoomMode == Z_WIDTH ? "Fit width  \xE2\x9C\x93" : "Fit width", 2);
-	m.add ("Actual size", 3);
+	m.add (t.zoomMode == Z_PAGE ? TR ("Fit page  \xE2\x9C\x93") : TR ("Fit page"), 1, true, "Ctrl+0");
+	m.add (t.zoomMode == Z_WIDTH ? TR ("Fit width  \xE2\x9C\x93") : TR ("Fit width"), 2);
+	m.add (TR ("Actual size"), 3);
 	m.separator ();
 	static char lab[8][24];
 	for (int i = 0; i < 8; i++)
@@ -1455,7 +1460,7 @@ static void zoom_menu (int x, int y)
 		snprintf (lab[i], sizeof lab[i], on ? "%d %%  \xE2\x9C\x93" : "%d %%", (int) (ZOOMS[i] * 100)); m.add (lab[i], 10 + i);
 	}
 	m.separator ();
-	m.add ("Zoom in", 4, true, "Ctrl++"); m.add ("Zoom out", 5, true, "Ctrl+-");
+	m.add (TR ("Zoom in"), 4, true, "Ctrl++"); m.add (TR ("Zoom out"), 5, true, "Ctrl+-");
 	int r = m.run ();
 	if (r == 1) set_zoom (Z_PAGE, 0); else if (r == 2) set_zoom (Z_WIDTH, 0); else if (r == 3) set_zoom (Z_CUSTOM, 96.0f / 72.0f);
 	else if (r == 4) zoom_step (1); else if (r == 5) zoom_step (-1);
@@ -1563,7 +1568,7 @@ static void copy_selection ()
 {
 	char *s = selection_text ();
 	if (!s) return;
-	if (!doc_allows (g_mu, tab ().doc, FZ_PERMISSION_COPY)) { uk_messagebox ("PDF Viewer", "This document does not allow copying its text.", MB_OK); fz_free (g_mu, s); return; }
+	if (!doc_allows (g_mu, tab ().doc, FZ_PERMISSION_COPY)) { uk_messagebox (TR ("PDF Viewer"), TR ("This document does not allow copying its text."), MB_OK); fz_free (g_mu, s); return; }
 	clip_set_text (s); fz_free (g_mu, s);
 }
 static void select_all ()
@@ -1575,8 +1580,8 @@ static void url_open (const char *uri)
 {
 	if (!strncmp (uri, "http://", 7) || !strncmp (uri, "https://", 8)) { kapi_exec ("SD:apps/jet.app/main", uri); return; }
 	if (!strncmp (uri, "file:", 5) || strstr (uri, ".pdf")) { const char *p = uri; if (!strncmp (p, "file://", 7)) p += 7; open_path (p); return; }
-	char m[400]; snprintf (m, sizeof m, "This link (%.300s) cannot be opened on Onyx.", uri);
-	uk_messagebox ("PDF Viewer", m, MB_OK);
+	char m[400]; snprintf (m, sizeof m, TR ("This link (%.300s) cannot be opened on Onyx."), uri);
+	uk_messagebox (TR ("PDF Viewer"), m, MB_OK);
 }
 static void look_up (const char *s)
 {
@@ -1594,12 +1599,12 @@ static void context_menu (int mx, int my)
 {
 	Tab &t = tab (); if (!t.doc) return;
 	char *s = selection_text ();
-	char lab[80] = "Find the Selection";
-	if (s) { char w[40]; int n = 0; for (const char *p = s; *p && n < 24; p++) w[n++] = (*p == '\n' || *p == '\r') ? ' ' : *p; w[n] = 0; snprintf (lab, sizeof lab, "Find \xE2\x80\x9C%s%s\xE2\x80\x9D", w, strlen (s) > 24 ? "\xE2\x80\xA6" : ""); }
+	char lab[80]; scopy (lab, TR ("Find the Selection"), sizeof lab);
+	if (s) { char w[40]; int n = 0; for (const char *p = s; *p && n < 24; p++) w[n++] = (*p == '\n' || *p == '\r') ? ' ' : *p; w[n] = 0; snprintf (lab, sizeof lab, TR ("Find \xE2\x80\x9C%s%s\xE2\x80\x9D"), w, strlen (s) > 24 ? "\xE2\x80\xA6" : ""); }
 	PopupMenu m (g_view->left + mx, g_view->top + my);
-	m.add ("Copy", 1, s != 0, "Ctrl+C"); m.add ("Select All", 2, true, "Ctrl+A");
+	m.add (TR ("Copy"), 1, s != 0, "Ctrl+C"); m.add (TR ("Select All"), 2, true, "Ctrl+A");
 	m.separator ();
-	m.add (lab, 3, s != 0, "Ctrl+F"); m.add ("Look Up in Jet Browser", 4, s != 0);
+	m.add (lab, 3, s != 0, "Ctrl+F"); m.add (TR ("Look Up in Jet Browser"), 4, s != 0);
 	int r = m.run ();
 	if (r == 1) copy_selection ();
 	else if (r == 2) select_all ();
@@ -1623,7 +1628,7 @@ static void save_copy ()
 	bool ok = a && b;
 	if (ok) { static char buf[32768]; int n; while ((n = kapi_read (a, buf, sizeof buf)) > 0) if (kapi_stream_write (b, buf, n) != n) { ok = false; break; } }
 	if (a) kapi_close (a); if (b) kapi_stream_close (b);
-	if (!ok) uk_messagebox ("PDF Viewer", "The copy could not be written.", MB_OK);
+	if (!ok) uk_messagebox (TR ("PDF Viewer"), TR ("The copy could not be written."), MB_OK);
 }
 // File > Print: the Print dialog (the library's: printerkit/printerkit.h), then the pages drawn by MuPDF at the
 // printer's 300 dots an inch, each a picture of the job's page (the document's own page size: fitted on the
@@ -1632,7 +1637,7 @@ static void print_doc ()
 {
 	Tab &t = tab (); if (!t.doc) return;
 	Doc *D = t.doc;
-	if (!doc_allows (g_mu, D, FZ_PERMISSION_PRINT)) { uk_messagebox ("PDF Viewer", "This document does not allow printing.", MB_OK); return; }
+	if (!doc_allows (g_mu, D, FZ_PERMISSION_PRINT)) { uk_messagebox (TR ("PDF Viewer"), TR ("This document does not allow printing."), MB_OK); return; }
 	PrintSetup ps; print_setup_default (&ps);
 	PrintDialogInfo di = { sizeof di, D->name, D->npages, t.cur + 1, PRINT_DLG_OWN_PAPER, D->pw[t.cur], D->ph[t.cur] };
 	if (!print_dialog (&ps, &di)) return;
@@ -1642,7 +1647,7 @@ static void print_doc ()
 		bool ok = a && b;
 		if (ok) { static char buf[32768]; int n; while ((n = kapi_read (a, buf, sizeof buf)) > 0) if (kapi_stream_write (b, buf, n) != n) { ok = false; break; } }
 		if (a) kapi_close (a); if (b) kapi_stream_close (b);
-		if (!ok) uk_messagebox ("PDF Viewer", "The copy could not be written.", MB_OK);
+		if (!ok) uk_messagebox (TR ("PDF Viewer"), TR ("The copy could not be written."), MB_OK);
 		return;
 	}
 	PrintJob *j = print_begin (&ps, D->name);
@@ -1657,7 +1662,7 @@ static void print_doc ()
 		print_image (j, px, w, h, 0, 0, D->pw[pg], D->ph[pg], 0);
 		free (px);
 	}
-	if (!j || print_end (j) < 0) uk_messagebox ("PDF Viewer", "The document could not be put in the print queue.", MB_OK);
+	if (!j || print_end (j) < 0) uk_messagebox (TR ("PDF Viewer"), TR ("The document could not be put in the print queue."), MB_OK);
 }
 static void show_in_files ()
 {
@@ -1672,11 +1677,11 @@ static void more_menu (int x, int y)
 {
 	Tab &t = tab ();
 	PopupMenu m (g_tb->left + x, g_tb->top + y);
-	m.add ("Properties...", 1, t.doc != 0, "Ctrl+D");
-	m.add ("Save a Copy...", 2, t.doc != 0);
-	m.add ("Show in the File Viewer", 3, t.doc != 0);
+	m.add (TR ("Properties..."), 1, t.doc != 0, "Ctrl+D");
+	m.add (TR ("Save a Copy..."), 2, t.doc != 0);
+	m.add (TR ("Show in the File Viewer"), 3, t.doc != 0);
 	m.separator ();
-	m.add ("Close the Tab", 4, true, "Ctrl+W");
+	m.add (TR ("Close the Tab"), 4, true, "Ctrl+W");
 	int r = m.run ();
 	if (r == 1) properties (); else if (r == 2) save_copy (); else if (r == 3) show_in_files (); else if (r == 4) close_tab (g_cur);
 }
@@ -1767,6 +1772,9 @@ static void save_settings ()
 }
 
 // ---- the window --------------------------------------------------------------------------------------------------------------------
+// (P7) In pocket and console the side panel (the pages, the contents, the search) is the content of a navigation
+// SidePanel (uikit/sidepanel.h): beside the pages on a wide screen when "Side Panel" is on, a DRAWER over them on a
+// small one (its tab at the left edge; F9 opens and closes it). 0 on the desktop: the panel itself, as always.
 static void layout_parts ()
 {
 	if (!g_root) return;
@@ -1774,11 +1782,23 @@ static void layout_parts ()
 	Tab &t = tab ();
 	bool doc = t.doc != 0;
 	g_tabbar->left = 0; g_tabbar->top = 0; g_tabbar->resizeTo (W, TABS_H);
-	g_tb->hidden = !doc; g_side->hidden = !doc || !g_sideOn; g_view->hidden = !doc; g_home->hidden = doc;
+	g_tb->hidden = !doc; g_view->hidden = !doc; g_home->hidden = doc;
 	int y = TABS_H;
 	if (doc) { g_tb->left = 0; g_tb->top = y; g_tb->resizeTo (W, TB_H); y += TB_H; }
 	int sw = doc && g_sideOn ? SIDE_W : 0;
-	if (sw) { g_side->left = 0; g_side->top = y; g_side->resizeTo (SIDE_W, H - y); g_side->findBox->resizeTo (SIDE_W - 20, 28); }
+	if (g_sp)
+	{
+		g_sp->place (0, y, SIDE_W, H - y);
+		bool drawer = g_sp->presentation () != UK_SP_FULL;
+		g_sp->hidden = !doc || (!drawer && !g_sideOn);	// (a drawer: its tab always there with a document)
+		sw = g_sp->hidden ? 0 : g_sp->reservedWidth ();
+		g_side->findBox->resizeTo (SIDE_W - 20, 28);
+	}
+	else
+	{
+		g_side->hidden = !doc || !g_sideOn;
+		if (sw) { g_side->left = 0; g_side->top = y; g_side->resizeTo (SIDE_W, H - y); g_side->findBox->resizeTo (SIDE_W - 20, 28); }
+	}
 	g_view->left = sw; g_view->top = y; g_view->resizeTo (W - sw, H - y);
 	g_home->left = 0; g_home->top = TABS_H; g_home->resizeTo (W, H - TABS_H);
 }
@@ -1848,8 +1868,9 @@ class PdfRoot : public Root
 {
 public:
 	int lastW, lastH;
-	PdfRoot (int w, int h) : Root (w, h, "PDF Viewer"), lastW (0), lastH (0) {}
+	PdfRoot (int w, int h) : Root (w, h, TR ("PDF Viewer")), lastW (0), lastH (0) {}
 	void onResized () override { invalidate_layout (); refresh_all (); }
+	void onSizeClass (int) override { invalidate_layout (); refresh_all (); }
 	void onTick () override
 	{
 		g_tick = kapi_get_ticks ();
@@ -1931,8 +1952,9 @@ public:
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);
+	uk_lang_init ();				// (the words in the system's language)
 	faces_open ();
-	if (!engine_init ()) { uk_messagebox ("PDF Viewer", "Not enough memory to start.", MB_OK); return 1; }
+	if (!engine_init ()) { uk_messagebox (TR ("PDF Viewer"), TR ("Not enough memory to start."), MB_OK); return 1; }
 	load_settings ();
 	recent_load ();
 	folders_count ();
@@ -1945,52 +1967,61 @@ int main (void)
 	root.setBg (C_BG);
 	g_tabbar = new TabBar (0, 0, 1000, TABS_H); root.addChild (g_tabbar);
 	g_tb = new ToolBar (0, TABS_H, 1000, TB_H); root.addChild (g_tb);
-	g_side = new PdfSidePanel (0, TABS_H + TB_H, SIDE_W, 640 - TABS_H - TB_H); root.addChild (g_side);
+	bool pocket = uk_size_class () != UK_SC_REGULAR;
+	g_side = new PdfSidePanel (0, pocket ? 0 : TABS_H + TB_H, SIDE_W, 640 - TABS_H - TB_H);
+	if (!pocket) root.addChild (g_side);
 	g_view = new View (SIDE_W, TABS_H + TB_H, 1000 - SIDE_W, 640 - TABS_H - TB_H); root.addChild (g_view);
 	g_home = new Home (0, TABS_H, 1000, 640 - TABS_H); root.addChild (g_home);
+	if (pocket)					// (over the pages: a drawer and its tab)
+	{
+		g_sp = new SidePanel (0, TABS_H + TB_H, SIDE_W, 640 - TABS_H - TB_H, UK_SP_LEFT, UK_SP_NAVIGATION);
+		g_sp->setContent (g_side);
+		g_sp->onPresentation = [] (SidePanel &, int) { invalidate_layout (); refresh_all (); };
+		root.addChild (g_sp);
+	}
 	g_worker.start (on_done, on_hits);
 
 	static Menu menu;
-	menu.menu ("File");
-	menu.item ("Open...", "^O", UK_CTRL ('O'), m_open);
-	menu.item ("Home", "", 0, m_home);
-	menu.item ("Close the Tab", "^W", UK_CTRL ('W'), m_close);
+	menu.menu (TR ("File"));
+	menu.item (TR ("Open..."), "^O", UK_CTRL ('O'), m_open);
+	menu.item (TR ("Home"), "", 0, m_home);
+	menu.item (TR ("Close the Tab"), "^W", UK_CTRL ('W'), m_close);
 	menu.separator ();
-	menu.item ("Save a Copy...", "", 0, m_savecopy);
-	menu.item ("Print...", "^P", UK_CTRL ('P'), print_doc);
-	menu.item ("Show in the File Viewer", "", 0, show_in_files);
+	menu.item (TR ("Save a Copy..."), "", 0, m_savecopy);
+	menu.item (TR ("Print..."), "^P", UK_CTRL ('P'), print_doc);
+	menu.item (TR ("Show in the File Viewer"), "", 0, show_in_files);
 	menu.separator ();
-	menu.item ("Properties...", "^D", UK_CTRL ('D'), m_props);
-	menu.menu ("Edit");
-	menu.item ("Copy", "^C", UK_CTRL ('C'), m_copy);
-	menu.item ("Select All (the page)", "^A", UK_CTRL ('A'), m_selall);
+	menu.item (TR ("Properties..."), "^D", UK_CTRL ('D'), m_props);
+	menu.menu (TR ("Edit"));
+	menu.item (TR ("Copy"), "^C", UK_CTRL ('C'), m_copy);
+	menu.item (TR ("Select All (the page)"), "^A", UK_CTRL ('A'), m_selall);
 	menu.separator ();
-	menu.item ("Find...", "^F", UK_CTRL ('F'), m_find);
-	menu.item ("Find Next", "F3", 0, m_next);
-	menu.item ("Find Previous", "Shift+F3", 0, m_prev);
-	menu.menu ("View");
-	menu.item ("Side Panel", "F9", 0, m_side);
+	menu.item (TR ("Find..."), "^F", UK_CTRL ('F'), m_find);
+	menu.item (TR ("Find Next"), "F3", 0, m_next);
+	menu.item (TR ("Find Previous"), "Shift+F3", 0, m_prev);
+	menu.menu (TR ("View"));
+	menu.item (TR ("Side Panel"), "F9", 0, m_side);
 	menu.separator ();
-	menu.item ("Fit Page", "^0", 0, m_fitpage);
-	menu.item ("Fit Width", "", 0, m_fitwidth);
-	menu.item ("Actual Size", "", 0, m_actual);
-	menu.item ("Zoom In", "^+", 0, m_zin);
-	menu.item ("Zoom Out", "^-", 0, m_zout);
+	menu.item (TR ("Fit Page"), "^0", 0, m_fitpage);
+	menu.item (TR ("Fit Width"), "", 0, m_fitwidth);
+	menu.item (TR ("Actual Size"), "", 0, m_actual);
+	menu.item (TR ("Zoom In"), "^+", 0, m_zin);
+	menu.item (TR ("Zoom Out"), "^-", 0, m_zout);
 	menu.separator ();
-	menu.item ("One Page at a Time", "", 0, m_single);
-	menu.item ("Continuous", "", 0, m_scroll);
-	menu.item ("Two Pages", "", 0, m_two);
+	menu.item (TR ("One Page at a Time"), "", 0, m_single);
+	menu.item (TR ("Continuous"), "", 0, m_scroll);
+	menu.item (TR ("Two Pages"), "", 0, m_two);
 	menu.separator ();
-	menu.item ("Rotate", "^R", UK_CTRL ('R'), m_rotate);
-	menu.item ("Full Screen", "F11", 0, m_full);
-	menu.menu ("Go");
-	menu.item ("Next Page", "PgDn", 0, m_pgnext);
-	menu.item ("Previous Page", "PgUp", 0, m_pgprev);
-	menu.item ("First Page", "Home", 0, m_first);
-	menu.item ("Last Page", "End", 0, m_last);
-	menu.item ("Go to Page...", "^G", UK_CTRL ('G'), m_goto);
+	menu.item (TR ("Rotate"), "^R", UK_CTRL ('R'), m_rotate);
+	menu.item (TR ("Full Screen"), "F11", 0, m_full);
+	menu.menu (TR ("Go"));
+	menu.item (TR ("Next Page"), "PgDn", 0, m_pgnext);
+	menu.item (TR ("Previous Page"), "PgUp", 0, m_pgprev);
+	menu.item (TR ("First Page"), "Home", 0, m_first);
+	menu.item (TR ("Last Page"), "End", 0, m_last);
+	menu.item (TR ("Go to Page..."), "^G", UK_CTRL ('G'), m_goto);
 	menu.separator ();
-	menu.item ("Next Tab", "^Tab", 0, m_nexttab);
+	menu.item (TR ("Next Tab"), "^Tab", 0, m_nexttab);
 	menu.publish ();
 
 	refresh_all ();

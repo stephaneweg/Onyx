@@ -2182,6 +2182,10 @@ app list (*Productivity*), double click a `.pdf` in the File Viewer, or drop PDF
 **Each document opens in its own tab** (the `+` tab: the home; a middle click or × closes a tab;
 Ctrl+Tab goes to the next one).
 
+The PDF Viewer speaks the **system's language** (English or French: Control Panel ▸ Language & Region). **In the
+pocket and console modes** (the same program) the side panel is a **drawer** on a small screen: the tab at the left
+edge, F9 or the toolbar's first button open it over the pages; on a wide screen it sits beside them as on the desktop.
+
 **The window**: the **tabs** on top, the **toolbar** — the side panel (F9), Open, the previous / next
 page, **the page's number** (type one and Enter to go there) and the count, the **zoom** (− / the
 drop-down / +), the **layout** (one page at a time, continuous — the default —, two pages side by

@@ -11,7 +11,7 @@
 #   - the pilots: the Task Manager (the grid's roles: cards in portrait), the Terminal (its tabs, no source change);
 #   - the viewport: Setup (800 x 600, fixed) at 800 x 480 scrolled by the wheel over its indicator;
 #   - the File Viewer: resizable, its places a SidePanel in pocket (landscape, portrait's drawer) and console.
-# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar irc ledger archiver iconedit fmtracker telegram]
+# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar irc ledger archiver iconedit fmtracker telegram pdf]
 # SHOTS_PNG=<folder>: the pictures copied there too (docs/compact-shell/real/).
 set -e
 cd "$(dirname "$0")/../../.."
@@ -378,6 +378,31 @@ if want telegram; then
 		tgrun telegram-portrait 480x800 pocket 0
 		tgrun telegram-console 640x480 console 0
 	else echo "adaptive: Telegram skipped (no $MS/libmbtg.a: sh tools/tests/desktop_sim/shots.sh telegram)"; fi
+fi
+
+# ---- P7: the PDF Viewer (pocket, console: its side panel a SidePanel's content -- a drawer on a small screen) -------------
+# MuPDF for the PC from shots.sh's folder (MEDIA_SHOTS: mupdf/libmupdf.a); skipped without it. Its document: a manual.
+if want pdf; then
+	MS=${MEDIA_SHOTS:-/tmp/onyx_shots}
+	if [ -f "$MS/mupdf/libmupdf.a" ]; then
+		echo "adaptive: the PDF Viewer"
+		$CXX $INC -Iuser/Kits/fontkit -I$FT/include -Ithird_party/mupdf-1.28.5/include -o "$OUT/pocket_pdf" "$OUT/obj/pocket"/*.o "$OUT/fakekapi.o" user/Apps/pdf/main.cpp \
+			"$OUT/libuikit_pocket.a" "$MS/mupdf/libmupdf.a" -lpthread -lm -Wl,--unresolved-symbols=ignore-all
+		PDFDOC=$(find sdcard/manuals -name "*.pdf" | sort | head -1); PDFARG="SD:/${PDFDOC#sdcard/}"
+		PW="$WWW;$WWW;$WWW;$WWW"
+		for t in 800x480:800 1280x720:720 480x800:portrait 640x480:console; do
+			sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
+			WR=$(langdir "")
+			run pocket_pdf pdf-$tg "$PW;expect kind fill;expect frame 0;$W;dump $OUT/pdf-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=pdf SIM_APP=pdf SIM_WRITES=$WR SIM_SLEEP=1 SIM_ARGS=$PDFARG
+			out pdf-$tg
+		done
+		WR=$(langdir "")
+		run pocket_pdf pdf-800-drawer "$PW;down 6 280;up 6 280;$WWW;dump $OUT/pdf-800-drawer.elsm" SIM_SCREEN=800x480 SIM_APPNAME=pdf SIM_APP=pdf SIM_WRITES=$WR SIM_SLEEP=1 SIM_ARGS=$PDFARG
+		out pdf-800-drawer
+		WR=$(langdir fr)
+		run pocket_pdf pdf-720-fr "$PW;dump $OUT/pdf-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=pdf SIM_APP=pdf SIM_WRITES=$WR SIM_SLEEP=1 SIM_ARGS=$PDFARG
+		out pdf-720-fr
+	else echo "adaptive: the PDF Viewer skipped (no $MS/mupdf/libmupdf.a: sh tools/tests/desktop_sim/shots.sh pdf)"; fi
 fi
 
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1
