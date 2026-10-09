@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include "appkit/appkit.h"
 #include "gamepad.h"
+#include "gamekit/gamekit.h"
 #include "uikit/bmp.h"
 #include "uikit/uikit.h"
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
@@ -69,164 +70,74 @@ enum { CORE_NONE, CORE_GB, CORE_GBA, CORE_SNES, CORE_NES, CORE_N64, CORE_GC };
 struct Sys { char name[40]; char ext[64]; char extText[64]; char emu[24]; int order, core; };
 static Sys g_sys[MAXSYS]; static int NSYS = 0;
 #define SYS_NAME(k)	g_sys[k].name
-static void load_systems (void)
+static int slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
+static void scpy (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
+static void load_systems (void)		// (GameKit: the consoles of the installed emulators)
 {
-	NSYS = 0;
-	void *d = kapi_opendir ("SD:/apps");
-	if (!d) return;
-	struct kapi_dirent e;
-	while (kapi_readdir (d, &e) && NSYS < MAXSYS)
+	static struct game_system ks[MAXSYS];
+	NSYS = games_systems (ks, MAXSYS);
+	for (int i = 0; i < NSYS; i++)
 	{
-		int nl = 0; while (e.name[nl]) nl++;
-		if (!e.is_dir || nl < 5 || e.name[nl - 4] != '.') continue;
-		char emu[24]; int k = 0; for (; k < nl - 4 && k < 23; k++) emu[k] = e.name[k]; emu[k] = 0;
-		char p[96]; int n = 0; lx_cat (p, sizeof p, &n, "SD:/apps/"); lx_cat (p, sizeof p, &n, e.name); lx_cat (p, sizeof p, &n, "/app.txt");
-		if (app_ini_load_path (p) < 0) continue;
-		const char *games = app_ini_get (0, "games", 0), *ord = app_ini_get (0, "order", "100");
-		// (an emulator of before the `games` key: its systems as they were)
-		static const char *const older[][3] = { { "gcemu", "GameCube: iso gcm", "10" }, { "n64emu", "Nintendo 64: z64 n64 v64", "20" },
-			{ "snesemu", "Super Nintendo: sfc smc", "30" }, { "gbaemu", "Game Boy Advance: gba", "40" },
-			{ "gbemu", "Game Boy Color: gbc; Game Boy: gb", "50" }, { "nesemu", "NES: nes", "60" } };
-		for (unsigned o = 0; !games && o < sizeof older / sizeof older[0]; o++) if (!strcmp (emu, older[o][0])) { games = older[o][1]; ord = older[o][2]; }
-		if (!games) continue;
-		int order = atoi (ord), idx = 0;
-		int core = !strcmp (emu, "gbemu") ? CORE_GB : !strcmp (emu, "gbaemu") ? CORE_GBA : !strcmp (emu, "snesemu") ? CORE_SNES :
-			   !strcmp (emu, "nesemu") ? CORE_NES : !strcmp (emu, "n64emu") ? CORE_N64 : !strcmp (emu, "gcemu") ? CORE_GC : CORE_NONE;
-		for (const char *g = games; *g && NSYS < MAXSYS; idx++)	// "Name: ext ext; Name: ext"
-		{
-			while (*g == ' ' || *g == ';') g++;
-			if (!*g) break;
-			Sys &y = g_sys[NSYS];
-			int m = 0; while (*g && *g != ':' && *g != ';' && m < 39) y.name[m++] = *g++;
-			while (m > 0 && y.name[m - 1] == ' ') m--;
-			y.name[m] = 0;
-			if (*g != ':') { while (*g && *g != ';') g++; continue; }
-			g++;
-			int x = 0, t = 0; y.ext[x++] = ' ';
-			while (*g && *g != ';')
-			{
-				while (*g == ' ' || *g == ',' || *g == '.') g++;
-				if (!*g || *g == ';') break;
-				if (t && t < 60) { y.extText[t++] = ' '; y.extText[t++] = '/'; y.extText[t++] = ' '; }
-				if (t < 62) y.extText[t++] = '.';
-				while (*g && *g != ' ' && *g != ',' && *g != ';') { char c = lx_low (*g++); if (x < 62) y.ext[x++] = c; if (t < 62) y.extText[t++] = c; }
-				if (x < 63) y.ext[x++] = ' ';
-			}
-			y.ext[x] = 0; y.extText[t] = 0;
-			lx_cat (y.emu, sizeof y.emu, (m = 0, &m), emu);
-			y.order = order * 16 + idx; y.core = core;
-			if (y.name[0] && x > 1) NSYS++;
-		}
+		Sys &y = g_sys[i];
+		scpy (y.name, ks[i].name, sizeof y.name); scpy (y.ext, ks[i].ext, sizeof y.ext); scpy (y.extText, ks[i].ext_text, sizeof y.extText);
+		scpy (y.emu, ks[i].emu, sizeof y.emu); y.order = ks[i].order;
+		const char *emu = y.emu;
+		y.core = !strcmp (emu, "gbemu") ? CORE_GB : !strcmp (emu, "gbaemu") ? CORE_GBA : !strcmp (emu, "snesemu") ? CORE_SNES :
+			 !strcmp (emu, "nesemu") ? CORE_NES : !strcmp (emu, "n64emu") ? CORE_N64 : !strcmp (emu, "gcemu") ? CORE_GC : CORE_NONE;
 	}
-	kapi_closedir (d);
-	for (int i = 1; i < NSYS; i++) for (int j = i; j > 0 && g_sys[j - 1].order > g_sys[j].order; j--) { Sys t = g_sys[j]; g_sys[j] = g_sys[j - 1]; g_sys[j - 1] = t; }
-}
-// the system of a file, by its extension -> its index, -1: none
-static int sys_of (const char *file)
-{
-	int n = 0; while (file[n]) n++;
-	int d = n; while (d > 0 && file[d - 1] != '.' && file[d - 1] != '/') d--;
-	if (d <= 0 || file[d - 1] != '.' || n - d > 8) return -1;
-	char x[12]; int k = 0; x[k++] = ' '; for (int i = d; i < n; i++) x[k++] = lx_low (file[i]); x[k++] = ' '; x[k] = 0;
-	for (int i = 0; i < NSYS; i++) if (strstr (g_sys[i].ext, x)) return i;
-	return -1;
 }
 struct Game { char path[200]; char name[64]; char key[64]; int sys; unsigned *thumb; bool tried; };
 static Game g_games[MAXG]; static int g_ng = 0;
 enum { MAXF = 8 };
-static char g_folder[MAXF][200] = { "SD:/roms" }; static int g_nf = 1;	// the watched folders
+static char g_folder[MAXF][GAMES_PATH] = { "SD:/roms" }; static int g_nf = 1;	// the watched folders
 static bool g_full = false;
 static int g_scroll = 0, g_sel = 0, g_hover = -1;		// (g_sel, g_hover: indexes in g_vis)
 static Root *g_root = 0;
 static int g_vis[MAXG], g_nvis;			// the games shown (g_games indexes), in their order
 static void refilter (void);
 
-static int slen (const char *s) { int n = 0; while (s[n]) n++; return n; }
-static void scpy (char *d, const char *s, int cap) { int i = 0; for (; s[i] && i < cap - 1; i++) d[i] = s[i]; d[i] = 0; }
 static char low (char c) { return c >= 'A' && c <= 'Z' ? (char) (c + 32) : c; }
 static bool ends (const char *s, const char *e) { int n = slen (s), m = slen (e); if (n < m) return false; for (int i = 0; i < m; i++) if (low (s[n - m + i]) != e[i]) return false; return true; }
 static bool ci_less (const char *a, const char *b) { for (;; a++, b++) { char x = low (*a), y = low (*b); if (x != y || !x) return x < y; } }
 
-// "ZeldaOracleOfSeason.gbc" -> "Zelda Oracle Of Season"; "super_mario_land" -> "Super mario land"
-static void nice_name (const char *file, char *out, int cap)
-{
-	int n = 0; const char *p = file;
-	for (const char *q = file; *q; q++) if (*q == '/' || *q == ':') p = q + 1;
-	int e = slen (p); while (e > 0 && p[e - 1] != '.') e--;
-	if (e > 0) e--; else e = slen (p);
-	for (int i = 0; i < e && n < cap - 2; i++)
-	{
-		char c = p[i];
-		if (c == '_' || c == '-') c = ' ';
-		if (i > 0 && c >= 'A' && c <= 'Z' && p[i - 1] >= 'a' && p[i - 1] <= 'z') out[n++] = ' ';
-		if (n == 0 && c >= 'a' && c <= 'z') c = (char) (c - 32);
-		out[n++] = c;
-	}
-	out[n] = 0;
-}
-
 // ---- the ROMs ------------------------------------------------------------------------------------
-static void scan (const char *dir, int depth)
-{
-	if (depth > 6) return;
-	void *d = kapi_opendir (dir);
-	if (!d) return;
-	struct kapi_dirent e;
-	while (kapi_readdir (d, &e) && g_ng < MAXG)
-	{
-		if (e.name[0] == '.') continue;
-		char p[200]; int n = 0; lx_cat (p, sizeof p, &n, dir); if (n && p[n - 1] != '/') lx_cat (p, sizeof p, &n, "/"); lx_cat (p, sizeof p, &n, e.name);
-		if (e.is_dir) { scan (p, depth + 1); continue; }
-		int sys = sys_of (e.name);
-		if (sys < 0) continue;
-		Game &g = g_games[g_ng++];
-		scpy (g.path, p, sizeof g.path);
-		nice_name (e.name, g.name, sizeof g.name);
-		scpy (g.key, e.name, sizeof g.key);
-		g.sys = sys; g.thumb = 0; g.tried = false;
-	}
-	kapi_closedir (d);
-}
-static void rescan (void)
+static void rescan (void)			// (GameKit: the ROMs of the watched folders, by system then by name)
 {
 	for (int i = 0; i < g_ng; i++) delete [] g_games[i].thumb;
-	g_ng = 0;
-	for (int f = 0; f < g_nf; f++) scan (g_folder[f], 0);
-	// by system (Super Nintendo, Advance, Color, Game Boy, NES), then by name
-	for (int i = 1; i < g_ng; i++)
+	static struct game kg[MAXG];
+	static struct game_system ks[MAXSYS];
+	for (int k = 0; k < NSYS; k++)
 	{
-		Game t = g_games[i]; int j = i;
-		while (j > 0 && (g_games[j - 1].sys > t.sys || (g_games[j - 1].sys == t.sys && ci_less (t.name, g_games[j - 1].name)))) { g_games[j] = g_games[j - 1]; j--; }
-		g_games[j] = t;
+		scpy (ks[k].name, g_sys[k].name, sizeof ks[k].name); scpy (ks[k].ext, g_sys[k].ext, sizeof ks[k].ext);
+		scpy (ks[k].ext_text, g_sys[k].extText, sizeof ks[k].ext_text); scpy (ks[k].emu, g_sys[k].emu, sizeof ks[k].emu); ks[k].order = g_sys[k].order;
+	}
+	g_ng = games_scan (g_folder, g_nf, ks, NSYS, kg, MAXG);
+	for (int i = 0; i < g_ng; i++)
+	{
+		Game &g = g_games[i];
+		scpy (g.path, kg[i].path, sizeof g.path); scpy (g.name, kg[i].name, sizeof g.name); scpy (g.key, kg[i].key, sizeof g.key);
+		g.sys = kg[i].sys; g.thumb = 0; g.tried = false;
 	}
 	g_sel = 0; g_scroll = 0;
 	refilter ();
 }
 
 // ---- the pictures: cached raw 160 x 144 x RGB ------------------------------------------------------
-static void thumb_path (const Game &g, char *out, int cap)
+static struct game kgame (const Game &g)	// (GameKit's view of a game: its picture's name)
 {
-	int n = 0; lx_cat (out, cap, &n, "SD:/apps/gamelib.app/thumbs/"); lx_cat (out, cap, &n, g.key); lx_cat (out, cap, &n, ".thm");
+	struct game k;
+	scpy (k.path, g.path, sizeof k.path); scpy (k.name, g.name, sizeof k.name); scpy (k.key, g.key, sizeof k.key); k.sys = g.sys;
+	return k;
 }
 static bool thumb_load (Game &g)
 {
-	char p[260]; thumb_path (g, p, sizeof p);
-	void *f = kapi_open (p); if (!f) return false;
-	static unsigned char b[TW * TH * 3];
-	int r = kapi_read (f, b, sizeof b); kapi_close (f);
-	if (r != (int) sizeof b) return false;
-	g.thumb = new unsigned[TW * TH];
-	for (int i = 0; i < TW * TH; i++) g.thumb[i] = ((unsigned) b[i * 3] << 16) | ((unsigned) b[i * 3 + 1] << 8) | b[i * 3 + 2];
+	struct game k = kgame (g);
+	unsigned *px = new unsigned[TW * TH];
+	if (!games_thumb_load (&k, px)) { delete [] px; return false; }
+	g.thumb = px;
 	return true;
 }
-static void thumb_save (const Game &g)
-{
-	kapi_mkdir ("SD:/apps/gamelib.app/thumbs");
-	static unsigned char b[TW * TH * 3];
-	for (int i = 0; i < TW * TH; i++) { b[i * 3] = (unsigned char) (g.thumb[i] >> 16); b[i * 3 + 1] = (unsigned char) (g.thumb[i] >> 8); b[i * 3 + 2] = (unsigned char) g.thumb[i]; }
-	char p[260]; thumb_path (g, p, sizeof p);
-	kapi_save_file (p, (const char *) b, sizeof b);
-}
+static void thumb_save (const Game &g) { struct game k = kgame (g); games_thumb_save (&k, g.thumb); }
 
 // The picture being made: one game at a time -- its ROM read a piece per call (a GBA ROM is up
 // to 32 MB), then some frames run per call. A GBA screen (240 x 160) is shrunk to 160 x 107, a
@@ -1022,14 +933,7 @@ static void pad_poll (void)
 static void on_refresh () { rescan (); side_rows (); g_root->invalidate (true); }
 static void on_full () { g_full = !g_full; g_root->invalidate (true); }
 static void build_menu ();
-static void save_folders ()
-{
-	char ini[MAXF * 202 + 64]; int n = 0;
-	lx_cat (ini, sizeof ini, &n, "; Game Library settings: the watched folders, one line each\n");
-	for (int f = 0; f < g_nf; f++) { lx_cat (ini, sizeof ini, &n, "folder = "); lx_cat (ini, sizeof ini, &n, g_folder[f]); lx_cat (ini, sizeof ini, &n, "\n"); }
-	if (g_nf == 0) lx_cat (ini, sizeof ini, &n, "folder =\n");			// (none: not the default)
-	kapi_save_file ("SD:/apps/gamelib.app/config.ini", ini, (unsigned) n);
-}
+static void save_folders () { games_folders_save (g_folder, g_nf); }
 static void on_add ()
 {
 	char p[256];
@@ -1095,15 +999,7 @@ int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);		// (before the widgets; false: the bitmap font)
 	uk_lang_init ();
-	if (app_ini_load_path ("SD:/apps/gamelib.app/config.ini") >= 0)
-	{
-		// one `folder = <path>` line per watched folder (an .ini value: 63 characters at most)
-		int nf = 0; bool any = false;
-		for (int i = 0; i < app_ini_count () && nf < MAXF; i++)
-			if (app_ini_section (i)[0] == 0 && ax_streq (app_ini_key (i), "folder"))
-			{ any = true; if (app_ini_value (i)[0]) scpy (g_folder[nf++], app_ini_value (i), sizeof g_folder[0]); }
-		if (any) g_nf = nf;
-	}
+	g_nf = games_folders (g_folder, MAXF);		// (GameKit: the watched folders; SD:/roms by default)
 	LibRoot root;
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;

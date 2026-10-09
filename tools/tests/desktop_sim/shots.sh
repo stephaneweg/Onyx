@@ -66,7 +66,7 @@ build () {
 	[ "$1" = critters ] && extra="user/Apps/critters/terrain.cpp user/Apps/critters/level.cpp user/Apps/critters/world.cpp user/Apps/critters/solution.cpp user/Apps/critters/progress.cpp"	# (its core)
 	[ "$1" = clock ] && extra="user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp"	# (its core, shared with clockd)
 	[ "$1" = menubar ] && extra="user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp"	# (the bell: the Clock's alarms)
-	[ "$1" = gamelib ] && extra="user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
+	[ "$1" = gamelib ] && extra="user/Kits/gamekit/gamekit.cpp user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)"
 	if [ "$1" = koton ]; then			# (the studio: its engine, MeltySynth, its plugin host, FreeType)
 		K=user/Apps/koton; mkdir -p "$OUT/koton"
 		for f in $K/engine/*.cpp $K/synth/*.cpp $K/plug/*.cpp; do $CXX -I$K -c "$f" -o "$OUT/koton/$(basename "$f" .cpp).o" || return 1; done

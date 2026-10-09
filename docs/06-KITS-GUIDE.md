@@ -19,8 +19,9 @@ model, the ports) and of [Kernel Internals](02-KERNEL-INTERNALS.md).*
 10. [FontKit — fonts and text](#10-fontkit--fonts-and-text)
 11. [PrinterKit — printing](#11-printerkit--printing)
 12. [GPIOKit — the 40-pin header](#12-gpiokit--the-40-pin-header)
-13. [Adding to a kit, creating a kit](#13-adding-to-a-kit-creating-a-kit)
-14. [Quick reference](#14-quick-reference)
+13. [GameKit — the games of the card's ROMs](#13-gamekit--the-games-of-the-cards-roms)
+14. [Adding to a kit, creating a kit](#14-adding-to-a-kit-creating-a-kit)
+15. [Quick reference](#15-quick-reference)
 
 ---
 
@@ -42,11 +43,12 @@ that uses them.
 | **FontKit** | Fonts: FreeType, the font manager, anti-aliased text | `SD:/lib/fontkit.so` | `user/Kits/fontkit` | [17 — FontKit](17-FONTKIT.md) |
 | **PrinterKit** | Printing: the Print dialog, a job's pages | `SD:/lib/printerkit.so` | `user/Kits/printerkit` | [18 — PrinterKit](18-PRINTERKIT.md) |
 | **GPIOKit** | The Raspberry Pi's 40-pin header: pins, PWM, edges, I2C, SPI; a simulated board | `SD:/lib/gpiokit.so` | `user/Kits/gpiokit` | [19 — GPIOKit](19-GPIOKIT.md) |
+| **GameKit** | The games of the card's ROMs: the emulators' consoles, the watched folders, the ROMs, their pictures | `SD:/lib/gamekit.so` | `user/Kits/gamekit` | [20 — GameKit](20-GAMEKIT.md) |
 
 Three rules follow from this layout, and they hold for every new development:
 
 - **Reusable code goes into the adequate kit** — not into a new shared header, not copied into an
-  application. If no kit fits the domain, a new kit is created (§13).
+  application. If no kit fits the domain, a new kit is created (§14).
 - **A program draws on the kits as much as it can**, and never reaches the kernel itself. Only AppKit
   reads the kernel's table; so the kernel can change without any program being rebuilt. (One exception,
   decided by the user: **GPIOKit** calls the kernel's `gpio_ctl` entry itself — it ships with the kernel,
@@ -933,7 +935,44 @@ waves, an I2C bus with an SSD1306 display (0x3C: `gk_sim_display` gives its pixe
 (0x76), SPI looped back. `gk_sim (1)` switches to it; it runs by itself where the system has no GPIO, and
 on a PC. GPIO Lab (docs/04) is built on GPIOKit; BASIC has statements for it (docs/04 §13 *GPIO*).
 
-## 13. Adding to a kit, creating a kit
+## 13. GameKit — the games of the card's ROMs
+
+`#include "gamekit/gamekit.h"` — link `lib/gamekit.imp.a` (C++) or `lib/gamekit.imp_c.a` (C).
+
+What the Game Library and the console's home share about the games: **the consoles** the installed emulators play
+(each emulator's `app.txt`: `games = Game Boy Color: gbc; Game Boy: gb`, `order = 50` — an emulator's package
+installed, its console appears), **the watched folders** (`SD:/apps/gamelib.app/config.ini`, one `folder =` line each;
+`SD:/roms` when none is said), **the ROMs** found in them and their sub-folders by their extension — sorted by console,
+then by name, each with a name to show (`ZeldaOracleOfSeason.gbc` → *Zelda Oracle Of Season*) — and **their
+pictures**, the title screens the Game Library makes (`SD:/apps/gamelib.app/thumbs/<file>.thm`, 160 × 144).
+The gamepads' buttons and their settings are not in it: `Include/gamepad.h` keeps them.
+
+**Every Game Boy Advance game, its picture** (C):
+
+```c
+#include "gamekit/gamekit.h"
+
+static struct game_system sys[GAMES_SYSTEMS_MAX];
+static char dirs[GAMES_FOLDERS_MAX][GAMES_PATH];
+static struct game g[256];
+static unsigned pic[GAMES_THUMB_W * GAMES_THUMB_H];
+
+int ns = games_systems (sys, GAMES_SYSTEMS_MAX);        // the consoles, by their order
+int nd = games_folders (dirs, GAMES_FOLDERS_MAX);       // the watched folders
+int n = games_scan (dirs, nd, sys, ns, g, 256);         // by console, then by name
+for (int i = 0; i < n; i++)
+    if (ax_streq (sys[g[i].sys].name, "Game Boy Advance"))
+    {
+        ax_putln (g[i].name);                           // "Star Courier"
+        if (games_thumb_load (&g[i], pic)) { /* 0xRRGGBB, 160 x 144 */ }
+    }
+```
+
+A game is opened with its emulator by AppKit (`lx_open (g[i].path, "")`: the emulator found by the same `app.txt`).
+A folder added: `games_folders_save (dirs, nd + 1)`. A program that makes the pictures saves them with
+`games_thumb_save`.
+
+## 14. Adding to a kit, creating a kit
 
 **Before writing a helper, look for it in the kits.** If two programs could use it, it belongs to a
 kit.
@@ -965,7 +1004,7 @@ When a domain has no kit (SystemKit and NetKit are the models — small, with no
 
 The header of a kit a C program may use is written in C.
 
-## 14. Quick reference
+## 15. Quick reference
 
 | I want to… | Kit | Call |
 |---|---|---|
@@ -985,6 +1024,7 @@ The header of a kit a C program may use is written in C.
 | ask the user (message, file, colour) | UIKit | `uk_messagebox`, `uk_file_open`, `uk_color_dialog` |
 | lay the app out for every mode (desktop, pocket, console) | UIKit | `SidePanel`, `ToolBar::setPriority`, `DataGrid::setColumnRole`, `FormDialog`, `uk_size_class`, `Root::onSizeClass` |
 | load an icon | UIKit | `ui::icon_load` |
+| list the card's games (ROMs), their consoles, their pictures | GameKit | `games_systems`, `games_folders`, `games_scan`, `games_thumb_load` |
 | show a notification | SystemKit | `notify`, `notify_action` |
 | copy / paste | SystemKit | `clip_set_text`, `clip_get_text` |
 | know the system's language | SystemKit (UIKit's `TR ()` for the words) | `locale_language`, `uk_lang_init` |

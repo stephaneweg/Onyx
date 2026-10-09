@@ -65,7 +65,7 @@ sources.
 - **The kits.** The shared libraries are one **kit per domain**: **AppKit** (the kernel's calls,
   what makes a program run), **UIKit** (the widgets), **SystemKit** (the system and the other
   programs), **NetKit**, **FileKit**, **ImageKit**, **AudioKit**, **FontKit**, **PrinterKit**,
-  **GPIOKit**. A program draws on the kits and never reaches the kernel itself; a kit that changes
+  **GPIOKit**, **GameKit** (the games of the card's ROMs). A program draws on the kits and never reaches the kernel itself; a kit that changes
   is replaced on the card, the programs are not rebuilt. ([The kits](06-KITS-GUIDE.md).)
 - **Threads, app cores, RAM volume.** An app may run threads (mutexes, events, a futex,
   "real time" priority), take a whole CPU core for its own code (the emulators, Doom), and

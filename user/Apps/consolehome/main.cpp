@@ -1,19 +1,19 @@
 //
 // consolehome -- the console mode's shell (PocketUI's console mode: the games, a television, a pad; phase P9 of
-// docs/POCKETUI-TECH-STUDY.md, its look docs/COMPACT-SHELL-STUDY.md section 7: the mood of the PlayStation 2's
-// browser -- a deep blue space with soft motes and towers of cubes, big thin words, a glow on the chosen item).
+// docs/POCKETUI-TECH-STUDY.md; its home Lakka's XMB since 2026-10-09: docs/COMPACT-SHELL-STUDY.md §17, xmb.h).
 //
-// THE HOME (its backmost window, the whole screen: console mode has no band): at the left the CATEGORIES of the card's
-// apps (Recent, Games, Productivity... Settings: pocketshell's catalogue -- their app.txt, the dock's order, the
-// Control Panel's applets), the chosen one glowing with a line about it; at the right, in a glass panel, the APPS of
-// that category as tiles. THE MENU (a topmost overlay, asked with the pad's Home or Select, F10, the Super key, or the
-// shell's message): the app in front, Home, the other running apps (to switch to), Close this app, Settings, Shut
-// Down -- over any app, since an app in console mode fills the screen with no chrome.
+// THE HOME (its backmost window, the whole screen: console mode has no band): across the upper third a white icon per
+// CONSOLE that has games (GameKit: the installed emulators, the ROMs of the watched folders), then ONYX (the native
+// games), APPS (the apps' categories, each unrolling its apps at its right) and SETTINGS (the Control Panel's
+// applets); under the chosen one its items as a vertical list, a ROM's title screen big at the right. THE MENU (a
+// topmost overlay, asked with the pad's Home or Select, F10, the Super key, or the shell's message): the app in front,
+// Home, the other running apps (to switch to), Close this app, Settings, Shut Down -- over any app, since an app in
+// console mode fills the screen with no chrome. A game (an emulator) gets its own screen size while it is in front.
 //
-// The pad first (gamepad.h): the d-pad moves, A enters, B goes back, L1 / R1 the previous / next category, L2 / R2 a
-// page of tiles, Home or Select the menu. The keyboard the same: the arrows, Enter, Esc or Backspace, Page Up / Down
-// (a page), Ctrl+Page Up / Down or Tab (a category), F10 the menu. The mouse: a move brings the glow, a click
-// enters, the wheel scrolls. The bottom line says the buttons that work.
+// The pad first (gamepad.h): Left / Right the column, Up / Down the item, A plays / opens / enters, B goes back, L1 / R1
+// the previous / next column, L2 / R2 a page, Home or Select the menu. The keyboard the same: the arrows, Enter, Esc or
+// Backspace, Page Up / Down, Ctrl+Page Up / Down or Tab, F10 the menu. The mouse: a click chooses, a click on the chosen
+// item opens it, the wheel moves the items. The bottom line says the buttons that work.
 //
 // It is PocketUI's shell (uk_shell_register): its keys come before the front app's (uk_shell_keys), every key while the
 // menu is up (uk_shell_grab). Resolution independent: every size in logical units times a scale (SD:/etc/theme.txt
@@ -22,6 +22,7 @@
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 //
 #include <string.h>
+#include <stdio.h>
 #include "appkit/appkit.h"
 #include "systemkit/systemkit.h"
 #include "filekit/filekit.h"
@@ -29,6 +30,7 @@
 #include "uikit/bmp.h"
 #include "fontkit/uikitface.h"
 #include "gamepad.h"
+#include "gamekit/gamekit.h"
 
 using namespace uikit;
 
@@ -87,43 +89,8 @@ static const unsigned C_GLOW = 0x60C8FF, C_WORD = 0xE4ECF8, C_DIM = 0x7C94B8, C_
 // TR: Packages
 // TR: App Settings
 
-// ---- the space behind: drawn once for a size (a gradient, the motes, the towers of cubes) ------------------------
+// ---- the home's background: made once for a size (xmb.h) ---------------------------------------------------------------
 static unsigned *g_bgPx; static int g_bgW, g_bgH;
-static unsigned rnd (unsigned &s) { s = s * 1664525u + 1013904223u; return s >> 8; }
-static void cube (Canvas &cv, int x, int y, int s, int a)		// a translucent cube's front and top
-{
-	for (int j = 0; j < s; j++)
-		for (int i = 0; i < s; i++)
-		{
-			bool edge = i == 0 || j == 0 || i == s - 1 || j == s - 1;
-			lk_px (cv, x + i, y + j, edge ? 0x6FA8E8 : 0x2C5AA0, edge ? a : a / 3);
-		}
-	for (int j = 1; j <= s / 3; j++) for (int i = 0; i < s; i++) lk_px (cv, x + i + j, y - j, 0x4F86D0, a / 2);
-}
-static void space_make (int w, int h)
-{
-	delete [] g_bgPx;
-	g_bgPx = new unsigned[w * h]; g_bgW = w; g_bgH = h;
-	Canvas cv; cv.adopt (g_bgPx, w, h, w);
-	for (int y = 0; y < h; y++)
-	{
-		unsigned c = y < h * 2 / 3 ? uk_mix (0x05080F, 0x0A1630, y * 256 / (h * 2 / 3)) : uk_mix (0x0A1630, 0x163268, (y - h * 2 / 3) * 256 / (h / 3 + 1));
-		cv.fillRect (0, y, w, 1, c);
-	}
-	unsigned s = 0x9E3779B9u;
-	for (int k = 0; k < w * h / 2600; k++)				// the motes
-	{
-		int x = (int) (rnd (s) % (unsigned) w), y = (int) (rnd (s) % (unsigned) h), a = 40 + (int) (rnd (s) % 140), r = (int) (rnd (s) % 5) == 0 ? 2 : 1;
-		for (int j = -r; j <= r; j++) for (int i = -r; i <= r; i++) if (i * i + j * j <= r * r) lk_px (cv, x + i, y + j, 0xBFD8FF, a / (1 + i * i + j * j));
-	}
-	int cs = D (20);
-	for (int t = 0; t < 7; t++)					// the towers, receding to the left
-	{
-		int x = D (20) + t * D (54) + (int) (rnd (s) % (unsigned) D (16)), n = 2 + (int) (rnd (s) % 5), a = 26 + t * 3;
-		int sz = cs - t;
-		for (int k = 0; k < n; k++) cube (cv, x, h - D (70) - (k + 1) * (sz + D (3)) + t * D (4), sz, a - k * 2);
-	}
-}
 
 // ---- small pieces --------------------------------------------------------------------------------------
 static int tw (const char *s, int style = 0)	{ return uk_tw (s, style); }
@@ -173,227 +140,20 @@ struct Hits { Hit h[MAXHITS]; int n; void clear () { n = 0; } void add (int x, i
 	{ if (n < MAXHITS) h[n++] = { x, y, w, h_, k, i }; }
 	const Hit *at (int x, int y) const { for (int k = n - 1; k >= 0; k--) if (x >= h[k].x && x < h[k].x + h[k].w && y >= h[k].y && y < h[k].y + h[k].h) return &h[k]; return 0; } };
 static Hits g_homeHits, g_overHits;
-enum { H_CAT = 1, H_TILE, H_MORE, H_ITEM };
-
-// ---- what the home shows ---------------------------------------------------------------------------------
-static int g_cat;					// the category chosen (g_cats)
-static int g_firstCat;					// the first one drawn (more than fit)
-static bool g_inTiles;					// the glow is on a tile (else on the category)
-static int g_tile, g_firstRow;				// the tile chosen, the first row drawn
-static int g_items[MAXAPPS], g_nitems;			// the chosen category's apps (g_apps)
-static int g_cols = 3, g_rowsShown = 3;
-
-static bool cat_shown (const char *c) { return !ieq (c, "Demos") && !ieq (c, "Other") && !ieq (c, "Shell") && !ieq (c, "Emulators"); }
-static int cat_count (int c)
-{
-	const char *n = g_cats[c].name;
-	if (ieq (n, "Recent")) { int k = 0; for (int i = 0; i < g_nrecent; i++) if (find_app (g_recent[i])) k++; return k; }
-	int k = 0;
-	for (int a = 0; a < g_napps; a++)
-		if (!g_apps[a].hidden && (ieq (n, "Settings") ? g_apps[a].applet : !g_apps[a].applet && ieq (g_apps[a].cat, n))) k++;
-	return k;
-}
-static void items_read (void)
-{
-	g_nitems = 0;
-	if (g_cat < 0 || g_cat >= g_ncats) return;
-	const char *n = g_cats[g_cat].name;
-	if (ieq (n, "Recent"))
-	{
-		for (int i = 0; i < g_nrecent; i++) { App *a = find_app (g_recent[i]); if (a) g_items[g_nitems++] = (int) (a - g_apps); }
-		return;
-	}
-	for (int a = 0; a < g_napps && g_nitems < MAXAPPS; a++)
-		if (!g_apps[a].hidden && (ieq (n, "Settings") ? g_apps[a].applet : !g_apps[a].applet && ieq (g_apps[a].cat, n))) g_items[g_nitems++] = a;
-}
-static void cats_filter (void)				// the categories console mode shows (not Demos, not Other)
-{
-	int k = 0;
-	for (int i = 0; i < g_ncats; i++) if (cat_shown (g_cats[i].name)) g_cats[k++] = g_cats[i];
-	g_ncats = k;
-	if (g_cat >= g_ncats) g_cat = 0;
-}
-static void choose_cat (int c)
-{
-	if (g_ncats == 0) return;
-	g_cat = (c + g_ncats) % g_ncats;
-	g_tile = 0; g_firstRow = 0;
-	items_read ();
-	if (g_nitems == 0) g_inTiles = false;
-	g_homeDirty = true;
-}
+enum { H_CAT = 1, H_ITEM, H_SUB };
 static bool screen_of (const char *app, int *w, int *h);
 static void screen_to (int w, int h, const char *who);
 static char g_launch[32];				// an app just opened: its size before it comes in front (screen_follow)
 static unsigned g_launchT;
-static void open_tile (int i)
+// A hint's width (hint () below draws it): its button's pill and its word.
+static int hint_w (const char *btn, const char *word)
 {
-	if (i < 0 || i >= g_nitems) return;
-	tasks_read ();
-	const char *name = g_apps[g_items[i]].name;
-	int w, h;
-	if (task_of (name) < 0 && screen_of (name, &w, &h))		// (its own size before it starts: screen_follow)
-	{
-		fs_copy (g_launch, name, sizeof g_launch); g_launchT = kapi_get_ticks ();
-		screen_to (w, h, name);
-	}
-	open_app (name);
+	UkFaceScope f (F (12));
+	int h = uk_fh () + D (8), bw = tw (btn, 2) + D (12);
+	if (bw < h) bw = h;
+	return bw + D (7) + tw (word) + D (22);
 }
-
-// ---- the home drawn ------------------------------------------------------------------------------------------
-static void draw_home (void)
-{
-	g_homeDirty = false;
-	Canvas &cv = g_hc;
-	int W = g_sw, H = g_sh;
-	if (g_bgPx == 0 || g_bgW != W || g_bgH != H) space_make (W, H);
-	for (int y = 0; y < H; y++) memcpy (cv.px + (long) y * cv.stride, g_bgPx + (long) y * W, (size_t) W * 4);
-	g_homeHits.clear ();
-	uk_paint_alpha (false);
-
-	// the top: the gem and "Onyx"; the day and the time
-	{
-		int gx = D (22), gy = D (20);
-		int g = D (6);
-		for (int j = -g; j <= g; j++) for (int i = -g; i <= g; i++)
-		{
-			int d = (i < 0 ? -i : i) + (j < 0 ? -j : j);
-			if (d <= g) cv.pixel (gx + g + i, gy + g + j, d == g ? 0x9CCBFF : j < 0 ? 0x78B4F0 : 0x3D86DA);
-		}
-		UkFaceScope f (F (15));
-		uk_text (cv, gx + D (22), gy - D (2), "Onyx", C_WORD);
-		int hh = 0, mi = 0; kapi_get_datetime (0, 0, 0, &hh, &mi, 0);
-		char t[8] = { (char) ('0' + hh / 10), (char) ('0' + hh % 10), ':', (char) ('0' + mi / 10), (char) ('0' + mi % 10), 0 };
-		UkFaceScope f2 (F (18));
-		uk_text (cv, W - D (22) - tw (t), gy - D (5), t, 0xFFFFFF);
-	}
-
-	// the left: the categories, big thin words; the chosen one glowing with its line
-	int lx = D (34), ly = D (72), lw = W * 44 / 100, rowH = D (40), selH = D (62);
-	int foot = H - D (52);
-	int fit = (foot - ly - (selH - rowH)) / rowH;
-	if (fit < 1) fit = 1;
-	if (g_cat < g_firstCat) g_firstCat = g_cat;
-	if (g_cat >= g_firstCat + fit) g_firstCat = g_cat - fit + 1;
-	if (g_firstCat > g_ncats - fit) g_firstCat = g_ncats - fit > 0 ? g_ncats - fit : 0;
-	int y = ly;
-	for (int c = g_firstCat; c < g_ncats && c < g_firstCat + fit; c++)
-	{
-		bool on = c == g_cat;
-		int h = on ? selH : rowH;
-		const char *name = TR (g_cats[c].name);
-		if (on)
-		{
-			uk_paint_alpha (true);
-			if (!g_inTiles) glow (cv, lx - D (10), y, lw - D (30), h - D (4), D (10));
-			else { lk_fill (cv, lx - D (10), y, lw - D (30), h - D (4), D (10), 0x1E3258, 0x1A2C4E, 200); lk_ring (cv, lx - D (10), y, lw - D (30), h - D (4), D (10), 16, 0x5E86C8, 200); }
-			uk_paint_alpha (false);
-			{ UkFaceScope f (F (25)); text_fit (cv, lx + D (18), y + D (4), lw - D (70), name, 0xFFFFFF); }
-			char sub[64]; int k = 0, n = cat_count (c);
-			num_cat (sub, sizeof sub, &k, n); lx_cat (sub, sizeof sub, &k, " "); lx_cat (sub, sizeof sub, &k, ieq (g_cats[c].name, "Settings") ? TR ("settings") : n == 1 ? TR ("app") : TR ("apps"));
-			{ UkFaceScope f (F (12)); text_fit (cv, lx + D (20), y + D (36), lw - D (70), sub, 0xD6E4F8); }
-		}
-		else { UkFaceScope f (F (21)); text_fit (cv, lx + D (18), y + D (6), lw - D (70), name, uk_mix (0x0A1630, C_WORD, 205 - (c > g_cat ? (c - g_cat) * 18 : 0))); }
-		lk_fill (cv, lx - D (2), y + h / 2 - D (5), D (7), D (7), D (3), g_cats[c].dot, g_cats[c].dot, on ? 255 : 170);
-		g_homeHits.add (lx - D (10), y, lw - D (30), h - D (2), H_CAT, c);
-		y += h;
-	}
-
-	// the right: the chosen category's apps, tiles in a glass panel
-	int px = lx + lw - D (10), py = D (62), pw = W - px - D (22), ph = foot - py - D (8);
-	glass (cv, px, py, pw, ph, D (12));
-	{
-		UkFaceScope f (F (15));
-		text_fit (cv, px + D (16), py + D (10), pw - D (80), g_ncats ? TR (g_cats[g_cat].name) : "", C_WORD);
-		char n[12]; int k = 0; num_cat (n, sizeof n, &k, g_nitems);
-		uk_text (cv, px + pw - D (16) - tw (n), py + D (10), n, C_DIM);
-	}
-	cv.fillRect (px + D (14), py + D (36), pw - D (28), 1, 0x3E5E96);
-	int tileW = D (96), tileH = D (98), ic = D (52);
-	g_cols = (pw - D (16)) / tileW; if (g_cols < 1) g_cols = 1;
-	g_rowsShown = (ph - D (62)) / tileH; if (g_rowsShown < 1) g_rowsShown = 1;
-	int rows = (g_nitems + g_cols - 1) / g_cols;
-	if (g_tile >= g_nitems) g_tile = g_nitems ? g_nitems - 1 : 0;
-	if (g_tile / g_cols < g_firstRow) g_firstRow = g_tile / g_cols;
-	if (g_tile / g_cols >= g_firstRow + g_rowsShown) g_firstRow = g_tile / g_cols - g_rowsShown + 1;
-	if (g_firstRow > rows - g_rowsShown) g_firstRow = rows - g_rowsShown > 0 ? rows - g_rowsShown : 0;
-	int gx0 = px + (pw - g_cols * tileW) / 2, gy0 = py + D (44);
-	for (int i = g_firstRow * g_cols; i < g_nitems && i < (g_firstRow + g_rowsShown) * g_cols; i++)
-	{
-		int cx = gx0 + (i % g_cols) * tileW, cy = gy0 + (i / g_cols - g_firstRow) * tileH;
-		App &a = g_apps[g_items[i]];
-		bool on = g_inTiles && i == g_tile;
-		uk_paint_alpha (true);
-		if (on) glow (cv, cx + D (4), cy + D (2), tileW - D (8), tileH - D (6), D (10));
-		int ix = cx + (tileW - ic) / 2 - D (5), iy = cy + D (8);
-		lk_fill (cv, ix, iy, ic + D (10), ic + D (10), D (10), 0x3A5C9C, 0x24407A, 235);		// the tile: a glossy card
-		lk_ring (cv, ix, iy, ic + D (10), ic + D (10), D (10), 16, 0x8CB4EC, 200);
-		uk_paint_alpha (false);
-		draw_icon (cv, ix + D (5), iy + D (5), a, ic);
-		if (a.icon == 0)
-		{
-			UkFaceScope f (F (21));
-			char c1[2] = { (char) (a.label[0] >= 'a' && a.label[0] <= 'z' ? a.label[0] - 32 : a.label[0]), 0 };
-			uk_text (cv, ix + (ic + D (10) - tw (c1, 2)) / 2, iy + (ic + D (10) - uk_fh ()) / 2, c1, 0xFFFFFF, 2);
-		}
-		{ UkFaceScope f (F (12)); text_cfit (cv, cx + D (2), cy + ic + D (22), tileW - D (4), a.applet ? TR (a.label) : a.label, on ? 0xFFFFFF : C_WORD); }
-		g_homeHits.add (cx, cy, tileW, tileH, H_TILE, i);
-	}
-	if (g_nitems == 0) { UkFaceScope f (F (13)); text_cfit (cv, px, py + ph / 2 - D (8), pw, TR ("Nothing here yet"), C_DIM); }
-	int more = g_nitems - (g_firstRow + g_rowsShown) * g_cols;
-	if (more > 0)
-	{
-		UkFaceScope f (F (12));
-		char m[40]; int k = 0;
-		lx_cat (m, sizeof m, &k, "\xE2\x96\xBE  "); num_cat (m, sizeof m, &k, more); lx_cat (m, sizeof m, &k, " "); lx_cat (m, sizeof m, &k, TR ("more"));
-		text_cfit (cv, px, py + ph - D (22), pw, m, C_DIM);
-		g_homeHits.add (px, py + ph - D (26), pw, D (24), H_MORE, 0);
-	}
-
-	// the foot: the buttons that work here
-	cv.fillRect (0, foot, W, 1, 0x24406E);
-	int hx = D (120), hy = foot + D (14);
-	if (W < D (560)) hx = D (16);
-	hx += hint (cv, hx, hy, "A", 0x5E9CFF, g_inTiles ? TR ("Open") : TR ("Enter"));
-	if (g_inTiles) hx += hint (cv, hx, hy, "B", 0xFF6A6A, TR ("Back"));
-	hx += hint (cv, hx, hy, "L1 R1", 0x9AA8C0, TR ("Category"));
-	if (hx + D (140) < W) hint (cv, hx, hy, "Home", 0x9AA8C0, TR ("Menu"));
-	uk_win_select (W_HOME); uk_win_present (); uk_win_select (0);
-}
-
-// ---- the home's moves -------------------------------------------------------------------------------------------
-static void go (int key)
-{
-	switch (key)
-	{
-	case KEY_UP:
-		if (g_inTiles) { if (g_tile >= g_cols) g_tile -= g_cols; }
-		else choose_cat (g_cat - 1);
-		break;
-	case KEY_DOWN:
-		if (g_inTiles) { if (g_tile + g_cols < g_nitems) g_tile += g_cols; else if (g_tile / g_cols < (g_nitems - 1) / g_cols) g_tile = g_nitems - 1; }
-		else choose_cat (g_cat + 1);
-		break;
-	case KEY_RIGHT:
-		if (!g_inTiles) { if (g_nitems) g_inTiles = true; }
-		else if (g_tile + 1 < g_nitems) g_tile++;
-		break;
-	case KEY_LEFT:
-		if (g_inTiles) { if (g_tile % g_cols == 0) g_inTiles = false; else g_tile--; }
-		break;
-	case KEY_ENTER:
-		if (!g_inTiles) { if (g_nitems) g_inTiles = true; }
-		else open_tile (g_tile);
-		break;
-	case 0x1b: case KEY_BACKSPACE: g_inTiles = false; break;
-	case KEY_PGDN: if (g_nitems) { g_inTiles = true; g_tile += g_cols * g_rowsShown; if (g_tile >= g_nitems) g_tile = g_nitems - 1; } break;
-	case KEY_PGUP: if (g_nitems) { g_inTiles = true; g_tile -= g_cols * g_rowsShown; if (g_tile < 0) g_tile = 0; } break;
-	case '\t': { bool t = g_inTiles; choose_cat (g_cat + 1); g_inTiles = t && g_nitems > 0; } break;
-	case -1: { bool t = g_inTiles; choose_cat (g_cat - 1); g_inTiles = t && g_nitems > 0; } break;	// (the previous category)
-	default: return;
-	}
-	g_homeDirty = true;
-}
+#include "xmb.h"				// the home: Lakka's XMB -- the consoles, Onyx, Apps, Settings across, their items down
 
 // ---- the menu: an overlay over whatever is in front ----------------------------------------------------------------
 enum { M_RESUME, M_HOME, M_TASK, M_CLOSE, M_SETTINGS, M_POWER, M_APPMENU, M_COMMAND, M_BACK };
@@ -611,25 +371,8 @@ static void ptr (unsigned long win, int ev, long v)
 		if (ev == GUI_EVENT_PTR_DOWN && (c & 1)) { if (h) menu_do (h->i); else menu_hide (); }
 		return;
 	}
-	const Hit *h = g_homeHits.at (x, y);
-	if (ev == GUI_EVENT_PTR_MOVE && h)				// the glow follows the pointer
-	{
-		if (h->kind == H_TILE && (!g_inTiles || g_tile != h->i)) { g_inTiles = true; g_tile = h->i; g_homeDirty = true; }
-		else if (h->kind == H_CAT && g_inTiles && h->i == g_cat) { g_inTiles = false; g_homeDirty = true; }
-	}
-	if (ev == GUI_EVENT_PTR_DOWN && (c & 1) && h)
-	{
-		if (h->kind == H_CAT) { choose_cat (h->i); g_inTiles = false; }
-		else if (h->kind == H_TILE) { g_inTiles = true; g_tile = h->i; g_homeDirty = true; open_tile (h->i); }
-		else if (h->kind == H_MORE) go (KEY_PGDN);
-	}
+	home_ptr (ev, x, y, c, v);
 	if (ev == GUI_EVENT_PTR_DOWN && (c & 2)) menu_show ();		// (a right click: the menu)
-	if (ev == GUI_EVENT_PTR_WHEEL)
-	{
-		int wv = GUI_PTR_WHEEL (v);
-		if (x < g_sw * 44 / 100) choose_cat (g_cat - wv);
-		else { g_inTiles = g_nitems > 0; g_tile -= wv * g_cols; if (g_tile < 0) g_tile = 0; if (g_tile >= g_nitems) g_tile = g_nitems ? g_nitems - 1 : 0; g_homeDirty = true; }
-	}
 }
 
 // The pad (every pad): the d-pad repeating while held, A enters, B backs, L1 / R1 the categories, L2 / R2 a page; Home
@@ -944,11 +687,8 @@ int main (void)
 
 	kapi_ipc_register (SHELL_SERVICE);
 	scan_apps ();
-	cats_filter ();
-	recent_load ();
-	for (int c = 0; c < g_ncats; c++) if (ieq (g_cats[c].name, "Games")) g_cat = c;		// (the console wakes on its games...)
-	if (g_nrecent > 0) g_cat = 0;								// (... or on what was used last)
-	items_read ();
+	roms_read ();
+	xmb_build ();						// (the console wakes on its first console's games)
 	static const int K[] = { UK_SHELL_KEY (0, UK_SHELL_KEY_SUPER), UK_SHELL_KEY (0, KEY_F1 + 9) };
 	uk_shell_events (shell_event);
 	uk_shell_keys (K, (int) (sizeof K / sizeof K[0]));
@@ -966,12 +706,17 @@ int main (void)
 		kapi_get_datetime (0, 0, 0, 0, &mi, 0);
 		if (mi != lastMin) { lastMin = mi; g_homeDirty = true; }
 		if (kapi_get_ticks () - lastSync >= 10) { lastSync = kapi_get_ticks (); screen_follow (); screen_sync (); }
+		{							// back home (a game ended...): the ROMs read again, at most every 30 s
+			static bool s_wasHome = true;
+			if (g_home && !s_wasHome && kapi_get_ticks () - g_romsT > 3000) { roms_read (); g_thumbOf = -1; xmb_build (); }
+			s_wasHome = g_home;
+		}
 		if (kapi_get_ticks () - lastScan > 1000 && g_home && !g_menu)		// (an app installed meanwhile: every 10 s at home)
 		{
 			lastScan = kapi_get_ticks ();
 			static char list[4096], seen[4096];
 			kapi_list_apps (list, sizeof list);
-			if (strcmp (list, seen) != 0) { strcpy (seen, list); scan_apps (); cats_filter (); recent_load (); items_read (); g_homeDirty = true; }
+			if (strcmp (list, seen) != 0) { strcpy (seen, list); scan_apps (); xmb_build (); }
 		}
 		if (g_homeDirty && g_home) draw_home ();
 		if (g_overDirty && g_menu) draw_menu ();

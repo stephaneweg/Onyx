@@ -1,0 +1,14 @@
+# gamekit.abi -- the export table of SD:/lib/gamekit.so: "<slot> <symbol>", in the table's order.
+# APPEND-ONLY (tools/libgen/libgen.py adds the new functions at the end): never move or remove a
+# line -- programs built against an older table call the entries by their slot. The one edit allowed:
+# a function RENAMED keeps its line, with its new symbol (a reserved virtual given a meaning).
+# The table's version is its number of entries.
+0 games_folders
+1 games_folders_save
+2 games_nice_name
+3 games_scan
+4 games_system_of
+5 games_systems
+6 games_thumb_load
+7 games_thumb_path
+8 games_thumb_save

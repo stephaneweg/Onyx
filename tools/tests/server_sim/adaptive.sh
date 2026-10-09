@@ -188,7 +188,7 @@ fi
 # ---- P7: the Game Library (its sidebar a SidePanel in pocket and console; the desktop keeps its own) ---------------------
 if want gamelib; then
 	echo "adaptive: the Game Library"
-	ftapp pocket gamelib uikit_pocket user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)
+	ftapp pocket gamelib uikit_pocket user/Kits/gamekit/gamekit.cpp user/Emulators/gb/gb.cpp $(ls user/Emulators/gba/*.cpp user/Emulators/nes/*.cpp user/Emulators/snes/*.cpp)
 	for t in 800x480:800 1280x720:720 480x800:portrait 640x480:console; do
 		sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
 		WR=$(langdir ""); python3 $D/gamelib_samples.py "$WR"

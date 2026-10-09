@@ -793,10 +793,22 @@ the **console home** as its shell (below).
 
 #### The console mode (the console home, `consolehome`)
 
-For a television and a **gamepad**: a deep blue space, big words, a glow on what is chosen. **The home**: at the
-left the **categories** of the card's apps (Recent, Productivity, Internet, Graphics, Programming, Games,
-Multimedia, System, Settings — the Control Panel's applets), the chosen one lit with its count; at the right the
-**apps** of that category as tiles. An app opened fills the screen, with no frame, no menu bar.
+For a television and a **gamepad**, in the manner of Lakka's menu (RetroArch's XMB): a calm blue gradient with a soft
+white ribbon, white icons, big words. **The home** has two levels:
+
+- **Across the top**, a white icon per **console that has games** — Nintendo 64, Super Nintendo, Game Boy Advance,
+  Game Boy Color, Game Boy, NES, GameCube...: one for each console an installed emulator plays (its `app.txt`'s
+  `games =`, in their `order =`) with at least one ROM in the **watched folders** (the Game Library's: `SD:/roms` by
+  default, *Folders › Add Folder...* there) — then **Onyx** (Onyx's own games), **Apps** and **Settings**. The chosen
+  one stays at the same place, big, its name under it; the others small and faded.
+- **Under it**, its items as a vertical list, the chosen one big with a line about it, the ones before it above the
+  icons, faded: a console's **ROMs** (by name; the chosen one's **title screen** big at the right — the pictures the
+  Game Library makes: until it has made one, the console's icon stands there), Onyx's **games**, the Control Panel's
+  **applets** (Display, Gamepad, Mode...), or under **Apps** the apps' **categories** (Productivity, Internet...) —
+  the chosen category **unrolls its apps at its right**; **A** goes into them, **B** or Left comes back.
+
+A ROM is played with its emulator, the screen at the emulator's own resolution (below). An app opened fills the screen,
+with no frame, no menu bar. (The Game Library itself has no place in the console's home: its ROMs are there.)
 
 **The menu** comes over whatever is in front — the pad's **Home** button (or **Select + Start** together on a pad
 without one), **F10**, the **Super** key, a right click at home: *Resume* the app, **the app's own menus** (File ›,
@@ -806,11 +818,12 @@ reads nothing. When an app comes to the front, a small **Home · Menu** tip show
 
 | Pad | Keyboard | What |
 |---|---|---|
-| the d-pad | the arrows | move: the categories; Right goes into the tiles, Left comes back |
-| **A** (or Start) | Enter | enter the category; open the app; choose the menu's item |
-| **B** | Esc, Backspace | back to the categories; leave a menu |
-| **L1** / **R1** | Shift+Tab / Tab, Ctrl+Page Up / Down | the previous / next category |
-| **L2** / **R2** | Page Up / Down | a page of tiles |
+| the d-pad Left / Right | the arrows | the previous / next console, Onyx, Apps, Settings (out of Apps' apps: Left) |
+| the d-pad Up / Down | the arrows | the previous / next item |
+| **A** (or Start) | Enter | play the ROM; open the app or the applet; go into a category's apps; choose the menu's item |
+| **B** | Esc, Backspace | out of a category's apps; else back to the first item; leave a menu |
+| **L1** / **R1** | Shift+Tab / Tab, Ctrl+Page Up / Down | the previous / next column |
+| **L2** / **R2** | Page Up / Down | eight items up / down |
 | **Home** (Select at home; Select + Start over an app) | F10, Super | the menu |
 
 **In an app that is not a game** the pad works as a keyboard: the d-pad the arrows, **A** Enter, **B** Esc, **X**
@@ -824,16 +837,21 @@ home, the game ended or another app in front, the screen goes back to the system
 To choose another size for an app, or keep the system's: `SD:/etc/console.ini`, section `[screen]`, a line
 `gbemu = 640x480` or `n64emu = system` (from 640x480 to 2560x1600).
 
-The mouse works too: the glow follows the pointer, a click opens, the wheel scrolls. Everything is drawn at a
+The mouse works too: a click chooses a column or an item, a click on the chosen item opens it, the wheel moves the
+items. Everything is drawn at a
 **scale** (`scale =` in `SD:/etc/theme.txt`, else 1.5 from a 1080-line screen, 2 from 1800), in the system's
 language. Back to the desktop: the menu's *Settings* › **Mode**, or `session switch desktop` in a Terminal.
 
 | | |
 |---|---|
-| ![](compact-shell/real/consolehome-tiles-800.png) | ![](compact-shell/real/consolehome-appmenu-800.png) |
-| *The home, 800 × 480: a category's apps.* | *The menu over an app: the app's own File menu.* |
+![](compact-shell/real/consolehome-home-720.png)
 
-![](compact-shell/real/consolehome-home-1080.png)
+*The home, 1280 × 720: the Super Nintendo's games, the chosen one's title screen at the right.*
+
+| | |
+|---|---|
+| ![](compact-shell/real/consolehome-appsub-800.png) | ![](compact-shell/real/consolehome-appmenu-800.png) |
+| *Apps: Productivity's apps unrolled at its right.* | *The menu over an app: the app's own File menu.* |
 
 *The console home at 1920 × 1080.*
 
@@ -2359,7 +2377,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **imageview** (Image Viewer) | Views **BMP, GIF (animated), PNG, JPEG, PCX and WebP** images — double-click one in the File Viewer (`fileassoc.ini`), drop it on the window or File ▸ Open... (^O). Fits the window by default (never enlarged); **1** = actual size, **+ / −** or the **wheel** zoom, **0** = fit; **drag** to pan a large image. **← / →** (or Page Up / Down, Backspace / Space) = previous / next image of the folder, Home / End = first / last. Transparency is shown over a checkerboard. The status bar shows the name, size, format, zoom and position in the folder. File ▸ **Edit in Paint** hands the file to paint. **Wallpaper**: `imageview --background <image>` (no window) makes the image the desktop background, scaled to cover the screen (proportions kept, the overflow cut), or with **`-tile`** repeated from the top-left corner, then exits — e.g. the line `run imageview --background SD:/pictures/sky.jpg` in `SD:/etc/autostart` instead of `run voronoy`. The pictures are read by **ImageKit**: a photo is shown **the way the camera was held** (its EXIF orientation), and a picture made the wallpaper is brought to the screen's size by a true average. |
 | **paint** (Paint) | Drawing on **layers** with **blend modes** (normal, multiply, screen, add, subtract, lighten, mask, cut out; a mask on the layer below only), assembled by the GPU: brushes (pencil, brush, soft, calligraphy, airbrush, marker, crayon, patterns), eraser, fill (a colour, a pattern or a **gradient along a line**), gradients (GIMP's `.ggr`, an editor), text (TrueType fonts), shapes, selections (rectangle, lasso, magic wand), colours (brightness, contrast, hue, desaturate, colorize, the channels remapped, invert, sepia, posterize, threshold — on the selection, the layer or every layer), filters (blur, sharpen, pixelate), colour picker, zoom to 3200 %. Opens PNG, JPEG, BMP, GIF (WebP, PCX), a picture as a layer; saves OpenRaster (`.ora`); exports PNG, JPEG, BMP or GIF. See *Paint* below. |
 | **calendar** | The **planner**: appointments by the **day, the week or the month** (blocks in their calendar's colour, now as a red line; double-click or drag to make one, drag to move it, its edge to resize it), all-day ones, **repetitions** (days, weekdays, weeks on chosen days, months, years; until a date), **reminders** (notifications), **calendars** (Work, Personal... shown or hidden), **tasks** (due dates, ticked off). Kept as **iCalendar** in `calendar.ics`; **import / export `.ics`** (Google Calendar, Outlook). An argument `YYYYMMDD` opens that day. See *Calendar, the planner* below. |
-| **consolehome** (Console Home) | The **console mode's shell** (§5 *The console mode*): the home — the categories, the apps as tiles, moved with a gamepad, the keyboard or the mouse — and the menu over an app (the app's own menus, Home, the open apps, Close, Settings, Shut Down). Started by `SD:/etc/session/console`, not from a menu; under the desktop's server it says so and ends. Reads the apps' `app.txt` (their `resolution =`: the screen's size while a game is in front), `SD:/etc/console.ini` (`[screen]`), `SD:/etc/pocket/recent`, `SD:/etc/theme.txt` (`scale`); writes `SD:/etc/pocket/recent`. In English and French. |
+| **consolehome** (Console Home) | The **console mode's shell** (§5 *The console mode*): the home, in the manner of Lakka's XMB — a column per console that has games (their ROMs, their title screens), Onyx's games, Apps (by category), Settings, moved with a gamepad, the keyboard or the mouse — and the menu over an app (the app's own menus, Home, the open apps, Close, Settings, Shut Down). Started by `SD:/etc/session/console`, not from a menu; under the desktop's server it says so and ends. Reads the ROMs through GameKit (the emulators' `games =`, the Game Library's watched folders and pictures), the apps' `app.txt` (their `resolution =`: the screen's size while a game is in front), `SD:/etc/console.ini` (`[screen]`), `SD:/etc/pocket/recent`, `SD:/etc/theme.txt` (`scale`); writes `SD:/etc/pocket/recent`. In English and French. |
 | **setup** (Onyx Setup) | The **first-run wizard** (§4, *Setup*): language, country, keyboard, time zone, Wi-Fi, resolution, colours and wallpaper, the computer's name and the remote services; started by `run setup` in `SD:/etc/autostart` on a new card, it removes that line when done; its welcome page chooses the **interface** too (desktop, pocket, console: switched to when it ends). Writes `SD:/etc/system.ini` (`timezone`, `ntp`, `hostname`; `shell` through `/bin/session`), `SD:/etc/wpa_supplicant.conf`, `SD:/cmdline.txt` (the size kept), `SD:/etc/theme.txt`, `SD:/etc/wallpaper.ini` and `SD:/etc/autostart`. The Wi-Fi page's **Connect** writes the network into `wpa_supplicant.conf` first, then joins it, waiting up to 60 s (a 2.4 GHz network's association and address can take a while); past that it says *Not connected yet (saved: joined at the next start)* — the network is kept either way. |
 | **wifimenu** (Wi-Fi Menu) | The box the menu bar's Wi-Fi icon opens (§5, *The menu bar*): the networks around, strongest first, the current one marked; a click joins one (a password field for a new secured network) without a reboot (`SD:/etc/wpa_supplicant.conf`, then the reconnect); **Wi-Fi Settings...** opens `wpaconf`. Esc closes it. |
 | **agenda** (Agenda) | Desktop widget: the next calendar appointments (see §5, *The agenda widget*). |

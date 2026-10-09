@@ -4,6 +4,28 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## The console's home in Lakka's manner, GameKit, a game's resolution (2026-10-09, afternoon) -- tested on the PC, NOT on the Pi
+
+The user's report: in console mode the Game Library showed as on the desktop and F10 / Home did nothing. **The cause**
+(no Pi here to confirm): the card kept the console's session file of before `consolehome` (`run terminal`,
+`run gamelib`: no shell, nothing answers the menu's button). `/bin/session` now writes it anew when it is still that old
+default (kept as `console.old`). Then, by the user's choices (mock-ups v2 PS4-like, **v3 XMB chosen**:
+docs/COMPACT-SHELL-STUDY.md §16, §17):
+
+- **`consolehome`'s home is Lakka's XMB** (`user/Apps/consolehome/xmb.h`; docs/03 §5.10.5b, docs/04 *The console
+  mode*): across, a column per console that has ROMs, then Onyx (the native games), Apps (the categories, each
+  unrolling its apps at its right: A goes in) and Settings (the applets); under it the items, a ROM's title screen at
+  the right. Pictures `docs/compact-shell/real/consolehome-*.png`. The menu over an app is unchanged (v1's look).
+- **GameKit** (`user/Kits/gamekit/`, `SD:/lib/gamekit.so`, its own package `gamekit`; docs/06 §13, docs/20): the
+  consoles, the watched folders, the ROMs, their pictures -- the Game Library now reads them through it (its desktop
+  picture identical). The gamepads stay in `Include/gamepad.h` (the user).
+- **A game's own resolution**: the emulators' `app.txt` `resolution =` (800x600 GB / GBA, 640x480 the others),
+  `SD:/etc/console.ini` `[screen]` overrides; the shell switches before the game starts and back at home.
+- **Left** (the mock-ups, the user to decide): the game's level (Run / Favourites / Save states / Information), the
+  quick menu in the XMB style, save states (the emulators keep only the cartridge's `.sav`), History / Favourites,
+  the sort (alphabetical today). **To try on the Pi**: the home with a pad and a keyboard, a ROM started (the screen
+  at the emulator's size, back at home), Apps' sub-level, the session file's fix (`session: ... written anew`).
+
 ## Where PocketUI stands on the morning of 2026-10-09 (the night's work, P7 to P10) -- read this first
 
 Everything below is in `main`, published (onyx 2026.10.137, uikit 1.950.2 and the apps' packages) and on the Pi

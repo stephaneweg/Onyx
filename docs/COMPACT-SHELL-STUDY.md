@@ -1144,7 +1144,13 @@ menus) in this style; the game's part (save states, screenshot) appears only for
 
 ## 17. Console mode v3: the XMB-like shell (Lakka) (2026-10-09, mock-ups)
 
-*A design proposal with mock-ups only, nothing built.* The user liked v2 (§16) and asked for a **v3 much closer
+> **Chosen by the user and built the same day** (`user/Apps/consolehome/xmb.h`, docs/03 §5.10.5b, docs/04 *The console
+> mode*), with the user's structure: level 1 = the consoles that have ROMs, **Onyx** (the native games), **Apps** (the
+> apps' categories, each unrolling its apps at its right) and **Settings** (the applets) -- no Main Menu, History or
+> Favourites column yet; A on a ROM plays it (the game's level, save states and the XMB quick menu are still to do).
+> The ROMs come from **GameKit** (docs/06 §13).
+
+*The design proposal as it was made, with its mock-ups:* The user liked v2 (§16) and asked for a **v3 much closer
 to Lakka's menu** (RetroArch's XMB), so that the two can be compared and one chosen. The pictures are made by
 **`python3 tools/screenshot/mockup_console_xmb.py`** (it imports v2's script for the helpers and the content:
 the card's apps, icons and categories, the consoles from the emulators' `games =`, the made-up ROMs and their

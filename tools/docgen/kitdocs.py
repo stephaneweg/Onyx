@@ -72,6 +72,11 @@ KITS = [
    "GPIOKit is the Raspberry Pi's 40-pin header: a pin's mode and level, PWM, a servo, edges queued with "
    "their time, the I2C bus and SPI, the header's own table — and a simulated board (an SSD1306 display "
    "and a BME280 sensor on its I2C bus) for a PC or a system without the hardware. The levels are 3.3 V."),
+  ("20-GAMEKIT", "GameKit", 13, "gamekit", '#include "gamekit/gamekit.h"', "`lib/gamekit.imp.a` (C++) or `lib/gamekit.imp_c.a` (C)",
+   ["gamekit/gamekit.h"],
+   "GameKit is the games of the card's ROMs: the consoles the installed emulators play (their app.txt's "
+   "`games =`), the watched folders, the ROMs found in them by their extension, and their pictures -- what the "
+   "Game Library and the console's home share."),
 ]
 
 PREFIX = re.compile(r"^(KAPI_FN|KAPI_C|SK_API|NK_API|FS_API|FK_KV_API|UIKIT_API)\s+")

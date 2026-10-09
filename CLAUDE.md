@@ -18,7 +18,7 @@ The reference documentation is in **`docs/`** and is written in **English**:
 - `docs/04-USER-GUIDE.md`
 - `docs/05-CIRCLE-CHANGES.md` (patches in our Circle fork vs upstream `Step51.1.1`)
 - `docs/06-KITS-GUIDE.md` (**the kits**: one per domain, how a program uses them, an example for each — keep it up to date when a kit gains a subject)
-- `docs/10-APPKIT.md` … `docs/18-PRINTERKIT.md` (**one reference per kit**: every operation it exposes — GENERATED from the kits' headers by `python tools/docgen/kitdocs.py`: never edit them by hand; after a kit's header changes, run it, then `python docs/build_docs.py`)
+- `docs/10-APPKIT.md` … `docs/20-GAMEKIT.md` (**one reference per kit**: every operation it exposes — GENERATED from the kits' headers by `python tools/docgen/kitdocs.py`: never edit them by hand; after a kit's header changes, run it, then `python docs/build_docs.py`)
 - `docs/08-WEBKIT-PORT.md` (Jet Browser, the Onyx web browser: the WebKit port — its status and how to resume, the plan, the patch series in `tools/webkit/patches/`, `jsc`; the NetSurf Jet and its documents 06 and 07 were removed on 2026-10-04)
 - `docs/LICENSING.md` (the licences of everything Onyx contains; under which licence it can be distributed)
 - `docs/PI5-PORT.md` (the Raspberry Pi 5 port: the plan A to Z -- blockers, phases, the V3D 7.1 GPU; **a separate binary distribution** `sdcard5/`, `sdcard5_lite/`, packages in `onyx-packages/pi5/` (the user, 2026-10-09); built, not run on a Pi 5 yet: the kernel, the card, the V3D 7.1 GPU -- docs/02 §15.1)
@@ -44,14 +44,14 @@ LibreOffice headless). Screenshots
 
 > Names: the shared libraries are "kits" -- **UIKit** (the widget toolkit, `user/Kits/uikit/`, `namespace uikit`,
 > `uk_*`, `SD:/lib/uikit.so`; named **wtk** until 2026-10-05, fully renamed), **SystemKit**, **NetKit**, **AudioKit** (`user/Kits/audiokit/`), **PrinterKit** (`user/Kits/printerkit/`), **FileKit** (`user/Kits/filekit/`: ZIP, zlib, files and trees),
-> **ImageKit** (`user/Kits/imagekit/`: pictures read, written, resized, adjusted; it uses FileKit), **AppKit** (`user/Kits/appkit/`: the programs' interface to the kernel, loaded and bound by the kernel), **FontKit** (`user/Kits/fontkit/`, `SD:/lib/fontkit.so`: FreeType and the apps' font manager; it was `user/ft`, `ft.so`, the package `ft` until 2026-10-05). docs/03 sections 5.6 to 5.10. DocumentKit: an analysis only (IDEAS.md).
+> **ImageKit** (`user/Kits/imagekit/`: pictures read, written, resized, adjusted; it uses FileKit), **AppKit** (`user/Kits/appkit/`: the programs' interface to the kernel, loaded and bound by the kernel), **GameKit** (`user/Kits/gamekit/`: the ROMs, the emulators' consoles, the watched folders, the pictures -- the Game Library and the console's home; the gamepads stay in `Include/gamepad.h`), **FontKit** (`user/Kits/fontkit/`, `SD:/lib/fontkit.so`: FreeType and the apps' font manager; it was `user/ft`, `ft.so`, the package `ft` until 2026-10-05). docs/03 sections 5.6 to 5.10. DocumentKit: an analysis only (IDEAS.md).
 
 > Layout of `user/` (the user, 2026-10-05) -- everything sorted by its use:
 > - **`Apps/<name>/`** the graphical apps; **`BinUtils/`** the console programs (`SD:/bin`; it was `user/bin`);
 > - **`Servers/<name>/`** the system's servers, of several sources (`SD:/bin/<name>`): **Elegant**, the graphics server
 >   (`Servers/elegant`: the window manager, the compositor, the input's routing -- no longer the kernel's;
 >   docs/02 §10, docs/HANDOFF.md);
-> - **`Kits/<kit>/`** the shared libraries (appkit, uikit, systemkit, netkit, audiokit, filekit, imagekit, printerkit, fontkit);
+> - **`Kits/<kit>/`** the shared libraries (appkit, uikit, systemkit, netkit, audiokit, filekit, imagekit, printerkit, fontkit, gpiokit, gamekit);
 > - **`Runtime/`** what every program is linked with (`crt0.S`, `user.ld`, `lib.ld`, `lib.h`, `librt.cpp`, `umm.h`,
 >   `onyxpp.hpp`, `libc/` = newlib's glue and the POSIX library);
 > - **`Libs/`** the libraries linked into the programs (av, img, zlib, tls, v3d, gpucomp, pdf, mail, pkg, basic, demo);
@@ -76,7 +76,7 @@ One **kit per domain** instead of many loose headers and libraries, and no tight
 **AppKit** (what makes a program run: the kernel's calls, strings, console, `.ini`, starting programs), **UIKit**
 (the interface, the icons), **SystemKit** (talking to the system and the other programs), **NetKit** (the network),
 **FileKit** (files, archives), **ImageKit** (pictures), **AudioKit** (sound), **FontKit** (fonts), **PrinterKit**
-(printing); DocumentKit to come.
+(printing), **GameKit** (the games' ROMs); DocumentKit to come.
 
 - **Reusable code goes into the adequate kit** — not a new shared header, not a copy in an app. No kit fits:
   create one (a header that declares, the code in the library, an append-only `.abi`, a package).
@@ -85,7 +85,7 @@ One **kit per domain** instead of many loose headers and libraries, and no tight
 - A C program links a kit through `lib/<kit>.imp_c.a` (libgen `--bind-c`), a C++ one through `lib/<kit>.imp.a`.
 - A program includes **the kit's one header**: `"appkit/appkit.h"`, `"uikit/uikit.h"`, `"systemkit/systemkit.h"`,
   `"netkit/netkit.h"`, `"filekit/filekit.h"`, `"imagekit/imagekit.h"`, `"audiokit/audiokit.h"`,
-  `"printerkit/printerkit.h"` (FontKit: `"fontkit/uikitface.h"` / `"fontkit/fonts.h"`; `"netkit/http.hpp"` apart).
+  `"printerkit/printerkit.h"`, `"gamekit/gamekit.h"` (FontKit: `"fontkit/uikitface.h"` / `"fontkit/fonts.h"`; `"netkit/http.hpp"` apart).
 
 ## RULE — every app in English and French (the user, 2026-10-06)
 

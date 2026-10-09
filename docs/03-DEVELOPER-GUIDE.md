@@ -1149,6 +1149,14 @@ own:
   stand-in kernel (`tools/tests/desktop_sim`), or on its own with `-DGK_STANDALONE` (a clock of its own:
   `tools/tests/run_gpiokit_test.sh`, the BASIC tests).
 
+**GameKit** (2026-10-09, `user/Kits/gamekit/`, `SD:/lib/gamekit.so`; the guide: docs/06 *GameKit*, the reference:
+docs/20) is made as GPIOKit, through AppKit only: one header (`gamekit/gamekit.h`: C functions `games_*`), one source
+(`gamekit.cpp`, freestanding; compiled as it is in the PC tests), an append-only `gamekit.abi`, `lib/gamekit.imp.a` and
+`lib/gamekit.imp_c.a`, its own package `gamekit` (the Game Library's `needs`, and `onyx`'s for the console's home). It
+holds what the Game Library and `consolehome` share: the consoles of the emulators' `app.txt` (`games =`, `order =`),
+the watched folders (`SD:/apps/gamelib.app/config.ini`), the ROMs, their names, their pictures (`thumbs/*.thm`). The
+gamepads stay in `Include/gamepad.h` (the user, 2026-10-09).
+
 BASIC reaches it by statements of its own (`PINMODE`, `PIN`, `PWM`, `SERVO`, `ON PIN`, `I2C…`, `SPI$`;
 docs/04 §13 *GPIO*): the runtime (`Libs/basic/runtime.cpp`) opens `gpiokit.so` at the first of them
 (`bas::onyxKitOpen`, `baskits.cpp`) and calls its entries by their places in `gpiokit.abi` (the macros
@@ -1535,10 +1543,19 @@ the screen when hidden, `uk_shell_keys` for Super and F10, `uk_shell_grab` while
 pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan_apps`, `g_cats`, `recent_*`,
 `tasks_read`, `open_app`, `draw_icon`; `look.h`: `lk_fill`, `lk_ring`, `lk_shadow`).
 
-- **The home**: `draw_home ()` — the space behind made once per size (`space_make`: a gradient, motes, towers of
-  cubes), the categories (`cats_filter` drops Demos / Other / Shell / Emulators), the chosen category's tiles
-  (`items_read`); `go (key)` is the one function every input ends in (the keyboard's handler, the pad's poll, the
-  pointer's hits).
+- **The home** (`xmb.h`, since 2026-10-09 — Lakka's XMB, docs/COMPACT-SHELL-STUDY.md §17 "v3", the user's choice):
+  the columns (`xmb_build`): one per console that has ROMs (**GameKit**, `roms_read`: `games_systems`,
+  `games_folders`, `games_scan`), then Onyx (the apps of category *Games* but the Game Library), Apps (the categories
+  of `scan_apps` but Recent / Settings / Games / Shell / Emulators; the chosen one's apps `g_sub`, `g_inSub`) and
+  Settings (the applets). `draw_home ()`: the background made once per size (`xmb_bg_make`: the gradient, a soft
+  light, the ribbon from an integer sine table — the apps are built `-mgeneral-regs-only`), the white icons drawn into
+  a cached mask (`xi_mask`: generic console shapes with their short names, the gem, the grid, the gear, a folder;
+  `look.h`'s rounded boxes), the lists (`draw_list`: the chosen item at a fixed height), a ROM's title screen
+  (`games_thumb_load`), the hints right-aligned (`hint_w`). `go (key)` is the one function every input ends in (the
+  keyboard's handler, the pad's poll; `home_ptr` the pointer's). A ROM opens with `lx_open` (its emulator by its
+  extension), the screen switched to the emulator's `resolution =` first (`play_rom`). The ROMs are read again when
+  the home comes back, at most every 30 s. Sizes: the mock-up's metrics (`xm ()`), a compact set under 560 logical
+  lines.
 - **The menu**: `menu_build ()` — *Resume*, the front app's menus (its spec read by `uk_win_menu_get` when the menu
   comes up; one of them chosen: `g_level`, its items, `uk_win_menu_command (id)` once the overlay is hidden), *Home*
   (`uk_shell_front (0, 0)`), the other tasks (`uk_shell_front (id, 1)`), *Close* (`uk_win_close`), *Settings*,
@@ -1550,9 +1567,10 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   each `tasks_read`), `pad_type ()` types for the pad with `kapi_inject_key` / `kapi_inject_modifiers` (the server
   routes the keys to the app in front): arrows, Enter, Esc, Space, Tab, Ctrl+Page Up / Down, Page Up / Down.
 - **Sizes**: logical units × the scale (`D ()`, `F (lp)` a face per size), as pocketshell.
-- **Tests**: `tools/tests/server_sim/run.sh`'s `conshots` (800 × 480, 1920 × 1080, 640 × 480 in French): the home
-  is the whole screen, Right / Down move, F10 shows and Esc hides the menu; over an app with menus: the menu, its
-  File menu, Esc twice — the app still in front. Pictures `consolehome-*.png` (`CONSOLE_PNG=<folder>`).
+- **Tests**: `tools/tests/server_sim/run.sh`'s `conshots` (800 × 480, 1280 × 720, 1920 × 1080, 640 × 480 in French,
+  with `gamelib_samples.py`'s made-up ROMs): the home is the whole screen; a console's games, Apps and its unrolled
+  apps, Settings; F10 shows and Esc hides the menu; over an app with menus: the menu, its
+  File menu, Esc twice — the app still in front. Pictures `consolehome-<home|apps|appsub|settings|menu|appmenu>-*.png` (`CONSOLE_PNG=<folder>`).
 - **The tip**: a third window (`W_TIP`, see-through, parked): `front_look ()` shows it for 3 s when another app
   comes to the front (`tip_show`, `tip_tick`).
 - **A game's resolution**: an app's `app.txt` may say `resolution = 800x600` (the emulators do), overridden by
@@ -1563,8 +1581,8 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   shell is undone. A refusal (`-2`: a full-screen program has the display) is said once and tried again every 2 s.
   The kernel's switch is not simulated by `server_sim` (its stand-in has no `screen_set`).
 - **Not done** (the study's §7.5): the quick menu of games (save / load state — the emulators have no common
-  call for it yet), the pointer held at the top edge, the library's ROMs on the home
-  (the Game Library is a tile of *Games*), `PK_OP_TOOLS`. A full-screen game (the kernel's direct path) hides the
+  call for it yet; the mock-ups' *Run / Favourites / Save states* level), the pointer held at the top edge,
+  History and Favourites (Lakka's), `PK_OP_TOOLS`. A full-screen game (the kernel's direct path) hides the
   menu: the emulators are to stay windowed in console (a window fills the screen there).
 
 ### 5.10.6. The adaptive widgets: one binary laid out for every mode (`uikit/adapt.h`, `sidepanel.h`, `form.h`)

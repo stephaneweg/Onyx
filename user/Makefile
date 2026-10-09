@@ -408,9 +408,30 @@ lib/gpiokit.imp_c.a: lib/gpiokit_stubs.o lib/gpiokit_bind_c.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/fontkit.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so lib/systemkit.so lib/netkit.so lib/gpiokit.so
+# ---- gamekit.so: GameKit -- the games of the card's ROMs (Kits/gamekit/gamekit.h; docs/06 "GameKit", docs/20): the
+# consoles of the installed emulators, the watched folders, the ROMs, their pictures. Through AppKit only; in the
+# package onyx (lib/). The Game Library and the console's shell read it.
+lib/gm/gamekit.o: Kits/gamekit/gamekit.cpp Kits/gamekit/gamekit.h Kits/appkit/appkit.h $(LIB_DEP)
+	@mkdir -p lib/gm
+	$(CXX) $(LIB_CXXFLAGS) -fno-tree-loop-distribute-patterns -fno-builtin -DONYX_LIB_BUILD -c $< -o $@
+Kits/gamekit/gamekit.abi:
+	@touch $@
+lib/gamekit_table.S: lib/gm/gamekit.o Kits/gamekit/gamekit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name gamekit --abi Kits/gamekit/gamekit.abi --init gm_lib_init --allow-data . --export '^games_' --exclude '^gm_lib_init$$' \
+		--table lib/gamekit_table.S --stubs lib/gamekit_stubs.S --bind lib/gamekit_bind.cpp --bind-c lib/gamekit_bind_c.c lib/gm/gamekit.o
+lib/gamekit_stubs.S lib/gamekit_bind.cpp lib/gamekit_bind_c.c: lib/gamekit_table.S ;
+lib/gamekit.so: lib/gm/gamekit.o lib/gamekit_table.o lib/librt.o $(LIB_KAPI)
+	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
+lib/gamekit.imp.a: lib/gamekit_stubs.o lib/gamekit_bind.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+lib/gamekit.imp_c.a: lib/gamekit_stubs.o lib/gamekit_bind_c.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+
+SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/fontkit.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so lib/systemkit.so lib/netkit.so lib/gpiokit.so lib/gamekit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/pocket/uikit.so lib/pocket/abi_same.stamp lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a lib/gpiokit.imp.a lib/gpiokit.imp_c.a lib/uikit.imp_c.a
+libs: $(SHLIBS) lib/pocket/uikit.so lib/pocket/abi_same.stamp lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a lib/gpiokit.imp.a lib/gpiokit.imp_c.a lib/gamekit.imp.a lib/gamekit.imp_c.a lib/uikit.imp_c.a
 
 # The kits' descriptions for Onyx BASIC (lib/<kit>.bi -> SD:/lib/<kit>.bi; `#import filekit`): each kit's functions,
 # their places (its .abi) and their types (its headers' prototypes), by tools/kitbi/kitbi.py -- every kit of Kits/,
@@ -815,7 +836,9 @@ agenda.elf:
 setup.elf: Apps/setup/system.h Kits/systemkit/wallpaper.h Kits/imagekit/img/imgload.hpp
 # The FreeType apps (FT_APPS): newlib + lib/fontkit.imp.a, as the Calendar. The Game Library also links the
 # emulators it takes the covers and the save states' pictures from.
-FT_EXTRA_gamelib = Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a
+FT_EXTRA_consolehome = lib/gamekit.imp.a
+consolehome.elf: lib/gamekit.imp.a Kits/gamekit/gamekit.h Apps/consolehome/xmb.h Apps/pocketshell/catalog.h Apps/pocketshell/look.h
+FT_EXTRA_gamelib = lib/gamekit.imp.a Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a
 FT_EXTRA_fmtracker = lib/audiokit.imp.a
 FT_EXTRA_soundconf = lib/audiokit.imp.a
 # (GPIO Lab's Code view: Onyx BASIC's compiler and VM built in, as Turtle Quest's)
