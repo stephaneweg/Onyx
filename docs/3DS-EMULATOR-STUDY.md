@@ -381,9 +381,12 @@ text) found why *A Link Between Worlds* drew next to nothing:
   the screen's size and distance...).
 - **0 times infinity is 0 on this GPU** (the shader's MUL, DP3, DP4, DPH, MAD), not "not a number".
 - Also: ETC1 and ETC1A4 textures; `n3dstest`'s `N3DS_SAVE=<file>` keeps what a program writes between two runs.
-- **Where the game is now**: at its 520th frame the scene is drawn (a sky, the scenery: 900 000 pixels a frame)
-  under a black full-screen rectangle of the game's own (a fade, fully opaque then). Not done and asked: lighting
-  (the scenery's colours come from it), fog.
+- **Where the game is now: its title screen.** The black rectangle over the scene at the 520th frame was the game's
+  own fade. Run 1000 frames (`N3DS_SHOTS`, a picture every 40): the Triforce's three pieces fly in and join, the
+  town appears behind, then **the logo "The Legend of Zelda -- A Link Between Worlds", "(c) 2013 Nintendo" and
+  "Press A" on the bottom screen**. Wrong, seen: the scenery is pale grey-violet and speckled, the Triforce plain
+  white before it turns gold -- **lighting** is asked and not done (the scenery's colours come from it), fog
+  neither. Not tried: pressing A, the file selection, a save, the game itself.
 
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
