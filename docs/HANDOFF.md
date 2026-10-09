@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail, the Calendar, IRC, Ledger and the Archiver migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, published
+## PocketUI phase P7, begun: the Media Player, Photos, the Game Library, Mail, the Calendar, IRC, Ledger, the Archiver, the Icon Editor and FM Tracker migrated (2026-10-09): built for the PC and the Pi, tested on the PC, NOT on the Pi, published
 
 P7 is the apps' migration to P6's adaptive widgets (`docs/POCKETUI-TECH-STUDY.md` §6.15, §9: about 32 session-days, one
 app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10.6):
@@ -118,6 +118,17 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   panel (`g_sp`, `body_lay_out ()`: the list beside `reservedWidth ()`), a drawer on a small screen; the desktop keeps
   its `HSplitter`. Translated: 177 words (many are pieces of a line: their spaces; `arcfk.h`'s three engine errors and
   the default file name stay English). `adaptive.sh <out> archiver` (arc_sample.py's archive): 8 checks.
+- **Icon Editor** (`user/Apps/iconedit/main.cpp`, a plain app, a FIXED 700 x 520 window on the desktop -- unchanged):
+  in pocket and console it is **resizable and fills** (`lay_out ()`: the grid takes what is left, the status line at
+  the foot), and its right column (the palette, *More...*, the previews, the mouse's hints) is built into a `Panel`
+  given to an **inspector** SidePanel as its one page (`UK_SP_RIGHT`, `addPage`: the first inspector of P7 -- a
+  slide-over in landscape under 4 x 170 px, a bottom sheet in portrait). Translated: 46 words (the tools' names fit
+  their 66 px buttons). `adaptive.sh <out> iconedit`: 8 checks.
+- **FM Tracker** (`user/Apps/fmtracker/main.cpp`): in pocket and console its side panel is the content of a navigation
+  SidePanel (a drawer on a small screen); `SIDE_W` is now `g_sideW` (what the panel takes: `SIDE0` 156, or 0), so the
+  grid, the channels' heads and the piano take the width. The desktop: unchanged. Translated: 133 words. Its toolbar is
+  a fixed row: in a 480 px portrait window the edit buttons are under *Follow* (the menus have them) -- to do with the
+  toolbars' pass. `adaptive.sh <out> fmtracker` (needs `MEDIA_SHOTS`'s AudioKit): 8 checks.
 - **Tests (PC)**: `sh tools/tests/server_sim/adaptive.sh <out> media` and `... photos` -- each app under PocketUI at
   800 x 480 (the rail; the rail expanded under the pointer), 1280 x 720 (whole; in French), 480 x 800 (the drawer's tab;
   the drawer opened), console 640 x 480 (the column): 8 checks each, all pass; the pictures looked at. The Media
@@ -147,7 +158,7 @@ app at a time). **How an app is done** (the pattern of these two; docs/03 §5.10
   (`InputBox`, `PropsBox`, `VPropsBox`, `NameBox`: the scrolling sheet meanwhile), `uk_set_input_type` on the
   search fields. Media's pages (the album's band, the videos' grid) were looked at in landscape only.
 - **Next apps, in the study's order**: Courier, PDF, Slides, Paint, QBStudio, 3DForge,
-  Icon Editor, fmtracker, Telegram's pane; then the toolbars, tabs, dialog bases, tables;
+  Telegram's pane; then the toolbars, tabs, dialog bases, tables;
   the Control Panel's applets laid out in their pane (Theme first).
 
 ## The pocket launcher v2; Onyx is Home in pocket; the shell's scale after a switch; full screen in Onyx Remote (2026-10-08): built, tested on the PC, NOT yet on the Pi, committed (not pushed), not published

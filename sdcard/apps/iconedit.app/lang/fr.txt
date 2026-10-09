@@ -1,0 +1,48 @@
+# The Icon Editor's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly. The tools' names fit a 66-pixel button.
+Icon Editor	Éditeur d'icônes
+Pen	Crayon
+Line	Ligne
+Rect	Rect.
+Box	Boîte
+Ellipse	Ellipse
+Fill	Remplir
+Picker	Pipette
+Eraser	Gomme
+transparent	transparent
+Save	Enregistrer
+Cannot write the file.	Impossible d'écrire le fichier.
+Open	Ouvrir
+Not a 24-bit BMP file.	Ce n'est pas un fichier BMP 24 bits.
+Icons can be at most 64 x 64 pixels.	Les icônes font au plus 64 x 64 pixels.
+Primary colour	Couleur principale
+More...	Autres...
+Preview	Aperçu
+Left: 1st colour	Gauche : 1re couleur
+Right: 2nd colour	Droit : 2e couleur
+X: swap them	X : les échanger
+Colours	Couleurs
+File	Fichier
+New 40 x 40 (app icon)	Nouveau 40 x 40 (icône d'appli)
+New 16 x 16	Nouveau 16 x 16
+New 24 x 24	Nouveau 24 x 24
+New 32 x 32	Nouveau 32 x 32
+New 48 x 48	Nouveau 48 x 48
+New 64 x 64	Nouveau 64 x 64
+Open...	Ouvrir...
+Save As...	Enregistrer sous...
+Edit	Édition
+Undo	Annuler
+Redo	Rétablir
+Swap Colours	Échanger les couleurs
+More Colours...	Autres couleurs...
+Image	Image
+Flip Horizontal	Retourner horizontalement
+Flip Vertical	Retourner verticalement
+Rotate 90	Pivoter de 90
+Shift Left	Décaler à gauche
+Shift Right	Décaler à droite
+Shift Up	Décaler vers le haut
+Shift Down	Décaler vers le bas
+Clear	Effacer
+Grid On / Off	Grille : oui / non

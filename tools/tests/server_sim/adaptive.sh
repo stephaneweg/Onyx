@@ -11,7 +11,7 @@
 #   - the pilots: the Task Manager (the grid's roles: cards in portrait), the Terminal (its tabs, no source change);
 #   - the viewport: Setup (800 x 600, fixed) at 800 x 480 scrolled by the wheel over its indicator;
 #   - the File Viewer: resizable, its places a SidePanel in pocket (landscape, portrait's drawer) and console.
-# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar irc ledger archiver]
+# Usage: sh tools/tests/server_sim/adaptive.sh [out dir] [only: control gallery pilots viewport fileviewer media photos gamelib mail calendar irc ledger archiver iconedit fmtracker]
 # SHOTS_PNG=<folder>: the pictures copied there too (docs/compact-shell/real/).
 set -e
 cd "$(dirname "$0")/../../.."
@@ -316,6 +316,48 @@ if want archiver; then
 	WR=$(langdir fr)
 	run pocket_archiver archiver-720-fr "$WWW;dump $OUT/archiver-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=archiver SIM_APP=archiver SIM_WRITES=$WR $A
 	out archiver-720-fr
+fi
+
+# ---- P7: the Icon Editor (pocket, console: it fills, its colours an inspector SidePanel at the right) --------------------
+if want iconedit; then
+	echo "adaptive: the Icon Editor"
+	app pocket iconedit uikit_pocket
+	I=SIM_ARGS=SD:/apps/invaders.app/icon.bmp
+	for t in 800x480:800 1280x720:720 480x800:portrait 640x480:console; do
+		sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
+		WR=$(langdir "")
+		run pocket_iconedit iconedit-$tg "$WWW;expect kind fill;expect frame 0;$W;dump $OUT/iconedit-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=iconedit SIM_APP=iconedit SIM_WRITES=$WR $I
+		out iconedit-$tg
+	done
+	WR=$(langdir "")
+	run pocket_iconedit iconedit-800-colours "$WWW;down 794 230;up 794 230;$W;dump $OUT/iconedit-800-colours.elsm" SIM_SCREEN=800x480 SIM_APPNAME=iconedit SIM_APP=iconedit SIM_WRITES=$WR $I
+	out iconedit-800-colours
+	WR=$(langdir fr)
+	run pocket_iconedit iconedit-720-fr "$WWW;dump $OUT/iconedit-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=iconedit SIM_APP=iconedit SIM_WRITES=$WR $I
+	out iconedit-720-fr
+fi
+
+# ---- P7: FM Tracker (pocket, console: its side panel a SidePanel's content -- a drawer on a small screen) ----------------
+# AudioKit for the PC from shots.sh's folder (MEDIA_SHOTS), as the Media Player's part; skipped without it.
+if want fmtracker; then
+	MS=${MEDIA_SHOTS:-/tmp/onyx_shots}
+	if [ -f "$MS/libaudiokit.a" ]; then
+		echo "adaptive: FM Tracker"
+		ftapp pocket fmtracker uikit_pocket "$MS/libaudiokit.a" -lm
+		F=SIM_ARGS=SD:/music/fms/AIRWOLF.FMS
+		for t in 800x480:800 1280x720:720 480x800:portrait 640x480:console; do
+			sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
+			WR=$(langdir "")
+			run pocket_fmtracker fmtracker-$tg "$WWW;expect kind fill;expect frame 0;$W;dump $OUT/fmtracker-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=fmtracker SIM_APP=fmtracker SIM_WRITES=$WR $F
+			out fmtracker-$tg
+		done
+		WR=$(langdir "")
+		run pocket_fmtracker fmtracker-800-drawer "$WWW;down 6 250;up 6 250;$W;dump $OUT/fmtracker-800-drawer.elsm" SIM_SCREEN=800x480 SIM_APPNAME=fmtracker SIM_APP=fmtracker SIM_WRITES=$WR $F
+		out fmtracker-800-drawer
+		WR=$(langdir fr)
+		run pocket_fmtracker fmtracker-720-fr "$WWW;dump $OUT/fmtracker-720-fr.elsm" SIM_SCREEN=1280x720 SIM_APPNAME=fmtracker SIM_APP=fmtracker SIM_WRITES=$WR $F
+		out fmtracker-720-fr
+	else echo "adaptive: FM Tracker skipped (no $MS/libaudiokit.a: sh tools/tests/desktop_sim/shots.sh fmtracker)"; fi
 fi
 
 grep -h "server_sim: FAIL" "$OUT/log.txt" && FAIL=1

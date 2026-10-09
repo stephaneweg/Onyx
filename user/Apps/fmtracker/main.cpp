@@ -40,7 +40,9 @@ static int g_W = 980, g_H = 660;	// the window's size (resizable: PocketUI fills
 #define W	g_W
 #define H	g_H
 #define TOOL_H	50
-#define SIDE_W	156
+#define SIDE0	156			// the side panel's width
+static int g_sideW = SIDE0;		// what it takes at the window's left now (pocket, console: 0 when it is a drawer)
+#define SIDE_W	g_sideW
 #define ST_H	22
 #define PIANO_H	58
 #define HEAD_Y	TOOL_H
@@ -178,7 +180,7 @@ static void undo_push () { snap_clear (g_redo, g_nredo); snap_push (g_undo, g_nu
 static void refresh_pattern_ui ();
 static void snap_back (Snap *from, int &nf, Snap *to, int &nt, const char *what)
 {
-	if (!nf) { set_status ("Nothing to ", what); return; }
+	if (!nf) { set_status (TR ("Nothing to "), what); return; }
 	Snap s = from[--nf];
 	if (s.pat >= g_song.npat) { delete [] s.n; return; }
 	g_pat = s.pat;
@@ -189,8 +191,8 @@ static void snap_back (Snap *from, int &nf, Snap *to, int &nt, const char *what)
 	g_dirty = true; g_sel = false;
 	refresh_pattern_ui ();
 }
-static void op_undo () { snap_back (g_undo, g_nundo, g_redo, g_nredo, "undo."); }
-static void op_redo () { snap_back (g_redo, g_nredo, g_undo, g_nundo, "redo."); }
+static void op_undo () { snap_back (g_undo, g_nundo, g_redo, g_nredo, TR ("undo.")); }
+static void op_redo () { snap_back (g_redo, g_nredo, g_undo, g_nundo, TR ("redo.")); }
 
 // ---- the view ---------------------------------------------------------------------------------------
 static void sync_scroll ()
@@ -242,14 +244,14 @@ static void sel_rect (int &r0, int &r1, int &c0, int &c1)	// the block chosen (t
 }
 
 // ---- the instrument dialog -----------------------------------------------------------------------------
-static const char *const WAVES[4] = { "Sine", "Half sine", "Abs sine", "Pulses" };
-static const char *const CONNS[2] = { "FM", "Additive" };
+static const char *const WAVES[4] = { TRN ("Sine"), TRN ("Half sine"), TRN ("Abs sine"), TRN ("Pulses") };
+static const char *const CONNS[2] = { "FM", TRN ("Additive") };
 static char g_presetNames[96][13]; static const char *g_presetPtr[96]; static int g_npreset = 0;
 
 static void load_presets ()
 {
 	if (g_npreset) return;
-	g_presetPtr[g_npreset] = "(preset...)"; g_npreset++;
+	g_presetPtr[g_npreset] = TR ("(preset...)"); g_npreset++;
 	void *d = kapi_opendir (INS_DIR);
 	if (!d) return;
 	struct kapi_dirent e;
@@ -365,21 +367,22 @@ public:
 		left = (W - width) / 2; top = (H - height) / 2;
 		ins = g_song.ins[ch];
 		int y = titleH () + 12;
-		addChild (new Label (16, y + 4, 46, 20, "Name", C_TEXT, C_FACE));
+		addChild (new Label (16, y + 4, 46, 20, TR ("Name"), C_TEXT, C_FACE));
 		name = new Textbox (64, y, 110, 26, ins.name); addChild (name);
 		load_presets ();
 		preset = new Dropdown (186, y, 190, 26, g_presetPtr, g_npreset, 0, dlg_preset);
 		Button *b;
-		b = new Button (width - 190, y - 1, 84, 28, "Load...", dlg_btn); b->tag = B_LOAD; addChild (b);
-		b = new Button (width - 100, y - 1, 84, 28, "Save...", dlg_btn); b->tag = B_SAVE; addChild (b);
+		b = new Button (width - 190, y - 1, 84, 28, TR ("Load..."), dlg_btn); b->tag = B_LOAD; addChild (b);
+		b = new Button (width - 100, y - 1, 84, 28, TR ("Save..."), dlg_btn); b->tag = B_SAVE; addChild (b);
 		yB = y + 40;
-		addChild (new Label (16, yB + 4, 70, 20, "Algorithm", C_TEXT, C_FACE));
-		conn = new SegmentedControl (90, yB, 170, 26, CONNS, 2, ins.p[P_CON] & 1, dlg_changed); addChild (conn);
-		addChild (new Label (446, yB + 4, 66, 20, "Feedback", C_TEXT, C_FACE));
+		addChild (new Label (16, yB + 4, 70, 20, TR ("Algorithm"), C_TEXT, C_FACE));
+		static const char *connTr[2]; connTr[0] = CONNS[0]; connTr[1] = TR (CONNS[1]);		// (in the system's language)
+		conn = new SegmentedControl (90, yB, 170, 26, connTr, 2, ins.p[P_CON] & 1, dlg_changed); addChild (conn);
+		addChild (new Label (446, yB + 4, 66, 20, TR ("Feedback"), C_TEXT, C_FACE));
 		fb = new Slider (516, yB + 3, 100, 20, 0, 7, ins.p[P_FB] & 7, dlg_changed, C_FACE); addChild (fb);
 		yO = yB + 42; yS = yO + 132;
-		static const char *const rows[7] = { "Attack", "Decay", "Sustain", "Release", "Volume", "Multiplier", "Key scale" };
-		static const char *const flags[4] = { "Held (sustain)", "Tremolo", "Vibrato", "Key scale rate" };
+		static const char *const rows[7] = { TR ("Attack"), TR ("Decay"), TR ("Sustain"), TR ("Release"), TR ("Volume"), TR ("Multiplier"), TR ("Key scale") };
+		static const char *const flags[4] = { TR ("Held (sustain)"), TR ("Tremolo"), TR ("Vibrato"), TR ("Key scale rate") };
 		static const int ffield[4] = { P_EGT, P_AM, P_VIB, P_KSR };
 		for (int o = 0; o < 2; o++)
 		{
@@ -397,9 +400,9 @@ public:
 				addChild (chk[o][f]);
 			}
 		}
-		b = new Button (16, height - 42, 90, 30, "Test", dlg_btn); b->tag = B_TEST; addChild (b);
-		b = new Button (width - 196, height - 42, 86, 30, "OK", dlg_btn); b->tag = B_OK; addChild (b);
-		b = new Button (width - 102, height - 42, 86, 30, "Cancel", dlg_btn); b->tag = B_CANCEL; addChild (b);
+		b = new Button (16, height - 42, 90, 30, TR ("Test"), dlg_btn); b->tag = B_TEST; addChild (b);
+		b = new Button (width - 196, height - 42, 86, 30, TR ("OK"), dlg_btn); b->tag = B_OK; addChild (b);
+		b = new Button (width - 102, height - 42, 86, 30, TR ("Cancel"), dlg_btn); b->tag = B_CANCEL; addChild (b);
 		addChild (preset);			// the drop-down last: its list opens over the controls below
 		g_dlg = this;
 	}
@@ -510,7 +513,7 @@ public:
 			char p[256];
 			if (!uk_file_open (p, sizeof p, INS_DIR, FMI_KINDS)) return;
 			FmsIns in;
-			if (read_fmi (p, &in)) { ins = in; show (); } else uk_messagebox ("Instrument", "Not an .FMI instrument file.", MB_OK);
+			if (read_fmi (p, &in)) { ins = in; show (); } else uk_messagebox (TR ("Instrument"), TR ("Not an .FMI instrument file."), MB_OK);
 			return;
 		}
 		if (tag == B_SAVE)
@@ -520,7 +523,7 @@ public:
 			char p[256];
 			if (!uk_file_save (p, sizeof p, INS_DIR, def, FMI_KINDS)) return;
 			char t[600]; int len = fmi_write (&ins, t);
-			if (kapi_save_file (p, t, (unsigned) len) < 0) uk_messagebox ("Instrument", "Cannot write the file.", MB_OK);
+			if (kapi_save_file (p, t, (unsigned) len) < 0) uk_messagebox (TR ("Instrument"), TR ("Cannot write the file."), MB_OK);
 			return;
 		}
 		if (tag == B_OK) collect ();
@@ -553,21 +556,21 @@ public:
 	}
 	void onDraw () override
 	{
-		char t[48]; snprintf (t, sizeof t, "Instrument of channel %d", ch + 1);
+		char t[48]; snprintf (t, sizeof t, TR ("Instrument of channel %d"), ch + 1);
 		drawBox (t);
 		unsigned dim = uk_mix (C_FACE, C_TEXT, 150);
 		// the algorithm
 		int ax = 276, ay = yB + 2;
 		if (ins.p[P_CON] & 1)			// additive: both to the output
 		{
-			box (ax, ay - 12, "Op 1"); box (ax, ay + 12, "Op 2");
+			box (ax, ay - 12, TR ("Op 1")); box (ax, ay + 12, TR ("Op 2"));
 			seg (ax + 50, ay - 1, ax + 70, ay - 1, C_ACCENT); seg (ax + 50, ay + 23, ax + 70, ay + 23, C_ACCENT);
 			seg (ax + 70, ay - 1, ax + 70, ay + 23, C_ACCENT); seg (ax + 70, ay + 11, ax + 92, ay + 11, C_ACCENT);
 			uk_text_l (canvas, ax + 98, ay, 22, "out", dim);
 		}
 		else
 		{
-			box (ax, ay, "Op 1"); box (ax + 70, ay, "Op 2");
+			box (ax, ay, TR ("Op 1")); box (ax + 70, ay, TR ("Op 2"));
 			seg (ax + 50, ay + 11, ax + 70, ay + 11, C_ACCENT); seg (ax + 120, ay + 11, ax + 136, ay + 11, C_ACCENT);
 			uk_text_l (canvas, ax + 140, ay, 22, "out", dim);
 		}
@@ -575,8 +578,8 @@ public:
 		for (int o = 0; o < 2; o++)
 		{
 			int x = colX (o);
-			uk_text_l (canvas, x, yO, 20, o ? ((ins.p[P_CON] & 1) ? "Operator 2" : "Operator 2 - carrier (what is heard)")
-							   : ((ins.p[P_CON] & 1) ? "Operator 1" : "Operator 1 - modulator (the timbre)"), C_TEXT, 2);
+			uk_text_l (canvas, x, yO, 20, o ? ((ins.p[P_CON] & 1) ? TR ("Operator 2") : TR ("Operator 2 - carrier (what is heard)"))
+							   : ((ins.p[P_CON] & 1) ? TR ("Operator 1") : TR ("Operator 1 - modulator (the timbre)")), C_TEXT, 2);
 			envelope (o, x, yO + 58, COLW, 66);
 			for (int r = 0; r < 7; r++)
 			{
@@ -585,9 +588,9 @@ public:
 				uk_text_l (canvas, x + COLW - 30, yS + r * 24, 20, t, C_TEXT);
 			}
 		}
-		uk_text_l (canvas, 16, yS + 7 * 24 + 58, 20, anim ? "The sound's wave, as the note sounds" : "The sound's wave (two periods, at full volume)", C_TEXT, 2);
+		uk_text_l (canvas, 16, yS + 7 * 24 + 58, 20, anim ? TR ("The sound's wave, as the note sounds") : TR ("The sound's wave (two periods, at full volume)"), C_TEXT, 2);
 		output_wave (16, yS + 7 * 24 + 80, width - 32, 62);
-		uk_text_l (canvas, 118, height - 42, 30, "Test plays it: the wave moves with the note.", dim);
+		uk_text_l (canvas, 118, height - 42, 30, TR ("Test plays it: the wave moves with the note."), dim);
 	}
 };
 static void dlg_btn (Widget &w) { ((Modal *) w.parent)->onButton (w.tag); }
@@ -649,7 +652,7 @@ public:
 		canvas.fillRect (0, 0, width - 1, 3, CH_COL[ch]);
 		canvas.fillRect (width - 1, 0, 1, height, uk_tone (C_BG, 100));
 		if (part == 0 || down == 0) uk_raised (canvas, 3, 5, width - 8, 19, 4, C_BUTTON, down == 0 ? UK_PRESSED : UK_HOT);
-		char t[24], f[24]; snprintf (t, sizeof t, "%d  %s", ch + 1, g_song.ins[ch].name[0] ? g_song.ins[ch].name : "(none)");
+		char t[24], f[24]; snprintf (t, sizeof t, "%d  %s", ch + 1, g_song.ins[ch].name[0] ? g_song.ins[ch].name : TR ("(none)"));
 		uk_text_fit (t, width - 16, f, sizeof f, 2);
 		uk_text_l (canvas, 8, 5, 19, f, quiet ? C_DIS : C_TEXT, 2);
 		pill (4, "M", muted, 0x00D9534A, part == 1);
@@ -847,7 +850,7 @@ public:
 			unsigned ink = on ? uk_hilite_ink (true) : C_TEXT, dim = on ? ink : uk_mix (bg, C_TEXT, 140);
 			char t[24]; snprintf (t, sizeof t, "%02d", i + 1);
 			uk_text_l (canvas, 22, y, ROW, t, ink, 2);
-			snprintf (t, sizeof t, "%d rows", g_song.pat[i].rows);
+			snprintf (t, sizeof t, TR ("%d rows"), g_song.pat[i].rows);
 			uk_text_l (canvas, 50, y, ROW, t, dim);
 			if (g_playing && i == g_playPat) uk_glyph (canvas, WKG_RIGHT, 11, y + ROW / 2, 9, on ? ink : 0x0048B068u);
 		}
@@ -959,13 +962,13 @@ static void op_copy ()
 	int r0, r1, c0, c1; sel_rect (r0, r1, c0, c1);
 	g_clipR = r1 - r0 + 1; g_clipC = c1 - c0 + 1;
 	for (int c = 0; c < g_clipC; c++) for (int r = 0; r < g_clipR; r++) g_clip[c * g_clipR + r] = p.n[(c0 + c) * p.rows + r0 + r];
-	char s[64]; snprintf (s, sizeof s, "Copied %d row%s x %d channel%s.", g_clipR, g_clipR == 1 ? "" : "s", g_clipC, g_clipC == 1 ? "" : "s");
+	char s[64]; snprintf (s, sizeof s, TR ("Copied: %d rows x %d channels."), g_clipR, g_clipC);
 	set_status (s);
 }
 static void op_cut () { op_copy (); op_clear_block (); }
 static void op_paste ()						// at the cursor (the block's top left when one is chosen)
 {
-	if (!g_clipR) { set_status ("Nothing to paste: copy a block first."); return; }
+	if (!g_clipR) { set_status (TR ("Nothing to paste: copy a block first.")); return; }
 	FmsPattern &p = pat ();
 	int r0, r1, c0, c1; sel_rect (r0, r1, c0, c1);
 	undo_push ();
@@ -1012,7 +1015,7 @@ static void op_stop ()
 	note_off (-1);
 	g_btPlay->setOn (false);
 	redraw ();
-	set_status ("Stopped.");
+	set_status (TR ("Stopped."));
 }
 static void start_play (int patn, int row)
 {
@@ -1022,11 +1025,11 @@ static void start_play (int patn, int row)
 	g_playing = true; g_playPat = patn; g_playRow = row; g_shownRow = row;
 	g_nextTick = kapi_get_ticks ();
 	g_btPlay->setOn (true);
-	set_status (g_loop ? "Playing this pattern in a loop -- Esc or Stop to stop." : "Playing -- Esc or Stop to stop.");
+	set_status (g_loop ? TR ("Playing this pattern in a loop -- Esc or Stop to stop.") : TR ("Playing -- Esc or Stop to stop."));
 }
 static void op_play () { if (g_playing) op_stop (); else start_play (g_pat, g_row); }
 static void op_play_start () { op_stop (); start_play (g_loop ? g_pat : 0, 0); }
-static void op_loop () { g_loop = !g_loop; g_btLoop->setOn (g_loop); set_status (g_loop ? "Loop: the pattern plays again and again." : "Loop off: the patterns play in order."); }
+static void op_loop () { g_loop = !g_loop; g_btLoop->setOn (g_loop); set_status (g_loop ? TR ("Loop: the pattern plays again and again.") : TR ("Loop off: the patterns play in order.")); }
 static void op_follow () { g_follow = !g_follow; g_btFollow->setOn (g_follow); }
 static void tick ()
 {
@@ -1064,17 +1067,17 @@ static void tick ()
 }
 
 // ---- song commands ------------------------------------------------------------------------------------------------
-static void title_status () { set_status (g_path[0] ? g_path : "Untitled", g_dirty ? "  (modified)" : ""); }
+static void title_status () { set_status (g_path[0] ? g_path : TR ("Untitled"), g_dirty ? TR ("  (modified)") : ""); }
 static void song_labels ()
 {
-	g_songLabel->setText (g_song.title[0] ? g_song.title : (g_path[0] ? fs_basename (g_path) : "Untitled"));
+	g_songLabel->setText (g_song.title[0] ? g_song.title : (g_path[0] ? fs_basename (g_path) : TR ("Untitled")));
 	g_authorLabel->setText (g_song.author);
 }
 
 static bool confirm_discard ()
 {
 	if (!g_dirty) return true;
-	int r = uk_messagebox ("FM Tracker", "The song has changed. Save it first?", MB_YESNOCANCEL);
+	int r = uk_messagebox (TR ("FM Tracker"), TR ("The song has changed. Save it first?"), MB_YESNOCANCEL);
 	if (r == 0) return false;
 	if (r == 1) { extern void op_save (); op_save (); return !g_dirty; }
 	return true;
@@ -1102,7 +1105,7 @@ static void op_new ()
 static bool load_song (const char *path)
 {
 	void *f = kapi_open (path);
-	if (!f) { set_status ("Cannot open ", path); return false; }
+	if (!f) { set_status (TR ("Cannot open "), path); return false; }
 	unsigned n = kapi_fsize (f);
 	unsigned char *b = new unsigned char[n + 1];
 	int r = kapi_read (f, b, n); kapi_close (f);
@@ -1110,7 +1113,7 @@ static bool load_song (const char *path)
 	s.npat = 0;
 	bool ok = r > 0 && fms_parse (b, r, &s);
 	delete [] b;
-	if (!ok) { fms_clear (&s); uk_messagebox ("FM Tracker", "This is not an FM Song (.FMS) file.", MB_OK); return false; }
+	if (!ok) { fms_clear (&s); uk_messagebox (TR ("FM Tracker"), TR ("This is not an FM Song (.FMS) file."), MB_OK); return false; }
 	op_stop ();
 	fms_clear (&g_song);
 	g_song = s; s.npat = 0;					// (the patterns move to g_song)
@@ -1140,7 +1143,7 @@ static void op_save_as ()
 	if (!uk_file_save (p, sizeof p, g_path[0] ? g_path : SONG_DIR, def, FMS_KINDS)) return;
 	int n = fms_len (p);
 	if (!(n > 4 && p[n - 4] == '.')) fms_copy (p + n, ".FMS", sizeof p - n);
-	if (!write_song (p)) { set_status ("Cannot save ", p); return; }
+	if (!write_song (p)) { set_status (TR ("Cannot save "), p); return; }
 	fms_copy (g_path, p, sizeof g_path);
 	g_dirty = false; title_status (); song_labels ();
 }
@@ -1157,7 +1160,7 @@ static void op_export_wav ()
 	if (!(n > 4 && p[n - 4] == '.')) fms_copy (p + n, ".WAV", sizeof p - n);
 	static const char tmp[] = "SD:/tmp/fmtracker-export.fms";
 	kapi_mkdir ("SD:/tmp");
-	if (!write_song (tmp)) { set_status ("Cannot export ", p); return; }
+	if (!write_song (tmp)) { set_status (TR ("Cannot export "), p); return; }
 	char err[128];
 	ak_stream *st = ak_open (tmp, err, sizeof err);
 	bool ok = false;
@@ -1169,20 +1172,20 @@ static void op_export_wav ()
 		if (w != 0)
 		{
 			static short buf[2 * 4096];
-			set_status ("Exporting ", p);
+			set_status (TR ("Exporting "), p);
 			for (int k; (k = ak_read (st, buf, 4096)) > 0; ) ak_wav_write (w, buf, k);
 			ok = ak_wav_end (w) == 0;
 		}
 		ak_close (st);
 	}
 	kapi_remove (tmp);
-	set_status (ok ? "Exported " : "Cannot export ", p);
+	set_status (ok ? TR ("Exported ") : TR ("Cannot export "), p);
 }
 
 void op_save ()
 {
 	if (!g_path[0]) { op_save_as (); return; }
-	if (!write_song (g_path)) { set_status ("Cannot save ", g_path); return; }
+	if (!write_song (g_path)) { set_status (TR ("Cannot save "), g_path); return; }
 	g_dirty = false; title_status ();
 }
 
@@ -1195,7 +1198,7 @@ public:
 	InfoDialog () : Modal (440, 190)
 	{
 		left = (W - width) / 2; top = (H - height) / 2;
-		static const char *const lab[3] = { "Title", "Author", "Comment" };
+		static const char *const lab[3] = { TR ("Title"), TR ("Author"), TR ("Comment") };
 		const char *val[3] = { g_song.title, g_song.author, g_song.comment };
 		static const int cap[3] = { 20, 20, 50 };
 		for (int i = 0; i < 3; i++)
@@ -1205,12 +1208,12 @@ public:
 			addChild (t[i]);
 		}
 		Button *b;
-		b = new Button (width - 184, height - 38, 82, 28, "OK", info_btn); b->tag = 1; addChild (b);
-		b = new Button (width - 94, height - 38, 82, 28, "Cancel", info_btn); b->tag = 0; addChild (b);
+		b = new Button (width - 184, height - 38, 82, 28, TR ("OK"), info_btn); b->tag = 1; addChild (b);
+		b = new Button (width - 94, height - 38, 82, 28, TR ("Cancel"), info_btn); b->tag = 0; addChild (b);
 		t[0]->setFocus ();
 	}
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
-	void onDraw () override { drawBox ("Song information"); }
+	void onDraw () override { drawBox (TR ("Song information")); }
 };
 static void op_info ()
 {
@@ -1249,7 +1252,7 @@ static void op_clear_channel ()
 }
 static void add_pattern (bool duplicate)
 {
-	if (g_song.npat >= FMS_MAXPAT) { set_status ("At most 64 patterns."); return; }
+	if (g_song.npat >= FMS_MAXPAT) { set_status (TR ("At most 64 patterns.")); return; }
 	op_stop (); undo_clear ();
 	for (int i = g_song.npat; i > g_pat + 1; i--) g_song.pat[i] = g_song.pat[i - 1];
 	FmsPattern &src = g_song.pat[g_pat], &np = g_song.pat[g_pat + 1];
@@ -1262,8 +1265,8 @@ static void op_new_pattern () { add_pattern (false); }
 static void op_dup_pattern () { add_pattern (true); }
 static void op_delete_pattern ()
 {
-	if (g_song.npat <= 1) { set_status ("A song keeps at least one pattern."); return; }
-	if (!uk_messagebox ("Pattern", "Delete this pattern?", MB_YESNO)) return;
+	if (g_song.npat <= 1) { set_status (TR ("A song keeps at least one pattern.")); return; }
+	if (!uk_messagebox (TR ("Pattern"), TR ("Delete this pattern?"), MB_YESNO)) return;
 	op_stop (); undo_clear ();
 	delete [] g_song.pat[g_pat].n;
 	for (int i = g_pat; i + 1 < g_song.npat; i++) g_song.pat[i] = g_song.pat[i + 1];
@@ -1317,16 +1320,17 @@ static void side_icon (Canvas &cv, int id, int x, int y, int size, unsigned ink,
 class TrackerRoot : public Root
 {
 public:
-	TrackerRoot () : Root (W, H, "FM Tracker") {}
+	TrackerRoot () : Root (W, H, TR ("FM Tracker")) {}
 	void onDraw () override
 	{
 		Root::onDraw ();
 		canvas.fillRect (0, TOOL_H - 1, width, 1, uk_tone (bg, 100));			// the toolbar's edge
-		canvas.fillRect (SIDE_W - 1, TOOL_H, 1, height - TOOL_H - ST_H, uk_tone (bg, 100));	// the side panel's
+		if (SIDE_W > 0) canvas.fillRect (SIDE_W - 1, TOOL_H, 1, height - TOOL_H - ST_H, uk_tone (bg, 100));	// the side panel's
 		canvas.fillRect (GRID_X, HEAD_Y, NUM_W, HEAD_H, bg);
 	}
 	void onTick () override { tick (); }
 	void onResized () override;
+	void onSizeClass (int) override { onResized (); }
 	bool onKey (long k) override
 	{
 		if (k == 27) { if (g_sel && !g_playing) { g_sel = false; redraw (); } else op_stop (); return true; }
@@ -1342,16 +1346,21 @@ public:
 	}
 };
 
+// (P7) In pocket and console the side panel (the patterns, this pattern, the typing, the song) is the content of a
+// navigation SidePanel (uikit/sidepanel.h): whole on a wide screen, a drawer otherwise -- the grid takes the width. 0
+// on the desktop: the panel at the window's left, as always.
+static SidePanel *g_sp;
 // The window resized: the side panel taller, the channels wider (COL_W), the grid taller, the piano wider
 void TrackerRoot::onResized ()
 {
 	g_W = width; g_H = height;
 	((Widget *) g_btFollow)->left = W - 96;
-	g_side->resizeTo (SIDE_W - 1, H - TOOL_H - ST_H);
+	if (g_sp) { g_sp->place (0, TOOL_H, SIDE0 - 1, H - TOOL_H - ST_H); g_sideW = g_sp->reservedWidth (); if (g_sideW) g_sideW++; }
+	else g_side->resizeTo (SIDE_W - 1, H - TOOL_H - ST_H);
 	for (int c = 0; c < FMS_CH; c++) { g_head[c]->left = GRID_X + NUM_W + c * COL_W; g_head[c]->resizeTo (COL_W, HEAD_H); }
-	((Widget *) g_grid)->resizeTo (GRID_W, GRID_H);
+	((Widget *) g_grid)->left = GRID_X; ((Widget *) g_grid)->resizeTo (GRID_W, GRID_H);
 	((Widget *) g_sb)->left = GRID_X + GRID_W; ((Widget *) g_sb)->resizeTo (SB_W, GRID_H);
-	((Widget *) g_piano)->top = H - ST_H - PIANO_H; ((Widget *) g_piano)->resizeTo (W - SIDE_W, PIANO_H);
+	((Widget *) g_piano)->left = SIDE_W; ((Widget *) g_piano)->top = H - ST_H - PIANO_H; ((Widget *) g_piano)->resizeTo (W - SIDE_W, PIANO_H);
 	((Widget *) g_status)->top = H - ST_H; ((Widget *) g_status)->resizeTo (W, ST_H);
 	ensure_visible (g_row, false);
 	invalidate (true);
@@ -1374,6 +1383,7 @@ int main (void)
 		big = new FtTextFace;
 		if (!big->open ("DejaVu Sans Mono", 22) && !big->open ("DejaVu Sans", 22)) { delete big; big = 0; }
 	}
+	uk_lang_init ();				// (the words in the system's language, before the window)
 	TrackerRoot root;				// (its background: the theme's face)
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
@@ -1381,49 +1391,51 @@ int main (void)
 
 	// the transport bar
 	int x = 10;
-	g_btPlay = tool (root, x, 8, 38, 34, "Play from the cursor / stop (Ctrl+P)", on_play, WKT_PLAY); x += 42;
+	g_btPlay = tool (root, x, 8, 38, 34, TR ("Play from the cursor / stop (Ctrl+P)"), on_play, WKT_PLAY); x += 42;
 	g_btPlay->setToggle (true); g_btPlay->filled = true;
-	tool (root, x, 8, 34, 34, "Play from the start", on_play_start, WKT_TO_START); x += 38;
-	tool (root, x, 8, 34, 34, "Stop (Esc)", on_stop, WKT_STOP); x += 38;
-	g_btLoop = tool (root, x, 8, 34, 34, "Loop: play this pattern again and again (Ctrl+L)", on_loop, WKT_LOOP); x += 46;
+	tool (root, x, 8, 34, 34, TR ("Play from the start"), on_play_start, WKT_TO_START); x += 38;
+	tool (root, x, 8, 34, 34, TR ("Stop (Esc)"), on_stop, WKT_STOP); x += 38;
+	g_btLoop = tool (root, x, 8, 34, 34, TR ("Loop: play this pattern again and again (Ctrl+L)"), on_loop, WKT_LOOP); x += 46;
 	g_btLoop->setToggle (true);
-	g_lcd = new LcdDisplay (x, 6, 216, 38, "01:000", "PATTERN : ROW"); g_lcd->face = big; root.addChild (g_lcd); x += 228;
-	tool (root, x, 8, 32, 34, "Undo (Ctrl+Z)", on_undo, WKT_UNDO); x += 34;
-	tool (root, x, 8, 32, 34, "Redo (Ctrl+Y)", on_redo, WKT_REDO); x += 44;
-	tool (root, x, 8, 32, 34, "Cut the block (Ctrl+X)", on_cut, WKT_CUT); x += 34;
-	tool (root, x, 8, 32, 34, "Copy the block (Ctrl+C)", on_copy, WKT_COPY); x += 34;
-	tool (root, x, 8, 32, 34, "Paste at the cursor (Ctrl+V)", on_paste, WKT_PASTE); x += 44;
-	g_btFollow = tool (root, W - 96, 8, 86, 34, "Follow the position while it plays", on_follow, WKT_NONE);
-	g_btFollow->setText ("Follow"); g_btFollow->setToggle (true, true);
+	g_lcd = new LcdDisplay (x, 6, 216, 38, "01:000", TR ("PATTERN : ROW")); g_lcd->face = big; root.addChild (g_lcd); x += 228;
+	tool (root, x, 8, 32, 34, TR ("Undo (Ctrl+Z)"), on_undo, WKT_UNDO); x += 34;
+	tool (root, x, 8, 32, 34, TR ("Redo (Ctrl+Y)"), on_redo, WKT_REDO); x += 44;
+	tool (root, x, 8, 32, 34, TR ("Cut the block (Ctrl+X)"), on_cut, WKT_CUT); x += 34;
+	tool (root, x, 8, 32, 34, TR ("Copy the block (Ctrl+C)"), on_copy, WKT_COPY); x += 34;
+	tool (root, x, 8, 32, 34, TR ("Paste at the cursor (Ctrl+V)"), on_paste, WKT_PASTE); x += 44;
+	g_btFollow = tool (root, W - 96, 8, 86, 34, TR ("Follow the position while it plays"), on_follow, WKT_NONE);
+	g_btFollow->setText (TR ("Follow")); g_btFollow->setToggle (true, true);
 
 	// the side panel: the patterns, this pattern, the typing
 	unsigned sbg = col_side ();
-	Panel *side = new Panel (0, TOOL_H, SIDE_W - 1, H - TOOL_H - ST_H, sbg);
-	root.addChild (side); g_side = side;
-	side->addChild (new Heading (10, 8, 130, 18, "PATTERNS", sbg));
-	g_plist = new PatList (4, 30, SIDE_W - 9, 9 * PatList::ROW); side->addChild (g_plist);
+	Panel *side = new Panel (0, TOOL_H, SIDE0 - 1, H - TOOL_H - ST_H, sbg);
+	g_side = side;
+	bool pocket = uk_size_class () != UK_SC_REGULAR;
+	if (!pocket) root.addChild (side);
+	side->addChild (new Heading (10, 8, 130, 18, TR ("PATTERNS"), sbg));
+	g_plist = new PatList (4, 30, SIDE0 - 9, 9 * PatList::ROW); side->addChild (g_plist);
 	int by = 30 + 9 * PatList::ROW + 8, bx = 6;
-	tool (*side, bx, by, 27, 26, "A new pattern after this one", on_add, WKT_PLUS); bx += 29;
-	tool (*side, bx, by, 27, 26, "Duplicate this pattern", on_dup, WKT_COPY); bx += 29;
-	tool (*side, bx, by, 27, 26, "Move it earlier in the song", on_pup, WKT_NONE)->setIcon (side_icon, 0); bx += 29;
-	tool (*side, bx, by, 27, 26, "Move it later in the song", on_pdown, WKT_NONE)->setIcon (side_icon, 1); bx += 29;
-	tool (*side, bx, by, 27, 26, "Delete this pattern", on_pdel, WKT_NONE)->setIcon (side_icon, 2);
+	tool (*side, bx, by, 27, 26, TR ("A new pattern after this one"), on_add, WKT_PLUS); bx += 29;
+	tool (*side, bx, by, 27, 26, TR ("Duplicate this pattern"), on_dup, WKT_COPY); bx += 29;
+	tool (*side, bx, by, 27, 26, TR ("Move it earlier in the song"), on_pup, WKT_NONE)->setIcon (side_icon, 0); bx += 29;
+	tool (*side, bx, by, 27, 26, TR ("Move it later in the song"), on_pdown, WKT_NONE)->setIcon (side_icon, 1); bx += 29;
+	tool (*side, bx, by, 27, 26, TR ("Delete this pattern"), on_pdel, WKT_NONE)->setIcon (side_icon, 2);
 	int sy = by + 40;
-	side->addChild (new Heading (10, sy, 130, 18, "THIS PATTERN", sbg)); sy += 24;
-	side->addChild (new Label (12, sy + 5, 52, 20, "Rows", C_TEXT, sbg));
+	side->addChild (new Heading (10, sy, 130, 18, TR ("THIS PATTERN"), sbg)); sy += 24;
+	side->addChild (new Label (12, sy + 5, 52, 20, TR ("Rows"), C_TEXT, sbg));
 	g_rowsBox = new NumericUpDown (66, sy, 80, 28, 1, FMS_MAXROWS, 64, 1, on_rows); side->addChild (g_rowsBox); sy += 32;
-	side->addChild (new Label (12, sy + 5, 52, 20, "Speed", C_TEXT, sbg));
+	side->addChild (new Label (12, sy + 5, 52, 20, TR ("Speed"), C_TEXT, sbg));
 	g_speedBox = new NumericUpDown (66, sy, 80, 28, 1, 40, 3, 1, on_speed); side->addChild (g_speedBox);
-	g_speedBox->tip = "A row lasts speed / 20 s"; sy += 42;
-	side->addChild (new Heading (10, sy, 130, 18, "TYPING", sbg)); sy += 24;
-	side->addChild (new Label (12, sy + 5, 52, 20, "Octave", C_TEXT, sbg));
+	g_speedBox->tip = TR ("A row lasts speed / 20 s"); sy += 42;
+	side->addChild (new Heading (10, sy, 130, 18, TR ("TYPING"), sbg)); sy += 24;
+	side->addChild (new Label (12, sy + 5, 52, 20, TR ("Octave"), C_TEXT, sbg));
 	g_octBox = new NumericUpDown (66, sy, 80, 28, 0, 7, g_oct, 1, on_oct); side->addChild (g_octBox); sy += 32;
-	side->addChild (new Label (12, sy + 5, 52, 20, "Step", C_TEXT, sbg));
+	side->addChild (new Label (12, sy + 5, 52, 20, TR ("Step"), C_TEXT, sbg));
 	g_stepBox = new NumericUpDown (66, sy, 80, 28, 0, 16, g_step, 1, on_step); side->addChild (g_stepBox);
-	g_stepBox->tip = "The rows the cursor goes down after a note"; sy += 42;
-	side->addChild (new Heading (10, sy, 130, 18, "SONG", sbg)); sy += 22;
-	g_songLabel = new Label (12, sy, SIDE_W - 22, 20, "", C_TEXT, sbg); side->addChild (g_songLabel); sy += 20;
-	g_authorLabel = new Label (12, sy, SIDE_W - 22, 20, "", uk_mix (sbg, C_TEXT, 140), sbg); side->addChild (g_authorLabel);
+	g_stepBox->tip = TR ("The rows the cursor goes down after a note"); sy += 42;
+	side->addChild (new Heading (10, sy, 130, 18, TR ("SONG"), sbg)); sy += 22;
+	g_songLabel = new Label (12, sy, SIDE0 - 22, 20, "", C_TEXT, sbg); side->addChild (g_songLabel); sy += 20;
+	g_authorLabel = new Label (12, sy, SIDE0 - 22, 20, "", uk_mix (sbg, C_TEXT, 140), sbg); side->addChild (g_authorLabel);
 
 	// channel headers, grid, scrollbar, piano, status
 	for (int c = 0; c < FMS_CH; c++) { g_head[c] = new ChanHeader (GRID_X + NUM_W + c * COL_W, HEAD_Y, COL_W, HEAD_H, c); root.addChild (g_head[c]); }
@@ -1435,52 +1447,61 @@ int main (void)
 	root.addChild (g_piano);
 	g_status = new StatusBar (0, H - ST_H, W, ST_H);
 	root.addChild (g_status);
+	if (pocket)					// (over the grid: a drawer and its tab)
+	{
+		side->left = 0; side->top = 0;
+		g_sp = new SidePanel (0, TOOL_H, SIDE0 - 1, H - TOOL_H - ST_H, UK_SP_LEFT, UK_SP_NAVIGATION);
+		g_sp->setColors (sbg, UK_AUTO);
+		g_sp->setContent (side);
+		g_sp->onPresentation = [] (SidePanel &, int) { if (g_root) ((TrackerRoot *) g_root)->onResized (); };
+		root.addChild (g_sp);
+	}
 
 	static Menu menu;
-	menu.menu ("File");
-	menu.item ("New",            "^N", UK_CTRL ('N'), op_new);
-	menu.item ("Open...",        "^O", UK_CTRL ('O'), op_open);
-	menu.item ("Save",           "^S", UK_CTRL ('S'), op_save);
-	menu.item ("Save As...",     "",   0,             op_save_as);
-	menu.item ("Export WAV...",  "",   0,             op_export_wav);
+	menu.menu (TR ("File"));
+	menu.item (TR ("New"),            "^N", UK_CTRL ('N'), op_new);
+	menu.item (TR ("Open..."),        "^O", UK_CTRL ('O'), op_open);
+	menu.item (TR ("Save"),           "^S", UK_CTRL ('S'), op_save);
+	menu.item (TR ("Save As..."),     "",   0,             op_save_as);
+	menu.item (TR ("Export WAV..."),  "",   0,             op_export_wav);
 	menu.separator ();
-	menu.item ("Song Info...",   "",   0,             op_info);
-	menu.menu ("Edit");
-	menu.item ("Undo",           "^Z", UK_CTRL ('Z'), op_undo);
-	menu.item ("Redo",           "^Y", UK_CTRL ('Y'), op_redo);
+	menu.item (TR ("Song Info..."),   "",   0,             op_info);
+	menu.menu (TR ("Edit"));
+	menu.item (TR ("Undo"),           "^Z", UK_CTRL ('Z'), op_undo);
+	menu.item (TR ("Redo"),           "^Y", UK_CTRL ('Y'), op_redo);
 	menu.separator ();
-	menu.item ("Cut",            "^X", UK_CTRL ('X'), op_cut);
-	menu.item ("Copy",           "^C", UK_CTRL ('C'), op_copy);
-	menu.item ("Paste",          "^V", UK_CTRL ('V'), op_paste);
-	menu.item ("Select the Pattern", "^A", UK_CTRL ('A'), op_select_all);
+	menu.item (TR ("Cut"),            "^X", UK_CTRL ('X'), op_cut);
+	menu.item (TR ("Copy"),           "^C", UK_CTRL ('C'), op_copy);
+	menu.item (TR ("Paste"),          "^V", UK_CTRL ('V'), op_paste);
+	menu.item (TR ("Select the Pattern"), "^A", UK_CTRL ('A'), op_select_all);
 	menu.separator ();
-	menu.item ("Insert Slice",   "^E", UK_CTRL ('E'), op_insert_row);
-	menu.item ("Delete Slice",   "^D", UK_CTRL ('D'), op_delete_row);
-	menu.item ("Clear Channel",  "",   0,             op_clear_channel);
+	menu.item (TR ("Insert Slice"),   "^E", UK_CTRL ('E'), op_insert_row);
+	menu.item (TR ("Delete Slice"),   "^D", UK_CTRL ('D'), op_delete_row);
+	menu.item (TR ("Clear Channel"),  "",   0,             op_clear_channel);
 	menu.separator ();
-	menu.item ("Semitone Up",    "Ctrl+Up",   0,      op_up1);
-	menu.item ("Semitone Down",  "Ctrl+Down", 0,      op_down1);
-	menu.item ("Octave Up",      "",   0,             op_up12);
-	menu.item ("Octave Down",    "",   0,             op_down12);
-	menu.menu ("Pattern");
-	menu.item ("Previous",       "^B", UK_CTRL ('B'), op_prev_pattern);
-	menu.item ("Next",           "^F", UK_CTRL ('F'), op_next_pattern);
+	menu.item (TR ("Semitone Up"),    "Ctrl+Up",   0,      op_up1);
+	menu.item (TR ("Semitone Down"),  "Ctrl+Down", 0,      op_down1);
+	menu.item (TR ("Octave Up"),      "",   0,             op_up12);
+	menu.item (TR ("Octave Down"),    "",   0,             op_down12);
+	menu.menu (TR ("Pattern"));
+	menu.item (TR ("Previous"),       "^B", UK_CTRL ('B'), op_prev_pattern);
+	menu.item (TR ("Next"),           "^F", UK_CTRL ('F'), op_next_pattern);
 	menu.separator ();
-	menu.item ("New Pattern",    "",   0,             op_new_pattern);
-	menu.item ("Duplicate",      "",   0,             op_dup_pattern);
-	menu.item ("Move Earlier",   "",   0,             op_pattern_up);
-	menu.item ("Move Later",     "",   0,             op_pattern_down);
-	menu.item ("Delete...",      "",   0,             op_delete_pattern);
-	menu.menu ("Channel");
-	menu.item ("Instrument...",  "",   0,             op_instrument);
-	menu.item ("Mute in this Pattern", "", 0,         op_mute);
-	menu.item ("Solo",           "",   0,             op_solo);
-	menu.menu ("Play");
-	menu.item ("Play / Stop",    "^P", UK_CTRL ('P'), op_play);
-	menu.item ("From the Start", "",   0,             op_play_start);
-	menu.item ("Loop the Pattern", "^L", UK_CTRL ('L'), op_loop);
-	menu.item ("Follow",         "",   0,             op_follow);
-	menu.item ("Stop",           "Esc", 0,            op_stop);
+	menu.item (TR ("New Pattern"),    "",   0,             op_new_pattern);
+	menu.item (TR ("Duplicate"),      "",   0,             op_dup_pattern);
+	menu.item (TR ("Move Earlier"),   "",   0,             op_pattern_up);
+	menu.item (TR ("Move Later"),     "",   0,             op_pattern_down);
+	menu.item (TR ("Delete..."),      "",   0,             op_delete_pattern);
+	menu.menu (TR ("Channel"));
+	menu.item (TR ("Instrument..."),  "",   0,             op_instrument);
+	menu.item (TR ("Mute in this Pattern"), "", 0,         op_mute);
+	menu.item (TR ("Solo"),           "",   0,             op_solo);
+	menu.menu (TR ("Play"));
+	menu.item (TR ("Play / Stop"),    "^P", UK_CTRL ('P'), op_play);
+	menu.item (TR ("From the Start"), "",   0,             op_play_start);
+	menu.item (TR ("Loop the Pattern"), "^L", UK_CTRL ('L'), op_loop);
+	menu.item (TR ("Follow"),         "",   0,             op_follow);
+	menu.item (TR ("Stop"),           "Esc", 0,            op_stop);
 	menu.publish ();
 
 	char args[256];
@@ -1490,7 +1511,7 @@ int main (void)
 		FmsIns in;
 		if (read_fmi (INS_DIR "/PIANO.FMI", &in)) for (int c = 0; c < FMS_CH; c++) g_song.ins[c] = in;
 		after_load ();
-		set_status ("C D E F G A B: a note (Shift = #), 0-7: octave, Space: silence, Del: ---, Shift+arrows: a block, ^P: play");
+		set_status (TR ("C D E F G A B: a note (Shift = #), 0-7: octave, Space: silence, Del: ---, Shift+arrows: a block, ^P: play"));
 	}
 	focus_grid ();
 	root.setResizable (true);
