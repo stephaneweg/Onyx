@@ -294,6 +294,7 @@ struct Machine
 	const u8 *memFile; u32 memSize;		// (load (file, size): the source is that memory)
 	char title[16]; char productCode[20];	// (a game's: from its headers)
 	bool trace;				// the system calls and the requests, on stderr (tests)
+	bool traceGpu;				// ... each draw and transfer of the GPU
 	// what the program says (svcOutputDebugString): the host's
 	void (*debugOut) (void *user, const char *text, u32 len);
 	void *debugUser;

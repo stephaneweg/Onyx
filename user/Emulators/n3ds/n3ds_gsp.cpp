@@ -12,6 +12,7 @@
 //
 // MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors (see n3ds.h).
 //
+#include <stdio.h>
 #include <string.h>
 #include "n3ds/n3ds.h"
 
@@ -75,6 +76,7 @@ void Machine::vblank ()
 // One command of the GX queue (8 words; addresses are the program's).
 static void gxCommand (Machine *m, const u32 *c)
 {
+	if (m->traceGpu) fprintf (stderr, "gx %08x %08x %08x %08x %08x %08x %08x %08x%c", (unsigned) c[0], (unsigned) c[1], (unsigned) c[2], (unsigned) c[3], (unsigned) c[4], (unsigned) c[5], (unsigned) c[6], (unsigned) c[7], 10);
 	switch (c[0] & 0xFF)
 	{
 	case 0:									// DMA (source, destination, size)

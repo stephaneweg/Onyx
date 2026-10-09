@@ -7,14 +7,14 @@
 //     coordinates;
 //   triangles: assembled (lists, strips, fans), clipped, culled, put in the viewport and rasterized with
 //     perspective-correct interpolation;
-//   fragments: up to three textures (8 x 8 tiles in Z order, 12 formats but ETC1 here), six texture-combiner
+//   fragments: up to three textures (8 x 8 tiles in Z order, the 14 formats, ETC1 among them), six texture-combiner
 //     stages, the alpha test, the depth test, blending or a logic operation, into the colour and depth buffers
 //     (tiled too, rows from the bottom).
 // And the display transfer that turns a colour buffer into a screen's framebuffer.
 // The procedural texture (unit 3: a colour computed from two coordinates through look-up tables -- what citro2d
 // tints its pictures with) is there but for its noise and its filtering.
-// Not done yet: lighting, fog, shadows, stencil, ETC1, the geometry shader, texture filtering (the nearest
-// texel is taken), mipmaps -- noted when a program asks.
+// Not done yet: lighting, fog, shadows, stencil, the geometry shader, texture filtering (the nearest texel is
+// taken), mipmaps -- noted when a program asks.
 //
 // Written from the public documentation of the GPU (3dbrew's register and shader pages); no code of another
 // emulator.
@@ -22,6 +22,7 @@
 // MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors (see n3ds.h).
 //
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "n3ds/n3ds.h"
@@ -68,9 +69,10 @@ struct Pica
 	u32 procIndex, procTable;
 	// the triangle being assembled
 	Vertex prim[3]; int primCount; bool stripFlip;
+	u32 codeTop; int dumped;			// (traces: how much code was loaded; shaders already printed)
 	int jump;					// a jump asked by the command being run: 1 or 2 (which buffer), 0 none
 	// counters
-	u64 triangles, pixels;
+	u64 triangles, pixels, depthFailed, alphaFailed;
 };
 
 // ---- numbers -----------------------------------------------------------------------------------------------------
@@ -108,6 +110,10 @@ struct Shader
 	float in[16][4], tmp[16][4], out[16][4];
 	bool cmp[2]; int a[2]; int aL;
 };
+
+// The GPU's product: nothing times anything is nothing, even infinity (where IEEE says "not a number"): shaders
+// count on it.
+static inline float mulz (float a, float b) { return a == 0.0f || b == 0.0f ? 0.0f : a * b; }
 
 static inline const float *srcReg (const Pica *p, const Shader &s, u32 r)
 {
@@ -202,17 +208,17 @@ static void runShader (Pica *p, Shader &s, u32 entry)
 		float *dst = d < 0x10 ? s.out[d] : s.tmp[d - 0x10];
 		const u32 mask = od & 15;
 #define EACH(expr) for (int i = 0; i < 4; i++) if (mask & (8u >> i)) dst[i] = (expr)
-		if (mad) { EACH (s1[i] * s2[i] + s3[i]); continue; }
+		if (mad) { EACH (mulz (s1[i], s2[i]) + s3[i]); continue; }
 		switch (op)
 		{
 		case 0x00: EACH (s1[i] + s2[i]); break;									// ADD
-		case 0x01: { float v = s1[0] * s2[0] + s1[1] * s2[1] + s1[2] * s2[2]; EACH (v); break; }			// DP3
-		case 0x02: { float v = s1[0] * s2[0] + s1[1] * s2[1] + s1[2] * s2[2] + s1[3] * s2[3]; EACH (v); break; }	// DP4
-		case 0x03: case 0x18: { float v = s1[0] * s2[0] + s1[1] * s2[1] + s1[2] * s2[2] + s2[3]; EACH (v); break; }	// DPH
+		case 0x01: { float v = mulz (s1[0], s2[0]) + mulz (s1[1], s2[1]) + mulz (s1[2], s2[2]); EACH (v); break; }			// DP3
+		case 0x02: { float v = mulz (s1[0], s2[0]) + mulz (s1[1], s2[1]) + mulz (s1[2], s2[2]) + mulz (s1[3], s2[3]); EACH (v); break; }	// DP4
+		case 0x03: case 0x18: { float v = mulz (s1[0], s2[0]) + mulz (s1[1], s2[1]) + mulz (s1[2], s2[2]) + s2[3]; EACH (v); break; }	// DPH
 		case 0x04: case 0x19: { float t[4] = { 1.0f, s1[1] * s2[1], s1[2], s2[3] }; EACH (t[i]); break; }		// DST
 		case 0x05: { float v = exp2f (s1[0]); EACH (v); break; }							// EX2
 		case 0x06: { float v = log2f (s1[0]); EACH (v); break; }							// LG2
-		case 0x08: EACH (s1[i] * s2[i]); break;									// MUL
+		case 0x08: EACH (mulz (s1[i], s2[i])); break;									// MUL
 		case 0x09: case 0x1A: EACH (s1[i] >= s2[i] ? 1.0f : 0.0f); break;						// SGE
 		case 0x0A: case 0x1B: EACH (s1[i] < s2[i] ? 1.0f : 0.0f); break;						// SLT
 		case 0x0B: EACH (floorf (s1[i])); break;									// FLR
@@ -289,10 +295,50 @@ static inline int wrapCoord (int v, int size, u32 mode)
 	}
 }
 
+// ETC1: blocks of 4 x 4 texels in 8 bytes -- two base colours (each for half the block, split upright or
+// lying), and for each texel one of four steps of brightness around its half's colour. An 8 x 8 tile holds four
+// blocks; with alpha (ETC1A4) 8 bytes of 4-bit alphas come before each block.
+static void etc1Texel (const u8 *block, bool alpha, u32 x, u32 y, int out[4])
+{
+	static const int STEP[8][2] = { { 2, 8 }, { 5, 17 }, { 9, 29 }, { 13, 42 }, { 18, 60 }, { 24, 80 }, { 33, 106 }, { 47, 183 } };
+	u64 a = 0, c = 0;
+	if (alpha) { memcpy (&a, block, 8); block += 8; }
+	memcpy (&c, block, 8);
+	const u32 texel = x * 4 + y;
+	const bool flip = (c >> 32 & 1) != 0, diff = (c >> 33 & 1) != 0;
+	const bool second = flip ? y >= 2 : x >= 2;
+	int r, g, b;
+	if (diff)							// 5 bits and a signed 3-bit difference
+	{
+		r = (int) (c >> 59 & 31); g = (int) (c >> 51 & 31); b = (int) (c >> 43 & 31);
+		if (second)
+		{
+			r += (int) ((s32) ((u32) (c >> 56 & 7) << 29) >> 29); g += (int) ((s32) ((u32) (c >> 48 & 7) << 29) >> 29); b += (int) ((s32) ((u32) (c >> 40 & 7) << 29) >> 29);
+		}
+		r = (r & 31) << 3 | (r & 31) >> 2; g = (g & 31) << 3 | (g & 31) >> 2; b = (b & 31) << 3 | (b & 31) >> 2;
+	}
+	else								// 4 bits each
+	{
+		r = (int) (second ? c >> 56 & 15 : c >> 60 & 15) * 17; g = (int) (second ? c >> 48 & 15 : c >> 52 & 15) * 17; b = (int) (second ? c >> 40 & 15 : c >> 44 & 15) * 17;
+	}
+	const u32 table = (u32) (second ? c >> 34 & 7 : c >> 37 & 7);
+	int step = STEP[table][c >> texel & 1];
+	if (c >> (16 + texel) & 1) step = -step;
+	out[0] = clamp255 (r + step); out[1] = clamp255 (g + step); out[2] = clamp255 (b + step);
+	out[3] = alpha ? (int) (a >> (4 * texel) & 15) * 17 : 255;
+}
+
 // The texel at (s, t), t from the bottom: a texture's rows are stored from the top.
 static void texel (const Texture &t, int s, int tt, int out[4])
 {
 	const u32 x = (u32) wrapCoord (s, (int) t.w, t.wrapS), y = t.h - 1 - (u32) wrapCoord (tt, (int) t.h, t.wrapT);
+	if (t.format >= 12)						// ETC1 (12), ETC1A4 (13)
+	{
+		const u32 size = t.format == 13 ? 16 : 8;
+		const u32 tile = (x >> 3) + (y >> 3) * (t.w >> 3), sub = (x >> 2 & 1) + 2 * (y >> 2 & 1);
+		etc1Texel (t.data + (tile * 4 + sub) * size, t.format == 13, x & 3, y & 3, out);
+		return;
+	}
 	const u32 n = tiled (x, y, t.w);
 	const u8 *d = t.data;
 	switch (t.format)
@@ -557,8 +603,8 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, S
 	float area = (s1.x - s0.x) * (s2.y - s0.y) - (s1.y - s0.y) * (s2.x - s0.x);
 	const u32 cull = p->regs[R_CULL] & 3;
 	if (area == 0.0f) return;
-	if (cull == 1 && area < 0) return;					// keep the counter-clockwise ones
-	if (cull == 2 && area > 0) return;					// ... the clockwise ones
+	if (cull == 1 && area > 0) return;					// 1: the counter-clockwise ones (the "front") are removed
+	if (cull == 2 && area < 0) return;					// 2: the clockwise ones (the "back") -- what games use
 	if (area < 0) { Screen tmp = s1; s1 = s2; s2 = tmp; area = -area; }
 	float minx = s0.x < s1.x ? s0.x : s1.x, maxx = s0.x > s1.x ? s0.x : s1.x, miny = s0.y < s1.y ? s0.y : s1.y, maxy = s0.y > s1.y ? s0.y : s1.y;
 	if (s2.x < minx) minx = s2.x;
@@ -599,7 +645,7 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, S
 			if (f.depthTest && dq)
 			{
 				const u32 old = t.depthBytes == 2 ? (u32) (dq[0] | dq[1] << 8) : (u32) (dq[0] | dq[1] << 8 | dq[2] << 16);
-				if (!compare (f.depthFunc, depth, old)) continue;
+				if (!compare (f.depthFunc, depth, old)) { p->depthFailed++; continue; }
 			}
 			// what the vertices carry, perspective-correct
 			const float q0 = l0 * s0.invw, q1 = l1 * s1.invw, q2 = l2 * s2.invw, qs = 1.0f / (q0 + q1 + q2);
@@ -656,7 +702,7 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, S
 					if (f.updateA >> st & 1) nextBuffer[3] = prev[3];
 				}
 			}
-			if (f.alphaTest && !compare (f.alphaFunc, (u32) prev[3], f.alphaRef)) continue;
+			if (f.alphaTest && !compare (f.alphaFunc, (u32) prev[3], f.alphaRef)) { p->alphaFailed++; continue; }
 			p->pixels++;
 			if (dq && t.depthWrite && f.depthMask && f.depthTest)
 			{
@@ -687,6 +733,9 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, S
 				}
 			}
 			for (int i = 0; i < 4; i++) if (!f.rgbaMask[i]) out[i] = dst[i];
+			if (p->m->traceGpu && x == t.w / 2 && y == t.h / 2)
+				fprintf (stderr, "   centre: primary %d %d %d %d, tex0 %d %d %d %d, combined %d %d %d %d, there %d %d %d %d -> %d %d %d %d%c", primary[0], primary[1], primary[2], primary[3],
+					 texc[0][0], texc[0][1], texc[0][2], texc[0][3], prev[0], prev[1], prev[2], prev[3], dst[0], dst[1], dst[2], dst[3], out[0], out[1], out[2], out[3], 10);
 			writeColor (t, cq, out);
 		}
 	}
@@ -784,6 +833,34 @@ static void draw (Pica *p, bool indexed)
 		index = p->m->physPtr (base + (p->regs[R_INDEX_CONFIG] & 0x0FFFFFFF), count * (index16 ? 2 : 1));
 		if (!index) return;
 	}
+	if (p->m->traceGpu)
+	{
+		const u32 *r = p->regs;
+		fprintf (stderr, "draw %s %u vertices, mode %u, entry %03x, inputs %d | target %08x %ux%u fmt %u, viewport %g x %g at %u,%u, scissor %u | tex cfg %05x: 0 %ux%u fmt %x at %08x | tev0 %08x %08x %08x k %08x, tev1 %08x %08x %08x, tev2 %08x %08x %08x k %08x, tev3 %08x %08x %08x, tev4 %08x %08x %08x, tev5 %08x %08x %08x, e0 %08x | blend %08x op %08x, alpha %08x, depth %08x, stencil %08x, cull %u, light %u%c",
+			 indexed ? "indexed" : "arrays", (unsigned) count, (unsigned) (r[R_PRIM_CONFIG] >> 8 & 3), (unsigned) (r[R_VSH_ENTRY] & 0xFFFF), inputs,
+			 (unsigned) (r[R_COLOR_ADDR] << 3), (unsigned) (r[R_FB_DIM] & 0x7FF), (unsigned) ((r[R_FB_DIM] >> 12 & 0x3FF) + 1), (unsigned) (r[R_COLOR_FORMAT] >> 16 & 7),
+			 (double) (f24 (r[R_VIEWPORT_W]) * 2), (double) (f24 (r[R_VIEWPORT_H]) * 2), (unsigned) (r[R_VIEWPORT_XY] & 0x3FF), (unsigned) (r[R_VIEWPORT_XY] >> 16 & 0x3FF), (unsigned) (r[R_SCISSOR_MODE] & 3),
+			 (unsigned) r[R_TEX_CONFIG], (unsigned) (r[R_TEX0 + 1] >> 16), (unsigned) (r[R_TEX0 + 1] & 0xFFFF), (unsigned) (r[R_TEX0_TYPE] & 15), (unsigned) (r[R_TEX0 + 4] << 3),
+			 (unsigned) r[0xC0], (unsigned) r[0xC1], (unsigned) r[0xC2], (unsigned) r[0xC3], (unsigned) r[0xC8], (unsigned) r[0xC9], (unsigned) r[0xCA],
+			 (unsigned) r[0xD0], (unsigned) r[0xD1], (unsigned) r[0xD2], (unsigned) r[0xD3], (unsigned) r[0xD8], (unsigned) r[0xD9], (unsigned) r[0xDA],
+			 (unsigned) r[0xF0], (unsigned) r[0xF1], (unsigned) r[0xF2], (unsigned) r[0xF8], (unsigned) r[0xF9], (unsigned) r[0xFA], (unsigned) r[0xE0],
+			 (unsigned) r[R_BLEND_FUNC], (unsigned) r[R_COLOR_OP], (unsigned) r[R_ALPHA_TEST], (unsigned) r[R_DEPTH_COLOR_MASK], (unsigned) r[R_STENCIL_TEST], (unsigned) (r[R_CULL] & 3), (unsigned) (r[R_LIGHTING] & 1), 10);
+	}
+	if (p->m->traceGpu && p->dumped < 6)				// (a shader's code, uniforms and state, once: to study it)
+	{
+		p->dumped++;
+		fprintf (stderr, "shader entry %03x bool %04x int %02x%02x%02x %02x%02x%02x outmask %04x outmap %u: %08x %08x %08x %08x %08x %08x %08x%c", (unsigned) (p->regs[R_VSH_ENTRY] & 0xFFFF), (unsigned) p->bu,
+			 p->iu[0][0], p->iu[0][1], p->iu[0][2], p->iu[1][0], p->iu[1][1], p->iu[1][2], (unsigned) p->regs[R_VSH_OUTMASK], (unsigned) p->regs[R_OUTMAP_TOTAL],
+			 (unsigned) p->regs[R_OUTMAP], (unsigned) p->regs[R_OUTMAP + 1], (unsigned) p->regs[R_OUTMAP + 2], (unsigned) p->regs[R_OUTMAP + 3], (unsigned) p->regs[R_OUTMAP + 4], (unsigned) p->regs[R_OUTMAP + 5], (unsigned) p->regs[R_OUTMAP + 6], 10);
+		fprintf (stderr, "code");
+		for (u32 i = 0; i < p->codeTop && i < CODE_MAX; i++) fprintf (stderr, " %08x", (unsigned) p->code[i]);
+		fprintf (stderr, "%cdesc", 10);
+		for (u32 i = 0; i < OPDESC_MAX; i++) fprintf (stderr, " %08x", (unsigned) p->opdesc[i]);
+		fprintf (stderr, "%cuniforms", 10);
+		for (int i = 0; i < 96; i++) fprintf (stderr, " %d:[%g %g %g %g]", i, (double) p->fu[i][0], (double) p->fu[i][1], (double) p->fu[i][2], (double) p->fu[i][3]);
+		fprintf (stderr, "%c", 10);
+	}
+	const u64 pixelsBefore = p->pixels, trisBefore = p->triangles, depthBefore = p->depthFailed, alphaBefore = p->alphaFailed;
 	p->primCount = 0; p->stripFlip = false;
 	for (u32 n = 0; n < count; n++)
 	{
@@ -822,8 +899,17 @@ static void draw (Pica *p, bool indexed)
 		for (int i = 0; i < 12; i++) if (fixedMask >> i & 1) memcpy (attr[i], p->fixed[i], sizeof attr[i]);
 		Vertex v;
 		shadeVertex (p, attr, inputs, v);
+		if (p->m->traceGpu && n == 0)
+		{
+			fprintf (stderr, "   in:");
+			for (int i = 0; i < inputs && i < 8; i++) fprintf (stderr, " [%g %g %g %g]", (double) attr[i][0], (double) attr[i][1], (double) attr[i][2], (double) attr[i][3]);
+			fprintf (stderr, "  formats %08x %08x perm %08x fixed %03x%c", (unsigned) p->regs[R_ATTR_FORMAT_LO], (unsigned) p->regs[R_ATTR_FORMAT_HI], (unsigned) p->regs[R_VSH_PERM_LO], (unsigned) fixedMask, 10);
+		}
+		if (p->m->traceGpu && n < 3) fprintf (stderr, "   v%u clip %g %g %g %g  color %g %g %g %g  tc %g %g%c", (unsigned) n, (double) v.a[0], (double) v.a[1], (double) v.a[2], (double) v.a[3], (double) v.a[8], (double) v.a[9], (double) v.a[10], (double) v.a[11], (double) v.a[12], (double) v.a[13], 10);
 		assemble (p, v);
 	}
+	if (p->m->traceGpu) fprintf (stderr, "   -> %llu pixels (%llu triangles on the screen; %llu pixels behind, %llu refused by the alpha test)%c", (unsigned long long) (p->pixels - pixelsBefore),
+				     (unsigned long long) (p->triangles - trisBefore), (unsigned long long) (p->depthFailed - depthBefore), (unsigned long long) (p->alphaFailed - alphaBefore), 10);
 }
 
 // ---- the registers ---------------------------------------------------------------------------------------------------
@@ -896,7 +982,7 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 			}
 			p->floatIndex++;
 		}
-		else if (id >= R_VSH_CODE_DATA && id < R_VSH_CODE_DATA + 8) { if (p->codeIndex < CODE_MAX) p->code[p->codeIndex++] = value; }
+		else if (id >= R_VSH_CODE_DATA && id < R_VSH_CODE_DATA + 8) { if (p->codeIndex < CODE_MAX) { p->code[p->codeIndex++] = value; if (p->codeIndex > p->codeTop) p->codeTop = p->codeIndex; } }
 		else if (id >= R_VSH_OPDESC_DATA && id < R_VSH_OPDESC_DATA + 8) { if (p->opdescIndex < OPDESC_MAX) p->opdesc[p->opdescIndex++] = value; }
 		break;
 	}
@@ -932,6 +1018,12 @@ void picaCommandList (Machine *m, u32 va, u32 size)
 		at += 2;
 		const u32 id = header & 0xFFFF, mask = header >> 16 & 15, extra = header >> 20 & 0xFF;
 		const bool consecutive = (header >> 31) != 0;
+		if (m->traceGpu && id >= 0x2B0 && id <= 0x2C8)			// (uniforms: how the program sends them)
+		{
+			fprintf (stderr, "reg %03x mask %x %s +%u: %08x", (unsigned) id, (unsigned) mask, consecutive ? "run" : "same", (unsigned) extra, (unsigned) value);
+			for (u32 i = 0; i < extra && i < 20 && at + i < words; i++) fprintf (stderr, " %08x", (unsigned) list[at + i]);
+			fprintf (stderr, "%c", 10);
+		}
 		writeReg (p, id, value, mask);
 		for (u32 i = 0; i < extra && at < words; i++, at++) writeReg (p, consecutive ? id + i + 1 : id, list[at], mask);
 		if (extra & 1) at++;						// (padded to 8 bytes)
@@ -955,6 +1047,7 @@ void picaDisplayTransfer (Machine *m, const u32 *c)
 	const u32 inW = c[3] & 0xFFFF, inH = c[3] >> 16, outW = c[4] & 0xFFFF, outH = c[4] >> 16, flags = c[5];
 	const bool flip = (flags & 1) != 0, inLinear = (flags & 2) != 0, raw = (flags & 8) != 0, sameTiling = (flags & 0x20) != 0;
 	const u32 inFmt = flags >> 8 & 7, outFmt = flags >> 12 & 7, scale = flags >> 24 & 3;
+	if (m->traceGpu) fprintf (stderr, "transfer %08x %ux%u -> %08x %ux%u flags %08x%c", (unsigned) c[1], (unsigned) inW, (unsigned) inH, (unsigned) c[2], (unsigned) outW, (unsigned) outH, (unsigned) flags, 10);
 	static const u32 BYTES[8] = { 4, 3, 2, 2, 2, 4, 4, 4 };
 	const u32 ib = BYTES[inFmt], ob = BYTES[outFmt];
 	if (raw || !inW || !outW || inW > 2048 || outW > 2048 || inH > 2048 || outH > 2048) { if (raw) m->note ("a raw display transfer"); return; }

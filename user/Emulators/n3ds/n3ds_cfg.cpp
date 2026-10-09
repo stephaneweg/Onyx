@@ -27,7 +27,12 @@ static u32 block (const Machine *m, u32 id, u8 *out, u32 size)
 	memset (out, 0, size);
 	switch (id)
 	{
-	case 0x00050005: if (size >= 4) { const float f = 62.0f; memcpy (out, &f, 4); } return size;	// stereo camera settings (the eyes' distance first)
+	case 0x00050005:										// the stereo camera's calibration: 8 floats (a game's
+	{												// 3D projection divides by them: zeros give it nothing)
+		static const float CAL[8] = { 62.0f, 289.0f, 76.8f, 46.08f, 10.0f, 5.0f, 55.58f, 21.57f };
+		memcpy (out, CAL, size < sizeof CAL ? size : sizeof CAL);
+		return size;
+	}
 	case 0x00070001: out[0] = 1; return 1;								// sound: stereo
 	case 0x000A0000: if (size >= 0x1C) memcpy (out, m->user.name, 22); return 0x1C;			// the user's name (UTF-16)
 	case 0x000A0001: out[0] = 1; if (size > 1) out[1] = 1; return 2;					// birthday: the 1st of January

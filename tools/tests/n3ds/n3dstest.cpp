@@ -76,6 +76,19 @@ int main (int argc, char **argv)
 	}
 	if (!m->loadFrom (src)) { fprintf (stderr, "%s\n", m->lastError); return 2; }
 	if (m->title[0]) fprintf (stderr, "%s [%s]\n", m->title, m->productCode);
+	// N3DS_SAVE=<file>  what the program writes (its saves, the SD card): read at the start, written back at the end
+	const char *savePath = getenv ("N3DS_SAVE");
+	if (savePath)
+	{
+		FILE *sf = fopen (savePath, "rb");
+		if (sf)
+		{
+			fseek (sf, 0, SEEK_END); long sn = ftell (sf); fseek (sf, 0, SEEK_SET);
+			unsigned char *sb = (unsigned char *) malloc ((size_t) sn + 1);
+			if (sb && fread (sb, 1, (size_t) sn, sf) == (size_t) sn && !m->storageImport (sb, (n3ds::u32) sn)) fprintf (stderr, "%s is not a save file of ours\n", savePath);
+			free (sb); fclose (sf);
+		}
+	}
 	// N3DS_KEYS=100-110:1;200-210:8  buttons held over frame ranges, a hex mask each (n3ds.h's BTN_*)
 	// N3DS_TOUCH=300-305:160,120      the touch screen pressed there over frames
 	// N3DS_SHOTS=<prefix> N3DS_SHOTEVERY=<n>  a picture every n frames (default 60)
@@ -106,6 +119,7 @@ int main (int argc, char **argv)
 		for (int k = 0; k < nk; k++) if (n >= keys[k].f0 && n <= keys[k].f1) b |= keys[k].a;
 		for (int k = 0; k < nt; k++) if (n >= touch[k].f0 && n <= touch[k].f1) { down = true; tx = (int) touch[k].a; ty = (int) touch[k].b; }
 		m->setInput (b, 0, 0, down, tx, ty);
+		if (const char *g = getenv ("N3DS_GPUTRACE")) m->traceGpu = n == atoi (g);	// (the GPU's draws of that frame)
 		m->runFrame (); n++;
 		if (shots && shotEvery > 0 && n % shotEvery == 0)
 		{
@@ -126,6 +140,14 @@ int main (int argc, char **argv)
 	{
 		FILE *o = fopen (argv[3], "wb");
 		if (o) { fprintf (o, "P6\n%d %d\n255\n", n3ds::TOP_W, n3ds::SCREEN_H * 2); fwrite (rgb, 1, rgbSize, o); fclose (o); }
+	}
+	if (savePath && m->storageDirty)
+	{
+		const n3ds::u32 need = m->storageExport (0, 0);
+		unsigned char *sb = (unsigned char *) malloc (need + 1);
+		FILE *sf = sb ? fopen (savePath, "wb") : 0;
+		if (sf) { m->storageExport (sb, need); fwrite (sb, 1, need, sf); fclose (sf); fprintf (stderr, "saved %u bytes to %s\n", (unsigned) need, savePath); }
+		free (sb);
 	}
 	if (m->notes[0]) fprintf (stderr, "not emulated: %s\n", m->notes);
 	if (m->mem.faults) fprintf (stderr, "the last memory fault: %08x\n", (unsigned) m->mem.faultAddr);

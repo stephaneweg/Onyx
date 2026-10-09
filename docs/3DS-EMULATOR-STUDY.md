@@ -367,6 +367,24 @@ The core's skeleton, `user/Emulators/n3ds/` (`n3ds.h` declares everything), and 
   shifted right by 80 pixels, lighting is asked (not done), ETC1 textures (not done: most of a game's textures).
   Asked and not emulated: `ndm:u` 0006 / 0007 / 0014, `ptm:u` 000B, `cecd:u` 0012.
 
+## 9i. The game's first frames looked into (2026-10-09): three faults of ours found by tracing
+
+`N3DS_GPUTRACE=<frame>` (new: each draw of that frame -- its state, its first vertices in and out of the shader, the
+triangles that reach the screen, the pixels refused by the depth and alpha tests, what is written at the screen's
+centre --, the shaders' code and uniforms, the GX commands) and `tools/n3ds/picadis.py` (lists a traced shader as
+text) found why *A Link Between Worlds* drew next to nothing:
+- **Culling was the wrong way round** (`n3ds_pica.cpp`): mode 2 removes the clockwise triangles (the "back": what
+  every game sets), mode 1 the counter-clockwise ones; we did the opposite, and our own test had the same mistake
+  (corrected: it now uses mode 2). The homebrew, with no culling, did not show it.
+- **The stereo camera's calibration** (`cfg` block 0x00050005) was nearly all zeros: the game builds its projection
+  and its view from it and sent the GPU matrices of "not a number". Eight plausible values now (the eyes' distance,
+  the screen's size and distance...).
+- **0 times infinity is 0 on this GPU** (the shader's MUL, DP3, DP4, DPH, MAD), not "not a number".
+- Also: ETC1 and ETC1A4 textures; `n3dstest`'s `N3DS_SAVE=<file>` keeps what a program writes between two runs.
+- **Where the game is now**: at its 520th frame the scene is drawn (a sky, the scenery: 900 000 pixels a frame)
+  under a black full-screen rectangle of the game's own (a fade, fully opaque then). Not done and asked: lighting
+  (the scenery's colours come from it), fog.
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 

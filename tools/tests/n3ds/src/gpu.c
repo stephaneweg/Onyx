@@ -355,8 +355,8 @@ int main (void)
 	quadZ (10, 70, 24, 24, -0.5f, 0, 1, 0, 1, 0, 0);
 	quadZ (10, 70, 24, 24, -0.3f, 0, 0, 1, 1, 0, 0);
 	W (0x107, 0x1F00);
-	/* culling: the counter-clockwise triangles are kept */
-	W (0x040, 1);
+	/* culling, mode 2 (the back faces removed): the counter-clockwise triangles are kept */
+	W (0x040, 2);
 	{
 		u32 first = s_vn;
 		vtx (40, 70, -0.5f, 1, 1, 1, 1, 0, 0); vtx (64, 70, -0.5f, 1, 1, 1, 1, 0, 0); vtx (40, 94, -0.5f, 1, 1, 1, 1, 0, 0);
