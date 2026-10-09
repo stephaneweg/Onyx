@@ -376,3 +376,37 @@ The games' resolutions	Les résolutions des jeux
 Each emulator's screen size while it plays (SD:/etc/console.ini)	La taille d'écran de chaque émulateur pendant qu'il joue (SD:/etc/console.ini)
 the system's	celle du système
 The repository could not be read	Le dépôt n'a pas pu être lu
+# the Games page (the watched folders)
+The folders the games are looked for in, on the card and the USB sticks	Les dossiers où chercher les jeux, sur la carte et les clés USB
+%d game found	%d jeu trouvé
+%d games found	%d jeux trouvés
+Watched with its sub-folders: A to stop watching it	Surveillé avec ses sous-dossiers : A pour ne plus le surveiller
+No folder watched	Aucun dossier surveillé
+Add one: the games found there show in the home	Ajoutez-en un : les jeux qui s'y trouvent apparaissent dans l'accueil
+Add a folder...	Ajouter un dossier...
+The card, its partitions and the USB sticks: choose a folder, then Watch this folder	La carte, ses partitions et les clés USB : choisissez un dossier, puis « Surveiller ce dossier »
+%d games, %d consoles	%d jeux, %d consoles
+Look for the games again	Chercher de nouveau les jeux
+After games were copied (Y does it anywhere on this page)	Après avoir copié des jeux (Y le fait partout sur cette page)
+Title screens	Écrans titres
+the Game Library's	ceux de la Ludothèque
+Made by the Game Library (desktop mode): it plays each game a moment	Faits par la Ludothèque (mode bureau) : elle joue chaque jeu un instant
+Watched with its sub-folders (6 deep)	Surveillé avec ses sous-dossiers (6 niveaux)
+Games found	Jeux trouvés
+Stop watching this folder	Ne plus surveiller ce dossier
+Its games leave the home; the files stay	Ses jeux quittent l'accueil ; les fichiers restent
+Watch this folder	Surveiller ce dossier
+Its games, and those of its sub-folders, show in the home	Ses jeux, et ceux de ses sous-dossiers, apparaissent dans l'accueil
+.. (the folder above)	.. (le dossier au-dessus)
+A volume: the card, a partition, a USB stick	Un volume : la carte, une partition, une clé USB
+No sub-folder	Aucun sous-dossier
+No volume	Aucun volume
+This folder's path is too long (63 characters at most)	Le chemin de ce dossier est trop long (63 caractères au plus)
+This folder is watched already	Ce dossier est déjà surveillé
+Too many folders (8 at most)	Trop de dossiers (8 au plus)
+The Game Library's settings could not be written	Les réglages de la Ludothèque n'ont pas pu être écrits
+Add a folder	Ajouter un dossier
+Stop watching this folder?	Ne plus surveiller ce dossier ?
+Its games leave the home; the files stay on the volume.	Ses jeux quittent l'accueil ; les fichiers restent sur le volume.
+Stop watching	Ne plus surveiller
+Look again	Chercher de nouveau
