@@ -27,6 +27,7 @@ struct Thread
 	std::string name;
 	bool done = false;
 	std::atomic<bool> killed { false };
+	std::atomic<bool> preempt { false };	// stop at the next block's start (the tick, a kill, the process's end)
 	int code = 0;			// its exit code (thread_join)
 	bool coreJob = false;		// an app core's job (a fault stops it only)
 };
@@ -36,6 +37,8 @@ static thread_local Thread *t_Self = 0;
 // ONYXRUN_PROFILE=N: every N ms, where each running thread is (its pc, its lr) on stderr.
 static std::atomic<bool> s_ProfileReq { false };
 static int s_ProfileMs = 0;
+static bool s_StressTick = false;
+static size_t s_StressCount = 0;			// ONYXRUN_STRESS_COUNT=n: every engine stops every n instructions (a test)			// ONYXRUN_STRESS_TICK=1: every running engine stopped every 5 ms (a test)
 
 Thread *cpu_self (void) { return t_Self; }
 int cpu_tid (void) { return t_Self ? t_Self->tid : 0; }
@@ -179,7 +182,7 @@ static void do_syscall (Thread *T)
 
 // ---- the engine's hooks -----------------------------------------------------------------------------------------
 enum { STOP_NONE, STOP_SVC, STOP_FAULT };
-struct EngineState { int stop; u32 intno; };
+struct EngineState { int stop; u32 intno; u64 addr; };
 static thread_local EngineState t_State;
 
 // QEMU's exception numbers (target/arm/cpu.h)
@@ -194,9 +197,23 @@ static void hook_intr (uc_engine *uc, u32 intno, void *)
 	uc_emu_stop (uc);
 }
 
-static bool hook_unmapped (uc_engine *, uc_mem_type type, u64, int, s64, void *)
+// At each translated block's start: a stop asked by another thread is made here, by the engine's own thread, where the
+// state is exact. (Unicorn's uc_emu_stop from another thread is not safe: a block may be resumed at its start after
+// some of its instructions ran -- seen with 2.1.1 and 2.1.4: "ldr x16, [x16]" done twice.)
+static void hook_block (uc_engine *uc, u64, u32, void *)
+{
+	Thread *T = t_Self;
+	if (T && T->preempt.load (std::memory_order_relaxed))
+	{
+		T->preempt = false;
+		uc_emu_stop (uc);
+	}
+}
+
+static bool hook_unmapped (uc_engine *, uc_mem_type type, u64 addr, int, s64, void *)
 {
 	t_State.stop = STOP_FAULT;
+	t_State.addr = addr;
 	t_State.intno = 1000 + (u32) type;
 	return false;
 }
@@ -226,9 +243,22 @@ static void fault (Thread *T, uc_err e)
 {
 	u64 pc = xreg (T->uc, UC_ARM64_REG_PC), sp = xreg (T->uc, UC_ARM64_REG_SP), lr = xreg (T->uc, UC_ARM64_REG_X30);
 	const Region *r = T->P->mem.find (pc);
-	rlog ("%s%s: %s at pc %llx (%s), lr %llx, sp %llx (thread %d %s)", T->P->name.c_str (),
-	      T->coreJob ? "'s app core job stopped" : " killed", fault_name (t_State.intno, e), (unsigned long long) pc,
+	char at[48] = "";
+	if (t_State.intno >= 1000) snprintf (at, sizeof at, " of %llx", (unsigned long long) t_State.addr);
+	rlog ("%s%s: %s%s at pc %llx (%s), lr %llx, sp %llx (thread %d %s)", T->P->name.c_str (),
+	      T->coreJob ? "'s app core job stopped" : " killed", fault_name (t_State.intno, e), at, (unsigned long long) pc,
 	      r ? r->what.c_str () : "nowhere", (unsigned long long) lr, (unsigned long long) sp, T->tid, T->name.c_str ());
+	if (getenv ("ONYXRUN_MEMCHECK"))		// (a test: does this engine see the host's memory everywhere?)
+		for (auto &kv : T->P->mem.regions)
+		{
+			const Region &g = kv.second;
+			for (u64 off = 0; off < g.len; off += 4096)
+			{
+				u64 v = 0;
+				if (uc_mem_read (T->uc, g.va + off, &v, 8) != UC_ERR_OK) { rlog ("memcheck: %llx (%s) not readable by the engine", (unsigned long long) (g.va + off), g.what.c_str ()); break; }
+				if (v != *(u64 *) (g.host + off)) { rlog ("memcheck: %llx (%s): engine %llx, host %llx", (unsigned long long) (g.va + off), g.what.c_str (), (unsigned long long) v, (unsigned long long) *(u64 *) (g.host + off)); break; }
+			}
+		}
 	if (T->coreJob && core_job_fault (T->P, T->tid)) return;
 	if (!T->P->dying.exchange (true))
 	{
@@ -243,9 +273,10 @@ static uc_engine *new_engine (void)
 	uc_err e = uc_open (UC_ARCH_ARM64, UC_MODE_ARM, &uc);
 	if (e != UC_ERR_OK) { rlog ("Unicorn: %s", uc_strerror (e)); exit (2); }
 	uc_ctl_set_cpu_model (uc, UC_CPU_ARM64_A72);
-	uc_hook h1, h2;
+	uc_hook h1, h2, h3;
 	uc_hook_add (uc, &h1, UC_HOOK_INTR, (void *) hook_intr, 0, 1, 0);
 	uc_hook_add (uc, &h2, UC_HOOK_MEM_INVALID, (void *) hook_unmapped, 0, 1, 0);
+	uc_hook_add (uc, &h3, UC_HOOK_BLOCK, (void *) hook_block, 0, 1, 0);
 	u64 core = 0;
 	uc_reg_write (uc, UC_ARM64_REG_TPIDRRO_EL0, &core);	// (the core's number at EL0: 0)
 	return uc;
@@ -266,7 +297,7 @@ static void run_thread (Thread *T, u64 pc)
 		t_State.stop = STOP_NONE;
 		P->runningSince = now_us ();
 		P->running = T;
-		uc_err e = uc_emu_start (T->uc, pc, 1 /* (never reached: odd) */, 0, 0);
+		uc_err e = uc_emu_start (T->uc, pc, 1 /* (never reached: odd) */, 0, s_StressCount);
 		{ std::lock_guard<std::mutex> L (P->lockM); P->running = nullptr; }	// (the tick checks it under lockM)
 		pc = xreg (T->uc, UC_ARM64_REG_PC);
 		if (t_State.stop == STOP_SVC)
@@ -315,10 +346,10 @@ static void ticker (void)
 		for (Proc *P : proc_list ())
 		{
 			Thread *T = P->running.load ();
-			if (T && (profile || (P->lockWaiting.load () > 0 && now - P->runningSince.load () >= 10000)))
+			if (T && (profile || s_StressTick || (P->lockWaiting.load () > 0 && now - P->runningSince.load () >= 10000)))
 			{
-				std::lock_guard<std::mutex> L (P->lockM);	// (T's engine is not closed meanwhile)
-				if (P->running.load () == T && T->uc) uc_emu_stop (T->uc);
+				std::lock_guard<std::mutex> L (P->lockM);	// (T is not freed meanwhile)
+				if (P->running.load () == T) T->preempt = true;
 			}
 		}
 	}
@@ -329,6 +360,8 @@ int cpu_thread_start (Proc *P, u64 pc, u64 arg, u64 sp, u64 lr, u64 tls, const c
 	static std::once_flag s_Tick;
 	std::call_once (s_Tick, [] {
 		if (getenv ("ONYXRUN_PROFILE")) s_ProfileMs = atoi (getenv ("ONYXRUN_PROFILE"));
+		s_StressTick = getenv ("ONYXRUN_STRESS_TICK") != 0;
+		if (getenv ("ONYXRUN_STRESS_COUNT")) s_StressCount = (size_t) atol (getenv ("ONYXRUN_STRESS_COUNT"));
 		std::thread (ticker).detach ();
 	});
 	Thread *T = new Thread ();
@@ -345,6 +378,9 @@ int cpu_thread_start (Proc *P, u64 pc, u64 arg, u64 sp, u64 lr, u64 tls, const c
 		uc_reg_write (T->uc, UC_ARM64_REG_SP, &sp);
 		uc_reg_write (T->uc, UC_ARM64_REG_X30, &lr);
 		uc_reg_write (T->uc, UC_ARM64_REG_TPIDR_EL0, &tls);
+		// the core's number, read-only at EL0 (libc's on_app_core, kapi__core): an app core's job runs on 2 or 3
+		u64 core = T->coreJob && T->name.size () > 5 ? (u64) (T->name[5] - '0') : 0;
+		uc_reg_write (T->uc, UC_ARM64_REG_TPIDRRO_EL0, &core);
 	}
 	std::thread (run_thread, T, pc).detach ();
 	return T->tid;
@@ -371,13 +407,12 @@ int cpu_thread_kill (Proc *P, int tid)
 	if (tid > (int) P->threads.size ()) return -1;
 	Thread *T = P->threads[tid - 1];
 	T->killed = true;
-	if (P->running.load () == T && T->uc) uc_emu_stop (T->uc);
+	T->preempt = true;
 	return 0;
 }
 
 void cpu_stop_all (Proc *P)
 {
 	std::lock_guard<std::mutex> L (P->lockM);
-	Thread *T = P->running.load ();
-	if (T && T->uc) uc_emu_stop (T->uc);
+	for (Thread *T : P->threads) if (T) T->preempt = true;
 }

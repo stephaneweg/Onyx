@@ -21,8 +21,11 @@
 #endif
 
 static std::mutex s_M;
-static std::vector<u32> s_Fb;
+struct Fb { u32 *p = 0; size_t n = 0; u32 *data () { return p; } const u32 *data () const { return p; } size_t size () const { return n; }
+	    u32 &operator[] (size_t i) { return p[i]; } };
+static Fb s_Fb;					// (host shared memory: a full-screen program may draw into it, fullscreen_direct)
 static int s_W = 0, s_H = 0;
+static std::atomic<bool> s_Direct { false };	// a program draws straight into the screen: repainted 60 times a second
 static DisplayOpts s_Opts;
 
 void display_size (int *w, int *h) { *w = s_W; *h = s_H; }
@@ -38,7 +41,7 @@ bool display_grab (u32 *dst, int w, int h)
 bool display_write_bmp (const std::string &path)
 {
 	std::vector<u32> px;
-	{ std::lock_guard<std::mutex> L (s_M); px = s_Fb; }
+	{ std::lock_guard<std::mutex> L (s_M); px.assign (s_Fb.data (), s_Fb.data () + s_Fb.size ()); }
 	FILE *f = fopen (path.c_str (), "wb");
 	if (!f) return false;
 	u32 size = 54 + (u32) px.size () * 4;
@@ -148,6 +151,9 @@ static LRESULT CALLBACK wnd_proc (HWND w, UINT msg, WPARAM wp, LPARAM lp)
 		EndPaint (w, &ps);
 		return 0;
 	}
+	case WM_TIMER:
+		if (s_Direct) InvalidateRect (w, 0, FALSE);
+		return 0;
 	case WM_MOUSEMOVE:
 		to_screen (lp, &s_LastX, &s_LastY);
 		ws_input_pointer (s_LastX, s_LastY, s_Buttons, 0);
@@ -250,6 +256,7 @@ static void window_thread (void)
 	std::wstring title (s_Opts.title.begin (), s_Opts.title.end ());
 	s_Wnd = CreateWindowW (L"OnyxRunner", title.c_str (), style, CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, 0, 0, inst, 0);
 	ShowWindow (s_Wnd, SW_SHOW);
+	SetTimer (s_Wnd, 1, 16, 0);
 	ShowCursor (FALSE);			// (the server draws the pointer)
 	MSG m;
 	while (GetMessageW (&m, 0, 0, 0) > 0) { TranslateMessage (&m); DispatchMessageW (&m); }
@@ -334,11 +341,16 @@ static void input_thread (std::string script)
 	}
 }
 
+u8 *display_screen_memory (u64 *len) { *len = ALIGN_UP ((u64) s_Fb.n * 4); return (u8 *) s_Fb.p; }
+void display_direct (bool on) { s_Direct = on; }
+
 bool display_start (const DisplayOpts &o)
 {
 	s_Opts = o;
 	s_W = o.w; s_H = o.h;
-	s_Fb.assign ((size_t) s_W * s_H, 0x00202830);
+	s_Fb.n = (size_t) s_W * s_H;
+	s_Fb.p = (u32 *) host_shared_alloc (ALIGN_UP ((u64) s_Fb.n * 4));
+	for (size_t k = 0; k < s_Fb.n; k++) s_Fb.p[k] = 0x00202830;
 #ifdef _WIN32
 	if (!o.headless) std::thread (window_thread).detach ();
 #endif

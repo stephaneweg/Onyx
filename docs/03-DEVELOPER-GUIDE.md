@@ -4960,6 +4960,49 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
 - **Post-mortem console**: on a kernel panic, the compositor stops and the logger
   is shown on the framebuffer (see [Kernel internals §13](02-KERNEL-INTERNALS.md#13-post-mortem-debug-console)).
 
+### 12.1. The Pi's binaries on a PC: the app runner `onyxrun` (`tools/onyxrun`)
+
+`onyxrun` runs Onyx's programs **as they are on the card** -- their AArch64 ELF, AppKit and the kits
+(`SD:/lib/*.so`), Elegant -- on a PC, Windows (`onyxrun.exe`, one static program) or Linux. Their code
+runs on Unicorn Engine (the AArch64 target of QEMU's translator); their system calls are answered by
+the runner, which stands for the kernel: the same kapi page as the kernel's (`KAPI_TABLE_VA`, the stubs
+`mov x8, #slot; svc #0`, the kernel's own EL0 blob from `el0blob.S`, AppKit's table at
+`APPKIT_TABLE_VA`), the same address map (the program at 8 GB, the libraries at 16 GB+, the windows'
+buffers at their slots), SD: on a folder of the PC (the repository's `sdcard/` by default), RAM: on
+another. The plan and the choices are `docs/APP-RUNNER-STUDY.md`.
+
+```
+sh tools/onyxrun/get_unicorn.sh      # once: Unicorn built for Linux and (with mingw-w64) Windows
+make -C tools/onyxrun                # build/onyxrun          (Linux)
+make -C tools/onyxrun win            # build/onyxrun.exe      (Windows, cross-built; one .exe)
+
+onyxrun echo hello                   # a /bin tool: its output on the PC's console
+onyxrun cmd -c "ls SD:/etc | sort"   # the shell, its pipes, its children
+onyxrun clock                        # an app: Elegant started first, the screen in a window of the PC
+onyxrun --headless --shot out.bmp --shot-after 8000 clock      # no window: the screen written after 8 s
+onyxrun --headless --input "wait 5000; click 640 300; key hello; enter; shot a.bmp" notes
+```
+
+Options: `--root DIR` (the folder for SD:), `--ram DIR`, `--cwd PATH`, `--screen WxH` (1280x800),
+`--console` / `--gui`, `--trace` (every system call on stderr; also `ONYXRUN_TRACE=1`),
+`ONYXRUN_PROFILE=ms` (where the threads run, every ms). The PC's keys reach Elegant as a Pi's USB
+keyboard gives them (UTF-8, Enter `\n`, Backspace 0x7F, the VT100 escapes); `--input` plays a script
+(`wait MS`, `move` / `click` / `rclick` / `down` / `up X Y`, `wheel X Y N`, `key TEXT`, `enter`, `esc`,
+`tab`, `bs`, `mods N`, `shot FILE.bmp`, `waitfile FILE` + `include FILE`: a test looks at a shot, then
+says where to click).
+
+How it is made (the sources' comments say the rest): every Onyx process lives in the one host process,
+its user range one host reservation (a pointer of a system call is translated); one Unicorn engine and
+one host thread a guest thread, one thread of a process running at a time (its lock), the processes in
+parallel; `k_*.cpp` are the kapi's slots (`KAPI (slot, function)`), `k_ws.cpp` the graphics server's side
+(`kern/wsrv.h`), `display.cpp` the PC's window (Win32) or the headless screen.
+
+What it does not show: the kernel (not run), the weak memory ordering (an x86 PC orders more than the
+A72: a missing barrier passes), the caches (a missing cache clean passes), the timing. Not there yet
+(their calls answer as a Pi without them would): the GPU (`gpu_info` empty: gpucomp and the apps take
+their CPU path), the sound, the network, the gamepads. The Pi stays the reference.
+
+
 ## 13. Known pitfalls
 
 - **`uk_win_resize` keeps the buffer's size and row pitch.** The window buffer is made

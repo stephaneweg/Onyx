@@ -28,6 +28,10 @@ void display_present (const u32 *pixels, int stride, int x, int y, int w, int h)
 // The screen as it is now into dst (w x h must be the screen's) -> false: not that size.
 bool display_grab (u32 *dst, int w, int h);
 bool display_write_bmp (const std::string &path);
+// The screen's own memory (host shared memory, 64 KB rounded: *len) -- fullscreen_direct maps it in a program; while
+// display_direct (true) the window shows it 60 times a second.
+u8 *display_screen_memory (u64 *len);
+void display_direct (bool on);
 
 // (k_ws.cpp) the input, as the kernel's feeders give it (kern/wsrv.h)
 void ws_input_pointer (int x, int y, unsigned buttons, int wheel);

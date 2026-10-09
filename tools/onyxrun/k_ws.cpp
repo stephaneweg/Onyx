@@ -12,6 +12,7 @@
 #include "display.h"
 #include <chrono>
 #include <string.h>
+#include <thread>
 
 typedef std::chrono::steady_clock Clock;
 
@@ -50,6 +51,10 @@ static unsigned s_NextReq = 1;
 static int s_FocusPid = 0;
 static unsigned s_Mods = 0;
 static std::map<int, bool> s_Held;		// logical key -> held
+static int s_FsPid = 0;					// (s_M) the program that has the full screen
+static u8 *s_FsBuf = 0;
+static u64 s_FsLen = 0;
+
 
 static int me (void) { Proc *P = cur (); return P ? P->pid : 0; }
 
@@ -346,7 +351,11 @@ static long ws_present (u64 up)
 	struct kapi_ws_present *gp = G<struct kapi_ws_present> (up, MEM_R);
 	if (!gp) return -KAPI_EFAULT;
 	struct kapi_ws_present P = *gp;
-	{ std::lock_guard<std::mutex> L (s_M); if (!s_Owned) return -KAPI_EPERM; }
+	{
+		std::lock_guard<std::mutex> L (s_M);
+		if (!s_Owned) return -KAPI_EPERM;
+		if (s_FsPid) return -KAPI_EBUSY;		// (a full-screen program shows itself)
+	}
 	int W, H;
 	display_size (&W, &H);
 	if (P.w <= 0 || P.h <= 0) { P.x = 0; P.y = 0; P.w = W; P.h = H; }
@@ -472,9 +481,12 @@ static long ws_kick (long window)
 	return s_ServerPid;
 }
 
+static void fs_end (Proc *P);
+
 // A process is gone (proc.cpp): the server's role, its programs' buffers and requests.
 void ws_proc_gone (Proc *P)
 {
+	fs_end (P);
 	std::lock_guard<std::mutex> L (s_M);
 	if (P->pid == s_ServerPid)
 	{
@@ -531,6 +543,90 @@ static long k_ws_ctl (int op, long long a0, long long a1, long long a2)
 	return -KAPI_ENOSYS;
 }
 
+// ---- a program on the full screen (kapi v41, v55): its buffer shown instead of the server's ----------------------
+
+static void fs_tell_server (int pid, bool on)		// (s_M held)
+{
+	if (!s_Owned) return;
+	struct kapi_ws_input e; memset (&e, 0, sizeof e);
+	e.type = KAPI_WS_IN_FULLSCREEN; e.a = pid; e.buttons = on ? 1 : 0;
+	push (e);
+}
+
+static u64 k_fullscreen_begin (u64 pw, u64 ph)
+{
+	Proc *P = cur ();
+	int W, H;
+	display_size (&W, &H);
+	u64 len = ALIGN_UP ((u64) W * H * 4);
+	{
+		std::lock_guard<std::mutex> L (s_M);
+		if (s_FsPid && s_FsPid != P->pid) { Proc *O = proc_find (s_FsPid); if (O && !O->ended) return 0; }
+		if (!s_FsBuf || s_FsLen != len) { if (s_FsBuf) host_shared_free (s_FsBuf, s_FsLen); s_FsBuf = host_shared_alloc (len); s_FsLen = len; }
+		if (!s_FsBuf) return 0;
+		memset (s_FsBuf, 0, len);
+		s_FsPid = P->pid;
+		fs_tell_server (P->pid, true);
+	}
+	{
+		PLock L (P);
+		if (P->mem.find (USER_FULLSCREEN_CANVAS)) P->mem.unmap (USER_FULLSCREEN_CANVAS, P->mem.find (USER_FULLSCREEN_CANVAS)->len);
+		P->mem.map_shared (USER_FULLSCREEN_CANVAS, len, MEM_R | MEM_W, "the full screen's buffer", s_FsBuf, KAPI_VMK_FIXED);
+	}
+	gput<int> (pw, W); gput<int> (ph, H);
+	return USER_FULLSCREEN_CANVAS;
+}
+
+static bool fs_mine (void) { std::lock_guard<std::mutex> L (s_M); return s_FsPid == me () && s_FsBuf; }
+
+static void k_present_fb (void)
+{
+	if (!fs_mine ()) return;
+	int W, H;
+	display_size (&W, &H);
+	display_present ((const u32 *) s_FsBuf, W, 0, 0, W, H);
+	std::this_thread::yield ();
+}
+
+static u64 k_fullscreen_direct (u64 pw, u64 ph, u64 pstride)
+{
+	if (!fs_mine ()) return 0;
+	Proc *P = cur ();
+	u64 len;
+	u8 *screen = display_screen_memory (&len);
+	{
+		PLock L (P);
+		if (!P->mem.find (USER_FULLSCREEN_SCREEN))
+			P->mem.map_shared (USER_FULLSCREEN_SCREEN, len, MEM_R | MEM_W, "the screen", screen, KAPI_VMK_FIXED);
+	}
+	int W, H;
+	display_size (&W, &H);
+	gput<int> (pw, W); gput<int> (ph, H); gput<int> (pstride, W);
+	display_direct (true);
+	return USER_FULLSCREEN_SCREEN;
+}
+
+static void fs_end (Proc *P)
+{
+	{
+		std::lock_guard<std::mutex> L (s_M);
+		if (s_FsPid != P->pid) return;
+		s_FsPid = 0;
+		fs_tell_server (P->pid, false);
+	}
+	display_direct (false);
+	if (!P->ended)
+	{
+		PLock L (P);
+		const Region *r = P->mem.find (USER_FULLSCREEN_CANVAS);
+		if (r) P->mem.unmap (USER_FULLSCREEN_CANVAS, r->len);
+		r = P->mem.find (USER_FULLSCREEN_SCREEN);
+		if (r) P->mem.unmap (USER_FULLSCREEN_SCREEN, r->len);
+	}
+}
+
+static void k_fullscreen_end (void) { fs_end (cur ()); }
+
 // ---- the screen's calls of any program ---------------------------------------------------------------------------
 static void k_screen_size (u64 w, u64 h)
 {
@@ -577,3 +673,7 @@ KAPI (key_held, k_key_held);
 KAPI (font_width, k_font_width);
 KAPI (font_height, k_font_height);
 KAPI (set_cursor, k_set_cursor);
+KAPI (fullscreen_begin, k_fullscreen_begin);
+KAPI (fullscreen_direct, k_fullscreen_direct);
+KAPI (present_fb, k_present_fb);
+KAPI (fullscreen_end, k_fullscreen_end);

@@ -158,6 +158,8 @@ static void proc_mark_ended (Proc *P)
 	ws_proc_gone (P);
 	extern void ipc_proc_gone (Proc *P);		// (k_ipc.cpp)
 	ipc_proc_gone (P);
+	extern void net_proc_gone (Proc *P);		// (k_net.cpp)
+	net_proc_gone (P);
 	h_drop_all (P);
 	if (P->stdoutStream && P->stdoutStream->pipe)
 	{

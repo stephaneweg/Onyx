@@ -1,6 +1,8 @@
 # Onyx: an app runner for the PC, with the V3D bridged — a feasibility study
 
-*Status (2026-10-09): **a study, nothing built.** Asked by the user: since we know what Onyx expects
+*Status (2026-10-09, evening): **being built** -- `tools/onyxrun`, docs/03 §12.1; what is done is section 9
+(R0, R1, R2: the console programs, the processes, Elegant and the apps' windows, native Windows `.exe`). The
+user's answers are section 7. Asked by the user: since we know what Onyx expects
 of the hardware, how hard is a Pi 4 emulator for Windows that loads the binaries unchanged, to speed
 the tests up — and then: an **app runner** that also bridges the GPU to simulate the V3D? Facts
 marked **[repo]** were read in this repository, **[memory]** are from knowledge and were not
@@ -167,11 +169,11 @@ gcemu / n64emu on the PC becomes a goal; G3 only for work on the driver.
 
 Estimates, not measurements.
 
-## 7. Questions for the user
+## 7. The user's answers (2026-10-09)
 
-1. **WSL2 first, or a native Windows `.exe` from the start** (Unicorn, more work, GPL-2.0 tool)?
-2. **The GPU: exactness (G2) first, or speed (G4)** — to test, or also to play the emulators on the PC?
-3. **G3** (the kernel's V3D driver against a fake V3D): wanted, or left for later?
+1. **A native Windows `.exe` from the start** (Unicorn; not WSL2).
+2. **The GPU: speed (G4)** -- the host's GPU, the stock shaders first, the QPU programs then.
+3. **G3 later**, when the rest works.
 
 ## 8. For the record: the full-system emulator
 

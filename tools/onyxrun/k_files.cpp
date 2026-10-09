@@ -749,15 +749,6 @@ static int k_path_utime (u64 path, long long mtime)
 #endif
 }
 
-static int k_vol_info (u64 path, u64 out)
-{
-	std::string onyx, host;
-	struct kapi_vol_info *o = G<struct kapi_vol_info> (out, MEM_W);
-	if (!o || !arg_path (path, onyx, host)) return -1;
-	memset (o, 0, sizeof *o);
-	return 0;
-}
-
 KAPI (open, k_open);
 KAPI (read, k_read);
 KAPI (fsize, k_fsize);
@@ -797,4 +788,3 @@ KAPI (path_unlink, k_path_unlink);
 KAPI (path_mkdir, k_path_mkdir);
 KAPI (path_rename, k_path_rename);
 KAPI (path_utime, k_path_utime);
-KAPI (vol_info, k_vol_info);

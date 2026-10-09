@@ -6,7 +6,7 @@
 # MIT licence (Onyx). Copyright (c) 2026 Stephane Wegener and the Onyx contributors.
 set -e
 cd "$(dirname "$0")"
-V=${UNICORN_VERSION:-2.1.1}
+V=${UNICORN_VERSION:-2.1.4}
 B=$(pwd)/build/unicorn
 mkdir -p "$B"
 cd "$B"

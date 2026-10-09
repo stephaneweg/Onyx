@@ -10,6 +10,7 @@
 #include "onyxrun.h"
 #include <chrono>
 #include <string.h>
+#include <stdlib.h>
 
 #define THREAD_MAX	32
 #define STACK_SLOTS	((USER_MMAP_BASE - USER_THREAD_STACKS) / USER_THREAD_SLOT)
@@ -438,6 +439,7 @@ bool core_job_fault (Proc *P, int tid)
 
 static int k_core_acquire (void)
 {
+	if (getenv ("ONYXRUN_NOCORES")) return -1;	// (to test a program without its app cores)
 	TState &S = TS (cur ());
 	std::lock_guard<std::mutex> L (S.m);
 	for (int c = 2; c <= 3; c++) if (!S.coreOwned[c]) { S.coreOwned[c] = true; S.coreTid[c] = 0; S.coreFault[c] = false; return c; }
