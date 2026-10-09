@@ -21,17 +21,38 @@
 namespace nds { extern u32 g_watch[2][2]; extern bool g_watchHit; }
 #endif
 #if defined(__aarch64__)
-namespace nds { extern unsigned g_jitNoKinds, g_jitNoDP; extern u64 g_jitStats[8]; extern u32 g_jitInterpOps[256][2]; extern u64 g_jitSlowRegion[2][256]; }
+namespace nds { extern unsigned g_jitNoKinds, g_jitNoDP; extern u64 g_jitStats[8]; extern u32 g_jitInterpOps[256][2]; extern u64 g_jitSlowRegion[2][256]; extern void (*g_jitDumpHook) (const u32 *, int, u32); }
 #endif
 #if defined(__aarch64__) || defined(__x86_64__)
 #include <sys/mman.h>
+#endif
+
+static unsigned char *s_code; static unsigned s_codeSize;
+#if defined(__aarch64__)
+#include <signal.h>
+#include <ucontext.h>
+// a fault in the JIT's code: where (the offset in the code buffer), the word there, the registers
+static void onFault (int sig, siginfo_t *si, void *uc)
+{
+	mcontext_t &mc = ((ucontext_t *) uc)->uc_mcontext;
+	unsigned long pc = mc.pc;
+	fprintf (stderr, "signal %d at pc %lx (code buffer +%lx) address %p, word %08x\n", sig, pc,
+		 pc - (unsigned long) s_code, si->si_addr, pc - (unsigned long) s_code < s_codeSize ? *(unsigned *) pc : 0);
+	for (int i = 0; i < 31; i++) fprintf (stderr, "x%d=%llx%s", i, (unsigned long long) mc.regs[i], i % 4 == 3 ? "\n" : " ");
+	fprintf (stderr, "\nsp=%llx\n", (unsigned long long) mc.sp);
+	_exit (3);
+}
 #endif
 
 static void *hostCode (unsigned size)
 {
 #if defined(__aarch64__)
 	void *p = mmap (0, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-	return p == MAP_FAILED ? 0 : p;
+	if (p == MAP_FAILED) return 0;
+	s_code = (unsigned char *) p; s_codeSize = size;
+	struct sigaction sa = {}; sa.sa_sigaction = onFault; sa.sa_flags = SA_SIGINFO;
+	sigaction (SIGILL, &sa, 0); sigaction (SIGSEGV, &sa, 0); sigaction (SIGBUS, &sa, 0);
+	return p;
 #else
 	(void) size; return 0;
 #endif
@@ -70,6 +91,15 @@ static int parseRanges (const char *s, Range *out, int max, bool touch)
 	return n;
 }
 
+#if defined(__aarch64__)
+static FILE *s_codeFile;
+static void codeDump (const nds::u32 *code, int words, nds::u32 pc)
+{
+	unsigned h[2] = { 0xFFFFFFFFu, pc };		// (a marker the disassembly shows as .inst, then the block's guest address)
+	fwrite (h, 4, 2, s_codeFile); fwrite (code, 4, (size_t) words, s_codeFile);
+}
+#endif
+
 int main (int argc, char **argv)
 {
 	if (argc < 3) { fprintf (stderr, "ndstest <rom.nds> <frames> [out.ppm]\n"); return 2; }
@@ -93,6 +123,7 @@ int main (int argc, char **argv)
 #if defined(__aarch64__)
 	if (getenv ("NDS_JITNODP")) nds::g_jitNoDP = (unsigned) strtoul (getenv ("NDS_JITNODP"), 0, 16);
 	if (getenv ("NDS_JITNO")) nds::g_jitNoKinds = (unsigned) strtoul (getenv ("NDS_JITNO"), 0, 16);
+	if (getenv ("NDS_JITCODE")) { s_codeFile = fopen (getenv ("NDS_JITCODE"), "wb"); nds::g_jitDumpHook = codeDump; }	// (every block's host code, for objdump)
 #endif
 	if (getenv ("NDS_JIT") && atoi (getenv ("NDS_JIT"))) printf ("JIT: %s\n", m->jitEnable (hostCode) ? "on" : "unavailable");
 	m->setAudioRate (48000);

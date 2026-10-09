@@ -156,6 +156,12 @@ struct Asm
 	static void patch (u32 *at, u32 *to)
 	{
 		s32 d = (s32) (to - at);
+#ifdef NDS_DEBUG
+		{
+			u32 o = *at; int bits = (o & 0xFC000000) == 0x14000000 ? 26 : (o & 0x7E000000) == 0x36000000 ? 14 : 19;
+			if (d >= (1 << (bits - 1)) || d < -(1 << (bits - 1))) __builtin_trap ();	// (out of the branch's reach)
+		}
+#endif
 		u32 op = *at;
 		if ((op & 0xFC000000) == 0x14000000) *at = 0x14000000 | ((u32) d & 0x3FFFFFF);
 		else if ((op & 0xFF000010) == 0x54000000 || (op & 0x7E000000) == 0x34000000) *at = (op & 0xFF00001F) | (((u32) d & 0x7FFFF) << 5);
@@ -462,17 +468,21 @@ struct Gen
 	{
 		a.ldrx (T1, XC, OFF (ts)); a.ldrx (T2, XC, OFF (target));
 		a.dp (0xEB000000, WZR, T1, T2);				// cmp x10, x11
-		Asm::patch (a.bcond (GE), j->exitStub);
+		u32 *late = a.bcond (GE);
 		a.ldrbi (T1, XC, OFF (jitExit));
-		Asm::patch (a.cbnz (T1), j->exitStub);
+		u32 *asked = a.cbnz (T1);
 		a.ldrx (T2, XC, OFF (jitFast));
 		a.ubfx (T1, key, 1, FAST_BITS);
 		a.e (0x8B000000 | ((u32) T1 << 16) | (4u << 10) | ((u32) T2 << 5) | (u32) T2);	// add x11, x11, x10, lsl 4
 		a.ldrw (T1, T2, 0);
 		a.dp (0x6B000000, WZR, T1, key);			// cmp w10, wkey
-		Asm::patch (a.bcond (NE), j->exitStub);
+		u32 *unknown = a.bcond (NE);
 		a.ldrx (T2, T2, 8);
 		a.br (T2);
+		// out through a b beside them: a conditional branch reaches +-1 MB only, the exit stub is at the
+		// buffer's start (the code past 1 MB jumped into nothing: ndsemu's crash at code + 0x200020)
+		Asm::patch (late, a.p); Asm::patch (asked, a.p); Asm::patch (unknown, a.p);
+		a.bTo (j->exitStub);
 	}
 	// an exit to a constant address (in the current state, or switching)
 	void exitTo (u32 pc, int cyc, int setThumb = -1)
