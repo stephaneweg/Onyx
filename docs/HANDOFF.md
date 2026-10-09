@@ -75,6 +75,14 @@ session tests and debugs it on the Pi. Done: D0 to D5.
   the plan T0-T8); nothing built. The user's answers (2026-10-09, §11): option C, Old 3DS only to begin
   with; the first games not named yet (A Link Between Worlds asked about).
 
+## An app runner for the PC with the V3D bridged: a study (2026-10-09)
+
+Asked by the user (a Pi 4 emulator for Windows to speed the tests up, then an app runner bridging the GPU):
+`docs/APP-RUNNER-STUDY.md` -- the Pi binaries unchanged against a host kapi (elfrun + posixsim + desktop_sim +
+server_sim merged, the kits' loader), Elegant run as its own binary, the `kapi_gpu_*` calls done in software
+(G1 the stock shaders, G2 the apps' QPU code in `tools/qpu/qpusim`); the plan R0-R7. Nothing built; the user's
+answers to §7 (WSL2 or native, exactness or speed, the kernel's V3D driver against a fake V3D) are awaited.
+
 ## The console: the pad as a mouse in the desktop's apps (2026-10-09, night) -- NOT tried on the Pi
 
 The user: "the desktop's apps that need the mouse (the browser) must be usable with a pad: the stick moves the
