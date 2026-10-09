@@ -2,6 +2,13 @@
 // v3d.cpp -- the V3D GPU (VideoCore VI, V3D 4.2) of the Raspberry Pi 4: kapi v52 gpu_info /
 // gpu_draw. Depth-tested, Gouraud-shaded triangles rendered by the GPU's tile pipeline.
 //
+// The Raspberry Pi 5 (RASPPI >= 5: its own kernel, docs/PI5-PORT.md §9) has a V3D 7.1 (VideoCore
+// VII): another address (hub 0x10_0200_0000, core 0 + 0x8000), no ASB but the SMS to wake, two
+// interrupts (the core's SPI 249), other control-list packets -- built from Mesa's own description
+// (kern/v3d_pack71.h, tools/v3d/genpackets.py: its 4.2 output checked against kern/v3d_cl.h) -- and
+// another QPU instruction set (v3d_shaders71.qasm). Those parts are under #if RASPPI >= 5; the rest
+// (the targets, textures, clipping, programs' bookkeeping) is the same. Not run on a Pi 5 yet.
+//
 // Bring-up (first gpu_info / gpu_draw): the firmware powers the V3D domain and its clock
 // (mailbox), then the reset is released (PM_GRAFX) and the async AXI bridges opened (ASB),
 // as Linux does; the identity registers must then say V3D 4.x. No V3D MMU: the GPU gets
@@ -20,6 +27,9 @@
 #include <kern/crashlog.h>
 #include <kern/kapi_abi.h>
 #include <kern/v3d_cl.h>
+#if RASPPI >= 5
+#include <kern/v3d_pack71.h>
+#endif
 #include <kern/v3d_tiling.h>
 #include <kern/v3d.h>
 #include <kern/v3d_clip.h>
@@ -42,12 +52,28 @@
 static const char From[] = "v3d";
 
 // ---- registers --------------------------------------------------------------------------------------
+#if RASPPI >= 5
+// the BCM2712's (its device tree's v3d node: reg hub, core0, sms; interrupts SPI 250 hub, 249 core)
+#define V3D_HUB			0x1002000000UL
+#define V3D_CORE0		(V3D_HUB + 0x8000)
+#define V3D_SMS			0x1002030800UL
+#define   V3D_SMS_REE_CS	(V3D_SMS + 0x000)
+#define   V3D_SMS_TEE_CS	(V3D_SMS + 0x400)
+#define   V3D_SMS_CLEAR_POWER_OFF (1u << 29)
+#define   V3D_SMS_STATE(v)	((v) & 15)
+#define   V3D_SMS_IDLE		0
+#define   V3D_SMS_ISOLATING_FOR_RESET 0xA
+#define   V3D_SMS_RESETTING	0xB
+#else
 #define V3D_HUB			(ARM_IO_BASE + 0xC00000)
+#endif
 #define V3D_HUB_IDENT0		(V3D_HUB + 0x08)
 #define V3D_HUB_IDENT1		(V3D_HUB + 0x0C)
 #define V3D_HUB_IDENT2		(V3D_HUB + 0x10)
 #define V3D_HUB_INT_MSK_SET	(V3D_HUB + 0x60)
+#if RASPPI <= 4
 #define V3D_CORE0		(ARM_IO_BASE + 0xC04000)
+#endif
 #define V3D_CTL_IDENT0		(V3D_CORE0 + 0x000)
 #define V3D_CTL_SLCACTL		(V3D_CORE0 + 0x024)
 #define V3D_CTL_L2TCACTL	(V3D_CORE0 + 0x030)
@@ -61,7 +87,11 @@ static const char From[] = "v3d";
 #define   V3D_INT_FLDONE	(1 << 1)		// bin (tile lists) done
 #define   V3D_INT_OUTOMEM	(1 << 2)		// the binner wants memory
 #define   V3D_INTS		(V3D_INT_FRDONE | V3D_INT_FLDONE | V3D_INT_OUTOMEM)
+#if RASPPI >= 5
+#define V3D_IRQ			GIC_SPI (249)		// (the core's; the hub's, 250, is not used)
+#else
 #define V3D_IRQ			GIC_SPI (74)		// (the device tree's v3d node: core and hub share it)
+#endif
 #define V3D_CLE_CT0CS		(V3D_CORE0 + 0x100)
 #define V3D_CLE_CT1CS		(V3D_CORE0 + 0x104)
 #define V3D_CLE_CT0CA		(V3D_CORE0 + 0x110)
@@ -78,7 +108,11 @@ static const char From[] = "v3d";
 #define V3D_PTB_BPOA		(V3D_CORE0 + 0x308)
 #define V3D_PTB_BPOS		(V3D_CORE0 + 0x30C)
 
+#if RASPPI >= 5
+#define PM_GRAFX		(ARM_PM_BASE + 0x304)	// (PM_GRAFX_2712: Linux's bcm2835-power.c)
+#else
 #define PM_GRAFX		(ARM_IO_BASE + 0x10010C)
+#endif
 #define   PM_PASSWORD		0x5A000000
 #define   PM_V3DRSTN		(1 << 6)
 #define ASB_V3D_S_CTRL		(ARM_IO_BASE + 0xC11008)
@@ -115,7 +149,19 @@ static const u64 COORD_SHADER[] = {
 
 // the v53 shaders (hand-written QPU code: v3d_shaders.qasm, assembled by tools/qpu/qpuasm):
 // VS_CLIP / CS_CLIP (the batch's matrix, the divide by w), FS_COLOR, FS_TEX (texture * colour)
+#if RASPPI >= 5
+#include "v3d_shaders71.inc"		// (the same programs for the V3D 7.1's QPU)
+#else
 #include "v3d_shaders.inc"
+#endif
+
+// The screen coordinates' unit, in the clipper's XY scaling and the vertex shaders' x / y scale
+// uniforms: 1/256 pixel on V3D 4.2 (24.8 fixed point), 1/64 on 7.1.
+#if RASPPI >= 5
+#define V3D_SUBPIXELS		64.0f
+#else
+#define V3D_SUBPIXELS		256.0f
+#endif
 
 // ---- GPU memory: low heap, page aligned, physical = virtual ------------------------------------------------
 struct TGpuBuf
@@ -148,6 +194,11 @@ public:
 		return *this;
 	}
 	void Align (u32 a) { while (m_n % a) *this << (u8) 0; }
+	void Bytes (const u8 *p, u32 n)
+	{
+		if (m_n + n <= m_b.nSize) memcpy (m_b.p + m_n, p, n);
+		m_n += n;
+	}
 	u32 Bus () const { return m_b.Bus (m_n); }		// where the next bytes go
 	u32 Start () const { return m_b.Bus (); }
 	u32 Size () const { return m_n; }
@@ -156,7 +207,16 @@ private:
 	TGpuBuf &m_b; u32 m_n;
 };
 
-static TGpuBuf s_BCL, s_RCL, s_Ind, s_State, s_Verts, s_Target, s_TileAlloc, s_TileState, s_Overflow;
+#if RASPPI >= 5
+// a V3D 7.1 packet (kern/v3d_pack71.h) into the list L: its defaults (opcode, sub-id), then the fields set
+#define PACK71(L, T, ...) do { struct V3D71_##T v_ = { V3D71_##T##_header }; struct V3D71_##T &v = v_; __VA_ARGS__; \
+	u8 b_[V3D71_##T##_length]; V3D71_##T##_pack (b_, &v_); (L).Bytes (b_, sizeof b_); } while (0)
+#endif
+
+static TGpuBuf s_BCL, s_RCL, s_Ind, s_State, s_Target, s_TileAlloc, s_TileState, s_Overflow;
+#if RASPPI <= 4
+static TGpuBuf s_Verts;				// (gpu_draw's vertices: the v52 path, 4.2's)
+#endif
 static int  s_nState = 0;			// 0 not tried, 1 up, -1 unavailable / failed
 static char s_Info[96] = "not started";
 static volatile boolean s_bBusy = FALSE;
@@ -186,6 +246,7 @@ static void Fmt (char *pOut, unsigned nCap, const char *pFmt, u32 a, u32 b, u32 
 }
 
 // ---- bring-up ------------------------------------------------------------------------------------------------
+#if RASPPI <= 4
 static boolean WaitClear (uintptr nReg, u32 nBit)
 {
 	unsigned t0 = CTimer::Get ()->GetClockTicks ();
@@ -193,6 +254,11 @@ static boolean WaitClear (uintptr nReg, u32 nBit)
 		if (CTimer::Get ()->GetClockTicks () - t0 > 100000) return FALSE;
 	return TRUE;
 }
+#endif
+
+#if RASPPI >= 5
+boolean g_bGpu71 = TRUE;				// cmdline.txt gpu71=0: the Pi 5's GPU not started (kernel.cpp)
+#endif
 
 static boolean PowerOn (void)
 {
@@ -217,12 +283,44 @@ static boolean PowerOn (void)
 	}
 	CLogger::Get ()->Write (From, LogNotice, "V3D clock %u MHz (max)", nMax / 1000000);
 
+#if RASPPI >= 5
+	// Linux's bcm2835-power.c (bcm2835_asb_power_on with no bridges) for the BCM2712: the clock off
+	// while the reset is released, then on; then its v3d_idle_sms: the SMS out of power-off, idle, reset
+	Clock.nState = 0; Tags.GetTag (PROPTAG_SET_CLOCK_STATE, &Clock, sizeof Clock, 8);
+	CTimer::SimpleusDelay (10);
+	write32 (PM_GRAFX, PM_PASSWORD | (read32 (PM_GRAFX) & 0xFFFFFF) | PM_V3DRSTN);	// out of reset
+	Clock.nState = 1; Tags.GetTag (PROPTAG_SET_CLOCK_STATE, &Clock, sizeof Clock, 8);
+	CTimer::SimpleusDelay (10);
+	write32 (V3D_SMS_TEE_CS, V3D_SMS_CLEAR_POWER_OFF);
+	unsigned t0 = CTimer::Get ()->GetClockTicks ();
+	while (V3D_SMS_STATE (read32 (V3D_SMS_TEE_CS)) != V3D_SMS_IDLE)
+		if (CTimer::Get ()->GetClockTicks () - t0 > 100000)
+		{
+			CLogger::Get ()->Write (From, LogWarning, "SMS does not power up (TEE_CS %08X)", read32 (V3D_SMS_TEE_CS));
+			return FALSE;
+		}
+	write32 (V3D_SMS_REE_CS, 4);						// (state 4: reset)
+	t0 = CTimer::Get ()->GetClockTicks ();
+	for (;;)
+	{
+		u32 st = V3D_SMS_STATE (read32 (V3D_SMS_REE_CS));
+		if (st != V3D_SMS_ISOLATING_FOR_RESET && st != V3D_SMS_RESETTING) break;
+		if (CTimer::Get ()->GetClockTicks () - t0 > 100000)
+		{
+			CLogger::Get ()->Write (From, LogWarning, "SMS reset does not end (REE_CS %08X)", read32 (V3D_SMS_REE_CS));
+			return FALSE;
+		}
+	}
+	CLogger::Get ()->Write (From, LogNotice, "SMS idle (TEE_CS %08X, REE_CS %08X)", read32 (V3D_SMS_TEE_CS), read32 (V3D_SMS_REE_CS));
+	return TRUE;
+#else
 	write32 (PM_GRAFX, PM_PASSWORD | (read32 (PM_GRAFX) & 0xFFFFFF) | PM_V3DRSTN);	// out of reset
 	write32 (ASB_V3D_M_CTRL, PM_PASSWORD | (read32 (ASB_V3D_M_CTRL) & ~ASB_REQ_STOP & 0xFFFFFF));
 	if (!WaitClear (ASB_V3D_M_CTRL, ASB_ACK)) { CLogger::Get ()->Write (From, LogWarning, "ASB master does not answer"); return FALSE; }
 	write32 (ASB_V3D_S_CTRL, PM_PASSWORD | (read32 (ASB_V3D_S_CTRL) & ~ASB_REQ_STOP & 0xFFFFFF));
 	if (!WaitClear (ASB_V3D_S_CTRL, ASB_ACK)) { CLogger::Get ()->Write (From, LogWarning, "ASB slave does not answer"); return FALSE; }
 	return TRUE;
+#endif
 }
 
 static void IrqOn (void);
@@ -232,19 +330,22 @@ static boolean Up (void)
 	if (s_nState) return s_nState > 0;
 	s_nState = -1;
 #if RASPPI >= 5
-	// The Pi 5's V3D 7.1 is elsewhere (hub 0x10_0200_0000, no ASB, the SMS, other IRQs) and speaks
-	// other control lists and another QPU ISA (docs/PI5-PORT.md §9): until that port, no GPU -- no
-	// register touched, no IRQ connected; gpu_info says 0 and the apps take their software paths.
-	Fmt (s_Info, sizeof s_Info, "V3D: the Pi 5's GPU is not supported yet", 0, 0, 0);
-	CLogger::Get ()->Write (From, LogNotice, "%s", s_Info);
-	return FALSE;
+	if (!g_bGpu71)						// (cmdline.txt gpu71=0: the GPU left off, as before the port)
+	{
+		Fmt (s_Info, sizeof s_Info, "V3D: off (gpu71=0)", 0, 0, 0);
+		return FALSE;
+	}
 #endif
 	if (!PowerOn ()) { Fmt (s_Info, sizeof s_Info, "V3D: power-up failed", 0, 0, 0); return FALSE; }
 	u32 nId0 = read32 (V3D_HUB_IDENT0), nId1 = read32 (V3D_HUB_IDENT1), nId2 = read32 (V3D_HUB_IDENT2);
 	u32 nCtl = read32 (V3D_CTL_IDENT0);
 	u32 nTver = nId1 & 0xF, nRev = (nId1 >> 4) & 0xF, nCores = (nId1 >> 8) & 0xF;
 	CLogger::Get ()->Write (From, LogNotice, "HUB_IDENT0..2 %08X %08X %08X, CTL_IDENT0 %08X", nId0, nId1, nId2, nCtl);
+#if RASPPI >= 5
+	if (nTver != 7)
+#else
 	if (nTver != 4)
+#endif
 	{
 		Fmt (s_Info, sizeof s_Info, "V3D: not found (IDENT1 %08X)", nId1, 0, 0);
 		CLogger::Get ()->Write (From, LogWarning, "%s", s_Info);
@@ -427,6 +528,52 @@ static void TargetAfter (const TTarget &T, unsigned *pPx, int w, int h, int nStr
 	}
 }
 
+#if RASPPI >= 5
+// The shader state record, V3D 7.1's (no default attributes' address: every later field 32 bits
+// earlier; the code addresses whole), from the 4.2 one the draws fill. The vertex and coordinate
+// shaders 2-way threaded: the kernel's use rf0..rf27 (4-way gives a thread 16 registers).
+static void Rec71 (CList &L, const GLShaderStateRecord &r)
+{
+	PACK71 (L, GL_SHADER_STATE_RECORD,
+		v.point_size_in_shaded_vertex_data = r.point_size_in_shaded_vertex_data; v.enable_clipping = r.enable_clipping;
+		v.vertex_id_read_by_coordinate_shader = r.vertex_id_read_by_coordinate_shader; v.instance_id_read_by_coordinate_shader = r.instance_id_read_by_coordinate_shader;
+		v.base_instance_id_read_by_coordinate_shader = r.base_instance_id_read_by_coordinate_shader;
+		v.vertex_id_read_by_vertex_shader = r.vertex_id_read_by_vertex_shader; v.instance_id_read_by_vertex_shader = r.instance_id_read_by_vertex_shader;
+		v.base_instance_id_read_by_vertex_shader = r.base_instance_id_read_by_vertex_shader;
+		v.enable_sample_rate_shading = r.enable_sample_rate_shading; v.any_shader_reads_hardware_written_primitive_id = r.any_shader_reads_hardware_written_primitive_id;
+		v.insert_primitive_id_as_first_varying_to_fragment_shader = r.insert_primitive_id_as_first_varying_to_fragment_shader;
+		v.turn_off_scoreboard = r.turn_off_scoreboard; v.do_scoreboard_wait_on_first_thread_switch = r.do_scoreboard_wait_on_first_thread_switch;
+		v.no_prim_pack = r.no_prim_pack;
+		v.fragment_shader_does_z_writes = r.fragment_shader_does_z_writes; v.turn_off_early_z_test = r.turn_off_early_z_test;
+		v.fragment_shader_uses_real_pixel_centre_w_in_addition_to_centroid_w2 = r.fragment_shader_uses_real_pixel_centre_w_in_addition_to_centroid_w2;
+		v.disable_implicit_point_line_varyings = r.disable_implicit_point_line_varyings;
+		v.number_of_varyings_in_fragment_shader = r.number_of_varyings_in_fragment_shader;
+		v.coordinate_shader_output_vpm_segment_size = r.coordinate_shader_output_vpm_segment_size;
+		v.min_coord_shader_output_segments_required_in_play_in_addition_to_vcm_cache_size = r.min_coord_shader_output_segments_required_in_play_in_addition_to_vcm_cache_size;
+		v.coordinate_shader_input_vpm_segment_size = r.coordinate_shader_input_vpm_segment_size;
+		v.min_coord_shader_input_segments_required_in_play = r.min_coord_shader_input_segments_required_in_play + 1u;	// (stored minus one)
+		v.vertex_shader_output_vpm_segment_size = r.vertex_shader_output_vpm_segment_size;
+		v.min_vertex_shader_output_segments_required_in_play_in_addition_to_vcm_cache_size = r.min_vertex_shader_output_segments_required_in_play_in_addition_to_vcm_cache_size;
+		v.vertex_shader_input_vpm_segment_size = r.vertex_shader_input_vpm_segment_size;
+		v.min_vertex_shader_input_segments_required_in_play = r.min_vertex_shader_input_segments_required_in_play + 1u;
+		v.fragment_shader_4_way_threadable = r.fragment_shader_4_way_threadable;
+		v.fragment_shader_start_in_final_thread_section = r.fragment_shader_start_in_final_thread_section;
+		v.fragment_shader_propagate_nans = r.fragment_shader_propagate_nans;
+		v.fragment_shader_code_address = (u32) r.fragment_shader_code_address << 3;
+		v.fragment_shader_uniforms_address = r.fragment_shader_uniforms_address;
+		v.vertex_shader_4_way_threadable = 0;
+		v.vertex_shader_start_in_final_thread_section = r.vertex_shader_start_in_final_thread_section;
+		v.vertex_shader_propagate_nans = r.vertex_shader_propagate_nans;
+		v.vertex_shader_code_address = (u32) r.vertex_shader_code_address << 3;
+		v.vertex_shader_uniforms_address = r.vertex_shader_uniforms_address;
+		v.coordinate_shader_4_way_threadable = 0;
+		v.coordinate_shader_start_in_final_thread_section = r.coordinate_shader_start_in_final_thread_section;
+		v.coordinate_shader_propagate_nans = r.coordinate_shader_propagate_nans;
+		v.coordinate_shader_code_address = (u32) r.coordinate_shader_code_address << 3;
+		v.coordinate_shader_uniforms_address = r.coordinate_shader_uniforms_address);
+}
+#endif
+
 // ---- a frame ---------------------------------------------------------------------------------------------------
 static void InvalidateGpuCaches (void)
 {
@@ -452,10 +599,23 @@ static void BuildRCL (CList &R, CList &Ind, int w, int h, unsigned nClear, boole
 	u32 tilesX = (u32) (w + 63) / 64, tilesY = (u32) (h + 63) / 64;
 	u32 nClearA = T.bAlpha ? nClear & 0xFF000000 : T.bDirect ? 0 : 0xFF000000;	// (F_ALPHA: clear's top byte)
 	u32 nClearRGBA = nClearA | ((nClear & 0xFF) << 16) | (nClear & 0xFF00) | ((nClear >> 16) & 0xFF);
+#if RASPPI >= 5
+	// V3D 7.1 (Mesa's v3dx_rcl.c): the tile size explicit (64 x 64: log2 6 - 3), one render target
+	// (Part1: RGBA8 -- "8", no clamp --, 32 bpp, the stride of a 64-pixel tile in 128 bits a 2 rows = 32,
+	// at 0 in the tile buffer, its clear colour); the depth cleared early (never loaded nor stored)
+	PACK71 (R, TILE_RENDERING_MODE_CFG_COMMON, v.number_of_render_targets = 1; v.image_width_pixels = (u32) w;
+		v.image_height_pixels = (u32) h; v.internal_depth_type = 2; v.early_z_disable = 0; v.early_z_test_and_update_direction = 0;
+		v.early_depth_stencil_clear = 1; v.log2_tile_width = 3; v.log2_tile_height = 3);
+	PACK71 (R, TILE_RENDERING_MODE_CFG_RENDER_TARGET_PART1, v.render_target_number = 0; v.base_address = 0;
+		v.stride = 64 * 1 / 2; v.internal_bpp = V3D71_INTERNAL_BPP_32; v.internal_type_and_clamping = V3D71_RENDER_TARGET_TYPE_CLAMP_8;
+		v.clear_color_low_bits = nClearRGBA);
+	PACK71 (R, TILE_RENDERING_MODE_CFG_ZS_CLEAR_VALUES, v.stencil_clear_value = 0; v.z_clear_value = 1.0f);
+#else
 	R << TileRenderingModeCfgCommon (1, (u16) w, (u16) h, 0, false, false, 0, false, 2, false);
 	R << TileRenderingModeCfgClearColorsPart1 (0, nClearRGBA, 0);
 	R << TileRenderingModeCfgColor (0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 	R << TileRenderingModeCfgZSClearValues (0, 1.0f);
+#endif
 	R << TileListInitialBlockSize (0, true);
 	u32 stW = 1, stH = 1, fW, fH;
 	for (;;)
@@ -469,7 +629,11 @@ static void BuildRCL (CList &R, CList &Ind, int w, int h, unsigned nClear, boole
 	R << TileCoordinates (0, 0);				// clear, then a dummy store (a hardware race)
 	R << OP_END_OF_LOADS;
 	R << StoreTileBufferGeneral ();
+#if RASPPI >= 5
+	PACK71 (R, CLEAR_RENDER_TARGETS, (void) v);
+#else
 	R << ClearTileBuffers (true, true);
+#endif
 	R << OP_END_OF_TILE_MARKER;
 	R << TileCoordinates (0, 0);
 	R << OP_END_OF_LOADS;
@@ -484,7 +648,11 @@ static void BuildRCL (CList &R, CList &Ind, int w, int h, unsigned nClear, boole
 	Ind << PrimListFormat (LIST_TRIANGLES, false);
 	Ind << BranchToImplicitTileList (0);
 	Ind << V3dStoreTarget (T.bDirect, T.nStrideBytes, T.nBus);
+#if RASPPI >= 5
+	PACK71 (Ind, CLEAR_RENDER_TARGETS, (void) v);
+#else
 	Ind << ClearTileBuffers (true, true);
+#endif
 	Ind << OP_END_OF_TILE_MARKER;
 	Ind << OP_RETURN_FROM_SUB_LIST;
 	R << StartAddressOfGenericTileList (nGeneric, Ind.Bus ());
@@ -529,8 +697,15 @@ static int Run (CList &B, CList &R, CList &Ind, u32 nAllocSize)
 	return 0;
 }
 
+#if RASPPI >= 5
+static int Draw71 (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigned *pDst, int w, int h, int nStride);
+#endif
+
 static int Draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigned *pDst, int w, int h, int nStride)
 {
+#if RASPPI >= 5
+	return Draw71 (pV, n, nClear, pDst, w, h, nStride);
+#else
 	u32 tilesX = (u32) (w + 63) / 64, tilesY = (u32) (h + 63) / 64, nTiles = tilesX * tilesY;
 	u32 nAllocSize = ((nTiles * 64 + 4095) & ~4095u) + 2 * 1024 * 1024;
 	if (!Alloc (s_Verts, (n ? n : 3) * sizeof (kapi_gpu_vertex)) || !Alloc (s_Target, (u32) (w * h * 4))
@@ -545,9 +720,9 @@ static int Draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigne
 	CList Ind (s_Ind);
 	u32 nFragUnif = Ind.Bus ();
 	u32 nVtxUnif = Ind.Bus ();
-	Ind << 1.0f << (f32) (w / 2) * 256.0f << (f32) (h / 2) * -256.0f << 0.5f << 0.5f;
+	Ind << 1.0f << (f32) (w / 2) * V3D_SUBPIXELS << (f32) (h / 2) * -V3D_SUBPIXELS << 0.5f << 0.5f;
 	u32 nCoordUnif = Ind.Bus ();
-	Ind << 1.0f << (f32) (w / 2) * 256.0f << (f32) (h / 2) * -256.0f;
+	Ind << 1.0f << (f32) (w / 2) * V3D_SUBPIXELS << (f32) (h / 2) * -V3D_SUBPIXELS;
 	Ind.Align (32);
 	u32 nShaderRec = Ind.Bus ();
 	GLShaderStateRecord Rec {};
@@ -575,7 +750,11 @@ static int Draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigne
 	Rec.coordinate_shader_4_way_threadable = true;
 	Rec.coordinate_shader_start_in_final_thread_section = true;
 	Rec.coordinate_shader_propagate_nans = true;
+#if RASPPI >= 5
+	Rec71 (Ind, Rec);
+#else
 	Ind << Rec;
+#endif
 	GlShaderStateAttributeRecord Pos {};
 	Pos.address = s_Verts.Bus (0);
 	Pos.number_of_values_read_by_vertex_shader = 3;
@@ -597,16 +776,31 @@ static int Draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigne
 
 	// ---- the binning list
 	CList B (s_BCL);
+#if RASPPI >= 5
+	PACK71 (B, TILE_BINNING_MODE_CFG, v.tile_allocation_initial_block_size = 0; v.tile_allocation_block_size = 0;
+		v.log2_tile_width = 3; v.log2_tile_height = 3; v.width_in_pixels = (u32) w; v.height_in_pixels = (u32) h);
+#else
 	B << TileBinningModeCfg (0, 0, 1, 0, false, false, (u16) w, (u16) h);
+#endif
 	B << OP_FLUSH_VCD_CACHE;
 	B << OcclusionQueryCounter (0);
 	B << OP_START_TILE_BINNING;
 	B << ClipWindow (0, 0, (u16) w, (u16) h);
 	// both faces, depth test LESS with depth writes
+#if RASPPI >= 5
+	PACK71 (B, CFG_BITS, v.enable_forward_facing_primitive = 1; v.enable_reverse_facing_primitive = 1; v.clockwise_primitives = 1;
+		v.depth_test_function = 1; v.z_updates_enable = 1);
+#else
 	B << CfgBits (true, true, true, false, 0, 0, false, 1, true, false, false, false, false, false, false);
+#endif
 	B << PointSize (1.0f);
 	B << LineWidth (1.0f);
+#if RASPPI >= 5
+	PACK71 (B, CLIPPER_XY_SCALING, v.viewport_half_width_in_1_64th_of_pixel = (f32) (w / 2) * V3D_SUBPIXELS;
+		v.viewport_half_height_in_1_64th_of_pixel = (f32) (h / 2) * -V3D_SUBPIXELS);
+#else
 	B << ClipperXYScaling ((f32) (w / 2) * 256.0f, (f32) (h / 2) * -256.0f);
+#endif
 	B << ClipperZScaleAndOffset (0.5f, 0.5f);
 	B << CLipperZMinMaxClippingPlanes (0.0f, 1.0f);
 	B << ViewportOffset ((f32) (w / 2), (f32) (h / 2), 0, 0);
@@ -632,6 +826,7 @@ static int Draw (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigne
 
 	TargetAfter (T, pDst, w, h, nStride);
 	return 0;
+#endif
 }
 
 // ---- v53: textures -------------------------------------------------------------------------------------------
@@ -777,19 +972,28 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 	TTarget T; ResolveTarget (F.pixels, w, h, F.stride, T, (F.flags & KAPI_GPU_F_ALPHA) != 0);
 	TargetBefore (T, F.pixels, w, h, F.stride, bKeep);
 
-	f32 fXs = (f32) (w / 2) * 256.0f, fYs = (f32) (h / 2) * -256.0f;
+	f32 fXs = (f32) (w / 2) * V3D_SUBPIXELS, fYs = (f32) (h / 2) * -V3D_SUBPIXELS;
 	static const f32 Ident[16] = { 1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1 };
 
 	CList Ind (s_Ind);
 	CList B (s_BCL);
+#if RASPPI >= 5
+	PACK71 (B, TILE_BINNING_MODE_CFG, v.tile_allocation_initial_block_size = 0; v.tile_allocation_block_size = 0;
+		v.log2_tile_width = 3; v.log2_tile_height = 3; v.width_in_pixels = (u32) w; v.height_in_pixels = (u32) h);
+#else
 	B << TileBinningModeCfg (0, 0, 1, 0, false, false, (u16) w, (u16) h);
+#endif
 	B << OP_FLUSH_VCD_CACHE;
 	B << OcclusionQueryCounter (0);
 	B << OP_START_TILE_BINNING;
 	B << ClipWindow (0, 0, (u16) w, (u16) h);
 	B << PointSize (1.0f);
 	B << LineWidth (1.0f);
+#if RASPPI >= 5
+	PACK71 (B, CLIPPER_XY_SCALING, v.viewport_half_width_in_1_64th_of_pixel = fXs; v.viewport_half_height_in_1_64th_of_pixel = fYs);
+#else
 	B << ClipperXYScaling (fXs, fYs);
+#endif
 	B << ClipperZScaleAndOffset (0.5f, 0.5f);
 	B << CLipperZMinMaxClippingPlanes (0.0f, 1.0f);
 	B << ViewportOffset ((f32) (w / 2), (f32) (h / 2), 0, 0);
@@ -870,7 +1074,11 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 		Rec.coordinate_shader_4_way_threadable = true;
 		Rec.coordinate_shader_start_in_final_thread_section = true;
 		Rec.coordinate_shader_propagate_nans = true;
+#if RASPPI >= 5
+		Rec71 (Ind, Rec);
+#else
 		Ind << Rec;
+#endif
 		GlShaderStateAttributeRecord A {};
 		A.address = s_Verts3.Bus (0);					// x y z w
 		A.number_of_values_read_by_vertex_shader = 4;
@@ -899,8 +1107,14 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 		if (nZ == 0) nZ = 1;						// LESS
 		u32 nBlend = (b.flags >> 8) & 15;
 		boolean bZWrite = !(b.flags & KAPI_GPU_B_NOZWRITE) && nZ != 7;
+#if RASPPI >= 5
+		PACK71 (B, CFG_BITS, v.enable_forward_facing_primitive = !(b.flags & KAPI_GPU_B_CULL_FRONT);
+			v.enable_reverse_facing_primitive = !(b.flags & KAPI_GPU_B_CULL_BACK); v.clockwise_primitives = 1;
+			v.depth_test_function = nZ; v.z_updates_enable = bZWrite; v.blend_enable = nBlend != 0);
+#else
 		B << CfgBits (!(b.flags & KAPI_GPU_B_CULL_FRONT), !(b.flags & KAPI_GPU_B_CULL_BACK), true, false, 0, 0, false,
 			      nZ, bZWrite, false, false, false, nBlend != 0, false, false);
+#endif
 		if (nBlend != 0 && nBlend != nPrevBlend)
 		{
 			// colour src, dst, equation, then alpha's -- factors: 0 zero, 1 one, 3 1 - src colour,
@@ -922,7 +1136,12 @@ static int Render (const kapi_gpu_frame &F, const kapi_gpu_vertex3 *pV, unsigned
 				{ 0, 7, 0, 0, 7, 0 } };			// DSTOUT: d (1 - sa)
 			const u8 *f = Fac[nBlend <= KAPI_GPU_BLEND_LAST ? nBlend : 1];
 			B << BlendEnables (1);
+#if RASPPI >= 5
+			PACK71 (B, BLEND_CFG, v.alpha_blend_mode = f[5]; v.alpha_blend_src_factor = f[3]; v.alpha_blend_dst_factor = f[4];
+				v.color_blend_mode = f[2]; v.color_blend_src_factor = f[0]; v.color_blend_dst_factor = f[1]; v.render_target_mask = 0xF);
+#else
 			B << BlendCfg (f[5], f[3], f[4], f[2], f[0], f[1], 0xF);
+#endif
 			nPrevBlend = nBlend;
 		}
 		B << GlShaderState (nShaderRec, 4);
@@ -1069,6 +1288,31 @@ static boolean ClipFrame (const kapi_gpu_vertex3 *pV, unsigned nV, const kapi_gp
 	return TRUE;
 }
 
+#if RASPPI >= 5
+// The v52 shaders are Mesa's 4.2 code: on 7.1 a draw is a gpu_render batch of the same triangles
+// (x y z, w = 1: no matrix; the colour; both faces, depth LESS) with the kernel's own shaders.
+static kapi_gpu_vertex3 *s_pDrawV = 0; static unsigned s_nDrawVCap = 0;
+static int Draw71 (const kapi_gpu_vertex *pV, unsigned n, unsigned nClear, unsigned *pDst, int w, int h, int nStride)
+{
+	unsigned nCap = n ? n : 3;
+	if (s_nDrawVCap < nCap) { delete [] s_pDrawV; s_pDrawV = new kapi_gpu_vertex3[nCap]; s_nDrawVCap = s_pDrawV ? nCap : 0; }
+	if (s_pDrawV == 0) return -2;
+	for (unsigned i = 0; i < n; i++)
+	{
+		kapi_gpu_vertex3 &q = s_pDrawV[i];
+		memset (&q, 0, sizeof q);
+		q.x = pV[i].x; q.y = pV[i].y; q.z = pV[i].z; q.w = 1.0f;
+		q.r = pV[i].r; q.g = pV[i].g; q.b = pV[i].b; q.a = pV[i].a;
+	}
+	kapi_gpu_batch Bt; memset (&Bt, 0, sizeof Bt);
+	Bt.first = 0; Bt.count = n; Bt.texture = -1; Bt.flags = KAPI_GPU_B_NOMATRIX;
+	kapi_gpu_frame Fr; Fr.pixels = pDst; Fr.w = w; Fr.h = h; Fr.stride = nStride; Fr.clear = nClear; Fr.flags = 0;
+	unsigned nCV = 0, nCB = 0;
+	if (!ClipFrame (s_pDrawV, n, &Bt, 1, &nCV, &nCB)) return -4;
+	return Render (Fr, s_pClipV, nCV, s_pClipB, nCB);
+}
+#endif
+
 extern "C" int kapi_gpu_render (const kapi_gpu_frame *pUserF, const kapi_gpu_vertex3 *pV, unsigned nV,
 				const kapi_gpu_batch *pB, unsigned nB)
 {
@@ -1149,6 +1393,9 @@ static int Program (int nHandle, const kapi_gpu_program *pP)
 	    || pP->inputs < 4 || pP->inputs > CLIP_MAX_FLOATS || pP->csInputs < 4 || pP->csInputs > pP->inputs
 	    || pP->csOutputs < 6 || pP->csOutputs > 16 || pP->varyings > 64)
 		return -2;
+#if RASPPI >= 5
+	if (!(pP->flags & KAPI_GPU_P_V71)) return -2;			// (4.2 code: it would not run on the 7.1)
+#endif
 	if (nHandle < 0)
 	{
 		for (int i = 0; i < KAPI_GPU_MAX_PROGRAMS; i++)
@@ -1171,6 +1418,9 @@ static int Program (int nHandle, const kapi_gpu_program *pP)
 	p.nInputs = (u8) pP->inputs; p.nCSInputs = (u8) pP->csInputs;
 	p.nCSOutputs = (u8) pP->csOutputs; p.nVaryings = (u8) pP->varyings;
 	p.nFlags = pP->flags;
+#if RASPPI >= 5
+	p.nFlags &= ~KAPI_GPU_P_FS_4WAY;		// (7.1: an app's fragment shader 2-way, 32 registers -- user/Libs/v3d/qpu.h's translation)
+#endif
 	return nHandle;
 }
 
@@ -1431,13 +1681,23 @@ static int Render2 (const kapi_gpu_frame &F, const kapi_gpu_batch2 *pB, unsigned
 
 	CList Ind (s_Ind);
 	CList B (s_BCL);
+#if RASPPI >= 5
+	PACK71 (B, TILE_BINNING_MODE_CFG, v.tile_allocation_initial_block_size = 0; v.tile_allocation_block_size = 0;
+		v.log2_tile_width = 3; v.log2_tile_height = 3; v.width_in_pixels = (u32) w; v.height_in_pixels = (u32) h);
+#else
 	B << TileBinningModeCfg (0, 0, 1, 0, false, false, (u16) w, (u16) h);
+#endif
 	B << OP_FLUSH_VCD_CACHE;
 	B << OcclusionQueryCounter (0);
 	B << OP_START_TILE_BINNING;
 	B << PointSize (1.0f);
 	B << LineWidth (1.0f);
+#if RASPPI >= 5
+	PACK71 (B, CLIPPER_XY_SCALING, v.viewport_half_width_in_1_64th_of_pixel = (f32) (w / 2) * V3D_SUBPIXELS;
+		v.viewport_half_height_in_1_64th_of_pixel = (f32) (h / 2) * -V3D_SUBPIXELS);
+#else
 	B << ClipperXYScaling ((f32) (w / 2) * 256.0f, (f32) (h / 2) * -256.0f);
+#endif
 	B << ClipperZScaleAndOffset (0.5f, 0.5f);
 	B << CLipperZMinMaxClippingPlanes (0.0f, 1.0f);
 	B << ViewportOffset ((f32) (w / 2), (f32) (h / 2), 0, 0);
@@ -1523,7 +1783,11 @@ static int Render2 (const kapi_gpu_frame &F, const kapi_gpu_batch2 *pB, unsigned
 		Rec.coordinate_shader_4_way_threadable = true;
 		Rec.coordinate_shader_start_in_final_thread_section = true;
 		Rec.coordinate_shader_propagate_nans = true;
+#if RASPPI >= 5
+		Rec71 (Ind, Rec);
+#else
 		Ind << Rec;
+#endif
 		u32 nAttr = (P.nInputs + 3) / 4;
 		for (u32 k = 0; k < nAttr; k++)
 		{
@@ -1544,13 +1808,25 @@ static int Render2 (const kapi_gpu_frame &F, const kapi_gpu_batch2 *pB, unsigned
 		u32 nZ = KAPI_GPU_B_ZFUNC (b.flags);
 		if (nZ == 0) nZ = 1;						// LESS
 		boolean bZWrite = !(b.flags & KAPI_GPU_B_NOZWRITE) && nZ != 7;
+#if RASPPI >= 5
+		PACK71 (B, CFG_BITS, v.enable_forward_facing_primitive = !(b.flags & KAPI_GPU_B_CULL_FRONT);
+			v.enable_reverse_facing_primitive = !(b.flags & KAPI_GPU_B_CULL_BACK); v.clockwise_primitives = 1;
+			v.depth_test_function = nZ; v.z_updates_enable = bZWrite; v.blend_enable = b.blend != 0);
+#else
 		B << CfgBits (!(b.flags & KAPI_GPU_B_CULL_FRONT), !(b.flags & KAPI_GPU_B_CULL_BACK), true, false, 0, 0, false,
 			      nZ, bZWrite, false, false, false, b.blend != 0, false, false);
+#endif
 		if (b.blend != 0 && b.blend != nPrevBlend)
 		{
 			u32 v = b.blend;
 			B << BlendEnables (1);
+#if RASPPI >= 5
+			PACK71 (B, BLEND_CFG, v.alpha_blend_mode = (b.blend >> 24) & 7; v.alpha_blend_src_factor = (b.blend >> 12) & 15;
+				v.alpha_blend_dst_factor = (b.blend >> 16) & 15; v.color_blend_mode = (b.blend >> 20) & 7;
+				v.color_blend_src_factor = (b.blend >> 4) & 15; v.color_blend_dst_factor = (b.blend >> 8) & 15; v.render_target_mask = 0xF);
+#else
 			B << BlendCfg ((v >> 24) & 7, (v >> 12) & 15, (v >> 16) & 15, (v >> 20) & 7, (v >> 4) & 15, (v >> 8) & 15, 0xF);
+#endif
 			nPrevBlend = v;
 		}
 		u32 nMask = (b.wmask & 15) | (T.bDirect && !T.bAlpha ? 0x8 : 0);	// (direct: alpha not written, stays 0 -- unless F_ALPHA)

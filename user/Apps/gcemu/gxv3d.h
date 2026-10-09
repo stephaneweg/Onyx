@@ -841,7 +841,7 @@ struct Out
 		struct kapi_gpu_program P;
 		P.vs = vs.words (); P.nvs = (unsigned) vs.count (); P.cs = cs.words (); P.ncs = (unsigned) cs.count ();
 		P.fs = r.arena + p.words; P.nfs = p.nWords;
-		P.inputs = (unsigned) nIn; P.csInputs = 4; P.csOutputs = 6; P.varyings = (unsigned) p.nVary; P.flags = p.flags;
+		P.inputs = (unsigned) nIn; P.csInputs = 4; P.csOutputs = 6; P.varyings = (unsigned) p.nVary; P.flags = qpu::programFlags (p.flags);
 		int h = kapi_gpu_program (-1, &P);
 		if (h < 0) { st.progFails++; st.progErr = h; }
 		p.handle = h >= 0 ? h : -2;

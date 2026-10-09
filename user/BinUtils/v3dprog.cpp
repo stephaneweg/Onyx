@@ -66,7 +66,7 @@ static int program (const qpu::Prog &vs, const qpu::Prog &fs, int inputs, int va
 	P.cs = s_CS.words (); P.ncs = (unsigned) s_CS.count ();
 	P.fs = fs.words (); P.nfs = (unsigned) fs.count ();
 	P.inputs = (unsigned) inputs; P.csInputs = 4; P.csOutputs = 6; P.varyings = (unsigned) varyings;
-	P.flags = flags;
+	P.flags = qpu::programFlags (flags);
 	return kapi_gpu_program (-1, &P);
 }
 
@@ -155,7 +155,7 @@ static void tevTest (const char *name, const gxtev::Config &cf)
 	struct kapi_gpu_program P;
 	P.vs = s_TevVS.words (); P.nvs = (unsigned) s_TevVS.count (); P.cs = s_CS.words (); P.ncs = (unsigned) s_CS.count ();
 	P.fs = s_Tev.prog.words (); P.nfs = (unsigned) s_Tev.prog.count ();
-	P.inputs = (unsigned) nIn; P.csInputs = 4; P.csOutputs = 6; P.varyings = (unsigned) s_Tev.nVary; P.flags = s_Tev.flags;
+	P.inputs = (unsigned) nIn; P.csInputs = 4; P.csOutputs = 6; P.varyings = (unsigned) s_Tev.nVary; P.flags = qpu::programFlags (s_Tev.flags);
 	int prog = kapi_gpu_program (-1, &P);
 	// the dynamic values, the textures (4 x 4 each lookup)
 	gxtev::Dyn dy;
@@ -276,10 +276,10 @@ static int wwFrame (int w, int h, unsigned flags, float scale, int variant)
 	struct kapi_gpu_program P;
 	P.vs = s_TevVS.words (); P.nvs = (unsigned) s_TevVS.count (); P.cs = s_CS.words (); P.ncs = (unsigned) s_CS.count ();
 	P.fs = s_Tev.prog.words (); P.nfs = (unsigned) s_Tev.prog.count ();
-	P.inputs = (unsigned) nIn; P.csInputs = 4; P.csOutputs = 6; P.varyings = (unsigned) s_Tev.nVary; P.flags = s_Tev.flags;
-	if (variant & 1) { P.fs = s_VaryF.words (); P.nfs = (unsigned) s_VaryF.count (); P.varyings = 4; P.flags = KAPI_GPU_P_FS_FINAL; }
-	if (variant & 8) { P.fs = s_FlatF.words (); P.nfs = (unsigned) s_FlatF.count (); P.varyings = 0; P.flags = KAPI_GPU_P_FS_4WAY | KAPI_GPU_P_FS_FINAL; }
-	if (variant & 16) { P.fs = s_Flat.words (); P.nfs = (unsigned) s_Flat.count (); P.varyings = 0; P.flags = 0; }
+	P.inputs = (unsigned) nIn; P.csInputs = 4; P.csOutputs = 6; P.varyings = (unsigned) s_Tev.nVary; P.flags = qpu::programFlags (s_Tev.flags);
+	if (variant & 1) { P.fs = s_VaryF.words (); P.nfs = (unsigned) s_VaryF.count (); P.varyings = 4; P.flags = qpu::programFlags (KAPI_GPU_P_FS_FINAL); }
+	if (variant & 8) { P.fs = s_FlatF.words (); P.nfs = (unsigned) s_FlatF.count (); P.varyings = 0; P.flags = qpu::programFlags (KAPI_GPU_P_FS_4WAY | KAPI_GPU_P_FS_FINAL); }
+	if (variant & 16) { P.fs = s_Flat.words (); P.nfs = (unsigned) s_Flat.count (); P.varyings = 0; P.flags = qpu::programFlags (0); }
 	int prog = kapi_gpu_program (-1, &P);
 	ax_puts ("ww: program "); putint (prog); ax_puts (" ("); putint ((int) P.nfs); ax_puts (" instructions, flags ");
 	putint ((int) P.flags); ax_puts ("), target "); putint (w); ax_puts (" x "); putint (h); ax_puts (", batch flags ");
@@ -315,6 +315,7 @@ int main (void)
 	char info[96];
 	if (!kapi_gpu_info (info, sizeof info)) { ax_puts ("no GPU: "); ax_putln (info); return 1; }
 	ax_puts ("GPU: "); ax_putln (info);
+	if (qpu::versionOf (info)) qpu::setVersion (qpu::versionOf (info));	// (V3D 7.1, the Pi 5: the programs translated, qpu.h)
 	if (kapi_abi_version () < 61) { ax_putln ("the kernel is older than kapi v61 (gpu_program)"); return 1; }
 	qpu::passVS (s_VS, 8); qpu::passVS (s_VS12, 12); qpu::passCS (s_CS);
 	qpu::flatFS (s_Flat, false); qpu::flatFS (s_FlatF, true);

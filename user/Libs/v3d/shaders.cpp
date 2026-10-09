@@ -136,8 +136,9 @@ void texFS (Prog &p)
 void viewUniforms (int w, int h, unsigned out[4])
 {
 	union { float f; unsigned u; } c;
-	c.f = (float) (w / 2) * 256.0f; out[0] = c.u;
-	c.f = (float) (h / 2) * -256.0f; out[1] = c.u;
+	float sub = version () >= 71 ? 64.0f : 256.0f;			// (the screen coordinates: 1/256 pixel on 4.2, 1/64 on 7.1)
+	c.f = (float) (w / 2) * sub; out[0] = c.u;
+	c.f = (float) (h / 2) * -sub; out[1] = c.u;
 	c.f = 0.5f; out[2] = c.u; out[3] = c.u;
 }
 

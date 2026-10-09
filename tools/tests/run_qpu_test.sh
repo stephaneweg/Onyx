@@ -27,3 +27,6 @@ for s in v3d_shaders v3d_shaders71; do
 	(cd "$root/kernel/sys" && "$T/qpuasm" $s.qasm "$T/$s.inc" >/dev/null)
 	if [ "$(tail -n +2 "$T/$s.inc")" = "$(tail -n +2 "$root/kernel/sys/$s.inc")" ]; then echo "ok  : kernel/sys/$s.inc is its .qasm's"; else echo "FAIL: kernel/sys/$s.inc is stale (cd tools/qpu && make)"; exit 1; fi
 done
+# V3D 7.1 (the Pi 5): the stock shaders and the TEV built through qpu.h's translation, checked and simulated as 7.1
+QPU_VER=71 "$T/shaders" | tail -3
+GXTEV_VER=71 "$T/gxtev" ${GXTEV_N:-2000}

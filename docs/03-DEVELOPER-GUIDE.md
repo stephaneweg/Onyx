@@ -1893,7 +1893,9 @@ tabs, the viewport (Setup), the File Viewer. A selection is in `screenshots/pock
 > **ABI v61 — your own shaders**: `kapi_gpu_program (-1, &prog)` uploads a vertex, a coordinate
 > and a fragment shader (V3D 4.2 QPU words, generated at run time with `user/Libs/v3d/qpu.h`:
 > `qpu::Prog p; p << qpu::I ().a (V3D_QPU_A_FADD, rf (3), r1, r5).ldvary (r0); …`; every app
-> links `v3d/libv3d.a`; test them on the PC with `tools/qpu/qpusim` —
+> links `v3d/libv3d.a`; **on the Pi 5** (V3D 7.1) the same code is translated as it is built after
+> `qpu::setVersion (qpu::versionOf (info))` (`info`: `kapi_gpu_info`'s text), keep to rf0..rf(`qpu::rfLimit ()` − 1)
+> and give the program `qpu::programFlags (flags)` (docs/02 §15.1); test them on the PC with `tools/qpu/qpusim` —
 > `tools/tests/run_qpu_test.sh`), then `kapi_gpu_render2 (&frame, verts, nv, stride, batches,
 > nb, uniforms, nuni)` draws `struct kapi_gpu_batch2` batches of vertices of `stride` floats
 > (the clip-space x y z w first, clipped by the kernel) with their program, uniform ranges,

@@ -648,6 +648,9 @@ struct kapi_gpu_program
 #define KAPI_GPU_P_FS_FINAL	(1u << 1)	// the fragment shader starts in its last thread section
 						// (no thread switch before its end)
 #define KAPI_GPU_P_FS_ZWRITE	(1u << 2)	// the fragment shader writes the depth
+#define KAPI_GPU_P_V71		(1u << 3)	// the shaders are V3D 7.1's (the Pi 5's GPU: gpu_info says "V3D 7.1");
+						// a 7.1 kernel refuses a program without it (-2): 4.2 code; and
+						// on 7.1 FS_4WAY is ignored (2 threads, 32 registers: qpu.h)
 #define KAPI_GPU_MAX_PROGRAMS	256
 // A batch of gpu_render2: vertices [first, first + count) (triangles) with a program, its
 // uniforms (ranges of the call's uniform array: vertex, coordinate, fragment shader), up to 8

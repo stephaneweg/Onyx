@@ -40,8 +40,9 @@ FAT32 card, then insert it into the Pi 4 and power on.
 **A Raspberry Pi 5** has its own card: [`sdcard5/`](../sdcard5/) (or the smallest one, `sdcard5_lite/`), copied the
 same way — its kernel `kernel_2712.img`, its device trees, no boot firmware (the Pi 5's is in the board's EEPROM),
 its packages from the repository's `pi5/` folder. A Pi 4's card does not start a Pi 5, nor the reverse. **Not run
-on a Pi 5 yet** (2026-10-09, docs/PI5-PORT.md): the GPU (3D) and the 40-pin header's GPIO are not there yet, the
-sound goes to USB or HDMI (no jack on the Pi 5); its kernel log goes to the 3-pin debug UART between the HDMI
+on a Pi 5 yet** (2026-10-09, docs/PI5-PORT.md): its GPU (the 3D, the browser's compositing, the emulators' GPU
+paths) is written for it but untried -- `gpu71=0` in `cmdline.txt` turns it off if it misbehaves --, the 40-pin
+header's GPIO is not there yet, the sound goes to USB or HDMI (no jack on the Pi 5); its kernel log goes to the 3-pin debug UART between the HDMI
 ports.
 
 **The file dialog** (Open, Save, Choose folder — every program's; redone on 2026-10-05):
@@ -192,6 +193,8 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
   report.
 - **`gpudirect`**: `gpudirect=0`: the GPU renders into its own buffer, then copied, instead of
   writing the window's (or the full screen's) pixels itself — the same kind of test.
+- **`gpu71`** (the Raspberry Pi 5 only): `gpu71=0` leaves its GPU (V3D 7.1) off — the apps draw in
+  software, as on a board without one; for a GPU start that hangs or a frame that never finishes.
 - **`slice`**: the app time slice, in 10 ms ticks (default `2` = 20 ms).
 - **`hogsched`**: `hogsched=0` turns off the CPU-hog detection (apps preempted twice in a
   row lose priority — see `docs/02`); the scheduler is then plain round-robin

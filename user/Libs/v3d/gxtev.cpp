@@ -126,8 +126,8 @@ struct Gen
 
 	int allocRf ()
 	{
-		for (int r = 1; r < 32; r++) if (!(rfUsed >> r & 1)) { rfUsed |= 1ull << r; s.nRegs++; return r; }
-		fail ("more than 32 registers");
+		for (int r = 1; r < rfLimit (); r++) if (!(rfUsed >> r & 1)) { rfUsed |= 1ull << r; s.nRegs++; return r; }
+		fail (rfLimit () < 32 ? "more registers than V3D 7.1 leaves (25)" : "more than 32 registers");	// (qpu.h: 7.1's pseudo-accumulators)
 		return 31;
 	}
 	int allocAcc ()
@@ -266,8 +266,9 @@ struct Gen
 	{
 		if (x.k == VK_ACC && x.v == lastAcc && lastIdx == s.prog.count () - 1)
 		{
-			if (lastAlu) { lastI.in.alu.mul.waddr = (uint8_t) dst; lastI.in.alu.mul.magic_write = false; }
-			else { lastI.in.alu.add.waddr = (uint8_t) dst; lastI.in.alu.add.magic_write = false; }
+			uint8_t w = (uint8_t) physical (rf (dst));		// (the register itself: 7.1 puts it elsewhere, qpu.h)
+			if (lastAlu) { lastI.in.alu.mul.waddr = w; lastI.in.alu.mul.magic_write = false; }
+			else { lastI.in.alu.add.waddr = w; lastI.in.alu.add.magic_write = false; }
 			s.prog.set (lastIdx, lastI);
 			if (s.nClaim && s.claim[s.nClaim - 1].ip == lastIdx && s.claim[s.nClaim - 1].reg == x.v) s.claim[s.nClaim - 1].reg = 6 + dst;
 			prevW |= 1ull << dst; lastAcc = -1;
@@ -614,7 +615,7 @@ struct Gen
 		if (needTC) TC = allocRf ();
 		// the float constants, when registers are left
 		int left = 0;
-		for (int r = 1; r < 32; r++) if (!(rfUsed >> r & 1)) left++;
+		for (int r = 1; r < rfLimit (); r++) if (!(rfUsed >> r & 1)) left++;
 		if (left >= 1 && (rasUsed[0] | rasUsed[1] | texUsed)) { F255 = allocRf (); ldunifrf (F255, U_CONST, 0, 0, 0x437F0000); left--; }
 		if (left >= 1) { INV255 = allocRf (); union { float f; unsigned u; } k; k.f = 1.0f / 255.0f; ldunifrf (INV255, U_CONST, 0, 0, k.u); }
 		if (failed) return;

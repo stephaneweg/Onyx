@@ -14,6 +14,20 @@
 > `…/pi5` by default on a Pi 5 and refusing the other board's index (`tools/tests/run_pkg_test.sh`: two boards).
 > Not done: a userland of its own (the Pi 4's programs, ARMv8.0, run on the A76), `CCPUThrottle::Update ()` for
 > the fan. **Next: a first boot (§6)**, with the debug UART.
+>
+> **The GPU, V3D 7.1 (§9) -- built and tested on the PC, 2026-10-09, not run on a Pi 5 yet:** the QPU
+> assembler and simulator know V3D 7.1 (`tools/qpu`: `.version 71`, Mesa's v71 restrictions; vertex shaders
+> simulated too); the kernel's shaders for 7.1 (`kernel/sys/v3d_shaders71.qasm`, the same results as 4.2's,
+> bit for bit); the 7.1 packets generated from Mesa's XML (`tools/v3d/genpackets.py` -> `kern/v3d_pack71.h`;
+> the generator's 4.2 output equal to the hand-written packets that run on the Pi 4); the bring-up (the
+> SMS, PM_GRAFX_2712, SPI 249), the rendering list (Render Target Part1, Clear Render Targets, the tile
+> size), the binning list (1/64 pixel, Cfg Bits, Blend Cfg) and the 32-byte shader record -- in
+> `kernel/sys/v3d.cpp` under `#if RASPPI >= 5`; the apps' shaders translated by `user/Libs/v3d/qpu.h`
+> (gcemu, v3dprog: `KAPI_GPU_P_V71`). So gpucomp (Jet's compositing), teapot, gpudemo, BASIC 3D,
+> planets3d, n64emu (`gpu_render`) and gcemu (`gpu_program`) have their GPU path on the Pi 5. docs/02 §15.1.
+> **To check on the Pi 5** (§9.3's ladder): `gpu_info` (`V3D 7.1`, "SMS idle"), then `gpudemo`, `v3dprog`,
+> `gpcdemo`; `gpu71=0` in `cmdline.txt` if the GPU's start hangs. Open points: the V3D MMU off on 7.1
+> (§14.8), gxtev's register budget on 7.1 (25 registers: half of the big random TEV configurations fall back).
 > The fork was then brought to upstream **Circle 51.1.1** (docs/05 *Upstream merges*: for the Pi 5 the DSI
 > touchscreens, the RP1's I2C 4 and 6, the xHCI endpoint recovery); both kernels build on it.
 >

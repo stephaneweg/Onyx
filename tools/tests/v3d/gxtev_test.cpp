@@ -4,7 +4,8 @@
 // formats, the destination alpha) are generated, checked against the V3D's instruction
 // restrictions (tools/qpu/qpulib), run in the simulator (tools/qpu/qpusim) over random pixels and
 // compared with a C++ reference: the TEV of pc/NintendoEMU/core/gxgl.cpp's GLSL, line for line.
-//   gxtev_test [configurations] [seed]
+//   gxtev_test [configurations] [seed]        (GXTEV_VER=71: built for V3D 7.1, the Pi 5 -- qpu.h's translation --,
+//                                               checked and simulated as 7.1)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,7 +76,7 @@ static int testConfig (const Config &cf, unsigned seed, bool verbose, const char
 	srand (seed);
 	if (!gxtev::build (cf, sh))
 	{
-		if (!strcmp (sh.err, "more than 32 registers")) return 2;
+		if (strstr (sh.err, "registers")) return 2;
 		if (verbose) printf ("FAIL %s: %s\n", name, sh.err);
 		return 1;
 	}
@@ -87,6 +88,7 @@ static int testConfig (const Config &cf, unsigned seed, bool verbose, const char
 	if (rr (2)) for (int k = 0; k < 16; k++) dy.regs[k] = rr (256);
 	dy.aref[0] = rr (256); dy.aref[1] = rr (256); dy.dstA = (float) rr (256) / 255.0f;
 	Run run;
+	run.version = qpu::version ();
 	Texture tx[8];
 	for (int L = 0; L < sh.nLook; L++)
 	{
@@ -110,7 +112,12 @@ static int testConfig (const Config &cf, unsigned seed, bool verbose, const char
 		}
 		run.uniforms.push_back (v);
 	}
-	for (int i = 0; i < sh.nClaim; i++) run.watch.push_back ({ sh.claim[i].ip, sh.claim[i].reg, sh.claim[i].lo, sh.claim[i].hi });
+	for (int i = 0; i < sh.nClaim; i++)
+	{
+		int reg = sh.claim[i].reg;			// (0..5 r0..r5, 6 + n rf n: the program's; on V3D 7.1 where they are)
+		if (qpu::version () >= 71) reg = 6 + qpu::physical (reg < 6 ? qpu::R { 0, reg, 0, 0 } : qpu::rf (reg - 6));
+		run.watch.push_back ({ sh.claim[i].ip, reg, sh.claim[i].lo, sh.claim[i].hi });
+	}
 	// the pixels
 	std::vector<Pixel> px (48);
 	std::vector<std::vector<float>> c0 (px.size ()), c1 (px.size ()), st (px.size ());
@@ -187,6 +194,7 @@ static void minimize (Config &cf, unsigned seed)
 int main (int argc, char **argv)
 {
 	int nConf = argc > 1 ? atoi (argv[1]) : 2000;
+	if (getenv ("GXTEV_VER") && atoi (getenv ("GXTEV_VER")) == 71) { qpu::setVersion (71, 32); qpu_set_version (71); printf ("(V3D 7.1)\n"); }
 	unsigned seed0 = argc > 2 ? (unsigned) atoi (argv[2]) : 1;
 	int fails = 0, built = 0, tooBig = 0;
 	long instr = 0; int maxInstr = 0, maxRegs = 0;

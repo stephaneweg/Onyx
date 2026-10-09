@@ -804,7 +804,9 @@ int main (void)
 	if (g_m->jitEnable ()) g_jit = g_m->jit;
 	if (!g_wantJit) g_m->jit = 0;
 
-	g_gpu = kapi_gpu_info (0, 0) == 1 && kapi_gpu_texture (-2, 0, 0, 0, 0) != -1;
+	char gpuInfo[96] = "";
+	g_gpu = kapi_gpu_info (gpuInfo, sizeof gpuInfo) == 1 && kapi_gpu_texture (-2, 0, 0, 0, 0) != -1;
+	if (g_gpu && qpu::versionOf (gpuInfo)) qpu::setVersion (qpu::versionOf (gpuInfo));	// (the Pi 5's V3D 7.1: its shaders translated, qpu.h)
 	for (int k = 0; k < gc::Machine::MAX_TEX; k++) g_gpuTex[k] = -1;
 	g_tevOk = g_gpu && kapi_abi_version () >= 61 && g_rec.init () && g_out.init ();
 	if (g_tevOk && g_wantTev) g_m->gpu = &g_rec;

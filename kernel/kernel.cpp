@@ -567,6 +567,9 @@ private:
 //
 boolean g_bDisplayDma = TRUE;			// cmdline.txt dispdma=0: no asynchronous display DMA
 extern boolean g_bGpuDirect;			// (sys/v3d.cpp) gpudirect=0: the GPU never writes the window itself
+#if RASPPI >= 5
+extern boolean g_bGpu71;			// (sys/v3d.cpp) gpu71=0: the Pi 5's GPU (V3D 7.1) not started
+#endif
 
 class CCompositorTask : public CTask
 {
@@ -2101,6 +2104,9 @@ boolean CKernel::Initialize (void)
 		// asynchronous 2D DMA off); gpudirect=0: the GPU renders into its own buffer, copied
 		g_bDisplayDma = m_Options.GetAppOptionDecimal ("dispdma", 1) != 0;
 		g_bGpuDirect = m_Options.GetAppOptionDecimal ("gpudirect", 1) != 0;
+#if RASPPI >= 5
+		g_bGpu71 = m_Options.GetAppOptionDecimal ("gpu71", 1) != 0;
+#endif
 		s_pCores = new COnyxCores;
 		if (s_pCores == 0 || !s_pCores->Initialize ())
 			m_Logger.Write (FromKernel, LogWarning, "secondary cores did not start (no sound producer)");

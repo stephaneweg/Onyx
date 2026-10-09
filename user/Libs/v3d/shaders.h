@@ -28,8 +28,11 @@ void varyFS (Prog &p, int nVaryings, bool bFinal);
 void texFS (Prog &p);
 
 // the vertex shader's uniforms for a w x h target: x scale, y scale, z scale, z offset (as
-// 32-bit words; the coordinate shader takes the first 2)
+// 32-bit words; the coordinate shader takes the first 2) -- for the version set (qpu::setVersion)
 void viewUniforms (int w, int h, unsigned out[4]);
+
+// a program's kapi_gpu_program flags for the version set: + KAPI_GPU_P_V71 on V3D 7.1 (kern/kapi_abi.h)
+inline unsigned programFlags (unsigned flags) { return flags | (version () >= 71 ? 1u << 3 : 0u); }
 }
 
 #endif
