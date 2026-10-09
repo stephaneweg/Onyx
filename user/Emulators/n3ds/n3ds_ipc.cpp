@@ -17,6 +17,8 @@ static const struct { const char *name; ServiceFn fn; } SERVICES[] = {
 	{ "APT:U",    aptRequest }, { "APT:S", aptRequest }, { "APT:A", aptRequest },
 	{ "hid:USER", hidRequest }, { "hid:SPVR", hidRequest },
 	{ "fs:USER",  fsRequest },
+	{ "cfg:u",    cfgRequest }, { "cfg:s", cfgRequest }, { "cfg:i", cfgRequest },
+	{ "ptm:u",    ptmRequest }, { "ptm:sysm", ptmRequest },
 };
 
 Session *Machine::serviceOpen (const char *name)

@@ -8,6 +8,7 @@
 // MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors (see n3ds.h).
 //
 #include <array>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -99,14 +100,20 @@ struct DynCpu final : Cpu, Dynarmic::A32::UserCallbacks
 		u32 v; m->mem.read (va, &v, 4);
 		return v;
 	}
-	u8 MemoryRead8 (u32 va) override { return m->mem.r8 (va); }
-	u16 MemoryRead16 (u32 va) override { return m->mem.r16 (va); }
-	u32 MemoryRead32 (u32 va) override { return m->mem.r32 (va); }
-	u64 MemoryRead64 (u32 va) override { return m->mem.r64 (va); }
-	void MemoryWrite8 (u32 va, u8 v) override { m->mem.w8 (va, v); }
-	void MemoryWrite16 (u32 va, u16 v) override { m->mem.w16 (va, v); }
-	void MemoryWrite32 (u32 va, u32 v) override { m->mem.w32 (va, v); }
-	void MemoryWrite64 (u32 va, u64 v) override { m->mem.w64 (va, v); }
+	// (a page that is not there: the access comes here instead of the inline path -- said in a trace)
+	void missing (u32 va, const char *what)
+	{
+		if (m->trace && !m->mem.pages[va >> PAGE_BITS])
+			fprintf (stderr, "    %s %08x: nothing there (pc %08x, lr %08x)%c", what, (unsigned) va, (unsigned) jit->Regs ()[15], (unsigned) jit->Regs ()[14], 10);
+	}
+	u8 MemoryRead8 (u32 va) override { missing (va, "read"); return m->mem.r8 (va); }
+	u16 MemoryRead16 (u32 va) override { missing (va, "read"); return m->mem.r16 (va); }
+	u32 MemoryRead32 (u32 va) override { missing (va, "read"); return m->mem.r32 (va); }
+	u64 MemoryRead64 (u32 va) override { missing (va, "read"); return m->mem.r64 (va); }
+	void MemoryWrite8 (u32 va, u8 v) override { missing (va, "write"); m->mem.w8 (va, v); }
+	void MemoryWrite16 (u32 va, u16 v) override { missing (va, "write"); m->mem.w16 (va, v); }
+	void MemoryWrite32 (u32 va, u32 v) override { missing (va, "write"); m->mem.w32 (va, v); }
+	void MemoryWrite64 (u32 va, u64 v) override { missing (va, "write"); m->mem.w64 (va, v); }
 	// (one emulated core: an exclusive store succeeds when the value is still the one read)
 	bool MemoryWriteExclusive8 (u32 va, u8 v, u8 expected) override { if (m->mem.r8 (va) != expected) return false; m->mem.w8 (va, v); return true; }
 	bool MemoryWriteExclusive16 (u32 va, u16 v, u16 expected) override { if (m->mem.r16 (va) != expected) return false; m->mem.w16 (va, v); return true; }

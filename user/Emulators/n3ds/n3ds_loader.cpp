@@ -91,10 +91,10 @@ bool Machine::load3dsx (const u8 *f, u32 size)
 	for (int seg = 0; seg < 3; seg++)
 	{
 		const u8 *rh = f + relocHeaders + (u32) seg * relocHeaderSize;
-		u32 word = segOff[seg];						// (offset in the image of the next word looked at)
 		const u32 segEnd = segOff[seg] + pages[seg];
 		for (u32 table = 0; table < relocHeaderSize / 4; table++)
 		{
+			u32 word = segOff[seg];					// (each table walks the segment from its start)
 			const u32 count = le32 (rh + table * 4);
 			if ((u64) pos + (u64) count * 4 > size) { fail ("the .3dsx's relocations are cut"); return false; }
 			for (u32 e = 0; e < count; e++, pos += 4)

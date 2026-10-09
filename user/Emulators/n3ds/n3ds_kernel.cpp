@@ -35,6 +35,7 @@ Machine::Machine ()
 	memset (&apt, 0, sizeof apt); apt.cpuLimit = 30;
 	memset (&hid, 0, sizeof hid);
 	romfs = 0; romfsSize = 0; trace = false; pica = 0;
+	memset (&user, 0, sizeof user); setUser ("Onyx", 1, 2);
 	svcCount = switchCount = 0; unknownSvcs = 0;
 }
 
@@ -740,6 +741,7 @@ void Machine::svc (u32 n)
 		r[0] = RES_NOT_IMPLEMENTED;
 		break;
 	}
+	if (trace && current == t && (s32) cpu->regs ()[0] < 0 && n != 0x32) fprintf (stderr, "    -> %08x\n", (unsigned) cpu->regs ()[0]);
 	if (resched || exited) cpu->halt ();
 }
 

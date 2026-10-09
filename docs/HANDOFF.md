@@ -35,7 +35,9 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
   shows its menu; *Mars* wants `cfg:u`.
 - **The GPU has its own test**: `tools/tests/n3ds/src/gpu.c` (a shader in machine words, 51 checks on pixels read
   back, the picture's checksum): `sh tools/tests/run_n3ds_test.sh` runs `kernel` (137), `gfx` (45), `gpu` (51).
-- **Next**: `cfg:u` (Mars) and `ptm:sysm`; texture filtering; the SD card's archive (saves); what the next homebrew or the first game asks (`Machine::notes`).
+- **Done since** (section 9g): `cfg:*`, `ptm:*`, the GPU's procedural texture (citro2d's tint), a fault of the
+  `.3dsx` loader (the relative relocations): ***Mars* runs** (logo, title, instructions).
+- **Next**: texture filtering; the SD card's archive (saves); what the next homebrew or the first game asks (`Machine::notes`).
   Then T3 (the Pi: the speed, the V3D), T4 (sound), T5 (the NCCH loader: *A Link Between Worlds*). The app `n3dsemu` starts with a mock-up of its screens (the user's
   rule), at T7.
 - **Homebrew to try** (the user asked for some in `sdcard/roms`, git-ignored since 2026-10-09 but for its README;

@@ -265,6 +265,9 @@ struct Machine
 	struct Apt { Mutex *lock; Event *signal, *param; bool pending; u32 cpuLimit; SharedMem *font; bool fontReady; } apt;
 	// HID (n3ds_hid.cpp): the buttons, the circle pad and the touch screen, in a shared page
 	struct Hid { SharedMem *shared; Event *events[5]; u32 buttons; s16 cpadX, cpadY; bool touch; u16 touchX, touchY; u32 padIndex, touchIndex; } hid;
+	// the console's user (cfg): the name (UTF-16), the language (0 Japanese, 1 English, 2 French, 3 German, 4 Italian,
+	// 5 Spanish...), the region (0 Japan, 1 USA, 2 Europe)
+	struct User { u16 name[11]; u8 language, region; } user;
 	// the program's read-only files (RomFS): a piece of the file it was loaded from (kept by the host)
 	const u8 *romfs; u32 romfsSize;
 	bool trace;				// the system calls and the requests, on stderr (tests)
@@ -281,6 +284,7 @@ struct Machine
 	bool load (const u8 *file, u32 size);
 	bool loadElf (const u8 *file, u32 size);
 	bool load3dsx (const u8 *file, u32 size);
+	void setUser (const char *name, int language, int region);
 	// The shared system font, a BCFNT file (ours: tools/n3ds/mkfont.py -> data/sysfont.bcfnt; never Nintendo's
 	// unless the user gives the dump of their own console's). Before the program runs. false: not a font.
 	bool setSharedFont (const u8 *bcfnt, u32 size);
@@ -334,6 +338,8 @@ void aptRequest (Machine *m, Session *s, u32 *cmd);			// APT:U / APT:S / APT:A (
 void hidRequest (Machine *m, Session *s, u32 *cmd);			// hid:USER / hid:SPVR (n3ds_hid.cpp)
 void hidUpdate (Machine *m);						// (each frame: the input into the shared page)
 void fsRequest (Machine *m, Session *s, u32 *cmd);			// fs:USER (n3ds_fs.cpp)
+void cfgRequest (Machine *m, Session *s, u32 *cmd);			// cfg:u / cfg:s / cfg:i (n3ds_cfg.cpp)
+void ptmRequest (Machine *m, Session *s, u32 *cmd);			// ptm:u / ptm:sysm
 
 }
 

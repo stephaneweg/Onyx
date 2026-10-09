@@ -11,8 +11,10 @@
 //     stages, the alpha test, the depth test, blending or a logic operation, into the colour and depth buffers
 //     (tiled too, rows from the bottom).
 // And the display transfer that turns a colour buffer into a screen's framebuffer.
-// Not done yet: lighting, fog, procedural textures, shadows, stencil, ETC1, the geometry shader, texture
-// filtering (the nearest texel is taken), mipmaps -- noted when a program asks.
+// The procedural texture (unit 3: a colour computed from two coordinates through look-up tables -- what citro2d
+// tints its pictures with) is there but for its noise and its filtering.
+// Not done yet: lighting, fog, shadows, stencil, ETC1, the geometry shader, texture filtering (the nearest
+// texel is taken), mipmaps -- noted when a program asks.
 //
 // Written from the public documentation of the GPU (3dbrew's register and shader pages); no code of another
 // emulator.
@@ -32,6 +34,7 @@ enum
 	R_FINALIZE = 0x010, R_CULL = 0x040, R_VIEWPORT_W = 0x041, R_VIEWPORT_H = 0x043, R_DEPTH_SCALE = 0x04D, R_DEPTH_OFFSET = 0x04E,
 	R_OUTMAP_TOTAL = 0x04F, R_OUTMAP = 0x050, R_SCISSOR_MODE = 0x065, R_SCISSOR_POS = 0x066, R_SCISSOR_DIM = 0x067, R_VIEWPORT_XY = 0x068,
 	R_TEX_CONFIG = 0x080, R_TEX0 = 0x081, R_TEX0_TYPE = 0x08E, R_LIGHTING = 0x08F, R_TEX1 = 0x091, R_TEX1_TYPE = 0x096, R_TEX2 = 0x099, R_TEX2_TYPE = 0x09E,
+	R_PROCTEX0 = 0x0A8, R_PROCTEX4 = 0x0AC, R_PROCTEX5 = 0x0AD, R_PROCTEX_LUT = 0x0AF, R_PROCTEX_LUT_DATA = 0x0B0,
 	R_TEV_UPDATE = 0x0E0, R_TEV_BUFFER = 0x0FD,
 	R_COLOR_OP = 0x100, R_BLEND_FUNC = 0x101, R_LOGIC_OP = 0x102, R_BLEND_COLOR = 0x103, R_ALPHA_TEST = 0x104, R_STENCIL_TEST = 0x105, R_DEPTH_COLOR_MASK = 0x107,
 	R_COLOR_WRITE = 0x113, R_DEPTH_WRITE = 0x115, R_DEPTH_FORMAT = 0x116, R_COLOR_FORMAT = 0x117, R_DEPTH_ADDR = 0x11C, R_COLOR_ADDR = 0x11D, R_FB_DIM = 0x11E,
@@ -60,6 +63,9 @@ struct Pica
 	// attributes given by registers: the fixed ones, and the vertices given one by one
 	float fixed[12][4]; u32 fixedIndex; u32 fixedWords[3]; int fixedCount;
 	float immediate[16][4]; int immediateCount;
+	// the procedural texture's tables: the two maps (128 values and their slopes), the colours (256)
+	float procMap[2][128], procMapDiff[2][128]; u32 procColor[256];
+	u32 procIndex, procTable;
 	// the triangle being assembled
 	Vertex prim[3]; int primCount; bool stripFlip;
 	// counters
@@ -306,6 +312,53 @@ static void texel (const Texture &t, int s, int tt, int out[4])
 	}
 }
 
+// The procedural texture: each coordinate is clamped, the two are combined into one number (u, v, their mean,
+// their distance...), which goes through a map, then picks a colour in the table; the alpha may have its own
+// combination and map.
+struct ProcTex { bool on; int coord; u32 clampU, clampV, funcRgb, funcA; bool separateA; u32 width, offset; };
+
+static inline float procClamp (float c, u32 mode)
+{
+	c = fabsf (c);
+	switch (mode)
+	{
+	case 0: return c > 1.0f ? 0.0f : c;					// nothing outside
+	case 1: return c > 1.0f ? 1.0f : c;					// the edge
+	case 2: return c - floorf (c);						// repeated
+	case 3: { const int i = (int) c; const float f = c - (float) i; return (i & 1) ? 1.0f - f : f; }	// mirrored
+	default: return c > 0.5f ? 1.0f : 0.0f;					// a pulse
+	}
+}
+static inline float procCombine (float u, float v, u32 func)
+{
+	switch (func)
+	{
+	case 0: return u; case 1: return u * u; case 2: return v; case 3: return v * v;
+	case 4: return (u + v) * 0.5f; case 5: return (u * u + v * v) * 0.5f;
+	case 6: { const float d = sqrtf (u * u + v * v); return d > 1.0f ? 1.0f : d; }
+	case 7: return u < v ? u : v; case 8: return u > v ? u : v;
+	default: { const float a = (u + v) * 0.5f, d = sqrtf (u * u + v * v), x = a > d ? a : d; return x > 1.0f ? 1.0f : x; }
+	}
+}
+static inline float procMapped (const Pica *p, int table, float x)
+{
+	x *= 128.0f;
+	int i = (int) x;
+	if (i < 0) i = 0; else if (i > 127) i = 127;
+	const float r = p->procMap[table][i] + p->procMapDiff[table][i] * (x - (float) i);
+	return r < 0 ? 0 : r > 1 ? 1 : r;
+}
+static void procTexel (const Pica *p, const ProcTex &pt, float cu, float cv, int out[4])
+{
+	const float u = procClamp (cu, pt.clampU), v = procClamp (cv, pt.clampV);
+	const float x = procMapped (p, 0, procCombine (u, v, pt.funcRgb));
+	u32 i = pt.offset + (u32) (x * (float) (pt.width ? pt.width - 1 : 0) + 0.5f);
+	if (i > 255) i = 255;
+	const u32 c = p->procColor[i];
+	out[0] = (int) (c & 255); out[1] = (int) (c >> 8 & 255); out[2] = (int) (c >> 16 & 255); out[3] = (int) (c >> 24);
+	if (pt.separateA) out[3] = (int) (procMapped (p, 1, procCombine (u, v, pt.funcA)) * 255.0f + 0.5f);
+}
+
 // ---- the fragment's way to the buffers ---------------------------------------------------------------------------------
 struct Target
 {
@@ -445,6 +498,7 @@ static inline int blendEq (u32 eq, int s, int sf, int d, int df)
 struct Fragment
 {
 	Texture tex[3];
+	ProcTex proc;
 	struct Stage { u32 src[3], srcA[3], op[3], opA[3], mode, modeA; int konst[4]; int scale, scaleA; bool pass; } stage[6];
 	int bufferColor[4]; u32 updateRgb, updateA;
 	bool alphaTest; u32 alphaFunc, alphaRef;
@@ -455,6 +509,14 @@ struct Fragment
 static void fragmentState (const Pica *p, Fragment &f)
 {
 	for (int i = 0; i < 3; i++) texInfo (p, i, f.tex[i]);
+	{
+		const u32 cfg = p->regs[R_TEX_CONFIG], r0 = p->regs[R_PROCTEX0];
+		f.proc.on = (cfg >> 10 & 1) != 0; f.proc.coord = (int) (cfg >> 8 & 3);
+		f.proc.clampU = r0 & 7; f.proc.clampV = r0 >> 3 & 7; f.proc.funcRgb = r0 >> 6 & 15; f.proc.funcA = r0 >> 10 & 15;
+		f.proc.separateA = (r0 >> 14 & 1) != 0;
+		f.proc.width = p->regs[R_PROCTEX4] >> 11 & 0xFF; f.proc.offset = p->regs[R_PROCTEX5] & 0xFF;
+		if (f.proc.on && (r0 >> 15 & 1)) p->m->note ("procedural texture noise");
+	}
 	for (int i = 0; i < 6; i++)
 	{
 		const u32 *r = p->regs + TEV_BASE[i];				// source, operand, combiner, colour, scale
@@ -551,6 +613,12 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, S
 				const int ai = u == 0 ? A_TC0 : u == 1 ? A_TC1 : A_TC2;
 				texel (tx, (int) floorf (ATTR (ai) * (float) tx.w), (int) floorf (ATTR (ai + 1) * (float) tx.h), texc[u]);
 			}
+			int proc[4] = { 0, 0, 0, 255 };
+			if (f.proc.on)
+			{
+				const int ai = f.proc.coord == 0 ? A_TC0 : f.proc.coord == 1 ? A_TC1 : A_TC2;
+				procTexel (p, f.proc, ATTR (ai), ATTR (ai + 1), proc);
+			}
 #undef ATTR
 			// the combiner's stages
 			int prev[4] = { primary[0], primary[1], primary[2], primary[3] };
@@ -565,9 +633,9 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, S
 					for (int k = 0; k < 3; k++)
 					{
 						const int *src;
-						switch (sg.src[k]) { case 0: case 1: case 2: src = primary; break; case 3: src = texc[0]; break; case 4: src = texc[1]; break; case 5: src = texc[2]; break; case 13: src = buffer; break; case 14: src = sg.konst; break; default: src = prev; break; }
+						switch (sg.src[k]) { case 0: case 1: case 2: src = primary; break; case 3: src = texc[0]; break; case 4: src = texc[1]; break; case 5: src = texc[2]; break; case 6: src = proc; break; case 13: src = buffer; break; case 14: src = sg.konst; break; default: src = prev; break; }
 						tevColor (src, sg.op[k], c[k]);
-						switch (sg.srcA[k]) { case 0: case 1: case 2: src = primary; break; case 3: src = texc[0]; break; case 4: src = texc[1]; break; case 5: src = texc[2]; break; case 13: src = buffer; break; case 14: src = sg.konst; break; default: src = prev; break; }
+						switch (sg.srcA[k]) { case 0: case 1: case 2: src = primary; break; case 3: src = texc[0]; break; case 4: src = texc[1]; break; case 5: src = texc[2]; break; case 6: src = proc; break; case 13: src = buffer; break; case 14: src = sg.konst; break; default: src = prev; break; }
 						a[k] = tevAlpha (src, sg.opA[k]);
 					}
 					int out[4];
@@ -790,6 +858,7 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 			assemble (p, vtx);
 		}
 		break;
+	case R_PROCTEX_LUT: p->procIndex = v & 0xFF; p->procTable = v >> 8 & 15; break;
 	case R_VSH_BOOL: p->bu = v & 0xFFFF; break;
 	case R_VSH_INT: case R_VSH_INT + 1: case R_VSH_INT + 2: case R_VSH_INT + 3:
 	{
@@ -801,6 +870,18 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 	case R_VSH_CODE_INDEX: p->codeIndex = v & 0xFFF; break;
 	case R_VSH_OPDESC_INDEX: p->opdescIndex = v & 0x7F; break;
 	default:
+		if (id >= R_PROCTEX_LUT_DATA && id < R_PROCTEX_LUT_DATA + 8)	// a table's next entry: 2 the colour map, 3 the alpha map, 4 the colours
+		{
+			const u32 i = p->procIndex++;
+			if ((p->procTable == 2 || p->procTable == 3) && i < 128)
+			{
+				const int t = (int) p->procTable - 2;
+				p->procMap[t][i] = (float) (value & 0xFFF) / 4095.0f;
+				p->procMapDiff[t][i] = (float) ((s32) (value << 8) >> 20) / 4095.0f;
+			}
+			else if (p->procTable == 4 && i < 256) p->procColor[i] = value;
+			break;
+		}
 		if (id >= R_VSH_FLOAT_DATA && id < R_VSH_FLOAT_DATA + 8)	// a uniform: 4 words (32-bit floats) or 3 (24-bit), w first
 		{
 			p->floatWords[p->floatCount++] = value;

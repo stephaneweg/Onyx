@@ -321,6 +321,25 @@ The core's skeleton, `user/Emulators/n3ds/` (`n3ds.h` declares everything), and 
   factors and depth formats, the display transfer's flip / scaling / other formats, uniforms' boolean flow (IFU,
   JMP), DP4's use aside from the position.
 
+## 9g. Phase T2, second slice (2026-10-09): *Mars* runs -- cfg, ptm, the procedural texture, a loader fix
+
+- **A fault of the `.3dsx` loader, found by *Mars*** (a C++ program: position-independent references from its code
+  to its data): each relocation table of a segment walks the segment **from its start**; ours went on from where
+  the table before had stopped, so the relative words were left as they were. *Snake* and *2048* have none in
+  their code.
+- **`cfg:u` / `cfg:s` / `cfg:i`** (`n3ds_cfg.cpp`): the region (Europe), the model (an Old 3DS), the settings blocks
+  (the language and the user's name from `Machine::setUser` -- the host's --, the birthday, the country, the sound's
+  output, the EULA...); an unknown block is refused and noted. **`ptm:u` / `ptm:sysm`**: the lid open, the battery
+  full, no steps.
+- **The procedural texture** (the GPU's unit 3; `n3ds_pica.cpp`): the coordinates' clamps, the ten combinations,
+  the colour and alpha maps (128 entries with their slopes), the colour table, a separate alpha. citro2d tints
+  every picture through it: without it *Mars*'s sprites were black on black. Not done: its noise, its filtering.
+- `N3DS_TRACE=1` also says the system calls that fail and every access to memory that is not there (with the
+  program counter): what found the loader's fault.
+- **Result**: *Mars* shows its studio logo, its title, its instructions (its own font from its RomFS, its
+  sprites), and goes on at each press of A. A thin diagonal line on its bottom screen: its own or a fault of
+  ours -- not known.
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 
