@@ -100,7 +100,7 @@ Card contents:
 | `bin/<tool>` | the terminal **command-line tools** (§8), `init` included |
 | `etc/autostart` | commands run automatically at boot (read by `init`): the system's part — the services — and the line `session` |
 | `etc/session/desktop`, `pocket`, `console` | the **session** of each mode: the interface's programs (the menu bar, the dock...), run by `/bin/session` (§5 *Sessions*) |
-| `etc/pocketui.ini`, `etc/pocket/recent` | the pocket mode: the apps shown as cards rather than full screen; the launcher's recent apps (§5 *The pocket mode*) |
+| `etc/pocketui.ini`, `etc/pocket/recent`, `etc/pocket/keyboard` | the pocket mode: the apps shown as cards rather than full screen; the launcher's recent apps; when the on-screen keyboard comes (`auto` / `manual`) (§5 *The pocket mode*) |
 | `etc/system.ini` | general settings (§3) |
 | `etc/theme.txt`, `etc/wallpaper.ini`, `etc/dock.ini` | the desktop's colours and style, the wallpaper, the dock (the Control Panel writes them) |
 | `etc/keymaps/*.kmap` | the keyboard layouts (§10) |
@@ -715,7 +715,8 @@ fills the screen again). Each app lays itself out for its half — its side pane
 
 **Quick settings** (Super+N, a click on the time): the date and the time; Wi-Fi (its state;
 a click: the Wi-Fi menu), Do not disturb (no notification's bubble while it is on), Sound (mute), Mode (the Control Panel
-full screen on its Mode applet); the volume; **the notifications** — in pocket the pocket shell receives them (no `notifyd`): each one shows
+full screen on its Mode applet), Keyboard (the on-screen keyboard: on demand, or with the text fields) and Show
+keyboard; the volume; **the notifications** — in pocket the pocket shell receives them (no `notifyd`): each one shows
 for a few seconds as a bubble under the menu bar, then waits here, the newest first (a click runs its action and
 removes it; Clear all) — on the launcher at 1920 × 1080 no bubble: its Today column shows them; the Control Panel,
 Lock and Power. Esc or a click beside the panel closes it.
@@ -723,6 +724,21 @@ Lock and Power. Esc or a click beside the panel closes it.
 ![](compact-shell/real/pocketshell-quick-800.png)
 
 *Quick settings and the notifications.*
+
+**The on-screen keyboard** (pocket only): **Super+K**, or quick settings' **Show keyboard**, brings a keyboard up
+from the screen's bottom edge; the app in front is laid out again in the room left above it, and what you click
+is typed into it as a real keyboard's keys. Letters (QWERTY; **AZERTY** when the system's language is French),
+**⇧** for one capital, **123** for the figures and the punctuation, **#+=** for more signs and the accented letters
+(é è ê à â ç ù û î ô ë ï ü ö), **ABC** back; a key held repeats; **▾** hides it. In a Terminal it has a row more:
+Esc, Tab, **Ctrl** (for the next key: Ctrl then c is Ctrl+C) and the arrows. A field of numbers opens on the
+figures; an e-mail field has **@**, an address field **/** beside the space. Quick settings' **Keyboard** tile
+chooses when it comes: **on demand** (as shipped: a screen with a real keyboard) or **with the text fields** (a
+device without one: it comes when a text field takes the focus and goes with it) — kept in
+`SD:/etc/pocket/keyboard`. The console mode has none.
+
+![](compact-shell/real/pocketshell-keys-800.png)
+
+*The on-screen keyboard under the Terminal, 800 × 480.*
 
 **The keys** (PocketUI gives them to the pocket shell before the app in front; a program in full screen keeps all
 its keys):
@@ -733,6 +749,7 @@ its keys):
 | **Alt+Tab** / **Alt+Shift+Tab** | the switcher (release Alt to switch; Del closes the chosen app; Esc stays) |
 | **Super+N** | quick settings and the notifications |
 | **Super+Space** | the launcher, the search emptied |
+| **Super+K** | the on-screen keyboard shown / hidden |
 | **Super+←** / **Super+→**, **Super+↑** | the split view: the app in front to that half; the split ended |
 | **Super+Tab**, **Super+[** / **Super+]** | in the split view: the other app in front; the divider at 40 / 50 / 60 % |
 | on the launcher: typing, Up / Down, Tab, Enter, Esc | search, choose, the next group, open, clear (Esc on an empty search: back to the app) |

@@ -1034,6 +1034,18 @@ static void Tick (unsigned self)
 		if (bBar && pk_band_id () >= 0) pk_band_make (0);
 		else if (!bBar && pk_band_id () < 0) pk_band_make (g_nScreenWidth);
 	}
+	// (P10) The shell's on-screen keyboard: its window that is opaque, as wide as the screen, on the screen's bottom
+	// edge and no taller than half of it is a BAND -- the work area ends above it (the apps are laid out again in
+	// what is left); its other windows (the overlays, the toasts; the keyboard parked off the screen) never are.
+	for (int id = 0; id < EL_WINDOWS_MAX; id++)
+	{
+		CWindow *p = g_pElWin[id];
+		if (p == 0 || s_St[id].pWin != p || s_St[id].nKind != PK_KIND_SHELL) continue;
+		boolean bKeys = !(p->Flags () & WIN_FLAG_ALPHA) && !p->Hidden () && p->X () == 0 && p->OuterWidth () >= g_nScreenWidth
+				&& p->Y () > 0 && p->Y () < g_nScreenHeight && p->Y () + p->OuterHeight () >= g_nScreenHeight
+				&& p->OuterHeight () <= g_nScreenHeight / 2;
+		if (bKeys == (p->NoInset () != FALSE)) { p->SetNoInset (!bKeys); ScreenDirty (); }
+	}
 	int ax, ay, aw, ah;
 	Area (&ax, &ay, &aw, &ah);
 	if (ax != s_nAreaX || ay != s_nAreaY || aw != s_nAreaW || ah != s_nAreaH)
@@ -1161,6 +1173,17 @@ static void Tick (unsigned self)
 		}
 		if (nSig == 0) nSig = 1;
 		if (nSig != s_nTaskSig && ShellPush (UK_SHELL_EVENT, UK_SHELL_EV_TASKS)) s_nTaskSig = nSig;
+
+		// (P10) ... and when the front program's focused text field changes (its type, as the pocket UIKit says it:
+		// PK_OP_TEXT_HINT): the shell's on-screen keyboard comes and goes with it. Pocket only (console has none).
+		static int s_nHintSent = -1;
+		int nHint = -1;
+		if (g_nPkMode == PK_MODE_POCKET && !s_bHome && s_nFront != 0 && !bFull)
+			for (int id = 0; id < EL_WINDOWS_MAX && nHint < 0; id++)
+				if (g_pElWin[id] != 0 && s_St[id].pWin == g_pElWin[id] && g_pElWin[id]->OwnerPid () == s_nFront
+				    && !g_pElWin[id]->Hidden () && !g_pElWin[id]->Minimised ()) nHint = s_St[id].nHint;
+		if (nHint > 254) nHint = 0;
+		if (nHint != s_nHintSent && ShellPush (UK_SHELL_EVENT, UK_SHELL_EV_TEXT | ((long) (nHint + 1) << 8))) s_nHintSent = nHint;
 	}
 }
 

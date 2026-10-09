@@ -297,8 +297,8 @@ static void stop_process (const char *name)
 	b[n < (int) sizeof b ? n : (int) sizeof b - 1] = 0;
 	for (char *l = strtok (b, "\n"); l; l = strtok (0, "\n"))
 	{
-		int pid = 0; char kind[4], state[8], nm[48];
-		if (sscanf (l, "%d %3s %7s %47s", &pid, kind, state, nm) == 4 && !strcmp (nm, name) && pid > 0) kapi_kill_pid (pid, 0);
+		int pid = 0, pages = 0; char kind[4], state[8], nm[48];	// ("<pid> <a|k> <state> <pages> <name>")
+		if (sscanf (l, "%d %3s %7s %d %47s", &pid, kind, state, &pages, nm) == 5 && !strcmp (nm, name) && pid > 0) kapi_kill_pid (pid, 0);
 	}
 }
 
@@ -310,8 +310,8 @@ static bool running (const char *name)
 	b[n < (int) sizeof b ? n : (int) sizeof b - 1] = 0;
 	for (char *l = strtok (b, "\n"); l; l = strtok (0, "\n"))
 	{
-		int pid = 0; char kind[4], state[8], nm[48];
-		if (sscanf (l, "%d %3s %7s %47s", &pid, kind, state, nm) == 4 && !strcmp (nm, name)) return true;
+		int pid = 0, pages = 0; char kind[4], state[8], nm[48];
+		if (sscanf (l, "%d %3s %7s %d %47s", &pid, kind, state, &pages, nm) == 5 && !strcmp (nm, name)) return true;
 	}
 	return false;
 }

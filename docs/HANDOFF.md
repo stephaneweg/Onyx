@@ -4,6 +4,26 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## PocketUI phase P10, the part that needs no new hardware (2026-10-09): the on-screen keyboard; a session-switch fix
+
+- **The on-screen keyboard** (pocket only; docs/04 *The on-screen keyboard*, docs/03 §5.10.3's table):
+  `user/Apps/pocketshell/keys.h` -- a fourth window of the shell (`W_KEYS`), opaque, on the bottom edge: PocketUI
+  takes it for a band (the work area ends above it) and tells the shell the front program's focused field
+  (`UK_SHELL_EV_TEXT`); the keys are `kapi_inject_key`. Super+K, quick settings' *Show keyboard*; the *Keyboard* tile:
+  on demand (the default -- every pocket screen today has a real keyboard or a remote desktop) or with the text
+  fields (`SD:/etc/pocket/keyboard`). QWERTY / AZERTY by the system's language, figures, signs and accents, a
+  Terminal's row. No uikit ABI change (one event value added to `win.h`).
+- **Fixed: a session switch left the old session's programs running** (seen on the Pi: after pocket -> console the
+  old `menubar` and `pocketshell` stayed, polling the new server). `/bin/session` read the kernel's process list
+  without its pages column (`<pid> <a|k> <state> <pages> <name>`): no name ever matched, nothing was ended. Setup's
+  `system.h` had the same mistake. Checked on the Pi: `session: ending menubar / pocketshell / consolehome`.
+- **NOT done in P10 -- needs a device or a kernel session, the user to decide** (the study's §6.3, §6.4, §7.4):
+  the **scale** (per-window 2 x composition in the compositor, the native scale opt-in `apps.ini` /
+  `uk_logical_units`, `icon@2x.bmp`), **portrait sizes** under 640 px wide in `kapi_screen_set`, the **rotation**,
+  the **touch input** (`KAPI_WS_IN_TOUCH`: Circle's touch drivers are in the nested `circle/` repository, not
+  checked out in this clone; no touch screen here to try it). The on-screen keyboard is drawn for a finger (44-unit
+  keys) and takes the pointer's presses: a touch driver that feeds the pointer makes it work as it is.
+
 ## PocketUI phase P9, first version (2026-10-09): `consolehome`, the console mode's shell -- tested on the PC
 
 `user/Apps/consolehome/` (docs/03 §5.10.5b, docs/04 *The console mode*): the home (categories + tiles, the PS2

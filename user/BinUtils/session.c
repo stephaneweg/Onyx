@@ -82,7 +82,7 @@ struct Proc { int pid; char name[48]; };
 static struct Proc g_procs[128];
 static int g_nprocs;
 
-// kapi_list_procs' lines "<pid> <a|k> <state> <name>" -> the user processes (a)
+// kapi_list_procs' lines "<pid> <a|k> <state> <pages> <name>" -> the user processes (a)
 static void read_procs (void)
 {
 	static char b[8192];
@@ -103,6 +103,9 @@ static void read_procs (void)
 			while (*p && *p != ' ') p++;
 			while (*p == ' ') p++;
 		}
+		// (the kernel's line has the process's pages before its name: "<pid> <a|k> <state> <pages> <name>" -- read
+		//  as the name's start it hid every program from the switch: the old session's shells stayed, 2026-10-09)
+		{ char *q = p; while (*q >= '0' && *q <= '9') q++; if (q > p && *q == ' ') { while (*q == ' ') q++; p = q; } }
 		if (k > 0 && kind == 'a' && *p) { g_procs[g_nprocs].pid = pid; scpy (g_procs[g_nprocs].name, 48, p); g_nprocs++; }
 		*e = c;
 		l = *e ? e + 1 : e;
@@ -372,7 +375,12 @@ static int do_switch (int to, int flags, int waitMs)
 		int pid = g_procs[i].pid;
 		if (pid == me || kept (pid)) continue;
 		if (seq (g_procs[i].name, "printd")) { printd = 1; pids[np++] = pid; continue; }
-		if (is_session_program (g_procs[i].name)) { if (is_parent (pid, me)) keep (pid); else pids[np++] = pid; }
+		if (is_session_program (g_procs[i].name))
+		{
+			int par = is_parent (pid, me);
+			put (par ? "session: kept until the end (it started this switch): " : "session: ending "); ax_putln (g_procs[i].name);
+			if (par) keep (pid); else pids[np++] = pid;
+		}
 	}
 	end_programs (pids, np, END_MS);
 

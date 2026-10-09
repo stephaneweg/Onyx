@@ -131,3 +131,8 @@ Sep	sept.
 Oct	oct.
 Nov	nov.
 Dec	déc.
+Keyboard	Clavier
+with the text fields	avec les champs de texte
+on demand	sur demande
+Show keyboard	Afficher le clavier
+Hide keyboard	Masquer le clavier

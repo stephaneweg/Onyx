@@ -525,7 +525,7 @@ int kapi_list_tasks (char *b, unsigned s);
 int kapi_kill (const char *name);	// kill the app of that name -> 1, 0 (not running, a kernel task, the caller)
 ```
 
-ps / kill by PID. list_procs: lines "<pid> <a|k> <state> <name>". kill_pid: force 0 = clean close, 1 = hard terminate; 1 ok / 0 no such pid / -1 protected.
+ps / kill by PID. list_procs: lines "<pid> <a|k> <state> <pages> <name>" (pages: its 64 KB frames). kill_pid: force 0 = clean close, 1 = hard terminate; 1 ok / 0 no such pid / -1 protected.
 
 ```cpp
 int kapi_list_procs (char *b, unsigned s);

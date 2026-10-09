@@ -1183,6 +1183,12 @@ int uk_shell_events (gui_handler fn);
 #define UK_SHELL_EVENT		64	// the event: value UK_SHELL_EV_*
 #define UK_SHELL_EV_TASKS	1	// a program's window opened, closed, retitled, minimised; the front one changed; home
 #define UK_SHELL_EV_AREA	2	// the work area changed (the menu bar came or went, the screen's size): uk_win_server
+#define UK_SHELL_EV_TEXT	3	// (value & 0xFF; PocketUI's P10) the app in front's focused text field changed: its type + 1
+```
+
+in bits 8..15 (UK_IN_* of uikit/adapt.h; 0: no field has the focus) -- the on-screen keyboard
+
+```cpp
 #define UK_SHELL_KEYEV		65	// the event: value UK_SHELL_KEY (mods, code) -- a system key, or every key while grabbed
 ```
 

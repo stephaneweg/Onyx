@@ -370,7 +370,11 @@ static void switcher_key (int code, unsigned mods)
 static bool g_dnd;					// do not disturb: no toast
 static int g_vol = 7, g_mute;
 static bool g_volDrag;
-enum { H_WIFI = 40, H_DND, H_SOUND, H_MODE, H_VOL, H_CLEAR, H_NOTE, H_CONTROL, H_LOCK, H_POWER, H_PANEL };
+enum { H_WIFI = 40, H_DND, H_SOUND, H_MODE, H_VOL, H_CLEAR, H_NOTE, H_CONTROL, H_LOCK, H_POWER, H_PANEL, H_KEYS, H_KEYSHOW };
+static void kb_toggle (void);
+static bool g_kbOn;
+static bool g_kbAuto;					// (keys.h) the on-screen keyboard comes with the text fields
+static void kb_auto_set (bool on);
 static int g_volX0, g_volX1;
 
 static void num2 (char *o, int v) { o[0] = (char) ('0' + v / 10 % 10); o[1] = (char) ('0' + v % 10); o[2] = 0; }
@@ -415,7 +419,7 @@ static void draw_quick (void)
 	int pad = D (12), x = px + pad, w = pw - 2 * pad;
 	int notesH = g_nnotes == 0 ? D (40) : 0;
 	for (int i = 0; i < g_nnotes; i++) notesH += D (50) + D (6);
-	int fixed = D (40) + 2 * (D (48) + D (8)) + D (34) + D (12) + D (28) + D (46) + 2 * pad;
+	int fixed = D (40) + 3 * (D (48) + D (8)) + D (34) + D (12) + D (28) + D (46) + 2 * pad;
 	int ph = fixed + notesH;
 	if (ph > g_ah - D (12)) ph = g_ah - D (12);
 	uk_rbox (cv, px, py, pw, ph, D (10), 0xF6F6F7, 0xE9EAED);
@@ -447,6 +451,9 @@ static void draw_quick (void)
 	y += th + D (8);
 	tile (cv, x, y, tw2, th, !g_mute, TR ("Sound"), g_mute ? TR ("muted") : TR ("on"), H_SOUND);
 	tile (cv, x + tw2 + D (8), y, tw2, th, false, TR ("Mode"), TR ("Pocket"), H_MODE);
+	y += th + D (8);
+	tile (cv, x, y, tw2, th, g_kbAuto, TR ("Keyboard"), g_kbAuto ? TR ("with the text fields") : TR ("on demand"), H_KEYS);
+	tile (cv, x + tw2 + D (8), y, tw2, th, g_kbOn, g_kbOn ? TR ("Hide keyboard") : TR ("Show keyboard"), "Super+K", H_KEYSHOW);
 	y += th + D (8);
 	// the volume
 	{
@@ -552,6 +559,8 @@ static void quick_click (const Hit *h, int x)
 	case H_BACK: over_hide (); break;
 	case H_WIFI: over_hide (); if (uk_win_app_raise ("wifimenu") == 0) lx_launch ("wifimenu", 0); break;
 	case H_DND: g_dnd = !g_dnd; g_overDirty = true; break;
+	case H_KEYS: kb_auto_set (!g_kbAuto); g_overDirty = true; break;
+	case H_KEYSHOW: over_hide (); kb_toggle (); break;
 	case H_SOUND: { int r = kapi_sound_volume (-1, g_mute ? 0 : 1); g_mute = (r & 0x100) ? 1 : 0; volume_save (g_vol, g_mute); g_overDirty = true; break; }
 	case H_MODE: over_hide (); open_app ("modeconf"); break;
 	case H_VOL: g_volDrag = true; vol_at (x); break;
@@ -741,7 +750,17 @@ static bool screen_sync (bool force)
 	return true;
 }
 
-static void relayout (void) { screen_sync (true); }
+#include "keys.h"					// the on-screen keyboard (P10)
+static void relayout (void) { screen_sync (true); kb_screen (); }
+// The tile: with the text fields (the keyboard shown at once when a field has the focus), or on demand (hidden).
+static void kb_auto_set (bool on)
+{
+	g_kbAuto = on;
+	kb_auto_save ();
+	g_kbManual = false;
+	if (on && g_kbField >= 0) { over_hide (); kb_hint (g_kbField); }
+	else if (!on) kb_show (false);
+}
 
 static void go_home (bool search_)
 {
@@ -772,7 +791,8 @@ static void shell_event (unsigned long, int ev, long v)
 {
 	if (ev == UK_SHELL_EVENT)
 	{
-		if (v == UK_SHELL_EV_AREA) relayout ();
+		if ((v & 0xFF) == UK_SHELL_EV_TEXT) kb_hint ((int) ((v >> 8) & 0xFF) - 1);	// (the app's focused field)
+		else if (v == UK_SHELL_EV_AREA) screen_sync (true);
 		else { tasks_read (); g_homeDirty = true; if (g_over == OV_SWITCHER) g_overDirty = true; }
 		return;
 	}
@@ -796,6 +816,7 @@ static void shell_event (unsigned long, int ev, long v)
 	if (code == UK_SHELL_KEY_SUPER || (code == KEY_F1 && (mods & MOD_ALT)) || (code == 0x1b && (mods & MOD_CTRL))) { toggle_home (); return; }
 	if (code == ' ' && (mods & UK_SHELL_MOD_SUPER)) { go_home (true); return; }
 	if (code == 'n' && (mods & UK_SHELL_MOD_SUPER)) { over_show (OV_QUICK); return; }
+	if (code == 'k' && (mods & UK_SHELL_MOD_SUPER)) { kb_toggle (); return; }		// (the on-screen keyboard, by hand)
 }
 
 static void ptr (unsigned long win, int ev, long v)
@@ -820,6 +841,7 @@ static void ptr (unsigned long win, int ev, long v)
 		}
 		return;
 	}
+	if (win == W_KEYS) { kb_ptr (ev, x, y, c); return; }
 	if (win == W_TOAST)
 	{
 		if (ev == GUI_EVENT_PTR_DOWN && g_toastState != 0 && g_nnotes > 0)
@@ -920,6 +942,8 @@ int main (void)
 	uk_win_select (W_OVER); uk_win_on_pointer (ptr); uk_win_alpha (0); uk_win_move (-g_sw - 50, g_ay); uk_win_present ();
 	uk_win_select (W_TOAST); uk_win_on_pointer (ptr); uk_win_alpha (0); uk_win_move (-g_sw - 50, g_ay); uk_win_present ();
 	uk_win_select (0);
+	if (kb_make ()) { uk_win_select (W_KEYS); uk_win_on_pointer (ptr); uk_win_move (-g_sw - 50, g_sh / 2); uk_win_present (); uk_win_select (0); }
+	else ax_puts ("pocketshell: no window for the on-screen keyboard\n");
 
 	kapi_ipc_register (SHELL_SERVICE);
 	if (!kapi_ipc_register (NOTIFY_SERVICE)) ax_puts ("pocketshell: another program serves the notifications (notifyd)\n");
@@ -932,7 +956,7 @@ int main (void)
 	static const int K[] = {
 		UK_SHELL_KEY (MOD_ALT, '\t'), UK_SHELL_KEY (MOD_ALT | MOD_SHIFT, '\t'), UK_SHELL_KEY (0, UK_SHELL_KEY_SUPER),
 		UK_SHELL_KEY (MOD_ALT, KEY_F1), UK_SHELL_KEY (MOD_CTRL, 0x1b), UK_SHELL_KEY (UK_SHELL_MOD_SUPER, 'n'),
-		UK_SHELL_KEY (UK_SHELL_MOD_SUPER, ' ') };
+		UK_SHELL_KEY (UK_SHELL_MOD_SUPER, ' '), UK_SHELL_KEY (UK_SHELL_MOD_SUPER, 'k') };
 	uk_shell_events (shell_event);
 	uk_shell_keys (K, (int) (sizeof K / sizeof K[0]));
 	tasks_read ();
@@ -945,6 +969,8 @@ int main (void)
 		pump_events ();
 		messages ();
 		toast_tick ();
+		kb_tick ();
+		if (g_kbDirty && g_kbOn) kb_draw ();
 		int mi = 0;
 		kapi_get_datetime (0, 0, 0, 0, &mi, 0);
 		if (mi != lastMin) { lastMin = mi; if (g_over == OV_QUICK) g_overDirty = true; g_homeDirty = true; }	// (the Today line's "in 25 min")
@@ -952,7 +978,7 @@ int main (void)
 		if (kapi_get_ticks () - lastSync >= 100)			// every second: the screen, the agenda, the documents
 		{
 			lastSync = kapi_get_ticks ();
-			screen_sync (false);
+			if (screen_sync (false)) kb_screen ();
 			if (agenda_load ()) g_homeDirty = true;
 			if (g_home && g_over == OV_NONE) { int n = g_ndocs; docs_load (); if (n != g_ndocs) g_homeDirty = true; }
 		}

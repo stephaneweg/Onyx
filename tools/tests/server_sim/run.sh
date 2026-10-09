@@ -204,6 +204,17 @@ WR=$(langdir "")
 APPS8="otherpic 800 450 tinypad $OUT/app-pad-800.elsm 0 24;$W;otherpic 260 300 tinycalc $OUT/pocket-calculator.elsm 262 115 0x40;$W;otherpic 800 450 terminal $OUT/app-term-800.elsm 0 24;$W"
 run pocket_pocketshell shell-strip-keys "otherpic 800 30 menubar $OUT/bar-home-800.elsm 0 0 0x35 0 0;$W;$W;$APPS8;mods 8;mods 0;$W;$W;expect home 1;key 0x101;key 0x101;$W;expect home 1;key 13;$W;$W;expect home 0;expect front other" \
 	SIM_SCREEN=800x480 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$WR
+# ---- the on-screen keyboard (phase P10): Super+K shows it over the app in front -- the shell's opaque window on the
+# screen's bottom edge is a band: the work area ends above it (184 px at 800 x 480), the app stays in front; Super+K
+# again hides it, the work area back. The pictures: pocketshell-keys-800.png (QWERTY), -fr (AZERTY).
+for lg in "" fr; do
+	KB="otherpic 800 30 menubar $OUT/bar-home-800.elsm 0 0 0x35 0 0;$W;$W;$APPS8;expect front other;expect area 0,30,800,450"
+	KB="$KB;mods 8;key k;mods 0;$W;$W;$W;expect area 0,30,800,266;expect front other;expect home 0;dump $OUT/pocketshell-keys-800${lg:+-$lg}.elsm"
+	KB="$KB;mods 8;key k;mods 0;$W;$W;$W;expect area 0,30,800,450;expect front other"
+	run pocket_pocketshell shell-osk${lg:+-$lg} "$KB" SIM_SCREEN=800x480 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$(langdir "$lg")
+	png pocketshell-keys-800${lg:+-$lg}
+	if [ -n "$SHELL_PNG" ]; then cp "$OUT/pocketshell-keys-800${lg:+-$lg}.png" "$SHELL_PNG/"; fi
+done
 # the menu bar's Onyx in pocket (SHELL_MSG_HOME, as menubar sends it: a click on "Onyx"): the home shown, the app
 # behind; again: the app back (pocketshell's side; the menu bar's side below)
 W10="$W;$W;$W;wait"
