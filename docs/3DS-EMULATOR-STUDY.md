@@ -851,6 +851,36 @@ jump under a guard: not specialized. **Super Mario 3D Land: 82.0 % of the vertic
 Link Between Worlds: 83.9 %, 1 048 163 checked, 0 differ.** What is left (18 % and 16 %) is the vertex's index
 register alone: the skinned meshes, which stay on the processor. 132 and 54 shapes; 69 and 86 operations a list.
 
+## 9u. S2, the list as a V3D vertex shader (2026-10-11): `user/Libs/v3d/picavs`
+
+`picavs::build` makes a QPU program (V3D 4.2 or 7.1, through qpu.h) from a specialized list -- the core's `Spec`
+copied into plain structures by `specList` (the library knows nothing of the core). Three passes: the list opened
+into scalar values (a register's component is "its current value": a MOV costs nothing, a guarded write is a
+choice between the new value and the old; a comparison and a guard are masks); what the asked outputs do not
+need dropped (a coordinate shader is the position's chain alone); the rest written out in order, each value in a
+register of the file from where it is made to its last use, an output stored in the VPM as soon as it is made.
+It tells the caller the VPM inputs it reads (input registers' components, in order) and the uniform stream it
+wants (the list's constants' components and the view's ten values, in order). Outputs: raw components of the
+shader's output registers, `1 - t`, or the position as a vertex shader gives it (Xs Ys Zs 1/Wc) or a coordinate
+shader (Xc Yc Zc Wc Xs Ys). A list with more values alive at once than the file holds is refused.
+
+What the QPU asked for: a register of the file is not read by the instruction right after its write (a nop is put
+in: many -- to be packed later), the SFU's result three instructions on, a VPM read's too, a VPM index above 15
+counted up in an accumulator, a comparison as `fcmp` + a conditional move of -1, a choice as a move then a
+conditional move under the guard's flag.
+
+**Checked** (`tools/tests/v3d/picavs_test.cpp`, in `run_qpu_test.sh`): random lists (arithmetic, shuffled and
+negated operands, comparisons, guards one inside another, guarded writes) built as a vertex and as a coordinate
+shader, passed through the instruction restrictions (qpulib), run in the QPU simulator on random vertices against
+`picavs_ref.h`: 8 994 programs for V3D 4.2 and 2 967 for 7.1, none wrong. **And the games' own lists**
+(`N3DS_SPECDUMP=<file>` in n3dstest writes each new shape with eight vertices and the interpreter's outputs;
+`PICAVS_FILE=<file>` runs them -- not in the repository: they come from a game): *Super Mario 3D Land* **124 of
+132 built, all right**, 8 refused for registers; *A Link Between Worlds* **44 of 54, all right**, 10 refused.
+A program with all sixteen outputs is ~650 instructions (22 registers at most), the position alone 190 to 250.
+
+Not done here: nothing draws with these programs yet (S3 the kernel's clipping, S4 the lighting, S5 the
+recorder and the Pi); the refused lists (which vertices they are is not counted); the PICA's "0 x infinity = 0".
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours

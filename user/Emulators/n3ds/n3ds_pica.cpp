@@ -48,6 +48,7 @@
 #include <string.h>
 #include "n3ds/n3ds.h"
 #include "v3d/picatev.h"
+#include "v3d/picavs.h"
 
 namespace n3ds {
 
@@ -670,6 +671,23 @@ static void specRun (const Spec &sp, float regs[32][4], float out[16][4])
 		else if (!shaderArith (o.op, o.shape, in[0], in[1], in[2], v)) continue;
 		v = (V4) (((VI) v & o.mask) | ((VI) old & ~o.mask));
 		memcpy (dst, &v, sizeof v);
+	}
+}
+// The list as the GPU's shader generator takes it (user/Libs/v3d/picavs.h).
+static void specList (const Spec &sp, picavs::Op *out)
+{
+	for (u32 n = 0; n < sp.nOps; n++)
+	{
+		const SpecOp &o = sp.ops[n];
+		picavs::Op &d = out[n];
+		memset (&d, 0, sizeof d);
+		d.op = o.op; d.shape = o.shape; d.d = o.d; d.writes = o.writes; d.dOut = o.dOut ? 1 : 0; d.guard = o.guard;
+		for (int k = 0; k < 3; k++)
+		{
+			d.kind[k] = o.kind[k]; d.reg[k] = o.reg[k]; d.slot[k] = o.slot[k];
+			for (int i = 0; i < 4; i++) d.sw[k][i] = (u8) (o.sh[k][4 * i] / 4);
+			d.neg[k] = o.neg[k][0] != 0;
+		}
 	}
 }
 // A draw's shader specialized: inKnown[r] = the components of input register r that are the draw's (a fixed
@@ -2759,6 +2777,8 @@ static void draw (Pica *p, bool indexed)
 			bool seen = false;
 			for (u32 i = 0; i < st.shapes && !seen; i++) seen = st.shape[i] == sp.shape;
 			if (!seen && st.shapes < 256) st.shape[st.shapes++] = sp.shape;
+			const bool dumpIt = !seen && m->specDump;
+			static float dumpV[8][128]; u32 dumped = 0;
 			for (u32 n = 0; n < count; n += n < 8 ? 1 : 97)
 			{
 				u64 steps = 0; u32 bad = 0;
@@ -2766,6 +2786,15 @@ static void draw (Pica *p, bool indexed)
 				load (n, sl); specRun (sp, sl.reg, sl.out);
 				st.checked++;
 				if (memcmp (si.out, sl.out, sizeof si.out) != 0) st.wrong++;
+				if (dumpIt && dumped < 8) { load (n, sl); memcpy (dumpV[dumped], sl.reg, sizeof (float) * 64); memcpy (dumpV[dumped] + 64, si.out, sizeof (float) * 64); dumped++; }
+			}
+			if (dumpIt)
+			{
+				static picavs::Op lo[Spec::OPS_MAX];
+				specList (sp, lo);
+				const u32 head[4] = { 0x4C535650, sp.nOps, sp.nConsts, dumped };
+				FILE *f = (FILE *) m->specDump;
+				fwrite (head, 4, 4, f); fwrite (lo, sizeof (picavs::Op), sp.nOps, f); fwrite (sp.consts, sizeof (float) * 4, sp.nConsts, f); fwrite (dumpV, sizeof dumpV[0], dumped, f);
 			}
 		}
 	}

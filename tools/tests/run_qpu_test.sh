@@ -34,3 +34,7 @@ GXTEV_VER=71 "$T/gxtev" ${GXTEV_N:-2000}
 g++ -std=c++17 -O1 -w -I"$root/user" -I"$root/user/Libs" -I"$Q" -I"$Q/mesa" "$here/v3d/picatev_test.cpp" "$root/user/Libs/v3d/picatev.cpp" "$root/user/Libs/v3d/qpu.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/picatev"
 "$T/picatev" ${GXTEV_N:-2000}
 PICATEV_VER=71 "$T/picatev" ${GXTEV_N:-2000}
+# the 3DS GPU's vertex shaders specialized for a draw (user/Libs/v3d/picavs.cpp) against their reference, V3D 4.2 then 7.1
+g++ -std=c++17 -O1 -w -I"$root/user" -I"$root/user/Libs" -I"$Q" -I"$Q/mesa" "$here/v3d/picavs_test.cpp" "$root/user/Libs/v3d/picavs.cpp" "$root/user/Libs/v3d/qpu.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/picavs"
+"$T/picavs" ${PICAVS_N:-600}
+PICAVS_VER=71 "$T/picavs" ${PICAVS_N:-600}
