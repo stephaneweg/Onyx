@@ -162,7 +162,8 @@ static int run (int argc, char **argv)
 	// N3DS_TOUCH=300-305:160,120      the touch screen pressed there over frames
 	// N3DS_SHOTS=<prefix> N3DS_SHOTEVERY=<n>  a picture every n frames (default 60)
 	struct Range { int f0, f1; unsigned a, b; } keys[32], touch[32]; int nk = 0, nt = 0;
-	for (const char *e = getenv ("N3DS_KEYS"); e && *e && nk < 32; )
+	// (on Onyx, where there is no environment: the 9th and 10th arguments -- "-" for none)
+	for (const char *e = argc > 9 && argv[9][0] != '-' ? argv[9] : getenv ("N3DS_KEYS"); e && *e && nk < 32; )
 	{
 		Range r; char *end;
 		r.f0 = (int) strtol (e, &end, 10); if (*end != '-') break;
@@ -170,7 +171,7 @@ static int run (int argc, char **argv)
 		r.a = (unsigned) strtoul (end + 1, &end, 16); r.b = 0;
 		keys[nk++] = r; e = *end == ';' ? end + 1 : end; if (*end != ';') break;
 	}
-	for (const char *e = getenv ("N3DS_TOUCH"); e && *e && nt < 32; )
+	for (const char *e = argc > 10 && argv[10][0] != '-' ? argv[10] : getenv ("N3DS_TOUCH"); e && *e && nt < 32; )
 	{
 		Range r; char *end;
 		r.f0 = (int) strtol (e, &end, 10); if (*end != '-') break;
@@ -242,6 +243,14 @@ static int run (int argc, char **argv)
 	fprintf (stderr, "of the lists: %.2f s rasterizing %llu triangles, %llu pixels; the rest for %llu vertices (%llu shader instructions, %llu triangles)%c", (double) (m->gsp.usRaster - m->gsp.usRasterAside) / 1e6, (unsigned long long) m->gsp.trianglesDrawn, (unsigned long long) m->gsp.pixelsDrawn, (unsigned long long) m->gsp.vertices, (unsigned long long) m->gsp.shaderSteps, (unsigned long long) m->gsp.trianglesIn, 10);
 	if (m->gpuDraw) fprintf (stderr, "of the %u transfers: %llu from the host's pixels in %.2f s%c", (unsigned) m->gsp.transfers, (unsigned long long) m->gsp.hostTransfers, (double) m->gsp.usHostTransfers / 1e6, 10);
 	if (m->gsp.usShade) fprintf (stderr, "of the draws of many vertices: %.2f s reading attributes, %.2f s shading, %.2f s assembling triangles%c", (double) m->gsp.usRead / 1e6, (double) m->gsp.usShade / 1e6, (double) m->gsp.usAssemble / 1e6, 10);
+	// N3DS_WHERE=1  where the running thread is (a program that goes round without a system call)
+	if (getenv ("N3DS_WHERE") && m->cpu)
+	{
+		n3ds::CpuState st; m->cpu->save (st);
+		fprintf (stderr, "the running thread: pc %08x lr %08x sp %08x, r0-r5 %08x %08x %08x %08x %08x %08x; the code there:", (unsigned) st.r[15], (unsigned) st.r[14], (unsigned) st.r[13], (unsigned) st.r[0], (unsigned) st.r[1], (unsigned) st.r[2], (unsigned) st.r[3], (unsigned) st.r[4], (unsigned) st.r[5]);
+		for (int i = -8; i < 8; i++) fprintf (stderr, " %08x", (unsigned) m->mem.r32 ((st.r[15] & ~3u) + (n3ds::u32) (i * 4)));
+		fprintf (stderr, "%c", 10);
+	}
 	const unsigned char *rgb = screens (m);
 	const size_t rgbSize = (size_t) n3ds::TOP_W * n3ds::SCREEN_H * 2 * 3;
 	fprintf (stderr, "screens %08x (%llu VBlanks; the GPU was asked %u fills, %u transfers, %u command lists)\n", crc32 (rgb, rgbSize),

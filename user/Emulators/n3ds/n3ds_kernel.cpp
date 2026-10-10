@@ -36,7 +36,7 @@ Machine::Machine ()
 	memset (&apt, 0, sizeof apt); apt.cpuLimit = 30;
 	memset (&hid, 0, sizeof hid);
 	memset (&source, 0, sizeof source); romfsBase = 0; romfsSize = 0; memFile = 0; memSize = 0; trace = false; traceGpu = false; gpuSkip = 0; pica = 0;
-	title[0] = 0; productCode[0] = 0;
+	title[0] = 0; productCode[0] = 0; cfgPage = 0; fontFile = 0; fontFileSize = 0;
 	parallelBegin = 0; parallelDone = 0; parallelEnd = 0; parallelUser = 0; helpers = 0; monoOnly = false; gpuDraw = 0; gpuUser = 0; gpuSoft = 0; skipDraw = false; shaderCheck = false;
 	memset (&dsp, 0, sizeof dsp);
 	storage = 0; storageDirty = false; memset (archives, 0, sizeof archives);
@@ -47,6 +47,7 @@ Machine::Machine ()
 Machine::~Machine ()
 {
 	delete cpu;
+	free (fontFile);
 	picaFree (this);
 	storageFree (this);
 	release (gsp.irq); release (gsp.shared);
@@ -56,6 +57,21 @@ Machine::~Machine ()
 	for (int i = 0; i < HANDLE_MAX; i++) if (handles[i]) release (handles[i]);
 	for (int i = 0; i < threadCount; i++) release (threads[i]);
 	mem.quit ();
+}
+
+// The memory's shares (the configuration page): an Old 3DS gives the application 64 MB, and more to the games whose
+// header asks an extended mode (the console restarts for them) -- Pokemon Sun and Moon, Smash Bros, Monster Hunter.
+// Called before the game's memory is taken; the shared font follows the application's share.
+void Machine::setMemoryMode (int mode)
+{
+	u32 app = APP_MEM_DEFAULT;
+	if (mode == 2) app = 0x06000000; else if (mode == 3) app = 0x05000000; else if (mode == 4) app = 0x04800000; else if (mode == 5) app = 0x02000000;
+	if (mem.linearUsed > app) return;
+	const u32 baseMem = 0x01400000, sysMem = FCRAM_SIZE - baseMem - app;
+	const bool moved = app != mem.appMem;
+	mem.appMem = app;
+	if (cfgPage) { memcpy (cfgPage + 0x40, &app, 4); memcpy (cfgPage + 0x44, &sysMem, 4); memcpy (cfgPage + 0x48, &baseMem, 4); }
+	if (moved && fontFile) setSharedFont (fontFile, fontFileSize);
 }
 
 bool Machine::init ()
@@ -74,8 +90,7 @@ bool Machine::init ()
 	cfg[0x02] = 57; cfg[0x03] = 2;					// kernel 2.57
 	cfg[0x10] = 2;							// SYSCOREVER
 	cfg[0x14] = 1;							// UNITINFO: retail
-	const u32 appMem = 0x04000000, sysMem = 0x02C00000, baseMem = 0x01400000;
-	memcpy (cfg + 0x40, &appMem, 4); memcpy (cfg + 0x44, &sysMem, 4); memcpy (cfg + 0x48, &baseMem, 4);
+	cfgPage = cfg; setMemoryMode (0);
 	cfg[0x62] = 57; cfg[0x63] = 2; cfg[0x64] = 2;			// FIRM 2.57, its SYSCOREVER
 	const u32 sdk = 0x0000F297; memcpy (cfg + 0x68, &sdk, 4);
 	// the shared page: a product unit, the date (ms since 1900: 2026-10-09), the 3D slider down
@@ -355,7 +370,7 @@ u32 Machine::svcControlMemory (u32 op, u32 addr0, u32 addr1, u32 size, u32 perm,
 	case 3:									// commit
 		if (linear)
 		{
-			if (size > FCRAM_SIZE - mem.linearUsed - mem.topUsed || mem.linearUsed + size > APP_LINEAR_MAX) return RES_OUT_OF_MEMORY;
+			if (size > FCRAM_SIZE - mem.linearUsed - mem.topUsed || mem.linearUsed + size > mem.appMem) return RES_OUT_OF_MEMORY;
 			u32 va = VA_LINEAR + mem.linearUsed;
 			if (addr0 && addr0 != va) return RES_INVALID_ADDRESS;	// (the linear heap only grows, in order)
 			memset (mem.fcram + mem.linearUsed, 0, size);
@@ -704,7 +719,7 @@ void Machine::svc (u32 n)
 		{
 			const u32 name = mem.r32 (r[2] + i * 4);
 			u64 v = 0;
-			if (name == 1) v = n == 0x39 ? 0x04000000 : (u64) mem.linearUsed + mem.topUsed;	// committed memory
+			if (name == 1) v = n == 0x39 ? mem.appMem : (u64) mem.linearUsed + mem.topUsed;	// committed memory
 			else if (name == 0) v = n == 0x39 ? 0x18 : 0x30;				// the highest priority allowed
 			else if (name == 2) v = n == 0x39 ? (u64) TLS_MAX : (u64) threadCount;		// threads
 			mem.w64 (r[0] + i * 8, v);

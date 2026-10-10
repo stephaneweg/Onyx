@@ -8,6 +8,7 @@
 //
 #include <string.h>
 #include "n3ds/n3ds.h"
+#include <stdlib.h>
 
 namespace n3ds {
 
@@ -18,15 +19,22 @@ static u32 share (Machine *m, Object *o) { o->refs++; return m->handleNew (o); }
 static u32 get32 (const u8 *p) { return (u32) p[0] | (u32) p[1] << 8 | (u32) p[2] << 16 | (u32) p[3] << 24; }
 static void put32 (u8 *p, u32 v) { p[0] = (u8) v; p[1] = (u8) (v >> 8); p[2] = (u8) (v >> 16); p[3] = (u8) (v >> 24); }
 
-// The font goes into FCRAM where the console keeps it (the programs map it at VA_FONT, and give the GPU its
+// The font goes into FCRAM where the console keeps it (the programs map it past their own share (Memory::fontVa), and give the GPU its
 // glyph sheets by their linear address), after a header of 0x80 bytes. A BCFNT file holds offsets from its start;
 // the console hands the font with addresses instead ("CFNU"): the font's three tables, the sheets, and the
 // chains of width and character-map blocks.
 bool Machine::setSharedFont (const u8 *bcfnt, u32 size)
 {
 	if (size < 0x34 || size > FONT_SIZE - 0x80 || memcmp (bcfnt, "CFNT", 4) != 0 || memcmp (bcfnt + 0x14, "FINF", 4) != 0) return false;
-	u8 *block = mem.fcram + FONT_FCRAM, *f = block + 0x80;
-	const u32 base = VA_FONT + 0x80;
+	if (bcfnt != fontFile)								// (kept: a game's memory mode moves the font)
+	{
+		u8 *copy = (u8 *) malloc (size);
+		if (!copy) return false;
+		memcpy (copy, bcfnt, size);
+		free (fontFile); fontFile = copy; fontFileSize = size; bcfnt = copy;
+	}
+	u8 *block = mem.fcram + mem.appMem, *f = block + 0x80;
+	const u32 base = mem.fontVa () + 0x80;
 	memset (block, 0, FONT_SIZE);
 	memcpy (f, bcfnt, size);
 	put32 (block, 2); put32 (block + 4, 1); put32 (block + 8, size);		// loaded, the region, its size
@@ -111,8 +119,8 @@ void aptRequest (Machine *m, Session *s, u32 *cmd)
 			cmd[0] = ipcHeader (id, 1, 0); cmd[1] = 0xC8A0CFEFu;
 			break;
 		}
-		if (!a.font) a.font = new SharedMem (m->mem.fcram + FONT_FCRAM, FONT_SIZE, VA_FONT);
-		cmd[0] = ipcHeader (id, 2, 2); cmd[1] = RES_OK; cmd[2] = VA_FONT; cmd[3] = 0; cmd[4] = share (m, a.font);
+		if (!a.font) a.font = new SharedMem (m->mem.fcram + m->mem.appMem, FONT_SIZE, m->mem.fontVa ());
+		cmd[0] = ipcHeader (id, 2, 2); cmd[1] = RES_OK; cmd[2] = m->mem.fontVa (); cmd[3] = 0; cmd[4] = share (m, a.font);
 		break;
 	}
 	case 0x4B:								// AppletUtility (id, sizes, a buffer) -> the applet's result

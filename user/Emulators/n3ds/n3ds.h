@@ -39,10 +39,9 @@ enum : u32 {
 	VA_CONFIG      = 0x1FF80000,		// the kernel's configuration page
 	VA_SHARED      = 0x1FF81000,		// the shared page (time, 3D slider...)
 	VA_TLS         = 0x1FF82000,		// the threads' local storage, 0x200 bytes each
-	VA_FONT        = 0x18000000,		// the shared system font (inside the linear range: FCRAM past the application's 64 MB)
-	FONT_FCRAM     = 0x04000000,		// ... its place in FCRAM
+	// (the shared system font is inside the linear range, in FCRAM past the application's share: Memory::appMem)
 	FONT_SIZE      = 0x00332000,
-	APP_LINEAR_MAX = 0x04000000,		// the application's share of FCRAM (the linear heap never passes it)
+	APP_MEM_DEFAULT = 0x04000000,		// the application's share of FCRAM: 64 MB, unless the game asks another (setMemoryMode)
 	FCRAM_SIZE     = 0x08000000,		// 128 MB
 	VRAM_SIZE      = 0x00600000,
 	PA_FCRAM       = 0x20000000,
@@ -103,6 +102,8 @@ struct Memory
 	u8 *fcram, *vram;
 	u32 linearUsed;				// FCRAM taken from its start (the linear heap: va - VA_LINEAR = its offset)
 	u32 topUsed;				// ... and from its end (the program, its heap, stacks, TLS)
+	u32 appMem;				// the application's share (the linear heap never passes it; the font is behind it)
+	u32 fontVa () const { return VA_LINEAR + appMem; }
 
 	bool init ();
 	void quit ();
@@ -399,6 +400,8 @@ struct Machine
 	// The shared system font, a BCFNT file (ours: tools/n3ds/mkfont.py -> data/sysfont.bcfnt; never Nintendo's
 	// unless the user gives the dump of their own console's). Before the program runs. false: not a font.
 	bool setSharedFont (const u8 *bcfnt, u32 size);
+	void setMemoryMode (int mode);		// an Old 3DS's memory modes (a game's header): 0 = 64 MB, 2 = 96, 3 = 80, 4 = 72, 5 = 32
+	u8 *cfgPage; u8 *fontFile; u32 fontFileSize;	// (the configuration page; the font as it was given, to place it again)
 	// what the player does: BTN_* held, the circle pad (-156..156), the touch screen (pixels of the bottom screen)
 	void setInput (u32 buttons, int cpadX, int cpadY, bool touch, int touchX, int touchY);
 	bool start (u32 entryPoint, u32 stackSize);			// the main thread

@@ -106,6 +106,7 @@ bool Machine::loadNcch (u64 at)
 	if (!source.read (source.user, at + 0x200, ex, sizeof ex) || !source.read (source.user, exefsAt, efs, sizeof efs)) { fail ("the game's headers cannot be read"); return false; }
 	memcpy (title, ex, 8); title[8] = 0;
 	const bool packed = (ex[0x0D] & 1) != 0;
+	setMemoryMode (ex[0x20E] >> 4);							// (the Old 3DS's memory mode)
 	const u32 textAddr = le32 (ex + 0x10), textPages = le32 (ex + 0x14), stackSize = le32 (ex + 0x1C);
 	const u32 roAddr = le32 (ex + 0x20), roPages = le32 (ex + 0x24);
 	const u32 dataAddr = le32 (ex + 0x30), dataPages = le32 (ex + 0x34), dataSize = le32 (ex + 0x38), bssSize = le32 (ex + 0x3C);

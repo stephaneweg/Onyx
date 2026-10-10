@@ -17,7 +17,7 @@ bool Memory::init ()
 	perms = (u8 *) calloc (PAGE_COUNT, 1);
 	fcram = (u8 *) calloc (FCRAM_SIZE, 1);
 	vram = (u8 *) calloc (VRAM_SIZE, 1);
-	linearUsed = topUsed = 0; faults = 0; faultAddr = 0;
+	linearUsed = topUsed = 0; appMem = APP_MEM_DEFAULT; faults = 0; faultAddr = 0;
 	if (!pages || !perms || !fcram || !vram) { quit (); return false; }
 	map (VA_VRAM, VRAM_SIZE, vram, PERM_RW);
 	return true;
@@ -33,7 +33,7 @@ u8 *Memory::allocTop (u32 size)
 {
 	size = (size + PAGE_SIZE - 1) & ~(u32) (PAGE_SIZE - 1);
 	if (size > FCRAM_SIZE - linearUsed - topUsed) return 0;
-	if (FCRAM_SIZE - topUsed - size < FONT_FCRAM + FONT_SIZE) return 0;		// (the shared font's place stays free)
+	if (FCRAM_SIZE - topUsed - size < appMem + FONT_SIZE) return 0;		// (the shared font's place stays free)
 	topUsed += size;
 	u8 *p = fcram + FCRAM_SIZE - topUsed;
 	memset (p, 0, size);
