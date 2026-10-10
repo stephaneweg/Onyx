@@ -443,7 +443,8 @@ frames `acc3db37`, the game's first 600 frames `9c6e43e7`):
   application core.
 - **Textures decoded once** into plain pixels (96 kept, found by where the program's bytes are and a checksum of
   samples, made again when they change): a texel is one read, ETC1 included.
-- **Fragments shaded by groups of 32** (`CH`): the fragments of a row that passed the depth test are gathered,
+- **Fragments shaded by groups of 32** (`CH`): the fragments that passed the depth test are gathered row after row
+  (a row is walked only where it can be inside the three edges, the exact test staying the judge),
   then each input (the vertex colour, the texels, the lighting, the procedural texture) and each combiner stage
   is worked out for the whole group in one loop over plain rows of integers -- loops GCC turns into NEON --, a
   stage's choices (its sources, operands, mode) being made once a group. A source is a pointer to rows, a stage
@@ -466,16 +467,17 @@ On the Pi 4 (`n3dstest`, no display, two cores):
 | Program | Before | Now | The rasterizer's part |
 |---|---|---|---|
 | Mars, 120 frames | 9.6 fps | **28.8 fps** | 2.0 s for 21.8 M pixels |
-| *A Link Between Worlds*, its first 600 frames (to the title screen) | not measured (11.1 fps midway through this slice) | **15.5 fps** (38.8 s) | 20.7 s for 255 M pixels |
+| *A Link Between Worlds*, its first 600 frames (to the title screen) | not measured (11.1 fps midway through this slice) | **17 fps** (35.2 to 35.6 s) | 17.1 to 17.5 s for 255 M pixels |
 
-Where the game's 38.8 s go: **the rasterizer 20.7 s** (measured by leaving parts out: finding the fragments 4.5 s,
-the vertices' values brought to each fragment ~4 s, the lighting 3.9 s, the texels 0.6 s, the combiner and the
-writing the rest), the vertices 5.0 s (their shader: ~3.5 s), the display transfers 3.3 s, everything else (the
-processor, the system, the card) 9.7 s. **What is left to do, in the order of what it gives**: more cores for the
-rasterizer (both application cores when they are free); the fragments found by spans instead of by testing every
-pixel of the box, their values stepped along the row; the lighting cheaper (per pixel today); the vertex shaders
-compiled; then the GPU's whole command list on its own core, the processor going on meanwhile; and the V3D for
-the fragments (the study's plan) -- the software path alone will not reach the console's speed in this game.
+Where the game's 35.6 s go: **the rasterizer 17.5 s** (measured by leaving parts out: finding the fragments and
+their depth test 3.8 s; their inputs 7.6 s -- the vertices' values, the lighting ~3.9 s, the texels 0.6 s --; the
+combiner, the blending and the writing 6.2 s), the vertices 5.0 s (their shader: ~3.5 s), the display transfers
+3.3 s, **everything else 9.5 s** (the processor, the system, the card: with no pixel drawn at all the 600 frames
+still take 21.6 s, 27.7 frames a second). **So the next steps, in the order of what they give**: the GPU's command
+lists on the application cores while the processor goes on (today the processor waits for each list: the two
+times add up); both application cores when they are free; the lighting cheaper (per pixel today); the vertex
+shaders compiled; and the V3D for the fragments (the study's plan) -- the software path alone will not reach the
+console's speed in this game.
 
 **A kernel fault found on the way** (and why some runs on the Pi stopped with only their first line): after each
 upload of a rebuilt `n3dstest`, the application core faulted at places the new code cannot fault at -- it was

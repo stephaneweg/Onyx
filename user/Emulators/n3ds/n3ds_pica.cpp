@@ -22,7 +22,7 @@
 // them (Machine::parallel), each taking the rows of its own 8-row bands, all in the triangles' order.
 // A texture is decoded once into plain pixels (its rows from the top) and kept while the program's bytes stay the
 // same (a checksum of samples, looked at when a draw's state is made): a texel is then one read.
-// The fragments of a triangle are shaded by groups of up to CH (the ones of a row that passed the depth test): each
+// The fragments of a triangle are shaded by groups of up to CH (the ones that passed the depth test, row after row): each
 // input, each combiner stage is worked out for the whole group in one loop over plain rows of numbers (loops the
 // compiler turns into vector instructions), the choices a stage makes being made once a group and not once a pixel.
 // Not done yet: fog, shadows, stencil, the geometry shader, texture filtering (the nearest texel is taken),
@@ -937,7 +937,7 @@ struct Screen { float x, y, z, invw; const Vertex *v; };
 // A worker's group of fragments: where they are, their weights, then each input and each stage's result as rows.
 struct Scratch
 {
-	int n, y, x[CH]; u32 at[CH], depth[CH];
+	int n, x[CH], y[CH]; u32 at[CH], depth[CH];
 	float l0[CH], l1[CH], l2[CH], q0[CH], q1[CH], q2[CH], qs[CH], fa[CH], fb[CH], fq[7][CH];
 	Row primary[4], tex[3][4], litP[4], litS[4], proc[4], prev[6][4], c[3][3], a[3], o[4];
 	Row dst[4], bo[4], bf[2];					// what is in the buffer, what goes there, two blending factors
@@ -987,6 +987,9 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 	const u32 skipBits = p->m->gpuSkip;
 	const bool trace = p->m->traceGpu;
 	const Vertex &v0 = *s0.v, &v1 = *s1.v, &v2 = *s2.v;
+	const float edgeX[3] = { e0x, e1x, e2x }, edgeY[3] = { e0y, e1y, e2y };
+	const float edgeInv[3] = { e0y != 0 ? 1.0f / e0y : 0.0f, e1y != 0 ? 1.0f / e1y : 0.0f, e2y != 0 ? 1.0f / e2y : 0.0f };
+	const Screen *const edgeAt[3] = { &s1, &s2, &s0 };			// (the vertex each edge's function is measured from)
 	const float iw0 = s0.invw, iw1 = s1.invw, iw2 = s2.invw;
 
 	// The fragments gathered are shaded, then written.
@@ -1191,7 +1194,7 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 		{
 			if (!alive[i]) continue;
 			const int c[4] = { out[0][i], out[1][i], out[2][i], out[3][i] };
-			if (trace && k.x[i] == t.w / 2 && k.y == t.h / 2)
+			if (trace && k.x[i] == t.w / 2 && k.y[i] == t.h / 2)
 				fprintf (stderr, "   centre: lit %d %d %d %d + %d %d %d %d, primary %d %d %d %d, tex0 %d %d %d %d, combined %d %d %d %d, there %d %d %d %d -> %d %d %d %d%c", T[1][0][i], T[1][1][i], T[1][2][i], T[1][3][i], T[2][0][i], T[2][1][i], T[2][2][i], T[2][3][i],
 					 T[0][0][i], T[0][1][i], T[0][2][i], T[0][3][i], T[3][0][i], T[3][1][i], T[3][2][i], T[3][3][i], prev[0][i], prev[1][i], prev[2][i], prev[3][i], k.dst[0][i], k.dst[1][i], k.dst[2][i], k.dst[3][i], c[0], c[1], c[2], c[3], 10);
 			writeColor (t, t.color + k.at[i] * t.colorBytes, c);
@@ -1203,8 +1206,21 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 		if (workers > 1 && (int) ((u32) (t.h - 1 - y) >> 3) % workers != worker) continue;	// (another core's band)
 		const float py = (float) y + 0.5f;
 		const u32 row = (u32) (t.h - 1 - y);					// (the buffers' rows go from the bottom)
-		k.y = y;
-		for (int x = x0; x < x1; x++)
+		// where the row can be inside the three edges: a little more than that, the test below stays the judge
+		float lo = (float) x0, hi = (float) x1;
+		bool none = false;
+		for (int e = 0; e < 3; e++)
+		{
+			const float c = edgeX[e] * (py - edgeAt[e]->y);
+			if (edgeY[e] > 0) { const float b = edgeAt[e]->x + c * edgeInv[e]; if (b < hi) hi = b; }
+			else if (edgeY[e] < 0) { const float b = edgeAt[e]->x + c * edgeInv[e]; if (b > lo) lo = b; }
+			else if (c < 0) none = true;
+		}
+		if (none) continue;
+		int xa = x0, xb = x1;
+		if (lo > (float) x0) { const float v = lo - 2.0f; xa = v >= (float) x1 ? x1 : (int) v; if (xa < x0) xa = x0; }
+		if (hi < (float) x1) { const float v = hi + 2.0f; xb = v <= (float) x0 ? x0 : (int) v; if (xb > x1) xb = x1; }
+		for (int x = xa; x < xb; x++)
 		{
 			const float px = (float) x + 0.5f;
 			const float w0 = e0x * (py - s1.y) - e0y * (px - s1.x);
@@ -1225,11 +1241,11 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 				if (!compare (f.depthFunc, depth, old)) { nDepth++; continue; }
 			}
 			const int i = k.n++;
-			k.x[i] = x; k.at[i] = at; k.depth[i] = depth; k.l0[i] = l0; k.l1[i] = l1; k.l2[i] = l2;
+			k.x[i] = x; k.y[i] = y; k.at[i] = at; k.depth[i] = depth; k.l0[i] = l0; k.l1[i] = l1; k.l2[i] = l2;
 			if (k.n == CH) shade ();
 		}
-		shade ();
 	}
+	shade ();							// (the last ones: a group is not ended by a row)
 	p->stat[worker].pixels += nPixels; p->stat[worker].depthFailed += nDepth; p->stat[worker].alphaFailed += nAlpha;
 }
 
