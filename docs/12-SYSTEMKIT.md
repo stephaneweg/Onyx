@@ -31,7 +31,7 @@ SystemKit is what a program says to the system and to the other programs: notifi
 |---|---|
 | Include | `#include "systemkit/systemkit.h"` |
 | Link | `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C) |
-| Library | `SD:/lib/systemkit.so` — 111 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
+| Library | `SD:/lib/systemkit.so` — 113 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
 | Sources | `user/Kits/systemkit/` |
 
 ## Using it
@@ -181,6 +181,8 @@ if (kapi_screen_set (w, h) == 0) display_save_size (w, h);  // applied, then kep
 display_game_set ("n64emu", 1024, 768);                    // the N64 emulator at 1024 x 768 while it plays
 display_game_set ("gcemu", DISPLAY_SYSTEM, 0);             // ... the system's size; DISPLAY_OWN: its app.txt's again
 if (display_game_size ("snesemu", &w, &h)) { /* the size consolehome switches to */ }
+display_save_option ("opaque", "0");                       // another kernel option of SD:/cmdline.txt (0: removed)
+char v[8]; if (display_saved_option ("opaque", v, sizeof v) > 0) { /* "0" */ }
 ```
 
 **The keyboard and the mouse** (`input.h`, 2026-10-09): the layouts on the card, the one in use, taking one (kept for

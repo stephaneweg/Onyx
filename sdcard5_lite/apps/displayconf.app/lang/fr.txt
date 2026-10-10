@@ -35,3 +35,6 @@ Keep	Garder
 Go back	Revenir
 Keep this resolution? Back to the one before in %d s.	Garder cette résolution ? Retour à la précédente dans %d s.
 The resolution before is back.	La résolution précédente est revenue.
+Alpha fix: opaque pixels (older Pi 5 bootloaders)	Correctif alpha : pixels opaques (vieux bootloaders Pi 5)
+The alpha fix: on at the next start.	Correctif alpha : actif au prochain démarrage.
+The alpha fix: off at the next start (a recent bootloader).	Correctif alpha : coupé au prochain démarrage (bootloader récent).

@@ -8,11 +8,15 @@
 // answered (15 s, else the size before comes back by itself). An older kernel: kept
 // only, applied at the next start. The monitor shows any size (the firmware scales the picture to
 // its own mode); its native one is the sharpest.
+// On a Pi 5 (kernel_info's "board pi5"): the alpha fix (SD:/cmdline.txt opaque=): the kernel makes the screen's
+// pixels opaque, for the bootloaders that do not honour framebuffer_ignore_alpha (the screen black but the boot
+// log); off (opaque=0) with a recent bootloader -- a little faster, and the games' direct full-screen mode back.
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"
 #include "systemkit/systemkit.h"		// display.h: the sizes, cmdline.txt
 #include <stdio.h>
+#include <string.h>
 #include "fontkit/uikitface.h"		// FreeType's text (DejaVu Sans) for every widget
 
 using namespace uikit;
@@ -41,6 +45,20 @@ static Label   *g_now, *g_status;
 
 static int put_str (char *b, int n, const char *s) { while (*s) b[n++] = *s++; return n; }
 static int put_int (char *b, int n, int v) { return n + ax_itoa (v, b + n); }
+
+// The Pi 5's alpha fix: checked = on (no opaque= line, the default), unchecked = opaque=0 -- at the next start.
+static bool on_pi5 (void)
+{
+	char t[512];
+	return kapi_kernel_info (t, sizeof t) > 0 && strstr (t, "\nboard pi5\n") != 0;
+}
+static void on_alpha (Widget &w)
+{
+	bool on = ((Checkbox &) w).checked;
+	bool ok = display_save_option ("opaque", on ? 0 : "0") != 0;
+	g_status->setText (!ok ? TR ("SD:/cmdline.txt could not be written.")
+			       : on ? TR ("The alpha fix: on at the next start.") : TR ("The alpha fix: off at the next start (a recent bootloader)."));
+}
 
 static void show_now (void)
 {
@@ -155,8 +173,14 @@ int main (void)
 	gs->addChild (new Label (360, ct + 124, 300, 20, TR ("The monitor's own resolution"), C_DIS, gs->bg));
 	gs->addChild (new Label (360, ct + 144, 300, 20, TR ("is the sharpest."), C_DIS, gs->bg));
 
-	g_status = new Label (X + 12, 350, W - 24, 22, "", C_TEXT, root.bg);
+	g_status = new Label (X + 12, 346, W - 24, 22, "", C_TEXT, root.bg);
 	root.addChild (g_status);
+	if (on_pi5 ())
+	{
+		char v[8]; bool off = display_saved_option ("opaque", v, sizeof v) > 0 && v[0] == '0';
+		root.addChild (new Checkbox (X + 12, 374, W - 24, 24, TR ("Alpha fix: opaque pixels (older Pi 5 bootloaders)"), !off,
+					     on_alpha, root.bg));
+	}
 	root.addChild (new Label (X + 12, H - 60, W - 24, 20, TR ("Kept in SD:/cmdline.txt (width= / height=), read at the start."), C_DIS, root.bg));
 	show_now ();
 	root.run ();

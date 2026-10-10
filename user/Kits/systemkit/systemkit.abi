@@ -114,3 +114,5 @@
 108 input_wheel
 109 input_wheel_save
 110 display_game_ask
+111 display_save_option
+112 display_saved_option

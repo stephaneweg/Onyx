@@ -457,7 +457,8 @@ static unsigned *MapScreen (CAddressSpace *pAS, unsigned *pPitch)
 	// The Pi 5's display takes the alpha byte and the programs write 0 (0x00RRGGBB): a program writing
 	// the screen itself would be invisible. No direct mode there: the program presents (fullscreen_begin
 	// / present_fb), C2DGraphics making the pixels opaque on their way (the fork, docs/05 patch 31).
-	return 0;
+	// cmdline opaque=0 (the firmware honours framebuffer_ignore_alpha): the direct mode as on the Pi 4.
+	if (C2DGraphics::s_bOnyxOpaque) return 0;
 #endif
 	CBcmFrameBuffer *pFB = g_pGraphics != 0 && pAS != 0 ? (CBcmFrameBuffer *) g_pGraphics->GetDisplay () : 0;
 	if (pFB == 0 || pFB->GetDepth () != 32 || pFB->GetBuffer () == 0)

@@ -1077,7 +1077,10 @@ card) was not honoured there.
 partial `UpdateDisplay`, `UpdateDisplayAsync`, `UpdateDisplayStart`) -- one pass over the presented rows, before
 the DMA cleans them from the cache. The Pi 4 is unchanged. With it, the kernel's direct mode (`fullscreen_direct`:
 a program writing the displayed framebuffer itself, n64emu and gcemu) is off on the Pi 5 (`MapScreen` gives 0: the
-programs present through `fullscreen_begin` / `present_fb`). Fork commit `9266885b`. **Not tested on a board yet.**
+programs present through `fullscreen_begin` / `present_fb`). Fork commit `9266885b`. **Switchable** (2026-10-10): `C2DGraphics::s_bOnyxOpaque`
+(default TRUE), set from the kernel's `cmdline.txt` `opaque=` -- the tester found that the Pi 500's latest bootloader
+honours `framebuffer_ignore_alpha=1` (Raspberry Pi OS also works around it in software); `opaque=0` skips the pass and
+gives the direct mode back. The Display applet has the check box. Fork commit `b47451c6`. **Tested on a Pi 500 (2026-10-10): the desktop shows.**
 
 ## 32. The Japanese keyboards' Ro and Yen keys
 

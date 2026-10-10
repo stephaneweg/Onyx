@@ -49,6 +49,9 @@
 > apps (QBStudio, Invaders), **the Wi-Fi joins**. Rough edges reported: no keyboard layout for the Pi 500's
 > (Nordic) keyboard — the Wi-Fi password typed by trying keys on Setup's keyboard page. Still unchecked: the GPU
 > (V3D 7.1), Ethernet, the fan, the power button, the RTC, the GPIO, the sound.
+> The tester then found that **the Pi 500's latest bootloader honours `framebuffer_ignore_alpha`**: the fix is kept on
+> by default (older bootloaders, as Raspberry Pi OS does in software) and **`opaque=0`** in `cmdline.txt` turns it off
+> (the Display applet's *Alpha fix* check box on a Pi 5).
 >
 > The fork was then brought to upstream **Circle 51.1.1** (docs/05 *Upstream merges*: for the Pi 5 the DSI
 > touchscreens, the RP1's I2C 4 and 6, the xHCI endpoint recovery); both kernels build on it.

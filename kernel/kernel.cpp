@@ -2168,6 +2168,11 @@ boolean CKernel::Initialize (void)
 		// (diagnostics) dispdma=0: the compositor's copies to the screen synchronous (the
 		// asynchronous 2D DMA off); gpudirect=0: the GPU renders into its own buffer, copied
 		g_bDisplayDma = m_Options.GetAppOptionDecimal ("dispdma", 1) != 0;
+#if RASPPI >= 5
+		// opaque=0: the Pi 5's firmware honours framebuffer_ignore_alpha (a recent bootloader): the
+		// pixels are sent as they are (no pass making them opaque) and the direct full-screen mode is back
+		C2DGraphics::s_bOnyxOpaque = m_Options.GetAppOptionDecimal ("opaque", 1) != 0;
+#endif
 		g_bGpuDirect = m_Options.GetAppOptionDecimal ("gpudirect", 1) != 0;
 #if RASPPI >= 5
 		g_bGpu71 = m_Options.GetAppOptionDecimal ("gpu71", 1) != 0;

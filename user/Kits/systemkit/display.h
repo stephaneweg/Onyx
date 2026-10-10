@@ -37,6 +37,10 @@ SK_API const char *display_mode (int i, int *w, int *h);
 // -> 1 (w, h set), 0 none said.
 SK_API int display_save_size (int w, int h);
 SK_API int display_saved_size (int *w, int *h);
+// Another kernel option of SD:/cmdline.txt (its other options kept), for the next start: key=value written (value
+// 0: the option removed) -> 1, 0 not written; read -> its length (value copied, NUL-ended), -1 not there.
+SK_API int display_save_option (const char *key, const char *value);
+SK_API int display_saved_option (const char *key, char *value, int cap);
 // "800x600" -> 1 (w, h set: 640 x 480 .. 2560 x 1600, w even), 0 not a size.
 SK_API int display_parse_size (const char *s, int *w, int *h);
 

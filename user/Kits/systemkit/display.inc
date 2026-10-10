@@ -77,6 +77,49 @@ SK_FN int display_save_size (int w, int h)
 	out[o++] = '\n';
 	return kapi_save_file (DISPLAY_CMDLINE, out, (unsigned) o) >= 0;
 }
+SK_FN int display_save_option (const char *key, const char *value)
+{
+	static char in[1024], out[1100];
+	int n = dp_read (DISPLAY_CMDLINE, in, sizeof in), kl = dp_len (key), o = 0;
+	if (n < 0) { n = 0; in[0] = 0; }
+	if (kl == 0) return 0;
+	for (int i = 0; in[i]; )				// its other options kept, this one's line dropped
+	{
+		while (in[i] == ' ' || in[i] == '\t' || in[i] == '\r' || in[i] == '\n') i++;
+		int s = i;
+		while (in[i] && in[i] != ' ' && in[i] != '\t' && in[i] != '\r' && in[i] != '\n') i++;
+		if (i == s) break;
+		if (i - s > kl && in[s + kl] == '=' && !dp_ncmp (in + s, key, kl)) continue;
+		if (o + (i - s) + 2 >= (int) sizeof out) continue;
+		if (o) out[o++] = ' ';
+		for (int k = s; k < i; k++) out[o++] = in[k];
+	}
+	if (value != 0 && o + kl + dp_len (value) + 3 < (int) sizeof out)
+	{
+		if (o) out[o++] = ' ';
+		for (int k = 0; k < kl; k++) out[o++] = key[k];
+		out[o++] = '=';
+		for (int k = 0; value[k]; k++) out[o++] = value[k];
+	}
+	out[o++] = '\n';
+	return kapi_save_file (DISPLAY_CMDLINE, out, (unsigned) o) >= 0;
+}
+SK_FN int display_saved_option (const char *key, char *value, int cap)
+{
+	static char b[1024];
+	int kl = dp_len (key);
+	if (cap <= 0 || kl == 0 || dp_read (DISPLAY_CMDLINE, b, sizeof b) <= 0) return -1;
+	for (int i = 0; b[i]; i++)
+	{
+		if (i > 0 && b[i - 1] != ' ' && b[i - 1] != '\n' && b[i - 1] != '\t') continue;
+		if (dp_ncmp (b + i, key, kl) || b[i + kl] != '=') continue;
+		int k = i + kl + 1, n = 0;
+		while (b[k] && b[k] != ' ' && b[k] != '\t' && b[k] != '\r' && b[k] != '\n' && n < cap - 1) value[n++] = b[k++];
+		value[n] = 0;
+		return n;
+	}
+	return -1;
+}
 SK_FN int display_saved_size (int *w, int *h)
 {
 	static char b[1024];
