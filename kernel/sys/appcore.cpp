@@ -116,6 +116,11 @@ u64 AppCoreBusyUs (unsigned nCore, unsigned *pOwnerPid)
 
 static inline void Barrier (void)	{ asm volatile ("dsb ish" ::: "memory"); }
 static inline void LocalTLBFlush (void)	{ asm volatile ("tlbi vmalle1; dsb nsh; isb" ::: "memory"); }
+// This core's instruction cache emptied. The loader empties core 0's alone (Circle's SyncDataAndInstructionCache:
+// "ic iallu" is local), and a program loaded again -- a new build of it above all -- gets the frames the last one
+// had: without this a job ran the OLD code wherever this core still held it (seen 2026-10-10: faults at places
+// the new binary's code cannot fault at, after each upload of a rebuilt test program).
+static inline void LocalICacheFlush (void)	{ asm volatile ("ic iallu; dsb nsh; isb" ::: "memory"); }
 
 static void __attribute__ ((noreturn)) AppCoreLoop (unsigned nCore)
 {
@@ -136,6 +141,7 @@ static void __attribute__ ((noreturn)) AppCoreLoop (unsigned nCore)
 			Barrier ();
 			asm volatile ("msr ttbr0_el1, %0; isb" :: "r" (C.ulTTBR0) : "memory");
 			LocalTLBFlush ();			// (an ASID may have been reused)
+			LocalICacheFlush ();			// (the owner's code may be new where an older program's was)
 			asm volatile ("msr tpidr_el0, %0" :: "r" (C.ulTls) : "memory");	// (v75: its TLS)
 			C.ulJobStart = ClockUs64 ();		// (v80: the job's time, until it ends or is dropped)
 			// fn at EL0 on the app's stack, returning into the blob's El0CoreReturn, whose

@@ -76,6 +76,7 @@ struct Pica
 	u32 code[CODE_MAX]; u32 opdesc[OPDESC_MAX];
 	float fu[96][4]; u8 iu[4][4]; u32 bu;
 	u32 codeIndex, opdescIndex;
+	struct ShaderIns *dec; u8 *decValid; bool decDirty;	// the code's instructions decoded (as they are met; again when the code or the descriptors change)
 	u32 floatIndex; bool float32; u32 floatWords[4]; int floatCount;
 	// attributes given by registers: the fixed ones, and the vertices given one by one
 	float fixed[12][4]; u32 fixedIndex; u32 fixedWords[3]; int fixedCount;
@@ -93,6 +94,7 @@ struct Pica
 	struct Decoded { const u8 *data; u32 w, h, format; u64 check; u32 *px; u64 used; } decoded[96];
 	u64 decodedClock;
 	struct Scratch *scratch;			// a worker's rows (8 of them)
+	struct Shaded *shaded; u32 drawStamp;		// an indexed draw's vertices already shaded (by their index; this draw's: the stamp)
 	bool stateOk, targetOk;				// (the registers' meaning for a draw: worked out at its first triangle)
 	struct State *states; u32 stateCount;		// the states of the queued triangles (the last one: the current)
 	struct Job *jobs; u32 jobCount;			// the triangles waiting to be rasterized
@@ -133,32 +135,100 @@ static const u8 TILE_X[8] = { 0, 1, 4, 5, 16, 17, 20, 21 }, TILE_Y[8] = { 0, 2, 
 static inline u32 tiled (u32 x, u32 y, u32 width) { return (u32) TILE_X[x & 7] + TILE_Y[y & 7] + (x & ~7u) * 8 + (y & ~7u) * width; }
 
 // ---- the vertex shader ---------------------------------------------------------------------------------------------
+// An instruction's four components are worked out at once (the compiler's vectors: NEON): an operand is its
+// register's four floats shuffled and negated as the instruction's descriptor says, the result goes to the
+// components the descriptor names. What an instruction says is decoded once (ShaderIns), when it is first met.
+typedef float V4 __attribute__ ((vector_size (16)));
+typedef int VI __attribute__ ((vector_size (16)));
+typedef unsigned char VB __attribute__ ((vector_size (16)));
+
 struct Shader
 {
-	float in[16][4], tmp[16][4], out[16][4];
+	float reg[32][4], out[16][4];					// the inputs (0-15) and the temporaries (16-31); the outputs
 	bool cmp[2]; int a[2]; int aL;
+};
+
+struct ShaderIns
+{
+	VB sh[3]; VI neg[3]; VI mask;					// the operands' shuffles (bytes) and signs; the components written
+	u8 op, shape;							// shape: 0 not arithmetic, 1 two operands, 2 three (MAD)
+	u8 d, r[3], idx, idxOn;						// the destination, the operands' registers, the index register and the operand it moves
+	u8 writes;							// (the written components as bits: x = 8)
 };
 
 // The GPU's product: nothing times anything is nothing, even infinity (where IEEE says "not a number"): shaders
 // count on it.
-static inline float mulz (float a, float b) { return a == 0.0f || b == 0.0f ? 0.0f : a * b; }
+static inline V4 mulz (V4 a, V4 b)
+{
+	const V4 zero = { 0.0f, 0.0f, 0.0f, 0.0f };
+	const VI z = (a == zero) | (b == zero);
+	return (V4) (~z & (VI) (a * b));
+}
 
 static inline const float *srcReg (const Pica *p, const Shader &s, u32 r)
 {
-	if (r < 0x10) return s.in[r];
-	if (r < 0x20) return s.tmp[r - 0x10];
+	if (r < 0x20) return s.reg[r];
 	r -= 0x20;
 	return p->fu[r < 96 ? r : 95];
+}
+static inline V4 operand (const float *q, VB sh, VI neg)
+{
+	V4 v;
+	memcpy (&v, q, sizeof v);
+	return (V4) ((VI) (V4) __builtin_shuffle ((VB) v, sh) ^ neg);
+}
+
+static void decodeIns (const Pica *p, u32 pc, ShaderIns &I)
+{
+	const u32 ins = p->code[pc], op = ins >> 26;
+	I.op = (u8) op; I.shape = 0;
+	if (op >= 0x20 && op <= 0x2D) return;				// BREAK, NOP, END, the flow, the geometry shader's
+	u32 desc;
+	if (op >= 0x30)							// MADI (0x30-0x37), MAD (0x38-0x3F)
+	{
+		I.shape = 2; I.d = (u8) (ins >> 24 & 0x1F); I.idx = (u8) (ins >> 22 & 3); I.r[0] = (u8) (ins >> 17 & 0x1F); desc = ins & 0x1F;
+		if (op >= 0x38) { I.r[1] = (u8) (ins >> 10 & 0x7F); I.r[2] = (u8) (ins >> 5 & 0x1F); I.idxOn = 1; }
+		else { I.r[1] = (u8) (ins >> 12 & 0x1F); I.r[2] = (u8) (ins >> 5 & 0x7F); I.idxOn = 2; }
+	}
+	else
+	{
+		I.shape = 1; I.d = (u8) (ins >> 21 & 0x1F); I.idx = (u8) (ins >> 19 & 3); desc = ins & 0x7F; I.r[2] = 0;
+		if (op >= 0x18 && op <= 0x1B) { I.r[0] = (u8) (ins >> 14 & 0x1F); I.r[1] = (u8) (ins >> 7 & 0x7F); I.idxOn = 1; }	// the "inverted" ones
+		else { I.r[0] = (u8) (ins >> 12 & 0x7F); I.r[1] = (u8) (ins >> 7 & 0x1F); I.idxOn = 0; }
+	}
+	const u32 od = p->opdesc[desc & (OPDESC_MAX - 1)];
+	static const int SW[3] = { 5, 14, 23 }, NG[3] = { 4, 13, 22 };
+	for (int k = 0; k < 3; k++)
+	{
+		const u32 sw = od >> SW[k] & 0xFF;
+		const int sign = (od >> NG[k] & 1) ? (int) 0x80000000u : 0;
+		for (int i = 0; i < 4; i++)
+		{
+			const u32 c = sw >> (6 - 2 * i) & 3;
+			for (int b = 0; b < 4; b++) I.sh[k][4 * i + b] = (unsigned char) (c * 4 + (u32) b);
+			I.neg[k][i] = sign;
+		}
+	}
+	I.writes = (u8) (od & 15);
+	for (int i = 0; i < 4; i++) I.mask[i] = (od & 15 & (8u >> i)) ? -1 : 0;
 }
 
 static void runShader (Pica *p, Shader &s, u32 entry)
 {
+	if (!p->dec)
+	{
+		p->dec = (ShaderIns *) malloc (sizeof (ShaderIns) * CODE_MAX); p->decValid = (u8 *) malloc (CODE_MAX);
+		if (!p->dec || !p->decValid) { free (p->dec); free (p->decValid); p->dec = 0; p->decValid = 0; return; }
+		p->decDirty = true;
+	}
+	if (p->decDirty) { memset (p->decValid, 0, CODE_MAX); p->decDirty = false; }
 	struct Frame { u32 end, ret, repeat, inc, loop; } stack[16];
 	int depth = 0;
 	u32 pc = entry;
 	s.cmp[0] = s.cmp[1] = false; s.a[0] = s.a[1] = 0; s.aL = 0;
 	for (int steps = 0; steps < 65536; steps++)
 	{
+		p->m->gsp.shaderSteps++;
 		while (depth && pc == stack[depth - 1].end)			// the end of a called block, of a loop's body
 		{
 			Frame &f = stack[depth - 1];
@@ -166,12 +236,15 @@ static void runShader (Pica *p, Shader &s, u32 entry)
 			else { pc = f.ret; depth--; }
 		}
 		if (pc >= CODE_MAX) return;
+		if (!p->decValid[pc]) { decodeIns (p, pc, p->dec[pc]); p->decValid[pc] = 1; }
+		const ShaderIns &I = p->dec[pc];
 		const u32 ins = p->code[pc++];
-		const u32 op = ins >> 26;
-		if (op == 0x22) return;						// END
-		if (op == 0x21 || op == 0x20) continue;				// NOP, BREAK
-		if (op >= 0x24 && op <= 0x2D && op != 0x2A && op != 0x2B)	// flow: CALL*, IF*, LOOP, JMP*
+		const u32 op = I.op;
+		if (I.shape == 0)
 		{
+			if (op == 0x22) return;						// END
+			if (op == 0x21 || op == 0x20 || op == 0x2A || op == 0x2B || op == 0x23) continue;	// NOP, BREAK, EMIT, SETEMIT (geometry shaders), BREAKC
+			// flow: CALL*, IF*, LOOP, JMP*
 			const u32 dst = ins >> 10 & 0xFFF, num = ins & 0xFF;
 			bool cond = true;
 			if (op == 0x25 || op == 0x28 || op == 0x2C)		// ...C: on the comparison's two results
@@ -201,72 +274,52 @@ static void runShader (Pica *p, Shader &s, u32 entry)
 			}
 			continue;
 		}
-		if (op == 0x2A || op == 0x2B || op == 0x23) continue;		// EMIT, SETEMIT (geometry shaders), BREAKC
 
-		// arithmetic: where the operands and the descriptor are depends on the instruction's shape
-		u32 d, r1, r2, r3 = 0, desc, idx;
-		bool mad = false;
-		if (op >= 0x30)							// MADI (0x30-0x37), MAD (0x38-0x3F)
+		// arithmetic
+		u32 r1 = I.r[0], r2 = I.r[1], r3 = I.r[2];
+		if (I.idx)
 		{
-			mad = true;
-			d = ins >> 24 & 0x1F; idx = ins >> 22 & 3; r1 = ins >> 17 & 0x1F; desc = ins & 0x1F;
-			if (op >= 0x38) { r2 = ins >> 10 & 0x7F; r3 = ins >> 5 & 0x1F; if (idx) r2 += (u32) (idx == 1 ? s.a[0] : idx == 2 ? s.a[1] : s.aL); }
-			else { r2 = ins >> 12 & 0x1F; r3 = ins >> 5 & 0x7F; if (idx) r3 += (u32) (idx == 1 ? s.a[0] : idx == 2 ? s.a[1] : s.aL); }
+			const u32 off = (u32) (I.idx == 1 ? s.a[0] : I.idx == 2 ? s.a[1] : s.aL);
+			if (I.idxOn == 0) r1 += off; else if (I.idxOn == 1) r2 += off; else r3 += off;
 		}
-		else
+		const V4 s1 = operand (srcReg (p, s, r1 & 0x7F), I.sh[0], I.neg[0]);
+		const V4 s2 = operand (srcReg (p, s, r2 & 0x7F), I.sh[1], I.neg[1]);
+		V4 v;
+		if (I.shape == 2) v = mulz (s1, s2) + operand (srcReg (p, s, r3 & 0x7F), I.sh[2], I.neg[2]);
+		else switch (op)
 		{
-			d = ins >> 21 & 0x1F; idx = ins >> 19 & 3; desc = ins & 0x7F;
-			const int off = idx == 0 ? 0 : idx == 1 ? s.a[0] : idx == 2 ? s.a[1] : s.aL;
-			if (op >= 0x18 && op <= 0x1B) { r1 = ins >> 14 & 0x1F; r2 = (ins >> 7 & 0x7F) + (u32) off; }	// the "inverted" ones
-			else { r1 = (ins >> 12 & 0x7F) + (u32) off; r2 = ins >> 7 & 0x1F; }
-		}
-		const u32 od = p->opdesc[desc & (OPDESC_MAX - 1)];
-		float s1[4], s2[4], s3[4];
-		{
-			const float *q = srcReg (p, s, r1 & 0x7F); const u32 sw = od >> 5 & 0xFF; const bool neg = (od >> 4 & 1) != 0;
-			for (int i = 0; i < 4; i++) { float v = q[sw >> (6 - 2 * i) & 3]; s1[i] = neg ? -v : v; }
-			q = srcReg (p, s, r2 & 0x7F); const u32 sw2 = od >> 14 & 0xFF; const bool neg2 = (od >> 13 & 1) != 0;
-			for (int i = 0; i < 4; i++) { float v = q[sw2 >> (6 - 2 * i) & 3]; s2[i] = neg2 ? -v : v; }
-			if (mad)
-			{
-				q = srcReg (p, s, r3 & 0x7F); const u32 sw3 = od >> 23 & 0xFF; const bool neg3 = (od >> 22 & 1) != 0;
-				for (int i = 0; i < 4; i++) { float v = q[sw3 >> (6 - 2 * i) & 3]; s3[i] = neg3 ? -v : v; }
-			}
-		}
-		float *dst = d < 0x10 ? s.out[d] : s.tmp[d - 0x10];
-		const u32 mask = od & 15;
-#define EACH(expr) for (int i = 0; i < 4; i++) if (mask & (8u >> i)) dst[i] = (expr)
-		if (mad) { EACH (mulz (s1[i], s2[i]) + s3[i]); continue; }
-		switch (op)
-		{
-		case 0x00: EACH (s1[i] + s2[i]); break;									// ADD
-		case 0x01: { float v = mulz (s1[0], s2[0]) + mulz (s1[1], s2[1]) + mulz (s1[2], s2[2]); EACH (v); break; }			// DP3
-		case 0x02: { float v = mulz (s1[0], s2[0]) + mulz (s1[1], s2[1]) + mulz (s1[2], s2[2]) + mulz (s1[3], s2[3]); EACH (v); break; }	// DP4
-		case 0x03: case 0x18: { float v = mulz (s1[0], s2[0]) + mulz (s1[1], s2[1]) + mulz (s1[2], s2[2]) + s2[3]; EACH (v); break; }	// DPH
-		case 0x04: case 0x19: { float t[4] = { 1.0f, s1[1] * s2[1], s1[2], s2[3] }; EACH (t[i]); break; }		// DST
-		case 0x05: { float v = exp2f (s1[0]); EACH (v); break; }							// EX2
-		case 0x06: { float v = log2f (s1[0]); EACH (v); break; }							// LG2
-		case 0x08: EACH (mulz (s1[i], s2[i])); break;									// MUL
-		case 0x09: case 0x1A: EACH (s1[i] >= s2[i] ? 1.0f : 0.0f); break;						// SGE
-		case 0x0A: case 0x1B: EACH (s1[i] < s2[i] ? 1.0f : 0.0f); break;						// SLT
-		case 0x0B: EACH (floorf (s1[i])); break;									// FLR
-		case 0x0C: EACH (s1[i] > s2[i] ? s1[i] : s2[i]); break;							// MAX
-		case 0x0D: EACH (s1[i] < s2[i] ? s1[i] : s2[i]); break;							// MIN
-		case 0x0E: { float v = 1.0f / s1[0]; EACH (v); break; }							// RCP
-		case 0x0F: { float v = 1.0f / sqrtf (s1[0]); EACH (v); break; }						// RSQ
-		case 0x12: if (mask & 8) s.a[0] = (int) s1[0]; if (mask & 4) s.a[1] = (int) s1[1]; break;			// MOVA
-		case 0x13: EACH (s1[i]); break;										// MOV
-		case 0x2E: case 0x2F:											// CMP
+		case 0x00: v = s1 + s2; break;											// ADD
+		case 0x01: { const V4 m = mulz (s1, s2); const float f = m[0] + m[1] + m[2]; v = (V4) { f, f, f, f }; break; }		// DP3
+		case 0x02: { const V4 m = mulz (s1, s2); const float f = m[0] + m[1] + m[2] + m[3]; v = (V4) { f, f, f, f }; break; }	// DP4
+		case 0x03: case 0x18: { const V4 m = mulz (s1, s2); const float f = m[0] + m[1] + m[2] + s2[3]; v = (V4) { f, f, f, f }; break; }	// DPH
+		case 0x04: case 0x19: v = (V4) { 1.0f, s1[1] * s2[1], s1[2], s2[3] }; break;					// DST
+		case 0x05: { const float f = exp2f (s1[0]); v = (V4) { f, f, f, f }; break; }					// EX2
+		case 0x06: { const float f = log2f (s1[0]); v = (V4) { f, f, f, f }; break; }					// LG2
+		case 0x08: v = mulz (s1, s2); break;										// MUL
+		case 0x09: case 0x1A: v = (V4) ((s1 >= s2) & (VI) (V4) { 1.0f, 1.0f, 1.0f, 1.0f }); break;			// SGE
+		case 0x0A: case 0x1B: v = (V4) ((s1 < s2) & (VI) (V4) { 1.0f, 1.0f, 1.0f, 1.0f }); break;			// SLT
+		case 0x0B: v = (V4) { floorf (s1[0]), floorf (s1[1]), floorf (s1[2]), floorf (s1[3]) }; break;			// FLR
+		case 0x0C: { const VI c = s1 > s2; v = (V4) (((VI) s1 & c) | ((VI) s2 & ~c)); break; }				// MAX
+		case 0x0D: { const VI c = s1 < s2; v = (V4) (((VI) s1 & c) | ((VI) s2 & ~c)); break; }				// MIN
+		case 0x0E: { const float f = 1.0f / s1[0]; v = (V4) { f, f, f, f }; break; }					// RCP
+		case 0x0F: { const float f = 1.0f / sqrtf (s1[0]); v = (V4) { f, f, f, f }; break; }				// RSQ
+		case 0x12: if (I.writes & 8) s.a[0] = (int) s1[0]; if (I.writes & 4) s.a[1] = (int) s1[1]; continue;		// MOVA
+		case 0x13: v = s1; break;											// MOV
+		case 0x2E: case 0x2F:												// CMP
 			for (int i = 0; i < 2; i++)
 			{
 				const u32 c = i == 0 ? ins >> 24 & 7 : ins >> 21 & 7;
 				const float x = s1[i], y = s2[i];
 				s.cmp[i] = c == 0 ? x == y : c == 1 ? x != y : c == 2 ? x < y : c == 3 ? x <= y : c == 4 ? x > y : c == 5 ? x >= y : true;
 			}
-			break;
-		default: p->m->note ("vertex shader instruction %02x", (unsigned) op); break;
+			continue;
+		default: p->m->note ("vertex shader instruction %02x", (unsigned) op); continue;
 		}
-#undef EACH
+		float *dst = I.d < 0x10 ? s.out[I.d] : s.reg[I.d];
+		V4 old;
+		memcpy (&old, dst, sizeof old);
+		v = (V4) (((VI) v & I.mask) | ((VI) old & ~I.mask));
+		memcpy (dst, &v, sizeof v);
 	}
 }
 
@@ -277,8 +330,8 @@ static void shadeVertex (Pica *p, float attr[16][4], int count, Vertex &v)
 	Shader s;
 	memset (&s, 0, sizeof s);
 	const u64 perm = (u64) p->regs[R_VSH_PERM_HI] << 32 | p->regs[R_VSH_PERM_LO];
-	for (int i = 0; i < count && i < 16; i++) memcpy (s.in[perm >> (4 * i) & 15], attr[i], sizeof (float) * 4);
-	runShader (p, s, p->regs[R_VSH_ENTRY] & 0xFFFF);
+	for (int i = 0; i < count && i < 16; i++) memcpy (s.reg[perm >> (4 * i) & 15], attr[i], sizeof (float) * 4);
+	if (!(p->m->gpuSkip & 256)) runShader (p, s, p->regs[R_VSH_ENTRY] & 0xFFFF);
 	memset (&v, 0, sizeof v);
 	v.a[A_POS + 3] = 1.0f;
 	const u32 outMask = p->regs[R_VSH_OUTMASK];
@@ -697,6 +750,31 @@ static inline bool rowCombine (u32 mode, int n, int *__restrict d, const int *a,
 	}
 }
 
+// A row blended with what is there (each with its factor), or combined with it bit by bit.
+static inline void rowBlend (u32 eq, int n, int *__restrict d, const int *s, const int *sf, const int *t, const int *tf)
+{
+	switch (eq)
+	{
+	case 1: for (int i = 0; i < n; i++) d[i] = clamp255 ((s[i] * sf[i] - t[i] * tf[i]) / 255); break;
+	case 2: for (int i = 0; i < n; i++) d[i] = clamp255 ((t[i] * tf[i] - s[i] * sf[i]) / 255); break;
+	case 3: for (int i = 0; i < n; i++) d[i] = s[i] < t[i] ? s[i] : t[i]; break;
+	case 4: for (int i = 0; i < n; i++) d[i] = s[i] > t[i] ? s[i] : t[i]; break;
+	default: for (int i = 0; i < n; i++) d[i] = clamp255 ((s[i] * sf[i] + t[i] * tf[i]) / 255); break;
+	}
+}
+static inline void rowLogic (u32 op, int n, int *__restrict o, const int *sr, const int *ds)
+{
+#define EACH(expr) for (int i = 0; i < n; i++) { const int s = sr[i], d = ds[i]; (void) s; (void) d; o[i] = (expr); } break
+	switch (op)
+	{
+	case 0: EACH (0); case 1: EACH (s & d); case 2: EACH (s & ~d & 255); case 3: EACH (s);
+	case 4: EACH (255); case 5: EACH (~s & 255); case 6: EACH (d); case 7: EACH (~d & 255);
+	case 8: EACH (~(s & d) & 255); case 9: EACH (s | d); case 10: EACH (~(s | d) & 255); case 11: EACH (s ^ d);
+	case 12: EACH (~(s ^ d) & 255); case 13: EACH (~s & d & 255); case 14: EACH ((s | ~d) & 255); default: EACH ((~s | d) & 255);
+	}
+#undef EACH
+}
+
 // One combiner stage's operand: a source's colour seen through an operand's choice.
 static inline void tevColor (const int src[4], u32 operand, int out[3])
 {
@@ -862,6 +940,7 @@ struct Scratch
 	int n, y, x[CH]; u32 at[CH], depth[CH];
 	float l0[CH], l1[CH], l2[CH], q0[CH], q1[CH], q2[CH], qs[CH], fa[CH], fb[CH], fq[7][CH];
 	Row primary[4], tex[3][4], litP[4], litS[4], proc[4], prev[6][4], c[3][3], a[3], o[4];
+	Row dst[4], bo[4], bf[2];					// what is in the buffer, what goes there, two blending factors
 };
 
 static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Screen s0, Screen s1, Screen s2, int worker, int workers)
@@ -1045,49 +1124,77 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 				if (f.updateA >> st & 1) next[3] = prev[3];
 			}
 		}
-		// each fragment into the buffers
-		for (int i = 0; i < n; i++)
-		{
-			const int src[4] = { prev[0][i], prev[1][i], prev[2][i], prev[3][i] };
-			if (f.alphaTest && !compare (f.alphaFunc, (u32) src[3], f.alphaRef)) { nAlpha++; continue; }
-			nPixels++;
-			const u32 at = k.at[i];
-			if (useDepth && t.depthWrite && f.depthMask)
+		// each fragment into the buffers: the alpha test, the depth, then the colour -- put as it is, or blended with
+		// what is there (read for the whole group, blended as rows)
+		bool alive[CH];
+		for (int i = 0; i < n; i++) alive[i] = !f.alphaTest || compare (f.alphaFunc, (u32) prev[3][i], f.alphaRef);
+		for (int i = 0; i < n; i++) if (alive[i]) nPixels++; else nAlpha++;
+		if (useDepth && t.depthWrite && f.depthMask)
+			for (int i = 0; i < n; i++)
 			{
-				u8 *dq = t.depth + at * t.depthBytes;
+				if (!alive[i]) continue;
+				u8 *dq = t.depth + k.at[i] * t.depthBytes;
 				const u32 depth = k.depth[i];
 				dq[0] = (u8) depth; dq[1] = (u8) (depth >> 8);
 				if (t.depthBytes > 2) dq[2] = (u8) (depth >> 16);
 			}
-			if (!t.colorWrite) continue;
-			u8 *cq = t.color + at * t.colorBytes;
-			if (f.replace && !trace) { writeColor (t, cq, src); continue; }
-			int dst[4], out[4];
-			readColor (t, cq, dst);
-			if (f.blend)
+		if (!t.colorWrite) return;
+		const int *out[4] = { prev[0], prev[1], prev[2], prev[3] };
+		if (!f.replace || trace)
+		{
+			for (int i = 0; i < n; i++)
 			{
-				int sf[4], df[4], sfa[4], dfa[4];
-				blendFactor (f.srcRgb, src, dst, f.blendColor, sf); blendFactor (f.dstRgb, src, dst, f.blendColor, df);
-				blendFactor (f.srcA, src, dst, f.blendColor, sfa); blendFactor (f.dstA, src, dst, f.blendColor, dfa);
-				for (int c = 0; c < 3; c++) out[c] = blendEq (f.eqRgb, src[c], sf[c], dst[c], df[c]);
-				out[3] = blendEq (f.eqA, src[3], sfa[3], dst[3], dfa[3]);
+				int d[4];
+				readColor (t, t.color + k.at[i] * t.colorBytes, d);
+				k.dst[0][i] = d[0]; k.dst[1][i] = d[1]; k.dst[2][i] = d[2]; k.dst[3][i] = d[3];
 			}
-			else for (int c = 0; c < 4; c++)
+			auto factor = [&] (u32 which, int c, int *__restrict tmp) -> const int *
 			{
-				const int s = src[c], d = dst[c];
-				switch (f.logicOp)
+				switch (which)
 				{
-				case 0: out[c] = 0; break; case 1: out[c] = s & d; break; case 2: out[c] = s & ~d & 255; break; case 3: out[c] = s; break;
-				case 4: out[c] = 255; break; case 5: out[c] = ~s & 255; break; case 6: out[c] = d; break; case 7: out[c] = ~d & 255; break;
-				case 8: out[c] = ~(s & d) & 255; break; case 9: out[c] = s | d; break; case 10: out[c] = ~(s | d) & 255; break; case 11: out[c] = s ^ d; break;
-				case 12: out[c] = ~(s ^ d) & 255; break; case 13: out[c] = ~s & d & 255; break; case 14: out[c] = (s | ~d) & 255; break; default: out[c] = (~s | d) & 255; break;
+				case 0: return f.zeroRow;
+				case 1: return f.fullRow;
+				case 2: return prev[c];
+				case 3: rowInv (n, tmp, prev[c]); return tmp;
+				case 4: return k.dst[c];
+				case 5: rowInv (n, tmp, k.dst[c]); return tmp;
+				case 6: return prev[3];
+				case 7: rowInv (n, tmp, prev[3]); return tmp;
+				case 8: return k.dst[3];
+				case 9: rowInv (n, tmp, k.dst[3]); return tmp;
+				case 10: for (int i = 0; i < n; i++) tmp[i] = f.blendColor[c]; return tmp;
+				case 11: for (int i = 0; i < n; i++) tmp[i] = 255 - f.blendColor[c]; return tmp;
+				case 12: for (int i = 0; i < n; i++) tmp[i] = f.blendColor[3]; return tmp;
+				case 13: for (int i = 0; i < n; i++) tmp[i] = 255 - f.blendColor[3]; return tmp;
+				default:							// the source's alpha, as far as the buffer's leaves room
+				{
+					if (c == 3) return f.fullRow;
+					const int *sa = prev[3], *da = k.dst[3];
+					for (int i = 0; i < n; i++) tmp[i] = sa[i] < 255 - da[i] ? sa[i] : 255 - da[i];
+					return tmp;
 				}
+				}
+			};
+			for (int c = 0; c < 4; c++)
+			{
+				if (!f.rgbaMask[c]) { out[c] = k.dst[c]; continue; }
+				if (f.blend)
+				{
+					const int *sf = factor (c < 3 ? f.srcRgb : f.srcA, c, k.bf[0]), *df = factor (c < 3 ? f.dstRgb : f.dstA, c, k.bf[1]);
+					rowBlend (c < 3 ? f.eqRgb : f.eqA, n, k.bo[c], prev[c], sf, k.dst[c], df);
+				}
+				else rowLogic (f.logicOp, n, k.bo[c], prev[c], k.dst[c]);
+				out[c] = k.bo[c];
 			}
-			for (int c = 0; c < 4; c++) if (!f.rgbaMask[c]) out[c] = dst[c];
+		}
+		for (int i = 0; i < n; i++)
+		{
+			if (!alive[i]) continue;
+			const int c[4] = { out[0][i], out[1][i], out[2][i], out[3][i] };
 			if (trace && k.x[i] == t.w / 2 && k.y == t.h / 2)
 				fprintf (stderr, "   centre: lit %d %d %d %d + %d %d %d %d, primary %d %d %d %d, tex0 %d %d %d %d, combined %d %d %d %d, there %d %d %d %d -> %d %d %d %d%c", T[1][0][i], T[1][1][i], T[1][2][i], T[1][3][i], T[2][0][i], T[2][1][i], T[2][2][i], T[2][3][i],
-					 T[0][0][i], T[0][1][i], T[0][2][i], T[0][3][i], T[3][0][i], T[3][1][i], T[3][2][i], T[3][3][i], src[0], src[1], src[2], src[3], dst[0], dst[1], dst[2], dst[3], out[0], out[1], out[2], out[3], 10);
-			writeColor (t, cq, out);
+					 T[0][0][i], T[0][1][i], T[0][2][i], T[0][3][i], T[3][0][i], T[3][1][i], T[3][2][i], T[3][3][i], prev[0][i], prev[1][i], prev[2][i], prev[3][i], k.dst[0][i], k.dst[1][i], k.dst[2][i], k.dst[3][i], c[0], c[1], c[2], c[3], 10);
+			writeColor (t, t.color + k.at[i] * t.colorBytes, c);
 		}
 	};
 
@@ -1151,7 +1258,7 @@ static void flush (Pica *p)
 		Machine *m = p->m;
 		struct timeval tv0; gettimeofday (&tv0, 0);
 		p->flushWorkers = m->parallel && m->workers > 1 && !m->traceGpu ? (m->workers > 8 ? 8 : m->workers) : 1;
-		if (p->flushWorkers > 1) m->parallel (m->parallelUser, flushWorker, p, p->flushWorkers);
+		if (m->parallel && !m->traceGpu) m->parallel (m->parallelUser, flushWorker, p, p->flushWorkers);	// (even one worker: the host's, maybe another core)
 		else flushWorker (p, 0);
 		for (int w = 0; w < 8; w++)
 		{
@@ -1170,6 +1277,8 @@ static void flush (Pica *p)
 // piece put on the screen.
 static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c)
 {
+	p->m->gsp.trianglesIn++;
+	if (p->m->gpuSkip & 512) return;
 	if (!p->states)
 	{
 		p->states = (State *) malloc (sizeof (State) * STATE_MAX);
@@ -1271,6 +1380,10 @@ static void assemble (Pica *p, const Vertex &v)
 	else { triangle (p, p->prim[0], p->prim[1], p->prim[2]); p->primCount = 0; }
 }
 
+// A vertex an indexed draw names several times (a mesh's triangles share theirs) is shaded once.
+struct Shaded { u32 index, stamp; Vertex v; };
+enum { SHADED_MAX = 1024 };
+
 // ---- draws ---------------------------------------------------------------------------------------------------------------
 static void draw (Pica *p, bool indexed)
 {
@@ -1329,9 +1442,14 @@ static void draw (Pica *p, bool indexed)
 	}
 	const u64 pixelsBefore = p->pixels, trisBefore = p->triangles, depthBefore = p->depthFailed, alphaBefore = p->alphaFailed;
 	p->primCount = 0; p->stripFlip = false;
+	if (indexed && !p->shaded) p->shaded = (Shaded *) calloc (SHADED_MAX, sizeof (Shaded));
+	Shaded *const shaded = indexed && !p->m->traceGpu ? p->shaded : 0;
+	if (++p->drawStamp == 0) { p->drawStamp = 1; if (p->shaded) memset (p->shaded, 0, sizeof (Shaded) * SHADED_MAX); }
 	for (u32 n = 0; n < count; n++)
 	{
 		const u32 vi = indexed ? (index16 ? (u32) (index[n * 2] | index[n * 2 + 1] << 8) : index[n]) : n + p->regs[R_VERTEX_OFFSET];
+		Shaded *const slot = shaded ? &shaded[vi & (SHADED_MAX - 1)] : 0;
+		if (slot && slot->stamp == p->drawStamp && slot->index == vi) { assemble (p, slot->v); continue; }
 		float attr[16][4];
 		for (int i = 0; i < 16; i++) { attr[i][0] = attr[i][1] = attr[i][2] = 0; attr[i][3] = 1.0f; }
 		for (int l = 0; l < 12; l++)
@@ -1367,6 +1485,7 @@ static void draw (Pica *p, bool indexed)
 		Vertex v;
 		p->m->gsp.vertices++;
 		shadeVertex (p, attr, inputs, v);
+		if (slot) { slot->index = vi; slot->stamp = p->drawStamp; slot->v = v; }
 		if (p->m->traceGpu && n == 0)
 		{
 			fprintf (stderr, "   in:");
@@ -1463,8 +1582,8 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 			}
 			p->floatIndex++;
 		}
-		else if (id >= R_VSH_CODE_DATA && id < R_VSH_CODE_DATA + 8) { if (p->codeIndex < CODE_MAX) { p->code[p->codeIndex++] = value; if (p->codeIndex > p->codeTop) p->codeTop = p->codeIndex; } }
-		else if (id >= R_VSH_OPDESC_DATA && id < R_VSH_OPDESC_DATA + 8) { if (p->opdescIndex < OPDESC_MAX) p->opdesc[p->opdescIndex++] = value; }
+		else if (id >= R_VSH_CODE_DATA && id < R_VSH_CODE_DATA + 8) { if (p->codeIndex < CODE_MAX) { p->code[p->codeIndex++] = value; p->decDirty = true; if (p->codeIndex > p->codeTop) p->codeTop = p->codeIndex; } }
+		else if (id >= R_VSH_OPDESC_DATA && id < R_VSH_OPDESC_DATA + 8) { if (p->opdescIndex < OPDESC_MAX) { p->opdesc[p->opdescIndex++] = value; p->decDirty = true; } }
 		break;
 	}
 }
@@ -1481,7 +1600,7 @@ static Pica *pica (Machine *m)
 
 void picaFree (Machine *m)
 {
-	if (m->pica) { free (m->pica->states); free (m->pica->jobs); free (m->pica->scratch); for (auto &d : m->pica->decoded) free (d.px); }
+	if (m->pica) { free (m->pica->states); free (m->pica->jobs); free (m->pica->scratch); free (m->pica->shaded); free (m->pica->dec); free (m->pica->decValid); for (auto &d : m->pica->decoded) free (d.px); }
 	free (m->pica); m->pica = 0;
 }
 

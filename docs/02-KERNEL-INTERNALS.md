@@ -2687,6 +2687,10 @@ the kernel, Circle's drivers, FatFs or the network has to be multi-core safe.
   access, no TLBI needed) or 3 (no region, or out of memory: `FAULT`) and `SEV`s — up to one 10 ms
   tick per request. Frames leaving or protections lowered on core 0 reach the job's TLB by the
   inner-shareable `TLBI`.
+- **Instruction cache (2026-10-10).** A job's start empties the core's own instruction cache (`ic iallu`, beside
+  the TLB's flush): the loader's `SyncDataAndInstructionCache` reaches core 0 only, and a program loaded again
+  -- a new build of it -- gets the frames the last one had, so the core would run the old instructions wherever
+  it still held them.
 - **TLS (v75).** `core_run` reads the caller's `TPIDR_EL0` (the kernel never changes it) and the
   core writes it before `El0Enter`: a job shares its caller's thread-local data (errno included).
 - **Teardown.** `~CAddressSpace` calls `AppCoreReleaseAS (this)` **before** freeing the

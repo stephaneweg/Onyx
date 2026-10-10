@@ -276,7 +276,7 @@ struct Machine
 		u32 fills, transfers, cmdLists;		// (counters: what the program asked the GPU)
 		u64 usLists, usTransfers, usFills;	// ... and the host's time in each, in microseconds
 		u64 usRaster;				// (of the lists' time: the rasterizer's -- the rest is the vertices')
-		u64 vertices, trianglesDrawn, pixelsDrawn;
+		u64 vertices, trianglesDrawn, pixelsDrawn, shaderSteps, trianglesIn;	// (shaderSteps: the vertex shader's instructions run; trianglesIn: before clipping and culling)
 	} gsp;
 	struct Pica *pica;			// the GPU's state (n3ds_pica.cpp), made at its first command list
 	// APT (n3ds_apt.cpp): the application's life -- its events, the parameter the system sends it (the wake-up)
@@ -304,7 +304,7 @@ struct Machine
 	void *parallelUser;
 	bool trace;				// the system calls and the requests, on stderr (tests)
 	bool traceGpu;				// ... each draw and transfer of the GPU
-	u32 gpuSkip;				// (to find what is slow: 1 no procedural texture, 2 no blending, 4 no depth, 8 no texture, 16 no lighting, 32 no pixel at all, 64 the fragments found but not shaded, 128 not combined nor written)
+	u32 gpuSkip;				// (to find what is slow: 1 no procedural texture, 2 no blending, 4 no depth, 8 no texture, 16 no lighting, 32 no pixel at all, 64 the fragments found but not shaded, 128 not combined nor written, 256 no vertex shader, 512 no triangle)
 	// what the program says (svcOutputDebugString): the host's
 	void (*debugOut) (void *user, const char *text, u32 len);
 	void *debugUser;

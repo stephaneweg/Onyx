@@ -448,6 +448,15 @@ frames `acc3db37`, the game's first 600 frames `9c6e43e7`):
   is worked out for the whole group in one loop over plain rows of integers -- loops GCC turns into NEON --, a
   stage's choices (its sources, operands, mode) being made once a group. A source is a pointer to rows, a stage
   writes rows of its own: the buffer's two-stage delay is a matter of pointers.
+- **Blending by rows too**: what is in the buffer is read for the group, the factors are rows (or pointers to
+  rows), the equation one loop a channel.
+- **A vertex shaded once a draw**: an indexed draw names a mesh's vertices several times (the game: 3.0 M
+  vertices for 1.0 M triangles); the shaded ones are kept by their index for the draw's time (`Shaded`, 1024
+  slots): 1.15 M shader runs instead of 3.0 M.
+- **The vertex shader's instructions decoded once** (`ShaderIns`: the operands' shuffles, signs and the written
+  components as vectors) and worked out four components at once (GCC's vectors: NEON). The gain is small -- about
+  30 ns an instruction either way, the dispatch's mispredicted branches: **only compiling the shaders will make
+  them fast** (the game runs ~95 instructions a vertex).
 - **Fills and display transfers**: direct paths for the usual formats.
 - The core says where its time goes (`Machine::gsp.usLists / usRaster / usTransfers / usFills`, the vertices, the
   triangles, the pixels), and `gpuSkip` leaves parts of the renderer out to time them.
@@ -456,16 +465,28 @@ On the Pi 4 (`n3dstest`, no display, two cores):
 
 | Program | Before | Now | The rasterizer's part |
 |---|---|---|---|
-| Mars, 120 frames | 9.6 fps | **28.3 fps** | 2.1 s for 21.8 M pixels |
-| *A Link Between Worlds*, its first 600 frames (to the title screen) | not measured (11.1 fps midway through this slice) | **13.0 fps** (46.1 s) | 21.7 s for 255 M pixels |
+| Mars, 120 frames | 9.6 fps | **28.8 fps** | 2.0 s for 21.8 M pixels |
+| *A Link Between Worlds*, its first 600 frames (to the title screen) | not measured (11.1 fps midway through this slice) | **15.5 fps** (38.8 s) | 20.7 s for 255 M pixels |
 
-Where the game's 46 s go: the rasterizer 21.7 s (finding the fragments alone: 4.5 s), **the vertex shader 11.3 s**
-(3.0 M vertices: 3.7 microseconds each, interpreted), the display transfers 3.3 s, everything else (the processor,
-the system, the card) 9.8 s. **What is left to do, in the order of what it gives**: the vertex shader compiled (or
-at least decoded once) and run beside the processor; the fragments' lighting (per pixel today, the costliest
-input); the fragments found by spans instead of by testing every pixel of the box; then the GPU's whole command
-list on its own core, the processor going on meanwhile; and the V3D for the fragments (the study's plan) -- the
-software path alone will not reach the console's speed in this game.
+Where the game's 38.8 s go: **the rasterizer 20.7 s** (measured by leaving parts out: finding the fragments 4.5 s,
+the vertices' values brought to each fragment ~4 s, the lighting 3.9 s, the texels 0.6 s, the combiner and the
+writing the rest), the vertices 5.0 s (their shader: ~3.5 s), the display transfers 3.3 s, everything else (the
+processor, the system, the card) 9.7 s. **What is left to do, in the order of what it gives**: more cores for the
+rasterizer (both application cores when they are free); the fragments found by spans instead of by testing every
+pixel of the box, their values stepped along the row; the lighting cheaper (per pixel today); the vertex shaders
+compiled; then the GPU's whole command list on its own core, the processor going on meanwhile; and the V3D for
+the fragments (the study's plan) -- the software path alone will not reach the console's speed in this game.
+
+**A kernel fault found on the way** (and why some runs on the Pi stopped with only their first line): after each
+upload of a rebuilt `n3dstest`, the application core faulted at places the new code cannot fault at -- it was
+running the OLD binary's instructions. The loader empties the instruction cache of core 0 only (Circle's
+`SyncDataAndInstructionCache`: `ic iallu` is local to a core), and a program loaded again gets the frames the
+last one had. Two remedies: the kernel empties an application core's instruction cache when a job starts
+(`kernel/sys/appcore.cpp`, `LocalICacheFlush` -- **in the source, not yet in a published kernel**), and until
+then a program that uses the cores declares its code new to all of them before starting one (`n3dstest`'s
+`codeFresh`: `__builtin___clear_cache` over its code region, whose `ic ivau` reaches every core). The runner
+also gives core 0 back while it waits for a core (`kapi_yield`: the pager must be able to run) and says when a
+core's job stopped (`kapi_core_state`), instead of waiting for ever.
 
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.

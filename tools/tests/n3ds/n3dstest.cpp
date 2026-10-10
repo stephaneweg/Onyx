@@ -71,6 +71,14 @@ static int run (int argc, char **argv)
 	if (!m->init ()) { fprintf (stderr, "not enough memory for the machine\n"); return 2; }
 	m->debugOut = debugOut;
 	if (g_onMachine) g_onMachine (m);
+	// N3DS_WORKERS=<n>  the rasterizer's work cut in n parts as for n cores, done here one after the other: the
+	// pictures must be the same
+	if (const char *w = getenv ("N3DS_WORKERS"))
+		if (!m->parallel && atoi (w) > 1)
+		{
+			m->workers = atoi (w);
+			m->parallel = [] (void *, void (*fn) (void *, int), void *arg, int workers) { for (int i = 0; i < workers; i++) fn (arg, i); };
+		}
 	if (argc > 5) m->gpuSkip = (n3ds::u32) strtoul (argv[5], 0, 16);	// (a 5th argument: parts of the GPU left out, to time them)
 	m->trace = getenv ("N3DS_TRACE") != 0;
 	// N3DS_FONT=<sysfont.bcfnt>  the shared system font (tools/n3ds/mkfont.py makes ours)
@@ -148,7 +156,7 @@ static int run (int argc, char **argv)
 		 (unsigned long long) m->switchCount, (unsigned) m->mem.faults);
 	if (m->workers > 1) fprintf (stderr, "the rasterizer on %d cores%c", m->workers, 10);
 	fprintf (stderr, "the GPU's share: %.2f s in command lists, %.2f s in transfers, %.2f s in fills%c", (double) m->gsp.usLists / 1e6, (double) m->gsp.usTransfers / 1e6, (double) m->gsp.usFills / 1e6, 10);
-	fprintf (stderr, "of the lists: %.2f s rasterizing %llu triangles, %llu pixels; the rest for %llu vertices%c", (double) m->gsp.usRaster / 1e6, (unsigned long long) m->gsp.trianglesDrawn, (unsigned long long) m->gsp.pixelsDrawn, (unsigned long long) m->gsp.vertices, 10);
+	fprintf (stderr, "of the lists: %.2f s rasterizing %llu triangles, %llu pixels; the rest for %llu vertices (%llu shader instructions, %llu triangles)%c", (double) m->gsp.usRaster / 1e6, (unsigned long long) m->gsp.trianglesDrawn, (unsigned long long) m->gsp.pixelsDrawn, (unsigned long long) m->gsp.vertices, (unsigned long long) m->gsp.shaderSteps, (unsigned long long) m->gsp.trianglesIn, 10);
 	const unsigned char *rgb = screens (m);
 	const size_t rgbSize = (size_t) n3ds::TOP_W * n3ds::SCREEN_H * 2 * 3;
 	fprintf (stderr, "screens %08x (%llu VBlanks; the GPU was asked %u fills, %u transfers, %u command lists)\n", crc32 (rgb, rgbSize),
@@ -204,7 +212,19 @@ static void parRun (void *, void (*fn) (void *, int), void *arg, int)
 	g_par.req++;
 	__asm__ volatile ("dsb ish; sev" ::: "memory");
 	if (g_parMain) fn (arg, g_par.n);
-	for (int i = 0; i < g_par.n; i++) while (g_par.done[i] != g_par.req) __asm__ volatile ("wfe" ::: "memory");
+	// (a page of the program a core touches first -- code, a table -- is brought in by the kernel's pager, a task of
+	// core 0: it must be given the processor, or the core waits for ever)
+	for (int i = 0; i < g_par.n; i++)
+		for (unsigned spins = 0; g_par.done[i] != g_par.req; )
+		{
+			__asm__ volatile ("wfe" ::: "memory");
+			if (++spins >= 16)
+			{
+				kapi_yield (); spins = 0;
+				const int st = kapi_core_state (g_par.cores[i]);
+				if (st != 1 && g_par.done[i] != g_par.req) { fprintf (stderr, "the application core %d stopped (state %d) in the rasterizer%c", g_par.cores[i], st, 10); exit (3); }
+			}
+		}
 }
 // The program's file through Onyx's own calls (a seek, then one read of the whole piece).
 static bool kfileRead (void *user, n3ds::u64 offset, void *dst, n3ds::u32 n)
@@ -222,8 +242,19 @@ static bool kfileOpen (const char *path, n3ds::Source *src)
 	return true;
 }
 
+// The other cores may still hold, in their instruction caches, what an earlier program had at the same place
+// (the kernel empties core 0's when it loads a program): the program's code is declared new to all of them.
+extern "C" void _start (void);
+static void codeFresh (void)
+{
+	struct kapi_vm_region r;
+	const unsigned long long at = (unsigned long long) (void *) &_start;
+	if (kapi_vm_query (at, &r) == 0 && r.end > at) __builtin___clear_cache ((char *) at, (char *) r.end);
+}
+
 static void parSetup (n3ds::Machine *m)
 {
+	codeFresh ();
 	for (int i = 0; i < 2; i++)
 	{
 		const int c = kapi_core_acquire ();

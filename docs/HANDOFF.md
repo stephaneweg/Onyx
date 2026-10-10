@@ -50,8 +50,14 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
 - **On the Pi 4** (sections 9k and 9l; `n3dstest.elf`, headless): 2048 190 fps, Snake 116, Cube Adventures 63; **T3's first
   slice** (the draws' state kept, the triangles queued and rasterized by two cores in 8-row bands, textures decoded once,
   fragments shaded by groups of 32 in vector loops; same pictures) took **Mars from 9.6 to 28 fps and the game's first 600
-  frames to 13 fps** (11.1 midway). Of the game's 46 s: rasterizer 21.7, **vertex shader 11.3 (interpreted: compile it)**,
-  transfers 3.3, the rest 9.8. Next in T3: the vertex shader, the lighting, spans, the GPU on its own core, then the V3D.
+  frames to 15.5 fps** (38.8 s; also: blending by rows, a vertex shaded once a draw, the shader's instructions decoded once
+  and vectorised). Of the 38.8 s: rasterizer 20.7, vertices 5.0, transfers 3.3, the rest 9.7. Next in T3: both application
+  cores, spans, the lighting, the shaders compiled, the GPU on its own core, then the V3D.
+  **A kernel fault found there**: the loader empties core 0's instruction cache only, so an application core ran the
+  previous build's instructions after each upload of a rebuilt program (faults at impossible places, or a hang).
+  `kernel/sys/appcore.cpp` now empties the core's cache at a job's start (`LocalICacheFlush`) -- **in the source only: to
+  be built, tried on the Pi and published with the next kernel**; until then a program declares its code new before
+  starting a core (`n3dstest`'s `codeFresh`), which every program using the cores could need after an update without a reboot.
   Only one application core was free on the user's Pi (a server holds the other). Timing a part: `n3dstest <program>
   <frames> - <font> <gpuSkip hex>` (`n3ds.h`); from the PC: FTP the stripped `n3dstest.elf` to `SD:/bin`, run by telnet.
 - **Next for the game**: the software keyboard applet (*Rename* waits for it: `APT` 0x18 and the library applets),
