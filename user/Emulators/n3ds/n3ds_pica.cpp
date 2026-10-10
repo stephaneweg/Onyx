@@ -1491,6 +1491,14 @@ static void flush (Pica *p)
 	else flushWorker (p, 0);
 	flushDone (p, false);
 }
+static inline u64 hashBytes (const void *data, size_t n, u64 h)
+{
+	const u8 *d = (const u8 *) data;
+	size_t i = 0;
+	for (; i + 8 <= n; i += 8) { u64 w; memcpy (&w, d + i, 8); h = (h ^ w) * 1099511628211ull; h ^= h >> 29; }
+	for (; i < n; i++) h = (h ^ d[i]) * 1099511628211ull;
+	return h;
+}
 static bool guardSet (Pica *p, u32 pa, u32 bytes);
 // ... or by the host's helpers while this thread goes on (a list's end), when there are some.
 static void flushAside (Pica *p)
@@ -1539,6 +1547,7 @@ struct GRec
 	float *v; u32 nf; GpuBatch *b; u32 nb; u32 *u; u32 nu;
 	u32 serial; u32 *pixels;
 	u64 touched;				// (the frame it was last drawn into or transferred: an old one gives its place)
+	struct Past { u64 start, rec; u32 *out; size_t cap; } past[2]; int pastAt;	// its last two frames: what they began from and were made of (hashes), their pictures
 	bool open, skip;			// a frame of it has begun (its first draw came); that frame is left out (Machine::skipDraw then)
 	bool guestStale;			// the host's pixels are newer than the program's buffer (put there only when something reads it)
 	bool trusted;				// its last frame was the GPU's, whole: this one's triangles are not queued for the software
@@ -1622,6 +1631,7 @@ static GRec *gpuRec (Pica *p, u32 color, bool make)
 		r.u = (u32 *) malloc (sizeof (u32) * GUNI_MAX); r.pixels = (u32 *) malloc (sizeof (u32) * 1024 * 1024);
 		if (!r.v || !r.b || !r.u || !r.pixels) { free (r.v); free (r.b); free (r.u); free (r.pixels); r.v = 0; r.b = 0; r.u = 0; r.pixels = 0; return 0; }
 	}
+	r.past[0].start = r.past[0].rec = r.past[1].start = r.past[1].rec = 0;
 	r.used = true; r.color = color; r.nf = r.nb = r.nu = 0; r.bad = false; r.hostValid = false; r.serial = 0; r.trusted = false; r.guestStale = false; r.open = false; r.skip = false;
 	return &r;
 }
@@ -1742,7 +1752,35 @@ static void gpuState (Pica *p, State &st)
 struct ViewMap { float vw, vh, vx, vy, ds, dof; };
 // A triangle recorded for the GPU (its three vertices: clip space, not yet divided). -> true: it need not be queued
 // for the software renderer too (its target's last frame was the GPU's: this one is trusted to be).
-static bool gpuTriangle (Pica *p, const State &st, const Vertex *const tri[3], const ViewMap &vm)
+// A vertex as the host's GPU takes it: its place in clip space, then the varyings its batch's program reads.
+static inline void gpuRow (const GProg &g, const ViewMap &vm, float halfW, float halfH, const float *q, float *d)
+{
+	// (from the game's viewport to the whole target; the depth as the PICA makes it, in the GPU's -w..w)
+	d[0] = q[0] * (vm.vw / halfW) + q[3] * ((vm.vw + vm.vx) / halfW - 1.0f);
+	d[1] = q[1] * (vm.vh / halfH) + q[3] * ((vm.vh + vm.vy) / halfH - 1.0f);
+	d[2] = 2.0f * (vm.ds * q[2] + vm.dof * q[3]) - q[3];
+	d[3] = q[3];
+	for (u32 n = 0; n < g.nVary; n++)
+	{
+		const picatev::Vary &vy = g.vary[n];
+		float x;
+		switch (vy.kind)
+		{
+		case picatev::V_PRIMARY: x = q[A_COLOR + vy.a]; break;
+		case picatev::V_LITP: x = q[A_LITP + vy.a]; break;
+		case picatev::V_LITS: x = q[A_LITS + vy.a]; break;
+		default:
+		{
+			const int unit = g.look[vy.a].unit, at = unit == 0 ? A_TC0 : unit == 1 ? A_TC1 : A_TC2;
+			x = vy.b == 0 ? q[at] : 1.0f - q[at + 1];		// (the texture's rows: from the top for the GPU)
+			break;
+		}
+		}
+		d[4 + n] = x;
+	}
+}
+
+static bool gpuTriangle (Pica *p, const State &st, const Vertex *const tri[3], const ViewMap &vm, const float *const *rows = 0)
 {
 	GRec *r = gpuRec (p, st.colorPhys, true);
 	if (!r) return false;
@@ -1781,35 +1819,8 @@ static bool gpuTriangle (Pica *p, const State &st, const Vertex *const tri[3], c
 	}
 	const float halfW = (float) r->w * 0.5f, halfH = (float) r->h * 0.5f;
 	GpuBatch &b = r->b[r->nb - 1];
-	for (int i = 0; i < 3; i++)
-	{
-		const float *q = tri[i]->a;
-		float *d = r->v + r->nf;
-		// (from the game's viewport to the whole target; the depth as the PICA makes it, in the GPU's -w..w)
-		d[0] = q[0] * (vm.vw / halfW) + q[3] * ((vm.vw + vm.vx) / halfW - 1.0f);
-		d[1] = q[1] * (vm.vh / halfH) + q[3] * ((vm.vh + vm.vy) / halfH - 1.0f);
-		d[2] = 2.0f * (vm.ds * q[2] + vm.dof * q[3]) - q[3];
-		d[3] = q[3];
-		for (u32 n = 0; n < g.nVary; n++)
-		{
-			const picatev::Vary &vy = g.vary[n];
-			float x;
-			switch (vy.kind)
-			{
-			case picatev::V_PRIMARY: x = q[A_COLOR + vy.a]; break;
-			case picatev::V_LITP: x = q[A_LITP + vy.a]; break;
-			case picatev::V_LITS: x = q[A_LITS + vy.a]; break;
-			default:
-			{
-				const int unit = g.look[vy.a].unit, at = unit == 0 ? A_TC0 : unit == 1 ? A_TC1 : A_TC2;
-				x = vy.b == 0 ? q[at] : 1.0f - q[at + 1];		// (the texture's rows: from the top for the GPU)
-				break;
-			}
-			}
-			d[4 + n] = x;
-		}
-		r->nf += stride;
-	}
+	if (rows) for (int i = 0; i < 3; i++) { memcpy (r->v + r->nf, rows[i], stride * sizeof (float)); r->nf += stride; }	// (made once a vertex: gpuRow)
+	else for (int i = 0; i < 3; i++) { gpuRow (g, vm, halfW, halfH, tri[i]->a, r->v + r->nf); r->nf += stride; }
 	b.count += 3;
 	return r->trusted;
 }
@@ -1894,7 +1905,28 @@ static GRec *gpuFrameEnd (Pica *p, u32 color)
 		GpuFrame f;
 		f.w = r->w; f.h = r->h; f.v = r->v; f.nFloats = r->nf; f.b = r->b; f.nb = r->nb; f.u = r->u; f.nu = r->nu;
 		f.programs = progs; f.nPrograms = p->gprogCount; f.textures = texs; f.nTextures = 96;
-		const bool ok = m->gpuDraw (m->gpuUser, &f, r->pixels);
+		// The same frame as one of this target's last two -- the same pixels to draw over, the same batches, vertices,
+		// uniforms and textures -- gives the same picture: taken back, the host's GPU not asked (a screen that
+		// does not move: the bottom one of many games, a pause, a menu; a call costs 3 ms and more).
+		const size_t outBytes = (size_t) r->w * (size_t) r->h * sizeof (u32);
+		u64 hStart = hashBytes (r->pixels, outBytes, 1469598103934665603ull);
+		u64 hRec = hashBytes (r->b, sizeof (GpuBatch) * r->nb, (u64) r->nb * 31 + (u64) r->w);
+		hRec = hashBytes (r->u, sizeof (u32) * r->nu, hRec); hRec = hashBytes (r->v, sizeof (float) * r->nf, hRec);
+		for (u32 i = 0; i < r->nb; i++)
+			for (int k = 0; k < 3; k++)
+				if (r->b[i].tex[k] >= 0 && r->b[i].tex[k] < 96) hRec = (hRec ^ ((u64) texs[r->b[i].tex[k]].serial << 20 | (u64) r->b[i].tex[k])) * 1099511628211ull;
+		int same = -1;
+		for (int k = 0; k < 2; k++) if (r->past[k].out && r->past[k].cap >= outBytes && r->past[k].rec && r->past[k].start == hStart && r->past[k].rec == hRec) same = k;
+		bool ok;
+		if (same >= 0) { memcpy (r->pixels, r->past[same].out, outBytes); r->pastAt = same ^ 1; ok = true; m->gsp.sameFrames++; }
+		else
+		{
+			ok = m->gpuDraw (m->gpuUser, &f, r->pixels);
+			GRec::Past &pa = r->past[r->pastAt & 1];
+			if (ok && pa.cap < outBytes) { free (pa.out); pa.out = (u32 *) malloc (outBytes); pa.cap = pa.out ? outBytes : 0; }
+			if (ok && pa.out) { memcpy (pa.out, r->pixels, outBytes); pa.start = hStart; pa.rec = hRec; r->pastAt ^= 1; }
+			else pa.start = pa.rec = 0;
+		}
 		if (ok)
 		{
 			r->hostValid = true; r->guestStale = true;		// (the program's buffer: only when something reads it)
@@ -1980,16 +2012,15 @@ static bool drawnInto (const Pica *p, const Texture &tx)
 
 // A triangle from the shader: clipped to what can be seen (in clip space: -w <= x, y <= w, -w <= z <= 0), each
 // piece put on the screen.
-static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c)
+// The draw's state (its target, its fragment's rules, its GPU program) queued once, before its first triangle.
+static bool ensureState (Pica *p)
 {
-	p->m->gsp.trianglesIn++;
-	if (p->m->gpuSkip & 512) return;
 	if (!p->states)
 	{
 		p->states = (State *) malloc (sizeof (State) * STATE_MAX);
 		p->jobs = (Job *) malloc (sizeof (Job) * JOB_MAX);
 		if (!p->scratch) p->scratch = (Scratch *) malloc (sizeof (Scratch) * 8);
-		if (!p->states || !p->jobs || !p->scratch) { free (p->states); free (p->jobs); free (p->scratch); p->states = 0; p->jobs = 0; p->scratch = 0; return; }
+		if (!p->states || !p->jobs || !p->scratch) { free (p->states); free (p->jobs); free (p->scratch); p->states = 0; p->jobs = 0; p->scratch = 0; return false; }
 		p->stateCount = 0; p->jobCount = 0;
 	}
 	if (!p->stateOk || !p->stateCount)
@@ -2013,6 +2044,14 @@ static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c
 		p->states[p->stateCount++] = st;
 		p->stateOk = true;
 	}
+	return true;
+}
+
+static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c)
+{
+	p->m->gsp.trianglesIn++;
+	if (p->m->gpuSkip & 512) return;
+	if (!ensureState (p)) return;
 	const u32 stateIndex = p->stateCount - 1;
 	if (!p->states[stateIndex].ok) return;
 	// A triangle wholly inside, of a target whose frames are the GPU's: recorded from where its vertices are
@@ -2173,6 +2212,7 @@ static void lightVertices (const Pica *p, const Lighting &l, Vertex *v, int n, S
 struct Batch
 {
 	float attr[BATCH_MAX][16][4]; Vertex out[BATCH_MAX]; u16 order[BATCH_SPAN];
+	bool in[BATCH_MAX]; float sx[BATCH_MAX], sy[BATCH_MAX], iw[BATCH_MAX]; u8 rowOf[BATCH_MAX]; float row[BATCH_MAX][36];	// (each shaded vertex: inside the view, where on the target)
 	u32 count, next; int inputs;
 	const Lighting *lit;						// (the vertices are lit too: for the GPU's frames)
 	struct { u64 steps; u32 badOp; char pad[52]; } by[8];		// (a worker's own)
@@ -2400,7 +2440,65 @@ static void draw (Pica *p, bool indexed)
 			else shadeWorker (p, 0);
 			for (int w = 0; w < 8; w++) { m->gsp.shaderSteps += b.by[w].steps; if (b.by[w].badOp) p->badOp = b.by[w].badOp; }
 			const u64 tAsm = microsNow ();
-			for (u32 i = n0; i < n; i++) assemble (p, b.out[b.order[i - n0]]);
+			// A list of triangles for a target whose frames are the host GPU's: each triangle wholly inside goes
+			// straight from the shaded vertices to the record -- where each vertex falls is worked out once a
+			// vertex, not once a triangle; nothing is copied. The others (cut by the view, a strip, a fan, the
+			// software renderer's) take the ordinary way.
+			u32 i = n0;
+			const u32 primMode = p->regs[R_PRIM_CONFIG] >> 8 & 3;
+			if (m->gpuDraw && primMode != 1 && primMode != 2 && !(m->gpuSkip & 512) && n - n0 >= 3)
+			{
+				while (p->primCount && i < n) { assemble (p, b.out[b.order[i - n0]]); i++; }	// (a triangle begun in the batch before)
+				GRec *gr = 0;
+				if (i + 3 <= n && ensureState (p))
+				{
+					const State &S0 = p->states[p->stateCount - 1];
+					if (S0.ok && S0.gprog >= 0) gr = gpuRec (p, S0.colorPhys, false);
+					if (gr && (!gr->trusted || gr->bad)) gr = 0;
+				}
+				if (gr)
+				{
+					const ViewMap vm = { f24 (p->regs[R_VIEWPORT_W]), f24 (p->regs[R_VIEWPORT_H]), (float) (int) (p->regs[R_VIEWPORT_XY] & 0x3FF), (float) (int) (p->regs[R_VIEWPORT_XY] >> 16 & 0x3FF),
+							     f24 (p->regs[R_DEPTH_SCALE]), f24 (p->regs[R_DEPTH_OFFSET]) };
+					for (u32 k = 0; k < b.count; k++)
+					{
+						const float *q = b.out[k].a;
+						const bool in = q[3] - 1e-6f >= 0 && q[3] + q[0] >= 0 && q[3] - q[0] >= 0 && q[3] + q[1] >= 0 && q[3] - q[1] >= 0 && q[3] + q[2] >= 0 && -q[2] >= 0;
+						b.in[k] = in;
+						const float iw = in ? 1.0f / q[3] : 0.0f;
+						b.sx[k] = (q[0] * iw + 1.0f) * vm.vw + vm.vx; b.sy[k] = (q[1] * iw + 1.0f) * vm.vh + vm.vy; b.iw[k] = iw;
+						b.rowOf[k] = 0;
+					}
+					const GProg *rowProg = 0;				// (the rows made are this program's)
+					for (; i + 3 <= n; i += 3)
+					{
+						const u32 k0 = b.order[i - n0], k1 = b.order[i + 1 - n0], k2 = b.order[i + 2 - n0];
+						const State &S = p->states[p->stateCount - 1];	// (the same all along: nothing is queued or flushed here)
+						if (!(b.in[k0] && b.in[k1] && b.in[k2]) || gr->bad) { triangle (p, b.out[k0], b.out[k1], b.out[k2]); continue; }
+						m->gsp.trianglesIn++;
+						const Vertex *const vp[3] = { &b.out[k0], &b.out[k1], &b.out[k2] };
+						Screen s3[3];
+						s3[0].x = b.sx[k0]; s3[0].y = b.sy[k0]; s3[0].z = 0; s3[0].invw = b.iw[k0]; s3[0].v = vp[0];
+						s3[1].x = b.sx[k1]; s3[1].y = b.sy[k1]; s3[1].z = 0; s3[1].invw = b.iw[k1]; s3[1].v = vp[1];
+						s3[2].x = b.sx[k2]; s3[2].y = b.sy[k2]; s3[2].z = 0; s3[2].invw = b.iw[k2]; s3[2].v = vp[2];
+						float area; int box[4];
+						if (!triBox (S.t, S.cull, s3[0], s3[1], s3[2], area, box)) continue;
+						const GProg *const gp = &p->gprog[S.gprog];
+						if (gp != rowProg) { rowProg = gp; for (u32 k = 0; k < b.count; k++) b.rowOf[k] = 0; }
+						const float halfW = (float) S.t.w * 0.5f, halfH = (float) S.t.h * 0.5f;
+						const u32 ks[3] = { k0, k1, k2 };
+						const float *rows[3];
+						for (int e = 0; e < 3; e++)
+						{
+							if (!b.rowOf[ks[e]]) { gpuRow (*gp, vm, halfW, halfH, b.out[ks[e]].a, b.row[ks[e]]); b.rowOf[ks[e]] = 1; }
+							rows[e] = b.row[ks[e]];
+						}
+						if (gpuTriangle (p, S, vp, vm, rows)) { p->triangles++; m->gsp.trianglesDrawn++; }
+						else { m->gsp.trianglesIn--; triangle (p, b.out[k0], b.out[k1], b.out[k2]); }
+					}
+				}
+			}
+			for (; i < n; i++) assemble (p, b.out[b.order[i - n0]]);
 			const u64 tEnd = microsNow ();
 			m->gsp.usRead += tShade - tRead; m->gsp.usShade += tAsm - tShade; m->gsp.usAssemble += tEnd - tAsm;
 		}

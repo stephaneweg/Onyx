@@ -794,6 +794,27 @@ reading 19 %, shading 43 %, assembling and recording 31 %; a translated draw kee
 fifths of the vertices translated and lit on the GPU, about half of the frame's time on the lists goes -- if the
 GPU takes the vertices at that rate, which is not measured.
 
+## 9s. Two small gains tried before the vertex shaders (2026-10-10): what they gave
+
+- **The triangles' assembly.** A list of triangles for a target whose frames are the GPU's goes straight from
+  the batch's shaded vertices to the record: where a vertex falls and its row for the GPU are made once a vertex,
+  not once a triangle, nothing copied (`ensureState`, `gpuRow`, the batch's `in / sx / sy / row`). Measured:
+  the assembly 3.68 -> 3.2 s for 1200 frames of Mario's opening -- **about 2 % of a frame**. Three triangles of
+  four are rejected (outside, culled): the time is in reading their vertices, already near its floor on one core.
+- **The GPU call's fixed cost is the GPU's own time.** A kernel that watches the V3D's counters for 1.5 ms before
+  sleeping (tried on the Pi: built here against Circle in WSL -- `CIRCLEHOME=`, the add-ons, `-d DEPTH=32` --, the
+  card's kernel put back after) changed nothing: 3.0 to 3.6 ms a target with 800 vertices as with 9 000, 6 to 9 ms
+  in a level. It is not the scheduler: it is the frame itself (28 tiles, the generated fragment shaders on every
+  pixel). The change was dropped.
+- **A frame the same as one of the target's last two is not drawn again** (`GRec::past`: hashes of the pixels it
+  starts from and of its batches, vertices, uniforms and textures' serials; its picture kept): 3 475 of the 5 552
+  frames of Mario's first 5 600 VBlanks (the dialogs, the menus, a pause -- 11 to 13 ms a VBlank were going to
+  two GPU calls there). Nothing in a scene where both screens move.
+
+So in a level the two big shares stay the lists (7 to 8.5 ms a VBlank) and the GPU's frames (5 to 6): the vertex
+shaders on the V3D (9r) for the first; for the second, cheaper generated fragment shaders and the kernel's own
+clipping ("clip": 0.6 to 2 ms a frame on the processor) are what is left to look at.
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours
