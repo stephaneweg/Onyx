@@ -631,6 +631,14 @@ music comes out as a clean waveform (the sample format comes with a voice's firs
 dirty bit: seen in a dump of the orders). Not done: the filters, the auxiliary mixes (reverb), the master
 volume, the compressor. **Not heard on the Pi yet** (it was unreachable when the app's sound was ready).
 
+**Frames left out when the Pi is late (2026-10-10)** -- the user heard the sound "a little choppy": below the
+console's speed the mix comes slower than it is played. `Machine::skipDraw` (set by the host for a frame when
+it is late by one or more, three in a row at most): a render target's frame that begins while it is set -- decided
+at its first draw, for the whole of it (`GRec::open`, `skip`) -- is neither drawn nor transferred, the framebuffer
+keeps the last picture; the program, its command lists' registers and its sound go on. On the user's Pi, the
+file-selection scene: the game at 60.7 frames a second, about 18 pictures drawn. View ▸ Draw Every Frame turns
+it off.
+
 **V2's design, as built**:
 - *The software queue is the universal record.* A frame's triangles stay queued (`Job`, `State`) **until the
   display transfer of their target** instead of being rasterized at each list's end; beside them the GPU's frame is

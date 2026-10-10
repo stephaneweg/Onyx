@@ -15,8 +15,9 @@
 //   * The machine runs on this thread (its processor's JIT allocates as it goes); the picture is drawn by the
 //     V3D (the fragments: generated shaders) with the free application core's help for the vertices, or by the
 //     software renderer on both (--soft, or a frame the GPU cannot do). The right eye's picture is not drawn.
-//   * The sound: the DSP's mix (32728 samples a second) brought to the output's rate; Sound > Sound On / Off. The
-//     pace is the clock's, 59.8 frames a second at most (a game that runs slower has gaps in its sound).
+//   * The sound: the DSP's mix (32728 samples a second) brought to the output's rate; Sound > Sound On / Off.
+//   * The pace is the clock's, 59.8 frames a second. When the Pi is late the next frames are not drawn (up to three
+//     in a row: the game and its sound keep their speed, the picture's rate drops) -- View > Draw Every Frame: never.
 //
 // MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -41,6 +42,7 @@ static n3ds::Machine *g_m = 0;
 static char g_rom_path[256], g_sav_path[260];
 static int g_zoom = 1, g_zmax = 2;				// (the largest zoom the screen holds: the window is made at it)
 static bool g_side = false, g_paused = false, g_stats = false;
+static bool g_everyFrame = false;				// never leave a frame's picture out
 static bool g_arrowsPad = false;				// the arrows are the + Control Pad (else the Circle Pad)
 static unsigned *g_fs = 0; static int g_fsw, g_fsh;		// full screen back buffer
 static Root *g_root = 0;
@@ -202,6 +204,7 @@ static void on_full () { full_screen (!g_fs); }
 static void on_pause () { g_paused = !g_paused; g_root->invalidate (true); }
 static void on_stats () { g_stats = !g_stats; g_root->invalidate (true); }
 static void on_arrows () { g_arrowsPad = !g_arrowsPad; }
+static void on_every () { g_everyFrame = !g_everyFrame; }
 static void on_sound ()
 {
 	g_sound = !g_sound;
@@ -370,6 +373,7 @@ int main (void)
 	if (g_zmax >= 2) menu.item (TR ("Zoom 2x"), "", 0, on_zoom2);
 	menu.separator ();
 	menu.item (TR ("Show Speed"),   "F12", 0, on_stats);
+	menu.item (TR ("Draw Every Frame"), "", 0, on_every);
 	menu.menu (TR ("Controls"));
 	menu.item (TR ("Arrows Are the + Control Pad"), "", 0, on_arrows);
 	menu.menu (TR ("Sound"));
@@ -380,7 +384,7 @@ int main (void)
 	g_loading = false;
 	const unsigned long long frameUs = 16715;			// 59.83 frames a second
 	unsigned long long next = now_us (), stT = next, emuUs = 0, drawUs = 0, lastSave = next;
-	unsigned stFrames = 0;
+	unsigned stFrames = 0, stDrawn = 0, skipped = 0;
 	unsigned long long gpuBefore = 0, softBefore = 0;
 	while (!should_exit () && !g_m->exited)
 	{
@@ -388,32 +392,44 @@ int main (void)
 		if (g_paused) { show_frame (); kapi_msleep (20); next = now_us (); continue; }
 		unsigned long long t = now_us ();
 		if (t < next) { kapi_msleep (1); continue; }			// (ahead of the console's pace)
-		if (t - next > 4 * frameUs) next = t;				// (too slow to catch up: no burst after)
+		// late by a frame or more: this one's picture is left out (not more than three in a row); too late to catch
+		// up at all: the clock starts again from here
+		const bool skip = !g_everyFrame && t - next > frameUs && skipped < 3;
+		if (t - next > 8 * frameUs) next = t;
 		next += frameUs;
 		n3ds::u32 b; int cx, cy;
 		input (b, cx, cy);
 		g_m->setInput (b, cx, cy, g_touchDown != 0, g_touchX, g_touchY);
+		g_m->skipDraw = skip;
 		g_m->runFrame ();
 		const unsigned long long t1 = now_us ();
 		play_sound ();
-		g_m->gpuSync ();
-		g_m->screenImage (n3ds::SCREEN_TOP, g_top);
-		g_m->screenImage (n3ds::SCREEN_BOTTOM, g_bottom);
-		show_frame ();
+		stFrames++; emuUs += t1 - t;
+		if (skip) skipped++;
+		else
+		{
+			skipped = 0;
+			g_m->gpuSync ();
+			g_m->screenImage (n3ds::SCREEN_TOP, g_top);
+			g_m->screenImage (n3ds::SCREEN_BOTTOM, g_bottom);
+			show_frame ();
+			stDrawn++;
+		}
 		const unsigned long long t2 = now_us ();
-		emuUs += t1 - t; drawUs += t2 - t1; stFrames++;
+		drawUs += t2 - t1;
 		if (t2 - stT >= 1000000)
 		{
 			const unsigned long long el = t2 - stT;
 			int k = 0;
-			fmt_num (g_statText, &k, (unsigned) ((unsigned long long) stFrames * 10000000ull / el), 1); cat (g_statText, &k, TR (" fps  emu "));
+			fmt_num (g_statText, &k, (unsigned) ((unsigned long long) stFrames * 10000000ull / el), 1); cat (g_statText, &k, TR (" fps  shown "));
+			fmt_num (g_statText, &k, (unsigned) ((unsigned long long) stDrawn * 10000000ull / el), 1); cat (g_statText, &k, TR ("  emu "));
 			fmt_num (g_statText, &k, stFrames ? (unsigned) (emuUs / stFrames / 100) : 0, 1); cat (g_statText, &k, TR (" ms  draw "));
-			fmt_num (g_statText, &k, stFrames ? (unsigned) (drawUs / stFrames / 100) : 0, 1); cat (g_statText, &k, " ms");
+			fmt_num (g_statText, &k, stDrawn ? (unsigned) (drawUs / stDrawn / 100) : 0, 1); cat (g_statText, &k, " ms");
 			const unsigned long long gf = g_m->gsp.gpuFrames - gpuBefore, sf = g_m->gsp.softFrames - softBefore;
 			cat (g_statText, &k, gf && !sf ? TR ("  GPU") : gf ? TR ("  GPU + software") : TR ("  software"));
 			if (g_m->helpers) cat (g_statText, &k, TR ("  + a core"));
 			gpuBefore = g_m->gsp.gpuFrames; softBefore = g_m->gsp.softFrames;
-			stT = t2; emuUs = 0; drawUs = 0; stFrames = 0;
+			stT = t2; emuUs = 0; drawUs = 0; stFrames = 0; stDrawn = 0;
 		}
 		if (g_m->storageDirty && t2 - lastSave > 3000000) { save_storage (); lastSave = t2; }
 	}

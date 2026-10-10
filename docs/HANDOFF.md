@@ -72,8 +72,9 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
   `Emulators/n3ds/onyxhost.h`)**: the machine on the app's thread, the free application core for the renderer, saves in
   `<game>.sav`; on the user's Pi the game plays past its title. **The sound (T4) the same day**: the DSP's 24 voices mixed at a high level
   (`n3ds_dsp.cpp`: PCM 8 / 16, ADPCM, rates, gains; `Machine::audioRead`; `N3DS_WAV` in the test runner), the app plays it
-  through AudioKit -- the game's opening music is a clean waveform under qemu; **the app's sound was not heard on the Pi
-  yet** (unreachable that evening: try it, the pace is still the clock's). Next: the lighting per fragment (V5), the
+  through AudioKit -- the game's opening music is a clean waveform under qemu; the user heard it on the Pi ("un peu saccadé"), so **frames are left
+  out when the Pi is late** (`Machine::skipDraw`, the app's pace loop; n3dsemu 1.0.1): the game keeps 60 fps and its sound,
+  ~18 pictures a second are drawn in the file-selection scene. **He asked whether gcemu can do the same: looked at next.** Next: the lighting per fragment (V5), the
   software keyboard applet, the sound's effects, an asynchronous GPU call in the kernel. Also still open:
   the vertex shader compiled, the one-colour full-screen layers (the software path will not reach full speed in this game).
   **A kernel fault found there**: the loader empties core 0's instruction cache only, so an application core ran the

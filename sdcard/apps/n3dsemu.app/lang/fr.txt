@@ -18,7 +18,8 @@ Zoom 2x	Zoom 2x
 Show Speed	Afficher la vitesse
 Controls	Commandes
 Arrows Are the + Control Pad	Les flèches sont la croix directionnelle
- fps  emu 	 i/s  émulation 
+ fps  shown 	 i/s  affichées 
+  emu 	  émulation 
  ms  draw 	 ms  dessin 
   GPU	  GPU
   GPU + software	  GPU + logiciel
@@ -26,3 +27,4 @@ Arrows Are the + Control Pad	Les flèches sont la croix directionnelle
   + a core	  + un cœur
 Sound	Son
 Sound On / Off	Son activé / désactivé
+Draw Every Frame	Dessiner toutes les images

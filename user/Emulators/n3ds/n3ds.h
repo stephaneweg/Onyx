@@ -311,7 +311,7 @@ struct Machine
 		u64 hostTransfers, usHostTransfers;	// the transfers read from the host's pixels, their time
 		u64 usRead, usShade, usAssemble;	// (of the lists' time, in the draws of many vertices: their attributes read, shaded, their triangles assembled)
 		u64 shaderChecked, shaderWrong;		// (shaderCheck: vertices run by both the compiled shader and the interpreter; the ones that differed)
-		u64 gpuFrames, softFrames, usGpu;	// the targets' frames drawn by the host's GPU, by the software renderer; the host's time
+		u64 gpuFrames, softFrames, usGpu, skippedFrames;	// the targets' frames drawn by the host's GPU, by the software renderer; the host's time
 		u64 vertices, trianglesDrawn, pixelsDrawn, shaderSteps, trianglesIn;	// (shaderSteps: the vertex shader's instructions run; trianglesIn: before clipping and culling)
 	} gsp;
 	struct Pica *pica;			// the GPU's state (n3ds_pica.cpp), made at its first command list
@@ -364,6 +364,9 @@ struct Machine
 	// the next -- is given whole to gpuDraw as GPU batches when every draw of it could be put so (GpuFrame below),
 	// and the pixels it gives back (w x h, 0xAARRGGBB, the first row at the top) are put into the program's
 	// buffer; false, or a frame with a draw the GPU's interface has not: the software renderer draws it.
+	// (skipDraw, with gpuDraw: a render target's frame that begins while it is set is not drawn, nor transferred --
+	// the screen keeps its picture; the program and its sound go on at their pace. The host sets it when it is late.)
+	bool skipDraw;
 	bool (*gpuDraw) (void *user, const struct GpuFrame *f, u32 *pixels);
 	void *gpuUser;
 	void (*gpuSoft) (void *user, const u32 *pixels, int w, int h);	// (tests: a frame gpuDraw refused, as the software renderer drew it)

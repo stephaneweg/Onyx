@@ -111,6 +111,7 @@ struct Pica
 	struct GProg *gprog; u32 gprogCount;
 	struct GRec *grec;
 	u32 stateSerial;
+	bool frameSkipped;				// (the frame whose transfer is being asked was left out)
 	const char *why;				// (why the queue is drawn by the software renderer now: said once a reason)
 	struct Scratch *scratch;			// a worker's rows (8 of them)
 	struct Shaded *shaded; u32 drawStamp;		// an indexed draw's vertices already shaded (by their index; this draw's: the stamp)
@@ -1496,6 +1497,7 @@ struct GRec
 	float *v; u32 nf; GpuBatch *b; u32 nb; u32 *u; u32 nu;
 	u32 serial; u32 *pixels;
 	u64 touched;				// (the frame it was last drawn into or transferred: an old one gives its place)
+	bool open, skip;			// a frame of it has begun (its first draw came); that frame is left out (Machine::skipDraw then)
 	bool guestStale;			// the host's pixels are newer than the program's buffer (put there only when something reads it)
 	bool trusted;				// its last frame was the GPU's, whole: this one's triangles are not queued for the software
 						// renderer (a draw the GPU cannot do then costs this frame what came before it)
@@ -1563,7 +1565,7 @@ static GRec *gpuRec (Pica *p, u32 color, bool make)
 		r.u = (u32 *) malloc (sizeof (u32) * GUNI_MAX); r.pixels = (u32 *) malloc (sizeof (u32) * 1024 * 1024);
 		if (!r.v || !r.b || !r.u || !r.pixels) { free (r.v); free (r.b); free (r.u); free (r.pixels); r.v = 0; r.b = 0; r.u = 0; r.pixels = 0; return 0; }
 	}
-	r.used = true; r.color = color; r.nf = r.nb = r.nu = 0; r.bad = false; r.hostValid = false; r.serial = 0; r.trusted = false; r.guestStale = false;
+	r.used = true; r.color = color; r.nf = r.nb = r.nu = 0; r.bad = false; r.hostValid = false; r.serial = 0; r.trusted = false; r.guestStale = false; r.open = false; r.skip = false;
 	return &r;
 }
 
@@ -1790,6 +1792,9 @@ static GRec *gpuFrameEnd (Pica *p, u32 color)
 			if (g.used && g.w && color > g.color && color < g.color + (u32) (g.w * g.h) * g.t.colorBytes) r = &g;
 		}
 	if (r) color = r->color;
+	p->frameSkipped = r && r->open && r->skip;
+	if (r) r->open = false;
+	if (p->frameSkipped) { m->gsp.skippedFrames++; return r; }
 	if (r && r->nb && !r->bad && m->gpuDraw)
 	{
 		const u64 t0 = microsNow ();
@@ -2126,6 +2131,16 @@ static void draw (Pica *p, bool indexed)
 	if (count > 0x100000) return;
 	// (the right eye's picture, on a host that shows the left one only: n3ds_gsp.cpp)
 	if (p->m->gsp.eyeSkip && (p->regs[R_COLOR_ADDR] << 3) == Machine::virtToPhys (p->m->gsp.eyeSrc)) { p->m->gsp.eyeDraws++; return; }
+	// (a frame the host asked to leave out: decided at its first draw, for the whole of it)
+	if (p->m->gpuDraw)
+	{
+		GRec *gr = gpuRec (p, p->regs[R_COLOR_ADDR] << 3, true);
+		if (gr)
+		{
+			if (!gr->open) { gr->open = true; gr->skip = p->m->skipDraw && gr->trusted; }
+			if (gr->skip) return;
+		}
+	}
 	if ((p->regs[R_GEO_CONFIG] & 3) == 2) p->m->note ("a geometry shader");
 	const u8 *index = 0; bool index16 = false;
 	if (indexed)
@@ -2442,6 +2457,7 @@ void picaDisplayTransfer (Machine *m, const u32 *c)
 {
 	picaSync (m);
 	GRec *host = m->pica && m->gpuDraw ? gpuFrameEnd (m->pica, Machine::virtToPhys (c[1])) : 0;
+	if (host && m->pica->frameSkipped) return;				// (a frame left out: the framebuffer keeps the last picture)
 	const u32 inW = c[3] & 0xFFFF, inH = c[3] >> 16, outW = c[4] & 0xFFFF, outH = c[4] >> 16, flags = c[5];
 	const bool flip = (flags & 1) != 0, inLinear = (flags & 2) != 0, raw = (flags & 8) != 0, sameTiling = (flags & 0x20) != 0;
 	const u32 inFmt = flags >> 8 & 7, outFmt = flags >> 12 & 7, scale = flags >> 24 & 3;
