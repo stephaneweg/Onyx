@@ -403,6 +403,17 @@ void fsRequest (Machine *m, Session *s, u32 *cmd)
 		REPLY (RES_OK);
 		break;
 	}
+	case 0x0852:								// DeleteExtSaveData (media, the id)
+	case 0x0835:								// DeleteExtSaveData, the old command
+	{
+		snprintf (name, sizeof name, "ext%08X%08X:", (unsigned) cmd[3], (unsigned) cmd[2]);
+		const size_t n = strlen (name);
+		bool was = false;
+		for (int i = st->count - 1; i >= 0; i--) if (strncmp (st->nodes[i].name, name, n) == 0) { nodeRemove (st, i); was = true; }
+		if (was) m->storageDirty = true;
+		REPLY (was ? (u32) RES_OK : (u32) FS_NO_EXT_DATA);
+		break;
+	}
 	case 0x0845:								// GetFormatInfo (archive, its path) -> size, folders, files, duplicated
 	{
 		const u32 missing = archiveName (m, cmd[1], cmd[5], cmd[3], name, sizeof name);
