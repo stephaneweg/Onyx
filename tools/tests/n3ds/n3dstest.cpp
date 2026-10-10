@@ -44,6 +44,9 @@ static unsigned char *screens (const n3ds::Machine *m)
 	return rgb;
 }
 
+static void (*g_onMachine) (n3ds::Machine *m);
+static bool (*g_openSource) (const char *path, n3ds::Source *src);	// (the host's own files instead of stdio's)		// (the host's own set-up: Onyx's app cores)
+
 static bool fileRead (void *user, n3ds::u64 offset, void *dst, n3ds::u32 n)
 {
 	FILE *f = (FILE *) user;
@@ -54,15 +57,21 @@ static int run (int argc, char **argv)
 {
 	if (argc < 2) { fprintf (stderr, "usage: n3dstest <program.elf> [frames [picture.ppm]]\n"); return 2; }
 	int frames = argc > 2 ? atoi (argv[2]) : 600;
-	FILE *f = fopen (argv[1], "rb");
-	if (!f) { fprintf (stderr, "cannot open %s\n", argv[1]); return 2; }
-	fseek (f, 0, SEEK_END); long size = ftell (f); fseek (f, 0, SEEK_SET);
 	// (the file is read piece by piece: a game is hundreds of MB)
-	n3ds::Source src = { f, (n3ds::u64) size, fileRead };
+	n3ds::Source src = { 0, 0, 0 };
+	if (!g_openSource || !g_openSource (argv[1], &src))
+	{
+		FILE *f = fopen (argv[1], "rb");
+		if (!f) { fprintf (stderr, "cannot open %s\n", argv[1]); return 2; }
+		fseek (f, 0, SEEK_END); long size = ftell (f); fseek (f, 0, SEEK_SET);
+		src.user = f; src.size = (n3ds::u64) size; src.read = fileRead;
+	}
 
 	n3ds::Machine *m = new n3ds::Machine;
 	if (!m->init ()) { fprintf (stderr, "not enough memory for the machine\n"); return 2; }
 	m->debugOut = debugOut;
+	if (g_onMachine) g_onMachine (m);
+	if (argc > 5) m->gpuSkip = (n3ds::u32) strtoul (argv[5], 0, 16);	// (a 5th argument: parts of the GPU left out, to time them)
 	m->trace = getenv ("N3DS_TRACE") != 0;
 	// N3DS_FONT=<sysfont.bcfnt>  the shared system font (tools/n3ds/mkfont.py makes ours)
 	if (const char *fontPath = argc > 4 ? argv[4] : getenv ("N3DS_FONT"))		// (or the 4th argument: where there is no environment)
@@ -137,6 +146,9 @@ static int run (int argc, char **argv)
 	fprintf (stderr, "%s after %d frames (%llu ticks): %llu system calls, %llu thread switches, %u memory faults\n",
 		 m->exited ? "ended" : "still running", n, (unsigned long long) m->now, (unsigned long long) m->svcCount,
 		 (unsigned long long) m->switchCount, (unsigned) m->mem.faults);
+	if (m->workers > 1) fprintf (stderr, "the rasterizer on %d cores%c", m->workers, 10);
+	fprintf (stderr, "the GPU's share: %.2f s in command lists, %.2f s in transfers, %.2f s in fills%c", (double) m->gsp.usLists / 1e6, (double) m->gsp.usTransfers / 1e6, (double) m->gsp.usFills / 1e6, 10);
+	fprintf (stderr, "of the lists: %.2f s rasterizing %llu triangles, %llu pixels; the rest for %llu vertices%c", (double) m->gsp.usRaster / 1e6, (unsigned long long) m->gsp.trianglesDrawn, (unsigned long long) m->gsp.pixelsDrawn, (unsigned long long) m->gsp.vertices, 10);
 	const unsigned char *rgb = screens (m);
 	const size_t rgbSize = (size_t) n3ds::TOP_W * n3ds::SCREEN_H * 2 * 3;
 	fprintf (stderr, "screens %08x (%llu VBlanks; the GPU was asked %u fills, %u transfers, %u command lists)\n", crc32 (rgb, rgbSize),
@@ -163,8 +175,70 @@ static int run (int argc, char **argv)
 #ifdef N3DS_ONYX
 // On Onyx a program has no argc / argv: its arguments are one line, asked from the kernel (AppKit).
 #include "appkit/appkit.h"
+
+// The rasterizer's helpers: up to two application cores (2 and 3), each waiting for a request, doing its part
+// and saying so. They make no system call. The main thread is worker 0.
+static struct { void (*fn) (void *, int); void *arg; volatile unsigned req, done[2], stop; int n; int cores[2]; } g_par;
+static void parCore (void *a)
+{
+	const int idx = (int) (long) a;
+	unsigned seen = 0;
+	while (!g_par.stop)
+	{
+		if (g_par.req != seen)
+		{
+			seen = g_par.req;
+			__asm__ volatile ("dmb ish" ::: "memory");
+			g_par.fn (g_par.arg, idx);
+			g_par.done[idx] = seen;
+			__asm__ volatile ("dsb ish; sev" ::: "memory");
+		}
+		__asm__ volatile ("wfe" ::: "memory");
+	}
+}
+static int g_parMain = 1;			// (does the main thread rasterize too? It shares core 0 with the system)
+static void parRun (void *, void (*fn) (void *, int), void *arg, int)
+{
+	g_par.fn = fn; g_par.arg = arg;
+	__asm__ volatile ("dmb ish" ::: "memory");
+	g_par.req++;
+	__asm__ volatile ("dsb ish; sev" ::: "memory");
+	if (g_parMain) fn (arg, g_par.n);
+	for (int i = 0; i < g_par.n; i++) while (g_par.done[i] != g_par.req) __asm__ volatile ("wfe" ::: "memory");
+}
+// The program's file through Onyx's own calls (a seek, then one read of the whole piece).
+static bool kfileRead (void *user, n3ds::u64 offset, void *dst, n3ds::u32 n)
+{
+	if (kapi_seek (user, offset) != 0) return false;
+	unsigned char *d = (unsigned char *) dst;
+	while (n) { const int k = kapi_read (user, d, n); if (k <= 0) return false; d += k; n -= (n3ds::u32) k; }
+	return true;
+}
+static bool kfileOpen (const char *path, n3ds::Source *src)
+{
+	void *h = kapi_open (path);
+	if (!h) return false;
+	src->user = h; src->size = kapi_fsize64 (h); src->read = kfileRead;
+	return true;
+}
+
+static void parSetup (n3ds::Machine *m)
+{
+	for (int i = 0; i < 2; i++)
+	{
+		const int c = kapi_core_acquire ();
+		if (c < 0) break;
+		unsigned char *stack = (unsigned char *) malloc (256 * 1024);
+		if (!stack || kapi_core_run (c, parCore, (void *) (long) g_par.n, stack + 256 * 1024) != 0) { kapi_core_release (c); break; }
+		g_par.cores[g_par.n++] = c;
+	}
+	if (g_par.n) { m->workers = g_par.n + g_parMain; m->parallel = parRun; }
+	fprintf (stderr, "%d application cores taken%s%c", g_par.n, g_parMain ? ", the main thread rasterizes too" : "", 10);
+}
+
 int main (void)
 {
+	g_onMachine = parSetup; g_openSource = kfileOpen;
 	static char line[512]; static char *argv[8];
 	int argc = 0;
 	argv[argc++] = (char *) "n3dstest";
@@ -177,7 +251,12 @@ int main (void)
 		while (*p && *p != ' ') p++;
 		if (*p) *p++ = 0;
 	}
-	return run (argc, argv);
+	if (argc > 6) g_parMain = atoi (argv[6]);			// (a 6th argument 0: the application cores alone rasterize)
+	const int r = run (argc, argv);
+	g_par.stop = 1;
+	__asm__ volatile ("dsb ish; sev" ::: "memory");
+	for (int i = 0; i < g_par.n; i++) kapi_core_release (g_par.cores[i]);
+	return r;
 }
 #else
 int main (int argc, char **argv) { return run (argc, argv); }

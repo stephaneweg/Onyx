@@ -274,6 +274,9 @@ struct Machine
 		Framebuffer fb[2];
 		u64 frames;				// VBlanks since the start
 		u32 fills, transfers, cmdLists;		// (counters: what the program asked the GPU)
+		u64 usLists, usTransfers, usFills;	// ... and the host's time in each, in microseconds
+		u64 usRaster;				// (of the lists' time: the rasterizer's -- the rest is the vertices')
+		u64 vertices, trianglesDrawn, pixelsDrawn;
 	} gsp;
 	struct Pica *pica;			// the GPU's state (n3ds_pica.cpp), made at its first command list
 	// APT (n3ds_apt.cpp): the application's life -- its events, the parameter the system sends it (the wake-up)
@@ -293,8 +296,15 @@ struct Machine
 	u64 romfsBase, romfsSize;
 	const u8 *memFile; u32 memSize;		// (load (file, size): the source is that memory)
 	char title[16]; char productCode[20];	// (a game's: from its headers)
+	// The GPU's rasterizer on several host cores: `workers` of them (1: this one alone), and how the host runs
+	// fn (arg, 0) .. fn (arg, workers - 1) at the same time and comes back when all are done. The work given to
+	// the others makes no system call and allocates nothing (an Onyx app core can do neither).
+	int workers;
+	void (*parallel) (void *user, void (*fn) (void *arg, int worker), void *arg, int workers);
+	void *parallelUser;
 	bool trace;				// the system calls and the requests, on stderr (tests)
 	bool traceGpu;				// ... each draw and transfer of the GPU
+	u32 gpuSkip;				// (to find what is slow: 1 no procedural texture, 2 no blending, 4 no depth, 8 no texture, 16 no lighting, 32 no pixel at all, 64 the fragments found but not shaded, 128 not combined nor written)
 	// what the program says (svcOutputDebugString): the host's
 	void (*debugOut) (void *user, const char *text, u32 len);
 	void *debugUser;

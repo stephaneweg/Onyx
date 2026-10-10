@@ -17,6 +17,14 @@
 // vector; up to 8 lights give a "primary" colour (ambient and diffuse) and a "secondary" one (two speculars),
 // shaped by look-up tables (D0, D1, the reflection's three, Fresnel, the distance's) -- the combiner's sources 1
 // and 2. Not in it: spot lights, bump mapping, shadows, the geometric factors.
+// The triangles of a command list are not drawn one by one: they are queued with the state they are drawn with,
+// and the queue is rasterized at the list's end (or when it is full) -- by several host cores when the host has
+// them (Machine::parallel), each taking the rows of its own 8-row bands, all in the triangles' order.
+// A texture is decoded once into plain pixels (its rows from the top) and kept while the program's bytes stay the
+// same (a checksum of samples, looked at when a draw's state is made): a texel is then one read.
+// The fragments of a triangle are shaded by groups of up to CH (the ones of a row that passed the depth test): each
+// input, each combiner stage is worked out for the whole group in one loop over plain rows of numbers (loops the
+// compiler turns into vector instructions), the choices a stage makes being made once a group and not once a pixel.
 // Not done yet: fog, shadows, stencil, the geometry shader, texture filtering (the nearest texel is taken),
 // mipmaps -- noted when a program asks.
 //
@@ -27,6 +35,7 @@
 //
 #include <math.h>
 #include <stdio.h>
+#include <sys/time.h>
 #include <stdlib.h>
 #include <string.h>
 #include "n3ds/n3ds.h"
@@ -80,9 +89,18 @@ struct Pica
 	// the triangle being assembled
 	Vertex prim[3]; int primCount; bool stripFlip;
 	u32 codeTop; int dumped;			// (traces: how much code was loaded; shaders already printed)
+	// the textures decoded: where the program's is, its size and format, its bytes' checksum, the pixels (r, g, b, a bytes)
+	struct Decoded { const u8 *data; u32 w, h, format; u64 check; u32 *px; u64 used; } decoded[96];
+	u64 decodedClock;
+	struct Scratch *scratch;			// a worker's rows (8 of them)
+	bool stateOk, targetOk;				// (the registers' meaning for a draw: worked out at its first triangle)
+	struct State *states; u32 stateCount;		// the states of the queued triangles (the last one: the current)
+	struct Job *jobs; u32 jobCount;			// the triangles waiting to be rasterized
+	int flushWorkers;				// (how many cores the flush under way uses)
 	int jump;					// a jump asked by the command being run: 1 or 2 (which buffer), 0 none
 	// counters
 	u64 triangles, pixels, depthFailed, alphaFailed;
+	struct { u64 triangles, pixels, depthFailed, alphaFailed; char pad[32]; } stat[8];	// (a worker's own, added at the flush's end)
 };
 
 // ---- numbers -----------------------------------------------------------------------------------------------------
@@ -279,7 +297,8 @@ static void shadeVertex (Pica *p, float attr[16][4], int count, Vertex &v)
 }
 
 // ---- textures ------------------------------------------------------------------------------------------------------
-struct Texture { const u8 *data; u32 w, h, format, wrapS, wrapT; bool on; };
+struct Texture { const u8 *data; u32 w, h, format, wrapS, wrapT; bool on; u32 maskW, maskH; /* size - 1 when it repeats and is a power of two, else 0 */
+		 u32 bytes; const u32 *px; /* the texture decoded (rows from the top; r, g, b, a bytes), or 0: decoded texel by texel */ };
 
 static void texInfo (const Pica *p, int unit, Texture &t)
 {
@@ -293,6 +312,10 @@ static void texInfo (const Pica *p, int unit, Texture &t)
 	const u32 bytes = t.format < 14 ? (t.w * t.h * BITS[t.format] + 7) / 8 : 0;
 	t.data = t.on && t.w && t.h && bytes ? p->m->physPtr (r[4] << 3, bytes) : 0;
 	if (!t.data) t.on = false;
+	t.maskW = t.wrapS == 2 && !(t.w & (t.w - 1)) ? t.w - 1 : 0;
+	t.maskH = t.wrapT == 2 && !(t.h & (t.h - 1)) ? t.h - 1 : 0;
+	t.px = 0;
+	t.bytes = bytes;
 }
 
 static inline int wrapCoord (int v, int size, u32 mode)
@@ -339,9 +362,22 @@ static void etc1Texel (const u8 *block, bool alpha, u32 x, u32 y, int out[4])
 }
 
 // The texel at (s, t), t from the bottom: a texture's rows are stored from the top.
-static void texel (const Texture &t, int s, int tt, int out[4])
+static void fetch (const Texture &t, u32 x, u32 y, int out[4]);
+static inline void texel (const Texture &t, int s, int tt, int out[4])
 {
-	const u32 x = (u32) wrapCoord (s, (int) t.w, t.wrapS), y = t.h - 1 - (u32) wrapCoord (tt, (int) t.h, t.wrapT);
+	const u32 x = t.maskW ? (u32) s & t.maskW : (u32) wrapCoord (s, (int) t.w, t.wrapS);
+	const u32 y = t.h - 1 - (t.maskH ? (u32) tt & t.maskH : (u32) wrapCoord (tt, (int) t.h, t.wrapT));
+	if (t.px)
+	{
+		const u32 c = t.px[y * t.w + x];
+		out[0] = (int) (c & 255); out[1] = (int) (c >> 8 & 255); out[2] = (int) (c >> 16 & 255); out[3] = (int) (c >> 24);
+		return;
+	}
+	fetch (t, x, y, out);
+}
+// The texel in column x of row y (from the top), from the program's bytes.
+static void fetch (const Texture &t, u32 x, u32 y, int out[4])
+{
 	if (t.format >= 12)						// ETC1 (12), ETC1A4 (13)
 	{
 		const u32 size = t.format == 13 ? 16 : 8;
@@ -414,6 +450,37 @@ static void procTexel (const Pica *p, const ProcTex &pt, float cu, float cv, int
 	const u32 c = p->procColor[i];
 	out[0] = (int) (c & 255); out[1] = (int) (c >> 8 & 255); out[2] = (int) (c >> 16 & 255); out[3] = (int) (c >> 24);
 	if (pt.separateA) out[3] = (int) (procMapped (p, 1, procCombine (u, v, pt.funcA)) * 255.0f + 0.5f);
+}
+
+static void flush (Pica *p);
+
+// The decoded pixels of a texture: kept by where the program's bytes are, and made again when they changed.
+static void texDecoded (Pica *p, Texture &t)
+{
+	if (!t.on || t.w * t.h > 1024 * 1024) return;
+	u64 check = 1469598103934665603ull ^ t.bytes;
+	const u32 step = t.bytes / 97 + 1;
+	for (u32 i = 0; i < t.bytes; i += step) { check ^= t.data[i]; check *= 1099511628211ull; }
+	Pica::Decoded *slot = 0, *oldest = &p->decoded[0];
+	for (auto &d : p->decoded)
+	{
+		if (d.px && d.data == t.data && d.w == t.w && d.h == t.h && d.format == t.format) { slot = &d; break; }
+		if (d.used < oldest->used) oldest = &d;
+	}
+	if (slot && slot->check == check) { slot->used = ++p->decodedClock; t.px = slot->px; return; }
+	if (p->jobCount) flush (p);						// (queued triangles may read what changes here)
+	if (!slot) { slot = oldest; free (slot->px); slot->px = 0; }
+	if (!slot->px || slot->w * slot->h != t.w * t.h) { free (slot->px); slot->px = (u32 *) malloc ((size_t) t.w * t.h * 4); }
+	slot->data = t.data; slot->w = t.w; slot->h = t.h; slot->format = t.format; slot->check = check; slot->used = ++p->decodedClock;
+	if (!slot->px) return;
+	for (u32 y = 0; y < t.h; y++)
+		for (u32 x = 0; x < t.w; x++)
+		{
+			int c[4];
+			fetch (t, x, y, c);
+			slot->px[y * t.w + x] = (u32) c[0] | (u32) c[1] << 8 | (u32) c[2] << 16 | (u32) c[3] << 24;
+		}
+	t.px = slot->px;
 }
 
 // ---- lighting ---------------------------------------------------------------------------------------------------------
@@ -613,6 +680,23 @@ static inline bool compare (u32 func, u32 a, u32 b)
 	switch (func) { case 0: return false; case 1: return true; case 2: return a == b; case 3: return a != b; case 4: return a < b; case 5: return a <= b; case 6: return a > b; default: return a >= b; }
 }
 
+// A row of fragments: 255 - a channel; two or three channels combined (false: the result is the first one as it is).
+static inline void rowInv (int n, int *__restrict d, const int *s) { for (int i = 0; i < n; i++) d[i] = 255 - s[i]; }
+static inline bool rowCombine (u32 mode, int n, int *__restrict d, const int *a, const int *b, const int *c)
+{
+	switch (mode)
+	{
+	case 1: for (int i = 0; i < n; i++) d[i] = a[i] * b[i] / 255; return true;
+	case 2: for (int i = 0; i < n; i++) d[i] = clamp255 (a[i] + b[i]); return true;
+	case 3: for (int i = 0; i < n; i++) d[i] = clamp255 (a[i] + b[i] - 128); return true;
+	case 4: for (int i = 0; i < n; i++) d[i] = (a[i] * c[i] + b[i] * (255 - c[i])) / 255; return true;
+	case 5: for (int i = 0; i < n; i++) d[i] = clamp255 (a[i] - b[i]); return true;
+	case 8: for (int i = 0; i < n; i++) d[i] = clamp255 (a[i] * b[i] / 255 + c[i]); return true;
+	case 9: for (int i = 0; i < n; i++) d[i] = clamp255 ((a[i] + b[i]) * c[i] / 255); return true;
+	default: return false;
+	}
+}
+
 // One combiner stage's operand: a source's colour seen through an operand's choice.
 static inline void tevColor (const int src[4], u32 operand, int out[3])
 {
@@ -685,6 +769,9 @@ static inline int blendEq (u32 eq, int s, int sf, int d, int df)
 }
 
 // What a draw's fragments all share, read from the registers once.
+enum { CH = 32 };							// the fragments shaded at once
+typedef int Row[CH];							// one channel of a group's fragments
+
 struct Fragment
 {
 	Texture tex[3];
@@ -695,6 +782,10 @@ struct Fragment
 	bool alphaTest; u32 alphaFunc, alphaRef;
 	bool depthTest; u32 depthFunc; bool depthMask; bool rgbaMask[4];
 	bool blend; u32 eqRgb, eqA, srcRgb, dstRgb, srcA, dstA; int blendColor[4]; u32 logicOp;
+	// what the stages really read (the rest is not computed), and a fragment that simply replaces what is there
+	bool useTex[3], useProc, useLight, replace;
+	Row konstRow[6][4], bufferRow[4], zeroRow, fullRow;			// (the stages' constants, the buffer's colour, 0 and 255 as rows)
+	bool needPrimary, usesBuffer; int stageEnd;	// the vertex colour is read; a stage reads the buffer; one past the last stage that does something
 };
 
 static void fragmentState (const Pica *p, Fragment &f)
@@ -737,16 +828,46 @@ static void fragmentState (const Pica *p, Fragment &f)
 	const u32 k = p->regs[R_BLEND_COLOR];
 	f.blendColor[0] = (int) (k & 255); f.blendColor[1] = (int) (k >> 8 & 255); f.blendColor[2] = (int) (k >> 16 & 255); f.blendColor[3] = (int) (k >> 24);
 	f.logicOp = p->regs[R_LOGIC_OP] & 15;
+	u32 used = 0;								// (a bit a source number)
+	for (int i = 0; i < 6; i++)
+		if (!f.stage[i].pass)
+			for (int k = 0; k < 3; k++) used |= 1u << f.stage[i].src[k] | 1u << f.stage[i].srcA[k];
+	for (int i = 0; i < 3; i++) f.useTex[i] = f.tex[i].on && (used >> (3 + i) & 1);
+	f.useProc = f.proc.on && (used >> 6 & 1);
+	f.useLight = f.light.on && (used & 6);
+	f.stageEnd = 0;
+	for (int i = 0; i < 6; i++) if (!f.stage[i].pass) f.stageEnd = i + 1;
+	f.usesBuffer = (used >> 13 & 1) != 0;
+	f.needPrimary = !f.stageEnd || (used & 0x8001) || (!f.useLight && (used & 6));
+	for (int i = 0; i < CH; i++)
+	{
+		f.zeroRow[i] = 0; f.fullRow[i] = 255;
+		for (int c = 0; c < 4; c++) { f.bufferRow[c][i] = f.bufferColor[c]; for (int st = 0; st < 6; st++) f.konstRow[st][c][i] = f.stage[st].konst[c]; }
+	}
+	const u32 skip = p->m->gpuSkip;
+	if (skip & 1) f.useProc = false;
+	if (skip & 8) f.useTex[0] = f.useTex[1] = f.useTex[2] = false;
+	if (skip & 16) f.useLight = false;
+	if (skip & 4) f.depthTest = false;
+	f.replace = (skip & 2) || (f.blend && f.eqRgb == 0 && f.eqA == 0 && f.srcRgb == 1 && f.dstRgb == 0 && f.srcA == 1 && f.dstA == 0
+		    && f.rgbaMask[0] && f.rgbaMask[1] && f.rgbaMask[2] && f.rgbaMask[3]);
 }
 
 // ---- triangles ---------------------------------------------------------------------------------------------------------
 struct Screen { float x, y, z, invw; const Vertex *v; };
 
-static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, Screen s1, Screen s2)
+// A worker's group of fragments: where they are, their weights, then each input and each stage's result as rows.
+struct Scratch
+{
+	int n, y, x[CH]; u32 at[CH], depth[CH];
+	float l0[CH], l1[CH], l2[CH], q0[CH], q1[CH], q2[CH], qs[CH], fa[CH], fb[CH], fq[7][CH];
+	Row primary[4], tex[3][4], litP[4], litS[4], proc[4], prev[6][4], c[3][3], a[3], o[4];
+};
+
+static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Screen s0, Screen s1, Screen s2, int worker, int workers)
 {
 	// the triangle's side: culled, or turned so that its area is positive
 	float area = (s1.x - s0.x) * (s2.y - s0.y) - (s1.y - s0.y) * (s2.x - s0.x);
-	const u32 cull = p->regs[R_CULL] & 3;
 	if (area == 0.0f) return;
 	if (cull == 1 && area > 0) return;					// 1: the counter-clockwise ones (the "front") are removed
 	if (cull == 2 && area < 0) return;					// 2: the clockwise ones (the "back") -- what games use
@@ -762,15 +883,220 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, S
 	if (x1 > t.sx1) x1 = t.sx1;
 	if (y1 > t.sy1) y1 = t.sy1;
 	if (x0 >= x1 || y0 >= y1) return;
-	p->triangles++;
+	if (p->m->gpuSkip & 32) return;
+	if (worker == 0) p->stat[0].triangles++;
+	u64 nPixels = 0, nDepth = 0, nAlpha = 0;
 	const float inv = 1.0f / area;
 	const u32 depthMax = t.depthBytes == 2 ? 0xFFFF : 0xFFFFFF;
 	// an edge shared by two triangles belongs to one: the left and the lower ones are in
 	const float e0x = s2.x - s1.x, e0y = s2.y - s1.y, e1x = s0.x - s2.x, e1y = s0.y - s2.y, e2x = s1.x - s0.x, e2y = s1.y - s0.y;
 	const bool in0 = e0y < 0 || (e0y == 0 && e0x > 0), in1 = e1y < 0 || (e1y == 0 && e1x > 0), in2 = e2y < 0 || (e2y == 0 && e2x > 0);
+	Scratch &k = p->scratch[worker];
+	k.n = 0;
+	// where a stage finds each source's channels (an input the draw does not use: its neutral value)
+	const int *T[16][4];
+	const int *const neutral[4] = { f.zeroRow, f.zeroRow, f.zeroRow, f.fullRow };
+	for (int c = 0; c < 4; c++)
+	{
+		T[0][c] = f.needPrimary ? k.primary[c] : neutral[c];
+		T[1][c] = f.useLight ? k.litP[c] : T[0][c];
+		T[2][c] = f.useLight ? k.litS[c] : neutral[c];
+		for (int u = 0; u < 3; u++) T[3 + u][c] = f.useTex[u] ? k.tex[u][c] : neutral[c];
+		T[6][c] = f.useProc ? k.proc[c] : neutral[c];
+	}
+	const bool useDepth = f.depthTest && t.depth;
+	const u32 skipBits = p->m->gpuSkip;
+	const bool trace = p->m->traceGpu;
+	const Vertex &v0 = *s0.v, &v1 = *s1.v, &v2 = *s2.v;
+	const float iw0 = s0.invw, iw1 = s1.invw, iw2 = s2.invw;
+
+	// The fragments gathered are shaded, then written.
+	auto shade = [&] ()
+	{
+		const int n = k.n;
+		k.n = 0;
+		if (!n) return;
+		if (skipBits & 64) { nPixels += (u64) n; return; }
+		// what the vertices carry, perspective-correct
+		for (int i = 0; i < n; i++)
+		{
+			const float q0 = k.l0[i] * iw0, q1 = k.l1[i] * iw1, q2 = k.l2[i] * iw2;
+			k.q0[i] = q0; k.q1[i] = q1; k.q2[i] = q2; k.qs[i] = 1.0f / (q0 + q1 + q2);
+		}
+		auto attr = [&] (int ai, float *__restrict d)
+		{
+			const float a0 = v0.a[ai], a1 = v1.a[ai], a2 = v2.a[ai];
+			for (int i = 0; i < n; i++) d[i] = (k.q0[i] * a0 + k.q1[i] * a1 + k.q2[i] * a2) * k.qs[i];
+		};
+		if (f.needPrimary)
+			for (int c = 0; c < 4; c++)
+			{
+				attr (A_COLOR + c, k.fa);
+				for (int i = 0; i < n; i++) { const float v = k.fa[i]; k.primary[c][i] = v <= 0 ? 0 : v >= 1 ? 255 : (int) (v * 255.0f + 0.5f); }
+			}
+		for (int u = 0; u < 3; u++)
+		{
+			if (!f.useTex[u]) continue;
+			const Texture &tx = f.tex[u];
+			const int ai = u == 0 ? A_TC0 : u == 1 ? A_TC1 : A_TC2;
+			attr (ai, k.fa); attr (ai + 1, k.fb);
+			const float tw = (float) tx.w, th = (float) tx.h;
+			for (int i = 0; i < n; i++)
+			{
+				int c[4];
+				texel (tx, (int) floorf (k.fa[i] * tw), (int) floorf (k.fb[i] * th), c);
+				k.tex[u][0][i] = c[0]; k.tex[u][1][i] = c[1]; k.tex[u][2][i] = c[2]; k.tex[u][3][i] = c[3];
+			}
+		}
+		if (f.useLight)
+		{
+			for (int j = 0; j < 4; j++) attr (A_QUAT + j, k.fq[j]);
+			for (int j = 0; j < 3; j++) attr (A_VIEW + j, k.fq[4 + j]);
+			for (int i = 0; i < n; i++)
+			{
+				const float quat[4] = { k.fq[0][i], k.fq[1][i], k.fq[2][i], k.fq[3][i] }, view[3] = { k.fq[4][i], k.fq[5][i], k.fq[6][i] };
+				int lp[4] = { T[0][0][i], T[0][1][i], T[0][2][i], T[0][3][i] }, ls[4] = { 0, 0, 0, 255 };
+				lightFragment (p, f.light, quat, view, lp, ls);
+				for (int c = 0; c < 4; c++) { k.litP[c][i] = lp[c]; k.litS[c][i] = ls[c]; }
+			}
+		}
+		if (f.useProc)
+		{
+			const int ai = f.proc.coord == 0 ? A_TC0 : f.proc.coord == 1 ? A_TC1 : A_TC2;
+			attr (ai, k.fa); attr (ai + 1, k.fb);
+			for (int i = 0; i < n; i++)
+			{
+				int c[4] = { 0, 0, 0, 255 };
+				procTexel (p, f.proc, k.fa[i], k.fb[i], c);
+				k.proc[0][i] = c[0]; k.proc[1][i] = c[1]; k.proc[2][i] = c[2]; k.proc[3][i] = c[3];
+			}
+		}
+		if (skipBits & 128) { nPixels += (u64) n; return; }
+		// the combiner's stages: each leaves its result in rows of its own
+		// (the combiner's buffer is two stages late: a stage that "updates" it is seen by the stage after the next;
+		// the first stage sees nothing, the second the buffer's colour register)
+		const int *prev[4] = { T[0][0], T[0][1], T[0][2], T[0][3] };
+		const int *buffer[4] = { f.zeroRow, f.zeroRow, f.zeroRow, f.zeroRow }, *next[4] = { f.bufferRow[0], f.bufferRow[1], f.bufferRow[2], f.bufferRow[3] };
+		for (int st = 0; st < f.stageEnd; st++)
+		{
+			const Fragment::Stage &sg = f.stage[st];
+			if (!sg.pass)
+			{
+				for (int c = 0; c < 4; c++)
+				{
+					T[13][c] = buffer[c]; T[14][c] = f.konstRow[st][c];
+					T[7][c] = T[8][c] = T[9][c] = T[10][c] = T[11][c] = T[12][c] = T[15][c] = prev[c];
+				}
+				const int *cp[3][3], *ap[3];					// the three operands: colour, alpha
+				for (int j = 0; j < 3; j++)
+				{
+					const int *const *src = T[sg.src[j]];
+					const u32 op = sg.op[j];
+					if (op == 0 || op > 13 || ((op & 3) > 1 && op > 3)) { cp[j][0] = src[0]; cp[j][1] = src[1]; cp[j][2] = src[2]; }
+					else if (op == 1) for (int c = 0; c < 3; c++) { rowInv (n, k.c[j][c], src[c]); cp[j][c] = k.c[j][c]; }
+					else
+					{
+						const int *one = src[op < 4 ? 3 : op < 8 ? 0 : op < 12 ? 1 : 2];	// (one channel as the three)
+						if (op & 1) { rowInv (n, k.c[j][0], one); one = k.c[j][0]; }
+						cp[j][0] = cp[j][1] = cp[j][2] = one;
+					}
+					src = T[sg.srcA[j]];
+					const u32 opA = sg.opA[j];
+					const int *one = src[opA < 2 ? 3 : opA < 4 ? 0 : opA < 6 ? 1 : 2];
+					if (opA & 1) { rowInv (n, k.a[j], one); one = k.a[j]; }
+					ap[j] = one;
+				}
+				const int *out[4];
+				switch (sg.mode)
+				{
+				case 0: out[0] = cp[0][0]; out[1] = cp[0][1]; out[2] = cp[0][2]; break;
+				case 6: case 7:							// the dot product of two colours as vectors
+				{
+					const int *a0 = cp[0][0], *a1 = cp[0][1], *a2 = cp[0][2], *b0 = cp[1][0], *b1 = cp[1][1], *b2 = cp[1][2];
+					int *__restrict d = k.o[0];
+					for (int i = 0; i < n; i++)
+						d[i] = clamp255 (((a0[i] * 2 - 255) * (b0[i] * 2 - 255) + (a1[i] * 2 - 255) * (b1[i] * 2 - 255) + (a2[i] * 2 - 255) * (b2[i] * 2 - 255)) / 255);
+					out[0] = out[1] = out[2] = k.o[0];
+					break;
+				}
+				default:
+					if (!rowCombine (sg.mode, n, k.o[0], cp[0][0], cp[1][0], cp[2][0])) { out[0] = cp[0][0]; out[1] = cp[0][1]; out[2] = cp[0][2]; break; }
+					rowCombine (sg.mode, n, k.o[1], cp[0][1], cp[1][1], cp[2][1]);
+					rowCombine (sg.mode, n, k.o[2], cp[0][2], cp[1][2], cp[2][2]);
+					out[0] = k.o[0]; out[1] = k.o[1]; out[2] = k.o[2];
+					break;
+				}
+				if (sg.mode == 7) out[3] = out[0];
+				else out[3] = rowCombine (sg.modeA, n, k.o[3], ap[0], ap[1], ap[2]) ? k.o[3] : ap[0];
+				for (int c = 0; c < 4; c++)
+				{
+					const int scale = c < 3 ? sg.scale : sg.scaleA;
+					const int *from = out[c];
+					int *__restrict d = k.prev[st][c];
+					for (int i = 0; i < n; i++) d[i] = clamp255 (from[i] * scale);
+					prev[c] = d;
+				}
+			}
+			if (!f.usesBuffer) continue;
+			for (int c = 0; c < 4; c++) buffer[c] = next[c];
+			if (st < 4)
+			{
+				if (f.updateRgb >> st & 1) { next[0] = prev[0]; next[1] = prev[1]; next[2] = prev[2]; }
+				if (f.updateA >> st & 1) next[3] = prev[3];
+			}
+		}
+		// each fragment into the buffers
+		for (int i = 0; i < n; i++)
+		{
+			const int src[4] = { prev[0][i], prev[1][i], prev[2][i], prev[3][i] };
+			if (f.alphaTest && !compare (f.alphaFunc, (u32) src[3], f.alphaRef)) { nAlpha++; continue; }
+			nPixels++;
+			const u32 at = k.at[i];
+			if (useDepth && t.depthWrite && f.depthMask)
+			{
+				u8 *dq = t.depth + at * t.depthBytes;
+				const u32 depth = k.depth[i];
+				dq[0] = (u8) depth; dq[1] = (u8) (depth >> 8);
+				if (t.depthBytes > 2) dq[2] = (u8) (depth >> 16);
+			}
+			if (!t.colorWrite) continue;
+			u8 *cq = t.color + at * t.colorBytes;
+			if (f.replace && !trace) { writeColor (t, cq, src); continue; }
+			int dst[4], out[4];
+			readColor (t, cq, dst);
+			if (f.blend)
+			{
+				int sf[4], df[4], sfa[4], dfa[4];
+				blendFactor (f.srcRgb, src, dst, f.blendColor, sf); blendFactor (f.dstRgb, src, dst, f.blendColor, df);
+				blendFactor (f.srcA, src, dst, f.blendColor, sfa); blendFactor (f.dstA, src, dst, f.blendColor, dfa);
+				for (int c = 0; c < 3; c++) out[c] = blendEq (f.eqRgb, src[c], sf[c], dst[c], df[c]);
+				out[3] = blendEq (f.eqA, src[3], sfa[3], dst[3], dfa[3]);
+			}
+			else for (int c = 0; c < 4; c++)
+			{
+				const int s = src[c], d = dst[c];
+				switch (f.logicOp)
+				{
+				case 0: out[c] = 0; break; case 1: out[c] = s & d; break; case 2: out[c] = s & ~d & 255; break; case 3: out[c] = s; break;
+				case 4: out[c] = 255; break; case 5: out[c] = ~s & 255; break; case 6: out[c] = d; break; case 7: out[c] = ~d & 255; break;
+				case 8: out[c] = ~(s & d) & 255; break; case 9: out[c] = s | d; break; case 10: out[c] = ~(s | d) & 255; break; case 11: out[c] = s ^ d; break;
+				case 12: out[c] = ~(s ^ d) & 255; break; case 13: out[c] = ~s & d & 255; break; case 14: out[c] = (s | ~d) & 255; break; default: out[c] = (~s | d) & 255; break;
+				}
+			}
+			for (int c = 0; c < 4; c++) if (!f.rgbaMask[c]) out[c] = dst[c];
+			if (trace && k.x[i] == t.w / 2 && k.y == t.h / 2)
+				fprintf (stderr, "   centre: lit %d %d %d %d + %d %d %d %d, primary %d %d %d %d, tex0 %d %d %d %d, combined %d %d %d %d, there %d %d %d %d -> %d %d %d %d%c", T[1][0][i], T[1][1][i], T[1][2][i], T[1][3][i], T[2][0][i], T[2][1][i], T[2][2][i], T[2][3][i],
+					 T[0][0][i], T[0][1][i], T[0][2][i], T[0][3][i], T[3][0][i], T[3][1][i], T[3][2][i], T[3][3][i], src[0], src[1], src[2], src[3], dst[0], dst[1], dst[2], dst[3], out[0], out[1], out[2], out[3], 10);
+			writeColor (t, cq, out);
+		}
+	};
+
 	for (int y = y0; y < y1; y++)
 	{
+		if (workers > 1 && (int) ((u32) (t.h - 1 - y) >> 3) % workers != worker) continue;	// (another core's band)
 		const float py = (float) y + 0.5f;
+		const u32 row = (u32) (t.h - 1 - y);					// (the buffers' rows go from the bottom)
+		k.y = y;
 		for (int x = x0; x < x1; x++)
 		{
 			const float px = (float) x + 0.5f;
@@ -780,129 +1106,91 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, Screen s0, S
 			if (w0 < 0 || w1 < 0 || w2 < 0) continue;
 			if ((w0 == 0 && !in0) || (w1 == 0 && !in1) || (w2 == 0 && !in2)) continue;
 			const float l0 = w0 * inv, l1 = w1 * inv, l2 = w2 * inv;
-			// the depth, linear on the screen
-			float z = l0 * s0.z + l1 * s1.z + l2 * s2.z;
-			if (z < 0) z = 0; else if (z > 1) z = 1;
-			const u32 depth = (u32) (z * (float) depthMax);
-			const u32 row = (u32) (t.h - 1 - y);				// (the buffers' rows go from the bottom)
 			const u32 at = tiled ((u32) x, row, (u32) t.w);
-			u8 *dq = t.depth ? t.depth + at * t.depthBytes : 0;
-			if (f.depthTest && dq)
+			u32 depth = 0;
+			if (useDepth)							// the depth, linear on the screen
 			{
+				float z = l0 * s0.z + l1 * s1.z + l2 * s2.z;
+				if (z < 0) z = 0; else if (z > 1) z = 1;
+				depth = (u32) (z * (float) depthMax);
+				const u8 *dq = t.depth + at * t.depthBytes;
 				const u32 old = t.depthBytes == 2 ? (u32) (dq[0] | dq[1] << 8) : (u32) (dq[0] | dq[1] << 8 | dq[2] << 16);
-				if (!compare (f.depthFunc, depth, old)) { p->depthFailed++; continue; }
+				if (!compare (f.depthFunc, depth, old)) { nDepth++; continue; }
 			}
-			// what the vertices carry, perspective-correct
-			const float q0 = l0 * s0.invw, q1 = l1 * s1.invw, q2 = l2 * s2.invw, qs = 1.0f / (q0 + q1 + q2);
-#define ATTR(i) ((q0 * s0.v->a[i] + q1 * s1.v->a[i] + q2 * s2.v->a[i]) * qs)
-			int primary[4];
-			for (int i = 0; i < 4; i++) { float c = ATTR (A_COLOR + i); primary[i] = c <= 0 ? 0 : c >= 1 ? 255 : (int) (c * 255.0f + 0.5f); }
-			int texc[3][4];
-			for (int u = 0; u < 3; u++)
-			{
-				const Texture &tx = f.tex[u];
-				if (!tx.on) { texc[u][0] = texc[u][1] = texc[u][2] = 0; texc[u][3] = 255; continue; }
-				const int ai = u == 0 ? A_TC0 : u == 1 ? A_TC1 : A_TC2;
-				texel (tx, (int) floorf (ATTR (ai) * (float) tx.w), (int) floorf (ATTR (ai + 1) * (float) tx.h), texc[u]);
-			}
-			int litP[4] = { primary[0], primary[1], primary[2], primary[3] }, litS[4] = { 0, 0, 0, 255 };
-			if (f.light.on)
-			{
-				const float quat[4] = { ATTR (A_QUAT), ATTR (A_QUAT + 1), ATTR (A_QUAT + 2), ATTR (A_QUAT + 3) };
-				const float view[3] = { ATTR (A_VIEW), ATTR (A_VIEW + 1), ATTR (A_VIEW + 2) };
-				lightFragment (p, f.light, quat, view, litP, litS);
-			}
-			int proc[4] = { 0, 0, 0, 255 };
-			if (f.proc.on)
-			{
-				const int ai = f.proc.coord == 0 ? A_TC0 : f.proc.coord == 1 ? A_TC1 : A_TC2;
-				procTexel (p, f.proc, ATTR (ai), ATTR (ai + 1), proc);
-			}
-#undef ATTR
-			// the combiner's stages
-			int prev[4] = { primary[0], primary[1], primary[2], primary[3] };
-			// (the combiner's buffer is two stages late: a stage that "updates" it is seen by the stage after the next;
-			// the first stage sees nothing, the second the buffer's colour register)
-			int buffer[4] = { 0, 0, 0, 0 }, nextBuffer[4] = { f.bufferColor[0], f.bufferColor[1], f.bufferColor[2], f.bufferColor[3] };
-			for (int st = 0; st < 6; st++)
-			{
-				const Fragment::Stage &sg = f.stage[st];
-				if (!sg.pass)
-				{
-					int c[3][3], a[3];
-					for (int k = 0; k < 3; k++)
-					{
-						const int *src;
-						switch (sg.src[k]) { case 0: src = primary; break; case 1: src = litP; break; case 2: src = litS; break; case 3: src = texc[0]; break; case 4: src = texc[1]; break; case 5: src = texc[2]; break; case 6: src = proc; break; case 13: src = buffer; break; case 14: src = sg.konst; break; default: src = prev; break; }
-						tevColor (src, sg.op[k], c[k]);
-						switch (sg.srcA[k]) { case 0: src = primary; break; case 1: src = litP; break; case 2: src = litS; break; case 3: src = texc[0]; break; case 4: src = texc[1]; break; case 5: src = texc[2]; break; case 6: src = proc; break; case 13: src = buffer; break; case 14: src = sg.konst; break; default: src = prev; break; }
-						a[k] = tevAlpha (src, sg.opA[k]);
-					}
-					int out[4];
-					if (sg.mode == 6 || sg.mode == 7)			// the dot product of two colours as vectors
-					{
-						int d = ((c[0][0] * 2 - 255) * (c[1][0] * 2 - 255) + (c[0][1] * 2 - 255) * (c[1][1] * 2 - 255) + (c[0][2] * 2 - 255) * (c[1][2] * 2 - 255)) / 255;
-						out[0] = out[1] = out[2] = clamp255 (d);
-					}
-					else for (int i = 0; i < 3; i++) out[i] = tevCombine (sg.mode, c[0][i], c[1][i], c[2][i]);
-					out[3] = sg.mode == 7 ? out[0] : tevCombine (sg.modeA, a[0], a[1], a[2]);
-					for (int i = 0; i < 3; i++) prev[i] = clamp255 (out[i] * sg.scale);
-					prev[3] = clamp255 (out[3] * sg.scaleA);
-				}
-				for (int i = 0; i < 4; i++) buffer[i] = nextBuffer[i];
-				if (st < 4)
-				{
-					if (f.updateRgb >> st & 1) { nextBuffer[0] = prev[0]; nextBuffer[1] = prev[1]; nextBuffer[2] = prev[2]; }
-					if (f.updateA >> st & 1) nextBuffer[3] = prev[3];
-				}
-			}
-			if (f.alphaTest && !compare (f.alphaFunc, (u32) prev[3], f.alphaRef)) { p->alphaFailed++; continue; }
-			p->pixels++;
-			if (dq && t.depthWrite && f.depthMask && f.depthTest)
-			{
-				dq[0] = (u8) depth; dq[1] = (u8) (depth >> 8);
-				if (t.depthBytes > 2) dq[2] = (u8) (depth >> 16);
-			}
-			if (!t.colorWrite) continue;
-			u8 *cq = t.color + at * t.colorBytes;
-			int dst[4], out[4];
-			readColor (t, cq, dst);
-			if (f.blend)
-			{
-				int sf[4], df[4], sfa[4], dfa[4];
-				blendFactor (f.srcRgb, prev, dst, f.blendColor, sf); blendFactor (f.dstRgb, prev, dst, f.blendColor, df);
-				blendFactor (f.srcA, prev, dst, f.blendColor, sfa); blendFactor (f.dstA, prev, dst, f.blendColor, dfa);
-				for (int i = 0; i < 3; i++) out[i] = blendEq (f.eqRgb, prev[i], sf[i], dst[i], df[i]);
-				out[3] = blendEq (f.eqA, prev[3], sfa[3], dst[3], dfa[3]);
-			}
-			else for (int i = 0; i < 4; i++)
-			{
-				const int s = prev[i], d = dst[i];
-				switch (f.logicOp)
-				{
-				case 0: out[i] = 0; break; case 1: out[i] = s & d; break; case 2: out[i] = s & ~d & 255; break; case 3: out[i] = s; break;
-				case 4: out[i] = 255; break; case 5: out[i] = ~s & 255; break; case 6: out[i] = d; break; case 7: out[i] = ~d & 255; break;
-				case 8: out[i] = ~(s & d) & 255; break; case 9: out[i] = s | d; break; case 10: out[i] = ~(s | d) & 255; break; case 11: out[i] = s ^ d; break;
-				case 12: out[i] = ~(s ^ d) & 255; break; case 13: out[i] = ~s & d & 255; break; case 14: out[i] = (s | ~d) & 255; break; default: out[i] = (~s | d) & 255; break;
-				}
-			}
-			for (int i = 0; i < 4; i++) if (!f.rgbaMask[i]) out[i] = dst[i];
-			if (p->m->traceGpu && x == t.w / 2 && y == t.h / 2)
-				fprintf (stderr, "   centre: lit %d %d %d %d + %d %d %d %d, primary %d %d %d %d, tex0 %d %d %d %d, combined %d %d %d %d, there %d %d %d %d -> %d %d %d %d%c", litP[0], litP[1], litP[2], litP[3], litS[0], litS[1], litS[2], litS[3], primary[0], primary[1], primary[2], primary[3],
-					 texc[0][0], texc[0][1], texc[0][2], texc[0][3], prev[0], prev[1], prev[2], prev[3], dst[0], dst[1], dst[2], dst[3], out[0], out[1], out[2], out[3], 10);
-			writeColor (t, cq, out);
+			const int i = k.n++;
+			k.x[i] = x; k.at[i] = at; k.depth[i] = depth; k.l0[i] = l0; k.l1[i] = l1; k.l2[i] = l2;
+			if (k.n == CH) shade ();
 		}
+		shade ();
 	}
+	p->stat[worker].pixels += nPixels; p->stat[worker].depthFailed += nDepth; p->stat[worker].alphaFailed += nAlpha;
+}
+
+// What is queued: a state (the target, the fragment's rules, the culling) shared by the triangles of a draw, and
+// each triangle on the screen with its three vertices.
+struct State { Target t; Fragment f; u32 cull; bool ok; };
+struct Job { Screen s[3]; Vertex v[3]; u32 state; };
+enum { STATE_MAX = 256, JOB_MAX = 8192 };
+
+static void flushWorker (void *arg, int worker)
+{
+	Pica *p = (Pica *) arg;
+	for (u32 i = 0; i < p->jobCount; i++)
+	{
+		const Job &j = p->jobs[i];
+		const State &st = p->states[j.state];
+		rasterize (p, st.t, st.f, st.cull, j.s[0], j.s[1], j.s[2], worker, p->flushWorkers);
+	}
+}
+
+// The queued triangles are drawn; the last state stays (the next triangles may use it).
+static void flush (Pica *p)
+{
+	if (p->jobCount)
+	{
+		Machine *m = p->m;
+		struct timeval tv0; gettimeofday (&tv0, 0);
+		p->flushWorkers = m->parallel && m->workers > 1 && !m->traceGpu ? (m->workers > 8 ? 8 : m->workers) : 1;
+		if (p->flushWorkers > 1) m->parallel (m->parallelUser, flushWorker, p, p->flushWorkers);
+		else flushWorker (p, 0);
+		for (int w = 0; w < 8; w++)
+		{
+			p->triangles += p->stat[w].triangles; p->pixels += p->stat[w].pixels; p->depthFailed += p->stat[w].depthFailed; p->alphaFailed += p->stat[w].alphaFailed;
+			m->gsp.trianglesDrawn += p->stat[w].triangles; m->gsp.pixelsDrawn += p->stat[w].pixels;
+			p->stat[w].triangles = p->stat[w].pixels = p->stat[w].depthFailed = p->stat[w].alphaFailed = 0;
+		}
+		struct timeval tv1; gettimeofday (&tv1, 0);
+		m->gsp.usRaster += (u64) (tv1.tv_sec - tv0.tv_sec) * 1000000ull + (u64) tv1.tv_usec - (u64) tv0.tv_usec;
+		p->jobCount = 0;
+	}
+	if (p->stateCount > 1) { p->states[0] = p->states[p->stateCount - 1]; p->stateCount = 1; }
 }
 
 // A triangle from the shader: clipped to what can be seen (in clip space: -w <= x, y <= w, -w <= z <= 0), each
 // piece put on the screen.
 static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c)
 {
-	Target t;
-	if (!target (p, t)) return;
-	Fragment f;
-	fragmentState (p, f);
+	if (!p->states)
+	{
+		p->states = (State *) malloc (sizeof (State) * STATE_MAX);
+		p->jobs = (Job *) malloc (sizeof (Job) * JOB_MAX);
+		p->scratch = (Scratch *) malloc (sizeof (Scratch) * 8);
+		if (!p->states || !p->jobs || !p->scratch) { free (p->states); free (p->jobs); free (p->scratch); p->states = 0; p->jobs = 0; p->scratch = 0; return; }
+		p->stateCount = 0; p->jobCount = 0;
+	}
+	if (!p->stateOk || !p->stateCount)
+	{
+		static State st;							// (built aside: decoding a texture may flush the queue)
+		st.ok = target (p, st.t);
+		fragmentState (p, st.f);
+		for (int i = 0; i < 3; i++) if (st.f.useTex[i]) texDecoded (p, st.f.tex[i]);
+		st.cull = p->regs[R_CULL] & 3;
+		if (p->stateCount >= STATE_MAX) flush (p);
+		p->states[p->stateCount++] = st;
+		p->stateOk = true;
+	}
+	const u32 stateIndex = p->stateCount - 1;
+	if (!p->states[stateIndex].ok) return;
 	Vertex poly[2][12]; int n = 3, cur = 0;
 	poly[0][0] = a; poly[0][1] = b; poly[0][2] = c;
 	// (a normal's quaternion and its opposite are the same turn: all three on one side, to interpolate them)
@@ -953,7 +1241,14 @@ static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c
 		s[i].z = q[2] * iw * ds + dof;
 		s[i].invw = iw; s[i].v = &poly[cur][i];
 	}
-	for (int i = 1; i + 1 < n; i++) rasterize (p, t, f, s[0], s[i], s[i + 1]);
+	for (int i = 1; i + 1 < n; i++)
+	{
+		if (p->jobCount >= JOB_MAX) flush (p);
+		Job &j = p->jobs[p->jobCount++];
+		const Screen *tri[3] = { &s[0], &s[i], &s[i + 1] };
+		for (int k = 0; k < 3; k++) { j.v[k] = *tri[k]->v; j.s[k] = *tri[k]; j.s[k].v = &j.v[k]; }
+		j.state = p->stateCount - 1;					// (flush may have moved the state to index 0)
+	}
 }
 
 // A vertex out of the shader joins the primitive being assembled.
@@ -1070,6 +1365,7 @@ static void draw (Pica *p, bool indexed)
 		}
 		for (int i = 0; i < 12; i++) if (fixedMask >> i & 1) memcpy (attr[i], p->fixed[i], sizeof attr[i]);
 		Vertex v;
+		p->m->gsp.vertices++;
 		shadeVertex (p, attr, inputs, v);
 		if (p->m->traceGpu && n == 0)
 		{
@@ -1080,6 +1376,7 @@ static void draw (Pica *p, bool indexed)
 		if (p->m->traceGpu && n < 3) fprintf (stderr, "   v%u clip %g %g %g %g  color %g %g %g %g  tc %g %g%c", (unsigned) n, (double) v.a[0], (double) v.a[1], (double) v.a[2], (double) v.a[3], (double) v.a[8], (double) v.a[9], (double) v.a[10], (double) v.a[11], (double) v.a[12], (double) v.a[13], 10);
 		assemble (p, v);
 	}
+	if (p->m->traceGpu) flush (p);						// (a trace: each draw rasterized at once, to count it)
 	if (p->m->traceGpu) fprintf (stderr, "   -> %llu pixels (%llu triangles on the screen; %llu pixels behind, %llu refused by the alpha test)%c", (unsigned long long) (p->pixels - pixelsBefore),
 				     (unsigned long long) (p->triangles - trisBefore), (unsigned long long) (p->depthFailed - depthBefore), (unsigned long long) (p->alphaFailed - alphaBefore), 10);
 }
@@ -1091,6 +1388,7 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 	static const u32 BYTES[16] = { 0, 0xFF, 0xFF00, 0xFFFF, 0xFF0000, 0xFF00FF, 0xFFFF00, 0xFFFFFF, 0xFF000000, 0xFF0000FF, 0xFF00FF00, 0xFF00FFFF, 0xFFFF0000, 0xFFFF00FF, 0xFFFFFF00, 0xFFFFFFFF };
 	const u32 bits = BYTES[mask & 15];
 	p->regs[id] = (p->regs[id] & ~bits) | (value & bits);
+	if (id < R_ATTR_BASE) p->stateOk = false;				// (the fragment's registers: before the vertex ones)
 	const u32 v = p->regs[id];
 	switch (id)
 	{
@@ -1181,7 +1479,11 @@ static Pica *pica (Machine *m)
 	return m->pica;
 }
 
-void picaFree (Machine *m) { free (m->pica); m->pica = 0; }
+void picaFree (Machine *m)
+{
+	if (m->pica) { free (m->pica->states); free (m->pica->jobs); free (m->pica->scratch); for (auto &d : m->pica->decoded) free (d.px); }
+	free (m->pica); m->pica = 0;
+}
 
 // A command list: a value, then a header -- the register, a mask of the value's bytes, how many more values
 // follow, and whether they go to the following registers or all to this one. Each command fills 8 bytes' multiples.
@@ -1216,10 +1518,11 @@ void picaCommandList (Machine *m, u32 va, u32 size)
 			p->jump = 0;
 			const u32 bytes = p->regs[R_CMD_SIZE0 + k] << 3;
 			const u32 *next = bytes <= 0x400000 ? (const u32 *) m->physPtr (p->regs[R_CMD_ADDR0 + k] << 3, bytes) : 0;
-			if (!next || ++jumps > 4096) { m->note ("a command list's jump to nowhere"); return; }
+			if (!next || ++jumps > 4096) { m->note ("a command list's jump to nowhere"); break; }
 			list = next; words = bytes / 4; at = 0;
 		}
 	}
+	flush (p);
 }
 
 // ---- transfers -------------------------------------------------------------------------------------------------------
@@ -1239,6 +1542,32 @@ void picaDisplayTransfer (Machine *m, const u32 *c)
 	memset (&ti, 0, sizeof ti); memset (&to, 0, sizeof to);
 	ti.colorFormat = inFmt == 2 ? 3 : inFmt == 3 ? 2 : inFmt;		// (the transfer's numbers swap RGB565 and RGB5A1)
 	to.colorFormat = outFmt == 2 ? 3 : outFmt == 3 ? 2 : outFmt;
+	// (both buffers are linear memory or VRAM, one piece each in the host: read and written there)
+	const u8 *hin = m->physPtr (Machine::virtToPhys (c[1]), inW * inH * ib);
+	u8 *hout = m->physPtr (Machine::virtToPhys (c[2]), outW * outH * ob);
+	if (hin && hout)
+	{
+		for (u32 y = 0; y < outH; y++)
+		{
+			const u32 iy = y << sy, oy = flip ? outH - 1 - y : y;
+			if (iy >= inH) continue;
+			for (u32 x = 0; x < outW; x++)
+			{
+				const u32 ix = x << sx;
+				if (ix >= inW) continue;
+				u32 src, dst;
+				if (sameTiling) { src = (ix + iy * inW) * ib; dst = (x + oy * outW) * ob; }
+				else if (inLinear) { src = (ix + iy * inW) * ib; dst = tiled (x, oy, outW) * ob; }
+				else { src = tiled (ix, iy, inW) * ib; dst = (x + oy * outW) * ob; }
+				if (ti.colorFormat == 0 && to.colorFormat == 1) { hout[dst] = hin[src + 1]; hout[dst + 1] = hin[src + 2]; hout[dst + 2] = hin[src + 3]; continue; }	// RGBA8 -> RGB8
+				if (ti.colorFormat == to.colorFormat) { for (u32 k = 0; k < ib; k++) hout[dst + k] = hin[src + k]; continue; }
+				int col[4];
+				readColor (ti, hin + src, col);
+				writeColor (to, hout + dst, col);
+			}
+		}
+		return;
+	}
 	for (u32 y = 0; y < outH; y++)
 		for (u32 x = 0; x < outW; x++)
 		{

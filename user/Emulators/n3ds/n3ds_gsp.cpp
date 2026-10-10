@@ -14,6 +14,7 @@
 //
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
 #include "n3ds/n3ds.h"
 
 namespace n3ds {
@@ -73,6 +74,8 @@ void Machine::vblank ()
 	gspInterrupt (GSP_PDC1);
 }
 
+static u64 micros () { struct timeval tv; gettimeofday (&tv, 0); return (u64) tv.tv_sec * 1000000ull + (u64) tv.tv_usec; }
+
 // One command of the GX queue (8 words; addresses are the program's).
 static void gxCommand (Machine *m, const u32 *c)
 {
@@ -89,24 +92,35 @@ static void gxCommand (Machine *m, const u32 *c)
 	}
 	case 1:									// a PICA200 command list (address, size)
 		m->gsp.cmdLists++;
-		picaCommandList (m, c[1], c[2]);
+		{ const u64 t = micros (); picaCommandList (m, c[1], c[2]); m->gsp.usLists += micros () - t; }
 		m->gspInterrupt (GSP_P3D);
 		break;
 	case 2:									// memory fill: two areas (start, value, end), their controls
 		for (int k = 0; k < 2; k++)
 		{
+			const u64 t0 = micros ();
 			const u32 start = c[1 + k * 3], value = c[2 + k * 3], end = c[3 + k * 3], ctl = c[7] >> (k * 16) & 0xFFFF;
 			if (!start) continue;
 			const int width = (ctl >> 8 & 3) == 2 ? 4 : (ctl >> 8 & 3) == 1 ? 3 : 2;	// 32, 24 or 16 bits a value
-			for (u32 a = start; a + (u32) width <= end && a >= start; a += (u32) width)
+			// (the area is linear memory or VRAM: one piece in the host -- filled there; else through the page table)
+			u8 *host = end > start ? m->physPtr (Machine::virtToPhys (start), end - start) : 0;
+			if (host)
+			{
+				const u32 count = (end - start) / (u32) width;
+				if (width == 4) { u32 *q = (u32 *) host; for (u32 i = 0; i < count; i++) q[i] = value; }
+				else if (width == 2) { u16 *q = (u16 *) host; const u16 v16 = (u16) value; for (u32 i = 0; i < count; i++) q[i] = v16; }
+				else for (u32 i = 0; i < count; i++) { host[i * 3] = (u8) value; host[i * 3 + 1] = (u8) (value >> 8); host[i * 3 + 2] = (u8) (value >> 16); }
+			}
+			else for (u32 a = start; a + (u32) width <= end && a >= start; a += (u32) width)
 				if (!m->mem.write (a, &value, (u32) width)) break;
 			m->gsp.fills++;
+			m->gsp.usFills += micros () - t0;
 			m->gspInterrupt (k ? GSP_PSC1 : GSP_PSC0);
 		}
 		break;
 	case 3:									// display transfer (what the GPU rendered -> a framebuffer)
 		m->gsp.transfers++;
-		picaDisplayTransfer (m, c);
+		{ const u64 t = micros (); picaDisplayTransfer (m, c); m->gsp.usTransfers += micros () - t; }
 		m->gspInterrupt (GSP_PPF);
 		break;
 	case 4:									// texture copy

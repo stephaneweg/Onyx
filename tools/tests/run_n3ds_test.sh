@@ -19,7 +19,8 @@ D="$ROOT/user/Libs/dynarmic"
 make -C "$D" -j"$(nproc)" OUT="$B/dynarmic" > "$B/build.log" 2>&1 || { grep -E "error|Error" "$B/build.log" | head -20; exit 1; }
 DYN="$ROOT/third_party/dynarmic-a466015"
 INC="-I$DYN/src -I$DYN/externals/mcl/include -I$DYN/externals/fmt/include -isystem $ROOT/third_party/boost-1.86.0 -I$D/onyx -include $D/onyx/onyx_std_mutex.h"
-ARCH="-mcpu=cortex-a72 -mno-outline-atomics -ffunction-sections -fdata-sections"
+# (-fno-math-errno: sqrtf and the like are the processor's instructions, not library calls -- the GPU's lighting)
+ARCH="-mcpu=cortex-a72 -mno-outline-atomics -ffunction-sections -fdata-sections -fno-math-errno"
 U="-I$ROOT/user/Emulators"
 OBJS=""
 for src in "$ROOT"/user/Emulators/n3ds/*.cpp "$HERE/n3ds/n3dstest.cpp"; do

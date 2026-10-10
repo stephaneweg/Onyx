@@ -425,6 +425,48 @@ best this way. **Phase T3 is the next need** -- the fragments on the V3D (the st
 faster software path (stages compiled per draw, integer spans, the renderer on the second app core). The game
 itself was not run on the Pi (its ROM is on the PC).
 
+## 9l. Phase T3, first slice (2026-10-10): the software renderer three times faster, on two cores
+
+Still the software renderer, the pictures' checksums unchanged at every step (the three test programs, Mars's 120
+frames `acc3db37`, the game's first 600 frames `9c6e43e7`):
+
+- **A draw's state worked out once** (`State`: the target, the fragment's rules, the culling), kept until a
+  fragment register is written; what the combiner's stages really read (`useTex`, `useProc`, `useLight`,
+  `needPrimary`, `stageEnd`, `usesBuffer`) -- the rest is not computed; a fragment that simply replaces what is
+  there (`replace`) is written without reading the buffer.
+- **The triangles queued and rasterized at the list's end by several host cores** (`Machine::workers`,
+  `Machine::parallel`: the host runs `fn (arg, worker)` on each): every core walks the same queue in order and
+  draws the rows of its own 8-row bands, so nothing is shared and the order within a pixel is kept. The work
+  given to the others calls nothing and allocates nothing (an Onyx app core can do neither): each has its
+  `Scratch`, made beforehand. `n3dstest` on Onyx takes the free application cores (`kapi_core_acquire`); on the
+  user's Pi one of the two was free (the other one belongs to a server), so: **two cores**, the main thread and one
+  application core.
+- **Textures decoded once** into plain pixels (96 kept, found by where the program's bytes are and a checksum of
+  samples, made again when they change): a texel is one read, ETC1 included.
+- **Fragments shaded by groups of 32** (`CH`): the fragments of a row that passed the depth test are gathered,
+  then each input (the vertex colour, the texels, the lighting, the procedural texture) and each combiner stage
+  is worked out for the whole group in one loop over plain rows of integers -- loops GCC turns into NEON --, a
+  stage's choices (its sources, operands, mode) being made once a group. A source is a pointer to rows, a stage
+  writes rows of its own: the buffer's two-stage delay is a matter of pointers.
+- **Fills and display transfers**: direct paths for the usual formats.
+- The core says where its time goes (`Machine::gsp.usLists / usRaster / usTransfers / usFills`, the vertices, the
+  triangles, the pixels), and `gpuSkip` leaves parts of the renderer out to time them.
+
+On the Pi 4 (`n3dstest`, no display, two cores):
+
+| Program | Before | Now | The rasterizer's part |
+|---|---|---|---|
+| Mars, 120 frames | 9.6 fps | **28.3 fps** | 2.1 s for 21.8 M pixels |
+| *A Link Between Worlds*, its first 600 frames (to the title screen) | ~8 fps | **13.0 fps** (46.1 s) | 21.7 s for 255 M pixels |
+
+Where the game's 46 s go: the rasterizer 21.7 s (finding the fragments alone: 4.5 s), **the vertex shader 11.3 s**
+(3.0 M vertices: 3.7 microseconds each, interpreted), the display transfers 3.3 s, everything else (the processor,
+the system, the card) 9.8 s. **What is left to do, in the order of what it gives**: the vertex shader compiled (or
+at least decoded once) and run beside the processor; the fragments' lighting (per pixel today, the costliest
+input); the fragments found by spans instead of by testing every pixel of the box; then the GPU's whole command
+list on its own core, the processor going on meanwhile; and the V3D for the fragments (the study's plan) -- the
+software path alone will not reach the console's speed in this game.
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 

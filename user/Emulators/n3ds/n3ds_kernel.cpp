@@ -35,8 +35,9 @@ Machine::Machine ()
 	memset (&gsp, 0, sizeof gsp);
 	memset (&apt, 0, sizeof apt); apt.cpuLimit = 30;
 	memset (&hid, 0, sizeof hid);
-	memset (&source, 0, sizeof source); romfsBase = 0; romfsSize = 0; memFile = 0; memSize = 0; trace = false; traceGpu = false; pica = 0;
+	memset (&source, 0, sizeof source); romfsBase = 0; romfsSize = 0; memFile = 0; memSize = 0; trace = false; traceGpu = false; gpuSkip = 0; pica = 0;
 	title[0] = 0; productCode[0] = 0;
+	workers = 1; parallel = 0; parallelUser = 0;
 	memset (&dsp, 0, sizeof dsp);
 	storage = 0; storageDirty = false; memset (archives, 0, sizeof archives);
 	memset (&user, 0, sizeof user); setUser ("Onyx", 1, 2);
