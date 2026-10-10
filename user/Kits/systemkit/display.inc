@@ -208,4 +208,11 @@ SK_FN int display_game_set (const char *app, int w, int h)
 	return dp_screen_write (app, v);
 }
 SK_FN int display_game_reset (void) { return dp_screen_write (0, 0); }
+SK_FN int display_game_ask (int w, int h)
+{
+	int pid = kapi_ipc_lookup ("shell"), size[2];
+	if (pid <= 0) return 0;
+	size[0] = w; size[1] = h;
+	return kapi_mailbox_send (pid, 105 /* SHELL_MSG_SCREEN */, size, sizeof size) ? 1 : 0;
+}
 #undef SK_FN

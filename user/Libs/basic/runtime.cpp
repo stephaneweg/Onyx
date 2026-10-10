@@ -158,7 +158,7 @@ public:
 		unsigned now = kapi_get_ticks ();
 		if (!force && now - lastPresent < 2) return;	// ~50 Hz at most
 		lastPresent = now;
-		if (fsBuf) { blitFull (); kapi_present_fb (); return; }
+		if (fsBuf) { blitFull (); if (fsBuf) kapi_present_fb (); return; }
 		if (!root->valid) { root->draw (); uk_win_present (); }
 	}
 	void pumpEvents () override { pump_events (); if (root && !fsBuf) root->tooltipTick (); }
@@ -211,6 +211,8 @@ public:
 	// Full screen: the visible page scaled into the display, proportions kept.
 	void blitFull ()
 	{
+		consoleRetune ();
+		if (!fsBuf) return;
 		const unsigned *v = visible ();
 		int dw = W * sx, dh = H * sy;			// the displayed aspect
 		int ow, oh;
@@ -231,13 +233,57 @@ public:
 			for (int x = 0; x < ow && x < 4096; x++) d[x] = s[xmap[x]];
 		}
 	}
+	// In console mode the screen takes the size of the program's SCREEN mode while it is full screen (SCREEN 12:
+	// 640 x 480, its own pixels; SCREEN 13: 640 x 480 too, the smallest the display has -- its 320 x 200 doubled):
+	// asked from the console's home (SystemKit display.h), which gives the system's size back when the program is
+	// no longer in front. Asked BEFORE going full screen: the screen cannot change under a full-screen window.
+	int askedW = 0, askedH = 0;			// the size asked (0: none)
+	int askedForW = 0, askedForH = 0;		// ... for a picture of that size
+	void consoleScreen (bool on)
+	{
+		if (session_mode () != SESSION_CONSOLE) return;
+		int w = 0, h = 0;
+		if (on)
+		{
+			const int pw = W * sx, ph = H * sy;
+			askedForW = pw; askedForH = ph;
+			long best = 0;
+			for (int i = 0; i < display_modes (); i++)	// the smallest size that holds the picture
+			{
+				int mw, mh; display_mode (i, &mw, &mh);
+				if (mw >= pw && mh >= ph && (best == 0 || (long) mw * mh < best)) { best = (long) mw * mh; w = mw; h = mh; }
+			}
+		}
+		if (w == askedW && h == askedH) return;
+		if (!display_game_ask (w, h)) return;
+		askedW = w; askedH = h;
+		if (w == 0) return;
+		for (int t = 0; t < 150; t++)			// (the home looks every 0.1 s; the switch itself: up to 3 s)
+		{
+			int cw = 0, ch = 0;
+			kapi_screen_size (&cw, &ch);
+			if (cw == w && ch == h) break;
+			kapi_msleep (20);
+		}
+	}
+	// The SCREEN mode changed while full screen: out, the screen at the new mode's size, in again.
+	void consoleRetune ()
+	{
+		if (!fsBuf || askedW == 0 || (W * sx == askedForW && H * sy == askedForH)) return;
+		uk_win_fullscreen_end (); fsBuf = 0;
+		consoleScreen (true);
+		fsBuf = uk_win_fullscreen_begin (&fsW, &fsH);
+		if (!fsBuf) { root->fs = false; consoleScreen (false); return; }
+		for (long i = 0; i < (long) fsW * fsH; i++) fsBuf[i] = 0;
+	}
 	void fullscreen (bool on) override
 	{
 		if (!ensureWindow ()) return;
 		if (on && !fsBuf)
 		{
+			consoleScreen (true);
 			fsBuf = uk_win_fullscreen_begin (&fsW, &fsH);
-			if (!fsBuf) return;
+			if (!fsBuf) { consoleScreen (false); return; }
 			for (long i = 0; i < (long) fsW * fsH; i++) fsBuf[i] = 0;
 			root->fs = true;
 			present (true);
@@ -245,6 +291,7 @@ public:
 		else if (!on && fsBuf)
 		{
 			uk_win_fullscreen_end (); fsBuf = 0; root->fs = false;
+			consoleScreen (false);
 			root->invalidate (true); present (true);
 		}
 	}

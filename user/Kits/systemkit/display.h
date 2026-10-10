@@ -48,6 +48,11 @@ SK_API int display_game_said (const char *app, int *w, int *h);
 SK_API int display_game_size (const char *app, int *w, int *h);
 // Its line in [screen] set (w > 0: w x h), or DISPLAY_SYSTEM, or removed (DISPLAY_OWN) -> 1 written, 0 not.
 SK_API int display_game_set (const char *app, int w, int h);
+// The app in front asks the console's home for a screen size of its own while it stays in front (a BASIC game: its
+// SCREEN mode's), or gives it back (0, 0) -- over what display_game_size says for it; forgotten when the app ends.
+// Not while it is full screen (the screen cannot change then): ask, wait for kapi_screen_size to say it, then go
+// full screen. -> 1 sent, 0 no console's home runs (the desktop, the pocket mode: nothing to do).
+SK_API int display_game_ask (int w, int h);
 // Every app's line removed from [screen] (all their own again) -> 1 written, 0 not.
 SK_API int display_game_reset (void);
 

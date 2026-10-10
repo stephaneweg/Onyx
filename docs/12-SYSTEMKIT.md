@@ -31,7 +31,7 @@ SystemKit is what a program says to the system and to the other programs: notifi
 |---|---|
 | Include | `#include "systemkit/systemkit.h"` |
 | Link | `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C) |
-| Library | `SD:/lib/systemkit.so` — 110 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
+| Library | `SD:/lib/systemkit.so` — 111 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
 | Sources | `user/Kits/systemkit/` |
 
 ## Using it

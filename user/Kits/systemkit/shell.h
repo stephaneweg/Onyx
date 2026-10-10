@@ -27,6 +27,7 @@
 #define SHELL_MSG_SWITCHER	102	// the task switcher (the open apps, their pictures)
 #define SHELL_MSG_QUICK		103	// quick settings and the notifications
 #define SHELL_MSG_SEARCH	104	// the launcher, its search field focused
+#define SHELL_MSG_SCREEN	105	// display.h's display_game_ask: two ints, the screen size the app in front wants (0, 0: none)
 // One of the shell's screens asked (SHELL_MSG_*) -> 1 sent, 0 no shell runs (the desktop).
 SK_API int shell_ask (int what);
 SK_API int shell_running (void);	// 1 a shell serves SHELL_SERVICE (the pocket mode), 0 not

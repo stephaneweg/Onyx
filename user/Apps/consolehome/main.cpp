@@ -694,6 +694,16 @@ static bool screen_of (const char *app, int *w, int *h)	// the app's own size (S
 // The screen at w x h for an app (w 0: the system's size again). The system's size is the screen's whenever no app's
 // own size is on (a change made meanwhile -- the Display applet -- followed); only a size set here is undone.
 static bool g_ours;					// the screen has an app's size, set here
+// A size an app asked for itself while it runs (display_game_ask: a BASIC game's SCREEN mode) -- its while it is in
+// front, forgotten when it is no longer among the tasks. "*": asked before it was seen in front.
+static char g_askApp[32]; static int g_askW, g_askH;
+static void screen_asked (int w, int h)
+{
+	int ok = 0;
+	for (int i = 0; w > 0 && i < display_modes (); i++) { int mw, mh; display_mode (i, &mw, &mh); if (mw == w && mh == h) ok = 1; }
+	if (!ok) { g_askApp[0] = 0; g_askW = g_askH = 0; return; }
+	fs_copy (g_askApp, g_front[0] ? g_front : "*", sizeof g_askApp); g_askW = w; g_askH = h;
+}
 static void screen_to (int w, int h, const char *who)
 {
 	int cw = 0, ch = 0;
@@ -723,7 +733,15 @@ static void screen_follow (void)			// (every 0.1 s: the screen at the size of wh
 		else who = g_launch;
 	}
 	int w = 0, h = 0;
-	if (!(who[0] && screen_of (who, &w, &h))) w = h = 0;
+	if (g_askApp[0] == '*' && g_front[0]) fs_copy (g_askApp, g_front, sizeof g_askApp);
+	if (g_askApp[0] && g_askApp[0] != '*')			// (its app ended: forgotten)
+	{
+		bool there = false;
+		for (int i = 0; i < g_ntasks; i++) if (ieq (g_tasks[i].name, g_askApp)) there = true;
+		if (!there) { g_askApp[0] = 0; g_askW = g_askH = 0; }
+	}
+	if (who[0] && g_askApp[0] && ieq (who, g_askApp)) { w = g_askW; h = g_askH; }
+	else if (!(who[0] && screen_of (who, &w, &h))) w = h = 0;
 	screen_to (w, h, w ? who : "");
 }
 
@@ -735,6 +753,7 @@ static void messages (void)
 	{
 		if (type == SHELL_MSG_HOME) { menu_hide (); uk_shell_front (0, 0); g_homeDirty = true; }
 		else if (type == SHELL_MSG_SWITCHER || type == SHELL_MSG_QUICK) menu_toggle ();
+		else if (type == SHELL_MSG_SCREEN && n >= 8) { int s[2]; memcpy (s, buf, 8); screen_asked (s[0], s[1]); }
 	}
 }
 

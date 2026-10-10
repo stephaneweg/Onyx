@@ -1613,6 +1613,11 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   keyboard's keys).
 - **The tip**: a third window (`W_TIP`, see-through, parked): `front_look ()` shows it for 3 s when another app
   comes to the front (`tip_show`, `tip_tick`).
+- **A size asked while running**: SystemKit's `display_game_ask (w, h)` (a `SHELL_MSG_SCREEN` message to the home;
+  one of `display_modes`' sizes, `0, 0` gives it back) is the front app's size over the two below, forgotten when that
+  app is no longer among the tasks. To be asked BEFORE going full screen (`kapi_screen_set` refuses under a
+  full-screen window): BASIC's runtime does it for `FULLSCREEN` (`consoleScreen` in `Libs/basic/runtime.cpp`: the
+  smallest size that holds the `SCREEN` mode's picture; out and in again when the mode changes).
 - **A game's resolution**: an app's `app.txt` may say `resolution = 800x600` (the emulators do), overridden by
   `SD:/etc/console.ini` `[screen]` `<app> = WxH | system`. `screen_follow ()` (every 0.1 s) puts the screen at the
   front app's size (`screen_of`, cached: SystemKit's `display_game_size`) with `kapi_screen_set`, and back at the system's when none is wanted;

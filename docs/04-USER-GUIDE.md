@@ -874,6 +874,11 @@ home, the game ended or another app in front, the screen goes back to the system
 To choose another size for an app, or keep the system's: *Settings* › **Display** › *The games' resolutions* — kept in
 `SD:/etc/console.ini`, section `[screen]`, a line `gbemu = 640x480` or `n64emu = system` (from 640x480 to 2560x1600).
 
+**A BASIC game full screen** (`FULLSCREEN`, or View ▸ Full screen) takes the size of its `SCREEN` mode: **640 × 480**
+for `SCREEN 12` (its own pixels, one for one) and for `SCREEN 13` too (640 × 480 is the smallest size the display
+has: the 320 × 200 picture is doubled, a black band above and under it); a bigger picture gets the smallest size that
+holds it. The system's size comes back when the game leaves full screen, ends, or is no longer in front.
+
 **The settings (since 2026-10-09).** The **Settings** column holds the console's own pages, drawn in the home's style
 and made for a pad: **Games**, **Sound**, **Gamepad**, **Keyboard & Mouse**, **Language & Region**, **Wi-Fi**,
 **Packages**, **Mode**, **Display**. **A** enters one: the pages become a faded column at the left, the page's settings the list — a
