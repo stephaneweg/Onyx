@@ -287,7 +287,7 @@ static inline bool shaderArith (u32 op, u32 shape, V4 s1, V4 s2, V4 s3, V4 &v)
 
 struct Spec;
 static int specFlow (Pica *p, const struct Shader &s, u32 op, u32 ins, u32 pc, bool cond, int depth);
-static void specPop (Pica *p, int depth);
+static void specPop (Pica *p, int depth, u32 endPc, u32 retPc);
 static void specAt (Pica *p, u32 pc, int depth);
 static void specEnd (Pica *p);
 static void specStep (Pica *p, const struct Shader &s, const struct ShaderIns &I, u32 pcOf, u32 r1, u32 r2, u32 r3, V4 s1, V4 s2);
@@ -307,7 +307,7 @@ static void runShader (Pica *p, Shader &s, u32 entry, u64 &stepsOut, u32 &badOp)
 		{
 			Frame &f = stack[depth - 1];
 			if (f.repeat) { f.repeat--; s.aL += (int) f.inc; pc = f.loop; }
-			else { pc = f.ret; depth--; if (p->spec) specPop (p, depth); }
+			else { const u32 was = pc; pc = f.ret; depth--; if (p->spec) specPop (p, depth, was, pc); }
 		}
 		if (pc >= CODE_MAX) return;
 		if (p->spec) specAt (p, pc, depth);
@@ -418,7 +418,7 @@ struct Spec
 	bool cmpKnown[2], cmpMat[2], aKnown[2];
 	// A branch on a vertex's comparison: both arms are done, each under a guard -- a per-vertex yes / no the list
 	// works out (the GPU: a conditional write). gs: the guards of the blocks being run, by the interpreter's depth.
-	struct { int depth, until; u8 slot; } gs[8]; int ng; u32 nGuards;	// (until: a jumped-over block's end, or -1: the interpreter's block)
+	struct { int depth, until; u8 slot, other; } gs[8]; int ng; u32 nGuards;	// (until: a jumped-over block's end, or -1: the interpreter's block)
 	SpecOp ops[OPS_MAX]; u32 nOps;
 	float consts[CONSTS_MAX][4]; u32 nConsts;
 	u64 shape; int fail;
@@ -474,30 +474,44 @@ static int specFlow (Pica *p, const Shader &s, u32 op, u32 ins, u32 pc, bool con
 			if (op == 0x2C)					// a jump forward over a block: the block, under the opposite guard
 			{
 				const u32 to = ins >> 10 & 0xFFF;
-				if (to <= pc || sp.ng + 1 > 8) { sp.fail = Spec::WHY_JUMP; return 0; }
+				if (to <= pc || sp.ng + 1 > 8) { sp.fail = Spec::WHY_JUMP; p->m->note ("spec: jump %03x -> %03x %s (depth %d, %d guards)", (unsigned) (pc - 1), (unsigned) to, to <= pc ? "backward" : "too many guards", depth, sp.ng); return 0; }
 				specFlagsPut (sp, s, 0); specFlagsPut (sp, s, 1);
 				sp.shape = (sp.shape ^ ((u64) pc << 8 | (u64) op << 1 | 0x33)) * 1099511628211ull;
 				const u8 g = specGuardMake (sp, ins, true);		// (the block is run when the jump is not taken)
-				sp.gs[sp.ng].depth = depth; sp.gs[sp.ng].until = (int) to; sp.gs[sp.ng++].slot = g;
+				const u8 gOther = specGuardMake (sp, ins, false);	// (... and, should the block end by jumping over an "else" part, that part when it is)
+				sp.gs[sp.ng].depth = depth; sp.gs[sp.ng].until = (int) to; sp.gs[sp.ng].other = gOther; sp.gs[sp.ng++].slot = g;
 				return 3;
 			}
 			if (sp.ng + 2 > 8 || depth + 2 > 16) { sp.fail = Spec::WHY_DEEP; return 0; }
 			specFlagsPut (sp, s, 0); specFlagsPut (sp, s, 1);
 			sp.shape = (sp.shape ^ ((u64) pc << 8 | (u64) op << 1 | 0x55)) * 1099511628211ull;
-			if (op == 0x25) { const u8 g = specGuardMake (sp, ins, false); sp.gs[sp.ng].depth = depth + 1; sp.gs[sp.ng].until = -1; sp.gs[sp.ng++].slot = g; return 1; }
+			if (op == 0x25) { const u8 g = specGuardMake (sp, ins, false); sp.gs[sp.ng].depth = depth + 1; sp.gs[sp.ng].until = -1; sp.gs[sp.ng].other = 0; sp.gs[sp.ng++].slot = g; return 1; }
 			const u8 gThen = specGuardMake (sp, ins, false), gElse = specGuardMake (sp, ins, true);
-			sp.gs[sp.ng].depth = depth + 1; sp.gs[sp.ng].until = -1; sp.gs[sp.ng++].slot = gElse;
-			sp.gs[sp.ng].depth = depth + 2; sp.gs[sp.ng].until = -1; sp.gs[sp.ng++].slot = gThen;
+			sp.gs[sp.ng].depth = depth + 1; sp.gs[sp.ng].until = -1; sp.gs[sp.ng].other = 0; sp.gs[sp.ng++].slot = gElse;
+			sp.gs[sp.ng].depth = depth + 2; sp.gs[sp.ng].until = -1; sp.gs[sp.ng].other = 0; sp.gs[sp.ng++].slot = gThen;
 			return 2;
 		}
 	}
 	sp.shape = (sp.shape ^ ((u64) pc << 8 | (u64) op << 1 | (cond ? 1 : 0))) * 1099511628211ull;
+	// A jump that IS taken (its condition the draw's) inside guarded blocks. The one shape followed: the last
+	// instruction of a jumped-over block, jumping further on -- "if ... else ..." written with jumps: the part it
+	// skips is the "else", run under the other guard, up to where it lands.
+	if ((op == 0x2C && cond) || (op == 0x2D && cond == !(ins & 1)))
+	{
+		const u32 to = ins >> 10 & 0xFFF;
+		if (sp.ng)
+		{
+			auto &g = sp.gs[sp.ng - 1];
+			if (g.until == (int) pc && g.depth == depth && g.other && to > pc) { g.slot = g.other; g.other = 0; g.until = (int) to; return 3; }
+			sp.fail = Spec::WHY_JUMP;
+		}
+	}
 	return 0;
 }
-static void specPop (Pica *p, int depth)				// the interpreter left a block: its guard with it
+static void specPop (Pica *p, int depth, u32 endPc, u32 retPc)	// the interpreter left a block (at endPc, for retPc): its guards with it
 {
 	Spec &sp = *p->spec;
-	while (sp.ng && sp.gs[sp.ng - 1].depth > depth) { if (sp.gs[sp.ng - 1].until >= 0 && !sp.fail) sp.fail = Spec::WHY_JUMP; sp.ng--; }	// (a jump out of its block: not followed)
+	while (sp.ng && sp.gs[sp.ng - 1].depth > depth) { if (sp.gs[sp.ng - 1].until >= 0 && sp.gs[sp.ng - 1].until != (int) endPc && sp.gs[sp.ng - 1].until != (int) retPc && !sp.fail) { sp.fail = Spec::WHY_JUMP; p->m->note ("spec: a jump to %03x leaves its block", (unsigned) sp.gs[sp.ng - 1].until); } sp.ng--; }	// (a jump to the block's very end, or to where the block goes on -- past an IF's other arm --, ends with it; one elsewhere is not followed)
 }
 static void specAt (Pica *p, u32 pc, int depth)				// the instruction a jumped-over block ends at
 {

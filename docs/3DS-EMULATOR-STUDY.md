@@ -843,6 +843,14 @@ differ**, 66.7 % of the vertices in specialized draws (18 % have a vertex's inde
 *A Link Between Worlds*, 609 495 vertices, **0 differ**, 37.7 % specialized (16 % an index, 46 % a jump not
 followed -- the next thing to look at). A list is 53 to 67 operations and 45 to 52 constants on average.
 
+**The jumps, since** (the same day): the jump not followed was one shape, read in Zelda's code -- an "if ... else"
+written with two jumps: `JMPC else; ...; JMPU end; else: ...; end:`. A jumped-over block whose LAST instruction is a
+taken jump further on is the "if" part; what that jump skips is the "else", run under the other guard (both guards
+are made at the first jump, from the comparison's results as they are then), up to where it lands. Any other taken
+jump under a guard: not specialized. **Super Mario 3D Land: 82.0 % of the vertices, 4 117 066 checked, 0 differ; A
+Link Between Worlds: 83.9 %, 1 048 163 checked, 0 differ.** What is left (18 % and 16 %) is the vertex's index
+register alone: the skinned meshes, which stay on the processor. 132 and 54 shapes; 69 and 86 operations a list.
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours
