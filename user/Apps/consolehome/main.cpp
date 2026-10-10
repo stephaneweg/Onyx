@@ -376,8 +376,10 @@ static void menu_do (int i)
 	case M_COMMAND: uk_win_menu_command (m.task); break;
 	}
 }
+static void draw_menu_sw (void);
 static void draw_menu (void)
 {
+	if (g_style != ST_XMB) { draw_menu_sw (); return; }	// (the tiles' themes: a panel at the right, tiles.h)
 	g_overDirty = false;
 	Canvas &cv = g_oc;
 	g_overHits.clear ();

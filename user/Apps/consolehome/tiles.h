@@ -602,3 +602,90 @@ static void tiles_ptr (int ev, int x, int y, int c, long v)
 	}
 	g_homeDirty = true;
 }
+
+// ---- the menu as a panel at the right (§19.3): over the app in front, dimmed -- its icon and name, the menu's rows
+// (Resume, the app's own menus, Home, the other apps, Close, Settings, Shut Down; or an app's menu's commands), the
+// chosen one in the ring; at its foot the volume, the network, the time. The same items as XMB's menu (menu_build). --
+static void draw_menu_sw (void)
+{
+	g_overDirty = false;
+	const Pal &P = *g_pal;
+	TMet t = tm ();
+	Canvas &cv = g_oc;
+	int W = g_sw, H = g_sh;
+	g_overHits.clear ();
+	uk_paint_alpha (true);
+	for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) cv.px[(long) y * cv.stride + x] = (P.dark ? 0x60000000u : 0x78000000u) | 0x101218;	// (the app dimmed)
+	int pw = D (t.c ? 300 : 500), px = W - pw - D (t.c ? 12 : 28), py = D (t.c ? 12 : 28), ph = t.bary - py - D (t.c ? 10 : 20);
+	if (px < D (8)) { px = D (8); pw = W - 2 * px; }
+	lk_fill (cv, px, py, pw, ph, D (22), P.panel, P.panel, 250);	// (no shadow: over the see-through dim it would blacken)
+	if (!P.dark) lk_ring (cv, px, py, pw, ph, D (22), 16, P.line, 255);
+	// the header: the app in front (its icon, its name) -- or the menu of the app shown
+	App *front = 0; const char *title = "Onyx", *sub = TR ("The menu");
+	for (int i = 0; i < g_ntasks; i++)
+		if (g_tasks[i].flags & UK_TASK_FRONT) { front = find_app (g_tasks[i].name); title = front ? front->label : g_tasks[i].title[0] ? g_tasks[i].title : g_tasks[i].name; sub = front ? front->name : ""; }
+	static char t2[64];
+	if (g_level >= 0 && spec_menu (g_level, t2, sizeof t2)) sub = t2;
+	int is = D (t.c ? 44 : 84), hx = px + D (t.c ? 14 : 24), hy = py + D (t.c ? 14 : 24);
+	if (front) app_icon_at (cv, *front, hx + is / 2, hy + is / 2, is, 255);
+	else { lk_fill (cv, hx, hy, is, is, D (12), P.acc, P.acc, 255); tint_icon (cv, XI_GEM, 0, hx + is / 2, hy + is / 2, is * 60 / 100, 0xFFFFFF); }
+	{
+		UkFaceScope f (F (t.c ? 15 : 26));
+		text_fit (cv, hx + is + D (16), hy + D (t.c ? 2 : 10), pw - is - D (t.c ? 40 : 64), title, P.fg, 2);
+		UkFaceScope f2 (F (t.c ? 11 : 15));
+		text_fit (cv, hx + is + D (16), hy + D (t.c ? 24 : 48), pw - is - D (t.c ? 40 : 64), sub, P.sub);
+	}
+	// the rows
+	int rx = px + D (t.c ? 8 : 12), rw = pw - D (t.c ? 16 : 24), rh = D (t.c ? 30 : 52);
+	int foot = D (t.c ? 50 : 90), ry = hy + is + D (t.c ? 12 : 24), avail = py + ph - foot - ry;
+	int fit = avail / rh; if (fit < 1) fit = 1;
+	int first = g_msel >= fit ? g_msel - fit + 1 : 0;
+	for (int i = first; i < g_nmi && ry + rh <= py + ph - foot; i++, ry += rh)
+	{
+		bool on = i == g_msel;
+		if (i > first && !on && i - 1 != g_msel) lk_fill (cv, rx + D (16), ry, rw - D (32), D (1) > 1 ? D (1) : 1, 0, P.line, P.line, 255);
+		const MItem &mi = g_mi[i];
+		int lx = rx + D (20);
+		if (mi.kind == M_TASK && mi.task < g_ntasks)	// another app: its icon
+		{
+			App *a = find_app (g_tasks[mi.task].name);
+			int s = D (t.c ? 18 : 26);
+			if (a) { app_icon_at (cv, *a, lx + s / 2, ry + rh / 2, s, 255); lx += s + D (12); }
+		}
+		UkFaceScope f (F (t.c ? 13 : 19));
+		unsigned ink = mi.kind == M_POWER || mi.kind == M_CLOSE ? (P.dark ? 0xFF8A7A : 0xC43C2C) : P.fg;
+		text_fit (cv, lx, ry + (rh - uk_fh ()) / 2, rx + rw - D (40) - lx, mi.label, ink, on ? 2 : 0);
+		if (mi.kind == M_SETTINGS) uk_text (cv, rx + rw - D (20) - tw ("\xE2\x80\xBA"), ry + (rh - uk_fh ()) / 2, "\xE2\x80\xBA", P.sub);
+		if (on) tiles_ring (cv, rx + D (6), ry + D (4), rw - D (12), rh - D (8), D (10));
+		g_overHits.add (rx, ry, rw, rh, H_ITEM, i);
+	}
+	// the foot: the volume, the network, the time
+	{
+		int fy = py + ph - foot + D (t.c ? 6 : 12), fx = px + D (t.c ? 16 : 28), fw = pw - 2 * D (t.c ? 16 : 28);
+		lk_fill (cv, fx, fy - D (t.c ? 4 : 10), fw, D (1) > 1 ? D (1) : 1, 0, P.line, P.line, 255);
+		int v = kapi_sound_volume (-1, -1), vol = v < 0 ? 0 : v & 0xFF;
+		UkFaceScope f (F (t.c ? 11 : 16));
+		char vs[16]; ax_itoa (vol, vs);
+		uk_text (cv, fx, fy, TR ("Volume"), P.sub);
+		int bx = fx + tw (TR ("Volume")) + D (14), bw = fw - (bx - fx) - D (34), seg = 10, sg = D (3), sw = (bw - (seg - 1) * sg) / seg;
+		for (int k = 0; k < seg && sw > 0; k++)
+			lk_fill (cv, bx + k * (sw + sg), fy + uk_fh () / 2 - D (5), sw, D (10), D (3), k < vol && !(v & 0x100) ? P.acc : P.line, k < vol && !(v & 0x100) ? P.acc : P.line, 255);
+		uk_text (cv, fx + fw - tw (vs), fy, vs, P.fg, 2);
+		int y2 = fy + uk_fh () + D (t.c ? 6 : 12);
+		char net[40] = "", ip[24] = "";
+		if (kapi_net_status (ip, sizeof ip)) { ws_cat (net, sizeof net, TR ("Network"), ": ", ip); }
+		else ws_cat (net, sizeof net, TR ("No network"));
+		uk_text (cv, fx, y2, net, P.sub);
+		int hh = 0, mi2 = 0; kapi_get_datetime (0, 0, 0, &hh, &mi2, 0);
+		char tmx[8] = { (char) ('0' + hh / 10), (char) ('0' + hh % 10), ':', (char) ('0' + mi2 / 10), (char) ('0' + mi2 % 10), 0 };
+		uk_text (cv, fx + fw - tw (tmx, 2), y2, tmx, P.fg, 2);
+	}
+	// the buttons, on a band at the bottom
+	lk_fill (cv, 0, t.bary, W, H - t.bary, 0, P.bg2, P.bg2, 235);
+	{
+		const char *B[3] = { "\xE2\x96\xB2\xE2\x96\xBC", "B", "A" }, *Wd[3] = { TR ("Move"), g_level >= 0 ? TR ("Back") : TR ("Resume"), TR ("OK") };
+		tiles_hints (cv, B, Wd, 3);
+	}
+	uk_paint_alpha (false);
+	uk_win_select (W_OVER); uk_win_present (); uk_win_select (0);
+}

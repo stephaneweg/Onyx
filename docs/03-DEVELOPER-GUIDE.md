@@ -1589,8 +1589,9 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   rows' moves (`g_trow`), `tiles_ptr` the pointer. `draw_home`, `go` and `home_ptr` hand over to them when the style
   is not XMB. **The settings in the theme** (`draw_settings_sw`): the pages at the left, the rows at the right with
   lines between them and the ring (`draw_set_rows`, shared with XMB's pages), the dialog and the virtual keyboard in
-  the palette. Not built yet (§19): a game's options (X), favourites (Y), the last-played order and the All games
-  tile, the menu as a right-hand panel, the ring's pulse.
+  the palette. **The menu as a panel** (`draw_menu_sw`: the same items as `menu_build`, drawn at the right over the
+  dimmed app, the volume / network / time at its foot). Not built yet (§19): a game's options (X), favourites (Y),
+  the last-played order and the All games tile, the ring's pulse.
 - **The settings** (`xset.h`, 2026-10-09; the **Games** page — the watched folders, GameKit's `games_folders_save`,
   a folder browser over `kapi_vol_list` / `kapi_opendir` — added the same night — docs/COMPACT-SHELL-STUDY.md §18): A on an item of the Settings column
   calls `set_enter (page)`; while `g_setOn`, `draw_home` draws `draw_settings` and every input goes to `set_key`
