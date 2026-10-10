@@ -12,7 +12,7 @@
 
 namespace n3ds {
 
-enum { APPID_HOME_MENU = 0x101, APPID_APPLICATION = 0x300, APTCMD_WAKEUP = 1 };
+enum { APPID_HOME_MENU = 0x101, APPID_APPLICATION = 0x300, APTCMD_WAKEUP = 1, APTCMD_REQUEST = 2, APTCMD_RESPONSE = 3, APTCMD_WAKEUP_EXIT = 0xA };
 
 static u32 share (Machine *m, Object *o) { o->refs++; return m->handleNew (o); }
 
@@ -92,8 +92,47 @@ void aptRequest (Machine *m, Session *s, u32 *cmd)
 	case 0x06:								// GetAppletInfo (app id) -> title, media, registered, loaded, attributes
 		cmd[0] = ipcHeader (id, 7, 0); cmd[1] = RES_OK; cmd[2] = 0; cmd[3] = 0; cmd[4] = 0; cmd[5] = 1; cmd[6] = 1; cmd[7] = 0;
 		break;
+	case 0x16:								// PreloadLibraryApplet (applet id)
+	case 0x18:								// PrepareToStartLibraryApplet (applet id)
+		if (a.applet != cmd[1]) m->note ("library applet %03x", (unsigned) cmd[1]);
+		a.applet = cmd[1];
+		cmd[0] = ipcHeader (id, 1, 0); cmd[1] = RES_OK;
+		break;
+	case 0x17:								// FinishPreloadingLibraryApplet
+	case 0x40:								// SendCaptureBufferInfo (the screens' pictures, for the applet)
+		cmd[0] = ipcHeader (id, 1, 0); cmd[1] = RES_OK;
+		break;
+	// A library applet (the console's own keyboard, Mii chooser, error box...) is not run: it "ends" at once and
+	// the program gets its parameter block back with the answer of somebody who closed it -- nothing chosen.
+	case 0x0C:								// SendParameter (from, to, command, size, a handle, the parameters)
+	case 0x1E:								// StartLibraryApplet (applet id, size, a handle, the parameters)
+	{
+		const u32 applet = id == 0x0C ? cmd[2] : cmd[1], given = id == 0x0C ? cmd[4] : cmd[2], from = id == 0x0C ? cmd[8] : cmd[6];
+		const u32 size = given < sizeof a.reply ? given : (u32) sizeof a.reply;
+		memset (a.reply, 0, sizeof a.reply);
+		m->mem.read (from, a.reply, size);
+		if (id == 0x0C) m->note ("SendParameter %x -> %x command %x, %u bytes: %08x %08x %08x %08x", (unsigned) cmd[1], (unsigned) cmd[2], (unsigned) cmd[3], (unsigned) cmd[4], (unsigned) get32 (a.reply), (unsigned) get32 (a.reply + 4), (unsigned) get32 (a.reply + 8), (unsigned) get32 (a.reply + 12));
+		if (applet == 0x406) m->note ("the game shows an error box: type %u, code %08x (%u bytes)", (unsigned) get32 (a.reply), (unsigned) get32 (a.reply + 4), (unsigned) size);
+		if (applet == 0x406 && size >= 0xEF0) put32 (a.reply + 0xEEC, 1);	// the error box (or the EULA): closed, "success"
+		if (applet == 0x402 || applet == 0x404) put32 (a.reply, 1);	// the Mii chooser: no Mii selected
+		a.replySize = size; a.replySender = applet; a.replyCmd = APTCMD_WAKEUP_EXIT; a.replyCapture = false;
+		if (id == 0x0C && cmd[3] == APTCMD_REQUEST)			// the program asks where to put the screens' pictures:
+		{								// the applet answers with a memory block for them
+			u32 want = get32 (a.reply);
+			if (want < 0x1000 || want > 0x00400000) want = 0x00200000;
+			want = (want + PAGE_SIZE - 1) & ~(u32) (PAGE_SIZE - 1);
+			if (!a.capture) { u8 *h = (u8 *) calloc (want, 1); if (h) a.capture = new SharedMem (h, want); }
+			a.replyCmd = APTCMD_RESPONSE; a.replyCapture = a.capture != 0;
+		}
+		if (a.replyCmd == APTCMD_WAKEUP_EXIT) a.applet = 0;
+		a.pending = true;
+		if (a.param) { a.param->signaled = true; m->wakeWaiters (a.param); }
+		if (a.signal) { a.signal->signaled = true; m->wakeWaiters (a.signal); }
+		cmd[0] = ipcHeader (id, 1, 0); cmd[1] = RES_OK;
+		break;
+	}
 	case 0x09:								// IsRegistered (app id)
-		cmd[0] = ipcHeader (id, 2, 0); cmd[2] = cmd[1] == APPID_APPLICATION || cmd[1] == APPID_HOME_MENU; cmd[1] = RES_OK;
+		cmd[0] = ipcHeader (id, 2, 0); cmd[2] = cmd[1] == APPID_APPLICATION || cmd[1] == APPID_HOME_MENU || (a.applet && cmd[1] == a.applet); cmd[1] = RES_OK;
 		break;
 	case 0x0B:								// InquireNotification (app id) -> none
 		cmd[0] = ipcHeader (id, 2, 0); cmd[1] = RES_OK; cmd[2] = 0;
@@ -103,12 +142,20 @@ void aptRequest (Machine *m, Session *s, u32 *cmd)
 	{
 		const u32 *stat = cmd + 0x40;					// (the thread's static buffers: where the data goes)
 		const bool had = a.pending;
-		if (id == 0x0D) a.pending = false;
+		const u32 room = cmd[2];
+		u32 size = 0, sender = APPID_HOME_MENU, command = had ? (u32) APTCMD_WAKEUP : 0;
+		if (had && a.replyCmd)						// (an applet's answer)
+		{
+			size = a.replySize < room ? a.replySize : room; sender = a.replySender; command = a.replyCmd;
+			m->mem.write (stat[1], a.reply, size);
+		}
+		const u32 object = had && a.replyCmd && a.replyCapture ? share (m, a.capture) : 0;
+		if (id == 0x0D) { a.pending = false; a.replyCmd = 0; a.replySize = 0; a.replyCapture = false; }
 		cmd[0] = ipcHeader (id, 4, 4);
 		cmd[1] = had ? (u32) RES_OK : 0xC8A0CFEFu;			// (nothing sent)
-		cmd[2] = APPID_HOME_MENU; cmd[3] = had ? APTCMD_WAKEUP : 0; cmd[4] = 0;
-		cmd[5] = 0; cmd[6] = 0;						// (no handle)
-		cmd[7] = 2; cmd[8] = stat[1];					// (an empty buffer)
+		cmd[2] = sender; cmd[3] = command; cmd[4] = size;
+		cmd[5] = 0; cmd[6] = object;					// (a handle, or none)
+		cmd[7] = size << 14 | 2; cmd[8] = stat[1];
 		break;
 	}
 	case 0x44:								// GetSharedFont -> where to map it, the font's memory

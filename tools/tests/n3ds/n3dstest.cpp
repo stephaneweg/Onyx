@@ -169,7 +169,7 @@ static int run (int argc, char **argv)
 		r.f0 = (int) strtol (e, &end, 10); if (*end != '-') break;
 		r.f1 = (int) strtol (end + 1, &end, 10); if (*end != ':') break;
 		r.a = (unsigned) strtoul (end + 1, &end, 16); r.b = 0;
-		keys[nk++] = r; e = *end == ';' ? end + 1 : end; if (*end != ';') break;
+		keys[nk++] = r; e = *end == ';' || *end == '+' ? end + 1 : end; if (*end != ';' && *end != '+') break;	// ('+': Onyx's shell keeps ';')
 	}
 	for (const char *e = argc > 10 && argv[10][0] != '-' ? argv[10] : getenv ("N3DS_TOUCH"); e && *e && nt < 32; )
 	{
@@ -178,8 +178,9 @@ static int run (int argc, char **argv)
 		r.f1 = (int) strtol (end + 1, &end, 10); if (*end != ':') break;
 		r.a = (unsigned) strtoul (end + 1, &end, 10); if (*end != ',') break;
 		r.b = (unsigned) strtoul (end + 1, &end, 10);
-		touch[nt++] = r; e = *end == ';' ? end + 1 : end; if (*end != ';') break;
+		touch[nt++] = r; e = *end == ';' || *end == '+' ? end + 1 : end; if (*end != ';' && *end != '+') break;
 	}
+	if (nk || nt) printf ("scripted: %d key ranges, %d touches%c", nk, nt, 10);
 	const char *shots = getenv ("N3DS_SHOTS");
 	const int shotEvery = getenv ("N3DS_SHOTEVERY") ? atoi (getenv ("N3DS_SHOTEVERY")) : 60;
 	// N3DS_WAV=<file.wav>  the sound the DSP mixed (stereo, 16 bits, 32728 Hz)

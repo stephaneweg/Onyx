@@ -318,7 +318,10 @@ struct Machine
 	void *ldr;				// the dynamic modules loaded (n3ds_ldr.cpp)
 	struct Pica *pica;			// the GPU's state (n3ds_pica.cpp), made at its first command list
 	// APT (n3ds_apt.cpp): the application's life -- its events, the parameter the system sends it (the wake-up)
-	struct Apt { Mutex *lock; Event *signal, *param; bool pending; u32 cpuLimit; SharedMem *font; bool fontReady; } apt;
+	struct Apt { Mutex *lock; Event *signal, *param; bool pending; u32 cpuLimit; SharedMem *font; bool fontReady;
+		u32 applet;				// the library applet the program prepared (its id), or 0
+		u8 reply[0x1000]; u32 replySize, replySender, replyCmd; SharedMem *capture; bool replyCapture;	// what the next ReceiveParameter gives (an applet's answer)
+	} apt;
 	// HID (n3ds_hid.cpp): the buttons, the circle pad and the touch screen, in a shared page
 	struct Hid { SharedMem *shared; Event *events[5]; u32 buttons; s16 cpadX, cpadY; bool touch; u16 touchX, touchY; u32 padIndex, touchIndex; } hid;
 	// the sound processor (n3ds_dsp.cpp): its memory, the pipe's answer, the events of each audio frame

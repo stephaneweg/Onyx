@@ -258,6 +258,14 @@ void gspRequest (Machine *m, Session *, u32 *cmd)
 		m->release (m->gsp.irq); m->gsp.irq = 0;
 		cmd[0] = ipcHeader (id, 1, 0); cmd[1] = RES_OK;
 		break;
+	case 0x18:								// ImportDisplayCaptureInfo -> each screen's buffers, format, stride
+		cmd[0] = ipcHeader (id, 9, 0); cmd[1] = RES_OK;
+		for (int i = 0; i < 2; i++)
+		{
+			const Machine::Framebuffer &f = m->gsp.fb[i];
+			cmd[2 + i * 4] = f.left; cmd[3 + i * 4] = f.right; cmd[4 + i * 4] = f.format & 7; cmd[5 + i * 4] = f.stride;
+		}
+		break;
 	default:
 		ipcStub (m, "gsp::Gpu", cmd);
 		break;

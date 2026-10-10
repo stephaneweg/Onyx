@@ -41,7 +41,7 @@ static u32 block (const Machine *m, u32 id, u8 *out, u32 size)
 	case 0x000B0001: case 0x000B0002: return size;							// the country's, the state's names
 	case 0x000B0003: return size;									// coordinates
 	case 0x000C0000: return size;									// parental controls: none
-	case 0x000D0000: if (size >= 4) { out[0] = 1; out[1] = 0; out[2] = 1; out[3] = 0; } return 4;	// the EULA: accepted
+	case 0x000D0000: if (size >= 4) { out[0] = 0xFF; out[1] = 0xFF; out[2] = 0xFF; out[3] = 0xFF; } return 4;	// the EULA: every version accepted
 	case 0x000F0004: return 4;									// the model: an Old 3DS
 	case 0x00030001: return 8;									// the user's time offset
 	case 0x00090001: return 8;									// the console's unique id
