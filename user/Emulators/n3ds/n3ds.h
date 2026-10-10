@@ -308,6 +308,8 @@ struct Machine
 		u32 eyePairs[4][2]; int eyePairCount;
 		u32 eyeSrc; int eyeLastSide, eyeSeen, eyeBroken; bool eyeSkip;
 		u64 eyeDraws;				// (draws left out)
+		u64 hostTransfers, usHostTransfers;	// the transfers read from the host's pixels, their time
+		u64 usRead, usShade, usAssemble;	// (of the lists' time, in the draws of many vertices: their attributes read, shaded, their triangles assembled)
 		u64 shaderChecked, shaderWrong;		// (shaderCheck: vertices run by both the compiled shader and the interpreter; the ones that differed)
 		u64 gpuFrames, softFrames, usGpu;	// the targets' frames drawn by the host's GPU, by the software renderer; the host's time
 		u64 vertices, trianglesDrawn, pixelsDrawn, shaderSteps, trianglesIn;	// (shaderSteps: the vertex shader's instructions run; trianglesIn: before clipping and culling)

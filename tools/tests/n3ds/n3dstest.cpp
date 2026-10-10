@@ -192,6 +192,8 @@ static int run (int argc, char **argv)
 			m->gpuSync ();
 			gettimeofday (&t0, 0);
 			m->gsp.usLists = m->gsp.usTransfers = m->gsp.usFills = m->gsp.usRaster = m->gsp.usRasterAside = 0;
+			m->gsp.hostTransfers = m->gsp.usHostTransfers = m->gsp.usGpu = m->gsp.gpuFrames = m->gsp.softFrames = 0; m->gsp.transfers = 0;
+			m->gsp.usRead = m->gsp.usShade = m->gsp.usAssemble = 0;
 			m->gsp.vertices = m->gsp.trianglesDrawn = m->gsp.pixelsDrawn = m->gsp.shaderSteps = m->gsp.trianglesIn = 0;
 		}
 		unsigned b = 0; bool down = false; int tx = 0, ty = 0;
@@ -224,6 +226,8 @@ static int run (int argc, char **argv)
 	if (m->helpers) fprintf (stderr, "the rasterizer has %d other core%s: %.2f s of its time while the program went on%c", m->helpers, m->helpers > 1 ? "s" : "", (double) m->gsp.usRasterAside / 1e6, 10);
 	fprintf (stderr, "the GPU's share: %.2f s in command lists, %.2f s in transfers, %.2f s in fills%c", (double) m->gsp.usLists / 1e6, (double) m->gsp.usTransfers / 1e6, (double) m->gsp.usFills / 1e6, 10);
 	fprintf (stderr, "of the lists: %.2f s rasterizing %llu triangles, %llu pixels; the rest for %llu vertices (%llu shader instructions, %llu triangles)%c", (double) (m->gsp.usRaster - m->gsp.usRasterAside) / 1e6, (unsigned long long) m->gsp.trianglesDrawn, (unsigned long long) m->gsp.pixelsDrawn, (unsigned long long) m->gsp.vertices, (unsigned long long) m->gsp.shaderSteps, (unsigned long long) m->gsp.trianglesIn, 10);
+	if (m->gpuDraw) fprintf (stderr, "of the %u transfers: %llu from the host's pixels in %.2f s%c", (unsigned) m->gsp.transfers, (unsigned long long) m->gsp.hostTransfers, (double) m->gsp.usHostTransfers / 1e6, 10);
+	if (m->gsp.usShade) fprintf (stderr, "of the draws of many vertices: %.2f s reading attributes, %.2f s shading, %.2f s assembling triangles%c", (double) m->gsp.usRead / 1e6, (double) m->gsp.usShade / 1e6, (double) m->gsp.usAssemble / 1e6, 10);
 	const unsigned char *rgb = screens (m);
 	const size_t rgbSize = (size_t) n3ds::TOP_W * n3ds::SCREEN_H * 2 * 3;
 	fprintf (stderr, "screens %08x (%llu VBlanks; the GPU was asked %u fills, %u transfers, %u command lists)\n", crc32 (rgb, rgbSize),

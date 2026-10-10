@@ -557,6 +557,14 @@ static bool gpuKeeps (const Pica *p);
 static void texDecoded (Pica *p, Texture &t)
 {
 	if (!t.on || t.w * t.h > 1024 * 1024) return;
+	// (a texture already looked at since the queue was last emptied is taken as it was: its bytes are sampled once
+	// a frame, not once a draw)
+	{
+		Pica::Decoded *seen = 0;
+		for (auto &d : p->decoded)
+			if (d.px && d.epoch == p->epoch && d.data == t.data && d.w == t.w && d.h == t.h && d.format == t.format && (!seen || d.used > seen->used)) seen = &d;
+		if (seen) { seen->used = ++p->decodedClock; t.px = seen->px; t.slot = (int) (seen - p->decoded); return; }
+	}
 	u64 check = 1469598103934665603ull ^ t.bytes;
 	const u32 step = t.bytes / 97 + 1;
 	for (u32 i = 0; i < t.bytes; i += step) { check ^= t.data[i]; check *= 1099511628211ull; }
@@ -854,6 +862,7 @@ struct Fragment
 	bool blend; u32 eqRgb, eqA, srcRgb, dstRgb, srcA, dstA; int blendColor[4]; u32 logicOp;
 	// what the stages really read (the rest is not computed), and a fragment that simply replaces what is there
 	bool useTex[3], useProc, useLight, replace;
+	bool rowsMade;								// (the rows below: made when the software renderer draws with this state)
 	Row konstRow[6][4], bufferRow[4], zeroRow, fullRow;			// (the stages' constants, the buffer's colour, 0 and 255 as rows)
 	bool needPrimary, usesBuffer; int stageEnd;	// the vertex colour is read; a stage reads the buffer; one past the last stage that does something
 };
@@ -909,11 +918,7 @@ static void fragmentState (const Pica *p, Fragment &f)
 	for (int i = 0; i < 6; i++) if (!f.stage[i].pass) f.stageEnd = i + 1;
 	f.usesBuffer = (used >> 13 & 1) != 0;
 	f.needPrimary = !f.stageEnd || (used & 0x8001) || (!f.useLight && (used & 6));
-	for (int i = 0; i < CH; i++)
-	{
-		f.zeroRow[i] = 0; f.fullRow[i] = 255;
-		for (int c = 0; c < 4; c++) { f.bufferRow[c][i] = f.bufferColor[c]; for (int st = 0; st < 6; st++) f.konstRow[st][c][i] = f.stage[st].konst[c]; }
-	}
+	f.rowsMade = false;
 	const u32 skip = p->m->gpuSkip;
 	if (skip & 1) f.useProc = false;
 	if (skip & 8) f.useTex[0] = f.useTex[1] = f.useTex[2] = false;
@@ -1375,6 +1380,7 @@ static void queueEmptied (Pica *p)
 }
 static void gpuAllBad (Pica *p);
 static bool gpuKeeps (const Pica *p);
+static void gpuBeforeSoft (Pica *p);
 
 // A worker (this thread, or one of the host's): it takes the next band nobody has, and draws there the queued
 // triangles that reach it, in their order -- until no band is left.
@@ -1399,6 +1405,17 @@ static void flushWorker (void *arg, int worker)
 // The queue's bands laid out for the workers.
 static void flushStart (Pica *p)
 {
+	for (u32 k = 0; k < p->stateCount; k++)					// (the states' rows of constants)
+	{
+		Fragment &f = p->states[k].f;
+		if (f.rowsMade) continue;
+		for (int i = 0; i < CH; i++)
+		{
+			f.zeroRow[i] = 0; f.fullRow[i] = 255;
+			for (int c = 0; c < 4; c++) { f.bufferRow[c][i] = f.bufferColor[c]; for (int st = 0; st < 6; st++) f.konstRow[st][c][i] = f.stage[st].konst[c]; }
+		}
+		f.rowsMade = true;
+	}
 	int rows = 0;
 	for (u32 i = 0; i < p->jobCount; i++) if (p->jobs[i].rowMax >= rows) rows = p->jobs[i].rowMax + 1;
 	p->bandCount = (u32) (rows + BAND - 1) / BAND;
@@ -1429,7 +1446,7 @@ static void flush (Pica *p)
 	Machine *m = p->m;
 	if (p->busy) picaSync (m);
 	if (!p->jobCount) { if (p->stateCount > 1) { p->states[0] = p->states[p->stateCount - 1]; p->stateCount = 1; } return; }
-	gpuAllBad (p);								// (drawn here: no record is its target's whole frame any more)
+	gpuBeforeSoft (p);							// (drawn here: no record is its target's whole frame any more)
 	flushStart (p);
 	if (m->parallelBegin && !m->traceGpu && m->parallelBegin (m->parallelUser, flushWorker, p)) m->parallelEnd (m->parallelUser, flushWorker, p);
 	else flushWorker (p, 0);
@@ -1441,7 +1458,7 @@ static void flushAside (Pica *p)
 	Machine *m = p->m;
 	if (gpuKeeps (p)) return;						// (a frame the GPU may draw: at its transfer)
 	if (!p->jobCount || !m->parallelBegin || m->traceGpu) { flush (p); return; }
-	gpuAllBad (p);
+	gpuBeforeSoft (p);
 	flushStart (p);
 	if (!m->parallelBegin (m->parallelUser, flushWorker, p)) { flushWorker (p, 0); flushDone (p, false); return; }
 	p->busy = true;
@@ -1479,6 +1496,7 @@ struct GRec
 	float *v; u32 nf; GpuBatch *b; u32 nb; u32 *u; u32 nu;
 	u32 serial; u32 *pixels;
 	u64 touched;				// (the frame it was last drawn into or transferred: an old one gives its place)
+	bool guestStale;			// the host's pixels are newer than the program's buffer (put there only when something reads it)
 	bool trusted;				// its last frame was the GPU's, whole: this one's triangles are not queued for the software
 						// renderer (a draw the GPU cannot do then costs this frame what came before it)
 };
@@ -1498,6 +1516,24 @@ static bool gpuKeeps (const Pica *p)
 	for (int i = 0; i < GREC_MAX; i++) if (p->grec[i].used && p->grec[i].nb && !p->grec[i].bad) return true;
 	return false;
 }
+static void gpuStoreGuest (GRec *r);
+// The program's buffer made current (the host's pixels put there), for something that reads or draws into it.
+static void gpuGuestCurrent (GRec *r) { if (r->guestStale && r->pixels && r->w) gpuStoreGuest (r); r->guestStale = false; }
+// The software renderer is about to draw the queue: the buffers current, the records not whole frames any more,
+// and the host's copies of the targets it draws into not theirs any more.
+static void gpuBeforeSoft (Pica *p)
+{
+	if (p->grec)
+		for (int i = 0; i < GREC_MAX; i++)
+		{
+			GRec &r = p->grec[i];
+			if (!r.used) continue;
+			gpuGuestCurrent (&r);
+			for (u32 k = 0; k < p->stateCount; k++) if (p->states[k].colorPhys == r.color) { r.hostValid = false; break; }
+		}
+	gpuAllBad (p);
+}
+
 static GRec *gpuRec (Pica *p, u32 color, bool make)
 {
 	if (!p->grec)
@@ -1518,6 +1554,7 @@ static GRec *gpuRec (Pica *p, u32 color, bool make)
 		else if (r.touched + 2 < now && r.bad && (!spare || (spare->used && spare->nb + (u32) spare->bad && r.touched < spare->touched))) spare = &r;
 	}
 	if (!make || !spare) return 0;
+	if (spare->used) gpuGuestCurrent (spare);
 	spare->touched = now;
 	GRec &r = *spare;
 	if (!r.v)
@@ -1526,7 +1563,7 @@ static GRec *gpuRec (Pica *p, u32 color, bool make)
 		r.u = (u32 *) malloc (sizeof (u32) * GUNI_MAX); r.pixels = (u32 *) malloc (sizeof (u32) * 1024 * 1024);
 		if (!r.v || !r.b || !r.u || !r.pixels) { free (r.v); free (r.b); free (r.u); free (r.pixels); r.v = 0; r.b = 0; r.u = 0; r.pixels = 0; return 0; }
 	}
-	r.used = true; r.color = color; r.nf = r.nb = r.nu = 0; r.bad = false; r.hostValid = false; r.serial = 0; r.trusted = false;
+	r.used = true; r.color = color; r.nf = r.nb = r.nu = 0; r.bad = false; r.hostValid = false; r.serial = 0; r.trusted = false; r.guestStale = false;
 	return &r;
 }
 
@@ -1740,8 +1777,8 @@ static void gpuStoreGuest (GRec *r)
 }
 
 // A render target's frame ends (its display transfer is asked): the host's GPU draws its record when it is whole,
-// else the software renderer draws what is queued.
-static void gpuFrameEnd (Pica *p, u32 color)
+// else the software renderer draws what is queued. -> the target's record (0: none).
+static GRec *gpuFrameEnd (Pica *p, u32 color)
 {
 	Machine *m = p->m;
 	// (a transfer may start inside a target: the bottom screen's picture is drawn in the top one's buffer, 80 rows down)
@@ -1783,8 +1820,7 @@ static void gpuFrameEnd (Pica *p, u32 color)
 		const bool ok = m->gpuDraw (m->gpuUser, &f, r->pixels);
 		if (ok)
 		{
-			gpuStoreGuest (r);
-			r->hostValid = true;
+			r->hostValid = true; r->guestStale = true;		// (the program's buffer: only when something reads it)
 			// its triangles leave the queue
 			u32 keep = 0;
 			for (u32 i = 0; i < p->jobCount; i++)
@@ -1798,16 +1834,21 @@ static void gpuFrameEnd (Pica *p, u32 color)
 			r->nf = r->nb = r->nu = 0;
 			r->trusted = true;
 			m->gsp.gpuFrames++; m->gsp.usGpu += microsNow () - t0;
-			return;
+			return r;
 		}
-		r->hostValid = false;
+		r->bad = true;
 	}
 	// (the software renderer draws the queue -- when some of it is this target's)
 	bool mine = false;
 	for (u32 i = 0; i < p->jobCount && !mine; i++) mine = p->states[p->jobs[i].state].colorPhys == color;
 	if (mine) { p->why = "another target's frame drawn by the software renderer"; flush (p); m->gsp.softFrames++; }
-	if (r && r->pixels && m->gpuSoft && r->w) { gpuLoadHost (r); m->gpuSoft (m->gpuUser, r->pixels, r->w, r->h); }
-	if (r) { r->nf = r->nb = r->nu = 0; r->bad = false; r->hostValid = false; r->trusted = false; }
+	if (r && (mine || r->bad))						// (the software renderer drew it, or some of it earlier)
+	{
+		gpuGuestCurrent (r);
+		if (r->pixels && m->gpuSoft && r->w) { gpuLoadHost (r); m->gpuSoft (m->gpuUser, r->pixels, r->w, r->h); }
+		r->nf = r->nb = r->nu = 0; r->bad = false; r->hostValid = false; r->trusted = false;
+	}
+	return r;
 }
 
 // Memory is about to be filled (a GX fill): what is queued for a target there is drawn first, and the host's copy
@@ -1832,7 +1873,7 @@ void picaBeforeFill (Machine *m, u32 physStart, u32 physEnd)
 		for (int i = 0; i < GREC_MAX; i++)
 		{
 			GRec &r = p->grec[i];
-			if (r.used && r.color < physEnd && physStart < r.color + (u32) (r.w * r.h) * 4) r.hostValid = false;
+			if (r.used && r.color < physEnd && physStart < r.color + (u32) (r.w * r.h) * 4) { gpuGuestCurrent (&r); r.hostValid = false; }
 		}
 }
 
@@ -1879,6 +1920,14 @@ static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c
 		st.ok = target (p, st.t);
 		fragmentState (p, st.f);
 		for (int i = 0; i < 3; i++) if (st.f.useTex[i] && drawnInto (p, st.f.tex[i])) { p->why = "a rendered picture used as a texture"; flush (p); break; }
+		if (p->grec)							// (a texture in a buffer the host's pixels are ahead of: put there first)
+			for (int i = 0; i < 3; i++)
+				for (int g = 0; g < GREC_MAX && st.f.useTex[i] && st.f.tex[i].data; g++)
+				{
+					GRec &r = p->grec[g];
+					if (!r.used || !r.guestStale || !r.t.color) continue;
+					if (st.f.tex[i].data < r.t.color + (size_t) r.w * (size_t) r.h * r.t.colorBytes && r.t.color < st.f.tex[i].data + st.f.tex[i].bytes) gpuGuestCurrent (&r);
+				}
 		for (int i = 0; i < 3; i++) if (st.f.useTex[i]) texDecoded (p, st.f.tex[i]);
 		st.cull = p->regs[R_CULL] & 3;
 		gpuState (p, st);
@@ -1888,6 +1937,38 @@ static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c
 	}
 	const u32 stateIndex = p->stateCount - 1;
 	if (!p->states[stateIndex].ok) return;
+	// A triangle wholly inside, of a target whose frames are the GPU's: recorded from where its vertices are
+	// (nothing copied, nothing cut, nothing queued).
+	if (p->m->gpuDraw && p->states[stateIndex].gprog >= 0)
+	{
+		const State &S = p->states[stateIndex];
+		GRec *gr = gpuRec (p, S.colorPhys, false);
+		if (gr && gr->trusted && !gr->bad)
+		{
+			const Vertex *const vp[3] = { &a, &b, &c };
+			bool in3 = true;
+			for (int i = 0; i < 3 && in3; i++)
+			{
+				const float *q = vp[i]->a;
+				in3 = q[3] - 1e-6f >= 0 && q[3] + q[0] >= 0 && q[3] - q[0] >= 0 && q[3] + q[1] >= 0 && q[3] - q[1] >= 0 && q[3] + q[2] >= 0 && -q[2] >= 0;
+			}
+			if (in3)
+			{
+				const ViewMap vm = { f24 (p->regs[R_VIEWPORT_W]), f24 (p->regs[R_VIEWPORT_H]), (float) (int) (p->regs[R_VIEWPORT_XY] & 0x3FF), (float) (int) (p->regs[R_VIEWPORT_XY] >> 16 & 0x3FF),
+						     f24 (p->regs[R_DEPTH_SCALE]), f24 (p->regs[R_DEPTH_OFFSET]) };
+				Screen s3[3];
+				for (int i = 0; i < 3; i++)
+				{
+					const float *q = vp[i]->a;
+					const float iw = 1.0f / q[3];
+					s3[i].x = (q[0] * iw + 1.0f) * vm.vw + vm.vx; s3[i].y = (q[1] * iw + 1.0f) * vm.vh + vm.vy; s3[i].z = 0; s3[i].invw = iw; s3[i].v = vp[i];
+				}
+				float area; int box[4];
+				if (!triBox (S.t, S.cull, s3[0], s3[1], s3[2], area, box)) return;
+				if (gpuTriangle (p, S, vp, vm)) { p->triangles++; p->m->gsp.trianglesDrawn++; return; }
+			}
+		}
+	}
 	Vertex poly[2][12]; int n = 3, cur = 0;
 	poly[0][0] = a; poly[0][1] = b; poly[0][2] = c;
 	// (a normal's quaternion and its opposite are the same turn: all three on one side, to interpolate them)
@@ -2146,7 +2227,7 @@ static void draw (Pica *p, bool indexed)
 		lightingState (p, vlight);
 		if (p->scratch && vlight.on) lit = &vlight;
 	}
-	if (count >= 96 && m->parallelBegin && !m->traceGpu && (!indexed || p->shaded) && decReady (p, true)
+	if (count >= 96 && m->parallelBegin && !m->traceGpu && (!indexed || p->shaded) && ((p->shaderFn && !m->shaderCheck) || decReady (p, true))
 	    && (p->batch || (p->batch = (Batch *) malloc (sizeof (Batch))) != 0))
 	{
 		// (many vertices and other cores: shaded together)
@@ -2158,6 +2239,7 @@ static void draw (Pica *p, bool indexed)
 			for (int w = 0; w < 8; w++) { b.by[w].steps = 0; b.by[w].badOp = 0; }
 			if (++p->drawStamp == 0) { p->drawStamp = 1; if (p->shaded) memset (p->shaded, 0, sizeof (Shaded) * SHADED_MAX); }
 			const u32 n0 = n;
+			const u64 tRead = microsNow ();
 			for (; n < count && n - n0 < BATCH_SPAN && b.count < BATCH_MAX; n++)
 			{
 				const u32 vi = vertexIndex (n);
@@ -2169,10 +2251,14 @@ static void draw (Pica *p, bool indexed)
 				if (slot) { slot->index = vi; slot->stamp = p->drawStamp; slot->entry = k; }
 			}
 			m->gsp.vertices += b.count;
+			const u64 tShade = microsNow ();
 			if (b.count >= 2 * BATCH_PIECE && m->parallelBegin (m->parallelUser, shadeWorker, p)) m->parallelEnd (m->parallelUser, shadeWorker, p);
 			else shadeWorker (p, 0);
 			for (int w = 0; w < 8; w++) { m->gsp.shaderSteps += b.by[w].steps; if (b.by[w].badOp) p->badOp = b.by[w].badOp; }
+			const u64 tAsm = microsNow ();
 			for (u32 i = n0; i < n; i++) assemble (p, b.out[b.order[i - n0]]);
+			const u64 tEnd = microsNow ();
+			m->gsp.usRead += tShade - tRead; m->gsp.usShade += tAsm - tShade; m->gsp.usAssemble += tEnd - tAsm;
 		}
 		if (++p->drawStamp == 0) p->drawStamp = 1;			// (the entries kept by index are this draw's batches': not vertices)
 	}
@@ -2285,8 +2371,8 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 			}
 			p->floatIndex++;
 		}
-		else if (id >= R_VSH_CODE_DATA && id < R_VSH_CODE_DATA + 8) { if (p->codeIndex < CODE_MAX) { p->code[p->codeIndex++] = value; p->decDirty = true; p->jitDirty = true; if (p->codeIndex > p->codeTop) p->codeTop = p->codeIndex; } }
-		else if (id >= R_VSH_OPDESC_DATA && id < R_VSH_OPDESC_DATA + 8) { if (p->opdescIndex < OPDESC_MAX) { p->opdesc[p->opdescIndex++] = value; p->decDirty = true; p->jitDirty = true; } }
+		else if (id >= R_VSH_CODE_DATA && id < R_VSH_CODE_DATA + 8) { if (p->codeIndex < CODE_MAX) { if (p->code[p->codeIndex] != value) { p->decDirty = true; p->jitDirty = true; } p->code[p->codeIndex++] = value; if (p->codeIndex > p->codeTop) p->codeTop = p->codeIndex; } }
+		else if (id >= R_VSH_OPDESC_DATA && id < R_VSH_OPDESC_DATA + 8) { if (p->opdescIndex < OPDESC_MAX) { if (p->opdesc[p->opdescIndex] != value) { p->decDirty = true; p->jitDirty = true; } p->opdesc[p->opdescIndex++] = value; } }
 		break;
 	}
 }
@@ -2355,7 +2441,7 @@ void picaCommandList (Machine *m, u32 va, u32 size)
 void picaDisplayTransfer (Machine *m, const u32 *c)
 {
 	picaSync (m);
-	if (m->pica && m->gpuDraw) gpuFrameEnd (m->pica, Machine::virtToPhys (c[1]));
+	GRec *host = m->pica && m->gpuDraw ? gpuFrameEnd (m->pica, Machine::virtToPhys (c[1])) : 0;
 	const u32 inW = c[3] & 0xFFFF, inH = c[3] >> 16, outW = c[4] & 0xFFFF, outH = c[4] >> 16, flags = c[5];
 	const bool flip = (flags & 1) != 0, inLinear = (flags & 2) != 0, raw = (flags & 8) != 0, sameTiling = (flags & 0x20) != 0;
 	const u32 inFmt = flags >> 8 & 7, outFmt = flags >> 12 & 7, scale = flags >> 24 & 3;
@@ -2371,6 +2457,37 @@ void picaDisplayTransfer (Machine *m, const u32 *c)
 	// (both buffers are linear memory or VRAM, one piece each in the host: read and written there)
 	const u8 *hin = m->physPtr (Machine::virtToPhys (c[1]), inW * inH * ib);
 	u8 *hout = m->physPtr (Machine::virtToPhys (c[2]), outW * outH * ob);
+	// A target the host's GPU drew: the transfer reads the host's pixels (its rows are the tiled buffer's), from
+	// the row it starts at -- the program's buffer is not written for it.
+	if (host && host->hostValid && hout && !inLinear && !sameTiling && (u32) host->w == inW && ib == host->t.colorBytes)
+	{
+		const u32 off = Machine::virtToPhys (c[1]) - host->color, rowBytes = inW * ib;
+		const u32 rowsRead = (outH << sy) < inH ? (outH << sy) : inH;		// (the rows the transfer really reads)
+		if (off % (rowBytes * 8) == 0 && off / rowBytes + rowsRead <= (u32) host->h)
+		{
+			const u32 row0 = off / rowBytes;
+			const u64 t0 = microsNow ();
+			for (u32 y = 0; y < outH; y++)
+			{
+				const u32 iy = y << sy, oy = flip ? outH - 1 - y : y;
+				if (iy >= inH) continue;
+				const u32 *src = host->pixels + (size_t) (iy + row0) * inW;
+				u8 *d = hout + (size_t) oy * outW * ob;
+				for (u32 x = 0; x < outW; x++, d += ob)
+				{
+					const u32 ix = x << sx;
+					if (ix >= inW) continue;
+					const u32 v = src[ix];					// 0xAARRGGBB
+					if (to.colorFormat == 1) { d[0] = (u8) v; d[1] = (u8) (v >> 8); d[2] = (u8) (v >> 16); }
+					else if (to.colorFormat == 0) { d[0] = (u8) (v >> 24); d[1] = (u8) v; d[2] = (u8) (v >> 8); d[3] = (u8) (v >> 16); }
+					else { const int col[4] = { (int) (v >> 16 & 255), (int) (v >> 8 & 255), (int) (v & 255), (int) (v >> 24) }; writeColor (to, d, col); }
+				}
+			}
+			m->gsp.hostTransfers++; m->gsp.usHostTransfers += microsNow () - t0;
+			return;
+		}
+	}
+	if (host) gpuGuestCurrent (host);					// (the ordinary way reads the program's buffer)
 	if (hin && hout)
 	{
 		for (u32 y = 0; y < outH; y++)
