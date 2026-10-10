@@ -47,6 +47,10 @@ run pocket_tinycalc pocket-calculator "$W;expect kind card;expect frame 1;expect
 	SIM_SCREEN=800x480 SIM_APPNAME=tinycalc
 # a window bigger than the screen (the Calculator on a 320 x 240 screen): made all the same -- filled, frameless, cut
 run pocket_tinycalc pocket-too-big "$W;expect kind fill;expect frame 0;expect pos 0,24;expect front app" SIM_SCREEN=320x240 SIM_APPNAME=tinycalc
+# ... in console (a game bigger than the screen at its own resolution): the viewport's bars never a band -- they were
+# once, the work area moved under them and back each turn, the window jumping between the top and the bottom (2026-10-10)
+run pocket_tinycalc console-too-big "$W;$W;expect area 0,0,320,240;expect pos 0,0;$W;expect area 0,0,320,240;expect pos 0,0;$W;expect area 0,0,320,240;expect pos 0,0" \
+	SIM_SCREEN=320x240 SIM_MODE=console SIM_APPNAME=tinycalc
 # console: the same policy, no band
 run pocket_terminal console-terminal "$WW;expect area 0,0,800,480;expect client 800,480;expect frame 0;dump $OUT/console-terminal.elsm" \
 	SIM_SCREEN=800x480 SIM_MODE=console SIM_APPNAME=terminal SIM_PIPE="$PIPE"

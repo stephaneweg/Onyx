@@ -164,7 +164,10 @@ static int KindOf (int id)
 		s_St[id].nVx = s_St[id].nVy = 0; s_St[id].bFocus = FALSE; s_St[id].nHint = -1; s_St[id].nUnits = 0;
 		s_St[id].nKind = p != 0 ? Classify (id, p) : PK_KIND_NONE;
 		if (p != 0) p->SetPinned (s_St[id].nKind == PK_KIND_CARD || s_St[id].nKind == PK_KIND_FILL || s_St[id].nKind == PK_KIND_CENTRE);
-		if (p != 0) p->SetNoInset (s_St[id].nKind == PK_KIND_SHELL || s_St[id].nKind == PK_KIND_HOME);	// (not a band)
+		// (not a band; a window made with NoInset keeps it -- the viewport's bars, BarMake: classified here after it was set,
+		// they lost it and became bands themselves -- the work area moved under them and back each turn, the game's
+		// window jumping between the top and the bottom of the screen, 2026-10-10)
+		if (p != 0) p->SetNoInset (p->NoInset () || s_St[id].nKind == PK_KIND_SHELL || s_St[id].nKind == PK_KIND_HOME);
 		if (s_St[id].nKind == PK_KIND_FILL && p->Resizable ()) Fill (id);
 		if (p != 0 && s_bReady && AppWindow (p)) Promote (p->OwnerPid ());	// (a program that opens a window: in front)
 	}
