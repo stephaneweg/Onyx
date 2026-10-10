@@ -509,6 +509,10 @@ general path.
   is), the shader runs on all of them, 32 at a time on every core (`shadeWorker`; all the instructions decoded
   beforehand: no core writes the table), and the triangles are assembled in the draw's order. The title scene:
   the lists 9.9 -> 7.4 s, **28.7 s for 300 frames (10.5 a second)**, the same picture.
+- **The lighting by rows** (`lightRows`): a group's normals, view vectors, light directions and half-way vectors
+  as rows -- the square roots and the divisions four at a time --, the tables read in their own loops, the sums
+  by rows. The title scene: the rasterizer 18.4 -> 16.3 s, **26.6 s for 300 frames (11.3 a second)**, and still
+  the same picture to the bit.
 
 **A kernel fault found on the way** (and why some runs on the Pi stopped with only their first line): after each
 upload of a rebuilt `n3dstest`, the application core faulted at places the new code cannot fault at -- it was

@@ -631,63 +631,6 @@ static inline float lutLook (const Pica *p, int table, float x, bool abs)
 static inline void norm3 (float v[3]) { const float n = sqrtf (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); if (n > 0) { v[0] /= n; v[1] /= n; v[2] /= n; } }
 static inline float dot3 (const float a[3], const float b[3]) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 
-// A fragment's primary (ambient + diffuse) and secondary (specular) colours from its normal's quaternion and its
-// view vector.
-static void lightFragment (const Pica *p, const Lighting &l, const float quat[4], const float viewIn[3], int primary[4], int secondary[4])
-{
-	float q[4] = { quat[0], quat[1], quat[2], quat[3] };
-	const float qn = sqrtf (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
-	if (qn > 0) for (int i = 0; i < 4; i++) q[i] /= qn;
-	float n[3] = { 2 * (q[0] * q[2] + q[3] * q[1]), 2 * (q[1] * q[2] - q[3] * q[0]), 1 - 2 * (q[0] * q[0] + q[1] * q[1]) };
-	float v[3] = { viewIn[0], viewIn[1], viewIn[2] };
-	norm3 (v);
-	float diffuse[3] = { l.ambient[0], l.ambient[1], l.ambient[2] }, specular[3] = { 0, 0, 0 }, alphaP = 1, alphaS = 1;
-	for (int i = 0; i < l.count; i++)
-	{
-		const Lighting::Light &g = l.light[i];
-		float lv[3] = { g.pos[0], g.pos[1], g.pos[2] };
-		if (!g.directional) { lv[0] += viewIn[0]; lv[1] += viewIn[1]; lv[2] += viewIn[2]; }
-		float att = 1;
-		if (g.distance)
-		{
-			const float dist = sqrtf (lv[0] * lv[0] + lv[1] * lv[1] + lv[2] * lv[2]);
-			float x = g.scale * dist + g.bias;
-			x = x < 0 ? 0 : x > 1 ? 1 : x;
-			att = lutLook (p, LUT_DA + g.id, x, true);
-		}
-		norm3 (lv);
-		float h[3] = { v[0] + lv[0], v[1] + lv[1], v[2] + lv[2] };
-		norm3 (h);
-		const float nl = dot3 (n, lv);
-		const float lit = g.twoSided ? fabsf (nl) : nl > 0 ? nl : 0;
-		const float in[6] = { dot3 (n, h), dot3 (v, h), dot3 (n, v), nl, 0, 0 };
-#define LUT(t, table) (l.t.on ? lutLook (p, table, in[l.t.input < 6 ? l.t.input : 0], l.t.abs) * l.t.scale : 1.0f)
-		const float d0 = LUT (d0, LUT_D0), d1 = LUT (d1, LUT_D1);
-		const float rr = LUT (rr, LUT_RR), rgv = l.rg.on ? LUT (rg, LUT_RG) : rr, rbv = l.rb.on ? LUT (rb, LUT_RB) : rr;
-		const float refl[3] = { rr, rgv, rbv };
-		const float clampH = l.clampHighlights && nl <= 0 ? 0.0f : 1.0f;
-		for (int c = 0; c < 3; c++)
-		{
-			diffuse[c] += (g.diff[c] * lit + g.amb[c]) * att;
-			specular[c] += (d0 * g.spec0[c] + d1 * refl[c] * g.spec1[c]) * clampH * att;
-		}
-		if (i == l.count - 1 && l.fr.on)
-		{
-			const float fr = LUT (fr, LUT_FR);
-			if (l.fresnel & 1) alphaP = fr;
-			if (l.fresnel & 2) alphaS = fr;
-		}
-#undef LUT
-	}
-	for (int c = 0; c < 3; c++)
-	{
-		primary[c] = diffuse[c] <= 0 ? 0 : diffuse[c] >= 1 ? 255 : (int) (diffuse[c] * 255.0f + 0.5f);
-		secondary[c] = specular[c] <= 0 ? 0 : specular[c] >= 1 ? 255 : (int) (specular[c] * 255.0f + 0.5f);
-	}
-	primary[3] = alphaP <= 0 ? 0 : alphaP >= 1 ? 255 : (int) (alphaP * 255.0f + 0.5f);
-	secondary[3] = alphaS <= 0 ? 0 : alphaS >= 1 ? 255 : (int) (alphaS * 255.0f + 0.5f);
-}
-
 // ---- the fragment's way to the buffers ---------------------------------------------------------------------------------
 struct Target
 {
@@ -960,7 +903,111 @@ struct Scratch
 	float l0[CH], l1[CH], l2[CH], q0[CH], q1[CH], q2[CH], qs[CH], fa[CH], fb[CH], fq[7][CH];
 	Row primary[4], tex[3][4], litP[4], litS[4], proc[4], prev[6][4], c[3][3], a[3], o[4];
 	Row dst[4], bo[4], bf[2];					// what is in the buffer, what goes there, two blending factors
+	float lf[29][CH];						// the lighting's rows (lightRows)
 };
+
+// The lighting of a group of fragments, by rows: from their normals' quaternions (k.fq[0..3]) and their view
+// vectors (k.fq[4..6]) to their primary (ambient + diffuse) and secondary (specular) colours. For each light: its
+// direction and the half-way vector, the tables read at the dot products the configuration names, the sums.
+static void lightRows (const Pica *p, const Lighting &l, int n, Scratch &k, Row *litP, Row *litS)
+{
+	float *__restrict nx = k.lf[0], *__restrict ny = k.lf[1], *__restrict nz = k.lf[2];		// the normal
+	float *__restrict vx = k.lf[3], *__restrict vy = k.lf[4], *__restrict vz = k.lf[5];		// the view vector, of length 1
+	float *__restrict lx = k.lf[6], *__restrict ly = k.lf[7], *__restrict lz = k.lf[8];		// the light's direction
+	float *__restrict att = k.lf[9], *__restrict nl = k.lf[10], *__restrict lit = k.lf[11];
+	float *__restrict in0 = k.lf[12], *__restrict in1 = k.lf[13], *__restrict in2 = k.lf[14];
+	float *__restrict d0 = k.lf[15], *__restrict d1 = k.lf[16], *__restrict rr = k.lf[17], *__restrict rg = k.lf[18], *__restrict rb = k.lf[19];
+	float *const dif[3] = { k.lf[20], k.lf[21], k.lf[22] }, *const spe[3] = { k.lf[23], k.lf[24], k.lf[25] };
+	float *__restrict aP = k.lf[26], *__restrict aS = k.lf[27], *__restrict zero = k.lf[28];
+	const float *__restrict q0 = k.fq[0], *__restrict q1 = k.fq[1], *__restrict q2 = k.fq[2], *__restrict q3 = k.fq[3];
+	const float *__restrict wx = k.fq[4], *__restrict wy = k.fq[5], *__restrict wz = k.fq[6];
+	for (int i = 0; i < n; i++)
+	{
+		float a = q0[i], b = q1[i], c = q2[i], d = q3[i];
+		const float qn = sqrtf (a * a + b * b + c * c + d * d);
+		if (qn > 0) { a /= qn; b /= qn; c /= qn; d /= qn; }
+		nx[i] = 2 * (a * c + d * b); ny[i] = 2 * (b * c - d * a); nz[i] = 1 - 2 * (a * a + b * b);
+		float x = wx[i], y = wy[i], z = wz[i];
+		const float vn = sqrtf (x * x + y * y + z * z);
+		if (vn > 0) { x /= vn; y /= vn; z /= vn; }
+		vx[i] = x; vy[i] = y; vz[i] = z;
+		aP[i] = 1.0f; aS[i] = 1.0f; zero[i] = 0.0f;
+	}
+	for (int c = 0; c < 3; c++) { float *__restrict a = dif[c], *__restrict b = spe[c]; for (int i = 0; i < n; i++) { a[i] = l.ambient[c]; b[i] = 0.0f; } }
+	const float *const ins[6] = { in0, in1, in2, nl, zero, zero };
+	auto lut = [&] (const Lighting::Lut &t, int table, float *__restrict out)
+	{
+		if (!t.on) { for (int i = 0; i < n; i++) out[i] = 1.0f; return; }
+		const float *x = ins[t.input < 6 ? t.input : 0];
+		for (int i = 0; i < n; i++) out[i] = lutLook (p, table, x[i], t.abs) * t.scale;
+	};
+	for (int li = 0; li < l.count; li++)
+	{
+		const Lighting::Light &g = l.light[li];
+		for (int i = 0; i < n; i++)
+		{
+			float x = g.pos[0], y = g.pos[1], z = g.pos[2];
+			if (!g.directional) { x += wx[i]; y += wy[i]; z += wz[i]; }
+			const float len = sqrtf (x * x + y * y + z * z);
+			att[i] = len;						// (the distance, for now)
+			if (len > 0) { x /= len; y /= len; z /= len; }
+			lx[i] = x; ly[i] = y; lz[i] = z;
+		}
+		if (g.distance)
+			for (int i = 0; i < n; i++)
+			{
+				float x = g.scale * att[i] + g.bias;
+				x = x < 0 ? 0 : x > 1 ? 1 : x;
+				att[i] = lutLook (p, LUT_DA + g.id, x, true);
+			}
+		else for (int i = 0; i < n; i++) att[i] = 1.0f;
+		for (int i = 0; i < n; i++)
+		{
+			float hx = vx[i] + lx[i], hy = vy[i] + ly[i], hz = vz[i] + lz[i];	// half-way between the eye and the light
+			const float hn = sqrtf (hx * hx + hy * hy + hz * hz);
+			if (hn > 0) { hx /= hn; hy /= hn; hz /= hn; }
+			const float d = nx[i] * lx[i] + ny[i] * ly[i] + nz[i] * lz[i];
+			nl[i] = d;
+			lit[i] = g.twoSided ? fabsf (d) : d > 0 ? d : 0;
+			in0[i] = nx[i] * hx + ny[i] * hy + nz[i] * hz;
+			in1[i] = vx[i] * hx + vy[i] * hy + vz[i] * hz;
+			in2[i] = nx[i] * vx[i] + ny[i] * vy[i] + nz[i] * vz[i];
+		}
+		lut (l.d0, LUT_D0, d0); lut (l.d1, LUT_D1, d1); lut (l.rr, LUT_RR, rr);
+		const float *refl[3] = { rr, rr, rr };
+		if (l.rg.on) { lut (l.rg, LUT_RG, rg); refl[1] = rg; }
+		if (l.rb.on) { lut (l.rb, LUT_RB, rb); refl[2] = rb; }
+		for (int c = 0; c < 3; c++)
+		{
+			float *__restrict a = dif[c], *__restrict b = spe[c];
+			const float *r = refl[c];
+			const float diff = g.diff[c], amb = g.amb[c], spec0 = g.spec0[c], spec1 = g.spec1[c];
+			const bool clampH = l.clampHighlights;
+			for (int i = 0; i < n; i++)
+			{
+				const float high = clampH && nl[i] <= 0 ? 0.0f : 1.0f;
+				a[i] += (diff * lit[i] + amb) * att[i];
+				b[i] += (d0[i] * spec0 + d1[i] * r[i] * spec1) * high * att[i];
+			}
+		}
+		if (li == l.count - 1 && l.fr.on)
+		{
+			lut (l.fr, LUT_FR, d0);
+			if (l.fresnel & 1) for (int i = 0; i < n; i++) aP[i] = d0[i];
+			if (l.fresnel & 2) for (int i = 0; i < n; i++) aS[i] = d0[i];
+		}
+	}
+	for (int c = 0; c < 4; c++)
+	{
+		const float *a = c < 3 ? dif[c] : aP, *b = c < 3 ? spe[c] : aS;
+		int *__restrict o = litP[c], *__restrict q = litS[c];
+		for (int i = 0; i < n; i++)
+		{
+			o[i] = a[i] <= 0 ? 0 : a[i] >= 1 ? 255 : (int) (a[i] * 255.0f + 0.5f);
+			q[i] = b[i] <= 0 ? 0 : b[i] >= 1 ? 255 : (int) (b[i] * 255.0f + 0.5f);
+		}
+	}
+}
 
 // A triangle on the screen: its side (the area's sign: the culling) and its box, cut by what may be drawn.
 // False: nothing of it is drawn. (One function for the queue and for the rasterizer: the same answer.)
@@ -1067,13 +1114,7 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 		{
 			for (int j = 0; j < 4; j++) attr (A_QUAT + j, k.fq[j]);
 			for (int j = 0; j < 3; j++) attr (A_VIEW + j, k.fq[4 + j]);
-			for (int i = 0; i < n; i++)
-			{
-				const float quat[4] = { k.fq[0][i], k.fq[1][i], k.fq[2][i], k.fq[3][i] }, view[3] = { k.fq[4][i], k.fq[5][i], k.fq[6][i] };
-				int lp[4] = { T[0][0][i], T[0][1][i], T[0][2][i], T[0][3][i] }, ls[4] = { 0, 0, 0, 255 };
-				lightFragment (p, f.light, quat, view, lp, ls);
-				for (int c = 0; c < 4; c++) { k.litP[c][i] = lp[c]; k.litS[c][i] = ls[c]; }
-			}
+			lightRows (p, f.light, n, k, k.litP, k.litS);
 		}
 		if (f.useProc)
 		{
