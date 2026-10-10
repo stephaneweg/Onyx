@@ -22,7 +22,7 @@ INC="-I$DYN/src -I$DYN/externals/mcl/include -I$DYN/externals/fmt/include -isyst
 # (-fno-math-errno: sqrtf and the like are the processor's instructions, not library calls -- the GPU's lighting;
 # -fno-trapping-math: a float turned into an integer under a condition can be worked out for a whole row at once)
 ARCH="-mcpu=cortex-a72 -mno-outline-atomics -ffunction-sections -fdata-sections -fno-math-errno -fno-trapping-math"
-U="-I$ROOT/user/Emulators"
+U="-I$ROOT/user/Emulators -I$ROOT/user/Libs -I$ROOT/tools/qpu/mesa"
 OBJS=""
 for src in "$ROOT"/user/Emulators/n3ds/*.cpp "$HERE/n3ds/n3dstest.cpp"; do
 	o="$B/core/$(basename "$src" .cpp).o"
@@ -34,6 +34,23 @@ for src in "$ROOT"/user/Emulators/n3ds/*.cpp "$HERE/n3ds/n3dstest.cpp"; do
 	fi
 	OBJS="$OBJS $o"
 done
+# the GPU's shader generator (user/Libs/v3d: picatev, the QPU builder, Mesa's packer)
+V3D="$ROOT/user/Libs/v3d"; MESA="$ROOT/tools/qpu/mesa"
+v3dobjs () {	# $1: the objects' suffix, $2: more flags
+	VO=""
+	for src in "$V3D/picatev.cpp" "$V3D/qpu.cpp" "$V3D/shaders.cpp"; do
+		o="$B/core/v3d_$(basename "$src" .cpp)$1.o"
+		[ -f "$o" ] && [ "$o" -nt "$src" ] || aarch64-none-elf-g++ -std=c++17 -O2 $ARCH $2 -fno-exceptions -fno-rtti -I"$ROOT/user/Libs" -I"$MESA" -c "$src" -o "$o"
+		VO="$VO $o"
+	done
+	for src in "$MESA/broadcom/qpu/qpu_pack.c" "$MESA/broadcom/qpu/qpu_instr.c" "$V3D/shim.c"; do
+		o="$B/core/v3d_$(basename "$src" .c)$1.o"
+		[ -f "$o" ] && [ "$o" -nt "$src" ] || aarch64-none-elf-gcc -std=gnu11 -O2 $ARCH $2 -DNDEBUG -w -I"$MESA" -c "$src" -o "$o"
+		VO="$VO $o"
+	done
+}
+v3dobjs "" ""
+OBJS="$OBJS $VO"
 aarch64-none-elf-gcc -O2 -c "$HERE/basic/a64/linux_shim.c" -o "$B/linux_shim.o"
 aarch64-none-elf-gcc -O2 -I"$D/onyx" -c "$HERE/n3ds/t0_shim.c" -o "$B/t0_shim.o"
 aarch64-none-elf-g++ $ARCH -static -nostartfiles --specs=nosys.specs -Wl,--gc-sections $OBJS "$B/dynarmic/libdynarmic.a" \
@@ -54,6 +71,8 @@ if [ -f "$UL/lib/appkit_stubs.o" ] && [ -f "$UL/Runtime/libc/crt0libc.o" ] && [ 
 		fi
 		OO="$OO $o"
 	done
+	v3dobjs ".onyx" "-fno-pic -fno-pie -fno-stack-protector"
+	OO="$OO $VO"
 	aarch64-none-elf-g++ $ARCH -fno-pic -fno-pie -nostartfiles -Wl,-T,"$UL/Runtime/user.ld" -Wl,-z,max-page-size=0x10000 -Wl,--build-id=none -Wl,--gc-sections 		"$UL/lib/appkit_stubs.o" "$UL/Runtime/libc/crt0libc.o" "$UL/Runtime/libc/onyx_syscalls.o" $OO "$B/dynarmic/codemem.o" "$B/dynarmic/libdynarmic.a" -lm -o "$B/n3dstest.elf" 2>&1 | grep -v "warning" | head -5 || true
 fi
 # the shared system font: ours (tools/n3ds/mkfont.py)

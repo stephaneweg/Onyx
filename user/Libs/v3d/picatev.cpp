@@ -29,7 +29,7 @@ inline Val inRf (int r, long long lo = -WIDE, long long hi = WIDE - 1) { Val x; 
 inline Val unif (int kind, int a, int b)
 {
 	Val x; x.k = VK_UNIF; x.v = 0; x.uk = (unsigned char) kind; x.ua = (unsigned char) a; x.ub = (unsigned char) b;
-	const bool byte = kind == U_KONST || kind == U_BUFFER || kind == U_ALPHAREF;
+	const bool byte = kind == U_KONST || kind == U_BUFFER || kind == U_ALPHAREF || kind == U_BLEND;
 	x.lo = byte ? 0 : -WIDE; x.hi = byte ? 255 : WIDE - 1;
 	return x;
 }
@@ -583,6 +583,24 @@ struct Gen
 				emit (I ().a (V3D_QPU_A_SETMSF, nop, imm (0)).ac (V3D_QPU_COND_IFA), 0, 0);
 			}
 		}
+		// what is written instead of the combiner's result (the blending constant's part)
+		for (int ch = 0; ch < 4; ch++)
+		{
+			if (!c.outMode[ch]) continue;
+			const Val k = unif (U_BLEND, 0, c.outConst[ch] & 3);
+			Val v;
+			switch (c.outMode[ch])
+			{
+			case 1: v = div255 (op (O_MUL, out[ch], k)); break;
+			case 2: v = div255 (op (O_MUL, out[ch], op (O_SUB, k255 (), k))); break;
+			case 3: v = k; break;
+			default: v = op (O_SUB, k255 (), k); break;
+			}
+			const int reg = allocRf ();
+			store (v.k == VK_UNIF ? toAcc (v) : v, reg);
+			out[ch] = inRf (reg, 0, 255);
+		}
+		if (failed) return;
 		// the channels as floats 0..1 in r0..r3
 		for (int ch = 0; ch < 4; ch++)
 		{
@@ -624,6 +642,7 @@ unsigned long long key (const Config &c)
 		mix (g.mode); mix (g.modeA); mix (g.scale); mix (g.scaleA);
 	}
 	mix (c.updateRgb); mix (c.updateA); mix (c.alphaTest); mix (c.alphaTest ? c.alphaFunc : 0); mix (c.texOn); mix (c.lit);
+	for (int ch = 0; ch < 4; ch++) { mix (c.outMode[ch]); mix (c.outMode[ch] ? c.outConst[ch] : 0); }
 	return h;
 }
 

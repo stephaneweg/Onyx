@@ -32,11 +32,15 @@ struct Config
 	bool alphaTest; unsigned char alphaFunc;	// 0 never, 1 always, 2 =, 3 !=, 4 <, 5 <=, 6 >, 7 >= (the alpha against the reference)
 	unsigned char texOn;			// the units that have a texture (bit a unit; another one reads 0 0 0 255)
 	bool lit;				// the lighting's colours are given (else source 1 is the vertex colour, 2 is 0 0 0 255)
+	// what is written, a channel (after the alpha test): 0 the combiner's result, 1 it x the blending constant's
+	// channel outConst / 255, 2 it x (255 - that), 3 that constant itself, 4 255 - it. (The blending with a
+	// constant colour, which the GPU's interface has not: the host turns the factors into these.)
+	unsigned char outMode[4], outConst[4];
 };
 
-enum UniKind { U_CONST, U_KONST, U_BUFFER, U_ALPHAREF, U_TEXP0, U_TEXP1 };
+enum UniKind { U_CONST, U_KONST, U_BUFFER, U_ALPHAREF, U_TEXP0, U_TEXP1, U_BLEND };
 // U_CONST: value; U_KONST: stage a's constant, channel b (0..255); U_BUFFER: the buffer's colour, channel b;
-// U_ALPHAREF: the reference (0..255); U_TEXP0 / U_TEXP1: lookup a's TMU words (the kernel writes them)
+// U_BLEND: the blending constant's channel b (0..255); U_ALPHAREF: the reference (0..255); U_TEXP0 / U_TEXP1: lookup a's TMU words (the kernel writes them)
 struct Uni { unsigned char kind, a, b; unsigned value; };
 
 enum VaryKind { V_PRIMARY, V_LITP, V_LITS, V_COORD };

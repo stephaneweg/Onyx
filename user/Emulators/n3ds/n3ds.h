@@ -246,6 +246,31 @@ struct Thread : Object
 };
 
 // ---- the machine -----------------------------------------------------------------------------------------------------
+// A frame for the host's GPU (Machine::gpuDraw). The numbers are the Onyx kernel's (kern/kapi_abi.h: kapi_gpu_batch2,
+// gpu_program, gpu_texture): a program is a V3D fragment shader of `nVary` varyings (user/Libs/v3d/picatev; the
+// vertex and coordinate shaders are the stock ones for 4 + nVary floats a vertex), a texture is pixels r g b a
+// (bytes, the first row at the top) that changed when its serial did.
+struct GpuProgramInfo { const unsigned long long *words; u32 nWords, nVary, flags; };
+struct GpuTextureInfo { const u32 *px; u32 w, h, serial; };
+struct GpuBatch
+{
+	u32 program;				// an index in GpuFrame::programs
+	u32 off, count, stride;			// `count` vertices of `stride` floats from float `off`: x y z w (clip space of the whole target), the varyings
+	u32 flags, blend, wmask;		// KAPI_GPU_B_ZFUNC / NOZWRITE; KAPI_GPU_BLEND2 or 0; the channels not written
+	int scissor[4];				// x, y (from the top), w, h
+	u32 uni, nUni;				// its fragment uniforms in GpuFrame::u
+	int tex[3]; u32 texFlags[3]; int texUni[3];	// each lookup's texture (an index in GpuFrame::textures), its wrapping, where its two words go (-1: none)
+};
+struct GpuFrame
+{
+	int w, h;
+	const float *v; u32 nFloats;
+	const GpuBatch *b; u32 nb;
+	const u32 *u; u32 nu;
+	const GpuProgramInfo *programs; u32 nPrograms;
+	const GpuTextureInfo *textures; u32 nTextures;
+};
+
 struct Machine
 {
 	Memory mem;
@@ -283,6 +308,7 @@ struct Machine
 		u32 eyePairs[4][2]; int eyePairCount;
 		u32 eyeSrc; int eyeLastSide, eyeSeen, eyeBroken; bool eyeSkip;
 		u64 eyeDraws;				// (draws left out)
+		u64 gpuFrames, softFrames, usGpu;	// the targets' frames drawn by the host's GPU, by the software renderer; the host's time
 		u64 vertices, trianglesDrawn, pixelsDrawn, shaderSteps, trianglesIn;	// (shaderSteps: the vertex shader's instructions run; trianglesIn: before clipping and culling)
 	} gsp;
 	struct Pica *pica;			// the GPU's state (n3ds_pica.cpp), made at its first command list
@@ -320,6 +346,13 @@ struct Machine
 	// twice a frame -- the left eye's picture, then the right eye's, each sent to its own framebuffer --, the
 	// second one is not drawn (n3ds_gsp.cpp: learnt from the transfers, checked again each frame).
 	bool monoOnly;
+	// A host with a GPU (Onyx's V3D) sets this: a render target's frame -- its draws from one display transfer to
+	// the next -- is given whole to gpuDraw as GPU batches when every draw of it could be put so (GpuFrame below),
+	// and the pixels it gives back (w x h, 0xAARRGGBB, the first row at the top) are put into the program's
+	// buffer; false, or a frame with a draw the GPU's interface has not: the software renderer draws it.
+	bool (*gpuDraw) (void *user, const struct GpuFrame *f, u32 *pixels);
+	void *gpuUser;
+	void (*gpuSoft) (void *user, const u32 *pixels, int w, int h);	// (tests: a frame gpuDraw refused, as the software renderer drew it)
 	void gpuSync ();			// the GPU's work under way is ended (call it before reading a screen)
 	bool trace;				// the system calls and the requests, on stderr (tests)
 	bool traceGpu;				// ... each draw and transfer of the GPU
@@ -393,6 +426,7 @@ void gspRequest (Machine *m, Session *s, u32 *cmd);			// gsp::Gpu (n3ds_gsp.cpp)
 // the GPU (n3ds_pica.cpp): a command list at a program's address; a display transfer (the GX command's 8 words)
 void picaCommandList (Machine *m, u32 va, u32 size);
 void picaDisplayTransfer (Machine *m, const u32 *c);
+void picaBeforeFill (Machine *m, u32 physStart, u32 physEnd);	// memory is about to be filled: what is queued for it is drawn first
 bool picaBusy (const Machine *m);		// a list's triangles are being drawn aside
 bool picaDone (Machine *m);			// ... and the helpers have finished them
 void picaSync (Machine *m);			// ... this thread helps, waits, and the list is over

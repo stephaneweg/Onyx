@@ -54,6 +54,7 @@ static void randomConfig (Config &c)
 	c.alphaTest = rr (2) != 0; c.alphaFunc = (unsigned char) rr (8);
 	c.texOn = (unsigned char) rr (8);
 	c.lit = rr (2) != 0;
+	if (rr (3) == 0) for (int ch = 0; ch < 4; ch++) { c.outMode[ch] = (unsigned char) rr (5); c.outConst[ch] = (unsigned char) rr (4); }
 }
 
 static picatev::Shader sh;
@@ -73,6 +74,7 @@ static int testConfig (const Config &cf, unsigned seed, bool verbose, const char
 	for (int st = 0; st < 6; st++) for (int k = 0; k < 4; k++) in.konst[st][k] = rr (256);
 	for (int k = 0; k < 4; k++) in.buffer[k] = rr (256);
 	in.alphaRef = rr (256);
+	for (int k = 0; k < 4; k++) in.blend[k] = rr (256);
 	Run run;
 	run.version = qpu::version ();
 	Texture tx[3];
@@ -92,6 +94,7 @@ static int testConfig (const Config &cf, unsigned seed, bool verbose, const char
 		case picatev::U_KONST: v = (unsigned) in.konst[u.a][u.b]; break;
 		case picatev::U_BUFFER: v = (unsigned) in.buffer[u.b]; break;
 		case picatev::U_ALPHAREF: v = (unsigned) in.alphaRef; break;
+		case picatev::U_BLEND: v = (unsigned) in.blend[u.b]; break;
 		case picatev::U_TEXP0: v = 0x10000u * (unsigned) (u.a + 1) | 3; break;
 		default: v = 0; break;
 		}

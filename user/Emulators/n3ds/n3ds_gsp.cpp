@@ -118,6 +118,7 @@ static void gxCommand (Machine *m, const u32 *c)
 			if (!start) continue;
 			const int width = (ctl >> 8 & 3) == 2 ? 4 : (ctl >> 8 & 3) == 1 ? 3 : 2;	// 32, 24 or 16 bits a value
 			// (the area is linear memory or VRAM: one piece in the host -- filled there; else through the page table)
+			if (end > start) picaBeforeFill (m, Machine::virtToPhys (start), Machine::virtToPhys (start) + (end - start));
 			u8 *host = end > start ? m->physPtr (Machine::virtToPhys (start), end - start) : 0;
 			if (host)
 			{

@@ -13,7 +13,7 @@ namespace picatev
 {
 
 // a fragment's inputs, 0..255 a channel (r g b a)
-struct Inputs { int primary[4], litP[4], litS[4], tex[3][4], konst[6][4], buffer[4], alphaRef; };
+struct Inputs { int primary[4], litP[4], litS[4], tex[3][4], konst[6][4], buffer[4], alphaRef, blend[4]; };
 
 inline int refClamp (int v) { return v < 0 ? 0 : v > 255 ? 255 : v; }
 inline int refCombine (unsigned mode, int a, int b, int c)
@@ -84,7 +84,11 @@ inline bool reference (const Config &c, const Inputs &in, int out[4])
 			if (c.updateA >> st & 1) next[3] = prev[3];
 		}
 	}
-	for (int i = 0; i < 4; i++) out[i] = prev[i];
+	for (int i = 0; i < 4; i++)
+	{
+		const int k = in.blend[c.outConst[i] & 3];
+		out[i] = c.outMode[i] == 1 ? prev[i] * k / 255 : c.outMode[i] == 2 ? prev[i] * (255 - k) / 255 : c.outMode[i] == 3 ? k : c.outMode[i] == 4 ? 255 - k : prev[i];
+	}
 	if (!c.alphaTest) return true;
 	const int x = prev[3], r = in.alphaRef;
 	switch (c.alphaFunc & 7) { case 0: return false; case 1: return true; case 2: return x == r; case 3: return x != r; case 4: return x < r; case 5: return x <= r; case 6: return x > r; default: return x >= r; }

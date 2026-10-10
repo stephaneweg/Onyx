@@ -59,8 +59,13 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
   rasterizer 16.3, the lists 7.4 (vertex shader, interpreted), processor 2.3. **Two cores is what an app has**: the graphics server holds the
   other application core. **The user chose the V3D next (2026-10-10; plan: the study's section 9m)**: V1 done --
   `user/Libs/v3d/picatev` turns a combiner configuration into a QPU fragment shader (reference `picatev_ref.h`, test in
-  `run_qpu_test.sh`: 22 000 random configurations right); **next V2**: the core records batches instead of rasterizing
-  (model: `gc_gxgpu.cpp` + `Apps/gcemu/gxv3d.h`), then V3 the host draws with `kapi_gpu_render3`. Also still open:
+  `run_qpu_test.sh`: random configurations right); **V2 and V3 done the same day**: the core records each target's frame
+  beside its queue (`Machine::gpuDraw`, `GpuFrame`; the queue is the fallback), `n3dstest` on Onyx draws it with
+  `kapi_gpu_render3` (`onyxDraw`). **On the Pi 4 the title scene: 11.3 -> 20.7 fps, every frame on the GPU, the pictures
+  right** (the lighting per vertex for now). `n3dstest`'s 8th argument 0 = the software renderer alone; a picture as the
+  3rd argument is written to the card (fetch it by FTP to compare); `N3DS_GPUDUMP` + `tools/tests/n3ds/gpuview.cpp` replay a
+  frame on the PC. Next there: the vertices are now the cost (8 of 14.5 s: the shader compiled, the lighting once a
+  vertex, no software queue while a record is whole), the pixel copies, the lighting per fragment (V5). Also still open:
   the vertex shader compiled, the one-colour full-screen layers (the software path will not reach full speed in this game).
   **A kernel fault found there**: the loader empties core 0's instruction cache only, so an application core ran the
   previous build's instructions after each upload of a rebuilt program (faults at impossible places, or a hang).

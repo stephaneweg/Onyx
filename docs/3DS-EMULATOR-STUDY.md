@@ -534,9 +534,9 @@ emulator does (`gcemu`: `user/Libs/v3d/gxtev`, `user/Apps/gcemu/gxv3d.h`, kapi v
 | Step | What | State |
 |---|---|---|
 | V1 | **`user/Libs/v3d/picatev`**: a PICA200 combiner configuration -> a V3D fragment shader. The six stages in integers as the software renderer computes them (operands, modes, scales, the exact division by 255 -- `(x + 1 + (x >> 8)) >> 8` --, the dot product, the buffer two stages late), the lookups of units 0..2, the alpha test (`SETMSF`), the colours of the lighting as varyings. The configuration is followed forwards (where each operand's channels come from: "previous" and the buffer are names for an earlier value) then backwards (what the output needs, and until when): nothing unread is computed, and a register is given back at its value's last reading. `picatev_ref.h` is the reference; `tools/tests/v3d/picatev_test.cpp` (in `run_qpu_test.sh`) builds random configurations, checks them against the QPU's restrictions and runs them in the simulator: **22 000 as the reference, for V3D 4.2 and 7.1, none beyond 18 registers**; the game's own (a GPU trace's): the lit ground 137 instructions and 13 registers, a one-colour layer 26 instructions. | **done** |
-| V2 | The core records instead of rasterizing (`Machine`'s hook, as `gc`'s `GxGpu`): a draw -> a batch (the clip-space vertices with the varyings in the shader's order, the blending, the depth test, the culling, the scissor, the write masks, the textures, the uniforms), kept by render target from its clear to its display transfer. | next |
-| V3 | The host draws: `n3dstest` on Onyx (the programs' cache by `picatev::key`, the textures from the decoded ones, `kapi_gpu_vbuf`, one `kapi_gpu_render3` a target a frame, on the main thread), the pixels put back where the transfer reads them; on the PC the software V3D of `tools/tests/gc/gcv3d.cpp` to compare with the software renderer. | |
-| V4 | On the Pi: the speeds, the pictures against the software renderer's. | |
+| V2 | The core records beside its queue (`Machine::gpuDraw`, `GpuFrame` in `n3ds.h`; `n3ds_pica.cpp`'s `gpuState` / `gpuTriangle` / `gpuFrameEnd`): a draw -> a batch (the clip-space vertices with the varyings in the shader's order, the blending, the depth test, the scissor, the write masks, the textures, the uniforms), kept by render target until its display transfer; the queue stays as the fallback. | **done** |
+| V3 | The host draws: `n3dstest` on Onyx (`onyxDraw`: the programs made at their first use -- the stock vertex and coordinate shaders with the generated fragment shader --, the decoded textures given when their serial changes, one `kapi_gpu_render3` a target a frame, on the main thread), the pixels put back into the program's buffer. On the PC: `N3DS_GPUDUMP` writes a recorded frame, `tools/tests/n3ds/gpuview.cpp` draws it with the shaders in the QPU simulator and compares it with the software renderer's picture of the same frame. | **done** |
+| V4 | On the Pi: the speeds, the pictures against the software renderer's. | **the title scene: 11.3 -> 22 frames a second**, the top screen right; see below |
 | V5 | The lighting per fragment (the tables as textures); the procedural texture as a texture. | |
 
 **What the GPU's interface makes of it** (kern/kapi_abi.h, docs/02 §15):
@@ -551,7 +551,23 @@ emulator does (`gcemu`: `user/Libs/v3d/gxtev`, `user/Apps/gcemu/gxv3d.h`, kapi v
 - not in the interface: a blending constant colour (the kernel sets it to 0), logic operations, a "never" depth
   test, a stencil -- a draw that needs one sends its frame to the software renderer until the kernel has it.
 
-**V2's design, worked out (not written yet)**:
+**On the Pi 4 (2026-10-10)**: Cube Adventures' pictures are the software renderer's to the bit; *A Link Between
+Worlds*' title scene has **every frame of both screens drawn by the GPU: 300 frames in 14.5 s, 20.7 a second**
+(the software path: 26.6 s) -- the GPU's part 9.5 s for 2353 frames (about 4 ms a target: the kernel's lists and
+clipping, the GPU, the two copies of the pixels), **the vertices 8 s** (the shader interpreted, the triangles
+queued twice, the lighting worked out a triangle), the processor 2.3 s. The top screen is the software
+renderer's within the lighting's difference (per vertex: 11 % of its pixels differ by more than 8, 0.5 % by more
+than 48); the bottom screen is the same picture (3 pixels differ). What the game needed beyond the
+plan: a depth test "greater" (the GPU's buffer starts at 1: such a frame's depths are mirrored), the logic
+operation "keep what is there" (a write mask), **blending with the constant colour** (not in the kernel's
+interface: the shader multiplies by the constant, or writes it and the GPU multiplies it by what is there --
+`Config::outMode`), a target that is never transferred (its record gives its place), a transfer from a buffer
+nothing is queued for (the others' queue is left alone), and **a transfer that starts inside a target** (the
+bottom screen is drawn in the top one's buffer, 80 rows down, behind a scissor). The GPU's target has its first
+row at the top -- the PICA's highest y, the first row of its tiled buffer. Next: the vertices (the shader compiled, the lighting at the vertices once, no software queue
+while the GPU's record is whole), the copies (the transfer straight from the host's pixels).
+
+**V2's design, as built**:
 - *The software queue is the universal record.* A frame's triangles stay queued (`Job`, `State`) **until the
   display transfer of their target** instead of being rasterized at each list's end; beside them the GPU's frame is
   built (the floats, the batches). At the transfer: every draw could be expressed -> the GPU draws and the queue is
