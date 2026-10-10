@@ -42,7 +42,8 @@
 #include <circle/util.h>
 #include <circle/startup.h>		// reboot() (kapi_reboot)
 #include <circle/memory.h>		// CMemorySystem (meminfo)
-#include <circle/machineinfo.h>		// CMachineInfo::GetRAMSize (firmware board RAM)
+#include <circle/machineinfo.h>
+#include <circle/devicetreeblob.h>		// CMachineInfo::GetRAMSize (firmware board RAM)
 #include <circle/actled.h>		// kapi_shutdown: LED off
 #include <circle/2dgraphics.h>		// kapi_present_fb
 #include <circle/bcmframebuffer.h>		// kapi_fullscreen_direct
@@ -339,6 +340,29 @@ const void *kapi_lib_open_as (const char *pPath, const char *pAlias, unsigned nM
 // "key value" lines. The build's date and revision are buildstamp.cpp's: compiled again at every
 // link (kernel/Makefile), so they are this image's, whichever file changed.
 extern const char g_BuildStamp[], g_BuildRev[];
+
+// The board's own keyboard (the Pi 400, the Pi 500): its layout, the country code the firmware reads from
+// the OTP into the device tree (/chosen/rpi-country-code, a 32-bit word); the codes are Raspberry Pi's (as
+// its first-boot wizard piwiz): 1 GB, 2 FR, 3 ES, 4 US, 5 DE, 6 IT, 7 JP, 8 PT, 9 NO, 10 SE (the Nordic
+// keyboard), 11 DK, 12 RU, 13 TR, 14 IL, 15 HU, 16 KR -- each with its SD:/etc/keymaps name, or "-" (none
+// yet). 0: no such keyboard (a Pi 4, a Pi 5).
+static unsigned BoardKeyboard (const char **ppMap)
+{
+	*ppMap = "-";
+#if RASPPI >= 4
+	static const char *const Map[] = { "-", "UK", "FR", "ES", "US", "DE", "IT", "JP", "PT", "NO", "SE", "DK" };
+	const CDeviceTreeBlob *pDTB = CMachineInfo::Get ()->GetDTB ();
+	const TDeviceTreeNode *pNode = pDTB != 0 ? pDTB->FindNode ("/chosen") : 0;
+	const TDeviceTreeProperty *pProp = pNode != 0 ? pDTB->FindProperty (pNode, "rpi-country-code") : 0;
+	if (pProp == 0 || pDTB->GetPropertyValueLength (pProp) < 4) return 0;
+	unsigned nCode = pDTB->GetPropertyValueWord (pProp, 0);
+	if (nCode < sizeof Map / sizeof Map[0]) *ppMap = Map[nCode];
+	return nCode;
+#else
+	return 0;
+#endif
+}
+
 int kapi_kernel_info (char *pBuf, unsigned nCap)
 {
 	CString Text;
@@ -348,6 +372,15 @@ int kapi_kernel_info (char *pBuf, unsigned nCap)
 		     (unsigned) KAPI_ABI_VERSION, g_BuildStamp, g_BuildRev,
 		     CMachineInfo::Get ()->GetMachineName (), (unsigned) CMachineInfo::Get ()->GetRAMSize (),
 		     (unsigned) (RASPPI >= 5 ? 5 : 4));
+	// keyboard: the board's own keyboard's layout (a keymap's name, or "-") and its code (Setup proposes it)
+	const char *pMap;
+	unsigned nKbd = BoardKeyboard (&pMap);
+	if (nKbd != 0)
+	{
+		CString Line;
+		Line.Format ("keyboard %s %u\n", pMap, nKbd);
+		Text.Append (Line);
+	}
 	unsigned n = Text.GetLength ();
 	if (nCap == 0) return (int) n;
 	unsigned k = n < nCap - 1 ? n : nCap - 1;

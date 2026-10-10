@@ -183,3 +183,9 @@ remote desktop (VNC) on	bureau à distance (VNC) activé
 remote windows on	fenêtres distantes activées
 file sharing (FTP) on	partage de fichiers (FTP) activé
 Start Onyx: the menu bar and the dock appear; this assistant does not come back.	Démarrer Onyx : la barre de menus et le dock apparaissent ; cet assistant ne reviendra plus.
+Norway	Norvège
+Swedish / Finnish (Nordic)	Suédois / finnois (nordique)
+Norwegian	Norvégien
+Danish	Danois
+Portuguese	Portugais
+Japanese	Japonais

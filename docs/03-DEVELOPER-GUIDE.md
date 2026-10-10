@@ -186,8 +186,9 @@ actually present — load one and send it to the kernel via `kapi_set_keymap_dat
 stays so until `keyb` loads a layout from the card (see [Circle Changes §1](05-CIRCLE-CHANGES.md#1-keyboard-map-decoupled-from-the-kernel--max_tasks)),
 so a layout is *only* ever a file — adding one needs no kernel rebuild. Regenerate the
 `.kmap` files with `python tools/keymaps/genkeymaps.py`; it compiles each `<NAME>` from a
-`keymap_<name>.h` table in **`tools/keymaps/maps/`** (the 8 layout sources, incl. `BE` =
-Belgian azerty, all tracked in the Onyx repo — not in the Circle tree). The `.kmap` format
+`keymap_<name>.h` table in **`tools/keymaps/maps/`** (the 13 layout sources, incl. `BE` =
+Belgian azerty and, since 2026-10-10, the Raspberry Pi keyboards' `SE` (Nordic), `NO`, `DK`, `PT`, `JP` -- the
+Japanese Ro / Yen keys, USB codes 0x87 / 0x89 past the table's 128 rows, come at rows 0x7D / 0x7E: fork patch 32, all tracked in the Onyx repo — not in the Circle tree). The `.kmap` format
 is `"OKM1"` + `u16` rows/cols + the `u16[128][5]` table (see the script header).
 
 ## 5. The application model
@@ -1577,6 +1578,19 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   with `gamelib_samples.py`'s made-up ROMs): the home is the whole screen; a console's games, Apps and its unrolled
   apps, Settings; F10 shows and Esc hides the menu; over an app with menus: the menu, its
   File menu, Esc twice — the app still in front. Pictures `consolehome-<home|apps|appsub|settings|menu|appmenu>-*.png` (`CONSOLE_PNG=<folder>`).
+- **The tiles** (`tiles.h`, 2026-10-10 — docs/COMPACT-SHELL-STUDY.md §19, the Switch-like v4; the user chose V1 light
+  and V2 dark): `g_style` (`ST_XMB`, `ST_LIGHT`, `ST_DARK`; `SD:/etc/console.ini` `[look] style =`, `style_read` /
+  `style_save` in main.cpp, the Display page's *Look* row) and its palette `g_pal` (`Pal`: the background, the words,
+  the accent, the lines... the settings pages' colours too). Over XMB's model (the columns `g_x`, `sel`, `g_inSub` /
+  `g_subSel` for a folder — tile 0 Back —, `sub_read`, `play_rom`, `open_app_at`, `choose_col`), `tiles_draw` draws the
+  two rows (`TMet`: the mock-up's metrics, the bottom rows from the screen's bottom), `draw_tile` a tile by its kind
+  (a ROM's title screen made square — `tile_thumb`, 24 cached —, an app on a plate, a folder with its first four
+  apps, Back, a settings page), `tiles_ring` the accent ring, `tiles_top` / `tiles_hints` the bars; `tiles_go` the two
+  rows' moves (`g_trow`), `tiles_ptr` the pointer. `draw_home`, `go` and `home_ptr` hand over to them when the style
+  is not XMB. **The settings in the theme** (`draw_settings_sw`): the pages at the left, the rows at the right with
+  lines between them and the ring (`draw_set_rows`, shared with XMB's pages), the dialog and the virtual keyboard in
+  the palette. Not built yet (§19): a game's options (X), favourites (Y), the last-played order and the All games
+  tile, the menu as a right-hand panel, the ring's pulse.
 - **The settings** (`xset.h`, 2026-10-09; the **Games** page — the watched folders, GameKit's `games_folders_save`,
   a folder browser over `kapi_vol_list` / `kapi_opendir` — added the same night — docs/COMPACT-SHELL-STUDY.md §18): A on an item of the Settings column
   calls `set_enter (page)`; while `g_setOn`, `draw_home` draws `draw_settings` and every input goes to `set_key`

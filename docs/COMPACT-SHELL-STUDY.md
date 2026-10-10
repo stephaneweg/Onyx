@@ -1627,6 +1627,233 @@ started by the shell, drawn with the same UIKit XMB rows; the user decides.
    in?
 8. **Packages' updates mode** (Manual / Auto / Never) on X from the list, or only on the package's page?
 
+## 19. Console mode v4: the Switch-like shell (mock-ups)
+
+*2026-10-10.* **Built the same day** (the user chose V1 light and V2 dark, "and the settings page"): `user/Apps/consolehome/tiles.h`
+— the two rows, the folders and their Back tile, the settings as tiles and their pages in the theme, light and dark
+(*Settings* › *Display* › *Look*; Lakka's XMB stays the third look); see docs/03 §5.10.5b. Not yet: a game's options
+(X), favourites (Y), the last-played order and the All games tile, the menu as a panel, the ring's pulse, V3. The user asked for **a console mode closer to the Nintendo Switch
+(1 and 2) home menu**, with their own layout: **the categories as tiles in the bottom part**, scrolling sideways
+(the current categories: one per console, then the native games, then Apps, then Settings), and **above them the
+content as tiles**, scrolling sideways too (the games...). Where there are several levels (the apps and their
+categories), a **folder tile**; inside a folder, its apps, with a **Back tile** to go up a level.
+
+The pictures are made by **`python3 tools/screenshot/mockup_console_switch.py`**, which imports the v2 and v3 scripts
+for their helpers and content: the card's apps and icons, the consoles from the emulators' `games =`, the made-up
+ROMs and their title screens, the white glyphs and the generic console shapes. The Nintendo DS (ndsemu) is added
+with a generic two-screen shape and three made-up games. The pictures land in
+`docs/compact-shell/mockups/console-switch-*.png`. As before, **no console maker's logo, game, button symbol or asset
+is drawn**: the tiles, rings and round buttons are generic shapes, and the pad's buttons are named A / B / X / Y /
+L1 / R1 / Home.
+
+![](compact-shell/mockups/console-switch-variants.png)
+
+*The three variants at the same moment: the Game Boy Advance's games, Star Courier chosen (1920 × 1080).*
+
+### 19.1 The model: two rows
+
+The home has **two rows and nothing else**:
+
+- **The category row (the bottom)**: round tiles in a line, centred, one per category. The order:
+  - **one per console that has games**, in the emulators' `order =` (GameCube, Nintendo DS, N64, SNES, GBA, GBC, GB,
+    NES); a console with no game is not shown;
+  - **Onyx games**;
+  - **Apps**;
+  - **Settings**.
+
+  Each tile is a white (or grey) circle with the console's generic shape or a glyph in the console's colour. The
+  **shown category** carries a small accent dot and its name under it. When the focus is on this row, the ring
+  goes around it and its name turns to the accent colour. With more categories than the width holds (the compact
+  screen), the row **scrolls**: it is cut at the margins, and a chevron marks each side that has more.
+- **The content row (above)**: big **square tiles** from the left margin, scrolling sideways so that the chosen tile
+  is always in sight with one tile after it; the next tile is cut at the right edge as a hint. When focused, the
+  chosen tile has **the ring** and **its name above it** in the accent colour (the Switch's way). Under the row is
+  one line about it (the file, last played, time played, save states), with its place at the right ("1 / 9").
+  When the focus is on the category row, the content row shows **the category's name and count** as its heading,
+  and the remembered tile without a ring.
+- **What a category holds**:
+  - **a console**: its games, **the last played first** (the Switch's order), each one its title screen (the 10:9
+    picture made square with its own blur above and below, so that the title is never cut). At the end of the row
+    is **an "All games" tile**, which opens a grid of every game, A to Z, where Y searches. A long library thus
+    stays fast to cross, as in v3.
+  - **Onyx games**: their screenshots, or their icon on a plate of their colour.
+  - **Apps**: **one folder tile per category** (Productivity, Internet, Graphics, Programming, Demos, Multimedia,
+    System), in the category's colour, with its first four apps on a white card and "14 apps". **A opens the
+    folder**: the row becomes **a Back tile first, then the category's apps** (their icon and name). The top bar
+    shows "Apps > Productivity". **A on Back, or B anywhere in the folder**, comes back up to the folders, with the
+    folder chosen. A running app carries a "running" pill.
+  - **Settings**: **the nine pages as tiles**, each a coloured tile with a white glyph and its name (Games, Sound,
+    Gamepad, Keyboard & Mouse, Language & Region, Wi-Fi, Packages, Mode, Display). The page's help line is under
+    the row. A opens the page (§19.4).
+- **The top bar**: at the left, Onyx's round badge (the place of the Switch's profile icons) and where you are
+  ("Game Boy Advance", "Apps > Productivity"). At the right, **the Wi-Fi, the pad and its charge, the time**.
+- **The bottom bar**: a thin line. At the left, the pad that is connected ("Pad 1"); at the right, the buttons
+  that work now, as filled round buttons with their words (Move, L1 R1 Category, Y Favourite, X Options, B Back,
+  A Play).
+- **The focus ring**: a gap of 5 lp, then a 4 lp accent line with a soft halo. It **pulses** slowly (about 1.2 s
+  from the accent to a lighter tint and back) while the focus rests. Moving the focus slides the row (the same
+  few-frame ease as v3's `anim_step`).
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-switch-v1-home.png) | **Home (V1, light)**: Game Boy Advance shown (the dot under its round tile); Star Courier chosen, its name above it, `star-courier.gba · Last played Monday 21:04 · 6 h 41 min · 2 save states` under the row; Pocket Derby cut at the right edge. |
+| ![](compact-shell/mockups/console-switch-v1-categories.png) | **Down: the focus on the categories**: the ring on Super Nintendo; the row above shows the SNES games, its heading "Super Nintendo  5 games", no ring on the remembered game. Left / Right go through the categories; Up (or A) goes back to the row. |
+| ![](compact-shell/mockups/console-switch-v1-apps.png) | **Apps: the folders**: one tile per category, its colour, its first four apps, "14 apps"; the line under the row lists them. |
+| ![](compact-shell/mockups/console-switch-v1-folder.png) | **A on Productivity**: the Back tile ("Back to Apps") first, then Archiver, Calculator, Calendar...; the top bar says "Apps > Productivity"; the Apps round tile stays the shown category. |
+| ![](compact-shell/mockups/console-switch-v1-settings.png) | **Settings**: the pages as coloured tiles; Sound chosen, its help line under the row. |
+| ![](compact-shell/mockups/console-switch-v1-home-fr.png) | **In French**: Dernière partie : lundi 21:04, 2 sauvegardes; Aller, Catégorie, Favori, Options, Retour, Jouer. |
+
+### 19.2 The pad
+
+| Where | Left / Right | Up / Down | A | B | X | Y | L1 / R1 | Home |
+|---|---|---|---|---|---|---|---|---|
+| **Content row** | the tile (the row scrolls) | Down: to the categories | **Play** a game, **start** an app, **open** a folder, a page or All games | in a folder: up to the folders; else to the row's first tile; at the first tile nothing | **Options** of the game or app (§19.3) | **Favourite** (add or remove) | **the category at once** (the focus stays in the content row, on that category's first tile) | the menu |
+| **Category row** | the category (the row above follows at once) | Up: back to the content row | to the content row | — | — | — | the same as Left / Right | the menu |
+| **In a folder** | the tile | Down: to the categories | as above; on Back: up | **up to the folders** | options of the app | — | the category (leaves the folder) | the menu |
+| **Options panel** | on Save states: the slot | the row | do it (load the slot) | close | — | delete the slot | — | close |
+| **Menu over a game** | on Save / Load state: the slot | the row | do it | **resume** | — | — | — | **resume** |
+| **Settings page** | change the value | the row | OK, open a sub-page | back to the pages | — | — | the previous / next page | the menu |
+
+- L2 / R2 (where there are some) jump by five tiles. Start = A on a game.
+- The keyboard and mouse map as before (§7.2): the arrows; Enter = A; Esc / Backspace = B; Page Up / Page Down = L1 /
+  R1; F10 / Alt = Home. The wheel scrolls the row the mouse is over, and a click chooses a tile.
+- **The focus is remembered per category** (the chosen game and whether a folder is open), as v3 keeps `sel` per
+  column.
+
+### 19.3 A game's options and the menu over a game
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-switch-v1-options.png) | **X on a game: its options**, a panel at the right over the dimmed home: the game's picture, name, console, file, last played; **Play** (gbaemu), **Save states** with the three slots' pictures (Left / Right a slot, A loads it, Y deletes it; "+" an empty one), **Add to Favourites**, **Information** (time played), **Delete**. |
+| ![](compact-shell/mockups/console-switch-v1-menu.png) | **Home in a game: the menu**, the same panel over the paused game: **Resume**, **Save state < Slot 2 >**, Load state, Screenshot, Controls, **Home** (the game waits: its tile comes first in its row with a "suspended" pill, as the Switch's), **Close game**; at its foot, quick settings: the volume, the Wi-Fi, the time. |
+| ![](compact-shell/mockups/console-switch-v2-menu.png) | **The same menu in V2 (dark)**. |
+
+The panel replaces v3's quick-menu list. Its content is the same as today's menu (`main.cpp`'s overlay: Resume,
+the app's menus, Home, Close, Settings, Shut Down), extended for the games. **Over an app**, the panel lists Resume,
+the app's own menus (File >, Edit >), Home, Close, Settings and Shut Down, as the overlay does today.
+
+### 19.4 Settings: keep xset.h's pages, drawn in the theme (recommended)
+
+Opening a page (A on its tile) shows a **Switch-like settings screen**: **the pages listed at the left** (each
+with its coloured glyph chip, the open one with a light plate and an accent bar), **the page's rows at the
+right** (label at the left, value at the right in the accent colour, a thin line between rows, the focused row in
+the ring with its help line under its label), the page's title and help line on top. L1 / R1 change the page.
+
+This is **already the structure of the built XMB pages** (`xset.h`: the parent column at the left, the rows at the
+right; §18). Only their drawing changes: the flat theme background instead of the blue gradient and ribbon, the
+ring instead of the glass row, the lines between rows. **The rows, values, sliders, toggles, dialogs, the Wi-Fi
+keyboard and the gamepad wizard stay as built**; their logic stays in the kits (§18.5).
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-switch-v1-setpage.png) | **Settings > Sound (V1)**: Play on (Headphone jack), **Volume** (the slider, 7, its help line), Mute (a toggle), Play a test sound. |
+| ![](compact-shell/mockups/console-switch-v2-setpage.png) | **The same in V2 (dark)**. |
+
+### 19.5 The variants
+
+- **V1 "light"**: a light grey background (`#F2F2F4` → `#E4E5E9`), dark words `#2C2C32`, **white round categories**
+  with the consoles' colours, square tiles with a soft shadow and 12 lp corners, **the ring cyan** `#00A6D6`. It is
+  the calmest on a bright living-room TV.
+- **V2 "dark"**: the same layout on dark grey (`#34343A` → `#26262B`), grey circles `#484850`, white words, the
+  ring a brighter cyan `#22CCF0`. It is the one for the evening, and the default proposed for a TV (less glare,
+  pictures stand out).
+- **V3 "hero"** (my refinement, in the Switch 2's spirit): Onyx's navy (`#0C142C`). The chosen item's **picture
+  blurred as a wide banner** behind the top half (a game's world without its title; a colour wash for an app, a
+  folder or a page). Over the banner, at the left: the console in small capitals, **the name large (46 lp)**, its
+  line, and **its actions as pills** (A Play, X Options, Y Favourite). The content row sits lower: **the chosen
+  tile larger (240 lp, the others 180 lp)**, bottom-aligned, with 22 lp corners. The categories are **chips**
+  (rounded pills): the shown one widens to show its name, and the focused one turns accent blue. With the focus on
+  the categories, the banner shows **the category** ("Nintendo 64 · 4 games · the last played: Sky Fortress").
+
+| | |
+|---|---|
+| ![](compact-shell/mockups/console-switch-v2-home.png) | **V2 home**: Nintendo 64, Hover Derby chosen (4 / 4), the row scrolled (Sky Fortress cut at the left), **the All games tile** at the end. |
+| ![](compact-shell/mockups/console-switch-v2-folder.png) | **V2, Apps > Internet**: Back, Courier, **IRC**, Jet... |
+| ![](compact-shell/mockups/console-switch-v2-onyx.png) | **V2, the focus on the categories**: Onyx games in the ring; the row above shows the games' screenshots. |
+| ![](compact-shell/mockups/console-switch-v3-home.png) | **V3 home**: the banner, "Star Courier", its line, A Play / X Options / Y Favourite; the tile larger; the chips at the bottom. |
+| ![](compact-shell/mockups/console-switch-v3-categories.png) | **V3, the focus on the categories**: the Nintendo 64 chip in accent; the banner tells about the category. |
+| ![](compact-shell/mockups/console-switch-v3-apps.png) | **V3, Apps**: the Internet folder chosen, larger; its banner a wash of its colour. |
+| ![](compact-shell/mockups/console-switch-v3-settings.png) | **V3, Settings**: the Wi-Fi page chosen; its help line in the banner. |
+
+![](compact-shell/mockups/console-switch-overview.png)
+
+*V1's key states on one sheet.*
+
+### 19.6 Metrics (lp; × the scale, the compact set below 560 logical lines)
+
+| Metric | regular (1280 × 720 at 1, 1920 × 1080 at 1.5) | compact (640 × 480 at 1) | V3 hero (regular) |
+|---|---|---|---|
+| side margin | 64 | 24 | 64 |
+| top bar: height / badge / place / time | 70 / 40 / 21 b / 23 | 42 / 24 / 14 b / 15 | the same as regular |
+| chosen tile's name above it (y, size) | 92, 24 b | 48, 15 b | — (in the banner: 46 b at y 130) |
+| content row: top / tile / gap / corner | 134 / 272 / 16 / 12 | 74 / 156 / 10 / 8 | bottom 550 / 240 chosen, 180 others / 18 / 22 |
+| the line under the row (y, size) | 424, 16 | 238, 11 | in the banner, 18 |
+| category row: centre / circle / spacing / name | 550 / 80 / 104 / 17 b | 326 / 46 / 58 / 12 b | 610 / chips 54 high, glyph 30 |
+| focus ring: gap / width / halo | 5 / 4 / 6 blur | 3 / 3 / 6 blur | the same |
+| bottom bar: line at / buttons / words | 652 / 26 / 16 | 432 / 18 / 12 | 662 / 26 / 16 |
+| tiles in sight | 4 and a cut one | 3 and a cut one | 1 large + 4 and a cut one |
+
+At 1920 × 1080 a tile is 408 px, a title screen (160 × 144) scaled ×2.6 with sharp pixels. On the compact screen
+the 11 categories do not fit (11 × 58 lp > 592): the row scrolls.
+
+### 19.7 What changes in consolehome's code
+
+- **`xmb.h` is replaced by a tiles module** (`tiles.h`, one unit with `main.cpp` as now). What it keeps of `xmb.h`:
+  - the model: the columns `XCol` (X_SYS, X_ONYX, X_APPS, X_SET) become the categories, with `sel` per category plus
+    a `folder` index for Apps;
+  - `roms_read` (GameKit), `xmb_build`, `sub_read` (a folder's apps), `play_rom`, `open_app_at`;
+  - the console shapes `xi_mask`, drawn coloured on a circle instead of white;
+  - `thumb_for` (the ROM pictures, now at tile size);
+  - `ease` / `anim_step` for the slides.
+
+  What goes: the vertical list (`draw_list`), the ribbon background (`xmb_bg_make`), the fixed-point layout `XMet`.
+  What is new:
+  - `TMet` (the metrics of §19.6);
+  - the two rows' drawing, the folder, Back and All-games tiles, the ring and its pulse (a timer while idle; an
+    alpha step per frame, cheap);
+  - the "last played first" order: GameKit has no last-played date today; it gains one (a small list the shell
+    writes when it starts a game, e.g. `SD:/etc/console/recent.ini`, read through a GameKit call);
+  - the All games grid.
+- **`go` (the pad)** becomes the two-row state machine of §19.2; `home_ptr` maps clicks to tiles.
+- **What stays**:
+  - **`xset.h`**: the settings pages, re-themed through its colour constants and the row's focus drawing (§19.4);
+  - **the menu overlay** of `main.cpp`, redrawn as the right-hand panel, with the same items;
+  - **GameKit** (the consoles, the folders, the ROMs, the pictures);
+  - the **screen resolutions** (`screen_follow`, the games' own sizes, SystemKit `display.h`);
+  - the scale rule `S` / `D (lp)` and the faces `F (lp)`;
+  - the hint pills (now filled round buttons);
+  - `lang/fr.txt` (a few new words: Favourite, Options, Back, All games, A to Z, running, suspended).
+- **The theme**: `light` / `dark` / `hero` in `SD:/etc/console.ini` (`[look] theme=`), chosen in Settings > Display;
+  the colour constants (`C_GLOW`, `C_WORD`...) become per theme.
+- **Cost to draw**: at most 6 picture tiles and 11 circles per frame, no full-screen blur except V3's banner (made
+  once per chosen item, at 1/8 size then scaled, as the mock-up does). That is lighter than v2, about v3's.
+
+### 19.8 Open questions for the user
+
+1. **Which variant**: V1 light, V2 dark, V3 hero, or V1 / V2 as one layout with a light / dark theme switch?
+   *Recommended: build V1 / V2 as one layout with two themes (dark by default on a TV); V3 later as a third theme
+   if wanted, since its layout differs.*
+2. **The categories' shape**: round tiles (V1 / V2) or chips with the name (V3)? *Recommended: round, with the
+   shown one's name under it. Chips do not fit 11 categories at 640 wide.*
+3. **A console's order**: the last played first (the Switch's way) or A to Z (v3's)? *Recommended: the last played
+   first, plus the All games tile at the end for A to Z and search.*
+4. **Folder tiles for Apps only**, or also to group consoles (for example "Handhelds: GB, GBC, GBA, DS") when there
+   are many? *Recommended: Apps only; the consoles stay one category each, as asked.*
+5. **The Back tile**: first in the folder (proposed, as asked), or also at the end? *Recommended: first only; B
+   does the same from anywhere.*
+6. **L1 / R1 from the content row**: change the category and **stay in the content row** (proposed), or move the
+   focus down? *Recommended: stay up, on the new category's first tile.*
+7. **Settings pages**: keep xset.h's pages re-themed (proposed), or open each page as a full-screen panel without
+   the list of pages? *Recommended: keep the list at the left; it is the built code and the Switch's own settings
+   look.*
+8. **Home over a running game**: the right-hand panel (proposed), or go straight to the home with the game
+   suspended as the first tile (the Switch's Home button), with the panel on a long press? *Recommended: a short
+   press opens the panel (save states need it); its "Home" row goes to the home with the game suspended.*
+9. **Favourites** (Y): a category of their own at the start of the bottom row, or a mark that sorts favourites
+   first in their console? *Recommended: a "Favourites" round tile first, shown only when there is one.*
+10. **The pulsing ring**: keep the pulse (it redraws while idle, a few small rectangles) or a still ring?
+    *Recommended: pulse, about 1.2 s; still when the screen saver dims.*
+
 ## Résumé (FR)
 
 L'utilisateur demandait si, maintenant qu'Elegant est en espace utilisateur, on pouvait remplacer le bureau
@@ -1660,4 +1887,4 @@ taille (une barre latérale repliée en rail, comme pour Ledger), une racine dé
 visible partout et le tactile. Côté Elegant : un même serveur avec une politique par mode, un rôle de
 shell, des raccourcis système, un clavier à l'écran, le tactile, la rotation, la manette comme entrée
 système et la batterie. Les questions ouvertes sont au §14 ; les étapes suivantes (§15) s'arrêtent avant
-toute implémentation. Ajouts du 2026-10-08 : le Panneau de configuration en mode pocket (§6.11 : en paysage, les applets en liens à gauche et l'applet qui remplit le reste — cette mise en page remplace aussi le tableau de bord du bureau ; en portrait, la liste puis une barre de retour) et en mode console (§7.6 : les applets utiles à la manette à gauche, leur page en grandes lignes à droite, ←/→ pour changer une valeur ; le mot de passe Wi-Fi demande un vrai clavier), et une proposition de lanceur pocket plus abouti, la v2 (§6.2 : vrai champ de recherche, « Aujourd'hui », puces de catégories, icônes sur plaques, focus net, vignettes des apps ouvertes ; une colonne Aujourd'hui à 1920 × 1080). Ajout du 2026-10-09 (§16, maquettes seulement) : une **v2 du mode console** façon accueil de console de salon (PS4) et Lakka — une rangée de fonctions en haut, des **étagères** (Récents, Jeux Onyx, **une par console** d'après les lignes `games =` des émulateurs, Apps, Réglages), une grande rangée de tuiles dont la tuile choisie est agrandie, son image floutée en fond, et sous la rangée les détails (Jouer, les emplacements de sauvegarde) ; le menu par-dessus un jeu avec ses emplacements. Puis une **v3** (§17) bien plus proche du menu de **Lakka** (le XMB de RetroArch) : des icônes blanches de catégories en travers (Menu principal, Réglages, Historique, Favoris, une par console, Jeux Onyx, Apps), la liste verticale des éléments dessous, l'écran titre du jeu à droite, un niveau plus profond pour les actions d'un jeu, le menu rapide en jeu, sur un dégradé bleu avec le ruban blanc — et une comparaison v2 / v3 pour choisir.
+toute implémentation. Ajouts du 2026-10-08 : le Panneau de configuration en mode pocket (§6.11 : en paysage, les applets en liens à gauche et l'applet qui remplit le reste — cette mise en page remplace aussi le tableau de bord du bureau ; en portrait, la liste puis une barre de retour) et en mode console (§7.6 : les applets utiles à la manette à gauche, leur page en grandes lignes à droite, ←/→ pour changer une valeur ; le mot de passe Wi-Fi demande un vrai clavier), et une proposition de lanceur pocket plus abouti, la v2 (§6.2 : vrai champ de recherche, « Aujourd'hui », puces de catégories, icônes sur plaques, focus net, vignettes des apps ouvertes ; une colonne Aujourd'hui à 1920 × 1080). Ajout du 2026-10-09 (§16, maquettes seulement) : une **v2 du mode console** façon accueil de console de salon (PS4) et Lakka — une rangée de fonctions en haut, des **étagères** (Récents, Jeux Onyx, **une par console** d'après les lignes `games =` des émulateurs, Apps, Réglages), une grande rangée de tuiles dont la tuile choisie est agrandie, son image floutée en fond, et sous la rangée les détails (Jouer, les emplacements de sauvegarde) ; le menu par-dessus un jeu avec ses emplacements. Puis une **v3** (§17) bien plus proche du menu de **Lakka** (le XMB de RetroArch) : des icônes blanches de catégories en travers (Menu principal, Réglages, Historique, Favoris, une par console, Jeux Onyx, Apps), la liste verticale des éléments dessous, l'écran titre du jeu à droite, un niveau plus profond pour les actions d'un jeu, le menu rapide en jeu, sur un dégradé bleu avec le ruban blanc — et une comparaison v2 / v3 pour choisir. Ajout du 2026-10-10 (§19, maquettes seulement) : une **v4 du mode console** dans l'esprit de l'accueil de la Switch, avec la disposition voulue par l'utilisateur — **les catégories en bas** (des tuiles rondes : une par console, Jeux Onyx, Apps, Réglages), **le contenu au-dessus** en grandes tuiles carrées défilant de côté (le nom du jeu choisi au-dessus de lui, l'anneau qui pulse), Apps en **tuiles dossiers** (dedans, une tuile Retour puis les apps), les Réglages en tuiles qui ouvrent les pages de `xset.h` redessinées ; Haut / Bas entre les deux rangées, L1 / R1 la catégorie directement, X les options d'un jeu (ses sauvegardes), Home le menu en panneau ; trois variantes (clair, sombre, « hero » avec bannière et tuile agrandie), les métriques, ce qui change dans consolehome (`xmb.h` remplacé par un module de tuiles) et dix questions avec une recommandation chacune.

@@ -142,7 +142,10 @@ confirm they're still present, since they're what makes the empty-kernel design 
   gone — the ABI slot stays for append-only compatibility).
 - `user/applib.h`: `ax_load_keymap(name)` (file-first, then the now-inert `kapi_set_keymap`).
 - `user/theme.c`: `scan_keymaps()` fills the keymap dropdown from `SD:/etc/keymaps/*.kmap`.
-- `user/BinUtils/keyb.c`: lists `US UK DE FR BE ES IT DV` and uses `ax_load_keymap`.
+- `user/BinUtils/keyb.c`: lists `US UK DE FR BE ES IT DV SE NO DK PT JP` and uses `ax_load_keymap`.
 
 If a full Onyx-branch rebase also clobbered these, re-derive them from
 `docs/05-CIRCLE-CHANGES.md` §1 and the kernel-internals ABI notes (`docs/02`).
+
+Also check, after any re-sync, the **Japanese keys' fold** in `CKeyMap::Translate` (`lib/input/keymap.cpp`, docs/05
+patch 32): USB 0x87 (Ro) → row 0x7D, 0x89 (Yen) → row 0x7E, where `SD:/etc/keymaps/JP.kmap` has them.

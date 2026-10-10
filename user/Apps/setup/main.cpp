@@ -157,19 +157,21 @@ static void draw_pic (Canvas &cv, const Pic &p, int x, int y, int s)
 struct Country { const char *name, *code, *keyb; int zones[5]; };
 static const Country COUNTRIES[] = {
 	{ TRN ("Austria"), "AT", "DE", { 6, -1 } }, { TRN ("Belgium"), "BE", "BE", { 0, -1 } }, { TRN ("Canada"), "CA", "US", { 17, 18, 19, 20, -1 } },
-	{ TRN ("Denmark"), "DK", "US", { 9, -1 } }, { TRN ("Finland"), "FI", "US", { 14, -1 } }, { TRN ("France"), "FR", "FR", { 1, -1 } },
+	{ TRN ("Denmark"), "DK", "DK", { 9, -1 } }, { TRN ("Finland"), "FI", "SE", { 14, -1 } }, { TRN ("France"), "FR", "FR", { 1, -1 } },
 	{ TRN ("Germany"), "DE", "DE", { 4, -1 } }, { TRN ("Greece"), "GR", "US", { 15, -1 } }, { TRN ("Ireland"), "IE", "UK", { 12, -1 } },
-	{ TRN ("Italy"), "IT", "IT", { 7, -1 } }, { TRN ("Japan"), "JP", "US", { 21, -1 } }, { TRN ("Luxembourg"), "LU", "FR", { 3, -1 } },
-	{ TRN ("Netherlands"), "NL", "US", { 2, -1 } }, { TRN ("Poland"), "PL", "US", { 10, -1 } }, { TRN ("Portugal"), "PT", "US", { 13, -1 } },
-	{ TRN ("Spain"), "ES", "ES", { 8, -1 } }, { TRN ("Sweden"), "SE", "US", { 9, -1 } }, { TRN ("Switzerland"), "CH", "DE", { 5, -1 } },
+	{ TRN ("Italy"), "IT", "IT", { 7, -1 } }, { TRN ("Japan"), "JP", "JP", { 21, -1 } }, { TRN ("Luxembourg"), "LU", "FR", { 3, -1 } },
+	{ TRN ("Netherlands"), "NL", "US", { 2, -1 } }, { TRN ("Norway"), "NO", "NO", { 9, -1 } }, { TRN ("Poland"), "PL", "US", { 10, -1 } },
+	{ TRN ("Portugal"), "PT", "PT", { 13, -1 } },
+	{ TRN ("Spain"), "ES", "ES", { 8, -1 } }, { TRN ("Sweden"), "SE", "SE", { 9, -1 } }, { TRN ("Switzerland"), "CH", "DE", { 5, -1 } },
 	{ TRN ("United Kingdom"), "GB", "UK", { 11, -1 } }, { TRN ("United States"), "US", "US", { 16, 18, 19, 20, -1 } } };
 #define UTC_ZONE	22
 #define NZONES		23		// (the kit's: locale_zone_count)
 #define NCOUNTRIES	((int) (sizeof COUNTRIES / sizeof COUNTRIES[0]))
 static const char *const KEYB_NAMES[] = { TRN ("Belgian (AZERTY)"), TRN ("French (AZERTY)"), TRN ("German (QWERTZ)"), TRN ("English, UK"),
-	TRN ("English, US"), TRN ("Spanish"), TRN ("Italian"), TRN ("Dvorak") };
-static const char *const KEYB_CODES[] = { "BE", "FR", "DE", "UK", "US", "ES", "IT", "DV" };
-#define NKEYB	8
+	TRN ("English, US"), TRN ("Spanish"), TRN ("Italian"), TRN ("Dvorak"), TRN ("Swedish / Finnish (Nordic)"), TRN ("Norwegian"),
+	TRN ("Danish"), TRN ("Portuguese"), TRN ("Japanese") };
+static const char *const KEYB_CODES[] = { "BE", "FR", "DE", "UK", "US", "ES", "IT", "DV", "SE", "NO", "DK", "PT", "JP" };
+#define NKEYB	13
 static const char *g_keybOpts[NKEYB];		// (the layouts' names in the language: the drop-down's)
 static char g_zoneText[NZONES][48];
 // A zone's line: "Brussels  (UTC+2, summer time)" -- the kit's city and offset, in the language. The
@@ -521,8 +523,11 @@ public:
 		static const char *const QZ[] = { "Q W E R T Z U I O P", "A S D F G H J K L \xC3\x96", "Y X C V B N M , . -" };
 		static const char *const QW[] = { "Q W E R T Y U I O P", "A S D F G H J K L ;", "Z X C V B N M , . /" };
 		static const char *const DV[] = { "' , . P Y F G C R L", "A O E U I D H T N S", "; Q J K X B M W V Z" };
-		const char *const *r = (k == 0 || k == 1) ? AZ : k == 2 ? QZ : k == 7 ? DV : QW;
+		static const char *const NX[] = { "Q W E R T Y U I O P", 0, "Z X C V B N M , . -" };	// (the Nordic and Portuguese)
+		const char *const *r = (k == 0 || k == 1) ? AZ : k == 2 ? QZ : k == 7 ? DV : (k >= 8 && k <= 11) ? NX : QW;
 		for (int i = 0; i < 3; i++) rows[i] = r[i];
+		if (r == NX) rows[1] = k == 8 ? "A S D F G H J K L \xC3\x96" : k == 9 ? "A S D F G H J K L \xC3\x98"
+				     : k == 10 ? "A S D F G H J K L \xC3\x86" : "A S D F G H J K L \xC3\x87";	// (Ö, Ø, Æ, Ç)
 		invalidate (true);
 	}
 	void onDraw () override
@@ -1470,6 +1475,19 @@ int main (void)
 		wpa_load ();
 		for (int i = 0; i < NCOUNTRIES; i++) if (!strcmp (COUNTRIES[i].code, g_wpaCountry)) g_country = i;
 		for (int k = 0; k < NKEYB; k++) if (!strcmp (KEYB_CODES[k], COUNTRIES[g_country].keyb)) g_keyb = k;
+		// The board's own keyboard (a Pi 400 / Pi 500: its layout from the firmware, the kernel's "keyboard" line):
+		// proposed, and taken at once -- the Wi-Fi's password is typed with it
+		{
+			char info[512]; int n = kapi_kernel_info (info, sizeof info);
+			const char *kb = n > 0 ? strstr (info, "\nkeyboard ") : 0;
+			if (kb != 0)
+			{
+				char code[8]; int i = 0; kb += 10;
+				while (kb[i] && kb[i] != ' ' && kb[i] != '\n' && i < 7) { code[i] = kb[i]; i++; }
+				code[i] = 0;
+				for (int k = 0; k < NKEYB; k++) if (!strcmp (KEYB_CODES[k], code)) { g_keyb = k; apply_keyb (); }
+			}
+		}
 		g_zone = COUNTRIES[g_country].zones[0];
 		UkTheme t; uk_theme_get (t); if (t.theme >= 0 && t.theme < NSCHEMES) g_scheme = t.theme;
 		Wallpaper wp; wp_load (wp);

@@ -195,6 +195,7 @@ run pocket_pocketshell shell-console "$W;$W;expect shell app;expect kind home;ex
 conshots () {		# conshots <W>x<H> <tag> [lang]
 	sz=$1; w=${sz%x*}; h=${sz#*x}; sfx=$2${3:+-$3}
 	WR=$(langdir "$3"); python3 $D/gamelib_samples.py "$WR" >/dev/null
+	printf '[look]\nstyle = xmb\n' > "$WR/etc/console.ini"	# (these are the XMB's; the tiles: tileshots below)
 	E="SIM_SCREEN=$sz SIM_MODE=console SIM_APPNAME=consolehome SIM_APP=consolehome SIM_WRITES=$WR"
 	R6="key 0x103;key 0x103;key 0x103;key 0x103;key 0x103;key 0x103"
 	run pocket_consolehome console-home-$sfx "$W;$W;$W;expect shell app;expect kind home;expect area 0,0,$w,$h;expect pos 0,0;expect home 1;key 0x103;key 0x101;$W;dump $OUT/consolehome-home-$sfx.elsm;$R6;$W;dump $OUT/consolehome-apps-$sfx.elsm;key 13;key 0x101;$W;dump $OUT/consolehome-appsub-$sfx.elsm;key 0x102;key 0x103;$W;dump $OUT/consolehome-settings-$sfx.elsm;key 0x119;$W;$W;expect shown1 1;key 0x1b;$W;expect shown1 0;expect home 1" $E
@@ -211,6 +212,26 @@ conshots () {		# conshots <W>x<H> <tag> [lang]
 	for s in roms browse sound gamepad wifi net osk packages mode display keep games; do png consolehome-set-$s-$sfx; if [ -n "$CONSOLE_PNG" ]; then cp "$OUT/consolehome-set-$s-$sfx.png" "$CONSOLE_PNG/"; fi; done
 	for s in home apps appsub settings menu appmenu; do png consolehome-$s-$sfx; if [ -n "$CONSOLE_PNG" ]; then mkdir -p "$CONSOLE_PNG"; cp "$OUT/consolehome-$s-$sfx.png" "$CONSOLE_PNG/"; fi; done
 }
+# ---- the tiles (tiles.h, since 2026-10-10: the Switch-like v4, light and dark): the categories at the bottom, the content
+# above; Down to the categories, Right to Apps, Up, A into Productivity's folder (Back first), the settings' tiles, a page.
+# The pictures: consolehome-tiles-<light|dark>-<home|cats|apps|folder|settings|page>-<size>[-fr].png.
+tileshots () {		# tileshots <W>x<H> <tag> <light|dark> [lang]
+	sz=$1; w=${sz%x*}; h=${sz#*x}; th=$3; sfx=$2${4:+-$4}
+	WR=$(langdir "$4"); python3 $D/gamelib_samples.py "$WR" >/dev/null
+	printf '[look]\nstyle = %s\n' "$th" > "$WR/etc/console.ini"
+	E="SIM_SCREEN=$sz SIM_MODE=console SIM_APPNAME=consolehome SIM_APP=consolehome SIM_WRITES=$WR"
+	R1="key 0x103"; R7="$R1;$R1;$R1;$R1;$R1;$R1;$R1"; T="$OUT/consolehome-tiles-$th"
+	SC="$W;$W;$W;expect shell app;expect kind home;expect home 1;key 0x101;key 0x103;key 0x103;key 0x100;$W;$W;dump $T-home-$sfx.elsm"
+	SC="$SC;key 0x101;key 0x103;$W;$W;dump $T-cats-$sfx.elsm;$R1;$R1;$R1;$R1;key 0x100;$W;$W;dump $T-apps-$sfx.elsm"
+	SC="$SC;key 13;$W;$W;dump $T-folder-$sfx.elsm;key 0x1b;key 0x101;$R1;key 0x100;key 0x103;$W;$W;dump $T-settings-$sfx.elsm"
+	SC="$SC;key 13;$W;$W;key 0x101;$W;dump $T-page-$sfx.elsm;key 0x1b;$W;expect home 1"
+	run pocket_consolehome console-tiles-$th-$sfx "$SC" $E
+	for s in home cats apps folder settings page; do png consolehome-tiles-$th-$s-$sfx; if [ -n "$CONSOLE_PNG" ]; then mkdir -p "$CONSOLE_PNG"; cp "$OUT/consolehome-tiles-$th-$s-$sfx.png" "$CONSOLE_PNG/"; fi; done
+}
+tileshots 1920x1080 1080 dark
+tileshots 1920x1080 1080 light
+tileshots 1280x720 720 dark
+tileshots 640x480 640 light fr
 conshots 800x480 800
 conshots 1280x720 720
 conshots 1920x1080 1080

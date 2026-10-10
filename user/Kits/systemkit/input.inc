@@ -68,8 +68,9 @@ SK_FN int input_keymaps (char (*out)[12], int max)
 }
 SK_FN const char *input_keymap_name (const char *code)
 {
-	static const char *const K[][2] = { { "BE", "Belgian (azerty)" }, { "DE", "German (qwertz)" }, { "DV", "Dvorak" },
-		{ "ES", "Spanish" }, { "FR", "French (azerty)" }, { "IT", "Italian" }, { "UK", "British" }, { "US", "American (qwerty)" } };
+	static const char *const K[][2] = { { "BE", "Belgian (azerty)" }, { "DE", "German (qwertz)" }, { "DK", "Danish" }, { "DV", "Dvorak" },
+		{ "ES", "Spanish" }, { "FR", "French (azerty)" }, { "IT", "Italian" }, { "JP", "Japanese" }, { "NO", "Norwegian" },
+		{ "PT", "Portuguese" }, { "SE", "Swedish / Finnish" }, { "UK", "British" }, { "US", "American (qwerty)" } };
 	for (unsigned i = 0; i < sizeof K / sizeof K[0]; i++) if (in_ieq (K[i][0], code)) return K[i][1];
 	return "";
 }

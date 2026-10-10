@@ -18,3 +18,8 @@ Wheel: lines a notch scrolls	Molette : lignes par cran
 Could not load this layout.	Impossible de charger cette disposition.
 : taken, and set at every boot (SD:/etc/autostart).	 : prise, et remise à chaque démarrage (SD:/etc/autostart).
 : taken (autostart not written).	 : prise (autostart non écrit).
+Danish	Danois
+Japanese	Japonais
+Norwegian	Norvégien
+Portuguese	Portugais
+Swedish / Finnish	Suédois / finnois

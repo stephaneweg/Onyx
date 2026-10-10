@@ -39,8 +39,8 @@ FAT32 card, then insert it into the Pi 4 and power on.
 
 **A Raspberry Pi 5** has its own card: [`sdcard5/`](../sdcard5/) (or the smallest one, `sdcard5_lite/`), copied the
 same way — its kernel `kernel_2712.img`, its device trees, no boot firmware (the Pi 5's is in the board's EEPROM),
-its packages from the repository's `pi5/` folder. A Pi 4's card does not start a Pi 5, nor the reverse. **Not run
-on a Pi 5 yet** (2026-10-09, docs/PI5-PORT.md): its GPU (the 3D, the browser's compositing, the emulators' GPU
+its packages from the repository's `pi5/` folder. A Pi 4's card does not start a Pi 5, nor the reverse. **First
+run on a Pi 500 on 2026-10-10** (a tester: the desktop, the apps and the Wi-Fi work; docs/PI5-PORT.md): its GPU (the 3D, the browser's compositing, the emulators' GPU
 paths) is written for it but untried -- `gpu71=0` in `cmdline.txt` turns it off if it misbehaves --, the 40-pin
 header's pins, edges, I2C and SPI go through the RP1 (its PWM not yet), the sound goes to USB or HDMI (no jack on
 the Pi 5); its kernel log goes to the 3-pin debug UART between the HDMI ports. What the Pi 5 has more: the
@@ -805,9 +805,27 @@ the **console home** as its shell (below).
 
 #### The console mode (the console home, `consolehome`)
 
-For a television and a **gamepad**, in the manner of Lakka's menu (RetroArch's XMB): a calm blue gradient with a soft
-white ribbon, white icons, big words; the moves are animated (the icons and the lists glide, a new column's list
-slides in). **The home** has two levels:
+For a television and a **gamepad**. **Two looks** (*Settings* › **Display** › **Look**, kept in `SD:/etc/console.ini`
+`[look] style =`): **the tiles** on a **dark** (the default) or a **light** background, in the manner of a Switch's
+home (since 2026-10-10), or **Lakka** (the list, below).
+
+**The tiles.** At the bottom, the **categories** as round tiles: one per console that has games, then **Onyx games**,
+**Apps**, **Settings**; above them, the chosen category's **content** as big square tiles that scroll sideways — a
+console's games (their title screens), Onyx's games, Apps' categories as **folder tiles** (in one: a **Back** tile
+first, then its apps), the settings pages. The chosen tile has a cyan ring and its name above it; the line under the
+row tells about it. **Up / Down** go from one row to the other, **Left / Right** move in the row, **A** plays, starts
+or opens, **B** comes out of a folder (else back to the row's first tile), **L1 / R1** change the category at once.
+The settings pages are the same as below, drawn in the theme: the pages listed at the left, the rows at the right.
+
+| | |
+|---|---|
+| ![](compact-shell/real/consolehome-tiles-dark-home-1080.png) | ![](compact-shell/real/consolehome-tiles-light-folder-1080.png) |
+| *The tiles, dark: a console's games.* | *The tiles, light: Apps › Productivity (Back first).* |
+| ![](compact-shell/real/consolehome-tiles-dark-settings-1080.png) | ![](compact-shell/real/consolehome-tiles-light-page-1080.png) |
+| *The settings as tiles.* | *A settings page in the light theme.* |
+
+**Lakka.** In the manner of Lakka's menu (RetroArch's XMB): a calm blue gradient with a soft white ribbon, white
+icons, big words; the moves are animated (the icons and the lists glide, a new column's list slides in). **The home** has two levels:
 
 - **Across the top**, a white icon per **console that has games** — Nintendo 64, Super Nintendo, Game Boy Advance,
   Game Boy Color, Game Boy, NES, GameCube, Nintendo DS...: one for each console an installed emulator plays (its `app.txt`'s
@@ -2006,7 +2024,7 @@ keyboard appears. (This removed a boot race where `keyb` could time out before t
 enumerated and leave it with **no** map at all — a dead keyboard while the mouse worked.) To
 change it **on the fly**:
 
-- **At the command line**: `keyb FR` (or `US`, `UK`, `DE`, `BE`, `ES`, `IT`, `DV`). `keyb` alone
+- **At the command line**: `keyb FR` (or `US`, `UK`, `DE`, `BE`, `ES`, `IT`, `DV`, `SE`, `NO`, `DK`, `PT`, `JP`). `keyb` alone
   shows the current layout and the list.
 - **Graphically**: the Control Panel's **Keyboard & Mouse** applet (`keyconf`) lists the
   `.kmap` files actually present in `SD:/etc/keymaps/`; a click takes one at once **and keeps
@@ -2014,7 +2032,13 @@ change it **on the fly**:
 - **Permanently**: edit the `keyb` line in `SD:/etc/autostart` (or use the applet).
 
 The layouts themselves live as files in **`SD:/etc/keymaps/`** — `BE.kmap`, `DE.kmap`,
-`DV.kmap`, `ES.kmap`, `FR.kmap`, `IT.kmap`, `UK.kmap`, `US.kmap` (small binary tables). The
+`DK.kmap` (Danish), `DV.kmap`, `ES.kmap`, `FR.kmap`, `IT.kmap`, `JP.kmap` (Japanese JIS, romaji: the Ro and Yen keys
+too), `NO.kmap` (Norwegian), `PT.kmap` (Portuguese), `SE.kmap` (Swedish / Finnish — the Raspberry Pi 500's Nordic
+keyboard), `UK.kmap`, `US.kmap` (small binary tables; Latin-1 characters only: no Cyrillic, Hebrew, Korean or kana,
+and a dead key gives its own character — no composed letters). **A Pi 400 or Pi 500 says which keyboard it has**
+(the firmware reads it from the board: `uname -a`'s `keyboard` line), and Setup takes that layout at once, before
+the Wi-Fi's password is typed; the Raspberry Pi keyboards' codes and the layouts Onyx has for them: UK, FR, ES, US,
+DE, IT, JP, PT, NO, SE (Nordic), DK — not yet RU, TR, IL, HU, KR. The
 Belgian (`BE`) map is an azerty layout close to French, with the Belgian standard for the
 digit row and several AltGr symbols (`!` on **8**, `=` `+` on the bottom-right key, `-` `_`
 right of `)`, and `| @ #` on **1 2 3**, `{ }` on **9 0**, `[ ]` on the `^`/`$` keys). `keyb XX`

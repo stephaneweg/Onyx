@@ -1079,6 +1079,17 @@ the DMA cleans them from the cache. The Pi 4 is unchanged. With it, the kernel's
 a program writing the displayed framebuffer itself, n64emu and gcemu) is off on the Pi 5 (`MapScreen` gives 0: the
 programs present through `fullscreen_begin` / `present_fb`). Fork commit `9266885b`. **Not tested on a board yet.**
 
+## 32. The Japanese keyboards' Ro and Yen keys
+
+**Why.** A Japanese (JIS) keyboard -- the Raspberry Pi 500's and keyboard's `JP` variant -- has two keys past the
+layout table's 128 rows: Ro (`\ _`, USB usage 0x87, International1) and Yen (`¥ |`, 0x89, International3);
+`CKeyMap::Translate` dropped them.
+
+**What.** `lib/input/keymap.cpp`, `CKeyMap::Translate`: 0x87 is taken at row 0x7D and 0x89 at 0x7E (Paste and
+Find, which no layout maps), where `SD:/etc/keymaps/JP.kmap` has them. The raw keys (`kapi_key_held`, the games)
+are unchanged. Not the keymap decoupling of §1 (its skill re-applies that one after an upstream merge: check this
+fold is still there too). Fork commit `9a9180ba`. **Not tested on a Japanese keyboard yet.**
+
 ## Contributions to upstream Circle
 
 The fork's changes useful to every Circle user are prepared as clean pull-request branches on
