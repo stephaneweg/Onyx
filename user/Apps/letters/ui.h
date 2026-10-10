@@ -10,6 +10,12 @@
 
 #include "icons.h"
 #include "view.h"
+// The toolbars are UIKit's ToolBar (uikit/toolbar.h): in pocket and console its ONE row keeps what fits by priority,
+// the rest behind "»", the lists shrink then fold to an icon (docs/COMPACT-SHELL-STUDY.md section 20.3). Letters keeps
+// its own ToolButton (its icons, the colour bar under one): UIKit's class of that name is not used here.
+#define ToolButton UkToolButton_
+#include "uikit/toolbar.h"
+#undef ToolButton
 
 namespace wr {
 
@@ -73,28 +79,6 @@ public:
 	}
 private:
 	int m_part, m_down;			// the part under the pointer, the one pressed (-1 none)
-};
-
-// ---- a toolbar ----------------------------------------------------------------------------------------
-class ToolBar : public Widget
-{
-public:
-	ToolBar (int l, int t, int w) : Widget (l, t, w, TB_H), m_x (6), m_nsep (0) {}
-	void add (Widget *w, int gap = 1)
-	{
-		m_x += gap;
-		w->left = m_x; w->top = (TB_H - w->height) / 2;
-		addChild (w);
-		m_x += w->width;
-	}
-	void sep () { if (m_nsep < 16) m_sepX[m_nsep++] = m_x + 5; m_x += 11; }
-	void onDraw () override
-	{
-		canvas.fillRect (0, 0, width, height, C_BG);
-		for (int i = 0; i < m_nsep; i++) uk_etch_v (canvas, m_sepX[i], 7, height - 14, C_BG);
-	}
-private:
-	int m_x, m_nsep, m_sepX[16];
 };
 
 // ---- a list dropping from a box (over the window) --------------------------------------------------------
@@ -178,12 +162,19 @@ class PickBox : public Widget
 public:
 	void (*drawValue) (Canvas &cv, int x, int y, int w, int h, unsigned ink);
 	void (*onClick) (PickBox &);
+	const char *fold;			// its letter when a toolbar folds it to an icon (uikit/toolbar.h setFlex)
 	PickBox (int w, const char *tip_, void (*dv) (Canvas &, int, int, int, int, unsigned), void (*oc) (PickBox &))
-		: Widget (0, 0, w, 26), drawValue (dv), onClick (oc), m_hot (false) { tip = tip_; }
+		: Widget (0, 0, w, 26), drawValue (dv), onClick (oc), fold (""), m_hot (false) { tip = tip_; }
 	unsigned bgColor () override { return parent ? parent->bgColor () : C_BG; }
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
+		if (width <= 36)					// folded by its toolbar: an icon that opens the list
+		{
+			uk_raised (canvas, 0, 0, width, height, 5, C_BUTTON, m_hot ? UK_HOT : UK_NORMAL);
+			uk_text_c (canvas, 0, 0, width, height, fold, C_BUTTON_TEXT, 2);
+			return;
+		}
 		uk_sunken (canvas, 0, 0, width, height, 5, C_FIELD, m_hot);
 		drawValue (canvas, 7, 2, width - 28, height - 4, C_FIELD_TEXT);
 		uk_raised (canvas, width - 20, 3, 17, height - 6, 3, C_BUTTON, m_hot ? UK_HOT : UK_NORMAL);

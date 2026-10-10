@@ -37,8 +37,8 @@
 #define MAXTABS		16
 #define SCROLLBACK	200		// bounded scrollback (rows)
 #define COLS		112		// stored chars per line
-#define TERM_BG		0x001A3A46	// the console's own colours (a terminal stays dark: a deep
-#define TERM_FG		0x00D4EAF0	// teal, as the modernised CDE's mock-up)
+#define TERM_BG		(uk_flat () ? 0x000E1316u : 0x001A3A46u)	// the console's own colours (a terminal stays dark: a deep
+#define TERM_FG		(uk_flat () ? 0x00D6E2E0u : 0x00D4EAF0u)	// teal, as the modernised CDE's mock-up; the flat look: near black, as its mock-up)
 
 static int g_fw = 8, g_fh = 16, g_vrows = 1, g_cols = COLS;	// g_cols = columns that fit the view
 

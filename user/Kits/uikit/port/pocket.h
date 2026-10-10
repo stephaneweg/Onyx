@@ -100,7 +100,12 @@ struct pk_server
 #define PK_OP_TASKS		0x117		// a[0] = max: out: struct uk_shell_task each, the most recent first -> how many
 #define PK_OP_GRAB		0x118		// a[0] = on: every key and the modifiers' changes to the shell -> 1
 // The shell's operations from another program than the shell: -KAPI_EPERM (PK_OP_TASKS and PK_OP_THUMB: anyone --
-// a task manager, a remote desktop may show them).
+// a task manager, a remote desktop may show them). ONE exception, the MENU BAR's program (the owner of the top band's
+// window): its PK_OP_EVENTS gives the handler of the menu's keys -- it is pushed UK_SHELL_KEYEV with
+// UK_SHELL_KEY_MENU for the menu key (F10 alone, an Alt pressed and released alone; not while the shell grabs, not
+// over a full-screen program) --, its PK_OP_GRAB (a[0] = on) makes every key the menu's while its menu is open; a key
+// of the shell's own (PK_OP_KEYS: Home, Alt+Tab; any key with Super) then ends the grab, the bar is pushed
+// UK_SHELL_KEY_CANCEL and the key goes to the shell. While the bar grabs, it is also who "has the keys" for the pads.
 
 // THE ADAPTIVE LAYER'S (uikit/adapt.h, phase P6; docs/POCKETUI-TECH-STUDY.md sections 6.3, 6.11): what the pocket UIKit
 // tells PocketUI of a window (the window bits of the operation say which).

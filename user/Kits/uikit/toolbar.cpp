@@ -235,7 +235,8 @@ bool ToolButton::onMouse (int mx, int my, int bl, int, int, int)
 // it; the "»" button. The desktop never moves a tool: the records only serve pocket and console.
 namespace {
 enum { TB_MAX = 64, MORE_W = 28 };
-struct TbRec { Widget *w; ToolBar *home; int left, top, homeW, gap, prio, rank, group, pad; bool sepBefore, right; const char *label; };
+struct TbRec { Widget *w; ToolBar *home; int left, top, homeW, gap, prio, rank, group, pad; bool sepBefore, right; const char *label;
+	       int natW, minW, foldW; };	// (setFlex) its own width, its least one, its folded one (0: it does not fold)
 struct TbExt : internal::ExtHead
 {
 	TbRec rec[TB_MAX]; int n = 0;
@@ -272,13 +273,15 @@ class MoreButton : public Widget
 {
 public:
 	ToolBar *bar;
-	MoreButton (ToolBar *b, int h) : Widget (0, 0, MORE_W, h), bar (b) { tip = "More tools"; }
+	MoreButton (ToolBar *b, int h) : Widget (0, 0, MORE_W, h), bar (b) { tip = "More tools"; canFocus = true; }	// (the arrows reach it)
+	bool onKey (long k) override { if (k == KEY_ENTER || k == ' ') { bar->showOverflow (); return true; } return false; }
 	unsigned bgColor () override { return parent ? parent->bgColor () : C_BG; }
 	void onDraw () override
 	{
 		unsigned b = bgColor ();
 		canvas.clear (b);
-		if (hover || pressed) uk_rbox (canvas, 0, 0, width, height, 5, uk_tone (b, pressed ? 112 : 150), uk_tone (b, pressed ? 118 : 132));
+		if (UK_FLAT) uk_rbox (canvas, 0, 0, width, height, 8, hover || pressed ? UK_N_BG3 : UK_N_BG2, hover || pressed ? UK_N_BG3 : UK_N_BG2);	// (a plate: it is a control)
+		else if (hover || pressed) uk_rbox (canvas, 0, 0, width, height, 5, uk_tone (b, pressed ? 112 : 150), uk_tone (b, pressed ? 118 : 132));
 		unsigned ink = uk_ink_for (b);
 		uk_glyph (canvas, WKG_CHEV_RIGHT, width / 2 - 3, height / 2, 8, ink);
 		uk_glyph (canvas, WKG_CHEV_RIGHT, width / 2 + 3, height / 2, 8, ink);
@@ -299,13 +302,37 @@ class OverPanel : public Modal
 {
 public:
 	Widget *w[TB_MAX]; Widget *home[TB_MAX]; int n;
-	OverPanel () : Modal (40, 40), n (0) {}
-	unsigned bgColor () override { return uk_size_class () == UK_SC_CONSOLE ? 0x00182644 : C_FIELD; }
+	int sel;				// the tool the keys' ring is on (-1: none yet)
+	OverPanel () : Modal (40, 40), n (0), sel (-1) {}
+	unsigned bgColor () override { return uk_size_class () == UK_SC_CONSOLE ? 0x00182644 : UK_FLAT ? (unsigned) UK_N_BG2 : C_FIELD; }
 	void onDraw () override
 	{
 		canvas.clear (UK_TRANSPARENT_KEY);
 		if (uk_size_class () == UK_SC_CONSOLE) { uk_rbox (canvas, 0, 0, width, height, 10, 0x00182644, 0x000C1428); uk_rline (canvas, 0, 0, width, height, 10, 0x0060C8FF, 200); }
 		else uk_popup (canvas, 0, 0, width, height, 8, C_FIELD);
+		if (sel >= 0 && sel < n)			// the keys' ring round the chosen tool
+		{
+			Widget *c = w[sel];
+			uk_rline (canvas, c->left - 3, c->top - 3, c->width + 6, c->height + 6, 7, C_ACCENT, 255);
+			uk_rline (canvas, c->left - 2, c->top - 2, c->width + 4, c->height + 4, 6, C_ACCENT, 255);
+		}
+	}
+	void move (int dx, int dy)				// the ring to the nearest tool that way
+	{
+		if (n == 0) return;
+		if (sel < 0) { sel = 0; invalidate (true); return; }
+		int cx = w[sel]->left + w[sel]->width / 2, cy = w[sel]->top + w[sel]->height / 2, best = -1; long bd = 0;
+		for (int i = 0; i < n; i++)
+		{
+			if (i == sel) continue;
+			int along = dx ? (w[i]->left + w[i]->width / 2 - cx) * dx : (w[i]->top + w[i]->height / 2 - cy) * dy;
+			int across = dx ? w[i]->top + w[i]->height / 2 - cy : w[i]->left + w[i]->width / 2 - cx;
+			if (along <= 0) continue;
+			if (across < 0) across = -across;
+			long d = (long) along * along + 4L * across * across;
+			if (best < 0 || d < bd) { best = i; bd = d; }
+		}
+		if (best >= 0) { sel = best; invalidate (true); }
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -313,7 +340,28 @@ public:
 		else if (!bl) pressed = false;
 		return true;
 	}
-	bool onKey (long k) override { if (k == 27) { close (0); return true; } return false; }
+	bool onKey (long k) override
+	{
+		if (k == 27) { close (0); return true; }
+		if (k == KEY_LEFT) { move (-1, 0); return true; }
+		if (k == KEY_RIGHT) { move (1, 0); return true; }
+		if (k == KEY_UP) { move (0, -1); return true; }
+		if (k == KEY_DOWN || k == KEY_TAB) { move (0, 1); return true; }
+		if ((k == KEY_ENTER || k == ' ') && sel >= 0 && sel < n)	// the ringed tool used: a click at its middle
+		{
+			Widget *c = w[sel];
+			bool small = c->width <= 64 && c->height <= 48;
+			if (c->canFocus && !small) { c->setFocus (); c->onTabFocus (); invalidate (true); return true; }	// (a field: typed into)
+			int x = c->width / 2 < 14 ? c->width / 2 : c->width - 10;		// (a box with a list: its arrow's side opens it too)
+			if (small) x = c->width / 2 < 14 ? c->width / 2 : 14;
+			c->onMouse (x, c->height / 2, 1, 0, 0, 0);
+			c->onMouse (x, c->height / 2, 0, 0, 0, 0);
+			if (small && !done) close (1);
+			return true;
+		}
+		for (int i = 0; i < n; i++) if (w[i]->hasFocus && w[i]->onKey (k)) return true;	// (a field of the panel)
+		return false;
+	}
 	int runPanel ()
 	{
 		Root *r = Root::current ();
@@ -358,6 +406,7 @@ static void tb_record (ToolBar *t, Widget *w, int gap, bool right)
 	TbRec &r = e->rec[e->n++];
 	r.w = w; r.home = t; r.left = w->left; r.top = w->top; r.homeW = t->width; r.gap = gap; r.prio = UK_TB_ALWAYS; r.rank = 0;
 	r.group = e->seps; r.pad = 0; r.sepBefore = e->sepPending && !right; r.right = right; r.label = 0;
+	r.natW = w->width; r.minW = r.foldW = 0;
 	if (!right) e->sepPending = false;
 }
 
@@ -396,6 +445,13 @@ void ToolBar::setPriority (Widget *w, int prio, int rank)
 }
 void ToolBar::setLabel (Widget *w, const char *label) { TbRec *r = tb_find (tb_ext (this), w); if (r) r->label = label; }
 void ToolBar::setGroup (Widget *w, int group) { TbRec *r = tb_find (tb_ext (this), w); if (r) r->group = group; }
+void ToolBar::setFlex (Widget *w, int minW, int foldW)
+{
+	TbRec *r = tb_find (tb_ext (this), w);
+	if (r == 0) return;
+	r->minW = minW < r->natW ? minW : r->natW; r->foldW = foldW;
+	if (uk_size_class () != UK_SC_REGULAR) { layout (); invalidate (true); }
+}
 void ToolBar::setShortcut (Widget *w, int padButton) { TbRec *r = tb_find (tb_ext (this), w); if (r) r->pad = padButton; }
 
 void ToolBar::foldInto (ToolBar *first)
@@ -451,6 +507,7 @@ void ToolBar::layout ()
 			TbRec *r = all[i];
 			if (r->w->parent != r->home) { if (r->w->parent) r->w->parent->removeChild (r->w); r->home->addChild (r->w); }
 			r->w->hidden = false;
+			if (r->minW > 0 && r->w->width != r->natW) r->w->resizeTo (r->natW, r->w->height);	// (its own width again)
 			r->w->left = r->right ? r->home->width - (r->homeW - r->left) : r->left; r->w->top = r->top;
 		}
 		if (e->more) e->more->hidden = true;
@@ -468,25 +525,43 @@ void ToolBar::layout ()
 	for (int i = 0; i < n; i++) if (all[i]->right) rightW += all[i]->gap + all[i]->w->width;
 	int avail = width - 6 - rightW - 4;
 	bool vis[TB_MAX * 2];
+	int cw[TB_MAX * 2];					// each tool's width in the row (a flexible one: what it is given)
+	for (int i = 0; i < n; i++) { if (all[i]->natW < all[i]->w->width && all[i]->minW == 0) all[i]->natW = all[i]->w->width; cw[i] = all[i]->minW > 0 ? all[i]->natW : all[i]->w->width; }
 	// the width of a set: its tools, their gaps, the separators between the shown ones
-	auto widthOf = [&] () { int x = 0; bool any = false; for (int i = 0; i < n; i++) { if (!vis[i] || all[i]->right) continue; if (any && all[i]->sepBefore) x += 11; x += all[i]->gap + all[i]->w->width; any = true; } return x; };
+	auto widthOf = [&] () { int x = 0; bool any = false; for (int i = 0; i < n; i++) { if (!vis[i] || all[i]->right) continue; if (any && all[i]->sepBefore) x += 11; x += all[i]->gap + cw[i]; any = true; } return x; };
 	bool anyOver = false;
 	for (int i = 0; i < n; i++) { vis[i] = all[i]->right || all[i]->prio != UK_TB_OVERFLOW; if (!vis[i]) anyOver = true; }
+	if (widthOf () > avail - (anyOver ? MORE_W + 2 : 0))	// too wide: first the flexible tools at their least width
+		for (int i = 0; i < n; i++) if (all[i]->minW > 0) cw[i] = all[i]->minW;
 	if (anyOver || widthOf () > avail)			// not everything: keep room for "»", drop the IF_ROOMs by rank
 	{
 		int room = avail - MORE_W - 2;
 		for (int i = 0; i < n; i++) if (!all[i]->right) vis[i] = all[i]->prio == UK_TB_ALWAYS;
+		// (the ALWAYS tools alone too wide: the flexible ones among them fold, from the row's end)
+		for (int i = n - 1; i >= 0 && widthOf () > room; i--) if (vis[i] && all[i]->foldW > 0 && cw[i] > all[i]->foldW) cw[i] = all[i]->foldW;
 		for (int rank = -100; ; )				// the IF_ROOMs by their rank (lower stays longer), in order
 		{
 			int best = 1 << 30;
 			for (int i = 0; i < n; i++) if (!vis[i] && all[i]->prio == UK_TB_IF_ROOM && all[i]->rank > rank && all[i]->rank < best) best = all[i]->rank;
 			if (best == (1 << 30)) break;
-			for (int i = 0; i < n; i++)
-				if (!vis[i] && all[i]->prio == UK_TB_IF_ROOM && all[i]->rank == best)
-				{
-					vis[i] = true;
-					if (widthOf () > room) vis[i] = false;
-				}
+			// this rank's tools, in order, while they fit: first with its flexible tools at their least width; if
+			// some then have to leave, again with those folded to an icon (a list folds before its neighbours go)
+			for (int pass = 0; pass < 2; pass++)
+			{
+				bool left = false;
+				for (int i = 0; i < n; i++)
+					if (!vis[i] && all[i]->prio == UK_TB_IF_ROOM && all[i]->rank == best)
+					{
+						if (pass == 1 && all[i]->foldW > 0) cw[i] = all[i]->foldW;
+						vis[i] = true;
+						if (widthOf () > room) { vis[i] = false; left = true; }
+					}
+				if (!left || pass == 1) break;
+				bool flex = false;
+				for (int i = 0; i < n; i++) if (all[i]->prio == UK_TB_IF_ROOM && all[i]->rank == best && all[i]->foldW > 0) flex = true;
+				if (!flex) break;
+				for (int i = 0; i < n; i++) if (all[i]->prio == UK_TB_IF_ROOM && all[i]->rank == best) vis[i] = false;
+			}
 			rank = best;
 		}
 		while (widthOf () > room)				// (still too wide: the ALWAYS ones from the end)
@@ -498,6 +573,17 @@ void ToolBar::layout ()
 		}
 		anyOver = true;
 	}
+	// the room left given back to the flexible tools that are not folded, in their order, up to their own width
+	{
+		int spare = avail - (anyOver ? MORE_W + 2 : 0) - widthOf ();
+		for (int i = 0; i < n && spare > 0; i++)
+		{
+			TbRec *r = all[i];
+			if (!vis[i] || r->right || r->minW == 0 || cw[i] >= r->natW || (r->foldW > 0 && cw[i] <= r->foldW)) continue;
+			int g = r->natW - cw[i] < spare ? r->natW - cw[i] : spare;
+			cw[i] += g; spare -= g;
+		}
+	}
 	int x = 6; bool any = false;
 	e->nsep = 0;
 	for (int i = 0; i < n; i++)
@@ -505,6 +591,11 @@ void ToolBar::layout ()
 		TbRec *r = all[i];
 		if (r->right) { r->w->hidden = false; continue; }
 		r->w->hidden = !vis[i];
+		if (r->minW > 0)				// a flexible tool: the width it has in the row (hidden: its own, for the panel)
+		{
+			int ww = vis[i] ? cw[i] : r->natW;
+			if (r->w->width != ww) { r->w->resizeTo (ww, r->w->height); r->w->invalidate (true); }
+		}
 		if (!vis[i]) continue;
 		if (any && r->sepBefore) { if (e->nsep < 32) e->sepX[e->nsep++] = x + 5; x += 11; }
 		x += r->gap;
@@ -537,6 +628,8 @@ void ToolBar::showOverflow ()
 	int sc = uk_size_class ();
 	int maxW = sc == UK_SC_NARROW ? r->width - 16 : r->width - 16 < 360 ? r->width - 16 : 360;
 	int x = 10, y = 10, rowH = 0, w = 0, group = -99999;
+	e->panel = true;					// (from here the bar's layout leaves the tools alone: removeChild calls it,
+								//  and it would take each tool back from the panel -- an empty panel)
 	for (int i = 0; i < n && p.n < TB_MAX; i++)
 	{
 		TbRec *t = all[i];
@@ -556,7 +649,7 @@ void ToolBar::showOverflow ()
 		if (x > w) w = x;
 		if (c->height > rowH) rowH = c->height;
 	}
-	if (p.n == 0) return;
+	if (p.n == 0) { e->panel = false; return; }
 	int ph = y + rowH + 10, pw = w + 6 < 120 ? 120 : w + 6;
 	p.resizeTo (pw, ph);
 	int ax, ay; internal::abs_pos (this, &ax, &ay);
@@ -567,7 +660,7 @@ void ToolBar::showOverflow ()
 	if (p.left < 4) p.left = 4;
 	if (p.top + ph > r->height) p.top = r->height - ph;
 	if (p.top < 0) p.top = 0;
-	e->panel = true;
+	p.sel = -1;
 	p.runPanel ();
 	e->panel = false;
 	for (int i = 0; i < p.n; i++)				// the tools back on the bar (hidden: placed by layout)

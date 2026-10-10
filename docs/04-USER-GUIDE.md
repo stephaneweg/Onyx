@@ -2816,6 +2816,14 @@ header copied (*Tour · Temps du tour · Total*); `alarms.txt` keeps the same En
 ![Letters](../screenshots/letters.png)
 *Letters with its sample document (`SD:/docs/letters-tour.rtf`): its table of contents, a word selected, the toolbar showing its style, font and size.*
 
+**In a small window** (the pocket and console modes: a handheld's 640 × 480) the two toolbars are **one row**: the
+tools that matter most stay -- Save, Undo, the style, the size, bold / italic / underline, then Open, Redo, Find,
+the colour, the alignments while there is room --, the font list shrinks then becomes an **F** that still opens it,
+and the rest is behind **»** at the row's end (a click, or the arrows and Enter once it has the focus; in its panel
+the arrows move a ring, Enter uses the tool, Esc closes). The **ruler is not shown** and the **page is fitted to the
+window's width** (a zoom chosen by hand is kept; *View ▸ Page Width* fits it again). The page stays white whatever
+the theme: it is what will be printed. Every tool is also a menu item (in pocket: the **Menu** entry, F10).
+
 Letters is Onyx's word processor, in the way of AbiWord and Word (it was called *Writer* until
 2026-10-04: a card that had Writer gets Letters as its update). The document is laid out on
 **pages** — A4 by default, 2 cm margins — shown one under the other on a grey desk, each with its

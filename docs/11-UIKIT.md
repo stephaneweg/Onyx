@@ -40,27 +40,28 @@
 34. [`uikit/listbox.h`](#uikitlistboxh)
 35. [`uikit/menu.h`](#uikitmenuh)
 36. [`uikit/numeric.h`](#uikitnumerich)
-37. [`uikit/paint.h`](#uikitpainth)
-38. [`uikit/panel.h`](#uikitpanelh)
-39. [`uikit/progress.h`](#uikitprogressh)
-40. [`uikit/radio.h`](#uikitradioh)
-41. [`uikit/richtextbox.h`](#uikitrichtextboxh)
-42. [`uikit/scrollbar.h`](#uikitscrollbarh)
-43. [`uikit/segmented.h`](#uikitsegmentedh)
-44. [`uikit/sidepanel.h`](#uikitsidepanelh)
-45. [`uikit/skin.h`](#uikitskinh)
-46. [`uikit/slider.h`](#uikitsliderh)
-47. [`uikit/splitter.h`](#uikitsplitterh)
-48. [`uikit/sysclip.h`](#uikitsyscliph)
-49. [`uikit/tabhost.h`](#uikittabhosth)
-50. [`uikit/tabstrip.h`](#uikittabstriph)
-51. [`uikit/textarea.h`](#uikittextareah)
-52. [`uikit/textbox.h`](#uikittextboxh)
-53. [`uikit/toggle.h`](#uikittoggleh)
-54. [`uikit/toolbar.h`](#uikittoolbarh)
-55. [`uikit/treeview.h`](#uikittreeviewh)
-56. [`uikit/vpaint.h`](#uikitvpainth)
-57. [`uikit/vumeter.h`](#uikitvumeterh)
+37. [`uikit/padhint.h`](#uikitpadhinth)
+38. [`uikit/paint.h`](#uikitpainth)
+39. [`uikit/panel.h`](#uikitpanelh)
+40. [`uikit/progress.h`](#uikitprogressh)
+41. [`uikit/radio.h`](#uikitradioh)
+42. [`uikit/richtextbox.h`](#uikitrichtextboxh)
+43. [`uikit/scrollbar.h`](#uikitscrollbarh)
+44. [`uikit/segmented.h`](#uikitsegmentedh)
+45. [`uikit/sidepanel.h`](#uikitsidepanelh)
+46. [`uikit/skin.h`](#uikitskinh)
+47. [`uikit/slider.h`](#uikitsliderh)
+48. [`uikit/splitter.h`](#uikitsplitterh)
+49. [`uikit/sysclip.h`](#uikitsyscliph)
+50. [`uikit/tabhost.h`](#uikittabhosth)
+51. [`uikit/tabstrip.h`](#uikittabstriph)
+52. [`uikit/textarea.h`](#uikittextareah)
+53. [`uikit/textbox.h`](#uikittextboxh)
+54. [`uikit/toggle.h`](#uikittoggleh)
+55. [`uikit/toolbar.h`](#uikittoolbarh)
+56. [`uikit/treeview.h`](#uikittreeviewh)
+57. [`uikit/vpaint.h`](#uikitvpainth)
+58. [`uikit/vumeter.h`](#uikitvumeterh)
 
 ---
 
@@ -72,7 +73,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 950 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 954 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -382,6 +383,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `present` | Friendly aliases used by the demos (they were appkit.h's). | `win.h` |
 | `Canvas` | (a type) | `canvas.h` |
 | `UIKIT_VAR` | an app's background (its face) | `theme.h` |
+| `uk_flat` | The FLAT look (the theme Onyx Noir -- PocketUI's default in pocket mode, SD:/etc/pocketui.ini "[look] theme =") | `theme.h` |
 | `uk_style_palette` | UK_STYLE_MILK: Milk's; any other value: CDE's | `theme.h` |
 | `uk_theme_palette` | a named theme's colours (its own, else its style's) | `theme.h` |
 | `uk_theme_load` | (uikit::init () calls it; idempotent) | `theme.h` |
@@ -517,6 +519,9 @@ Everything the headers declare, in their order — the details are in each heade
 | `MenuAction` | a menu item's callback (chosen in the bar, or its shortcut typed) | `menu.h` |
 | `Menu` | (a type) | `menu.h` |
 | `NumericUpDown` | uikit/numeric.h -- NumericUpDown | `numeric.h` |
+| `uk_pad_glyph` | A button's glyph, h px high, at (x, y) -> its width (measure | `padhint.h` |
+| `uk_pad_key` | A key's cap (a keyboard's equivalent | `padhint.h` |
+| `uk_pad_hints` | The line of hints at (x, y), h px high, the words in `ink` -> its width (measure | `padhint.h` |
 | `uk_paint_alpha` | The alpha mode | `paint.h` |
 | `uk_blend_px` | One pixel of c at opacity a (0..255) over what the canvas holds (the alpha mode heeded). | `paint.h` |
 | `uk_tone` | the grey profile: 128 = c, 255 = white, 0 = black | `paint.h` |
@@ -1203,6 +1208,13 @@ A key as the shell names it: the modifiers (1 Ctrl, 2 Shift, 4 Alt, 8 Super) and
 #define UK_SHELL_KEY_HELD	0x1001	// (grabbed) the modifiers held changed: UK_SHELL_KEY_MODS says which now
 ```
 
+The MENU BAR's keys (pocket: the app's menus are one "Menu" entry of the top band). The menu bar's program gives its handler with uk_shell_events and is sent UK_SHELL_KEY_MENU for the menu key -- F10, an Alt pressed and released alone, a pad's Select (the shell types F10); while its menu is open it asks every key with uk_shell_grab (1) -- but the shell's own (Home, Alt+Tab): those close it (UK_SHELL_KEY_CANCEL) and go to the shell.
+
+```cpp
+#define UK_SHELL_KEY_MENU	0x1002
+#define UK_SHELL_KEY_CANCEL	0x1003
+```
+
 The system keys the shell takes before the front app (UK_SHELL_KEY each; count 0: none) -> how many. A program in full screen keeps every key.
 
 ```cpp
@@ -1315,8 +1327,11 @@ uikit/theme.h -- the desktop's look (docs/gui-redesign/README.md, "a modernised 
     theme    = Peach        a named theme. Two kinds: CDE's framed title buttons -- Peach, Steel,
                             Sage, Brick, Slate (the frame of the window in front; the ones
                             behind: Grey) --, or OS X's coloured beads, the frame melting into
-                            the window (no line between them) -- Milk (soft greys) and Dark
-                            Coffee (black coffee's browns, a caramel accent)
+                            the window (no line between them) -- Milk (soft greys), Dark
+                            Coffee (black coffee's browns, a caramel accent) and Onyx Noir
+                            (FLAT and dark: no gradient, no bevel, no shadow -- the pocket
+                            mode's default, whatever this file says: SD:/etc/pocketui.ini
+                            "[look] theme = Onyx Noir | system | <a theme's name>")
     style    = cde          the frames' look, if not the theme's: cde or milk
     active   = 0xF0B07A     or the colours themselves (they override the theme's)
     inactive = 0xACACB0
@@ -1353,6 +1368,22 @@ UIKIT_VAR (unsigned, C_DOCK);			// the dock's face (and the drawers' frame)
 UIKIT_VAR (unsigned, C_BUTTON);		// a push button's / a drop-down's face (the window's by default)
 UIKIT_VAR (unsigned, C_BUTTON_TEXT);		// ... its text
 UIKIT_VAR (unsigned, C_MENUBAR);		// the menu bar's face (the window's by default)
+```
+
+The FLAT look (the theme Onyx Noir -- PocketUI's default in pocket mode, SD:/etc/pocketui.ini "[look] theme ="): 1 = the painter (uikit/paint.h) draws no gradient, no bevel, no shadow -- plain faces from the tokens below, the focus a ring of the accent. An app that draws its own chrome asks uk_flat () and uses the tokens.
+
+```cpp
+UIKIT_VAR (int, UK_FLAT);
+bool uk_flat ();
+```
+
+Onyx Noir's tokens (docs/compact-shell/mockups/pocketterm/tokens.png).
+
+```cpp
+enum : unsigned { UK_N_BG0 = 0x000B0C0E, UK_N_BG1 = 0x0015171B, UK_N_BG2 = 0x001F2228, UK_N_BG3 = 0x002C3038,
+		  UK_N_LINE = 0x00343842, UK_N_TEXT1 = 0x00ECEEF2, UK_N_TEXT2 = 0x00A4AAB5, UK_N_TEXT3 = 0x00717783,
+		  UK_N_ACCENT = 0x003D86DA, UK_N_ACCENT_HI = 0x007DB4F2, UK_N_DANGER = 0x00E5484D,
+		  UK_N_SUCCESS = 0x0046A758, UK_N_WARNING = 0x00F1B33B };
 ```
 
 The frames' look: CDE's (framed title buttons) or Milk's (Xfce's Milk theme, as OS X: the title buttons coloured beads -- close red, minimise amber, maximise green --, the title's gradient down to the window's colour, C_BG, the borders that colour: the frame melts into the window).
@@ -2646,6 +2677,42 @@ private:
 };
 ```
 
+## `uikit/padhint.h`
+
+uikit/padhint.h -- a handheld's buttons as small flat glyphs, and lines of hints made of them ("[+] move  (A) choose (B) back"): what PocketUI's screens show at their foot on a device with a D-pad and A / B / X / Y, L / R, Start / Select (the Waveshare PocketTerm35: docs/COMPACT-SHELL-STUDY.md section 20, docs/compact-shell/mockups/pocketterm/ button-map.png). Drawn by code, in the theme's colours (the flat look's tokens; else shades of the face); the text in the installed face.
+
+```
+  static const UkPadHint H[] = { { "+", TR ("move") }, { "A", TR ("choose") }, { "B", TR ("back") } };
+  int w = uk_pad_hints (cv, 0, 0, 18, H, 3, C_DIS, true);         // measured
+  uk_pad_hints (cv, (cv.w - w) / 2, y, 18, H, 3, C_DIS);          // centred
+```
+
+MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
+
+A button's glyph, h px high, at (x, y) -> its width (measure: nothing drawn). kind: 'A' 'B' 'X' 'Y' (a disc, A's in the accent), 'L' 'R' (a pill), 'S' Start, 's' Select (a pill with the word), '+' the D-pad, '-' its left / right arms lit, '|' its up / down arms lit.
+
+```cpp
+int uk_pad_glyph (Canvas &cv, int x, int y, int h, int kind, bool measure = false);
+```
+
+A key's cap (a keyboard's equivalent: "Esc", "F10") as an outlined box -> its width.
+
+```cpp
+int uk_pad_key (Canvas &cv, int x, int y, int h, const char *label, bool measure = false);
+```
+
+A hint: its glyphs (each character a kind of uk_pad_glyph; a word in brackets, "[Esc]", a key's cap) and its word.
+
+```cpp
+struct UkPadHint { const char *glyphs; const char *word; };
+```
+
+The line of hints at (x, y), h px high, the words in `ink` -> its width (measure: nothing drawn).
+
+```cpp
+int uk_pad_hints (Canvas &cv, int x, int y, int h, const UkPadHint *hints, int n, unsigned ink, bool measure = false);
+```
+
 ## `uikit/paint.h`
 
 uikit/paint.h -- the procedural painter of the desktop's look: no skin bitmap, everything drawn by code from a few theme colours (uikit/theme.h), integer arithmetic only (the apps build with -mgeneral-regs-only).
@@ -3591,7 +3658,7 @@ private:
   UK_TB_OVERFLOW  only in the overflow;
 ```
 
-on the desktop the bar is as built (every tool, its rows); in pocket and console ONE row of what fits by priority, the rest behind "»": a panel that hosts the tools themselves (a toggle stays a toggle, a drop-down a drop-down), group by group (a separator's run is a group). A second bar folded into the first (foldInto) joins its row when compact. The app lays itself out with rows () (the rows the bar takes now).
+on the desktop the bar is as built (every tool, its rows); in pocket and console ONE row of what fits by priority, the rest behind "»": a panel that hosts the tools themselves (a toggle stays a toggle, a drop-down a drop-down), group by group (a separator's run is a group). A second bar folded into the first (foldInto) joins its row when compact. The app lays itself out with rows () (the rows the bar takes now). The rule while the row is too wide (docs/compact-shell/mockups/pocketterm/toolbar-rule.png): the flexible tools (setFlex) shrink to their least width; the IF_ROOM tools leave for "»", the highest rank first, from the row's end; the flexible IF_ROOM tools fold to an icon rather than leave; last the flexible ALWAYS ones fold. What room is left is given back to the flexible tools. "»" takes the keyboard's focus (the arrows reach it, Enter opens it); in its panel the arrows move a ring, Enter uses the ringed tool, Esc closes.
 
 ```cpp
 enum { UK_TB_ALWAYS = 0, UK_TB_IF_ROOM = 1, UK_TB_OVERFLOW = 2 };
@@ -3614,6 +3681,11 @@ public:
 	void setLabel (Widget *w, const char *label);		// its words (the console's Tools section; kept, not copied)
 	void setGroup (Widget *w, int group);			// its group (default: its separator's run)
 	void setShortcut (Widget *w, int padButton);		// the console's button for it (gamepad.h's numbers; P9)
+	// A tool that gives room before any tool leaves the row (a drop-down list, a box with a value): compact, the bar
+	// makes it narrower -- down to minW -- and, with foldW > 0, FOLDS it to foldW px (an icon that still opens its
+	// list: the widget draws itself for the width it is given -- resizeTo) once the tools of a lower priority have
+	// left. In the "»" panel and on the desktop it has its own width again.
+	void setFlex (Widget *w, int minW, int foldW = 0);
 	void foldInto (ToolBar *first);	// this second row's tools join first's row when compact (this one then hidden)
 	int  rows () const;			// the rows the bar takes now: the desktop 1 + the bars folded into it; else 1
 						// (a bar folded into another: 0 when compact)

@@ -75,6 +75,11 @@ private:
 // the rest behind "»": a panel that hosts the tools themselves (a toggle stays a toggle, a drop-down a drop-down),
 // group by group (a separator's run is a group). A second bar folded into the first (foldInto) joins its row when
 // compact. The app lays itself out with rows () (the rows the bar takes now).
+// The rule while the row is too wide (docs/compact-shell/mockups/pocketterm/toolbar-rule.png): the flexible tools
+// (setFlex) shrink to their least width; the IF_ROOM tools leave for "»", the highest rank first, from the row's end;
+// the flexible IF_ROOM tools fold to an icon rather than leave; last the flexible ALWAYS ones fold. What room is left
+// is given back to the flexible tools. "»" takes the keyboard's focus (the arrows reach it, Enter opens it); in its
+// panel the arrows move a ring, Enter uses the ringed tool, Esc closes.
 enum { UK_TB_ALWAYS = 0, UK_TB_IF_ROOM = 1, UK_TB_OVERFLOW = 2 };
 
 class ToolBar : public Widget
@@ -95,6 +100,11 @@ public:
 	void setLabel (Widget *w, const char *label);		// its words (the console's Tools section; kept, not copied)
 	void setGroup (Widget *w, int group);			// its group (default: its separator's run)
 	void setShortcut (Widget *w, int padButton);		// the console's button for it (gamepad.h's numbers; P9)
+	// A tool that gives room before any tool leaves the row (a drop-down list, a box with a value): compact, the bar
+	// makes it narrower -- down to minW -- and, with foldW > 0, FOLDS it to foldW px (an icon that still opens its
+	// list: the widget draws itself for the width it is given -- resizeTo) once the tools of a lower priority have
+	// left. In the "»" panel and on the desktop it has its own width again.
+	void setFlex (Widget *w, int minW, int foldW = 0);
 	void foldInto (ToolBar *first);	// this second row's tools join first's row when compact (this one then hidden)
 	int  rows () const;			// the rows the bar takes now: the desktop 1 + the bars folded into it; else 1
 						// (a bar folded into another: 0 when compact)

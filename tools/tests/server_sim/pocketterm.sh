@@ -67,7 +67,7 @@ if want menu; then
 	pixel pt-band-app-640 320 15 0b0c0e "the band is flat and dark"
 	pixel pt-menu-open-640 320 470 0b0c0e "the hint line's strip"
 	pixel pt-menu-open-640 320 278 3d86da "the chosen item is the accent"
-	pixel pt-band-app-640-milk 320 15 ebe4e0 "theme = system: the light band kept"
+	tone pt-band-app-640-milk 320 15 light "theme = system: the light band kept"
 fi
 
 # ---- the theme: Onyx Noir is pocket's default; the desktop, the console and "theme = system" keep theirs -----------------
@@ -95,10 +95,35 @@ if want theme; then
 	app elegant tinypad uikit_wire
 	run elegant_tinypad pt-desktop-tinypad "$WW;dump $OUT/pt-desktop-tinypad.elsm" SIM_SCREEN=800x600 SIM_APPNAME=tinypad SIM_APP=tinypad
 	out pt-desktop-tinypad
-	pixel pt-gallery-640 630 80 0b0c0e "pocket: the window's background is Onyx Noir's"
+	tone pt-gallery-640 630 80 dark "pocket: the widgets are on Onyx Noir"
 	pixel pt-tinypad-640 600 400 15171b "pocket: a text field is a dark surface"
 	tone pt-gallery-640-system 630 80 light "theme = system: theme.txt's look"
 	tone pt-desktop-tinypad 400 300 light "the desktop: theme.txt's look"
+fi
+
+# ---- the toolbars adapt: UIKit's ToolBar (the host tests), Letters' two bars in one row at 640 x 480 ---------------------
+if want toolbar; then
+	echo "pocketterm: the toolbars (UIKit's host tests, Letters)"
+	$CXX $INC -Iuser/Kits/fontkit -I$FT/include -o "$OUT/pocket_gallery" "$OUT/obj/pocket"/*.o "$OUT/fakekapi.o" $S/adaptive.cpp "$OUT/libuikit_pocket.a" "$OUT/libft.a" -lpthread
+	if env ADAPT_TEST=1 SIM_OVERLAY=$D/sd SIM="exit" "$OUT/pocket_gallery" >>"$OUT/log.txt" 2>&1; then echo "  the widgets' host tests: ok"
+	else echo "  the widgets' host tests: FAILED (see $OUT/log.txt)"; FAIL=1; fi
+	ftapp pocket letters uikit_pocket -Wl,--unresolved-symbols=ignore-all
+	ftapp elegant letters uikit_wire -Wl,--unresolved-symbols=ignore-all
+	DOC=; for f in letters-tour.rtf new-year-letter.rtf; do if [ -f "$D/sd/docs/$f" ] || [ -f "sdcard/docs/$f" ]; then DOC="SD:/docs/$f"; break; fi; done
+	for sz in 640x480 800x480 480x800 1280x720; do
+		w=${sz%x*}
+		# the window filled, one row of tools; a click on "»": its panel; Right, Right move the ring; Esc closes it
+		run pocket_letters pt-letters-$sz "$WW;$WW;$W;expect kind fill;move 320 300;$W;$W;dump $OUT/pt-letters-$sz.elsm;down $((w - 20)) 47;up $((w - 20)) 47;$W;key $RIGHT;key $RIGHT;$W;dump $OUT/pt-letters-over-$sz.elsm;key 0x1b;$W;move 320 300;$W;$W;dump $OUT/pt-letters-back-$sz.elsm" \
+			SIM_SCREEN=$sz SIM_APPNAME=letters SIM_APP=letters ${DOC:+SIM_ARGS=$DOC}
+		out pt-letters-$sz; out pt-letters-over-$sz
+		png pt-letters-back-$sz >/dev/null
+		# (the band and the toolbar: the page under them has a caret that blinks)
+		if python3 -c "import sys; from PIL import Image, ImageChops; a = Image.open ('$OUT/pt-letters-$sz.png').convert ('RGB').crop ((0, 0, $w, 64)); b = Image.open ('$OUT/pt-letters-back-$sz.png').convert ('RGB').crop ((0, 0, $w, 64)); sys.exit (1 if ImageChops.difference (a, b).getbbox () else 0)"; then echo "  letters $sz: the row as before once the panel is closed: ok"
+		else echo "  letters $sz: FAILED (the row changed after the panel: pt-letters-back-$sz.elsm)"; FAIL=1; fi
+	done
+	run elegant_letters pt-letters-desktop "$WW;$WW;dump $OUT/pt-letters-desktop.elsm" SIM_SCREEN=1024x768 SIM_APPNAME=letters SIM_APP=letters ${DOC:+SIM_ARGS=$DOC}
+	out pt-letters-desktop
+	pixel pt-letters-640x480 40 300 ffffff "letters: the page stays white in the dark shell"
 fi
 
 # ---- the pocket shell: the home, the switcher, quick settings -- the menu bar's picture above them ------------------------

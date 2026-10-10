@@ -439,8 +439,10 @@ static void cmd_table_props () { if (in_tbl () && dlg_table_props ()) after_edit
 
 // ---- the zoom --------------------------------------------------------------------------------------------
 static const int ZOOMS[] = { 25, 50, 75, 100, 125, 150, 200, 300, 400 };
+static bool g_fitWidth;				// the page follows the window's width (pocket's default; Page Width)
 static void zoom_to (int z)
 {
+	g_fitWidth = false;				// (a zoom chosen: kept)
 	if (z == L.zoom) return;
 	set_zoom (z);
 	g_relayout = true;
@@ -461,7 +463,7 @@ static void zoom_by (int dir)
 static void cmd_zoom_in () { zoom_by (1); }
 static void cmd_zoom_out () { zoom_by (-1); }
 static void cmd_zoom_100 () { zoom_to (100); }
-static void cmd_zoom_width () { int avail = g_view->viewW () - 2 * GAP; zoom_to (wclamp ((int) ((long long) avail * 1500 / g_doc.page.w), 10, 500)); }
+static void cmd_zoom_width () { int avail = g_view->viewW () - 2 * GAP; zoom_to (wclamp ((int) ((long long) avail * 1500 / g_doc.page.w), 10, 500)); g_fitWidth = uk_compact (); }
 static void cmd_zoom_page ()
 {
 	int aw = g_view->viewW () - 2 * GAP, ah = g_view->viewH () - 2 * GAP;
@@ -659,6 +661,8 @@ public:
 	void onTick () override
 	{
 		if (g_view) g_view->tick ();
+		static int s_fitW;				// (pocket: the page fitted to the width, again when the window's changes)
+		if (g_view && g_fitWidth && g_view->viewW () != s_fitW) { s_fitW = g_view->viewW (); cmd_zoom_width (); }
 		unsigned t = kapi_get_ticks ();
 		if (g_countDirty && t - g_countT > 40)			// (the words counted when typing pauses: the body's)
 		{
@@ -689,10 +693,14 @@ public:
 	}
 };
 
-static ToolButton *button (ToolBar *tb, int ic, const char *tip, void (*cb) (), int gap = 1, bool split = false)
+// A tool's priority in a small window (UIKit's ToolBar): 1 always in the row, 2 while there is room, 3 the first to
+// leave for "»".
+static void prio (ToolBar *tb, Widget *w, int p) { if (p > 1) tb->setPriority (w, UK_TB_IF_ROOM, p - 1); }
+static ToolButton *button (ToolBar *tb, int ic, const char *tip, void (*cb) (), int gap = 1, bool split = false, int p = 3)
 {
 	ToolButton *b = new ToolButton (ic, tip, cb, split);
 	tb->add (b, gap);
+	prio (tb, b, p);
 	g_btn[ic] = b;
 	return b;
 }
@@ -725,17 +733,17 @@ int main (void)
 	root.addChild (tb1); root.addChild (tb2);
 	tb1->anchor = tb2->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	button (tb1, IC_NEW, "New document (Ctrl+N)", cmd_new);
-	button (tb1, IC_OPEN, "Open... (Ctrl+O)", cmd_open);
-	button (tb1, IC_SAVE, "Save (Ctrl+S)", cmd_save);
+	button (tb1, IC_OPEN, "Open... (Ctrl+O)", cmd_open, 1, false, 2);
+	button (tb1, IC_SAVE, "Save (Ctrl+S)", cmd_save, 1, false, 1);
 	tb1->sep ();
-	button (tb1, IC_UNDO, "Undo (Ctrl+Z)", cmd_undo);
-	button (tb1, IC_REDO, "Redo (Ctrl+Y)", cmd_redo);
+	button (tb1, IC_UNDO, "Undo (Ctrl+Z)", cmd_undo, 1, false, 1);
+	button (tb1, IC_REDO, "Redo (Ctrl+Y)", cmd_redo, 1, false, 2);
 	tb1->sep ();
 	button (tb1, IC_CUT, "Cut (Ctrl+X)", cmd_cut);
 	button (tb1, IC_COPY, "Copy (Ctrl+C)", cmd_copy);
 	button (tb1, IC_PASTE, "Paste (Ctrl+V)", cmd_paste);
 	tb1->sep ();
-	button (tb1, IC_FIND, "Find and Replace (Ctrl+F)", cmd_find);
+	button (tb1, IC_FIND, "Find and Replace (Ctrl+F)", cmd_find, 1, false, 2);
 	button (tb1, IC_PILCROW, "Formatting marks", cmd_marks);
 	tb1->sep ();
 	button (tb1, IC_PAGEBREAK, "Page break", cmd_page_break);
@@ -747,41 +755,53 @@ int main (void)
 	button (tb1, IC_ZOOMOUT, "Zoom out", cmd_zoom_out);
 	g_zoomBox = new PickBox (84, "Zoom", zoom_value, pick_zoom);
 	tb1->add (g_zoomBox, 2);
+	g_zoomBox->fold = "%"; prio (tb1, g_zoomBox, 3); tb1->setFlex (g_zoomBox, 60, 30);
 	button (tb1, IC_ZOOMIN, "Zoom in", cmd_zoom_in, 2);
 
 	g_styleBox = new PickBox (136, "Paragraph style", style_value, pick_style);
 	tb2->add (g_styleBox, 0);
+	g_styleBox->fold = "S"; tb2->setFlex (g_styleBox, 84, 30);
 	g_fontBox = new PickBox (176, "Font", font_value, pick_font);
 	tb2->add (g_fontBox, 6);
+	g_fontBox->fold = "F"; prio (tb2, g_fontBox, 2); tb2->setFlex (g_fontBox, 104, 30);
 	g_sizeBox = new SizeBox (58, pick_size);
 	tb2->add (g_sizeBox, 6);
+
 	tb2->sep ();
-	button (tb2, IC_BOLD, "Bold (Ctrl+B)", cmd_bold);
-	button (tb2, IC_ITALIC, "Italic (Ctrl+I)", cmd_italic);
-	button (tb2, IC_UNDER, "Underline (Ctrl+U)", cmd_under);
+	button (tb2, IC_BOLD, "Bold (Ctrl+B)", cmd_bold, 1, false, 1);
+	button (tb2, IC_ITALIC, "Italic (Ctrl+I)", cmd_italic, 1, false, 1);
+	button (tb2, IC_UNDER, "Underline (Ctrl+U)", cmd_under, 1, false, 1);
 	button (tb2, IC_STRIKE, "Strikethrough", cmd_strike);
 	button (tb2, IC_SUPER, "Superscript", cmd_super, 4);
 	button (tb2, IC_SUB, "Subscript", cmd_sub);
 	tb2->sep ();
-	ToolButton *tc = button (tb2, IC_COLOR, "Text colour", cmd_color, 1, true);
+	ToolButton *tc = button (tb2, IC_COLOR, "Text colour", cmd_color, 1, true, 2);
 	tc->arrow = drop_color; tc->setBar (g_textColor);
 	ToolButton *th = button (tb2, IC_HILITE, "Highlight", cmd_hilite, 2, true);
 	th->arrow = drop_hilite; th->setBar (g_hiliteColor);
 	tb2->sep ();
-	button (tb2, IC_LEFT, "Align left (Ctrl+L)", cmd_left);
-	button (tb2, IC_CENTER, "Centre (Ctrl+E)", cmd_center);
+	button (tb2, IC_LEFT, "Align left (Ctrl+L)", cmd_left, 1, false, 2);
+	button (tb2, IC_CENTER, "Centre (Ctrl+E)", cmd_center, 1, false, 2);
 	button (tb2, IC_RIGHT, "Align right (Ctrl+R)", cmd_right);
 	button (tb2, IC_JUSTIFY, "Justify (Ctrl+J)", cmd_justify);
 	tb2->sep ();
-	button (tb2, IC_BULLETS, "Bullets", cmd_bullets);
+	button (tb2, IC_BULLETS, "Bullets", cmd_bullets, 1, false, 2);
 	button (tb2, IC_NUMBERS, "Numbering", cmd_numbers);
 	button (tb2, IC_OUTDENT, "Decrease indent", cmd_outdent, 4);
 	button (tb2, IC_INDENT, "Increase indent", cmd_indent);
 
+	// In a small window (pocket, console) the formatting bar joins the first one's row -- what fits by priority, the
+	// rest behind "»" --, the ruler is not shown and the page follows the window's width.
+	tb2->foldInto (tb1);
+	bool small = uk_compact ();
+	int tbh = tb1->rows () * TB_H, rh = small ? 0 : RULER_H;
+	g_fitWidth = small;
+
 	// the page, its ruler, the status bar
-	int vy = 2 * TB_H + RULER_H;
+	int vy = tbh + rh;
 	g_view = new PageView (0, vy, W, H - vy - STATUS_H);
-	g_ruler = new Ruler (0, 2 * TB_H, W, g_view);
+	g_ruler = new Ruler (0, tbh, W, g_view);
+	g_ruler->hidden = small;
 	g_status = new StatusBar (0, H - STATUS_H, W);
 	g_status->zoomBy = zoom_by;
 	root.addChild (g_ruler); root.addChild (g_status);

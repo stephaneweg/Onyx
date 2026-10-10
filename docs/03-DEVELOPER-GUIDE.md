@@ -1756,6 +1756,32 @@ tabs, both panels, a grid with roles, a form, a menu, in every mode, and on Eleg
 tabs, the viewport (Setup), the File Viewer. A selection is in `screenshots/pocket/`. In the desktop simulator
 (`tools/tests/desktop_sim`) the class is the desktop's: `shots.sh` checks that nothing changed there.
 
+### 5.10.7. The flat look, a handheld's buttons, the Menu entry (`uikit/theme.h`, `padhint.h`, `toolbar.h`; the branch `PocketTerm`)
+
+What an app needs to know of PocketUI on a small screen without a pointer (`docs/COMPACT-SHELL-STUDY.md` section 20):
+
+- **The flat look.** The theme *Onyx Noir* sets `UK_FLAT` (`uk_flat ()`): UIKit's painter then draws plain faces --
+  an app that uses the widgets and `uk_raised` / `uk_sunken` / `uk_popup` / `uk_hilite` / `uk_rbox` has nothing to
+  do. An app that paints chrome in colours of its own asks `uk_flat ()` and takes the tokens `UK_N_BG0..3`,
+  `UK_N_LINE`, `UK_N_TEXT1..3`, `UK_N_ACCENT`, `UK_N_ACCENT_HI`, `UK_N_DANGER / SUCCESS / WARNING` (or simply the
+  palette: `C_BG`, `C_FIELD`, `C_BUTTON`, `C_BORDER`, `C_TEXT`, `C_DIS`, `C_ACCENT`). A document's page, a picture, a
+  terminal keep their own colours. The pocket mode's theme is `SD:/etc/pocketui.ini` `[look] theme =`.
+- **The menus.** Nothing changes for the app: `uikit::Menu` as ever. In pocket the menu bar shows them as ONE
+  `Menu` entry (F10, Alt alone, Select). Every command a toolbar offers should also be a menu item: the menu is what
+  the keys always reach.
+- **A toolbar that adapts** (`uikit/toolbar.h`): `ToolBar::add` any widget, `setPriority (w, UK_TB_IF_ROOM, rank)`
+  for what may leave the row (the higher the rank, the sooner), `setFlex (w, minW, foldW)` for a list or a value box
+  (it shrinks to `minW`, then folds to `foldW`: draw an icon when your width is that small), `foldInto (first)` for a
+  second row, `rows ()` to lay the window out. On the desktop the bar stays as built.
+- **The keys a handheld's buttons type** (so that an app is driven without a pointer): the arrows, Enter (A), Esc
+  (B), Delete (X), Shift+F10 (Y: UIKit clicks the focused control with the right button -- a context menu),
+  Ctrl+Page Up / Down (L / R: UIKit steps the window's tabs or sections), F10 (Select: the Menu), Super (Start:
+  Home). An app must not need another key for its main path. `uikit/padhint.h` draws the buttons
+  (`uk_pad_glyph`, `uk_pad_hints`) for a line of hints.
+- **PocketUI's protocol**: the menu bar's program may call `uk_shell_events` and `uk_shell_grab` (they were the
+  shell's only): it is sent `UK_SHELL_KEY_MENU` for the menu key and, while it grabs, every key; `UK_SHELL_KEY_CANCEL`
+  when a key of the shell's closes its menu.
+
 ## 6. Writing a graphical application
 
 > **Notifications and clipboard (ABI v40).** Notifications are AppKit's (`appkit/appkit.h`; it was `notify.h`):

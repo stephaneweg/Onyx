@@ -257,7 +257,8 @@ void uk_sunken (Canvas &cv, int x, int y, int w, int h, int r, unsigned bg, bool
 	{
 		if ((bg & 0x00FFFFFFu) == uk_tone (C_FACE, 150)) bg = uk_mix (C_FIELD, C_BG, 128);
 		uk_rbox (cv, x, y, w, h, r, bg, bg);
-		if (focus && h > 64) uk_rline (cv, x, y, w, h, r, C_ACCENT, 255);	// (a text area, a list: a thin line is enough)
+		if (focus && h > 200) uk_rline (cv, x, y, w, h, r, C_BORDER, 255);	// (a view that is most of the window: no ring)
+		else if (focus && h > 64) uk_rline (cv, x, y, w, h, r, C_ACCENT, 255);	// (a text area, a list: a thin line is enough)
 		else if (focus) flat_focus (cv, x, y, w, h, r);
 		else uk_rline (cv, x, y, w, h, r, uk_bright (bg) < 110 ? C_BORDER : uk_mix (bg, 0, 60), 255);
 		return;

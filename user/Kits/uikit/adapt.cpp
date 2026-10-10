@@ -278,6 +278,9 @@ void focus_ring (Canvas &cv, Widget *c, int x, int y)
 	unsigned a = console ? 0x0060C8FF : C_ACCENT;
 	int w = c->width, h = c->height;
 	if (w < 6 || h < 6) return;
+	// The flat look: a view that is most of its window (a terminal, a page, an editor) has the keys by default -- a
+	// ring round the whole screen says nothing and eats its rounded corners.
+	if (UK_FLAT && !console && c->parent != 0 && w * 4 >= c->parent->width * 3 && h * 2 >= c->parent->height) return;
 	int r = h / 2 < 6 ? h / 2 : 6;
 	uk_rline (cv, x, y, w, h, r, a, 255);			// (inside its rectangle: the next composite puts it back)
 	uk_rline (cv, x + 1, y + 1, w - 2, h - 2, r > 1 ? r - 1 : 0, a, console ? 200 : 140);

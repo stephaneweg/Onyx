@@ -1932,7 +1932,36 @@ source (`uk_win_menu_get`) and the keys' rules, not the drawing.
 
 ### 20.3 The toolbars adapt
 
-(S3 -- see below once built.)
+UIKit's `ToolBar` (`uikit/toolbar.h`) already had, since P6, priorities per tool (`setPriority`: ALWAYS, IF_ROOM
+with a rank, OVERFLOW), a "»" overflow and a second bar folded into the first one's row (`foldInto`) in pocket and
+console. What this branch adds, and one fix:
+
+- **flexible tools** -- `setFlex (tool, minW, foldW)`: a list box or a value box gives room before any tool leaves
+  the row. The rule while the row is too wide (the mock-up `toolbar-rule.png`): (1) the flexible tools shrink to
+  their least width; (2) the IF_ROOM tools leave for "»", the highest rank first, from the row's end; (3) the
+  flexible tools of a rank fold to `foldW` -- an icon that still opens their list: the widget draws itself for the
+  width it is given -- before the other tools of that rank leave; (4) last the flexible ALWAYS tools fold; the room
+  left is given back to the flexible tools;
+- **"»" by the keys**: it takes the focus (the arrows reach it, Enter opens it); in its panel the arrows move a
+  ring among the tools, Enter uses the ringed one (a click at its middle; a field is typed into), Esc closes;
+- **fixed: the "»" panel was empty** (on `main` too: `screenshots/pocket/gallery-800-overflow.png` shows it): the
+  bar's own `layout ()`, called by each `removeChild`, took every tool back from the panel as it was put there.
+
+**Letters** (`user/Apps/letters`) had two toolbars of its own class, laid out by hand, clipped at 640 px. They are
+UIKit's `ToolBar` now (its own `ToolButton` and boxes kept: any widget is a tool), the formatting bar folded into
+the first: on the desktop two rows as before (compared by eye, not pixel by pixel); **at 640 × 480 one row** --
+New, Open, Save, Undo, Redo, Find, the style, **the font folded to an "F"**, the size, B, I, U, the text colour,
+left, centre: 15 tools --, the other 21 behind "»"; at 800 × 480 the font list is back, narrower ("Liberat.."), 17
+tools. Its priorities: Save, Undo, the style, the size, B / I / U always; Open, Redo, Find, the font, the colour,
+left, centre, bullets while there is room; the rest first to leave. Every tool is also in its menus (the Menu
+entry), so nothing depends on the pointer.
+
+**Not as the mock-ups**: the "»" panel hosts the tools themselves (their icons, a group a row; a list box at its
+full width), not a list of their names with shortcuts; in a short landscape window the two rows always merge (the
+mock-up keeps two rows in portrait: here portrait merges too); the row's order is the first bar's tools then the
+second's (the mock-up puts the style, font and size first). An app that does nothing special is never clipped as
+soon as it uses UIKit's `ToolBar`: an app with a hand-made bar (the Spreadsheet, Cardfile, Paint...) still is --
+§20.6.
 
 ### 20.4 The shell and the buttons
 
@@ -1978,10 +2007,27 @@ client sending real buttons) needs a pad-injection call in the kernel: left for 
 
 ### 20.5 The heavy apps
 
-(S5 -- see below once built.)
+- **Letters** in pocket and console: the page is **fitted to the window's width** by default (and again when the
+  width changes; a zoom chosen by hand is kept; *View > Page Width* fits again), the **ruler is not shown**, the
+  **page stays white** inside the dark shell (it is what will be printed), one toolbar row (§20.3);
+- **the Terminal**: its tabs are UIKit's `TabStrip`, flat by the theme; in the flat look its screen is near black
+  (`#0E1316`, the text `#D6E2E0`) instead of the teal. **Not built: the TrueType monospace face** -- it still draws
+  the kernel's 8 × 16 bitmap font (78 × 25 at 640 × 480, where the mock-up has DejaVu Sans Mono 15 px, 68 × 22);
+  it needs the Terminal linked with FontKit and its cell metrics taken from the face;
+- UIKit, in the flat look: a view that is most of its window (the Terminal's screen, a page, an editor) gets no
+  focus ring.
+
 
 ### 20.6 What differs from the mock-ups, what is left
 
+- **per-app work seen while building** (not done): the apps that are not FreeType apps keep the bitmap font in the
+  dark look (the Text Editor, the Terminal, Letters' own chrome); the Text Editor has no toolbar and a bare path
+  line; apps with a hand-made toolbar or hard-coded light colours (the Spreadsheet, Cardfile, Paint, Slides, the
+  Calendar's views, Mail's lists, the Media Player's bar...) need their own pass -- each either moves to UIKit's
+  `ToolBar` / the theme's colours or asks `uk_flat ()`; the Theme applet does not list Onyx Noir; the on-screen
+  keyboard (`pocketshell/keys.h`) and the toast keep the Milk colours through `look.h`'s mapping only; the
+  Control Panel's applets were not looked at one by one; the search's results and the Today column are recoloured
+  by the mapping, not redrawn;
 - no battery in the band (Onyx has no battery gauge yet: the device's fuel gauge needs a driver), the speaker and
   the USB icons stay;
 - the home's search field says "Search apps, files and settings" (the shell's words, already translated);

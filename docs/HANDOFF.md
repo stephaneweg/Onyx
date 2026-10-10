@@ -4,6 +4,74 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## The PocketTerm branch: PocketUI restyled for the Waveshare PocketTerm35 -- "Onyx Noir" (2026-10-10) -- tested on the PC, NOT on the Pi, NOT on the device (it has not arrived), not in `main`, not published
+
+The branch **`PocketTerm`** (from `main` of 2026-10-10; never merged, no package published from it). The device: a Pi
+4 behind a 3.5" 640 x 480 screen, a D-pad, A / B / X / Y, L / R, Start / Select, a thumb keyboard, no pointer. The
+agreed mock-ups: `docs/compact-shell/mockups/pocketterm/` (direction 1, "Onyx Noir"; `tools/screenshot/
+mockup_pocketterm.py`). What is built, slice by slice, and what differs from the pictures:
+**`docs/COMPACT-SHELL-STUDY.md` section 20**; the captures of the real code: `docs/compact-shell/real/pocketterm/`.
+The same branch has the PocketTerm Simulator (`pc/`, another session's: the device's face on a PC, a client of `rdpd`).
+
+- **S1, the theme** -- UIKit: the named theme `Onyx Noir`, the flat look (`UK_FLAT`, `uk_flat ()`, the `UK_N_*`
+  tokens; `uikit/theme.h`, `theme.cpp`, `paint.cpp`: no gradient, no bevel, no shadow, the focus a ring), chosen for
+  the **pocket mode only** by `SD:/etc/pocketui.ini` `[look] theme =` (the default: Onyx Noir; `system`: theme.txt).
+  `uikit/padhint.h`: a handheld's buttons as glyphs, hint lines. The band (menubar), the pocket shell (home,
+  switcher, quick settings) and PocketUI's own pixels drawn for it. The desktop and the console mode unchanged.
+- **S2, Select = the Menu** -- in pocket the menu bar shows the app's name and ONE `Menu` entry: F10, Alt alone, a
+  pad's Select or a click unfolds a column of the menus, each opening its items; all by keys. PocketUI (`wm.cpp`,
+  "THE MENU BAR'S KEYS") gives the bar's program the menu key and, while the column is open, every key.
+- **S3, the toolbars** -- UIKit's `ToolBar`: flexible tools (`setFlex`: a list shrinks, then folds to an icon), "»"
+  and its panel by the keys, and a fix: the "»" panel was empty (on `main` too). Letters' two bars are UIKit's now:
+  one row at 640 x 480, 15 tools, 21 behind "»".
+- **S4, the buttons** -- `user/Apps/pocketshell/buttons.h`, `SD:/etc/pocketui.ini` `[buttons]`: each button types a
+  key (the table: section 20.4; the same defaults as `pc/dist/PocketTermSim.buttons.ini`), from a USB gamepad or
+  from keys (`<button>.key =`). Super on the home opens the switcher; quick settings by the arrows; UIKit's
+  Shift+F10 = the context menu; the Display applet lists 800 x 480 and 640 x 480.
+- **S5, the heavy apps** -- Letters: the page fitted to the width, no ruler, the page white. The Terminal: near-black
+  screen in the flat look. **Not done**: the Terminal's TrueType monospace face (still the 8 x 16 bitmap font).
+
+**Tests (PC)**: `sh tools/tests/server_sim/pocketterm.sh <out> [theme menu toolbar shell]` (new: the pictures and
+their checks; `SHOTS_PNG=docs/compact-shell/real/pocketterm`), `run.sh` (500 checks; one script line changed: on
+the home "Super again" is now the switcher, the check uses Esc), `adaptive.sh` (the widgets' host tests: six new
+ones for `setFlex`). Under WSL `git` does not work in this worktree (its `.git` file holds a Windows path): run.sh's
+three "before / after" comparisons (Elegant, the desktop's menu bar) are skipped there -- run them from a normal
+clone before a merge. `python tools/lang/check.py menubar pocketshell displayconf consolehome`: 0 missing.
+`docs/build_docs.py` was not run (no pandoc on this PC): the exports in `docs/exports/` are not regenerated.
+
+**How to try the branch** (nothing needs a new kernel: no kapi change):
+1. Build as usual from a clone with the `circle` submodule (`cd kernel && make && make stage`), or only the user
+   side: `make -C user -j12 libs menubar.elf pocketshell.elf letters.elf terminal.elf displayconf.elf consolehome.elf`
+   and `make -C user/Servers/pocketui`.
+2. Copy to the card (or stage and copy the changed files): `SD:/lib/uikit.so`, `SD:/lib/pocket/uikit.so`,
+   `SD:/lib/systemkit.so` (from `user/lib/`), `SD:/bin/pocketui` (`user/Servers/pocketui/pocketui.elf`),
+   `SD:/apps/<app>.app/main` for menubar, pocketshell, letters, terminal, displayconf, consolehome (`user/<app>.elf`),
+   the `lang/fr.txt` of menubar, pocketshell, displayconf, consolehome, and `SD:/etc/pocketui.ini`. Every other app
+   takes the theme through `uikit.so` without being rebuilt. (`tools/tests/elegant/pi_deploy.py --apps a,b` uploads
+   apps by FTP but its fixed list is the kernel, AppKit and Elegant: the libraries and `pocketui` are to be added
+   by hand.) No package was published: `pkg update` will not bring it.
+3. Pocket mode: the Control Panel's **Mode** applet, or `session switch pocket` in a Terminal, or `shell=pocket` in
+   `SD:/etc/system.ini`. The theme is Onyx Noir at once (`SD:/etc/pocketui.ini` `[look] theme = system` gives the
+   desktop's theme back).
+4. 640 x 480: the Control Panel's **Display** applet (the new last line of its list), or `width=640 height=480` in
+   `SD:/cmdline.txt`.
+5. Without the device: the PocketTerm Simulator (`pc/dist/PocketTermSim.exe <the Pi's address>`; docs/04 *The
+   PocketTerm35 on a PC*) -- its buttons send the keys of the table. `tools/onyxrun --desktop` was NOT tried for the
+   pocket mode (no onyxrun binary in this clone; its server accepts `pocketui`, but whether `--desktop` follows
+   `shell = pocket` is not verified): to try, `onyxrun --desktop --screen 640x480 --root <a copy of sdcard with
+   shell=pocket in etc/system.ini and the new binaries staged>`.
+
+**To check on the Pi / the device first**: the menu key through `rdpd` (F10, Super alone as Home, Shift+F10) -- the
+path was read (`kapi_inject_modifiers` carries Super to PocketUI's `Mods`) but not run; whether the device's
+buttons are a gamepad or keys (then `[buttons]`); the glass' real corner radius (27 px assumed: the 22 / 14 px
+margins); the text sizes at 229 ppi; the speed of the flat home.
+
+**Next / left**: the Terminal's TrueType face; a named list in the toolbar's "»"; the battery in the band (a fuel
+gauge driver); a lock / splash screen; "Start held"; the pointer by Ctrl + arrows; a pad message in `rdpd`'s
+protocol (needs a pad-injection call in the kernel -- not on this branch); the Theme applet listing Onyx Noir; the
+apps with hand-made toolbars or hard-coded colours (the list: section 20.6); the console mode's menu and the
+pocket Menu share no drawing code.
+
 ## The Nintendo 3DS emulator: phase T0 done -- Dynarmic runs on Onyx (2026-10-09, the local session)
 
 The user's answers to `docs/3DS-EMULATOR-STUDY.md`: **option C** (our core under MIT + Dynarmic), **Old 3DS only**

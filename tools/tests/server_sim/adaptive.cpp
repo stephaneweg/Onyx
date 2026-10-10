@@ -194,6 +194,29 @@ static void test_toolbar ()
 		b->resizeTo (1000, 38); b->layout ();
 		check (t[8]->hidden && !t[5]->hidden && !t[3]->hidden, "toolbar pocket, wide: the IF_ROOM tools back, OVERFLOW still away");
 	}
+	{
+		// the flexible tools (setFlex): a list 150 wide that shrinks to 80 then folds to 30, before a tool of its rank leaves
+		Widget win (0, 0, 800, 456);
+		ToolBar *b = new ToolBar (0, 0, 800, 38);
+		Widget *list = new Widget (0, 0, 150, 26);
+		ToolButton *k[6];
+		b->add (list, 0); b->setFlex (list, 80, 30); b->setPriority (list, UK_TB_IF_ROOM, 1);
+		for (int i = 0; i < 6; i++) { k[i] = new ToolButton (28, 28, "tool"); k[i]->setGlyph (WKT_NEW + i); b->add (k[i], 2); b->setPriority (k[i], i < 3 ? UK_TB_ALWAYS : UK_TB_IF_ROOM, 1); }
+		win.addChild (b);
+		b->layout ();
+		check (list->width == 150 && !list->hidden, "toolbar flex: its own width when there is room", list->width);
+		b->resizeTo (6 + 110 + 6 * 30 + 12, 38); b->layout ();		// everything fits if the list gives 40 px
+		int shown = 0; for (int i = 0; i < 6; i++) if (!k[i]->hidden) shown++;
+		check (shown == 6 && list->width < 150 && list->width >= 80, "toolbar flex: the list shrinks before any tool leaves", list->width);
+		b->resizeTo (6 + 30 + 6 * 30 + 28 + 12, 38); b->layout ();	// not even at its least width: folded, the tools stay
+		shown = 0; for (int i = 0; i < 6; i++) if (!k[i]->hidden) shown++;
+		check (shown == 6 && list->width == 30 && !list->hidden, "toolbar flex: the list folds to an icon rather than a tool of its rank leaving", list->width);
+		b->resizeTo (800, 38); b->layout ();
+		check (list->width == 150, "toolbar flex: wide again, its own width back", list->width);
+		force (UK_SC_REGULAR); b->layout ();
+		check (list->width == 150, "toolbar flex: the desktop keeps the tool as built", list->width);
+		force (UK_SC_COMPACT);
+	}
 	force (UK_SC_REGULAR);
 }
 
