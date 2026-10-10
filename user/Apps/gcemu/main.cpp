@@ -103,6 +103,8 @@ static void *code_alloc (unsigned n) { return kapi_code_alloc (n); }
 static bool g_sound = true;
 static int g_audio = 0;						// 0 not tried, 1 ours, -1 none
 static volatile bool g_audioOn = false;				// the machine's sound is kept
+static EcStretch g_st;						// the sound stretched when the machine is late
+static int g_stretch = 256;
 static volatile unsigned g_audioMade = 0;			// frames of sound the machine made
 static char g_sav_path[260];
 static unsigned char *g_card = 0; static unsigned g_cardSize = 0;
@@ -864,13 +866,16 @@ int main (void)
 			freeFrames = (unsigned) ak_out_free ();
 			static unsigned cap = 0; if (freeFrames > cap) cap = freeFrames;
 			queued = cap - freeFrames;
-			int k = ec_audio_pop (&g_ec, pcm, freeFrames < 4096 ? (int) freeFrames : 4096);
+			// the machine behind the real one: the sound in hand runs low, and is stretched (its pitch kept) rather
+			// than chopped -- none above ~30 ms in hand, up to 1.75 times near nothing
+			g_stretch = g_audioMade ? ec_stretch_for (queued + ec_audio_count (&g_ec) + ec_stretch_held (&g_st), SOUND_RATE / 120, SOUND_RATE / 32) : 256;
+			int k = ec_stretch_pop (&g_ec, &g_st, pcm, freeFrames < 4096 ? (int) freeFrames : 4096, g_stretch);
 			if (k > 0) { ak_out_write (pcm, k); queued += (unsigned) k; }
 			stQueued = queued;
 		}
 		if (audio && g_audioMade > 0)
 		{
-			unsigned q = queued + ec_audio_count (&g_ec), fieldFrames = SOUND_RATE * 100 / fps100 ();
+			unsigned q = queued + ec_audio_count (&g_ec) + ec_stretch_held (&g_st), fieldFrames = SOUND_RATE * 100 / fps100 ();
 			if (q < 2600 && ec_pending (&g_ec) == 0)
 			{
 				unsigned k = later && q + fieldFrames < 2600 ? 2 : 1;
@@ -930,7 +935,7 @@ int main (void)
 			if (g_m->gpu) { cat (g_statText, &k, " "); fmt_num (g_statText, &k, (unsigned) g_rec.nProg, 0); cat (g_statText, &k, " progs"); }
 			cat (g_statText, &k, g_m->jit ? "  JIT" : "  interpreter");
 			if (g_fpcrWas) { cat (g_statText, &k, "  FPCR was "); char hx[12]; int j = 0; for (int b = 28; b >= 0; b -= 4) hx[j++] = "0123456789ABCDEF"[(g_fpcrWas >> b) & 15]; hx[j] = 0; cat (g_statText, &k, hx); }
-			if (g_sound && g_audio == 1 && g_audioMade) { cat (g_statText, &k, "  sound "); fmt_num (g_statText, &k, stQueued * 1000 / SOUND_RATE, 0); cat (g_statText, &k, " ms"); }
+			if (g_sound && g_audio == 1 && g_audioMade) { cat (g_statText, &k, "  sound "); fmt_num (g_statText, &k, stQueued * 1000 / SOUND_RATE, 0); cat (g_statText, &k, " ms"); if (g_stretch > 256) { cat (g_statText, &k, " x"); fmt_num (g_statText, &k, (unsigned) g_stretch * 100 / 256, 0); cat (g_statText, &k, "%"); } }
 			if (ec_on_core (&g_ec)) { cat (g_statText, &k, "  core "); fmt_num (g_statText, &k, (unsigned) g_ec.core, 0); }
 			g_m->status (g_statState, sizeof g_statState);	// (read while it may run: a diagnostic)
 			stT = tn; stDone = doneNow; stEmuUs = emuNow; drawUs = 0; stShown = 0;

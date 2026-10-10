@@ -218,4 +218,70 @@ static inline void ec_shutdown (EmuCore *ec)
 	ec->core = -1;
 }
 
+// ---- the sound stretched in time, its pitch kept ---------------------------------------------------------------------
+// A machine slower than the real one makes less sound than is played: the queue runs dry and the sound is chopped.
+// ec_stretch_pop () takes the ring's sound as ec_audio_pop () does, but makes it last `stretch` / 256 times longer
+// (256 = as it is) without lowering its pitch: grains of 20 ms laid over each other, each one taken where the
+// sound resembles best what the last grain was followed by (the overlap is then in phase: no flutter).
+// ec_stretch_for () gives the stretch from the sound in hand: none above `full` frames, up to 1.75 at `low`.
+enum { EC_ST_GRAIN = 960, EC_ST_OVER = 240, EC_ST_HOP = EC_ST_GRAIN - EC_ST_OVER, EC_ST_SEARCH = 240, EC_ST_IN = 4096 };
+typedef struct
+{
+	short in[EC_ST_IN * 2]; int have;			// the ring's sound not yet passed
+	short over[EC_ST_OVER * 2]; bool on;			// the last grain's end, to lay the next one over
+} EcStretch;
+
+static inline int ec_stretch_for (unsigned frames, unsigned low, unsigned full)
+{
+	if (frames >= full) return 256;
+	if (frames <= low) return 448;
+	return 256 + (int) ((full - frames) * 192 / (full - low));
+}
+static inline unsigned ec_stretch_held (const EcStretch *st) { return (unsigned) st->have; }
+static inline int ec_stretch_pop (EmuCore *ec, EcStretch *st, short *lr, int max, int stretch)
+{
+	int out = 0;
+	if (stretch < 256) stretch = 256;
+	if (!st->on && stretch == 256 && st->have == 0) return ec_audio_pop (ec, lr, max);
+	const int step = EC_ST_HOP * 256 / stretch;		// the ring's frames a grain uses up
+	while (max - out >= EC_ST_HOP)
+	{
+		if (st->have < EC_ST_SEARCH + EC_ST_GRAIN) st->have += ec_audio_pop (ec, st->in + st->have * 2, EC_ST_IN - st->have);
+		if (st->have < EC_ST_SEARCH + EC_ST_GRAIN) break;
+		int at = 0;
+		if (st->on)
+		{
+			long long best = -0x7FFFFFFFFFFFFFFFll;
+			for (int d = 0; d <= EC_ST_SEARCH; d += 2)
+			{
+				long long c = 0;
+				const short *a = st->in + d * 2, *b = st->over;
+				for (int i = 0; i < EC_ST_OVER; i += 2) c += (long long) ((int) a[i * 2] + a[i * 2 + 1]) * ((int) b[i * 2] + b[i * 2 + 1]);
+				if (c > best) { best = c; at = d; }
+			}
+		}
+		const short *g = st->in + at * 2;
+		short *o = lr + out * 2;
+		for (int i = 0; i < EC_ST_OVER; i++)
+		{
+			if (st->on)
+			{
+				o[i * 2] = (short) (((int) st->over[i * 2] * (EC_ST_OVER - i) + (int) g[i * 2] * i) / EC_ST_OVER);
+				o[i * 2 + 1] = (short) (((int) st->over[i * 2 + 1] * (EC_ST_OVER - i) + (int) g[i * 2 + 1] * i) / EC_ST_OVER);
+			}
+			else { o[i * 2] = g[i * 2]; o[i * 2 + 1] = g[i * 2 + 1]; }
+		}
+		for (int i = EC_ST_OVER * 2; i < EC_ST_HOP * 2; i++) o[i] = g[i];
+		for (int i = 0; i < EC_ST_OVER * 2; i++) st->over[i] = g[EC_ST_HOP * 2 + i];
+		st->on = true;
+		out += EC_ST_HOP;
+		// the next grain: `step` frames further than this one's nominal place (at most past this grain's body)
+		int used = step;
+		if (used > st->have) used = st->have;
+		st->have -= used;
+		for (int i = 0; i < st->have * 2; i++) st->in[i] = st->in[used * 2 + i];
+	}
+	return out;
+}
+
 #endif
