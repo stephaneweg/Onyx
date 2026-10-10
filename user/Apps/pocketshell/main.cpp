@@ -31,12 +31,14 @@
 #include "uikit/uikit.h"
 #include "uikit/bmp.h"
 #include "fontkit/uikitface.h"
+#include "gamepad.h"
 
 using namespace uikit;
 
 #include "catalog.h"
 #include "look.h"
 #include "today.h"
+#include "buttons.h"				// a handheld's buttons: each types a key (SD:/etc/pocketui.ini [buttons])
 
 // ---- the screen, the scale ------------------------------------------------------------------------------
 static int g_sw = 800, g_sh = 480;			// the screen
@@ -443,6 +445,35 @@ static void ago (unsigned at, char *o)				// "now", "2 min", "1 h"
 	int i = 0; do { d[i++] = (char) ('0' + h % 10); h /= 10; } while (h); while (i) o[k++] = d[--i]; strcpy (o + k, " h");
 }
 
+// Quick settings by the keys (no pointer on a handheld): the arrows move a focus among the panel's controls, Enter
+// (A) does the focused one, Left / Right move the volume while it has the focus.
+static int g_qFocus = -1;				// the focused control (an index of g_overHits), -1: none yet
+static bool q_control (const Hit &h) { return h.kind >= H_WIFI && h.kind != H_PANEL && h.kind != H_CLEAR; }
+static void quick_move (int dx, int dy)
+{
+	int best = -1; long bestD = 0;
+	if (g_qFocus < 0 || g_qFocus >= g_overHits.n || !q_control (g_overHits.h[g_qFocus]))
+	{
+		for (int i = 0; i < g_overHits.n; i++) if (q_control (g_overHits.h[i])) { g_qFocus = i; break; }
+		g_overDirty = true;
+		return;
+	}
+	const Hit &c = g_overHits.h[g_qFocus];
+	int cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+	for (int i = 0; i < g_overHits.n; i++)
+	{
+		const Hit &h = g_overHits.h[i];
+		if (i == g_qFocus || !q_control (h)) continue;
+		int along = dx ? (h.x + h.w / 2 - cx) * dx : (h.y + h.h / 2 - cy) * dy;
+		int across = dx ? h.y + h.h / 2 - cy : h.x + h.w / 2 - cx;
+		if (along <= 0) continue;
+		if (across < 0) across = -across;
+		long d = (long) along * along + 4L * across * across;
+		if (best < 0 || d < bestD) { best = i; bestD = d; }
+	}
+	if (best >= 0) { g_qFocus = best; g_overDirty = true; }
+}
+
 static void draw_quick (void)
 {
 	Canvas &cv = g_oc;
@@ -556,6 +587,12 @@ static void draw_quick (void)
 		}
 		g_overHits.add (bx, by, bw, D (34), H_CONTROL + i, 0);
 	}
+	if (g_qFocus >= 0 && g_qFocus < g_overHits.n && q_control (g_overHits.h[g_qFocus]))	// the keys' focus: a ring
+	{
+		const Hit &h = g_overHits.h[g_qFocus];
+		uk_rline (cv, h.x - 3, h.y - 3, h.w + 6, h.h + 6, D (11), uk_flat () ? (unsigned) UK_N_ACCENT_HI : C_ACCENT, 255);
+		uk_rline (cv, h.x - 2, h.y - 2, h.w + 4, h.h + 4, D (10), uk_flat () ? (unsigned) UK_N_ACCENT_HI : C_ACCENT, 255);
+	}
 	uk_paint_alpha (false);
 	present (W_OVER);
 }
@@ -629,7 +666,7 @@ static void over_show (int kind)
 static void over_hide (void)
 {
 	if (g_over == OV_NONE) return;
-	g_over = OV_NONE; g_held = false; g_volDrag = false;
+	g_over = OV_NONE; g_held = false; g_volDrag = false; g_qFocus = -1;
 	uk_shell_grab (0);
 	uk_win_select (W_OVER);
 	uk_win_alpha (0);
@@ -805,12 +842,29 @@ static void go_home (bool search_)
 	g_homeDirty = true;
 }
 
-static void toggle_home (void)
+static void open_switcher (bool held);
+// Home (Super alone, a handheld's Start). On the home already: the open apps -- the switcher, where A / Enter goes to
+// the chosen one and B / Esc stays (Esc on the home, and the menu bar's gem clicked again, go straight back to the
+// last app).
+static void toggle_home (bool key = false)
 {
 	if (g_over != OV_NONE) over_hide ();
 	tasks_read ();
-	if (g_home && g_ntasks > 0) uk_shell_front (g_tasks[0].id, 1);	// (Home again: back to the app)
+	if (g_home && g_ntasks > 0 && key) open_switcher (false);
+	else if (g_home && g_ntasks > 0) uk_shell_front (g_tasks[0].id, 1);	// (Home again: back to the app)
 	else go_home (false);
+}
+// The app in front reads the pad itself (a game, an emulator): its buttons are not typed as keys.
+static bool front_is_game (void)
+{
+	if (g_home || g_over != OV_NONE) return false;
+	for (int i = 0; i < g_ntasks; i++)
+		if (g_tasks[i].flags & UK_TASK_FRONT)
+		{
+			App *a = find_app (g_tasks[i].name);
+			return a != 0 && (ieq (a->cat, "Games") || ieq (a->cat, "Emulators"));
+		}
+	return false;
 }
 
 static void open_switcher (bool held)
@@ -835,6 +889,7 @@ static void shell_event (unsigned long, int ev, long v)
 	if (ev != UK_SHELL_KEYEV) return;
 	unsigned mods = UK_SHELL_KEY_MODS (v);
 	int code = UK_SHELL_KEY_CODE (v);
+	if (g_over == OV_NONE && buttons_key (mods, code)) return;	// (a key that IS a button: its key typed instead)
 	if (g_over == OV_SWITCHER)
 	{
 		if (code == UK_SHELL_KEY_SUPER) { over_hide (); go_home (false); return; }
@@ -843,13 +898,27 @@ static void shell_event (unsigned long, int ev, long v)
 	}
 	if (g_over == OV_QUICK)
 	{
+		bool onVol = g_qFocus >= 0 && g_qFocus < g_overHits.n && g_overHits.h[g_qFocus].kind == H_VOL;
+		if (onVol && (code == KEY_LEFT || code == KEY_RIGHT))		// the volume, a step
+		{
+			int v = g_vol + (code == KEY_LEFT ? -1 : 1);
+			int r = kapi_sound_volume (v < 0 ? 0 : v > 10 ? 10 : v, 0);
+			g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; volume_save (g_vol, g_mute); g_overDirty = true;
+		}
+		else if (code == KEY_LEFT) quick_move (-1, 0);
+		else if (code == KEY_RIGHT) quick_move (1, 0);
+		else if (code == KEY_UP) quick_move (0, -1);
+		else if (code == KEY_DOWN || code == '\t') quick_move (0, 1);
+		else if ((code == KEY_ENTER || code == ' ') && g_qFocus >= 0 && g_qFocus < g_overHits.n && q_control (g_overHits.h[g_qFocus]) && !onVol)
+		{ Hit h = g_overHits.h[g_qFocus]; quick_click (&h, h.x + h.w / 2); }
+		else
 		if (code == 0x1b || (code == 'n' && (mods & UK_SHELL_MOD_SUPER))) over_hide ();
 		else if (code == UK_SHELL_KEY_SUPER) { over_hide (); go_home (false); }
 		else if (code == '\t' && (mods & MOD_ALT)) { over_hide (); open_switcher (true); }
 		return;
 	}
 	if (code == '\t' && (mods & MOD_ALT)) { open_switcher (true); if (mods & MOD_SHIFT) { g_sel = g_ntasks - 1; g_overDirty = true; } return; }
-	if (code == UK_SHELL_KEY_SUPER || (code == KEY_F1 && (mods & MOD_ALT)) || (code == 0x1b && (mods & MOD_CTRL))) { toggle_home (); return; }
+	if (code == UK_SHELL_KEY_SUPER || (code == KEY_F1 && (mods & MOD_ALT)) || (code == 0x1b && (mods & MOD_CTRL))) { toggle_home (true); return; }
 	if (code == ' ' && (mods & UK_SHELL_MOD_SUPER)) { go_home (true); return; }
 	if (code == 'n' && (mods & UK_SHELL_MOD_SUPER)) { over_show (OV_QUICK); return; }
 	if (code == 'k' && (mods & UK_SHELL_MOD_SUPER)) { kb_toggle (); return; }		// (the on-screen keyboard, by hand)
@@ -989,12 +1058,13 @@ int main (void)
 	docs_load ();
 	tab_items ();
 	screen_sync (true);
-	static const int K[] = {
+	buttons_load ();						// (SD:/etc/pocketui.ini [buttons])
+	static int K[32] = {
 		UK_SHELL_KEY (MOD_ALT, '\t'), UK_SHELL_KEY (MOD_ALT | MOD_SHIFT, '\t'), UK_SHELL_KEY (0, UK_SHELL_KEY_SUPER),
 		UK_SHELL_KEY (MOD_ALT, KEY_F1), UK_SHELL_KEY (MOD_CTRL, 0x1b), UK_SHELL_KEY (UK_SHELL_MOD_SUPER, 'n'),
 		UK_SHELL_KEY (UK_SHELL_MOD_SUPER, ' '), UK_SHELL_KEY (UK_SHELL_MOD_SUPER, 'k') };
 	uk_shell_events (shell_event);
-	uk_shell_keys (K, (int) (sizeof K / sizeof K[0]));
+	uk_shell_keys (K, buttons_keys (K, 8, 32));
 	tasks_read ();
 	{ int r = kapi_sound_volume (-1, -1); g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; }
 
@@ -1025,6 +1095,7 @@ int main (void)
 			kapi_list_apps (list, sizeof list);
 			if (strcmp (list, seen) != 0) { strcpy (seen, list); scan_apps (); recent_load (); g_homeDirty = true; }
 		}
+		buttons_poll ();						// a pad's buttons: each types its key
 		if (g_homeDirty) draw_home ();
 		if (g_overDirty)
 		{

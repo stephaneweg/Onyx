@@ -1942,7 +1942,39 @@ surfaces): the **home** (the search field, the categories as chips between **L**
 flat plates -- the icons unchanged --, the open apps as pills, a hairline and the hint line), the **switcher**
 (the chosen card ringed), **quick settings** (a switch that is on is the accent).
 
-(The buttons: S4 -- see below once built.)
+**The buttons: each one types a key.** There is no pointer on the device, and nobody knows yet whether its buttons
+reach the Pi as a USB gamepad or as keys of its keyboard -- so a button is defined by **the key it types**, and
+everything (the shell, the Menu entry, UIKit's widgets) is driven by keys alone. The table is
+`SD:/etc/pocketui.ini`, section **`[buttons]`** (`user/Apps/pocketshell/buttons.h`); its defaults are also what the
+PocketTerm Simulator on a PC sends (`pc/dist/PocketTermSim.buttons.ini`), through `rdpd`:
+
+| button | types | on the home and in the shell's screens | in an app |
+|---|---|---|---|
+| D-pad | the arrows | move the focus | the arrows: the caret, a list; a key nobody takes moves the focus (UIKit) |
+| **A** | Enter | open, confirm, switch | activate the focused control |
+| **B** | Esc | back, cancel, close; on the home: back to the last app | close a menu, a dialog; back |
+| **X** | Delete | close the chosen app (the switcher, the Running pills) | Delete |
+| **Y** | Shift+F10 | -- | the focused control's context menu (UIKit: a right click at its middle) |
+| **L** / **R** | Ctrl+Page Up / Ctrl+Page Down | the category before / after | the tab or the section before / after (UIKit's shoulders); in the Menu: the menu before / after |
+| **Start** | Super, pressed and released | on the home: the open apps (the switcher) | Home |
+| **Select** | F10 | (no menus on the home) | the Menu entry of the top band (§20.2) |
+
+- a **gamepad**: the pocket shell reads the pads (`gamepad.h`, `SD:/etc/gamepad.ini`'s mappings) and types each
+  button's key (`kapi_inject_key`, `kapi_inject_modifiers`), the D-pad repeating while held. In a game or an
+  emulator (app.txt's category Games or Emulators) the pad is the game's; Select + Start together is Home there;
+- **keys**: nothing to do when the device sends the keys above; when it sends others, `<button>.key = <key>` says
+  which key IS the button (`a.key = F5`): the shell takes that key before the apps and types the button's;
+- L / R are **Ctrl+**Page Up / Down, not the plain keys the mock-up `button-map.png` names: the plain ones page a
+  list or a text, and UIKit already steps the tabs and the sections with the Ctrl ones (the console's L1 / R1);
+- on the home **Start** (the Super key) opens the switcher; Esc (B) there, or the menu bar's gem clicked again,
+  goes back to the last app; "Start held: the open apps" of the mock-up is not built (a tap only);
+- **quick settings** (Super+N; a click on the time) take the arrows: a ring moves among the tiles, the volume and
+  the buttons, Enter (A) does the ringed one, Left / Right move the volume;
+- the hint lines of the home, the switcher and the Menu show the device's buttons (`uikit/padhint.h`).
+
+**Not built**: X's "second action" inside the apps (it is the Delete key there), Y's options on the home, the
+pointer moved by Ctrl + the arrows (the user's plan), a lock screen. A pad message in `rdpd`'s protocol (the remote
+client sending real buttons) needs a pad-injection call in the kernel: left for later.
 
 ### 20.5 The heavy apps
 

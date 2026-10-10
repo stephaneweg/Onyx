@@ -231,10 +231,23 @@ static bool shown (Widget *w)
 	return true;
 }
 
+static Widget *leaf (Widget *w);
+static Widget *modal_or (Widget *r);
+
 bool key_fallback (Root *r, long k)
 {
 	if (!ring_on ()) return false;				// (the desktop: nothing more than today)
 	unsigned mods = kapi_get_modifiers ();
+	if (k == KEY_F1 + 9 && (mods & MOD_SHIFT))		// Shift+F10 (a handheld's Y): the focused control's context
+	{							// menu -- a right click at its middle, where there is no pointer
+		Widget *f = leaf (modal_or (r));
+		if (f == 0) return false;
+		int x, y; abs_pos (f, &x, &y);
+		x += f->width / 2; y += f->height / 2;
+		r->handleMouse (x, y, false, true, false, 0);
+		r->handleMouse (x, y, false, false, false, 0);
+		return true;
+	}
 	if ((k == KEY_PGUP || k == KEY_PGDN) && (mods & MOD_CTRL))	// L1 / R1: the window's tabs, else its sections
 	{
 		NavOwner *best = 0;

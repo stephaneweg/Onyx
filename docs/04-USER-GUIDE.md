@@ -708,6 +708,18 @@ the chosen menu's items beside the column, **Enter** does the chosen item, **Lef
 starting with it; F10, Alt or Select again closes it. The shortcuts (`Ctrl+S`) work as ever without opening it. On
 the home there is no Menu entry: the name is *Onyx* (a click on it: the Onyx menu).
 
+**A handheld's buttons.** On a device with a D-pad and buttons and no pointer (the Waveshare PocketTerm35) each
+button types a key, so everything is done with the keys: the **D-pad** is the arrows (the focus, the caret), **A**
+is Enter (open, confirm), **B** is Esc (back, cancel, close; on the home: back to the last app), **X** is Delete
+(in the switcher and on the home's Running pills: close that app), **Y** is Shift+F10 (the focused control's
+context menu), **L** / **R** are Ctrl+Page Up / Ctrl+Page Down (the category, the tab, the section before / after),
+**Start** is the Super key (Home; on the home: the open apps), **Select** is F10 (the Menu entry). The foot of the
+home, of the switcher and of the Menu shows them. The table is in **`SD:/etc/pocketui.ini`**, section `[buttons]`
+-- `a = Enter`, `select = F10`... --: change a line to make a button type another key; if the device's buttons are
+keys of its keyboard that are not these, `a.key = F5` says that F5 is the A button. A USB gamepad works the same way
+(in a game the pad is the game's; Select + Start together is Home). Quick settings (Super+N) take the arrows and
+Enter too. The Display applet lists **640 × 480** and **800 × 480** for such screens.
+
 **The launcher.** At the top a round **search field** and, beside it, **Today**: the Calendar's next appointment
 (“Mon 28 Sep | 14:00 Team call — in 1 h 26”; read from `SD:/apps/calendar.app/agenda.txt`, which the Calendar
 writes; a click opens the Calendar; nothing planned: the line is not shown). On a wide screen (1920 × 1080) Today

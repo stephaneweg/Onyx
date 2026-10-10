@@ -427,3 +427,5 @@ SD:/etc/console.ini could not be written	SD:/etc/console.ini n'a pas pu être é
 Network	Réseau
 No network	Pas de réseau
 Move	Aller
+5:3, WVGA (small panels)	5:3, WVGA (petits écrans)
+4:3, VGA (a 3.5-inch handheld)	4:3, VGA (une console de poche de 3,5 pouces)

@@ -114,19 +114,22 @@ if want shell; then
 		run pocket_terminal pt-app-term-$sfx "$WW;dump $OUT/pt-app-term-$sfx.elsm" SIM_SCREEN=$sz SIM_APPNAME=terminal SIM_APP=terminal SIM_PIPE="$PIPE" SIM_WRITES=$WR
 		run pocket_tinypad pt-app-pad-$sfx "$WW;key N;key o;key t;key e;key s;$W;dump $OUT/pt-app-pad-$sfx.elsm" SIM_SCREEN=$sz SIM_APPNAME=tinypad SIM_APP=tinypad SIM_WRITES=$WR
 		run pocket_menubar pt-bar-home-$sfx "$W;$W;dump $OUT/pt-bar-home-$sfx.elsm" SIM_SCREEN=$sz SIM_APPNAME=menubar SIM_APP=menubar SIM_WRITES=$WR
-		run pocket_menubar pt-bar-pad-$sfx "other $w $((h - 30)) Text~Editor;othermenu MFile|I1~New~^N|MEdit|I2~Copy~^C;$W;$W;$W;dump $OUT/pt-bar-pad-$sfx.elsm" \
+		run pocket_menubar pt-bar-pad-$sfx "other $w $((h - 30)) Notes;othermenu MFile|I1~New~^N|MEdit|I2~Copy~^C;$W;$W;$W;dump $OUT/pt-bar-pad-$sfx.elsm" \
 			SIM_SCREEN=$sz SIM_APPNAME=menubar SIM_APP=menubar SIM_WRITES=$WR
 		APPS="otherpic $w $((h - 30)) letters $OUT/pt-app-pad-$sfx.elsm 0 30;$W;otherpic $w $((h - 30)) terminal $OUT/pt-app-term-$sfx.elsm 0 30;$W;otherpic $w $((h - 30)) tinypad $OUT/pt-app-pad-$sfx.elsm 0 30;$W"
 		E="SIM_SCREEN=$sz SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$WR"
 		# the home: Super shows it (the keys the shell's); Right moves the focus; Tab the next category; Down to the Running pills
 		SC="otherpic $w 30 menubar $OUT/pt-bar-home-$sfx.elsm 0 0 0x35 0 0;$W;$W;expect shell app;expect kind home;$APPS;expect front other;expect tasks 3"
 		SC="$SC;mods 8;mods 0;$W;$W;expect home 1;expect focus app;key $RIGHT;$W;$W;dump $OUT/pt-home-$sfx.elsm"
-		SC="$SC;key t;key e;$W;$W;dump $OUT/pt-search-$sfx.elsm;key 0x1b;$W;key 0x09;$W;$W;dump $OUT/pt-home-tab-$sfx.elsm"
+		# typing searches; Esc clears; Ctrl+Page Down (R) the next category; Super (Start) on the home: the open apps, Esc stays;
+		# Esc on the home: back to the app
+		SC="$SC;key t;key e;$W;$W;dump $OUT/pt-search-$sfx.elsm;key 0x1b;$W;mods 1;key 0x107;mods 0;$W;$W;dump $OUT/pt-home-tab-$sfx.elsm"
+		SC="$SC;mods 8;mods 0;$W;$W;expect shown1 1;expect home 1;key 0x1b;$W;expect shown1 0;expect home 1;key 0x1b;$W;$W;expect home 0;expect front other"
 		run pocket_pocketshell pt-shell-home-$sfx "$SC" $E
 		SC="otherpic $w 30 menubar $OUT/pt-bar-pad-$sfx.elsm 0 0 0x35 0 0;$W;$W;$APPS;expect front other;expect shown1 0"
 		SW="$SC;mods 4;key 0x09;$W;$W;expect shown1 1;dump $OUT/pt-switcher-$sfx.elsm;key 0x09;mods 0;$W;$W;expect shown1 0;expect front other"
 		run pocket_pocketshell pt-shell-switcher-$sfx "$SW" $E
-		QS="$SC;$WW;$WW;$WW;mods 8;key n;mods 0;$W;$W;expect shown1 1;dump $OUT/pt-quick-$sfx.elsm;key 0x1b;$W;expect shown1 0"
+		QS="$SC;$WW;$WW;$WW;mods 8;key n;mods 0;$W;$W;expect shown1 1;key $DOWN;key $RIGHT;$W;dump $OUT/pt-quick-$sfx.elsm;key 0x1b;$W;expect shown1 0"
 		run pocket_pocketshell pt-shell-quick-$sfx "$QS" $E SIM_MBOX='1:3:Telegram\0Alice: are you on the train?\0telegram\n1:3:Packages\02 updates are ready\0control pkgman\n'
 		for p in pt-home pt-search pt-home-tab pt-switcher pt-quick; do out $p-$sfx; done
 	}

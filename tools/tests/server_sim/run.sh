@@ -168,7 +168,7 @@ shellshots () {		# shellshots <W>x<H> <tag> <shots: home search switcher quick> 
 	case "$want" in *" home "*|*" search "*)
 		SC="otherpic $w 30 menubar $OUT/bar-home-$sfx.elsm 0 0 0x35 0 0;$W;$W;expect shell app;expect kind home;expect home 1;$APPS;expect front other;expect home 0;expect tasks 3"
 		SC="$SC;mods 8;mods 0;$W;$W;expect home 1;expect focus app;expect aside 0;expect area 0,30,$w,$((h - 30));expect pos 0,30;dump $OUT/pocketshell-home-$sfx.elsm"
-		SC="$SC;key t;key e;$W;$W;expect keys 2;dump $OUT/pocketshell-search-$sfx.elsm;key 0x1b;$W;mods 8;mods 0;$W;$W;expect home 0;expect front other"
+		SC="$SC;key t;key e;$W;$W;expect keys 2;dump $OUT/pocketshell-search-$sfx.elsm;key 0x1b;$W;key 0x1b;$W;$W;expect home 0;expect front other"
 		HN=""; [ "$w" -ge 1600 ] && HN="$NOTES"		# (1920 x 1080: the Today column shows the notifications, no toast)
 		run pocket_pocketshell shell-home-$sfx "$SC" $E SIM_MBOX="$HN" ;;
 	esac

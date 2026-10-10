@@ -1122,6 +1122,8 @@ static void home_key (unsigned long, int ev, long v)
 			if (!card_move (k) && lay ().strip && g_ntasks > 0) { g_stripFocus = 0; g_homeDirty = true; }
 			return;
 		case KEY_PGDN: case KEY_PGUP: case KEY_HOME: case KEY_END:
+			if ((k == KEY_PGUP || k == KEY_PGDN) && (mods & MOD_CTRL))	// Ctrl+Page Up / Down (a handheld's L / R): the
+			{ set_tab (g_tab + (k == KEY_PGUP ? -1 : 1)); return; }		// category before / after
 			{
 				Lay L = lay (); tab_items (); Card c = card (L);
 				if (k == KEY_PGDN) g_focus += c.cols * c.rows;
