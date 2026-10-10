@@ -117,6 +117,8 @@ struct Memory
 	bool read (u32 va, void *dst, u32 n) const;
 	bool write (u32 va, const void *src, u32 n);
 	bool fill (u32 va, u8 v, u32 n);
+	// a page is not there: the host may put it back (a buffer the renderer kept from the program: n3ds_pica.cpp) -> true
+	bool (*missing) (void *user, u32 va); void *missingUser;
 	u32 faults;				// accesses outside the mapped pages (read as 0, writes dropped)
 	u32 faultAddr;
 };
@@ -303,6 +305,7 @@ struct Machine
 		u64 usLists, usTransfers, usFills;	// ... and the host's time in each, in microseconds
 		u64 usRaster, usRasterAside;		// the rasterizer's time; of it, what ran while the program went on (not in the lists' time)
 		bool listPending;			// a list's triangles are still being drawn: its interrupt is owed
+		bool listQueued;			// ... and its command is still counted in the program's queue (as on the console)
 		// the right eye left out (monoOnly): the top screen's (left, right) framebuffers seen, the buffer the
 		// program renders an eye in and where it was last sent (1 left, 2 right), how many frames in a row
 		// showed "left, then right", and: its draws are being left out now (until its transfer to the right)
@@ -379,6 +382,8 @@ struct Machine
 	bool shaderCheck;			// (tests: every vertex through the compiled shader and the interpreter, compared)
 	bool trace;				// the system calls and the requests, on stderr (tests)
 	bool traceGpu;				// ... each draw and transfer of the GPU
+	bool listsAside;			// a list's triangles drawn while the program goes on, its interrupt late (off: see n3ds_gsp.cpp)
+	bool traceAll;				// (trace: the waits and the arbiters too)
 	u32 gpuSkip;				// (to find what is slow: 1 no procedural texture, 2 no blending, 4 no depth, 8 no texture, 16 no lighting, 32 no pixel at all, 64 the fragments found but not shaded, 128 not combined nor written, 256 no vertex shader, 512 no triangle)
 	// what the program says (svcOutputDebugString): the host's
 	void (*debugOut) (void *user, const char *text, u32 len);
@@ -460,6 +465,7 @@ const void *shaderJitConsts (const ShaderJit *jit);
 void picaBeforeFill (Machine *m, u32 physStart, u32 physEnd);	// memory is about to be filled: what is queued for it is drawn first
 bool picaBusy (const Machine *m);		// a list's triangles are being drawn aside
 bool picaDone (Machine *m);			// ... and the helpers have finished them
+bool picaGuestTouch (Machine *m, u32 va);	// the program reaches a buffer kept from it: finished, given back -> true
 void picaSync (Machine *m);			// ... this thread helps, waits, and the list is over
 void picaFree (Machine *m);
 void ldrRequest (Machine *m, Session *s, u32 *cmd);			// ldr:ro, the dynamic modules (n3ds_ldr.cpp)

@@ -119,6 +119,7 @@ struct Pica
 	struct State *states; u32 stateCount;		// the states of the queued triangles (the last one: the current)
 	struct Job *jobs; u32 jobCount;			// the triangles waiting to be rasterized
 	u32 bandNext, bandCount;			// the bands of the flush under way: the next one to take, how many
+	bool guarded;					// VRAM pages are kept from the program (picaGuestTouch gives them back)
 	bool busy; u64 busySince;			// the queue is being rasterized aside (since when, in microseconds)
 	int jump;					// a jump asked by the command being run: 1 or 2 (which buffer), 0 none
 	// counters
@@ -1453,12 +1454,16 @@ static void flush (Pica *p)
 	else flushWorker (p, 0);
 	flushDone (p, false);
 }
+static bool guardSet (Pica *p, u32 pa, u32 bytes);
 // ... or by the host's helpers while this thread goes on (a list's end), when there are some.
 static void flushAside (Pica *p)
 {
 	Machine *m = p->m;
 	if (gpuKeeps (p)) return;						// (a frame the GPU may draw: at its transfer)
 	if (!p->jobCount || !m->parallelBegin || m->traceGpu) { flush (p); return; }
+	// (drawn while the program goes on: it must not read these targets meanwhile -- kept from it, or drawn at once)
+	for (u32 k = 0; k < p->stateCount; k++)
+		if (p->states[k].ok && !guardSet (p, p->states[k].colorPhys, (u32) (p->states[k].t.w * p->states[k].t.h) * (u32) p->states[k].t.colorBytes)) { flush (p); return; }
 	gpuBeforeSoft (p);
 	flushStart (p);
 	if (!m->parallelBegin (m->parallelUser, flushWorker, p)) { flushWorker (p, 0); flushDone (p, false); return; }
@@ -1520,6 +1525,21 @@ static bool gpuKeeps (const Pica *p)
 }
 static void gpuStoreGuest (GRec *r);
 // The program's buffer made current (the host's pixels put there), for something that reads or draws into it.
+// ---- a buffer the program must not read yet ---------------------------------------------------------------------------
+// A program may read its render target with its own processor (VRAM is in its address space: Super Mario 3D Land
+// takes the screen's picture so for a transition) -- while the pixels are still the host GPU's (put into the
+// program's buffer only when something reads it) or the triangles still being drawn on other cores. The buffer's
+// pages are taken out of the program's page table then: its first access comes to picaGuestTouch, which ends the
+// work, makes the buffers current and gives every page back. VRAM only (its mapping never changes) -> false else.
+static bool guardSet (Pica *p, u32 pa, u32 bytes)
+{
+	if (pa < PA_VRAM || bytes > VRAM_SIZE || pa - PA_VRAM > VRAM_SIZE - bytes || !bytes) return false;
+	Memory &mem = p->m->mem;
+	const u32 va = VA_VRAM + (pa - PA_VRAM);
+	for (u32 pg = va >> PAGE_BITS; pg <= (va + bytes - 1) >> PAGE_BITS; pg++) mem.pages[pg] = 0;
+	p->guarded = true;
+	return true;
+}
 static void gpuGuestCurrent (GRec *r) { if (r->guestStale && r->pixels && r->w) gpuStoreGuest (r); r->guestStale = false; }
 // The software renderer is about to draw the queue: the buffers current, the records not whole frames any more,
 // and the host's copies of the targets it draws into not theirs any more.
@@ -1777,6 +1797,16 @@ static void gpuStoreGuest (GRec *r)
 			writeColor (t, t.color + tiled ((u32) x, (u32) y, (u32) t.w) * t.colorBytes, c);
 		}
 }
+bool picaGuestTouch (Machine *m, u32 va)
+{
+	Pica *p = m->pica;
+	if (!p || !p->guarded || va < VA_VRAM || va - VA_VRAM >= VRAM_SIZE) return false;
+	p->guarded = false;
+	for (u32 off = 0; off < VRAM_SIZE; off += PAGE_SIZE) m->mem.pages[(VA_VRAM + off) >> PAGE_BITS] = m->mem.vram + off;
+	m->gpuSync ();								// (what was drawn aside is done, its interrupt told)
+	if (p->grec) for (int i = 0; i < GREC_MAX; i++) if (p->grec[i].used) gpuGuestCurrent (&p->grec[i]);
+	return true;
+}
 
 // A render target's frame ends (its display transfer is asked): the host's GPU draws its record when it is whole,
 // else the software renderer draws what is queued. -> the target's record (0: none).
@@ -1826,6 +1856,7 @@ static GRec *gpuFrameEnd (Pica *p, u32 color)
 		if (ok)
 		{
 			r->hostValid = true; r->guestStale = true;		// (the program's buffer: only when something reads it)
+			if (!guardSet (p, color, (u32) (r->w * r->h) * (u32) r->t.colorBytes)) gpuGuestCurrent (r);
 			// its triangles leave the queue
 			u32 keep = 0;
 			for (u32 i = 0; i < p->jobCount; i++)

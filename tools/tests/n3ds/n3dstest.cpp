@@ -112,7 +112,7 @@ static int run (int argc, char **argv)
 	if (g_onMachine) g_onMachine (m);
 	// N3DS_ASIDE=<n>  the rasterizer's work "on other cores" played here: a list's triangles are drawn only when
 	// the machine has asked n times whether they are done, or when it waits for them -- the program goes on meanwhile
-	if (const char *w = getenv ("N3DS_ASIDE"))
+	if (const char *w = getenv ("N3DS_ASIDE"))				// (it sets Machine::listsAside: off by default)
 		if (!m->parallelBegin)
 		{
 			static struct { void (*fn) (void *, int); void *arg; int left, every; } aside;
@@ -120,7 +120,7 @@ static int run (int argc, char **argv)
 			m->parallelBegin = [] (void *, void (*fn) (void *, int), void *arg) { aside.fn = fn; aside.arg = arg; aside.left = aside.every; return true; };
 			m->parallelDone = [] (void *) { if (aside.fn && --aside.left <= 0) { aside.fn (aside.arg, 0); aside.fn = 0; } return aside.fn == 0; };
 			m->parallelEnd = [] (void *, void (*fn) (void *, int), void *arg) { fn (arg, 1); aside.fn = 0; };
-			m->helpers = 1;
+			m->helpers = 1; m->listsAside = true;
 		}
 	// N3DS_GPUDUMP=<prefix> N3DS_GPUDUMPAT=<frame>  the frames recorded for a GPU during that frame, each into
 	// <prefix>_<k>.gpf (tools/tests/n3ds/gpuview.cpp draws one on the PC, the generated shaders in the QPU
@@ -207,6 +207,7 @@ static int run (int argc, char **argv)
 		for (int k = 0; k < nt; k++) if (n >= touch[k].f0 && n <= touch[k].f1) { down = true; tx = (int) touch[k].a; ty = (int) touch[k].b; }
 		m->setInput (b, 0, 0, down, tx, ty);
 		if (const char *g = getenv ("N3DS_GPUTRACE")) m->traceGpu = n == atoi (g);	// (the GPU's draws of that frame)
+		{ const char *tf = argc > 11 ? argv[11] : getenv ("N3DS_TRACEFROM"); if (tf && n >= atoi (tf)) { m->trace = true; m->traceAll = tf[0] == '+'; fprintf (stderr, "frame %d%c", n, 10); } }	// (the system calls from that frame on)
 		g_frameNow = n;
 		m->runFrame (); n++;
 		if (wav) { static n3ds::s16 pcm[4096 * 2]; int k; while ((k = m->audioRead (pcm, 4096)) > 0) { fwrite (pcm, 4, (size_t) k, wav); wavFrames += (unsigned) k; } }
@@ -250,6 +251,43 @@ static int run (int argc, char **argv)
 		n3ds::CpuState st; m->cpu->save (st);
 		fprintf (stderr, "the running thread: pc %08x lr %08x sp %08x, r0-r5 %08x %08x %08x %08x %08x %08x; the code there:", (unsigned) st.r[15], (unsigned) st.r[14], (unsigned) st.r[13], (unsigned) st.r[0], (unsigned) st.r[1], (unsigned) st.r[2], (unsigned) st.r[3], (unsigned) st.r[4], (unsigned) st.r[5]);
 		for (int i = -8; i < 8; i++) fprintf (stderr, " %08x", (unsigned) m->mem.r32 ((st.r[15] & ~3u) + (n3ds::u32) (i * 4)));
+		fprintf (stderr, "%c", 10);
+	}
+	if (argc > 11 || getenv ("N3DS_TRACEFROM") || getenv ("N3DS_WHERE"))		// what every thread waits for
+		for (int i = 0; i < m->threadCount; i++)
+		{
+			const n3ds::Thread *t = m->threads[i];
+			if (!t) continue;
+			fprintf (stderr, "thread %u: status %d priority %d pc %08x lr %08x, wake %lld, arbiter %08x, waits on", (unsigned) t->id, t->status, (int) t->priority, (unsigned) t->ctx.r[15], (unsigned) t->ctx.r[14], (long long) t->wakeTick, (unsigned) t->arbiterAddr);
+			for (int k = 0; k < t->waitCount; k++)
+			{
+				const n3ds::Object *o = t->waitOn[k];
+				fprintf (stderr, " type %d%s%s%s", o->type, o == m->gsp.irq ? " (the GPU's interrupts)" : "", o == m->apt.param ? " (APT's parameter)" : "", o == m->apt.signal ? " (APT's signal)" : "");
+				if (o->type == n3ds::OBJ_SESSION) fprintf (stderr, " %s", ((const n3ds::Session *) o)->name);
+			}
+			fprintf (stderr, "%c   r4 %08x:", 10, (unsigned) t->ctx.r[4]);
+			for (int k = 0; k < 32; k++) fprintf (stderr, " %08x", (unsigned) m->mem.r32 (t->ctx.r[4] + (n3ds::u32) k * 4));
+			fprintf (stderr, "%c", 10);
+		}
+	if ((argc > 11 || getenv ("N3DS_WHERE")) && m->gsp.shared)
+	{
+		const unsigned char *q = m->gsp.shared->host;
+		fprintf (stderr, "the GPU's interrupt queue: first %u count %u lost %u; its command queue: first %u count %u (flags %02x %02x); a list pending: %d%c", q[0], q[1], q[2], q[0x800], q[0x801], q[0x802], q[0x803], (int) m->gsp.listPending, 10);
+		fprintf (stderr, "the command queue's slots:");
+		for (int i = 0; i < 15; i++) fprintf (stderr, " %08x", (unsigned) (q[0x820 + i * 0x20] | q[0x821 + i * 0x20] << 8 | q[0x822 + i * 0x20] << 16 | (unsigned) q[0x823 + i * 0x20] << 24));
+		fprintf (stderr, "%c", 10);
+	}
+	if (const char *cd = getenv ("N3DS_CODEDUMP"))				// the program's code, for a disassembler (from 0x100000)
+	{
+		FILE *o = fopen (cd, "wb");
+		for (n3ds::u32 va = 0x100000; o && m->mem.mapped (va, 4096); va += 4096) { unsigned char pg[4096]; m->mem.read (va, pg, 4096); fwrite (pg, 1, 4096, o); }
+		if (o) fclose (o);
+	}
+	if (const char *pk = argc > 11 && strchr (argv[11], '@') ? strchr (argv[11], '@') + 1 : getenv ("N3DS_PEEK"))		// 48 words of the program's memory from that address (hex)
+	{
+		const n3ds::u32 at = (n3ds::u32) strtoul (pk, 0, 16);
+		fprintf (stderr, "memory at %08x:", (unsigned) at);
+		for (int k = 0; k < 48; k++) fprintf (stderr, " %08x", (unsigned) m->mem.r32 (at + (n3ds::u32) k * 4));
 		fprintf (stderr, "%c", 10);
 	}
 	const unsigned char *rgb = screens (m);

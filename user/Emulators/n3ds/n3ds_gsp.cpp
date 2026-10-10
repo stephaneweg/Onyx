@@ -48,6 +48,7 @@ void Machine::gspInterrupt (int id)
 {
 	if (!gsp.shared) return;
 	u8 *q = gsp.shared->host + SHM_IRQ;
+	if (trace) fprintf (stderr, "  the GPU's interrupt %d (%u waiting)%c", id, q[1], 10);
 	if (q[1] < SHM_IRQ_SLOTS) { q[0xC + (q[0] + q[1]) % SHM_IRQ_SLOTS] = (u8) id; q[1]++; }
 	else q[2] = 1;								// (the program does not take them: lost)
 	if (gsp.irq) { gsp.irq->signaled = true; wakeWaiters (gsp.irq); }
@@ -81,10 +82,40 @@ void Machine::vblank ()
 }
 
 // The GPU's work under way is ended, and the interrupt of the list it belonged to raised.
+// The program's queue as the console keeps it: a command stays counted there until it is DONE -- the program's
+// library tells from the count whether the GPU still works (a command added meanwhile is not announced: the GPU
+// goes on to it by itself) and which request an interrupt ends. (Super Mario 3D Land never asked for its
+// frame's transfer when a list's interrupt came after its command had left the queue.)
+static void gxCommand (Machine *m, const u32 *c);
+static void gxRun (Machine *m)
+{
+	if (!m->gsp.shared) return;
+	u8 *q = m->gsp.shared->host + SHM_CMD;
+	for (int guard = 0; guard < 64 && q[1] && !m->gsp.listPending; guard++)
+	{
+		u32 c[8];
+		memcpy (c, q + 0x20 + q[0] % SHM_CMD_SLOTS * 0x20, sizeof c);
+		gxCommand (m, c);
+		if (m->gsp.listPending) { m->gsp.listQueued = true; return; }	// (drawn aside: it leaves the queue at its end)
+		q[0] = (u8) ((q[0] + 1) % SHM_CMD_SLOTS); q[1]--;
+	}
+}
 void Machine::gpuSync ()
 {
 	picaSync (this);
-	if (gsp.listPending) { gsp.listPending = false; gspInterrupt (GSP_P3D); }
+	if (!gsp.listPending) return;
+	gsp.listPending = false;
+	if (gsp.listQueued && gsp.shared)
+	{
+		u8 *q = gsp.shared->host + SHM_CMD;
+		gsp.listQueued = false;
+		if (q[1]) { q[0] = (u8) ((q[0] + 1) % SHM_CMD_SLOTS); q[1]--; }
+		gspInterrupt (GSP_P3D);
+		gxRun (this);							// (the commands added while it was drawn)
+		return;
+	}
+	gsp.listQueued = false;
+	gspInterrupt (GSP_P3D);
 }
 
 static u64 micros () { struct timeval tv; gettimeofday (&tv, 0); return (u64) tv.tv_sec * 1000000ull + (u64) tv.tv_usec; }
@@ -93,6 +124,7 @@ static u64 micros () { struct timeval tv; gettimeofday (&tv, 0); return (u64) tv
 static void gxCommand (Machine *m, const u32 *c)
 {
 	m->gpuSync ();								// (the commands follow each other: the list before is over first)
+	if (m->trace) fprintf (stderr, "  gx %08x %08x %08x %08x%c", (unsigned) c[0], (unsigned) c[1], (unsigned) c[2], (unsigned) c[3], 10);
 	if (m->traceGpu) fprintf (stderr, "gx %08x %08x %08x %08x %08x %08x %08x %08x%c", (unsigned) c[0], (unsigned) c[1], (unsigned) c[2], (unsigned) c[3], (unsigned) c[4], (unsigned) c[5], (unsigned) c[6], (unsigned) c[7], 10);
 	switch (c[0] & 0xFF)
 	{
@@ -107,6 +139,10 @@ static void gxCommand (Machine *m, const u32 *c)
 	case 1:									// a PICA200 command list (address, size)
 		m->gsp.cmdLists++;
 		{ const u64 t = micros (); picaCommandList (m, c[1], c[2]); m->gsp.usLists += micros () - t; }
+		// A list's end is told at once. Drawn aside with the interrupt at the triangles' end (listsAside), Super Mario
+		// 3D Land's request queue went wrong after its title screen -- it clears its other command list meanwhile and
+		// never starts the next one -- though the console's interrupt is late too: what differs is not found yet.
+		if (!m->listsAside) picaSync (m);
 		if (picaBusy (m)) m->gsp.listPending = true;			// (its triangles are drawn aside: the interrupt at their end)
 		else m->gspInterrupt (GSP_P3D);
 		break;
@@ -219,19 +255,8 @@ void gspRequest (Machine *m, Session *, u32 *cmd)
 	}
 	case 0x0C:								// TriggerCmdReqQueue: the commands the program queued
 	{
-		if (m->gsp.shared)
-		{
-			u8 *q = m->gsp.shared->host + SHM_CMD;
-			u32 first = q[0] % SHM_CMD_SLOTS, count = q[1];
-			if (count > SHM_CMD_SLOTS) count = SHM_CMD_SLOTS;
-			for (u32 i = 0; i < count; i++)
-			{
-				u32 c[8];
-				memcpy (c, q + 0x20 + (first + i) % SHM_CMD_SLOTS * 0x20, sizeof c);
-				gxCommand (m, c);
-			}
-			q[0] = (u8) ((first + count) % SHM_CMD_SLOTS); q[1] = 0;
-		}
+		m->gpuSync ();
+		gxRun (m);
 		cmd[0] = ipcHeader (id, 1, 0); cmd[1] = RES_OK;
 		break;
 	}

@@ -686,6 +686,29 @@ harder GPU and an OS — **several sessions**, then the user's tests on the Pi a
 The game then reaches its language screen, under qemu and **on the Pi 4 with the GPU path** (590 frames given
 to the GPU, none refused). Not yet looked at: what follows that screen; `frd:u`, `boss:U`, `ndm:u` answer "done, nothing".
 
+## 9o. *Super Mario 3D Land* past its title screen (2026-10-10): the EULA, the applets, a list's end told at once
+
+- **The EULA box.** After A on the title screen the game went white: it found the console's EULA (cfg block
+  0xD0000) older than the one it wants and started the system's box (library applet 0x406), waiting for ever. The
+  block says every version accepted; and the library applets are answered as closed at once (APT 0x16 / 0x18 /
+  0x1E, SendParameter's request for the capture memory; the error box "success", the Mii chooser "none").
+- **Still white on the Pi, not under qemu.** The game was not drawing any more: its main thread sat in
+  nngxWaitCmdlistDone. Its library (read in the game's code, disassembled from `N3DS_CODEDUMP`) keeps a queue of
+  requests per command list, completed one by one by the GPU's interrupts, and two lists it alternates. When a
+  list's triangles were drawn aside (the application cores) and its P3D interrupt came after the answer, the game
+  had already cleared and refilled its other list, and the queue's "stopped at a split" flag stayed set: the next
+  list was never started. On the console the interrupt is late too, so something else of ours differs -- **not
+  found**. `Machine::listsAside` (off) keeps the deferred way; by default a list is over before the answer
+  (`picaSync` in gxCommand): the helpers still rasterize with the main thread, the program just does not go on
+  meanwhile. Zelda's speeds on the Pi 4 are unchanged (36 fps on the GPU, 13.4 in software).
+- Kept from the search: the program's queue keeps a command until it is done (`gxRun`, `listQueued`: as the
+  console counts); a render target's VRAM pages are taken from the program's page table while the host's pixels
+  are newer or the triangles still drawn, and given back at its first access (`guardSet`, `picaGuestTouch`,
+  `Memory::missing`) -- a program may read its target with its own processor.
+- `n3dstest` on Onyx: an 11th argument `<frame>` (`+<frame>`: with the waits; `@<hex>`: 48 words of memory at the
+  end) traces from that frame and says what every thread waits on; `N3DS_CODEDUMP=<file>` writes the program's
+  code for `arm-none-eabi-objdump -D -b binary -marm --adjust-vma=0x100000`.
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours

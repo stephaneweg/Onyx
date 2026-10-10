@@ -35,7 +35,7 @@ Machine::Machine ()
 	memset (&gsp, 0, sizeof gsp);
 	memset (&apt, 0, sizeof apt); apt.cpuLimit = 30;
 	memset (&hid, 0, sizeof hid);
-	memset (&source, 0, sizeof source); romfsBase = 0; romfsSize = 0; memFile = 0; memSize = 0; trace = false; traceGpu = false; gpuSkip = 0; pica = 0;
+	memset (&source, 0, sizeof source); romfsBase = 0; romfsSize = 0; memFile = 0; memSize = 0; trace = false; listsAside = false; traceAll = false; traceGpu = false; gpuSkip = 0; pica = 0;
 	title[0] = 0; productCode[0] = 0; cfgPage = 0; ldr = 0; fontFile = 0; fontFileSize = 0;
 	parallelBegin = 0; parallelDone = 0; parallelEnd = 0; parallelUser = 0; helpers = 0; monoOnly = false; gpuDraw = 0; gpuUser = 0; gpuSoft = 0; skipDraw = false; shaderCheck = false;
 	memset (&dsp, 0, sizeof dsp);
@@ -78,6 +78,7 @@ void Machine::setMemoryMode (int mode)
 bool Machine::init ()
 {
 	if (!mem.init ()) return false;
+	mem.missing = [] (void *u, u32 va) { return picaGuestTouch ((Machine *) u, va); }; mem.missingUser = this;
 	u8 *cfg = mem.allocTop (2 * PAGE_SIZE);				// the configuration and shared pages
 	u8 *tls = mem.allocTop (TLS_MAX * TLS_SIZE);
 	if (!cfg || !tls) return false;
@@ -419,7 +420,7 @@ void Machine::svc (u32 n)
 	Thread *t = current;
 	svcCount++;
 	if (!t) return;
-	if (trace && n != 0x32 && n != 0x24 && n != 0x25 && n != 0x22 && n != 0x28 && n != 0x3D)
+	if (trace && (traceAll || (n != 0x32 && n != 0x24 && n != 0x25 && n != 0x22 && n != 0x28 && n != 0x3D)))
 		fprintf (stderr, "svc %02x (%08x %08x %08x %08x) thread %u from %08x\n", (unsigned) n, (unsigned) r[0], (unsigned) r[1], (unsigned) r[2], (unsigned) r[3], (unsigned) t->id, (unsigned) r[14]);
 	switch (n)
 	{
