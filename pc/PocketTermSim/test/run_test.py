@@ -44,7 +44,7 @@ SHL, SHR, CTRL, ALTL, ALTR, SUPER = 0xFFE1, 0xFFE2, 0xFFE3, 0xFFE9, 0xFFEA, 0xFF
 def F (n): return 0xFFBE + n - 1
 def tap (sym, *mods): return [(1, m) for m in mods] + [(1, sym), (0, sym)] + [(0, m) for m in reversed (mods)]
 
-PAD = [("Up", tap (UP)), ("Down", tap (DOWN)), ("Left", tap (LEFT)), ("Right", tap (RIGHT)), ("A", tap (ENTER)), ("B", tap (ESC)), ("X", []),
+PAD = [("Up", tap (UP)), ("Down", tap (DOWN)), ("Left", tap (LEFT)), ("Right", tap (RIGHT)), ("A", tap (ENTER)), ("B", tap (ESC)), ("X", tap (DEL)),
        ("Y", tap (F (10), SHL)), ("L", tap (PGUP, CTRL)), ("R", tap (PGDN, CTRL)), ("Select", tap (F (10))), ("Start", tap (SUPER))]
 ROWS = ["` 1 2 3 4 5 6 7 8 9 0 - = Backspace", "Tab q w e r t y u i o p [ ] \\", "Caps a s d f g h j k l ; ' Enter",
 	"ShiftL z x c v b n m , . / Up ShiftR", "FnL Ctrl AltL Space AltR CMD FnR Left Down Right"]
