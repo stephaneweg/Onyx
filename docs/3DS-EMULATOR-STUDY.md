@@ -709,6 +709,25 @@ to the GPU, none refused). Not yet looked at: what follows that screen; `frd:u`,
   end) traces from that frame and says what every thread waits on; `N3DS_CODEDUMP=<file>` writes the program's
   code for `arm-none-eabi-objdump -D -b binary -marm --adjust-vma=0x100000`.
 
+## 9p. The stencil (2026-10-10): Mario 3D Land's levels had no ground
+
+A game started (the Mii chooser answers a guest Mii of ours; an applet's answer raises the parameter event only --
+the notification event made the game's APT thread stop itself), and its first level showed Mario on plain grey:
+no ground, no sky. Drawn with the first 72 draws of the frame only (`N3DS_DRAWS=1-72`), the level was whole: the
+draws after them are full-screen rectangles **cut by the stencil** (the shape of a character behind a wall,
+darkened areas), which was not emulated -- they covered the picture.
+
+- **The software renderer has the stencil**: the fourth byte of a 24 + 8 bit depth buffer, tested before the depth
+  (function, reference, mask), its three operations (fail, depth fail, pass -- the last when the fragment is put,
+  after the alpha test), the write mask and register 0x115's two bits (bit 0 the stencil, bit 1 the depth: the
+  depth was written when either was set).
+- **The host's GPU has none** (the kernel's calls): a draw that only writes the stencil (test "always") is drawn
+  as it is, a draw cut by it is left out -- its effect is lost rather than spread over the picture. A stencil in
+  `kapi_gpu_render3` would give it back.
+- `n3dstest`: `N3DS_DRAWS=a-b` (those draws of each frame only), `N3DS_DRAWEVERY=n` (triangles drawn around every
+  n-th frame only: minutes of a game in seconds), `N3DS_SKIPUNTIL`, `N3DS_SKIPAFTER`; the GPU trace says what
+  became of each draw's triangles (clipped away, culled, drawn).
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours

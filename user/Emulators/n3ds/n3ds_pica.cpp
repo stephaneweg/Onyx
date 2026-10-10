@@ -33,7 +33,7 @@
 // when every draw of it could be recorded, and its pixels are put into the program's buffer -- else the software
 // renderer draws the queue, as without a GPU. (A frame is one or the other, whole: the GPU's depth buffer does not
 // outlive a call.)
-// Not done yet: fog, shadows, stencil, the geometry shader, texture filtering (the nearest texel is taken),
+// Not done yet: fog, shadows, the geometry shader, texture filtering (the nearest texel is taken),
 // mipmaps -- noted when a program asks.
 //
 // Written from the public documentation of the GPU (3dbrew's register and shader pages); no code of another
@@ -62,7 +62,7 @@ enum
 	R_LIGHT0 = 0x140, R_LIGHT_AMBIENT = 0x1C0, R_LIGHT_COUNT = 0x1C2, R_LIGHT_CONFIG0 = 0x1C3, R_LIGHT_CONFIG1 = 0x1C4,
 	R_LIGHT_LUT_INDEX = 0x1C5, R_LIGHT_LUT_DATA = 0x1C8, R_LIGHT_LUT_ABS = 0x1D0, R_LIGHT_LUT_SELECT = 0x1D1, R_LIGHT_LUT_SCALE = 0x1D2,
 	R_LIGHT_PERMUTATION = 0x1D9,
-	R_COLOR_OP = 0x100, R_BLEND_FUNC = 0x101, R_LOGIC_OP = 0x102, R_BLEND_COLOR = 0x103, R_ALPHA_TEST = 0x104, R_STENCIL_TEST = 0x105, R_DEPTH_COLOR_MASK = 0x107,
+	R_COLOR_OP = 0x100, R_BLEND_FUNC = 0x101, R_LOGIC_OP = 0x102, R_BLEND_COLOR = 0x103, R_ALPHA_TEST = 0x104, R_STENCIL_TEST = 0x105, R_STENCIL_OP = 0x106, R_DEPTH_COLOR_MASK = 0x107,
 	R_COLOR_WRITE = 0x113, R_DEPTH_WRITE = 0x115, R_DEPTH_FORMAT = 0x116, R_COLOR_FORMAT = 0x117, R_DEPTH_ADDR = 0x11C, R_COLOR_ADDR = 0x11D, R_FB_DIM = 0x11E,
 	R_ATTR_BASE = 0x200, R_ATTR_FORMAT_LO = 0x201, R_ATTR_FORMAT_HI = 0x202, R_ATTR_LOADER = 0x203,
 	R_INDEX_CONFIG = 0x227, R_NUM_VERTICES = 0x228, R_GEO_CONFIG = 0x229, R_VERTEX_OFFSET = 0x22A, R_DRAW_ARRAYS = 0x22E, R_DRAW_ELEMENTS = 0x22F,
@@ -119,6 +119,7 @@ struct Pica
 	struct State *states; u32 stateCount;		// the states of the queued triangles (the last one: the current)
 	struct Job *jobs; u32 jobCount;			// the triangles waiting to be rasterized
 	u32 bandNext, bandCount;			// the bands of the flush under way: the next one to take, how many
+	u32 dbgIn, dbgClipped, dbgBoxed, dbgDrawn;	// (the trace: what became of the last draw's triangles)
 	bool guarded;					// VRAM pages are kept from the program (picaGuestTouch gives them back)
 	bool busy; u64 busySince;			// the queue is being rasterized aside (since when, in microseconds)
 	int jump;					// a jump asked by the command being run: 1 or 2 (which buffer), 0 none
@@ -677,6 +678,7 @@ struct Target
 	u8 *color, *depth;
 	int w, h;
 	u32 colorFormat, colorBytes, depthBytes;
+	bool stencilWrite;			// (the stencil: the fourth byte of a 24 + 8 bit depth buffer)
 	bool colorWrite, depthWrite;
 	int sx0, sy0, sx1, sy1;							// what may be drawn (the buffer, cut by the scissor)
 };
@@ -693,7 +695,8 @@ static bool target (const Pica *p, Target &t)
 	t.color = p->regs[R_COLOR_ADDR] ? p->m->physPtr (p->regs[R_COLOR_ADDR] << 3, (u32) (t.w * t.h) * t.colorBytes) : 0;
 	t.depth = p->regs[R_DEPTH_ADDR] ? p->m->physPtr (p->regs[R_DEPTH_ADDR] << 3, (u32) (t.w * t.h) * t.depthBytes) : 0;
 	t.colorWrite = t.color && (p->regs[R_COLOR_WRITE] & 0xF) != 0;
-	t.depthWrite = t.depth && (p->regs[R_DEPTH_WRITE] & 3) != 0;
+	t.depthWrite = t.depth && (p->regs[R_DEPTH_WRITE] & 2) != 0;
+	t.stencilWrite = t.depth && t.depthBytes == 4 && (p->regs[R_DEPTH_WRITE] & 1) != 0;
 	t.sx0 = 0; t.sy0 = 0; t.sx1 = t.w; t.sy1 = t.h;
 	if ((p->regs[R_SCISSOR_MODE] & 3) == 3)					// draw inside the rectangle only
 	{
@@ -861,6 +864,7 @@ struct Fragment
 	int bufferColor[4]; u32 updateRgb, updateA;
 	bool alphaTest; u32 alphaFunc, alphaRef;
 	bool depthTest; u32 depthFunc; bool depthMask; bool rgbaMask[4];
+	bool stencilTest; u32 stencilFunc, stencilRef, stencilMask, stencilWMask, stencilFail, stencilZFail, stencilZPass;
 	bool blend; u32 eqRgb, eqA, srcRgb, dstRgb, srcA, dstA; int blendColor[4]; u32 logicOp;
 	// what the stages really read (the rest is not computed), and a fragment that simply replaces what is there
 	bool useTex[3], useProc, useLight, replace;
@@ -903,6 +907,9 @@ static void fragmentState (const Pica *p, Fragment &f)
 	f.depthTest = (dm & 1) != 0; f.depthFunc = dm >> 4 & 7;
 	for (int i = 0; i < 4; i++) f.rgbaMask[i] = (dm >> (8 + i) & 1) != 0;
 	f.depthMask = (dm >> 12 & 1) != 0;
+	const u32 sr = p->regs[R_STENCIL_TEST], so = p->regs[R_STENCIL_OP];
+	f.stencilTest = (sr & 1) != 0; f.stencilFunc = sr >> 4 & 7; f.stencilWMask = sr >> 8 & 255; f.stencilRef = sr >> 16 & 255; f.stencilMask = sr >> 24;
+	f.stencilFail = so & 7; f.stencilZFail = so >> 4 & 7; f.stencilZPass = so >> 8 & 7;
 	f.blend = (p->regs[R_COLOR_OP] >> 8 & 1) != 0;
 	const u32 bf = p->regs[R_BLEND_FUNC];
 	f.eqRgb = bf & 7; f.eqA = bf >> 8 & 7; f.srcRgb = bf >> 16 & 15; f.dstRgb = bf >> 20 & 15; f.srcA = bf >> 24 & 15; f.dstA = bf >> 28 & 15;
@@ -1101,6 +1108,17 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 		T[6][c] = f.useProc ? k.proc[c] : neutral[c];
 	}
 	const bool useDepth = f.depthTest && t.depth;
+	// the stencil (a 24 + 8 bit depth buffer's fourth byte): tested before the depth; a fragment that fails either
+	// changes it at once, one that passes both when it is put (after the alpha test)
+	const bool useStencil = f.stencilTest && t.depth && t.depthBytes == 4;
+	const u32 sRef = f.stencilRef, sMask = f.stencilMask, sWrite = t.stencilWrite ? f.stencilWMask : 0;
+	auto stencilOp = [sRef, sWrite] (u8 *q, u32 op)
+	{
+		const u32 v = *q; u32 n = v;
+		switch (op) { case 1: n = 0; break; case 2: n = sRef; break; case 3: n = v < 255 ? v + 1 : 255; break; case 4: n = v ? v - 1 : 0; break;
+			      case 5: n = ~v; break; case 6: n = v + 1; break; case 7: n = v - 1; break; default: return; }
+		*q = (u8) ((v & ~sWrite) | (n & sWrite));
+	};
 	const u32 skipBits = p->m->gpuSkip;
 	const bool trace = p->m->traceGpu;
 	const Vertex &v0 = *s0.v, &v1 = *s1.v, &v2 = *s2.v;
@@ -1243,6 +1261,8 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 		bool alive[CH];
 		for (int i = 0; i < n; i++) alive[i] = !f.alphaTest || compare (f.alphaFunc, (u32) prev[3][i], f.alphaRef);
 		for (int i = 0; i < n; i++) if (alive[i]) nPixels++; else nAlpha++;
+		if (useStencil && f.stencilZPass && sWrite)
+			for (int i = 0; i < n; i++) if (alive[i]) stencilOp (t.depth + k.at[i] * 4 + 3, f.stencilZPass);
 		if (useDepth && t.depthWrite && f.depthMask)
 			for (int i = 0; i < n; i++)
 			{
@@ -1341,6 +1361,11 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 			const float l0 = w0 * inv, l1 = w1 * inv, l2 = w2 * inv;
 			const u32 at = tiled ((u32) x, row, (u32) t.w);
 			u32 depth = 0;
+			if (useStencil)
+			{
+				u8 *sq = t.depth + at * 4 + 3;
+				if (!compare (f.stencilFunc, sRef & sMask, *sq & sMask)) { stencilOp (sq, f.stencilFail); nDepth++; continue; }
+			}
 			if (useDepth)							// the depth, linear on the screen
 			{
 				float z = l0 * s0.z + l1 * s1.z + l2 * s2.z;
@@ -1348,7 +1373,7 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 				depth = (u32) (z * (float) depthMax);
 				const u8 *dq = t.depth + at * t.depthBytes;
 				const u32 old = t.depthBytes == 2 ? (u32) (dq[0] | dq[1] << 8) : (u32) (dq[0] | dq[1] << 8 | dq[2] << 16);
-				if (!compare (f.depthFunc, depth, old)) { nDepth++; continue; }
+				if (!compare (f.depthFunc, depth, old)) { if (useStencil) stencilOp (t.depth + at * 4 + 3, f.stencilZFail); nDepth++; continue; }
 			}
 			const int i = k.n++;
 			k.x[i] = x; k.y[i] = y; k.at[i] = at; k.depth[i] = depth; k.l0[i] = l0; k.l1[i] = l1; k.l2[i] = l2;
@@ -1690,6 +1715,10 @@ static void gpuState (Pica *p, State &st)
 		st.gflags = ZF[f.depthFunc & 7] | (t.depthWrite && f.depthMask ? 0 : G_NOZWRITE);
 	}
 	else st.gflags = GZ_ALWAYS | G_NOZWRITE;
+	// The host's GPU has no stencil here. A draw that only WRITES it (the test "always") is drawn as it is; one
+	// that is cut by it is left out -- what such draws add (a character's shape seen through a wall, a darkened
+	// area) is lost, rather than spread over the whole picture.
+	if (f.stencilTest && t.depth && t.depthBytes == 4 && f.stencilFunc != 1) st.gskip = true;
 	st.gwmask = 0;
 	for (int c = 0; c < 4; c++) if (!f.rgbaMask[c] || !t.colorWrite) st.gwmask |= 1u << c;
 	if (!f.blend && f.logicOp == 6) st.gwmask = 15;
@@ -2048,7 +2077,7 @@ static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c
 		}
 		n = m; cur ^= 1;
 	}
-	if (n < 3) return;
+	if (n < 3) { p->dbgClipped++; return; }
 	const float vw = f24 (p->regs[R_VIEWPORT_W]), vh = f24 (p->regs[R_VIEWPORT_H]);
 	const float vx = (float) (int) (p->regs[R_VIEWPORT_XY] & 0x3FF), vy = (float) (int) (p->regs[R_VIEWPORT_XY] >> 16 & 0x3FF);
 	const float ds = f24 (p->regs[R_DEPTH_SCALE]), dof = f24 (p->regs[R_DEPTH_OFFSET]);
@@ -2068,8 +2097,9 @@ static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c
 		float area; int box[4];
 		{
 			const State &st = p->states[p->stateCount - 1];
-			if (!triBox (st.t, st.cull, s[0], s[i], s[i + 1], area, box)) continue;
+			if (!triBox (st.t, st.cull, s[0], s[i], s[i + 1], area, box)) { p->dbgBoxed++; continue; }
 		}
+		p->dbgDrawn++;
 		p->triangles++; p->m->gsp.trianglesDrawn++;
 		const Screen *tri[3] = { &s[0], &s[i], &s[i + 1] };
 		if (p->m->gpuDraw)
@@ -2154,6 +2184,7 @@ static void shadeWorker (void *arg, int worker)
 // ---- draws ---------------------------------------------------------------------------------------------------------------
 static void draw (Pica *p, bool indexed)
 {
+	{ Machine *dm = p->m; dm->drawNow++; if (dm->drawLast && (dm->drawNow < dm->drawFirst || dm->drawNow > dm->drawLast)) return; }
 	const u32 base = p->regs[R_ATTR_BASE] << 3;
 	const u64 formats = (u64) p->regs[R_ATTR_FORMAT_HI] << 32 | p->regs[R_ATTR_FORMAT_LO];
 	const u32 fixedMask = p->regs[R_ATTR_FORMAT_HI] >> 16 & 0xFFF;
@@ -2179,6 +2210,11 @@ static void draw (Pica *p, bool indexed)
 		index16 = (p->regs[R_INDEX_CONFIG] >> 31) != 0;
 		index = p->m->physPtr (base + (p->regs[R_INDEX_CONFIG] & 0x0FFFFFFF), count * (index16 ? 2 : 1));
 		if (!index) return;
+	}
+	if (p->m->traceGpu)
+	{
+		fprintf (stderr, "   (the draw before: %u triangles clipped away, %u culled or outside, %u drawn)%c", (unsigned) p->dbgClipped, (unsigned) p->dbgBoxed, (unsigned) p->dbgDrawn, 10);
+		p->dbgClipped = p->dbgBoxed = p->dbgDrawn = 0;
 	}
 	if (p->m->traceGpu)
 	{

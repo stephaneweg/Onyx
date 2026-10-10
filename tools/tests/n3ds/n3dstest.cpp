@@ -208,6 +208,9 @@ static int run (int argc, char **argv)
 		m->setInput (b, 0, 0, down, tx, ty);
 		if (const char *g = getenv ("N3DS_GPUTRACE")) m->traceGpu = n == atoi (g);	// (the GPU's draws of that frame)
 		{ const char *tf = argc > 11 ? argv[11] : getenv ("N3DS_TRACEFROM"); if (tf && n >= atoi (tf)) { m->trace = true; m->traceAll = tf[0] == '+'; fprintf (stderr, "frame %d%c", n, 10); } }	// (the system calls from that frame on)
+		if (const char *su = getenv ("N3DS_SKIPUNTIL")) m->gpuSkip = n < atoi (su) ? 0x200 : getenv ("N3DS_SKIPAFTER") ? (n3ds::u32) strtoul (getenv ("N3DS_SKIPAFTER"), 0, 16) : 0;	// (no triangle drawn before that frame: to get somewhere fast)
+		if (const char *se = getenv ("N3DS_DRAWEVERY")) { const int e = atoi (se); m->gpuSkip = e > 0 && n % e >= e - 4 ? (getenv ("N3DS_SKIPAFTER") ? (n3ds::u32) strtoul (getenv ("N3DS_SKIPAFTER"), 0, 16) : 0) : 0x200; }	// (triangles drawn for the 4 frames before every e-th only)
+		m->drawNow = 0; if (const char *dr = getenv ("N3DS_DRAWS")) { m->drawFirst = (n3ds::u32) atoi (dr); m->drawLast = strchr (dr, '-') ? (n3ds::u32) atoi (strchr (dr, '-') + 1) : m->drawFirst; }	// (N3DS_DRAWS=a-b: those draws of each frame only, from 1)
 		g_frameNow = n;
 		m->runFrame (); n++;
 		if (wav) { static n3ds::s16 pcm[4096 * 2]; int k; while ((k = m->audioRead (pcm, 4096)) > 0) { fwrite (pcm, 4, (size_t) k, wav); wavFrames += (unsigned) k; } }
