@@ -226,7 +226,9 @@ tileshots () {		# tileshots <W>x<H> <tag> <light|dark> [lang]
 	SC="$SC;key 13;$W;$W;dump $T-folder-$sfx.elsm;key 0x1b;key 0x101;$R1;key 0x100;key 0x103;$W;$W;dump $T-settings-$sfx.elsm"
 	SC="$SC;key 13;$W;$W;key 0x101;$W;dump $T-page-$sfx.elsm;key 0x1b;$W;expect home 1"
 	run pocket_consolehome console-tiles-$th-$sfx "$SC" $E
-	for s in home cats apps folder settings page; do png consolehome-tiles-$th-$s-$sfx; if [ -n "$CONSOLE_PNG" ]; then mkdir -p "$CONSOLE_PNG"; cp "$OUT/consolehome-tiles-$th-$s-$sfx.png" "$CONSOLE_PNG/"; fi; done
+	# the menu over an app: a panel at the right (its own menus, Home, Close...), its File menu
+	run pocket_consolehome console-tiles-menu-$th-$sfx "$W;$W;other $w $h Notes;othermenu MFile|I1~New~^N|I2~Open...~^O|MEdit|I4~Copy~^C;$W;$W;$W;expect front other;key 0x119;$W;$W;expect shown1 1;key 0x101;$W;dump $T-menu-$sfx.elsm;key 13;$W;$W;expect shown1 1;key 0x1b;key 0x1b;$W;$W;expect shown1 0;expect front other" $E
+	for s in home cats apps folder settings page menu; do png consolehome-tiles-$th-$s-$sfx; if [ -n "$CONSOLE_PNG" ]; then mkdir -p "$CONSOLE_PNG"; cp "$OUT/consolehome-tiles-$th-$s-$sfx.png" "$CONSOLE_PNG/"; fi; done
 }
 tileshots 1920x1080 1080 dark
 tileshots 1920x1080 1080 light

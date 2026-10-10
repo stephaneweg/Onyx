@@ -816,6 +816,8 @@ first, then its apps), the settings pages. The chosen tile has a cyan ring and i
 row tells about it. **Up / Down** go from one row to the other, **Left / Right** move in the row, **A** plays, starts
 or opens, **B** comes out of a folder (else back to the row's first tile), **L1 / R1** change the category at once.
 The settings pages are the same as below, drawn in the theme: the pages listed at the left, the rows at the right.
+**The menu** (Home, F10...) comes as a **panel at the right** over the dimmed app: the app's icon and name, its rows
+(the same as below), and at its foot the volume, the network and the time.
 
 | | |
 |---|---|
@@ -823,6 +825,8 @@ The settings pages are the same as below, drawn in the theme: the pages listed a
 | *The tiles, dark: a console's games.* | *The tiles, light: Apps › Productivity (Back first).* |
 | ![](compact-shell/real/consolehome-tiles-dark-settings-1080.png) | ![](compact-shell/real/consolehome-tiles-light-page-1080.png) |
 | *The settings as tiles.* | *A settings page in the light theme.* |
+| ![](compact-shell/real/consolehome-tiles-dark-menu-1080.png) | |
+| *The menu over an app, as a panel.* | |
 
 **Lakka.** In the manner of Lakka's menu (RetroArch's XMB): a calm blue gradient with a soft white ribbon, white
 icons, big words; the moves are animated (the icons and the lists glide, a new column's list slides in). **The home** has two levels:

@@ -424,3 +424,6 @@ Tiles, dark	Tuiles, sombre
 Look	Apparence
 The home: the consoles in a list, or as tiles on a light or a dark background	L'accueil : les consoles en liste, ou en tuiles sur un fond clair ou sombre
 SD:/etc/console.ini could not be written	SD:/etc/console.ini n'a pas pu être écrit
+Network	Réseau
+No network	Pas de réseau
+Move	Aller
