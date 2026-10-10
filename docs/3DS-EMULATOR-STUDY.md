@@ -551,6 +551,28 @@ emulator does (`gcemu`: `user/Libs/v3d/gxtev`, `user/Apps/gcemu/gxv3d.h`, kapi v
 - not in the interface: a blending constant colour (the kernel sets it to 0), logic operations, a "never" depth
   test, a stencil -- a draw that needs one sends its frame to the software renderer until the kernel has it.
 
+**V2's design, worked out (not written yet)**:
+- *The software queue is the universal record.* A frame's triangles stay queued (`Job`, `State`) **until the
+  display transfer of their target** instead of being rasterized at each list's end; beside them the GPU's frame is
+  built (the floats, the batches). At the transfer: every draw could be expressed -> the GPU draws and the queue is
+  dropped; else (a feature the interface lacks, a queue that had to be flushed before: full, a texture changed under
+  it, a rendered picture used as a texture) the software renderer draws the queue as today. Nothing is decided
+  before the frame is whole, and nothing is lost.
+- *The vertices*: the clipped triangles the core already makes (its own clip volume, -w <= z <= 0), x and y
+  brought from the game's viewport to the whole target, z given as `2 (ds z + dof w) - w` so that the GPU's depth
+  is the PICA's (`ds`, `dof`: the depth range registers); then the varyings in `Shader::vary`'s order. Front =
+  counter-clockwise, y up: the PICA's culling 2 is `CULL_BACK`, 1 `CULL_FRONT`.
+- *The state*: the blending factors and equations have the same numbers on both sides (GL's); the depth functions
+  map one to one except "never"; no depth test = `Z_ALWAYS` + `NOZWRITE`; the write masks as `wmask`.
+- *The textures*: the decoded ones (r g b a bytes, rows from the top) uploaded with red and blue swapped,
+  t given as 1 - t.
+- *The depth*: the title scene never fills its buffers -- it "clears" by drawing a full-screen layer with the
+  test "always" and the depth written, which a single `gpu_render3` call does as it is. A GX fill of a target's
+  colour buffer becomes the frame's clear colour.
+- *The result*: the host's pixels are put into the program's colour buffer (tiled, its format) before the
+  transfer runs unchanged; a target that is not cleared keeps the host's pixels (`KAPI_GPU_F_KEEP`).
+- *The lighting*: `lightRows` over each triangle's three vertices, the two colours as varyings.
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 
