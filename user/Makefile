@@ -47,12 +47,12 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom
+all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf n3dsemu.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom
 # (AppKit's stubs are linked into every program: made first)
 # (a real prerequisite, not an order-only one: every program relinks when AppKit's stubs change -- libgen
 # rewrites them only when a slot moved. On 2026-10-08 an order-only one let the programs keep stale stubs:
 # none could start. The link lines use $< and LDFLAGS, never $^: it is not linked twice)
-$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf BinUtils/basic.elf $(KPLUG_ELFS): lib/appkit_stubs.o
+$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf n3dsemu.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf BinUtils/basic.elf $(KPLUG_ELFS): lib/appkit_stubs.o
 
 # ---- Shared libraries (docs/SHARED-LIBS-PLAN.md; kapi v83): position-independent code linked with
 # Runtime/lib.ld at 0 -- the kernel places it --, ONE exported symbol (Runtime/lib.vers), the export table, which is
@@ -812,6 +812,26 @@ Libs/manifold/libmanifold.a: $(MF_OBJ)
 # knows by their names.
 3dforge.elf: Apps/3dforge/main.cpp $(wildcard Apps/3dforge/*.h) Libs/manifold/libmanifold.a Libs/manifold/onyx_manifold.h Include/docguard.h Libs/pdf/pdfwrite.h Kits/imagekit/img/pngsave.hpp lib/fontkit.imp.a 	     Kits/fontkit/uikitface.h lib/imagekit.imp.a lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) $(MF_INC) -DPNGSAVE_USE_IMAGEKIT -DUSE_IMAGEKIT -fno-math-errno -IApps/3dforge -IKits/fontkit -I$(FT_SRC)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< 	       Libs/manifold/libmanifold.a lib/imagekit.imp.a lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a -lstdc++ -lm -o $@
+	$(PREFIX)strip -K __arm_za_disable -K __arm_tpidr2_save -K __arm_tpidr2_restore -K __arm_sme_state -K __arm_get_current_vg $@
+
+# The Nintendo 3DS emulator: its core (Emulators/n3ds/: libc, the FPU, NEON; n3ds_cpu.cpp alone includes Dynarmic --
+# C++20, its own include paths), Dynarmic (Libs/dynarmic: its own Makefile), the V3D's shader builder (Libs/v3d),
+# a newlib app as Letters. The shared system font beside it on the card: Emulators/n3ds/data/sysfont.bcfnt.
+N3DS_SRCS = $(filter-out Emulators/n3ds/n3ds_cpu.cpp,$(wildcard Emulators/n3ds/*.cpp))
+N3DS_OBJS = $(N3DS_SRCS:.cpp=.o) Emulators/n3ds/n3ds_cpu.o
+N3DS_FLAGS = -mcpu=cortex-a72 -mno-outline-atomics -O3 -fno-math-errno -fno-trapping-math -fno-stack-protector -fno-pic -fno-pie -ffunction-sections -fdata-sections 	     -I. -I../kernel/include -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -I$(V3D_MESA)
+DYN_DIR  = ../third_party/dynarmic-a466015
+DYN_INC  = -I$(DYN_DIR)/src -I$(DYN_DIR)/externals/mcl/include -I$(DYN_DIR)/externals/fmt/include -isystem ../third_party/boost-1.86.0 	   -ILibs/dynarmic/onyx -include Libs/dynarmic/onyx/onyx_std_mutex.h
+Emulators/n3ds/n3ds_cpu.o: Emulators/n3ds/n3ds_cpu.cpp Emulators/n3ds/n3ds.h
+	$(CXX) -std=c++20 $(N3DS_FLAGS) $(DYN_INC) -c $< -o $@
+Emulators/n3ds/%.o: Emulators/n3ds/%.cpp Emulators/n3ds/n3ds.h Libs/v3d/picatev.h
+	$(CXX) -std=c++17 $(N3DS_FLAGS) -fno-exceptions -fno-rtti -c $< -o $@
+Emulators/n3ds/libn3ds.a: $(N3DS_OBJS)
+	$(AR) rcs $@ $^
+Libs/dynarmic/obj/libdynarmic.a Libs/dynarmic/obj/codemem.o:
+	$(MAKE) -C Libs/dynarmic PREFIX=$(PREFIX)
+n3dsemu.elf: Apps/n3dsemu/main.cpp Emulators/n3ds/onyxhost.h Emulators/n3ds/n3ds.h Emulators/n3ds/libn3ds.a Libs/dynarmic/obj/libdynarmic.a Libs/dynarmic/obj/codemem.o Libs/v3d/libv3d.a 	     Include/gamepad.h lib/audiokit.imp.a Kits/audiokit/audiokit.h lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IKits/fontkit -I$(FT_SRC)/include -I$(V3D_MESA) $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< 	       Emulators/n3ds/libn3ds.a Libs/dynarmic/obj/libdynarmic.a Libs/dynarmic/obj/codemem.o Libs/v3d/libv3d.a lib/audiokit.imp.a lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a -lm -o $@
 	$(PREFIX)strip -K __arm_za_disable -K __arm_tpidr2_save -K __arm_tpidr2_restore -K __arm_sme_state -K __arm_get_current_vg $@
 
 Emulators/snes/libsnes.a: $(SNES_OBJS)

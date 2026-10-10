@@ -68,8 +68,13 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
   against the interpreter, `N3DS_SHADERCHECK=1`: 2.77 M of the game's vertices, none differs), the lighting once a vertex,
   no software queue for a target whose last frame was the GPU's, the transfer straight from the host's pixels, shader
   code sent again unchanged ignored -> **the title scene 36.2 fps** (lists 3.4 s, GPU 2.8 s, processor 1.8 s of 8.3 s).
-  **Next: the app `n3dsemu`, modelled on `ndsemu` (the user, 2026-10-10)**; then the lighting per fragment (V5), an
-  asynchronous GPU call in the kernel. Also still open:
+  **The app `n3dsemu` is built and published (2026-10-10; modelled on `ndsemu`; `user/Apps/n3dsemu`, the host glue in
+  `Emulators/n3ds/onyxhost.h`)**: the machine on the app's thread, the free application core for the renderer, saves in
+  `<game>.sav`; on the user's Pi the game plays past its title. **The sound (T4) the same day**: the DSP's 24 voices mixed at a high level
+  (`n3ds_dsp.cpp`: PCM 8 / 16, ADPCM, rates, gains; `Machine::audioRead`; `N3DS_WAV` in the test runner), the app plays it
+  through AudioKit -- the game's opening music is a clean waveform under qemu; **the app's sound was not heard on the Pi
+  yet** (unreachable that evening: try it, the pace is still the clock's). Next: the lighting per fragment (V5), the
+  software keyboard applet, the sound's effects, an asynchronous GPU call in the kernel. Also still open:
   the vertex shader compiled, the one-colour full-screen layers (the software path will not reach full speed in this game).
   **A kernel fault found there**: the loader empties core 0's instruction cache only, so an application core ran the
   previous build's instructions after each upload of a rebuilt program (faults at impossible places, or a hang).

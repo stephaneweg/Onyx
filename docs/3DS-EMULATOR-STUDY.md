@@ -604,6 +604,33 @@ commands and the states), the GPU 2.8 s (4.7 ms a target's frame, of which the k
 transfers 0.3 s, the processor 1.8 s. What is left is mostly the kernel's GPU call, which waits for the GPU
 (an asynchronous one would let the processor's emulation go on meanwhile), and the vertices.
 
+**The app (2026-10-10)**: `user/Apps/n3dsemu` (`sdcard/apps/n3dsemu.app`, the package `n3dsemu`), modelled on
+`ndsemu` as the user asked -- the two screens (the bottom one centred under the top one, or side by side), zoom,
+full screen, the mouse as the stylus, the keyboard and the gamepads (the arrows are the Circle Pad, or the + Control
+Pad; a pad's left stick is the Circle Pad), pause, the speed line, English and French. Unlike the DS's, **the
+machine runs on the app's own thread** (Dynarmic allocates as it compiles, the services read files: an application
+core can do neither) and the free application core helps the renderer; the pace is the clock's while there is no
+sound. The game is read from its file as it plays; what it writes (saves, extra data) is `<game>.sav` beside it
+(`Machine::storageExport`), written a few seconds after and at the end. The core's host on Onyx -- the file
+source, the helpers, the GPU's calls -- is `user/Emulators/n3ds/onyxhost.h`, shared with the test runner. Built
+by `user/Makefile` (`libn3ds.a`, `Libs/dynarmic/obj/libdynarmic.a`, `Libs/v3d/libv3d.a`; a newlib app). **On the
+user's Pi 4: the game plays past its title** (the picture by VNC: Link's house, the map below). No screenshot
+from `shots.sh`: the core's processor is Dynarmic's AArch64 back end, which the PC's simulator cannot run.
+
+**Phase T4, the sound (2026-10-10)**: `n3ds_dsp.cpp` plays the DSP's 24 sources at a high level (no DSP code is
+run). A frame (160 samples at 32728 Hz): the region whose frame counter is ahead is taken -- the program writes
+that counter, the DSP does not --; each voice's orders are read where their dirty bits say (enable, sync, rate,
+gains, the first buffer in the orders themselves, the queue's four places; the bits cleared); each playing voice
+gives 160 samples -- its buffers in the program's linear memory by their ids, 8 or 16-bit PCM, mono or stereo,
+or the DSP's ADPCM (8-byte frames, 14 samples each, predicted with the voice's coefficients) --, stepped at its
+rate with a straight line between two samples, times its front gains; the sum is the final mix, and each
+voice's state is written back (playing, the buffer's id and "it changed", the position), which is what makes a
+game queue the next piece of its music. `Machine::audioRead` hands the mix to the host; the app brings it to the
+output's rate (AudioKit); `N3DS_WAV=<file>` writes it from the test runner. *A Link Between Worlds*: its opening
+music comes out as a clean waveform (the sample format comes with a voice's first buffer, not under its own
+dirty bit: seen in a dump of the orders). Not done: the filters, the auxiliary mixes (reverb), the master
+volume, the compressor. **Not heard on the Pi yet** (it was unreachable when the app's sound was ready).
+
 **V2's design, as built**:
 - *The software queue is the universal record.* A frame's triangles stay queued (`Job`, `State`) **until the
   display transfer of their target** instead of being rasterized at each list's end; beside them the GPU's frame is

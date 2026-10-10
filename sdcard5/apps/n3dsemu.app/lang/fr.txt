@@ -1,0 +1,28 @@
+# The Nintendo 3DS emulator's words in French (uikit/lang.h): English<TAB>French, a line each (	 
+ \ escaped).
+# The English is the source's text, exactly (spaces included).
+Loading...	Chargement...
+Paused	En pause
+Nintendo 3DS	Nintendo 3DS
+Not enough memory for the console.	Pas assez de mémoire pour la console.
+This file cannot be opened.	Impossible d'ouvrir ce fichier.
+This is not a Nintendo 3DS game this emulator can run: it needs a decrypted .3ds / .cci / .cxi dump, or a .3dsx program.	Ce n'est pas un jeu Nintendo 3DS que cet émulateur sait lancer : il faut une copie déchiffrée .3ds / .cci / .cxi, ou un programme .3dsx.
+Game	Jeu
+Pause	Pause
+Quit	Quitter
+View	Affichage
+Full Screen	Plein écran
+Side by Side	Côte à côte
+Zoom 1x	Zoom 1x
+Zoom 2x	Zoom 2x
+Show Speed	Afficher la vitesse
+Controls	Commandes
+Arrows Are the + Control Pad	Les flèches sont la croix directionnelle
+ fps  emu 	 i/s  émulation 
+ ms  draw 	 ms  dessin 
+  GPU	  GPU
+  GPU + software	  GPU + logiciel
+  software	  logiciel
+  + a core	  + un cœur
+Sound	Son
+Sound On / Off	Son activé / désactivé

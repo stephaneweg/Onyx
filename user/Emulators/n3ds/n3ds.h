@@ -320,7 +320,18 @@ struct Machine
 	// HID (n3ds_hid.cpp): the buttons, the circle pad and the touch screen, in a shared page
 	struct Hid { SharedMem *shared; Event *events[5]; u32 buttons; s16 cpadX, cpadY; bool touch; u16 touchX, touchY; u32 padIndex, touchIndex; } hid;
 	// the sound processor (n3ds_dsp.cpp): its memory, the pipe's answer, the events of each audio frame
-	struct Dsp { u8 *ram; bool on; u64 nextTick, frames; u16 pipe[16]; u32 pipeLen, pipePos; Event *interrupt, *semaphore; } dsp;
+	struct Dsp
+	{
+		u8 *ram; bool on; u64 nextTick, frames; u16 pipe[16]; u32 pipeLen, pipePos; Event *interrupt, *semaphore;
+		struct DspVoice *voices;		// the 24 sources being played (n3ds_dsp.cpp)
+		// what was mixed, for the host: stereo, 32728 samples a second (audioRead takes it)
+		enum { OUT_FRAMES = 16384 };
+		s16 *out; u32 outRead, outWrite;
+		u64 mixed;				// (frames mixed with a source playing: is there sound at all?)
+	} dsp;
+	// The sound mixed since the last call: up to `frames` stereo frames (16 bits, AUDIO_RATE a second) -> how many.
+	enum { AUDIO_RATE = 32728 };
+	int audioRead (s16 *dst, int frames);
 	// the console's user (cfg): the name (UTF-16), the language (0 Japanese, 1 English, 2 French, 3 German, 4 Italian,
 	// 5 Spanish...), the region (0 Japan, 1 USA, 2 Europe)
 	struct User { u16 name[11]; u8 language, region; } user;
