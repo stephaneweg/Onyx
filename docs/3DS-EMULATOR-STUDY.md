@@ -441,8 +441,9 @@ frames `acc3db37`, the game's first 600 frames `9c6e43e7`):
   (`triBox`, the one function the queue and the rasterizer ask). The work given to the other cores calls nothing
   and allocates nothing (an Onyx app core can do neither): each has its `Scratch`, made beforehand.
   `Machine::parallelBegin / parallelDone / parallelEnd` are the host's: `n3dstest` on Onyx takes the free
-  application cores (`kapi_core_acquire`); on the user's Pi one of the two was free (the other one belongs to a
-  server), so: **two cores**, the main thread and one application core.
+  application cores (`kapi_core_acquire`); on a Pi with its desktop one of the two is free (**the graphics server,
+  Elegant or PocketUI, holds the other** for its compositor), so: **two cores**, the main thread and one
+  application core -- what an emulator's app will have too.
 - **A list's triangles drawn while the program goes on**: at a command list's end the helpers start and the
   processor is given back to the program; the list's interrupt (P3D) is raised when the helpers are done
   (looked for every quarter of a millisecond of the program's time), at once when every thread waits (this
@@ -500,8 +501,14 @@ with one eye, **31.5 s for 300 frames (9.5 a second)** -- the rasterizer 18.2 s 
 frame, six times the screen: three full-screen layers, the lit ground with six combiner stages; the lighting
 alone 5.1 s, finding the fragments 3.2 s), **the vertices 9.9 s** (8 700 a frame after sharing, 88 shader
 instructions each: ~40 ns an instruction, on one core), the transfers 1.2 s, the processor 2.3 s. Next there: the
-vertex shader compiled or at least run on both cores, the lighting worked out by rows, the full-screen layers
-of one colour drawn without the general path.
+vertex shader compiled, the lighting worked out by rows, the full-screen layers of one colour drawn without the
+general path.
+
+- **A draw's vertices shaded together** (96 vertices or more, when the host has other cores): their attributes
+  are read first, once a vertex (`Batch`, 2048 at a time; `order` says which entry each of the draw's vertices
+  is), the shader runs on all of them, 32 at a time on every core (`shadeWorker`; all the instructions decoded
+  beforehand: no core writes the table), and the triangles are assembled in the draw's order. The title scene:
+  the lists 9.9 -> 7.4 s, **28.7 s for 300 frames (10.5 a second)**, the same picture.
 
 **A kernel fault found on the way** (and why some runs on the Pi stopped with only their first line): after each
 upload of a rebuilt `n3dstest`, the application core faulted at places the new code cannot fault at -- it was

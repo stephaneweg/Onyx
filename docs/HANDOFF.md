@@ -55,9 +55,10 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
   the rest 9.5 (with no pixel drawn: 27.7 fps). Then: bands taken dynamically, a list's triangles drawn while the program
   goes on (`Machine::parallelBegin/Done/End`, `gpuSync`), and **the right eye left out** (`Machine::monoOnly`: the game
   draws its top screen twice a frame whatever the slider). **The title scene itself** (frames 900-1200, heavier): 5.1 ->
-  **9.5 fps**; of its 31.5 s: rasterizer 18.2 (lighting 5.1), **vertex shader ~8-10 (one core, interpreted)**, processor 2.3.
-  Next in T3: the vertex shader compiled / on both cores, the lighting by rows, the one-colour full-screen layers, the
-  second application core, then the V3D.
+  **10.5 fps** (a draw's vertices are shaded on both cores too); of its 28.7 s: rasterizer 18.3 (lighting 5.1), the
+  lists 7.4 (vertex shader, interpreted), processor 2.3. **Two cores is what an app has**: the graphics server holds the
+  other application core. Next in T3: the vertex shader compiled, the lighting by rows, the one-colour full-screen
+  layers, then the V3D (the software path will not reach full speed in this game).
   **A kernel fault found there**: the loader empties core 0's instruction cache only, so an application core ran the
   previous build's instructions after each upload of a rebuilt program (faults at impossible places, or a hang).
   `kernel/sys/appcore.cpp` now empties the core's cache at a job's start (`LocalICacheFlush`) -- **in the source only: to
