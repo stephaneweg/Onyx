@@ -35,11 +35,16 @@ static void *uk_global (unsigned i, void *own)	{ void *p = onyx_lib_data (i); re
 // Dark Coffee: black coffee's browns under Milk's beads, a caramel accent, a black outline.
 static const UkPalette s_coffee = { 0x001F1A17, 0x00C8813F, 0x00322A26, 0x00151210, 0x00352C27, 0x00151210, 2 };
 
+// Onyx Noir: flat and dark (PocketUI on a small screen: docs/COMPACT-SHELL-STUDY.md section 20) -- the background
+// continues the black glass, the surfaces three greys above it, Onyx's Aqua blue; theme.cpp sets its other tokens.
+static const UkPalette s_noir = { 0x000B0C0E, 0x003D86DA, 0x0015171B, 0x0015171B, 0x001F2228, 0x0015171B, 1 };
+
 const UkNamedTheme uk_themes[] = {
 	{ "Peach", 0x00F0B07A, UK_STYLE_CDE }, { "Steel", 0x007A98C0, UK_STYLE_CDE },
 	{ "Sage", 0x0080AA76, UK_STYLE_CDE }, { "Brick", 0x00C45450, UK_STYLE_CDE },
 	{ "Slate", 0x003A4458, UK_STYLE_CDE }, { "Milk", 0x00D4D4D6, UK_STYLE_MILK },
-	{ "Dark Coffee", 0x004A3E37, UK_STYLE_MILK, &s_coffee }, { 0, 0, 0 }
+	{ "Dark Coffee", 0x004A3E37, UK_STYLE_MILK, &s_coffee },
+	{ "Onyx Noir", 0x0015171B, UK_STYLE_MILK, &s_noir }, { 0, 0, 0 }
 };
 
 } // namespace uikit

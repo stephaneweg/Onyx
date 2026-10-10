@@ -4,6 +4,7 @@
 #include "uikit/theme.h"
 #include "uikit/paint.h"
 #include "appkit/appkit.h"
+#include "uikit/win.h"			// (the pocket port: the server's mode)
 
 namespace uikit {
 
@@ -73,6 +74,8 @@ void uk_theme_take (UkTheme &t, int theme)
 	t.theme = theme; t.active = uk_themes[theme].frame;
 }
 
+static bool eq (const char *a, const char *b);
+
 void uk_theme_set (const UkTheme &t)
 {
 	C_FRAME_ACTIVE = t.active & 0x00FFFFFFu;
@@ -85,6 +88,15 @@ void uk_theme_set (const UkTheme &t)
 	if (t.button != UK_AUTO) { C_BUTTON = t.button & 0x00FFFFFFu; C_BUTTON_TEXT = uk_ink_on (C_BUTTON); }
 	if (t.field != UK_AUTO) { C_FIELD = t.field & 0x00FFFFFFu; C_FIELD_TEXT = uk_ink_on (C_FIELD); }
 	if (t.menubar != UK_AUTO) C_MENUBAR = t.menubar & 0x00FFFFFFu;
+	// The flat look: the named theme Onyx Noir, its window colour kept -- the tokens themselves, not shades computed
+	// from the face (a near-black face has no darker shade to give).
+	UK_FLAT = t.theme >= 0 && eq (uk_themes[t.theme].name, "Onyx Noir") && (t.window & 0x00FFFFFFu) == UK_N_BG0 ? 1 : 0;
+	if (UK_FLAT)
+	{
+		C_FACE_HI = C_FACE_DN = UK_N_BG3; C_BORDER = UK_N_LINE;
+		C_TEXT = UK_N_TEXT1; C_DIS = UK_N_TEXT3; C_FIELD_TEXT = UK_N_TEXT1; C_SEL_TEXT = 0x00FFFFFF;
+		C_BUTTON_TEXT = UK_N_TEXT1;
+	}
 }
 
 static UkTheme s_cur;
@@ -231,10 +243,68 @@ static bool s_loaded = false;
 
 void uk_theme_reload () { s_loaded = false; uk_theme_load (); }
 
+#ifdef UK_PORT_POCKET
+// PocketUI's UIKit, the pocket mode: the theme is SD:/etc/pocketui.ini's "[look] theme =" -- a named theme (its
+// colours over what SD:/etc/theme.txt says; theme.txt's metrics and scale stay), or "system" (theme.txt alone, as
+// the desktop); without the line: Onyx Noir, the flat and dark look made for a small screen. The console mode keeps
+// theme.txt.
+static void pocket_theme ()
+{
+	struct uk_win_server_info si;
+	__builtin_memset (&si, 0, sizeof si);
+	si.size = sizeof si;
+	uk_win_server (&si);
+	if (si.mode != UK_MODE_POCKET) return;
+	char name[40] = "Onyx Noir";
+	void *f = kapi_open ("SD:/etc/pocketui.ini");
+	if (f != 0)
+	{
+		static char b[4097];
+		int n = kapi_read (f, b, sizeof b - 1);
+		kapi_close (f);
+		if (n < 0) n = 0;
+		b[n] = 0;
+		bool in = false;
+		for (char *p = b; *p; )
+		{
+			char *l = p; while (*p && *p != '\n') p++;
+			if (*p) *p++ = 0;
+			while (*l == ' ' || *l == '\t') l++;
+			if (*l == '[') { in = __builtin_strncmp (l, "[look]", 6) == 0; continue; }
+			if (!in || __builtin_strncmp (l, "theme", 5) != 0) continue;
+			l += 5; while (*l == ' ' || *l == '\t' || *l == '=') l++;
+			int k = 0; while (l[k] && l[k] != '\r' && l[k] != '#' && k < 39) { name[k] = l[k]; k++; }
+			while (k > 0 && (name[k - 1] == ' ' || name[k - 1] == '\t')) k--;
+			name[k] = 0;
+		}
+	}
+	if (eq (name, "system")) return;
+	for (int i = 0; uk_themes[i].name; i++)
+		if (eq (name, uk_themes[i].name))
+		{
+			UkTheme t; uk_theme_defaults (t);
+			uk_theme_take (t, i);
+			s_cur = t;
+			uk_theme_set (s_cur);
+			return;
+		}
+}
+#endif
+
+static void theme_file ();
+
 void uk_theme_load ()
 {
 	if (s_loaded) return;
 	s_loaded = true;
+	theme_file ();
+#ifdef UK_PORT_POCKET
+	pocket_theme ();
+#endif
+}
+
+static void theme_file ()
+{
 	void *f = kapi_open ("SD:/etc/theme.txt");
 	if (f == 0) return;
 	unsigned sz = kapi_fsize (f);

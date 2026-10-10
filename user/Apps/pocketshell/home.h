@@ -33,7 +33,13 @@ static int g_resSel = 0, g_resTop = 0;
 static int g_kind = 0;					// the results shown: 0 all, 1 apps, 2 settings, 3 files
 enum { H_TAB = 1, H_CHEV, H_TILE, H_DOC, H_RUNCARD, H_RUNX, H_RESULT, H_FIELD, H_CLEARQ, H_TODAY, H_AGENDA, H_HNOTE, H_KIND };
 
-static const unsigned INK = 0x18181A, INK2 = 0x66666C, CAPS = 0x82868E;
+static unsigned INK = 0x18181A, INK2 = 0x66666C, CAPS = 0x82868E;	// (the flat look: Onyx Noir's text colours -- home_colours)
+static void home_colours (void)
+{
+	if (uk_flat ()) { INK = UK_N_TEXT1; INK2 = UK_N_TEXT2; CAPS = UK_N_TEXT3; }
+	else { INK = 0x18181A; INK2 = 0x66666C; CAPS = 0x82868E; }
+}
+static const char *face_name (void) { return uk_flat () ? "Selawik" : "DejaVu Sans"; }	// (the flat look's face: the mock-ups')
 
 static int D10 (int lp10)	{ return (lp10 * S + 500) / 1000; }	// tenths of a logical unit -> pixels
 
@@ -45,13 +51,13 @@ static FtTextFace *F (int lp)
 	if (g_faces[lp] == 0)
 	{
 		g_faces[lp] = new FtTextFace;
-		if (!g_faces[lp]->open ("DejaVu Sans", D (lp))) { delete g_faces[lp]; g_faces[lp] = 0; }
+		if (!g_faces[lp]->open (face_name (), D (lp))) { delete g_faces[lp]; g_faces[lp] = 0; }
 	}
 	return g_faces[lp];
 }
 static void faces_rescale (void)
 {
-	for (int i = 0; i < 32; i++) if (g_faces[i] != 0) g_faces[i]->open ("DejaVu Sans", D (i));
+	for (int i = 0; i < 32; i++) if (g_faces[i] != 0) g_faces[i]->open (face_name (), D (i));
 }
 // text centred in a box of height h at y
 static void text_v (Canvas &cv, int x, int y, int h, const char *s, unsigned c, int style = 0) { uk_text (cv, x, y + (h - uk_fh ()) / 2, s, c, style); }
@@ -94,6 +100,21 @@ static Lay lay (void)
 	L.cx = L.M; L.cy = y + D (12); L.ch = D (30); L.cw = g_aw - 2 * L.M - (L.side ? L.colw + L.M : 0);
 	L.rh = L.strip ? D (104) : D (12);
 	L.px = L.M; L.py = L.cy + L.ch + D (12); L.pw = L.cw; L.ph = g_ah - L.py - L.rh;
+	if (uk_flat ())						// the flat look (noir-home.png): 14 px margins, the Running pills
+	{							// and the hint line under the card -- clear of the glass' corners
+		L.M = D (14);
+		L.sx = L.M; L.sy = D (8); L.sh = D (36);
+		if (q || L.narrow || !L.today) L.sw = g_aw - 2 * L.M - (L.side ? L.colw + L.M : 0);
+		if (L.today && !L.narrow) { L.ty = L.sy; L.th = L.sh; }
+		int yy = (L.today && L.narrow ? L.ty + L.th : L.sy + L.sh);
+		L.colx = g_aw - L.M - L.colw;
+		L.cx = L.M; L.cy = yy + D (9); L.ch = D (30); L.cw = g_aw - 2 * L.M - (L.side ? L.colw + L.M : 0);
+		L.rh = L.strip ? D (107) : D (12);
+		L.px = L.M; L.py = L.cy + L.ch + D (8); L.pw = L.cw; L.ph = g_ah - L.py - L.rh;
+		if (L.ph < D (120)) L.ph = D (120);
+		L.ry = g_ah - L.rh + D (6);
+		return L;
+	}
 	if (L.ph < D (120)) L.ph = D (120);
 	L.ry = g_ah - L.rh + D (10);
 	return L;
@@ -171,6 +192,16 @@ static Card card (const Lay &L)
 	c.gx = L.px + (L.pw - c.cols * c.cellw) / 2;
 	c.gy = L.py + D (46);
 	c.rows = (L.ph - D (46) + D (6)) / c.rowh;
+	if (uk_flat ())						// (the flat look: wider cells that share the card's width, 104 a row)
+	{
+		c.rowh = D (104);
+		c.cols = (L.pw - D (16)) / D (112);
+		if (c.cols < 1) c.cols = 1;
+		c.cellw = (L.pw - D (16)) / c.cols;
+		c.gx = L.px + D (8);
+		c.gy = L.py + D (39);
+		c.rows = (L.ph - D (39) + D (6)) / c.rowh;
+	}
 	if (c.rows < 1) c.rows = 1;
 	c.ntiles = g_nitems;
 	if (tab_is_recent () && g_ndocs > 0)
@@ -197,6 +228,7 @@ static Card card (const Lay &L)
 static int cap2 (Canvas &cv, int x, int y, const char *k, bool measure = false)
 {
 	UkFaceScope f (F (10));
+	if (uk_flat ()) return uk_pad_key (cv, x, y, D (18), k, measure);	// (the flat look: an outlined cap)
 	int w = tw (k, 2) + D (10), h = D (18);
 	if (w < D (18)) w = D (18);
 	if (measure) return w;
@@ -244,6 +276,20 @@ static void magnifier (Canvas &cv, int x, int y, int s, unsigned c)
 static void plate (Canvas &cv, int x, int y, int cw, App &a, const char *label, bool focus, bool running)
 {
 	int ps = D (60), px = x + (cw - ps) / 2, py = y;
+	if (uk_flat ())						// a flat plate and a hairline (several icons are dark); the focus a ring
+	{
+		lk_fill (cv, px, py, ps, ps, D (14), UK_N_BG2, UK_N_BG2);
+		lk_ring (cv, px, py, ps, ps, D (14), 16, UK_N_LINE);
+		if (focus) lk_ring (cv, px - D (4), py - D (4), ps + D (8), ps + D (8), D (18), D (2) * 16, C_ACCENT);
+		int is = D (44);
+		draw_icon (cv, px + (ps - is) / 2, py + (ps - is) / 2, a, is);
+		if (running) lk_fill (cv, x + cw / 2 - D10 (25), py + ps + D (5), D (5), D (5), D10 (25), C_ACCENT, C_ACCENT);
+		UkFaceScope f (F (14));
+		char lab[64];
+		int lw = uk_text_fit (label, cw - D (6), lab, sizeof lab, focus ? 2 : 0);
+		text_v (cv, x + (cw - lw) / 2, py + ps + D (11), D (20), lab, focus ? UK_N_TEXT1 : UK_N_TEXT2, focus ? 2 : 0);
+		return;
+	}
 	if (focus) lk_shadow (cv, px - D (4), py - D (4), ps + D (8), ps + D (8), D (19), D (7) / 2 + 1, 150, 0, uk_tone (C_ACCENT, 140));
 	lk_shadow (cv, px, py, ps, ps, D (15), D10 (25) > 1 ? D10 (25) / 2 + 1 : 1, 55, D10 (15));
 	lk_fill (cv, px, py, ps, ps, D (15), 0xFFFFFF, 0xEAECF1);
@@ -267,6 +313,7 @@ static void plate (Canvas &cv, int x, int y, int cw, App &a, const char *label, 
 // The card's raised panel.
 static void panel_card (Canvas &cv, int x, int y, int w, int h)
 {
+	if (uk_flat ()) { lk_fill (cv, x, y, w, h, D (16), UK_N_BG1, UK_N_BG1); return; }	// (a surface: no shadow, no outline)
 	lk_shadow (cv, x, y, w, h, D (16), D (10) / 2 + 1, 100, D (4));
 	lk_fill (cv, x, y, w, h, D (16), 0xFBFBFC, 0xEEEFF3);
 	lk_ring (cv, x, y, w, h, D (16), 16, 0x000000, 34);
@@ -275,6 +322,12 @@ static void panel_card (Canvas &cv, int x, int y, int w, int h)
 static void header (Canvas &cv, int x, int y, const char *title, const char *sub, unsigned dot, bool hasDot)
 {
 	int tx = x;
+	if (uk_flat ())
+	{
+		{ UkFaceScope f (F (15)); text_v (cv, x - D (2), y - D (6), D (24), title, INK, 2); tx = x - D (2) + tw (title, 2) + D (10); }
+		UkFaceScope f (F (13)); text_v (cv, tx, y - D (6), D (24), sub, INK2);
+		return;
+	}
 	if (hasDot) { lk_fill (cv, x, y + D (5), D (9), D (9), D10 (45), dot, dot); tx = x + D (16); }
 	{ UkFaceScope f (F (14)); uk_text (cv, tx, y, title, INK, 2); tx += tw (title, 2) + D (10); }
 	UkFaceScope f (F (12)); uk_text (cv, tx, y + D (2), sub, INK2);
@@ -287,11 +340,12 @@ static void draw_search (Canvas &cv, const Lay &L)
 	int x = L.sx, y = L.sy, w = L.sw, h = L.sh;
 	lk_shadow (cv, x, y, w, h, h / 2, D (6) / 2 + 1, 90, D (2));
 	lk_fill (cv, x, y, w, h, h / 2, 0xFFFFFF, 0xF7F7F9);
-	if (g_query[0]) lk_ring (cv, x - D (2), y - D (2), w + D (4), h + D (4), h / 2 + D (2), D10 (25) * 16 / 10 < 24 ? 24 : D10 (25) * 16 / 10, uk_tone (C_ACCENT, 160));
-	else lk_ring (cv, x, y, w, h, h / 2, 16, 0x000000, 30);
+	if (g_query[0] && uk_flat ()) lk_ring (cv, x, y, w, h, h / 2, D (2) * 16, C_ACCENT);
+	else if (g_query[0]) lk_ring (cv, x - D (2), y - D (2), w + D (4), h + D (4), h / 2 + D (2), D10 (25) * 16 / 10 < 24 ? 24 : D10 (25) * 16 / 10, uk_tone (C_ACCENT, 160));
+	else if (!uk_flat ()) lk_ring (cv, x, y, w, h, h / 2, 16, 0x000000, 30);
 	int ms = D (15);
-	magnifier (cv, x + D (14), y + (h - ms) / 2, ms, g_query[0] ? C_ACCENT : 0x787C84);
-	UkFaceScope f (F (13));
+	magnifier (cv, x + D (14), y + (h - ms) / 2, ms, g_query[0] ? C_ACCENT : uk_flat () ? (unsigned) UK_N_TEXT3 : 0x787C84);
+	UkFaceScope f (F (uk_flat () ? 15 : 13));
 	int tx = x + D (38);
 	if (g_query[0])
 	{
@@ -346,11 +400,20 @@ static void draw_today_line (Canvas &cv, const Lay &L)
 // One chip at x (measure: only its width) -> its width.
 static int chip (Canvas &cv, int x, int y, int h, const char *name, unsigned dot, bool hasDot, bool on, int count, bool measure)
 {
-	UkFaceScope f (F (12));
+	UkFaceScope f (F (uk_flat () ? 14 : 12));
 	char cnt[12] = ""; int k = 0;
 	if (count >= 0) num_cat (cnt, sizeof cnt, &k, count);
 	int w = tw (name, on ? 2 : 0) + D (hasDot ? 34 : 24) + (count >= 0 ? tw ("  ") + tw (cnt) : 0);
 	if (measure) return w;
+	if (uk_flat ())						// (the chosen one a step lighter and bold; the others on a surface)
+	{
+		lk_fill (cv, x, y, w, h, h / 2, on ? UK_N_BG3 : UK_N_BG1, on ? UK_N_BG3 : UK_N_BG1);
+		int fx = x + D (12);
+		if (hasDot) { lk_fill (cv, x + D (11), y + (h - D (8)) / 2, D (8), D (8), D (4), dot, dot); fx = x + D (25); }
+		text_v (cv, fx, y, h, name, on ? UK_N_TEXT1 : UK_N_TEXT2, on ? 2 : 0);
+		if (count >= 0) text_v (cv, fx + tw (name, on ? 2 : 0) + tw ("  "), y, h, cnt, UK_N_TEXT3);
+		return w;
+	}
 	if (on)
 	{
 		lk_shadow (cv, x, y, w, h, h / 2, D (4) / 2 + 1, 80, D10 (15));
@@ -367,6 +430,15 @@ static int chip (Canvas &cv, int x, int y, int h, const char *name, unsigned dot
 static void draw_chips (Canvas &cv, const Lay &L)
 {
 	int x = L.cx, y = L.cy, h = L.ch, right = L.cx + L.cw - D (40);
+	if (uk_flat ())						// L and R at the row's ends: the buttons that change the category
+	{
+		UkFaceScope f (F (13));
+		int ph = D (22);
+		x += uk_pad_glyph (cv, x, y + (h - ph) / 2, ph, 'L') + D (8);
+		int rw = uk_pad_glyph (cv, 0, 0, ph, 'R', true);
+		uk_pad_glyph (cv, L.cx + L.cw - rw, y + (h - ph) / 2, ph, 'R');
+		right = L.cx + L.cw - rw - D (8);
+	}
 	if (g_tab < g_tabFirst) g_tabFirst = g_tab;
 	for (;;)							// (the chip chosen kept in view)
 	{
@@ -380,12 +452,17 @@ static void draw_chips (Canvas &cv, const Lay &L)
 	{
 		const char *n = TR (g_cats[i].name);
 		int w = chip (cv, 0, 0, h, n, 0, true, i == g_tab, -1, true);
-		if (x + w > right) { more = true; break; }
+		if (x + w > right - (uk_flat () ? D (16) : 0)) { more = true; break; }
 		chip (cv, x, y, h, n, g_cats[i].dot, true, i == g_tab, -1, false);
 		g_homeHits.add (x, y, w, h, H_TAB, i);
 		x += w + D (6);
 	}
-	if (more || g_tabFirst > 0)					// the chevron: the next chips (or back to the first)
+	if ((more || g_tabFirst > 0) && uk_flat ())			// (the flat look: a chevron before R says there are more)
+	{
+		uk_glyph (cv, more ? WKG_CHEV_RIGHT : WKG_CHEV_LEFT, right - D (2), y + h / 2, D (10), UK_N_TEXT2);
+		g_homeHits.add (right - D (12), y, D (20), h, H_CHEV, more ? 1 : -1);
+	}
+	else if (more || g_tabFirst > 0)				// the chevron: the next chips (or back to the first)
 	{
 		int bw = D (30), bx = L.cx + L.cw - bw;
 		lk_fill (cv, bx, y, bw, h, h / 2, 0xFFFFFF, 0xFFFFFF, 30);
@@ -455,11 +532,11 @@ static void draw_card (Canvas &cv, const Lay &L)
 	if (!c.docs && totalRows > c.rows)				// (more rows: a thin bar at the right)
 	{
 		int gh = c.rows * c.rowh, th = gh * c.rows / totalRows, ty = c.gy + (gh - th) * g_gridTop / (totalRows - c.rows);
-		lk_fill (cv, L.px + L.pw - D (8), ty, D (4), th, D (2), 0xA8AEB8, 0xA8AEB8);
+		lk_fill (cv, L.px + L.pw - D (8), ty, D (4), th, D (2), uk_flat () ? (unsigned) UK_N_BG3 : 0xA8AEB8, uk_flat () ? (unsigned) UK_N_BG3 : 0xA8AEB8);
 	}
 	if (!c.docs) return;
 	int sy = c.gy + c.rowh;
-	cv.fillRect (L.px + D (18), sy, L.pw - D (36), 1, 0xDCDDE2);
+	cv.fillRect (L.px + D (18), sy, L.pw - D (36), 1, uk_flat () ? (unsigned) UK_N_LINE : 0xDCDDE2);
 	header (cv, L.px + D (18), sy + D (14), TR ("Documents"), TR ("the files opened last, with the app that opens them"), 0, false);
 	for (int i = 0; i < c.ndocs; i++)
 	{
@@ -558,9 +635,47 @@ static void run_thumbs (int cw, int ch)			// the pictures taken again: the tasks
 	}
 }
 
+// The flat look's foot (noir-home.png): the open apps as pills on one line, a hairline, then THIS device's buttons.
+static void draw_strip_flat (Canvas &cv, const Lay &L)
+{
+	int x = L.M + D (8), y = L.ry, right = g_aw - L.M - D (8);
+	{
+		UkFaceScope f (F (14));
+		text_v (cv, x, y, D (26), TR ("Running"), UK_N_TEXT1, 2);
+		x += tw (TR ("Running"), 2) + D (12);
+	}
+	if (g_stripFocus >= g_ntasks) g_stripFocus = g_ntasks - 1;
+	{
+		UkFaceScope f (F (13));
+		if (g_ntasks == 0) text_v (cv, x, y, D (26), TR ("No open apps."), UK_N_TEXT3);
+		for (int i = 0; i < g_ntasks; i++)
+		{
+			const uk_shell_task &t = g_tasks[i];
+			const char *l = task_label (t);
+			int pw = D (34) + tw (l) + D (12), ph = D (26);
+			if (x + pw > right) break;
+			lk_fill (cv, x, y, pw, ph, ph / 2, UK_N_BG2, UK_N_BG2);
+			if (i == g_stripFocus) lk_ring (cv, x - D (3), y - D (3), pw + D (6), ph + D (6), ph / 2 + D (3), D (2) * 16, C_ACCENT);
+			icon_of (cv, x + D (7), y + D (4), t.name, l, D (18));
+			text_v (cv, x + D (30), y, ph, l, UK_N_TEXT1);
+			g_homeHits.add (x, y, pw, ph, H_RUNCARD, i);
+			x += pw + D (6);
+		}
+	}
+	int ly = g_ah - D (64);
+	cv.fillRect (L.M + D (8), ly, g_aw - 2 * L.M - D (16), 1, UK_N_LINE);
+	static UkPadHint H[4];
+	if (g_stripFocus >= 0) { H[0] = { "-", TR ("choose") }; H[1] = { "A", TR ("bring it") }; H[2] = { "X", TR ("close") }; H[3] = { "B", TR ("back") }; }
+	else { H[0] = { "+", TR ("choose") }; H[1] = { "A", TR ("open") }; H[2] = { "LR", TR ("category") }; H[3] = { "S", TR ("tasks") }; }
+	UkFaceScope f (F (13));
+	int hw = uk_pad_hints (cv, 0, 0, D (18), H, 4, 0, true);
+	uk_pad_hints (cv, (g_aw - hw) / 2, ly + D (13), D (18), H, 4, UK_N_TEXT2);
+}
+
 static void draw_strip (Canvas &cv, const Lay &L)
 {
 	if (!L.strip) return;
+	if (uk_flat ()) { draw_strip_flat (cv, L); return; }
 	int x = L.M, y = L.ry, w = g_aw - 2 * L.M;
 	int lw;
 	{
@@ -846,7 +961,9 @@ static void draw_home (void)
 {
 	Canvas &cv = g_hc;
 	g_homeHits.clear ();
-	for (int y = 0; y < g_ah; y++)					// the wallpaper: Milk's navy, a gradient
+	home_colours ();
+	if (uk_flat ()) cv.fillRect (0, 0, g_aw, g_ah, UK_N_BG0);		// (the flat look: the glass' black)
+	else for (int y = 0; y < g_ah; y++)				// the wallpaper: Milk's navy, a gradient
 		cv.fillRect (0, y, g_aw, 1, uk_mix (0x223A55, 0x16263C, y * 256 / (g_ah > 1 ? g_ah : 1)));
 	Lay L = lay ();
 	draw_search (cv, L);

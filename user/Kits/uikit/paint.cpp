@@ -143,6 +143,9 @@ void uk_rbox (Canvas &cv, int x, int y, int w, int h, int r, unsigned top, unsig
 {
 	if (w <= 0 || h <= 0) return;
 	r = clamp_r (r, w, h);
+	// The flat look: no gradient anywhere -- a face shaded top to bottom (a widget's, an app's own chrome) is one
+	// colour, near its bottom's (the face itself in the painter's light-to-face gradients).
+	if (UK_FLAT && top != bottom) top = bottom = uk_mix (top, bottom, 200);
 	const UkCorner &t = uk_corner (r > 0 ? r : 1);
 	for (int j = 0; j < h; j++)
 	{
@@ -189,9 +192,36 @@ void uk_rline (Canvas &cv, int x, int y, int w, int h, int r, unsigned c, int al
 }
 
 // ---- the look's pieces ----------------------------------------------------------------------------------
+// ---- the flat look (UK_FLAT: the theme Onyx Noir) ------------------------------------------------------------
+// A face in the flat look: the window's own colour (nothing would show on it) is a raised surface; pointed at or
+// pressed, one step lighter.
+static unsigned flat_face (unsigned face, int st)
+{
+	unsigned f = face & 0x00FFFFFFu;
+	if (f == C_BG || f == UK_N_BG1) f = UK_N_BG2;
+	if (st == UK_HOT || st == UK_PRESSED) f = f == UK_N_BG2 ? UK_N_BG3 : uk_mix (f, 0x00FFFFFF, st == UK_PRESSED ? 44 : 28);
+	else if (st == UK_DISABLED) f = uk_mix (f, C_BG, 128);
+	return f;
+}
+// The focus: a 2 px ring of the accent just inside the box.
+static void flat_focus (Canvas &cv, int x, int y, int w, int h, int r)
+{
+	uk_rline (cv, x, y, w, h, r, C_ACCENT, 255);
+	uk_rline (cv, x + 1, y + 1, w - 2, h - 2, r > 1 ? r - 1 : 0, C_ACCENT, 255);
+}
+
 void uk_framed (Canvas &cv, int x, int y, int w, int h, unsigned face, int state,
 		int *bx, int *by, int *bw, int *bh)
 {
+	if (UK_FLAT)						// (a button: 8 px corners, nothing moves when pressed)
+	{
+		uk_raised (cv, x, y, w, h, h < 18 || w < 18 ? 4 : 8, face, state);
+		if (bx) *bx = x;
+		if (by) *by = y;
+		if (bw) *bw = w;
+		if (bh) *bh = h;
+		return;
+	}
 	// (no frame, no well any more: the drop-down's raised face, the whole box the button's)
 	uk_raised (cv, x, y, w, h, h < 18 || w < 18 ? 3 : 5, face, state);
 	int d = (state & 15) == UK_PRESSED ? 1 : 0;
@@ -203,6 +233,13 @@ void uk_framed (Canvas &cv, int x, int y, int w, int h, unsigned face, int state
 
 void uk_raised (Canvas &cv, int x, int y, int w, int h, int r, unsigned face, int state)
 {
+	if (UK_FLAT)
+	{
+		unsigned f = flat_face (face, state & 15);
+		uk_rbox (cv, x, y, w, h, r, f, f);
+		if (state & UK_FOCUS) flat_focus (cv, x, y, w, h, r);
+		return;
+	}
 	int t = 176, b = 112;
 	if ((state & 15) == UK_HOT) { t = 192; b = 124; }
 	else if ((state & 15) == UK_PRESSED) { t = 104; b = 120; }
@@ -216,6 +253,15 @@ void uk_raised (Canvas &cv, int x, int y, int w, int h, int r, unsigned face, in
 
 void uk_sunken (Canvas &cv, int x, int y, int w, int h, int r, unsigned bg, bool focus)
 {
+	if (UK_FLAT)						// (a field: a surface and a hairline; disabled: dimmer)
+	{
+		if ((bg & 0x00FFFFFFu) == uk_tone (C_FACE, 150)) bg = uk_mix (C_FIELD, C_BG, 128);
+		uk_rbox (cv, x, y, w, h, r, bg, bg);
+		if (focus && h > 64) uk_rline (cv, x, y, w, h, r, C_ACCENT, 255);	// (a text area, a list: a thin line is enough)
+		else if (focus) flat_focus (cv, x, y, w, h, r);
+		else uk_rline (cv, x, y, w, h, r, uk_bright (bg) < 110 ? C_BORDER : uk_mix (bg, 0, 60), 255);
+		return;
+	}
 	uk_rbox (cv, x, y, w, h, r, bg, bg);
 	for (int i = x + (r > 1 ? r : 1); i < x + w - (r > 1 ? r : 1); i++)	// a shadow along the top
 	{
@@ -227,20 +273,23 @@ void uk_sunken (Canvas &cv, int x, int y, int w, int h, int r, unsigned bg, bool
 }
 
 // (a groove's two lines on a face: dark over light -- on a dark face both darker than it)
-static inline unsigned etch_dark (unsigned face) { return uk_tone (face, uk_bright (face) < 110 ? 40 : 88); }
-static inline unsigned etch_light (unsigned face) { return uk_tone (face, uk_bright (face) < 110 ? 96 : 196); }
+static inline unsigned etch_dark (unsigned face) { if (UK_FLAT) return uk_bright (face) < 110 ? C_BORDER : uk_mix (face, 0, 50); return uk_tone (face, uk_bright (face) < 110 ? 40 : 88); }
+static inline unsigned etch_light (unsigned face) { if (UK_FLAT) return face & 0x00FFFFFFu; return uk_tone (face, uk_bright (face) < 110 ? 96 : 196); }
 
 void uk_etch_h (Canvas &cv, int x, int y, int w, unsigned face)
 {
+	if (UK_FLAT) { for (int i = 0; i < w; i++) blend_px (cv, x + i, y, etch_dark (face), 255); return; }	// (a hairline)
 	for (int i = 0; i < w; i++) { blend_px (cv, x + i, y, etch_dark (face), 255); blend_px (cv, x + i, y + 1, etch_light (face), 255); }
 }
 void uk_etch_v (Canvas &cv, int x, int y, int h, unsigned face)
 {
+	if (UK_FLAT) { for (int j = 0; j < h; j++) blend_px (cv, x, y + j, etch_dark (face), 255); return; }
 	for (int j = 0; j < h; j++) { blend_px (cv, x, y + j, etch_dark (face), 255); blend_px (cv, x + 1, y + j, etch_light (face), 255); }
 }
 
 void uk_etch_box (Canvas &cv, int x, int y, int w, int h, int r, unsigned face)
 {
+	if (UK_FLAT) { uk_rline (cv, x, y, w, h, r < 8 ? 8 : r, etch_dark (face), 255); return; }
 	uk_rline (cv, x + 1, y + 1, w - 1, h - 1, r, uk_bright (face) < 110 ? etch_light (face) : uk_tone (face, 200), 255);
 	uk_rline (cv, x, y, w - 1, h - 1, r, etch_dark (face), 255);
 }
@@ -248,6 +297,14 @@ void uk_etch_box (Canvas &cv, int x, int y, int w, int h, int r, unsigned face)
 // ---- the controls' marks ----------------------------------------------------------------------------------
 static void mark_field (Canvas &cv, int x, int y, int w, int h, int r, int st, bool focus)
 {
+	if (UK_FLAT)
+	{
+		unsigned f = st == UK_DISABLED ? UK_N_BG1 : st == UK_PRESSED || st == UK_HOT ? UK_N_BG3 : UK_N_BG2;
+		uk_rbox (cv, x, y, w, h, r, f, f);
+		uk_rline (cv, x, y, w, h, r, focus ? C_ACCENT : UK_N_TEXT3, st == UK_DISABLED ? 120 : 255);
+		if (focus) uk_rline (cv, x + 1, y + 1, w - 2, h - 2, r > 1 ? r - 1 : 0, C_ACCENT, 255);
+		return;
+	}
 	unsigned bg = st == UK_DISABLED ? uk_tone (C_FACE, 150) : st == UK_PRESSED ? uk_tone (C_FIELD, 118) : C_FIELD;
 	uk_rbox (cv, x, y, w, h, r, st == UK_DISABLED ? bg : uk_tone (bg, 112), bg);
 	unsigned ol = focus || st == UK_HOT ? C_ACCENT : uk_tone (C_FACE, 72);
@@ -256,6 +313,13 @@ static void mark_field (Canvas &cv, int x, int y, int w, int h, int r, int st, b
 
 static void mark_on (Canvas &cv, int x, int y, int w, int h, int r, int st, bool focus)
 {
+	if (UK_FLAT)
+	{
+		unsigned f = st == UK_DISABLED ? uk_mix (C_ACCENT, C_BG, 150) : st == UK_HOT ? uk_mix (C_ACCENT, 0x00FFFFFF, 30) : C_ACCENT;
+		uk_rbox (cv, x, y, w, h, r, f, f);
+		if (focus) uk_rline (cv, x, y, w, h, r, UK_N_ACCENT_HI, 255);
+		return;
+	}
 	unsigned a = st == UK_DISABLED ? uk_mix (C_ACCENT, C_FACE, 150) : C_ACCENT;
 	int lift = st == UK_HOT ? 14 : st == UK_PRESSED ? -12 : 0;
 	uk_rbox (cv, x, y, w, h, r, uk_tone (a, 156 + lift), uk_tone (a, 112 + lift));
@@ -282,7 +346,7 @@ void uk_radio_mark (Canvas &cv, int x, int y, int s, bool checked, int state)
 	{
 		mark_on (cv, x, y, s, s, s / 2, st, focus);
 		int d = s * 2 / 5 < 4 ? 4 : s * 2 / 5;
-		uk_rbox (cv, x + (s - d) / 2, y + (s - d) / 2, d, d, d / 2, 0x00FFFFFF, uk_tone (C_FIELD, 118));
+		uk_rbox (cv, x + (s - d) / 2, y + (s - d) / 2, d, d, d / 2, 0x00FFFFFF, UK_FLAT ? 0x00FFFFFFu : uk_tone (C_FIELD, 118));
 	}
 	else mark_field (cv, x, y, s, s, s / 2, st, focus);
 }
@@ -292,13 +356,20 @@ void uk_switch_mark (Canvas &cv, int x, int y, int w, int h, bool on, int state)
 	int st = state & 15, r = h / 2;
 	bool focus = (state & UK_FOCUS) != 0;
 	if (on) mark_on (cv, x, y, w, h, r, st, focus);
-	else
+	else if (!UK_FLAT)
 	{
 		unsigned t = st == UK_DISABLED ? uk_tone (C_FACE, 150) : uk_tone (C_FACE, 104);
 		uk_rbox (cv, x, y, w, h, r, uk_tone (t, 96), t);
 		uk_rline (cv, x, y, w, h, r, focus ? C_ACCENT : uk_tone (C_FACE, 66), focus ? 255 : 200);
 	}
 	int d = h - 4, kx = on ? x + w - 2 - d : x + 2;			// the knob
+	if (UK_FLAT)
+	{
+		if (!on) { uk_rbox (cv, x, y, w, h, r, UK_N_BG3, UK_N_BG3); if (focus) flat_focus (cv, x, y, w, h, r); }
+		unsigned kc = st == UK_DISABLED ? UK_N_TEXT3 : UK_N_TEXT1;
+		uk_rbox (cv, kx, y + 2, d, d, d / 2, kc, kc);
+		return;
+	}
 	unsigned k = st == UK_DISABLED ? uk_tone (C_FACE, 190) : st == UK_HOT ? 0x00FFFFFF : uk_tone (C_FIELD, 132);
 	uk_rbox (cv, kx, y + 2, d, d, d / 2, k, uk_tone (C_FACE, 172));
 	uk_rline (cv, kx, y + 2, d, d, d / 2, uk_tone (C_FACE, 70), 150);
@@ -322,6 +393,16 @@ void uk_scroll_bar (Canvas &cv, int x, int y, int w, int h, bool vertical, int p
 		return;
 	}
 	int r = across / 2;
+	if (UK_FLAT)						// (the desktop in the flat look: a plain groove, a plain thumb)
+	{
+		uk_rbox (cv, x, y, w, h, r, UK_N_BG1, UK_N_BG1);
+		if (len <= 0) return;
+		int hot = (state & 15) == UK_HOT || (state & 15) == UK_PRESSED;
+		unsigned f = hot ? UK_N_TEXT3 : UK_N_BG3;
+		if (vertical) uk_rbox (cv, x + 2, y + pos, w - 4, len, (w - 4) / 2, f, f);
+		else uk_rbox (cv, x + pos, y + 2, len, h - 4, (h - 4) / 2, f, f);
+		return;
+	}
 	uk_rbox (cv, x, y, w, h, r, uk_mix (bg, 0, 34), uk_mix (bg, 0, 18));	// the groove
 	if (len <= 0) return;
 	int t = (state & 15) == UK_HOT || (state & 15) == UK_PRESSED;
@@ -336,6 +417,18 @@ void uk_scroll_bar (Canvas &cv, int x, int y, int w, int h, bool vertical, int p
 void uk_slider_mark (Canvas &cv, int x, int y, int w, int h, int fill, int kx, int kw, int state)
 {
 	int st = state & 15, gh = h < 12 ? 4 : 6, gy = y + (h - gh) / 2;
+	if (UK_FLAT)						// (a groove, the accent up to a round knob)
+	{
+		gh = h < 12 ? 4 : 8; gy = y + (h - gh) / 2;
+		uk_rbox (cv, x, gy, w, gh, gh / 2, UK_N_BG3, UK_N_BG3);
+		unsigned a = st == UK_DISABLED ? uk_mix (C_ACCENT, C_BG, 150) : C_ACCENT;
+		if (fill > 0) uk_rbox (cv, x, gy, fill < gh ? gh : fill, gh, gh / 2, a, a);
+		int d = h - 2 < 18 ? h - 2 : 18, cx = kx + kw / 2;
+		unsigned k = st == UK_DISABLED ? UK_N_TEXT3 : UK_N_TEXT1;
+		uk_rbox (cv, cx - d / 2, y + (h - d) / 2, d, d, d / 2, k, k);
+		if (state & UK_FOCUS) uk_rline (cv, cx - d / 2 - 2, y + (h - d) / 2 - 2, d + 4, d + 4, d / 2 + 2, C_ACCENT, 255);
+		return;
+	}
 	uk_rbox (cv, x, gy, w, gh, gh / 2, uk_tone (C_FACE, 92), uk_tone (C_FACE, 140));
 	if (fill > 0)
 	{
@@ -348,6 +441,13 @@ void uk_slider_mark (Canvas &cv, int x, int y, int w, int h, int fill, int kx, i
 void uk_progress_bar (Canvas &cv, int x, int y, int w, int h, int fill)
 {
 	int r = h / 2 < 5 ? h / 2 : 5;
+	if (UK_FLAT)
+	{
+		r = h / 2 < 8 ? h / 2 : 8;
+		uk_rbox (cv, x, y, w, h, r, UK_N_BG3, UK_N_BG3);
+		if (fill > 0) uk_rbox (cv, x, y, fill < 2 * r ? 2 * r : fill > w ? w : fill, h, r, C_ACCENT, C_ACCENT);
+		return;
+	}
 	uk_sunken (cv, x, y, w, h, r, C_FIELD, false);
 	if (fill > 2)
 	{
@@ -378,6 +478,18 @@ void uk_corner_key (Canvas &cv, int x, int y, int w, int h, int r)
 
 void uk_popup (Canvas &cv, int x, int y, int w, int h, int r, unsigned face)
 {
+	if (UK_FLAT)						// (a menu, a list: a raised surface, a hairline, rounder)
+	{
+		unsigned f = face & 0x00FFFFFFu;
+		if (f == C_FIELD || f == C_BG) f = UK_N_BG2;
+		if (r >= 5 && r < 10) r = 10;
+		unsigned ol = uk_bright (f) < 110 ? C_BORDER : uk_mix (f, 0, 60);
+		cv.fillRect (x, y, w, h, ol);
+		uk_rbox (cv, x, y, w, h, r, f, f);
+		uk_rline (cv, x, y, w, h, r, ol, 255);
+		uk_corner_key (cv, x, y, w, h, r);
+		return;
+	}
 	unsigned ol = uk_tone (C_FACE, 70);
 	cv.fillRect (x, y, w, h, ol);
 	uk_rbox (cv, x, y, w, h, r, uk_tone (face, 140), face);
@@ -387,6 +499,13 @@ void uk_popup (Canvas &cv, int x, int y, int w, int h, int r, unsigned face)
 
 void uk_hilite (Canvas &cv, int x, int y, int w, int h, int r, bool strong)
 {
+	if (UK_FLAT)
+	{
+		if (r >= 4 && r < 7) r = 7;
+		unsigned f = strong ? C_ACCENT : UK_N_BG3;
+		uk_rbox (cv, x, y, w, h, r, f, f);
+		return;
+	}
 	if (strong) uk_rbox (cv, x, y, w, h, r, uk_tone (C_ACCENT, 142), uk_tone (C_ACCENT, 118));
 	else uk_rbox (cv, x, y, w, h, r, uk_mix (C_FIELD, C_ACCENT, 76), uk_mix (C_FIELD, C_ACCENT, 92));
 }
@@ -434,6 +553,12 @@ void uk_bead (Canvas &cv, int x, int y, int d, unsigned c)
 
 void uk_title_strip (Canvas &cv, int x, int y, int w, int h, const char *s, int r)
 {
+	if (UK_FLAT)						// (a dialog's title: its words, bold, on the dialog's own surface)
+	{
+		uk_rbox (cv, x, y, w, h, r, C_FACE, C_FACE, 255, UK_TL | UK_TR);
+		if (s) uk_text_c (cv, x, y + 2, w, h, s, C_TEXT, 2);
+		return;
+	}
 	unsigned f = C_FRAME_ACTIVE, top = uk_tone (f, 164), bot = uk_tone (f, 115), mid = uk_tone (f, 140);
 	if (UK_STYLE == UK_STYLE_MILK)					// (as the frames' title bars: Milk's
 	{ top = uk_bright (f) < 110 ? f : uk_tone (f, 230); bot = C_FACE; mid = uk_mix (top, bot, 128); }	//  melts into the box's face)

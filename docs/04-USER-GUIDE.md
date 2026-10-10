@@ -692,6 +692,22 @@ handheld, a 7-inch panel), **one app at a time**, as on a phone. Its parts:
 - **the launcher (Home)**, behind every app: what you see when no app is in front;
 - **the task switcher** and **quick settings**, over the app.
 
+**The look: Onyx Noir.** The pocket mode has a theme of its own, **Onyx Noir**: flat and dark -- no gradient, no
+bevel, no shadow, the background the black of the screen's glass, the surfaces three greys above it, Onyx's blue for
+the focus (a ring), the chosen item and a switch that is on. Every app takes it (what an app paints in colours of
+its own stays: a document's page is white). It is chosen in **`SD:/etc/pocketui.ini`**, section `[look]`:
+`theme = Onyx Noir` (the default without the line), another theme's name (Milk, Dark Coffee, Peach...), or
+`theme = system` -- what `SD:/etc/theme.txt` says, the desktop's look. The desktop and the console mode do not read
+it. A change shows in the programs started next (the whole session: `session switch pocket`).
+
+**The Menu entry (F10, Alt, Select).** In pocket the band shows the app's name and ONE entry, **Menu**, instead of
+the row of titles. **F10**, **Alt pressed and released alone**, a handheld's **Select** button -- or a click on it --
+opens it: a column of the app's menus (then *Quit*). **Up / Down** move, **Right** or **Enter** (a pad's **A**) opens
+the chosen menu's items beside the column, **Enter** does the chosen item, **Left**, **Esc** or **Backspace** (a pad's
+**B**) goes back one level, **Page Up / Down** (L / R) go to the menu before / after, a letter jumps to the next entry
+starting with it; F10, Alt or Select again closes it. The shortcuts (`Ctrl+S`) work as ever without opening it. On
+the home there is no Menu entry: the name is *Onyx* (a click on it: the Onyx menu).
+
 **The launcher.** At the top a round **search field** and, beside it, **Today**: the Calendar's next appointment
 (“Mon 28 Sep | 14:00 Team call — in 1 h 26”; read from `SD:/apps/calendar.app/agenda.txt`, which the Calendar
 writes; a click opens the Calendar; nothing planned: the line is not shown). On a wide screen (1920 × 1080) Today

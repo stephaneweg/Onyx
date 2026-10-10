@@ -35,6 +35,7 @@
 //                   (P5) home (1 / 0), shell (app, other, none), tasks (how many), kindN (the app's window N's kind),
 //                   okind[N] (the latest "other" program's window N's), shownN (1 / 0: the app's window N on the
 //                   screen), focus (who has the keys: app, other, none), keys (the GUI_EVENT_KEY the app received),
+//                   bargrab (1 / 0: the menu bar's open menu takes every key), menucmd (the last menu command the app sent),
 //                   matte (1 / 0: PocketUI's matte shown), full (1 / 0: the app has the full screen, as the list says),
 //                   hidden (1 / 0: the app's window not shown as the list says -- set aside: KAPI_WIN_OFFDESK, rdpd's view)
 //   (mods 8 is the Super key: the policy's mods hook gets it, the window manager not -- as serve.cpp does; the app's
@@ -99,6 +100,7 @@ static unsigned *s_pScreen;
 static unsigned s_nButtons, s_nMods;
 static int s_nOthers;
 static bool s_bOtherMade;
+static int s_nMenuCmd = -1;			// the last menu command the app sent (the menu bar as the app)
 static std::map<unsigned, std::string> s_Names;	// the "other" programs' names (their title in lower case)
 static int s_nKeys;				// the keys delivered to the app (GUI_EVENT_KEY events)
 
@@ -184,6 +186,7 @@ extern "C" long sim_ws_ctl (int op, long a0, long a1, long a2)
 				return EL_E_BADOP;
 			}
 #endif
+			if ((c->op & 0xFFFF) == EL_OP_MENU_COMMAND) s_nMenuCmd = (int) c->a[0];	// (the menu bar's: the item chosen)
 			long st = el_op (APP_PID, c->op, c->a, (const unsigned char *) c->in, c->in_len, s_Out, &len);
 			if (getenv ("SIM_TRACE")) fprintf (stderr, "server_sim: request %d (window %d) %ld %ld %ld %ld -> %ld\n", c->op & 0xFFFF, c->op >> 16, c->a[0], c->a[1], c->a[2], c->a[3], st);
 			if (c->out != 0) memcpy (c->out, s_Out, len < c->out_cap ? len : c->out_cap);
@@ -424,6 +427,7 @@ static void Expect (const char *key, const char *want)
 		memcpy (&M, s_Out, len < sizeof M ? len : sizeof M);
 		snprintf (got, sizeof got, "%s", serial > 0 && M.title[0] ? M.title : "-");
 	}
+	else if (!strcmp (key, "menucmd")) snprintf (got, sizeof got, "%d", s_nMenuCmd);	// the last EL_OP_MENU_COMMAND the app sent
 	else if (!strcmp (key, "client")) snprintf (got, sizeof got, "%d,%d", F.content_w, F.content_h);
 	else if (!strcmp (key, "keys")) snprintf (got, sizeof got, "%d", s_nKeys);
 	else if (!strcmp (key, "full"))					// the app has the full screen (the server's state, the list's)
@@ -470,6 +474,7 @@ static void Expect (const char *key, const char *want)
 		int k = pk_kind (id);
 		snprintf (got, sizeof got, "%s", k >= 0 && k <= 8 ? K[k] : "?");
 	}
+	else if (!strcmp (key, "bargrab")) snprintf (got, sizeof got, "%d", pk_bar_grab ());	// the menu bar's menu has the keys
 	else if (!strcmp (key, "bar")) snprintf (got, sizeof got, "%d", pk_bar_id () >= 0 ? 1 : 0);
 	else if (!strcmp (key, "home")) snprintf (got, sizeof got, "%d", pk_home ());
 	else if (!strcmp (key, "split")) snprintf (got, sizeof got, "%d", pk_split ());		// (P8) split view on

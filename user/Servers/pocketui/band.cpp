@@ -41,13 +41,15 @@ static void Draw (void)
 	int w = 0, h = 0;
 	unsigned *p = el_core_window_canvas (s_nId, &w, &h);
 	if (p == 0) return;
+	int bFlat = pk_flat ();			// (Onyx Noir: the band continues the glass, light words)
+	unsigned nInk = bFlat ? 0x00ECEEF2 : 0x00202024;
 	for (int y = 0; y < h; y++)				// the Milk menu bar: a light gradient, a line under it
 	{
-		unsigned c = y == h - 1 ? 0x00B4B8C0 : Mix (0x00FAFAFB, 0x00DDE0E5, y, h - 1);
+		unsigned c = bFlat ? 0x000B0C0E : y == h - 1 ? 0x00B4B8C0 : Mix (0x00FAFAFB, 0x00DDE0E5, y, h - 1);
 		for (int x = 0; x < w; x++) p[y * w + x] = c;
 	}
 	// the Onyx gem: a small Aqua diamond
-	int cx = 14, cy = h / 2;
+	int cx = bFlat ? 28 : 14, cy = h / 2;
 	for (int y = -6; y <= 6; y++)
 		for (int x = -6; x <= 6; x++)
 		{
@@ -59,14 +61,14 @@ static void Draw (void)
 	int ty = (h - 16) / 2;
 	if (s_Title[0] != 0)					// the app in front, in bold (twice, one pixel apart)
 	{
-		kapi_draw_text_buf (p, w, h, 30, ty, s_Title, 0x00202024);
-		kapi_draw_text_buf (p, w, h, 31, ty, s_Title, 0x00202024);
+		kapi_draw_text_buf (p, w, h, cx + 16, ty, s_Title, nInk);
+		kapi_draw_text_buf (p, w, h, cx + 17, ty, s_Title, nInk);
 	}
 	int Y = 0, Mo = 0, D = 0, H = 0, Mi = 0, S = 0;
 	kapi_get_datetime (&Y, &Mo, &D, &H, &Mi, &S);		// (the clock not set yet: the time since the boot)
 	{
 		char t[6] = { (char) ('0' + H / 10 % 10), (char) ('0' + H % 10), ':', (char) ('0' + Mi / 10 % 10), (char) ('0' + Mi % 10), 0 };
-		kapi_draw_text_buf (p, w, h, w - 12 - 5 * 8, ty, t, 0x00202024);
+		kapi_draw_text_buf (p, w, h, w - (bFlat ? 22 : 12) - 5 * 8, ty, t, nInk);
 	}
 	el_core_window_present (s_nId);
 }

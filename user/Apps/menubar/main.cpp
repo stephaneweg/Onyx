@@ -29,6 +29,15 @@
 // opens the Onyx menu, as on the desktop (the user, 2026-10-09: "the Onyx menu in pocket too, the icon beside it the
 // shortcut to Home"). A click on the time opens quick settings and the notifications instead of the calendar.
 //
+// In pocket the app's menus are ONE entry, "Menu", after the app's name (docs/COMPACT-SHELL-STUDY.md section 20: a
+// small screen, no pointer): it unfolds as a COLUMN of the menus' titles (then Quit), each opening its items beside
+// it. The menu key opens it -- F10, an Alt pressed and released alone, a pad's Select (PocketUI tells this program:
+// UK_SHELL_KEY_MENU, uikit/win.h) -- and while it is open every key is the menu's (uk_shell_grab): Up / Down move,
+// Right or Enter opens a menu / does the item, Left, Esc or Backspace goes back one level, Page Up / Down the menu
+// before / after, a letter the next title or item starting with it, the menu key again closes. A click works too.
+// In the flat look (the theme Onyx Noir, pocket's default) the band is plain and dark, 22 px clear of the glass'
+// rounded corners.
+//
 // A click on the time opens a calendar (the month; "Open Calendar" starts the Calendar app; "Alarms and timers..."
 // opens the Clock on its Alarms tab -- when the Clock is on the card). A small bell left of the time says an alarm of
 // the Clock rings within 24 hours (SD:/apps/clock.app/alarms.txt read once a minute, through the Clock's own model,
@@ -82,6 +91,10 @@ static Canvas g_cv;
 static int g_open = -1, g_hover = -1;	// open menu / hovered item index
 static int g_titleHot = -1;		// the title under the pointer while no menu is open (a lighter back)
 static bool g_dirty = true, g_pressedTitle = false;
+// Pocket: the ONE "Menu" entry's column (the app's menus g_menus[2..], then Quit), g_open the menu whose items show
+static bool g_col = false;		// the column is open
+static int g_colSel = 0;		// its chosen row (the last one: Quit)
+static int g_rowH = 24;			// an item's row in the open panel
 static int g_lastMin = -1;
 static int g_wifi = -1;			// last drawn Wi-Fi state (1 connected, 0 not)
 static int g_vol = 10, g_mute = 0;	// the master volume, as last read from the kernel
@@ -191,6 +204,7 @@ static bool onyx_is_home (void) { return g_pocket && shell_running (); }
 #define GEM_W	18			// (the Home button's gem and its gap)
 static int g_menu0x (void);		// (the first title's left)
 static bool on_gem (int x) { return x >= g_menu0x () && x < g_menu0x () + 8 + GEM_W - 2; }
+static bool flat_bar (void) { return g_pocket && uk_flat (); }		// the flat, dark band (Onyx Noir in pocket)
 
 static void add_quit_menu (const char *app)
 {
@@ -284,6 +298,11 @@ static void parse (const char *spec, const char *title)
 			if (q < e && *q == '\t') q++;
 			n = 0; while (q < e && n < (int) sizeof it.key - 1) it.key[n++] = *q++;
 			it.key[n] = '\0';
+			if (g_pocket && it.key[0] == '^' && it.key[1] && n + 4 < (int) sizeof it.key)	// pocket: "^S" written "Ctrl+S"
+			{
+				char k[12]; scopy (k, it.key + 1, sizeof k);
+				scopy (it.key, "Ctrl+", sizeof it.key); scopy (it.key + 5, k, (int) sizeof it.key - 5);
+			}
 		}
 		p = *e ? e + 1 : e;
 	}
@@ -292,9 +311,16 @@ static void parse (const char *spec, const char *title)
 // ---- geometry ------------------------------------------------------------------------------
 static int g_menu0x (void) { return g_nmenus > 0 ? g_menus[0].x : 10; }
 static int title_style (int i) { return i == (g_onyx ? 0 : 1) ? 2 : 0; }	// the app's name: bold
+static const char *pk_name (void) { return g_onyx ? "Onyx" : g_app; }	// pocket: the name after the gem
 static void layout_titles (void)
 {
-	int x = 10;
+	int x = flat_bar () ? 14 : 10;
+	if (g_pocket)					// pocket: the gem and the name; the app's menus are the Menu entry's
+	{
+		for (int i = 0; i < g_nmenus; i++) { g_menus[i].x = x; g_menus[i].w = 0; }
+		if (g_nmenus > 0) g_menus[0].w = 8 + GEM_W + uk_tw (pk_name (), 2) + 8;
+		return;
+	}
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		g_menus[i].x = x;
@@ -312,11 +338,51 @@ static int drop_w (const MenuDef &m)
 	}
 	return w;
 }
-static int item_h (const Item &it) { return it.sep ? 9 : g_fh + 8; }
+static int item_h (const Item &it) { return g_col ? (it.sep ? g_rowH / 2 : g_rowH) : it.sep ? 9 : g_fh + 8; }
+// ---- pocket: the Menu entry and its column ----
+static bool pk_has_menu (void) { return g_pocket && !g_onyx && g_nmenus >= 2; }
+static int pk_menu_x (void) { return g_menus[0].x + g_menus[0].w + 8; }
+static int pk_menu_w (void) { return 24 + uk_tw (TR ("Menu")) + 10; }
+static bool on_menu_entry (int x, int y) { return pk_has_menu () && y >= 0 && y < BAR_H && x >= pk_menu_x () - 6 && x < pk_menu_x () + pk_menu_w () + 2; }
+static int col_n (void) { return g_nmenus - 2; }			// the app's menus (row col_n (): Quit)
+static int col_rh (void) { return uk_flat () ? 30 : g_fh + 10; }
+static int col_w (void)
+{
+	int w = 150;
+	for (int i = 2; i < g_nmenus; i++) { int ww = uk_tw (g_menus[i].title, 2) + 16 + 40; if (ww > w) w = ww; }
+	int q = uk_tw (TR ("Quit")) + uk_tw ("Ctrl+Q") + 16 + 40;
+	return q > w ? q : w;
+}
+static int col_x (void) { int x = pk_menu_x () - 4; return x + col_w () > g_sw - 4 ? g_sw - 4 - col_w () : x; }
+static int col_y (void) { return BAR_H + 4; }
+static int col_row_y (int i) { return col_y () + 7 + i * col_rh () + (i >= col_n () && col_n () > 0 ? 9 : 0); }
+static int col_h (void) { return col_row_y (col_n ()) + col_rh () + 7 - col_y (); }
+static int col_at (int x, int y)
+{
+	if (!g_col || x < col_x () || x >= col_x () + col_w ()) return -1;
+	for (int i = 0; i <= col_n (); i++) if (y >= col_row_y (i) && y < col_row_y (i) + col_rh ()) return i;
+	return -1;
+}
+static bool in_col (int x, int y) { return g_col && x >= col_x () && x < col_x () + col_w () && y >= col_y () && y < col_y () + col_h (); }
+static int drop_y (void);
 static int drop_h (const MenuDef &m) { int h = 10; for (int i = 0; i < m.count; i++) h += item_h (m.items[i]); return h; }
-static int drop_x (const MenuDef &m) { int x = m.x; int w = drop_w (m); if (x + w > g_sw - 2) x = g_sw - 2 - w; return x; }
+static int drop_x (const MenuDef &m)
+{
+	int x = g_col ? col_x () + col_w () + 6 : m.x; int w = drop_w (m);
+	if (x + w > g_sw - 2) x = g_sw - 2 - w;
+	return x < 2 ? 2 : x;
+}
+// The open panel's top: under the bar -- or, beside the column, level with its menu's title (kept on the screen,
+// above the hint line).
+static int drop_y (void)
+{
+	if (!g_col || g_open < 2) return BAR_H + 1;
+	int y = col_row_y (g_open - 2) - 7, h = drop_h (g_menus[g_open]);
+	if (y + h > g_sh - 34) y = g_sh - 34 - h;
+	return y < BAR_H + 4 ? BAR_H + 4 : y;
+}
 
-static int item_y (const MenuDef &m, int idx) { int yy = BAR_H + 5; for (int i = 0; i < idx; i++) yy += item_h (m.items[i]); return yy; }
+static int item_y (const MenuDef &m, int idx) { int yy = drop_y () + 4; for (int i = 0; i < idx; i++) yy += item_h (m.items[i]); return yy; }
 static int sub_w (const SubDef &sd)
 {
 	int w = 140;
@@ -357,7 +423,7 @@ static int title_at (int x, int y)
 }
 // the status icons on the right: the clock, the Wi-Fi state left of it, the speaker left of that
 static int clk_w (void) { return uk_tw ("00:00", 2); }
-static int clk_x (void) { return g_sw - clk_w () - 14; }
+static int clk_x (void) { return g_sw - clk_w () - (flat_bar () ? 22 : 14); }
 static bool on_clock (int x, int y) { return y >= 0 && y < BAR_H && x >= clk_x () - 6 && x < g_sw; }
 static int bell_w (void);
 static int wifi_x (void) { return clk_x () - 27 - bell_w (); }
@@ -377,7 +443,7 @@ static int item_at (int x, int y)		// index in the open menu, -1 = none
 {
 	if (g_open < 0) return -1;
 	const MenuDef &m = g_menus[g_open];
-	int dx = drop_x (m), dw = drop_w (m), yy = BAR_H + 5;
+	int dx = drop_x (m), dw = drop_w (m), yy = drop_y () + 4;
 	if (x < dx || x >= dx + dw) return -1;
 	for (int i = 0; i < m.count; i++)
 	{
@@ -448,6 +514,7 @@ static void draw_speaker (int x, int y)
 // blended over what lies below (the canvas is see-through there).
 static void panel (int x, int y, int w, int h)
 {
+	if (uk_flat ()) { uk_rbox (g_cv, x, y, w, h, 12, UK_N_BG2, UK_N_BG2); uk_rline (g_cv, x, y, w, h, 12, UK_N_LINE, 255); return; }
 	uk_rbox (g_cv, x, y, w, h, 8, uk_tone (C_DROP, 140), C_DROP);
 	uk_rline (g_cv, x, y, w, h, 8, C_OUT, 200);
 }
@@ -800,20 +867,44 @@ static void draw_gem (int x, int y, bool lit)
 		}
 }
 
+// The gem in one colour, 15 px (the flat look): a lozenge cut at its top, as a cut stone.
+static void draw_gem_flat (int x, int y, unsigned c)
+{
+	VPath p;
+	int g[10] = { V (x + 3), V (y + 1), V (x + 12), V (y + 1), V (x + 15), V (y + 5), V (x + 7) + 8, V (y + 14), V (x), V (y + 5) };
+	p.poly (g, 5);
+	p.fill (g_cv, c);
+}
+
 static void draw (void)
 {
-	bool full = g_open >= 0 || g_volOpen || g_calOpen || g_usbOpen;
+	bool full = g_open >= 0 || g_col || g_volOpen || g_calOpen || g_usbOpen;
 	int tipH = !full && g_trayHot >= 0 && g_trayHot < g_ntray && g_tray[g_trayHot].tip[0] ? g_fh + 16 : 0;	// (an icon's tip)
 	int h = full ? g_sh : BAR_H + tipH;
-	if (full) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, CATCH);	// (catches a click elsewhere)
+	if (full) g_cv.fillRect (0, BAR_H, g_sw, g_sh - BAR_H, g_col && uk_flat () ? (140u << 24) | UK_N_BG0 : CATCH);	// (catches a click elsewhere; the column: the app dimmed)
 	else if (tipH) g_cv.fillRect (0, BAR_H, g_sw, tipH, CLEAR);
 	uk_paint_alpha (true);
 	// the bar: a light gradient of the face, a light line on top, a darker one below
-	uk_rbox (g_cv, 0, 0, g_sw, BAR_H - 1, 0, uk_tone (C_MENUBAR, 196), uk_tone (C_MENUBAR, 150));
-	for (int x = 0; x < g_sw; x++) { uk_blend_px (g_cv, x, 0, 0x00FFFFFF, 120); g_cv.pixel (x, BAR_H - 1, C_OUT); }
+	if (flat_bar ()) g_cv.fillRect (0, 0, g_sw, BAR_H, UK_N_BG0);	// (the flat look: it continues the glass, no line)
+	else
+	{
+		uk_rbox (g_cv, 0, 0, g_sw, BAR_H - 1, 0, uk_tone (C_MENUBAR, 196), uk_tone (C_MENUBAR, 150));
+		for (int x = 0; x < g_sw; x++) { uk_blend_px (g_cv, x, 0, 0x00FFFFFF, 120); g_cv.pixel (x, BAR_H - 1, C_OUT); }
+	}
 	for (int i = 0; i < g_nmenus; i++)
 	{
 		const MenuDef &m = g_menus[i];
+		if (i > 0 && g_pocket) break;			// (pocket: the app's menus are the Menu entry's)
+		if (i == 0 && g_pocket && uk_flat ())		// the flat look: the gem (the accent's on the home), the name
+		{
+			bool lit = g_onyx && onyx_is_home ();
+			int tx = m.x + 8 + GEM_W - 4;
+			if (i == g_open && !g_col) uk_rbox (g_cv, tx, 4, m.x + m.w - 2 - tx, 22, 6, UK_N_BG3, UK_N_BG3);
+			else if (i == g_titleHot) uk_rbox (g_cv, tx, 4, m.x + m.w - 2 - tx, 22, 6, UK_N_BG2, UK_N_BG2);
+			draw_gem_flat (m.x + 8, 8, lit || !g_onyx ? (lit ? UK_N_ACCENT : UK_N_TEXT1) : UK_N_TEXT1);
+			uk_text_l (g_cv, m.x + 8 + GEM_W, 0, BAR_H, pk_name (), g_onyx && !lit ? UK_N_TEXT2 : UK_N_TEXT1, 2);
+			continue;
+		}
 		if (i == 0 && g_pocket)				// pocket: the gem (Home, lit on the home), then "Onyx" (its menu)
 		{
 			bool lit = g_onyx && onyx_is_home ();
@@ -822,13 +913,28 @@ static void draw (void)
 			if (i == g_open) uk_hilite (g_cv, tx, 3, m.x + m.w - 2 - tx, BAR_H - 7, 5, true);
 			else if (i == g_titleHot) uk_rbox (g_cv, tx, 3, m.x + m.w - 2 - tx, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
 			draw_gem (m.x + 8, (BAR_H - 1 - 13) / 2, lit);
-			uk_text_l (g_cv, m.x + 8 + GEM_W, 0, BAR_H - 1, m.title, i == g_open ? C_SEL_TEXT : C_BARTXT, title_style (i));
+			uk_text_l (g_cv, m.x + 8 + GEM_W, 0, BAR_H - 1, pk_name (), i == g_open ? C_SEL_TEXT : C_BARTXT, 2);
 			continue;
 		}
 		if (i == g_open) uk_hilite (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, true);
 		else if (i == g_titleHot)			// under the pointer: a shade lighter than the bar
 			uk_rbox (g_cv, m.x + 2, 3, m.w - 4, BAR_H - 7, 5, uk_tone (C_MENUBAR, 232), uk_tone (C_MENUBAR, 208));
 		uk_text_l (g_cv, m.x + 8, 0, BAR_H - 1, m.title, i == g_open ? C_SEL_TEXT : C_BARTXT, title_style (i));
+	}
+	if (pk_has_menu ())				// pocket: the ONE Menu entry (the focus' ring while its column is open)
+	{
+		int x = pk_menu_x (), w = pk_menu_w (), y = 4, h = 22;
+		unsigned ink = g_col ? (uk_flat () ? (unsigned) UK_N_TEXT1 : C_BARTXT) : C_BARDIM;
+		if (g_col)
+		{
+			unsigned f = uk_flat () ? (unsigned) UK_N_BG3 : uk_tone (C_MENUBAR, 120);
+			uk_rbox (g_cv, x - 4, y, w, h, 6, f, f);
+			uk_rline (g_cv, x - 7, y - 3, w + 6, h + 6, 8, C_ACCENT, 255);
+			uk_rline (g_cv, x - 6, y - 2, w + 4, h + 4, 7, C_ACCENT, 255);
+		}
+		else if (g_titleHot == -2) { unsigned f = uk_flat () ? (unsigned) UK_N_BG2 : uk_tone (C_MENUBAR, 220); uk_rbox (g_cv, x - 4, y, w, h, 6, f, f); }
+		for (int k = 0; k < 3; k++) g_cv.fillRect (x + 2, y + 6 + k * 4, 12, 2, ink);
+		uk_text_l (g_cv, x + 22, 0, BAR_H - (uk_flat () ? 0 : 1), TR ("Menu"), ink);
 	}
 	int hh = 0, mm = 0;
 	kapi_get_datetime (0, 0, 0, &hh, &mm, 0);
@@ -856,12 +962,36 @@ static void draw (void)
 	if (g_usbOpen) draw_usb_box ();
 	if (g_calOpen) draw_calendar_box ();
 
+	if (g_col)					// pocket: the column of the app's menus, then Quit
+	{
+		int cx = col_x (), cw = col_w (), rh = col_rh ();
+		bool here = g_open < 0;				// (the focus is in the column: no menu's items open)
+		panel (cx, col_y (), cw, col_h ());
+		for (int i = 0; i <= col_n (); i++)
+		{
+			int ry = col_row_y (i);
+			bool sel = i == g_colSel, quit = i == col_n ();
+			if (quit && col_n () > 0) uk_etch_h (g_cv, cx + 10, ry - 5, cw - 20, C_DROP);
+			if (sel && here) uk_hilite (g_cv, cx + 5, ry, cw - 10, rh, 7, true);
+			else if (sel) { unsigned f = uk_flat () ? (unsigned) UK_N_BG3 : uk_mix (C_DROP, C_ACCENT, 60); uk_rbox (g_cv, cx + 5, ry, cw - 10, rh, 7, f, f); }
+			unsigned ink = sel && here ? C_SEL_TEXT : C_FIELD_TEXT;
+			uk_text_l (g_cv, cx + 16, ry, rh, quit ? TR ("Quit") : g_menus[2 + i].title, ink, sel && !here ? 2 : 0);
+			if (quit) uk_text_l (g_cv, cx + cw - 16 - uk_tw ("Ctrl+Q"), ry, rh, "Ctrl+Q", sel && here ? C_SEL_TEXT : C_DIM);
+			else uk_glyph (g_cv, WKG_CHEV_RIGHT, cx + cw - 18, ry + rh / 2, 8, sel ? ink : C_DIM);
+		}
+		// the foot: this device's buttons (and what they are on a keyboard: the arrows, Enter, Esc, F10)
+		static UkPadHint H[4];
+		H[0] = { "+", TR ("move") }; H[1] = { "A", TR ("choose") }; H[2] = { "B", TR ("back") }; H[3] = { "s", TR ("close") };
+		g_cv.fillRect (0, g_sh - 30, g_sw, 30, uk_flat () ? (unsigned) UK_N_BG0 : C_MENUBAR);
+		int hw = uk_pad_hints (g_cv, 0, 0, 18, H, 4, 0, true);
+		uk_pad_hints (g_cv, (g_sw - hw) / 2, g_sh - 25, 18, H, 4, uk_flat () ? (unsigned) UK_N_TEXT2 : C_BARDIM);
+	}
 	if (g_open >= 0)
 	{
 		const MenuDef &m = g_menus[g_open];
 		int dx = drop_x (m), dw = drop_w (m), dh = drop_h (m);
-		panel (dx, BAR_H + 1, dw, dh);
-		int yy = BAR_H + 5;
+		panel (dx, drop_y (), dw, dh);
+		int yy = drop_y () + 4;
 		for (int i = 0; i < m.count; i++)
 		{
 			const Item &it = m.items[i];
@@ -920,7 +1050,103 @@ static void open_menu (int i)
 	if (i == 0) build_onyx_menu (g_menus[0]);		// the apps as they are now
 	g_open = i; g_hover = -1; g_sub = -1; g_subOwner = -1; g_subHover = -1; g_dirty = true;
 }
-static void close_menu (void) { g_open = -1; g_hover = -1; g_sub = -1; g_subOwner = -1; g_subHover = -1; g_dirty = true; }
+static void close_menu (void)
+{
+	g_open = -1; g_hover = -1; g_sub = -1; g_subOwner = -1; g_subHover = -1; g_dirty = true;
+	if (g_col) { g_col = false; uk_shell_grab (0); }
+}
+// ---- pocket: the Menu entry's column ----
+static void col_open (void)
+{
+	if (!pk_has_menu ()) return;
+	close_menu ();
+	g_volOpen = false; g_calOpen = false; g_usbOpen = false;
+	g_col = true; g_colSel = 0; g_dirty = true;
+	uk_shell_grab (1);				// every key the menu's (PocketUI; the pad moves in it)
+}
+static int first_item (const MenuDef &m, int from, int dir)	// the next item that is not a separator, -1 none
+{
+	for (int k = 0; k < m.count; k++)
+	{
+		int i = ((from + dir * k) % m.count + m.count) % m.count;
+		if (!m.items[i].sep) return i;
+	}
+	return -1;
+}
+static void col_enter (int row, bool keys)	// a row chosen: a menu's items open beside it; Quit: done
+{
+	if (row < 0 || row > col_n ()) return;
+	g_colSel = row; g_dirty = true;
+	if (row == col_n ()) { close_menu (); draw (); uk_win_menu_command (MENU_QUIT); return; }
+	const MenuDef &m = g_menus[2 + row];
+	g_rowH = col_rh ();				// (a long menu: its rows closer, to stay on the screen)
+	int nrow = 0, nsep = 0;
+	for (int i = 0; i < m.count; i++) if (m.items[i].sep) nsep++; else nrow++;
+	int room = g_sh - 34 - BAR_H - 4 - 10;
+	while (g_rowH > g_fh + 2 && nrow * g_rowH + nsep * (g_rowH / 2) > room) g_rowH--;
+	g_open = 2 + row; g_sub = -1; g_subOwner = -1;
+	g_hover = keys ? first_item (m, 0, 1) : -1;
+}
+static void col_key (int code)
+{
+	int n = col_n () + 1;
+	if (code == KEY_F1 + 9) { close_menu (); return; }		// F10 again
+	if (g_open >= 2)					// in a menu's items
+	{
+		const MenuDef &m = g_menus[g_open];
+		switch (code)
+		{
+		case KEY_UP:   g_hover = first_item (m, g_hover < 0 ? m.count - 1 : g_hover - 1, -1); break;
+		case KEY_DOWN: g_hover = first_item (m, g_hover < 0 ? 0 : g_hover + 1, 1); break;
+		case KEY_HOME: g_hover = first_item (m, 0, 1); break;
+		case KEY_END:  g_hover = first_item (m, m.count - 1, -1); break;
+		case KEY_ENTER: case ' ':
+			if (g_hover >= 0) { Item it = m.items[g_hover]; close_menu (); draw (); run_item (it); }
+			return;
+		case KEY_LEFT: case 0x1b: case KEY_BACKSPACE: g_open = -1; g_hover = -1; break;
+		case KEY_PGUP: col_enter ((g_colSel + col_n () - 1) % col_n (), true); break;
+		case KEY_PGDN: col_enter ((g_colSel + 1) % col_n (), true); break;
+		default:
+			if (code > 32 && code < 127)			// a letter: the next item starting with it
+				for (int k = 1; k <= m.count; k++)
+				{
+					int i = ((g_hover < 0 ? -1 : g_hover) + k) % m.count;
+					if (!m.items[i].sep && lx_low (m.items[i].label[0]) == lx_low ((char) code)) { g_hover = i; break; }
+				}
+		}
+		g_dirty = true;
+		return;
+	}
+	switch (code)						// in the column
+	{
+	case KEY_UP:   g_colSel = (g_colSel + n - 1) % n; break;
+	case KEY_DOWN: g_colSel = (g_colSel + 1) % n; break;
+	case KEY_HOME: case KEY_PGUP: g_colSel = 0; break;
+	case KEY_END:  case KEY_PGDN: g_colSel = n - 1; break;
+	case KEY_RIGHT: if (g_colSel < col_n ()) col_enter (g_colSel, true); break;
+	case KEY_ENTER: case ' ': col_enter (g_colSel, true); return;
+	case 0x1b: case KEY_BACKSPACE: close_menu (); return;
+	default:
+		if (code > 32 && code < 127)
+			for (int k = 1; k <= n; k++)
+			{
+				int i = (g_colSel + k) % n;
+				const char *t = i == col_n () ? TR ("Quit") : g_menus[2 + i].title;
+				if (lx_low (t[0]) == lx_low ((char) code)) { g_colSel = i; break; }
+			}
+	}
+	g_dirty = true;
+}
+// PocketUI's news for the menu bar: the menu key, then every key while the column is open.
+static void bar_key (unsigned long, int ev, long v)
+{
+	if (ev != UK_SHELL_KEYEV) return;
+	int code = UK_SHELL_KEY_CODE (v);
+	if (code == UK_SHELL_KEY_CANCEL) { if (g_col) { g_col = false; close_menu (); } return; }
+	if (code == UK_SHELL_KEY_MENU) { if (g_col) close_menu (); else col_open (); return; }
+	if (code == UK_SHELL_KEY_HELD || code == UK_SHELL_KEY_SUPER) return;
+	if (g_col) col_key (code);
+}
 static void open_sub (int owner)
 {
 	const Item &it = g_menus[g_open].items[owner];
@@ -1064,6 +1290,15 @@ static void ptr (unsigned long, int ev, long v)
 			g_volOpen = false; g_dirty = true;			// a click outside closes it
 			if (t < 0) break;
 		}
+		if (g_col)					// pocket: the column -- a title opens its items, an item is done on release
+		{
+			int r = col_at (x, y);
+			if (r >= 0) { col_enter (r, false); break; }
+			if (g_open >= 2 && item_at (x, y) >= 0) break;
+			close_menu ();
+			if (on_menu_entry (x, y)) break;
+		}
+		else if (on_menu_entry (x, y)) { col_open (); break; }
 		if (t == 0 && onyx_is_home () && on_gem (x))	// pocket: the gem is Home (again: back to the app); the name: the menu
 		{
 			if (g_open >= 0) close_menu ();
@@ -1133,6 +1368,14 @@ static void ptr (unsigned long, int ev, long v)
 		}
 		if (g_open >= 0)
 		{
+			if (g_col)					// (the column: the row pointed at, a menu's item)
+			{
+				int r = col_at (x, y);
+				if (r >= 0 && r != g_colSel && g_open < 0) { g_colSel = r; g_dirty = true; }
+				int i = g_open >= 2 ? item_at (x, y) : -1;
+				if (g_open >= 2 && i != g_hover && (i >= 0 || !in_col (x, y))) { g_hover = i; g_dirty = true; }
+				break;
+			}
 			if (t >= 0 && t != g_open && !(t == 0 && onyx_is_home ())) open_menu (t);	// slide across titles
 			if (in_sub (x, y))
 			{
@@ -1145,6 +1388,7 @@ static void ptr (unsigned long, int ev, long v)
 			if (i >= 0 && g_menus[g_open].items[i].sub >= 0) open_sub (i);
 			else if (i >= 0 && g_sub >= 0) { g_sub = -1; g_subOwner = -1; g_dirty = true; }
 		}
+		if (t < 0 && on_menu_entry (x, y)) t = -2;		// (pocket: the Menu entry)
 		if (t != g_titleHot) { g_titleHot = t; g_dirty = true; }	// the title pointed at
 		break;
 	case GUI_EVENT_PTR_LEAVE:
@@ -1170,15 +1414,17 @@ int main (void)
 	uk_win_resize (g_sw, BAR_H);		// reserves the strip (the kernel keeps the minimum)
 	g_cv.adopt (g_fb, g_sw, g_sh);
 	uikit::init ();					// the fonts, the theme: the palette
-	if (ft_uikit_install ("DejaVu Sans", 13))		// FreeType's anti-aliased text (else the bitmap font)
+	{ struct uk_win_server_info si; memset (&si, 0, sizeof si); si.size = sizeof si; uk_win_server (&si); g_pocket = si.mode == UK_MODE_POCKET; }
+	if (flat_bar () ? ft_uikit_install ("Selawik", 14) : ft_uikit_install ("DejaVu Sans", 13))	// FreeType's anti-aliased text (else the bitmap font)
 		g_fh = uk_fh ();
 	uk_lang_init ();					// the words in the system's language (after the text face)
 	C_BARTXT = uk_ink_on (uk_tone (C_MENUBAR, 176));
 	C_BARDIM = uk_mix (uk_tone (C_MENUBAR, 176), C_BARTXT, 110);
 	C_DROP = C_FIELD; C_DIM = uk_mix (C_FIELD, C_FIELD_TEXT, 130); C_OUT = uk_tone (C_MENUBAR, 70);
+	if (uk_flat ()) { C_BARTXT = UK_N_TEXT1; C_BARDIM = UK_N_TEXT2; C_DROP = UK_N_BG2; C_DIM = UK_N_TEXT3; C_OUT = UK_N_LINE; }
 	{ int yy = 2026, mo = 1, dd = 1; kapi_get_datetime (&yy, &mo, &dd, 0, 0, 0); g_cal = new CalCard (yy, mo, dd); }
 	uk_win_on_pointer (ptr);
-	{ struct uk_win_server_info si; memset (&si, 0, sizeof si); si.size = sizeof si; uk_win_server (&si); g_pocket = si.mode == UK_MODE_POCKET; }
+	if (g_pocket) uk_shell_events (bar_key);			// (PocketUI: the menu key, the keys of the open column)
 	alarms_init (g_alarms);
 	bell_poll ();							// (the Clock's alarms: the bell)
 	volume_restore ();						// the saved volume (SD:/etc/sound.ini)
@@ -1227,6 +1473,6 @@ int main (void)
 		}
 		if (g_calOpen && !g_cal->valid) g_dirty = true;		// (the calendar changed its month)
 		if (g_dirty) draw ();
-		msleep (g_open >= 0 || g_volOpen || g_calOpen || g_usbOpen ? 16 : 50);
+		msleep (g_open >= 0 || g_col || g_volOpen || g_calOpen || g_usbOpen ? 16 : 50);
 	}
 }

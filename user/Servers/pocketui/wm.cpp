@@ -82,6 +82,15 @@ static unsigned s_nTaskSig;					// what the shell was last told of the tasks
 static unsigned s_nMods;					// the modifiers held (Super too)
 static boolean s_bSuperAlone;					// a Super pressed, no key since
 
+// THE MENU BAR'S KEYS (pocket: the app's menus are ONE "Menu" entry of the top band, reached without a pointer --
+// docs/COMPACT-SHELL-STUDY.md section 20): the menu bar's program gives its handler (PK_OP_EVENTS) and is told the menu
+// key -- F10, an Alt pressed and released alone (a pad's Select: the shell types F10) -- as UK_SHELL_KEY_MENU; while
+// its menu is open it takes every key (PK_OP_GRAB), but the shell's own (Home, Alt+Tab...): those close the menu
+// (UK_SHELL_KEY_CANCEL) and go to the shell.
+static unsigned s_nBarPid;
+static u64 s_ulBarEv;
+static boolean s_bBarGrab, s_bAltAlone;
+
 // (P8) SPLIT VIEW: two programs share the work area -- the front one (it has the keys, the menu bar shows its menus)
 // and the one beside it -- each on its half, the divider between them (docs/COMPACT-SHELL-STUDY.md section 6.7).
 // Super+Left / Right: the front program to that half, the program fronted before it on the other; Super+Up: the front
@@ -198,6 +207,26 @@ static boolean ShellPush (int nEvent, long lValue)
 	g_pElWin[id]->PushEvent (Ev);
 	return TRUE;
 }
+
+// The menu bar's program still has the bar (else: its handler and its grab forgotten).
+int pk_bar_id (void);
+static boolean BarAlive (void)
+{
+	if (s_nBarPid == 0 || s_ulBarEv == 0) return FALSE;
+	int id = pk_bar_id ();
+	if (id >= 0 && g_pElWin[id] != 0 && g_pElWin[id]->OwnerPid () == s_nBarPid) return TRUE;
+	s_nBarPid = 0; s_ulBarEv = 0; s_bBarGrab = FALSE;
+	return FALSE;
+}
+static boolean BarPush (long lValue)
+{
+	if (!BarAlive ()) return FALSE;
+	GUIEvent Ev;
+	Ev.ulHandler = s_ulBarEv; Ev.ulSender = 0; Ev.nEvent = UK_SHELL_KEYEV; Ev.lValue = lValue; Ev.nMods = s_nMods & 7;
+	g_pElWin[pk_bar_id ()]->PushEvent (Ev);
+	return TRUE;
+}
+int pk_bar_grab (void)		{ return s_bBarGrab && BarAlive () ? 1 : 0; }
 
 // A program's window, normal (not the band, not a toast, not the desktop's): what "one app in front" counts.
 static boolean AppWindow (CWindow *p)
@@ -634,6 +663,17 @@ static int Op (unsigned nPid, int nOp, int nWin, const long *a, const unsigned c
 		*pnStatus = 1;
 		return 1;
 	case PK_OP_EVENTS: case PK_OP_KEYS: case PK_OP_FRONT: case PK_OP_GRAB:
+		if (nPid != s_nShell && (nOp == PK_OP_EVENTS || nOp == PK_OP_GRAB))	// the menu bar's program: the menu's keys
+		{
+			int nBar = pk_bar_id ();
+			if (nBar >= 0 && g_pElWin[nBar] != 0 && g_pElWin[nBar]->OwnerPid () == nPid)
+			{
+				if (nOp == PK_OP_EVENTS) { s_nBarPid = nPid; s_ulBarEv = (u64) a[0]; s_bBarGrab = FALSE; }
+				else if (nPid == s_nBarPid) s_bBarGrab = a[0] != 0;
+				*pnStatus = 1;
+				return 1;
+			}
+		}
 		if (nPid != s_nShell || s_nShell == 0) { *pnStatus = -KAPI_EPERM; return 1; }
 		*pnStatus = ShellOp (nOp, a, pIn, nInLen);
 		return 1;
@@ -911,6 +951,15 @@ static void Mods (unsigned mods)
 {
 	unsigned nOld = s_nMods;
 	s_nMods = mods;
+	// Alt pressed and released alone: the menu key (the bar's; not over the shell's overlay, a full-screen program)
+	if ((mods & 15) == MOD_ALT && (nOld & 15) == 0) s_bAltAlone = TRUE;
+	else if ((mods & 15) != 0) s_bAltAlone = FALSE;
+	else if (s_bAltAlone)
+	{
+		s_bAltAlone = FALSE;
+		if ((nOld & 15) == MOD_ALT && !s_bGrab && g_pElWM != 0 && g_pElWM->FullscreenWindow () == 0)
+			BarPush (UK_SHELL_KEY (0, UK_SHELL_KEY_MENU));
+	}
 	if (s_nShell == 0 || s_ulShellEv == 0) return;
 	if ((mods & KAPI_WS_MOD_SUPER) && !(nOld & KAPI_WS_MOD_SUPER)) s_bSuperAlone = (mods & 7) == 0;
 	else if (mods & 7) s_bSuperAlone = FALSE;
@@ -965,6 +1014,23 @@ static int KeysToFront (const char *keys, unsigned mods)
 	return 1;
 }
 
+// The look (SD:/etc/pocketui.ini "[look] theme =", as the pocket UIKit reads it -- uikit/theme.cpp): flat and dark
+// (Onyx Noir, the pocket mode's default) unless another theme or "system" is named. PocketUI's own pixels follow: its
+// status band, the wallpaper behind the cards.
+int pk_flat (void)
+{
+	static int s_nFlat = -1;
+	if (s_nFlat >= 0) return s_nFlat;
+	s_nFlat = g_nPkMode == PK_MODE_POCKET ? 1 : 0;
+	static char b[4096];
+	if (s_nFlat && ReadFile ("SD:/etc/pocketui.ini", b, sizeof b) > 0 && !IniHas (b, "look", "theme", "onyx noir"))
+	{
+		static const char *const Other[] = { "system", "peach", "steel", "sage", "brick", "slate", "milk", "dark coffee", 0 };
+		for (int i = 0; Other[i] != 0; i++) if (IniHas (b, "look", "theme", Other[i])) s_nFlat = 0;
+	}
+	return s_nFlat;
+}
+
 // (P8) Split view's keys, PocketUI's own (before the shell's): -> 1 taken.
 static int SplitKey (const char *keys, unsigned mods)
 {
@@ -998,9 +1064,46 @@ static int SplitKey (const char *keys, unsigned mods)
 	return 1;
 }
 
+// The menu bar's keys -> 1 taken.
+static boolean ShellWants (const char *keys, unsigned mods)	// (one of the shell's system keys: Home, Alt+Tab...)
+{
+	const char *p = keys;
+	unsigned m = 0;
+	int code = el_core_next_key (&p, &m);
+	if (code == 0 || *p != 0 || s_nShell == 0) return FALSE;
+	unsigned k = (unsigned) UK_SHELL_KEY ((mods | m) & 15, code);
+	if (code >= 'A' && code <= 'Z' && ((mods | m) & (MOD_ALT | MOD_CTRL | KAPI_WS_MOD_SUPER)))
+		k = (unsigned) UK_SHELL_KEY (((mods | m) & 15) & ~MOD_SHIFT, code + 32);
+	for (int i = 0; i < s_nShellKeys; i++) if ((unsigned) s_ShellKeys[i] == k) return TRUE;
+	return FALSE;
+}
+static int BarKey (const char *keys, unsigned mods)
+{
+	s_bAltAlone = FALSE;					// (Alt + a key: not Alt alone)
+	if (!BarAlive () || g_pElWM->FullscreenWindow () != 0) return 0;
+	const char *p = keys;
+	unsigned m = 0;
+	int code = el_core_next_key (&p, &m);
+	if (code == 0) return 0;
+	if (s_bBarGrab)
+	{
+		if (ShellWants (keys, mods) || (mods & KAPI_WS_MOD_SUPER))
+		{
+			s_bBarGrab = FALSE;
+			BarPush (UK_SHELL_KEY (0, UK_SHELL_KEY_CANCEL));
+			return 0;
+		}
+		for (p = keys; m = 0, (code = el_core_next_key (&p, &m)) != 0; ) BarPush (UK_SHELL_KEY ((mods | m) & 7, code));
+		return 1;
+	}
+	if (*p != 0 || code != KEY_F1 + 9 || ((mods | m) & 15) != 0 || s_bGrab) return 0;	// F10 alone
+	return BarPush (UK_SHELL_KEY (0, UK_SHELL_KEY_MENU)) ? 1 : 0;
+}
+
 static int Key (const char *keys, unsigned mods)
 {
 	if (SplitKey (keys, mods)) return 1;
+	if (BarKey (keys, mods)) return 1;
 	int r = ShellKey (keys, mods);
 	if (r >= 0) return r ? r : KeysToFront (keys, mods);
 	if (keys[0] != '\t' || keys[1] != '\0' || (mods & MOD_ALT) == 0 || (mods & MOD_CTRL) != 0) return KeysToFront (keys, mods);
@@ -1229,7 +1332,7 @@ static void Matte (CWindow *pFront, int ax, int ay, int aw, int ah)
 	// its colour: the window's own background (its client area's top left pixel), else Milk's face; in console mode
 	// black (a game on a television: its picture over black, not over its first pixel's colour -- the user, 2026-10-09)
 	const u32 *pC = pFront->CanvasBuffer ();
-	unsigned c = g_nPkMode == PK_MODE_CONSOLE ? 0 : pC != 0 ? pC[0] & 0x00FFFFFF : 0x00E4E4E4;
+	unsigned c = g_nPkMode == PK_MODE_CONSOLE ? 0 : pC != 0 ? pC[0] & 0x00FFFFFF : pk_flat () ? 0x000B0C0E : 0x00E4E4E4;
 	if (c != s_nMatteColour)
 	{
 		s_nMatteColour = c;
@@ -1464,7 +1567,8 @@ static void Start (int w, int, int restart)
 {
 	g_nPkSelf = (unsigned) kapi_getpid (0);
 	g_pElWM->SetDesk (0, 1);					// one workspace
-	if (!restart) el_core_wallpaper (0x00203050, 24, kapi_get_ticks () | 1);	// (the navy wallpaper behind the cards)
+	if (!restart && pk_flat ()) el_core_wallpaper (0x000B0C0E, 0, 1);		// (the flat look: the glass' black behind the cards)
+	else if (!restart) el_core_wallpaper (0x00203050, 24, kapi_get_ticks () | 1);	// (the navy wallpaper behind the cards)
 	pk_band_make (g_nPkMode == PK_MODE_POCKET && pk_bar_id () < 0 ? w : 0);
 	Recentre ();
 }
@@ -1475,6 +1579,7 @@ void pk_main_registered (int restart);				// (main.cpp: the alias)
 // home -- the console's menu over a game is moved with the pad, the game under it reads nothing meanwhile.
 static unsigned Focus (unsigned pid)
 {
+	if (s_bBarGrab && BarAlive ()) return s_nBarPid;		// (the menu is open: the pad moves in it, not in the app)
 	return s_nShell != 0 && (s_bGrab || s_bHome) ? s_nShell : pid;
 }
 

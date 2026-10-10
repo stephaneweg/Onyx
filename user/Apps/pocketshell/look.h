@@ -58,10 +58,21 @@ static inline int lk_cov (int sd)			// a signed distance -> the pixel's coverage
 	return c <= 0 ? 0 : c >= 16 ? 255 : c * 255 / 16;
 }
 
+// THE FLAT LOOK (the theme Onyx Noir, uk_flat (): docs/COMPACT-SHELL-STUDY.md section 20): no gradient, no shadow, no
+// glow. The launcher's main pieces are drawn for it (home.h, main.cpp: `if (uk_flat ())`); what is left -- the
+// search's results, the Today column, the documents -- goes through the three functions below, which then turn the
+// Milk look's light faces into dark surfaces and its soft outlines into hairlines.
+static unsigned lk_flat_face (unsigned c)
+{
+	if (uk_bright (c) >= 200) return UK_N_BG2;		// a white plate, a light card: a raised surface
+	return c;
+}
+
 // A rounded box filled with a vertical gradient top -> bottom, at opacity alpha.
 static void lk_fill (Canvas &cv, int x, int y, int w, int h, int r, unsigned top, unsigned bottom, int alpha = 255)
 {
 	if (w <= 0 || h <= 0) return;
+	if (uk_flat ()) { top = bottom = lk_flat_face (top); if (uk_bright (top) < 200 && top == UK_N_BG2) alpha = 255; }
 	LkBox b = lk_box (x, y, w, h, r);
 	if (r * 2 > w) r = w / 2;
 	if (r * 2 > h) r = h / 2;
@@ -97,6 +108,7 @@ static void lk_fill (Canvas &cv, int x, int y, int w, int h, int r, unsigned top
 static void lk_ring (Canvas &cv, int x, int y, int w, int h, int r, int t16, unsigned c, int alpha = 255)
 {
 	if (w <= 0 || h <= 0) return;
+	if (uk_flat () && (c == 0x000000 || c == 0xFFFFFF)) { c = UK_N_LINE; alpha = 255; }	// (a soft outline: a hairline)
 	LkBox b = lk_box (x, y, w, h, r);
 	int band = (t16 + 31) / 16 + 1;					// (the pixels near the edge only)
 	if (r * 2 > w) r = w / 2;
@@ -129,6 +141,7 @@ static int lk_edge (int s)
 // A soft shadow (or, in Aqua, a glow) under a rounded box: blur = its standard deviation in pixels, dy its drop.
 static void lk_shadow (Canvas &cv, int x, int y, int w, int h, int r, int blur, int alpha, int dy = 0, unsigned c = 0x060E1C)
 {
+	if (uk_flat ()) return;						// (flat: no shadow, no glow)
 	if (blur < 1) blur = 1;
 	y += dy;
 	LkBox b = lk_box (x, y, w, h, r);

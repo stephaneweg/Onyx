@@ -136,3 +136,7 @@ with the text fields	avec les champs de texte
 on demand	sur demande
 Show keyboard	Afficher le clavier
 Hide keyboard	Masquer le clavier
+tasks	tâches
+Open apps	Applis ouvertes
+the most recent first	la plus récente en premier
+close it	la fermer

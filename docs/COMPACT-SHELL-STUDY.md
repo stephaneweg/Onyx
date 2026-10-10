@@ -1855,6 +1855,108 @@ the 11 categories do not fit (11 × 58 lp > 592): the row scrolls.
 10. **The pulsing ring**: keep the pulse (it redraws while idle, a few small rectangles) or a still ring?
     *Recommended: pulse, about 1.2 s; still when the screen saver dims.*
 
+## 20. PocketUI on the PocketTerm35: "Onyx Noir", as built (2026-10-10, the branch `PocketTerm`)
+
+The Waveshare **PocketTerm35** is a handheld with a Pi 4 inside: a 3.5" **640 × 480** landscape screen (about 229
+ppi, its glass' corners rounded), a D-pad, A / B / X / Y, L / R, Start / Select and a 67-key thumb keyboard --
+**no pointer**. The user chose direction 1 of the mock-ups `docs/compact-shell/mockups/pocketterm/` (their
+generator: `tools/screenshot/mockup_pocketterm.py`): today's pocket shell, **flat and dark**. This section says what
+is built of it on the branch `PocketTerm`, and where it differs from the pictures. The captures of the real code, made
+in the PC simulator (`sh tools/tests/server_sim/pocketterm.sh`), are in `docs/compact-shell/real/pocketterm/`.
+
+### 20.1 The theme: Onyx Noir
+
+A named theme of UIKit, **`Onyx Noir`** (`uikit/theme.h`, `globals.cpp`), with a flag of its own: **`UK_FLAT`**
+(`uk_flat ()`). The tokens are the mock-ups' (`tokens.png`; `UK_N_*` in `uikit/theme.h`):
+
+| token | value | what |
+|---|---|---|
+| bg0 | `#0B0C0E` | the screen's background: it continues the black glass (`C_BG`, `C_FACE`, the menu bar) |
+| bg1 | `#15171B` | a surface: a card, a panel, a text field, a list (`C_FIELD`) |
+| bg2 | `#1F2228` | raised: a button (`C_BUTTON`), an icon's plate, a menu, a key |
+| bg3 | `#2C3038` | pressed, pointed at, chosen, a chip (`C_FACE_HI`, `C_FACE_DN`) |
+| line | `#343842` | a 1 px separator, a hairline round a plate (`C_BORDER`) |
+| text | `#ECEEF2` / `#A4AAB5` / `#717783` | body, secondary, disabled (`C_TEXT`, -, `C_DIS`) |
+| accent | `#3D86DA`, `#7DB4F2` | the focus, a default button, a switch that is on; the accent as text on dark |
+| danger / success / warning | `#E5484D` / `#46A758` / `#F1B33B` | |
+
+In the flat look the painter (`uikit/paint.cpp`) draws **no gradient, no bevel, no shadow**: `uk_rbox` fills with one
+colour, `uk_raised` / `uk_framed` are plain raised surfaces (8 px corners, a step lighter when pointed at or
+pressed), `uk_sunken` a surface and a hairline, `uk_popup` a raised surface with 10 px corners, `uk_hilite` the
+accent, the marks (check box, radio, switch, slider, progress bar) flat; the **focus is a 2 px ring of the accent**.
+Every app that draws with UIKit's widgets and painter inherits it without a change; what an app paints with its own
+hard-coded colours stays as it is (§20.6).
+
+**Where it is chosen.** `SD:/etc/pocketui.ini`, section `[look]`: `theme = Onyx Noir` (the default when the line is
+absent -- **the pocket mode is Onyx Noir on this branch**), another theme's name, or `system` (what
+`SD:/etc/theme.txt` says, as on the desktop). Only the pocket UIKit in the **pocket** mode reads it
+(`uikit/theme.cpp` `pocket_theme`): the desktop (Elegant) and the console mode keep `theme.txt`. `theme = Onyx Noir`
+in `SD:/etc/theme.txt` gives the flat look on the desktop too (the Theme applet does not list it yet). PocketUI's
+own pixels follow (`pk_flat`, `wm.cpp`): its status band when no menu bar runs, the matte, the wallpaper behind the
+cards (plain bg0).
+
+**The text** of the chrome is anti-aliased TrueType: Selawik 14 px in the band and the shell (the mock-ups' face),
+bold for the app's name, the chosen item. The apps keep their own face (most: UIKit's bitmap font).
+
+**The safe margins**: 22 px at the left and the right of the band, 14 px round the shell's screens, the hint line
+64 px above the bottom edge's corners (the glass' corner radius is assumed 27 px).
+
+### 20.2 Select = the Menu
+
+In the pocket mode (every theme) the top band shows **the gem** (Home), **the app's name** in bold and ONE entry,
+**Menu** -- not the row of titles, which a 640 px band cannot hold for an app of eight menus and which nothing but a
+pointer could reach. The menu key puts the focus on it and unfolds it:
+
+- **the menu key**: **F10**, an **Alt pressed and released alone**, the pad's **Select** (the shell types F10 for
+  it, §20.4) -- or a click on the entry;
+- it unfolds as a **column of the app's menus' titles**, then *Quit*; **Up / Down** move, **Right**, **Enter** or
+  **A** opens the chosen menu's items beside the column (the shortcuts written `Ctrl+S`), **Enter / A** does the
+  item, **Left**, **Esc**, **Backspace** or **B** goes back one level (from the column: closes), **Page Up / Down**
+  (L / R) the menu before / after, a letter the next title or item that starts with it, the menu key again closes
+  and the app has the keys back;
+- a long menu's rows get closer so that it stays on the screen; the app under it is dimmed; the foot shows the
+  device's buttons (`uikit/padhint.h`).
+
+How: the menu bar (`user/Apps/menubar`) draws it; PocketUI (`wm.cpp`, "THE MENU BAR'S KEYS") lets the bar's program
+ask the menu key and, while its column is open, every key (`uk_shell_events`, `uk_shell_grab` from the bar's owner;
+`UK_SHELL_KEY_MENU`, `UK_SHELL_KEY_CANCEL` in `uikit/win.h`); the shell's own keys (Home, Alt+Tab) close the menu
+and go to the shell; a pad is the menu's while it is open (the policy's `Focus`). On the home there are no menus:
+the name is *Onyx* (a click: the Onyx menu), no Menu entry.
+
+**Not as the mock-ups**: an app's menus have no check marks and no sub-menus (the menu specification of
+`uk_win_menu_set` has neither), so the column shows titles, items, separators and shortcuts only. The alternative
+of the mock-up `noir-editor-menu.png` (the titles written in the band for an app of three or four menus) is not
+built: the single entry is the rule everywhere. **The console mode keeps its own menu** (`consolehome`'s overlay on
+Home / F10: the app's menus are its first rows): the two were not merged into one code -- they share the menus'
+source (`uk_win_menu_get`) and the keys' rules, not the drawing.
+
+### 20.3 The toolbars adapt
+
+(S3 -- see below once built.)
+
+### 20.4 The shell and the buttons
+
+The pocket shell's screens are drawn for the flat look (`user/Apps/pocketshell`: `if (uk_flat ())` in `home.h`,
+`main.cpp`; the rest goes through `look.h`'s three functions, which turn the Milk look's light faces into dark
+surfaces): the **home** (the search field, the categories as chips between **L** and **R**, the card of apps on
+flat plates -- the icons unchanged --, the open apps as pills, a hairline and the hint line), the **switcher**
+(the chosen card ringed), **quick settings** (a switch that is on is the accent).
+
+(The buttons: S4 -- see below once built.)
+
+### 20.5 The heavy apps
+
+(S5 -- see below once built.)
+
+### 20.6 What differs from the mock-ups, what is left
+
+- no battery in the band (Onyx has no battery gauge yet: the device's fuel gauge needs a driver), the speaker and
+  the USB icons stay;
+- the home's search field says "Search apps, files and settings" (the shell's words, already translated);
+- the switcher's chosen card is ringed and a little bigger, not twice the others' size;
+- no lock / boot splash screen (PocketUI has none);
+- the apps' own text is still the bitmap font where the app does not install a TrueType face.
+
 ## Résumé (FR)
 
 L'utilisateur demandait si, maintenant qu'Elegant est en espace utilisateur, on pouvait remplacer le bureau

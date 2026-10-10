@@ -25,3 +25,5 @@ UIKIT_GLOBAL (unsigned, C_MENUBAR, 0)
 // The installed text face (uikit/text.h)
 UIKIT_GLOBAL (TextFace *, uk_face_, 0)
 UIKIT_GLOBAL (int, uk_face_fw_, 8)
+// The flat look (uikit/theme.h: the theme Onyx Noir): 1 = no gradient, no bevel, no shadow in the painter
+UIKIT_GLOBAL (int, UK_FLAT, 0)

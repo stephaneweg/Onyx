@@ -8,8 +8,11 @@
 //     theme    = Peach        a named theme. Two kinds: CDE's framed title buttons -- Peach, Steel,
 //                             Sage, Brick, Slate (the frame of the window in front; the ones
 //                             behind: Grey) --, or OS X's coloured beads, the frame melting into
-//                             the window (no line between them) -- Milk (soft greys) and Dark
-//                             Coffee (black coffee's browns, a caramel accent)
+//                             the window (no line between them) -- Milk (soft greys), Dark
+//                             Coffee (black coffee's browns, a caramel accent) and Onyx Noir
+//                             (FLAT and dark: no gradient, no bevel, no shadow -- the pocket
+//                             mode's default, whatever this file says: SD:/etc/pocketui.ini
+//                             "[look] theme = Onyx Noir | system | <a theme's name>")
 //     style    = cde          the frames' look, if not the theme's: cde or milk
 //     active   = 0xF0B07A     or the colours themselves (they override the theme's)
 //     inactive = 0xACACB0
@@ -52,6 +55,16 @@ UIKIT_VAR (unsigned, C_DOCK);			// the dock's face (and the drawers' frame)
 UIKIT_VAR (unsigned, C_BUTTON);		// a push button's / a drop-down's face (the window's by default)
 UIKIT_VAR (unsigned, C_BUTTON_TEXT);		// ... its text
 UIKIT_VAR (unsigned, C_MENUBAR);		// the menu bar's face (the window's by default)
+// The FLAT look (the theme Onyx Noir -- PocketUI's default in pocket mode, SD:/etc/pocketui.ini "[look] theme ="):
+// 1 = the painter (uikit/paint.h) draws no gradient, no bevel, no shadow -- plain faces from the tokens below, the
+// focus a ring of the accent. An app that draws its own chrome asks uk_flat () and uses the tokens.
+UIKIT_VAR (int, UK_FLAT);
+static inline bool uk_flat () { return UK_FLAT != 0; }
+// Onyx Noir's tokens (docs/compact-shell/mockups/pocketterm/tokens.png).
+enum : unsigned { UK_N_BG0 = 0x000B0C0E, UK_N_BG1 = 0x0015171B, UK_N_BG2 = 0x001F2228, UK_N_BG3 = 0x002C3038,
+		  UK_N_LINE = 0x00343842, UK_N_TEXT1 = 0x00ECEEF2, UK_N_TEXT2 = 0x00A4AAB5, UK_N_TEXT3 = 0x00717783,
+		  UK_N_ACCENT = 0x003D86DA, UK_N_ACCENT_HI = 0x007DB4F2, UK_N_DANGER = 0x00E5484D,
+		  UK_N_SUCCESS = 0x0046A758, UK_N_WARNING = 0x00F1B33B };
 
 // The frames' look: CDE's (framed title buttons) or Milk's (Xfce's Milk theme, as OS X: the title
 // buttons coloured beads -- close red, minimise amber, maximise green --, the title's gradient

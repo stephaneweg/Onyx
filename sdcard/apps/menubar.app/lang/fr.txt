@@ -40,3 +40,8 @@ Format...	Formater…
 Disks...	Disques…
 The stick could not be ejected.	La clé n'a pas pu être éjectée.
 The stick could not be mounted again.	La clé n'a pas pu être remontée.
+Menu	Menu
+move	déplacer
+choose	choisir
+back	retour
+close	fermer

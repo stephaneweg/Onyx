@@ -45,6 +45,8 @@ unsigned pk_matte_colour (void);		// its colour (0xRRGGBB; console: black)
 int pk_kind (int id);
 unsigned pk_front_pid (void);
 int pk_bar_id (void);			// the global menu bar's window, -1: none
+int pk_bar_grab (void);			// 1: the menu bar's open menu takes every key (the Menu entry, pocket)
+int pk_flat (void);			// 1: the flat and dark look (pocket, SD:/etc/pocketui.ini "[look] theme =": Onyx Noir)
 unsigned pk_shell_pid (void);		// the shell (uk_shell_register), 0: none
 int pk_home (void);			// 1: home -- no app in front, the shell's home shown
 int pk_split (void);			// (P8) 1: split view -- two programs share the work area

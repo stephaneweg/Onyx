@@ -48,6 +48,9 @@ static int LH (void)		{ return g_ah * 100 / S; }
 static bool portrait (void)	{ return LH () * 100 > LW () * 105; }
 
 static FtTextFace *g_big, *g_small;			// (the regular face: ft_uikit_install's)
+static const char *face_name (void);			// (home.h: the flat look's face, else DejaVu Sans)
+// A colour of the Milk look, or Onyx Noir's token in the flat look.
+static inline unsigned LK (unsigned milk, unsigned noir) { return uk_flat () ? noir : milk; }
 static int g_fh = 16;
 
 // ---- the windows ----------------------------------------------------------------------------------------
@@ -92,6 +95,7 @@ static void text_cfit (Canvas &cv, int x, int y, int w, const char *s, unsigned 
 static int keycap (Canvas &cv, int x, int y, const char *k, bool dark = false)
 {
 	UkFaceScope f (g_small);
+	if (uk_flat ()) return uk_pad_key (cv, x, y, uk_fh () + D (4), k);	// (the flat look: an outlined cap)
 	int w = tw (k, 2) + D (10), h = uk_fh () + D (4);
 	uk_rbox (cv, x, y, w, h, D (4), dark ? 0x5A6270 : 0xFAFAFA, dark ? 0x434A56 : 0xD8DADF);
 	uk_rline (cv, x, y, w, h, D (4), dark ? 0x22262E : 0x9097A2);
@@ -244,9 +248,16 @@ static void draw_switcher (void)
 	Canvas &cv = g_oc;
 	g_overHits.clear ();
 	uk_paint_alpha (true);
-	cv.clear (0x30000000u | 0x0A0F18);				// the dim (a fifth of what is below shows)
+	bool flat = uk_flat ();
+	cv.clear (flat ? (unsigned) UK_N_BG0 : 0x30000000u | 0x0A0F18);	// the dim (a fifth of what is below shows); flat: the glass' black
 	g_overHits.add (0, 0, g_aw, g_ah, H_BACK, 0);
 	int M = D (16);
+	if (flat)							// (noir-switcher.png: the title, a line under it)
+	{
+		{ UkFaceScope f (F (18)); const char *t = TR ("Open apps"); text (cv, (g_aw - tw (t, 2)) / 2, D (12), t, UK_N_TEXT1, 2); }
+		UkFaceScope f (F (13)); const char *t = TR ("the most recent first"); text (cv, (g_aw - tw (t)) / 2, D (38), t, UK_N_TEXT2);
+	}
+	else
 	{
 		UkFaceScope f (g_big);
 		const char *t = TR ("Open apps -- the most recent first");
@@ -283,21 +294,33 @@ static void draw_switcher (void)
 			{
 				int g = D (10);
 				ix -= g; iy -= g; iw += 2 * g; ih += 2 * g;
-				uk_rbox (cv, ix - D (6), iy - D (6), iw + D (12), ih + D (12) + g_fh + D (16), D (10), uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 120));
+				if (!flat) uk_rbox (cv, ix - D (6), iy - D (6), iw + D (12), ih + D (12) + g_fh + D (16), D (10), uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 120));
 			}
 			blit_thumb (cv, ix, iy, g_thumbs[i], iw, ih);
-			uk_rline (cv, ix, iy, iw, ih, 0, on ? 0xFFFFFF : 0x50586A);
+			if (flat && on) lk_ring (cv, ix - D (4), iy - D (4), iw + D (8), ih + D (8), D (6), D (3) * 16, C_ACCENT);	// the chosen one: a ring
+			else uk_rline (cv, ix, iy, iw, ih, 0, flat ? (unsigned) UK_N_LINE : on ? 0xFFFFFF : 0x50586A);
 			const char *l = task_label (t);
-			int ny = iy + ih + D (8);
+			int ny = iy + ih + D (flat ? 12 : 8);
+			if (flat)						// (its icon and its name, centred under the card)
+			{
+				char b[64];
+				int lw = uk_text_fit (l, iw - D (26), b, sizeof b, on ? 2 : 0), lx = ix + (iw - lw - D (26)) / 2;
+				icon_of (cv, lx, ny, t.name, l, D (20));
+				text (cv, lx + D (26), ny + (D (20) - uk_fh ()) / 2, b, on ? UK_N_TEXT1 : UK_N_TEXT2, on ? 2 : 0);
+			}
+			else
+			{
 			icon_of (cv, ix, ny, t.name, l, D (20));
 			if (on) text_fit (cv, ix + D (26), ny + (D (20) - uk_fh ()) / 2, iw - D (26), l, 0xFFFFFF, 2);
 			else uk_text_over (cv, ix + D (26), ny + (D (20) - uk_fh ()) / 2, l, 0xF0F2F5, 0, 1);
+			}
 			if (i == 0 && (t.flags & UK_TASK_FRONT)) { UkFaceScope f (g_small); uk_text_over (cv, ix, iy - g_fh - D (2), TR ("now"), 0xD8DEE8, 2, 1); }
 			if (on)							// its close bead
 			{
 				int d = D (22), bx = ix + iw - d / 2, by = iy - d / 2;
-				uk_rbox (cv, bx, by, d, d, d / 2, 0x3A3F48, 0x24282F);
-				uk_rline (cv, bx, by, d, d, d / 2, 0xE0E4EA);
+				if (flat) by = iy + D (4), bx = ix + iw - d - D (4);	// (inside the ring's corner)
+				uk_rbox (cv, bx, by, d, d, d / 2, LK (0x3A3F48, UK_N_BG3), LK (0x24282F, UK_N_BG3));
+				if (!flat) uk_rline (cv, bx, by, d, d, d / 2, 0xE0E4EA);
 				uk_glyph (cv, WKG_CLOSE, bx + d / 2, by + d / 2, D (8), 0xFFFFFF);
 				g_overHits.add (ix - D (6), iy - D (6), iw + D (12), ih + D (12) + g_fh + D (16), H_CARD, i);
 				g_overHits.add (bx, by, d, d, H_CARDX, i);
@@ -318,7 +341,7 @@ static void draw_switcher (void)
 			int i = g_cardFirst + k, y = top + k * row, x = M;
 			const uk_shell_task &t = g_tasks[i];
 			bool on = i == g_sel;
-			uk_rbox (cv, x, y, g_aw - 2 * M, row - D (6), D (8), on ? uk_tone (C_ACCENT, 150) : 0x343B48, on ? uk_tone (C_ACCENT, 120) : 0x2A303B);
+			uk_rbox (cv, x, y, g_aw - 2 * M, row - D (6), D (8), on ? uk_tone (C_ACCENT, 150) : LK (0x343B48, UK_N_BG1), on ? uk_tone (C_ACCENT, 120) : LK (0x2A303B, UK_N_BG1));
 			blit_thumb (cv, x + D (6), y + (row - D (6) - th) / 2, g_thumbs[i], tw_, th);
 			const char *l = task_label (t);
 			text_fit (cv, x + tw_ + D (16), y + D (8), g_aw - 2 * M - tw_ - D (60), l, 0xFFFFFF, 2);
@@ -330,6 +353,18 @@ static void draw_switcher (void)
 	}
 	static const char *const H[] = { TRN ("Alt+Tab"), TRN ("next"), TRN ("Shift+Tab"), TRN ("back"), TRN ("S"), TRN ("beside"), TRN ("Del"), TRN ("close the app"), TRN ("Esc"), TRN ("stay") };
 	static const char *const H2[] = { TRN ("Tab"), TRN ("next"), TRN ("Del"), TRN ("close"), TRN ("Esc"), TRN ("stay") };
+	if (flat)							// this device's buttons (and Alt+Tab on a keyboard)
+	{
+		static UkPadHint P[5];
+		P[0] = { portrait () ? "|" : "-", TR ("choose") }; P[1] = { "A", TR ("switch") }; P[2] = { "X", TR ("close it") };
+		P[3] = { "B", TR ("stay") }; P[4] = { "[Alt][Tab]", TR ("next") };
+		UkFaceScope f (F (13));
+		int n = LW () >= 560 ? 5 : 4, ly = g_ah - D (64);
+		cv.fillRect (D (22), ly, g_aw - D (44), 1, UK_N_LINE);
+		int w = uk_pad_hints (cv, 0, 0, D (18), P, n, 0, true);
+		uk_pad_hints (cv, (g_aw - w) / 2, ly + D (13), D (18), P, n, UK_N_TEXT2);
+	}
+	else
 	{
 		UkFaceScope f (g_small);
 		bool wide = LW () >= 560;
@@ -387,11 +422,12 @@ static void panel_rect (int *x, int *y, int *w)
 
 static void tile (Canvas &cv, int x, int y, int w, int h, bool on, const char *title, const char *sub, int kind)
 {
-	if (on) uk_rbox (cv, x, y, w, h, D (8), uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 118));
+	if (uk_flat ()) uk_rbox (cv, x, y, w, h, D (10), on ? C_ACCENT : UK_N_BG2, on ? C_ACCENT : UK_N_BG2);	// (a switch that is on: the accent)
+	else if (on) uk_rbox (cv, x, y, w, h, D (8), uk_tone (C_ACCENT, 150), uk_tone (C_ACCENT, 118));
 	else { uk_rbox (cv, x, y, w, h, D (8), 0xFAFAFB, 0xE6E8EC); uk_rline (cv, x, y, w, h, D (8), 0xB8BEC8); }
-	unsigned ink = on ? 0xFFFFFF : 0x1A1E24;
+	unsigned ink = on ? 0xFFFFFF : LK (0x1A1E24, UK_N_TEXT1);
 	text_fit (cv, x + D (12), y + D (5), w - D (16), title, ink, 2);
-	{ UkFaceScope f (g_small); text_fit (cv, x + D (12), y + D (7) + g_fh, w - D (16), sub, on ? 0xE8F0FC : 0x5A606A); }
+	{ UkFaceScope f (g_small); text_fit (cv, x + D (12), y + D (7) + g_fh, w - D (16), sub, on ? 0xE8F0FC : LK (0x5A606A, UK_N_TEXT2)); }
 	g_overHits.add (x, y, w, h, kind, 0);
 }
 
@@ -412,7 +448,7 @@ static void draw_quick (void)
 	Canvas &cv = g_oc;
 	g_overHits.clear ();
 	uk_paint_alpha (true);
-	cv.clear (CATCH);
+	cv.clear (uk_flat () ? (100u << 24) | UK_N_BG0 : CATCH);		// (the flat look: what is below dimmed)
 	g_overHits.add (0, 0, g_aw, g_ah, H_BACK, 0);
 	int px, py, pw;
 	panel_rect (&px, &py, &pw);
@@ -422,8 +458,8 @@ static void draw_quick (void)
 	int fixed = D (40) + 3 * (D (48) + D (8)) + D (34) + D (12) + D (28) + D (46) + 2 * pad;
 	int ph = fixed + notesH;
 	if (ph > g_ah - D (12)) ph = g_ah - D (12);
-	uk_rbox (cv, px, py, pw, ph, D (10), 0xF6F6F7, 0xE9EAED);
-	uk_rline (cv, px, py, pw, ph, D (10), 0x8A909A);
+	uk_rbox (cv, px, py, pw, ph, D (uk_flat () ? 16 : 10), LK (0xF6F6F7, UK_N_BG1), LK (0xE9EAED, UK_N_BG1));
+	uk_rline (cv, px, py, pw, ph, D (uk_flat () ? 16 : 10), LK (0x8A909A, UK_N_LINE));
 	g_overHits.add (px, py, pw, ph, H_PANEL, 0);
 	int y = py + pad;
 	// the date, the time
@@ -436,10 +472,10 @@ static void draw_quick (void)
 		lx_cat (date, sizeof date, &k, TR (WD[wd])); lx_cat (date, sizeof date, &k, " ");
 		lx_cat (date, sizeof date, &k, d[0] == '0' ? d + 1 : d); lx_cat (date, sizeof date, &k, " ");
 		lx_cat (date, sizeof date, &k, TR (MO[(mo + 11) % 12]));
-		text_fit (cv, x, y + D (6), w - D (80), date, 0x14181E, 2);
+		text_fit (cv, x, y + D (6), w - D (80), date, LK (0x14181E, UK_N_TEXT1), 2);
 		char t[8]; num2 (t, hh); t[2] = ':'; num2 (t + 3, mi);
 		UkFaceScope f (g_big);
-		text (cv, x + w - tw (t, 2), y + D (4), t, 0x14181E, 2);
+		text (cv, x + w - tw (t, 2), y + D (4), t, LK (0x14181E, UK_N_TEXT1), 2);
 	}
 	y += D (40);
 	// the tiles
@@ -458,37 +494,37 @@ static void draw_quick (void)
 	// the volume
 	{
 		int sx = x + D (2), sy = y + D (8), s = D (14);			// a speaker
-		cv.fillRect (sx, sy + s / 3, s / 3, s / 3 + 1, 0x30343A);
-		for (int k = 0; k < s / 2; k++) cv.fillRect (sx + s / 3 + k, sy + s / 3 - k * 2 / 3, 1, s / 3 + 1 + k * 4 / 3, 0x30343A);
+		cv.fillRect (sx, sy + s / 3, s / 3, s / 3 + 1, LK (0x30343A, UK_N_TEXT1));
+		for (int k = 0; k < s / 2; k++) cv.fillRect (sx + s / 3 + k, sy + s / 3 - k * 2 / 3, 1, s / 3 + 1 + k * 4 / 3, LK (0x30343A, UK_N_TEXT1));
 		g_volX0 = x + D (30); g_volX1 = x + w - D (8);
 		int tw_ = g_volX1 - g_volX0, fill = g_mute ? 0 : tw_ * g_vol / 10, kw = D (18);
 		uk_slider_mark (cv, g_volX0, y + D (4), tw_, D (22), fill, g_volX0 + fill - kw / 2, kw, g_volDrag ? UK_HOT : UK_NORMAL);
 		g_overHits.add (g_volX0 - D (10), y, tw_ + D (20), D (30), H_VOL, 0);
 	}
 	y += D (34) + D (6);
-	cv.fillRect (x, y, w, 1, 0xC8CCD4);
+	cv.fillRect (x, y, w, 1, LK (0xC8CCD4, UK_N_LINE));
 	y += D (6);
 	// the notifications
-	text (cv, x, y + D (4), TR ("Notifications"), 0x14181E, 2);
+	text (cv, x, y + D (4), TR ("Notifications"), LK (0x14181E, UK_N_TEXT1), 2);
 	if (g_nnotes > 0)
 	{
 		const char *c = TR ("Clear all");
-		text (cv, x + w - tw (c), y + D (4), c, C_ACCENT);
+		text (cv, x + w - tw (c), y + D (4), c, LK (C_ACCENT, UK_N_ACCENT_HI));
 		g_overHits.add (x + w - tw (c) - D (6), y, tw (c) + D (12), D (26), H_CLEAR, 0);
 	}
 	y += D (28);
 	int bottom = py + ph - pad - D (34) - D (8);
-	if (g_nnotes == 0) { UkFaceScope f (g_small); text (cv, x + D (4), y + D (8), TR ("No notifications."), 0x6A707A); }
+	if (g_nnotes == 0) { UkFaceScope f (g_small); text (cv, x + D (4), y + D (8), TR ("No notifications."), LK (0x6A707A, UK_N_TEXT3)); }
 	for (int i = 0; i < g_nnotes && y + D (50) <= bottom; i++)
 	{
 		Note &n = g_notes[i];
-		uk_rbox (cv, x, y, w, D (50), D (8), 0xFFFFFF, 0xF8F8FA);
-		uk_rline (cv, x, y, w, D (50), D (8), 0xC4C9D2);
+		uk_rbox (cv, x, y, w, D (50), D (8), LK (0xFFFFFF, UK_N_BG2), LK (0xF8F8FA, UK_N_BG2));
+		if (!uk_flat ()) uk_rline (cv, x, y, w, D (50), D (8), 0xC4C9D2);
 		icon_of (cv, x + D (8), y + D (11), note_app (n), n.title, D (28));
 		char t[16]; ago (n.at, t);
-		{ UkFaceScope f (g_small); text (cv, x + w - D (10) - tw (t), y + D (6), t, 0x6A707A); }
-		text_fit (cv, x + D (46), y + D (5), w - D (100), n.title, 0x14181E, 2);
-		{ UkFaceScope f (g_small); text_fit (cv, x + D (46), y + D (8) + g_fh, w - D (56), n.text, 0x40464E); }
+		{ UkFaceScope f (g_small); text (cv, x + w - D (10) - tw (t), y + D (6), t, LK (0x6A707A, UK_N_TEXT3)); }
+		text_fit (cv, x + D (46), y + D (5), w - D (100), n.title, LK (0x14181E, UK_N_TEXT1), 2);
+		{ UkFaceScope f (g_small); text_fit (cv, x + D (46), y + D (8) + g_fh, w - D (56), n.text, LK (0x40464E, UK_N_TEXT2)); }
 		g_overHits.add (x, y, w, D (50), H_NOTE, i);
 		y += D (50) + D (6);
 	}
@@ -508,7 +544,7 @@ static void draw_quick (void)
 		if (i > 0) bx += BW[i - 1] + gap;
 		uk_framed (cv, bx, by, bw, D (34), C_BUTTON, UK_NORMAL);
 		const char *l = TR (B[i]);
-		unsigned gc = i == 2 ? 0xD8402E : 0x30343A;
+		unsigned gc = i == 2 ? LK (0xD8402E, UK_N_DANGER) : LK (0x30343A, UK_N_TEXT1);
 		if (!words[i]) uk_glyph (cv, G[i], bx + bw / 2, by + D (17), D (14), gc);
 		else
 		{
@@ -722,7 +758,7 @@ static bool screen_sync (bool force)
 	if (s != S)						// another scale: the faces at their new sizes, the toast's window
 	{
 		S = s;
-		if (ft_uikit_install ("DejaVu Sans", D (13))) g_fh = uk_fh ();
+		if (ft_uikit_install (face_name (), D (uk_flat () ? 14 : 13))) g_fh = uk_fh ();
 		faces_rescale ();
 		int st = D (340);
 		uk_win_select (W_TOAST);
@@ -914,7 +950,7 @@ int main (void)
 	area_read ();
 	uikit::init ();
 	S = scale_of ();
-	if (ft_uikit_install ("DejaVu Sans", D (13))) g_fh = uk_fh ();
+	if (ft_uikit_install (face_name (), D (uk_flat () ? 14 : 13))) g_fh = uk_fh ();
 	g_big = F (16); g_small = F (11);
 	uk_lang_init ();
 	colours ();
