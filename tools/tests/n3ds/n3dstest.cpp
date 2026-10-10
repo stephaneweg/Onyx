@@ -295,6 +295,7 @@ static int run (int argc, char **argv)
 		for (int k = 0; k < 48; k++) fprintf (stderr, " %08x", (unsigned) m->mem.r32 (at + (n3ds::u32) k * 4));
 		fprintf (stderr, "%c", 10);
 	}
+	fprintf (stderr, "of the GPU's frames, %llu were the same as an earlier one and not drawn again%c", (unsigned long long) m->gsp.sameFrames, 10);
 	fprintf (stderr, "frames begun: %u to leave out, %u to draw; ended: %u left out, %u without a record%c", (unsigned) m->dbgLatch[0], (unsigned) m->dbgLatch[1], (unsigned) m->dbgLatch[2], (unsigned) m->dbgLatch[3], 10);
 	if (m->surveyShaders && m->shaderUse)
 	{
