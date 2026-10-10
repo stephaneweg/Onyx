@@ -749,6 +749,51 @@ helper core); assembling the triangles on two cores; the fills kept for when som
 host's pixels are); the GPU call's fixed cost (to be looked at in the kernel); and, far bigger, the vertex
 shaders on the V3D.
 
+## 9r. The vertex shaders on the V3D: what the games' shaders are, and the plan (2026-10-10)
+
+The user's choice among 9q's gains: the picture's blit (done: the two screens taken and scaled on two cores,
+n3dsemu 1.0.8, 45-50 -> 50-56 VBlanks a second in Mario's first level) and **the vertex shaders on the GPU**.
+
+**The survey** (`N3DS_SURVEY=1` in `n3dstest`: each shader used -- its entry, the boolean and integer uniforms
+that decide its flow --, what it is made of, its share of the vertices; and, per draw, whether its branches and
+index registers are the same on its first, middle and last vertices):
+
+- *Super Mario 3D Land* (8000 frames): 17 kinds, three of them 80 % of the vertices; *A Link Between Worlds*
+  (2400 frames): 23 kinds, three of them 78 %. 40 to 130 instructions run, no loop, 1 to 9 calls.
+- The instructions: ADD, MUL, DP3, DP4, MAX, RCP, RSQ, MOV, MOVA, CMP, MAD -- nothing else in the big ones.
+- **Every big shader has branches on a comparison (3 to 7) and uniforms indexed by a0 / a1 (3 to 12)**: the
+  matrix palette, even for scenery. But in about four fifths of the vertices (the survey says 39 % while half the
+  draws were not probed -- the fast-forward --: 45 to 50 % of 50 % in the main kinds) **both are the draw's
+  alone**: the index comes from a per-draw value, the comparisons are on uniforms. The skinned draws (one kind
+  of 13 % in Mario, one of 14 % in Zelda) depend on the vertex.
+
+**The plan** (each step tested before the next):
+
+- **S1, a specializer** (the core, no GPU): the shader run once for a draw with every value tagged "the draw's"
+  or "the vertex's" -- uniforms, constants and fixed attributes are the draw's. Flow instructions and MOVA whose
+  operands are the draw's are settled (else: not translatable, the draw stays on the processor); what is left is
+  a straight list of operations on the vertex's values, the draw's values becoming its constants. Key: the
+  shader's code, entry, uniforms' flow bits, the branches taken, the indices. Checked by running the list on
+  the processor against the interpreter (`N3DS_SHADERCHECK`).
+- **S2, the list as QPU code** (`user/Libs/v3d`, beside picatev): a vertex shader and a coordinate shader, the
+  attributes read in order, the draw's constants as the uniform stream, the outputs mapped (position through the
+  viewport as the stock shader does, the varyings the fragment shader of the batch wants). Checked in the QPU
+  simulator against S1's list (`run_qpu_test.sh`).
+- **S3, the kernel**: a batch whose program has its own vertex shader is not clipped on the processor
+  (`gpu_render3` clips the triangles itself today: "clip" ~1 ms a frame) -- the V3D's own clipping from the
+  coordinate shader's clip coordinates; a new batch flag, AppKit unchanged.
+- **S4, the lighting**: the GPU path works the lighting out at the vertices on the processor, from the shader's
+  outputs (the normal's quaternion, the view vector). With the shader on the GPU those never come back: the
+  lighting must be done there too (per vertex in the generated shader, or per fragment -- the pending V5), or
+  the lit draws stay on the processor. **Most of Mario's scenery is lit: without S4 the gain is small.**
+- **S5, on the Pi**: the recorder gives the raw attributes of a translatable draw instead of shaded triangles
+  (expanded by its indices: the kernel's batches are not indexed), the frame's other draws as today.
+
+What it should give: the lists' time (7 ms of 17 a VBlank in Mario's first level, 12 of 24 in its opening) is
+reading 19 %, shading 43 %, assembling and recording 31 %; a translated draw keeps the reading only. With four
+fifths of the vertices translated and lit on the GPU, about half of the frame's time on the lists goes -- if the
+GPU takes the vertices at that rate, which is not measured.
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours

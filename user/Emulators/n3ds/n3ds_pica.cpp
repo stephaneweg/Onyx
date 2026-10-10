@@ -120,6 +120,7 @@ struct Pica
 	struct Job *jobs; u32 jobCount;			// the triangles waiting to be rasterized
 	u32 bandNext, bandCount;			// the bands of the flush under way: the next one to take, how many
 	u32 dbgIn, dbgClipped, dbgBoxed, dbgDrawn;	// (the trace: what became of the last draw's triangles)
+	Machine::ShaderUse *use;				// (the survey's entry the running shader is counted in, or 0)
 	bool guarded;					// VRAM pages are kept from the program (picaGuestTouch gives them back)
 	bool busy; u64 busySince;			// the queue is being rasterized aside (since when, in microseconds)
 	int jump;					// a jump asked by the command being run: 1 or 2 (which buffer), 0 none
@@ -278,6 +279,17 @@ static void runShader (Pica *p, Shader &s, u32 entry, u64 &stepsOut, u32 &badOp)
 		const ShaderIns &I = p->dec[pc];
 		const u32 ins = p->code[pc++];
 		const u32 op = I.op;
+		if (p->use)								// (the survey: this run is a draw's first vertex)
+		{
+			Machine::ShaderUse &u = *p->use;
+			u.steps++; u.ops |= op < 32 ? 1u << op : 0;
+			if (op == 0x25 || op == 0x28 || op == 0x2C) { u.cmpFlow++; u.flowHash = u.flowHash * 1099511628211ull + (u64) (s.cmp[0] * 2 + s.cmp[1]) + 7; }
+			if (op == 0x12) u.movA++;
+			if (op == 0x29) u.loops++;
+			if (op >= 0x24 && op <= 0x26) u.calls++;
+			if (I.shape != 0 && (I.idx == 1 || I.idx == 2)) { u.idxA++; u.idxHash = u.idxHash * 1099511628211ull + (u64) (u32) (I.idx == 1 ? s.a[0] : s.a[1]) + 3; }
+			if (I.shape != 0 && I.idx == 3) u.idxL++;
+		}
 		if (I.shape == 0)
 		{
 			if (op == 0x22) return;						// END
@@ -2183,6 +2195,31 @@ static void shadeWorker (void *arg, int worker)
 }
 
 // ---- draws ---------------------------------------------------------------------------------------------------------------
+// The survey (Machine::surveyShaders): a draw counted for its shader -- the entry and the uniforms that decide its
+// flow; a new one is run once, on a vertex of zeros, to see what it is made of.
+static void surveyDraw (Pica *p, u32 count)
+{
+	Machine *m = p->m;
+	const u32 entry = p->regs[R_VSH_ENTRY] & 0xFFFF;
+	u32 iu[4]; memcpy (iu, p->iu, sizeof iu);
+	Machine::ShaderUse *u = 0;
+	for (u32 i = 0; i < m->shaderUses && !u; i++)
+		if (m->shaderUse[i].entry == entry && m->shaderUse[i].bu == p->bu && memcmp (m->shaderUse[i].iu, iu, sizeof iu) == 0) u = &m->shaderUse[i];
+	if (!u)
+	{
+		if (m->shaderUses >= 256) return;
+		if (!m->shaderUse) m->shaderUse = (Machine::ShaderUse *) calloc (256, sizeof (Machine::ShaderUse));
+		if (!m->shaderUse) return;
+		u = &m->shaderUse[m->shaderUses++];
+		u->entry = entry; u->bu = p->bu; memcpy (u->iu, iu, sizeof iu);
+		static Shader s; memset (&s, 0, sizeof s);
+		u64 steps = 0; u32 bad = 0;
+		p->use = u; runShader (p, s, entry, steps, bad); p->use = 0;
+	}
+	u->vertices += count; u->draws++;
+	m->shaderNow = u;
+}
+
 static void draw (Pica *p, bool indexed)
 {
 	{ Machine *dm = p->m; dm->drawNow++; if (dm->drawLast && (dm->drawNow < dm->drawFirst || dm->drawNow > dm->drawLast)) return; }
@@ -2191,6 +2228,8 @@ static void draw (Pica *p, bool indexed)
 	const u32 fixedMask = p->regs[R_ATTR_FORMAT_HI] >> 16 & 0xFFF;
 	const int inputs = (int) (p->regs[R_VSH_INPUT] & 15) + 1;
 	const u32 count = p->regs[R_NUM_VERTICES];
+	p->m->shaderNow = 0;
+	if (p->m->surveyShaders) surveyDraw (p, count);
 	if (count > 0x100000) return;
 	// (the right eye's picture, on a host that shows the left one only: n3ds_gsp.cpp)
 	if (p->m->gsp.eyeSkip && (p->regs[R_COLOR_ADDR] << 3) == Machine::virtToPhys (p->m->gsp.eyeSrc)) { p->m->gsp.eyeDraws++; return; }
@@ -2298,6 +2337,28 @@ static void draw (Pica *p, bool indexed)
 	};
 	auto vertexIndex = [&] (u32 n) -> u32 { return indexed ? (index16 ? (u32) (index[n * 2] | index[n * 2 + 1] << 8) : index[n]) : n + p->regs[R_VERTEX_OFFSET]; };
 	Machine *const m = p->m;
+	// (the survey) Do this draw's branches and index registers depend on the vertex? The shader is run on its first,
+	// middle and last vertices: the same path, the same indices = the draw's alone, to all appearances -- what a
+	// translation for a GPU could settle before the vertices.
+	if (m->shaderNow && count)
+	{
+		static Machine::ShaderUse probe; static Shader ps; static float pa[16][4];
+		u64 hc[3], hi[3];
+		const u64 perm = (u64) p->regs[R_VSH_PERM_HI] << 32 | p->regs[R_VSH_PERM_LO];
+		for (int k = 0; k < 3; k++)
+		{
+			memset (&ps, 0, sizeof ps); memset (&probe, 0, sizeof probe); memset (pa, 0, sizeof pa);
+			readVertex (vertexIndex (k == 0 ? 0 : k == 1 ? count / 2 : count - 1), pa);
+			for (int i = 0; i < inputs && i < 16; i++) memcpy (ps.reg[perm >> (4 * i) & 15], pa[i], sizeof (float) * 4);
+			u64 steps = 0; u32 bad = 0;
+			p->use = &probe; runShader (p, ps, p->regs[R_VSH_ENTRY] & 0xFFFF, steps, bad); p->use = 0;
+			hc[k] = probe.flowHash; hi[k] = probe.idxHash;
+		}
+		const bool sameC = hc[0] == hc[1] && hc[1] == hc[2], sameI = hi[0] == hi[1] && hi[1] == hi[2];
+		if (sameC) m->shaderNow->fixedCmp += count;
+		if (sameI) m->shaderNow->fixedIdx += count;
+		if (sameC && sameI) { m->shaderNow->fixedVertices += count; m->shaderNow->fixedDraws++; }
+	}
 	// the draw's shader as a function, when it compiles (gpuSkip 2048: never)
 	if (p->jitDirty) { shaderJitReset (p->jit); p->jitDirty = false; }
 	p->shaderFn = (m->gpuSkip & 2048) || m->traceGpu ? 0 : shaderCompile (&p->jit, p->code, p->opdesc, p->regs[R_VSH_ENTRY] & 0xFFFF);

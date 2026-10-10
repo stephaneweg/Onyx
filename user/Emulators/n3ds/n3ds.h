@@ -383,6 +383,9 @@ struct Machine
 	bool trace;				// the system calls and the requests, on stderr (tests)
 	bool traceGpu;				// ... each draw and transfer of the GPU
 	bool listsAside;			// a list's triangles drawn while the program goes on, its interrupt late (off: see n3ds_gsp.cpp)
+	// (a survey of the vertex shaders a program uses: per entry and set of boolean / integer uniforms -- how long, with
+	//  which kinds of instructions: what a translation of them to a GPU must know)
+	struct ShaderUse { u32 entry, bu, iu[4]; u64 vertices, draws; u32 steps, cmpFlow, movA, idxA, idxL, loops, calls, ops; u64 flowHash, idxHash, fixedVertices, fixedDraws, fixedIdx, fixedCmp; } *shaderUse; ShaderUse *shaderNow; u32 shaderUses; bool surveyShaders;
 	u32 dbgLatch[4];			// (frames begun: asked to be left out or not; ended: left out, with no record)
 	u32 drawNow, drawFirst, drawLast;	// (to study a frame: only the draws drawFirst..drawLast of those counted in drawNow are done; drawLast 0: all)
 	bool traceAll;				// (trace: the waits and the arbiters too)

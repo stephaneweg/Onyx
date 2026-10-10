@@ -132,6 +132,7 @@ static int run (int argc, char **argv)
 	if (getenv ("N3DS_MONO")) m->monoOnly = true;
 	if (argc > 5) m->gpuSkip = (n3ds::u32) strtoul (argv[5], 0, 16);	// (a 5th argument: parts of the GPU left out, to time them)
 	m->trace = getenv ("N3DS_TRACE") != 0;
+	m->surveyShaders = getenv ("N3DS_SURVEY") != 0;	// (N3DS_SURVEY=1: the vertex shaders the program used, at the end)
 	// N3DS_FONT=<sysfont.bcfnt>  the shared system font (tools/n3ds/mkfont.py makes ours)
 	if (const char *fontPath = argc > 4 ? argv[4] : getenv ("N3DS_FONT"))		// (or the 4th argument: where there is no environment)
 	{
@@ -295,6 +296,23 @@ static int run (int argc, char **argv)
 		fprintf (stderr, "%c", 10);
 	}
 	fprintf (stderr, "frames begun: %u to leave out, %u to draw; ended: %u left out, %u without a record%c", (unsigned) m->dbgLatch[0], (unsigned) m->dbgLatch[1], (unsigned) m->dbgLatch[2], (unsigned) m->dbgLatch[3], 10);
+	if (m->surveyShaders && m->shaderUse)
+	{
+		unsigned long long all = 0;
+		for (n3ds::u32 i = 0; i < m->shaderUses; i++) all += m->shaderUse[i].vertices;
+		{ unsigned long long fx = 0, fi = 0, fc = 0; for (n3ds::u32 i = 0; i < m->shaderUses; i++) { fx += m->shaderUse[i].fixedVertices; fi += m->shaderUse[i].fixedIdx; fc += m->shaderUse[i].fixedCmp; } fprintf (stderr, "(the indices alone: %.1f %%, the branches alone: %.1f %%)%c", all ? 100.0 * (double) fi / (double) all : 0.0, all ? 100.0 * (double) fc / (double) all : 0.0, 10); fprintf (stderr, "vertices of draws whose branches and indices are the draw's alone: %.1f %%%c", all ? 100.0 * (double) fx / (double) all : 0.0, 10); }
+		fprintf (stderr, "the vertex shaders used: %u kinds, %llu vertices%c", (unsigned) m->shaderUses, all, 10);
+		for (n3ds::u32 done = 0; done < m->shaderUses && done < 40; done++)
+		{
+			n3ds::Machine::ShaderUse *b = 0;
+			for (n3ds::u32 i = 0; i < m->shaderUses; i++) if (m->shaderUse[i].draws && (!b || m->shaderUse[i].vertices > b->vertices)) b = &m->shaderUse[i];
+			if (!b) break;
+			fprintf (stderr, "  entry %03x bool %04x int %06x %06x: %5.1f %% of the vertices (%3.0f %% settled by the draw), %llu draws; %u instructions run, %u loops, %u calls, %u branches on a comparison, %u MOVA, %u indexed by a0/a1, %u by aL; ops %08x%c",
+				 (unsigned) b->entry, (unsigned) b->bu, (unsigned) (b->iu[0] & 0xFFFFFF), (unsigned) (b->iu[1] & 0xFFFFFF), all ? 100.0 * (double) b->vertices / (double) all : 0.0, b->vertices ? 100.0 * (double) b->fixedVertices / (double) b->vertices : 0.0, (unsigned long long) b->draws,
+				 (unsigned) b->steps, (unsigned) b->loops, (unsigned) b->calls, (unsigned) b->cmpFlow, (unsigned) b->movA, (unsigned) b->idxA, (unsigned) b->idxL, (unsigned) b->ops, 10);
+			b->draws = 0;
+		}
+	}
 	const unsigned char *rgb = screens (m);
 	const size_t rgbSize = (size_t) n3ds::TOP_W * n3ds::SCREEN_H * 2 * 3;
 	fprintf (stderr, "screens %08x (%llu VBlanks; the GPU was asked %u fills, %u transfers, %u command lists)\n", crc32 (rgb, rgbSize),
