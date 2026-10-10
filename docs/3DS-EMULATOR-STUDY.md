@@ -457,7 +457,7 @@ On the Pi 4 (`n3dstest`, no display, two cores):
 | Program | Before | Now | The rasterizer's part |
 |---|---|---|---|
 | Mars, 120 frames | 9.6 fps | **28.3 fps** | 2.1 s for 21.8 M pixels |
-| *A Link Between Worlds*, its first 600 frames (to the title screen) | ~8 fps | **13.0 fps** (46.1 s) | 21.7 s for 255 M pixels |
+| *A Link Between Worlds*, its first 600 frames (to the title screen) | not measured (11.1 fps midway through this slice) | **13.0 fps** (46.1 s) | 21.7 s for 255 M pixels |
 
 Where the game's 46 s go: the rasterizer 21.7 s (finding the fragments alone: 4.5 s), **the vertex shader 11.3 s**
 (3.0 M vertices: 3.7 microseconds each, interpreted), the display transfers 3.3 s, everything else (the processor,

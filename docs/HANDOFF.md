@@ -50,7 +50,7 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
 - **On the Pi 4** (sections 9k and 9l; `n3dstest.elf`, headless): 2048 190 fps, Snake 116, Cube Adventures 63; **T3's first
   slice** (the draws' state kept, the triangles queued and rasterized by two cores in 8-row bands, textures decoded once,
   fragments shaded by groups of 32 in vector loops; same pictures) took **Mars from 9.6 to 28 fps and the game's first 600
-  frames from ~8 to 13 fps**. Of the game's 46 s: rasterizer 21.7, **vertex shader 11.3 (interpreted: compile it)**,
+  frames to 13 fps** (11.1 midway). Of the game's 46 s: rasterizer 21.7, **vertex shader 11.3 (interpreted: compile it)**,
   transfers 3.3, the rest 9.8. Next in T3: the vertex shader, the lighting, spans, the GPU on its own core, then the V3D.
   Only one application core was free on the user's Pi (a server holds the other). Timing a part: `n3dstest <program>
   <frames> - <font> <gpuSkip hex>` (`n3ds.h`); from the PC: FTP the stripped `n3dstest.elf` to `SD:/bin`, run by telnet.
