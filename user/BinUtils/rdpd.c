@@ -22,7 +22,8 @@
 // Protocol (TCP, little-endian). Hello: the server sends "ONYXRDP1", u16 screen w, h, u16 the
 // kernel's kapi version (below 56: no window can be listed -- an old kernel image); the
 // client answers "ONYXRDP1", u8 options (bit 0: 16-bit pixels, bit 1: no frames -- the client
-// shows the contents in native windows, bit 2: pipelined -- see below). Then messages:
+// shows the contents in native windows, bit 2: pipelined -- see below, bit 3: COPY understood;
+// an older rdpd ignores the bits it does not know). Then messages:
 //   server -> client: u8 type, u32 length, payload
 //     1 WIN     u32 id, s16 x y (client area on the Pi's screen), u16 w h (client area),
 //               u16 ow oh il it (the whole window with its frame, the client area's place
@@ -46,6 +47,11 @@
 //               the size arrows, 8 cell, 9 cross, 10 wait, 11 no), sent when it changes, between
 //               rounds -- the client shows its own pointer of that shape (uk_win_cursor_shown: known
 //               only when Elegant, the graphics server, has the display)
+//    12 COPY    u32 id, u16 x y w h, s16 dx dy: move a rectangle of the window's content as the client has it
+//               (x y w h, inside the content) by dx dy (the destination inside too; the two may overlap: as if
+//               through a copy) -- only to a client that set option bit 3. A row of tiles slid sideways (the
+//               console's home) or a page scrolled sends the strip that came into view, not the whole area
+//               (see copy_find); the PIXELS that follow in the round are drawn over it
 //   client -> server: u8 type, payload
 //     1 READY   (send the next round)
 //     2 PTR     u32 id, s16 x y (in the window's client area: negative on its frame, e.g.
@@ -101,6 +107,7 @@ static struct {
 	unsigned send_us, send_max, round_us, round_max, read_us, lz_us;
 	unsigned ans_us, ans_max, ans_n, rect, px;
 	unsigned stall_us, inflight_max, probes, ping_us, ping_max, ping_n, idle;
+	unsigned copies, copy_px, copy_tries, copy_us;
 } g_st;
 static void rdlog (const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
 static void rdlog (const char *fmt, ...)
@@ -141,6 +148,9 @@ static void stats_tick (int force)
 		rdlog ("rdpd   credit %d of %d, in flight max %u, no credit %ums; %u idle checks, %u probes, ping avg %ums max %ums",
 			g_credit, g_window, g_st.inflight_max, g_st.stall_us / 1000, g_st.idle, g_st.probes,
 			g_st.ping_n ? g_st.ping_us / g_st.ping_n / 1000 : 0, g_st.ping_max / 1000);
+		if (g_st.copy_tries)
+			rdlog ("rdpd   copy: %u searches %ums, %u copies %uKpx", g_st.copy_tries, g_st.copy_us / 1000,
+				g_st.copies, g_st.copy_px / 1000);
 	}
 	memset (&g_st, 0, sizeof g_st);
 	g_st.t0 = now;
@@ -151,7 +161,7 @@ static void stats_tick (int force)
 #define MIN_ROUND_TICKS	2		// >= 20 ms between rounds (<= 50 a second)
 #define BUSY_FACTOR	2		// ... and twice the last round's time (core 0 kept for the apps)
 
-static int g_sock, g_dead, g_W, g_H, g_bpp16, g_desktop, g_noFrames, g_pipe;
+static int g_sock, g_dead, g_W, g_H, g_bpp16, g_desktop, g_noFrames, g_pipe, g_copy;
 static volatile int g_next = -1;	// a new client accepted while a session runs (-1 none): acceptor ()
 static int g_roundMsgs;			// messages in this round but its END (0: nothing changed)
 
@@ -277,6 +287,7 @@ struct Win
 	int sent;				// its WIN message went out
 	unsigned flags;				// the flags it told (pocket_flags)
 	int stale;				// its pixels not sent yet (new, or hidden until now)
+	int miss, skip;				// COPY: searches in a row that found nothing, rounds left without one
 	int alive;
 };
 static struct Win g_win[MAXWIN];
@@ -447,8 +458,147 @@ static void send_win (const struct kapi_win_info *I, unsigned flags)
 	put32 (flags); put8 ((unsigned) I->alpha); put8 (I->state); put8 ((unsigned) tn); put (I->title, tn);
 }
 
+// ---- COPY: a moved area found (option bit 3) ------------------------------------------------
+// When many tiles of a window changed, part of it may only have moved: a row of tiles slid sideways (the console's
+// home, its animation), a list or a page scrolled. A few anchors -- a short run of pixels in the middle of a changed
+// tile, along a row and down a column -- are looked for in the client's copy (prev) on the same row / column; each
+// place found gives a shift, the rectangle around the anchor where cur is prev shifted is grown, and the largest
+// (at least COPY_MIN pixels) is sent as a COPY and done in prev too -- the tile diff then sends only what is new.
+// What a COPY covers is checked pixel for pixel: a wrong guess costs nothing but the search. The cost: the search
+// only when COPY_TILES tiles changed, a few row / column scans with an early exit; a window where nothing is
+// found (a game, a video: everything changes) is searched less and less often (skip: 2, 4 .. 16 rounds).
+#define COPY_TILES	8		// changed tiles before a search
+#define COPY_SEG	16		// the anchor's length
+#define COPY_ANCHORS	6		// anchors a search
+#define COPY_CANDS	8		// places tried an anchor
+#define COPY_MIN	(2 * TILE * TILE)	// pixels a COPY at least
+#define COPY_MAX	3		// COPYs a window a round
+static unsigned char g_chg[4096];	// the tiles changed (a window's, row by row; window_map)
+
+static int tiles_across (int W) { return (W + TILE - 1) / TILE; }
+// The changed tiles of a window into g_chg -> how many (-1: too many tiles to map)
+static int window_map (struct Win *w, int full)
+{
+	int W = w->info.w, H = w->info.h, nx = tiles_across (W), ny = (H + TILE - 1) / TILE, n = 0;
+	if (nx * ny > (int) sizeof g_chg) return -1;
+	for (int ty = 0, k = 0; ty < H; ty += TILE)
+	{
+		int th = H - ty < TILE ? H - ty : TILE;
+		for (int tx = 0; tx < W; tx += TILE, k++)
+		{
+			int tw = W - tx < TILE ? W - tx : TILE, changed = full;
+			for (int j = 0; j < th && !changed; j++)
+				changed = memcmp (w->cur + (size_t) (ty + j) * W + tx, w->prev + (size_t) (ty + j) * W + tx, (size_t) tw * 4) != 0;
+			g_chg[k] = (unsigned char) changed; n += changed;
+		}
+	}
+	return n;
+}
+
+struct CopyR { int x0, y0, x1, y1, dx, dy; };	// the destination (cur), the source = it - (dx, dy)
+static int row_ok (const struct Win *w, const struct CopyR *r, int y)
+{
+	int W = w->info.w;
+	return memcmp (w->cur + (size_t) y * W + r->x0, w->prev + (size_t) (y - r->dy) * W + r->x0 - r->dx, (size_t) (r->x1 - r->x0) * 4) == 0;
+}
+static int col_ok (const struct Win *w, const struct CopyR *r, int x)
+{
+	int W = w->info.w;
+	const unsigned *c = w->cur + (size_t) r->y0 * W + x, *p = w->prev + (size_t) (r->y0 - r->dy) * W + x - r->dx;
+	for (int y = r->y0; y < r->y1; y++, c += W, p += W) if (*c != *p) return 0;
+	return 1;
+}
+// The rectangle around the anchor where cur is prev shifted, as large as it grows (rows, then columns, twice)
+static int grow (const struct Win *w, struct CopyR *r)
+{
+	int W = w->info.w, H = w->info.h;
+	int ylo = r->dy > 0 ? r->dy : 0, yhi = r->dy < 0 ? H + r->dy : H;		// (the source inside)
+	int xlo = r->dx > 0 ? r->dx : 0, xhi = r->dx < 0 ? W + r->dx : W;
+	if (r->x0 < xlo || r->x1 > xhi || r->y0 < ylo || r->y1 > yhi) return 0;
+	for (int pass = 0; pass < 2; pass++)
+	{
+		while (r->y0 > ylo && row_ok (w, r, r->y0 - 1)) r->y0--;
+		while (r->y1 < yhi && row_ok (w, r, r->y1)) r->y1++;
+		while (r->x0 > xlo && col_ok (w, r, r->x0 - 1)) r->x0--;
+		while (r->x1 < xhi && col_ok (w, r, r->x1)) r->x1++;
+	}
+	return (r->x1 - r->x0) * (r->y1 - r->y0);
+}
+
+// Do a COPY in prev (the client does the same with its copy)
+static void copy_apply (struct Win *w, const struct CopyR *r)
+{
+	int W = w->info.w, cw = r->x1 - r->x0, h = r->y1 - r->y0;
+	for (int j = 0; j < h; j++)
+	{
+		int y = r->dy > 0 ? r->y1 - 1 - j : r->y0 + j;		// (overlapping: the rows read before written)
+		memmove (w->prev + (size_t) y * W + r->x0, w->prev + (size_t) (y - r->dy) * W + r->x0 - r->dx, (size_t) cw * 4);
+	}
+}
+
+// One search -> 1 a COPY sent (and done in prev), 0 none found
+static int copy_find (struct Win *w, int n)
+{
+	int W = w->info.w, H = w->info.h, nx = tiles_across (W), ntiles = nx * ((H + TILE - 1) / TILE);
+	struct CopyR best = { 0, 0, 0, 0, 0, 0 }; int bestA = 0;
+	for (int a = 0; a < COPY_ANCHORS; a++)
+	{
+		int want = n * a / COPY_ANCHORS, k = 0;			// (the changed tiles, spread)
+		for (int seen = 0; k < ntiles; k++) if (g_chg[k] && seen++ == want) break;
+		if (k >= ntiles) break;
+		int tx = (k % nx) * TILE, ty = (k / nx) * TILE;
+		int tw = W - tx < TILE ? W - tx : TILE, th = H - ty < TILE ? H - ty : TILE;
+		// along a row: the anchor = cur[y][x .. x + COPY_SEG), looked for on the same row of prev (a sideways move)
+		if (W >= 2 * COPY_SEG)
+		{
+			int y = ty + th / 2, x = tx + tw / 2 - COPY_SEG / 2;
+			if (x < 0) x = 0;
+			if (x > W - COPY_SEG) x = W - COPY_SEG;
+			const unsigned *c = w->cur + (size_t) y * W + x, *p = w->prev + (size_t) y * W;
+			int flat = 1;
+			for (int i = 1; i < COPY_SEG && flat; i++) flat = c[i] == c[0];
+			for (int xs = 0, cands = 0; !flat && xs <= W - COPY_SEG && cands < COPY_CANDS; xs++)
+				if (xs != x && p[xs] == c[0] && memcmp (p + xs, c, COPY_SEG * 4) == 0)
+				{
+					struct CopyR r = { x, y, x + COPY_SEG, y + 1, x - xs, 0 };
+					int A = grow (w, &r); cands++;
+					if (A > bestA) { bestA = A; best = r; }
+				}
+		}
+		// down a column: the anchor = cur[y .. y + COPY_SEG)[x], looked for in the same column of prev (a scroll)
+		if (H >= 2 * COPY_SEG)
+		{
+			int x = tx + tw / 2, y = ty + th / 2 - COPY_SEG / 2;
+			if (y < 0) y = 0;
+			if (y > H - COPY_SEG) y = H - COPY_SEG;
+			const unsigned *c = w->cur + (size_t) y * W + x, *p = w->prev + x;
+			int flat = 1;
+			for (int j = 1; j < COPY_SEG && flat; j++) flat = c[(size_t) j * W] == c[0];
+			for (int ys = 0, cands = 0; !flat && ys <= H - COPY_SEG && cands < COPY_CANDS; ys++)
+			{
+				if (ys == y || p[(size_t) ys * W] != c[0]) continue;
+				int j = 1;
+				while (j < COPY_SEG && p[(size_t) (ys + j) * W] == c[(size_t) j * W]) j++;
+				if (j < COPY_SEG) continue;
+				struct CopyR r = { x, y, x + 1, y + COPY_SEG, 0, y - ys };
+				int A = grow (w, &r); cands++;
+				if (A > bestA) { bestA = A; best = r; }
+			}
+		}
+	}
+	if (bestA < COPY_MIN) return 0;
+	msg (12, 4 + 8 + 4);
+	put32 (w->id);
+	put16 ((unsigned) (best.x0 - best.dx)); put16 ((unsigned) (best.y0 - best.dy));
+	put16 ((unsigned) (best.x1 - best.x0)); put16 ((unsigned) (best.y1 - best.y0));
+	put16 ((unsigned) (short) best.dx); put16 ((unsigned) (short) best.dy);
+	copy_apply (w, &best);
+	g_st.copies++; g_st.copy_px += (unsigned) bestA;
+	return 1;
+}
+
 // The content: the tiles that changed since the client's copy, a row of tiles at a time
-// (the changed ones side by side sent as one rectangle).
+// (the changed ones side by side sent as one rectangle) -- after the COPYs of what only moved.
 static void send_content (struct Win *w, int full)
 {
 	int W = w->info.w, H = w->info.h;
@@ -462,20 +612,30 @@ static void send_content (struct Win *w, int full)
 	}
 	unsigned tr = kapi_clock_us ();
 	if (uk_win_read (w->id, 0, 0, 0, W, H, w->cur, W) != 0) return;
+	int n = window_map (w, full);
 	g_st.read_us += kapi_clock_us () - tr;
+	if (n < 0) full = 1;
+	else if (g_copy && !full && n >= COPY_TILES)
+	{
+		if (w->skip > 0) w->skip--;
+		else
+		{
+			unsigned tc = kapi_clock_us ();
+			int k = 0;
+			g_st.copy_tries++;
+			while (k < COPY_MAX && n >= COPY_TILES && copy_find (w, n)) { k++; n = window_map (w, 0); }
+			if (k) w->miss = 0;
+			else { w->miss++; w->skip = 1 << (w->miss < 4 ? w->miss : 4); }
+			g_st.copy_us += kapi_clock_us () - tc;
+		}
+	}
+	int nx = tiles_across (W);
 	for (int ty = 0; ty < H; ty += TILE)
 	{
 		int th = H - ty < TILE ? H - ty : TILE, run = -1;
 		for (int tx = 0; tx < W + TILE; tx += TILE)		// (one step past the edge: ends a run)
 		{
-			int changed = 0;
-			if (tx < W)
-			{
-				int tw = W - tx < TILE ? W - tx : TILE;
-				if (full) changed = 1;
-				else for (int j = 0; j < th && !changed; j++)
-					changed = memcmp (w->cur + (size_t) (ty + j) * W + tx, w->prev + (size_t) (ty + j) * W + tx, (size_t) tw * 4) != 0;
-			}
+			int changed = tx < W && (full || g_chg[(ty / TILE) * nx + tx / TILE]);
 			if (changed && run < 0) run = tx;
 			if (!changed && run >= 0)
 			{
@@ -667,7 +827,7 @@ static void session (void)
 	for (int i = 0; i < MAXWIN; i++) drop (&g_win[i]);
 	put ("ONYXRDP1", 8); put16 ((unsigned) g_W); put16 ((unsigned) g_H); put16 (kapi_abi_version ()); flush_out ();
 	if (!need (9) || memcmp (g_in, "ONYXRDP1", 8) != 0) return;
-	g_bpp16 = g_in[8] & 1; g_noFrames = (g_in[8] & 2) != 0; g_pipe = (g_in[8] & 4) != 0;
+	g_bpp16 = g_in[8] & 1; g_noFrames = (g_in[8] & 2) != 0; g_pipe = (g_in[8] & 4) != 0; g_copy = (g_in[8] & 8) != 0;
 	consume (9);
 	g_window = g_pipe ? PIPE_ROUNDS : 1;
 	g_credit = g_window - 1;			// (+ the client's first READY)
@@ -675,8 +835,8 @@ static void session (void)
 	g_lastRx = g_lastEnd = g_lastPing = kapi_clock_us ();
 	if (g_pipe) { msg (9, 2); put8 (2); put8 ((unsigned) g_window); flush_out (); }	// (protocol 2: MOVE)
 	memset (&g_st, 0, sizeof g_st); g_st.t0 = kapi_clock_us ();
-	rdlog ("rdpd: session start (%d bits a pixel%s, %s)", g_bpp16 ? 16 : 32, g_noFrames ? ", no frames" : "",
-	       g_pipe ? "pipelined: 3 rounds in flight" : "lock-step: an older client");
+	rdlog ("rdpd: session start (%d bits a pixel%s%s, %s)", g_bpp16 ? 16 : 32, g_noFrames ? ", no frames" : "",
+	       g_copy ? ", COPY" : "", g_pipe ? "pipelined: 3 rounds in flight" : "lock-step: an older client");
 	unsigned last = kapi_get_ticks () - 100, wait = MIN_ROUND_TICKS, loopAt = kapi_clock_us ();
 	while (!g_dead)
 	{

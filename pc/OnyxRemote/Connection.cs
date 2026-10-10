@@ -14,6 +14,8 @@
 //    other side resend sooner (duplicate ACKs) -- see rdpd.c;
 //  * the connection lost (an error, or nothing heard for SilentMs), it reconnects by itself with
 //    the same options, waiting longer each time (0.5 s .. 8 s), the windows kept meanwhile;
+//  * what only moved on the Pi (a row of tiles slid, a page scrolled) comes as a COPY (option bit 3: an older
+//    rdpd ignores it and sends the pixels), the client's copy of the window moved, then the new strip's pixels;
 //  * a message whose fields are out of range is skipped (counted: Damaged), the pixels clipped to
 //    their window's buffers; a stream whose framing is wrong (an unknown type, a huge length:
 //    bytes lost or doubled) is dropped and the connection made again.
@@ -74,7 +76,7 @@ namespace OnyxRemote
 		const int SilentMs = 12000;			// nothing heard that long: the connection is dead
 		const int ConnectMs = 8000, HelloMs = 15000;
 		const int MaxMessage = 4 << 20, MaxRound = 256 << 20;	// (larger: the stream is damaged)
-		const byte OPT_16BIT = 1, OPT_NOFRAMES = 2, OPT_PIPELINED = 4;
+		const byte OPT_16BIT = 1, OPT_NOFRAMES = 2, OPT_PIPELINED = 4, OPT_COPY = 8;
 
 		string host; int port;
 		bool bpp16, frames;
@@ -126,7 +128,7 @@ namespace OnyxRemote
 				if (Encoding.ASCII.GetString (hello, 0, 8) != "ONYXRDP1") throw new RefusedException ("not an Onyx rdpd server (or an older rdpd: update the SD card)");
 				t.ReceiveTimeout = SilentMs;
 				var ans = new List<byte> (Encoding.ASCII.GetBytes ("ONYXRDP1"));
-				ans.Add ((byte) ((bpp16 ? OPT_16BIT : 0) | (frames ? 0 : OPT_NOFRAMES) | OPT_PIPELINED));
+				ans.Add ((byte) ((bpp16 ? OPT_16BIT : 0) | (frames ? 0 : OPT_NOFRAMES) | OPT_PIPELINED | OPT_COPY));
 				ans.Add (7); ans.Add ((byte) (desktopOn ? 1 : 0));	// DESKTOP
 				ans.Add (1);						// READY: the first round
 				s.Write (ans.ToArray (), 0, ans.Count);
@@ -439,6 +441,23 @@ namespace OnyxRemote
 						else c = src[o] | src[o + 1] << 8 | src[o + 2] << 16 | src[o + 3] << 24;	// (the top byte kept)
 						dst[row + i] = c;
 					}
+				}
+				m.Dirty = true;
+				return true;
+			}
+			case 12:	// COPY: a rectangle of the content moved by dx dy (the two may overlap)
+			{
+				if (p.Length < 16) return false;
+				WinModel m;
+				if (!Windows.TryGetValue (U32 (p, 0), out m)) return true;
+				int x = U16 (p, 4), y = U16 (p, 6), w = U16 (p, 8), h = U16 (p, 10), dx = S16 (p, 12), dy = S16 (p, 14);
+				int dw = m.W, dh = m.H;
+				if (m.Content.Length < dw * dh || x + w > dw || y + h > dh || x + dx < 0 || y + dy < 0
+				    || x + dx + w > dw || y + dy + h > dh) return false;
+				for (int j = 0; j < h; j++)
+				{
+					int r = dy > 0 ? h - 1 - j : j;		// (overlapping: the rows read before written)
+					Array.Copy (m.Content, (y + r) * dw + x, m.Content, (y + dy + r) * dw + x + dx, w);
 				}
 				m.Dirty = true;
 				return true;

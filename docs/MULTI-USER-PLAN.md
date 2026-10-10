@@ -489,7 +489,7 @@ then an `mbedtls.so` — it is on the shared-library list anyway):
 
 ### 8.3 `rdpd` and Onyx Remote (D7)
 
-- Protocol: option bit 3 of the client's hello = "TLS + login" (bits 3–7 are free); a new server
+- Protocol: option bit 4 of the client's hello = "TLS + login" (bits 4–7 are free; bit 3 is COPY since 2026-10-10); a new server
   refuses a client without it (message "update Onyx Remote"), unless `SD:/etc/remote.ini` allows the
   old protocol (off by default once shipped). After the TLS handshake, a `LOGIN` message (name,
   password) and its answer; then the stream as today, inside TLS.

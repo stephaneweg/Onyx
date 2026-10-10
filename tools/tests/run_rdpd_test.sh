@@ -2,7 +2,8 @@
 # Host test of user/BinUtils/rdpd.c (the window-level remote desktop server): built against a mock
 # kapi (real sockets, two made-up windows: rdpd/mock_rdpd.h) and driven by rdpd/rdpd_test.py
 # (the protocol, LZ4 decoded, the pixels, the changed tile only, the pointer put back); then rdpd/rdpd_pocket_test.py
-# under a mock PocketUI (the flags told to Onyx Remote: the windows that take the PC's keys).
+# under a mock PocketUI (the flags told to Onyx Remote: the windows that take the PC's keys), and rdpd/rdpd_copy_test.py
+# (COPY: what only moved).
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 b=$(mktemp -d)
@@ -21,7 +22,8 @@ MOCK_POCKET=2 "$b/rdpd" 3393 > "$b/log2" & pid2=$!
 MOCK_POCKET=3 "$b/rdpd" 3394 > "$b/log3" & pid3=$!
 MOCK_POCKET=4 "$b/rdpd" 3395 > "$b/log4" & pid4=$!
 MOCK_POCKET=5 "$b/rdpd" 3396 > "$b/log5" & pid5=$!
-trap 'kill $pid $pid1 $pid2 $pid3 $pid4 $pid5 2>/dev/null; rm -rf "$b"' EXIT
+MOCK_POCKET=6 "$b/rdpd" 3397 > "$b/log6" 2>&1 & pid6=$!
+trap 'kill $pid $pid1 $pid2 $pid3 $pid4 $pid5 $pid6 2>/dev/null; rm -rf "$b"' EXIT
 sleep 0.5
 python3 "$here/rdpd/rdpd_test.py" 3391 "$b/log"
 # under PocketUI (the mock's MOCK_POCKET): the frameless main windows and the home told as plain ones (the keys)
@@ -32,3 +34,5 @@ python3 "$here/rdpd/rdpd_pocket_test.py" 3394 "$b/log3" 3
 python3 "$here/rdpd/rdpd_pocket_test.py" 3395 "$b/log4" 4
 # console mode: no menu bar -- the home's menu at the top edge told without TOPMOST (Onyx Remote: not a menu bar)
 python3 "$here/rdpd/rdpd_pocket_test.py" 3396 "$b/log5" 5
+# COPY (option bit 3): a band slid sideways, a window scrolled -- moved by COPY, only the new strips as PIXELS
+python3 "$here/rdpd/rdpd_copy_test.py" 3397 "$b/log6"
