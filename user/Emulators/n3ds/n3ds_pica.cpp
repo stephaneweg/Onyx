@@ -78,7 +78,8 @@ struct Pica
 	u32 code[CODE_MAX]; u32 opdesc[OPDESC_MAX];
 	float fu[96][4]; u8 iu[4][4]; u32 bu;
 	u32 codeIndex, opdescIndex;
-	struct ShaderIns *dec; u8 *decValid; bool decDirty;	// the code's instructions decoded (as they are met; again when the code or the descriptors change)
+	struct ShaderIns *dec; u8 *decValid; bool decDirty, decAll;
+	struct Batch *batch; u32 badOp;			// a draw's vertices shaded together (on several cores); an instruction the shader does not know	// the code's instructions decoded (as they are met; again when the code or the descriptors change)
 	u32 floatIndex; bool float32; u32 floatWords[4]; int floatCount;
 	// attributes given by registers: the fixed ones, and the vertices given one by one
 	float fixed[12][4]; u32 fixedIndex; u32 fixedWords[3]; int fixedCount;
@@ -216,21 +217,35 @@ static void decodeIns (const Pica *p, u32 pc, ShaderIns &I)
 	for (int i = 0; i < 4; i++) I.mask[i] = (od & 15 & (8u >> i)) ? -1 : 0;
 }
 
-static void runShader (Pica *p, Shader &s, u32 entry)
+// The decoded instructions' table is there and up to date (false: no memory). `all`: every instruction decoded now
+// (what several cores running the shader at once need: none of them writes the table then).
+static bool decReady (Pica *p, bool all)
 {
 	if (!p->dec)
 	{
 		p->dec = (ShaderIns *) malloc (sizeof (ShaderIns) * CODE_MAX); p->decValid = (u8 *) malloc (CODE_MAX);
-		if (!p->dec || !p->decValid) { free (p->dec); free (p->decValid); p->dec = 0; p->decValid = 0; return; }
+		if (!p->dec || !p->decValid) { free (p->dec); free (p->decValid); p->dec = 0; p->decValid = 0; return false; }
 		p->decDirty = true;
 	}
-	if (p->decDirty) { memset (p->decValid, 0, CODE_MAX); p->decDirty = false; }
+	if (p->decDirty) { memset (p->decValid, 0, CODE_MAX); p->decDirty = false; p->decAll = false; }
+	if (all && !p->decAll)
+	{
+		for (u32 pc = 0; pc < CODE_MAX; pc++) if (!p->decValid[pc]) { decodeIns (p, pc, p->dec[pc]); p->decValid[pc] = 1; }
+		p->decAll = true;
+	}
+	return true;
+}
+
+// (stepsOut: the instructions run are added there; badOp: an instruction it does not know is left there)
+static void runShader (Pica *p, Shader &s, u32 entry, u64 &stepsOut, u32 &badOp)
+{
+	if (!p->dec || p->decDirty) { if (!decReady (p, false)) return; }
 	struct Frame { u32 end, ret, repeat, inc, loop; } stack[16];
 	int depth = 0;
 	u32 pc = entry;
 	s.cmp[0] = s.cmp[1] = false; s.a[0] = s.a[1] = 0; s.aL = 0;
 	int steps = 0;
-	struct Count { u64 &total; int &n; ~Count () { total += (u64) n; } } count = { p->m->gsp.shaderSteps, steps };
+	struct Count { u64 &total; int &n; ~Count () { total += (u64) n; } } count = { stepsOut, steps };
 	for (; steps < 65536; steps++)
 	{
 		while (depth && pc == stack[depth - 1].end)			// the end of a called block, of a loop's body
@@ -317,7 +332,7 @@ static void runShader (Pica *p, Shader &s, u32 entry)
 				s.cmp[i] = c == 0 ? x == y : c == 1 ? x != y : c == 2 ? x < y : c == 3 ? x <= y : c == 4 ? x > y : c == 5 ? x >= y : true;
 			}
 			continue;
-		default: p->m->note ("vertex shader instruction %02x", (unsigned) op); continue;
+		default: badOp = op | 0x100; continue;
 		}
 		float *dst = I.d < 0x10 ? s.out[I.d] : s.reg[I.d];
 		V4 old;
@@ -329,13 +344,13 @@ static void runShader (Pica *p, Shader &s, u32 entry)
 
 // Runs the shader on a vertex's attributes (the input registers are fed through the permutation) and maps its
 // outputs to the vertex's meanings.
-static void shadeVertex (Pica *p, float attr[16][4], int count, Vertex &v)
+static void shadeVertex (Pica *p, float attr[16][4], int count, Vertex &v, u64 &steps, u32 &badOp)
 {
 	Shader s;
 	memset (&s, 0, sizeof s);
 	const u64 perm = (u64) p->regs[R_VSH_PERM_HI] << 32 | p->regs[R_VSH_PERM_LO];
 	for (int i = 0; i < count && i < 16; i++) memcpy (s.reg[perm >> (4 * i) & 15], attr[i], sizeof (float) * 4);
-	if (!(p->m->gpuSkip & 256)) runShader (p, s, p->regs[R_VSH_ENTRY] & 0xFFFF);
+	if (!(p->m->gpuSkip & 256)) runShader (p, s, p->regs[R_VSH_ENTRY] & 0xFFFF, steps, badOp);
 	memset (&v, 0, sizeof v);
 	v.a[A_POS + 3] = 1.0f;
 	const u32 outMask = p->regs[R_VSH_OUTMASK];
@@ -1490,8 +1505,34 @@ static void assemble (Pica *p, const Vertex &v)
 }
 
 // A vertex an indexed draw names several times (a mesh's triangles share theirs) is shaded once.
-struct Shaded { u32 index, stamp; Vertex v; };
+struct Shaded { u32 index, stamp, entry; Vertex v; };
 enum { SHADED_MAX = 1024 };
+
+// A draw's vertices shaded together: each one's attributes are read first (once a vertex: `order` says which entry
+// each of the draw's vertices is), the shader then runs on all of them -- the host's other cores taking their
+// share, 32 at a time --, and the triangles are assembled in the draw's order.
+enum { BATCH_MAX = 2048, BATCH_SPAN = 8192, BATCH_PIECE = 32 };
+struct Batch
+{
+	float attr[BATCH_MAX][16][4]; Vertex out[BATCH_MAX]; u16 order[BATCH_SPAN];
+	u32 count, next; int inputs;
+	struct { u64 steps; u32 badOp; char pad[52]; } by[8];		// (a worker's own)
+};
+static void shadeWorker (void *arg, int worker)
+{
+	Pica *p = (Pica *) arg;
+	Batch &b = *p->batch;
+	u64 steps = 0; u32 badOp = 0;
+	for (;;)
+	{
+		const u32 k0 = __atomic_fetch_add (&b.next, (u32) BATCH_PIECE, __ATOMIC_SEQ_CST);
+		if (k0 >= b.count) break;
+		const u32 k1 = k0 + BATCH_PIECE < b.count ? k0 + BATCH_PIECE : b.count;
+		for (u32 k = k0; k < k1; k++) shadeVertex (p, b.attr[k], b.inputs, b.out[k], steps, badOp);
+	}
+	b.by[worker].steps += steps;
+	if (badOp) b.by[worker].badOp = badOp;
+}
 
 // ---- draws ---------------------------------------------------------------------------------------------------------------
 static void draw (Pica *p, bool indexed)
@@ -1556,12 +1597,9 @@ static void draw (Pica *p, bool indexed)
 	if (indexed && !p->shaded) p->shaded = (Shaded *) calloc (SHADED_MAX, sizeof (Shaded));
 	Shaded *const shaded = indexed && !p->m->traceGpu ? p->shaded : 0;
 	if (++p->drawStamp == 0) { p->drawStamp = 1; if (p->shaded) memset (p->shaded, 0, sizeof (Shaded) * SHADED_MAX); }
-	for (u32 n = 0; n < count; n++)
+	// one vertex's attributes, as the loaders and the formats say
+	auto readVertex = [&] (u32 vi, float attr[16][4])
 	{
-		const u32 vi = indexed ? (index16 ? (u32) (index[n * 2] | index[n * 2 + 1] << 8) : index[n]) : n + p->regs[R_VERTEX_OFFSET];
-		Shaded *const slot = shaded ? &shaded[vi & (SHADED_MAX - 1)] : 0;
-		if (slot && slot->stamp == p->drawStamp && slot->index == vi) { assemble (p, slot->v); continue; }
-		float attr[16][4];
 		for (int i = 0; i < 16; i++) { attr[i][0] = attr[i][1] = attr[i][2] = 0; attr[i][3] = 1.0f; }
 		for (int l = 0; l < 12; l++)
 		{
@@ -1593,9 +1631,49 @@ static void draw (Pica *p, bool indexed)
 			}
 		}
 		for (int i = 0; i < 12; i++) if (fixedMask >> i & 1) memcpy (attr[i], p->fixed[i], sizeof attr[i]);
+	};
+	auto vertexIndex = [&] (u32 n) -> u32 { return indexed ? (index16 ? (u32) (index[n * 2] | index[n * 2 + 1] << 8) : index[n]) : n + p->regs[R_VERTEX_OFFSET]; };
+	Machine *const m = p->m;
+	if (count >= 96 && m->parallelBegin && !m->traceGpu && (!indexed || p->shaded) && decReady (p, true)
+	    && (p->batch || (p->batch = (Batch *) malloc (sizeof (Batch))) != 0))
+	{
+		// (many vertices and other cores: shaded together)
+		Batch &b = *p->batch;
+		for (u32 n = 0; n < count; )
+		{
+			b.count = 0; b.inputs = inputs;
+			__atomic_store_n (&b.next, 0u, __ATOMIC_SEQ_CST);
+			for (int w = 0; w < 8; w++) { b.by[w].steps = 0; b.by[w].badOp = 0; }
+			if (++p->drawStamp == 0) { p->drawStamp = 1; if (p->shaded) memset (p->shaded, 0, sizeof (Shaded) * SHADED_MAX); }
+			const u32 n0 = n;
+			for (; n < count && n - n0 < BATCH_SPAN && b.count < BATCH_MAX; n++)
+			{
+				const u32 vi = vertexIndex (n);
+				Shaded *const slot = shaded ? &shaded[vi & (SHADED_MAX - 1)] : 0;
+				if (slot && slot->stamp == p->drawStamp && slot->index == vi) { b.order[n - n0] = (u16) slot->entry; continue; }
+				const u32 k = b.count++;
+				readVertex (vi, b.attr[k]);
+				b.order[n - n0] = (u16) k;
+				if (slot) { slot->index = vi; slot->stamp = p->drawStamp; slot->entry = k; }
+			}
+			m->gsp.vertices += b.count;
+			if (b.count >= 2 * BATCH_PIECE && m->parallelBegin (m->parallelUser, shadeWorker, p)) m->parallelEnd (m->parallelUser, shadeWorker, p);
+			else shadeWorker (p, 0);
+			for (int w = 0; w < 8; w++) { m->gsp.shaderSteps += b.by[w].steps; if (b.by[w].badOp) p->badOp = b.by[w].badOp; }
+			for (u32 i = n0; i < n; i++) assemble (p, b.out[b.order[i - n0]]);
+		}
+		if (++p->drawStamp == 0) p->drawStamp = 1;			// (the entries kept by index are this draw's batches': not vertices)
+	}
+	else for (u32 n = 0; n < count; n++)
+	{
+		const u32 vi = vertexIndex (n);
+		Shaded *const slot = shaded ? &shaded[vi & (SHADED_MAX - 1)] : 0;
+		if (slot && slot->stamp == p->drawStamp && slot->index == vi) { assemble (p, slot->v); continue; }
+		float attr[16][4];
+		readVertex (vi, attr);
 		Vertex v;
 		p->m->gsp.vertices++;
-		shadeVertex (p, attr, inputs, v);
+		shadeVertex (p, attr, inputs, v, m->gsp.shaderSteps, p->badOp);
 		if (slot) { slot->index = vi; slot->stamp = p->drawStamp; slot->v = v; }
 		if (p->m->traceGpu && n == 0)
 		{
@@ -1606,6 +1684,7 @@ static void draw (Pica *p, bool indexed)
 		if (p->m->traceGpu && n < 3) fprintf (stderr, "   v%u clip %g %g %g %g  color %g %g %g %g  tc %g %g%c", (unsigned) n, (double) v.a[0], (double) v.a[1], (double) v.a[2], (double) v.a[3], (double) v.a[8], (double) v.a[9], (double) v.a[10], (double) v.a[11], (double) v.a[12], (double) v.a[13], 10);
 		assemble (p, v);
 	}
+	if (p->badOp) { m->note ("vertex shader instruction %02x", (unsigned) (p->badOp & 0xFF)); p->badOp = 0; }
 	if (p->m->traceGpu) flush (p);						// (a trace: each draw rasterized at once, to count it)
 	if (p->m->traceGpu) fprintf (stderr, "   -> %llu pixels (%llu triangles on the screen; %llu pixels behind, %llu refused by the alpha test)%c", (unsigned long long) (p->pixels - pixelsBefore),
 				     (unsigned long long) (p->triangles - trisBefore), (unsigned long long) (p->depthFailed - depthBefore), (unsigned long long) (p->alphaFailed - alphaBefore), 10);
@@ -1640,7 +1719,7 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 		if (p->immediateCount >= (int) (p->regs[R_VSH_INPUT] & 15) + 1)
 		{
 			Vertex vtx;
-			shadeVertex (p, p->immediate, p->immediateCount, vtx);
+			shadeVertex (p, p->immediate, p->immediateCount, vtx, p->m->gsp.shaderSteps, p->badOp);
 			p->immediateCount = 0;
 			assemble (p, vtx);
 		}
@@ -1712,7 +1791,7 @@ static Pica *pica (Machine *m)
 void picaFree (Machine *m)
 {
 	picaSync (m);
-	if (m->pica) { free (m->pica->states); free (m->pica->jobs); free (m->pica->scratch); free (m->pica->shaded); free (m->pica->dec); free (m->pica->decValid); for (auto &d : m->pica->decoded) free (d.px); }
+	if (m->pica) { free (m->pica->states); free (m->pica->jobs); free (m->pica->scratch); free (m->pica->shaded); free (m->pica->batch); free (m->pica->dec); free (m->pica->decValid); for (auto &d : m->pica->decoded) free (d.px); }
 	free (m->pica); m->pica = 0;
 }
 
