@@ -49,6 +49,28 @@ not shown. "Desktop" shows the Onyx desktop behind them; "16-bit colours" sends 
 address:port) in its own window -- scroll, select and copy the output, Enter sends the command
 line, Up / Down the history, Ctrl+C interrupts. No password, no encryption: trusted LAN only.
 
+PocketTerm Simulator
+====================
+
+PocketTermSim.exe (+ PocketTermSim.exe.config, PocketTermSim.buttons.ini): the face of the Waveshare
+PocketTerm35 on this PC, to try Onyx's pocket interface before the device is there -- the Onyx session
+(rdpd, port 3390) under the glass at 640 x 480, pixel for pixel, and the device's controls below, to click:
+the D-pad, L / R, X / Y / A / B, Select / Start, the thumb keyboard.
+
+  PocketTermSim.exe              the window, then the Pi's address
+  PocketTermSim.exe <address>    connected at once (address or address:port)
+
+The window has the device's shape (771 x 1390 pixels at 1x): taller than the monitor, it scrolls (the
+wheel). View: 1x / 1.5x / 2x, True size, "Fit the whole device to this monitor", or "Controls beside the
+screen". Shift, Ctrl, Alt, CMD and Fn are sticky: one click for the next key, two to lock, a third to
+release. The pad's buttons are sent as keys (rdpd has no gamepad message): the D-pad the arrows, A Enter,
+B Esc, Y Shift+F10, L / R Ctrl+Page Up / Down, Select F10, Start the Super key -- change them in
+PocketTermSim.buttons.ini (Device > Edit the button mapping, then Reload); Help > "What each control
+sends" lists the key codes. The PC's keyboard types into the session; F5 X, F6 Y, F7 L, F8 R, F9 Select,
+F12 Start. Ctrl+Shift+S saves the screen as a PNG (Pictures\Onyx). The Pi's screen must be 640 x 480:
+width=640 height=480 in SD:/cmdline.txt, then restart the Pi (the client cannot ask for it, and the
+Display applet's list starts at 1024 x 768); another size is shown scaled into the glass. Built by: sh pc/PocketTermSim/build.sh
+
 NintendoEMU
 ===========
 

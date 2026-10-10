@@ -4985,6 +4985,15 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   when the .NET SDK is there: COPY applied right after every round), and
   `unshare -rn python3 tools/tests/rdpd/loss_bench.py` (rounds a second over a loopback that
   drops 20 % of the packets).
+- **PocketTerm Simulator** (`pc/PocketTermSim`, `pc/dist/PocketTermSim.exe`; docs/04 *The PocketTerm35 on a PC*):
+  the Waveshare PocketTerm35's face on a PC, a second client of `rdpd`. It **links** Onyx Remote's
+  `Connection.cs`, `KeyMap.cs` and `Lz4.cs` (no copy), composites the windows into one screen itself
+  (`Compositor.cs`, as `Screenshot.cs`) and sends every control as rdpd's `KEY` (X11 keysyms: rdpd has no gamepad
+  message; the chords in `PocketTermSim.buttons.ini`). Build: `sh pc/PocketTermSim/build.sh` (the .NET SDK; it
+  touches nothing else in `pc/dist`). Test, with no Pi: `python pc/PocketTermSim/test/run_test.py` -- a fake rdpd
+  (`test/fake_rdpd.py`: the hello, one picture, a log of the input received) and the program's `--selftest`, which
+  presses every control: 210 steps checked against the default mapping. `python pc/PocketTermSim/test/fake_rdpd.py`
+  alone, then `PocketTermSim.exe 127.0.0.1`, shows the simulator over a mock-up's picture.
 - **Serial console**: `config.txt` must have `enable_uart=1` (PL011 clock). The boot
   log goes **also** to the HDMI screen (`CScreenDevice`) so it is readable without a serial
   cable.

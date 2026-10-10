@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- PocketTerm Simulator: the Waveshare PocketTerm35's face on a PC (its 640 x 480 screen, its pad, its
+       thumb keyboard), a client of rdpd like Onyx Remote, whose connection code it shares (linked, not
+       copied). .NET Framework 4.8 (on every Windows 10 / 11).
+       Build: sh pc/PocketTermSim/build.sh -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>PocketTermSim</AssemblyName>
+    <RootNamespace>PocketTermSim</RootNamespace>
+    <ApplicationManifest>..\OnyxRemote\app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\OnyxRemote\onyxremote.ico</ApplicationIcon>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AssemblyTitle>PocketTerm Simulator</AssemblyTitle>
+    <Product>PocketTerm Simulator</Product>
+    <Version>1.0.0</Version>
+    <Nullable>disable</Nullable>
+    <DebugType>none</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="*.cs" />
+    <!-- Onyx Remote's link to rdpd, its keys and its LZ4: the same files -->
+    <Compile Include="..\OnyxRemote\Connection.cs" Link="Shared\Connection.cs" />
+    <Compile Include="..\OnyxRemote\KeyMap.cs" Link="Shared\KeyMap.cs" />
+    <Compile Include="..\OnyxRemote\Lz4.cs" Link="Shared\Lz4.cs" />
+    <EmbeddedResource Include="..\OnyxRemote\onyxremote.ico" LogicalName="onyxremote.ico" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

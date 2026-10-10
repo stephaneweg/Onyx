@@ -22,6 +22,8 @@ cp "$ROOT/sdcard/apps/qbasic.app/help.txt" "$DIST/help.txt"
 # Onyx Remote: the client of rdpd (the Onyx windows on the PC)
 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/OnyxRemote/OnyxRemote.csproj" -c Release -o "$HERE/OnyxRemote/bin/out" -v quiet -nologo
 cp "$HERE/OnyxRemote/bin/out/OnyxRemote.exe" "$HERE/OnyxRemote/bin/out/OnyxRemote.exe.config" "$DIST/"
+# PocketTerm Simulator: the PocketTerm35's face, a client of rdpd sharing Onyx Remote's connection (its own script)
+sh "$HERE/PocketTermSim/build.sh"
 # NintendoEMU: the emulators of Onyx (user/Emulators/gb, gba, nes, snes, n64, gc) + a library of the games
 x86_64-w64-mingw32-g++ -std=c++17 -O2 -Wall -Wextra -shared -static -static-libgcc -static-libstdc++ \
 	-I "$ROOT/user" -I "$ROOT/user/Kits" -I "$ROOT/user/Runtime" -I "$ROOT/user/Include" -I "$ROOT/user/Libs" -I "$ROOT/user/Emulators" -I "$ROOT/user/Ports" -o "$DIST/nemucore.dll" "$HERE/NintendoEMU/core/nemucore.cpp" "$HERE/NintendoEMU/core/gxgl.cpp" \

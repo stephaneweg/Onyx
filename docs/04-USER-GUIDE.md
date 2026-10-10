@@ -1766,6 +1766,43 @@ again (see below) the bar stays shown, the Pi's name followed by *(reconnecting.
 - One PC at a time. **No password and no encryption**: trusted LAN only (remove the `rdpd`
   line from `SD:/etc/autostart` otherwise).
 
+### The PocketTerm35 on a PC (PocketTerm Simulator)
+
+**PocketTerm Simulator** (`PocketTermSim.exe` in `pc/dist/`, with `PocketTermSim.exe.config` and
+`PocketTermSim.buttons.ini`; .NET Framework 4.8, already on Windows 10 / 11) shows the face of the Waveshare
+**PocketTerm35** on a PC, to try the pocket interface before the device is there: the Onyx session under the
+glass at **640 × 480, pixel for pixel**, and below it the device's controls, clickable — the D-pad, **L** / **R**,
+**X** / **Y** / **A** / **B**, **Select** / **Start** and the thumb keyboard. It is a client of `rdpd` (port
+**3390**), like Onyx Remote, whose connection it shares; one client at a time, no password: a trusted network only.
+
+- **Start it**: `PocketTermSim.exe`, type the Pi's address (the last ones are kept), **Connect** — or
+  `PocketTermSim.exe 192.168.0.7` to connect at once. The status line says the Pi, the screen's size, the updates
+  a second.
+- **The window has the device's shape** (93.5 × 168.5 mm: 771 × 1390 pixels at 1x, the keyboard as wide as the
+  glass). Taller than the monitor, it scrolls (the wheel). **View**: **1x**, **1.5x**, **2x** (the whole device
+  grows; *Smooth scaling* or sharp pixels), **True size** (3.5 inches on the monitor), **Fit the whole device to
+  this monitor** (nothing to scroll, the picture resampled), or **Controls beside the screen** (a low, wide
+  window: the screen 1:1 and every control visible on a 1080-line monitor).
+- **The keyboard**: a click presses a key; held, it repeats. **Shift**, **Ctrl**, **Alt** and **CMD** (the Super
+  key) are *sticky*: one click arms the modifier for the next key (Ctrl then →: Ctrl+Right; Alt then Tab), a second
+  click **locks** it (an amber frame), a third releases it; armed and released with nothing between is the key
+  tapped alone (CMD: Home). **Fn** works the same and gives the blue legends: F1–F12 on the digits' row, Esc, Del,
+  Home / End / PgUp / PgDn on the arrows. **Caps** is a switch.
+- **The pad's buttons are sent as keys** (rdpd has no gamepad message) — the D-pad the arrows, **A** Enter, **B**
+  Esc, **Y** Shift+F10 (the context menu), **L** / **R** Ctrl+Page Up / Ctrl+Page Down, **Select** F10 (the app's
+  Menu), **Start** the Super key, **X** nothing yet. Change them in **`PocketTermSim.buttons.ini`** beside the
+  program (*Device ▸ Edit the button mapping*, then *Reload*): `[buttons]` a chord a button, `[fn]` the Fn layer,
+  `[pc]` the PC keys that press the buttons. *Help ▸ What each control sends* lists the exact key codes.
+- **The PC's keyboard** types into the session as in Onyx Remote; the arrows, Enter and Esc are the D-pad, A and
+  B; **F5** X, **F6** Y, **F7** L, **F8** R, **F9** Select, **F12** Start (the `[pc]` section). The mouse on the
+  glass moves the Pi's pointer (*View*: off, as the device has none).
+- **Screenshot to PNG** (Ctrl+Shift+S: the Pi's screen; Ctrl+Shift+D: with the device around it) into
+  `Pictures\Onyx`.
+- **A 640 × 480 screen**: the client cannot ask for a size (rdpd only tells it), so set it on the Pi: `width=640 height=480` in
+  `SD:/cmdline.txt`, then restart it (the **Display** applet's list starts at 1024 × 768 today) — and the pocket
+  mode with Control Panel ▸ **Mode** (`shell=pocket` in `SD:/etc/system.ini`). A screen of another size is shown
+  whole, scaled into the glass, with a yellow line saying so.
+
 ### Remote desktop (`vncd`)
 
 `vncd` (started by `SD:/etc/autostart`) serves the Onyx screen over **VNC**, so you can
