@@ -525,6 +525,32 @@ then a program that uses the cores declares its code new to all of them before s
 also gives core 0 back while it waits for a core (`kapi_yield`: the pager must be able to run) and says when a
 core's job stopped (`kapi_core_state`), instead of waiting for ever.
 
+## 9m. Phase T3, the V3D (2026-10-10): the plan, and its first step -- the combiner as a QPU shader
+
+The user's choice after the software path's numbers (section 9l): **the fragments on the V3D**, as the GameCube
+emulator does (`gcemu`: `user/Libs/v3d/gxtev`, `user/Apps/gcemu/gxv3d.h`, kapi v61-v63 `gpu_program` /
+`gpu_render3` / `gpu_vbuf`). The vertex shader stays on the processor (its results are the GPU's vertices).
+
+| Step | What | State |
+|---|---|---|
+| V1 | **`user/Libs/v3d/picatev`**: a PICA200 combiner configuration -> a V3D fragment shader. The six stages in integers as the software renderer computes them (operands, modes, scales, the exact division by 255 -- `(x + 1 + (x >> 8)) >> 8` --, the dot product, the buffer two stages late), the lookups of units 0..2, the alpha test (`SETMSF`), the colours of the lighting as varyings. The configuration is followed forwards (where each operand's channels come from: "previous" and the buffer are names for an earlier value) then backwards (what the output needs, and until when): nothing unread is computed, and a register is given back at its value's last reading. `picatev_ref.h` is the reference; `tools/tests/v3d/picatev_test.cpp` (in `run_qpu_test.sh`) builds random configurations, checks them against the QPU's restrictions and runs them in the simulator: **22 000 as the reference, for V3D 4.2 and 7.1, none beyond 18 registers**; the game's own (a GPU trace's): the lit ground 137 instructions and 13 registers, a one-colour layer 26 instructions. | **done** |
+| V2 | The core records instead of rasterizing (`Machine`'s hook, as `gc`'s `GxGpu`): a draw -> a batch (the clip-space vertices with the varyings in the shader's order, the blending, the depth test, the culling, the scissor, the write masks, the textures, the uniforms), kept by render target from its clear to its display transfer. | next |
+| V3 | The host draws: `n3dstest` on Onyx (the programs' cache by `picatev::key`, the textures from the decoded ones, `kapi_gpu_vbuf`, one `kapi_gpu_render3` a target a frame, on the main thread), the pixels put back where the transfer reads them; on the PC the software V3D of `tools/tests/gc/gcv3d.cpp` to compare with the software renderer. | |
+| V4 | On the Pi: the speeds, the pictures against the software renderer's. | |
+| V5 | The lighting per fragment (the tables as textures); the procedural texture as a texture. | |
+
+**What the GPU's interface makes of it** (kern/kapi_abi.h, docs/02 §15):
+- **the depth buffer does not outlive a `gpu_render3` call** -- a target's whole frame goes in one call (the
+  batches of several command lists are kept until the transfer), and the software renderer cannot draw a part of
+  it: a frame is the GPU's or the software's, whole;
+- the target is the caller's pixels (0xAARRGGBB): they are put into the program's buffer (its format, tiled)
+  at the transfer, or the transfer reads them directly;
+- a picture rendered and then used as a texture is rendered first and uploaded (`gpu_texture`);
+- **the lighting is per vertex at first** (`lightRows` over the vertices, the two colours as varyings): right on
+  finely cut ground, softer highlights elsewhere -- per fragment in V5;
+- not in the interface: a blending constant colour (the kernel sets it to 0), logic operations, a "never" depth
+  test, a stencil -- a draw that needs one sends its frame to the software renderer until the kernel has it.
+
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 

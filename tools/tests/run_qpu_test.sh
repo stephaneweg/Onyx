@@ -30,3 +30,7 @@ done
 # V3D 7.1 (the Pi 5): the stock shaders and the TEV built through qpu.h's translation, checked and simulated as 7.1
 QPU_VER=71 "$T/shaders" | tail -3
 GXTEV_VER=71 "$T/gxtev" ${GXTEV_N:-2000}
+# the 3DS GPU's combiner (user/Libs/v3d/picatev.cpp) against its reference, V3D 4.2 then 7.1
+g++ -std=c++17 -O1 -w -I"$root/user" -I"$root/user/Libs" -I"$Q" -I"$Q/mesa" "$here/v3d/picatev_test.cpp" "$root/user/Libs/v3d/picatev.cpp" "$root/user/Libs/v3d/qpu.cpp" "$Q/qpusim.cpp" "$T"/*.o -o "$T/picatev"
+"$T/picatev" ${GXTEV_N:-2000}
+PICATEV_VER=71 "$T/picatev" ${GXTEV_N:-2000}

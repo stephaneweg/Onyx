@@ -759,12 +759,14 @@ Emulators/gc/libgc.a: $(GC_OBJS)
 # The V3D QPU builder (Libs/v3d/: shaders generated at run time, e.g. the GameCube's TEV): the C++
 # builder + Mesa's QPU packer (tools/qpu/mesa, MIT) + the few libc functions it calls.
 V3D_MESA = ../tools/qpu/mesa
-V3D_OBJS = Libs/v3d/qpu.o Libs/v3d/shaders.o Libs/v3d/gxtev.o Libs/v3d/qpu_pack.o Libs/v3d/qpu_instr.o Libs/v3d/shim.o
+V3D_OBJS = Libs/v3d/qpu.o Libs/v3d/shaders.o Libs/v3d/gxtev.o Libs/v3d/picatev.o Libs/v3d/qpu_pack.o Libs/v3d/qpu_instr.o Libs/v3d/shim.o
 Libs/v3d/qpu.o: Libs/v3d/qpu.cpp Libs/v3d/qpu.h
 	$(CXX) $(CXXFLAGS) -O2 -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -I$(V3D_MESA) -c $< -o $@
 Libs/v3d/shaders.o: Libs/v3d/shaders.cpp Libs/v3d/shaders.h Libs/v3d/qpu.h
 	$(CXX) $(CXXFLAGS_NEON) -O2 -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -I$(V3D_MESA) -c $< -o $@
 Libs/v3d/gxtev.o: Libs/v3d/gxtev.cpp Libs/v3d/gxtev.h Libs/v3d/qpu.h
+	$(CXX) $(CXXFLAGS_NEON) -O2 -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -I$(V3D_MESA) -c $< -o $@
+Libs/v3d/picatev.o: Libs/v3d/picatev.cpp Libs/v3d/picatev.h Libs/v3d/qpu.h
 	$(CXX) $(CXXFLAGS_NEON) -O2 -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts -I$(V3D_MESA) -c $< -o $@
 Libs/v3d/qpu_pack.o: $(V3D_MESA)/broadcom/qpu/qpu_pack.c
 	$(CC) $(CFLAGS) -std=gnu11 -DNDEBUG -w -I$(V3D_MESA) -c $< -o $@
