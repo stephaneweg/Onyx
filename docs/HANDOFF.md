@@ -166,6 +166,15 @@ a native Windows .exe, speed for the GPU, G3 later). `docs/APP-RUNNER-STUDY.md` 
   the block hook (cpu.cpp). `ONYXRUN_STRESS_TICK=1` must keep malloctest / threadtest / Doom passing.
 - Not there yet: the sound, the apps' QPU programs (`gpu_program` answers -1), gamepads, USB, GPIO.
 
+## The console: a game at its own resolution jumped up and down (2026-10-10) -- fixed, tested on the PC, NOT on the Pi
+
+The user (every emulator, Onyx Remote and VNC alike; the menu shown: normal again): the game's picture alternated with
+the console's. The Pi's kmsg (rdpd's `told` lines) showed the work area flipping each turn between 0,0 640x468 and
+0,468 640x12, the game's window and the home with it: PocketUI's viewport bars (`BarMake`) are made NoInset, but
+`KindOf` classified them right after and reset NoInset -- a bar on the bottom edge became a band (12 px), the 480-high
+game no longer fitted, a vertical bar at y 0 became a top band of 468... Fixed in `KindOf` (a window made NoInset keeps
+it). server_sim `console-too-big` (failed before: the window at 0,240). pocketui rebuilt, staged, published.
+
 ## rdpd + Onyx Remote: COPY, what only moved (2026-10-10) -- tested on the PC, NOT on the Pi
 
 The user: the console's full-screen home costs Onyx Remote a lot while its tiles glide; "can rdpd say which part
