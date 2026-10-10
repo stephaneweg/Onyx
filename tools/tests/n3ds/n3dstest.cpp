@@ -207,7 +207,8 @@ static int run (int argc, char **argv)
 		for (int k = 0; k < nt; k++) if (n >= touch[k].f0 && n <= touch[k].f1) { down = true; tx = (int) touch[k].a; ty = (int) touch[k].b; }
 		m->setInput (b, 0, 0, down, tx, ty);
 		if (const char *g = getenv ("N3DS_GPUTRACE")) m->traceGpu = n == atoi (g);	// (the GPU's draws of that frame)
-		{ const char *tf = argc > 11 ? argv[11] : getenv ("N3DS_TRACEFROM"); if (tf && n >= atoi (tf)) { m->trace = true; m->traceAll = tf[0] == '+'; fprintf (stderr, "frame %d%c", n, 10); } }	// (the system calls from that frame on)
+		{ const char *tf = argc > 11 ? argv[11] : getenv ("N3DS_TRACEFROM"); if (tf && tf[0] == 's') m->skipDraw = n % 4 != 0;	/* ("s": three frames of four left out, as the app does when late) */
+		  else if (tf && n >= atoi (tf)) { m->trace = true; m->traceAll = tf[0] == '+'; fprintf (stderr, "frame %d%c", n, 10); } }	// (the system calls from that frame on)
 		if (const char *su = getenv ("N3DS_SKIPUNTIL")) m->gpuSkip = n < atoi (su) ? 0x200 : getenv ("N3DS_SKIPAFTER") ? (n3ds::u32) strtoul (getenv ("N3DS_SKIPAFTER"), 0, 16) : 0;	// (no triangle drawn before that frame: to get somewhere fast)
 		if (const char *se = getenv ("N3DS_DRAWEVERY")) { const int e = atoi (se); m->gpuSkip = e > 0 && n % e >= e - 4 ? (getenv ("N3DS_SKIPAFTER") ? (n3ds::u32) strtoul (getenv ("N3DS_SKIPAFTER"), 0, 16) : 0) : 0x200; }	// (triangles drawn for the 4 frames before every e-th only)
 		m->drawNow = 0; if (const char *dr = getenv ("N3DS_DRAWS")) { m->drawFirst = (n3ds::u32) atoi (dr); m->drawLast = strchr (dr, '-') ? (n3ds::u32) atoi (strchr (dr, '-') + 1) : m->drawFirst; }	// (N3DS_DRAWS=a-b: those draws of each frame only, from 1)
@@ -256,7 +257,7 @@ static int run (int argc, char **argv)
 		for (int i = -8; i < 8; i++) fprintf (stderr, " %08x", (unsigned) m->mem.r32 ((st.r[15] & ~3u) + (n3ds::u32) (i * 4)));
 		fprintf (stderr, "%c", 10);
 	}
-	if (argc > 11 || getenv ("N3DS_TRACEFROM") || getenv ("N3DS_WHERE"))		// what every thread waits for
+	if ((argc > 11 && argv[11][0] != 's') || getenv ("N3DS_TRACEFROM") || getenv ("N3DS_WHERE"))		// what every thread waits for
 		for (int i = 0; i < m->threadCount; i++)
 		{
 			const n3ds::Thread *t = m->threads[i];
@@ -272,7 +273,7 @@ static int run (int argc, char **argv)
 			for (int k = 0; k < 32; k++) fprintf (stderr, " %08x", (unsigned) m->mem.r32 (t->ctx.r[4] + (n3ds::u32) k * 4));
 			fprintf (stderr, "%c", 10);
 		}
-	if ((argc > 11 || getenv ("N3DS_WHERE")) && m->gsp.shared)
+	if (((argc > 11 && argv[11][0] != 's') || getenv ("N3DS_WHERE")) && m->gsp.shared)
 	{
 		const unsigned char *q = m->gsp.shared->host;
 		fprintf (stderr, "the GPU's interrupt queue: first %u count %u lost %u; its command queue: first %u count %u (flags %02x %02x); a list pending: %d%c", q[0], q[1], q[2], q[0x800], q[0x801], q[0x802], q[0x803], (int) m->gsp.listPending, 10);
@@ -293,6 +294,7 @@ static int run (int argc, char **argv)
 		for (int k = 0; k < 48; k++) fprintf (stderr, " %08x", (unsigned) m->mem.r32 (at + (n3ds::u32) k * 4));
 		fprintf (stderr, "%c", 10);
 	}
+	fprintf (stderr, "frames begun: %u to leave out, %u to draw; ended: %u left out, %u without a record%c", (unsigned) m->dbgLatch[0], (unsigned) m->dbgLatch[1], (unsigned) m->dbgLatch[2], (unsigned) m->dbgLatch[3], 10);
 	const unsigned char *rgb = screens (m);
 	const size_t rgbSize = (size_t) n3ds::TOP_W * n3ds::SCREEN_H * 2 * 3;
 	fprintf (stderr, "screens %08x (%llu VBlanks; the GPU was asked %u fills, %u transfers, %u command lists)\n", crc32 (rgb, rgbSize),

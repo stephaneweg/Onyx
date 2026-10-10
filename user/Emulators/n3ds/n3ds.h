@@ -383,6 +383,7 @@ struct Machine
 	bool trace;				// the system calls and the requests, on stderr (tests)
 	bool traceGpu;				// ... each draw and transfer of the GPU
 	bool listsAside;			// a list's triangles drawn while the program goes on, its interrupt late (off: see n3ds_gsp.cpp)
+	u32 dbgLatch[4];			// (frames begun: asked to be left out or not; ended: left out, with no record)
 	u32 drawNow, drawFirst, drawLast;	// (to study a frame: only the draws drawFirst..drawLast of those counted in drawNow are done; drawLast 0: all)
 	bool traceAll;				// (trace: the waits and the arbiters too)
 	u32 gpuSkip;				// (to find what is slow: 1 no procedural texture, 2 no blending, 4 no depth, 8 no texture, 16 no lighting, 32 no pixel at all, 64 the fragments found but not shaded, 128 not combined nor written, 256 no vertex shader, 512 no triangle)

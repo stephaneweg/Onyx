@@ -42,6 +42,7 @@ static n3ds::Machine *g_m = 0;
 static char g_rom_path[256], g_sav_path[260];
 static int g_zoom = 1, g_zmax = 2;				// (the largest zoom the screen holds: the window is made at it)
 static bool g_side = false, g_paused = false, g_stats = false;
+static bool g_statsOut = false;					// --stats: the speed line written to the console every second
 static bool g_everyFrame = false;				// never leave a frame's picture out
 static bool g_arrowsPad = false;				// the arrows are the + Control Pad (else the Circle Pad)
 static unsigned *g_fs = 0; static int g_fsw, g_fsh;		// full screen back buffer
@@ -310,6 +311,7 @@ int main (void)
 		if (args[i] == '-' && args[i + 1] == '-')
 		{
 			if (args[i + 2] == 'f' && args[i + 3] == 'u') wantFull = true;
+			if (args[i + 2] == 's' && args[i + 3] == 't') g_statsOut = true;
 			if (args[i + 2] == 's' && args[i + 3] == 'o') g_useGpu = 0;
 		}
 	{ int b = slen (g_rom_path); while (b > 0 && g_rom_path[b - 1] != '/' && g_rom_path[b - 1] != ':') b--; scpy (g_loadName, g_rom_path + b, sizeof g_loadName); }
@@ -385,7 +387,7 @@ int main (void)
 	const unsigned long long frameUs = 16715;			// 59.83 frames a second
 	unsigned long long next = now_us (), stT = next, emuUs = 0, drawUs = 0, lastSave = next;
 	unsigned stFrames = 0, stDrawn = 0, skipped = 0;
-	unsigned long long gpuBefore = 0, softBefore = 0;
+	unsigned long long gpuBefore = 0, softBefore = 0, listsBefore = 0, transBefore = 0, fillsBefore = 0, skipBefore = 0;
 	while (!should_exit () && !g_m->exited)
 	{
 		pump_events ();
@@ -429,6 +431,18 @@ int main (void)
 			cat (g_statText, &k, gf && !sf ? TR ("  GPU") : gf ? TR ("  GPU + software") : TR ("  software"));
 			if (g_m->helpers) cat (g_statText, &k, TR ("  + a core"));
 			gpuBefore = g_m->gsp.gpuFrames; softBefore = g_m->gsp.softFrames;
+			if (g_statsOut)					// (of the emulation's time: the command lists, the transfers with the GPU's work, the fills)
+			{
+				char ln[320]; int q = 0;
+				cat (ln, &q, g_statText); cat (ln, &q, " | lists ");
+				fmt_num (ln, &q, stFrames ? (unsigned) ((g_m->gsp.usLists - listsBefore) / stFrames / 100) : 0, 1); cat (ln, &q, " transfers ");
+				fmt_num (ln, &q, stFrames ? (unsigned) ((g_m->gsp.usTransfers - transBefore) / stFrames / 100) : 0, 1); cat (ln, &q, " fills ");
+				fmt_num (ln, &q, stFrames ? (unsigned) ((g_m->gsp.usFills - fillsBefore) / stFrames / 100) : 0, 1); cat (ln, &q, " ms, left out ");
+				fmt_num (ln, &q, (unsigned) (g_m->gsp.skippedFrames - skipBefore), 0); cat (ln, &q, ", helpers ");
+				fmt_num (ln, &q, (unsigned) g_m->helpers, 0); ln[q++] = 10;
+				kapi_stdout_write (ln, (unsigned) q);
+			}
+			listsBefore = g_m->gsp.usLists; transBefore = g_m->gsp.usTransfers; fillsBefore = g_m->gsp.usFills; skipBefore = g_m->gsp.skippedFrames;
 			stT = t2; emuUs = 0; drawUs = 0; stFrames = 0; stDrawn = 0;
 		}
 		if (g_m->storageDirty && t2 - lastSave > 3000000) { save_storage (); lastSave = t2; }

@@ -728,6 +728,27 @@ darkened areas), which was not emulated -- they covered the picture.
   n-th frame only: minutes of a game in seconds), `N3DS_SKIPUNTIL`, `N3DS_SKIPAFTER`; the GPU trace says what
   became of each draw's triangles (clipped away, culled, drawn).
 
+## 9q. Where the time goes in *Super Mario 3D Land* on the Pi 4 (2026-10-10, measured)
+
+`n3dstest` on the idle Pi, the GPU path, the opening scene (60 pictures a second in the game): **23.5 to 26.5 ms a
+frame** -- the command lists 11.9 to 12.4 ms (about 9 700 vertices a frame: 19 % reading the attributes, 43 %
+the vertex shader (compiled, NEON, on the main thread and one helper), 31 % assembling and recording the
+triangles, single-threaded), the transfers 6.3 to 9.2 ms (nearly all of it the host GPU's draw and the copy back,
+`kapi_gpu_render3`: 3.5 to 7 ms a target whatever it holds), the fills 1.1 ms (the program's buffers are really
+filled), and **the emulated processor only about 4 ms**. In a level the game makes 30 pictures a second (a frame
+every second VBlank, two targets' frames each: the top screen's ~67 batches, the bottom's 1).
+
+The app (`n3dsemu --stats` writes its speed line and these shares to the console every second): 45 to 50 VBlanks a
+second in the first level, 17 ms each with half of the game's frames left out; the picture put on the screen
+costs 13 ms a shown frame in a window (the widgets drawn again). **One application core only is free for a
+program on this Pi** (`coretest`: the second is never free) -- `helpers 1`; two instances of an emulator share
+it (the second gets none).
+
+What would gain, by what it costs: the picture's blit (a direct copy instead of the widgets' redraw; on the
+helper core); assembling the triangles on two cores; the fills kept for when something reads them (as the
+host's pixels are); the GPU call's fixed cost (to be looked at in the kernel); and, far bigger, the vertex
+shaders on the V3D.
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours

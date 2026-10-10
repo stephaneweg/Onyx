@@ -1853,7 +1853,8 @@ static GRec *gpuFrameEnd (Pica *p, u32 color)
 	if (r) color = r->color;
 	p->frameSkipped = r && r->open && r->skip;
 	if (r) r->open = false;
-	if (p->frameSkipped) { m->gsp.skippedFrames++; return r; }
+	if (p->frameSkipped) { m->gsp.skippedFrames++; m->dbgLatch[2]++; return r; }
+	if (!r || !r->nb) m->dbgLatch[3]++;
 	if (r && r->nb && !r->bad && m->gpuDraw)
 	{
 		const u64 t0 = microsNow ();
@@ -2199,7 +2200,7 @@ static void draw (Pica *p, bool indexed)
 		GRec *gr = gpuRec (p, p->regs[R_COLOR_ADDR] << 3, true);
 		if (gr)
 		{
-			if (!gr->open) { gr->open = true; gr->skip = p->m->skipDraw && gr->trusted; }
+			if (!gr->open) { gr->open = true; gr->skip = p->m->skipDraw; p->m->dbgLatch[gr->skip ? 0 : 1]++; }
 			if (gr->skip) return;
 		}
 	}
