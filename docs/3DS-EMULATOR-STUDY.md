@@ -567,6 +567,27 @@ bottom screen is drawn in the top one's buffer, 80 rows down, behind a scissor).
 row at the top -- the PICA's highest y, the first row of its tiled buffer. Next: the vertices (the shader compiled, the lighting at the vertices once, no software queue
 while the GPU's record is whole), the copies (the transfer straight from the host's pixels).
 
+**The vertices next (2026-10-10)** -- with the fragments on the GPU they were the cost (8 of 14.5 s):
+- **The vertex shaders compiled to AArch64** (`n3ds_shjit.cpp`, `shaderCompile`): an entry point's code as a
+  function -- an instruction's four components as one NEON operation (the operands shuffled by a table lookup,
+  the result put into the named components), a CALL's block in place, IF / LOOP / forward JMP as branches, the
+  address registers and the comparison's results in processor registers, the boolean and integer uniforms read
+  when it runs. What it does not compile (DST, EX2, LG2, a jump backwards or out of its block) stays the
+  interpreter's, entry point by entry point. **Checked to the bit**: `N3DS_SHADERCHECK=1` runs every vertex
+  through both -- the game's first 1000 frames, 2 773 834 vertices, none differs (nor the homebrew's).
+- **The lighting once a vertex** (`lightVertices`, in the vertices' batches: 32 at a time on every core) instead
+  of once a triangle; its two colours are two more attributes of a vertex.
+- **No software queue for a trusted target**: when a target's last frame was the GPU's, whole, this one's
+  triangles are recorded for the GPU only (a draw the GPU cannot do then costs that frame what came before it,
+  and the next one is queued again).
+
+The title scene on the Pi 4: **300 frames in 10.6 s, 28.3 a second** (20.7 before these three; 5.1 this morning) --
+the lists 4.5 s (the vertices' attributes read, the triangles cut and recorded), the GPU's part 4.3 s (the
+kernel's about 8.5 ms a frame for both screens, the rest the pixels' copies), the processor 1.8 s. The pictures
+as before (top: 12 % of the pixels differ by more than 8 from the software renderer's, 0.5 % by more than 48;
+bottom: the same). Next: the display transfer straight from the host's pixels, the triangles' path (three
+copies of a vertex a triangle today), the lighting per fragment (V5).
+
 **V2's design, as built**:
 - *The software queue is the universal record.* A frame's triangles stay queued (`Job`, `State`) **until the
   display transfer of their target** instead of being rasterized at each list's end; beside them the GPU's frame is

@@ -37,7 +37,7 @@ Machine::Machine ()
 	memset (&hid, 0, sizeof hid);
 	memset (&source, 0, sizeof source); romfsBase = 0; romfsSize = 0; memFile = 0; memSize = 0; trace = false; traceGpu = false; gpuSkip = 0; pica = 0;
 	title[0] = 0; productCode[0] = 0;
-	parallelBegin = 0; parallelDone = 0; parallelEnd = 0; parallelUser = 0; helpers = 0; monoOnly = false; gpuDraw = 0; gpuUser = 0; gpuSoft = 0;
+	parallelBegin = 0; parallelDone = 0; parallelEnd = 0; parallelUser = 0; helpers = 0; monoOnly = false; gpuDraw = 0; gpuUser = 0; gpuSoft = 0; shaderCheck = false;
 	memset (&dsp, 0, sizeof dsp);
 	storage = 0; storageDirty = false; memset (archives, 0, sizeof archives);
 	memset (&user, 0, sizeof user); setUser ("Onyx", 1, 2);

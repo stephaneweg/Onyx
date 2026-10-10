@@ -64,8 +64,11 @@ to begin with, "go ahead"; he gives the test ROM when it is needed (he asked abo
   `kapi_gpu_render3` (`onyxDraw`). **On the Pi 4 the title scene: 11.3 -> 20.7 fps, every frame on the GPU, the pictures
   right** (the lighting per vertex for now). `n3dstest`'s 8th argument 0 = the software renderer alone; a picture as the
   3rd argument is written to the card (fetch it by FTP to compare); `N3DS_GPUDUMP` + `tools/tests/n3ds/gpuview.cpp` replay a
-  frame on the PC. Next there: the vertices are now the cost (8 of 14.5 s: the shader compiled, the lighting once a
-  vertex, no software queue while a record is whole), the pixel copies, the lighting per fragment (V5). Also still open:
+  frame on the PC. Then the vertices: **the vertex shaders compiled to AArch64** (`n3ds_shjit.cpp`; checked to the bit
+  against the interpreter, `N3DS_SHADERCHECK=1`: 2.77 M of the game's vertices, none differs), the lighting once a vertex,
+  no software queue for a target whose last frame was the GPU's -> **the title scene 28.3 fps** (lists 4.5 s, GPU 4.3 s,
+  processor 1.8 s of 10.6 s). Next there: the transfer straight from the host's pixels, the triangles' path, the lighting
+  per fragment (V5). Also still open:
   the vertex shader compiled, the one-colour full-screen layers (the software path will not reach full speed in this game).
   **A kernel fault found there**: the loader empties core 0's instruction cache only, so an application core ran the
   previous build's instructions after each upload of a rebuilt program (faults at impossible places, or a hang).

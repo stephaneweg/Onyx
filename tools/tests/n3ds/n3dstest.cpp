@@ -126,6 +126,8 @@ static int run (int argc, char **argv)
 	// <prefix>_<k>.gpf (tools/tests/n3ds/gpuview.cpp draws one on the PC, the generated shaders in the QPU
 	// simulator), and the same frame as the software renderer drew it into <prefix>_<k>_soft.ppm
 	if (getenv ("N3DS_GPUDUMP")) { m->gpuDraw = dumpDraw; m->gpuSoft = dumpSoft; }
+	// N3DS_SHADERCHECK=1  every vertex through the compiled shader and the interpreter: their outputs compared
+	if (getenv ("N3DS_SHADERCHECK")) m->shaderCheck = true;
 	// N3DS_MONO=1  the right eye's picture is not drawn (what a host with one picture a screen asks)
 	if (getenv ("N3DS_MONO")) m->monoOnly = true;
 	if (argc > 5) m->gpuSkip = (n3ds::u32) strtoul (argv[5], 0, 16);	// (a 5th argument: parts of the GPU left out, to time them)
@@ -217,6 +219,7 @@ static int run (int argc, char **argv)
 		 m->exited ? "ended" : "still running", n, (unsigned long long) m->now, (unsigned long long) m->svcCount,
 		 (unsigned long long) m->switchCount, (unsigned) m->mem.faults);
 	if (m->gpuDraw) fprintf (stderr, "the targets' frames: %llu drawn by the GPU (%.2f s with their copies), %llu by the software renderer%c", (unsigned long long) m->gsp.gpuFrames, (double) m->gsp.usGpu / 1e6, (unsigned long long) m->gsp.softFrames, 10);
+	if (m->shaderCheck) fprintf (stderr, "the compiled vertex shaders: %llu vertices checked against the interpreter, %llu differ%c", (unsigned long long) m->gsp.shaderChecked, (unsigned long long) m->gsp.shaderWrong, 10);
 	if (m->monoOnly) fprintf (stderr, "one picture a screen: %llu draws of the right eye left out%c", (unsigned long long) m->gsp.eyeDraws, 10);
 	if (m->helpers) fprintf (stderr, "the rasterizer has %d other core%s: %.2f s of its time while the program went on%c", m->helpers, m->helpers > 1 ? "s" : "", (double) m->gsp.usRasterAside / 1e6, 10);
 	fprintf (stderr, "the GPU's share: %.2f s in command lists, %.2f s in transfers, %.2f s in fills%c", (double) m->gsp.usLists / 1e6, (double) m->gsp.usTransfers / 1e6, (double) m->gsp.usFills / 1e6, 10);

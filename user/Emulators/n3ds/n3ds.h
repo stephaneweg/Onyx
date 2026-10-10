@@ -308,6 +308,7 @@ struct Machine
 		u32 eyePairs[4][2]; int eyePairCount;
 		u32 eyeSrc; int eyeLastSide, eyeSeen, eyeBroken; bool eyeSkip;
 		u64 eyeDraws;				// (draws left out)
+		u64 shaderChecked, shaderWrong;		// (shaderCheck: vertices run by both the compiled shader and the interpreter; the ones that differed)
 		u64 gpuFrames, softFrames, usGpu;	// the targets' frames drawn by the host's GPU, by the software renderer; the host's time
 		u64 vertices, trianglesDrawn, pixelsDrawn, shaderSteps, trianglesIn;	// (shaderSteps: the vertex shader's instructions run; trianglesIn: before clipping and culling)
 	} gsp;
@@ -354,6 +355,7 @@ struct Machine
 	void *gpuUser;
 	void (*gpuSoft) (void *user, const u32 *pixels, int w, int h);	// (tests: a frame gpuDraw refused, as the software renderer drew it)
 	void gpuSync ();			// the GPU's work under way is ended (call it before reading a screen)
+	bool shaderCheck;			// (tests: every vertex through the compiled shader and the interpreter, compared)
 	bool trace;				// the system calls and the requests, on stderr (tests)
 	bool traceGpu;				// ... each draw and transfer of the GPU
 	u32 gpuSkip;				// (to find what is slow: 1 no procedural texture, 2 no blending, 4 no depth, 8 no texture, 16 no lighting, 32 no pixel at all, 64 the fragments found but not shaded, 128 not combined nor written, 256 no vertex shader, 512 no triangle)
@@ -426,6 +428,12 @@ void gspRequest (Machine *m, Session *s, u32 *cmd);			// gsp::Gpu (n3ds_gsp.cpp)
 // the GPU (n3ds_pica.cpp): a command list at a program's address; a display transfer (the GX command's 8 words)
 void picaCommandList (Machine *m, u32 va, u32 size);
 void picaDisplayTransfer (Machine *m, const u32 *c);
+// the vertex shaders compiled for the host's processor (n3ds_shjit.cpp)
+typedef void (*ShaderCode) (float *regs, const float *uniforms, const void *consts, const u8 *ints, u32 bools);
+struct ShaderJit;
+ShaderCode shaderCompile (ShaderJit **jit, const u32 *code, const u32 *opdesc, u32 entry);
+void shaderJitReset (ShaderJit *jit);
+const void *shaderJitConsts (const ShaderJit *jit);
 void picaBeforeFill (Machine *m, u32 physStart, u32 physEnd);	// memory is about to be filled: what is queued for it is drawn first
 bool picaBusy (const Machine *m);		// a list's triangles are being drawn aside
 bool picaDone (Machine *m);			// ... and the helpers have finished them

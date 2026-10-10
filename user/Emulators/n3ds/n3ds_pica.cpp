@@ -73,8 +73,10 @@ enum
 };
 static const int TEV_BASE[6] = { 0x0C0, 0x0C8, 0x0D0, 0x0D8, 0x0F0, 0x0F8 };
 
-// What the vertex shader's outputs mean (the output map's numbers): a vertex is these 24 floats.
-enum { A_POS = 0, A_QUAT = 4, A_COLOR = 8, A_TC0 = 12, A_TC1 = 14, A_TC0W = 16, A_VIEW = 18, A_TC2 = 22, A_COUNT = 24 };
+// What the vertex shader's outputs mean (the output map's numbers): a vertex is these floats.
+// (A_LITP, A_LITS: the lighting's two colours at the vertex, 0..1 -- worked out here for a host's GPU, which
+// interpolates them; the software renderer lights each fragment)
+enum { A_POS = 0, A_QUAT = 4, A_COLOR = 8, A_TC0 = 12, A_TC1 = 14, A_TC0W = 16, A_VIEW = 18, A_TC2 = 22, A_LITP = 24, A_LITS = 28, A_COUNT = 32 };
 struct Vertex { float a[A_COUNT]; };
 
 struct Pica
@@ -86,6 +88,7 @@ struct Pica
 	float fu[96][4]; u8 iu[4][4]; u32 bu;
 	u32 codeIndex, opdescIndex;
 	struct ShaderIns *dec; u8 *decValid; bool decDirty, decAll;
+	ShaderJit *jit; bool jitDirty; ShaderCode shaderFn;	// the shaders compiled; the draw's (0: interpreted)
 	struct Batch *batch; u32 badOp;			// a draw's vertices shaded together (on several cores); an instruction the shader does not know	// the code's instructions decoded (as they are met; again when the code or the descriptors change)
 	u32 floatIndex; bool float32; u32 floatWords[4]; int floatCount;
 	// attributes given by registers: the fixed ones, and the vertices given one by one
@@ -363,7 +366,17 @@ static void shadeVertex (Pica *p, float attr[16][4], int count, Vertex &v, u64 &
 	memset (&s, 0, sizeof s);
 	const u64 perm = (u64) p->regs[R_VSH_PERM_HI] << 32 | p->regs[R_VSH_PERM_LO];
 	for (int i = 0; i < count && i < 16; i++) memcpy (s.reg[perm >> (4 * i) & 15], attr[i], sizeof (float) * 4);
-	if (!(p->m->gpuSkip & 256)) runShader (p, s, p->regs[R_VSH_ENTRY] & 0xFFFF, steps, badOp);
+	if (p->m->gpuSkip & 256) ;
+	else if (p->shaderFn && !p->m->shaderCheck) p->shaderFn (s.reg[0], p->fu[0], shaderJitConsts (p->jit), p->iu[0], p->bu);
+	else if (p->shaderFn)							// (a test: both, compared)
+	{
+		Shader t = s;
+		p->shaderFn (t.reg[0], p->fu[0], shaderJitConsts (p->jit), p->iu[0], p->bu);
+		runShader (p, s, p->regs[R_VSH_ENTRY] & 0xFFFF, steps, badOp);
+		__atomic_fetch_add (&p->m->gsp.shaderChecked, 1, __ATOMIC_RELAXED);
+		if (memcmp (t.out, s.out, sizeof s.out)) __atomic_fetch_add (&p->m->gsp.shaderWrong, 1, __ATOMIC_RELAXED);
+	}
+	else runShader (p, s, p->regs[R_VSH_ENTRY] & 0xFFFF, steps, badOp);
 	memset (&v, 0, sizeof v);
 	v.a[A_POS + 3] = 1.0f;
 	const u32 outMask = p->regs[R_VSH_OUTMASK];
@@ -538,6 +551,7 @@ static void procTexel (const Pica *p, const ProcTex &pt, float cu, float cv, int
 }
 
 static void flush (Pica *p);
+static bool gpuKeeps (const Pica *p);
 
 // The decoded pixels of a texture: kept by where the program's bytes are, and made again when they changed.
 static void texDecoded (Pica *p, Texture &t)
@@ -552,7 +566,7 @@ static void texDecoded (Pica *p, Texture &t)
 	{
 		if (d.px && d.data == t.data && d.w == t.w && d.h == t.h && d.format == t.format && d.check == check)
 		{ d.used = ++p->decodedClock; d.epoch = p->epoch; t.px = d.px; t.slot = (int) (&d - p->decoded); return; }
-		const bool busy = d.px && d.epoch == p->epoch && p->jobCount;
+		const bool busy = d.px && d.epoch == p->epoch && (p->jobCount || gpuKeeps (p));
 		if (!busy && (!oldest || d.used < oldest->used)) oldest = &d;
 	}
 	if (!oldest) { p->why = "no room for a decoded texture"; flush (p); oldest = &p->decoded[0]; for (auto &d : p->decoded) if (d.used < oldest->used) oldest = &d; }
@@ -1465,6 +1479,8 @@ struct GRec
 	float *v; u32 nf; GpuBatch *b; u32 nb; u32 *u; u32 nu;
 	u32 serial; u32 *pixels;
 	u64 touched;				// (the frame it was last drawn into or transferred: an old one gives its place)
+	bool trusted;				// its last frame was the GPU's, whole: this one's triangles are not queued for the software
+						// renderer (a draw the GPU cannot do then costs this frame what came before it)
 };
 
 static void gpuWhy (Pica *p, const char *why) { p->m->note ("a frame left to the software renderer: %s", why); }
@@ -1510,7 +1526,7 @@ static GRec *gpuRec (Pica *p, u32 color, bool make)
 		r.u = (u32 *) malloc (sizeof (u32) * GUNI_MAX); r.pixels = (u32 *) malloc (sizeof (u32) * 1024 * 1024);
 		if (!r.v || !r.b || !r.u || !r.pixels) { free (r.v); free (r.b); free (r.u); free (r.pixels); r.v = 0; r.b = 0; r.u = 0; r.pixels = 0; return 0; }
 	}
-	r.used = true; r.color = color; r.nf = r.nb = r.nu = 0; r.bad = false; r.hostValid = false; r.serial = 0;
+	r.used = true; r.color = color; r.nf = r.nb = r.nu = 0; r.bad = false; r.hostValid = false; r.serial = 0; r.trusted = false;
 	return &r;
 }
 
@@ -1624,20 +1640,21 @@ static void gpuState (Pica *p, State &st)
 }
 
 struct ViewMap { float vw, vh, vx, vy, ds, dof; };
-// A queued triangle recorded for the GPU too (its three vertices: clip space, not yet divided).
-static void gpuTriangle (Pica *p, const State &st, const Vertex *const tri[3], const ViewMap &vm)
+// A triangle recorded for the GPU (its three vertices: clip space, not yet divided). -> true: it need not be queued
+// for the software renderer too (its target's last frame was the GPU's: this one is trusted to be).
+static bool gpuTriangle (Pica *p, const State &st, const Vertex *const tri[3], const ViewMap &vm)
 {
 	GRec *r = gpuRec (p, st.colorPhys, true);
-	if (!r) return;
-	if (st.gprog < 0 || r->bad) { if (!r->bad && st.gwhy) gpuWhy (p, st.gwhy); r->bad = true; return; }
+	if (!r) return false;
+	if (st.gprog < 0 || r->bad) { if (!r->bad && st.gwhy) gpuWhy (p, st.gwhy); r->bad = true; return false; }
 	if (!r->nb) { r->t = st.t; r->w = st.t.w; r->h = st.t.h; }
-	if (st.gskip) return;
+	if (st.gskip) return r->trusted;
 	const GProg &g = p->gprog[st.gprog];
 	const u32 stride = 4 + g.nVary;
-	if (r->nf + 3 * stride > GFLOATS_MAX) { r->bad = true; gpuWhy (p, "too many vertices"); return; }
+	if (r->nf + 3 * stride > GFLOATS_MAX) { r->bad = true; gpuWhy (p, "too many vertices"); return false; }
 	if (!r->nb || r->serial != st.serial)
 	{
-		if (r->nb >= GBATCH_MAX || r->nu + g.nUni > GUNI_MAX) { r->bad = true; gpuWhy (p, "too many batches"); return; }
+		if (r->nb >= GBATCH_MAX || r->nu + g.nUni > GUNI_MAX) { r->bad = true; gpuWhy (p, "too many batches"); return false; }
 		GpuBatch &b = r->b[r->nb++];
 		b.program = (u32) st.gprog; b.off = r->nf; b.count = 0; b.stride = stride;
 		b.flags = st.gflags; b.blend = st.gblend; b.wmask = st.gwmask;
@@ -1662,19 +1679,6 @@ static void gpuTriangle (Pica *p, const State &st, const Vertex *const tri[3], c
 		}
 		r->serial = st.serial;
 	}
-	// the lighting at the three vertices
-	Scratch &k = p->scratch[7];
-	bool lit = false;
-	for (u32 i = 0; i < g.nVary; i++) if (g.vary[i].kind == picatev::V_LITP || g.vary[i].kind == picatev::V_LITS) lit = true;
-	if (lit)
-	{
-		for (int i = 0; i < 3; i++)
-		{
-			for (int j = 0; j < 4; j++) k.fq[j][i] = tri[i]->a[A_QUAT + j];
-			for (int j = 0; j < 3; j++) k.fq[4 + j][i] = tri[i]->a[A_VIEW + j];
-		}
-		lightRows (p, st.f.light, 3, k, k.litP, k.litS);
-	}
 	const float halfW = (float) r->w * 0.5f, halfH = (float) r->h * 0.5f;
 	GpuBatch &b = r->b[r->nb - 1];
 	for (int i = 0; i < 3; i++)
@@ -1693,8 +1697,8 @@ static void gpuTriangle (Pica *p, const State &st, const Vertex *const tri[3], c
 			switch (vy.kind)
 			{
 			case picatev::V_PRIMARY: x = q[A_COLOR + vy.a]; break;
-			case picatev::V_LITP: x = (float) k.litP[vy.a][i] * (1.0f / 255.0f); break;
-			case picatev::V_LITS: x = (float) k.litS[vy.a][i] * (1.0f / 255.0f); break;
+			case picatev::V_LITP: x = q[A_LITP + vy.a]; break;
+			case picatev::V_LITS: x = q[A_LITS + vy.a]; break;
 			default:
 			{
 				const int unit = g.look[vy.a].unit, at = unit == 0 ? A_TC0 : unit == 1 ? A_TC1 : A_TC2;
@@ -1707,6 +1711,7 @@ static void gpuTriangle (Pica *p, const State &st, const Vertex *const tri[3], c
 		r->nf += stride;
 	}
 	b.count += 3;
+	return r->trusted;
 }
 
 // The host's pixels <-> the program's colour buffer (tiled, its format): the same rows -- the first one is the top,
@@ -1791,6 +1796,7 @@ static void gpuFrameEnd (Pica *p, u32 color)
 			p->jobCount = keep;
 			if (!keep) { if (p->stateCount > 1) { p->states[0] = p->states[p->stateCount - 1]; p->stateCount = 1; } queueEmptied (p); }
 			r->nf = r->nb = r->nu = 0;
+			r->trusted = true;
 			m->gsp.gpuFrames++; m->gsp.usGpu += microsNow () - t0;
 			return;
 		}
@@ -1801,7 +1807,7 @@ static void gpuFrameEnd (Pica *p, u32 color)
 	for (u32 i = 0; i < p->jobCount && !mine; i++) mine = p->states[p->jobs[i].state].colorPhys == color;
 	if (mine) { p->why = "another target's frame drawn by the software renderer"; flush (p); m->gsp.softFrames++; }
 	if (r && r->pixels && m->gpuSoft && r->w) { gpuLoadHost (r); m->gpuSoft (m->gpuUser, r->pixels, r->w, r->h); }
-	if (r) { r->nf = r->nb = r->nu = 0; r->bad = false; r->hostValid = false; }
+	if (r) { r->nf = r->nb = r->nu = 0; r->bad = false; r->hostValid = false; r->trusted = false; }
 }
 
 // Memory is about to be filled (a GX fill): what is queued for a target there is drawn first, and the host's copy
@@ -1833,7 +1839,16 @@ void picaBeforeFill (Machine *m, u32 physStart, u32 physEnd)
 // Do queued triangles still draw into this texture's memory? (They are drawn first then: a picture rendered, then used.)
 static bool drawnInto (const Pica *p, const Texture &tx)
 {
-	if (!p->jobCount || !tx.data) return false;
+	if (!tx.data) return false;
+	if (p->grec)								// (a record's triangles may not be in the queue)
+		for (int i = 0; i < GREC_MAX; i++)
+		{
+			const GRec &r = p->grec[i];
+			if (!r.used || !r.nb || !r.t.color) continue;
+			const u8 *end = r.t.color + (size_t) r.w * (size_t) r.h * r.t.colorBytes;
+			if (tx.data < end && r.t.color < tx.data + tx.bytes) return true;
+		}
+	if (!p->jobCount) return false;
 	for (u32 i = 0; i < p->stateCount; i++)
 	{
 		const Target &q = p->states[i].t;
@@ -1854,7 +1869,7 @@ static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c
 	{
 		p->states = (State *) malloc (sizeof (State) * STATE_MAX);
 		p->jobs = (Job *) malloc (sizeof (Job) * JOB_MAX);
-		p->scratch = (Scratch *) malloc (sizeof (Scratch) * 8);
+		if (!p->scratch) p->scratch = (Scratch *) malloc (sizeof (Scratch) * 8);
 		if (!p->states || !p->jobs || !p->scratch) { free (p->states); free (p->jobs); free (p->scratch); p->states = 0; p->jobs = 0; p->scratch = 0; return; }
 		p->stateCount = 0; p->jobCount = 0;
 	}
@@ -1939,19 +1954,19 @@ static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c
 			if (!triBox (st.t, st.cull, s[0], s[i], s[i + 1], area, box)) continue;
 		}
 		p->triangles++; p->m->gsp.trianglesDrawn++;
-		if (p->jobCount >= JOB_MAX) { p->why = "more than 8192 triangles queued"; flush (p); }
-		Job &j = p->jobs[p->jobCount++];
 		const Screen *tri[3] = { &s[0], &s[i], &s[i + 1] };
-		for (int k = 0; k < 3; k++) { j.v[k] = *tri[k]->v; j.s[k] = *tri[k]; j.s[k].v = &j.v[k]; }
-		j.state = p->stateCount - 1;					// (flush may have moved the state to index 0)
-		const int h = p->states[j.state].t.h;
-		j.rowMin = h - box[3]; j.rowMax = h - 1 - box[1];
 		if (p->m->gpuDraw)
 		{
 			const ViewMap vm = { vw, vh, vx, vy, ds, dof };
 			const Vertex *const gv[3] = { tri[0]->v, tri[1]->v, tri[2]->v };
-			gpuTriangle (p, p->states[j.state], gv, vm);
+			if (gpuTriangle (p, p->states[p->stateCount - 1], gv, vm)) continue;	// (the GPU's alone)
 		}
+		if (p->jobCount >= JOB_MAX) { p->why = "more than 8192 triangles queued"; flush (p); }
+		Job &j = p->jobs[p->jobCount++];
+		for (int k = 0; k < 3; k++) { j.v[k] = *tri[k]->v; j.s[k] = *tri[k]; j.s[k].v = &j.v[k]; }
+		j.state = p->stateCount - 1;					// (flush may have moved the state to index 0)
+		const int h = p->states[j.state].t.h;
+		j.rowMin = h - box[3]; j.rowMax = h - 1 - box[1];
 	}
 }
 
@@ -1983,10 +1998,23 @@ enum { SHADED_MAX = 1024 };
 // each of the draw's vertices is), the shader then runs on all of them -- the host's other cores taking their
 // share, 32 at a time --, and the triangles are assembled in the draw's order.
 enum { BATCH_MAX = 2048, BATCH_SPAN = 8192, BATCH_PIECE = 32 };
+// The lighting's two colours at n vertices (n <= CH), from their normals' quaternions and their view vectors.
+static void lightVertices (const Pica *p, const Lighting &l, Vertex *v, int n, Scratch &k)
+{
+	for (int i = 0; i < n; i++)
+	{
+		for (int j = 0; j < 4; j++) k.fq[j][i] = v[i].a[A_QUAT + j];
+		for (int j = 0; j < 3; j++) k.fq[4 + j][i] = v[i].a[A_VIEW + j];
+	}
+	lightRows (p, l, n, k, k.litP, k.litS);
+	for (int i = 0; i < n; i++)
+		for (int c = 0; c < 4; c++) { v[i].a[A_LITP + c] = (float) k.litP[c][i] * (1.0f / 255.0f); v[i].a[A_LITS + c] = (float) k.litS[c][i] * (1.0f / 255.0f); }
+}
 struct Batch
 {
 	float attr[BATCH_MAX][16][4]; Vertex out[BATCH_MAX]; u16 order[BATCH_SPAN];
 	u32 count, next; int inputs;
+	const Lighting *lit;						// (the vertices are lit too: for the GPU's frames)
 	struct { u64 steps; u32 badOp; char pad[52]; } by[8];		// (a worker's own)
 };
 static void shadeWorker (void *arg, int worker)
@@ -2000,6 +2028,7 @@ static void shadeWorker (void *arg, int worker)
 		if (k0 >= b.count) break;
 		const u32 k1 = k0 + BATCH_PIECE < b.count ? k0 + BATCH_PIECE : b.count;
 		for (u32 k = k0; k < k1; k++) shadeVertex (p, b.attr[k], b.inputs, b.out[k], steps, badOp);
+		if (b.lit) lightVertices (p, *b.lit, b.out + k0, (int) (k1 - k0), p->scratch[worker]);
 	}
 	b.by[worker].steps += steps;
 	if (badOp) b.by[worker].badOp = badOp;
@@ -2105,6 +2134,18 @@ static void draw (Pica *p, bool indexed)
 	};
 	auto vertexIndex = [&] (u32 n) -> u32 { return indexed ? (index16 ? (u32) (index[n * 2] | index[n * 2 + 1] << 8) : index[n]) : n + p->regs[R_VERTEX_OFFSET]; };
 	Machine *const m = p->m;
+	// the draw's shader as a function, when it compiles (gpuSkip 2048: never)
+	if (p->jitDirty) { shaderJitReset (p->jit); p->jitDirty = false; }
+	p->shaderFn = (m->gpuSkip & 2048) || m->traceGpu ? 0 : shaderCompile (&p->jit, p->code, p->opdesc, p->regs[R_VSH_ENTRY] & 0xFFFF);
+	// (a host's GPU: the lighting at the vertices, once each)
+	static Lighting vlight;
+	const Lighting *lit = 0;
+	if (m->gpuDraw && (p->regs[R_LIGHTING] & 1))
+	{
+		if (!p->scratch) p->scratch = (Scratch *) malloc (sizeof (Scratch) * 8);
+		lightingState (p, vlight);
+		if (p->scratch && vlight.on) lit = &vlight;
+	}
 	if (count >= 96 && m->parallelBegin && !m->traceGpu && (!indexed || p->shaded) && decReady (p, true)
 	    && (p->batch || (p->batch = (Batch *) malloc (sizeof (Batch))) != 0))
 	{
@@ -2112,7 +2153,7 @@ static void draw (Pica *p, bool indexed)
 		Batch &b = *p->batch;
 		for (u32 n = 0; n < count; )
 		{
-			b.count = 0; b.inputs = inputs;
+			b.count = 0; b.inputs = inputs; b.lit = lit;
 			__atomic_store_n (&b.next, 0u, __ATOMIC_SEQ_CST);
 			for (int w = 0; w < 8; w++) { b.by[w].steps = 0; b.by[w].badOp = 0; }
 			if (++p->drawStamp == 0) { p->drawStamp = 1; if (p->shaded) memset (p->shaded, 0, sizeof (Shaded) * SHADED_MAX); }
@@ -2145,6 +2186,7 @@ static void draw (Pica *p, bool indexed)
 		Vertex v;
 		p->m->gsp.vertices++;
 		shadeVertex (p, attr, inputs, v, m->gsp.shaderSteps, p->badOp);
+		if (lit) lightVertices (p, *lit, &v, 1, p->scratch[7]);
 		if (slot) { slot->index = vi; slot->stamp = p->drawStamp; slot->v = v; }
 		if (p->m->traceGpu && n == 0)
 		{
@@ -2190,7 +2232,7 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 		if (p->immediateCount >= (int) (p->regs[R_VSH_INPUT] & 15) + 1)
 		{
 			Vertex vtx;
-			shadeVertex (p, p->immediate, p->immediateCount, vtx, p->m->gsp.shaderSteps, p->badOp);
+			p->shaderFn = 0; shadeVertex (p, p->immediate, p->immediateCount, vtx, p->m->gsp.shaderSteps, p->badOp);
 			p->immediateCount = 0;
 			assemble (p, vtx);
 		}
@@ -2243,8 +2285,8 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 			}
 			p->floatIndex++;
 		}
-		else if (id >= R_VSH_CODE_DATA && id < R_VSH_CODE_DATA + 8) { if (p->codeIndex < CODE_MAX) { p->code[p->codeIndex++] = value; p->decDirty = true; if (p->codeIndex > p->codeTop) p->codeTop = p->codeIndex; } }
-		else if (id >= R_VSH_OPDESC_DATA && id < R_VSH_OPDESC_DATA + 8) { if (p->opdescIndex < OPDESC_MAX) { p->opdesc[p->opdescIndex++] = value; p->decDirty = true; } }
+		else if (id >= R_VSH_CODE_DATA && id < R_VSH_CODE_DATA + 8) { if (p->codeIndex < CODE_MAX) { p->code[p->codeIndex++] = value; p->decDirty = true; p->jitDirty = true; if (p->codeIndex > p->codeTop) p->codeTop = p->codeIndex; } }
+		else if (id >= R_VSH_OPDESC_DATA && id < R_VSH_OPDESC_DATA + 8) { if (p->opdescIndex < OPDESC_MAX) { p->opdesc[p->opdescIndex++] = value; p->decDirty = true; p->jitDirty = true; } }
 		break;
 	}
 }
