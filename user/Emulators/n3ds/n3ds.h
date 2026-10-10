@@ -275,7 +275,14 @@ struct Machine
 		u64 frames;				// VBlanks since the start
 		u32 fills, transfers, cmdLists;		// (counters: what the program asked the GPU)
 		u64 usLists, usTransfers, usFills;	// ... and the host's time in each, in microseconds
-		u64 usRaster;				// (of the lists' time: the rasterizer's -- the rest is the vertices')
+		u64 usRaster, usRasterAside;		// the rasterizer's time; of it, what ran while the program went on (not in the lists' time)
+		bool listPending;			// a list's triangles are still being drawn: its interrupt is owed
+		// the right eye left out (monoOnly): the top screen's (left, right) framebuffers seen, the buffer the
+		// program renders an eye in and where it was last sent (1 left, 2 right), how many frames in a row
+		// showed "left, then right", and: its draws are being left out now (until its transfer to the right)
+		u32 eyePairs[4][2]; int eyePairCount;
+		u32 eyeSrc; int eyeLastSide, eyeSeen, eyeBroken; bool eyeSkip;
+		u64 eyeDraws;				// (draws left out)
 		u64 vertices, trianglesDrawn, pixelsDrawn, shaderSteps, trianglesIn;	// (shaderSteps: the vertex shader's instructions run; trianglesIn: before clipping and culling)
 	} gsp;
 	struct Pica *pica;			// the GPU's state (n3ds_pica.cpp), made at its first command list
@@ -296,12 +303,24 @@ struct Machine
 	u64 romfsBase, romfsSize;
 	const u8 *memFile; u32 memSize;		// (load (file, size): the source is that memory)
 	char title[16]; char productCode[20];	// (a game's: from its headers)
-	// The GPU's rasterizer on several host cores: `workers` of them (1: this one alone), and how the host runs
-	// fn (arg, 0) .. fn (arg, workers - 1) at the same time and comes back when all are done. The work given to
-	// the others makes no system call and allocates nothing (an Onyx app core can do neither).
-	int workers;
-	void (*parallel) (void *user, void (*fn) (void *arg, int worker), void *arg, int workers);
+	// The GPU's rasterizer on other host cores (all three, or none: this thread alone then). fn (arg, worker) takes
+	// the work piece by piece until none is left; it makes no system call and allocates nothing (an Onyx app
+	// core can do neither); a worker's number is its own, below 8.
+	//   parallelBegin  the host's helpers start fn (true; false: there is none), and this comes back at once
+	//   parallelDone   have they all come back? (then all the work is done)
+	//   parallelEnd    this thread takes its part too (fn, with its own number), then waits for the helpers
+	// A command list's triangles are rasterized that way while the program goes on: its "list done" interrupt is
+	// raised when they are (gpuSync: at once when the program waits for it, or before the GPU's next command).
+	bool (*parallelBegin) (void *user, void (*fn) (void *arg, int worker), void *arg);
+	bool (*parallelDone) (void *user);
+	void (*parallelEnd) (void *user, void (*fn) (void *arg, int worker), void *arg);
 	void *parallelUser;
+	int helpers;				// (how many the host has: to say it)
+	// A host that shows one picture a screen (no stereo screen) sets this: when the program draws its top screen
+	// twice a frame -- the left eye's picture, then the right eye's, each sent to its own framebuffer --, the
+	// second one is not drawn (n3ds_gsp.cpp: learnt from the transfers, checked again each frame).
+	bool monoOnly;
+	void gpuSync ();			// the GPU's work under way is ended (call it before reading a screen)
 	bool trace;				// the system calls and the requests, on stderr (tests)
 	bool traceGpu;				// ... each draw and transfer of the GPU
 	u32 gpuSkip;				// (to find what is slow: 1 no procedural texture, 2 no blending, 4 no depth, 8 no texture, 16 no lighting, 32 no pixel at all, 64 the fragments found but not shaded, 128 not combined nor written, 256 no vertex shader, 512 no triangle)
@@ -374,6 +393,9 @@ void gspRequest (Machine *m, Session *s, u32 *cmd);			// gsp::Gpu (n3ds_gsp.cpp)
 // the GPU (n3ds_pica.cpp): a command list at a program's address; a display transfer (the GX command's 8 words)
 void picaCommandList (Machine *m, u32 va, u32 size);
 void picaDisplayTransfer (Machine *m, const u32 *c);
+bool picaBusy (const Machine *m);		// a list's triangles are being drawn aside
+bool picaDone (Machine *m);			// ... and the helpers have finished them
+void picaSync (Machine *m);			// ... this thread helps, waits, and the list is over
 void picaFree (Machine *m);
 void storageFree (Machine *m);
 void aptRequest (Machine *m, Session *s, u32 *cmd);			// APT:U / APT:S / APT:A (n3ds_apt.cpp)

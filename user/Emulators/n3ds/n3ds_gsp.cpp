@@ -69,9 +69,22 @@ void Machine::vblank ()
 			fb.active = info[0]; fb.left = info[1]; fb.right = info[2]; fb.stride = info[3]; fb.format = info[4]; fb.select = info[5]; fb.unknown = info[6];
 			fb.set = true;
 			u[1] = 0;
+			if (sc == 0 && fb.right && fb.right != fb.left)		// (the top screen's two eyes: remembered, see monoOnly)
+			{
+				bool known = false;
+				for (int i = 0; i < gsp.eyePairCount; i++) if (gsp.eyePairs[i][0] == fb.left && gsp.eyePairs[i][1] == fb.right) known = true;
+				if (!known) { const int i = gsp.eyePairCount < 4 ? gsp.eyePairCount++ : 0; gsp.eyePairs[i][0] = fb.left; gsp.eyePairs[i][1] = fb.right; }
+			}
 		}
 	gspInterrupt (GSP_PDC0);
 	gspInterrupt (GSP_PDC1);
+}
+
+// The GPU's work under way is ended, and the interrupt of the list it belonged to raised.
+void Machine::gpuSync ()
+{
+	picaSync (this);
+	if (gsp.listPending) { gsp.listPending = false; gspInterrupt (GSP_P3D); }
 }
 
 static u64 micros () { struct timeval tv; gettimeofday (&tv, 0); return (u64) tv.tv_sec * 1000000ull + (u64) tv.tv_usec; }
@@ -79,6 +92,7 @@ static u64 micros () { struct timeval tv; gettimeofday (&tv, 0); return (u64) tv
 // One command of the GX queue (8 words; addresses are the program's).
 static void gxCommand (Machine *m, const u32 *c)
 {
+	m->gpuSync ();								// (the commands follow each other: the list before is over first)
 	if (m->traceGpu) fprintf (stderr, "gx %08x %08x %08x %08x %08x %08x %08x %08x%c", (unsigned) c[0], (unsigned) c[1], (unsigned) c[2], (unsigned) c[3], (unsigned) c[4], (unsigned) c[5], (unsigned) c[6], (unsigned) c[7], 10);
 	switch (c[0] & 0xFF)
 	{
@@ -93,7 +107,8 @@ static void gxCommand (Machine *m, const u32 *c)
 	case 1:									// a PICA200 command list (address, size)
 		m->gsp.cmdLists++;
 		{ const u64 t = micros (); picaCommandList (m, c[1], c[2]); m->gsp.usLists += micros () - t; }
-		m->gspInterrupt (GSP_P3D);
+		if (picaBusy (m)) m->gsp.listPending = true;			// (its triangles are drawn aside: the interrupt at their end)
+		else m->gspInterrupt (GSP_P3D);
 		break;
 	case 2:									// memory fill: two areas (start, value, end), their controls
 		for (int k = 0; k < 2; k++)
@@ -119,9 +134,37 @@ static void gxCommand (Machine *m, const u32 *c)
 		}
 		break;
 	case 3:									// display transfer (what the GPU rendered -> a framebuffer)
+	{
 		m->gsp.transfers++;
-		{ const u64 t = micros (); picaDisplayTransfer (m, c); m->gsp.usTransfers += micros () - t; }
+		// The right eye's picture is never shown by a host with one picture a screen (monoOnly). A program that
+		// renders an eye in a buffer S, sends it to the left framebuffer, renders the other eye in S again and
+		// sends it to the right one -- seen two frames in a row -- has its draws into S left out between the two
+		// transfers (n3ds_pica.cpp's draw), and the second transfer too. A frame that does otherwise ends that
+		// (one picture may be wrong then); after three such frames it is not tried any more.
+		bool skip = false;
+		if (m->monoOnly && m->gsp.eyeBroken < 3)
+		{
+			auto &g = m->gsp;
+			const u32 src = c[1], dst = c[2];
+			int side = 0;
+			for (int i = 0; i < g.eyePairCount; i++) { if (dst == g.eyePairs[i][0]) side = 1; else if (dst == g.eyePairs[i][1]) side = 2; }
+			if (side == 1)
+			{
+				if (src != g.eyeSrc) g.eyeSeen = 0;
+				else if (g.eyeSkip) { g.eyeSeen = 0; g.eyeBroken++; }	// (no right eye came: its draws were this picture's)
+				g.eyeSrc = src; g.eyeLastSide = 1;
+				g.eyeSkip = g.eyeSeen >= 2;
+			}
+			else if (src == g.eyeSrc)
+			{
+				if (side == 2 && g.eyeLastSide == 1) { skip = g.eyeSkip; if (g.eyeSeen < 2) g.eyeSeen++; }
+				else { if (g.eyeSkip) g.eyeBroken++; g.eyeSeen = 0; }
+				g.eyeSkip = false; g.eyeLastSide = side;
+			}
+		}
+		if (!skip) { const u64 t = micros (); picaDisplayTransfer (m, c); m->gsp.usTransfers += micros () - t; }
 		m->gspInterrupt (GSP_PPF);
+	}
 		break;
 	case 4:									// texture copy
 		m->note ("a texture copy");

@@ -71,14 +71,20 @@ static int run (int argc, char **argv)
 	if (!m->init ()) { fprintf (stderr, "not enough memory for the machine\n"); return 2; }
 	m->debugOut = debugOut;
 	if (g_onMachine) g_onMachine (m);
-	// N3DS_WORKERS=<n>  the rasterizer's work cut in n parts as for n cores, done here one after the other: the
-	// pictures must be the same
-	if (const char *w = getenv ("N3DS_WORKERS"))
-		if (!m->parallel && atoi (w) > 1)
+	// N3DS_ASIDE=<n>  the rasterizer's work "on other cores" played here: a list's triangles are drawn only when
+	// the machine has asked n times whether they are done, or when it waits for them -- the program goes on meanwhile
+	if (const char *w = getenv ("N3DS_ASIDE"))
+		if (!m->parallelBegin)
 		{
-			m->workers = atoi (w);
-			m->parallel = [] (void *, void (*fn) (void *, int), void *arg, int workers) { for (int i = 0; i < workers; i++) fn (arg, i); };
+			static struct { void (*fn) (void *, int); void *arg; int left, every; } aside;
+			aside.every = atoi (w);
+			m->parallelBegin = [] (void *, void (*fn) (void *, int), void *arg) { aside.fn = fn; aside.arg = arg; aside.left = aside.every; return true; };
+			m->parallelDone = [] (void *) { if (aside.fn && --aside.left <= 0) { aside.fn (aside.arg, 0); aside.fn = 0; } return aside.fn == 0; };
+			m->parallelEnd = [] (void *, void (*fn) (void *, int), void *arg) { fn (arg, 1); aside.fn = 0; };
+			m->helpers = 1;
 		}
+	// N3DS_MONO=1  the right eye's picture is not drawn (what a host with one picture a screen asks)
+	if (getenv ("N3DS_MONO")) m->monoOnly = true;
 	if (argc > 5) m->gpuSkip = (n3ds::u32) strtoul (argv[5], 0, 16);	// (a 5th argument: parts of the GPU left out, to time them)
 	m->trace = getenv ("N3DS_TRACE") != 0;
 	// N3DS_FONT=<sysfont.bcfnt>  the shared system font (tools/n3ds/mkfont.py makes ours)
@@ -131,9 +137,18 @@ static int run (int argc, char **argv)
 	const char *shots = getenv ("N3DS_SHOTS");
 	const int shotEvery = getenv ("N3DS_SHOTEVERY") ? atoi (getenv ("N3DS_SHOTEVERY")) : 60;
 	int n = 0;
+	// (a 7th argument: that many frames first -- a game's loading -- before the time and the GPU's counters are taken)
+	const int warm = argc > 7 ? atoi (argv[7]) : 0;
 	struct timeval t0; gettimeofday (&t0, 0);
 	while (n < frames && !m->exited)
 	{
+		if (warm > 0 && n == warm)
+		{
+			m->gpuSync ();
+			gettimeofday (&t0, 0);
+			m->gsp.usLists = m->gsp.usTransfers = m->gsp.usFills = m->gsp.usRaster = m->gsp.usRasterAside = 0;
+			m->gsp.vertices = m->gsp.trianglesDrawn = m->gsp.pixelsDrawn = m->gsp.shaderSteps = m->gsp.trianglesIn = 0;
+		}
 		unsigned b = 0; bool down = false; int tx = 0, ty = 0;
 		for (int k = 0; k < nk; k++) if (n >= keys[k].f0 && n <= keys[k].f1) b |= keys[k].a;
 		for (int k = 0; k < nt; k++) if (n >= touch[k].f0 && n <= touch[k].f1) { down = true; tx = (int) touch[k].a; ty = (int) touch[k].b; }
@@ -142,21 +157,25 @@ static int run (int argc, char **argv)
 		m->runFrame (); n++;
 		if (shots && shotEvery > 0 && n % shotEvery == 0)
 		{
+			m->gpuSync ();
 			char name[512]; snprintf (name, sizeof name, "%s%05d.ppm", shots, n);
 			FILE *o = fopen (name, "wb");
 			if (o) { fprintf (o, "P6\n%d %d\n255\n", n3ds::TOP_W, n3ds::SCREEN_H * 2); fwrite (screens (m), 1, (size_t) n3ds::TOP_W * n3ds::SCREEN_H * 2 * 3, o); fclose (o); }
 		}
 	}
+	m->gpuSync ();
 	fflush (stdout);
 	struct timeval t1; gettimeofday (&t1, 0);
 	const double secs = (double) (t1.tv_sec - t0.tv_sec) + (double) (t1.tv_usec - t0.tv_usec) / 1e6;
-	if (n && secs > 0) fprintf (stderr, "%d frames in %.2f s: %.1f frames a second (the console: 59.8)%c", n, secs, (double) n / secs, 10);
+	const int timed = warm > 0 && n > warm ? n - warm : n;
+	if (timed && secs > 0) fprintf (stderr, "%d frames in %.2f s: %.1f frames a second (the console: 59.8)%c", timed, secs, (double) timed / secs, 10);
 	fprintf (stderr, "%s after %d frames (%llu ticks): %llu system calls, %llu thread switches, %u memory faults\n",
 		 m->exited ? "ended" : "still running", n, (unsigned long long) m->now, (unsigned long long) m->svcCount,
 		 (unsigned long long) m->switchCount, (unsigned) m->mem.faults);
-	if (m->workers > 1) fprintf (stderr, "the rasterizer on %d cores%c", m->workers, 10);
+	if (m->monoOnly) fprintf (stderr, "one picture a screen: %llu draws of the right eye left out%c", (unsigned long long) m->gsp.eyeDraws, 10);
+	if (m->helpers) fprintf (stderr, "the rasterizer has %d other core%s: %.2f s of its time while the program went on%c", m->helpers, m->helpers > 1 ? "s" : "", (double) m->gsp.usRasterAside / 1e6, 10);
 	fprintf (stderr, "the GPU's share: %.2f s in command lists, %.2f s in transfers, %.2f s in fills%c", (double) m->gsp.usLists / 1e6, (double) m->gsp.usTransfers / 1e6, (double) m->gsp.usFills / 1e6, 10);
-	fprintf (stderr, "of the lists: %.2f s rasterizing %llu triangles, %llu pixels; the rest for %llu vertices (%llu shader instructions, %llu triangles)%c", (double) m->gsp.usRaster / 1e6, (unsigned long long) m->gsp.trianglesDrawn, (unsigned long long) m->gsp.pixelsDrawn, (unsigned long long) m->gsp.vertices, (unsigned long long) m->gsp.shaderSteps, (unsigned long long) m->gsp.trianglesIn, 10);
+	fprintf (stderr, "of the lists: %.2f s rasterizing %llu triangles, %llu pixels; the rest for %llu vertices (%llu shader instructions, %llu triangles)%c", (double) (m->gsp.usRaster - m->gsp.usRasterAside) / 1e6, (unsigned long long) m->gsp.trianglesDrawn, (unsigned long long) m->gsp.pixelsDrawn, (unsigned long long) m->gsp.vertices, (unsigned long long) m->gsp.shaderSteps, (unsigned long long) m->gsp.trianglesIn, 10);
 	const unsigned char *rgb = screens (m);
 	const size_t rgbSize = (size_t) n3ds::TOP_W * n3ds::SCREEN_H * 2 * 3;
 	fprintf (stderr, "screens %08x (%llu VBlanks; the GPU was asked %u fills, %u transfers, %u command lists)\n", crc32 (rgb, rgbSize),
@@ -205,12 +224,21 @@ static void parCore (void *a)
 	}
 }
 static int g_parMain = 1;			// (does the main thread rasterize too? It shares core 0 with the system)
-static void parRun (void *, void (*fn) (void *, int), void *arg, int)
+static bool parBegin (void *, void (*fn) (void *, int), void *arg)
 {
 	g_par.fn = fn; g_par.arg = arg;
 	__asm__ volatile ("dmb ish" ::: "memory");
 	g_par.req++;
 	__asm__ volatile ("dsb ish; sev" ::: "memory");
+	return true;
+}
+static bool parDone (void *)
+{
+	for (int i = 0; i < g_par.n; i++) if (g_par.done[i] != g_par.req) return false;
+	return true;
+}
+static void parEnd (void *, void (*fn) (void *, int), void *arg)
+{
 	if (g_parMain) fn (arg, g_par.n);
 	// (a page of the program a core touches first -- code, a table -- is brought in by the kernel's pager, a task of
 	// core 0: it must be given the processor, or the core waits for ever)
@@ -254,6 +282,7 @@ static void codeFresh (void)
 
 static void parSetup (n3ds::Machine *m)
 {
+	m->monoOnly = true;							// (Onyx shows one picture a screen)
 	codeFresh ();
 	for (int i = 0; i < 2; i++)
 	{
@@ -263,7 +292,7 @@ static void parSetup (n3ds::Machine *m)
 		if (!stack || kapi_core_run (c, parCore, (void *) (long) g_par.n, stack + 256 * 1024) != 0) { kapi_core_release (c); break; }
 		g_par.cores[g_par.n++] = c;
 	}
-	if (g_par.n) { m->workers = g_par.n + g_parMain; m->parallel = parRun; }
+	if (g_par.n) { m->helpers = g_par.n; m->parallelBegin = parBegin; m->parallelDone = parDone; m->parallelEnd = parEnd; }
 	fprintf (stderr, "%d application cores taken%s%c", g_par.n, g_parMain ? ", the main thread rasterizes too" : "", 10);
 }
 

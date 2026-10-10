@@ -434,13 +434,28 @@ frames `acc3db37`, the game's first 600 frames `9c6e43e7`):
   fragment register is written; what the combiner's stages really read (`useTex`, `useProc`, `useLight`,
   `needPrimary`, `stageEnd`, `usesBuffer`) -- the rest is not computed; a fragment that simply replaces what is
   there (`replace`) is written without reading the buffer.
-- **The triangles queued and rasterized at the list's end by several host cores** (`Machine::workers`,
-  `Machine::parallel`: the host runs `fn (arg, worker)` on each): every core walks the same queue in order and
-  draws the rows of its own 8-row bands, so nothing is shared and the order within a pixel is kept. The work
-  given to the others calls nothing and allocates nothing (an Onyx app core can do neither): each has its
-  `Scratch`, made beforehand. `n3dstest` on Onyx takes the free application cores (`kapi_core_acquire`); on the
-  user's Pi one of the two was free (the other one belongs to a server), so: **two cores**, the main thread and one
-  application core.
+- **The triangles queued and rasterized at the list's end by several host cores**, band by band of 8 rows (a
+  band is a row of the buffer's 8 x 8 tiles): a worker takes the next band nobody has (`bandNext`, an atomic
+  counter) and draws there the queued triangles that reach it, in their order -- nothing is shared, the order
+  within a pixel is kept, and a slower core simply takes fewer bands. What is culled or outside is not queued
+  (`triBox`, the one function the queue and the rasterizer ask). The work given to the other cores calls nothing
+  and allocates nothing (an Onyx app core can do neither): each has its `Scratch`, made beforehand.
+  `Machine::parallelBegin / parallelDone / parallelEnd` are the host's: `n3dstest` on Onyx takes the free
+  application cores (`kapi_core_acquire`); on the user's Pi one of the two was free (the other one belongs to a
+  server), so: **two cores**, the main thread and one application core.
+- **A list's triangles drawn while the program goes on**: at a command list's end the helpers start and the
+  processor is given back to the program; the list's interrupt (P3D) is raised when the helpers are done
+  (looked for every quarter of a millisecond of the program's time), at once when every thread waits (this
+  thread then takes bands too), or before the GPU's next command (`Machine::gpuSync`). *A Link Between Worlds*
+  waits for each list, so it gains nothing there -- a program that prepares its next frame meanwhile does.
+  Under qemu `N3DS_ASIDE=<n>` plays it (the triangles drawn at the n-th question): the same pictures.
+- **The right eye left out** (`Machine::monoOnly`, for a host that shows one picture a screen -- Onyx): the game
+  draws its top screen **twice a frame**, the 3D slider down or not (the same lists again into the same buffer,
+  sent to the right eye's framebuffer; saying "a 2DS" changes nothing). The transfers tell it: a buffer sent to
+  a left framebuffer of the top screen, drawn into again, sent to the right one -- two frames in a row -- and
+  from then on the draws into that buffer between the two transfers are not done (nor the second transfer). A
+  frame that does otherwise ends it (one picture may be wrong); three such frames and it is not tried again.
+  The left picture is the same to the bit; **the title scene: 5.1 -> 9.4 frames a second**.
 - **Textures decoded once** into plain pixels (96 kept, found by where the program's bytes are and a checksum of
   samples, made again when they change): a texel is one read, ETC1 included.
 - **Fragments shaded by groups of 32** (`CH`): the fragments that passed the depth test are gathered row after row
@@ -478,6 +493,15 @@ lists on the application cores while the processor goes on (today the processor 
 times add up); both application cores when they are free; the lighting cheaper (per pixel today); the vertex
 shaders compiled; and the V3D for the fragments (the study's plan) -- the software path alone will not reach the
 console's speed in this game.
+
+**The title scene itself** (frames 900 to 1200: the camera over the castle, the logo; `n3dstest`'s 7th argument
+is the frames to run before the time and the counters are taken) is much heavier than the 600 frames before it:
+with one eye, **31.5 s for 300 frames (9.5 a second)** -- the rasterizer 18.2 s on two cores (605 000 pixels a
+frame, six times the screen: three full-screen layers, the lit ground with six combiner stages; the lighting
+alone 5.1 s, finding the fragments 3.2 s), **the vertices 9.9 s** (8 700 a frame after sharing, 88 shader
+instructions each: ~40 ns an instruction, on one core), the transfers 1.2 s, the processor 2.3 s. Next there: the
+vertex shader compiled or at least run on both cores, the lighting worked out by rows, the full-screen layers
+of one colour drawn without the general path.
 
 **A kernel fault found on the way** (and why some runs on the Pi stopped with only their first line): after each
 upload of a rebuilt `n3dstest`, the application core faulted at places the new code cannot fault at -- it was

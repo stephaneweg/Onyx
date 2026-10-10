@@ -18,8 +18,10 @@
 // shaped by look-up tables (D0, D1, the reflection's three, Fresnel, the distance's) -- the combiner's sources 1
 // and 2. Not in it: spot lights, bump mapping, shadows, the geometric factors.
 // The triangles of a command list are not drawn one by one: they are queued with the state they are drawn with,
-// and the queue is rasterized at the list's end (or when it is full) -- by several host cores when the host has
-// them (Machine::parallel), each taking the rows of its own 8-row bands, all in the triangles' order.
+// and the queue is rasterized at the list's end (or when it is full), band by band of 8 rows, each band in the
+// triangles' order. When the host has other cores (Machine::parallelBegin) they take the bands one after the
+// other, and at a list's end this thread does not wait for them: the program goes on, and the list is over
+// (picaSync) when it waits for it or at the GPU's next command.
 // A texture is decoded once into plain pixels (its rows from the top) and kept while the program's bytes stay the
 // same (a checksum of samples, looked at when a draw's state is made): a texel is then one read.
 // The fragments of a triangle are shaded by groups of up to CH (the ones that passed the depth test, row after row): each
@@ -98,7 +100,8 @@ struct Pica
 	bool stateOk, targetOk;				// (the registers' meaning for a draw: worked out at its first triangle)
 	struct State *states; u32 stateCount;		// the states of the queued triangles (the last one: the current)
 	struct Job *jobs; u32 jobCount;			// the triangles waiting to be rasterized
-	int flushWorkers;				// (how many cores the flush under way uses)
+	u32 bandNext, bandCount;			// the bands of the flush under way: the next one to take, how many
+	bool busy; u64 busySince;			// the queue is being rasterized aside (since when, in microseconds)
 	int jump;					// a jump asked by the command being run: 1 or 2 (which buffer), 0 none
 	// counters
 	u64 triangles, pixels, depthFailed, alphaFailed;
@@ -226,9 +229,10 @@ static void runShader (Pica *p, Shader &s, u32 entry)
 	int depth = 0;
 	u32 pc = entry;
 	s.cmp[0] = s.cmp[1] = false; s.a[0] = s.a[1] = 0; s.aL = 0;
-	for (int steps = 0; steps < 65536; steps++)
+	int steps = 0;
+	struct Count { u64 &total; int &n; ~Count () { total += (u64) n; } } count = { p->m->gsp.shaderSteps, steps };
+	for (; steps < 65536; steps++)
 	{
-		p->m->gsp.shaderSteps++;
 		while (depth && pc == stack[depth - 1].end)			// the end of a called block, of a loop's body
 		{
 			Frame &f = stack[depth - 1];
@@ -943,14 +947,14 @@ struct Scratch
 	Row dst[4], bo[4], bf[2];					// what is in the buffer, what goes there, two blending factors
 };
 
-static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Screen s0, Screen s1, Screen s2, int worker, int workers)
+// A triangle on the screen: its side (the area's sign: the culling) and its box, cut by what may be drawn.
+// False: nothing of it is drawn. (One function for the queue and for the rasterizer: the same answer.)
+static __attribute__ ((noinline)) bool triBox (const Target &t, u32 cull, const Screen &s0, const Screen &s1, const Screen &s2, float &area, int box[4])
 {
-	// the triangle's side: culled, or turned so that its area is positive
-	float area = (s1.x - s0.x) * (s2.y - s0.y) - (s1.y - s0.y) * (s2.x - s0.x);
-	if (area == 0.0f) return;
-	if (cull == 1 && area > 0) return;					// 1: the counter-clockwise ones (the "front") are removed
-	if (cull == 2 && area < 0) return;					// 2: the clockwise ones (the "back") -- what games use
-	if (area < 0) { Screen tmp = s1; s1 = s2; s2 = tmp; area = -area; }
+	area = (s1.x - s0.x) * (s2.y - s0.y) - (s1.y - s0.y) * (s2.x - s0.x);
+	if (area == 0.0f) return false;
+	if (cull == 1 && area > 0) return false;				// 1: the counter-clockwise ones (the "front") are removed
+	if (cull == 2 && area < 0) return false;				// 2: the clockwise ones (the "back") -- what games use
 	float minx = s0.x < s1.x ? s0.x : s1.x, maxx = s0.x > s1.x ? s0.x : s1.x, miny = s0.y < s1.y ? s0.y : s1.y, maxy = s0.y > s1.y ? s0.y : s1.y;
 	if (s2.x < minx) minx = s2.x;
 	if (s2.x > maxx) maxx = s2.x;
@@ -961,9 +965,23 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 	if (y0 < t.sy0) y0 = t.sy0;
 	if (x1 > t.sx1) x1 = t.sx1;
 	if (y1 > t.sy1) y1 = t.sy1;
-	if (x0 >= x1 || y0 >= y1) return;
+	if (x0 >= x1 || y0 >= y1) return false;
+	box[0] = x0; box[1] = y0; box[2] = x1; box[3] = y1;
+	return true;
+}
+
+// The triangle's fragments in the buffer's rows rowLo..rowHi (a band: counted from the bottom).
+static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Screen s0, Screen s1, Screen s2, int worker, int rowLo, int rowHi)
+{
+	float area; int box[4];
+	if (!triBox (t, cull, s0, s1, s2, area, box)) return;
+	if (area < 0) { Screen tmp = s1; s1 = s2; s2 = tmp; area = -area; }	// (turned so that its area is positive)
+	const int x0 = box[0], x1 = box[2];
+	int y0 = t.h - 1 - rowHi, y1 = t.h - rowLo;
+	if (y0 < box[1]) y0 = box[1];
+	if (y1 > box[3]) y1 = box[3];
+	if (y0 >= y1) return;
 	if (p->m->gpuSkip & 32) return;
-	if (worker == 0) p->stat[0].triangles++;
 	u64 nPixels = 0, nDepth = 0, nAlpha = 0;
 	const float inv = 1.0f / area;
 	const u32 depthMax = t.depthBytes == 2 ? 0xFFFF : 0xFFFFFF;
@@ -1203,7 +1221,6 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 
 	for (int y = y0; y < y1; y++)
 	{
-		if (workers > 1 && (int) ((u32) (t.h - 1 - y) >> 3) % workers != worker) continue;	// (another core's band)
 		const float py = (float) y + 0.5f;
 		const u32 row = (u32) (t.h - 1 - y);					// (the buffers' rows go from the bottom)
 		// where the row can be inside the three edges: a little more than that, the test below stays the judge
@@ -1252,41 +1269,100 @@ static void rasterize (Pica *p, const Target &t, const Fragment &f, u32 cull, Sc
 // What is queued: a state (the target, the fragment's rules, the culling) shared by the triangles of a draw, and
 // each triangle on the screen with its three vertices.
 struct State { Target t; Fragment f; u32 cull; bool ok; };
-struct Job { Screen s[3]; Vertex v[3]; u32 state; };
-enum { STATE_MAX = 256, JOB_MAX = 8192 };
+struct Job { Screen s[3]; Vertex v[3]; u32 state; int rowMin, rowMax; /* the buffer's rows it can touch */ };
+enum { STATE_MAX = 256, JOB_MAX = 8192, BAND = 8 };
 
+static u64 microsNow () { struct timeval tv; gettimeofday (&tv, 0); return (u64) tv.tv_sec * 1000000ull + (u64) tv.tv_usec; }
+
+// A worker (this thread, or one of the host's): it takes the next band nobody has, and draws there the queued
+// triangles that reach it, in their order -- until no band is left.
 static void flushWorker (void *arg, int worker)
 {
 	Pica *p = (Pica *) arg;
-	for (u32 i = 0; i < p->jobCount; i++)
+	for (;;)
 	{
-		const Job &j = p->jobs[i];
-		const State &st = p->states[j.state];
-		rasterize (p, st.t, st.f, st.cull, j.s[0], j.s[1], j.s[2], worker, p->flushWorkers);
+		const u32 b = __atomic_fetch_add (&p->bandNext, 1u, __ATOMIC_SEQ_CST);
+		if (b >= p->bandCount) return;
+		const int rowLo = (int) b * BAND, rowHi = rowLo + BAND - 1;
+		for (u32 i = 0; i < p->jobCount; i++)
+		{
+			const Job &j = p->jobs[i];
+			if (j.rowMax < rowLo || j.rowMin > rowHi) continue;
+			const State &st = p->states[j.state];
+			rasterize (p, st.t, st.f, st.cull, j.s[0], j.s[1], j.s[2], worker, rowLo, rowHi);
+		}
 	}
 }
 
-// The queued triangles are drawn; the last state stays (the next triangles may use it).
+// The queue's bands laid out for the workers.
+static void flushStart (Pica *p)
+{
+	int rows = 0;
+	for (u32 i = 0; i < p->jobCount; i++) if (p->jobs[i].rowMax >= rows) rows = p->jobs[i].rowMax + 1;
+	p->bandCount = (u32) (rows + BAND - 1) / BAND;
+	__atomic_store_n (&p->bandNext, 0u, __ATOMIC_SEQ_CST);
+	p->busySince = microsNow ();
+}
+// The queue is drawn: the workers' counters, the queue emptied; the last state stays (the next triangles may use it).
+static void flushDone (Pica *p, bool aside)
+{
+	Machine *m = p->m;
+	for (int w = 0; w < 8; w++)
+	{
+		p->pixels += p->stat[w].pixels; p->depthFailed += p->stat[w].depthFailed; p->alphaFailed += p->stat[w].alphaFailed;
+		m->gsp.pixelsDrawn += p->stat[w].pixels;
+		p->stat[w].triangles = p->stat[w].pixels = p->stat[w].depthFailed = p->stat[w].alphaFailed = 0;
+	}
+	const u64 us = microsNow () - p->busySince;
+	m->gsp.usRaster += us;
+	if (aside) m->gsp.usRasterAside += us;
+	p->jobCount = 0; p->busy = false;
+	if (p->stateCount > 1) { p->states[0] = p->states[p->stateCount - 1]; p->stateCount = 1; }
+}
+
+// The queued triangles are drawn now (with the host's helpers when it has some).
 static void flush (Pica *p)
 {
-	if (p->jobCount)
+	Machine *m = p->m;
+	if (p->busy) picaSync (m);
+	if (!p->jobCount) { if (p->stateCount > 1) { p->states[0] = p->states[p->stateCount - 1]; p->stateCount = 1; } return; }
+	flushStart (p);
+	if (m->parallelBegin && !m->traceGpu && m->parallelBegin (m->parallelUser, flushWorker, p)) m->parallelEnd (m->parallelUser, flushWorker, p);
+	else flushWorker (p, 0);
+	flushDone (p, false);
+}
+// ... or by the host's helpers while this thread goes on (a list's end), when there are some.
+static void flushAside (Pica *p)
+{
+	Machine *m = p->m;
+	if (!p->jobCount || !m->parallelBegin || m->traceGpu) { flush (p); return; }
+	flushStart (p);
+	if (!m->parallelBegin (m->parallelUser, flushWorker, p)) { flushWorker (p, 0); flushDone (p, false); return; }
+	p->busy = true;
+}
+
+bool picaBusy (const Machine *m) { return m->pica && m->pica->busy; }
+bool picaDone (Machine *m) { return !m->pica || !m->pica->busy || m->parallelDone (m->parallelUser); }
+void picaSync (Machine *m)
+{
+	Pica *p = m->pica;
+	if (!p || !p->busy) return;
+	m->parallelEnd (m->parallelUser, flushWorker, p);
+	flushDone (p, true);
+}
+
+// Do queued triangles still draw into this texture's memory? (They are drawn first then: a picture rendered, then used.)
+static bool drawnInto (const Pica *p, const Texture &tx)
+{
+	if (!p->jobCount || !tx.data) return false;
+	for (u32 i = 0; i < p->stateCount; i++)
 	{
-		Machine *m = p->m;
-		struct timeval tv0; gettimeofday (&tv0, 0);
-		p->flushWorkers = m->parallel && m->workers > 1 && !m->traceGpu ? (m->workers > 8 ? 8 : m->workers) : 1;
-		if (m->parallel && !m->traceGpu) m->parallel (m->parallelUser, flushWorker, p, p->flushWorkers);	// (even one worker: the host's, maybe another core)
-		else flushWorker (p, 0);
-		for (int w = 0; w < 8; w++)
-		{
-			p->triangles += p->stat[w].triangles; p->pixels += p->stat[w].pixels; p->depthFailed += p->stat[w].depthFailed; p->alphaFailed += p->stat[w].alphaFailed;
-			m->gsp.trianglesDrawn += p->stat[w].triangles; m->gsp.pixelsDrawn += p->stat[w].pixels;
-			p->stat[w].triangles = p->stat[w].pixels = p->stat[w].depthFailed = p->stat[w].alphaFailed = 0;
-		}
-		struct timeval tv1; gettimeofday (&tv1, 0);
-		m->gsp.usRaster += (u64) (tv1.tv_sec - tv0.tv_sec) * 1000000ull + (u64) tv1.tv_usec - (u64) tv0.tv_usec;
-		p->jobCount = 0;
+		const Target &q = p->states[i].t;
+		if (!p->states[i].ok || !q.color) continue;
+		const u8 *end = q.color + (size_t) q.w * (size_t) q.h * q.colorBytes;
+		if (tx.data < end && q.color < tx.data + tx.bytes) return true;
 	}
-	if (p->stateCount > 1) { p->states[0] = p->states[p->stateCount - 1]; p->stateCount = 1; }
+	return false;
 }
 
 // A triangle from the shader: clipped to what can be seen (in clip space: -w <= x, y <= w, -w <= z <= 0), each
@@ -1308,6 +1384,7 @@ static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c
 		static State st;							// (built aside: decoding a texture may flush the queue)
 		st.ok = target (p, st.t);
 		fragmentState (p, st.f);
+		for (int i = 0; i < 3; i++) if (st.f.useTex[i] && drawnInto (p, st.f.tex[i])) { flush (p); break; }
 		for (int i = 0; i < 3; i++) if (st.f.useTex[i]) texDecoded (p, st.f.tex[i]);
 		st.cull = p->regs[R_CULL] & 3;
 		if (p->stateCount >= STATE_MAX) flush (p);
@@ -1324,7 +1401,14 @@ static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c
 		float *q = poly[0][i].a + A_QUAT; const float *q0 = poly[0][0].a + A_QUAT;
 		if (q[0] * q0[0] + q[1] * q0[1] + q[2] * q0[2] + q[3] * q0[3] < 0) for (int k = 0; k < 4; k++) q[k] = -q[k];
 	}
-	for (int plane = 0; plane < 7 && n >= 3; plane++)
+	// (most triangles are wholly inside: nothing to cut)
+	bool inside = true;
+	for (int i = 0; i < 3 && inside; i++)
+	{
+		const float *q = poly[0][i].a;
+		inside = q[3] - 1e-6f >= 0 && q[3] + q[0] >= 0 && q[3] - q[0] >= 0 && q[3] + q[1] >= 0 && q[3] - q[1] >= 0 && q[3] + q[2] >= 0 && -q[2] >= 0;
+	}
+	for (int plane = 0; plane < 7 && n >= 3 && !inside; plane++)
 	{
 		const Vertex *in = poly[cur]; Vertex *out = poly[cur ^ 1]; int m = 0;
 		float d[12];
@@ -1368,11 +1452,20 @@ static void triangle (Pica *p, const Vertex &a, const Vertex &b, const Vertex &c
 	}
 	for (int i = 1; i + 1 < n; i++)
 	{
+		// (what is culled or outside is not queued)
+		float area; int box[4];
+		{
+			const State &st = p->states[p->stateCount - 1];
+			if (!triBox (st.t, st.cull, s[0], s[i], s[i + 1], area, box)) continue;
+		}
+		p->triangles++; p->m->gsp.trianglesDrawn++;
 		if (p->jobCount >= JOB_MAX) flush (p);
 		Job &j = p->jobs[p->jobCount++];
 		const Screen *tri[3] = { &s[0], &s[i], &s[i + 1] };
 		for (int k = 0; k < 3; k++) { j.v[k] = *tri[k]->v; j.s[k] = *tri[k]; j.s[k].v = &j.v[k]; }
 		j.state = p->stateCount - 1;					// (flush may have moved the state to index 0)
+		const int h = p->states[j.state].t.h;
+		j.rowMin = h - box[3]; j.rowMax = h - 1 - box[1];
 	}
 }
 
@@ -1409,6 +1502,8 @@ static void draw (Pica *p, bool indexed)
 	const int inputs = (int) (p->regs[R_VSH_INPUT] & 15) + 1;
 	const u32 count = p->regs[R_NUM_VERTICES];
 	if (count > 0x100000) return;
+	// (the right eye's picture, on a host that shows the left one only: n3ds_gsp.cpp)
+	if (p->m->gsp.eyeSkip && (p->regs[R_COLOR_ADDR] << 3) == Machine::virtToPhys (p->m->gsp.eyeSrc)) { p->m->gsp.eyeDraws++; return; }
 	if ((p->regs[R_GEO_CONFIG] & 3) == 2) p->m->note ("a geometry shader");
 	const u8 *index = 0; bool index16 = false;
 	if (indexed)
@@ -1616,6 +1711,7 @@ static Pica *pica (Machine *m)
 
 void picaFree (Machine *m)
 {
+	picaSync (m);
 	if (m->pica) { free (m->pica->states); free (m->pica->jobs); free (m->pica->scratch); free (m->pica->shaded); free (m->pica->dec); free (m->pica->decValid); for (auto &d : m->pica->decoded) free (d.px); }
 	free (m->pica); m->pica = 0;
 }
@@ -1628,6 +1724,7 @@ void picaCommandList (Machine *m, u32 va, u32 size)
 {
 	Pica *p = pica (m);
 	if (!p || (va & 3) || size > 0x400000) return;
+	picaSync (m);
 	const u32 *list = (const u32 *) m->physPtr (Machine::virtToPhys (va), size);
 	if (!list) { m->note ("a command list outside the linear memory"); return; }
 	u32 at = 0, words = size / 4;
@@ -1657,7 +1754,7 @@ void picaCommandList (Machine *m, u32 va, u32 size)
 			list = next; words = bytes / 4; at = 0;
 		}
 	}
-	flush (p);
+	flushAside (p);
 }
 
 // ---- transfers -------------------------------------------------------------------------------------------------------
@@ -1665,6 +1762,7 @@ void picaCommandList (Machine *m, u32 va, u32 size)
 // formats may differ, the picture may be halved, turned upside down.
 void picaDisplayTransfer (Machine *m, const u32 *c)
 {
+	picaSync (m);
 	const u32 inW = c[3] & 0xFFFF, inH = c[3] >> 16, outW = c[4] & 0xFFFF, outH = c[4] >> 16, flags = c[5];
 	const bool flip = (flags & 1) != 0, inLinear = (flags & 2) != 0, raw = (flags & 8) != 0, sameTiling = (flags & 0x20) != 0;
 	const u32 inFmt = flags >> 8 & 7, outFmt = flags >> 12 & 7, scale = flags >> 24 & 3;

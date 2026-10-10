@@ -37,7 +37,7 @@ Machine::Machine ()
 	memset (&hid, 0, sizeof hid);
 	memset (&source, 0, sizeof source); romfsBase = 0; romfsSize = 0; memFile = 0; memSize = 0; trace = false; traceGpu = false; gpuSkip = 0; pica = 0;
 	title[0] = 0; productCode[0] = 0;
-	workers = 1; parallel = 0; parallelUser = 0;
+	parallelBegin = 0; parallelDone = 0; parallelEnd = 0; parallelUser = 0; helpers = 0; monoOnly = false;
 	memset (&dsp, 0, sizeof dsp);
 	storage = 0; storageDirty = false; memset (archives, 0, sizeof archives);
 	memset (&user, 0, sizeof user); setUser ("Onyx", 1, 2);
@@ -291,6 +291,7 @@ void Machine::run (u64 ticks)
 	const u64 end = now + ticks;
 	while (!exited && now < end)
 	{
+		if (gsp.listPending && picaDone (this)) gpuSync ();		// (the GPU drew a list aside: its end is told)
 		// the sound processor's frames, timers whose time has come
 		u64 nextWake = NEVER;
 		if (dsp.on)
@@ -326,12 +327,14 @@ void Machine::run (u64 ticks)
 		Thread *t = pick ();
 		if (!t)								// everyone waits: the time passes
 		{
+			if (gsp.listPending) { gpuSync (); continue; }		// (... for the GPU, maybe: this thread helps it, no time passes)
 			if (current) { cpu->save (current->ctx); current = 0; }
 			now = nextWake < end ? nextWake : end;
 			continue;
 		}
 		if (t != current) switchTo (t);
 		u64 limit = nextWake < end ? nextWake : end;
+		if (gsp.listPending && limit > now + 67000) limit = now + 67000;	// (a quarter of a millisecond: the GPU's end is looked for often)
 		ticksLeft = (s64) (limit - now);
 		if (ticksLeft < 1) ticksLeft = 1;
 		resched = false;
