@@ -113,7 +113,7 @@ static void screens_at (int w, int h, int &s, int &tx, int &ty, int &bx, int &by
 static void blit (unsigned *dst, int pitch, int dw, int dh, int x, int y, int s, const unsigned *src, int sw)
 {
 	const int ow = sw * s / 256, oh = SH * s / 256;
-	static int xmap[4096];
+	int xmap[4096];								// (not static: the two screens are scaled on two cores)
 	for (int i = 0; i < ow && i < 4096; i++) xmap[i] = i * 256 / s;
 	for (int j = 0; j < oh; j++)
 	{
@@ -122,13 +122,39 @@ static void blit (unsigned *dst, int pitch, int dw, int dh, int x, int y, int s,
 		unsigned *d = dst + (long) yy * pitch + x;
 		if (j > 0 && sy == (j - 1) * 256 / s && yy > 0)	// the same source row: copy the line above
 		{
-			const unsigned *u = d - pitch;
-			for (int i = 0; i < ow && x + i < dw; i++) d[i] = u[i];
+			int n = ow; if (x + n > dw) n = dw - x;
+			if (n > 0) memcpy (d, d - pitch, (size_t) n * sizeof (unsigned));
 			continue;
 		}
 		const unsigned *r = src + sy * sw;
 		for (int i = 0; i < ow && x + i < dw && i < 4096; i++) d[i] = r[xmap[i]];
 	}
+}
+
+// A frame's two pictures -- taken from the machine's framebuffers, scaled into the window or the screen -- on two
+// cores when the renderer's helper is there (it is idle between two frames): the top screen on the helper, the
+// bottom one here. (Memory only: an application core makes no system call.)
+static struct { unsigned *dst; int pitch, dw, dh, s, tx, ty, bx, by; } g_put;
+static void put_screen (void *, int worker)
+{
+	const bool mainThread = worker == g_par.n;
+	if (!mainThread || g_par.n == 0)
+	{
+		g_m->screenImage (n3ds::SCREEN_TOP, g_top);
+		blit (g_put.dst, g_put.pitch, g_put.dw, g_put.dh, g_put.tx, g_put.ty, g_put.s, g_top, TW);
+	}
+	if (mainThread)
+	{
+		g_m->screenImage (n3ds::SCREEN_BOTTOM, g_bottom);
+		blit (g_put.dst, g_put.pitch, g_put.dw, g_put.dh, g_put.bx, g_put.by, g_put.s, g_bottom, BW);
+	}
+}
+static void put_screens (unsigned *dst, int pitch, int dw, int dh)
+{
+	g_put.dst = dst; g_put.pitch = pitch; g_put.dw = dw; g_put.dh = dh;
+	screens_at (dw, dh, g_put.s, g_put.tx, g_put.ty, g_put.bx, g_put.by);
+	if (g_par.n > 0 && g_m) { parBegin (0, put_screen, 0); const int keep = g_parMain; g_parMain = 1; parEnd (0, put_screen, 0); g_parMain = keep; }
+	else if (g_m) put_screen (0, g_par.n);
 }
 
 class EmuRoot : public Root
@@ -144,11 +170,10 @@ public:
 			canvas.text (8, height / 2 - 6, g_loadName, 0xA0A0A0);
 			return;
 		}
-		int s, tx, ty, bx, by;
-		screens_at (width, height, s, tx, ty, bx, by);
-		canvas.clear (0);							// (around the screens: the bottom one is narrower)
-		blit (canvas.px, canvas.stride, width, height, tx, ty, s, g_top, TW);
-		blit (canvas.px, canvas.stride, width, height, bx, by, s, g_bottom, BW);
+		// (around the screens -- the bottom one is narrower --: cleared when the layout or what is written over it changes)
+		static int was[5]; const int now[5] = { width, height, g_side, g_paused, g_stats };
+		if (memcmp (was, now, sizeof was) != 0) { canvas.clear (0); memcpy (was, now, sizeof was); }
+		put_screens (canvas.px, canvas.stride, width, height);
 		if (g_paused) canvas.text (8, 8, TR ("Paused"), 0xFFFFFF);
 		if (g_stats) { canvas.fillRect (0, height - 20, width, 20, 0); canvas.text (4, height - 18, g_statText, 0x00FFFF60); }
 	}
@@ -177,10 +202,7 @@ static void full_screen (bool on)
 }
 static void blit_full (void)
 {
-	int s, tx, ty, bx, by;
-	screens_at (g_fsw, g_fsh, s, tx, ty, bx, by);
-	blit (g_fs, g_fsw, g_fsw, g_fsh, tx, ty, s, g_top, TW);
-	blit (g_fs, g_fsw, g_fsw, g_fsh, bx, by, s, g_bottom, BW);
+	put_screens (g_fs, g_fsw, g_fsw, g_fsh);
 	if (g_stats)
 	{
 		Canvas c; c.adopt (g_fs, g_fsw, g_fsh);
@@ -412,9 +434,7 @@ int main (void)
 		{
 			skipped = 0;
 			g_m->gpuSync ();
-			g_m->screenImage (n3ds::SCREEN_TOP, g_top);
-			g_m->screenImage (n3ds::SCREEN_BOTTOM, g_bottom);
-			show_frame ();
+			show_frame ();						// (the screens' pictures are taken there)
 			stDrawn++;
 		}
 		const unsigned long long t2 = now_us ();
