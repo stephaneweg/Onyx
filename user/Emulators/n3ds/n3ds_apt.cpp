@@ -64,6 +64,35 @@ bool Machine::setSharedFont (const u8 *bcfnt, u32 size)
 	return true;
 }
 
+// The Mii chooser's answer: a guest Mii was picked. The console has no Mii of the user's here, and a game may not
+// take "none" for an answer (Super Mario 3D Land stops). The Mii is OURS -- plain middle values for every feature,
+// the user's name -- in the console's layout: 0x5C bytes, then their CRC-16 (CCITT, big-endian) after two zeros.
+static void miiGuest (Machine *m, u8 *out)
+{
+	memset (out, 0, 0x84);
+	put32 (out, 0); put32 (out + 4, 1); put32 (out + 8, 0);			// one was selected; a guest; the first
+	u8 *mii = out + 0xC;
+	mii[0] = 3; mii[1] = 0x30; mii[3] = 0x30;				// the format's version, may be copied, made on a 3DS
+	mii[0xC] = 0x80; mii[0xF] = 1;						// its id (a special Mii's)
+	mii[0x18] = 0; mii[0x19] = 0x04;					// a man, no birthday, a colour
+	for (int i = 0; i < 10 && m->user.name[i]; i++) { mii[0x1A + i * 2] = (u8) m->user.name[i]; mii[0x1B + i * 2] = (u8) (m->user.name[i] >> 8); }
+	if (!m->user.name[0]) { mii[0x1A] = 'O'; mii[0x1C] = 'n'; mii[0x1E] = 'y'; mii[0x20] = 'x'; }
+	mii[0x2E] = 64; mii[0x2F] = 64;						// width, height
+	put32 (mii + 0x34, 4u << 9 | 3u << 13 | 4u << 16 | 2u << 21 | 12u << 25);	// the eyes: size, turn, apart, height
+	put32 (mii + 0x38, 4u << 8 | 3u << 12 | 6u << 16 | 2u << 21 | 10u << 25);	// the eyebrows
+	const u16 nose = 4 << 5 | 9 << 9, mouth = 4 << 9 | 3 << 13, mouth2 = 13, beard = 4 << 6 | 10 << 10, glasses = 4 << 7 | 10 << 11;
+	mii[0x3C] = (u8) nose; mii[0x3D] = (u8) (nose >> 8); mii[0x3E] = (u8) mouth; mii[0x3F] = (u8) (mouth >> 8);
+	mii[0x40] = (u8) mouth2; mii[0x42] = (u8) beard; mii[0x43] = (u8) (beard >> 8); mii[0x44] = (u8) glasses; mii[0x45] = (u8) (glasses >> 8);
+	u16 crc = 0;
+	for (int i = 0; i < 0x5E; i++)
+	{
+		crc ^= (u16) (mii[i] << 8);
+		for (int b = 0; b < 8; b++) crc = (u16) (crc & 0x8000 ? crc << 1 ^ 0x1021 : crc << 1);
+	}
+	mii[0x5E] = (u8) (crc >> 8); mii[0x5F] = (u8) crc;
+	for (int i = 0; i < 10; i++) { out[0x6C + i * 2] = mii[0x1A + i * 2]; out[0x6D + i * 2] = mii[0x1B + i * 2]; }	// the guest's name
+}
+
 void aptRequest (Machine *m, Session *s, u32 *cmd)
 {
 	const u32 id = cmd[0] >> 16;
@@ -108,13 +137,13 @@ void aptRequest (Machine *m, Session *s, u32 *cmd)
 	case 0x1E:								// StartLibraryApplet (applet id, size, a handle, the parameters)
 	{
 		const u32 applet = id == 0x0C ? cmd[2] : cmd[1], given = id == 0x0C ? cmd[4] : cmd[2], from = id == 0x0C ? cmd[8] : cmd[6];
-		const u32 size = given < sizeof a.reply ? given : (u32) sizeof a.reply;
+		u32 size = given < sizeof a.reply ? given : (u32) sizeof a.reply;
 		memset (a.reply, 0, sizeof a.reply);
 		m->mem.read (from, a.reply, size);
 		if (id == 0x0C) m->note ("SendParameter %x -> %x command %x, %u bytes: %08x %08x %08x %08x", (unsigned) cmd[1], (unsigned) cmd[2], (unsigned) cmd[3], (unsigned) cmd[4], (unsigned) get32 (a.reply), (unsigned) get32 (a.reply + 4), (unsigned) get32 (a.reply + 8), (unsigned) get32 (a.reply + 12));
 		if (applet == 0x406) m->note ("the game shows an error box: type %u, code %08x (%u bytes)", (unsigned) get32 (a.reply), (unsigned) get32 (a.reply + 4), (unsigned) size);
 		if (applet == 0x406 && size >= 0xEF0) put32 (a.reply + 0xEEC, 1);	// the error box (or the EULA): closed, "success"
-		if (applet == 0x402 || applet == 0x404) put32 (a.reply, 1);	// the Mii chooser: no Mii selected
+		if ((applet == 0x402 || applet == 0x404) && sizeof a.reply >= 0x84) { miiGuest (m, a.reply); if (size < 0x84) size = 0x84; }
 		a.replySize = size; a.replySender = applet; a.replyCmd = APTCMD_WAKEUP_EXIT; a.replyCapture = false;
 		if (id == 0x0C && cmd[3] == APTCMD_REQUEST)			// the program asks where to put the screens' pictures:
 		{								// the applet answers with a memory block for them
@@ -127,7 +156,6 @@ void aptRequest (Machine *m, Session *s, u32 *cmd)
 		if (a.replyCmd == APTCMD_WAKEUP_EXIT) a.applet = 0;
 		a.pending = true;
 		if (a.param) { a.param->signaled = true; m->wakeWaiters (a.param); }
-		if (a.signal) { a.signal->signaled = true; m->wakeWaiters (a.signal); }
 		cmd[0] = ipcHeader (id, 1, 0); cmd[1] = RES_OK;
 		break;
 	}
