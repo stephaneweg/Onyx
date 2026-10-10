@@ -805,9 +805,27 @@ the **console home** as its shell (below).
 
 #### The console mode (the console home, `consolehome`)
 
-For a television and a **gamepad**, in the manner of Lakka's menu (RetroArch's XMB): a calm blue gradient with a soft
-white ribbon, white icons, big words; the moves are animated (the icons and the lists glide, a new column's list
-slides in). **The home** has two levels:
+For a television and a **gamepad**. **Two looks** (*Settings* › **Display** › **Look**, kept in `SD:/etc/console.ini`
+`[look] style =`): **the tiles** on a **dark** (the default) or a **light** background, in the manner of a Switch's
+home (since 2026-10-10), or **Lakka** (the list, below).
+
+**The tiles.** At the bottom, the **categories** as round tiles: one per console that has games, then **Onyx games**,
+**Apps**, **Settings**; above them, the chosen category's **content** as big square tiles that scroll sideways — a
+console's games (their title screens), Onyx's games, Apps' categories as **folder tiles** (in one: a **Back** tile
+first, then its apps), the settings pages. The chosen tile has a cyan ring and its name above it; the line under the
+row tells about it. **Up / Down** go from one row to the other, **Left / Right** move in the row, **A** plays, starts
+or opens, **B** comes out of a folder (else back to the row's first tile), **L1 / R1** change the category at once.
+The settings pages are the same as below, drawn in the theme: the pages listed at the left, the rows at the right.
+
+| | |
+|---|---|
+| ![](compact-shell/real/consolehome-tiles-dark-home-1080.png) | ![](compact-shell/real/consolehome-tiles-light-folder-1080.png) |
+| *The tiles, dark: a console's games.* | *The tiles, light: Apps › Productivity (Back first).* |
+| ![](compact-shell/real/consolehome-tiles-dark-settings-1080.png) | ![](compact-shell/real/consolehome-tiles-light-page-1080.png) |
+| *The settings as tiles.* | *A settings page in the light theme.* |
+
+**Lakka.** In the manner of Lakka's menu (RetroArch's XMB): a calm blue gradient with a soft white ribbon, white
+icons, big words; the moves are animated (the icons and the lists glide, a new column's list slides in). **The home** has two levels:
 
 - **Across the top**, a white icon per **console that has games** — Nintendo 64, Super Nintendo, Game Boy Advance,
   Game Boy Color, Game Boy, NES, GameCube, Nintendo DS...: one for each console an installed emulator plays (its `app.txt`'s

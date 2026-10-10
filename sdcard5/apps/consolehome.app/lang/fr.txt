@@ -415,3 +415,12 @@ Japanese	Japonais
 Norwegian	Norvégien
 Portuguese	Portugais
 Swedish / Finnish	Suédois / finnois
+# the tiles (tiles.h), the look
+to Apps	vers les Apps
+Back to the Apps' folders (B does the same)	Retour aux dossiers des Apps (B fait de même)
+Lakka (the list)	Lakka (la liste)
+Tiles, light	Tuiles, clair
+Tiles, dark	Tuiles, sombre
+Look	Apparence
+The home: the consoles in a list, or as tiles on a light or a dark background	L'accueil : les consoles en liste, ou en tuiles sur un fond clair ou sombre
+SD:/etc/console.ini could not be written	SD:/etc/console.ini n'a pas pu être écrit

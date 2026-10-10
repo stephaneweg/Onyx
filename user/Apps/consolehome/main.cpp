@@ -155,6 +155,88 @@ static int hint_w (const char *btn, const char *word)
 	return bw + D (7) + tw (word) + D (22);
 }
 static bool g_setOn;					// the settings' pages are up (xset.h)
+// ---- the look (the user, 2026-10-10: the Switch-like v4, docs/COMPACT-SHELL-STUDY.md §19): XMB (v3: the blue ribbon,
+// the lists down), or the TILES in a light or a dark theme -- SD:/etc/console.ini [look] style = xmb | light | dark
+// (Settings > Display). The colours the settings pages draw with follow it (Pal). -------------------------------------
+enum { ST_XMB, ST_LIGHT, ST_DARK };
+static int g_style = ST_DARK;
+struct Pal
+{
+	unsigned bg1, bg2;		// the background's gradient (the tiles' themes)
+	unsigned fg, sub, faint, line, acc, circle, panel, neutral;
+	unsigned on, lab, val, valOn, help, arrow, segOn, segOff, togOn, togOff, head;
+	int shadow; bool dark;
+};
+static const Pal PAL_XMB = { 0, 0, 0xFFFFFF, 0xC8D6F0, 0x7C94B8, 0x5A74A8, 0x8CD0FF, 0x1C3158, 0x18305E, 0x26407A,
+	0xFFFFFF, 0xE4ECF8, 0xC8D6F0, 0xFFFFFF, 0xC8D6F0, 0x9AB0D8, 0xFFFFFF, 0x5A74A8, 0x4C9AFF, 0x2A3E68, 0x9AB8E8, 150, true };
+static const Pal PAL_LIGHT = { 0xF2F2F4, 0xE4E5E9, 0x2C2C32, 0x70727C, 0xA8AAB2, 0xCCCDD4, 0x00A6D6, 0xFFFFFF, 0xFAFAFC, 0xFCFCFD,
+	0x2C2C32, 0x2C2C32, 0x00A6D6, 0x00A6D6, 0x70727C, 0x70727C, 0x00A6D6, 0xCCCDD4, 0x00A6D6, 0xCCCDD4, 0x70727C, 70, false };
+static const Pal PAL_DARK = { 0x34343A, 0x26262B, 0xF0F0F4, 0xA8AAB4, 0x70727C, 0x52535C, 0x22CCF0, 0x484850, 0x3A3A42, 0x46464E,
+	0xF0F0F4, 0xF0F0F4, 0x22CCF0, 0x22CCF0, 0xA8AAB4, 0xA8AAB4, 0x22CCF0, 0x52535C, 0x22CCF0, 0x52535C, 0xA8AAB4, 150, true };
+static const Pal *g_pal = &PAL_DARK;
+static void style_set (int st) { g_style = st; g_pal = st == ST_XMB ? &PAL_XMB : st == ST_LIGHT ? &PAL_LIGHT : &PAL_DARK; }
+static void style_read (void)				// SD:/etc/console.ini [look] style= (none: dark tiles)
+{
+	int st = ST_DARK;
+	if (app_ini_load_path ("SD:/etc/console.ini") >= 0)
+	{
+		const char *v = app_ini_get ("look", "style", "dark");
+		st = ieq (v, "xmb") ? ST_XMB : ieq (v, "light") ? ST_LIGHT : ST_DARK;
+	}
+	style_set (st);
+}
+// The look kept: its line in [look] written (the file's other lines kept as they are) -> 1 written.
+static int style_save (int st)
+{
+	static char in[4096], out[4400];
+	const char *word = st == ST_XMB ? "xmb" : st == ST_LIGHT ? "light" : "dark";
+	int n = -1;
+	void *f = kapi_open ("SD:/etc/console.ini");
+	if (f) { n = (int) kapi_read (f, in, sizeof in - 1); kapi_close (f); }
+	if (n < 0) n = 0;
+	in[n] = 0;
+	int o = 0, sec = 0, done = 0;
+	auto put = [&] (const char *a, int l) { for (int i = 0; i < l && o < (int) sizeof out - 2; i++) out[o++] = a[i]; };
+	auto line = [&] () { put ("style = ", 8); put (word, (int) strlen (word)); put ("\n", 1); done = 1; };
+	for (const char *l = in; *l; )
+	{
+		const char *e = l; while (*e && *e != '\n') e++;
+		const char *p = l; while (p < e && (*p == ' ' || *p == '\t')) p++;
+		bool drop = false;
+		if (p < e && *p == '[') { if (sec && !done) line (); sec = (e - p) >= 6 && !strncmp (p, "[look]", 6); }
+		else if (sec && e - p >= 5 && !strncmp (p, "style", 5)) { drop = true; if (!done) line (); }
+		if (!drop) { put (l, (int) (e - l)); put ("\n", 1); }
+		l = *e ? e + 1 : e;
+	}
+	if (!done) { if (!sec) put ("[look]\n", 7); line (); }
+	return kapi_save_file ("SD:/etc/console.ini", out, (unsigned) o) >= 0;
+}
+// (tiles.h's metrics and colour helpers: here, the settings pages (xset.h) use them too)
+// ---- the metrics (lp; a compact set under 560 logical lines; the bottom rows from the screen's bottom) --------------------
+struct TMet { bool c; int mx, top, badge, crumb, clock, laby, lab, rowy, T, G, r, metay, meta, caty, cd, cs, catlab, bary, hint, hb, rg, rw; };
+static TMet tm (void)
+{
+	TMet m;
+	bool c = g_sh * 100 / S < 560;
+	m.c = c;
+	int LH = g_sh * 100 / S;				// the logical height
+	m.mx = D (c ? 24 : 64); m.top = D (c ? 42 : 70); m.badge = D (c ? 24 : 40); m.crumb = c ? 14 : 21; m.clock = c ? 15 : 23;
+	m.laby = D (c ? 48 : 92); m.lab = c ? 15 : 24; m.rowy = D (c ? 74 : 134);
+	m.T = D (c ? 156 : 272); m.G = D (c ? 10 : 16); m.r = D (c ? 8 : 12);
+	m.metay = m.rowy + m.T + D (c ? 8 : 18); m.meta = c ? 11 : 16;
+	m.bary = D (LH - (c ? 48 : 68)); m.caty = m.bary - D (c ? 106 : 102);
+	m.cd = D (c ? 46 : 80); m.cs = D (c ? 58 : 104); m.catlab = c ? 12 : 17;
+	m.hint = c ? 12 : 16; m.hb = D (c ? 18 : 26); m.rg = D (c ? 3 : 5); m.rw = D (c ? 3 : 4);
+	if (m.rw < 2) m.rw = 2;
+	return m;
+}
+
+static unsigned mixc (unsigned a, unsigned b, int w) { return uk_mix (a, b, w); }	// w 0..256: a -> b
+static unsigned lighter (unsigned c, int w) { return uk_mix (c, 0xFFFFFF, w); }
+static unsigned darker (unsigned c, int w) { return uk_mix (c, 0x000000, w); }
+static void tiles_draw (Canvas &cv);
+static void tiles_go (int key);
+static void tiles_ptr (int ev, int x, int y, int c, long v);
 static void draw_settings (Canvas &cv);
 static void set_enter (int page);
 static void set_key (int k);
@@ -414,6 +496,7 @@ static unsigned pad_any (void)
 	return b;
 }
 #include "xset.h"				// the settings' pages: Sound, Gamepad ... Display, in the XMB's style
+#include "tiles.h"				// the home in the Switch's manner: the categories at the bottom, the tiles above
 
 // THE PAD AS A MOUSE AND KEYS (the user, 2026-10-09: the desktop's apps need the mouse -- the browser...): an app that is
 // not a game (app.txt's category: not Games, not Emulators -- those read the pad themselves) is moved by the pad as by
@@ -755,6 +838,7 @@ int main (void)
 	}
 
 	kapi_ipc_register (SHELL_SERVICE);
+	style_read ();						// (the look: SD:/etc/console.ini [look])
 	scan_apps ();
 	roms_read ();
 	xmb_build ();						// (the console wakes on its first console's games)

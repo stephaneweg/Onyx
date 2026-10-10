@@ -439,6 +439,12 @@ static void draw_home (void)
 	unsigned t0 = kapi_clock_us ();
 	g_homeDirty = false;
 	Canvas &cv = g_hc;
+	if (g_style != ST_XMB)					// the tiles (tiles.h): the Switch-like look
+	{
+		tiles_draw (cv);
+		uk_win_select (W_HOME); uk_win_present (); uk_win_select (0);
+		return;
+	}
 	int W = g_sw, H = g_sh;
 	if (g_bgPx == 0 || g_bgW != W || g_bgH != H) xmb_bg_make (W, H);
 	for (int y = 0; y < H; y++) memcpy (cv.px + (long) y * cv.stride, g_bgPx + (long) y * W, (size_t) W * 4);
@@ -641,6 +647,7 @@ static void move_item (int d)
 }
 static void go (int key)
 {
+	if (g_style != ST_XMB) { tiles_go (key); return; }
 	if (!g_nx) return;
 	XCol &c = g_x[g_xf];
 	switch (key)
@@ -666,6 +673,7 @@ static void go (int key)
 // the wheel moves the items.
 static void home_ptr (int ev, int x, int y, int c, long v)
 {
+	if (g_style != ST_XMB) { tiles_ptr (ev, x, y, c, v); return; }
 	const Hit *h = g_homeHits.at (x, y);
 	if (ev == GUI_EVENT_PTR_DOWN && (c & 1) && h)
 	{

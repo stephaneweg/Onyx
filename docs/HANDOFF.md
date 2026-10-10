@@ -152,6 +152,16 @@ a native Windows .exe, speed for the GPU, G3 later). `docs/APP-RUNNER-STUDY.md` 
   the block hook (cpu.cpp). `ONYXRUN_STRESS_TICK=1` must keep malloctest / threadtest / Doom passing.
 - Not there yet: the sound, the apps' QPU programs (`gpu_program` answers -1), gamepads, USB, GPIO.
 
+## The console's tiles: the Switch-like look built, light and dark (2026-10-10) -- tested on the PC, NOT on the Pi
+
+The UX designer's v4 (docs/COMPACT-SHELL-STUDY.md §19, its mock-ups); the user chose V1 light and V2 dark and their
+settings page. consolehome's `tiles.h` (the two rows, folders with a Back tile, the settings as tiles), the settings
+pages and their dialog / keyboard drawn in the theme (`g_pal`), the look chosen in Settings > Display > Look
+(`SD:/etc/console.ini [look] style = dark | light | xmb`; dark by default). server_sim's `tileshots` (pictures
+`docs/compact-shell/real/consolehome-tiles-*`). **The user said (2026-10-10): no tests on the Pi until they say so.**
+Next (§19.8): a game's options (X: save states), favourites (Y), the last played first + All games, the menu as a
+right-hand panel, the ring's pulse.
+
 ## The console: the pad as a mouse in the desktop's apps (2026-10-09, night) -- NOT tried on the Pi
 
 The user: "the desktop's apps that need the mouse (the browser) must be usable with a pad: the stick moves the

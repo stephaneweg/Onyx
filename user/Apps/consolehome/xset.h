@@ -982,6 +982,10 @@ static void disp_rows (void)
 	const char *wd = display_mode (g_dispSel, &w, &h);
 	char v[80]; size_words (v, sizeof v, w, h);
 	if (wd) ws_cat (v, sizeof v, " (", TR (wd), ")");
+	{
+		static const char *const LOOK[3] = { TRN ("Lakka (the list)"), TRN ("Tiles, light"), TRN ("Tiles, dark") };
+		row_add (R_CHOICE, 3, TR ("Look"), TR (LOOK[g_style]), TR ("The home: the consoles in a list, or as tiles on a light or a dark background")).v = g_style;
+	}
 	SRow &r = row_add (R_CHOICE, 1, TR ("Resolution"), v, TR ("Left / Right choose a size, A tries it (kept only when you say so)"));
 	r.v = g_dispSel;
 	size_words (v, sizeof v, cw, ch);
@@ -1329,7 +1333,10 @@ static void row_change (int d)
 	case SC_PKGONE:
 		if (r.id == 2) { const char *nm = g_pkgName; int k = (r.v + d + 3) % 3; pkg_start (pkg::J_MODE, &nm, 1, PKG_MODES[k]); flash (mode_word (PKG_MODES[k])); }
 		break;
-	case SC_DISP: if (r.id == 1) { int n = display_modes (); g_dispSel = (g_dispSel + d + n) % n; } break;
+	case SC_DISP:
+		if (r.id == 1) { int n = display_modes (); g_dispSel = (g_dispSel + d + n) % n; }
+		else if (r.id == 3) { int st = (g_style + d + 3) % 3; style_set (st); if (!style_save (st)) flash (TR ("SD:/etc/console.ini could not be written")); }
+		break;
 	case SC_GAMES: games_change (r, d); break;
 	}
 	g_homeDirty = true;
@@ -1508,40 +1515,41 @@ static void draw_lock (Canvas &cv, int x, int y, int h, unsigned c)	// a padlock
 static int draw_value (Canvas &cv, const SMet &m, const SRow &r, int y, int h, bool on)
 {
 	int x = m.vr;
-	unsigned ink = r.warn ? 0xF2B24A : r.good ? 0x7CE08A : on ? 0xFFFFFF : 0xC8D6F0;
+	const Pal &P = *g_pal;
+	unsigned ink = r.warn ? 0xF2B24A : r.good ? (P.dark ? 0x7CE08A : 0x2E9E4A) : on ? P.valOn : P.val;
 	UkFaceScope f (F (m.val));
 	int ty = y + (h - uk_fh ()) / 2;
 	auto txt = [&] (const char *s, unsigned c) { int w = tw (s); x -= w; uk_text (cv, x, ty, s, c); x -= D (8); };
 	switch (r.kind)
 	{
-	case R_SUB: txt ("\xE2\x80\xBA", on ? 0xFFFFFF : 0x9AB0D8); if (r.value[0]) txt (r.value, ink); break;
+	case R_SUB: txt ("\xE2\x80\xBA", on ? P.on : P.arrow); if (r.value[0]) txt (r.value, ink); break;
 	case R_CHOICE:
-		if (on) { txt ("\xE2\x80\xBA", 0xFFFFFF); x += D (4); }
+		if (on) { txt ("\xE2\x80\xBA", P.on); x += D (4); }
 		if (r.value[0]) { char b[80]; uk_text_fit (r.value, m.vr - m.rx - D (200), b, sizeof b); txt (b, ink); }
-		if (on) { x += D (4); txt ("\xE2\x80\xB9", 0xFFFFFF); }
+		if (on) { x += D (4); txt ("\xE2\x80\xB9", P.on); }
 		break;
 	case R_SLIDER:
 	{
 		char n[16];
 		if (r.max == 100) { int k = 0; n[0] = 0; num_cat (n, sizeof n, &k, r.v); lx_cat (n, sizeof n, &k, " %"); } else ax_itoa (r.v, n);
-		if (on) txt ("\xE2\x80\xBA", 0xFFFFFF);
+		if (on) txt ("\xE2\x80\xBA", P.on);
 		if (r.value[0]) txt (r.value, 0xF2B24A);
-		txt (n, ink);
+		txt (n, on ? P.on : ink);
 		int segs = 10, lit = r.max ? (r.v * segs + r.max / 2) / r.max : 0;
 		if (r.max == 16) { segs = 16; lit = r.v; }
 		int sw = segs == 16 ? m.seg * 2 / 3 : m.seg, wtot = segs * sw + (segs - 1) * m.sgap;
 		x -= wtot;
 		for (int i = 0; i < segs; i++)
-			lk_fill (cv, x + i * (sw + m.sgap), y + (h - m.segh) / 2, sw, m.segh, D (2), i < lit ? 0xFFFFFF : 0x5A74A8, i < lit ? 0xDCE8FF : 0x4A6498, i < lit ? 255 : 150);
+			lk_fill (cv, x + i * (sw + m.sgap), y + (h - m.segh) / 2, sw, m.segh, D (2), i < lit ? P.segOn : P.segOff, i < lit ? P.segOn : P.segOff, i < lit || !P.dark ? 255 : 150);
 		x -= D (8);
-		if (on) txt ("\xE2\x80\xB9", 0xFFFFFF);
+		if (on) txt ("\xE2\x80\xB9", P.on);
 		break;
 	}
 	case R_TOGGLE:
 	{
 		int tx = x - m.tw, tyy = y + (h - m.th) / 2;
-		lk_fill (cv, tx, tyy, m.tw, m.th, m.th / 2, r.on ? 0x4C9AFF : 0x2A3E68, r.on ? 0x3A84EA : 0x22355C, 255);
-		lk_ring (cv, tx, tyy, m.tw, m.th, m.th / 2, 16, r.on ? 0xBFE0FF : 0x6A84B8, 200);
+		lk_fill (cv, tx, tyy, m.tw, m.th, m.th / 2, r.on ? P.togOn : P.togOff, r.on ? P.togOn : P.togOff, 255);
+		if (g_style == ST_XMB) lk_ring (cv, tx, tyy, m.tw, m.th, m.th / 2, 16, r.on ? 0xBFE0FF : 0x6A84B8, 200);
 		int k = m.th - D (6);
 		lk_fill (cv, r.on ? tx + m.tw - k - D (3) : tx + D (3), tyy + D (3), k, k, k / 2, 0xFFFFFF, 0xE0E8F4, 255);
 		x = tx - D (8);
@@ -1551,9 +1559,9 @@ static int draw_value (Canvas &cv, const SMet &m, const SRow &r, int y, int h, b
 	{
 		int bh = D (m.c ? 12 : 18);
 		x -= bars_w (bh);
-		draw_bars (cv, x, y + (h - bh) / 2, bh, r.v, 0xFFFFFF);
+		draw_bars (cv, x, y + (h - bh) / 2, bh, r.v, P.on);
 		x -= D (10);
-		if (r.lock) { x -= bh * 3 / 4; draw_lock (cv, x, y + (h - bh) / 2, bh, 0xD0DCF4); x -= D (10); }
+		if (r.lock) { x -= bh * 3 / 4; draw_lock (cv, x, y + (h - bh) / 2, bh, P.sub); x -= D (10); }
 		if (r.value[0]) txt (r.value, ink);
 		break;
 	}
@@ -1561,22 +1569,22 @@ static int draw_value (Canvas &cv, const SMet &m, const SRow &r, int y, int h, b
 	{
 		int d = m.th;
 		x -= d;
-		lk_ring (cv, x, y + (h - d) / 2, d, d, d / 2, 24, on ? 0xFFFFFF : 0xA8BCE0, 255);
+		lk_ring (cv, x, y + (h - d) / 2, d, d, d / 2, 24, on ? P.on : P.sub, 255);
 		if (r.on) lk_fill (cv, x + d / 4, y + (h - d) / 2 + d / 4, d / 2, d / 2, d / 4, 0x7CE08A, 0x7CE08A, 255);
 		x -= D (12);
 		if (r.value[0]) txt (r.value, ink);
 		break;
 	}
 	default:
-		if (r.value[0]) { char b[80]; uk_text_fit (r.value, m.vr - m.rx - D (200), b, sizeof b); txt (b, r.kind == R_INFO && !r.warn && !r.good ? 0xB4C6E8 : ink); }
+		if (r.value[0]) { char b[80]; uk_text_fit (r.value, m.vr - m.rx - D (200), b, sizeof b); txt (b, r.kind == R_INFO && !r.warn && !r.good ? (g_style == ST_XMB ? 0xB4C6E8 : P.sub) : ink); }
 		break;
 	}
 	if (r.pct >= 0)						// a progress bar on its row
 	{
 		int bw = D (m.c ? 70 : 120), bh = D (m.c ? 5 : 7);
 		x -= bw;
-		lk_fill (cv, x, y + (h - bh) / 2, bw, bh, bh / 2, 0x2A3E68, 0x2A3E68, 220);
-		lk_fill (cv, x, y + (h - bh) / 2, bw * r.pct / 100 > bh ? bw * r.pct / 100 : bh, bh, bh / 2, 0x7CC4FF, 0x5AA8F0, 255);
+		lk_fill (cv, x, y + (h - bh) / 2, bw, bh, bh / 2, P.segOff, P.segOff, 220);
+		lk_fill (cv, x, y + (h - bh) / 2, bw * r.pct / 100 > bh ? bw * r.pct / 100 : bh, bh, bh / 2, P.acc, P.acc, 255);
 		x -= D (8);
 	}
 	return x;
@@ -1616,6 +1624,10 @@ static void draw_wizard (Canvas &cv, const SMet &m, int y0, int H)
 static void draw_dialog (Canvas &cv, const SMet &m)
 {
 	int W = g_sw, H = g_sh;
+	const Pal &P = *g_pal;
+	bool sw = g_style != ST_XMB;			// (the tiles' themes: the panel's colours)
+	unsigned cB1 = sw ? P.panel : 0x18305E, cB2 = sw ? P.panel : 0x10244A, cRg = sw ? P.line : 0x6E96D8, cTi = sw ? P.fg : 0xFFFFFF,
+		 cTx = sw ? P.sub : 0xD2E0F8, cBo = sw ? P.segOff : 0x2A3E68, cBa = sw ? P.acc : 0x7CC4FF, cSe = sw ? P.sub : 0xC8D6F0;
 	uk_paint_alpha (true);
 	for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) lk_px (cv, x, y, 0x020814, 120);	// (the page dimmed)
 	int w = D (m.c ? 400 : 560); if (w > W - D (20)) w = W - D (20);
@@ -1627,14 +1639,14 @@ static void draw_dialog (Canvas &cv, const SMet &m)
 	int h = pad + th + D (10) + n * lh + (g_dlg.ticks ? D (18) : 0) + D (12) + bh + pad;
 	int x = (W - w) / 2, y = (H - h) / 2;
 	lk_shadow (cv, x, y, w, h, D (14), D (16), 140, D (6));
-	lk_fill (cv, x, y, w, h, D (14), 0x18305E, 0x10244A, 250);
-	lk_ring (cv, x, y, w, h, D (14), 16, 0x6E96D8, 230);
+	lk_fill (cv, x, y, w, h, D (14), cB1, cB2, 250);
+	lk_ring (cv, x, y, w, h, D (14), 16, cRg, 230);
 	int yy = y + pad;
-	{ UkFaceScope f (F (m.c ? 15 : 20)); text_fit (cv, x + pad, yy, w - 2 * pad, g_dlg.title, 0xFFFFFF, 2); }
+	{ UkFaceScope f (F (m.c ? 15 : 20)); text_fit (cv, x + pad, yy, w - 2 * pad, g_dlg.title, cTi, 2); }
 	yy += th + D (10);
 	{
 		UkFaceScope f (F (m.c ? 12 : 15));
-		for (int i = 0; i < n; i++) { char b[200]; int l = ln[i] < 199 ? ln[i] : 199; memcpy (b, g_dlg.text + sl[i], (size_t) l); b[l] = 0; uk_text (cv, x + pad, yy, b, 0xD2E0F8); yy += lh; }
+		for (int i = 0; i < n; i++) { char b[200]; int l = ln[i] < 199 ? ln[i] : 199; memcpy (b, g_dlg.text + sl[i], (size_t) l); b[l] = 0; uk_text (cv, x + pad, yy, b, cTx); yy += lh; }
 	}
 	if (g_dlg.ticks)						// the countdown
 	{
@@ -1643,9 +1655,9 @@ static void draw_dialog (Canvas &cv, const SMet &m)
 		UkFaceScope f (F (m.help));
 		int sw = tw ("00 s") + D (10), bwid = w - 2 * pad - sw, left = (int) ((g_dlg.ticks - el) * (unsigned) bwid / g_dlg.ticks);
 		yy += D (6);
-		lk_fill (cv, x + pad, yy, bwid, D (5), D (2), 0x2A3E68, 0x2A3E68, 255);
-		lk_fill (cv, x + pad, yy, left > D (5) ? left : D (5), D (5), D (2), 0x7CC4FF, 0x7CC4FF, 255);
-		uk_text (cv, x + w - pad - tw (s), yy + D (2) - uk_fh () / 2, s, 0xC8D6F0);
+		lk_fill (cv, x + pad, yy, bwid, D (5), D (2), cBo, cBo, 255);
+		lk_fill (cv, x + pad, yy, left > D (5) ? left : D (5), D (5), D (2), cBa, cBa, 255);
+		uk_text (cv, x + w - pad - tw (s), yy + D (2) - uk_fh () / 2, s, cSe);
 		yy += D (12);
 	}
 	yy += D (12);
@@ -1653,10 +1665,12 @@ static void draw_dialog (Canvas &cv, const SMet &m)
 	for (int i = 0; i < g_dlg.n; i++, bx += bw + D (14))
 	{
 		bool on = i == g_dlg.sel;
-		if (on) glow (cv, bx, yy, bw, bh, bh / 2, false);
+		if (on && sw) lk_fill (cv, bx, yy, bw, bh, bh / 2, P.acc, P.acc, 255);
+		else if (on) glow (cv, bx, yy, bw, bh, bh / 2, false);
+		else if (sw) { lk_fill (cv, bx, yy, bw, bh, bh / 2, P.neutral, P.neutral, 255); lk_ring (cv, bx, yy, bw, bh, bh / 2, 16, P.line, 255); }
 		else { lk_fill (cv, bx, yy, bw, bh, bh / 2, 0x223A6A, 0x1A3060, 255); lk_ring (cv, bx, yy, bw, bh, bh / 2, 16, 0x5E7EB8, 200); }
 		UkFaceScope f (F (m.val));
-		text_cfit (cv, bx, yy + (bh - uk_fh ()) / 2, bw, g_dlg.b[i], on ? 0xFFFFFF : 0xC8D6F0, on ? 2 : 0);
+		text_cfit (cv, bx, yy + (bh - uk_fh ()) / 2, bw, g_dlg.b[i], on ? 0xFFFFFF : sw ? P.fg : 0xC8D6F0, on ? 2 : 0);
 		g_homeHits.add (bx, yy, bw, bh, H_DBTN, i);
 	}
 	uk_paint_alpha (false);
@@ -1664,6 +1678,8 @@ static void draw_dialog (Canvas &cv, const SMet &m)
 static void draw_osk (Canvas &cv, const SMet &m)
 {
 	int W = g_sw, H = g_sh;
+	const Pal &P = *g_pal;
+	bool sw = g_style != ST_XMB;			// (the tiles' themes: the panel's colours)
 	uk_paint_alpha (true);
 	for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) lk_px (cv, x, y, 0x020814, 110);
 	int kw = D (m.c ? 40 : 56), kh = D (m.c ? 34 : 48), g = D (m.c ? 5 : 8), pad = D (m.c ? 10 : 16);
@@ -1671,7 +1687,7 @@ static void draw_osk (Canvas &cv, const SMet &m)
 	if (pw > W - D (8)) { kw = (W - D (8) - 2 * pad - 9 * g) / 10; gw = 10 * kw + 9 * g; pw = gw + 2 * pad; }
 	int fh = D (m.c ? 46 : 64);
 	int ph = pad + fh + D (10) + 5 * kh + 4 * g + pad;
-	int bar = xm ().bar;
+	int bar = sw ? H - tm ().bary : xm ().bar;
 	int x = (W - pw) / 2, y = H - bar - D (8) - ph;
 	if (y < D (4)) y = D (4);
 	if (g_osk.purpose == O_SEARCH && g_pm)		// the matches, live, above the keyboard
@@ -1682,22 +1698,22 @@ static void draw_osk (Canvas &cv, const SMet &m)
 		{
 			const pkg::Pkg &p = g_pm->index.p[i];
 			if (!g_osk.t[0] || !(contains_ci (p.name, g_osk.t) || contains_ci (p.title, g_osk.t) || contains_ci (p.summary, g_osk.t))) continue;
-			text_fit (cv, x + pad, ly, pw - 2 * pad, p.title, 0xFFFFFF);
+			text_fit (cv, x + pad, ly, pw - 2 * pad, p.title, sw ? P.fg : 0xFFFFFF);
 			ly += uk_fh () + D (6); n++;
 		}
-		if (!n && g_osk.t[0]) text_fit (cv, x + pad, ly, pw - 2 * pad, TR ("Nothing matches"), 0xC8D6F0);
+		if (!n && g_osk.t[0]) text_fit (cv, x + pad, ly, pw - 2 * pad, TR ("Nothing matches"), sw ? P.sub : 0xC8D6F0);
 	}
 	lk_shadow (cv, x, y, pw, ph, D (14), D (16), 140, D (6));
-	lk_fill (cv, x, y, pw, ph, D (14), 0x16305C, 0x0E2148, 250);
-	lk_ring (cv, x, y, pw, ph, D (14), 16, 0x6E96D8, 230);
+	lk_fill (cv, x, y, pw, ph, D (14), sw ? P.panel : 0x16305C, sw ? P.panel : 0x0E2148, 250);
+	lk_ring (cv, x, y, pw, ph, D (14), 16, sw ? P.line : 0x6E96D8, 230);
 	// the field: its label, the text and its caret (a secret: dots, the last letter a moment, L3 shows it)
 	{
 		UkFaceScope f (F (m.help));
-		text_fit (cv, x + pad, y + pad, gw, g_osk.label, 0xC8D6F0);
+		text_fit (cv, x + pad, y + pad, gw, g_osk.label, sw ? P.sub : 0xC8D6F0);
 	}
 	int fy = y + pad + D (m.c ? 16 : 22), fhh = fh - D (m.c ? 16 : 22);
-	lk_fill (cv, x + pad, fy, gw, fhh, D (8), 0x0A1834, 0x0A1834, 255);
-	lk_ring (cv, x + pad, fy, gw, fhh, D (8), 16, 0x8CB4EC, 220);
+	{ unsigned fb = sw ? (P.dark ? 0x26262B : 0xFFFFFF) : 0x0A1834; lk_fill (cv, x + pad, fy, gw, fhh, D (8), fb, fb, 255); }
+	lk_ring (cv, x + pad, fy, gw, fhh, D (8), 16, sw ? P.acc : 0x8CB4EC, 220);
 	{
 		UkFaceScope f (F (m.lab));
 		char shown[200]; int k = 0, cx = 0; shown[0] = 0;
@@ -1718,8 +1734,8 @@ static void draw_osk (Canvas &cv, const SMet &m)
 		int tx = x + pad + D (10), ty = fy + (fhh - uk_fh ()) / 2, avail = gw - D (40), pw2 = tw (pre);
 		int off = pw2 > avail ? pw2 - avail : 0;			// (a long text: its end in view)
 		Canvas sub; sub.adopt (cv.px + (long) fy * cv.stride + x + pad + D (4), gw - D (36), fhh, cv.stride);
-		uk_text (sub, tx - (x + pad + D (4)) - off, ty - fy, shown, 0xFFFFFF);
-		lk_fill (cv, tx + pw2 - off, ty, D (2), uk_fh (), 0, 0x8CD0FF, 0x8CD0FF, 255);
+		uk_text (sub, tx - (x + pad + D (4)) - off, ty - fy, shown, sw ? P.fg : 0xFFFFFF);
+		lk_fill (cv, tx + pw2 - off, ty, D (2), uk_fh (), 0, sw ? P.acc : 0x8CD0FF, sw ? P.acc : 0x8CD0FF, 255);
 		if (g_osk.secret)					// the eye: shown or not (L3)
 		{
 			int ex = x + pad + gw - D (26), ey = fy + fhh / 2;
@@ -1740,18 +1756,20 @@ static void draw_osk (Canvas &cv, const SMet &m)
 			int w = r < 4 ? kw : (OSK_SPW[c] * (kw + g)) / 10 - g;
 			bool on = g_osk.r == r && g_osk.c == c;
 			bool lit = r == 4 && ((c == 0 && g_osk.page == 1) || (c == 1 && g_osk.page == 2));
-			if (on) glow (cv, kx, ky, w, kh, D (8), false);
+			if (on && sw) lk_fill (cv, kx, ky, w, kh, D (8), P.acc, P.acc, 255);
+			else if (on) glow (cv, kx, ky, w, kh, D (8), false);
+			else if (sw) { unsigned kc = lit ? lighter (P.acc, P.dark ? 0 : 150) : r == 4 ? (P.dark ? lighter (P.neutral, 10) : 0xE6E7EC) : P.neutral; lk_fill (cv, kx, ky, w, kh, D (8), kc, kc, 255); if (!P.dark) lk_ring (cv, kx, ky, w, kh, D (8), 16, P.line, 255); }
 			else lk_fill (cv, kx, ky, w, kh, D (8), lit ? 0x3A64A8 : r == 4 ? 0x1E3666 : 0x26407A, lit ? 0x30589A : r == 4 ? 0x1A305C : 0x1E3870, 255);
 			const char *t = r < 4 ? osk_key (r, c) : c == 1 && g_osk.page == 2 ? "abc" : c < 3 || c >= 5 ? TR (SPW_TXT[c]) : SPW_TXT[c];
 			{
 				UkFaceScope f (F (r < 4 ? m.lab : m.help + 1));
 				int ty = r < 4 ? ky + (kh - uk_fh ()) / 2 : ky + D (m.c ? 3 : 6);
-				text_cfit (cv, kx, ty, w, t, on ? 0xFFFFFF : 0xDCE6F8, on ? 2 : 0);
+				text_cfit (cv, kx, ty, w, t, on ? 0xFFFFFF : sw ? P.fg : 0xDCE6F8, on ? 2 : 0);
 			}
 			if (r == 4 && !m.c)
 			{
 				UkFaceScope f (F (9));
-				text_cfit (cv, kx, ky + kh - uk_fh () - D (4), w, SPW_BTN[c], 0x8CA4D0);
+				text_cfit (cv, kx, ky + kh - uk_fh () - D (4), w, SPW_BTN[c], sw ? P.sub : 0x8CA4D0);
 			}
 			g_homeHits.add (kx, ky, w, kh, H_KEY, r * 16 + c);
 			kx += w + g;
@@ -1760,6 +1778,8 @@ static void draw_osk (Canvas &cv, const SMet &m)
 	uk_paint_alpha (false);
 }
 // The foot's hints of the settings: right-aligned, those that work here.
+static void tiles_hints (Canvas &cv, const char *const *b, const char *const *w, int n);
+static void draw_settings_sw (Canvas &cv);
 static void draw_set_hints (Canvas &cv)
 {
 	XMet xmm = xm ();
@@ -1787,6 +1807,13 @@ static void draw_set_hints (Canvas &cv)
 		if (r && r->kind != R_INFO && r->kind != R_HEAD && r->kind != R_CHOICE && r->kind != R_SLIDER)
 			add ("A", BL, r->kind == R_SUB || r->kind == R_NET ? TR ("Enter") : r->kind == R_TOGGLE ? TR ("Switch") : r->kind == R_RADIO ? TR ("Choose") : TR ("Do"));
 	}
+	if (g_style != ST_XMB)				// (the tiles' themes: filled round buttons on a thin line)
+	{
+		const char *B[8], *Wd[8];
+		for (int i = 0; i < n; i++) { B[i] = hs[i].b; Wd[i] = hs[i].w; }
+		tiles_hints (cv, B, Wd, n);
+		return;
+	}
 	int tot = 0;
 	for (int i = 0; i < n; i++) tot += hint_w (hs[i].b, hs[i].w);
 	int hx = W - xmm.tx - tot + D (22), hy;
@@ -1800,8 +1827,70 @@ static void draw_set_hints (Canvas &cv)
 		text_fit (cv, xmm.tx, y0 + (xmm.bar - uk_fh ()) / 2, W - xmm.tx - tot - D (40), l, 0xC8D6F0);
 	}
 }
+// The screen's rows from m.y0 to bottom, scrolled to keep the chosen one in sight: its label (an icon before it), its
+// value at m.vr, its help line under the chosen one. XMB: the chosen one on a glass; the tiles' themes: thin lines
+// between the rows, the chosen one in the accent ring (docs/COMPACT-SHELL-STUDY.md §19.4).
+static void tiles_ring (Canvas &cv, int x, int y, int w, int h, int r);
+static void draw_set_rows (Canvas &cv, SMet &m, int bottom)
+{
+	const Pal &P = *g_pal;
+	bool sw = g_style != ST_XMB;
+	Scr &s = scr ();
+	int hh; { UkFaceScope f (F (m.help)); hh = uk_fh () + D (6); }
+	int fit = (bottom - m.y0 - hh) / m.rh;
+	if (fit < 1) fit = 1;
+	if (s.sel < s.top) s.top = s.sel;
+	if (s.sel >= s.top + fit) s.top = s.sel - fit + 1;
+	if (s.top > 0 && s.top + fit > g_nsr) s.top = g_nsr - fit > 0 ? g_nsr - fit : 0;
+	int y = m.y0, pad = sw ? D (m.c ? 10 : 20) : 0;
+	auto hline = [&] (int yy) { if (sw) lk_fill (cv, m.rx - pad, yy, m.vr - m.rx + 2 * pad, D (1) > 1 ? D (1) : 1, 0, P.line, P.line, 255); };
+	for (int i = s.top; i < g_nsr && y + m.rh <= bottom; i++)
+	{
+		SRow &r = g_sr[i];
+		bool on = i == s.sel && !g_dlg.on && !g_osk.on;
+		bool foc = i == s.sel;
+		int rh = r.kind == R_HEAD ? m.rh * 3 / 4 : m.rh;
+		if (r.kind == R_HEAD)
+		{
+			UkFaceScope f (F (m.help + 1));
+			uk_text (cv, m.rx, y + rh - uk_fh () - D (4), r.label, P.head, 2);
+			uk_paint_alpha (true);
+			lk_fill (cv, m.rx, y + rh - D (2), m.vr - m.rx, 1 > D (1) ? 1 : D (1), 0, P.head, P.head, 70);
+			uk_paint_alpha (false);
+			y += rh;
+			continue;
+		}
+		int full = rh + (foc && r.help[0] ? hh : 0);
+		uk_paint_alpha (true);
+		if (sw) hline (y);
+		if (foc && !sw)
+		{
+			lk_fill (cv, m.rx - D (14), y + D (2), m.vr - m.rx + D (28), full - D (4), D (10), 0xFFFFFF, 0xFFFFFF, on ? 34 : 18);
+			lk_ring (cv, m.rx - D (14), y + D (2), m.vr - m.rx + D (28), full - D (4), D (10), 16, 0xBFE4FF, on ? 120 : 50);
+		}
+		int vx = draw_value (cv, m, r, y, rh, on);
+		int lx = m.rx;
+		if (r.icon) { app_icon_at (cv, *r.icon, m.rx + m.isz / 2, y + rh / 2, m.isz, foc ? 255 : 200); lx += m.isz + D (12); }
+		{
+			UkFaceScope f (F (m.lab));
+			text_fit (cv, lx, y + (rh - uk_fh ()) / 2, vx - lx - D (8), r.label, foc ? P.on : r.kind == R_INFO && !sw ? 0xC8D6F0 : P.lab, foc ? 2 : 0);
+		}
+		if (foc && r.help[0])
+		{
+			UkFaceScope f (F (m.help));
+			text_fit (cv, lx, y + rh - D (6), m.vr - lx, r.help, P.help);
+		}
+		if (foc && on && sw) tiles_ring (cv, m.rx - pad, y + D (3), m.vr - m.rx + 2 * pad, full - D (6), D (12));
+		uk_paint_alpha (false);
+		g_homeHits.add (m.rx - D (14), y, m.vr - m.rx + D (28), full, H_ROW, i);
+		y += full;
+	}
+	if (sw) { uk_paint_alpha (true); hline (y); uk_paint_alpha (false); }
+	if (s.top > 0) { UkFaceScope f (F (m.val)); uk_text (cv, m.vr - D (10), m.y0 - uk_fh () - D (2), "\xE2\x96\xB4", P.sub); }
+}
 static void draw_settings (Canvas &cv)
 {
+	if (g_style != ST_XMB) { draw_settings_sw (cv); return; }
 	SMet m = sm ();
 	XMet xmm = xm ();
 	int W = g_sw, H = g_sh;
@@ -1866,59 +1955,7 @@ static void draw_settings (Canvas &cv)
 	// the rows
 	int bottom = H - xmm.bar - D (8);
 	if (scr ().kind == SC_WIZ) draw_wizard (cv, m, m.y0, bottom);
-	else
-	{
-		Scr &s = scr ();
-		int hh; { UkFaceScope f (F (m.help)); hh = uk_fh () + D (6); }
-		int fit = (bottom - m.y0 - hh) / m.rh;
-		if (fit < 1) fit = 1;
-		if (s.sel < s.top) s.top = s.sel;
-		if (s.sel >= s.top + fit) s.top = s.sel - fit + 1;
-		if (s.top > 0 && s.top + fit > g_nsr) s.top = g_nsr - fit > 0 ? g_nsr - fit : 0;
-		int y = m.y0;
-		for (int i = s.top; i < g_nsr && y + m.rh <= bottom; i++)
-		{
-			SRow &r = g_sr[i];
-			bool on = i == s.sel && !g_dlg.on && !g_osk.on;
-			bool foc = i == s.sel;
-			int rh = r.kind == R_HEAD ? m.rh * 3 / 4 : m.rh;
-			if (r.kind == R_HEAD)
-			{
-				UkFaceScope f (F (m.help + 1));
-				uk_text (cv, m.rx, y + rh - uk_fh () - D (4), r.label, 0x9AB8E8, 2);
-				uk_paint_alpha (true);
-				lk_fill (cv, m.rx, y + rh - D (2), m.vr - m.rx, 1 > D (1) ? 1 : D (1), 0, 0x9AB8E8, 0x9AB8E8, 70);
-				uk_paint_alpha (false);
-				y += rh;
-				continue;
-			}
-			int full = rh + (foc && r.help[0] ? hh : 0);
-			if (foc)
-			{
-				uk_paint_alpha (true);
-				lk_fill (cv, m.rx - D (14), y + D (2), m.vr - m.rx + D (28), full - D (4), D (10), 0xFFFFFF, 0xFFFFFF, on ? 34 : 18);
-				lk_ring (cv, m.rx - D (14), y + D (2), m.vr - m.rx + D (28), full - D (4), D (10), 16, 0xBFE4FF, on ? 120 : 50);
-				uk_paint_alpha (false);
-			}
-			uk_paint_alpha (true);
-			int vx = draw_value (cv, m, r, y, rh, on);
-			int lx = m.rx;
-			if (r.icon) { app_icon_at (cv, *r.icon, m.rx + m.isz / 2, y + rh / 2, m.isz, foc ? 255 : 200); lx += m.isz + D (12); }
-			{
-				UkFaceScope f (F (m.lab));
-				text_fit (cv, lx, y + (rh - uk_fh ()) / 2, vx - lx - D (8), r.label, foc ? 0xFFFFFF : r.kind == R_INFO ? 0xC8D6F0 : 0xE4ECF8, foc ? 2 : 0);
-			}
-			if (foc && r.help[0])
-			{
-				UkFaceScope f (F (m.help));
-				text_fit (cv, lx, y + rh - D (6), m.vr - lx, r.help, 0xC8D6F0);
-			}
-			uk_paint_alpha (false);
-			g_homeHits.add (m.rx - D (14), y, m.vr - m.rx + D (28), full, H_ROW, i);
-			y += full;
-		}
-		if (s.top > 0) { UkFaceScope f (F (m.val)); uk_text (cv, m.vr - D (10), m.y0 - uk_fh () - D (2), "\xE2\x96\xB4", 0xC8D6F0); }
-	}
+	else draw_set_rows (cv, m, bottom);
 	if (g_osk.on) draw_osk (cv, m);
 	if (g_dlg.on) draw_dialog (cv, m);
 	draw_set_hints (cv);

@@ -1629,7 +1629,10 @@ started by the shell, drawn with the same UIKit XMB rows; the user decides.
 
 ## 19. Console mode v4: the Switch-like shell (mock-ups)
 
-*2026-10-10, a design proposal: nothing is built.* The user asked for **a console mode closer to the Nintendo Switch
+*2026-10-10.* **Built the same day** (the user chose V1 light and V2 dark, "and the settings page"): `user/Apps/consolehome/tiles.h`
+— the two rows, the folders and their Back tile, the settings as tiles and their pages in the theme, light and dark
+(*Settings* › *Display* › *Look*; Lakka's XMB stays the third look); see docs/03 §5.10.5b. Not yet: a game's options
+(X), favourites (Y), the last-played order and the All games tile, the menu as a panel, the ring's pulse, V3. The user asked for **a console mode closer to the Nintendo Switch
 (1 and 2) home menu**, with their own layout: **the categories as tiles in the bottom part**, scrolling sideways
 (the current categories: one per console, then the native games, then Apps, then Settings), and **above them the
 content as tiles**, scrolling sideways too (the games...). Where there are several levels (the apps and their
