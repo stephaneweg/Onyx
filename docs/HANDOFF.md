@@ -161,6 +161,19 @@ a native Windows .exe, speed for the GPU, G3 later). `docs/APP-RUNNER-STUDY.md` 
   the block hook (cpu.cpp). `ONYXRUN_STRESS_TICK=1` must keep malloctest / threadtest / Doom passing.
 - Not there yet: the sound, the apps' QPU programs (`gpu_program` answers -1), gamepads, USB, GPIO.
 
+## rdpd + Onyx Remote: COPY, what only moved (2026-10-10) -- tested on the PC, NOT on the Pi
+
+The user: the console's full-screen home costs Onyx Remote a lot while its tiles glide; "can rdpd say which part
+moved?" -- and it must stay right for the desktop's windowed mode. rdpd's server message 12 **COPY** (u32 id, u16 x y
+w h, s16 dx dy), only to a client setting hello option bit 3 (Onyx Remote now; an older one gets pixels; an older
+rdpd ignores the bit): per window, `copy_find` (rdpd.c) looks for a sideways or vertical shift when 8+ tiles changed
+(anchors in changed tiles, the rectangle grown and checked pixel for pixel), the copy done in `prev` too, then the
+tile diff; a window where nothing is found is searched less often. Tests: `run_rdpd_test.sh` (`rdpd_copy_test.py`:
+5x fewer pixels for a band slid + a scrolled window), `run_rdpd_pipeline_test.sh` (conntest: Connection.cs applies
+COPY right; `rdpdhost.c` fixed: `win_geometry` stubbed, `RDPD_ANIM` read as a number; the f7cb6f19 lock-step rdpd no
+longer builds against today's headers: skipped). The kmsg line `copy: N searches, N copies` says what it saves.
+Not measured on the Pi (the user: no Pi tests until they say so). Hello bit 4 is next free (MULTI-USER-PLAN moved).
+
 ## The console's tiles: the Switch-like look built, light and dark (2026-10-10) -- tested on the PC, NOT on the Pi
 
 The UX designer's v4 (docs/COMPACT-SHELL-STUDY.md §19, its mock-ups); the user chose V1 light and V2 dark and their
@@ -168,8 +181,8 @@ settings page. consolehome's `tiles.h` (the two rows, folders with a Back tile, 
 pages and their dialog / keyboard drawn in the theme (`g_pal`), the look chosen in Settings > Display > Look
 (`SD:/etc/console.ini [look] style = dark | light | xmb`; dark by default). server_sim's `tileshots` (pictures
 `docs/compact-shell/real/consolehome-tiles-*`). **The user said (2026-10-10): no tests on the Pi until they say so.**
-Next (§19.8): a game's options (X: save states), favourites (Y), the last played first + All games, the menu as a
-right-hand panel, the ring's pulse.
+Next (§19.8): a game's options (X: save states), favourites (Y), the last played first + All games, the ring's pulse
+(the menu as a right-hand panel: done, 2026-10-10).
 
 ## The console: the pad as a mouse in the desktop's apps (2026-10-09, night) -- NOT tried on the Pi
 

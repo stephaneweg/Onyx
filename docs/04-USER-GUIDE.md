@@ -1694,6 +1694,13 @@ again (see below) the bar stays shown, the Pi's name followed by *(reconnecting.
   packet sooner now (after 200 ms at least, not a second), and the pointer's moves no longer
   make it slow down its sending (they were taken for signs of a lost packet). A send that waits
   more than 5 s for the network no longer ends the session: rdpd sends the rest when it can.
+- **What only moved is not sent again**: when a part of a window just slides — the console's row of
+  tiles moving sideways, a list or a page scrolled — rdpd tells Onyx Remote to **move** what it already
+  has (a *copy with a shift*) and sends only the strip that came into view, in each window on its own
+  (the desktop's windows as the console's full screen). A full-screen home in the console mode costs
+  a fraction of what it did while its tiles glide. rdpd looks for it only when many parts of a window
+  changed at once, and less and less often in a window where nothing ever just moves (a game, a
+  video). An older Onyx Remote gets the pixels as before; this Onyx Remote with an older rdpd too.
 - **The connection lost** (the Wi-Fi dropped, the Pi restarted, nothing heard from it for 12 s,
   a damaged stream), Onyx Remote **reconnects by itself** with the same options (16-bit colours,
   Desktop, Onyx frames): the status (and the window's title) says *Connection lost (why):
@@ -1733,7 +1740,9 @@ again (see below) the bar stays shown, the Pi's name followed by *(reconnecting.
   events; then the **credit** (the rounds the client lets it send ahead: 3 for Onyx Remote now,
   1 for an older one), the most **in flight** at once, the time spent with **no credit**
   (waiting on the PC), the looks that found **nothing changed** (no round sent), the
-  **probes** sent after a quiet round and the **ping** round trip (retransmissions included).
+  **probes** sent after a quiet round and the **ping** round trip (retransmissions included);
+  with the copies, a line *copy: N searches T ms, N copies N Kpx* (the time spent looking, the
+  pixels moved on the PC instead of being sent).
   At once: a send over 0.5 s, a round over 1 s, a client answer over 2 s, a send that stopped
   part-way (the session ends: the client reconnects), a client silent 12 s (the session ends:
   a PC gone without a word). Slow sends point to the network (Wi-Fi), a slow read / compress

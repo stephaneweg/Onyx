@@ -4959,14 +4959,25 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   small `PING`s (10) -- the PC's dup ACKs make Circle resend its lost tail segment at once
   instead of after its 1 s minimum RTO, and the client's `PONG`s (client 8) do the same for a
   READY the PC lost; a pipelined client also gets a PING every 2 s when idle and is dropped
-  after 12 s of silence. Onyx Remote (`Connection.cs`) sends from its own thread, coalesces the
+  after 12 s of silence. **COPY** (server 12: u32 id, u16 x y w h, s16 dx dy -- move a rectangle of the
+  client's copy of a window's content, the two places may overlap): only to a client that sets hello
+  option bit 3 (an older rdpd ignores the bit). `send_content` maps the changed tiles first; with 8 or
+  more, `copy_find` takes 6 anchors (16 pixels in the middle of changed tiles, along a row and down a
+  column), looks for each on the same row / column of the client's copy (`prev`), grows the rectangle
+  where the current pixels are the old ones shifted (checked pixel for pixel: a wrong guess costs only
+  the search), sends the largest (at least 2 tiles) and does it in `prev` -- up to 3 a window a round;
+  the tile diff then sends what is new. A window where nothing is found is searched again after 2, 4
+  .. 16 rounds (a game, a video). Per window, so the desktop's windowed mode and the console's full
+  screen alike. Onyx Remote (`Connection.cs`) sends from its own thread, coalesces the
   pointer's moves (one per 16 ms, the latest; buttons, wheel and keys at once, in order),
   applies a round to its model only at its END, validates every message (a damaged one is
   skipped, a damaged stream reconnects) and reconnects by itself (0.5 .. 8 s back-off, the
-  windows kept). Host tests: `sh tools/tests/run_rdpd_test.sh` (a mock kapi, a Python client),
-  `sh tools/tests/run_rdpd_pipeline_test.sh` (rdpd against the real `kapi.h` with fake windows
-  -- `tools/tests/rdpd/rdpdhost.c` --, the current and an older rdpd, a Python client both
-  ways, and Onyx Remote's own `Connection.cs` when the .NET SDK is there), and
+  windows kept). Host tests: `sh tools/tests/run_rdpd_test.sh` (a mock kapi, a Python client;
+  `rdpd_copy_test.py` in it: a band slid, a window scrolled, the client's copy right after every round
+  with and without bit 3), `sh tools/tests/run_rdpd_pipeline_test.sh` (rdpd against AppKit with fake
+  windows -- `tools/tests/rdpd/rdpdhost.c`, `RDPD_ANIM=2` a window scrolling --, the current and an
+  older rdpd when it still builds, a Python client both ways, and Onyx Remote's own `Connection.cs`
+  when the .NET SDK is there: COPY applied right after every round), and
   `unshare -rn python3 tools/tests/rdpd/loss_bench.py` (rounds a second over a loopback that
   drops 20 % of the packets).
 - **Serial console**: `config.txt` must have `enable_uart=1` (PL011 clock). The boot

@@ -7,6 +7,9 @@
 // full screen (a BASIC game's way: borderless, KAPI_WIN_FULLSCREEN, at 0, 0, the screen's size), the others there too;
 // MOCK_POCKET=4: the same on the desktop's server (an emulator's way: a framed window, its frame gone while full screen).
 // MOCK_POCKET=5: console mode -- the home alone, its menu shown (topmost, borderless, at 0, 0), its tip parked.
+// MOCK_POCKET=6: COPY -- two windows whose content moves at each list k (their title "S<k>"): 30 (640 x 400), its band
+// y 100 .. 299 slid 37 px to the left a list (+ a ring above it, changed); 31 (300 x 240) scrolled 23 px up a list
+// but its scroll bar (x >= 290), changed (rdpd_copy_test.py).
 #ifndef MOCK_RDPD_H
 #define MOCK_RDPD_H
 #define MOD_CTRL 1
@@ -52,9 +55,30 @@ static unsigned mock_px (unsigned id, int part, int x, int y)
 	if (part) return (unsigned) (0x202020 + part * 0x100000 + (x & 7));
 	return id == 7 ? (unsigned) ((x * 2) << 16 | (y * 3) << 8 | ((x ^ y) & 0xFF)) : 0x00123456;
 }
+static unsigned mock_hash (unsigned u, unsigned v) { return ((u * 2654435761u) ^ (v * 40503u + 12345u)) & 0xFFFFFF; }
+static unsigned mock_scroll_px (unsigned id, int x, int y)
+{
+	unsigned k = (unsigned) mock_lists;
+	if (id == 30)
+	{
+		if (y >= 100 && y < 300) return mock_hash ((unsigned) x + 37 * k, (unsigned) y);
+		if (y >= 90 && y < 100 && x >= 200 && x < 260) return (k * 0x111111u) & 0xFFFFFF;
+		return 0x101010;
+	}
+	return x >= 290 ? (k * 0x10101u) & 0xFFFFFF : mock_hash ((unsigned) x + 7, (unsigned) y + 23 * k);
+}
 static inline int uk_win_list (struct kapi_win_info *o, int max)
 {
 	mock_lists++;
+	if (mock_pocket () == 6)
+	{
+		struct kapi_win_info a = { 30, 3, 10, 10, 640, 400, 1, 255, (unsigned) mock_lists, 1, "", 0, 0, 0, 0, 0 };
+		struct kapi_win_info b = { 31, 4, 700, 10, 300, 240, 1, 255, (unsigned) mock_lists, 0, "", 0, 0, 0, 0, 0 };
+		snprintf (a.title, sizeof a.title, "S%d", mock_lists); snprintf (b.title, sizeof b.title, "S%d", mock_lists);
+		if (max < 2) return 0;
+		o[0] = a; o[1] = b;
+		return 2;
+	}
 	if (mock_pocket ())		// home 20 (shell 5), matte 21 (PocketUI 2), app 22 + its popup 23 (pid 3), menu bar 24 (pid 6)
 	{
 		struct kapi_win_info W[7] = {
@@ -88,6 +112,12 @@ static inline int uk_win_read (unsigned id, int part, int x, int y, int w, int h
 {
 	int W = id == 7 ? (part ? 114 : 100) : 50, H = id == 7 ? (part ? 109 : 70) : 20;
 	if (id != 7 && part) return -1;
+	if (id == 30 || id == 31)
+	{
+		W = id == 30 ? 640 : 300; H = id == 30 ? 400 : 240;
+		for (int j = 0; j < h && y + j < H; j++) for (int i = 0; i < w && x + i < W; i++) dst[j * stride + i] = mock_scroll_px (id, x + i, y + j);
+		return 0;
+	}
 	if (id >= 20) { W = 50; H = 30; }
 	for (int j = 0; j < h && y + j < H; j++) for (int i = 0; i < w && x + i < W; i++) dst[j * stride + i] = mock_px (id, part, x + i, y + j);
 	return 0;

@@ -3,7 +3,8 @@
 //   dotnet run --project tools/tests/rdpd/conntest -- NEW_RDPD_HOST [OLD_RDPD_HOST]
 // Checks: pipelined rounds with the new rdpd, lock-step with an older one (no PONG sent to it),
 // whole rounds in the model, the pointer's moves coalesced (buttons and keys all sent, in
-// order), the reconnection after rdpd restarts, the windows kept meanwhile.
+// order), the reconnection after rdpd restarts, the windows kept meanwhile; COPY (a window scrolled: RDPD_ANIM=2)
+// applied right.
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -18,13 +19,14 @@ static class Program
 
 	class Server
 	{
-		Process p; readonly string exe; readonly int port; readonly bool anim;
+		Process p; readonly string exe; readonly int port; readonly int anim;
 		public readonly System.Collections.Concurrent.ConcurrentQueue<string> Log = new System.Collections.Concurrent.ConcurrentQueue<string> ();
-		public Server (string exe, int port, bool anim) { this.exe = exe; this.port = port; this.anim = anim; Start (); }
+		public Server (string exe, int port, bool anim) : this (exe, port, anim ? 1 : 0) { }
+		public Server (string exe, int port, int anim) { this.exe = exe; this.port = port; this.anim = anim; Start (); }
 		public void Start ()
 		{
 			var si = new ProcessStartInfo (exe, port.ToString ()) { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };
-			si.Environment["RDPD_ANIM"] = anim ? "1" : "0";
+			si.Environment["RDPD_ANIM"] = anim.ToString ();
 			p = Process.Start (si);
 			p.ErrorDataReceived += (s, e) => { if (e.Data != null) Log.Enqueue (e.Data); };
 			p.BeginErrorReadLine ();
@@ -98,6 +100,34 @@ static class Program
 		Check (slowRounds >= 30 && slowRounds <= 45, "slow PC: " + slowRounds + " rounds in 2 s (3 in flight / 150 ms: ~40)");
 		c.Close (); Thread.Sleep (200); sv.Kill ();
 		Check (sv.Log.Any (l => l.Contains ("in flight max 3")), "kmsg: in flight max 3");
+
+		// 3b. COPY (option bit 3): window 2 scrolled 7 rows a frame -- after every round the model is what the
+		// server shows (its gen in the title), whether the rows came by COPY or as pixels
+		sv = new Server (fresh, port + 5, 2);
+		c = new Connection ();
+		int copyRounds = 0, copyBad = 0;
+		c.RoundDone += s =>
+		{
+			lock (c.Lock)
+				if (c.Windows.TryGetValue (2, out var m) && m.Title.StartsWith ("Window 2 g"))
+				{
+					uint g = uint.Parse (m.Title.Substring (10));
+					for (int y = 0, bad = 0; y < m.H && bad == 0; y++)
+						for (int x = 0; x < m.W; x++)
+						{
+							uint want = x / 16 == (int) (g % 18) && y < 64 ? 0xFF2020u : (uint) (x * 3 + (y + 7 * (int) g) * 5) * 0x010203u & 0xFFFFFFu;
+							if (((uint) m.Content[y * m.W + x] & 0xFFFFFFu) != want) { bad = 1; copyBad++; break; }
+						}
+					copyRounds++;
+				}
+			c.Ready (s);
+		};
+		c.Open ("127.0.0.1", port + 5, false, false, false);
+		Thread.Sleep (1500);
+		c.Close (); Thread.Sleep (300); sv.Kill ();
+		Check (copyRounds >= 20 && copyBad == 0, "COPY: a scrolled window right after every round (" + copyRounds + " rounds, " + copyBad + " wrong)");
+		var cl = sv.Log.FirstOrDefault (l => l.Contains ("copy:"));
+		Check (cl != null && !cl.Contains (" 0 copies"), "COPY: the server moved the rows (" + cl + ")");
 
 		// 4. an older rdpd: lock-step, no PONG (it would end the session)
 		if (old != null)

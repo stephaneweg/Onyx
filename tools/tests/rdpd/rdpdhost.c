@@ -4,7 +4,8 @@
 // send / recv) and a few fake windows, then rdpd's own main. See build_host.sh, ../run_rdpd_pipeline_test.sh.
 //   RDPD_SRC   the rdpd source to build (default user/BinUtils/rdpd.c; an older one to test
 //              compatibility)
-//   RDPD_ANIM=1  window 2 redrawn every 40 ms (a demo running), else everything static
+//   RDPD_ANIM=1  window 2 redrawn every 40 ms (a demo running), else everything static; RDPD_ANIM=2 its content
+//              scrolled 7 rows up too (COPY), its title "Window 2 g<gen>" (the client knows what it must show)
 // The injected input is printed on stderr ("host: ptr x y b w", "host: key ...").
 //
 #define _GNU_SOURCE
@@ -91,7 +92,8 @@ static int h_win_list (struct kapi_win_info *o, int max)
 		w->id = (unsigned) i; w->pid = 10u + (unsigned) i;
 		w->x = 100 * i; w->y = 80 * i; w->w = 300; w->h = 200; w->alpha = 255;
 		w->gen = i == 2 ? anim_gen () : 1; w->state = i == 2 ? KAPI_WIN_KEYS : 0;
-		snprintf (w->title, sizeof w->title, "Window %d", i);
+		if (i == 2 && g_anim == 2) snprintf (w->title, sizeof w->title, "Window 2 g%u", w->gen);
+		else snprintf (w->title, sizeof w->title, "Window %d", i);
 		w->ow = 304; w->oh = 230; w->il = 2; w->it = 28; w->chromeGen = 1;
 	}
 	return n;
@@ -104,7 +106,8 @@ static int h_win_read (unsigned id, int part, int x, int y, int w, int h, unsign
 		for (int i = 0; i < w; i++)
 		{
 			int X = x + i, Y = y + j;
-			unsigned c = part ? 0x303050u + (unsigned) part : (unsigned) (X * 3 + Y * 5) * 0x010203u;
+			int sy = id == 2 && g_anim == 2 ? (int) (7 * g) : 0;
+			unsigned c = part ? 0x303050u + (unsigned) part : (unsigned) (X * 3 + (Y + sy) * 5) * 0x010203u;
 			if (part == 0 && id == 2 && X / 16 == (int) (g % 18) && Y < 64) c = 0xFF2020u;	// (a moving bar)
 			dst[(size_t) j * stride + i] = c & 0xFFFFFFu;
 		}
@@ -133,7 +136,8 @@ static int h_thread (int (*fn) (void *), void *arg, unsigned st, const char *nam
 	return 2;
 }
 
-static void unimplemented (void) { fprintf (stderr, "host: an unimplemented kapi call\n"); abort (); }
+static int h_geom (struct kapi_win_geom *g) { (void) g; return -1; }	// (no work area: uikit's port asks)
+static void unimplemented (void) { fprintf (stderr, "host: an unimplemented kapi call (from %p)\n", __builtin_return_address (0)); abort (); }
 
 #define main rdpd_main
 #include RDPD_SRC
@@ -142,7 +146,7 @@ static void unimplemented (void) { fprintf (stderr, "host: an unimplemented kapi
 int main (int argc, char **argv)
 {
 	t0 = now_us () - 1000000ull;
-	g_anim = getenv ("RDPD_ANIM") && atoi (getenv ("RDPD_ANIM"));
+	g_anim = getenv ("RDPD_ANIM") ? atoi (getenv ("RDPD_ANIM")) : 0;
 	snprintf (g_args, sizeof g_args, "%s", argc > 1 ? argv[1] : "3390");
 	void *p = mmap ((void *) KAPI_TABLE_VA, 65536, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
 	if (p == MAP_FAILED) { perror ("mmap"); return 1; }
@@ -154,7 +158,7 @@ int main (int argc, char **argv)
 	T->get_args = h_args; T->screen_size = h_screen; T->net_status = h_net;
 	T->tcp_listen = h_listen; T->tcp_accept = h_accept; T->tcp_send = h_send; T->tcp_recv = h_recv; T->tcp_close = h_close;
 	T->win_list = h_win_list; T->win_read = h_win_read; T->win_raise = h_win_raise; T->win_close = h_win_close; T->win_move = h_win_move;
-	T->thread_create = h_thread;
+	T->thread_create = h_thread; T->win_geometry = h_geom;
 	T->inject_pointer = h_ptr; T->inject_key = h_key; T->inject_key_held = h_held; T->inject_modifiers = h_mods;
 	setvbuf (stderr, 0, _IOLBF, 0);
 	return rdpd_main ();
