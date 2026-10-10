@@ -664,6 +664,28 @@ it off.
 **Calibration**: the DS took D0–D5 in one long session (~7 k lines); this is ~3× bigger with a
 harder GPU and an OS — **several sessions**, then the user's tests on the Pi as for the DS.
 
+## 9n. A second and a third game (2026-10-10): the memory modes, the dynamic modules
+
+*Pokemon Ultra Sun* (the user's ROM) did not start. Two things of the console were missing:
+
+- **The memory mode.** The game's extended header (`flag0`'s high four bits) names the Old 3DS's memory mode:
+  0 = 64 MB for the application, 2 = 96, 3 = 80, 4 = 72, 5 = 32 (the console restarts into it). The core always
+  gave 64 MB and the game's library stopped in its first calls (it wants `limit - used - 0x45A9000 >= 0`).
+  `Machine::setMemoryMode`, called by the loader: the configuration page's three shares, the resource limit
+  (svc 0x39), the linear heap's maximum (`Memory::appMem`); **the shared font follows the application's share**
+  (it sits behind it in FCRAM, its address `Memory::fontVa ()`: the font given by the host is kept to be placed again).
+- **ldr:ro, the dynamic modules** (`n3ds_ldr.cpp`). The big games keep most of their code in CRO files, read
+  into their own memory, that the service makes runnable at an address they choose: the tables' offsets become
+  addresses, the segment table (the data and bss segments at the places the game gives), the internal
+  relocations, the imports by name / by number / by place from the other modules, the exports to them, the fixed
+  program's part through the CRS (its exports; the places in it that point into a module). The module's pages are
+  the game's buffer seen at a second address. One list of modules, no signature check (CRR), no "fix level".
+  Written from the format's public description (3dbrew).
+- `fs:USER` DeleteExtSaveData (the game deletes its extra data before making it).
+
+The game then reaches its language screen, under qemu and **on the Pi 4 with the GPU path** (590 frames given
+to the GPU, none refused). Not yet looked at: what follows that screen; `frd:u`, `boss:U`, `ndm:u` answer "done, nothing".
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours
