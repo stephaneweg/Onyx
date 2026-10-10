@@ -588,6 +588,22 @@ as before (top: 12 % of the pixels differ by more than 8 from the software rende
 bottom: the same). Next: the display transfer straight from the host's pixels, the triangles' path (three
 copies of a vertex a triangle today), the lighting per fragment (V5).
 
+**Then (the same day): 36.2 frames a second** (300 frames in 8.3 s):
+- **the display transfer reads the host's pixels** (their rows are the tiled buffer's, from the row the transfer
+  starts at): the program's buffer is written only when something reads it (`GRec::guestStale` -- a texture
+  there, the software renderer, a fill, a transfer of another shape);
+- a triangle wholly inside, of a target whose frames are the GPU's, is recorded from where its vertices are
+  (nothing copied, cut or queued);
+- **shader code sent again unchanged changes nothing** -- the game sends its shaders again draw after draw, and
+  each time the compiled functions were thrown away and the interpreter's 4096 instructions decoded again: that
+  alone was 1 s of the lists' 4.4; the constant rows of a state are made only when the software renderer draws
+  with it; a texture's bytes are sampled once a frame, not once a draw.
+
+Of the 8.3 s: the lists 3.4 s (the vertices' attributes 0.5, their shading 1.1, the triangles 0.8, the rest the
+commands and the states), the GPU 2.8 s (4.7 ms a target's frame, of which the kernel's call about 4), the
+transfers 0.3 s, the processor 1.8 s. What is left is mostly the kernel's GPU call, which waits for the GPU
+(an asynchronous one would let the processor's emulation go on meanwhile), and the vertices.
+
 **V2's design, as built**:
 - *The software queue is the universal record.* A frame's triangles stay queued (`Job`, `State`) **until the
   display transfer of their target** instead of being rasterized at each list's end; beside them the GPU's frame is
