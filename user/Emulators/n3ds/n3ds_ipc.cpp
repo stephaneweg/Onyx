@@ -20,6 +20,7 @@ static const struct { const char *name; ServiceFn fn; } SERVICES[] = {
 	{ "cfg:u",    cfgRequest }, { "cfg:s", cfgRequest }, { "cfg:i", cfgRequest },
 	{ "ptm:u",    ptmRequest }, { "ptm:sysm", ptmRequest },
 	{ "dsp::DSP", dspRequest },
+	{ "ldr:ro",   ldrRequest },
 };
 
 // Services that exist on the console and are not emulated: a game stops at once when one of them cannot be
@@ -27,7 +28,7 @@ static const struct { const char *name; ServiceFn fn; } SERVICES[] = {
 static const char *const ABSENT[] = {
 	"ac:u", "ac:i", "act:u", "act:a", "am:app", "am:net", "am:u", "am:sys", "boss:U", "boss:P", "cam:u", "cam:c", "cecd:u", "cecd:s",
 	"csnd:SND", "dlp:SRVR", "dlp:CLNT", "dlp:FKCL", "err:f", "frd:u", "frd:a", "gsp::Lcd", "http:C", "ir:u", "ir:USER",
-	"ir:rst", "ldr:ro", "mcu::HWC", "mic:u", "ndm:u", "news:u", "news:s", "nfc:u", "nfc:m", "nim:aoc", "nim:u", "nwm::UDS", "nwm::EXT",
+	"ir:rst", "mcu::HWC", "mic:u", "ndm:u", "news:u", "news:s", "nfc:u", "nfc:m", "nim:aoc", "nim:u", "nwm::UDS", "nwm::EXT",
 	"ps:ps", "ptm:gets", "ptm:sets", "ptm:play", "pxi:dev", "qtm:u", "qtm:s", "soc:U", "ssl:C", "y2r:u",
 };
 static void absentRequest (Machine *m, Session *s, u32 *cmd)

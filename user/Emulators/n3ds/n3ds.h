@@ -315,6 +315,7 @@ struct Machine
 		u64 gpuFrames, softFrames, usGpu, skippedFrames;	// the targets' frames drawn by the host's GPU, by the software renderer; the host's time
 		u64 vertices, trianglesDrawn, pixelsDrawn, shaderSteps, trianglesIn;	// (shaderSteps: the vertex shader's instructions run; trianglesIn: before clipping and culling)
 	} gsp;
+	void *ldr;				// the dynamic modules loaded (n3ds_ldr.cpp)
 	struct Pica *pica;			// the GPU's state (n3ds_pica.cpp), made at its first command list
 	// APT (n3ds_apt.cpp): the application's life -- its events, the parameter the system sends it (the wake-up)
 	struct Apt { Mutex *lock; Event *signal, *param; bool pending; u32 cpuLimit; SharedMem *font; bool fontReady; } apt;
@@ -458,6 +459,8 @@ bool picaBusy (const Machine *m);		// a list's triangles are being drawn aside
 bool picaDone (Machine *m);			// ... and the helpers have finished them
 void picaSync (Machine *m);			// ... this thread helps, waits, and the list is over
 void picaFree (Machine *m);
+void ldrRequest (Machine *m, Session *s, u32 *cmd);			// ldr:ro, the dynamic modules (n3ds_ldr.cpp)
+void ldrFree (Machine *m);
 void storageFree (Machine *m);
 void aptRequest (Machine *m, Session *s, u32 *cmd);			// APT:U / APT:S / APT:A (n3ds_apt.cpp)
 void hidRequest (Machine *m, Session *s, u32 *cmd);			// hid:USER / hid:SPVR (n3ds_hid.cpp)
