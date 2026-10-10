@@ -39,8 +39,8 @@ FAT32 card, then insert it into the Pi 4 and power on.
 
 **A Raspberry Pi 5** has its own card: [`sdcard5/`](../sdcard5/) (or the smallest one, `sdcard5_lite/`), copied the
 same way — its kernel `kernel_2712.img`, its device trees, no boot firmware (the Pi 5's is in the board's EEPROM),
-its packages from the repository's `pi5/` folder. A Pi 4's card does not start a Pi 5, nor the reverse. **Not run
-on a Pi 5 yet** (2026-10-09, docs/PI5-PORT.md): its GPU (the 3D, the browser's compositing, the emulators' GPU
+its packages from the repository's `pi5/` folder. A Pi 4's card does not start a Pi 5, nor the reverse. **First
+run on a Pi 500 on 2026-10-10** (a tester: the desktop, the apps and the Wi-Fi work; docs/PI5-PORT.md): its GPU (the 3D, the browser's compositing, the emulators' GPU
 paths) is written for it but untried -- `gpu71=0` in `cmdline.txt` turns it off if it misbehaves --, the 40-pin
 header's pins, edges, I2C and SPI go through the RP1 (its PWM not yet), the sound goes to USB or HDMI (no jack on
 the Pi 5); its kernel log goes to the 3-pin debug UART between the HDMI ports. What the Pi 5 has more: the

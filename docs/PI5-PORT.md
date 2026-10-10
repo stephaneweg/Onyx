@@ -45,7 +45,10 @@
 > the alpha byte, Onyx's pixels have 0 (`framebuffer_ignore_alpha=1` not honoured on the Pi 500). Fixed in the fork
 > (patch 31, docs/05: `C2DGraphics` makes the presented pixels opaque) and the direct full-screen mode turned off on
 > the Pi 5 (`fullscreen_direct` → 0). Onyx needs `framebuffer_depth=32`: with 24 the kernel stops early (the LED
-> dark). **To check again** on the board.
+> dark). **Checked (2026-10-10, the same tester): the desktop shows on the Pi 500** — the windows, the dock, the
+> apps (QBStudio, Invaders), **the Wi-Fi joins**. Rough edges reported: no keyboard layout for the Pi 500's
+> (Nordic) keyboard — the Wi-Fi password typed by trying keys on Setup's keyboard page. Still unchecked: the GPU
+> (V3D 7.1), Ethernet, the fan, the power button, the RTC, the GPIO, the sound.
 >
 > The fork was then brought to upstream **Circle 51.1.1** (docs/05 *Upstream merges*: for the Pi 5 the DSI
 > touchscreens, the RP1's I2C 4 and 6, the xHCI endpoint recovery); both kernels build on it.
