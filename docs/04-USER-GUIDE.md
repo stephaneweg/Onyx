@@ -2006,7 +2006,7 @@ keyboard appears. (This removed a boot race where `keyb` could time out before t
 enumerated and leave it with **no** map at all — a dead keyboard while the mouse worked.) To
 change it **on the fly**:
 
-- **At the command line**: `keyb FR` (or `US`, `UK`, `DE`, `BE`, `ES`, `IT`, `DV`). `keyb` alone
+- **At the command line**: `keyb FR` (or `US`, `UK`, `DE`, `BE`, `ES`, `IT`, `DV`, `SE`, `NO`, `DK`, `PT`, `JP`). `keyb` alone
   shows the current layout and the list.
 - **Graphically**: the Control Panel's **Keyboard & Mouse** applet (`keyconf`) lists the
   `.kmap` files actually present in `SD:/etc/keymaps/`; a click takes one at once **and keeps
@@ -2014,7 +2014,13 @@ change it **on the fly**:
 - **Permanently**: edit the `keyb` line in `SD:/etc/autostart` (or use the applet).
 
 The layouts themselves live as files in **`SD:/etc/keymaps/`** — `BE.kmap`, `DE.kmap`,
-`DV.kmap`, `ES.kmap`, `FR.kmap`, `IT.kmap`, `UK.kmap`, `US.kmap` (small binary tables). The
+`DK.kmap` (Danish), `DV.kmap`, `ES.kmap`, `FR.kmap`, `IT.kmap`, `JP.kmap` (Japanese JIS, romaji: the Ro and Yen keys
+too), `NO.kmap` (Norwegian), `PT.kmap` (Portuguese), `SE.kmap` (Swedish / Finnish — the Raspberry Pi 500's Nordic
+keyboard), `UK.kmap`, `US.kmap` (small binary tables; Latin-1 characters only: no Cyrillic, Hebrew, Korean or kana,
+and a dead key gives its own character — no composed letters). **A Pi 400 or Pi 500 says which keyboard it has**
+(the firmware reads it from the board: `uname -a`'s `keyboard` line), and Setup takes that layout at once, before
+the Wi-Fi's password is typed; the Raspberry Pi keyboards' codes and the layouts Onyx has for them: UK, FR, ES, US,
+DE, IT, JP, PT, NO, SE (Nordic), DK — not yet RU, TR, IL, HU, KR. The
 Belgian (`BE`) map is an azerty layout close to French, with the Belgian standard for the
 digit row and several AltGr symbols (`!` on **8**, `=` `+` on the bottom-right key, `-` `_`
 right of `)`, and `| @ #` on **1 2 3**, `{ }` on **9 0**, `[ ]` on the `^`/`$` keys). `keyb XX`

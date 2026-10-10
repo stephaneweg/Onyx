@@ -32,6 +32,11 @@ static Label *g_status;
 // TR: Italian
 // TR: British
 // TR: American (qwerty)
+// TR: Danish
+// TR: Japanese
+// TR: Norwegian
+// TR: Portuguese
+// TR: Swedish / Finnish
 static const char *map_name (const char *code) { const char *n = input_keymap_name (code); return n[0] ? TR (n) : ""; }
 static void scan_maps (void) { g_nkm = input_keymaps (g_km, MAXKM); }
 static void on_map (Widget &)

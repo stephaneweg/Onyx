@@ -186,8 +186,9 @@ actually present — load one and send it to the kernel via `kapi_set_keymap_dat
 stays so until `keyb` loads a layout from the card (see [Circle Changes §1](05-CIRCLE-CHANGES.md#1-keyboard-map-decoupled-from-the-kernel--max_tasks)),
 so a layout is *only* ever a file — adding one needs no kernel rebuild. Regenerate the
 `.kmap` files with `python tools/keymaps/genkeymaps.py`; it compiles each `<NAME>` from a
-`keymap_<name>.h` table in **`tools/keymaps/maps/`** (the 8 layout sources, incl. `BE` =
-Belgian azerty, all tracked in the Onyx repo — not in the Circle tree). The `.kmap` format
+`keymap_<name>.h` table in **`tools/keymaps/maps/`** (the 13 layout sources, incl. `BE` =
+Belgian azerty and, since 2026-10-10, the Raspberry Pi keyboards' `SE` (Nordic), `NO`, `DK`, `PT`, `JP` -- the
+Japanese Ro / Yen keys, USB codes 0x87 / 0x89 past the table's 128 rows, come at rows 0x7D / 0x7E: fork patch 32, all tracked in the Onyx repo — not in the Circle tree). The `.kmap` format
 is `"OKM1"` + `u16` rows/cols + the `u16[128][5]` table (see the script header).
 
 ## 5. The application model

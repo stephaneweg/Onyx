@@ -21,7 +21,7 @@ int main (void)
 		kapi_get_keymap (cur, sizeof (cur));
 		ax_puts ("current: ");
 		ax_putln (cur[0] ? cur : "(boot default)");
-		ax_putln ("available: US UK DE FR BE ES IT DV");
+		ax_putln ("available: US UK DE FR BE ES IT DV SE NO DK PT JP");
 		ax_putln ("usage: keyb <XX>");
 		return 0;
 	}
@@ -53,6 +53,6 @@ int main (void)
 	}
 	ax_puts ("keyb: unknown layout '");
 	ax_puts (name);
-	ax_putln ("' (try US UK DE FR BE ES IT DV)");
+	ax_putln ("' (try US UK DE FR BE ES IT DV SE NO DK PT JP)");
 	return 1;
 }

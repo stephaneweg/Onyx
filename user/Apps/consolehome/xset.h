@@ -490,6 +490,11 @@ static int g_nkm;
 // TR: German (qwertz)
 // TR: Italian
 // TR: Spanish
+// TR: Danish
+// TR: Japanese
+// TR: Norwegian
+// TR: Portuguese
+// TR: Swedish / Finnish
 static void kbd_rows (void)
 {
 	g_nkm = input_keymaps (g_km, INPUT_KEYMAPS_MAX);

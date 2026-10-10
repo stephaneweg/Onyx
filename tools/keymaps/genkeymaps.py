@@ -24,7 +24,7 @@ KEYMAP_H = os.path.join(ROOT, "circle", "include", "circle", "input", "keymap.h"
 TBL_DIR  = os.path.join(ROOT, "circle", "lib", "input")       # Circle's stock tables
 CUSTOM_DIR = os.path.join(ROOT, "tools", "keymaps", "maps")   # custom layouts (not in Circle)
 ROWS, COLS = 128, 5                                  # PHY_MAX_CODE+1, K_CTRLTAB+1
-LOCALES = ["BE", "DE", "DV", "ES", "FR", "IT", "UK", "US"]
+LOCALES = ["BE", "DE", "DK", "DV", "ES", "FR", "IT", "JP", "NO", "PT", "SE", "UK", "US"]
 
 # --- parse the TSpecialKey enum from keymap.h (drift-proof: no hand-copied values) --
 def parse_enum():
