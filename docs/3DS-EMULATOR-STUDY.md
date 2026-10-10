@@ -881,6 +881,22 @@ A program with all sixteen outputs is ~650 instructions (22 registers at most), 
 Not done here: nothing draws with these programs yet (S3 the kernel's clipping, S4 the lighting, S5 the
 recorder and the Pi); the refused lists (which vertices they are is not counted); the PICA's "0 x infinity = 0".
 
+## 9v. S3, the kernel (2026-10-11): a batch with its own vertex shader is clipped by the V3D
+
+`gpu_render3` clips every triangle on the processor (the near plane, the guard band: `ClipFrame3`,
+`ClipInPlace`) -- it needs clip positions in the vertices. A batch whose program has a generated vertex shader
+gives attributes instead. **`KAPI_GPU_B_NOCLIP`** (bit 27 of a batch's flags, `kern/kapi_abi.h`): the kernel
+leaves that batch's vertices alone (copied whole, or one run in place), and the V3D clips from the coordinate
+shader's clip position (the shader record already asks for it; the Z planes are set).
+
+**Tried on the Pi 4** (`tools/tests/v3d/vsclip_pi.cpp`, built by hand as an Onyx program; a kernel built on the
+PC and put back after): five triangles -- inside, 40 times wider than the view, one vertex behind the eye,
+through the near and the far planes, uneven w -- drawn with the stock shaders the usual way and with the flag:
+**65 109 pixels drawn each way, 0 of 65 536 differ.** So the V3D's own clipping can be trusted for this.
+
+The flag is in the sources only: **the kernel is not published** (it goes with S5, when something uses it; the
+Pi 5's kernel is to be built then too).
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours

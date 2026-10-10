@@ -1575,7 +1575,14 @@ static boolean ClipFrame3 (const float *pV, const kapi_gpu_batch3 *pB, unsigned 
 		unsigned nIn = s_Prog[o.program].nInputs, nStride = b3.stride, nRest = (nIn - 4) * 4;
 		u32 nStart = n;
 		const float *pT = pV + b3.off;
-		for (unsigned t = 0; t + 3 <= b3.b.count && n + 21 * nStride <= nCap; t += 3, pT += 3 * nStride)
+		if (b3.b.flags & KAPI_GPU_B_NOCLIP)				// (its own vertex shader: the vertices as they are)
+		{
+			u32 nAll = b3.b.count * nStride;
+			if (n + nAll > nCap) nAll = 0;
+			memcpy (pOut + n, pT, (u64) nAll * 4);
+			n += nAll;
+		}
+		else for (unsigned t = 0; t + 3 <= b3.b.count && n + 21 * nStride <= nCap; t += 3, pT += 3 * nStride)
 		{
 			float *d = pOut + n;
 			for (int k = 0; k < 3; k++)				// (framed, its inputs only)
@@ -1621,7 +1628,8 @@ static boolean ClipInPlace (const TVBuf &vb, float *pK, unsigned nFloats, const 
 		if (b3.off < nLow) nLow = b3.off;
 		s_pOutOff[i] = 0; s_pOutStride[i] = nStride; s_pOutBus[i] = (u32) (uintptr) pBase; s_pRunAt[i] = s_nRuns;
 		u32 nRun = 0, nRunCount = 0;					// (the run being made: its first vertex, count)
-		for (u32 t = 0; t + 3 <= b3.b.count; t += 3)
+		if (b3.b.flags & KAPI_GPU_B_NOCLIP) nRunCount = b3.b.count - b3.b.count % 3;	// (its own vertex shader: one run, nothing touched)
+		else for (u32 t = 0; t + 3 <= b3.b.count; t += 3)
 		{
 			float *d = pBase + t * nStride;
 			if (pView)
