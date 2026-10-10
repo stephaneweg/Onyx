@@ -815,6 +815,34 @@ So in a level the two big shares stay the lists (7 to 8.5 ms a VBlank) and the G
 shaders on the V3D (9r) for the first; for the second, cheaper generated fragment shaders and the kernel's own
 clipping ("clip": 0.6 to 2 ms a frame on the processor) are what is left to look at.
 
+## 9t. S1, the specializer (2026-10-10): a draw's shader as a straight list, checked against the interpreter
+
+`n3ds_pica.cpp`: `Spec`, `specBuild`, `specRun` (and `shaderArith`, the instructions' arithmetic shared with the
+interpreter). The interpreter runs the shader once for the draw with hooks (`specStep`, `specFlow`, `specPop`,
+`specAt`, `specEnd`) that mark every register's component "the draw's" or "the vertex's":
+
+- the draw's: the uniforms, the fixed attributes, the registers no attribute feeds, **an attribute's component
+  that has one value over the draw's vertices** (a rigid mesh's bone index and weights), and what is computed
+  from them -- worked out by that very run, they become the list's constants (given again at each draw);
+- an instruction with a vertex's operand goes into the list (its known operands as constants; a known component
+  beside a vertex's one in a register is put in place first);
+- the flow on boolean and integer uniforms, and on a comparison of the draw's values, is simply followed;
+- **a branch on a vertex's comparison**: the comparison goes into the list, and the block it decides is run under
+  a GUARD -- a per-vertex yes / no the list computes (the comparison's two results as the branch reads them, and
+  the guard around): both arms of an IF, a called block, the block a forward jump skips. Every write under a
+  guard is conditional (on a GPU: a conditional move). MOVA under a guard, a backward jump, a jump out of its
+  block, the end of the shader under a guard: not specialized;
+- an index register that is a vertex's (a skinned mesh): not specialized -- the draw stays on the processor.
+
+The list's SHAPE (a hash of its instructions, registers, guards and of the flow followed) is what a compiled
+program will be kept by: 124 shapes in Mario's first 8 000 frames, 44 in Zelda's first 2 400.
+
+**Checked** (`N3DS_SPECCHECK=1`: every draw specialized, its list run beside the interpreter on its first eight
+vertices and one in 97, the sixteen outputs compared bit for bit): *Super Mario 3D Land*, 3 856 894 vertices, **0
+differ**, 66.7 % of the vertices in specialized draws (18 % have a vertex's index, 15 % a jump not followed);
+*A Link Between Worlds*, 609 495 vertices, **0 differ**, 37.7 % specialized (16 % an index, 46 % a jump not
+followed -- the next thing to look at). A list is 53 to 67 operations and 45 to 52 constants on average.
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours
