@@ -62,11 +62,15 @@ the D-pad, L / R, X / Y / A / B, Select / Start, the thumb keyboard.
 
 The window has the device's shape (771 x 1390 pixels at 1x): taller than the monitor, it scrolls (the
 wheel). View: 1x / 1.5x / 2x, True size, "Fit the whole device to this monitor", or "Controls beside the
-screen". Shift, Ctrl, Alt, CMD and Fn are sticky: one click for the next key, two to lock, a third to
-release. The pad's buttons are sent as keys (rdpd has no gamepad message): the D-pad the arrows, A Enter,
-B Esc, Y Shift+F10, L / R Ctrl+Page Up / Down, Select F10, Start the Super key -- change them in
-PocketTermSim.buttons.ini (Device > Edit the button mapping, then Reload); Help > "What each control
-sends" lists the key codes. The PC's keyboard types into the session; F5 X, F6 Y, F7 L, F8 R, F9 Select,
+screen". The keyboard is the maker's: 55 keys in six rows, no arrow keys (the D-pad is the arrows).
+Shift, Ctrl, Alt, CMD and Fn are sticky: one click for the next key, two to lock, a third to release.
+Fn gives the blue legends (F1-F10 on the digits, Esc on Q, F11 / F12 on O / P, Del on Backspace, Ins Home
+End PgUp PgDn ScrLk on Z X V B N M, PrtSc on Select, Pause on Start); Fn with - = E R W C is the device's
+own (brightness, volume, mute, sleep): nothing is sent, the status line says so. The pad's buttons are
+sent as keys (rdpd has no gamepad message): the D-pad the arrows, A Enter, B Esc, X Delete, Y Shift+F10,
+L / R Ctrl+Page Up / Down, Select and Start nothing (Device > Game keys: the pad as the emulators'
+keyboard) -- change them in PocketTermSim.buttons.ini (Device > Edit the button mapping, then Reload);
+Help > "What each control sends" lists the key codes. The PC's keyboard types into the session; F5 X, F6 Y, F7 L, F8 R, F9 Select,
 F12 Start. Ctrl+Shift+S saves the screen as a PNG (Pictures\Onyx). The Pi's screen must be 640 x 480:
 width=640 height=480 in SD:/cmdline.txt, then restart the Pi (the client cannot ask for it, and the
 Display applet's list starts at 1024 x 768); another size is shown scaled into the glass. Built by: sh pc/PocketTermSim/build.sh

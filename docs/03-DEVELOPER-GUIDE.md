@@ -5045,7 +5045,7 @@ Bring-up is done **directly on the Pi 4** (no QEMU raspi4b). Tools:
   message; the chords in `PocketTermSim.buttons.ini`). Build: `sh pc/PocketTermSim/build.sh` (the .NET SDK; it
   touches nothing else in `pc/dist`). Test, with no Pi: `python pc/PocketTermSim/test/run_test.py` -- a fake rdpd
   (`test/fake_rdpd.py`: the hello, one picture, a log of the input received) and the program's `--selftest`, which
-  presses every control: 210 steps checked against the default mapping. `python pc/PocketTermSim/test/fake_rdpd.py`
+  presses every control (the maker's 55 keys, the Fn layer, the six combinations the device keeps): 190 steps checked against the default mapping. `python pc/PocketTermSim/test/fake_rdpd.py`
   alone, then `PocketTermSim.exe 127.0.0.1`, shows the simulator over a mock-up's picture.
 - **Serial console**: `config.txt` must have `enable_uart=1` (PL011 clock). The boot
   log goes **also** to the HDMI screen (`CScreenDevice`) so it is readable without a serial

@@ -46,15 +46,18 @@ def tap (sym, *mods): return [(1, m) for m in mods] + [(1, sym), (0, sym)] + [(0
 
 PAD = [("Up", tap (UP)), ("Down", tap (DOWN)), ("Left", tap (LEFT)), ("Right", tap (RIGHT)), ("A", tap (ENTER)), ("B", tap (ESC)), ("X", tap (DEL)),
        ("Y", tap (F (10), SHL)), ("L", tap (PGUP, CTRL)), ("R", tap (PGDN, CTRL)), ("Select", []), ("Start", [])]	# (Select, Start: the games', nothing sent by default)
-ROWS = ["` 1 2 3 4 5 6 7 8 9 0 - = Backspace", "Tab q w e r t y u i o p [ ] \\", "Caps a s d f g h j k l ; ' Enter",
-	"ShiftL z x c v b n m , . / Up ShiftR", "FnL Ctrl AltL Space AltR CMD FnR Left Down Right"]
-SHIFTED = dict (zip ("`1234567890-=[]\\;',./", "~!@#$%^&*()_+{}|:\"<>?"))
-SPECIAL = {"Backspace": BKSP, "Tab": TAB, "Enter": ENTER, "Up": UP, "Left": LEFT, "Down": DOWN, "Right": RIGHT, "Space": 0x20}
-MODS = {"ShiftL": SHL, "ShiftR": SHR, "Ctrl": CTRL, "AltL": ALTL, "AltR": ALTR, "CMD": SUPER, "Caps": 0, "FnL": 0, "FnR": 0}
-FN = {"`": ESC, "-": F (11), "=": F (12), "Backspace": DEL, "Up": PGUP, "Down": PGDN, "Left": HOME, "Right": END}
+# the maker's keyboard (Waveshare's "Button Description" picture): 55 keys, one Shift, no arrow keys
+ROWS = ["1 2 3 4 5 6 7 8 9 0", "q w e r t y u i o p", "a s d f g h j k l Backspace", "z x c v b n m / Enter",
+	"Tab Caps - = ; ' , . Shift", "FnL Ctrl AltL Space AltR CMD FnR"]
+SHIFTED = dict (zip ("1234567890-=;',./", "!@#$%^&*()_+:\"<>?"))
+SPECIAL = {"Backspace": BKSP, "Tab": TAB, "Enter": ENTER, "Space": 0x20}
+MODS = {"Shift": SHL, "Ctrl": CTRL, "AltL": ALTL, "AltR": ALTR, "CMD": SUPER, "Caps": 0, "FnL": 0, "FnR": 0}
+INS, PRTSC, PAUSE, SCRLK = 0xFF63, 0xFF61, 0xFF13, 0xFF14
+FN = {"q": ESC, "o": F (11), "p": F (12), "Backspace": DEL, "z": INS, "x": HOME, "v": END, "b": PGUP, "n": PGDN, "m": SCRLK}
 FN.update ({str (n): F (n) for n in range (1, 10)}); FN["0"] = F (10)
+DEVICE = {"w": "mute", "e": "volume -", "r": "volume +", "c": "sleep", "-": "brightness -", "=": "brightness +"}	# the device's own: nothing sent
 KEYS = [k for row in ROWS for k in row.split (" ")]
-assert len (KEYS) == 64
+assert len (KEYS) == 55
 
 def base (k): return SPECIAL.get (k, ord (k[0]))
 def shifted (k): return SPECIAL[k] if k in SPECIAL else ord (SHIFTED[k]) if k in SHIFTED else ord (k.upper ())
@@ -68,7 +71,10 @@ for k in KEYS:
 	n += 1
 n = 300
 for k in KEYS:
-	if k not in MODS: expect[n] = ("Fn + " + k, tap (FN.get (k, base (k)))); n += 1
+	if k not in MODS: expect[n] = ("Fn + " + k, [] if k in DEVICE else tap (FN.get (k, base (k)))); n += 1
+expect[390] = ("Fn + Select = PrintScreen", tap (PRTSC))
+expect[391] = ("Fn + Start = Pause", tap (PAUSE))
+expect[392] = ("Fn + A = A", tap (ENTER))
 expect[500] = ("Shift locked", [(1, SHL)]); n = 501
 for k in KEYS:
 	if k not in MODS: expect[n] = ("Shift + " + k, tap (shifted (k))); n += 1
@@ -78,13 +84,15 @@ expect.update ({
 	1000: ("Ctrl then Right", tap (RIGHT, CTRL)),
 	1001: ("Alt then Tab", tap (TAB, ALTL)),
 	1002: ("Fn then 1, then 1", tap (F (1)) + tap (ord ("1"))),
-	1003: ("right Shift then a, then a", tap (ord ("A"), SHR) + tap (A)),
+	1003: ("Shift then a, then a", tap (ord ("A"), SHL) + tap (A)),
 	1004: ("Caps: a, 1, Shift + a", tap (ord ("A")) + tap (ord ("1")) + tap (A, SHL)),
 	1005: ("Ctrl locked: c, v", [(1, CTRL)] + tap (C) + tap (V) + [(0, CTRL)]),
 	1006: ("CMD tapped alone", tap (SUPER)),
 	1007: ("Ctrl then the D-pad's Up", tap (UP, CTRL)),
 	1008: ("Ctrl, Alt, Fn, Backspace = Ctrl+Alt+Del", [(1, CTRL), (1, ALTL), (1, DEL), (0, DEL), (0, CTRL), (0, ALTL)]),
 	1009: ("CMD then Left", tap (LEFT, SUPER)),
+	1010: ("Game keys: A, Start, Select; off: Start", tap (ord ("z")) + tap (ENTER) + tap (BKSP)),
+	1011: ("Fn then e (the device's volume: nothing), then e", tap (ord ("e"))),
 	1200: ("PC F7 held = L", [(1, CTRL), (1, PGUP), (1, PGUP), (0, PGUP), (0, CTRL)]),
 	1201: ("PC F12 = Start (nothing by default)", []),
 	1202: ("PC Left", tap (LEFT)),
@@ -129,7 +137,9 @@ for n, (name, mods, sym) in REPEATS.items ():
 	check (got[:len (head)] == head and got[-len (tail):] == tail and len (mid) >= 3 and all (e == (1, sym) for e in mid), "%d %s: %d downs then one up" % (n, name, len (mid)), "got " + show (got))
 check (len (g) == len (expect) + len (REPEATS) + 1, "no step missing or unknown (%d marks)" % len (g))
 order = [l.split (" ", 1)[1] for l in open (os.path.join (OUT, "order.txt")).read ().splitlines ()]
-check (order == [p[0] for p in PAD] + ["key:" + k for k in KEYS], "the face's controls: the 12 pad buttons and the 64 keys, in order")
+check (order == [p[0] for p in PAD] + ["key:" + k for k in KEYS], "the face's controls: the 12 pad buttons and the 55 keys, in order")
+notes = open (os.path.join (OUT, "notes.txt")).read ().splitlines ()
+check (notes == [DEVICE[k] for k in KEYS if k in DEVICE], "the six combinations the device keeps are told, nothing else", str (notes))
 src = Image.open (PIC).convert ("RGB")
 check (ImageChops.difference (Image.open (os.path.join (OUT, "remote.png")).convert ("RGB"), src).getbbox () is None, "the screen received is the picture sent, pixel for pixel")
 # the device's picture holds the middle of the screen untouched (1:1, not resampled)

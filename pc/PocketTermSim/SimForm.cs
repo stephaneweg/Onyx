@@ -36,6 +36,8 @@ namespace PocketTermSim
 		int rounds, fps;
 		string host = ""; int port = 3390;
 		string linkNote;
+		string toast; DateTime toastUntil;		// a short word in the status line (a combination the device keeps)
+		public readonly List<string> Notes = new List<string> ();	// (the tests read them)
 		readonly HashSet<Keys> pcDown = new HashSet<Keys> ();
 		public string MappingPath;
 		bool bannerOn;
@@ -52,6 +54,13 @@ namespace PocketTermSim
 			Dev = new Device (Mapping.Load (mappingPath));
 			Dev.Send = (down, sym) => { var c = Conn; if (c != null) c.Key (down, false, sym); };
 			Dev.Changed += () => { Face.Invalidate (); stMods.Text = Dev.ModsText (); };
+			Dev.Note += what =>
+			{
+				Notes.Add (what);
+				toast = "Fn: " + what + "  --  handled by the device itself, nothing is sent to Onyx";
+				toastUntil = DateTime.Now.AddSeconds (4);
+				stLink.Text = toast;
+			};
 			Face.Dev = Dev;
 			Face.Pointer += (x, y, b, w) => { var c = Conn; if (c != null && Set.Mouse) c.Pointer (WinModel.DESKTOP_ID, x, y, b, w); };
 
@@ -169,16 +178,19 @@ namespace PocketTermSim
 			sb.AppendLine ();
 			sb.AppendLine ("The thumb keyboard");
 			sb.AppendLine ("  a character key      KEY down, KEY up: the keysym is the character itself (Latin-1), Shift / Caps applied here: a A 1 ! [ {");
-			sb.AppendLine ("  Tab 0xFF09   Enter 0xFF0D   Backspace 0xFF08   Up 0xFF52   Down 0xFF54   Left 0xFF51   Right 0xFF53   Space 0x0020");
-			sb.AppendLine ("  Shift 0xFFE1 (left) 0xFFE2 (right)   Ctrl 0xFFE3   Alt 0xFFE9 (left) 0xFFEA (right)   CMD 0xFFEB (Super)");
+			sb.AppendLine ("  Tab 0xFF09   Enter 0xFF0D   Backspace 0xFF08   Space 0x0020   (no arrow keys: the D-pad is the arrows)");
+			sb.AppendLine ("  Shift 0xFFE1   Ctrl 0xFFE3   Alt 0xFFE9 (left) 0xFFEA (right)   CMD 0xFFEB (Super)");
 			sb.AppendLine ("  a modifier: one click = down, released after the next key; two clicks = locked; a third = up.");
 			sb.AppendLine ("  Caps and Fn send nothing themselves. Held with the mouse, a key repeats its down (400 ms, then every 60 ms).");
 			sb.AppendLine ();
-			sb.AppendLine ("The Fn layer (Fn + key)");
-			foreach (var row in Dev.Rows) foreach (var k in row)
+			sb.AppendLine ("The Fn layer (Fn + key; the blue legends of the maker's diagram)");
+			var fnNames = new List<string> ();
+			foreach (var row in Dev.Rows) foreach (var k in row) fnNames.Add (k.Name);
+			fnNames.Add ("Select"); fnNames.Add ("Start");
+			foreach (string name in fnNames)
 			{
-				Chord c = Dev.FnOf (k);
-				if (c != null) sb.AppendLine (string.Format ("  Fn + {0,-10} = {1,-10} {2}", k.Name, c.Text, Wire (c)));
+				Chord c = Dev.FnOf (name);
+				if (c != null) sb.AppendLine (string.Format ("  Fn + {0,-10} = {1,-22} {2}", name, c.Text, c.Local != null ? "(nothing: the device does it itself)" : Wire (c)));
 			}
 			if (Dev.Map.Problems.Count > 0) { sb.AppendLine (); sb.AppendLine ("Not understood in the mapping file:"); foreach (string p in Dev.Map.Problems) sb.AppendLine ("  " + p); }
 			return sb.ToString ();
@@ -265,8 +277,9 @@ namespace PocketTermSim
 		{
 			var c = Conn;
 			miDisconnect.Enabled = c != null;
-			if (c == null) { stLink.Text = linkNote ?? "Not connected  (Session > Connect...)"; stSize.Text = ""; stFps.Text = ""; SetBanner (null); return; }
-			stLink.Text = linkNote ?? ("Connected to " + host + (port != 3390 ? ":" + port : "") + (c.Reconnects > 0 ? "  (" + c.Reconnects + " reconnection" + (c.Reconnects > 1 ? "s" : "") + ")" : ""));
+			if (toast != null && DateTime.Now >= toastUntil) toast = null;
+			if (c == null) { stLink.Text = toast ?? linkNote ?? "Not connected  (Session > Connect...)"; stSize.Text = ""; stFps.Text = ""; SetBanner (null); return; }
+			stLink.Text = toast ?? linkNote ?? ("Connected to " + host + (port != 3390 ? ":" + port : "") + (c.Reconnects > 0 ? "  (" + c.Reconnects + " reconnection" + (c.Reconnects > 1 ? "s" : "") + ")" : ""));
 			int w = c.ScreenW, h = c.ScreenH;
 			stSize.Text = w + " x " + h;
 			stFps.Text = fps + " fps";

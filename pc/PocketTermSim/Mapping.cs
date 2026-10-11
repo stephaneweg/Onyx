@@ -20,7 +20,8 @@ namespace PocketTermSim
 		public readonly List<uint> Mods = new List<uint> ();
 		public uint Key;
 		public string Text = "none";
-		public bool Empty { get { return Key == 0 && Mods.Count == 0; } }
+		public string Local;			// a combination the device keeps for itself ("volume +"): nothing is sent
+		public bool Empty { get { return Key == 0 && Mods.Count == 0 && Local == null; } }
 	}
 
 	class Mapping
@@ -39,8 +40,8 @@ namespace PocketTermSim
 @"# PocketTermSim.buttons.ini -- what the PocketTerm35's controls send to Onyx (rdpd, port 3390).
 # rdpd has no gamepad message: the pad's buttons are sent as keys. Edit, then Device > Reload the mapping.
 # A value: a key, or modifiers + a key -- Ctrl+PageUp, Shift+F10, Alt+Tab -- or none.
-# Keys: Up Down Left Right Enter Esc Tab Backspace Delete Home End PageUp PageDown Space F1..F12 Super
-#       Shift Ctrl Alt, one character (a, 1, /), or an X11 keysym in hexadecimal (0xFF67).
+# Keys: Up Down Left Right Enter Esc Tab Backspace Delete Insert Home End PageUp PageDown Space F1..F12
+#       PrintScreen Pause ScrollLock Super Shift Ctrl Alt, one character (a, 1, /), or an X11 keysym in hexadecimal (0xFF67).
 
 [buttons]
 Up     = Up
@@ -78,10 +79,11 @@ R      = w
 Select = Backspace
 Start  = Enter
 
-# The thumb keyboard's Fn layer (the blue legends; assumed from one photo): key = what Fn + key gives.
-# Keys are named by their legend: ` 1 .. 0 - = Backspace Tab Enter Up Down Left Right Space, a letter...
+# The thumb keyboard's Fn layer -- the blue legends of the maker's button diagram: key = what Fn + key gives.
+# Keys are named by their legend: 1 .. 0, a letter, - = ; ' , . / Backspace Tab Enter Space; Select and Start too.
+# device: ... is a combination the PocketTerm35 keeps for itself (its keyboard controller changes the
+# brightness or the volume and sends nothing to the computer): the simulator sends nothing and says so.
 [fn]
-`  = Esc
 1  = F1
 2  = F2
 3  = F3
@@ -92,13 +94,24 @@ Start  = Enter
 8  = F8
 9  = F9
 0  = F10
--  = F11
-=  = F12
+q  = Esc
+w  = device: mute
+e  = device: volume -
+r  = device: volume +
+o  = F11
+p  = F12
 Backspace = Delete
-Up    = PageUp
-Down  = PageDown
-Left  = Home
-Right = End
+z  = Insert
+x  = Home
+c  = device: sleep
+v  = End
+b  = PageUp
+n  = PageDown
+m  = ScrollLock
+-  = device: brightness -
+=  = device: brightness +
+Select = PrintScreen
+Start  = Pause
 
 # The PC's keys that press the pad's buttons (the arrows, Enter and Esc already are the D-pad, A and B
 # through the lines above). A name of System.Windows.Forms.Keys (F5, NumPad0, Pause...) or none.
@@ -145,7 +158,8 @@ Start  = F12
 				string name = line.Substring (0, eq).Trim (), value = line.Substring (eq + 1).Trim ();
 				if (section == "buttons" || section == "fn" || section == "game")
 				{
-					Chord c = ParseChord (value);
+					Chord c = section == "fn" && value.StartsWith ("device:", StringComparison.OrdinalIgnoreCase)
+						? new Chord { Local = value.Substring (7).Trim (), Text = value } : ParseChord (value);
 					if (c == null) { Problems.Add ("line " + n + ": '" + value + "' is not a key"); continue; }
 					if (section == "buttons" || section == "game")
 					{
@@ -195,7 +209,8 @@ Start  = F12
 		{
 			{ "Up", 0xFF52 }, { "Down", 0xFF54 }, { "Left", 0xFF51 }, { "Right", 0xFF53 },
 			{ "Enter", 0xFF0D }, { "Return", 0xFF0D }, { "Esc", 0xFF1B }, { "Escape", 0xFF1B }, { "Tab", 0xFF09 },
-			{ "Backspace", 0xFF08 }, { "Delete", 0xFFFF }, { "Del", 0xFFFF }, { "Insert", 0xFF63 },
+			{ "Backspace", 0xFF08 }, { "Delete", 0xFFFF }, { "Del", 0xFFFF }, { "Insert", 0xFF63 }, { "Ins", 0xFF63 },
+			{ "PrintScreen", 0xFF61 }, { "PrtSc", 0xFF61 }, { "Pause", 0xFF13 }, { "ScrollLock", 0xFF14 }, { "ScrLk", 0xFF14 },
 			{ "Home", 0xFF50 }, { "End", 0xFF57 }, { "PageUp", 0xFF55 }, { "PgUp", 0xFF55 }, { "PageDown", 0xFF56 }, { "PgDn", 0xFF56 },
 			{ "Space", 0x20 }, { "Super", SuperL }, { "CMD", SuperL }, { "Win", SuperL },
 			{ "Shift", ShiftL }, { "Ctrl", CtrlL }, { "Control", CtrlL }, { "Alt", AltL },

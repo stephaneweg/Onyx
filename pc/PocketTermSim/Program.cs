@@ -115,6 +115,7 @@ namespace PocketTermSim
 			f.Connect (address.Substring (0, colon), int.Parse (address.Substring (colon + 1)));
 			for (int i = 0; i < 100 && f.RemotePicture == null; i++) await Task.Delay (100);
 			if (f.RemotePicture == null) return 2;
+			f.Face.Deaf = true;			// (the real mouse may click the window meanwhile)
 			f.Set.Mouse = false;			// (the real mouse may be over the window: not in the log)
 			await Task.Delay (300);
 			f.RemotePicture.Save (Path.Combine (outDir, "remote.png"), ImageFormat.Png);
@@ -137,30 +138,36 @@ namespace PocketTermSim
 				for (int j = 0; j < n; j++) await click (order[i]);
 			}
 			File.WriteAllText (Path.Combine (outDir, "order.txt"), names.ToString ());
-			// 300..: the Fn layer, Fn locked
+			// 300..: the Fn layer, Fn locked: every key, then Select, Start and A
 			await click ("key:FnL"); await click ("key:FnL");
 			int m = 300;
 			foreach (var row in f.Dev.Rows) foreach (var k in row) if (k.Mod == Mod.None) { mark (m++); await click (k.Id); }
+			mark (390); await click ("Select");
+			mark (391); await click ("Start");
+			mark (392); await click ("A");
 			await click ("key:FnR");						// (the other Fn key: its own state)
 			await click ("key:FnR"); await click ("key:FnR");
 			await click ("key:FnL");						// off
+			File.WriteAllLines (Path.Combine (outDir, "notes.txt"), f.Notes.ToArray ());
 			// 500..: Shift locked, every character key
 			mark (500);
-			await click ("key:ShiftL"); await click ("key:ShiftL");
+			await click ("key:Shift"); await click ("key:Shift");
 			m = 501;
 			foreach (var row in f.Dev.Rows) foreach (var k in row) if (k.Mod == Mod.None) { mark (m++); await click (k.Id); }
-			mark (599); await click ("key:ShiftL");
+			mark (599); await click ("key:Shift");
 			// 1000..: chords
-			mark (1000); await click ("key:Ctrl"); await click ("key:Right");		// Ctrl + Right, Ctrl armed
+			mark (1000); await click ("key:Ctrl"); await click ("Right");			// Ctrl + Right (the D-pad), Ctrl armed
 			mark (1001); await click ("key:AltL"); await click ("key:Tab");			// Alt + Tab
 			mark (1002); await click ("key:FnL"); await click ("key:1"); await click ("key:1");	// Fn armed: F1, then 1
-			mark (1003); await click ("key:ShiftR"); await click ("key:a"); await click ("key:a");	// Shift armed: A, then a
-			mark (1004); await click ("key:Caps"); await click ("key:a"); await click ("key:1"); await click ("key:ShiftL"); await click ("key:a"); await click ("key:Caps");
+			mark (1003); await click ("key:Shift"); await click ("key:a"); await click ("key:a");	// Shift armed: A, then a
+			mark (1004); await click ("key:Caps"); await click ("key:a"); await click ("key:1"); await click ("key:Shift"); await click ("key:a"); await click ("key:Caps");
 			mark (1005); await click ("key:Ctrl"); await click ("key:Ctrl"); await click ("key:c"); await click ("key:v"); await click ("key:Ctrl");	// Ctrl locked
 			mark (1006); await click ("key:CMD"); await click ("key:CMD"); await click ("key:CMD");	// CMD tapped alone
 			mark (1007); await click ("key:Ctrl"); await click ("Up");				// Ctrl + the D-pad
 			mark (1008); await click ("key:Ctrl"); await click ("key:AltL"); await click ("key:FnL"); await click ("key:Backspace");	// Ctrl + Alt + Del
-			mark (1009); await click ("key:CMD"); await click ("key:Left");			// CMD + Left
+			mark (1009); await click ("key:CMD"); await click ("Left");				// CMD + Left
+			mark (1010); f.Dev.GameKeys = true; await click ("A"); await click ("Start"); await click ("Select"); f.Dev.GameKeys = false; await click ("Start");	// Game keys
+			mark (1011); await click ("key:FnL"); await click ("key:e"); await click ("key:e");	// Fn armed: the device's volume (nothing), then e
 			// 1100..: held with the mouse: it repeats
 			mark (1100); v.DoDown (centre ("key:x")); await Task.Delay (750); v.DoUp (); await Task.Delay (20);
 			mark (1101); v.DoDown (centre ("Down")); await Task.Delay (750); v.DoUp (); await Task.Delay (20);
@@ -178,7 +185,7 @@ namespace PocketTermSim
 			mark (1300);
 			f.Set.Mouse = true;
 			var sp = new Point (v.L.Screen.X + (int) (100 * v.L.Scale), v.L.Screen.Y + (int) (50 * v.L.Scale));
-			typeof (Control).GetMethod ("OnMouseMove", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke (v, new object[] { new MouseEventArgs (MouseButtons.None, 0, sp.X, sp.Y, 0) });
+			v.Wheel (sp, 0);
 			await Task.Delay (60);
 			mark (9999);
 			await Task.Delay (400);

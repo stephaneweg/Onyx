@@ -1827,16 +1827,26 @@ glass at **640 × 480, pixel for pixel**, and below it the device's controls, cl
   grows; *Smooth scaling* or sharp pixels), **True size** (3.5 inches on the monitor), **Fit the whole device to
   this monitor** (nothing to scroll, the picture resampled), or **Controls beside the screen** (a low, wide
   window: the screen 1:1 and every control visible on a 1080-line monitor).
-- **The keyboard**: a click presses a key; held, it repeats. **Shift**, **Ctrl**, **Alt** and **CMD** (the Super
-  key) are *sticky*: one click arms the modifier for the next key (Ctrl then →: Ctrl+Right; Alt then Tab), a second
-  click **locks** it (an amber frame), a third releases it; armed and released with nothing between is the key
-  tapped alone (CMD: Home). **Fn** works the same and gives the blue legends: F1–F12 on the digits' row, Esc, Del,
-  Home / End / PgUp / PgDn on the arrows. **Caps** is a switch.
+- **The keyboard is the maker's** (Waveshare's button diagram), 55 keys in six rows: the digits; `Q` … `P`; `A` …
+  `L` and Backspace; `Z` … `M`, `/` and a wide Enter; Tab, Caps, `-` `=` `;` `'` `,` `.` and the one Shift; Fn, Ctrl,
+  Alt, a short space bar, Alt, CMD, Fn. **No arrow keys**: the D-pad is the arrows. A click presses a key; held, it
+  repeats. **Shift**, **Ctrl**, **Alt** and **CMD** (the Super key) are *sticky*: one click arms the modifier for the
+  next key (Ctrl then the D-pad's Right: Ctrl+Right; Alt then Tab), a second click **locks** it (an amber frame), a
+  third releases it; armed and released with nothing between is the key tapped alone (CMD: the Menu). **Caps** is a
+  switch (the small light at the D-pad's top left).
+- **Fn** (sticky too) gives the blue legends: **F1–F10** on the digits, **Esc** on Q, **F11** / **F12** on O / P,
+  **Del** on Backspace, **Ins** Z, **Home** X, **End** V, **PgUp** B, **PgDn** N, **ScrLk** M, **PrtSc** on Select,
+  **Pause** on Start. Six combinations are **the device's own** — Fn + `-` / `=` the display's brightness, Fn + E / R
+  the volume, Fn + W mute, Fn + C the display's sleep: the PocketTerm35 does them itself and sends nothing to the
+  computer, so the simulator sends nothing either and says it in the status line. (Onyx's `rdpd` does not know
+  Insert, Scroll Lock, Print Screen and Pause yet: they are sent and ignored.)
 - **The pad's buttons are sent as keys** (rdpd has no gamepad message) — the D-pad the arrows, **A** Enter, **B**
-  Esc, **Y** Shift+F10 (the context menu), **L** / **R** Ctrl+Page Up / Ctrl+Page Down, **Select** F10 (the app's
-  Menu), **Start** the Super key, **X** nothing yet. Change them in **`PocketTermSim.buttons.ini`** beside the
-  program (*Device ▸ Edit the button mapping*, then *Reload*): `[buttons]` a chord a button, `[fn]` the Fn layer,
-  `[pc]` the PC keys that press the buttons. *Help ▸ What each control sends* lists the exact key codes.
+  Esc, **X** Delete, **Y** Shift+F10 (the context menu), **L** / **R** Ctrl+Page Up / Ctrl+Page Down; **Select** and
+  **Start** send nothing (they are the games'). *Device ▸ Game keys* (F11) makes the whole pad the emulators'
+  keyboard (`z x a s`, `q w`, Enter, Backspace: the `[game]` section). Change them in
+  **`PocketTermSim.buttons.ini`** beside the program (*Device ▸ Edit the button mapping*, then *Reload*):
+  `[buttons]` a chord a button, `[game]`, `[fn]` the Fn layer (`device: …` = kept by the device), `[pc]` the PC keys
+  that press the buttons. *Help ▸ What each control sends* lists the exact key codes.
 - **The PC's keyboard** types into the session as in Onyx Remote; the arrows, Enter and Esc are the D-pad, A and
   B; **F5** X, **F6** Y, **F7** L, **F8** R, **F9** Select, **F12** Start (the `[pc]` section). The mouse on the
   glass moves the Pi's pointer (*View*: off, as the device has none).

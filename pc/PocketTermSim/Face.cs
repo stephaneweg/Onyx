@@ -1,8 +1,8 @@
 // Face.cs -- the PocketTerm35's face, drawn and clicked: the black glass with the Onyx screen under it
-// (640 x 480, its rounded corners), the four LEDs, the D-pad, L / R, X / Y / A / B, Select / Start and the
-// thumb keyboard. The proportions and the buttons' places are those of the mock-ups' drawing
-// (tools/screenshot/mockup_pocketterm.py, device (): a face of 93.5 x 168.5 mm, 9.01 pixels a millimetre
-// when the screen is shown 1:1) -- themselves assumed from one product photo.
+// (640 x 480, its rounded corners), the LEDs, the four arrow keys of the D-pad, L / R, X / Y / A / B, Select /
+// Start and the thumb keyboard. The body's size is the maker's (93.5 x 168.5 mm); the controls and the six rows
+// of keys are placed as on the maker's "Button Description" picture (measured on it: its body is 93.5 mm wide),
+// the keyboard as wide as the glass.
 //
 // The window has the device's shape: tall and narrow, 771 x 1390 pixels at 1x. Taller than the monitor, the
 // view scrolls (SimForm); "Fit" scales the whole device to the monitor instead, "beside" puts the controls
@@ -17,7 +17,7 @@ using System.Windows.Forms;
 
 namespace PocketTermSim
 {
-	enum CtlKind { Key, PadArm, Round, Shoulder, Pill }
+	enum CtlKind { Key, PadArm, Round, Pill }
 
 	class Ctl
 	{
@@ -35,7 +35,7 @@ namespace PocketTermSim
 		// border must span the glass' 80 mm, so the whole face follows the screen's scale and keeps the device's
 		// proportions (771 x 1390 pixels at 1x). The controls and the keyboard stay inside the glass' width: the
 		// keyboard's edges line up with the glass' edges.
-		public const float FaceW = 93.5f, FaceH = 168.5f, GlassW = 80f, GlassX = (FaceW - GlassW) / 2, GlassY = 11f, LowerTop = 72f;
+		public const float FaceW = 93.5f, FaceH = 168.5f, GlassW = 80f, GlassX = (FaceW - GlassW) / 2, GlassY = 14.5f, LowerTop = 80f;
 		public const float Border = 10f;		// the black border round the picture under the glass, pixels at 1x
 		public const float PpiDevice = 640f / 71f * 25.4f;	// the real screen: 229 pixels an inch
 		public static float UnitAt (float scale) { return (640 + 2 * Border) * scale / GlassW; }	// pixels a millimetre
@@ -49,7 +49,7 @@ namespace PocketTermSim
 		public PointF[] Leds = new PointF[4];
 		public float LedD;
 		public readonly List<Ctl> Ctls = new List<Ctl> ();
-		public PointF PadCentre; public float PadArm;
+		public PointF CapsLed;				// the Caps Lock indicator, at the D-pad's top left
 		public float Unit;				// pixels a millimetre in the controls
 		public const int Margin = 12;
 
@@ -67,7 +67,7 @@ namespace PocketTermSim
 			L.Glass = new RectangleF (L.Screen.X - b, L.Screen.Y - b, sw + 2 * b, sh + 2 * b);
 			L.GlassR = 4.6f * u;
 			L.ScreenR = L.GlassR - b;
-			L.LedSet (Margin + FaceW * u / 2, Margin + 6.5f * u, u);
+			L.LedSet (Margin + FaceW * u / 2, Margin + 7.5f * u, u);
 			L.Lower (dev, new PointF (Margin, Margin), u, GlassX, GlassW);
 			L.Client = SizeAt (s);
 			return L;
@@ -101,43 +101,50 @@ namespace PocketTermSim
 		}
 
 		// The controls and the keyboard: the face's millimetres (o: the face's corner, u: pixels a millimetre),
-		// the keyboard's rows from kx over kw millimetres.
+		// the keyboard's rows from kx over kw millimetres -- ten key places a row; the last two rows are shorter
+		// and centred, as on the device.
 		void Lower (Device dev, PointF o, float u, float kx, float kw)
 		{
-			float m = u;
 			Unit = u;
 			Func<float, float> X = mm => o.X + mm * u, Y = mm => o.Y + mm * u;
-			float sx = u;
-			// the D-pad: four arms round its centre
-			float cx = X (19.5f), cy = Y (88), a = 5.2f * m;
-			PadCentre = new PointF (cx, cy); PadArm = a;
-			Ctls.Add (new Ctl { Id = "Up", Kind = CtlKind.PadArm, R = new RectangleF (cx - a / 2, cy - 1.5f * a, a, a) });
-			Ctls.Add (new Ctl { Id = "Down", Kind = CtlKind.PadArm, R = new RectangleF (cx - a / 2, cy + a / 2, a, a) });
-			Ctls.Add (new Ctl { Id = "Left", Kind = CtlKind.PadArm, R = new RectangleF (cx - 1.5f * a, cy - a / 2, a, a) });
-			Ctls.Add (new Ctl { Id = "Right", Kind = CtlKind.PadArm, R = new RectangleF (cx + a / 2, cy - a / 2, a, a) });
-			// L, R
-			for (int i = 0; i < 2; i++)
-				Ctls.Add (new Ctl { Id = i == 0 ? "L" : "R", Label = i == 0 ? "L" : "R", Kind = CtlKind.Shoulder, R = new RectangleF (X (36.5f + i * 11), Y (86.75f) - 2.75f * m, 9 * sx, 5.5f * m) });
+			Func<string, string, CtlKind, float, float, float, float, Ctl> add = (id, label, kind, cx, cy, w, h) =>
+			{
+				var c = new Ctl { Id = id, Label = label, Kind = kind, R = new RectangleF (X (cx) - w * u / 2, Y (cy) - h * u / 2, w * u, h * u) };
+				Ctls.Add (c);
+				return c;
+			};
+			const float PadX = 21.6f, PadY = 97.9f, Off = 7.3f;
+			CapsLed = new PointF (X (12.8f), Y (86.2f));
+			// the D-pad: four arrow keys round a centre
+			add ("Up", "", CtlKind.PadArm, PadX, PadY - Off, 7.6f, 5.6f);
+			add ("Down", "", CtlKind.PadArm, PadX, PadY + Off, 7.6f, 5.6f);
+			add ("Left", "", CtlKind.PadArm, PadX - Off, PadY, 5.6f, 7.6f);
+			add ("Right", "", CtlKind.PadArm, PadX + Off, PadY, 5.6f, 7.6f);
+			// L, R: round, above Select and Start
+			add ("L", "L", CtlKind.Round, 39.3f, 90.6f, 6.4f, 6.4f);
+			add ("R", "R", CtlKind.Round, FaceW - 39.3f, 90.6f, 6.4f, 6.4f);
 			// X (top), Y (left), A (right), B (bottom)
-			float fx = X (74.5f), fy = Y (88), d = 6.4f * m, rr = 7.2f * m;
-			foreach (var b in new[] { new { n = "X", dx = 0, dy = -1 }, new { n = "Y", dx = -1, dy = 0 }, new { n = "A", dx = 1, dy = 0 }, new { n = "B", dx = 0, dy = 1 } })
-				Ctls.Add (new Ctl { Id = b.n, Label = b.n, Kind = CtlKind.Round, R = new RectangleF (fx + b.dx * rr - d / 2, fy + b.dy * rr - d / 2, d, d) });
-			// Select, Start
-			for (int i = 0; i < 2; i++)
-				Ctls.Add (new Ctl { Id = i == 0 ? "Select" : "Start", Label = i == 0 ? "SELECT" : "START", Kind = CtlKind.Pill, R = new RectangleF (X (36 + i * 11.5f), Y (97.8f) - 1.8f * m, 10 * sx, 3.6f * m) });
-			// the keyboard: 14 places a row across the glass' width, small rounded keys a little taller than wide
-			float rowH = 10.2f * u, keyH = 7.9f * u, gap = 1.0f * u;
+			float ax = FaceW - PadX;
+			add ("X", "X", CtlKind.Round, ax, PadY - Off, 7f, 7f);
+			add ("Y", "Y", CtlKind.Round, ax - Off, PadY, 7f, 7f);
+			add ("A", "A", CtlKind.Round, ax + Off, PadY, 7f, 7f);
+			add ("B", "B", CtlKind.Round, ax, PadY + Off, 7f, 7f);
+			add ("Select", "Select", CtlKind.Pill, 39.5f, 104.9f, 9.6f, 5.8f);
+			add ("Start", "Start", CtlKind.Pill, FaceW - 39.5f, 104.9f, 9.6f, 5.8f);
+			// the keyboard
+			const float RowY = 115.6f, RowPitch = 7.8f, KeyH = 5.8f, Gap = 1.8f;
+			float pitch = (kw + Gap) / 10;
 			for (int row = 0; row < dev.Rows.Count; row++)
 			{
-				int n = 0;
-				foreach (var kd in dev.Rows[row]) n += kd.Span;
-				float pitch = (kw * u + gap) / n;
-				int i = 0;
+				float n = 0;
+				foreach (var kd in dev.Rows[row]) n += kd.Width;
+				float at = kx + (10 - n) / 2 * pitch;
 				foreach (var kd in dev.Rows[row])
 				{
-					float x = (float) Math.Round (X (kx) + i * pitch), x1 = (float) Math.Round (X (kx) + (i + kd.Span) * pitch - gap);
-					Ctls.Add (new Ctl { Id = kd.Id, Key = kd, Kind = CtlKind.Key, Label = kd.Label, R = new RectangleF (x, (float) Math.Round (Y (110) + row * rowH), x1 - x, (float) Math.Round (keyH)) });
-					i += kd.Span;
+					float x = (float) Math.Round (X (at)), x1 = (float) Math.Round (X (at + kd.Width * pitch - Gap));
+					float y = (float) Math.Round (Y (RowY + row * RowPitch - KeyH / 2));
+					Ctls.Add (new Ctl { Id = kd.Id, Key = kd, Kind = CtlKind.Key, Label = kd.Label, R = new RectangleF (x, y, x1 - x, (float) Math.Round (KeyH * u)) });
+					at += kd.Width * pitch;
 				}
 			}
 		}
@@ -166,6 +173,7 @@ namespace PocketTermSim
 		public FaceLayout L;
 		public Device Dev;
 		public Bitmap Remote;				// the Pi's screen (null: not connected)
+		public bool Deaf;				// (the self-test: the real mouse is not heard)
 		public bool Smooth;
 		public string Idle = "Not connected";		// the text on the dark screen
 		public event Action<int, int, int, int> Pointer;	// x, y on the Pi's screen, buttons, wheel
@@ -238,15 +246,17 @@ namespace PocketTermSim
 		}
 		protected override void OnMouseDown (MouseEventArgs e)
 		{
+			if (Deaf) return;
 			if (L.Screen.Contains (e.Location)) { Ptr (e, 0); return; }
 			if (e.Button == MouseButtons.Left) DoDown (e.Location);
 		}
 		protected override void OnMouseUp (MouseEventArgs e)
 		{
+			if (Deaf) return;
 			if (e.Button == MouseButtons.Left) DoUp ();
 			Ptr (e, 0);
 		}
-		protected override void OnMouseMove (MouseEventArgs e) { Ptr (e, 0); }
+		protected override void OnMouseMove (MouseEventArgs e) { if (!Deaf) Ptr (e, 0); }
 		// the wheel over the Pi's screen (the window gives it: this view never has the focus)
 		public void Wheel (Point p, int wheel) { Ptr (new MouseEventArgs (MouseButtons.None, 0, p.X, p.Y, 0), wheel); }
 
@@ -292,14 +302,21 @@ namespace PocketTermSim
 				}
 			}
 		}
-		static string Short (string t)
+		static string Short (Chord c)
 		{
-			switch (t.ToLowerInvariant ())
+			if (c.Local != null)
+				switch (c.Local.ToLowerInvariant ())
+				{
+				case "mute": return "Mute"; case "volume -": return "Vol-"; case "volume +": return "Vol+";
+				case "sleep": return "Sleep"; case "brightness -": return "Bri-"; case "brightness +": return "Bri+";
+				default: return c.Local;
+				}
+			switch (c.Text.ToLowerInvariant ())
 			{
 			case "pageup": return "PgUp"; case "pagedown": return "PgDn"; case "delete": return "Del"; case "backspace": return "Bksp";
-			case "escape": return "Esc"; case "insert": return "Ins";
+			case "escape": return "Esc"; case "insert": return "Ins"; case "printscreen": return "PrtSc"; case "scrolllock": return "ScrLk";
 			}
-			return t;
+			return c.Text;
 		}
 		static Font F (float px, bool bold = false, bool symbol = false) { return new Font (symbol ? "Segoe UI Symbol" : "Segoe UI", Math.Max (6f, px), bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel); }
 
@@ -318,9 +335,13 @@ namespace PocketTermSim
 			for (int i = 0; i < 4; i++)
 				using (var b = new SolidBrush (i == 0 && Remote != null ? Color.FromArgb (60, 200, 110) : Color.FromArgb (46, 48, 54)))
 					g.FillEllipse (b, L.Leds[i].X - L.LedD / 2, L.Leds[i].Y - L.LedD / 2, L.LedD, L.LedD);
+			using (var b = new SolidBrush (Dev.Caps ? Color.FromArgb (60, 200, 110) : Color.FromArgb (46, 48, 54)))
+			{
+				float d = Math.Max (4, 1.2f * L.Unit);
+				g.FillEllipse (b, L.CapsLed.X - d / 2, L.CapsLed.Y - d / 2, d, d);
+			}
 			DrawScreen (g);
-			DrawPad (g);
-			foreach (Ctl c in L.Ctls) if (c.Kind != CtlKind.PadArm) DrawCtl (g, c);
+			foreach (Ctl c in L.Ctls) DrawCtl (g, c);
 		}
 
 		void DrawScreen (Graphics g)
@@ -358,23 +379,6 @@ namespace PocketTermSim
 			using (var p = Round (L.Glass, L.GlassR)) using (var pen = new Pen (GlassEdge, 1)) g.DrawPath (pen, p);
 		}
 
-		void DrawPad (Graphics g)
-		{
-			float a = L.PadArm, cx = L.PadCentre.X, cy = L.PadCentre.Y;
-			Fill (g, new RectangleF (cx - 1.5f * a, cy - a / 2, 3 * a, a), a * 0.25f, Cap);
-			Fill (g, new RectangleF (cx - a / 2, cy - 1.5f * a, a, 3 * a), a * 0.25f, Cap);
-			foreach (Ctl c in L.Ctls)
-			{
-				if (c.Kind != CtlKind.PadArm) continue;
-				if (Lit (c.Id)) Fill (g, c.R, a * 0.25f, Accent);
-				// a small arrow head on each arm
-				float mx = c.R.X + c.R.Width / 2, my = c.R.Y + c.R.Height / 2, t = a * 0.2f;
-				int dx = c.Id == "Left" ? -1 : c.Id == "Right" ? 1 : 0, dy = c.Id == "Up" ? -1 : c.Id == "Down" ? 1 : 0;
-				var pts = new[] { new PointF (mx + dx * t, my + dy * t), new PointF (mx - dx * t + dy * t, my - dy * t + dx * t), new PointF (mx - dx * t - dy * t, my - dy * t - dx * t) };
-				using (var b = new SolidBrush (Lit (c.Id) ? Color.White : Dim)) g.FillPolygon (b, pts);
-			}
-		}
-
 		void DrawCtl (Graphics g, Ctl c)
 		{
 			bool lit = Lit (c.Id);
@@ -382,17 +386,27 @@ namespace PocketTermSim
 			if (c.Kind == CtlKind.Round)
 			{
 				using (var b = new SolidBrush (lit ? Accent : Cap)) g.FillEllipse (b, c.R);
-				using (var f = F (3.4f * m, true)) Txt (g, c.Label, f, lit ? Color.White : Legend, c.R);
+				using (var f = F (c.R.Height * 0.52f, true)) Txt (g, c.Label, f, lit ? Color.White : Legend, c.R);
 			}
-			else if (c.Kind == CtlKind.Shoulder)
+			else if (c.Kind == CtlKind.PadArm)		// an arrow key of the D-pad
+			{
+				Fill (g, c.R, 1.8f * m, lit ? Accent : Cap);
+				float mx = c.R.X + c.R.Width / 2, my = c.R.Y + c.R.Height / 2, t = 1.3f * m;
+				int dx = c.Id == "Left" ? -1 : c.Id == "Right" ? 1 : 0, dy = c.Id == "Up" ? -1 : c.Id == "Down" ? 1 : 0;
+				var pts = new[] { new PointF (mx + dx * t, my + dy * t), new PointF (mx - dx * t * 0.6f + dy * t * 1.2f, my - dy * t * 0.6f + dx * t * 1.2f), new PointF (mx - dx * t * 0.6f - dy * t * 1.2f, my - dy * t * 0.6f - dx * t * 1.2f) };
+				using (var b = new SolidBrush (lit ? Color.White : Legend)) g.FillPolygon (b, pts);
+			}
+			else if (c.Kind == CtlKind.Pill)		// Select, Start: the name, the Fn legend above it
 			{
 				Fill (g, c.R, 1.6f * m, lit ? Accent : Cap);
-				using (var f = F (3.2f * m, true)) Txt (g, c.Label, f, lit ? Color.White : Legend, c.R);
-			}
-			else if (c.Kind == CtlKind.Pill)
-			{
-				Fill (g, c.R, c.R.Height / 2, lit ? Accent : Cap);
-				using (var f = F (Math.Max (8.5f, 1.9f * m), true)) Txt (g, c.Label, f, Dim, new RectangleF (c.R.X - 20, c.R.Bottom + 1, c.R.Width + 40, Math.Max (12, 4 * m)));
+				Chord layer = Dev.FnOf (c.Id);
+				bool fn = Dev.Active (Mod.Fn) && layer != null;
+				if (fn) Fit (g, Short (layer), c.R.Height * 0.42f, true, false, lit ? Color.White : AccentHi, c.R, c.R.Width - 4);
+				else
+				{
+					Fit (g, c.Label, c.R.Height * 0.4f, true, false, lit ? Color.White : Legend, new RectangleF (c.R.X, c.R.Y + c.R.Height * (layer != null ? 0.22f : 0), c.R.Width, c.R.Height * (layer != null ? 0.78f : 1)), c.R.Width - 4);
+					if (layer != null) Fit (g, Short (layer), Math.Max (7.5f, c.R.Height * 0.24f), true, false, lit ? Color.White : AccentHi, new RectangleF (c.R.X, c.R.Y + 1, c.R.Width, c.R.Height * 0.36f), c.R.Width - 4, StringAlignment.Center, StringAlignment.Near);
+				}
 			}
 			else DrawKey (g, c, lit);
 		}
@@ -408,21 +422,29 @@ namespace PocketTermSim
 			float rad = Math.Min (1.4f * L.Unit, c.R.Height / 4);
 			Fill (g, c.R, rad, body);
 			if (on) using (var p = Round (RectangleF.Inflate (c.R, -1, -1), rad)) using (var pen = new Pen (sticky == 2 ? Locked : Accent, 2)) g.DrawPath (pen, p);
-			float size = Math.Max (9, Math.Min (c.R.Height * 0.5f, c.R.Width * 0.42f)), room = c.R.Width - 6;
-			string label = d.Label;
-			if (d.Mod == Mod.None && d.Sym == 0 && d.Base != ' ' && !char.IsLetter (d.Base)) label = Dev.CharOf (d).ToString ();	// (a letter: its capital, as printed)
+			float size = Math.Max (9, Math.Min (c.R.Height * 0.46f, c.R.Width * 0.42f)), room = c.R.Width - 6;
+			string label = d.Label, corner = null;
+			bool shift = Dev.Active (Mod.Shift);
+			if (d.Mod == Mod.None && d.Sym == 0 && d.Base != ' ' && !char.IsLetter (d.Base))	// (a letter: its capital, as printed)
+			{
+				if (char.IsDigit (d.Base)) { label = Dev.CharOf (d).ToString (); corner = (shift ? d.Base : d.Shifted).ToString (); }	// the other one small, as printed
+				else label = shift ? d.Shifted.ToString () : d.Base + " " + d.Shifted;
+			}
 			bool small = layer != null && c.R.Height >= 22;
 			Color ink = lit || on ? Color.White : Legend;
 			if (fn && layer != null)			// the Fn layer shown: its legend takes the key
 			{
-				Fit (g, Short (layer.Text), Math.Min (size, c.R.Width * 0.3f), true, false, lit ? Color.White : AccentHi, c.R, room);
+				Fit (g, Short (layer), Math.Min (size, c.R.Width * 0.3f), true, false, lit ? Color.White : AccentHi, c.R, room);
 				return;
 			}
-			RectangleF main = small ? new RectangleF (c.R.X, c.R.Y + c.R.Height * 0.2f, c.R.Width, c.R.Height * 0.8f) : c.R;
-			Fit (g, label, size, false, d.Glyph, ink, main, room);
+			RectangleF main = small || corner != null ? new RectangleF (c.R.X, c.R.Y + c.R.Height * 0.22f, c.R.Width, c.R.Height * 0.78f) : c.R;
+			Fit (g, label, d.Mod != Mod.None || d.Sym != 0 && !d.Glyph ? Math.Min (size, c.R.Height * 0.36f) : size, false, d.Glyph, ink, main, room);
+			float tiny = Math.Max (7.5f, Math.Min (c.R.Height * 0.26f, c.R.Width * 0.23f));
+			if (corner != null && c.R.Height >= 22)
+				Fit (g, corner, tiny, false, false, lit ? Color.White : Dim, new RectangleF (c.R.X + 4, c.R.Y + 1, c.R.Width - 4, c.R.Height * 0.4f), room, StringAlignment.Near, StringAlignment.Near);
 			if (small)
-				Fit (g, Short (layer.Text), Math.Max (7.5f, Math.Min (c.R.Height * 0.3f, c.R.Width * 0.23f)), true, false, lit ? Color.White : AccentHi,
-				     new RectangleF (c.R.X, c.R.Y + 1, c.R.Width - 3, c.R.Height * 0.4f), room, StringAlignment.Far, StringAlignment.Near);
+				Fit (g, Short (layer), tiny, true, false, lit ? Color.White : AccentHi,
+				     new RectangleF (c.R.X, c.R.Y + 1, c.R.Width - 3, c.R.Height * 0.4f), corner != null ? room * 0.62f : room, StringAlignment.Far, StringAlignment.Near);
 			if (sticky == 2) using (var b = new SolidBrush (Locked)) g.FillEllipse (b, c.R.X + 4, c.R.Y + 4, 4, 4);
 		}
 	}
