@@ -214,6 +214,7 @@ static int run (int argc, char **argv)
 			m->gsp.usLists = m->gsp.usTransfers = m->gsp.usFills = m->gsp.usRaster = m->gsp.usRasterAside = 0;
 			m->gsp.hostTransfers = m->gsp.usHostTransfers = m->gsp.usGpu = m->gsp.gpuFrames = m->gsp.softFrames = 0; m->gsp.transfers = 0;
 			m->gsp.usRead = m->gsp.usShade = m->gsp.usAssemble = 0;
+			m->gsp.usGpuLoad = m->gsp.usGpuHash = m->gsp.usGpuCall = m->gsp.usGpuKeep = m->gsp.usGpuAfter = m->gsp.gpuCalls = 0;
 			m->gsp.vsVertices = m->gsp.vsChunks = m->gsp.usVsProgram = m->gsp.usVsRecord = m->gsp.vsKept = 0; m->gsp.vsNot[1] = m->gsp.vsNot[2] = m->gsp.vsNot[3] = 0;
 			m->gsp.vertices = m->gsp.trianglesDrawn = m->gsp.pixelsDrawn = m->gsp.shaderSteps = m->gsp.trianglesIn = 0;
 		}
@@ -257,6 +258,7 @@ static int run (int argc, char **argv)
 		 m->exited ? "ended" : "still running", n, (unsigned long long) m->now, (unsigned long long) m->svcCount,
 		 (unsigned long long) m->switchCount, (unsigned) m->mem.faults);
 	if (m->gpuDraw) fprintf (stderr, "the targets' frames: %llu drawn by the GPU (%.2f s with their copies), %llu by the software renderer%c", (unsigned long long) m->gsp.gpuFrames, (double) m->gsp.usGpu / 1e6, (unsigned long long) m->gsp.softFrames, 10);
+	if (m->gpuDraw) fprintf (stderr, "of the GPU's frames' time: %.2f s reading the buffer, %.2f s comparing with the last frames, %.2f s in the host's %llu calls, %.2f s keeping the picture, %.2f s after%c", (double) m->gsp.usGpuLoad / 1e6, (double) m->gsp.usGpuHash / 1e6, (double) m->gsp.usGpuCall / 1e6, (unsigned long long) m->gsp.gpuCalls, (double) m->gsp.usGpuKeep / 1e6, (double) m->gsp.usGpuAfter / 1e6, 10);
 	if (m->shaderCheck) fprintf (stderr, "the compiled vertex shaders: %llu vertices checked against the interpreter, %llu differ%c", (unsigned long long) m->gsp.shaderChecked, (unsigned long long) m->gsp.shaderWrong, 10);
 	if (m->gsp.vsChunks || m->gsp.vsNot[1] || m->gsp.vsNot[2] || m->gsp.vsNot[3])
 		fprintf (stderr, "the vertex shaders on the GPU: %llu vertices in %llu chunks, %llu programs (%llu instructions); left to the processor: %llu not specialized, %llu refused by the generator, %llu for want of room; %.2f s finding the programs (%llu by a kept specialization), %.2f s recording%c",

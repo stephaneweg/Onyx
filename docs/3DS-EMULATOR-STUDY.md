@@ -1041,6 +1041,45 @@ targets a frame, ~6 ms each -- the generated combiner programs, the copies in an
 (reading attributes 0.41, finding and recording the programs 0.41, the rest the registers, states and textures),
 the processor's emulation the rest. The next gains are there, not in the vertex shaders.
 
+## 9z. What a GPU frame costs (2026-10-11, measured on the Pi 4), and two things taken out of it
+
+n3dstest now says where a target's GPU frame goes (the core: the buffer read, the comparison with the last frames,
+the host's call, the picture kept; the host: its own part and the kernel's call), and the kernel's log has its
+own parts (`render2, a frame: clip, lists, GPU, target`).
+
+***A Link Between Worlds*' title** (600 calls in 7.4 s, two targets a frame): 4.9 ms a call -- in the kernel 0.2 ms
+clipping / copying the vertices, 0.4 ms building the lists, 0.26 ms copying the picture out, and **3.7 to 4.3 ms
+of GPU** on the top screen, 0.8 to 1.1 ms on the bottom one whatever it draws (29 vertices: the tiles loaded and
+stored, two jobs and their interrupts). With every batch's scissor one pixel (`Machine::vsDebug` 128: no fragment
+drawn) the calls take 1.68 s instead of 3.0: **the fragments are 1.3 s of the 7.4, what is not them 1.7 s.**
+
+**The early depth test tried and taken out.** The kernel never asks for it on the V3D 4.2 (`CfgBits`' early-Z
+bits are off): a hidden pixel runs its whole fragment shader before the depth test. A trial kernel turned it on
+for the batches whose fragment program neither discards nor writes the depth, in frames whose tests all go one
+way -- it applied (half the top screen's batches) and **changed nothing** in either game (3.03 s against 2.96 s;
+the pictures the same). Not kept: no gain shown, and one more thing to go wrong. (Worth another look with a game
+that draws back to front, and for the other emulators: gcemu, n64emu.)
+
+**Kept: a frame's clear is known.** *Super Mario 3D Land* fills its colour buffer at each frame; the fill made
+the host's copy of the target stale, so each frame began by putting the host's pixels into the program's buffer
+(just before the fill overwrote them) and then reading the cleared buffer back, pixel by pixel through the tiled
+order: 0.46 s of 10. Now a fill of a target's whole colour buffer (`picaAfterFill`) sets the host's pixels to that
+colour, and the store before it is dropped. And a frame that begins with a fill is not hashed for the
+"same frame as before" test (its start is the colour); the others are hashed as before.
+
+| VBlanks a second, Pi 4 | 9y | now |
+|---|---|---|
+| *Super Mario 3D Land*, level 1-1 | 60.5 | **66.1** |
+| *Super Mario 3D Land*, to the menu (2 700 frames) | 90.8 | **105.6** |
+| *A Link Between Worlds*, the title (no fill there) | 40.3 | 40.4 |
+
+The pictures: 3, 0 and 20 pixels of 192 000 from the references, as before.
+
+**What is left in a frame**, by size: the GPU's own time (the fragments; the fixed part of a call: ~1 ms -- the
+bottom screen pays it for almost nothing), the kernel's part of a call (~0.9 ms: the lists, the picture copied
+out), the fills themselves (Mario: 0.55 s of 9 -- the colour and the depth buffers of the program, written for the
+software renderer that does not run), the command lists' registers and states, the processor.
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours

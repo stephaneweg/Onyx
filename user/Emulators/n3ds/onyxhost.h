@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #include "appkit/appkit.h"
 #include "v3d/qpu.h"
 #include "v3d/shaders.h"
@@ -105,11 +106,12 @@ static void codeFresh (void)
 
 // ---- the V3D: a frame the core recorded (n3ds.h's GpuFrame) drawn by the kernel's GPU calls -- the programs made
 // (the stock vertex and coordinate shaders with the core's fragment shader), the textures given, one gpu_render3.
+static unsigned long long hostMicros (void) { struct timeval tv; gettimeofday (&tv, 0); return (unsigned long long) tv.tv_sec * 1000000ull + (unsigned long long) tv.tv_usec; }
 static int g_useGpu = 1, g_useVS = 1;		// (g_useVS 2: the vertex programs' batches not indexed)
 static unsigned g_vsDebug;			// (Machine::vsDebug)
 static int g_vsOn71;				// (the vertex programs on a V3D 7.1 too: not tried on a Pi 5 yet -- off unless asked)
 // (prog, vprog: 0 not made, -1 refused, else the kernel's handle + 1; their `last`: the frame that used them)
-static struct { int prog[256]; unsigned progLast[256]; int vprog[512]; unsigned vprogLast[512]; int tex[96]; unsigned texSerial[96]; bool texMade[96]; bool off; int said; unsigned calls, refused[4], replaced; } g_gpu;
+static struct { int prog[256]; unsigned progLast[256]; int vprog[512]; unsigned vprogLast[512]; int tex[96]; unsigned texSerial[96]; bool texMade[96]; bool off; int said; unsigned calls, refused[4], replaced; unsigned long long usPrep, usKernel, floats, batches; } g_gpu;
 // A program made. The kernel's table is full: the one used longest ago (not in this frame) gives its place.
 static int onyxProgram (const struct kapi_gpu_program *kp)
 {
@@ -126,6 +128,7 @@ static int onyxProgram (const struct kapi_gpu_program *kp)
 static bool onyxDraw (void *, const n3ds::GpuFrame *f, n3ds::u32 *pixels)
 {
 	g_gpu.calls++;
+	const unsigned long long tIn = hostMicros ();
 	if (g_gpu.off || f->nb > 2048 || f->nu > (1u << 18)) { g_gpu.refused[0]++; return false; }
 	static qpu::Prog vs, cs; static bool csMade;
 	static struct kapi_gpu_batch3 rb[2048];
@@ -186,6 +189,7 @@ static bool onyxDraw (void *, const n3ds::GpuFrame *f, n3ds::u32 *pixels)
 		o.b.first = b.nVerts;					// (an indexed batch's vertices: KAPI_GPU_B_INDEXED)
 		o.b.count = b.count; o.b.flags = b.flags; o.b.blend = b.blend; o.b.wmask = b.wmask;
 		for (int k = 0; k < 4; k++) o.b.scissor[k] = b.scissor[k];
+		if (g_vsDebug & 128) { o.b.scissor[0] = o.b.scissor[1] = 0; o.b.scissor[2] = o.b.scissor[3] = 1; }	// (to time what is not the fragments: one pixel drawn)
 		o.b.fsUni = 4 + b.uni; o.b.fsNUni = b.nUni;
 		for (int k = 0; k < 8; k++) { o.b.tex[k] = -1; o.b.texUni[k] = -1; }
 		for (int k = 0; k < 3; k++)
@@ -207,7 +211,9 @@ static bool onyxDraw (void *, const n3ds::GpuFrame *f, n3ds::u32 *pixels)
 		o.off = b.off; o.stride = b.stride;
 	}
 	struct kapi_gpu_frame fr = { pixels, f->w, f->h, f->w, 0, KAPI_GPU_F_KEEP | KAPI_GPU_F_ALPHA };
+	const unsigned long long tCall = hostMicros ();
 	const int ret = kapi_gpu_render3 (&fr, f->v, f->nFloats, rb, f->nb, ru, 4 + f->nu, 0);
+	g_gpu.usPrep += tCall - tIn; g_gpu.usKernel += hostMicros () - tCall; g_gpu.floats += f->nFloats; g_gpu.batches += f->nb;
 	if (ret != 0)
 	{
 		if (g_gpu.said++ < 4) fprintf (stderr, "gpu_render3: %d (%u batches, %u floats)%c", ret, (unsigned) f->nb, (unsigned) f->nFloats, 10);
@@ -218,7 +224,7 @@ static bool onyxDraw (void *, const n3ds::GpuFrame *f, n3ds::u32 *pixels)
 	return true;
 }
 
-static void gpuSay (void) { if (g_gpu.calls) fprintf (stderr, "the GPU was given %u frames; refused: %u too big or off, %u a program, %u a texture, %u the render; %u programs gave their place to another%c", g_gpu.calls, g_gpu.refused[0], g_gpu.refused[1], g_gpu.refused[2], g_gpu.refused[3], g_gpu.replaced, 10); }
+static void gpuSay (void) { if (g_gpu.calls) fprintf (stderr, "the GPU was given %u frames; refused: %u too big or off, %u a program, %u a texture, %u the render; %u programs gave their place to another; %.2f s preparing them, %.2f s in the kernel's call; %llu batches and %llu floats a frame%c", g_gpu.calls, g_gpu.refused[0], g_gpu.refused[1], g_gpu.refused[2], g_gpu.refused[3], g_gpu.replaced, (double) g_gpu.usPrep / 1e6, (double) g_gpu.usKernel / 1e6, g_gpu.batches / g_gpu.calls, g_gpu.floats / g_gpu.calls, 10); }
 static void (*g_atEnd) (void);
 // The machine set up for Onyx: one picture a screen, the GPU when there is one (g_useGpu), the free application cores.
 static void n3ds_onyx_setup (n3ds::Machine *m)

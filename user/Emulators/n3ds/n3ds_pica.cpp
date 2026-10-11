@@ -1967,6 +1967,8 @@ struct GRec
 	u32 color; int w, h; bool used, bad, hostValid;
 	Target t;
 	float *v; u32 nf; GpuBatch *b; u32 nb; u32 *u; u32 nu;
+	u64 pixId; bool pixIdOk;		// what `pixels` hold, as a number: their bytes hashed (when a frame needs it: pixIdOk), or a fill's
+						// colour -- a frame that begins with a fill is not hashed at all
 	u32 serial, vsSerial; u32 *pixels;	// (the state of its last batch: of the ordinary kind, with a vertex program)
 	u64 touched;				// (the frame it was last drawn into or transferred: an old one gives its place)
 	struct Past { u64 start, rec; u32 *out; size_t cap; } past[2]; int pastAt;	// its last two frames: what they began from and were made of (hashes), their pictures
@@ -2268,6 +2270,7 @@ static void gpuLoadHost (GRec *r)
 			readColor (t, t.color + tiled ((u32) x, (u32) y, (u32) t.w) * t.colorBytes, c);
 			r->pixels[y * t.w + x] = (u32) c[3] << 24 | (u32) c[0] << 16 | (u32) c[1] << 8 | (u32) c[2];
 		}
+	r->pixIdOk = false;
 }
 static void gpuStoreGuest (GRec *r)
 {
@@ -2315,6 +2318,8 @@ static GRec *gpuFrameEnd (Pica *p, u32 color)
 	{
 		const u64 t0 = microsNow ();
 		if (!r->hostValid) gpuLoadHost (r);
+		const u64 tA = microsNow ();
+		m->gsp.usGpuLoad += tA - t0;
 		// The GPU's depth buffer starts at 1, the far side of "less". A frame whose first depth test is "greater"
 		// has its buffer cleared to 0 by the program: its depths are mirrored (z -> -z, the tests turned round).
 		for (u32 i = 0; i < r->nb; i++)
@@ -2344,12 +2349,16 @@ static GRec *gpuFrameEnd (Pica *p, u32 color)
 		// uniforms and textures -- gives the same picture: taken back, the host's GPU not asked (a screen that
 		// does not move: the bottom one of many games, a pause, a menu; a call costs 3 ms and more).
 		const size_t outBytes = (size_t) r->w * (size_t) r->h * sizeof (u32);
-		u64 hStart = hashBytes (r->pixels, outBytes, 1469598103934665603ull);
+		if (!r->pixIdOk) { r->pixId = hashBytes (r->pixels, outBytes, 1469598103934665603ull); r->pixIdOk = true; }
+		const u64 hStart = r->pixId;
 		u64 hRec = hashBytes (r->b, sizeof (GpuBatch) * r->nb, (u64) r->nb * 31 + (u64) r->w);
 		hRec = hashBytes (r->u, sizeof (u32) * r->nu, hRec); hRec = hashBytes (r->v, sizeof (float) * r->nf, hRec);
 		for (u32 i = 0; i < r->nb; i++)
 			for (int k = 0; k < 3; k++)
 				if (r->b[i].tex[k] >= 0 && r->b[i].tex[k] < 96) hRec = (hRec ^ ((u64) texs[r->b[i].tex[k]].serial << 20 | (u64) r->b[i].tex[k])) * 1099511628211ull;
+		const u64 tB = microsNow ();
+		m->gsp.usGpuHash += tB - tA;
+		u64 tC = tB, tD = tB;
 		int same = -1;
 		for (int k = 0; k < 2; k++) if (r->past[k].out && r->past[k].cap >= outBytes && r->past[k].rec && r->past[k].start == hStart && r->past[k].rec == hRec) same = k;
 		bool ok;
@@ -2357,13 +2366,17 @@ static GRec *gpuFrameEnd (Pica *p, u32 color)
 		else
 		{
 			ok = m->gpuDraw (m->gpuUser, &f, r->pixels);
+			tC = microsNow (); m->gsp.usGpuCall += tC - tB; m->gsp.gpuCalls++;
 			GRec::Past &pa = r->past[r->pastAt & 1];
 			if (ok && pa.cap < outBytes) { free (pa.out); pa.out = (u32 *) malloc (outBytes); pa.cap = pa.out ? outBytes : 0; }
 			if (ok && pa.out) { memcpy (pa.out, r->pixels, outBytes); pa.start = hStart; pa.rec = hRec; r->pastAt ^= 1; }
 			else pa.start = pa.rec = 0;
+			tD = microsNow (); m->gsp.usGpuKeep += tD - tC;
 		}
+		if (same >= 0) tD = microsNow ();
 		if (ok)
 		{
+			r->pixIdOk = false;						// (another picture now)
 			r->hostValid = true; r->guestStale = true;		// (the program's buffer: only when something reads it)
 			if (!guardSet (p, color, (u32) (r->w * r->h) * (u32) r->t.colorBytes)) gpuGuestCurrent (r);
 			// its triangles leave the queue
@@ -2378,7 +2391,7 @@ static GRec *gpuFrameEnd (Pica *p, u32 color)
 			if (!keep) { if (p->stateCount > 1) { p->states[0] = p->states[p->stateCount - 1]; p->stateCount = 1; } queueEmptied (p); }
 			r->nf = r->nb = r->nu = 0; r->serial = r->vsSerial = 0;
 			r->trusted = true;
-			m->gsp.gpuFrames++; m->gsp.usGpu += microsNow () - t0;
+			{ const u64 tE = microsNow (); m->gsp.gpuFrames++; m->gsp.usGpu += tE - t0; m->gsp.usGpuAfter += tE - tD; }
 			return r;
 		}
 		r->bad = true;
@@ -2418,8 +2431,33 @@ void picaBeforeFill (Machine *m, u32 physStart, u32 physEnd)
 		for (int i = 0; i < GREC_MAX; i++)
 		{
 			GRec &r = p->grec[i];
-			if (r.used && r.color < physEnd && physStart < r.color + (u32) (r.w * r.h) * 4) { gpuGuestCurrent (&r); r.hostValid = false; }
+			if (!r.used || !(r.color < physEnd && physStart < r.color + (u32) (r.w * r.h) * 4)) continue;
+			// (the whole buffer is about to be filled: the host's pixels need not be put there first)
+			if (r.w && physStart <= r.color && physEnd >= r.color + (u32) (r.w * r.h) * (u32) r.t.colorBytes) r.guestStale = false;
+			else gpuGuestCurrent (&r);
+			r.hostValid = false;
 		}
+}
+// Memory was filled with one value of `width` bytes: a render target's whole colour buffer filled so (a frame's
+// clear) is known without reading it back -- the host's copy is that colour.
+void picaAfterFill (Machine *m, u32 physStart, u32 physEnd, int width)
+{
+	Pica *p = m->pica;
+	if (!p || !p->grec || !m->gpuDraw) return;
+	for (int i = 0; i < GREC_MAX; i++)
+	{
+		GRec &r = p->grec[i];
+		if (!r.used || !r.w || !r.pixels || !r.t.color || r.t.colorBytes != width) continue;
+		if (!(physStart <= r.color && physEnd >= r.color + (u32) (r.w * r.h) * (u32) r.t.colorBytes)) continue;
+		if (m->physPtr (r.color, 1) != r.t.color) continue;		// (the record's target is where it was)
+		int c[4];
+		readColor (r.t, r.t.color, c);
+		const u32 v = (u32) c[3] << 24 | (u32) c[0] << 16 | (u32) c[1] << 8 | (u32) c[2];
+		const u32 n = (u32) (r.w * r.h);
+		for (u32 k = 0; k < n; k++) r.pixels[k] = v;
+		r.pixId = ((u64) v ^ 0xF111C0105EEDull) * 1099511628211ull + n; r.pixIdOk = true;
+		r.hostValid = true; r.guestStale = false;
+	}
 }
 
 // Do queued triangles still draw into this texture's memory? (They are drawn first then: a picture rendered, then used.)

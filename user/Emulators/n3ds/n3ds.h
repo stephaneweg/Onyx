@@ -330,6 +330,7 @@ struct Machine
 		u64 vsVertices, vsChunks, vsPrograms, vsInstructions, vsNot[4];
 		u64 vsKept;				// ... chunks whose program was found by a kept specialization
 		u64 usVsProgram, usVsRecord;		// ... the host's time finding a chunk's program (its shader specialized), recording it
+		u64 usGpuLoad, usGpuHash, usGpuCall, usGpuKeep, usGpuAfter, gpuCalls;	// of usGpu: the buffer read into the host's pixels, the frame compared with the last ones, the host's call (how many), the picture kept, the queue and the guard after
 		u64 gpuFrames, softFrames, usGpu, skippedFrames;	// the targets' frames drawn by the host's GPU, by the software renderer; the host's time
 		u64 vertices, trianglesDrawn, pixelsDrawn, shaderSteps, trianglesIn;	// (shaderSteps: the vertex shader's instructions run; trianglesIn: before clipping and culling)
 	} gsp;
@@ -492,6 +493,7 @@ ShaderCode shaderCompile (ShaderJit **jit, const u32 *code, const u32 *opdesc, u
 void shaderJitReset (ShaderJit *jit);
 const void *shaderJitConsts (const ShaderJit *jit);
 void picaBeforeFill (Machine *m, u32 physStart, u32 physEnd);	// memory is about to be filled: what is queued for it is drawn first
+void picaAfterFill (Machine *m, u32 physStart, u32 physEnd, int width);
 bool picaBusy (const Machine *m);		// a list's triangles are being drawn aside
 bool picaDone (Machine *m);			// ... and the helpers have finished them
 bool picaGuestTouch (Machine *m, u32 va);	// the program reaches a buffer kept from it: finished, given back -> true
