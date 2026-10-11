@@ -20,6 +20,7 @@
 //   other W H T [F [X Y]] another program's window (pid 101 + n, a plain coloured canvas titled T, flags F, at
 //                   X, Y -- else placed by the server): the policy with two programs, the desktop's bands
 //   otherpic W H T FILE SX SY [F [X Y]]   the same, its canvas painted from a dump (FILE.elsm, from SX, SY): a real app's look
+//   pad MASK        a simulated gamepad's buttons held (see SimPad; 0: none held) -- the front program's alone
 //   othermenu SPEC  the latest "other" program's menus ('|' between the lines, '~' a tab): what the menu bar shows
 //   owin W H T      a second window of the latest "other" program (a dialog)
 //   oclose          the latest "other" program ended (its windows removed)
@@ -297,11 +298,35 @@ static void SimInjectMods (unsigned mods)
 #endif
 }
 
+// The modifiers of the key event being handled (the kernel gives a key handler the modifiers held when the key was
+// typed -- kapi_get_modifiers; the stand-in kernel's own were always 0: a handler that asks "is Ctrl held" saw none).
+static unsigned s_nEvMods;
+static unsigned SimGetMods (void) { return s_nEvMods; }
+// A SIMULATED GAMEPAD (the script's "pad MASK": the buttons held, 1 A, 2 B, 4 X, 8 Y, 16 L, 32 R, 64 Select, 128 Start,
+// 256 Home, 0x1000 up, 0x2000 right, 0x4000 down, 0x8000 left): pad 0, a model no table knows -- its layout is the
+// test's SD:/etc/gamepad.ini [default] (a = 1 ... home = 9, dpad = hat) --, its buttons given only to the program that
+// has the keys, as the kernel does.
+static unsigned s_nPad; static bool s_bPad;
+static int SimPad (int i, struct kapi_pad *p)
+{
+	if (!s_bPad || i != 0 || p == 0) return 0;
+	memset (p, 0, sizeof *p);
+	p->vid = 0x1234; p->pid = 0x5678; p->props = 0; p->seq = 1;
+	p->focus = el_core_focus_pid () == APP_PID ? 1 : 0;
+	p->nbuttons = 12; p->buttons = s_nPad & 0x1FF;
+	p->nhats = 1;
+	unsigned d = s_nPad >> 12;			// up 1, right 2, down 4, left 8
+	p->hats[0] = d == 1 ? 0 : d == 3 ? 1 : d == 2 ? 2 : d == 6 ? 3 : d == 4 ? 4 : d == 12 ? 5 : d == 8 ? 6 : d == 9 ? 7 : 8;
+	return 1;
+}
+
 static void Init (void)
 {
 	if (s_bInit) return;
 	s_bInit = true;
 	TKApiTable *T = (TKApiTable *) KAPI_TABLE_VA;
+	T->get_modifiers = SimGetMods;
+	T->pad_state = SimPad;
 	T->inject_key = SimInjectKey; T->inject_modifiers = SimInjectMods;
 	s_pShouldExit = T->should_exit; T->should_exit = SimShouldExit;
 	T->getpid = SimGetpid;
@@ -369,7 +394,9 @@ extern "C" void sim_server_turn (void)
 	for (auto &e : q)
 	{
 		if (bTrace) fprintf (stderr, "server_sim: event %d value 0x%llx to window %llu\n", e.event, (unsigned long long) e.value, (unsigned long long) e.sender);
+		s_nEvMods = e.mods & 7;
 		if (e.handler != 0) ((gui_handler) e.handler) ((unsigned long) e.sender, e.event, (gui_value) e.value);
+		s_nEvMods = 0;
 	}
 	el_core_compose (s_pScreen, s_nW, s_nH, 0);
 }
@@ -610,6 +637,7 @@ extern "C" int sim_server_step (const char *st)
 		ws_route_key (keys, s_nMods);
 		return 1;
 	}
+	if (!strcmp (cmd, "pad")) { sscanf (st, "%*s %255s", arg); s_nPad = (unsigned) strtoul (arg, 0, 0); s_bPad = true; return 1; }
 	if (!strcmp (cmd, "mods"))				// (8: Super -- the policy's only, as serve.cpp does)
 	{
 		sscanf (st, "%*s %d", &a); s_nMods = (unsigned) a; el_core_modifiers (s_nMods & 7);

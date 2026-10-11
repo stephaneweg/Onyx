@@ -466,6 +466,7 @@ void Root::keyEvent (unsigned long sender, int ev, gui_value v)
 	if (r == 0 || ev != GUI_EVENT_KEY) return;
 	active () = r;
 	if (Menu::current () && Menu::current ()->shortcut (v)) return;	// menu shortcuts first
+	if (internal::key_first (r, v)) return;				// (pocket, console: Prev / Next -- L / R -- the window's tabs)
 	if (!r->handleKey (v)) internal::key_fallback (r, v);	// (P6, pocket and console: the arrows, L1 / R1)
 }
 

@@ -18,6 +18,16 @@
 #include "uikit/textbox.h"
 #include "uikit/port/port.h"
 #include "appkit/appkit.h"
+#include "inputkit/inputkit.h"		// the actions: a key and a pad's button are one input (the navigation)
+#ifdef ONYX_LIB_BUILD
+#include "lib.h"
+extern "C" {
+const void *onyx_inputkit_table;			// the import stubs' table (lib/inputkit_stubs.o, linked in)
+const TLibImports *onyx_lib_imports (void);		// (librt.cpp: what the program gave this library)
+}
+#else
+#include "inputkit/inputkit.cpp"		// (a PC build: InputKit's code is in the program, as SystemKit's)
+#endif
 
 namespace uikit {
 
@@ -234,33 +244,133 @@ static bool shown (Widget *w)
 static Widget *leaf (Widget *w);
 static Widget *modal_or (Widget *r);
 
+// InputKit is there (the shared library: opened the first time; a PC build: its code is in the program).
+static bool in_ready ()
+{
+#ifdef ONYX_LIB_BUILD
+	static bool tried;
+	if (onyx_inputkit_table == 0 && !tried)
+	{
+		tried = true;
+		int err = 0;
+		const TLibHeader *t = (const TLibHeader *) kapi_lib_open ("inputkit", 1, &err);
+		if (t != 0)
+		{
+			TLibImports imp = *onyx_lib_imports ();
+			imp.size = sizeof imp; imp.ndata = 0; imp.data = 0;
+			if (t->init (&imp) >= 0) onyx_inputkit_table = t;
+		}
+	}
+	return onyx_inputkit_table != 0;
+#else
+	return true;
+#endif
+}
+
+// The window's tabs (else its sections) stepped: the owner of the highest priority -- a TabStrip, a navigation
+// SidePanel -- of this Root.
+static bool nav_step (Root *r, int dir)
+{
+	NavOwner *best = 0;
+	for (int i = 0; i < 16; i++)
+		if (s_nav[i].w && root_of (s_nav[i].w) == r && shown (s_nav[i].w) && (best == 0 || s_nav[i].prio > best->prio)) best = &s_nav[i];
+	return best && best->step && best->step (best->w, dir);
+}
+
+// An ACTION of InputKit that no control took, whatever it came from -- a key or a pad's button: Prev / Next the
+// window's tabs or sections, Alt2 the focused control's context menu (a right click at its middle, where there is no
+// pointer), the directions the focus.
+static bool nav_action (Root *r, int action)
+{
+	switch (action)
+	{
+	case IN_PREV: return nav_step (r, -1);
+	case IN_NEXT: return nav_step (r, 1);
+	case IN_ALT2:
+		{
+			Widget *f = leaf (modal_or (r));
+			if (f == 0) return false;
+			int x, y; abs_pos (f, &x, &y);
+			x += f->width / 2; y += f->height / 2;
+			r->handleMouse (x, y, false, true, false, 0);
+			r->handleMouse (x, y, false, false, false, 0);
+			return true;
+		}
+	case IN_UP: return uk_focus_move (r, 0, -1);
+	case IN_DOWN: return uk_focus_move (r, 0, 1);
+	case IN_LEFT: return uk_focus_move (r, -1, 0);
+	case IN_RIGHT: return uk_focus_move (r, 1, 0);
+	}
+	return false;
+}
+
+// A key BEFORE the controls see it (Root::keyEvent; pocket and console): Prev / Next -- Ctrl+Page Up / Down,
+// Ctrl+(Shift+)Tab, whatever SD:/etc/input.ini binds -- step the window's tabs even while a view that takes every key
+// (a terminal, an editor) has the focus. Not under a modal dialog.
+bool key_first (Root *r, long k)
+{
+	if (!ring_on () || r == 0 || !in_ready ()) return false;
+	int a = in_key_action ((int) k, kapi_get_modifiers ());
+	if (a != IN_PREV && a != IN_NEXT) return false;
+	for (Widget *n = r->lastChild; n; n = n->prevSib) if (n->modal) return false;
+	return nav_step (r, a == IN_PREV ? -1 : 1);
+}
+
+} // namespace internal
+
+// Prev / Next as a key (uikit/adapt.h): the window's tabs stepped, in every mode -- for a program that hands its keys to
+// its view itself (the Terminal).
+bool uk_nav_key (Root *r, long key)
+{
+	if (r == 0 || !internal::in_ready ()) return false;
+	int a = in_key_action ((int) key, kapi_get_modifiers ());
+	if (a != IN_PREV && a != IN_NEXT) return false;
+	for (Widget *n = r->lastChild; n; n = n->prevSib) if (n->modal) return false;
+	return internal::nav_step (r, a == IN_PREV ? -1 : 1);
+}
+
+namespace internal {
+
 bool key_fallback (Root *r, long k)
 {
 	if (!ring_on ()) return false;				// (the desktop: nothing more than today)
 	unsigned mods = kapi_get_modifiers ();
-	if (k == KEY_F1 + 9 && (mods & MOD_SHIFT))		// Shift+F10 (a handheld's Y): the focused control's context
-	{							// menu -- a right click at its middle, where there is no pointer
-		Widget *f = leaf (modal_or (r));
-		if (f == 0) return false;
-		int x, y; abs_pos (f, &x, &y);
-		x += f->width / 2; y += f->height / 2;
-		r->handleMouse (x, y, false, true, false, 0);
-		r->handleMouse (x, y, false, false, false, 0);
-		return true;
-	}
-	if ((k == KEY_PGUP || k == KEY_PGDN) && (mods & MOD_CTRL))	// L1 / R1: the window's tabs, else its sections
-	{
-		NavOwner *best = 0;
-		for (int i = 0; i < 16; i++)
-			if (s_nav[i].w && root_of (s_nav[i].w) == r && shown (s_nav[i].w) && (best == 0 || s_nav[i].prio > best->prio)) best = &s_nav[i];
-		return best && best->step && best->step (best->w, k == KEY_PGUP ? -1 : 1);
-	}
+	int a = in_ready () ? in_key_action ((int) k, mods) : -1;
+	if (a == IN_ALT2 || a == IN_PREV || a == IN_NEXT) return nav_action (r, a);
 	if ((k == KEY_PGUP || k == KEY_PGDN) && sheet_scroll (r, 0, k == KEY_PGUP ? r->height * 3 / 4 : -r->height * 3 / 4)) return true;
-	if (k == KEY_UP) return uk_focus_move (r, 0, -1);
+	if (a >= IN_UP && a <= IN_RIGHT) return nav_action (r, a);
+	if (k == KEY_UP) return uk_focus_move (r, 0, -1);	// (the arrows themselves, whatever the file binds)
 	if (k == KEY_DOWN) return uk_focus_move (r, 0, 1);
 	if (k == KEY_LEFT) return uk_focus_move (r, -1, 0);
 	if (k == KEY_RIGHT) return uk_focus_move (r, 1, 0);
 	return false;
+}
+
+// THE PAD (each turn of the front Root): InputKit's events -- only the program that has the keys gets them -- acted
+// on as the keys they stand for, so that every control answers a pad as it answers the keyboard: the directions are
+// the arrows, Accept Enter, Back Esc, Alt1 Delete (what no control takes: the focus moves); Prev / Next step the tabs;
+// Alt2 is the context menu. Not in a program whose pad is its own: one that reads InputKit's state (in_claimed), or
+// whose app.txt says a game (in_app_owns_pad: the programs still on gamepad.h).
+static void pad_turn (Root *r)
+{
+	static int own = -1;
+	if (r == 0 || r != Root::current () || !in_ready ()) return;
+	if (own < 0) own = in_app_owns_pad (0);
+	if (own || in_claimed ()) return;
+	struct in_event ev[8];
+	int n = in_poll (ev, 8);
+	for (int i = 0; i < n; i++)
+	{
+		if (ev[i].kind == IN_RELEASE) continue;
+		int a = ev[i].action;
+		long key = a == IN_UP ? KEY_UP : a == IN_DOWN ? KEY_DOWN : a == IN_LEFT ? KEY_LEFT : a == IN_RIGHT ? KEY_RIGHT
+			 : a == IN_ACCEPT ? KEY_ENTER : a == IN_BACK ? 27 : a == IN_ALT1 ? KEY_DEL : 0;
+		bool modal = false;
+		for (Widget *m = r->lastChild; m; m = m->prevSib) if (m->modal) modal = true;
+		if ((a == IN_PREV || a == IN_NEXT) && !modal && nav_step (r, a == IN_PREV ? -1 : 1)) { r->invalidate (true); continue; }
+		if (key != 0 && r->handleKey (key)) continue;
+		if (ring_on () || key == 0) nav_action (r, a);
+	}
 }
 
 // ---- the focus ring --------------------------------------------------------------------------------------------
@@ -312,6 +422,7 @@ void redraw_soon (Widget *w) { s_later = root_of (w); }
 void root_tick (Root *r)
 {
 	if (s_later) { Root *l = s_later; s_later = 0; l->invalidate (true); }
+	pad_turn (r);
 	if (!ring_on () || r == 0) return;
 	static Root *s_r; static int s_x = -1, s_y, s_w, s_h, s_type = -2;
 	Widget *f = leaf (modal_or (r));
@@ -375,5 +486,8 @@ bool uk_focus_move (Widget *root, int dx, int dy)
 	best->invalidate (true);
 	return true;
 }
+
+// The pad's actions for a program that runs its own loop (uikit/adapt.h): what Root::step does each turn.
+void uk_input_turn (Root *root) { internal::pad_turn (root); }
 
 } // namespace uikit

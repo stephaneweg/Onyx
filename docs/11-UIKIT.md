@@ -73,7 +73,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 954 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 956 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -442,6 +442,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_set_input_type` | any widget that takes text (a Textbox, a terminal's view...) | `adapt.h` |
 | `uk_input_type` | UK_IN_* (a Textbox with `password` set: UK_IN_PASSWORD; else UK_IN_TEXT) | `adapt.h` |
 | `uk_focus_move` | The focus moved from the focused control of root's tree to the nearest focusable one in that direction (dx, dy | `adapt.h` |
+| `uk_nav_key` |  | `adapt.h` |
+| `uk_input_turn` | A program with a loop of its own (pump_events, no Root::run / step) calls this each turn | `adapt.h` |
 | `icon_load` | The picture of a file (new[] | `bmp.h` |
 | `bmp_decode` | (the name the programs knew | `bmp.h` |
 | `Calendar` | uikit/calendar.h -- Calendar | `calendar.h` |
@@ -1806,6 +1808,21 @@ The focus moved from the focused control of root's tree to the nearest focusable
 
 ```cpp
 bool uk_focus_move (Widget *root, int dx, int dy);
+```
+
+### the actions (InputKit: inputkit/inputkit.h)
+
+UIKit takes its navigation from InputKit's ACTIONS, whatever they come from -- a key or a pad's button (SD:/etc/ input.ini): the directions move the focus, Accept / Back are Enter / Esc, Prev / Next (L / R, Ctrl+Page Up / Down, Ctrl+Tab) step the window's tabs -- a TabStrip, else a navigation SidePanel's sections --, Alt2 (Y, Shift+F10) is the focused control's context menu. A Root does it by itself: an app has nothing to write. A pad acts only on the program that has the keys, and never in a program whose pad is its own (a game: InputKit's in_claimed, app.txt). A program that gives its keys to a view itself (no Root::keyEvent) calls uk_nav_key first: -> true, the key was Prev / Next and the tabs were stepped.
+
+```cpp
+class Root;
+bool uk_nav_key (Root *root, long key);
+```
+
+A program with a loop of its own (pump_events, no Root::run / step) calls this each turn: the pad's actions acted on, as Root::step does.
+
+```cpp
+void uk_input_turn (Root *root);
 ```
 
 ### the console's shoulders

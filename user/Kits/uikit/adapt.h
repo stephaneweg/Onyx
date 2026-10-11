@@ -77,6 +77,20 @@ int  uk_input_type (Widget *w);		// UK_IN_* (a Textbox with `password` set: UK_I
 // -1, 0, 1) -> true moved. UIKit does it itself with the arrows nobody took, in pocket and console.
 bool uk_focus_move (Widget *root, int dx, int dy);
 
+// ---- the actions (InputKit: inputkit/inputkit.h) -----------------------------------------------------------------
+// UIKit takes its navigation from InputKit's ACTIONS, whatever they come from -- a key or a pad's button (SD:/etc/
+// input.ini): the directions move the focus, Accept / Back are Enter / Esc, Prev / Next (L / R, Ctrl+Page Up / Down,
+// Ctrl+Tab) step the window's tabs -- a TabStrip, else a navigation SidePanel's sections --, Alt2 (Y, Shift+F10) is the
+// focused control's context menu. A Root does it by itself: an app has nothing to write. A pad acts only on the
+// program that has the keys, and never in a program whose pad is its own (a game: InputKit's in_claimed, app.txt).
+// A program that gives its keys to a view itself (no Root::keyEvent) calls uk_nav_key first: -> true, the key was
+// Prev / Next and the tabs were stepped.
+class Root;
+bool uk_nav_key (Root *root, long key);
+// A program with a loop of its own (pump_events, no Root::run / step) calls this each turn: the pad's actions acted on,
+// as Root::step does.
+void uk_input_turn (Root *root);
+
 // ---- the console's shoulders -------------------------------------------------------------------------------------
 // L1 / R1 (on a keyboard: Ctrl+Page Up / Ctrl+Page Down) step through the window's tabs, else through its navigation
 // SidePanel's sections; L2 / R2 (Page Up / Page Down) page a list. The pad's buttons are given these keys by the

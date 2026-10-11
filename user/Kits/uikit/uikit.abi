@@ -957,3 +957,5 @@
 951 _ZN5uikit12uk_pad_glyphERNS_6CanvasEiiiib
 952 _ZN5uikit12uk_pad_hintsERNS_6CanvasEiiiPKNS_9UkPadHintEijb
 953 _ZN5uikit7ToolBar7setFlexEPNS_6WidgetEii
+954 _ZN5uikit10uk_nav_keyEPNS_4RootEl
+955 _ZN5uikit13uk_input_turnEPNS_4RootE
