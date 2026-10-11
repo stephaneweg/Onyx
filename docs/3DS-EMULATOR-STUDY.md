@@ -990,6 +990,57 @@ count); strips and fans; small draws. **The Pi 5's kernel is built but was not r
 has no "separate blocks" bit in the shader record -- to be checked on the machine: **on a V3D 7.1 the vertex
 shaders stay on the processor unless `n3dsemu --vs` asks** (`g_vsOn71` in onyxhost.h).
 
+## 9y. After S5 (2026-10-11): a chunk's program found without making its list again; what was not done, and why
+
+**The specialization kept** (n3ds_pica.cpp: `SpecTpl`, `Replay`). Finding a chunk's program cost 0.5 s of 10: the
+shader was specialized again at every chunk -- run on the first vertex with every value's "the draw's / the
+vertex's" followed, its list built, the list hashed. Now the first specialization for a shader (its code, entry,
+boolean and integer uniforms) and a set of known inputs **notes what it took**: where each of the list's constants
+came from (an operand's value, a register, an output, at which instruction), what each flow instruction was
+decided, and the known comparison results the list was given. The next chunk with the same key runs the shader
+**plainly** on its first vertex, taking the constants at the same places; a condition that was the draw's must
+come out the same, the instructions' count, the index registers' use and the noted results too -- else the whole
+specialization is done again (and noted). The list being the same, its vertex program is found by the fragment
+program, the outputs' meanings and the lighting's configuration (six a kept specialization). A shader that could
+not be specialized (a skinned mesh) is remembered too: its chunks go straight to the processor. A lighting
+table's fit is now found by the table's contents hashed only when the table was written. 93 % of the chunks are
+found so in both games.
+
+Two smaller things: which components have one value in a chunk is found by gathering the bits that differ (not a
+comparison a component); a draw's attribute layout (the loaders' registers) is worked out once a draw, not once a
+vertex.
+
+**Checked** (`N3DS_VSCHECK=1`: every followed specialization compared with the whole one -- its constants, bit
+for bit): *A Link Between Worlds* 27 264 chunks, *Super Mario 3D Land* 44 156 (up to the first level): **none differ**.
+
+**On the Pi 4** (the same day's build, one application core; VBlanks a second):
+
+| | vertex shaders on the processor | on the V3D (9x) | + this |
+|---|---|---|---|
+| *Super Mario 3D Land*, level 1-1 | 55.8 | 59.1 | **60.5** |
+| *A Link Between Worlds*, the title | 33.7 (31.4 in 9x's session) | 35.8 | **40.3** |
+
+(finding the programs: 0.51 s -> 0.32 s of Mario's 10, 0.49 s -> 0.29 s of Zelda's 7.5; the pictures as before:
+3 and 20 pixels of 192 000.) The measures vary by a few per cent from one session to another (Zelda's baseline:
+31.4 then 33.7).
+
+**Not done, measured first.**
+- *The no-operations in the generated code* (a third of a program; one ALU an instruction). What the V3D spends
+  on the generated vertex shaders is at most the difference between its frames' time with them and with the
+  stock ones: Mario 3.23 s against 3.00 s of 10, Zelda 3.69 s against 3.93 s -- less. Packing the code would win
+  under 1 %; a scheduler in the generator (and accumulators for short-lived values, the V3D 4.2's two
+  register-file reads an instruction) is real work with a fault only the hardware would show (as 9x's VPM
+  block). Left.
+- *The skinned meshes* (18 % of Mario's vertices, 11 % of Zelda's: the bone's index is the vertex's). The V3D
+  has no indexed uniform read: a program would carry every bone's matrix and choose by comparisons, or a mesh be
+  cut by bone (a triangle across two bones cannot be). Their whole cost on the processor today is the shading:
+  0.22 s of 10 (Mario), 0.09 s of 7.5 (Zelda) -- 2 % at best. Left.
+
+**Where the time is now** (Zelda's title, 7.45 s for 300 frames): the V3D's frames 3.7 s (the fragments: two
+targets a frame, ~6 ms each -- the generated combiner programs, the copies in and out), the command lists 2.0 s
+(reading attributes 0.41, finding and recording the programs 0.41, the rest the registers, states and textures),
+the processor's emulation the rest. The next gains are there, not in the vertex shaders.
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours

@@ -214,7 +214,7 @@ static int run (int argc, char **argv)
 			m->gsp.usLists = m->gsp.usTransfers = m->gsp.usFills = m->gsp.usRaster = m->gsp.usRasterAside = 0;
 			m->gsp.hostTransfers = m->gsp.usHostTransfers = m->gsp.usGpu = m->gsp.gpuFrames = m->gsp.softFrames = 0; m->gsp.transfers = 0;
 			m->gsp.usRead = m->gsp.usShade = m->gsp.usAssemble = 0;
-			m->gsp.vsVertices = m->gsp.vsChunks = m->gsp.usVsProgram = m->gsp.usVsRecord = 0; m->gsp.vsNot[1] = m->gsp.vsNot[2] = m->gsp.vsNot[3] = 0;
+			m->gsp.vsVertices = m->gsp.vsChunks = m->gsp.usVsProgram = m->gsp.usVsRecord = m->gsp.vsKept = 0; m->gsp.vsNot[1] = m->gsp.vsNot[2] = m->gsp.vsNot[3] = 0;
 			m->gsp.vertices = m->gsp.trianglesDrawn = m->gsp.pixelsDrawn = m->gsp.shaderSteps = m->gsp.trianglesIn = 0;
 		}
 		unsigned b = 0; bool down = false; int tx = 0, ty = 0;
@@ -259,14 +259,14 @@ static int run (int argc, char **argv)
 	if (m->gpuDraw) fprintf (stderr, "the targets' frames: %llu drawn by the GPU (%.2f s with their copies), %llu by the software renderer%c", (unsigned long long) m->gsp.gpuFrames, (double) m->gsp.usGpu / 1e6, (unsigned long long) m->gsp.softFrames, 10);
 	if (m->shaderCheck) fprintf (stderr, "the compiled vertex shaders: %llu vertices checked against the interpreter, %llu differ%c", (unsigned long long) m->gsp.shaderChecked, (unsigned long long) m->gsp.shaderWrong, 10);
 	if (m->gsp.vsChunks || m->gsp.vsNot[1] || m->gsp.vsNot[2] || m->gsp.vsNot[3])
-		fprintf (stderr, "the vertex shaders on the GPU: %llu vertices in %llu chunks, %llu programs (%llu instructions); left to the processor: %llu not specialized, %llu refused by the generator, %llu for want of room; %.2f s finding the programs, %.2f s recording%c",
+		fprintf (stderr, "the vertex shaders on the GPU: %llu vertices in %llu chunks, %llu programs (%llu instructions); left to the processor: %llu not specialized, %llu refused by the generator, %llu for want of room; %.2f s finding the programs (%llu by a kept specialization), %.2f s recording%c",
 			 (unsigned long long) m->gsp.vsVertices, (unsigned long long) m->gsp.vsChunks, (unsigned long long) m->gsp.vsPrograms, (unsigned long long) m->gsp.vsInstructions,
-			 (unsigned long long) m->gsp.vsNot[1], (unsigned long long) m->gsp.vsNot[2], (unsigned long long) m->gsp.vsNot[3], (double) m->gsp.usVsProgram / 1e6, (double) m->gsp.usVsRecord / 1e6, 10);
+			 (unsigned long long) m->gsp.vsNot[1], (unsigned long long) m->gsp.vsNot[2], (unsigned long long) m->gsp.vsNot[3], (double) m->gsp.usVsProgram / 1e6, (unsigned long long) m->gsp.vsKept, (double) m->gsp.usVsRecord / 1e6, 10);
 	if (m->vsCheck)
-		fprintf (stderr, "the vertex programs against the processor's path: %llu vertices checked in %llu chunks (%.1f inputs, %.0f uniforms a chunk; %llu programs, %llu instructions), %llu differ, %llu by the lighting alone; not made: %llu vertices not specialized, %llu refused, %llu no room, %llu without a GPU state%c",
+		fprintf (stderr, "the vertex programs against the processor's path: %llu vertices checked in %llu chunks (%.1f inputs, %.0f uniforms a chunk; %llu programs, %llu instructions), %llu differ, %llu by the lighting alone; not made: %llu vertices not specialized, %llu refused, %llu no room, %llu without a GPU state; the kept specializations followed again: %llu compared with the whole one, %llu differ%c",
 			 (unsigned long long) m->vsStat.checked, (unsigned long long) m->vsStat.chunks, m->vsStat.chunks ? (double) m->vsStat.inputs / (double) m->vsStat.chunks : 0.0, m->vsStat.chunks ? (double) m->vsStat.uniforms / (double) m->vsStat.chunks : 0.0,
 			 (unsigned long long) m->gsp.vsPrograms, (unsigned long long) m->gsp.vsInstructions, (unsigned long long) m->vsStat.wrong, (unsigned long long) m->vsStat.wrongLit,
-			 (unsigned long long) m->vsStat.notVerts[1], (unsigned long long) m->vsStat.notVerts[2], (unsigned long long) m->vsStat.notVerts[3], (unsigned long long) m->vsStat.noState, 10);
+			 (unsigned long long) m->vsStat.notVerts[1], (unsigned long long) m->vsStat.notVerts[2], (unsigned long long) m->vsStat.notVerts[3], (unsigned long long) m->vsStat.noState, (unsigned long long) m->vsStat.tplChecked, (unsigned long long) m->vsStat.tplWrong, 10);
 	if (m->monoOnly) fprintf (stderr, "one picture a screen: %llu draws of the right eye left out%c", (unsigned long long) m->gsp.eyeDraws, 10);
 	if (m->helpers) fprintf (stderr, "the rasterizer has %d other core%s: %.2f s of its time while the program went on%c", m->helpers, m->helpers > 1 ? "s" : "", (double) m->gsp.usRasterAside / 1e6, 10);
 	fprintf (stderr, "the GPU's share: %.2f s in command lists, %.2f s in transfers, %.2f s in fills%c", (double) m->gsp.usLists / 1e6, (double) m->gsp.usTransfers / 1e6, (double) m->gsp.usFills / 1e6, 10);

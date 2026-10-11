@@ -112,6 +112,10 @@ struct Pica
 	// the GPU's frames: the programs made (by configuration), a record a render target, the states' numbering
 	struct GProg *gprog; u32 gprogCount;
 	struct VProg *vprog; u32 vprogCount;		// ... and the vertex programs (a draw's shader on the GPU)
+	struct SpecTpl *tpl;				// the specializations kept (what a chunk's program is found by, without making its list again)
+	struct Replay *replay;				// (a kept specialization being followed by the running shader, or 0)
+	bool specCodeDirty; u64 specCodeHash;		// the shader's code and descriptors as one number (worked out when they changed)
+	u32 lutEpoch[24];				// each lighting table's changes, counted
 	struct GRec *grec;
 	u32 stateSerial;
 	bool frameSkipped;				// (the frame whose transfer is being asked was left out)
@@ -288,12 +292,26 @@ static inline bool shaderArith (u32 op, u32 shape, V4 s1, V4 s2, V4 s3, V4 &v)
 	return true;
 }
 
+// A specialization kept (SpecTpl below) and followed again: the shader is run plainly on the chunk's first vertex --
+// each flow instruction as it was decided then (a condition that was the draw's must come out the same), the
+// constants taken where they were taken then -- and nothing else is worked out: the list is the same.
+struct SpecCap { u32 step; u8 kind, a; u16 slot; };		// at arithmetic instruction `step`: 0 operand a's value, 1 register a, 2 output a -> constant `slot`;
+								// 3 output a at the end; 4 the comparison's results must be a's (bit 2i: checked, 2i + 1: its value)
+struct SpecFlowRec { u8 both, cond, known, flags; };		// a flow instruction: what specFlow said, the condition (checked when `known`), results to check (as 4's)
+struct Replay
+{
+	const SpecCap *cap; u32 nCap, at; const SpecFlowRec *flow; u32 nFlow, atFlow;
+	u64 idxHash; u32 steps; bool fail; float (*consts)[4];
+};
+struct SpecRec { SpecCap cap[1200]; u32 nCap; SpecFlowRec flow[1024]; u32 nFlow; bool over; };
+static inline bool replayFlags (const struct Shader &s, u8 flags);
 struct Spec;
 static int specFlow (Pica *p, const struct Shader &s, u32 op, u32 ins, u32 pc, bool cond, int depth);
 static void specPop (Pica *p, int depth, u32 endPc, u32 retPc);
 static void specAt (Pica *p, u32 pc, int depth);
 static void specEnd (Pica *p);
 static void specStep (Pica *p, const struct Shader &s, const struct ShaderIns &I, u32 pcOf, u32 r1, u32 r2, u32 r3, V4 s1, V4 s2);
+static int specFlowRec (Pica *p, const struct Shader &s, u32 op, u32 ins, u32 pc, bool cond, int depth);
 
 static void runShader (Pica *p, Shader &s, u32 entry, u64 &stepsOut, u32 &badOp)
 {
@@ -342,7 +360,16 @@ static void runShader (Pica *p, Shader &s, u32 entry, u64 &stepsOut, u32 &badOp)
 				switch (ins >> 22 & 3) { case 0: cond = x || y; break; case 1: cond = x && y; break; case 2: cond = x; break; default: cond = y; break; }
 			}
 			else if (op == 0x26 || op == 0x27 || op == 0x2D) cond = (p->bu >> (ins >> 22 & 15) & 1) != 0;	// ...U: on a boolean uniform
-			const int both = p->spec ? specFlow (p, s, op, ins, pc, cond, depth) : 0;
+			int both;
+			if (p->replay)
+			{
+				Replay &rp = *p->replay;
+				if (rp.atFlow >= rp.nFlow) { rp.fail = true; return; }
+				const SpecFlowRec &f = rp.flow[rp.atFlow++];
+				if ((f.known && (f.cond != 0) != cond) || (f.flags && !replayFlags (s, f.flags))) { rp.fail = true; return; }
+				both = f.both;
+			}
+			else both = p->spec ? specFlowRec (p, s, op, ins, pc, cond, depth) : 0;
 			if (both == 1) cond = true;
 			if (both == 3) continue;					// (a jump on a vertex's comparison: its block is run, guarded)
 			if (both == 2) { stack[depth++] = { dst + num, dst + num, 0, 0, 0 }; stack[depth++] = { dst, dst, 0, 0, 0 }; continue; }	// [pc, dst) then [dst, dst + num)
@@ -378,6 +405,21 @@ static void runShader (Pica *p, Shader &s, u32 entry, u64 &stepsOut, u32 &badOp)
 		const V4 s1 = operand (srcReg (p, s, r1 & 0x7F), I.sh[0], I.neg[0]);
 		const V4 s2 = operand (srcReg (p, s, r2 & 0x7F), I.sh[1], I.neg[1]);
 		if (p->spec) specStep (p, s, I, pc - 1, r1 & 0x7F, r2 & 0x7F, r3 & 0x7F, s1, s2);
+		if (p->replay)
+		{
+			Replay &rp = *p->replay;
+			const u32 n = rp.steps++;
+			if (I.idx) rp.idxHash = (rp.idxHash ^ ((u64) (r1 & 0x7F) | (u64) (r2 & 0x7F) << 8 | (u64) (r3 & 0x7F) << 16)) * 1099511628211ull;
+			while (rp.at < rp.nCap && rp.cap[rp.at].step == n && rp.cap[rp.at].kind != 3)
+			{
+				const SpecCap &c = rp.cap[rp.at++];
+				if (c.kind == 4) { if (!replayFlags (s, c.a)) { rp.fail = true; return; } continue; }
+				V4 t;
+				const void *src = c.kind == 1 ? (const void *) s.reg[c.a & 31] : c.kind == 2 ? (const void *) s.out[c.a & 15] : c.a == 0 ? (const void *) &s1 : c.a == 1 ? (const void *) &s2
+						: (t = operand (srcReg (p, s, r3 & 0x7F), I.sh[2], I.neg[2]), (const void *) &t);
+				memcpy (rp.consts[c.slot], src, sizeof (float) * 4);
+			}
+		}
 		V4 v;
 		if (op == 0x12) { if (I.writes & 8) s.a[0] = (int) s1[0]; if (I.writes & 4) s.a[1] = (int) s1[1]; continue; }		// MOVA
 		if (op == 0x2E || op == 0x2F)											// CMP
@@ -425,6 +467,7 @@ struct Spec
 	SpecOp ops[OPS_MAX]; u32 nOps;
 	float consts[CONSTS_MAX][4]; u32 nConsts;
 	u64 shape; int fail;
+	SpecRec *rec; u32 step; u64 idxHash; bool flowKnown; u8 flagChk;	// (noted for a later Replay: the constants' sources, the flow's decisions)
 };
 static inline void specNeeds (u32 op, u32 shape, u32 writes, u32 need[3])
 {
@@ -442,6 +485,17 @@ static inline void specNeeds (u32 op, u32 shape, u32 writes, u32 need[3])
 	default: need[0] = need[1] = writes; break;
 	}
 }
+static inline bool replayFlags (const Shader &s, u8 flags)
+{
+	for (int i = 0; i < 2; i++) if ((flags >> (2 * i) & 1) && s.cmp[i] != ((flags >> (2 * i + 1) & 1) != 0)) return false;
+	return true;
+}
+// A constant of the list, from `src` (what it is: SpecCap's kinds).
+static inline void specConst (Spec &sp, const void *src, u8 kind, u8 a)
+{
+	if (sp.rec) { if (sp.rec->nCap < 1200) { const SpecCap c = { sp.step, kind, a, (u16) sp.nConsts }; sp.rec->cap[sp.rec->nCap++] = c; } else sp.rec->over = true; }
+	memcpy (sp.consts[sp.nConsts++], src, sizeof (float) * 4);
+}
 static inline u8 specGuardNow (const Spec &sp) { return sp.ng ? sp.gs[sp.ng - 1].slot : 0; }
 static void specFlagsPut (Spec &sp, const Shader &s, int i)		// a known result the list has not got yet
 {
@@ -450,6 +504,7 @@ static void specFlagsPut (Spec &sp, const Shader &s, int i)		// a known result t
 	memset (&m, 0, sizeof m);
 	m.op = 0xFB; m.d = (u8) i; m.reg[0] = s.cmp[i] ? 1 : 0;
 	sp.ops[sp.nOps++] = m; sp.cmpMat[i] = true;
+	sp.flagChk |= (u8) ((1u | (s.cmp[i] ? 2u : 0u)) << (2 * i));
 	sp.shape = (sp.shape ^ ((u64) 0xFB << 40 | (u64) i << 8 | m.reg[0])) * 1099511628211ull;
 }
 static u8 specGuardMake (Spec &sp, u32 ins, bool negate)
@@ -467,6 +522,7 @@ static u8 specGuardMake (Spec &sp, u32 ins, bool negate)
 static int specFlow (Pica *p, const Shader &s, u32 op, u32 ins, u32 pc, bool cond, int depth)
 {
 	Spec &sp = *p->spec;
+	sp.flowKnown = true; sp.flagChk = 0;
 	if (sp.fail) return 0;
 	if (op == 0x25 || op == 0x28 || op == 0x2C)			// on the comparison's results
 	{
@@ -474,6 +530,7 @@ static int specFlow (Pica *p, const Shader &s, u32 op, u32 ins, u32 pc, bool con
 		const bool known = !((mode != 3 && !sp.cmpKnown[0]) || (mode != 2 && !sp.cmpKnown[1]));
 		if (!known)
 		{
+			sp.flowKnown = false;
 			if (op == 0x2C)					// a jump forward over a block: the block, under the opposite guard
 			{
 				const u32 to = ins >> 10 & 0xFFF;
@@ -511,6 +568,17 @@ static int specFlow (Pica *p, const Shader &s, u32 op, u32 ins, u32 pc, bool con
 	}
 	return 0;
 }
+static int specFlowRec (Pica *p, const Shader &s, u32 op, u32 ins, u32 pc, bool cond, int depth)
+{
+	const int both = specFlow (p, s, op, ins, pc, cond, depth);
+	Spec &sp = *p->spec;
+	if (sp.rec)
+	{
+		if (sp.rec->nFlow < 1024) { const SpecFlowRec f = { (u8) both, (u8) (cond ? 1 : 0), (u8) (sp.flowKnown ? 1 : 0), sp.flagChk }; sp.rec->flow[sp.rec->nFlow++] = f; }
+		else sp.rec->over = true;
+	}
+	return both;
+}
 static void specPop (Pica *p, int depth, u32 endPc, u32 retPc)	// the interpreter left a block (at endPc, for retPc): its guards with it
 {
 	Spec &sp = *p->spec;
@@ -524,6 +592,10 @@ static void specAt (Pica *p, u32 pc, int depth)				// the instruction a jumped-o
 static void specStep (Pica *p, const Shader &s, const ShaderIns &I, u32 pcOf, u32 r1, u32 r2, u32 r3, V4 s1, V4 s2)
 {
 	Spec &sp = *p->spec;
+	if (I.idx) sp.idxHash = (sp.idxHash ^ ((u64) r1 | (u64) r2 << 8 | (u64) r3 << 16)) * 1099511628211ull;
+	sp.flagChk = 0;
+	// (at the way out: the results this instruction needed checked are noted, and the next one's number is set)
+	struct Next { Spec &sp; u32 n; ~Next () { if (sp.flagChk && sp.rec) { if (sp.rec->nCap < 1200) { const SpecCap c = { n, 4, sp.flagChk, 0 }; sp.rec->cap[sp.rec->nCap++] = c; } else sp.rec->over = true; } sp.step = n + 1; } } next = { sp, sp.step };
 	if (sp.fail) return;
 	const u32 op = I.op, regs[3] = { r1, r2, r3 };
 	if ((I.idx == 1 && !sp.aKnown[0]) || (I.idx == 2 && !sp.aKnown[1])) { sp.fail = Spec::WHY_INDEX; return; }
@@ -566,7 +638,7 @@ static void specStep (Pica *p, const Shader &s, const ShaderIns &I, u32 pcOf, u3
 		for (int q = 0; q < 2; q++)
 		{
 			o.sh[q] = I.sh[q]; o.neg[q] = I.neg[q];
-			if (known[q]) { o.kind[q] = 1; o.slot[q] = (u16) sp.nConsts; memcpy (sp.consts[sp.nConsts++], &val[q], sizeof (float) * 4); continue; }
+			if (known[q]) { o.kind[q] = 1; o.slot[q] = (u16) sp.nConsts; specConst (sp, &val[q], 0, (u8) q); continue; }
 			o.kind[q] = 0; o.reg[q] = (u8) regs[q];
 			const u8 put = (u8) (srcNeed[q] & sp.known[regs[q]] & ~sp.mat[regs[q]]);
 			if (put)
@@ -575,7 +647,7 @@ static void specStep (Pica *p, const Shader &s, const ShaderIns &I, u32 pcOf, u3
 				memset (&m, 0, sizeof m);
 				m.op = 0xFE; m.d = (u8) regs[q]; m.writes = put; m.slot[0] = (u16) sp.nConsts;
 				for (int e = 0; e < 4; e++) m.mask[e] = (put & (8u >> e)) ? -1 : 0;
-				memcpy (sp.consts[sp.nConsts++], s.reg[regs[q]], sizeof (float) * 4);
+				specConst (sp, s.reg[regs[q]], 1, (u8) regs[q]);
 				sp.ops[sp.nOps++] = m; sp.mat[regs[q]] |= put;
 				sp.shape = (sp.shape ^ ((u64) 0xFE << 40 | (u64) regs[q] << 8 | put)) * 1099511628211ull;
 			}
@@ -604,7 +676,7 @@ static void specStep (Pica *p, const Shader &s, const ShaderIns &I, u32 pcOf, u3
 			memset (&m, 0, sizeof m);
 			m.op = 0xFE; m.d = I.d; m.dOut = I.d < 0x10; m.writes = put; m.slot[0] = (u16) sp.nConsts;
 			for (int e = 0; e < 4; e++) m.mask[e] = (put & (8u >> e)) ? -1 : 0;
-			memcpy (sp.consts[sp.nConsts++], I.d < 0x10 ? s.out[I.d] : s.reg[I.d], sizeof (float) * 4);
+			specConst (sp, I.d < 0x10 ? s.out[I.d] : s.reg[I.d], I.d < 0x10 ? 2 : 1, I.d);
 			sp.ops[sp.nOps++] = m; dm |= put;
 			sp.shape = (sp.shape ^ ((u64) 0xFE << 40 | (u64) I.d << 8 | put | (I.d < 0x10 ? 0x80 : 0))) * 1099511628211ull;
 		}
@@ -613,7 +685,7 @@ static void specStep (Pica *p, const Shader &s, const ShaderIns &I, u32 pcOf, u3
 	for (int k = 0; k < nOperands; k++)
 	{
 		o.sh[k] = I.sh[k]; o.neg[k] = I.neg[k];
-		if (known[k]) { o.kind[k] = 1; o.slot[k] = (u16) sp.nConsts; memcpy (sp.consts[sp.nConsts++], &val[k], sizeof (float) * 4); continue; }
+		if (known[k]) { o.kind[k] = 1; o.slot[k] = (u16) sp.nConsts; specConst (sp, &val[k], 0, (u8) k); continue; }
 		o.kind[k] = 0; o.reg[k] = (u8) regs[k];
 		const u8 put = (u8) (srcNeed[k] & sp.known[regs[k]] & ~sp.mat[regs[k]]);	// (known components beside a vertex's: put in place first)
 		if (put)
@@ -622,7 +694,7 @@ static void specStep (Pica *p, const Shader &s, const ShaderIns &I, u32 pcOf, u3
 			memset (&m, 0, sizeof m);
 			m.op = 0xFE; m.d = (u8) regs[k]; m.dOut = false; m.writes = put; m.slot[0] = (u16) sp.nConsts;
 			for (int i = 0; i < 4; i++) m.mask[i] = (put & (8u >> i)) ? -1 : 0;
-			memcpy (sp.consts[sp.nConsts++], s.reg[regs[k]], sizeof (float) * 4);
+			specConst (sp, s.reg[regs[k]], 1, (u8) regs[k]);
 			sp.ops[sp.nOps++] = m; sp.mat[regs[k]] |= put;
 			sp.shape = (sp.shape ^ ((u64) 0xFE << 40 | (u64) regs[k] << 8 | put)) * 1099511628211ull;
 		}
@@ -694,8 +766,10 @@ static void specList (const Spec &sp, picavs::Op *out)
 }
 // A draw's shader specialized: inKnown[r] = the components of input register r that are the draw's (a fixed
 // attribute, a register no attribute feeds); `s` holds a vertex's inputs (the draw's are read from it).
-static bool specBuild (Pica *p, Spec &sp, const u8 inKnown[16], Shader &s)
+static bool specBuild (Pica *p, Spec &sp, const u8 inKnown[16], Shader &s, SpecRec *rec = 0)
 {
+	sp.rec = rec; sp.step = 0; sp.idxHash = 1469598103934665603ull; sp.flowKnown = true; sp.flagChk = 0;
+	if (rec) { rec->nCap = 0; rec->nFlow = 0; rec->over = false; }
 	memset (sp.known, 0xF, sizeof sp.known); memset (sp.mat, 0, sizeof sp.mat);
 	memset (sp.outKnown, 0xF, sizeof sp.outKnown); memset (sp.outMat, 0, sizeof sp.outMat);
 	for (int r = 0; r < 16; r++) sp.known[r] = inKnown[r];
@@ -715,7 +789,7 @@ static bool specBuild (Pica *p, Spec &sp, const u8 inKnown[16], Shader &s)
 		memset (&m, 0, sizeof m);
 		m.op = 0xFE; m.d = (u8) o; m.dOut = true; m.writes = put; m.slot[0] = (u16) sp.nConsts;
 		for (int i = 0; i < 4; i++) m.mask[i] = (put & (8u >> i)) ? -1 : 0;
-		memcpy (sp.consts[sp.nConsts++], s.out[o], sizeof (float) * 4);
+		specConst (sp, s.out[o], 3, (u8) o);
 		sp.ops[sp.nOps++] = m;
 	}
 	return true;
@@ -2649,9 +2723,15 @@ static void lutFitKept (const Pica *p, int table, bool abs, float scale, float *
 {
 	enum { KEPT = 64 };
 	static struct { u64 key; float v[picavs::TABLE_VALUES]; } kept[KEPT]; static u32 next;
-	u64 key = hashBytes (p->lightLut[table], sizeof p->lightLut[table], 1469598103934665603ull ^ (abs ? 0x9E3779B9ull : 0));
-	key = hashBytes (p->lightLutDiff[table], sizeof p->lightLutDiff[table], key);
-	key = hashBytes (&scale, sizeof scale, key) | 1;
+	// (a table's contents as one number: worked out again only when the table was written)
+	static u32 seen[24]; static u64 hashOf[24];
+	const int tb = table % 24;
+	if (seen[tb] != p->lutEpoch[tb] + 1)
+	{
+		hashOf[tb] = hashBytes (p->lightLutDiff[tb], sizeof p->lightLutDiff[tb], hashBytes (p->lightLut[tb], sizeof p->lightLut[tb], 1469598103934665603ull));
+		seen[tb] = p->lutEpoch[tb] + 1;
+	}
+	const u64 key = hashBytes (&scale, sizeof scale, hashOf[tb] ^ (abs ? 0x9E3779B9ull : 0)) | 1;
 	for (int i = 0; i < KEPT; i++) if (kept[i].key == key) { memcpy (out, kept[i].v, sizeof kept[i].v); return; }
 	lutFit (p, table, abs, scale, out);
 	kept[next % KEPT].key = key; memcpy (kept[next % KEPT].v, out, sizeof kept[0].v); next++;
@@ -2706,6 +2786,16 @@ struct VsNow
 	picavs::Write w[40]; u32 nw;
 };
 static VsNow &vsNow () { static VsNow n; return n; }
+// A specialization kept: for the same code, entry, boolean and integer uniforms and known inputs, the shader gives
+// the same list as long as the run goes the same way (Replay checks it) -- only its constants are taken again.
+// hit: the vertex programs made from this list (by fragment program, meanings and lighting; -1: refused).
+struct SpecTpl
+{
+	u64 key; bool used, fails; u64 shape, idxHash; u32 nOps, nConsts, steps, nCap, nFlow;
+	SpecCap *cap; SpecFlowRec *flow;
+	struct { u64 k; int vprog; } hit[6]; u32 nHit;
+};
+enum { TPL_MAX = 256 };
 
 // What the vertex shader writes for a fragment program: the position, then its varyings in order (gpuRow's).
 static u32 vsWrites (const GProg &g, const picavs::Sem *sem, bool lit, picavs::Write *w)
@@ -2817,28 +2907,105 @@ static VProg *vsPrepare (Pica *p, Batch &b, int inputs, const State &S, const Li
 	const int ni = inputs < 16 ? inputs : 16;
 	// (an attribute's component with one value in the whole chunk is the draw's: a rigid mesh's bone, its weights)
 	u8 same[16]; memset (same, 0xF, sizeof same);
-	for (u32 k = 1; k < b.count; k++)
-		for (int i = 0; i < ni; i++)
-			if (same[i] && memcmp (b.attr[k][i], b.attr[0][i], sizeof (float) * 4) != 0)
-				for (int c = 0; c < 4; c++) if (memcmp (&b.attr[k][i][c], &b.attr[0][i][c], sizeof (float)) != 0) same[i] &= (u8) ~(8u >> c);
+	{
+		u32 first[64], diff[64];					// (each float's bits: vertex 0's, and what differed from them)
+		const int nw = ni * 4;
+		memcpy (first, b.attr[0], sizeof (u32) * (size_t) nw);
+		for (int j = 0; j < nw; j++) diff[j] = 0;
+		for (u32 k = 1; k < b.count; k++)
+		{
+			u32 w[64];
+			memcpy (w, b.attr[k], sizeof (u32) * (size_t) nw);
+			for (int j = 0; j < nw; j++) diff[j] |= w[j] ^ first[j];
+		}
+		for (int i = 0; i < ni; i++) for (int c = 0; c < 4; c++) if (diff[i * 4 + c]) same[i] &= (u8) ~(8u >> c);
+	}
 	u8 inKnown[16]; memset (inKnown, 0xF, sizeof inKnown);		// (a register no attribute feeds: zeros, the draw's)
 	memset (N.attrOf, 0xFF, sizeof N.attrOf);
 	static Shader s0;
-	memset (&s0, 0, sizeof s0);
 	for (int i = 0; i < ni; i++)
 	{
 		const u32 reg = (u32) (perm >> (4 * i) & 15);
 		inKnown[reg] = i < 12 && (fixedMask >> i & 1) ? 0xF : same[i];
 		N.attrOf[reg] = (u8) i;
-		memcpy (s0.reg[reg], b.attr[0][i], sizeof (float) * 4);
 	}
+	auto load = [&] () { memset (&s0, 0, sizeof s0); for (int i = 0; i < ni; i++) memcpy (s0.reg[perm >> (4 * i) & 15], b.attr[0][i], sizeof (float) * 4); };
+	Machine *m = p->m;
+	const u32 entry = p->regs[R_VSH_ENTRY] & 0xFFFF;
+	// the specialization kept for this shader and these known inputs, followed again when there is one
+	if (!p->tpl) p->tpl = (SpecTpl *) calloc (TPL_MAX, sizeof (SpecTpl));
+	if (p->specCodeDirty || !p->specCodeHash) { p->specCodeHash = hashBytes (p->opdesc, sizeof p->opdesc, hashBytes (p->code, sizeof p->code, 1469598103934665603ull)) | 1; p->specCodeDirty = false; }
+	u64 key = hashBytes (inKnown, sizeof inKnown, p->specCodeHash ^ (u64) entry * 0x9E3779B97F4A7C15ull);
+	key = hashBytes (p->iu, sizeof p->iu, key);
+	key = (key ^ p->bu) * 1099511628211ull; key = (key ^ perm) * 1099511628211ull; key = ((key ^ (u64) ni) * 1099511628211ull) | 1;
+	SpecTpl *t = p->tpl ? &p->tpl[(key >> 8) & (TPL_MAX - 1)] : 0;
+	bool followed = false, checkIt = false;
+	static float keptConsts[Spec::CONSTS_MAX][4]; u32 keptN = 0; u64 keptShape = 0;
 	why = 1;
-	if (!specBuild (p, N.sp, inKnown, s0)) return 0;
+	if (t && t->used && t->key == key && !(m->vsDebug & 64))
+	{
+		if (t->fails) { m->gsp.vsKept++; return 0; }
+		Replay rp = { t->cap, t->nCap, 0, t->flow, t->nFlow, 0, 1469598103934665603ull, 0, false, N.sp.consts };
+		u64 steps = 0; u32 bad = 0;
+		load ();
+		p->replay = &rp; runShader (p, s0, entry, steps, bad); p->replay = 0;
+		if (!rp.fail && !bad && rp.steps == t->steps && rp.atFlow == t->nFlow && rp.idxHash == t->idxHash)
+		{
+			for (; rp.at < rp.nCap && rp.cap[rp.at].kind == 3; rp.at++) memcpy (N.sp.consts[rp.cap[rp.at].slot], s0.out[rp.cap[rp.at].a & 15], sizeof (float) * 4);
+			followed = rp.at == rp.nCap;
+		}
+		if (followed && m->vsCheck)					// (tests: the whole specialization too, compared below)
+		{
+			keptN = t->nConsts; keptShape = t->shape; memcpy (keptConsts, N.sp.consts, sizeof (float) * 4 * keptN);
+			followed = false; checkIt = true;
+		}
+	}
 	specSems (p, N.sem);
 	N.lit = lit != 0;
 	if (lit) specLighting (p, *lit, N.sem, N.gl, N.lv);
+	u64 k2 = hashBytes (N.sem, sizeof N.sem, 1469598103934665603ull ^ (u64) (u32) S.gprog * 0x9E3779B97F4A7C15ull);
+	if (N.lit) k2 = hashBytes (&N.gl, sizeof N.gl, k2) ^ 0x5555;
+	if (followed)
+		for (u32 i = 0; i < t->nHit && i < 6; i++)
+			if (t->hit[i].k == k2)
+			{
+				m->gsp.vsKept++;
+				if (t->hit[i].vprog < 0 || !p->vprog[t->hit[i].vprog].ok) { why = 2; return 0; }
+				why = 0;
+				return &p->vprog[t->hit[i].vprog];
+			}
+	// the whole specialization: the list made, what it took noted for the next time
+	static SpecRec rec;
+	load ();
+	const bool ok = specBuild (p, N.sp, inKnown, s0, t ? &rec : 0);
+	if (checkIt)
+	{
+		m->vsStat.tplChecked++;
+		if (!ok || N.sp.nConsts != keptN || N.sp.shape != keptShape || memcmp (keptConsts, N.sp.consts, sizeof (float) * 4 * keptN) != 0) m->vsStat.tplWrong++;
+	}
+	const bool sameTpl = t && t->used && t->key == key && !t->fails && ok && t->shape == N.sp.shape && t->nOps == N.sp.nOps && t->nConsts == N.sp.nConsts;
+	if (t && !sameTpl)
+	{
+		free (t->cap); free (t->flow);
+		memset (t, 0, sizeof *t);
+		if (!ok) { t->used = true; t->key = key; t->fails = true; }
+		else if (!rec.over)
+		{
+			t->cap = (SpecCap *) malloc (sizeof (SpecCap) * (rec.nCap + 1)); t->flow = (SpecFlowRec *) malloc (sizeof (SpecFlowRec) * (rec.nFlow + 1));
+			if (t->cap && t->flow)
+			{
+				memcpy (t->cap, rec.cap, sizeof (SpecCap) * rec.nCap); memcpy (t->flow, rec.flow, sizeof (SpecFlowRec) * rec.nFlow);
+				t->nCap = rec.nCap; t->nFlow = rec.nFlow; t->used = true; t->key = key;
+				t->shape = N.sp.shape; t->idxHash = N.sp.idxHash; t->steps = N.sp.step; t->nOps = N.sp.nOps; t->nConsts = N.sp.nConsts;
+			}
+			else { free (t->cap); free (t->flow); t->cap = 0; t->flow = 0; }
+		}
+	}
+	if (!ok) return 0;
 	N.nw = vsWrites (p->gprog[S.gprog], N.sem, N.lit, N.w);
-	return vsProgram (p, N, S, why);
+	VProg *v = vsProgram (p, N, S, why);
+	if (t && t->used && t->key == key && !t->fails && (v || why == 2)) { t->hit[t->nHit % 6].k = k2; t->hit[t->nHit % 6].vprog = v ? (int) (v - p->vprog) : -1; t->nHit++; }
+	return v;
 }
 static GpuBatch &gpuBatchNew (GRec *r, const State &st, const GProg &g, u32 stride);
 // A chunk of a list of triangles -- the draw's vertices [n0, n), each one's entry in b.order -- recorded with its
@@ -3158,36 +3325,51 @@ static void draw (Pica *p, bool indexed)
 	if (indexed && !p->shaded) p->shaded = (Shaded *) calloc (SHADED_MAX, sizeof (Shaded));
 	Shaded *const shaded = indexed && !p->m->traceGpu ? p->shaded : 0;
 	if (++p->drawStamp == 0) { p->drawStamp = 1; if (p->shaded) memset (p->shaded, 0, sizeof (Shaded) * SHADED_MAX); }
-	// one vertex's attributes, as the loaders and the formats say
+	// one vertex's attributes, as the loaders and the formats say -- where each one is in a loader's piece is
+	// worked out once for the draw
+	struct RvItem { u16 pos; u8 id, type, elems; };
+	struct RvLoader { u32 off, stride; int n; RvItem it[12]; };
+	RvLoader rvl[12]; int rvn = 0;
+	for (int l = 0; l < 12; l++)
+	{
+		const u32 *r = p->regs + R_ATTR_LOADER + l * 3;			// offset, the components' attributes, their count and the stride
+		const u32 comps = r[2] >> 28, stride = r[2] >> 16 & 0xFF;
+		if (!comps) continue;
+		const u64 cfg = (u64) (r[2] & 0xFFFF) << 32 | r[1];
+		RvLoader &L = rvl[rvn++];
+		L.off = r[0] & 0x0FFFFFFF; L.stride = stride; L.n = 0;
+		u32 pos = 0;
+		for (u32 c = 0; c < comps && c < 12; c++)
+		{
+			const u32 id = (u32) (cfg >> (4 * c) & 15);
+			if (id >= 12) { pos = (pos + 3) & ~3u; pos += (id - 11) * 4; continue; }	// padding
+			const u32 type = (u32) (formats >> (4 * id) & 3), elems = (u32) (formats >> (4 * id + 2) & 3) + 1;
+			const u32 size = type == 3 ? 4 : type == 2 ? 2 : 1;
+			pos = (pos + size - 1) & ~(size - 1);
+			RvItem &it = L.it[L.n++];
+			it.pos = (u16) pos; it.id = (u8) id; it.type = (u8) type; it.elems = (u8) elems;
+			pos += size * elems;
+		}
+	}
 	auto readVertex = [&] (u32 vi, float attr[16][4])
 	{
 		for (int i = 0; i < 16; i++) { attr[i][0] = attr[i][1] = attr[i][2] = 0; attr[i][3] = 1.0f; }
-		for (int l = 0; l < 12; l++)
+		for (int l = 0; l < rvn; l++)
 		{
-			const u32 *r = p->regs + R_ATTR_LOADER + l * 3;		// offset, the components' attributes, their count and the stride
-			const u32 comps = r[2] >> 28, stride = r[2] >> 16 & 0xFF;
-			if (!comps) continue;
-			const u64 cfg = (u64) (r[2] & 0xFFFF) << 32 | r[1];
-			const u8 *src = p->m->physPtr (base + (r[0] & 0x0FFFFFFF) + stride * vi, stride ? stride : 64);
+			const RvLoader &L = rvl[l];
+			const u8 *src = p->m->physPtr (base + L.off + L.stride * vi, L.stride ? L.stride : 64);
 			if (!src) continue;
-			u32 pos = 0;
-			for (u32 c = 0; c < comps && c < 12; c++)
+			for (int c = 0; c < L.n; c++)
 			{
-				const u32 id = (u32) (cfg >> (4 * c) & 15);
-				if (id >= 12) { pos = (pos + 3) & ~3u; pos += (id - 11) * 4; continue; }	// padding
-				const u32 type = (u32) (formats >> (4 * id) & 3), elems = (u32) (formats >> (4 * id + 2) & 3) + 1;
-				const u32 size = type == 3 ? 4 : type == 2 ? 2 : 1;
-				pos = (pos + size - 1) & ~(size - 1);
-				for (u32 e = 0; e < elems; e++, pos += size)
+				const RvItem &it = L.it[c];
+				const u8 *q = src + it.pos;
+				float *d = attr[it.id];
+				switch (it.type)
 				{
-					const u8 *q = src + pos;
-					switch (type)
-					{
-					case 0: attr[id][e] = (float) (s8) q[0]; break;
-					case 1: attr[id][e] = (float) q[0]; break;
-					case 2: attr[id][e] = (float) (s16) (q[0] | q[1] << 8); break;
-					default: { u32 w = (u32) q[0] | (u32) q[1] << 8 | (u32) q[2] << 16 | (u32) q[3] << 24; attr[id][e] = bitsFloat (w); break; }
-					}
+				case 0: for (u32 e = 0; e < it.elems; e++) d[e] = (float) (s8) q[e]; break;
+				case 1: for (u32 e = 0; e < it.elems; e++) d[e] = (float) q[e]; break;
+				case 2: for (u32 e = 0; e < it.elems; e++) d[e] = (float) (s16) (q[2 * e] | q[2 * e + 1] << 8); break;
+				default: memcpy (d, q, sizeof (float) * it.elems); break;
 				}
 			}
 		}
@@ -3499,6 +3681,7 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 			const u32 i = p->lightLutIndex++;
 			if (p->lightLutType < 24 && i < 256)
 			{
+				p->lutEpoch[p->lightLutType]++;
 				p->lightLut[p->lightLutType][i] = (float) (value & 0xFFF) / 4095.0f;
 				const float d = (float) (value >> 12 & 0x7FF) / 2047.0f;
 				p->lightLutDiff[p->lightLutType][i] = (value >> 23 & 1) ? -d : d;
@@ -3530,8 +3713,8 @@ static void writeReg (Pica *p, u32 id, u32 value, u32 mask)
 			}
 			p->floatIndex++;
 		}
-		else if (id >= R_VSH_CODE_DATA && id < R_VSH_CODE_DATA + 8) { if (p->codeIndex < CODE_MAX) { if (p->code[p->codeIndex] != value) { p->decDirty = true; p->jitDirty = true; } p->code[p->codeIndex++] = value; if (p->codeIndex > p->codeTop) p->codeTop = p->codeIndex; } }
-		else if (id >= R_VSH_OPDESC_DATA && id < R_VSH_OPDESC_DATA + 8) { if (p->opdescIndex < OPDESC_MAX) { if (p->opdesc[p->opdescIndex] != value) { p->decDirty = true; p->jitDirty = true; } p->opdesc[p->opdescIndex++] = value; } }
+		else if (id >= R_VSH_CODE_DATA && id < R_VSH_CODE_DATA + 8) { if (p->codeIndex < CODE_MAX) { if (p->code[p->codeIndex] != value) { p->decDirty = true; p->jitDirty = true; p->specCodeDirty = true; } p->code[p->codeIndex++] = value; if (p->codeIndex > p->codeTop) p->codeTop = p->codeIndex; } }
+		else if (id >= R_VSH_OPDESC_DATA && id < R_VSH_OPDESC_DATA + 8) { if (p->opdescIndex < OPDESC_MAX) { if (p->opdesc[p->opdescIndex] != value) { p->decDirty = true; p->jitDirty = true; p->specCodeDirty = true; } p->opdesc[p->opdescIndex++] = value; } }
 		break;
 	}
 }

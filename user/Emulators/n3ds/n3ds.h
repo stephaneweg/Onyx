@@ -328,6 +328,7 @@ struct Machine
 		// the vertex shaders on the host's GPU (gpuVS): vertices given raw, the chunks of draws they came in, the programs
 		// made and their instructions; vertices left to the processor (1 the shader not specialized, 2 its program refused, 3 no room)
 		u64 vsVertices, vsChunks, vsPrograms, vsInstructions, vsNot[4];
+		u64 vsKept;				// ... chunks whose program was found by a kept specialization
 		u64 usVsProgram, usVsRecord;		// ... the host's time finding a chunk's program (its shader specialized), recording it
 		u64 gpuFrames, softFrames, usGpu, skippedFrames;	// the targets' frames drawn by the host's GPU, by the software renderer; the host's time
 		u64 vertices, trianglesDrawn, pixelsDrawn, shaderSteps, trianglesIn;	// (shaderSteps: the vertex shader's instructions run; trianglesIn: before clipping and culling)
@@ -399,7 +400,7 @@ struct Machine
 	u32 gpuSubpixels;			// ... and its screen positions' unit: 256 a pixel (V3D 4.2), 64 (V3D 7.1)
 	u32 vsDebug;				// (to find a fault: kinds of draws kept on the processor -- n3ds_pica.cpp, vsChunk)
 	bool vsCheck;				// (tests: what each draw's vertex program would give, beside the processor's path)
-	struct { u64 noState, notVerts[4], chunks, inputs, uniforms, checked, wrong, wrongLit; u32 said; } vsStat;
+	struct { u64 noState, notVerts[4], chunks, inputs, uniforms, checked, wrong, wrongLit, tplChecked, tplWrong; u32 said; } vsStat;
 	bool trace;				// the system calls and the requests, on stderr (tests)
 	bool traceGpu;				// ... each draw and transfer of the GPU
 	bool listsAside;			// a list's triangles drawn while the program goes on, its interrupt late (off: see n3ds_gsp.cpp)
